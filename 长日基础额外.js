@@ -80,99 +80,144 @@ function sendForwardMsg(ctx, msg, nodes) {
 
 let cmd_view_preset_gifts = seal.ext.newCmdItemInfo();
 cmd_view_preset_gifts.name = "礼物商城";
-cmd_view_preset_gifts.help = "礼物商城 - 随机解锁 1 个预设礼物（受游戏天数和冷却控制）";
+cmd_view_preset_gifts.help = "礼物商城 — 查看今日上架的商品（随机3件）";
 
 cmd_view_preset_gifts.solve = (ctx, msg) => {
     const main = getMainExt();
     if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件");
 
-    const platform = msg.platform;
-    const uid = msg.sender.userId.replace(`${platform}:`, "");
-    const userKey = `${platform}:${uid}`;
-
-    // 1. 身份验证
     const sendname = getRoleName(ctx, msg);
     if (!sendname) {
         seal.replyToSender(ctx, msg, "⚠️ 请先创建角色再逛商城。");
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    // 2. 冷却检查
-    let globalCooldowns = JSON.parse(main.storageGet("global_shop_cooldowns") || "{}");
-    const now = Date.now();
-    const cooldownDuration = 3600 * 1000; // 1小时
-
-    if (now - (globalCooldowns[userKey] || 0) < cooldownDuration) {
-        const remainingMin = Math.ceil((cooldownDuration - (now - globalCooldowns[userKey])) / 60000);
-        seal.replyToSender(ctx, msg, `⏳ 进货中... 商城正在整顿，请 ${remainingMin} 分钟后再来~`);
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    // 3. 获取数据
     const presetGifts = JSON.parse(main.storageGet("preset_gifts") || "{}");
-    const giftIds = Object.keys(presetGifts);
-    if (giftIds.length === 0) {
-        return seal.replyToSender(ctx, msg, "🛒 商城空空如也。");
+    const freeMode = main.storageGet("shop_free_mode") !== "false";
+    const currencyAttr = main.storageGet("shop_currency_attr") || "金币";
+
+    // 只展示有库存的商品
+    const inStock = Object.entries(presetGifts).filter(([, g]) => (g.stock ?? 3) > 0);
+    if (inStock.length === 0) {
+        return seal.replyToSender(ctx, msg, "🛒 商城暂无库存，请等待补货~");
     }
 
-    // 4. 图鉴与解锁逻辑
-    let giftSightings = JSON.parse(main.storageGet("gift_sightings") || "{}");
-    if (!giftSightings[userKey]) {
-        giftSightings[userKey] = { unlocked_gifts: [] };
+    // 随机抽取最多3件
+    const shuffled = inStock.sort(() => Math.random() - 0.5).slice(0, 3);
+    const bot = "礼物助手", uin = "10086";
+
+    const nodes = [{
+        type: "node",
+        data: { name: bot, uin, content:
+            `🛒 礼物商城\n${"━".repeat(14)}\n` +
+            (freeMode
+                ? "✨ 当前开启零元购，所有商品免费！\n"
+                : `💰 使用货币：${currencyAttr}\n`) +
+            `📦 共有 ${inStock.length} 件在售，随机展示 ${shuffled.length} 件\n\n` +
+            `发送「购买 商品名」即可购买`
+        }
+    }];
+
+    for (const [id, gift] of shuffled) {
+        const stock = gift.stock ?? 3;
+        const priceText = freeMode ? "0元（零元购）" : `${gift.price ?? 0} ${currencyAttr}`;
+        nodes.push({ type: "node", data: { name: bot, uin, content:
+            `🎁 ${gift.name}\n${"─".repeat(12)}\n` +
+            `📝 ${gift.content}\n` +
+            `💰 价格：${priceText}\n` +
+            `📦 剩余库存：${stock} 件`
+        }});
     }
 
-    // 随机选择一个未解锁的礼物（如果全部已解锁，则随机一个已解锁的）
-    let selectedId;
-    let unlocked = giftSightings[userKey].unlocked_gifts;
-    let available = giftIds.filter(id => !unlocked.includes(id));
-    if (available.length > 0) {
-        const randomIndex = Math.floor(Math.random() * available.length);
-        selectedId = available[randomIndex];
-    } else {
-        // 已全部解锁，随机一个已解锁的（但不会重复添加）
-        const randomIndex = Math.floor(Math.random() * giftIds.length);
-        selectedId = giftIds[randomIndex];
-    }
-    const gift = presetGifts[selectedId];
-
-    if (!unlocked.includes(selectedId)) {
-        unlocked.push(selectedId);
-    }
-
-    // 5. 持久化（图鉴解锁）
-    globalCooldowns[userKey] = now;
-    main.storageSet("global_shop_cooldowns", JSON.stringify(globalCooldowns));
-    main.storageSet("gift_sightings", JSON.stringify(giftSightings));
-
-    // 6. 加入背包（获得 3 份可赠送的礼物副本）
-    const roleInvKey = `${platform}:${sendname}`;
-    const invs = JSON.parse(main.storageGet("global_inventories") || "{}");
-    if (!invs[roleInvKey]) invs[roleInvKey] = [];
-    for (let i = 0; i < 3; i++) {
-        invs[roleInvKey].push({
-            name: gift.name,
-            desc: gift.content,
-            used: false,
-            type: "礼物",
-            giftId: selectedId,
-            createTime: Date.now(),
-            source: "礼物商城"
-        });
-    }
-    main.storageSet("global_inventories", JSON.stringify(invs));
-
-    // 7. 渲染回复
-    const isNew = unlocked.length === (invs[roleInvKey].filter(i => i.giftId === selectedId).length === 3 ? unlocked.length : unlocked.length - 1);
-    let rep = `🛒 【${sendname}】你在商城货架发现了一件宝贝：\n\n`;
-    rep += `📦 编号：${selectedId}\n`;
-    rep += `✨ 礼物：${gift.name}\n`;
-    rep += `📝 内容：${gift.content}\n`;
-    rep += `\n🎁 已获得 3 份，可通过「道具赠送 对方名 ${gift.name}」送出\n`;
-    rep += `📚 图鉴进度：${unlocked.length} / ${giftIds.length}`;
-    seal.replyToSender(ctx, msg, rep);
+    sendForwardMsg(ctx, msg, nodes);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["礼物商城"] = cmd_view_preset_gifts;
+
+// ========================
+// 🛍️ 玩家指令：购买
+// ========================
+
+let cmd_purchase = seal.ext.newCmdItemInfo();
+cmd_purchase.name = "购买";
+cmd_purchase.help = "购买 商品名 — 在礼物商城购买指定商品";
+
+cmd_purchase.solve = (ctx, msg, cmdArgs) => {
+    const main = getMainExt();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件");
+
+    const sendname = getRoleName(ctx, msg);
+    if (!sendname) return seal.replyToSender(ctx, msg, "⚠️ 请先创建角色再购买商品。");
+
+    const itemName = cmdArgs.getArgN(1);
+    if (!itemName) return seal.replyToSender(ctx, msg, "用法：购买 商品名");
+
+    const presetGifts = JSON.parse(main.storageGet("preset_gifts") || "{}");
+    const freeMode = main.storageGet("shop_free_mode") !== "false";
+    const currencyAttr = main.storageGet("shop_currency_attr") || "金币";
+
+    // 按名字找商品
+    const entry = Object.entries(presetGifts).find(([, g]) => g.name === itemName);
+    if (!entry) return seal.replyToSender(ctx, msg, `❌ 商城中没有「${itemName}」，发送「礼物商城」查看在售商品。`);
+    const [giftId, gift] = entry;
+
+    const stock = gift.stock ?? 3;
+    if (stock <= 0) return seal.replyToSender(ctx, msg, `😔 「${itemName}」已售罄。`);
+
+    // 非零元购：检查并扣除货币
+    if (!freeMode) {
+        const price = gift.price ?? 0;
+        if (price > 0) {
+            let attrs = JSON.parse(main.storageGet("sys_character_attrs") || "{}");
+            const currentVal = attrs[sendname]?.[currencyAttr] || 0;
+            if (currentVal < price) {
+                return seal.replyToSender(ctx, msg, `💰 ${currencyAttr}不足！需要 ${price}，当前 ${currentVal}。`);
+            }
+            if (!attrs[sendname]) attrs[sendname] = {};
+            attrs[sendname][currencyAttr] = currentVal - price;
+            main.storageSet("sys_character_attrs", JSON.stringify(attrs));
+        }
+    }
+
+    // 加入背包（1份，普通礼物分区）
+    const platform = msg.platform;
+    const roleInvKey = `${platform}:${sendname}`;
+    const invs = JSON.parse(main.storageGet("global_inventories") || "{}");
+    if (!invs[roleInvKey]) invs[roleInvKey] = [];
+    invs[roleInvKey].push({
+        name: gift.name,
+        desc: gift.content,
+        used: false,
+        type: "礼物",
+        giftId: giftId,
+        createTime: Date.now(),
+        source: "礼物商城"
+    });
+    main.storageSet("global_inventories", JSON.stringify(invs));
+
+    // 扣库存
+    presetGifts[giftId].stock = stock - 1;
+    main.storageSet("preset_gifts", JSON.stringify(presetGifts));
+
+    // 更新图鉴（购买即解锁）
+    const uid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+    const userKey = `${platform}:${uid}`;
+    let sightings = JSON.parse(main.storageGet("gift_sightings") || "{}");
+    if (!sightings[userKey]) sightings[userKey] = { unlocked_gifts: [] };
+    if (!sightings[userKey].unlocked_gifts.includes(giftId)) {
+        sightings[userKey].unlocked_gifts.push(giftId);
+    }
+    main.storageSet("gift_sightings", JSON.stringify(sightings));
+
+    const priceText = freeMode ? "（零元购）" : `（已扣除 ${gift.price ?? 0} ${currencyAttr}）`;
+    seal.replyToSender(ctx, msg,
+        `✅ 购买成功${priceText}\n` +
+        `🎁 「${gift.name}」已放入背包·普通礼物\n` +
+        `📦 商城剩余库存：${stock - 1} 件`
+    );
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["购买"] = cmd_purchase;
 
 // ========================
 // 📚 我的图鉴指令
@@ -247,14 +292,11 @@ ext.cmdMap["我的图鉴"] = cmd_view_my_gift_collection;
 
 let cmd_upload_preset_gift = seal.ext.newCmdItemInfo();
 cmd_upload_preset_gift.name = "上传预设礼物";
-cmd_upload_preset_gift.help = `用法：
-1. 单个上传：上传预设礼物 编号:礼物名:礼物内容
-   示例：上传预设礼物 #1:玫瑰花:一束精心包装的红色玫瑰花
-
-2. 批量上传：上传预设礼物 礼物1$礼物2$礼物3
-   示例：上传预设礼物 #1:玫瑰花:一束红玫瑰$#2:巧克力:一盒心形巧克力
-
-3. 导出数据：上传预设礼物 导出 - 导出所有预设礼物数据`;
+cmd_upload_preset_gift.help = `用法（零元购开启）：上传预设礼物 编号:礼物名:礼物内容
+用法（零元购关闭）：上传预设礼物 编号:礼物名:价格:礼物内容
+批量（$分隔）：上传预设礼物 礼物1$礼物2
+补货（恢复库存）：上传预设礼物 补货 编号
+导出：上传预设礼物 导出`;
 
 cmd_upload_preset_gift.solve = (ctx, msg, cmdArgs) => {
     const main = getMainExt();
@@ -265,123 +307,99 @@ cmd_upload_preset_gift.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
+    const freeMode = main.storageGet("shop_free_mode") !== "false";
+    const currencyAttr = main.storageGet("shop_currency_attr") || "金币";
     const inputArg = cmdArgs.getArgN(1).trim();
+
     if (!inputArg) {
-        seal.replyToSender(ctx, msg,
-            "❌ 请输入参数\n" +
-            "格式1（单个）：编号:礼物名:礼物内容\n" +
-            "格式2（批量）：礼物1$礼物2$礼物3\n" +
-            "格式3（导出）：上传预设礼物 导出");
+        const fmt = freeMode
+            ? "格式：编号:礼物名:礼物内容（零元购模式，无需价格）"
+            : `格式：编号:礼物名:价格:礼物内容（货币：${currencyAttr}）`;
+        seal.replyToSender(ctx, msg, `❌ 请输入参数\n${fmt}`);
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    // 导出功能
+    let presetGifts = JSON.parse(main.storageGet("preset_gifts") || "{}");
+
+    // 导出
     if (inputArg === "导出") {
-        const presetGifts = JSON.parse(main.storageGet("preset_gifts") || "{}");
         if (Object.keys(presetGifts).length === 0) {
             seal.replyToSender(ctx, msg, "📭 当前没有预设礼物数据");
             return seal.ext.newCmdExecuteResult(true);
         }
-        const exportData = JSON.stringify(presetGifts, null, 2);
-        seal.replyToSender(ctx, msg, `📦 当前预设礼物数据：\n\`\`\`json\n${exportData}\n\`\`\``);
+        seal.replyToSender(ctx, msg, `📦 当前预设礼物数据：\n\`\`\`json\n${JSON.stringify(presetGifts, null, 2)}\n\`\`\``);
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    // 获取现有礼物数据
-    let presetGifts = JSON.parse(main.storageGet("preset_gifts") || "{}");
+    // 补货：恢复指定编号库存为3
+    const restockArg = cmdArgs.getArgN(2);
+    if (inputArg === "补货") {
+        if (!restockArg) return seal.replyToSender(ctx, msg, "用法：上传预设礼物 补货 编号（如 #1）");
+        if (!presetGifts[restockArg]) return seal.replyToSender(ctx, msg, `❌ 编号 ${restockArg} 不存在。`);
+        presetGifts[restockArg].stock = 3;
+        main.storageSet("preset_gifts", JSON.stringify(presetGifts));
+        seal.replyToSender(ctx, msg, `✅ 「${presetGifts[restockArg].name}」库存已补至 3 件。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
 
-    let results = {
-        success: 0,
-        failed: 0,
-        details: []
-    };
+    // 解析单条
+    function parseSingle(raw) {
+        const parts = raw.trim().split(':');
+        const giftId = (parts[0] || "").trim();
+        const giftName = (parts[1] || "").trim();
+        if (!giftId.startsWith('#')) return { err: `编号必须以#开头: ${giftId}` };
+        if (!giftName) return { err: `礼物名为空: ${raw}` };
 
-    // 判断是批量上传还是单个上传
+        if (freeMode) {
+            // #id:name:content
+            if (parts.length < 3) return { err: `格式错误(缺少内容): ${raw}` };
+            const giftContent = parts.slice(2).join(':').trim();
+            if (!giftContent) return { err: `内容为空: ${raw}` };
+            return { giftId, giftName, giftContent, price: 0 };
+        } else {
+            // #id:name:price:content
+            if (parts.length < 4) return { err: `格式错误(零元购已关闭，需要价格): ${raw}\n  正确格式：编号:礼物名:价格:礼物内容` };
+            const price = parseInt(parts[2].trim());
+            if (isNaN(price) || price < 0) return { err: `价格必须为非负整数: ${parts[2]}` };
+            const giftContent = parts.slice(3).join(':').trim();
+            if (!giftContent) return { err: `内容为空: ${raw}` };
+            return { giftId, giftName, giftContent, price };
+        }
+    }
+
     const giftItems = inputArg.includes('$') ? inputArg.split('$') : [inputArg];
+    const results = { success: 0, failed: 0, details: [] };
 
     for (const giftItem of giftItems) {
         const item = giftItem.trim();
         if (!item) continue;
-
-        const parts = item.split(':');
-        if (parts.length < 3) {
-            results.details.push(`❌ 格式错误: ${item} (需要冒号分隔三部分)`);
+        const parsed = parseSingle(item);
+        if (parsed.err) {
+            results.details.push(`❌ ${parsed.err}`);
             results.failed++;
             continue;
         }
-
-        const giftId = parts[0].trim();
-        const giftName = parts[1].trim();
-        let giftContent = parts.slice(2).join(':').trim();
-
-        if (!giftId.startsWith('#')) {
-            results.details.push(`❌ 编号错误: ${giftId} (必须以#开头)`);
-            results.failed++;
-            continue;
-        }
-        if (!giftName || !giftContent) {
-            results.details.push(`❌ 内容为空: ${giftId} (名称和内容不能为空)`);
-            results.failed++;
-            continue;
-        }
-
-        if (presetGifts[giftId]) {
-            results.details.push(`🔄 已存在: ${giftId} (${giftName}) - 已更新`);
-        } else {
-            results.details.push(`✅ 新增: ${giftId} (${giftName})`);
-        }
-
-        if (presetGifts[giftId]) {
-            presetGifts[giftId] = {
-                ...presetGifts[giftId],
-                name: giftName,
-                content: giftContent,
-                updated_at: new Date().toLocaleString("zh-CN")
-            };
-        } else {
-            presetGifts[giftId] = {
-                name: giftName,
-                content: giftContent,
-                created_at: new Date().toLocaleString("zh-CN"),
-                usage_count: 0
-            };
-        }
+        const { giftId, giftName, giftContent, price } = parsed;
+        const isUpdate = !!presetGifts[giftId];
+        presetGifts[giftId] = isUpdate
+            ? { ...presetGifts[giftId], name: giftName, content: giftContent, price, updated_at: new Date().toLocaleString("zh-CN") }
+            : { name: giftName, content: giftContent, price, stock: 3, usage_count: 0, created_at: new Date().toLocaleString("zh-CN") };
+        results.details.push(isUpdate
+            ? `🔄 更新: ${giftId} (${giftName}) 价格:${price}`
+            : `✅ 新增: ${giftId} (${giftName}) 价格:${price} 库存:3`);
         results.success++;
     }
 
-    if (results.success > 0) {
-        main.storageSet("preset_gifts", JSON.stringify(presetGifts));
-    }
+    if (results.success > 0) main.storageSet("preset_gifts", JSON.stringify(presetGifts));
 
     let rep = "";
     if (giftItems.length > 1) {
-        rep += `📦 批量上传完成 (${giftItems.length}个)\n`;
-        rep += `✅ 成功: ${results.success}个\n`;
-        rep += `❌ 失败: ${results.failed}个\n`;
-        rep += `📊 当前总计: ${Object.keys(presetGifts).length}个预设礼物\n\n`;
+        rep += `📦 批量上传完成\n✅ 成功: ${results.success}  ❌ 失败: ${results.failed}\n📊 总计: ${Object.keys(presetGifts).length} 件\n\n`;
     }
-
-    if (results.details.length > 0) {
-        if (giftItems.length <= 3) {
-            rep += "📋 处理详情：\n";
-            results.details.forEach(detail => {
-                rep += `  ${detail}\n`;
-            });
-        } else {
-            rep += "📋 前3项处理详情：\n";
-            for (let i = 0; i < Math.min(3, results.details.length); i++) {
-                rep += `  ${results.details[i]}\n`;
-            }
-            if (results.details.length > 3) {
-                rep += `  ...等${results.details.length}项\n`;
-            }
-        }
-    }
-
-    if (results.success === 0) {
-        rep += "\n💡 提示：批量上传时使用 $ 分隔多个礼物\n" +
-               "示例：#1:礼物名:礼物内容$#2:礼物名:礼物内容";
-    }
+    const showCount = Math.min(results.details.length, 5);
+    rep += results.details.slice(0, showCount).join('\n');
+    if (results.details.length > showCount) rep += `\n...等${results.details.length}项`;
+    if (results.success === 0) rep += `\n💡 ${freeMode ? "零元购模式：编号:礼物名:内容" : "付费模式：编号:礼物名:价格:内容"}`;
 
     seal.replyToSender(ctx, msg, rep);
     return seal.ext.newCmdExecuteResult(true);
@@ -512,4 +530,8 @@ ext.onNotCommandReceived = (ctx, msg) => {
     const raw = msg.message.trim();
     if (raw === "礼物商城") return cmd_view_preset_gifts.solve(ctx, msg, { getArgN: () => "", args: [] });
     if (raw === "我的图鉴") return cmd_view_my_gift_collection.solve(ctx, msg);
+    if (raw.startsWith("购买")) {
+        const itemName = raw.slice(2).trim();
+        if (itemName) return cmd_purchase.solve(ctx, msg, { getArgN: (n) => n === 1 ? itemName : "", args: [itemName] });
+    }
 };

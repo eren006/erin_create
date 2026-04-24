@@ -469,9 +469,11 @@ function showItemSettings(ctx, msg) {
 
     const trackerRate = parseInt(main.storageGet("item_tracker_success_rate") || "70");
     const drawLimit = parseInt(main.storageGet("item_daily_draw_limit") || "2");
-    const showPartner = main.storageGet("item_tracker_show_partner") !== "false"; // 默认 true
-    const timeRestrict = main.storageGet("item_tracker_time_restrict") !== "false"; // 默认 true
-    const itemPoolMode = getMainStorage("item_pool_mode", "自由池"); // 新增
+    const showPartner = main.storageGet("item_tracker_show_partner") !== "false";
+    const timeRestrict = main.storageGet("item_tracker_time_restrict") !== "false";
+    const itemPoolMode = getMainStorage("item_pool_mode", "自由池");
+    const freeMode = main.storageGet("shop_free_mode") !== "false";
+    const currencyAttr = main.storageGet("shop_currency_attr") || "金币";
 
     const results = [
         ".设置 道具设置",
@@ -479,7 +481,9 @@ function showItemSettings(ctx, msg) {
         `【每日抽取上限】${drawLimit}`,
         `【追踪器显示伙伴】${showPartner ? "开启" : "关闭"}`,
         `【追踪器时间限制】${timeRestrict ? "开启" : "关闭"}`,
-        `【物品池模式】${itemPoolMode}`
+        `【物品池模式】${itemPoolMode}`,
+        `【商城零元购】${freeMode ? "开启" : "关闭"}`,
+        `【商城货币属性】${currencyAttr}`
     ];
     seal.replyToSender(ctx, msg, results.join('\n'));
 }
@@ -520,6 +524,22 @@ function applyItemParam(name, val) {
         }
         setMainStorage("item_pool_mode", val);
         return { success: true, message: `【物品池模式】已切换为 ${val}` };
+    }
+    if (name === '商城零元购') {
+        const enabled = val === '开启' || val === '开' || val === 'true';
+        main.storageSet("shop_free_mode", enabled ? "true" : "false");
+        return { success: true, message: `【商城零元购】已${enabled ? "开启" : "关闭"}${!enabled ? "\n💡 请确认已设置【商城货币属性】，并通过「我创建属性 属性名」创建对应属性" : ""}` };
+    }
+    if (name === '商城货币属性') {
+        if (!val || !val.trim()) return { success: false, message: "【商城货币属性】不能为空" };
+        const attrName = val.trim();
+        // 验证属性是否已存在
+        const presets = JSON.parse(main.storageGet("sys_attr_presets") || "[]");
+        if (!presets.includes(attrName)) {
+            return { success: false, message: `❌ 属性「${attrName}」尚未创建。\n请先让骰主执行：我创建属性 ${attrName}` };
+        }
+        main.storageSet("shop_currency_attr", attrName);
+        return { success: true, message: `【商城货币属性】已设为「${attrName}」` };
     }
     return { success: false, message: `未知参数：${name}` };
 }
