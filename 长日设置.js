@@ -472,8 +472,6 @@ function showItemSettings(ctx, msg) {
     const showPartner = main.storageGet("item_tracker_show_partner") !== "false";
     const timeRestrict = main.storageGet("item_tracker_time_restrict") !== "false";
     const itemPoolMode = getMainStorage("item_pool_mode", "自由池");
-    const freeMode = main.storageGet("shop_free_mode") !== "false";
-    const currencyAttr = main.storageGet("shop_currency_attr") || "金币";
 
     const results = [
         ".设置 道具设置",
@@ -481,11 +479,72 @@ function showItemSettings(ctx, msg) {
         `【每日抽取上限】${drawLimit}`,
         `【追踪器显示伙伴】${showPartner ? "开启" : "关闭"}`,
         `【追踪器时间限制】${timeRestrict ? "开启" : "关闭"}`,
-        `【物品池模式】${itemPoolMode}`,
-        `【商城零元购】${freeMode ? "开启" : "关闭"}`,
-        `【商城货币属性】${currencyAttr}`
+        `【物品池模式】${itemPoolMode}`
     ];
     seal.replyToSender(ctx, msg, results.join('\n'));
+}
+
+// ========================
+// 商城设置模块
+// ========================
+function showShopSettings(ctx, msg) {
+    const main = getMainExt();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件");
+
+    const freeMode = main.storageGet("shop_free_mode") !== "false";
+    const currencyAttr = main.storageGet("shop_currency_attr") || "金币";
+    const refreshHours = parseInt(main.storageGet("shop_refresh_hours") || "24");
+
+    const results = [
+        ".设置 商城设置",
+        `【商城零元购】${freeMode ? "开启" : "关闭"}`,
+        `【商城货币属性】${currencyAttr}`,
+        `【商城刷新间隔】${refreshHours}`
+    ];
+    seal.replyToSender(ctx, msg, results.join('\n'));
+}
+
+function applyShopParam(name, val) {
+    const main = getMainExt();
+    if (!main) return { success: false, message: "无法连接主插件" };
+
+    if (name === '商城零元购') {
+        const enabled = val === '开启' || val === '开' || val === 'true';
+        main.storageSet("shop_free_mode", enabled ? "true" : "false");
+        if (!enabled) {
+            // 零元购关闭时，把所有价格为0或未设置的商品自动改为100
+            const presetGifts = JSON.parse(main.storageGet("preset_gifts") || "{}");
+            let updated = 0;
+            for (const id in presetGifts) {
+                if (!presetGifts[id].price || presetGifts[id].price === 0) {
+                    presetGifts[id].price = 100;
+                    updated++;
+                }
+            }
+            if (updated > 0) main.storageSet("preset_gifts", JSON.stringify(presetGifts));
+            return { success: true, message: `【商城零元购】已关闭${updated > 0 ? `\n已自动将 ${updated} 件商品价格设为 100` : ""}` };
+        }
+        return { success: true, message: "【商城零元购】已开启" };
+    }
+    if (name === '商城货币属性') {
+        if (!val || !val.trim()) return { success: false, message: "【商城货币属性】不能为空" };
+        const attrName = val.trim();
+        const presets = JSON.parse(main.storageGet("sys_attr_presets") || "[]");
+        if (!presets.includes(attrName)) {
+            return { success: false, message: `❌ 属性「${attrName}」尚未创建。\n请先让骰主执行：我创建属性 ${attrName}` };
+        }
+        main.storageSet("shop_currency_attr", attrName);
+        return { success: true, message: `【商城货币属性】已设为「${attrName}」` };
+    }
+    if (name === '商城刷新间隔') {
+        const hours = parseInt(val);
+        if (isNaN(hours) || hours < 1) return { success: false, message: "【商城刷新间隔】必须是 ≥1 的整数（单位：小时）" };
+        main.storageSet("shop_refresh_hours", hours.toString());
+        // 清除缓存，下次访问立即刷新
+        main.storageSet("shop_current_display", "null");
+        return { success: true, message: `【商城刷新间隔】已设为 ${hours} 小时（下次访问商城时立即生效）` };
+    }
+    return { success: false, message: `未知参数：${name}` };
 }
 
 function applyItemParam(name, val) {
@@ -524,22 +583,6 @@ function applyItemParam(name, val) {
         }
         setMainStorage("item_pool_mode", val);
         return { success: true, message: `【物品池模式】已切换为 ${val}` };
-    }
-    if (name === '商城零元购') {
-        const enabled = val === '开启' || val === '开' || val === 'true';
-        main.storageSet("shop_free_mode", enabled ? "true" : "false");
-        return { success: true, message: `【商城零元购】已${enabled ? "开启" : "关闭"}${!enabled ? "\n💡 请确认已设置【商城货币属性】，并通过「我创建属性 属性名」创建对应属性" : ""}` };
-    }
-    if (name === '商城货币属性') {
-        if (!val || !val.trim()) return { success: false, message: "【商城货币属性】不能为空" };
-        const attrName = val.trim();
-        // 验证属性是否已存在
-        const presets = JSON.parse(main.storageGet("sys_attr_presets") || "[]");
-        if (!presets.includes(attrName)) {
-            return { success: false, message: `❌ 属性「${attrName}」尚未创建。\n请先让骰主执行：我创建属性 ${attrName}` };
-        }
-        main.storageSet("shop_currency_attr", attrName);
-        return { success: true, message: `【商城货币属性】已设为「${attrName}」` };
     }
     return { success: false, message: `未知参数：${name}` };
 }
@@ -619,24 +662,55 @@ function applyGroupParam(name, val) {
 // 设置指令主体
 // ========================
 
+// ========================
+// 懒加载默认值（首次使用设置时初始化缺失的关键配置）
+// ========================
+function ensureDefaults(main) {
+    const defaults = {
+        "global_feature_toggle": JSON.stringify({ enable_general_letter: true, enable_general_gift: true, enable_general_appointment: true, enable_chaos_letter: true, enable_secret_letter: true, enable_wish_system: true, enable_lovemail: true }),
+        "chaos_letter_config": JSON.stringify({ misdelivery: 0, blackoutText: 0, loseContent: 0, antonymReplace: 0, reverseOrder: 0, mistakenSignature: 0, poeticSignature: 0, dailyLimit: 5, publicChance: 50 }),
+        "sighting_system_config": JSON.stringify({ enabled: true, send_to_all: true, max_reports_per_day: 5, include_ended_meetings: false, time_overlap_threshold: 0.3 }),
+        "place_system_config": JSON.stringify({ enabled: true, require_key_by_default: false }),
+        "appointment_duration_config": JSON.stringify({ phone: 29, private: 59 }),
+        "monitor_settings": JSON.stringify({ enabled: true, min_words_phone: 20, min_words_private: 150, min_words_wish: 150, min_words_official: 150, timeout_phone: 3600000, timeout_private: 10800000, timeout_wish: 10800000, timeout_official: 10800000, remind_interval_phone: 5400000, remind_interval_private: 10800000, remind_interval_wish: 10800000, remind_interval_official: 10800000 }),
+        "group_expire_hours": "48",
+        "relationship_system_enabled": "true",
+        "max_relationships_per_user": "5",
+        "lovemail_default_limit": "3",
+        "lovemail_day_limits": "{}",
+        "auto_day_reset_enabled": "false",
+        "item_pool_mode": "自由池",
+        "shop_free_mode": "true",
+        "shop_currency_attr": "金币",
+        "shop_refresh_hours": "24",
+    };
+    for (const [key, val] of Object.entries(defaults)) {
+        const existing = main.storageGet(key);
+        if (!existing || existing.trim() === "") main.storageSet(key, val);
+    }
+}
+
 let cmd_settings = seal.ext.newCmdItemInfo();
 cmd_settings.name = '设置';
 cmd_settings.help = `==== 📺 恋综系统控制台 ====
-使用方法：
-.设置 基础  - 名字、群号、核心功能开关
-.设置 互动  - 冷却时间、邀约时长
-.设置 信件  - 寄信混乱度、匿名上限、送达时间
-.设置 公告  - 各种公开广播的概率与开关
-.设置 道具  - 物品系统参数
-.设置 群组  - 小群管理、目击报告、合并策略
+.设置 基础  - 恋综名、群号、核心功能开关
+.设置 互动  - 冷却时间、邀约时长、地点系统
+.设置 信件  - 寄信/匿名信/心动信配置
+.设置 公告  - 公开广播概率与开关
+.设置 道具  - 物品抽取、追踪器参数
+.设置 商城  - 礼物商城零元购/货币/刷新间隔
+.设置 群组  - 小群管理、目击报告
 
-💡 提示：输入对应指令后，复制弹出的模板进行修改即可。`;
+💡 输入对应指令后，复制弹出的模板修改并重新发送即可。`;
 
 cmd_settings.solve = function(ctx, msg, argv) {
     if (!isUserAdmin(ctx, msg)) {
         seal.replyToSender(ctx, msg, "❌ 权限不足：该指令仅限管理员使用");
         return seal.ext.newCmdExecuteResult(true);
     }
+
+    const main = getMainExt();
+    if (main) ensureDefaults(main);
 
     const rawMessage = msg.message.trim();
     const subCmd = argv.getArgN(1);
@@ -649,6 +723,7 @@ cmd_settings.solve = function(ctx, msg, argv) {
         if (firstLine.includes('信件设置')) return handleApply(ctx, msg, rawMessage, applyLetterParam);
         if (firstLine.includes('公告设置')) return handleApply(ctx, msg, rawMessage, applyPublicParam);
         if (firstLine.includes('道具设置')) return handleApply(ctx, msg, rawMessage, applyItemParam);
+        if (firstLine.includes('商城设置')) return handleApply(ctx, msg, rawMessage, applyShopParam);
         if (firstLine.includes('群组设置')) return handleApply(ctx, msg, rawMessage, applyGroupParam);
         return seal.ext.newCmdExecuteResult(true);
     }
@@ -660,6 +735,7 @@ cmd_settings.solve = function(ctx, msg, argv) {
         case '信件': return showLetterSettings(ctx, msg);
         case '公告': return showPublicSettings(ctx, msg);
         case '道具': return showItemSettings(ctx, msg);
+        case '商城': return showShopSettings(ctx, msg);
         case '群组': return showGroupSettings(ctx, msg);
         default: seal.replyToSender(ctx, msg, cmd_settings.help);
     }
@@ -1025,167 +1101,6 @@ cmd_disable_auto_day.solve = (ctx, msg) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["关闭自动天数"] = cmd_disable_auto_day;
-
-// ========================
-// 🔄 强硬初始化（重置所有存储，包括天数、信件系统）
-// ========================
-
-let cmd_hard_reset = seal.ext.newCmdItemInfo();
-cmd_hard_reset.name = "强硬初始化";
-cmd_hard_reset.help = "。强硬初始化（重置所有存储，包括天数、信件系统）";
-
-cmd_hard_reset.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) {
-        seal.replyToSender(ctx, msg, `该指令仅限管理员使用`);
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    const main = getMainExt();
-    if (!main) {
-        seal.replyToSender(ctx, msg, "❌ 无法连接主插件");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    // 默认配置对象（与主插件中的默认值保持一致）
-    const defaultSightingConfig = {
-        enabled: true,
-        send_to_all: true,
-        max_reports_per_day: 5,
-        include_ended_meetings: false,
-        time_overlap_threshold: 0.3
-    };
-
-    const defaultPlaceConfig = {
-        enabled: true,
-        require_key_by_default: false
-    };
-
-    const defaultStore = {
-        appointmentList: JSON.stringify([]),
-        b_confirmedSchedule: JSON.stringify({}),
-        b_MultiGroupRequest: JSON.stringify({}),
-        a_lockedSlots: JSON.stringify({}),
-        a_private_group: JSON.stringify({}),
-        group_expire_info: JSON.stringify({}),
-        forum_posts: JSON.stringify([]),
-        group: JSON.stringify([]),
-        a_adminList: JSON.stringify({}),
-        a_messageLog: JSON.stringify([]),
-        a_meetingCount_call: "0",
-        a_meetingCount_private: "0",
-        a_meetingCount_letter: "0",
-        a_meetingCount_gift: "0",
-        a_meetingCount_secretletter: "0",
-        a_meetingCount_wish: "0",
-        a_wishPool: JSON.stringify([]),
-        lovemail_pool: JSON.stringify([]),
-        lovemail_limit: "2",
-        global_days: "D0",
-        current_day: "D0",
-        lovemail_day_counts: JSON.stringify({}),
-        lovemail_day_limits: JSON.stringify({}),
-        lovemail_default_limit: "3",
-        place_system_config: JSON.stringify(defaultPlaceConfig),
-        available_places: JSON.stringify({}),
-        place_keys: JSON.stringify({}),
-        global_feature_toggle: JSON.stringify({
-            enable_general_letter: true,
-            enable_general_gift: true,
-            enable_general_appointment: true,
-            enable_chaos_letter: true,
-            enable_secret_letter: true,
-            enable_wish_system: true,
-            enable_lovemail: true
-        }),
-        adminPassword: JSON.stringify("newyork"),
-        adminAnnounceGroupId: JSON.stringify(null),
-        allowed_appointment_times: JSON.stringify([]),
-        sighting_system_config: JSON.stringify(defaultSightingConfig),
-        sighting_daily_count: JSON.stringify({}),
-        feature_user_blocklist: JSON.stringify({}),
-        chaos_letter_config: JSON.stringify({
-            misdelivery: 0,
-            blackoutText: 0,
-            loseContent: 0,
-            antonymReplace: 0,
-            reverseOrder: 0,
-            mistakenSignature: 0,
-            poeticSignature: 0,
-            dailyLimit: 5,
-            publicChance: 50
-        }),
-        gift_public_send: JSON.stringify(false),
-        secret_letter_public_send: JSON.stringify(false),
-        wish_public_send: JSON.stringify(false),
-        letter_public_send: JSON.stringify(false),
-        preset_gifts: JSON.stringify({}),
-        gift_sightings: JSON.stringify({}),
-        group_expire_hours: "48",
-        relationship_system_enabled: JSON.stringify(true),
-        max_relationships_per_user: "5",
-        song_group_id: JSON.stringify(null),
-        background_group_id: JSON.stringify(null),
-        appointment_duration_config: JSON.stringify({
-            phone: 29,
-            private: 59
-        }),
-        monitor_settings: JSON.stringify({
-            enabled: true,
-            min_words_phone: 20,
-            min_words_private: 150,
-            min_words_wish: 150,
-            min_words_official: 150,
-            timeout_phone: 3600000,
-            timeout_private: 10800000,
-            timeout_wish: 10800000,
-            timeout_official: 10800000,
-            remind_interval_phone: 5400000,
-            remind_interval_private: 10800000,
-            remind_interval_wish: 10800000,
-            remind_interval_official: 10800000
-        }),
-        monitor_groups: JSON.stringify([]),
-        group_timers: JSON.stringify({}),
-        user_stats: JSON.stringify({}),
-        whiteList: "1",
-        wx_channels: JSON.stringify({}),
-        relationship_data: JSON.stringify({}),
-        game_stage: "preparation",
-        global_flags: JSON.stringify({}),
-        dinner_system_data: JSON.stringify({}),
-        dinner_global_status: "未开始",
-        wechat_groups: JSON.stringify({}),
-        a_npc_list: JSON.stringify([]),
-        sys_item_pool: JSON.stringify([]),
-        global_inventories: JSON.stringify({}),
-        global_draw_records: JSON.stringify({}),
-        global_chaos_letter_counts: JSON.stringify({}),
-        chaos_letter_cooldown_data: JSON.stringify({}),
-        global_gift_stats: JSON.stringify({}),
-        global_gift_cooldowns: JSON.stringify({}),
-        global_secret_letter_stats: JSON.stringify({}),
-        global_secret_letter_cooldowns: JSON.stringify({}),
-        global_shop_cooldowns: JSON.stringify({}),
-        auto_day_reset_enabled: "false",
-        auto_day_last_reset: "0",
-        auto_merge_duplicate_private: JSON.stringify(false),
-        require_fupan_before_end: JSON.stringify(true),
-        enable_join_existing_appointment: JSON.stringify(true),
-        join_request_list: JSON.stringify([]),
-        item_pool_mode: "自由池",
-        fixed_item_pool: JSON.stringify([]),
-    };
-
-    // 使用主插件存储逐个设置
-    for (let key in defaultStore) {
-        main.storageSet(key, defaultStore[key]);
-    }
-
-    seal.replyToSender(ctx, msg, "✅ 全部存储项目已初始化为默认结构（含天数系统 + 信件系统按游戏天数限额）");
-    return seal.ext.newCmdExecuteResult(true);
-};
-
-ext.cmdMap["强硬初始化"] = cmd_hard_reset;
 
 // 启动自动天数轮询
 registerAutoDaySystem();

@@ -95,30 +95,45 @@ cmd_view_preset_gifts.solve = (ctx, msg) => {
     const presetGifts = JSON.parse(main.storageGet("preset_gifts") || "{}");
     const freeMode = main.storageGet("shop_free_mode") !== "false";
     const currencyAttr = main.storageGet("shop_currency_attr") || "金币";
+    const refreshHours = parseInt(main.storageGet("shop_refresh_hours") || "24");
+    const now = Date.now();
 
-    // 只展示有库存的商品
-    const inStock = Object.entries(presetGifts).filter(([, g]) => (g.stock ?? 3) > 0);
-    if (inStock.length === 0) {
-        return seal.replyToSender(ctx, msg, "🛒 商城暂无库存，请等待补货~");
+    // 轮转逻辑：到期才换一批
+    let display = null;
+    try { display = JSON.parse(main.storageGet("shop_current_display") || "null"); } catch (e) {}
+    const needsRefresh = !display || (now - display.refreshedAt) > refreshHours * 3600 * 1000;
+
+    if (needsRefresh) {
+        const inStock = Object.entries(presetGifts).filter(([, g]) => (g.stock ?? 3) > 0);
+        if (inStock.length === 0) return seal.replyToSender(ctx, msg, "🛒 商城暂无库存，请等待补货~");
+        const picked = inStock.sort(() => Math.random() - 0.5).slice(0, 3);
+        display = { giftIds: picked.map(([id]) => id), refreshedAt: now };
+        main.storageSet("shop_current_display", JSON.stringify(display));
     }
 
-    // 随机抽取最多3件
-    const shuffled = inStock.sort(() => Math.random() - 0.5).slice(0, 3);
+    // 过滤掉已售罄的（库存变化后可能有些没了）
+    const items = display.giftIds
+        .map(id => ({ id, gift: presetGifts[id] }))
+        .filter(({ gift }) => gift && (gift.stock ?? 3) > 0);
+
+    if (items.length === 0) return seal.replyToSender(ctx, msg, "🛒 本期商品已全部售罄，等待下次上新~");
+
+    const nextRefreshMs = display.refreshedAt + refreshHours * 3600 * 1000 - now;
+    const nextRefreshHrs = Math.max(1, Math.ceil(nextRefreshMs / 3600000));
     const bot = "礼物助手", uin = "10086";
 
     const nodes = [{
         type: "node",
         data: { name: bot, uin, content:
             `🛒 礼物商城\n${"━".repeat(14)}\n` +
-            (freeMode
-                ? "✨ 当前开启零元购，所有商品免费！\n"
-                : `💰 使用货币：${currencyAttr}\n`) +
-            `📦 共有 ${inStock.length} 件在售，随机展示 ${shuffled.length} 件\n\n` +
+            (freeMode ? "✨ 当前开启零元购，所有商品免费！\n" : `💰 使用货币：${currencyAttr}\n`) +
+            `📦 本期展示 ${items.length} 件商品\n` +
+            `🔄 下次刷新约 ${nextRefreshHrs} 小时后\n\n` +
             `发送「购买 商品名」即可购买`
         }
     }];
 
-    for (const [id, gift] of shuffled) {
+    for (const { gift } of items) {
         const stock = gift.stock ?? 3;
         const priceText = freeMode ? "0元（零元购）" : `${gift.price ?? 0} ${currencyAttr}`;
         nodes.push({ type: "node", data: { name: bot, uin, content:
