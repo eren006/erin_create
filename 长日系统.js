@@ -2125,7 +2125,8 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
     newmsg.groupId = `${platform}-Group:${targetEntry[1]}`; 
     const newctx = seal.createTempCtx(ctx.endPoint, newmsg);
 
-    const recipientMsg = `🎀 ${toname}，有一份来自「${sendname}」的快递：\n礼物：${giftDisplayName}\n寄语：「${giftContent}」`;
+    const targetQQ = targetEntry[0];
+    const recipientMsg = `[CQ:at,qq=${targetQQ}]\n🎀 ${toname}，有一份来自「${sendname}」的快递：\n礼物：${giftDisplayName}\n寄语：「${giftContent}」`;
     seal.replyToSender(newctx, newmsg, recipientMsg);
 
     // 7. 更新数据
@@ -3910,7 +3911,8 @@ async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, co
     newmsg.groupId = `${platform}-Group:${targetEntry[1]}`;
     const newctx = seal.createTempCtx(ctx.endPoint, newmsg);
 
-    const notice = `📜 ${toname}，你收到一封简讯：\n「${content}」\n\n${finalSignature}`;
+    const targetQQ = targetEntry[0];
+    const notice = `[CQ:at,qq=${targetQQ}]\n📱 ${toname}，你收到一条短信：\n「${content}」\n\n${finalSignature}`;
     seal.replyToSender(newctx, newmsg, notice);
 
     // 7. 更新数据
@@ -5864,15 +5866,17 @@ ext.onNotCommandReceived = (ctx, msg) => {
         }
     }
 
-    // 3. 互动系统 (赠送/写信)
-    // 支持「赠送 对方 礼物」和「自定义名赠送 对方 礼物」两种写法
-    const giftM = raw.match(/^(.*?)赠送\s+(.+?)\s+(.+)$/);
-    if (giftM) {
-        const customName = giftM[1].trim() || null;
-        return handleNaturalGift(ctx, msg, platform, giftM[2].trim(), giftM[3].trim(), customName);
+    // 3. 互动系统 (赠送/短信)
+    // 支持「赠送 对方 礼物」和「自定义名赠送 对方 礼物」，排除「道具赠送」
+    if (!raw.startsWith("道具赠送")) {
+        const giftM = raw.match(/^(.*?)赠送\s+(.+?)\s+(.+)$/);
+        if (giftM) {
+            const customName = giftM[1].trim() || null;
+            return handleNaturalGift(ctx, msg, platform, giftM[2].trim(), giftM[3].trim(), customName);
+        }
     }
 
-    const letM = raw.match(/^(.+?)?写信\s*(.+?)\s+([\s\S]+)$/);
+    const letM = raw.match(/^(.+?)?短信\s*(.+?)\s+([\s\S]+)$/);
     if (letM) {
         // 【修改点】单独读取开关状态
         const allowCustom = ext.storageGet("allow_custom_letter_sign") === "true";
@@ -7256,10 +7260,11 @@ cmd_guide.solve = (ctx, msg) => {
             "撤心愿 [编号]",
             "  不带编号则列出你的心愿",
         ]),
-        section("🕊️ 寄信", [
-            "[署名]写信 收信人 内容",
-            "  例：张三写信 李四 你好！",
+        section("📱 短信", [
+            "[署名]短信 收信人 内容",
+            "  例：张三短信 李四 你好！",
             "  不写署名则自动使用你的角色名",
+            "  收件人会收到 @ 提醒",
         ]),
         section("🎒 背包与物品", [
             "抽取",
@@ -7274,10 +7279,10 @@ cmd_guide.solve = (ctx, msg) => {
             "背包 普通1 / 道具1 / 礼物1",
             "  查看指定物品的完整描述",
             "",
-            "。赠送 对方名 物品名",
-            "  从背包转交物品给对方",
-            "  道具：静默转交；普通/礼物：进入对方背包",
-            "  例：。赠送 张三 玫瑰",
+            "道具赠送 对方名 物品名",
+            "  将背包中的物品转交给对方（无冷却）",
+            "  对方会收到 @ 通知",
+            "  例：道具赠送 张三 玫瑰",
             "",
             "使用 物品名 [参数]",
             "  例：使用 万能钥匙 图书馆",
@@ -7513,7 +7518,7 @@ cmd_backpack.solve = (ctx, msg, cmdArgs) => {
             `⚙️ 道具      ${tools.length} 件\n` +
             `🎁 礼物      ${gifts.length} 件\n\n` +
             `发送「背包 普通1」查看物品完整详情\n` +
-            `发送「。赠送 对方名 物品名」转交物品`
+            `发送「道具赠送 对方名 物品名」转交物品`
         }
     }];
 

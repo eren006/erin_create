@@ -609,9 +609,10 @@ ext.cmdMap["抽取"] = cmd_item_draw;
 
 // 背包指令已移至长日系统.js（使用 ws 合并转发显示）
 
-// === 玩家指令：赠送 ===
+// === 玩家指令：道具赠送 ===
 let cmd_item_give = seal.ext.newCmdItemInfo();
-cmd_item_give.name = "赠送";
+cmd_item_give.name = "道具赠送";
+cmd_item_give.help = "道具赠送 对方名 物品名 — 将背包中的物品转交给对方（无冷却）";
 cmd_item_give.solve = (ctx, msg, cmdArgs) => {
     const myKey = ItemRoleUtils.getRoleKey(ctx, msg);
     const targetName = cmdArgs.getArgN(1);
@@ -642,17 +643,32 @@ cmd_item_give.solve = (ctx, msg, cmdArgs) => {
 
         const senderName = myKey.split(":")[1];
         const isSpecial = item.special === true || item.type === "道具";
-        if (isSpecial) {
-            seal.replyToSender(ctx, msg, `⚙️ 【${senderName}】将道具「${item.name}」移交给了【${targetName}】。`);
-        } else {
-            seal.replyToSender(ctx, msg, `🎁 【${senderName}】将「${item.name}」赠给了【${targetName}】，它已放入对方背包。`);
+
+        // 通知对方（@mention）
+        const targetInfo = a_private_group[platform]?.[targetName];
+        if (targetInfo) {
+            const targetQQ = targetInfo[0];
+            const targetGid = targetInfo[1];
+            const notifyMsg = seal.newMessage();
+            notifyMsg.messageType = "group";
+            notifyMsg.groupId = `${platform}-Group:${targetGid}`;
+            const notifyCtx = seal.createTempCtx(ctx.endPoint, notifyMsg);
+            const notifyText = isSpecial
+                ? `[CQ:at,qq=${targetQQ}]\n⚙️ 【${senderName}】将道具「${item.name}」移交给了你，已加入你的背包。`
+                : `[CQ:at,qq=${targetQQ}]\n🎁 【${senderName}】将「${item.name}」赠给了你，已放入你的背包。`;
+            seal.replyToSender(notifyCtx, notifyMsg, notifyText);
         }
+
+        seal.replyToSender(ctx, msg, isSpecial
+            ? `⚙️ 道具「${item.name}」已移交给【${targetName}】。`
+            : `🎁 「${item.name}」已赠给【${targetName}】。`
+        );
     } else {
         seal.replyToSender(ctx, msg, `❌ 背包里没有【${itemName}】。`);
     }
     return seal.ext.newCmdExecuteResult(true);
 };
-ext.cmdMap["赠送"] = cmd_item_give;
+ext.cmdMap["道具赠送"] = cmd_item_give;
 
 // ========================
 // 🎯 使用物品
@@ -1341,8 +1357,13 @@ ext.onNotCommandReceived = (ctx, msg) => {
     if (raw === "抽取") return cmd_item_draw.solve(ctx, msg, makeFakeCmdArgs([]));
     if (raw === "抽取次数") return cmd_draw_count.solve(ctx, msg, makeFakeCmdArgs([]));
 
+    // 道具赠送：道具赠送 对方名 物品名
+    if (raw.startsWith("道具赠送")) {
+        const rest = raw.slice(4).trim();
+        if (rest) return cmd_item_give.solve(ctx, msg, makeFakeCmdArgs(rest.split(/\s+/)));
+    }
+
     // 使用：支持「使用 物品名」及「使用 物品名 参数」
-    // 注意：赠送 由长日系统.js 的 onNotCommandReceived 统一处理，此处不重复响应
     if (raw.startsWith("使用")) {
         const rest = raw.slice(2).trim();
         if (rest) return cmd_item_use.solve(ctx, msg, makeFakeCmdArgs(rest.split(/\s+/)));
