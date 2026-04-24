@@ -120,6 +120,33 @@ function ws(postData, ctx, msg, successreply) {
 
 // 暴露给其他插件使用
 ext._ws = ws;
+ext._showBackpack = (ctx, msg, targetRoleName) => {
+    const platform = msg.platform;
+    const roleKey = `${platform}:${targetRoleName}`;
+    const inv = (store.get("global_inventories")[roleKey] || []).filter(i => !i.used);
+    const fakeMsg = { ...msg };
+    // 借用 cmd_backpack 逻辑但以 targetRoleName 为主体
+    const ordinary = getItemsByCategory(inv, "普通");
+    const tools    = getItemsByCategory(inv, "道具");
+    const gifts    = getItemsByCategory(inv, "礼物");
+    const bot = "长日将尽", uin = "10001";
+    const trunc = (s, n = 20) => s && s.length > n ? s.slice(0, n) + "…" : (s || "");
+    if (!inv.length) { seal.replyToSender(ctx, msg, `🎒 【${targetRoleName}】背包空空如也。`); return; }
+    const nodes = [{ type: "node", data: { name: bot, uin, content:
+        `🎒 【${targetRoleName}】的背包\n${"━".repeat(14)}\n` +
+        `📦 普通  ${ordinary.length} 件 · ⚙️ 道具  ${tools.length} 件 · 🎁 礼物  ${gifts.length} 件`
+    }}];
+    const addN = (label, emoji, items, prefix) => {
+        if (!items.length) return;
+        nodes.push({ type: "node", data: { name: bot, uin,
+            content: `${emoji} ${label}\n${"─".repeat(12)}\n` + items.map((it, i) => `${emoji} ${prefix}${i+1}. ${it.name}  ${trunc(it.desc)}`).join("\n")
+        }});
+    };
+    addN("普通物品", "📦", ordinary, "普通");
+    addN("道具",     "⚙️", tools,    "道具");
+    addN("礼物",     "🎁", gifts,    "礼物");
+    ws({ action: "send_group_forward_msg", params: { group_id: parseInt(msg.groupId.replace(/[^\d]/g, ""), 10), messages: nodes } }, ctx, msg, "");
+};
 
 function handleForwardAction(ctx, msg, data, currentWs) {
     // 1. 群号处理 (去掉平台前缀，转为纯数字)
@@ -640,6 +667,15 @@ const getUserRoleName = (platform, fullUid) => {
     return Object.entries(store.get("a_private_group")[platform] || {})
         .find(([_, val]) => val[0] === uid)?.[0];
 };
+
+// 背包物品按类别分组（兼容无 type 字段的旧数据）
+function getItemsByCategory(inv, cat) {
+    return inv.filter(i => {
+        if (cat === "道具") return i.special === true || i.type === "道具";
+        if (cat === "礼物") return i.type === "礼物";
+        return !i.special && i.type !== "礼物" && i.type !== "道具";
+    });
+}
 
 // --- 逻辑判断逻辑 ---
 function checkPlacePermission(platform, roleName, placeName) {
@@ -1995,7 +2031,7 @@ ext.cmdMap["清空邀约时间"] = cmd_clear_allowed_times;
 // ========================
 // 🎁 礼物系统
 // ========================
-async function handleNaturalGift(ctx, msg, platform, toname, giftInput) {
+async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSenderName = null) {
     // 1. 功能开关检查
     const config = JSON.parse(ext.storageGet("global_feature_toggle") || "{}");
     if (!(config.enable_general_gift ?? true)) {
@@ -2004,14 +2040,16 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput) {
 
     const uid = msg.sender.userId.replace(`${platform}:`, "");
     const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
-    
+
     // 2. 身份识别
-    const sendname = Object.keys(a_private_group[platform] || {}).find(
+    const autoSendname = Object.keys(a_private_group[platform] || {}).find(
         key => a_private_group[platform][key][0] === uid
     );
-    if (!sendname) {
+    if (!autoSendname) {
         return seal.replyToSender(ctx, msg, `❌ 请先创建新角色再使用该功能`);
     }
+    const allowCustomSign = ext.storageGet("allow_custom_letter_sign") === "true";
+    const sendname = allowCustomSign && customSenderName ? customSenderName : autoSendname;
 
     // 违规检查
     if (!(await checkNoQuitBlocker(uid, ctx, msg))) return;
@@ -5827,8 +5865,12 @@ ext.onNotCommandReceived = (ctx, msg) => {
     }
 
     // 3. 互动系统 (赠送/写信)
-    const giftM = raw.match(/^赠送\s*(.+?)\s+([#\w\u4e00-\u9fa5]+)$/);
-    if (giftM) return handleNaturalGift(ctx, msg, platform, giftM[1].trim(), giftM[2].trim());
+    // 支持「赠送 对方 礼物」和「自定义名赠送 对方 礼物」两种写法
+    const giftM = raw.match(/^(.*?)赠送\s+(.+?)\s+(.+)$/);
+    if (giftM) {
+        const customName = giftM[1].trim() || null;
+        return handleNaturalGift(ctx, msg, platform, giftM[2].trim(), giftM[3].trim(), customName);
+    }
 
     const letM = raw.match(/^(.+?)?写信\s*(.+?)\s+([\s\S]+)$/);
     if (letM) {
@@ -5906,6 +5948,12 @@ ext.onNotCommandReceived = (ctx, msg) => {
 
     if (raw.startsWith("发送心动信")) {
         return cmd_send_lovemail.solve(ctx, msg, makeFakeCmdArgs([]));
+    }
+
+    if (raw === "背包") return cmd_backpack.solve(ctx, msg, makeFakeCmdArgs([]));
+    if (raw.match(/^背包\s+(普通|道具|礼物)\d+$/)) {
+        const parts = raw.split(/\s+/);
+        return cmd_backpack.solve(ctx, msg, makeFakeCmdArgs([parts[1]]));
     }
 
     // 5. 信息收集系统 & 设定NPC
@@ -7213,22 +7261,32 @@ cmd_guide.solve = (ctx, msg) => {
             "  例：张三写信 李四 你好！",
             "  不写署名则自动使用你的角色名",
         ]),
-        section("🎲 物品系统", [
+        section("🎒 背包与物品", [
             "抽取",
-            "  从当前物品池随机获得一件物品",
+            "  从当前物品池随机获得一件普通物品",
+            "",
+            "抽取次数",
+            "  查看今日剩余抽取次数（不消耗机会）",
             "",
             "背包",
-            "  查看你的物品库存",
+            "  查看背包总览（普通 / 道具 / 礼物）",
             "",
-            "赠送 物品名 对方名",
-            "  例：赠送 玫瑰 张三",
+            "背包 普通1 / 道具1 / 礼物1",
+            "  查看指定物品的完整描述",
             "",
-            "使用 物品名",
-            "  例：使用 万能钥匙",
+            "。赠送 对方名 物品名",
+            "  从背包转交物品给对方",
+            "  道具：静默转交；普通/礼物：进入对方背包",
+            "  例：。赠送 张三 玫瑰",
+            "",
+            "使用 物品名 [参数]",
+            "  例：使用 万能钥匙 图书馆",
+            "  例：使用 追踪器 张三",
         ]),
-        section("🛒 礼物系统", [
+        section("🛒 礼物商城", [
             "礼物商城",
-            "  随机解锁一件预设礼物（1小时冷却）",
+            "  随机解锁一件礼物并获得 3 份（1小时冷却）",
+            "  解锁的礼物进入背包，可通过「。赠送」送出",
             "",
             "我的图鉴",
             "  查看所有已解锁的礼物及内容",
@@ -7406,6 +7464,77 @@ cmd_admin_guide.solve = (ctx, msg) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["管理指令"] = cmd_admin_guide;
+
+// ========================
+// 🎒 背包
+// ========================
+let cmd_backpack = seal.ext.newCmdItemInfo();
+cmd_backpack.name = "背包";
+cmd_backpack.help = "背包 — 查看背包总览\n背包 普通1 / 道具1 / 礼物1 — 查看物品完整详情";
+cmd_backpack.solve = (ctx, msg, cmdArgs) => {
+    const roleName = getRoleName(ctx, msg);
+    if (!roleName) return seal.replyToSender(ctx, msg, "⚠️ 请先绑定角色。");
+
+    const platform = msg.platform;
+    const roleKey = `${platform}:${roleName}`;
+    const inv = (store.get("global_inventories")[roleKey] || []).filter(i => !i.used);
+
+    // 查看单件详情
+    const arg1 = cmdArgs.getArgN(1);
+    if (arg1) {
+        const m = arg1.match(/^(普通|道具|礼物)(\d+)$/);
+        if (!m) return seal.replyToSender(ctx, msg, "格式：背包 普通1 / 道具1 / 礼物1");
+        const [_, cat, numStr] = m;
+        const items = getItemsByCategory(inv, cat);
+        const item = items[parseInt(numStr) - 1];
+        if (!item) return seal.replyToSender(ctx, msg, `❌ ${cat}${numStr} 不存在。`);
+        const emoji = { 道具: "⚙️", 礼物: "🎁", 普通: "📦" }[cat];
+        seal.replyToSender(ctx, msg, `${emoji} 【${cat}${numStr}】${item.name}\n${"─".repeat(12)}\n📝 ${item.desc}`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    if (inv.length === 0) {
+        seal.replyToSender(ctx, msg, `🎒 【${roleName}】的背包空空如也。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const ordinary = getItemsByCategory(inv, "普通");
+    const tools    = getItemsByCategory(inv, "道具");
+    const gifts    = getItemsByCategory(inv, "礼物");
+
+    const bot = "长日将尽", uin = "10001";
+    const trunc = (s, n = 20) => s && s.length > n ? s.slice(0, n) + "…" : (s || "");
+
+    const nodes = [{
+        type: "node",
+        data: { name: bot, uin, content:
+            `🎒 【${roleName}】的背包\n${"━".repeat(14)}\n` +
+            `📦 普通物品  ${ordinary.length} 件\n` +
+            `⚙️ 道具      ${tools.length} 件\n` +
+            `🎁 礼物      ${gifts.length} 件\n\n` +
+            `发送「背包 普通1」查看物品完整详情\n` +
+            `发送「。赠送 对方名 物品名」转交物品`
+        }
+    }];
+
+    const addNode = (label, emoji, items, prefix) => {
+        if (!items.length) return;
+        const lines = items.map((it, i) => `${emoji} ${prefix}${i + 1}. ${it.name}  ${trunc(it.desc)}`);
+        nodes.push({ type: "node", data: { name: bot, uin,
+            content: `${emoji} ${label}\n${"─".repeat(12)}\n${lines.join("\n")}`
+        }});
+    };
+
+    addNode("普通物品", "📦", ordinary, "普通");
+    addNode("道具",     "⚙️", tools,    "道具");
+    addNode("礼物",     "🎁", gifts,    "礼物");
+
+    ws({ action: "send_group_forward_msg", params: {
+        group_id: parseInt(msg.groupId.replace(/[^\d]/g, ""), 10), messages: nodes
+    }}, ctx, msg, "");
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["背包"] = cmd_backpack;
 
 // ========================
 // 🎲 指令：。随机分组 [组数]

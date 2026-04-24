@@ -585,12 +585,13 @@ cmd_item_draw.solve = (ctx, msg) => {
         source = "物资池";
     }
 
-    // 添加到玩家背包（注意：固定池抽取的物品是副本，需要添加 used 字段）
+    // 添加到玩家背包
     let inv = ItemRoleUtils.getInv(roleKey);
     inv.push({
         name: item.name,
         desc: item.desc,
         used: false,
+        type: "普通",
         createTime: new Date().getTime(),
         source: source
     });
@@ -606,68 +607,7 @@ cmd_item_draw.solve = (ctx, msg) => {
 };
 ext.cmdMap["抽取"] = cmd_item_draw;
 
-/**
- * 统一展示背包界面
- * @param {object} ctx - 上下文
- * @param {object} msg - 消息对象
- * @param {string} roleName - 角色名展示
- * @param {Array} inv - 背包数组数据
- */
-function showInventory(ctx, msg, roleName, inv) {
-    // 1. 过滤掉已使用的
-    const activeItems = inv.filter(item => !item.used);
-    if (activeItems.length === 0) {
-        return seal.replyToSender(ctx, msg, `🎒 【${roleName}】的背包空空如也。`);
-    }
-
-    // 2. 合并统计数量 (按名称+描述+是否特殊作为唯一Key)
-    const itemMap = new Map();
-    activeItems.forEach(item => {
-        const key = `${item.name}|${item.desc}|${!!item.special}`;
-        const existing = itemMap.get(key) || { ...item, count: 0 };
-        existing.count++;
-        itemMap.set(key, existing);
-    });
-
-    // 3. 排序：特殊物品(special)排在前面
-    const allItems = Array.from(itemMap.values()).sort((a, b) => (b.special ? 0 : 1) - (a.special ? 0 : 1));
-
-    // 4. 分页渲染
-    const pageSize = 15; // 稍微调小一点，防止单条消息过长被平台拦截
-    const totalPages = Math.ceil(allItems.length / pageSize);
-
-    for (let p = 0; p < totalPages; p++) {
-        let text = `🎒 【${roleName}】的背包 (${p + 1}/${totalPages})\n━━━━━━━━━━━━━━━\n`;
-        const pageSlice = allItems.slice(p * pageSize, (p + 1) * pageSize);
-        
-        pageSlice.forEach((it, idx) => {
-            const prefix = it.special ? "✨" : "📦";
-            const countStr = it.count > 1 ? ` x${it.count}` : "";
-            text += `${prefix} ${p * pageSize + idx + 1}. ${it.name}${countStr}\n   └ ${it.desc}\n`;
-        });
-        
-        seal.replyToSender(ctx, msg, text.trim());
-    }
-}
-
-// ========================
-// 🎒 背包指令
-// ========================
-
-let cmd_item_inv = seal.ext.newCmdItemInfo();
-cmd_item_inv.name = "背包";
-cmd_item_inv.solve = (ctx, msg) => {
-    const roleKey = ItemRoleUtils.getRoleKey(ctx, msg);
-    if (!roleKey) return seal.replyToSender(ctx, msg, "⚠️ 请先绑定角色。");
-
-    const inv = ItemRoleUtils.getInv(roleKey);
-    const roleName = roleKey.split(":")[1];
-    
-    // 直接调用公共函数
-    showInventory(ctx, msg, roleName, inv);
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["背包"] = cmd_item_inv;
+// 背包指令已移至长日系统.js（使用 ws 合并转发显示）
 
 // === 玩家指令：赠送 ===
 let cmd_item_give = seal.ext.newCmdItemInfo();
@@ -700,9 +640,14 @@ cmd_item_give.solve = (ctx, msg, cmdArgs) => {
         tInv.push(item);
         ItemRoleUtils.setInv(targetKey, tInv);
 
-        seal.replyToSender(ctx, msg, `🤝 赠送成功！【${item.name}】已交给【${targetName}】。`);
+        const senderName = myKey.split(":")[1];
+        const isSpecial = item.special === true || item.type === "道具";
+        if (isSpecial) {
+            seal.replyToSender(ctx, msg, `⚙️ 【${senderName}】将道具「${item.name}」移交给了【${targetName}】。`);
+        } else {
+            seal.replyToSender(ctx, msg, `🎁 【${senderName}】将「${item.name}」赠给了【${targetName}】，它已放入对方背包。`);
+        }
     } else {
-        console.log(`[赠送] 失败：${myKey} 背包中没有名为「${itemName}」的物品`);
         seal.replyToSender(ctx, msg, `❌ 背包里没有【${itemName}】。`);
     }
     return seal.ext.newCmdExecuteResult(true);
@@ -983,6 +928,7 @@ cmd_issue_special.solve = (ctx, msg, cmdArgs) => {
                     name: op.name,
                     desc: op.desc,
                     used: false,
+                    type: op.special ? "道具" : "普通",
                     createTime: Date.now(),
                     source: "Admin",
                     special: op.special
@@ -1273,10 +1219,19 @@ cmd_admin_view_bag.solve = (ctx, msg, cmdArgs) => {
 
     const platform = msg.platform;
     const targetKey = `${platform}:${targetRoleName}`;
-    const inv = ItemRoleUtils.getInv(targetKey);
-
-    // 直接调用同一个公共函数，保持展示效果一致
-    showInventory(ctx, msg, targetRoleName, inv);
+    // 直接借用 changriV1 的背包指令显示（合并转发格式）
+    const main = getMainExt();
+    if (main && typeof main._showBackpack === "function") {
+        return main._showBackpack(ctx, msg, targetRoleName);
+    }
+    // fallback：纯文本列表
+    const inv = ItemRoleUtils.getInv(targetKey).filter(i => !i.used);
+    if (!inv.length) {
+        seal.replyToSender(ctx, msg, `🎒 【${targetRoleName}】背包空空如也。`);
+    } else {
+        const lines = inv.map((it, i) => `${i + 1}. ${it.name} — ${it.desc}`);
+        seal.replyToSender(ctx, msg, `🎒 【${targetRoleName}】的背包：\n${lines.join("\n")}`);
+    }
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["查看背包"] = cmd_admin_view_bag;
@@ -1349,3 +1304,47 @@ cmd_fixed_give.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["固定发放"] = cmd_fixed_give;
+
+// ========================
+// 🎲 查看今日抽取次数
+// ========================
+let cmd_draw_count = seal.ext.newCmdItemInfo();
+cmd_draw_count.name = "抽取次数";
+cmd_draw_count.help = "抽取次数 — 查看今日剩余抽取次数，不消耗机会";
+cmd_draw_count.solve = (ctx, msg) => {
+    const roleKey = ItemRoleUtils.getRoleKey(ctx, msg);
+    if (!roleKey) return seal.replyToSender(ctx, msg, "⚠️ 请先绑定角色。");
+
+    const today = ItemRoleUtils.getToday();
+    const limit = seal.ext.getIntConfig(ext, "dailyDrawLimit");
+    const records = ItemRoleUtils.getGlobalRecords();
+    const myRec = records[roleKey] || { date: "", count: 0 };
+    const todayCount = myRec.date === today ? myRec.count : 0;
+    const remaining = limit - todayCount;
+
+    const bar = "█".repeat(todayCount) + "░".repeat(remaining);
+    seal.replyToSender(ctx, msg, `🎲 今日抽取进度 [${bar}] ${todayCount}/${limit}\n剩余 ${remaining} 次机会${remaining === 0 ? "，明日再来~" : "，发送「抽取」获得物品！"}`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["抽取次数"] = cmd_draw_count;
+
+// ========================
+// 💬 无前缀指令触发
+// ========================
+ext.onNotCommandReceived = (ctx, msg) => {
+    const raw = msg.message.trim();
+    const makeFakeCmdArgs = (parts) => ({
+        getArgN: (n) => parts[n - 1] || "",
+        args: parts
+    });
+
+    if (raw === "抽取") return cmd_item_draw.solve(ctx, msg, makeFakeCmdArgs([]));
+    if (raw === "抽取次数") return cmd_draw_count.solve(ctx, msg, makeFakeCmdArgs([]));
+
+    // 使用：支持「使用 物品名」及「使用 物品名 参数」
+    // 注意：赠送 由长日系统.js 的 onNotCommandReceived 统一处理，此处不重复响应
+    if (raw.startsWith("使用")) {
+        const rest = raw.slice(2).trim();
+        if (rest) return cmd_item_use.solve(ctx, msg, makeFakeCmdArgs(rest.split(/\s+/)));
+    }
+};

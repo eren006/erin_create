@@ -139,18 +139,36 @@ cmd_view_preset_gifts.solve = (ctx, msg) => {
         unlocked.push(selectedId);
     }
 
-    // 5. 持久化
+    // 5. 持久化（图鉴解锁）
     globalCooldowns[userKey] = now;
     main.storageSet("global_shop_cooldowns", JSON.stringify(globalCooldowns));
     main.storageSet("gift_sightings", JSON.stringify(giftSightings));
 
-    // 6. 渲染回复
-    let rep = `🛒 【${sendname}】你在商城货架深处发现了一件宝贝：\n\n`;
+    // 6. 加入背包（获得 3 份可赠送的礼物副本）
+    const roleInvKey = `${platform}:${sendname}`;
+    const invs = JSON.parse(main.storageGet("global_inventories") || "{}");
+    if (!invs[roleInvKey]) invs[roleInvKey] = [];
+    for (let i = 0; i < 3; i++) {
+        invs[roleInvKey].push({
+            name: gift.name,
+            desc: gift.content,
+            used: false,
+            type: "礼物",
+            giftId: selectedId,
+            createTime: Date.now(),
+            source: "礼物商城"
+        });
+    }
+    main.storageSet("global_inventories", JSON.stringify(invs));
+
+    // 7. 渲染回复
+    const isNew = unlocked.length === (invs[roleInvKey].filter(i => i.giftId === selectedId).length === 3 ? unlocked.length : unlocked.length - 1);
+    let rep = `🛒 【${sendname}】你在商城货架发现了一件宝贝：\n\n`;
     rep += `📦 编号：${selectedId}\n`;
     rep += `✨ 礼物：${gift.name}\n`;
     rep += `📝 内容：${gift.content}\n`;
-    rep += `\n📚 目前已收集：${unlocked.length} / ${giftIds.length}\n`;
-    rep += `💡 发送「。我的图鉴」查看所有已解锁礼物。`;
+    rep += `\n🎁 已获得 3 份，可通过「。赠送 对方名 ${gift.name}」送出\n`;
+    rep += `📚 图鉴进度：${unlocked.length} / ${giftIds.length}`;
     seal.replyToSender(ctx, msg, rep);
     return seal.ext.newCmdExecuteResult(true);
 };
