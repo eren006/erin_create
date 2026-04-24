@@ -103,20 +103,23 @@ cmd_view_preset_gifts.solve = (ctx, msg) => {
     try { display = JSON.parse(main.storageGet("shop_current_display") || "null"); } catch (e) {}
     const needsRefresh = !display || (now - display.refreshedAt) > refreshHours * 3600 * 1000;
 
+    const allGifts = Object.keys(presetGifts);
+    if (allGifts.length === 0) return seal.replyToSender(ctx, msg, "🛒 商城暂无商品，管理员尚未上传任何礼物~");
+
     if (needsRefresh) {
         const inStock = Object.entries(presetGifts).filter(([, g]) => (g.stock ?? 3) > 0);
-        if (inStock.length === 0) return seal.replyToSender(ctx, msg, "🛒 商城暂无库存，请等待补货~");
+        if (inStock.length === 0) return seal.replyToSender(ctx, msg, "🛒 商城暂时无库存，所有商品已售罄，等待补货~");
         const picked = inStock.sort(() => Math.random() - 0.5).slice(0, 3);
         display = { giftIds: picked.map(([id]) => id), refreshedAt: now };
         main.storageSet("shop_current_display", JSON.stringify(display));
     }
 
-    // 过滤掉已售罄的（库存变化后可能有些没了）
+    // 过滤掉已售罄或已被删除的
     const items = display.giftIds
         .map(id => ({ id, gift: presetGifts[id] }))
         .filter(({ gift }) => gift && (gift.stock ?? 3) > 0);
 
-    if (items.length === 0) return seal.replyToSender(ctx, msg, "🛒 本期商品已全部售罄，等待下次上新~");
+    if (items.length === 0) return seal.replyToSender(ctx, msg, "🛒 本期商品已全部售罄，等待下次刷新上新~");
 
     const nextRefreshMs = display.refreshedAt + refreshHours * 3600 * 1000 - now;
     const nextRefreshHrs = Math.max(1, Math.ceil(nextRefreshMs / 3600000));
