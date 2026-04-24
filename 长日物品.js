@@ -381,6 +381,7 @@ cmd_item_admin.solve = (ctx, msg, cmdArgs) => {
                 name: itemName,
                 desc: itemDesc,
                 used: false,
+                type: "普通",
                 createTime: new Date().getTime(),
                 source: "Admin"
             });
@@ -643,6 +644,7 @@ cmd_item_give.solve = (ctx, msg, cmdArgs) => {
 
         const senderName = myKey.split(":")[1];
         const isSpecial = item.special === true || item.type === "道具";
+        const catLabel = isSpecial ? "特殊道具" : "普通道具";
 
         // 通知对方（@mention）
         const targetInfo = a_private_group[platform]?.[targetName];
@@ -654,14 +656,14 @@ cmd_item_give.solve = (ctx, msg, cmdArgs) => {
             notifyMsg.groupId = `${platform}-Group:${targetGid}`;
             const notifyCtx = seal.createTempCtx(ctx.endPoint, notifyMsg);
             const notifyText = isSpecial
-                ? `[CQ:at,qq=${targetQQ}]\n⚙️ 【${senderName}】将道具「${item.name}」移交给了你，已加入你的背包。`
-                : `[CQ:at,qq=${targetQQ}]\n🎁 【${senderName}】将「${item.name}」赠给了你，已放入你的背包。`;
+                ? `[CQ:at,qq=${targetQQ}]\n⚙️ 【${senderName}】将特殊道具「${item.name}」移交给了你，已加入背包·特殊道具。`
+                : `[CQ:at,qq=${targetQQ}]\n📦 【${senderName}】将「${item.name}」转交给了你，已放入背包·普通道具。`;
             seal.replyToSender(notifyCtx, notifyMsg, notifyText);
         }
 
         seal.replyToSender(ctx, msg, isSpecial
-            ? `⚙️ 道具「${item.name}」已移交给【${targetName}】。`
-            : `🎁 「${item.name}」已赠给【${targetName}】。`
+            ? `⚙️ 特殊道具「${item.name}」已移交给【${targetName}】。`
+            : `📦 「${item.name}」已转交给【${targetName}】。`
         );
     } else {
         seal.replyToSender(ctx, msg, `❌ 背包里没有【${itemName}】。`);
