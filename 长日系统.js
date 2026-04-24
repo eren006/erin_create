@@ -206,15 +206,7 @@ function handleForwardAction(ctx, msg, data, currentWs) {
                         "action": "send_group_msg",
                         "params": {
                             "group_id": gid,
-                            "message": [
-                                {
-                                    "type": "music",
-                                    "data": {
-                                        "type": musicType,
-                                        "id": songId
-                                    }
-                                }
-                            ]
+                            "message": `[CQ:music,type=${musicType},id=${songId}]`
                         }
                     }));
                     seal.replyToSender(ctx, msg, "✅ 点歌已同步至点歌群。");
@@ -5836,7 +5828,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
         if (raw.includes("撤回")) return withdrawMsg(ctx, msg, wdId);
         if (raw.includes("点歌")) {
             const gid = ext.storageGet("song_group_id"), dM = raw.match(/点歌人[:：]\s*(.*?)(?=\s|,|，|留言|$)/), lM = raw.match(/留言[:：]\s*(.*)/);
-            if (!gid || !dM || !lM) return seal.replyToSender(ctx, msg, !gid ? "❌ 未配置点歌群" : "⚠️ 格式错误");
+            if (!gid || !dM || !lM) return seal.replyToSender(ctx, msg, !gid ? "❌ 未配置点歌群" : "⚠️ 格式错误\n正确用法：回复音乐卡片，消息内容写\n点歌人：名字 留言：内容");
             ["temp_target_gid", "temp_task_type", "temp_song_dgr", "temp_song_ly"].forEach((k, i) => ext.storageSet(k, [gid, "song", dM[1].trim(), lM[1].trim()][i]));
             return ws({ action: "get_msg", params: { message_id: wdId } }, ctx, msg);
         }
