@@ -165,21 +165,28 @@ function handleForwardAction(ctx, msg, data, currentWs) {
         const dgr = ext.storageGet("temp_song_dgr") || "未知";
         const ly = ext.storageGet("temp_song_ly") || "无";
 
-        // 识别 ID：neteaseIdMatch 匹配数字，qqIdMatch 匹配字母数字混合
-        const neteaseIdMatch = originalContent.match(/id[=:]\s*(\d+)/);
-        const qqIdMatch = originalContent.match(/["'](?:mid|songmid)["']\s*[:=]\s*["'](\w+)["']/) || 
-                          originalContent.match(/mid=(\w+)/) ||
-                          originalContent.match(/songid[=:]\s*(\d+)/);
+        // 优先匹配 CQ 码格式：[CQ:music,type=qq,id=xxx] / [CQ:music,type=163,id=xxx]
+        const cqMatch = originalContent.match(/\[CQ:music,type=(\w+),id=([\w]+)\]/);
+        // 次优先匹配 JSON 格式：{"type":"qq","id":"xxx"}
+        const jsonTypeMatch = originalContent.match(/"type"\s*:\s*"(qq|163|kugou|migu|kuwo)"/);
+        const jsonIdMatch   = originalContent.match(/"id"\s*:\s*"?([\w]+)"?/);
 
         let songId = "";
         let musicType = "163";
 
-        if (qqIdMatch) {
-            songId = qqIdMatch[1];
-            musicType = "qq";
-        } else if (neteaseIdMatch) {
-            songId = neteaseIdMatch[1];
-            musicType = "163";
+        if (cqMatch) {
+            musicType = cqMatch[1];
+            songId    = cqMatch[2];
+        } else if (jsonTypeMatch && jsonIdMatch) {
+            musicType = jsonTypeMatch[1];
+            songId    = jsonIdMatch[1];
+        } else {
+            // 兜底：mid/songmid 字段（旧版 QQ 音乐格式）
+            const qqFallback = originalContent.match(/["'](?:mid|songmid)["']\s*[:=]\s*["'](\w+)["']/)
+                            || originalContent.match(/mid=([\w]+)/);
+            const neteaseFallback = originalContent.match(/id[=:]\s*(\d+)/);
+            if (qqFallback) { songId = qqFallback[1]; musicType = "qq"; }
+            else if (neteaseFallback) { songId = neteaseFallback[1]; musicType = "163"; }
         }
 
         if (songId) {
@@ -7283,6 +7290,12 @@ cmd_guide.solve = (ctx, msg) => {
             "  将背包中的物品转交给对方（无冷却）",
             "  对方会收到 @ 通知",
             "  例：道具赠送 张三 玫瑰",
+            "",
+            "赠送 对方名 礼物内容",
+            "  叙事礼物（有冷却与每日上限）",
+            "  支持「[署名]赠送 对方名 内容」自定义署名",
+            "  例：赠送 张三 一束花",
+            "  例：张三赠送 李四 #1",
             "",
             "使用 物品名 [参数]",
             "  例：使用 万能钥匙 图书馆",

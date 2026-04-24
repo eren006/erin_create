@@ -167,7 +167,7 @@ cmd_view_preset_gifts.solve = (ctx, msg) => {
     rep += `📦 编号：${selectedId}\n`;
     rep += `✨ 礼物：${gift.name}\n`;
     rep += `📝 内容：${gift.content}\n`;
-    rep += `\n🎁 已获得 3 份，可通过「。赠送 对方名 ${gift.name}」送出\n`;
+    rep += `\n🎁 已获得 3 份，可通过「道具赠送 对方名 ${gift.name}」送出\n`;
     rep += `📚 图鉴进度：${unlocked.length} / ${giftIds.length}`;
     seal.replyToSender(ctx, msg, rep);
     return seal.ext.newCmdExecuteResult(true);
