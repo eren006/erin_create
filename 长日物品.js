@@ -632,21 +632,57 @@ cmd_item_give.solve = (ctx, msg, cmdArgs) => {
 
     let myInv = ItemRoleUtils.getInv(myKey);
 
-    const idx = myInv.findIndex(i => i.name === itemName);
+    // 支持分类编号（如 普通礼物1、普通道具2、特殊道具1）
+    const numRef = itemName && itemName.match(/^(普通礼物|普通道具|特殊道具)(\d+)$/);
+    let idx = -1;
+    let transferOne = false; // 叠加物品只取一个
+
+    if (numRef) {
+        const [, cat, numStr] = numRef;
+        const catItems = myInv.filter(i => {
+            const unused = !i.used;
+            if (cat === "特殊道具") return unused && (i.special === true || i.type === "道具");
+            if (cat === "普通道具") return unused && i.type === "普通" && !i.special;
+            if (cat === "普通礼物") return unused && (i.type === "普通礼物" || i.type === "礼物");
+            return false;
+        });
+        const catItem = catItems[parseInt(numStr) - 1];
+        if (catItem) {
+            idx = myInv.indexOf(catItem);
+            transferOne = (catItem.count || 1) > 1;
+        }
+    } else {
+        idx = myInv.findIndex(i => !i.used && i.name === itemName);
+        if (idx > -1) transferOne = (myInv[idx].count || 1) > 1;
+    }
 
     if (idx > -1) {
-        const item = myInv.splice(idx, 1)[0];
-        ItemRoleUtils.setInv(myKey, myInv);
+        let item;
+        if (transferOne) {
+            // 叠加物品：扣减一个，给对方一个新条目
+            myInv[idx].count -= 1;
+            item = { ...myInv[idx], count: 1 };
+            ItemRoleUtils.setInv(myKey, myInv);
+        } else {
+            item = myInv.splice(idx, 1)[0];
+            ItemRoleUtils.setInv(myKey, myInv);
+        }
 
         let tInv = ItemRoleUtils.getInv(targetKey);
-        tInv.push(item);
+        // 对方背包也尝试叠加（商城同款）
+        const tExistIdx = item.giftId
+            ? tInv.findIndex(i => i.giftId === item.giftId && i.source === item.source && !i.used)
+            : -1;
+        if (tExistIdx !== -1) {
+            tInv[tExistIdx].count = (tInv[tExistIdx].count || 1) + 1;
+        } else {
+            tInv.push({ ...item, count: 1 });
+        }
         ItemRoleUtils.setInv(targetKey, tInv);
 
         const senderName = myKey.split(":")[1];
         const isSpecial = item.special === true || item.type === "道具";
-        const catLabel = isSpecial ? "特殊道具" : "普通道具";
 
-        // 通知对方（@mention）
         const targetInfo = a_private_group[platform]?.[targetName];
         if (targetInfo) {
             const targetQQ = targetInfo[0];
@@ -666,7 +702,7 @@ cmd_item_give.solve = (ctx, msg, cmdArgs) => {
             : `📦 「${item.name}」已转交给【${targetName}】。`
         );
     } else {
-        seal.replyToSender(ctx, msg, `❌ 背包里没有【${itemName}】。`);
+        seal.replyToSender(ctx, msg, `❌ 背包里没有「${itemName}」。`);
     }
     return seal.ext.newCmdExecuteResult(true);
 };
