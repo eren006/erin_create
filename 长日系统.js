@@ -137,7 +137,7 @@ ext._showBackpack = (ctx, msg, targetRoleName) => {
     )];
     const addN = (label, emoji, items, prefix) => {
         if (!items.length) return;
-        nodes.push(mkN(`${emoji} ${label}\n${"─".repeat(12)}\n` + items.map((it, i) => `${emoji} ${prefix}${i+1}. ${it.name}  ${trunc(it.desc)}`).join("\n")));
+        nodes.push(mkN(`${emoji} ${label}\n${"─".repeat(12)}\n` + items.map((it, i) => `${emoji} ${prefix}${i+1}. ${it.name}${it.from ? `  来自：${it.from}` : ""}  ${trunc(it.desc)}`).join("\n")));
     };
     addN("普通礼物", "🎁", normalGifts, "普通礼物");
     addN("普通道具", "📦", normalTools,  "普通道具");
@@ -7561,7 +7561,7 @@ cmd_backpack.solve = (ctx, msg, cmdArgs) => {
             const items = getItemsByCategory(inv, cat);
             total += items.length;
             if (!items.length) continue;
-            const lines = items.map((it, i) => `${emoji} ${prefix}${i + 1}. ${it.name}  ${trunc(it.desc)}`);
+            const lines = items.map((it, i) => `${emoji} ${prefix}${i + 1}. ${it.name}${it.from ? `  来自：${it.from}` : ""}  ${trunc(it.desc)}`);
             nodes.push(mkNode(`${emoji} ${cat}\n${"─".repeat(12)}\n${lines.join("\n")}`));
         }
         if (!nodes.length) {
