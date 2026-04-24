@@ -500,7 +500,7 @@ function showShopSettings(ctx, msg) {
     const results = [
         ".设置 商城设置",
         `【商城模式】${shopMode}（抽卡=每人不同随机商品 / 商城=全部在售商品）`,
-        `【商城显示件数】${displayCount}（抽卡模式下每人看到的商品数，1~20）`,
+        `【商城显示件数】${displayCount}（抽卡模式下每人看到的商品数，1~5）`,
         `【商城零元购】${freeMode ? "开启" : "关闭"}`,
         `【商城货币属性】${currencyAttr}`,
         `【商城刷新间隔】${refreshHours}（小时，抽卡模式下个人刷新间隔）`,
@@ -555,7 +555,7 @@ function applyShopParam(name, val) {
     }
     if (name === '商城显示件数') {
         const count = parseInt(val);
-        if (isNaN(count) || count < 1 || count > 20) return { success: false, message: "【商城显示件数】必须是 1~20 的整数" };
+        if (isNaN(count) || count < 1 || count > 5) return { success: false, message: "【商城显示件数】必须是 1~5 的整数" };
         main.storageSet("shop_display_count", count.toString());
         main.storageSet("shop_personal_display", "{}");
         return { success: true, message: `【商城显示件数】已设为 ${count} 件（下次进入商城生效）` };
@@ -700,7 +700,7 @@ function ensureDefaults(main) {
         "shop_currency_attr": "金币",
         "shop_refresh_hours": "24",
         "shop_mode": "抽卡",
-        "shop_display_count": "3",
+        "shop_display_count": "2",
     };
     for (const [key, val] of Object.entries(defaults)) {
         const existing = main.storageGet(key);

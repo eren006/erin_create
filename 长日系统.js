@@ -7488,7 +7488,7 @@ cmd_admin_guide.solve = (ctx, msg) => {
         section("🛒 礼物商城管理", [
             "【商城设置（.设置 商城）】",
             "  商城模式：抽卡（每人不同随机商品）/ 商城（全部在售，最多30件）",
-            "  商城显示件数：抽卡模式下每人看到的商品数（默认3，范围1~20）",
+            "  商城显示件数：抽卡模式下每人看到的商品数（默认2，范围1~5）",
             "  商城零元购：开启/关闭（默认开）",
             "  商城货币属性：指定扣除的属性名（如 金币）",
             "  商城刷新间隔：抽卡模式下个人刷新间隔（小时，默认24）",
@@ -7557,31 +7557,20 @@ cmd_view_preset_gifts.solve = (ctx, msg) => {
         const display = inStock.slice(0, FULL_CAP);
         const truncated = inStock.length > FULL_CAP;
 
-        const nodes = [{
-            type: "node",
-            data: { name: bot, uin, content:
-                `🛒 礼物商城（完整商城）\n${"━".repeat(14)}\n` +
-                (freeMode ? "✨ 当前开启零元购，所有商品免费！\n" : `💰 使用货币：${currencyAttr}\n`) +
-                `📦 共 ${inStock.length} 件在售商品${truncated ? `（仅展示前 ${FULL_CAP} 件）` : ""}\n\n` +
-                `发送「购买 商品名」即可购买`
-            }
-        }];
+        let text = `🛒 礼物商城\n${"━".repeat(14)}\n` +
+            (freeMode ? "✨ 零元购开启，所有商品免费！\n" : `💰 使用货币：${currencyAttr}\n`) +
+            `📦 共 ${inStock.length} 件在售${truncated ? `（仅展示前 ${FULL_CAP} 件）` : ""}\n`;
         for (const [, gift] of display) {
-            const stock = gift.stock ?? 3;
             const priceText = freeMode ? "0元（零元购）" : `${gift.price ?? 0} ${currencyAttr}`;
-            nodes.push({ type: "node", data: { name: bot, uin, content:
-                `🎁 ${gift.name}\n${"─".repeat(12)}\n` +
-                `📝 ${gift.content}\n` +
-                `💰 价格：${priceText}\n` +
-                `📦 剩余库存：${stock} 件`
-            }});
+            text += `\n🎁 ${gift.name}\n📝 ${gift.content}\n💰 ${priceText}  📦 库存：${gift.stock ?? 3} 件\n`;
         }
-        ws({ action: "send_group_forward_msg", params: { group_id: gid, messages: nodes } }, ctx, msg, "");
+        text += `\n发送「购买 商品名」即可购买`;
+        seal.replyToSender(ctx, msg, text);
         return seal.ext.newCmdExecuteResult(true);
     }
 
     // 抽卡模式：每人独立随机，有刷新计时
-    const displayCount = Math.max(1, parseInt(ext.storageGet("shop_display_count") || "3"));
+    const displayCount = Math.min(5, Math.max(1, parseInt(ext.storageGet("shop_display_count") || "2")));
     const refreshHours = parseInt(ext.storageGet("shop_refresh_hours") || "24");
     const now = Date.now();
     const platform = msg.platform;
@@ -7610,29 +7599,15 @@ cmd_view_preset_gifts.solve = (ctx, msg) => {
     const nextRefreshMs = personalDisplay[userKey].refreshedAt + refreshHours * 3600 * 1000 - now;
     const nextRefreshHrs = Math.max(1, Math.ceil(nextRefreshMs / 3600000));
 
-    const nodes = [{
-        type: "node",
-        data: { name: bot, uin, content:
-            `🛒 礼物商城（抽卡模式）\n${"━".repeat(14)}\n` +
-            (freeMode ? "✨ 当前开启零元购，所有商品免费！\n" : `💰 使用货币：${currencyAttr}\n`) +
-            `📦 本期为你展示 ${items.length} 件商品\n` +
-            `🔄 下次刷新约 ${nextRefreshHrs} 小时后\n\n` +
-            `发送「购买 商品名」即可购买`
-        }
-    }];
-
+    let text = `🛒 礼物商城（抽卡）\n${"━".repeat(14)}\n` +
+        (freeMode ? "✨ 零元购开启，所有商品免费！\n" : `💰 使用货币：${currencyAttr}\n`) +
+        `📦 本期为你展示 ${items.length} 件  🔄 ${nextRefreshHrs}h 后刷新\n`;
     for (const { gift } of items) {
-        const stock = gift.stock ?? 3;
         const priceText = freeMode ? "0元（零元购）" : `${gift.price ?? 0} ${currencyAttr}`;
-        nodes.push({ type: "node", data: { name: bot, uin, content:
-            `🎁 ${gift.name}\n${"─".repeat(12)}\n` +
-            `📝 ${gift.content}\n` +
-            `💰 价格：${priceText}\n` +
-            `📦 剩余库存：${stock} 件`
-        }});
+        text += `\n🎁 ${gift.name}\n📝 ${gift.content}\n💰 ${priceText}  📦 库存：${gift.stock ?? 3} 件\n`;
     }
-
-    ws({ action: "send_group_forward_msg", params: { group_id: gid, messages: nodes } }, ctx, msg, "");
+    text += `\n发送「购买 商品名」即可购买`;
+    seal.replyToSender(ctx, msg, text);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["礼物商城"] = cmd_view_preset_gifts;
@@ -7681,15 +7656,17 @@ cmd_purchase.solve = (ctx, msg, cmdArgs) => {
     const roleInvKey = `${platform}:${sendname}`;
     const invs = JSON.parse(ext.storageGet("global_inventories") || "{}");
     if (!invs[roleInvKey]) invs[roleInvKey] = [];
-    invs[roleInvKey].push({
-        name: gift.name,
-        desc: gift.content,
-        used: false,
-        type: "礼物",
-        giftId: giftId,
-        createTime: Date.now(),
-        source: "礼物商城"
-    });
+    const existingIdx = invs[roleInvKey].findIndex(
+        item => item.giftId === giftId && item.source === "礼物商城" && !item.used
+    );
+    if (existingIdx !== -1) {
+        invs[roleInvKey][existingIdx].count = (invs[roleInvKey][existingIdx].count || 1) + 1;
+    } else {
+        invs[roleInvKey].push({
+            name: gift.name, desc: gift.content, used: false,
+            type: "礼物", giftId, count: 1, createTime: Date.now(), source: "礼物商城"
+        });
+    }
     ext.storageSet("global_inventories", JSON.stringify(invs));
 
     presetGifts[giftId].stock = stock - 1;
@@ -8045,7 +8022,8 @@ cmd_backpack.solve = (ctx, msg, cmdArgs) => {
             if (!item) return seal.replyToSender(ctx, msg, `❌ ${cat}${numStr} 不存在。`);
             const emoji = { 特殊道具: "⚙️", 普通礼物: "🎁", 普通道具: "📦" }[cat];
             const fromLine = item.from ? `\n📮 来自：${item.from}` : "";
-            seal.replyToSender(ctx, msg, `${emoji} 【${cat}${numStr}】${item.name}${fromLine}\n${"─".repeat(12)}\n📝 ${item.desc}`);
+            const countLine = (item.count || 1) > 1 ? `\n🔢 数量：${item.count}` : "";
+            seal.replyToSender(ctx, msg, `${emoji} 【${cat}${numStr}】${item.name}${fromLine}${countLine}\n${"─".repeat(12)}\n📝 ${item.desc}`);
             return seal.ext.newCmdExecuteResult(true);
         }
 
@@ -8065,7 +8043,7 @@ cmd_backpack.solve = (ctx, msg, cmdArgs) => {
             const items = getItemsByCategory(inv, cat);
             total += items.length;
             if (!items.length) continue;
-            const lines = items.map((it, i) => `${emoji} ${prefix}${i + 1}. ${it.name}${it.from ? `  来自：${it.from}` : ""}  ${trunc(it.desc)}`);
+            const lines = items.map((it, i) => `${emoji} ${prefix}${i + 1}. ${it.name}${(it.count || 1) > 1 ? ` x${it.count}` : ""}${it.from ? `  来自：${it.from}` : ""}  ${trunc(it.desc)}`);
             nodes.push(mkNode(`${emoji} ${cat}\n${"─".repeat(12)}\n${lines.join("\n")}`));
         }
         if (!nodes.length) {
@@ -8099,7 +8077,7 @@ cmd_backpack.solve = (ctx, msg, cmdArgs) => {
 
     const addSection = (cat, emoji, items, prefix) => {
         if (!items.length) return;
-        const lines = items.map((it, i) => `${emoji} ${prefix}${i + 1}. ${it.name}  ${trunc(it.desc)}`);
+        const lines = items.map((it, i) => `${emoji} ${prefix}${i + 1}. ${it.name}${(it.count || 1) > 1 ? ` x${it.count}` : ""}  ${trunc(it.desc)}`);
         nodes.push(mkNode(`${emoji} ${cat}\n${"─".repeat(12)}\n${lines.join("\n")}`));
     };
 
