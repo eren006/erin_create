@@ -494,12 +494,16 @@ function showShopSettings(ctx, msg) {
     const freeMode = main.storageGet("shop_free_mode") !== "false";
     const currencyAttr = main.storageGet("shop_currency_attr") || "金币";
     const refreshHours = parseInt(main.storageGet("shop_refresh_hours") || "24");
+    const shopMode = main.storageGet("shop_mode") || "抽卡";
+    const displayCount = parseInt(main.storageGet("shop_display_count") || "3");
 
     const results = [
         ".设置 商城设置",
+        `【商城模式】${shopMode}（抽卡=每人不同随机商品 / 商城=全部在售商品）`,
+        `【商城显示件数】${displayCount}（抽卡模式下每人看到的商品数，1~20）`,
         `【商城零元购】${freeMode ? "开启" : "关闭"}`,
         `【商城货币属性】${currencyAttr}`,
-        `【商城刷新间隔】${refreshHours}`
+        `【商城刷新间隔】${refreshHours}（小时，抽卡模式下个人刷新间隔）`,
     ];
     seal.replyToSender(ctx, msg, results.join('\n'));
 }
@@ -540,9 +544,21 @@ function applyShopParam(name, val) {
         const hours = parseInt(val);
         if (isNaN(hours) || hours < 1) return { success: false, message: "【商城刷新间隔】必须是 ≥1 的整数（单位：小时）" };
         main.storageSet("shop_refresh_hours", hours.toString());
-        // 清除缓存，下次访问立即刷新
-        main.storageSet("shop_current_display", "null");
-        return { success: true, message: `【商城刷新间隔】已设为 ${hours} 小时（下次访问商城时立即生效）` };
+        main.storageSet("shop_personal_display", "{}");
+        return { success: true, message: `【商城刷新间隔】已设为 ${hours} 小时（所有人下次访问商城时立即生效）` };
+    }
+    if (name === '商城模式') {
+        const mode = val === "商城" ? "商城" : "抽卡";
+        main.storageSet("shop_mode", mode);
+        main.storageSet("shop_personal_display", "{}");
+        return { success: true, message: `【商城模式】已切换为「${mode}」\n${mode === "抽卡" ? "每位玩家看到不同的随机商品" : "所有玩家看到完整在售商品（最多30件）"}` };
+    }
+    if (name === '商城显示件数') {
+        const count = parseInt(val);
+        if (isNaN(count) || count < 1 || count > 20) return { success: false, message: "【商城显示件数】必须是 1~20 的整数" };
+        main.storageSet("shop_display_count", count.toString());
+        main.storageSet("shop_personal_display", "{}");
+        return { success: true, message: `【商城显示件数】已设为 ${count} 件（下次进入商城生效）` };
     }
     return { success: false, message: `未知参数：${name}` };
 }
@@ -683,6 +699,8 @@ function ensureDefaults(main) {
         "shop_free_mode": "true",
         "shop_currency_attr": "金币",
         "shop_refresh_hours": "24",
+        "shop_mode": "抽卡",
+        "shop_display_count": "3",
     };
     for (const [key, val] of Object.entries(defaults)) {
         const existing = main.storageGet(key);
@@ -698,7 +716,7 @@ cmd_settings.help = `==== 📺 恋综系统控制台 ====
 .设置 信件  - 寄信/匿名信/心动信配置
 .设置 公告  - 公开广播概率与开关
 .设置 道具  - 物品抽取、追踪器参数
-.设置 商城  - 礼物商城零元购/货币/刷新间隔
+.设置 商城  - 礼物商城模式/件数/零元购/货币/刷新间隔
 .设置 群组  - 小群管理、目击报告
 
 💡 输入对应指令后，复制弹出的模板修改并重新发送即可。`;
