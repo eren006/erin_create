@@ -217,7 +217,6 @@ function showInteractionSettings(ctx, msg) {
         `【私密最小时长】${duration.private}`,
         `【寄信冷却时间】${getMainStorage("mailCooldown", "60")}`,
         `【送礼冷却时间】${getMainStorage("giftCooldown", "30")}`,
-        `【匿名信冷却时间】${getMainStorage("secretLetterCooldown", "2")}`,
         `【送礼模式】${getMainStorage("giftMode", "0")}`
     ];
     seal.replyToSender(ctx, msg, results.join('\n'));
@@ -245,7 +244,6 @@ function applyInteractionParam(name, val) {
     const storageKeys = {
         '寄信冷却时间': 'mailCooldown',
         '送礼冷却时间': 'giftCooldown',
-        '匿名信冷却时间': 'secretLetterCooldown',
         '送礼模式': 'giftMode'
     };
     if (storageKeys[name]) {
@@ -268,7 +266,6 @@ function showLetterSettings(ctx, msg) {
     let feature = {
         enable_chaos_letter: true,
         enable_lovemail: true,
-        enable_secret_letter: true
     };
     
     let chaos = {
@@ -303,21 +300,11 @@ function showLetterSettings(ctx, msg) {
         console.error("解析 chaos_letter_config 失败:", e);
     }
 
-    // 4. 读取其他单值配置（增加去除引号的处理）
-    const deliveryTime = getMainStorage("lovemail_delivery_time", "22:00").replace(/"/g, '');
-    const secretLimit = getMainStorage("secretLetterDailyLimit", "30");
-
     // 5. 组装展示模板
     const results = [
         ".设置 信件设置",
         `【寄信】${feature.enable_chaos_letter !== false ? '开启' : '关闭'}`,
-        `【匿名信】${feature.enable_secret_letter !== false ? '开启' : '关闭'}`,
-        `【发送信件】${feature.enable_direct_letter !== false ? '开启' : '关闭'}`,
         `【寄信每日上限】${chaos.dailyLimit}`,
-        `【匿名信每日上限】${secretLimit}`,
-        `【发送信件每日上限】${getMainStorage("direct_letter_daily_limit", "5")}`,
-        `【发送信件最低字数】${getMainStorage("direct_letter_min_chars", "0")}`,
-        `【发送信件赏金】${getMainStorage("direct_letter_reward", "0")}`,
         `【寄信允许自定义名字】${getMainStorage("allow_custom_letter_sign", "false") === "true" ? '开启' : '关闭'}`,
         `【寄信混乱送错】${chaos.misdelivery}`,
         `【寄信混乱涂改】${chaos.blackoutText}`,
@@ -332,34 +319,11 @@ function showLetterSettings(ctx, msg) {
 }
 
 function applyLetterParam(name, val) {
-    const featureMap = {
-        '寄信': 'enable_chaos_letter',
-        '匿名信': 'enable_secret_letter',
-        '发送信件': 'enable_direct_letter'
-    };
-    if (featureMap[name]) {
+    if (name === '寄信') {
         let cfg = JSON.parse(getMainStorage("global_feature_toggle", "{}"));
-        cfg[featureMap[name]] = (val === '开启');
+        cfg.enable_chaos_letter = (val === '开启');
         setMainStorage("global_feature_toggle", JSON.stringify(cfg));
-        return { success: true, message: `【${name}】已${val}` };
-    }
-
-    if (name === '匿名信每日上限') {
-        setMainStorage("secretLetterDailyLimit", val);
-        return { success: true, message: `【${name}】上限已更新为 ${val}` };
-    }
-
-    if (name === '发送信件每日上限') {
-        setMainStorage("direct_letter_daily_limit", val);
-        return { success: true, message: `【发送信件每日上限】已更新为 ${val}` };
-    }
-    if (name === '发送信件最低字数') {
-        setMainStorage("direct_letter_min_chars", val);
-        return { success: true, message: `【发送信件最低字数】已更新为 ${val} 字` };
-    }
-    if (name === '发送信件赏金') {
-        setMainStorage("direct_letter_reward", val);
-        return { success: true, message: `【发送信件赏金】已更新为 ${val} 写信币/封` };
+        return { success: true, message: `【寄信】已${val}` };
     }
 
     if (name === '寄信允许自定义名字') {
@@ -389,6 +353,42 @@ function applyLetterParam(name, val) {
 }
 
 // ========================
+// 发送信件设置模块
+// ========================
+function showDirectLetterSettings(ctx, msg) {
+    const feature = (() => {
+        try { return JSON.parse(getMainStorage("global_feature_toggle", "{}")); } catch (e) { return {}; }
+    })();
+    const results = [
+        ".设置 发送信件设置",
+        `【发送信件】${feature.enable_direct_letter !== false ? '开启' : '关闭'}`,
+        `【发送信件每日上限】${getMainStorage("direct_letter_daily_limit", "5")}`,
+        `【发送信件最低字数】${getMainStorage("direct_letter_min_chars", "0")}`,
+        `【发送信件赏金】${getMainStorage("direct_letter_reward", "0")}`,
+    ];
+    seal.replyToSender(ctx, msg, results.join('\n'));
+}
+
+function applyDirectLetterParam(name, val) {
+    if (name === '发送信件') {
+        let cfg = JSON.parse(getMainStorage("global_feature_toggle", "{}"));
+        cfg.enable_direct_letter = (val === '开启');
+        setMainStorage("global_feature_toggle", JSON.stringify(cfg));
+        return { success: true, message: `【发送信件】已${val}` };
+    }
+    const storageKeys = {
+        '发送信件每日上限': 'direct_letter_daily_limit',
+        '发送信件最低字数': 'direct_letter_min_chars',
+        '发送信件赏金': 'direct_letter_reward'
+    };
+    if (storageKeys[name]) {
+        setMainStorage(storageKeys[name], val);
+        return { success: true, message: `【${name}】已更新为 ${val}` };
+    }
+    return { success: false, message: `未知参数：${name}` };
+}
+
+// ========================
 // 公告设置模块
 // ========================
 
@@ -411,11 +411,8 @@ function showPublicSettings(ctx, msg) {
         `【心愿公开提醒】${getBool("wish_public_send") ? '开启' : '关闭'}`,
         `【送礼公开发送】${getBool("gift_public_send") ? '开启' : '关闭'}`,
         `【寄信公开发送】${getBool("letter_public_send") ? '开启' : '关闭'}`,
-        `【匿名信公开发送】${getBool("secret_letter_public_send") ? '开启' : '关闭'}`,
         `【寄信公开概率】${chaos.publicChance}`,
         `【礼物公开概率】${getMainStorage("giftPublicChance", "50")}`,
-        `【匿名信公开概率】${getMainStorage("secretLetterPublicChance", "50")}`,
-        `【匿名信暴露概率】${getMainStorage("secretLetterRevealChance", "15")}`,
         `【每日礼物上限】${getMainStorage("giftDailyLimit", "100")}`,
         `【公告触发频率】${getMainStorage("announceFrequency", "5")}`,
     ];
@@ -427,7 +424,6 @@ function applyPublicParam(name, val) {
         '心愿公开提醒': 'wish_public_send',
         '送礼公开发送': 'gift_public_send',
         '寄信公开发送': 'letter_public_send',
-        '匿名信公开发送': 'secret_letter_public_send'
     };
     if (map[name]) {
         setMainStorage(map[name], JSON.stringify(val === '开启'));
@@ -443,8 +439,6 @@ function applyPublicParam(name, val) {
 
     const storageKeys = {
         '礼物公开概率': 'giftPublicChance',
-        '匿名信公开概率': 'secretLetterPublicChance',
-        '匿名信暴露概率': 'secretLetterRevealChance',
         '每日礼物上限': 'giftDailyLimit',
         '公告触发频率': 'announceFrequency'
     };
@@ -832,7 +826,8 @@ cmd_settings.name = '设置';
 cmd_settings.help = `==== 📺 恋综系统控制台 ====
 .设置 基础  - 恋综名、群号、核心功能开关
 .设置 互动  - 冷却时间、邀约时长、地点系统
-.设置 信件  - 寄信/匿名信/发送信件配置
+.设置 信件  - 寄信开关/每日上限/混乱参数
+.设置 发送信件 - 发送信件开关/上限/字数/赏金
 .设置 心动信 - 心动信开关/送达时间/曝光设置
 .设置 公告  - 公开广播概率/开关/触发频率
 .设置 道具  - 物品抽取、追踪器参数
@@ -860,6 +855,7 @@ cmd_settings.solve = function(ctx, msg, argv) {
         if (firstLine.includes('基础设置')) return handleApply(ctx, msg, rawMessage, applyBasicParam);
         if (firstLine.includes('互动设置')) return handleApply(ctx, msg, rawMessage, applyInteractionParam);
         if (firstLine.includes('信件设置')) return handleApply(ctx, msg, rawMessage, applyLetterParam);
+        if (firstLine.includes('发送信件设置')) return handleApply(ctx, msg, rawMessage, applyDirectLetterParam);
         if (firstLine.includes('心动信设置')) return handleApply(ctx, msg, rawMessage, applyLovemailParam);
         if (firstLine.includes('公告设置')) return handleApply(ctx, msg, rawMessage, applyPublicParam);
         if (firstLine.includes('道具设置')) return handleApply(ctx, msg, rawMessage, applyItemParam);
@@ -874,6 +870,7 @@ cmd_settings.solve = function(ctx, msg, argv) {
         case '基础': return showBasicSettings(ctx, msg);
         case '互动': return showInteractionSettings(ctx, msg);
         case '信件': return showLetterSettings(ctx, msg);
+        case '发送信件': return showDirectLetterSettings(ctx, msg);
         case '心动信': return showLovemailSettings(ctx, msg);
         case '公告': return showPublicSettings(ctx, msg);
         case '道具': return showItemSettings(ctx, msg);
@@ -1006,8 +1003,9 @@ function generateStatisticsReport(ctx, msg, newDay, previousDay, isCleared = fal
         "电话": parseInt(main.storageGet("a_meetingCount_call") || "0"),
         "私密": parseInt(main.storageGet("a_meetingCount_private") || "0"),
         "寄信": parseInt(main.storageGet("a_meetingCount_chaosletter") || "0"),
+        "发送信件": parseInt(main.storageGet("a_meetingCount_directletter") || "0"),
+        "心动信": parseInt(main.storageGet("a_meetingCount_lovemail") || "0"),
         "礼物": parseInt(main.storageGet("a_meetingCount_gift") || "0"),
-        "匿名信": parseInt(main.storageGet("a_meetingCount_secretletter") || "0"),
         "心愿": parseInt(main.storageGet("a_meetingCount_wish") || "0"),
         "官约": parseInt(main.storageGet("a_meetingCount_official") || "0")
     };
@@ -1050,13 +1048,14 @@ function generateStatisticsReport(ctx, msg, newDay, previousDay, isCleared = fal
         `🕒 生成时间：${new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}\n` +
         `👥 【玩家统计】\n• 绑定角色数：${playerCount} 人\n\n` +
         `📞 【会面统计】\n` +
-        `• 电话会面：${meetingCounts["电话"]} 次\n` +
-        `• 私密会面：${meetingCounts["私密"]} 次\n` +
+        `• 电话：${meetingCounts["电话"]} 次\n` +
+        `• 私密：${meetingCounts["私密"]} 次\n` +
+        `• 官约：${meetingCounts["官约"]} 次\n` +
         `• 寄信：${meetingCounts["寄信"]} 次\n` +
+        `• 发送信件：${meetingCounts["发送信件"]} 次\n` +
+        `• 心动信派送：${meetingCounts["心动信"]} 次\n` +
         `• 礼物馈赠：${meetingCounts["礼物"]} 次\n` +
-        `• 匿名信：${meetingCounts["匿名信"]} 次\n` +
-        `• 心愿达成：${meetingCounts["心愿"]} 次\n` +
-        `• 官方约会：${meetingCounts["官约"]} 次\n\n` +
+        `• 心愿达成：${meetingCounts["心愿"]} 次\n\n` +
         `📋 【待办事项】\n` +
         `• 待处理请求：${pendingRequests} 个\n` +
         `• 多人邀约：${multiRequests} 个\n` +

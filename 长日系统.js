@@ -403,7 +403,6 @@ function isUserAdmin(ctx, msg) {
 function recordMeetingAndAnnounce(subtype, platform, ctx, endPoint) {
     const subtypeKeyMap = {
         "电话": "call",
-        "续杯": "sequel",
         "私密": "private",
         "寄信": "chaosletter",
         "发送信件": "directletter",
@@ -444,7 +443,6 @@ function recordMeetingAndAnnounce(subtype, platform, ctx, endPoint) {
 
             // ... 以下逻辑保持不变 ...
             if (subtype === "电话") return getDirectRecord("电话", count, "☎️");
-            if (subtype === "续杯") return getDirectRecord("续杯约会", count, "🍷");
             if (subtype === "私密") return getDirectRecord("私密约会", count, "💫");
             if (subtype === "寄信") return getDirectRecord("寄信", count, "📮");
             if (subtype === "发送信件") return getDirectRecord("发送信件", count, "✉️");
@@ -571,43 +569,102 @@ cmd_bind_role.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    // 查找并删除该用户旧的角色绑定 (防止一人多号)
-    let oldName = Object.keys(storage[platform]).find(key => storage[platform][key][0] === uid);
-    let isRename = !!oldName && oldName !== name;
+    // 已有角色则拒绝，提示用修改名字
+    const existing = Object.keys(storage[platform]).find(key => storage[platform][key][0] === uid);
+    if (existing) {
+        seal.replyToSender(ctx, msg, `⚠️ 你已有角色「${existing}」。若想改名，请发送「修改名字 新名字」。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
 
-    if (oldName) delete storage[platform][oldName];
-
-    // 执行保存
     storage[platform][name] = [uid, gid];
     ext.storageSet("a_private_group", JSON.stringify(storage));
-
     initCharProfile(platform, name);
 
-    if (isRename) {
-        // 迁移档案key
-        const profiles = store.get("sys_char_profiles");
-        const oldKey = `${platform}:${oldName}`;
-        const newKey = `${platform}:${name}`;
-        if (profiles[oldKey]) { profiles[newKey] = profiles[oldKey]; delete profiles[oldKey]; store.set("sys_char_profiles", profiles); }
-        seal.replyToSender(ctx, msg, `✅ 角色名已由「${oldName}」更新为「${name}」`);
-    } else {
-        const profile = getCharProfile(platform, name);
-        seal.replyToSender(ctx, msg,
-            `✅ 角色「${name}」创建成功！\n` +
-            `\n欢迎加入长日！以下是你的初始档案：\n` +
-            `👤 性别：${profile.gender}　年龄：${profile.age}\n` +
-            `🌸 皮相：${profile.look}\n` +
-            `\n💡 可发送以下消息定制角色：\n` +
-            `  修改性别 男/女\n` +
-            `  修改年龄 数字\n` +
-            `  修改皮相 明星名\n` +
-            `  修改签名 你的签名（12小时冷却）\n` +
-            `\n发送「玩家名单」查看所有角色，「指令指南」查看全部功能。`
-        );
-    }
+    const profile = getCharProfile(platform, name);
+    seal.replyToSender(ctx, msg,
+        `✅ 角色「${name}」创建成功！\n` +
+        `\n欢迎加入长日！以下是你的初始档案：\n` +
+        `👤 性别：${profile.gender}　年龄：${profile.age}\n` +
+        `🌸 皮相：${profile.look}\n` +
+        `\n💡 可发送以下消息定制角色：\n` +
+        `  修改性别 男/女\n` +
+        `  修改年龄 数字\n` +
+        `  修改皮相 明星名\n` +
+        `  修改签名 你的签名（12小时冷却）\n` +
+        `\n发送「玩家名单」查看所有角色，「指令指南」查看全部功能。`
+    );
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["创建新角色"] = cmd_bind_role;
+
+// 修改名字
+let cmd_rename_role = seal.ext.newCmdItemInfo();
+cmd_rename_role.name = "修改名字";
+cmd_rename_role.help = "。修改名字 新名字";
+cmd_rename_role.solve = (ctx, msg, cmdArgs) => {
+    const newName = cmdArgs.getArgN(1);
+    if (!newName) return seal.replyToSender(ctx, msg, "格式：修改名字 新名字");
+
+    const platform = msg.platform;
+    const uid = msg.sender.userId.replace(`${platform}:`, "");
+    const storage = getRoleStorage();
+    if (!storage[platform]) return seal.replyToSender(ctx, msg, "❌ 请先创建角色");
+
+    const oldName = Object.keys(storage[platform]).find(k => storage[platform][k][0] === uid);
+    if (!oldName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色");
+    if (oldName === newName) return seal.replyToSender(ctx, msg, "❌ 新名字与当前名字相同");
+    if (storage[platform][newName] && storage[platform][newName][0] !== uid)
+        return seal.replyToSender(ctx, msg, `❌ 名字「${newName}」已被他人使用`);
+
+    // 1. a_private_group
+    storage[platform][newName] = storage[platform][oldName];
+    delete storage[platform][oldName];
+    ext.storageSet("a_private_group", JSON.stringify(storage));
+
+    // 2. global_inventories（platform:roleName 键，仍需迁移）
+    const invs = JSON.parse(ext.storageGet("global_inventories") || "{}");
+    const oldInvKey = `${platform}:${oldName}`, newInvKey = `${platform}:${newName}`;
+    if (invs[oldInvKey] !== undefined) { invs[newInvKey] = invs[oldInvKey]; delete invs[oldInvKey]; }
+    ext.storageSet("global_inventories", JSON.stringify(invs));
+
+    // 3. place_keys（platform][roleName 键，仍需迁移）
+    const placeKeys = JSON.parse(ext.storageGet("place_keys") || "{}");
+    if (placeKeys[platform]?.[oldName] !== undefined) {
+        placeKeys[platform][newName] = placeKeys[platform][oldName];
+        delete placeKeys[platform][oldName];
+        ext.storageSet("place_keys", JSON.stringify(placeKeys));
+    }
+
+    // 4. a_npc_list
+    const npcList = JSON.parse(ext.storageGet("a_npc_list") || "[]");
+    const npcIdx = npcList.indexOf(oldName);
+    if (npcIdx !== -1) { npcList[npcIdx] = newName; ext.storageSet("a_npc_list", JSON.stringify(npcList)); }
+
+    // 5. relationship_lines（key 和 value 内部都含旧名）
+    const relData = JSON.parse(ext.storageGet("relationship_lines") || "{}");
+    if (relData[platform]) {
+        if (relData[platform][oldName]) {
+            relData[platform][newName] = relData[platform][oldName];
+            delete relData[platform][oldName];
+        }
+        for (const [role, rels] of Object.entries(relData[platform])) {
+            if (role === newName) continue;
+            if (rels[oldName] !== undefined) { rels[newName] = rels[oldName]; delete rels[oldName]; }
+        }
+        for (const rels of Object.values(relData[platform])) {
+            for (const rel of Object.values(rels)) {
+                if (rel.initiator === oldName) rel.initiator = newName;
+                if (Array.isArray(rel.details)) rel.details.forEach(d => { if (d.from === oldName) d.from = newName; });
+            }
+        }
+        ext.storageSet("relationship_lines", JSON.stringify(relData));
+    }
+    // sys_char_profiles 和 group_write_progress 已改为 uid 索引，改名无需迁移
+
+    seal.replyToSender(ctx, msg, `✅ 角色名已由「${oldName}」改为「${newName}」，所有数据已同步迁移。`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["修改名字"] = cmd_rename_role;
 
 // 2. 玩家名单
 let cmd_role_list = seal.ext.newCmdItemInfo();
@@ -717,13 +774,16 @@ const getPrimaryUid = (platform, uid) => {
 // 角色档案系统
 // ========================
 function getCharProfile(platform, roleName) {
-    const profiles = store.get("sys_char_profiles");
-    return profiles[`${platform}:${roleName}`] || {};
+    const uid = store.get("a_private_group")[platform]?.[roleName]?.[0];
+    if (!uid) return {};
+    return store.get("sys_char_profiles")[`${platform}:${uid}`] || {};
 }
 
 function setCharProfile(platform, roleName, patch) {
+    const uid = store.get("a_private_group")[platform]?.[roleName]?.[0];
+    if (!uid) return;
     const profiles = store.get("sys_char_profiles");
-    const key = `${platform}:${roleName}`;
+    const key = `${platform}:${uid}`;
     profiles[key] = Object.assign(profiles[key] || {}, patch);
     store.set("sys_char_profiles", profiles);
 }
@@ -1708,13 +1768,14 @@ cmd_view_schedule.solve = (ctx, msg) => {
                   (timer === "replied" ? " [已回]" : (timer === "timing" ? " [⏳未回]" : ""));
             if (isPending && ev.isMulti && multiReq[ev.multiRef]?.targetList?.[myName] === "accepted") tag += " [🤝已接]";
         }
-        const icon = { "电话": "📞", "续杯": "🍷", "微信群": "💬" }[ev.subtype] || "🎭";
+        const icon = { "电话": "📞", "微信群": "💬" }[ev.subtype] || "🎭";
         let progressText = "";
         if (ev.group && !ev.isWechat) {
             const grpProg = JSON.parse(ext.storageGet("group_write_progress") || "{}")[ev.group] || {};
+            const privGrp = store.get("a_private_group")[platform] || {};
             const parts = [myName, ...ev.partner.split(/[、,，]/).map(s => s.trim()).filter(Boolean)]
                 .filter((v, i, a) => a.indexOf(v) === i);
-            const counts = parts.map(n => grpProg[n] || 0);
+            const counts = parts.map(n => grpProg[privGrp[n]?.[0]] || 0);
             if (counts.some(c => c > 0)) progressText = `\n✍️ 当前进度：${counts.join('v')}`;
         }
         ev.displayText = `【${ev.day} ${ev.time}】\n${icon} ${ev.subtype} · ${tag}\n📍 地点：${ev.place || "未知"}\n👥 伙伴：${ev.partner}${progressText}`;
@@ -2403,7 +2464,7 @@ ext.cmdMap["查看进行中"] = cmd_admin_view_active;
 
 let cmd_grouplist_release = seal.ext.newCmdItemInfo();
 cmd_grouplist_release.name = "结束私约";
-cmd_grouplist_release.help = "。结束私约（将当前群标记为结束状态，禁止当前阶段续杯）。若当前群为微信群，则结束微信群并释放群号。";
+cmd_grouplist_release.help = "。结束私约（将当前群标记为结束状态）。若当前群为微信群，则结束微信群并释放群号。";
 
 /**
  * 结束微信群（仅清理状态，不发公告）
@@ -3321,7 +3382,7 @@ cmd_view_schedule_other.solve = (ctx, msg, cmdArgs) => {
   for (let day of Object.keys(grouped).sort((a, b) => parseInt(a.slice(1)) - parseInt(b.slice(1)))) {
     rep += `\n📅【${day}】\n`;
     for (let ev of grouped[day]) {
-      let marker = ev.subtype === "续杯" ? "🌀" : ev.subtype === "电话" ? "📞" : "🤫";
+      let marker = ev.subtype === "电话" ? "📞" : "🤫";
       rep += `${marker} ${ev.time} —— ${ev.partner}（${ev.subtype}小群）\n`;
     }
   }
@@ -6223,6 +6284,13 @@ ext.onNotCommandReceived = (ctx, msg) => {
     }
 
     // 4.8 角色档案修改（无前缀）
+    if (raw.startsWith("修改名字")) {
+        const newName = raw.slice(4).trim();
+        if (!newName) return seal.replyToSender(ctx, msg, "格式：修改名字 新名字");
+        const fakeArgs = { getArgN: (i) => i === 1 ? newName : "" };
+        return cmd_rename_role.solve(ctx, msg, fakeArgs);
+    }
+
     if (raw.startsWith("修改性别")) {
         const roleName = getRoleName(ctx, msg);
         if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
@@ -6346,11 +6414,10 @@ ext.onNotCommandReceived = (ctx, msg) => {
 
     // 4.10 写了（记录写帖进度）
     if (raw === "写了") {
-        const roleName = getRoleName(ctx, msg);
-        if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色");
+        if (!getRoleName(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 请先创建角色");
         const progress = JSON.parse(ext.storageGet("group_write_progress") || "{}");
         if (!progress[groupId]) progress[groupId] = {};
-        progress[groupId][roleName] = (progress[groupId][roleName] || 0) + 1;
+        progress[groupId][uid] = (progress[groupId][uid] || 0) + 1;
         ext.storageSet("group_write_progress", JSON.stringify(progress));
         return seal.ext.newCmdExecuteResult(true);
     }
@@ -7786,157 +7853,197 @@ ext.cmdMap["结算拍卖"] = cmd_settle_auction;
 // ========================
 let cmd_guide = seal.ext.newCmdItemInfo();
 cmd_guide.name = "指令指南";
-cmd_guide.solve = (ctx, msg) => {
+cmd_guide.solve = (ctx, msg, cmdArgs) => {
     const gid = parseInt(msg.groupId.replace(/[^\d]/g, ""), 10);
     const bot = "长日将尽", uin = "10001";
+    const arg = (cmdArgs.getArgN(1) || "").trim();
 
     const section = (title, lines) => ({
         type: "node",
         data: { name: bot, uin, content: `${title}\n${"━".repeat(14)}\n${lines.join("\n")}` }
     });
 
-    const nodes = [
-        { type: "node", data: { name: bot, uin, content: `📖 长日指令指南\n${"━".repeat(14)}\n以下指令无需句号，直接发送消息即可触发。` } },
-        section("🌟 入门", [
-            "创建新角色 角色名",
-            "  例：创建新角色 张三",
-            "  注册角色，获得初始档案（性别/年龄/皮相）",
-            "",
-            "修改性别 男/女",
-            "修改年龄 数字",
-            "修改皮相 明星名  （2小时冷却）",
-            "修改签名 内容     （12小时冷却）",
-            "",
-            "额外账号 QQ号",
-            "  将另一个QQ绑定为当前角色的别号",
-            "额外账号 删除 QQ号",
-            "额外账号  （不带参数→查看已有）",
-            "",
-            "玩家名单",
-            "  查看所有已注册角色及其档案",
-            "",
-            "地点查看",
-            "  查看当前可用地点列表",
-        ]),
-        section("🔗 关系线", [
-            "拉线 对方名 关系内容",
-            "  向对方发起关系线并记录细节",
-            "  例：拉线 张三 两人曾在大学相识",
-            "",
-            "确认关系线 对方名",
-            "  确认对方向你发起的关系线",
-            "  例：确认关系线 张三",
-            "",
-            "撤回关系 对方名 要撤回的内容",
-            "  精确匹配撤回自己发送过的细节",
-            "  例：撤回关系 张三 两人曾在大学相识",
-            "",
-            "查看关系线",
-            "  查看你的所有关系对象（列表）",
-            "",
-            "查看关系线 角色名",
-            "  查看与该角色的完整关系细节（合并转发）",
-        ]),
-        section("💕 约会与邀约", [
-            "电话 时间 对方名 [标题]",
-            "  例：电话 1400-1500 张三",
-            "  例：电话 1400-1500 张三/李四 一起聊聊",
-            "",
-            "私约 时间 地点 对方名[/对方2/...]",
-            "  例：私约 1400-1500 咖啡厅 张三",
-            "",
-            "申请加入 角色名 时间点",
-            "  申请加入已有约会",
-            "  例：申请加入 张三 14:30",
-        ]),
-        section("💬 微信长期群", [
-            "微信 对方名",
-            "  例：微信 张三",
-        ]),
-        section("🌠 心愿系统", [
-            "挂心愿 时间 地点 内容",
-            "  例：挂心愿 1400-1500 图书馆 想找人聊聊",
-            "",
-            "看心愿  （查看所有漂流心愿）",
-            "摘心愿 编号  （例：摘心愿 A1B2C3）",
-            "撤心愿 [编号]  （不带编号→列出自己的心愿）",
-        ]),
-        section("📱 短信", [
-            "[署名]短信 收信人 内容",
-            "  例：张三短信 李四 你好！",
-            "  不写署名则自动使用角色名",
-        ]),
-        section("🎒 背包与物品", [
-            "抽取  （从物品池随机获得普通物品）",
-            "抽取次数  （查看今日剩余次数）",
-            "",
-            "背包  （总览）",
-            "背包 礼物 / 普通道具 / 道具 / 特殊道具",
-            "背包 普通礼物1 / 普通道具1 / 特殊道具1  （查看详情）",
-            "",
-            "道具赠送 对方名 物品名",
-            "  例：道具赠送 张三 玫瑰",
-            "",
-            "赠送 对方名 礼物内容",
-            "  叙事礼物（有冷却与每日上限）",
-            "  例：赠送 张三 一束花",
-            "  例：张三赠送 李四 #1",
-            "",
-            "使用 物品名 [参数]",
-            "  例：使用 万能钥匙 图书馆",
-        ]),
-        section("🛒 礼物商城", [
-            "礼物商城",
-            "  抽卡模式：每人随机抽一件礼物，自动加入图鉴",
-            "  商城模式：展示所有在售商品及库存价格",
-            "",
-            "购买 编号or名字 [数量]  （仅商城模式）",
-            "  例：购买 #1 3  /  购买 玫瑰花",
-            "",
-            "图鉴  （查看收藏进度与全服热度排名）",
-            "",
-            "赠送 对方 #编号",
-            "  抽卡模式：图鉴内礼物无限赠送",
-            "  商城模式：消耗背包内一件礼物",
-        ]),
-        section("🗨️ 论坛系统", [
-            "发帖 内容",
-            "  例：发帖 今天天气真好",
-            "发帖 署名 内容",
-            "  例：发帖 张三 今天天气真好",
-            "",
-            "回复帖子 贴号 内容",
-            "  例：回复帖子 A1B2C 同感！",
-            "回复帖子 贴号 署名 内容",
-        ]),
-        section("💌 心动信", [
-            "发送心动信",
-            "【发送对象】角色名",
-            "【内容】想说的话（支持空行）",
-            "【署名】自定义昵称（选填）",
-        ]),
-        section("🔨 拍卖系统", [
-            "查看拍卖",
-            "  查看所有进行中的拍卖（合并转发）",
-            "  显示当前出价、剩余时间、起拍价",
-            "",
-            "实名出价 价格 编号",
-            "  例：实名出价 150 #1",
-            "  出价会显示你的角色名",
-            "",
-            "匿名出价 价格 编号",
-            "  例：匿名出价 200 #1",
-            "  出价匿名处理（管理员可控是否允许）",
-        ]),
-        section("📋 信息收集", [
-            "我提交 项目名: 内容",
-            "  例：我提交 问卷: 我选A",
-            "",
-            "查看收集          → 列出所有项目",
-            "查看收集 项目名   → 查看该项目全部内容",
-        ]),
-    ];
+    const chapters = {
+        "1": {
+            label: "🌟 入门",
+            nodes: () => [
+                section("🌟 入门 — 角色与账号", [
+                    "创建新角色 角色名",
+                    "  例：创建新角色 张三",
+                    "  注册角色，获得初始档案（性别/年龄/皮相）",
+                    "",
+                    "修改名字 新名字   （改名并同步所有数据）",
+                    "修改性别 男/女",
+                    "修改年龄 数字",
+                    "修改皮相 明星名  （2小时冷却）",
+                    "修改签名 内容     （12小时冷却）",
+                    "",
+                    "额外账号 QQ号       绑定小号",
+                    "额外账号 删除 QQ号  解绑小号",
+                    "额外账号            查看已有",
+                    "",
+                    "玩家名单   查看所有角色及档案",
+                    "地点查看   查看可用地点列表",
+                ]),
+            ]
+        },
+        "2": {
+            label: "🔗 关系线",
+            nodes: () => [
+                section("🔗 关系线", [
+                    "拉线 对方名 关系内容",
+                    "  向对方发起关系线并记录细节",
+                    "  例：拉线 张三 两人曾在大学相识",
+                    "",
+                    "确认关系线 对方名",
+                    "  确认对方向你发起的关系线",
+                    "",
+                    "撤回关系 对方名 要撤回的内容",
+                    "  精确匹配撤回自己的细节",
+                    "",
+                    "查看关系线          查看所有关系对象",
+                    "查看关系线 角色名   查看与该角色的完整细节",
+                ]),
+            ]
+        },
+        "3": {
+            label: "💕 约会与社交",
+            nodes: () => [
+                section("💕 约会与邀约", [
+                    "电话 时间 对方名 [标题]",
+                    "  例：电话 1400-1500 张三",
+                    "  例：电话 1400-1500 张三/李四 一起聊聊",
+                    "",
+                    "私约 时间 地点 对方名[/对方2/...]",
+                    "  例：私约 1400-1500 咖啡厅 张三",
+                    "",
+                    "申请加入 角色名 时间点",
+                    "  例：申请加入 张三 14:30",
+                ]),
+                section("💬 微信 & 心愿 & 短信", [
+                    "微信 对方名   建立长期微信群",
+                    "",
+                    "挂心愿 时间 地点 内容",
+                    "  例：挂心愿 1400-1500 图书馆 想找人聊聊",
+                    "看心愿          查看所有漂流心愿",
+                    "摘心愿 编号     例：摘心愿 A1B2C3",
+                    "撤心愿 [编号]   不带编号→列出自己的心愿",
+                    "",
+                    "[署名]短信 收信人 内容",
+                    "  例：张三短信 李四 你好！",
+                ]),
+            ]
+        },
+        "4": {
+            label: "🎒 物品与商城",
+            nodes: () => [
+                section("🎒 背包与道具", [
+                    "抽取          从物品池随机获得普通物品",
+                    "抽取次数      查看今日剩余次数",
+                    "",
+                    "背包          总览",
+                    "背包 礼物 / 普通道具 / 道具 / 特殊道具",
+                    "背包 物品名   查看详情",
+                    "",
+                    "道具赠送 对方名 物品名",
+                    "  例：道具赠送 张三 玫瑰",
+                    "",
+                    "使用 物品名 [参数]",
+                    "  例：使用 万能钥匙 图书馆",
+                ]),
+                section("🛒 礼物商城", [
+                    "礼物商城",
+                    "  抽卡模式：随机抽一件礼物，自动加图鉴",
+                    "  商城模式：展示在售商品及库存价格",
+                    "",
+                    "购买 编号or名字 [数量]  （商城模式）",
+                    "  例：购买 #1 3  /  购买 玫瑰花",
+                    "",
+                    "图鉴        查看收藏进度与全服热度排名",
+                    "图鉴 #编号  查看该礼物完整描述",
+                    "",
+                    "赠送 对方名 礼物内容  叙事礼物",
+                    "  例：赠送 张三 一束花",
+                    "赠送 对方 #编号",
+                    "  抽卡模式：图鉴内礼物无限赠送",
+                    "  商城模式：消耗背包内一件礼物",
+                ]),
+            ]
+        },
+        "5": {
+            label: "💌 信件与论坛",
+            nodes: () => [
+                section("💌 心动信", [
+                    "发送心动信",
+                    "【发送对象】角色名",
+                    "【内容】想说的话（支持空行）",
+                    "【署名】自定义昵称（选填）",
+                    "",
+                    "撤回心动信 编号   撤回已投递的信",
+                ]),
+                section("🗨️ 论坛", [
+                    "发帖 内容",
+                    "  例：发帖 今天天气真好",
+                    "发帖 署名 内容",
+                    "  例：发帖 张三 今天天气真好",
+                    "",
+                    "回复帖子 贴号 内容",
+                    "  例：回复帖子 A1B2C 同感！",
+                    "回复帖子 贴号 署名 内容",
+                ]),
+            ]
+        },
+        "6": {
+            label: "🔨 拍卖 & 其他",
+            nodes: () => [
+                section("🔨 拍卖系统", [
+                    "查看拍卖",
+                    "  查看所有进行中的拍卖（合并转发）",
+                    "",
+                    "实名出价 价格 编号",
+                    "  例：实名出价 150 #1",
+                    "",
+                    "匿名出价 价格 编号",
+                    "  例：匿名出价 200 #1",
+                ]),
+                section("📋 信息收集 & 写帖进度", [
+                    "我提交 项目名: 内容",
+                    "  例：我提交 问卷: 我选A",
+                    "查看收集          列出所有项目",
+                    "查看收集 项目名   查看该项目全部内容",
+                    "",
+                    "写了   在帖子群记录本角色写了一段",
+                    "  （进度在时间线中查看）",
+                ]),
+            ]
+        },
+    };
 
+    // 无参数 → 发送索引文本
+    if (!arg) {
+        const index = [
+            "📖 长日指令指南",
+            "━".repeat(14),
+            "发送「指令指南 编号」查看对应板块",
+            "",
+            ...Object.entries(chapters).map(([k, v]) => `${k}. ${v.label}`),
+            "",
+            "以下指令无需句号，直接发送即可触发。",
+        ].join("\n");
+        seal.replyToSender(ctx, msg, index);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const chapter = chapters[arg];
+    if (!chapter) {
+        seal.replyToSender(ctx, msg, `❌ 不存在该板块，请发送「指令指南」查看目录。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const nodes = [
+        { type: "node", data: { name: bot, uin, content: `📖 长日指令指南 — ${chapter.label}` } },
+        ...chapter.nodes(),
+    ];
     ws({ action: "send_group_forward_msg", params: { group_id: gid, messages: nodes } }, ctx, msg, "");
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -8762,10 +8869,17 @@ cmd_random_group.solve = (ctx, msg, cmdArgs) => {
     let groups = Array.from({ length: groupCount }, () => []);
 
     if (bgMode) {
-        // 按性别分桶，读取 sys_char_profiles
-        const profiles = JSON.parse(ext.storageGet("sys_char_profiles") || "{}");
-        const males = shuffle(players.filter(n => (profiles[`${platform}:${n}`]?.gender || "女") === "男"));
-        const females = shuffle(players.filter(n => (profiles[`${platform}:${n}`]?.gender || "女") !== "男"));
+        // 按性别分桶，读取 sys_char_profiles（uid-keyed）
+        const privGrp = store.get("a_private_group")[platform] || {};
+        const profiles = store.get("sys_char_profiles");
+        const males = shuffle(players.filter(n => {
+            const uid = privGrp[n]?.[0];
+            return uid && (profiles[`${platform}:${uid}`]?.gender || "女") === "男";
+        }));
+        const females = shuffle(players.filter(n => {
+            const uid = privGrp[n]?.[0];
+            return !uid || (profiles[`${platform}:${uid}`]?.gender || "女") !== "男";
+        }));
         // 交替向各组塞入男/女，尽量打散
         let gi = 0;
         const fillRound = (bucket) => { bucket.forEach(p => { groups[gi % groupCount].push(p); gi++; }); };
