@@ -6104,20 +6104,25 @@ ext.onNotCommandReceived = (ctx, msg) => {
         if (rest) return cmd_apply_join.solve(ctx, msg, makeFakeCmdArgs(rest.split(/\s+/)));
     }
 
-    // 4.6 关系线（无前缀，管理员指令）
-    if (raw.startsWith("拉线") && isAdmin) {
+    // 4.6 关系线（无前缀，所有人可用）
+    if (raw.startsWith("拉线")) {
         const rest = raw.slice(2).trim();
         if (rest) return cmd_add_rel_detail.solve(ctx, msg, makeFakeCmdArgs(rest.split(/\s+/)));
+    }
+
+    if (raw.startsWith("确认关系线")) {
+        const rest = raw.slice(5).trim();
+        if (rest) return cmd_confirm_relationship.solve(ctx, msg, makeFakeCmdArgs([rest]));
+    }
+
+    if (raw.startsWith("撤回关系")) {
+        const rest = raw.slice(4).trim();
+        if (rest) return cmd_withdraw_relation.solve(ctx, msg, makeFakeCmdArgs(rest.split(/\s+/)));
     }
 
     if (raw.startsWith("查看关系线")) {
         const rest = raw.slice(5).trim();
         return cmd_view_relationship.solve(ctx, msg, makeFakeCmdArgs(rest ? [rest] : []));
-    }
-
-    if (raw.startsWith("撤回关系") && isAdmin) {
-        const rest = raw.slice(4).trim();
-        if (rest) return cmd_withdraw_relation.solve(ctx, msg, makeFakeCmdArgs(rest.split(/\s+/)));
     }
 
     if (raw === "关系线统计" && isAdmin) {
@@ -7504,11 +7509,23 @@ cmd_guide.solve = (ctx, msg) => {
             "  查看当前可用地点列表",
         ]),
         section("🔗 关系线", [
+            "拉线 对方名 关系内容",
+            "  向对方发起关系线并记录细节",
+            "  例：拉线 张三 两人曾在大学相识",
+            "",
+            "确认关系线 对方名",
+            "  确认对方向你发起的关系线",
+            "  例：确认关系线 张三",
+            "",
+            "撤回关系 对方名 要撤回的内容",
+            "  精确匹配撤回自己发送过的细节",
+            "  例：撤回关系 张三 两人曾在大学相识",
+            "",
             "查看关系线",
             "  查看你的所有关系对象（列表）",
             "",
             "查看关系线 角色名",
-            "  查看与该角色的详细关系记录（合并转发）",
+            "  查看与该角色的完整关系细节（合并转发）",
         ]),
         section("💕 约会与邀约", [
             "电话 时间 对方名 [标题]",
@@ -7739,14 +7756,18 @@ cmd_admin_guide.solve = (ctx, msg) => {
             "。删除预设礼物 编号",
             "。删除预设礼物 全部 确认  ⚠️",
         ]),
-        section("🔗 关系线管理（无前缀，管理员）", [
-            "拉线 对方名 关系内容",
-            "  例：拉线 张三 两人曾在大学相识",
+        section("🔗 关系线管理（管理员）", [
+            "。设置强制关系线 角色A 角色B 描述",
+            "  强制设定两人关系（系统发起，不占名额）",
+            "  例：。设置强制关系线 张三 李四 青梅竹马",
             "",
-            "撤回关系 对方名 要撤回的内容",
-            "  精确匹配，仅能撤回自己发送的记录",
+            "。删除关系线 角色A 角色B",
+            "  删除两人之间的关系线",
             "",
-            "关系线统计",
+            "。清空关系线 角色名",
+            "  清空该角色全部关系线",
+            "",
+            "关系线统计  （无前缀）",
             "  查看所有角色的关系线数量",
         ]),
         section("👤 角色管理", [
