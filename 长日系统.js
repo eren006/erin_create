@@ -400,13 +400,14 @@ function isUserAdmin(ctx, msg) {
   }
 
 
-// 注册公告触发频率（例如：每5次发一次）
-seal.ext.registerIntConfig(ext, "announceFrequency", 5, "公告触发频率", "每发生多少次该类型的互动后，向管理员群发送一次记录公告");
 function recordMeetingAndAnnounce(subtype, platform, ctx, endPoint) {
     const subtypeKeyMap = {
         "电话": "call",
+        "续杯": "sequel",
         "私密": "private",
         "寄信": "chaosletter",
+        "发送信件": "directletter",
+        "心动信": "lovemail",
         "礼物": "gift",
         "心愿": "wish",
         "官约": "official"
@@ -430,7 +431,7 @@ function recordMeetingAndAnnounce(subtype, platform, ctx, endPoint) {
         const getStageText = (subtype, count) => {
             // --- 核心修改部分：从配置项获取频率 ---
             // 获取用户在插件设置里填写的数字，默认为 5
-            const frequency = seal.ext.getIntConfig(ext, "announceFrequency"); 
+            const frequency = parseInt(ext.storageGet("announceFrequency") || "5");
             
             // 检查是否应该触发公告：使用动态频率
             let shouldAnnounce = (count % frequency === 0);
@@ -443,7 +444,11 @@ function recordMeetingAndAnnounce(subtype, platform, ctx, endPoint) {
 
             // ... 以下逻辑保持不变 ...
             if (subtype === "电话") return getDirectRecord("电话", count, "☎️");
+            if (subtype === "续杯") return getDirectRecord("续杯约会", count, "🍷");
             if (subtype === "私密") return getDirectRecord("私密约会", count, "💫");
+            if (subtype === "寄信") return getDirectRecord("寄信", count, "📮");
+            if (subtype === "发送信件") return getDirectRecord("发送信件", count, "✉️");
+            if (subtype === "心动信") return getDirectRecord("心动信派送", count, "💌");
             if (subtype === "礼物") return getDirectRecord("礼物赠送", count, "🎁");
             if (subtype === "心愿") return getDirectRecord("心愿", count, "🌠");
             if (subtype === "官约") return getDirectRecord("官方约会", count, "🏢");
@@ -2656,29 +2661,46 @@ async function checkGroupHasNonNPC(platform, gid, ctx, msg) {
         
         if (role && !role.isNPC) {
             hasNonNPC = true;
-            // 向该玩家发送提醒（通过其绑定的私群）
             const groupId = platformRoles[role.name]?.[1];
             if (groupId) {
-                const remindMsg = seal.newMessage();
-                remindMsg.messageType = "group";
-                remindMsg.groupId = `${platform}-Group:${groupId}`;
-                const remindCtx = seal.createTempCtx(ctx.endPoint, remindMsg);
-                const atCq = `[CQ:at,qq=${qq}]`;
-                seal.replyToSender(remindCtx, remindMsg,
-                    `${atCq} ⚠️ 系统检测到群 ${gid} 将用于私密邀约/心愿等自动建群，请尽快退出，否则可能影响后续流程。`);
-                
-                // --- 2. 累积记录未退出的群 (数组模式) ---
-                
-                // 如果该用户还没有记录，初始化为空数组
-                if (!noquitRecord[qq]) {
-                    noquitRecord[qq] = [];
-                }
-                
-                // 如果数组中还没有这个群号，则加入（避免重复记录）
+                // 初始化记录
+                if (!noquitRecord[qq]) noquitRecord[qq] = [];
+
+                // 新增群号
                 if (!noquitRecord[qq].includes(gid)) {
                     noquitRecord[qq].push(gid);
                     needSave = true;
                     console.log(`[NoQuit] 记录玩家 ${qq} 在群 ${gid} 未退出 (累计群数: ${noquitRecord[qq].length})`);
+                }
+
+                const count = noquitRecord[qq].length;
+
+                if (count > 10) {
+                    // 超过10个，自动转NPC并清空记录，不再提醒
+                    const npcList = JSON.parse(ext.storageGet("a_npc_list") || "[]");
+                    if (!npcList.includes(role.name)) {
+                        npcList.push(role.name);
+                        ext.storageSet("a_npc_list", JSON.stringify(npcList));
+                        console.log(`[NoQuit] 玩家 ${role.name}(${qq}) 累计超过10个未退群，自动转为NPC`);
+                    }
+                    delete noquitRecord[qq];
+                    needSave = true;
+
+                    // 通知私群
+                    const remindMsg = seal.newMessage();
+                    remindMsg.messageType = "group";
+                    remindMsg.groupId = `${platform}-Group:${groupId}`;
+                    const remindCtx = seal.createTempCtx(ctx.endPoint, remindMsg);
+                    seal.replyToSender(remindCtx, remindMsg,
+                        `[CQ:at,qq=${qq}] ⚠️ 系统检测到您长期未退出临时房间，累计已超过10个，已自动将角色「${role.name}」转为NPC身份，违规记录已清空。`);
+                } else {
+                    // 正常提醒
+                    const remindMsg = seal.newMessage();
+                    remindMsg.messageType = "group";
+                    remindMsg.groupId = `${platform}-Group:${groupId}`;
+                    const remindCtx = seal.createTempCtx(ctx.endPoint, remindMsg);
+                    seal.replyToSender(remindCtx, remindMsg,
+                        `[CQ:at,qq=${qq}] ⚠️ 系统检测到群 ${gid} 将用于私密邀约/心愿等自动建群，请尽快退出，否则可能影响后续流程。（累计未退：${count}/10）`);
                 }
             }
         }
@@ -4180,6 +4202,7 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
         reply += meetsMinChars ? `\n💰 写信币 +${rewardGiven}（共 ${totalCoins}）` : `\n📝 提示：字数不足 ${minChars}，未获得赏金。`;
     }
     seal.replyToSender(ctx, msg, reply);
+    recordMeetingAndAnnounce("发送信件", platform, ctx, ctx.endPoint);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["发送信件"] = cmd_send_letter;
@@ -7113,8 +7136,6 @@ ext.cmdMap["删除帖子"] = cmd_delete_post;
 // ========================
 // 💌 心动信系统
 // ========================
-seal.ext.registerBoolConfig(ext, "开启心动信曝光", false, "开启后，信件有概率同步发送到指定的公告群");
-seal.ext.registerIntConfig(ext, "曝光概率", 10, "每封信件被公开的概率 (0-100)");
 
 let cmd_send_lovemail = seal.ext.newCmdItemInfo();
 cmd_send_lovemail.name = "发送心动信";
@@ -7474,8 +7495,8 @@ function performLoveMailDelivery(ctx, msg, backgroundGroupId) {
     }
 
     const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
-    const isPublicEnabled = seal.ext.getBoolConfig(ext, "开启心动信曝光");
-    const publicChance = seal.ext.getIntConfig(ext, "曝光概率");
+    const isPublicEnabled = ext.storageGet("lovemail_expose") === "true";
+    const publicChance = parseInt(ext.storageGet("lovemail_expose_chance") || "10");
     let announceGroupId = JSON.parse(ext.storageGet("adminAnnounceGroupId") || "null");
     if (!announceGroupId || announceGroupId === "null") announceGroupId = null;
 
@@ -7513,6 +7534,7 @@ function performLoveMailDelivery(ctx, msg, backgroundGroupId) {
     
     // 4. 清理并反馈
     ext.storageSet(mailKey, "[]");
+    if (success > 0) recordMeetingAndAnnounce("心动信", platform, ctx, ctx.endPoint);
     return { success, fail, publicCount, empty: false, status: "派送完成" };
 }
 
@@ -8697,7 +8719,7 @@ ext.cmdMap["背包"] = cmd_backpack;
 // ========================
 let cmd_random_group = seal.ext.newCmdItemInfo();
 cmd_random_group.name = "随机分组";
-cmd_random_group.help = "用法：.随机分组 [数字]\n说明：将所有非NPC玩家随机分配到指定数量的组中。";
+cmd_random_group.help = "用法：.随机分组 [数字] [bg]\n说明：将所有非NPC玩家随机分配到指定数量的组中。加 bg 尽量保证每组男女搭配。";
 cmd_random_group.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) {
         seal.replyToSender(ctx, msg, "⚠️ 仅限管理员使用分组功能。");
@@ -8709,11 +8731,12 @@ cmd_random_group.solve = (ctx, msg, cmdArgs) => {
         seal.replyToSender(ctx, msg, "❌ 请输入正确的小组数量，例如：.随机分组 2");
         return seal.ext.newCmdExecuteResult(true);
     }
+    const bgMode = cmdArgs.getArgN(2) === "bg";
 
     let platform = msg.platform;
     let storage = getRoleStorage();
     let npcList = JSON.parse(ext.storageGet("a_npc_list") || "[]");
-    
+
     // 获取当前平台所有玩家，并剔除 NPC
     let players = Object.keys(storage[platform] || {}).filter(name => !npcList.includes(name));
 
@@ -8728,19 +8751,39 @@ cmd_random_group.solve = (ctx, msg, cmdArgs) => {
     }
 
     // 洗牌算法 (Fisher-Yates Shuffle)
-    for (let i = players.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [players[i], players[j]] = [players[j], players[i]];
+    const shuffle = arr => {
+        for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+        return arr;
+    };
+
+    let groups = Array.from({ length: groupCount }, () => []);
+
+    if (bgMode) {
+        // 按性别分桶，读取 sys_char_profiles
+        const profiles = JSON.parse(ext.storageGet("sys_char_profiles") || "{}");
+        const males = shuffle(players.filter(n => (profiles[`${platform}:${n}`]?.gender || "女") === "男"));
+        const females = shuffle(players.filter(n => (profiles[`${platform}:${n}`]?.gender || "女") !== "男"));
+        // 交替向各组塞入男/女，尽量打散
+        let gi = 0;
+        const fillRound = (bucket) => { bucket.forEach(p => { groups[gi % groupCount].push(p); gi++; }); };
+        // 先男后女交织：每组先放一个男，再放一个女，循环
+        const maxRounds = Math.max(males.length, females.length);
+        let mi = 0, fi = 0;
+        for (let r = 0; r < maxRounds; r++) {
+            if (mi < males.length)   { groups[r % groupCount].push(males[mi++]); }
+            if (fi < females.length) { groups[r % groupCount].push(females[fi++]); }
+        }
+    } else {
+        shuffle(players).forEach((player, index) => {
+            groups[index % groupCount].push(player);
+        });
     }
 
-    // 分配到小组
-    let groups = Array.from({ length: groupCount }, () => []);
-    players.forEach((player, index) => {
-        groups[index % groupCount].push(player);
-    });
-
     // 构建回复文本
-    let response = `🎲 【随机分组结果】\n总人数：${players.length} | 组数：${groupCount}\n`;
+    let response = `🎲 【随机分组结果】${bgMode ? "（男女搭配模式）" : ""}\n总人数：${players.length} | 组数：${groupCount}\n`;
     response += "━━━━━━━━━━━━━━\n";
     groups.forEach((members, i) => {
         response += `第 ${i + 1} 组：${members.join("、")}\n`;

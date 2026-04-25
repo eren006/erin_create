@@ -311,15 +311,13 @@ function showLetterSettings(ctx, msg) {
     const results = [
         ".设置 信件设置",
         `【寄信】${feature.enable_chaos_letter !== false ? '开启' : '关闭'}`,
-        `【心动信】${feature.enable_lovemail !== false ? '开启' : '关闭'}`,
         `【匿名信】${feature.enable_secret_letter !== false ? '开启' : '关闭'}`,
-        `【发送信件】${feature.enable_direct_letter !== false ? '开启' : '关闭'}`,   // ← 新增
-        `【心动信送达时间】${deliveryTime}`,
+        `【发送信件】${feature.enable_direct_letter !== false ? '开启' : '关闭'}`,
         `【寄信每日上限】${chaos.dailyLimit}`,
         `【匿名信每日上限】${secretLimit}`,
-        `【发送信件每日上限】${getMainStorage("direct_letter_daily_limit", "5")}`,    // ← 新增
-        `【发送信件最低字数】${getMainStorage("direct_letter_min_chars", "0")}`,      // ← 新增
-        `【发送信件赏金】${getMainStorage("direct_letter_reward", "0")}`,             // ← 新增
+        `【发送信件每日上限】${getMainStorage("direct_letter_daily_limit", "5")}`,
+        `【发送信件最低字数】${getMainStorage("direct_letter_min_chars", "0")}`,
+        `【发送信件赏金】${getMainStorage("direct_letter_reward", "0")}`,
         `【寄信允许自定义名字】${getMainStorage("allow_custom_letter_sign", "false") === "true" ? '开启' : '关闭'}`,
         `【寄信混乱送错】${chaos.misdelivery}`,
         `【寄信混乱涂改】${chaos.blackoutText}`,
@@ -328,7 +326,6 @@ function showLetterSettings(ctx, msg) {
         `【寄信混乱乱序】${chaos.reverseOrder}`,
         `【寄信混乱混淆】${chaos.mistakenSignature}`,
         `【寄信混乱诗意】${chaos.poeticSignature}`,
-        
     ];
 
     seal.replyToSender(ctx, msg, results.join('\n'));
@@ -337,7 +334,6 @@ function showLetterSettings(ctx, msg) {
 function applyLetterParam(name, val) {
     const featureMap = {
         '寄信': 'enable_chaos_letter',
-        '心动信': 'enable_lovemail',
         '匿名信': 'enable_secret_letter',
         '发送信件': 'enable_direct_letter'
     };
@@ -346,11 +342,6 @@ function applyLetterParam(name, val) {
         cfg[featureMap[name]] = (val === '开启');
         setMainStorage("global_feature_toggle", JSON.stringify(cfg));
         return { success: true, message: `【${name}】已${val}` };
-    }
-
-    if (name === '心动信送达时间') {
-        setMainStorage("lovemail_delivery_time", JSON.stringify(val));
-        return { success: true, message: `时间已设为 ${val}` };
     }
 
     if (name === '匿名信每日上限') {
@@ -425,7 +416,8 @@ function showPublicSettings(ctx, msg) {
         `【礼物公开概率】${getMainStorage("giftPublicChance", "50")}`,
         `【匿名信公开概率】${getMainStorage("secretLetterPublicChance", "50")}`,
         `【匿名信暴露概率】${getMainStorage("secretLetterRevealChance", "15")}`,
-        `【每日礼物上限】${getMainStorage("giftDailyLimit", "100")}`
+        `【每日礼物上限】${getMainStorage("giftDailyLimit", "100")}`,
+        `【公告触发频率】${getMainStorage("announceFrequency", "5")}`,
     ];
     seal.replyToSender(ctx, msg, results.join('\n'));
 }
@@ -453,13 +445,59 @@ function applyPublicParam(name, val) {
         '礼物公开概率': 'giftPublicChance',
         '匿名信公开概率': 'secretLetterPublicChance',
         '匿名信暴露概率': 'secretLetterRevealChance',
-        '每日礼物上限': 'giftDailyLimit'
+        '每日礼物上限': 'giftDailyLimit',
+        '公告触发频率': 'announceFrequency'
     };
     if (storageKeys[name]) {
         setMainStorage(storageKeys[name], val);
         return { success: true, message: `【${name}】已保存为 ${val}` };
     }
 
+    return { success: false, message: `未知参数：${name}` };
+}
+
+// ========================
+// 心动信设置模块
+// ========================
+function showLovemailSettings(ctx, msg) {
+    const feature = (() => {
+        try { return JSON.parse(getMainStorage("global_feature_toggle", "{}")); } catch (e) { return {}; }
+    })();
+    const deliveryTime = getMainStorage("lovemail_delivery_time", "22:00").replace(/"/g, '');
+    const expose = getMainStorage("lovemail_expose", "false") === "true";
+    const exposeChance = getMainStorage("lovemail_expose_chance", "10");
+
+    const results = [
+        ".设置 心动信设置",
+        `【心动信】${feature.enable_lovemail !== false ? '开启' : '关闭'}`,
+        `【心动信送达时间】${deliveryTime}`,
+        `【心动信曝光】${expose ? '开启' : '关闭'}`,
+        `【心动信曝光概率】${exposeChance}`,
+    ];
+    seal.replyToSender(ctx, msg, results.join('\n'));
+}
+
+function applyLovemailParam(name, val) {
+    if (name === '心动信') {
+        let cfg = JSON.parse(getMainStorage("global_feature_toggle", "{}"));
+        cfg.enable_lovemail = (val === '开启');
+        setMainStorage("global_feature_toggle", JSON.stringify(cfg));
+        return { success: true, message: `【心动信】已${val}` };
+    }
+    if (name === '心动信送达时间') {
+        setMainStorage("lovemail_delivery_time", JSON.stringify(val));
+        return { success: true, message: `心动信送达时间已设为 ${val}` };
+    }
+    if (name === '心动信曝光') {
+        setMainStorage("lovemail_expose", val === '开启' ? "true" : "false");
+        return { success: true, message: `【心动信曝光】已${val}` };
+    }
+    if (name === '心动信曝光概率') {
+        const n = parseInt(val);
+        if (isNaN(n) || n < 0 || n > 100) return { success: false, message: "概率请填 0-100 的整数" };
+        setMainStorage("lovemail_expose_chance", val);
+        return { success: true, message: `【心动信曝光概率】已设为 ${val}%` };
+    }
     return { success: false, message: `未知参数：${name}` };
 }
 
@@ -794,8 +832,9 @@ cmd_settings.name = '设置';
 cmd_settings.help = `==== 📺 恋综系统控制台 ====
 .设置 基础  - 恋综名、群号、核心功能开关
 .设置 互动  - 冷却时间、邀约时长、地点系统
-.设置 信件  - 寄信/匿名信/心动信配置
-.设置 公告  - 公开广播概率与开关
+.设置 信件  - 寄信/匿名信/发送信件配置
+.设置 心动信 - 心动信开关/送达时间/曝光设置
+.设置 公告  - 公开广播概率/开关/触发频率
 .设置 道具  - 物品抽取、追踪器参数
 .设置 商城  - 礼物商城模式/货币/刷新间隔
 .设置 拍卖  - 拍卖展示群/匿名/播报/货币等
@@ -821,6 +860,7 @@ cmd_settings.solve = function(ctx, msg, argv) {
         if (firstLine.includes('基础设置')) return handleApply(ctx, msg, rawMessage, applyBasicParam);
         if (firstLine.includes('互动设置')) return handleApply(ctx, msg, rawMessage, applyInteractionParam);
         if (firstLine.includes('信件设置')) return handleApply(ctx, msg, rawMessage, applyLetterParam);
+        if (firstLine.includes('心动信设置')) return handleApply(ctx, msg, rawMessage, applyLovemailParam);
         if (firstLine.includes('公告设置')) return handleApply(ctx, msg, rawMessage, applyPublicParam);
         if (firstLine.includes('道具设置')) return handleApply(ctx, msg, rawMessage, applyItemParam);
         if (firstLine.includes('商城设置')) return handleApply(ctx, msg, rawMessage, applyShopParam);
@@ -834,6 +874,7 @@ cmd_settings.solve = function(ctx, msg, argv) {
         case '基础': return showBasicSettings(ctx, msg);
         case '互动': return showInteractionSettings(ctx, msg);
         case '信件': return showLetterSettings(ctx, msg);
+        case '心动信': return showLovemailSettings(ctx, msg);
         case '公告': return showPublicSettings(ctx, msg);
         case '道具': return showItemSettings(ctx, msg);
         case '商城': return showShopSettings(ctx, msg);
