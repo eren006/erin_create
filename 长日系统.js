@@ -1370,11 +1370,10 @@ async function checkAppointmentPreflight(ctx, msg, cmdArgs, subtype, minDuration
     }
 
     const platform = msg.platform;
-    const uid = msg.sender.userId.replace(`${platform}:`, "");
     const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
     if (!a_private_group[platform]) a_private_group[platform] = {};
 
-    const sendname = Object.entries(a_private_group[platform]).find(([_, val]) => val[0] === uid)?.[0];
+    const sendname = getRoleName(ctx, msg);
     if (!sendname) return { valid: false, errorMsg: "请先使用「创建新角色」绑定角色" };
 
     const blockMap = JSON.parse(ext.storageGet("feature_user_blocklist") || "{}");
@@ -1746,12 +1745,11 @@ cmd_apply_join.solve = async (ctx, msg, cmdArgs) => {
     }
 
     const platform = msg.platform;
-    const uid = msg.sender.userId.replace(`${platform}:`, "");
     const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
     if (!a_private_group[platform]) a_private_group[platform] = {};
 
     // 2. 获取发起人角色名
-    const sendname = Object.entries(a_private_group[platform]).find(([_, val]) => val[0] === uid)?.[0];
+    const sendname = getRoleName(ctx, msg);
     if (!sendname) return seal.replyToSender(ctx, msg, "请先使用「创建新角色」绑定角色");
 
     // 3. 全局天数
@@ -2105,13 +2103,10 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
         return seal.replyToSender(ctx, msg, "🎁 礼物功能已被禁用。");
     }
 
-    const uid = msg.sender.userId.replace(`${platform}:`, "");
     const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
 
     // 2. 身份识别
-    const autoSendname = Object.keys(a_private_group[platform] || {}).find(
-        key => a_private_group[platform][key][0] === uid
-    );
+    const autoSendname = getRoleName(ctx, msg);
     if (!autoSendname) {
         return seal.replyToSender(ctx, msg, `❌ 请先创建新角色再使用该功能`);
     }
@@ -5991,7 +5986,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
             snd = letM[1].trim();
         } else {
             // 不允许自定义或没写 A，按原逻辑自动识别或校验
-            snd = letM[1] ? letM[1].trim() : Object.keys(priv).find(k => priv[k][0] === uid);
+            snd = letM[1] ? letM[1].trim() : getRoleName(ctx, msg);
         }
 
         // 【修改点】如果开启了自定义，不再强制要求 snd 必须存在于 priv 绑定中
@@ -6621,12 +6616,11 @@ cmd_wechat.solve = (ctx, msg, cmdArgs) => {
     }
 
     const platform = msg.platform;
-    const uid = msg.sender.userId.replace(`${platform}:`, "");
     const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
     if (!a_private_group[platform]) a_private_group[platform] = {};
 
     // 获取发送者角色名
-    const sendname = Object.entries(a_private_group[platform]).find(([_, val]) => val[0] === uid)?.[0];
+    const sendname = getRoleName(ctx, msg);
     if (!sendname) {
         seal.replyToSender(ctx, msg, "请先使用「创建新角色」绑定角色");
         return seal.ext.newCmdExecuteResult(true);
