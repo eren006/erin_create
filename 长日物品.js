@@ -88,6 +88,17 @@ function isUserAdmin(ctx, msg) {
     }
 }
 
+function isItemFeatureEnabled(roleName, key, defaultValue = true) {
+    const main = getMainExt();
+    if (!main) return defaultValue;
+    try {
+        const blockMap = JSON.parse(main.storageGet("feature_user_blocklist") || "{}");
+        const personConfig = blockMap[roleName];
+        if (personConfig && personConfig[key] !== undefined) return personConfig[key];
+    } catch (e) {}
+    return defaultValue;
+}
+
 function timeOverlap(t1, t2) {
     const parseStartEnd = (t) => {
         const [s, e] = t.split("-");
@@ -548,6 +559,12 @@ cmd_item_draw.name = "抽取";
 cmd_item_draw.solve = (ctx, msg) => {
     const roleKey = ItemRoleUtils.getRoleKey(ctx, msg);
     if (!roleKey) return seal.replyToSender(ctx, msg, "⚠️ 请先创建并绑定角色。");
+
+    const roleName = getRoleName(ctx, msg);
+    if (roleName && !isItemFeatureEnabled(roleName, "enable_item_draw")) {
+        seal.replyToSender(ctx, msg, "🚫 你的抽取功能已被关闭。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
 
     const today = ItemRoleUtils.getToday();
     const limit = seal.ext.getIntConfig(ext, "dailyDrawLimit");

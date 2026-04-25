@@ -576,8 +576,30 @@ cmd_bind_role.solve = (ctx, msg, cmdArgs) => {
     storage[platform][name] = [uid, gid];
     ext.storageSet("a_private_group", JSON.stringify(storage));
 
-    let tip = isRename ? `角色名已由「${oldName}」更新为「${name}」` : `角色「${name}」创建成功！`;
-    seal.replyToSender(ctx, msg, `✅ ${tip}`);
+    initCharProfile(platform, name);
+
+    if (isRename) {
+        // 迁移档案key
+        const profiles = store.get("sys_char_profiles");
+        const oldKey = `${platform}:${oldName}`;
+        const newKey = `${platform}:${name}`;
+        if (profiles[oldKey]) { profiles[newKey] = profiles[oldKey]; delete profiles[oldKey]; store.set("sys_char_profiles", profiles); }
+        seal.replyToSender(ctx, msg, `✅ 角色名已由「${oldName}」更新为「${name}」`);
+    } else {
+        const profile = getCharProfile(platform, name);
+        seal.replyToSender(ctx, msg,
+            `✅ 角色「${name}」创建成功！\n` +
+            `\n欢迎加入长日！以下是你的初始档案：\n` +
+            `👤 性别：${profile.gender}　年龄：${profile.age}\n` +
+            `🌸 皮相：${profile.look}\n` +
+            `\n💡 可发送以下消息定制角色：\n` +
+            `  修改性别 男/女\n` +
+            `  修改年龄 数字\n` +
+            `  修改皮相 明星名\n` +
+            `  修改签名 你的签名（12小时冷却）\n` +
+            `\n发送「玩家名单」查看所有角色，「指令指南」查看全部功能。`
+        );
+    }
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["创建新角色"] = cmd_bind_role;
@@ -600,10 +622,14 @@ cmd_role_list.solve = (ctx, msg) => {
 
     let rep = `📊 当前已绑定角色列表：\n`;
     for (let [name, info] of Object.entries(roles)) {
-        let groupShow = info[1] === "0" ? "未录入" : info[1];
         let isNPC = npcList.includes(name);
-        let npcTag = isNPC ? " 🎭 NPC" : "";
-        rep += `👤 ${name}${npcTag}\n   ID: ${info[0]}\n   群号: ${groupShow}\n\n`;
+        let npcTag = isNPC ? " 🎭" : "";
+        const prof = getCharProfile(platform, name);
+        const gender = prof.gender || "女";
+        const age = prof.age !== undefined ? prof.age : 18;
+        const look = prof.look || (gender === "男" ? "亨利卡维尔" : "刘亦菲");
+        const bio = prof.bio ? `\n   签名：${prof.bio}` : "";
+        rep += `👤 ${name}${npcTag}\n   ${gender} · ${age}岁 · 皮相：${look}${bio}\n\n`;
     }
     seal.replyToSender(ctx, msg, rep.trim());
     return seal.ext.newCmdExecuteResult(true);
@@ -654,15 +680,56 @@ const store = {
 const getRoleName = (ctx, msg) => {
     const platform = msg.platform;
     const uid = msg.sender.userId.replace(`${platform}:`, "");
-    return Object.entries(store.get("a_private_group")[platform] || {})
-        .find(([_, val]) => val[0] === uid)?.[0];
+    // Check primary roles first
+    const roles = store.get("a_private_group")[platform] || {};
+    const primary = Object.entries(roles).find(([_, val]) => val[0] === uid)?.[0];
+    if (primary) return primary;
+    // Resolve via extra_accounts alias
+    const extras = store.get("extra_accounts");
+    const primaryUid = extras[`${platform}:${uid}`];
+    if (primaryUid) return Object.entries(roles).find(([_, val]) => val[0] === primaryUid)?.[0] || null;
+    return null;
 };
 
 const getUserRoleName = (platform, fullUid) => {
     const uid = String(fullUid).replace(`${platform}:`, "");
-    return Object.entries(store.get("a_private_group")[platform] || {})
-        .find(([_, val]) => val[0] === uid)?.[0];
+    const roles = store.get("a_private_group")[platform] || {};
+    const primary = Object.entries(roles).find(([_, val]) => val[0] === uid)?.[0];
+    if (primary) return primary;
+    const extras = store.get("extra_accounts");
+    const primaryUid = extras[`${platform}:${uid}`];
+    if (primaryUid) return Object.entries(roles).find(([_, val]) => val[0] === primaryUid)?.[0] || null;
+    return null;
 };
+
+// ========================
+// 角色档案系统
+// ========================
+function getCharProfile(platform, roleName) {
+    const profiles = store.get("sys_char_profiles");
+    return profiles[`${platform}:${roleName}`] || {};
+}
+
+function setCharProfile(platform, roleName, patch) {
+    const profiles = store.get("sys_char_profiles");
+    const key = `${platform}:${roleName}`;
+    profiles[key] = Object.assign(profiles[key] || {}, patch);
+    store.set("sys_char_profiles", profiles);
+}
+
+function initCharProfile(platform, roleName, gender) {
+    const genderVal = gender || "女";
+    const defaultLook = genderVal === "男" ? "亨利卡维尔" : "刘亦菲";
+    const existing = getCharProfile(platform, roleName);
+    setCharProfile(platform, roleName, {
+        gender: existing.gender || genderVal,
+        age: existing.age !== undefined ? existing.age : 18,
+        look: existing.look || defaultLook,
+        bio: existing.bio || "",
+        bioUpdatedAt: existing.bioUpdatedAt || 0,
+        lookUpdatedAt: existing.lookUpdatedAt || 0
+    });
+}
 
 // 背包物品按类别分组（兼容无 type 字段的旧数据）
 // 普通礼物: 赠送收到的礼物 + 礼物商城物品
@@ -3608,12 +3675,12 @@ ext.cmdMap["查看锁定"] = cmd_view_locks;
 
 let cmd_block_user_feature = seal.ext.newCmdItemInfo();
 cmd_block_user_feature.name = "功能权限";
-cmd_block_user_feature.help = "。功能权限 角色名 信件/礼物/发起邀约 开启/关闭 —— 针对某人限制某功能";
+cmd_block_user_feature.help = "。功能权限 角色名 功能 开启/关闭\n功能：礼物/发起邀约/寄信/心愿/心动信/论坛/商城购买/抽取/全部";
 
 cmd_block_user_feature.solve = (ctx, msg, cmdArgs) => {
-  const roleName = cmdArgs.getArgN(1);     // 角色名
-  const featureName = cmdArgs.getArgN(2);  // 信件 / 礼物 / 发起邀约
-  const action = cmdArgs.getArgN(3);       // 开启 / 关闭
+  const roleName = cmdArgs.getArgN(1);
+  const featureName = cmdArgs.getArgN(2);
+  const action = cmdArgs.getArgN(3);
 
   if (!roleName || !featureName || !action) {
     const ret = seal.ext.newCmdExecuteResult(true);
@@ -3621,21 +3688,16 @@ cmd_block_user_feature.solve = (ctx, msg, cmdArgs) => {
     return ret;
   }
 
-  // 🔧 新增“发起邀约”功能映射
   const featureMap = {
     "礼物": "enable_general_gift",
     "发起邀约": "enable_general_appointment",
     "寄信": "enable_chaos_letter",
     "心愿": "enable_wish_system",
-    "心动信": "enable_lovemail"
+    "心动信": "enable_lovemail",
+    "论坛": "enable_forum",
+    "商城购买": "enable_shop_purchase",
+    "抽取": "enable_item_draw"
   };
-
-
-  const key = featureMap[featureName];
-  if (!key) {
-    seal.replyToSender(ctx, msg, `⚠️ 功能名仅支持：信件 / 礼物 / 发起邀约`);
-    return seal.ext.newCmdExecuteResult(true);
-  }
 
   const value = (action === "开启") ? true : (action === "关闭") ? false : null;
   if (value === null) {
@@ -3645,10 +3707,25 @@ cmd_block_user_feature.solve = (ctx, msg, cmdArgs) => {
 
   let blockMap = JSON.parse(ext.storageGet("feature_user_blocklist") || "{}");
   if (!blockMap[roleName]) blockMap[roleName] = {};
+
+  if (featureName === "全部") {
+    for (const key of Object.values(featureMap)) blockMap[roleName][key] = value;
+    ext.storageSet("feature_user_blocklist", JSON.stringify(blockMap));
+    const status = value ? "✅ 已开启" : "🚫 已关闭";
+    seal.replyToSender(ctx, msg, `${status} 全部功能：${roleName}`);
+    return seal.ext.newCmdExecuteResult(true);
+  }
+
+  const key = featureMap[featureName];
+  if (!key) {
+    seal.replyToSender(ctx, msg, `⚠️ 功能名可选：礼物 / 发起邀约 / 寄信 / 心愿 / 心动信 / 论坛 / 商城购买 / 抽取 / 全部`);
+    return seal.ext.newCmdExecuteResult(true);
+  }
+
   blockMap[roleName][key] = value;
   ext.storageSet("feature_user_blocklist", JSON.stringify(blockMap));
 
-  const status = value ? "✅ 已允许使用" : "🚫 已封禁";
+  const status = value ? "✅ 已开启" : "🚫 已关闭";
   seal.replyToSender(ctx, msg, `${status} ${featureName} 功能：${roleName}`);
   return seal.ext.newCmdExecuteResult(true);
 };
@@ -3672,7 +3749,10 @@ cmd_view_user_feature.solve = (ctx, msg, cmdArgs) => {
     enable_general_appointment: "发起邀约",
     enable_chaos_letter: "寄信",
     enable_wish_system: "心愿",
-    enable_lovemail: "心动信"
+    enable_lovemail: "心动信",
+    enable_forum: "论坛",
+    enable_shop_purchase: "商城购买",
+    enable_item_draw: "抽取"
   };
 
 
@@ -6007,6 +6087,122 @@ ext.onNotCommandReceived = (ctx, msg) => {
         return cmd_backpack.solve(ctx, msg, makeFakeCmdArgs([parts[1]]));
     }
 
+    // 4.5 角色系统（无前缀）
+    if (raw.startsWith("创建新角色")) {
+        const rest = raw.slice(5).trim();
+        if (rest) return cmd_bind_role.solve(ctx, msg, makeFakeCmdArgs(rest.split(/\s+/)));
+    }
+
+    if (raw === "玩家名单") return cmd_role_list.solve(ctx, msg, makeFakeCmdArgs([]));
+
+    if (raw === "地点查看" || raw === "查看地点") {
+        return cmdPlace.solve(ctx, msg, makeFakeCmdArgs(["查看"]));
+    }
+
+    if (raw.startsWith("申请加入")) {
+        const rest = raw.slice(4).trim();
+        if (rest) return cmd_apply_join.solve(ctx, msg, makeFakeCmdArgs(rest.split(/\s+/)));
+    }
+
+    // 4.6 关系线（无前缀，管理员指令）
+    if (raw.startsWith("拉线") && isAdmin) {
+        const rest = raw.slice(2).trim();
+        if (rest) return cmd_add_rel_detail.solve(ctx, msg, makeFakeCmdArgs(rest.split(/\s+/)));
+    }
+
+    if (raw.startsWith("查看关系线")) {
+        const rest = raw.slice(5).trim();
+        return cmd_view_relationship.solve(ctx, msg, makeFakeCmdArgs(rest ? [rest] : []));
+    }
+
+    if (raw.startsWith("撤回关系") && isAdmin) {
+        const rest = raw.slice(4).trim();
+        if (rest) return cmd_withdraw_relation.solve(ctx, msg, makeFakeCmdArgs(rest.split(/\s+/)));
+    }
+
+    if (raw === "关系线统计" && isAdmin) {
+        return cmd_rel_stats.solve(ctx, msg, makeFakeCmdArgs([]));
+    }
+
+    // 4.7 额外账号（无前缀，本人操作）
+    if (raw.startsWith("额外账号")) {
+        const rest = raw.slice(4).trim();
+        const selfRoleName = getRoleName(ctx, msg);
+        if (!selfRoleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+        const extras = store.get("extra_accounts");
+        if (rest.startsWith("删除")) {
+            const extraQQ = rest.slice(2).trim();
+            if (!extraQQ) return seal.replyToSender(ctx, msg, "格式：额外账号 删除 QQ号");
+            const extraKey = `${platform}:${extraQQ}`;
+            if (extras[extraKey] !== uid) return seal.replyToSender(ctx, msg, `❌ 该账号不是你的额外账号`);
+            delete extras[extraKey];
+            store.set("extra_accounts", extras);
+            return seal.replyToSender(ctx, msg, `✅ 已移除额外账号 ${extraQQ}`);
+        }
+        if (rest) {
+            const extraQQ = rest.trim();
+            const extraKey = `${platform}:${extraQQ}`;
+            if (extras[extraKey]) return seal.replyToSender(ctx, msg, `❌ 该账号已被绑定为其他角色的额外账号`);
+            extras[extraKey] = uid;
+            store.set("extra_accounts", extras);
+            return seal.replyToSender(ctx, msg, `✅ 已将 ${extraQQ} 绑定为「${selfRoleName}」的额外账号`);
+        }
+        // 查看自己的额外账号
+        const myExtras = Object.entries(extras).filter(([, v]) => v === uid).map(([k]) => k.replace(`${platform}:`, ""));
+        return seal.replyToSender(ctx, msg, myExtras.length ? `📱 你的额外账号：\n${myExtras.join("\n")}` : "📭 暂无额外账号");
+    }
+
+    // 4.8 角色档案修改（无前缀）
+    if (raw.startsWith("修改性别")) {
+        const roleName = getRoleName(ctx, msg);
+        if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+        const val = raw.slice(4).trim();
+        if (val !== "男" && val !== "女") return seal.replyToSender(ctx, msg, "性别仅支持：男 / 女");
+        setCharProfile(platform, roleName, { gender: val });
+        return seal.replyToSender(ctx, msg, `✅ 性别已更新为：${val}`);
+    }
+
+    if (raw.startsWith("修改年龄")) {
+        const roleName = getRoleName(ctx, msg);
+        if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+        const val = parseInt(raw.slice(4).trim());
+        if (isNaN(val) || val < 0 || val > 200) return seal.replyToSender(ctx, msg, "❌ 请输入有效年龄（0-200）");
+        setCharProfile(platform, roleName, { age: val });
+        return seal.replyToSender(ctx, msg, `✅ 年龄已更新为：${val}`);
+    }
+
+    if (raw.startsWith("修改皮相")) {
+        const roleName = getRoleName(ctx, msg);
+        if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+        const val = raw.slice(4).trim();
+        if (!val) return seal.replyToSender(ctx, msg, "请输入明星名，例：修改皮相 刘亦菲");
+        const prof = getCharProfile(platform, roleName);
+        const now = Date.now();
+        const cooldown = 2 * 3600 * 1000;
+        if (prof.lookUpdatedAt && now - prof.lookUpdatedAt < cooldown) {
+            const remain = Math.ceil((cooldown - (now - prof.lookUpdatedAt)) / 60000);
+            return seal.replyToSender(ctx, msg, `⏳ 皮相修改冷却中，还需等待 ${remain} 分钟`);
+        }
+        setCharProfile(platform, roleName, { look: val, lookUpdatedAt: now });
+        return seal.replyToSender(ctx, msg, `✅ 皮相已更新为：${val}`);
+    }
+
+    if (raw.startsWith("修改签名")) {
+        const roleName = getRoleName(ctx, msg);
+        if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+        const val = raw.slice(4).trim();
+        if (!val) return seal.replyToSender(ctx, msg, "请输入签名内容，例：修改签名 愿岁月温柔以待");
+        const prof = getCharProfile(platform, roleName);
+        const now = Date.now();
+        const cooldown = 12 * 3600 * 1000;
+        if (prof.bioUpdatedAt && now - prof.bioUpdatedAt < cooldown) {
+            const remain = Math.ceil((cooldown - (now - prof.bioUpdatedAt)) / 60000);
+            return seal.replyToSender(ctx, msg, `⏳ 签名修改冷却中，还需等待 ${remain} 分钟`);
+        }
+        setCharProfile(platform, roleName, { bio: val, bioUpdatedAt: now });
+        return seal.replyToSender(ctx, msg, `✅ 签名已更新为：${val}`);
+    }
+
     // 5. 信息收集系统 & 设定NPC
     const projects = getS("sys_info_projects");
     const subM = raw.match(/^我提交\s*(.+?)[:：\s]\s*([\s\S]+)$/);
@@ -6582,6 +6778,10 @@ cmd_post_forum.name = "发帖";
 cmd_post_forum.help = ".发帖 (署名) [内容] —— 发表一篇新帖子";
 cmd_post_forum.solve = (ctx, msg, cmdArgs) => {
     const roleName = RelationshipUtils.getRoleName(ctx, msg, msg.platform) || ctx.player.name;
+    if (roleName && !isUserFeatureEnabled(roleName, "enable_forum")) {
+        seal.replyToSender(ctx, msg, "🚫 你的论坛功能已被关闭。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
     let author, content;
 
     if (cmdArgs.args.length > 1) {
@@ -7282,6 +7482,34 @@ cmd_guide.solve = (ctx, msg) => {
 
     const nodes = [
         { type: "node", data: { name: bot, uin, content: `📖 长日指令指南\n${"━".repeat(14)}\n以下指令无需句号，直接发送消息即可触发。` } },
+        section("🌟 入门", [
+            "创建新角色 角色名",
+            "  例：创建新角色 张三",
+            "  注册角色，获得初始档案（性别/年龄/皮相）",
+            "",
+            "修改性别 男/女",
+            "修改年龄 数字",
+            "修改皮相 明星名  （2小时冷却）",
+            "修改签名 内容     （12小时冷却）",
+            "",
+            "额外账号 QQ号",
+            "  将另一个QQ绑定为当前角色的别号",
+            "额外账号 删除 QQ号",
+            "额外账号  （不带参数→查看已有）",
+            "",
+            "玩家名单",
+            "  查看所有已注册角色及其档案",
+            "",
+            "地点查看",
+            "  查看当前可用地点列表",
+        ]),
+        section("🔗 关系线", [
+            "查看关系线",
+            "  查看你的所有关系对象（列表）",
+            "",
+            "查看关系线 角色名",
+            "  查看与该角色的详细关系记录（合并转发）",
+        ]),
         section("💕 约会与邀约", [
             "电话 时间 对方名 [标题]",
             "  例：电话 1400-1500 张三",
@@ -7289,6 +7517,10 @@ cmd_guide.solve = (ctx, msg) => {
             "",
             "私约 时间 地点 对方名[/对方2/...]",
             "  例：私约 1400-1500 咖啡厅 张三",
+            "",
+            "申请加入 角色名 时间点",
+            "  申请加入已有约会",
+            "  例：申请加入 张三 14:30",
         ]),
         section("💬 微信长期群", [
             "微信 对方名",
@@ -7298,81 +7530,57 @@ cmd_guide.solve = (ctx, msg) => {
             "挂心愿 时间 地点 内容",
             "  例：挂心愿 1400-1500 图书馆 想找人聊聊",
             "",
-            "看心愿",
-            "  查看当前所有漂流心愿",
-            "",
-            "摘心愿 编号",
-            "  例：摘心愿 A1B2C3",
-            "",
-            "撤心愿 [编号]",
-            "  不带编号则列出你的心愿",
+            "看心愿  （查看所有漂流心愿）",
+            "摘心愿 编号  （例：摘心愿 A1B2C3）",
+            "撤心愿 [编号]  （不带编号→列出自己的心愿）",
         ]),
         section("📱 短信", [
             "[署名]短信 收信人 内容",
             "  例：张三短信 李四 你好！",
-            "  不写署名则自动使用你的角色名",
-            "  收件人会收到 @ 提醒",
+            "  不写署名则自动使用角色名",
         ]),
         section("🎒 背包与物品", [
-            "抽取",
-            "  从当前物品池随机获得一件普通物品",
+            "抽取  （从物品池随机获得普通物品）",
+            "抽取次数  （查看今日剩余次数）",
             "",
-            "抽取次数",
-            "  查看今日剩余抽取次数（不消耗机会）",
-            "",
-            "背包",
-            "  查看背包总览（普通礼物 / 普通道具 / 特殊道具）",
-            "",
+            "背包  （总览）",
             "背包 礼物 / 普通道具 / 道具 / 特殊道具",
-            "  只看该分类的物品（道具=普通道具+特殊道具）",
-            "",
-            "背包 普通礼物1 / 普通道具1 / 特殊道具1",
-            "  查看指定物品的完整描述",
+            "背包 普通礼物1 / 普通道具1 / 特殊道具1  （查看详情）",
             "",
             "道具赠送 对方名 物品名",
-            "  将背包中的物品转交给对方（无冷却）",
-            "  对方会收到 @ 通知",
             "  例：道具赠送 张三 玫瑰",
             "",
             "赠送 对方名 礼物内容",
             "  叙事礼物（有冷却与每日上限）",
-            "  支持「[署名]赠送 对方名 内容」自定义署名",
             "  例：赠送 张三 一束花",
             "  例：张三赠送 李四 #1",
             "",
             "使用 物品名 [参数]",
             "  例：使用 万能钥匙 图书馆",
-            "  例：使用 追踪器 张三",
         ]),
         section("🛒 礼物商城", [
             "礼物商城",
-            "  抽卡模式：每人随机抽一件礼物，自动加入图鉴，定时刷新",
+            "  抽卡模式：每人随机抽一件礼物，自动加入图鉴",
             "  商城模式：展示所有在售商品及库存价格",
             "",
             "购买 编号or名字 [数量]  （仅商城模式）",
             "  例：购买 #1 3  /  购买 玫瑰花",
-            "  扣除对应货币属性，加入背包",
             "",
-            "图鉴",
-            "  抽卡模式：查看个人收藏进度与全服热度排名",
-            "  商城模式：查看所有礼物目录与全服热度排名",
+            "图鉴  （查看收藏进度与全服热度排名）",
             "",
             "赠送 对方 #编号",
-            "  抽卡模式：图鉴内礼物可无限赠送",
+            "  抽卡模式：图鉴内礼物无限赠送",
             "  商城模式：消耗背包内一件礼物",
         ]),
         section("🗨️ 论坛系统", [
             "发帖 内容",
             "  例：发帖 今天天气真好",
-            "",
             "发帖 署名 内容",
             "  例：发帖 张三 今天天气真好",
             "",
             "回复帖子 贴号 内容",
             "  例：回复帖子 A1B2C 同感！",
-            "",
             "回复帖子 贴号 署名 内容",
-            "  例：回复帖子 A1B2C 张三 同感！",
         ]),
         section("💌 心动信", [
             "发送心动信",
@@ -7432,8 +7640,10 @@ cmd_admin_guide.solve = (ctx, msg) => {
         ]),
         section("🚫 功能权限管理", [
             "。功能权限 角色名 功能 开启/关闭",
-            "  功能可选：信件 / 礼物 / 发起邀约",
-            "  例：。功能权限 张三 信件 关闭",
+            "  功能可选：礼物 / 发起邀约 / 寄信 / 心愿 / 心动信",
+            "            论坛 / 商城购买 / 抽取 / 全部",
+            "  例：。功能权限 张三 论坛 关闭",
+            "  例：。功能权限 张三 全部 关闭  （一键阻断）",
             "",
             "。查看功能权限",
             "  查看所有被设置过权限的角色",
@@ -7518,16 +7728,30 @@ cmd_admin_guide.solve = (ctx, msg) => {
             "  商城货币属性：商城模式下购买消耗的属性名（如 金币）",
             "  商城刷新间隔：抽卡模式下个人刷新间隔（小时，默认24）",
             "",
-            "【上传格式】",
-            "  。上传预设礼物 #1/玫瑰花/一束红玫瑰",
-            "  。上传预设礼物 #1/玫瑰花/50/一束红玫瑰  （商城模式加价格）",
-            "  批量：#1/礼物1/内容$#2/礼物2/内容",
+            "【上传格式（用&分隔字段）】",
+            "  。上传预设礼物 #1&玫瑰花&一束红玫瑰",
+            "  。上传预设礼物 #1&玫瑰花&50&一束红玫瑰  （商城模式加价格）",
+            "  批量：#1&礼物1&内容$#2&礼物2&内容",
             "  。上传预设礼物 导出  （导出所有礼物 JSON）",
             "",
             "补货 名字or编号 数量  （仅商城模式，管理员无前缀触发）",
             "",
             "。删除预设礼物 编号",
             "。删除预设礼物 全部 确认  ⚠️",
+        ]),
+        section("🔗 关系线管理（无前缀，管理员）", [
+            "拉线 对方名 关系内容",
+            "  例：拉线 张三 两人曾在大学相识",
+            "",
+            "撤回关系 对方名 要撤回的内容",
+            "  精确匹配，仅能撤回自己发送的记录",
+            "",
+            "关系线统计",
+            "  查看所有角色的关系线数量",
+        ]),
+        section("👤 角色管理", [
+            "。清除玩家 角色名",
+            "  删除该角色的注册数据",
         ]),
     ];
 
@@ -7652,6 +7876,10 @@ cmd_purchase.solve = (ctx, msg, cmdArgs) => {
 
     const sendname = getRoleName(ctx, msg);
     if (!sendname) return seal.replyToSender(ctx, msg, "⚠️ 请先创建角色再购买商品。");
+
+    if (!isUserFeatureEnabled(sendname, "enable_shop_purchase")) {
+        return seal.replyToSender(ctx, msg, "🚫 你的商城购买功能已被关闭。");
+    }
 
     const arg1 = cmdArgs.getArgN(1);
     const arg2 = cmdArgs.getArgN(2);
@@ -7778,9 +8006,9 @@ ext.cmdMap["我的图鉴"] = cmd_view_my_gift_collection;
 
 let cmd_upload_preset_gift = seal.ext.newCmdItemInfo();
 cmd_upload_preset_gift.name = "上传预设礼物";
-cmd_upload_preset_gift.help = `上传预设礼物 #编号/名称/内容
-上传预设礼物 #编号/名称/价格/内容  （商城模式，价格为整数）
-批量：上传预设礼物 #1/玫瑰/内容$#2/巧克力/内容
+cmd_upload_preset_gift.help = `上传预设礼物 #编号&名称&内容
+上传预设礼物 #编号&名称&价格&内容  （商城模式，价格为整数）
+批量：上传预设礼物 #1&玫瑰&内容$#2&巧克力&内容
 导出：上传预设礼物 导出`;
 
 cmd_upload_preset_gift.solve = (ctx, msg, cmdArgs) => {
@@ -7796,8 +8024,8 @@ cmd_upload_preset_gift.solve = (ctx, msg, cmdArgs) => {
     if (!inputArg) {
         seal.replyToSender(ctx, msg,
             shopMode === "商城"
-                ? `格式：#编号/名称/价格/内容（货币：${currencyAttr}）\n例：#1/玫瑰花/50/一束红玫瑰`
-                : "格式：#编号/名称/内容\n例：#1/玫瑰花/一束红玫瑰"
+                ? `格式：#编号&名称&价格&内容（货币：${currencyAttr}）\n例：#1&玫瑰花&50&一束红玫瑰`
+                : "格式：#编号&名称&内容\n例：#1&玫瑰花&一束红玫瑰"
         );
         return seal.ext.newCmdExecuteResult(true);
     }
@@ -7814,7 +8042,7 @@ cmd_upload_preset_gift.solve = (ctx, msg, cmdArgs) => {
     }
 
     function parseSingle(raw) {
-        const parts = raw.trim().split('/');
+        const parts = raw.trim().split('&');
         const giftId = (parts[0] || "").trim();
         const giftName = (parts[1] || "").trim();
         if (!giftId.startsWith('#')) return { err: `编号必须以#开头：${giftId}` };
@@ -7823,10 +8051,10 @@ cmd_upload_preset_gift.solve = (ctx, msg, cmdArgs) => {
         let price = 0, giftContent = "";
         if (parts.length >= 4 && /^\d+$/.test((parts[2] || "").trim())) {
             price = parseInt(parts[2].trim());
-            giftContent = parts.slice(3).join('/').trim();
+            giftContent = parts.slice(3).join('&').trim();
         } else {
             if (shopMode === "商城" && parts.length < 3) return { err: `格式错误（商城模式建议写价格）：${raw}` };
-            giftContent = parts.slice(2).join('/').trim();
+            giftContent = parts.slice(2).join('&').trim();
         }
         if (!giftContent) return { err: `内容为空：${raw}` };
         return { giftId, giftName, giftContent, price };
@@ -7858,7 +8086,7 @@ cmd_upload_preset_gift.solve = (ctx, msg, cmdArgs) => {
     const showCount = Math.min(results.details.length, 5);
     rep += results.details.slice(0, showCount).join('\n');
     if (results.details.length > showCount) rep += `\n...等${results.details.length}项`;
-    if (results.success === 0) rep += `\n💡 格式：#编号/名称${shopMode === "商城" ? "/价格" : ""}/内容`;
+    if (results.success === 0) rep += `\n💡 格式：#编号&名称${shopMode === "商城" ? "&价格" : ""}&内容`;
 
     seal.replyToSender(ctx, msg, rep);
     return seal.ext.newCmdExecuteResult(true);
