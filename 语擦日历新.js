@@ -1,55 +1,49 @@
 // ==UserScript==
 // @name         语擦助手
 // @author       长日将尽
-// @version      1.7.2
-// @description  记录和管理语擦档期，支持跨年拆分、本月空闲区间、本年数据统计、月视图。新增性别字段，时间段格式 MMDD MMDD。长消息自动分段。
-// @timestamp    2025-03-16
+// @version      2.0.0
+// @description  记录和管理语擦档期，支持跨年录入、本月在档/空闲查询、本年数据统计、月视图。新增查档期、重命名档期、档期帮助。
+// @timestamp    2026-04-25
 // @license      CC BY-NC-SA
 // ==/UserScript//
 
 /**
- * 数据结构：
- * 所有用户数据存储在统一键 "yuca_helper_data" 下：
+ * 数据结构（与 v1.7.x 完全兼容，同 storage key，直接替换即可）：
+ * 存储键 "yuca_helper_data"
  * {
- *   "用户ID1": {
- *     "恋综名A": {
+ *   "用户ID": {
+ *     "恋综名": {
  *       startYear: 2025,
- *       timeRange: "MMDD MMDD",    // 例如 "0315 0320"
- *       status: "状态",
- *       character: "皮相",
- *       orientation: "性向",
- *       theme: "主题",
- *       roleName: "角色名",
- *       roleType: "角色类型",
- *       gender: "性别"
- *     },
- *     ...
- *   },
- *   ...
+ *       timeRange: "MMDD MMDD",   // 同年如 "0315 0320"，跨年如 "1201 0201"
+ *       status, character, orientation, theme,
+ *       roleName, roleType, gender, outcome
+ *     }
+ *   }
  * }
  *
- * 如果 timeRange 跨年（结束月份 < 开始月份），则结束年份 = startYear + 1。
- * 显示时，跨年区间会被拆分为两个年份分别展示。
+ * v2.0.0 改动：
+ * - 修复跨年时间段（如 1201 0201）被验证拦截的 bug
+ * - 录入档期：覆盖旧记录时提示"已更新"
+ * - 修改命令：错误提示补全"结局"字段
+ * - 新增：查档期、重命名档期、档期帮助
+ * - 本月档期：同时展示在档恋综列表和空闲日期
+ * - 提取 parseYearMonth、calcMonthOccupied 公共函数，消除月视图/本月档期的重复逻辑
  */
 
 let ext = seal.ext.find('yuca_helper');
 if (!ext) {
-    ext = seal.ext.new('yuca_helper', '长日将尽', '1.7.2');
+    ext = seal.ext.new('yuca_helper', '长日将尽', '2.0.0');
     seal.ext.register(ext);
 }
 
-// ======================== 辅助函数 ========================
+// ======================== 存储工具 ========================
 
 const STORAGE_KEY = 'yuca_helper_data';
 
 function readAllData() {
     let raw = ext.storageGet(STORAGE_KEY);
     if (raw) {
-        try {
-            return JSON.parse(raw);
-        } catch (e) {
-            return {};
-        }
+        try { return JSON.parse(raw); } catch (e) { return {}; }
     }
     return {};
 }
@@ -59,15 +53,7 @@ function saveAllData(data) {
 }
 
 function getUserData(ctx, msg) {
-    let all = readAllData();
-    return all[msg.sender.userId] || {};
-}
-
-function getUserDataRef(ctx, msg) {
-    let all = readAllData();
-    let uid = msg.sender.userId;
-    if (!all[uid]) all[uid] = {};
-    return all[uid];
+    return readAllData()[msg.sender.userId] || {};
 }
 
 function updateUserData(ctx, msg, newData) {
@@ -76,193 +62,239 @@ function updateUserData(ctx, msg, newData) {
     saveAllData(all);
 }
 
-function getCurrentYear() {
-    return new Date().getFullYear();
-}
+// ======================== 时间工具 ========================
 
-function getCurrentMonth() {
-    return new Date().getMonth() + 1;
-}
-
-function getCurrentDay() {
-    return new Date().getDate();
-}
-
-function getDaysInMonth(year, month) {
-    return new Date(year, month, 0).getDate();
-}
-
-function getFirstDayOfMonth(year, month) {
-    return new Date(year, month - 1, 1).getDay();
-}
+function getCurrentYear() { return new Date().getFullYear(); }
+function getCurrentMonth() { return new Date().getMonth() + 1; }
+function getDaysInMonth(year, month) { return new Date(year, month, 0).getDate(); }
+function getFirstDayOfMonth(year, month) { return new Date(year, month - 1, 1).getDay(); }
 
 /**
- * 解析时间段字符串（新格式：MMDD MMDD）
- * @returns {Object} { valid, startMonth, startDay, endMonth, endDay, errorMsg }
+ * 解析时间段字符串（MMDD MMDD）。
+ * v2.0.0 修复：允许跨年（endMonth < startMonth），不再错误拦截。
  */
 function parseTimeRange(rangeStr) {
-    // 新格式：四个数字 空格 四个数字
     const pattern = /^(\d{2})(\d{2})\s+(\d{2})(\d{2})$/;
     let match = rangeStr.match(pattern);
     if (!match) {
-        return { valid: false, errorMsg: '时间段格式错误，应为 MMDD MMDD（例如 0315 0320）' };
+        return { valid: false, errorMsg: '时间段格式错误，应为 MMDD MMDD（同年如 0315 0320，跨年如 1201 0201）' };
     }
 
-    let startMonth = parseInt(match[1], 10);
-    let startDay = parseInt(match[2], 10);
-    let endMonth = parseInt(match[3], 10);
-    let endDay = parseInt(match[4], 10);
+    let sm = parseInt(match[1], 10), sd = parseInt(match[2], 10);
+    let em = parseInt(match[3], 10), ed = parseInt(match[4], 10);
 
-    // 月份范围 1-12
-    if (startMonth < 1 || startMonth > 12 || endMonth < 1 || endMonth > 12) {
+    if (sm < 1 || sm > 12 || em < 1 || em > 12) {
         return { valid: false, errorMsg: '月份必须在 01-12 之间' };
     }
 
-    // 日期范围合法性（2月允许29日）
-    const daysInMonth = (month) => {
-        if (month === 2) return 29;
-        if ([4,6,9,11].includes(month)) return 30;
-        return 31;
-    };
+    const maxDay = m => m === 2 ? 29 : [4, 6, 9, 11].includes(m) ? 30 : 31;
 
-    if (startDay < 1 || startDay > daysInMonth(startMonth)) {
-        return { valid: false, errorMsg: `开始日期 ${startMonth}月 不存在 ${startDay} 日` };
+    if (sd < 1 || sd > maxDay(sm)) {
+        return { valid: false, errorMsg: `开始日期 ${sm}月 不存在 ${sd} 日` };
     }
-    if (endDay < 1 || endDay > daysInMonth(endMonth)) {
-        return { valid: false, errorMsg: `结束日期 ${endMonth}月 不存在 ${endDay} 日` };
+    if (ed < 1 || ed > maxDay(em)) {
+        return { valid: false, errorMsg: `结束日期 ${em}月 不存在 ${ed} 日` };
     }
 
-    // 比较前后日期
-    const dateToValue = (month, day) => month * 100 + day;
-    if (dateToValue(endMonth, endDay) <= dateToValue(startMonth, startDay)) {
-        return { valid: false, errorMsg: '结束日期必须大于开始日期' };
+    // 跨年（endMonth < startMonth）合法；同月时结束日必须大于开始日
+    if (em === sm && ed <= sd) {
+        return { valid: false, errorMsg: '同月时结束日必须大于开始日' };
     }
 
-    return {
-        valid: true,
-        startMonth, startDay,
-        endMonth, endDay,
-        errorMsg: ''
-    };
+    return { valid: true, startMonth: sm, startDay: sd, endMonth: em, endDay: ed, errorMsg: '' };
 }
 
 function isCrossYear(endMonth, startMonth) {
     return endMonth < startMonth;
 }
 
-// ======================== 新增：长消息分段发送 ========================
-/**
- * 将长文本分段发送，每段不超过 maxLen 字符（默认1500）
- * @param {Object} ctx 上下文
- * @param {Object} msg 消息对象
- * @param {string} text 要发送的文本
- * @param {number} maxLen 单条消息最大长度
- */
+// ======================== 长消息分段发送 ========================
+
 function sendLongMessage(ctx, msg, text, maxLen = 1500) {
     if (text.length <= maxLen) {
         seal.replyToSender(ctx, msg, text);
         return;
     }
-
     let lines = text.split('\n');
-    let currentChunk = '';
-    let chunks = [];
-
+    let chunks = [], cur = '';
     for (let line of lines) {
-        // 如果加入当前行会超出长度，则保存当前块，并重新开始
-        if ((currentChunk + line + '\n').length > maxLen) {
-            chunks.push(currentChunk);
-            currentChunk = line + '\n';
+        if ((cur + line + '\n').length > maxLen) {
+            chunks.push(cur);
+            cur = line + '\n';
         } else {
-            currentChunk += line + '\n';
+            cur += line + '\n';
         }
     }
-    if (currentChunk) chunks.push(currentChunk);
-
-    for (let chunk of chunks) {
-        seal.replyToSender(ctx, msg, chunk.trim());
-    }
+    if (cur) chunks.push(cur);
+    for (let chunk of chunks) seal.replyToSender(ctx, msg, chunk.trim());
 }
 
-// ======================== 录入档期（支持结局） ========================
+// ======================== 参数解析工具 ========================
+
+/**
+ * 智能解析年月参数，顺序任意。
+ * @returns {{ year, month, error }}
+ */
+function parseYearMonth(arg1, arg2) {
+    const isYear = y => !isNaN(y) && y >= 1900 && y <= 2100;
+    const isMon = m => !isNaN(m) && m >= 1 && m <= 12;
+    const now = new Date();
+
+    if (arg1 && arg2) {
+        let n1 = parseInt(arg1, 10), n2 = parseInt(arg2, 10);
+        if (isYear(n1) && isMon(n2)) return { year: n1, month: n2, error: null };
+        if (isMon(n1) && isYear(n2)) return { year: n2, month: n1, error: null };
+        return { error: '❌ 参数无效，请提供合法的年份（1900-2100）和月份（1-12）' };
+    } else if (arg1) {
+        let m = parseInt(arg1, 10);
+        if (!isMon(m)) return { error: '❌ 月份无效，请输入 1-12 之间的数字' };
+        return { year: now.getFullYear(), month: m, error: null };
+    }
+    return { year: now.getFullYear(), month: now.getMonth() + 1, error: null };
+}
+
+// ======================== 月份占用计算（复用于本月档期/月视图） ========================
+
+/**
+ * 计算指定年月中各天是否被档期覆盖，以及在档恋综列表。
+ * @returns {{ occupied: boolean[], daysInMonth: number, activeShows: Array }}
+ */
+function calcMonthOccupied(userData, targetYear, targetMonth) {
+    let daysInMonth = getDaysInMonth(targetYear, targetMonth);
+    let occupied = new Array(daysInMonth + 1).fill(false);
+    let activeShows = [];
+
+    for (let name in userData) {
+        let entry = userData[name];
+        let { startYear, timeRange } = entry;
+        let parsed = parseTimeRange(timeRange);
+        if (!parsed.valid) continue;
+
+        let cross = isCrossYear(parsed.endMonth, parsed.startMonth);
+        let endYear = cross ? startYear + 1 : startYear;
+
+        let startVal = startYear * 10000 + parsed.startMonth * 100 + parsed.startDay;
+        let endVal = endYear * 10000 + parsed.endMonth * 100 + parsed.endDay;
+        let monthStartVal = targetYear * 10000 + targetMonth * 100 + 1;
+        let monthEndVal = targetYear * 10000 + targetMonth * 100 + daysInMonth;
+
+        if (endVal < monthStartVal || startVal > monthEndVal) continue;
+
+        let startDay = (startYear === targetYear && parsed.startMonth === targetMonth)
+            ? parsed.startDay : 1;
+        let endDay = (endYear === targetYear && parsed.endMonth === targetMonth)
+            ? parsed.endDay : daysInMonth;
+
+        for (let d = startDay; d <= endDay; d++) occupied[d] = true;
+        activeShows.push({ name, startDay, endDay });
+    }
+
+    return { occupied, daysInMonth, activeShows };
+}
+
+// ======================== 字段映射（全局复用） ========================
+
+const FIELD_MAP = {
+    '时间段': 'timeRange', 'timerange': 'timeRange',
+    '恋综名': 'name', 'name': 'name',
+    '年份': 'startYear', 'year': 'startYear',
+    '状态': 'status', 'status': 'status',
+    '皮相': 'character', 'character': 'character',
+    '性向': 'orientation', 'orientation': 'orientation',
+    '主题': 'theme', 'theme': 'theme',
+    '角色名': 'roleName', 'rolename': 'roleName',
+    '角色类型': 'roleType', 'roletype': 'roleType',
+    '性别': 'gender', 'gender': 'gender',
+    '结局': 'outcome', 'outcome': 'outcome'
+};
+
+const ENTRY_TEMPLATE = '。录入档期\n时间段：\n恋综名：\n年份：\n状态：\n皮相：\n性向：\n主题：\n角色名：\n角色类型：\n性别：\n结局：';
+
+// ======================== 档期帮助 ========================
+
+let cmd_help = seal.ext.newCmdItemInfo();
+cmd_help.name = '档期帮助';
+cmd_help.help = '。档期帮助 —— 显示所有可用指令';
+cmd_help.solve = (ctx, msg, cmdArgs) => {
+    let help = `📅 【语擦助手 v2.0 指令列表】
+══════════════
+📝 录入与管理
+  。录入档期          录入新档期（多行键值格式）
+  。修改 名 项 值     修改指定字段
+  。重命名档期 旧 新  重命名恋综（保留所有数据）
+  。删除档期 名       删除指定档期
+
+🔍 查询
+  。查档期 名             查看档期完整详情
+  。我的日历              全部档期（按年分组）
+  。本月档期 [年] [月]    本月在档恋综及空闲日期
+  。月视图   [年] [月]    日历视图（标记有档期日）
+
+📊 统计
+  。本年数据 [年]   年度数据统计
+
+💡 时间段格式：MMDD MMDD
+   同年示例：0315 0320（3月15日至3月20日）
+   跨年示例：1201 0201（12月1日至次年2月1日）
+══════════════`;
+    seal.replyToSender(ctx, msg, help);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap['档期帮助'] = cmd_help;
+
+// ======================== 录入档期 ========================
+
 let cmd_add = seal.ext.newCmdItemInfo();
 cmd_add.name = '录入档期';
-cmd_add.help = '。录入档期 —— 以多行键值对方式录入档期。直接发送如下格式（可复制后填写）：\n\n。录入档期\n时间段：\n恋综名：\n年份：\n状态：\n皮相：\n性向：\n主题：\n角色名：\n角色类型：\n性别：\n结局：\n\n时间段格式：MMDD MMDD（如 0315 0320）。未填写的字段默认为“未知”，年份默认为当前年。';
+cmd_add.help = `。录入档期 —— 以多行键值对方式录入档期。时间段格式：MMDD MMDD（跨年示例：1201 0201）。未填写字段默认"未知"，年份默认当前年。\n\n模板：\n${ENTRY_TEMPLATE}`;
 cmd_add.solve = (ctx, msg, cmdArgs) => {
     const rawMessage = msg.message.trim();
     const prefix = '。录入档期';
     let content = rawMessage.startsWith(prefix) ? rawMessage.substring(prefix.length).trim() : rawMessage;
 
     if (!content) {
-        let template = '请按以下格式录入档期（可复制后填写）：\n\n。录入档期\n时间段：\n恋综名：\n年份：\n状态：\n皮相：\n性向：\n主题：\n角色名：\n角色类型：\n性别：\n结局：\n\n时间段格式示例：0315 0320';
-        seal.replyToSender(ctx, msg, template);
+        seal.replyToSender(ctx, msg, `请按以下格式录入档期（可复制后填写）：\n\n${ENTRY_TEMPLATE}\n\n时间段格式：MMDD MMDD\n同年示例：0315 0320\n跨年示例：1201 0201`);
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    const fieldMap = {
-        '时间段': 'timeRange', 'timerange': 'timeRange',
-        '恋综名': 'name', 'name': 'name',
-        '年份': 'startYear', 'year': 'startYear',
-        '状态': 'status', 'status': 'status',
-        '皮相': 'character', 'character': 'character',
-        '性向': 'orientation', 'orientation': 'orientation',
-        '主题': 'theme', 'theme': 'theme',
-        '角色名': 'roleName', 'rolename': 'roleName',
-        '角色类型': 'roleType', 'roletype': 'roleType',
-        '性别': 'gender', 'gender': 'gender',
-        '结局': 'outcome', 'outcome': 'outcome'
-    };
-
     let fields = {
-        timeRange: null,
-        name: null,
-        startYear: getCurrentYear(),
-        status: '未知',
-        character: '未知',
-        orientation: '未知',
-        theme: '未知',
-        roleName: '未知',
-        roleType: '未知',
-        gender: '未知',
-        outcome: '未知'
+        timeRange: null, name: null, startYear: getCurrentYear(),
+        status: '未知', character: '未知', orientation: '未知',
+        theme: '未知', roleName: '未知', roleType: '未知',
+        gender: '未知', outcome: '未知'
     };
 
-    let lines = content.split('\n');
-    for (let line of lines) {
+    for (let line of content.split('\n')) {
         line = line.trim();
-        if (line === '') continue;
-
+        if (!line) continue;
         let match = line.match(/^(.+?)[:：](.*)$/);
         if (!match) continue;
 
         let keyRaw = match[1].trim();
         let value = match[2].trim();
-
         let keyNorm = keyRaw.toLowerCase().replace(/\s+/g, '');
-        let fieldKey = fieldMap[keyNorm] || fieldMap[keyRaw];
+        let fieldKey = FIELD_MAP[keyNorm] || FIELD_MAP[keyRaw];
         if (!fieldKey) continue;
 
         if (fieldKey === 'startYear') {
-            if (value === '') continue;
+            if (!value) continue;
             let y = parseInt(value, 10);
             if (isNaN(y) || y < 1900 || y > 2100) {
-                seal.replyToSender(ctx, msg, `❌ 年份“${value}”无效，请输入四位数字年份（如2025）或留空`);
+                seal.replyToSender(ctx, msg, `❌ 年份"${value}"无效，请输入四位数字年份（如2025）或留空`);
                 return seal.ext.newCmdExecuteResult(true);
             }
             fields.startYear = y;
-        } else {
-            if (value !== '') {
-                fields[fieldKey] = value;
-            }
+        } else if (value) {
+            fields[fieldKey] = value;
         }
     }
 
     if (!fields.timeRange) {
-        seal.replyToSender(ctx, msg, '❌ 缺少必填字段“时间段”，请填写例如 0315 0320');
+        seal.replyToSender(ctx, msg, '❌ 缺少必填字段"时间段"，请填写例如 0315 0320');
         return seal.ext.newCmdExecuteResult(true);
     }
     if (!fields.name) {
-        seal.replyToSender(ctx, msg, '❌ 缺少必填字段“恋综名”，请填写恋综名称');
+        seal.replyToSender(ctx, msg, '❌ 缺少必填字段"恋综名"，请填写恋综名称');
         return seal.ext.newCmdExecuteResult(true);
     }
 
@@ -272,8 +304,12 @@ cmd_add.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    let userData = getUserDataRef(ctx, msg);
-    userData[fields.name] = {
+    let all = readAllData();
+    let uid = msg.sender.userId;
+    if (!all[uid]) all[uid] = {};
+    let isUpdate = !!all[uid][fields.name];
+
+    all[uid][fields.name] = {
         startYear: fields.startYear,
         timeRange: fields.timeRange,
         status: fields.status,
@@ -285,12 +321,13 @@ cmd_add.solve = (ctx, msg, cmdArgs) => {
         gender: fields.gender,
         outcome: fields.outcome
     };
-    updateUserData(ctx, msg, userData);
+    saveAllData(all);
 
     let cross = isCrossYear(parsed.endMonth, parsed.startMonth);
-    let hint = cross ? '（跨年，已自动拆分）' : '';
+    let hint = cross ? '（跨年，将自动拆分显示）' : '';
+    let action = isUpdate ? '已更新' : '已录入';
 
-    let reply = `✅ 档期已录入${hint}：\n`;
+    let reply = `✅ 档期${action}${hint}：\n`;
     reply += `恋综名：${fields.name}\n`;
     reply += `时间段：${fields.startYear}/${fields.timeRange}\n`;
     if (fields.status !== '未知') reply += `状态：${fields.status}\n`;
@@ -307,10 +344,46 @@ cmd_add.solve = (ctx, msg, cmdArgs) => {
 };
 ext.cmdMap['录入档期'] = cmd_add;
 
+// ======================== 查档期 ========================
+
+let cmd_query = seal.ext.newCmdItemInfo();
+cmd_query.name = '查档期';
+cmd_query.help = '。查档期 恋综名 —— 查看指定恋综的完整档期信息';
+cmd_query.solve = (ctx, msg, cmdArgs) => {
+    let name = cmdArgs.getArgN(1);
+    if (!name) {
+        seal.replyToSender(ctx, msg, '❌ 格式：。查档期 恋综名');
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    let userData = getUserData(ctx, msg);
+    if (!userData[name]) {
+        seal.replyToSender(ctx, msg, `❌ 未找到恋综「${name}」的档期记录`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    let e = userData[name];
+    let parsed = parseTimeRange(e.timeRange || '');
+    let cross = parsed.valid && isCrossYear(parsed.endMonth, parsed.startMonth);
+
+    let reply = `📌 【${name}】${cross ? '（跨年）' : ''}\n`;
+    reply += `时间段：${e.startYear}/${e.timeRange}\n`;
+    reply += `状态：${e.status || '未知'}\n`;
+    reply += `皮相：${e.character || '未知'}\n`;
+    reply += `性向：${e.orientation || '未知'}\n`;
+    reply += `主题：${e.theme || '未知'}\n`;
+    reply += `角色名：${e.roleName || '未知'}\n`;
+    reply += `角色类型：${e.roleType || '未知'}\n`;
+    reply += `性别：${e.gender || '未知'}\n`;
+    reply += `结局：${e.outcome || '未知'}`;
+    seal.replyToSender(ctx, msg, reply);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap['查档期'] = cmd_query;
+
 // ======================== 修改档期 ========================
+
 let cmd_modify = seal.ext.newCmdItemInfo();
 cmd_modify.name = '修改';
-cmd_modify.help = '。修改 恋综名 项目 内容 —— 修改指定恋综的某个字段。项目可以是：时间段、年份、状态、皮相、性向、主题、角色名、角色类型、性别。';
+cmd_modify.help = '。修改 恋综名 项目 内容 —— 修改指定恋综的某个字段。项目可以是：时间段、年份、状态、皮相、性向、主题、角色名、角色类型、性别、结局。';
 cmd_modify.solve = (ctx, msg, cmdArgs) => {
     let name = cmdArgs.getArgN(1);
     let field = cmdArgs.getArgN(2);
@@ -320,25 +393,18 @@ cmd_modify.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    const fieldMap = {
-        '时间段': 'timeRange', '年份': 'startYear', '状态': 'status',
-        '皮相': 'character', '性向': 'orientation', '主题': 'theme',
-        '角色名': 'roleName', '角色类型': 'roleType', '性别': 'gender',
-        'timerange': 'timeRange', 'year': 'startYear', 'status': 'status',
-        'character': 'character', 'orientation': 'orientation', 'theme': 'theme',
-        'rolename': 'roleName', 'roletype': 'roleType', 'gender': 'gender',
-        '结局': 'outcome', 'outcome': 'outcome'
-    };
-
-    let fieldKey = fieldMap[field.toLowerCase ? field.toLowerCase() : field];
-    if (!fieldKey) {
-        seal.replyToSender(ctx, msg, '❌ 项目名称无效，可用项目：时间段、年份、状态、皮相、性向、主题、角色名、角色类型、性别');
+    let fieldKey = FIELD_MAP[(field.toLowerCase ? field.toLowerCase() : field).replace(/\s+/g, '')] || FIELD_MAP[field];
+    // "name" 字段不允许通过修改命令改变（应使用重命名档期）
+    if (!fieldKey || fieldKey === 'name') {
+        seal.replyToSender(ctx, msg, '❌ 项目名称无效，可用项目：时间段、年份、状态、皮相、性向、主题、角色名、角色类型、性别、结局\n（重命名恋综请用：。重命名档期 旧名 新名）');
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    let userData = getUserDataRef(ctx, msg);
+    let all = readAllData();
+    let uid = msg.sender.userId;
+    let userData = all[uid] || {};
     if (!userData[name]) {
-        seal.replyToSender(ctx, msg, `❌ 未找到恋综“${name}”的档期`);
+        seal.replyToSender(ctx, msg, `❌ 未找到恋综「${name}」的档期`);
         return seal.ext.newCmdExecuteResult(true);
     }
 
@@ -360,13 +426,47 @@ cmd_modify.solve = (ctx, msg, cmdArgs) => {
         userData[name][fieldKey] = value;
     }
 
-    updateUserData(ctx, msg, userData);
-    seal.replyToSender(ctx, msg, `✅ 已修改 ${name} 的 ${field} 为：${value}`);
+    all[uid] = userData;
+    saveAllData(all);
+    seal.replyToSender(ctx, msg, `✅ 已修改「${name}」的 ${field} 为：${value}`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap['修改'] = cmd_modify;
 
+// ======================== 重命名档期 ========================
+
+let cmd_rename = seal.ext.newCmdItemInfo();
+cmd_rename.name = '重命名档期';
+cmd_rename.help = '。重命名档期 旧名 新名 —— 将恋综名从旧名改为新名（保留所有档期数据）';
+cmd_rename.solve = (ctx, msg, cmdArgs) => {
+    let oldName = cmdArgs.getArgN(1);
+    let newName = cmdArgs.getArgN(2);
+    if (!oldName || !newName) {
+        seal.replyToSender(ctx, msg, '❌ 格式：。重命名档期 旧名 新名');
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    let all = readAllData();
+    let uid = msg.sender.userId;
+    let userData = all[uid] || {};
+    if (!userData[oldName]) {
+        seal.replyToSender(ctx, msg, `❌ 未找到恋综「${oldName}」的档期`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    if (userData[newName]) {
+        seal.replyToSender(ctx, msg, `❌ 恋综「${newName}」已存在，请先删除或换一个名称`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    userData[newName] = userData[oldName];
+    delete userData[oldName];
+    all[uid] = userData;
+    saveAllData(all);
+    seal.replyToSender(ctx, msg, `✅ 已将「${oldName}」重命名为「${newName}」`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap['重命名档期'] = cmd_rename;
+
 // ======================== 删除档期 ========================
+
 let cmd_delete = seal.ext.newCmdItemInfo();
 cmd_delete.name = '删除档期';
 cmd_delete.help = '。删除档期 恋综名 —— 删除指定恋综的档期记录';
@@ -376,24 +476,26 @@ cmd_delete.solve = (ctx, msg, cmdArgs) => {
         seal.replyToSender(ctx, msg, '❌ 参数不足，格式：。删除档期 恋综名');
         return seal.ext.newCmdExecuteResult(true);
     }
-
-    let userData = getUserDataRef(ctx, msg);
+    let all = readAllData();
+    let uid = msg.sender.userId;
+    let userData = all[uid] || {};
     if (!userData[name]) {
-        seal.replyToSender(ctx, msg, `❌ 未找到恋综“${name}”的档期`);
+        seal.replyToSender(ctx, msg, `❌ 未找到恋综「${name}」的档期`);
         return seal.ext.newCmdExecuteResult(true);
     }
-
     delete userData[name];
-    updateUserData(ctx, msg, userData);
-    seal.replyToSender(ctx, msg, `✅ 已删除恋综“${name}”的档期`);
+    all[uid] = userData;
+    saveAllData(all);
+    seal.replyToSender(ctx, msg, `✅ 已删除恋综「${name}」的档期`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap['删除档期'] = cmd_delete;
 
-// ======================== 我的日历（显示性别） ========================
+// ======================== 我的日历 ========================
+
 let cmd_calendar = seal.ext.newCmdItemInfo();
 cmd_calendar.name = '我的日历';
-cmd_calendar.help = '。我的日历 —— 按年份分组显示所有档期（含角色信息、性别）';
+cmd_calendar.help = '。我的日历 —— 按年份分组显示所有档期（含角色信息、性别、结局）';
 cmd_calendar.solve = (ctx, msg, cmdArgs) => {
     let userData = getUserData(ctx, msg);
     if (Object.keys(userData).length === 0) {
@@ -406,49 +508,44 @@ cmd_calendar.solve = (ctx, msg, cmdArgs) => {
     for (let name in userData) {
         let entry = userData[name];
         let { startYear, timeRange, status, character, orientation, theme } = entry;
-        // 兼容旧数据，若没有则默认为“未知”
         let roleName = entry.roleName || '未知';
         let roleType = entry.roleType || '未知';
         let gender = entry.gender || '未知';
-        let outcome = entry.outcome || '未知';  
+        let outcome = entry.outcome || '未知';
         let parsed = parseTimeRange(timeRange);
         if (!parsed.valid) continue;
 
         let cross = isCrossYear(parsed.endMonth, parsed.startMonth);
 
-        // 构建角色信息字符串（如果非未知）
-        let roleStr = '';
-        if (roleName !== '未知' || roleType !== '未知' || gender !== '未知' || outcome !== '未知') {
-            let parts = [];
-            if (roleName !== '未知') parts.push(roleName);
-            if (roleType !== '未知') parts.push(roleType);
-            if (gender !== '未知') parts.push(gender);
-            if (outcome !== '未知') parts.push(`结:${outcome}`);  
-            roleStr = ` [${parts.join('/')}]`;
-        }
+        let roleParts = [];
+        if (roleName !== '未知') roleParts.push(roleName);
+        if (roleType !== '未知') roleParts.push(roleType);
+        if (gender !== '未知') roleParts.push(gender);
+        if (outcome !== '未知') roleParts.push(`结:${outcome}`);
+        let roleStr = roleParts.length > 0 ? ` [${roleParts.join('/')}]` : '';
 
-        // 构建基本信息（过滤未知）
-        let baseInfo = ` ${status} ${character} ${orientation} ${theme}`.replace(/未知/g, '').trim();
+        let baseInfo = [status, character, orientation, theme]
+            .filter(v => v && v !== '未知').join(' ');
         if (baseInfo) baseInfo = ' · ' + baseInfo;
 
+        const pad = n => n.toString().padStart(2, '0');
+
         if (cross) {
-            // 第一段：startYear 年 startMonth.startDay ～ 12.31
-            let first = `${startYear}/${parsed.startMonth.toString().padStart(2,'0')}${parsed.startDay.toString().padStart(2,'0')}-1231`;
-            // 第二段：startYear+1 年 01.01 ～ endMonth.endDay
-            let second = `${startYear+1}/0101-${parsed.endMonth.toString().padStart(2,'0')}${parsed.endDay.toString().padStart(2,'0')}`;
+            let first = `${startYear}/${pad(parsed.startMonth)}${pad(parsed.startDay)}-1231`;
+            let second = `${startYear + 1}/0101-${pad(parsed.endMonth)}${pad(parsed.endDay)}`;
 
             if (!yearGroups[startYear]) yearGroups[startYear] = [];
             yearGroups[startYear].push({
                 sort: startYear * 10000 + parsed.startMonth * 100 + parsed.startDay,
                 line: `📌 ${name}${roleStr}\n   ${first}${baseInfo}`
             });
-            if (!yearGroups[startYear+1]) yearGroups[startYear+1] = [];
-            yearGroups[startYear+1].push({
-                sort: (startYear+1) * 10000 + 1 * 100 + 1,
+            if (!yearGroups[startYear + 1]) yearGroups[startYear + 1] = [];
+            yearGroups[startYear + 1].push({
+                sort: (startYear + 1) * 10000 + 101,
                 line: `📌 ${name}${roleStr} (续)\n   ${second}${baseInfo}`
             });
         } else {
-            let range = `${startYear}/${parsed.startMonth.toString().padStart(2,'0')}${parsed.startDay.toString().padStart(2,'0')}-${parsed.endMonth.toString().padStart(2,'0')}${parsed.endDay.toString().padStart(2,'0')}`;
+            let range = `${startYear}/${pad(parsed.startMonth)}${pad(parsed.startDay)}-${pad(parsed.endMonth)}${pad(parsed.endDay)}`;
             if (!yearGroups[startYear]) yearGroups[startYear] = [];
             yearGroups[startYear].push({
                 sort: startYear * 10000 + parsed.startMonth * 100 + parsed.startDay,
@@ -468,17 +565,17 @@ cmd_calendar.solve = (ctx, msg, cmdArgs) => {
         yearGroups[year].forEach(item => { reply += item.line + '\n'; });
     }
     reply += '══════════════';
-    
-    // 替换为分段发送
+
     sendLongMessage(ctx, msg, reply);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap['我的日历'] = cmd_calendar;
 
-// ======================== 本月档期（智能识别参数顺序） ========================
+// ======================== 本月档期（显示在档恋综 + 空闲日期） ========================
+
 let cmd_this_month = seal.ext.newCmdItemInfo();
 cmd_this_month.name = '本月档期';
-cmd_this_month.help = '。本月档期 [年份] [月份] 或 [月份] [年份] —— 显示指定年月的空闲日期区间。缺省年份为今年，缺省月份为当月。';
+cmd_this_month.help = '。本月档期 [年份] [月份] 或 [月份] [年份] —— 显示指定年月的在档恋综列表及空闲日期区间';
 cmd_this_month.solve = (ctx, msg, cmdArgs) => {
     let userData = getUserData(ctx, msg);
     if (Object.keys(userData).length === 0) {
@@ -486,112 +583,60 @@ cmd_this_month.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    let now = new Date();
-    let targetYear, targetMonth;
-
-    let arg1 = cmdArgs.getArgN(1);
-    let arg2 = cmdArgs.getArgN(2);
-
-    const isValidYear = (y) => !isNaN(y) && y >= 1900 && y <= 2100;
-    const isValidMonth = (m) => !isNaN(m) && m >= 1 && m <= 12;
-
-    if (arg1 && arg2) {
-        let num1 = parseInt(arg1, 10);
-        let num2 = parseInt(arg2, 10);
-
-        if (isValidYear(num1) && isValidMonth(num2)) {
-            targetYear = num1;
-            targetMonth = num2;
-        } else if (isValidMonth(num1) && isValidYear(num2)) {
-            targetYear = num2;
-            targetMonth = num1;
-        } else {
-            seal.replyToSender(ctx, msg, '❌ 参数无效，请提供合法的年份（1900-2100）和月份（1-12）');
-            return seal.ext.newCmdExecuteResult(true);
-        }
-    } else if (arg1 && !arg2) {
-        let month = parseInt(arg1, 10);
-        if (!isValidMonth(month)) {
-            seal.replyToSender(ctx, msg, '❌ 月份无效，请输入 1-12 之间的数字');
-            return seal.ext.newCmdExecuteResult(true);
-        }
-        targetMonth = month;
-        targetYear = now.getFullYear();
-    } else {
-        targetYear = now.getFullYear();
-        targetMonth = now.getMonth() + 1;
+    let ym = parseYearMonth(cmdArgs.getArgN(1), cmdArgs.getArgN(2));
+    if (ym.error) {
+        seal.replyToSender(ctx, msg, ym.error);
+        return seal.ext.newCmdExecuteResult(true);
     }
+    let { year: targetYear, month: targetMonth } = ym;
 
-    let daysInMonth = getDaysInMonth(targetYear, targetMonth);
-    let occupied = new Array(daysInMonth + 1).fill(false);
+    let { occupied, daysInMonth, activeShows } = calcMonthOccupied(userData, targetYear, targetMonth);
 
-    for (let name in userData) {
-        let entry = userData[name];
-        let { startYear, timeRange } = entry;
-        let parsed = parseTimeRange(timeRange);
-        if (!parsed.valid) continue;
+    const pad = n => n.toString().padStart(2, '0');
 
-        let cross = isCrossYear(parsed.endMonth, parsed.startMonth);
-        let endYear = cross ? startYear + 1 : startYear;
+    let reply = `📅 ${targetYear}年${targetMonth}月 档期概览\n══════════════\n`;
 
-        let startVal = startYear * 10000 + parsed.startMonth * 100 + parsed.startDay;
-        let endVal = endYear * 10000 + parsed.endMonth * 100 + parsed.endDay;
-        let monthStartVal = targetYear * 10000 + targetMonth * 100 + 1;
-        let monthEndVal = targetYear * 10000 + targetMonth * 100 + daysInMonth;
-
-        if (endVal < monthStartVal || startVal > monthEndVal) continue;
-
-        let startDayInMonth = 1;
-        let endDayInMonth = daysInMonth;
-
-        if (startYear === targetYear && parsed.startMonth === targetMonth) {
-            startDayInMonth = parsed.startDay;
-        }
-        if (startYear < targetYear && targetMonth === 1 && cross) {
-            startDayInMonth = 1;
-        }
-        if (endYear === targetYear && parsed.endMonth === targetMonth) {
-            endDayInMonth = parsed.endDay;
-        }
-        if (endYear > targetYear && targetMonth === 12 && cross) {
-            endDayInMonth = daysInMonth;
-        }
-
-        for (let d = startDayInMonth; d <= endDayInMonth; d++) {
-            occupied[d] = true;
-        }
+    if (activeShows.length === 0) {
+        reply += `▶ 在档恋综：本月无档期\n`;
+    } else {
+        activeShows.sort((a, b) => a.startDay - b.startDay);
+        reply += `▶ 在档恋综（${activeShows.length} 个）：\n`;
+        activeShows.forEach(s => {
+            reply += `  · ${s.name}（${pad(s.startDay)}日-${pad(s.endDay)}日）\n`;
+        });
     }
 
     let freeIntervals = [];
     let start = null;
     for (let d = 1; d <= daysInMonth; d++) {
         if (!occupied[d] && start === null) start = d;
-        if (occupied[d] && start !== null) {
-            freeIntervals.push({ start, end: d - 1 });
-            start = null;
-        }
+        if (occupied[d] && start !== null) { freeIntervals.push({ start, end: d - 1 }); start = null; }
     }
     if (start !== null) freeIntervals.push({ start, end: daysInMonth });
 
+    reply += '\n🆓 空闲日期：\n';
     if (freeIntervals.length === 0) {
-        seal.replyToSender(ctx, msg, `📅 ${targetYear}年${targetMonth}月 整月无空闲（全部被档期覆盖）`);
-        return seal.ext.newCmdExecuteResult(true);
+        reply += '  整月无空闲（全部被档期覆盖）\n';
+    } else {
+        let rangeStr = freeIntervals.map(iv =>
+            iv.start === iv.end
+                ? `${pad(iv.start)}日`
+                : `${pad(iv.start)}-${pad(iv.end)}日`
+        ).join('、');
+        reply += `  ${rangeStr}\n`;
     }
 
-    let rangeStr = freeIntervals.map(iv => {
-        if (iv.start === iv.end) return `${iv.start.toString().padStart(2,'0')}`;
-        else return `${iv.start.toString().padStart(2,'0')}-${iv.end.toString().padStart(2,'0')}`;
-    }).join('、');
-
-    seal.replyToSender(ctx, msg, `📅 ${targetYear}年${targetMonth}月 空闲日期：\n${rangeStr}`);
+    reply += '══════════════';
+    seal.replyToSender(ctx, msg, reply);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap['本月档期'] = cmd_this_month;
 
 // ======================== 本年数据 ========================
+
 let cmd_year_data = seal.ext.newCmdItemInfo();
 cmd_year_data.name = '本年数据';
-cmd_year_data.help = '。本年数据 [年份] —— 统计指定年份（缺省为今年）的档期总数、皮相列表、性向分布、性别分布、结局分布百分比、语擦天数（去重）。若缺省，统计至今日。';
+cmd_year_data.help = '。本年数据 [年份] —— 统计指定年份的档期总数、皮相、性向/性别/结局分布、语擦天数（去重）。缺省统计至今日。';
 cmd_year_data.solve = (ctx, msg, cmdArgs) => {
     let userData = getUserData(ctx, msg);
     if (Object.keys(userData).length === 0) {
@@ -609,14 +654,14 @@ cmd_year_data.solve = (ctx, msg, cmdArgs) => {
             seal.replyToSender(ctx, msg, '❌ 年份无效，请输入四位数字年份（如2025）');
             return seal.ext.newCmdExecuteResult(true);
         }
-        targetStart = targetYear * 10000 + 1 * 100 + 1;
-        targetEnd = targetYear * 10000 + 12 * 100 + 31;
+        targetStart = targetYear * 10000 + 101;
+        targetEnd = targetYear * 10000 + 1231;
         yearLabel = `${targetYear}年`;
     } else {
         targetYear = now.getFullYear();
         let month = now.getMonth() + 1;
         let day = now.getDate();
-        targetStart = targetYear * 10000 + 1 * 100 + 1;
+        targetStart = targetYear * 10000 + 101;
         targetEnd = targetYear * 10000 + month * 100 + day;
         yearLabel = `${targetYear}年（截至今日）`;
     }
@@ -626,7 +671,6 @@ cmd_year_data.solve = (ctx, msg, cmdArgs) => {
     let orientations = [];
     let genders = [];
     let outcomes = [];
-
     let activeRanges = [];
 
     for (let name in userData) {
@@ -651,56 +695,44 @@ cmd_year_data.solve = (ctx, msg, cmdArgs) => {
         if (gender !== '未知') genders.push(gender);
         if (outcome !== '未知') outcomes.push(outcome);
 
-        let rangeStart = Math.max(startVal, targetStart);
-        let rangeEnd = Math.min(endVal, targetEnd);
-        activeRanges.push({ start: rangeStart, end: rangeEnd });
+        activeRanges.push({ start: Math.max(startVal, targetStart), end: Math.min(endVal, targetEnd) });
     }
 
-    // 计算语擦天数
-    let startYear = Math.floor(targetStart / 10000);
-    let startMonth = Math.floor((targetStart % 10000) / 100);
-    let startDay = targetStart % 100;
-    let endYear = Math.floor(targetEnd / 10000);
-    let endMonth = Math.floor((targetEnd % 10000) / 100);
-    let endDay = targetEnd % 100;
+    // 逐日统计语擦天数
+    let sy = Math.floor(targetStart / 10000), sm2 = Math.floor((targetStart % 10000) / 100), sd2 = targetStart % 100;
+    let ey = Math.floor(targetEnd / 10000), em2 = Math.floor((targetEnd % 10000) / 100), ed2 = targetEnd % 100;
 
-    let totalDaysInRange = 0;
-    let coveredDays = 0;
-    let weekdayCovered = 0;
-    let weekendCovered = 0;
-
-    let currentDate = new Date(startYear, startMonth - 1, startDay);
-    let endDate = new Date(endYear, endMonth - 1, endDay);
+    let totalDaysInRange = 0, coveredDays = 0, weekdayCovered = 0, weekendCovered = 0;
+    let curDate = new Date(sy, sm2 - 1, sd2);
+    let endDate = new Date(ey, em2 - 1, ed2);
     endDate.setHours(23, 59, 59, 999);
 
-    while (currentDate <= endDate) {
+    while (curDate <= endDate) {
         totalDaysInRange++;
-        let currentVal = currentDate.getFullYear() * 10000 + (currentDate.getMonth() + 1) * 100 + currentDate.getDate();
-
-        let isCovered = false;
-        for (let range of activeRanges) {
-            if (currentVal >= range.start && currentVal <= range.end) {
-                isCovered = true;
-                break;
-            }
-        }
-
-        if (isCovered) {
+        let curVal = curDate.getFullYear() * 10000 + (curDate.getMonth() + 1) * 100 + curDate.getDate();
+        let covered = activeRanges.some(r => curVal >= r.start && curVal <= r.end);
+        if (covered) {
             coveredDays++;
-            let dayOfWeek = currentDate.getDay();
-            if (dayOfWeek === 0 || dayOfWeek === 6) {
-                weekendCovered++;
-            } else {
-                weekdayCovered++;
-            }
+            let dow = curDate.getDay();
+            if (dow === 0 || dow === 6) weekendCovered++; else weekdayCovered++;
         }
-
-        currentDate.setDate(currentDate.getDate() + 1);
+        curDate.setDate(curDate.getDate() + 1);
     }
 
     let coveredPercent = totalDaysInRange > 0 ? (coveredDays / totalDaysInRange * 100).toFixed(1) : '0.0';
 
-    // 构建回复
+    const distrib = (arr, label, emoji) => {
+        if (arr.length === 0) return `\n${emoji} ${label}：无非未知记录\n`;
+        let countMap = {};
+        arr.forEach(v => countMap[v] = (countMap[v] || 0) + 1);
+        let total = arr.length;
+        let out = `\n${emoji} ${label}分布（共 ${total} 个非未知）：\n`;
+        Object.entries(countMap).sort((a, b) => b[1] - a[1]).forEach(([v, c]) => {
+            out += `   ${v} ： ${c} (${(c / total * 100).toFixed(1)}%)\n`;
+        });
+        return out;
+    };
+
     let reply = `📊 【${yearLabel}数据】\n══════════════\n📌 涉及的恋综：${totalLianZong} 个\n`;
 
     if (characters.length > 0) {
@@ -710,61 +742,22 @@ cmd_year_data.solve = (ctx, msg, cmdArgs) => {
         reply += `\n🎭 皮相：无记录\n`;
     }
 
-    if (orientations.length > 0) {
-        let countMap = {};
-        orientations.forEach(o => countMap[o] = (countMap[o] || 0) + 1);
-        let totalOri = orientations.length;
-        reply += `\n❤️ 性向分布（共 ${totalOri} 个非未知）：\n`;
-        let sorted = Object.entries(countMap).sort((a, b) => b[1] - a[1]);
-        sorted.forEach(([ori, cnt]) => {
-            let percent = (cnt / totalOri * 100).toFixed(1);
-            reply += `   ${ori} ： ${cnt} (${percent}%)\n`;
-        });
-    } else {
-        reply += `\n❤️ 性向：无非未知记录\n`;
-    }
-
-    if (genders.length > 0) {
-        let countMap = {};
-        genders.forEach(g => countMap[g] = (countMap[g] || 0) + 1);
-        let totalGender = genders.length;
-        reply += `\n🚻 性别分布（共 ${totalGender} 个非未知）：\n`;
-        let sorted = Object.entries(countMap).sort((a, b) => b[1] - a[1]);
-        sorted.forEach(([gen, cnt]) => {
-            let percent = (cnt / totalGender * 100).toFixed(1);
-            reply += `   ${gen} ： ${cnt} (${percent}%)\n`;
-        });
-    } else {
-        reply += `\n🚻 性别：无非未知记录\n`;
-    }
-
-    if (outcomes.length > 0) {
-        let countMap = {};
-        outcomes.forEach(o => countMap[o] = (countMap[o] || 0) + 1);
-        let totalOutcome = outcomes.length;
-        reply += `\n🎬 结局分布（共 ${totalOutcome} 个非未知）：\n`;
-        let sorted = Object.entries(countMap).sort((a, b) => b[1] - a[1]);
-        sorted.forEach(([out, cnt]) => {
-            let percent = (cnt / totalOutcome * 100).toFixed(1);
-            reply += `   ${out} ： ${cnt} (${percent}%)\n`;
-        });
-    } else {
-        reply += `\n🎬 结局：无非未知记录\n`;
-    }
+    reply += distrib(orientations, '性向', '❤️');
+    reply += distrib(genders, '性别', '🚻');
+    reply += distrib(outcomes, '结局', '🎬');
 
     reply += `\n📅 语擦天数：${coveredDays} 天（占 ${coveredPercent}%）\n`;
     reply += `   · 周中：${weekdayCovered} 天\n`;
     reply += `   · 周末：${weekendCovered} 天\n`;
-
     reply += '══════════════';
-    
-    // 替换为分段发送
+
     sendLongMessage(ctx, msg, reply);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap['本年数据'] = cmd_year_data;
 
 // ======================== 月视图 ========================
+
 let cmd_month_view = seal.ext.newCmdItemInfo();
 cmd_month_view.name = '月视图';
 cmd_month_view.help = '。月视图 [年份] [月份] 或 [月份] [年份] —— 显示指定年月的日历，标记有档期的日期。缺省年份为今年，缺省月份为当月。';
@@ -775,101 +768,23 @@ cmd_month_view.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    let now = new Date();
-    let targetYear, targetMonth;
-
-    let arg1 = cmdArgs.getArgN(1);
-    let arg2 = cmdArgs.getArgN(2);
-
-    const isValidYear = (y) => !isNaN(y) && y >= 1900 && y <= 2100;
-    const isValidMonth = (m) => !isNaN(m) && m >= 1 && m <= 12;
-
-    if (arg1 && arg2) {
-        let num1 = parseInt(arg1, 10);
-        let num2 = parseInt(arg2, 10);
-
-        if (isValidYear(num1) && isValidMonth(num2)) {
-            targetYear = num1;
-            targetMonth = num2;
-        } else if (isValidMonth(num1) && isValidYear(num2)) {
-            targetYear = num2;
-            targetMonth = num1;
-        } else {
-            seal.replyToSender(ctx, msg, '❌ 参数无效，请提供合法的年份（1900-2100）和月份（1-12）');
-            return seal.ext.newCmdExecuteResult(true);
-        }
-    } else if (arg1 && !arg2) {
-        let month = parseInt(arg1, 10);
-        if (!isValidMonth(month)) {
-            seal.replyToSender(ctx, msg, '❌ 月份无效，请输入 1-12 之间的数字');
-            return seal.ext.newCmdExecuteResult(true);
-        }
-        targetMonth = month;
-        targetYear = now.getFullYear();
-    } else {
-        targetYear = now.getFullYear();
-        targetMonth = now.getMonth() + 1;
+    let ym = parseYearMonth(cmdArgs.getArgN(1), cmdArgs.getArgN(2));
+    if (ym.error) {
+        seal.replyToSender(ctx, msg, ym.error);
+        return seal.ext.newCmdExecuteResult(true);
     }
+    let { year: targetYear, month: targetMonth } = ym;
 
-    let daysInMonth = getDaysInMonth(targetYear, targetMonth);
-    let occupied = new Array(daysInMonth + 1).fill(false);
+    let { occupied, daysInMonth } = calcMonthOccupied(userData, targetYear, targetMonth);
 
-    for (let name in userData) {
-        let entry = userData[name];
-        let { startYear, timeRange } = entry;
-        let parsed = parseTimeRange(timeRange);
-        if (!parsed.valid) continue;
-
-        let cross = isCrossYear(parsed.endMonth, parsed.startMonth);
-        let endYear = cross ? startYear + 1 : startYear;
-
-        let startVal = startYear * 10000 + parsed.startMonth * 100 + parsed.startDay;
-        let endVal = endYear * 10000 + parsed.endMonth * 100 + parsed.endDay;
-        let monthStartVal = targetYear * 10000 + targetMonth * 100 + 1;
-        let monthEndVal = targetYear * 10000 + targetMonth * 100 + daysInMonth;
-
-        if (endVal < monthStartVal || startVal > monthEndVal) continue;
-
-        let startDayInMonth = 1;
-        let endDayInMonth = daysInMonth;
-
-        if (startYear === targetYear && parsed.startMonth === targetMonth) {
-            startDayInMonth = parsed.startDay;
-        }
-        if (startYear < targetYear && targetMonth === 1 && cross) {
-            startDayInMonth = 1;
-        }
-        if (endYear === targetYear && parsed.endMonth === targetMonth) {
-            endDayInMonth = parsed.endDay;
-        }
-        if (endYear > targetYear && targetMonth === 12 && cross) {
-            endDayInMonth = daysInMonth;
-        }
-
-        for (let d = startDayInMonth; d <= endDayInMonth; d++) {
-            occupied[d] = true;
-        }
-    }
-
-    // 构建日历
     let firstDay = getFirstDayOfMonth(targetYear, targetMonth);
     let weekdays = ['日', '一', '二', '三', '四', '五', '六'];
-    let header = weekdays.join(' ');
     let lines = [];
-
-    let line = '';
-    for (let i = 0; i < firstDay; i++) {
-        line += '   ';
-    }
+    let line = '   '.repeat(firstDay);
 
     for (let d = 1; d <= daysInMonth; d++) {
         let dayStr = d.toString().padStart(2, ' ');
-        if (occupied[d]) {
-            dayStr = `[${dayStr}]`;
-        } else {
-            dayStr = ` ${dayStr} `;
-        }
-        line += dayStr;
+        line += occupied[d] ? `[${dayStr}]` : ` ${dayStr} `;
         if ((firstDay + d) % 7 === 0 || d === daysInMonth) {
             lines.push(line);
             line = '';
@@ -877,7 +792,7 @@ cmd_month_view.solve = (ctx, msg, cmdArgs) => {
     }
 
     let reply = `📅 ${targetYear}年${targetMonth}月 档期视图\n`;
-    reply += `${header}\n`;
+    reply += weekdays.join(' ') + '\n';
     lines.forEach(l => reply += l + '\n');
     reply += '注：[数字] 表示该日有档期';
     seal.replyToSender(ctx, msg, reply);
