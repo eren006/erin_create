@@ -491,19 +491,18 @@ function showShopSettings(ctx, msg) {
     const main = getMainExt();
     if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件");
 
-    const freeMode = main.storageGet("shop_free_mode") !== "false";
     const currencyAttr = main.storageGet("shop_currency_attr") || "金币";
     const refreshHours = parseInt(main.storageGet("shop_refresh_hours") || "24");
     const shopMode = main.storageGet("shop_mode") || "抽卡";
-    const displayCount = parseInt(main.storageGet("shop_display_count") || "3");
 
     const results = [
         ".设置 商城设置",
-        `【商城模式】${shopMode}（抽卡=每人不同随机商品 / 商城=全部在售商品）`,
-        `【商城显示件数】${displayCount}（抽卡模式下每人看到的商品数，1~5）`,
-        `【商城零元购】${freeMode ? "开启" : "关闭"}`,
-        `【商城货币属性】${currencyAttr}`,
-        `【商城刷新间隔】${refreshHours}（小时，抽卡模式下个人刷新间隔）`,
+        `【商城模式】${shopMode}`,
+        `  抽卡 = 每人随机一件礼物，自动加图鉴，可无限赠送`,
+        `  商城 = 全部在售商品，需购买加背包，库存有限（默认10件）`,
+        `  ⚠️ 切换模式会自动转换现有数据（图鉴↔背包）`,
+        `【商城货币属性】${currencyAttr}（商城模式购买时扣除）`,
+        `【商城刷新间隔】${refreshHours}h（抽卡模式下个人刷新间隔）`,
     ];
     seal.replyToSender(ctx, msg, results.join('\n'));
 }
@@ -512,24 +511,6 @@ function applyShopParam(name, val) {
     const main = getMainExt();
     if (!main) return { success: false, message: "无法连接主插件" };
 
-    if (name === '商城零元购') {
-        const enabled = val === '开启' || val === '开' || val === 'true';
-        main.storageSet("shop_free_mode", enabled ? "true" : "false");
-        if (!enabled) {
-            // 零元购关闭时，把所有价格为0或未设置的商品自动改为100
-            const presetGifts = JSON.parse(main.storageGet("preset_gifts") || "{}");
-            let updated = 0;
-            for (const id in presetGifts) {
-                if (!presetGifts[id].price || presetGifts[id].price === 0) {
-                    presetGifts[id].price = 100;
-                    updated++;
-                }
-            }
-            if (updated > 0) main.storageSet("preset_gifts", JSON.stringify(presetGifts));
-            return { success: true, message: `【商城零元购】已关闭${updated > 0 ? `\n已自动将 ${updated} 件商品价格设为 100` : ""}` };
-        }
-        return { success: true, message: "【商城零元购】已开启" };
-    }
     if (name === '商城货币属性') {
         if (!val || !val.trim()) return { success: false, message: "【商城货币属性】不能为空" };
         const attrName = val.trim();
@@ -545,20 +526,65 @@ function applyShopParam(name, val) {
         if (isNaN(hours) || hours < 1) return { success: false, message: "【商城刷新间隔】必须是 ≥1 的整数（单位：小时）" };
         main.storageSet("shop_refresh_hours", hours.toString());
         main.storageSet("shop_personal_display", "{}");
-        return { success: true, message: `【商城刷新间隔】已设为 ${hours} 小时（所有人下次访问商城时立即生效）` };
+        return { success: true, message: `【商城刷新间隔】已设为 ${hours} 小时（所有人下次进入商城生效）` };
     }
     if (name === '商城模式') {
-        const mode = val === "商城" ? "商城" : "抽卡";
-        main.storageSet("shop_mode", mode);
+        const newMode = val === "商城" ? "商城" : "抽卡";
+        const oldMode = main.storageGet("shop_mode") || "抽卡";
+        if (newMode === oldMode) return { success: false, message: `【商城模式】当前已是「${newMode}」` };
+
+        // 数据转换
+        const invs = JSON.parse(main.storageGet("global_inventories") || "{}");
+        const sightings = JSON.parse(main.storageGet("gift_sightings") || "{}");
+        const presetGifts = JSON.parse(main.storageGet("preset_gifts") || "{}");
+        const privGroup = JSON.parse(main.storageGet("a_private_group") || "{}");
+
+        if (newMode === "商城") {
+            // 抽卡→商城：图鉴×3 转入背包
+            for (const [platform, roles] of Object.entries(privGroup)) {
+                for (const [roleName, info] of Object.entries(roles)) {
+                    const uid = Array.isArray(info) ? info[0] : info;
+                    const userKey = `${platform}:${uid}`;
+                    const unlocked = sightings[userKey]?.unlocked_gifts || [];
+                    if (!unlocked.length) continue;
+                    const roleKey = `${platform}:${roleName}`;
+                    if (!invs[roleKey]) invs[roleKey] = [];
+                    for (const giftId of unlocked) {
+                        const gift = presetGifts[giftId];
+                        if (!gift) continue;
+                        const ei = invs[roleKey].findIndex(i => i.giftId === giftId && i.source === "礼物商城");
+                        if (ei !== -1) { invs[roleKey][ei].count = (invs[roleKey][ei].count || 1) + 3; }
+                        else { invs[roleKey].push({ name: gift.name, desc: gift.content, used: false, type: "礼物", giftId, count: 3, createTime: Date.now(), source: "礼物商城" }); }
+                    }
+                    if (sightings[userKey]) sightings[userKey].unlocked_gifts = [];
+                }
+            }
+        } else {
+            // 商城→抽卡：背包商城礼物转入图鉴并移除
+            for (const [platform, roles] of Object.entries(privGroup)) {
+                for (const [roleName, info] of Object.entries(roles)) {
+                    const uid = Array.isArray(info) ? info[0] : info;
+                    const userKey = `${platform}:${uid}`;
+                    const roleKey = `${platform}:${roleName}`;
+                    if (!invs[roleKey]) continue;
+                    const shopItems = invs[roleKey].filter(i => i.giftId && i.source === "礼物商城");
+                    if (!sightings[userKey]) sightings[userKey] = { unlocked_gifts: [] };
+                    for (const item of shopItems) {
+                        if (!sightings[userKey].unlocked_gifts.includes(item.giftId)) {
+                            sightings[userKey].unlocked_gifts.push(item.giftId);
+                        }
+                    }
+                    invs[roleKey] = invs[roleKey].filter(i => !(i.giftId && i.source === "礼物商城"));
+                }
+            }
+        }
+
+        main.storageSet("global_inventories", JSON.stringify(invs));
+        main.storageSet("gift_sightings", JSON.stringify(sightings));
+        main.storageSet("shop_mode", newMode);
         main.storageSet("shop_personal_display", "{}");
-        return { success: true, message: `【商城模式】已切换为「${mode}」\n${mode === "抽卡" ? "每位玩家看到不同的随机商品" : "所有玩家看到完整在售商品（最多30件）"}` };
-    }
-    if (name === '商城显示件数') {
-        const count = parseInt(val);
-        if (isNaN(count) || count < 1 || count > 5) return { success: false, message: "【商城显示件数】必须是 1~5 的整数" };
-        main.storageSet("shop_display_count", count.toString());
-        main.storageSet("shop_personal_display", "{}");
-        return { success: true, message: `【商城显示件数】已设为 ${count} 件（下次进入商城生效）` };
+        const note = newMode === "商城" ? "图鉴礼物已×3转入各玩家背包" : "背包商城礼物已转入各玩家图鉴";
+        return { success: true, message: `【商城模式】已切换为「${newMode}」\n${note}` };
     }
     return { success: false, message: `未知参数：${name}` };
 }
@@ -696,11 +722,9 @@ function ensureDefaults(main) {
         "lovemail_day_limits": "{}",
         "auto_day_reset_enabled": "false",
         "item_pool_mode": "自由池",
-        "shop_free_mode": "true",
         "shop_currency_attr": "金币",
         "shop_refresh_hours": "24",
         "shop_mode": "抽卡",
-        "shop_display_count": "2",
     };
     for (const [key, val] of Object.entries(defaults)) {
         const existing = main.storageGet(key);
