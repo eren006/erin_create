@@ -1704,7 +1704,15 @@ cmd_view_schedule.solve = (ctx, msg) => {
             if (isPending && ev.isMulti && multiReq[ev.multiRef]?.targetList?.[myName] === "accepted") tag += " [🤝已接]";
         }
         const icon = { "电话": "📞", "续杯": "🍷", "微信群": "💬" }[ev.subtype] || "🎭";
-        ev.displayText = `【${ev.day} ${ev.time}】\n${icon} ${ev.subtype} · ${tag}\n📍 地点：${ev.place || "未知"}\n👥 伙伴：${ev.partner}`;
+        let progressText = "";
+        if (ev.group && !ev.isWechat) {
+            const grpProg = JSON.parse(ext.storageGet("group_write_progress") || "{}")[ev.group] || {};
+            const parts = [myName, ...ev.partner.split(/[、,，]/).map(s => s.trim()).filter(Boolean)]
+                .filter((v, i, a) => a.indexOf(v) === i);
+            const counts = parts.map(n => grpProg[n] || 0);
+            if (counts.some(c => c > 0)) progressText = `\n✍️ 当前进度：${counts.join('v')}`;
+        }
+        ev.displayText = `【${ev.day} ${ev.time}】\n${icon} ${ev.subtype} · ${tag}\n📍 地点：${ev.place || "未知"}\n👥 伙伴：${ev.partner}${progressText}`;
     });
 
     if (!msg.groupId) return seal.replyToSender(ctx, msg, "请在群内使用合并转发。");
@@ -6310,6 +6318,17 @@ ext.onNotCommandReceived = (ctx, msg) => {
             const topDisplay = settings.showTopBidder && !top.isAnon ? `「${top.roleName}」` : "匿名";
             _notifyAuction(ctx, msg, settings, `🔔 出价播报 | ${auctionId} 「${item.name}」\n💰 最新出价：${top.amount} ${settings.currency}${settings.showTopBidder ? `（${topDisplay}）` : ""}`);
         }
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 4.10 写了（记录写帖进度）
+    if (raw === "写了") {
+        const roleName = getRoleName(ctx, msg);
+        if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色");
+        const progress = JSON.parse(ext.storageGet("group_write_progress") || "{}");
+        if (!progress[groupId]) progress[groupId] = {};
+        progress[groupId][roleName] = (progress[groupId][roleName] || 0) + 1;
+        ext.storageSet("group_write_progress", JSON.stringify(progress));
         return seal.ext.newCmdExecuteResult(true);
     }
 
