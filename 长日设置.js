@@ -589,6 +589,63 @@ function applyShopParam(name, val) {
     return { success: false, message: `未知参数：${name}` };
 }
 
+function showAuctionSettings(ctx, msg) {
+    const main = getMainExt();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件");
+    const displayGroup = main.storageGet("auction_display_group") || "未设置";
+    const allowAnon = main.storageGet("auction_allow_anon") !== "false" ? "开启" : "关闭";
+    const broadcast = main.storageGet("auction_broadcast") !== "false" ? "开启" : "关闭";
+    const showTop = main.storageGet("auction_show_top_bidder") !== "false" ? "开启" : "关闭";
+    const currency = main.storageGet("auction_currency") || "金币";
+    seal.replyToSender(ctx, msg, [
+        ".设置 拍卖设置",
+        `【拍卖展示群】${displayGroup}`,
+        `  拍卖结果与出价播报发往该群`,
+        `【允许匿名出价】${allowAnon}`,
+        `【出价播报】${broadcast}`,
+        `  每次出价后是否向展示群广播`,
+        `【展示最高出价者】${showTop}`,
+        `  查看拍卖/播报中是否显示出价者角色名`,
+        `【拍卖货币】${currency}`,
+        `  出价时验证该属性余额，结束后自动扣除`,
+    ].join('\n'));
+}
+
+function applyAuctionParam(name, val) {
+    const main = getMainExt();
+    if (!main) return { success: false, message: "无法连接主插件" };
+    if (name === '拍卖展示群') {
+        const gid = val.trim();
+        if (!/^\d+$/.test(gid)) return { success: false, message: "【拍卖展示群】请填写纯数字群号" };
+        main.storageSet("auction_display_group", gid);
+        return { success: true, message: `【拍卖展示群】已设为 ${gid}` };
+    }
+    if (name === '允许匿名出价') {
+        const v = val.trim() === "开启";
+        main.storageSet("auction_allow_anon", v ? "true" : "false");
+        return { success: true, message: `【允许匿名出价】已${v ? "开启" : "关闭"}` };
+    }
+    if (name === '出价播报') {
+        const v = val.trim() === "开启";
+        main.storageSet("auction_broadcast", v ? "true" : "false");
+        return { success: true, message: `【出价播报】已${v ? "开启" : "关闭"}` };
+    }
+    if (name === '展示最高出价者') {
+        const v = val.trim() === "开启";
+        main.storageSet("auction_show_top_bidder", v ? "true" : "false");
+        return { success: true, message: `【展示最高出价者】已${v ? "开启" : "关闭"}` };
+    }
+    if (name === '拍卖货币') {
+        const attr = val.trim();
+        if (!attr) return { success: false, message: "【拍卖货币】不能为空" };
+        const presets = JSON.parse(main.storageGet("sys_attr_presets") || "[]");
+        if (!presets.includes(attr)) return { success: false, message: `❌ 属性「${attr}」尚未创建。\n请先执行：我创建属性 ${attr}` };
+        main.storageSet("auction_currency", attr);
+        return { success: true, message: `【拍卖货币】已设为「${attr}」` };
+    }
+    return { success: false, message: `未知参数：${name}` };
+}
+
 function applyItemParam(name, val) {
     const main = getMainExt();
     if (!main) return { success: false, message: "无法连接主插件" };
@@ -740,7 +797,8 @@ cmd_settings.help = `==== 📺 恋综系统控制台 ====
 .设置 信件  - 寄信/匿名信/心动信配置
 .设置 公告  - 公开广播概率与开关
 .设置 道具  - 物品抽取、追踪器参数
-.设置 商城  - 礼物商城模式/件数/零元购/货币/刷新间隔
+.设置 商城  - 礼物商城模式/货币/刷新间隔
+.设置 拍卖  - 拍卖展示群/匿名/播报/货币等
 .设置 群组  - 小群管理、目击报告
 
 💡 输入对应指令后，复制弹出的模板修改并重新发送即可。`;
@@ -766,6 +824,7 @@ cmd_settings.solve = function(ctx, msg, argv) {
         if (firstLine.includes('公告设置')) return handleApply(ctx, msg, rawMessage, applyPublicParam);
         if (firstLine.includes('道具设置')) return handleApply(ctx, msg, rawMessage, applyItemParam);
         if (firstLine.includes('商城设置')) return handleApply(ctx, msg, rawMessage, applyShopParam);
+        if (firstLine.includes('拍卖设置')) return handleApply(ctx, msg, rawMessage, applyAuctionParam);
         if (firstLine.includes('群组设置')) return handleApply(ctx, msg, rawMessage, applyGroupParam);
         return seal.ext.newCmdExecuteResult(true);
     }
@@ -778,6 +837,7 @@ cmd_settings.solve = function(ctx, msg, argv) {
         case '公告': return showPublicSettings(ctx, msg);
         case '道具': return showItemSettings(ctx, msg);
         case '商城': return showShopSettings(ctx, msg);
+        case '拍卖': return showAuctionSettings(ctx, msg);
         case '群组': return showGroupSettings(ctx, msg);
         default: seal.replyToSender(ctx, msg, cmd_settings.help);
     }
