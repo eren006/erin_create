@@ -35,9 +35,16 @@ const DINNER_MENUS = {
 // ========================
 // 核心逻辑：读取主插件存储
 // ========================
+function getChangriPrimaryUid(crExt, platform, uid) {
+    try {
+        const extras = JSON.parse(crExt.storageGet("extra_accounts") || "{}");
+        return extras[`${platform}:${uid}`] || uid;
+    } catch (e) { return uid; }
+}
+
 function getChangriRoleName(ctx, msg) {
     let crExt = seal.ext.find('changriV1');
-    if (!crExt) { 
+    if (!crExt) {
         return msg.sender.nickname;
     }
 
@@ -46,14 +53,15 @@ function getChangriRoleName(ctx, msg) {
         if (!rawData) return msg.sender.nickname;
 
         let charPlatform = JSON.parse(rawData);
-        // 去除平台前缀，得到纯 uid
-        const currentUid = msg.sender.userId.replace(/^[a-z]+:/i, ""); // 匹配 "qq:"、"wx:" 等并移除
+        // 去除平台前缀，得到纯 uid，并解析辅助账号为主账号
+        const platform = msg.platform || Object.keys(charPlatform)[0] || "QQ";
+        const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+        const currentUid = getChangriPrimaryUid(crExt, platform, rawUid);
 
-        for (let platform in charPlatform) {
-            let platformData = charPlatform[platform];
+        for (let plt in charPlatform) {
+            let platformData = charPlatform[plt];
             for (let name in platformData) {
                 if (Array.isArray(platformData[name]) && platformData[name][0] === currentUid) {
-                    console.log(name);
                     return name;
                 }
             }

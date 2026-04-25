@@ -40,6 +40,15 @@ function getMainExt() {
 /**
  * 获取当前发送者的角色名（依赖 changriV1 的角色绑定）
  */
+function getPrimaryUid(platform, uid) {
+    const main = getMainExt();
+    if (!main) return uid;
+    try {
+        const extras = JSON.parse(main.storageGet("extra_accounts") || "{}");
+        return extras[`${platform}:${uid}`] || uid;
+    } catch (e) { return uid; }
+}
+
 function getRoleName(ctx, msg) {
     const main = getMainExt();
     if (!main) return null;
@@ -50,7 +59,8 @@ function getRoleName(ctx, msg) {
 
         let charPlatform = JSON.parse(rawData);
         const platform = msg.platform;
-        const uid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+        const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+        const uid = getPrimaryUid(platform, rawUid);
 
         if (!charPlatform[platform]) return null;
         for (let name in charPlatform[platform]) {

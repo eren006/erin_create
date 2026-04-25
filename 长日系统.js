@@ -702,6 +702,12 @@ const getUserRoleName = (platform, fullUid) => {
     return null;
 };
 
+// 将辅助账号 uid 解析为主账号 uid（找不到则原样返回）
+const getPrimaryUid = (platform, uid) => {
+    const extras = store.get("extra_accounts");
+    return extras[`${platform}:${uid}`] || uid;
+};
+
 // ========================
 // 角色档案系统
 // ========================
@@ -3945,8 +3951,8 @@ async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, co
     };
     chaosConfig = { ...defaultConfig, ...chaosConfig };
 
-    // ⏳ 冷却与次数检查 (使用发送者的 UID)
-    const uid = msg.sender.userId.replace(`${platform}:`, "");
+    // ⏳ 冷却与次数检查 (使用发送者的主账号 UID)
+    const uid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
     const cooldownKey = `chaos_letter_cooldown_${platform}:${uid}`;
     const lastSent = parseInt(ext.storageGet(cooldownKey) || "0");
     const now = Date.now();
@@ -5915,7 +5921,9 @@ function checkCondition(ctx) {
 // ========================
 ext.onNotCommandReceived = (ctx, msg) => {
     const raw = (msg.rawMessage || msg.message || "").trim();
-    const platform = msg.platform, uid = msg.sender.userId.replace(`${platform}:`, '');
+    const platform = msg.platform;
+    const _rawUid = msg.sender.userId.replace(`${platform}:`, '');
+    const uid = getPrimaryUid(platform, _rawUid); // 辅助账号自动解析为主账号 uid
     const groupId = msg.groupId.replace(`${platform}-Group:`, ''), isAdmin = isUserAdmin(ctx, msg);
     const getS = (k) => JSON.parse(ext.storageGet(k) || (k.includes("list") || k.includes("presets") || k.includes("projects") ? "[]" : "{}"));
 
@@ -7030,12 +7038,11 @@ cmd_send_lovemail.solve = (ctx, msg, cmdArgs) => {
     }
 
     const platform = msg.platform;
-    const uid = msg.sender.userId.replace(`${platform}:`, "");
+    const uid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
     const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
 
     // 身份核验
-    const senderRoleName = Object.entries(a_private_group[platform] || {})
-        .find(([_, val]) => val[0] === uid)?.[0];
+    const senderRoleName = getRoleName(ctx, msg);
     if (!senderRoleName) {
         seal.replyToSender(ctx, msg, "✨ 远方的旅人，寄信前请先使用「创建新角色」来认领你的身份吧。");
         return seal.ext.newCmdExecuteResult(true);
@@ -7177,7 +7184,7 @@ let cmd_view_mylovemails = seal.ext.newCmdItemInfo();
 cmd_view_mylovemails.name = "查看信箱";
 cmd_view_mylovemails.solve = (ctx, msg, cmdArgs) => {
     const platform = msg.platform;
-    const uid = msg.sender.userId.replace(`${platform}:`, "");
+    const uid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
     const records = JSON.parse(ext.storageGet("lovemail_pool") || "[]");
     const my = records.filter(r => r.uid === uid);
 
@@ -7195,7 +7202,7 @@ let cmd_revoke_lovemail = seal.ext.newCmdItemInfo();
 cmd_revoke_lovemail.name = "撤回心动信";
 cmd_revoke_lovemail.solve = (ctx, msg, cmdArgs) => {
     const platform = msg.platform;
-    const uid = msg.sender.userId.replace(`${platform}:`, "");
+    const uid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
     const idx = parseInt(cmdArgs.getArgN(1)) - 1;
     let records = JSON.parse(ext.storageGet("lovemail_pool") || "[]");
 
@@ -7851,7 +7858,7 @@ cmd_view_preset_gifts.solve = (ctx, msg) => {
     const refreshHours = parseInt(ext.storageGet("shop_refresh_hours") || "24");
     const now = Date.now();
     const platform = msg.platform;
-    const uid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+    const uid = getPrimaryUid(platform, msg.sender.userId.replace(/^[a-z]+:/i, ""));
     const userKey = `${platform}:${uid}`;
 
     const sightings = JSON.parse(ext.storageGet("gift_sightings") || "{}");
@@ -8355,7 +8362,7 @@ cmd_backpack.solve = (ctx, msg, cmdArgs) => {
     const shopModeForBackpack = ext.storageGet("shop_mode") || "抽卡";
     let gachaProgressLine = "";
     if (shopModeForBackpack === "抽卡") {
-        const uid_bp = msg.sender.userId.replace(/^[a-z]+:/i, "");
+        const uid_bp = getPrimaryUid(platform, msg.sender.userId.replace(/^[a-z]+:/i, ""));
         const bpUserKey = `${platform}:${uid_bp}`;
         const bpSightings = JSON.parse(ext.storageGet("gift_sightings") || "{}");
         const bpPresets = JSON.parse(ext.storageGet("preset_gifts") || "{}");
