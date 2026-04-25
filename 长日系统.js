@@ -6052,7 +6052,10 @@ ext.onNotCommandReceived = (ctx, msg) => {
     }
 
     if (raw === "礼物商城") return cmd_view_preset_gifts.solve(ctx, msg);
-    if (raw === "图鉴" || raw === "我的图鉴") return cmd_view_my_gift_collection.solve(ctx, msg);
+    if (raw === "图鉴" || raw === "我的图鉴" || raw.startsWith("图鉴 ") || raw.startsWith("我的图鉴 ")) {
+        const rest = raw.replace(/^(我的)?图鉴/, "").trim();
+        return cmd_view_my_gift_collection.solve(ctx, msg, makeFakeCmdArgs(rest ? [rest] : []));
+    }
     if (raw.startsWith("购买")) {
         const rest = raw.slice(2).trim();
         if (rest) {
@@ -6145,7 +6148,35 @@ ext.onNotCommandReceived = (ctx, msg) => {
             if (extras[extraKey]) return seal.replyToSender(ctx, msg, `❌ 该账号已被绑定为其他角色的额外账号`);
             extras[extraKey] = uid;
             store.set("extra_accounts", extras);
-            return seal.replyToSender(ctx, msg, `✅ 已将 ${extraQQ} 绑定为「${selfRoleName}」的额外账号`);
+
+            // 清理辅助账号的商城/图鉴数据，只保留主账号的
+            // 1. 删除辅助账号的 gift_sightings（uid-based key）
+            const sightings = JSON.parse(ext.storageGet("gift_sightings") || "{}");
+            const extraSightingKey = `${platform}:${extraQQ}`;
+            if (sightings[extraSightingKey]) {
+                delete sightings[extraSightingKey];
+                ext.storageSet("gift_sightings", JSON.stringify(sightings));
+            }
+            // 2. 删除辅助账号的 global_inventories（roleName-based key）
+            // 找出辅助账号在 a_private_group 中绑定的角色名
+            const rolesStorage = store.get("a_private_group")[platform] || {};
+            const extraRoleName = Object.entries(rolesStorage).find(([, v]) => v[0] === extraQQ)?.[0];
+            if (extraRoleName) {
+                const invs = JSON.parse(ext.storageGet("global_inventories") || "{}");
+                const extraInvKey = `${platform}:${extraRoleName}`;
+                if (invs[extraInvKey]) {
+                    delete invs[extraInvKey];
+                    ext.storageSet("global_inventories", JSON.stringify(invs));
+                }
+            }
+            // 3. 删除辅助账号的 shop_personal_display（uid-based key，抽卡进度）
+            const spd = JSON.parse(ext.storageGet("shop_personal_display") || "{}");
+            if (spd[extraSightingKey]) {
+                delete spd[extraSightingKey];
+                ext.storageSet("shop_personal_display", JSON.stringify(spd));
+            }
+
+            return seal.replyToSender(ctx, msg, `✅ 已将 ${extraQQ} 绑定为「${selfRoleName}」的额外账号（辅助账号的商城/图鉴数据已清除）`);
         }
         // 查看自己的额外账号
         const myExtras = Object.entries(extras).filter(([, v]) => v === uid).map(([k]) => k.replace(`${platform}:`, ""));
@@ -7024,7 +7055,7 @@ cmd_send_lovemail.solve = (ctx, msg, cmdArgs) => {
     let content = getTag("内容") || "";
 
     if (!receiver) {
-        let helpMsg = `⚠️ 格式错误！请指定发送对象。\n\n标准格式：\n。发送心动信\n【发送对象】角色名\n【内容】想说的话\n【署名】自定义昵称（选填）\n`;
+        let helpMsg = `⚠️ 格式错误！请指定发送对象。\n\n标准格式：\n发送心动信\n【发送对象】角色名\n【内容】想说的话\n【署名】自定义昵称（选填）\n`;
         seal.replyToSender(ctx, msg, helpMsg);
         return seal.ext.newCmdExecuteResult(true);
     }
@@ -7966,11 +7997,17 @@ let cmd_view_my_gift_collection = seal.ext.newCmdItemInfo();
 cmd_view_my_gift_collection.name = "图鉴";
 cmd_view_my_gift_collection.help = "图鉴 — 查看礼物收藏与全服热度排名";
 
-cmd_view_my_gift_collection.solve = (ctx, msg) => {
+cmd_view_my_gift_collection.solve = (ctx, msg, cmdArgs) => {
     const platform = msg.platform;
     const uid = msg.sender.userId.replace(/^[a-z]+:/i, "");
-    const userKey = `${platform}:${uid}`;
+    // Resolve via primary account (extra_accounts alias)
+    const primaryUid = (() => {
+        const extras = store.get("extra_accounts");
+        return extras[`${platform}:${uid}`] || uid;
+    })();
+    const userKey = `${platform}:${primaryUid}`;
     const shopMode = ext.storageGet("shop_mode") || "抽卡";
+    const queryId = cmdArgs?.getArgN ? cmdArgs.getArgN(1) : "";
 
     const presetGifts = JSON.parse(ext.storageGet("preset_gifts") || "{}");
     const total = Object.keys(presetGifts).length;
@@ -7991,22 +8028,41 @@ cmd_view_my_gift_collection.solve = (ctx, msg) => {
     if (shopMode === "抽卡") {
         const sightings = JSON.parse(ext.storageGet("gift_sightings") || "{}");
         const owned = sightings[userKey]?.unlocked_gifts || [];
+
+        // 查询单件详情
+        if (queryId && queryId.startsWith('#')) {
+            if (!owned.includes(queryId)) return seal.replyToSender(ctx, msg, `🔒 ${queryId} 不在你的图鉴中`);
+            const gift = presetGifts[queryId];
+            if (!gift) return seal.replyToSender(ctx, msg, `❌ ${queryId} 已下架`);
+            return seal.replyToSender(ctx, msg,
+                `📖 ${queryId} 「${gift.name}」\n🔥 热度第${heatRanks[queryId]}名\n${"━".repeat(14)}\n${gift.content}`
+            );
+        }
+
         if (owned.length === 0) {
             return seal.replyToSender(ctx, msg, `📚 图鉴（0/${total}）\n发送「礼物商城」开始收集！`);
         }
         const sorted = [...owned].sort((a, b) => (parseInt(a.replace('#', '')) || 0) - (parseInt(b.replace('#', '')) || 0));
-        let text = `📚 我的图鉴（${owned.length}/${total}）\n${"━".repeat(14)}\n💌 图鉴内的礼物可无限赠送\n`;
+        let text = `📚 我的图鉴（${owned.length}/${total}）\n${"━".repeat(14)}\n💌 图鉴内的礼物可无限赠送\n发送「图鉴 #编号」查看详细描述\n`;
         for (const giftId of sorted) {
             const gift = presetGifts[giftId];
-            if (!gift) { text += `\n${giftId} （已下架）\n`; continue; }
-            text += `\n${giftId} 「${gift.name}」 🔥热度第${heatRanks[giftId]}名\n📝 ${gift.content}\n`;
+            if (!gift) { text += `\n${giftId} （已下架）`; continue; }
+            text += `\n${giftId} 「${gift.name}」 🔥第${heatRanks[giftId]}名`;
         }
         seal.replyToSender(ctx, msg, text.trim());
     } else {
-        // 商城模式：显示全部礼物目录（热度排名）
-        let text = `📚 礼物图鉴（共 ${total} 件）\n${"━".repeat(14)}\n`;
-        for (const { id, name, content, count } of sortedByHeat) {
-            text += `\n${id} 「${name}」 🔥第${heatRanks[id]}名（${count}次）\n📝 ${content}\n`;
+        // 商城模式：查询单件详情
+        if (queryId && queryId.startsWith('#')) {
+            const gift = presetGifts[queryId];
+            if (!gift) return seal.replyToSender(ctx, msg, `❌ ${queryId} 不存在`);
+            return seal.replyToSender(ctx, msg,
+                `📖 ${queryId} 「${gift.name}」\n🔥 热度第${heatRanks[queryId]}名（${gift.usage_count || 0}次）\n${"━".repeat(14)}\n${gift.content}`
+            );
+        }
+        // 商城模式：显示全部礼物目录（仅名称+热度）
+        let text = `📚 礼物图鉴（共 ${total} 件）\n${"━".repeat(14)}\n发送「图鉴 #编号」查看详细描述\n`;
+        for (const { id, name, count } of sortedByHeat) {
+            text += `\n${id} 「${name}」 🔥第${heatRanks[id]}名（${count}次）`;
         }
         seal.replyToSender(ctx, msg, text.trim());
     }
