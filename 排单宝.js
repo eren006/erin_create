@@ -27,16 +27,6 @@ function isOrderAdmin(ctx, msg) {
     return ctx.privilegeLevel === 100 || (admins[platform] && admins[platform].includes(uid));
 }
 
-// 标签解析工具 (仿照心动信箱逻辑)
-const parseTags = (raw) => {
-    const getTag = (tag) => {
-        const regex = new RegExp(`【${tag}】([\\s\\S]*?)(?=【|$)`, "i");
-        const match = raw.match(regex);
-        return match ? match[1].trim() : null;
-    };
-    return getTag;
-};
-
 function sendNotify(groupId, userId, text) {
     const eps = seal.getEndPoints();
     if (eps.length > 0 && groupId) {
@@ -110,6 +100,10 @@ cmdReg.solve = (ctx, msg, cmdArgs) => {
 
     const uid = msg.sender.userId.replace(`${msg.platform}:`, "");
     let users = getDb("paidan_users");
+    if (users[uid] && users[uid].verified) {
+        seal.replyToSender(ctx, msg, "⚠️ 您已通过核对，如需修改请联系管理员。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
     users[uid] = { name, balance: count, expiry: "待核对", verified: false, group: msg.groupId };
     setDb("paidan_users", users);
 
@@ -119,10 +113,7 @@ cmdReg.solve = (ctx, msg, cmdArgs) => {
     const config = getDb("paidan_config");
     if (config.adminGroupId) {
         const text = `📢 【新注册提醒】\n姓名：${name}\n报数：${count}\nUID：${uid}\n来自群：${msg.groupId}\n请管理员使用「.排单核对」进行确认。`;
-        const eps = seal.getEndPoints();
-        const targetCtx = seal.createTempCtx(eps[0], msg);
-        targetCtx.msg.groupId = config.adminGroupId;
-        seal.replyToSender(targetCtx, targetCtx.msg, text);
+        sendNotify(config.adminGroupId, null, text);
     }
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -147,7 +138,8 @@ cmdOrder.solve = (ctx, msg) => {
         uid: uid,
         content: msg.message.replace(".下单", "").trim(),
         status: "待接单",
-        group: msg.groupId
+        group: msg.groupId,
+        timestamp: Date.now()
     };
     setDb("paidan_orders", orders);
 
@@ -157,10 +149,7 @@ cmdOrder.solve = (ctx, msg) => {
     const config = getDb("paidan_config");
     if (config.adminGroupId) {
         const text = `🔥 【新订单：${orderId}】\n客户：${user.name}\n内容：\n${orders[orderId].content}`;
-        const eps = seal.getEndPoints();
-        const targetCtx = seal.createTempCtx(eps[0], msg);
-        targetCtx.msg.groupId = config.adminGroupId;
-        seal.replyToSender(targetCtx, targetCtx.msg, text);
+        sendNotify(config.adminGroupId, null, text);
     }
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -183,16 +172,13 @@ cmdCheck.solve = (ctx, msg, cmdArgs) => {
     users[targetUid].balance = realCount;
     users[targetUid].expiry = expiry;
     users[targetUid].verified = true;
+    users[targetUid].expiryReminded = false;
     setDb("paidan_users", users);
 
     seal.replyToSender(ctx, msg, `✅ 用户 ${users[targetUid].name} 核对完成。`);
     
     // 回执到用户群
-    const text = `[CQ:at,qq=${targetUid}] ✨ 管理员已完成您的资产核对！\n核定数量：${realCount}\n有效期至：${expiry}`;
-    const eps = seal.getEndPoints();
-    const targetCtx = seal.createTempCtx(eps[0], msg);
-    targetCtx.msg.groupId = users[targetUid].group;
-    seal.replyToSender(targetCtx, targetCtx.msg, text);
+    sendNotify(users[targetUid].group, targetUid, `✨ 管理员已完成您的资产核对！\n核定数量：${realCount}\n有效期至：${expiry}`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["排单核对"] = cmdCheck;
@@ -257,9 +243,12 @@ cmdUrge.solve = (ctx, msg, cmdArgs) => {
     if (config.adminGroupId) {
         const adminText = `⚠️ 【催单转发】客户 [CQ:at,qq=${o.uid}] 正在询问订单 [${orderId}] 的进度，工期已达 ${progress}%。`;
         sendNotify(config.adminGroupId, null, adminText);
-        seal.replyToSender(ctx, msg, "📫 催单请求已发送给劳斯，请耐心等待回复。");
         addOrderLog(`客户 ${o.uid} 对订单 ${orderId} 发起了催单`);
+    } else {
+        seal.replyToSender(ctx, msg, "⚠️ 系统尚未配置工作群，请联系管理员处理。");
+        return seal.ext.newCmdExecuteResult(true);
     }
+    seal.replyToSender(ctx, msg, "📫 催单请求已发送给劳斯，请耐心等待回复。");
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["催单"] = cmdUrge;
@@ -314,11 +303,7 @@ cmdFinish.solve = (ctx, msg, cmdArgs) => {
 
     seal.replyToSender(ctx, msg, `✅ 订单 ${orderId} 扣卡成功，剩余 ${users[uid].balance} 张。`);
     
-    const text = `[CQ:at,qq=${uid}] 🎉 您的订单 [${orderId}] 已制作完成！\n本次扣除：${decr}\n剩余卡片数量：${users[uid].balance}`;
-    const eps = seal.getEndPoints();
-    const targetCtx = seal.createTempCtx(eps[0], msg);
-    targetCtx.msg.groupId = orders[orderId].group;
-    seal.replyToSender(targetCtx, targetCtx.msg, text);
+    sendNotify(orders[orderId].group, uid, `🎉 您的订单 [${orderId}] 已制作完成！\n本次扣除：${decr}\n剩余卡片数量：${users[uid].balance}`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["扣卡"] = cmdFinish;
@@ -338,10 +323,10 @@ cmdQueue.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
     
+    const users = getDb("paidan_users");
     let res = "📋 【待接单排队】\n";
     queue.forEach(o => {
-        // o.group 是下单时记录的来源群号
-        res += `编号：${o.id}\n客户：${getDb("paidan_users")[o.uid]?.name || '未知'}\n群号：${o.group}\n内容：${o.content.slice(0, 30)}...\n————\n`;
+        res += `编号：${o.id}\n客户：${users[o.uid]?.name || '未知'}\n群号：${o.group}\n内容：${o.content.slice(0, 30)}...\n————\n`;
     });
     seal.replyToSender(ctx, msg, res);
     return seal.ext.newCmdExecuteResult(true);
@@ -355,17 +340,17 @@ cmdTodoList.help = ".查看待完成 (查看已接单待扣卡的任务列表)";
 cmdTodoList.solve = (ctx, msg, cmdArgs) => {
     if (!isOrderAdmin(ctx, msg)) return;
     const orders = getDb("paidan_orders");
-    const todoList = Object.values(orders).filter(o => o.status === "处理中" || o.status === "待完成");
+    const todoList = Object.values(orders).filter(o => o.status === "制作中" || o.status === "草图阶段");
     
     if (todoList.length === 0) {
         seal.replyToSender(ctx, msg, "✅ 恭喜！目前没有任何待完成的任务。");
         return seal.ext.newCmdExecuteResult(true);
     }
     
+    const users = getDb("paidan_users");
     let res = "🛠️ 【待完成任务清单】\n";
     todoList.forEach(o => {
-        const userName = getDb("paidan_users")[o.uid]?.name || '未知';
-        res += `编号：${o.id}\n客户：${userName}\n群号：${o.group}\n需求：${o.content}\n————\n`;
+        res += `编号：${o.id}\n客户：${users[o.uid]?.name || '未知'}\n群号：${o.group}\n需求：${o.content}\n————\n`;
     });
     seal.replyToSender(ctx, msg, res);
     return seal.ext.newCmdExecuteResult(true);
@@ -380,7 +365,7 @@ cmdMy.solve = (ctx, msg) => {
     const orders = getDb("paidan_orders");
     const my = Object.values(orders).filter(o => o.uid === uid && o.status !== "已完成");
     
-    if (my.length === 0) return seal.replyToSender(ctx, msg, " você没有进行中的订单。");
+    if (my.length === 0) return seal.replyToSender(ctx, msg, "您没有进行中的订单。");
     
     let res = "🔍 【进行中订单】\n";
     my.forEach(o => {
@@ -390,22 +375,6 @@ cmdMy.solve = (ctx, msg) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["查看订单状态"] = cmdMy;
-
-let cmdQueue = seal.ext.newCmdItemInfo();
-cmdQueue.name = "查看待接单";
-cmdQueue.solve = (ctx, msg) => {
-    if (!isOrderAdmin(ctx, msg)) return;
-    const orders = getDb("paidan_orders");
-    const queue = Object.values(orders).filter(o => o.status === "待接单");
-    
-    if (queue.length === 0) return seal.replyToSender(ctx, msg, "当前没有待接单的订单。");
-    
-    let res = "📋 【待接单排队】\n";
-    queue.forEach(o => { res += `编号：${o.id} | 客户：${getDb("paidan_users")[o.uid].name}\n`; });
-    seal.replyToSender(ctx, msg, res);
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["查看待接单"] = cmdQueue;
 
 // ======================== 进度与权重模块 ========================
 
@@ -439,6 +408,7 @@ cmdPriority.solve = (ctx, msg, cmdArgs) => {
     orders[orderId].isUrgent = true;
     setDb("paidan_orders", orders);
     seal.replyToSender(ctx, msg, `⚡ 订单 ${orderId} 已标记为高优先级急单。`);
+    sendNotify(orders[orderId].group, orders[orderId].uid, `⚡ 您的订单 [${orderId}] 已被标记为急单，将优先处理。`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["设为急单"] = cmdPriority;
@@ -454,6 +424,7 @@ cmdKanban.solve = (ctx, msg) => {
     
     if (activeOrders.length === 0) return seal.replyToSender(ctx, msg, "🟢 当前工坊空闲，暂无排单。");
 
+    const users = getDb("paidan_users");
     let res = "📊 【工坊实时排单看板】\n";
     activeOrders.sort((a, b) => (b.isUrgent ? 1 : 0) - (a.isUrgent ? 1 : 0)); // 急单置顶
 
@@ -462,8 +433,8 @@ cmdKanban.solve = (ctx, msg) => {
         let urgent = o.isUrgent ? " [⚡急]" : "";
         let timeDiff = Math.floor((Date.now() - o.timestamp) / (1000 * 60 * 60 * 24));
         let timeout = timeDiff >= 3 ? " ⏳超时" : "";
-        
-        res += `${icon}${urgent} ${o.id} | ${getDb("paidan_users")[o.uid]?.name || '访客'}${timeout}\n`;
+
+        res += `${icon}${urgent} ${o.id} | ${users[o.uid]?.name || '访客'}${timeout}\n`;
         res += `   进度：${o.status} | 已排：${timeDiff}天\n`;
     });
     res += "\n💡 提示：⚪待接单 🟡草图 🟢制作中";
@@ -481,9 +452,10 @@ cmdReport.solve = (ctx, msg) => {
     const now = new Date();
     const currentMonth = now.getMonth();
     
+    const currentYear = now.getFullYear();
     const monthlyOrders = orders.filter(o => {
         const d = new Date(o.timestamp);
-        return d.getMonth() === currentMonth && o.status === "已完成";
+        return d.getFullYear() === currentYear && d.getMonth() === currentMonth && o.status === "已完成";
     });
 
     let res = `📅 【${now.getMonth() + 1}月工坊结算报告】\n`;

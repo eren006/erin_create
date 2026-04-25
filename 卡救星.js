@@ -159,10 +159,11 @@ cmdDel.solve = (ctx, msg, cmdArgs) => {
 };
 ext.cmdMap['删除卡片'] = cmdDel;
 
-// 5. 卡片列表 (纯文本分段核心逻辑)
+// 5. 卡片列表 (纯文本分段核心逻辑，支持按类型筛选)
 let cmdList = seal.ext.newCmdItemInfo();
 cmdList.name = '卡片列表';
 cmdList.solve = (ctx, msg, cmdArgs) => {
+    let filterType = cmdArgs.getArgN(1) || '';
     let data = getData();
     let userCards = data[msg.sender.userId];
 
@@ -172,10 +173,25 @@ cmdList.solve = (ctx, msg, cmdArgs) => {
     }
 
     let cardNames = Object.keys(userCards);
+    if (filterType) {
+        if (!VALID_TYPES.includes(filterType)) {
+            seal.replyToSender(ctx, msg, `❌ 可选类型：${VALID_TYPES.join('/')}`);
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        cardNames = cardNames.filter(n => userCards[n].type === filterType);
+        if (cardNames.length === 0) {
+            seal.replyToSender(ctx, msg, `📭 没有「${filterType}」类型的卡片。`);
+            return seal.ext.newCmdExecuteResult(true);
+        }
+    }
+
+    // 按到期日升序排列（最快到期的排最前）
+    cardNames.sort((a, b) => new Date(userCards[a].expiry) - new Date(userCards[b].expiry));
+
     let total = cardNames.length;
-    
-    // 发送页眉
-    seal.replyToSender(ctx, msg, `🛡️ 【卡片救星 · 资产总览】\n共计 ${total} 张卡片，正在分段展示：`);
+    let title = filterType ? `🛡️ 【卡片救星 · ${filterType}】\n共计 ${total} 张，按临期排序：`
+                           : `🛡️ 【卡片救星 · 资产总览】\n共计 ${total} 张卡片，按临期排序：`;
+    seal.replyToSender(ctx, msg, title);
 
     let text = "";
     let count = 0;
@@ -192,7 +208,6 @@ cmdList.solve = (ctx, msg, cmdArgs) => {
 
         count++;
 
-        // 每 5 张发送一次，防止消息过长
         if (count >= 5 || i === total - 1) {
             seal.replyToSender(ctx, msg, text.trim());
             text = "";
@@ -202,6 +217,83 @@ cmdList.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap['卡片列表'] = cmdList;
+
+// 6. 清理过期卡片
+let cmdClean = seal.ext.newCmdItemInfo();
+cmdClean.name = '清理过期';
+cmdClean.solve = (ctx, msg, cmdArgs) => {
+    let data = getData();
+    let uid = msg.sender.userId;
+    let userCards = data[uid];
+
+    if (!userCards || Object.keys(userCards).length === 0) {
+        seal.replyToSender(ctx, msg, "📭 卡包空空如也。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    let expired = Object.keys(userCards).filter(n => getDaysDiff(userCards[n].expiry) <= 0);
+    if (expired.length === 0) {
+        seal.replyToSender(ctx, msg, "✅ 没有过期卡片，卡包干净。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    expired.forEach(n => delete userCards[n]);
+    saveData(data);
+    seal.replyToSender(ctx, msg, `🗑️ 已清理 ${expired.length} 张过期卡片：\n${expired.map(n => `· ${n}`).join('\n')}`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap['清理过期'] = cmdClean;
+
+// 7. 急救箱：随机抽取一张卡片
+const JIUJIU_LINES = [
+    "命运之手为你选中了它！",
+    "今天就用它吧，别再纠结了~",
+    "它在卡包里等你很久了。",
+    "就决定是你了！",
+    "缘分天注定，出手吧！",
+    "骰子已掷出，无法反悔。",
+];
+
+let cmdRandom = seal.ext.newCmdItemInfo();
+cmdRandom.name = '急救箱';
+cmdRandom.solve = (ctx, msg, cmdArgs) => {
+    let filterType = cmdArgs.getArgN(1) || '';
+    let data = getData();
+    let userCards = data[msg.sender.userId];
+
+    if (!userCards || Object.keys(userCards).length === 0) {
+        seal.replyToSender(ctx, msg, "📭 卡包空空如也，没什么可抽的。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    let pool = Object.values(userCards).filter(c => getDaysDiff(c.expiry) > 0);
+    if (filterType) {
+        if (!VALID_TYPES.includes(filterType)) {
+            seal.replyToSender(ctx, msg, `❌ 可选类型：${VALID_TYPES.join('/')}`);
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        pool = pool.filter(c => c.type === filterType);
+    }
+
+    if (pool.length === 0) {
+        let tip = filterType ? `没有有效的「${filterType}」卡片` : '没有有效卡片（可能都过期了？）';
+        seal.replyToSender(ctx, msg, `📭 ${tip}`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    let card = pool[Math.floor(Math.random() * pool.length)];
+    let days = getDaysDiff(card.expiry);
+    let flavor = JIUJIU_LINES[Math.floor(Math.random() * JIUJIU_LINES.length)];
+
+    seal.replyToSender(ctx, msg,
+        `🎲 【急救箱】${flavor}\n` +
+        `📌 ${card.name}（${card.type}）\n` +
+        `⏳ 还剩 ${days} 天到期 | 📦 库存：${card.quantity}`
+    );
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap['急救箱'] = cmdRandom;
+ext.cmdMap['随机卡片'] = cmdRandom;
 
 // ======================== 自动预警模块 ========================
 function runReminder() {
@@ -215,7 +307,8 @@ function runReminder() {
             
             for (let m of milestones) {
                 if (days === m && !card.reminded.includes(m)) {
-                    let text = `📢 【过期预警】\n您的「${name}」还有 ${days} 天就要到期了。\n当前库存：${card.quantity}\n请记得及时使用。`;
+                    let atPrefix = `[CQ:at,qq=${uid.replace('QQ:', '')}] `;
+                    let text = `${atPrefix}📢 【过期预警】\n您的「${name}」还有 ${days} 天就要到期了。\n当前库存：${card.quantity}\n请记得及时使用。`;
                     let eps = seal.getEndPoints();
                     if (eps.length > 0) {
                         let fakeMsg = seal.newMessage();
@@ -225,6 +318,8 @@ function runReminder() {
                         } else {
                             fakeMsg.sender.userId = uid;
                             fakeMsg.messageType = 'private';
+                            // 私聊不需要艾特前缀
+                            text = `📢 【过期预警】\n您的「${name}」还有 ${days} 天就要到期了。\n当前库存：${card.quantity}\n请记得及时使用。`;
                         }
                         let targetCtx = seal.createTempCtx(eps[0], fakeMsg);
                         seal.replyToSender(targetCtx, fakeMsg, text);
