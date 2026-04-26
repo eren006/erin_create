@@ -2300,7 +2300,22 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
     ext.storageSet("global_gift_stats", JSON.stringify(globalStats));
     ext.storageSet("global_gift_cooldowns", JSON.stringify(globalCooldowns));
 
-    seal.replyToSender(ctx, msg, `🎁 已成功将 ${giftDisplayName} 送往「${toname}」的房间。\n(今日第 ${userStat.count}份)`);
+    // 记录撤回信息（3分钟内可撤回）
+    const pendingRecall = JSON.parse(ext.storageGet("pending_recall") || "{}");
+    pendingRecall[userKey] = {
+        type: "礼物",
+        toname,
+        trueRecipient: toname,
+        recipientGroupId: targetEntry[1],
+        sentAt: now,
+        senderName: sendname,
+        giftDisplayName,
+        presetGiftId: giftInput.startsWith('#') ? giftInput : null,
+        shopMode: giftInput.startsWith('#') ? (ext.storageGet("shop_mode") || "抽卡") : null,
+    };
+    ext.storageSet("pending_recall", JSON.stringify(pendingRecall));
+
+    seal.replyToSender(ctx, msg, `🎁 已成功将 ${giftDisplayName} 送往「${toname}」的房间。\n(今日第 ${userStat.count}份，3分钟内可发「撤回」取消)`);
 
     // 8. 公开广播逻辑 (保持原样)
     const publicGroupId = JSON.parse(ext.storageGet("adminAnnounceGroupId") || "null");
@@ -4115,7 +4130,19 @@ async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, co
     globalChaosCounts[userKey] = userRec;
     ext.storageSet("global_chaos_letter_counts", JSON.stringify(globalChaosCounts));
 
-    seal.replyToSender(ctx, msg, `🕊️ 信件已由鸽子衔往 ${toname} 处。今日已发 ${userRec.count}/${chaosConfig.dailyLimit}。`);
+    // 记录撤回信息（3分钟内可撤回）
+    const pendingRecall = JSON.parse(ext.storageGet("pending_recall") || "{}");
+    pendingRecall[userKey] = {
+        type: "短信",
+        toname,
+        trueRecipient,
+        recipientGroupId: targetEntry[1],
+        sentAt: now,
+        senderName: sendname,
+    };
+    ext.storageSet("pending_recall", JSON.stringify(pendingRecall));
+
+    seal.replyToSender(ctx, msg, `🕊️ 信件已由鸽子衔往 ${toname} 处。今日已发 ${userRec.count}/${chaosConfig.dailyLimit}（3分钟内可发「撤回」取消）。`);
 
     // 公开逻辑
     const letterPublicEnabled = JSON.parse(ext.storageGet("letter_public_send") || "false");
@@ -4980,28 +5007,21 @@ function getPlaceSystemConfig() {
 
 // 检查用户今日目击报告次数
 function getUserSightingCountToday(platform, roleName) {
-    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const today = new Date().toISOString().slice(0, 10);
     const sightingCount = JSON.parse(ext.storageGet("sighting_daily_count") || "{}");
-    
-    if (!sightingCount[today]) {
-        sightingCount[today] = {};
-    }
-    
-    const platformKey = `${platform}:${roleName}`;
-    return sightingCount[today][platformKey] || 0;
+    return (sightingCount[today] || {})[`${platform}:${roleName}`] || 0;
 }
 
-// 增加用户今日目击报告次数
+// 增加用户今日目击报告次数（同时清理过期日期）
 function incrementUserSightingCountToday(platform, roleName) {
     const today = new Date().toISOString().slice(0, 10);
     const sightingCount = JSON.parse(ext.storageGet("sighting_daily_count") || "{}");
-    
-    if (!sightingCount[today]) {
-        sightingCount[today] = {};
+    // 清理非今天的旧数据
+    for (const date of Object.keys(sightingCount)) {
+        if (date !== today) delete sightingCount[date];
     }
-    
-    const platformKey = `${platform}:${roleName}`;
-    sightingCount[today][platformKey] = (sightingCount[today][platformKey] || 0) + 1;
+    if (!sightingCount[today]) sightingCount[today] = {};
+    sightingCount[today][`${platform}:${roleName}`] = (sightingCount[today][`${platform}:${roleName}`] || 0) + 1;
     ext.storageSet("sighting_daily_count", JSON.stringify(sightingCount));
 }
 
@@ -5042,173 +5062,105 @@ function calculateTimeOverlapRatio(time1, time2) {
     return overlapMinutes / minDuration;
 }
 
-// 查找同一时间同一地点的其他约会（包括已结束的）
+// 查找同一时间同一地点的其他约会
 function findSimultaneousMeetings(platform, day, time, place, excludeGroupId = null) {
     const b_confirmedSchedule = JSON.parse(ext.storageGet("b_confirmedSchedule") || "{}");
     const groupExpireInfo = JSON.parse(ext.storageGet("group_expire_info") || "{}");
     const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
     const sightingConfig = getSightingConfig();
-    
+
+    // 按 groupId 去重，避免同一会议因多个参与者各有日程而重复出现
+    const seenGroups = new Set();
     const simultaneousMeetings = [];
-    
-    // 遍历所有已确认的日程（包括已结束的）
+
     for (const [userId, scheduleList] of Object.entries(b_confirmedSchedule)) {
         for (const meeting of scheduleList) {
-            // 跳过排除的群组
             if (excludeGroupId && meeting.group === excludeGroupId) continue;
-            
-            // 检查是否同一天同一地点
             if (meeting.day !== day || meeting.place !== place) continue;
-            
-            // 检查时间段是否重叠（部分重合即可）
+
+            // 已结束的会议按配置决定是否纳入
+            if (!sightingConfig.include_ended_meetings && meeting.status === "ended") continue;
+
             const overlapRatio = calculateTimeOverlapRatio(meeting.time, time);
             if (overlapRatio < sightingConfig.time_overlap_threshold) continue;
-            
-            // 获取参与者信息
-            const meetingParticipants = [];
+
+            // 按 groupId 去重（同一群组只收录一次）
             const meetingGroupId = meeting.group;
-            
-            // 尝试从群组信息中获取参与者
-            if (meetingGroupId && groupExpireInfo[meetingGroupId]) {
+            if (meetingGroupId && seenGroups.has(meetingGroupId)) continue;
+            if (meetingGroupId) seenGroups.add(meetingGroupId);
+
+            // 获取参与者
+            const meetingParticipants = [];
+            if (meetingGroupId && groupExpireInfo[meetingGroupId]?.participants?.length) {
                 meetingParticipants.push(...groupExpireInfo[meetingGroupId].participants);
             } else {
-                // 从日程信息中获取参与者
-                if (meeting.partner) {
-                    if (meeting.partner === "多人小群") {
-                        // 多人小群，需要从其他地方获取参与者
-                        // 这里简化处理，标记为多人
-                        meetingParticipants.push("多人");
-                    } else {
-                        meetingParticipants.push(meeting.partner);
-                    }
-                }
-                
-                // 从用户ID获取角色名
-                const userIdParts = userId.split(':');
-                const userPlatform = userIdParts[0];
-                const userUid = userIdParts[1];
-                
-                if (a_private_group[userPlatform]) {
-                    const roleName = Object.entries(a_private_group[userPlatform])
-                        .find(([_, val]) => val[0] === userUid)?.[0];
-                    if (roleName && !meetingParticipants.includes(roleName)) {
-                        meetingParticipants.push(roleName);
-                    }
-                }
+                if (meeting.partner && meeting.partner !== "多人小群") meetingParticipants.push(meeting.partner);
+                const [userPlatform, userUid] = userId.split(':');
+                const roleName = Object.entries(a_private_group[userPlatform] || {})
+                    .find(([_, v]) => v[0] === userUid)?.[0];
+                if (roleName && !meetingParticipants.includes(roleName)) meetingParticipants.push(roleName);
             }
-            
-            // 如果参与者为空，跳过
+
             if (meetingParticipants.length === 0) continue;
-            
-            // 确定活动类型
-            let meetingType = meeting.subtype || "未知";
-            if (meeting.partner === "多人小群") {
-                meetingType = "多人" + meetingType;
-            }
-            
-            // 确定会议状态
-            const isEnded = meeting.status === "ended";
-            
+
             simultaneousMeetings.push({
                 groupId: meetingGroupId,
                 day: meeting.day,
                 time: meeting.time,
                 place: meeting.place,
-                participants: [...new Set(meetingParticipants)], // 去重
-                type: meetingType,
-                isEnded: isEnded,
-                overlapRatio: overlapRatio
+                participants: [...new Set(meetingParticipants)],
+                type: meeting.subtype || "未知",
+                isEnded: meeting.status === "ended",
+                overlapRatio
             });
         }
     }
-    
-    // 排序：按时间重叠比例降序排列
+
     simultaneousMeetings.sort((a, b) => b.overlapRatio - a.overlapRatio);
-    console.log("找到其他会议数量：" + simultaneousMeetings.length)
     return simultaneousMeetings;
 }
 function sendSightingReports(platform, newMeetingInfo, simultaneousMeetings, ctx, msg) {
-    console.log("[DEBUG] sendSightingReports 被调用", {
-        platform,
-        newMeetingInfo,
-        simultaneousMeetingsCount: simultaneousMeetings?.length,
-        ctxType: typeof ctx,
-        msgType: typeof msg,
-        ctxExists: !!ctx,
-        msgExists: !!msg,
-        ctxEndPointExists: ctx && !!ctx.endPoint
-    });
-    
-    // 检查 ctx 和 endPoint 有效性
-    if (!ctx || !ctx.endPoint) {
-        console.error("[ERROR] sendSightingReports: ctx 或 ctx.endPoint 无效，无法发送报告");
-        return;
-    }
-    
+    if (!ctx || !ctx.endPoint) return;
+
     const sightingConfig = getSightingConfig();
     const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
-    
-    if (!a_private_group[platform]) {
-        console.log("[DEBUG] a_private_group[platform] 不存在，platform=", platform);
-        return;
-    }
-    
-    // 记录已经发送过反向报告的 meeting，避免重复
+    if (!a_private_group[platform]) return;
+
+    // 记录已触发过反向报告的 meeting，避免重复通知
     const processedReverseMeetings = new Set();
-    
-    // 为新会议的每个参与者发送目击报告
+
     for (const participant of newMeetingInfo.participants) {
-        // 检查是否需要发送报告
-        if (!shouldSendSightingReport(platform, participant)) {
-            console.log("[DEBUG] 跳过参与者（shouldSendSightingReport=false）:", participant);
-            continue;
-        }
-        
-        // 获取参与者的群组ID
         const participantInfo = a_private_group[platform][participant];
-        if (!participantInfo || !participantInfo[1]) {
-            console.log("[DEBUG] 参与者信息无效:", participant, participantInfo);
-            continue;
-        }
-        
-        // 为每个同时进行的会议生成报告
+        if (!participantInfo?.[1]) continue;
+
+        const targetGroupId = participantInfo[1];
+
         for (const otherMeeting of simultaneousMeetings) {
             // 跳过自己所在的会议
-            if (otherMeeting.participants.includes(participant)) {
-                console.log("[DEBUG] 跳过自身会议，参与者:", participant);
-                continue;
-            }
-            
-            // 构建生动的报告消息
+            if (otherMeeting.participants.includes(participant)) continue;
+
+            // 检查是否还在每日上限内（含随机概率）
+            if (!shouldSendSightingReport(platform, participant)) continue;
+
             const otherParticipantsText = otherMeeting.participants.join('、');
-            const reportMessage = 
-                `👀 不会吧，你居然在 ${newMeetingInfo.place} 看见了 ${otherParticipantsText} 在一起！\n` ;
-            
-            // 使用 seal 框架发送消息
-            const targetGroupId = participantInfo[1];
+            const reportMessage = `👀 不会吧，你居然在 ${newMeetingInfo.place} 看见了 ${otherParticipantsText} 在一起！`;
+
             const newMsg = seal.newMessage();
             newMsg.messageType = "group";
             newMsg.groupId = `${platform}-Group:${targetGroupId}`;
             const tempCtx = seal.createTempCtx(ctx.endPoint, newMsg);
-            
             try {
                 seal.replyToSender(tempCtx, newMsg, reportMessage);
-                console.log("[DEBUG] 目击报告已发送至群组:", targetGroupId);
             } catch (err) {
-                console.error("[ERROR] 发送目击报告失败:", err);
+                console.error("[目击] 发送报告失败:", err);
             }
-            
-            // 增加目击次数
+
             incrementUserSightingCountToday(platform, participant);
-            
-            // 如果配置为同时发送给被目击者，且该 meeting 尚未处理过反向报告
+
             if (sightingConfig.send_to_all && !processedReverseMeetings.has(otherMeeting.groupId)) {
                 processedReverseMeetings.add(otherMeeting.groupId);
                 sendCounterSightingReports(platform, otherMeeting, newMeetingInfo, ctx);
             }
-            
-            // 每个参与者每天只发送一次报告
-            break;
         }
     }
 }
@@ -5259,48 +5211,6 @@ function sendCounterSightingReports(platform, originalMeeting, newMeetingInfo, c
         
         // 增加目击次数
         incrementUserSightingCountToday(platform, participant);
-    }
-}
-
-// 获取时间重叠的描述
-function getTimeOverlapDescription(time1, time2) {
-    const [start1, end1] = parseStartEnd(time1);
-    const [start2, end2] = parseStartEnd(time2);
-    
-    // 找到重叠的时间段
-    const overlapStart = Math.max(start1, start2);
-    const overlapEnd = Math.min(end1, end2);
-    
-    // 计算重叠的分钟数
-    const overlapMinutes = Math.max(0, overlapEnd - overlapStart);
-    
-    // 格式化为小时:分钟
-    const formatMinutes = (minutes) => {
-        const hours = Math.floor(minutes / 60);
-        const mins = minutes % 60;
-        return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
-    };
-    
-    if (overlapMinutes > 0) {
-        const overlapStartTime = formatMinutes(overlapStart);
-        const overlapEndTime = formatMinutes(overlapEnd);
-        return `${overlapStartTime}-${overlapEndTime}（重叠${overlapMinutes}分钟）`;
-    } else {
-        // 如果没有完全重叠，但时间段相近（相隔30分钟内）
-        const timeGap = Math.min(
-            Math.abs(start1 - end2),
-            Math.abs(start2 - end1)
-        );
-        
-        if (timeGap <= 30) {
-            const gapTime = formatMinutes(Math.max(start1, start2));
-            return `${gapTime}左右`;
-        } else {
-            // 返回大致时间段
-            const midTime1 = formatMinutes(Math.floor((start1 + end1) / 2));
-            const midTime2 = formatMinutes(Math.floor((start2 + end2) / 2));
-            return `${midTime1}至${midTime2}期间`;
-        }
     }
 }
 
@@ -6419,6 +6329,71 @@ ext.onNotCommandReceived = (ctx, msg) => {
         if (!progress[groupId]) progress[groupId] = {};
         progress[groupId][uid] = (progress[groupId][uid] || 0) + 1;
         ext.storageSet("group_write_progress", JSON.stringify(progress));
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    if (raw === "撤回") {
+        const roleName = getRoleName(ctx, msg);
+        if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色");
+        const userKey = `${platform}:${uid}`;
+        const pendingRecall = JSON.parse(ext.storageGet("pending_recall") || "{}");
+        const record = pendingRecall[userKey];
+
+        if (!record) {
+            seal.replyToSender(ctx, msg, "⚠️ 没有可撤回的发送记录");
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        if (Date.now() - record.sentAt > 3 * 60 * 1000) {
+            delete pendingRecall[userKey];
+            ext.storageSet("pending_recall", JSON.stringify(pendingRecall));
+            seal.replyToSender(ctx, msg, "⚠️ 超过3分钟，无法撤回");
+            return seal.ext.newCmdExecuteResult(true);
+        }
+
+        // 发撤回通知到收件人群
+        if (record.recipientGroupId) {
+            const recallMsg = seal.newMessage();
+            recallMsg.messageType = "group";
+            recallMsg.groupId = `${platform}-Group:${record.recipientGroupId}`;
+            const recallCtx = seal.createTempCtx(ctx.endPoint, recallMsg);
+            const recallText = record.type === "礼物"
+                ? `📭 「${record.senderName}」撤回了刚才送给 ${record.trueRecipient} 的${record.giftDisplayName || "礼物"}`
+                : `📭 「${record.senderName}」撤回了刚才发给 ${record.trueRecipient} 的短信`;
+            seal.replyToSender(recallCtx, recallMsg, recallText);
+        }
+
+        // 返还次数
+        if (record.type === "短信") {
+            const counts = JSON.parse(ext.storageGet("global_chaos_letter_counts") || "{}");
+            if (counts[userKey]) {
+                counts[userKey].count = Math.max(0, (counts[userKey].count || 1) - 1);
+                ext.storageSet("global_chaos_letter_counts", JSON.stringify(counts));
+            }
+        } else if (record.type === "礼物") {
+            const globalStats = JSON.parse(ext.storageGet("global_gift_stats") || "{}");
+            if (globalStats[userKey]) {
+                globalStats[userKey].count = Math.max(0, (globalStats[userKey].count || 1) - 1);
+                ext.storageSet("global_gift_stats", JSON.stringify(globalStats));
+            }
+            // 商城模式：返还背包
+            if (record.presetGiftId && record.shopMode === "商城") {
+                const invs = store.get("global_inventories");
+                const invKey = `${platform}:${roleName}`;
+                const myInv = invs[invKey] || [];
+                const idx = myInv.findIndex(i => i.giftId === record.presetGiftId);
+                if (idx !== -1) {
+                    myInv[idx].count = (myInv[idx].count || 0) + 1;
+                } else {
+                    myInv.push({ giftId: record.presetGiftId, count: 1 });
+                }
+                invs[invKey] = myInv;
+                store.set("global_inventories", invs);
+            }
+        }
+
+        delete pendingRecall[userKey];
+        ext.storageSet("pending_recall", JSON.stringify(pendingRecall));
+        seal.replyToSender(ctx, msg, `✅ 已撤回，次数已返还`);
         return seal.ext.newCmdExecuteResult(true);
     }
 
