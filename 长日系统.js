@@ -2241,36 +2241,17 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
     let giftContent = giftInput;
 
     if (giftInput.startsWith('#')) {
-        const shopMode = ext.storageGet("shop_mode") || "抽卡";
         let presetGifts = JSON.parse(ext.storageGet("preset_gifts") || "{}");
         const giftData = presetGifts[giftInput];
         if (!giftData) return seal.replyToSender(ctx, msg, `❌ 预设礼物 ${giftInput} 不存在`);
 
-        if (shopMode === "商城") {
-            // 商城模式：消耗背包里的一件
-            const myInvKey = `${platform}:${autoSendname}`;
-            const invs = store.get("global_inventories");
-            const myInv = invs[myInvKey] || [];
-            const backpackIdx = myInv.findIndex(i => i.giftId === giftInput && !i.used);
-            if (backpackIdx === -1) {
-                return seal.replyToSender(ctx, msg, `❌ 背包里没有「${giftData.name}」，请先在礼物商城购买。`);
-            }
-            if ((myInv[backpackIdx].count || 1) > 1) {
-                myInv[backpackIdx].count -= 1;
-            } else {
-                myInv.splice(backpackIdx, 1);
-            }
-            invs[myInvKey] = myInv;
-            store.set("global_inventories", invs);
-        } else {
-            // 抽卡模式：检查图鉴，可无限赠送
-            const sightings = JSON.parse(ext.storageGet("gift_sightings") || "{}");
-            const uid_clean = msg.sender.userId.replace(/^[a-z]+:/i, "");
-            const userKey = `${platform}:${uid_clean}`;
-            const owned = sightings[userKey]?.unlocked_gifts || [];
-            if (!owned.includes(giftInput)) {
-                return seal.replyToSender(ctx, msg, `🔒 「${giftData.name}」不在图鉴中，请先发送「礼物商城」收集。`);
-            }
+        // 抽卡模式：检查图鉴，可无限赠送
+        const sightings = JSON.parse(ext.storageGet("gift_sightings") || "{}");
+        const uid_clean = msg.sender.userId.replace(/^[a-z]+:/i, "");
+        const userKey = `${platform}:${uid_clean}`;
+        const owned = sightings[userKey]?.unlocked_gifts || [];
+        if (!owned.includes(giftInput)) {
+            return seal.replyToSender(ctx, msg, `🔒 「${giftData.name}」不在图鉴中，请先发送「礼物商城」收集。`);
         }
 
         giftDisplayName = `「${giftData.name}」`;
@@ -2300,7 +2281,21 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
     ext.storageSet("global_gift_stats", JSON.stringify(globalStats));
     ext.storageSet("global_gift_cooldowns", JSON.stringify(globalCooldowns));
 
-    seal.replyToSender(ctx, msg, `🎁 已成功将 ${giftDisplayName} 送往「${toname}」的房间。\n(今日第 ${userStat.count}份)`);
+    // 记录撤回信息（3分钟内可撤回）
+    const pendingRecall = JSON.parse(ext.storageGet("pending_recall") || "{}");
+    pendingRecall[userKey] = {
+        type: "礼物",
+        toname,
+        trueRecipient: toname,
+        recipientGroupId: targetEntry[1],
+        sentAt: now,
+        senderName: sendname,
+        giftDisplayName,
+        presetGiftId: giftInput.startsWith('#') ? giftInput : null,
+    };
+    ext.storageSet("pending_recall", JSON.stringify(pendingRecall));
+
+    seal.replyToSender(ctx, msg, `🎁 已成功将 ${giftDisplayName} 送往「${toname}」的房间。\n(今日第 ${userStat.count}份，3分钟内可发「撤回」取消)`);
 
     // 8. 公开广播逻辑 (保持原样)
     const publicGroupId = JSON.parse(ext.storageGet("adminAnnounceGroupId") || "null");
@@ -2588,6 +2583,7 @@ cmd_grouplist_release.solve = (ctx, msg, cmdArgs) => {
         seal.replyToSender(ctx, msg, `✅ 本群（${gid}）本轮小群已结束，可再次发起新小群，所有相关记录已标记"已结束"`);
         setGroupName(ctx, msg, ctx.group.groupId, `备用`);
         cleanupGroupTimer(gid);
+        applyEndGameBonuses(ctx, msg, gid, platform);
     } else {
         seal.replyToSender(ctx, msg, `⚠️ 当前群号未处于占用状态，无法结束`);
     }
@@ -4115,7 +4111,19 @@ async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, co
     globalChaosCounts[userKey] = userRec;
     ext.storageSet("global_chaos_letter_counts", JSON.stringify(globalChaosCounts));
 
-    seal.replyToSender(ctx, msg, `🕊️ 信件已由鸽子衔往 ${toname} 处。今日已发 ${userRec.count}/${chaosConfig.dailyLimit}。`);
+    // 记录撤回信息（3分钟内可撤回）
+    const pendingRecall = JSON.parse(ext.storageGet("pending_recall") || "{}");
+    pendingRecall[userKey] = {
+        type: "短信",
+        toname,
+        trueRecipient,
+        recipientGroupId: targetEntry[1],
+        sentAt: now,
+        senderName: sendname,
+    };
+    ext.storageSet("pending_recall", JSON.stringify(pendingRecall));
+
+    seal.replyToSender(ctx, msg, `🕊️ 信件已由鸽子衔往 ${toname} 处。今日已发 ${userRec.count}/${chaosConfig.dailyLimit}（3分钟内可发「撤回」取消）。`);
 
     // 公开逻辑
     const letterPublicEnabled = JSON.parse(ext.storageGet("letter_public_send") || "false");
@@ -4980,28 +4988,21 @@ function getPlaceSystemConfig() {
 
 // 检查用户今日目击报告次数
 function getUserSightingCountToday(platform, roleName) {
-    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const today = new Date().toISOString().slice(0, 10);
     const sightingCount = JSON.parse(ext.storageGet("sighting_daily_count") || "{}");
-    
-    if (!sightingCount[today]) {
-        sightingCount[today] = {};
-    }
-    
-    const platformKey = `${platform}:${roleName}`;
-    return sightingCount[today][platformKey] || 0;
+    return (sightingCount[today] || {})[`${platform}:${roleName}`] || 0;
 }
 
-// 增加用户今日目击报告次数
+// 增加用户今日目击报告次数（同时清理过期日期）
 function incrementUserSightingCountToday(platform, roleName) {
     const today = new Date().toISOString().slice(0, 10);
     const sightingCount = JSON.parse(ext.storageGet("sighting_daily_count") || "{}");
-    
-    if (!sightingCount[today]) {
-        sightingCount[today] = {};
+    // 清理非今天的旧数据
+    for (const date of Object.keys(sightingCount)) {
+        if (date !== today) delete sightingCount[date];
     }
-    
-    const platformKey = `${platform}:${roleName}`;
-    sightingCount[today][platformKey] = (sightingCount[today][platformKey] || 0) + 1;
+    if (!sightingCount[today]) sightingCount[today] = {};
+    sightingCount[today][`${platform}:${roleName}`] = (sightingCount[today][`${platform}:${roleName}`] || 0) + 1;
     ext.storageSet("sighting_daily_count", JSON.stringify(sightingCount));
 }
 
@@ -5042,173 +5043,105 @@ function calculateTimeOverlapRatio(time1, time2) {
     return overlapMinutes / minDuration;
 }
 
-// 查找同一时间同一地点的其他约会（包括已结束的）
+// 查找同一时间同一地点的其他约会
 function findSimultaneousMeetings(platform, day, time, place, excludeGroupId = null) {
     const b_confirmedSchedule = JSON.parse(ext.storageGet("b_confirmedSchedule") || "{}");
     const groupExpireInfo = JSON.parse(ext.storageGet("group_expire_info") || "{}");
     const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
     const sightingConfig = getSightingConfig();
-    
+
+    // 按 groupId 去重，避免同一会议因多个参与者各有日程而重复出现
+    const seenGroups = new Set();
     const simultaneousMeetings = [];
-    
-    // 遍历所有已确认的日程（包括已结束的）
+
     for (const [userId, scheduleList] of Object.entries(b_confirmedSchedule)) {
         for (const meeting of scheduleList) {
-            // 跳过排除的群组
             if (excludeGroupId && meeting.group === excludeGroupId) continue;
-            
-            // 检查是否同一天同一地点
             if (meeting.day !== day || meeting.place !== place) continue;
-            
-            // 检查时间段是否重叠（部分重合即可）
+
+            // 已结束的会议按配置决定是否纳入
+            if (!sightingConfig.include_ended_meetings && meeting.status === "ended") continue;
+
             const overlapRatio = calculateTimeOverlapRatio(meeting.time, time);
             if (overlapRatio < sightingConfig.time_overlap_threshold) continue;
-            
-            // 获取参与者信息
-            const meetingParticipants = [];
+
+            // 按 groupId 去重（同一群组只收录一次）
             const meetingGroupId = meeting.group;
-            
-            // 尝试从群组信息中获取参与者
-            if (meetingGroupId && groupExpireInfo[meetingGroupId]) {
+            if (meetingGroupId && seenGroups.has(meetingGroupId)) continue;
+            if (meetingGroupId) seenGroups.add(meetingGroupId);
+
+            // 获取参与者
+            const meetingParticipants = [];
+            if (meetingGroupId && groupExpireInfo[meetingGroupId]?.participants?.length) {
                 meetingParticipants.push(...groupExpireInfo[meetingGroupId].participants);
             } else {
-                // 从日程信息中获取参与者
-                if (meeting.partner) {
-                    if (meeting.partner === "多人小群") {
-                        // 多人小群，需要从其他地方获取参与者
-                        // 这里简化处理，标记为多人
-                        meetingParticipants.push("多人");
-                    } else {
-                        meetingParticipants.push(meeting.partner);
-                    }
-                }
-                
-                // 从用户ID获取角色名
-                const userIdParts = userId.split(':');
-                const userPlatform = userIdParts[0];
-                const userUid = userIdParts[1];
-                
-                if (a_private_group[userPlatform]) {
-                    const roleName = Object.entries(a_private_group[userPlatform])
-                        .find(([_, val]) => val[0] === userUid)?.[0];
-                    if (roleName && !meetingParticipants.includes(roleName)) {
-                        meetingParticipants.push(roleName);
-                    }
-                }
+                if (meeting.partner && meeting.partner !== "多人小群") meetingParticipants.push(meeting.partner);
+                const [userPlatform, userUid] = userId.split(':');
+                const roleName = Object.entries(a_private_group[userPlatform] || {})
+                    .find(([_, v]) => v[0] === userUid)?.[0];
+                if (roleName && !meetingParticipants.includes(roleName)) meetingParticipants.push(roleName);
             }
-            
-            // 如果参与者为空，跳过
+
             if (meetingParticipants.length === 0) continue;
-            
-            // 确定活动类型
-            let meetingType = meeting.subtype || "未知";
-            if (meeting.partner === "多人小群") {
-                meetingType = "多人" + meetingType;
-            }
-            
-            // 确定会议状态
-            const isEnded = meeting.status === "ended";
-            
+
             simultaneousMeetings.push({
                 groupId: meetingGroupId,
                 day: meeting.day,
                 time: meeting.time,
                 place: meeting.place,
-                participants: [...new Set(meetingParticipants)], // 去重
-                type: meetingType,
-                isEnded: isEnded,
-                overlapRatio: overlapRatio
+                participants: [...new Set(meetingParticipants)],
+                type: meeting.subtype || "未知",
+                isEnded: meeting.status === "ended",
+                overlapRatio
             });
         }
     }
-    
-    // 排序：按时间重叠比例降序排列
+
     simultaneousMeetings.sort((a, b) => b.overlapRatio - a.overlapRatio);
-    console.log("找到其他会议数量：" + simultaneousMeetings.length)
     return simultaneousMeetings;
 }
 function sendSightingReports(platform, newMeetingInfo, simultaneousMeetings, ctx, msg) {
-    console.log("[DEBUG] sendSightingReports 被调用", {
-        platform,
-        newMeetingInfo,
-        simultaneousMeetingsCount: simultaneousMeetings?.length,
-        ctxType: typeof ctx,
-        msgType: typeof msg,
-        ctxExists: !!ctx,
-        msgExists: !!msg,
-        ctxEndPointExists: ctx && !!ctx.endPoint
-    });
-    
-    // 检查 ctx 和 endPoint 有效性
-    if (!ctx || !ctx.endPoint) {
-        console.error("[ERROR] sendSightingReports: ctx 或 ctx.endPoint 无效，无法发送报告");
-        return;
-    }
-    
+    if (!ctx || !ctx.endPoint) return;
+
     const sightingConfig = getSightingConfig();
     const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
-    
-    if (!a_private_group[platform]) {
-        console.log("[DEBUG] a_private_group[platform] 不存在，platform=", platform);
-        return;
-    }
-    
-    // 记录已经发送过反向报告的 meeting，避免重复
+    if (!a_private_group[platform]) return;
+
+    // 记录已触发过反向报告的 meeting，避免重复通知
     const processedReverseMeetings = new Set();
-    
-    // 为新会议的每个参与者发送目击报告
+
     for (const participant of newMeetingInfo.participants) {
-        // 检查是否需要发送报告
-        if (!shouldSendSightingReport(platform, participant)) {
-            console.log("[DEBUG] 跳过参与者（shouldSendSightingReport=false）:", participant);
-            continue;
-        }
-        
-        // 获取参与者的群组ID
         const participantInfo = a_private_group[platform][participant];
-        if (!participantInfo || !participantInfo[1]) {
-            console.log("[DEBUG] 参与者信息无效:", participant, participantInfo);
-            continue;
-        }
-        
-        // 为每个同时进行的会议生成报告
+        if (!participantInfo?.[1]) continue;
+
+        const targetGroupId = participantInfo[1];
+
         for (const otherMeeting of simultaneousMeetings) {
             // 跳过自己所在的会议
-            if (otherMeeting.participants.includes(participant)) {
-                console.log("[DEBUG] 跳过自身会议，参与者:", participant);
-                continue;
-            }
-            
-            // 构建生动的报告消息
+            if (otherMeeting.participants.includes(participant)) continue;
+
+            // 检查是否还在每日上限内（含随机概率）
+            if (!shouldSendSightingReport(platform, participant)) continue;
+
             const otherParticipantsText = otherMeeting.participants.join('、');
-            const reportMessage = 
-                `👀 不会吧，你居然在 ${newMeetingInfo.place} 看见了 ${otherParticipantsText} 在一起！\n` ;
-            
-            // 使用 seal 框架发送消息
-            const targetGroupId = participantInfo[1];
+            const reportMessage = `👀 不会吧，你居然在 ${newMeetingInfo.place} 看见了 ${otherParticipantsText} 在一起！`;
+
             const newMsg = seal.newMessage();
             newMsg.messageType = "group";
             newMsg.groupId = `${platform}-Group:${targetGroupId}`;
             const tempCtx = seal.createTempCtx(ctx.endPoint, newMsg);
-            
             try {
                 seal.replyToSender(tempCtx, newMsg, reportMessage);
-                console.log("[DEBUG] 目击报告已发送至群组:", targetGroupId);
             } catch (err) {
-                console.error("[ERROR] 发送目击报告失败:", err);
+                console.error("[目击] 发送报告失败:", err);
             }
-            
-            // 增加目击次数
+
             incrementUserSightingCountToday(platform, participant);
-            
-            // 如果配置为同时发送给被目击者，且该 meeting 尚未处理过反向报告
+
             if (sightingConfig.send_to_all && !processedReverseMeetings.has(otherMeeting.groupId)) {
                 processedReverseMeetings.add(otherMeeting.groupId);
                 sendCounterSightingReports(platform, otherMeeting, newMeetingInfo, ctx);
             }
-            
-            // 每个参与者每天只发送一次报告
-            break;
         }
     }
 }
@@ -5259,48 +5192,6 @@ function sendCounterSightingReports(platform, originalMeeting, newMeetingInfo, c
         
         // 增加目击次数
         incrementUserSightingCountToday(platform, participant);
-    }
-}
-
-// 获取时间重叠的描述
-function getTimeOverlapDescription(time1, time2) {
-    const [start1, end1] = parseStartEnd(time1);
-    const [start2, end2] = parseStartEnd(time2);
-    
-    // 找到重叠的时间段
-    const overlapStart = Math.max(start1, start2);
-    const overlapEnd = Math.min(end1, end2);
-    
-    // 计算重叠的分钟数
-    const overlapMinutes = Math.max(0, overlapEnd - overlapStart);
-    
-    // 格式化为小时:分钟
-    const formatMinutes = (minutes) => {
-        const hours = Math.floor(minutes / 60);
-        const mins = minutes % 60;
-        return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
-    };
-    
-    if (overlapMinutes > 0) {
-        const overlapStartTime = formatMinutes(overlapStart);
-        const overlapEndTime = formatMinutes(overlapEnd);
-        return `${overlapStartTime}-${overlapEndTime}（重叠${overlapMinutes}分钟）`;
-    } else {
-        // 如果没有完全重叠，但时间段相近（相隔30分钟内）
-        const timeGap = Math.min(
-            Math.abs(start1 - end2),
-            Math.abs(start2 - end1)
-        );
-        
-        if (timeGap <= 30) {
-            const gapTime = formatMinutes(Math.max(start1, start2));
-            return `${gapTime}左右`;
-        } else {
-            // 返回大致时间段
-            const midTime1 = formatMinutes(Math.floor((start1 + end1) / 2));
-            const midTime2 = formatMinutes(Math.floor((start2 + end2) / 2));
-            return `${midTime1}至${midTime2}期间`;
-        }
     }
 }
 
@@ -5386,11 +5277,83 @@ function getUserStats() {
     return JSON.parse(ext.storageGet("user_stats") || "{}");
 }
 
-/**
- * 保存用户统计
- */
 function saveUserStats(stats) {
     ext.storageSet("user_stats", JSON.stringify(stats));
+}
+
+function getSessionStats() {
+    return JSON.parse(ext.storageGet("group_session_stats") || "{}");
+}
+
+function saveSessionStats(s) {
+    ext.storageSet("group_session_stats", JSON.stringify(s));
+}
+
+/**
+ * 结戏时发放加成奖励
+ */
+function applyEndGameBonuses(ctx, msg, gid, platform) {
+    const bonuses = JSON.parse(ext.storageGet("end_game_bonuses") || "[]");
+    const enabled = bonuses.filter(b => b.enabled);
+    if (!enabled.length) return;
+
+    const sessionStats = getSessionStats();
+    const groupStat = sessionStats[gid];
+    if (!groupStat || !Object.keys(groupStat).length) return;
+
+    const reg = JSON.parse(ext.storageGet("item_registry") || "{}");
+    const currencyByName = {};
+    Object.values(reg).forEach(r => { if (r.type === "currency") currencyByName[r.name] = r.code; });
+
+    const report = [];
+
+    for (const [roleName, stat] of Object.entries(groupStat)) {
+        const roleLines = [];
+        for (const bonus of enabled) {
+            const basisVal = bonus.basis === "次数" ? stat.replies : stat.words;
+            const perN = bonus.perN || 1;
+            let amount = Math.floor(basisVal / perN) * bonus.rate;
+            if (bonus.maxPerGame != null) amount = Math.min(amount, bonus.maxPerGame);
+            if (amount <= 0) continue;
+
+            const target = bonus.target;
+            if (bonus.targetType === "currency" || bonus.targetType === "item") {
+                const code = bonus.targetType === "currency"
+                    ? (currencyByName[target] || target.toUpperCase())
+                    : target.toUpperCase();
+                const invs = JSON.parse(ext.storageGet("global_inventories") || "{}");
+                const invKey = `${platform}:${roleName}`;
+                if (!invs[invKey]) invs[invKey] = {};
+                invs[invKey][code] = (invs[invKey][code] || 0) + amount;
+                ext.storageSet("global_inventories", JSON.stringify(invs));
+                roleLines.push(`${target}×${amount}`);
+            } else {
+                // attr
+                const apg = JSON.parse(ext.storageGet("a_private_group") || "{}");
+                let profileKey = null;
+                for (const [plat, roles] of Object.entries(apg)) {
+                    if (roles[roleName]) { profileKey = `${plat}:${roleName}`; break; }
+                }
+                if (profileKey) {
+                    const profiles = JSON.parse(ext.storageGet("sys_char_profiles") || "{}");
+                    if (!profiles[profileKey]) profiles[profileKey] = {};
+                    const cur = parseInt(profiles[profileKey][target] || "0");
+                    profiles[profileKey][target] = String(cur + amount);
+                    ext.storageSet("sys_char_profiles", JSON.stringify(profiles));
+                    roleLines.push(`${target}+${amount}`);
+                }
+            }
+        }
+        if (roleLines.length) report.push(`【${roleName}】${roleLines.join("、")}`);
+    }
+
+    // 清除本群本场记录
+    delete sessionStats[gid];
+    saveSessionStats(sessionStats);
+
+    if (report.length) {
+        seal.replyToSender(ctx, msg, `🎁 结戏加成已发放：\n${report.join("\n")}`);
+    }
 }
 
 /**
@@ -5546,6 +5509,14 @@ function handleReply(platform, groupId, roleName, message) {
     
     // 更新用户统计
     updateUserStats(platform, roleName, wordCount, roleStatus.startTime, roleStatus.repliedTime);
+
+    // 更新本场会话统计（用于结戏加成）
+    const _ss = getSessionStats();
+    if (!_ss[groupId]) _ss[groupId] = {};
+    if (!_ss[groupId][roleName]) _ss[groupId][roleName] = { replies: 0, words: 0 };
+    _ss[groupId][roleName].replies += 1;
+    _ss[groupId][roleName].words += wordCount;
+    saveSessionStats(_ss);
     
     // 根据计时模式处理下一步
     if (timer.timerMode === "turn_taking") {
@@ -6156,26 +6127,8 @@ ext.onNotCommandReceived = (ctx, msg) => {
         const rest = raw.replace(/^(我的)?图鉴/, "").trim();
         return cmd_view_my_gift_collection.solve(ctx, msg, makeFakeCmdArgs(rest ? [rest] : []));
     }
-    if (raw.startsWith("购买")) {
-        const rest = raw.slice(2).trim();
-        if (rest) {
-            const parts = rest.split(/\s+/);
-            return cmd_purchase.solve(ctx, msg, { getArgN: (n) => parts[n - 1] || "", args: parts });
-        }
-    }
     if (raw.startsWith("补货") && isAdmin) {
-        const shopModeNc = ext.storageGet("shop_mode") || "抽卡";
-        if (shopModeNc !== "商城") return seal.replyToSender(ctx, msg, "⚠️ 补货仅在商城模式下可用。");
-        const parts = raw.slice(2).trim().split(/\s+/);
-        const target = parts[0], qty = parts[1] ? parseInt(parts[1]) : 10;
-        if (!target) return seal.replyToSender(ctx, msg, "用法：补货 名字or编号 数量（默认10）");
-        if (isNaN(qty) || qty < 1) return seal.replyToSender(ctx, msg, "❌ 数量必须是正整数");
-        const pgNc = JSON.parse(ext.storageGet("preset_gifts") || "{}");
-        let gidNc = pgNc[target] ? target : (Object.entries(pgNc).find(([, g]) => g.name === target) || [])[0];
-        if (!gidNc) return seal.replyToSender(ctx, msg, `❌ 找不到「${target}」`);
-        pgNc[gidNc].stock = (pgNc[gidNc].stock || 0) + qty;
-        ext.storageSet("preset_gifts", JSON.stringify(pgNc));
-        return seal.replyToSender(ctx, msg, `✅ 「${pgNc[gidNc].name}」补货 ${qty} 件，当前库存：${pgNc[gidNc].stock}`);
+        return seal.replyToSender(ctx, msg, "⚠️ 补货功能已停用（礼物商城目前仅限抽卡模式）");
     }
 
     if (raw === "背包") return cmd_backpack.solve(ctx, msg, makeFakeCmdArgs([]));
@@ -6221,10 +6174,6 @@ ext.onNotCommandReceived = (ctx, msg) => {
     if (raw.startsWith("查看关系线")) {
         const rest = raw.slice(5).trim();
         return cmd_view_relationship.solve(ctx, msg, makeFakeCmdArgs(rest ? [rest] : []));
-    }
-
-    if (raw === "关系线统计" && isAdmin) {
-        return cmd_rel_stats.solve(ctx, msg, makeFakeCmdArgs([]));
     }
 
     // 4.7 额外账号（无前缀，本人操作）
@@ -6419,6 +6368,110 @@ ext.onNotCommandReceived = (ctx, msg) => {
         if (!progress[groupId]) progress[groupId] = {};
         progress[groupId][uid] = (progress[groupId][uid] || 0) + 1;
         ext.storageSet("group_write_progress", JSON.stringify(progress));
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 4.11 时间线
+    if (raw === "时间线") return cmd_view_schedule.solve(ctx, msg, makeFakeCmdArgs([]));
+    if (raw.startsWith("修改时间线")) {
+        const rest = raw.slice(5).trim();
+        if (rest) return cmd_update_schedule.solve(ctx, msg, makeFakeCmdArgs(rest.split(/\s+/)));
+        return cmd_update_schedule.solve(ctx, msg, makeFakeCmdArgs([]));
+    }
+    if (raw.startsWith("废除时间线")) {
+        const rest = raw.slice(5).trim();
+        return cmd_abolish_schedule.solve(ctx, msg, makeFakeCmdArgs(rest ? [rest] : []));
+    }
+    if (raw.startsWith("结束私约")) {
+        const rest = raw.slice(4).trim();
+        return cmd_grouplist_release.solve(ctx, msg, makeFakeCmdArgs(rest ? rest.split(/\s+/) : []));
+    }
+
+    // 4.12 加入请求
+    if (raw === "加入请求") return cmd_join_requests.solve(ctx, msg, makeFakeCmdArgs([]));
+    if (raw.startsWith("同意加入")) {
+        const rest = raw.slice(4).trim();
+        if (rest) return cmd_accept_join.solve(ctx, msg, makeFakeCmdArgs([rest]));
+    }
+    if (raw.startsWith("拒绝加入")) {
+        const rest = raw.slice(4).trim();
+        if (rest) return cmd_reject_join.solve(ctx, msg, makeFakeCmdArgs([rest]));
+    }
+
+    // 4.13 信箱 & 发送信件
+    if (raw === "查看信箱") return cmd_view_mylovemails.solve(ctx, msg, makeFakeCmdArgs([]));
+    if (raw.startsWith("发送信件")) {
+        const rest = raw.slice(4).trim();
+        if (rest) return cmd_send_letter.solve(ctx, msg, makeFakeCmdArgs(rest.split(/\s+/)));
+    }
+
+    // 4.14 本场统计
+    if (raw === "本场统计") return cmd_my_stats.solve(ctx, msg, makeFakeCmdArgs([]));
+
+    // 4.15 管理员无前缀指令
+    if (isAdmin) {
+        if (raw === "查看计时器") return cmd_view_timers.solve(ctx, msg, makeFakeCmdArgs([]));
+        if (raw === "查看进行中") return cmd_admin_view_active.solve(ctx, msg, makeFakeCmdArgs([]));
+        if (raw.startsWith("提醒超时")) {
+            const rest = raw.slice(4).trim();
+            return cmd_remind_timeouts.solve(ctx, msg, makeFakeCmdArgs(rest ? [rest] : []));
+        }
+        if (raw === "查看全员统计") return cmd_all_stats.solve(ctx, msg, makeFakeCmdArgs([]));
+        if (raw === "关系线统计") return cmd_rel_stats.solve(ctx, msg, makeFakeCmdArgs([]));
+        if (raw.startsWith("发起官约")) {
+            const rest = raw.slice(4).trim();
+            if (rest) return cmd_create_official_appointment.solve(ctx, msg, makeFakeCmdArgs(rest.split(/\s+/)));
+        }
+    }
+
+    if (raw === "撤回") {
+        const roleName = getRoleName(ctx, msg);
+        if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色");
+        const userKey = `${platform}:${uid}`;
+        const pendingRecall = JSON.parse(ext.storageGet("pending_recall") || "{}");
+        const record = pendingRecall[userKey];
+
+        if (!record) {
+            seal.replyToSender(ctx, msg, "⚠️ 没有可撤回的发送记录");
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        if (Date.now() - record.sentAt > 3 * 60 * 1000) {
+            delete pendingRecall[userKey];
+            ext.storageSet("pending_recall", JSON.stringify(pendingRecall));
+            seal.replyToSender(ctx, msg, "⚠️ 超过3分钟，无法撤回");
+            return seal.ext.newCmdExecuteResult(true);
+        }
+
+        // 发撤回通知到收件人群
+        if (record.recipientGroupId) {
+            const recallMsg = seal.newMessage();
+            recallMsg.messageType = "group";
+            recallMsg.groupId = `${platform}-Group:${record.recipientGroupId}`;
+            const recallCtx = seal.createTempCtx(ctx.endPoint, recallMsg);
+            const recallText = record.type === "礼物"
+                ? `📭 「${record.senderName}」撤回了刚才送给 ${record.trueRecipient} 的${record.giftDisplayName || "礼物"}`
+                : `📭 「${record.senderName}」撤回了刚才发给 ${record.trueRecipient} 的短信`;
+            seal.replyToSender(recallCtx, recallMsg, recallText);
+        }
+
+        // 返还次数
+        if (record.type === "短信") {
+            const counts = JSON.parse(ext.storageGet("global_chaos_letter_counts") || "{}");
+            if (counts[userKey]) {
+                counts[userKey].count = Math.max(0, (counts[userKey].count || 1) - 1);
+                ext.storageSet("global_chaos_letter_counts", JSON.stringify(counts));
+            }
+        } else if (record.type === "礼物") {
+            const globalStats = JSON.parse(ext.storageGet("global_gift_stats") || "{}");
+            if (globalStats[userKey]) {
+                globalStats[userKey].count = Math.max(0, (globalStats[userKey].count || 1) - 1);
+                ext.storageSet("global_gift_stats", JSON.stringify(globalStats));
+            }
+        }
+
+        delete pendingRecall[userKey];
+        ext.storageSet("pending_recall", JSON.stringify(pendingRecall));
+        seal.replyToSender(ctx, msg, `✅ 已撤回，次数已返还`);
         return seal.ext.newCmdExecuteResult(true);
     }
 
@@ -7919,6 +7972,18 @@ cmd_guide.solve = (ctx, msg, cmdArgs) => {
                     "",
                     "申请加入 角色名 时间点",
                     "  例：申请加入 张三 14:30",
+                    "",
+                    "加入请求       查看收到的加入请求",
+                    "同意加入 请求编号",
+                    "拒绝加入 请求编号",
+                    "",
+                    "时间线         查看自己的日程安排",
+                    "修改时间线 [参数]",
+                    "废除时间线 [群号]   强制删除约会记录",
+                    "",
+                    "结束私约       在约会群中结束本场（需先复盘）",
+                    "  先：回复合并转发消息并发送「转发复盘」",
+                    "  后：发送「结束私约」退群",
                 ]),
                 section("💬 微信 & 心愿 & 短信", [
                     "微信 对方名   建立长期微信群",
@@ -7938,48 +8003,77 @@ cmd_guide.solve = (ctx, msg, cmdArgs) => {
             label: "🎒 物品与商城",
             nodes: () => [
                 section("🎒 背包与道具", [
-                    "抽取          从物品池随机获得普通物品",
-                    "抽取次数      查看今日剩余次数",
+                    "我的背包 / 背包",
+                    "  查看持有的物品、货币、特殊道具",
                     "",
-                    "背包          总览",
-                    "背包 礼物 / 普通道具 / 道具 / 特殊道具",
-                    "背包 物品名   查看详情",
+                    "物品详情 物品码或名称",
+                    "  查看物品描述、属性效果、商城价格",
                     "",
-                    "道具赠送 对方名 物品名",
-                    "  例：道具赠送 张三 玫瑰",
+                    "抽取 [池子名]",
+                    "  从抽取池随机获得物品（不填则从第一个开放池抽）",
+                    "  例：抽取 / 抽取 普通池",
                     "",
-                    "使用 物品名 [参数]",
-                    "  例：使用 万能钥匙 图书馆",
+                    "我的抽取次数 / 抽取次数",
+                    "  查看今日已用/剩余次数",
+                    "",
+                    "赠送道具 对方名 物品码 [数量]",
+                    "  例：赠送道具 张三 AA00 2",
+                    "",
+                    "使用 物品码或名称 [参数]",
+                    "  例：使用 TJ00 张三    （追踪器）",
+                    "  例：使用 WN00 图书馆  （万能钥匙）",
+                    "  例：使用 AA00",
+                ]),
+                section("🏪 商城与二手市场", [
+                    "商城",
+                    "  查看当前在售物品及价格",
+                    "",
+                    "购买 物品码 [数量]",
+                    "  例：购买 AA00 / 购买 AA00 3",
+                    "",
+                    "售卖 物品码 价格 货币名 [数量]",
+                    "  将背包物品挂上二手市场",
+                    "  例：售卖 AA00 8 金币 2",
+                    "",
+                    "二手市场",
+                    "  查看所有在售卖单",
+                    "",
+                    "二手市场 买 编号",
+                    "  购买指定卖单（手续费由买方承担）",
+                    "  例：二手市场 买 0001",
+                    "",
+                    "撤销卖单 编号   撤回自己的卖单并退货",
                 ]),
                 section("🛒 礼物商城", [
-                    "礼物商城",
-                    "  抽卡模式：随机抽一件礼物，自动加图鉴",
-                    "  商城模式：展示在售商品及库存价格",
-                    "",
-                    "购买 编号or名字 [数量]  （商城模式）",
-                    "  例：购买 #1 3  /  购买 玫瑰花",
+                    "礼物商城   随机抽一件礼物，解锁入图鉴",
                     "",
                     "图鉴        查看收藏进度与全服热度排名",
                     "图鉴 #编号  查看该礼物完整描述",
                     "",
                     "赠送 对方名 礼物内容  叙事礼物",
                     "  例：赠送 张三 一束花",
-                    "赠送 对方 #编号",
-                    "  抽卡模式：图鉴内礼物无限赠送",
-                    "  商城模式：消耗背包内一件礼物",
+                    "赠送 对方 #编号   图鉴内礼物可无限赠送",
+                    "",
+                    "撤回   3分钟内可撤回最后一次赠送或短信",
                 ]),
             ]
         },
         "5": {
             label: "💌 信件与论坛",
             nodes: () => [
-                section("💌 心动信", [
+                section("💌 心动信 & 信箱", [
                     "发送心动信",
                     "【发送对象】角色名",
                     "【内容】想说的话（支持空行）",
                     "【署名】自定义昵称（选填）",
                     "",
                     "撤回心动信 编号   撤回已投递的信",
+                    "",
+                    "查看信箱   查看收到的心动信",
+                    "",
+                    "发送信件 收件人 内容",
+                    "  直接短信式发送信件",
+                    "  例：发送信件 张三 见面聊聊？",
                 ]),
                 section("🗨️ 论坛", [
                     "发帖 内容",
@@ -8014,6 +8108,9 @@ cmd_guide.solve = (ctx, msg, cmdArgs) => {
                     "",
                     "写了   在帖子群记录本角色写了一段",
                     "  （进度在时间线中查看）",
+                ]),
+                section("📊 统计", [
+                    "本场统计   查看自己的本场互动数据",
                 ]),
             ]
         },
@@ -8118,12 +8215,40 @@ cmd_admin_guide.solve = (ctx, msg) => {
             "。master jsclear 插件名字",
             "  重置插件存储（替代原强硬初始化）",
         ]),
-        section("📊 数据统计", [
+        section("📊 数据统计 & 监控", [
+            "查看全员统计（无前缀）",
+            "  查看所有玩家数据排名（合并转发）",
+            "",
+            "查看计时器（无前缀）",
+            "  查看所有活跃群的倒计时状态",
+            "",
+            "查看进行中（无前缀）",
+            "  查看当前所有进行中的约会",
+            "",
+            "提醒超时（无前缀）",
+            "  向超时未结束的约会群发送提醒",
+            "",
+            "关系线统计（无前缀）",
+            "  查看所有角色的关系线数量统计",
+            "",
             "。存入统计",
             "  将全场玩家历史数据导出为字段格式",
+        ]),
+        section("📅 群号 & 邀约管理", [
+            "。添加群号 群号",
+            "  将群号添加至可用约会群列表",
             "",
-            "。查看全员统计",
-            "  查看所有玩家数据排名（合并转发）",
+            "。移除群号 群号",
+            "  从列表中移除指定群号",
+            "",
+            "。查看群号",
+            "  查看当前所有已注册群号及状态",
+            "",
+            "。设置邀约时间 时间段",
+            "  限制玩家可发起邀约的时间范围",
+            "",
+            "发起官约（无前缀）",
+            "  以系统身份发起官方约会",
         ]),
         section("📢 群管功能", [
             "。群公告发布 内容",
@@ -8142,46 +8267,60 @@ cmd_admin_guide.solve = (ctx, msg) => {
             "  切换头衔修改权限（管理员/所有人）",
         ]),
         section("🎲 物品管理（长日物品）", [
-            "。自由放 物品名 数量 [描述]",
-            "  向自由池投放物品",
+            "【注册】",
+            "。上载物品 名称*描述[*属性效果]  （支持多行批量）",
+            "  例：。上载物品 急救包*紧急治疗用品*体力+20",
+            "。注册货币 名称*描述",
+            "  例：。注册货币 金币*基础流通货币",
+            "。注册属性 体力 精力 心情   注册可用属性名",
+            "。物品列表 [物品|货币|预设|全部]",
             "",
-            "。固定放 物品名 数量",
-            "  向固定池投放物品",
+            "【商城】",
+            "。上架商城 物品码*价格货币名",
+            "  例：。上架商城 AA00*10金币",
+            "。商城下架 物品码",
             "",
-            "。发放 物品名 角色名",
-            "  直接发放物品给某角色",
+            "【抽取池】",
+            "。注册池子 池子名 fixed/free",
+            "  fixed=固定池（加权随机），free=自由池（有限存量）",
+            "。上架池子 池子名 物品码*权重or数量  （支持多行）",
+            "。从池移除 池子名 物品码",
+            "。池子设定 总量:N / 池子名:N / 总量:无限 / 查看",
+            "。开启池子/关闭池子/删除池子 池子名",
+            "。发放抽取 角色名 N              总额外次数",
+            "。发放抽取 角色名 池子名 N       特定池额外次数",
             "",
-            "。固定发放 物品名 角色名",
-            "  发放固定物品给某角色",
-            "",
-            "。物品使用记录",
-            "  查看所有物品使用记录",
-            "",
-            "。清空物品",
-            "  清空当前物品池",
-            "",
-            "。移除物品 物品名",
-            "  从池中删除指定物品",
-            "",
-            "。删除使用记录 编号",
-            "  删除指定使用记录",
-            "",
+            "【背包操作】",
+            "。调整 角色名 物品码 +N/-N",
+            "  例：。调整 张三 AA00 +3",
             "。查看背包 角色名",
-            "  查看指定角色的背包",
+            "",
+            "【二手市场】",
+            "。二手设定 开启/关闭",
+            "。二手设定 手续费:N  （2-5，默认3）",
+            "",
+            "【记录】",
+            "。物品使用记录 [N]   查看今日最近N条",
+        ]),
+        section("🎁 结戏加成", [
+            "结戏加成              查看所有规则",
+            "结戏加成 添加 目标 按次数 数量",
+            "结戏加成 添加 目标 按字数 数量 [每N字]",
+            "  例：结戏加成 添加 金币 按次数 5",
+            "  例：结戏加成 添加 好感度 按字数 1 100",
+            "  目标：货币名 / 道具码 / 属性名（自动识别类型）",
+            "结戏加成 移除 编号",
+            "结戏加成 开启/关闭 编号",
+            "结戏加成 上限 编号 数量   （0 = 不限）",
         ]),
         section("🛒 礼物商城管理", [
             "【商城设置（.设置 商城）】",
-            "  商城模式：抽卡 / 商城（切换时自动转换图鉴↔背包数据）",
-            "  商城货币属性：商城模式下购买消耗的属性名（如 金币）",
-            "  商城刷新间隔：抽卡模式下个人刷新间隔（小时，默认24）",
+            "  商城刷新间隔：个人刷新间隔（小时，默认24）",
             "",
             "【上传格式（用&分隔字段）】",
             "  。上传预设礼物 #1&玫瑰花&一束红玫瑰",
-            "  。上传预设礼物 #1&玫瑰花&50&一束红玫瑰  （商城模式加价格）",
             "  批量：#1&礼物1&内容$#2&礼物2&内容",
             "  。上传预设礼物 导出  （导出所有礼物 JSON）",
-            "",
-            "补货 名字or编号 数量  （仅商城模式，管理员无前缀触发）",
             "",
             "。删除预设礼物 编号",
             "。删除预设礼物 全部 确认  ⚠️",
@@ -8196,9 +8335,6 @@ cmd_admin_guide.solve = (ctx, msg) => {
             "",
             "。清空关系线 角色名",
             "  清空该角色全部关系线",
-            "",
-            "关系线统计  （无前缀）",
-            "  查看所有角色的关系线数量",
         ]),
         section("🔨 拍卖系统管理", [
             "【设置（.设置 拍卖）】",
@@ -8220,6 +8356,8 @@ cmd_admin_guide.solve = (ctx, msg) => {
         section("👤 角色管理", [
             "。清除玩家 角色名",
             "  删除该角色的注册数据",
+            "",
+            "清除玩家 角色名（无前缀，管理员可用）",
         ]),
     ];
 
@@ -8234,7 +8372,7 @@ ext.cmdMap["管理指令"] = cmd_admin_guide;
 
 let cmd_view_preset_gifts = seal.ext.newCmdItemInfo();
 cmd_view_preset_gifts.name = "礼物商城";
-cmd_view_preset_gifts.help = "礼物商城 — 查看本期上架商品（抽卡模式：每人随机；商城模式：全部在售）";
+cmd_view_preset_gifts.help = "礼物商城 — 查看今日随机礼物，解锁后可无限赠送";
 
 cmd_view_preset_gifts.solve = (ctx, msg) => {
     const sendname = getRoleName(ctx, msg);
@@ -8244,32 +8382,11 @@ cmd_view_preset_gifts.solve = (ctx, msg) => {
     }
 
     const presetGifts = JSON.parse(ext.storageGet("preset_gifts") || "{}");
-    const shopMode = ext.storageGet("shop_mode") || "抽卡";
     const allIds = Object.keys(presetGifts);
 
     if (allIds.length === 0) return seal.replyToSender(ctx, msg, "🛒 商城暂无礼物，管理员尚未上传任何礼物~");
 
-    if (shopMode === "商城") {
-        // 商城模式：展示所有在售商品（有库存），最多30件
-        const currencyAttr = ext.storageGet("shop_currency_attr") || "金币";
-        const inStock = Object.entries(presetGifts).filter(([, g]) => (g.stock || 0) > 0);
-        if (inStock.length === 0) return seal.replyToSender(ctx, msg, "🛒 所有商品已售罄，等待管理员补货~");
-        const FULL_CAP = 30;
-        const display = inStock.slice(0, FULL_CAP);
-        const truncated = inStock.length > FULL_CAP;
-
-        let text = `🛒 礼物商城\n${"━".repeat(14)}\n` +
-            `💰 货币：${currencyAttr}\n` +
-            `📦 共 ${inStock.length} 件在售${truncated ? `（仅展示前 ${FULL_CAP} 件）` : ""}\n`;
-        for (const [id, gift] of display) {
-            text += `\n${id} 「${gift.name}」\n📝 ${gift.content}\n💰 ${gift.price ?? 0} ${currencyAttr}  📦 库存：${gift.stock} 件\n`;
-        }
-        text += `\n发送「购买 编号or名字 数量」即可购买`;
-        seal.replyToSender(ctx, msg, text);
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    // 抽卡模式：每人独立随机1件，自动加入图鉴，刷新只选未拥有的
+    // 每人独立随机1件，自动加入图鉴，刷新只选未拥有的
     const refreshHours = parseInt(ext.storageGet("shop_refresh_hours") || "24");
     const now = Date.now();
     const platform = msg.platform;
@@ -8338,75 +8455,7 @@ cmd_purchase.name = "购买";
 cmd_purchase.help = "购买 商品名 — 在礼物商城购买指定商品";
 
 cmd_purchase.solve = (ctx, msg, cmdArgs) => {
-    if ((ext.storageGet("shop_mode") || "抽卡") !== "商城") {
-        return seal.replyToSender(ctx, msg, "🎰 当前为抽卡模式，发送「礼物商城」查看今日礼物。");
-    }
-
-    const sendname = getRoleName(ctx, msg);
-    if (!sendname) return seal.replyToSender(ctx, msg, "⚠️ 请先创建角色再购买商品。");
-
-    if (!isUserFeatureEnabled(sendname, "enable_shop_purchase")) {
-        return seal.replyToSender(ctx, msg, "🚫 你的商城购买功能已被关闭。");
-    }
-
-    const arg1 = cmdArgs.getArgN(1);
-    const arg2 = cmdArgs.getArgN(2);
-    if (!arg1) return seal.replyToSender(ctx, msg, "用法：购买 编号or名字 [数量]");
-
-    const qty = arg2 ? parseInt(arg2) : 1;
-    if (isNaN(qty) || qty < 1) return seal.replyToSender(ctx, msg, "❌ 数量必须是正整数");
-
-    const presetGifts = JSON.parse(ext.storageGet("preset_gifts") || "{}");
-    const currencyAttr = ext.storageGet("shop_currency_attr") || "金币";
-
-    // 支持编号(#1)或名字查找
-    let giftId = null, gift = null;
-    if (arg1.startsWith('#') && presetGifts[arg1]) {
-        giftId = arg1; gift = presetGifts[arg1];
-    } else {
-        const entry = Object.entries(presetGifts).find(([, g]) => g.name === arg1);
-        if (entry) { [giftId, gift] = entry; }
-    }
-    if (!gift) return seal.replyToSender(ctx, msg, `❌ 商城中没有「${arg1}」，发送「礼物商城」查看在售商品。`);
-
-    const stock = gift.stock || 0;
-    if (stock <= 0) return seal.replyToSender(ctx, msg, `😔 「${gift.name}」已售罄。`);
-    if (stock < qty) return seal.replyToSender(ctx, msg, `😔 「${gift.name}」库存不足，剩余 ${stock} 件。`);
-
-    const price = gift.price ?? 0;
-    const totalPrice = price * qty;
-    if (totalPrice > 0) {
-        let attrs = JSON.parse(ext.storageGet("sys_character_attrs") || "{}");
-        const currentVal = attrs[sendname]?.[currencyAttr] || 0;
-        if (currentVal < totalPrice) {
-            return seal.replyToSender(ctx, msg, `💰 ${currencyAttr}不足！需要 ${totalPrice}${qty > 1 ? `（${price}×${qty}）` : ""}，当前 ${currentVal}。`);
-        }
-        if (!attrs[sendname]) attrs[sendname] = {};
-        attrs[sendname][currencyAttr] = currentVal - totalPrice;
-        ext.storageSet("sys_character_attrs", JSON.stringify(attrs));
-    }
-
-    const platform = msg.platform;
-    const roleInvKey = `${platform}:${sendname}`;
-    const invs = JSON.parse(ext.storageGet("global_inventories") || "{}");
-    if (!invs[roleInvKey]) invs[roleInvKey] = [];
-    const existingIdx = invs[roleInvKey].findIndex(i => i.giftId === giftId && i.source === "礼物商城" && !i.used);
-    if (existingIdx !== -1) {
-        invs[roleInvKey][existingIdx].count = (invs[roleInvKey][existingIdx].count || 1) + qty;
-    } else {
-        invs[roleInvKey].push({ name: gift.name, desc: gift.content, used: false, type: "礼物", giftId, count: qty, createTime: Date.now(), source: "礼物商城" });
-    }
-    ext.storageSet("global_inventories", JSON.stringify(invs));
-
-    presetGifts[giftId].stock = stock - qty;
-    ext.storageSet("preset_gifts", JSON.stringify(presetGifts));
-
-    const priceText = totalPrice > 0 ? `（已扣除 ${totalPrice} ${currencyAttr}）` : "";
-    seal.replyToSender(ctx, msg,
-        `✅ 购买成功${priceText}\n` +
-        `🎁 ${giftId} 「${gift.name}」×${qty} 已放入背包\n` +
-        `📦 商城剩余库存：${stock - qty} 件`
-    );
+    seal.replyToSender(ctx, msg, "🎰 礼物商城为抽卡模式，发送「礼物商城」查看今日礼物。");
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["购买"] = cmd_purchase;
@@ -8428,7 +8477,6 @@ cmd_view_my_gift_collection.solve = (ctx, msg, cmdArgs) => {
         return extras[`${platform}:${uid}`] || uid;
     })();
     const userKey = `${platform}:${primaryUid}`;
-    const shopMode = ext.storageGet("shop_mode") || "抽卡";
     const queryId = cmdArgs?.getArgN ? cmdArgs.getArgN(1) : "";
 
     const presetGifts = JSON.parse(ext.storageGet("preset_gifts") || "{}");
@@ -8436,7 +8484,6 @@ cmd_view_my_gift_collection.solve = (ctx, msg, cmdArgs) => {
 
     if (total === 0) return seal.replyToSender(ctx, msg, "📚 图鉴暂无礼物，管理员尚未上传任何礼物~");
 
-    // 计算全服热度排名（竞争排名，可并列）
     const sortedByHeat = Object.entries(presetGifts)
         .map(([id, g]) => ({ id, name: g.name, content: g.content, count: g.usage_count || 0 }))
         .sort((a, b) => b.count - a.count);
@@ -8447,47 +8494,29 @@ cmd_view_my_gift_collection.solve = (ctx, msg, cmdArgs) => {
         heatRanks[sortedByHeat[i].id] = rank;
     }
 
-    if (shopMode === "抽卡") {
-        const sightings = JSON.parse(ext.storageGet("gift_sightings") || "{}");
-        const owned = sightings[userKey]?.unlocked_gifts || [];
+    const sightings = JSON.parse(ext.storageGet("gift_sightings") || "{}");
+    const owned = sightings[userKey]?.unlocked_gifts || [];
 
-        // 查询单件详情
-        if (queryId && queryId.startsWith('#')) {
-            if (!owned.includes(queryId)) return seal.replyToSender(ctx, msg, `🔒 ${queryId} 不在你的图鉴中`);
-            const gift = presetGifts[queryId];
-            if (!gift) return seal.replyToSender(ctx, msg, `❌ ${queryId} 已下架`);
-            return seal.replyToSender(ctx, msg,
-                `📖 ${queryId} 「${gift.name}」\n🔥 热度第${heatRanks[queryId]}名\n${"━".repeat(14)}\n${gift.content}`
-            );
-        }
-
-        if (owned.length === 0) {
-            return seal.replyToSender(ctx, msg, `📚 图鉴（0/${total}）\n发送「礼物商城」开始收集！`);
-        }
-        const sorted = [...owned].sort((a, b) => (parseInt(a.replace('#', '')) || 0) - (parseInt(b.replace('#', '')) || 0));
-        let text = `📚 我的图鉴（${owned.length}/${total}）\n${"━".repeat(14)}\n💌 图鉴内的礼物可无限赠送\n发送「图鉴 #编号」查看详细描述\n`;
-        for (const giftId of sorted) {
-            const gift = presetGifts[giftId];
-            if (!gift) { text += `\n${giftId} （已下架）`; continue; }
-            text += `\n${giftId} 「${gift.name}」 🔥第${heatRanks[giftId]}名`;
-        }
-        seal.replyToSender(ctx, msg, text.trim());
-    } else {
-        // 商城模式：查询单件详情
-        if (queryId && queryId.startsWith('#')) {
-            const gift = presetGifts[queryId];
-            if (!gift) return seal.replyToSender(ctx, msg, `❌ ${queryId} 不存在`);
-            return seal.replyToSender(ctx, msg,
-                `📖 ${queryId} 「${gift.name}」\n🔥 热度第${heatRanks[queryId]}名（${gift.usage_count || 0}次）\n${"━".repeat(14)}\n${gift.content}`
-            );
-        }
-        // 商城模式：显示全部礼物目录（仅名称+热度）
-        let text = `📚 礼物图鉴（共 ${total} 件）\n${"━".repeat(14)}\n发送「图鉴 #编号」查看详细描述\n`;
-        for (const { id, name, count } of sortedByHeat) {
-            text += `\n${id} 「${name}」 🔥第${heatRanks[id]}名（${count}次）`;
-        }
-        seal.replyToSender(ctx, msg, text.trim());
+    if (queryId && queryId.startsWith('#')) {
+        if (!owned.includes(queryId)) return seal.replyToSender(ctx, msg, `🔒 ${queryId} 不在你的图鉴中`);
+        const gift = presetGifts[queryId];
+        if (!gift) return seal.replyToSender(ctx, msg, `❌ ${queryId} 已下架`);
+        return seal.replyToSender(ctx, msg,
+            `📖 ${queryId} 「${gift.name}」\n🔥 热度第${heatRanks[queryId]}名\n${"━".repeat(14)}\n${gift.content}`
+        );
     }
+
+    if (owned.length === 0) {
+        return seal.replyToSender(ctx, msg, `📚 图鉴（0/${total}）\n发送「礼物商城」开始收集！`);
+    }
+    const sorted = [...owned].sort((a, b) => (parseInt(a.replace('#', '')) || 0) - (parseInt(b.replace('#', '')) || 0));
+    let text = `📚 我的图鉴（${owned.length}/${total}）\n${"━".repeat(14)}\n💌 图鉴内的礼物可无限赠送\n发送「图鉴 #编号」查看详细描述\n`;
+    for (const giftId of sorted) {
+        const gift = presetGifts[giftId];
+        if (!gift) { text += `\n${giftId} （已下架）`; continue; }
+        text += `\n${giftId} 「${gift.name}」 🔥第${heatRanks[giftId]}名`;
+    }
+    seal.replyToSender(ctx, msg, text.trim());
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["图鉴"] = cmd_view_my_gift_collection;
@@ -8500,7 +8529,6 @@ ext.cmdMap["我的图鉴"] = cmd_view_my_gift_collection;
 let cmd_upload_preset_gift = seal.ext.newCmdItemInfo();
 cmd_upload_preset_gift.name = "上传预设礼物";
 cmd_upload_preset_gift.help = `上传预设礼物 #编号&名称&内容
-上传预设礼物 #编号&名称&价格&内容  （商城模式，价格为整数）
 批量：上传预设礼物 #1&玫瑰&内容$#2&巧克力&内容
 导出：上传预设礼物 导出`;
 
@@ -8510,16 +8538,10 @@ cmd_upload_preset_gift.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    const shopMode = ext.storageGet("shop_mode") || "抽卡";
-    const currencyAttr = ext.storageGet("shop_currency_attr") || "金币";
     const inputArg = cmdArgs.getArgN(1).trim();
 
     if (!inputArg) {
-        seal.replyToSender(ctx, msg,
-            shopMode === "商城"
-                ? `格式：#编号&名称&价格&内容（货币：${currencyAttr}）\n例：#1&玫瑰花&50&一束红玫瑰`
-                : "格式：#编号&名称&内容\n例：#1&玫瑰花&一束红玫瑰"
-        );
+        seal.replyToSender(ctx, msg, "格式：#编号&名称&内容\n例：#1&玫瑰花&一束红玫瑰");
         return seal.ext.newCmdExecuteResult(true);
     }
 
@@ -8546,7 +8568,6 @@ cmd_upload_preset_gift.solve = (ctx, msg, cmdArgs) => {
             price = parseInt(parts[2].trim());
             giftContent = parts.slice(3).join('&').trim();
         } else {
-            if (shopMode === "商城" && parts.length < 3) return { err: `格式错误（商城模式建议写价格）：${raw}` };
             giftContent = parts.slice(2).join('&').trim();
         }
         if (!giftContent) return { err: `内容为空：${raw}` };
@@ -8567,8 +8588,8 @@ cmd_upload_preset_gift.solve = (ctx, msg, cmdArgs) => {
             ? { ...presetGifts[giftId], name: giftName, content: giftContent, price, updated_at: new Date().toLocaleString("zh-CN") }
             : { name: giftName, content: giftContent, price, stock: 10, usage_count: 0, created_at: new Date().toLocaleString("zh-CN") };
         results.details.push(isUpdate
-            ? `🔄 更新：${giftId}「${giftName}」${shopMode === "商城" ? ` 价格:${price}` : ""}`
-            : `✅ 新增：${giftId}「${giftName}」${shopMode === "商城" ? ` 价格:${price} 库存:10` : ""}`);
+            ? `🔄 更新：${giftId}「${giftName}」`
+            : `✅ 新增：${giftId}「${giftName}」`);
         results.success++;
     }
 
@@ -8579,7 +8600,7 @@ cmd_upload_preset_gift.solve = (ctx, msg, cmdArgs) => {
     const showCount = Math.min(results.details.length, 5);
     rep += results.details.slice(0, showCount).join('\n');
     if (results.details.length > showCount) rep += `\n...等${results.details.length}项`;
-    if (results.success === 0) rep += `\n💡 格式：#编号&名称${shopMode === "商城" ? "&价格" : ""}&内容`;
+    if (results.success === 0) rep += `\n💡 格式：#编号&名称&内容`;
 
     seal.replyToSender(ctx, msg, rep);
     return seal.ext.newCmdExecuteResult(true);
@@ -8774,17 +8795,13 @@ cmd_backpack.solve = (ctx, msg, cmdArgs) => {
     }
 
     // 全览
-    const shopModeForBackpack = ext.storageGet("shop_mode") || "抽卡";
-    let gachaProgressLine = "";
-    if (shopModeForBackpack === "抽卡") {
-        const uid_bp = getPrimaryUid(platform, msg.sender.userId.replace(/^[a-z]+:/i, ""));
-        const bpUserKey = `${platform}:${uid_bp}`;
-        const bpSightings = JSON.parse(ext.storageGet("gift_sightings") || "{}");
-        const bpPresets = JSON.parse(ext.storageGet("preset_gifts") || "{}");
-        const ownedCnt = (bpSightings[bpUserKey]?.unlocked_gifts || []).length;
-        const totalCnt = Object.keys(bpPresets).length;
-        gachaProgressLine = `\n📚 图鉴进度：${ownedCnt}/${totalCnt}（发送「图鉴」查看收藏）`;
-    }
+    const uid_bp = getPrimaryUid(platform, msg.sender.userId.replace(/^[a-z]+:/i, ""));
+    const bpUserKey = `${platform}:${uid_bp}`;
+    const bpSightings = JSON.parse(ext.storageGet("gift_sightings") || "{}");
+    const bpPresets = JSON.parse(ext.storageGet("preset_gifts") || "{}");
+    const ownedCnt = (bpSightings[bpUserKey]?.unlocked_gifts || []).length;
+    const totalCnt = Object.keys(bpPresets).length;
+    const gachaProgressLine = totalCnt > 0 ? `\n📚 图鉴进度：${ownedCnt}/${totalCnt}（发送「图鉴」查看收藏）` : "";
 
     if (inv.length === 0 && !gachaProgressLine) {
         seal.replyToSender(ctx, msg, `🎒 【${roleName}】的背包空空如也。`);
@@ -8797,7 +8814,6 @@ cmd_backpack.solve = (ctx, msg, cmdArgs) => {
 
     const nodes = [mkNode(
         `🎒 【${roleName}】的背包\n${"━".repeat(14)}\n` +
-        (shopModeForBackpack === "商城" ? `🎁 普通礼物  ${normalGifts.length} 件\n` : "") +
         `📦 普通道具  ${normalTools.length} 件\n` +
         `⚙️ 特殊道具  ${specTools.length} 件` +
         gachaProgressLine + "\n\n" +
