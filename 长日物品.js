@@ -226,15 +226,38 @@ function modCharAttrs(platform, roleName, changesStr) {
     if (!main) return;
     const changes = parseAttrEffects(changesStr);
     if (!Object.keys(changes).length) return;
+
+    // 识别已注册货币，按名称索引
+    const reg = getRegistry();
+    const currencyByName = {};
+    for (const item of Object.values(reg)) {
+        if (item.type === "currency") currencyByName[item.name] = item.code;
+    }
+
+    const roleKey = `${platform}:${roleName}`;
     const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
     const info = apg[platform]?.[roleName];
-    if (!info) return;
-    const profileKey = `${platform}:${info[0]}`;
-    const profiles = JSON.parse(main.storageGet("sys_char_profiles") || "{}");
-    const profile = profiles[profileKey] || {};
-    for (const [attr, delta] of Object.entries(changes)) profile[attr] = (profile[attr] || 0) + delta;
-    profiles[profileKey] = profile;
-    main.storageSet("sys_char_profiles", JSON.stringify(profiles));
+    const profileKey = info ? `${platform}:${info[0]}` : null;
+    const profiles = profileKey ? JSON.parse(main.storageGet("sys_char_profiles") || "{}") : null;
+    const profile = profiles ? (profiles[profileKey] || {}) : null;
+    let profileChanged = false;
+
+    for (const [attr, delta] of Object.entries(changes)) {
+        if (currencyByName[attr]) {
+            // 货币：走背包增减
+            if (delta > 0) addToInv(roleKey, currencyByName[attr], delta);
+            else if (delta < 0) removeFromInv(roleKey, currencyByName[attr], -delta);
+        } else if (profile !== null) {
+            // 普通属性：写入角色档案（parseInt 防止字符串拼接）
+            profile[attr] = parseInt(profile[attr] || 0) + delta;
+            profileChanged = true;
+        }
+    }
+
+    if (profileChanged && profiles && profileKey) {
+        profiles[profileKey] = profile;
+        main.storageSet("sys_char_profiles", JSON.stringify(profiles));
+    }
 }
 
 // ========================
@@ -347,6 +370,16 @@ function initPresetItems() {
         reg["WN00"] = { code: "WN00", name: "万能钥匙", desc: "一把泛着银光的万能钥匙，据说能开启世间任何一扇被锁住的门。", type: "preset", attrs: null };
         changed = true;
     }
+    // 默认货币：金币、银币（按名称判断，避免重复注册）
+    const currencyNames = new Set(Object.values(reg).filter(r => r.type === "currency").map(r => r.name));
+    if (!currencyNames.has("金币")) {
+        const code = genCurrencyCode(reg);
+        if (code) { reg[code] = { code, name: "金币", desc: "流通于玩家间的基础货币。", type: "currency", attrs: null }; changed = true; }
+    }
+    if (!currencyNames.has("银币")) {
+        const code = genCurrencyCode(reg);
+        if (code) { reg[code] = { code, name: "银币", desc: "比金币更零碎的辅助货币。", type: "currency", attrs: null }; changed = true; }
+    }
     if (changed) saveRegistry(reg);
 }
 
@@ -439,6 +472,7 @@ function logItemUsage(platform, roleName, code, itemName) {
     if (!main) return;
     const log = JSON.parse(main.storageGet("item_usage_log") || "[]");
     log.push({ timestamp: Date.now(), platform, roleName, code, name: itemName });
+    if (log.length > 500) log.splice(0, log.length - 500);
     main.storageSet("item_usage_log", JSON.stringify(log));
 }
 
@@ -956,8 +990,8 @@ cmd_buy.solve = (ctx, msg, cmdArgs) => {
 ext.cmdMap["购买"] = cmd_buy;
 
 let cmd_give_item = seal.ext.newCmdItemInfo();
-cmd_give_item.name = "赠送物品";
-cmd_give_item.help = "将背包中的物品送给其他玩家\n赠送物品 角色名 物品码 [数量]";
+cmd_give_item.name = "赠送道具";
+cmd_give_item.help = "将背包中的物品送给其他玩家\n赠送道具 角色名 物品码 [数量]";
 cmd_give_item.solve = (ctx, msg, cmdArgs) => {
     const roleName = getRoleName(ctx, msg);
     if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
@@ -984,7 +1018,7 @@ cmd_give_item.solve = (ctx, msg, cmdArgs) => {
     seal.replyToSender(ctx, msg, `✅ 已将 [${item.code}]${item.name} ×${count} 赠送给「${targetName}」。`);
     return seal.ext.newCmdExecuteResult(true);
 };
-ext.cmdMap["赠送物品"] = cmd_give_item;
+ext.cmdMap["赠送道具"] = cmd_give_item;
 
 let cmd_use = seal.ext.newCmdItemInfo();
 cmd_use.name = "使用";
@@ -1031,6 +1065,7 @@ cmd_sell.solve = (ctx, msg, cmdArgs) => {
     const currencyName = cmdArgs.getArgN(3);
     const count = parseInt(cmdArgs.getArgN(4)) || 1;
     if (!inputCode || !priceStr || !currencyName) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    if (count <= 0) return seal.replyToSender(ctx, msg, "❌ 数量必须为正整数。");
     const price = parseInt(priceStr);
     if (isNaN(price) || price <= 0) return seal.replyToSender(ctx, msg, "❌ 价格必须为正整数。");
     const reg = getRegistry();
@@ -1253,7 +1288,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
         const parts = raw.slice(2).trim().split(/\s+/);
         if (parts[0]) return cmd_buy.solve(ctx, msg, fa(parts));
     }
-    if (raw.startsWith("赠送物品")) {
+    if (raw.startsWith("赠送道具")) {
         const parts = raw.slice(4).trim().split(/\s+/);
         if (parts.length >= 2) return cmd_give_item.solve(ctx, msg, fa(parts));
     }

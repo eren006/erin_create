@@ -523,100 +523,24 @@ function showShopSettings(ctx, msg) {
     const main = getMainExt();
     if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件");
 
-    const currencyAttr = main.storageGet("shop_currency_attr") || "金币";
     const refreshHours = parseInt(main.storageGet("shop_refresh_hours") || "24");
-    const shopMode = main.storageGet("shop_mode") || "抽卡";
 
-    const results = [
+    seal.replyToSender(ctx, msg, [
         ".设置 商城设置",
-        `【商城模式】${shopMode}`,
-        `  抽卡 = 每人随机一件礼物，自动加图鉴，可无限赠送`,
-        `  商城 = 全部在售商品，需购买加背包，库存有限（默认10件）`,
-        `  ⚠️ 切换模式会自动转换现有数据（图鉴↔背包）`,
-        `【商城货币属性】${currencyAttr}（商城模式购买时扣除）`,
-        `【商城刷新间隔】${refreshHours}h（抽卡模式下个人刷新间隔）`,
-    ];
-    seal.replyToSender(ctx, msg, results.join('\n'));
+        `【商城刷新间隔】${refreshHours}`,
+    ].join('\n'));
 }
 
 function applyShopParam(name, val) {
     const main = getMainExt();
     if (!main) return { success: false, message: "无法连接主插件" };
 
-    if (name === '商城货币属性') {
-        if (!val || !val.trim()) return { success: false, message: "【商城货币属性】不能为空" };
-        const attrName = val.trim();
-        const presets = JSON.parse(main.storageGet("sys_attr_presets") || "[]");
-        if (!presets.includes(attrName)) {
-            return { success: false, message: `❌ 属性「${attrName}」尚未创建。\n请先让骰主执行：我创建属性 ${attrName}` };
-        }
-        main.storageSet("shop_currency_attr", attrName);
-        return { success: true, message: `【商城货币属性】已设为「${attrName}」` };
-    }
     if (name === '商城刷新间隔') {
         const hours = parseInt(val);
         if (isNaN(hours) || hours < 1) return { success: false, message: "【商城刷新间隔】必须是 ≥1 的整数（单位：小时）" };
         main.storageSet("shop_refresh_hours", hours.toString());
         main.storageSet("shop_personal_display", "{}");
         return { success: true, message: `【商城刷新间隔】已设为 ${hours} 小时（所有人下次进入商城生效）` };
-    }
-    if (name === '商城模式') {
-        const newMode = val === "商城" ? "商城" : "抽卡";
-        const oldMode = main.storageGet("shop_mode") || "抽卡";
-        if (newMode === oldMode) return { success: false, message: `【商城模式】当前已是「${newMode}」` };
-
-        // 数据转换
-        const invs = JSON.parse(main.storageGet("global_inventories") || "{}");
-        const sightings = JSON.parse(main.storageGet("gift_sightings") || "{}");
-        const presetGifts = JSON.parse(main.storageGet("preset_gifts") || "{}");
-        const privGroup = JSON.parse(main.storageGet("a_private_group") || "{}");
-
-        if (newMode === "商城") {
-            // 抽卡→商城：图鉴×3 转入背包
-            for (const [platform, roles] of Object.entries(privGroup)) {
-                for (const [roleName, info] of Object.entries(roles)) {
-                    const uid = Array.isArray(info) ? info[0] : info;
-                    const userKey = `${platform}:${uid}`;
-                    const unlocked = sightings[userKey]?.unlocked_gifts || [];
-                    if (!unlocked.length) continue;
-                    const roleKey = `${platform}:${roleName}`;
-                    if (!invs[roleKey]) invs[roleKey] = [];
-                    for (const giftId of unlocked) {
-                        const gift = presetGifts[giftId];
-                        if (!gift) continue;
-                        const ei = invs[roleKey].findIndex(i => i.giftId === giftId && i.source === "礼物商城");
-                        if (ei !== -1) { invs[roleKey][ei].count = (invs[roleKey][ei].count || 1) + 3; }
-                        else { invs[roleKey].push({ name: gift.name, desc: gift.content, used: false, type: "礼物", giftId, count: 3, createTime: Date.now(), source: "礼物商城" }); }
-                    }
-                    if (sightings[userKey]) sightings[userKey].unlocked_gifts = [];
-                }
-            }
-        } else {
-            // 商城→抽卡：背包商城礼物转入图鉴并移除
-            for (const [platform, roles] of Object.entries(privGroup)) {
-                for (const [roleName, info] of Object.entries(roles)) {
-                    const uid = Array.isArray(info) ? info[0] : info;
-                    const userKey = `${platform}:${uid}`;
-                    const roleKey = `${platform}:${roleName}`;
-                    if (!invs[roleKey]) continue;
-                    const shopItems = invs[roleKey].filter(i => i.giftId && i.source === "礼物商城");
-                    if (!sightings[userKey]) sightings[userKey] = { unlocked_gifts: [] };
-                    for (const item of shopItems) {
-                        if (!sightings[userKey].unlocked_gifts.includes(item.giftId)) {
-                            sightings[userKey].unlocked_gifts.push(item.giftId);
-                        }
-                    }
-                    invs[roleKey] = invs[roleKey].filter(i => !(i.giftId && i.source === "礼物商城"));
-                }
-            }
-        }
-
-        main.storageSet("global_inventories", JSON.stringify(invs));
-        main.storageSet("gift_sightings", JSON.stringify(sightings));
-        main.storageSet("shop_mode", newMode);
-        main.storageSet("shop_personal_display", "{}");
-        const note = newMode === "商城" ? "图鉴礼物已×3转入各玩家背包" : "背包商城礼物已转入各玩家图鉴";
-        return { success: true, message: `【商城模式】已切换为「${newMode}」\n${note}` };
     }
     return { success: false, message: `未知参数：${name}` };
 }
@@ -629,17 +553,18 @@ function showAuctionSettings(ctx, msg) {
     const broadcast = main.storageGet("auction_broadcast") !== "false" ? "开启" : "关闭";
     const showTop = main.storageGet("auction_show_top_bidder") !== "false" ? "开启" : "关闭";
     const currency = main.storageGet("auction_currency") || "金币";
+    const reg = JSON.parse(main.storageGet("item_registry") || "{}");
+    const registeredCurrencies = Object.values(reg).filter(r => r.type === "currency").map(r => r.name);
+    const currencyLine = registeredCurrencies.length
+        ? `【拍卖货币】${currency}（可选：${registeredCurrencies.join("、")}）`
+        : `【拍卖货币】${currency}（暂无已注册货币）`;
     seal.replyToSender(ctx, msg, [
         ".设置 拍卖设置",
         `【拍卖展示群】${displayGroup}`,
-        `  拍卖结果与出价播报发往该群`,
         `【允许匿名出价】${allowAnon}`,
         `【出价播报】${broadcast}`,
-        `  每次出价后是否向展示群广播`,
         `【展示最高出价者】${showTop}`,
-        `  查看拍卖/播报中是否显示出价者角色名`,
-        `【拍卖货币】${currency}`,
-        `  出价时验证该属性余额，结束后自动扣除`,
+        currencyLine,
     ].join('\n'));
 }
 
@@ -811,9 +736,7 @@ function ensureDefaults(main) {
         "lovemail_day_limits": "{}",
         "auto_day_reset_enabled": "false",
         "item_pool_mode": "自由池",
-        "shop_currency_attr": "金币",
         "shop_refresh_hours": "24",
-        "shop_mode": "抽卡",
     };
     for (const [key, val] of Object.entries(defaults)) {
         const existing = main.storageGet(key);
@@ -831,9 +754,11 @@ cmd_settings.help = `==== 📺 恋综系统控制台 ====
 .设置 心动信 - 心动信开关/送达时间/曝光设置
 .设置 公告  - 公开广播概率/开关/触发频率
 .设置 道具  - 物品抽取、追踪器参数
-.设置 商城  - 礼物商城模式/货币/刷新间隔
+.设置 商城  - 礼物商城刷新间隔
 .设置 拍卖  - 拍卖展示群/匿名/播报/货币等
 .设置 群组  - 小群管理、目击报告
+
+结戏加成    - 结戏自动发放奖励规则管理
 
 💡 输入对应指令后，复制弹出的模板修改并重新发送即可。`;
 
@@ -1243,6 +1168,145 @@ cmd_disable_auto_day.solve = (ctx, msg) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["关闭自动天数"] = cmd_disable_auto_day;
+
+// ========================
+// 结戏加成管理指令
+// ========================
+
+let cmd_end_bonus = seal.ext.newCmdItemInfo();
+cmd_end_bonus.name = "结戏加成";
+cmd_end_bonus.help = `结戏加成 — 管理结戏自动发放奖励规则
+
+指令：
+结戏加成              查看所有规则
+结戏加成 添加 目标 按次数 数量       每次有效回复发放数量
+结戏加成 添加 目标 按字数 数量 每N字  每N字发放数量（每N字省略默认100）
+结戏加成 移除 编号
+结戏加成 开启/关闭 编号
+结戏加成 上限 编号 数量    设置单场发放上限（0=不限）
+
+目标：货币名（如金币）、道具码（如TJ00）、属性名（如好感度）`;
+
+cmd_end_bonus.solve = function(ctx, msg, argv) {
+    if (!isUserAdmin(ctx, msg)) {
+        seal.replyToSender(ctx, msg, "❌ 权限不足");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const main = getMainExt();
+    if (!main) return seal.ext.newCmdExecuteResult(true);
+
+    const bonuses = JSON.parse(main.storageGet("end_game_bonuses") || "[]");
+    const save = () => main.storageSet("end_game_bonuses", JSON.stringify(bonuses));
+
+    const sub = argv.getArgN(1);
+
+    // 查看列表
+    if (!sub || sub === "列表") {
+        if (!bonuses.length) {
+            seal.replyToSender(ctx, msg, "📋 暂无结戏加成规则，使用「结戏加成 添加」新增。");
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        const lines = bonuses.map((b, i) => {
+            const state = b.enabled ? "✅" : "⏸️";
+            const perStr = b.perN > 1 ? `每${b.perN}` : "每";
+            const cap = b.maxPerGame != null ? `（上限${b.maxPerGame}）` : "";
+            return `${state} [${i+1}] ${b.target} | ${perStr}${b.basis} +${b.rate}${cap}`;
+        });
+        seal.replyToSender(ctx, msg, `📋 结戏加成规则列表：\n${lines.join("\n")}`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 添加规则
+    if (sub === "添加") {
+        const target = argv.getArgN(2);
+        const basis = argv.getArgN(3);  // 按次数 / 按字数
+        const rateStr = argv.getArgN(4);
+        const perNStr = argv.getArgN(5);
+
+        if (!target || !basis || !rateStr) {
+            seal.replyToSender(ctx, msg, "❌ 格式：结戏加成 添加 目标 按次数/按字数 数量 [每N字]");
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        if (basis !== "按次数" && basis !== "按字数") {
+            seal.replyToSender(ctx, msg, "❌ 计算基准只能是「按次数」或「按字数」");
+            return seal.ext.newCmdExecuteResult(true);
+        }
+
+        const rate = parseInt(rateStr);
+        if (isNaN(rate) || rate <= 0) {
+            seal.replyToSender(ctx, msg, "❌ 数量必须是正整数");
+            return seal.ext.newCmdExecuteResult(true);
+        }
+
+        const perN = (basis === "按字数" && perNStr) ? parseInt(perNStr) : 1;
+
+        // 自动检测目标类型
+        const reg = JSON.parse(main.storageGet("item_registry") || "{}");
+        let targetType = "attr";
+        const upperTarget = target.toUpperCase();
+        for (const r of Object.values(reg)) {
+            if (r.type === "currency" && r.name === target) { targetType = "currency"; break; }
+            if (r.type !== "currency" && (r.code === upperTarget || r.name === target)) { targetType = "item"; break; }
+        }
+
+        const basisLabel = basis === "按次数" ? "次数" : "字数";
+        bonuses.push({ id: Date.now(), target, targetType, basis: basisLabel, rate, perN, maxPerGame: null, enabled: true });
+        save();
+
+        const perStr = (basis === "按字数" && perN > 1) ? `每${perN}字` : `每${basisLabel}`;
+        seal.replyToSender(ctx, msg, `✅ 已添加规则：【${target}（${targetType}）】${perStr} +${rate}`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 移除
+    if (sub === "移除") {
+        const idx = parseInt(argv.getArgN(2)) - 1;
+        if (isNaN(idx) || idx < 0 || idx >= bonuses.length) {
+            seal.replyToSender(ctx, msg, "❌ 编号不存在");
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        const removed = bonuses.splice(idx, 1)[0];
+        save();
+        seal.replyToSender(ctx, msg, `🗑️ 已移除规则：${removed.target}`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 开启 / 关闭
+    if (sub === "开启" || sub === "关闭") {
+        const idx = parseInt(argv.getArgN(2)) - 1;
+        if (isNaN(idx) || idx < 0 || idx >= bonuses.length) {
+            seal.replyToSender(ctx, msg, "❌ 编号不存在");
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        bonuses[idx].enabled = (sub === "开启");
+        save();
+        seal.replyToSender(ctx, msg, `${sub === "开启" ? "✅" : "⏸️"} 规则 [${idx+1}] 已${sub}`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 上限
+    if (sub === "上限") {
+        const idx = parseInt(argv.getArgN(2)) - 1;
+        const capVal = parseInt(argv.getArgN(3));
+        if (isNaN(idx) || idx < 0 || idx >= bonuses.length) {
+            seal.replyToSender(ctx, msg, "❌ 编号不存在");
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        if (isNaN(capVal) || capVal < 0) {
+            seal.replyToSender(ctx, msg, "❌ 上限必须是 0（不限）或正整数");
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        bonuses[idx].maxPerGame = capVal === 0 ? null : capVal;
+        save();
+        seal.replyToSender(ctx, msg, `✅ 规则 [${idx+1}] 单场上限已设为：${capVal === 0 ? "不限" : capVal}`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    seal.replyToSender(ctx, msg, cmd_end_bonus.help);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["结戏加成"] = cmd_end_bonus;
 
 // 启动自动天数轮询
 registerAutoDaySystem();
