@@ -1999,25 +1999,26 @@ cmd_apply.solve = (ctx, msg, cmdArgs) => {
 
     // 7. 渲染反馈
     const changes = parseAttrEffects(item.attrs);
-    const effectStr = Object.entries(changes).map(([k, v]) => `${k}${v > 0 ? '+' : ''}${v}`).join("，");
+    const effectStr = Object.entries(changes).map(([k, v]) => `${k}${v > 0 ? '+' : ''}${v}`).join(“，”);
     const main = getMain();
-    const shouldNotify = main.storageGet("apply_item_notification") !== "false";
-    const isAnonymous = main.storageGet("apply_item_anonymous") === "true";
+    const shouldNotify = main.storageGet(“apply_item_notification”) !== “false”;
+    const exposeRate = parseInt(main.storageGet(“apply_item_expose_rate”) || “0”);
+    const isExposed = Math.random() * 100 < exposeRate;
 
     // 通知被施加者
     if (shouldNotify) {
-        // 决定显示的名字：如果开启匿名，则显示“某人”
-        const displayName = isAnonymous ? "某人" : `角色「${roleName}」`;
-        
+        // 根据概率决定是否暴露名字
+        const displayName = isExposed ? `角色「${roleName}」` : “某人”;
+
         notifyPlayer(ctx, platform, targetName, `💉 ${displayName} 对你使用了 [${item.name}]！\n📊 你的属性变化：${effectStr}`);
     }
 
     // 给发起者的反馈（发起者始终能看到详细信息）
     let feedback = `✅ 你成功对「${targetName}」使用了 [${item.name}] ${usageStatus}。`;
     if (!shouldNotify) {
-        feedback += "\n(已根据设置隐藏对目标的通知)";
-    } else if (isAnonymous) {
-        feedback += "\n(已根据设置匿名通知目标)";
+        feedback += “\n(已根据设置隐藏对目标的通知)”;
+    } else {
+        feedback += `\n(暴露概率：${exposeRate}%，本次${isExposed ? “已暴露名字” : “保持匿名”})`;
     }
     feedback += `\n📊 目标属性变化：${effectStr}`;
 

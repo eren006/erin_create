@@ -517,7 +517,7 @@ function showItemSettings(ctx, msg) {
     const timeRestrict = main.storageGet("item_tracker_time_restrict") !== "false";
     const itemPoolMode = getMainStorage("item_pool_mode", "自由池");
     const applyNotify = main.storageGet("apply_item_notification") !== "false";
-    const applyAnon = main.storageGet("apply_item_anonymous") === "true";
+    const exposeNameRate = parseInt(main.storageGet("apply_item_expose_rate") || "0");
     const applyHours = main.storageGet("apply_item_hours") || "不限";
 
     const results = [
@@ -527,8 +527,8 @@ function showItemSettings(ctx, msg) {
         `【追踪器显示伙伴】${showPartner ? "开启" : "关闭"}`,
         `【追踪器时间限制】${timeRestrict ? "开启" : "关闭"}`,
         `【物品池模式】${itemPoolMode}`,
-        `【施加是否提醒】${applyNotify ? '开启' : '关闭'}` ,
-        `【是否匿名施加】${applyAnon ? '开启' : '关闭'}`,
+        `【施加是否提醒】${applyNotify ? '开启' : '关闭'}`,
+        `【暴露名字概率】${exposeNameRate}%`,
         `【施加可用时段】${applyHours}`
     ];
     seal.replyToSender(ctx, msg, results.join('\n'));
@@ -656,10 +656,13 @@ function applyItemParam(name, val) {
         main.storageSet("apply_item_notification", isOpen ? "true" : "false");
         return { success: true, message: `【施加是否提醒】已${val}` };
     }
-    if (name === '是否匿名施加') {
-        const isAnon = (val === '开启');
-        main.storageSet("apply_item_anonymous", isAnon ? "true" : "false");
-        return { success: true, message: `【是否匿名施加】已${val}` };
+    if (name === '暴露名字概率') {
+        const rate = parseInt(val);
+        if (isNaN(rate) || rate < 0 || rate > 100) {
+            return { success: false, message: "❌ 暴露名字概率必须是 0-100 之间的数字" };
+        }
+        main.storageSet("apply_item_expose_rate", rate.toString());
+        return { success: true, message: `【暴露名字概率】已设为：${rate}%` };
     }
     if (name === '施加可用时段') {
     if (val === '不限' || val === '全部') {
