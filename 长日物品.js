@@ -1899,7 +1899,6 @@ cmd_apply.solve = (ctx, msg, cmdArgs) => {
     if (item.type !== "interact") return seal.replyToSender(ctx, msg, `⚠️ [${item.name}] 不是互动类物品，请使用「.使用」指令。`);
 
     // 2. 检查目标是否存在
-    const main = getMain();
     const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
     if (!apg[platform]?.[targetName]) return seal.replyToSender(ctx, msg, `❌ 未找到目标角色「${targetName}」。`);
 
