@@ -1350,5 +1350,72 @@ cmd_end_bonus.solve = function(ctx, msg, argv) {
 };
 ext.cmdMap["结戏加成"] = cmd_end_bonus;
 
+// ========================
+// 攻防系统配置管理
+// ========================
+
+function getAttackDefenseConfig() {
+    const defaultConfig = { enabled: false };
+    try {
+        const main = getMainExt();
+        if (!main) return defaultConfig;
+        const val = main.storageGet("attack_defense_config");
+        return val ? { ...defaultConfig, ...JSON.parse(val) } : defaultConfig;
+    } catch(e) { return defaultConfig; }
+}
+
+function setAttackDefenseConfig(config) {
+    const main = getMainExt();
+    if (!main) return;
+    main.storageSet("attack_defense_config", JSON.stringify(config));
+}
+
+function showAttackDefenseSettings(ctx, msg) {
+    let config = getAttackDefenseConfig();
+    let info = "⚔️ 攻防系统设置\n\n";
+    info += `${config.enabled ? "✅" : "❌"} 系统状态: ${config.enabled ? "已启用" : "已禁用"}\n\n`;
+    info += "⚙️ 参数配置:\n";
+    info += `· 每日最大发起次数: ${config.maxInitiations || 10}\n`;
+    info += `· 每日最大拒绝次数: ${config.maxRefusals || 10}\n`;
+    info += `· 单个回合超时(毫秒): ${config.turnTimeout || 3600000}\n`;
+    info += `· 默认回合数: ${config.defaultTurns || 10}\n`;
+    info += `· 逃脱成功率(%): ${config.escapeRate !== undefined ? config.escapeRate : 30}\n`;
+    info += `· 伤害随机性: ${config.damageRandomness ? config.damageRandomness : "无(纯数值)"}\n`;
+    info += `· 强制参战模式: ${config.forceParticipate ? "是" : "否"}\n`;
+    info += `· 最小参战人数: ${config.minPlayers || 2}\n`;
+    info += `· 手动开始模式: ${config.manualStart ? "是" : "否"}\n`;
+    info += `\n输入「攻防 设置 参数 值」来修改配置。`;
+    seal.replyToSender(ctx, msg, info);
+}
+
+let cmd_settings = seal.ext.newCmdItemInfo();
+cmd_settings.name = "设置";
+cmd_settings.help = "【管理员】查看和管理各系统设置\n设置               - 显示所有设置\n设置 基础          - 显示基础设置\n设置 互动          - 显示互动物品设置\n设置 地点          - 显示地点系统设置\n设置 目击          - 显示目击系统设置\n设置 攻防          - 显示攻防系统设置\n设置 信件          - 显示信件系统设置";
+cmd_settings.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足");
+
+    const subCmd = cmdArgs.getArgN(1);
+
+    if (!subCmd || subCmd === "查看") {
+        let info = "🎮 长日系统设置面板\n\n";
+        info += "可用设置:\n";
+        info += "· 设置 基础          - 基础功能设置\n";
+        info += "· 设置 互动          - 互动物品设置\n";
+        info += "· 设置 地点          - 地点系统设置\n";
+        info += "· 设置 目击          - 目击系统设置\n";
+        info += "· 设置 攻防          - 攻防系统设置\n";
+        info += "· 设置 信件          - 信件系统设置\n";
+        return seal.replyToSender(ctx, msg, info);
+    }
+
+    if (subCmd === "攻防") {
+        return showAttackDefenseSettings(ctx, msg);
+    }
+
+    return seal.replyToSender(ctx, msg, cmd_settings.help);
+};
+
+ext.cmdMap["设置"] = cmd_settings;
+
 // 启动自动天数轮询
 registerAutoDaySystem();
