@@ -3750,19 +3750,53 @@ function saveEquipConfig(config) {
     if (main) main.storageSet("equipment_config", JSON.stringify(config));
 }
 
+function getEquipSlots() {
+    const main = getMain();
+    if (!main) return ["head", "chest", "hand", "leg", "foot"];
+    try {
+        const slots = JSON.parse(main.storageGet("equipment_slots") || "[]");
+        return slots.length > 0 ? slots : ["head", "chest", "hand", "leg", "foot"];
+    } catch(e) {
+        return ["head", "chest", "hand", "leg", "foot"];
+    }
+}
+
+function saveEquipSlots(slots) {
+    const main = getMain();
+    if (main) main.storageSet("equipment_slots", JSON.stringify(slots));
+}
+
+function getSlotDisplayNames() {
+    const main = getMain();
+    if (!main) return {};
+    try {
+        return JSON.parse(main.storageGet("equipment_slot_names") || "{}");
+    } catch(e) {
+        return {};
+    }
+}
+
+function saveSlotDisplayNames(names) {
+    const main = getMain();
+    if (main) main.storageSet("equipment_slot_names", JSON.stringify(names));
+}
+
+function getSlotDisplayName(slot) {
+    const names = getSlotDisplayNames();
+    return names[slot] || slot;
+}
+
 function getPlayerEquips(roleKey) {
     const main = getMain();
     if (!main) return null;
     try {
         const data = JSON.parse(main.storageGet("player_equipments") || "{}");
         if (!data[roleKey]) {
-            data[roleKey] = {
-                head: null,
-                chest: null,
-                hand: null,
-                leg: null,
-                foot: null
-            };
+            const slots = getEquipSlots();
+            data[roleKey] = {};
+            slots.forEach(slot => {
+                data[roleKey][slot] = null;
+            });
             main.storageSet("player_equipments", JSON.stringify(data));
         }
         return data[roleKey];
@@ -3835,7 +3869,7 @@ function getTotalEquipBonus(playerEquips, registry) {
 
 let cmd_equip = seal.ext.newCmdItemInfo();
 cmd_equip.name = "装备";
-cmd_equip.help = "装备或查看装备\n装备 <装备名或代码>    - 穿上装备\n脱装备 <槽位>          - 卸下装备\n查看装备                - 显示当前装备及属性加成\n装备列表                - 查看所有可用装备\n装备详情 <装备码>       - 查看装备详细信息";
+cmd_equip.help = "装备或查看装备\n装备 <装备名或代码>    - 穿上装备\n脱装备 <槽位>          - 卸下装备\n查看装备                - 显示当前装备及属性加成\n装备列表                - 查看所有可用装备\n装备详情 <装备码>       - 查看装备详细信息\n\n💡 槽位由管理员定义，执行「槽位 查看」看可用槽位。";
 cmd_equip.solve = (ctx, msg, cmdArgs) => {
     const player = getRoleName(ctx, msg);
     if (!player) return seal.replyToSender(ctx, msg, "❌ 无法获取你的角色信息。");
@@ -3900,6 +3934,13 @@ cmd_equip.solve = (ctx, msg, cmdArgs) => {
         if (!equips) return seal.replyToSender(ctx, msg, "❌ 无法读取装备数据。");
 
         const slot = equip.slot;
+        const allSlots = getEquipSlots();
+
+        // 检查槽位是否有效
+        if (!allSlots.includes(slot)) {
+            return seal.replyToSender(ctx, msg, `❌ 装备槽位「${slot}」不存在或已被删除。`);
+        }
+
         const oldEquip = equips[slot];
 
         equips[slot] = { code: equip.code, reinforceLevel: 0 };
@@ -3964,6 +4005,9 @@ ext.cmdMap["装备"] = cmd_equip;
 
 // 辅助函数
 function getSlotName(slot) {
+    const displayNames = getSlotDisplayNames();
+    if (displayNames[slot]) return displayNames[slot];
+
     const names = { head: "头部", chest: "胸部", hand: "手部", leg: "腿部", foot: "脚部" };
     return names[slot] || slot;
 }
@@ -3979,17 +4023,17 @@ function getSlotEmoji(slot) {
 
 let cmd_unequip = seal.ext.newCmdItemInfo();
 cmd_unequip.name = "脱装备";
-cmd_unequip.help = "卸下装备\n脱装备 <槽位>\n\n槽位: head(头), chest(胸), hand(手), leg(腿), foot(脚)";
+cmd_unequip.help = "卸下装备\n脱装备 <槽位>\n\n执行「槽位 查看」查看所有可用槽位。";
 cmd_unequip.solve = (ctx, msg, cmdArgs) => {
     const player = getRoleName(ctx, msg);
     if (!player) return seal.replyToSender(ctx, msg, "❌ 无法获取你的角色信息。");
 
     const slot = cmdArgs.getArgN(1);
-    if (!slot) return seal.replyToSender(ctx, msg, "❌ 请指定槽位 (head/chest/hand/leg/foot)。");
+    if (!slot) return seal.replyToSender(ctx, msg, "❌ 请指定槽位。");
 
-    const validSlots = { head: true, chest: true, hand: true, leg: true, foot: true };
-    if (!validSlots[slot]) {
-        return seal.replyToSender(ctx, msg, "❌ 无效的槽位。有效槽位: head, chest, hand, leg, foot");
+    const allSlots = getEquipSlots();
+    if (!allSlots.includes(slot)) {
+        return seal.replyToSender(ctx, msg, `❌ 无效的槽位。有效槽位: ${allSlots.join(", ")}`);
     }
 
     const parts = msg.sender.userId.split(':');
@@ -4022,7 +4066,7 @@ ext.cmdMap["脱装备"] = cmd_unequip;
 
 let cmd_reinforce = seal.ext.newCmdItemInfo();
 cmd_reinforce.name = "强化装备";
-cmd_reinforce.help = "强化装备并提升属性\n强化装备 <槽位> [次数]\n\n示例: 强化装备 hand (强化1次)\n     强化装备 hand 5 (强化5次)";
+cmd_reinforce.help = "强化装备并提升属性\n强化装备 <槽位> [次数]\n\n示例: 强化装备 hand (强化1次)\n     强化装备 hand 5 (强化5次)\n\n执行「槽位 查看」查看所有可用槽位。";
 cmd_reinforce.solve = (ctx, msg, cmdArgs) => {
     const player = getRoleName(ctx, msg);
     if (!player) return seal.replyToSender(ctx, msg, "❌ 无法获取你的角色信息。");
@@ -4032,9 +4076,9 @@ cmd_reinforce.solve = (ctx, msg, cmdArgs) => {
 
     if (!slot) return seal.replyToSender(ctx, msg, "❌ 请指定槽位。");
 
-    const validSlots = { head: true, chest: true, hand: true, leg: true, foot: true };
-    if (!validSlots[slot]) {
-        return seal.replyToSender(ctx, msg, "❌ 无效的槽位。");
+    const allSlots = getEquipSlots();
+    if (!allSlots.includes(slot)) {
+        return seal.replyToSender(ctx, msg, `❌ 无效的槽位。有效槽位: ${allSlots.join(", ")}`);
     }
 
     const parts = msg.sender.userId.split(':');
@@ -4121,7 +4165,7 @@ ext.cmdMap["强化装备"] = cmd_reinforce;
 
 let cmd_register_equip = seal.ext.newCmdItemInfo();
 cmd_register_equip.name = "注册装备";
-cmd_register_equip.help = "【管理员】注册新装备\n注册装备 <装备名>*<描述>*<槽位>*<基础属性>*[强化属性]*[最大强化]\n\n槽位: head/chest/hand/leg/foot\n属性格式: ATK+15,DEF+10\n\n示例:\n注册装备 铁制短剑*普通短剑*hand*ATK+15*ATK+2*10\n注册装备 钢铁胸甲*防御胸甲*chest*DEF+20,HP+50*DEF+3*10";
+cmd_register_equip.help = "【管理员】注册新装备\n注册装备 <装备名>*<描述>*<槽位>*<基础属性>*[强化属性]*[最大强化]\n\n属性格式: ATK+15,DEF+10\n槽位：执行「槽位 查看」查看所有可用槽位\n\n示例:\n注册装备 铁制短剑*普通短剑*hand*ATK+15*ATK+2*10\n注册装备 钢铁胸甲*防御胸甲*chest*DEF+20,HP+50*DEF+3*10";
 cmd_register_equip.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
 
@@ -4141,9 +4185,9 @@ cmd_register_equip.solve = (ctx, msg, cmdArgs) => {
     const reinforceAttrStr = parts[4]?.trim();
     const maxReinforceStr = parts[5]?.trim();
 
-    const validSlots = { head: true, chest: true, hand: true, leg: true, foot: true };
-    if (!validSlots[slot]) {
-        return seal.replyToSender(ctx, msg, `❌ 无效槽位。有效槽位: head, chest, hand, leg, foot`);
+    const allSlots = getEquipSlots();
+    if (!allSlots.includes(slot)) {
+        return seal.replyToSender(ctx, msg, `❌ 无效槽位。有效槽位: ${allSlots.join(", ")}`);
     }
 
     // 解析属性
@@ -4267,3 +4311,109 @@ cmd_equip_config.solve = (ctx, msg, cmdArgs) => {
 };
 
 ext.cmdMap["强化"] = cmd_equip_config;
+
+// ========================
+// 装备系统 - 管理员命令：槽位管理
+// ========================
+
+let cmd_equip_slots = seal.ext.newCmdItemInfo();
+cmd_equip_slots.name = "槽位";
+cmd_equip_slots.help = "【管理员】管理装备槽位\n槽位 查看               - 查看所有槽位\n槽位 添加 <槽位码> <名称> - 添加新槽位\n槽位 删除 <槽位码>      - 删除槽位\n槽位 重置              - 重置为默认5个槽位\n\n示例:\n槽位 添加 ring1 戒指1\n槽位 添加 wing 翅膀\n槽位 删除 ring1";
+cmd_equip_slots.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+
+    const subCmd = cmdArgs.getArgN(1);
+    let slots = getEquipSlots();
+    let slotNames = getSlotDisplayNames();
+
+    if (subCmd === "查看") {
+        let info = `📋 装备槽位列表 (${slots.length}个):\n\n`;
+        slots.forEach((slot, idx) => {
+            const displayName = slotNames[slot] || slot;
+            info += `${idx + 1}. [${slot}] ${displayName}\n`;
+        });
+        return seal.replyToSender(ctx, msg, info);
+    }
+
+    if (subCmd === "添加") {
+        const slotCode = cmdArgs.getArgN(2);
+        const slotName = cmdArgs.getArgN(3);
+
+        if (!slotCode || !slotName) {
+            return seal.replyToSender(ctx, msg, "❌ 请指定槽位码和显示名称。");
+        }
+
+        if (slots.includes(slotCode)) {
+            return seal.replyToSender(ctx, msg, `❌ 槽位「${slotCode}」已存在。`);
+        }
+
+        // 检查槽位码格式（只允许字母数字）
+        if (!/^[a-z0-9_]+$/i.test(slotCode)) {
+            return seal.replyToSender(ctx, msg, "❌ 槽位码只能包含字母、数字和下划线。");
+        }
+
+        slots.push(slotCode);
+        slotNames[slotCode] = slotName;
+
+        saveEquipSlots(slots);
+        saveSlotDisplayNames(slotNames);
+
+        return seal.replyToSender(ctx, msg, `✅ 已添加槽位「${slotCode}」(${slotName})。\n\n现在共有 ${slots.length} 个槽位。`);
+    }
+
+    if (subCmd === "删除") {
+        const slotCode = cmdArgs.getArgN(2);
+
+        if (!slotCode) {
+            return seal.replyToSender(ctx, msg, "❌ 请指定要删除的槽位码。");
+        }
+
+        if (!slots.includes(slotCode)) {
+            return seal.replyToSender(ctx, msg, `❌ 槽位「${slotCode}」不存在。`);
+        }
+
+        if (slots.length <= 1) {
+            return seal.replyToSender(ctx, msg, "❌ 至少需要保留1个槽位。");
+        }
+
+        slots = slots.filter(s => s !== slotCode);
+        delete slotNames[slotCode];
+
+        saveEquipSlots(slots);
+        saveSlotDisplayNames(slotNames);
+
+        // 同时从所有玩家的装备数据中移除这个槽位
+        const main = getMain();
+        if (main) {
+            try {
+                const data = JSON.parse(main.storageGet("player_equipments") || "{}");
+                for (const roleKey in data) {
+                    delete data[roleKey][slotCode];
+                }
+                main.storageSet("player_equipments", JSON.stringify(data));
+            } catch(e) {}
+        }
+
+        return seal.replyToSender(ctx, msg, `✅ 已删除槽位「${slotCode}」。\n\n现在共有 ${slots.length} 个槽位。\n\n⚠️ 该槽位上的装备已卸除。`);
+    }
+
+    if (subCmd === "重置") {
+        const defaultSlots = ["head", "chest", "hand", "leg", "foot"];
+        const defaultNames = {
+            head: "头部",
+            chest: "胸部",
+            hand: "手部",
+            leg: "腿部",
+            foot: "脚部"
+        };
+
+        saveEquipSlots(defaultSlots);
+        saveSlotDisplayNames(defaultNames);
+
+        return seal.replyToSender(ctx, msg, `✅ 已重置为默认5个槽位:\n\n${defaultSlots.map(s => `· [${s}] ${defaultNames[s]}`).join("\n")}`);
+    }
+
+    return seal.replyToSender(ctx, msg, cmd_equip_slots.help);
+};
+
+ext.cmdMap["槽位"] = cmd_equip_slots;
