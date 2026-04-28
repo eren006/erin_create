@@ -7871,7 +7871,7 @@ function settleExpiredAuctions(ctx, msg) {
         const invs = JSON.parse(ext.storageGet("global_inventories") || "{}");
         const invKey = `${platform}:${winner.roleName}`;
         if (!invs[invKey]) invs[invKey] = [];
-        invs[invKey].push({ name: item.name, desc: item.desc, used: false, type: "普通道具", count: 1, createTime: Date.now(), source: "拍卖" });
+        invs[invKey].push({ name: item.name, desc: item.desc, used: false, type: "普通道具", count: 1, createTime: Date.now(), source: "拍卖", canResell: item.canResell });
         ext.storageSet("global_inventories", JSON.stringify(invs));
 
         item.status = "sold";
@@ -7899,20 +7899,21 @@ function _nextAuctionId(auctions) {
 // 解析单件格式：名称%描述%起拍价%最低加价%时长(h)
 function _parseAuctionItem(raw) {
     const parts = raw.trim().split('%');
-    if (parts.length < 5) return { err: `格式错误（需5段，用%分隔）：${raw}` };
-    const [name, desc, sp, mi, dur] = parts;
+    if (parts.length < 5) return { err: `格式错误（需至少5段，用%分隔）：${raw}` };
+    const [name, desc, sp, mi, dur, resell] = parts;
     const startPrice = parseInt(sp), minIncrement = parseInt(mi), durationHours = parseFloat(dur);
+    const canResell = (resell && resell.trim().toUpperCase() === "Y");
     if (!name.trim()) return { err: "名称为空" };
     if (isNaN(startPrice) || startPrice < 0) return { err: `起拍价无效：${sp}` };
     if (isNaN(minIncrement) || minIncrement < 1) return { err: `最低加价无效：${mi}` };
     if (isNaN(durationHours) || durationHours <= 0) return { err: `时长无效：${dur}` };
-    return { name: name.trim(), desc: desc.trim(), startPrice, minIncrement, durationHours };
+    return { name: name.trim(), desc: desc.trim(), startPrice, minIncrement, durationHours, canResell };
 }
 
 // 添加拍卖物品
 let cmd_add_auction = seal.ext.newCmdItemInfo();
 cmd_add_auction.name = "添加拍卖物品";
-cmd_add_auction.help = "。添加拍卖物品 名称%描述%起拍价%最低加价%时长(h)\n批量：多件用$分隔\n例：。添加拍卖物品 魔法棒%一根闪亮的魔法棒%100%10%24";
+cmd_add_auction.help = "。添加拍卖物品 名称%描述%起拍价%最低加价%时长(h)%允许二手\n批量：多件用$分隔\n允许二手：Y/N，默认N（不允许）\n例：。添加拍卖物品 魔法棒%一根闪亮的魔法棒%100%10%24%Y";
 cmd_add_auction.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) { seal.replyToSender(ctx, msg, "该指令仅限管理员使用"); return seal.ext.newCmdExecuteResult(true); }
     const inputArg = msg.message.replace(/^[。.]添加拍卖物品\s*/, "").trim();
@@ -7930,8 +7931,9 @@ cmd_add_auction.solve = (ctx, msg, cmdArgs) => {
         const parsed = _parseAuctionItem(item);
         if (parsed.err) { results.details.push(`❌ ${parsed.err}`); results.failed++; continue; }
         const id = _nextAuctionId(auctions);
-        auctions[id] = { id, name: parsed.name, desc: parsed.desc, startPrice: parsed.startPrice, minIncrement: parsed.minIncrement, durationHours: parsed.durationHours, startTime: now, endTime: now + parsed.durationHours * 3600 * 1000, bids: [], status: "active", winner: null };
-        results.details.push(`✅ ${id} 「${parsed.name}」起拍 ${parsed.startPrice}，最低加价 ${parsed.minIncrement}，时长 ${parsed.durationHours}h`);
+        auctions[id] = { id, name: parsed.name, desc: parsed.desc, startPrice: parsed.startPrice, minIncrement: parsed.minIncrement, durationHours: parsed.durationHours, canResell: parsed.canResell, startTime: now, endTime: now + parsed.durationHours * 3600 * 1000, bids: [], status: "active", winner: null };
+        const resellText = parsed.canResell ? "✅ 可二手" : "❌ 不可二手";
+        results.details.push(`✅ ${id} 「${parsed.name}」起拍 ${parsed.startPrice}，最低加价 ${parsed.minIncrement}，时长 ${parsed.durationHours}h | ${resellText}`);
         results.success++;
     }
 

@@ -681,7 +681,7 @@ ext.cmdMap["注册属性"] = cmd_reg_attr;
 
 let cmd_upload_item = seal.ext.newCmdItemInfo();
 cmd_upload_item.name = "上载物品";
-cmd_upload_item.help = "【管理员】注册新物品\n格式：名称*描述*次数*属性效果\n次数：-1为无限，正数位次数\n效果：属性+10,属性-5 (支持多个，逗号隔开)\n支持多行批量上载";
+cmd_upload_item.help = "【管理员】注册新物品\n格式：名称*描述*次数*属性效果*允许二手\n次数：-1为无限，正数位次数\n效果：属性+10,属性-5 (支持多个，逗号隔开)\n允许二手：Y/N，默认N（不允许）\n支持多行批量上载";
 
 cmd_upload_item.solve = (ctx, msg, cmdArgs) => {
     // 1. 权限校验
@@ -722,7 +722,8 @@ cmd_upload_item.solve = (ctx, msg, cmdArgs) => {
         const name = (parts[0] || "").trim();
         const desc = (parts[1] || "").trim() || "暂无描述";
         const maxUses = parseInt((parts[2] || "").trim());
-        const attrs = (parts[3] || "").trim() || null; // 属性效果字符串
+        const attrs = (parts[3] || "").trim() || null;
+        const canResell = ((parts[4] || "").trim().toUpperCase() === "Y");
 
         if (!name) { results.push(`❌ 名称不能为空`); continue; }
         if (isNaN(maxUses)) { results.push(`❌ 「${name}」次数参数必须是数字`); continue; }
@@ -747,13 +748,15 @@ cmd_upload_item.solve = (ctx, msg, cmdArgs) => {
             name,
             desc,
             type: "item",
-            maxUses: maxUses, // 记录最大使用次数
-            attrs: attrs,    // 存储复合属性字符串，如 "体力+10,心情-5"
-            price: 0         // 默认价格，后续可通过商城指令修改
+            maxUses: maxUses,
+            attrs: attrs,
+            price: 0,
+            canResell: canResell
         };
 
         const useText = maxUses === -1 ? "无限" : `${maxUses}次`;
-        results.push(`✅ [${code}] ${name} | 次数:${useText} | 效果:[${attrs || "无"}]`);
+        const resellText = canResell ? "✅ 可二手" : "❌ 不可二手";
+        results.push(`✅ [${code}] ${name} | 次数:${useText} | 效果:[${attrs || "无"}] | ${resellText}`);
     }
 
     // 5. 保存并反馈
@@ -1440,6 +1443,7 @@ cmd_sell.solve = (ctx, msg, cmdArgs) => {
     const item = findItem(reg, inputCode);
     if (!item) return seal.replyToSender(ctx, msg, `❌ 未知物品「${inputCode}」`);
     if (item.type === "preset") return seal.replyToSender(ctx, msg, "❌ 特殊道具不可在二手市场售卖。");
+    if (!item.canResell) return seal.replyToSender(ctx, msg, `❌ [${item.code}]${item.name} 不允许在二手市场售卖。`);
 
     const currency = Object.values(reg).find(r => r.name === currencyName && r.type === "currency");
     if (!currency) return seal.replyToSender(ctx, msg, `❌ 未找到货币「${currencyName}」。`);
@@ -1824,7 +1828,7 @@ ext.cmdMap["查看配方"] = cmd_recipe_list;
 
 let cmd_upload_interact = seal.ext.newCmdItemInfo();
 cmd_upload_interact.name = "上载互动物品";
-cmd_upload_interact.help = "【管理员】注册互动类物品（对他人使用）\n格式：名称*描述*次数*属性效果\n次数：-1为无限，正数位次数\n效果：属性+10,属性-5 (支持多个，逗号隔开)\n示例：上载互动物品 医疗包*为他人包扎*1*体力+50";
+cmd_upload_interact.help = "【管理员】注册互动类物品（对他人使用）\n格式：名称*描述*次数*属性效果*允许二手\n次数：-1为无限，正数位次数\n效果：属性+10,属性-5 (支持多个，逗号隔开)\n允许二手：Y/N，默认N（不允许）\n示例：上载互动物品 医疗包*为他人包扎*1*体力+50*Y";
 cmd_upload_interact.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
 
@@ -1860,6 +1864,7 @@ cmd_upload_interact.solve = (ctx, msg, cmdArgs) => {
         const desc = (parts[1] || "").trim() || "暂无描述";
         const maxUses = parseInt((parts[2] || "").trim());
         const attrs = (parts[3] || "").trim() || null;
+        const canResell = ((parts[4] || "").trim().toUpperCase() === "Y");
 
         if (!name) { results.push(`❌ 名称不能为空`); continue; }
         if (isNaN(maxUses)) { results.push(`❌ 「${name}」次数参数必须是数字`); continue; }
@@ -1886,11 +1891,13 @@ cmd_upload_interact.solve = (ctx, msg, cmdArgs) => {
             type: "interact",
             maxUses: maxUses,
             attrs: attrs,
-            price: 0
+            price: 0,
+            canResell: canResell
         };
 
         const useText = maxUses === -1 ? "无限" : `${maxUses}次`;
-        results.push(`✅ [${code}] ${name} | 次数:${useText} | 效果:[${attrs || "无"}]`);
+        const resellText = canResell ? "✅ 可二手" : "❌ 不可二手";
+        results.push(`✅ [${code}] ${name} | 次数:${useText} | 效果:[${attrs || "无"}] | ${resellText}`);
     }
 
     saveRegistry(reg);
