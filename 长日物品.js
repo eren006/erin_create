@@ -1319,7 +1319,7 @@ ext.cmdMap["物品详情"] = cmd_item_detail;
 
 let cmd_reg_craft = seal.ext.newCmdItemInfo();
 cmd_reg_craft.name = "注册合成";
-cmd_reg_craft.help = "【管理员】注册合成配方\n注册合成 产物代码*材料代码1:数量1,材料代码2:数量2,...\n示例：注册合成 高级丹*初级丹:3,金币:100";
+cmd_reg_craft.help = "【管理员】注册合成配方\n注册合成 产物代码*描述*材料代码1:数量1,材料代码2:数量2[*限制条件]\n限制格式：attr:属性名:最小值,currency:货币名:最小值\n示例：注册合成 高级丹*升级丹药*初级丹:3,金币:100*attr:体力:50,currency:金币:50";
 cmd_reg_craft.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
     const raw = cmdArgs.getArgN(1);
@@ -1327,12 +1327,16 @@ cmd_reg_craft.solve = (ctx, msg, cmdArgs) => {
 
     const parts = raw.split(/[*＊]/);
     const outputCode = (parts[0] || "").trim();
-    const materialsStr = (parts[1] || "").trim();
-    if (!outputCode || !materialsStr) return seal.replyToSender(ctx, msg, "❌ 格式错误。");
+    const desc = (parts[1] || "").trim();
+    const materialsStr = (parts[2] || "").trim();
+    const limitsStr = (parts[3] || "").trim();
+
+    if (!outputCode || !materialsStr) return seal.replyToSender(ctx, msg, "❌ 格式错误，至少需要产物代码和材料。");
 
     const reg = getRegistry();
     if (!reg[outputCode]) return seal.replyToSender(ctx, msg, `❌ 产物代码 [${outputCode}] 不存在。`);
 
+    // 解析材料
     const materials = {};
     const matParts = materialsStr.split(",");
     for (const mat of matParts) {
@@ -1344,12 +1348,39 @@ cmd_reg_craft.solve = (ctx, msg, cmdArgs) => {
         materials[code] = count;
     }
 
+    // 解析限制条件
+    const limits = { attrs: {}, currencies: {} };
+    if (limitsStr) {
+        const limitParts = limitsStr.split(",");
+        for (const limit of limitParts) {
+            const [type, name, valueStr] = limit.split(":").map(s => s.trim());
+            if (!type || !name || !valueStr) return seal.replyToSender(ctx, msg, "❌ 限制格式错误，应为 type:名称:数值");
+            const value = parseInt(valueStr);
+            if (isNaN(value)) return seal.replyToSender(ctx, msg, "❌ 限制数值必须为整数。");
+
+            if (type === "attr") {
+                limits.attrs[name] = value;
+            } else if (type === "currency") {
+                limits.currencies[name] = value;
+            } else {
+                return seal.replyToSender(ctx, msg, "❌ 限制类型应为 attr 或 currency");
+            }
+        }
+    }
+
     const recipes = getCraftRecipes();
-    recipes[outputCode] = { materials, output: outputCode };
+    recipes[outputCode] = { materials, output: outputCode, desc: desc || "暂无描述", limits };
     saveCraftRecipes(recipes);
 
     const matStr = Object.entries(materials).map(([c, cnt]) => `${reg[c].name}×${cnt}`).join(" + ");
-    seal.replyToSender(ctx, msg, `✅ 合成配方已注册：${matStr} → ${reg[outputCode].name}`);
+    let msg_text = `✅ 合成配方已注册：${matStr} → ${reg[outputCode].name}`;
+    if (desc) msg_text += `\n📝 ${desc}`;
+    if (Object.keys(limits.attrs).length || Object.keys(limits.currencies).length) {
+        msg_text += "\n⚠️ 限制条件：";
+        for (const [attr, val] of Object.entries(limits.attrs)) msg_text += `\n  · ${attr} ≥ ${val}`;
+        for (const [curr, val] of Object.entries(limits.currencies)) msg_text += `\n  · ${curr} ≥ ${val}`;
+    }
+    seal.replyToSender(ctx, msg, msg_text);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["注册合成"] = cmd_reg_craft;
@@ -1369,7 +1400,18 @@ cmd_view_craft.solve = (ctx, msg, cmdArgs) => {
 
     const lines = filtered.map(([code, recipe]) => {
         const matStr = Object.entries(recipe.materials).map(([c, cnt]) => `${reg[c]?.name || c}×${cnt}`).join(" + ");
-        return `[${code}] ${reg[code]?.name || code}\n   ← ${matStr}`;
+        let line = `[${code}] ${reg[code]?.name || code}`;
+        if (recipe.desc && recipe.desc !== "暂无描述") line += ` - ${recipe.desc}`;
+        line += `\n   ← ${matStr}`;
+
+        const limits = recipe.limits || {};
+        if (Object.keys(limits.attrs || {}).length || Object.keys(limits.currencies || {}).length) {
+            line += "\n   ⚠️ 需求：";
+            for (const [attr, val] of Object.entries(limits.attrs || {})) line += ` ${attr}≥${val},`;
+            for (const [curr, val] of Object.entries(limits.currencies || {})) line += ` ${curr}≥${val},`;
+            line = line.slice(0, -1);
+        }
+        return line;
     });
     seal.replyToSender(ctx, msg, `📋 合成配方（${filtered.length}/${Object.keys(recipes).length}）：\n${lines.join("\n")}`);
     return seal.ext.newCmdExecuteResult(true);
@@ -1500,15 +1542,32 @@ ext.onNotCommandReceived = (ctx, msg) => {
             const inv = getInv(roleKey);
             const charAttrs = getCharAttrs();
             const roleAttrs = charAttrs[roleName] || {};
+            const defs = getAttrDefs();
+
+            // 检查限制条件
+            const limits = recipe.limits || {};
+            const unmet = [];
+            for (const [attr, minVal] of Object.entries(limits.attrs || {})) {
+                const have = roleAttrs[attr] || 0;
+                if (have < minVal) unmet.push(`${attr} 需≥${minVal}（当前${have}）`);
+            }
+            for (const [currencyName, minVal] of Object.entries(limits.currencies || {})) {
+                const currencyCode = Object.entries(reg).find(([_, info]) => info.type === "currency" && info.name === currencyName)?.[0];
+                if (currencyCode) {
+                    const currEntry = inv.find(e => e.code === currencyCode);
+                    const have = currEntry?.count || 0;
+                    if (have < minVal) unmet.push(`${currencyName} 需≥${minVal}（当前${have}）`);
+                }
+            }
+            if (unmet.length) {
+                return seal.replyToSender(ctx, msg, `❌ 不满足合成条件：\n${unmet.join("\n")}`);
+            }
 
             // 检查材料是否足够
             const lacking = [];
             for (const [matCode, matCount] of Object.entries(recipe.materials)) {
                 const needed = matCount * count;
                 const matEntry = inv.find(e => e.code === matCode);
-                const attrEntry = Object.entries(charAttrs).find(([, attrs]) =>
-                    Object.keys(attrs || {}).some(k => getAttrDefs()[k]?.name === matCode)
-                );
                 const have = matEntry?.count || (roleAttrs[matCode] || 0);
                 if (have < needed) {
                     lacking.push(`${reg[matCode]?.name || matCode} (需${needed}，只有${have})`);
@@ -1523,7 +1582,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
                 const matEntry = inv.find(e => e.code === matCode);
                 if (matEntry) {
                     removeFromInv(roleKey, matCode, matCount * count);
-                } else if (getAttrDefs()[matCode]) {
+                } else if (defs[matCode]) {
                     const oldVal = roleAttrs[matCode] || 0;
                     roleAttrs[matCode] = oldVal - matCount * count;
                 }
