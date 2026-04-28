@@ -2371,3 +2371,80 @@ ext.onNotCommandReceived = (ctx, msg) => {
         }
     }
 };
+
+// ========================
+// 同步踩点池命令
+// ========================
+
+let cmd_sync_spot_pools = seal.ext.newCmdItemInfo();
+cmd_sync_spot_pools.name = "同步踩点池";
+cmd_sync_spot_pools.help = "【管理员】同步地点系统中的所有地点到抽取池\n同步踩点池\n  将自动为每个地点创建相应的池子（若已存在则跳过）\n  不删除任何已有的池子";
+cmd_sync_spot_pools.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+
+    const main = getMain();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
+
+    // 读取地点系统配置（检查是否启用）
+    let placeSystemEnabled = true;
+    try {
+        const placeConfig = JSON.parse(main.storageGet("place_system_config") || "{}");
+        placeSystemEnabled = placeConfig.enabled !== false;
+    } catch(e) {}
+
+    if (!placeSystemEnabled) {
+        return seal.replyToSender(ctx, msg, "⚠️ 地点系统未启用，无法同步踩点池。");
+    }
+
+    // 读取所有地点
+    let places = {};
+    try {
+        places = JSON.parse(main.storageGet("available_places") || "{}");
+    } catch(e) {
+        return seal.replyToSender(ctx, msg, "❌ 无法读取地点数据。");
+    }
+
+    if (Object.keys(places).length === 0) {
+        return seal.replyToSender(ctx, msg, "⚠️ 地点系统中没有地点数据。");
+    }
+
+    // 获取当前的池子定义
+    const poolDefs = getPoolDefs();
+
+    let created = [];
+    let skipped = [];
+
+    // 为每个地点创建对应的池子（如果不存在）
+    for (const placeName in places) {
+        const poolName = `${placeName}池`;
+
+        if (poolDefs[poolName]) {
+            skipped.push(placeName);
+        } else {
+            // 创建新的固定池
+            poolDefs[poolName] = {
+                name: poolName,
+                type: "fixed",
+                items: [],
+                enabled: true
+            };
+            created.push(placeName);
+        }
+    }
+
+    // 保存更新后的池子定义
+    savePoolDefs(poolDefs);
+
+    let resultMsg = "✅ 踩点池同步完成！\n";
+    if (created.length > 0) {
+        resultMsg += `\n📝 新建池子 (${created.length})：\n` + created.map(p => `  · ${p}池`).join("\n");
+    }
+    if (skipped.length > 0) {
+        resultMsg += `\n⏭️  已存在，跳过 (${skipped.length})：\n` + skipped.map(p => `  · ${p}池`).join("\n");
+    }
+    resultMsg += `\n\n💡 现在可使用「上架池子」命令向这些池子添加物品。`;
+
+    seal.replyToSender(ctx, msg, resultMsg);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["同步踩点池"] = cmd_sync_spot_pools;
