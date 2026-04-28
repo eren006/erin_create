@@ -315,30 +315,25 @@ function saveMarketConfig(cfg) {
 // 代码生成器
 // ========================
 
-const CODE_LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ";
-
 function genItemCode(reg) {
-    for (let i = 0; i < CODE_LETTERS.length; i++)
-        for (let j = 0; j < CODE_LETTERS.length; j++)
-            for (let d = 0; d < 100; d++) {
-                const code = `${CODE_LETTERS[i]}${CODE_LETTERS[j]}${String(d).padStart(2, '0')}`;
-                if (!reg[code]) return code;
-            }
+    for (let d = 1; d < 10000; d++) {
+        const code = `ITEM_${String(d).padStart(3, '0')}`;
+        if (!reg[code]) return code;
+    }
     return null;
 }
 
 function genCurrencyCode(reg) {
-    for (let i = 0; i < CODE_LETTERS.length; i++)
-        for (let d = 0; d < 1000; d++) {
-            const code = `${CODE_LETTERS[i]}${String(d).padStart(3, '0')}`;
-            if (!reg[code]) return code;
-        }
+    for (let d = 1; d < 10000; d++) {
+        const code = `CUR_${String(d).padStart(3, '0')}`;
+        if (!reg[code]) return code;
+    }
     return null;
 }
 
 function genSecondhandCode(market) {
     for (let d = 1; d < 10000; d++) {
-        const code = String(d).padStart(4, '0');
+        const code = `MARK_${String(d).padStart(4, '0')}`;
         if (!market[code]) return code;
     }
     return null;
@@ -503,12 +498,12 @@ function initPresetItems() {
     if (!main) return;
     const reg = getRegistry();
     let changed = false;
-    if (!reg["TJ00"]) {
-        reg["TJ00"] = { code: "TJ00", name: "追踪器", desc: "一枚散发着微光的微型追踪器，轻轻按动便能感知目标此刻的行踪。", type: "preset", attrs: null };
+    if (!reg["SPEC_001"]) {
+        reg["SPEC_001"] = { code: "SPEC_001", name: "追踪器", desc: "一枚散发着微光的微型追踪器，轻轻按动便能感知目标此刻的行踪。", type: "preset", attrs: null };
         changed = true;
     }
-    if (!reg["WN00"]) {
-        reg["WN00"] = { code: "WN00", name: "万能钥匙", desc: "一把泛着银光的万能钥匙，据说能开启世间任何一扇被锁住的门。", type: "preset", attrs: null };
+    if (!reg["SPEC_002"]) {
+        reg["SPEC_002"] = { code: "SPEC_002", name: "万能钥匙", desc: "一把泛着银光的万能钥匙，据说能开启世间任何一扇被锁住的门。", type: "preset", attrs: null };
         changed = true;
     }
     // 默认货币：金币、银币（按名称判断，避免重复注册）
@@ -534,9 +529,9 @@ function handleSpecialItemUse(ctx, msg, platform, roleName, roleKey, code, cmdAr
     const main = getMain();
     if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
 
-    if (code === "TJ00") {
+    if (code === "SPEC_001") {
         const targetRole = cmdArgs.getArgN(2);
-        if (!targetRole) return seal.replyToSender(ctx, msg, "🔍 请指定要追踪的角色：使用 TJ00 角色名");
+        if (!targetRole) return seal.replyToSender(ctx, msg, "🔍 请指定要追踪的角色：使用 SPEC_001 角色名");
         const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
         const targetInfo = apg[platform]?.[targetRole];
         if (!targetInfo) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${targetRole}」。`);
@@ -551,7 +546,7 @@ function handleSpecialItemUse(ctx, msg, platform, roleName, roleKey, code, cmdAr
             timeRange = `${h.toString().padStart(2,'0')}:00-${h === 23 ? "23:59" : (h+1).toString().padStart(2,'0')+":00"}`;
         } else {
             const timeArg = cmdArgs.getArgN(3);
-            if (!timeArg) return seal.replyToSender(ctx, msg, "🔍 请指定追踪时间：使用 TJ00 角色名 时间（如 14 或 14:30）");
+            if (!timeArg) return seal.replyToSender(ctx, msg, "🔍 请指定追踪时间：使用 SPEC_001 角色名 时间（如 14 或 14:30）");
             let hour, minute = 0;
             if (/^\d{1,2}$/.test(timeArg)) { hour = parseInt(timeArg); }
             else if (/^\d{1,2}:\d{2}$/.test(timeArg)) {
@@ -573,7 +568,7 @@ function handleSpecialItemUse(ctx, msg, platform, roleName, roleKey, code, cmdAr
         const isSuccess = Math.random() * 100 < successRate;
 
         if (!matchingEvent) return seal.replyToSender(ctx, msg, `🔍 未能发现「${targetRole}」的行踪。\n（追踪器未消耗）`);
-        if (!removeFromInv(roleKey, "TJ00", 1)) return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的追踪器。");
+        if (!removeFromInv(roleKey, "SPEC_001", 1)) return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的追踪器。");
         if (!isSuccess) return seal.replyToSender(ctx, msg, `🔍 信号干扰，定位失败。\n（追踪器已消耗）`);
 
         let resultMsg = `🔍 追踪到「${targetRole}」在 ${globalDay} ${matchingEvent.time} 出现在「${matchingEvent.place || "某处"}」`;
@@ -582,9 +577,9 @@ function handleSpecialItemUse(ctx, msg, platform, roleName, roleKey, code, cmdAr
         return seal.replyToSender(ctx, msg, resultMsg);
     }
 
-    if (code === "WN00") {
+    if (code === "SPEC_002") {
         const placeName = cmdArgs.args.slice(1).join(' ').trim();
-        if (!placeName) return seal.replyToSender(ctx, msg, "🔑 请指定要兑换钥匙的地点：使用 WN00 地点名");
+        if (!placeName) return seal.replyToSender(ctx, msg, "🔑 请指定要兑换钥匙的地点：使用 SPEC_002 地点名");
         const availablePlaces = JSON.parse(main.storageGet("available_places") || "{}");
         if (!availablePlaces[placeName]) {
             const placeList = Object.keys(availablePlaces).join("、") || "（暂无）";
@@ -595,7 +590,7 @@ function handleSpecialItemUse(ctx, msg, platform, roleName, roleKey, code, cmdAr
         if (!placeKeys[platform][roleName]) placeKeys[platform][roleName] = [];
         if (placeKeys[platform][roleName].includes(placeName))
             return seal.replyToSender(ctx, msg, `🔑 你已经拥有「${placeName}」的钥匙了。`);
-        if (!removeFromInv(roleKey, "WN00", 1)) return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的万能钥匙。");
+        if (!removeFromInv(roleKey, "SPEC_002", 1)) return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的万能钥匙。");
         placeKeys[platform][roleName].push(placeName);
         main.storageSet("place_keys", JSON.stringify(placeKeys));
         return seal.replyToSender(ctx, msg, `🔓 万能钥匙化作一缕金光，为你开启了「${placeName}」的门锁！\n你获得了该地点的钥匙。`);
@@ -850,7 +845,7 @@ ext.cmdMap["设置属性"] = cmd_set_attr;
 
 let cmd_shop_add = seal.ext.newCmdItemInfo();
 cmd_shop_add.name = "上架商城";
-cmd_shop_add.help = "【管理员】上架物品\n上架商城 物品码*价格货币名\n示例：上架商城 AA00*10金币";
+cmd_shop_add.help = "【管理员】上架物品\n上架商城 物品码*价格货币名\n示例：上架商城 ITEM_001*10金币";
 cmd_shop_add.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
     const raw = cmdArgs.getArgN(1);
@@ -1062,7 +1057,7 @@ ext.cmdMap["删除池子"] = cmd_del_pool;
 
 let cmd_adjust = seal.ext.newCmdItemInfo();
 cmd_adjust.name = "调整";
-cmd_adjust.help = "【管理员】直接调整玩家背包数量\n调整 角色名 物品码 +N 或 -N\n示例：调整 张三 AA00 +3";
+cmd_adjust.help = "【管理员】直接调整玩家背包数量\n调整 角色名 物品码 +N 或 -N\n示例：调整 张三 ITEM_001 +3";
 cmd_adjust.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
     const roleName = cmdArgs.getArgN(1);
@@ -1311,7 +1306,7 @@ ext.cmdMap["赠送道具"] = cmd_give_item;
 
 let cmd_use = seal.ext.newCmdItemInfo();
 cmd_use.name = "使用";
-cmd_use.help = "使用背包中的物品\n使用 物品码或名称 [参数]\n示例：\n使用 TJ00 张三 —— 追踪器\n使用 AA00 —— 普通物品";
+cmd_use.help = "使用背包中的物品\n使用 物品码或名称 [参数]\n示例：\n使用 SPEC_001 张三 —— 追踪器\n使用 ITEM_001 —— 普通物品";
 
 cmd_use.solve = (ctx, msg, cmdArgs) => {
     const roleName = getRoleName(ctx, msg);
@@ -1340,8 +1335,8 @@ cmd_use.solve = (ctx, msg, cmdArgs) => {
 
     let userItem = inv[invIndex];
 
-    // 2. 特殊物品逻辑 (TJ00, WN00)
-    if (item.code === "TJ00" || item.code === "WN00") {
+    // 2. 特殊物品逻辑 (SPEC_001, SPEC_002)
+    if (item.code === "SPEC_001" || item.code === "SPEC_002") {
         return handleSpecialItemUse(ctx, msg, platform, roleName, roleKey, item.code, cmdArgs);
     }
 
@@ -1402,7 +1397,7 @@ ext.cmdMap["使用"] = cmd_use;
 
 let cmd_sell = seal.ext.newCmdItemInfo();
 cmd_sell.name = "售卖";
-cmd_sell.help = "将物品上架二手市场\n售卖 物品码 价格 货币名 [数量]\n示例：售卖 AA00 8 金币 2";
+cmd_sell.help = "将物品上架二手市场\n售卖 物品码 价格 货币名 [数量]\n示例：售卖 ITEM_001 8 金币 2";
 
 cmd_sell.solve = (ctx, msg, cmdArgs) => {
     const roleName = getRoleName(ctx, msg);
