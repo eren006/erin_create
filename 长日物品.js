@@ -323,6 +323,14 @@ function genItemCode(reg) {
     return null;
 }
 
+function genInteractionCode(reg) {
+    for (let d = 1; d < 10000; d++) {
+        const code = `INTER_${String(d).padStart(3, '0')}`;
+        if (!reg[code]) return code;
+    }
+    return null;
+}
+
 function genCurrencyCode(reg) {
     for (let d = 1; d < 10000; d++) {
         const code = `CUR_${String(d).padStart(3, '0')}`;
@@ -1325,6 +1333,11 @@ cmd_use.solve = (ctx, msg, cmdArgs) => {
     const item = findItem(reg, inputCode);
     if (!item) return seal.replyToSender(ctx, msg, `❌ 未知物品「${inputCode}」`);
 
+    // 检查是否为互动物品
+    if (item.type === "interact") {
+        return seal.replyToSender(ctx, msg, `❌ [${item.code}]${item.name} 是互动物品，请使用「施加 目标名 ${item.code}」来对其他人使用。`);
+    }
+
     // 1. 获取玩家背包，寻找该物品实例
     let inv = getInv(roleKey);
     let invIndex = inv.findIndex(i => i.code === item.code);
@@ -1811,34 +1824,77 @@ ext.cmdMap["查看配方"] = cmd_recipe_list;
 
 let cmd_upload_interact = seal.ext.newCmdItemInfo();
 cmd_upload_interact.name = "上载互动物品";
-cmd_upload_interact.help = "【管理员】注册互动类物品（对他人使用）\n格式：名称*描述*次数*属性效果\n示例：上载互动物品 医疗包*为他人包扎*1*体力+50";
+cmd_upload_interact.help = "【管理员】注册互动类物品（对他人使用）\n格式：名称*描述*次数*属性效果\n次数：-1为无限，正数位次数\n效果：属性+10,属性-5 (支持多个，逗号隔开)\n示例：上载互动物品 医疗包*为他人包扎*1*体力+50";
 cmd_upload_interact.solve = (ctx, msg, cmdArgs) => {
-    if (ctx.privilegeLevel < 40) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
 
-    const rest = msg.message.replace(/^[。.]\s*上载互动物品\s*/, "").trim();
-    if (!rest) return seal.ext.newCmdExecuteResult(true);
+    const rawMsg = msg.message.trim();
+    const msgParts = rawMsg.split(/\r?\n/);
+    let itemLines;
 
-    const parts = rest.split(/[*＊]/);
-    const name = (parts[0] || "").trim();
-    const desc = (parts[1] || "").trim() || "暂无描述";
-    const maxUses = parseInt((parts[2] || "").trim());
-    const attrs = (parts[3] || "").trim() || null;
+    // 解析多行输入
+    if (msgParts.length > 1) {
+        itemLines = msgParts.slice(1).filter(l => l.trim());
+    } else {
+        const rest = rawMsg.replace(/^[。.]\s*上载互动物品\s*/, "").trim();
+        itemLines = rest ? [rest] : [];
+    }
 
-    if (!name || isNaN(maxUses)) return seal.replyToSender(ctx, msg, "❌ 格式错误。");
+    if (!itemLines.length) {
+        const r = seal.ext.newCmdExecuteResult(true);
+        r.showHelp = true;
+        return r;
+    }
 
     const reg = getRegistry();
-    let hdId = 1;
-    const hdCodes = Object.keys(reg).filter(c => c.startsWith("HD"));
-    if (hdCodes.length > 0) {
-        const lastNum = Math.max(...hdCodes.map(c => parseInt(c.replace("HD", ""))));
-        hdId = lastNum + 1;
+    const results = [];
+
+    for (const line of itemLines) {
+        const parts = line.split(/[*＊]/);
+        if (parts.length < 3) {
+            results.push(`❌ 格式错误: 「${line.substring(0,10)}...」需包含名称、描述、次数`);
+            continue;
+        }
+
+        const name = (parts[0] || "").trim();
+        const desc = (parts[1] || "").trim() || "暂无描述";
+        const maxUses = parseInt((parts[2] || "").trim());
+        const attrs = (parts[3] || "").trim() || null;
+
+        if (!name) { results.push(`❌ 名称不能为空`); continue; }
+        if (isNaN(maxUses)) { results.push(`❌ 「${name}」次数参数必须是数字`); continue; }
+
+        // 检查同名物品
+        const existing = Object.values(reg).find(r => r.name === name);
+        if (existing) {
+            results.push(`⚠️ 「${name}」已存在 [${existing.code}]，跳过`);
+            continue;
+        }
+
+        // 生成唯一代码
+        const code = genInteractionCode(reg);
+        if (!code) {
+            results.push("❌ 错误：代码空间已满，无法继续注册");
+            break;
+        }
+
+        // 写入注册表
+        reg[code] = {
+            code,
+            name,
+            desc,
+            type: "interact",
+            maxUses: maxUses,
+            attrs: attrs,
+            price: 0
+        };
+
+        const useText = maxUses === -1 ? "无限" : `${maxUses}次`;
+        results.push(`✅ [${code}] ${name} | 次数:${useText} | 效果:[${attrs || "无"}]`);
     }
-    const code = `HD${hdId.toString().padStart(3, '0')}`;
 
-    reg[code] = { code, name, desc, type: "interact", maxUses, attrs };
     saveRegistry(reg);
-
-    seal.replyToSender(ctx, msg, `✅ 互动道具已注册：[${code}] ${name}\n效果：${attrs || "无"}`);
+    seal.replyToSender(ctx, msg, `🎭 互动物品注册结果（共${itemLines.length}条）：\n${results.join("\n")}`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["上载互动物品"] = cmd_upload_interact;
