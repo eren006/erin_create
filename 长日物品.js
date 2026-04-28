@@ -3608,6 +3608,89 @@ cmd_quick_init.solve = (ctx, msg, cmdArgs) => {
         errors.push(`⏭️ 攻防系统已启用`);
     }
 
+    // ========== 创建基础装备 ==========
+    const equipRegistry = getEquipRegistry();
+    const baseEquips = [
+        {
+            name: "铁制短剑",
+            desc: "一把普通的短剑",
+            slot: "hand",
+            baseAttrs: { ATK: 15 },
+            reinforceBonus: { ATK: 2 },
+            maxReinforce: 10,
+            code: "EQUIP_SWORD_01"
+        },
+        {
+            name: "皮革甲胄",
+            desc: "轻便的皮甲防御",
+            slot: "chest",
+            baseAttrs: { DEF: 20, HP: 50 },
+            reinforceBonus: { DEF: 3 },
+            maxReinforce: 10,
+            code: "EQUIP_CHEST_01"
+        },
+        {
+            name: "铁制头盔",
+            desc: "保护头部的头盔",
+            slot: "head",
+            baseAttrs: { DEF: 10 },
+            reinforceBonus: { DEF: 1 },
+            maxReinforce: 10,
+            code: "EQUIP_HEAD_01"
+        },
+        {
+            name: "腰部护甲",
+            desc: "增强体力的护甲",
+            slot: "hand",
+            baseAttrs: { HP: 30 },
+            reinforceBonus: { HP: 5 },
+            maxReinforce: 10,
+            code: "EQUIP_WAIST_01"
+        },
+        {
+            name: "敏捷靴子",
+            desc: "提升速度的靴子",
+            slot: "foot",
+            baseAttrs: { AGI: 5 },
+            reinforceBonus: { AGI: 1 },
+            maxReinforce: 10,
+            code: "EQUIP_FOOT_01"
+        }
+    ];
+
+    let equipCount = 0;
+    baseEquips.forEach(equip => {
+        if (!equipRegistry[equip.code]) {
+            equipRegistry[equip.code] = {
+                code: equip.code,
+                name: equip.name,
+                desc: equip.desc,
+                type: "equipment",
+                slot: equip.slot,
+                baseAttrs: equip.baseAttrs,
+                reinforceBonus: equip.reinforceBonus,
+                maxReinforce: equip.maxReinforce
+            };
+            equipCount++;
+        }
+    });
+
+    if (equipCount > 0) {
+        saveEquipRegistry(equipRegistry);
+        results.push(`✅ 已创建装备系统（${equipCount}件基础装备）`);
+    } else {
+        errors.push(`⏭️ 装备系统已初始化`);
+    }
+
+    // 初始化强化系统配置
+    let equipConfig = getEquipConfig();
+    if (!equipConfig.successRate) {
+        equipConfig.enabled = true;
+        equipConfig.successRate = 90;
+        equipConfig.costPerLevel = [100, 150, 200, 250, 300, 400, 500, 600, 750, 1000];
+        saveEquipConfig(equipConfig);
+    }
+
     // ========== 返回结果 ==========
     let reply = `🚀 一键初始化完成！\n\n`;
 
@@ -3622,9 +3705,12 @@ cmd_quick_init.solve = (ctx, msg, cmdArgs) => {
     reply += `📋 已创建：\n`;
     reply += `· 5个属性：HP、MP、ATK、DEF、AGI\n`;
     reply += `· 4种药品：小/中/大回血药 + 全恢复药\n`;
-    reply += `· 攻防系统已启用\n\n`;
+    reply += `· 5件装备：铁剑、皮甲、头盔、腰甲、靴子\n`;
+    reply += `· 攻防系统已启用\n`;
+    reply += `· 强化系统已启用\n\n`;
     reply += `💡 下一步：\n`;
     reply += `· 上架商城：上架商城 ITEM_POT_S*50金币\n`;
+    reply += `· 上架装备：上架商城 EQUIP_SWORD_01*500金币\n`;
     reply += `· 配置攻防：攻防 设置 参数 值\n`;
     reply += `· 创建池子：注册池子 回血药池 fixed`;
 
@@ -3633,3 +3719,551 @@ cmd_quick_init.solve = (ctx, msg, cmdArgs) => {
 };
 
 ext.cmdMap["一键初始化"] = cmd_quick_init;
+
+// ========================
+// 装备系统 - 存储和配置
+// ========================
+
+function getEquipRegistry() {
+    const main = getMain();
+    if (!main) return {};
+    try {
+        return JSON.parse(main.storageGet("equipment_registry") || "{}");
+    } catch(e) { return {}; }
+}
+
+function saveEquipRegistry(reg) {
+    const main = getMain();
+    if (main) main.storageSet("equipment_registry", JSON.stringify(reg));
+}
+
+function getEquipConfig() {
+    const main = getMain();
+    if (!main) return {};
+    try {
+        return JSON.parse(main.storageGet("equipment_config") || "{}");
+    } catch(e) { return {}; }
+}
+
+function saveEquipConfig(config) {
+    const main = getMain();
+    if (main) main.storageSet("equipment_config", JSON.stringify(config));
+}
+
+function getPlayerEquips(roleKey) {
+    const main = getMain();
+    if (!main) return null;
+    try {
+        const data = JSON.parse(main.storageGet("player_equipments") || "{}");
+        if (!data[roleKey]) {
+            data[roleKey] = {
+                head: null,
+                chest: null,
+                hand: null,
+                leg: null,
+                foot: null
+            };
+            main.storageSet("player_equipments", JSON.stringify(data));
+        }
+        return data[roleKey];
+    } catch(e) { return null; }
+}
+
+function savePlayerEquips(roleKey, equips) {
+    const main = getMain();
+    if (!main) return;
+    try {
+        const data = JSON.parse(main.storageGet("player_equipments") || "{}");
+        data[roleKey] = equips;
+        main.storageSet("player_equipments", JSON.stringify(data));
+    } catch(e) {}
+}
+
+function generateEquipCode(registry) {
+    let i = 1;
+    while (registry[`EQUIP_${String(i).padStart(3, '0')}`]) i++;
+    return `EQUIP_${String(i).padStart(3, '0')}`;
+}
+
+function findEquip(registry, input) {
+    if (registry[input]) return registry[input];
+    for (const code in registry) {
+        if (registry[code].name === input) return registry[code];
+    }
+    return null;
+}
+
+function getEquipBonus(equip, reinforceLevel) {
+    if (!equip || !equip.baseAttrs) return {};
+
+    const bonus = {};
+    for (const attr in equip.baseAttrs) {
+        bonus[attr] = equip.baseAttrs[attr];
+    }
+
+    if (reinforceLevel > 0 && equip.reinforceBonus) {
+        for (const attr in equip.reinforceBonus) {
+            bonus[attr] = (bonus[attr] || 0) + (equip.reinforceBonus[attr] * reinforceLevel);
+        }
+    }
+
+    return bonus;
+}
+
+function getTotalEquipBonus(playerEquips, registry) {
+    const totalBonus = {};
+
+    for (const slot in playerEquips) {
+        const equipped = playerEquips[slot];
+        if (!equipped || !equipped.code) continue;
+
+        const equip = registry[equipped.code];
+        if (!equip) continue;
+
+        const bonus = getEquipBonus(equip, equipped.reinforceLevel || 0);
+        for (const attr in bonus) {
+            totalBonus[attr] = (totalBonus[attr] || 0) + bonus[attr];
+        }
+    }
+
+    return totalBonus;
+}
+
+// ========================
+// 装备系统 - 玩家命令：装备管理
+// ========================
+
+let cmd_equip = seal.ext.newCmdItemInfo();
+cmd_equip.name = "装备";
+cmd_equip.help = "装备或查看装备\n装备 <装备名或代码>    - 穿上装备\n脱装备 <槽位>          - 卸下装备\n查看装备                - 显示当前装备及属性加成\n装备列表                - 查看所有可用装备\n装备详情 <装备码>       - 查看装备详细信息";
+cmd_equip.solve = (ctx, msg, cmdArgs) => {
+    const player = getRoleName(ctx, msg);
+    if (!player) return seal.replyToSender(ctx, msg, "❌ 无法获取你的角色信息。");
+
+    const subCmd = cmdArgs.getArgN(1);
+    const registry = getEquipRegistry();
+    const main = getMain();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
+
+    // 获取roleKey
+    const parts = msg.sender.userId.split(':');
+    const platform = parts[0];
+    const rawUid = parts[1];
+    const uid = getPrimaryUid(platform, rawUid);
+    const roleKey = `${platform}:${player}`;
+
+    // 查看装备
+    if (!subCmd) {
+        const equips = getPlayerEquips(roleKey);
+        if (!equips) return seal.replyToSender(ctx, msg, "❌ 无法读取装备数据。");
+
+        let info = `⚔️ ${player} 的装备:\n\n`;
+        let hasEquip = false;
+
+        for (const slot in equips) {
+            const equipped = equips[slot];
+            if (!equipped || !equipped.code) {
+                info += `${getSlotEmoji(slot)} ${getSlotName(slot)}: 空\n`;
+            } else {
+                hasEquip = true;
+                const equip = registry[equipped.code];
+                if (equip) {
+                    const bonus = getEquipBonus(equip, equipped.reinforceLevel || 0);
+                    const bonusStr = Object.entries(bonus).map(([k, v]) => `${k}${v > 0 ? '+' : ''}${v}`).join(',');
+                    info += `${getSlotEmoji(slot)} ${getSlotName(slot)}: ${equip.name}`;
+                    if (equipped.reinforceLevel) {
+                        info += ` [+${equipped.reinforceLevel}]`;
+                    }
+                    info += ` (${bonusStr})\n`;
+                }
+            }
+        }
+
+        if (hasEquip) {
+            const totalBonus = getTotalEquipBonus(equips, registry);
+            info += `\n📊 总属性加成:\n`;
+            for (const attr in totalBonus) {
+                info += `· ${attr}${totalBonus[attr] > 0 ? '+' : ''}${totalBonus[attr]}\n`;
+            }
+        }
+
+        return seal.replyToSender(ctx, msg, info);
+    }
+
+    // 穿上装备
+    if (!subCmd.match(/^(脱|查|装|列|详)/)) {
+        const equipName = subCmd;
+        const equip = findEquip(registry, equipName);
+        if (!equip) return seal.replyToSender(ctx, msg, `❌ 未找到装备「${equipName}」。`);
+
+        const equips = getPlayerEquips(roleKey);
+        if (!equips) return seal.replyToSender(ctx, msg, "❌ 无法读取装备数据。");
+
+        const slot = equip.slot;
+        const oldEquip = equips[slot];
+
+        equips[slot] = { code: equip.code, reinforceLevel: 0 };
+        savePlayerEquips(roleKey, equips);
+
+        let msg_text = `✅ 你穿上了 ${equip.name}！\n\n`;
+        const bonus = getEquipBonus(equip, 0);
+        const bonusStr = Object.entries(bonus).map(([k, v]) => `${k}+${v}`).join(', ');
+        msg_text += `属性加成: ${bonusStr}`;
+
+        if (oldEquip && oldEquip.code && registry[oldEquip.code]) {
+            msg_text += `\n\n(原装备 ${registry[oldEquip.code].name} 已卸下)`;
+        }
+
+        return seal.replyToSender(ctx, msg, msg_text);
+    }
+
+    // 列表
+    if (subCmd === "列表" || subCmd === "列表") {
+        const equips = Object.values(registry).filter(e => e.type === "equipment");
+        if (!equips.length) return seal.replyToSender(ctx, msg, "❌ 还没有注册任何装备。");
+
+        let info = `📋 装备列表 (${equips.length}件):\n\n`;
+        equips.forEach(equip => {
+            const bonus = Object.entries(equip.baseAttrs || {}).map(([k, v]) => `${k}+${v}`).join(', ');
+            info += `· [${equip.code}] ${equip.name} (${getSlotName(equip.slot)})\n  ${equip.desc}\n  属性: ${bonus}\n\n`;
+        });
+
+        return seal.replyToSender(ctx, msg, info);
+    }
+
+    // 详情
+    if (subCmd === "详情") {
+        const equipCode = cmdArgs.getArgN(2);
+        if (!equipCode || !registry[equipCode]) {
+            return seal.replyToSender(ctx, msg, "❌ 请指定有效的装备代码。");
+        }
+
+        const equip = registry[equipCode];
+        let info = `⚔️ ${equip.name}\n\n`;
+        info += `代码: ${equip.code}\n`;
+        info += `槽位: ${getSlotName(equip.slot)}\n`;
+        info += `描述: ${equip.desc}\n\n`;
+        info += `基础属性加成:\n`;
+        for (const attr in equip.baseAttrs) {
+            info += `· ${attr}+${equip.baseAttrs[attr]}\n`;
+        }
+        if (equip.reinforceBonus && equip.maxReinforce) {
+            info += `\n强化属性 (每级):\n`;
+            for (const attr in equip.reinforceBonus) {
+                info += `· ${attr}+${equip.reinforceBonus[attr]} (最高${equip.maxReinforce}级)\n`;
+            }
+        }
+
+        return seal.replyToSender(ctx, msg, info);
+    }
+
+    return seal.replyToSender(ctx, msg, cmd_equip.help);
+};
+
+ext.cmdMap["装备"] = cmd_equip;
+
+// 辅助函数
+function getSlotName(slot) {
+    const names = { head: "头部", chest: "胸部", hand: "手部", leg: "腿部", foot: "脚部" };
+    return names[slot] || slot;
+}
+
+function getSlotEmoji(slot) {
+    const emojis = { head: "🎩", chest: "🛡️", hand: "⚔️", leg: "👖", foot: "👢" };
+    return emojis[slot] || "📦";
+}
+
+// ========================
+// 装备系统 - 玩家命令：脱装备
+// ========================
+
+let cmd_unequip = seal.ext.newCmdItemInfo();
+cmd_unequip.name = "脱装备";
+cmd_unequip.help = "卸下装备\n脱装备 <槽位>\n\n槽位: head(头), chest(胸), hand(手), leg(腿), foot(脚)";
+cmd_unequip.solve = (ctx, msg, cmdArgs) => {
+    const player = getRoleName(ctx, msg);
+    if (!player) return seal.replyToSender(ctx, msg, "❌ 无法获取你的角色信息。");
+
+    const slot = cmdArgs.getArgN(1);
+    if (!slot) return seal.replyToSender(ctx, msg, "❌ 请指定槽位 (head/chest/hand/leg/foot)。");
+
+    const validSlots = { head: true, chest: true, hand: true, leg: true, foot: true };
+    if (!validSlots[slot]) {
+        return seal.replyToSender(ctx, msg, "❌ 无效的槽位。有效槽位: head, chest, hand, leg, foot");
+    }
+
+    const parts = msg.sender.userId.split(':');
+    const platform = parts[0];
+    const roleKey = `${platform}:${player}`;
+
+    const equips = getPlayerEquips(roleKey);
+    if (!equips) return seal.replyToSender(ctx, msg, "❌ 无法读取装备数据。");
+
+    if (!equips[slot] || !equips[slot].code) {
+        return seal.replyToSender(ctx, msg, `❌ ${getSlotName(slot)}槽位没有装备。`);
+    }
+
+    const equipCode = equips[slot].code;
+    const registry = getEquipRegistry();
+    const equip = registry[equipCode];
+
+    equips[slot] = null;
+    savePlayerEquips(roleKey, equips);
+
+    let msg_text = `✅ 你卸下了 ${equip.name}！`;
+    return seal.replyToSender(ctx, msg, msg_text);
+};
+
+ext.cmdMap["脱装备"] = cmd_unequip;
+
+// ========================
+// 装备系统 - 玩家命令：强化装备
+// ========================
+
+let cmd_reinforce = seal.ext.newCmdItemInfo();
+cmd_reinforce.name = "强化装备";
+cmd_reinforce.help = "强化装备并提升属性\n强化装备 <槽位> [次数]\n\n示例: 强化装备 hand (强化1次)\n     强化装备 hand 5 (强化5次)";
+cmd_reinforce.solve = (ctx, msg, cmdArgs) => {
+    const player = getRoleName(ctx, msg);
+    if (!player) return seal.replyToSender(ctx, msg, "❌ 无法获取你的角色信息。");
+
+    const slot = cmdArgs.getArgN(1);
+    const times = parseInt(cmdArgs.getArgN(2)) || 1;
+
+    if (!slot) return seal.replyToSender(ctx, msg, "❌ 请指定槽位。");
+
+    const validSlots = { head: true, chest: true, hand: true, leg: true, foot: true };
+    if (!validSlots[slot]) {
+        return seal.replyToSender(ctx, msg, "❌ 无效的槽位。");
+    }
+
+    const parts = msg.sender.userId.split(':');
+    const platform = parts[0];
+    const roleKey = `${platform}:${player}`;
+
+    const equips = getPlayerEquips(roleKey);
+    if (!equips || !equips[slot] || !equips[slot].code) {
+        return seal.replyToSender(ctx, msg, `❌ ${getSlotName(slot)}槽位没有装备。`);
+    }
+
+    const registry = getEquipRegistry();
+    const equip = registry[equips[slot].code];
+    if (!equip) return seal.replyToSender(ctx, msg, "❌ 装备数据错误。");
+
+    const maxReinforce = equip.maxReinforce || 10;
+    const currentLevel = equips[slot].reinforceLevel || 0;
+
+    if (currentLevel >= maxReinforce) {
+        return seal.replyToSender(ctx, msg, `❌ 该装备已达到最高强化等级 (${maxReinforce})。`);
+    }
+
+    const config = getEquipConfig();
+    const costPerLevel = config.costPerLevel || [100, 150, 200, 250, 300, 400, 500, 600, 750, 1000];
+    const successRate = config.successRate !== undefined ? config.successRate : 90;
+    const main = getMain();
+
+    let totalCost = 0;
+    let results = [];
+
+    for (let i = 0; i < times; i++) {
+        const newLevel = currentLevel + i + 1;
+        if (newLevel > maxReinforce) break;
+
+        const cost = costPerLevel[Math.min(newLevel - 1, costPerLevel.length - 1)];
+        totalCost += cost;
+
+        // 检查成功率
+        const roll = Math.random() * 100;
+        if (roll < successRate) {
+            results.push(`✅ 等级 ${newLevel - 1} → ${newLevel} 强化成功！`);
+        } else {
+            results.push(`❌ 等级 ${newLevel - 1} 强化失败！消耗金币已扣除。`);
+            // 继续扣费，但不提升等级
+            continue;
+        }
+
+        // 更新强化等级
+        equips[slot].reinforceLevel = newLevel;
+    }
+
+    // 扣费（使用现有的货币系统）
+    if (totalCost > 0) {
+        try {
+            const charCurrency = JSON.parse(main.storageGet("sys_character_currency") || "{}");
+            if (!charCurrency[player]) charCurrency[player] = {};
+            if (!charCurrency[player]["金币"]) charCurrency[player]["金币"] = 0;
+
+            if (charCurrency[player]["金币"] < totalCost) {
+                return seal.replyToSender(ctx, msg, `❌ 金币不足。需要 ${totalCost}，你有 ${charCurrency[player]["金币"]}。`);
+            }
+
+            charCurrency[player]["金币"] -= totalCost;
+            main.storageSet("sys_character_currency", JSON.stringify(charCurrency));
+        } catch(e) {
+            return seal.replyToSender(ctx, msg, "❌ 扣费失败。");
+        }
+    }
+
+    savePlayerEquips(roleKey, equips);
+
+    let msg_text = `⚡ 强化结果:\n\n` + results.join("\n");
+    msg_text += `\n\n💰 消耗金币: ${totalCost}`;
+    msg_text += `\n当前强化等级: ${equips[slot].reinforceLevel}/${maxReinforce}`;
+
+    return seal.replyToSender(ctx, msg, msg_text);
+};
+
+ext.cmdMap["强化装备"] = cmd_reinforce;
+
+// ========================
+// 装备系统 - 管理员命令：注册装备
+// ========================
+
+let cmd_register_equip = seal.ext.newCmdItemInfo();
+cmd_register_equip.name = "注册装备";
+cmd_register_equip.help = "【管理员】注册新装备\n注册装备 <装备名>*<描述>*<槽位>*<基础属性>*[强化属性]*[最大强化]\n\n槽位: head/chest/hand/leg/foot\n属性格式: ATK+15,DEF+10\n\n示例:\n注册装备 铁制短剑*普通短剑*hand*ATK+15*ATK+2*10\n注册装备 钢铁胸甲*防御胸甲*chest*DEF+20,HP+50*DEF+3*10";
+cmd_register_equip.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+
+    const input = msg.messageType === "group" ?
+        msg.rawMessage.substring(msg.rawMessage.indexOf(" ") + 1) :
+        msg.rawMessage.substring(msg.rawMessage.indexOf(" ") + 1);
+
+    const parts = input.split(/[*]/);
+    if (parts.length < 4) {
+        return seal.replyToSender(ctx, msg, "❌ 参数不足。格式: 装备名*描述*槽位*基础属性[*强化属性*最大强化]");
+    }
+
+    const name = parts[0].trim();
+    const desc = parts[1].trim();
+    const slot = parts[2].trim();
+    const baseAttrStr = parts[3].trim();
+    const reinforceAttrStr = parts[4]?.trim();
+    const maxReinforceStr = parts[5]?.trim();
+
+    const validSlots = { head: true, chest: true, hand: true, leg: true, foot: true };
+    if (!validSlots[slot]) {
+        return seal.replyToSender(ctx, msg, `❌ 无效槽位。有效槽位: head, chest, hand, leg, foot`);
+    }
+
+    // 解析属性
+    const parseAttrs = (str) => {
+        const attrs = {};
+        if (!str) return attrs;
+        const matches = str.split(',');
+        matches.forEach(m => {
+            const match = m.trim().match(/^(\w+)([\+\-])(\d+)$/);
+            if (match) {
+                const [, attrName, op, value] = match;
+                attrs[attrName] = parseInt(value) * (op === '+' ? 1 : -1);
+            }
+        });
+        return attrs;
+    };
+
+    const baseAttrs = parseAttrs(baseAttrStr);
+    const reinforceBonus = reinforceAttrStr ? parseAttrs(reinforceAttrStr) : null;
+    const maxReinforce = maxReinforceStr ? parseInt(maxReinforceStr) : 10;
+
+    if (Object.keys(baseAttrs).length === 0) {
+        return seal.replyToSender(ctx, msg, "❌ 基础属性格式错误。格式: ATK+15,DEF+10");
+    }
+
+    const registry = getEquipRegistry();
+    const code = generateEquipCode(registry);
+
+    registry[code] = {
+        code: code,
+        name: name,
+        desc: desc,
+        type: "equipment",
+        slot: slot,
+        baseAttrs: baseAttrs,
+        reinforceBonus: reinforceBonus,
+        maxReinforce: maxReinforce
+    };
+
+    saveEquipRegistry(registry);
+
+    let msg_text = `✅ 装备已注册！\n\n`;
+    msg_text += `代码: ${code}\n`;
+    msg_text += `名称: ${name}\n`;
+    msg_text += `槽位: ${getSlotName(slot)}\n`;
+    msg_text += `基础属性: ${Object.entries(baseAttrs).map(([k, v]) => `${k}${v > 0 ? '+' : ''}${v}`).join(', ')}\n`;
+    if (reinforceBonus) {
+        msg_text += `强化属性: ${Object.entries(reinforceBonus).map(([k, v]) => `${k}${v > 0 ? '+' : ''}${v}/级`).join(', ')}\n`;
+        msg_text += `最大强化: ${maxReinforce}级\n`;
+    }
+
+    return seal.replyToSender(ctx, msg, msg_text);
+};
+
+ext.cmdMap["注册装备"] = cmd_register_equip;
+
+// ========================
+// 装备系统 - 管理员命令：强化配置
+// ========================
+
+let cmd_equip_config = seal.ext.newCmdItemInfo();
+cmd_equip_config.name = "强化";
+cmd_equip_config.help = "【管理员】配置强化系统\n强化 启 / 禁          - 启用/禁用强化系统\n强化 查看             - 查看强化配置\n强化 设置 成功率 <值>  - 设置强化成功率(0-100)\n强化 设置 消耗 <值>    - 设置强化消耗(每级增加)";
+cmd_equip_config.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+
+    const subCmd = cmdArgs.getArgN(1);
+    let config = getEquipConfig();
+
+    if (subCmd === "启") {
+        config.enabled = true;
+        saveEquipConfig(config);
+        return seal.replyToSender(ctx, msg, "✅ 强化系统已启用。");
+    }
+
+    if (subCmd === "禁") {
+        config.enabled = false;
+        saveEquipConfig(config);
+        return seal.replyToSender(ctx, msg, "✅ 强化系统已禁用。");
+    }
+
+    if (subCmd === "查看") {
+        let info = "⚙️ 强化系统配置:\n\n";
+        info += `启用状态: ${config.enabled !== false ? "✅ 已启用" : "❌ 已禁用"}\n`;
+        info += `成功率: ${config.successRate !== undefined ? config.successRate : 90}%\n`;
+        const costs = config.costPerLevel || [100, 150, 200, 250, 300, 400, 500, 600, 750, 1000];
+        info += `消耗: ${costs.join(', ')} (按强化等级递增)\n`;
+        return seal.replyToSender(ctx, msg, info);
+    }
+
+    if (subCmd === "设置") {
+        const param = cmdArgs.getArgN(2);
+        const value = cmdArgs.getArgN(3);
+
+        if (param === "成功率") {
+            const rate = parseInt(value);
+            if (isNaN(rate) || rate < 0 || rate > 100) {
+                return seal.replyToSender(ctx, msg, "❌ 成功率必须在0-100之间。");
+            }
+            config.successRate = rate;
+            saveEquipConfig(config);
+            return seal.replyToSender(ctx, msg, `✅ 强化成功率已设置为 ${rate}%。`);
+        }
+
+        if (param === "消耗") {
+            const increase = parseInt(value);
+            if (isNaN(increase) || increase <= 0) {
+                return seal.replyToSender(ctx, msg, "❌ 消耗增量必须为正整数。");
+            }
+            const costs = [];
+            for (let i = 0; i < 10; i++) {
+                costs.push(100 + i * increase);
+            }
+            config.costPerLevel = costs;
+            saveEquipConfig(config);
+            return seal.replyToSender(ctx, msg, `✅ 强化消耗已设置。各等级消耗: ${costs.join(', ')}`);
+        }
+    }
+
+    return seal.replyToSender(ctx, msg, cmd_equip_config.help);
+};
+
+ext.cmdMap["强化"] = cmd_equip_config;
