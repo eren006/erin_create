@@ -143,6 +143,45 @@ function clampAttr(def, value) {
     return value;
 }
 
+// RPG 属性系统辅助函数
+function getAttrDefs() {
+    const main = getMain();
+    return main ? JSON.parse(main.storageGet("sys_attr_defs") || "{}") : {};
+}
+function saveAttrDefs(defs) {
+    const main = getMain();
+    if (main) main.storageSet("sys_attr_defs", JSON.stringify(defs));
+}
+
+function getCharAttrs() {
+    const main = getMain();
+    return main ? JSON.parse(main.storageGet("sys_character_attrs") || "{}") : {};
+}
+function saveCharAttrs(attrs) {
+    const main = getMain();
+    if (main) main.storageSet("sys_character_attrs", JSON.stringify(attrs));
+}
+
+function clampAttr(def, val) {
+    if (def.max !== null && def.max !== undefined) {
+        val = Math.min(val, def.max);
+    }
+    if (def.min !== null && def.min !== undefined) {
+        val = Math.max(val, def.min);
+    }
+    return val;
+}
+
+// 合成系统
+function getCraftRecipes() {
+    const main = getMain();
+    return main ? JSON.parse(main.storageGet("craft_recipes") || "{}") : {};
+}
+function saveCraftRecipes(recipes) {
+    const main = getMain();
+    if (main) main.storageSet("craft_recipes", JSON.stringify(recipes));
+}
+
 function getInvAll() {
     const main = getMain();
     return main ? JSON.parse(main.storageGet("global_inventories") || "{}") : {};
@@ -615,27 +654,24 @@ cmd_reg_attr.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
     const defs = getAttrDefs();
     if (cmdArgs.getArgN(1) === "列表") {
-        const entries = Object.entries(defs);
-        if (!entries.length) return seal.replyToSender(ctx, msg, "📋 暂无已注册属性。");
-        const lines = entries.map(([name, d]) => {
-            const range = (d.min !== null && d.max !== null) ? ` [${d.min}~${d.max}，默认${d.default ?? d.min}]` : ` [无限制，默认${d.default ?? 0}]`;
-            return `· ${name}${range}${d.desc ? " — " + d.desc : ""}`;
-        });
-        return seal.replyToSender(ctx, msg, `📋 RPG 属性（${entries.length}）：\n${lines.join("\n")}`);
+        const attrs = getValidAttrs();
+        return seal.replyToSender(ctx, msg, attrs.length ? `📋 已注册属性：${attrs.join("、")}` : "📋 暂无已注册属性。");
     }
-    const name = cmdArgs.getArgN(1);
-    if (!name) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
-    const minStr = cmdArgs.getArgN(2), maxStr = cmdArgs.getArgN(3), defStr = cmdArgs.getArgN(4), desc = cmdArgs.getArgN(5) || "";
-    const hasRange = minStr !== "" && maxStr !== "";
-    const min = hasRange ? parseInt(minStr) : null;
-    const max = hasRange ? parseInt(maxStr) : null;
-    if (hasRange && (isNaN(min) || isNaN(max) || min > max)) return seal.replyToSender(ctx, msg, "❌ min/max 必须是整数且 min≤max。");
-    const defaultVal = defStr ? parseInt(defStr) : (min !== null ? min : 0);
-    defs[name] = { min, max, default: defaultVal, desc };
-    saveAttrDefs(defs);
-    const isNew = !defs[name];
-    const rangeStr = hasRange ? ` 范围[${min}~${max}]，默认${defaultVal}` : ` 默认${defaultVal}`;
-    seal.replyToSender(ctx, msg, `✅ ${isNew ? "新增" : "更新"}属性「${name}」${rangeStr}${desc ? "，" + desc : ""}`);
+    const newAttrs = [];
+    for (let i = 1; ; i++) { const a = cmdArgs.getArgN(i); if (!a) break; newAttrs.push(a); }
+    if (!newAttrs.length) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+
+    // 检查是否与货币名冲突
+    const reg = getRegistry();
+    const currencyNames = new Set(Object.values(reg).filter(r => r.type === "currency").map(r => r.name));
+    const conflicted = newAttrs.filter(a => currencyNames.has(a));
+    if (conflicted.length) return seal.replyToSender(ctx, msg, `❌ 以下属性名已被货币占用：${conflicted.join("、")}`);
+
+    const attrs = getValidAttrs();
+    let added = 0;
+    for (const a of newAttrs) if (!attrs.includes(a)) { attrs.push(a); added++; }
+    saveValidAttrs(attrs);
+    seal.replyToSender(ctx, msg, `✅ 新增 ${added} 个属性。当前：${attrs.join("、")}`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["注册属性"] = cmd_reg_attr;
@@ -1933,6 +1969,111 @@ cmd_apply.solve = (ctx, msg, cmdArgs) => {
 ext.cmdMap["施加"] = cmd_apply;
 
 // ========================
+// 合成系统
+// ========================
+
+let cmd_reg_craft = seal.ext.newCmdItemInfo();
+cmd_reg_craft.name = "注册合成";
+cmd_reg_craft.help = "【管理员】注册合成配方\n注册合成 产物代码*描述*材料代码1:数量1,材料代码2:数量2[*限制条件]\n限制格式：attr:属性名:最小值,currency:货币名:最小值\n示例：注册合成 高级丹*升级丹药*初级丹:3,金币:100*attr:体力:50,currency:金币:50";
+cmd_reg_craft.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const raw = cmdArgs.getArgN(1);
+    if (!raw) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+
+    const parts = raw.split(/[*＊]/);
+    const outputCode = (parts[0] || "").trim();
+    const desc = (parts[1] || "").trim();
+    const materialsStr = (parts[2] || "").trim();
+    const limitsStr = (parts[3] || "").trim();
+
+    if (!outputCode || !materialsStr) return seal.replyToSender(ctx, msg, "❌ 格式错误，至少需要产物代码和材料。");
+
+    const reg = getRegistry();
+    if (!reg[outputCode]) return seal.replyToSender(ctx, msg, `❌ 产物代码 [${outputCode}] 不存在。`);
+
+    // 解析材料
+    const materials = {};
+    const matParts = materialsStr.split(",");
+    for (const mat of matParts) {
+        const [code, countStr] = mat.split(":").map(s => s.trim());
+        if (!code || !countStr) return seal.replyToSender(ctx, msg, "❌ 材料格式错误，应为 代码:数量");
+        const count = parseInt(countStr);
+        if (isNaN(count) || count <= 0) return seal.replyToSender(ctx, msg, "❌ 材料数量必须为正整数。");
+        if (!reg[code]) return seal.replyToSender(ctx, msg, `❌ 材料代码 [${code}] 不存在。`);
+        materials[code] = count;
+    }
+
+    // 解析限制条件
+    const limits = { attrs: {}, currencies: {} };
+    if (limitsStr) {
+        const limitParts = limitsStr.split(",");
+        for (const limit of limitParts) {
+            const [type, name, valueStr] = limit.split(":").map(s => s.trim());
+            if (!type || !name || !valueStr) return seal.replyToSender(ctx, msg, "❌ 限制格式错误，应为 type:名称:数值");
+            const value = parseInt(valueStr);
+            if (isNaN(value)) return seal.replyToSender(ctx, msg, "❌ 限制数值必须为整数。");
+
+            if (type === "attr") {
+                limits.attrs[name] = value;
+            } else if (type === "currency") {
+                limits.currencies[name] = value;
+            } else {
+                return seal.replyToSender(ctx, msg, "❌ 限制类型应为 attr 或 currency");
+            }
+        }
+    }
+
+    const recipes = getCraftRecipes();
+    recipes[outputCode] = { materials, output: outputCode, desc: desc || "暂无描述", limits };
+    saveCraftRecipes(recipes);
+
+    const matStr = Object.entries(materials).map(([c, cnt]) => `${reg[c].name}×${cnt}`).join(" + ");
+    let msg_text = `✅ 合成配方已注册：${matStr} → ${reg[outputCode].name}`;
+    if (desc) msg_text += `\n📝 ${desc}`;
+    if (Object.keys(limits.attrs).length || Object.keys(limits.currencies).length) {
+        msg_text += "\n⚠️ 限制条件：";
+        for (const [attr, val] of Object.entries(limits.attrs)) msg_text += `\n  · ${attr} ≥ ${val}`;
+        for (const [curr, val] of Object.entries(limits.currencies)) msg_text += `\n  · ${curr} ≥ ${val}`;
+    }
+    seal.replyToSender(ctx, msg, msg_text);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["注册合成"] = cmd_reg_craft;
+
+let cmd_view_craft = seal.ext.newCmdItemInfo();
+cmd_view_craft.name = "查看合成";
+cmd_view_craft.help = "查看所有合成配方\n查看合成 [搜索关键词]";
+cmd_view_craft.solve = (ctx, msg, cmdArgs) => {
+    const recipes = getCraftRecipes();
+    const reg = getRegistry();
+    if (!Object.keys(recipes).length) return seal.replyToSender(ctx, msg, "📋 暂无合成配方。");
+
+    const filter = cmdArgs.getArgN(1) || "";
+    const filtered = Object.entries(recipes).filter(([code]) => !filter || code.includes(filter) || reg[code]?.name.includes(filter));
+
+    if (!filtered.length) return seal.replyToSender(ctx, msg, `📋 未找到包含「${filter}」的配方。`);
+
+    const lines = filtered.map(([code, recipe]) => {
+        const matStr = Object.entries(recipe.materials).map(([c, cnt]) => `${reg[c]?.name || c}×${cnt}`).join(" + ");
+        let line = `[${code}] ${reg[code]?.name || code}`;
+        if (recipe.desc && recipe.desc !== "暂无描述") line += ` - ${recipe.desc}`;
+        line += `\n   ← ${matStr}`;
+
+        const limits = recipe.limits || {};
+        if (Object.keys(limits.attrs || {}).length || Object.keys(limits.currencies || {}).length) {
+            line += "\n   ⚠️ 需求：";
+            for (const [attr, val] of Object.entries(limits.attrs || {})) line += ` ${attr}≥${val},`;
+            for (const [curr, val] of Object.entries(limits.currencies || {})) line += ` ${curr}≥${val},`;
+            line = line.slice(0, -1);
+        }
+        return line;
+    });
+    seal.replyToSender(ctx, msg, `📋 合成配方（${filtered.length}/${Object.keys(recipes).length}）：\n${lines.join("\n")}`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["查看合成"] = cmd_view_craft;
+
+// ========================
 // 无前缀指令触发
 // ========================
 
@@ -1942,11 +2083,186 @@ ext.onNotCommandReceived = (ctx, msg) => {
     const isAdmin = isUserAdmin(ctx, msg);
     const platform = msg.platform;
 
+    // ── RPG 属性 ──
+
+    // 我的状态
+    if (raw === "我的状态") {
+        const roleName = getRoleName(ctx, msg);
+        if (!roleName) return seal.replyToSender(ctx, msg, "❌ 未绑定角色");
+        const defs = getAttrDefs();
+        const charAttrs = getCharAttrs();
+        const roleAttrs = charAttrs[roleName] || {};
+        const attrNames = Object.keys(defs);
+        if (!attrNames.length) return seal.replyToSender(ctx, msg, `🎭 【${roleName}】暂无属性，管理员可用「我创建属性」添加。`);
+        const BAR = 10;
+        const lines = attrNames.map(name => {
+            const def = defs[name];
+            const val = roleAttrs[name] ?? (def.default ?? 0);
+            if (def.max !== null && def.max !== undefined && def.min !== null) {
+                const pct = def.max === def.min ? 1 : (val - def.min) / (def.max - def.min);
+                const filled = Math.round(Math.max(0, Math.min(1, pct)) * BAR);
+                const bar = "█".repeat(filled) + "░".repeat(BAR - filled);
+                return `${name}  ${bar}  ${val}/${def.max}`;
+            }
+            return `${name}  ${val}${def.min !== null ? `（最低${def.min}）` : ""}`;
+        });
+        return seal.replyToSender(ctx, msg, `🎭 【${roleName}】的状态\n${"━".repeat(14)}\n${lines.join("\n")}`);
+    }
+
+    // 我创建属性（管理员，无前缀）
+    if (raw.startsWith("我创建属性") && isAdmin) {
+        const rest = raw.slice(5).trim().split(/\s+/);
+        return cmd_reg_attr.solve(ctx, msg, fa(rest.length && rest[0] ? rest : [""]));
+    }
+
+    // 角色:属性++值 / 角色:属性--值 / 角色:货币++值（管理员批量改属性或货币）
+    if (isAdmin) {
+        const attrM = raw.match(/^(.+?)[:：](.+?)([+\-]{2})([\d、,，]+)$/);
+        if (attrM) {
+            const [, rolesPart, attrName, op, valsPart] = attrM;
+            const main = getMain();
+            if (!main) return;
+            const priv = JSON.parse(main.storageGet("a_private_group") || "{}")[platform] || {};
+            const roles = rolesPart === "全体" ? Object.keys(priv) : rolesPart.split(/[、,，]/).map(r => r.trim());
+            const vals = valsPart.split(/[、,，]/).map(v => parseInt(v));
+            const res = [];
+
+            // 检查是属性还是货币
+            const defs = getAttrDefs();
+            const reg = getRegistry();
+            const currencyCode = Object.entries(reg).find(([_, info]) => info.type === "currency" && info.name === attrName)?.[0];
+
+            if (defs[attrName]) {
+                // 处理属性
+                const charAttrs = getCharAttrs();
+                roles.forEach((r, i) => {
+                    if (!priv[r]) return;
+                    if (!charAttrs[r]) charAttrs[r] = {};
+                    const v = isNaN(vals[i]) ? vals[0] : vals[i];
+                    const old = charAttrs[r][attrName] ?? (defs[attrName].default ?? 0);
+                    const next = clampAttr(defs[attrName], op === "++" ? old + v : old - v);
+                    charAttrs[r][attrName] = next;
+                    res.push(`${r}：${old}→${next}`);
+                });
+                if (res.length) {
+                    saveCharAttrs(charAttrs);
+                    return seal.replyToSender(ctx, msg, `${op === "++" ? "📈" : "📉"} ${attrName} 变更：\n${res.join("\n")}`);
+                }
+            } else if (currencyCode) {
+                // 处理货币
+                roles.forEach((r, i) => {
+                    if (!priv[r]) return;
+                    const roleKey = `${platform}:${r}`;
+                    const v = isNaN(vals[i]) ? vals[0] : vals[i];
+                    const inv = getInv(roleKey);
+                    const entry = inv.find(e => e.code === currencyCode);
+                    const old = entry?.count || 0;
+                    if (op === "++") {
+                        addToInv(roleKey, currencyCode, v);
+                    } else {
+                        removeFromInv(roleKey, currencyCode, Math.min(v, old));
+                    }
+                    const newEntry = getInv(roleKey).find(e => e.code === currencyCode);
+                    const next = newEntry?.count || 0;
+                    res.push(`${r}：${old}→${next}`);
+                });
+                if (res.length) {
+                    return seal.replyToSender(ctx, msg, `${op === "++" ? "📈" : "📉"} ${attrName} 变更：\n${res.join("\n")}`);
+                }
+            }
+        }
+    }
+
+    // ── 合成系统 ──
+    if (raw === "合成列表") {
+        return cmd_view_craft.solve(ctx, msg, fa([]));
+    }
+    if (raw.startsWith("合成")) {
+        const rest = raw.slice(2).trim();
+        if (rest) {
+            // 格式：合成 产物代码 或 合成 产物代码 数量
+            const craftParts = rest.split(/\s+/);
+            const outputCode = craftParts[0];
+            const count = craftParts[1] ? parseInt(craftParts[1]) : 1;
+
+            const roleName = getRoleName(ctx, msg);
+            if (!roleName) return seal.replyToSender(ctx, msg, "❌ 未绑定角色");
+
+            const recipes = getCraftRecipes();
+            const recipe = recipes[outputCode];
+            if (!recipe) return seal.replyToSender(ctx, msg, `❌ 合成配方 [${outputCode}] 不存在`);
+
+            const reg = getRegistry();
+            const roleKey = `${platform}:${roleName}`;
+            const inv = getInv(roleKey);
+            const charAttrs = getCharAttrs();
+            const roleAttrs = charAttrs[roleName] || {};
+            const defs = getAttrDefs();
+
+            // 检查限制条件
+            const limits = recipe.limits || {};
+            const unmet = [];
+            for (const [attr, minVal] of Object.entries(limits.attrs || {})) {
+                const have = roleAttrs[attr] || 0;
+                if (have < minVal) unmet.push(`${attr} 需≥${minVal}（当前${have}）`);
+            }
+            for (const [currencyName, minVal] of Object.entries(limits.currencies || {})) {
+                const currencyCode = Object.entries(reg).find(([_, info]) => info.type === "currency" && info.name === currencyName)?.[0];
+                if (currencyCode) {
+                    const currEntry = inv.find(e => e.code === currencyCode);
+                    const have = currEntry?.count || 0;
+                    if (have < minVal) unmet.push(`${currencyName} 需≥${minVal}（当前${have}）`);
+                }
+            }
+            if (unmet.length) {
+                return seal.replyToSender(ctx, msg, `❌ 不满足合成条件：\n${unmet.join("\n")}`);
+            }
+
+            // 检查材料是否足够
+            const lacking = [];
+            for (const [matCode, matCount] of Object.entries(recipe.materials)) {
+                const needed = matCount * count;
+                const matEntry = inv.find(e => e.code === matCode);
+                const have = matEntry?.count || (roleAttrs[matCode] || 0);
+                if (have < needed) {
+                    lacking.push(`${reg[matCode]?.name || matCode} (需${needed}，只有${have})`);
+                }
+            }
+            if (lacking.length) {
+                return seal.replyToSender(ctx, msg, `❌ 材料不足：\n${lacking.join("\n")}`);
+            }
+
+            // 扣除材料
+            for (const [matCode, matCount] of Object.entries(recipe.materials)) {
+                const matEntry = inv.find(e => e.code === matCode);
+                if (matEntry) {
+                    removeFromInv(roleKey, matCode, matCount * count);
+                } else if (defs[matCode]) {
+                    const oldVal = roleAttrs[matCode] || 0;
+                    roleAttrs[matCode] = oldVal - matCount * count;
+                }
+            }
+            if (Object.keys(roleAttrs).length) {
+                charAttrs[roleName] = roleAttrs;
+                saveCharAttrs(charAttrs);
+            }
+
+            // 给予产物
+            addToInv(roleKey, outputCode, count);
+
+            const matStr = Object.entries(recipe.materials)
+                .map(([c, cnt]) => `${reg[c]?.name || c}×${cnt * count}`)
+                .join(" + ");
+            return seal.replyToSender(ctx, msg, `✨ 合成成功！\n消耗：${matStr}\n获得：${reg[outputCode]?.name || outputCode}×${count}`);
+        }
+    }
+
     // ── 道具 ──
     if (raw === "商城") return cmd_shop_view.solve(ctx, msg, fa([]));
     if (raw === "我的背包" || raw === "背包") return cmd_bag.solve(ctx, msg, fa([]));
     if (raw === "我的抽取次数" || raw === "抽取次数") return cmd_draw_count.solve(ctx, msg, fa([]));
     if (raw === "二手市场") return cmd_market.solve(ctx, msg, fa([]));
+
 
     if (raw.startsWith("抽取")) {
         const rest = raw.slice(2).trim();
