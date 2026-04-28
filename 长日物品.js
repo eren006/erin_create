@@ -4165,7 +4165,7 @@ ext.cmdMap["强化装备"] = cmd_reinforce;
 
 let cmd_register_equip = seal.ext.newCmdItemInfo();
 cmd_register_equip.name = "注册装备";
-cmd_register_equip.help = "【管理员】注册新装备\n注册装备 <装备名>*<描述>*<槽位>*<基础属性>*[强化属性]*[最大强化]\n\n属性格式: ATK+15,DEF+10\n槽位：执行「槽位 查看」查看所有可用槽位\n\n示例:\n注册装备 铁制短剑*普通短剑*hand*ATK+15*ATK+2*10\n注册装备 钢铁胸甲*防御胸甲*chest*DEF+20,HP+50*DEF+3*10";
+cmd_register_equip.help = "【管理员】注册新装备\n注册装备 <装备名>*<描述>*<槽位>*<基础属性>*[强化属性]*[最大强化]\n\n属性格式: ATK+15,DEF+10 (用逗号分隔多个属性)\n属性必须已注册，执行「我创建属性」可注册新属性\n槽位：执行「槽位 查看」查看所有可用槽位\n\n示例:\n注册装备 铁制短剑*普通短剑*hand*ATK+15*ATK+2*10\n注册装备 钢铁胸甲*防御胸甲*chest*DEF+20,HP+50*DEF+3*10\n注册装备 智者法杖*法术武器*hand*智力+20,MP+50*智力+3*10";
 cmd_register_equip.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
 
@@ -4211,6 +4211,24 @@ cmd_register_equip.solve = (ctx, msg, cmdArgs) => {
 
     if (Object.keys(baseAttrs).length === 0) {
         return seal.replyToSender(ctx, msg, "❌ 基础属性格式错误。格式: ATK+15,DEF+10");
+    }
+
+    // 验证所有属性是否已注册
+    const attrDefs = getAttrDefs();
+    const allAttrNames = new Set([...Object.keys(baseAttrs)]);
+    if (reinforceBonus) {
+        Object.keys(reinforceBonus).forEach(attr => allAttrNames.add(attr));
+    }
+
+    const unregisteredAttrs = [];
+    for (const attrName of allAttrNames) {
+        if (!attrDefs[attrName]) {
+            unregisteredAttrs.push(attrName);
+        }
+    }
+
+    if (unregisteredAttrs.length > 0) {
+        return seal.replyToSender(ctx, msg, `❌ 以下属性未注册: ${unregisteredAttrs.join(", ")}\n\n请先执行 \"我创建属性 <属性名>\" 来注册这些属性。`);
     }
 
     const registry = getEquipRegistry();
