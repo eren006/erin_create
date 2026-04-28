@@ -210,9 +210,13 @@ function showInteractionSettings(ctx, msg) {
         duration = { ...duration, ...JSON.parse(getMainStorage("appointment_duration_config", "{}")) };
     } catch (e) {}
 
+    const endGameDrawConfig = JSON.parse(getMainStorage("end_game_draw_config", "{}"));
+    const endGameDrawEnabled = endGameDrawConfig.enabled !== false;
+
     const results = [
         ".设置 互动设置",
         `【地点系统】${getPlaceSystemConfig().enabled ? '开启' : '关闭'}`,
+        `【结戏抽取】${endGameDrawEnabled ? '开启' : '关闭'}`,
         `【电话最小时长】${duration.phone}`,
         `【私密最小时长】${duration.private}`,
         `【寄信冷却时间】${getMainStorage("mailCooldown", "60")}`,
@@ -229,6 +233,14 @@ function applyInteractionParam(name, val) {
         c.enabled = (val === '开启');
         setPlaceSystemConfig(c);
         return { success: true, message: `地点系统已${val}` };
+    }
+
+    // 结戏抽取
+    if (name === '结戏抽取') {
+        let cfg = JSON.parse(getMainStorage("end_game_draw_config", "{}"));
+        cfg.enabled = (val === '开启');
+        setMainStorage("end_game_draw_config", JSON.stringify(cfg));
+        return { success: true, message: `结戏抽取已${val}` };
     }
 
     // 邀约时长

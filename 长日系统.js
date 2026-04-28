@@ -5310,11 +5310,18 @@ function saveSessionStats(s) {
 function applyEndGameBonuses(ctx, msg, gid, platform) {
     const bonuses = JSON.parse(ext.storageGet("end_game_bonuses") || "[]");
     const enabled = bonuses.filter(b => b.enabled);
-    if (!enabled.length) return;
+    if (!enabled.length) {
+        // 即使没有加成奖励，也要检查并发放抽取机会
+        applyEndGameDraws(ctx, msg, gid, platform);
+        return;
+    }
 
     const sessionStats = getSessionStats();
     const groupStat = sessionStats[gid];
-    if (!groupStat || !Object.keys(groupStat).length) return;
+    if (!groupStat || !Object.keys(groupStat).length) {
+        applyEndGameDraws(ctx, msg, gid, platform);
+        return;
+    }
 
     const reg = JSON.parse(ext.storageGet("item_registry") || "{}");
     const currencyByName = {};
@@ -5368,6 +5375,85 @@ function applyEndGameBonuses(ctx, msg, gid, platform) {
 
     if (report.length) {
         seal.replyToSender(ctx, msg, `🎁 结戏加成已发放：\n${report.join("\n")}`);
+    }
+
+    // 发放结戏抽取机会
+    applyEndGameDraws(ctx, msg, gid, platform);
+}
+
+/**
+ * 结戏时自动发放对应地点的抽取机会（需要先同步踩点池）
+ */
+function applyEndGameDraws(ctx, msg, gid, platform) {
+    // 检查设置是否启用
+    const drawConfig = JSON.parse(ext.storageGet("end_game_draw_config", "{}"));
+    if (!drawConfig.enabled) return;
+
+    // 从 b_confirmedSchedule 获取该群的地点
+    const b_confirmedSchedule = JSON.parse(ext.storageGet("b_confirmedSchedule") || "{}");
+    let place = null;
+
+    for (const [uidKey, events] of Object.entries(b_confirmedSchedule)) {
+        for (const event of events) {
+            if (event.group === gid && event.place) {
+                place = event.place;
+                break;
+            }
+        }
+        if (place) break;
+    }
+
+    if (!place) return; // 没有地点信息，不发放
+
+    // 构建对应的池子名称（{地点}池）
+    const poolName = `${place}池`;
+
+    // 获取本群的所有参与者（从 sessionStats）
+    const sessionStats = getSessionStats();
+    const groupStat = sessionStats[gid];
+    const participants = Object.keys(groupStat || {});
+
+    if (!participants.length) return;
+
+    // 获取物品系统的 player_draw_records
+    const itemExt = seal.ext.find("item_system_v2");
+    if (!itemExt) return; // 物品系统未加载
+
+    const records = JSON.parse(ext.storageGet("player_draw_records") || "{}");
+    const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
+
+    let awardedCount = 0;
+    const awardedList = [];
+
+    for (const roleName of participants) {
+        // 获取角色的 uid
+        const roleInfo = a_private_group[platform]?.[roleName];
+        if (!roleInfo) continue;
+
+        const uid = roleInfo[0];
+        const key = `${platform}:${uid}`;
+
+        // 获取或创建该玩家的抽取记录
+        let rec = records[key] || { day: "", used: {}, extra: {} };
+        const currentDay = ext.storageGet("global_days") || "";
+        if (rec.day !== currentDay) {
+            rec.day = currentDay;
+            rec.used = {};
+        }
+
+        // 发放该地点池的抽取机会
+        if (!rec.extra) rec.extra = {};
+        rec.extra[poolName] = (rec.extra[poolName] || 0) + 1;
+        records[key] = rec;
+
+        awardedCount++;
+        awardedList.push(roleName);
+    }
+
+    // 保存更新后的记录
+    if (awardedCount > 0) {
+        ext.storageSet("player_draw_records", JSON.stringify(records));
+        seal.replyToSender(ctx, msg, `🎰 结戏抽取：已为 ${awardedList.join("、")} 发放「${poolName}」抽取机会 ×1`);
     }
 }
 
