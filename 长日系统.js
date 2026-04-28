@@ -2498,6 +2498,13 @@ function endWechatGroup(ctx, msg, gid, platform, uid) {
         ext.storageSet("group", JSON.stringify(groupList));
     }
 
+    // 【新增：微信群也重置计数】
+        let progress = JSON.parse(ext.storageGet("group_write_progress") || "{}");
+        if (progress[gid]) {
+            delete progress[gid];
+            ext.storageSet("group_write_progress", JSON.stringify(progress));
+        }
+
     // 修改群名为“备用”
     setGroupName(ctx, msg, gid, "备用");
 
@@ -2553,6 +2560,14 @@ cmd_grouplist_release.solve = (ctx, msg, cmdArgs) => {
         group.splice(group.indexOf(fullId), 1);
         group.push(gid);
         ext.storageSet("group", JSON.stringify(group));
+
+        // 【新增：重置该群的写帖进度计数】
+        let progress = JSON.parse(ext.storageGet("group_write_progress") || "{}");
+        if (progress[gid]) {
+            delete progress[gid]; // 删除该群下所有人的计数记录
+            ext.storageSet("group_write_progress", JSON.stringify(progress));
+            console.log(`[DEBUG] 已重置群组 ${gid} 的写帖进度计数`);
+        }
 
         // 更新 b_confirmedSchedule 中所有 status 为 ended
         let b_confirmedSchedule = JSON.parse(ext.storageGet("b_confirmedSchedule") || "{}");
@@ -5458,70 +5473,77 @@ function initGroupTimer(platform, groupId, subtype, participants, initiator) {
     console.log(`[监听系统] 初始化群组 ${groupId} 的计时器，参与者：${activeParticipants.join(',')}，模式：${isTwoPerson ? '轮流模式' : '独立模式'}`);
 }
 
+
 /**
  * 处理回复（监听消息时调用）
- * 修改：独立模式下，每个人回复后保持"已回复"状态，不改变其他人状态
+ * 已集成：计时状态更新、字数校验、转发逻辑、以及写帖进度计数
  */
 function handleReply(platform, groupId, roleName, message) {
-
     const settings = getMonitorSettings();
     if (!settings.enabled) {
         return false;
     }
-    
+
     const timers = getGroupTimers();
     const timer = timers[groupId];
     if (!timer) {
         return false;
     }
-    
+
     const roleStatus = timer.timerStatus[roleName];
     if (!roleStatus) {
-        console.warn(`[监听系统] 处理失败: 角色 [${roleName}] 不在当前计时的参与者名单中`);
+        console.warn(`[监听系统] 处理失败: 角色 [${roleName}] 不在参与者名单中`);
         return false;
     }
-    
-    // 检查状态
-    console.log(`[监听系统] 角色 [${roleName}] 当前状态: ${roleStatus.status}, 模式: ${timer.timerMode}`);
-    
+
+    // 1. 检查计时状态
     if (roleStatus.status !== "timing") {
-        console.warn(`[监听系统] 忽略回复: [${roleName}] 的状态不是 "timing" (计时中)，当前状态为 "${roleStatus.status}"`);
         return false;
     }
-    
-    // 计算字数
+
+    // 2. 字数统计与校验
     const wordCount = countWords(message);
     const minWords = getMinWords(timer.subtype);
-    console.log(`[监听系统] 字数统计: 当前输入 ${wordCount} 字, 最低要求 ${minWords} 字`);
-    
-    // 检查是否达到最低字数要求
     if (wordCount < minWords) {
-        console.warn(`[监听系统] 忽略回复: 字数不足 (需要 ${minWords} 字，实际 ${wordCount} 字)`);
-        return false;
+        // 字数不足不触发计数和状态更新
+        return false; 
     }
-    
+
     // --- 校验通过，开始更新数据 ---
-    
-    // 记录回复
+
+    // 3. 记录回复状态
     roleStatus.status = "replied";
     roleStatus.repliedTime = Date.now();
     roleStatus.wordCount = wordCount;
-    
-    // 更新用户统计
+
+    // 4. 更新用户统计 (原有逻辑)
     updateUserStats(platform, roleName, wordCount, roleStatus.startTime, roleStatus.repliedTime);
 
-    // 更新本场会话统计（用于结戏加成）
+    // 5. 【新增逻辑】记录写帖进度 (替代原来的 .写了 指令)
+    // 获取该角色的 UID
+    const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
+    const uid = a_private_group[platform]?.[roleName]?.[0];
+    
+    if (uid) {
+        const progress = JSON.parse(ext.storageGet("group_write_progress") || "{}");
+        // 这里的 groupId 是当前互动的群号（如 001_1）
+        if (!progress[groupId]) progress[groupId] = {};
+        progress[groupId][uid] = (progress[groupId][uid] || 0) + 1;
+        ext.storageSet("group_write_progress", JSON.stringify(progress));
+        console.log(`[监听系统] 记录进度: ${roleName}(${uid}) 在群 ${groupId} 回复数 +1`);
+    }
+
+    // 6. 更新本场会话统计
     const _ss = getSessionStats();
     if (!_ss[groupId]) _ss[groupId] = {};
     if (!_ss[groupId][roleName]) _ss[groupId][roleName] = { replies: 0, words: 0 };
     _ss[groupId][roleName].replies += 1;
     _ss[groupId][roleName].words += wordCount;
     saveSessionStats(_ss);
-    
-    // 根据计时模式处理下一步
+
+    // 7. 处理计时器流转 (轮流模式/独立模式)
     if (timer.timerMode === "turn_taking") {
         const otherParticipant = timer.participants.find(p => p !== roleName);
-        
         if (otherParticipant) {
             const otherStatus = timer.timerStatus[otherParticipant];
             if (otherStatus) {
@@ -5530,18 +5552,12 @@ function handleReply(platform, groupId, roleName, message) {
                 otherStatus.repliedTime = null;
                 otherStatus.wordCount = 0;
                 otherStatus.remindedTimes = 0;
-                console.log(`[监听系统] 轮流模式: 下一位角色 [${otherParticipant}] 已进入计时状态`);
             }
-        } else {
-            console.log(`[监听系统] 轮流模式: 未找到另一位参与者`);
         }
-    } else {
-        console.log(`[监听系统] 独立模式: 角色 [${roleName}] 回复成功，不影响其他人的计时状态`);
     }
-    
+
     saveGroupTimers(timers);
-    
-    return true;
+    return true; // 返回 true 表示处理成功，外部逻辑会执行 handleReply 转发
 }
 
 /**
@@ -6013,27 +6029,6 @@ ext.onNotCommandReceived = (ctx, msg) => {
         }
     }
 
-    // 2. 属性系统 (我创建属性/我的状态/属性变更)
-    if (raw.startsWith("我创建属性") && isAdmin) {
-        const name = raw.replace("我创建属性", "").trim();
-        let pts = getS("sys_attr_presets");
-        if (name && !pts.includes(name)) { pts.push(name); ext.storageSet("sys_attr_presets", JSON.stringify(pts)); return seal.replyToSender(ctx, msg, `✅ 已创建属性：${name}`); }
-    }
-    if (raw === "我的状态") {
-        const role = getRoleName(ctx, msg), data = getS("sys_character_attrs"), pts = getS("sys_attr_presets");
-        return seal.replyToSender(ctx, msg, role ? `🎭 【${role}】状态\n` + (pts.length ? pts.map(p => `${p}：${data[role]?.[p] || 0}`).join('\n') : "暂无属性") : "❌ 未绑定角色");
-    }
-    const attrM = raw.match(/^(.+?)[:：](.+?)([+\-]{2})([\d、,，]+)$/);
-    if (attrM && isAdmin) {
-        const [_, rP, aN, op, vP] = attrM, pts = getS("sys_attr_presets"), priv = getS("a_private_group");
-        if (pts.includes(aN)) {
-            let data = getS("sys_character_attrs"), res = [], rs = rP === "全体" ? Object.keys(priv[platform] || {}) : rP.split(/[、,，]/).map(r => r.trim());
-            const vL = vP.split(/[、,，]/).map(v => parseInt(v));
-            rs.forEach((r, i) => { if (priv[platform]?.[r]) { const old = (data[r] = data[r] || {})[aN] || 0, v = isNaN(vL[i]) ? vL[0] : vL[i]; res.push(`${r}：${old}->${(data[r][aN] = op === "++" ? old + v : old - v)}`); } });
-            if (res.length) { ext.storageSet("sys_character_attrs", JSON.stringify(data)); return seal.replyToSender(ctx, msg, `${op === "++" ? "📈" : "📉"} ${aN}变更:\n${res.join('\n')}`); }
-        }
-    }
-
     // 3. 互动系统 (赠送/短信)
     // 支持「赠送 对方 礼物」和「自定义名赠送 对方 礼物」，排除「道具赠送」
     if (!raw.startsWith("道具赠送")) {
@@ -6361,15 +6356,6 @@ ext.onNotCommandReceived = (ctx, msg) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    // 4.10 写了（记录写帖进度）
-    if (raw === "写了") {
-        if (!getRoleName(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 请先创建角色");
-        const progress = JSON.parse(ext.storageGet("group_write_progress") || "{}");
-        if (!progress[groupId]) progress[groupId] = {};
-        progress[groupId][uid] = (progress[groupId][uid] || 0) + 1;
-        ext.storageSet("group_write_progress", JSON.stringify(progress));
-        return seal.ext.newCmdExecuteResult(true);
-    }
 
     // 4.11 时间线
     if (raw === "时间线") return cmd_view_schedule.solve(ctx, msg, makeFakeCmdArgs([]));
