@@ -3492,7 +3492,7 @@ ext.cmdMap["设置昵称"] = cmd_set_display_name;
 
 let cmd_quick_init = seal.ext.newCmdItemInfo();
 cmd_quick_init.name = "一键初始化";
-cmd_quick_init.help = "【管理员】一键初始化攻防系统 - 注册属性和回血药\n一键初始化\n  将自动创建：\n  · 5个RPG属性（体力、防御、敏捷、智力、精神）\n  · 4种回血药（小、中、大、满）\n  · 启用攻防系统";
+cmd_quick_init.help = "【管理员】一键初始化攻防系统 - 注册属性和回血药\n一键初始化\n  将自动创建：\n  · 5个RPG属性（HP、MP、ATK、DEF、AGI）\n  · 4种回血药（小、中、大、满）\n  · 启用攻防系统";
 cmd_quick_init.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
 
@@ -3508,11 +3508,11 @@ cmd_quick_init.solve = (ctx, msg, cmdArgs) => {
 
     // ========== 创建RPG属性 ==========
     const attrs = [
-        { name: "体力", min: 0, max: 100, default: 50, desc: "生命值和耐力" },
-        { name: "防御", min: 0, max: 100, default: 30, desc: "抵抗伤害能力" },
-        { name: "敏捷", min: 0, max: 100, default: 40, desc: "行动速度和闪避" },
-        { name: "智力", min: 0, max: 100, default: 35, desc: "魔法攻击和法术强度" },
-        { name: "精神", min: 0, max: 100, default: 40, desc: "精神力和恢复速率" }
+        { name: "HP", min: 0, max: 100, default: 50, desc: "生命值" },
+        { name: "MP", min: 0, max: 100, default: 50, desc: "魔法值" },
+        { name: "ATK", min: 0, max: 100, default: 40, desc: "攻击力" },
+        { name: "DEF", min: 0, max: 100, default: 30, desc: "防御力" },
+        { name: "AGI", min: 0, max: 100, default: 40, desc: "敏捷" }
     ];
 
     attrs.forEach(attr => {
@@ -3535,33 +3535,33 @@ cmd_quick_init.solve = (ctx, msg, cmdArgs) => {
     const potions = [
         {
             name: "小回血药",
-            desc: "恢复少量体力",
+            desc: "恢复少量HP",
             uses: -1,
-            effects: "体力+30",
+            effects: "HP+30",
             resellable: "Y",
             code: "ITEM_POT_S"
         },
         {
             name: "中回血药",
-            desc: "恢复中等体力",
+            desc: "恢复中等HP",
             uses: -1,
-            effects: "体力+60",
+            effects: "HP+60",
             resellable: "Y",
             code: "ITEM_POT_M"
         },
         {
             name: "大回血药",
-            desc: "恢复大量体力",
+            desc: "恢复大量HP",
             uses: -1,
-            effects: "体力+100",
+            effects: "HP+100",
             resellable: "Y",
             code: "ITEM_POT_L"
         },
         {
             name: "全恢复药",
-            desc: "完全恢复体力和精神",
+            desc: "完全恢复HP和MP",
             uses: 0,
-            effects: "体力+100,精神+100",
+            effects: "HP+100,MP+100",
             resellable: "N",
             code: "ITEM_POT_FULL"
         }
@@ -3620,7 +3620,7 @@ cmd_quick_init.solve = (ctx, msg, cmdArgs) => {
     }
 
     reply += `📋 已创建：\n`;
-    reply += `· 5个属性：体力、防御、敏捷、智力、精神\n`;
+    reply += `· 5个属性：HP、MP、ATK、DEF、AGI\n`;
     reply += `· 4种药品：小/中/大回血药 + 全恢复药\n`;
     reply += `· 攻防系统已启用\n\n`;
     reply += `💡 下一步：\n`;
