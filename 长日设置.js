@@ -504,6 +504,9 @@ function showItemSettings(ctx, msg) {
     const showPartner = main.storageGet("item_tracker_show_partner") !== "false";
     const timeRestrict = main.storageGet("item_tracker_time_restrict") !== "false";
     const itemPoolMode = getMainStorage("item_pool_mode", "自由池");
+    const applyNotify = main.storageGet("apply_item_notification") !== "false";
+    const applyAnon = main.storageGet("apply_item_anonymous") === "true";
+    const applyHours = main.storageGet("apply_item_hours") || "不限";
 
     const results = [
         ".设置 道具设置",
@@ -511,7 +514,10 @@ function showItemSettings(ctx, msg) {
         `【每日抽取上限】${drawLimit}`,
         `【追踪器显示伙伴】${showPartner ? "开启" : "关闭"}`,
         `【追踪器时间限制】${timeRestrict ? "开启" : "关闭"}`,
-        `【物品池模式】${itemPoolMode}`
+        `【物品池模式】${itemPoolMode}`,
+        `【施加是否提醒】${applyNotify ? '开启' : '关闭'}` ,
+        `【是否匿名施加】${applyAnon ? '开启' : '关闭'}`,
+        `【施加可用时段】${applyHours}`
     ];
     seal.replyToSender(ctx, msg, results.join('\n'));
 }
@@ -632,6 +638,27 @@ function applyItemParam(name, val) {
         const enabled = (val === '开启' || val === '开' || val === 'true');
         main.storageSet("item_tracker_time_restrict", enabled ? "true" : "false");
         return { success: true, message: `【追踪器时间限制】已${enabled ? "开启" : "关闭"}` };
+    }
+    if (name === '施加是否提醒') {
+        const isOpen = (val === '开启');
+        main.storageSet("apply_item_notification", isOpen ? "true" : "false");
+        return { success: true, message: `【施加是否提醒】已${val}` };
+    }
+    if (name === '是否匿名施加') {
+        const isAnon = (val === '开启');
+        main.storageSet("apply_item_anonymous", isAnon ? "true" : "false");
+        return { success: true, message: `【是否匿名施加】已${val}` };
+    }
+    if (name === '施加可用时段') {
+    if (val === '不限' || val === '全部') {
+        main.storageSet("apply_item_hours", "");
+        return { success: true, message: `【施加可用时段】已设为全天可用` };
+    }
+    if (!/^[\d\-,，]+$/.test(val)) {
+            return { success: false, message: "❌ 格式错误。示例：18-23 或 9-12,14-18" };
+        }
+        main.storageSet("apply_item_hours", val);
+        return { success: true, message: `【施加可用时段】已设为：${val}` };
     }
     if (name === '物品池模式') {
         if (val !== '自由池' && val !== '固定池') {
