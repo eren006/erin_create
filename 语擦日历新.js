@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         语擦助手
 // @author       长日将尽
-// @version      2.0.0
-// @description  记录和管理语擦档期，支持跨年录入、本月在档/空闲查询、本年数据统计、月视图。新增查档期、重命名档期、档期帮助。
+// @version      2.1.0
+// @description  记录和管理语擦档期，支持跨年录入、撞档预警、本月在档/空闲查询、本年数据统计（含主题题材）、月视图。
 // @timestamp    2026-04-25
 // @license      CC BY-NC-SA
 // ==/UserScript//
@@ -28,11 +28,15 @@
  * - 新增：查档期、重命名档期、档期帮助
  * - 本月档期：同时展示在档恋综列表和空闲日期
  * - 提取 parseYearMonth、calcMonthOccupied 公共函数，消除月视图/本月档期的重复逻辑
+ *
+ * v2.1.0 改动：
+ * - 录入档期：保存后检测与已有档期的时间重叠，给出撞档提醒（不阻止录入）
+ * - 本年数据：新增主题题材分布统计
  */
 
 let ext = seal.ext.find('yuca_helper');
 if (!ext) {
-    ext = seal.ext.new('yuca_helper', '长日将尽', '2.0.0');
+    ext = seal.ext.new('yuca_helper', '长日将尽', '2.1.0');
     seal.ext.register(ext);
 }
 
@@ -192,6 +196,41 @@ function calcMonthOccupied(userData, targetYear, targetMonth) {
     return { occupied, daysInMonth, activeShows };
 }
 
+// ======================== 撞档检测 ========================
+
+/**
+ * 检测新档期与已有档期是否存在时间重叠。
+ * @param {Object} userData  当前用户全部档期（已含本次新增/覆盖后的数据）
+ * @param {string} skipName  本次录入的恋综名，跳过自身比较
+ * @param {number} newStartYear
+ * @param {Object} newParsed  parseTimeRange 返回的解析结果
+ * @returns {string[]} 与新档期存在重叠的恋综名列表
+ */
+function findConflicts(userData, skipName, newStartYear, newParsed) {
+    let cross = isCrossYear(newParsed.endMonth, newParsed.startMonth);
+    let newEndYear = cross ? newStartYear + 1 : newStartYear;
+    let newStartVal = newStartYear * 10000 + newParsed.startMonth * 100 + newParsed.startDay;
+    let newEndVal = newEndYear * 10000 + newParsed.endMonth * 100 + newParsed.endDay;
+
+    let conflicts = [];
+    for (let name in userData) {
+        if (name === skipName) continue;
+        let entry = userData[name];
+        let parsed = parseTimeRange(entry.timeRange || '');
+        if (!parsed.valid) continue;
+
+        let existCross = isCrossYear(parsed.endMonth, parsed.startMonth);
+        let existEndYear = existCross ? entry.startYear + 1 : entry.startYear;
+        let existStartVal = entry.startYear * 10000 + parsed.startMonth * 100 + parsed.startDay;
+        let existEndVal = existEndYear * 10000 + parsed.endMonth * 100 + parsed.endDay;
+
+        if (newStartVal <= existEndVal && newEndVal >= existStartVal) {
+            conflicts.push(name);
+        }
+    }
+    return conflicts;
+}
+
 // ======================== 字段映射（全局复用） ========================
 
 const FIELD_MAP = {
@@ -216,7 +255,7 @@ let cmd_help = seal.ext.newCmdItemInfo();
 cmd_help.name = '档期帮助';
 cmd_help.help = '。档期帮助 —— 显示所有可用指令';
 cmd_help.solve = (ctx, msg, cmdArgs) => {
-    let help = `📅 【语擦助手 v2.0 指令列表】
+    let help = `📅 【语擦助手 v2.1 指令列表】
 ══════════════
 📝 录入与管理
   。录入档期          录入新档期（多行键值格式）
@@ -327,6 +366,9 @@ cmd_add.solve = (ctx, msg, cmdArgs) => {
     let hint = cross ? '（跨年，将自动拆分显示）' : '';
     let action = isUpdate ? '已更新' : '已录入';
 
+    // 撞档检测：检查与其他档期的时间重叠（all[uid] 此时已含本次录入）
+    let conflicts = findConflicts(all[uid], fields.name, fields.startYear, parsed);
+
     let reply = `✅ 档期${action}${hint}：\n`;
     reply += `恋综名：${fields.name}\n`;
     reply += `时间段：${fields.startYear}/${fields.timeRange}\n`;
@@ -338,6 +380,11 @@ cmd_add.solve = (ctx, msg, cmdArgs) => {
     if (fields.roleType !== '未知') reply += `角色类型：${fields.roleType}\n`;
     if (fields.gender !== '未知') reply += `性别：${fields.gender}\n`;
     if (fields.outcome !== '未知') reply += `结局：${fields.outcome}\n`;
+
+    if (conflicts.length > 0) {
+        reply += `\n⚠️ 撞档提醒：与以下档期存在时间重叠：\n`;
+        conflicts.forEach(n => reply += `  · ${n}\n`);
+    }
 
     seal.replyToSender(ctx, msg, reply);
     return seal.ext.newCmdExecuteResult(true);
@@ -671,11 +718,12 @@ cmd_year_data.solve = (ctx, msg, cmdArgs) => {
     let orientations = [];
     let genders = [];
     let outcomes = [];
+    let themes = [];
     let activeRanges = [];
 
     for (let name in userData) {
         let entry = userData[name];
-        let { startYear, timeRange, character, orientation } = entry;
+        let { startYear, timeRange, character, orientation, theme } = entry;
         let gender = entry.gender || '未知';
         let outcome = entry.outcome || '未知';
         let parsed = parseTimeRange(timeRange);
@@ -694,6 +742,7 @@ cmd_year_data.solve = (ctx, msg, cmdArgs) => {
         if (orientation !== '未知') orientations.push(orientation);
         if (gender !== '未知') genders.push(gender);
         if (outcome !== '未知') outcomes.push(outcome);
+        if (theme && theme !== '未知') themes.push(theme);
 
         activeRanges.push({ start: Math.max(startVal, targetStart), end: Math.min(endVal, targetEnd) });
     }
@@ -745,6 +794,7 @@ cmd_year_data.solve = (ctx, msg, cmdArgs) => {
     reply += distrib(orientations, '性向', '❤️');
     reply += distrib(genders, '性别', '🚻');
     reply += distrib(outcomes, '结局', '🎬');
+    reply += distrib(themes, '主题题材', '🎨');
 
     reply += `\n📅 语擦天数：${coveredDays} 天（占 ${coveredPercent}%）\n`;
     reply += `   · 周中：${weekdayCovered} 天\n`;
