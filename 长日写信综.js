@@ -282,11 +282,15 @@ cmd_letter_config.help = `⚙️ 【管理员】配置发送信件系统
 - 日限：每日最多可发送的信件数（默认5）
 - 赏金：每封信获得的写信币数（默认0，即禁用赏金）
 - 最小字数：获得赏金的最少字数（默认0）
+- 心愿成本：发送心愿需要消费的写信币数（默认0，即禁用消费）
+- 私约成本：发送私约需要消费的写信币数（默认0，即禁用消费）
 
 示例：
 。信件设置 日限 10
 。信件设置 赏金 5
-。信件设置 最小字数 10`;
+。信件设置 最小字数 10
+。信件设置 心愿成本 3
+。信件设置 私约成本 5`;
 
 cmd_letter_config.solve = (ctx, msg, cmdArgs) => {
     if (!seal.isAdmin(ctx, msg)) {
@@ -310,6 +314,12 @@ cmd_letter_config.solve = (ctx, msg, cmdArgs) => {
         modified = true;
     } else if (param === "最小字数") {
         ext.storageSet("letter_min_chars", value);
+        modified = true;
+    } else if (param === "心愿成本") {
+        ext.storageSet("wish_coin_cost", value);
+        modified = true;
+    } else if (param === "私约成本") {
+        ext.storageSet("appointment_coin_cost", value);
         modified = true;
     }
 

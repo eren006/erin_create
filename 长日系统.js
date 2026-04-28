@@ -1623,6 +1623,67 @@ async function directCreateAndFinalizeAppointment({
 }
 
 // ========================
+// 💰 写信币消费辅助函数
+// ========================
+
+/**
+ * 检查写信系统是否启用
+ */
+function isLetterSystemEnabled() {
+    const letterExt = seal.ext.find("我的长日");
+    if (!letterExt) return false;
+    const config = JSON.parse(letterExt.storageGet("global_feature_toggle") || "{}");
+    return config.enable_letter_system === true;
+}
+
+/**
+ * 检查和消费写信币
+ * @returns {success: bool, errorMsg?: string}
+ */
+function checkAndCostLetterCoin(ctx, msg, costType) {
+    const letterExt = seal.ext.find("我的长日");
+    if (!letterExt) return { success: false, errorMsg: "❌ 写信系统未找到" };
+
+    const platform = msg.platform;
+    const uid = msg.sender.userId.replace(`${platform}:`, "");
+
+    // 获取玩家角色名
+    const a_private_group = JSON.parse(letterExt.storageGet("a_private_group") || "{}");
+    const senderRoleName = Object.entries(a_private_group[platform] || {}).find(([_, v]) => v[0] === uid)?.[0];
+
+    if (!senderRoleName) {
+        return { success: false, errorMsg: "✨ 请先使用「创建新角色」来认领你的身份。" };
+    }
+
+    // 获取消费成本
+    let cost = 0;
+    if (costType === "wish") {
+        cost = parseInt(letterExt.storageGet("wish_coin_cost") || "0");
+    } else if (costType === "appointment") {
+        cost = parseInt(letterExt.storageGet("appointment_coin_cost") || "0");
+    }
+
+    if (cost <= 0) {
+        return { success: true }; // 未启用消费
+    }
+
+    // 检查写信币余额
+    let attrs = JSON.parse(letterExt.storageGet("sys_character_attrs") || "{}");
+    const currentCoins = attrs[senderRoleName]?.["写信币"] || 0;
+
+    if (currentCoins < cost) {
+        return { success: false, errorMsg: `💰 写信币不足！需要 ${cost} 枚，现有 ${currentCoins} 枚。` };
+    }
+
+    // 消费写信币
+    if (!attrs[senderRoleName]) attrs[senderRoleName] = {};
+    attrs[senderRoleName]["写信币"] = currentCoins - cost;
+    letterExt.storageSet("sys_character_attrs", JSON.stringify(attrs));
+
+    return { success: true, cost };
+}
+
+// ========================
 // 📞 电话指令（直接确认版）
 // ========================
 let cmd_phone = seal.ext.newCmdItemInfo();
@@ -1643,6 +1704,12 @@ function generatePhoneInvitationMessage(sendname, title, day, time, isMulti, oth
 }
 
 cmd_phone.solve = async (ctx, msg, cmdArgs) => {
+    // 检查写信系统是否启用
+    if (isLetterSystemEnabled()) {
+        seal.replyToSender(ctx, msg, "❌ 启用写信综模式后，电话功能已禁用。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
     const pre = await checkAppointmentPreflight(ctx, msg, cmdArgs, "电话", "phone");
     if (!pre.valid) return seal.replyToSender(ctx, msg, pre.errorMsg), seal.ext.newCmdExecuteResult(true);
     const { platform, uid, sendname, day, time, names, isMulti, a_private_group, title } = pre.data;
@@ -1655,8 +1722,8 @@ cmd_phone.solve = async (ctx, msg, cmdArgs) => {
         generateMessageFn: generatePhoneInvitationMessage
     });
 
-    const successMsg = isMulti 
-        ? `✅ 你已成功向 ${names.join("、")} 发起多人电话，通讯频段已自动建立！` 
+    const successMsg = isMulti
+        ? `✅ 你已成功向 ${names.join("、")} 发起多人电话，通讯频段已自动建立！`
         : `✅ 你已成功与 ${names[0]} 连线，通讯频段已自动建立！`;
     seal.replyToSender(ctx, msg, successMsg);
     return seal.ext.newCmdExecuteResult(true);
@@ -1689,11 +1756,20 @@ function generatePrivateInvitationMessage(sendname, place, day, time, isMulti, o
 }
 
 cmd_appointment_private.solve = async (ctx, msg, cmdArgs) => {
+    // 检查写信系统启用时是否需要消费写信币
+    if (isLetterSystemEnabled()) {
+        const coinCheck = checkAndCostLetterCoin(ctx, msg, "appointment");
+        if (!coinCheck.success) {
+            seal.replyToSender(ctx, msg, coinCheck.errorMsg);
+            return seal.ext.newCmdExecuteResult(true);
+        }
+    }
+
     const pre = await checkAppointmentPreflight(ctx, msg, cmdArgs, "私密", "private");
     if (!pre.valid) return seal.replyToSender(ctx, msg, pre.errorMsg), seal.ext.newCmdExecuteResult(true);
 
     if (pre.data.mergeTarget) {
-        const newNames = pre.data.names; 
+        const newNames = pre.data.names;
         const success = mergeIntoExistingAppointment(ctx, msg, pre.data.mergeTarget, newNames, pre.data);
         if (success) {
             const successMsg = `✅ 你发起的私约已自动合并到现有约会中！\n参与者：${pre.data.mergeTarget.partner}\n群号：${pre.data.mergeTarget.group}\n请自行申请入群~`;
@@ -1706,7 +1782,7 @@ cmd_appointment_private.solve = async (ctx, msg, cmdArgs) => {
     }
 
     const { platform, uid, sendname, day, time, names, isMulti, place, a_private_group } = pre.data;
-    
+
     // 替换为直接确认函数
     await directCreateAndFinalizeAppointment({
         ctx, msg, platform, sendname, sendid: uid,
@@ -1714,9 +1790,9 @@ cmd_appointment_private.solve = async (ctx, msg, cmdArgs) => {
         names, isMulti,
         generateMessageFn: generatePrivateInvitationMessage
     });
-    
-    const successMsg = isMulti 
-        ? `✅ 你已成功与 ${names.join("、")} 开启多方私约，私人空间已自动建立！` 
+
+    const successMsg = isMulti
+        ? `✅ 你已成功与 ${names.join("、")} 开启多方私约，私人空间已自动建立！`
         : `✅ 你已成功与 ${names[0]} 开启私约，私人空间已自动建立！`;
     seal.replyToSender(ctx, msg, successMsg);
     return seal.ext.newCmdExecuteResult(true);
@@ -3915,6 +3991,15 @@ cmd_post_wish.name = "挂心愿";
 cmd_post_wish.solve = (ctx, msg, cmdArgs) => {
     const cfg = JSON.parse(ext.storageGet("global_feature_toggle") || "{}");
     if (cfg.enable_wish_system === false) return seal.replyToSender(ctx, msg, "🌠 心愿功能已关闭。");
+
+    // 检查写信系统启用时是否需要消费写信币
+    if (isLetterSystemEnabled()) {
+        const coinCheck = checkAndCostLetterCoin(ctx, msg, "wish");
+        if (!coinCheck.success) {
+            seal.replyToSender(ctx, msg, coinCheck.errorMsg);
+            return seal.ext.newCmdExecuteResult(true);
+        }
+    }
 
     const platform = msg.platform, uid = msg.sender.userId, name = getUserRoleName(platform, uid);
     const day = ext.storageGet("global_days");
