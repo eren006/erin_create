@@ -1928,9 +1928,27 @@ function isApplyTimeValid(main) {
 
 let cmd_apply = seal.ext.newCmdItemInfo();
 cmd_apply.name = "施加";
-cmd_apply.help = "对他人使用互动道具\n格式：施加 目标姓名 物品名/代码\n示例：施加 张三 医疗包";
+cmd_apply.help = "对他人使用互动道具\n格式：施加 目标姓名 物品名/代码\n查看设置：施加 设置 或 施加 查看\n示例：施加 张三 医疗包";
 cmd_apply.solve = (ctx, msg, cmdArgs) => {
     const main = getMain();
+    const targetName = cmdArgs.getArgN(1);
+    const inputCode = cmdArgs.getArgN(2);
+
+    // 显示施加设置
+    if (!targetName || targetName === "设置" || targetName === "查看") {
+        const applyNotify = main.storageGet("apply_item_notification") !== "false";
+        const exposeRate = parseInt(main.storageGet("apply_item_expose_rate") || "0");
+        const applyHours = main.storageGet("apply_item_hours") || "不限";
+
+        const results = [
+            "【互动物品施加设置】",
+            `施加是否提醒：${applyNotify ? '开启' : '关闭'} (${applyNotify ? '告知对方' : '不告知对方'})`,
+            `暴露名字概率：${exposeRate}% (${exposeRate === 0 ? '完全匿名' : exposeRate === 100 ? '完全暴露' : '随机暴露'})`,
+            `施加可用时段：${applyHours}`,
+        ];
+        return seal.replyToSender(ctx, msg, results.join('\n'));
+    }
+
     // --- 新增：时段检查 ---
     if (!isApplyTimeValid(main)) {
         const hoursStr = main.storageGet("apply_item_hours");
@@ -1938,9 +1956,7 @@ cmd_apply.solve = (ctx, msg, cmdArgs) => {
     }
     const roleName = getRoleName(ctx, msg);
     if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
-    
-    const targetName = cmdArgs.getArgN(1);
-    const inputCode = cmdArgs.getArgN(2);
+
     if (!targetName || !inputCode) {
         const r = seal.ext.newCmdExecuteResult(true);
         r.showHelp = true;
