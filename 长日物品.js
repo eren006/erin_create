@@ -3485,3 +3485,151 @@ cmd_set_display_name.solve = (ctx, msg, cmdArgs) => {
 };
 
 ext.cmdMap["设置昵称"] = cmd_set_display_name;
+
+// ========================
+// 一键初始化 - 快速启用攻防系统
+// ========================
+
+let cmd_quick_init = seal.ext.newCmdItemInfo();
+cmd_quick_init.name = "一键初始化";
+cmd_quick_init.help = "【管理员】一键初始化攻防系统 - 注册属性和回血药\n一键初始化\n  将自动创建：\n  · 5个RPG属性（体力、防御、敏捷、智力、精神）\n  · 4种回血药（小、中、大、满）\n  · 启用攻防系统";
+cmd_quick_init.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+
+    const main = getMain();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
+
+    // 获取当前属性和物品定义
+    const defs = getAttrDefs();
+    const registry = getRegistry();
+
+    let results = [];
+    let errors = [];
+
+    // ========== 创建RPG属性 ==========
+    const attrs = [
+        { name: "体力", min: 0, max: 100, default: 50, desc: "生命值和耐力" },
+        { name: "防御", min: 0, max: 100, default: 30, desc: "抵抗伤害能力" },
+        { name: "敏捷", min: 0, max: 100, default: 40, desc: "行动速度和闪避" },
+        { name: "智力", min: 0, max: 100, default: 35, desc: "魔法攻击和法术强度" },
+        { name: "精神", min: 0, max: 100, default: 40, desc: "精神力和恢复速率" }
+    ];
+
+    attrs.forEach(attr => {
+        if (defs[attr.name]) {
+            errors.push(`⏭️ 属性「${attr.name}」已存在`);
+        } else {
+            defs[attr.name] = {
+                min: attr.min,
+                max: attr.max,
+                default: attr.default,
+                desc: attr.desc
+            };
+            results.push(`✅ 已创建属性：${attr.name}`);
+        }
+    });
+
+    saveAttrDefs(defs);
+
+    // ========== 创建回血药物品 ==========
+    const potions = [
+        {
+            name: "小回血药",
+            desc: "恢复少量体力",
+            uses: -1,
+            effects: "体力+30",
+            resellable: "Y",
+            code: "ITEM_POT_S"
+        },
+        {
+            name: "中回血药",
+            desc: "恢复中等体力",
+            uses: -1,
+            effects: "体力+60",
+            resellable: "Y",
+            code: "ITEM_POT_M"
+        },
+        {
+            name: "大回血药",
+            desc: "恢复大量体力",
+            uses: -1,
+            effects: "体力+100",
+            resellable: "Y",
+            code: "ITEM_POT_L"
+        },
+        {
+            name: "全恢复药",
+            desc: "完全恢复体力和精神",
+            uses: 0,
+            effects: "体力+100,精神+100",
+            resellable: "N",
+            code: "ITEM_POT_FULL"
+        }
+    ];
+
+    potions.forEach(potion => {
+        if (registry[potion.code]) {
+            errors.push(`⏭️ 物品「${potion.name}」(${potion.code})已存在`);
+        } else {
+            registry[potion.code] = {
+                code: potion.code,
+                name: potion.name,
+                type: "normal",
+                desc: potion.desc,
+                useTimes: parseInt(potion.uses),
+                attrs: potion.effects.split(",").map(e => {
+                    const [attr, val] = e.trim().split("+");
+                    return { attr: attr.trim(), value: parseInt(val) };
+                }),
+                canResell: potion.resellable === "Y"
+            };
+            results.push(`✅ 已创建物品：${potion.name} (${potion.code})`);
+        }
+    });
+
+    saveRegistry(registry);
+
+    // ========== 启用攻防系统 ==========
+    let attackDefenseConfig = getAttackDefenseConfig();
+    if (!attackDefenseConfig.enabled) {
+        attackDefenseConfig.enabled = true;
+        attackDefenseConfig.maxInitiations = attackDefenseConfig.maxInitiations || 10;
+        attackDefenseConfig.maxRefusals = attackDefenseConfig.maxRefusals || 10;
+        attackDefenseConfig.turnTimeout = attackDefenseConfig.turnTimeout || 3600000;
+        attackDefenseConfig.defaultTurns = attackDefenseConfig.defaultTurns || 10;
+        attackDefenseConfig.escapeRate = attackDefenseConfig.escapeRate !== undefined ? attackDefenseConfig.escapeRate : 30;
+        attackDefenseConfig.damageRandomness = attackDefenseConfig.damageRandomness || 0;
+        attackDefenseConfig.forceParticipate = false;
+        attackDefenseConfig.minPlayers = 2;
+        attackDefenseConfig.manualStart = false;
+        saveAttackDefenseConfig(attackDefenseConfig);
+        results.push(`✅ 已启用攻防系统（休闲模式配置）`);
+    } else {
+        errors.push(`⏭️ 攻防系统已启用`);
+    }
+
+    // ========== 返回结果 ==========
+    let reply = `🚀 一键初始化完成！\n\n`;
+
+    if (results.length > 0) {
+        reply += `✅ 成功项目 (${results.length})：\n` + results.join("\n") + "\n\n";
+    }
+
+    if (errors.length > 0) {
+        reply += `⏭️ 已跳过 (${errors.length})：\n` + errors.join("\n") + "\n\n";
+    }
+
+    reply += `📋 已创建：\n`;
+    reply += `· 5个属性：体力、防御、敏捷、智力、精神\n`;
+    reply += `· 4种药品：小/中/大回血药 + 全恢复药\n`;
+    reply += `· 攻防系统已启用\n\n`;
+    reply += `💡 下一步：\n`;
+    reply += `· 上架商城：上架商城 ITEM_POT_S*50金币\n`;
+    reply += `· 配置攻防：攻防 设置 参数 值\n`;
+    reply += `· 创建池子：注册池子 回血药池 fixed`;
+
+    seal.replyToSender(ctx, msg, reply);
+    return seal.ext.newCmdExecuteResult(true);
+};
+
+ext.cmdMap["一键初始化"] = cmd_quick_init;
