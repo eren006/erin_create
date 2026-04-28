@@ -101,7 +101,13 @@ function isUserAdmin(ctx, msg) {
 function getDinnerData() {
     const raw = ext.storageGet("dinner_system_data");
     if (!raw) return null;
-    let data = JSON.parse(raw);
+    let data;
+    try {
+        data = JSON.parse(raw);
+    } catch (e) {
+        console.log("[晚餐] 数据解析失败: " + e.message);
+        return null;
+    }
     // 兼容旧版：若存在 bubbleGame 且无 game，则迁移
     if (data.bubbleGame && !data.game) {
         data.game = {
@@ -499,11 +505,8 @@ cmd_start_roulette.solve = (ctx, msg, cmdArgs) => {
         totalChambers = 6;
         bulletCount = 1;
     } else if (isNaN(bulletCount) || bulletCount <= 0) {
-        // 只有一个有效参数：视为子弹数，总弹巢默认为6
-        bulletCount = totalChambers;
-        totalChambers = 6;
-        // 确保子弹数不超过总弹巢
-        if (bulletCount > totalChambers) bulletCount = totalChambers;
+        // 只有一个有效参数：视为总弹巢数（与 help 一致），子弹默认为1
+        bulletCount = 1;
     } else {
         // 两个参数都提供了，进行范围校验
         if (bulletCount > totalChambers) bulletCount = totalChambers; // 自动修正
@@ -852,7 +855,7 @@ cmd_poke.solve = (ctx, msg, cmdArgs) => {
     const cooldownKey = `poke_cooldown_${platform}:${uid}`;
     const lastPoke = parseInt(ext.storageGet(cooldownKey) || "0");
     const now = Date.now();
-    const cooldownDuration = 1 * 60 * 1000; // 5分钟
+    const cooldownDuration = 5 * 60 * 1000; // 5分钟
 
     if (now - lastPoke < cooldownDuration) {
         const remaining = Math.ceil((cooldownDuration - (now - lastPoke)) / 60000);
