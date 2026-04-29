@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         大天使加百列
-// @author       加百列 & Qwen
+// @author       长日将尽
 // @version      1.2.0
 // @description  吾乃加百列，奉命为你铭记此刻——无需引号，直述心声。🕊️
 // @license      MIT
