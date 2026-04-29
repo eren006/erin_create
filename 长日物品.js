@@ -24,8 +24,20 @@ function getMain() {
     if (!main) main = seal.ext.find('changriv1');
 
     if (!main) {
-        console.error("[物品V2] 未找到主插件 changri。可用的ext:",
-            (seal.ext && seal.ext._extMap) ? Object.keys(seal.ext._extMap) : "无法列出");
+        // 获取调用者的行号
+        const stack = new Error().stack;
+        const lines = stack.split('\n');
+        let callerInfo = "未知位置";
+        if (lines.length > 2) {
+            // lines[0] 是 "Error"，lines[1] 是 getMain 本身，lines[2] 是调用者
+            const match = lines[2].match(/:(\d+):(\d+)\)?$/);
+            if (match) {
+                callerInfo = `行 ${match[1]}`;
+            }
+        }
+
+        console.error(`[物品V2] ❌ 未找到主插件 changri（调用位置：${callerInfo}）`);
+        console.error("[物品V2] 可用的ext:", (seal.ext && seal.ext._extMap) ? Object.keys(seal.ext._extMap) : "无法列出");
     }
     return main;
 }
@@ -40,6 +52,7 @@ function getPrimaryUid(platform, uid) {
 }
 
 function getRoleName(ctx, msg) {
+    console.log("2")
     const main = getMain();
     if (!main) return null;
     try {
@@ -57,6 +70,7 @@ function getRoleName(ctx, msg) {
 
 function isUserAdmin(ctx, msg) {
     if (ctx.privilegeLevel === 100) return true;
+    console.log("3")
     const main = getMain();
     if (!main) return false;
     try {
@@ -71,10 +85,12 @@ function isUserAdmin(ctx, msg) {
 // ========================
 
 function getRegistry() {
+    console.log("4")
     const main = getMain();
     return main ? JSON.parse(main.storageGet("item_registry") || "{}") : {};
 }
 function saveRegistry(reg) {
+    console.log("5")
     const main = getMain();
     if (main) main.storageSet("item_registry", JSON.stringify(reg));
 }
@@ -82,6 +98,7 @@ function saveRegistry(reg) {
 // RPG 属性定义：{ attrName: { min, max, default, desc } }
 // 兼容迁移旧格式 sys_attr_presets (数组) 和 item_valid_attrs (数组)
 function getAttrDefs() {
+    console.log("6")
     const main = getMain();
     if (!main) return {};
     let defs = {};
@@ -102,6 +119,7 @@ function getAttrDefs() {
     return defs;
 }
 function saveAttrDefs(defs) {
+    console.log("7")
     const main = getMain();
     if (!main) return;
     main.storageSet("rpg_attr_defs", JSON.stringify(defs));
@@ -111,6 +129,7 @@ function saveAttrDefs(defs) {
 
 // 角色属性数值：{ roleName: { attrName: value } }
 function getCharAttrs() {
+    console.log("8")
     const main = getMain();
     return main ? JSON.parse(main.storageGet("sys_character_attrs") || "{}") : {};
 }
@@ -139,6 +158,7 @@ function modCharAttrs(platform, roleName, attrEffectStr) {
     saveCharAttrs(charAttrs);
 }
 function saveCharAttrs(attrs) {
+    console.log("9")
     const main = getMain();
     if (main) main.storageSet("sys_character_attrs", JSON.stringify(attrs));
 }
