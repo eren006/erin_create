@@ -4409,3 +4409,505 @@ cmd_equip_slots.solve = (ctx, msg, cmdArgs) => {
 };
 
 ext.cmdMap["槽位"] = cmd_equip_slots;
+
+// ========================
+// 升级系统 (PlayerLevel)
+// ========================
+
+// 获取升级规则
+function getLevelUpRules() {
+    const main = getMain();
+    return main ? JSON.parse(main.storageGet("level_up_rules") || '{"max_level":100,"enabled":true,"level_up_rules":{}}') : {};
+}
+
+function saveLevelUpRules(rules) {
+    const main = getMain();
+    if (main) main.storageSet("level_up_rules", JSON.stringify(rules));
+}
+
+// 获取玩家当前等级
+function getPlayerLevel(roleName) {
+    const main = getMain();
+    if (!main) return 1;
+    const data = JSON.parse(main.storageGet("player_level") || "{}");
+    return data[roleName] || 1;
+}
+
+function setPlayerLevel(roleName, level) {
+    const main = getMain();
+    if (!main) return;
+    const data = JSON.parse(main.storageGet("player_level") || "{}");
+    data[roleName] = level;
+    main.storageSet("player_level", JSON.stringify(data));
+}
+
+// 获取玩家升级历史
+function getLevelHistory(roleName) {
+    const main = getMain();
+    if (!main) return [];
+    const data = JSON.parse(main.storageGet("player_level_history") || "{}");
+    return data[roleName] || [];
+}
+
+function addLevelHistory(roleName, record) {
+    const main = getMain();
+    if (!main) return;
+    const data = JSON.parse(main.storageGet("player_level_history") || "{}");
+    if (!data[roleName]) data[roleName] = [];
+    data[roleName].push(record);
+    main.storageSet("player_level_history", JSON.stringify(data));
+}
+
+// 递增公式：基础 + (级数-1) × 增幅
+function calculateValue(baseStr, level) {
+    if (!baseStr.includes('+')) return parseInt(baseStr) || 0;
+    const [base, increment] = baseStr.split('+').map(x => parseFloat(x) || 0);
+    return Math.floor(base + (level - 1) * increment);
+}
+
+// 替换描述中的 {等级}
+function replaceDescTemplate(desc, level) {
+    return desc.replace(/{等级}/g, level);
+}
+
+// 解析消耗品/奖励品字符串，返回 {消耗品类型: {名称: 数值}}
+function parseConsumables(str, level) {
+    if (!str || str.trim() === '') return {};
+    const result = {};
+    const items = str.split(',').map(s => s.trim()).filter(s => s);
+
+    items.forEach(item => {
+        if (item.includes(':')) {
+            const [name, value] = item.split(':');
+            const actualValue = calculateValue(value, level);
+
+            // 判断是物品、互动物品、货币还是属性
+            const itemReg = getRegistry();
+            const isItem = itemReg[name];
+            const currencies = JSON.parse(getMain().storageGet("item_currencies") || "{}");
+            const isCurrency = currencies[name];
+            const attrDefs = getAttrDefs();
+            const isAttr = attrDefs[name];
+
+            if (isItem) {
+                if (!result.items) result.items = {};
+                result.items[name] = actualValue;
+            } else if (isCurrency) {
+                if (!result.currencies) result.currencies = {};
+                result.currencies[name] = actualValue;
+            } else if (isAttr) {
+                if (!result.attributes) result.attributes = {};
+                result.attributes[name] = actualValue;
+            }
+        } else if (item.includes('+')) {
+            const [name, value] = item.split('+');
+            const actualValue = calculateValue(value, level);
+            if (!result.rewards) result.rewards = {};
+            result.rewards[name] = actualValue;
+        }
+    });
+
+    return result;
+}
+
+// 展开等级范围 "1-50" → [1, 2, ..., 50]
+function expandLevelRange(rangeStr) {
+    if (!rangeStr.includes('-')) return [parseInt(rangeStr)];
+    const [start, end] = rangeStr.split('-').map(x => parseInt(x));
+    const levels = [];
+    for (let i = start; i <= end; i++) levels.push(i);
+    return levels;
+}
+
+// 上传升级等级命令
+function cmd_upload_level_rule(msg, cmdArgs, ctx) {
+    const main = getMain();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 未找到主插件");
+
+    const rest = msg.message.replace(/^[。.]\s*上传升级等级\s*/, "").trim();
+    const parts = rest.split('*').map(p => p.trim());
+
+    if (parts.length < 3) {
+        return seal.replyToSender(ctx, msg, "❌ 格式错误\n格式：上传升级等级 <等级|范围> <描述> * <消耗品> * <奖励品> [*成功率]\n示例：上传升级等级 1-10 * {等级}级冒险者 * 金币:50+50 * HP+5+5");
+    }
+
+    const levelRange = parts[0];
+    const description = parts[1];
+    const consumables = parts[2] || '';
+    const rewards = parts[3] || '';
+    const successRate = parts[4] ? Math.max(0, Math.min(100, parseInt(parts[4]) || 100)) : 100;
+
+    const levels = expandLevelRange(levelRange);
+    const rules = getLevelUpRules();
+    if (!rules.level_up_rules) rules.level_up_rules = {};
+
+    // 成功率是否递减（范围）
+    let successRates = {};
+    if (successRate < 100 && successRate > 0) {
+        const step = (100 - successRate) / (levels.length - 1);
+        levels.forEach((lv, idx) => {
+            successRates[lv] = Math.floor(100 - idx * step);
+        });
+    } else {
+        levels.forEach(lv => {
+            successRates[lv] = successRate;
+        });
+    }
+
+    // 为每个等级创建配置
+    levels.forEach(level => {
+        const desc = replaceDescTemplate(description, level);
+        const consume = parseConsumables(consumables, level);
+        const reward = parseConsumables(rewards, level);
+
+        rules.level_up_rules[level] = {
+            description: desc,
+            consume: consume,
+            rewards: reward,
+            success_rate: successRates[level] || 100
+        };
+    });
+
+    saveLevelUpRules(rules);
+
+    return seal.replyToSender(ctx, msg, `✅ 已配置 ${levels.length} 个等级的升级规则 (等级 ${levels[0]}-${levels[levels.length-1]})`);
+}
+
+// 查看升级配置
+function cmd_view_level_rule(msg, cmdArgs) {
+    const levelStr = cmdArgs.getArgN(2);
+    if (!levelStr) {
+        const rules = getLevelUpRules();
+        const levels = Object.keys(rules.level_up_rules || {}).sort((a,b) => parseInt(a) - parseInt(b));
+        const levelCount = levels.length;
+        const maxLevel = rules.max_level || 100;
+        return seal.replyToSender(ctx, msg, `📊 升级系统配置\n\n最大等级: ${maxLevel}\n已配置等级: ${levelCount}个\n等级范围: ${levels[0]}-${levels[levels.length-1]}`);
+    }
+
+    const level = parseInt(levelStr);
+    const rules = getLevelUpRules();
+    const rule = rules.level_up_rules[level];
+
+    if (!rule) {
+        return seal.replyToSender(ctx, msg, `❌ 等级 ${level} 未配置`);
+    }
+
+    let msg_text = `📋 等级 ${level}: ${rule.description}\n\n`;
+    msg_text += `消耗品:\n`;
+    if (rule.consume.items) Object.entries(rule.consume.items).forEach(([name, qty]) => { msg_text += `  · ${name}: ${qty}\n`; });
+    if (rule.consume.currencies) Object.entries(rule.consume.currencies).forEach(([name, qty]) => { msg_text += `  · ${name}: ${qty}\n`; });
+    if (rule.consume.attributes) Object.entries(rule.consume.attributes).forEach(([name, qty]) => { msg_text += `  · ${name}: ${qty}\n`; });
+    if (!rule.consume.items && !rule.consume.currencies && !rule.consume.attributes) msg_text += `  · (无)\n`;
+
+    msg_text += `\n奖励品:\n`;
+    if (rule.rewards.rewards) Object.entries(rule.rewards.rewards).forEach(([attr, val]) => { msg_text += `  · ${attr}+${val}\n`; });
+    if (rule.rewards.currencies) Object.entries(rule.rewards.currencies).forEach(([name, qty]) => { msg_text += `  · ${name}: ${qty}\n`; });
+    if (rule.rewards.items) Object.entries(rule.rewards.items).forEach(([name, qty]) => { msg_text += `  · ${name}: ${qty}\n`; });
+    if (!rule.rewards.rewards && !rule.rewards.currencies && !rule.rewards.items) msg_text += `  · (无)\n`;
+
+    msg_text += `\n成功率: ${rule.success_rate}%`;
+
+    return seal.replyToSender(ctx, msg, msg_text);
+}
+
+// 升级列表
+function cmd_level_list(msg, cmdArgs) {
+    const rules = getLevelUpRules();
+    const levels = Object.keys(rules.level_up_rules || {}).sort((a,b) => parseInt(a) - parseInt(b));
+
+    if (levels.length === 0) {
+        return seal.replyToSender(ctx, msg, "❌ 尚未配置任何升级等级");
+    }
+
+    let msg_text = `📜 升级等级列表 (共 ${levels.length} 级)\n\n`;
+    levels.forEach(lv => {
+        const rule = rules.level_up_rules[lv];
+        msg_text += `${lv}. ${rule.description}\n`;
+    });
+
+    return seal.replyToSender(ctx, msg, msg_text);
+}
+
+// 检查玩家是否满足消耗条件
+function checkConsumables(roleName, roleKey, consume) {
+    const charAttrs = getCharAttrs();
+    const playerAttrs = charAttrs[roleName] || {};
+    const currencies = JSON.parse(getMain().storageGet("item_currencies") || "{}");
+    const main = getMain();
+
+    // 检查属性
+    if (consume.attributes) {
+        for (const [attrName, required] of Object.entries(consume.attributes)) {
+            const current = playerAttrs[attrName] || 0;
+            if (current < required) {
+                return { ok: false, reason: `${attrName}不足（需要${required}，当前${current}）` };
+            }
+        }
+    }
+
+    // 检查货币
+    if (consume.currencies) {
+        for (const [curName, required] of Object.entries(consume.currencies)) {
+            const curCode = Object.keys(currencies).find(code => currencies[code].name === curName);
+            if (!curCode) {
+                return { ok: false, reason: `货币「${curName}」不存在` };
+            }
+            const current = getInvCount(roleKey, curCode) || 0;
+            if (current < required) {
+                return { ok: false, reason: `${curName}不足（需要${required}，当前${current}）` };
+            }
+        }
+    }
+
+    // 检查物品
+    if (consume.items) {
+        for (const [itemName, required] of Object.entries(consume.items)) {
+            const reg = getRegistry();
+            const itemCode = Object.keys(reg).find(code => reg[code].name === itemName);
+            if (!itemCode) {
+                return { ok: false, reason: `物品「${itemName}」不存在` };
+            }
+            const current = getInvCount(roleKey, itemCode) || 0;
+            if (current < required) {
+                return { ok: false, reason: `${itemName}不足（需要${required}，当前${current}）` };
+            }
+        }
+    }
+
+    return { ok: true };
+}
+
+// 消耗资源
+function consumeResources(roleName, roleKey, consume) {
+    const charAttrs = getCharAttrs();
+    const currencies = JSON.parse(getMain().storageGet("item_currencies") || "{}");
+
+    // 消耗属性
+    if (consume.attributes) {
+        if (!charAttrs[roleName]) charAttrs[roleName] = {};
+        for (const [attrName, amount] of Object.entries(consume.attributes)) {
+            charAttrs[roleName][attrName] = (charAttrs[roleName][attrName] || 0) - amount;
+        }
+        saveCharAttrs(charAttrs);
+    }
+
+    // 消耗货币
+    if (consume.currencies) {
+        for (const [curName, amount] of Object.entries(consume.currencies)) {
+            const curCode = Object.keys(currencies).find(code => currencies[code].name === curName);
+            if (curCode) removeFromInv(roleKey, curCode, amount);
+        }
+    }
+
+    // 消耗物品
+    if (consume.items) {
+        for (const [itemName, amount] of Object.entries(consume.items)) {
+            const reg = getRegistry();
+            const itemCode = Object.keys(reg).find(code => reg[code].name === itemName);
+            if (itemCode) removeFromInv(roleKey, itemCode, amount);
+        }
+    }
+}
+
+// 发放奖励
+function grantRewards(roleName, roleKey, rewards) {
+    const charAttrs = getCharAttrs();
+    const currencies = JSON.parse(getMain().storageGet("item_currencies") || "{}");
+
+    // 发放属性
+    if (rewards.rewards) {
+        if (!charAttrs[roleName]) charAttrs[roleName] = {};
+        for (const [attrName, amount] of Object.entries(rewards.rewards)) {
+            charAttrs[roleName][attrName] = (charAttrs[roleName][attrName] || 0) + amount;
+        }
+        saveCharAttrs(charAttrs);
+    }
+
+    // 发放货币
+    if (rewards.currencies) {
+        for (const [curName, amount] of Object.entries(rewards.currencies)) {
+            const curCode = Object.keys(currencies).find(code => currencies[code].name === curName);
+            if (curCode) addToInv(roleKey, curCode, amount);
+        }
+    }
+
+    // 发放物品
+    if (rewards.items) {
+        for (const [itemName, amount] of Object.entries(rewards.items)) {
+            const reg = getRegistry();
+            const itemCode = Object.keys(reg).find(code => reg[code].name === itemName);
+            if (itemCode) addToInv(roleKey, itemCode, amount);
+        }
+    }
+}
+
+// 玩家升级命令
+function cmd_do_levelup(msg, cmdArgs, ctx) {
+    const roleName = getRoleName(ctx, msg);
+    if (!roleName) {
+        return seal.replyToSender(ctx, msg, "❌ 无法识别角色");
+    }
+
+    const rules = getLevelUpRules();
+    if (!rules.enabled) {
+        return seal.replyToSender(ctx, msg, "❌ 升级系统已关闭");
+    }
+
+    const main = getMain();
+    const roleKey = `${msg.platform}:${roleName}`;
+    const curLevel = getPlayerLevel(roleName);
+    const maxLevel = rules.max_level || 100;
+
+    if (curLevel >= maxLevel) {
+        return seal.replyToSender(ctx, msg, `✨ 您已达到最高等级 ${maxLevel}`);
+    }
+
+    const nextLevel = curLevel + 1;
+    const rule = rules.level_up_rules[nextLevel];
+
+    if (!rule) {
+        return seal.replyToSender(ctx, msg, `⚠️ 等级 ${nextLevel} 尚未配置`);
+    }
+
+    // 检查消耗品
+    const checkResult = checkConsumables(roleName, roleKey, rule.consume);
+    if (!checkResult.ok) {
+        return seal.replyToSender(ctx, msg, `❌ 升级失败！\n${checkResult.reason}`);
+    }
+
+    // 判断成功率
+    const successRate = rule.success_rate || 100;
+    const isSuccess = Math.random() * 100 < successRate;
+
+    if (!isSuccess) {
+        consumeResources(roleName, roleKey, rule.consume);
+        addLevelHistory(roleName, {
+            timestamp: new Date().toLocaleString(),
+            from_level: curLevel,
+            to_level: nextLevel,
+            success: false,
+            consumed: rule.consume,
+            reason: "升级失败"
+        });
+        return seal.replyToSender(ctx, msg, `❌ 升级失败！\n消耗已扣除（成功率${successRate}%）`);
+    }
+
+    // 升级成功：消耗资源
+    consumeResources(roleName, roleKey, rule.consume);
+
+    // 发放奖励
+    grantRewards(roleName, roleKey, rule.rewards);
+
+    // 提升等级
+    setPlayerLevel(roleName, nextLevel);
+
+    // 记录历史
+    addLevelHistory(roleName, {
+        timestamp: new Date().toLocaleString(),
+        from_level: curLevel,
+        to_level: nextLevel,
+        success: true,
+        consumed: rule.consume,
+        gained: rule.rewards
+    });
+
+    // 返回成功消息
+    let msg_text = `✅ 恭喜！升级成功！\n\n`;
+    msg_text += `${rule.description}\n`;
+    msg_text += `等级: ${curLevel} → ${nextLevel}\n\n`;
+
+    if (rule.rewards.rewards) {
+        msg_text += `获得属性:\n`;
+        Object.entries(rule.rewards.rewards).forEach(([attr, val]) => {
+            msg_text += `  · ${attr}+${val}\n`;
+        });
+    }
+    if (rule.rewards.currencies) {
+        msg_text += `获得货币:\n`;
+        Object.entries(rule.rewards.currencies).forEach(([cur, val]) => {
+            msg_text += `  · ${cur}×${val}\n`;
+        });
+    }
+    if (rule.rewards.items) {
+        msg_text += `获得物品:\n`;
+        Object.entries(rule.rewards.items).forEach(([item, val]) => {
+            msg_text += `  · ${item}×${val}\n`;
+        });
+    }
+
+    return seal.replyToSender(ctx, msg, msg_text);
+}
+
+// 查看升级信息
+function cmd_levelup_info(msg, cmdArgs, ctx) {
+    const roleName = getRoleName(ctx, msg);
+    if (!roleName) {
+        return seal.replyToSender(ctx, msg, "❌ 无法识别角色");
+    }
+
+    const curLevel = getPlayerLevel(roleName);
+    const rules = getLevelUpRules();
+    const nextLevel = curLevel + 1;
+    const maxLevel = rules.max_level || 100;
+
+    let msg_text = `📊 升级信息\n\n`;
+    msg_text += `当前等级: ${curLevel}\n`;
+    msg_text += `最大等级: ${maxLevel}\n\n`;
+
+    if (curLevel >= maxLevel) {
+        msg_text += `✨ 您已达到最高等级！`;
+    } else {
+        const rule = rules.level_up_rules[nextLevel];
+        if (rule) {
+            msg_text += `下一等级: ${nextLevel} - ${rule.description}\n\n`;
+            msg_text += `升级需要:\n`;
+            if (rule.consume.items) Object.entries(rule.consume.items).forEach(([name, qty]) => { msg_text += `  · ${name}: ${qty}\n`; });
+            if (rule.consume.currencies) Object.entries(rule.consume.currencies).forEach(([name, qty]) => { msg_text += `  · ${name}: ${qty}\n`; });
+            if (rule.consume.attributes) Object.entries(rule.consume.attributes).forEach(([name, qty]) => { msg_text += `  · 消耗${name}${qty}点\n`; });
+        }
+    }
+
+    return seal.replyToSender(ctx, msg, msg_text);
+}
+
+// 创建命令对象（规范格式）
+let cmd_upload_level = seal.ext.newCmdItemInfo();
+cmd_upload_level.name = "上传升级等级";
+cmd_upload_level.help = "【管理员】配置升级规则\n上传升级等级 <等级|范围> <描述> * <消耗品> * <奖励品> [*成功率]\n消耗品格式：物品名:数量 或 物品名:基础+增幅\n奖励品格式：属性名+数值 或 属性名+基础+增幅\n示例：\n  上传升级等级 1-10 * {等级}级冒险者 * 金币:50+50 * HP+5+5\n  上传升级等级 20 * 传奇战士 * 金币:1000,晶体:3 * ATK+20,DEF+10 * 80";
+cmd_upload_level.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足");
+    return cmd_upload_level_rule(msg, cmdArgs, ctx);
+};
+ext.cmdMap["上传升级等级"] = cmd_upload_level;
+
+let cmd_view_level = seal.ext.newCmdItemInfo();
+cmd_view_level.name = "查看升级配置";
+cmd_view_level.help = "查看升级配置\n查看升级配置 [等级号]";
+cmd_view_level.solve = (ctx, msg, cmdArgs) => {
+    return cmd_view_level_rule(msg, cmdArgs);
+};
+ext.cmdMap["查看升级配置"] = cmd_view_level;
+
+let cmd_level_listing = seal.ext.newCmdItemInfo();
+cmd_level_listing.name = "升级列表";
+cmd_level_listing.help = "查看所有已配置的升级等级";
+cmd_level_listing.solve = (ctx, msg, cmdArgs) => {
+    return cmd_level_list(msg, cmdArgs);
+};
+ext.cmdMap["升级列表"] = cmd_level_listing;
+
+let cmd_do_upgrade = seal.ext.newCmdItemInfo();
+cmd_do_upgrade.name = "升级";
+cmd_do_upgrade.help = "升级一次\n格式：升级";
+cmd_do_upgrade.solve = (ctx, msg, cmdArgs) => {
+    return cmd_do_levelup(msg, cmdArgs, ctx);
+};
+ext.cmdMap["升级"] = cmd_do_upgrade;
+
+let cmd_level_info = seal.ext.newCmdItemInfo();
+cmd_level_info.name = "查看升级信息";
+cmd_level_info.help = "查看升级进度和下一等级要求\n格式：查看升级信息";
+cmd_level_info.solve = (ctx, msg, cmdArgs) => {
+    return cmd_levelup_info(msg, cmdArgs, ctx);
+};
+ext.cmdMap["查看升级信息"] = cmd_level_info;
