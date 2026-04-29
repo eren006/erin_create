@@ -2,7 +2,7 @@
 // @name         物品系统V2
 // @author       长日将尽
 // @version      2.0.0
-// @description  物品注册、背包、商城、抽取池、二手市场。所有数据存储在主插件 changriV1 中。
+// @description  物品注册、背包、商城、抽取池、二手市场。所有数据存储在主插件 changri 中。
 // @timestamp    1745568000
 // @license      MIT
 // ==/UserScript==
@@ -19,12 +19,12 @@ if (!ext) {
 
 function getMain() {
     // 尝试多个可能的名称
-    let main = seal.ext.find('changriV1');
+    let main = seal.ext.find('changri');
     if (!main) main = seal.ext.find('长日');
     if (!main) main = seal.ext.find('changriv1');
 
     if (!main) {
-        console.error("[物品V2] 未找到主插件 changriV1。可用的ext:",
+        console.error("[物品V2] 未找到主插件 changri。可用的ext:",
             (seal.ext && seal.ext._extMap) ? Object.keys(seal.ext._extMap) : "无法列出");
     }
     return main;

@@ -2,16 +2,16 @@
 // @name         长日设置
 // @author       长日将尽
 // @version      1.1.0
-// @description  独立的设置控制台（基础、互动、信件、公告）及天数系统、统计报告。所有数据统一存储在主插件 changriV1 中。
+// @description  独立的设置控制台（基础、互动、信件、公告）及天数系统、统计报告。所有数据统一存储在主插件 changri 中。
 // @timestamp    1743292800
 // @license      MIT
 // ==/UserScript==
 
 /**
  * 说明：
- * 1. 核心依赖：通过 seal.ext.find('changriV1') 寻找主插件，读写其存储中的配置数据。
+ * 1. 核心依赖：通过 seal.ext.find('changri') 寻找主插件，读写其存储中的配置数据。
  * 2. 功能模块：统一设置面板（基础、互动、信件、公告）、天数管理、自动天数推进、统计报告。
- * 3. 数据存储：所有配置项、计数、池子数据均存储在主插件 changriV1 的存储空间中。
+ * 3. 数据存储：所有配置项、计数、池子数据均存储在主插件 changri 的存储空间中。
  * 4. 权限检查：复用主插件的管理员列表（a_adminList）和 ctx.privilegeLevel。
  */
 
@@ -26,16 +26,16 @@ if (!ext) {
 // ========================
 
 function getMainExt() {
-    const main = seal.ext.find('changriV1');
+    const main = seal.ext.find('changri');
     if (!main) {
-        console.error("❌ 设置系统错误：未找到主插件 changriV1，请检查主插件是否已加载");
+        console.error("❌ 设置系统错误：未找到主插件 changri，请检查主插件是否已加载");
         return null;
     }
     return main;
 }
 
 /**
- * 权限检查（依赖 changriV1 的管理员列表）
+ * 权限检查（依赖 changri 的管理员列表）
  */
 function isUserAdmin(ctx, msg) {
     if (ctx.privilegeLevel === 100) return true;

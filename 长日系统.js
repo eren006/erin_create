@@ -7,9 +7,9 @@
 // @license      MIT
 // ==/UserScript==
 
-let ext = seal.ext.find("changriV1")
+let ext = seal.ext.find("changri")
 if (!ext) {
-    ext = seal.ext.new("changriV1", "长日将尽", "1.2.0");
+    ext = seal.ext.new("changri", "长日将尽", "1.2.0");
     // 注册扩展
     seal.ext.register(ext);
     ext.autoActive = true;

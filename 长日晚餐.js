@@ -2,14 +2,14 @@
 // @name         晚餐系统
 // @author       长日将尽
 // @version      2.4.0
-// @description  独立的晚餐系统。自动读取“changriV1”插件中的角色名与管理列表。支持多游戏框架，俄罗斯轮盘可自定义弹巢数和子弹数。
+// @description  独立的晚餐系统。自动读取“changri”插件中的角色名与管理列表。支持多游戏框架，俄罗斯轮盘可自定义弹巢数和子弹数。
 // @timestamp    1740292337
 // @license      CC BY-NC-SA
 // ==/UserScript==
 
 /**
  * 说明：
- * 1. 核心依赖：通过 seal.ext.find('changriV1') 寻找主插件。
+ * 1. 核心依赖：通过 seal.ext.find('changri') 寻找主插件。
  * 2. 角色读取：从主插件的 'Character_Platform' 存储中匹配当前 UID 对应的角色名。
  * 3. 权限控制：从主插件的 'a_adminList' 存储中读取管理员列表。
  * 4. 游戏框架：晚餐数据新增 game 字段，存放当前进行的游戏（type + state）。
@@ -43,7 +43,7 @@ function getChangriPrimaryUid(crExt, platform, uid) {
 }
 
 function getChangriRoleName(ctx, msg) {
-    let crExt = seal.ext.find('changriV1');
+    let crExt = seal.ext.find('changri');
     if (!crExt) {
         return msg.sender.nickname;
     }
@@ -76,7 +76,7 @@ function getChangriRoleName(ctx, msg) {
 function isUserAdmin(ctx, msg) {
     if (ctx.privilegeLevel === 100) return true;
 
-    let crExt = seal.ext.find('changriV1');
+    let crExt = seal.ext.find('changri');
     if (!crExt) return false;
 
     try {
@@ -813,9 +813,9 @@ cmd_poke.solve = (ctx, msg, cmdArgs) => {
     const uid = msg.sender.userId.replace(`${platform}:`, "");
 
     // 读取主插件的角色绑定数据
-    let crExt = seal.ext.find('changriV1');
+    let crExt = seal.ext.find('changri');
     if (!crExt) {
-        seal.replyToSender(ctx, msg, "❌ 未找到主插件 changriV1，无法使用此功能");
+        seal.replyToSender(ctx, msg, "❌ 未找到主插件 changri，无法使用此功能");
         return seal.ext.newCmdExecuteResult(true);
     }
 

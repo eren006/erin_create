@@ -18,7 +18,7 @@
  * - 记录查询：查看信件发送记录
  */
 
-let ext = seal.ext.find("changriV1");
+let ext = seal.ext.find("changri");
 if (!ext) {
     // 如果找不到主插件，尝试创建一个包装器
     ext = seal.ext.find("letter_system_wrapper");
@@ -26,7 +26,7 @@ if (!ext) {
         ext = seal.ext.new("letter_system_wrapper", "长日将尽", "1.0.0");
         seal.ext.register(ext);
     }
-    console.warn("⚠️  长日写信综运行在兼容模式：未找到changriV1主插件");
+    console.warn("⚠️  长日写信综运行在兼容模式：未找到changri主插件");
 }
 
 // ========================
