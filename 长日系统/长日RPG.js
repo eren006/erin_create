@@ -621,12 +621,40 @@ function logItemUsage(platform, roleName, code, itemName) {
 }
 
 // ========================
-// 背包显示
+// 背包显示（手机版紧凑格式）
 // ========================
 
-function formatInventory(roleKey, roleName, reg) {
+function formatItemEntry(entry, info) {
+    const name = info.name || entry.code;
+    const shortName = name.length > 8 ? name.slice(0, 8) : name;
+    const codeShort = entry.code.slice(-3);
+    const desc = (info.desc || "").slice(0, 15);
+    const uses = (entry.remainingUses ?? info.maxUses ?? -1);
+    const usesStr = uses === -1 ? "∞次" : `余${uses}次`;
+
+    let tags = "";
+    if (info.type === "preset") tags += "🎯";
+    if (info.canResell === false) tags += "🔒";
+    if (info.canResell === true) tags += "✨";
+
+    let line1 = `·${shortName}[${codeShort}]${tags}`;
+    let line2 = `数量×${entry.count}|${usesStr}`;
+    let line3 = desc || "无描述";
+
+    let result = `${line1}\n${line2}\n${line3}`;
+
+    if (info.attrs) {
+        const attrsShort = info.attrs.slice(0, 22);
+        result += `\n${attrsShort}`;
+    }
+
+    return result;
+}
+
+function formatInventory(roleKey, roleName, reg, category = "全部", page = 1) {
     const inv = getInv(roleKey).filter(e => e.count > 0);
-    if (!inv.length) return `🎒 【${roleName}】的背包空空如也。`;
+    if (!inv.length) return `🎒【${roleName}】背包空空`;
+
     const currencies = [], presets = [], items = [];
     for (const entry of inv) {
         const info = reg[entry.code] || { name: entry.code, type: "item" };
@@ -634,10 +662,63 @@ function formatInventory(roleKey, roleName, reg) {
         else if (info.type === "preset") presets.push({ entry, info });
         else items.push({ entry, info });
     }
-    const lines = [`🎒 【${roleName}】的背包：`];
-    if (currencies.length) { lines.push("💰 货币："); currencies.forEach(({ entry, info }) => lines.push(`  · ${info.name} [${entry.code}] ×${entry.count}`)); }
-    if (presets.length) { lines.push("⚙️ 特殊道具："); presets.forEach(({ entry, info }) => lines.push(`  · ${info.name} [${entry.code}] ×${entry.count}`)); }
-    if (items.length) { lines.push("📦 物品："); items.forEach(({ entry, info }) => lines.push(`  · ${info.name} [${entry.code}] ×${entry.count}`)); }
+
+    const PAGE_SIZE = 6;
+    const catList = [];
+    if (currencies.length) catList.push({ name: "货币", emoji: "💰", items: currencies });
+    if (presets.length) catList.push({ name: "道具", emoji: "⚙️", items: presets });
+    if (items.length) catList.push({ name: "物品", emoji: "📦", items });
+
+    let lines = [`背包|${roleName}`];
+
+    if (category === "全部") {
+        for (const cat of catList) {
+            const displayItems = cat.items.slice(0, 3);
+            lines.push(`${cat.emoji}${cat.name}(${cat.items.length})`);
+            for (const { entry, info } of displayItems) {
+                lines.push(formatItemEntryMobile(entry, info));
+            }
+            if (cat.items.length > 3) {
+                lines.push(`>查看全部${cat.items.length - 3}项`);
+            }
+        }
+        lines.push("");
+        lines.push("指令:");
+        lines.push(".背包 货币/道具/物品");
+        lines.push(".背包 搜 关键词");
+    } else {
+        const catMap = { "货币": "currency", "道具": "preset", "物品": "item" };
+        const typeFilter = catMap[category];
+        const filtered = catList.find(c => {
+            if (typeFilter === "currency") return c.emoji === "💰";
+            if (typeFilter === "preset") return c.emoji === "⚙️";
+            if (typeFilter === "item") return c.emoji === "📦";
+            return false;
+        });
+
+        if (!filtered || !filtered.items.length) {
+            return `🎒背包无${category}`;
+        }
+
+        const total = filtered.items.length;
+        const start = (page - 1) * PAGE_SIZE;
+        const end = Math.min(start + PAGE_SIZE, total);
+        const pageItems = filtered.items.slice(start, end);
+        const totalPages = Math.ceil(total / PAGE_SIZE);
+
+        lines.push(`${filtered.emoji}${category} ${page}/${totalPages}`);
+        for (const { entry, info } of pageItems) {
+            lines.push(formatItemEntryMobile(entry, info));
+        }
+
+        if (totalPages > 1) {
+            lines.push("");
+            if (page > 1) lines.push(`⬅️.背包 ${category} ${page-1}`);
+            if (page < totalPages) lines.push(`➡️.背包 ${category} ${page+1}`);
+        }
+        lines.push(".背包返首页");
+    }
+
     return lines.join("\n");
 }
 
@@ -1750,11 +1831,49 @@ ext.cmdMap["抽取次数"] = cmd_draw_count;
 
 let cmd_bag = seal.ext.newCmdItemInfo();
 cmd_bag.name = "我的背包";
-cmd_bag.help = "查看自己的背包";
-cmd_bag.solve = (ctx, msg) => {
+cmd_bag.help = `查看自己的背包
+。背包                     查看背包全览
+。背包 货币/道具/物品      按分类查看
+。背包 [分类] [页码]      翻页查看（如：。背包 道具 2）
+。背包 搜 [关键词]        搜索物品`;
+cmd_bag.solve = (ctx, msg, cmdArgs) => {
     const roleName = getRoleName(ctx, msg);
     if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
-    seal.replyToSender(ctx, msg, formatInventory(`${msg.platform}:${roleName}`, roleName, getRegistry()));
+
+    const arg1 = cmdArgs.getArgN(1) || "全部";
+    const arg2 = cmdArgs.getArgN(2) || "1";
+    const roleKey = `${msg.platform}:${roleName}`;
+    const reg = getRegistry();
+
+    if (arg1 === "搜" || arg1 === "搜索") {
+        const keyword = arg2;
+        if (!keyword) return seal.replyToSender(ctx, msg, "❌ 请输入搜索关键词\n使用: 。背包 搜 关键词");
+
+        const inv = getInv(roleKey).filter(e => e.count > 0);
+        const results = inv.filter(entry => {
+            const info = reg[entry.code] || { name: entry.code };
+            const name = info.name || "";
+            const desc = info.desc || "";
+            return name.includes(keyword) || desc.includes(keyword);
+        });
+
+        if (!results.length) return seal.replyToSender(ctx, msg, `🔍 未找到「${keyword}」`);
+
+        const lines = [`搜索「${keyword}」(${results.length})`];
+        for (const entry of results.slice(0, 8)) {
+            const info = reg[entry.code] || { name: entry.code, type: "item" };
+            lines.push(formatItemEntry(entry, info));
+        }
+        if (results.length > 8) lines.push(`...还有${results.length - 8}项`);
+        seal.replyToSender(ctx, msg, lines.join("\n"));
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const validCategories = ["全部", "货币", "道具", "物品"];
+    const category = validCategories.includes(arg1) ? arg1 : "全部";
+    const page = Math.max(1, parseInt(arg2) || 1);
+
+    seal.replyToSender(ctx, msg, formatInventory(roleKey, roleName, reg, category, page));
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["我的背包"] = cmd_bag;
