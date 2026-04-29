@@ -21,9 +21,9 @@
 let ext = seal.ext.find("changri");
 if (!ext) {
     // 如果找不到主插件，尝试创建一个包装器
-    ext = seal.ext.find("letter_system_wrapper");
+    ext = seal.ext.find("letter_system_wrappers");
     if (!ext) {
-        ext = seal.ext.new("letter_system_wrapper", "长日将尽", "1.0.0");
+        ext = seal.ext.new("letter_system_wrappers", "长日将尽", "1.0.0");
         seal.ext.register(ext);
     }
     console.warn("⚠️  长日写信综运行在兼容模式：未找到changri主插件");

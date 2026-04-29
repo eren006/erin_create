@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         物品系统V2
+// @name         物品系统V3
 // @author       长日将尽
 // @version      2.0.0
 // @description  物品注册、背包、商城、抽取池、二手市场。所有数据存储在主插件 changri 中。
@@ -7,9 +7,9 @@
 // @license      MIT
 // ==/UserScript==
 
-let ext = seal.ext.find('item_system_v2');
+let ext = seal.ext.find('item_system_v3');
 if (!ext) {
-    ext = seal.ext.new("item_system_v2", "长日将尽", "2.0.0");
+    ext = seal.ext.new("item_system_v3", "长日将尽", "2.0.0");
     seal.ext.register(ext);
 }
 
