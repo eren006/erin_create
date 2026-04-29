@@ -1758,7 +1758,7 @@ ext.cmdMap["物品详情"] = cmd_item_detail;
 
 let cmd_upload_recipe = seal.ext.newCmdItemInfo();
 cmd_upload_recipe.name = "上传配方";
-cmd_upload_recipe.help = "【管理员】注册合成配方\n格式：上传配方 目标物品名*材料名:数量,材料名:数量\n示例：上传配方 简易绷带*干净的布:2,酒精:1";
+cmd_upload_recipe.help = "【管理员】注册合成配方\n格式：上传配方 目标物品名*材料名:数量,材料名:数量[*成功率]\n成功率：可选，0-100，默认100\n示例：上传配方 简易绷带*干净的布:2,酒精:1\n     上传配方 高级丹*初级丹:3*80";
 cmd_upload_recipe.solve = (ctx, msg, cmdArgs) => {
     if (ctx.privilegeLevel < 40) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
 
@@ -1766,10 +1766,19 @@ cmd_upload_recipe.solve = (ctx, msg, cmdArgs) => {
     if (!rest) return seal.ext.newCmdExecuteResult(true);
 
     const parts = rest.split(/[*＊]/);
-    if (parts.length < 2) return seal.replyToSender(ctx, msg, "❌ 格式错误。需为：目标物品*材料1:数量,材料2:数量");
+    if (parts.length < 2) return seal.replyToSender(ctx, msg, "❌ 格式错误。需为：目标物品*材料1:数量,材料2:数量[*成功率]");
 
     const targetName = parts[0].trim();
     const ingredientsStr = parts[1].trim();
+    const successRateStr = parts[2]?.trim();
+
+    let successRate = 100;
+    if (successRateStr) {
+        successRate = parseInt(successRateStr);
+        if (isNaN(successRate) || successRate < 0 || successRate > 100) {
+            return seal.replyToSender(ctx, msg, "❌ 成功率必须是 0-100 之间的整数");
+        }
+    }
 
     const reg = getRegistry();
     const targetItem = Object.values(reg).find(i => i.name === targetName);
@@ -1786,11 +1795,12 @@ cmd_upload_recipe.solve = (ctx, msg, cmdArgs) => {
 
     const main = getMain();
     const recipes = JSON.parse(main.storageGet("item_recipes") || "{}");
-    recipes[targetItem.code] = { targetCode: targetItem.code, targetName: targetItem.name, ingredients };
+    recipes[targetItem.code] = { targetCode: targetItem.code, targetName: targetItem.name, ingredients, successRate };
     main.storageSet("item_recipes", JSON.stringify(recipes));
 
     const ingText = ingredients.map(i => `${i.name}x${i.count}`).join(", ");
-    seal.replyToSender(ctx, msg, `✅ 配方已注册：[${targetItem.name}] ← ${ingText}`);
+    const rateText = successRate === 100 ? "" : `，成功率 ${successRate}%`;
+    seal.replyToSender(ctx, msg, `✅ 配方已注册：[${targetItem.name}] ← ${ingText}${rateText}`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["上传配方"] = cmd_upload_recipe;
@@ -1832,11 +1842,28 @@ cmd_craft.solve = (ctx, msg, cmdArgs) => {
         removeFromInv(roleKey, ing.code, ing.count * craftCount);
     }
 
-    // 3. 增加产物 (继承注册表的初始次数)
-    const targetItemInfo = reg[recipe.targetCode];
-    addToInv(roleKey, recipe.targetCode, craftCount);
+    // 3. 检查成功率
+    const successRate = recipe.successRate || 100;
+    let successCount = 0;
+    for (let i = 0; i < craftCount; i++) {
+        if (Math.random() * 100 < successRate) {
+            successCount++;
+        }
+    }
 
-    seal.replyToSender(ctx, msg, `🛠️ 合成成功！消耗材料制作了 [${recipe.targetName}] x${craftCount}。`);
+    // 4. 增加产物 (继承注册表的初始次数)
+    if (successCount > 0) {
+        const targetItemInfo = reg[recipe.targetCode];
+        addToInv(roleKey, recipe.targetCode, successCount);
+    }
+
+    if (successCount === craftCount) {
+        seal.replyToSender(ctx, msg, `🛠️ 合成成功！消耗材料制作了 [${recipe.targetName}] x${craftCount}。`);
+    } else if (successCount === 0) {
+        seal.replyToSender(ctx, msg, `❌ 合成失败！消耗了材料，但未能制作出 [${recipe.targetName}]。`);
+    } else {
+        seal.replyToSender(ctx, msg, `⚠️ 合成部分成功！消耗材料制作了 [${recipe.targetName}] x${successCount}/${craftCount}。`);
+    }
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["合成"] = cmd_craft;
