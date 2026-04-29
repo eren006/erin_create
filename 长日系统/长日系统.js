@@ -24,6 +24,105 @@ seal.ext.registerStringConfig(ext, "ws地址", "ws://localhost:3001");
 // ========================
 // 🌐 WebSocket 通信模块
 // ========================
+// 批量同步专用函数（使用单个连接）
+function wsBatchSync(requestQueue, ctx, msg) {
+    const wsUrl = seal.ext.getStringConfig(ext, "ws地址");
+    const token = seal.ext.getStringConfig(ext, "ws Access token");
+    let connectionUrl = wsUrl;
+
+    if (token) {
+        const separator = connectionUrl.includes('?') ? '&' : '?';
+        connectionUrl += `${separator}access_token=${encodeURIComponent(token)}`;
+    }
+
+    const ws = new WebSocket(connectionUrl);
+    let isClosed = false;
+    let currentIndex = 0;
+    let successCount = 0;
+    let failureCount = 0;
+
+    const closeSafe = (reason) => {
+        if (!isClosed) {
+            isClosed = true;
+            clearTimeout(timeoutId);
+            if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+                ws.close(1000, reason);
+            }
+        }
+    };
+
+    const timeoutId = setTimeout(() => {
+        if (!isClosed) {
+            console.log(`[WS] 批量同步超时`);
+            closeSafe("TIMEOUT");
+        }
+    }, 30000); // 30秒超时
+
+    const sendNext = () => {
+        if (currentIndex >= requestQueue.length) {
+            closeSafe("BATCH_COMPLETE");
+            return;
+        }
+
+        const postData = requestQueue[currentIndex];
+        const currentEcho = postData.action + "_" + Date.now() + "_" + currentIndex;
+        postData.echo = currentEcho;
+
+        if (postData.params) {
+            if (postData.params.message_id) postData.params.message_id = parseInt(postData.params.message_id);
+            if (postData.params.group_id) postData.params.group_id = parseInt(postData.params.group_id);
+        }
+
+        try {
+            ws.send(JSON.stringify(postData));
+        } catch (e) {
+            console.error('发送失败:', e);
+            currentIndex++;
+            failureCount++;
+            sendNext();
+        }
+    };
+
+    ws.onopen = function() {
+        sendNext();
+    };
+
+    ws.onmessage = function(event) {
+        try {
+            const response = JSON.parse(event.data);
+            if (response.post_type === "meta_event") return;
+            if (!response.echo) return;
+
+            if (response.status === 'ok' || response.retcode === 0) {
+                successCount++;
+            } else {
+                console.error(`[WS] 请求失败: ${response.echo}`);
+                failureCount++;
+            }
+
+            currentIndex++;
+            // 延迟50ms后发送下一个请求
+            setTimeout(sendNext, 50);
+        } catch (e) {
+            console.error('收包解析异常:', e);
+        }
+    };
+
+    ws.onerror = function(e) {
+        if (isClosed || ws.readyState === WebSocket.CLOSING || ws.readyState === WebSocket.CLOSED) {
+            return;
+        }
+        console.error('[WS] 连接异常，请检查OneBot连接状态');
+        closeSafe("ERROR");
+    };
+
+    ws.onclose = function(event) {
+        isClosed = true;
+        const resultMsg = `✅ 同步完成！\n成功: ${successCount}\n失败: ${failureCount}\n总计: ${requestQueue.length}`;
+        seal.replyToSender(ctx, msg, resultMsg);
+    };
+}
+
 function ws(postData, ctx, msg, successreply) {
     const wsUrl = seal.ext.getStringConfig(ext, "ws地址");
     const token = seal.ext.getStringConfig(ext, "ws Access token");
@@ -3102,18 +3201,18 @@ async function finalizeGroupCreation(platform, ctx, msg, groupData, participants
     const finalGroupName = `${groupData.subtype} ${groupData.day} ${groupData.time} ${groupNameTag}`;
 
     // 4. 构建统一通知文案（包含群号和所有人名）
-    const noticeText = `🎉 【${groupData.subtype}】创建成功！\n` +
-                       `━━━━━━━━━━━━━━\n` +
-                       `👤 发起人：${groupData.sendname}\n` +
-                       `📅 时间：${groupData.day} ${groupData.time}\n` +
-                       `📍 地点：${groupData.place}\n` +
-                       `👥 参与者：${participantsText}\n` +
-                       `💬 群号：${gid}\n` +
-                       `⏰ 有效期至：${timeStr}\n` +
-                       `━━━━━━━━━━━━━━\n` +
-                       `请搜索群号入群\n` +
-                       `· 修改时间 → 。修改时间线 ${groupData.day} 新时间段\n` +
-                       `· 提前结束 → 。废除时间线`;
+    const noticeText = `🎉 ${groupData.subtype}创建成功！
+
+📍 ${groupData.place}
+📅 ${groupData.day} ${groupData.time}
+👥 ${participantsText}
+
+🔗 群号：${gid}
+⏰ 有效期：${timeStr}
+
+💡 操作指南：
+  修改时间 ➜ 。修改时间线 ${groupData.day} 新时间（在私约群内）
+  不想参加 ➜ 。废除时间线 私约群号`;
 
     // 5. 向所有参与者发送私聊/绑定群通知
     participants.forEach(name => {
@@ -4033,8 +4132,10 @@ cmd_post_wish.solve = (ctx, msg, cmdArgs) => {
     if (JSON.parse(ext.storageGet("wish_public_send") || "false")) {
         const gid = JSON.parse(ext.storageGet("adminAnnounceGroupId") || "null");
         if (gid) {
+            const profile = getCharProfile(platform, name);
+            const genderEmoji = profile.gender === "男" ? "👨" : "👩";
             const m = seal.newMessage(); m.messageType = "group"; m.groupId = `${platform}-Group:${gid}`;
-            seal.replyToSender(seal.createTempCtx(ctx.endPoint, m), m, `🌠 新心愿 [${id}]\n📅 ${day} ${time.replace('-', ' ~ ')}\n📍 ${place}\n💌 ${content}\n✨ 摘取：。摘心愿 ${id}`);
+            seal.replyToSender(seal.createTempCtx(ctx.endPoint, m), m, `🌠 新心愿 [${id}]\n${genderEmoji} ${name}\n📅 ${day} ${time.replace('-', ' ~ ')}\n📍 ${place}\n💌 ${content}\n✨ 摘取：。摘心愿 ${id}`);
         }
     }
     return seal.ext.newCmdExecuteResult(true);
@@ -4083,11 +4184,16 @@ cmd_pick_wish.solve = async (ctx, msg, cmdArgs) => {
     
     // 通知双方
     const priv = JSON.parse(ext.storageGet("a_private_group") || "{}")[platform] || {};
-    [ {id: uid, t: fromName}, {id: wish.fromId, t: name} ].forEach(p => {
+    const fromProfile = getCharProfile(platform, fromName);
+    const toProfile = getCharProfile(platform, name);
+    const fromGenderEmoji = fromProfile.gender === "男" ? "👨" : "👩";
+    const toGenderEmoji = toProfile.gender === "男" ? "👨" : "👩";
+
+    [ {id: uid, t: fromName, gender: fromGenderEmoji}, {id: wish.fromId, t: name, gender: toGenderEmoji} ].forEach(p => {
         const gid = priv[p.t === fromName ? name : fromName]?.[1];
         if (gid) {
             const m = seal.newMessage(); m.messageType = "group"; m.groupId = `${platform}-Group:${gid}`;
-            seal.replyToSender(seal.createTempCtx(ctx.endPoint, m), m, `💫 摘心愿成功！与 ${p.t} 的小群已开启。\n📍 ${wish.place} | ⏰ ${wish.day} ${wish.time}`);
+            seal.replyToSender(seal.createTempCtx(ctx.endPoint, m), m, `💫 摘心愿成功！与 ${p.gender}${p.t} 的小群已开启。\n📍 ${wish.place} | ⏰ ${wish.day} ${wish.time}`);
         }
     });
 
@@ -5428,11 +5534,8 @@ function applyEndGameBonuses(ctx, msg, gid, platform) {
                 const code = bonus.targetType === "currency"
                     ? (currencyByName[target] || target.toUpperCase())
                     : target.toUpperCase();
-                const invs = JSON.parse(ext.storageGet("global_inventories") || "{}");
-                const invKey = `${platform}:${roleName}`;
-                if (!invs[invKey]) invs[invKey] = {};
-                invs[invKey][code] = (invs[invKey][code] || 0) + amount;
-                ext.storageSet("global_inventories", JSON.stringify(invs));
+                const roleKey = `${platform}:${roleName}`;
+                addToInv_system(roleKey, code, amount);
                 roleLines.push(`${target}×${amount}`);
             } else {
                 // attr
@@ -7893,6 +7996,49 @@ cmd_set_npc.solve = (ctx, msg, cmdArgs) => {
 ext.cmdMap["设为npc"] = cmd_set_npc;
 
 // ========================
+// ========================
+// RPG背包辅助函数（复制自长日RPG，确保长日系统能调用）
+// ========================
+function getRegistry_rpg() {
+    const main = seal.ext.find("changri");
+    return main ? JSON.parse(main.storageGet("item_registry") || "{}") : {};
+}
+function getInvAll_rpg() {
+    const main = seal.ext.find("changri");
+    return main ? JSON.parse(main.storageGet("global_inventories") || "{}") : {};
+}
+function saveInvAll_rpg(invs) {
+    const main = seal.ext.find("changri");
+    if (main) main.storageSet("global_inventories", JSON.stringify(invs));
+}
+function addToInv_system(roleKey, code, count) {
+    const invs = getInvAll_rpg();
+    const inv = invs[roleKey] || [];
+    const reg = getRegistry_rpg();
+    const itemInfo = reg[code];
+
+    if (!itemInfo) {
+        console.error(`[长日系统] 尝试添加不存在的物品代码: ${code}`);
+        return;
+    }
+
+    const initialUses = itemInfo.maxUses ?? -1;
+    const entry = inv.find(e => e.code === code && (e.remainingUses ?? -1) === initialUses);
+
+    if (entry) {
+        entry.count += count;
+    } else {
+        inv.push({
+            code,
+            count,
+            remainingUses: initialUses
+        });
+    }
+
+    invs[roleKey] = inv;
+    saveInvAll_rpg(invs);
+}
+
 // 🔨 拍卖系统
 // ========================
 
@@ -7952,12 +8098,9 @@ function settleExpiredAuctions(ctx, msg) {
         attrs[winner.roleName][settings.currency] = (attrs[winner.roleName][settings.currency] || 0) - winner.amount;
         ext.storageSet("sys_character_attrs", JSON.stringify(attrs));
 
-        // 加入背包
-        const invs = JSON.parse(ext.storageGet("global_inventories") || "{}");
-        const invKey = `${platform}:${winner.roleName}`;
-        if (!invs[invKey]) invs[invKey] = [];
-        invs[invKey].push({ name: item.name, desc: item.desc, used: false, type: "普通道具", count: 1, createTime: Date.now(), source: "拍卖", canResell: item.canResell });
-        ext.storageSet("global_inventories", JSON.stringify(invs));
+        // 加入RPG背包
+        const roleKey = `${platform}:${winner.roleName}`;
+        addToInv_system(roleKey, item.code || item.name.toUpperCase(), 1);
 
         item.status = "sold";
         item.winner = { roleName: winner.roleName, amount: winner.amount, isAnon: winner.isAnon };
@@ -8950,8 +9093,10 @@ function sendBackpackNodes(ctx, msg, nodes) {
 
 let cmd_backpack = seal.ext.newCmdItemInfo();
 cmd_backpack.name = "背包";
-cmd_backpack.help = "背包 — 全览\n背包 礼物/普通道具/道具/特殊道具 — 按分类查看\n背包 普通礼物1/普通道具1/特殊道具1 — 查看完整详情";
+cmd_backpack.help = "已转移到RPG系统，请使用「我的背包」或「背包」命令";
 cmd_backpack.solve = (ctx, msg, cmdArgs) => {
+    return seal.replyToSender(ctx, msg, "💡 背包已统一到RPG系统！\n\n请使用：\n  。我的背包  或  。背包 —— 查看背包\n\n所有商城、拍卖、结戏奖励都在同一个背包里了~");
+};
     const roleName = getRoleName(ctx, msg);
     if (!roleName) return seal.replyToSender(ctx, msg, "⚠️ 请先绑定角色。");
 
@@ -9212,13 +9357,12 @@ cmd_delete_timeline_precise.solve = (ctx, msg, cmdArgs) => {
 ext.cmdMap["删除时间线"] = cmd_delete_timeline_precise;
 
 let cmd_sync_now = seal.ext.newCmdItemInfo();
-cmd_sync_now.name = "同步名片"; 
+cmd_sync_now.name = "同步名片";
 cmd_sync_now.solve = (ctx, msg) => {
     if (!isUserAdmin(ctx, msg)) return;
 
     const platform = msg.platform, storage = getRoleStorage();
     const pData = storage[platform] || {};
-    // 统一读取特殊群组，过滤无效值
     const specials = ["adminAnnounceGroupId", "water_group_id", "song_group_id"]
         .map(k => JSON.parse(ext.storageGet(k) || "null"))
         .filter(id => id && id !== "未设置");
@@ -9226,29 +9370,36 @@ cmd_sync_now.solve = (ctx, msg) => {
     const names = Object.keys(pData);
     if (!names.length) return seal.replyToSender(ctx, msg, "📭 数据库为空");
 
-    let count = 0;
-    names.forEach((name, index) => {
-        const [uid, pGid] = pData[name];
-        // 合并私信群与公共群，去重
-        const targets = [...new Set([pGid, ...specials])].filter(id => id && id !== "0");
+    // 构建所有需要发送的请求队列
+    const requestQueue = [];
+    names.forEach(name => {
+        const data = pData[name];
+        if (!Array.isArray(data) || data.length < 2 || !data[0]) return;
 
+        const [uid, pGid] = data;
+        const cleanUid = parseInt(uid.toString().replace(/[^\d]/g, ""));
+        if (isNaN(cleanUid)) return;
+
+        const targets = [...new Set([pGid, ...specials])].filter(id => id && id !== "0");
         targets.forEach(gid => {
             const cleanGid = parseInt(gid.toString().replace(/[^\d]/g, ""));
-            const cleanUid = parseInt(uid.toString().replace(/[^\d]/g, ""));
-
-            if (!isNaN(cleanGid) && !isNaN(cleanUid)) {
-                // 增加一个小延迟，防止 WS 堵塞导致失败
-                setTimeout(() => {
-                    ws({
-                        "action": "set_group_card",
-                        "params": { "group_id": cleanGid, "user_id": cleanUid, "card": name }
-                    }, ctx, msg, "");
-                }, (count++) * 100); // 每个请求间隔 100ms
+            if (!isNaN(cleanGid)) {
+                requestQueue.push({
+                    action: "set_group_card",
+                    params: { group_id: cleanGid, user_id: cleanUid, card: name }
+                });
             }
         });
     });
 
-    seal.replyToSender(ctx, msg, `🔄 正在同步 ${names.length} 个角色的名片...\n涉及群组：${specials.length + 1} 个\n预计操作次数：${count}`);
+    if (!requestQueue.length) {
+        return seal.replyToSender(ctx, msg, "⚠️ 没有有效的同步目标");
+    }
+
+    // 使用单个 WebSocket 连接按顺序发送所有请求
+    wsBatchSync(requestQueue, ctx, msg);
+
+    seal.replyToSender(ctx, msg, `🔄 正在同步 ${names.length} 个角色的名片...\n总共需要 ${requestQueue.length} 次操作`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["同步名片"] = cmd_sync_now;
@@ -9338,48 +9489,86 @@ ext.cmdMap["修改时间线"] = cmd_update_schedule;
 // ========================
 let cmd_abolish_schedule = seal.ext.newCmdItemInfo();
 cmd_abolish_schedule.name = "废除时间线";
-cmd_abolish_schedule.help = "。废除时间线 (强制删除当前约会记录并释放群号，无需复盘)";
+cmd_abolish_schedule.help = "。废除时间线 群号 (在任何群使用，强制删除约会记录并通知相关者)";
 
-cmd_abolish_schedule.solve = (ctx, msg) => {
+cmd_abolish_schedule.solve = (ctx, msg, cmdArgs) => {
     const platform = msg.platform;
-    const gid = msg.groupId.replace(`${platform}-Group:`, "");
+    const targetGid = cmdArgs.getArgN(1);
+
+    if (!targetGid) return seal.replyToSender(ctx, msg, "⚠️ 格式错误，请使用：.废除时间线 群号");
+
     let groupPool = JSON.parse(ext.storageGet("group") || "[]");
+    let groupExpireInfo = JSON.parse(ext.storageGet("group_expire_info") || "{}");
+    let b_confirmedSchedule = JSON.parse(ext.storageGet("b_confirmedSchedule") || "{}");
+    const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
 
     // 1. 检查是否为占用状态
-    const fullId = `${gid}_占用`;
+    const fullId = `${targetGid}_占用`;
     const isOccupied = groupPool.includes(fullId);
-    
-    if (!isOccupied) return seal.replyToSender(ctx, msg, "⚠️ 当前群号未处于占用状态，无需废除。");
 
-    // 2. 彻底删除日程记录 (b_confirmedSchedule)
-    let b_confirmedSchedule = JSON.parse(ext.storageGet("b_confirmedSchedule") || "{}");
+    if (!isOccupied) return seal.replyToSender(ctx, msg, `⚠️ 群号 ${targetGid} 未处于占用状态，无需废除。`);
+
+    // 2. 检查约会类型，只有电话和私约可以废除
+    const groupInfo = groupExpireInfo[targetGid] || {};
+    const subtype = groupInfo.subtype || "私密";
+    if (subtype === "心愿" || subtype === "官约") {
+        return seal.replyToSender(ctx, msg, `⚠️ ${subtype}约不可废除，请通过正常流程处理。`);
+    }
+
+    // 3. 获取参与者信息（用于后续通知）
+    const participants = groupInfo.participants || [];
+
+    // 4. 给目标群发送废除通知
+    const groupMsg = seal.newMessage();
+    groupMsg.messageType = "group";
+    groupMsg.groupId = `${platform}-Group:${targetGid}`;
+    const groupCtx = seal.createTempCtx(ctx.endPoint, groupMsg);
+    const groupNotice = `🚫 【约会已取消】\n\n本场时间线已被废除，约会已取消。\n请各位参与者尽快退群，期待下次相遇！`;
+    seal.replyToSender(groupCtx, groupMsg, groupNotice);
+
+    // 5. 给其他参与者发送私信通知（对方已拒绝）
+    for (let participantName of participants) {
+        const targetInfo = a_private_group[platform] && a_private_group[platform][participantName];
+        if (!targetInfo) continue;
+
+        const [targetUid, targetGidPrivate] = targetInfo;
+        if (!targetUid || !targetGidPrivate) continue;
+
+        const privateMsg = seal.newMessage();
+        privateMsg.messageType = "group";
+        privateMsg.groupId = `${platform}-Group:${targetGidPrivate}`;
+        privateMsg.sender = {};
+        privateMsg.sender.userId = `${platform}:${targetUid}`;
+        const privateCtx = seal.createTempCtx(ctx.endPoint, privateMsg);
+        const privateNotice = `❌ 【约会已取消】\n\n抱歉，对方已经拒绝了这场约会，约会已自动取消。\n期待下次相遇！`;
+        seal.replyToSender(privateCtx, privateMsg, privateNotice);
+    }
+
+    // 6. 彻底删除日程记录 (b_confirmedSchedule)
     for (let uidKey in b_confirmedSchedule) {
-        // 过滤掉当前群的所有记录
-        b_confirmedSchedule[uidKey] = b_confirmedSchedule[uidKey].filter(ev => ev.group !== gid);
+        b_confirmedSchedule[uidKey] = b_confirmedSchedule[uidKey].filter(ev => ev.group !== targetGid);
     }
     ext.storageSet("b_confirmedSchedule", JSON.stringify(b_confirmedSchedule));
 
-    // 3. 清理过期信息 (group_expire_info)
-    let groupExpireInfo = JSON.parse(ext.storageGet("group_expire_info") || "{}");
-    if (groupExpireInfo[gid]) {
-        delete groupExpireInfo[gid];
+    // 7. 清理过期信息 (group_expire_info)
+    if (groupExpireInfo[targetGid]) {
+        delete groupExpireInfo[targetGid];
         ext.storageSet("group_expire_info", JSON.stringify(groupExpireInfo));
     }
 
-    // 4. 释放群号回池子
+    // 8. 释放群号回池子
     const idx = groupPool.indexOf(fullId);
     if (idx !== -1) {
         groupPool.splice(idx, 1);
-        groupPool.push(gid);
+        groupPool.push(targetGid);
         ext.storageSet("group", JSON.stringify(groupPool));
     }
 
-    // 5. 修改群名片并遣散通知
-    setGroupName(ctx, msg, gid, `备用`);
-    cleanupGroupTimer(gid); // 清理该群计时器
+    // 9. 修改群名片并清理计时器
+    setGroupName(ctx, msg, targetGid, `备用`);
+    cleanupGroupTimer(targetGid);
 
-    const notice = `🚫 【约会废除通知】\n\n本场时间线已被强制废除，相关日程已从系统删除。\n请各位参与者尽快退群，期待下次相遇！`;
-    seal.replyToSender(ctx, msg, notice);
+    seal.replyToSender(ctx, msg, `✅ 已成功废除群 ${targetGid} 的约会，并通知了相关参与者。`);
 
     return seal.ext.newCmdExecuteResult(true);
 };
