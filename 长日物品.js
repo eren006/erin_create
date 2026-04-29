@@ -2612,36 +2612,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
         return cmd_reg_attr.solve(ctx, msg, fa(rest.length && rest[0] ? rest : [""]));
     }
 
-    // 角色:属性++值 / 角色:属性--值（管理员批量改属性）
-    if (isAdmin) {
-        const attrM = raw.match(/^(.+?)[:：](.+?)([+\-]{2})([\d、,，]+)$/);
-        if (attrM) {
-            const [, rolesPart, attrName, op, valsPart] = attrM;
-            const defs = getAttrDefs();
-            if (defs[attrName]) {
-                const main = getMain();
-                if (!main) return;
-                const priv = JSON.parse(main.storageGet("a_private_group") || "{}")[platform] || {};
-                const roles = rolesPart === "全体" ? Object.keys(priv) : rolesPart.split(/[、,，]/).map(r => r.trim());
-                const vals = valsPart.split(/[、,，]/).map(v => parseInt(v));
-                const charAttrs = getCharAttrs();
-                const res = [];
-                roles.forEach((r, i) => {
-                    if (!priv[r]) return;
-                    if (!charAttrs[r]) charAttrs[r] = {};
-                    const v = isNaN(vals[i]) ? vals[0] : vals[i];
-                    const old = charAttrs[r][attrName] ?? (defs[attrName].default ?? 0);
-                    const next = clampAttr(defs[attrName], op === "++" ? old + v : old - v);
-                    charAttrs[r][attrName] = next;
-                    res.push(`${r}：${old}→${next}`);
-                });
-                if (res.length) {
-                    saveCharAttrs(charAttrs);
-                    return seal.replyToSender(ctx, msg, `${op === "++" ? "📈" : "📉"} ${attrName} 变更：\n${res.join("\n")}`);
-                }
-            }
-        }
-    }
+    // 重复代码已删除（属性++/--在上面的 2347-2402 行已完整处理）
 };
 
 // ========================
