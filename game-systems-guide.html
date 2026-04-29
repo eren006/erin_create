@@ -3,1157 +3,858 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🎮 长日游戏系统完整指南</title>
+    <title>🎮 长日系统完整导览</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: #333;
-            min-height: 100vh;
-        }
-
-        .container {
-            max-width: 900px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        header {
-            background: white;
-            border-radius: 12px;
-            padding: 30px 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            text-align: center;
-        }
-
-        header h1 {
-            font-size: 28px;
-            color: #667eea;
-            margin-bottom: 8px;
-        }
-
-        header p {
-            color: #666;
-            font-size: 14px;
-        }
-
-        .tabs {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-        }
-
-        .tab-btn {
-            flex: 1;
-            min-width: 120px;
-            padding: 12px 20px;
-            border: none;
-            border-radius: 8px;
-            background: white;
-            color: #667eea;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-
-        .tab-btn.active {
-            background: #667eea;
-            color: white;
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-        }
-
-        .tab-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-        }
-
-        .tab-content {
-            display: none;
-            animation: fadeIn 0.3s ease;
-        }
-
-        .tab-content.active {
-            display: block;
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-            }
-            to {
-                opacity: 1;
-            }
-        }
-
-        .card {
-            background: white;
-            border-radius: 12px;
-            padding: 0;
-            margin-bottom: 16px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
-        }
-
-        .card-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 16px 20px;
-            cursor: pointer;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-weight: 600;
-            user-select: none;
-        }
-
-        .card-header:hover {
-            background: linear-gradient(135deg, #5568d3 0%, #653a92 100%);
-        }
-
-        .card-header.expanded {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-
-        .card-content {
-            display: none;
-            padding: 20px;
-            animation: slideDown 0.3s ease;
-        }
-
-        .card-content.show {
-            display: block;
-        }
-
-        @keyframes slideDown {
-            from {
-                opacity: 0;
-                max-height: 0;
-            }
-            to {
-                opacity: 1;
-                max-height: 2000px;
-            }
-        }
-
-        .toggle-icon {
-            display: inline-block;
-            transition: transform 0.3s ease;
-            font-size: 20px;
-        }
-
-        .toggle-icon.rotated {
-            transform: rotate(180deg);
-        }
-
-        h2 {
-            color: #667eea;
-            margin: 24px 0 16px 0;
-            font-size: 22px;
-            border-left: 4px solid #667eea;
-            padding-left: 12px;
-        }
-
-        h3 {
-            color: #764ba2;
-            margin: 16px 0 12px 0;
-            font-size: 16px;
-        }
-
-        p {
-            line-height: 1.6;
-            margin-bottom: 12px;
-            color: #555;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 16px 0;
-            font-size: 13px;
-        }
-
-        th {
-            background: #f5f7ff;
-            color: #667eea;
-            padding: 12px;
-            text-align: left;
-            font-weight: 600;
-            border-bottom: 2px solid #667eea;
-        }
-
-        td {
-            padding: 12px;
-            border-bottom: 1px solid #e5e7eb;
-        }
-
-        tr:hover {
-            background: #f9fafc;
-        }
-
-        code {
-            background: #f5f7ff;
-            color: #764ba2;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-            font-size: 12px;
-        }
-
-        pre {
-            background: #f5f7ff;
-            padding: 16px;
-            border-radius: 8px;
-            overflow-x: auto;
-            margin: 12px 0;
-            border-left: 4px solid #667eea;
-        }
-
-        pre code {
-            background: none;
-            padding: 0;
-            color: #333;
-        }
-
-        ul, ol {
-            margin-left: 20px;
-            margin-bottom: 12px;
-        }
-
-        li {
-            margin-bottom: 8px;
-            line-height: 1.6;
-        }
-
-        .highlight {
-            background: #fef3c7;
-            padding: 2px 6px;
-            border-radius: 3px;
-        }
-
-        .example-box {
-            background: #f0f4ff;
-            border-left: 4px solid #667eea;
-            padding: 12px 16px;
-            margin: 12px 0;
-            border-radius: 4px;
-        }
-
-        .command {
-            background: #fff5e6;
-            border-left: 4px solid #f59e0b;
-            padding: 12px 16px;
-            margin: 12px 0;
-            border-radius: 4px;
-            font-family: 'Monaco', 'Menlo', monospace;
-            font-size: 13px;
-            overflow-x: auto;
-        }
-
-        .tip {
-            background: #d1fae5;
-            border-left: 4px solid #10b981;
-            padding: 12px 16px;
-            margin: 12px 0;
-            border-radius: 4px;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #333; min-height: 100vh; }
+        .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
+        header { background: white; border-radius: 12px; padding: 30px 20px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); text-align: center; }
+        header h1 { font-size: 28px; color: #667eea; margin-bottom: 8px; }
+        header p { color: #666; font-size: 14px; }
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .tab-btn { flex: 1; min-width: 100px; padding: 12px 16px; border: none; border-radius: 8px; background: white; color: #667eea; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); }
+        .tab-btn.active { background: #667eea; color: white; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); }
+        .tab-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15); }
+        .tab-content { display: none; animation: fadeIn 0.3s ease; }
+        .tab-content.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .card { background: white; border-radius: 12px; padding: 0; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); overflow: hidden; }
+        .card-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 16px 20px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-weight: 600; user-select: none; }
+        .card-header:hover { background: linear-gradient(135deg, #5568d3 0%, #653a92 100%); }
+        .card-content { display: none; padding: 20px; animation: slideDown 0.3s ease; }
+        .card-content.show { display: block; }
+        @keyframes slideDown { from { opacity: 0; max-height: 0; } to { opacity: 1; max-height: 2000px; } }
+        .toggle-icon { display: inline-block; transition: transform 0.3s ease; font-size: 20px; }
+        .toggle-icon.rotated { transform: rotate(180deg); }
+        h2 { color: #667eea; margin: 24px 0 16px 0; font-size: 22px; border-left: 4px solid #667eea; padding-left: 12px; }
+        h3 { color: #764ba2; margin: 16px 0 12px 0; font-size: 16px; }
+        p { line-height: 1.6; margin-bottom: 12px; color: #555; }
+        table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+        th { background: #f5f7ff; color: #667eea; padding: 12px; text-align: left; font-weight: 600; border-bottom: 2px solid #667eea; }
+        td { padding: 12px; border-bottom: 1px solid #e5e7eb; }
+        tr:hover { background: #f9fafc; }
+        code { background: #f5f7ff; color: #764ba2; padding: 4px 8px; border-radius: 4px; font-family: 'Monaco', 'Menlo', monospace; font-size: 12px; }
+        pre { background: #f5f7ff; padding: 16px; border-radius: 8px; overflow-x: auto; margin: 12px 0; border-left: 4px solid #667eea; }
+        pre code { background: none; padding: 0; color: #333; }
+        ul, ol { margin-left: 20px; margin-bottom: 12px; }
+        li { margin-bottom: 8px; line-height: 1.6; }
+        .tip { background: #d1fae5; border-left: 4px solid #10b981; padding: 12px 16px; margin: 12px 0; border-radius: 4px; }
+        .example-box { background: #f0f4ff; border-left: 4px solid #667eea; padding: 12px 16px; margin: 12px 0; border-radius: 4px; }
+        .quick-start { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 12px; padding: 20px; margin: 20px 0; }
+        .quick-start h3 { color: white; margin-top: 0; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
+        .grid-item { background: #f9fafc; padding: 16px; border-radius: 8px; border-left: 4px solid #667eea; }
+        .grid-item h4 { color: #667eea; margin-bottom: 8px; }
+        .toc { background: #f9fafc; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+        .toc h4 { color: #667eea; margin-bottom: 12px; font-size: 14px; }
+        .toc ul { margin-left: 16px; }
+        .toc li { font-size: 13px; margin-bottom: 6px; }
+        footer { text-align: center; color: #999; font-size: 12px; margin-top: 40px; padding: 20px; }
         @media (max-width: 768px) {
-            .container {
-                padding: 12px;
-            }
-
-            header {
-                padding: 20px 12px;
-            }
-
-            header h1 {
-                font-size: 20px;
-            }
-
-            .tabs {
-                gap: 6px;
-            }
-
-            .tab-btn {
-                min-width: 100px;
-                padding: 10px 12px;
-                font-size: 12px;
-            }
-
-            .card {
-                margin-bottom: 12px;
-            }
-
-            .card-header {
-                padding: 12px 16px;
-                font-size: 14px;
-            }
-
-            .card-content {
-                padding: 16px;
-            }
-
-            table {
-                font-size: 12px;
-            }
-
-            th, td {
-                padding: 8px 4px;
-            }
-
-            h2 {
-                font-size: 18px;
-                margin: 16px 0 12px 0;
-            }
-
-            h3 {
-                font-size: 14px;
-                margin: 12px 0 8px 0;
-            }
-        }
-
-        .toc {
-            background: #f9fafc;
-            border-radius: 8px;
-            padding: 16px;
-            margin-bottom: 16px;
-        }
-
-        .toc h4 {
-            color: #667eea;
-            margin-bottom: 12px;
-            font-size: 14px;
-        }
-
-        .toc ul {
-            margin-left: 16px;
-        }
-
-        .toc li {
-            font-size: 13px;
-            margin-bottom: 6px;
-        }
-
-        .quick-start {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border-radius: 12px;
-            padding: 20px;
-            margin: 20px 0;
-        }
-
-        .quick-start h3 {
-            color: white;
-            margin-top: 0;
-        }
-
-        .grid-2 {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 16px;
-            margin: 16px 0;
-        }
-
-        .grid-item {
-            background: #f9fafc;
-            padding: 16px;
-            border-radius: 8px;
-            border-left: 4px solid #667eea;
-        }
-
-        .grid-item h4 {
-            color: #667eea;
-            margin-bottom: 8px;
-        }
-
-        @media (max-width: 768px) {
-            .grid-2 {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        footer {
-            text-align: center;
-            color: #999;
-            font-size: 12px;
-            margin-top: 40px;
-            padding: 20px;
+            .grid-2 { grid-template-columns: 1fr; }
+            .tab-btn { min-width: 80px; padding: 8px 10px; font-size: 11px; }
+            .container { padding: 12px; }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>🎮 长日游戏系统完整指南</h1>
-            <p>物品系统 + 升级系统 | 版本 2.0</p>
+            <h1>🎮 长日系统完整导览</h1>
+            <p>90+命令的完整系统 | 主系统、设置、晚餐、RPG、写信综</p>
         </header>
 
         <div class="tabs">
-            <button class="tab-btn active" onclick="switchTab(0)">📦 物品系统</button>
-            <button class="tab-btn" onclick="switchTab(1)">⬆️ 升级系统</button>
+            <button class="tab-btn active" onclick="switchTab(0)">🏠 概览</button>
+            <button class="tab-btn" onclick="switchTab(1)">⚙️ 主系统</button>
+            <button class="tab-btn" onclick="switchTab(2)">🔧 设置</button>
+            <button class="tab-btn" onclick="switchTab(3)">🍽️ 晚餐</button>
+            <button class="tab-btn" onclick="switchTab(4)">🎭 RPG<small style="opacity:0.7">(非典型)</small></button>
+            <button class="tab-btn" onclick="switchTab(5)">✉️ 写信<small style="opacity:0.7">(写信综)</small></button>
         </div>
 
-        <!-- 物品系统 Tab -->
+        <!-- 系统概览 Tab -->
         <div id="tab-0" class="tab-content active">
+            <div class="quick-start">
+                <h3>🎮 欢迎来到长日系统</h3>
+                <p>拥有90+命令的完整游戏社交框架，支持恋爱综艺式的多人互动体验。</p>
+            </div>
+
+            <h2>📋 系统架构</h2>
+            <div class="grid-2">
+                <div class="grid-item"><h4>⚙️ 主系统</h4><p>角色、邀约、关系、论坛、礼物、统计等核心功能</p></div>
+                <div class="grid-item"><h4>🔧 设置系统</h4><p>统一配置控制台、参数管理、天数系统</p></div>
+                <div class="grid-item"><h4>🍽️ 晚餐系统</h4><p>独立社交系统、互动游戏、参与管理</p></div>
+                <div class="grid-item"><h4>🎭 RPG系统</h4><p>物品、装备、货币、商城、合成等经济系统</p></div>
+                <div class="grid-item"><h4>✉️ 写信系统</h4><p>正式信件系统、写信币赏金、故事推进</p></div>
+                <div class="grid-item"><h4>📊 统计分析</h4><p>互动数据、关系网络、财经数据统计</p></div>
+            </div>
+        </div>
+
+        <!-- 主系统 Tab (90+ 命令) -->
+        <div id="tab-1" class="tab-content">
+            <div class="quick-start">
+                <h3>⚙️ 长日系统 | 核心社交框架</h3>
+                <p>长日系统（changriV1）包含<strong>90+个命令</strong>，管理角色、邀约、关系、互动等所有核心社交功能。是一套完整的恋爱综艺类游戏框架。</p>
+            </div>
+
+            <h2>📋 系统全景图</h2>
+            <div class="example-box">
+                <p><strong>游戏流程：</strong> 创建角色 → 配置地点 → 发起邀约 → 互动交流 → 建立关系线 → 论坛讨论 → 数据统计</p>
+            </div>
+
+            <h2>🎯 核心功能分类</h2>
+            <div class="grid-2">
+                <div class="grid-item">
+                    <h4>👥 角色和权限</h4>
+                    <p>创建角色、设置管理员、权限控制、NPC设定</p>
+                </div>
+                <div class="grid-item">
+                    <h4>📍 场景和邀约</h4>
+                    <p>地点管理、私约/官约、心愿系统、多人邀请</p>
+                </div>
+                <div class="grid-item">
+                    <h4>💌 互动和关系</h4>
+                    <p>通讯、关系线、心动信、时间线管理</p>
+                </div>
+                <div class="grid-item">
+                    <h4>💬 社区和经济</h4>
+                    <p>论坛讨论、礼物系统、拍卖、背包管理</p>
+                </div>
+            </div>
+
             <div class="toc">
-                <h4>📑 物品系统导航</h4>
+                <h4>📑 功能模块（共18类 / 90+命令）</h4>
                 <ul>
-                    <li>物品注册与管理</li>
-                    <li>货币系统</li>
-                    <li>装备系统</li>
-                    <li>商城与池子</li>
-                    <li>合成系统</li>
-                    <li>攻防系统</li>
+                    <li><strong>角色与权限：</strong> 角色人物管理 (4) | 权限和管理员 (6) | NPC系统 (1)</li>
+                    <li><strong>场景与邀约：</strong> 地点权限系统 (7) | 邀约系统 (6) | 多人邀请 (4) | 邀约时间 (3)</li>
+                    <li><strong>互动与关系：</strong> 时间线日程 (5) | 通讯互动 (3) | 关系线系统 (7) | 心动信系统 (6)</li>
+                    <li><strong>社区与经济：</strong> 论坛系统 (5) | 礼物系统 (6) | 背包系统 (1) | 拍卖系统 (3)</li>
+                    <li><strong>群组与统计：</strong> 群号群组管理 (8) | 统计系统 (3) | 工具和其他 (6)</li>
                 </ul>
             </div>
 
-            <!-- 物品注册 -->
+            <h2>🚀 快速开始指南</h2>
             <div class="card">
-                <div class="card-header" onclick="toggleCard(this)">
-                    📋 物品注册与使用
-                    <span class="toggle-icon">▼</span>
-                </div>
+                <div class="card-header" onclick="toggleCard(this)">📖 新手管理员必读</div>
                 <div class="card-content">
-                    <h3>物品分类</h3>
-                    <p>系统支持两种物品类型：</p>
-                    <table>
-                        <tr>
-                            <th>类型</th>
-                            <th>说明</th>
-                            <th>命令</th>
-                        </tr>
-                        <tr>
-                            <td>普通物品</td>
-                            <td>玩家对自己使用（如药品）</td>
-                            <td><code>普通使用 ITEM_001</code></td>
-                        </tr>
-                        <tr>
-                            <td>互动物品</td>
-                            <td>玩家对他人使用（如治疗术）</td>
-                            <td><code>施加 INTER_001 李四</code></td>
-                        </tr>
-                    </table>
+                    <h3>初始化游戏的第一步</h3>
+                    <ol>
+                        <li><strong>创建角色</strong>：为每个玩家创建一个游戏角色（使用"创建新角色"）</li>
+                        <li><strong>配置地点</strong>：设定游戏中的场景和地点权限</li>
+                        <li><strong>分配权限</strong>：选择并授予统计员/副管理员权限</li>
+                        <li><strong>发起邀约</strong>：管理员发起第一场官约，开启游戏</li>
+                    </ol>
 
-                    <h3>注册物品</h3>
-                    <div class="command">上载物品 物品名*描述*使用次数*属性效果*允许二手</div>
-
-                    <h3>使用次数说明</h3>
+                    <h3>游戏进行中的关键任务</h3>
                     <ul>
-                        <li><code>-1</code> 无限使用（不会消失）</li>
-                        <li><code>0</code> 一次性（使用后消失）</li>
-                        <li><code>>0</code> 指定次数（使用N次后消失）</li>
+                        <li>📋 <strong>监控邀约</strong>：定期查看"进行中"的邀约状态，及时处理超时</li>
+                        <li>📊 <strong>收集数据</strong>：邀约结束后，通过"本场统计"记录互动数据</li>
+                        <li>💌 <strong>推进剧情</strong>：通过发送心动信、发起官约推进故事线</li>
+                        <li>🎁 <strong>维护经济</strong>：管理礼物商城和拍卖，保持游戏币平衡</li>
+                        <li>💬 <strong>观察热点</strong>：查看论坛讨论和关系线统计，了解玩家焦点</li>
                     </ul>
 
-                    <h3>示例</h3>
-                    <pre><code>上载物品 医疗包*恢复生命*3*HP+50*N
-上载物品 魔法卷轴*增加魔法*0*MP+30*Y
-上载互动物品 治疗术*为他人治疗*5*HP+50*N</code></pre>
-
-                    <div class="tip">
-                        💡 <strong>提示</strong>：使用 <code>查看背包</code> 查看物品，<code>物品列表</code> 查看所有注册物品。
-                    </div>
-                </div>
-            </div>
-
-            <!-- 货币系统 -->
-            <div class="card">
-                <div class="card-header" onclick="toggleCard(this)">
-                    💰 货币系统
-                    <span class="toggle-icon">▼</span>
-                </div>
-                <div class="card-content">
-                    <h3>注册货币</h3>
-                    <div class="command">注册货币 货币名*描述</div>
-
-                    <h3>示例</h3>
-                    <pre><code>注册货币 金币*通用流通货币，主要来源于任务和转售
-注册货币 钻石*高级货币，需充值或特殊任务获得
-注册货币 积分*任务奖励，可兑换物品</code></pre>
-
-                    <h3>管理员操作</h3>
+                    <h3>常用命令速查</h3>
                     <table>
-                        <tr>
-                            <th>操作</th>
-                            <th>命令</th>
-                        </tr>
-                        <tr>
-                            <td>增加货币</td>
-                            <td><code>调整 角色名 CUR_001 +100</code></td>
-                        </tr>
-                        <tr>
-                            <td>减少货币</td>
-                            <td><code>调整 角色名 CUR_001 -50</code></td>
-                        </tr>
-                        <tr>
-                            <td>查看玩家货币</td>
-                            <td><code>查看背包 角色名</code></td>
-                        </tr>
-                    </table>
-
-                    <div class="tip">
-                        💡 系统自动生成编码：CUR_001, CUR_002 等
-                    </div>
-                </div>
-            </div>
-
-            <!-- 装备系统 -->
-            <div class="card">
-                <div class="card-header" onclick="toggleCard(this)">
-                    ⚔️ 装备系统
-                    <span class="toggle-icon">▼</span>
-                </div>
-                <div class="card-content">
-                    <h3>装备槽位</h3>
-                    <table>
-                        <tr>
-                            <th>代码</th>
-                            <th>名称</th>
-                            <th>用途</th>
-                        </tr>
-                        <tr>
-                            <td>head</td>
-                            <td>头部</td>
-                            <td>头盔、王冠、面罩</td>
-                        </tr>
-                        <tr>
-                            <td>chest</td>
-                            <td>胸部</td>
-                            <td>甲胄、衣服、外套</td>
-                        </tr>
-                        <tr>
-                            <td>hand</td>
-                            <td>手部</td>
-                            <td>武器、盾牌、手套</td>
-                        </tr>
-                        <tr>
-                            <td>leg</td>
-                            <td>腿部</td>
-                            <td>护腿、裤子</td>
-                        </tr>
-                        <tr>
-                            <td>foot</td>
-                            <td>脚部</td>
-                            <td>靴子、鞋子</td>
-                        </tr>
-                    </table>
-
-                    <h3>注册装备</h3>
-                    <div class="command">注册装备 装备名*描述*槽位*基础属性</div>
-
-                    <h3>示例</h3>
-                    <pre><code>注册装备 铁制短剑*普通短剑*hand*ATK+15
-注册装备 钢铁胸甲*防御胸甲*chest*DEF+20,HP+50
-注册装备 王冠*尊贵王冠*head*ATK+5,DEF+5</code></pre>
-
-                    <h3>玩家操作</h3>
-                    <table>
-                        <tr>
-                            <th>操作</th>
-                            <th>命令</th>
-                        </tr>
-                        <tr>
-                            <td>查看当前装备</td>
-                            <td><code>装备</code></td>
-                        </tr>
-                        <tr>
-                            <td>装备物品</td>
-                            <td><code>装备 EQUIP_001</code></td>
-                        </tr>
-                        <tr>
-                            <td>卸下装备</td>
-                            <td><code>脱装备 hand</code></td>
-                        </tr>
+                        <tr><th>操作</th><th>命令</th><th>权限</th></tr>
+                        <tr><td>查看所有角色</td><td><code>玩家名单</code></td><td>玩家</td></tr>
+                        <tr><td>查看进行中的邀约</td><td><code>查看进行中</code></td><td>管理员</td></tr>
+                        <tr><td>发起官方约会</td><td><code>发起官约 描述</code></td><td>管理员</td></tr>
+                        <tr><td>查看关系线统计</td><td><code>关系线统计</code></td><td>玩家</td></tr>
+                        <tr><td>查看全员统计</td><td><code>查看全员统计</code></td><td>管理员</td></tr>
+                        <tr><td>发布群公告</td><td><code>群公告发布 内容</code></td><td>管理员</td></tr>
                     </table>
                 </div>
             </div>
 
-            <!-- 商城与池子 -->
+            <!-- 1. 角色人物管理 -->
             <div class="card">
-                <div class="card-header" onclick="toggleCard(this)">
-                    🏪 商城与池子系统
-                    <span class="toggle-icon">▼</span>
-                </div>
+                <div class="card-header" onclick="toggleCard(this)">👥 角色人物管理 (4命令)</div>
                 <div class="card-content">
-                    <h3>商城操作</h3>
-                    <table>
-                        <tr>
-                            <th>操作</th>
-                            <th>命令</th>
-                        </tr>
-                        <tr>
-                            <td>上架物品</td>
-                            <td><code>上架商城 ITEM_001*100金币</code></td>
-                        </tr>
-                        <tr>
-                            <td>下架物品</td>
-                            <td><code>商城下架 ITEM_001</code></td>
-                        </tr>
-                        <tr>
-                            <td>玩家购买</td>
-                            <td><code>商城</code></td>
-                        </tr>
-                    </table>
-
-                    <h3>池子系统</h3>
-                    <p>池子用于随机掉落和抽取，分为两种类型：</p>
-
-                    <div class="grid-2">
-                        <div class="grid-item">
-                            <h4>固定池</h4>
-                            <p>加权随机，不减少物品。适合常驻抽取池、月卡池。</p>
-                            <code>注册池子 十连池 fixed</code>
-                        </div>
-                        <div class="grid-item">
-                            <h4>自由池</h4>
-                            <p>有限数量，抽完即止。适合活动奖励、副本掉落。</p>
-                            <code>注册池子 活动奖励池 free</code>
-                        </div>
-                    </div>
-
-                    <h3>池子操作</h3>
-                    <table>
-                        <tr>
-                            <th>操作</th>
-                            <th>命令</th>
-                        </tr>
-                        <tr>
-                            <td>添加到池子</td>
-                            <td><code>上架池子 十连池 ITEM_001*50</code></td>
-                        </tr>
-                        <tr>
-                            <td>从池移除</td>
-                            <td><code>从池移除 十连池 ITEM_001</code></td>
-                        </tr>
-                        <tr>
-                            <td>玩家抽取</td>
-                            <td><code>抽取 十连池 10</code></td>
-                        </tr>
-                    </table>
-                </div>
-            </div>
-
-            <!-- 合成系统 -->
-            <div class="card">
-                <div class="card-header" onclick="toggleCard(this)">
-                    🔧 合成系统
-                    <span class="toggle-icon">▼</span>
-                </div>
-                <div class="card-content">
-                    <h3>注册配方</h3>
-                    <div class="command">上传配方 产物名*材料:数量,材料:数量[*成功率]</div>
-
-                    <h3>示例</h3>
-                    <pre><code>上传配方 简易绷带*干净的布:2,酒精:1
-上传配方 高级丹*初级丹:3,金币:100*80
-上传配方 传奇装备*高级装备:5,魔晶石:10*60</code></pre>
-
-                    <h3>玩家操作</h3>
-                    <table>
-                        <tr>
-                            <th>操作</th>
-                            <th>命令</th>
-                        </tr>
-                        <tr>
-                            <td>查看所有配方</td>
-                            <td><code>查看配方</code></td>
-                        </tr>
-                        <tr>
-                            <td>执行合成</td>
-                            <td><code>合成 物品名 3</code></td>
-                        </tr>
-                    </table>
-
-                    <div class="tip">
-                        💡 合成结果支持全部成功、全部失败、部分成功三种情况。失败时材料仍会消耗。
-                    </div>
-                </div>
-            </div>
-
-            <!-- 攻防系统 -->
-            <div class="card">
-                <div class="card-header" onclick="toggleCard(this)">
-                    ⚡ 攻防（PK）系统
-                    <span class="toggle-icon">▼</span>
-                </div>
-                <div class="card-content">
-                    <h3>战斗属性</h3>
-                    <table>
-                        <tr>
-                            <th>属性</th>
-                            <th>说明</th>
-                            <th>默认值</th>
-                        </tr>
-                        <tr>
-                            <td>HP</td>
-                            <td>生命值</td>
-                            <td>100</td>
-                        </tr>
-                        <tr>
-                            <td>ATK</td>
-                            <td>攻击力</td>
-                            <td>50</td>
-                        </tr>
-                        <tr>
-                            <td>DEF</td>
-                            <td>防御力</td>
-                            <td>30</td>
-                        </tr>
-                        <tr>
-                            <td>AGI</td>
-                            <td>敏捷（决定行动顺序）</td>
-                            <td>40</td>
-                        </tr>
-                    </table>
-
-                    <h3>玩家命令</h3>
-                    <table>
-                        <tr>
-                            <th>操作</th>
-                            <th>命令</th>
-                        </tr>
-                        <tr>
-                            <td>发起战斗</td>
-                            <td><code>PK 发起</code></td>
-                        </tr>
-                        <tr>
-                            <td>接受战斗</td>
-                            <td><code>PK 接受 &lt;战斗ID&gt;</code></td>
-                        </tr>
-                        <tr>
-                            <td>普通攻击</td>
-                            <td><code>攻击 &lt;对手名字&gt;</code></td>
-                        </tr>
-                        <tr>
-                            <td>防守</td>
-                            <td><code>防守</code></td>
-                        </tr>
-                        <tr>
-                            <td>逃跑</td>
-                            <td><code>投降</code></td>
-                        </tr>
-                    </table>
-
-                    <h3>伤害计算</h3>
-                    <pre><code>基础伤害 = 攻击者ATK
-防御减伤 = 防守者DEF × 0.1
-最终伤害 = max(1, 基础伤害 - 防御减伤 + 随机值)</code></pre>
-                </div>
-            </div>
-
-            <!-- 属性系统 -->
-            <div class="card">
-                <div class="card-header" onclick="toggleCard(this)">
-                    📊 属性系统
-                    <span class="toggle-icon">▼</span>
-                </div>
-                <div class="card-content">
-                    <h3>创建属性</h3>
-                    <div class="command">我创建属性 属性名 [最小值] [最大值] [默认值]</div>
-
-                    <h3>示例</h3>
-                    <pre><code>我创建属性 HP 0 1000 100
-我创建属性 MP 0 500 50
-我创建属性 ATK 0 100 40
-我创建属性 DEF 0 50 30
-我创建属性 AGI 0 50 40</code></pre>
-
-                    <h3>玩家操作</h3>
-                    <table>
-                        <tr>
-                            <th>操作</th>
-                            <th>命令</th>
-                        </tr>
-                        <tr>
-                            <td>查看自己属性</td>
-                            <td><code>我的状态</code></td>
-                        </tr>
-                        <tr>
-                            <td>查看他人属性</td>
-                            <td><code>属性 玩家名</code></td>
-                        </tr>
-                    </table>
-
-                    <h3>管理员操作</h3>
-                    <table>
-                        <tr>
-                            <th>操作</th>
-                            <th>命令</th>
-                        </tr>
-                        <tr>
-                            <td>设置属性</td>
-                            <td><code>设置属性 角色名 属性名 100</code></td>
-                        </tr>
-                        <tr>
-                            <td>增加属性</td>
-                            <td><code>ATK++ 角色名 50</code></td>
-                        </tr>
-                        <tr>
-                            <td>减少属性</td>
-                            <td><code>ATK-- 角色名 30</code></td>
-                        </tr>
-                    </table>
-                </div>
-            </div>
-
-            <!-- 二手市场 -->
-            <div class="card">
-                <div class="card-header" onclick="toggleCard(this)">
-                    🏬 二手市场
-                    <span class="toggle-icon">▼</span>
-                </div>
-                <div class="card-content">
-                    <h3>市场配置（管理员）</h3>
-                    <table>
-                        <tr>
-                            <th>操作</th>
-                            <th>命令</th>
-                        </tr>
-                        <tr>
-                            <td>查看配置</td>
-                            <td><code>二手设定 查看</code></td>
-                        </tr>
-                        <tr>
-                            <td>设置手续费</td>
-                            <td><code>二手设定 手续费:3</code></td>
-                        </tr>
-                        <tr>
-                            <td>启用市场</td>
-                            <td><code>二手设定 开启</code></td>
-                        </tr>
-                    </table>
-
-                    <h3>玩家操作</h3>
-                    <div class="command">上架二手 物品码 价格</div>
-
-                    <h3>建议配置</h3>
+                    <p>长日系统的第一步是创建和管理角色。每个角色是一个独立的游戏身份，拥有自己的数据、关系、邀约记录等。</p>
+                    <h3>核心功能</h3>
+                    <ul>
+                        <li><strong>角色创建</strong>：创建新角色后，系统自动为其初始化所有数据存储</li>
+                        <li><strong>名字修改</strong>：支持动态修改角色名字，不影响已有关系和数据</li>
+                        <li><strong>玩家查看</strong>：管理员和玩家都可查看完整的角色列表</li>
+                        <li><strong>数据删除</strong>：删除操作会清空该角色的所有相关数据（邀约、关系、信件等）</li>
+                    </ul>
                     <div class="example-box">
-                        • <strong>允许二手</strong>：普通物品、装备、消耗品<br>
-                        • <strong>禁止二手</strong>：任务物品、限定物品、系统物品<br>
-                        • <strong>推荐手续费</strong>：2-3%
+                        <strong>使用场景</strong>：组织成员加入游戏时，管理员需要为每个参与者创建角色；游戏结束后清除角色以重置数据
                     </div>
+                    <table>
+                        <tr><th>命令</th><th>说明</th></tr>
+                        <tr><td><code>创建新角色 角色名</code></td><td>创建一个新的可游玩角色</td></tr>
+                        <tr><td><code>修改名字 旧名 新名</code></td><td>修改角色名字</td></tr>
+                        <tr><td><code>玩家名单</code></td><td>查看所有已注册的角色</td></tr>
+                        <tr><td><code>清除玩家 角色名</code></td><td>【管理员】删除角色及其数据</td></tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 2. 地点与权限系统 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">📍 地点与权限系统 (7命令)</div>
+                <div class="card-content">
+                    <p>地点系统是长日邀约的舞台管理工具。通过地点权限控制，管理员可以设定角色能在哪些地点邀约，以及谁拥有私人房间。</p>
+                    <h3>核心概念</h3>
+                    <ul>
+                        <li><strong>公开地点</strong>：所有角色都可访问和邀约的地点（如餐厅、花园等）</li>
+                        <li><strong>私人地点</strong>：需要钥匙才能使用的地点（如个人房间）</li>
+                        <li><strong>地点权限</strong>：控制角色是否可在特定地点发起或参加邀约</li>
+                    </ul>
+                    <h3>权限管理流程</h3>
+                    <div class="example-box">
+                        <ol>
+                            <li>管理员设置地点权限 → 角色获得特定地点访问权</li>
+                            <li>管理员发放钥匙 → 角色获得私人房间使用权</li>
+                            <li>角色发起邀约 → 在拥有权限的地点进行邀约</li>
+                        </ol>
+                    </div>
+                    <table>
+                        <tr><th>命令</th><th>说明</th></tr>
+                        <tr><td><code>地点 查看</code></td><td>查看可用地点列表</td></tr>
+                        <tr><td><code>地点 钥匙</code></td><td>查看已拥有的私人房间钥匙</td></tr>
+                        <tr><td><code>查看可私约地点</code></td><td>查看允许私约的地点</td></tr>
+                        <tr><td><code>地点管理</code></td><td>【管理员】管理地点权限</td></tr>
+                        <tr><td><code>批量设置地点 地点 角色1 角色2...</code></td><td>批量分配地点，高效分配权限</td></tr>
+                        <tr><td><code>批量发放钥匙 地点 角色1 角色2...</code></td><td>批量发放私人房间钥匙</td></tr>
+                        <tr><td><code>查看地点详情 地点名</code></td><td>查看地点的具体信息和权限分配</td></tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 3. 邀约系统 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">💕 邀约系统 (6命令)</div>
+                <div class="card-content">
+                    <p>邀约系统是长日的核心社交机制。支持私约（两人私密互动）、官约（官方大型活动）和心愿（开放式互动机制）三种形式。</p>
+                    <h3>邀约类型</h3>
+                    <ul>
+                        <li><strong>私约</strong>：角色A邀请角色B进行一对一互动，只有两人能看到邀约详情。支持确认、拒绝、取消等操作</li>
+                        <li><strong>官约</strong>：官方组织的大型活动，所有符合条件的角色都可参加，支持多人同时参与</li>
+                        <li><strong>心愿</strong>：开放式互动邀请，发布者不指定对象，任何人都可主动接受（摘心愿）</li>
+                    </ul>
+                    <h3>邀约流程</h3>
+                    <div class="example-box">
+                        <strong>私约流程</strong>：发起私约 → 对方收到邀请 → 对方确认/拒绝 → 写入时间线<br>
+                        <strong>心愿流程</strong>：发布心愿 → 他人浏览 → 他人摘取 → 两人开始互动
+                    </div>
+                    <div class="tip">💡 心愿是一种高效的匹配机制，不需要知道对方名字就能发起互动</div>
+                    <table>
+                        <tr><th>命令</th><th>说明</th><th>使用场景</th></tr>
+                        <tr><td><code>私约 角色名 描述</code></td><td>发起私约邀请（两人私密）</td><td>与特定人物进行一对一互动</td></tr>
+                        <tr><td><code>发起官约 描述</code></td><td>【管理员】发起官方约会</td><td>组织多人参加的官方活动</td></tr>
+                        <tr><td><code>挂心愿 描述</code></td><td>发布一个心愿（等待他人接受）</td><td>发起开放式邀约，吸引他人主动互动</td></tr>
+                        <tr><td><code>看心愿</code></td><td>查看所有未摘取的心愿</td><td>浏览当前可用的互动机会</td></tr>
+                        <tr><td><code>摘心愿 心愿ID</code></td><td>接受并摘取他人的心愿</td><td>响应他人的心愿邀请</td></tr>
+                        <tr><td><code>撤心愿 心愿ID</code></td><td>撤回已发布的心愿</td><td>取消之前发布的邀请</td></tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 4. 时间线与日程 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">📅 时间线与日程 (5命令)</div>
+                <div class="card-content">
+                    <p>时间线是角色的日程记录系统。所有已确认的邀约都会写入时间线，形成完整的互动历史和日程安排。</p>
+                    <h3>时间线的含义</h3>
+                    <ul>
+                        <li><strong>确认邀约</strong>：当私约被接受或参加官约时，会自动添加到时间线</li>
+                        <li><strong>日程记录</strong>：时间线记录了所有已确认的互动，用于追踪角色的活动历史</li>
+                        <li><strong>动态管理</strong>：支持修改、删除或废除已有的日程</li>
+                    </ul>
+                    <h3>典型场景</h3>
+                    <div class="example-box">
+                        <strong>统计员</strong>：通过查看时间线检查某场邀约的参与情况<br>
+                        <strong>角色</strong>：查看自己的日程安排，确认各个互动<br>
+                        <strong>管理员</strong>：修改时间线内容以纠正错误或调整日程
+                    </div>
+                    <table>
+                        <tr><th>命令</th><th>说明</th><th>权限</th></tr>
+                        <tr><td><code>时间线</code></td><td>查看自己的所有确认日程</td><td>玩家</td></tr>
+                        <tr><td><code>查看他人时间线 角色名</code></td><td>查看其他角色的日程</td><td>管理员/统计</td></tr>
+                        <tr><td><code>修改时间线 邀约ID 新信息</code></td><td>修改已确认的邀约内容</td><td>管理员</td></tr>
+                        <tr><td><code>删除时间线 邀约ID</code></td><td>删除某个时间线事件</td><td>管理员</td></tr>
+                        <tr><td><code>废除时间线 邀约ID</code></td><td>废除一个邀约（不再参加）</td><td>参与者</td></tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 5. 通讯互动 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">☎️ 通讯互动 (3命令)</div>
+                <div class="card-content">
+                    <p>通讯互动是角色间日常沟通的方式。不同于邀约的正式互动，通讯可以随时进行，用于日常交流和关系维持。</p>
+                    <h3>通讯方式</h3>
+                    <ul>
+                        <li><strong>电话</strong>：实时电话对话，两人通话可被记录，支持撤回</li>
+                        <li><strong>信件</strong>：书面信件，支持长篇幅内容，适合表达想法</li>
+                        <li><strong>微信</strong>：即时消息，快速轻量的沟通方式</li>
+                    </ul>
+                    <h3>模式切换</h3>
+                    <div class="example-box">
+                        <strong>普通模式</strong>：支持电话、信件、微信三种通讯方式<br>
+                        <strong>写信综模式</strong>：电话功能禁用，聚焦信件和心愿互动（参见写信系统 Tab）
+                    </div>
+                    <div class="tip">⚠️ 启用写信综系统后，电话功能会被禁用，系统自动切换到信件为主的沟通方式</div>
+                    <table>
+                        <tr><th>命令</th><th>说明</th><th>特点</th></tr>
+                        <tr><td><code>电话 角色名 内容</code></td><td>与另一个角色进行电话对话</td><td>实时、可记录、支持撤回</td></tr>
+                        <tr><td><code>发送信件 角色名 内容</code></td><td>发送一封信件（非写信综模式）</td><td>书面、长篇幅、正式</td></tr>
+                        <tr><td><code>微信 内容</code></td><td>微信通讯（系统内置）</td><td>快速、轻量、即时</td></tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 6. 多人邀请管理 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">👥 多人邀请管理 (4命令)</div>
+                <div class="card-content">
+                    <p>多人邀约允许角色发起包含多个参与者的邀约。其他角色可主动申请加入，邀约发起者负责审核和管理参与者。</p>
+                    <h3>多人邀约的优势</h3>
+                    <ul>
+                        <li><strong>灵活组织</strong>：支持动态参与，他人可主动申请加入而非被动邀请</li>
+                        <li><strong>自主筛选</strong>：发起者可选择同意或拒绝加入申请，掌控参与者质量</li>
+                        <li><strong>开放互动</strong>：与官约不同，多人邀约由玩家自发组织，更加灵活</li>
+                    </ul>
+                    <h3>多人邀约流程</h3>
+                    <div class="example-box">
+                        <ol>
+                            <li>发起者创建私约/官约并标记为多人模式</li>
+                            <li>他人查看邀约详情，点击"申请加入"</li>
+                            <li>发起者查看加入请求，选择同意或拒绝</li>
+                            <li>申请人被确认后，加入邀约并写入时间线</li>
+                        </ol>
+                    </div>
+                    <div class="tip">💡 多人邀约是组织临时性小型活动的高效方式，无需管理员干预</div>
+                    <table>
+                        <tr><th>命令</th><th>说明</th></tr>
+                        <tr><td><code>申请加入 邀约ID 理由</code></td><td>申请加入他人的多人邀约</td></tr>
+                        <tr><td><code>加入请求</code></td><td>查看所有未处理的加入申请</td></tr>
+                        <tr><td><code>同意加入 申请ID</code></td><td>同意一个加入申请，对方正式加入</td></tr>
+                        <tr><td><code>拒绝加入 申请ID</code></td><td>拒绝一个加入申请</td></tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 7. 邀约时间管理 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">⏰ 邀约时间管理 (3命令)</div>
+                <div class="card-content">
+                    <p>邀约时间管理允许管理员为角色设置"可邀约时段"，限制邀约只能在指定时间内进行。用于模拟游戏内的时间流控制。</p>
+                    <h3>时间管理的用途</h3>
+                    <ul>
+                        <li><strong>模拟游戏时间</strong>：控制邀约发生在游戏内的特定时间段</li>
+                        <li><strong>避免冲突</strong>：防止角色在同一时间被邀约多次</li>
+                        <li><strong>剧情推进</strong>：某个剧情阶段限制特定角色的邀约时段</li>
+                        <li><strong>平衡参与</strong>：确保长期活动中所有角色都有充足的邀约时间</li>
+                    </ul>
+                    <h3>时间锁定机制</h3>
+                    <div class="example-box">
+                        <strong>场景1</strong>：设置所有角色只能在下午2-6点邀约<br>
+                        <strong>场景2</strong>：为特定角色设置不同时段（如特殊身份限时活动）<br>
+                        <strong>场景3</strong>：临时锁定某个角色的邀约（如角色正在进行某个关键互动）
+                    </div>
+                    <table>
+                        <tr><th>命令</th><th>说明</th><th>说明</th></tr>
+                        <tr><td><code>设置邀约时间 角色 时段1 时段2...</code></td><td>【管理员】限制角色的邀约时段</td><td>支持多个时段，如 09:00-12:00 14:00-18:00</td></tr>
+                        <tr><td><code>清空邀约时间 角色</code></td><td>【管理员】清除时间限制</td><td>恢复该角色全天邀约权限</td></tr>
+                        <tr><td><code>查看锁定</code> / <code>时间锁定</code></td><td>查看或设置邀约时间锁定</td><td>查看当前时间限制配置</td></tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 8. 群号与群组管理 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">👥 群号与群组管理 (8命令)</div>
+                <div class="card-content">
+                    <p>群号系统关联长日系统与QQ群的互动。支持管理多个群号，同步群公告、群头衔等，实现游戏内外的一体化管理。</p>
+                    <h3>群号管理的作用</h3>
+                    <ul>
+                        <li><strong>多群支持</strong>：支持在多个QQ群中运行长日系统，统一数据管理</li>
+                        <li><strong>群同步</strong>：将邀约、公告等信息同步到QQ群</li>
+                        <li><strong>身份管理</strong>：管理群头衔和群成员身份</li>
+                        <li><strong>公告发布</strong>：通过系统发布游戏相关公告</li>
+                    </ul>
+                    <h3>邀约管理</h3>
+                    <div class="example-box">
+                        <strong>进行中</strong>：显示所有正在进行的邀约（私约、官约等），便于追踪实时状态<br>
+                        <strong>结束邀约</strong>：管理员可手动结束某个私约，释放参与者时间
+                    </div>
+                    <table>
+                        <tr><th>命令</th><th>说明</th><th>用途</th></tr>
+                        <tr><td><code>添加群号 群号</code></td><td>【管理员】添加新的QQ群</td><td>配置新的游戏运行群</td></tr>
+                        <tr><td><code>查看群号</code></td><td>查看已配置的群号列表</td><td>确认系统关联的所有群</td></tr>
+                        <tr><td><code>移除群号 群号</code></td><td>【管理员】移除一个群号</td><td>停用某个群的长日系统</td></tr>
+                        <tr><td><code>查看进行中</code></td><td>查看所有进行中的邀约</td><td>实时了解邀约状态</td></tr>
+                        <tr><td><code>结束私约 邀约ID</code></td><td>【管理员】结束一个私约</td><td>强制结束某个邀约（超时等）</td></tr>
+                        <tr><td><code>设置加百列群名</code></td><td>【管理员】配置群名称</td><td>自定义系统显示的群名</td></tr>
+                        <tr><td><code>群头衔 参数</code></td><td>【管理员】管理群头衔</td><td>为角色分配群内身份</td></tr>
+                        <tr><td><code>群公告发布 公告内容</code></td><td>【管理员】发布群公告</td><td>发布游戏规则、活动信息等</td></tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 9. 关系线系统 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">💞 关系线系统 (7命令)</div>
+                <div class="card-content">
+                    <p>关系线系统是长日的核心感情线追踪机制。记录角色间的感情关系发展，支持单向和双向确认，可自动生成关系网络图。</p>
+                    <h3>关系线的重要性</h3>
+                    <ul>
+                        <li><strong>感情线追踪</strong>：记录谁和谁之间有感情关系（好感、心动、喜欢等）</li>
+                        <li><strong>故事推进</strong>：关系线是塑造恋爱综艺剧情的核心</li>
+                        <li><strong>数据分析</strong>：通过关系线统计分析整体互动趋势和热点CP</li>
+                        <li><strong>视觉化展现</strong>：生成关系网络图展示所有角色间的联系</li>
+                    </ul>
+                    <h3>关系线流程</h3>
+                    <div class="example-box">
+                        <strong>单向拉线</strong>：A对B有感情 → 拉线A→B（仅A知道）<br>
+                        <strong>双向确认</strong>：A和B互相有感情 → 两人都拉线并互相确认 → 形成正式CP<br>
+                        <strong>关系变化</strong>：若感情消散，可撤回或删除关系线
+                    </div>
+                    <div class="tip">💡 关系线数据影响论坛热度、拍卖走向等，是游戏的重要数据维度</div>
+                    <table>
+                        <tr><th>命令</th><th>说明</th><th>状态</th></tr>
+                        <tr><td><code>拉线 角色A 角色B</code></td><td>建立两个角色之间的关系线</td><td>单向（A→B）</td></tr>
+                        <tr><td><code>查看关系线</code></td><td>查看自己的关系线（拉出和收到）</td><td>个人视图</td></tr>
+                        <tr><td><code>关系线统计</code></td><td>查看关系线统计信息和排行</td><td>全局数据</td></tr>
+                        <tr><td><code>确认关系线</code></td><td>确认收到的关系线（双向确认）</td><td>双向（A↔B）</td></tr>
+                        <tr><td><code>撤回关系</code></td><td>撤回自己已拉的单向线</td><td>删除未确认的线</td></tr>
+                        <tr><td><code>删除关系线 角色名</code></td><td>删除与某人的关系线</td><td>删除已确认的线</td></tr>
+                        <tr><td><code>清空关系线</code></td><td>【管理员】清空所有关系线</td><td>重置</td></tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 10. 心动信系统 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">💌 心动信系统 (6命令)</div>
+                <div class="card-content">
+                    <p>心动信系统是角色表达感情的官方渠道。用于发送带有感情意涵的特殊信件，可直接影响关系线、论坛热度和角色好感度。</p>
+                    <h3>心动信的用途</h3>
+                    <ul>
+                        <li><strong>感情表达</strong>：用特殊格式表达对他人的感情，比普通信件更有仪式感</li>
+                        <li><strong>关系发展</strong>：心动信常常作为感情线推进的重要事件</li>
+                        <li><strong>互动记录</strong>：心动信被完整记录，形成互动历史</li>
+                        <li><strong>统计数据</strong>：心动信数量影响论坛热度和角色人气排名</li>
+                    </ul>
+                    <h3>心动信的特点</h3>
+                    <div class="example-box">
+                        <strong>个性化</strong>：可自由编写内容，表达具体的感情和想法<br>
+                        <strong>可追溯</strong>：发送者和接收者都能查看完整的心动信历史<br>
+                        <strong>可撤回</strong>：支持撤回已发送的心动信（但可能已被看过）<br>
+                        <strong>批量发送</strong>：管理员可群发心动信用于剧情推进
+                    </div>
+                    <div class="tip">💡 心动信是感情线的重要组成部分，高频收到心动信的角色往往是游戏的感情焦点</div>
+                    <table>
+                        <tr><th>命令</th><th>说明</th><th>用途</th></tr>
+                        <tr><td><code>发送心动信 接收者 内容</code></td><td>发送一封心动信（带感情表达）</td><td>玩家主动表达感情</td></tr>
+                        <tr><td><code>查看信箱</code></td><td>查看已接收的所有心动信</td><td>查看谁对自己表达过感情</td></tr>
+                        <tr><td><code>查看心动信 信ID</code></td><td>查看单封心动信详情</td><td>回顾具体内容</td></tr>
+                        <tr><td><code>撤回心动信 信ID</code></td><td>撤回已发送的心动信</td><td>修正或删除错误发送</td></tr>
+                        <tr><td><code>统一送心动信 接收者列表 内容</code></td><td>【管理员】群发心动信</td><td>剧情推进或事件触发</td></tr>
+                        <tr><td><code>信箱统计</code></td><td>查看心动信统计数据</td><td>了解感情线分布</td></tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 11. 论坛系统 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">💬 论坛系统 (5命令)</div>
+                <div class="card-content">
+                    <p>论坛是长日的舆论阵地。角色可在论坛讨论八卦、评论互动、发表观点，形成虚拟的"综艺舆论"环境。</p>
+                    <h3>论坛的功能</h3>
+                    <ul>
+                        <li><strong>舆论中心</strong>：角色和旁观者讨论游戏内发生的故事和CP</li>
+                        <li><strong>推广热度</strong>：论坛点赞点踩影响角色和CP的人气指数</li>
+                        <li><strong>自由讨论</strong>：没有权限限制，所有人都能参与和发表观点</li>
+                        <li><strong>实时反馈</strong>：论坛热度实时反映整个社群的关注焦点</li>
+                    </ul>
+                    <h3>论坛的特点</h3>
+                    <div class="example-box">
+                        <strong>开放性</strong>：任何角色都可发帖，形成自由讨论空间<br>
+                        <strong>互动性</strong>：支持回复、点赞、点踩，形成讨论链条<br>
+                        <strong>数据驱动</strong>：点赞点踩数据影响论坛排名和推荐<br>
+                        <strong>代入感</strong>：论坛讨论模拟真实综艺的舆论环境
+                    </div>
+                    <div class="tip">💡 论坛热度高的话题往往反映了当下游戏的核心CP和焦点事件，可用于了解玩家关注</div>
+                    <table>
+                        <tr><th>命令</th><th>说明</th><th>特点</th></tr>
+                        <tr><td><code>发帖 标题 内容</code></td><td>在论坛发表新帖子</td><td>创建讨论话题</td></tr>
+                        <tr><td><code>回复帖子 帖ID 内容</code></td><td>回复某个帖子</td><td>参与讨论</td></tr>
+                        <tr><td><code>查看帖子</code></td><td>查看论坛所有帖子</td><td>浏览讨论</td></tr>
+                        <tr><td><code>点赞 帖ID</code></td><td>为帖子点赞（表示支持）</td><td>提高帖子热度和排名</td></tr>
+                        <tr><td><code>点踩 帖ID</code></td><td>为帖子点踩（表示反对）</td><td>反馈消极意见</td></tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 12. 礼物系统 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">🎁 礼物系统 (6命令)</div>
+                <div class="card-content">
+                    <p>礼物系统是长日的消费和收集机制。角色可购买和赠送各式礼物，建立礼物图鉴，用于表达心意和完成互动。</p>
+                    <h3>礼物系统的组成</h3>
+                    <ul>
+                        <li><strong>礼物商城</strong>：管理员预设的礼物池，角色消费游戏币购买</li>
+                        <li><strong>购买机制</strong>：消耗游戏币（通常是邀约获得的奖励）购买礼物</li>
+                        <li><strong>赠送机制</strong>：将购买的礼物赠送给其他角色（邀约时或单独赠送）</li>
+                        <li><strong>图鉴收集</strong>：记录已收到的礼物，形成收藏体系</li>
+                    </ul>
+                    <h3>礼物的经济价值</h3>
+                    <div class="example-box">
+                        <strong>消费渠道</strong>：玩家游戏币的主要消费方式，维持经济平衡<br>
+                        <strong>互动道具</strong>：邀约时可赠送礼物，增加互动仪式感<br>
+                        <strong>收集成就</strong>：集齐图鉴可获得成就感或额外奖励<br>
+                        <strong>稀有度设计</strong>：不同稀有度的礼物价格不同，形成消费阶梯
+                    </div>
+                    <div class="tip">💡 礼物系统与RPG系统（长日物品.js）协同工作，支持自定义礼物数据</div>
+                    <table>
+                        <tr><th>命令</th><th>说明</th><th>说明</th></tr>
+                        <tr><td><code>礼物商城</code></td><td>查看可购买的礼物列表</td><td>展示所有可用礼物和价格</td></tr>
+                        <tr><td><code>购买 礼物ID</code></td><td>购买某个礼物</td><td>消耗游戏币获得礼物</td></tr>
+                        <tr><td><code>图鉴</code> / <code>我的图鉴</code></td><td>查看已拥有的礼物收藏</td><td>查看收到过的所有礼物</td></tr>
+                        <tr><td><code>上传预设礼物 礼物名*描述*价格</code></td><td>【管理员】添加礼物到商城</td><td>创建新礼物供玩家购买</td></tr>
+                        <tr><td><code>删除预设礼物 礼物ID</code></td><td>【管理员】删除礼物</td><td>从商城移除已下架礼物</td></tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 13. 背包系统 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">🎒 背包系统 (1命令)</div>
+                <div class="card-content">
+                    <p>背包是角色的物品存储空间。汇总展示角色拥有的所有物品、礼物和资源，提供统一的物品管理界面。</p>
+                    <h3>背包的内容</h3>
+                    <ul>
+                        <li><strong>礼物</strong>：从商城购买或从他人获得的礼物</li>
+                        <li><strong>物品</strong>：邀约奖励的各类道具和消耗品</li>
+                        <li><strong>装备</strong>：RPG系统中的装备（若启用）</li>
+                        <li><strong>资源</strong>：游戏币、写信币等各类货币</li>
+                        <li><strong>消耗品</strong>：一次性使用的道具和材料</li>
+                    </ul>
+                    <h3>背包的用途</h3>
+                    <div class="example-box">
+                        <strong>物品查询</strong>：快速查看拥有哪些物品和数量<br>
+                        <strong>资源管理</strong>：一目了然的资源概览<br>
+                        <strong>交易准备</strong>：与拍卖系统配合，查看可用于交易的物品<br>
+                        <strong>成就追踪</strong>：通过背包内容追踪集齐情况
+                    </div>
+                    <table>
+                        <tr><th>命令</th><th>说明</th><th>显示内容</th></tr>
+                        <tr><td><code>背包</code></td><td>查看个人背包中的物品和礼物</td><td>所有物品、礼物、装备、货币等</td></tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 14. 拍卖系统 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">🔨 拍卖系统 (3命令)</div>
+                <div class="card-content">
+                    <p>拍卖系统是长日的高价值物品交易机制。管理员可上架稀有物品，玩家竞拍出价，最高价者获得物品。</p>
+                    <h3>拍卖系统的特点</h3>
+                    <ul>
+                        <li><strong>稀有物品交易</strong>：上架无法从商城购买的限定物品</li>
+                        <li><strong>价格发现机制</strong>：通过竞拍确定物品的真实价值</li>
+                        <li><strong>资金分配</strong>：拍卖所得可用于游戏基金或奖励</li>
+                        <li><strong>互动热点</strong>：拍卖事件可成为游戏的重要话题</li>
+                    </ul>
+                    <h3>拍卖的管理流程</h3>
+                    <div class="example-box">
+                        <ol>
+                            <li>管理员添加拍卖物品和起价</li>
+                            <li>玩家查看拍卖列表并出价</li>
+                            <li>管理员根据时间结算拍卖</li>
+                            <li>最高价出价者获得物品并支付价格</li>
+                        </ol>
+                    </div>
+                    <div class="tip">💡 拍卖系统与背包配合，玩家可查看背包确认是否有充足的游戏币参加拍卖</div>
+                    <table>
+                        <tr><th>命令</th><th>说明</th><th>说明</th></tr>
+                        <tr><td><code>添加拍卖物品 物品 初始价格</code></td><td>【管理员】添加物品到拍卖</td><td>设定起价，开放拍卖</td></tr>
+                        <tr><td><code>删除拍卖物品 物品ID</code></td><td>【管理员】移除拍卖物品</td><td>取消某个拍卖</td></tr>
+                        <tr><td><code>结算拍卖 物品ID</code></td><td>【管理员】结算拍卖，分配给出价最高者</td><td>完成拍卖交易</td></tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 15. 统计系统 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">📊 统计系统 (3命令)</div>
+                <div class="card-content">
+                    <p>统计系统收集和分析游戏内的各类数据。提供实时的互动统计、排行榜等数据支持，帮助玩家和管理员了解游戏进展。</p>
+                    <h3>统计的维度</h3>
+                    <ul>
+                        <li><strong>邀约统计</strong>：当场邀约的参与情况、参与人数、场景分布等</li>
+                        <li><strong>互动排行</strong>：邀约次数、互动频率、人气排行等</li>
+                        <li><strong>关系数据</strong>：关系线数量、CP热度等感情线统计</li>
+                        <li><strong>论坛热度</strong>：论坛点赞、讨论热点等舆论数据</li>
+                        <li><strong>经济数据</strong>：游戏币流向、消费排行等经济运行指标</li>
+                    </ul>
+                    <h3>统计的应用场景</h3>
+                    <div class="example-box">
+                        <strong>实时监控</strong>：管理员可实时查看本场邀约的参与数据<br>
+                        <strong>对标分析</strong>：对比多场邀约的数据，评估活跃度<br>
+                        <strong>排行榜</strong>：生成各类排行榜，激励玩家参与<br>
+                        <strong>存档记录</strong>：保存历史统计数据用于复盘和分析
+                    </div>
+                    <div class="tip">💡 统计数据是评估长日游戏运营状态的重要指标，定期查看可帮助优化游戏节奏</div>
+                    <table>
+                        <tr><th>命令</th><th>说明</th><th>用途</th></tr>
+                        <tr><td><code>本场统计</code></td><td>查看当场邀约的互动统计</td><td>实时了解本场邀约的参与情况</td></tr>
+                        <tr><td><code>查看全员统计</code></td><td>查看所有角色的统计数据</td><td>生成全局排行和热度分析</td></tr>
+                        <tr><td><code>存入统计</code></td><td>【管理员】保存统计数据</td><td>存档当前统计数据用于历史对比</td></tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 16. 权限和管理员 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">🔑 权限和管理员系统 (6命令)</div>
+                <div class="card-content">
+                    <p>权限系统区分玩家和管理员权限，控制谁可执行管理操作。权限分为超级管理员（系统管理）和普通管理员（功能管理）两个等级。</p>
+                    <h3>权限等级</h3>
+                    <ul>
+                        <li><strong>普通玩家</strong>：只能执行基本的邀约、通讯、论坛操作</li>
+                        <li><strong>普通管理员</strong>：可执行大部分管理命令（创建角色、发起官约、管理地点等）</li>
+                        <li><strong>超级管理员</strong>：最高权限，可管理管理员、修改系统配置、重置数据等</li>
+                    </ul>
+                    <h3>常见管理操作</h3>
+                    <div class="example-box">
+                        <strong>角色管理</strong>：创建/删除角色、修改角色名（普通管理）<br>
+                        <strong>地点管理</strong>：配置地点权限、发放钥匙（普通管理）<br>
+                        <strong>活动管理</strong>：发起官约、结束邀约、发布公告（普通管理）<br>
+                        <strong>权限管理</strong>：授予/撤销管理员权限（超级管理）
+                    </div>
+                    <div class="tip">⚠️ 超级管理员权限需谨慎使用，清空管理员后只能靠配置文件恢复</div>
+                    <table>
+                        <tr><th>命令</th><th>说明</th><th>权限等级</th></tr>
+                        <tr><td><code>授予管理员 角色名</code></td><td>【超级管理员】授予管理员权限</td><td>超级管理</td></tr>
+                        <tr><td><code>收回管理员 角色名</code></td><td>【超级管理员】撤销管理员权限</td><td>超级管理</td></tr>
+                        <tr><td><code>清空管理员</code></td><td>【超级管理员】清除所有管理员</td><td>超级管理（谨慎使用）</td></tr>
+                        <tr><td><code>管理员列表</code></td><td>查看当前管理员列表</td><td>公开</td></tr>
+                        <tr><td><code>功能权限</code></td><td>查看功能权限设置</td><td>管理员</td></tr>
+                        <tr><td><code>查看功能权限</code></td><td>查看详细的权限配置</td><td>管理员</td></tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 17. NPC系统 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">🤖 NPC系统 (1命令)</div>
+                <div class="card-content">
+                    <p>NPC系统允许管理员将某个角色转换为非玩家角色。NPC由管理员控制，用于剧情推进、增加故事丰富度或填充虚拟参与者。</p>
+                    <h3>NPC的用途</h3>
+                    <ul>
+                        <li><strong>故事角色</strong>：创建故事中必需的配角或反派角色</li>
+                        <li><strong>剧情推进</strong>：通过NPC行动（邀约、发信等）推进故事进展</li>
+                        <li><strong>参与者填充</strong>：当官约参与者不足时，添加NPC参与者</li>
+                        <li><strong>互动对象</strong>：为特定玩家创建固定的互动目标</li>
+                    </ul>
+                    <h3>NPC的特点</h3>
+                    <div class="example-box">
+                        <strong>管理员控制</strong>：NPC的所有行动由管理员直接操控<br>
+                        <strong>无独立意志</strong>：NPC不会自主发起行动，只响应管理员指令<br>
+                        <strong>灵活配置</strong>：同一个角色可随时在玩家和NPC间切换<br>
+                        <strong>故事功能</strong>：主要用于故事和剧情设定，而非竞争
+                    </div>
+                    <div class="tip">💡 NPC机制对编织故事线和控制游戏节奏非常有用，可创建虚拟恋爱对象或故事反派</div>
+                    <table>
+                        <tr><th>命令</th><th>说明</th><th>说明</th></tr>
+                        <tr><td><code>设为npc 角色名</code></td><td>【管理员】将某个角色设置为NPC</td><td>角色转换为NPC模式，由管理员控制</td></tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 18. 工具和其他 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">🛠️ 工具和其他 (6命令)</div>
+                <div class="card-content">
+                    <p>工具模块提供各类辅助功能，支持随机分组、系统监控、帮助查询等管理需求。</p>
+                    <h3>工具的功能</h3>
+                    <ul>
+                        <li><strong>随机分组</strong>：快速将所有角色随机分成若干小组（用于小游戏或任务分配）</li>
+                        <li><strong>名片同步</strong>：更新角色在系统中的名片信息（如昵称、描述等）</li>
+                        <li><code><strong>计时器监控</strong>：查看邀约、互动等各类计时器的运行状态</li>
+                        <li><strong>超时提醒</strong>：自动提醒已超时的邀约，便于管理员跟进</li>
+                        <li><strong>参数配置</strong>：配置系统的消息监听、事件触发等底层参数</li>
+                        <li><strong>帮助文档</strong>：随时查看命令指南和使用说明</li>
+                    </ul>
+                    <h3>常用工具场景</h3>
+                    <div class="example-box">
+                        <strong>快速分组</strong>：游戏中需要5人一组进行小游戏，用分组工具快速生成<br>
+                        <strong>名片更新</strong>：角色更换形象或昵称后，同步名片确保最新信息<br>
+                        <strong>邀约管理</strong>：查看计时器确认各邀约的进行状态，及时处理超时<br>
+                        <strong>系统调试</strong>：通过监听参数配置优化系统性能
+                    </div>
+                    <table>
+                        <tr><th>命令</th><th>说明</th><th>用途</th></tr>
+                        <tr><td><code>随机分组 人数</code></td><td>【管理员】随机将角色分成若干组</td><td>快速进行分组相关的游戏或活动</td></tr>
+                        <tr><td><code>同步名片</code></td><td>同步名片信息</td><td>更新角色在系统中的信息显示</td></tr>
+                        <tr><td><code>查看计时器</code></td><td>查看各项计时器状态</td><td>监控邀约和互动的进行状态</td></tr>
+                        <tr><td><code>提醒超时</code></td><td>【管理员】提醒超时的邀约</td><td>跟进已超时未完成的邀约</td></tr>
+                        <tr><td><code>设置监听参数</code></td><td>【管理员】配置系统监听参数</td><td>调整系统事件监听和性能参数</td></tr>
+                        <tr><td><code>指令指南</code> / <code>管理指令</code></td><td>查看命令帮助文档</td><td>随时查询命令用法和说明</td></tr>
+                    </table>
                 </div>
             </div>
         </div>
 
-        <!-- 升级系统 Tab -->
-        <div id="tab-1" class="tab-content">
+        <!-- 设置系统 Tab -->
+        <div id="tab-2" class="tab-content">
+            <div class="quick-start">
+                <h3>🔧 长日设置 | 统一控制台</h3>
+                <p>长日设置系统与主插件changriV1配合，提供10大模块的完整配置功能。</p>
+            </div>
+
             <div class="toc">
-                <h4>📑 升级系统导航</h4>
+                <h4>📑 配置模块</h4>
                 <ul>
-                    <li>核心概念</li>
-                    <li>命令参考</li>
-                    <li>快速配置方案</li>
-                    <li>递增公式</li>
-                    <li>常见问题</li>
+                    <li>基础设置 | 互动设置 | 信件相关设置</li>
+                    <li>公告与展示设置 | 物品系统设置 | 商城与拍卖设置</li>
+                    <li>天数系统 | 统计报告</li>
                 </ul>
             </div>
 
-            <!-- 核心概念 -->
             <div class="card">
-                <div class="card-header" onclick="toggleCard(this)">
-                    📖 核心概念
-                    <span class="toggle-icon">▼</span>
-                </div>
+                <div class="card-header" onclick="toggleCard(this)">📋 快速开始</div>
                 <div class="card-content">
-                    <h3>升级系统是什么？</h3>
-                    <p>一个<strong>玩家角色等级系统</strong>，所有玩家遵循相同的升级规则。管理员只需配置一套规则，所有玩家自动适用。</p>
+                    <h3>基本操作流程</h3>
+                    <ol>
+                        <li>使用 <code>.设置 基础</code> 查看当前配置</li>
+                        <li>复制返回的设置信息</li>
+                        <li>编辑想要修改的参数值</li>
+                        <li>粘贴完整模板提交更新</li>
+                    </ol>
 
-                    <h3>三个关键概念</h3>
+                    <h3>常用命令</h3>
                     <table>
-                        <tr>
-                            <th>概念</th>
-                            <th>说明</th>
-                        </tr>
-                        <tr>
-                            <td><strong>等级</strong></td>
-                            <td>玩家的当前等级（1-100）</td>
-                        </tr>
-                        <tr>
-                            <td><strong>消耗品</strong></td>
-                            <td>升级时需要消耗的资源（金币、物品、属性等）</td>
-                        </tr>
-                        <tr>
-                            <td><strong>奖励品</strong></td>
-                            <td>升级成功后获得的奖励（属性、货币、物品等）</td>
-                        </tr>
-                    </table>
-
-                    <h3>升级流程</h3>
-                    <div class="example-box">
-                        1. 玩家执行升级<br>
-                        2. 检查是否满足消耗条件<br>
-                        3. 判断成功率（可能失败）<br>
-                        4. 消耗资源（即使失败也消耗）<br>
-                        5. 发放奖励（仅成功时）<br>
-                        6. 更新等级和历史记录
-                    </div>
-                </div>
-            </div>
-
-            <!-- 配置命令 -->
-            <div class="card">
-                <div class="card-header" onclick="toggleCard(this)">
-                    ⚙️ 配置命令
-                    <span class="toggle-icon">▼</span>
-                </div>
-                <div class="card-content">
-                    <h3>上传升级等级</h3>
-                    <div class="command">上传升级等级 &lt;等级|范围&gt; &lt;描述&gt; * &lt;消耗品&gt; * &lt;奖励品&gt; [*成功率]</div>
-
-                    <h3>参数说明</h3>
-                    <table>
-                        <tr>
-                            <th>参数</th>
-                            <th>说明</th>
-                            <th>示例</th>
-                        </tr>
-                        <tr>
-                            <td>等级|范围</td>
-                            <td>单个等级或范围</td>
-                            <td><code>1</code> 或 <code>1-50</code></td>
-                        </tr>
-                        <tr>
-                            <td>描述</td>
-                            <td>等级名称（支持{等级}模板）</td>
-                            <td><code>{等级}级战士</code></td>
-                        </tr>
-                        <tr>
-                            <td>消耗品</td>
-                            <td>升级消耗（逗号分隔）</td>
-                            <td><code>金币:100</code></td>
-                        </tr>
-                        <tr>
-                            <td>奖励品</td>
-                            <td>升级奖励（逗号分隔）</td>
-                            <td><code>HP+10,ATK+5</code></td>
-                        </tr>
-                        <tr>
-                            <td>成功率</td>
-                            <td>升级成功概率（可选，默认100）</td>
-                            <td><code>80</code></td>
-                        </tr>
-                    </table>
-
-                    <h3>查看命令</h3>
-                    <table>
-                        <tr>
-                            <th>操作</th>
-                            <th>命令</th>
-                        </tr>
-                        <tr>
-                            <td>查看系统概览</td>
-                            <td><code>查看升级配置</code></td>
-                        </tr>
-                        <tr>
-                            <td>查看特定等级</td>
-                            <td><code>查看升级配置 20</code></td>
-                        </tr>
-                        <tr>
-                            <td>查看所有等级</td>
-                            <td><code>升级列表</code></td>
-                        </tr>
+                        <tr><th>模块</th><th>查看命令</th></tr>
+                        <tr><td>基础设置</td><td><code>.设置 基础</code></td></tr>
+                        <tr><td>互动设置</td><td><code>.设置 互动</code></td></tr>
+                        <tr><td>信件设置</td><td><code>.设置 信件</code></td></tr>
+                        <tr><td>商城设置</td><td><code>.设置 商城</code></td></tr>
+                        <tr><td>天数系统</td><td><code>.天数 查看</code></td></tr>
                     </table>
                 </div>
             </div>
+        </div>
 
-            <!-- 玩家命令 -->
-            <div class="card">
-                <div class="card-header" onclick="toggleCard(this)">
-                    👤 玩家命令
-                    <span class="toggle-icon">▼</span>
-                </div>
-                <div class="card-content">
-                    <h3>执行升级</h3>
-                    <div class="command">升级</div>
-
-                    <h3>升级结果</h3>
-                    <table>
-                        <tr>
-                            <th>结果</th>
-                            <th>说明</th>
-                        </tr>
-                        <tr>
-                            <td>✅ 升级成功</td>
-                            <td>等级上升，获得奖励</td>
-                        </tr>
-                        <tr>
-                            <td>❌ 升级失败</td>
-                            <td>消耗已扣除，不获得奖励</td>
-                        </tr>
-                        <tr>
-                            <td>❌ 条件不足</td>
-                            <td>资源不足，无法升级</td>
-                        </tr>
-                    </table>
-
-                    <h3>查看升级信息</h3>
-                    <div class="command">查看升级信息</div>
-                    <p>显示当前等级、下一等级、升级需求等信息。</p>
-                </div>
+        <!-- 晚餐系统 Tab -->
+        <div id="tab-3" class="tab-content">
+            <div class="quick-start">
+                <h3>🍽️ 长日晚餐 | 独立社交系统</h3>
+                <p>长日晚餐系统是独立的社交互动框架，支持多种游戏和互动形式。</p>
             </div>
 
-            <!-- 消耗品与奖励 -->
             <div class="card">
-                <div class="card-header" onclick="toggleCard(this)">
-                    💎 消耗品与奖励品
-                    <span class="toggle-icon">▼</span>
-                </div>
+                <div class="card-header" onclick="toggleCard(this)">🎲 系统功能</div>
                 <div class="card-content">
-                    <h3>消耗品类型</h3>
-                    <table>
-                        <tr>
-                            <th>类型</th>
-                            <th>格式</th>
-                            <th>示例</th>
-                        </tr>
-                        <tr>
-                            <td>物品</td>
-                            <td>物品名:数量</td>
-                            <td><code>升级石:2</code></td>
-                        </tr>
-                        <tr>
-                            <td>货币</td>
-                            <td>货币名:数量</td>
-                            <td><code>金币:100</code></td>
-                        </tr>
-                        <tr>
-                            <td>属性</td>
-                            <td>属性名:数值</td>
-                            <td><code>HP:50消耗</code></td>
-                        </tr>
-                    </table>
+                    <h3>核心功能</h3>
+                    <ul>
+                        <li>晚餐发起和参加</li>
+                        <li>多种互动形式（发言、干杯、赠礼等）</li>
+                        <li>俄罗斯轮盘游戏（可自定义参数）</li>
+                        <li>参与者管理和统计记录</li>
+                    </ul>
 
-                    <h3>奖励品类型</h3>
-                    <table>
-                        <tr>
-                            <th>类型</th>
-                            <th>格式</th>
-                            <th>示例</th>
-                        </tr>
-                        <tr>
-                            <td>属性</td>
-                            <td>属性名+数值</td>
-                            <td><code>HP+10</code></td>
-                        </tr>
-                        <tr>
-                            <td>货币</td>
-                            <td>货币名:数量</td>
-                            <td><code>金币:50</code></td>
-                        </tr>
-                        <tr>
-                            <td>物品</td>
-                            <td>物品名:数量</td>
-                            <td><code>升级证:1</code></td>
-                        </tr>
-                    </table>
-
-                    <h3>递增公式</h3>
-                    <pre><code>第N级值 = 基础 + (N-1) × 增幅
-
-示例：
-配置: 金币:50+50
-  1级: 50 + (1-1) × 50 = 50
-  2级: 50 + (2-1) × 50 = 100
-  3级: 50 + (3-1) × 50 = 150</code></pre>
+                    <div class="tip">💡 晚餐系统与长日系统配合，支持发起邀约后转到晚餐进行互动</div>
                 </div>
             </div>
+        </div>
 
-            <!-- 快速配置 -->
-            <div class="card">
-                <div class="card-header" onclick="toggleCard(this)">
-                    ⚡ 快速配置方案
-                    <span class="toggle-icon">▼</span>
-                </div>
-                <div class="card-content">
-                    <h3>方案1：极简版（推荐新手）</h3>
-                    <pre><code>上传升级等级 1-50 * {等级}级 * 金币:100+100 * HP+10+10,ATK+5+5</code></pre>
-                    <p>效果：50个等级全部配置，消耗和奖励逐级递增</p>
-
-                    <h3>方案2：分阶段版</h3>
-                    <pre><code>上传升级等级 1-20 * 新手{等级} * 金币:50+50 * HP+5+5
-上传升级等级 21-40 * 战士{等级} * 金币:300+100,升级石:0+1 * HP+15+10,ATK+10+5
-上传升级等级 41-60 * 传奇{等级} * 金币:1000+200 * ATK+15+10,DEF+5+3</code></pre>
-
-                    <h3>方案3：职业专精版</h3>
-                    <pre><code>上传升级等级 1-50 * 战士{等级} * 金币:100+50 * ATK+15+10,HP+200+100
-上传升级等级 1-50 * 法师{等级} * 金币:100+50,魔法卷轴:1+1 * MP+30+20</code></pre>
-
-                    <h3>方案4：献祭式升级</h3>
-                    <pre><code>上传升级等级 1-30 * 血之战士{等级} * 金币:100+50,HP:20+10消耗 * ATK+20+10</code></pre>
-                </div>
+        <!-- RPG系统 Tab -->
+        <div id="tab-4" class="tab-content">
+            <div class="quick-start">
+                <h3>🎭 长日RPG | 物品装备系统</h3>
+                <p>长日RPG系统与长日物品.js配合，提供完整的物品、装备、货币、商城等经济系统。</p>
             </div>
 
-            <!-- 常见问题 -->
+            <div class="toc">
+                <h4>📑 RPG系统内容</h4>
+                <ul>
+                    <li>物品系统与注册 | 货币系统 | 装备系统</li>
+                    <li>商城与池子 | 合成系统 | 二手市场</li>
+                    <li>属性系统 | 攻防（PK）系统</li>
+                </ul>
+            </div>
+
             <div class="card">
-                <div class="card-header" onclick="toggleCard(this)">
-                    ❓ 常见问题
-                    <span class="toggle-icon">▼</span>
-                </div>
+                <div class="card-header" onclick="toggleCard(this)">📦 主要功能</div>
                 <div class="card-content">
-                    <h3>Q: 可以跳级升级吗？</h3>
-                    <p>A: 不可以。必须逐级升级。但支持连续升级（多次执行升级命令）。</p>
+                    <h3>物品与装备</h3>
+                    <p>支持普通物品、互动物品、装备等多种物品类型，完整的背包管理。</p>
 
-                    <h3>Q: 升级失败会消耗材料吗？</h3>
-                    <p>A: 会的。失败时材料仍会被消耗。成功率100%时才不会失败。</p>
+                    <h3>经济系统</h3>
+                    <p>自定义货币、商城交易、池子抽取、二手市场、物品合成等完整的游戏经济体系。</p>
 
-                    <h3>Q: 如何修改已配置的等级？</h3>
-                    <p>A: 重新执行相同的等级范围命令即可覆盖旧配置。</p>
+                    <h3>战斗系统</h3>
+                    <p>属性系统、攻防对战、装备影响战斗力的完整PK框架。</p>
 
-                    <h3>Q: {等级} 占位符会自动替换吗？</h3>
-                    <p>A: 是的。第2级时，`{等级}级冒险者` 变成 `2级冒险者`。</p>
+                    <div class="tip">💡 所有数据存储在主插件changri中，与主系统数据联动</div>
+                </div>
+            </div>
+        </div>
 
-                    <h3>Q: 多个职业可以有不同的升级规则吗？</h3>
-                    <p>A: 目前规则是全局统一的。可通过不同消耗品设计实现职业差异。</p>
+        <!-- 写信系统 Tab -->
+        <div id="tab-5" class="tab-content">
+            <div class="quick-start">
+                <h3>✉️ 长日写信综 | 正式信件系统</h3>
+                <p>一个独立的正式信件系统，主要写信，次要私约。支持写信币赏金机制和故事推进。</p>
+            </div>
 
-                    <h3>Q: 最大等级可以改吗？</h3>
-                    <p>A: 可以。默认100，可在规则配置中修改 `max_level` 字段。</p>
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">💌 核心功能</div>
+                <div class="card-content">
+                    <h3>正式信件发送</h3>
+                    <p>发送格式化书信，支持日期、附件、自定义署名等功能。</p>
+
+                    <h3>写信币赏金机制</h3>
+                    <p>根据信件字数发放赏金，支持心愿和私约的消费配置。</p>
+
+                    <h3>故事推进</h3>
+                    <p>通过信件实现角色间的关系发展和情感线推进。</p>
+
+                    <h3>系统联动</h3>
+                    <ul>
+                        <li>启用写信综后，电话功能自动禁用</li>
+                        <li>发送心愿和私约需要消费写信币（可选）</li>
+                        <li>完整的信件历史和关系追踪</li>
+                    </ul>
                 </div>
             </div>
         </div>
 
         <footer>
-            <p>🎮 长日游戏系统完整指南 | 最后更新: 2026-04-28</p>
+            <p>🎮 长日系统完整导览 | 90+命令 | 18个功能模块详细说明 | 最后更新: 2026-04-28</p>
         </footer>
     </div>
 
     <script>
         function switchTab(index) {
-            // Hide all tabs
-            document.querySelectorAll('.tab-content').forEach(tab => {
-                tab.classList.remove('active');
-            });
-            // Remove active class from all buttons
-            document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
-
-            // Show selected tab
-            document.getElementById('tab-' + index).classList.add('active');
+            document.querySelectorAll('.tab-content').forEach(tab => { tab.classList.remove('active'); tab.style.display = 'none'; });
+            document.querySelectorAll('.tab-btn').forEach(btn => { btn.classList.remove('active'); });
+            const tabId = 'tab-' + index;
+            const tabElement = document.getElementById(tabId);
+            if (tabElement) { tabElement.classList.add('active'); tabElement.style.display = 'block'; }
             document.querySelectorAll('.tab-btn')[index].classList.add('active');
         }
 
         function toggleCard(header) {
             const content = header.nextElementSibling;
             const icon = header.querySelector('.toggle-icon');
-
+            if (!content || !icon) return;
             content.classList.toggle('show');
             header.classList.toggle('expanded');
             icon.classList.toggle('rotated');
         }
 
-        // Initialize - expand first card in each tab
         document.addEventListener('DOMContentLoaded', function() {
-            document.querySelectorAll('.card-header')[0].click();
+            const firstCard = document.querySelector('.tab-content.active .card-header');
+            if (firstCard) { firstCard.click(); }
         });
     </script>
 </body>

@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>长日系统导览</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', 'Microsoft YaHei', Arial, sans-serif;
+            background: #0a0e27;
+            color: #e0e0e0;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .background-effect {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 50%, #0f1428 100%);
+            z-index: -1;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        /* Header */
+        header {
+            text-align: center;
+            margin-bottom: 60px;
+            padding: 40px 0;
+            border-bottom: 2px solid #00ff88;
+            background: linear-gradient(180deg, rgba(0, 255, 136, 0.1) 0%, transparent 100%);
+        }
+
+        header h1 {
+            font-size: 3.5rem;
+            color: #00ff88;
+            margin-bottom: 15px;
+            letter-spacing: 3px;
+            text-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+            font-weight: 700;
+        }
+
+        header p {
+            font-size: 1.2rem;
+            color: #00d4ff;
+            margin-bottom: 10px;
+            letter-spacing: 1px;
+        }
+
+        .subtitle {
+            color: #888;
+            font-size: 0.95rem;
+            margin-top: 15px;
+        }
+
+        /* Grid Layout */
+        .modules-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+
+        .module-card {
+            background: linear-gradient(135deg, #1a1f3a 0%, #0f1428 100%);
+            border: 2px solid #00ff88;
+            border-radius: 12px;
+            padding: 0;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            overflow: hidden;
+            position: relative;
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.1);
+        }
+
+        .module-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(0, 255, 136, 0.2), transparent);
+            transition: left 0.5s ease;
+            pointer-events: none;
+        }
+
+        .module-card:hover::before {
+            left: 100%;
+        }
+
+        .module-card:hover {
+            border-color: #00d4ff;
+            box-shadow: 0 0 30px rgba(0, 212, 255, 0.3), inset 0 0 20px rgba(0, 255, 136, 0.05);
+            transform: translateY(-8px);
+        }
+
+        .module-header {
+            padding: 35px 30px;
+            background: linear-gradient(135deg, rgba(0, 255, 136, 0.1) 0%, rgba(0, 212, 255, 0.05) 100%);
+            border-bottom: 1px solid rgba(0, 255, 136, 0.3);
+            position: relative;
+            z-index: 1;
+        }
+
+        .module-title {
+            font-size: 2rem;
+            color: #00ff88;
+            margin-bottom: 10px;
+            font-weight: 700;
+            letter-spacing: 2px;
+        }
+
+        .module-description {
+            font-size: 1rem;
+            color: #00d4ff;
+            line-height: 1.6;
+        }
+
+        .module-icon {
+            position: absolute;
+            top: 30px;
+            right: 30px;
+            font-size: 3rem;
+            opacity: 0.3;
+        }
+
+        .module-footer {
+            padding: 20px 30px;
+            background: rgba(0, 0, 0, 0.3);
+            border-top: 1px solid rgba(0, 255, 136, 0.2);
+            text-align: right;
+            color: #888;
+            font-size: 0.9rem;
+        }
+
+        .arrow-icon {
+            display: inline-block;
+            margin-left: 10px;
+            transition: transform 0.3s ease;
+            color: #00ff88;
+        }
+
+        .module-card:hover .arrow-icon {
+            transform: translateX(5px);
+        }
+
+        /* Tabs Content (Hidden by default) */
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .content-area {
+            background: linear-gradient(135deg, #1a1f3a 0%, #0f1428 100%);
+            border: 2px solid #00ff88;
+            border-radius: 12px;
+            padding: 40px;
+            margin-top: 30px;
+            box-shadow: 0 0 30px rgba(0, 255, 136, 0.15);
+        }
+
+        .content-area h2 {
+            font-size: 2.5rem;
+            color: #00ff88;
+            margin-bottom: 30px;
+            letter-spacing: 2px;
+        }
+
+        .content-area h3 {
+            font-size: 1.5rem;
+            color: #00d4ff;
+            margin: 25px 0 15px 0;
+        }
+
+        .content-area p {
+            line-height: 1.8;
+            margin-bottom: 15px;
+            color: #d0d0d0;
+        }
+
+        .content-area ul, .content-area ol {
+            margin-left: 30px;
+            margin-bottom: 15px;
+        }
+
+        .content-area li {
+            margin-bottom: 10px;
+            line-height: 1.7;
+            color: #d0d0d0;
+        }
+
+        .back-button {
+            display: inline-block;
+            margin-bottom: 30px;
+            padding: 12px 24px;
+            background: transparent;
+            border: 2px solid #00ff88;
+            color: #00ff88;
+            font-size: 1rem;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            letter-spacing: 1px;
+        }
+
+        .back-button:hover {
+            background: rgba(0, 255, 136, 0.1);
+            box-shadow: 0 0 15px rgba(0, 255, 136, 0.3);
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            margin-top: 60px;
+            padding: 30px 0;
+            border-top: 2px solid #00ff88;
+            color: #00d4ff;
+            font-size: 0.95rem;
+            letter-spacing: 1px;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            header h1 { font-size: 2rem; }
+            .modules-grid { grid-template-columns: 1fr; gap: 20px; }
+            .content-area { padding: 25px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="background-effect"></div>
+
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <h1>长日系统</h1>
+            <p>90+ 命令 | 6 大模块 | 完整框架</p>
+            <p class="subtitle">恋爱综艺游戏系统导览</p>
+        </header>
+
+        <!-- Main Grid -->
+        <div id="grid-view" class="modules-grid">
+            <!-- 主系统 -->
+            <div class="module-card" onclick="showTab(1)">
+                <div class="module-header">
+                    <div class="module-icon">⚙️</div>
+                    <div class="module-title">主系统</div>
+                    <div class="module-description">核心社交框架，包含18个功能模块</div>
+                </div>
+                <div class="module-footer">
+                    查看详情 <span class="arrow-icon">→</span>
+                </div>
+            </div>
+
+            <!-- 设置 -->
+            <div class="module-card" onclick="showTab(2)">
+                <div class="module-header">
+                    <div class="module-icon">🔧</div>
+                    <div class="module-title">设置系统</div>
+                    <div class="module-description">统一控制台，管理所有游戏参数</div>
+                </div>
+                <div class="module-footer">
+                    查看详情 <span class="arrow-icon">→</span>
+                </div>
+            </div>
+
+            <!-- 晚餐 -->
+            <div class="module-card" onclick="showTab(3)">
+                <div class="module-header">
+                    <div class="module-icon">🍽️</div>
+                    <div class="module-title">晚餐系统</div>
+                    <div class="module-description">独立社交系统，丰富的互动游戏</div>
+                </div>
+                <div class="module-footer">
+                    查看详情 <span class="arrow-icon">→</span>
+                </div>
+            </div>
+
+            <!-- RPG -->
+            <div class="module-card" onclick="showTab(4)">
+                <div class="module-header">
+                    <div class="module-icon">🎭</div>
+                    <div class="module-title">RPG 系统</div>
+                    <div class="module-description">可选高级功能，物品装备战斗</div>
+                </div>
+                <div class="module-footer">
+                    查看详情 <span class="arrow-icon">→</span>
+                </div>
+            </div>
+
+            <!-- 写信综 -->
+            <div class="module-card" onclick="showTab(5)">
+                <div class="module-header">
+                    <div class="module-icon">✉️</div>
+                    <div class="module-title">写信综</div>
+                    <div class="module-description">专用模式，以信件为核心的玩法</div>
+                </div>
+                <div class="module-footer">
+                    查看详情 <span class="arrow-icon">→</span>
+                </div>
+            </div>
+
+            <!-- 文档资源 -->
+            <div class="module-card" onclick="showTab(0)">
+                <div class="module-header">
+                    <div class="module-icon">📚</div>
+                    <div class="module-title">文档资源</div>
+                    <div class="module-description">快速参考和详细指南</div>
+                </div>
+                <div class="module-footer">
+                    查看详情 <span class="arrow-icon">→</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Content Views -->
+        <!-- 文档资源 -->
+        <div id="tab-0" class="tab-content">
+            <div class="content-area">
+                <button class="back-button" onclick="backToGrid()">← 返回</button>
+                <h2>📚 文档资源</h2>
+
+                <h3>可用文档</h3>
+                <ul>
+                    <li><strong>长日系统_玩家版.md</strong> - 玩家快速参考指南</li>
+                    <li><strong>长日系统_管理版.md</strong> - 管理员工作手册</li>
+                    <li><strong>game-systems-guide.html</strong> - 完整技术指南</li>
+                    <li><strong>长日系统导览.html</strong> - 本导览页面</li>
+                </ul>
+
+                <h3>推荐阅读顺序</h3>
+                <ol>
+                    <li>新手 → 先读《玩家版》了解基础操作</li>
+                    <li>管理员 → 读《管理版》掌握运营要点</li>
+                    <li>深度学习 → 阅读《完整技术指南》</li>
+                </ol>
+            </div>
+        </div>
+
+        <!-- 主系统 -->
+        <div id="tab-1" class="tab-content">
+            <div class="content-area">
+                <button class="back-button" onclick="backToGrid()">← 返回</button>
+                <h2>⚙️ 主系统</h2>
+
+                <h3>核心特性</h3>
+                <p>长日主系统是完整的社交框架，包含18个功能模块和90+个命令，管理游戏的所有主要功能。</p>
+
+                <h3>功能模块</h3>
+                <ul>
+                    <li>角色人物管理 - 创建和管理游戏角色</li>
+                    <li>地点与权限 - 场景配置和权限控制</li>
+                    <li>邀约系统 - 私约、官约、心愿</li>
+                    <li>时间线与日程 - 邀约日程管理</li>
+                    <li>通讯互动 - 电话、信件、微信</li>
+                    <li>多人邀请 - 灵活的小组邀约</li>
+                    <li>关系线系统 - 感情发展追踪</li>
+                    <li>心动信系统 - 感情表达</li>
+                    <li>论坛系统 - 社区讨论</li>
+                    <li>礼物系统 - 购买和赠送</li>
+                    <li>背包系统 - 物品管理</li>
+                    <li>拍卖系统 - 价值交易</li>
+                    <li>统计系统 - 数据分析</li>
+                    <li>权限管理 - 管理员控制</li>
+                </ul>
+
+                <h3>游戏流程</h3>
+                <p><code>创建角色</code> → <code>配置地点</code> → <code>发起邀约</code> → <code>互动交流</code> → <code>建立关系线</code> → <code>论坛讨论</code> → <code>数据统计</code></p>
+            </div>
+        </div>
+
+        <!-- 设置系统 -->
+        <div id="tab-2" class="tab-content">
+            <div class="content-area">
+                <button class="back-button" onclick="backToGrid()">← 返回</button>
+                <h2>🔧 设置系统</h2>
+
+                <h3>系统概述</h3>
+                <p>设置系统是长日的统一控制台，管理员可通过它配置所有游戏参数，无需修改代码。</p>
+
+                <h3>配置模块</h3>
+                <ul>
+                    <li>基础设置 - 游戏名称、基础参数</li>
+                    <li>互动设置 - 邀约、通讯相关配置</li>
+                    <li>信件设置 - 写信系统的参数</li>
+                    <li>公告与展示 - 群公告、显示信息</li>
+                    <li>物品系统 - 礼物、商城配置</li>
+                    <li>拍卖设置 - 拍卖相关参数</li>
+                    <li>天数系统 - 游戏时间流控制</li>
+                    <li>统计报告 - 数据分析和导出</li>
+                </ul>
+
+                <h3>使用流程</h3>
+                <ol>
+                    <li>查看当前配置</li>
+                    <li>复制完整模板</li>
+                    <li>修改想要的参数</li>
+                    <li>提交更新</li>
+                </ol>
+            </div>
+        </div>
+
+        <!-- 晚餐系统 -->
+        <div id="tab-3" class="tab-content">
+            <div class="content-area">
+                <button class="back-button" onclick="backToGrid()">← 返回</button>
+                <h2>🍽️ 晚餐系统</h2>
+
+                <h3>系统概述</h3>
+                <p>晚餐系统是独立的社交互动框架，为长日提供丰富的小游戏和互动形式。</p>
+
+                <h3>核心功能</h3>
+                <ul>
+                    <li>晚餐发起 - 组织一场晚宴活动</li>
+                    <li>多人互动 - 支持多种互动形式（干杯、敬酒、赠礼）</li>
+                    <li>俄罗斯轮盘 - 紧张刺激的小游戏</li>
+                    <li>参与管理 - 灵活的参与者管理</li>
+                    <li>互动记录 - 完整的活动统计</li>
+                </ul>
+
+                <h3>特色玩法</h3>
+                <p>俄罗斯轮盘游戏支持自定义参数，可根据需要调整触发条件和奖惩机制，为游戏增加趣味性和刺激感。</p>
+
+                <h3>与主系统的关系</h3>
+                <p>晚餐系统可以独立运行，也可以和主系统邀约配合使用。例如：在主系统发起官约后，可转到晚餐系统进行更多的互动游戏。</p>
+            </div>
+        </div>
+
+        <!-- RPG系统 -->
+        <div id="tab-4" class="tab-content">
+            <div class="content-area">
+                <button class="back-button" onclick="backToGrid()">← 返回</button>
+                <h2>🎭 RPG 系统</h2>
+
+                <h3>系统概述</h3>
+                <p>长日RPG系统是可选的高级功能，提供完整的物品、装备、货币、商城等经济系统。</p>
+
+                <h3>⚠️ 使用前提</h3>
+                <ul>
+                    <li>这是完全可选的功能</li>
+                    <li>不影响主系统的正常运行</li>
+                    <li>需要额外的配置和管理工作</li>
+                    <li>适合想要更丰富玩法的小组</li>
+                </ul>
+
+                <h3>系统构成</h3>
+                <ul>
+                    <li>物品系统 - 普通物品、互动物品、装备</li>
+                    <li>货币系统 - 游戏币、副币、特殊代币</li>
+                    <li>装备系统 - 穿戴、卸下、强化</li>
+                    <li>商城系统 - 物品交易、池子抽取</li>
+                    <li>合成系统 - 物品合成、升级</li>
+                    <li>二手市场 - 玩家间交易</li>
+                    <li>战斗系统 - 属性、攻防、PK</li>
+                </ul>
+
+                <h3>启用建议</h3>
+                <p>建议在小组已经稳定运营主系统至少1-2个月后，再考虑启用RPG功能。可以先启用基础的物品和商城功能，逐步引入更复杂的系统。</p>
+            </div>
+        </div>
+
+        <!-- 写信综 -->
+        <div id="tab-5" class="tab-content">
+            <div class="content-area">
+                <button class="back-button" onclick="backToGrid()">← 返回</button>
+                <h2>✉️ 写信综</h2>
+
+                <h3>系统概述</h3>
+                <p>长日写信综是专用模式，以正式信件系统为核心，适合重度文本互动的小组。</p>
+
+                <h3>核心特色</h3>
+                <ul>
+                    <li>正式信件系统 - 格式化书信，包含日期、署名、附件</li>
+                    <li>写信币赏金 - 根据字数自动发放奖励</li>
+                    <li>故事推进 - 通过信件推动角色关系发展</li>
+                    <li>沉浸式体验 - 强调文本质量和情感表达</li>
+                </ul>
+
+                <h3>运营模式</h3>
+                <ul>
+                    <li>主要玩法：发送正式信件</li>
+                    <li>次要玩法：心愿和私约</li>
+                    <li>特殊机制：写信币赏金机制</li>
+                    <li>禁用功能：电话功能自动禁用</li>
+                </ul>
+
+                <h3>适用的小组类型</h3>
+                <ul>
+                    <li>文学爱好者 - 重视文本质量和创意</li>
+                    <li>故事向社群 - 强调剧情和人物发展</li>
+                    <li>角色扮演爱好者 - 深入人物心理</li>
+                    <li>长期运营项目 - 积累高质量内容</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer>
+        <p>长日系统导览 | 恋爱综艺游戏框架 | 90+ 命令 | 6 大模块</p>
+    </footer>
+
+    <script>
+        function showTab(index) {
+            // Hide grid
+            document.getElementById('grid-view').style.display = 'none';
+
+            // Hide all tabs
+            const tabs = document.querySelectorAll('.tab-content');
+            tabs.forEach(tab => tab.classList.remove('active'));
+
+            // Show selected tab
+            const selectedTab = document.getElementById('tab-' + index);
+            if (selectedTab) {
+                selectedTab.classList.add('active');
+            }
+
+            // Scroll to top
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function backToGrid() {
+            // Hide all tabs
+            const tabs = document.querySelectorAll('.tab-content');
+            tabs.forEach(tab => tab.classList.remove('active'));
+
+            // Show grid
+            document.getElementById('grid-view').style.display = 'grid';
+
+            // Scroll to top
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    </script>
+</body>
+</html>
