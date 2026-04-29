@@ -9,14 +9,14 @@
 function parseTimeToFutureTimestamp(timeStr) {
     const match = timeStr.trim().match(/^(\d{1,2}):(\d{1,2})$/);
     if (!match) {
-        throw new Error("凡人，时间需以 HH:mm 书写，如 9:05 或 14:30。");
+        throw new Error("凡人，时间需以 HH:mm 书写，如 9:05 或 14:30。[DEBUG] 收到: " + timeStr);
     }
     let [_, hoursStr, minutesStr] = match;
     let hours = parseInt(hoursStr, 10);
     let minutes = parseInt(minutesStr, 10);
 
     if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
-        throw new Error("时辰有误：小时应为 0–23，分钟应为 0–59。");
+        throw new Error(`时辰有误：小时应为 0–23，分钟应为 0–59。[DEBUG] 时: ${hours}, 分: ${minutes}`);
     }
 
     const now = new Date();
@@ -78,13 +78,20 @@ class ArchangelGabriel {
                 };
             }
         }
-        this.ext.storageSet("gabriel_reminders", JSON.stringify(data));
+        try {
+            const jsonStr = JSON.stringify(data);
+            this.ext.storageSet("gabriel_reminders", jsonStr);
+            console.log("[Gabriel DEBUG] 已保存", Object.keys(data).length, "条提醒");
+        } catch (e) {
+            console.error("[Gabriel ERROR] 保存数据失败:", e);
+        }
     }
 
     load() {
         try {
             const saved = this.ext.storageGet("gabriel_reminders") || "{}";
             const data = JSON.parse(saved);
+            console.log("[Gabriel DEBUG] 加载了", Object.keys(data).length, "条提醒");
             for (const id in data) {
                 const task = data[id];
                 task.fun = deliverMessage;
@@ -92,7 +99,7 @@ class ArchangelGabriel {
                 this.taskMap.set(id, task);
             }
         } catch (e) {
-            console.error("加百列翻阅圣约之书时略有迟滞……", e);
+            console.error("[Gabriel ERROR] 加载数据失败:", e);
         }
     }
 
@@ -135,10 +142,11 @@ class ArchangelGabriel {
         const now = Date.now();
         for (const [id, task] of this.taskMap.entries()) {
             if (!task.executed && task.task_sec <= now) {
+                console.log("[Gabriel DEBUG] 执行任务:", id, "内容:", task.arg[5]);
                 try {
                     task.fun(...task.arg, this.generateAtCQ);
                 } catch (e) {
-                    console.error("加百列传递讯息时遭遇干扰……", e);
+                    console.error("[Gabriel ERROR] 加百列传递讯息时遭遇干扰:", e);
                 } finally {
                     task.executed = true;
                     this.taskMap.delete(id);
@@ -191,17 +199,19 @@ class ArchangelGabriel {
 
 function deliverMessage(epId, guildId, groupId, userId, isPrivate, text, generateAtCQ) {
     const eps = seal.getEndPoints();
+    console.log("[Gabriel DEBUG] 发送提醒:", {epId, groupId, userId, isPrivate, text: text.substring(0, 50)});
+
     for (let ep of eps) {
         if (ep.userId === epId) {
             const msg = seal.newMessage();
-            
+
             // 构建最终消息：如果是群消息，添加艾特
             let finalMessage = text;
             if (!isPrivate && groupId && generateAtCQ) {
                 const atCQ = generateAtCQ(userId);
                 finalMessage = `${atCQ}${text}`;
             }
-            
+
             if (isPrivate) {
                 msg.messageType = "private";
                 msg.sender.userId = userId;
@@ -211,12 +221,15 @@ function deliverMessage(epId, guildId, groupId, userId, isPrivate, text, generat
                 msg.guildId = guildId || "";
                 msg.sender.userId = userId;
             }
-            
+
+            console.log("[Gabriel DEBUG] 最终消息内容:", finalMessage);
             const ctx = seal.createTempCtx(ep, msg);
             seal.replyToSender(ctx, msg, finalMessage);
             return;
         }
     }
+
+    console.error("[Gabriel ERROR] 未找到对应的端点:", epId);
 }
 
 // ========================
@@ -249,15 +262,21 @@ if (!seal.ext.find('大天使加百列')) {
 
     cmd.solve = (ctx, msg, cmdArgs) => {
         // 获取原始命令文本（不含指令名）
-        const rawArgs = msg.message.replace(/^\s*\.?提醒我\s+/i, '').trim();
+        let rawArgs = msg.message.replace(/^\s*\.?提醒我\s+/i, '').trim();
+
+        console.log("[Gabriel DEBUG] 原始参数:", rawArgs);
+
         if (!rawArgs) {
             seal.replyToSender(ctx, msg, "凡人，请示下旨意。使用 .提醒我 help 查阅圣谕。");
             return seal.ext.newCmdExecuteResult(true);
         }
 
-        // 尝试匹配开头的时间（支持 9:05、14:30 等）
-        const timeMatch = rawArgs.match(/^(\d{1,2}:\d{1,2})\s+(.+)$/);
+        // 尝试匹配开头的时间（支持 9:05、14:30 等，支持任意标点符号）
+        // 更灵活的正则：匹配时间后面至少有一个空格，然后是任何内容（包括标点符号）
+        const timeMatch = rawArgs.match(/^(\d{1,2}:\d{1,2})\s+(.+)$/s);
+
         if (!timeMatch) {
+            console.log("[Gabriel DEBUG] 时间匹配失败，检查是否为命令");
             // 检查是否是 list / del / help
             const firstWord = rawArgs.split(/\s+/)[0];
             if (['help', 'list', 'del', 'delete'].includes(firstWord)) {
@@ -281,13 +300,18 @@ if (!seal.ext.find('大天使加百列')) {
                 }
                 return seal.ext.newCmdExecuteResult(true);
             } else {
-                seal.replyToSender(ctx, msg, "⚠️ 无法解析指令。请使用「.提醒我 HH:mm 内容」格式，例如：.提醒我 14:30 记得吃药");
+                seal.replyToSender(ctx, msg, `⚠️ 无法解析指令。请使用「.提醒我 HH:mm 内容」格式，例如：.提醒我 14:30 记得吃药\n[DEBUG] 收到: ${rawArgs}`);
                 return seal.ext.newCmdExecuteResult(true);
             }
         }
 
         const timeStr = timeMatch[1];
-        const messageText = timeMatch[2].trim();
+        let messageText = timeMatch[2];
+
+        // 只trim首尾空格，保留内部的所有内容和标点
+        messageText = messageText.trim();
+
+        console.log("[Gabriel DEBUG] 时间:", timeStr, "内容:", messageText, "长度:", messageText.length);
 
         if (!messageText) {
             seal.replyToSender(ctx, msg, "❌ 请赐下你要铭记的言语，例如：.提醒我 14:30 记得吃药");
@@ -299,13 +323,15 @@ if (!seal.ext.find('大天使加百列')) {
             gabriel.addTask(ctx, msg, timeStr, messageText);
             const execTime = new Date(parseTimeToFutureTimestamp(timeStr));
             const timeDisplay = `${execTime.getMonth()+1}月${execTime.getDate()}日 ${execTime.getHours()}:${execTime.getMinutes().toString().padStart(2,'0')}`;
-            
+
             // 根据消息类型给出不同的确认信息
             const isPrivate = (msg.messageType === "private");
             const atInfo = isPrivate ? "" : "（提醒时会艾特君）";
-            
+
+            console.log("[Gabriel DEBUG] 任务创建成功，执行时间:", timeDisplay);
             seal.replyToSender(ctx, msg, `🕊️ 吾已将「${messageText}」载入圣约之书，将于 ${timeDisplay} 为你鸣钟${atInfo}。`);
         } catch (e) {
+            console.error("[Gabriel ERROR]", e);
             seal.replyToSender(ctx, msg, `⚠️ 加百列无法记录此谕：${e.message}`);
         }
 
