@@ -355,16 +355,6 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
         quillPenEffects[senderRoleName] = quillPenEffects[senderRoleName].filter(e => e);
         ext.storageSet("letter_quill_pen_effects", JSON.stringify(quillPenEffects));
 
-        // 通知施加人
-        const applierEntry = a_private_group[platform][quillPenApplier.applier];
-        const applierMsg = seal.newMessage();
-        applierMsg.messageType = "group";
-        applierMsg.groupId = `${platform}-Group:${applierEntry[1]}`;
-        const applierCtx = seal.createTempCtx(ctx.endPoint, applierMsg);
-
-        let pendingContent = `🖋️ 【羽毛笔待审】${senderRoleName} 想向 ${receiver} 发送信件：\n\n「${content}」\n\n请使用 。羽毛笔修改 <新内容> 修改内容后发送。\n⏰ 3小时内未修改将自动发送原文。`;
-        seal.replyToSender(applierCtx, applierMsg, `[CQ:at,qq=${applierEntry[0]}]\n${pendingContent}`);
-
         seal.replyToSender(ctx, msg, `⏳ 你的信件已发送给「${quillPenApplier.applier}」进行审核，等待修改或超时发送...`);
         return seal.ext.newCmdExecuteResult(true);
     }
@@ -389,33 +379,9 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
     const deliverCtx = seal.createTempCtx(ctx.endPoint, deliverMsg);
     seal.replyToSender(deliverCtx, deliverMsg, finalLetter);
 
-    // 8.5 处理望远镜效果（抄录）
+    // 8.5 处理望远镜效果（删除已使用的效果，但不发送通知）
     if (effectToHandle?.type === "telescope") {
         const telescopeApplier = effectToHandle.data;
-        if (receiver === telescopeApplier.applier) {
-            // 收件人就是施加人，只发通知
-            const applierEntry = a_private_group[platform][telescopeApplier.applier];
-            const applierMsg = seal.newMessage();
-            applierMsg.messageType = "group";
-            applierMsg.groupId = `${platform}-Group:${applierEntry[1]}`;
-            const applierCtx = seal.createTempCtx(ctx.endPoint, applierMsg);
-            seal.replyToSender(applierCtx, applierMsg, `📺 望远镜提醒：${senderRoleName} 正好发给了你（所以没有进行抄录）`);
-        } else {
-            // 抄录一份给施加人
-            const applierEntry = a_private_group[platform][telescopeApplier.applier];
-            const applierMsg = seal.newMessage();
-            applierMsg.messageType = "group";
-            applierMsg.groupId = `${platform}-Group:${applierEntry[1]}`;
-            const applierCtx = seal.createTempCtx(ctx.endPoint, applierMsg);
-
-            let copiedLetter = `📺 【望远镜抄录】来自 ${senderRoleName} 发给 ${receiver} 的信件：\n`;
-            if (dateTag) copiedLetter += `📅 日期：${dateTag}\n`;
-            copiedLetter += `\n「${content}」\n\n—— ${signature}`;
-            if (attachment) copiedLetter += `\n\n附件：\n--------------------\n${attachment}`;
-
-            seal.replyToSender(applierCtx, applierMsg, copiedLetter);
-        }
-
         // 删除已使用的望远镜效果
         telescopeEffects[senderRoleName] = telescopeEffects[senderRoleName].filter(e => e !== telescopeApplier);
         ext.storageSet("letter_telescope_effects", JSON.stringify(telescopeEffects));
