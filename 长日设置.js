@@ -1102,26 +1102,30 @@ cmd_set_days.solve = (ctx, msg, args) => {
     if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件");
 
     const prev = main.storageGet("global_days") || "未设置";
-    main.storageSet("global_days", day);
-    main.storageSet("auto_day_last_reset", "0");
+    const platform = msg.platform;
 
-    let resp = `✅ 已将全局天数从 ${prev} 设置为：${day}`;
+    // ★ 第一步：生成报告（在清空前，基于当前数据）
+    const report = generateStatisticsReport(ctx, msg, day, prev);
 
-    // 自动清空所有计数
+    // ★ 第二步：清空所有计数
     ["a_meetingCount_call","a_meetingCount_private","a_meetingCount_letter","a_meetingCount_gift","a_meetingCount_wish","a_meetingCount_chaosletter","a_meetingCount_secretletter","a_meetingCount_official"].forEach(k => main.storageSet(k, "0"));
-    const groups = JSON.parse(main.storageGet("a_private_group") || "{}")[msg.platform];
+    const groups = JSON.parse(main.storageGet("a_private_group") || "{}")[platform];
     if (groups) {
         for (let name in groups) {
-            main.storageSet(`chaos_letter_daily_${msg.platform}:${groups[name][0]}_${day}`, "0");
+            main.storageSet(`chaos_letter_daily_${platform}:${groups[name][0]}_${day}`, "0");
         }
     }
     main.storageSet("a_wishPool", "[]");
     main.storageSet("lovemail_pool", "[]");
+
+    // ★ 第三步：设置新天数
+    main.storageSet("global_days", day);
+    main.storageSet("auto_day_last_reset", "0");
+
+    let resp = `✅ 已将全局天数从 ${prev} 设置为：${day}`;
     resp += "\n✅ 已自动清空所有会面计数、每日信件计数、寄信限制、心愿池和心动信池";
 
-    const report = generateStatisticsReport(ctx, msg, day, prev);
-    const platform = msg.platform;
-
+    // ★ 第四步：发送报告
     const announceGid = JSON.parse(main.storageGet("adminAnnounceGroupId") || "null");
     if (announceGid) {
         sendTextToGroup(platform, announceGid, `📜 全局天数已从 ${prev} 切换到 ${day}（所有计数已自动重置）`);
@@ -1145,7 +1149,12 @@ function performAutoDayReset(newDay, now) {
     if (!main) return;
 
     const prev = main.storageGet("global_days") || "未设置";
-    main.storageSet("global_days", newDay);
+    const mockMsg = { platform: "QQ" };
+
+    // ★ 第一步：生成报告（在清空前，基于当前数据）
+    const report = generateStatisticsReport(null, mockMsg, newDay, prev);
+
+    // ★ 第二步：清空所有计数
     ["a_meetingCount_call","a_meetingCount_private","a_meetingCount_letter","a_meetingCount_gift","a_meetingCount_wish","a_meetingCount_chaosletter","a_meetingCount_secretletter","a_meetingCount_official"].forEach(k => main.storageSet(k, "0"));
     const groups = JSON.parse(main.storageGet("a_private_group") || "{}")["QQ"];
     if (groups) {
@@ -1156,8 +1165,10 @@ function performAutoDayReset(newDay, now) {
     main.storageSet("a_wishPool", "[]");
     main.storageSet("lovemail_pool", "[]");
 
-    const mockMsg = { platform: "QQ" };
-    const report = generateStatisticsReport(null, mockMsg, newDay, prev);
+    // ★ 第三步：设置新天数
+    main.storageSet("global_days", newDay);
+
+    // ★ 第四步：发送报告
     const announceGid = JSON.parse(main.storageGet("adminAnnounceGroupId") || "null");
     if (announceGid) sendTextToGroup("QQ", announceGid, `📜 自动天数推进：${prev} → ${newDay}（所有计数已清空）`);
     const bgGid = JSON.parse(main.storageGet("background_group_id") || "null");
