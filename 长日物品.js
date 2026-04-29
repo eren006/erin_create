@@ -563,8 +563,7 @@ function handleSpecialItemUse(ctx, msg, platform, roleName, roleKey, code, cmdAr
             } else return seal.replyToSender(ctx, msg, "⚠️ 时间格式错误，请使用：14 或 14:30");
             if (hour < 0 || hour > 23) return seal.replyToSender(ctx, msg, "⚠️ 小时应在0-23之间");
             const start = `${hour.toString().padStart(2,'0')}:${minute.toString().padStart(2,'0')}`;
-            let endH = hour, endM = minute + 60;
-            if (endM >= 60) { endH += Math.floor(endM / 60); endM %= 60; }
+            let endH = hour + 1, endM = minute;
             if (endH >= 24) { endH = 23; endM = 59; }
             timeRange = `${start}-${endH.toString().padStart(2,'0')}:${endM.toString().padStart(2,'0')}`;
         }
