@@ -18,8 +18,15 @@ if (!ext) {
 // ========================
 
 function getMain() {
-    const main = seal.ext.find('changriV1');
-    if (!main) console.error("[物品V2] 未找到主插件 changriV1");
+    // 尝试多个可能的名称
+    let main = seal.ext.find('changriV1');
+    if (!main) main = seal.ext.find('长日');
+    if (!main) main = seal.ext.find('changriv1');
+
+    if (!main) {
+        console.error("[物品V2] 未找到主插件 changriV1。可用的ext:",
+            (seal.ext && seal.ext._extMap) ? Object.keys(seal.ext._extMap) : "无法列出");
+    }
     return main;
 }
 
