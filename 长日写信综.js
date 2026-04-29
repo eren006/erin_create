@@ -11,7 +11,8 @@
 
 const ext = seal.ext.find("changriV1");
 if (!ext) {
-    console.error("❌ 长日写信综需要依赖「我的长日」插件");
+    console.error("❌ 长日写信综需要依赖「changriV1」插件");
+    throw new Error("缺少核心依赖：changriV1插件未找到");
 }
 
 // ========================
