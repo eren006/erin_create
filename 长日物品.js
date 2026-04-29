@@ -2210,11 +2210,12 @@ ext.onNotCommandReceived = (ctx, msg) => {
             if (def.max !== null && def.max !== undefined && def.min !== null) {
                 const pct = def.max === def.min ? 1 : (val - def.min) / (def.max - def.min);
                 const filled = Math.round(Math.max(0, Math.min(1, pct)) * BAR);
-                const bar = "█".repeat(filled) + "░".repeat(BAR - filled);
+                const bar = "▓".repeat(filled) + "░".repeat(BAR - filled);
                 const percent = Math.round(pct * 100);
-                limitedAttrs.push(`  ✦ ${name.padEnd(6)} ${bar} ${val}/${def.max} (${percent}%)`);
+                limitedAttrs.push(`【${name}】${bar} ${val}/${def.max} (${percent}%)`);
             } else {
-                unlimitedAttrs.push(`  ◆ ${name.padEnd(6)} ${val.toString().padStart(6)}${def.min !== null ? ` 〔最低:${def.min}〕` : ""}`);
+                const minText = def.min !== null ? ` [最低:${def.min}]` : "";
+                unlimitedAttrs.push(`【${name}】${val}${minText}`);
             }
         });
 
@@ -2227,27 +2228,31 @@ ext.onNotCommandReceived = (ctx, msg) => {
             return item && item.type === "currency";
         }).sort((a, b) => a.code.localeCompare(b.code));
 
-        let result = `╔══════════════════════════════╗\n║ 🎭 【${roleName}】的状态面板\n╠══════════════════════════════╣\n`;
+        let result = `\n★━━━━━━━━━━━━━━━━━━★\n🎭 【${roleName}】的状态\n★━━━━━━━━━━━━━━━━━━★\n`;
 
         if (limitedAttrs.length > 0) {
-            result += `║ 📊 核心属性\n${limitedAttrs.map(l => `║${l}`).join("\n")}\n`;
-        }
-
-        if (unlimitedAttrs.length > 0) {
-            if (limitedAttrs.length > 0) result += `║\n`;
-            result += `║ 📈 资源属性\n${unlimitedAttrs.map(l => `║${l}`).join("\n")}\n`;
-        }
-
-        if (currencies.length > 0) {
-            if (limitedAttrs.length > 0 || unlimitedAttrs.length > 0) result += `║\n`;
-            result += `║ 💰 货币\n`;
-            currencies.forEach(curr => {
-                const currName = registry[curr.code]?.name || curr.code;
-                result += `║  💵 ${currName.padEnd(6)} ${curr.count.toString().padStart(8)}\n`;
+            result += `\n📊 核心属性\n`;
+            limitedAttrs.forEach(l => {
+                result += `${l}\n`;
             });
         }
 
-        result += `╚══════════════════════════════╝`;
+        if (unlimitedAttrs.length > 0) {
+            result += `\n📈 资源属性\n`;
+            unlimitedAttrs.forEach(l => {
+                result += `${l}\n`;
+            });
+        }
+
+        if (currencies.length > 0) {
+            result += `\n💰 货币\n`;
+            currencies.forEach(curr => {
+                const currName = registry[curr.code]?.name || curr.code;
+                result += `${currName}: ${curr.count}\n`;
+            });
+        }
+
+        result += `★━━━━━━━━━━━━━━━━━━★`;
         return seal.replyToSender(ctx, msg, result);
     }
 
@@ -2473,11 +2478,12 @@ ext.onNotCommandReceived = (ctx, msg) => {
             if (def.max !== null && def.max !== undefined && def.min !== null) {
                 const pct = def.max === def.min ? 1 : (val - def.min) / (def.max - def.min);
                 const filled = Math.round(Math.max(0, Math.min(1, pct)) * BAR);
-                const bar = "█".repeat(filled) + "░".repeat(BAR - filled);
+                const bar = "▓".repeat(filled) + "░".repeat(BAR - filled);
                 const percent = Math.round(pct * 100);
-                limitedAttrs.push(`  ✦ ${name.padEnd(6)} ${bar} ${val}/${def.max} (${percent}%)`);
+                limitedAttrs.push(`【${name}】${bar} ${val}/${def.max} (${percent}%)`);
             } else {
-                unlimitedAttrs.push(`  ◆ ${name.padEnd(6)} ${val.toString().padStart(6)}${def.min !== null ? ` 〔最低:${def.min}〕` : ""}`);
+                const minText = def.min !== null ? ` [最低:${def.min}]` : "";
+                unlimitedAttrs.push(`【${name}】${val}${minText}`);
             }
         });
 
@@ -2490,27 +2496,31 @@ ext.onNotCommandReceived = (ctx, msg) => {
             return item && item.type === "currency";
         }).sort((a, b) => a.code.localeCompare(b.code));
 
-        let result = `╔══════════════════════════════╗\n║ 🎭 【${roleName}】的状态面板\n╠══════════════════════════════╣\n`;
+        let result = `\n★━━━━━━━━━━━━━━━━━━★\n🎭 【${roleName}】的状态\n★━━━━━━━━━━━━━━━━━━★\n`;
 
         if (limitedAttrs.length > 0) {
-            result += `║ 📊 核心属性\n${limitedAttrs.map(l => `║${l}`).join("\n")}\n`;
-        }
-
-        if (unlimitedAttrs.length > 0) {
-            if (limitedAttrs.length > 0) result += `║\n`;
-            result += `║ 📈 资源属性\n${unlimitedAttrs.map(l => `║${l}`).join("\n")}\n`;
-        }
-
-        if (currencies.length > 0) {
-            if (limitedAttrs.length > 0 || unlimitedAttrs.length > 0) result += `║\n`;
-            result += `║ 💰 货币\n`;
-            currencies.forEach(curr => {
-                const currName = registry[curr.code]?.name || curr.code;
-                result += `║  💵 ${currName.padEnd(6)} ${curr.count.toString().padStart(8)}\n`;
+            result += `\n📊 核心属性\n`;
+            limitedAttrs.forEach(l => {
+                result += `${l}\n`;
             });
         }
 
-        result += `╚══════════════════════════════╝`;
+        if (unlimitedAttrs.length > 0) {
+            result += `\n📈 资源属性\n`;
+            unlimitedAttrs.forEach(l => {
+                result += `${l}\n`;
+            });
+        }
+
+        if (currencies.length > 0) {
+            result += `\n💰 货币\n`;
+            currencies.forEach(curr => {
+                const currName = registry[curr.code]?.name || curr.code;
+                result += `${currName}: ${curr.count}\n`;
+            });
+        }
+
+        result += `★━━━━━━━━━━━━━━━━━━★`;
         return seal.replyToSender(ctx, msg, result);
     }
 
