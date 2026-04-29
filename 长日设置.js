@@ -786,70 +786,7 @@ function ensureDefaults(main) {
     }
 }
 
-let cmd_settings = seal.ext.newCmdItemInfo();
-cmd_settings.name = '设置';
-cmd_settings.help = `==== 📺 恋综系统控制台 ====
-.设置 基础  - 恋综名、群号、核心功能开关
-.设置 互动  - 冷却时间、邀约时长、地点系统
-.设置 信件  - 寄信开关/每日上限/混乱参数
-.设置 发送信件 - 发送信件开关/上限/字数/赏金
-.设置 心动信 - 心动信开关/送达时间/曝光设置
-.设置 公告  - 公开广播概率/开关/触发频率
-.设置 道具  - 物品抽取、追踪器参数
-.设置 商城  - 礼物商城刷新间隔
-.设置 拍卖  - 拍卖展示群/匿名/播报/货币等
-.设置 群组  - 小群管理、目击报告
-
-结戏加成    - 结戏自动发放奖励规则管理
-
-💡 输入对应指令后，复制弹出的模板修改并重新发送即可。`;
-
-cmd_settings.solve = function(ctx, msg, argv) {
-    if (!isUserAdmin(ctx, msg)) {
-        seal.replyToSender(ctx, msg, "❌ 权限不足：该指令仅限管理员使用");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    const main = getMainExt();
-    if (main) ensureDefaults(main);
-
-    const rawMessage = msg.message.trim();
-    const subCmd = argv.getArgN(1);
-
-    // 提交模式：识别首行标识符
-    if (rawMessage.includes('\n')) {
-        const firstLine = rawMessage.split('\n')[0];
-        if (firstLine.includes('基础设置')) return handleApply(ctx, msg, rawMessage, applyBasicParam);
-        if (firstLine.includes('互动设置')) return handleApply(ctx, msg, rawMessage, applyInteractionParam);
-        if (firstLine.includes('信件设置')) return handleApply(ctx, msg, rawMessage, applyLetterParam);
-        if (firstLine.includes('发送信件设置')) return handleApply(ctx, msg, rawMessage, applyDirectLetterParam);
-        if (firstLine.includes('心动信设置')) return handleApply(ctx, msg, rawMessage, applyLovemailParam);
-        if (firstLine.includes('公告设置')) return handleApply(ctx, msg, rawMessage, applyPublicParam);
-        if (firstLine.includes('道具设置')) return handleApply(ctx, msg, rawMessage, applyItemParam);
-        if (firstLine.includes('商城设置')) return handleApply(ctx, msg, rawMessage, applyShopParam);
-        if (firstLine.includes('拍卖设置')) return handleApply(ctx, msg, rawMessage, applyAuctionParam);
-        if (firstLine.includes('群组设置')) return handleApply(ctx, msg, rawMessage, applyGroupParam);
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    // 查询模式
-    switch (subCmd) {
-        case '基础': return showBasicSettings(ctx, msg);
-        case '互动': return showInteractionSettings(ctx, msg);
-        case '信件': return showLetterSettings(ctx, msg);
-        case '发送信件': return showDirectLetterSettings(ctx, msg);
-        case '心动信': return showLovemailSettings(ctx, msg);
-        case '公告': return showPublicSettings(ctx, msg);
-        case '道具': return showItemSettings(ctx, msg);
-        case '商城': return showShopSettings(ctx, msg);
-        case '拍卖': return showAuctionSettings(ctx, msg);
-        case '群组': return showGroupSettings(ctx, msg);
-        default: seal.replyToSender(ctx, msg, cmd_settings.help);
-    }
-    return seal.ext.newCmdExecuteResult(true);
-};
-
-ext.cmdMap["设置"] = cmd_settings;
+// 已移除重复的cmd_settings声明，使用下面的新版本
 
 // ========================
 // 设置信箱上限指令

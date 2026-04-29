@@ -1,0 +1,1160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎮 长日游戏系统完整指南</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            background: white;
+            border-radius: 12px;
+            padding: 30px 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        header h1 {
+            font-size: 28px;
+            color: #667eea;
+            margin-bottom: 8px;
+        }
+
+        header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .tab-btn {
+            flex: 1;
+            min-width: 120px;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            background: white;
+            color: #667eea;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .tab-btn.active {
+            background: #667eea;
+            color: white;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .tab-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        .tab-content {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 0;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .card-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 16px 20px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+            user-select: none;
+        }
+
+        .card-header:hover {
+            background: linear-gradient(135deg, #5568d3 0%, #653a92 100%);
+        }
+
+        .card-header.expanded {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .card-content {
+            display: none;
+            padding: 20px;
+            animation: slideDown 0.3s ease;
+        }
+
+        .card-content.show {
+            display: block;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                max-height: 0;
+            }
+            to {
+                opacity: 1;
+                max-height: 2000px;
+            }
+        }
+
+        .toggle-icon {
+            display: inline-block;
+            transition: transform 0.3s ease;
+            font-size: 20px;
+        }
+
+        .toggle-icon.rotated {
+            transform: rotate(180deg);
+        }
+
+        h2 {
+            color: #667eea;
+            margin: 24px 0 16px 0;
+            font-size: 22px;
+            border-left: 4px solid #667eea;
+            padding-left: 12px;
+        }
+
+        h3 {
+            color: #764ba2;
+            margin: 16px 0 12px 0;
+            font-size: 16px;
+        }
+
+        p {
+            line-height: 1.6;
+            margin-bottom: 12px;
+            color: #555;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+            font-size: 13px;
+        }
+
+        th {
+            background: #f5f7ff;
+            color: #667eea;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid #667eea;
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        tr:hover {
+            background: #f9fafc;
+        }
+
+        code {
+            background: #f5f7ff;
+            color: #764ba2;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 12px;
+        }
+
+        pre {
+            background: #f5f7ff;
+            padding: 16px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 12px 0;
+            border-left: 4px solid #667eea;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+            color: #333;
+        }
+
+        ul, ol {
+            margin-left: 20px;
+            margin-bottom: 12px;
+        }
+
+        li {
+            margin-bottom: 8px;
+            line-height: 1.6;
+        }
+
+        .highlight {
+            background: #fef3c7;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+
+        .example-box {
+            background: #f0f4ff;
+            border-left: 4px solid #667eea;
+            padding: 12px 16px;
+            margin: 12px 0;
+            border-radius: 4px;
+        }
+
+        .command {
+            background: #fff5e6;
+            border-left: 4px solid #f59e0b;
+            padding: 12px 16px;
+            margin: 12px 0;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 13px;
+            overflow-x: auto;
+        }
+
+        .tip {
+            background: #d1fae5;
+            border-left: 4px solid #10b981;
+            padding: 12px 16px;
+            margin: 12px 0;
+            border-radius: 4px;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 12px;
+            }
+
+            header {
+                padding: 20px 12px;
+            }
+
+            header h1 {
+                font-size: 20px;
+            }
+
+            .tabs {
+                gap: 6px;
+            }
+
+            .tab-btn {
+                min-width: 100px;
+                padding: 10px 12px;
+                font-size: 12px;
+            }
+
+            .card {
+                margin-bottom: 12px;
+            }
+
+            .card-header {
+                padding: 12px 16px;
+                font-size: 14px;
+            }
+
+            .card-content {
+                padding: 16px;
+            }
+
+            table {
+                font-size: 12px;
+            }
+
+            th, td {
+                padding: 8px 4px;
+            }
+
+            h2 {
+                font-size: 18px;
+                margin: 16px 0 12px 0;
+            }
+
+            h3 {
+                font-size: 14px;
+                margin: 12px 0 8px 0;
+            }
+        }
+
+        .toc {
+            background: #f9fafc;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .toc h4 {
+            color: #667eea;
+            margin-bottom: 12px;
+            font-size: 14px;
+        }
+
+        .toc ul {
+            margin-left: 16px;
+        }
+
+        .toc li {
+            font-size: 13px;
+            margin-bottom: 6px;
+        }
+
+        .quick-start {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .quick-start h3 {
+            color: white;
+            margin-top: 0;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin: 16px 0;
+        }
+
+        .grid-item {
+            background: #f9fafc;
+            padding: 16px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .grid-item h4 {
+            color: #667eea;
+            margin-bottom: 8px;
+        }
+
+        @media (max-width: 768px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        footer {
+            text-align: center;
+            color: #999;
+            font-size: 12px;
+            margin-top: 40px;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎮 长日游戏系统完整指南</h1>
+            <p>物品系统 + 升级系统 | 版本 2.0</p>
+        </header>
+
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab(0)">📦 物品系统</button>
+            <button class="tab-btn" onclick="switchTab(1)">⬆️ 升级系统</button>
+        </div>
+
+        <!-- 物品系统 Tab -->
+        <div id="tab-0" class="tab-content active">
+            <div class="toc">
+                <h4>📑 物品系统导航</h4>
+                <ul>
+                    <li>物品注册与管理</li>
+                    <li>货币系统</li>
+                    <li>装备系统</li>
+                    <li>商城与池子</li>
+                    <li>合成系统</li>
+                    <li>攻防系统</li>
+                </ul>
+            </div>
+
+            <!-- 物品注册 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    📋 物品注册与使用
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-content">
+                    <h3>物品分类</h3>
+                    <p>系统支持两种物品类型：</p>
+                    <table>
+                        <tr>
+                            <th>类型</th>
+                            <th>说明</th>
+                            <th>命令</th>
+                        </tr>
+                        <tr>
+                            <td>普通物品</td>
+                            <td>玩家对自己使用（如药品）</td>
+                            <td><code>普通使用 ITEM_001</code></td>
+                        </tr>
+                        <tr>
+                            <td>互动物品</td>
+                            <td>玩家对他人使用（如治疗术）</td>
+                            <td><code>施加 INTER_001 李四</code></td>
+                        </tr>
+                    </table>
+
+                    <h3>注册物品</h3>
+                    <div class="command">上载物品 物品名*描述*使用次数*属性效果*允许二手</div>
+
+                    <h3>使用次数说明</h3>
+                    <ul>
+                        <li><code>-1</code> 无限使用（不会消失）</li>
+                        <li><code>0</code> 一次性（使用后消失）</li>
+                        <li><code>>0</code> 指定次数（使用N次后消失）</li>
+                    </ul>
+
+                    <h3>示例</h3>
+                    <pre><code>上载物品 医疗包*恢复生命*3*HP+50*N
+上载物品 魔法卷轴*增加魔法*0*MP+30*Y
+上载互动物品 治疗术*为他人治疗*5*HP+50*N</code></pre>
+
+                    <div class="tip">
+                        💡 <strong>提示</strong>：使用 <code>查看背包</code> 查看物品，<code>物品列表</code> 查看所有注册物品。
+                    </div>
+                </div>
+            </div>
+
+            <!-- 货币系统 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    💰 货币系统
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-content">
+                    <h3>注册货币</h3>
+                    <div class="command">注册货币 货币名*描述</div>
+
+                    <h3>示例</h3>
+                    <pre><code>注册货币 金币*通用流通货币，主要来源于任务和转售
+注册货币 钻石*高级货币，需充值或特殊任务获得
+注册货币 积分*任务奖励，可兑换物品</code></pre>
+
+                    <h3>管理员操作</h3>
+                    <table>
+                        <tr>
+                            <th>操作</th>
+                            <th>命令</th>
+                        </tr>
+                        <tr>
+                            <td>增加货币</td>
+                            <td><code>调整 角色名 CUR_001 +100</code></td>
+                        </tr>
+                        <tr>
+                            <td>减少货币</td>
+                            <td><code>调整 角色名 CUR_001 -50</code></td>
+                        </tr>
+                        <tr>
+                            <td>查看玩家货币</td>
+                            <td><code>查看背包 角色名</code></td>
+                        </tr>
+                    </table>
+
+                    <div class="tip">
+                        💡 系统自动生成编码：CUR_001, CUR_002 等
+                    </div>
+                </div>
+            </div>
+
+            <!-- 装备系统 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    ⚔️ 装备系统
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-content">
+                    <h3>装备槽位</h3>
+                    <table>
+                        <tr>
+                            <th>代码</th>
+                            <th>名称</th>
+                            <th>用途</th>
+                        </tr>
+                        <tr>
+                            <td>head</td>
+                            <td>头部</td>
+                            <td>头盔、王冠、面罩</td>
+                        </tr>
+                        <tr>
+                            <td>chest</td>
+                            <td>胸部</td>
+                            <td>甲胄、衣服、外套</td>
+                        </tr>
+                        <tr>
+                            <td>hand</td>
+                            <td>手部</td>
+                            <td>武器、盾牌、手套</td>
+                        </tr>
+                        <tr>
+                            <td>leg</td>
+                            <td>腿部</td>
+                            <td>护腿、裤子</td>
+                        </tr>
+                        <tr>
+                            <td>foot</td>
+                            <td>脚部</td>
+                            <td>靴子、鞋子</td>
+                        </tr>
+                    </table>
+
+                    <h3>注册装备</h3>
+                    <div class="command">注册装备 装备名*描述*槽位*基础属性</div>
+
+                    <h3>示例</h3>
+                    <pre><code>注册装备 铁制短剑*普通短剑*hand*ATK+15
+注册装备 钢铁胸甲*防御胸甲*chest*DEF+20,HP+50
+注册装备 王冠*尊贵王冠*head*ATK+5,DEF+5</code></pre>
+
+                    <h3>玩家操作</h3>
+                    <table>
+                        <tr>
+                            <th>操作</th>
+                            <th>命令</th>
+                        </tr>
+                        <tr>
+                            <td>查看当前装备</td>
+                            <td><code>装备</code></td>
+                        </tr>
+                        <tr>
+                            <td>装备物品</td>
+                            <td><code>装备 EQUIP_001</code></td>
+                        </tr>
+                        <tr>
+                            <td>卸下装备</td>
+                            <td><code>脱装备 hand</code></td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 商城与池子 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    🏪 商城与池子系统
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-content">
+                    <h3>商城操作</h3>
+                    <table>
+                        <tr>
+                            <th>操作</th>
+                            <th>命令</th>
+                        </tr>
+                        <tr>
+                            <td>上架物品</td>
+                            <td><code>上架商城 ITEM_001*100金币</code></td>
+                        </tr>
+                        <tr>
+                            <td>下架物品</td>
+                            <td><code>商城下架 ITEM_001</code></td>
+                        </tr>
+                        <tr>
+                            <td>玩家购买</td>
+                            <td><code>商城</code></td>
+                        </tr>
+                    </table>
+
+                    <h3>池子系统</h3>
+                    <p>池子用于随机掉落和抽取，分为两种类型：</p>
+
+                    <div class="grid-2">
+                        <div class="grid-item">
+                            <h4>固定池</h4>
+                            <p>加权随机，不减少物品。适合常驻抽取池、月卡池。</p>
+                            <code>注册池子 十连池 fixed</code>
+                        </div>
+                        <div class="grid-item">
+                            <h4>自由池</h4>
+                            <p>有限数量，抽完即止。适合活动奖励、副本掉落。</p>
+                            <code>注册池子 活动奖励池 free</code>
+                        </div>
+                    </div>
+
+                    <h3>池子操作</h3>
+                    <table>
+                        <tr>
+                            <th>操作</th>
+                            <th>命令</th>
+                        </tr>
+                        <tr>
+                            <td>添加到池子</td>
+                            <td><code>上架池子 十连池 ITEM_001*50</code></td>
+                        </tr>
+                        <tr>
+                            <td>从池移除</td>
+                            <td><code>从池移除 十连池 ITEM_001</code></td>
+                        </tr>
+                        <tr>
+                            <td>玩家抽取</td>
+                            <td><code>抽取 十连池 10</code></td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 合成系统 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    🔧 合成系统
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-content">
+                    <h3>注册配方</h3>
+                    <div class="command">上传配方 产物名*材料:数量,材料:数量[*成功率]</div>
+
+                    <h3>示例</h3>
+                    <pre><code>上传配方 简易绷带*干净的布:2,酒精:1
+上传配方 高级丹*初级丹:3,金币:100*80
+上传配方 传奇装备*高级装备:5,魔晶石:10*60</code></pre>
+
+                    <h3>玩家操作</h3>
+                    <table>
+                        <tr>
+                            <th>操作</th>
+                            <th>命令</th>
+                        </tr>
+                        <tr>
+                            <td>查看所有配方</td>
+                            <td><code>查看配方</code></td>
+                        </tr>
+                        <tr>
+                            <td>执行合成</td>
+                            <td><code>合成 物品名 3</code></td>
+                        </tr>
+                    </table>
+
+                    <div class="tip">
+                        💡 合成结果支持全部成功、全部失败、部分成功三种情况。失败时材料仍会消耗。
+                    </div>
+                </div>
+            </div>
+
+            <!-- 攻防系统 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    ⚡ 攻防（PK）系统
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-content">
+                    <h3>战斗属性</h3>
+                    <table>
+                        <tr>
+                            <th>属性</th>
+                            <th>说明</th>
+                            <th>默认值</th>
+                        </tr>
+                        <tr>
+                            <td>HP</td>
+                            <td>生命值</td>
+                            <td>100</td>
+                        </tr>
+                        <tr>
+                            <td>ATK</td>
+                            <td>攻击力</td>
+                            <td>50</td>
+                        </tr>
+                        <tr>
+                            <td>DEF</td>
+                            <td>防御力</td>
+                            <td>30</td>
+                        </tr>
+                        <tr>
+                            <td>AGI</td>
+                            <td>敏捷（决定行动顺序）</td>
+                            <td>40</td>
+                        </tr>
+                    </table>
+
+                    <h3>玩家命令</h3>
+                    <table>
+                        <tr>
+                            <th>操作</th>
+                            <th>命令</th>
+                        </tr>
+                        <tr>
+                            <td>发起战斗</td>
+                            <td><code>PK 发起</code></td>
+                        </tr>
+                        <tr>
+                            <td>接受战斗</td>
+                            <td><code>PK 接受 &lt;战斗ID&gt;</code></td>
+                        </tr>
+                        <tr>
+                            <td>普通攻击</td>
+                            <td><code>攻击 &lt;对手名字&gt;</code></td>
+                        </tr>
+                        <tr>
+                            <td>防守</td>
+                            <td><code>防守</code></td>
+                        </tr>
+                        <tr>
+                            <td>逃跑</td>
+                            <td><code>投降</code></td>
+                        </tr>
+                    </table>
+
+                    <h3>伤害计算</h3>
+                    <pre><code>基础伤害 = 攻击者ATK
+防御减伤 = 防守者DEF × 0.1
+最终伤害 = max(1, 基础伤害 - 防御减伤 + 随机值)</code></pre>
+                </div>
+            </div>
+
+            <!-- 属性系统 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    📊 属性系统
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-content">
+                    <h3>创建属性</h3>
+                    <div class="command">我创建属性 属性名 [最小值] [最大值] [默认值]</div>
+
+                    <h3>示例</h3>
+                    <pre><code>我创建属性 HP 0 1000 100
+我创建属性 MP 0 500 50
+我创建属性 ATK 0 100 40
+我创建属性 DEF 0 50 30
+我创建属性 AGI 0 50 40</code></pre>
+
+                    <h3>玩家操作</h3>
+                    <table>
+                        <tr>
+                            <th>操作</th>
+                            <th>命令</th>
+                        </tr>
+                        <tr>
+                            <td>查看自己属性</td>
+                            <td><code>我的状态</code></td>
+                        </tr>
+                        <tr>
+                            <td>查看他人属性</td>
+                            <td><code>属性 玩家名</code></td>
+                        </tr>
+                    </table>
+
+                    <h3>管理员操作</h3>
+                    <table>
+                        <tr>
+                            <th>操作</th>
+                            <th>命令</th>
+                        </tr>
+                        <tr>
+                            <td>设置属性</td>
+                            <td><code>设置属性 角色名 属性名 100</code></td>
+                        </tr>
+                        <tr>
+                            <td>增加属性</td>
+                            <td><code>ATK++ 角色名 50</code></td>
+                        </tr>
+                        <tr>
+                            <td>减少属性</td>
+                            <td><code>ATK-- 角色名 30</code></td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 二手市场 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    🏬 二手市场
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-content">
+                    <h3>市场配置（管理员）</h3>
+                    <table>
+                        <tr>
+                            <th>操作</th>
+                            <th>命令</th>
+                        </tr>
+                        <tr>
+                            <td>查看配置</td>
+                            <td><code>二手设定 查看</code></td>
+                        </tr>
+                        <tr>
+                            <td>设置手续费</td>
+                            <td><code>二手设定 手续费:3</code></td>
+                        </tr>
+                        <tr>
+                            <td>启用市场</td>
+                            <td><code>二手设定 开启</code></td>
+                        </tr>
+                    </table>
+
+                    <h3>玩家操作</h3>
+                    <div class="command">上架二手 物品码 价格</div>
+
+                    <h3>建议配置</h3>
+                    <div class="example-box">
+                        • <strong>允许二手</strong>：普通物品、装备、消耗品<br>
+                        • <strong>禁止二手</strong>：任务物品、限定物品、系统物品<br>
+                        • <strong>推荐手续费</strong>：2-3%
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 升级系统 Tab -->
+        <div id="tab-1" class="tab-content">
+            <div class="toc">
+                <h4>📑 升级系统导航</h4>
+                <ul>
+                    <li>核心概念</li>
+                    <li>命令参考</li>
+                    <li>快速配置方案</li>
+                    <li>递增公式</li>
+                    <li>常见问题</li>
+                </ul>
+            </div>
+
+            <!-- 核心概念 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    📖 核心概念
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-content">
+                    <h3>升级系统是什么？</h3>
+                    <p>一个<strong>玩家角色等级系统</strong>，所有玩家遵循相同的升级规则。管理员只需配置一套规则，所有玩家自动适用。</p>
+
+                    <h3>三个关键概念</h3>
+                    <table>
+                        <tr>
+                            <th>概念</th>
+                            <th>说明</th>
+                        </tr>
+                        <tr>
+                            <td><strong>等级</strong></td>
+                            <td>玩家的当前等级（1-100）</td>
+                        </tr>
+                        <tr>
+                            <td><strong>消耗品</strong></td>
+                            <td>升级时需要消耗的资源（金币、物品、属性等）</td>
+                        </tr>
+                        <tr>
+                            <td><strong>奖励品</strong></td>
+                            <td>升级成功后获得的奖励（属性、货币、物品等）</td>
+                        </tr>
+                    </table>
+
+                    <h3>升级流程</h3>
+                    <div class="example-box">
+                        1. 玩家执行升级<br>
+                        2. 检查是否满足消耗条件<br>
+                        3. 判断成功率（可能失败）<br>
+                        4. 消耗资源（即使失败也消耗）<br>
+                        5. 发放奖励（仅成功时）<br>
+                        6. 更新等级和历史记录
+                    </div>
+                </div>
+            </div>
+
+            <!-- 配置命令 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    ⚙️ 配置命令
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-content">
+                    <h3>上传升级等级</h3>
+                    <div class="command">上传升级等级 &lt;等级|范围&gt; &lt;描述&gt; * &lt;消耗品&gt; * &lt;奖励品&gt; [*成功率]</div>
+
+                    <h3>参数说明</h3>
+                    <table>
+                        <tr>
+                            <th>参数</th>
+                            <th>说明</th>
+                            <th>示例</th>
+                        </tr>
+                        <tr>
+                            <td>等级|范围</td>
+                            <td>单个等级或范围</td>
+                            <td><code>1</code> 或 <code>1-50</code></td>
+                        </tr>
+                        <tr>
+                            <td>描述</td>
+                            <td>等级名称（支持{等级}模板）</td>
+                            <td><code>{等级}级战士</code></td>
+                        </tr>
+                        <tr>
+                            <td>消耗品</td>
+                            <td>升级消耗（逗号分隔）</td>
+                            <td><code>金币:100</code></td>
+                        </tr>
+                        <tr>
+                            <td>奖励品</td>
+                            <td>升级奖励（逗号分隔）</td>
+                            <td><code>HP+10,ATK+5</code></td>
+                        </tr>
+                        <tr>
+                            <td>成功率</td>
+                            <td>升级成功概率（可选，默认100）</td>
+                            <td><code>80</code></td>
+                        </tr>
+                    </table>
+
+                    <h3>查看命令</h3>
+                    <table>
+                        <tr>
+                            <th>操作</th>
+                            <th>命令</th>
+                        </tr>
+                        <tr>
+                            <td>查看系统概览</td>
+                            <td><code>查看升级配置</code></td>
+                        </tr>
+                        <tr>
+                            <td>查看特定等级</td>
+                            <td><code>查看升级配置 20</code></td>
+                        </tr>
+                        <tr>
+                            <td>查看所有等级</td>
+                            <td><code>升级列表</code></td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 玩家命令 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    👤 玩家命令
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-content">
+                    <h3>执行升级</h3>
+                    <div class="command">升级</div>
+
+                    <h3>升级结果</h3>
+                    <table>
+                        <tr>
+                            <th>结果</th>
+                            <th>说明</th>
+                        </tr>
+                        <tr>
+                            <td>✅ 升级成功</td>
+                            <td>等级上升，获得奖励</td>
+                        </tr>
+                        <tr>
+                            <td>❌ 升级失败</td>
+                            <td>消耗已扣除，不获得奖励</td>
+                        </tr>
+                        <tr>
+                            <td>❌ 条件不足</td>
+                            <td>资源不足，无法升级</td>
+                        </tr>
+                    </table>
+
+                    <h3>查看升级信息</h3>
+                    <div class="command">查看升级信息</div>
+                    <p>显示当前等级、下一等级、升级需求等信息。</p>
+                </div>
+            </div>
+
+            <!-- 消耗品与奖励 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    💎 消耗品与奖励品
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-content">
+                    <h3>消耗品类型</h3>
+                    <table>
+                        <tr>
+                            <th>类型</th>
+                            <th>格式</th>
+                            <th>示例</th>
+                        </tr>
+                        <tr>
+                            <td>物品</td>
+                            <td>物品名:数量</td>
+                            <td><code>升级石:2</code></td>
+                        </tr>
+                        <tr>
+                            <td>货币</td>
+                            <td>货币名:数量</td>
+                            <td><code>金币:100</code></td>
+                        </tr>
+                        <tr>
+                            <td>属性</td>
+                            <td>属性名:数值</td>
+                            <td><code>HP:50消耗</code></td>
+                        </tr>
+                    </table>
+
+                    <h3>奖励品类型</h3>
+                    <table>
+                        <tr>
+                            <th>类型</th>
+                            <th>格式</th>
+                            <th>示例</th>
+                        </tr>
+                        <tr>
+                            <td>属性</td>
+                            <td>属性名+数值</td>
+                            <td><code>HP+10</code></td>
+                        </tr>
+                        <tr>
+                            <td>货币</td>
+                            <td>货币名:数量</td>
+                            <td><code>金币:50</code></td>
+                        </tr>
+                        <tr>
+                            <td>物品</td>
+                            <td>物品名:数量</td>
+                            <td><code>升级证:1</code></td>
+                        </tr>
+                    </table>
+
+                    <h3>递增公式</h3>
+                    <pre><code>第N级值 = 基础 + (N-1) × 增幅
+
+示例：
+配置: 金币:50+50
+  1级: 50 + (1-1) × 50 = 50
+  2级: 50 + (2-1) × 50 = 100
+  3级: 50 + (3-1) × 50 = 150</code></pre>
+                </div>
+            </div>
+
+            <!-- 快速配置 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    ⚡ 快速配置方案
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-content">
+                    <h3>方案1：极简版（推荐新手）</h3>
+                    <pre><code>上传升级等级 1-50 * {等级}级 * 金币:100+100 * HP+10+10,ATK+5+5</code></pre>
+                    <p>效果：50个等级全部配置，消耗和奖励逐级递增</p>
+
+                    <h3>方案2：分阶段版</h3>
+                    <pre><code>上传升级等级 1-20 * 新手{等级} * 金币:50+50 * HP+5+5
+上传升级等级 21-40 * 战士{等级} * 金币:300+100,升级石:0+1 * HP+15+10,ATK+10+5
+上传升级等级 41-60 * 传奇{等级} * 金币:1000+200 * ATK+15+10,DEF+5+3</code></pre>
+
+                    <h3>方案3：职业专精版</h3>
+                    <pre><code>上传升级等级 1-50 * 战士{等级} * 金币:100+50 * ATK+15+10,HP+200+100
+上传升级等级 1-50 * 法师{等级} * 金币:100+50,魔法卷轴:1+1 * MP+30+20</code></pre>
+
+                    <h3>方案4：献祭式升级</h3>
+                    <pre><code>上传升级等级 1-30 * 血之战士{等级} * 金币:100+50,HP:20+10消耗 * ATK+20+10</code></pre>
+                </div>
+            </div>
+
+            <!-- 常见问题 -->
+            <div class="card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    ❓ 常见问题
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="card-content">
+                    <h3>Q: 可以跳级升级吗？</h3>
+                    <p>A: 不可以。必须逐级升级。但支持连续升级（多次执行升级命令）。</p>
+
+                    <h3>Q: 升级失败会消耗材料吗？</h3>
+                    <p>A: 会的。失败时材料仍会被消耗。成功率100%时才不会失败。</p>
+
+                    <h3>Q: 如何修改已配置的等级？</h3>
+                    <p>A: 重新执行相同的等级范围命令即可覆盖旧配置。</p>
+
+                    <h3>Q: {等级} 占位符会自动替换吗？</h3>
+                    <p>A: 是的。第2级时，`{等级}级冒险者` 变成 `2级冒险者`。</p>
+
+                    <h3>Q: 多个职业可以有不同的升级规则吗？</h3>
+                    <p>A: 目前规则是全局统一的。可通过不同消耗品设计实现职业差异。</p>
+
+                    <h3>Q: 最大等级可以改吗？</h3>
+                    <p>A: 可以。默认100，可在规则配置中修改 `max_level` 字段。</p>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>🎮 长日游戏系统完整指南 | 最后更新: 2026-04-28</p>
+        </footer>
+    </div>
+
+    <script>
+        function switchTab(index) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            // Remove active class from all buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+
+            // Show selected tab
+            document.getElementById('tab-' + index).classList.add('active');
+            document.querySelectorAll('.tab-btn')[index].classList.add('active');
+        }
+
+        function toggleCard(header) {
+            const content = header.nextElementSibling;
+            const icon = header.querySelector('.toggle-icon');
+
+            content.classList.toggle('show');
+            header.classList.toggle('expanded');
+            icon.classList.toggle('rotated');
+        }
+
+        // Initialize - expand first card in each tab
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.card-header')[0].click();
+        });
+    </script>
+</body>
+</html>

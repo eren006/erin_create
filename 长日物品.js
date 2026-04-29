@@ -2122,7 +2122,6 @@ cmd_apply.solve = (ctx, msg, cmdArgs) => {
     // 7. 渲染反馈
     const changes = parseAttrEffects(item.attrs);
     const effectStr = Object.entries(changes).map(([k, v]) => `${k}${v > 0 ? '+' : ''}${v}`).join("，");
-    const main = getMain();
     const shouldNotify = main.storageGet("apply_item_notification") !== "false";
     const exposeRate = parseInt(main.storageGet("apply_item_expose_rate") || "0");
     const isExposed = Math.random() * 100 < exposeRate;

@@ -9,7 +9,7 @@
  * - 记录查询：查看信件发送记录
  */
 
-const ext = seal.ext.find("我的长日");
+const ext = seal.ext.find("changriV1");
 if (!ext) {
     console.error("❌ 长日写信综需要依赖「我的长日」插件");
 }
