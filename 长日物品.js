@@ -1957,7 +1957,7 @@ function isApplyTimeValid(main) {
 
 let cmd_apply = seal.ext.newCmdItemInfo();
 cmd_apply.name = "施加";
-cmd_apply.help = "对他人使用互动道具\n格式：施加 目标姓名 物品名/代码\n查看设置：施加 设置 或 施加 查看\n示例：施加 张三 医疗包";
+cmd_apply.help = "对他人使用互动道具或追踪器\n\n【互动道具】\n格式：施加 目标姓名 物品名/代码\n示例：施加 张三 医疗包\n\n【追踪器】\n格式：施加 目标姓名 追踪器/SPEC_001 [时间]\n示例：施加 张三 追踪器 14\n     施加 张三 SPEC_001 14:30\n\n【管理设置】\n施加 设置  或  施加 查看  查看施加系统设置";
 cmd_apply.solve = (ctx, msg, cmdArgs) => {
     const main = getMain();
     const targetName = cmdArgs.getArgN(1);
@@ -1999,6 +1999,56 @@ cmd_apply.solve = (ctx, msg, cmdArgs) => {
 
     // 1. 基础校验
     if (!item) return seal.replyToSender(ctx, msg, `❌ 未知物品「${inputCode}」`);
+
+    // 特殊处理：追踪器
+    if (item.code === "SPEC_001") {
+        const timeArg = cmdArgs.getArgN(3);
+        const globalDay = main.storageGet("global_days");
+        if (!globalDay) return seal.replyToSender(ctx, msg, "⚠️ 未设置游戏天数。");
+
+        // 检查背包
+        let inv = getInv(roleKey);
+        if (!inv.find(e => e.code === "SPEC_001")) {
+            return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的追踪器。");
+        }
+
+        const timeRestrict = main.storageGet("item_tracker_time_restrict") !== "false";
+        let timeRange;
+        if (timeRestrict) {
+            const h = new Date().getHours();
+            timeRange = `${h.toString().padStart(2,'0')}:00-${h === 23 ? "23:59" : (h+1).toString().padStart(2,'0')+":00"}`;
+        } else {
+            if (!timeArg) return seal.replyToSender(ctx, msg, "🔍 请指定追踪时间：施加 角色名 追踪器 时间（如 14 或 14:30）");
+            let hour, minute = 0;
+            if (/^\d{1,2}$/.test(timeArg)) { hour = parseInt(timeArg); }
+            else if (/^\d{1,2}:\d{2}$/.test(timeArg)) {
+                [hour, minute] = timeArg.split(':').map(Number);
+                if (minute < 0 || minute > 59) return seal.replyToSender(ctx, msg, "⚠️ 分钟应在00-59之间");
+            } else return seal.replyToSender(ctx, msg, "⚠️ 时间格式错误，请使用：14 或 14:30");
+            if (hour < 0 || hour > 23) return seal.replyToSender(ctx, msg, "⚠️ 小时应在0-23之间");
+            const start = `${hour.toString().padStart(2,'0')}:${minute.toString().padStart(2,'0')}`;
+            let endH = hour + 1, endM = minute;
+            if (endH >= 24) { endH = 23; endM = 59; }
+            timeRange = `${start}-${endH.toString().padStart(2,'0')}:${endM.toString().padStart(2,'0')}`;
+        }
+
+        const b_confirmedSchedule = JSON.parse(main.storageGet("b_confirmedSchedule") || "{}");
+        const targetKey = `${platform}:${apg[platform][targetName][0]}`;
+        const matchingEvent = (b_confirmedSchedule[targetKey] || []).find(ev => ev.day === globalDay && timeOverlap(ev.time, timeRange));
+        const successRate = parseInt(main.storageGet("item_tracker_success_rate") || "70");
+        const showPartner = main.storageGet("item_tracker_show_partner") !== "false";
+        const isSuccess = Math.random() * 100 < successRate;
+
+        if (!matchingEvent) return seal.replyToSender(ctx, msg, `🔍 未能发现「${targetName}」的行踪。\n（追踪器未消耗）`);
+        if (!removeFromInv(roleKey, "SPEC_001", 1)) return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的追踪器。");
+        if (!isSuccess) return seal.replyToSender(ctx, msg, `🔍 信号干扰，定位失败。\n（追踪器已消耗）`);
+
+        let resultMsg = `🔍 追踪到「${targetName}」在 ${globalDay} ${matchingEvent.time} 出现在「${matchingEvent.place || "某处"}」`;
+        if (showPartner && matchingEvent.partner && matchingEvent.partner !== "独自一人") resultMsg += `，与 ${matchingEvent.partner} 一起`;
+        resultMsg += `。\n（追踪器已消耗）`;
+        return seal.replyToSender(ctx, msg, resultMsg);
+    }
+
     if (item.type !== "interact") return seal.replyToSender(ctx, msg, `⚠️ [${item.name}] 不是互动类物品，请使用「.使用」指令。`);
 
     // 2. 检查目标是否存在
