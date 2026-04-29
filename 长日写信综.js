@@ -1,3 +1,12 @@
+// ==UserScript==
+// @name         长日写信综
+// @author       长日将尽
+// @version      1.0.0
+// @description  独立的正式信件系统，支持发送信件、写信币赏金、配置管理
+// @timestamp    1745568000
+// @license      MIT
+// ==/UserScript==
+
 /**
  * 长日写信综 - 独立的正式信件系统
  * 支持发送正式信件、写信币赏金制度、配置管理等功能
@@ -9,10 +18,15 @@
  * - 记录查询：查看信件发送记录
  */
 
-const ext = seal.ext.find("changriV1");
+let ext = seal.ext.find("changriV1");
 if (!ext) {
-    console.error("❌ 长日写信综需要依赖「changriV1」插件");
-    throw new Error("缺少核心依赖：changriV1插件未找到");
+    // 如果找不到主插件，尝试创建一个包装器
+    ext = seal.ext.find("letter_system_wrapper");
+    if (!ext) {
+        ext = seal.ext.new("letter_system_wrapper", "长日将尽", "1.0.0");
+        seal.ext.register(ext);
+    }
+    console.warn("⚠️  长日写信综运行在兼容模式：未找到changriV1主插件");
 }
 
 // ========================
