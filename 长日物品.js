@@ -2198,19 +2198,57 @@ ext.onNotCommandReceived = (ctx, msg) => {
         const roleAttrs = charAttrs[roleName] || {};
         const attrNames = Object.keys(defs);
         if (!attrNames.length) return seal.replyToSender(ctx, msg, `🎭 【${roleName}】暂无属性，管理员可用「我创建属性」添加。`);
-        const BAR = 10;
-        const lines = attrNames.map(name => {
+
+        // 分类属性
+        const limitedAttrs = [];
+        const unlimitedAttrs = [];
+        const BAR = 12;
+
+        attrNames.forEach(name => {
             const def = defs[name];
             const val = roleAttrs[name] ?? (def.default ?? 0);
             if (def.max !== null && def.max !== undefined && def.min !== null) {
                 const pct = def.max === def.min ? 1 : (val - def.min) / (def.max - def.min);
                 const filled = Math.round(Math.max(0, Math.min(1, pct)) * BAR);
                 const bar = "█".repeat(filled) + "░".repeat(BAR - filled);
-                return `${name}  ${bar}  ${val}/${def.max}`;
+                const percent = Math.round(pct * 100);
+                limitedAttrs.push(`  ✦ ${name.padEnd(6)} ${bar} ${val}/${def.max} (${percent}%)`);
+            } else {
+                unlimitedAttrs.push(`  ◆ ${name.padEnd(6)} ${val.toString().padStart(6)}${def.min !== null ? ` 〔最低:${def.min}〕` : ""}`);
             }
-            return `${name}  ${val}${def.min !== null ? `（最低${def.min}）` : ""}`;
         });
-        return seal.replyToSender(ctx, msg, `🎭 【${roleName}】的状态\n${"━".repeat(14)}\n${lines.join("\n")}`);
+
+        // 获取货币信息
+        const roleKey = `${platform}:${roleName}`;
+        const inv = getInv(roleKey);
+        const registry = getRegistry();
+        const currencies = inv.filter(e => {
+            const item = registry[e.code];
+            return item && item.type === "currency";
+        }).sort((a, b) => a.code.localeCompare(b.code));
+
+        let result = `╔══════════════════════════════╗\n║ 🎭 【${roleName}】的状态面板\n╠══════════════════════════════╣\n`;
+
+        if (limitedAttrs.length > 0) {
+            result += `║ 📊 核心属性\n${limitedAttrs.map(l => `║${l}`).join("\n")}\n`;
+        }
+
+        if (unlimitedAttrs.length > 0) {
+            if (limitedAttrs.length > 0) result += `║\n`;
+            result += `║ 📈 资源属性\n${unlimitedAttrs.map(l => `║${l}`).join("\n")}\n`;
+        }
+
+        if (currencies.length > 0) {
+            if (limitedAttrs.length > 0 || unlimitedAttrs.length > 0) result += `║\n`;
+            result += `║ 💰 货币\n`;
+            currencies.forEach(curr => {
+                const currName = registry[curr.code]?.name || curr.code;
+                result += `║  💵 ${currName.padEnd(6)} ${curr.count.toString().padStart(8)}\n`;
+            });
+        }
+
+        result += `╚══════════════════════════════╝`;
+        return seal.replyToSender(ctx, msg, result);
     }
 
     // 我创建属性（管理员，无前缀）
@@ -2423,19 +2461,57 @@ ext.onNotCommandReceived = (ctx, msg) => {
         const roleAttrs = charAttrs[roleName] || {};
         const attrNames = Object.keys(defs);
         if (!attrNames.length) return seal.replyToSender(ctx, msg, `🎭 【${roleName}】暂无属性，管理员可用「我创建属性」添加。`);
-        const BAR = 10;
-        const lines = attrNames.map(name => {
+
+        // 分类属性
+        const limitedAttrs = [];
+        const unlimitedAttrs = [];
+        const BAR = 12;
+
+        attrNames.forEach(name => {
             const def = defs[name];
             const val = roleAttrs[name] ?? (def.default ?? 0);
             if (def.max !== null && def.max !== undefined && def.min !== null) {
                 const pct = def.max === def.min ? 1 : (val - def.min) / (def.max - def.min);
                 const filled = Math.round(Math.max(0, Math.min(1, pct)) * BAR);
                 const bar = "█".repeat(filled) + "░".repeat(BAR - filled);
-                return `${name}  ${bar}  ${val}/${def.max}`;
+                const percent = Math.round(pct * 100);
+                limitedAttrs.push(`  ✦ ${name.padEnd(6)} ${bar} ${val}/${def.max} (${percent}%)`);
+            } else {
+                unlimitedAttrs.push(`  ◆ ${name.padEnd(6)} ${val.toString().padStart(6)}${def.min !== null ? ` 〔最低:${def.min}〕` : ""}`);
             }
-            return `${name}  ${val}${def.min !== null ? `（最低${def.min}）` : ""}`;
         });
-        return seal.replyToSender(ctx, msg, `🎭 【${roleName}】的状态\n${"━".repeat(14)}\n${lines.join("\n")}`);
+
+        // 获取货币信息
+        const roleKey = `${platform}:${roleName}`;
+        const inv = getInv(roleKey);
+        const registry = getRegistry();
+        const currencies = inv.filter(e => {
+            const item = registry[e.code];
+            return item && item.type === "currency";
+        }).sort((a, b) => a.code.localeCompare(b.code));
+
+        let result = `╔══════════════════════════════╗\n║ 🎭 【${roleName}】的状态面板\n╠══════════════════════════════╣\n`;
+
+        if (limitedAttrs.length > 0) {
+            result += `║ 📊 核心属性\n${limitedAttrs.map(l => `║${l}`).join("\n")}\n`;
+        }
+
+        if (unlimitedAttrs.length > 0) {
+            if (limitedAttrs.length > 0) result += `║\n`;
+            result += `║ 📈 资源属性\n${unlimitedAttrs.map(l => `║${l}`).join("\n")}\n`;
+        }
+
+        if (currencies.length > 0) {
+            if (limitedAttrs.length > 0 || unlimitedAttrs.length > 0) result += `║\n`;
+            result += `║ 💰 货币\n`;
+            currencies.forEach(curr => {
+                const currName = registry[curr.code]?.name || curr.code;
+                result += `║  💵 ${currName.padEnd(6)} ${curr.count.toString().padStart(8)}\n`;
+            });
+        }
+
+        result += `╚══════════════════════════════╝`;
+        return seal.replyToSender(ctx, msg, result);
     }
 
     // 我创建属性（管理员，无前缀）
