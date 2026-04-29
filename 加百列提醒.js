@@ -7,9 +7,9 @@
 // ==/UserScript==
 
 function parseTimeToFutureTimestamp(timeStr) {
-    const match = timeStr.trim().match(/^(\d{1,2}):(\d{1,2})$/);
+    const match = timeStr.trim().match(/^(\d{1,2})[:：](\d{1,2})$/);
     if (!match) {
-        throw new Error("凡人，时间需以 HH:mm 书写，如 9:05 或 14:30。");
+        throw new Error("凡人，时间需以 HH:mm 或 HH：mm 书写，如 9:05 或 14：30。");
     }
     let [_, hoursStr, minutesStr] = match;
     let hours = parseInt(hoursStr, 10);
@@ -225,97 +225,91 @@ function deliverMessage(epId, guildId, groupId, userId, isPrivate, text, generat
 if (!seal.ext.find('大天使加百列')) {
     const ext = seal.ext.new('大天使加百列', 'Archangel Gabriel', '1.2.0');
 
-    const cmd = seal.ext.newCmdItemInfo();
-    cmd.name = '提醒我';
-    cmd.help = `
+    ext.onNotCommand = (ctx, msg) => {
+        const rawMsg = msg.message.trim();
+
+        // 匹配 "提醒我" 关键词后跟时间和内容
+        const notifyMatch = rawMsg.match(/^提醒我\s+(\d{1,2}[:：]\d{1,2})\s+(.+)$/s);
+
+        if (notifyMatch) {
+            const timeStr = notifyMatch[1];
+            const messageText = notifyMatch[2].trim();
+
+            if (!messageText) {
+                seal.replyToSender(ctx, msg, "❌ 请赐下你要铭记的言语，例如：提醒我 14:30 记得吃药");
+                return seal.ext.newCmdExecuteResult(true);
+            }
+
+            const gabriel = ArchangelGabriel.getInstance(ext);
+            try {
+                gabriel.addTask(ctx, msg, timeStr, messageText);
+                const execTime = new Date(parseTimeToFutureTimestamp(timeStr));
+                const timeDisplay = `${execTime.getMonth()+1}月${execTime.getDate()}日 ${execTime.getHours()}:${execTime.getMinutes().toString().padStart(2,'0')}`;
+
+                const isPrivate = (msg.messageType === "private");
+                const atInfo = isPrivate ? "" : "（提醒时会艾特君）";
+
+                seal.replyToSender(ctx, msg, `🕊️ 吾已将「${messageText}」载入圣约之书，将于 ${timeDisplay} 为你鸣钟${atInfo}。`);
+            } catch (e) {
+                seal.replyToSender(ctx, msg, `⚠️ 加百列无法记录此谕：${e.message}`);
+            }
+
+            return seal.ext.newCmdExecuteResult(true);
+        }
+
+        // 匹配 "提醒我" 后跟命令
+        const cmdMatch = rawMsg.match(/^提醒我\s+(\S+)(?:\s+(.+))?$/);
+
+        if (cmdMatch) {
+            const cmd = cmdMatch[1];
+            const arg = cmdMatch[2];
+            const gabriel = ArchangelGabriel.getInstance(ext);
+
+            switch (cmd) {
+                case 'help':
+                case '帮助':
+                    const helpText = `
 🕊️【大天使加百列 · 圣谕系统】
 吾乃加百列，奉命为你铭记此刻——无需引号，直述心声。
 
 📜 用法：
-.提醒我 14:30 记得吃药
-.提醒我 2:00 夜巡开始啦～
+提醒我 14:30 记得吃药
+提醒我 2:00 夜巡开始啦～
 
 📖 其他指令：
-.提醒我 list     → 查阅圣约之书
-.提醒我 del <ID> → 抹去某条记载
+提醒我 list     → 查阅圣约之书
+提醒我 del <ID> → 抹去某条记载
 
 ✨ 说明：
 - 时间后所有文字将视为提醒内容（支持空格）
-- 时间格式：HH:mm（如 9:05、14:30）
+- 时间格式：HH:mm 或 HH：mm（如 9:05、14:30、14：30）
 - 若时辰已过（如 20:00 设 2:00），则延至明日
 - 每条提醒仅生效一次，钟响即焚
 - 在群聊中提醒时会自动艾特设置者
 `;
+                    seal.replyToSender(ctx, msg, helpText);
+                    return seal.ext.newCmdExecuteResult(true);
 
-    cmd.solve = (ctx, msg, cmdArgs) => {
-        // 获取原始命令文本（不含指令名）
-        const rawArgs = msg.message.replace(/^\s*\.?提醒我\s+/i, '').trim();
+                case 'list':
+                case '列表':
+                    seal.replyToSender(ctx, msg, gabriel.listTasks(ctx));
+                    return seal.ext.newCmdExecuteResult(true);
 
-        if (!rawArgs) {
-            seal.replyToSender(ctx, msg, "凡人，请示下旨意。使用 .提醒我 help 查阅圣谕。");
-            return seal.ext.newCmdExecuteResult(true);
-        }
-
-        // 尝试匹配开头的时间（支持 9:05、14:30 等）
-        const timeMatch = rawArgs.match(/^(\d{1,2}:\d{1,2})\s+(.+)$/s);
-
-        if (!timeMatch) {
-            // 检查是否是 list / del / help
-            const firstWord = rawArgs.split(/\s+/)[0];
-            if (['help', 'list', 'del', 'delete'].includes(firstWord)) {
-                const gabriel = ArchangelGabriel.getInstance(ext);
-                switch (firstWord) {
-                    case 'help':
-                        seal.replyToSender(ctx, msg, cmd.help);
-                        break;
-                    case 'list':
-                        seal.replyToSender(ctx, msg, gabriel.listTasks(ctx));
-                        break;
-                    case 'del':
-                    case 'delete':
-                        const id = rawArgs.split(/\s+/)[1];
-                        if (!id) {
-                            seal.replyToSender(ctx, msg, "❌ 请赐下要抹去的圣约编号，使用 .提醒我 list 查阅。");
-                        } else {
-                            seal.replyToSender(ctx, msg, gabriel.deleteTask(ctx, id));
-                        }
-                        break;
-                }
-                return seal.ext.newCmdExecuteResult(true);
-            } else {
-                seal.replyToSender(ctx, msg, "⚠️ 无法解析指令。请使用「.提醒我 HH:mm 内容」格式，例如：.提醒我 14:30 记得吃药");
-                return seal.ext.newCmdExecuteResult(true);
+                case 'del':
+                case 'delete':
+                case '删除':
+                    if (!arg) {
+                        seal.replyToSender(ctx, msg, "❌ 请赐下要抹去的圣约编号，使用 提醒我 list 查阅。");
+                    } else {
+                        seal.replyToSender(ctx, msg, gabriel.deleteTask(ctx, arg));
+                    }
+                    return seal.ext.newCmdExecuteResult(true);
             }
         }
 
-        const timeStr = timeMatch[1];
-        const messageText = timeMatch[2].trim();
-
-        if (!messageText) {
-            seal.replyToSender(ctx, msg, "❌ 请赐下你要铭记的言语，例如：.提醒我 14:30 记得吃药");
-            return seal.ext.newCmdExecuteResult(true);
-        }
-
-        const gabriel = ArchangelGabriel.getInstance(ext);
-        try {
-            gabriel.addTask(ctx, msg, timeStr, messageText);
-            const execTime = new Date(parseTimeToFutureTimestamp(timeStr));
-            const timeDisplay = `${execTime.getMonth()+1}月${execTime.getDate()}日 ${execTime.getHours()}:${execTime.getMinutes().toString().padStart(2,'0')}`;
-
-            // 根据消息类型给出不同的确认信息
-            const isPrivate = (msg.messageType === "private");
-            const atInfo = isPrivate ? "" : "（提醒时会艾特君）";
-
-            seal.replyToSender(ctx, msg, `🕊️ 吾已将「${messageText}」载入圣约之书，将于 ${timeDisplay} 为你鸣钟${atInfo}。`);
-        } catch (e) {
-            seal.replyToSender(ctx, msg, `⚠️ 加百列无法记录此谕：${e.message}`);
-        }
-
-        return seal.ext.newCmdExecuteResult(true);
+        return seal.ext.newCmdExecuteResult(false);
     };
 
-    ext.cmdMap['提醒我'] = cmd;
     seal.ext.register(ext);
-
     ArchangelGabriel.getInstance(ext);
 }
