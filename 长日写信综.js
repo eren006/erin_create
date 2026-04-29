@@ -54,6 +54,37 @@ function ensureLetterCoinCurrency() {
     }
 }
 
+/**
+ * 注册特殊写信道具
+ */
+function ensureLetterSpecialItems() {
+    const itemReg = JSON.parse(ext.storageGet("item_registry") || "{}");
+
+    // 望远镜
+    if (!itemReg["SPEC_003"]) {
+        itemReg["SPEC_003"] = {
+            code: "SPEC_003",
+            name: "望远镜",
+            desc: "施加给目标，当其发出信件时自动抄录一份给使用者",
+            type: "item",
+            special: true
+        };
+    }
+
+    // 羽毛笔
+    if (!itemReg["SPEC_004"]) {
+        itemReg["SPEC_004"] = {
+            code: "SPEC_004",
+            name: "羽毛笔",
+            desc: "施加给目标，其下一封信将先发送给使用者进行修改后再发出",
+            type: "item",
+            special: true
+        };
+    }
+
+    ext.storageSet("item_registry", JSON.stringify(itemReg));
+}
+
 // ========================
 // 【2】工具函数
 // ========================
@@ -75,6 +106,49 @@ function recordActivity(actType, platform, ctx, endpoint) {
     if (typeof recordMeetingAndAnnounce === "function") {
         recordMeetingAndAnnounce(actType, platform, ctx, endpoint);
     }
+}
+
+/**
+ * 处理超时的待审信件（3小时未修改则发送原文）
+ */
+function processExpiredQuillPens() {
+    const TIMEOUT_MS = 3 * 60 * 60 * 1000; // 3小时
+    const now = Date.now();
+    let pendingLetters = JSON.parse(ext.storageGet("letter_pending_quill_pens") || "{}");
+    const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
+
+    for (const [modifierRoleName, letters] of Object.entries(pendingLetters)) {
+        for (let i = letters.length - 1; i >= 0; i--) {
+            const letterData = letters[i];
+            if (now - letterData.applyTime > TIMEOUT_MS) {
+                // 超时，发送原文
+                try {
+                    const platform = letterData.platform;
+                    const targetEntry = a_private_group[platform]?.[letterData.receiverName];
+                    if (targetEntry) {
+                        let originalLetter = `✉️ ${letterData.receiverName}，你收到一封信：\n`;
+                        if (letterData.dateTag) originalLetter += `📅 日期：${letterData.dateTag}\n`;
+                        originalLetter += `\n「${letterData.content}」\n\n—— ${letterData.signature}`;
+                        if (letterData.attachment) originalLetter += `\n\n附件：\n--------------------\n${letterData.attachment}`;
+                        originalLetter += `\n\n⏰ (此信件已超时3小时，自动发送原文)`;
+
+                        const msg = seal.newMessage();
+                        msg.messageType = "group";
+                        msg.groupId = `${platform}-Group:${targetEntry[1]}`;
+                        const msgCtx = seal.createTempCtx({endPoint: {cmdPrefix: "。"}}, msg);
+                        seal.replyToSender(msgCtx, msg, originalLetter);
+                    }
+                } catch (e) {
+                    console.error("发送超时待审信件失败:", e);
+                }
+
+                // 删除该待审信件
+                letters.splice(i, 1);
+            }
+        }
+    }
+
+    ext.storageSet("letter_pending_quill_pens", JSON.stringify(pendingLetters));
 }
 
 // ========================
@@ -114,7 +188,10 @@ cmd_enable_letter_system.solve = (ctx, msg, cmdArgs) => {
         // 自动注册写信币
         ensureLetterCoinCurrency();
 
-        seal.replyToSender(ctx, msg, `✅ 写信综已启用！\n\n✨ 已自动注册货币：写信币\n📮 玩家可以开始使用「发送信件」命令。`);
+        // 自动注册特殊道具
+        ensureLetterSpecialItems();
+
+        seal.replyToSender(ctx, msg, `✅ 写信综已启用！\n\n✨ 已自动注册货币：写信币\n🔭 已自动注册道具：望远镜、羽毛笔\n📮 玩家可以开始使用「发送信件」命令。`);
     } else {
         config.enable_letter_system = false;
         ext.storageSet("global_feature_toggle", JSON.stringify(config));
@@ -148,6 +225,9 @@ cmd_send_letter.help = `📮 发送正式信件
 【署名】小红`;
 
 cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
+    // 检查并处理超时的待审信件
+    processExpiredQuillPens();
+
     // 1. 检查写信综是否启用
     if (!isLetterSystemEnabled()) {
         seal.replyToSender(ctx, msg, "✉️ 发送信件功能未启用。\n\n管理员需要先执行「启用写信综 开启」。");
@@ -211,6 +291,84 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
+    // 6. 检查特殊道具效果（望远镜、羽毛笔）
+    let telescopeAppliers = []; // 施加望远镜的人列表
+    let quillPenApplier = null; // 施加羽毛笔的人
+    let effectToHandle = null; // 需要处理的效果
+
+    const telescopeEffects = JSON.parse(ext.storageGet("letter_telescope_effects") || "{}");
+    const quillPenEffects = JSON.parse(ext.storageGet("letter_quill_pen_effects") || "{}");
+
+    if (telescopeEffects[senderRoleName]) {
+        telescopeAppliers = telescopeEffects[senderRoleName]
+            .filter(e => e.itemCode === "SPEC_003")
+            .sort((a, b) => a.applyTime - b.applyTime);
+    }
+
+    if (quillPenEffects[senderRoleName]) {
+        const quillPens = quillPenEffects[senderRoleName]
+            .filter(e => e.itemCode === "SPEC_004")
+            .sort((a, b) => a.applyTime - b.applyTime);
+        if (quillPens.length > 0) {
+            quillPenApplier = quillPens[0];
+        }
+    }
+
+    // 确定优先级（谁先施加谁优先）
+    if (quillPenApplier && telescopeAppliers.length > 0) {
+        if (quillPenApplier.applyTime < telescopeAppliers[0].applyTime) {
+            effectToHandle = { type: "quill", data: quillPenApplier };
+        } else {
+            effectToHandle = { type: "telescope", data: telescopeAppliers[0] };
+        }
+    } else if (quillPenApplier) {
+        effectToHandle = { type: "quill", data: quillPenApplier };
+    } else if (telescopeAppliers.length > 0) {
+        effectToHandle = { type: "telescope", data: telescopeAppliers[0] };
+    }
+
+    // 处理羽毛笔效果（优先级最高时）
+    if (effectToHandle?.type === "quill" && receiver !== quillPenApplier.applier) {
+        // 羽毛笔进入待审状态
+        let pendingLetters = JSON.parse(ext.storageGet("letter_pending_quill_pens") || "{}");
+        if (!pendingLetters[quillPenApplier.applier]) {
+            pendingLetters[quillPenApplier.applier] = [];
+        }
+
+        pendingLetters[quillPenApplier.applier].push({
+            senderName: senderRoleName,
+            receiverName: receiver,
+            content: content,
+            dateTag: dateTag,
+            attachment: attachment,
+            signature: signature,
+            gameDay: gameDay,
+            platform: platform,
+            applyTime: Date.now(),
+            userId: uid
+        });
+
+        ext.storageSet("letter_pending_quill_pens", JSON.stringify(pendingLetters));
+
+        // 清除已使用的羽毛笔效果
+        delete quillPenEffects[senderRoleName][quillPenEffects[senderRoleName].indexOf(quillPenApplier)];
+        quillPenEffects[senderRoleName] = quillPenEffects[senderRoleName].filter(e => e);
+        ext.storageSet("letter_quill_pen_effects", JSON.stringify(quillPenEffects));
+
+        // 通知施加人
+        const applierEntry = a_private_group[platform][quillPenApplier.applier];
+        const applierMsg = seal.newMessage();
+        applierMsg.messageType = "group";
+        applierMsg.groupId = `${platform}-Group:${applierEntry[1]}`;
+        const applierCtx = seal.createTempCtx(ctx.endPoint, applierMsg);
+
+        let pendingContent = `🖋️ 【羽毛笔待审】${senderRoleName} 想向 ${receiver} 发送信件：\n\n「${content}」\n\n请使用 。羽毛笔修改 <新内容> 修改内容后发送。\n⏰ 3小时内未修改将自动发送原文。`;
+        seal.replyToSender(applierCtx, applierMsg, `[CQ:at,qq=${applierEntry[0]}]\n${pendingContent}`);
+
+        seal.replyToSender(ctx, msg, `⏳ 你的信件已发送给「${quillPenApplier.applier}」进行审核，等待修改或超时发送...`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
     // 6. 赏金机制
     const minChars = parseInt(ext.storageGet("letter_min_chars") || "0");
     const rewardPerLetter = parseInt(ext.storageGet("letter_reward") || "0");
@@ -230,6 +388,38 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
     deliverMsg.groupId = `${platform}-Group:${targetEntry[1]}`;
     const deliverCtx = seal.createTempCtx(ctx.endPoint, deliverMsg);
     seal.replyToSender(deliverCtx, deliverMsg, finalLetter);
+
+    // 8.5 处理望远镜效果（抄录）
+    if (effectToHandle?.type === "telescope") {
+        const telescopeApplier = effectToHandle.data;
+        if (receiver === telescopeApplier.applier) {
+            // 收件人就是施加人，只发通知
+            const applierEntry = a_private_group[platform][telescopeApplier.applier];
+            const applierMsg = seal.newMessage();
+            applierMsg.messageType = "group";
+            applierMsg.groupId = `${platform}-Group:${applierEntry[1]}`;
+            const applierCtx = seal.createTempCtx(ctx.endPoint, applierMsg);
+            seal.replyToSender(applierCtx, applierMsg, `📺 望远镜提醒：${senderRoleName} 正好发给了你（所以没有进行抄录）`);
+        } else {
+            // 抄录一份给施加人
+            const applierEntry = a_private_group[platform][telescopeApplier.applier];
+            const applierMsg = seal.newMessage();
+            applierMsg.messageType = "group";
+            applierMsg.groupId = `${platform}-Group:${applierEntry[1]}`;
+            const applierCtx = seal.createTempCtx(ctx.endPoint, applierMsg);
+
+            let copiedLetter = `📺 【望远镜抄录】来自 ${senderRoleName} 发给 ${receiver} 的信件：\n`;
+            if (dateTag) copiedLetter += `📅 日期：${dateTag}\n`;
+            copiedLetter += `\n「${content}」\n\n—— ${signature}`;
+            if (attachment) copiedLetter += `\n\n附件：\n--------------------\n${attachment}`;
+
+            seal.replyToSender(applierCtx, applierMsg, copiedLetter);
+        }
+
+        // 删除已使用的望远镜效果
+        telescopeEffects[senderRoleName] = telescopeEffects[senderRoleName].filter(e => e !== telescopeApplier);
+        ext.storageSet("letter_telescope_effects", JSON.stringify(telescopeEffects));
+    }
 
     // 9. 发放赏金
     let rewardGiven = 0;
@@ -376,7 +566,165 @@ cmd_letter_status.solve = (ctx, msg, cmdArgs) => {
 ext.cmdMap["信件状态"] = cmd_letter_status;
 
 // ========================
-// 【7】初始化
+// 【7】施加命令（特殊道具效果）
+// ========================
+
+let cmd_apply_effect = seal.ext.newCmdItemInfo();
+cmd_apply_effect.name = "施加";
+cmd_apply_effect.help = `🎯 施加特殊写信道具效果
+格式：。施加 <目标角色> <道具名>
+
+道具：
+- 望远镜：当目标发出信件时，自动抄录一份给你
+- 羽毛笔：当目标发出信件时，先发给你修改后再发出
+
+示例：
+。施加 小明 望远镜
+。施加 张三 羽毛笔`;
+
+cmd_apply_effect.solve = (ctx, msg, cmdArgs) => {
+    if (!isLetterSystemEnabled()) {
+        seal.replyToSender(ctx, msg, "✉️ 发送信件功能未启用。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const platform = msg.platform;
+    const uid = msg.sender.userId.replace(`${platform}:`, "");
+    const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
+
+    // 获取施加人角色名
+    const applierRoleName = getRoleName(ctx, msg);
+    if (!applierRoleName) {
+        seal.replyToSender(ctx, msg, "✨ 请先使用「创建新角色」来认领你的身份。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const targetName = cmdArgs.getArgN(1);
+    const itemName = cmdArgs.getArgN(2);
+
+    if (!targetName || !itemName) {
+        seal.replyToSender(ctx, msg, cmd_apply_effect.help);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 检查目标是否存在
+    if (!a_private_group[platform]?.[targetName]) {
+        seal.replyToSender(ctx, msg, `⚠️ 找不到角色「${targetName}」。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 确定道具code
+    let itemCode = null;
+    if (itemName === "望远镜") {
+        itemCode = "SPEC_003";
+    } else if (itemName === "羽毛笔") {
+        itemCode = "SPEC_004";
+    } else {
+        seal.replyToSender(ctx, msg, `⚠️ 未知道具「${itemName}」。支持：望远镜、羽毛笔`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 检查玩家是否拥有该道具
+    let attrs = JSON.parse(ext.storageGet("sys_character_attrs") || "{}");
+    if (!attrs[applierRoleName]?.[itemCode] || attrs[applierRoleName][itemCode] <= 0) {
+        seal.replyToSender(ctx, msg, `❌ 你没有「${itemName}」。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 消耗道具
+    attrs[applierRoleName][itemCode]--;
+    ext.storageSet("sys_character_attrs", JSON.stringify(attrs));
+
+    // 记录施加效果
+    const effectsKey = itemCode === "SPEC_003" ? "letter_telescope_effects" : "letter_quill_pen_effects";
+    let effects = JSON.parse(ext.storageGet(effectsKey) || "{}");
+
+    if (!effects[targetName]) {
+        effects[targetName] = [];
+    }
+
+    effects[targetName].push({
+        applier: applierRoleName,
+        applyTime: Date.now(),
+        itemCode: itemCode
+    });
+
+    ext.storageSet(effectsKey, JSON.stringify(effects));
+
+    seal.replyToSender(ctx, msg, `✅ 你已向「${targetName}」施加了「${itemName}」！`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+
+ext.cmdMap["施加"] = cmd_apply_effect;
+
+// ========================
+// 【8】羽毛笔修改命令
+// ========================
+
+let cmd_quill_pen_modify = seal.ext.newCmdItemInfo();
+cmd_quill_pen_modify.name = "羽毛笔修改";
+cmd_quill_pen_modify.help = `✏️ 修改待审的信件内容
+格式：。羽毛笔修改 <新内容>
+
+仅当有角色对你施加羽毛笔时可用。`;
+
+cmd_quill_pen_modify.solve = (ctx, msg, cmdArgs) => {
+    const platform = msg.platform;
+    const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
+
+    // 获取修改人角色名（应该是施加人）
+    const modifierRoleName = getRoleName(ctx, msg);
+    if (!modifierRoleName) {
+        seal.replyToSender(ctx, msg, "✨ 请先使用「创建新角色」来认领你的身份。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const newContent = msg.message.replace(/^[\s\S]*?。羽毛笔修改\s*/, "").trim();
+    if (!newContent) {
+        seal.replyToSender(ctx, msg, cmd_quill_pen_modify.help);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 查找该角色的待审信件
+    let pendingLetters = JSON.parse(ext.storageGet("letter_pending_quill_pens") || "{}");
+
+    if (!pendingLetters[modifierRoleName] || pendingLetters[modifierRoleName].length === 0) {
+        seal.replyToSender(ctx, msg, "❌ 你没有需要修改的信件。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 获取待审信件（取第一个）
+    const letterData = pendingLetters[modifierRoleName][0];
+
+    // 组装修改后的信件内容
+    let finalLetter = `✉️ ${letterData.receiverName}，你收到一封信：\n`;
+    if (letterData.dateTag) finalLetter += `📅 日期：${letterData.dateTag}\n`;
+    finalLetter += `\n「${newContent}」\n\n—— ${letterData.signature}`;
+    if (letterData.attachment) finalLetter += `\n\n附件：\n--------------------\n${letterData.attachment}`;
+
+    // 发送修改后的信件到收件人私人群
+    const targetEntry = a_private_group[platform][letterData.receiverName];
+    const deliverMsg = seal.newMessage();
+    deliverMsg.messageType = "group";
+    deliverMsg.groupId = `${platform}-Group:${targetEntry[1]}`;
+    const deliverCtx = seal.createTempCtx(ctx.endPoint, deliverMsg);
+    seal.replyToSender(deliverCtx, deliverMsg, finalLetter);
+
+    // 删除已处理的待审信件
+    pendingLetters[modifierRoleName].shift();
+    if (pendingLetters[modifierRoleName].length === 0) {
+        delete pendingLetters[modifierRoleName];
+    }
+    ext.storageSet("letter_pending_quill_pens", JSON.stringify(pendingLetters));
+
+    seal.replyToSender(ctx, msg, `✅ 信件已发送！已以「${letterData.senderName}」的名义发给「${letterData.receiverName}」。`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+
+ext.cmdMap["羽毛笔修改"] = cmd_quill_pen_modify;
+
+// ========================
+// 【9】初始化
 // ========================
 
 console.log("✅ 长日写信综已加载");

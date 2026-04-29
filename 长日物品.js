@@ -867,6 +867,20 @@ cmd_shop_add.solve = (ctx, msg, cmdArgs) => {
     const reg = getRegistry();
     const item = findItem(reg, inputCode);
     if (!item) return seal.replyToSender(ctx, msg, `❌ 找不到物品「${inputCode}」`);
+
+    // 检查特殊道具限制（SPEC_003望远镜、SPEC_004羽毛笔）
+    if ((item.code === "SPEC_003" || item.code === "SPEC_004")) {
+        const letterExt = seal.ext.find("我的长日");
+        if (letterExt) {
+            const config = JSON.parse(letterExt.storageGet("global_feature_toggle") || "{}");
+            if (!config.enable_letter_system) {
+                return seal.replyToSender(ctx, msg, `❌ 「${item.name}」只有在启用写信综模式后才能上架。`);
+            }
+        } else {
+            return seal.replyToSender(ctx, msg, `❌ 写信系统未找到。`);
+        }
+    }
+
     const priceMatch = priceStr.match(/^(\d+)(.+)$/);
     if (!priceMatch) return seal.replyToSender(ctx, msg, "❌ 价格格式错误，示例：10金币");
     const amount = parseInt(priceMatch[1]);
@@ -957,6 +971,22 @@ cmd_pool_add.solve = (ctx, msg, cmdArgs) => {
         const num = parseInt((parts[1] || "1").trim());
         const item = findItem(reg, inputCode);
         if (!item) { results.push(`❌ 未知物品「${inputCode}」`); continue; }
+
+        // 检查特殊道具限制（SPEC_003望远镜、SPEC_004羽毛笔）
+        if ((item.code === "SPEC_003" || item.code === "SPEC_004")) {
+            const letterExt = seal.ext.find("我的长日");
+            if (letterExt) {
+                const config = JSON.parse(letterExt.storageGet("global_feature_toggle") || "{}");
+                if (!config.enable_letter_system) {
+                    results.push(`❌ 「${item.name}」只有在启用写信综模式后才能添加到池子。`);
+                    continue;
+                }
+            } else {
+                results.push(`❌ 写信系统未找到。`);
+                continue;
+            }
+        }
+
         if (isNaN(num) || num <= 0) { results.push(`❌ 数值无效: ${parts[1]}`); continue; }
         if (pool.type === "fixed") {
             if (num > 999) { results.push(`❌ 权重最大999: [${item.code}]`); continue; }
