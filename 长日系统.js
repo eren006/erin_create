@@ -803,7 +803,7 @@ function initCharProfile(platform, roleName, gender) {
 }
 
 // 背包物品按类别分组（兼容无 type 字段的旧数据）
-// 普通礼物: 赠送收到的礼物 + 礼物商城物品
+// 普通礼物: 赠送收到的礼物 + 礼品店物品
 // 普通道具: 抽取所得普通物品
 // 特殊道具: 管理员发放的功能性道具（追踪器/万能钥匙等）
 function getItemsByCategory(inv, cat) {
@@ -2327,7 +2327,7 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
         const userKey = `${platform}:${uid_clean}`;
         const owned = sightings[userKey]?.unlocked_gifts || [];
         if (!owned.includes(giftInput)) {
-            return seal.replyToSender(ctx, msg, `🔒 「${giftData.name}」不在图鉴中，请先发送「礼物商城」收集。`);
+            return seal.replyToSender(ctx, msg, `🔒 「${giftData.name}」不在图鉴中，请先发送「礼品店」收集。`);
         }
 
         giftDisplayName = `「${giftData.name}」`;
@@ -6288,13 +6288,13 @@ ext.onNotCommandReceived = (ctx, msg) => {
         return cmd_send_lovemail.solve(ctx, msg, makeFakeCmdArgs([]));
     }
 
-    if (raw === "礼物商城") return cmd_view_preset_gifts.solve(ctx, msg);
+    if (raw === "礼品店") return cmd_view_preset_gifts.solve(ctx, msg);
     if (raw === "图鉴" || raw === "我的图鉴" || raw.startsWith("图鉴 ") || raw.startsWith("我的图鉴 ")) {
         const rest = raw.replace(/^(我的)?图鉴/, "").trim();
         return cmd_view_my_gift_collection.solve(ctx, msg, makeFakeCmdArgs(rest ? [rest] : []));
     }
     if (raw.startsWith("补货") && isAdmin) {
-        return seal.replyToSender(ctx, msg, "⚠️ 补货功能已停用（礼物商城目前仅限抽卡模式）");
+        return seal.replyToSender(ctx, msg, "⚠️ 补货功能已停用（礼品店目前仅限抽卡模式）");
     }
 
     if (raw === "背包") return cmd_backpack.solve(ctx, msg, makeFakeCmdArgs([]));
@@ -8203,8 +8203,8 @@ cmd_guide.solve = (ctx, msg, cmdArgs) => {
                     "",
                     "撤销卖单 编号   撤回自己的卖单并退货",
                 ]),
-                section("🛒 礼物商城", [
-                    "礼物商城   随机抽一件礼物，解锁入图鉴",
+                section("🛒 礼品店", [
+                    "礼品店   随机抽一件礼物，解锁入图鉴",
                     "",
                     "图鉴        查看收藏进度与全服热度排名",
                     "图鉴 #编号  查看该礼物完整描述",
@@ -8525,7 +8525,7 @@ cmd_admin_guide.solve = (ctx, msg) => {
             "结戏加成 开启/关闭 编号",
             "结戏加成 上限 编号 数量   （0 = 不限）",
         ]),
-        section("🛒 礼物商城管理", [
+        section("🛒 礼品店管理", [
             "【商城设置（.设置 商城）】",
             "  商城刷新间隔：个人刷新间隔（小时，默认24）",
             "",
@@ -8579,12 +8579,12 @@ cmd_admin_guide.solve = (ctx, msg) => {
 ext.cmdMap["管理指令"] = cmd_admin_guide;
 
 // ========================
-// 🛒 礼物商城
+// 🛒 礼品店
 // ========================
 
 let cmd_view_preset_gifts = seal.ext.newCmdItemInfo();
-cmd_view_preset_gifts.name = "礼物商城";
-cmd_view_preset_gifts.help = "礼物商城 — 查看今日随机礼物，解锁后可无限赠送";
+cmd_view_preset_gifts.name = "礼品店";
+cmd_view_preset_gifts.help = "礼品店 — 查看今日随机礼物，解锁后可无限赠送";
 
 cmd_view_preset_gifts.solve = (ctx, msg) => {
     const sendname = getRoleName(ctx, msg);
@@ -8656,7 +8656,7 @@ cmd_view_preset_gifts.solve = (ctx, msg) => {
     );
     return seal.ext.newCmdExecuteResult(true);
 };
-ext.cmdMap["礼物商城"] = cmd_view_preset_gifts;
+ext.cmdMap["礼品店"] = cmd_view_preset_gifts;
 
 // ========================
 // 🛍️ 购买
@@ -8664,10 +8664,10 @@ ext.cmdMap["礼物商城"] = cmd_view_preset_gifts;
 
 let cmd_purchase = seal.ext.newCmdItemInfo();
 cmd_purchase.name = "购买";
-cmd_purchase.help = "购买 商品名 — 在礼物商城购买指定商品";
+cmd_purchase.help = "购买 商品名 — 在礼品店购买指定商品";
 
 cmd_purchase.solve = (ctx, msg, cmdArgs) => {
-    seal.replyToSender(ctx, msg, "🎰 礼物商城为抽卡模式，发送「礼物商城」查看今日礼物。");
+    seal.replyToSender(ctx, msg, "🎰 礼品店为抽卡模式，发送「礼品店」查看今日礼物。");
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["购买"] = cmd_purchase;
@@ -8719,7 +8719,7 @@ cmd_view_my_gift_collection.solve = (ctx, msg, cmdArgs) => {
     }
 
     if (owned.length === 0) {
-        return seal.replyToSender(ctx, msg, `📚 图鉴（0/${total}）\n发送「礼物商城」开始收集！`);
+        return seal.replyToSender(ctx, msg, `📚 图鉴（0/${total}）\n发送「礼品店」开始收集！`);
     }
     const sorted = [...owned].sort((a, b) => (parseInt(a.replace('#', '')) || 0) - (parseInt(b.replace('#', '')) || 0));
     let text = `📚 我的图鉴（${owned.length}/${total}）\n${"━".repeat(14)}\n💌 图鉴内的礼物可无限赠送\n发送「图鉴 #编号」查看详细描述\n`;

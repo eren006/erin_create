@@ -36,22 +36,22 @@
             text-align: center;
             margin-bottom: 60px;
             padding: 40px 0;
-            border-bottom: 2px solid #00ff88;
-            background: linear-gradient(180deg, rgba(0, 255, 136, 0.1) 0%, transparent 100%);
+            border-bottom: 2px solid #FFD700;
+            background: linear-gradient(180deg, rgba(255, 215, 0, 0.1) 0%, transparent 100%);
         }
 
         header h1 {
             font-size: 3.5rem;
-            color: #00ff88;
+            color: #FFD700;
             margin-bottom: 15px;
             letter-spacing: 3px;
-            text-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+            text-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
             font-weight: 700;
         }
 
         header p {
             font-size: 1.2rem;
-            color: #00d4ff;
+            color: #FFB347;
             margin-bottom: 10px;
             letter-spacing: 1px;
         }
@@ -72,7 +72,7 @@
 
         .module-card {
             background: linear-gradient(135deg, #1a1f3a 0%, #0f1428 100%);
-            border: 2px solid #00ff88;
+            border: 2px solid #FFD700;
             border-radius: 12px;
             padding: 0;
             cursor: pointer;
@@ -99,7 +99,7 @@
         }
 
         .module-card:hover {
-            border-color: #00d4ff;
+            border-color: #FFB347;
             box-shadow: 0 0 30px rgba(0, 212, 255, 0.3), inset 0 0 20px rgba(0, 255, 136, 0.05);
             transform: translateY(-8px);
         }
@@ -114,7 +114,7 @@
 
         .module-title {
             font-size: 2rem;
-            color: #00ff88;
+            color: #FFD700;
             margin-bottom: 10px;
             font-weight: 700;
             letter-spacing: 2px;
@@ -122,7 +122,7 @@
 
         .module-description {
             font-size: 1rem;
-            color: #00d4ff;
+            color: #FFB347;
             line-height: 1.6;
         }
 
@@ -147,7 +147,7 @@
             display: inline-block;
             margin-left: 10px;
             transition: transform 0.3s ease;
-            color: #00ff88;
+            color: #FFD700;
         }
 
         .module-card:hover .arrow-icon {
@@ -171,7 +171,7 @@
 
         .content-area {
             background: linear-gradient(135deg, #1a1f3a 0%, #0f1428 100%);
-            border: 2px solid #00ff88;
+            border: 2px solid #FFD700;
             border-radius: 12px;
             padding: 40px;
             margin-top: 30px;
@@ -180,14 +180,14 @@
 
         .content-area h2 {
             font-size: 2.5rem;
-            color: #00ff88;
+            color: #FFD700;
             margin-bottom: 30px;
             letter-spacing: 2px;
         }
 
         .content-area h3 {
             font-size: 1.5rem;
-            color: #00d4ff;
+            color: #FFB347;
             margin: 25px 0 15px 0;
         }
 
@@ -213,8 +213,8 @@
             margin-bottom: 30px;
             padding: 12px 24px;
             background: transparent;
-            border: 2px solid #00ff88;
-            color: #00ff88;
+            border: 2px solid #FFD700;
+            color: #FFD700;
             font-size: 1rem;
             cursor: pointer;
             border-radius: 6px;
@@ -232,8 +232,8 @@
             text-align: center;
             margin-top: 60px;
             padding: 30px 0;
-            border-top: 2px solid #00ff88;
-            color: #00d4ff;
+            border-top: 2px solid #FFD700;
+            color: #FFB347;
             font-size: 0.95rem;
             letter-spacing: 1px;
         }
@@ -254,7 +254,7 @@
         <header>
             <h1>长日系统</h1>
             <p>90+ 命令 | 6 大模块 | 完整框架</p>
-            <p class="subtitle">恋爱综艺游戏系统导览</p>
+            <p class="subtitle">恋综海豹骰专用系统</p>
         </header>
 
         <!-- Main Grid -->
@@ -385,6 +385,44 @@
 
                 <h3>游戏流程</h3>
                 <p><code>创建角色</code> → <code>配置地点</code> → <code>发起邀约</code> → <code>互动交流</code> → <code>建立关系线</code> → <code>论坛讨论</code> → <code>数据统计</code></p>
+
+                <h3>玩家必备指令</h3>
+                <p><strong>基础查询</strong>：</p>
+                <ul>
+                    <li><code>玩家名单</code> - 查看所有可交互的角色</li>
+                    <li><code>时间线</code> - 查看你的邀约日程安排</li>
+                    <li><code>看心愿</code> - 查看所有可接受的开放心愿</li>
+                </ul>
+                <p><strong>邀约互动</strong>：</p>
+                <ul>
+                    <li><code>私约 角色名 描述</code> - 邀请特定角色私密互动</li>
+                    <li><code>挂心愿 描述</code> - 发布开放式邀约</li>
+                    <li><code>摘心愿 心愿ID</code> - 响应他人的心愿邀约</li>
+                    <li><code>申请加入 邀约ID 理由</code> - 申请加入他人的多人邀约</li>
+                    <li><code>加入请求</code> - 查看他人发来的加入申请</li>
+                </ul>
+                <p><strong>感情表达</strong>：</p>
+                <ul>
+                    <li><code>拉线 角色名</code> - 建立对某角色的好感线</li>
+                    <li><code>确认关系线</code> - 确认他人拉给你的线</li>
+                    <li><code>发送心动信 角色名 内容</code> - 发送感情特殊信件</li>
+                    <li><code>查看信箱</code> - 查看收到的心动信</li>
+                    <li><code>查看关系线</code> - 查看你的所有感情线</li>
+                </ul>
+                <p><strong>通讯与社区</strong>：</p>
+                <ul>
+                    <li><code>电话 角色名 内容</code> - 与他人通电话</li>
+                    <li><code>发送信件 角色名 内容</code> - 发送普通信件</li>
+                    <li><code>微信 内容</code> - 发送微信消息</li>
+                    <li><code>发帖 标题 内容</code> - 在论坛发表帖子</li>
+                    <li><code>查看帖子</code> - 浏览所有论坛讨论</li>
+                </ul>
+                <p><strong>物品与礼物</strong>：</p>
+                <ul>
+                    <li><code>背包</code> - 查看你的所有物品和资源</li>
+                    <li><code>图鉴</code> - 查看你收过的所有礼物</li>
+                    <li><code>礼品店</code> - 查看所有可购买的礼物和物品</li>
+                </ul>
             </div>
         </div>
 
@@ -395,27 +433,56 @@
                 <h2>🔧 设置系统</h2>
 
                 <h3>系统概述</h3>
-                <p>设置系统是长日的统一控制台，管理员可通过它配置所有游戏参数，无需修改代码。</p>
+                <p>设置系统是长日的统一控制台，与主插件 <code>changriV1</code> 和 <code>长日物品.js</code> 配合使用，管理员可配置 10+ 个模块的所有游戏参数，无需修改代码。自动生成统计报告和天数推进管理。</p>
 
-                <h3>配置模块</h3>
+                <h3>核心功能</h3>
                 <ul>
-                    <li>基础设置 - 游戏名称、基础参数</li>
-                    <li>互动设置 - 邀约、通讯相关配置</li>
-                    <li>信件设置 - 写信系统的参数</li>
-                    <li>公告与展示 - 群公告、显示信息</li>
-                    <li>物品系统 - 礼物、商城配置</li>
-                    <li>拍卖设置 - 拍卖相关参数</li>
-                    <li>天数系统 - 游戏时间流控制</li>
-                    <li>统计报告 - 数据分析和导出</li>
+                    <li>📺 统一设置面板 - 10 大模块配置</li>
+                    <li>⏰ 天数管理 - 游戏时间线推进与自动推进</li>
+                    <li>📊 统计报告 - 实时互动数据统计和待办事项追踪</li>
+                    <li>🔗 数据关联 - 与物品、装备、关系线等系统联动</li>
                 </ul>
 
-                <h3>使用流程</h3>
-                <ol>
-                    <li>查看当前配置</li>
-                    <li>复制完整模板</li>
-                    <li>修改想要的参数</li>
-                    <li>提交更新</li>
-                </ol>
+                <h3>配置模块详解</h3>
+                <ul>
+                    <li><strong>基础设置</strong> - 恋综名、功能开关（微信、礼物、心愿、邀约等）、群号配置</li>
+                    <li><strong>互动设置</strong> - 冷却时间、约会时长、地点系统、结戏抽取等</li>
+                    <li><strong>信件设置</strong> - 寄信（混乱信件）、发送信件（正式信件）、心动信等三个系统</li>
+                    <li><strong>公告与展示</strong> - 心愿/赠礼/寄信的公开播报规则和概率设置</li>
+                    <li><strong>物品系统</strong> - 追踪器、抽取上限、互动物品效果、物品池模式等</li>
+                    <li><strong>商城与拍卖</strong> - 商城刷新间隔、拍卖匿名、出价播报、拍卖货币等</li>
+                    <li><strong>群组管理</strong> - 小群过期时间、私约规则、目击报告系统</li>
+                    <li><strong>天数系统</strong> - 手动/自动推进、周期规划</li>
+                    <li><strong>统计报告</strong> - 自动生成互动统计、待办统计、群组状态</li>
+                </ul>
+
+                <h3>主要特点</h3>
+                <ul>
+                    <li>参数灵活 - 超 50 个可配置项，适应不同游戏风格</li>
+                    <li>实时生效 - 配置修改后立即生效</li>
+                    <li>自动统计 - 天数推进时自动生成详细报告</li>
+                    <li>集中管理 - 所有配置集中在一个系统中，便于维护</li>
+                </ul>
+
+                <h3>关键指令摘要</h3>
+                <p><strong>查看配置</strong>（复制返回的完整模板并修改）：</p>
+                <ul>
+                    <li><code>.设置 基础</code> - 基础设置（恋综名、功能开关、群号）</li>
+                    <li><code>.设置 互动</code> - 互动设置（冷却时间、约会时长）</li>
+                    <li><code>.设置 信件</code> - 寄信设置（混乱信件参数）</li>
+                    <li><code>.设置 发送信件</code> - 发送信件设置（正式信件参数）</li>
+                    <li><code>.设置 心动信</code> - 心动信设置（派送时间、曝光概率）</li>
+                    <li><code>.设置 公告</code> - 公告与展示设置</li>
+                    <li><code>.设置 道具</code> - 物品系统设置</li>
+                    <li><code>.设置 商城</code> - 商城与拍卖设置</li>
+                    <li><code>.设置 群组</code> - 群组与目击设置</li>
+                </ul>
+                <p><strong>天数管理</strong>：</p>
+                <ul>
+                    <li><code>.设置天数 D&lt;数字&gt;</code> - 手动推进天数（如 <code>.设置天数 D1</code>）</li>
+                    <li><code>.开启自动天数</code> - 启用每天 23:59 自动推进</li>
+                    <li><code>.关闭自动天数</code> - 禁用自动推进</li>
+                </ul>
             </div>
         </div>
 
@@ -426,22 +493,39 @@
                 <h2>🍽️ 晚餐系统</h2>
 
                 <h3>系统概述</h3>
-                <p>晚餐系统是独立的社交互动框架，为长日提供丰富的小游戏和互动形式。</p>
+                <p>晚餐系统是独立的小游戏和社交互动框架，自动读取主插件中的角色和管理员信息，支持多种菜单风格和互动游戏。</p>
 
                 <h3>核心功能</h3>
                 <ul>
-                    <li>晚餐发起 - 组织一场晚宴活动</li>
-                    <li>多人互动 - 支持多种互动形式（干杯、敬酒、赠礼）</li>
-                    <li>俄罗斯轮盘 - 紧张刺激的小游戏</li>
-                    <li>参与管理 - 灵活的参与者管理</li>
-                    <li>互动记录 - 完整的活动统计</li>
+                    <li>晚餐组织 - 创建晚宴，选择菜单风格，安排座位</li>
+                    <li>菜单风格 - 现代中餐、现代西餐、古代中餐、古代西餐、诡秘深渊、赛博未来</li>
+                    <li>座位管理 - 灵活的入座和换座机制</li>
+                    <li>小游戏框架 - 支持多种游戏（戳泡泡、俄罗斯轮盘等）</li>
                 </ul>
 
-                <h3>特色玩法</h3>
-                <p>俄罗斯轮盘游戏支持自定义参数，可根据需要调整触发条件和奖惩机制，为游戏增加趣味性和刺激感。</p>
+                <h3>游戏玩法</h3>
+                <ul>
+                    <li>戳泡泡 - 按座位顺序轮流戳泡泡，藏有珊瑚的泡泡有额外奖励</li>
+                    <li>俄罗斯轮盘 - 自定义弹巢数和子弹数，紧张刺激的概率游戏</li>
+                </ul>
 
-                <h3>与主系统的关系</h3>
-                <p>晚餐系统可以独立运行，也可以和主系统邀约配合使用。例如：在主系统发起官约后，可转到晚餐系统进行更多的互动游戏。</p>
+                <h3>主要特点</h3>
+                <ul>
+                    <li>独立运行 - 无需主系统即可独立使用</li>
+                    <li>灵活配置 - 游戏参数可自由设置</li>
+                    <li>座位顺序 - 游戏自动按座位顺序进行回合</li>
+                    <li>多种互动 - 丰富的菜单和游戏组合</li>
+                </ul>
+
+                <h3>快速开始</h3>
+                <ul>
+                    <li><code>.开始晚餐 &lt;座位数&gt; &lt;菜单风格&gt;</code> - 组织晚宴（管理员）</li>
+                    <li><code>.入座 &lt;座位号&gt;</code> - 选择座位入座</li>
+                    <li><code>.开始泡泡 &lt;总数量&gt; &lt;珊瑚数&gt;</code> - 开始戳泡泡游戏（管理员）</li>
+                    <li><code>.戳泡泡 &lt;编号&gt;</code> - 戳泡泡参与游戏</li>
+                    <li><code>.开始轮盘 [总弹巢数] [子弹数]</code> - 开始俄罗斯轮盘（管理员）</li>
+                    <li><code>.结束晚餐</code> - 结束当前晚餐和游戏（管理员）</li>
+                </ul>
             </div>
         </div>
 
@@ -452,29 +536,68 @@
                 <h2>🎭 RPG 系统</h2>
 
                 <h3>系统概述</h3>
-                <p>长日RPG系统是可选的高级功能，提供完整的物品、装备、货币、商城等经济系统。</p>
+                <p>长日RPG系统是可选的高级功能模块，由物品系统和升级系统组成，提供完整的物品、属性、货币、装备、商城、合成、市场和战斗等经济系统。与主插件深度整合。</p>
 
-                <h3>⚠️ 使用前提</h3>
+                <h3>物品系统</h3>
                 <ul>
-                    <li>这是完全可选的功能</li>
-                    <li>不影响主系统的正常运行</li>
-                    <li>需要额外的配置和管理工作</li>
-                    <li>适合想要更丰富玩法的小组</li>
+                    <li>普通物品 - 玩家对自己使用（医疗包、属性书等）</li>
+                    <li>互动物品 - 玩家对他人使用（治疗术、诅咒术、攻击术等）</li>
+                    <li>特殊物品 - 追踪器（定位追踪目标行踪）、隐藏物品等</li>
+                    <li>物品编码 - ITEM_、INTER_、SPEC_ 等规范化命名</li>
                 </ul>
 
-                <h3>系统构成</h3>
+                <h3>货币与属性</h3>
                 <ul>
-                    <li>物品系统 - 普通物品、互动物品、装备</li>
-                    <li>货币系统 - 游戏币、副币、特殊代币</li>
-                    <li>装备系统 - 穿戴、卸下、强化</li>
-                    <li>商城系统 - 物品交易、池子抽取</li>
-                    <li>合成系统 - 物品合成、升级</li>
-                    <li>二手市场 - 玩家间交易</li>
-                    <li>战斗系统 - 属性、攻防、PK</li>
+                    <li>货币系统 - 无限制注册（金币、钻石、积分、写信币等）</li>
+                    <li>货币编码 - CUR_ 开头，统一管理和转换</li>
+                    <li>属性系统 - HP（生命值）、ATK（攻击）、MP（魔法值）、理智值等</li>
+                    <li>属性管理 - 通过物品、升级、装备等方式获得属性加成</li>
                 </ul>
 
-                <h3>启用建议</h3>
-                <p>建议在小组已经稳定运营主系统至少1-2个月后，再考虑启用RPG功能。可以先启用基础的物品和商城功能，逐步引入更复杂的系统。</p>
+                <h3>装备与升级</h3>
+                <ul>
+                    <li>装备系统 - 武器防具穿戴、卸下、强化升级</li>
+                    <li>装备编码 - EQUIP_ 开头，支持多装备位</li>
+                    <li>升级系统 - 玩家等级范围（1-100），自定义消耗品和奖励品</li>
+                    <li>升级规则 - 支持成功率配置，失败也消耗资源，成功发放奖励</li>
+                </ul>
+
+                <h3>商城与交易</h3>
+                <ul>
+                    <li>商城系统 - 管理员上架物品和货币，玩家购买和兑换</li>
+                    <li>池子系统 - 自由池和固定池的随机抽取，可自定义掉落概率</li>
+                    <li>合成系统 - 玩家合成物品、升级物品品质</li>
+                    <li>二手市场 - 玩家间交易和转售物品</li>
+                </ul>
+
+                <h3>战斗与对抗</h3>
+                <ul>
+                    <li>攻防系统 - 玩家属性对抗，属性高低影响战斗结果</li>
+                    <li>PK战斗 - 支持属性伤害计算和胜负判定</li>
+                    <li>互动物品触发 - 通过互动物品可改变对方属性</li>
+                </ul>
+
+                <h3>特色道具</h3>
+                <ul>
+                    <li><strong>🔍 追踪器（SPEC_001）</strong> - 追踪目标角色在特定时间的行踪，可查看目标地点和同伴信息，默认70%成功率，失败也消耗道具</li>
+                    <li><strong>🔑 万能钥匙（SPEC_002）</strong> - 用来开启地点、获得地点钥匙的特殊物品，一旦使用可永久获得该地点的访问权限</li>
+                </ul>
+
+                <h3>预设礼物</h3>
+                <ul>
+                    <li>购买 礼物ID - 用游戏币购买指定礼物或物品</li>
+                    <li>图鉴 / 我的图鉴 - 查看已收集的所有礼物的图鉴</li>
+                </ul>
+                <p><strong>预设礼物特点</strong>：支持多种购买方式（直购、池子抽取、兑换等），管理员可自由配置物品和价格，玩家可通过邀约、任务等方式获得游戏币。</p>
+
+                <h3>战斗系统</h3>
+                <ul>
+                    <li>我的状态 - 查看自己的属性（HP、ATK、DEF等）</li>
+                    <li>查看 角色名 - 查看他人的属性和装备</li>
+                    <li>属性对战 - 基于属性值进行胜负判定</li>
+                    <li>互动物品施加 - 通过特殊物品改变对方属性（治疗术、诅咒术等）</li>
+                </ul>
+                <p><strong>战斗特点</strong>：属性越高越有利，互动物品可动态改变属性，支持属性对抗和PK机制，战斗结果影响关系线发展。</p>
             </div>
         </div>
 
@@ -485,30 +608,22 @@
                 <h2>✉️ 写信综</h2>
 
                 <h3>系统概述</h3>
-                <p>长日写信综是专用模式，以正式信件系统为核心，适合重度文本互动的小组。</p>
+                <p>长日写信综是独立的正式信件系统，支持格式化书信、写信币赏金和灵活的配置管理，适合重度文本互动和故事向的小组。</p>
 
-                <h3>核心特色</h3>
+                <h3>核心功能</h3>
                 <ul>
-                    <li>正式信件系统 - 格式化书信，包含日期、署名、附件</li>
-                    <li>写信币赏金 - 根据字数自动发放奖励</li>
-                    <li>故事推进 - 通过信件推动角色关系发展</li>
-                    <li>沉浸式体验 - 强调文本质量和情感表达</li>
+                    <li>发送信件 - 正式、格式化的书信（日期、附件、自定义署名）</li>
+                    <li>写信币赏金 - 根据字数自动发放奖励，可用于其他系统</li>
+                    <li>特殊道具 - 望远镜（抄录信件）和羽毛笔（拦截审核）</li>
+                    <li>系统联动 - 与心愿、私约等系统关联，电话功能自动禁用</li>
                 </ul>
 
-                <h3>运营模式</h3>
+                <h3>管理员配置</h3>
                 <ul>
-                    <li>主要玩法：发送正式信件</li>
-                    <li>次要玩法：心愿和私约</li>
-                    <li>特殊机制：写信币赏金机制</li>
-                    <li>禁用功能：电话功能自动禁用</li>
-                </ul>
-
-                <h3>适用的小组类型</h3>
-                <ul>
-                    <li>文学爱好者 - 重视文本质量和创意</li>
-                    <li>故事向社群 - 强调剧情和人物发展</li>
-                    <li>角色扮演爱好者 - 深入人物心理</li>
-                    <li>长期运营项目 - 积累高质量内容</li>
+                    <li>日限额设置 - 每日可发送信件数量（默认5封）</li>
+                    <li>赏金机制 - 每封信获得的写信币数（可选）</li>
+                    <li>字数要求 - 获得赏金的最少字数（默认无限制）</li>
+                    <li>系统成本 - 心愿、私约消费写信币的成本（可选）</li>
                 </ul>
             </div>
         </div>
