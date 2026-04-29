@@ -18,15 +18,42 @@
  * - 记录查询：查看信件发送记录
  */
 
-let ext = seal.ext.find("changri");
-if (!ext) {
-    // 如果找不到主插件，尝试创建一个包装器
-    ext = seal.ext.find("letter_system_wrappers");
-    if (!ext) {
-        ext = seal.ext.new("letter_system_wrappers", "长日将尽", "1.0.0");
-        seal.ext.register(ext);
+// ========================
+// 核心依赖：获取主插件 changri
+// ========================
+
+function getMainExt() {
+    const main = seal.ext.find('changri');
+    if (!main) {
+        console.error("❌ 写信综错误：未找到主插件 changri，请检查主插件是否已加载");
+        return null;
     }
-    console.warn("⚠️  长日写信综运行在兼容模式：未找到changri主插件");
+    return main;
+}
+
+// 本地扩展对象（用于注册命令）
+let ext = seal.ext.find("letter_system");
+if (!ext) {
+    ext = seal.ext.new("letter_system", "长日将尽", "1.0.0");
+    seal.ext.register(ext);
+}
+
+// ========================
+// 存储辅助函数
+// ========================
+
+function getMainStorage(key, defaultValue) {
+    const main = getMainExt();
+    if (!main) return defaultValue;
+    const val = main.storageGet(key);
+    if (val === null || val === undefined || val.trim() === "") return defaultValue;
+    return val;
+}
+
+function setMainStorage(key, value) {
+    const main = getMainExt();
+    if (!main) return;
+    main.storageSet(key, value);
 }
 
 // ========================
@@ -37,7 +64,7 @@ if (!ext) {
  * 检查写信综是否启用
  */
 function isLetterSystemEnabled() {
-    const config = JSON.parse(ext.storageGet("global_feature_toggle") || "{}");
+    const config = JSON.parse(getMainStorage("global_feature_toggle", "{}"));
     return config.enable_letter_system === true;
 }
 
@@ -45,7 +72,7 @@ function isLetterSystemEnabled() {
  * 注册写信币货币
  */
 function ensureLetterCoinCurrency() {
-    const itemReg = JSON.parse(ext.storageGet("item_registry") || "{}");
+    const itemReg = JSON.parse(getMainStorage("item_registry") || "{}");
 
     // 检查是否已注册
     const hasLetterCoin = Object.values(itemReg).some(item =>
@@ -65,7 +92,7 @@ function ensureLetterCoinCurrency() {
             type: "currency"
         };
 
-        ext.storageSet("item_registry", JSON.stringify(itemReg));
+        setMainStorage("item_registry", JSON.stringify(itemReg));
     }
 }
 
@@ -73,7 +100,7 @@ function ensureLetterCoinCurrency() {
  * 注册特殊写信道具
  */
 function ensureLetterSpecialItems() {
-    const itemReg = JSON.parse(ext.storageGet("item_registry") || "{}");
+    const itemReg = JSON.parse(getMainStorage("item_registry") || "{}");
 
     // 望远镜
     if (!itemReg["SPEC_003"]) {
@@ -97,7 +124,7 @@ function ensureLetterSpecialItems() {
         };
     }
 
-    ext.storageSet("item_registry", JSON.stringify(itemReg));
+    setMainStorage("item_registry", JSON.stringify(itemReg));
 }
 
 // ========================
@@ -110,7 +137,7 @@ function ensureLetterSpecialItems() {
 function getRoleName(ctx, msg) {
     const platform = msg.platform;
     const uid = msg.sender.userId.replace(`${platform}:`, "");
-    const groups = JSON.parse(ext.storageGet("a_private_group") || "{}");
+    const groups = JSON.parse(getMainStorage("a_private_group") || "{}");
     return Object.entries(groups[platform] || {}).find(([_, v]) => v[0] === uid)?.[0];
 }
 
@@ -129,8 +156,8 @@ function recordActivity(actType, platform, ctx, endpoint) {
 function processExpiredQuillPens() {
     const TIMEOUT_MS = 3 * 60 * 60 * 1000; // 3小时
     const now = Date.now();
-    let pendingLetters = JSON.parse(ext.storageGet("letter_pending_quill_pens") || "{}");
-    const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
+    let pendingLetters = JSON.parse(getMainStorage("letter_pending_quill_pens") || "{}");
+    const a_private_group = JSON.parse(getMainStorage("a_private_group") || "{}");
 
     for (const [modifierRoleName, letters] of Object.entries(pendingLetters)) {
         for (let i = letters.length - 1; i >= 0; i--) {
@@ -163,7 +190,7 @@ function processExpiredQuillPens() {
         }
     }
 
-    ext.storageSet("letter_pending_quill_pens", JSON.stringify(pendingLetters));
+    setMainStorage("letter_pending_quill_pens", JSON.stringify(pendingLetters));
 }
 
 // ========================
@@ -194,11 +221,11 @@ cmd_enable_letter_system.solve = (ctx, msg, cmdArgs) => {
         return seal.replyToSender(ctx, msg, cmd_enable_letter_system.help);
     }
 
-    const config = JSON.parse(ext.storageGet("global_feature_toggle") || "{}");
+    const config = JSON.parse(getMainStorage("global_feature_toggle") || "{}");
 
     if (action === "开启") {
         config.enable_letter_system = true;
-        ext.storageSet("global_feature_toggle", JSON.stringify(config));
+        setMainStorage("global_feature_toggle", JSON.stringify(config));
 
         // 自动注册写信币
         ensureLetterCoinCurrency();
@@ -209,7 +236,7 @@ cmd_enable_letter_system.solve = (ctx, msg, cmdArgs) => {
         seal.replyToSender(ctx, msg, `✅ 写信综已启用！\n\n✨ 已自动注册货币：写信币\n🔭 已自动注册道具：望远镜、羽毛笔\n📮 玩家可以开始使用「发送信件」命令。`);
     } else {
         config.enable_letter_system = false;
-        ext.storageSet("global_feature_toggle", JSON.stringify(config));
+        setMainStorage("global_feature_toggle", JSON.stringify(config));
         seal.replyToSender(ctx, msg, `❌ 写信综已禁用。\n\n玩家无法使用「发送信件」命令。`);
     }
 
@@ -251,7 +278,7 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
 
     const platform = msg.platform;
     const uid = msg.sender.userId.replace(`${platform}:`, "");
-    const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
+    const a_private_group = JSON.parse(getMainStorage("a_private_group") || "{}");
 
     // 2. 身份核验
     const senderRoleName = getRoleName(ctx, msg);
@@ -291,10 +318,10 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
     }
 
     // 5. 每日限额检查
-    const gameDay = ext.storageGet("global_days") || "D0";
-    const dailyLimit = parseInt(ext.storageGet("letter_daily_limit") || "5");
+    const gameDay = getMainStorage("global_days") || "D0";
+    const dailyLimit = parseInt(getMainStorage("letter_daily_limit") || "5");
     const userKey = `${platform}:${uid}`;
-    let dlCounts = JSON.parse(ext.storageGet("letter_day_counts") || "{}");
+    let dlCounts = JSON.parse(getMainStorage("letter_day_counts") || "{}");
 
     if (!dlCounts[userKey] || dlCounts[userKey].day !== gameDay) {
         dlCounts[userKey] = { day: gameDay, count: 0 };
@@ -311,8 +338,8 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
     let quillPenApplier = null; // 施加羽毛笔的人
     let effectToHandle = null; // 需要处理的效果
 
-    const telescopeEffects = JSON.parse(ext.storageGet("letter_telescope_effects") || "{}");
-    const quillPenEffects = JSON.parse(ext.storageGet("letter_quill_pen_effects") || "{}");
+    const telescopeEffects = JSON.parse(getMainStorage("letter_telescope_effects") || "{}");
+    const quillPenEffects = JSON.parse(getMainStorage("letter_quill_pen_effects") || "{}");
 
     if (telescopeEffects[senderRoleName]) {
         telescopeAppliers = telescopeEffects[senderRoleName]
@@ -345,7 +372,7 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
     // 处理羽毛笔效果（优先级最高时）
     if (effectToHandle?.type === "quill" && receiver !== quillPenApplier.applier) {
         // 羽毛笔进入待审状态
-        let pendingLetters = JSON.parse(ext.storageGet("letter_pending_quill_pens") || "{}");
+        let pendingLetters = JSON.parse(getMainStorage("letter_pending_quill_pens") || "{}");
         if (!pendingLetters[quillPenApplier.applier]) {
             pendingLetters[quillPenApplier.applier] = [];
         }
@@ -363,20 +390,20 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
             userId: uid
         });
 
-        ext.storageSet("letter_pending_quill_pens", JSON.stringify(pendingLetters));
+        setMainStorage("letter_pending_quill_pens", JSON.stringify(pendingLetters));
 
         // 清除已使用的羽毛笔效果
         delete quillPenEffects[senderRoleName][quillPenEffects[senderRoleName].indexOf(quillPenApplier)];
         quillPenEffects[senderRoleName] = quillPenEffects[senderRoleName].filter(e => e);
-        ext.storageSet("letter_quill_pen_effects", JSON.stringify(quillPenEffects));
+        setMainStorage("letter_quill_pen_effects", JSON.stringify(quillPenEffects));
 
         seal.replyToSender(ctx, msg, `⏳ 你的信件已发送给「${quillPenApplier.applier}」进行审核，等待修改或超时发送...`);
         return seal.ext.newCmdExecuteResult(true);
     }
 
     // 6. 赏金机制
-    const minChars = parseInt(ext.storageGet("letter_min_chars") || "0");
-    const rewardPerLetter = parseInt(ext.storageGet("letter_reward") || "0");
+    const minChars = parseInt(getMainStorage("letter_min_chars") || "0");
+    const rewardPerLetter = parseInt(getMainStorage("letter_reward") || "0");
     const contentLength = content.replace(/\s/g, "").length;
     const meetsMinChars = minChars === 0 || contentLength >= minChars;
 
@@ -399,30 +426,30 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
         const telescopeApplier = effectToHandle.data;
         // 删除已使用的望远镜效果
         telescopeEffects[senderRoleName] = telescopeEffects[senderRoleName].filter(e => e !== telescopeApplier);
-        ext.storageSet("letter_telescope_effects", JSON.stringify(telescopeEffects));
+        setMainStorage("letter_telescope_effects", JSON.stringify(telescopeEffects));
     }
 
     // 9. 发放赏金
     let rewardGiven = 0;
     let totalCoins = 0;
     if (rewardPerLetter > 0 && meetsMinChars) {
-        let attrs = JSON.parse(ext.storageGet("sys_character_attrs") || "{}");
+        let attrs = JSON.parse(getMainStorage("sys_character_attrs") || "{}");
         if (!attrs[senderRoleName]) attrs[senderRoleName] = {};
         attrs[senderRoleName]["写信币"] = (attrs[senderRoleName]["写信币"] || 0) + rewardPerLetter;
         totalCoins = attrs[senderRoleName]["写信币"];
-        ext.storageSet("sys_character_attrs", JSON.stringify(attrs));
+        setMainStorage("sys_character_attrs", JSON.stringify(attrs));
 
-        let presets = JSON.parse(ext.storageGet("sys_attr_presets") || "[]");
+        let presets = JSON.parse(getMainStorage("sys_attr_presets") || "[]");
         if (!presets.includes("写信币")) {
             presets.push("写信币");
-            ext.storageSet("sys_attr_presets", JSON.stringify(presets));
+            setMainStorage("sys_attr_presets", JSON.stringify(presets));
         }
         rewardGiven = rewardPerLetter;
     }
 
     // 10. 更新计数
     dlCounts[userKey].count = currentCount + 1;
-    ext.storageSet("letter_day_counts", JSON.stringify(dlCounts));
+    setMainStorage("letter_day_counts", JSON.stringify(dlCounts));
 
     // 11. 回复发信人
     let reply = `✉️ 信件已送达「${receiver}」！\n`;
@@ -478,19 +505,19 @@ cmd_letter_config.solve = (ctx, msg, cmdArgs) => {
     let modified = false;
 
     if (param === "日限") {
-        ext.storageSet("letter_daily_limit", value);
+        setMainStorage("letter_daily_limit", value);
         modified = true;
     } else if (param === "赏金") {
-        ext.storageSet("letter_reward", value);
+        setMainStorage("letter_reward", value);
         modified = true;
     } else if (param === "最小字数") {
-        ext.storageSet("letter_min_chars", value);
+        setMainStorage("letter_min_chars", value);
         modified = true;
     } else if (param === "心愿成本") {
-        ext.storageSet("wish_coin_cost", value);
+        setMainStorage("wish_coin_cost", value);
         modified = true;
     } else if (param === "私约成本") {
-        ext.storageSet("appointment_coin_cost", value);
+        setMainStorage("appointment_coin_cost", value);
         modified = true;
     }
 
@@ -522,14 +549,14 @@ cmd_letter_status.solve = (ctx, msg, cmdArgs) => {
 
     const platform = msg.platform;
     const uid = msg.sender.userId.replace(`${platform}:`, "");
-    const gameDay = ext.storageGet("global_days") || "D0";
+    const gameDay = getMainStorage("global_days") || "D0";
 
-    const dailyLimit = parseInt(ext.storageGet("letter_daily_limit") || "5");
-    const reward = parseInt(ext.storageGet("letter_reward") || "0");
-    const minChars = parseInt(ext.storageGet("letter_min_chars") || "0");
+    const dailyLimit = parseInt(getMainStorage("letter_daily_limit") || "5");
+    const reward = parseInt(getMainStorage("letter_reward") || "0");
+    const minChars = parseInt(getMainStorage("letter_min_chars") || "0");
 
     const userKey = `${platform}:${uid}`;
-    let dlCounts = JSON.parse(ext.storageGet("letter_day_counts") || "{}");
+    let dlCounts = JSON.parse(getMainStorage("letter_day_counts") || "{}");
     const used = dlCounts[userKey]?.count || 0;
 
     let info = `📊 发送信件系统状态\n\n`;
@@ -571,7 +598,7 @@ cmd_apply_effect.solve = (ctx, msg, cmdArgs) => {
 
     const platform = msg.platform;
     const uid = msg.sender.userId.replace(`${platform}:`, "");
-    const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
+    const a_private_group = JSON.parse(getMainStorage("a_private_group") || "{}");
 
     // 获取施加人角色名
     const applierRoleName = getRoleName(ctx, msg);
@@ -606,7 +633,7 @@ cmd_apply_effect.solve = (ctx, msg, cmdArgs) => {
     }
 
     // 检查玩家是否拥有该道具
-    let attrs = JSON.parse(ext.storageGet("sys_character_attrs") || "{}");
+    let attrs = JSON.parse(getMainStorage("sys_character_attrs") || "{}");
     if (!attrs[applierRoleName]?.[itemCode] || attrs[applierRoleName][itemCode] <= 0) {
         seal.replyToSender(ctx, msg, `❌ 你没有「${itemName}」。`);
         return seal.ext.newCmdExecuteResult(true);
@@ -614,11 +641,11 @@ cmd_apply_effect.solve = (ctx, msg, cmdArgs) => {
 
     // 消耗道具
     attrs[applierRoleName][itemCode]--;
-    ext.storageSet("sys_character_attrs", JSON.stringify(attrs));
+    setMainStorage("sys_character_attrs", JSON.stringify(attrs));
 
     // 记录施加效果
     const effectsKey = itemCode === "SPEC_003" ? "letter_telescope_effects" : "letter_quill_pen_effects";
-    let effects = JSON.parse(ext.storageGet(effectsKey) || "{}");
+    let effects = JSON.parse(getMainStorage(effectsKey) || "{}");
 
     if (!effects[targetName]) {
         effects[targetName] = [];
@@ -630,7 +657,7 @@ cmd_apply_effect.solve = (ctx, msg, cmdArgs) => {
         itemCode: itemCode
     });
 
-    ext.storageSet(effectsKey, JSON.stringify(effects));
+    setMainStorage(effectsKey, JSON.stringify(effects));
 
     seal.replyToSender(ctx, msg, `✅ 你已向「${targetName}」施加了「${itemName}」！`);
     return seal.ext.newCmdExecuteResult(true);
@@ -651,7 +678,7 @@ cmd_quill_pen_modify.help = `✏️ 修改待审的信件内容
 
 cmd_quill_pen_modify.solve = (ctx, msg, cmdArgs) => {
     const platform = msg.platform;
-    const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
+    const a_private_group = JSON.parse(getMainStorage("a_private_group") || "{}");
 
     // 获取修改人角色名（应该是施加人）
     const modifierRoleName = getRoleName(ctx, msg);
@@ -667,7 +694,7 @@ cmd_quill_pen_modify.solve = (ctx, msg, cmdArgs) => {
     }
 
     // 查找该角色的待审信件
-    let pendingLetters = JSON.parse(ext.storageGet("letter_pending_quill_pens") || "{}");
+    let pendingLetters = JSON.parse(getMainStorage("letter_pending_quill_pens") || "{}");
 
     if (!pendingLetters[modifierRoleName] || pendingLetters[modifierRoleName].length === 0) {
         seal.replyToSender(ctx, msg, "❌ 你没有需要修改的信件。");
@@ -696,7 +723,7 @@ cmd_quill_pen_modify.solve = (ctx, msg, cmdArgs) => {
     if (pendingLetters[modifierRoleName].length === 0) {
         delete pendingLetters[modifierRoleName];
     }
-    ext.storageSet("letter_pending_quill_pens", JSON.stringify(pendingLetters));
+    setMainStorage("letter_pending_quill_pens", JSON.stringify(pendingLetters));
 
     seal.replyToSender(ctx, msg, `✅ 信件已发送！已以「${letterData.senderName}」的名义发给「${letterData.receiverName}」。`);
     return seal.ext.newCmdExecuteResult(true);
