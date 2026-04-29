@@ -2202,7 +2202,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
         // 分类属性
         const limitedAttrs = [];
         const unlimitedAttrs = [];
-        const BAR = 12;
+        const BAR = 8;
 
         attrNames.forEach(name => {
             const def = defs[name];
@@ -2212,7 +2212,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
                 const filled = Math.round(Math.max(0, Math.min(1, pct)) * BAR);
                 const bar = "▓".repeat(filled) + "░".repeat(BAR - filled);
                 const percent = Math.round(pct * 100);
-                limitedAttrs.push(`【${name}】${bar} ${val}/${def.max} (${percent}%)`);
+                limitedAttrs.push(`【${name}】${bar} ${val}/${def.max}`);
             } else {
                 const minText = def.min !== null ? ` [最低:${def.min}]` : "";
                 unlimitedAttrs.push(`【${name}】${val}${minText}`);
@@ -2470,7 +2470,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
         // 分类属性
         const limitedAttrs = [];
         const unlimitedAttrs = [];
-        const BAR = 12;
+        const BAR = 8;
 
         attrNames.forEach(name => {
             const def = defs[name];
@@ -2480,7 +2480,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
                 const filled = Math.round(Math.max(0, Math.min(1, pct)) * BAR);
                 const bar = "▓".repeat(filled) + "░".repeat(BAR - filled);
                 const percent = Math.round(pct * 100);
-                limitedAttrs.push(`【${name}】${bar} ${val}/${def.max} (${percent}%)`);
+                limitedAttrs.push(`【${name}】${bar} ${val}/${def.max}`);
             } else {
                 const minText = def.min !== null ? ` [最低:${def.min}]` : "";
                 unlimitedAttrs.push(`【${name}】${val}${minText}`);
