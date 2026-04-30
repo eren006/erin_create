@@ -52,13 +52,13 @@ function getRoleName(ctx, msg) {
 }
 
 function isUserAdmin(ctx, msg) {
-    if (ctx.privilegeLevel === 100) return true;
+    const platform = msg.platform;
+    const uid = msg.sender.userId.replace(`${platform}:`, "");
     const main = getMainExt();
     if (!main) return false;
     try {
-        const adminList = JSON.parse(main.storageGet("a_adminList") || "{}");
-        const parts = msg.sender.userId.split(':');
-        return adminList[parts[0]] && adminList[parts[0]].includes(parts[1]);
+        const a_adminList = JSON.parse(main.storageGet("a_adminList") || "{}");
+        return ctx.privilegeLevel === 100 || (a_adminList[platform] && a_adminList[platform].includes(uid));
     } catch (e) { return false; }
 }
 
@@ -109,30 +109,6 @@ function saveAttrDefs(defs) {
 function getCharAttrs() {
     const main = getMainExt();
     return main ? JSON.parse(main.storageGet("sys_character_attrs") || "{}") : {};
-}
-function modCharAttrs(platform, roleName, attrEffectStr) {
-    if (!attrEffectStr) return;
-    
-    const charAttrs = getCharAttrs();
-    const defs = getAttrDefs(); // 确保你有这个函数获取属性定义
-    if (!charAttrs[roleName]) charAttrs[roleName] = {};
-
-    const effects = attrEffectStr.split(/[,，]/);
-    effects.forEach(eff => {
-        const m = eff.trim().match(/^(.+?)([+\-]{1,2})(\d+)$/);
-        if (m) {
-            const [, aName, op, valStr] = m;
-            const val = parseInt(valStr);
-            const def = defs[aName];
-            
-            let currentVal = charAttrs[roleName][aName] ?? (def ? def.default : 0);
-            const change = op.includes('-') ? -val : val;
-            
-            charAttrs[roleName][aName] = clampAttr(def, currentVal + change);
-        }
-    });
-    
-    saveCharAttrs(charAttrs);
 }
 function saveCharAttrs(attrs) {
     const main = getMainExt();
