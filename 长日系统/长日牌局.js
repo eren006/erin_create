@@ -195,6 +195,92 @@ function compareHands(hand1, hand2) {
 }
 
 // ========================
+// 炸金花牌型评估（3张牌）
+// ========================
+
+function getRankValue(rank) {
+    const rankMap = { 'A': 14, 'K': 13, 'Q': 12, 'J': 11 };
+    if (rankMap[rank]) return rankMap[rank];
+    const num = parseInt(rank);
+    return num >= 2 && num <= 10 ? num : 0;
+}
+
+function evaluateThreeCards(cards) {
+    // 返回 [等级, 高牌序列]
+    // 等级：5=豹子 4=顺金 3=金花 2=顺子 1=对子 0=高牌
+
+    if (!cards || cards.length !== 3) return [0, []];
+
+    const ranks = cards.map(c => getRankValue(c.rank)).sort((a, b) => b - a);
+    const suits = cards.map(c => c.suit);
+
+    // 检查豹子（三张相同）
+    if (ranks[0] === ranks[1] && ranks[1] === ranks[2]) {
+        return [5, ranks];
+    }
+
+    // 检查同花
+    const isFlush = suits[0] === suits[1] && suits[1] === suits[2];
+
+    // 检查顺子（包括特殊情况 A-2-3）
+    const isStraight = (ranks[0] - ranks[1] === 1 && ranks[1] - ranks[2] === 1) ||
+                       (ranks[0] === 14 && ranks[1] === 3 && ranks[2] === 2); // A-3-2
+
+    if (isFlush && isStraight) {
+        // 顺金：特殊处理 A-3-2 为最小顺金
+        const straightRanks = (ranks[0] === 14 && ranks[1] === 3 && ranks[2] === 2)
+            ? [5, 4, 3]  // A-3-2 视为 5-4-3（最小）
+            : ranks;
+        return [4, straightRanks];
+    }
+
+    if (isFlush) {
+        // 金花（同花）
+        return [3, ranks];
+    }
+
+    if (isStraight) {
+        // 顺子
+        const straightRanks = (ranks[0] === 14 && ranks[1] === 3 && ranks[2] === 2)
+            ? [5, 4, 3]  // A-3-2
+            : ranks;
+        return [2, straightRanks];
+    }
+
+    // 检查对子（两张相同）
+    if (ranks[0] === ranks[1]) {
+        const kickers = [ranks[0], ranks[0], ranks[2]];
+        return [1, kickers];
+    }
+    if (ranks[1] === ranks[2]) {
+        const kickers = [ranks[1], ranks[1], ranks[0]];
+        return [1, kickers];
+    }
+
+    // 高牌（都不同）
+    return [0, ranks];
+}
+
+function compareThreeCards(hand1, hand2) {
+    const [grade1, kickers1] = hand1;
+    const [grade2, kickers2] = hand2;
+
+    // 先比等级
+    if (grade1 !== grade2) {
+        return grade1 > grade2 ? 1 : -1;
+    }
+
+    // 等级相同，按高牌序列比较
+    for (let i = 0; i < Math.min(kickers1.length, kickers2.length); i++) {
+        if (kickers1[i] !== kickers2[i]) {
+            return kickers1[i] > kickers2[i] ? 1 : -1;
+        }
+    }
+
+    return 0; // 完全相同（平局）
+}
+
+// ========================
 // 游戏指令
 // ========================
 
@@ -218,6 +304,7 @@ cmd_create_game.solve = (ctx, msg, cmdArgs) => {
 
     games[gameId] = {
         gameId: gameId,
+        gameType: "texas",     // 游戏类型标识
         status: "waiting",  // waiting, dealing, playing, ended
         maxPlayers: maxPlayers,
         initialScore: initialScore,
@@ -491,7 +578,11 @@ cmd_check.solve = (ctx, msg, cmdArgs) => {
     seal.replyToSender(ctx, msg, reply);
 
     // 轮到下一个玩家
-    nextBettor(game, games, gameId, ctx);
+    if (game.gameType === "zhajinhua") {
+        nextBettorZhajinhua(game, games, gameId, ctx);
+    } else {
+        nextBettor(game, games, gameId, ctx);
+    }
 
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -539,7 +630,11 @@ cmd_fold.solve = (ctx, msg) => {
 
     saveCardGameData(games);
 
-    nextBettor(game, games, gameId, ctx);
+    if (game.gameType === "zhajinhua") {
+        nextBettorZhajinhua(game, games, gameId, ctx);
+    } else {
+        nextBettor(game, games, gameId, ctx);
+    }
 
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -828,3 +923,332 @@ cmd_list_games.solve = (ctx, msg) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["竞技列表"] = cmd_list_games;
+
+// ========================
+// 炸金花游戏命令
+// ========================
+
+let cmd_create_zhajinhua = seal.ext.newCmdItemInfo();
+cmd_create_zhajinhua.name = "创建炸金花";
+cmd_create_zhajinhua.help = "创建一场炸金花赛\n.创建炸金花 [人数=5] [初始积分=100]";
+cmd_create_zhajinhua.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) {
+        return seal.replyToSender(ctx, msg, "❌ 只有管理员可以创建游戏");
+    }
+
+    const maxPlayers = Math.max(2, Math.min(6, parseInt(cmdArgs.getArgN(1)) || 5));
+    const initialScore = Math.max(10, parseInt(cmdArgs.getArgN(2)) || 100);
+
+    const gameId = `zhajinhua_${Date.now()}`;
+    const games = getCardGameData();
+
+    games[gameId] = {
+        gameId,
+        gameType: "zhajinhua",           // 炸金花类型标识
+        status: "waiting",
+        maxPlayers,
+        initialScore,
+        players: [],
+        seats: Array(maxPlayers).fill(null),
+        deck: [],
+        communityCards: [],              // 炸金花无公共牌
+        pot: 0,
+        currentBettor: 0,
+        round: 0,
+        createdAt: Date.now(),
+        lastActionTime: null,
+        actionTimeout: 30000
+    };
+
+    saveCardGameData(games);
+
+    let reply = `✅ 炸金花赛创建成功！\n`;
+    reply += `🆔 游戏ID: ${gameId}\n`;
+    reply += `👥 容纳人数: ${maxPlayers}\n`;
+    reply += `💰 初始积分: ${initialScore}\n`;
+    reply += `\n加入指令: .加入炸金花 ${gameId}\n`;
+
+    seal.replyToSender(ctx, msg, reply);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["创建炸金花"] = cmd_create_zhajinhua;
+
+let cmd_join_zhajinhua = seal.ext.newCmdItemInfo();
+cmd_join_zhajinhua.name = "加入炸金花";
+cmd_join_zhajinhua.help = "加入炸金花赛\n.加入炸金花 [游戏ID]";
+cmd_join_zhajinhua.solve = (ctx, msg, cmdArgs) => {
+    const roleName = getRoleName(ctx, msg);
+    if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+
+    const gameId = cmdArgs.getArgN(1);
+    if (!gameId) {
+        return seal.replyToSender(ctx, msg, "❌ 请输入游戏ID\n用法: .加入炸金花 [游戏ID]");
+    }
+
+    const games = getCardGameData();
+    const game = games[gameId];
+
+    if (!game) return seal.replyToSender(ctx, msg, `❌ 游戏「${gameId}」不存在`);
+    if (game.gameType !== "zhajinhua") {
+        return seal.replyToSender(ctx, msg, "❌ 这不是炸金花游戏");
+    }
+    if (game.status !== "waiting") {
+        return seal.replyToSender(ctx, msg, `❌ 游戏已开始，无法加入`);
+    }
+    if (game.players.length >= game.maxPlayers) {
+        return seal.replyToSender(ctx, msg, `❌ 游戏人数已满(${game.maxPlayers}人)`);
+    }
+    if (game.players.some(p => p.name === roleName)) {
+        return seal.replyToSender(ctx, msg, "❌ 你已加入此游戏");
+    }
+
+    // 找第一个空座位
+    const seatIdx = game.seats.indexOf(null);
+    game.seats[seatIdx] = roleName;
+
+    game.players.push({
+        name: roleName,
+        seat: seatIdx,
+        score: game.initialScore,
+        holeCards: [],
+        currentBet: 0,
+        totalBet: 0,
+        status: "active",
+        folded: false
+    });
+
+    saveCardGameData(games);
+
+    let reply = `✅ 已加入炸金花赛 ${gameId}\n`;
+    reply += `👥 已有 ${game.players.length}/${game.maxPlayers} 人\n`;
+    reply += `💰 你的积分: ${game.initialScore}\n`;
+    reply += `\n人满后请开始: .开始炸金花`;
+
+    seal.replyToSender(ctx, msg, reply);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["加入炸金花"] = cmd_join_zhajinhua;
+
+let cmd_start_zhajinhua = seal.ext.newCmdItemInfo();
+cmd_start_zhajinhua.name = "开始炸金花";
+cmd_start_zhajinhua.help = "开始炸金花赛（需要4人以上）\n.开始炸金花 [游戏ID]";
+cmd_start_zhajinhua.solve = (ctx, msg, cmdArgs) => {
+    const games = getCardGameData();
+
+    // 查找该玩家所在的炸金花游戏
+    const roleName = getRoleName(ctx, msg);
+    if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+
+    let gameId = cmdArgs.getArgN(1);
+    if (!gameId) {
+        // 如果没有提供gameId，找该玩家所在的炸金花游戏
+        gameId = Object.keys(games).find(id =>
+            games[id].gameType === "zhajinhua" &&
+            games[id].status === "waiting" &&
+            games[id].players.some(p => p.name === roleName)
+        );
+    }
+
+    if (!gameId) {
+        return seal.replyToSender(ctx, msg, "❌ 游戏未找到或你未加入");
+    }
+
+    const game = games[gameId];
+
+    if (game.status !== "waiting") {
+        return seal.replyToSender(ctx, msg, "❌ 游戏已开始");
+    }
+
+    if (game.players.length < 2) {
+        return seal.replyToSender(ctx, msg, `❌ 至少需要2人才能开始（当前${game.players.length}人）`);
+    }
+
+    // 重新初始化游戏
+    game.status = "dealing";
+    game.deck = createDeck();
+    shuffleDeck(game.deck);
+
+    // 为每个玩家发3张底牌
+    for (let i = 0; i < game.players.length; i++) {
+        game.players[i].holeCards = [];
+        for (let j = 0; j < 3; j++) {
+            game.players[i].holeCards.push(game.deck.pop());
+        }
+        game.players[i].status = "active";
+        game.players[i].folded = false;
+        game.players[i].currentBet = 0;
+        game.players[i].totalBet = 0;
+    }
+
+    game.pot = 0;
+    game.currentBettor = 0;
+    game.round = 0;
+    game.status = "playing";
+
+    saveCardGameData(games);
+
+    // 显示公开游戏信息
+    let gameMsg = `🎴 炸金花赛开始！\n`;
+    gameMsg += `🆔 ID: ${gameId}\n`;
+    gameMsg += `────────────\n`;
+    gameMsg += `👥 玩家名单：\n`;
+
+    for (let i = 0; i < game.players.length; i++) {
+        gameMsg += `  座位${i + 1}️⃣: ${game.players[i].name} - 💰${game.players[i].score}\n`;
+    }
+
+    gameMsg += `\n💰 底池: ${game.pot}\n`;
+    gameMsg += `⏱️ 30秒内未操作将自动弃牌\n`;
+
+    seal.replyToSender(ctx, msg, gameMsg);
+
+    // 给每个玩家发私聊底牌
+    for (const player of game.players) {
+        const cardMsg = `🎴 你的底牌：\n${cardsToString(player.holeCards)}`;
+        sendToPrivateGroup(ctx, ctx.endPoint, msg.platform, player.name, cardMsg);
+    }
+
+    // 轮到第一个玩家
+    nextBettorZhajinhua(game, games, gameId, ctx);
+
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["开始炸金花"] = cmd_start_zhajinhua;
+
+// 炸金花专用的下一个投注者函数
+function nextBettorZhajinhua(game, games, gameId, ctx) {
+    const activePlayers = game.players.filter(p => !p.folded && p.status === "active");
+
+    if (activePlayers.length <= 1) {
+        // 游戏结束 - 只有一个玩家未弃牌
+        endRoundZhajinhua(game, games, gameId, ctx);
+        return;
+    }
+
+    // 找下一个未弃牌的玩家
+    let nextIdx = (game.currentBettor + 1) % game.players.length;
+    let attempts = 0;
+    while (game.players[nextIdx].folded && attempts < game.players.length) {
+        nextIdx = (nextIdx + 1) % game.players.length;
+        attempts++;
+    }
+
+    game.currentBettor = nextIdx;
+    const nextPlayer = game.players[game.currentBettor];
+
+    if (nextPlayer.folded) {
+        nextBettorZhajinhua(game, games, gameId, ctx);
+        return;
+    }
+
+    // 记录操作开始时间
+    game.lastActionTime = Date.now();
+
+    saveCardGameData(games);
+
+    // 艾特下一个玩家
+    if (ctx) {
+        let actionMsg = `\n💬 【机器人主持】\n`;
+        actionMsg += `@${nextPlayer.name} 现在轮到你了！\n`;
+        actionMsg += `────────────\n`;
+        actionMsg += `座位: ${nextPlayer.seat + 1}\n`;
+        actionMsg += `你的积分: ${nextPlayer.score}\n`;
+        actionMsg += `当前下注额: 0\n`;
+        actionMsg += `底池: ${game.pot}\n`;
+        actionMsg += `────────────\n`;
+        actionMsg += `⏱️ 30秒内未操作将自动弃牌\n`;
+        actionMsg += `\n请选择下列之一：\n`;
+        actionMsg += `  .跟注          跟当前下注额\n`;
+        actionMsg += `  .弃牌          放弃本轮\n`;
+        actionMsg += `  .加注 [数额]   加注到指定积分\n`;
+        actionMsg += `  .全押          投入所有积分\n`;
+
+        seal.replyToSender(ctx, ctx.message, actionMsg);
+    }
+}
+
+// 炸金花专用的摊牌函数
+function endRoundZhajinhua(game, games, gameId, ctx) {
+    const activePlayers = game.players.filter(p => !p.folded && p.status === "active");
+
+    let resultMsg = `\n🏁 【摊牌阶段】\n`;
+    resultMsg += `────────────\n`;
+
+    // 显示所有玩家的牌
+    const evaluations = [];
+    for (const player of game.players) {
+        if (player.folded) {
+            resultMsg += `${player.name}: 已弃牌 ❌\n`;
+        } else {
+            const eval_result = evaluateThreeCards(player.holeCards);
+            evaluations.push({ player, eval: eval_result });
+            resultMsg += `${player.name}: ${cardsToString(player.holeCards)}\n`;
+        }
+    }
+
+    resultMsg += `\n💰 底池: ${game.pot}\n`;
+
+    if (activePlayers.length === 1) {
+        // 只有一个玩家未弃牌
+        const winner = activePlayers[0];
+        resultMsg += `\n🏆 ${winner.name} 获胜！（其他玩家都已弃牌）\n`;
+        resultMsg += `💰 赢得: ${game.pot}糖果\n`;
+
+        winner.score += game.pot;
+    } else {
+        // 比牌
+        evaluations.sort((a, b) => compareThreeCards(b.eval, a.eval));
+
+        const winners = [evaluations[0]];
+        for (let i = 1; i < evaluations.length; i++) {
+            if (compareThreeCards(evaluations[i].eval, winners[0].eval) === 0) {
+                winners.push(evaluations[i]);
+            } else {
+                break;
+            }
+        }
+
+        if (winners.length === 1) {
+            const winner = winners[0].player;
+            resultMsg += `\n🏆 ${winner.name} 获胜！\n`;
+            resultMsg += `💰 赢得: ${game.pot}糖果\n`;
+            winner.score += game.pot;
+        } else {
+            // 平局分割底池
+            const perWinner = Math.floor(game.pot / winners.length);
+            resultMsg += `\n🤝 平局！${winners.map(w => w.player.name).join('、')} 平分底池\n`;
+            resultMsg += `💰 每人获得: ${perWinner}糖果\n`;
+
+            winners.forEach(w => {
+                w.player.score += perWinner;
+            });
+        }
+    }
+
+    // 显示最终积分
+    resultMsg += `\n📊 最终积分：\n`;
+    for (const player of game.players) {
+        resultMsg += `${player.name}: ${player.score}\n`;
+    }
+
+    resultMsg += `\n➡️ 继续下一局: .开始炸金花`;
+
+    // 重置游戏状态为 waiting，准备下一局
+    game.status = "waiting";
+    game.pot = 0;
+    game.deck = [];
+    game.communityCards = [];
+    for (const p of game.players) {
+        p.holeCards = [];
+        p.currentBet = 0;
+        p.totalBet = 0;
+        p.folded = false;
+        p.status = "active";
+    }
+
+    game.currentBettor = 0;
+
+    saveCardGameData(games);
+
+    if (ctx) seal.replyToSender(ctx, ctx.message, resultMsg);
+}
