@@ -199,7 +199,7 @@ cmd_start.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    let dishes = (era === "无菜") ? [] : (DINNER_MENUS[era] || ["家常小菜"]).sort(() => 0.5 - Math.random()).slice(0, 5 + Math.floor(num / 3));
+    let dishes = (era === "无菜") ? [] : (DINNER_MENUS[era] || ["家常小菜"]).slice().sort(() => 0.5 - Math.random()).slice(0, 5 + Math.floor(num / 3));
 
     let data = {
         status: "开始",
@@ -226,7 +226,10 @@ let cmd_sit = seal.ext.newCmdItemInfo();
 cmd_sit.name = "入座";
 cmd_sit.solve = (ctx, msg, cmdArgs) => {
     let data = getDinnerData();
-    if (!data || data.status !== "开始") return seal.ext.newCmdExecuteResult(true);
+    if (!data || data.status !== "开始") {
+        seal.replyToSender(ctx, msg, "❌ 晚餐尚未开始，请先使用「开始晚餐」");
+        return seal.ext.newCmdExecuteResult(true);
+    }
 
     let index = parseInt(cmdArgs.getArgN(1)) - 1;
     if (isNaN(index) || index < 0 || index >= data.max) {
@@ -669,7 +672,17 @@ cmd_shoot.solve = (ctx, msg, cmdArgs) => {
         game.currentSeat = game.aliveSeats[0];
     } else {
         // 安全，按顺序取下一个存活玩家
-        game.currentSeat = nextAliveSeat(game.aliveSeats, currentSeatIdx);
+        const nextSeat = nextAliveSeat(game.aliveSeats, currentSeatIdx);
+        if (nextSeat === -1) {
+            // 理论上不应发生，但以防万一
+            const errorMsg = `🔫 你扣动了扳机...\n${message}\n❌ 游戏状态异常，无法继续。`;
+            game.active = false;
+            data.game = null;
+            saveDinnerData(data);
+            seal.replyToSender(ctx, msg, errorMsg);
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        game.currentSeat = nextSeat;
     }
 
     saveDinnerData(data);
