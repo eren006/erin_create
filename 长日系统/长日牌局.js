@@ -228,7 +228,9 @@ cmd_create_game.solve = (ctx, msg, cmdArgs) => {
         pot: 0,
         currentBettor: 0,
         round: 0,  // 0=pre-flop, 1=flop, 2=turn, 3=river
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        lastActionTime: null,  // 上一次操作的时间戳
+        actionTimeout: 30000   // 30秒超时（毫秒）
     };
 
     saveCardGameData(games);
@@ -465,6 +467,12 @@ cmd_check.solve = (ctx, msg, cmdArgs) => {
         return seal.replyToSender(ctx, msg, "❌ 你已弃牌");
     }
 
+    // 检查是否超时
+    if (handlePlayerTimeout(game, games, gameId, ctx, roleName)) {
+        // 已超时自动弃牌，nextBettor 已在 checkTimeout 中被调用
+        return seal.replyToSender(ctx, msg, `❌ 你操作超时已自动弃牌！`);
+    }
+
     const needToBet = currentBettingPlayer.currentBet - player.currentBet;
     if (needToBet > player.score) {
         return seal.replyToSender(ctx, msg, `❌ 你的积分不足，只能全押 .全押`);
@@ -512,6 +520,14 @@ cmd_fold.solve = (ctx, msg) => {
         return seal.replyToSender(ctx, msg, "❌ 你已经弃牌了");
     }
 
+    // 检查是否超时（如果轮到该玩家但已超时）
+    const currentBettingPlayer = game.players[game.currentBettor];
+    if (player.name === currentBettingPlayer.name) {
+        if (checkTimeout(game, games, gameId, ctx)) {
+            return seal.replyToSender(ctx, msg, `❌ 你操作超时已自动弃牌！`);
+        }
+    }
+
     player.folded = true;
     player.status = "folded";
 
@@ -555,6 +571,9 @@ function nextBettor(game, games, gameId, ctx) {
         return;
     }
 
+    // 记录操作开始时间（用于超时检查）
+    game.lastActionTime = Date.now();
+
     saveCardGameData(games);
 
     // 🤖 机器人主持人艾特下一个玩家
@@ -567,7 +586,8 @@ function nextBettor(game, games, gameId, ctx) {
         actionMsg += `当前下注额: ${game.betAmount || 0}\n`;
         actionMsg += `底池: ${game.pot}\n`;
         actionMsg += `────────────\n`;
-        actionMsg += `请选择下列之一：\n`;
+        actionMsg += `⏱️  30秒内未操作将自动弃牌\n`;
+        actionMsg += `\n请选择下列之一：\n`;
         actionMsg += `  .跟注          跟当前下注额\n`;
         actionMsg += `  .弃牌          放弃本轮\n`;
         actionMsg += `  .加注 [数额]   加注到指定积分\n`;
@@ -575,6 +595,47 @@ function nextBettor(game, games, gameId, ctx) {
 
         seal.replyToSender(ctx, ctx.message, actionMsg);
     }
+}
+
+// 检查是否超时，超时则自动弃牌
+function checkTimeout(game, games, gameId, ctx) {
+    if (!game.lastActionTime) return false;
+
+    const elapsed = Date.now() - game.lastActionTime;
+
+    if (elapsed > game.actionTimeout) {
+        const currentPlayer = game.players[game.currentBettor];
+        currentPlayer.folded = true;
+        currentPlayer.status = "folded";
+
+        let timeoutMsg = `\n⏱️ 【超时自动弃牌】\n`;
+        timeoutMsg += `${currentPlayer.name} 超过30秒未操作\n`;
+        timeoutMsg += `自动弃牌！\n`;
+        timeoutMsg += `💰 底池: ${game.pot}`;
+
+        if (ctx) seal.replyToSender(ctx, ctx.message, timeoutMsg);
+
+        saveCardGameData(games);
+        return true;
+    }
+
+    return false;
+}
+
+// 检查玩家是否超时并自动弃牌
+function handlePlayerTimeout(game, games, gameId, ctx, roleName) {
+    const player = game.players.find(p => p.name === roleName);
+    if (!player) return false;
+
+    const currentBettingPlayer = game.players[game.currentBettor];
+    if (player.name !== currentBettingPlayer.name) return false;
+
+    // 检查是否超时
+    if (checkTimeout(game, games, gameId, ctx)) {
+        return true; // 已超时并自动弃牌
+    }
+
+    return false; // 未超时
 }
 
 function endRound(game, games, gameId, ctx) {
