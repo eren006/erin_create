@@ -35,21 +35,25 @@ function getMainExt() {
     return main;
 }
 
-// 参考长日系统的寄信方式发送私信
-function sendPrivateMessage(ctx, endPoint, platform, roleName, message) {
+// 参考长日系统的寄信方式，发送到玩家的个人私聊群
+// 使用方式完全参照长日系统的 sendLetter
+function sendToPrivateGroup(ctx, endPoint, platform, roleName, message) {
     const main = getMainExt();
-    if (!main) return false;
+    if (!main) {
+        console.error("[牌局] 主插件未找到");
+        return false;
+    }
 
     try {
         const a_private_group = JSON.parse(main.storageGet("a_private_group") || "{}");
         const targetEntry = a_private_group[platform]?.[roleName];
 
-        if (!targetEntry) {
-            console.error(`[牌局] 找不到${roleName}的私聊群信息`);
+        if (!targetEntry || !targetEntry[1]) {
+            console.error(`[牌局] 找不到${roleName}的个人群信息`);
             return false;
         }
 
-        // 创建临时消息发送到私聊群
+        // 完全参照长日系统的寄信方式
         const deliverMsg = seal.newMessage();
         deliverMsg.messageType = "group";
         deliverMsg.groupId = `${platform}-Group:${targetEntry[1]}`;
@@ -59,7 +63,7 @@ function sendPrivateMessage(ctx, endPoint, platform, roleName, message) {
 
         return true;
     } catch (e) {
-        console.error(`[牌局] 发送私信失败: ${e.message}`);
+        console.error(`[牌局] 发送到个人群失败: ${e.message}`);
         return false;
     }
 }
@@ -418,7 +422,7 @@ cmd_start_game.solve = (ctx, msg, cmdArgs) => {
                 cardMsg += `.跟注 / .弃牌 / .加注 [数额] / .全押\n`;
             }
 
-            sendPrivateMessage(ctx, ctx.endPoint, platform, player.name, cardMsg);
+            sendToPrivateGroup(ctx, ctx.endPoint, platform, player.name, cardMsg);
         });
     } catch (e) {
         console.error(`发牌失败: ${e.message}`);
