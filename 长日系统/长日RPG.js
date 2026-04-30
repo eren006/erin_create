@@ -146,33 +146,16 @@ function clampAttr(def, value) {
     return value;
 }
 
-// RPG 属性系统辅助函数
-function getAttrDefs() {
-    const main = getMainExt();
-    return main ? JSON.parse(main.storageGet("sys_attr_defs") || "{}") : {};
+function getValidAttrs() {
+    return Object.keys(getAttrDefs());
 }
-function saveAttrDefs(defs) {
-    const main = getMainExt();
-    if (main) main.storageSet("sys_attr_defs", JSON.stringify(defs));
-}
-
-function getCharAttrs() {
-    const main = getMainExt();
-    return main ? JSON.parse(main.storageGet("sys_character_attrs") || "{}") : {};
-}
-function saveCharAttrs(attrs) {
-    const main = getMainExt();
-    if (main) main.storageSet("sys_character_attrs", JSON.stringify(attrs));
-}
-
-function clampAttr(def, val) {
-    if (def.max !== null && def.max !== undefined) {
-        val = Math.min(val, def.max);
+function saveValidAttrs(attrs) {
+    const defs = getAttrDefs();
+    const newDefs = {};
+    for (const a of attrs) {
+        newDefs[a] = defs[a] || { min: null, max: null, default: 0, desc: "" };
     }
-    if (def.min !== null && def.min !== undefined) {
-        val = Math.max(val, def.min);
-    }
-    return val;
+    saveAttrDefs(newDefs);
 }
 
 // 合成系统
@@ -676,7 +659,7 @@ function formatInventory(roleKey, roleName, reg, category = "全部", page = 1) 
             const displayItems = cat.items.slice(0, 3);
             lines.push(`${cat.emoji}${cat.name}(${cat.items.length})`);
             for (const { entry, info } of displayItems) {
-                lines.push(formatItemEntryMobile(entry, info));
+                lines.push(formatItemEntry(entry, info));
             }
             if (cat.items.length > 3) {
                 lines.push(`>查看全部${cat.items.length - 3}项`);
@@ -708,7 +691,7 @@ function formatInventory(roleKey, roleName, reg, category = "全部", page = 1) 
 
         lines.push(`${filtered.emoji}${category} ${page}/${totalPages}`);
         for (const { entry, info } of pageItems) {
-            lines.push(formatItemEntryMobile(entry, info));
+            lines.push(formatItemEntry(entry, info));
         }
 
         if (totalPages > 1) {
