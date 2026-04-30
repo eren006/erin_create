@@ -484,7 +484,8 @@ function recordMeetingAndAnnounce(subtype, platform, ctx, endPoint) {
         "心动信": "lovemail",
         "礼物": "gift",
         "心愿": "wish",
-        "官约": "official"
+        "官约": "official",
+        "拉线": "relation"
     };
     const keyType = subtypeKeyMap[subtype] || "unknown";
     const storageKey = `a_meetingCount_${keyType}`;
@@ -525,6 +526,7 @@ function recordMeetingAndAnnounce(subtype, platform, ctx, endPoint) {
             if (subtype === "礼物") return getDirectRecord("礼物赠送", count, "🎁");
             if (subtype === "心愿") return getDirectRecord("心愿", count, "🌠");
             if (subtype === "官约") return getDirectRecord("官方约会", count, "🏢");
+            if (subtype === "拉线") return getDirectRecord("关系线记录", count, "🔗");
 
             return getDirectRecord("互动", count, "📝");
         };
@@ -4481,41 +4483,58 @@ function sendCombinedDetails(ctx, msg, toRoleName, fromRoleName, details, self) 
     // 4. 获取当前用户角色名（也可直接用 fromRoleName，但保持与原有逻辑一致）
     const sourceRoleName = RelationshipUtils.getRoleName(ctx, msg, platform);
 
-    // 5. 构造节点
-    const nodes = details.map(d => {
-        const isFromMe = (d.from === sourceRoleName); // 判断是谁说的
+    // 5. 统计总字数
+    const totalChars = details.reduce((sum, d) => sum + (d.text?.length || 0), 0);
+    const MAX_DETAIL_CHARS = parseInt(ext.storageGet("max_detail_chars") || "500");
+    const SPLIT_THRESHOLD = parseInt(ext.storageGet("forward_split_threshold") || "4000");
+    const gid = parseInt(targetGid.replace(/[^\d]/g, ""), 10);
+
+    // 6. 构造节点的辅助函数
+    const makeNode = d => {
+        const isFromMe = (d.from === sourceRoleName);
         return {
             type: "node",
             data: {
-                name: d.from,                      // 显示角色名
-                uin: isFromMe ? sourceUid : toUid, // 关键修正：对方永远用 toUid
+                name: d.from,
+                uin: isFromMe ? sourceUid : toUid,
                 content: d.text
             }
         };
-    });
+    };
 
-    // 6. 插入页眉（根据 self 调整文字）
-    const headerContent = self
-        ? `📜 你与「${toRoleName}」的关系细节：`
-        : `📜 角色「${sourceRoleName}」更新了与你的关系细节：`;
+    // 7. 页眉文字
+    const headerBase = self
+        ? `📜 你与「${toRoleName}」的关系细节`
+        : `📜 角色「${sourceRoleName}」更新了与你的关系细节`;
+    const charInfo = `共 ${details.length} 条 | 单条上限 ${MAX_DETAIL_CHARS} 字 | 累计 ${totalChars} 字`;
 
-    nodes.unshift({
-        type: "node",
-        data: {
-            name: "关系线档案",
-            uin: "10001",
-            content: headerContent
-        }
-    });
+    // 8. 判断是否需要拆分
+    if (totalChars > SPLIT_THRESHOLD) {
+        const mid = Math.ceil(details.length / 2);
+        const part1 = details.slice(0, mid);
+        const part2 = details.slice(mid);
 
-    // 7. 发送
-    ws({
-        action: "send_group_forward_msg",
-        params: {
-            group_id: parseInt(targetGid.replace(/[^\d]/g, ""), 10),
-            messages: nodes
-        }
-    }, ctx, msg, "");
+        const header1 = {
+            type: "node",
+            data: { name: "关系线档案", uin: "10001",
+                content: `${headerBase}\n${charInfo}\n⚠️ 内容较多，已拆分为2条转发 · 第1部分（共${mid}条）` }
+        };
+        const header2 = {
+            type: "node",
+            data: { name: "关系线档案", uin: "10001",
+                content: `${headerBase}\n第2部分（共${details.length - mid}条）` }
+        };
+
+        ws({ action: "send_group_forward_msg", params: { group_id: gid, messages: [header1, ...part1.map(makeNode)] } }, ctx, msg, "");
+        ws({ action: "send_group_forward_msg", params: { group_id: gid, messages: [header2, ...part2.map(makeNode)] } }, ctx, msg, "");
+    } else {
+        const header = {
+            type: "node",
+            data: { name: "关系线档案", uin: "10001",
+                content: `${headerBase}\n${charInfo}` }
+        };
+        ws({ action: "send_group_forward_msg", params: { group_id: gid, messages: [header, ...details.map(makeNode)] } }, ctx, msg, "");
+    }
 }
 
 // 辅助函数：获取对方绑定的 [uid, gid]
@@ -4547,6 +4566,12 @@ cmd_add_rel_detail.solve = (ctx, msg, cmdArgs) => {
 
     if (!sendName || !toName || !content) return seal.replyToSender(ctx, msg, "格式：。拉线 对方名 内容");
     if (sendName === toName) return seal.replyToSender(ctx, msg, "⚠️ 你不能跟自己建立关系线哦。");
+
+    const MAX_DETAIL_CHARS = parseInt(ext.storageGet("max_detail_chars") || "500");
+    const charCount = content.length;
+    if (charCount > MAX_DETAIL_CHARS) {
+        return seal.replyToSender(ctx, msg, `⚠️ 内容过长（${charCount} 字），单条拉线上限为 ${MAX_DETAIL_CHARS} 字，请精简后再提交。`);
+    }
 
     let relData = RelationshipUtils.getData("relationship_lines") || {};
     if (!relData[platform]) relData[platform] = {};
@@ -4588,14 +4613,21 @@ cmd_add_rel_detail.solve = (ctx, msg, cmdArgs) => {
     RelationshipUtils.setData("relationship_lines", relData);
 
     // 7. 同步通知
+    const totalCharsNow = rel.details.reduce((sum, d) => sum + (d.text?.length || 0), 0);
+    const SPLIT_THRESHOLD = parseInt(ext.storageGet("forward_split_threshold") || "4000");
+    const splitHint = totalCharsNow > SPLIT_THRESHOLD ? `（总字数 ${totalCharsNow} 字，查看时将自动拆分为2条转发）` : `（本条 ${charCount} 字，累计 ${totalCharsNow}/${SPLIT_THRESHOLD} 字）`;
+
     const addr = getTargetAddr(platform, toName);
     if (addr) {
         sendNewDetailNotification(ctx, msg, toName, content, sendName, addr[1]);
-        sendCombinedDetails(ctx, msg, toName, sendName,rel.details,false);
-        seal.replyToSender(ctx, msg, `✅ 细节已同步至「${toName}」的绑定群 (${addr[1]})`);
+        sendCombinedDetails(ctx, msg, toName, sendName, rel.details, false);
+        seal.replyToSender(ctx, msg, `✅ 细节已同步至「${toName}」的绑定群 (${addr[1]})\n${splitHint}`);
     } else {
-        seal.replyToSender(ctx, msg, `✅ 细节已记录，但「${toName}」尚未绑定注册群，无法实时同步。`);
+        seal.replyToSender(ctx, msg, `✅ 细节已记录，但「${toName}」尚未绑定注册群，无法实时同步。\n${splitHint}`);
     }
+
+    // 8. 全局计数公告（与其他互动类型统一频率）
+    recordMeetingAndAnnounce("拉线", platform, ctx, ctx.endPoint);
 
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -4823,8 +4855,11 @@ cmd_view_relationship.solve = (ctx, msg, cmdArgs) => {
         const statusIcon = data.confirmed ? "✅" : "⏳";
         const typeTag = isSystem ? "【强制】" : (data.initiator === sendName ? "【发起】" : "【收到】");
         const detailCount = data.details ? data.details.length : 0;
-        
-        listContent += `${statusIcon} ${typeTag} 与「${name}」(${detailCount}条细节)\n`;
+        const totalChars = data.details ? data.details.reduce((sum, d) => sum + (d.text?.length || 0), 0) : 0;
+        const SPLIT_THRESHOLD = parseInt(ext.storageGet("forward_split_threshold") || "4000");
+        const charHint = totalChars > SPLIT_THRESHOLD ? `⚠️${totalChars}字·将拆分` : `${totalChars}字`;
+
+        listContent += `${statusIcon} ${typeTag} 与「${name}」(${detailCount}条 | ${charHint})\n`;
     });
 
     if (!listContent) {
