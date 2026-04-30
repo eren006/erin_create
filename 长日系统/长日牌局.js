@@ -676,6 +676,72 @@ function showdown(game, games, gameId, ctx) {
 
 // ========================
 
+let cmd_rules = seal.ext.newCmdItemInfo();
+cmd_rules.name = "牌型规则";
+cmd_rules.help = "查看所有牌型的大小关系";
+cmd_rules.solve = (ctx, msg) => {
+    let reply = `🎴 纸牌竞技 - 牌型大小表\n`;
+    reply += `════════════════════\n\n`;
+
+    reply += `【1】皇家同花顺 🏆 最大\n`;
+    reply += `同一花色的 10-J-Q-K-A\n`;
+    reply += `示例：♠10 ♠J ♠Q ♠K ♠A\n`;
+    reply += `出现概率：1/649,740\n\n`;
+
+    reply += `【2】同花顺\n`;
+    reply += `同一花色的连续5张牌\n`;
+    reply += `示例：♥5 ♥6 ♥7 ♥8 ♥9\n`;
+    reply += `特殊：A-2-3-4-5 也是顺子（最小顺子）\n\n`;
+
+    reply += `【3】四条（铁支）\n`;
+    reply += `4张相同花色的牌\n`;
+    reply += `示例：♠A ♥A ♦A ♣A (加任意1张)\n\n`;
+
+    reply += `【4】葫芦（满堂红）\n`;
+    reply += `3张相同 + 2张相同\n`;
+    reply += `示例：♠K ♥K ♦K ♣5 ♥5\n`;
+    reply += `（三个K + 一对5）\n\n`;
+
+    reply += `【5】同花（花）\n`;
+    reply += `同一花色的任意5张牌\n`;
+    reply += `示例：♦2 ♦5 ♦8 ♦J ♦Q\n\n`;
+
+    reply += `【6】顺子（龙）\n`;
+    reply += `任意花色的连续5张牌\n`;
+    reply += `示例：♠2 ♥3 ♦4 ♣5 ♠6\n`;
+    reply += `特殊：A-2-3-4-5 是最小顺子\n\n`;
+
+    reply += `【7】三条（三个子）\n`;
+    reply += `3张相同的牌\n`;
+    reply += `示例：♠9 ♥9 ♦9 ♣2 ♥5\n\n`;
+
+    reply += `【8】两对\n`;
+    reply += `两组相同的牌\n`;
+    reply += `示例：♠K ♥K ♦7 ♣7 ♠2\n`;
+    reply += `（一对K + 一对7 + 一张2）\n\n`;
+
+    reply += `【9】一对\n`;
+    reply += `2张相同的牌\n`;
+    reply += `示例：♠Q ♥Q ♦3 ♣8 ♠2\n\n`;
+
+    reply += `【10】高牌 💧 最小\n`;
+    reply += `没有任何组合，只比最高牌\n`;
+    reply += `示例：♠A ♥K ♦J ♣9 ♠5\n`;
+    reply += `（单独一张A是最大的高牌）\n\n`;
+
+    reply += `════════════════════\n`;
+    reply += `⚡ 快速记忆口诀\n`;
+    reply += `从大到小：\n`;
+    reply += `皇家顺 → 顺 → 四 → 葫 → 花\n`;
+    reply += `龙 → 三 → 两对 → 一对 → 高\n`;
+
+    seal.replyToSender(ctx, msg, reply);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["牌型规则"] = cmd_rules;
+
+// ========================
+
 let cmd_list_games = seal.ext.newCmdItemInfo();
 cmd_list_games.name = "竞技列表";
 cmd_list_games.help = "查看所有竞技赛";
