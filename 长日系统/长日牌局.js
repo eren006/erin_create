@@ -35,6 +35,35 @@ function getMainExt() {
     return main;
 }
 
+// 参考长日系统的寄信方式发送私信
+function sendPrivateMessage(ctx, endPoint, platform, roleName, message) {
+    const main = getMainExt();
+    if (!main) return false;
+
+    try {
+        const a_private_group = JSON.parse(main.storageGet("a_private_group") || "{}");
+        const targetEntry = a_private_group[platform]?.[roleName];
+
+        if (!targetEntry) {
+            console.error(`[牌局] 找不到${roleName}的私聊群信息`);
+            return false;
+        }
+
+        // 创建临时消息发送到私聊群
+        const deliverMsg = seal.newMessage();
+        deliverMsg.messageType = "group";
+        deliverMsg.groupId = `${platform}-Group:${targetEntry[1]}`;
+
+        const deliverCtx = seal.createTempCtx(endPoint, deliverMsg);
+        seal.replyToSender(deliverCtx, deliverMsg, message);
+
+        return true;
+    } catch (e) {
+        console.error(`[牌局] 发送私信失败: ${e.message}`);
+        return false;
+    }
+}
+
 function getCardGameData() {
     const main = getMainExt();
     return main ? JSON.parse(main.storageGet("card_game_data") || "{}") : {};
@@ -343,6 +372,11 @@ cmd_start_game.solve = (ctx, msg, cmdArgs) => {
     game.pot = 0;
     game.round = 0;
 
+    game.status = "playing";
+    game.pot = 0;
+    game.round = 0;
+    game.currentBettor = 0;
+
     saveCardGameData(games);
 
     // 发送开始消息
@@ -350,43 +384,45 @@ cmd_start_game.solve = (ctx, msg, cmdArgs) => {
     startMsg += `════════════════════\n`;
     startMsg += `👥 参赛玩家（${game.players.length}人）:\n`;
     game.players.forEach((p, i) => {
-        startMsg += `  ${i+1}. ${p.name} - ${p.score}积分\n`;
+        startMsg += `座位${p.seat + 1}: ${p.name} - ${p.score}积分\n`;
     });
     startMsg += `════════════════════\n`;
-    startMsg += `📨 底牌已发送给各位玩家（私聊查看）\n`;
-    startMsg += `⏳ 等待小盲位玩家操作...\n`;
+    startMsg += `🎴 底牌已发送到私聊群\n`;
+    startMsg += `⏳ 第一个玩家（座位${game.players[0].seat + 1}）请准备...\n`;
 
     seal.replyToSender(ctx, msg, startMsg);
 
     // 分别给每个玩家私信发底牌
-    game.players.forEach((player, idx) => {
-        const main = getMainExt();
-        if (main) {
-            try {
-                const a_private = JSON.parse(main.storageGet("a_private_group") || "{}");
-                const platform = Object.keys(a_private).find(plat =>
-                    a_private[plat]?.[player.name]?.[0]
-                );
+    const main = getMainExt();
+    if (!main) {
+        seal.replyToSender(ctx, msg, "⚠️ 警告：无法发送底牌，主插件未找到");
+        return seal.ext.newCmdExecuteResult(true);
+    }
 
-                if (platform && a_private[platform]?.[player.name]) {
-                    const uid = a_private[platform][player.name][0];
-                    const groupId = a_private[platform][player.name][1];
+    try {
+        const a_private_group = JSON.parse(main.storageGet("a_private_group") || "{}");
+        const platform = msg.platform;
 
-                    let cardMsg = `🎴 你的底牌:\n`;
-                    cardMsg += `${cardsToString(player.holeCards)}\n`;
-                    cardMsg += `\n你的积分: ${player.score}\n`;
-                    cardMsg += `座位: ${player.seat + 1}\n`;
-                    cardMsg += `\n⏳ 等待游戏继续...`;
+        game.players.forEach((player, idx) => {
+            let cardMsg = `🎴【底牌】\n`;
+            cardMsg += `你的两张底牌：${cardsToString(player.holeCards)}\n`;
+            cardMsg += `\n────────────\n`;
+            cardMsg += `座位: ${player.seat + 1}\n`;
+            cardMsg += `当前积分: ${player.score}\n`;
+            cardMsg += `────────────\n`;
+            cardMsg += `💡 保管好这张牌，不要告诉其他人！\n`;
 
-                    // 这里需要通过seal.ext的消息系统发送
-                    // 实现方式取决于你的seal框架版本
-                    console.log(`[私信${player.name}]: ${cardMsg}`);
-                }
-            } catch (e) {
-                console.error(`发牌失败: ${e.message}`);
+            if (idx === 0) {
+                cardMsg += `\n🔔 【你是第一位玩家】\n`;
+                cardMsg += `准备好后，在公开群中使用：\n`;
+                cardMsg += `.跟注 / .弃牌 / .加注 [数额] / .全押\n`;
             }
-        }
-    });
+
+            sendPrivateMessage(ctx, ctx.endPoint, platform, player.name, cardMsg);
+        });
+    } catch (e) {
+        console.error(`发牌失败: ${e.message}`);
+    }
 
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -434,11 +470,16 @@ cmd_check.solve = (ctx, msg, cmdArgs) => {
     player.currentBet += needToBet;
     player.score -= needToBet;
     game.pot += needToBet;
+    player.totalBet += needToBet;
 
-    seal.replyToSender(ctx, msg, `✅ 你跟注了 ${needToBet} 积分\n💰 底池: ${game.pot}`);
+    let reply = `✅ ${roleName} 跟注了 ${needToBet} 积分\n`;
+    reply += `💰 底池: ${game.pot}\n`;
+    reply += `剩余积分: ${player.score}`;
+
+    seal.replyToSender(ctx, msg, reply);
 
     // 轮到下一个玩家
-    nextBettor(game, games, gameId);
+    nextBettor(game, games, gameId, ctx);
 
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -470,36 +511,69 @@ cmd_fold.solve = (ctx, msg) => {
     player.folded = true;
     player.status = "folded";
 
-    seal.replyToSender(ctx, msg, `⚠️ 你已弃牌，退出本轮竞争`);
+    let reply = `⚠️ ${roleName} 弃牌了\n`;
+    reply += `退出本轮竞争\n`;
+    reply += `💰 底池: ${game.pot}`;
 
-    nextBettor(game, games, gameId);
+    seal.replyToSender(ctx, msg, reply);
+
+    saveCardGameData(games);
+
+    nextBettor(game, games, gameId, ctx);
 
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["弃牌"] = cmd_fold;
 
-// 下一个投注者
-function nextBettor(game, games, gameId) {
+// 下一个投注者 - 机器人主持人艾特下一个玩家
+function nextBettor(game, games, gameId, ctx) {
     const activePlayers = game.players.filter(p => !p.folded && p.status === "active");
 
     if (activePlayers.length <= 1) {
         // 游戏结束
-        endRound(game, games, gameId);
+        endRound(game, games, gameId, ctx);
         return;
     }
 
-    game.currentBettor = (game.currentBettor + 1) % game.players.length;
+    // 找下一个未弃牌的玩家
+    let nextIdx = (game.currentBettor + 1) % game.players.length;
+    let attempts = 0;
+    while (game.players[nextIdx].folded && attempts < game.players.length) {
+        nextIdx = (nextIdx + 1) % game.players.length;
+        attempts++;
+    }
+
+    game.currentBettor = nextIdx;
     const nextPlayer = game.players[game.currentBettor];
 
     if (nextPlayer.folded) {
-        nextBettor(game, games, gameId);
+        nextBettor(game, games, gameId, ctx);
         return;
     }
 
     saveCardGameData(games);
+
+    // 🤖 机器人主持人艾特下一个玩家
+    if (ctx) {
+        let actionMsg = `\n💬 【机器人主持】\n`;
+        actionMsg += `@${nextPlayer.name} 现在轮到你了！\n`;
+        actionMsg += `────────────\n`;
+        actionMsg += `座位: ${nextPlayer.seat + 1}\n`;
+        actionMsg += `你的积分: ${nextPlayer.score}\n`;
+        actionMsg += `当前下注额: ${game.betAmount || 0}\n`;
+        actionMsg += `底池: ${game.pot}\n`;
+        actionMsg += `────────────\n`;
+        actionMsg += `请选择下列之一：\n`;
+        actionMsg += `  .跟注          跟当前下注额\n`;
+        actionMsg += `  .弃牌          放弃本轮\n`;
+        actionMsg += `  .加注 [数额]   加注到指定积分\n`;
+        actionMsg += `  .全押          投入所有积分\n`;
+
+        seal.replyToSender(ctx, ctx.message, actionMsg);
+    }
 }
 
-function endRound(game, games, gameId) {
+function endRound(game, games, gameId, ctx) {
     const activePlayers = game.players.filter(p => !p.folded);
 
     if (activePlayers.length === 1) {
@@ -507,11 +581,13 @@ function endRound(game, games, gameId) {
         const winner = activePlayers[0];
         winner.score += game.pot;
 
-        let msg = `🏆 ${winner.name} 赢得本轮！\n`;
-        msg += `获得积分: ${game.pot}\n`;
+        let msg = `\n🏆【本轮结束】\n`;
+        msg += `${winner.name} 赢得本轮！\n`;
+        msg += `获得积分: +${game.pot}\n`;
         msg += `总积分: ${winner.score}`;
 
-        console.log(msg);
+        if (ctx) seal.replyToSender(ctx, ctx.message, msg);
+
         game.status = "ended";
         saveCardGameData(games);
         return;
@@ -519,14 +595,14 @@ function endRound(game, games, gameId) {
 
     // 多个人存活，显示公牌进行比牌
     if (game.round < 3) {
-        dealCommunityCards(game, games, gameId);
+        dealCommunityCards(game, games, gameId, ctx);
     } else {
         // 河牌已出，进行摊牌
-        showdown(game, games, gameId);
+        showdown(game, games, gameId, ctx);
     }
 }
 
-function dealCommunityCards(game, games, gameId) {
+function dealCommunityCards(game, games, gameId, ctx) {
     const stages = ["Flop（翻牌）", "Turn（转牌）", "River（河牌）"];
     const stageCounts = [3, 1, 1];
 
@@ -536,21 +612,25 @@ function dealCommunityCards(game, games, gameId) {
 
     game.round++;
 
-    let msg = `\n🎴 ${stages[game.round - 1]} 已出现\n`;
+    let msg = `\n🎴【${stages[game.round - 1]}】\n`;
     msg += `公共牌: ${cardsToString(game.communityCards)}\n`;
     msg += `底池: ${game.pot}`;
 
-    console.log(msg);
+    if (ctx) seal.replyToSender(ctx, ctx.message, msg);
 
     // 重置下注
-    game.players.forEach(p => p.currentBet = 0);
+    game.players.forEach(p => {
+        if (!p.folded) p.currentBet = 0;
+    });
     game.currentBettor = 0;
-    game.pot += game.players[0].currentBet; // 小盲位先下注
 
     saveCardGameData(games);
+
+    // 继续下注轮
+    nextBettor(game, games, gameId, ctx);
 }
 
-function showdown(game, games, gameId) {
+function showdown(game, games, gameId, ctx) {
     const activePlayers = game.players.filter(p => !p.folded);
 
     let bestHandValue = null;
@@ -572,13 +652,20 @@ function showdown(game, games, gameId) {
 
     const winnerShare = Math.floor(game.pot / winners.length);
 
-    let resultMsg = `\n🏆 摊牌结果:\n`;
+    let resultMsg = `\n🏆【摊牌结果】\n`;
+    resultMsg += `最终公共牌: ${cardsToString(game.communityCards)}\n`;
+    resultMsg += `────────────\n`;
+
     winners.forEach(winner => {
         winner.score += winnerShare;
-        resultMsg += `${winner.name} 获胜 +${winnerShare} 积分\n`;
+        resultMsg += `🎉 ${winner.name} 获胜!\n`;
+        resultMsg += `  手牌: ${cardsToString(winner.holeCards)}\n`;
+        resultMsg += `  获得积分: +${winnerShare}\n`;
+        resultMsg += `  总积分: ${winner.score}\n`;
     });
 
-    console.log(resultMsg);
+    if (ctx) seal.replyToSender(ctx, ctx.message, resultMsg);
+
     game.status = "ended";
     saveCardGameData(games);
 }
