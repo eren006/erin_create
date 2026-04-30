@@ -76,6 +76,9 @@ function getChangriRoleName(ctx, msg) {
 function isUserAdmin(ctx, msg) {
     if (ctx.privilegeLevel === 100) return true;
 
+    const platform = msg.platform;
+    const uid = msg.sender.userId.replace(`${platform}:`, "");
+
     let crExt = seal.ext.find('changri');
     if (!crExt) return false;
 
@@ -84,11 +87,7 @@ function isUserAdmin(ctx, msg) {
         if (!rawAdmin) return false;
 
         let a_adminList = JSON.parse(rawAdmin);
-        const parts = msg.sender.userId.split(':');
-        const platform = parts[0];
-        const pureUid = parts[1];
-
-        return a_adminList[platform] && a_adminList[platform].includes(pureUid);
+        return a_adminList[platform] && a_adminList[platform].includes(uid);
     } catch (e) {
         return false;
     }
