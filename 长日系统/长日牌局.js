@@ -80,16 +80,20 @@ function saveCardGameData(data) {
 
 function getRoleName(ctx, msg) {
     const main = getMainExt();
-    if (!main) return msg.sender.nickname;
+    if (!main) return null;
     try {
-        const charData = JSON.parse(main.storageGet("Character_Platform") || "{}");
-        const parts = msg.sender.userId.split(':');
-        const platform = parts[0];
-        const uid = parts[1];
-        return charData[platform]?.[uid] || msg.sender.nickname;
+        const platform = msg.platform;
+        const uid = msg.sender.userId.replace(`${platform}:`, "");
+        const a_private_group = JSON.parse(main.storageGet("a_private_group") || "{}");
+        const roles = a_private_group[platform] || {};
+        return Object.entries(roles).find(([_, val]) => val[0] === uid)?.[0] || null;
     } catch (e) {
-        return msg.sender.nickname;
+        return null;
     }
+}
+
+function isRegisteredInChangri(ctx, msg) {
+    return getRoleName(ctx, msg) !== null;
 }
 
 function isUserAdmin(ctx, msg) {
@@ -344,6 +348,9 @@ let cmd_join_game = seal.ext.newCmdItemInfo();
 cmd_join_game.name = "加入竞技";
 cmd_join_game.help = "加入纸牌竞技赛\n.加入竞技 [座位号]\n.加入竞技 自动";
 cmd_join_game.solve = (ctx, msg, cmdArgs) => {
+    if (!isRegisteredInChangri(ctx, msg)) {
+        return seal.replyToSender(ctx, msg, "❌ 你尚未在长日系统注册，请先使用「.创建新角色 [名称]」注册角色后再加入竞技。");
+    }
     const roleName = getRoleName(ctx, msg);
     const seatInput = cmdArgs.getArgN(1);
     const games = getCardGameData();
@@ -977,8 +984,10 @@ let cmd_join_zhajinhua = seal.ext.newCmdItemInfo();
 cmd_join_zhajinhua.name = "加入炸金花";
 cmd_join_zhajinhua.help = "加入炸金花赛\n.加入炸金花 [游戏ID]";
 cmd_join_zhajinhua.solve = (ctx, msg, cmdArgs) => {
+    if (!isRegisteredInChangri(ctx, msg)) {
+        return seal.replyToSender(ctx, msg, "❌ 你尚未在长日系统注册，请先使用「.创建新角色 [名称]」注册角色后再加入炸金花。");
+    }
     const roleName = getRoleName(ctx, msg);
-    if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
 
     const gameId = cmdArgs.getArgN(1);
     if (!gameId) {
@@ -1037,7 +1046,7 @@ cmd_start_zhajinhua.solve = (ctx, msg, cmdArgs) => {
 
     // 查找该玩家所在的炸金花游戏
     const roleName = getRoleName(ctx, msg);
-    if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+    if (!roleName) return seal.replyToSender(ctx, msg, "❌ 你尚未在长日系统注册，请先使用「.创建新角色 [名称]」注册角色。");
 
     let gameId = cmdArgs.getArgN(1);
     if (!gameId) {
