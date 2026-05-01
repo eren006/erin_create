@@ -567,9 +567,9 @@ cmd_check.solve = (ctx, msg, cmdArgs) => {
         return seal.replyToSender(ctx, msg, `❌ 你操作超时已自动弃牌！`);
     }
 
-    const needToBet = currentBettingPlayer.currentBet - player.currentBet;
+    const needToBet = (game.currentBet || 0) - player.currentBet;
     if (needToBet > player.score) {
-        return seal.replyToSender(ctx, msg, `❌ 你的积分不足，只能全押 .全押`);
+        return seal.replyToSender(ctx, msg, `❌ 你的积分不足（需要 ${needToBet}），只能全押 .全押`);
     }
 
     // 执行跟注
@@ -578,7 +578,9 @@ cmd_check.solve = (ctx, msg, cmdArgs) => {
     game.pot += needToBet;
     player.totalBet += needToBet;
 
-    let reply = `✅ ${roleName} 跟注了 ${needToBet} 积分\n`;
+    let reply = needToBet > 0
+        ? `✅ ${roleName} 跟注了 ${needToBet} 积分\n`
+        : `✅ ${roleName} 过牌（当前无人下注）\n`;
     reply += `💰 底池: ${game.pot}\n`;
     reply += `剩余积分: ${player.score}`;
 
@@ -646,6 +648,129 @@ cmd_fold.solve = (ctx, msg) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["弃牌"] = cmd_fold;
+
+let cmd_raise = seal.ext.newCmdItemInfo();
+cmd_raise.name = "加注";
+cmd_raise.help = "加注到指定积分\n.加注 [数额]";
+cmd_raise.solve = (ctx, msg, cmdArgs) => {
+    const roleName = getRoleName(ctx, msg);
+    const games = getCardGameData();
+
+    const gameId = Object.keys(games).find(id =>
+        games[id].status === "playing" &&
+        games[id].players.some(p => p.name === roleName)
+    );
+
+    if (!gameId) {
+        return seal.replyToSender(ctx, msg, "❌ 你未参加任何进行中的竞技赛");
+    }
+
+    const game = games[gameId];
+    const player = game.players.find(p => p.name === roleName);
+    const currentBettingPlayer = game.players[game.currentBettor];
+
+    if (player.name !== currentBettingPlayer.name) {
+        return seal.replyToSender(ctx, msg, `❌ 现在轮到 ${currentBettingPlayer.name} 操作`);
+    }
+    if (player.folded) {
+        return seal.replyToSender(ctx, msg, "❌ 你已弃牌");
+    }
+    if (handlePlayerTimeout(game, games, gameId, ctx, roleName)) {
+        return seal.replyToSender(ctx, msg, "❌ 你操作超时已自动弃牌！");
+    }
+
+    const target = parseInt(cmdArgs.getArgN(1));
+    if (!target || target <= 0) {
+        return seal.replyToSender(ctx, msg, "❌ 请输入有效数额\n用法: .加注 [数额]");
+    }
+    if (target <= (game.currentBet || 0)) {
+        return seal.replyToSender(ctx, msg, `❌ 加注额必须大于当前最高注 ${game.currentBet || 0}`);
+    }
+
+    const needToPay = target - player.currentBet;
+    if (needToPay > player.score) {
+        return seal.replyToSender(ctx, msg, `❌ 积分不足（需要 ${needToPay}，当前 ${player.score}），可使用 .全押`);
+    }
+
+    player.score -= needToPay;
+    player.currentBet = target;
+    player.totalBet += needToPay;
+    game.pot += needToPay;
+    game.currentBet = target;
+
+    let reply = `🔺 ${roleName} 加注到 ${target} 积分！\n`;
+    reply += `💰 底池: ${game.pot}\n`;
+    reply += `剩余积分: ${player.score}`;
+    seal.replyToSender(ctx, msg, reply);
+
+    if (game.gameType === "zhajinhua") {
+        nextBettorZhajinhua(game, games, gameId, ctx);
+    } else {
+        nextBettor(game, games, gameId, ctx);
+    }
+
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["加注"] = cmd_raise;
+
+let cmd_allin = seal.ext.newCmdItemInfo();
+cmd_allin.name = "全押";
+cmd_allin.help = "投入所有积分";
+cmd_allin.solve = (ctx, msg) => {
+    const roleName = getRoleName(ctx, msg);
+    const games = getCardGameData();
+
+    const gameId = Object.keys(games).find(id =>
+        games[id].status === "playing" &&
+        games[id].players.some(p => p.name === roleName)
+    );
+
+    if (!gameId) {
+        return seal.replyToSender(ctx, msg, "❌ 你未参加任何进行中的竞技赛");
+    }
+
+    const game = games[gameId];
+    const player = game.players.find(p => p.name === roleName);
+    const currentBettingPlayer = game.players[game.currentBettor];
+
+    if (player.name !== currentBettingPlayer.name) {
+        return seal.replyToSender(ctx, msg, `❌ 现在轮到 ${currentBettingPlayer.name} 操作`);
+    }
+    if (player.folded) {
+        return seal.replyToSender(ctx, msg, "❌ 你已弃牌");
+    }
+    if (handlePlayerTimeout(game, games, gameId, ctx, roleName)) {
+        return seal.replyToSender(ctx, msg, "❌ 你操作超时已自动弃牌！");
+    }
+    if (player.score <= 0) {
+        return seal.replyToSender(ctx, msg, "❌ 你没有剩余积分");
+    }
+
+    const allIn = player.score;
+    const newBet = player.currentBet + allIn;
+    game.pot += allIn;
+    player.currentBet = newBet;
+    player.totalBet += allIn;
+    player.score = 0;
+
+    if (newBet > (game.currentBet || 0)) {
+        game.currentBet = newBet;
+    }
+
+    let reply = `💥 ${roleName} 全押！投入 ${allIn} 积分\n`;
+    reply += `💰 底池: ${game.pot}\n`;
+    reply += `剩余积分: 0`;
+    seal.replyToSender(ctx, msg, reply);
+
+    if (game.gameType === "zhajinhua") {
+        nextBettorZhajinhua(game, games, gameId, ctx);
+    } else {
+        nextBettor(game, games, gameId, ctx);
+    }
+
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["全押"] = cmd_allin;
 
 // 下一个投注者 - 机器人主持人艾特下一个玩家
 function nextBettor(game, games, gameId, ctx) {
@@ -1090,6 +1215,7 @@ cmd_start_zhajinhua.solve = (ctx, msg, cmdArgs) => {
     }
 
     game.pot = 0;
+    game.currentBet = 0;
     game.currentBettor = 0;
     game.round = 0;
     game.status = "playing";
@@ -1162,7 +1288,7 @@ function nextBettorZhajinhua(game, games, gameId, ctx) {
         actionMsg += `────────────\n`;
         actionMsg += `座位: ${nextPlayer.seat + 1}\n`;
         actionMsg += `你的积分: ${nextPlayer.score}\n`;
-        actionMsg += `当前下注额: 0\n`;
+        actionMsg += `当前最高注: ${game.currentBet || 0}（你已下: ${nextPlayer.currentBet}）\n`;
         actionMsg += `底池: ${game.pot}\n`;
         actionMsg += `────────────\n`;
         actionMsg += `⏱️ 30秒内未操作将自动弃牌\n`;
@@ -1256,6 +1382,7 @@ function endRoundZhajinhua(game, games, gameId, ctx) {
     }
 
     game.currentBettor = 0;
+    game.currentBet = 0;
 
     saveCardGameData(games);
 
