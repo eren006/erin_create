@@ -948,26 +948,8 @@ function checkPlaceCommon(platform, senderName, place, instructionName = "发起
     }
   } 
   
-  // --- 情况 B: 地点系统已【禁用】 (宽松检查模式) ---
-  else {
-    const placeExists = availablePlaces[place];
-    const isPrivateRoom = place.match(/^(.+?)的房间$/);
-    
-    // 如果地点不在预设库里，且也不是私人房间
-    if (Object.keys(availablePlaces).length > 0 && !placeExists && !isPrivateRoom) {
-      let warningMsg = `📢 提示：地点系统未启用，已自动通过${instructionName}。\n`;
-      warningMsg += `📝 您填写的地点「${place}」不在预设名单中。\n\n`;
-      
-      warningMsg += "📍 当前预设地点库：\n";
-      Object.entries(availablePlaces).forEach(([placeName, data]) => {
-        const desc = data.desc ? `（${data.desc}）` : '';
-        warningMsg += `· ${placeName}${desc}\n`;
-      });
-
-      // valid 为 true，不拦截，仅通过 warningMsg 携带提示
-      return { valid: true, errorMsg: "", warningMsg: warningMsg };
-    }
-  }
+  // --- 情况 B: 地点系统已【禁用】 (宽松检查模式，直接通过) ---
+  // 地点系统未启用时不做任何地点校验，也不显示地点列表
   
   // 默认通过
   return { valid: true, errorMsg: "", warningMsg: "" };
@@ -1505,6 +1487,7 @@ async function checkAppointmentPreflight(ctx, msg, cmdArgs, subtype, minDuration
     }
 
     const platform = msg.platform;
+    const uid = msg.sender.userId.replace(`${platform}:`, "");
     const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
     if (!a_private_group[platform]) a_private_group[platform] = {};
 
@@ -1862,6 +1845,142 @@ cmd_appointment_private.solve = async (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["私约"] = cmd_appointment_private;
+
+// ========================
+// 💬 微信长期群聊功能
+// ========================
+
+// 🔧 检查两人之间是否已有活跃微信群
+function checkWechatBetweenUsers(platform, user1, user2) {
+    const wechatGroups = JSON.parse(ext.storageGet("wechat_groups") || "{}");
+    const platformGroups = wechatGroups[platform] || {};
+
+    for (const groupId in platformGroups) {
+        const group = platformGroups[groupId];
+        if (group.status === "active") {
+            if (group.participants.includes(user1) && group.participants.includes(user2)) {
+                return {
+                    exists: true,
+                    groupId: groupId,
+                    topic: group.topic || "(无主题)"
+                };
+            }
+        }
+    }
+
+    return { exists: false };
+}
+
+// ========================
+// 核心指令：微信
+// ========================
+
+let cmd_wechat = seal.ext.newCmdItemInfo();
+cmd_wechat.name = "微信";
+cmd_wechat.help = "。微信 对方角色名 —— 与对方建立长期微信群聊\n示例：。微信 张三";
+
+cmd_wechat.solve = (ctx, msg, cmdArgs) => {
+    let config = JSON.parse(ext.storageGet("global_feature_toggle") || "{}");
+    if (config.enable_wechat === false) {
+        seal.replyToSender(ctx, msg, "💬 微信功能已关闭");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const platform = msg.platform;
+    const uid = msg.sender.userId.replace(`${platform}:`, "");
+    const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
+    if (!a_private_group[platform]) a_private_group[platform] = {};
+
+    const sendname = getRoleName(ctx, msg);
+    if (!sendname) {
+        seal.replyToSender(ctx, msg, "请先使用「创建新角色」绑定角色");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const blockMap = JSON.parse(ext.storageGet("feature_user_blocklist") || "{}");
+    if (blockMap[sendname] && blockMap[sendname].enable_wechat === false) {
+        seal.replyToSender(ctx, msg, "🚫 您已被禁止使用微信功能");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const toname = cmdArgs.getArgN(1);
+    if (!toname) {
+        const ret = seal.ext.newCmdExecuteResult(true);
+        ret.showHelp = true;
+        return ret;
+    }
+
+    if (!a_private_group[platform][toname]) {
+        seal.replyToSender(ctx, msg, `❌ 未找到角色「${toname}」，请确认对方已注册`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    if (toname === sendname) {
+        seal.replyToSender(ctx, msg, "❌ 不能邀请自己");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const existing = checkWechatBetweenUsers(platform, sendname, toname);
+    if (existing.exists) {
+        seal.replyToSender(ctx, msg, `⚠️ 你和「${toname}」之间已存在活跃微信群：${existing.groupId}（主题：${existing.topic}）`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const groupList = JSON.parse(ext.storageGet("group") || "[]");
+    const available = groupList.filter(g => !g.endsWith("_占用") && !g.endsWith("_微信占用"));
+    if (available.length === 0) {
+        seal.replyToSender(ctx, msg, "⚠️ 暂无可用群号，请联系管理员添加备用群");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const gid = available[Math.floor(Math.random() * available.length)];
+    groupList.splice(groupList.indexOf(gid), 1);
+    groupList.push(gid + "_微信占用");
+    ext.storageSet("group", JSON.stringify(groupList));
+
+    const wechatGroups = JSON.parse(ext.storageGet("wechat_groups") || "{}");
+    if (!wechatGroups[platform]) wechatGroups[platform] = {};
+    const now = new Date();
+    wechatGroups[platform][gid] = {
+        id: gid,
+        creator: sendname,
+        creator_id: uid,
+        topic: "",
+        participants: [sendname, toname],
+        status: "active",
+        created_at: now.toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" }),
+        created_timestamp: now.getTime()
+    };
+    ext.storageSet("wechat_groups", JSON.stringify(wechatGroups));
+
+    const groupNotice = `💬 微信群创建成功\n\n📱 群号：${gid}\n👤 创建者：${sendname}\n👥 成员：${sendname}、${toname}\n\n💡 这是一个长期群聊，无时间限制，每个微信关系只能有一个活跃群。`;
+    const groupMsg = seal.newMessage();
+    groupMsg.messageType = "group";
+    groupMsg.groupId = `${platform}-Group:${gid}`;
+    const groupCtx = seal.createTempCtx(ctx.endPoint, groupMsg);
+    seal.replyToSender(groupCtx, groupMsg, groupNotice);
+    setGroupName(groupCtx, groupMsg, gid, `微信:${sendname}&${toname}`);
+
+    const participants = [sendname, toname];
+    for (let participant of participants) {
+        const info = a_private_group[platform][participant];
+        if (info) {
+            const [pUid, pGid] = info;
+            const notifyMsg = seal.newMessage();
+            notifyMsg.messageType = "group";
+            notifyMsg.groupId = `${platform}-Group:${pGid}`;
+            notifyMsg.sender = {};
+            notifyMsg.sender.userId = `${platform}:${pUid}`;
+            const notifyCtx = seal.createTempCtx(ctx.endPoint, notifyMsg);
+            seal.replyToSender(notifyCtx, notifyMsg, `💬 你已被加入微信群\n📱 群号：${gid}\n👤 创建者：${sendname}\n👥 成员：${sendname}、${toname}\n\n💡 这是一个长期群聊，无时间限制。`);
+        }
+    }
+
+    seal.replyToSender(ctx, msg, `✅ 微信群创建成功！\n📱 群号：${gid}\n👥 成员：${sendname}、${toname}`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+
+ext.cmdMap["微信"] = cmd_wechat;
 
 
 let cmd_view_schedule = seal.ext.newCmdItemInfo();
@@ -2323,6 +2442,7 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
         return seal.replyToSender(ctx, msg, "🎁 礼物功能已被禁用。");
     }
 
+    const uid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
     const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
 
     // 2. 身份识别
@@ -2387,8 +2507,6 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
 
         // 抽卡模式：检查图鉴，可无限赠送
         const sightings = JSON.parse(ext.storageGet("gift_sightings") || "{}");
-        const uid_clean = msg.sender.userId.replace(/^[a-z]+:/i, "");
-        const userKey = `${platform}:${uid_clean}`;
         const owned = sightings[userKey]?.unlocked_gifts || [];
         if (!owned.includes(giftInput)) {
             return seal.replyToSender(ctx, msg, `🔒 「${giftData.name}」不在图鉴中，请先发送「礼品店」收集。`);
@@ -4033,8 +4151,11 @@ ext.cmdMap["查看功能权限"] = cmd_view_user_feature;
 const WishUtils = {
     getPool: () => {
         const now = Date.now(), exp = 86400000;
-        let p = JSON.parse(ext.storageGet("a_wishPool") || "[]").filter(w => now - w.timestamp < exp);
-        return p; // 仅作为获取，写入放在具体操作中
+        const raw = JSON.parse(ext.storageGet("a_wishPool") || "[]");
+        const p = raw.filter(w => now - w.timestamp < exp);
+        // Bug4修复：有过期条目时清理存储
+        if (p.length < raw.length) ext.storageSet("a_wishPool", JSON.stringify(p));
+        return p;
     },
     savePool: (p) => ext.storageSet("a_wishPool", JSON.stringify(p)),
     formatList: (pool, title) => {
@@ -4056,15 +4177,6 @@ cmd_post_wish.solve = (ctx, msg, cmdArgs) => {
     const cfg = JSON.parse(ext.storageGet("global_feature_toggle") || "{}");
     if (cfg.enable_wish_system === false) return seal.replyToSender(ctx, msg, "🌠 心愿功能已关闭。");
 
-    // 检查写信系统启用时是否需要消费写信币
-    if (isLetterSystemEnabled()) {
-        const coinCheck = checkAndCostLetterCoin(ctx, msg, "wish");
-        if (!coinCheck.success) {
-            seal.replyToSender(ctx, msg, coinCheck.errorMsg);
-            return seal.ext.newCmdExecuteResult(true);
-        }
-    }
-
     const platform = msg.platform, uid = msg.sender.userId, name = getUserRoleName(platform, uid);
     const day = ext.storageGet("global_days");
     if (!name || !day) return seal.replyToSender(ctx, msg, !name ? "请先绑定角色" : "请先设置全局天数");
@@ -4073,8 +4185,10 @@ cmd_post_wish.solve = (ctx, msg, cmdArgs) => {
     const content = contentArr.join(" ").trim();
     if (!rawT || !place || !content) return seal.replyToSender(ctx, msg, "用法：挂心愿 1400-1500 地点 内容");
 
-    const time = parseWishTime(rawT);
-    if (!time || !isValidTimeFormat(time)) return seal.replyToSender(ctx, msg, "⚠️ 时间格式错误（如 1400-1500）");
+    // Bug1修复：用 parseAndValidateTime 替代未定义的 parseWishTime
+    const timeResult = parseAndValidateTime(rawT, [], 0, "心愿");
+    if (!timeResult.valid) return seal.replyToSender(ctx, msg, timeResult.errorMsg);
+    const time = timeResult.time;
 
     // 冲突与限制检查
     if (!checkRealityHourLimit(time, ctx, msg)) return;
@@ -4086,6 +4200,15 @@ cmd_post_wish.solve = (ctx, msg, cmdArgs) => {
 
     let pool = WishUtils.getPool();
     if (pool.filter(w => w.fromId === uid).length >= 3) return seal.replyToSender(ctx, msg, "⚠️ 最多同时挂3个心愿");
+
+    // Bug2修复：所有验证通过后再扣写信币
+    if (isLetterSystemEnabled()) {
+        const coinCheck = checkAndCostLetterCoin(ctx, msg, "wish");
+        if (!coinCheck.success) {
+            seal.replyToSender(ctx, msg, coinCheck.errorMsg);
+            return seal.ext.newCmdExecuteResult(true);
+        }
+    }
 
     const id = Math.random().toString(36).slice(2, 9).toUpperCase();
     pool.push({ id, day, time, place, content, fromId: uid, timestamp: Date.now() });
@@ -4113,6 +4236,8 @@ ext.cmdMap["挂心愿"] = cmd_post_wish;
 ext.cmdMap["看心愿"] = {
     name: "看心愿",
     solve: (ctx, msg) => {
+        const cfg = JSON.parse(ext.storageGet("global_feature_toggle") || "{}");
+        if (cfg.enable_wish_system === false) return seal.replyToSender(ctx, msg, "🌠 心愿功能已关闭。");
         seal.replyToSender(ctx, msg, WishUtils.formatList(WishUtils.getPool(), "当前心愿"));
         return seal.ext.newCmdExecuteResult(true);
     }
@@ -4121,6 +4246,8 @@ ext.cmdMap["看心愿"] = {
 let cmd_pick_wish = seal.ext.newCmdItemInfo();
 cmd_pick_wish.name = "摘心愿";
 cmd_pick_wish.solve = async (ctx, msg, cmdArgs) => {
+    const cfg = JSON.parse(ext.storageGet("global_feature_toggle") || "{}");
+    if (cfg.enable_wish_system === false) return seal.replyToSender(ctx, msg, "🌠 心愿功能已关闭。");
     const wid = cmdArgs.getArgN(1)?.toUpperCase();
     const platform = msg.platform, uid = msg.sender.userId, name = getUserRoleName(platform, uid);
     if (!wid || !name) return seal.replyToSender(ctx, msg, !wid ? "格式：。摘心愿 编号" : "请先绑定角色");
@@ -4173,6 +4300,8 @@ ext.cmdMap["摘心愿"] = cmd_pick_wish;
 let cmd_withdraw_wish = seal.ext.newCmdItemInfo();
 cmd_withdraw_wish.name = "撤心愿";
 cmd_withdraw_wish.solve = (ctx, msg, cmdArgs) => {
+    const cfg = JSON.parse(ext.storageGet("global_feature_toggle") || "{}");
+    if (cfg.enable_wish_system === false) return seal.replyToSender(ctx, msg, "🌠 心愿功能已关闭。");
     const wid = cmdArgs.getArgN(1)?.toUpperCase(), uid = msg.sender.userId;
     let pool = WishUtils.getPool();
     const myWishes = pool.filter(w => w.fromId === uid);
@@ -4197,7 +4326,7 @@ async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, co
     }
 
     const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
-    if (!a_private_group[platform][toname]) {
+    if (!a_private_group[platform]?.[toname]) {
         return seal.replyToSender(ctx, msg, `❌ 未找到收信人：${toname}`);
     }
 
@@ -7094,158 +7223,6 @@ cmd_set_monitor_params.solve = (ctx, msg, cmdArgs) => {
 };
 
 ext.cmdMap["设置监听参数"] = cmd_set_monitor_params;
-
-// ========================
-// 💬 微信长期群聊功能（修改版）
-// ========================
-
-// 🔧 检查两人之间是否已有活跃微信群
-function checkWechatBetweenUsers(platform, user1, user2) {
-    const wechatGroups = JSON.parse(ext.storageGet("wechat_groups") || "{}");
-    const platformGroups = wechatGroups[platform] || {};
-    
-    for (const groupId in platformGroups) {
-        const group = platformGroups[groupId];
-        // 只检查活跃群
-        if (group.status === "active") {
-            // 检查两个用户是否都在这个群中
-            if (group.participants.includes(user1) && group.participants.includes(user2)) {
-                return {
-                    exists: true,
-                    groupId: groupId,
-                    topic: group.topic || "(无主题)"
-                };
-            }
-        }
-    }
-    
-    return { exists: false };
-}
-
-// ========================
-// 核心指令：微信
-// ========================
-
-let cmd_wechat = seal.ext.newCmdItemInfo();
-cmd_wechat.name = "微信";
-cmd_wechat.help = "。微信 对方角色名 —— 与对方建立长期微信群聊\n示例：。微信 张三";
-
-cmd_wechat.solve = (ctx, msg, cmdArgs) => {
-    // 1. 功能开关（默认开启）
-    let config = JSON.parse(ext.storageGet("global_feature_toggle") || "{}");
-    if (config.enable_wechat === false) {
-        seal.replyToSender(ctx, msg, "💬 微信功能已关闭");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    const platform = msg.platform;
-    const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
-    if (!a_private_group[platform]) a_private_group[platform] = {};
-
-    // 获取发送者角色名
-    const sendname = getRoleName(ctx, msg);
-    if (!sendname) {
-        seal.replyToSender(ctx, msg, "请先使用「创建新角色」绑定角色");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    // 检查用户是否被禁止
-    const blockMap = JSON.parse(ext.storageGet("feature_user_blocklist") || "{}");
-    if (blockMap[sendname] && blockMap[sendname].enable_wechat === false) {
-        seal.replyToSender(ctx, msg, "🚫 您已被禁止使用微信功能");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    // 获取目标角色名
-    const toname = cmdArgs.getArgN(1);
-    if (!toname) {
-        const ret = seal.ext.newCmdExecuteResult(true);
-        ret.showHelp = true;
-        return ret;
-    }
-
-    // 检查目标是否存在
-    if (!a_private_group[platform][toname]) {
-        seal.replyToSender(ctx, msg, `❌ 未找到角色「${toname}」，请确认对方已注册`);
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    // 不能邀请自己
-    if (toname === sendname) {
-        seal.replyToSender(ctx, msg, "❌ 不能邀请自己");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    // 检查两人是否已有活跃微信群
-    const existing = checkWechatBetweenUsers(platform, sendname, toname);
-    if (existing.exists) {
-        seal.replyToSender(ctx, msg, `⚠️ 你和「${toname}」之间已存在活跃微信群：${existing.groupId}（主题：${existing.topic}）`);
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    // 获取可用群号（排除占用和微信占用）
-    const groupList = JSON.parse(ext.storageGet("group") || "[]");
-    const available = groupList.filter(g => !g.endsWith("_占用") && !g.endsWith("_微信占用"));
-    if (available.length === 0) {
-        seal.replyToSender(ctx, msg, "⚠️ 暂无可用群号，请联系管理员添加备用群");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    // 分配群号
-    const gid = available[Math.floor(Math.random() * available.length)];
-    groupList.splice(groupList.indexOf(gid), 1);
-    groupList.push(gid + "_微信占用");
-    ext.storageSet("group", JSON.stringify(groupList));
-
-    // 创建微信群记录
-    const wechatGroups = JSON.parse(ext.storageGet("wechat_groups") || "{}");
-    if (!wechatGroups[platform]) wechatGroups[platform] = {};
-    const now = new Date();
-    wechatGroups[platform][gid] = {
-        id: gid,
-        creator: sendname,
-        creator_id: uid,
-        topic: "",
-        participants: [sendname, toname],
-        status: "active",
-        created_at: now.toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" }),
-        created_timestamp: now.getTime()
-    };
-    ext.storageSet("wechat_groups", JSON.stringify(wechatGroups));
-
-    // 通知群内所有成员（群公告）
-    const groupNotice = `💬 微信群创建成功\n\n📱 群号：${gid}\n👤 创建者：${sendname}\n👥 成员：${sendname}、${toname}\n\n💡 这是一个长期群聊，无时间限制，每个微信关系只能有一个活跃群。`;
-    const groupMsg = seal.newMessage();
-    groupMsg.messageType = "group";
-    groupMsg.groupId = `${platform}-Group:${gid}`;
-    const groupCtx = seal.createTempCtx(ctx.endPoint, groupMsg);
-    seal.replyToSender(groupCtx, groupMsg, groupNotice);
-    // 设置群名
-    setGroupName(groupCtx, groupMsg, gid, `微信:${sendname}&${toname}`);
-
-    // 通知双方的个人群
-    const participants = [sendname, toname];
-    for (let participant of participants) {
-        const info = a_private_group[platform][participant];
-        if (info) {
-            const [pUid, pGid] = info;
-            const notifyMsg = seal.newMessage();
-            notifyMsg.messageType = "group";
-            notifyMsg.groupId = `${platform}-Group:${pGid}`;
-            notifyMsg.sender = {};
-            notifyMsg.sender.userId = `${platform}:${pUid}`;
-            const notifyCtx = seal.createTempCtx(ctx.endPoint, notifyMsg);
-            const personalNotice = `💬 你已被加入微信群\n📱 群号：${gid}\n👤 创建者：${sendname}\n👥 成员：${sendname}、${toname}\n\n💡 这是一个长期群聊，无时间限制。`;
-            seal.replyToSender(notifyCtx, notifyMsg, personalNotice);
-        }
-    }
-
-    // 回复创建者
-    seal.replyToSender(ctx, msg, `✅ 微信群创建成功！\n📱 群号：${gid}\n👥 成员：${sendname}、${toname}`);
-    return seal.ext.newCmdExecuteResult(true);
-};
-
-ext.cmdMap["微信"] = cmd_wechat;
 
 // ========================
 // 🗨️ 秘密论坛系统 (WS公告集成版)
