@@ -6431,7 +6431,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
     // 3. 互动系统 (赠送/短信)
     // 支持「赠送 对方 礼物」和「自定义名赠送 对方 礼物」，排除「道具赠送」
     if (!raw.startsWith("道具赠送")) {
-        const giftM = raw.match(/^(.*?)赠送\s+(.+?)\s+(.+)$/);
+        const giftM = raw.match(/^(.*?)赠送\s+(.+?)\s+([\s\S]+)$/);
         if (giftM) {
             const customName = giftM[1].trim() || null;
             return handleNaturalGift(ctx, msg, platform, giftM[2].trim(), giftM[3].trim(), customName);
