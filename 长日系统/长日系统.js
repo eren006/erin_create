@@ -1581,9 +1581,11 @@ async function checkAppointmentPreflight(ctx, msg, cmdArgs, subtype, minDuration
 
     if (otherConflicts.length > 0) {
         const conflictNames = otherConflicts.map(e => e.name).join("、");
+        const joinEnabled = ext.storageGet("enable_join_existing_appointment") === "true";
+        const joinHint = joinEnabled ? `\n💡 你可以使用「申请加入 角色名 时间点」尝试加入对方的预约。` : "";
         return {
             valid: false,
-            errorMsg: `⚠️ 以下角色在 ${day} ${time} 时段已有安排：${conflictNames}\n💡 你可以使用「。申请加入 角色名 时间点」尝试加入对方的预约。`
+            errorMsg: `⚠️ 以下角色在 ${day} ${time} 时段已有安排：${conflictNames}${joinHint}`
         };
     }
 
@@ -2130,6 +2132,14 @@ cmd_apply_join.solve = async (ctx, msg, cmdArgs) => {
     if (matchingSchedule.partner && matchingSchedule.partner.includes(sendname)) {
         return seal.replyToSender(ctx, msg, `⚠️ 你已经在「${targetName}」的该时段预约中，无需重复加入。`);
     }
+    // 多人小群情况：partner 为"多人小群"，需从 group_expire_info 检查
+    if (matchingSchedule.partner === "多人小群" && matchingSchedule.group) {
+        const gei = JSON.parse(ext.storageGet("group_expire_info") || "{}");
+        const existingParticipants = gei[matchingSchedule.group]?.participants || [];
+        if (existingParticipants.includes(sendname)) {
+            return seal.replyToSender(ctx, msg, `⚠️ 你已经在该约会中，无需重复加入。`);
+        }
+    }
 
     // 9. 检查发起人自身在该时段是否有冲突（复用冲突检测）
     const fromKey = `${platform}:${uid}`;
@@ -2310,7 +2320,52 @@ cmd_accept_join.solve = (ctx, msg, cmdArgs) => {
     
     // 保存修改
     ext.storageSet("b_confirmedSchedule", JSON.stringify(b_confirmedSchedule));
-    
+
+    // 同步更新 group_expire_info 参与者列表
+    let groupExpireInfo = JSON.parse(ext.storageGet("group_expire_info") || "{}");
+    if (groupExpireInfo[groupId]) {
+        const existingParts = groupExpireInfo[groupId].participants || [];
+        if (!existingParts.includes(fullRequest.from)) {
+            groupExpireInfo[groupId].participants = [...existingParts, fullRequest.from];
+        }
+        ext.storageSet("group_expire_info", JSON.stringify(groupExpireInfo));
+    }
+
+    // 同步更新计时器
+    let groupTimers = JSON.parse(ext.storageGet("group_timers") || "{}");
+    const timerEntry = groupTimers[groupId];
+    if (timerEntry) {
+        const now = Date.now();
+        // 若原来是两人轮替模式，加入第三人后切换为独立计时
+        if (timerEntry.timerMode === "turn_taking" && timerEntry.participants.length === 2) {
+            timerEntry.timerMode = "independent";
+            for (const status of Object.values(timerEntry.timerStatus)) {
+                if (status.status === "waiting") {
+                    status.status = "timing";
+                    status.startTime = now;
+                    status.repliedTime = null;
+                    status.wordCount = 0;
+                    status.remindedTimes = 0;
+                }
+            }
+        }
+        if (!timerEntry.participants.includes(fullRequest.from)) {
+            timerEntry.participants.push(fullRequest.from);
+        }
+        if (!timerEntry.timerStatus[fullRequest.from]) {
+            timerEntry.timerStatus[fullRequest.from] = {
+                status: "timing",
+                startTime: now,
+                repliedTime: null,
+                wordCount: 0,
+                remindedTimes: 0,
+                isInitiator: false
+            };
+        }
+        groupTimers[groupId] = timerEntry;
+        ext.storageSet("group_timers", JSON.stringify(groupTimers));
+    }
+
     // 在群内发送通知
     const groupMsg = seal.newMessage();
     groupMsg.messageType = "group";
