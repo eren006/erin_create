@@ -1619,7 +1619,7 @@ async function directCreateAndFinalizeAppointment({
         const newctx = seal.createTempCtx(ctx.endPoint, newmsg);
         
         const otherNames = isMulti ? names.filter(n => n !== toname) : [];
-        const noticeText = generateMessageFn(sendname, place, day, time, isMulti, otherNames, toid);
+        const noticeText = generateMessageFn(sendname, subtype === "电话" ? title : place, day, time, isMulti, otherNames, toid);
         
         seal.replyToSender(newctx, newmsg, noticeText);
     }
@@ -1815,7 +1815,7 @@ cmd_appointment_private.solve = async (ctx, msg, cmdArgs) => {
     if (!pre.valid) return seal.replyToSender(ctx, msg, pre.errorMsg), seal.ext.newCmdExecuteResult(true);
 
     if (pre.data.mergeTarget) {
-        const newNames = pre.data.names;
+        const newNames = [pre.data.sendname, ...pre.data.names];
         const success = mergeIntoExistingAppointment(ctx, msg, pre.data.mergeTarget, newNames, pre.data);
         if (success) {
             const successMsg = `✅ 你发起的私约已自动合并到现有约会中！\n参与者：${pre.data.mergeTarget.partner}\n群号：${pre.data.mergeTarget.group}\n请自行申请入群~`;
