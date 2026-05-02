@@ -500,7 +500,6 @@ function recordMeetingAndAnnounce(subtype, platform, ctx, endPoint) {
         const msgDivineLog = seal.newMessage();
         msgDivineLog.messageType = "group";
         msgDivineLog.groupId = `${platform}-Group:${groupId}`;
-        msgDivineLog.sender = {};
         const ctxDivineLog = seal.createTempCtx(endPoint, msgDivineLog);
 
         const getStageText = (subtype, count) => {
@@ -940,9 +939,9 @@ function checkPlaceCommon(platform, senderName, place, instructionName = "发起
       }
       
       errorMsg += "💡 温馨提示：\n";
-      errorMsg += "- 也可以选择「[角色名]的房间」格式\n";
-      errorMsg += "- 使用「查看可私约地点」查看可用地点\n";
-      errorMsg += "- 使用「查看我的钥匙」查看拥有的钥匙";
+      if (allowPrivateRooms) errorMsg += "- 也可以选择「[角色名]的房间」格式\n";
+      errorMsg += "- 使用「地点 查看」查看可用地点\n";
+      errorMsg += "- 使用「地点 钥匙」查看拥有的钥匙";
       
       return { valid: false, errorMsg: errorMsg };
     }
@@ -1021,6 +1020,8 @@ cmdPlaceAdm.solve = (ctx, msg, cmdArgs) => {
         }
         case "删除": {
             const name = cmdArgs.getArgN(2);
+            if (!name) { seal.replyToSender(ctx, msg, "使用：.地点管理 删除 地点名"); break; }
+            if (!places[name]) { seal.replyToSender(ctx, msg, `❌ 地点「${name}」不存在`); break; }
             delete places[name];
             seal.replyToSender(ctx, msg, `🗑️ 已删除地点：${name}`);
             break;
@@ -1468,8 +1469,6 @@ function mergeIntoExistingAppointment(ctx, msg, existingAppointment, newNames, p
             const privateMsg = seal.newMessage();
             privateMsg.messageType = "group";
             privateMsg.groupId = `${platform}-Group:${targetGroupId}`;
-            privateMsg.sender = {};
-            privateMsg.sender.userId = `${platform}:${targetUid}`;
             const privateCtx = seal.createTempCtx(ctx.endPoint, privateMsg);
             const notice = `✨ 你发起的私约已自动合并到现有约会中！\n\n📅 时间：${day} ${time}\n📍 地点：${place}\n👥 参与者：${allParticipants.join("、")}\n💬 群号：${groupId}\n\n请自行申请入群，享受约会时光~`;
             seal.replyToSender(privateCtx, privateMsg, notice);
@@ -1614,8 +1613,6 @@ async function directCreateAndFinalizeAppointment({
         const toid = a_private_group[platform][toname][0];
         const newmsg = seal.newMessage();
         newmsg.messageType = "group";
-        newmsg.sender = {};
-        newmsg.sender.userId = `${platform}:${toid}`;
         newmsg.groupId = `${platform}-Group:${a_private_group[platform][toname][1]}`;
         const newctx = seal.createTempCtx(ctx.endPoint, newmsg);
         
@@ -1969,8 +1966,6 @@ cmd_wechat.solve = (ctx, msg, cmdArgs) => {
             const notifyMsg = seal.newMessage();
             notifyMsg.messageType = "group";
             notifyMsg.groupId = `${platform}-Group:${pGid}`;
-            notifyMsg.sender = {};
-            notifyMsg.sender.userId = `${platform}:${pUid}`;
             const notifyCtx = seal.createTempCtx(ctx.endPoint, notifyMsg);
             seal.replyToSender(notifyCtx, notifyMsg, `💬 你已被加入微信群\n📱 群号：${gid}\n👤 创建者：${sendname}\n👥 成员：${sendname}、${toname}\n\n💡 这是一个长期群聊，无时间限制。`);
         }
@@ -2189,8 +2184,6 @@ cmd_apply_join.solve = async (ctx, msg, cmdArgs) => {
         const notifyMsg = seal.newMessage();
         notifyMsg.messageType = "group";
         notifyMsg.groupId = `${platform}-Group:${targetGroupId}`;
-        notifyMsg.sender = {};
-        notifyMsg.sender.userId = `${platform}:${targetUid}`;
         const notifyCtx = seal.createTempCtx(ctx.endPoint, notifyMsg);
         const notice = `📢 加入请求\n\n${sendname} 想加入你正在进行的预约：\n📅 ${globalDay} ${matchingSchedule.time}\n📍 ${matchingSchedule.place || "电话"}\n\n请使用「加入请求」查看详情，然后输入「同意加入 编号」或「拒绝加入 编号」。`;
         seal.replyToSender(notifyCtx, notifyMsg, notice);
@@ -2331,8 +2324,6 @@ cmd_accept_join.solve = (ctx, msg, cmdArgs) => {
         const fromMsg = seal.newMessage();
         fromMsg.messageType = "group";
         fromMsg.groupId = `${platform}-Group:${fromGroupId}`;
-        fromMsg.sender = {};
-        fromMsg.sender.userId = `${platform}:${fromUid}`;
         const fromCtx = seal.createTempCtx(ctx.endPoint, fromMsg);
         seal.replyToSender(fromCtx, fromMsg, `✅ 你已成功加入 ${fullRequest.to} 的私约，群号：${targetGroupId}\n请自行申请入群。`);
     }
@@ -2372,8 +2363,6 @@ cmd_reject_join.solve = (ctx, msg, cmdArgs) => {
             const fromMsg = seal.newMessage();
             fromMsg.messageType = "group";
             fromMsg.groupId = `${platform}-Group:${fromGroupId}`;
-            fromMsg.sender = {};
-            fromMsg.sender.userId = `${platform}:${fromInfo[0]}`;
             const fromCtx = seal.createTempCtx(ctx.endPoint, fromMsg);
             seal.replyToSender(fromCtx, fromMsg, `❌ ${fullRequest.to} 拒绝了你的加入请求。`);
         }
@@ -6062,17 +6051,15 @@ function sendReminder(platform, groupId, roleName, subtype, elapsedTime,ctx) {
     const msg1 = seal.newMessage();
     msg1.messageType = "group";
     msg1.groupId = `${platform}-Group:${roleGroupId}`;
-    msg1.sender = {};
     const ctx1 = seal.createTempCtx(ctx.endPoint, msg1);
-    
-    seal.replyToSender(ctx1, msg1, 
+
+    seal.replyToSender(ctx1, msg1,
         `⏰ 提醒：你在 ${subtype} 群 ${groupId} 中已超过 ${hours}小时${minutes}分钟未回复\n请尽快回复！`);
-    
+
     // 发送到群组本身
     const msg2 = seal.newMessage();
     msg2.messageType = "group";
     msg2.groupId = `${platform}-Group:${groupId}`;
-    msg2.sender = {};
     const ctx2 = seal.createTempCtx(ctx.endPoint, msg2);
     
     seal.replyToSender(ctx2, msg2, 
