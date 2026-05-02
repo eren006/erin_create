@@ -169,9 +169,13 @@ function getParamValue(param) {
     try {
         const parsed = JSON.parse(raw);
         if (param.nested) {
-            return parsed[param.nested] !== false ? '开启' : '关闭';
+            // 修正：判断布尔值 true 或 字符串 '开启'
+            return (parsed[param.nested] === true || parsed[param.nested] === '开启') ? '开启' : '关闭';
         }
-        if (param.type === 'bool') return parsed === true || parsed === '开启' ? '开启' : '关闭';
+        // 修正：判断布尔值 true、字符串 'true' 或 字符串 '开启'
+        if (param.type === 'bool') {
+            return (parsed === true || parsed === 'true' || parsed === '开启') ? '开启' : '关闭';
+        }
         return parsed;
     } catch (e) {
         return param.default;
@@ -1320,32 +1324,110 @@ function showAttackDefenseSettings(ctx, msg) {
 
 let cmd_settings = seal.ext.newCmdItemInfo();
 cmd_settings.name = "设置";
-cmd_settings.help = "【管理员】查看和管理各系统设置\n设置               - 显示所有设置\n设置 基础          - 显示基础设置\n设置 互动          - 显示互动物品设置\n设置 地点          - 显示地点系统设置\n设置 目击          - 显示目击系统设置\n设置 攻防          - 显示攻防系统设置\n设置 信件          - 显示信件系统设置";
+cmd_settings.help = "【管理员】查看和管理各系统设置\n。设置               - 显示所有设置类别\n。设置 基础设置      - 查看/修改基础设置\n。设置 互动设置      - 查看/修改互动设置\n。设置 信件设置      - 查看/修改信件系统\n。设置 道具设置      - 查看/修改道具参数";
 cmd_settings.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足");
 
     const subCmd = cmdArgs.getArgN(1);
+    const rawMsg = msg.message; // 用于 handleApply 解析批量修改格式
 
+    // 1. 如果是直接输入 "。设置" 或 "。设置 查看"
     if (!subCmd || subCmd === "查看") {
         let info = "🎮 长日系统设置面板\n\n";
-        info += "可用设置:\n";
-        info += "· 设置 基础          - 基础功能设置\n";
-        info += "· 设置 互动          - 互动物品设置\n";
-        info += "· 设置 地点          - 地点系统设置\n";
-        info += "· 设置 目击          - 目击系统设置\n";
-        info += "· 设置 攻防          - 攻防系统设置\n";
-        info += "· 设置 信件          - 信件系统设置\n";
+        info += "🔹 使用方法：`。设置 类别` 查看，或按照【格式】换行批量修改\n\n";
+        info += "可用类别：\n";
+        info += "· 。设置 基础设置\n";
+        info += "· 。设置 互动设置\n";
+        info += "· 。设置 信件设置\n";
+        info += "· 。设置 发送信件设置\n";
+        info += "· 。设置 公告设置\n";
+        info += "· 。设置 心动信设置\n";
+        info += "· 。设置 道具设置\n";
+        info += "· 。设置 拍卖设置\n";
+        info += "· 。设置 群组设置\n";
+        info += "· 。设置 攻防\n";
         return seal.replyToSender(ctx, msg, info);
     }
 
-    if (subCmd === "攻防") {
-        return showAttackDefenseSettings(ctx, msg);
-    }
+    // 2. 路由分发：处理各个子模块的查看与修改
+    switch (subCmd) {
+        case "基础设置":
+            if (rawMsg.includes('\n')) return handleApply(ctx, msg, rawMsg, (n, v) => applyParam(n, v, '基础设置'));
+            return showSettings(ctx, msg, '基础设置');
+            
+        case "互动设置":
+            if (rawMsg.includes('\n')) return handleApply(ctx, msg, rawMsg, applyInteractionParam);
+            return showInteractionSettings(ctx, msg);
 
-    return seal.replyToSender(ctx, msg, cmd_settings.help);
+        case "信件设置":
+            if (rawMsg.includes('\n')) return handleApply(ctx, msg, rawMsg, applyLetterParam);
+            return showLetterSettings(ctx, msg);
+
+        case "发送信件设置":
+            if (rawMsg.includes('\n')) return handleApply(ctx, msg, rawMsg, applyDirectLetterParam);
+            return showDirectLetterSettings(ctx, msg);
+
+        case "公告设置":
+            if (rawMsg.includes('\n')) return handleApply(ctx, msg, rawMsg, applyPublicParam);
+            return showPublicSettings(ctx, msg);
+
+        case "心动信设置":
+            if (rawMsg.includes('\n')) return handleApply(ctx, msg, rawMsg, applyLovemailParam);
+            return showLovemailSettings(ctx, msg);
+
+        case "道具设置":
+            if (rawMsg.includes('\n')) return handleApply(ctx, msg, rawMsg, applyItemParam);
+            return showItemSettings(ctx, msg);
+
+        case "拍卖设置":
+            if (rawMsg.includes('\n')) return handleApply(ctx, msg, rawMsg, applyAuctionParam);
+            return showAuctionSettings(ctx, msg);
+
+        case "群组设置":
+            if (rawMsg.includes('\n')) return handleApply(ctx, msg, rawMsg, applyGroupParam);
+            return showGroupSettings(ctx, msg);
+
+        case "攻防":
+            return showAttackDefenseSettings(ctx, msg);
+
+        default:
+            return seal.replyToSender(ctx, msg, `❌ 未知的设置类别: ${subCmd}\n请输入 \`。设置\` 查看可用列表`);
+    }
 };
 
 ext.cmdMap["设置"] = cmd_settings;
+
+// ========================
+// 一键初始化指令
+// ========================
+
+let cmd_init_settings = seal.ext.newCmdItemInfo();
+cmd_init_settings.name = "初始化设置";
+cmd_init_settings.help = "【管理员】一键补全缺失的系统默认配置\n使用方法：。初始化设置";
+cmd_init_settings.solve = (ctx, msg, argv) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足");
+
+    const main = getMainExt();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件 changri");
+
+    try {
+        // 调用脚本中已有的 ensureDefaults 函数进行补全
+        ensureDefaults(main);
+        
+        let reply = "✅ 系统设置初始化完成！\n";
+        reply += "• 已补全缺失的：功能开关、信件配置、目击参数、过期时间等\n";
+        reply += "• 注意：此操作仅补全空白项，不会修改你已经设置好的内容";
+        
+        seal.replyToSender(ctx, msg, reply);
+    } catch (e) {
+        console.error("初始化失败:", e);
+        seal.replyToSender(ctx, msg, `❌ 初始化过程中出现错误: ${e.message}`);
+    }
+
+    return seal.ext.newCmdExecuteResult(true);
+};
+
+ext.cmdMap["初始化设置"] = cmd_init_settings;
 
 // 启动自动天数轮询
 registerAutoDaySystem();

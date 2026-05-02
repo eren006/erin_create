@@ -1385,9 +1385,13 @@ function mergeIntoExistingAppointment(ctx, msg, existingAppointment, newNames, p
     for (const [key, schedules] of Object.entries(b_confirmedSchedule)) {
         for (let ev of schedules) {
             if (ev.group === groupId && ev.day === day && ev.time === time) {
-                const currentPartners = ev.partner.split(/[、,]/).map(s => s.trim());
-                const newPartners = [...new Set([...currentPartners, ...newNames])];
-                ev.partner = newPartners.join("、");
+                if (allParticipants.length > 2) {
+                    ev.partner = "多人小群";
+                } else {
+                    const currentPartners = ev.partner.split(/[、,]/).map(s => s.trim());
+                    const newPartners = [...new Set([...currentPartners, ...newNames])];
+                    ev.partner = newPartners.join("、");
+                }
             }
         }
     }
@@ -1406,7 +1410,7 @@ function mergeIntoExistingAppointment(ctx, msg, existingAppointment, newNames, p
             b_confirmedSchedule[targetKey].push({
                 day: day,
                 time: time,
-                partner: allParticipants.join("、"),
+                partner: allParticipants.length > 2 ? "多人小群" : allParticipants.find(n => n !== newName) || allParticipants.join("、"),
                 subtype: "私密",
                 place: place,
                 group: groupId,
