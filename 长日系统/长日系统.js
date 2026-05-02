@@ -1935,43 +1935,55 @@ cmd_wechat.solve = async (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    const wechatGroups = JSON.parse(ext.storageGet("wechat_groups") || "{}");
-    if (!wechatGroups[platform]) wechatGroups[platform] = {};
-    const now = new Date();
-    wechatGroups[platform][gid] = {
-        id: gid,
-        creator: sendname,
-        creator_id: uid,
-        topic: "",
-        participants: [sendname, toname],
-        status: "active",
-        created_at: now.toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" }),
-        created_timestamp: now.getTime()
-    };
-    ext.storageSet("wechat_groups", JSON.stringify(wechatGroups));
+    try {
+        const wechatGroups = JSON.parse(ext.storageGet("wechat_groups") || "{}");
+        if (!wechatGroups[platform]) wechatGroups[platform] = {};
+        const now = new Date();
+        wechatGroups[platform][gid] = {
+            id: gid,
+            creator: sendname,
+            creator_id: uid,
+            topic: "",
+            participants: [sendname, toname],
+            status: "active",
+            created_at: now.toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" }),
+            created_timestamp: now.getTime()
+        };
+        ext.storageSet("wechat_groups", JSON.stringify(wechatGroups));
 
-    const groupNotice = `💬 微信群创建成功\n\n📱 群号：${gid}\n👤 创建者：${sendname}\n👥 成员：${sendname}、${toname}\n\n💡 这是一个长期群聊，无时间限制，每个微信关系只能有一个活跃群。\n\n进群后请发送：.ext all on（开启机器人指令）`;
-    const groupMsg = seal.newMessage();
-    groupMsg.messageType = "group";
-    groupMsg.groupId = `${platform}-Group:${gid}`;
-    const groupCtx = seal.createTempCtx(ctx.endPoint, groupMsg);
-    seal.replyToSender(groupCtx, groupMsg, groupNotice);
-    setGroupName(groupCtx, groupMsg, gid, `微信:${sendname}&${toname}`);
+        const groupNotice = `💬 微信群创建成功\n\n📱 群号：${gid}\n👤 创建者：${sendname}\n👥 成员：${sendname}、${toname}\n\n💡 这是一个长期群聊，无时间限制，每个微信关系只能有一个活跃群。\n\n进群后请发送：.ext all on（开启机器人指令）`;
+        const groupMsg = seal.newMessage();
+        groupMsg.messageType = "group";
+        groupMsg.groupId = `${platform}-Group:${gid}`;
+        const groupCtx = seal.createTempCtx(ctx.endPoint, groupMsg);
+        seal.replyToSender(groupCtx, groupMsg, groupNotice);
+        setGroupName(groupCtx, groupMsg, gid, `微信:${sendname}&${toname}`);
 
-    const participants = [sendname, toname];
-    for (let participant of participants) {
-        const info = a_private_group[platform][participant];
-        if (info) {
-            const [pUid, pGid] = info;
-            const notifyMsg = seal.newMessage();
-            notifyMsg.messageType = "group";
-            notifyMsg.groupId = `${platform}-Group:${pGid}`;
-            const notifyCtx = seal.createTempCtx(ctx.endPoint, notifyMsg);
-            seal.replyToSender(notifyCtx, notifyMsg, `💬 你已被加入微信群\n📱 群号：${gid}\n👤 创建者：${sendname}\n👥 成员：${sendname}、${toname}\n\n💡 这是一个长期群聊，无时间限制。`);
+        const participants = [sendname, toname];
+        for (let participant of participants) {
+            const info = a_private_group[platform][participant];
+            if (info) {
+                const [pUid, pGid] = info;
+                const notifyMsg = seal.newMessage();
+                notifyMsg.messageType = "group";
+                notifyMsg.groupId = `${platform}-Group:${pGid}`;
+                const notifyCtx = seal.createTempCtx(ctx.endPoint, notifyMsg);
+                seal.replyToSender(notifyCtx, notifyMsg, `💬 你已被加入微信群\n📱 群号：${gid}\n👤 创建者：${sendname}\n👥 成员：${sendname}、${toname}\n\n💡 这是一个长期群聊，无时间限制。`);
+            }
         }
-    }
 
-    seal.replyToSender(ctx, msg, `✅ 微信群创建成功！\n📱 群号：${gid}\n👥 成员：${sendname}、${toname}`);
+        seal.replyToSender(ctx, msg, `✅ 微信群创建成功！\n📱 群号：${gid}\n👥 成员：${sendname}、${toname}`);
+    } catch (e) {
+        // 创建失败，释放已分配的群号
+        const groupList = JSON.parse(ext.storageGet("group") || "[]");
+        const idx = groupList.indexOf(gid + "_占用");
+        if (idx !== -1) {
+            groupList.splice(idx, 1);
+            groupList.push(gid);
+            ext.storageSet("group", JSON.stringify(groupList));
+        }
+        seal.replyToSender(ctx, msg, `❌ 微信群创建失败（群号已释放），请重试。错误：${e.message}`);
+    }
     return seal.ext.newCmdExecuteResult(true);
 };
 
@@ -2742,6 +2754,52 @@ cmd_admin_view_active.solve = (ctx, msg, cmdArgs) => {
 };
 
 ext.cmdMap["查看进行中"] = cmd_admin_view_active;
+
+// ========================
+// 查看所有活跃微信群（管理员）
+// ========================
+
+let cmd_view_wechat_groups = seal.ext.newCmdItemInfo();
+cmd_view_wechat_groups.name = "查看微信群";
+cmd_view_wechat_groups.help = "。查看微信群 —— 列出所有当前活跃的微信群（管理员专用）";
+
+cmd_view_wechat_groups.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) {
+        seal.replyToSender(ctx, msg, "⚠️ 该指令仅限管理员使用");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const platform = msg.platform;
+    const wechatGroups = JSON.parse(ext.storageGet("wechat_groups") || "{}");
+    const platformGroups = wechatGroups[platform] || {};
+
+    const active = Object.values(platformGroups).filter(g => g.status === "active");
+
+    if (active.length === 0) {
+        seal.replyToSender(ctx, msg, "📭 当前没有活跃的微信群");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 同时检查群池，标出群号是否正确处于占用状态
+    const groupList = JSON.parse(ext.storageGet("group") || "[]");
+
+    let reply = `💬 当前活跃微信群（共 ${active.length} 个）：\n\n`;
+    active.sort((a, b) => (a.created_timestamp || 0) - (b.created_timestamp || 0));
+    active.forEach((g, idx) => {
+        const inPool = groupList.includes(g.id + "_占用");
+        const warn = inPool ? "" : " ⚠️[群池异常]";
+        reply += `${idx + 1}. 群号：${g.id}${warn}\n`;
+        reply += `   👥 ${g.participants.join("、")}\n`;
+        reply += `   📅 创建：${g.created_at}\n`;
+        if (g.topic) reply += `   📌 主题：${g.topic}\n`;
+        reply += "\n";
+    });
+
+    seal.replyToSender(ctx, msg, reply.trim());
+    return seal.ext.newCmdExecuteResult(true);
+};
+
+ext.cmdMap["查看微信群"] = cmd_view_wechat_groups;
 
 let cmd_grouplist_release = seal.ext.newCmdItemInfo();
 cmd_grouplist_release.name = "结束私约";
