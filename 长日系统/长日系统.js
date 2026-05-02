@@ -2072,7 +2072,7 @@ cmd_apply_join.help = "。申请加入 角色名 时间点\n功能：向已有�
 cmd_apply_join.solve = async (ctx, msg, cmdArgs) => {
 
     const enableJoin = ext.storageGet("enable_join_existing_appointment");
-    if (!enableJoin) {
+    if (enableJoin !== "true") {
         return seal.replyToSender(ctx, msg, "🚫 当前未启用「加入私约」功能。");
     }
 
@@ -2084,6 +2084,7 @@ cmd_apply_join.solve = async (ctx, msg, cmdArgs) => {
     }
 
     const platform = msg.platform;
+    const uid = msg.sender.userId.replace(`${platform}:`, "");
     const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
     if (!a_private_group[platform]) a_private_group[platform] = {};
 
@@ -2246,7 +2247,7 @@ cmd_accept_join.help = "。同意加入 编号 —— 同意对方加入你当�
 cmd_accept_join.solve = (ctx, msg, cmdArgs) => {
 
     const enableJoin = ext.storageGet("enable_join_existing_appointment");
-    if (!enableJoin) {
+    if (enableJoin !== "true") {
         return seal.replyToSender(ctx, msg, "🚫 当前未启用「加入私约」功能。");
     }
 
@@ -3054,7 +3055,7 @@ async function checkGroupHasNonNPC(platform, gid, ctx, msg) {
  */
 async function allocateGroup(platform, ctx, msg) {
     let groupList = JSON.parse(ext.storageGet("group") || "[]");
-    let freeGroups = groupList.filter(g => !g.endsWith("_占用"));  // 只过滤占用，不过滤 blocked
+    let freeGroups = groupList.filter(g => !g.endsWith("_占用") && !g.endsWith("_微信占用"));  // 排除约会占用和微信占用
     if (freeGroups.length === 0) return null;
 
     // 随机打乱顺序
@@ -5162,8 +5163,8 @@ cmd_create_official_appointment.solve = (ctx, msg, cmdArgs) => {
 
   // 分配群号
   const groupList = JSON.parse(ext.storageGet("group") || "[]");
-  const available = groupList.filter(g => !g.endsWith("_占用"));
-  
+  const available = groupList.filter(g => !g.endsWith("_占用") && !g.endsWith("_微信占用"));
+
   if (available.length === 0) {
     seal.replyToSender(ctx, msg, `暂无可用群号`);
     return seal.ext.newCmdExecuteResult(true);
@@ -5211,43 +5212,15 @@ cmd_create_official_appointment.solve = (ctx, msg, cmdArgs) => {
   };
   ext.storageSet("group_expire_info", JSON.stringify(groupInfo));
 
-  // 通知参与者（私聊/绑定群）
+  // 向每位参与者的绑定群发送群号
   for (let name of validParticipants) {
-    const uid = a_private_group[platform][name][0];
     const boundGroupId = a_private_group[platform][name][1];
-    
     const newmsg = seal.newMessage();
     newmsg.messageType = "group";
-    newmsg.sender = {};
-    newmsg.sender.userId = `${platform}:${uid}`;
     newmsg.groupId = `${platform}-Group:${boundGroupId}`;
     const newctx = seal.createTempCtx(ctx.endPoint, newmsg);
-    
-    seal.replyToSender(newctx, newmsg,
-      `🎊 官方邀约通知\n\n` +
-      `📅 时间：${day} ${time}\n` +
-      `📍 地点：${place}\n` +
-      `👥 参与者：${validParticipants.join("、")}\n` +
-      `💬 群号：${gid}\n\n` +
-      `${expireNotice}\n请按时参加。`
-    );
+    seal.replyToSender(newctx, newmsg, `📅 ${day} ${time}\n📍 ${place}\n💬 官约群号：${gid}`);
   }
-
-  // 在官约群内发送公告
-  const notice = seal.newMessage();
-  notice.messageType = "group";
-  notice.groupId = `${platform}-Group:${gid}`;
-  const noticeCtx = seal.createTempCtx(ctx.endPoint, notice);
-  
-  seal.replyToSender(noticeCtx, notice,
-    `🎊 官方约会开始\n\n` +
-    `📅 时间：${day} ${time}\n` +
-    `📍 地点：${place}\n` +
-    `👥 参与者：${validParticipants.join("、")}\n\n` +
-    `${expireNotice}`
-  );
-
-  setGroupName(noticeCtx, notice, noticeCtx.group.groupId, `官约 ${day} ${time} ${place} ${validParticipants.join("、")}`);
 
   // --- 核心：启动计时器 ---
   // 官约模式下，默认发起人为管理员，这里可以使用 validParticipants[0] 作为逻辑上的发起者
@@ -5255,6 +5228,7 @@ cmd_create_official_appointment.solve = (ctx, msg, cmdArgs) => {
       initGroupTimer(platform, gid, "官约", validParticipants, validParticipants[0]);
   }
 
+  recordMeetingAndAnnounce("官约", platform, ctx, ctx.endPoint);
   seal.replyToSender(ctx, msg, `✅ 官约创建成功！群号：${gid}`);
   return seal.ext.newCmdExecuteResult(true);
 };
@@ -5312,7 +5286,7 @@ function isSightingEnabled() {
 // 辅助函数：获取地点系统配置
 function getPlaceSystemConfig() {
     const defaultConfig = {
-        enabled: true,
+        enabled: false,
         require_key_by_default: false
     };
     const config = JSON.parse(ext.storageGet("place_system_config") || "{}");
@@ -5701,7 +5675,7 @@ function applyEndGameBonuses(ctx, msg, gid, platform) {
  */
 function applyEndGameDraws(ctx, msg, gid, platform) {
     // 检查设置是否启用
-    const drawConfig = JSON.parse(ext.storageGet("end_game_draw_config", "{}"));
+    const drawConfig = JSON.parse(ext.storageGet("end_game_draw_config") || "{}");
     if (!drawConfig.enabled) return;
 
     // 从 b_confirmedSchedule 获取该群的地点
@@ -5793,8 +5767,8 @@ function initGroupTimer(platform, groupId, subtype, participants, initiator) {
     if (multiGroup && multiGroup.targetList) {
         activeParticipants = participants.filter(participant => {
             const status = multiGroup.targetList[participant];
-            // 只包括已接受和待回应的参与者
-            return status === "accepted" || status === null;
+            // 只包括已接受和待回应的参与者（status 未设置时为 undefined，用 == null 同时匹配 null/undefined）
+            return status === "accepted" || status == null;
         });
     }
     
@@ -6201,7 +6175,7 @@ cmd_admin_save_all.name = "存入统计";
 cmd_admin_save_all.help = "。存入统计 （管理员功能：自动以字段格式导出全场玩家历史统计数据）";
 cmd_admin_save_all.solve = (ctx, msg, cmdArgs) => {
     // 1. 权限校验
-    if (ctx.privilegeLevel < 40) {
+    if (!isUserAdmin(ctx, msg)) {
         seal.replyToSender(ctx, msg, "❌ 权限不足，此指令仅限管理员使用。");
         return seal.ext.newCmdExecuteResult(true);
     }
@@ -6292,7 +6266,7 @@ cmd_all_stats.name = "查看全员统计";
 cmd_all_stats.help = "。查看全员统计 （管理员功能：查看所有玩家数据排名，合并转发形式）";
 cmd_all_stats.solve = (ctx, msg, cmdArgs) => {
     // 1. 权限校验
-    if (ctx.privilegeLevel < 40) {
+    if (!isUserAdmin(ctx, msg)) {
         seal.replyToSender(ctx, msg, "❌ 权限不足，此指令仅限管理员使用。");
         return seal.ext.newCmdExecuteResult(true);
     }
@@ -7240,14 +7214,12 @@ const saveForumPosts = (posts) => ext.storageSet("forum_posts", JSON.stringify(p
  * 放弃 WS 手动构造，直接调用你已有的 sendTextToGroup
  */
 function sendToAnnounceGroup(ctx, platform, text) {
-    // 统一从 storage 获取你原本定义的公告群号
-    const announceGid = JSON.parse(ext.storageGet("song_group_id") || "null");
-    
+    const announceGid = ext.storageGet("song_group_id");
+
     if (announceGid) {
-        // 调用你现成的发送函数
         sendTextToGroup(platform, announceGid, text);
     } else {
-        console.log("[论坛系统] 尚未配置 adminAnnounceGroupId，跳过公告。");
+        console.log("[论坛系统] 尚未配置 song_group_id，跳过公告。");
     }
 }
 
@@ -7391,14 +7363,14 @@ function handleVote(ctx, msg, cmdArgs, isLike) {
 let cmd_like = seal.ext.newCmdItemInfo();
 cmd_like.name = "点赞";
 cmd_like.solve = (ctx, msg, cmdArgs) => {
-handleVote(ctx, msg, cmdArgs, true);
+    return handleVote(ctx, msg, cmdArgs, true);
 }
 ext.cmdMap["点赞"] = cmd_like;
 
 let cmd_dislike = seal.ext.newCmdItemInfo();
 cmd_dislike.name = "点踩";
 cmd_dislike.solve = (ctx, msg, cmdArgs) => {
-handleVote(ctx, msg, cmdArgs, false);
+    return handleVote(ctx, msg, cmdArgs, false);
 }
 ext.cmdMap["点踩"] = cmd_dislike;
 
@@ -7882,7 +7854,7 @@ function performLoveMailDelivery(ctx, msg, backgroundGroupId) {
     
     // 4. 清理并反馈
     ext.storageSet(mailKey, "[]");
-    if (success > 0) recordMeetingAndAnnounce("心动信", platform, ctx, ctx.endPoint);
+    if (success > 0) recordMeetingAndAnnounce("心动信", platform, ctx, ep);
     return { success, fail, publicCount, empty: false, status: "派送完成" };
 }
 
@@ -9278,7 +9250,7 @@ let cmd_update_schedule = seal.ext.newCmdItemInfo();
 cmd_update_schedule.name = "修改时间线";
 cmd_update_schedule.help = "。修改时间线 D1 1400-1500 (在约会群内使用，修改当前约会的时间)";
 
-cmd_update_schedule.solve = async (ctx, msg, cmdArgs) => {
+cmd_update_schedule.solve = (ctx, msg, cmdArgs) => {
     const platform = msg.platform;
     const gid = msg.groupId.replace(`${platform}-Group:`, "");
     const newDay = cmdArgs.getArgN(1); // 例如 D1
@@ -9404,8 +9376,6 @@ cmd_abolish_schedule.solve = (ctx, msg, cmdArgs) => {
         const privateMsg = seal.newMessage();
         privateMsg.messageType = "group";
         privateMsg.groupId = `${platform}-Group:${targetGidPrivate}`;
-        privateMsg.sender = {};
-        privateMsg.sender.userId = `${platform}:${targetUid}`;
         const privateCtx = seal.createTempCtx(ctx.endPoint, privateMsg);
         const privateNotice = `❌ 【约会已取消】\n\n抱歉，对方已经拒绝了这场约会，约会已自动取消。\n期待下次相遇！`;
         seal.replyToSender(privateCtx, privateMsg, privateNotice);
