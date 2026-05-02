@@ -1882,7 +1882,7 @@ let cmd_wechat = seal.ext.newCmdItemInfo();
 cmd_wechat.name = "微信";
 cmd_wechat.help = "。微信 对方角色名 —— 与对方建立长期微信群聊\n示例：。微信 张三";
 
-cmd_wechat.solve = (ctx, msg, cmdArgs) => {
+cmd_wechat.solve = async (ctx, msg, cmdArgs) => {
     let config = JSON.parse(ext.storageGet("global_feature_toggle") || "{}");
     if (config.enable_wechat === false) {
         seal.replyToSender(ctx, msg, "💬 微信功能已关闭");
@@ -1929,17 +1929,11 @@ cmd_wechat.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    const groupList = JSON.parse(ext.storageGet("group") || "[]");
-    const available = groupList.filter(g => !g.endsWith("_占用") && !g.endsWith("_微信占用"));
-    if (available.length === 0) {
+    const gid = await allocateGroup(platform, ctx, msg);
+    if (!gid) {
         seal.replyToSender(ctx, msg, "⚠️ 暂无可用群号，请联系管理员添加备用群");
         return seal.ext.newCmdExecuteResult(true);
     }
-
-    const gid = available[Math.floor(Math.random() * available.length)];
-    groupList.splice(groupList.indexOf(gid), 1);
-    groupList.push(gid + "_微信占用");
-    ext.storageSet("group", JSON.stringify(groupList));
 
     const wechatGroups = JSON.parse(ext.storageGet("wechat_groups") || "{}");
     if (!wechatGroups[platform]) wechatGroups[platform] = {};
@@ -2758,15 +2752,10 @@ cmd_grouplist_release.help = "。结束私约（将当前群标记为结束状�
  */
 function endWechatGroup(ctx, msg, gid, platform, uid) {
     const groupList = JSON.parse(ext.storageGet("group") || "[]");
-    if (!groupList.includes(gid + "_微信占用")) {
-        seal.replyToSender(ctx, msg, "⚠️ 当前群不是微信群，无法结束");
-        return false;
-    }
-
     const wechatGroups = JSON.parse(ext.storageGet("wechat_groups") || "{}");
     const groupInfo = wechatGroups[platform]?.[gid];
     if (!groupInfo) {
-        seal.replyToSender(ctx, msg, "⚠️ 微信群信息不存在或已失效");
+        seal.replyToSender(ctx, msg, "⚠️ 当前群不是微信群，无法结束");
         return false;
     }
 
@@ -2783,7 +2772,7 @@ function endWechatGroup(ctx, msg, gid, platform, uid) {
     ext.storageSet("wechat_groups", JSON.stringify(wechatGroups));
 
     // 释放群号
-    const groupIndex = groupList.indexOf(gid + "_微信占用");
+    const groupIndex = groupList.indexOf(gid + "_占用");
     if (groupIndex !== -1) {
         groupList.splice(groupIndex, 1);
         groupList.push(gid);
@@ -2811,8 +2800,9 @@ cmd_grouplist_release.solve = (ctx, msg, cmdArgs) => {
     let gid = msg.groupId.replace(`${platform}-Group:`, "");
     const uid = msg.sender.userId.replace(`${platform}:`, "");
 
-    // 判断是否为微信群（以 "_微信占用" 结尾）
-    if (group.includes(gid + "_微信占用")) {
+    // 判断是否为微信群（通过 wechat_groups 数据判断，而非后缀）
+    const wechatGroups = JSON.parse(ext.storageGet("wechat_groups") || "{}");
+    if (wechatGroups[platform]?.[gid]?.status === "active") {
         endWechatGroup(ctx, msg, gid, platform, uid);
         return seal.ext.newCmdExecuteResult(true);
     }
@@ -3088,7 +3078,7 @@ async function checkGroupHasNonNPC(platform, gid, ctx, msg) {
  */
 async function allocateGroup(platform, ctx, msg) {
     let groupList = JSON.parse(ext.storageGet("group") || "[]");
-    let freeGroups = groupList.filter(g => !g.endsWith("_占用") && !g.endsWith("_微信占用"));  // 排除约会占用和微信占用
+    let freeGroups = groupList.filter(g => !g.endsWith("_占用"));
     if (freeGroups.length === 0) return null;
 
     // 随机打乱顺序
@@ -3100,14 +3090,12 @@ async function allocateGroup(platform, ctx, msg) {
     for (let gid of freeGroups) {
         const hasNonNPC = await checkGroupHasNonNPC(platform, gid, ctx, msg);
         if (!hasNonNPC) {
-            // 该群可用，标记为占用
             const newGroupList = groupList.map(g => g === gid ? gid + "_占用" : g);
             ext.storageSet("group", JSON.stringify(newGroupList));
             return gid;
         }
-        // 有非NPC玩家，跳过该群，不标记 _blocked，继续尝试下一个
     }
-    return null; // 所有群都不可用
+    return null;
 }
 
 /**
@@ -3197,7 +3185,7 @@ cmd_fix_noquit.solve = async (ctx, msg, cmdArgs) => {
     const platform = msg.platform;
     const roles = (getRoleStorage()[platform] || {});
     const npcs = JSON.parse(ext.storageGet("a_npc_list") || "[]");
-    const groups = JSON.parse(ext.storageGet("group") || "[]").map(g => g.replace("_占用", ""));
+    const groups = JSON.parse(ext.storageGet("group") || "[]").map(g => g.replace(/_占用$/, ""));
     const noquit = JSON.parse(ext.storageGet("noquit") || "{}");
 
     let countUpdate = 0; // 新增记录数
@@ -4982,7 +4970,7 @@ let cmd_create_official_appointment = seal.ext.newCmdItemInfo();
 cmd_create_official_appointment.name = "发起官约";
 cmd_create_official_appointment.help = "。发起官约 D1 14:00-15:00 地点 参与者1/参与者2/...（管理员专用，自动创建官方约会群组）";
 
-cmd_create_official_appointment.solve = (ctx, msg, cmdArgs) => {
+cmd_create_official_appointment.solve = async (ctx, msg, cmdArgs) => {
   if (!isUserAdmin(ctx, msg)) {
     seal.replyToSender(ctx, msg, `只有管理员可以发起官约`);
     return seal.ext.newCmdExecuteResult(true);
@@ -5053,18 +5041,11 @@ cmd_create_official_appointment.solve = (ctx, msg, cmdArgs) => {
   }
 
   // 分配群号
-  const groupList = JSON.parse(ext.storageGet("group") || "[]");
-  const available = groupList.filter(g => !g.endsWith("_占用") && !g.endsWith("_微信占用"));
-
-  if (available.length === 0) {
+  const gid = await allocateGroup(platform, ctx, msg);
+  if (!gid) {
     seal.replyToSender(ctx, msg, `暂无可用群号`);
     return seal.ext.newCmdExecuteResult(true);
   }
-
-  const gid = available[Math.floor(Math.random() * available.length)];
-  groupList.splice(groupList.indexOf(gid), 1);
-  groupList.push(gid + "_占用");
-  ext.storageSet("group", JSON.stringify(groupList));
 
   // --- 新增：过期与计时逻辑 ---
   const acceptTime = Date.now();
