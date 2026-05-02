@@ -429,20 +429,27 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
         setMainStorage("letter_telescope_effects", JSON.stringify(telescopeEffects));
     }
 
-    // 9. 发放赏金
+    // 9. 发放赏金（写入 global_inventories，与 RPG 背包一致）
     let rewardGiven = 0;
     let totalCoins = 0;
     if (rewardPerLetter > 0 && meetsMinChars) {
-        let attrs = JSON.parse(getMainStorage("sys_character_attrs") || "{}");
-        if (!attrs[senderRoleName]) attrs[senderRoleName] = {};
-        attrs[senderRoleName]["写信币"] = (attrs[senderRoleName]["写信币"] || 0) + rewardPerLetter;
-        totalCoins = attrs[senderRoleName]["写信币"];
-        setMainStorage("sys_character_attrs", JSON.stringify(attrs));
-
-        let presets = JSON.parse(getMainStorage("sys_attr_presets") || "[]");
-        if (!presets.includes("写信币")) {
-            presets.push("写信币");
-            setMainStorage("sys_attr_presets", JSON.stringify(presets));
+        const roleKey = `${platform}:${uid}`;
+        const itemReg = JSON.parse(getMainStorage("item_registry") || "{}");
+        const coinEntry = Object.entries(itemReg).find(([, v]) => v.name === "写信币");
+        if (coinEntry) {
+            const [coinCode, coinDef] = coinEntry;
+            const invs = JSON.parse(getMainStorage("global_inventories") || "{}");
+            const inv = invs[roleKey] || [];
+            const initialUses = coinDef.maxUses ?? -1;
+            const existing = inv.find(e => e.code === coinCode && (e.remainingUses ?? -1) === initialUses);
+            if (existing) {
+                existing.count += rewardPerLetter;
+            } else {
+                inv.push({ code: coinCode, count: rewardPerLetter, remainingUses: initialUses });
+            }
+            invs[roleKey] = inv;
+            setMainStorage("global_inventories", JSON.stringify(invs));
+            totalCoins = inv.filter(e => e.code === coinCode).reduce((sum, e) => sum + e.count, 0);
         }
         rewardGiven = rewardPerLetter;
     }
