@@ -1956,7 +1956,7 @@ cmd_wechat.solve = (ctx, msg, cmdArgs) => {
     };
     ext.storageSet("wechat_groups", JSON.stringify(wechatGroups));
 
-    const groupNotice = `💬 微信群创建成功\n\n📱 群号：${gid}\n👤 创建者：${sendname}\n👥 成员：${sendname}、${toname}\n\n💡 这是一个长期群聊，无时间限制，每个微信关系只能有一个活跃群。`;
+    const groupNotice = `💬 微信群创建成功\n\n📱 群号：${gid}\n👤 创建者：${sendname}\n👥 成员：${sendname}、${toname}\n\n💡 这是一个长期群聊，无时间限制，每个微信关系只能有一个活跃群。\n\n进群后请发送：.ext all on（开启机器人指令）`;
     const groupMsg = seal.newMessage();
     groupMsg.messageType = "group";
     groupMsg.groupId = `${platform}-Group:${gid}`;
@@ -3328,6 +3328,7 @@ async function finalizeGroupCreation(platform, ctx, msg, groupData, participants
 ⏰ 有效期：${timeStr}
 
 💡 操作指南：
+  进群后 ➜ .ext all on（开启机器人指令）
   修改时间 ➜ 。修改时间线 ${groupData.day} 新时间（在私约群内）
   不想参加 ➜ 。废除时间线 私约群号`;
 
