@@ -6450,6 +6450,11 @@ ext.onNotCommandReceived = (ctx, msg) => {
         }
     }
 
+    // 2.5 点歌引导（未回复卡片时单独发点歌）
+    if (raw === "点歌") {
+        return seal.replyToSender(ctx, msg, "🎵 点歌用法：回复一张音乐卡片，消息内容写\n点歌人：名字 留言：内容\n例：点歌人：张三 留言：送给你的歌");
+    }
+
     // 3. 互动系统 (赠送/短信)
     // 支持「赠送 对方 礼物」和「自定义名赠送 对方 礼物」，排除「道具赠送」
     if (!raw.startsWith("道具赠送")) {
@@ -6457,6 +6462,8 @@ ext.onNotCommandReceived = (ctx, msg) => {
         if (giftM) {
             const customName = giftM[1].trim() || null;
             return handleNaturalGift(ctx, msg, platform, giftM[2].trim(), giftM[3].trim(), customName);
+        } else if (/^(.*?)赠送$/.test(raw)) {
+            return seal.replyToSender(ctx, msg, "📦 赠送格式：赠送 对方名 礼物内容\n例：赠送 张三 一束花\n\n图鉴内礼物：赠送 对方名 #编号（可无限赠送）\n\n撤回 —— 3分钟内可撤回最后一次赠送");
         }
     }
 
@@ -6482,6 +6489,8 @@ ext.onNotCommandReceived = (ctx, msg) => {
         } else {
             return seal.replyToSender(ctx, msg, "❌ 角色识别失败");
         }
+    } else if (/^(.+?)?短信$/.test(raw)) {
+        return seal.replyToSender(ctx, msg, "💌 短信格式：[署名]短信 收信人 内容\n例：短信 李四 你好！\n例：张三短信 李四 你好！");
     }
 
     // 4. 约会/邀约/微信/心愿/发帖/心动信（无指令前缀触发）
@@ -6492,22 +6501,22 @@ ext.onNotCommandReceived = (ctx, msg) => {
 
     if (raw.startsWith("电话")) {
         const rest = raw.slice(2).trim();
-        if (rest) return cmd_phone.solve(ctx, msg, makeFakeCmdArgs(rest.split(/\s+/)));
+        return cmd_phone.solve(ctx, msg, makeFakeCmdArgs(rest ? rest.split(/\s+/) : []));
     }
 
     if (raw.startsWith("私约")) {
         const rest = raw.slice(2).trim();
-        if (rest) return cmd_appointment_private.solve(ctx, msg, makeFakeCmdArgs(rest.split(/\s+/)));
+        return cmd_appointment_private.solve(ctx, msg, makeFakeCmdArgs(rest ? rest.split(/\s+/) : []));
     }
 
     if (raw.startsWith("微信")) {
         const rest = raw.slice(2).trim();
-        if (rest) return cmd_wechat.solve(ctx, msg, makeFakeCmdArgs([rest]));
+        return cmd_wechat.solve(ctx, msg, makeFakeCmdArgs(rest ? [rest] : []));
     }
 
     if (raw.startsWith("挂心愿")) {
         const rest = raw.slice(3).trim();
-        if (rest) return cmd_post_wish.solve(ctx, msg, makeFakeCmdArgs(rest.split(/\s+/)));
+        return cmd_post_wish.solve(ctx, msg, makeFakeCmdArgs(rest ? rest.split(/\s+/) : []));
     }
 
     if (raw === "看心愿") {
