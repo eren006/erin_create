@@ -2576,7 +2576,6 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
     newmsg.messageType = "group";
     newmsg.groupId = `${platform}-Group:${targetEntry[1]}`;
     const newctx = seal.createTempCtx(ctx.endPoint, newmsg);
-
     const targetQQ = targetEntry[0];
     const recipientMsg = `[CQ:at,qq=${targetQQ}]\n🎀 ${toname}，有一份来自「${sendname}」的快递：\n礼物：${giftDisplayName}\n寄语：「${giftContent}」`;
     seal.replyToSender(newctx, newmsg, recipientMsg);
@@ -2588,21 +2587,7 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
     ext.storageSet("global_gift_stats", JSON.stringify(globalStats));
     ext.storageSet("global_gift_cooldowns", JSON.stringify(globalCooldowns));
 
-    // 记录撤回信息（3分钟内可撤回）
-    const pendingRecall = JSON.parse(ext.storageGet("pending_recall") || "{}");
-    pendingRecall[userKey] = {
-        type: "礼物",
-        toname,
-        trueRecipient: toname,
-        recipientGroupId: targetEntry[1],
-        sentAt: now,
-        senderName: sendname,
-        giftDisplayName,
-        presetGiftId: giftInput.startsWith('#') ? giftInput : null,
-    };
-    ext.storageSet("pending_recall", JSON.stringify(pendingRecall));
-
-    seal.replyToSender(ctx, msg, `🎁 已成功将 ${giftDisplayName} 送往「${toname}」的房间。\n(今日第 ${userStat.count}份，3分钟内可发「撤回」取消)`);
+    seal.replyToSender(ctx, msg, `🎁 已成功将 ${giftDisplayName} 送往「${toname}」的房间。\n(今日第 ${userStat.count}份)`);
 
     // 8. 公开广播逻辑 (保持原样)
     const publicGroupId = JSON.parse(ext.storageGet("adminAnnounceGroupId") || "null");
@@ -4460,19 +4445,7 @@ async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, co
     globalChaosCounts[userKey] = userRec;
     ext.storageSet("global_chaos_letter_counts", JSON.stringify(globalChaosCounts));
 
-    // 记录撤回信息（3分钟内可撤回）
-    const pendingRecall = JSON.parse(ext.storageGet("pending_recall") || "{}");
-    pendingRecall[userKey] = {
-        type: "短信",
-        toname,
-        trueRecipient,
-        recipientGroupId: targetEntry[1],
-        sentAt: now,
-        senderName: sendname,
-    };
-    ext.storageSet("pending_recall", JSON.stringify(pendingRecall));
-
-    seal.replyToSender(ctx, msg, `🕊️ 信件已由鸽子衔往 ${toname} 处。今日已发 ${userRec.count}/${chaosConfig.dailyLimit}（3分钟内可发「撤回」取消）。`);
+    seal.replyToSender(ctx, msg, `🕊️ 信件已由鸽子衔往 ${toname} 处。今日已发 ${userRec.count}/${chaosConfig.dailyLimit}。`);
 
     // 公开逻辑
     const letterPublicEnabled = JSON.parse(ext.storageGet("letter_public_send") || "false");
@@ -6463,7 +6436,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
             const customName = giftM[1].trim() || null;
             return handleNaturalGift(ctx, msg, platform, giftM[2].trim(), giftM[3].trim(), customName);
         } else if (/^(.*?)赠送$/.test(raw)) {
-            return seal.replyToSender(ctx, msg, "📦 赠送格式：赠送 对方名 礼物内容\n例：赠送 张三 一束花\n\n图鉴内礼物：赠送 对方名 #编号（可无限赠送）\n\n撤回 —— 3分钟内可撤回最后一次赠送");
+            return seal.replyToSender(ctx, msg, "📦 赠送格式：赠送 对方名 礼物内容\n例：赠送 张三 一束花\n\n图鉴内礼物：赠送 对方名 #编号（可无限赠送）");
         }
     }
 
@@ -6833,56 +6806,6 @@ ext.onNotCommandReceived = (ctx, msg) => {
         }
     }
 
-    if (raw === "撤回") {
-        const roleName = getRoleName(ctx, msg);
-        if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色");
-        const userKey = `${platform}:${uid}`;
-        const pendingRecall = JSON.parse(ext.storageGet("pending_recall") || "{}");
-        const record = pendingRecall[userKey];
-
-        if (!record) {
-            seal.replyToSender(ctx, msg, "⚠️ 没有可撤回的发送记录");
-            return seal.ext.newCmdExecuteResult(true);
-        }
-        if (Date.now() - record.sentAt > 3 * 60 * 1000) {
-            delete pendingRecall[userKey];
-            ext.storageSet("pending_recall", JSON.stringify(pendingRecall));
-            seal.replyToSender(ctx, msg, "⚠️ 超过3分钟，无法撤回");
-            return seal.ext.newCmdExecuteResult(true);
-        }
-
-        // 发撤回通知到收件人群
-        if (record.recipientGroupId) {
-            const recallMsg = seal.newMessage();
-            recallMsg.messageType = "group";
-            recallMsg.groupId = `${platform}-Group:${record.recipientGroupId}`;
-            const recallCtx = seal.createTempCtx(ctx.endPoint, recallMsg);
-            const recallText = record.type === "礼物"
-                ? `📭 「${record.senderName}」撤回了刚才送给 ${record.trueRecipient} 的${record.giftDisplayName || "礼物"}`
-                : `📭 「${record.senderName}」撤回了刚才发给 ${record.trueRecipient} 的短信`;
-            seal.replyToSender(recallCtx, recallMsg, recallText);
-        }
-
-        // 返还次数
-        if (record.type === "短信") {
-            const counts = JSON.parse(ext.storageGet("global_chaos_letter_counts") || "{}");
-            if (counts[userKey]) {
-                counts[userKey].count = Math.max(0, (counts[userKey].count || 1) - 1);
-                ext.storageSet("global_chaos_letter_counts", JSON.stringify(counts));
-            }
-        } else if (record.type === "礼物") {
-            const globalStats = JSON.parse(ext.storageGet("global_gift_stats") || "{}");
-            if (globalStats[userKey]) {
-                globalStats[userKey].count = Math.max(0, (globalStats[userKey].count || 1) - 1);
-                ext.storageSet("global_gift_stats", JSON.stringify(globalStats));
-            }
-        }
-
-        delete pendingRecall[userKey];
-        ext.storageSet("pending_recall", JSON.stringify(pendingRecall));
-        seal.replyToSender(ctx, msg, `✅ 已撤回，次数已返还`);
-        return seal.ext.newCmdExecuteResult(true);
-    }
 
     // 5. 信息收集系统 & 设定NPC
     const projects = getS("sys_info_projects");
@@ -8362,8 +8285,6 @@ cmd_guide.solve = (ctx, msg, cmdArgs) => {
                     "赠送 对方名 礼物内容  叙事礼物",
                     "  例：赠送 张三 一束花",
                     "赠送 对方 #编号   图鉴内礼物可无限赠送",
-                    "",
-                    "撤回   3分钟内可撤回最后一次赠送或短信",
                 ]),
                 section("🧪 合成系统", [
                     "合成列表 / 查看合成",
