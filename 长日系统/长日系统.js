@@ -480,7 +480,7 @@ function recordMeetingAndAnnounce(subtype, platform, ctx, endPoint) {
         "电话": "call",
         "私密": "private",
         "寄信": "chaosletter",
-        "发送信件": "directletter",
+
         "心动信": "lovemail",
         "礼物": "gift",
         "心愿": "wish",
@@ -520,7 +520,7 @@ function recordMeetingAndAnnounce(subtype, platform, ctx, endPoint) {
             if (subtype === "电话") return getDirectRecord("电话", count, "☎️");
             if (subtype === "私密") return getDirectRecord("私密约会", count, "💫");
             if (subtype === "寄信") return getDirectRecord("寄信", count, "📮");
-            if (subtype === "发送信件") return getDirectRecord("发送信件", count, "✉️");
+
             if (subtype === "心动信") return getDirectRecord("心动信派送", count, "💌");
             if (subtype === "礼物") return getDirectRecord("礼物赠送", count, "🎁");
             if (subtype === "心愿") return getDirectRecord("心愿", count, "🌠");
@@ -4466,137 +4466,6 @@ async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, co
 }
 
 // ========================
-// 核心功能：发送信件（含：日期前置、附件展示、写信币赏金）
-// ========================
-let cmd_send_letter = seal.ext.newCmdItemInfo();
-cmd_send_letter.name = "发送信件";
-cmd_send_letter.help = "。发送信件\n【收件人】角色名\n【内容】信件内容\n【日期】显示的日期（选填，前置显示）\n【附件】额外备注/物品（选填，分开展示）\n【署名】自定义落款（选填）";
-
-cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
-    // 1. 功能开关
-    const config = JSON.parse(ext.storageGet("global_feature_toggle") || "{}");
-    if (config.enable_direct_letter === false) {
-        seal.replyToSender(ctx, msg, "✉️ 发送信件功能已关闭。");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    const platform = msg.platform;
-    const uid = msg.sender.userId.replace(`${platform}:`, "");
-    const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
-
-    // 2. 身份核验
-    const senderRoleName = Object.entries(a_private_group[platform] || {})
-        .find(([_, val]) => val[0] === uid)?.[0];
-    if (!senderRoleName) {
-        seal.replyToSender(ctx, msg, "✨ 远方的旅人，寄信前请先使用「创建新角色」来认领你的身份吧。");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    const raw = msg.message.trim();
-
-    // 3. 解析【】标签
-    const getTag = (tag) => {
-        const regex = new RegExp(`【${tag}】([\\s\\S]*?)(?=【|$)`, "i");
-        const match = raw.match(regex);
-        return match ? match[1].trim() : null;
-    };
-
-    const signature = getTag("署名") || senderRoleName;
-    const receiver = getTag("收件人") || getTag("发送对象");
-    const content = getTag("内容") || "";
-    const dateTag = getTag("日期");      // 日期解析
-    const attachment = getTag("附件");   // 附件解析
-
-    if (!receiver) {
-        seal.replyToSender(ctx, msg, `⚠️ 格式错误！请指定收件人。\n\n标准格式：\n。发送信件\n【收件人】角色名\n【内容】想说的话\n【日期】日期\n【附件】附件内容\n【署名】落款`);
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    if (!a_private_group[platform]?.[receiver]) {
-        seal.replyToSender(ctx, msg, `⚠️ 找不到角色「${receiver}」，请确认名字是否正确。`);
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    if (!content) {
-        seal.replyToSender(ctx, msg, `⚠️ 信件内容不能为空。`);
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    // 4. 游戏天数 & 每日限额
-    const gameDay = ext.storageGet("global_days") || "D0";
-    const dailyLimit = parseInt(ext.storageGet("direct_letter_daily_limit") || "5");
-    const userKey = `${platform}:${uid}`;
-    let dlCounts = JSON.parse(ext.storageGet("direct_letter_day_counts") || "{}");
-    if (!dlCounts[userKey] || dlCounts[userKey].day !== gameDay) {
-        dlCounts[userKey] = { day: gameDay, count: 0 };
-    }
-    const currentCount = dlCounts[userKey].count;
-
-    if (currentCount >= dailyLimit) {
-        seal.replyToSender(ctx, msg, `📪 ${gameDay} 你已发送 ${currentCount} 封信件（上限 ${dailyLimit} 封）。`);
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    // 5. 赏金检查
-    const minChars = parseInt(ext.storageGet("direct_letter_min_chars") || "0");
-    const rewardPerLetter = parseInt(ext.storageGet("direct_letter_reward") || "0");
-    const contentLength = content.replace(/\s/g, "").length;
-    const meetsMinChars = minChars === 0 || contentLength >= minChars;
-
-    // 6. 组装并投递到收件人私人群
-    let finalLetter = `✉️ ${receiver}，你收到一封信：\n`;
-    
-    // 日期前置
-    if (dateTag) finalLetter += `📅 日期：${dateTag}\n`;
-    
-    finalLetter += `\n「${content}」\n\n—— ${signature}`;
-
-    // 附件展示（加分隔线）
-    if (attachment) {
-        finalLetter += `\n\n附件：\n--------------------\n${attachment}`;
-    }
-
-    const targetEntry = a_private_group[platform][receiver];
-    const deliverMsg = seal.newMessage();
-    deliverMsg.messageType = "group";
-    deliverMsg.groupId = `${platform}-Group:${targetEntry[1]}`;
-    const deliverCtx = seal.createTempCtx(ctx.endPoint, deliverMsg);
-    seal.replyToSender(deliverCtx, deliverMsg, finalLetter);
-
-    // 7. 发放写信币赏金
-    let rewardGiven = 0;
-    let totalCoins = 0;
-    if (rewardPerLetter > 0 && meetsMinChars) {
-        let attrs = JSON.parse(ext.storageGet("sys_character_attrs") || "{}");
-        if (!attrs[senderRoleName]) attrs[senderRoleName] = {};
-        attrs[senderRoleName]["写信币"] = (attrs[senderRoleName]["写信币"] || 0) + rewardPerLetter;
-        totalCoins = attrs[senderRoleName]["写信币"];
-        ext.storageSet("sys_character_attrs", JSON.stringify(attrs));
-
-        let presets = JSON.parse(ext.storageGet("sys_attr_presets") || "[]");
-        if (!presets.includes("写信币")) {
-            presets.push("写信币");
-            ext.storageSet("sys_attr_presets", JSON.stringify(presets));
-        }
-        rewardGiven = rewardPerLetter;
-    }
-
-    // 8. 更新发送计数
-    dlCounts[userKey].count = currentCount + 1;
-    ext.storageSet("direct_letter_day_counts", JSON.stringify(dlCounts));
-
-    // 9. 回复发信人
-    let reply = `✉️ 信件已送达「${receiver}」！\n`;
-    reply += `🖋️ 落款：${signature}\n`;
-    reply += `📅 ${gameDay}（今日剩余：${dailyLimit - (currentCount + 1)}/${dailyLimit}）`;
-    if (rewardPerLetter > 0) {
-        reply += meetsMinChars ? `\n💰 写信币 +${rewardGiven}（共 ${totalCoins}）` : `\n📝 提示：字数不足 ${minChars}，未获得赏金。`;
-    }
-    seal.replyToSender(ctx, msg, reply);
-    recordMeetingAndAnnounce("发送信件", platform, ctx, ctx.endPoint);
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["发送信件"] = cmd_send_letter;
 
 /**
  * 将关系线细节平铺转发到目标群 (登记名 + 真实QQ头像)
@@ -6780,12 +6649,8 @@ ext.onNotCommandReceived = (ctx, msg) => {
         if (rest) return cmd_reject_join.solve(ctx, msg, makeFakeCmdArgs([rest]));
     }
 
-    // 4.13 信箱 & 发送信件
+    // 4.13 信箱
     if (raw === "查看信箱") return cmd_view_mylovemails.solve(ctx, msg, makeFakeCmdArgs([]));
-    if (raw.startsWith("发送信件")) {
-        const rest = raw.slice(4).trim();
-        if (rest) return cmd_send_letter.solve(ctx, msg, makeFakeCmdArgs(rest.split(/\s+/)));
-    }
 
     // 4.14 本场统计
     if (raw === "本场统计") return cmd_my_stats.solve(ctx, msg, makeFakeCmdArgs([]));
@@ -8331,9 +8196,7 @@ cmd_guide.solve = (ctx, msg, cmdArgs) => {
                     "",
                     "查看信箱   查看收到的心动信",
                     "",
-                    "发送信件 收件人 内容",
-                    "  直接短信式发送信件",
-                    "  例：发送信件 张三 见面聊聊？",
+
                 ]),
                 section("🗨️ 论坛", [
                     "发帖 内容",
