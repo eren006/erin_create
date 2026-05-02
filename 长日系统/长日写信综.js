@@ -639,16 +639,21 @@ cmd_apply_effect.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    // 检查玩家是否拥有该道具
-    let attrs = JSON.parse(getMainStorage("sys_character_attrs") || "{}");
-    if (!attrs[applierRoleName]?.[itemCode] || attrs[applierRoleName][itemCode] <= 0) {
+    // 检查玩家是否拥有该道具（从 global_inventories 读取，与 RPG 背包一致）
+    const roleKey = `${platform}:${uid}`;
+    const invs = JSON.parse(getMainStorage("global_inventories") || "{}");
+    const inv = invs[roleKey] || [];
+    const itemEntry = inv.find(e => e.code === itemCode && e.count > 0);
+    if (!itemEntry) {
         seal.replyToSender(ctx, msg, `❌ 你没有「${itemName}」。`);
         return seal.ext.newCmdExecuteResult(true);
     }
 
     // 消耗道具
-    attrs[applierRoleName][itemCode]--;
-    setMainStorage("sys_character_attrs", JSON.stringify(attrs));
+    itemEntry.count--;
+    if (itemEntry.count <= 0) invs[roleKey] = inv.filter(e => e !== itemEntry);
+    else invs[roleKey] = inv;
+    setMainStorage("global_inventories", JSON.stringify(invs));
 
     // 记录施加效果
     const effectsKey = itemCode === "SPEC_003" ? "letter_telescope_effects" : "letter_quill_pen_effects";
