@@ -535,8 +535,8 @@ function handleSpecialItemUse(ctx, msg, platform, roleName, roleKey, code, cmdAr
         const showPartner = main.storageGet("item_tracker_show_partner") !== "false";
         const isSuccess = Math.random() * 100 < successRate;
 
-        if (!matchingEvent) return seal.replyToSender(ctx, msg, `🔍 未能发现「${targetRole}」的行踪。\n（追踪器未消耗）`);
         if (!removeFromInv(roleKey, "SPEC_001", 1)) return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的追踪器。");
+        if (!matchingEvent) return seal.replyToSender(ctx, msg, `🔍 未能发现「${targetRole}」的行踪。\n（追踪器已消耗）`);
         if (!isSuccess) return seal.replyToSender(ctx, msg, `🔍 信号干扰，定位失败。\n（追踪器已消耗）`);
 
         let resultMsg = `🔍 追踪到「${targetRole}」在 ${globalDay} ${matchingEvent.time} 出现在「${matchingEvent.place || "某处"}」`;
@@ -2173,8 +2173,8 @@ cmd_apply.solve = (ctx, msg, cmdArgs) => {
         const showPartner = main.storageGet("item_tracker_show_partner") !== "false";
         const isSuccess = Math.random() * 100 < successRate;
 
-        if (!matchingEvent) return seal.replyToSender(ctx, msg, `🔍 未能发现「${targetName}」的行踪。\n（追踪器未消耗）`);
         if (!removeFromInv(roleKey, "SPEC_001", 1)) return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的追踪器。");
+        if (!matchingEvent) return seal.replyToSender(ctx, msg, `🔍 未能发现「${targetName}」的行踪。\n（追踪器已消耗）`);
         if (!isSuccess) return seal.replyToSender(ctx, msg, `🔍 信号干扰，定位失败。\n（追踪器已消耗）`);
 
         let resultMsg = `🔍 追踪到「${targetName}」在 ${globalDay} ${matchingEvent.time} 出现在「${matchingEvent.place || "某处"}」`;
