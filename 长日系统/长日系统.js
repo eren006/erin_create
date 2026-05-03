@@ -6321,14 +6321,37 @@ ext.onNotCommandReceived = (ctx, msg) => {
             return ws({ action: "get_msg", params: { message_id: wdId } }, ctx, msg);
         }
         if (raw.includes("转发复盘")) {
-            const bgId = ext.storageGet("background_group_id");
-            if (!bgId) return seal.replyToSender(ctx, msg, "未配置目标群");
-            ext.storageSet("temp_target_gid", bgId); ext.storageSet("temp_task_type", "forward"); ext.storageSet("temp_source_group_name", ctx.group.groupName);
+            const fupanRouting = ext.storageGet("fupan_routing_enabled") === "true";
+            let targetId;
+            if (fupanRouting) {
+                let routingMap = {};
+                try { routingMap = JSON.parse(ext.storageGet("fupan_routing_groups") || "{}"); } catch (e) {}
+                const firstRoutingId = Object.values(routingMap)[0];
+                if (!firstRoutingId) return seal.replyToSender(ctx, msg, "❌ 未配置复盘群分流群，请先用「。复盘群分流群」配置");
+                // 找当前群对应约会的天数，然后查路由表
+                const bSched = getS("b_confirmedSchedule");
+                let appointmentDay = null;
+                for (const evList of Object.values(bSched)) {
+                    for (const ev of evList) {
+                        if (ev.group === groupId && ev.status === "active") {
+                            appointmentDay = ev.day || null;
+                            break;
+                        }
+                    }
+                    if (appointmentDay !== null) break;
+                }
+                const dayKey = appointmentDay ? appointmentDay.toUpperCase() : null;
+                targetId = (dayKey && routingMap[dayKey]) ? routingMap[dayKey] : firstRoutingId;
+            } else {
+                targetId = ext.storageGet("background_group_id");
+                if (!targetId) return seal.replyToSender(ctx, msg, "未配置目标群");
+            }
+            ext.storageSet("temp_target_gid", targetId); ext.storageSet("temp_task_type", "forward"); ext.storageSet("temp_source_group_name", ctx.group.groupName);
             let bSched = getS("b_confirmedSchedule");
             Object.values(bSched).flat().forEach(ev => { if(ev.group === groupId && ev.status === "active") ev.fupan = true; });
             ext.storageSet("b_confirmedSchedule", JSON.stringify(bSched));
             ws({ action: "get_msg", params: { message_id: wdId } }, ctx, msg);
-            return seal.replyToSender(ctx, msg, `已复盘至后台，请尽快结课退群！`);
+            return seal.replyToSender(ctx, msg, `已复盘至后台，请尽快结戏退群！`);
         }
     }
 

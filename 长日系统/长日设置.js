@@ -158,7 +158,9 @@ const settingsConfig = {
             { label: '点歌群', key: 'song_group_id', type: 'string', default: '未设置', raw: true },
             { label: '后台群', key: 'background_group_id', type: 'string', default: '未设置', raw: true },
             { label: '公告群', key: 'adminAnnounceGroupId', type: 'string', default: '未设置', raw: true },
-            { label: '水群', key: 'water_group_id', type: 'string', default: '未设置', raw: true }
+            { label: '水群', key: 'water_group_id', type: 'string', default: '未设置', raw: true },
+            { label: '复盘群分流', key: 'fupan_routing_enabled', type: 'bool', default: false },
+            { label: '复盘群分流群', key: 'fupan_routing_groups', type: 'routing', default: '未设置' }
         ]
     }
 };
@@ -166,6 +168,13 @@ const settingsConfig = {
 function getParamValue(param) {
     const raw = getMainStorage(param.key, JSON.stringify(param.default));
     if (param.raw) return raw.replace(/"/g, '');
+    if (param.type === 'routing') {
+        try {
+            const map = JSON.parse(raw);
+            if (!map || !Object.keys(map).length) return '未设置';
+            return Object.entries(map).map(([d, g]) => `${d}:${g}`).join('，');
+        } catch (e) { return '未设置'; }
+    }
     try {
         const parsed = JSON.parse(raw);
         if (param.nested) {
@@ -183,6 +192,16 @@ function getParamValue(param) {
 }
 
 function setParamValue(param, val) {
+    if (param.type === 'routing') {
+        const pairs = val.split(/[，,\s]+/);
+        const map = {};
+        for (const pair of pairs) {
+            const m = pair.trim().match(/^(D\d+)[：:]\s*(\d+)$/i);
+            if (m) map[m[1].toUpperCase()] = m[2];
+        }
+        setMainStorage(param.key, JSON.stringify(map));
+        return;
+    }
     if (param.nested) {
         let cfg = JSON.parse(getMainStorage(param.key, "{}"));
         cfg[param.nested] = (val === '开启');
@@ -979,7 +998,15 @@ function sendStatisticsToBackgroundGroup(ctx, msg, newDay, statisticsReport, isC
     const main = getMainExt();
     if (!main) return;
 
-    const backgroundGroupId = JSON.parse(main.storageGet("background_group_id") || "null");
+    let backgroundGroupId = JSON.parse(main.storageGet("background_group_id") || "null");
+    const fupanRouting = main.storageGet("fupan_routing_enabled") === "true";
+    if (fupanRouting) {
+        try {
+            const routingMap = JSON.parse(main.storageGet("fupan_routing_groups") || "{}");
+            const firstId = Object.values(routingMap)[0];
+            if (firstId) backgroundGroupId = firstId;
+        } catch (e) {}
+    }
     if (!backgroundGroupId) return;
 
     const backgroundMsg = seal.newMessage();
@@ -1054,9 +1081,18 @@ cmd_set_days.solve = (ctx, msg, args) => {
         sendTextToGroup(platform, announceGid, `📜 全局天数已从 ${prev} 切换到 ${day}（所有计数已自动重置）`);
     }
     const bgGid = JSON.parse(main.storageGet("background_group_id") || "null");
-    if (bgGid) sendStatisticsToBackgroundGroup(ctx, msg, day, report, true);
+    const fupanRoutingForReport = main.storageGet("fupan_routing_enabled") === "true";
+    let reportTarget = bgGid;
+    if (fupanRoutingForReport) {
+        try {
+            const rm = JSON.parse(main.storageGet("fupan_routing_groups") || "{}");
+            const firstId = Object.values(rm)[0];
+            if (firstId) reportTarget = firstId;
+        } catch (e) {}
+    }
+    if (reportTarget) sendStatisticsToBackgroundGroup(ctx, msg, day, report, true);
 
-    seal.replyToSender(ctx, msg, resp + `\n\n📊 统计报告已生成${bgGid ? '并发送到后台群' : ''}`);
+    seal.replyToSender(ctx, msg, resp + `\n\n📊 统计报告已生成${reportTarget ? '并发送到后台群' : ''}`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["设置天数"] = cmd_set_days;
