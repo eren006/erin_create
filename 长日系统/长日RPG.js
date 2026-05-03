@@ -445,7 +445,8 @@ function notifyPlayer(ctx, platform, roleName, text) {
     notifyMsg.messageType = "group";
     notifyMsg.groupId = `${platform}-Group:${info[1]}`;
     const notifyCtx = seal.createTempCtx(ctx.endPoint, notifyMsg);
-    seal.replyToSender(notifyCtx, notifyMsg, text);
+    const qq = info[0].replace(/^[^:]+:/, "");
+    seal.replyToSender(notifyCtx, notifyMsg, `[CQ:at,qq=${qq}]\n${text}`);
 }
 
 // ========================
@@ -909,6 +910,7 @@ cmd_set_attr.solve = (ctx, msg, cmdArgs) => {
     saveCharAttrs(charAttrs);
     const note = clamped !== val ? `（已截断至范围内：${clamped}）` : "";
     seal.replyToSender(ctx, msg, `✅ 【${roleName}】${attrName} 已设为 ${clamped}${note}`);
+    notifyPlayer(ctx, msg.platform, roleName, `📊【属性更新】你的「${attrName}」已设定为 ${clamped}${note}`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["设置属性"] = cmd_set_attr;
@@ -1181,9 +1183,11 @@ cmd_adjust.solve = (ctx, msg, cmdArgs) => {
     if (delta > 0) {
         addToInv(roleKey, item.code, delta);
         seal.replyToSender(ctx, msg, `✅ [${item.code}]${item.name} ×${delta} 已加入「${roleName}」背包。`);
+        notifyPlayer(ctx, platform, roleName, `📦【背包更新】${item.name} ×${delta} 已加入你的背包。`);
     } else if (delta < 0) {
         if (!removeFromInv(roleKey, item.code, -delta)) return seal.replyToSender(ctx, msg, `❌ 「${roleName}」背包中数量不足。`);
         seal.replyToSender(ctx, msg, `✅ 已从「${roleName}」背包扣除 [${item.code}]${item.name} ×${-delta}。`);
+        notifyPlayer(ctx, platform, roleName, `📦【背包更新】${item.name} ×${-delta} 已从你的背包中移除。`);
     } else {
         seal.replyToSender(ctx, msg, "⚠️ 调整量为0，无变化。");
     }
@@ -1217,9 +1221,11 @@ cmd_grant_draws.solve = (ctx, msg, cmdArgs) => {
     if (poolName) {
         rec.extra[poolName] = (rec.extra[poolName] || 0) + n;
         seal.replyToSender(ctx, msg, `✅ 已为「${roleName}」发放「${poolName}」额外次数 ×${n}`);
+        notifyPlayer(ctx, platform, roleName, `✨【机会降临】你在「${poolName}」中获得了 ${n} 次额外抽取机会！`);
     } else {
         rec.extra._total = (rec.extra._total || 0) + n;
         seal.replyToSender(ctx, msg, `✅ 已为「${roleName}」发放总额外次数 ×${n}`);
+        notifyPlayer(ctx, platform, roleName, `✨【机会降临】你获得了 ${n} 次额外抽取机会！`);
     }
     savePlayerDrawRec(records, key, rec);
     return seal.ext.newCmdExecuteResult(true);
@@ -2458,6 +2464,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
             if (defs[attrName]) {
                 // 处理属性
                 const charAttrs = getCharAttrs();
+                const notifyList = [];
                 roles.forEach((r, i) => {
                     if (!priv[r]) return;
                     if (!charAttrs[r]) charAttrs[r] = {};
@@ -2466,13 +2473,18 @@ ext.onNotCommandReceived = (ctx, msg) => {
                     const next = clampAttr(defs[attrName], op === "++" ? old + v : old - v);
                     charAttrs[r][attrName] = next;
                     res.push(`${r}：${old}→${next}`);
+                    notifyList.push({ r, old, next });
                 });
                 if (res.length) {
                     saveCharAttrs(charAttrs);
+                    notifyList.forEach(({ r, old, next }) => {
+                        notifyPlayer(ctx, platform, r, `${op === "++" ? "📈" : "📉"}【属性变动】你的「${attrName}」：${old} → ${next}`);
+                    });
                     return seal.replyToSender(ctx, msg, `${op === "++" ? "📈" : "📉"} ${attrName} 变更：\n${res.join("\n")}`);
                 }
             } else if (currencyCode) {
                 // 处理货币
+                const notifyList = [];
                 roles.forEach((r, i) => {
                     if (!priv[r]) return;
                     const roleKey = `${platform}:${r}`;
@@ -2488,8 +2500,12 @@ ext.onNotCommandReceived = (ctx, msg) => {
                     const newEntry = getInv(roleKey).find(e => e.code === currencyCode);
                     const next = newEntry?.count || 0;
                     res.push(`${r}：${old}→${next}`);
+                    notifyList.push({ r, old, next });
                 });
                 if (res.length) {
+                    notifyList.forEach(({ r, old, next }) => {
+                        notifyPlayer(ctx, platform, r, `${op === "++" ? "📈" : "📉"}【属性变动】你的「${attrName}」：${old} → ${next}`);
+                    });
                     return seal.replyToSender(ctx, msg, `${op === "++" ? "📈" : "📉"} ${attrName} 变更：\n${res.join("\n")}`);
                 }
             }
