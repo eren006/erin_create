@@ -5743,9 +5743,11 @@ function initGroupTimer(platform, groupId, subtype, participants, initiator) {
             repliedTime: null,
             wordCount: 0,
             remindedTimes: 0,
-            isInitiator: true
+            isInitiator: true,
+            sessionReplies: 0,
+            sessionWords: 0
         };
-        
+
         const receiver = activeParticipants.find(p => p !== initiator);
         if (receiver) {
             timerData.timerStatus[receiver] = {
@@ -5754,7 +5756,9 @@ function initGroupTimer(platform, groupId, subtype, participants, initiator) {
                 repliedTime: null,
                 wordCount: 0,
                 remindedTimes: 0,
-                isInitiator: false
+                isInitiator: false,
+                sessionReplies: 0,
+                sessionWords: 0
             };
         }
     } else {
@@ -5767,7 +5771,9 @@ function initGroupTimer(platform, groupId, subtype, participants, initiator) {
                 repliedTime: null,
                 wordCount: 0,
                 remindedTimes: 0,
-                isInitiator: isInitiator
+                isInitiator: isInitiator,
+                sessionReplies: 0,
+                sessionWords: 0
             };
         });
     }
@@ -5838,13 +5844,19 @@ function handleReply(platform, groupId, roleName, message) {
         console.log(`[监听系统] 记录进度: ${roleName}(${uid}) 在群 ${groupId} 回复数 +1`);
     }
 
-    // 6. 更新本场会话统计
+    // 6. 更新本场会话统计（同时写入独立 sessionStats 和计时器自身）
     const _ss = getSessionStats();
     if (!_ss[groupId]) _ss[groupId] = {};
     if (!_ss[groupId][roleName]) _ss[groupId][roleName] = { replies: 0, words: 0 };
     _ss[groupId][roleName].replies += 1;
     _ss[groupId][roleName].words += wordCount;
     saveSessionStats(_ss);
+
+    // 同步写入计时器，方便查看计时器时直接读取
+    if (!roleStatus.sessionReplies) roleStatus.sessionReplies = 0;
+    if (!roleStatus.sessionWords) roleStatus.sessionWords = 0;
+    roleStatus.sessionReplies += 1;
+    roleStatus.sessionWords += wordCount;
 
     // 7. 处理计时器流转 (轮流模式/独立模式)
     if (timer.timerMode === "turn_taking") {
@@ -6067,27 +6079,48 @@ cmd_my_stats.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
+    // 本场数据（当前群这个定时器的会话统计）
+    const groupId = msg.groupId;
+    const sessionStats = getSessionStats();
+    const sessionStat = groupId ? sessionStats[groupId]?.[roleName] : null;
+
     const stats = getUserStats();
     const globalStat = stats[`${platform}:${roleName}`];
 
+    let reply = `📊 【${roleName}】统计报告\n`;
+
+    // 本场数据块
+    if (sessionStat && sessionStat.replies > 0) {
+        const avgPerReply = sessionStat.replies > 0 ? Math.round(sessionStat.words / sessionStat.replies) : 0;
+        reply += `━━━ 本场 ━━━━━━━━━━━━\n`;
+        reply += `🔸 写了：${sessionStat.replies} 段\n`;
+        reply += `🔸 总字数：${sessionStat.words} 字\n`;
+        reply += `🔸 平均每段：${avgPerReply} 字\n`;
+    }
+
     if (!globalStat) {
-        seal.replyToSender(ctx, msg, `📊 【${roleName}】暂无历史统计数据，快去参与邀约吧！`);
+        if (!sessionStat || sessionStat.replies === 0) {
+            seal.replyToSender(ctx, msg, `📊 【${roleName}】暂无统计数据，快去参与邀约吧！`);
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        reply += `━━━━━━━━━━━━━━━`;
+        seal.replyToSender(ctx, msg, reply);
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    let reply = `📊 【${roleName}】历史统计报告\n`;
-    reply += `━━━━━━━━━━━━━━━\n`;
+    // 历史累计数据块
+    reply += `━━━ 历史 ━━━━━━━━━━━━\n`;
     reply += `🔹 累计回复：${globalStat.totalReplies} 次\n`;
     reply += `🔹 累计字数：${globalStat.totalWords} 字\n`;
     reply += `🔹 平均每条：${globalStat.avgWords} 字\n`;
     reply += `🔹 平均耗时：${globalStat.avgReplyTimeMin} 分钟\n`;
-    
+
     const sub = globalStat.subtypeStats?.[platform]?.[roleName];
     if (sub) {
         reply += `🔹 极限速度：${sub.fastestReply || '--'} min (最快)\n`;
     }
     reply += `━━━━━━━━━━━━━━━`;
-    
+
     seal.replyToSender(ctx, msg, reply);
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -6834,13 +6867,18 @@ cmd_view_timers.solve = (ctx, msg) => {
     tKeys.forEach(gid => {
         const t = timers[gid];
         const detail = Object.entries(t.timerStatus).map(([name, s]) => {
-            if (s.status !== "timing") return `✅ ${name}: replied`;
-            
+            const replies = s.sessionReplies || 0;
+            const words = s.sessionWords || 0;
+            const avg = replies > 0 ? Math.round(words / replies) : 0;
+            const statLine = `  📝 ${replies}段 / ${words}字 / 均${avg}字`;
+
+            if (s.status !== "timing") return `✅ ${name}: replied\n${statLine}`;
+
             const diff = t.timeoutDuration - (now - s.startTime);
             const isOver = diff < 0;
             if (isOver) totalOverdue++;
-            
-            return `${isOver ? "🔴" : "⏳"} ${name}: ${Math.abs(Math.round(diff / 60000))}min${isOver ? "!" : ""}`;
+
+            return `${isOver ? "🔴" : "⏳"} ${name}: ${Math.abs(Math.round(diff / 60000))}min${isOver ? "!" : ""}\n${statLine}`;
         }).join('\n');
 
         nodes.push({
