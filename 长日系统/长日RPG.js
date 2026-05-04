@@ -491,6 +491,10 @@ function initPresetItems() {
         reg["SPEC_002"] = { code: "SPEC_002", name: "万能钥匙", desc: "一把泛着银光的万能钥匙，据说能开启世间任何一扇被锁住的门。", type: "preset", attrs: null };
         changed = true;
     }
+    if (!reg["SPEC_005"]) {
+        reg["SPEC_005"] = { code: "SPEC_005", name: "捕鼠器", desc: "一个精巧的捕鼠器，激活后将锁定目标指定小时内的行动，使其无法私约、电话或摘心愿。", type: "preset", attrs: null };
+        changed = true;
+    }
     // 默认货币：金币、银币（按名称判断，避免重复注册）
     const currencyNames = new Set(Object.values(reg).filter(r => r.type === "currency").map(r => r.name));
     if (!currencyNames.has("金币")) {
@@ -2142,7 +2146,7 @@ function isApplyTimeValid(main) {
 
 let cmd_apply = seal.ext.newCmdItemInfo();
 cmd_apply.name = "施加";
-cmd_apply.help = "对他人使用互动道具或追踪器\n\n【互动道具】\n格式：施加 目标姓名 物品名/代码\n示例：施加 张三 医疗包\n\n【追踪器】\n格式：施加 目标姓名 追踪器/SPEC_001 [时间]\n示例：施加 张三 追踪器 14\n     施加 张三 SPEC_001 14:30\n\n【管理设置】\n施加 设置  或  施加 查看  查看施加系统设置";
+cmd_apply.help = "对他人使用互动道具或追踪器\n\n【互动道具】\n格式：施加 目标姓名 物品名/代码\n示例：施加 张三 医疗包\n\n【追踪器】\n格式：施加 目标姓名 追踪器/SPEC_001 [时间]\n示例：施加 张三 追踪器 14\n     施加 张三 SPEC_001 14:30\n\n【捕鼠器】\n格式：施加 目标姓名 捕鼠器/SPEC_005 时间\n示例：施加 张三 捕鼠器 14\n     施加 张三 SPEC_005 14\n\n【管理设置】\n施加 设置  或  施加 查看  查看施加系统设置";
 cmd_apply.solve = (ctx, msg, cmdArgs) => {
     const main = getMainExt();
     const targetName = cmdArgs.getArgN(1);
@@ -2234,6 +2238,39 @@ cmd_apply.solve = (ctx, msg, cmdArgs) => {
         if (showPartner && matchingEvent.partner && matchingEvent.partner !== "独自一人") resultMsg += `，与 ${matchingEvent.partner} 一起`;
         resultMsg += `。\n（追踪器已消耗）`;
         return seal.replyToSender(ctx, msg, resultMsg);
+    }
+
+    // 特殊处理：捕鼠器 (SPEC_005)
+    if (item.code === "SPEC_005") {
+        const timeArg = cmdArgs.getArgN(3);
+        if (!timeArg) return seal.replyToSender(ctx, msg, "🪤 请指定锁定时间：施加 角色名 捕鼠器 时间（如 14）");
+        if (!/^\d{1,2}$/.test(timeArg)) return seal.replyToSender(ctx, msg, "⚠️ 时间格式错误，请使用整点小时，如：14");
+        const hour = parseInt(timeArg);
+        if (hour < 0 || hour > 23) return seal.replyToSender(ctx, msg, "⚠️ 小时应在0-23之间");
+        const endH = hour === 23 ? 23 : hour + 1;
+        const endM = hour === 23 ? 59 : 0;
+        const timeRange = `${hour.toString().padStart(2,'0')}:00-${endH.toString().padStart(2,'0')}:${endM.toString().padStart(2,'0')}`;
+
+        const globalDay = main.storageGet("global_days");
+        if (!globalDay) return seal.replyToSender(ctx, msg, "⚠️ 未设置游戏天数。");
+
+        const apgTrap = JSON.parse(main.storageGet("a_private_group") || "{}");
+        if (!apgTrap[platform]?.[targetName]) return seal.replyToSender(ctx, msg, `❌ 未找到目标角色「${targetName}」。`);
+        const targetUid = apgTrap[platform][targetName][0];
+        const targetKey = `${platform}:${targetUid}`;
+
+        if (!removeFromInv(roleKey, "SPEC_005", 1)) return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的捕鼠器。");
+
+        let a_lockedSlots = JSON.parse(main.storageGet("a_lockedSlots") || "{}");
+        if (!a_lockedSlots[targetKey]) a_lockedSlots[targetKey] = {};
+        if (!a_lockedSlots[targetKey][globalDay]) a_lockedSlots[targetKey][globalDay] = [];
+        if (!a_lockedSlots[targetKey][globalDay].includes(timeRange)) {
+            a_lockedSlots[targetKey][globalDay].push(timeRange);
+        }
+        main.storageSet("a_lockedSlots", JSON.stringify(a_lockedSlots));
+
+        notifyPlayer(ctx, platform, targetName, `🪤 你在 ${globalDay} ${timeRange} 踩中了捕鼠器，该时段内无法发起或接受私约、电话，也无法摘心愿。`);
+        return seal.replyToSender(ctx, msg, `🪤 捕鼠器已激活！「${targetName}」在 ${globalDay} ${timeRange} 的行动被锁定。\n（捕鼠器已消耗）`);
     }
 
     // 特殊处理：望远镜 (SPEC_003) / 羽毛笔 (SPEC_004)
