@@ -386,7 +386,6 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
 
     // 处理羽毛笔效果（优先级最高时）
     if (effectToHandle?.type === "quill" && receiver !== quillPenApplier.applier) {
-        // 羽毛笔进入待审状态
         let pendingLetters = JSON.parse(getMainStorage("letter_pending_quill_pens") || "{}");
         if (!pendingLetters[quillPenApplier.applier]) {
             pendingLetters[quillPenApplier.applier] = [];
@@ -407,12 +406,27 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
 
         setMainStorage("letter_pending_quill_pens", JSON.stringify(pendingLetters));
 
+        // CC 原始信件给施加人
+        const applierEntry = a_private_group[platform]?.[quillPenApplier.applier];
+        if (applierEntry) {
+            const idx = pendingLetters[quillPenApplier.applier].length;
+            let originalPreview = `✉️ ${receiver}，你收到一封信：\n`;
+            if (dateTag) originalPreview += `📅 日期：${dateTag}\n`;
+            originalPreview += `\n「${content}」\n\n—— ${signature}`;
+            if (attachment) originalPreview += `\n\n附件：\n--------------------\n${attachment}`;
+            const ccMsg = seal.newMessage();
+            ccMsg.messageType = "group";
+            ccMsg.groupId = `${platform}-Group:${applierEntry[1]}`;
+            const ccCtx = seal.createTempCtx(ctx.endPoint, ccMsg);
+            seal.replyToSender(ccCtx, ccMsg, `✏️【羽毛笔截获】第 ${idx} 封\n${originalPreview}\n\n使用「羽毛笔修改 ${idx} 新内容」来修改后发出`);
+        }
+
         // 清除已使用的羽毛笔效果
-        delete quillPenEffects[senderRoleName][quillPenEffects[senderRoleName].indexOf(quillPenApplier)];
-        quillPenEffects[senderRoleName] = quillPenEffects[senderRoleName].filter(e => e);
+        quillPenEffects[senderRoleName] = quillPenEffects[senderRoleName].filter(e => e !== quillPenApplier);
         setMainStorage("letter_quill_pen_effects", JSON.stringify(quillPenEffects));
 
-        seal.replyToSender(ctx, msg, `⏳ 你的信件已发送给「${quillPenApplier.applier}」进行审核，等待修改或超时发送...`);
+        // 不向发信人透露细节
+        seal.replyToSender(ctx, msg, `⏳ 你的信件正在处理中，请稍候...`);
         return seal.ext.newCmdExecuteResult(true);
     }
 
@@ -609,46 +623,65 @@ ext.cmdMap["信件状态"] = cmd_letter_status;
 
 let cmd_quill_pen_modify = seal.ext.newCmdItemInfo();
 cmd_quill_pen_modify.name = "羽毛笔修改";
-cmd_quill_pen_modify.help = `✏️ 修改待审的信件内容
-格式：。羽毛笔修改 <新内容>
-
-仅当有角色对你施加羽毛笔时可用。`;
+cmd_quill_pen_modify.help = `✏️ 查看或修改截获的信件
+格式：
+  羽毛笔修改          —— 查看待修改清单
+  羽毛笔修改 序号 内容  —— 修改指定序号的信件后发出`;
 
 cmd_quill_pen_modify.solve = (ctx, msg, cmdArgs) => {
     const platform = msg.platform;
     const a_private_group = JSON.parse(getMainStorage("a_private_group") || "{}");
 
-    // 获取修改人角色名（应该是施加人）
     const modifierRoleName = getRoleName(ctx, msg);
     if (!modifierRoleName) {
         seal.replyToSender(ctx, msg, "✨ 请先使用「创建新角色」来认领你的身份。");
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    const newContent = msg.message.replace(/^[\s\S]*?。羽毛笔修改\s*/, "").trim();
-    if (!newContent) {
-        seal.replyToSender(ctx, msg, cmd_quill_pen_modify.help);
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    // 查找该角色的待审信件
     let pendingLetters = JSON.parse(getMainStorage("letter_pending_quill_pens") || "{}");
+    const myPending = pendingLetters[modifierRoleName] || [];
 
-    if (!pendingLetters[modifierRoleName] || pendingLetters[modifierRoleName].length === 0) {
-        seal.replyToSender(ctx, msg, "❌ 你没有需要修改的信件。");
+    const idxStr = cmdArgs.getArgN(1);
+
+    // 无参数：显示清单
+    if (!idxStr) {
+        if (myPending.length === 0) {
+            seal.replyToSender(ctx, msg, "✏️ 没有待修改的信件。");
+        } else {
+            let list = `✏️ 待修改信件（共 ${myPending.length} 封）：\n`;
+            myPending.forEach((l, i) => {
+                const preview = l.content.length > 20 ? l.content.slice(0, 20) + "..." : l.content;
+                list += `${i + 1}. ${l.senderName} → ${l.receiverName}：${preview}\n`;
+            });
+            list += `\n使用「羽毛笔修改 序号 新内容」来修改后发出`;
+            seal.replyToSender(ctx, msg, list);
+        }
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    // 获取待审信件（取第一个）
-    const letterData = pendingLetters[modifierRoleName][0];
+    const idx = parseInt(idxStr);
+    if (isNaN(idx) || idx < 1 || idx > myPending.length) {
+        seal.replyToSender(ctx, msg, `❌ 序号无效，请输入 1-${myPending.length} 之间的数字。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
 
-    // 组装修改后的信件内容
+    // 提取序号后的全部内容作为新正文
+    const rawAfterCmd = msg.message.replace(/^[\s\S]*?羽毛笔修改\s*/, "").trim();
+    const spacePos = rawAfterCmd.search(/\s/);
+    const newContent = spacePos === -1 ? "" : rawAfterCmd.slice(spacePos + 1).trim();
+
+    if (!newContent) {
+        seal.replyToSender(ctx, msg, "❌ 请提供修改后的内容。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const letterData = myPending[idx - 1];
+
     let finalLetter = `✉️ ${letterData.receiverName}，你收到一封信：\n`;
     if (letterData.dateTag) finalLetter += `📅 日期：${letterData.dateTag}\n`;
     finalLetter += `\n「${newContent}」\n\n—— ${letterData.signature}`;
     if (letterData.attachment) finalLetter += `\n\n附件：\n--------------------\n${letterData.attachment}`;
 
-    // 发送修改后的信件到收件人私人群
     const targetEntry = a_private_group[platform][letterData.receiverName];
     const deliverMsg = seal.newMessage();
     deliverMsg.messageType = "group";
@@ -656,14 +689,15 @@ cmd_quill_pen_modify.solve = (ctx, msg, cmdArgs) => {
     const deliverCtx = seal.createTempCtx(ctx.endPoint, deliverMsg);
     seal.replyToSender(deliverCtx, deliverMsg, finalLetter);
 
-    // 删除已处理的待审信件
-    pendingLetters[modifierRoleName].shift();
-    if (pendingLetters[modifierRoleName].length === 0) {
+    myPending.splice(idx - 1, 1);
+    if (myPending.length === 0) {
         delete pendingLetters[modifierRoleName];
+    } else {
+        pendingLetters[modifierRoleName] = myPending;
     }
     setMainStorage("letter_pending_quill_pens", JSON.stringify(pendingLetters));
 
-    seal.replyToSender(ctx, msg, `✅ 信件已发送！已以「${letterData.senderName}」的名义发给「${letterData.receiverName}」。`);
+    seal.replyToSender(ctx, msg, `✅ 信件已修改并发出！已以「${letterData.senderName}」的名义发给「${letterData.receiverName}」。`);
     return seal.ext.newCmdExecuteResult(true);
 };
 
