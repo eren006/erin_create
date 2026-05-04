@@ -5,6 +5,9 @@
 // @description  独立的设置控制台（基础、互动、信件、公告）及天数系统、统计报告。所有数据统一存储在主插件 changri 中。
 // @timestamp    1743292800
 // @license      MIT
+// @homepageURL  https://github.com/eren006/erin_create
+// @updateUrl    https://raw.gitmirror.com/eren006/erin_create/main/%E9%95%BF%E6%97%A5%E7%B3%BB%E7%BB%9F/%E9%95%BF%E6%97%A5%E8%AE%BE%E7%BD%AE.js
+// @updateUrl    https://raw.githubusercontent.com/eren006/erin_create/main/%E9%95%BF%E6%97%A5%E7%B3%BB%E7%BB%9F/%E9%95%BF%E6%97%A5%E8%AE%BE%E7%BD%AE.js
 // ==/UserScript==
 
 /**

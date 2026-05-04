@@ -5,6 +5,9 @@
 // @description  Texas Hold'em改编，机器人主持人管理游戏流程
 // @timestamp    1742205760
 // @license      MIT
+// @homepageURL  https://github.com/eren006/erin_create
+// @updateUrl    https://raw.gitmirror.com/eren006/erin_create/main/%E9%95%BF%E6%97%A5%E7%B3%BB%E7%BB%9F/%E9%95%BF%E6%97%A5%E7%89%8C%E5%B1%80.js
+// @updateUrl    https://raw.githubusercontent.com/eren006/erin_create/main/%E9%95%BF%E6%97%A5%E7%B3%BB%E7%BB%9F/%E9%95%BF%E6%97%A5%E7%89%8C%E5%B1%80.js
 // ==/UserScript==
 
 /**

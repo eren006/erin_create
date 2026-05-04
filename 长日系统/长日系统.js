@@ -5,6 +5,9 @@
 // @description  无
 // @timestamp    1742205760
 // @license      MIT
+// @homepageURL  https://github.com/eren006/erin_create
+// @updateUrl    https://raw.gitmirror.com/eren006/erin_create/main/%E9%95%BF%E6%97%A5%E7%B3%BB%E7%BB%9F/%E9%95%BF%E6%97%A5%E7%B3%BB%E7%BB%9F.js
+// @updateUrl    https://raw.githubusercontent.com/eren006/erin_create/main/%E9%95%BF%E6%97%A5%E7%B3%BB%E7%BB%9F/%E9%95%BF%E6%97%A5%E7%B3%BB%E7%BB%9F.js
 // ==/UserScript==
 
 let ext = seal.ext.find("changri")
