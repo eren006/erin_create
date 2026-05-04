@@ -425,8 +425,6 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
         quillPenEffects[senderRoleName] = quillPenEffects[senderRoleName].filter(e => e !== quillPenApplier);
         setMainStorage("letter_quill_pen_effects", JSON.stringify(quillPenEffects));
 
-        // 不向发信人透露细节
-        seal.replyToSender(ctx, msg, `⏳ 你的信件正在处理中，请稍候...`);
         return seal.ext.newCmdExecuteResult(true);
     }
 
