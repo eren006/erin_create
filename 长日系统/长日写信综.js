@@ -57,6 +57,18 @@ function setMainStorage(key, value) {
 }
 
 // ========================
+// 权限判断
+// ========================
+
+function isUserAdmin(ctx, msg) {
+    const platform = msg.platform;
+    const uid = msg.sender.userId.replace(`${platform}:`, "");
+    const main = getMainExt();
+    const a_adminList = JSON.parse((main ? main.storageGet("a_adminList") : null) || "{}");
+    return ctx.privilegeLevel === 100 || (a_adminList[platform] && a_adminList[platform].includes(uid));
+}
+
+// ========================
 // 【1】开关和初始化
 // ========================
 
@@ -65,7 +77,7 @@ function setMainStorage(key, value) {
  */
 function isLetterSystemEnabled() {
     const config = JSON.parse(getMainStorage("global_feature_toggle", "{}"));
-    return config.enable_letter_system === true;
+    return config.enable_direct_letter === true;
 }
 
 /**
@@ -211,7 +223,7 @@ cmd_enable_letter_system.help = `✉️ 【管理员】启用写信综系统
 。启用写信综 关闭`;
 
 cmd_enable_letter_system.solve = (ctx, msg, cmdArgs) => {
-    if (!seal.isAdmin(ctx, msg)) {
+    if (!isUserAdmin(ctx, msg)) {
         return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     }
 
@@ -224,7 +236,7 @@ cmd_enable_letter_system.solve = (ctx, msg, cmdArgs) => {
     const config = JSON.parse(getMainStorage("global_feature_toggle") || "{}");
 
     if (action === "开启") {
-        config.enable_letter_system = true;
+        config.enable_direct_letter = true;
         setMainStorage("global_feature_toggle", JSON.stringify(config));
 
         // 自动注册写信币
@@ -235,7 +247,7 @@ cmd_enable_letter_system.solve = (ctx, msg, cmdArgs) => {
 
         seal.replyToSender(ctx, msg, `✅ 写信综已启用！\n\n✨ 已自动注册货币：写信币\n🔭 已自动注册道具：望远镜、羽毛笔\n📮 玩家可以开始使用「发送信件」命令。`);
     } else {
-        config.enable_letter_system = false;
+        config.enable_direct_letter = false;
         setMainStorage("global_feature_toggle", JSON.stringify(config));
         seal.replyToSender(ctx, msg, `❌ 写信综已禁用。\n\n玩家无法使用「发送信件」命令。`);
     }
@@ -319,7 +331,7 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
 
     // 5. 每日限额检查
     const gameDay = getMainStorage("global_days") || "D0";
-    const dailyLimit = parseInt(getMainStorage("letter_daily_limit") || "5");
+    const dailyLimit = parseInt(getMainStorage("direct_letter_daily_limit") || "5");
     const userKey = `${platform}:${uid}`;
     let dlCounts = JSON.parse(getMainStorage("letter_day_counts") || "{}");
 
@@ -402,8 +414,8 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
     }
 
     // 6. 赏金机制
-    const minChars = parseInt(getMainStorage("letter_min_chars") || "0");
-    const rewardPerLetter = parseInt(getMainStorage("letter_reward") || "0");
+    const minChars = parseInt(getMainStorage("direct_letter_min_chars") || "0");
+    const rewardPerLetter = parseInt(getMainStorage("direct_letter_reward") || "0");
     const contentLength = content.replace(/\s/g, "").length;
     const meetsMinChars = minChars === 0 || contentLength >= minChars;
 
@@ -421,10 +433,17 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
     const deliverCtx = seal.createTempCtx(ctx.endPoint, deliverMsg);
     seal.replyToSender(deliverCtx, deliverMsg, finalLetter);
 
-    // 8.5 处理望远镜效果（删除已使用的效果，但不发送通知）
+    // 8.5 处理望远镜效果：抄录一份给施加人
     if (effectToHandle?.type === "telescope") {
         const telescopeApplier = effectToHandle.data;
-        // 删除已使用的望远镜效果
+        const applierEntry = a_private_group[platform]?.[telescopeApplier.applier];
+        if (applierEntry) {
+            const copyMsg = seal.newMessage();
+            copyMsg.messageType = "group";
+            copyMsg.groupId = `${platform}-Group:${applierEntry[1]}`;
+            const copyCtx = seal.createTempCtx(ctx.endPoint, copyMsg);
+            seal.replyToSender(copyCtx, copyMsg, `🔭【望远镜抄录】\n${finalLetter}`);
+        }
         telescopeEffects[senderRoleName] = telescopeEffects[senderRoleName].filter(e => e !== telescopeApplier);
         setMainStorage("letter_telescope_effects", JSON.stringify(telescopeEffects));
     }
@@ -498,7 +517,7 @@ cmd_letter_config.help = `⚙️ 【管理员】配置发送信件系统
 。信件设置 私约成本 5`;
 
 cmd_letter_config.solve = (ctx, msg, cmdArgs) => {
-    if (!seal.isAdmin(ctx, msg)) {
+    if (!isUserAdmin(ctx, msg)) {
         return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     }
 
@@ -512,13 +531,13 @@ cmd_letter_config.solve = (ctx, msg, cmdArgs) => {
     let modified = false;
 
     if (param === "日限") {
-        setMainStorage("letter_daily_limit", value);
+        setMainStorage("direct_letter_daily_limit", value);
         modified = true;
     } else if (param === "赏金") {
-        setMainStorage("letter_reward", value);
+        setMainStorage("direct_letter_reward", value);
         modified = true;
     } else if (param === "最小字数") {
-        setMainStorage("letter_min_chars", value);
+        setMainStorage("direct_letter_min_chars", value);
         modified = true;
     } else if (param === "心愿成本") {
         setMainStorage("wish_coin_cost", value);
@@ -558,9 +577,9 @@ cmd_letter_status.solve = (ctx, msg, cmdArgs) => {
     const uid = msg.sender.userId.replace(`${platform}:`, "");
     const gameDay = getMainStorage("global_days") || "D0";
 
-    const dailyLimit = parseInt(getMainStorage("letter_daily_limit") || "5");
-    const reward = parseInt(getMainStorage("letter_reward") || "0");
-    const minChars = parseInt(getMainStorage("letter_min_chars") || "0");
+    const dailyLimit = parseInt(getMainStorage("direct_letter_daily_limit") || "5");
+    const reward = parseInt(getMainStorage("direct_letter_reward") || "0");
+    const minChars = parseInt(getMainStorage("direct_letter_min_chars") || "0");
 
     const userKey = `${platform}:${uid}`;
     let dlCounts = JSON.parse(getMainStorage("letter_day_counts") || "{}");
@@ -581,104 +600,8 @@ cmd_letter_status.solve = (ctx, msg, cmdArgs) => {
 ext.cmdMap["信件状态"] = cmd_letter_status;
 
 // ========================
-// 【7】施加命令（特殊道具效果）
 // ========================
-
-let cmd_apply_effect = seal.ext.newCmdItemInfo();
-cmd_apply_effect.name = "施加";
-cmd_apply_effect.help = `🎯 施加特殊写信道具效果
-格式：。施加 <目标角色> <道具名>
-
-道具：
-- 望远镜：当目标发出信件时，自动抄录一份给你
-- 羽毛笔：当目标发出信件时，先发给你修改后再发出
-
-示例：
-。施加 小明 望远镜
-。施加 张三 羽毛笔`;
-
-cmd_apply_effect.solve = (ctx, msg, cmdArgs) => {
-    if (!isLetterSystemEnabled()) {
-        seal.replyToSender(ctx, msg, "✉️ 发送信件功能未启用。");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    const platform = msg.platform;
-    const uid = msg.sender.userId.replace(`${platform}:`, "");
-    const a_private_group = JSON.parse(getMainStorage("a_private_group") || "{}");
-
-    // 获取施加人角色名
-    const applierRoleName = getRoleName(ctx, msg);
-    if (!applierRoleName) {
-        seal.replyToSender(ctx, msg, "✨ 请先使用「创建新角色」来认领你的身份。");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    const targetName = cmdArgs.getArgN(1);
-    const itemName = cmdArgs.getArgN(2);
-
-    if (!targetName || !itemName) {
-        seal.replyToSender(ctx, msg, cmd_apply_effect.help);
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    // 检查目标是否存在
-    if (!a_private_group[platform]?.[targetName]) {
-        seal.replyToSender(ctx, msg, `⚠️ 找不到角色「${targetName}」。`);
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    // 确定道具code
-    let itemCode = null;
-    if (itemName === "望远镜") {
-        itemCode = "SPEC_003";
-    } else if (itemName === "羽毛笔") {
-        itemCode = "SPEC_004";
-    } else {
-        seal.replyToSender(ctx, msg, `⚠️ 未知道具「${itemName}」。支持：望远镜、羽毛笔`);
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    // 检查玩家是否拥有该道具（从 global_inventories 读取，与 RPG 背包一致）
-    const roleKey = `${platform}:${uid}`;
-    const invs = JSON.parse(getMainStorage("global_inventories") || "{}");
-    const inv = invs[roleKey] || [];
-    const itemEntry = inv.find(e => e.code === itemCode && e.count > 0);
-    if (!itemEntry) {
-        seal.replyToSender(ctx, msg, `❌ 你没有「${itemName}」。`);
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    // 消耗道具
-    itemEntry.count--;
-    if (itemEntry.count <= 0) invs[roleKey] = inv.filter(e => e !== itemEntry);
-    else invs[roleKey] = inv;
-    setMainStorage("global_inventories", JSON.stringify(invs));
-
-    // 记录施加效果
-    const effectsKey = itemCode === "SPEC_003" ? "letter_telescope_effects" : "letter_quill_pen_effects";
-    let effects = JSON.parse(getMainStorage(effectsKey) || "{}");
-
-    if (!effects[targetName]) {
-        effects[targetName] = [];
-    }
-
-    effects[targetName].push({
-        applier: applierRoleName,
-        applyTime: Date.now(),
-        itemCode: itemCode
-    });
-
-    setMainStorage(effectsKey, JSON.stringify(effects));
-
-    seal.replyToSender(ctx, msg, `✅ 你已向「${targetName}」施加了「${itemName}」！`);
-    return seal.ext.newCmdExecuteResult(true);
-};
-
-ext.cmdMap["施加"] = cmd_apply_effect;
-
-// ========================
-// 【8】羽毛笔修改命令
+// 【7】羽毛笔修改命令
 // ========================
 
 let cmd_quill_pen_modify = seal.ext.newCmdItemInfo();

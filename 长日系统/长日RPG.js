@@ -51,6 +51,15 @@ function getRoleName(ctx, msg) {
     return null;
 }
 
+function getRoleUid(platform, roleName) {
+    const main = getMainExt();
+    if (!main) return null;
+    try {
+        const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
+        return apg[platform]?.[roleName]?.[0] ?? null;
+    } catch (e) { return null; }
+}
+
 function isUserAdmin(ctx, msg) {
     const platform = msg.platform;
     const uid = msg.sender.userId.replace(`${platform}:`, "");
@@ -343,7 +352,9 @@ function modCharAttrs(platform, roleName, changesStr) {
         if (item.type === "currency") currencyByName[item.name] = item.code;
     }
 
-    const roleKey = `${platform}:${roleName}`;
+    const uid = getRoleUid(platform, roleName);
+    if (!uid) return;
+    const roleKey = `${platform}:${uid}`;
     const charAttrs = getCharAttrs();
     const roleAttrs = charAttrs[roleName] || {};
     let attrsChanged = false;
@@ -613,15 +624,22 @@ function formatItemEntry(entry, info) {
 
 function formatInventory(roleKey, roleName, reg, category = "全部", page = 1) {
     const inv = getInv(roleKey).filter(e => e.count > 0);
-    if (!inv.length) return `🎒【${roleName}】背包空空`;
 
     const currencies = [], presets = [], items = [];
+    // 所有注册货币都显示，即使玩家没有记录也补0
+    for (const [code, info] of Object.entries(reg)) {
+        if (info.type !== "currency") continue;
+        const entry = inv.find(e => e.code === code) || { code, count: 0 };
+        currencies.push({ entry, info });
+    }
     for (const entry of inv) {
         const info = reg[entry.code] || { name: entry.code, type: "item" };
-        if (info.type === "currency") currencies.push({ entry, info });
+        if (info.type === "currency") continue;
         else if (info.type === "preset") presets.push({ entry, info });
         else items.push({ entry, info });
     }
+
+    if (!currencies.length && !presets.length && !items.length) return `🎒【${roleName}】背包空空`;
 
     const PAGE_SIZE = 6;
     const catList = [];
@@ -636,7 +654,11 @@ function formatInventory(roleKey, roleName, reg, category = "全部", page = 1) 
             const displayItems = cat.items.slice(0, 3);
             lines.push(`${cat.emoji}${cat.name}(${cat.items.length})`);
             for (const { entry, info } of displayItems) {
-                lines.push(formatItemEntry(entry, info));
+                if (info.type === "currency") {
+                    lines.push(`${info.name}：${entry.count}`);
+                } else {
+                    lines.push(formatItemEntry(entry, info));
+                }
             }
             if (cat.items.length > 3) {
                 lines.push(`>查看全部${cat.items.length - 3}项`);
@@ -668,7 +690,11 @@ function formatInventory(roleKey, roleName, reg, category = "全部", page = 1) 
 
         lines.push(`${filtered.emoji}${category} ${page}/${totalPages}`);
         for (const { entry, info } of pageItems) {
-            lines.push(formatItemEntry(entry, info));
+            if (info.type === "currency") {
+                lines.push(`${info.name}：${entry.count}`);
+            } else {
+                lines.push(formatItemEntry(entry, info));
+            }
         }
 
         if (totalPages > 1) {
@@ -676,7 +702,7 @@ function formatInventory(roleKey, roleName, reg, category = "全部", page = 1) 
             if (page > 1) lines.push(`⬅️.背包 ${category} ${page-1}`);
             if (page < totalPages) lines.push(`➡️.背包 ${category} ${page+1}`);
         }
-        lines.push(".背包返首页");
+        lines.push(".背包");
     }
 
     return lines.join("\n");
@@ -1179,7 +1205,8 @@ cmd_adjust.solve = (ctx, msg, cmdArgs) => {
     const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
     const platform = msg.platform;
     if (!apg[platform]?.[roleName]) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${roleName}」。`);
-    const roleKey = `${platform}:${roleName}`;
+    const uid = apg[platform][roleName][0];
+    const roleKey = `${platform}:${uid}`;
     if (delta > 0) {
         addToInv(roleKey, item.code, delta);
         seal.replyToSender(ctx, msg, `✅ [${item.code}]${item.name} ×${delta} 已加入「${roleName}」背包。`);
@@ -1239,7 +1266,10 @@ cmd_admin_bag.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
     const roleName = cmdArgs.getArgN(1);
     if (!roleName) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
-    seal.replyToSender(ctx, msg, formatInventory(`${msg.platform}:${roleName}`, roleName, getRegistry()));
+    const adminPlatform = msg.platform;
+    const adminTargetUid = getRoleUid(adminPlatform, roleName);
+    if (!adminTargetUid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${roleName}」。`);
+    seal.replyToSender(ctx, msg, formatInventory(`${adminPlatform}:${adminTargetUid}`, roleName, getRegistry()));
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["查看背包"] = cmd_admin_bag;
@@ -1317,7 +1347,9 @@ cmd_buy.solve = (ctx, msg, cmdArgs) => {
     const roleName = getRoleName(ctx, msg);
     if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
     const platform = msg.platform;
-    const roleKey = `${platform}:${roleName}`;
+    const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+    const uid = getPrimaryUid(platform, rawUid);
+    const roleKey = `${platform}:${uid}`;
     const inputCode = cmdArgs.getArgN(1);
     const count = parseInt(cmdArgs.getArgN(2)) || 1;
     if (!inputCode || count <= 0) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
@@ -1344,7 +1376,9 @@ cmd_give_item.solve = (ctx, msg, cmdArgs) => {
     const roleName = getRoleName(ctx, msg);
     if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
     const platform = msg.platform;
-    const fromRoleKey = `${platform}:${roleName}`; // 赠送者Key
+    const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+    const uid = getPrimaryUid(platform, rawUid);
+    const fromRoleKey = `${platform}:${uid}`; // 赠送者Key
     
     const targetName = cmdArgs.getArgN(1);
     const inputCode = cmdArgs.getArgN(2);
@@ -1361,7 +1395,8 @@ cmd_give_item.solve = (ctx, msg, cmdArgs) => {
     // 2. 目标校验
     const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
     if (!apg[platform]?.[targetName]) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${targetName}」。`);
-    const toRoleKey = `${platform}:${targetName}`; // 接收者Key
+    const toTargetUid = apg[platform][targetName][0];
+    const toRoleKey = `${platform}:${toTargetUid}`; // 接收者Key
 
     // 3. 物品与次数校验
     const reg = getRegistry();
@@ -1421,7 +1456,9 @@ cmd_use.solve = (ctx, msg, cmdArgs) => {
     const roleName = getRoleName(ctx, msg);
     if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
     const platform = msg.platform;
-    const roleKey = `${platform}:${roleName}`;
+    const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+    const uid = getPrimaryUid(platform, rawUid);
+    const roleKey = `${platform}:${uid}`;
     const inputCode = cmdArgs.getArgN(1);
 
     if (!inputCode) { 
@@ -1516,9 +1553,11 @@ cmd_sell.help = "将物品上架二手市场\n售卖 物品码 价格 货币名 
 cmd_sell.solve = (ctx, msg, cmdArgs) => {
     const roleName = getRoleName(ctx, msg);
     if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
-    
+
     const platform = msg.platform;
-    const roleKey = `${platform}:${roleName}`;
+    const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+    const uid = getPrimaryUid(platform, rawUid);
+    const roleKey = `${platform}:${uid}`;
     const cfg = getMarketConfig();
     if (!cfg.enabled) return seal.replyToSender(ctx, msg, "❌ 二手市场暂未开放。");
 
@@ -1607,7 +1646,8 @@ cmd_cancel_sell.solve = (ctx, msg, cmdArgs) => {
     if (listing.sellerRole !== roleName && !isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 只能撤销自己的卖单。");
     delete market[shCode];
     saveMarket(market);
-    addToInv(`${platform}:${listing.sellerRole}`, listing.code, listing.count);
+    const cancelSellerUid = getRoleUid(platform, listing.sellerRole);
+    addToInv(cancelSellerUid ? `${platform}:${cancelSellerUid}` : `${platform}:${listing.sellerRole}`, listing.code, listing.count);
     const reg = getRegistry();
     seal.replyToSender(ctx, msg, `✅ 卖单 #${shCode} 已撤销，[${listing.code}]${reg[listing.code]?.name || listing.code} ×${listing.count} 已退回背包。`);
     return seal.ext.newCmdExecuteResult(true);
@@ -1637,8 +1677,11 @@ cmd_market.solve = (ctx, msg, cmdArgs) => {
         if (listing.sellerRole === roleName) return seal.replyToSender(ctx, msg, "❌ 不能购买自己的卖单。");
 
         const platform = msg.platform;
-        const buyerRoleKey = `${platform}:${roleName}`;
-        const sellerRoleKey = `${platform}:${listing.sellerRole}`;
+        const buyerRawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+        const buyerUid = getPrimaryUid(platform, buyerRawUid);
+        const buyerRoleKey = `${platform}:${buyerUid}`;
+        const sellerUid = getRoleUid(platform, listing.sellerRole);
+        const sellerRoleKey = sellerUid ? `${platform}:${sellerUid}` : `${platform}:${listing.sellerRole}`;
 
         // 计算费用
         const totalPrice = listing.price * listing.count;
@@ -1719,9 +1762,9 @@ cmd_draw.solve = (ctx, msg, cmdArgs) => {
     const roleName = getRoleName(ctx, msg);
     if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
     const platform = msg.platform;
-    const roleKey = `${platform}:${roleName}`;
     const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
     const uid = getPrimaryUid(platform, rawUid);
+    const roleKey = `${platform}:${uid}`;
     const drRec = getPlayerDrawRec(platform, uid);
     if (!drRec) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
     const { records, key, rec } = drRec;
@@ -1807,7 +1850,10 @@ cmd_bag.solve = (ctx, msg, cmdArgs) => {
 
     const arg1 = cmdArgs.getArgN(1) || "全部";
     const arg2 = cmdArgs.getArgN(2) || "1";
-    const roleKey = `${msg.platform}:${roleName}`;
+    const platform = msg.platform;
+    const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+    const uid = getPrimaryUid(platform, rawUid);
+    const roleKey = `${platform}:${uid}`;
     const reg = getRegistry();
 
     if (arg1 === "搜" || arg1 === "搜索") {
@@ -1932,7 +1978,9 @@ cmd_craft.solve = (ctx, msg, cmdArgs) => {
     if (!recipe) return seal.replyToSender(ctx, msg, `❌ 没有关于「${targetInput}」的配方。`);
 
     const platform = msg.platform;
-    const roleKey = `${platform}:${roleName}`;
+    const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+    const uid = getPrimaryUid(platform, rawUid);
+    const roleKey = `${platform}:${uid}`;
     const inv = getInv(roleKey);
 
     // 1. 检查材料是否充足
@@ -2127,7 +2175,9 @@ cmd_apply.solve = (ctx, msg, cmdArgs) => {
     }
 
     const platform = msg.platform;
-    const roleKey = `${platform}:${roleName}`;
+    const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+    const uid = getPrimaryUid(platform, rawUid);
+    const roleKey = `${platform}:${uid}`;
     const reg = getRegistry();
     const item = findItem(reg, inputCode);
 
@@ -2181,6 +2231,21 @@ cmd_apply.solve = (ctx, msg, cmdArgs) => {
         if (showPartner && matchingEvent.partner && matchingEvent.partner !== "独自一人") resultMsg += `，与 ${matchingEvent.partner} 一起`;
         resultMsg += `。\n（追踪器已消耗）`;
         return seal.replyToSender(ctx, msg, resultMsg);
+    }
+
+    // 特殊处理：望远镜 (SPEC_003) / 羽毛笔 (SPEC_004)
+    if (item.code === "SPEC_003" || item.code === "SPEC_004") {
+        const featureToggle = JSON.parse(main.storageGet("global_feature_toggle") || "{}");
+        if (!featureToggle.enable_direct_letter) return seal.replyToSender(ctx, msg, "✉️ 发送信件功能未启用。");
+        const apgLetter = JSON.parse(main.storageGet("a_private_group") || "{}");
+        if (!apgLetter[platform]?.[targetName]) return seal.replyToSender(ctx, msg, `❌ 未找到目标角色「${targetName}」。`);
+        if (!removeFromInv(roleKey, item.code, 1)) return seal.replyToSender(ctx, msg, `❌ 背包中没有可用的「${item.name}」。`);
+        const effectsKey = item.code === "SPEC_003" ? "letter_telescope_effects" : "letter_quill_pen_effects";
+        const effects = JSON.parse(main.storageGet(effectsKey) || "{}");
+        if (!effects[targetName]) effects[targetName] = [];
+        effects[targetName].push({ applier: roleName, applyTime: Date.now(), itemCode: item.code });
+        main.storageSet(effectsKey, JSON.stringify(effects));
+        return seal.replyToSender(ctx, msg, `✅ 你已向「${targetName}」施加了「${item.name}」！`);
     }
 
     if (item.type !== "interact") return seal.replyToSender(ctx, msg, `⚠️ [${item.name}] 不是互动类物品，请使用「.使用」指令。`);
@@ -2402,7 +2467,9 @@ ext.onNotCommandReceived = (ctx, msg) => {
         });
 
         // 获取货币信息
-        const roleKey = `${platform}:${roleName}`;
+        const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+        const uid = getPrimaryUid(platform, rawUid);
+        const roleKey = `${platform}:${uid}`;
         const inv = getInv(roleKey);
         const registry = getRegistry();
         const currencies = inv.filter(e => {
@@ -2487,7 +2554,9 @@ ext.onNotCommandReceived = (ctx, msg) => {
                 const notifyList = [];
                 roles.forEach((r, i) => {
                     if (!priv[r]) return;
-                    const roleKey = `${platform}:${r}`;
+                    const rUid = getRoleUid(platform, r);
+                    if (!rUid) return;
+                    const roleKey = `${platform}:${rUid}`;
                     const v = isNaN(vals[i]) ? vals[0] : vals[i];
                     const inv = getInv(roleKey);
                     const entry = inv.find(e => e.code === currencyCode);
@@ -2532,7 +2601,9 @@ ext.onNotCommandReceived = (ctx, msg) => {
             if (!recipe) return seal.replyToSender(ctx, msg, `❌ 合成配方 [${outputCode}] 不存在`);
 
             const reg = getRegistry();
-            const roleKey = `${platform}:${roleName}`;
+            const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+            const uid = getPrimaryUid(platform, rawUid);
+            const roleKey = `${platform}:${uid}`;
             const inv = getInv(roleKey);
             const charAttrs = getCharAttrs();
             const roleAttrs = charAttrs[roleName] || {};
@@ -2680,7 +2751,9 @@ ext.onNotCommandReceived = (ctx, msg) => {
         });
 
         // 获取货币信息
-        const roleKey = `${platform}:${roleName}`;
+        const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+        const uid = getPrimaryUid(platform, rawUid);
+        const roleKey = `${platform}:${uid}`;
         const inv = getInv(roleKey);
         const registry = getRegistry();
         const currencies = inv.filter(e => {
@@ -4139,7 +4212,7 @@ cmd_equip.solve = (ctx, msg, cmdArgs) => {
     const platform = parts[0];
     const rawUid = parts[1];
     const uid = getPrimaryUid(platform, rawUid);
-    const roleKey = `${platform}:${player}`;
+    const roleKey = `${platform}:${uid}`;
 
     // 查看装备
     if (!subCmd) {
@@ -4283,7 +4356,9 @@ cmd_unequip.solve = (ctx, msg, cmdArgs) => {
 
     const parts = msg.sender.userId.split(':');
     const platform = parts[0];
-    const roleKey = `${platform}:${player}`;
+    const rawUid = parts[1];
+    const uid = getPrimaryUid(platform, rawUid);
+    const roleKey = `${platform}:${uid}`;
 
     const equips = getPlayerEquips(roleKey);
     if (!equips) return seal.replyToSender(ctx, msg, "❌ 无法读取装备数据。");
@@ -4845,7 +4920,10 @@ function cmd_do_levelup(msg, cmdArgs, ctx) {
     }
 
     const main = getMainExt();
-    const roleKey = `${msg.platform}:${roleName}`;
+    const combatPlatform = msg.platform;
+    const combatRawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+    const combatUid = getPrimaryUid(combatPlatform, combatRawUid);
+    const roleKey = `${combatPlatform}:${combatUid}`;
     const curLevel = getPlayerLevel(roleName);
     const maxLevel = rules.max_level || 100;
 
