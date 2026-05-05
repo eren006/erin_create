@@ -81,11 +81,6 @@ function sendForward(ctx, msg, nodes) {
     ws({ action: "send_group_forward_msg", params: { group_id: gid, messages: nodes } }, ctx, msg, "");
 }
 
-// 发送合并转发到指定群
-function sendForwardToGroup(ctx, msg, gid, nodes) {
-    ws({ action: "send_group_forward_msg", params: { group_id: parseInt(gid, 10), messages: nodes } }, ctx, msg, "");
-}
-
 // 构造一条合并转发节点
 function makeNode(ctx, name, content) {
     return { type: "node", data: { name: name, uin: ctx.endPoint.userId, content: content } };
@@ -152,11 +147,6 @@ function findPlayerByUid(platform, uid) {
     const players = getPlayers();
     const map = players[platform] || {};
     return Object.keys(map).find(name => map[name] === uid) || null;
-}
-
-function findUidByName(platform, name) {
-    const players = getPlayers();
-    return (players[platform] || {})[name] || null;
 }
 
 // ========================
@@ -233,7 +223,7 @@ function filterRecords(records, { direction, roleName, noteType, day }) {
         if (direction === "in" && r.to !== roleName) return false;
         if (direction === "out" && r.from !== roleName) return false;
         if (noteType && r.type !== noteType) return false;
-        if (day && r.day && r.day.toUpperCase() !== day.toUpperCase()) return false;
+        if (day && (!r.day || r.day.toUpperCase() !== day.toUpperCase())) return false;
         return true;
     });
 }
@@ -292,17 +282,18 @@ cmd_give.solve = (ctx, msg, cmdArgs) => {
 
     const quotas = getQuotas();
     if (!quotas[platform]) quotas[platform] = {};
-    const missing = [];
+    const ok = [], missing = [];
     for (const name of names) {
         if (!pmap[name]) { missing.push(name); continue; }
         if (!quotas[platform][name]) quotas[platform][name] = {};
         quotas[platform][name][noteType] = (quotas[platform][name][noteType] || 0) + n;
+        ok.push(name);
     }
     setQuotas(quotas);
 
-    let reply = `✅ 已为 ${names.filter(n => pmap[n]).join("、")} 增加 ${noteType} 纸条 ${n} 张。`;
+    let reply = ok.length ? `✅ 已为 ${ok.join("、")} 增加 ${noteType} 纸条 ${n} 张。` : "";
     if (missing.length) reply += `\n⚠️ 未找到：${missing.join("、")}`;
-    seal.replyToSender(ctx, msg, reply);
+    seal.replyToSender(ctx, msg, reply.trim() || "❌ 没有有效玩家。");
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["给纸条"] = cmd_give;
@@ -335,14 +326,18 @@ cmd_deduct.solve = (ctx, msg, cmdArgs) => {
     const quotas = getQuotas();
     if (!quotas[platform]) quotas[platform] = {};
 
+    const okDeduct = [], missingDeduct = [];
     for (const name of names) {
-        if (!pmap[name]) continue;
+        if (!pmap[name]) { missingDeduct.push(name); continue; }
         if (!quotas[platform][name]) quotas[platform][name] = {};
         quotas[platform][name][noteType] = Math.max(0, (quotas[platform][name][noteType] || 0) - n);
+        okDeduct.push(name);
     }
     setQuotas(quotas);
 
-    seal.replyToSender(ctx, msg, `✅ 已为 ${names.filter(n => pmap[n]).join("、")} 扣除 ${noteType} 纸条 ${n} 张（不低于0）。`);
+    let replyDeduct = okDeduct.length ? `✅ 已为 ${okDeduct.join("、")} 扣除 ${noteType} 纸条 ${n} 张（不低于0）。` : "";
+    if (missingDeduct.length) replyDeduct += `\n⚠️ 未找到：${missingDeduct.join("、")}`;
+    seal.replyToSender(ctx, msg, replyDeduct.trim() || "❌ 没有有效玩家。");
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["扣除纸条"] = cmd_deduct;
@@ -371,14 +366,18 @@ cmd_reset_quota.solve = (ctx, msg, cmdArgs) => {
     const quotas = getQuotas();
     if (!quotas[platform]) quotas[platform] = {};
 
+    const okZero = [], missingZero = [];
     for (const name of names) {
-        if (!pmap[name]) continue;
+        if (!pmap[name]) { missingZero.push(name); continue; }
         if (!quotas[platform][name]) quotas[platform][name] = {};
         quotas[platform][name][noteType] = 0;
+        okZero.push(name);
     }
     setQuotas(quotas);
 
-    seal.replyToSender(ctx, msg, `✅ 已将 ${names.filter(n => pmap[n]).join("、")} 的 ${noteType} 纸条清零。`);
+    let replyZero = okZero.length ? `✅ 已将 ${okZero.join("、")} 的 ${noteType} 纸条清零。` : "";
+    if (missingZero.length) replyZero += `\n⚠️ 未找到：${missingZero.join("、")}`;
+    seal.replyToSender(ctx, msg, replyZero.trim() || "❌ 没有有效玩家。");
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["纸条清零"] = cmd_reset_quota;
