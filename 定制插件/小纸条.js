@@ -158,6 +158,45 @@ function parseNames(str) {
 }
 
 // ========================
+// 解析 给纸条/扣除纸条 的参数
+// 支持两种格式（与文档一致）：
+//   默认类型：  n 玩家名…       （数字在前）
+//   指定类型：  类型 玩家名… n  （数字在后）
+// 返回 { n, noteType, namesStr } 或 null
+// ========================
+
+function parseGiveArgs(raw, pmap) {
+    const tokens = raw.trim().split(/\s+/);
+    if (!tokens.length) return null;
+
+    let count, noteType, namesStr;
+
+    if (/^\d+$/.test(tokens[0])) {
+        // 格式：n 玩家名…（默认类型）
+        count = parseInt(tokens[0]);
+        namesStr = tokens.slice(1).join(" ");
+        noteType = DEFAULT_TYPE;
+    } else if (/^\d+$/.test(tokens[tokens.length - 1])) {
+        // 格式：[类型] 玩家名… n（指定类型，数字在末尾）
+        count = parseInt(tokens[tokens.length - 1]);
+        const rest = tokens.slice(0, -1);
+        // 第一个词如果不是玩家名则视为类型
+        if (rest.length >= 2 && !pmap[rest[0]]) {
+            noteType = rest[0];
+            namesStr = rest.slice(1).join(" ");
+        } else {
+            noteType = DEFAULT_TYPE;
+            namesStr = rest.join(" ");
+        }
+    } else {
+        return null;
+    }
+
+    if (!namesStr) return null;
+    return { count, noteType, namesStr };
+}
+
+// ========================
 // 解析 .to 指令参数
 //   .to 收件人 署名|<类型·标题> 时间：dx 内容：XXXXX
 // ========================
@@ -253,30 +292,13 @@ cmd_give.solve = (ctx, msg, cmdArgs) => {
     if (!isAdmin(ctx, msg)) { seal.replyToSender(ctx, msg, "❌ 仅骰主可用。"); return seal.ext.newCmdExecuteResult(true); }
     const platform = msg.platform;
 
-    // 解析参数：最后一个词是数字，倒数第二个是玩家列表，若还有词则是类型
-    const raw = cmdArgs.getArgN(1) ? cmdArgs.getAllArgs().trim() : "";
-    // 拆分：末尾的纯数字
-    const m = raw.match(/^(.*?)\s+(\d+)$/s);
-    if (!m) { seal.replyToSender(ctx, msg, "❌ 格式错误，示例：.给纸条 礼物 猫头鹰 5"); return seal.ext.newCmdExecuteResult(true); }
-
-    const before = m[1].trim(), n = parseInt(m[2]);
-    // before 可能是 "类型 玩家们" 或 "玩家们"
-    // 用最后出现中文名的方式：先试着把第一个词当类型，如果它是已注册玩家名则不是类型
+    const raw = cmdArgs.getAllArgs().trim();
     const players = getPlayers();
     const pmap = players[platform] || {};
+    const parsed = parseGiveArgs(raw, pmap);
+    if (!parsed) { seal.replyToSender(ctx, msg, "❌ 格式错误。\n示例：.给纸条 5 猫头鹰、兔子\n示例：.给纸条 礼物 猫头鹰、兔子 5"); return seal.ext.newCmdExecuteResult(true); }
 
-    let noteType = DEFAULT_TYPE, namesStr = before;
-    const firstSpace = before.search(/\s+/);
-    if (firstSpace !== -1) {
-        const maybeType = before.slice(0, firstSpace).trim();
-        const rest = before.slice(firstSpace).trim();
-        // 如果 maybeType 不是玩家名，则视为类型
-        if (!pmap[maybeType]) {
-            noteType = maybeType;
-            namesStr = rest;
-        }
-    }
-
+    const { count: n, noteType, namesStr } = parsed;
     const names = parseNames(namesStr);
     if (!names.length) { seal.replyToSender(ctx, msg, "❌ 未识别到玩家名。"); return seal.ext.newCmdExecuteResult(true); }
 
@@ -307,21 +329,12 @@ cmd_deduct.solve = (ctx, msg, cmdArgs) => {
     const platform = msg.platform;
 
     const raw = cmdArgs.getAllArgs().trim();
-    const m = raw.match(/^(.*?)\s+(\d+)$/s);
-    if (!m) { seal.replyToSender(ctx, msg, "❌ 格式错误，示例：.扣除纸条 礼物 猫头鹰 5"); return seal.ext.newCmdExecuteResult(true); }
-
-    const before = m[1].trim(), n = parseInt(m[2]);
     const players = getPlayers();
     const pmap = players[platform] || {};
+    const parsedD = parseGiveArgs(raw, pmap);
+    if (!parsedD) { seal.replyToSender(ctx, msg, "❌ 格式错误。\n示例：.扣除纸条 5 猫头鹰、兔子\n示例：.扣除纸条 礼物 猫头鹰、兔子 5"); return seal.ext.newCmdExecuteResult(true); }
 
-    let noteType = DEFAULT_TYPE, namesStr = before;
-    const firstSpace = before.search(/\s+/);
-    if (firstSpace !== -1) {
-        const maybeType = before.slice(0, firstSpace).trim();
-        const rest = before.slice(firstSpace).trim();
-        if (!pmap[maybeType]) { noteType = maybeType; namesStr = rest; }
-    }
-
+    const { count: n, noteType, namesStr } = parsedD;
     const names = parseNames(namesStr);
     const quotas = getQuotas();
     if (!quotas[platform]) quotas[platform] = {};
