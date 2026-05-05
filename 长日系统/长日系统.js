@@ -1613,25 +1613,11 @@ async function checkAppointmentPreflight(ctx, msg, cmdArgs, subtype, minDuration
 // 🚀 直接建群与通知（替换原有的待回应队列逻辑）
 // ========================
 async function directCreateAndFinalizeAppointment({
-    ctx, msg, platform, sendname, sendid, subtype, day, time, place, names, title = "", isMulti, generateMessageFn
+    ctx, msg, platform, sendname, sendid, subtype, day, time, place, names, title = "", isMulti
 }) {
     const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
 
-    // 1. 下发系统提示信件（已自动接受版文案）
-    for (let toname of names) {
-        const toid = a_private_group[platform][toname][0];
-        const newmsg = seal.newMessage();
-        newmsg.messageType = "group";
-        newmsg.groupId = `${platform}-Group:${a_private_group[platform][toname][1]}`;
-        const newctx = seal.createTempCtx(ctx.endPoint, newmsg);
-        
-        const otherNames = isMulti ? names.filter(n => n !== toname) : [];
-        const noticeText = generateMessageFn(sendname, subtype === "电话" ? title : place, day, time, isMulti, otherNames, toid);
-        
-        seal.replyToSender(newctx, newmsg, noticeText);
-    }
-    
-    // 2. 直接构造已确认的数据体并调用 finalizeGroupCreation 建群
+    // 直接构造已确认的数据体并调用 finalizeGroupCreation 建群
     if (isMulti) {
         const groupRef = generateGroupRef(); 
         const groupData = {
@@ -1771,8 +1757,7 @@ cmd_phone.solve = async (ctx, msg, cmdArgs) => {
     await directCreateAndFinalizeAppointment({
         ctx, msg, platform, sendname, sendid: uid,
         subtype: "电话", day, time, place: "电话",
-        names, isMulti, title,
-        generateMessageFn: generatePhoneInvitationMessage
+        names, isMulti, title
     });
 
     const successMsg = isMulti
@@ -1840,8 +1825,7 @@ cmd_appointment_private.solve = async (ctx, msg, cmdArgs) => {
     await directCreateAndFinalizeAppointment({
         ctx, msg, platform, sendname, sendid: uid,
         subtype: "私密", day, time, place,
-        names, isMulti,
-        generateMessageFn: generatePrivateInvitationMessage
+        names, isMulti
     });
 
     const successMsg = isMulti
@@ -3366,20 +3350,33 @@ async function finalizeGroupCreation(platform, ctx, msg, groupData, participants
     const groupNameTag = participants.length > 2 ? "多人" : participantsText;
     const finalGroupName = `${groupData.subtype} ${groupData.day} ${groupData.time} ${groupNameTag}`;
 
-    // 4. 构建统一通知文案（包含群号和所有人名）
-    const noticeText = `🎉 ${groupData.subtype}创建成功！
+    // 4. 构建通知文案
+    const otherNames = participants.filter(n => n !== groupData.sendname);
+    const multiLine = participants.length > 2
+        ? `\n同行：${otherNames.join("、")}`
+        : (otherNames.length === 1 ? "" : "");
 
-📍 ${groupData.place}
-📅 ${groupData.day} ${groupData.time}
-👥 ${participantsText}
+    let noticeText;
+    const guide = `\n\n修改时间 ➜ 。修改时间线 ${groupData.day} 新时间\n不想参加 ➜ 。废除时间线 ${gid}`;
 
-🔗 群号：${gid}
-⏰ 有效期：${timeStr}
+    if (groupData.subtype === "电话") {
+        const titleLine = groupData.title ? ` · ${groupData.title}` : "";
+        const peersLine = participants.length > 2 ? `\n同话：${otherNames.join("、")}` : "";
+        noticeText = `📞 来电
 
-💡 操作指南：
-  进群后 ➜ .ext all on（开启机器人指令）
-  修改时间 ➜ 。修改时间线 ${groupData.day} 新时间（在私约群内）
-  不想参加 ➜ 。废除时间线 私约群号`;
+${groupData.sendname} 邀你接听通话${titleLine}
+🕐 ${groupData.day} ${groupData.time}${peersLine}
+
+频段：${gid}
+有效至 ${timeStr}${guide}`;
+    } else {
+        noticeText = `💌 私约
+
+${groupData.sendname} 约你 ${groupData.day} ${groupData.time} 在 ${groupData.place} 相见${multiLine}
+
+群号：${gid}
+有效至 ${timeStr}${guide}`;
+    }
 
     // 5. 向所有参与者发送私聊/绑定群通知
     participants.forEach(name => {
@@ -3401,6 +3398,17 @@ async function finalizeGroupCreation(platform, ctx, msg, groupData, participants
     
     seal.replyToSender(targetCtx, targetMsg, noticeText);
     setGroupName(targetCtx, targetMsg, gid, finalGroupName);
+
+    // 6.5 在每人的个人绑定群单独发一条 @提醒，提示在约会群发 .ext all on
+    participants.forEach(name => {
+        const { uid, gid: bindGid } = getRoleDetails(platform, name);
+        if (!uid || !bindGid) return;
+        const m = seal.newMessage();
+        m.messageType = "group";
+        m.groupId = `${platform}-Group:${bindGid}`;
+        const tempCtx = seal.createTempCtx(ctx.endPoint, m);
+        seal.replyToSender(tempCtx, m, `[CQ:at,qq=${uid}]\n⚠️ 请在约会群（群号：${gid}）发送 .ext all on 开启机器人指令，否则可能收不到结戏奖励！`);
+    });
 
     // 7. 其他系统触发
     triggerSightingCheck(platform, groupData.day, groupData.time, groupData.place, participants, gid, groupData.subtype, ctx, msg);
@@ -5534,7 +5542,17 @@ function saveSessionStats(s) {
  */
 function applyEndGameBonuses(ctx, msg, gid, platform) {
     const templates = JSON.parse(ext.storageGet("end_game_bonus_templates") || "[]");
-    const enabled = templates.filter(t => t.enabled);
+    const groupExpireInfo = JSON.parse(ext.storageGet("group_expire_info") || "{}");
+    const groupSubtype = groupExpireInfo[gid]?.subtype || "";
+    // 模版用用户可读名称，群记录用内部名称，做映射对齐
+    const tplTypeToStored = { "私约": "私密", "心意": "心愿" };
+    const enabled = templates.filter(t => {
+        if (!t.enabled) return false;
+        const tplType = t.subtype || "通用";
+        if (tplType === "通用") return true;
+        const resolved = tplTypeToStored[tplType] || tplType;
+        return resolved === groupSubtype;
+    });
 
     const sessionStats = getSessionStats();
     const groupStat = sessionStats[gid];
@@ -9426,15 +9444,28 @@ cmd_abolish_schedule.solve = (ctx, msg, cmdArgs) => {
     // 3. 获取参与者信息（用于后续通知）
     const participants = groupInfo.participants || [];
 
+    // 3.5 检查执行者是否是该约会的参与者
+    const uid = msg.sender.userId.replace(`${platform}:`, "");
+    const isParticipant = participants.some(name => {
+        const details = getRoleDetails(platform, name);
+        return details && details.uid && details.uid.replace(/^[a-z]+:/i, "") === uid;
+    });
+    if (!isParticipant) return seal.replyToSender(ctx, msg, `⚠️ 你不是该约会的参与者，无法废除。`);
+
+    // 找到废除者的角色名
+    const abolisherName = participants.find(name => {
+        const details = getRoleDetails(platform, name);
+        return details && details.uid && details.uid.replace(/^[a-z]+:/i, "") === uid;
+    }) || "对方";
+
     // 4. 给目标群发送废除通知
     const groupMsg = seal.newMessage();
     groupMsg.messageType = "group";
     groupMsg.groupId = `${platform}-Group:${targetGid}`;
     const groupCtx = seal.createTempCtx(ctx.endPoint, groupMsg);
-    const groupNotice = `🚫 【约会已取消】\n\n本场时间线已被废除，约会已取消。\n请各位参与者尽快退群，期待下次相遇！`;
-    seal.replyToSender(groupCtx, groupMsg, groupNotice);
+    seal.replyToSender(groupCtx, groupMsg, `🚫 【约会已取消】\n\n${abolisherName} 取消了这场约会。\n请各位参与者尽快退群，期待下次相遇！`);
 
-    // 5. 给其他参与者发送私信通知（对方已拒绝）
+    // 5. 给各参与者发送私信通知，区分废除者本人和其他人
     for (let participantName of participants) {
         const targetInfo = a_private_group[platform] && a_private_group[platform][participantName];
         if (!targetInfo) continue;
@@ -9446,7 +9477,10 @@ cmd_abolish_schedule.solve = (ctx, msg, cmdArgs) => {
         privateMsg.messageType = "group";
         privateMsg.groupId = `${platform}-Group:${targetGidPrivate}`;
         const privateCtx = seal.createTempCtx(ctx.endPoint, privateMsg);
-        const privateNotice = `❌ 【约会已取消】\n\n抱歉，对方已经拒绝了这场约会，约会已自动取消。\n期待下次相遇！`;
+        const isSelf = targetUid.replace(/^[a-z]+:/i, "") === uid;
+        const privateNotice = isSelf
+            ? `✅ 你已取消与 ${participants.filter(n => n !== abolisherName).join("、")} 的约会。`
+            : `❌ ${abolisherName} 取消了你们的约会，期待下次相遇！`;
         seal.replyToSender(privateCtx, privateMsg, privateNotice);
     }
 

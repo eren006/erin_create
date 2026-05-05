@@ -69,6 +69,7 @@
         .tag-pool { background: #eafaf1; color: #1e8449; }
         .tag-fixed { background: #f4ecf7; color: #7d3c98; }
         .tag-time { background: #fdf2f8; color: #c0392b; }
+        .tag-type { background: #fff0f6; color: #c0537c; }
 
         .logic-box {
             background: #fafafa; border: 1px solid #eee;
@@ -100,62 +101,45 @@
             border-radius: 4px; padding: 1px 7px; margin: 2px 3px; font-size: 12px;
         }
 
-        /* ── 逐行指令区 ── */
+        /* ── 批量指令代码块 ── */
         .cmd-section { margin-top: 16px; }
         .cmd-section-title {
             font-size: 12px; font-weight: 700; color: #aaa;
             text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;
         }
-        .cmd-list {
+        .batch-block {
             background: #1e1e2e; border-radius: 10px;
             overflow: hidden; font-family: 'SF Mono','Fira Code','Consolas',monospace;
             font-size: 13px;
         }
-        .cmd-comment {
-            padding: 6px 16px 2px;
-            color: #6c7086; font-size: 12px; line-height: 1.4;
-            user-select: none;
+        .batch-code {
+            padding: 14px 18px 10px;
+            line-height: 1.85;
+            white-space: pre;
         }
-        .cmd-row {
-            display: flex; align-items: center;
-            padding: 5px 10px 5px 16px;
-            gap: 8px;
-            transition: background 0.15s;
-        }
-        .cmd-row:hover { background: rgba(255,255,255,0.05); }
-        .cmd-row code {
-            flex: 1; color: #cdd6f4; line-height: 1.6;
-            white-space: pre-wrap; word-break: break-all;
-        }
-        .cmd-row code .c-cmd { color: #cba6f7; }
-        .cmd-row code .c-arg { color: #a6e3a1; }
-        .cmd-row code .c-val { color: #f9e2af; }
-        .cp-btn {
-            flex-shrink: 0;
-            background: rgba(255,255,255,0.08);
-            border: none; border-radius: 5px;
-            color: #7f849c; font-size: 11px;
-            padding: 3px 9px; cursor: pointer;
-            transition: all 0.15s; white-space: nowrap;
-        }
-        .cp-btn:hover { background: rgba(255,255,255,0.16); color: #cdd6f4; }
-        .cp-btn.ok { color: #a6e3a1; background: rgba(166,227,161,0.12); }
+        /* 语法高亮 */
+        .hl-cmd   { color: #cba6f7; } /* 第一行命令：紫色 */
+        .hl-and   { color: #89b4fa; } /* and：蓝色 */
+        .hl-or    { color: #fab387; } /* or：橙色 */
+        .hl-cond  { color: #f38ba8; } /* 条件行：红色 */
+        .hl-rew   { color: #a6e3a1; } /* 奖励行：绿色 */
+        .hl-pool  { color: #cba6f7; } /* 池行：紫/品红 */
+        .hl-dim   { color: #6c7086; } /* 注释 */
 
-        /* 整块复制按钮 */
         .copy-all-row {
             display: flex; justify-content: flex-end;
-            padding: 6px 10px 8px;
+            padding: 6px 12px 10px;
             border-top: 1px solid rgba(255,255,255,0.06);
         }
         .copy-all-btn {
             background: rgba(255,255,255,0.08);
             border: none; border-radius: 5px;
             color: #7f849c; font-size: 11px;
-            padding: 4px 12px; cursor: pointer;
-            transition: all 0.15s;
+            padding: 5px 14px; cursor: pointer;
+            transition: all 0.15s; font-family: inherit;
         }
         .copy-all-btn:hover { background: rgba(255,255,255,0.16); color: #cdd6f4; }
-        .copy-all-btn.ok { color: #a6e3a1; }
+        .copy-all-btn.ok { color: #a6e3a1; background: rgba(166,227,161,0.12); }
 
         .effect-box {
             background: linear-gradient(135deg, #f0fff4, #e8f5e9);
@@ -169,11 +153,15 @@
         .ref-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
         .ref-card { background: white; border-radius: 12px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); }
         .ref-card h4 { color: #f5576c; font-size: 14px; margin-bottom: 10px; }
-        .ref-row { display: flex; gap: 8px; margin-bottom: 6px; align-items: flex-start; }
+        .ref-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: flex-start; }
         .ref-cmd {
             background: #1e1e2e; color: #cba6f7; border-radius: 6px;
             padding: 3px 8px; font-family: monospace; font-size: 11px;
             white-space: nowrap; flex-shrink: 0;
+        }
+        .ref-cmd.main {
+            background: linear-gradient(135deg, #6e3fba, #9b59b6);
+            color: white; font-size: 12px; padding: 4px 10px;
         }
         .ref-note { font-size: 12px; color: #666; line-height: 1.4; }
 
@@ -192,6 +180,43 @@
         }
         .flow-arrow { color: #f5576c; font-size: 18px; padding: 0 6px; }
 
+        /* 约会类型 Tab 专用 */
+        .type-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; margin-bottom: 16px; }
+        .type-chip {
+            border-radius: 10px; padding: 14px 16px; text-align: center;
+            font-weight: 700; font-size: 13px; box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+        }
+        .type-chip .chip-name { font-size: 18px; margin-bottom: 4px; }
+        .type-chip .chip-desc { font-size: 11px; font-weight: 400; opacity: 0.8; }
+        .tc-xinyi  { background: #fff0f9; color: #c0537c; }
+        .tc-guanyue { background: #fff8f0; color: #b96a1c; }
+        .tc-siyue  { background: #f0f9ff; color: #1c7eb9; }
+        .tc-dianhua { background: #f0fff5; color: #1c9b6a; }
+        .tc-tongyong { background: #f5f0ff; color: #7b3fc4; }
+
+        .notice-box {
+            background: #fff8e1; border-left: 3px solid #f5a623;
+            border-radius: 0 8px 8px 0; padding: 10px 14px;
+            font-size: 13px; color: #7d5a00; line-height: 1.7; margin: 10px 0;
+        }
+
+        .cmd-list {
+            background: #1e1e2e; border-radius: 10px;
+            overflow: hidden; font-family: 'SF Mono','Fira Code','Consolas',monospace;
+            font-size: 13px;
+        }
+        .cmd-row {
+            display: flex; align-items: center;
+            padding: 5px 10px 5px 16px;
+            gap: 8px;
+            transition: background 0.15s;
+        }
+        .cmd-row:hover { background: rgba(255,255,255,0.05); }
+        .cmd-row code {
+            flex: 1; color: #cdd6f4; line-height: 1.6;
+            white-space: pre-wrap; word-break: break-all;
+        }
+
         footer { text-align: center; padding: 24px 0; color: rgba(255,255,255,0.7); font-size: 12px; }
     </style>
 </head>
@@ -200,12 +225,13 @@
 
 <header>
     <h1>🎁 结戏加成 · 使用指南</h1>
-    <p>基于模版的规则引擎 · 支持条件判断 · 固定奖励 + 概率池 · and / or 逻辑</p>
+    <p>基于模版的规则引擎 · 批量多行写入 · 固定奖励 + 概率池 · and / or 逻辑 · 约会类型过滤</p>
 </header>
 
 <div class="nav">
     <button class="nav-btn active" onclick="showPanel('cases',this)">📚 案例大全</button>
     <button class="nav-btn" onclick="showPanel('params',this)">📌 可用参数</button>
+    <button class="nav-btn" onclick="showPanel('types',this)">🏷️ 约会类型</button>
     <button class="nav-btn" onclick="showPanel('ref',this)">⚡ 快速指令</button>
     <button class="nav-btn" onclick="showPanel('flow',this)">🔁 逻辑说明</button>
 </div>
@@ -238,17 +264,13 @@
             </div>
         </div>
         <div class="cmd-section">
-            <div class="cmd-section-title">指令序列</div>
-            <div class="cmd-list" id="cl1">
-                <div class="cmd-comment"># 1. 创建模版</div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 新建</span> <span class="c-arg">基础字数奖励</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-comment"># 2. 添加一个 and 块</div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 新块</span> <span class="c-arg">基础字数奖励</span> <span class="c-val">and</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-comment"># 3. 添加条件</div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加条件</span> <span class="c-arg">基础字数奖励</span> <span class="c-val">本场个人总字数 &gt;= 200</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-comment"># 4. 添加固定奖励</div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加奖励</span> <span class="c-arg">基础字数奖励</span> <span class="c-val">金币 10</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="copy-all-row"><button class="copy-all-btn" onclick="cpAll('cl1',this)">📋 复制全部</button></div>
+            <div class="cmd-section-title">批量指令</div>
+            <div class="batch-block" id="cl1">
+                <div class="batch-code"><span class="hl-cmd">结戏加成 批量 基础字数奖励</span>
+<span class="hl-and">and</span>
+<span class="hl-cond">字数 >= 200</span>
+<span class="hl-rew">奖励 金币 10</span></div>
+                <div class="copy-all-row"><button class="copy-all-btn" onclick="cpBatch('cl1',this)">📋 复制全部</button></div>
             </div>
         </div>
         <div class="effect-box">
@@ -296,22 +318,19 @@
             </div>
         </div>
         <div class="cmd-section">
-            <div class="cmd-section-title">指令序列</div>
-            <div class="cmd-list" id="cl2">
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 新建</span> <span class="c-arg">字数档位</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-comment"># 第一档（最高，优先检查）</div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 新块</span> <span class="c-arg">字数档位</span> <span class="c-val">or</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加条件</span> <span class="c-arg">字数档位</span> <span class="c-val">本场个人总字数 &gt;= 1000</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加奖励</span> <span class="c-arg">字数档位</span> <span class="c-val">金币 50</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-comment"># 第二档</div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 新块</span> <span class="c-arg">字数档位</span> <span class="c-val">or</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加条件</span> <span class="c-arg">字数档位</span> <span class="c-val">本场个人总字数 &gt;= 500</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加奖励</span> <span class="c-arg">字数档位</span> <span class="c-val">金币 20</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-comment"># 第三档</div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 新块</span> <span class="c-arg">字数档位</span> <span class="c-val">or</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加条件</span> <span class="c-arg">字数档位</span> <span class="c-val">本场个人总字数 &gt;= 200</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加奖励</span> <span class="c-arg">字数档位</span> <span class="c-val">金币 5</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="copy-all-row"><button class="copy-all-btn" onclick="cpAll('cl2',this)">📋 复制全部</button></div>
+            <div class="cmd-section-title">批量指令</div>
+            <div class="batch-block" id="cl2">
+                <div class="batch-code"><span class="hl-cmd">结戏加成 批量 字数档位</span>
+<span class="hl-or">or</span>
+<span class="hl-cond">字数 >= 1000</span>
+<span class="hl-rew">奖励 金币 50</span>
+<span class="hl-or">or</span>
+<span class="hl-cond">字数 >= 500</span>
+<span class="hl-rew">奖励 金币 20</span>
+<span class="hl-or">or</span>
+<span class="hl-cond">字数 >= 200</span>
+<span class="hl-rew">奖励 金币 5</span></div>
+                <div class="copy-all-row"><button class="copy-all-btn" onclick="cpBatch('cl2',this)">📋 复制全部</button></div>
             </div>
         </div>
         <div class="effect-box">
@@ -356,18 +375,16 @@
             </div>
         </div>
         <div class="cmd-section">
-            <div class="cmd-section-title">指令序列</div>
-            <div class="cmd-list" id="cl3">
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 新建</span> <span class="c-arg">双线并行</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-comment"># 块一：看总字数，给货币</div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 新块</span> <span class="c-arg">双线并行</span> <span class="c-val">and</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加条件</span> <span class="c-arg">双线并行</span> <span class="c-val">本场个人总字数 &gt;= 300</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加奖励</span> <span class="c-arg">双线并行</span> <span class="c-val">金币 15</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-comment"># 块二：看段数，给属性（和块一互不影响）</div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 新块</span> <span class="c-arg">双线并行</span> <span class="c-val">and</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加条件</span> <span class="c-arg">双线并行</span> <span class="c-val">本场个人段数 &gt;= 6</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加奖励</span> <span class="c-arg">双线并行</span> <span class="c-val">好感度 3</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="copy-all-row"><button class="copy-all-btn" onclick="cpAll('cl3',this)">📋 复制全部</button></div>
+            <div class="cmd-section-title">批量指令</div>
+            <div class="batch-block" id="cl3">
+                <div class="batch-code"><span class="hl-cmd">结戏加成 批量 双线并行</span>
+<span class="hl-and">and</span>
+<span class="hl-cond">字数 >= 300</span>
+<span class="hl-rew">奖励 金币 15</span>
+<span class="hl-and">and</span>
+<span class="hl-cond">段数 >= 6</span>
+<span class="hl-rew">奖励 好感度 3</span></div>
+                <div class="copy-all-row"><button class="copy-all-btn" onclick="cpBatch('cl3',this)">📋 复制全部</button></div>
             </div>
         </div>
         <div class="effect-box">
@@ -408,17 +425,15 @@
             </div>
         </div>
         <div class="cmd-section">
-            <div class="cmd-section-title">指令序列</div>
-            <div class="cmd-list" id="cl4">
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 新建</span> <span class="c-arg">完美表现</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 新块</span> <span class="c-arg">完美表现</span> <span class="c-val">and</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-comment"># 同一块里添加两个条件（全部满足才触发）</div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加条件</span> <span class="c-arg">完美表现</span> <span class="c-val">本场个人段数 &gt;= 8</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加条件</span> <span class="c-arg">完美表现</span> <span class="c-val">本场个人平均每段字数 &gt;= 150</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-comment"># 一个块里可以有多个固定奖励</div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加奖励</span> <span class="c-arg">完美表现</span> <span class="c-val">金币 30</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加奖励</span> <span class="c-arg">完美表现</span> <span class="c-val">好感度 5</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="copy-all-row"><button class="copy-all-btn" onclick="cpAll('cl4',this)">📋 复制全部</button></div>
+            <div class="cmd-section-title">批量指令</div>
+            <div class="batch-block" id="cl4">
+                <div class="batch-code"><span class="hl-cmd">结戏加成 批量 完美表现</span>
+<span class="hl-and">and</span>
+<span class="hl-cond">段数 >= 8</span>
+<span class="hl-cond">平均字数 >= 150</span>
+<span class="hl-rew">奖励 金币 30</span>
+<span class="hl-rew">奖励 好感度 5</span></div>
+                <div class="copy-all-row"><button class="copy-all-btn" onclick="cpBatch('cl4',this)">📋 复制全部</button></div>
             </div>
         </div>
         <div class="effect-box">
@@ -426,6 +441,7 @@
             <ul>
                 <li>段数≥8 且 平均字数≥150 → 金币×30 + 好感度+5</li>
                 <li>任意一个不满足 → 完全不发</li>
+                <li>同一 and 块内可写多个条件行，全部满足才触发</li>
             </ul>
         </div>
     </div>
@@ -462,19 +478,17 @@
             </div>
         </div>
         <div class="cmd-section">
-            <div class="cmd-section-title">指令序列</div>
-            <div class="cmd-list" id="cl5">
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 新建</span> <span class="c-arg">时效达人</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-comment"># 60 分钟内完成（高档）</div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 新块</span> <span class="c-arg">时效达人</span> <span class="c-val">or</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加条件</span> <span class="c-arg">时效达人</span> <span class="c-val">结戏最多耗费时间 &lt;= 60</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加奖励</span> <span class="c-arg">时效达人</span> <span class="c-val">金币 20</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加奖励</span> <span class="c-arg">时效达人</span> <span class="c-val">好感度 3</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-comment"># 120 分钟内完成（低档）</div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 新块</span> <span class="c-arg">时效达人</span> <span class="c-val">or</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加条件</span> <span class="c-arg">时效达人</span> <span class="c-val">结戏最多耗费时间 &lt;= 120</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加奖励</span> <span class="c-arg">时效达人</span> <span class="c-val">金币 10</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="copy-all-row"><button class="copy-all-btn" onclick="cpAll('cl5',this)">📋 复制全部</button></div>
+            <div class="cmd-section-title">批量指令</div>
+            <div class="batch-block" id="cl5">
+                <div class="batch-code"><span class="hl-cmd">结戏加成 批量 时效达人</span>
+<span class="hl-or">or</span>
+<span class="hl-cond">耗费时间 <= 60</span>
+<span class="hl-rew">奖励 金币 20</span>
+<span class="hl-rew">奖励 好感度 3</span>
+<span class="hl-or">or</span>
+<span class="hl-cond">耗费时间 <= 120</span>
+<span class="hl-rew">奖励 金币 10</span></div>
+                <div class="copy-all-row"><button class="copy-all-btn" onclick="cpBatch('cl5',this)">📋 复制全部</button></div>
             </div>
         </div>
         <div class="effect-box">
@@ -517,24 +531,21 @@
             </div>
         </div>
         <div class="cmd-section">
-            <div class="cmd-section-title">指令序列</div>
-            <div class="cmd-list" id="cl6">
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 新建</span> <span class="c-arg">神秘宝箱</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 新块</span> <span class="c-arg">神秘宝箱</span> <span class="c-val">and</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加条件</span> <span class="c-arg">神秘宝箱</span> <span class="c-val">本场个人段数 &gt;= 5</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-comment"># 创建概率池（权重不需要加到100）</div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 新建概率池</span> <span class="c-arg">神秘宝箱</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加池奖励</span> <span class="c-arg">神秘宝箱</span> <span class="c-val">金币 100 60</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加池奖励</span> <span class="c-arg">神秘宝箱</span> <span class="c-val">TJ00 1 30</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加池奖励</span> <span class="c-arg">神秘宝箱</span> <span class="c-val">TJ01 1 10</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="copy-all-row"><button class="copy-all-btn" onclick="cpAll('cl6',this)">📋 复制全部</button></div>
+            <div class="cmd-section-title">批量指令</div>
+            <div class="batch-block" id="cl6">
+                <div class="batch-code"><span class="hl-cmd">结戏加成 批量 神秘宝箱</span>
+<span class="hl-and">and</span>
+<span class="hl-cond">段数 >= 5</span>
+<span class="hl-pool">池 金币 100 60 TJ00 1 30 TJ01 1 10</span></div>
+                <div class="copy-all-row"><button class="copy-all-btn" onclick="cpBatch('cl6',this)">📋 复制全部</button></div>
             </div>
         </div>
         <div class="effect-box">
             <div class="effect-title">效果</div>
             <ul>
                 <li>段数 ≥5 → 从池中抽一件：60% 金币×100、30% TJ00×1、10% TJ01×1</li>
-                <li>个人群通知会显示抽中的奖励和概率</li>
+                <li>池行格式：<code style="background:#f0f0f0;padding:1px 5px;border-radius:3px;font-size:12px;">池 目标1 数量1 权重1 目标2 数量2 权重2 ...</code>，三个一组</li>
+                <li>权重无需加到100，60/30/10 与 6/3/1 效果相同</li>
             </ul>
         </div>
     </div>
@@ -570,24 +581,21 @@
             </div>
         </div>
         <div class="cmd-section">
-            <div class="cmd-section-title">指令序列</div>
-            <div class="cmd-list" id="cl7">
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 新建</span> <span class="c-arg">综合奖励包</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 新块</span> <span class="c-arg">综合奖励包</span> <span class="c-val">and</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加条件</span> <span class="c-arg">综合奖励包</span> <span class="c-val">本场个人总字数 &gt;= 300</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-comment"># 固定奖励（必发）</div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加奖励</span> <span class="c-arg">综合奖励包</span> <span class="c-val">好感度 3</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-comment"># 概率池（再抽一件）</div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 新建概率池</span> <span class="c-arg">综合奖励包</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加池奖励</span> <span class="c-arg">综合奖励包</span> <span class="c-val">金币 50 70</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加池奖励</span> <span class="c-arg">综合奖励包</span> <span class="c-val">TJ00 1 30</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="copy-all-row"><button class="copy-all-btn" onclick="cpAll('cl7',this)">📋 复制全部</button></div>
+            <div class="cmd-section-title">批量指令</div>
+            <div class="batch-block" id="cl7">
+                <div class="batch-code"><span class="hl-cmd">结戏加成 批量 综合奖励包</span>
+<span class="hl-and">and</span>
+<span class="hl-cond">字数 >= 300</span>
+<span class="hl-rew">奖励 好感度 3</span>
+<span class="hl-pool">池 金币 50 70 TJ00 1 30</span></div>
+                <div class="copy-all-row"><button class="copy-all-btn" onclick="cpBatch('cl7',this)">📋 复制全部</button></div>
             </div>
         </div>
         <div class="effect-box">
             <div class="effect-title">效果</div>
             <ul>
                 <li>总字数 ≥300 → 好感度+3（必发）+ 从池中抽一件</li>
+                <li>同一块内，奖励行和池行可同时存在，同时执行</li>
                 <li>个人群通知：固定奖励和抽中奖励分行显示</li>
             </ul>
         </div>
@@ -632,31 +640,26 @@
             </div>
         </div>
         <div class="cmd-section">
-            <div class="cmd-section-title">指令序列</div>
-            <div class="cmd-list" id="cl8">
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 新建</span> <span class="c-arg">全能综合</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-comment"># and 块：段数 → 好感度 + 概率池</div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 新块</span> <span class="c-arg">全能综合</span> <span class="c-val">and</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加条件</span> <span class="c-arg">全能综合</span> <span class="c-val">本场个人段数 &gt;= 5</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加奖励</span> <span class="c-arg">全能综合</span> <span class="c-val">好感度 2</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 新建概率池</span> <span class="c-arg">全能综合</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加池奖励</span> <span class="c-arg">全能综合</span> <span class="c-val">金币 30 60</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加池奖励</span> <span class="c-arg">全能综合</span> <span class="c-val">TJ00 1 40</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-comment"># or 块：字数高档</div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 新块</span> <span class="c-arg">全能综合</span> <span class="c-val">or</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加条件</span> <span class="c-arg">全能综合</span> <span class="c-val">本场个人总字数 &gt;= 800</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加奖励</span> <span class="c-arg">全能综合</span> <span class="c-val">金币 40</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-comment"># or 块：字数低档</div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 新块</span> <span class="c-arg">全能综合</span> <span class="c-val">or</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加条件</span> <span class="c-arg">全能综合</span> <span class="c-val">本场个人总字数 &gt;= 300</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="cmd-row"><code><span class="c-cmd">结戏加成 添加奖励</span> <span class="c-arg">全能综合</span> <span class="c-val">金币 15</span></code><button class="cp-btn" onclick="cp(this)">复制</button></div>
-                <div class="copy-all-row"><button class="copy-all-btn" onclick="cpAll('cl8',this)">📋 复制全部</button></div>
+            <div class="cmd-section-title">批量指令</div>
+            <div class="batch-block" id="cl8">
+                <div class="batch-code"><span class="hl-cmd">结戏加成 批量 全能综合</span>
+<span class="hl-and">and</span>
+<span class="hl-cond">段数 >= 5</span>
+<span class="hl-rew">奖励 好感度 2</span>
+<span class="hl-pool">池 金币 30 60 TJ00 1 40</span>
+<span class="hl-or">or</span>
+<span class="hl-cond">字数 >= 800</span>
+<span class="hl-rew">奖励 金币 40</span>
+<span class="hl-or">or</span>
+<span class="hl-cond">字数 >= 300</span>
+<span class="hl-rew">奖励 金币 15</span></div>
+                <div class="copy-all-row"><button class="copy-all-btn" onclick="cpBatch('cl8',this)">📋 复制全部</button></div>
             </div>
         </div>
         <div class="effect-box">
             <div class="effect-title">效果（各玩家独立结算）</div>
             <ul>
-                <li>段数≥5 → 好感度+2 + 从池中抽一件（同时）</li>
+                <li>段数≥5 → 好感度+2 + 从池中抽一件（and 块，独立触发）</li>
                 <li>总字数≥800 → 金币×40（or 组只发这一档）</li>
                 <li>总字数 300~799 → 金币×15</li>
                 <li>段数和字数的结算完全独立，可以都拿到</li>
@@ -671,15 +674,35 @@
 <div class="panel" id="panel-params">
     <div class="card">
         <div class="card-head" style="cursor:default;">
-            <div class="card-head-left"><div><div class="card-title">📊 条件参数</div></div></div>
+            <div class="card-head-left"><div><div class="card-title">📊 条件参数（支持简写）</div></div></div>
         </div>
         <div class="card-body open">
             <table>
-                <tr><th>参数名</th><th>说明</th><th>示例</th></tr>
-                <tr><td><span class="mono">本场个人段数</span></td><td>本场有效回复的段数（次数）</td><td><span class="mono">&gt;= 5</span></td></tr>
-                <tr><td><span class="mono">本场个人总字数</span></td><td>本场所有回复的总字数</td><td><span class="mono">&gt;= 500</span></td></tr>
-                <tr><td><span class="mono">本场个人平均每段字数</span></td><td>总字数 ÷ 段数（取整）</td><td><span class="mono">&gt;= 150</span></td></tr>
-                <tr><td><span class="mono">结戏最多耗费时间</span></td><td>从开始群到结戏的分钟数，用 &lt;= 判断</td><td><span class="mono">&lt;= 90</span></td></tr>
+                <tr><th>简写</th><th>全称</th><th>说明</th><th>示例</th></tr>
+                <tr>
+                    <td><span class="mono">段数</span></td>
+                    <td><span class="mono">本场个人段数</span></td>
+                    <td>本场有效回复的段数（次数）</td>
+                    <td><span class="mono">&gt;= 5</span></td>
+                </tr>
+                <tr>
+                    <td><span class="mono">字数</span> / <span class="mono">总字数</span></td>
+                    <td><span class="mono">本场个人总字数</span></td>
+                    <td>本场所有回复的总字数</td>
+                    <td><span class="mono">&gt;= 500</span></td>
+                </tr>
+                <tr>
+                    <td><span class="mono">平均字数</span></td>
+                    <td><span class="mono">本场个人平均每段字数</span></td>
+                    <td>总字数 ÷ 段数（取整）</td>
+                    <td><span class="mono">&gt;= 150</span></td>
+                </tr>
+                <tr>
+                    <td><span class="mono">耗费时间</span></td>
+                    <td><span class="mono">结戏最多耗费时间</span></td>
+                    <td>从开始群到结戏的分钟数，用 &lt;= 判断</td>
+                    <td><span class="mono">&lt;= 90</span></td>
+                </tr>
             </table>
         </div>
     </div>
@@ -689,12 +712,12 @@
         </div>
         <div class="card-body open">
             <table>
-                <tr><th>运算符</th><th>含义</th><th>指令写法示例</th></tr>
-                <tr><td><span class="mono">&gt;=</span></td><td>大于等于</td><td><span class="mono">本场个人段数 &gt;= 5</span></td></tr>
-                <tr><td><span class="mono">&lt;=</span></td><td>小于等于</td><td><span class="mono">结戏最多耗费时间 &lt;= 60</span></td></tr>
-                <tr><td><span class="mono">=</span></td><td>等于</td><td><span class="mono">本场个人段数 = 1</span></td></tr>
-                <tr><td><span class="mono">!=</span></td><td>不等于</td><td><span class="mono">本场个人段数 != 0</span></td></tr>
-                <tr><td><span class="mono">range</span></td><td>在范围内（含两端）</td><td><span class="mono">本场个人总字数 range 200 600</span></td></tr>
+                <tr><th>运算符</th><th>含义</th><th>批量指令写法示例</th></tr>
+                <tr><td><span class="mono">&gt;=</span></td><td>大于等于</td><td><span class="mono">段数 &gt;= 5</span></td></tr>
+                <tr><td><span class="mono">&lt;=</span></td><td>小于等于</td><td><span class="mono">耗费时间 &lt;= 60</span></td></tr>
+                <tr><td><span class="mono">=</span></td><td>等于</td><td><span class="mono">段数 = 1</span></td></tr>
+                <tr><td><span class="mono">!=</span></td><td>不等于</td><td><span class="mono">段数 != 0</span></td></tr>
+                <tr><td><span class="mono">range</span></td><td>在范围内（含两端）</td><td><span class="mono">字数 range 200 600</span></td></tr>
             </table>
         </div>
     </div>
@@ -704,11 +727,98 @@
         </div>
         <div class="card-body open">
             <table>
-                <tr><th>类型</th><th>写法</th><th>示例</th></tr>
-                <tr><td>已注册货币</td><td>货币名</td><td><span class="mono">金币 10</span></td></tr>
-                <tr><td>已注册道具 / 特殊道具 / 装备</td><td>道具码（大写）</td><td><span class="mono">TJ00 1</span></td></tr>
-                <tr><td>已注册属性</td><td>属性名</td><td><span class="mono">好感度 5</span></td></tr>
+                <tr><th>类型</th><th>写法</th><th>批量示例</th></tr>
+                <tr><td>已注册货币</td><td>货币名</td><td><span class="mono">奖励 金币 10</span></td></tr>
+                <tr><td>已注册道具 / 特殊道具 / 装备</td><td>道具码（大写）</td><td><span class="mono">奖励 TJ00 1</span></td></tr>
+                <tr><td>已注册属性</td><td>属性名</td><td><span class="mono">奖励 好感度 5</span></td></tr>
             </table>
+        </div>
+    </div>
+</div>
+
+<!-- ===== 约会类型 ===== -->
+<div class="panel" id="panel-types">
+    <div class="card">
+        <div class="card-head" style="cursor:default;">
+            <div class="card-head-left"><div>
+                <div class="card-title">🏷️ 约会类型过滤机制</div>
+                <div class="card-desc">不同类型的约会可以触发不同的结戏加成模版</div>
+            </div></div>
+        </div>
+        <div class="card-body open">
+            <div class="type-grid">
+                <div class="type-chip tc-xinyi">
+                    <div class="chip-name">💝 心意</div>
+                    <div class="chip-desc">心意约会专属模版</div>
+                </div>
+                <div class="type-chip tc-guanyue">
+                    <div class="chip-name">📜 官约</div>
+                    <div class="chip-desc">官方约会专属模版</div>
+                </div>
+                <div class="type-chip tc-siyue">
+                    <div class="chip-name">🌙 私约</div>
+                    <div class="chip-desc">私人约会专属模版</div>
+                </div>
+                <div class="type-chip tc-dianhua">
+                    <div class="chip-name">📞 电话</div>
+                    <div class="chip-desc">电话约会专属模版</div>
+                </div>
+                <div class="type-chip tc-tongyong">
+                    <div class="chip-name">🔮 通用</div>
+                    <div class="chip-desc">对所有类型生效（默认）</div>
+                </div>
+            </div>
+            <div class="notice-box">
+                ⚡ <b>触发规则：</b>结戏时，系统只触发 <b>类型匹配</b> 的模版。例如私约结戏，只会触发「私约」和「通用」类型的模版，不会触发「心意」和「官约」模版。
+            </div>
+            <p style="font-size:13px;color:#555;line-height:1.8;margin-top:8px;">
+                · 类型通过 <code style="background:#f0f0f0;padding:2px 6px;border-radius:4px;font-family:monospace;">批量</code> 命令的第三个参数指定<br>
+                · 不写第三个参数时，默认为 <b>通用</b>（所有约会类型都会触发）<br>
+                · 已有模版使用 <code style="background:#f0f0f0;padding:2px 6px;border-radius:4px;font-family:monospace;">批量</code> 同名覆盖可修改类型
+            </p>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-head" style="cursor:default;">
+            <div class="card-head-left"><div>
+                <div class="card-title">📖 示例：私约专属 + 通用模版共存</div>
+                <div class="card-desc">区分类型的实际写法演示</div>
+            </div></div>
+        </div>
+        <div class="card-body open">
+            <p style="font-size:13px;color:#555;line-height:1.8;margin-bottom:12px;">
+                场景：私约奖励更丰厚（专属模版），所有约会都有基础字数奖励（通用模版）。
+            </p>
+            <div style="margin-bottom:8px;font-size:12px;font-weight:700;color:#aaa;text-transform:uppercase;letter-spacing:0.5px;">私约专属模版</div>
+            <div class="batch-block" id="cl_type1">
+                <div class="batch-code"><span class="hl-cmd">结戏加成 批量 私约专属 私约</span>
+<span class="hl-and">and</span>
+<span class="hl-cond">字数 >= 500</span>
+<span class="hl-rew">奖励 好感度 5</span>
+<span class="hl-pool">池 金币 80 50 TJ00 1 30 TJ01 1 20</span>
+<span class="hl-or">or</span>
+<span class="hl-cond">字数 >= 200</span>
+<span class="hl-rew">奖励 好感度 2</span>
+<span class="hl-rew">奖励 金币 20</span></div>
+                <div class="copy-all-row"><button class="copy-all-btn" onclick="cpBatch('cl_type1',this)">📋 复制全部</button></div>
+            </div>
+            <div style="margin:12px 0 8px;font-size:12px;font-weight:700;color:#aaa;text-transform:uppercase;letter-spacing:0.5px;">通用基础模版（所有约会都触发）</div>
+            <div class="batch-block" id="cl_type2">
+                <div class="batch-code"><span class="hl-cmd">结戏加成 批量 基础通用</span>
+<span class="hl-and">and</span>
+<span class="hl-cond">字数 >= 100</span>
+<span class="hl-rew">奖励 金币 5</span></div>
+                <div class="copy-all-row"><button class="copy-all-btn" onclick="cpBatch('cl_type2',this)">📋 复制全部</button></div>
+            </div>
+            <div class="effect-box" style="margin-top:12px;">
+                <div class="effect-title">结果</div>
+                <ul>
+                    <li>私约结戏 → 同时触发「私约专属」和「基础通用」两个模版</li>
+                    <li>官约/心意/电话结戏 → 只触发「基础通用」，不触发私约专属</li>
+                    <li>模版列表中会显示各模版的类型标签（如 <b>[私约]</b>、<b>[通用]</b>）</li>
+                </ul>
+            </div>
         </div>
     </div>
 </div>
@@ -716,38 +826,45 @@
 <!-- ===== 快速指令 ===== -->
 <div class="panel" id="panel-ref">
     <div class="ref-grid">
-        <div class="ref-card">
-            <h4>📋 查看 & 管理</h4>
-            <div class="ref-row"><span class="ref-cmd">模版列表</span><span class="ref-note">查看所有模版及状态</span></div>
-            <div class="ref-row"><span class="ref-cmd">查看 名</span><span class="ref-note">展示模版完整规则结构</span></div>
-            <div class="ref-row"><span class="ref-cmd">可用参数</span><span class="ref-note">列出所有条件参数和奖励目标</span></div>
-            <div class="ref-row"><span class="ref-cmd">开启/关闭 名</span><span class="ref-note">启用或暂停某个模版</span></div>
-            <div class="ref-row"><span class="ref-cmd">删除模版 名</span><span class="ref-note">彻底删除整个模版</span></div>
+        <div class="ref-card" style="grid-column: 1 / -1; border: 2px solid #cba6f7;">
+            <h4 style="color:#7b3fc4;font-size:15px;">⭐ 核心入口：批量写入</h4>
+            <div style="background:#1e1e2e;border-radius:8px;padding:10px 14px;margin:8px 0;">
+                <div style="font-family:monospace;font-size:13px;line-height:2;white-space:pre;"><span style="color:#cba6f7;">结戏加成 批量 模版名 [类型]</span>
+<span style="color:#89b4fa;">and</span>
+<span style="color:#f38ba8;">条件行（如 字数 >= 300）</span>
+<span style="color:#a6e3a1;">奖励 目标 数量</span>
+<span style="color:#cba6f7;">池 目标1 数量1 权重1 ...</span>
+<span style="color:#fab387;">or</span>
+<span style="color:#f38ba8;">条件行</span>
+<span style="color:#a6e3a1;">奖励 目标 数量</span></div>
+            </div>
+            <p style="font-size:12px;color:#777;line-height:1.6;">多行发送。同名模版覆盖，不同名则新建。类型可选：心意 / 官约 / 私约 / 电话 / 通用（默认通用）。</p>
         </div>
         <div class="ref-card">
-            <h4>🏗️ 构建模版</h4>
-            <div class="ref-row"><span class="ref-cmd">新建 名</span><span class="ref-note">创建空模版</span></div>
-            <div class="ref-row"><span class="ref-cmd">新块 名 and/or</span><span class="ref-note">添加新规则块</span></div>
-            <div class="ref-row"><span class="ref-cmd">添加条件 名 参数 运算符 值</span><span class="ref-note">向最后一块追加条件</span></div>
-            <div class="ref-row"><span class="ref-cmd">添加奖励 名 目标 数量</span><span class="ref-note">向最后一块追加固定奖励</span></div>
-            <div class="ref-row"><span class="ref-cmd">删除块 名 编号</span><span class="ref-note">删除指定块（查看时可看编号）</span></div>
+            <h4>📋 查看 &amp; 管理</h4>
+            <div class="ref-row"><span class="ref-cmd">结戏加成 模版列表</span><span class="ref-note">查看所有模版、类型标签及状态</span></div>
+            <div class="ref-row"><span class="ref-cmd">结戏加成 查看 名</span><span class="ref-note">展示模版完整规则结构</span></div>
+            <div class="ref-row"><span class="ref-cmd">结戏加成 可用参数</span><span class="ref-note">列出所有条件参数和奖励目标</span></div>
+            <div class="ref-row"><span class="ref-cmd">结戏加成 开启 名</span><span class="ref-note">启用某个模版</span></div>
+            <div class="ref-row"><span class="ref-cmd">结戏加成 关闭 名</span><span class="ref-note">暂停某个模版</span></div>
+            <div class="ref-row"><span class="ref-cmd">结戏加成 删除模版 名</span><span class="ref-note">彻底删除整个模版</span></div>
         </div>
         <div class="ref-card">
-            <h4>🎲 概率池</h4>
-            <div class="ref-row"><span class="ref-cmd">新建概率池 名</span><span class="ref-note">在最后一块创建概率池</span></div>
-            <div class="ref-row"><span class="ref-cmd">添加池奖励 名 目标 数量 权重</span><span class="ref-note">向池中添加候选奖励</span></div>
-            <div class="ref-row"><span class="ref-cmd">删除池奖励 名 编号</span><span class="ref-note">删除最后一块的池中某条</span></div>
-            <div class="ref-row" style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0;">
-                <span class="ref-note" style="color:#888;">权重不需要加到100，如 60/30/10 和 6/3/1 效果相同</span>
+            <h4>📦 导入 / 导出</h4>
+            <div class="ref-row"><span class="ref-cmd">结戏加成 导出 名</span><span class="ref-note">导出 JSON，可编辑后用导入覆盖</span></div>
+            <div class="ref-row"><span class="ref-cmd">结戏加成 导入 JSON字符串</span><span class="ref-note">JSON 导入，同名覆盖，不同名新建</span></div>
+            <div style="margin-top:10px;padding-top:10px;border-top:1px solid #f0f0f0;">
+                <p style="font-size:12px;color:#888;line-height:1.6;">适合备份模版或批量迁移，导出的 JSON 可直接编辑后再导入。</p>
             </div>
         </div>
         <div class="ref-card">
-            <h4>⚠️ 注意事项</h4>
-            <div class="ref-row"><span class="ref-note">• 每次 <b>新块</b> 才开新块，<b>添加条件/奖励</b> 始终作用于最后一块</span></div>
-            <div class="ref-row"><span class="ref-note">• 同一块内多个条件全部满足才触发（AND 关系）</span></div>
-            <div class="ref-row"><span class="ref-note">• and 块之间互相独立，各自判断各自发</span></div>
-            <div class="ref-row"><span class="ref-note">• or 块只发第一个满足的，后面跳过</span></div>
-            <div class="ref-row"><span class="ref-note">• 每块最多一个概率池，与固定奖励同时执行</span></div>
+            <h4>⚠️ 批量格式要点</h4>
+            <div class="ref-row"><span class="ref-note">• 第一行必须是 <b>结戏加成 批量 模版名 [类型]</b></span></div>
+            <div class="ref-row"><span class="ref-note">• <b>and</b> 单独一行：新建一个独立 and 块（各块都会判断）</span></div>
+            <div class="ref-row"><span class="ref-note">• <b>or</b> 单独一行：新建 or 块，连续 or 属同一 or 组（只发第一个满足的）</span></div>
+            <div class="ref-row"><span class="ref-note">• 条件行、奖励行、池行写在 and/or 之后，归属于最近的块</span></div>
+            <div class="ref-row"><span class="ref-note">• 同一块内多个条件行 = 全部满足才触发（AND 关系）</span></div>
+            <div class="ref-row"><span class="ref-note">• 池行三个一组：<b>目标 数量 权重</b>，权重无需加到100</span></div>
         </div>
     </div>
 </div>
@@ -762,11 +879,11 @@
             <div class="flow" style="margin-bottom:16px;">
                 <div class="flow-step">结戏触发</div><div class="flow-arrow">→</div>
                 <div class="flow-step">遍历每位玩家</div><div class="flow-arrow">→</div>
-                <div class="flow-step">遍历所有启用模版</div><div class="flow-arrow">→</div>
+                <div class="flow-step">过滤匹配类型的模版</div><div class="flow-arrow">→</div>
                 <div class="flow-step">按 group 顺序执行</div><div class="flow-arrow">→</div>
                 <div class="flow-step">发放 + 个人群通知</div>
             </div>
-            <p style="font-size:13px;color:#666;line-height:1.8;">每位玩家独立结算，互不影响。模版启用后对所有参与本场的玩家生效。</p>
+            <p style="font-size:13px;color:#666;line-height:1.8;">每位玩家独立结算，互不影响。系统先根据约会类型过滤启用的模版，再逐一执行匹配的模版。</p>
         </div>
     </div>
     <div class="card">
@@ -785,8 +902,9 @@
                 <div class="lbl">混用时的优先级</div>
                 <p style="font-size:13px;color:#555;line-height:1.8;">
                     <b>and 优先级高于 or</b><br>
-                    写法 <code style="background:#f0f0f0;padding:2px 6px;border-radius:4px;">块A and 块B or 块C</code> = <code style="background:#f0f0f0;padding:2px 6px;border-radius:4px;">(块A and 块B) or 块C</code><br>
-                    A 和 B 先并行处理；若 A 或 B 任一触发，则 C 不执行。
+                    在批量格式中，<code style="background:#f0f0f0;padding:2px 6px;border-radius:4px;">and</code> 块之间完全独立并行；
+                    连续出现的 <code style="background:#f0f0f0;padding:2px 6px;border-radius:4px;">or</code> 构成一个 or 组，只触发其中第一个满足的块。<br>
+                    一个 <code style="background:#f0f0f0;padding:2px 6px;border-radius:4px;">and</code> 后跟的若干 <code style="background:#f0f0f0;padding:2px 6px;border-radius:4px;">or</code>，这些 or 形成独立的 or 组，与 and 块并行结算。
                 </p>
             </div>
         </div>
@@ -797,7 +915,7 @@
         </div>
         <div class="card-body open">
             <div class="cmd-list" style="font-size:13px;line-height:1.8;padding:12px 0;">
-                <div class="cmd-row" style="color:#89b4fa;cursor:default;"><code style="color:#89b4fa;">@玩家昵称</code></div>
+                <div class="cmd-row" style="cursor:default;"><code style="color:#89b4fa;">@玩家昵称</code></div>
                 <div class="cmd-row" style="cursor:default;"><code style="color:#a6e3a1;">🎁 结戏加成已发放：好感度+3、金币×15</code></div>
                 <div class="cmd-row" style="cursor:default;"><code style="color:#f9e2af;">🎲 概率奖励抽中：TJ00×1（30%）</code></div>
                 <div class="cmd-row" style="cursor:default;"><code style="color:#6c7086;">💡 可使用「背包」查看道具与货币，「角色卡」查看属性变更。</code></div>
@@ -830,29 +948,14 @@ function toggleCard(head) {
     arrow.classList.toggle('open');
 }
 
-// 复制单行
-function cp(btn) {
-    const code = btn.previousElementSibling;
-    const text = code.textContent.trim();
-    navigator.clipboard.writeText(text).then(() => {
-        btn.textContent = '✓';
-        btn.classList.add('ok');
-        setTimeout(() => { btn.textContent = '复制'; btn.classList.remove('ok'); }, 1500);
-    });
-}
-
-// 复制整块（跳过注释行）
-function cpAll(id, btn) {
-    const list = document.getElementById(id);
-    const rows = list.querySelectorAll('.cmd-row');
-    const lines = [];
-    rows.forEach(row => {
-        const code = row.querySelector('code');
-        if (code) lines.push(code.textContent.trim());
-    });
-    const text = lines.join('\n');
-    navigator.clipboard.writeText(text).then(() => {
-        btn.textContent = '✓ 已复制全部';
+// 批量块复制：提取 .batch-code 的纯文本内容
+function cpBatch(id, btn) {
+    const block = document.getElementById(id);
+    const codeEl = block.querySelector('.batch-code');
+    // 获取纯文本，保留换行
+    const text = codeEl.innerText || codeEl.textContent;
+    navigator.clipboard.writeText(text.trim()).then(() => {
+        btn.textContent = '✓ 已复制';
         btn.classList.add('ok');
         setTimeout(() => { btn.textContent = '📋 复制全部'; btn.classList.remove('ok'); }, 2000);
     });
