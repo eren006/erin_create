@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎁 结戏加成 · 使用指南</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: #333;
+            min-height: 100vh;
+        }
+        .container { max-width: 1000px; margin: 0 auto; padding: 24px 16px; }
+
+        /* Header */
+        header {
+            background: white;
+            border-radius: 16px;
+            padding: 32px 28px 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+            text-align: center;
+        }
+        header h1 { font-size: 28px; color: #f5576c; margin-bottom: 8px; }
+        header p { color: #888; font-size: 14px; line-height: 1.6; }
+
+        /* Nav tabs */
+        .nav { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+        .nav-btn {
+            flex: 1; min-width: 90px;
+            padding: 10px 14px;
+            border: none; border-radius: 10px;
+            background: rgba(255,255,255,0.85);
+            color: #f5576c;
+            font-size: 12px; font-weight: 600;
+            cursor: pointer;
+            transition: all 0.25s;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        }
+        .nav-btn.active, .nav-btn:hover {
+            background: white;
+            color: #d63052;
+            box-shadow: 0 4px 14px rgba(245,87,108,0.3);
+            transform: translateY(-1px);
+        }
+        .nav-btn.active { font-weight: 700; }
+
+        /* Panels */
+        .panel { display: none; }
+        .panel.active { display: block; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Card */
+        .card {
+            background: white;
+            border-radius: 14px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+            overflow: hidden;
+        }
+        .card-head {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 16px 20px;
+            cursor: pointer;
+            user-select: none;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+        .card-head:hover { filter: brightness(1.05); }
+        .card-head-left { display: flex; align-items: center; gap: 10px; }
+        .card-badge {
+            background: rgba(255,255,255,0.25);
+            border-radius: 6px;
+            padding: 2px 8px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .card-title { font-weight: 700; font-size: 15px; }
+        .card-desc { font-size: 12px; opacity: 0.85; }
+        .card-arrow { font-size: 18px; transition: transform 0.3s; }
+        .card-arrow.open { transform: rotate(180deg); }
+        .card-body { display: none; padding: 20px; }
+        .card-body.open { display: block; }
+
+        /* Scenario info */
+        .scenario-meta {
+            display: flex; gap: 8px; flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
+        .tag {
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .tag-and { background: #e8f4fd; color: #2980b9; }
+        .tag-or  { background: #fef9e7; color: #d68910; }
+        .tag-pool { background: #eafaf1; color: #1e8449; }
+        .tag-fixed { background: #f4ecf7; color: #7d3c98; }
+        .tag-time { background: #fdf2f8; color: #c0392b; }
+
+        /* Logic diagram */
+        .logic-box {
+            background: #fafafa;
+            border: 1px solid #eee;
+            border-radius: 10px;
+            padding: 14px 16px;
+            margin-bottom: 16px;
+            font-size: 13px;
+            line-height: 1.8;
+        }
+        .logic-box .lbl { font-weight: 700; color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+        .block-group { margin: 6px 0; }
+        .conn-and {
+            display: inline-block;
+            background: #e8f4fd; color: #2980b9;
+            border-radius: 4px; padding: 1px 7px;
+            font-size: 11px; font-weight: 700; margin: 3px 0;
+        }
+        .conn-or {
+            display: inline-block;
+            background: #fef9e7; color: #d68910;
+            border-radius: 4px; padding: 1px 7px;
+            font-size: 11px; font-weight: 700; margin: 3px 0;
+        }
+        .block-item {
+            background: white;
+            border: 1px solid #e8e8e8;
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin: 4px 0;
+        }
+        .block-cond { color: #555; font-size: 13px; }
+        .block-cond span { color: #e74c3c; font-weight: 600; }
+        .block-reward { color: #27ae60; font-size: 13px; margin-top: 4px; }
+        .block-pool { color: #8e44ad; font-size: 13px; margin-top: 4px; }
+        .pool-item { display: inline-block; background: #f4ecf7; border-radius: 4px; padding: 1px 7px; margin: 2px 3px; font-size: 12px; }
+
+        /* Commands */
+        .cmd-section { margin-top: 16px; }
+        .cmd-section-title {
+            font-size: 12px; font-weight: 700;
+            color: #aaa; text-transform: uppercase;
+            letter-spacing: 0.5px; margin-bottom: 8px;
+        }
+        .cmd-block {
+            background: #1e1e2e;
+            border-radius: 10px;
+            padding: 14px 16px;
+            position: relative;
+            font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+            font-size: 13px;
+            line-height: 2;
+            color: #cdd6f4;
+            overflow-x: auto;
+        }
+        .cmd-block .comment { color: #6c7086; }
+        .cmd-block .cmd { color: #cba6f7; }
+        .cmd-block .arg { color: #a6e3a1; }
+        .cmd-block .val { color: #f9e2af; }
+        .copy-btn {
+            position: absolute; top: 10px; right: 10px;
+            background: rgba(255,255,255,0.1);
+            border: none; border-radius: 6px;
+            color: #cdd6f4; font-size: 11px;
+            padding: 4px 10px; cursor: pointer;
+            transition: background 0.2s;
+        }
+        .copy-btn:hover { background: rgba(255,255,255,0.2); }
+        .copy-btn.copied { color: #a6e3a1; }
+
+        /* Effect box */
+        .effect-box {
+            background: linear-gradient(135deg, #f0fff4, #e8f5e9);
+            border-left: 3px solid #27ae60;
+            border-radius: 0 8px 8px 0;
+            padding: 12px 14px;
+            margin-top: 14px;
+            font-size: 13px;
+            line-height: 1.7;
+        }
+        .effect-box .effect-title { font-weight: 700; color: #1e8449; margin-bottom: 4px; font-size: 12px; }
+        .effect-box li { margin-left: 16px; color: #2d6a4f; }
+
+        /* Quick ref */
+        .ref-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+        .ref-card {
+            background: white; border-radius: 12px;
+            padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+        }
+        .ref-card h4 { color: #f5576c; font-size: 14px; margin-bottom: 10px; }
+        .ref-row { display: flex; gap: 8px; margin-bottom: 6px; align-items: flex-start; }
+        .ref-cmd {
+            background: #1e1e2e; color: #cba6f7;
+            border-radius: 6px; padding: 3px 8px;
+            font-family: monospace; font-size: 11px;
+            white-space: nowrap; flex-shrink: 0;
+        }
+        .ref-note { font-size: 12px; color: #666; line-height: 1.4; }
+
+        /* Params table */
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 10px 14px; text-align: left; font-weight: 600; }
+        td { padding: 10px 14px; border-bottom: 1px solid #f0f0f0; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: #fafafa; }
+        .mono { font-family: monospace; background: #f5f5f5; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+
+        /* Flow diagram */
+        .flow { display: flex; align-items: center; gap: 0; flex-wrap: wrap; margin: 12px 0; }
+        .flow-step {
+            background: white; border: 2px solid #f5576c;
+            border-radius: 8px; padding: 8px 14px;
+            font-size: 13px; font-weight: 600; color: #f5576c;
+            text-align: center;
+        }
+        .flow-arrow { color: #f5576c; font-size: 18px; padding: 0 6px; }
+
+        footer { text-align: center; padding: 24px 0; color: rgba(255,255,255,0.7); font-size: 12px; }
+    </style>
+</head>
+<body>
+<div class="container">
+
+    <header>
+        <h1>🎁 结戏加成 · 使用指南</h1>
+        <p>基于模版的规则引擎 · 支持条件判断 · 固定奖励 + 概率池 · and / or 逻辑</p>
+    </header>
+
+    <div class="nav">
+        <button class="nav-btn active" onclick="showPanel('cases')">📚 案例大全</button>
+        <button class="nav-btn" onclick="showPanel('params')">📌 可用参数</button>
+        <button class="nav-btn" onclick="showPanel('ref')">⚡ 快速指令</button>
+        <button class="nav-btn" onclick="showPanel('flow')">🔁 逻辑说明</button>
+    </div>
+
+    <!-- ===== 案例大全 ===== -->
+    <div class="panel active" id="panel-cases">
+
+        <!-- Case 1 -->
+        <div class="card">
+            <div class="card-head" onclick="toggleCard(this)">
+                <div class="card-head-left">
+                    <span class="card-badge">案例 1</span>
+                    <div>
+                        <div class="card-title">🟢 新手入门：基础字数奖励</div>
+                        <div class="card-desc">写满字数就给货币，最简单的单块模版</div>
+                    </div>
+                </div>
+                <span class="card-arrow">▾</span>
+            </div>
+            <div class="card-body">
+                <div class="scenario-meta">
+                    <span class="tag tag-and">and 块</span>
+                    <span class="tag tag-fixed">固定奖励</span>
+                </div>
+                <div class="logic-box">
+                    <div class="lbl">逻辑结构</div>
+                    <div class="block-item">
+                        <div class="block-cond">条件：本场个人总字数 <span>&gt;= 200</span></div>
+                        <div class="block-reward">→ 发放：金币 ×10</div>
+                    </div>
+                </div>
+                <div class="cmd-section">
+                    <div class="cmd-section-title">指令序列</div>
+                    <div class="cmd-block" id="cmd1">
+                        <button class="copy-btn" onclick="copyCmd('cmd1', this)">复制</button>
+<span class="comment"># 1. 创建模版</span>
+<span class="cmd">结戏加成 新建</span> <span class="arg">基础字数奖励</span>
+<span class="comment"># 2. 添加一个 and 块</span>
+<span class="cmd">结戏加成 新块</span> <span class="arg">基础字数奖励</span> <span class="val">and</span>
+<span class="comment"># 3. 添加条件</span>
+<span class="cmd">结戏加成 添加条件</span> <span class="arg">基础字数奖励</span> <span class="val">本场个人总字数 &gt;= 200</span>
+<span class="comment"># 4. 添加固定奖励</span>
+<span class="cmd">结戏加成 添加奖励</span> <span class="arg">基础字数奖励</span> <span class="val">金币 10</span>
+                    </div>
+                </div>
+                <div class="effect-box">
+                    <div class="effect-title">效果</div>
+                    <ul><li>本场写了 ≥200 字 → 结戏发 金币×10</li>
+                    <li>不足 200 字 → 不发</li></ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Case 2 -->
+        <div class="card">
+            <div class="card-head" onclick="toggleCard(this)">
+                <div class="card-head-left">
+                    <span class="card-badge">案例 2</span>
+                    <div>
+                        <div class="card-title">🟡 字数档位制（三档降级）</div>
+                        <div class="card-desc">高档不满足自动降到低档，or 逻辑的标准用法</div>
+                    </div>
+                </div>
+                <span class="card-arrow">▾</span>
+            </div>
+            <div class="card-body">
+                <div class="scenario-meta">
+                    <span class="tag tag-or">or 降级</span>
+                    <span class="tag tag-fixed">固定奖励</span>
+                </div>
+                <div class="logic-box">
+                    <div class="lbl">逻辑结构</div>
+                    <div class="block-item">
+                        <div class="block-cond">条件：本场个人总字数 <span>&gt;= 1000</span></div>
+                        <div class="block-reward">→ 金币 ×50</div>
+                    </div>
+                    <div style="margin: 4px 8px;"><span class="conn-or">or ↓ 不满足才看这个</span></div>
+                    <div class="block-item">
+                        <div class="block-cond">条件：本场个人总字数 <span>&gt;= 500</span></div>
+                        <div class="block-reward">→ 金币 ×20</div>
+                    </div>
+                    <div style="margin: 4px 8px;"><span class="conn-or">or ↓ 不满足才看这个</span></div>
+                    <div class="block-item">
+                        <div class="block-cond">条件：本场个人总字数 <span>&gt;= 200</span></div>
+                        <div class="block-reward">→ 金币 ×5</div>
+                    </div>
+                </div>
+                <div class="cmd-section">
+                    <div class="cmd-section-title">指令序列</div>
+                    <div class="cmd-block" id="cmd2">
+                        <button class="copy-btn" onclick="copyCmd('cmd2', this)">复制</button>
+<span class="cmd">结戏加成 新建</span> <span class="arg">字数档位</span>
+<span class="comment"># 第一档（最高，优先检查）</span>
+<span class="cmd">结戏加成 新块</span> <span class="arg">字数档位</span> <span class="val">or</span>
+<span class="cmd">结戏加成 添加条件</span> <span class="arg">字数档位</span> <span class="val">本场个人总字数 &gt;= 1000</span>
+<span class="cmd">结戏加成 添加奖励</span> <span class="arg">字数档位</span> <span class="val">金币 50</span>
+<span class="comment"># 第二档</span>
+<span class="cmd">结戏加成 新块</span> <span class="arg">字数档位</span> <span class="val">or</span>
+<span class="cmd">结戏加成 添加条件</span> <span class="arg">字数档位</span> <span class="val">本场个人总字数 &gt;= 500</span>
+<span class="cmd">结戏加成 添加奖励</span> <span class="arg">字数档位</span> <span class="val">金币 20</span>
+<span class="comment"># 第三档</span>
+<span class="cmd">结戏加成 新块</span> <span class="arg">字数档位</span> <span class="val">or</span>
+<span class="cmd">结戏加成 添加条件</span> <span class="arg">字数档位</span> <span class="val">本场个人总字数 &gt;= 200</span>
+<span class="cmd">结戏加成 添加奖励</span> <span class="arg">字数档位</span> <span class="val">金币 5</span>
+                    </div>
+                </div>
+                <div class="effect-box">
+                    <div class="effect-title">效果</div>
+                    <ul>
+                        <li>≥1000字 → 金币×50（后面两档跳过）</li>
+                        <li>500~999字 → 金币×20（最多发这一档）</li>
+                        <li>200~499字 → 金币×5</li>
+                        <li>&lt;200字 → 不发</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Case 3 -->
+        <div class="card">
+            <div class="card-head" onclick="toggleCard(this)">
+                <div class="card-head-left">
+                    <span class="card-badge">案例 3</span>
+                    <div>
+                        <div class="card-title">🔵 双线并行（字数 + 段数各自结算）</div>
+                        <div class="card-desc">两个 and 块各自独立判断，同时触发互不影响</div>
+                    </div>
+                </div>
+                <span class="card-arrow">▾</span>
+            </div>
+            <div class="card-body">
+                <div class="scenario-meta">
+                    <span class="tag tag-and">and 并行</span>
+                    <span class="tag tag-fixed">多类型奖励</span>
+                </div>
+                <div class="logic-box">
+                    <div class="lbl">逻辑结构（两块各自独立）</div>
+                    <div class="block-item">
+                        <div class="block-cond">条件：本场个人总字数 <span>&gt;= 300</span></div>
+                        <div class="block-reward">→ 金币 ×15</div>
+                    </div>
+                    <div style="margin: 4px 8px;"><span class="conn-and">and（独立判断）</span></div>
+                    <div class="block-item">
+                        <div class="block-cond">条件：本场个人段数 <span>&gt;= 6</span></div>
+                        <div class="block-reward">→ 好感度 +3</div>
+                    </div>
+                </div>
+                <div class="cmd-section">
+                    <div class="cmd-section-title">指令序列</div>
+                    <div class="cmd-block" id="cmd3">
+                        <button class="copy-btn" onclick="copyCmd('cmd3', this)">复制</button>
+<span class="cmd">结戏加成 新建</span> <span class="arg">双线并行</span>
+<span class="comment"># 块一：看总字数，给货币</span>
+<span class="cmd">结戏加成 新块</span> <span class="arg">双线并行</span> <span class="val">and</span>
+<span class="cmd">结戏加成 添加条件</span> <span class="arg">双线并行</span> <span class="val">本场个人总字数 &gt;= 300</span>
+<span class="cmd">结戏加成 添加奖励</span> <span class="arg">双线并行</span> <span class="val">金币 15</span>
+<span class="comment"># 块二：看段数，给属性（和块一互不影响）</span>
+<span class="cmd">结戏加成 新块</span> <span class="arg">双线并行</span> <span class="val">and</span>
+<span class="cmd">结戏加成 添加条件</span> <span class="arg">双线并行</span> <span class="val">本场个人段数 &gt;= 6</span>
+<span class="cmd">结戏加成 添加奖励</span> <span class="arg">双线并行</span> <span class="val">好感度 3</span>
+                    </div>
+                </div>
+                <div class="effect-box">
+                    <div class="effect-title">效果</div>
+                    <ul>
+                        <li>字数≥300 且 段数≥6 → 金币×15 + 好感度+3（全发）</li>
+                        <li>只有字数≥300 → 只发 金币×15</li>
+                        <li>只有段数≥6 → 只发 好感度+3</li>
+                        <li>都不满足 → 不发</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Case 4 -->
+        <div class="card">
+            <div class="card-head" onclick="toggleCard(this)">
+                <div class="card-head-left">
+                    <span class="card-badge">案例 4</span>
+                    <div>
+                        <div class="card-title">🟣 完美表现（块内多条件 AND）</div>
+                        <div class="card-desc">段数和平均字数同时达标才触发，块内多条件全部满足</div>
+                    </div>
+                </div>
+                <span class="card-arrow">▾</span>
+            </div>
+            <div class="card-body">
+                <div class="scenario-meta">
+                    <span class="tag tag-and">块内多条件</span>
+                    <span class="tag tag-fixed">高额奖励</span>
+                </div>
+                <div class="logic-box">
+                    <div class="lbl">逻辑结构（同一块内两个条件必须同时满足）</div>
+                    <div class="block-item">
+                        <div class="block-cond">条件1：本场个人段数 <span>&gt;= 8</span></div>
+                        <div class="block-cond">条件2：本场个人平均每段字数 <span>&gt;= 150</span></div>
+                        <div style="font-size:11px;color:#aaa;margin-top:4px;">↑ 两个条件都要满足</div>
+                        <div class="block-reward">→ 金币 ×30 + 好感度 +5</div>
+                    </div>
+                </div>
+                <div class="cmd-section">
+                    <div class="cmd-section-title">指令序列</div>
+                    <div class="cmd-block" id="cmd4">
+                        <button class="copy-btn" onclick="copyCmd('cmd4', this)">复制</button>
+<span class="cmd">结戏加成 新建</span> <span class="arg">完美表现</span>
+<span class="cmd">结戏加成 新块</span> <span class="arg">完美表现</span> <span class="val">and</span>
+<span class="comment"># 同一块里添加两个条件（全部满足才触发）</span>
+<span class="cmd">结戏加成 添加条件</span> <span class="arg">完美表现</span> <span class="val">本场个人段数 &gt;= 8</span>
+<span class="cmd">结戏加成 添加条件</span> <span class="arg">完美表现</span> <span class="val">本场个人平均每段字数 &gt;= 150</span>
+<span class="comment"># 一个块里可以有多个固定奖励</span>
+<span class="cmd">结戏加成 添加奖励</span> <span class="arg">完美表现</span> <span class="val">金币 30</span>
+<span class="cmd">结戏加成 添加奖励</span> <span class="arg">完美表现</span> <span class="val">好感度 5</span>
+                    </div>
+                </div>
+                <div class="effect-box">
+                    <div class="effect-title">效果</div>
+                    <ul>
+                        <li>段数≥8 且 平均字数≥150 → 金币×30 + 好感度+5</li>
+                        <li>任意一个不满足 → 完全不发</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Case 5 -->
+        <div class="card">
+            <div class="card-head" onclick="toggleCard(this)">
+                <div class="card-head-left">
+                    <span class="card-badge">案例 5</span>
+                    <div>
+                        <div class="card-title">⏱️ 时效达人（限时完成加成）</div>
+                        <div class="card-desc">在规定时间内结戏可获得额外奖励</div>
+                    </div>
+                </div>
+                <span class="card-arrow">▾</span>
+            </div>
+            <div class="card-body">
+                <div class="scenario-meta">
+                    <span class="tag tag-time">耗时条件</span>
+                    <span class="tag tag-fixed">固定奖励</span>
+                </div>
+                <div class="logic-box">
+                    <div class="lbl">逻辑结构</div>
+                    <div class="block-item">
+                        <div class="block-cond">条件：结戏最多耗费时间 <span>&lt;= 60</span>（分钟）</div>
+                        <div class="block-reward">→ 金币 ×20 + 好感度 +3</div>
+                    </div>
+                    <div style="margin: 4px 8px;"><span class="conn-or">or ↓</span></div>
+                    <div class="block-item">
+                        <div class="block-cond">条件：结戏最多耗费时间 <span>&lt;= 120</span>（分钟）</div>
+                        <div class="block-reward">→ 金币 ×10</div>
+                    </div>
+                </div>
+                <div class="cmd-section">
+                    <div class="cmd-section-title">指令序列</div>
+                    <div class="cmd-block" id="cmd5">
+                        <button class="copy-btn" onclick="copyCmd('cmd5', this)">复制</button>
+<span class="cmd">结戏加成 新建</span> <span class="arg">时效达人</span>
+<span class="comment"># 60分钟内完成（高档）</span>
+<span class="cmd">结戏加成 新块</span> <span class="arg">时效达人</span> <span class="val">or</span>
+<span class="cmd">结戏加成 添加条件</span> <span class="arg">时效达人</span> <span class="val">结戏最多耗费时间 &lt;= 60</span>
+<span class="cmd">结戏加成 添加奖励</span> <span class="arg">时效达人</span> <span class="val">金币 20</span>
+<span class="cmd">结戏加成 添加奖励</span> <span class="arg">时效达人</span> <span class="val">好感度 3</span>
+<span class="comment"># 120分钟内完成（低档）</span>
+<span class="cmd">结戏加成 新块</span> <span class="arg">时效达人</span> <span class="val">or</span>
+<span class="cmd">结戏加成 添加条件</span> <span class="arg">时效达人</span> <span class="val">结戏最多耗费时间 &lt;= 120</span>
+<span class="cmd">结戏加成 添加奖励</span> <span class="arg">时效达人</span> <span class="val">金币 10</span>
+                    </div>
+                </div>
+                <div class="effect-box">
+                    <div class="effect-title">效果</div>
+                    <ul>
+                        <li>游戏在 60 分钟内结束 → 金币×20 + 好感度+3</li>
+                        <li>61~120 分钟内结束 → 金币×10</li>
+                        <li>超过 120 分钟 → 不发</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Case 6 -->
+        <div class="card">
+            <div class="card-head" onclick="toggleCard(this)">
+                <div class="card-head-left">
+                    <span class="card-badge">案例 6</span>
+                    <div>
+                        <div class="card-title">🎲 神秘宝箱（纯概率池）</div>
+                        <div class="card-desc">满足段数条件后从奖品池中随机抽一件</div>
+                    </div>
+                </div>
+                <span class="card-arrow">▾</span>
+            </div>
+            <div class="card-body">
+                <div class="scenario-meta">
+                    <span class="tag tag-and">and 块</span>
+                    <span class="tag tag-pool">概率池</span>
+                </div>
+                <div class="logic-box">
+                    <div class="lbl">逻辑结构</div>
+                    <div class="block-item">
+                        <div class="block-cond">条件：本场个人段数 <span>&gt;= 5</span></div>
+                        <div class="block-pool">🎲 概率池（抽一件）：
+                            <span class="pool-item">金币×100 · 60%</span>
+                            <span class="pool-item">TJ00×1 · 30%</span>
+                            <span class="pool-item">TJ01×1 · 10%</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="cmd-section">
+                    <div class="cmd-section-title">指令序列</div>
+                    <div class="cmd-block" id="cmd6">
+                        <button class="copy-btn" onclick="copyCmd('cmd6', this)">复制</button>
+<span class="cmd">结戏加成 新建</span> <span class="arg">神秘宝箱</span>
+<span class="cmd">结戏加成 新块</span> <span class="arg">神秘宝箱</span> <span class="val">and</span>
+<span class="cmd">结戏加成 添加条件</span> <span class="arg">神秘宝箱</span> <span class="val">本场个人段数 &gt;= 5</span>
+<span class="comment"># 创建概率池</span>
+<span class="cmd">结戏加成 新建概率池</span> <span class="arg">神秘宝箱</span>
+<span class="comment"># 添加候选（权重不用加到100，自动换算比例）</span>
+<span class="cmd">结戏加成 添加池奖励</span> <span class="arg">神秘宝箱</span> <span class="val">金币 100 60</span>
+<span class="cmd">结戏加成 添加池奖励</span> <span class="arg">神秘宝箱</span> <span class="val">TJ00 1 30</span>
+<span class="cmd">结戏加成 添加池奖励</span> <span class="arg">神秘宝箱</span> <span class="val">TJ01 1 10</span>
+                    </div>
+                </div>
+                <div class="effect-box">
+                    <div class="effect-title">效果</div>
+                    <ul>
+                        <li>段数 ≥5 → 从池中抽一件：60% 金币×100、30% TJ00×1、10% TJ01×1</li>
+                        <li>个人群通知会显示抽中的奖励和概率</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Case 7 -->
+        <div class="card">
+            <div class="card-head" onclick="toggleCard(this)">
+                <div class="card-head-left">
+                    <span class="card-badge">案例 7</span>
+                    <div>
+                        <div class="card-title">🎁 综合奖励包（固定 + 概率池同块）</div>
+                        <div class="card-desc">满足条件后必发固定奖励，同时再抽一件随机奖励</div>
+                    </div>
+                </div>
+                <span class="card-arrow">▾</span>
+            </div>
+            <div class="card-body">
+                <div class="scenario-meta">
+                    <span class="tag tag-and">and 块</span>
+                    <span class="tag tag-fixed">固定奖励</span>
+                    <span class="tag tag-pool">+ 概率池</span>
+                </div>
+                <div class="logic-box">
+                    <div class="lbl">逻辑结构（同一块，固定+概率同时执行）</div>
+                    <div class="block-item">
+                        <div class="block-cond">条件：本场个人总字数 <span>&gt;= 300</span></div>
+                        <div class="block-reward">→ 必发：好感度 +3</div>
+                        <div class="block-pool">→ 再抽一件：
+                            <span class="pool-item">金币×50 · 70%</span>
+                            <span class="pool-item">TJ00×1 · 30%</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="cmd-section">
+                    <div class="cmd-section-title">指令序列</div>
+                    <div class="cmd-block" id="cmd7">
+                        <button class="copy-btn" onclick="copyCmd('cmd7', this)">复制</button>
+<span class="cmd">结戏加成 新建</span> <span class="arg">综合奖励包</span>
+<span class="cmd">结戏加成 新块</span> <span class="arg">综合奖励包</span> <span class="val">and</span>
+<span class="cmd">结戏加成 添加条件</span> <span class="arg">综合奖励包</span> <span class="val">本场个人总字数 &gt;= 300</span>
+<span class="comment"># 固定奖励（必发）</span>
+<span class="cmd">结戏加成 添加奖励</span> <span class="arg">综合奖励包</span> <span class="val">好感度 3</span>
+<span class="comment"># 概率池（再抽一件）</span>
+<span class="cmd">结戏加成 新建概率池</span> <span class="arg">综合奖励包</span>
+<span class="cmd">结戏加成 添加池奖励</span> <span class="arg">综合奖励包</span> <span class="val">金币 50 70</span>
+<span class="cmd">结戏加成 添加池奖励</span> <span class="arg">综合奖励包</span> <span class="val">TJ00 1 30</span>
+                    </div>
+                </div>
+                <div class="effect-box">
+                    <div class="effect-title">效果</div>
+                    <ul>
+                        <li>总字数 ≥300 → 好感度+3（必发）+ 从池中抽一件（70% 金币×50、30% TJ00×1）</li>
+                        <li>个人群通知：固定奖励和抽中的奖励分开显示</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Case 8 -->
+        <div class="card">
+            <div class="card-head" onclick="toggleCard(this)">
+                <div class="card-head-left">
+                    <span class="card-badge">案例 8</span>
+                    <div>
+                        <div class="card-title">🌟 全能综合模版（and + or 混用）</div>
+                        <div class="card-desc">最复杂的结构：字数块和段数块并行，同时对字数进行档位降级</div>
+                    </div>
+                </div>
+                <span class="card-arrow">▾</span>
+            </div>
+            <div class="card-body">
+                <div class="scenario-meta">
+                    <span class="tag tag-and">and 并行</span>
+                    <span class="tag tag-or">or 降级</span>
+                    <span class="tag tag-fixed">固定奖励</span>
+                    <span class="tag tag-pool">概率池</span>
+                </div>
+                <div class="logic-box">
+                    <div class="lbl">逻辑结构</div>
+                    <div class="block-item">
+                        <div class="block-cond">条件：本场个人段数 <span>&gt;= 5</span></div>
+                        <div class="block-reward">→ 好感度 +2（段数达标必发）</div>
+                        <div class="block-pool">→ 再抽一件：
+                            <span class="pool-item">金币×30 · 60%</span>
+                            <span class="pool-item">TJ00×1 · 40%</span>
+                        </div>
+                    </div>
+                    <div style="margin: 4px 8px;"><span class="conn-and">and（以下块独立判断，互不影响）</span></div>
+                    <div class="block-item">
+                        <div class="block-cond">条件：本场个人总字数 <span>&gt;= 800</span></div>
+                        <div class="block-reward">→ 金币 ×40（高字数加成）</div>
+                    </div>
+                    <div style="margin: 4px 8px;"><span class="conn-or">or ↓ 不满足才看</span></div>
+                    <div class="block-item">
+                        <div class="block-cond">条件：本场个人总字数 <span>&gt;= 300</span></div>
+                        <div class="block-reward">→ 金币 ×15（普通加成）</div>
+                    </div>
+                </div>
+                <div class="cmd-section">
+                    <div class="cmd-section-title">指令序列</div>
+                    <div class="cmd-block" id="cmd8">
+                        <button class="copy-btn" onclick="copyCmd('cmd8', this)">复制</button>
+<span class="cmd">结戏加成 新建</span> <span class="arg">全能综合</span>
+
+<span class="comment"># === and 组：块一（段数 → 好感度 + 概率池）===</span>
+<span class="cmd">结戏加成 新块</span> <span class="arg">全能综合</span> <span class="val">and</span>
+<span class="cmd">结戏加成 添加条件</span> <span class="arg">全能综合</span> <span class="val">本场个人段数 &gt;= 5</span>
+<span class="cmd">结戏加成 添加奖励</span> <span class="arg">全能综合</span> <span class="val">好感度 2</span>
+<span class="cmd">结戏加成 新建概率池</span> <span class="arg">全能综合</span>
+<span class="cmd">结戏加成 添加池奖励</span> <span class="arg">全能综合</span> <span class="val">金币 30 60</span>
+<span class="cmd">结戏加成 添加池奖励</span> <span class="arg">全能综合</span> <span class="val">TJ00 1 40</span>
+
+<span class="comment"># === or 组：块二（高字数档）===</span>
+<span class="cmd">结戏加成 新块</span> <span class="arg">全能综合</span> <span class="val">or</span>
+<span class="cmd">结戏加成 添加条件</span> <span class="arg">全能综合</span> <span class="val">本场个人总字数 &gt;= 800</span>
+<span class="cmd">结戏加成 添加奖励</span> <span class="arg">全能综合</span> <span class="val">金币 40</span>
+
+<span class="comment"># === or 组：块三（普通字数档）===</span>
+<span class="cmd">结戏加成 新块</span> <span class="arg">全能综合</span> <span class="val">or</span>
+<span class="cmd">结戏加成 添加条件</span> <span class="arg">全能综合</span> <span class="val">本场个人总字数 &gt;= 300</span>
+<span class="cmd">结戏加成 添加奖励</span> <span class="arg">全能综合</span> <span class="val">金币 15</span>
+                    </div>
+                </div>
+                <div class="effect-box">
+                    <div class="effect-title">效果（各玩家独立结算）</div>
+                    <ul>
+                        <li>段数≥5 → 好感度+2 + 从池中抽一件（同时）</li>
+                        <li>总字数≥800 → 金币×40（or 组只发这一档）</li>
+                        <li>总字数 300~799 → 金币×15</li>
+                        <li>段数和字数结算完全独立，可以都拿到</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- end panel-cases -->
+
+    <!-- ===== 可用参数 ===== -->
+    <div class="panel" id="panel-params">
+        <div class="card">
+            <div class="card-head" style="cursor:default;">
+                <div class="card-head-left">
+                    <div>
+                        <div class="card-title">📊 条件参数</div>
+                        <div class="card-desc">添加条件时可使用的参数名</div>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body open">
+                <table>
+                    <tr><th>参数名</th><th>说明</th><th>示例</th></tr>
+                    <tr><td><span class="mono">本场个人段数</span></td><td>本场有效回复的段数（次数）</td><td><span class="mono">&gt;= 5</span></td></tr>
+                    <tr><td><span class="mono">本场个人总字数</span></td><td>本场所有回复的总字数</td><td><span class="mono">&gt;= 500</span></td></tr>
+                    <tr><td><span class="mono">本场个人平均每段字数</span></td><td>总字数 ÷ 段数（取整）</td><td><span class="mono">&gt;= 150</span></td></tr>
+                    <tr><td><span class="mono">结戏最多耗费时间</span></td><td>从开始群到结戏的分钟数，用 &lt;= 判断</td><td><span class="mono">&lt;= 90</span></td></tr>
+                </table>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-head" style="cursor:default;">
+                <div class="card-head-left">
+                    <div>
+                        <div class="card-title">🔢 运算符</div>
+                        <div class="card-desc">条件判断的运算方式</div>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body open">
+                <table>
+                    <tr><th>运算符</th><th>含义</th><th>指令写法</th></tr>
+                    <tr><td><span class="mono">&gt;=</span></td><td>大于等于</td><td><span class="mono">本场个人段数 &gt;= 5</span></td></tr>
+                    <tr><td><span class="mono">&lt;=</span></td><td>小于等于</td><td><span class="mono">结戏最多耗费时间 &lt;= 60</span></td></tr>
+                    <tr><td><span class="mono">=</span></td><td>等于</td><td><span class="mono">本场个人段数 = 1</span></td></tr>
+                    <tr><td><span class="mono">!=</span></td><td>不等于</td><td><span class="mono">本场个人段数 != 0</span></td></tr>
+                    <tr><td><span class="mono">range</span></td><td>在范围内（含两端）</td><td><span class="mono">本场个人总字数 range 200 600</span></td></tr>
+                </table>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-head" style="cursor:default;">
+                <div class="card-head-left">
+                    <div>
+                        <div class="card-title">🎁 奖励目标</div>
+                        <div class="card-desc">发放奖励时支持的目标类型（自动识别）</div>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body open">
+                <table>
+                    <tr><th>类型</th><th>写法</th><th>示例</th></tr>
+                    <tr><td>已注册货币</td><td>货币名</td><td><span class="mono">金币 10</span></td></tr>
+                    <tr><td>已注册道具 / 特殊道具 / 装备</td><td>道具码（大写）</td><td><span class="mono">TJ00 1</span></td></tr>
+                    <tr><td>已注册属性</td><td>属性名</td><td><span class="mono">好感度 5</span></td></tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 快速指令 ===== -->
+    <div class="panel" id="panel-ref">
+        <div class="ref-grid">
+            <div class="ref-card">
+                <h4>📋 查看 & 管理</h4>
+                <div class="ref-row"><span class="ref-cmd">模版列表</span><span class="ref-note">查看所有模版及状态</span></div>
+                <div class="ref-row"><span class="ref-cmd">查看 名</span><span class="ref-note">展示模版完整规则结构</span></div>
+                <div class="ref-row"><span class="ref-cmd">可用参数</span><span class="ref-note">列出所有条件参数和奖励目标</span></div>
+                <div class="ref-row"><span class="ref-cmd">开启/关闭 名</span><span class="ref-note">启用或暂停某个模版</span></div>
+                <div class="ref-row"><span class="ref-cmd">删除模版 名</span><span class="ref-note">彻底删除整个模版</span></div>
+            </div>
+            <div class="ref-card">
+                <h4>🏗️ 构建模版</h4>
+                <div class="ref-row"><span class="ref-cmd">新建 名</span><span class="ref-note">创建空模版</span></div>
+                <div class="ref-row"><span class="ref-cmd">新块 名 and/or</span><span class="ref-note">添加新规则块</span></div>
+                <div class="ref-row"><span class="ref-cmd">添加条件 名 参数 运算符 值</span><span class="ref-note">向最后一块追加条件</span></div>
+                <div class="ref-row"><span class="ref-cmd">添加奖励 名 目标 数量</span><span class="ref-note">向最后一块追加固定奖励</span></div>
+                <div class="ref-row"><span class="ref-cmd">删除块 名 编号</span><span class="ref-note">删除指定块（查看时可看编号）</span></div>
+            </div>
+            <div class="ref-card">
+                <h4>🎲 概率池</h4>
+                <div class="ref-row"><span class="ref-cmd">新建概率池 名</span><span class="ref-note">在最后一块创建概率池</span></div>
+                <div class="ref-row"><span class="ref-cmd">添加池奖励 名 目标 数量 权重</span><span class="ref-note">向池中添加候选奖励</span></div>
+                <div class="ref-row"><span class="ref-cmd">删除池奖励 名 编号</span><span class="ref-note">删除最后一块的池中某条</span></div>
+                <div class="ref-row" style="margin-top:10px; padding-top:10px; border-top:1px solid #f0f0f0;">
+                    <span class="ref-note" style="color:#888;">权重不需要加到100，如 60/30/10 和 6/3/1 效果相同</span>
+                </div>
+            </div>
+            <div class="ref-card">
+                <h4>⚠️ 注意事项</h4>
+                <div class="ref-row"><span class="ref-note">• 每次 <b>新块</b> 才开新块，<b>添加条件/奖励</b> 始终作用于最后一块</span></div>
+                <div class="ref-row"><span class="ref-note">• 同一块内多个条件全部满足才触发（AND 关系）</span></div>
+                <div class="ref-row"><span class="ref-note">• and 块之间互相独立，各自判断各自发</span></div>
+                <div class="ref-row"><span class="ref-note">• or 块只发第一个满足的，后面跳过</span></div>
+                <div class="ref-row"><span class="ref-note">• 每块最多一个概率池，与固定奖励同时执行</span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== 逻辑说明 ===== -->
+    <div class="panel" id="panel-flow">
+        <div class="card">
+            <div class="card-head" style="cursor:default;">
+                <div class="card-head-left">
+                    <div>
+                        <div class="card-title">📐 整体流程</div>
+                        <div class="card-desc">结戏时的执行顺序</div>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body open">
+                <div class="flow" style="margin-bottom:16px;">
+                    <div class="flow-step">结戏触发</div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-step">遍历每位玩家</div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-step">遍历所有启用模版</div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-step">按 group 顺序执行</div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-step">发放 + 个人群通知</div>
+                </div>
+                <p style="font-size:13px;color:#666;line-height:1.8;">每位玩家独立结算，互不影响。模版启用后对所有参与本场的玩家生效。</p>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-head" style="cursor:default;">
+                <div class="card-head-left">
+                    <div>
+                        <div class="card-title">🔗 and 与 or 的区别</div>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body open">
+                <table>
+                    <tr><th></th><th>and</th><th>or</th></tr>
+                    <tr><td><b>块之间关系</b></td><td>各自独立判断，互不影响</td><td>按顺序找第一个满足的</td></tr>
+                    <tr><td><b>触发数量</b></td><td>满足的块都会发奖励</td><td>最多只有一块发奖励</td></tr>
+                    <tr><td><b>适合场景</b></td><td>字数/段数/属性等并列维度</td><td>高中低档位的降级逻辑</td></tr>
+                    <tr><td><b>整组判定</b></td><td>任意一块触发 = 整组满足</td><td>全部不满足 = 整组不满足</td></tr>
+                </table>
+                <div class="logic-box" style="margin-top:16px;">
+                    <div class="lbl">混用时的优先级</div>
+                    <p style="font-size:13px;color:#555;line-height:1.8;">
+                        <b>and 优先级高于 or</b><br>
+                        写法 <code style="background:#f0f0f0;padding:2px 6px;border-radius:4px;">块A and 块B or 块C</code> 等价于 <code style="background:#f0f0f0;padding:2px 6px;border-radius:4px;">(块A and 块B) or 块C</code><br>
+                        即：A 和 B 先作为一组并行处理；若 A 或 B 有任意一个触发，则 C 不执行。
+                    </p>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-head" style="cursor:default;">
+                <div class="card-head-left">
+                    <div>
+                        <div class="card-title">🔔 个人群通知格式</div>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body open">
+                <div class="cmd-block" style="font-size:13px; line-height:1.8;">
+<span style="color:#89b4fa;">@玩家昵称</span>
+<span style="color:#a6e3a1;">🎁 结戏加成已发放：好感度+3、金币×15</span>
+<span style="color:#f9e2af;">🎲 概率奖励抽中：TJ00×1（30%）</span>
+<span style="color:#6c7086;">💡 可使用「背包」查看道具与货币，「角色卡」查看属性变更。</span>
+                </div>
+                <p style="margin-top:12px;font-size:13px;color:#666;line-height:1.7;">
+                    • 固定奖励和概率池奖励分行显示<br>
+                    • 概率池奖励会附带抽中的概率百分比<br>
+                    • 游戏群同时发送汇总播报<br>
+                    • 找不到个人群的角色静默跳过
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <footer>结戏加成模版系统 · 长日系统</footer>
+
+</div>
+
+<script>
+function showPanel(name) {
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('panel-' + name).classList.add('active');
+    event.target.classList.add('active');
+}
+
+function toggleCard(head) {
+    const body = head.nextElementSibling;
+    const arrow = head.querySelector('.card-arrow');
+    body.classList.toggle('open');
+    arrow.classList.toggle('open');
+}
+
+function copyCmd(id, btn) {
+    const el = document.getElementById(id);
+    // Extract plain text from the cmd-block
+    const lines = [];
+    el.childNodes.forEach(node => {
+        if (node.nodeType === 3) lines.push(node.textContent);
+        else if (node.tagName === 'SPAN') lines.push(node.textContent);
+        else if (node.tagName === 'BUTTON') return;
+    });
+    const text = lines.join('').split('\n')
+        .map(l => l.trim())
+        .filter(l => l && !l.startsWith('#'))
+        .join('\n');
+    navigator.clipboard.writeText(text).then(() => {
+        btn.textContent = '已复制 ✓';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = '复制'; btn.classList.remove('copied'); }, 2000);
+    });
+}
+</script>
+</body>
+</html>
