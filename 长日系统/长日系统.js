@@ -5895,7 +5895,16 @@ function initGroupTimer(platform, groupId, subtype, participants, initiator) {
     
     timers[groupId] = timerData;
     saveGroupTimers(timers);
-    
+
+    // 记录游戏真正开始时间，供结戏加成的"结戏最多耗费时间"使用
+    // （计时器在结戏前会被清理，所以需要提前写入 sessionStats）
+    const _initSS = getSessionStats();
+    if (!_initSS[groupId]) _initSS[groupId] = {};
+    if (!_initSS[groupId]._startTime) {
+        _initSS[groupId]._startTime = now;
+        saveSessionStats(_initSS);
+    }
+
     console.log(`[监听系统] 初始化群组 ${groupId} 的计时器，参与者：${activeParticipants.join(',')}，模式：${isTwoPerson ? '轮流模式' : '独立模式'}`);
 }
 
