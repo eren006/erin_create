@@ -1185,22 +1185,26 @@ cmd_disable_auto_day.solve = (ctx, msg) => {
 ext.cmdMap["关闭自动天数"] = cmd_disable_auto_day;
 
 // ========================
-// 结戏加成管理指令
+// 结戏加成管理指令（模版系统）
 // ========================
 
 let cmd_end_bonus = seal.ext.newCmdItemInfo();
 cmd_end_bonus.name = "结戏加成";
-cmd_end_bonus.help = `结戏加成 — 管理结戏自动发放奖励规则
+cmd_end_bonus.help = `结戏加成 — 管理结戏自动发放奖励规则（模版系统）
 
-指令：
-结戏加成              查看所有规则
-结戏加成 添加 目标 按次数 数量       每次有效回复发放数量
-结戏加成 添加 目标 按字数 数量 每N字  每N字发放数量（每N字省略默认100）
-结戏加成 移除 编号
-结戏加成 开启/关闭 编号
-结戏加成 上限 编号 数量    设置单场发放上限（0=不限）
-
-目标：货币名（如金币）、道具码（如TJ00）、属性名（如好感度）`;
+结戏加成 模版列表                         查看所有模版
+结戏加成 可用参数                         列出可用条件与奖励
+结戏加成 查看 模版名                      查看模版详情
+结戏加成 新建 模版名                      创建空模版
+结戏加成 新块 模版名 and/or               添加新规则块
+结戏加成 添加条件 模版名 参数 运算符 数值  向最后一块追加条件
+结戏加成 添加奖励 模版名 目标 数量        向最后一块追加固定奖励
+结戏加成 新建概率池 模版名                在最后一块创建概率池
+结戏加成 添加池奖励 模版名 目标 数量 权重 向概率池添加候选
+结戏加成 删除池奖励 模版名 编号           删除概率池候选
+结戏加成 删除块 模版名 块编号             删除指定块
+结戏加成 开启/关闭 模版名                启用或禁用模版
+结戏加成 删除模版 模版名                  删除整个模版`;
 
 cmd_end_bonus.solve = function(ctx, msg, argv) {
     if (!isUserAdmin(ctx, msg)) {
@@ -1211,110 +1215,334 @@ cmd_end_bonus.solve = function(ctx, msg, argv) {
     const main = getMainExt();
     if (!main) return seal.ext.newCmdExecuteResult(true);
 
-    const bonuses = JSON.parse(main.storageGet("end_game_bonuses") || "[]");
-    const save = () => main.storageSet("end_game_bonuses", JSON.stringify(bonuses));
+    const getTemplates = () => JSON.parse(main.storageGet("end_game_bonus_templates") || "[]");
+    const saveTemplates = (t) => main.storageSet("end_game_bonus_templates", JSON.stringify(t));
+    const findTemplate = (templates, name) => templates.find(t => t.name === name);
+
+    const getLastBlock = (tpl) => {
+        if (!tpl.groups.length) return null;
+        const lastGroup = tpl.groups[tpl.groups.length - 1];
+        if (!lastGroup.blocks.length) return null;
+        return lastGroup.blocks[lastGroup.blocks.length - 1];
+    };
+
+    const ensureLastBlock = (tpl) => {
+        if (!tpl.groups.length) tpl.groups.push({ op: "and", blocks: [] });
+        const lastGroup = tpl.groups[tpl.groups.length - 1];
+        if (!lastGroup.blocks.length) lastGroup.blocks.push({ conditions: [], rewards: [] });
+        return lastGroup.blocks[lastGroup.blocks.length - 1];
+    };
+
+    const detectTargetType = (target) => {
+        const reg = JSON.parse(main.storageGet("item_registry") || "{}");
+        const upperTarget = target.toUpperCase();
+        for (const r of Object.values(reg)) {
+            if (r.type === "currency" && r.name === target) return "currency";
+            if (r.type !== "currency" && (r.code === upperTarget || r.name === target)) return "item";
+        }
+        return "attr";
+    };
 
     const sub = argv.getArgN(1);
 
-    // 查看列表
-    if (!sub || sub === "列表") {
-        if (!bonuses.length) {
-            seal.replyToSender(ctx, msg, "📋 暂无结戏加成规则，使用「结戏加成 添加」新增。");
+    // 模版列表
+    if (!sub || sub === "模版列表") {
+        const templates = getTemplates();
+        if (!templates.length) {
+            seal.replyToSender(ctx, msg, "📋 暂无模版，使用「结戏加成 新建 模版名」创建。");
             return seal.ext.newCmdExecuteResult(true);
         }
-        const lines = bonuses.map((b, i) => {
-            const state = b.enabled ? "✅" : "⏸️";
-            const perStr = b.perN > 1 ? `每${b.perN}` : "每";
-            const cap = b.maxPerGame != null ? `（上限${b.maxPerGame}）` : "";
-            return `${state} [${i+1}] ${b.target} | ${perStr}${b.basis} +${b.rate}${cap}`;
+        const lines = templates.map((t, i) => `${t.enabled ? "✅" : "⏸️"} [${i+1}] ${t.name}`);
+        seal.replyToSender(ctx, msg, `📋 结戏加成模版列表：\n${lines.join("\n")}`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 可用参数
+    if (sub === "可用参数") {
+        seal.replyToSender(ctx, msg, `📌 可用条件参数：
+• 本场个人段数
+• 本场个人总字数
+• 本场个人平均每段字数
+• 结戏最多耗费时间（分钟，<= 判断）
+
+📌 可用运算符：>=  <=  =  !=  range（如 range 100 500）
+
+📌 可用奖励目标：
+• 已注册货币（货币名）
+• 已注册道具（道具码）
+• 已注册属性（属性名）`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 查看 模版名
+    if (sub === "查看") {
+        const name = argv.getArgN(2);
+        if (!name) { seal.replyToSender(ctx, msg, "❌ 请指定模版名"); return seal.ext.newCmdExecuteResult(true); }
+        const templates = getTemplates();
+        const tpl = findTemplate(templates, name);
+        if (!tpl) { seal.replyToSender(ctx, msg, `❌ 模版「${name}」不存在`); return seal.ext.newCmdExecuteResult(true); }
+
+        const lines = [`📋 模版：${tpl.name} ${tpl.enabled ? "✅" : "⏸️"}`];
+        let blockNum = 0;
+        tpl.groups.forEach((group, gi) => {
+            group.blocks.forEach((block, bi) => {
+                blockNum++;
+                if (blockNum > 1) {
+                    lines.push(bi === 0 ? group.op : "and");
+                }
+                block.conditions.forEach(c => {
+                    const valStr = c.op === "range" ? `${c.value[0]}-${c.value[1]}` : c.value;
+                    lines.push(`【条件】${c.param} ${c.op} ${valStr}`);
+                });
+                (block.rewards || []).forEach(r => {
+                    if (!r.type || r.type === "fixed") {
+                        lines.push(`【固定奖励】${r.target}×${r.amount}`);
+                    } else if (r.type === "pool") {
+                        const total = r.items.reduce((s, it) => s + it.weight, 0);
+                        const poolStr = r.items.map(it =>
+                            `${it.target}×${it.amount}(${total > 0 ? Math.round(it.weight / total * 100) : 0}%)`
+                        ).join(" / ");
+                        lines.push(`【概率池】${poolStr || "（空）"}`);
+                    }
+                });
+                lines.push(`  （块 #${blockNum}）`);
+            });
         });
-        seal.replyToSender(ctx, msg, `📋 结戏加成规则列表：\n${lines.join("\n")}`);
+        seal.replyToSender(ctx, msg, lines.join("\n"));
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    // 添加规则
-    if (sub === "添加") {
-        const target = argv.getArgN(2);
-        const basis = argv.getArgN(3);  // 按次数 / 按字数
-        const rateStr = argv.getArgN(4);
-        const perNStr = argv.getArgN(5);
-
-        if (!target || !basis || !rateStr) {
-            seal.replyToSender(ctx, msg, "❌ 格式：结戏加成 添加 目标 按次数/按字数 数量 [每N字]");
-            return seal.ext.newCmdExecuteResult(true);
-        }
-        if (basis !== "按次数" && basis !== "按字数") {
-            seal.replyToSender(ctx, msg, "❌ 计算基准只能是「按次数」或「按字数」");
-            return seal.ext.newCmdExecuteResult(true);
-        }
-
-        const rate = parseInt(rateStr);
-        if (isNaN(rate) || rate <= 0) {
-            seal.replyToSender(ctx, msg, "❌ 数量必须是正整数");
-            return seal.ext.newCmdExecuteResult(true);
-        }
-
-        const perN = (basis === "按字数" && perNStr) ? parseInt(perNStr) : 1;
-
-        // 自动检测目标类型
-        const reg = JSON.parse(main.storageGet("item_registry") || "{}");
-        let targetType = "attr";
-        const upperTarget = target.toUpperCase();
-        for (const r of Object.values(reg)) {
-            if (r.type === "currency" && r.name === target) { targetType = "currency"; break; }
-            if (r.type !== "currency" && (r.code === upperTarget || r.name === target)) { targetType = "item"; break; }
-        }
-
-        const basisLabel = basis === "按次数" ? "次数" : "字数";
-        bonuses.push({ id: Date.now(), target, targetType, basis: basisLabel, rate, perN, maxPerGame: null, enabled: true });
-        save();
-
-        const perStr = (basis === "按字数" && perN > 1) ? `每${perN}字` : `每${basisLabel}`;
-        seal.replyToSender(ctx, msg, `✅ 已添加规则：【${target}（${targetType}）】${perStr} +${rate}`);
+    // 新建 模版名
+    if (sub === "新建") {
+        const name = argv.getArgN(2);
+        if (!name) { seal.replyToSender(ctx, msg, "❌ 请指定模版名"); return seal.ext.newCmdExecuteResult(true); }
+        const templates = getTemplates();
+        if (findTemplate(templates, name)) { seal.replyToSender(ctx, msg, `❌ 模版「${name}」已存在`); return seal.ext.newCmdExecuteResult(true); }
+        templates.push({ id: Date.now(), name, enabled: true, groups: [] });
+        saveTemplates(templates);
+        seal.replyToSender(ctx, msg, `✅ 已创建模版「${name}」，使用「结戏加成 新块 ${name} and」添加规则块。`);
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    // 移除
-    if (sub === "移除") {
-        const idx = parseInt(argv.getArgN(2)) - 1;
-        if (isNaN(idx) || idx < 0 || idx >= bonuses.length) {
-            seal.replyToSender(ctx, msg, "❌ 编号不存在");
-            return seal.ext.newCmdExecuteResult(true);
+    // 新块 模版名 and/or
+    if (sub === "新块") {
+        const name = argv.getArgN(2);
+        const op = argv.getArgN(3);
+        if (!name || !op) { seal.replyToSender(ctx, msg, "❌ 格式：结戏加成 新块 模版名 and/or"); return seal.ext.newCmdExecuteResult(true); }
+        if (op !== "and" && op !== "or") { seal.replyToSender(ctx, msg, "❌ 连接方式只能是 and 或 or"); return seal.ext.newCmdExecuteResult(true); }
+        const templates = getTemplates();
+        const tpl = findTemplate(templates, name);
+        if (!tpl) { seal.replyToSender(ctx, msg, `❌ 模版「${name}」不存在`); return seal.ext.newCmdExecuteResult(true); }
+
+        const newBlock = { conditions: [], rewards: [] };
+        const lastGroup = tpl.groups.length ? tpl.groups[tpl.groups.length - 1] : null;
+        if (lastGroup && lastGroup.op === op) {
+            lastGroup.blocks.push(newBlock);
+        } else {
+            tpl.groups.push({ op, blocks: [newBlock] });
         }
-        const removed = bonuses.splice(idx, 1)[0];
-        save();
-        seal.replyToSender(ctx, msg, `🗑️ 已移除规则：${removed.target}`);
+        saveTemplates(templates);
+        seal.replyToSender(ctx, msg, `✅ 已在模版「${name}」添加新块（${op}）`);
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    // 开启 / 关闭
+    // 添加条件 模版名 参数 运算符 数值
+    if (sub === "添加条件") {
+        const name = argv.getArgN(2);
+        const param = argv.getArgN(3);
+        const op = argv.getArgN(4);
+        const valStr = argv.getArgN(5);
+        const validParams = ["本场个人段数", "本场个人总字数", "本场个人平均每段字数", "结戏最多耗费时间"];
+        const validOps = [">=", "<=", "=", "!=", "range"];
+
+        if (!name || !param || !op || !valStr) {
+            seal.replyToSender(ctx, msg, "❌ 格式：结戏加成 添加条件 模版名 参数 运算符 数值");
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        if (!validParams.includes(param)) {
+            seal.replyToSender(ctx, msg, "❌ 参数不合法，使用「结戏加成 可用参数」查看");
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        if (!validOps.includes(op)) {
+            seal.replyToSender(ctx, msg, "❌ 运算符不合法，支持：>= <= = != range");
+            return seal.ext.newCmdExecuteResult(true);
+        }
+
+        const templates = getTemplates();
+        const tpl = findTemplate(templates, name);
+        if (!tpl) { seal.replyToSender(ctx, msg, `❌ 模版「${name}」不存在`); return seal.ext.newCmdExecuteResult(true); }
+
+        const lastBlock = ensureLastBlock(tpl);
+        let value;
+        if (op === "range") {
+            const val2 = argv.getArgN(6);
+            if (!val2) { seal.replyToSender(ctx, msg, "❌ range 格式：range 最小值 最大值"); return seal.ext.newCmdExecuteResult(true); }
+            value = [parseFloat(valStr), parseFloat(val2)];
+        } else {
+            value = parseFloat(valStr);
+        }
+
+        lastBlock.conditions.push({ param, op, value });
+        saveTemplates(templates);
+        const valDisplay = op === "range" ? `${value[0]}-${value[1]}` : value;
+        seal.replyToSender(ctx, msg, `✅ 已添加条件：${param} ${op} ${valDisplay}`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 添加奖励 模版名 目标 数量
+    if (sub === "添加奖励") {
+        const name = argv.getArgN(2);
+        const target = argv.getArgN(3);
+        const amountStr = argv.getArgN(4);
+        if (!name || !target || !amountStr) {
+            seal.replyToSender(ctx, msg, "❌ 格式：结戏加成 添加奖励 模版名 目标 数量");
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        const amount = parseInt(amountStr);
+        if (isNaN(amount) || amount <= 0) { seal.replyToSender(ctx, msg, "❌ 数量必须是正整数"); return seal.ext.newCmdExecuteResult(true); }
+
+        const templates = getTemplates();
+        const tpl = findTemplate(templates, name);
+        if (!tpl) { seal.replyToSender(ctx, msg, `❌ 模版「${name}」不存在`); return seal.ext.newCmdExecuteResult(true); }
+
+        const lastBlock = ensureLastBlock(tpl);
+        const targetType = detectTargetType(target);
+        lastBlock.rewards.push({ type: "fixed", target, targetType, amount });
+        saveTemplates(templates);
+        seal.replyToSender(ctx, msg, `✅ 已添加固定奖励：${target}（${targetType}）×${amount}`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 新建概率池 模版名
+    if (sub === "新建概率池") {
+        const name = argv.getArgN(2);
+        if (!name) { seal.replyToSender(ctx, msg, "❌ 请指定模版名"); return seal.ext.newCmdExecuteResult(true); }
+        const templates = getTemplates();
+        const tpl = findTemplate(templates, name);
+        if (!tpl) { seal.replyToSender(ctx, msg, `❌ 模版「${name}」不存在`); return seal.ext.newCmdExecuteResult(true); }
+
+        const lastBlock = ensureLastBlock(tpl);
+        if (lastBlock.rewards.some(r => r.type === "pool")) {
+            seal.replyToSender(ctx, msg, "❌ 该块已有概率池，每块只能有一个");
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        lastBlock.rewards.push({ type: "pool", items: [] });
+        saveTemplates(templates);
+        seal.replyToSender(ctx, msg, `✅ 已在模版「${name}」最后一块创建概率池，使用「结戏加成 添加池奖励」添加候选。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 添加池奖励 模版名 目标 数量 权重
+    if (sub === "添加池奖励") {
+        const name = argv.getArgN(2);
+        const target = argv.getArgN(3);
+        const amountStr = argv.getArgN(4);
+        const weightStr = argv.getArgN(5);
+        if (!name || !target || !amountStr || !weightStr) {
+            seal.replyToSender(ctx, msg, "❌ 格式：结戏加成 添加池奖励 模版名 目标 数量 权重");
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        const amount = parseInt(amountStr);
+        const weight = parseFloat(weightStr);
+        if (isNaN(amount) || amount <= 0 || isNaN(weight) || weight <= 0) {
+            seal.replyToSender(ctx, msg, "❌ 数量和权重必须是正数");
+            return seal.ext.newCmdExecuteResult(true);
+        }
+
+        const templates = getTemplates();
+        const tpl = findTemplate(templates, name);
+        if (!tpl) { seal.replyToSender(ctx, msg, `❌ 模版「${name}」不存在`); return seal.ext.newCmdExecuteResult(true); }
+
+        const lastBlock = getLastBlock(tpl);
+        if (!lastBlock) { seal.replyToSender(ctx, msg, "❌ 模版无规则块，请先使用「结戏加成 新块」添加"); return seal.ext.newCmdExecuteResult(true); }
+        const pool = lastBlock.rewards.find(r => r.type === "pool");
+        if (!pool) { seal.replyToSender(ctx, msg, "❌ 最后一块无概率池，请先使用「结戏加成 新建概率池」创建"); return seal.ext.newCmdExecuteResult(true); }
+
+        const targetType = detectTargetType(target);
+        pool.items.push({ target, targetType, amount, weight });
+        saveTemplates(templates);
+        seal.replyToSender(ctx, msg, `✅ 已添加池候选：${target}×${amount}（权重${weight}）`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 删除池奖励 模版名 编号
+    if (sub === "删除池奖励") {
+        const name = argv.getArgN(2);
+        const idxStr = argv.getArgN(3);
+        if (!name || !idxStr) { seal.replyToSender(ctx, msg, "❌ 格式：结戏加成 删除池奖励 模版名 编号"); return seal.ext.newCmdExecuteResult(true); }
+        const idx = parseInt(idxStr) - 1;
+
+        const templates = getTemplates();
+        const tpl = findTemplate(templates, name);
+        if (!tpl) { seal.replyToSender(ctx, msg, `❌ 模版「${name}」不存在`); return seal.ext.newCmdExecuteResult(true); }
+
+        const lastBlock = getLastBlock(tpl);
+        if (!lastBlock) { seal.replyToSender(ctx, msg, "❌ 无规则块"); return seal.ext.newCmdExecuteResult(true); }
+        const pool = lastBlock.rewards.find(r => r.type === "pool");
+        if (!pool) { seal.replyToSender(ctx, msg, "❌ 最后一块无概率池"); return seal.ext.newCmdExecuteResult(true); }
+        if (idx < 0 || idx >= pool.items.length) { seal.replyToSender(ctx, msg, "❌ 编号不存在"); return seal.ext.newCmdExecuteResult(true); }
+
+        const removed = pool.items.splice(idx, 1)[0];
+        saveTemplates(templates);
+        seal.replyToSender(ctx, msg, `🗑️ 已删除池候选：${removed.target}×${removed.amount}`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 删除块 模版名 块编号
+    if (sub === "删除块") {
+        const name = argv.getArgN(2);
+        const blockNumStr = argv.getArgN(3);
+        if (!name || !blockNumStr) { seal.replyToSender(ctx, msg, "❌ 格式：结戏加成 删除块 模版名 块编号"); return seal.ext.newCmdExecuteResult(true); }
+        const blockNum = parseInt(blockNumStr) - 1;
+
+        const templates = getTemplates();
+        const tpl = findTemplate(templates, name);
+        if (!tpl) { seal.replyToSender(ctx, msg, `❌ 模版「${name}」不存在`); return seal.ext.newCmdExecuteResult(true); }
+
+        let count = 0;
+        let found = false;
+        for (const group of tpl.groups) {
+            for (let bi = 0; bi < group.blocks.length; bi++) {
+                if (count === blockNum) {
+                    group.blocks.splice(bi, 1);
+                    found = true;
+                    break;
+                }
+                count++;
+            }
+            if (found) break;
+        }
+        tpl.groups = tpl.groups.filter(g => g.blocks.length > 0);
+
+        if (!found) { seal.replyToSender(ctx, msg, "❌ 块编号不存在"); return seal.ext.newCmdExecuteResult(true); }
+        saveTemplates(templates);
+        seal.replyToSender(ctx, msg, `🗑️ 已删除块 #${blockNum + 1}`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 开启 / 关闭 模版名
     if (sub === "开启" || sub === "关闭") {
-        const idx = parseInt(argv.getArgN(2)) - 1;
-        if (isNaN(idx) || idx < 0 || idx >= bonuses.length) {
-            seal.replyToSender(ctx, msg, "❌ 编号不存在");
-            return seal.ext.newCmdExecuteResult(true);
-        }
-        bonuses[idx].enabled = (sub === "开启");
-        save();
-        seal.replyToSender(ctx, msg, `${sub === "开启" ? "✅" : "⏸️"} 规则 [${idx+1}] 已${sub}`);
+        const name = argv.getArgN(2);
+        if (!name) { seal.replyToSender(ctx, msg, "❌ 请指定模版名"); return seal.ext.newCmdExecuteResult(true); }
+        const templates = getTemplates();
+        const tpl = findTemplate(templates, name);
+        if (!tpl) { seal.replyToSender(ctx, msg, `❌ 模版「${name}」不存在`); return seal.ext.newCmdExecuteResult(true); }
+        tpl.enabled = (sub === "开启");
+        saveTemplates(templates);
+        seal.replyToSender(ctx, msg, `${sub === "开启" ? "✅" : "⏸️"} 模版「${name}」已${sub}`);
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    // 上限
-    if (sub === "上限") {
-        const idx = parseInt(argv.getArgN(2)) - 1;
-        const capVal = parseInt(argv.getArgN(3));
-        if (isNaN(idx) || idx < 0 || idx >= bonuses.length) {
-            seal.replyToSender(ctx, msg, "❌ 编号不存在");
-            return seal.ext.newCmdExecuteResult(true);
-        }
-        if (isNaN(capVal) || capVal < 0) {
-            seal.replyToSender(ctx, msg, "❌ 上限必须是 0（不限）或正整数");
-            return seal.ext.newCmdExecuteResult(true);
-        }
-        bonuses[idx].maxPerGame = capVal === 0 ? null : capVal;
-        save();
-        seal.replyToSender(ctx, msg, `✅ 规则 [${idx+1}] 单场上限已设为：${capVal === 0 ? "不限" : capVal}`);
+    // 删除模版 模版名
+    if (sub === "删除模版") {
+        const name = argv.getArgN(2);
+        if (!name) { seal.replyToSender(ctx, msg, "❌ 请指定模版名"); return seal.ext.newCmdExecuteResult(true); }
+        const templates = getTemplates();
+        const idx = templates.findIndex(t => t.name === name);
+        if (idx === -1) { seal.replyToSender(ctx, msg, `❌ 模版「${name}」不存在`); return seal.ext.newCmdExecuteResult(true); }
+        templates.splice(idx, 1);
+        saveTemplates(templates);
+        seal.replyToSender(ctx, msg, `🗑️ 已删除模版「${name}」`);
         return seal.ext.newCmdExecuteResult(true);
     }
 

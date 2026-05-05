@@ -5530,20 +5530,19 @@ function saveSessionStats(s) {
 }
 
 /**
- * 结戏时发放加成奖励
+ * 结戏时发放加成奖励（模版系统）
  */
 function applyEndGameBonuses(ctx, msg, gid, platform) {
-    const bonuses = JSON.parse(ext.storageGet("end_game_bonuses") || "[]");
-    const enabled = bonuses.filter(b => b.enabled);
-    if (!enabled.length) {
-        // 即使没有加成奖励，也要检查并发放抽取机会
-        applyEndGameDraws(ctx, msg, gid, platform);
-        return;
-    }
+    const templates = JSON.parse(ext.storageGet("end_game_bonus_templates") || "[]");
+    const enabled = templates.filter(t => t.enabled);
 
     const sessionStats = getSessionStats();
     const groupStat = sessionStats[gid];
-    if (!groupStat || !Object.keys(groupStat).length) {
+    const playerKeys = groupStat ? Object.keys(groupStat).filter(k => k !== "_startTime") : [];
+
+    if (!enabled.length || !groupStat || !playerKeys.length) {
+        delete sessionStats[gid];
+        saveSessionStats(sessionStats);
         applyEndGameDraws(ctx, msg, gid, platform);
         return;
     }
@@ -5552,43 +5551,156 @@ function applyEndGameBonuses(ctx, msg, gid, platform) {
     const currencyByName = {};
     Object.values(reg).forEach(r => { if (r.type === "currency") currencyByName[r.name] = r.code; });
 
+    const apg = JSON.parse(ext.storageGet("a_private_group") || "{}");
+
+    // 计算游戏耗时（分钟）
+    const elapsedMinutes = groupStat._startTime
+        ? Math.floor((Date.now() - groupStat._startTime) / 60000)
+        : 0;
+
+    // 条件评估
+    function evaluateCondition(op, statVal, value) {
+        switch (op) {
+            case "=":     return statVal === value;
+            case "!=":    return statVal !== value;
+            case ">=":    return statVal >= value;
+            case "<=":    return statVal <= value;
+            case "range": return statVal >= value[0] && statVal <= value[1];
+        }
+        return false;
+    }
+
+    // 概率池抽取
+    function drawFromPool(pool) {
+        const totalWeight = pool.items.reduce((s, it) => s + it.weight, 0);
+        if (totalWeight <= 0) return null;
+        let rand = Math.random() * totalWeight;
+        for (const item of pool.items) {
+            rand -= item.weight;
+            if (rand <= 0) return item;
+        }
+        return pool.items[pool.items.length - 1];
+    }
+
+    // 发放单条奖励，返回显示文字
+    function applyRewardItem(roleName, rewardItem) {
+        const { target, targetType, amount } = rewardItem;
+        if (targetType === "currency" || targetType === "item") {
+            const code = targetType === "currency"
+                ? (currencyByName[target] || target.toUpperCase())
+                : target.toUpperCase();
+            addToInv_system(`${platform}:${roleName}`, code, amount);
+            return `${target}×${amount}`;
+        } else {
+            // attr
+            let profileKey = null;
+            for (const [plat, roles] of Object.entries(apg)) {
+                if (roles[roleName]) { profileKey = `${plat}:${roleName}`; break; }
+            }
+            if (profileKey) {
+                const profiles = JSON.parse(ext.storageGet("sys_char_profiles") || "{}");
+                if (!profiles[profileKey]) profiles[profileKey] = {};
+                const cur = parseInt(profiles[profileKey][target] || "0");
+                profiles[profileKey][target] = String(cur + amount);
+                ext.storageSet("sys_char_profiles", JSON.stringify(profiles));
+                return `${target}+${amount}`;
+            }
+        }
+        return null;
+    }
+
     const report = [];
 
-    for (const [roleName, stat] of Object.entries(groupStat)) {
-        const roleLines = [];
-        for (const bonus of enabled) {
-            const basisVal = bonus.basis === "次数" ? stat.replies : stat.words;
-            const perN = bonus.perN || 1;
-            let amount = Math.floor(basisVal / perN) * bonus.rate;
-            if (bonus.maxPerGame != null) amount = Math.min(amount, bonus.maxPerGame);
-            if (amount <= 0) continue;
+    for (const roleName of playerKeys) {
+        const stat = groupStat[roleName];
+        const avgWords = stat.replies > 0 ? Math.floor(stat.words / stat.replies) : 0;
 
-            const target = bonus.target;
-            if (bonus.targetType === "currency" || bonus.targetType === "item") {
-                const code = bonus.targetType === "currency"
-                    ? (currencyByName[target] || target.toUpperCase())
-                    : target.toUpperCase();
-                const roleKey = `${platform}:${roleName}`;
-                addToInv_system(roleKey, code, amount);
-                roleLines.push(`${target}×${amount}`);
-            } else {
-                // attr
-                const apg = JSON.parse(ext.storageGet("a_private_group") || "{}");
-                let profileKey = null;
-                for (const [plat, roles] of Object.entries(apg)) {
-                    if (roles[roleName]) { profileKey = `${plat}:${roleName}`; break; }
-                }
-                if (profileKey) {
-                    const profiles = JSON.parse(ext.storageGet("sys_char_profiles") || "{}");
-                    if (!profiles[profileKey]) profiles[profileKey] = {};
-                    const cur = parseInt(profiles[profileKey][target] || "0");
-                    profiles[profileKey][target] = String(cur + amount);
-                    ext.storageSet("sys_char_profiles", JSON.stringify(profiles));
-                    roleLines.push(`${target}+${amount}`);
+        const getStatVal = (param) => {
+            switch (param) {
+                case "本场个人段数":       return stat.replies;
+                case "本场个人总字数":     return stat.words;
+                case "本场个人平均每段字数": return avgWords;
+                case "结戏最多耗费时间":   return elapsedMinutes;
+            }
+            return 0;
+        };
+
+        const fixedLines = [];
+        const poolLines = [];
+
+        for (const tpl of enabled) {
+            for (const group of tpl.groups) {
+                if (group.op === "and") {
+                    // 每块独立判断，任意触发即整组满足
+                    for (const block of group.blocks) {
+                        const allMet = (block.conditions || []).every(c =>
+                            evaluateCondition(c.op, getStatVal(c.param), c.value)
+                        );
+                        if (!allMet) continue;
+                        for (const r of (block.rewards || [])) {
+                            if (!r.type || r.type === "fixed") {
+                                const result = applyRewardItem(roleName, r);
+                                if (result) fixedLines.push(result);
+                            } else if (r.type === "pool" && r.items.length) {
+                                const drawn = drawFromPool(r);
+                                if (drawn) {
+                                    const result = applyRewardItem(roleName, drawn);
+                                    if (result) {
+                                        const total = r.items.reduce((s, it) => s + it.weight, 0);
+                                        const pct = total > 0 ? Math.round(drawn.weight / total * 100) : 0;
+                                        poolLines.push(`${result}（${pct}%）`);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else if (group.op === "or") {
+                    // 按顺序找第一个满足的块
+                    for (const block of group.blocks) {
+                        const allMet = (block.conditions || []).every(c =>
+                            evaluateCondition(c.op, getStatVal(c.param), c.value)
+                        );
+                        if (!allMet) continue;
+                        for (const r of (block.rewards || [])) {
+                            if (!r.type || r.type === "fixed") {
+                                const result = applyRewardItem(roleName, r);
+                                if (result) fixedLines.push(result);
+                            } else if (r.type === "pool" && r.items.length) {
+                                const drawn = drawFromPool(r);
+                                if (drawn) {
+                                    const result = applyRewardItem(roleName, drawn);
+                                    if (result) {
+                                        const total = r.items.reduce((s, it) => s + it.weight, 0);
+                                        const pct = total > 0 ? Math.round(drawn.weight / total * 100) : 0;
+                                        poolLines.push(`${result}（${pct}%）`);
+                                    }
+                                }
+                            }
+                        }
+                        break; // or 只取第一个满足的块
+                    }
                 }
             }
         }
-        if (roleLines.length) report.push(`【${roleName}】${roleLines.join("、")}`);
+
+        const allLines = [...fixedLines, ...poolLines];
+        if (!allLines.length) continue;
+
+        report.push(`【${roleName}】${allLines.join("、")}`);
+
+        // 个人群艾特通知
+        const roleEntry = apg[platform]?.[roleName];
+        if (roleEntry) {
+            const [uid, personalGroupId] = roleEntry;
+            const notifyMsg = seal.newMessage();
+            notifyMsg.messageType = "group";
+            notifyMsg.groupId = `${platform}-Group:${personalGroupId}`;
+            const notifyCtx = seal.createTempCtx(ctx.endPoint, notifyMsg);
+            const fixedText = fixedLines.join("、");
+            const poolText = poolLines.length ? `\n🎲 概率奖励抽中：${poolLines.join("、")}` : "";
+            const notice = `[CQ:at,qq=${uid}]\n🎁 结戏加成已发放：${fixedText}${poolText}\n💡 可使用「背包」查看道具与货币，「角色卡」查看属性变更。`;
+            seal.replyToSender(notifyCtx, notifyMsg, notice);
+        }
     }
 
     // 清除本群本场记录
@@ -5850,6 +5962,7 @@ function handleReply(platform, groupId, roleName, message) {
     // 6. 更新本场会话统计（同时写入独立 sessionStats 和计时器自身）
     const _ss = getSessionStats();
     if (!_ss[groupId]) _ss[groupId] = {};
+    if (!_ss[groupId]._startTime) _ss[groupId]._startTime = Date.now();
     if (!_ss[groupId][roleName]) _ss[groupId][roleName] = { replies: 0, words: 0 };
     _ss[groupId][roleName].replies += 1;
     _ss[groupId][roleName].words += wordCount;
@@ -8558,15 +8671,19 @@ cmd_admin_guide.solve = (ctx, msg) => {
             "  例：。注册合成 VIP*礼包*普通:10*currency:金币:1000",
         ]),
         section("🎁 结戏加成", [
-            "结戏加成              查看所有规则",
-            "结戏加成 添加 目标 按次数 数量",
-            "结戏加成 添加 目标 按字数 数量 [每N字]",
-            "  例：结戏加成 添加 金币 按次数 5",
-            "  例：结戏加成 添加 好感度 按字数 1 100",
-            "  目标：货币名 / 道具码 / 属性名（自动识别类型）",
-            "结戏加成 移除 编号",
-            "结戏加成 开启/关闭 编号",
-            "结戏加成 上限 编号 数量   （0 = 不限）",
+            "结戏加成 模版列表                    查看所有模版",
+            "结戏加成 可用参数                    列出可用条件与奖励",
+            "结戏加成 查看 模版名                 查看模版详情",
+            "结戏加成 新建 模版名                 创建空模版",
+            "结戏加成 新块 模版名 and/or          添加新规则块",
+            "结戏加成 添加条件 模版名 参数 运算符 数值",
+            "结戏加成 添加奖励 模版名 目标 数量",
+            "结戏加成 新建概率池 模版名",
+            "结戏加成 添加池奖励 模版名 目标 数量 权重",
+            "结戏加成 删除池奖励 模版名 编号",
+            "结戏加成 删除块 模版名 块编号",
+            "结戏加成 开启/关闭 模版名",
+            "结戏加成 删除模版 模版名",
         ]),
         section("🛒 礼品店管理", [
             "【商城设置（.设置 商城）】",
