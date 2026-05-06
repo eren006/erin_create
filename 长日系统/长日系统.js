@@ -4128,7 +4128,7 @@ ext.cmdMap["查看锁定"] = cmd_view_locks;
 
 let cmd_block_user_feature = seal.ext.newCmdItemInfo();
 cmd_block_user_feature.name = "功能权限";
-cmd_block_user_feature.help = "。功能权限 角色名 功能 开启/关闭\n功能：礼物/发起邀约/寄信/心愿/心动信/论坛/商城购买/抽取/全部";
+cmd_block_user_feature.help = "。功能权限 角色名 功能 开启/关闭\n功能：礼物/发起邀约/寄信/心愿/心动信/论坛/抽取/全部";
 
 cmd_block_user_feature.solve = (ctx, msg, cmdArgs) => {
   const roleName = cmdArgs.getArgN(1);
@@ -4148,7 +4148,6 @@ cmd_block_user_feature.solve = (ctx, msg, cmdArgs) => {
     "心愿": "enable_wish_system",
     "心动信": "enable_lovemail",
     "论坛": "enable_forum",
-    "商城购买": "enable_shop_purchase",
     "抽取": "enable_item_draw"
   };
 
@@ -4171,7 +4170,7 @@ cmd_block_user_feature.solve = (ctx, msg, cmdArgs) => {
 
   const key = featureMap[featureName];
   if (!key) {
-    seal.replyToSender(ctx, msg, `⚠️ 功能名可选：礼物 / 发起邀约 / 寄信 / 心愿 / 心动信 / 论坛 / 商城购买 / 抽取 / 全部`);
+    seal.replyToSender(ctx, msg, `⚠️ 功能名可选：礼物 / 发起邀约 / 寄信 / 心愿 / 心动信 / 论坛 / 抽取 / 全部`);
     return seal.ext.newCmdExecuteResult(true);
   }
 
@@ -4204,7 +4203,6 @@ cmd_view_user_feature.solve = (ctx, msg, cmdArgs) => {
     enable_wish_system: "心愿",
     enable_lovemail: "心动信",
     enable_forum: "论坛",
-    enable_shop_purchase: "商城购买",
     enable_item_draw: "抽取"
   };
 
@@ -8369,9 +8367,6 @@ cmd_guide.solve = (ctx, msg, cmdArgs) => {
                     "商城",
                     "  查看当前在售物品及价格",
                     "",
-                    "购买 物品码 [数量]",
-                    "  例：购买 AA00 / 购买 AA00 3",
-                    "",
                     "售卖 物品码 价格 货币名 [数量]",
                     "  将背包物品挂上二手市场",
                     "  例：售卖 AA00 8 金币 2",
@@ -8552,7 +8547,7 @@ cmd_admin_guide.solve = (ctx, msg) => {
         section("🚫 功能权限管理", [
             "。功能权限 角色名 功能 开启/关闭",
             "  功能可选：礼物 / 发起邀约 / 寄信 / 心愿 / 心动信",
-            "            论坛 / 商城购买 / 抽取 / 全部",
+            "            论坛 / 抽取 / 全部",
             "  例：。功能权限 张三 论坛 关闭",
             "  例：。功能权限 张三 全部 关闭  （一键阻断）",
             "",
@@ -8846,19 +8841,6 @@ cmd_view_preset_gifts.solve = (ctx, msg) => {
 ext.cmdMap["礼品店"] = cmd_view_preset_gifts;
 
 // ========================
-// 🛍️ 购买
-// ========================
-
-let cmd_purchase = seal.ext.newCmdItemInfo();
-cmd_purchase.name = "购买";
-cmd_purchase.help = "购买 商品名 — 在礼品店购买指定商品";
-
-cmd_purchase.solve = (ctx, msg, cmdArgs) => {
-    seal.replyToSender(ctx, msg, "🎰 礼品店为抽卡模式，发送「礼品店」查看今日礼物。");
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["购买"] = cmd_purchase;
-
 // ========================
 // 📚 我的图鉴
 // ========================
