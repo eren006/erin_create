@@ -292,7 +292,7 @@ cmd_give.solve = (ctx, msg, cmdArgs) => {
     if (!isAdmin(ctx, msg)) { seal.replyToSender(ctx, msg, "❌ 仅骰主可用。"); return seal.ext.newCmdExecuteResult(true); }
     const platform = msg.platform;
 
-    const raw = msg.message.trim();
+    const raw = msg.message.trim().replace(/^\S+\s*/, "");
     const players = getPlayers();
     const pmap = players[platform] || {};
     const parsed = parseGiveArgs(raw, pmap);
@@ -328,7 +328,7 @@ cmd_deduct.solve = (ctx, msg, cmdArgs) => {
     if (!isAdmin(ctx, msg)) { seal.replyToSender(ctx, msg, "❌ 仅骰主可用。"); return seal.ext.newCmdExecuteResult(true); }
     const platform = msg.platform;
 
-    const raw = msg.message.trim();
+    const raw = msg.message.trim().replace(/^\S+\s*/, "");
     const players = getPlayers();
     const pmap = players[platform] || {};
     const parsedD = parseGiveArgs(raw, pmap);
@@ -363,7 +363,7 @@ cmd_reset_quota.solve = (ctx, msg, cmdArgs) => {
     if (!isAdmin(ctx, msg)) { seal.replyToSender(ctx, msg, "❌ 仅骰主可用。"); return seal.ext.newCmdExecuteResult(true); }
     const platform = msg.platform;
 
-    const raw = msg.message.trim();
+    const raw = msg.message.trim().replace(/^\S+\s*/, "");
     const players = getPlayers();
     const pmap = players[platform] || {};
 
@@ -528,7 +528,7 @@ cmd_view_inbox.help = ".查看纸条收件 [玩法类型] [dx] 玩家名\n示例
 cmd_view_inbox.solve = (ctx, msg, cmdArgs) => {
     if (!isAdmin(ctx, msg)) { seal.replyToSender(ctx, msg, "❌ 仅骰主可用。"); return seal.ext.newCmdExecuteResult(true); }
     const platform = msg.platform;
-    const raw = msg.message.trim();
+    const raw = msg.message.trim().replace(/^\S+\s*/, "");
     const { roleName, noteType, day } = parseViewArgs(raw, platform);
 
     if (!roleName) { seal.replyToSender(ctx, msg, "❌ 未识别到玩家名，请确认该玩家已绑定。"); return seal.ext.newCmdExecuteResult(true); }
@@ -555,7 +555,7 @@ cmd_view_outbox.help = ".查看纸条寄出 [玩法类型] [dx] 玩家名\n示�
 cmd_view_outbox.solve = (ctx, msg, cmdArgs) => {
     if (!isAdmin(ctx, msg)) { seal.replyToSender(ctx, msg, "❌ 仅骰主可用。"); return seal.ext.newCmdExecuteResult(true); }
     const platform = msg.platform;
-    const raw = msg.message.trim();
+    const raw = msg.message.trim().replace(/^\S+\s*/, "");
     const { roleName, noteType, day } = parseViewArgs(raw, platform);
 
     if (!roleName) { seal.replyToSender(ctx, msg, "❌ 未识别到玩家名，请确认该玩家已绑定。"); return seal.ext.newCmdExecuteResult(true); }
@@ -582,7 +582,7 @@ cmd_set_check.help = ".设置检定 [玩法类型] 0-100 玩家名…\n示例：
 cmd_set_check.solve = (ctx, msg, cmdArgs) => {
     if (!isAdmin(ctx, msg)) { seal.replyToSender(ctx, msg, "❌ 仅骰主可用。"); return seal.ext.newCmdExecuteResult(true); }
     const platform = msg.platform;
-    const raw = msg.message.trim();
+    const raw = msg.message.trim().replace(/^\S+\s*/, "");
 
     // 格式：[类型] 数字 玩家名…
     // 找第一个纯数字 token
@@ -632,7 +632,7 @@ cmd_set_announce.help = ".设置公示文案 [玩法类型] 文案内容\n示例
 cmd_set_announce.solve = (ctx, msg, cmdArgs) => {
     if (!isAdmin(ctx, msg)) { seal.replyToSender(ctx, msg, "❌ 仅骰主可用。"); return seal.ext.newCmdExecuteResult(true); }
 
-    const raw = msg.message.trim();
+    const raw = msg.message.trim().replace(/^\S+\s*/, "");
     const players = getPlayers();
     const platform = msg.platform;
     const pmap = players[platform] || {};
@@ -664,7 +664,7 @@ cmd_hide_check.help = ".设置隐藏检定 [玩法类型] 是/否\n示例：.设
 cmd_hide_check.solve = (ctx, msg, cmdArgs) => {
     if (!isAdmin(ctx, msg)) { seal.replyToSender(ctx, msg, "❌ 仅骰主可用。"); return seal.ext.newCmdExecuteResult(true); }
 
-    const raw = msg.message.trim();
+    const raw = msg.message.trim().replace(/^\S+\s*/, "");
     const tokens = raw.split(/\s+/);
     const last = tokens[tokens.length - 1];
     const hide = last === "是" || last === "yes" || last === "true";
@@ -735,7 +735,7 @@ cmd_ban.help = ".禁用纸条 [玩法类型] 玩家名\n示例：.禁用纸条 �
 cmd_ban.solve = (ctx, msg, cmdArgs) => {
     if (!isAdmin(ctx, msg)) { seal.replyToSender(ctx, msg, "❌ 仅骰主可用。"); return seal.ext.newCmdExecuteResult(true); }
     const platform = msg.platform;
-    const raw = msg.message.trim();
+    const raw = msg.message.trim().replace(/^\S+\s*/, "");
     const players = getPlayers();
     const pmap = players[platform] || {};
 
@@ -768,7 +768,7 @@ cmd_unban.help = ".解禁纸条 [玩法类型] 玩家名\n示例：.解禁纸条
 cmd_unban.solve = (ctx, msg, cmdArgs) => {
     if (!isAdmin(ctx, msg)) { seal.replyToSender(ctx, msg, "❌ 仅骰主可用。"); return seal.ext.newCmdExecuteResult(true); }
     const platform = msg.platform;
-    const raw = msg.message.trim();
+    const raw = msg.message.trim().replace(/^\S+\s*/, "");
     const players = getPlayers();
     const pmap = players[platform] || {};
 
@@ -868,7 +868,7 @@ cmd_send.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    const rawAll = msg.message.trim();
+    const rawAll = msg.message.trim().replace(/^\S+\s*/, "");
     const parsed = parseToCmd(rawAll);
 
     if (!parsed) {
@@ -968,7 +968,7 @@ cmd_my_inbox.solve = (ctx, msg, cmdArgs) => {
 
     if (!roleName) { seal.replyToSender(ctx, msg, "❌ 请先绑定角色。"); return seal.ext.newCmdExecuteResult(true); }
 
-    const raw = msg.message.trim();
+    const raw = msg.message.trim().replace(/^\S+\s*/, "");
     const tokens = raw.split(/\s+/).filter(Boolean);
     let noteType = null, day = null;
 
@@ -1010,7 +1010,7 @@ cmd_my_outbox.solve = (ctx, msg, cmdArgs) => {
 
     if (!roleName) { seal.replyToSender(ctx, msg, "❌ 请先绑定角色。"); return seal.ext.newCmdExecuteResult(true); }
 
-    const raw = msg.message.trim();
+    const raw = msg.message.trim().replace(/^\S+\s*/, "");
     const tokens = raw.split(/\s+/).filter(Boolean);
     let noteType = null, day = null;
 
