@@ -964,7 +964,7 @@ cmd_shop_add.solve = (ctx, msg, cmdArgs) => {
 
     // 检查特殊道具限制（SPEC_003望远镜、SPEC_004羽毛笔）
     if ((item.code === "SPEC_003" || item.code === "SPEC_004")) {
-        const letterExt = seal.ext.find("我的长日");
+        const letterExt = seal.ext.find("changri");
         if (letterExt) {
             const config = JSON.parse(letterExt.storageGet("global_feature_toggle") || "{}");
             if (!config.enable_letter_system) {
@@ -1068,7 +1068,7 @@ cmd_pool_add.solve = (ctx, msg, cmdArgs) => {
 
         // 检查特殊道具限制（SPEC_003望远镜、SPEC_004羽毛笔）
         if ((item.code === "SPEC_003" || item.code === "SPEC_004")) {
-            const letterExt = seal.ext.find("我的长日");
+            const letterExt = seal.ext.find("changri");
             if (letterExt) {
                 const config = JSON.parse(letterExt.storageGet("global_feature_toggle") || "{}");
                 if (!config.enable_letter_system) {
