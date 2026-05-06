@@ -1635,7 +1635,8 @@ async function directCreateAndFinalizeAppointment({
         names.forEach(n => groupData.targetList[n] = "accepted");
         
         const participants = [sendname, ...names];
-        await finalizeGroupCreation(platform, ctx, msg, groupData, participants);
+        const ok = await finalizeGroupCreation(platform, ctx, msg, groupData, participants);
+        if (ok === false) return { success: false };
     } else {
         const toname = names[0];
         const toid = a_private_group[platform][toname][0];
@@ -1648,16 +1649,17 @@ async function directCreateAndFinalizeAppointment({
             toname,
             toid,
             gid: a_private_group[platform][sendname][1],
-            day, 
-            time, 
+            day,
+            time,
             place,
             ...(title ? { title } : {})
         };
-        
+
         const participants = [sendname, toname];
-        await finalizeGroupCreation(platform, ctx, msg, item, participants);
+        const ok = await finalizeGroupCreation(platform, ctx, msg, item, participants);
+        if (ok === false) return { success: false };
     }
-    
+
     return { success: true, isMulti, names };
 }
 
@@ -1672,7 +1674,7 @@ function isLetterSystemEnabled() {
     const letterExt = seal.ext.find("我的长日");
     if (!letterExt) return false;
     const config = JSON.parse(letterExt.storageGet("global_feature_toggle") || "{}");
-    return config.enable_letter_system === true;
+    return config.enable_direct_letter === true;
 }
 
 /**
@@ -1754,16 +1756,18 @@ cmd_phone.solve = async (ctx, msg, cmdArgs) => {
     const { platform, uid, sendname, day, time, names, isMulti, a_private_group, title } = pre.data;
 
     // 替换为直接确认函数
-    await directCreateAndFinalizeAppointment({
+    const result = await directCreateAndFinalizeAppointment({
         ctx, msg, platform, sendname, sendid: uid,
         subtype: "电话", day, time, place: "电话",
         names, isMulti, title
     });
 
-    const successMsg = isMulti
-        ? `✅ 你已成功向 ${names.join("、")} 发起多人电话，通讯频段已自动建立！`
-        : `✅ 你已成功与 ${names[0]} 连线，通讯频段已自动建立！`;
-    seal.replyToSender(ctx, msg, successMsg);
+    if (result.success) {
+        const successMsg = isMulti
+            ? `✅ 你已成功向 ${names.join("、")} 发起多人电话，通讯频段已自动建立！`
+            : `✅ 你已成功与 ${names[0]} 连线，通讯频段已自动建立！`;
+        seal.replyToSender(ctx, msg, successMsg);
+    }
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["电话"] = cmd_phone;
@@ -1822,16 +1826,18 @@ cmd_appointment_private.solve = async (ctx, msg, cmdArgs) => {
     const { platform, uid, sendname, day, time, names, isMulti, place, a_private_group } = pre.data;
 
     // 替换为直接确认函数
-    await directCreateAndFinalizeAppointment({
+    const result = await directCreateAndFinalizeAppointment({
         ctx, msg, platform, sendname, sendid: uid,
         subtype: "私密", day, time, place,
         names, isMulti
     });
 
-    const successMsg = isMulti
-        ? `✅ 你已成功与 ${names.join("、")} 开启多方私约，私人空间已自动建立！`
-        : `✅ 你已成功与 ${names[0]} 开启私约，私人空间已自动建立！`;
-    seal.replyToSender(ctx, msg, successMsg);
+    if (result.success) {
+        const successMsg = isMulti
+            ? `✅ 你已成功与 ${names.join("、")} 开启多方私约，私人空间已自动建立！`
+            : `✅ 你已成功与 ${names[0]} 开启私约，私人空间已自动建立！`;
+        seal.replyToSender(ctx, msg, successMsg);
+    }
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["私约"] = cmd_appointment_private;
@@ -3308,7 +3314,10 @@ const getRoleDetails = (platform, name) => {
 async function finalizeGroupCreation(platform, ctx, msg, groupData, participants) {
     // 1. 获取可用群号
     const gid = await allocateGroup(platform, ctx, msg);
-    if (!gid) return seal.replyToSender(ctx, msg, "❌ 暂无可调用的群号，请联系管理员扩容群池。");
+    if (!gid) {
+        seal.replyToSender(ctx, msg, "❌ 暂无可调用的群号，请联系管理员扩容群池。");
+        return false;
+    }
 
     const expireHours = parseInt(ext.storageGet("group_expire_hours") || "48");
     const expireTime = Date.now() + expireHours * 3600000;
