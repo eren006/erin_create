@@ -668,6 +668,299 @@
     </div>
 </div>
 
+<!-- Case 9 -->
+<div class="card">
+    <div class="card-head" onclick="toggleCard(this)">
+        <div class="card-head-left">
+            <span class="card-badge">案例 9</span>
+            <div>
+                <div class="card-title">📏 精品区间（range 运算符）</div>
+                <div class="card-desc">平均字数落在某个区间内才给奖励，不奖励极端情况</div>
+            </div>
+        </div>
+        <span class="card-arrow">▾</span>
+    </div>
+    <div class="card-body">
+        <div class="scenario-meta">
+            <span class="tag tag-and">and 块</span>
+            <span class="tag tag-fixed">固定奖励</span>
+        </div>
+        <div class="logic-box">
+            <div class="lbl">逻辑结构</div>
+            <div class="block-item">
+                <div class="block-cond">条件：本场个人平均每段字数 <span>range 100-300</span></div>
+                <div class="block-reward">→ 好感度 +5</div>
+            </div>
+            <div style="margin:4px 8px;"><span class="conn-and">and（独立判断）</span></div>
+            <div class="block-item">
+                <div class="block-cond">条件：本场个人平均每段字数 <span>&gt;= 300</span></div>
+                <div class="block-reward">→ 好感度 +10 + 金币 ×20</div>
+            </div>
+        </div>
+        <div class="cmd-section">
+            <div class="cmd-section-title">批量指令</div>
+            <div class="batch-block" id="cl9">
+                <div class="batch-code"><span class="hl-cmd">结戏加成 批量 精品区间</span>
+<span class="hl-and">and</span>
+<span class="hl-cond">平均字数 range 100 300</span>
+<span class="hl-rew">奖励 好感度 5</span>
+<span class="hl-and">and</span>
+<span class="hl-cond">平均字数 >= 300</span>
+<span class="hl-rew">奖励 好感度 10</span>
+<span class="hl-rew">奖励 金币 20</span></div>
+                <div class="copy-all-row"><button class="copy-all-btn" onclick="cpBatch('cl9',this)">📋 复制全部</button></div>
+            </div>
+        </div>
+        <div class="effect-box">
+            <div class="effect-title">效果</div>
+            <ul>
+                <li>平均字数 100~300 字/段 → 好感度+5</li>
+                <li>平均字数 ≥300 字/段 → 好感度+10 + 金币×20</li>
+                <li>两块独立判断，不会同时触发（range 上限 300，另一块 >=300 互斥）</li>
+                <li><code style="background:#f0f0f0;padding:1px 5px;border-radius:3px;font-size:12px;">range 100 300</code> = 100 ≤ 平均字数 ≤ 300（含两端）</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- Case 10 -->
+<div class="card">
+    <div class="card-head" onclick="toggleCard(this)">
+        <div class="card-head-left">
+            <span class="card-badge">案例 10</span>
+            <div>
+                <div class="card-title">⚡ 极速高产（时间 + 字数双达标）</div>
+                <div class="card-desc">同一块内两个条件必须同时满足，时间短且字数多才给高额奖励</div>
+            </div>
+        </div>
+        <span class="card-arrow">▾</span>
+    </div>
+    <div class="card-body">
+        <div class="scenario-meta">
+            <span class="tag tag-time">耗时条件</span>
+            <span class="tag tag-and">块内多条件</span>
+            <span class="tag tag-pool">概率池</span>
+        </div>
+        <div class="logic-box">
+            <div class="lbl">逻辑结构</div>
+            <div class="block-item">
+                <div class="block-cond">条件1：结戏最多耗费时间 <span>&lt;= 90</span>（分钟）</div>
+                <div class="block-cond">条件2：本场个人总字数 <span>&gt;= 500</span></div>
+                <div style="font-size:11px;color:#aaa;margin-top:4px;">↑ 两个都要满足</div>
+                <div class="block-reward">→ 金币 ×30</div>
+                <div class="block-pool">→ 再抽一件：<span class="pool-item">TJ00×1 · 50%</span><span class="pool-item">TJ01×1 · 30%</span><span class="pool-item">TJ02×1 · 20%</span></div>
+            </div>
+        </div>
+        <div class="cmd-section">
+            <div class="cmd-section-title">批量指令</div>
+            <div class="batch-block" id="cl10">
+                <div class="batch-code"><span class="hl-cmd">结戏加成 批量 极速高产</span>
+<span class="hl-and">and</span>
+<span class="hl-cond">耗费时间 <= 90</span>
+<span class="hl-cond">字数 >= 500</span>
+<span class="hl-rew">奖励 金币 30</span>
+<span class="hl-pool">池 TJ00 1 50 TJ01 1 30 TJ02 1 20</span></div>
+                <div class="copy-all-row"><button class="copy-all-btn" onclick="cpBatch('cl10',this)">📋 复制全部</button></div>
+            </div>
+        </div>
+        <div class="effect-box">
+            <div class="effect-title">效果</div>
+            <ul>
+                <li>90 分钟内结束 且 总字数 ≥500 → 金币×30 + 从池中抽一件</li>
+                <li>任意一个条件不满足 → 完全不发</li>
+                <li>适合奖励又快又多产的玩家</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- Case 11 -->
+<div class="card">
+    <div class="card-head" onclick="toggleCard(this)">
+        <div class="card-head-left">
+            <span class="card-badge">案例 11</span>
+            <div>
+                <div class="card-title">🎯 三维并行（字数 / 段数 / 时效各给一种奖励）</div>
+                <div class="card-desc">三个 and 块完全独立，每个维度单独判断单独发，最多三种奖励同时拿</div>
+            </div>
+        </div>
+        <span class="card-arrow">▾</span>
+    </div>
+    <div class="card-body">
+        <div class="scenario-meta">
+            <span class="tag tag-and">三 and 并行</span>
+            <span class="tag tag-fixed">多类型奖励</span>
+            <span class="tag tag-time">耗时条件</span>
+        </div>
+        <div class="logic-box">
+            <div class="lbl">逻辑结构（三块完全独立）</div>
+            <div class="block-item">
+                <div class="block-cond">条件：本场个人总字数 <span>&gt;= 400</span></div>
+                <div class="block-reward">→ 金币 ×20</div>
+            </div>
+            <div style="margin:4px 8px;"><span class="conn-and">and（独立判断）</span></div>
+            <div class="block-item">
+                <div class="block-cond">条件：本场个人段数 <span>&gt;= 6</span></div>
+                <div class="block-reward">→ 好感度 +3</div>
+            </div>
+            <div style="margin:4px 8px;"><span class="conn-and">and（独立判断）</span></div>
+            <div class="block-item">
+                <div class="block-cond">条件：结戏最多耗费时间 <span>&lt;= 60</span></div>
+                <div class="block-reward">→ TJ00 ×1</div>
+            </div>
+        </div>
+        <div class="cmd-section">
+            <div class="cmd-section-title">批量指令</div>
+            <div class="batch-block" id="cl11">
+                <div class="batch-code"><span class="hl-cmd">结戏加成 批量 三维并行</span>
+<span class="hl-and">and</span>
+<span class="hl-cond">字数 >= 400</span>
+<span class="hl-rew">奖励 金币 20</span>
+<span class="hl-and">and</span>
+<span class="hl-cond">段数 >= 6</span>
+<span class="hl-rew">奖励 好感度 3</span>
+<span class="hl-and">and</span>
+<span class="hl-cond">耗费时间 <= 60</span>
+<span class="hl-rew">奖励 TJ00 1</span></div>
+                <div class="copy-all-row"><button class="copy-all-btn" onclick="cpBatch('cl11',this)">📋 复制全部</button></div>
+            </div>
+        </div>
+        <div class="effect-box">
+            <div class="effect-title">效果</div>
+            <ul>
+                <li>字数≥400 → 金币×20</li>
+                <li>段数≥6 → 好感度+3</li>
+                <li>60分钟内结束 → TJ00×1</li>
+                <li>三个维度各自独立，全部满足可同时拿到三种奖励</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- Case 12 -->
+<div class="card">
+    <div class="card-head" onclick="toggleCard(this)">
+        <div class="card-head-left">
+            <span class="card-badge">案例 12</span>
+            <div>
+                <div class="card-title">🎰 豪华概率池（五选一）</div>
+                <div class="card-desc">条件达标后从五个候选中按权重抽一件，奖励更丰富多样</div>
+            </div>
+        </div>
+        <span class="card-arrow">▾</span>
+    </div>
+    <div class="card-body">
+        <div class="scenario-meta">
+            <span class="tag tag-and">and 块</span>
+            <span class="tag tag-pool">五选一概率池</span>
+        </div>
+        <div class="logic-box">
+            <div class="lbl">逻辑结构</div>
+            <div class="block-item">
+                <div class="block-cond">条件：本场个人总字数 <span>&gt;= 300</span></div>
+                <div class="block-pool">🎲 概率池（五选一）：
+                    <span class="pool-item">金币×200 · 40%</span>
+                    <span class="pool-item">金币×50 · 25%</span>
+                    <span class="pool-item">TJ00×1 · 20%</span>
+                    <span class="pool-item">TJ01×2 · 10%</span>
+                    <span class="pool-item">TJ02×1 · 5%</span>
+                </div>
+            </div>
+        </div>
+        <div class="cmd-section">
+            <div class="cmd-section-title">批量指令</div>
+            <div class="batch-block" id="cl12">
+                <div class="batch-code"><span class="hl-cmd">结戏加成 批量 豪华礼包</span>
+<span class="hl-and">and</span>
+<span class="hl-cond">字数 >= 300</span>
+<span class="hl-pool">池 金币 200 40 金币 50 25 TJ00 1 20 TJ01 2 10 TJ02 1 5</span></div>
+                <div class="copy-all-row"><button class="copy-all-btn" onclick="cpBatch('cl12',this)">📋 复制全部</button></div>
+            </div>
+        </div>
+        <div class="effect-box">
+            <div class="effect-title">效果</div>
+            <ul>
+                <li>总字数 ≥300 → 从池中抽一件</li>
+                <li>40% 金币×200、25% 金币×50、20% TJ00×1、10% TJ01×2、5% TJ02×1</li>
+                <li>池行可以写任意多组，三个一组（目标 数量 权重）</li>
+                <li>同一目标（如金币）可以出现多次，代表不同数量的独立候选</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- Case 13 -->
+<div class="card">
+    <div class="card-head" onclick="toggleCard(this)">
+        <div class="card-head-left">
+            <span class="card-badge">案例 13</span>
+            <div>
+                <div class="card-title">📈 段数档位 + 字数保底（or + and 嵌套）</div>
+                <div class="card-desc">段数按档位给属性，同时字数只要达标就额外给货币保底</div>
+            </div>
+        </div>
+        <span class="card-arrow">▾</span>
+    </div>
+    <div class="card-body">
+        <div class="scenario-meta">
+            <span class="tag tag-or">or 降级</span>
+            <span class="tag tag-and">+ and 保底</span>
+            <span class="tag tag-fixed">多类型奖励</span>
+        </div>
+        <div class="logic-box">
+            <div class="lbl">逻辑结构</div>
+            <div class="block-item">
+                <div class="block-cond">条件：本场个人段数 <span>&gt;= 10</span></div>
+                <div class="block-reward">→ 好感度 +8</div>
+            </div>
+            <div style="margin:4px 8px;"><span class="conn-or">or ↓</span></div>
+            <div class="block-item">
+                <div class="block-cond">条件：本场个人段数 <span>&gt;= 5</span></div>
+                <div class="block-reward">→ 好感度 +4</div>
+            </div>
+            <div style="margin:4px 8px;"><span class="conn-or">or ↓</span></div>
+            <div class="block-item">
+                <div class="block-cond">条件：本场个人段数 <span>&gt;= 2</span></div>
+                <div class="block-reward">→ 好感度 +1</div>
+            </div>
+            <div style="margin:4px 8px;"><span class="conn-and">and（独立判断，以上 or 组同时并行）</span></div>
+            <div class="block-item">
+                <div class="block-cond">条件：本场个人总字数 <span>&gt;= 200</span></div>
+                <div class="block-reward">→ 金币 ×10（字数保底）</div>
+            </div>
+        </div>
+        <div class="cmd-section">
+            <div class="cmd-section-title">批量指令</div>
+            <div class="batch-block" id="cl13">
+                <div class="batch-code"><span class="hl-cmd">结戏加成 批量 段数档位保底</span>
+<span class="hl-or">or</span>
+<span class="hl-cond">段数 >= 10</span>
+<span class="hl-rew">奖励 好感度 8</span>
+<span class="hl-or">or</span>
+<span class="hl-cond">段数 >= 5</span>
+<span class="hl-rew">奖励 好感度 4</span>
+<span class="hl-or">or</span>
+<span class="hl-cond">段数 >= 2</span>
+<span class="hl-rew">奖励 好感度 1</span>
+<span class="hl-and">and</span>
+<span class="hl-cond">字数 >= 200</span>
+<span class="hl-rew">奖励 金币 10</span></div>
+                <div class="copy-all-row"><button class="copy-all-btn" onclick="cpBatch('cl13',this)">📋 复制全部</button></div>
+            </div>
+        </div>
+        <div class="effect-box">
+            <div class="effect-title">效果</div>
+            <ul>
+                <li>段数≥10 → 好感度+8（最高档，后两档跳过）</li>
+                <li>段数 5~9 → 好感度+4</li>
+                <li>段数 2~4 → 好感度+1</li>
+                <li>以上段数 or 组与字数 and 块完全独立，字数≥200 额外发 金币×10</li>
+                <li>例：段数 7、字数 300 → 好感度+4 + 金币×10</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
 </div><!-- end panel-cases -->
 
 <!-- ===== 可用参数 ===== -->
