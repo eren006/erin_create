@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>长日系统 — 玩家快速指南</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Noto+Serif+SC:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --black: #0C0B09;
+      --cream: #F7F4EE;
+      --warm-white: #FDFBF7;
+      --gold: #B89A6A;
+      --gold-light: #D4B896;
+      --gold-dim: rgba(184,154,106,0.18);
+      --muted: #7A7570;
+      --border: #E2DDD5;
+      --border-dark: rgba(247,244,238,0.1);
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Noto Serif SC', serif;
+      background: var(--warm-white);
+      color: var(--black);
+      overflow-x: hidden;
+    }
+
+    /* ── MASTHEAD ─────────────────────────────────── */
+    .masthead {
+      border-bottom: 3px solid var(--black);
+      padding: 0 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 60px;
+    }
+    .masthead-left {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 11px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .masthead-center {
+      font-family: 'Playfair Display', serif;
+      font-size: 13px;
+      letter-spacing: 8px;
+      text-transform: uppercase;
+    }
+    .masthead-right {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--gold);
+    }
+
+    /* ── COVER ────────────────────────────────────── */
+    .cover {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      min-height: 420px;
+      border-bottom: 1px solid var(--border);
+    }
+    .cover-left {
+      background: var(--black);
+      padding: 70px 64px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 20px;
+    }
+    .cover-eyebrow {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 11px;
+      letter-spacing: 5px;
+      text-transform: uppercase;
+      color: var(--gold);
+    }
+    .cover-title {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(60px, 9vw, 104px);
+      font-weight: 700;
+      color: var(--cream);
+      line-height: 0.9;
+      letter-spacing: -2px;
+    }
+    .cover-title em {
+      display: block;
+      font-size: 0.58em;
+      color: var(--gold-light);
+      font-weight: 400;
+      letter-spacing: 0;
+      margin-top: 10px;
+    }
+    .cover-rule {
+      width: 60px;
+      height: 1px;
+      background: var(--gold);
+      opacity: 0.4;
+    }
+    .cover-tagline {
+      font-family: 'Noto Serif SC', serif;
+      font-size: 12px;
+      font-weight: 300;
+      color: rgba(247,244,238,0.45);
+      letter-spacing: 3px;
+    }
+
+    .cover-right {
+      padding: 64px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      background: var(--cream);
+      gap: 32px;
+    }
+    .cover-intro-label {
+      font-size: 10px;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: var(--gold);
+    }
+    .cover-intro-text {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 21px;
+      font-weight: 300;
+      font-style: italic;
+      line-height: 1.85;
+      color: var(--black);
+    }
+    .concept-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+    }
+    .concept-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border: 1px solid var(--border);
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--muted);
+      letter-spacing: 0.5px;
+    }
+    .concept-pill span {
+      width: 5px;
+      height: 5px;
+      background: var(--gold);
+      display: inline-block;
+      flex-shrink: 0;
+    }
+
+    /* ── COPY TOAST ───────────────────────────────── */
+    .toast {
+      position: fixed;
+      bottom: 32px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: var(--black);
+      color: var(--gold-light);
+      padding: 10px 28px;
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 14px;
+      font-style: italic;
+      letter-spacing: 1px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s, transform 0.2s;
+      z-index: 999;
+      white-space: nowrap;
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* ── CMD BLOCK — the main element ─────────────── */
+    .cmd {
+      display: inline-block;
+      font-family: 'Playfair Display', serif;
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+      color: var(--black);
+      cursor: pointer;
+      position: relative;
+      transition: color 0.15s;
+    }
+    .cmd::after {
+      content: '';
+      position: absolute;
+      left: 0; bottom: -2px;
+      width: 0; height: 1px;
+      background: var(--gold);
+      transition: width 0.25s ease;
+    }
+    .cmd:hover { color: var(--gold-dark, #8B7044); }
+    .cmd:hover::after { width: 100%; }
+    .cmd .arg {
+      font-style: italic;
+      font-weight: 400;
+      color: var(--muted);
+      font-size: 0.85em;
+    }
+
+    /* dark variant */
+    .cmd-light {
+      color: var(--cream);
+    }
+    .cmd-light::after { background: var(--gold-light); }
+    .cmd-light:hover { color: var(--gold-light); }
+    .cmd-light .arg { color: rgba(247,244,238,0.45); }
+
+    /* ── SECTION SHELL ─────────────────────────────── */
+    .sec {
+      padding: 80px 60px;
+      border-bottom: 1px solid var(--border);
+    }
+    .sec-dark {
+      background: var(--black);
+      border-bottom-color: rgba(247,244,238,0.06);
+    }
+    .sec-alt { background: var(--cream); }
+
+    .sec-head {
+      display: flex;
+      align-items: baseline;
+      gap: 28px;
+      margin-bottom: 52px;
+    }
+    .sec-num {
+      font-family: 'Playfair Display', serif;
+      font-size: 13px;
+      color: var(--gold);
+      letter-spacing: 2px;
+    }
+    .sec-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 32px;
+      font-weight: 600;
+      color: var(--black);
+    }
+    .sec-dark .sec-title { color: var(--cream); }
+    .sec-rule {
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+    .sec-dark .sec-rule { background: var(--border-dark); }
+
+    /* ── FLOW GRID (the main pattern) ──────────────── */
+    .flow-grid {
+      display: grid;
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+    }
+    .sec-dark .flow-grid {
+      background: var(--border-dark);
+      border-color: var(--border-dark);
+    }
+
+    .flow-grid-2 { grid-template-columns: 1fr 1fr; }
+    .flow-grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+    .flow-grid-4 { grid-template-columns: repeat(4, 1fr); }
+
+    .flow-cell {
+      background: var(--warm-white);
+      padding: 36px 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .sec-dark .flow-cell { background: #100F0C; }
+    .sec-alt .flow-cell { background: var(--cream); }
+
+    .flow-cell-label {
+      font-size: 9px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 4px;
+    }
+
+    /* ── STEP FLOW (numbered like relationship) ─────── */
+    .step-flow {
+      display: flex;
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+    .step-cell {
+      flex: 1;
+      padding: 44px 36px;
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      position: relative;
+    }
+    .step-cell:last-child { border-right: none; }
+
+    .step-num {
+      font-family: 'Playfair Display', serif;
+      font-size: 52px;
+      font-weight: 700;
+      color: var(--border);
+      line-height: 1;
+    }
+    .sec-dark .step-num { color: rgba(247,244,238,0.07); }
+
+    .step-label {
+      font-size: 10px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--gold);
+    }
+    .step-cmds {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* dark step */
+    .step-cell-dark {
+      background: var(--black);
+      flex: 1;
+      padding: 44px 36px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* ── ARROW CONNECTOR ─────────────────────────────── */
+    .arrow-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+      margin: 24px 0;
+    }
+    .arrow-line {
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+    .arrow-head {
+      width: 28px;
+      height: 28px;
+      background: var(--gold);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 11px;
+      flex-shrink: 0;
+    }
+
+    /* ── TIPS BAND ────────────────────────────────────── */
+    .tips-band {
+      background: var(--gold);
+      padding: 56px 60px;
+    }
+    .tips-band-title {
+      font-size: 10px;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: rgba(12,11,9,0.5);
+      text-align: center;
+      margin-bottom: 36px;
+    }
+    .tips-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1px;
+      background: rgba(12,11,9,0.15);
+      border: 1px solid rgba(12,11,9,0.15);
+    }
+    .tip-cell {
+      background: var(--gold);
+      padding: 28px 24px;
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+    }
+    .tip-icon { font-size: 20px; flex-shrink: 0; margin-top: 1px; }
+    .tip-body {}
+    .tip-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 5px;
+      color: var(--black);
+    }
+    .tip-text {
+      font-size: 11.5px;
+      line-height: 1.7;
+      color: rgba(12,11,9,0.6);
+    }
+
+    /* ── FAQ ──────────────────────────────────────────── */
+    .faq-wrap {
+      padding: 80px 60px;
+    }
+    .faq-head {
+      display: flex;
+      align-items: baseline;
+      gap: 32px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 36px;
+      margin-bottom: 0;
+    }
+    .faq-big {
+      font-family: 'Playfair Display', serif;
+      font-size: 52px;
+      font-weight: 700;
+      font-style: italic;
+    }
+    .faq-sub {
+      font-size: 11px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--gold);
+    }
+    .faq-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+    .faq-item {
+      padding: 36px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .faq-item:nth-child(odd) { padding-right: 56px; border-right: 1px solid var(--border); }
+    .faq-item:nth-child(even) { padding-left: 56px; }
+    .faq-item:nth-last-child(-n+2) { border-bottom: none; }
+    .faq-q {
+      font-family: 'Playfair Display', serif;
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+    .faq-a {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.9;
+    }
+
+    /* ── FOOTER ───────────────────────────────────────── */
+    footer {
+      background: var(--black);
+      padding: 44px 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .footer-logo {
+      font-family: 'Playfair Display', serif;
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--cream);
+      letter-spacing: 2px;
+    }
+    .footer-logo em { color: var(--gold); font-style: italic; }
+    .footer-hint {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 13px;
+      font-style: italic;
+      color: rgba(247,244,238,0.35);
+      text-align: right;
+      line-height: 1.8;
+    }
+    .footer-hint code {
+      font-family: inherit;
+      font-style: normal;
+      color: var(--gold);
+    }
+
+    /* ── RESPONSIVE ───────────────────────────────────── */
+    @media (max-width: 880px) {
+      .cover { grid-template-columns: 1fr; }
+      .cover-left { min-height: 50vh; }
+      .masthead, .sec, .faq-wrap, .tips-band, footer { padding-left: 24px; padding-right: 24px; }
+      .cover-left, .cover-right { padding: 48px 24px; }
+      .flow-grid-3, .flow-grid-4 { grid-template-columns: 1fr 1fr; }
+      .flow-grid-2 { grid-template-columns: 1fr; }
+      .step-flow { flex-direction: column; }
+      .step-cell { border-right: none; border-bottom: 1px solid var(--border); }
+      .step-cell:last-child { border-bottom: none; }
+      .tips-row { grid-template-columns: 1fr 1fr; }
+      .faq-grid { grid-template-columns: 1fr; }
+      .faq-item:nth-child(odd) { border-right: none; padding-right: 0; }
+      .faq-item:nth-child(even) { padding-left: 0; }
+      .faq-item:nth-last-child(-n+2) { border-bottom: 1px solid var(--border); }
+      .faq-item:last-child { border-bottom: none; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="toast" id="toast">已复制</div>
+
+<!-- MASTHEAD -->
+<div class="masthead">
+  <div class="masthead-left">Player Edition · Quick Guide</div>
+  <div class="masthead-center">长 日 系 统</div>
+  <div class="masthead-right">恋爱综艺 RPG</div>
+</div>
+
+<!-- COVER -->
+<div class="cover">
+  <div class="cover-left">
+    <div class="cover-eyebrow">The Long Day System</div>
+    <div class="cover-title">
+      长日
+      <em>入场手册</em>
+    </div>
+    <div class="cover-rule"></div>
+    <div class="cover-tagline">点击任意指令即可复制</div>
+  </div>
+  <div class="cover-right">
+    <div class="cover-intro-label">关于这个系统</div>
+    <div class="cover-intro-text">
+      这是一个恋爱综艺类游戏系统。你将创建一个角色，通过邀约、互动、建立感情线，体验虚拟综艺的每一个动人时刻。
+    </div>
+    <div class="concept-row">
+      <div class="concept-pill"><span></span>邀约</div>
+      <div class="concept-pill"><span></span>关系线</div>
+      <div class="concept-pill"><span></span>心动信</div>
+      <div class="concept-pill"><span></span>论坛</div>
+      <div class="concept-pill"><span></span>礼物</div>
+      <div class="concept-pill"><span></span>时间线</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── 01 基础查询 ───────────────────────────────────────────── -->
+<div class="sec">
+  <div class="sec-head">
+    <div class="sec-num">01</div>
+    <div class="sec-title">基础查询</div>
+    <div class="sec-rule"></div>
+  </div>
+
+  <div class="flow-grid flow-grid-4">
+    <div class="flow-cell">
+      <div class="flow-cell-label">Players</div>
+      <div class="cmd" onclick="copy(this)">玩家名单</div>
+    </div>
+    <div class="flow-cell">
+      <div class="flow-cell-label">Schedule</div>
+      <div class="cmd" onclick="copy(this)">时间线</div>
+    </div>
+    <div class="flow-cell">
+      <div class="flow-cell-label">Wishes</div>
+      <div class="cmd" onclick="copy(this)">看心愿</div>
+    </div>
+    <div class="flow-cell">
+      <div class="flow-cell-label">Inventory</div>
+      <div class="cmd" onclick="copy(this)">背包</div>
+    </div>
+    <div class="flow-cell">
+      <div class="flow-cell-label">Locations</div>
+      <div class="cmd" onclick="copy(this)">地点 查看</div>
+    </div>
+    <div class="flow-cell">
+      <div class="flow-cell-label">Keys</div>
+      <div class="cmd" onclick="copy(this)">地点 钥匙</div>
+    </div>
+    <div class="flow-cell">
+      <div class="flow-cell-label">Private Spots</div>
+      <div class="cmd" onclick="copy(this)">查看可私约地点</div>
+    </div>
+    <div class="flow-cell">
+      <div class="flow-cell-label">Help</div>
+      <div class="cmd" onclick="copy(this)">指令指南</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── 02 邀约 ──────────────────────────────────────────────── -->
+<div class="sec sec-dark">
+  <div class="sec-head">
+    <div class="sec-num">02</div>
+    <div class="sec-title">发起邀约</div>
+    <div class="sec-rule"></div>
+  </div>
+
+  <div class="step-flow">
+    <div class="step-cell" style="background:#100F0C;">
+      <div class="step-num">私</div>
+      <div class="step-label">Private</div>
+      <div class="step-cmds">
+        <div class="cmd cmd-light" onclick="copy(this)">私约 <span class="arg">角色名 描述</span></div>
+      </div>
+    </div>
+    <div class="step-cell" style="background:#100F0C; border-right-color: rgba(247,244,238,0.08);">
+      <div class="step-num">愿</div>
+      <div class="step-label">Open Wish</div>
+      <div class="step-cmds">
+        <div class="cmd cmd-light" onclick="copy(this)">挂心愿 <span class="arg">描述</span></div>
+        <div class="cmd cmd-light" onclick="copy(this)">摘心愿 <span class="arg">心愿ID</span></div>
+      </div>
+    </div>
+    <div class="step-cell" style="background:#100F0C; border-right-color: rgba(247,244,238,0.08);">
+      <div class="step-num">申</div>
+      <div class="step-label">Join Request</div>
+      <div class="step-cmds">
+        <div class="cmd cmd-light" onclick="copy(this)">申请加入 <span class="arg">邀约ID 理由</span></div>
+        <div class="cmd cmd-light" onclick="copy(this)">加入请求</div>
+      </div>
+    </div>
+    <div class="step-cell" style="background:#100F0C; border-right: none;">
+      <div class="step-num">废</div>
+      <div class="step-label">Cancel</div>
+      <div class="step-cmds">
+        <div class="cmd cmd-light" onclick="copy(this)">废除时间线 <span class="arg">邀约ID</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── 03 感情线 ─────────────────────────────────────────────── -->
+<div class="sec sec-alt">
+  <div class="sec-head">
+    <div class="sec-num">03</div>
+    <div class="sec-title">感情线是如何建立的？</div>
+    <div class="sec-rule"></div>
+  </div>
+
+  <div class="step-flow">
+    <div class="step-cell">
+      <div class="step-num">一</div>
+      <div class="step-label">你拉线 A → B</div>
+      <div class="step-cmds">
+        <div class="cmd" onclick="copy(this)">拉线 <span class="arg">角色A 角色B</span></div>
+      </div>
+    </div>
+    <div class="step-cell">
+      <div class="step-num">二</div>
+      <div class="step-label">他拉线 B → A</div>
+      <div class="step-cmds">
+        <div style="font-size:12px; color:var(--muted); font-style:italic;">等待对方拉线给你</div>
+      </div>
+    </div>
+    <div class="step-cell">
+      <div class="step-num">三</div>
+      <div class="step-label">双方确认</div>
+      <div class="step-cmds">
+        <div class="cmd" onclick="copy(this)">确认关系线</div>
+      </div>
+    </div>
+    <div class="step-cell" style="background:var(--black);">
+      <div class="step-num" style="color:var(--gold); font-size:40px;">❤</div>
+      <div class="step-label">关系线成立</div>
+      <div class="step-cmds">
+        <div class="cmd cmd-light" onclick="copy(this)">查看关系线</div>
+        <div class="cmd cmd-light" onclick="copy(this)">关系线统计</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── 04 感情表达 ────────────────────────────────────────────── -->
+<div class="sec">
+  <div class="sec-head">
+    <div class="sec-num">04</div>
+    <div class="sec-title">感情表达与通讯</div>
+    <div class="sec-rule"></div>
+  </div>
+
+  <div class="flow-grid flow-grid-3">
+    <div class="flow-cell">
+      <div class="flow-cell-label">Love Letter</div>
+      <div class="cmd" onclick="copy(this)">发送心动信 <span class="arg">角色 内容</span></div>
+    </div>
+    <div class="flow-cell">
+      <div class="flow-cell-label">Mailbox</div>
+      <div class="cmd" onclick="copy(this)">查看信箱</div>
+    </div>
+    <div class="flow-cell">
+      <div class="flow-cell-label">Recall</div>
+      <div class="cmd" onclick="copy(this)">撤回心动信</div>
+    </div>
+    <div class="flow-cell">
+      <div class="flow-cell-label">Phone Call</div>
+      <div class="cmd" onclick="copy(this)">电话 <span class="arg">角色名 内容</span></div>
+    </div>
+    <div class="flow-cell">
+      <div class="flow-cell-label">Letter</div>
+      <div class="cmd" onclick="copy(this)">发送信件 <span class="arg">角色名 内容</span></div>
+    </div>
+    <div class="flow-cell">
+      <div class="flow-cell-label">WeChat</div>
+      <div class="cmd" onclick="copy(this)">微信 <span class="arg">内容</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── 05 论坛 ───────────────────────────────────────────────── -->
+<div class="sec sec-dark">
+  <div class="sec-head">
+    <div class="sec-num">05</div>
+    <div class="sec-title">论坛社区</div>
+    <div class="sec-rule"></div>
+  </div>
+
+  <div class="step-flow">
+    <div class="step-cell" style="background:#100F0C;">
+      <div class="step-num">发</div>
+      <div class="step-label">Post</div>
+      <div class="step-cmds">
+        <div class="cmd cmd-light" onclick="copy(this)">发帖 <span class="arg">标题 内容</span></div>
+      </div>
+    </div>
+    <div class="step-cell" style="background:#100F0C; border-right-color:rgba(247,244,238,0.08);">
+      <div class="step-num">回</div>
+      <div class="step-label">Reply</div>
+      <div class="step-cmds">
+        <div class="cmd cmd-light" onclick="copy(this)">回复帖子 <span class="arg">帖ID 内容</span></div>
+      </div>
+    </div>
+    <div class="step-cell" style="background:#100F0C; border-right-color:rgba(247,244,238,0.08);">
+      <div class="step-num">赞</div>
+      <div class="step-label">Vote</div>
+      <div class="step-cmds">
+        <div class="cmd cmd-light" onclick="copy(this)">点赞 <span class="arg">帖ID</span></div>
+        <div class="cmd cmd-light" onclick="copy(this)">点踩 <span class="arg">帖ID</span></div>
+      </div>
+    </div>
+    <div class="step-cell" style="background:#100F0C; border-right:none;">
+      <div class="step-num">览</div>
+      <div class="step-label">Browse</div>
+      <div class="step-cmds">
+        <div class="cmd cmd-light" onclick="copy(this)">查看帖子</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── 06 礼物 & 统计 ─────────────────────────────────────────── -->
+<div class="sec sec-alt">
+  <div class="sec-head">
+    <div class="sec-num">06</div>
+    <div class="sec-title">礼物 · 物品 · 统计</div>
+    <div class="sec-rule"></div>
+  </div>
+
+  <div class="flow-grid flow-grid-3">
+    <div class="flow-cell">
+      <div class="flow-cell-label">Gift Shop</div>
+      <div class="cmd" onclick="copy(this)">礼品店</div>
+    </div>
+    <div class="flow-cell">
+      <div class="flow-cell-label">Purchase</div>
+      <div class="cmd" onclick="copy(this)">购买 <span class="arg">礼物ID</span></div>
+    </div>
+    <div class="flow-cell">
+      <div class="flow-cell-label">Collection</div>
+      <div class="cmd" onclick="copy(this)">图鉴</div>
+    </div>
+    <div class="flow-cell">
+      <div class="flow-cell-label">This Session</div>
+      <div class="cmd" onclick="copy(this)">本场统计</div>
+    </div>
+    <div class="flow-cell">
+      <div class="flow-cell-label">All Players</div>
+      <div class="cmd" onclick="copy(this)">查看全员统计</div>
+    </div>
+    <div class="flow-cell">
+      <div class="flow-cell-label">Profile</div>
+      <div class="cmd" onclick="copy(this)">同步名片</div>
+    </div>
+  </div>
+</div>
+
+<!-- TIPS BAND -->
+<div class="tips-band">
+  <div class="tips-band-title">Key Notes · 关键须知</div>
+  <div class="tips-row">
+    <div class="tip-cell">
+      <div class="tip-icon">💌</div>
+      <div class="tip-body">
+        <div class="tip-title">心动信很重要</div>
+        <div class="tip-text">发送心动信会被记录，影响你的人气和感情线发展</div>
+      </div>
+    </div>
+    <div class="tip-cell">
+      <div class="tip-icon">🎁</div>
+      <div class="tip-body">
+        <div class="tip-title">礼物要花游戏币</div>
+        <div class="tip-text">购买礼物消耗游戏币，参加邀约是获得游戏币的主要途径</div>
+      </div>
+    </div>
+    <div class="tip-cell">
+      <div class="tip-icon">📊</div>
+      <div class="tip-body">
+        <div class="tip-title">论坛是舆论场</div>
+        <div class="tip-text">论坛讨论影响谁是人气角色和热门CP，积极发帖很关键</div>
+      </div>
+    </div>
+    <div class="tip-cell">
+      <div class="tip-icon">⏰</div>
+      <div class="tip-body">
+        <div class="tip-title">时间线是你的历史</div>
+        <div class="tip-text">邀约确认后写入时间线，形成你完整的互动记录</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- FAQ -->
+<div class="faq-wrap">
+  <div class="faq-head">
+    <div class="faq-big">FAQ</div>
+    <div class="faq-sub">常见问题解答</div>
+  </div>
+  <div class="faq-grid">
+    <div class="faq-item">
+      <div class="faq-q">私约、心愿、申请加入有什么区别？</div>
+      <div class="faq-a">私约是你直接邀请特定角色，两人私密互动；心愿是你发布开放邀请，任何人可接受；申请加入是你加入他人已发起的多人邀约，需要对方同意。</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q">怎样和某人建立正式感情线？</div>
+      <div class="faq-a">你拉线给他，他也拉线给你，然后双方都「确认关系线」，就形成了双向感情线，并出现在全员关系线统计中。</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q">别人申请加入我的邀约，我怎么处理？</div>
+      <div class="faq-a">用「加入请求」查看所有申请，然后选择「同意加入」或「拒绝加入」来处理对方的请求。</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q">如何成为热门角色？</div>
+      <div class="faq-a">积极参与邀约、发送心动信、发表论坛评论。关系线多、被讨论多的角色自然人气高，成为话题焦点。</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q">可以取消已发送的心动信吗？</div>
+      <div class="faq-a">可以用「撤回心动信」命令撤回，但如果对方已经看过，可能为时已晚——所以发送前请深思熟虑。</div>
+    </div>
+    <div class="faq-item">
+      <div class="faq-q">游戏币怎么获得？</div>
+      <div class="faq-a">参加邀约获得奖励、完成特定任务，以及论坛点赞数多的帖子可能有额外奖励。</div>
+    </div>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-logo">长日 <em>系统</em></div>
+  <div class="footer-hint">
+    查看所有命令<br>
+    输入 <code>指令指南</code> 或 <code>管理指令</code>
+  </div>
+</footer>
+
+<script>
+  function copy(el) {
+    // extract text without the arg styling — just the raw text
+    const text = el.innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      const toast = document.getElementById('toast');
+      toast.textContent = '已复制「' + text + '」';
+      toast.classList.add('show');
+      clearTimeout(toast._t);
+      toast._t = setTimeout(() => toast.classList.remove('show'), 1800);
+    });
+  }
+</script>
+</body>
+</html>
