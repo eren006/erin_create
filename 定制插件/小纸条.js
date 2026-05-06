@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         小纸条
 // @author       长日将尽
-// @version      2.3.0
-// @description  多玩法类型的小纸条传递系统，支持检定公示、收发箱查询、配额管理
+// @version      2.4.0
+// @description  多玩法类型的小纸条传递系统，支持检定公示、收发箱查询、每日限额刷新
 // @timestamp    1746374400
 // @license      MIT
 // @homepageURL  https://github.com/eren006/erin_create
@@ -14,7 +14,7 @@
 
 let ext = seal.ext.find("note_plugin");
 if (!ext) {
-    ext = seal.ext.new("note_plugin", "长日将尽", "2.3.0");
+    ext = seal.ext.new("note_plugin", "长日将尽", "2.4.0");
     seal.ext.register(ext);
 }
 
@@ -92,6 +92,9 @@ function makeNode(ctx, name, content) {
 // note_players          {[platform]: {[角色名]: uid}}
 // note_player_groups    {[platform]: {[角色名]: groupId}}
 // note_quotas           {[platform]: {[角色名]: {[type]: number}}}
+// note_base_quotas      {[platform]: {[type]: number}}  每日初始限额（0点自动刷新）
+// note_last_reset_date  string  上次刷新日期 "YYYY-MM-DD"
+// note_daily_counts     {[platform]: {[角色名]: {[type]: number}}}  当日使用计数
 // note_disabled         {[platform]: {[角色名]: {[type]: true}}}
 // note_records          [{id, from, to, type, title, pen, time, day, content, ts}]
 // note_public_group     string  群号
@@ -136,6 +139,44 @@ function setPublicGroup(v) { ext.storageSet("note_public_group", v); }
 function getGlobalDay() { return ext.storageGet("note_global_day") || "D0"; }
 function setGlobalDay(v) { ext.storageSet("note_global_day", v); }
 
+function getBaseQuotas() { return JSON.parse(ext.storageGet("note_base_quotas") || "{}"); }
+function setBaseQuotas(v) { ext.storageSet("note_base_quotas", JSON.stringify(v)); }
+
+function getLastResetDate() { return ext.storageGet("note_last_reset_date") || ""; }
+function setLastResetDate(v) { ext.storageSet("note_last_reset_date", v); }
+
+function getDailyCounts() { return JSON.parse(ext.storageGet("note_daily_counts") || "{}"); }
+function setDailyCounts(v) { ext.storageSet("note_daily_counts", JSON.stringify(v)); }
+
+function getTodayStr() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+// 检测跨天并自动刷新所有玩家配额为限额初始值
+function checkAndRefreshQuotas() {
+    const today = getTodayStr();
+    if (today === getLastResetDate()) return;
+
+    const baseQuotas = getBaseQuotas();
+    const players = getPlayers();
+    const quotas = getQuotas();
+
+    for (const platform of Object.keys(baseQuotas)) {
+        if (!quotas[platform]) quotas[platform] = {};
+        const pmap = players[platform] || {};
+        for (const roleName of Object.keys(pmap)) {
+            if (!quotas[platform][roleName]) quotas[platform][roleName] = {};
+            for (const [type, baseCount] of Object.entries(baseQuotas[platform])) {
+                quotas[platform][roleName][type] = baseCount;
+            }
+        }
+    }
+    setQuotas(quotas);
+    setDailyCounts({});
+    setLastResetDate(today);
+}
+
 // ========================
 // 权限判断
 // ========================
@@ -179,13 +220,13 @@ function parseGiveArgs(raw, pmap) {
 
     let count, noteType, namesStr;
 
-    if (/^\d+$/.test(tokens[0])) {
-        // 格式：n 玩家名…（默认类型）
+    if (/^-?\d+$/.test(tokens[0])) {
+        // 格式：n 玩家名…（默认类型，n 可为负）
         count = parseInt(tokens[0]);
         namesStr = tokens.slice(1).join(" ");
         noteType = DEFAULT_TYPE;
-    } else if (/^\d+$/.test(tokens[tokens.length - 1])) {
-        // 格式：[类型] 玩家名… n（指定类型，数字在末尾）
+    } else if (/^-?\d+$/.test(tokens[tokens.length - 1])) {
+        // 格式：[类型] 玩家名… n（指定类型，数字在末尾，n 可为负）
         count = parseInt(tokens[tokens.length - 1]);
         const rest = tokens.slice(0, -1);
         // 第一个词如果不是玩家名则视为类型
@@ -292,10 +333,10 @@ function formatNote(r, idx) {
 // 骰主指令
 // ========================
 
-// 1. .给纸条 [类型] 玩家1、玩家2 n
+// 1. .给纸条 [类型] 玩家1、玩家2 n（n 可为负，表示扣除）
 let cmd_give = seal.ext.newCmdItemInfo();
 cmd_give.name = "给纸条";
-cmd_give.help = ".给纸条 [玩法类型] 玩家名… n\n示例：.给纸条 5 猫头鹰、兔子\n示例：.给纸条 礼物 猫头鹰、兔子 5";
+cmd_give.help = ".给纸条 [玩法类型] 玩家名… n\n示例：.给纸条 5 猫头鹰、兔子\n示例：.给纸条 礼物 猫头鹰、兔子 -2（负数为扣除）";
 cmd_give.solve = (ctx, msg, cmdArgs) => {
     if (!isAdmin(ctx, msg)) { seal.replyToSender(ctx, msg, "❌ 仅骰主可用。"); return seal.ext.newCmdExecuteResult(true); }
     const platform = msg.platform;
@@ -304,7 +345,7 @@ cmd_give.solve = (ctx, msg, cmdArgs) => {
     const players = getPlayers();
     const pmap = players[platform] || {};
     const parsed = parseGiveArgs(raw, pmap);
-    if (!parsed) { seal.replyToSender(ctx, msg, "❌ 格式错误。\n示例：.给纸条 5 猫头鹰、兔子\n示例：.给纸条 礼物 猫头鹰、兔子 5"); return seal.ext.newCmdExecuteResult(true); }
+    if (!parsed) { seal.replyToSender(ctx, msg, "❌ 格式错误。\n示例：.给纸条 5 猫头鹰、兔子\n示例：.给纸条 礼物 猫头鹰、兔子 -2"); return seal.ext.newCmdExecuteResult(true); }
 
     const { count: n, noteType, namesStr } = parsed;
     const names = parseNames(namesStr);
@@ -316,12 +357,13 @@ cmd_give.solve = (ctx, msg, cmdArgs) => {
     for (const name of names) {
         if (!pmap[name]) { missing.push(name); continue; }
         if (!quotas[platform][name]) quotas[platform][name] = {};
-        quotas[platform][name][noteType] = (quotas[platform][name][noteType] || 0) + n;
+        quotas[platform][name][noteType] = Math.max(0, (quotas[platform][name][noteType] || 0) + n);
         ok.push(name);
     }
     setQuotas(quotas);
 
-    let reply = ok.length ? `✅ 已为 ${ok.join("、")} 增加 ${noteType} 纸条 ${n} 张。` : "";
+    const action = n >= 0 ? `增加 ${n}` : `扣除 ${Math.abs(n)}`;
+    let reply = ok.length ? `✅ 已为 ${ok.join("、")} ${action} 张 ${noteType} 纸条（不低于0）。` : "";
     if (missing.length) reply += `\n⚠️ 未找到：${missing.join("、")}`;
     seal.replyToSender(ctx, msg, reply.trim() || "❌ 没有有效玩家。");
     return seal.ext.newCmdExecuteResult(true);
@@ -465,6 +507,9 @@ cmd_reset_all.solve = (ctx, msg, cmdArgs) => {
     ext.storageSet("note_players", "{}");
     ext.storageSet("note_player_groups", "{}");
     ext.storageSet("note_quotas", "{}");
+    ext.storageSet("note_base_quotas", "{}");
+    ext.storageSet("note_last_reset_date", "");
+    ext.storageSet("note_daily_counts", "{}");
     ext.storageSet("note_disabled", "{}");
     ext.storageSet("note_records", "[]");
     ext.storageSet("note_check_rate", "{}");
@@ -479,26 +524,60 @@ cmd_reset_all.solve = (ctx, msg, cmdArgs) => {
 };
 ext.cmdMap["重置小纸条"] = cmd_reset_all;
 
-// 7. .重置纸条时间轴
-let cmd_reset_day = seal.ext.newCmdItemInfo();
-cmd_reset_day.name = "重置纸条时间轴";
-cmd_reset_day.help = ".重置纸条时间轴 （将时间轴重置为D0，并为现有所有纸条标注当前日期）";
-cmd_reset_day.solve = (ctx, msg, cmdArgs) => {
+// 7. .清空纸条计数
+let cmd_clear_counts = seal.ext.newCmdItemInfo();
+cmd_clear_counts.name = "清空纸条计数";
+cmd_clear_counts.help = ".清空纸条计数 （清空当前已累积的纸条使用计数）";
+cmd_clear_counts.solve = (ctx, msg, cmdArgs) => {
     if (!isAdmin(ctx, msg)) { seal.replyToSender(ctx, msg, "❌ 仅骰主可用。"); return seal.ext.newCmdExecuteResult(true); }
-
-    setGlobalDay("D0");
-
-    // 将所有没有 day 的纸条补上 D0
-    const records = getRecords();
-    for (const r of records) {
-        if (!r.day) r.day = "D0";
-    }
-    setRecords(records);
-
-    seal.replyToSender(ctx, msg, "✅ 时间轴已重置为 D0，所有纸条日期已更新。");
+    setDailyCounts({});
+    seal.replyToSender(ctx, msg, "✅ 纸条使用计数已清空。");
     return seal.ext.newCmdExecuteResult(true);
 };
-ext.cmdMap["重置纸条时间轴"] = cmd_reset_day;
+ext.cmdMap["清空纸条计数"] = cmd_clear_counts;
+
+// 7b. .纸条限额 [类型] 数量
+let cmd_set_limit = seal.ext.newCmdItemInfo();
+cmd_set_limit.name = "纸条限额";
+cmd_set_limit.help = ".纸条限额 [玩法类型] 数量\n示例：.纸条限额 3\n示例：.纸条限额 礼物 5\n（统一设置所有绑定玩家每日该类型纸条数量，每天0点自动刷新）";
+cmd_set_limit.solve = (ctx, msg, cmdArgs) => {
+    if (!isAdmin(ctx, msg)) { seal.replyToSender(ctx, msg, "❌ 仅骰主可用。"); return seal.ext.newCmdExecuteResult(true); }
+    const platform = msg.platform;
+    const raw = msg.message.trim().replace(/^\S+\s*/, "").trim();
+    if (!raw) { seal.replyToSender(ctx, msg, "❌ 格式错误。\n示例：.纸条限额 3\n示例：.纸条限额 礼物 5"); return seal.ext.newCmdExecuteResult(true); }
+
+    const tokens = raw.split(/\s+/);
+    const lastToken = tokens[tokens.length - 1];
+    if (!/^\d+$/.test(lastToken)) {
+        seal.replyToSender(ctx, msg, "❌ 格式错误，数量须为非负整数。\n示例：.纸条限额 3\n示例：.纸条限额 礼物 5");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const n = parseInt(lastToken);
+    const noteType = tokens.length > 1 ? tokens.slice(0, -1).join(" ") : DEFAULT_TYPE;
+
+    // 保存基准限额
+    const baseQuotas = getBaseQuotas();
+    if (!baseQuotas[platform]) baseQuotas[platform] = {};
+    baseQuotas[platform][noteType] = n;
+    setBaseQuotas(baseQuotas);
+
+    // 立即应用至所有已绑定玩家
+    const players = getPlayers();
+    const pmap = players[platform] || {};
+    const quotas = getQuotas();
+    if (!quotas[platform]) quotas[platform] = {};
+    for (const roleName of Object.keys(pmap)) {
+        if (!quotas[platform][roleName]) quotas[platform][roleName] = {};
+        quotas[platform][roleName][noteType] = n;
+    }
+    setQuotas(quotas);
+
+    const playerCount = Object.keys(pmap).length;
+    seal.replyToSender(ctx, msg, `✅ 已设置 ${noteType} 每日限额为 ${n} 张，已应用至 ${playerCount} 名已绑定玩家。\n每天0点自动刷新为初始数值。`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["纸条限额"] = cmd_set_limit;
 
 // ========================
 // 骰主：查看收件/寄件
@@ -718,26 +797,28 @@ ext.cmdMap["掉落显示收件人"] = cmd_show_receiver;
 // 15. .显示小纸条计数
 let cmd_show_counts = seal.ext.newCmdItemInfo();
 cmd_show_counts.name = "显示小纸条计数";
-cmd_show_counts.help = ".显示小纸条计数 （显示各类型纸条的发送总数）";
+cmd_show_counts.help = ".显示小纸条计数 （显示当日各玩家纸条使用次数）";
 cmd_show_counts.solve = (ctx, msg, cmdArgs) => {
     if (!isAdmin(ctx, msg)) { seal.replyToSender(ctx, msg, "❌ 仅骰主可用。"); return seal.ext.newCmdExecuteResult(true); }
 
-    const records = getRecords();
-    const typeCounts = {};
-    for (const r of records) {
-        typeCounts[r.type] = (typeCounts[r.type] || 0) + 1;
-    }
+    const platform = msg.platform;
+    const dailyCounts = getDailyCounts();
+    const platformCounts = dailyCounts[platform] || {};
 
-    if (!Object.keys(typeCounts).length) {
-        seal.replyToSender(ctx, msg, "📊 暂无纸条记录。");
+    if (!Object.keys(platformCounts).length) {
+        seal.replyToSender(ctx, msg, "📊 今日暂无纸条使用记录。");
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    let reply = "📊 各类型纸条发送计数：\n";
-    for (const [type, count] of Object.entries(typeCounts)) {
-        reply += `  · ${type}：${count} 张\n`;
+    let reply = `📊 今日纸条使用次数：\n`;
+    let total = 0;
+    for (const [roleName, typeCounts] of Object.entries(platformCounts)) {
+        for (const [type, count] of Object.entries(typeCounts)) {
+            reply += `  · ${roleName}（${type}）：${count} 张\n`;
+            total += count;
+        }
     }
-    reply += `合计：${records.length} 张`;
+    reply += `合计：${total} 张`;
     seal.replyToSender(ctx, msg, reply);
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -865,6 +946,19 @@ cmd_bind.solve = (ctx, msg, cmdArgs) => {
     players[platform][name] = uid;
     setPlayers(players);
 
+    // 绑定时赋予当前基准限额
+    const baseQuotas = getBaseQuotas();
+    const platformBase = baseQuotas[platform] || {};
+    if (Object.keys(platformBase).length) {
+        const quotas = getQuotas();
+        if (!quotas[platform]) quotas[platform] = {};
+        if (!quotas[platform][name]) quotas[platform][name] = {};
+        for (const [type, baseCount] of Object.entries(platformBase)) {
+            quotas[platform][name][type] = baseCount;
+        }
+        setQuotas(quotas);
+    }
+
     // 记录玩家绑定时所在的群
     if (msg.groupId) {
         const playerGroups = getPlayerGroups();
@@ -912,6 +1006,9 @@ cmd_send.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
+    // 跨天自动刷新配额
+    checkAndRefreshQuotas();
+
     const rawAll = msg.message.trim().replace(/^\S+\s*/, "");
     const parsed = parseToCmd(rawAll);
 
@@ -949,6 +1046,13 @@ cmd_send.solve = (ctx, msg, cmdArgs) => {
     quotas[platform][sendName][noteType] = remaining - 1;
     setQuotas(quotas);
 
+    // 记录当日使用计数
+    const dailyCounts = getDailyCounts();
+    if (!dailyCounts[platform]) dailyCounts[platform] = {};
+    if (!dailyCounts[platform][sendName]) dailyCounts[platform][sendName] = {};
+    dailyCounts[platform][sendName][noteType] = (dailyCounts[platform][sendName][noteType] || 0) + 1;
+    setDailyCounts(dailyCounts);
+
     // 记录
     const gameDay = day || getGlobalDay();
     const record = {
@@ -964,11 +1068,12 @@ cmd_send.solve = (ctx, msg, cmdArgs) => {
     // 给发送者回执
     seal.replyToSender(ctx, msg, `📮 纸条已寄出！\n收件人：${toName}\n类型：${noteType} · ${title}\n日期：${gameDay}\n剩余 ${noteType} 纸条：${remaining - 1} 张`);
 
-    // 向收件人绑定的群发送通知
+    // 向收件人绑定的群投递完整纸条
     const playerGroups = getPlayerGroups();
     const toGroupId = playerGroups[platform] && playerGroups[platform][toName];
     if (toGroupId) {
-        const toNotify = `📬 ${toName}，你收到了一封【${noteType}·${title}】纸条！\n📅 日期：${gameDay}\n请使用 .我的纸条收件箱 查看。`;
+        const penLine = pen ? `署名：${pen}` : `署名：${sendName}`;
+        const toNotify = `📬 ${toName}，你收到了一封纸条！\n📝 【${noteType}·${title}】\n📅 ${gameDay}\n${penLine}\n──────────\n${content}`;
         const nMsg = seal.newMessage();
         nMsg.messageType = "group";
         nMsg.groupId = `${platform}-Group:${toGroupId}`;
@@ -1095,40 +1200,42 @@ let cmd_help = seal.ext.newCmdItemInfo();
 cmd_help.name = "小纸条帮助";
 cmd_help.help = ".小纸条帮助 （显示完整帮助文档）";
 cmd_help.solve = (ctx, msg, cmdArgs) => {
-    const helpText = `📝 小纸条插件帮助 v2.2
+    const helpText = `📝 小纸条插件帮助 v2.4
 ====================
 【基本概念】
-- 消息权限：可以有多个玩法类型，每种类型的配额独立管理
+- 玩法类型：可以有多个，每种类型的配额独立管理
+- 每日限额：骰主用 .纸条限额 统一设置，每天0点自动刷新
 - 公示群：骰主指定的群聊，用于公示检定掉落的小纸条
 
 【骰主专用命令】
-.给纸条 [类型] 玩家… n — 增加指定玩法类型配额
-.扣除纸条 [类型] 玩家… n — 扣除配额
+.纸条限额 [类型] n — 设置所有玩家每日该类型纸条初始数量（每天0点刷新）
+.给纸条 [类型] 玩家… n — 调整玩家当日配额（n可为负，负数表示扣除）
+.扣除纸条 [类型] 玩家… n — 扣除配额（不低于0）
 .纸条清零 [类型] 玩家… — 将配额清零
 .删除小纸条玩家 玩家名 — 注销玩家
 .绑定纸条公示群 — 将当前群设为公示群
 .重置小纸条 — 重置所有数据
-.重置纸条时间轴 — 重置时间轴到D0
 .查看纸条收件 [类型] [dx] 玩家名 — 查看收件
 .查看纸条寄出 [类型] [dx] 玩家名 — 查看寄件
 .设置检定 [类型] 0-100 玩家… — 设置公示率
 .设置公示文案 [类型] 文案 — 设置公示文案
 .设置隐藏检定 [类型] 是/否 — 是否隐藏发件人
 .掉落显示收件人 [类型] 是/否 — 掉落时是否显示收件人（默认显示）
-.显示小纸条计数 — 查看各类型发送数
+.显示小纸条计数 — 查看今日各玩家纸条使用次数
+.清空纸条计数 — 清空当日已累积的使用计数
 .纸条玩家列表 — 查看已绑定玩家
 .禁用纸条 [类型] 玩家名 — 禁止该玩家发送
 .解禁纸条 [类型] 玩家名 — 解除禁止
 
 【玩家通用命令】
-.纸条绑定 角色名 — 绑定进入系统
+.纸条绑定 角色名 — 绑定进入系统（自动获得当前基准限额）
 .解除纸条绑定 — 解除绑定
-.to 收件人 [署名|]<类型·标题> 时间：dx 内容：…… — 发送纸条
+.to 收件人 [署名|]<类型·标题> 内容：…… — 发送纸条
 .我的纸条寄件箱 [类型] [dx] — 查看寄件
 .我的小纸条 — 查看配额余量
 
 【.to 格式说明】
-.to 兔子 匿名|<小纸条·秘密> 时间：d1 内容：你好呀
+.to 兔子 匿名|<小纸条·秘密> 内容：你好呀
            ↑署名  ↑类型  ↑标题
 署名和<>部分可省略，省略时使用默认类型「小纸条」`;
 
@@ -1144,4 +1251,4 @@ ext.cmdMap["小纸条帮助"] = cmd_help;
 seal.ext.registerStringConfig(ext, "ws地址", "ws://127.0.0.1:3001", "OneBot WS 地址（合并转发功能需要）");
 seal.ext.registerStringConfig(ext, "ws_token", "", "WS Access Token（可留空）");
 
-console.log("[小纸条] 插件加载完成 v2.3.0");
+console.log("[小纸条] 插件加载完成 v2.4.0");
