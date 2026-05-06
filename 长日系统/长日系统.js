@@ -1708,18 +1708,34 @@ function checkAndCostLetterCoin(ctx, msg, costType) {
         return { success: true }; // 未启用消费
     }
 
-    // 检查写信币余额
-    let attrs = JSON.parse(letterExt.storageGet("sys_character_attrs") || "{}");
-    const currentCoins = attrs[senderRoleName]?.["写信币"] || 0;
+    // 检查写信币余额（从背包 global_inventories 读取）
+    const roleKey = `${platform}:${uid}`;
+    const itemReg = JSON.parse(letterExt.storageGet("item_registry") || "{}");
+    const coinEntry = Object.entries(itemReg).find(([, v]) => v.name === "写信币");
+    if (!coinEntry) {
+        return { success: false, errorMsg: "❌ 写信币尚未注册，请先启用写信综。" };
+    }
+    const [coinCode] = coinEntry;
+
+    const invs = JSON.parse(letterExt.storageGet("global_inventories") || "{}");
+    const inv = invs[roleKey] || [];
+    const currentCoins = inv.filter(e => e.code === coinCode).reduce((sum, e) => sum + (e.count || 0), 0);
 
     if (currentCoins < cost) {
         return { success: false, errorMsg: `💰 写信币不足！需要 ${cost} 枚，现有 ${currentCoins} 枚。` };
     }
 
-    // 消费写信币
-    if (!attrs[senderRoleName]) attrs[senderRoleName] = {};
-    attrs[senderRoleName]["写信币"] = currentCoins - cost;
-    letterExt.storageSet("sys_character_attrs", JSON.stringify(attrs));
+    // 消费写信币（从背包中扣除）
+    let remaining = cost;
+    for (const entry of inv) {
+        if (entry.code === coinCode && remaining > 0) {
+            const deduct = Math.min(entry.count || 0, remaining);
+            entry.count -= deduct;
+            remaining -= deduct;
+        }
+    }
+    invs[roleKey] = inv.filter(e => e.count > 0 || e.code !== coinCode);
+    letterExt.storageSet("global_inventories", JSON.stringify(invs));
 
     return { success: true, cost };
 }
@@ -1833,9 +1849,10 @@ cmd_appointment_private.solve = async (ctx, msg, cmdArgs) => {
     });
 
     if (result.success) {
-        const successMsg = isMulti
+        let successMsg = isMulti
             ? `✅ 你已成功与 ${names.join("、")} 开启多方私约，私人空间已自动建立！`
             : `✅ 你已成功与 ${names[0]} 开启私约，私人空间已自动建立！`;
+        if (coinCheck.cost > 0) successMsg += `\n💰 已消耗写信币 ${coinCheck.cost} 枚`;
         seal.replyToSender(ctx, msg, successMsg);
     }
     return seal.ext.newCmdExecuteResult(true);
@@ -4303,10 +4320,11 @@ cmd_post_wish.solve = (ctx, msg, cmdArgs) => {
     if (pool.filter(w => w.fromId === uid).length >= 3) return seal.replyToSender(ctx, msg, "⚠️ 最多同时挂3个心愿");
 
     // Bug2修复：所有验证通过后再扣写信币
+    let wishCoinCheck = null;
     if (isLetterSystemEnabled()) {
-        const coinCheck = checkAndCostLetterCoin(ctx, msg, "wish");
-        if (!coinCheck.success) {
-            seal.replyToSender(ctx, msg, coinCheck.errorMsg);
+        wishCoinCheck = checkAndCostLetterCoin(ctx, msg, "wish");
+        if (!wishCoinCheck.success) {
+            seal.replyToSender(ctx, msg, wishCoinCheck.errorMsg);
             return seal.ext.newCmdExecuteResult(true);
         }
     }
@@ -4315,7 +4333,9 @@ cmd_post_wish.solve = (ctx, msg, cmdArgs) => {
     pool.push({ id, day, time, place, content, fromId: uid, timestamp: Date.now() });
     WishUtils.savePool(pool);
 
-    seal.replyToSender(ctx, msg, `✅ 心愿已漂走！编号：${id}\n有效期：24小时`);
+    let wishSuccessMsg = `✅ 心愿已漂走！编号：${id}\n有效期：24小时`;
+    if (wishCoinCheck?.cost > 0) wishSuccessMsg += `\n💰 已消耗写信币 ${wishCoinCheck.cost} 枚`;
+    seal.replyToSender(ctx, msg, wishSuccessMsg);
 
     // 公共频道推送
     if (JSON.parse(ext.storageGet("wish_public_send") || "false")) {
