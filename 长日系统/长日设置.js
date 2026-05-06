@@ -633,9 +633,11 @@ function applyAuctionParam(name, val) {
         const attr = val.trim();
         if (!attr) return { success: false, message: "【拍卖货币】不能为空" };
         const presets = JSON.parse(main.storageGet("sys_attr_presets") || "[]");
-        if (!presets.includes(attr)) return { success: false, message: `❌ 属性「${attr}」尚未创建。\n请先执行：我创建属性 ${attr}` };
+        const reg = JSON.parse(main.storageGet("item_registry") || "{}");
+        const isCurrency = Object.values(reg).some(i => i.type === "currency" && i.name === attr);
+        if (!presets.includes(attr) && !isCurrency) return { success: false, message: `❌ 「${attr}」不是已注册的属性或货币。\n请先注册属性（注册属性 ${attr}）或货币（注册货币 ${attr}*描述）` };
         main.storageSet("auction_currency", attr);
-        return { success: true, message: `【拍卖货币】已设为「${attr}」` };
+        return { success: true, message: `【拍卖货币】已设为「${attr}」${isCurrency ? "（货币物品）" : "（属性）"}` };
     }
     return { success: false, message: `未知参数：${name}` };
 }

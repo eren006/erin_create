@@ -6867,8 +6867,14 @@ ext.onNotCommandReceived = (ctx, msg) => {
         const minBid = topBid ? topBid.amount + item.minIncrement : item.startPrice;
         if (amount < minBid) return seal.replyToSender(ctx, msg, `❌ 出价不足！最低应出 ${minBid} ${settings.currency}（${topBid ? `当前最高${topBid.amount}+最低加价${item.minIncrement}` : `起拍价${item.startPrice}`}）`);
 
-        const attrs = JSON.parse(ext.storageGet("sys_character_attrs") || "{}");
-        const balance = attrs[roleName]?.[settings.currency] || 0;
+        const currencyItem = findCurrencyByName_rpg(settings.currency);
+        let balance;
+        if (currencyItem) {
+            balance = getInvCount_rpg(`${platform}:${uid}`, currencyItem.code);
+        } else {
+            const attrs = JSON.parse(ext.storageGet("sys_character_attrs") || "{}");
+            balance = attrs[roleName]?.[settings.currency] || 0;
+        }
         if (balance < amount) return seal.replyToSender(ctx, msg, `❌ ${settings.currency}不足！需要 ${amount}，当前 ${balance}`);
 
         // 同一人只保留最新出价
@@ -8057,6 +8063,33 @@ function getRegistry_rpg() {
     const main = seal.ext.find("changri");
     return main ? JSON.parse(main.storageGet("item_registry") || "{}") : {};
 }
+function findItem_rpg(reg, input) {
+    if (!input) return null;
+    const code = input.toUpperCase();
+    if (reg[code]) return reg[code];
+    return Object.values(reg).find(r => r.name === input) || null;
+}
+function findCurrencyByName_rpg(name) {
+    const reg = getRegistry_rpg();
+    return Object.values(reg).find(i => i.type === "currency" && i.name === name) || null;
+}
+function getInvCount_rpg(roleKey, code) {
+    const inv = getInvAll_rpg()[roleKey] || [];
+    return inv.filter(e => e.code === code).reduce((s, e) => s + e.count, 0);
+}
+function removeFromInv_rpg(roleKey, code, count) {
+    const invs = getInvAll_rpg();
+    const inv = invs[roleKey] || [];
+    let remaining = count;
+    for (const entry of inv.filter(e => e.code === code).sort((a, b) => (b.remainingUses || 0) - (a.remainingUses || 0))) {
+        if (remaining <= 0) break;
+        const take = Math.min(entry.count, remaining);
+        entry.count -= take;
+        remaining -= take;
+    }
+    invs[roleKey] = inv.filter(e => e.count > 0);
+    saveInvAll_rpg(invs);
+}
 function getInvAll_rpg() {
     const main = seal.ext.find("changri");
     return main ? JSON.parse(main.storageGet("global_inventories") || "{}") : {};
@@ -8119,6 +8152,7 @@ function settleExpiredAuctions(ctx, msg) {
     let changed = false;
     const settings = getAuctionSettings();
     const platform = msg.platform;
+    const summary = [];
 
     for (const [id, item] of Object.entries(auctions)) {
         if (item.status !== "active") continue;
@@ -8128,29 +8162,43 @@ function settleExpiredAuctions(ctx, msg) {
         if (bids.length === 0) {
             item.status = "unsold";
             changed = true;
-            _notifyAuction(ctx, msg, settings, `🔨 拍卖结束 | ${id} 「${item.name}」\n💸 无人出价，已流拍。`);
+            summary.push(`${id} 「${item.name}」流拍（无人出价）`);
+            _announceAuction(ctx, msg, settings, `🔨 拍卖结束 | ${id} 「${item.name}」\n💸 无人出价，已流拍。`);
             continue;
         }
 
         // 按出价降序依次找第一个余额足够的人
-        let attrs = JSON.parse(ext.storageGet("sys_character_attrs") || "{}");
+        const currencyItem = findCurrencyByName_rpg(settings.currency);
         let winner = null;
-        for (const bid of bids) {
-            const balance = attrs[bid.roleName]?.[settings.currency] || 0;
-            if (balance >= bid.amount) { winner = bid; break; }
+        if (currencyItem) {
+            for (const bid of bids) {
+                const roleKey = `${platform}:${bid.uid}`;
+                if (getInvCount_rpg(roleKey, currencyItem.code) >= bid.amount) { winner = bid; break; }
+            }
+        } else {
+            const attrs = JSON.parse(ext.storageGet("sys_character_attrs") || "{}");
+            for (const bid of bids) {
+                if ((attrs[bid.roleName]?.[settings.currency] || 0) >= bid.amount) { winner = bid; break; }
+            }
         }
 
         if (!winner) {
             item.status = "unsold";
             changed = true;
-            _notifyAuction(ctx, msg, settings, `🔨 拍卖结束 | ${id} 「${item.name}」\n💸 所有出价者余额不足，已流拍。`);
+            summary.push(`${id} 「${item.name}」流拍（余额不足）`);
+            _announceAuction(ctx, msg, settings, `🔨 拍卖结束 | ${id} 「${item.name}」\n💸 所有出价者余额不足，已流拍。`);
             continue;
         }
 
         // 扣除货币
-        if (!attrs[winner.roleName]) attrs[winner.roleName] = {};
-        attrs[winner.roleName][settings.currency] = (attrs[winner.roleName][settings.currency] || 0) - winner.amount;
-        ext.storageSet("sys_character_attrs", JSON.stringify(attrs));
+        if (currencyItem) {
+            removeFromInv_rpg(`${platform}:${winner.uid}`, currencyItem.code, winner.amount);
+        } else {
+            const attrs = JSON.parse(ext.storageGet("sys_character_attrs") || "{}");
+            if (!attrs[winner.roleName]) attrs[winner.roleName] = {};
+            attrs[winner.roleName][settings.currency] = (attrs[winner.roleName][settings.currency] || 0) - winner.amount;
+            ext.storageSet("sys_character_attrs", JSON.stringify(attrs));
+        }
 
         // 加入RPG背包
         const roleKey = `${platform}:${winner.roleName}`;
@@ -8161,14 +8209,21 @@ function settleExpiredAuctions(ctx, msg) {
         changed = true;
 
         const winnerDisplay = winner.isAnon ? "匿名玩家" : `「${winner.roleName}」`;
-        _notifyAuction(ctx, msg, settings, `🔨 拍卖成功 | ${id} 「${item.name}」\n🏆 ${winnerDisplay} 以 ${winner.amount} ${settings.currency} 竞得！\n物品已放入背包，货币已扣除。`);
+        summary.push(`${id} 「${item.name}」→ ${winnerDisplay} ${winner.amount} ${settings.currency}`);
+        _announceAuction(ctx, msg, settings,
+            `🎉 拍卖成交公告\n${"━".repeat(16)}\n📦 ${id} 「${item.name}」\n🏆 最终得主：${winnerDisplay}\n💰 成交价：${winner.amount} ${settings.currency}\n${"━".repeat(16)}\n物品已放入得主背包。`);
     }
 
     if (changed) saveAuctions(auctions);
+    return summary;
 }
 
 function _notifyAuction(ctx, msg, settings, text) {
     if (!settings.displayGroup || !settings.broadcast) return;
+    ws({ action: "send_group_msg", params: { group_id: parseInt(settings.displayGroup), message: text } }, ctx, msg, "");
+}
+function _announceAuction(ctx, msg, settings, text) {
+    if (!settings.displayGroup) return;
     ws({ action: "send_group_msg", params: { group_id: parseInt(settings.displayGroup), message: text } }, ctx, msg, "");
 }
 
@@ -8181,21 +8236,20 @@ function _nextAuctionId(auctions) {
 // 解析单件格式：名称%描述%起拍价%最低加价%时长(h)
 function _parseAuctionItem(raw) {
     const parts = raw.trim().split('%');
-    if (parts.length < 5) return { err: `格式错误（需至少5段，用%分隔）：${raw}` };
-    const [name, desc, sp, mi, dur, resell] = parts;
+    if (parts.length < 4) return { err: `格式错误（需至少4段，用%分隔）：${raw}` };
+    const [itemInput, sp, mi, dur] = parts;
     const startPrice = parseInt(sp), minIncrement = parseInt(mi), durationHours = parseFloat(dur);
-    const canResell = (resell && resell.trim().toUpperCase() === "Y");
-    if (!name.trim()) return { err: "名称为空" };
+    if (!itemInput.trim()) return { err: "物品码/名称为空" };
     if (isNaN(startPrice) || startPrice < 0) return { err: `起拍价无效：${sp}` };
     if (isNaN(minIncrement) || minIncrement < 1) return { err: `最低加价无效：${mi}` };
     if (isNaN(durationHours) || durationHours <= 0) return { err: `时长无效：${dur}` };
-    return { name: name.trim(), desc: desc.trim(), startPrice, minIncrement, durationHours, canResell };
+    return { itemInput: itemInput.trim(), startPrice, minIncrement, durationHours };
 }
 
 // 添加拍卖物品
 let cmd_add_auction = seal.ext.newCmdItemInfo();
 cmd_add_auction.name = "添加拍卖物品";
-cmd_add_auction.help = "。添加拍卖物品 名称%描述%起拍价%最低加价%时长(h)%允许二手\n批量：多件用$分隔\n允许二手：Y/N，默认N（不允许）\n例：。添加拍卖物品 魔法棒%一根闪亮的魔法棒%100%10%24%Y";
+cmd_add_auction.help = "。添加拍卖物品 物品码或名称%起拍价%最低加价%时长(h)\n批量：多件用$分隔\n例：。添加拍卖物品 ITEM_001%100%10%24";
 cmd_add_auction.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) { seal.replyToSender(ctx, msg, "该指令仅限管理员使用"); return seal.ext.newCmdExecuteResult(true); }
     const inputArg = msg.message.replace(/^[。.]添加拍卖物品\s*/, "").trim();
@@ -8203,6 +8257,7 @@ cmd_add_auction.solve = (ctx, msg, cmdArgs) => {
 
     const auctions = getAuctions();
     const activeCount = Object.values(auctions).filter(a => a.status === "active").length;
+    const reg = getRegistry_rpg();
     const items = inputArg.includes('$') ? inputArg.split('$') : [inputArg];
     const results = { success: 0, failed: 0, details: [] };
     const now = Date.now();
@@ -8212,10 +8267,13 @@ cmd_add_auction.solve = (ctx, msg, cmdArgs) => {
         if (activeCount + results.success >= 10) { results.details.push("❌ 已达10件同时上限，剩余未添加"); results.failed += items.length - results.success - results.failed; break; }
         const parsed = _parseAuctionItem(item);
         if (parsed.err) { results.details.push(`❌ ${parsed.err}`); results.failed++; continue; }
+        const regItem = findItem_rpg(reg, parsed.itemInput);
+        if (!regItem) { results.details.push(`❌ 未找到物品「${parsed.itemInput}」，请先上载物品`); results.failed++; continue; }
         const id = _nextAuctionId(auctions);
-        auctions[id] = { id, name: parsed.name, desc: parsed.desc, startPrice: parsed.startPrice, minIncrement: parsed.minIncrement, durationHours: parsed.durationHours, canResell: parsed.canResell, startTime: now, endTime: now + parsed.durationHours * 3600 * 1000, bids: [], status: "active", winner: null };
-        const resellText = parsed.canResell ? "✅ 可二手" : "❌ 不可二手";
-        results.details.push(`✅ ${id} 「${parsed.name}」起拍 ${parsed.startPrice}，最低加价 ${parsed.minIncrement}，时长 ${parsed.durationHours}h | ${resellText}`);
+        const canResell = regItem.allowSecondhand === true;
+        auctions[id] = { id, code: regItem.code, name: regItem.name, desc: regItem.desc || "", startPrice: parsed.startPrice, minIncrement: parsed.minIncrement, durationHours: parsed.durationHours, canResell, startTime: now, endTime: now + parsed.durationHours * 3600 * 1000, bids: [], status: "active", winner: null };
+        const resellText = canResell ? "✅ 可二手" : "❌ 不可二手";
+        results.details.push(`✅ ${id} [${regItem.code}]「${regItem.name}」起拍 ${parsed.startPrice}，最低加价 ${parsed.minIncrement}，时长 ${parsed.durationHours}h | ${resellText}`);
         results.success++;
     }
 
@@ -8251,8 +8309,12 @@ cmd_settle_auction.name = "结算拍卖";
 cmd_settle_auction.help = "。结算拍卖 —— 手动结算所有到期拍卖";
 cmd_settle_auction.solve = (ctx, msg) => {
     if (!isUserAdmin(ctx, msg)) { seal.replyToSender(ctx, msg, "该指令仅限管理员使用"); return seal.ext.newCmdExecuteResult(true); }
-    settleExpiredAuctions(ctx, msg);
-    seal.replyToSender(ctx, msg, "✅ 已结算所有到期拍卖");
+    const summary = settleExpiredAuctions(ctx, msg);
+    if (!summary.length) {
+        seal.replyToSender(ctx, msg, "✅ 暂无到期拍卖需要结算。");
+    } else {
+        seal.replyToSender(ctx, msg, `✅ 结算完成：\n${summary.join("\n")}`);
+    }
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["结算拍卖"] = cmd_settle_auction;

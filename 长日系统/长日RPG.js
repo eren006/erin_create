@@ -774,87 +774,78 @@ ext.cmdMap["初始化预设物品"] = cmd_init_preset;
 
 let cmd_upload_item = seal.ext.newCmdItemInfo();
 cmd_upload_item.name = "上载物品";
-cmd_upload_item.help = "【管理员】注册新物品\n格式：名称*描述*次数*属性效果*允许二手\n次数：-1为无限，正数位次数\n效果：属性+10,属性-5 (支持多个，逗号隔开)\n允许二手：Y/N，默认N（不允许）\n支持多行批量上载";
+cmd_upload_item.help = "【管理员】注册新物品\n格式：名称*描述*次数*属性效果*允许二手\n次数：-1为无限，正数为次数\n效果：属性+10,属性-5（仅限已注册属性或货币，多个逗号隔开，可为空）\n允许二手：Y/N，默认N\n支持多行批量上载";
 
 cmd_upload_item.solve = (ctx, msg, cmdArgs) => {
-    // 1. 权限校验
-    const isAdmin = ctx.privilegeLevel >= 40 || seal.ext.isAdmin(ext, ctx.player.userId);
-    if (!isAdmin) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
 
     const rawMsg = msg.message.trim();
     const msgParts = rawMsg.split(/\r?\n/);
-    let itemLines;
 
-    // 2. 解析多行输入
-    if (msgParts.length > 1) {
-        // 第一行是指令名，从第二行开始是数据
-        itemLines = msgParts.slice(1).filter(l => l.trim());
-    } else {
-        // 单行输入处理
-        const rest = rawMsg.replace(/^[。.]\s*上载物品\s*/, "").trim();
-        itemLines = rest ? [rest] : [];
-    }
+    // 第一行去掉指令前缀后的剩余内容
+    const firstLineRest = msgParts[0].replace(/^[。.]\s*上载物品\s*/, "").trim();
+    const extraLines = msgParts.slice(1).map(l => l.trim()).filter(l => l);
+    const itemLines = [...(firstLineRest ? [firstLineRest] : []), ...extraLines];
 
     if (!itemLines.length) {
-        const r = seal.ext.newCmdExecuteResult(true);
-        r.showHelp = true;
-        return r;
+        const validAttrs = getValidAttrs();
+        const attrList = validAttrs.length ? validAttrs.join("、") : "（暂无，请先注册属性）";
+        return seal.replyToSender(ctx, msg, `📦 上载物品格式：\n名称*描述*次数*属性效果*允许二手\n\n· 次数：-1 为无限，正数为使用次数\n· 效果：属性+数字,属性-数字（可为空）\n· 允许二手：Y 或 N（默认 N）\n· 支持多行批量，每行一条\n\n当前可用属性：${attrList}`);
     }
 
-    // 3. 获取注册表
     const reg = getRegistry();
+    const defs = getAttrDefs();
+    const currencyNames = new Set(Object.values(reg).filter(i => i.type === "currency").map(i => i.name));
     const results = [];
 
     for (const line of itemLines) {
         const parts = line.split(/[*＊]/);
         if (parts.length < 3) {
-            results.push(`❌ 格式错误: 「${line.substring(0,10)}...」需包含名称、描述、次数`);
+            results.push(`❌ 格式错误：「${line.substring(0, 15)}」需至少包含 名称*描述*次数`);
             continue;
         }
 
         const name = (parts[0] || "").trim();
         const desc = (parts[1] || "").trim() || "暂无描述";
         const maxUses = parseInt((parts[2] || "").trim());
-        const attrs = (parts[3] || "").trim() || null;
+        const attrsRaw = (parts[3] || "").trim();
         const canResell = ((parts[4] || "").trim().toUpperCase() === "Y");
 
         if (!name) { results.push(`❌ 名称不能为空`); continue; }
-        if (isNaN(maxUses)) { results.push(`❌ 「${name}」次数参数必须是数字`); continue; }
+        if (isNaN(maxUses)) { results.push(`❌ 「${name}」次数必须是数字`); continue; }
 
-        // 检查同名物品
+        // 效果格式校验
+        let attrsStr = null;
+        if (attrsRaw) {
+            const segments = attrsRaw.split(/[,，]/);
+            let attrErr = null;
+            for (const seg of segments) {
+                const m = seg.trim().match(/^(.+?)([+-]\d+)$/);
+                if (!m) { attrErr = `效果格式错误「${seg.trim()}」，需为：属性+数字 或 属性-数字`; break; }
+                const attrName = m[1];
+                if (!defs[attrName] && !currencyNames.has(attrName)) {
+                    attrErr = `未知属性「${attrName}」，请先注册属性`; break;
+                }
+            }
+            if (attrErr) { results.push(`❌ 「${name}」${attrErr}`); continue; }
+            attrsStr = attrsRaw;
+        }
+
         const existing = Object.values(reg).find(r => r.name === name);
-        if (existing) {
-            results.push(`⚠️ 「${name}」已存在 [${existing.code}]，跳过`);
-            continue;
-        }
+        if (existing) { results.push(`⚠️ 「${name}」已存在 [${existing.code}]，跳过`); continue; }
 
-        // 生成唯一代码
         const code = genItemCode(reg);
-        if (!code) {
-            results.push("❌ 错误：代码空间已满，无法继续注册");
-            break;
-        }
+        if (!code) { results.push("❌ 代码空间已满，无法继续注册"); break; }
 
-        // 4. 写入注册表数据结构
-        reg[code] = {
-            code,
-            name,
-            desc,
-            type: "item",
-            maxUses: maxUses,
-            attrs: attrs,
-            price: 0,
-            canResell: canResell
-        };
+        reg[code] = { code, name, desc, type: "item", maxUses, attrs: attrsStr, price: 0, canResell };
 
         const useText = maxUses === -1 ? "无限" : `${maxUses}次`;
-        const resellText = canResell ? "✅ 可二手" : "❌ 不可二手";
-        results.push(`✅ [${code}] ${name} | 次数:${useText} | 效果:[${attrs || "无"}] | ${resellText}`);
+        const resellText = canResell ? "可二手" : "不可二手";
+        results.push(`✅ [${code}] ${name} | ${useText} | 效果:${attrsStr || "无"} | ${resellText}`);
     }
 
-    // 5. 保存并反馈
     saveRegistry(reg);
-    seal.replyToSender(ctx, msg, `📦 物品注册结果（共${itemLines.length}条）：\n${results.join("\n")}`);
+    seal.replyToSender(ctx, msg, `📦 物品注册结果（共${results.length}条）：\n${results.join("\n")}`);
     return seal.ext.newCmdExecuteResult(true);
 };
 
@@ -874,6 +865,8 @@ cmd_reg_currency.solve = (ctx, msg, cmdArgs) => {
     const reg = getRegistry();
     const existing = Object.values(reg).find(r => r.name === name && r.type === "currency");
     if (existing) return seal.replyToSender(ctx, msg, `⚠️ 货币「${name}」已存在 [${existing.code}]`);
+    const validAttrs = getValidAttrs();
+    if (validAttrs.includes(name)) return seal.replyToSender(ctx, msg, `❌ 「${name}」已被注册为属性，货币名不能与属性重复`);
     const code = genCurrencyCode(reg);
     if (!code) return seal.replyToSender(ctx, msg, "❌ 货币代码空间已满。");
     reg[code] = { code, name, desc, type: "currency", attrs: null };
@@ -2046,83 +2039,191 @@ ext.cmdMap["查看配方"] = cmd_recipe_list;
 
 let cmd_upload_interact = seal.ext.newCmdItemInfo();
 cmd_upload_interact.name = "上载互动物品";
-cmd_upload_interact.help = "【管理员】注册互动类物品（对他人使用）\n格式：名称*描述*次数*属性效果*允许二手\n次数：-1为无限，正数位次数\n效果：属性+10,属性-5 (支持多个，逗号隔开)\n允许二手：Y/N，默认N（不允许）\n示例：上载互动物品 医疗包*为他人包扎*1*体力+50*Y";
+cmd_upload_interact.help = "【管理员】注册互动类物品（对他人使用）\n格式：名称*描述*次数*属性效果*允许二手\n次数：-1为无限，正数为次数\n效果：属性+10,属性-5（仅限已注册属性或货币，多个逗号隔开，可为空）\n允许二手：Y/N，默认N\n支持多行批量上载";
 cmd_upload_interact.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
 
     const rawMsg = msg.message.trim();
     const msgParts = rawMsg.split(/\r?\n/);
-    let itemLines;
 
-    // 解析多行输入
-    if (msgParts.length > 1) {
-        itemLines = msgParts.slice(1).filter(l => l.trim());
-    } else {
-        const rest = rawMsg.replace(/^[。.]\s*上载互动物品\s*/, "").trim();
-        itemLines = rest ? [rest] : [];
-    }
+    const firstLineRest = msgParts[0].replace(/^[。.]\s*上载互动物品\s*/, "").trim();
+    const extraLines = msgParts.slice(1).map(l => l.trim()).filter(l => l);
+    const itemLines = [...(firstLineRest ? [firstLineRest] : []), ...extraLines];
 
     if (!itemLines.length) {
-        const r = seal.ext.newCmdExecuteResult(true);
-        r.showHelp = true;
-        return r;
+        const validAttrs = getValidAttrs();
+        const attrList = validAttrs.length ? validAttrs.join("、") : "（暂无，请先注册属性）";
+        return seal.replyToSender(ctx, msg, `🎭 上载互动物品格式：\n名称*描述*次数*属性效果*允许二手\n\n· 次数：-1 为无限，正数为使用次数\n· 效果：属性+数字,属性-数字（可为空）\n· 允许二手：Y 或 N（默认 N）\n· 支持多行批量，每行一条\n\n当前可用属性：${attrList}`);
     }
 
     const reg = getRegistry();
+    const defs = getAttrDefs();
+    const currencyNames = new Set(Object.values(reg).filter(i => i.type === "currency").map(i => i.name));
     const results = [];
 
     for (const line of itemLines) {
         const parts = line.split(/[*＊]/);
         if (parts.length < 3) {
-            results.push(`❌ 格式错误: 「${line.substring(0,10)}...」需包含名称、描述、次数`);
+            results.push(`❌ 格式错误：「${line.substring(0, 15)}」需至少包含 名称*描述*次数`);
             continue;
         }
 
         const name = (parts[0] || "").trim();
         const desc = (parts[1] || "").trim() || "暂无描述";
         const maxUses = parseInt((parts[2] || "").trim());
-        const attrs = (parts[3] || "").trim() || null;
+        const attrsRaw = (parts[3] || "").trim();
         const canResell = ((parts[4] || "").trim().toUpperCase() === "Y");
 
         if (!name) { results.push(`❌ 名称不能为空`); continue; }
-        if (isNaN(maxUses)) { results.push(`❌ 「${name}」次数参数必须是数字`); continue; }
+        if (isNaN(maxUses)) { results.push(`❌ 「${name}」次数必须是数字`); continue; }
 
-        // 检查同名物品
+        // 效果格式校验
+        let attrsStr = null;
+        if (attrsRaw) {
+            const segments = attrsRaw.split(/[,，]/);
+            let attrErr = null;
+            for (const seg of segments) {
+                const m = seg.trim().match(/^(.+?)([+-]\d+)$/);
+                if (!m) { attrErr = `效果格式错误「${seg.trim()}」，需为：属性+数字 或 属性-数字`; break; }
+                const attrName = m[1];
+                if (!defs[attrName] && !currencyNames.has(attrName)) {
+                    attrErr = `未知属性「${attrName}」，请先注册属性`; break;
+                }
+            }
+            if (attrErr) { results.push(`❌ 「${name}」${attrErr}`); continue; }
+            attrsStr = attrsRaw;
+        }
+
         const existing = Object.values(reg).find(r => r.name === name);
-        if (existing) {
-            results.push(`⚠️ 「${name}」已存在 [${existing.code}]，跳过`);
-            continue;
-        }
+        if (existing) { results.push(`⚠️ 「${name}」已存在 [${existing.code}]，跳过`); continue; }
 
-        // 生成唯一代码
         const code = genInteractionCode(reg);
-        if (!code) {
-            results.push("❌ 错误：代码空间已满，无法继续注册");
-            break;
-        }
+        if (!code) { results.push("❌ 代码空间已满，无法继续注册"); break; }
 
-        // 写入注册表
-        reg[code] = {
-            code,
-            name,
-            desc,
-            type: "interact",
-            maxUses: maxUses,
-            attrs: attrs,
-            price: 0,
-            canResell: canResell
-        };
+        reg[code] = { code, name, desc, type: "interact", maxUses, attrs: attrsStr, price: 0, canResell };
 
         const useText = maxUses === -1 ? "无限" : `${maxUses}次`;
-        const resellText = canResell ? "✅ 可二手" : "❌ 不可二手";
-        results.push(`✅ [${code}] ${name} | 次数:${useText} | 效果:[${attrs || "无"}] | ${resellText}`);
+        const resellText = canResell ? "可二手" : "不可二手";
+        results.push(`✅ [${code}] ${name} | ${useText} | 效果:${attrsStr || "无"} | ${resellText}`);
     }
 
     saveRegistry(reg);
-    seal.replyToSender(ctx, msg, `🎭 互动物品注册结果（共${itemLines.length}条）：\n${results.join("\n")}`);
+    seal.replyToSender(ctx, msg, `🎭 互动物品注册结果（共${results.length}条）：\n${results.join("\n")}`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["上载互动物品"] = cmd_upload_interact;
+
+let cmd_delete_item = seal.ext.newCmdItemInfo();
+cmd_delete_item.name = "删除物品";
+cmd_delete_item.help = "【管理员】彻底删除物品定义，自动清出所有背包/商城/池子/配方/二手市场\n删除物品 物品码或名称";
+cmd_delete_item.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const input = cmdArgs.getArgN(1);
+    if (!input) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+
+    const reg = getRegistry();
+    const item = findItem(reg, input);
+    if (!item) return seal.replyToSender(ctx, msg, `❌ 未找到物品「${input}」。`);
+    const code = item.code;
+    const name = item.name;
+    const log = [];
+
+    // 1. 清出所有背包
+    const invAll = getInvAll();
+    let bagCount = 0;
+    for (const roleKey of Object.keys(invAll)) {
+        const inv = invAll[roleKey];
+        const before = inv.reduce((s, e) => e.code === code ? s + e.count : s, 0);
+        if (before > 0) {
+            invAll[roleKey] = inv.filter(e => e.code !== code);
+            bagCount += before;
+        }
+    }
+    saveInvAll(invAll);
+    if (bagCount > 0) log.push(`🎒 背包：清出 ×${bagCount}`);
+
+    // 2. 商城下架
+    const shop = getShop();
+    const shopBefore = shop.length;
+    const shopAfter = shop.filter(l => l.code !== code);
+    if (shopAfter.length < shopBefore) {
+        saveShop(shopAfter);
+        log.push(`🏪 商城：移除 ${shopBefore - shopAfter.length} 条上架`);
+    }
+
+    // 3. 从所有池子移除
+    const defs = getPoolDefs();
+    let poolLog = [];
+    for (const poolName of Object.keys(defs)) {
+        const pool = defs[poolName];
+        if (!pool.items) continue;
+        const before = pool.items.length;
+        pool.items = pool.items.filter(i => i.code !== code);
+        if (pool.items.length < before) poolLog.push(poolName);
+    }
+    if (poolLog.length > 0) {
+        savePoolDefs(defs);
+        log.push(`🎰 池子：从「${poolLog.join("、")}」移除`);
+    }
+
+    // 4. 从 item_recipes 移除（作为产物）及作为材料的配方
+    const main = getMainExt();
+    const itemRecipes = JSON.parse(main.storageGet("item_recipes") || "{}");
+    let recipeLog = [];
+    // 作为产物
+    if (itemRecipes[code]) {
+        delete itemRecipes[code];
+        recipeLog.push("作为产物的配方");
+    }
+    // 作为材料
+    for (const targetCode of Object.keys(itemRecipes)) {
+        const recipe = itemRecipes[targetCode];
+        if (recipe.ingredients && recipe.ingredients.some(ing => ing.code === code)) {
+            recipe.ingredients = recipe.ingredients.filter(ing => ing.code !== code);
+            recipeLog.push(`「${recipe.targetName}」的材料`);
+        }
+    }
+    main.storageSet("item_recipes", JSON.stringify(itemRecipes));
+
+    // 5. 从 craft_recipes 移除
+    const craftRecipes = getCraftRecipes();
+    if (craftRecipes[code]) {
+        delete craftRecipes[code];
+        recipeLog.push("合成配方（产物）");
+    }
+    for (const targetCode of Object.keys(craftRecipes)) {
+        const recipe = craftRecipes[targetCode];
+        if (recipe.materials && recipe.materials.some(m => m.code === code)) {
+            recipe.materials = recipe.materials.filter(m => m.code !== code);
+            recipeLog.push(`「${recipe.targetName || targetCode}」合成配方的材料`);
+        }
+    }
+    saveCraftRecipes(craftRecipes);
+    if (recipeLog.length > 0) log.push(`📋 配方：移除 ${recipeLog.join("、")}`);
+
+    // 6. 二手市场撤单
+    const market = getMarket();
+    let marketCount = 0;
+    for (const shCode of Object.keys(market)) {
+        if (market[shCode].code === code) {
+            delete market[shCode];
+            marketCount++;
+        }
+    }
+    if (marketCount > 0) {
+        saveMarket(market);
+        log.push(`🔄 二手市场：撤销 ${marketCount} 条挂单`);
+    }
+
+    // 7. 删除物品定义
+    delete reg[code];
+    saveRegistry(reg);
+    log.push(`🗑️ 物品定义 [${code}]${name} 已删除`);
+
+    seal.replyToSender(ctx, msg, `✅ 删除完成：\n${log.join("\n")}`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["删除物品"] = cmd_delete_item;
 
 function isApplyTimeValid(main) {
     const hoursStr = main.storageGet("apply_item_hours");

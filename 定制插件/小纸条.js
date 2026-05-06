@@ -810,13 +810,18 @@ cmd_show_counts.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
+    const typeTotals = {};
+    for (const typeCounts of Object.values(platformCounts)) {
+        for (const [type, count] of Object.entries(typeCounts)) {
+            typeTotals[type] = (typeTotals[type] || 0) + count;
+        }
+    }
+
     let reply = `📊 今日纸条使用次数：\n`;
     let total = 0;
-    for (const [roleName, typeCounts] of Object.entries(platformCounts)) {
-        for (const [type, count] of Object.entries(typeCounts)) {
-            reply += `  · ${roleName}（${type}）：${count} 张\n`;
-            total += count;
-        }
+    for (const [type, count] of Object.entries(typeTotals)) {
+        reply += `  · ${type}：${count} 张\n`;
+        total += count;
     }
     reply += `合计：${total} 张`;
     seal.replyToSender(ctx, msg, reply);
