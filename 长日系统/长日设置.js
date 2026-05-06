@@ -554,7 +554,7 @@ function showItemSettings(ctx, msg) {
 }
 
 // ========================
-// 商城设置模块
+// 礼品店设置模块
 // ========================
 function showShopSettings(ctx, msg) {
     const main = getMainExt();
@@ -563,8 +563,8 @@ function showShopSettings(ctx, msg) {
     const refreshHours = parseInt(main.storageGet("shop_refresh_hours") || "24");
 
     seal.replyToSender(ctx, msg, [
-        ".设置 商城设置",
-        `【商城刷新间隔】${refreshHours}`,
+        ".设置 礼品店设置",
+        `【礼品店刷新间隔】${refreshHours}`,
     ].join('\n'));
 }
 
@@ -572,12 +572,12 @@ function applyShopParam(name, val) {
     const main = getMainExt();
     if (!main) return { success: false, message: "无法连接主插件" };
 
-    if (name === '商城刷新间隔') {
+    if (name === '礼品店刷新间隔') {
         const hours = parseInt(val);
-        if (isNaN(hours) || hours < 1) return { success: false, message: "【商城刷新间隔】必须是 ≥1 的整数（单位：小时）" };
+        if (isNaN(hours) || hours < 1) return { success: false, message: "【礼品店刷新间隔】必须是 ≥1 的整数（单位：小时）" };
         main.storageSet("shop_refresh_hours", hours.toString());
         main.storageSet("shop_personal_display", "{}");
-        return { success: true, message: `【商城刷新间隔】已设为 ${hours} 小时（所有人下次进入商城生效）` };
+        return { success: true, message: `【礼品店刷新间隔】已设为 ${hours} 小时（所有人下次进入礼品店生效）` };
     }
     return { success: false, message: `未知参数：${name}` };
 }
@@ -1576,6 +1576,7 @@ cmd_settings.solve = (ctx, msg, cmdArgs) => {
         info += "· 。设置 道具设置\n";
         info += "· 。设置 拍卖设置\n";
         info += "· 。设置 群组设置\n";
+        info += "· 。设置 礼品店设置\n";
         info += "· 。设置 攻防\n";
         return seal.replyToSender(ctx, msg, info);
     }
@@ -1617,6 +1618,10 @@ cmd_settings.solve = (ctx, msg, cmdArgs) => {
         case "群组设置":
             if (rawMsg.includes('\n')) return handleApply(ctx, msg, rawMsg, applyGroupParam);
             return showGroupSettings(ctx, msg);
+
+        case "礼品店设置":
+            if (rawMsg.includes('\n')) return handleApply(ctx, msg, rawMsg, applyShopParam);
+            return showShopSettings(ctx, msg);
 
         case "攻防":
             return showAttackDefenseSettings(ctx, msg);
