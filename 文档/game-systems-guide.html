@@ -496,13 +496,12 @@
             <div class="card">
                 <div class="card-header" onclick="toggleCard(this)">🎁 礼物系统 (6命令)</div>
                 <div class="card-content">
-                    <p>礼物系统是长日的消费和收集机制。角色可购买和赠送各式礼物，建立礼物图鉴，用于表达心意和完成互动。</p>
+                    <p>礼物系统是长日的收集与赠送机制。角色通过抽卡解锁礼物，建立礼物图鉴，用于表达心意和完成互动。</p>
                     <h3>礼物系统的组成</h3>
                     <ul>
-                        <li><strong>礼物商城</strong>：管理员预设的礼物池，角色消费游戏币购买</li>
-                        <li><strong>购买机制</strong>：消耗游戏币（通常是邀约获得的奖励）购买礼物</li>
-                        <li><strong>赠送机制</strong>：将购买的礼物赠送给其他角色（邀约时或单独赠送）</li>
-                        <li><strong>图鉴收集</strong>：记录已收到的礼物，形成收藏体系</li>
+                        <li><strong>礼品店（抽卡）</strong>：发送「礼品店」随机抽取一件礼物，解锁入图鉴</li>
+                        <li><strong>赠送机制</strong>：将图鉴中已解锁的礼物赠送给其他角色（邀约时或单独赠送）</li>
+                        <li><strong>图鉴收集</strong>：记录已解锁的礼物，形成收藏体系</li>
                     </ul>
                     <h3>礼物的经济价值</h3>
                     <div class="example-box">
@@ -514,10 +513,9 @@
                     <div class="tip">💡 礼物系统与RPG系统（长日物品.js）协同工作，支持自定义礼物数据</div>
                     <table>
                         <tr><th>命令</th><th>说明</th><th>说明</th></tr>
-                        <tr><td><code>礼物商城</code></td><td>查看可购买的礼物列表</td><td>展示所有可用礼物和价格</td></tr>
-                        <tr><td><code>购买 礼物ID</code></td><td>购买某个礼物</td><td>消耗游戏币获得礼物</td></tr>
-                        <tr><td><code>图鉴</code> / <code>我的图鉴</code></td><td>查看已拥有的礼物收藏</td><td>查看收到过的所有礼物</td></tr>
-                        <tr><td><code>上传预设礼物 礼物名*描述*价格</code></td><td>【管理员】添加礼物到商城</td><td>创建新礼物供玩家购买</td></tr>
+                        <tr><td><code>礼品店</code></td><td>随机抽取一件礼物</td><td>解锁入图鉴，可用于赠送</td></tr>
+                        <tr><td><code>图鉴</code> / <code>我的图鉴</code></td><td>查看已解锁的礼物收藏</td><td>查看收到过的所有礼物</td></tr>
+                        <tr><td><code>上传预设礼物 礼物名*描述*价格</code></td><td>【管理员】添加礼物到抽卡池</td><td>创建新礼物供玩家抽取</td></tr>
                         <tr><td><code>删除预设礼物 礼物ID</code></td><td>【管理员】删除礼物</td><td>从商城移除已下架礼物</td></tr>
                     </table>
                 </div>
@@ -530,7 +528,7 @@
                     <p>背包是角色的物品存储空间。汇总展示角色拥有的所有物品、礼物和资源，提供统一的物品管理界面。</p>
                     <h3>背包的内容</h3>
                     <ul>
-                        <li><strong>礼物</strong>：从商城购买或从他人获得的礼物</li>
+                        <li><strong>礼物</strong>：从礼品店抽取或从他人获得的礼物</li>
                         <li><strong>物品</strong>：邀约奖励的各类道具和消耗品</li>
                         <li><strong>装备</strong>：RPG系统中的装备（若启用）</li>
                         <li><strong>资源</strong>：游戏币、写信币等各类货币</li>
