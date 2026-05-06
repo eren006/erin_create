@@ -1671,7 +1671,7 @@ async function directCreateAndFinalizeAppointment({
  * 检查写信系统是否启用
  */
 function isLetterSystemEnabled() {
-    const letterExt = seal.ext.find("我的长日");
+    const letterExt = seal.ext.find("changri");
     if (!letterExt) return false;
     const config = JSON.parse(letterExt.storageGet("global_feature_toggle") || "{}");
     return config.enable_direct_letter === true;
@@ -1682,7 +1682,7 @@ function isLetterSystemEnabled() {
  * @returns {success: bool, errorMsg?: string}
  */
 function checkAndCostLetterCoin(ctx, msg, costType) {
-    const letterExt = seal.ext.find("我的长日");
+    const letterExt = seal.ext.find("changri");
     if (!letterExt) return { success: false, errorMsg: "❌ 写信系统未找到" };
 
     const platform = msg.platform;
@@ -5777,7 +5777,7 @@ function applyEndGameDraws(ctx, msg, gid, platform) {
     if (!participants.length) return;
 
     // 获取物品系统的 player_draw_records
-    const itemExt = seal.ext.find("item_system_v2");
+    const itemExt = seal.ext.find("changriRPG");
     if (!itemExt) return; // 物品系统未加载
 
     const records = JSON.parse(ext.storageGet("player_draw_records") || "{}");
