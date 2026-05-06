@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         小纸条
 // @author       长日将尽
-// @version      2.2.0
+// @version      2.3.0
 // @description  多玩法类型的小纸条传递系统，支持检定公示、收发箱查询、配额管理
 // @timestamp    1746374400
 // @license      MIT
@@ -14,7 +14,7 @@
 
 let ext = seal.ext.find("note_plugin");
 if (!ext) {
-    ext = seal.ext.new("note_plugin", "长日将尽", "2.2.0");
+    ext = seal.ext.new("note_plugin", "长日将尽", "2.3.0");
     seal.ext.register(ext);
 }
 
@@ -90,6 +90,7 @@ function makeNode(ctx, name, content) {
 // 存储 key 命名规则
 // ========================
 // note_players          {[platform]: {[角色名]: uid}}
+// note_player_groups    {[platform]: {[角色名]: groupId}}
 // note_quotas           {[platform]: {[角色名]: {[type]: number}}}
 // note_disabled         {[platform]: {[角色名]: {[type]: true}}}
 // note_records          [{id, from, to, type, title, pen, time, day, content, ts}]
@@ -97,6 +98,7 @@ function makeNode(ctx, name, content) {
 // note_check_rate       {[platform]: {[角色名]: {[type]: 0-100}}}
 // note_check_text       {[type]: string}
 // note_check_hide       {[type]: bool}
+// note_show_receiver    {[type]: bool}  掉落时是否显示收件人（默认 true）
 // note_global_day       string  "D0"/"D1"...
 
 const DEFAULT_TYPE = "小纸条";
@@ -121,6 +123,12 @@ function setCheckText(v) { ext.storageSet("note_check_text", JSON.stringify(v));
 
 function getCheckHide() { return JSON.parse(ext.storageGet("note_check_hide") || "{}"); }
 function setCheckHide(v) { ext.storageSet("note_check_hide", JSON.stringify(v)); }
+
+function getShowReceiver() { return JSON.parse(ext.storageGet("note_show_receiver") || "{}"); }
+function setShowReceiver(v) { ext.storageSet("note_show_receiver", JSON.stringify(v)); }
+
+function getPlayerGroups() { return JSON.parse(ext.storageGet("note_player_groups") || "{}"); }
+function setPlayerGroups(v) { ext.storageSet("note_player_groups", JSON.stringify(v)); }
 
 function getPublicGroup() { return ext.storageGet("note_public_group") || ""; }
 function setPublicGroup(v) { ext.storageSet("note_public_group", v); }
@@ -414,7 +422,7 @@ cmd_remove_player.solve = (ctx, msg, cmdArgs) => {
     delete players[platform][name];
     setPlayers(players);
 
-    // 清理配额和禁用状态
+    // 清理配额、禁用状态和群绑定
     const quotas = getQuotas();
     if (quotas[platform]) delete quotas[platform][name];
     setQuotas(quotas);
@@ -422,6 +430,10 @@ cmd_remove_player.solve = (ctx, msg, cmdArgs) => {
     const disabled = getDisabled();
     if (disabled[platform]) delete disabled[platform][name];
     setDisabled(disabled);
+
+    const playerGroups = getPlayerGroups();
+    if (playerGroups[platform]) delete playerGroups[platform][name];
+    setPlayerGroups(playerGroups);
 
     seal.replyToSender(ctx, msg, `✅ 已注销玩家：${name}`);
     return seal.ext.newCmdExecuteResult(true);
@@ -451,12 +463,14 @@ cmd_reset_all.solve = (ctx, msg, cmdArgs) => {
     if (!isAdmin(ctx, msg)) { seal.replyToSender(ctx, msg, "❌ 仅骰主可用。"); return seal.ext.newCmdExecuteResult(true); }
 
     ext.storageSet("note_players", "{}");
+    ext.storageSet("note_player_groups", "{}");
     ext.storageSet("note_quotas", "{}");
     ext.storageSet("note_disabled", "{}");
     ext.storageSet("note_records", "[]");
     ext.storageSet("note_check_rate", "{}");
     ext.storageSet("note_check_text", "{}");
     ext.storageSet("note_check_hide", "{}");
+    ext.storageSet("note_show_receiver", "{}");
     ext.storageSet("note_public_group", "");
     ext.storageSet("note_global_day", "D0");
 
@@ -679,7 +693,29 @@ cmd_hide_check.solve = (ctx, msg, cmdArgs) => {
 };
 ext.cmdMap["设置隐藏检定"] = cmd_hide_check;
 
-// 13. .显示小纸条计数
+// 13. .掉落显示收件人 [类型] 是/否
+let cmd_show_receiver = seal.ext.newCmdItemInfo();
+cmd_show_receiver.name = "掉落显示收件人";
+cmd_show_receiver.help = ".掉落显示收件人 [玩法类型] 是/否\n示例：.掉落显示收件人 否\n示例：.掉落显示收件人 礼物 否";
+cmd_show_receiver.solve = (ctx, msg, cmdArgs) => {
+    if (!isAdmin(ctx, msg)) { seal.replyToSender(ctx, msg, "❌ 仅骰主可用。"); return seal.ext.newCmdExecuteResult(true); }
+
+    const raw = msg.message.trim().replace(/^\S+\s*/, "");
+    const tokens = raw.split(/\s+/);
+    const last = tokens[tokens.length - 1];
+    const show = !(last === "否" || last === "no" || last === "false");
+    const noteType = tokens.length > 1 ? tokens.slice(0, -1).join(" ") : DEFAULT_TYPE;
+
+    const showReceiver = getShowReceiver();
+    showReceiver[noteType] = show;
+    setShowReceiver(showReceiver);
+
+    seal.replyToSender(ctx, msg, `✅ ${noteType} 掉落时${show ? "显示" : "隐藏"}收件人。`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["掉落显示收件人"] = cmd_show_receiver;
+
+// 15. .显示小纸条计数
 let cmd_show_counts = seal.ext.newCmdItemInfo();
 cmd_show_counts.name = "显示小纸条计数";
 cmd_show_counts.help = ".显示小纸条计数 （显示各类型纸条的发送总数）";
@@ -829,6 +865,14 @@ cmd_bind.solve = (ctx, msg, cmdArgs) => {
     players[platform][name] = uid;
     setPlayers(players);
 
+    // 记录玩家绑定时所在的群
+    if (msg.groupId) {
+        const playerGroups = getPlayerGroups();
+        if (!playerGroups[platform]) playerGroups[platform] = {};
+        playerGroups[platform][name] = msg.groupId.replace(/[^\d]/g, "");
+        setPlayerGroups(playerGroups);
+    }
+
     seal.replyToSender(ctx, msg, `✅ 已绑定角色：${name}`);
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -920,6 +964,18 @@ cmd_send.solve = (ctx, msg, cmdArgs) => {
     // 给发送者回执
     seal.replyToSender(ctx, msg, `📮 纸条已寄出！\n收件人：${toName}\n类型：${noteType} · ${title}\n日期：${gameDay}\n剩余 ${noteType} 纸条：${remaining - 1} 张`);
 
+    // 向收件人绑定的群发送通知
+    const playerGroups = getPlayerGroups();
+    const toGroupId = playerGroups[platform] && playerGroups[platform][toName];
+    if (toGroupId) {
+        const toNotify = `📬 ${toName}，你收到了一封【${noteType}·${title}】纸条！\n📅 日期：${gameDay}\n请使用 .我的纸条收件箱 查看。`;
+        const nMsg = seal.newMessage();
+        nMsg.messageType = "group";
+        nMsg.groupId = `${platform}-Group:${toGroupId}`;
+        const nCtx = seal.createTempCtx(ctx.endPoint, nMsg);
+        seal.replyToSender(nCtx, nMsg, toNotify);
+    }
+
     // ✅ 检定 & 公示
     const checkRate = getCheckRate();
     const rate = (checkRate[platform] && checkRate[platform][toName] && checkRate[platform][toName][noteType]);
@@ -937,9 +993,14 @@ cmd_send.solve = (ctx, msg, cmdArgs) => {
                 const checkText = getCheckText();
                 const announceText = checkText[noteType] || "📌 纸条意外曝光了！";
 
+                const showReceiver = getShowReceiver();
+                const showTo = showReceiver[noteType] !== false; // 默认显示
+                const fromDisplay = hide ? "某人" : (pen || sendName);
+                const toDisplay = showTo ? toName : "未知";
+
                 let publicMsg = `${announceText}\n`;
                 publicMsg += `📝 【${noteType}·${title}】${gameDay}\n`;
-                publicMsg += `📮 ${hide ? "某人" : sendName} → ${toName}\n`;
+                publicMsg += `📮 ${fromDisplay} → ${toDisplay}\n`;
                 if (!hide) publicMsg += `检定：${finalRate}% 命中 ${roll.toFixed(1)}%\n`;
                 publicMsg += `──────────\n${content}`;
                 if (pen) publicMsg += `\n\n落款：${pen}`;
@@ -957,49 +1018,7 @@ cmd_send.solve = (ctx, msg, cmdArgs) => {
 };
 ext.cmdMap["to"] = cmd_send;
 
-// 4. .我的纸条收件箱 [类型] [dx]
-let cmd_my_inbox = seal.ext.newCmdItemInfo();
-cmd_my_inbox.name = "我的纸条收件箱";
-cmd_my_inbox.help = ".我的纸条收件箱 [玩法类型] [dx]\n示例：.我的纸条收件箱\n示例：.我的纸条收件箱 礼物 d1";
-cmd_my_inbox.solve = (ctx, msg, cmdArgs) => {
-    const platform = msg.platform;
-    const uid = msg.sender.userId.replace(platform + ":", "");
-    const roleName = findPlayerByUid(platform, uid);
-
-    if (!roleName) { seal.replyToSender(ctx, msg, "❌ 请先绑定角色。"); return seal.ext.newCmdExecuteResult(true); }
-
-    const raw = msg.message.trim().replace(/^\S+\s*/, "");
-    const tokens = raw.split(/\s+/).filter(Boolean);
-    let noteType = null, day = null;
-
-    if (tokens.length >= 2) {
-        if (/^d\d+$/i.test(tokens[tokens.length - 1])) {
-            day = tokens.pop().toUpperCase();
-            noteType = tokens.join(" ") || null;
-        } else {
-            noteType = tokens.join(" ");
-        }
-    } else if (tokens.length === 1) {
-        if (/^d\d+$/i.test(tokens[0])) day = tokens[0].toUpperCase();
-        else noteType = tokens[0];
-    }
-
-    const records = getRecords();
-    const filtered = filterRecords(records, { direction: "in", roleName, noteType, day });
-
-    if (!filtered.length) {
-        seal.replyToSender(ctx, msg, `📭 收件箱为空（${noteType || "全部"}${day ? " · " + day : ""}）。`);
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    const header = `📥 ${roleName} 的收件箱（${noteType || "全部"}${day ? " · " + day : ""}）共 ${filtered.length} 条`;
-    const nodes = [makeNode(ctx, "📮 纸条系统", header), ...filtered.map((r, i) => makeNode(ctx, r.from || "匿名", formatNote(r, i)))];
-    sendForward(ctx, msg, nodes);
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["我的纸条收件箱"] = cmd_my_inbox;
-
-// 5. .我的纸条寄件箱 [类型] [dx]
+// 4. .我的纸条寄件箱 [类型] [dx]
 let cmd_my_outbox = seal.ext.newCmdItemInfo();
 cmd_my_outbox.name = "我的纸条寄件箱";
 cmd_my_outbox.help = ".我的纸条寄件箱 [玩法类型] [dx]\n示例：.我的纸条寄件箱\n示例：.我的纸条寄件箱 礼物 d1";
@@ -1094,7 +1113,8 @@ cmd_help.solve = (ctx, msg, cmdArgs) => {
 .查看纸条寄出 [类型] [dx] 玩家名 — 查看寄件
 .设置检定 [类型] 0-100 玩家… — 设置公示率
 .设置公示文案 [类型] 文案 — 设置公示文案
-.设置隐藏检定 [类型] 是/否 — 是否隐藏检定率
+.设置隐藏检定 [类型] 是/否 — 是否隐藏发件人
+.掉落显示收件人 [类型] 是/否 — 掉落时是否显示收件人（默认显示）
 .显示小纸条计数 — 查看各类型发送数
 .纸条玩家列表 — 查看已绑定玩家
 .禁用纸条 [类型] 玩家名 — 禁止该玩家发送
@@ -1104,7 +1124,6 @@ cmd_help.solve = (ctx, msg, cmdArgs) => {
 .纸条绑定 角色名 — 绑定进入系统
 .解除纸条绑定 — 解除绑定
 .to 收件人 [署名|]<类型·标题> 时间：dx 内容：…… — 发送纸条
-.我的纸条收件箱 [类型] [dx] — 查看收件
 .我的纸条寄件箱 [类型] [dx] — 查看寄件
 .我的小纸条 — 查看配额余量
 
@@ -1125,4 +1144,4 @@ ext.cmdMap["小纸条帮助"] = cmd_help;
 seal.ext.registerStringConfig(ext, "ws地址", "ws://127.0.0.1:3001", "OneBot WS 地址（合并转发功能需要）");
 seal.ext.registerStringConfig(ext, "ws_token", "", "WS Access Token（可留空）");
 
-console.log("[小纸条] 插件加载完成 v2.2.0");
+console.log("[小纸条] 插件加载完成 v2.3.0");
