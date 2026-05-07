@@ -384,16 +384,18 @@ function performAuditLogic(ctx, msg, ownerName, members) {
     const npcUIDs = {};   
     const memberUIDs = members.map(m => (m.user_id || m.qq).toString());
 
-    // 建立映射
-    Object.entries(a_private_group[platform] || {}).forEach(([name, data]) => {
-        if (npcList.includes(name)) npcUIDs[name] = data[0]; 
-        else playerMap[data[0]] = name; 
+    // 建立映射（新结构：uid为key，roleName在value[0]）
+    Object.entries(a_private_group[platform] || {}).forEach(([uid, data]) => {
+        const name = data[0];
+        if (npcList.includes(name)) npcUIDs[name] = uid;
+        else playerMap[uid] = name;
     });
 
-    const ownerData = a_private_group[platform][ownerName];
-    if (!ownerData) return;
-    const ownerUID = ownerData[0];
-    const gid = ownerData[1];
+    // 通过 ownerName 反查 uid
+    const ownerEntry = Object.entries(a_private_group[platform] || {}).find(([_, v]) => v[0] === ownerName);
+    if (!ownerEntry) return;
+    const ownerUID = ownerEntry[0];
+    const gid = ownerEntry[1][1];
 
     // 1. 检查缺 NPC
     let missing = npcList.filter(n => !memberUIDs.includes(npcUIDs[n]));
@@ -604,9 +606,9 @@ function checkAcceptanceConflicts(platform, userId, roleName, day, time, exclude
     return (parsedPass || "detroit").trim(); // 兜底并清理空格
   }
 
-function isUserFeatureEnabled(roleName, key, defaultValue = true) {
+function isUserFeatureEnabled(uid, key, defaultValue = true) {
   const blockMap = JSON.parse(ext.storageGet("feature_user_blocklist") || "{}");
-  const personConfig = blockMap[roleName];
+  const personConfig = blockMap[uid];
   if (personConfig && personConfig[key] !== undefined) {
     return personConfig[key];
   }
@@ -642,20 +644,21 @@ cmd_bind_role.solve = (ctx, msg, cmdArgs) => {
 
     if (!storage[platform]) storage[platform] = {};
 
-    // 检查名称是否被他人占用
-    if (storage[platform][name] && storage[platform][name][0] !== uid) {
+    // 检查名称是否被他人占用（新结构：uid为key，roleName在value[0]）
+    const existingUidForName = Object.entries(storage[platform]).find(([k, v]) => v[0] === name && k !== uid)?.[0];
+    if (existingUidForName) {
         seal.replyToSender(ctx, msg, `❌ 名称「${name}」已被其他用户占用`);
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    // 已有角色则拒绝，提示用修改名字
-    const existing = Object.keys(storage[platform]).find(key => storage[platform][key][0] === uid);
-    if (existing) {
-        seal.replyToSender(ctx, msg, `⚠️ 你已有角色「${existing}」。若想改名，请发送「修改名字 新名字」。`);
+    // 已有角色则拒绝，提示用修改名字（新结构：直接按uid查找）
+    if (storage[platform][uid]) {
+        const existingName = storage[platform][uid][0];
+        seal.replyToSender(ctx, msg, `⚠️ 你已有角色「${existingName}」。若想改名，请发送「修改名字 新名字」。`);
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    storage[platform][name] = [uid, gid];
+    storage[platform][uid] = [name, gid];
     ext.storageSet("a_private_group", JSON.stringify(storage));
     initCharProfile(platform, name);
 
@@ -689,47 +692,28 @@ cmd_rename_role.solve = (ctx, msg, cmdArgs) => {
     const storage = getRoleStorage();
     if (!storage[platform]) return seal.replyToSender(ctx, msg, "❌ 请先创建角色");
 
-    const oldName = Object.keys(storage[platform]).find(k => storage[platform][k][0] === uid);
-    if (!oldName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色");
+    // 新结构：uid为key，直接查找
+    const entry = storage[platform][uid];
+    if (!entry) return seal.replyToSender(ctx, msg, "❌ 请先创建角色");
+    const oldName = entry[0];
     if (oldName === newName) return seal.replyToSender(ctx, msg, "❌ 新名字与当前名字相同");
-    if (storage[platform][newName] && storage[platform][newName][0] !== uid)
-        return seal.replyToSender(ctx, msg, `❌ 名字「${newName}」已被他人使用`);
 
-    // 1. a_private_group
-    storage[platform][newName] = storage[platform][oldName];
-    delete storage[platform][oldName];
+    // 检查名字是否被他人使用
+    const takenByOther = Object.entries(storage[platform]).find(([k, v]) => v[0] === newName && k !== uid);
+    if (takenByOther) return seal.replyToSender(ctx, msg, `❌ 名字「${newName}」已被他人使用`);
+
+    // 1. 更新 a_private_group（uid为key，只需更新 value[0]）
+    storage[platform][uid][0] = newName;
     ext.storageSet("a_private_group", JSON.stringify(storage));
 
-    // 2. global_inventories（platform:roleName 键，仍需迁移）
-    const invs = JSON.parse(ext.storageGet("global_inventories") || "{}");
-    const oldInvKey = `${platform}:${oldName}`, newInvKey = `${platform}:${newName}`;
-    if (invs[oldInvKey] !== undefined) { invs[newInvKey] = invs[oldInvKey]; delete invs[oldInvKey]; }
-    ext.storageSet("global_inventories", JSON.stringify(invs));
-
-    // 3. place_keys（platform][roleName 键，仍需迁移）
-    const placeKeys = JSON.parse(ext.storageGet("place_keys") || "{}");
-    if (placeKeys[platform]?.[oldName] !== undefined) {
-        placeKeys[platform][newName] = placeKeys[platform][oldName];
-        delete placeKeys[platform][oldName];
-        ext.storageSet("place_keys", JSON.stringify(placeKeys));
-    }
-
-    // 4. a_npc_list
+    // 2. a_npc_list
     const npcList = JSON.parse(ext.storageGet("a_npc_list") || "[]");
     const npcIdx = npcList.indexOf(oldName);
     if (npcIdx !== -1) { npcList[npcIdx] = newName; ext.storageSet("a_npc_list", JSON.stringify(npcList)); }
 
-    // 5. relationship_lines（key 和 value 内部都含旧名）
+    // 3. relationship_lines 内部 initiator/from 字段（显示用，需同步更新）
     const relData = JSON.parse(ext.storageGet("relationship_lines") || "{}");
     if (relData[platform]) {
-        if (relData[platform][oldName]) {
-            relData[platform][newName] = relData[platform][oldName];
-            delete relData[platform][oldName];
-        }
-        for (const [role, rels] of Object.entries(relData[platform])) {
-            if (role === newName) continue;
-            if (rels[oldName] !== undefined) { rels[newName] = rels[oldName]; delete rels[oldName]; }
-        }
         for (const rels of Object.values(relData[platform])) {
             for (const rel of Object.values(rels)) {
                 if (rel.initiator === oldName) rel.initiator = newName;
@@ -738,9 +722,9 @@ cmd_rename_role.solve = (ctx, msg, cmdArgs) => {
         }
         ext.storageSet("relationship_lines", JSON.stringify(relData));
     }
-    // sys_char_profiles 和 group_write_progress 已改为 uid 索引，改名无需迁移
+    // 所有其他存储（place_keys, feature_user_blocklist, user_stats等）已改为 uid 索引，改名无需迁移
 
-    seal.replyToSender(ctx, msg, `✅ 角色名已由「${oldName}」改为「${newName}」，所有数据已同步迁移。`);
+    seal.replyToSender(ctx, msg, `✅ 角色名已由「${oldName}」改为「${newName}」。`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["修改名字"] = cmd_rename_role;
@@ -762,7 +746,9 @@ cmd_role_list.solve = (ctx, msg) => {
     let npcList = JSON.parse(ext.storageGet("a_npc_list") || "[]");
 
     let rep = `📊 当前已绑定角色列表：\n`;
-    for (let [name, info] of Object.entries(roles)) {
+    // 新结构：uid为key，roleName在value[0]
+    for (let [uid, info] of Object.entries(roles)) {
+        const name = info[0];
         let isNPC = npcList.includes(name);
         let npcTag = isNPC ? " 🎭" : "";
         const prof = getCharProfile(platform, name);
@@ -794,12 +780,14 @@ cmd_del_role.solve = (ctx, msg, cmdArgs) => {
     let storage = getRoleStorage();
     let platform = msg.platform;
 
-    if (!storage[platform] || !storage[platform][delName]) {
+    // 新结构：uid为key，按roleName查找
+    const targetUidEntry = storage[platform] && Object.entries(storage[platform]).find(([_, v]) => v[0] === delName);
+    if (!targetUidEntry) {
         seal.replyToSender(ctx, msg, `未找到角色「${delName}」，请检查输入`);
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    delete storage[platform][delName];
+    delete storage[platform][targetUidEntry[0]];
     ext.storageSet("a_private_group", JSON.stringify(storage));
     seal.replyToSender(ctx, msg, `✅ 已成功清除玩家「${delName}」的数据`);
     return seal.ext.newCmdExecuteResult(true);
@@ -818,48 +806,173 @@ const store = {
     set: (key, val) => ext.storageSet(key, JSON.stringify(val))
 };
 
-const getRoleName = (ctx, msg) => {
-    const platform = msg.platform;
-    const uid = msg.sender.userId.replace(`${platform}:`, "");
-    // Check primary roles first
-    const roles = store.get("a_private_group")[platform] || {};
-    const primary = Object.entries(roles).find(([_, val]) => val[0] === uid)?.[0];
-    if (primary) return primary;
-    // Resolve via extra_accounts alias
-    const extras = store.get("extra_accounts");
-    const primaryUid = extras[`${platform}:${uid}`];
-    if (primaryUid) return Object.entries(roles).find(([_, val]) => val[0] === primaryUid)?.[0] || null;
-    return null;
-};
-
-const getUserRoleName = (platform, fullUid) => {
-    const uid = String(fullUid).replace(`${platform}:`, "");
-    const roles = store.get("a_private_group")[platform] || {};
-    const primary = Object.entries(roles).find(([_, val]) => val[0] === uid)?.[0];
-    if (primary) return primary;
-    const extras = store.get("extra_accounts");
-    const primaryUid = extras[`${platform}:${uid}`];
-    if (primaryUid) return Object.entries(roles).find(([_, val]) => val[0] === primaryUid)?.[0] || null;
-    return null;
-};
-
 // 将辅助账号 uid 解析为主账号 uid（找不到则原样返回）
 const getPrimaryUid = (platform, uid) => {
     const extras = store.get("extra_accounts");
     return extras[`${platform}:${uid}`] || uid;
 };
 
+// 新结构：a_private_group[platform][uid] = [roleName, gid]
+// getRoleName: O(1) 查找（uid为key）
+const getRoleName = (ctx, msg) => {
+    const platform = msg.platform;
+    const rawUid = msg.sender.userId.replace(`${platform}:`, "");
+    const uid = getPrimaryUid(platform, rawUid);
+    return store.get("a_private_group")[platform]?.[uid]?.[0] || null;
+};
+
+// getUserRoleName: O(1) 查找
+const getUserRoleName = (platform, fullUid) => {
+    const uid = getPrimaryUid(platform, String(fullUid).replace(`${platform}:`, ""));
+    return store.get("a_private_group")[platform]?.[uid]?.[0] || null;
+};
+
+// 通过 roleName 反查 uid（O(n) 扫描，仅在必要时使用）
+const getUidByRoleName = (platform, roleName) => {
+    const roles = store.get("a_private_group")[platform] || {};
+    return Object.entries(roles).find(([_, v]) => v[0] === roleName)?.[0] || null;
+};
+
+// uid → roleName 显示（找不到则返回 uid 本身）
+const resolveUidToName = (platform, uid) => {
+    return store.get("a_private_group")[platform]?.[uid]?.[0] || uid;
+};
+
+// 跨平台查找 uid → roleName
+const resolveUidToNameAnyPlatform = (uid) => {
+    const apg = store.get("a_private_group");
+    for (const platform in apg) {
+        if (apg[platform][uid]) return apg[platform][uid][0];
+    }
+    return uid;
+};
+
+// ========================
+// 数据结构迁移：roleName-key → uid-key
+// ========================
+function migrateToUidIndex() {
+    const apg = store.get("a_private_group");
+    let migrated = false;
+
+    for (const platform in apg) {
+        const platformData = apg[platform];
+        const newPlatformData = {};
+        let platformMigrated = false;
+
+        for (const key in platformData) {
+            const val = platformData[key];
+            // 新结构特征：val[0] 是 roleName（字符串），val[1] 是 gid（纯数字字符串）
+            // 旧结构特征：key 是 roleName，val[0] 是 uid（纯数字字符串），val[1] 是 gid
+            // 判断依据：uid 通常是纯数字，roleName 通常包含中文或字母
+            const looksLikeUid = /^\d+$/.test(key);
+            if (!looksLikeUid) {
+                // 旧结构：key = roleName, val = [uid, gid]
+                const roleName = key;
+                const uid = val[0];
+                const gid = val[1];
+                if (!uid) continue; // 跳过无效记录
+                if (!newPlatformData[uid]) {
+                    newPlatformData[uid] = [roleName, gid];
+                    platformMigrated = true;
+                    console.log(`[迁移] ${platform} ${roleName}(${uid}) → uid-key`);
+                }
+            } else {
+                // 新结构：key = uid，直接复制
+                newPlatformData[key] = val;
+            }
+        }
+
+        if (platformMigrated) {
+            apg[platform] = newPlatformData;
+            migrated = true;
+        }
+    }
+
+    if (migrated) {
+        store.set("a_private_group", apg);
+        console.log("[迁移] a_private_group 迁移完成（roleName-key → uid-key）");
+    }
+
+    // 迁移 feature_user_blocklist: roleName-key → uid-key
+    const fbl = store.get("feature_user_blocklist");
+    let fblMigrated = false;
+    const newFbl = {};
+    for (const k in fbl) {
+        // 旧结构：key = platform:roleName；新结构：key = platform:uid
+        const colonIdx = k.indexOf(':');
+        if (colonIdx === -1) { newFbl[k] = fbl[k]; continue; }
+        const plat = k.slice(0, colonIdx);
+        const nameOrUid = k.slice(colonIdx + 1);
+        const looksLikeUid = /^\d+$/.test(nameOrUid);
+        if (!looksLikeUid) {
+            // 旧：roleName → 查找 uid
+            const uidLookup = getUidByRoleName(plat, nameOrUid);
+            if (uidLookup) {
+                newFbl[`${plat}:${uidLookup}`] = fbl[k];
+                fblMigrated = true;
+            } else {
+                newFbl[k] = fbl[k]; // 无法迁移，保留
+            }
+        } else {
+            newFbl[k] = fbl[k];
+        }
+    }
+    if (fblMigrated) {
+        store.set("feature_user_blocklist", newFbl);
+        console.log("[迁移] feature_user_blocklist 迁移完成");
+    }
+
+    // 迁移 place_keys: roleName-key → uid-key（per platform）
+    const placeKeys = store.get("place_keys");
+    let pkMigrated = false;
+    for (const plat in placeKeys) {
+        const platData = placeKeys[plat];
+        const newPlatData = {};
+        let changed = false;
+        for (const nameOrUid in platData) {
+            const looksLikeUid = /^\d+$/.test(nameOrUid);
+            if (!looksLikeUid) {
+                const uidLookup = getUidByRoleName(plat, nameOrUid);
+                if (uidLookup) {
+                    newPlatData[uidLookup] = platData[nameOrUid];
+                    changed = true;
+                } else {
+                    newPlatData[nameOrUid] = platData[nameOrUid];
+                }
+            } else {
+                newPlatData[nameOrUid] = platData[nameOrUid];
+            }
+        }
+        if (changed) {
+            placeKeys[plat] = newPlatData;
+            pkMigrated = true;
+        }
+    }
+    if (pkMigrated) {
+        store.set("place_keys", placeKeys);
+        console.log("[迁移] place_keys 迁移完成");
+    }
+}
+
+// 在扩展加载时执行迁移
+try {
+    migrateToUidIndex();
+} catch (e) {
+    console.error("[迁移] migrateToUidIndex 执行失败:", e);
+}
+
 // ========================
 // 角色档案系统
 // ========================
 function getCharProfile(platform, roleName) {
-    const uid = store.get("a_private_group")[platform]?.[roleName]?.[0];
+    // 新结构：通过 roleName 反查 uid
+    const uid = getUidByRoleName(platform, roleName);
     if (!uid) return {};
     return store.get("sys_char_profiles")[`${platform}:${uid}`] || {};
 }
 
 function setCharProfile(platform, roleName, patch) {
-    const uid = store.get("a_private_group")[platform]?.[roleName]?.[0];
+    const uid = getUidByRoleName(platform, roleName);
     if (!uid) return;
     const profiles = store.get("sys_char_profiles");
     const key = `${platform}:${uid}`;
@@ -885,20 +998,23 @@ function initCharProfile(platform, roleName, gender) {
 function checkPlacePermission(platform, roleName, placeName) {
     const config = store.get("place_system_config");
     if (!config.enabled || config.enabled === undefined) return { allowed: true };
-    
+
     const places = store.get("available_places");
     const place = places[placeName];
 
     // 处理私人房间
     if (!place) {
         const owner = placeName.match(/^(.+?)的房间$/)?.[1];
-        const groups = store.get("a_private_group")[platform] || {};
-        return { allowed: !!(owner && groups[owner]), reason: "地点不存在或私人房间未激活" };
+        if (!owner) return { allowed: false, reason: "地点不存在" };
+        const ownerUid = getUidByRoleName(platform, owner);
+        return { allowed: !!ownerUid, reason: "地点不存在或私人房间未激活" };
     }
 
     if (!place.locked) return { allowed: true };
-    const hasKey = (store.get("place_keys")[platform]?.[roleName] || []).includes(placeName);
-    return { allowed: hasKey, reason: "需要钥匙" };
+    // 新结构：place_keys[platform][uid]
+    const uid = getUidByRoleName(platform, roleName);
+    const hasKey = uid && (store.get("place_keys")[platform]?.[uid] || []).includes(placeName);
+    return { allowed: !!hasKey, reason: "需要钥匙" };
 }
 
 /**
@@ -966,7 +1082,9 @@ cmdPlace.solve = (ctx, msg, cmdArgs) => {
     const platform = msg.platform;
     const sub = cmdArgs.getArgN(1);
     const places = store.get("available_places");
-    const userKeys = role ? (store.get("place_keys")[platform]?.[role] || []) : [];
+    // 新结构：place_keys[platform][uid]
+    const roleUid = role ? getUidByRoleName(platform, role) : null;
+    const userKeys = roleUid ? (store.get("place_keys")[platform]?.[roleUid] || []) : [];
 
     if (sub === "查看") {
         let rep = "🏢 可用地点列表：\n";
@@ -1043,15 +1161,18 @@ cmdPlaceAdm.solve = (ctx, msg, cmdArgs) => {
             const role = cmdArgs.getArgN(2);
             const pName = cmdArgs.getArgN(3);
             if (!places[pName]) return seal.replyToSender(ctx, msg, "❌ 目标地点不存在");
+            // 新结构：place_keys[platform][uid]
+            const targetUid = getUidByRoleName(pf, role);
+            if (!targetUid) { seal.replyToSender(ctx, msg, "❌ 找不到角色"); break; }
             if (!keys[pf]) keys[pf] = {};
-            if (!keys[pf][role]) keys[pf][role] = [];
-            
-            const idx = keys[pf][role].indexOf(pName);
+            if (!keys[pf][targetUid]) keys[pf][targetUid] = [];
+
+            const idx = keys[pf][targetUid].indexOf(pName);
             if (idx === -1) {
-                keys[pf][role].push(pName);
+                keys[pf][targetUid].push(pName);
                 seal.replyToSender(ctx, msg, `🔑 已发放 [${pName}] 钥匙给 [${role}]`);
             } else {
-                keys[pf][role].splice(idx, 1);
+                keys[pf][targetUid].splice(idx, 1);
                 seal.replyToSender(ctx, msg, `🚫 已收回 [${role}] 的 [${pName}] 钥匙`);
             }
             break;
@@ -1164,9 +1285,12 @@ cmdBatchKey.solve = (ctx, msg, cmdArgs) => {
     if (!keys[pf]) keys[pf] = {};
 
     roles.forEach(r => {
-        if (!keys[pf][r.trim()]) keys[pf][r.trim()] = [];
+        // 新结构：place_keys[platform][uid]
+        const rUid = getUidByRoleName(pf, r.trim());
+        if (!rUid) return;
+        if (!keys[pf][rUid]) keys[pf][rUid] = [];
         pNames.forEach(p => {
-            if (!keys[pf][r.trim()].includes(p.trim())) keys[pf][r.trim()].push(p.trim());
+            if (!keys[pf][rUid].includes(p.trim())) keys[pf][rUid].push(p.trim());
         });
     });
     ext.storageSet("place_keys", JSON.stringify(keys));
@@ -1190,7 +1314,8 @@ cmdViewPlace.solve = (ctx, msg) => {
     const allowPrivate = JSON.parse(ext.storageGet("allow_private_rooms") || "true");
     rep += `🏠 私人房间开关：${allowPrivate ? "开启" : "关闭"}\n`;
     Object.entries(places).forEach(([name, data]) => {
-        const holders = Object.entries(keys).filter(([_, kList]) => kList.includes(name)).map(([r]) => r);
+        // 新结构：keys的key是uid，显示时转为roleName
+        const holders = Object.entries(keys).filter(([_, kList]) => kList.includes(name)).map(([uid]) => resolveUidToName(msg.platform, uid));
         rep += `\n${data.locked ? "🔒" : "🔓"} ${name}\n 📝 描述：${data.desc || "无"}\n 🔑 持有：${holders.join(",") || "无人"}\n`;
     });
     seal.replyToSender(ctx, msg, rep || "📭 系统内无地点数据");
@@ -1279,11 +1404,13 @@ function parseAndValidateTime(rawTime, allowedRanges, minDuration, subtype) {
 function checkLockedSlots(platform, day, time, fromKey, sendname, names, a_private_group, a_lockedSlots) {
     let failed = [];
     for (let toname of names) {
-        if (!a_private_group[platform] || !a_private_group[platform][toname]) {
+        // 新结构：通过 roleName 反查 uid
+        const toUidLookup = Object.entries(a_private_group[platform] || {}).find(([_, v]) => v[0] === toname)?.[0];
+        if (!toUidLookup) {
             failed.push(`${toname}（未注册）`);
             continue;
         }
-        const toKey = `${platform}:${a_private_group[platform][toname][0]}`;
+        const toKey = `${platform}:${toUidLookup}`;
         const toLocked = a_lockedSlots[toKey]?.[day] || [];
         if (toLocked.some(lockedTime => timeOverlap(time, lockedTime))) {
             failed.push(`${toname}（该时段被锁定）`);
@@ -1304,7 +1431,9 @@ function checkParticipantConflicts(platform, day, time, sendname, names, a_priva
     let existingAppointments = [];  
 
     for (let toname of names) {
-        const toKey = `${platform}:${a_private_group[platform][toname][0]}`;
+        // 新结构：通过 roleName 反查 uid
+        const toUidLookup2 = Object.entries(a_private_group[platform] || {}).find(([_, v]) => v[0] === toname)?.[0];
+        const toKey = toUidLookup2 ? `${platform}:${toUidLookup2}` : `${platform}:${toname}`;
         
         let hasConflict = false;
         let conflictSchedule = null;
@@ -1400,9 +1529,11 @@ function mergeIntoExistingAppointment(ctx, msg, existingAppointment, newNames, p
     }
     
     for (let newName of newNames) {
-        const targetInfo = a_private_group[platform][newName];
+        // 新结构：通过 roleName 反查 uid
+        const newNameUid = getUidByRoleName(platform, newName);
+        const targetInfo = newNameUid ? a_private_group[platform][newNameUid] : null;
         if (!targetInfo) continue;
-        const targetUid = targetInfo[0];
+        const targetUid = newNameUid;
         const targetKey = `${platform}:${targetUid}`;
         if (!b_confirmedSchedule[targetKey]) b_confirmedSchedule[targetKey] = [];
         
@@ -1469,10 +1600,12 @@ function mergeIntoExistingAppointment(ctx, msg, existingAppointment, newNames, p
     seal.replyToSender(groupCtx, groupMsg, joinNotice);
     
     for (let newName of newNames) {
-        const targetInfo = a_private_group[platform][newName];
+        // 新结构：通过 roleName 反查 uid
+        const newNameUid2 = getUidByRoleName(platform, newName);
+        const targetInfo = newNameUid2 ? a_private_group[platform][newNameUid2] : null;
         if (targetInfo) {
             const targetGroupId = targetInfo[1];
-            const targetUid = targetInfo[0];
+            const targetUid = newNameUid2;
             const privateMsg = seal.newMessage();
             privateMsg.messageType = "group";
             privateMsg.groupId = `${platform}-Group:${targetGroupId}`;
@@ -1500,8 +1633,9 @@ async function checkAppointmentPreflight(ctx, msg, cmdArgs, subtype, minDuration
     const sendname = getRoleName(ctx, msg);
     if (!sendname) return { valid: false, errorMsg: "请先使用「创建新角色」绑定角色" };
 
-    const blockMap = JSON.parse(ext.storageGet("feature_user_blocklist") || "{}");
-    if (blockMap[sendname]?.enable_general_appointment === false) {
+    // 新结构：blockMap[uid]
+    const sendUid = getPrimaryUid(platform, uid);
+    if (!isUserFeatureEnabled(sendUid, "enable_general_appointment")) {
         return { valid: false, errorMsg: "🚫 您已被禁止使用发起邀约功能" };
     }
 
@@ -1639,7 +1773,10 @@ async function directCreateAndFinalizeAppointment({
         if (ok === false) return { success: false };
     } else {
         const toname = names[0];
-        const toid = a_private_group[platform][toname][0];
+        // 新结构：通过 roleName 反查 uid，再取 gid
+        const toUidDirect = getUidByRoleName(platform, toname);
+        const toid = toUidDirect;
+        const sendUidDirect = getUidByRoleName(platform, sendname);
         const item = {
             id: generateId(),
             type: "小群",
@@ -1648,7 +1785,7 @@ async function directCreateAndFinalizeAppointment({
             sendid,
             toname,
             toid,
-            gid: a_private_group[platform][sendname][1],
+            gid: sendUidDirect ? a_private_group[platform][sendUidDirect]?.[1] : null,
             day,
             time,
             place,
@@ -1688,9 +1825,9 @@ function checkAndCostLetterCoin(ctx, msg, costType) {
     const platform = msg.platform;
     const uid = msg.sender.userId.replace(`${platform}:`, "");
 
-    // 获取玩家角色名
+    // 获取玩家角色名（新结构：uid为key，roleName在value[0]）
     const a_private_group = JSON.parse(letterExt.storageGet("a_private_group") || "{}");
-    const senderRoleName = Object.entries(a_private_group[platform] || {}).find(([_, v]) => v[0] === uid)?.[0];
+    const senderRoleName = a_private_group[platform]?.[uid]?.[0];
 
     if (!senderRoleName) {
         return { success: false, errorMsg: "✨ 请先使用「创建新角色」来认领你的身份。" };
@@ -1910,8 +2047,9 @@ cmd_wechat.solve = async (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    const blockMap = JSON.parse(ext.storageGet("feature_user_blocklist") || "{}");
-    if (blockMap[sendname] && blockMap[sendname].enable_wechat === false) {
+    // 新结构：feature_user_blocklist[uid]
+    const wechatSendUid = getPrimaryUid(platform, uid);
+    if (!isUserFeatureEnabled(wechatSendUid, "enable_wechat")) {
         seal.replyToSender(ctx, msg, "🚫 您已被禁止使用微信功能");
         return seal.ext.newCmdExecuteResult(true);
     }
@@ -1923,7 +2061,9 @@ cmd_wechat.solve = async (ctx, msg, cmdArgs) => {
         return ret;
     }
 
-    if (!a_private_group[platform][toname]) {
+    // 新结构：通过 roleName 反查 uid
+    const wechatToUid = getUidByRoleName(platform, toname);
+    if (!wechatToUid) {
         seal.replyToSender(ctx, msg, `❌ 未找到角色「${toname}」，请确认对方已注册`);
         return seal.ext.newCmdExecuteResult(true);
     }
@@ -1971,9 +2111,12 @@ cmd_wechat.solve = async (ctx, msg, cmdArgs) => {
 
         const participants = [sendname, toname];
         for (let participant of participants) {
-            const info = a_private_group[platform][participant];
+            // 新结构：通过 roleName 反查 uid
+            const pUidLookup = getUidByRoleName(platform, participant);
+            const info = pUidLookup ? a_private_group[platform][pUidLookup] : null;
             if (info) {
-                const [pUid, pGid] = info;
+                const pUid = pUidLookup;
+                const pGid = info[1];
                 const notifyMsg = seal.newMessage();
                 notifyMsg.messageType = "group";
                 notifyMsg.groupId = `${platform}-Group:${pGid}`;
@@ -2008,7 +2151,8 @@ cmd_view_schedule.solve = (ctx, msg) => {
     const schedule = storage("b_confirmedSchedule"), multiReq = storage("b_MultiGroupRequest");
     const privGroup = storage("a_private_group"), timers = storage("group_timers");
     
-    const myName = Object.keys(privGroup[platform] || {}).find(n => privGroup[platform][n][0] === roleId);
+    // 新结构：uid为key，roleName在value[0]
+    const myName = privGroup[platform]?.[roleId]?.[0] || null;
     if (!myName) return seal.replyToSender(ctx, msg, "请先绑定角色");
 
     // 1. 聚合日程与微信群
@@ -2114,12 +2258,12 @@ cmd_apply_join.solve = async (ctx, msg, cmdArgs) => {
     if (!globalDay) return seal.replyToSender(ctx, msg, "⚠️ 当前尚未设置全局天数，请先使用 \".设置天数 D1\"");
 
     // 4. 验证目标角色是否存在
-    const targetInfo = a_private_group[platform][targetName];
-    if (!targetInfo) {
+    const targetUid = getUidByRoleName(platform, targetName);
+    if (!targetUid) {
         return seal.replyToSender(ctx, msg, `❌ 角色「${targetName}」未注册，无法发起加入请求。`);
     }
-    const targetUid = targetInfo[0];
-    const targetGroupId = targetInfo[1];  // 用于通知的个人群
+    const targetInfo = a_private_group[platform][targetUid];
+    const targetGroupId = targetInfo?.[1];  // 用于通知的个人群
 
     // 5. 解析时间点（支持 HH:MM 或 HHMM）
     let pointTime = rawTime;
@@ -2292,14 +2436,13 @@ cmd_accept_join.solve = (ctx, msg, cmdArgs) => {
     fullRequest.status = "accepted";
     ext.storageSet("join_request_list", JSON.stringify(joinRequests));
     
-    // 获取发起人信息
+    // 获取发起人信息（新结构：通过 roleName 反查 uid）
     const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
-    const fromInfo = a_private_group[platform]?.[fullRequest.from];
-    if (!fromInfo) {
+    const fromUid = getUidByRoleName(platform, fullRequest.from);
+    if (!fromUid) {
         seal.replyToSender(ctx, msg, `⚠️ 无法找到发起人「${fullRequest.from}」的信息。`);
         return seal.ext.newCmdExecuteResult(true);
     }
-    const fromUid = fromInfo[0];
     const targetGroupId = fullRequest.targetGroupId;
     
     // 更新日程
@@ -2431,7 +2574,8 @@ cmd_reject_join.solve = (ctx, msg, cmdArgs) => {
     
     // 通知发起人
     const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
-    const fromInfo = a_private_group[platform]?.[fullRequest.from];
+    const fromUid = getUidByRoleName(platform, fullRequest.from);
+    const fromInfo = fromUid ? a_private_group[platform]?.[fromUid] : null;
     if (fromInfo) {
         const fromGroupId = fromInfo[1];
         if (fromGroupId) {
@@ -2442,7 +2586,7 @@ cmd_reject_join.solve = (ctx, msg, cmdArgs) => {
             seal.replyToSender(fromCtx, fromMsg, `❌ ${fullRequest.to} 拒绝了你的加入请求。`);
         }
     }
-    
+
     seal.replyToSender(ctx, msg, `✅ 已拒绝 ${fullRequest.from} 的加入请求。`);
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -2521,15 +2665,16 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
     // 违规检查
     if (!(await checkNoQuitBlocker(uid, ctx, msg))) return;
 
-    // 3. 权限与自送检查
-    const blockMap = JSON.parse(ext.storageGet("feature_user_blocklist") || "{}");
-    if (blockMap[sendname]?.enable_general_gift === false) {
+    // 3. 权限与自送检查（新结构：feature_user_blocklist[uid]）
+    if (!isUserFeatureEnabled(uid, "enable_general_gift")) {
         return seal.replyToSender(ctx, msg, `🎁 ${sendname} 被限制使用礼物功能。`);
     }
     if (toname === sendname) {
         return seal.replyToSender(ctx, msg, `🌸 礼不自赠，情当他寄。`);
     }
-    if (!a_private_group[platform][toname]) {
+    // 新结构：通过 roleName 反查 uid
+    const toUid = getUidByRoleName(platform, toname);
+    if (!toUid) {
         return seal.replyToSender(ctx, msg, `❌ 未找到收件人 ${toname}`);
     }
 
@@ -2537,7 +2682,8 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
     const gameDay = ext.storageGet("global_days") || "D0";
     const dailyLimit = parseInt(ext.storageGet("giftDailyLimit") || "100");
     const cooldownMin = parseInt(ext.storageGet("giftCooldown") || "30");
-    
+    const isPreset = giftInput.startsWith('#');
+
     let globalStats = JSON.parse(ext.storageGet("global_gift_stats") || "{}");
     let globalCooldowns = JSON.parse(ext.storageGet("global_gift_cooldowns") || "{}");
     const userKey = `${platform}:${uid}`;
@@ -2557,7 +2703,7 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
 
     // 模式检查
     const giftMode = parseInt(ext.storageGet("giftMode") || "0");
-    if (giftMode === 1 && !giftInput.startsWith('#')) {
+    if (giftMode === 1 && !isPreset) {
         return seal.replyToSender(ctx, msg, "❌ 当前仅允许使用预设礼物（以 # 开头）");
     }
 
@@ -2586,13 +2732,26 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
         giftContent = giftInput;
     }
 
-    // 6. 投递（不写入收件人背包/图鉴，仅发送通知消息）
-    const targetEntry = a_private_group[platform][toname];
+    // 6. 投递（新结构：通过 toUid 查找 gid）
+    const targetEntry = a_private_group[platform][toUid]; // [roleName, gid]
+
+    // 收到即入图鉴：若设置开启，且是预设礼物，将礼物加入收件人图鉴
+    if (giftInput.startsWith('#') && ext.storageGet("shop_gift_catalog_on_receive") === "true") {
+        const recipientPrimaryUid = getPrimaryUid(platform, toUid);
+        const recipientKey = `${platform}:${recipientPrimaryUid}`;
+        const sightings = JSON.parse(ext.storageGet("gift_sightings") || "{}");
+        if (!sightings[recipientKey]) sightings[recipientKey] = { unlocked_gifts: [] };
+        if (!sightings[recipientKey].unlocked_gifts.includes(giftInput)) {
+            sightings[recipientKey].unlocked_gifts.push(giftInput);
+            ext.storageSet("gift_sightings", JSON.stringify(sightings));
+        }
+    }
+
     const newmsg = seal.newMessage();
     newmsg.messageType = "group";
     newmsg.groupId = `${platform}-Group:${targetEntry[1]}`;
     const newctx = seal.createTempCtx(ctx.endPoint, newmsg);
-    const targetQQ = targetEntry[0];
+    const targetQQ = toUid;
     const recipientMsg = `[CQ:at,qq=${targetQQ}]\n🎀 ${toname}，有一份来自「${sendname}」的快递：\n礼物：${giftDisplayName}\n寄语：「${giftContent}」`;
     seal.replyToSender(newctx, newmsg, recipientMsg);
 
@@ -3011,7 +3170,8 @@ function cleanupConflictsAndNotify(platform, toid, toname, day, time, ctx, msg) 
   
     // 🔔 通知逻辑：改为使用 WebSocket 发送
     for (let n of notifyRefused) {
-      const targetGroupIdRaw = a_private_group[platform]?.[n.toname]?.[1];
+      const nUid = getUidByRoleName(platform, n.toname);
+      const targetGroupIdRaw = nUid ? a_private_group[platform]?.[nUid]?.[1] : null;
       if (!targetGroupIdRaw) {
         console.log(`[❗️通知失败] 找不到 ${n.toname} 的绑定群，跳 skipped`);
         continue;
@@ -3187,8 +3347,8 @@ async function validateAndCleanNoQuit(qq, ctx, msg) {
     const platformRoles = roleStorage[platform] || {};
     const npcList = JSON.parse(ext.storageGet("a_npc_list") || "[]");
 
-    // 找到该 QQ 绑定的角色名
-    const roleName = Object.keys(platformRoles).find(name => platformRoles[name][0] === qq);
+    // 新结构：a_private_group[platform][uid] = [roleName, gid]，直接查
+    const roleName = platformRoles[qq]?.[0] || null;
 
     // 如果该角色现在被标记为了 NPC，直接清空其违规记录并放行
     if (roleName && npcList.includes(roleName)) {
@@ -3323,9 +3483,12 @@ ext.cmdMap["更新未退群"] = cmd_fix_noquit;
 
 // --- 辅助提取：统一的角色信息获取 ---
 const getRoleDetails = (platform, name) => {
+    // name is a roleName; look up the uid first, then get gid
     const privateGroups = JSON.parse(ext.storageGet("a_private_group") || "{}");
-    const info = privateGroups?.[platform]?.[name] || [];
-    return { uid: info[0], gid: info[1] };
+    const uid = getUidByRoleName(platform, name);
+    if (!uid) return { uid: null, gid: null };
+    const info = privateGroups?.[platform]?.[uid] || [];
+    return { uid, gid: info[1] };
 };
 
 async function finalizeGroupCreation(platform, ctx, msg, groupData, participants) {
@@ -3383,7 +3546,7 @@ async function finalizeGroupCreation(platform, ctx, msg, groupData, participants
         : (otherNames.length === 1 ? "" : "");
 
     let noticeText;
-    const guide = `\n\n修改时间 ➜ 。修改时间线 ${groupData.day} 新时间\n不想参加 ➜ 。废除时间线 ${gid}`;
+    const guide = `\n\n修改时间 ➜ 。修改时间线 ${groupData.day} 新时间\n不想参加 ➜ 。拒绝时间线 ${gid}`;
 
     if (groupData.subtype === "电话") {
         const titleLine = groupData.title ? ` · ${groupData.title}` : "";
@@ -3739,7 +3902,7 @@ cmd_view_schedule_other.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
   }
 
-  const targetUid = a_private_group[platform][role]?.[0];
+  const targetUid = getUidByRoleName(platform, role);
   if (!targetUid) {
     seal.replyToSender(ctx, msg, `⚠️ 找不到角色「${role}」，请确认其已完成绑定`);
     return seal.ext.newCmdExecuteResult(true);
@@ -3838,13 +4001,13 @@ cmd_time_lock.solve = function(ctx, msg, argv) {
     let a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
     let a_lockedSlots = JSON.parse(ext.storageGet("a_lockedSlots") || "{}");
 
-    // 获取目标角色列表
+    // 获取目标角色列表（roleNames 用于显示，内部转换为 uid 操作）
     let targetRoles = [];
-    
+
     if (target === "全体") {
-        // 获取当前平台所有角色
+        // 获取当前平台所有角色名
         if (a_private_group[platform]) {
-            targetRoles = Object.keys(a_private_group[platform]);
+            targetRoles = Object.values(a_private_group[platform]).map(v => v[0]).filter(Boolean);
         }
         if (targetRoles.length === 0) {
             seal.replyToSender(ctx, msg, "⚠️ 当前平台没有任何绑定的角色");
@@ -3865,13 +4028,13 @@ cmd_time_lock.solve = function(ctx, msg, argv) {
     let alreadyList = []; // 已经锁定/解锁的状态
 
     for (let roleName of targetRoles) {
-        // 检查角色是否存在
-        if (!a_private_group[platform] || !a_private_group[platform][roleName]) {
+        // 新结构：通过 roleName 反查 uid
+        const uid = getUidByRoleName(platform, roleName);
+        if (!uid) {
             notFoundList.push(roleName);
             continue;
         }
 
-        const uid = a_private_group[platform][roleName][0];
         const key = `${platform}:${uid}`;
 
         // 执行锁定或解锁操作
@@ -4123,13 +4286,12 @@ cmd_view_locks.solve = (ctx, msg, cmdArgs) => {
   }
 
   const platform = msg.platform;
-  const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
-  if (!a_private_group[platform] || !a_private_group[platform][name]) {
+  const uid = getUidByRoleName(platform, name);
+  if (!uid) {
     seal.replyToSender(ctx, msg, `未找到角色「${name}」，请确认其是否已绑定`);
     return;
   }
 
-  const uid = a_private_group[platform][name][0];
   const key = `${platform}:${uid}`;
   const a_lockedSlots = JSON.parse(ext.storageGet("a_lockedSlots") || "{}");
 
@@ -4183,11 +4345,19 @@ cmd_block_user_feature.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
   }
 
+  // 新结构：feature_user_blocklist[uid] 而非 [roleName]
+  const platform = msg.platform;
+  const targetUid = getUidByRoleName(platform, roleName);
+  if (!targetUid) {
+    seal.replyToSender(ctx, msg, `❌ 找不到角色「${roleName}」`);
+    return seal.ext.newCmdExecuteResult(true);
+  }
+
   let blockMap = JSON.parse(ext.storageGet("feature_user_blocklist") || "{}");
-  if (!blockMap[roleName]) blockMap[roleName] = {};
+  if (!blockMap[targetUid]) blockMap[targetUid] = {};
 
   if (featureName === "全部") {
-    for (const key of Object.values(featureMap)) blockMap[roleName][key] = value;
+    for (const key of Object.values(featureMap)) blockMap[targetUid][key] = value;
     ext.storageSet("feature_user_blocklist", JSON.stringify(blockMap));
     const status = value ? "✅ 已开启" : "🚫 已关闭";
     seal.replyToSender(ctx, msg, `${status} 全部功能：${roleName}`);
@@ -4200,7 +4370,7 @@ cmd_block_user_feature.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
   }
 
-  blockMap[roleName][key] = value;
+  blockMap[targetUid][key] = value;
   ext.storageSet("feature_user_blocklist", JSON.stringify(blockMap));
 
   const status = value ? "✅ 已开启" : "🚫 已关闭";
@@ -4235,8 +4405,10 @@ cmd_view_user_feature.solve = (ctx, msg, cmdArgs) => {
 
   let lines = [];
 
-  for (let roleName in blockMap) {
-    let userFeatures = blockMap[roleName];
+  // 新结构：blockMap[uid]，显示时转为 roleName
+  for (let uid in blockMap) {
+    const displayName = resolveUidToNameAnyPlatform(uid);
+    let userFeatures = blockMap[uid];
     let statusList = [];
 
     for (let key in userFeatures) {
@@ -4246,7 +4418,7 @@ cmd_view_user_feature.solve = (ctx, msg, cmdArgs) => {
     }
 
     if (statusList.length > 0) {
-      lines.push(`【${roleName}】→ ${statusList.join("，")}`);
+      lines.push(`【${displayName}】→ ${statusList.join("，")}`);
     }
   }
 
@@ -4445,7 +4617,8 @@ async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, co
     }
 
     const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
-    if (!a_private_group[platform]?.[toname]) {
+    const toUidForLetter = getUidByRoleName(platform, toname);
+    if (!toUidForLetter) {
         return seal.replyToSender(ctx, msg, `❌ 未找到收信人：${toname}`);
     }
 
@@ -4499,29 +4672,33 @@ async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, co
         content = content.split('').map(c => Math.random() < 0.2 ? blackout[Math.floor(Math.random() * blackout.length)] : c).join('');
     }
 
-    // 🖋️ 落款逻辑
+    // 🖋️ 落款逻辑（新结构：keys 是 uid，values[0] 是 roleName）
     let finalSignature = `落款：${sendname}`;
     const sigRoll = Math.random();
     if (sigRoll < (chaosConfig.mistakenSignature / 100)) {
-        const others = Object.keys(a_private_group[platform]).filter(n => n !== sendname);
-        if (others.length) finalSignature = `落款：${others[Math.floor(Math.random() * others.length)]}`;
+        const allRoleNames = Object.values(a_private_group[platform] || {}).map(v => v[0]).filter(n => n && n !== sendname);
+        if (allRoleNames.length) finalSignature = `落款：${allRoleNames[Math.floor(Math.random() * allRoleNames.length)]}`;
     }
 
     // 📤 投递
-    let trueRecipient = toname;
+    let trueRecipientName = toname;
+    let trueRecipientUid = toUidForLetter;
     if (Math.random() < (chaosConfig.misdelivery / 100)) {
-        const others = Object.keys(a_private_group[platform]).filter(n => n !== toname);
-        if (others.length) trueRecipient = others[Math.floor(Math.random() * others.length)];
+        const otherEntries = Object.entries(a_private_group[platform] || {}).filter(([uid, v]) => v[0] !== toname);
+        if (otherEntries.length) {
+            const pick = otherEntries[Math.floor(Math.random() * otherEntries.length)];
+            trueRecipientUid = pick[0];
+            trueRecipientName = pick[1][0];
+        }
     }
 
-    const targetEntry = a_private_group[platform][trueRecipient];
+    const targetEntry = a_private_group[platform][trueRecipientUid];
     const newmsg = seal.newMessage();
     newmsg.messageType = "group";
     newmsg.groupId = `${platform}-Group:${targetEntry[1]}`;
     const newctx = seal.createTempCtx(ctx.endPoint, newmsg);
 
-    const targetQQ = targetEntry[0];
-    const notice = `[CQ:at,qq=${targetQQ}]\n📱 ${toname}，你收到一条短信：\n「${content}」\n\n${finalSignature}`;
+    const notice = `[CQ:at,qq=${trueRecipientUid}]\n📱 ${toname}，你收到一条短信：\n「${content}」\n\n${finalSignature}`;
     seal.replyToSender(newctx, newmsg, notice);
 
     // 7. 更新数据
@@ -4642,17 +4819,22 @@ function sendCombinedDetails(ctx, msg, toRoleName, fromRoleName, details, self) 
     }
 }
 
-// 辅助函数：获取对方绑定的 [uid, gid]
+// 辅助函数：获取对方绑定的 [uid, gid]（新结构：uid为key）
 function getTargetAddr(platform, roleName) {
     const groups = JSON.parse(ext.storageGet("a_private_group") || "{}");
-    return groups[platform]?.[roleName];
+    const uid = getUidByRoleName(platform, roleName);
+    if (!uid) return null;
+    const entry = groups[platform]?.[uid];
+    return entry ? [uid, entry[1]] : null;
 }
 
 const RelationshipUtils = {
     getRoleName: (ctx, msg, platform) => {
-        const uid = msg.sender.userId.replace(`${platform}:`, "");
+        const rawUid = msg.sender.userId.replace(`${platform}:`, "");
+        const uid = getPrimaryUid(platform, rawUid);
         const groups = JSON.parse(ext.storageGet("a_private_group") || "{}");
-        return Object.entries(groups[platform] || {}).find(([_, v]) => v[0] === uid)?.[0];
+        // 新结构：uid为key，roleName在value[0]
+        return groups[platform]?.[uid]?.[0] || null;
     },
     getData: (key) => JSON.parse(ext.storageGet(key) || "{}"),
     setData: (key, data) => ext.storageSet(key, JSON.stringify(data)),
@@ -4681,39 +4863,44 @@ cmd_add_rel_detail.solve = (ctx, msg, cmdArgs) => {
     let relData = RelationshipUtils.getData("relationship_lines") || {};
     if (!relData[platform]) relData[platform] = {};
 
-    // 1. 统一查找逻辑：确保 sendName 和 toName 在结构中存在
-    if (!relData[platform][sendName]) relData[platform][sendName] = {};
-    if (!relData[platform][toName]) relData[platform][toName] = {};
+    // 新结构：relationship_lines[platform][uid][uid]，内部 initiator/from 仍用 roleName 显示
+    const sendUid = getUidByRoleName(platform, sendName);
+    const toUid = getUidByRoleName(platform, toName);
+    if (!sendUid || !toUid) return seal.replyToSender(ctx, msg, "❌ 找不到角色");
+
+    // 1. 确保 uid 节点存在
+    if (!relData[platform][sendUid]) relData[platform][sendUid] = {};
+    if (!relData[platform][toUid]) relData[platform][toUid] = {};
 
     // 2. 获取现有关系引用（双向兼容）
-    let rel = relData[platform][sendName][toName] || relData[platform][toName][sendName];
-    
+    let rel = relData[platform][sendUid][toUid] || relData[platform][toUid][sendUid];
+
     // 3. 如果是新关系，进行初始化
     if (!rel) {
         const maxRel = parseInt(ext.storageGet("max_relationships_per_user") || "20");
-        const currentCount = Object.values(relData[platform][sendName]).filter(r => r.initiator === sendName).length;
-        
+        const currentCount = Object.values(relData[platform][sendUid]).filter(r => r.initiator === sendName).length;
+
         if (currentCount >= maxRel) return seal.replyToSender(ctx, msg, `⚠️ 你的发起额度已达上限 (${maxRel})`);
-        
-        // 关键修复：显式初始化 details 数组
-        rel = { 
-            initiator: sendName, 
-            confirmed: false, 
-            details: [] 
+
+        // initiator 存 roleName（显示用）
+        rel = {
+            initiator: sendName,
+            confirmed: false,
+            details: []
         };
-        
+
         seal.replyToSender(ctx, msg, `✨ 已成功向「${toName}」发起关系线邀请并记录细节。`);
     }
 
     // 4. 再次检查细节数组是否存在（防范未知异常）
     if (!rel.details) rel.details = [];
 
-    // 5. 记录细节
+    // 5. 记录细节（from 存 roleName，显示用）
     rel.details.push({ text: content, from: sendName });
 
     // 6. 镜像存储引用
-    relData[platform][sendName][toName] = rel;
-    relData[platform][toName][sendName] = rel;
+    relData[platform][sendUid][toUid] = rel;
+    relData[platform][toUid][sendUid] = rel;
 
     RelationshipUtils.setData("relationship_lines", relData);
 
@@ -4744,7 +4931,9 @@ ext.cmdMap["拉线"] = cmd_add_rel_detail;
 function sendNewDetailNotification(ctx, msg, toRoleName, content, fromRoleName, targetGid) {
     const platform = msg.platform;
     const groups = JSON.parse(ext.storageGet("a_private_group") || "{}");
-    const toAddr = groups[platform]?.[toRoleName];
+    // 新结构：通过 roleName 反查 uid，再取 gid
+    const toUid = getUidByRoleName(platform, toRoleName);
+    const toAddr = toUid ? groups[platform]?.[toUid] : null;
     if (!toAddr) return;
 
     // 提取纯数字群号
@@ -4771,10 +4960,13 @@ cmd_confirm_relationship.solve = (ctx, msg, cmdArgs) => {
     const toName = cmdArgs.getArgN(1);
 
     let relData = RelationshipUtils.getData("relationship_lines");
-    if (!relData[platform]?.[sendName]?.[toName]) return seal.replyToSender(ctx, msg, "未找到该关系线");
+    // 新结构：uid为key
+    const sendUid = getUidByRoleName(platform, sendName);
+    const toUid = getUidByRoleName(platform, toName);
+    if (!sendUid || !toUid || !relData[platform]?.[sendUid]?.[toUid]) return seal.replyToSender(ctx, msg, "未找到该关系线");
 
-    relData[platform][sendName][toName].confirmed = true;
-    if (relData[platform][toName]?.[sendName]) relData[platform][toName][sendName].confirmed = true;
+    relData[platform][sendUid][toUid].confirmed = true;
+    if (relData[platform][toUid]?.[sendUid]) relData[platform][toUid][sendUid].confirmed = true;
 
     RelationshipUtils.setData("relationship_lines", relData);
     seal.replyToSender(ctx, msg, `✅ 你已确认与「${toName}」的关系线为完成状态。`);
@@ -4811,12 +5003,17 @@ cmd_set_forced_rel.solve = (ctx, msg, cmdArgs) => {
         details: [{ text: `[系统设定] ${content}`, time: new Date().toLocaleString(), from: "管理员" }]
     };
 
-    if (!relData[platform]) relData[platform] = {};
-    if (!relData[platform][nameA]) relData[platform][nameA] = {};
-    if (!relData[platform][nameB]) relData[platform][nameB] = {};
+    // 新结构：uid为key
+    const uidA = getUidByRoleName(platform, nameA);
+    const uidB = getUidByRoleName(platform, nameB);
+    if (!uidA || !uidB) return seal.replyToSender(ctx, msg, `❌ 找不到角色「${!uidA ? nameA : nameB}」`);
 
-    relData[platform][nameA][nameB] = forceNode;
-    relData[platform][nameB][nameA] = { ...forceNode, received: true }; // B 端标记为收到
+    if (!relData[platform]) relData[platform] = {};
+    if (!relData[platform][uidA]) relData[platform][uidA] = {};
+    if (!relData[platform][uidB]) relData[platform][uidB] = {};
+
+    relData[platform][uidA][uidB] = forceNode;
+    relData[platform][uidB][uidA] = { ...forceNode, received: true }; // B 端标记为收到
 
     RelationshipUtils.setData("relationship_lines", relData);
     seal.replyToSender(ctx, msg, `✅ 已成功为「${nameA}」与「${nameB}」建立强制关系线。`);
@@ -4833,8 +5030,11 @@ cmd_del_rel.solve = (ctx, msg, cmdArgs) => {
     const platform = msg.platform, nameA = cmdArgs.getArgN(1), nameB = cmdArgs.getArgN(2);
     let data = RelationshipUtils.getData("relationship_lines");
     if (data[platform]) {
-        if (data[platform][nameA]) delete data[platform][nameA][nameB];
-        if (data[platform][nameB]) delete data[platform][nameB][nameA];
+        // 新结构：uid为key
+        const uidA = getUidByRoleName(platform, nameA);
+        const uidB = getUidByRoleName(platform, nameB);
+        if (uidA && data[platform][uidA]) delete data[platform][uidA][uidB];
+        if (uidB && data[platform][uidB]) delete data[platform][uidB][uidA];
         RelationshipUtils.setData("relationship_lines", data);
         seal.replyToSender(ctx, msg, "✅ 已删除该关系线");
     }
@@ -4878,12 +5078,15 @@ cmd_withdraw_relation.solve = (ctx, msg, cmdArgs) => {
     }
 
     let relData = RelationshipUtils.getData("relationship_lines");
-    let rel = relData[platform]?.[sendName]?.[toName];
+    // 新结构：uid为key
+    const sendUid = getUidByRoleName(platform, sendName);
+    const toUid = getUidByRoleName(platform, toName);
+    let rel = sendUid && toUid ? (relData[platform]?.[sendUid]?.[toUid] || relData[platform]?.[toUid]?.[sendUid]) : null;
     if (!rel || !rel.details || rel.details.length === 0) {
         return seal.replyToSender(ctx, msg, "没有可撤回的细节记录。");
     }
 
-    // 查找自己发送的、内容精确匹配的第一条细节
+    // 查找自己发送的、内容精确匹配的第一条细节（from 仍是 roleName）
     const idx = rel.details.findIndex(d => d.from === sendName && d.text === content);
     if (idx === -1) {
         return seal.replyToSender(ctx, msg, `未找到你发送的匹配内容：「${content}」\n可使用「。查看关系线 ${toName}」查看所有细节。`);
@@ -4894,8 +5097,8 @@ cmd_withdraw_relation.solve = (ctx, msg, cmdArgs) => {
     rel.details.splice(idx, 1);
 
     // 同步删除对方存储中的相同记录（按内容 + 发送人匹配）
-    const otherRel = relData[platform]?.[toName]?.[sendName];
-    if (otherRel && otherRel.details) {
+    const otherRel = toUid && sendUid ? (relData[platform]?.[toUid]?.[sendUid] || relData[platform]?.[sendUid]?.[toUid]) : null;
+    if (otherRel && otherRel.details && otherRel !== rel) {
         const otherIdx = otherRel.details.findIndex(d => d.from === sendName && d.text === content);
         if (otherIdx !== -1) otherRel.details.splice(otherIdx, 1);
     }
@@ -4929,7 +5132,15 @@ cmd_view_relationship.solve = (ctx, msg, cmdArgs) => {
 
     const toName = cmdArgs.getArgN(1);
     let relData = RelationshipUtils.getData("relationship_lines");
-    const myRels = relData[platform]?.[sendName] || {};
+    // 新结构：uid为key
+    const myUid = getUidByRoleName(platform, sendName);
+    const myRelsRaw = myUid ? (relData[platform]?.[myUid] || {}) : {};
+    // 将 uid key 转换为 roleName key 用于显示
+    const myRels = {};
+    for (const [uid, rel] of Object.entries(myRelsRaw)) {
+        const name = resolveUidToName(platform, uid);
+        myRels[name] = rel;
+    }
 
     // --- 场景 A: 后面加了名字，执行合并转发查看 ---
     if (toName) {
@@ -4996,12 +5207,12 @@ cmd_rel_stats.solve = (ctx, msg) => {
     const relData = JSON.parse(ext.storageGet("relationship_lines") || "{}");
     const platformData = relData[platform] || {};
 
-    // 收集所有角色名及关系线数量
+    // 收集所有角色及关系线数量（新结构：uid为key，显示时转为roleName）
     const stats = [];
-    for (const [role, links] of Object.entries(platformData)) {
-        // links 是一个对象，键为关联的角色名，值为关系对象
+    for (const [uid, links] of Object.entries(platformData)) {
         const count = Object.keys(links).length;
         if (count > 0) {
+            const role = resolveUidToName(platform, uid);
             stats.push({ role, count });
         }
     }
@@ -5100,9 +5311,9 @@ cmd_create_official_appointment.solve = async (ctx, msg, cmdArgs) => {
 
   let validParticipants = [];
   let invalidParticipants = [];
-  
+
   for (let name of participants) {
-    if (a_private_group[platform][name]) {
+    if (getUidByRoleName(platform, name)) {
       validParticipants.push(name);
     } else {
       invalidParticipants.push(name);
@@ -5114,10 +5325,10 @@ cmd_create_official_appointment.solve = async (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
   }
 
-  // 检查时间冲突逻辑保持不变...
+  // 检查时间冲突逻辑
   let conflictParticipants = [];
   for (let name of validParticipants) {
-    const uid = a_private_group[platform][name][0];
+    const uid = getUidByRoleName(platform, name);
     const key = `${platform}:${uid}`;
     const locked = a_lockedSlots[key]?.[day] || [];
     if (locked.some(slot => timeOverlap(slot, time))) {
@@ -5152,7 +5363,7 @@ cmd_create_official_appointment.solve = async (ctx, msg, cmdArgs) => {
 
   // 更新已确认日程
   for (let name of validParticipants) {
-    const uid = a_private_group[platform][name][0];
+    const uid = getUidByRoleName(platform, name);
     const key = `${platform}:${uid}`;
     if (!b_confirmedSchedule[key]) b_confirmedSchedule[key] = [];
     b_confirmedSchedule[key].push({
@@ -5182,7 +5393,8 @@ cmd_create_official_appointment.solve = async (ctx, msg, cmdArgs) => {
 
   // 向每位参与者的绑定群发送群号
   for (let name of validParticipants) {
-    const boundGroupId = a_private_group[platform][name][1];
+    const nameUid = getUidByRoleName(platform, name);
+    const boundGroupId = nameUid ? a_private_group[platform][nameUid]?.[1] : null;
     const newmsg = seal.newMessage();
     newmsg.messageType = "group";
     newmsg.groupId = `${platform}-Group:${boundGroupId}`;
@@ -5261,15 +5473,15 @@ function getPlaceSystemConfig() {
     return { ...defaultConfig, ...config };
 }
 
-// 检查用户今日目击报告次数
-function getUserSightingCountToday(platform, roleName) {
+// 检查用户今日目击报告次数（以 uid 为 key）
+function getUserSightingCountToday(platform, uid) {
     const today = new Date().toISOString().slice(0, 10);
     const sightingCount = JSON.parse(ext.storageGet("sighting_daily_count") || "{}");
-    return (sightingCount[today] || {})[`${platform}:${roleName}`] || 0;
+    return (sightingCount[today] || {})[`${platform}:${uid}`] || 0;
 }
 
-// 增加用户今日目击报告次数（同时清理过期日期）
-function incrementUserSightingCountToday(platform, roleName) {
+// 增加用户今日目击报告次数（以 uid 为 key，同时清理过期日期）
+function incrementUserSightingCountToday(platform, uid) {
     const today = new Date().toISOString().slice(0, 10);
     const sightingCount = JSON.parse(ext.storageGet("sighting_daily_count") || "{}");
     // 清理非今天的旧数据
@@ -5277,16 +5489,18 @@ function incrementUserSightingCountToday(platform, roleName) {
         if (date !== today) delete sightingCount[date];
     }
     if (!sightingCount[today]) sightingCount[today] = {};
-    sightingCount[today][`${platform}:${roleName}`] = (sightingCount[today][`${platform}:${roleName}`] || 0) + 1;
+    sightingCount[today][`${platform}:${uid}`] = (sightingCount[today][`${platform}:${uid}`] || 0) + 1;
     ext.storageSet("sighting_daily_count", JSON.stringify(sightingCount));
 }
 
 // 检查是否需要发送目击报告（随机概率 + 每日次数限制）
+// roleName 参数：通过 getUidByRoleName 转换为 uid 后传入
 function shouldSendSightingReport(platform, roleName) {
     const sightingConfig = getSightingConfig();
-    
-    // 检查今日次数
-    const todayCount = getUserSightingCountToday(platform, roleName);
+    const uid = getUidByRoleName(platform, roleName);
+
+    // 检查今日次数（以 uid 为 key）
+    const todayCount = uid ? getUserSightingCountToday(platform, uid) : 0;
     if (todayCount >= sightingConfig.max_reports_per_day) {
         return false;
     }
@@ -5352,8 +5566,8 @@ function findSimultaneousMeetings(platform, day, time, place, excludeGroupId = n
             } else {
                 if (meeting.partner && meeting.partner !== "多人小群") meetingParticipants.push(meeting.partner);
                 const [userPlatform, userUid] = userId.split(':');
-                const roleName = Object.entries(a_private_group[userPlatform] || {})
-                    .find(([_, v]) => v[0] === userUid)?.[0];
+                // 新结构：uid为key，roleName在value[0]
+                const roleName = a_private_group[userPlatform]?.[userUid]?.[0];
                 if (roleName && !meetingParticipants.includes(roleName)) meetingParticipants.push(roleName);
             }
 
@@ -5386,7 +5600,9 @@ function sendSightingReports(platform, newMeetingInfo, simultaneousMeetings, ctx
     const processedReverseMeetings = new Set();
 
     for (const participant of newMeetingInfo.participants) {
-        const participantInfo = a_private_group[platform][participant];
+        // 新结构：通过 roleName 反查 uid，再取 gid
+        const participantUid = getUidByRoleName(platform, participant);
+        const participantInfo = participantUid ? a_private_group[platform][participantUid] : null;
         if (!participantInfo?.[1]) continue;
 
         const targetGroupId = participantInfo[1];
@@ -5411,7 +5627,7 @@ function sendSightingReports(platform, newMeetingInfo, simultaneousMeetings, ctx
                 console.error("[目击] 发送报告失败:", err);
             }
 
-            incrementUserSightingCountToday(platform, participant);
+            if (participantUid) incrementUserSightingCountToday(platform, participantUid);
 
             if (sightingConfig.send_to_all && !processedReverseMeetings.has(otherMeeting.groupId)) {
                 processedReverseMeetings.add(otherMeeting.groupId);
@@ -5438,9 +5654,10 @@ function sendCounterSightingReports(platform, originalMeeting, newMeetingInfo, c
         if (!shouldSendSightingReport(platform, participant)) {
             continue;
         }
-        
-        // 获取参与者的群组ID
-        const participantInfo = a_private_group[platform][participant];
+
+        // 新结构：通过 roleName 反查 uid，再取 gid
+        const participantUid = getUidByRoleName(platform, participant);
+        const participantInfo = participantUid ? a_private_group[platform][participantUid] : null;
         if (!participantInfo || !participantInfo[1]) {
             continue;
         }
@@ -5465,8 +5682,8 @@ function sendCounterSightingReports(platform, originalMeeting, newMeetingInfo, c
             continue;
         }
         
-        // 增加目击次数
-        incrementUserSightingCountToday(platform, participant);
+        // 增加目击次数（以 uid 为 key）
+        if (participantUid) incrementUserSightingCountToday(platform, participantUid);
     }
 }
 
@@ -5627,37 +5844,33 @@ function applyEndGameBonuses(ctx, msg, gid, platform) {
         return pool.items[pool.items.length - 1];
     }
 
-    // 发放单条奖励，返回显示文字
-    function applyRewardItem(roleName, rewardItem) {
+    // 发放单条奖励（playerUid 为 uid），返回显示文字
+    function applyRewardItem(playerUid, rewardItem) {
         const { target, targetType, amount } = rewardItem;
         if (targetType === "currency" || targetType === "item") {
             const code = targetType === "currency"
                 ? (currencyByName[target] || target.toUpperCase())
                 : target.toUpperCase();
-            addToInv_system(`${platform}:${roleName}`, code, amount);
+            addToInv_system(`${platform}:${playerUid}`, code, amount);
             return `${target}×${amount}`;
         } else {
-            // attr
-            let profileKey = null;
-            for (const [plat, roles] of Object.entries(apg)) {
-                if (roles[roleName]) { profileKey = `${plat}:${roleName}`; break; }
-            }
-            if (profileKey) {
-                const profiles = JSON.parse(ext.storageGet("sys_char_profiles") || "{}");
-                if (!profiles[profileKey]) profiles[profileKey] = {};
-                const cur = parseInt(profiles[profileKey][target] || "0");
-                profiles[profileKey][target] = String(cur + amount);
-                ext.storageSet("sys_char_profiles", JSON.stringify(profiles));
-                return `${target}+${amount}`;
-            }
+            // attr：使用 uid-based profile key
+            const profileKey = `${platform}:${playerUid}`;
+            const profiles = JSON.parse(ext.storageGet("sys_char_profiles") || "{}");
+            if (!profiles[profileKey]) profiles[profileKey] = {};
+            const cur = parseInt(profiles[profileKey][target] || "0");
+            profiles[profileKey][target] = String(cur + amount);
+            ext.storageSet("sys_char_profiles", JSON.stringify(profiles));
+            return `${target}+${amount}`;
         }
-        return null;
     }
 
     const report = [];
 
-    for (const roleName of playerKeys) {
-        const stat = groupStat[roleName];
+    // playerKeys 中的 key 现在是 uid
+    for (const playerUid of playerKeys) {
+        const roleName = resolveUidToName(platform, playerUid);
+        const stat = groupStat[playerUid];
         const avgWords = stat.replies > 0 ? Math.floor(stat.words / stat.replies) : 0;
 
         const getStatVal = (param) => {
@@ -5684,12 +5897,12 @@ function applyEndGameBonuses(ctx, msg, gid, platform) {
                         if (!allMet) continue;
                         for (const r of (block.rewards || [])) {
                             if (!r.type || r.type === "fixed") {
-                                const result = applyRewardItem(roleName, r);
+                                const result = applyRewardItem(playerUid, r);
                                 if (result) fixedLines.push(result);
                             } else if (r.type === "pool" && r.items.length) {
                                 const drawn = drawFromPool(r);
                                 if (drawn) {
-                                    const result = applyRewardItem(roleName, drawn);
+                                    const result = applyRewardItem(playerUid, drawn);
                                     if (result) {
                                         const total = r.items.reduce((s, it) => s + it.weight, 0);
                                         const pct = total > 0 ? Math.round(drawn.weight / total * 100) : 0;
@@ -5708,12 +5921,12 @@ function applyEndGameBonuses(ctx, msg, gid, platform) {
                         if (!allMet) continue;
                         for (const r of (block.rewards || [])) {
                             if (!r.type || r.type === "fixed") {
-                                const result = applyRewardItem(roleName, r);
+                                const result = applyRewardItem(playerUid, r);
                                 if (result) fixedLines.push(result);
                             } else if (r.type === "pool" && r.items.length) {
                                 const drawn = drawFromPool(r);
                                 if (drawn) {
-                                    const result = applyRewardItem(roleName, drawn);
+                                    const result = applyRewardItem(playerUid, drawn);
                                     if (result) {
                                         const total = r.items.reduce((s, it) => s + it.weight, 0);
                                         const pct = total > 0 ? Math.round(drawn.weight / total * 100) : 0;
@@ -5733,17 +5946,17 @@ function applyEndGameBonuses(ctx, msg, gid, platform) {
 
         report.push(`【${roleName}】${allLines.join("、")}`);
 
-        // 个人群艾特通知
-        const roleEntry = apg[platform]?.[roleName];
+        // 个人群艾特通知（新结构：uid为key）
+        const roleEntry = apg[platform]?.[playerUid];
         if (roleEntry) {
-            const [uid, personalGroupId] = roleEntry;
+            const personalGroupId = roleEntry[1];
             const notifyMsg = seal.newMessage();
             notifyMsg.messageType = "group";
             notifyMsg.groupId = `${platform}-Group:${personalGroupId}`;
             const notifyCtx = seal.createTempCtx(ctx.endPoint, notifyMsg);
             const fixedText = fixedLines.join("、");
             const poolText = poolLines.length ? `\n🎲 概率奖励抽中：${poolLines.join("、")}` : "";
-            const notice = `[CQ:at,qq=${uid}]\n🎁 结戏加成已发放：${fixedText}${poolText}\n💡 可使用「背包」查看道具与货币，「角色卡」查看属性变更。`;
+            const notice = `[CQ:at,qq=${playerUid}]\n🎁 结戏加成已发放：${fixedText}${poolText}\n💡 可使用「背包」查看道具与货币，「角色卡」查看属性变更。`;
             seal.replyToSender(notifyCtx, notifyMsg, notice);
         }
     }
@@ -5805,11 +6018,10 @@ function applyEndGameDraws(ctx, msg, gid, platform) {
     const awardedList = [];
 
     for (const roleName of participants) {
-        // 获取角色的 uid
-        const roleInfo = a_private_group[platform]?.[roleName];
-        if (!roleInfo) continue;
+        // 获取角色的 uid（新结构：通过 roleName 反查 uid）
+        const uid = getUidByRoleName(platform, roleName);
+        if (!uid) continue;
 
-        const uid = roleInfo[0];
         const key = `${platform}:${uid}`;
 
         // 获取或创建该玩家的抽取记录
@@ -5996,14 +6208,14 @@ function handleReply(platform, groupId, roleName, message) {
     roleStatus.repliedTime = Date.now();
     roleStatus.wordCount = wordCount;
 
-    // 4. 更新用户统计 (原有逻辑)
-    updateUserStats(platform, roleName, wordCount, roleStatus.startTime, roleStatus.repliedTime);
+    // 4. 更新用户统计（新签名：传 uid）
+    const roleUid = getUidByRoleName(platform, roleName);
+    updateUserStats(platform, roleUid || roleName, wordCount, roleStatus.startTime, roleStatus.repliedTime);
 
     // 5. 【新增逻辑】记录写帖进度 (替代原来的 .写了 指令)
-    // 获取该角色的 UID
-    const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
-    const uid = a_private_group[platform]?.[roleName]?.[0];
-    
+    // 获取该角色的 UID（新结构：直接使用 getUidByRoleName 结果）
+    const uid = roleUid;
+
     if (uid) {
         const progress = JSON.parse(ext.storageGet("group_write_progress") || "{}");
         // 这里的 groupId 是当前互动的群号（如 001_1）
@@ -6013,14 +6225,17 @@ function handleReply(platform, groupId, roleName, message) {
         console.log(`[监听系统] 记录进度: ${roleName}(${uid}) 在群 ${groupId} 回复数 +1`);
     }
 
-    // 6. 更新本场会话统计（同时写入独立 sessionStats 和计时器自身）
+    // 6. 更新本场会话统计（uid为key）
+    const sessionUid = roleUid;
     const _ss = getSessionStats();
-    if (!_ss[groupId]) _ss[groupId] = {};
-    if (!_ss[groupId]._startTime) _ss[groupId]._startTime = Date.now();
-    if (!_ss[groupId][roleName]) _ss[groupId][roleName] = { replies: 0, words: 0 };
-    _ss[groupId][roleName].replies += 1;
-    _ss[groupId][roleName].words += wordCount;
-    saveSessionStats(_ss);
+    if (sessionUid) {
+        if (!_ss[groupId]) _ss[groupId] = {};
+        if (!_ss[groupId]._startTime) _ss[groupId]._startTime = Date.now();
+        if (!_ss[groupId][sessionUid]) _ss[groupId][sessionUid] = { replies: 0, words: 0 };
+        _ss[groupId][sessionUid].replies += 1;
+        _ss[groupId][sessionUid].words += wordCount;
+        saveSessionStats(_ss);
+    }
 
     // 同步写入计时器，方便查看计时器时直接读取
     if (!roleStatus.sessionReplies) roleStatus.sessionReplies = 0;
@@ -6086,10 +6301,11 @@ function getMinWords(subtype) {
 /**
  * 更新用户统计（增强版：包含平均字数与平均时长）
  */
-function updateUserStats(platform, roleName, wordCount, startTime, repliedTime) {
+// uid 参数为玩家 uid（非 roleName），key 改为 ${platform}:${uid}
+function updateUserStats(platform, uid, wordCount, startTime, repliedTime) {
     const stats = getUserStats();
-    const key = `${platform}:${roleName}`;
-    
+    const key = `${platform}:${uid}`;
+
     // 1. 初始化统计结构
     if (!stats[key]) {
         stats[key] = {
@@ -6101,7 +6317,7 @@ function updateUserStats(platform, roleName, wordCount, startTime, repliedTime) 
             subtypeStats: {}      // 分类型统计
         };
     }
-    
+
     const userStat = stats[key];
     const replyTimeMs = repliedTime - startTime;
 
@@ -6112,13 +6328,12 @@ function updateUserStats(platform, roleName, wordCount, startTime, repliedTime) 
 
     // 3. 计算全局平均值
     userStat.avgWords = parseFloat((userStat.totalWords / userStat.totalReplies).toFixed(2));
-    // 计算平均分钟数（保留1位小数）
     userStat.avgReplyTimeMin = parseFloat((userStat.totalReplyTimeMs / userStat.totalReplies / 60000).toFixed(1));
-    
-    // 4. 更新细分类型统计（可选，保持你原有的逻辑并增强）
+
+    // 4. 更新细分类型统计（uid 为 key）
     if (!userStat.subtypeStats[platform]) userStat.subtypeStats[platform] = {};
-    if (!userStat.subtypeStats[platform][roleName]) {
-        userStat.subtypeStats[platform][roleName] = {
+    if (!userStat.subtypeStats[platform][uid]) {
+        userStat.subtypeStats[platform][uid] = {
             replies: 0,
             totalWords: 0,
             totalTime: 0,
@@ -6126,20 +6341,20 @@ function updateUserStats(platform, roleName, wordCount, startTime, repliedTime) 
             slowestReply: null
         };
     }
-    
-    const sub = userStat.subtypeStats[platform][roleName];
+
+    const sub = userStat.subtypeStats[platform][uid];
     sub.replies += 1;
     sub.totalWords += wordCount;
     sub.totalTime += replyTimeMs;
-    
+
     // 记录最快/最慢纪录（分钟）
     const currentReplyMin = Math.round(replyTimeMs / 60000);
     if (!sub.fastestReply || currentReplyMin < sub.fastestReply) sub.fastestReply = currentReplyMin;
     if (!sub.slowestReply || currentReplyMin > sub.slowestReply) sub.slowestReply = currentReplyMin;
-    
+
     saveUserStats(stats);
-    
-    console.log(`[统计更新] ${roleName}: 本次回复${wordCount}字, 耗时${currentReplyMin}分 | 累计平均: ${userStat.avgWords}字, ${userStat.avgReplyTimeMin}分`);
+
+    console.log(`[统计更新] uid=${uid}: 本次回复${wordCount}字, 耗时${currentReplyMin}分 | 累计平均: ${userStat.avgWords}字, ${userStat.avgReplyTimeMin}分`);
 }
 
 /**
@@ -6160,9 +6375,10 @@ function getRemindInterval(subtype) {
  * 发送提醒
  */
 function sendReminder(platform, groupId, roleName, subtype, elapsedTime,ctx) {
-    // 获取角色绑定的群
+    // 获取角色绑定的群（新结构：通过 roleName 反查 uid）
     const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
-    const roleGroupId = a_private_group[platform]?.[roleName]?.[1];
+    const roleUid = getUidByRoleName(platform, roleName);
+    const roleGroupId = roleUid ? a_private_group[platform]?.[roleUid]?.[1] : null;
     
     if (!roleGroupId) return;
     
@@ -6340,32 +6556,30 @@ cmd_admin_save_all.solve = (ctx, msg, cmdArgs) => {
         }
     });
 
-    // 遍历数据生成节点
+    // 遍历数据生成节点（stats key 为 ${platform}:${uid}）
     userKeys.forEach((key) => {
         const data = stats[key];
-        const parts = key.split(':');
-        const roleName = parts[1];
-        
-        // 模仿反查QQ/UID逻辑
-        let bindQQ = "未知";
-        if (storage[platform] && storage[platform][roleName]) {
-            bindQQ = storage[platform][roleName][0];
-        }
+        const colonIdx = key.indexOf(':');
+        const statPlatform2 = key.slice(0, colonIdx);
+        const statUid2 = key.slice(colonIdx + 1);
+
+        // 新结构：storage[platform][uid] = [roleName, gid]
+        const displayName2 = storage[statPlatform2]?.[statUid2]?.[0] || statUid2;
 
         // 构造字段化文本
-        let fieldText = `[角色名]：${roleName}\n`;
-        fieldText += `[QQ号]：${bindQQ}\n`;
+        let fieldText = `[角色名]：${displayName2}\n`;
+        fieldText += `[QQ号]：${statUid2}\n`;
         fieldText += `[总回复数]：${data.totalReplies}\n`;
         fieldText += `[总字数]：${data.totalWords}\n`;
         fieldText += `[平均字数]：${data.avgWords}\n`;
         fieldText += `[平均回复时间]：${data.avgReplyTimeMin}分钟\n`;
-        fieldText += `[CSV行]：${roleName},${bindQQ},${data.totalReplies},${data.totalWords},${data.avgWords},${data.avgReplyTimeMin}`;
+        fieldText += `[CSV行]：${displayName2},${statUid2},${data.totalReplies},${data.totalWords},${data.avgWords},${data.avgReplyTimeMin}`;
 
         nodes.push({
             type: "node",
             data: {
-                name: roleName,
-                uin: (bindQQ !== "未知" ? bindQQ : botUid),
+                name: displayName2,
+                uin: statUid2 || botUid,
                 content: fieldText
             }
         });
@@ -6433,26 +6647,26 @@ cmd_all_stats.solve = (ctx, msg, cmdArgs) => {
         }
     });
 
-    // 遍历排序后的数据
+    // 遍历排序后的数据（stats key 为 ${platform}:${uid}）
     sortedKeys.forEach((key, index) => {
         const user = stats[key];
-        const [platform, roleName] = key.split(':');
-        
-        // 反查UID以显示对应玩家头像
-        let bindUid = botUid;
-        if (storage[platform] && storage[platform][roleName]) {
-            bindUid = storage[platform][roleName][0];
-        }
+        const colonIdx = key.indexOf(':');
+        const statPlatform = key.slice(0, colonIdx);
+        const statUid = key.slice(colonIdx + 1);
 
-        let info = `第 ${index + 1} 名：【${roleName}】\n`;
+        // 新结构：storage[platform][uid] = [roleName, gid]
+        const displayName = storage[statPlatform]?.[statUid]?.[0] || statUid;
+        const bindUid = statUid || botUid;
+
+        let info = `第 ${index + 1} 名：【${displayName}】\n`;
         info += `━━━━━━━━━━━━━━━\n`;
         info += `🔹 总回复：${user.totalReplies} 次\n`;
         info += `🔹 总字数：${user.totalWords} 字\n`;
         info += `🔹 平均字数：${user.avgWords} 字/条\n`;
         info += `🔹 平均耗时：${user.avgReplyTimeMin} 分钟\n`;
-        
+
         // 增加最快/最慢纪录显示
-        const sub = user.subtypeStats?.[platform]?.[roleName];
+        const sub = user.subtypeStats?.[statPlatform]?.[statUid];
         if (sub) {
             info += `⏱️ 极限：最快 ${sub.fastestReply || '--'} min / 最慢 ${sub.slowestReply || '--'} min`;
         }
@@ -6460,7 +6674,7 @@ cmd_all_stats.solve = (ctx, msg, cmdArgs) => {
         nodes.push({
             type: "node",
             data: {
-                name: `排名 ${index + 1} - ${roleName}`,
+                name: `排名 ${index + 1} - ${displayName}`,
                 uin: bindUid,
                 content: info
             }
@@ -6563,15 +6777,15 @@ ext.onNotCommandReceived = (ctx, msg) => {
         return seal.replyToSender(ctx, msg, "🎵 点歌用法：回复一张音乐卡片，消息内容写\n点歌人：名字 留言：内容\n例：点歌人：张三 留言：送给你的歌");
     }
 
-    // 3. 互动系统 (赠送/短信)
-    // 支持「赠送 对方 礼物」和「自定义名赠送 对方 礼物」，排除「道具赠送」
-    if (!raw.startsWith("道具赠送")) {
-        const giftM = raw.match(/^(.*?)赠送\s+(.+?)\s+([\s\S]+)$/);
+    // 3. 互动系统 (送礼/短信)
+    // 支持「送礼 对方 礼物」和「自定义名送礼 对方 礼物」
+    {
+        const giftM = raw.match(/^(.*?)送礼\s+(.+?)\s+([\s\S]+)$/);
         if (giftM) {
             const customName = giftM[1].trim() || null;
             return handleNaturalGift(ctx, msg, platform, giftM[2].trim(), giftM[3].trim(), customName);
-        } else if (/^(.*?)赠送$/.test(raw)) {
-            return seal.replyToSender(ctx, msg, "📦 赠送格式：赠送 对方名 礼物内容\n例：赠送 张三 一束花\n\n图鉴内礼物：赠送 对方名 #编号（可无限赠送）");
+        } else if (/^(.*?)送礼$/.test(raw)) {
+            return seal.replyToSender(ctx, msg, "📦 送礼格式：送礼 对方名 礼物内容\n例：送礼 张三 一束花\n\n图鉴内礼物：送礼 对方名 #编号（可无限送礼）");
         }
     }
 
@@ -6659,9 +6873,6 @@ ext.onNotCommandReceived = (ctx, msg) => {
     if (raw === "图鉴" || raw === "我的图鉴" || raw.startsWith("图鉴 ") || raw.startsWith("我的图鉴 ")) {
         const rest = raw.replace(/^(我的)?图鉴/, "").trim();
         return cmd_view_my_gift_collection.solve(ctx, msg, makeFakeCmdArgs(rest ? [rest] : []));
-    }
-    if (raw.startsWith("补货") && isAdmin) {
-        return seal.replyToSender(ctx, msg, "⚠️ 补货功能已停用（礼品店目前仅限抽卡模式）");
     }
 
     // 4.5 角色系统（无前缀）
@@ -6816,6 +7027,88 @@ ext.onNotCommandReceived = (ctx, msg) => {
         return seal.replyToSender(ctx, msg, `✅ 签名已更新为：${val}`);
     }
 
+    if (raw === "角色卡") {
+        const roleName = getRoleName(ctx, msg);
+        if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+        const uid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
+        const roleKey = `${platform}:${uid}`;
+        const prof = getCharProfile(platform, roleName);
+
+        // 基础信息
+        const genderText = prof.gender === "男" ? "👨 男" : "👩 女";
+        const ageText = prof.age !== undefined && prof.age !== null ? `${prof.age}岁` : "未设置";
+
+        // ── 属性 ──────────────────────────────────────────────
+        const attrLines = [];
+        try {
+            const attrDefs = JSON.parse(ext.storageGet("rpg_attr_defs") || "{}");
+            const charAttrs = JSON.parse(ext.storageGet("sys_character_attrs") || "{}");
+            // 新结构：charAttrs 以 uid 为 key
+            const roleAttrs = charAttrs[uid] || {};
+            const BAR = 6;
+            for (const [name, def] of Object.entries(attrDefs)) {
+                const val = roleAttrs[name] ?? (def.default ?? 0);
+                if (def.max !== null && def.max !== undefined && def.min !== null) {
+                    const pct = def.max === def.min ? 1 : (val - def.min) / (def.max - def.min);
+                    const filled = Math.round(Math.max(0, Math.min(1, pct)) * BAR);
+                    attrLines.push(`【${name}】${"▓".repeat(filled)}${"░".repeat(BAR - filled)} ${val}/${def.max}`);
+                } else {
+                    attrLines.push(`【${name}】${val}`);
+                }
+            }
+        } catch(e) {}
+
+        // ── 装备 ──────────────────────────────────────────────
+        const equipLines = [];
+        try {
+            const allEquips = JSON.parse(ext.storageGet("player_equipments") || "{}");
+            const reg = JSON.parse(ext.storageGet("item_registry") || "{}");
+            const playerEquips = allEquips[roleKey] || {};
+            const slots = JSON.parse(ext.storageGet("equipment_slots") || "[]");
+            const slotNames = JSON.parse(ext.storageGet("equipment_slot_names") || "{}");
+            const defaultNames = { head:"头部", chest:"胸部", hand:"手部", leg:"腿部", foot:"脚部" };
+            const defaultEmoji = { head:"🎩", chest:"🛡️", hand:"⚔️", leg:"👖", foot:"👢" };
+            for (const slot of (slots.length ? slots : ["head","chest","hand","leg","foot"])) {
+                const e = playerEquips[slot];
+                if (e && e.code) {
+                    const displayName = slotNames[slot] || defaultNames[slot] || slot;
+                    const emoji = defaultEmoji[slot] || "📦";
+                    equipLines.push(`${emoji}${displayName}：${reg[e.code]?.name || e.code}`);
+                }
+            }
+        } catch(e) {}
+
+        // ── 货币 ──────────────────────────────────────────────
+        const currLines = [];
+        try {
+            const invs = JSON.parse(ext.storageGet("global_inventories") || "{}");
+            const reg = JSON.parse(ext.storageGet("item_registry") || "{}");
+            for (const e of (invs[roleKey] || [])) {
+                if (e.count > 0 && reg[e.code]?.type === "currency") {
+                    currLines.push(`${reg[e.code].name}：${e.count}`);
+                }
+            }
+        } catch(e) {}
+
+        // ── 拼接 ──────────────────────────────────────────────
+        const out = [];
+        out.push(`★━━━━━━━━━━★`);
+        out.push(`🃏 【${roleName}】`);
+        out.push(`★━━━━━━━━━━★`);
+        out.push(``);
+        out.push(`${genderText} · ${ageText}`);
+        out.push(`🌸 皮相：${prof.look || "未设置"}`);
+        if (prof.bio) out.push(`✏️ ${prof.bio}`);
+        if (attrLines.length) { out.push(``); out.push(`📊 战斗属性`); out.push(...attrLines); }
+        if (equipLines.length) { out.push(``); out.push(`⚔️ 装备`); out.push(...equipLines); }
+        if (currLines.length) { out.push(``); out.push(`💰 货币`); out.push(...currLines); }
+        out.push(``);
+        out.push(`★━━━━━━━━━━★`);
+
+        seal.replyToSender(ctx, msg, out.join("\n"));
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
     // 4.9 拍卖系统（无前缀）
     if (raw === "查看拍卖") {
         settleExpiredAuctions(ctx, msg);
@@ -6873,7 +7166,8 @@ ext.onNotCommandReceived = (ctx, msg) => {
             balance = getInvCount_rpg(`${platform}:${uid}`, currencyItem.code);
         } else {
             const attrs = JSON.parse(ext.storageGet("sys_character_attrs") || "{}");
-            balance = attrs[roleName]?.[settings.currency] || 0;
+            // 新结构：charAttrs 以 uid 为 key
+            balance = attrs[uid]?.[settings.currency] || 0;
         }
         if (balance < amount) return seal.replyToSender(ctx, msg, `❌ ${settings.currency}不足！需要 ${amount}，当前 ${balance}`);
 
@@ -6901,7 +7195,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
         if (rest) return cmd_update_schedule.solve(ctx, msg, makeFakeCmdArgs(rest.split(/\s+/)));
         return cmd_update_schedule.solve(ctx, msg, makeFakeCmdArgs([]));
     }
-    if (raw.startsWith("废除时间线")) {
+    if (raw.startsWith("拒绝时间线")) {
         const rest = raw.slice(5).trim();
         return cmd_abolish_schedule.solve(ctx, msg, makeFakeCmdArgs(rest ? [rest] : []));
     }
@@ -6994,7 +7288,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
     const npcM = raw.match(/^设定\s*(.+?)\s*为\s*npc$/i);
     if (npcM && isAdmin) {
         const name = npcM[1].trim(); let npcList = getS("a_npc_list");
-        if (!(getS("a_private_group")[platform] || {})[name]) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${name}」`);
+        if (!getUidByRoleName(platform, name)) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${name}」`);
         const idx = npcList.indexOf(name);
         if (idx === -1) npcList.push(name); else npcList.splice(idx, 1);
         ext.storageSet("a_npc_list", JSON.stringify(npcList));
@@ -7016,9 +7310,9 @@ ext.onNotCommandReceived = (ctx, msg) => {
     // 5. --- 你的核心私有群监听逻辑 (确保被包裹在 try 中) ---
     try {
         const a_private_group = getS("a_private_group");
-        const roleName = Object.entries(a_private_group[platform] || {})
-            .find(([_, val]) => val[0] === uid)?.[0];
-        
+        // 新结构：a_private_group[platform][uid] = [roleName, gid]，直接用 uid 查
+        const roleName = a_private_group[platform]?.[uid]?.[0];
+
         if (roleName) {
             // 如果找到了对应的角色名，执行原有的 handleReply 转发
             handleReply(platform, groupId, roleName, msg.message);
@@ -7369,9 +7663,14 @@ cmd_post_forum.name = "发帖";
 cmd_post_forum.help = ".发帖 (署名) [内容] —— 发表一篇新帖子";
 cmd_post_forum.solve = (ctx, msg, cmdArgs) => {
     const roleName = RelationshipUtils.getRoleName(ctx, msg, msg.platform) || ctx.player.name;
-    if (roleName && !isUserFeatureEnabled(roleName, "enable_forum")) {
-        seal.replyToSender(ctx, msg, "🚫 你的论坛功能已被关闭。");
-        return seal.ext.newCmdExecuteResult(true);
+    if (roleName) {
+        // 新结构：通过 uid 查询功能权限
+        const forumPlatform = msg.platform;
+        const forumUid = getUidByRoleName(forumPlatform, roleName);
+        if (forumUid && !isUserFeatureEnabled(forumUid, "enable_forum")) {
+            seal.replyToSender(ctx, msg, "🚫 你的论坛功能已被关闭。");
+            return seal.ext.newCmdExecuteResult(true);
+        }
     }
     let author, content;
 
@@ -7618,7 +7917,8 @@ cmd_send_lovemail.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    if (!a_private_group[platform] || !a_private_group[platform][receiver]) {
+    const receiverUid = getUidByRoleName(platform, receiver);
+    if (!a_private_group[platform] || !receiverUid) {
         seal.replyToSender(ctx, msg, `⚠️ 找不到角色「${receiver}」的投递地址，请确认名字是否正确。`);
         return seal.ext.newCmdExecuteResult(true);
     }
@@ -7944,11 +8244,12 @@ function performLoveMailDelivery(ctx, msg, backgroundGroupId) {
     let success = 0, fail = 0, publicCount = 0;
     const publicNodes = [];
 
-    // 2. 遍历信箱派送
+    // 2. 遍历信箱派送（新结构：通过 roleName 反查 uid，再取 gid）
     for (const [receiver, mails] of Object.entries(mailBox)) {
-        const addr = a_private_group[platform]?.[receiver];
+        const recvUid = getUidByRoleName(platform, receiver);
+        const addr = recvUid ? a_private_group[platform]?.[recvUid] : null;
         if (addr) {
-            const targetGidRaw = addr[1].replace(/\D/g, "");
+            const targetGidRaw = (addr[1] || "").replace(/\D/g, "");
             const personalNodes = [{ type: "node", data: { name: "心动邮局·派送员", uin: "2852199344", content: `💌 亲爱的 ${receiver}，你有一份包含 ${mails.length} 封信件的包裹待启封。` } }];
             
             mails.forEach((mail, idx) => {
@@ -8035,7 +8336,7 @@ cmd_set_npc.solve = (ctx, msg, cmdArgs) => {
     let storage = getRoleStorage();
     let npcList = JSON.parse(ext.storageGet("a_npc_list") || "[]");
 
-    if (!storage[platform] || !storage[platform][name]) {
+    if (!storage[platform] || !getUidByRoleName(platform, name)) {
         seal.replyToSender(ctx, msg, `❌ 未找到角色「${name}」，请先创建角色。`);
         return seal.ext.newCmdExecuteResult(true);
     }
@@ -8178,7 +8479,8 @@ function settleExpiredAuctions(ctx, msg) {
         } else {
             const attrs = JSON.parse(ext.storageGet("sys_character_attrs") || "{}");
             for (const bid of bids) {
-                if ((attrs[bid.roleName]?.[settings.currency] || 0) >= bid.amount) { winner = bid; break; }
+                // 新结构：charAttrs 以 uid 为 key
+                if ((attrs[bid.uid]?.[settings.currency] || 0) >= bid.amount) { winner = bid; break; }
             }
         }
 
@@ -8195,13 +8497,14 @@ function settleExpiredAuctions(ctx, msg) {
             removeFromInv_rpg(`${platform}:${winner.uid}`, currencyItem.code, winner.amount);
         } else {
             const attrs = JSON.parse(ext.storageGet("sys_character_attrs") || "{}");
-            if (!attrs[winner.roleName]) attrs[winner.roleName] = {};
-            attrs[winner.roleName][settings.currency] = (attrs[winner.roleName][settings.currency] || 0) - winner.amount;
+            // 新结构：charAttrs 以 uid 为 key
+            if (!attrs[winner.uid]) attrs[winner.uid] = {};
+            attrs[winner.uid][settings.currency] = (attrs[winner.uid][settings.currency] || 0) - winner.amount;
             ext.storageSet("sys_character_attrs", JSON.stringify(attrs));
         }
 
         // 加入RPG背包
-        const roleKey = `${platform}:${winner.roleName}`;
+        const roleKey = `${platform}:${winner.uid}`;
         addToInv_system(roleKey, item.code || item.name.toUpperCase(), 1);
 
         item.status = "sold";
@@ -8397,7 +8700,7 @@ cmd_guide.solve = (ctx, msg, cmdArgs) => {
                     "",
                     "时间线         查看自己的日程安排",
                     "修改时间线 [参数]",
-                    "废除时间线 [群号]   强制删除约会记录",
+                    "拒绝时间线 [群号]   退出或取消约会记录",
                     "",
                     "结束私约       在约会群中结束本场（需先复盘）",
                     "  先：回复合并转发消息并发送「转发复盘」",
@@ -8477,9 +8780,9 @@ cmd_guide.solve = (ctx, msg, cmdArgs) => {
                     "图鉴        查看收藏进度与全服热度排名",
                     "图鉴 #编号  查看该礼物完整描述",
                     "",
-                    "赠送 对方名 礼物内容  叙事礼物",
-                    "  例：赠送 张三 一束花",
-                    "赠送 对方 #编号   图鉴内礼物可无限赠送",
+                    "送礼 对方名 礼物内容  叙事礼物",
+                    "  例：送礼 张三 一束花",
+                    "送礼 对方 #编号   图鉴内礼物可无限送礼",
                 ]),
                 section("🧪 合成系统", [
                     "合成列表 / 查看合成",
@@ -8857,7 +9160,7 @@ ext.cmdMap["管理指令"] = cmd_admin_guide;
 
 let cmd_view_preset_gifts = seal.ext.newCmdItemInfo();
 cmd_view_preset_gifts.name = "礼品店";
-cmd_view_preset_gifts.help = "礼品店 — 查看今日随机礼物，解锁后可无限赠送";
+cmd_view_preset_gifts.help = "礼品店 — 查看今日随机礼物，解锁后可无限送礼";
 
 cmd_view_preset_gifts.solve = (ctx, msg) => {
     const sendname = getRoleName(ctx, msg);
@@ -8925,7 +9228,7 @@ cmd_view_preset_gifts.solve = (ctx, msg) => {
 
     const newCount = ownedCount + 1;
     seal.replyToSender(ctx, msg,
-        `🎰 本期礼物：${currentGiftId} 「${gift.name}」\n📝 ${gift.content}\n\n✨ 已加入图鉴！📚 进度：${newCount}/${total}\n🔄 ${nextRefreshHrs}h 后刷新\n\n💌 发送「赠送 对方名 ${currentGiftId}」即可赠送`
+        `🎰 本期礼物：${currentGiftId} 「${gift.name}」\n📝 ${gift.content}\n\n✨ 已加入图鉴！📚 进度：${newCount}/${total}\n🔄 ${nextRefreshHrs}h 后刷新\n\n💌 发送「送礼 对方名 ${currentGiftId}」即可送礼`
     );
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -8982,7 +9285,7 @@ cmd_view_my_gift_collection.solve = (ctx, msg, cmdArgs) => {
         return seal.replyToSender(ctx, msg, `📚 图鉴（0/${total}）\n发送「礼品店」开始收集！`);
     }
     const sorted = [...owned].sort((a, b) => (parseInt(a.replace('#', '')) || 0) - (parseInt(b.replace('#', '')) || 0));
-    let text = `📚 我的图鉴（${owned.length}/${total}）\n${"━".repeat(14)}\n💌 图鉴内的礼物可无限赠送\n发送「图鉴 #编号」查看详细描述\n`;
+    let text = `📚 我的图鉴（${owned.length}/${total}）\n${"━".repeat(14)}\n💌 图鉴内的礼物可无限送礼\n发送「图鉴 #编号」查看详细描述\n`;
     for (const giftId of sorted) {
         const gift = presetGifts[giftId];
         if (!gift) { text += `\n${giftId} （已下架）`; continue; }
@@ -9484,17 +9787,17 @@ cmd_update_schedule.solve = (ctx, msg, cmdArgs) => {
 ext.cmdMap["修改时间线"] = cmd_update_schedule;
 
 // ========================
-// 🗑️ 废除时间线 指令
+// 🗑️ 拒绝时间线 指令
 // ========================
 let cmd_abolish_schedule = seal.ext.newCmdItemInfo();
-cmd_abolish_schedule.name = "废除时间线";
-cmd_abolish_schedule.help = "。废除时间线 群号 (在任何群使用，强制删除约会记录并通知相关者)";
+cmd_abolish_schedule.name = "拒绝时间线";
+cmd_abolish_schedule.help = "。拒绝时间线 群号 (在任何群使用，退出约会并通知相关者)";
 
 cmd_abolish_schedule.solve = (ctx, msg, cmdArgs) => {
     const platform = msg.platform;
     const targetGid = cmdArgs.getArgN(1);
 
-    if (!targetGid) return seal.replyToSender(ctx, msg, "⚠️ 格式错误，请使用：.废除时间线 群号");
+    if (!targetGid) return seal.replyToSender(ctx, msg, "⚠️ 格式错误，请使用：.拒绝时间线 群号");
 
     let groupPool = JSON.parse(ext.storageGet("group") || "[]");
     let groupExpireInfo = JSON.parse(ext.storageGet("group_expire_info") || "{}");
@@ -9505,16 +9808,16 @@ cmd_abolish_schedule.solve = (ctx, msg, cmdArgs) => {
     const fullId = `${targetGid}_占用`;
     const isOccupied = groupPool.includes(fullId);
 
-    if (!isOccupied) return seal.replyToSender(ctx, msg, `⚠️ 群号 ${targetGid} 未处于占用状态，无需废除。`);
+    if (!isOccupied) return seal.replyToSender(ctx, msg, `⚠️ 群号 ${targetGid} 未处于占用状态，无需拒绝。`);
 
-    // 2. 检查约会类型，只有电话和私约可以废除
+    // 2. 检查约会类型，只有电话和私约可以拒绝
     const groupInfo = groupExpireInfo[targetGid] || {};
     const subtype = groupInfo.subtype || "私密";
     if (subtype === "心愿" || subtype === "官约") {
-        return seal.replyToSender(ctx, msg, `⚠️ ${subtype}约不可废除，请通过正常流程处理。`);
+        return seal.replyToSender(ctx, msg, `⚠️ ${subtype}约不可拒绝，请通过正常流程处理。`);
     }
 
-    // 3. 获取参与者信息（用于后续通知）
+    // 3. 获取参与者信息
     const participants = groupInfo.participants || [];
 
     // 3.5 检查执行者是否是该约会的参与者
@@ -9523,66 +9826,105 @@ cmd_abolish_schedule.solve = (ctx, msg, cmdArgs) => {
         const details = getRoleDetails(platform, name);
         return details && details.uid && details.uid.replace(/^[a-z]+:/i, "") === uid;
     });
-    if (!isParticipant) return seal.replyToSender(ctx, msg, `⚠️ 你不是该约会的参与者，无法废除。`);
+    if (!isParticipant) return seal.replyToSender(ctx, msg, `⚠️ 你不是该约会的参与者，无法拒绝。`);
 
-    // 找到废除者的角色名
-    const abolisherName = participants.find(name => {
+    // 找到拒绝者的角色名
+    const rejecterName = participants.find(name => {
         const details = getRoleDetails(platform, name);
         return details && details.uid && details.uid.replace(/^[a-z]+:/i, "") === uid;
     }) || "对方";
 
-    // 4. 给目标群发送废除通知
     const groupMsg = seal.newMessage();
     groupMsg.messageType = "group";
     groupMsg.groupId = `${platform}-Group:${targetGid}`;
     const groupCtx = seal.createTempCtx(ctx.endPoint, groupMsg);
-    seal.replyToSender(groupCtx, groupMsg, `🚫 【约会已取消】\n\n${abolisherName} 取消了这场约会。\n请各位参与者尽快退群，期待下次相遇！`);
 
-    // 5. 给各参与者发送私信通知，区分废除者本人和其他人
-    for (let participantName of participants) {
-        const targetInfo = a_private_group[platform] && a_private_group[platform][participantName];
-        if (!targetInfo) continue;
+    if (participants.length <= 2) {
+        // ── 两人约会：直接取消 ──
+        seal.replyToSender(groupCtx, groupMsg, `🚫 【约会已取消】\n\n${rejecterName} 取消了这场约会。\n请各位参与者尽快退群，期待下次相遇！`);
 
-        const [targetUid, targetGidPrivate] = targetInfo;
-        if (!targetUid || !targetGidPrivate) continue;
+        for (let participantName of participants) {
+            // 新结构：通过 roleName 反查 uid，再取 gid
+            const participantUid = getUidByRoleName(platform, participantName);
+            const targetInfo = participantUid ? a_private_group[platform]?.[participantUid] : null;
+            if (!targetInfo) continue;
+            const targetGidPrivate = targetInfo[1];
+            if (!participantUid || !targetGidPrivate) continue;
+            const privateMsg = seal.newMessage();
+            privateMsg.messageType = "group";
+            privateMsg.groupId = `${platform}-Group:${targetGidPrivate}`;
+            const privateCtx = seal.createTempCtx(ctx.endPoint, privateMsg);
+            const isSelf = participantUid === uid;
+            const privateNotice = isSelf
+                ? `✅ 你已取消与 ${participants.filter(n => n !== rejecterName).join("、")} 的约会。`
+                : `❌ ${rejecterName} 取消了你们的约会，期待下次相遇！`;
+            seal.replyToSender(privateCtx, privateMsg, privateNotice);
+        }
 
-        const privateMsg = seal.newMessage();
-        privateMsg.messageType = "group";
-        privateMsg.groupId = `${platform}-Group:${targetGidPrivate}`;
-        const privateCtx = seal.createTempCtx(ctx.endPoint, privateMsg);
-        const isSelf = targetUid.replace(/^[a-z]+:/i, "") === uid;
-        const privateNotice = isSelf
-            ? `✅ 你已取消与 ${participants.filter(n => n !== abolisherName).join("、")} 的约会。`
-            : `❌ ${abolisherName} 取消了你们的约会，期待下次相遇！`;
-        seal.replyToSender(privateCtx, privateMsg, privateNotice);
-    }
+        // 清除全部日程记录
+        for (let uidKey in b_confirmedSchedule) {
+            b_confirmedSchedule[uidKey] = b_confirmedSchedule[uidKey].filter(ev => ev.group !== targetGid);
+        }
+        ext.storageSet("b_confirmedSchedule", JSON.stringify(b_confirmedSchedule));
 
-    // 6. 彻底删除日程记录 (b_confirmedSchedule)
-    for (let uidKey in b_confirmedSchedule) {
-        b_confirmedSchedule[uidKey] = b_confirmedSchedule[uidKey].filter(ev => ev.group !== targetGid);
-    }
-    ext.storageSet("b_confirmedSchedule", JSON.stringify(b_confirmedSchedule));
+        if (groupExpireInfo[targetGid]) {
+            delete groupExpireInfo[targetGid];
+            ext.storageSet("group_expire_info", JSON.stringify(groupExpireInfo));
+        }
 
-    // 7. 清理过期信息 (group_expire_info)
-    if (groupExpireInfo[targetGid]) {
-        delete groupExpireInfo[targetGid];
+        const idx = groupPool.indexOf(fullId);
+        if (idx !== -1) {
+            groupPool.splice(idx, 1);
+            groupPool.push(targetGid);
+            ext.storageSet("group", JSON.stringify(groupPool));
+        }
+
+        setGroupName(ctx, msg, targetGid, `备用`);
+        cleanupGroupTimer(targetGid);
+
+        seal.replyToSender(ctx, msg, `✅ 已取消群 ${targetGid} 的约会，并通知了相关参与者。`);
+
+    } else {
+        // ── 多人约会：移除拒绝者，约会继续 ──
+        const remaining = participants.filter(n => n !== rejecterName);
+
+        seal.replyToSender(groupCtx, groupMsg, `⚠️ 【成员退出】\n\n${rejecterName} 退出了这场约会。\n约会继续，请 ${rejecterName} 尽快退群。`);
+
+        // 通知各参与者（新结构：通过 roleName 反查 uid，再取 gid）
+        for (let participantName of participants) {
+            const participantUid2 = getUidByRoleName(platform, participantName);
+            const targetInfo2 = participantUid2 ? a_private_group[platform]?.[participantUid2] : null;
+            if (!targetInfo2) continue;
+            const targetGidPrivate2 = targetInfo2[1];
+            if (!participantUid2 || !targetGidPrivate2) continue;
+            const privateMsg = seal.newMessage();
+            privateMsg.messageType = "group";
+            privateMsg.groupId = `${platform}-Group:${targetGidPrivate2}`;
+            const privateCtx = seal.createTempCtx(ctx.endPoint, privateMsg);
+            const isSelf = participantUid2 === uid;
+            const privateNotice = isSelf
+                ? `✅ 你已退出与 ${remaining.join("、")} 的约会，他们将继续进行。`
+                : `ℹ️ ${rejecterName} 退出了约会，你与 ${remaining.filter(n => n !== participantName).join("、") || "其他人"} 的约会继续。`;
+            seal.replyToSender(privateCtx, privateMsg, privateNotice);
+        }
+
+        // 仅清除拒绝者自己的日程条目（新结构：直接用 uid 匹配）
+        const rejecterUidForCleanup = getUidByRoleName(platform, rejecterName);
+        if (rejecterUidForCleanup) {
+            const rejecterKey = `${platform}:${rejecterUidForCleanup}`;
+            if (b_confirmedSchedule[rejecterKey]) {
+                b_confirmedSchedule[rejecterKey] = b_confirmedSchedule[rejecterKey].filter(ev => ev.group !== targetGid);
+            }
+        }
+        ext.storageSet("b_confirmedSchedule", JSON.stringify(b_confirmedSchedule));
+
+        // 更新参与者列表，约会继续
+        groupExpireInfo[targetGid].participants = remaining;
         ext.storageSet("group_expire_info", JSON.stringify(groupExpireInfo));
+
+        seal.replyToSender(ctx, msg, `✅ 你已退出群 ${targetGid} 的约会，剩余参与者：${remaining.join("、")}。`);
     }
-
-    // 8. 释放群号回池子
-    const idx = groupPool.indexOf(fullId);
-    if (idx !== -1) {
-        groupPool.splice(idx, 1);
-        groupPool.push(targetGid);
-        ext.storageSet("group", JSON.stringify(groupPool));
-    }
-
-    // 9. 修改群名片并清理计时器
-    setGroupName(ctx, msg, targetGid, `备用`);
-    cleanupGroupTimer(targetGid);
-
-    seal.replyToSender(ctx, msg, `✅ 已成功废除群 ${targetGid} 的约会，并通知了相关参与者。`);
 
     return seal.ext.newCmdExecuteResult(true);
 };
-ext.cmdMap["废除时间线"] = cmd_abolish_schedule;
+ext.cmdMap["拒绝时间线"] = cmd_abolish_schedule;

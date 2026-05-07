@@ -561,10 +561,12 @@ function showShopSettings(ctx, msg) {
     if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件");
 
     const refreshHours = parseInt(main.storageGet("shop_refresh_hours") || "24");
+    const catalogOnReceive = main.storageGet("shop_gift_catalog_on_receive") === "true" ? "开启" : "关闭";
 
     seal.replyToSender(ctx, msg, [
         ".设置 礼品店设置",
         `【礼品店刷新间隔】${refreshHours}`,
+        `【收到即入图鉴】${catalogOnReceive}`,
     ].join('\n'));
 }
 
@@ -578,6 +580,11 @@ function applyShopParam(name, val) {
         main.storageSet("shop_refresh_hours", hours.toString());
         main.storageSet("shop_personal_display", "{}");
         return { success: true, message: `【礼品店刷新间隔】已设为 ${hours} 小时（所有人下次进入礼品店生效）` };
+    }
+    if (name === '收到即入图鉴') {
+        const enabled = val === "开启" || val === "true";
+        main.storageSet("shop_gift_catalog_on_receive", enabled ? "true" : "false");
+        return { success: true, message: `【收到即入图鉴】已${enabled ? "开启" : "关闭"}` };
     }
     return { success: false, message: `未知参数：${name}` };
 }
@@ -1066,8 +1073,9 @@ cmd_set_days.solve = (ctx, msg, args) => {
     ["a_meetingCount_call","a_meetingCount_private","a_meetingCount_letter","a_meetingCount_gift","a_meetingCount_wish","a_meetingCount_chaosletter","a_meetingCount_secretletter","a_meetingCount_official"].forEach(k => main.storageSet(k, "0"));
     const groups = JSON.parse(main.storageGet("a_private_group") || "{}")[platform];
     if (groups) {
-        for (let name in groups) {
-            main.storageSet(`chaos_letter_daily_${platform}:${groups[name][0]}_${day}`, "0");
+        // 新结构：key 是 uid，groups[uid][0] 是 roleName
+        for (let uid in groups) {
+            main.storageSet(`chaos_letter_daily_${platform}:${uid}_${day}`, "0");
         }
     }
     main.storageSet("a_wishPool", "[]");
@@ -1122,8 +1130,9 @@ function performAutoDayReset(newDay, now) {
     ["a_meetingCount_call","a_meetingCount_private","a_meetingCount_letter","a_meetingCount_gift","a_meetingCount_wish","a_meetingCount_chaosletter","a_meetingCount_secretletter","a_meetingCount_official"].forEach(k => main.storageSet(k, "0"));
     const groups = JSON.parse(main.storageGet("a_private_group") || "{}")["QQ"];
     if (groups) {
-        for (let name in groups) {
-            main.storageSet(`chaos_letter_daily_QQ:${groups[name][0]}_${newDay}`, "0");
+        // 新结构：key 是 uid，groups[uid][0] 是 roleName
+        for (let uid in groups) {
+            main.storageSet(`chaos_letter_daily_QQ:${uid}_${newDay}`, "0");
         }
     }
     main.storageSet("a_wishPool", "[]");
@@ -1584,7 +1593,14 @@ cmd_settings.solve = (ctx, msg, cmdArgs) => {
     }
 
     // 2. 路由分发：处理各个子模块的查看与修改
-    switch (subCmd) {
+    const subCmdAliases = {
+        '基础': '基础设置', '互动': '互动设置', '信件': '信件设置',
+        '发送信件': '发送信件设置', '公告': '公告设置', '心动信': '心动信设置',
+        '道具': '道具设置', '拍卖': '拍卖设置', '群组': '群组设置', '礼品店': '礼品店设置'
+    };
+    const resolvedCmd = subCmdAliases[subCmd] || subCmd;
+
+    switch (resolvedCmd) {
         case "基础设置":
             if (rawMsg.includes('\n')) return handleApply(ctx, msg, rawMsg, (n, v) => applyParam(n, v, '基础设置'));
             return showSettings(ctx, msg, '基础设置');

@@ -38,28 +38,30 @@ function getPrimaryUid(platform, uid) {
     } catch (e) { return uid; }
 }
 
+// 新结构：a_private_group[platform][uid] = [roleName, gid]
+// getRoleName：O(1) 直接用 uid 查
 function getRoleName(ctx, msg) {
     const main = getMainExt();
     if (!main) return null;
     try {
-        const charPlatform = JSON.parse(main.storageGet("a_private_group") || "{}");
+        const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
         const platform = msg.platform;
         const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
         const uid = getPrimaryUid(platform, rawUid);
-        if (!charPlatform[platform]) return null;
-        for (const name in charPlatform[platform]) {
-            if (Array.isArray(charPlatform[platform][name]) && charPlatform[platform][name][0] === uid) return name;
-        }
+        return apg[platform]?.[uid]?.[0] || null;
     } catch (e) { console.log("[物品V2] getRoleName: " + e.message); }
     return null;
 }
 
+// getRoleUid：新结构下需要 O(n) 扫描（key 是 uid，value[0] 是 roleName）
 function getRoleUid(platform, roleName) {
     const main = getMainExt();
     if (!main) return null;
     try {
         const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
-        return apg[platform]?.[roleName]?.[0] ?? null;
+        const roles = apg[platform] || {};
+        const entry = Object.entries(roles).find(([_, v]) => v[0] === roleName);
+        return entry ? entry[0] : null;
     } catch (e) { return null; }
 }
 
@@ -359,7 +361,8 @@ function modCharAttrs(platform, roleName, changesStr) {
     if (!uid) return;
     const roleKey = `${platform}:${uid}`;
     const charAttrs = getCharAttrs();
-    const roleAttrs = charAttrs[roleName] || {};
+    // 新结构：charAttrs 以 uid 为 key
+    const roleAttrs = charAttrs[uid] || {};
     let attrsChanged = false;
 
     for (const [attr, delta] of Object.entries(changes)) {
@@ -375,7 +378,7 @@ function modCharAttrs(platform, roleName, changesStr) {
     }
 
     if (attrsChanged) {
-        charAttrs[roleName] = roleAttrs;
+        charAttrs[uid] = roleAttrs;
         saveCharAttrs(charAttrs);
     }
 }
@@ -453,14 +456,16 @@ function notifyPlayer(ctx, platform, roleName, text) {
     const main = getMainExt();
     if (!main) return;
     const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
-    const info = apg[platform]?.[roleName];
+    // 新结构：通过 roleName 反查 uid，再取 gid
+    const uid = getRoleUid(platform, roleName);
+    if (!uid) return;
+    const info = apg[platform]?.[uid];
     if (!info) return;
     const notifyMsg = seal.newMessage();
     notifyMsg.messageType = "group";
     notifyMsg.groupId = `${platform}-Group:${info[1]}`;
     const notifyCtx = seal.createTempCtx(ctx.endPoint, notifyMsg);
-    const qq = info[0].replace(/^[^:]+:/, "");
-    seal.replyToSender(notifyCtx, notifyMsg, `[CQ:at,qq=${qq}]\n${text}`);
+    seal.replyToSender(notifyCtx, notifyMsg, `[CQ:at,qq=${uid}]\n${text}`);
 }
 
 // ========================
@@ -512,78 +517,6 @@ function initPresetItems() {
 // 特殊物品使用逻辑
 // ========================
 
-function handleSpecialItemUse(ctx, msg, platform, roleName, roleKey, code, cmdArgs) {
-    const main = getMainExt();
-    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
-
-    if (code === "SPEC_001") {
-        const targetRole = cmdArgs.getArgN(2);
-        if (!targetRole) return seal.replyToSender(ctx, msg, "🔍 请指定要追踪的角色：使用 SPEC_001 角色名");
-        const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
-        const targetInfo = apg[platform]?.[targetRole];
-        if (!targetInfo) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${targetRole}」。`);
-        const targetKey = `${platform}:${targetInfo[0]}`;
-        const globalDay = main.storageGet("global_days");
-        if (!globalDay) return seal.replyToSender(ctx, msg, "⚠️ 未设置游戏天数。");
-
-        const timeRestrict = main.storageGet("item_tracker_time_restrict") !== "false";
-        let timeRange;
-        if (timeRestrict) {
-            const h = new Date().getHours();
-            timeRange = `${h.toString().padStart(2,'0')}:00-${h === 23 ? "23:59" : (h+1).toString().padStart(2,'0')+":00"}`;
-        } else {
-            const timeArg = cmdArgs.getArgN(3);
-            if (!timeArg) return seal.replyToSender(ctx, msg, "🔍 请指定追踪时间：使用 SPEC_001 角色名 时间（如 14 或 14:30）");
-            let hour, minute = 0;
-            if (/^\d{1,2}$/.test(timeArg)) { hour = parseInt(timeArg); }
-            else if (/^\d{1,2}:\d{2}$/.test(timeArg)) {
-                [hour, minute] = timeArg.split(':').map(Number);
-                if (minute < 0 || minute > 59) return seal.replyToSender(ctx, msg, "⚠️ 分钟应在00-59之间");
-            } else return seal.replyToSender(ctx, msg, "⚠️ 时间格式错误，请使用：14 或 14:30");
-            if (hour < 0 || hour > 23) return seal.replyToSender(ctx, msg, "⚠️ 小时应在0-23之间");
-            const start = `${hour.toString().padStart(2,'0')}:${minute.toString().padStart(2,'0')}`;
-            let endH = hour + 1, endM = minute;
-            if (endH >= 24) { endH = 23; endM = 59; }
-            timeRange = `${start}-${endH.toString().padStart(2,'0')}:${endM.toString().padStart(2,'0')}`;
-        }
-
-        const b_confirmedSchedule = JSON.parse(main.storageGet("b_confirmedSchedule") || "{}");
-        const matchingEvent = (b_confirmedSchedule[targetKey] || []).find(ev => ev.day === globalDay && timeOverlap(ev.time, timeRange));
-        const successRate = parseInt(main.storageGet("item_tracker_success_rate") || "70");
-        const showPartner = main.storageGet("item_tracker_show_partner") !== "false";
-        const isSuccess = Math.random() * 100 < successRate;
-
-        if (!removeFromInv(roleKey, "SPEC_001", 1)) return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的追踪器。");
-        if (!matchingEvent) return seal.replyToSender(ctx, msg, `🔍 未能发现「${targetRole}」的行踪。\n（追踪器已消耗）`);
-        if (!isSuccess) return seal.replyToSender(ctx, msg, `🔍 信号干扰，定位失败。\n（追踪器已消耗）`);
-
-        let resultMsg = `🔍 追踪到「${targetRole}」在 ${globalDay} ${matchingEvent.time} 出现在「${matchingEvent.place || "某处"}」`;
-        if (showPartner && matchingEvent.partner && matchingEvent.partner !== "独自一人") resultMsg += `，与 ${matchingEvent.partner} 一起`;
-        resultMsg += `。\n（追踪器已消耗）`;
-        return seal.replyToSender(ctx, msg, resultMsg);
-    }
-
-    if (code === "SPEC_002") {
-        const placeName = cmdArgs.args.slice(1).join(' ').trim();
-        if (!placeName) return seal.replyToSender(ctx, msg, "🔑 请指定要兑换钥匙的地点：使用 SPEC_002 地点名");
-        const availablePlaces = JSON.parse(main.storageGet("available_places") || "{}");
-        if (!availablePlaces[placeName]) {
-            const placeList = Object.keys(availablePlaces).join("、") || "（暂无）";
-            return seal.replyToSender(ctx, msg, `❌ 未找到地点「${placeName}」。\n📍 可用地点：${placeList}`);
-        }
-        let placeKeys = JSON.parse(main.storageGet("place_keys") || "{}");
-        if (!placeKeys[platform]) placeKeys[platform] = {};
-        if (!placeKeys[platform][roleName]) placeKeys[platform][roleName] = [];
-        if (placeKeys[platform][roleName].includes(placeName))
-            return seal.replyToSender(ctx, msg, `🔑 你已经拥有「${placeName}」的钥匙了。`);
-        if (!removeFromInv(roleKey, "SPEC_002", 1)) return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的万能钥匙。");
-        placeKeys[platform][roleName].push(placeName);
-        main.storageSet("place_keys", JSON.stringify(placeKeys));
-        return seal.replyToSender(ctx, msg, `🔓 万能钥匙化作一缕金光，为你开启了「${placeName}」的门锁！\n你获得了该地点的钥匙。`);
-    }
-
-    return false;
-}
 
 // ========================
 // 使用记录
@@ -734,13 +667,31 @@ cmd_reg_attr.solve = (ctx, msg, cmdArgs) => {
         const attrs = getValidAttrs();
         return seal.replyToSender(ctx, msg, attrs.length ? `📋 已注册属性：${attrs.join("、")}` : "📋 暂无已注册属性。");
     }
-    const newAttrs = [];
-    for (let i = 1; ; i++) { const a = cmdArgs.getArgN(i); if (!a) break; newAttrs.push(a); }
-    if (!newAttrs.length) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const arg1 = cmdArgs.getArgN(1);
+    if (!arg1) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const arg2 = cmdArgs.getArgN(2);
+    const arg3 = cmdArgs.getArgN(3);
+    const arg4 = cmdArgs.getArgN(4);
 
-    // 检查是否与货币名冲突
     const reg = getRegistry();
     const currencyNames = new Set(Object.values(reg).filter(r => r.type === "currency").map(r => r.name));
+
+    // 格式：我创建属性 [名] [最小] [最大] [默认]
+    if (arg2 !== "" && !isNaN(Number(arg2))) {
+        if (currencyNames.has(arg1)) return seal.replyToSender(ctx, msg, `❌ 属性名「${arg1}」已被货币占用`);
+        const min = Number(arg2);
+        const max = arg3 !== "" && !isNaN(Number(arg3)) ? Number(arg3) : null;
+        const defaultVal = arg4 !== "" && !isNaN(Number(arg4)) ? Number(arg4) : 0;
+        const existDefs = getAttrDefs();
+        const isNew = !existDefs[arg1];
+        existDefs[arg1] = { min, max, default: defaultVal, desc: existDefs[arg1]?.desc || "" };
+        saveAttrDefs(existDefs);
+        return seal.replyToSender(ctx, msg, `✅ ${isNew ? "新增" : "更新"}属性「${arg1}」：最小${min} 最大${max ?? "无限"} 默认${defaultVal}`);
+    }
+
+    // 旧格式：批量注册属性名（无范围）
+    const newAttrs = [arg1];
+    for (let i = 2; ; i++) { const a = cmdArgs.getArgN(i); if (!a) break; newAttrs.push(a); }
     const conflicted = newAttrs.filter(a => currencyNames.has(a));
     if (conflicted.length) return seal.replyToSender(ctx, msg, `❌ 以下属性名已被货币占用：${conflicted.join("、")}`);
 
@@ -880,6 +831,8 @@ let cmd_item_list = seal.ext.newCmdItemInfo();
 cmd_item_list.name = "物品列表";
 cmd_item_list.help = "查看所有已注册物品/货币\n物品列表 [物品|货币|预设|全部]";
 cmd_item_list.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+
     const reg = getRegistry();
     const filter = cmdArgs.getArgN(1) || "全部";
     const entries = Object.values(reg).filter(e => {
@@ -926,13 +879,14 @@ cmd_set_attr.solve = (ctx, msg, cmdArgs) => {
     if (isNaN(val)) return seal.replyToSender(ctx, msg, "❌ 值必须为整数。");
     const main = getMainExt();
     if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
-    const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
-    if (!apg[msg.platform]?.[roleName]) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${roleName}」`);
+    // 新结构：通过 roleName 反查 uid
+    const setAttrUid = getRoleUid(msg.platform, roleName);
+    if (!setAttrUid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${roleName}」`);
     const defs = getAttrDefs();
     const clamped = clampAttr(defs[attrName], val);
     const charAttrs = getCharAttrs();
-    if (!charAttrs[roleName]) charAttrs[roleName] = {};
-    charAttrs[roleName][attrName] = clamped;
+    if (!charAttrs[setAttrUid]) charAttrs[setAttrUid] = {};
+    charAttrs[setAttrUid][attrName] = clamped;
     saveCharAttrs(charAttrs);
     const note = clamped !== val ? `（已截断至范围内：${clamped}）` : "";
     seal.replyToSender(ctx, msg, `✅ 【${roleName}】${attrName} 已设为 ${clamped}${note}`);
@@ -1202,10 +1156,10 @@ cmd_adjust.solve = (ctx, msg, cmdArgs) => {
     const reg = getRegistry();
     const item = findItem(reg, inputCode);
     if (!item) return seal.replyToSender(ctx, msg, `❌ 找不到物品「${inputCode}」`);
-    const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
     const platform = msg.platform;
-    if (!apg[platform]?.[roleName]) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${roleName}」。`);
-    const uid = apg[platform][roleName][0];
+    // 新结构：通过 roleName 反查 uid
+    const uid = getRoleUid(platform, roleName);
+    if (!uid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${roleName}」。`);
     const roleKey = `${platform}:${uid}`;
     if (delta > 0) {
         addToInv(roleKey, item.code, delta);
@@ -1233,10 +1187,10 @@ cmd_grant_draws.solve = (ctx, msg, cmdArgs) => {
     if (!roleName || !arg2) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
     const main = getMainExt();
     if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
-    const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
     const platform = msg.platform;
-    if (!apg[platform]?.[roleName]) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${roleName}」。`);
-    const uid = apg[platform][roleName][0];
+    // 新结构：通过 roleName 反查 uid
+    const uid = getRoleUid(platform, roleName);
+    if (!uid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${roleName}」。`);
     const drRec = getPlayerDrawRec(platform, uid);
     if (!drRec) return seal.replyToSender(ctx, msg, "❌ 无法读取抽取记录。");
     const { records, key, rec } = drRec;
@@ -1391,11 +1345,10 @@ cmd_give_item.solve = (ctx, msg, cmdArgs) => {
 
     const main = getMainExt();
     if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
-    
-    // 2. 目标校验
-    const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
-    if (!apg[platform]?.[targetName]) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${targetName}」。`);
-    const toTargetUid = apg[platform][targetName][0];
+
+    // 2. 目标校验（新结构：通过 roleName 反查 uid）
+    const toTargetUid = getRoleUid(platform, targetName);
+    if (!toTargetUid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${targetName}」。`);
     const toRoleKey = `${platform}:${toTargetUid}`; // 接收者Key
 
     // 3. 物品与次数校验
@@ -1450,7 +1403,7 @@ ext.cmdMap["赠送道具"] = cmd_give_item;
 
 let cmd_use = seal.ext.newCmdItemInfo();
 cmd_use.name = "使用";
-cmd_use.help = "使用背包中的物品\n使用 物品码或名称 [参数]\n示例：\n使用 SPEC_001 张三 —— 追踪器\n使用 ITEM_001 —— 普通物品";
+cmd_use.help = "使用背包中的普通物品\n使用 物品码或名称\n示例：使用 ITEM_001\n特殊道具（SPEC类）请使用「特殊使用」指令";
 
 cmd_use.solve = (ctx, msg, cmdArgs) => {
     const roleName = getRoleName(ctx, msg);
@@ -1486,9 +1439,9 @@ cmd_use.solve = (ctx, msg, cmdArgs) => {
 
     let userItem = inv[invIndex];
 
-    // 2. 特殊物品逻辑 (SPEC_001, SPEC_002)
-    if (item.code === "SPEC_001" || item.code === "SPEC_002") {
-        return handleSpecialItemUse(ctx, msg, platform, roleName, roleKey, item.code, cmdArgs);
+    // 2. 特殊道具须使用专属指令
+    if (item.type === "preset") {
+        return seal.replyToSender(ctx, msg, `⚙️ [${item.code}]${item.name} 是特殊道具，请使用「特殊使用 ${item.name} [参数]」`);
     }
 
     // 3. 处理属性变更 (支持多属性同时影响)
@@ -2026,6 +1979,8 @@ ext.cmdMap["合成"] = cmd_craft;
 let cmd_recipe_list = seal.ext.newCmdItemInfo();
 cmd_recipe_list.name = "查看配方";
 cmd_recipe_list.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+
     const main = getMainExt();
     const recipes = JSON.parse(main.storageGet("item_recipes") || "{}");
     const list = Object.values(recipes);
@@ -2247,7 +2202,7 @@ function isApplyTimeValid(main) {
 
 let cmd_apply = seal.ext.newCmdItemInfo();
 cmd_apply.name = "施加";
-cmd_apply.help = "对他人使用互动道具或追踪器\n\n【互动道具】\n格式：施加 目标姓名 物品名/代码\n示例：施加 张三 医疗包\n\n【追踪器】\n格式：施加 目标姓名 追踪器/SPEC_001 [时间]\n示例：施加 张三 追踪器 14\n     施加 张三 SPEC_001 14:30\n\n【捕鼠器】\n格式：施加 目标姓名 捕鼠器/SPEC_005 时间\n示例：施加 张三 捕鼠器 14\n     施加 张三 SPEC_005 14\n\n【管理设置】\n施加 设置  或  施加 查看  查看施加系统设置";
+cmd_apply.help = "对他人使用互动道具（INTER类）\n格式：施加 目标姓名 物品名/代码\n示例：施加 张三 治疗术\n\n特殊道具（SPEC类）请使用「特殊使用」指令\n\n【管理设置】\n施加 设置  或  施加 查看  查看施加系统设置";
 cmd_apply.solve = (ctx, msg, cmdArgs) => {
     const main = getMainExt();
     const targetName = cmdArgs.getArgN(1);
@@ -2292,104 +2247,12 @@ cmd_apply.solve = (ctx, msg, cmdArgs) => {
     // 1. 基础校验
     if (!item) return seal.replyToSender(ctx, msg, `❌ 未知物品「${inputCode}」`);
 
-    // 特殊处理：追踪器
-    if (item.code === "SPEC_001") {
-        const timeArg = cmdArgs.getArgN(3);
-        const globalDay = main.storageGet("global_days");
-        if (!globalDay) return seal.replyToSender(ctx, msg, "⚠️ 未设置游戏天数。");
-
-        // 检查背包
-        let inv = getInv(roleKey);
-        if (!inv.find(e => e.code === "SPEC_001")) {
-            return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的追踪器。");
-        }
-
-        const timeRestrict = main.storageGet("item_tracker_time_restrict") !== "false";
-        let timeRange;
-        if (timeRestrict) {
-            const h = new Date().getHours();
-            timeRange = `${h.toString().padStart(2,'0')}:00-${h === 23 ? "23:59" : (h+1).toString().padStart(2,'0')+":00"}`;
-        } else {
-            if (!timeArg) return seal.replyToSender(ctx, msg, "🔍 请指定追踪时间：施加 角色名 追踪器 时间（如 14 或 14:30）");
-            let hour, minute = 0;
-            if (/^\d{1,2}$/.test(timeArg)) { hour = parseInt(timeArg); }
-            else if (/^\d{1,2}:\d{2}$/.test(timeArg)) {
-                [hour, minute] = timeArg.split(':').map(Number);
-                if (minute < 0 || minute > 59) return seal.replyToSender(ctx, msg, "⚠️ 分钟应在00-59之间");
-            } else return seal.replyToSender(ctx, msg, "⚠️ 时间格式错误，请使用：14 或 14:30");
-            if (hour < 0 || hour > 23) return seal.replyToSender(ctx, msg, "⚠️ 小时应在0-23之间");
-            const start = `${hour.toString().padStart(2,'0')}:${minute.toString().padStart(2,'0')}`;
-            let endH = hour + 1, endM = minute;
-            if (endH >= 24) { endH = 23; endM = 59; }
-            timeRange = `${start}-${endH.toString().padStart(2,'0')}:${endM.toString().padStart(2,'0')}`;
-        }
-
-        const b_confirmedSchedule = JSON.parse(main.storageGet("b_confirmedSchedule") || "{}");
-        const targetKey = `${platform}:${apg[platform][targetName][0]}`;
-        const matchingEvent = (b_confirmedSchedule[targetKey] || []).find(ev => ev.day === globalDay && timeOverlap(ev.time, timeRange));
-        const successRate = parseInt(main.storageGet("item_tracker_success_rate") || "70");
-        const showPartner = main.storageGet("item_tracker_show_partner") !== "false";
-        const isSuccess = Math.random() * 100 < successRate;
-
-        if (!removeFromInv(roleKey, "SPEC_001", 1)) return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的追踪器。");
-        if (!matchingEvent) return seal.replyToSender(ctx, msg, `🔍 未能发现「${targetName}」的行踪。\n（追踪器已消耗）`);
-        if (!isSuccess) return seal.replyToSender(ctx, msg, `🔍 信号干扰，定位失败。\n（追踪器已消耗）`);
-
-        let resultMsg = `🔍 追踪到「${targetName}」在 ${globalDay} ${matchingEvent.time} 出现在「${matchingEvent.place || "某处"}」`;
-        if (showPartner && matchingEvent.partner && matchingEvent.partner !== "独自一人") resultMsg += `，与 ${matchingEvent.partner} 一起`;
-        resultMsg += `。\n（追踪器已消耗）`;
-        return seal.replyToSender(ctx, msg, resultMsg);
+    // 特殊道具须使用专属指令
+    if (item.type === "preset") {
+        return seal.replyToSender(ctx, msg, `⚙️ [${item.code}]${item.name} 是特殊道具，请使用「特殊使用 ${item.name} [参数]」`);
     }
 
-    // 特殊处理：捕鼠器 (SPEC_005)
-    if (item.code === "SPEC_005") {
-        const timeArg = cmdArgs.getArgN(3);
-        if (!timeArg) return seal.replyToSender(ctx, msg, "🪤 请指定锁定时间：施加 角色名 捕鼠器 时间（如 14）");
-        if (!/^\d{1,2}$/.test(timeArg)) return seal.replyToSender(ctx, msg, "⚠️ 时间格式错误，请使用整点小时，如：14");
-        const hour = parseInt(timeArg);
-        if (hour < 0 || hour > 23) return seal.replyToSender(ctx, msg, "⚠️ 小时应在0-23之间");
-        const endH = hour === 23 ? 23 : hour + 1;
-        const endM = hour === 23 ? 59 : 0;
-        const timeRange = `${hour.toString().padStart(2,'0')}:00-${endH.toString().padStart(2,'0')}:${endM.toString().padStart(2,'0')}`;
-
-        const globalDay = main.storageGet("global_days");
-        if (!globalDay) return seal.replyToSender(ctx, msg, "⚠️ 未设置游戏天数。");
-
-        const apgTrap = JSON.parse(main.storageGet("a_private_group") || "{}");
-        if (!apgTrap[platform]?.[targetName]) return seal.replyToSender(ctx, msg, `❌ 未找到目标角色「${targetName}」。`);
-        const targetUid = apgTrap[platform][targetName][0];
-        const targetKey = `${platform}:${targetUid}`;
-
-        if (!removeFromInv(roleKey, "SPEC_005", 1)) return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的捕鼠器。");
-
-        let a_lockedSlots = JSON.parse(main.storageGet("a_lockedSlots") || "{}");
-        if (!a_lockedSlots[targetKey]) a_lockedSlots[targetKey] = {};
-        if (!a_lockedSlots[targetKey][globalDay]) a_lockedSlots[targetKey][globalDay] = [];
-        if (!a_lockedSlots[targetKey][globalDay].includes(timeRange)) {
-            a_lockedSlots[targetKey][globalDay].push(timeRange);
-        }
-        main.storageSet("a_lockedSlots", JSON.stringify(a_lockedSlots));
-
-        notifyPlayer(ctx, platform, targetName, `🪤 你在 ${globalDay} ${timeRange} 踩中了捕鼠器，该时段内无法发起或接受私约、电话，也无法摘心愿。`);
-        return seal.replyToSender(ctx, msg, `🪤 捕鼠器已激活！「${targetName}」在 ${globalDay} ${timeRange} 的行动被锁定。\n（捕鼠器已消耗）`);
-    }
-
-    // 特殊处理：望远镜 (SPEC_003) / 羽毛笔 (SPEC_004)
-    if (item.code === "SPEC_003" || item.code === "SPEC_004") {
-        const featureToggle = JSON.parse(main.storageGet("global_feature_toggle") || "{}");
-        if (!featureToggle.enable_direct_letter) return seal.replyToSender(ctx, msg, "✉️ 发送信件功能未启用。");
-        const apgLetter = JSON.parse(main.storageGet("a_private_group") || "{}");
-        if (!apgLetter[platform]?.[targetName]) return seal.replyToSender(ctx, msg, `❌ 未找到目标角色「${targetName}」。`);
-        if (!removeFromInv(roleKey, item.code, 1)) return seal.replyToSender(ctx, msg, `❌ 背包中没有可用的「${item.name}」。`);
-        const effectsKey = item.code === "SPEC_003" ? "letter_telescope_effects" : "letter_quill_pen_effects";
-        const effects = JSON.parse(main.storageGet(effectsKey) || "{}");
-        if (!effects[targetName]) effects[targetName] = [];
-        effects[targetName].push({ applier: roleName, applyTime: Date.now(), itemCode: item.code });
-        main.storageSet(effectsKey, JSON.stringify(effects));
-        return seal.replyToSender(ctx, msg, `✅ 你已向「${targetName}」施加了「${item.name}」！`);
-    }
-
-    if (item.type !== "interact") return seal.replyToSender(ctx, msg, `⚠️ [${item.name}] 不是互动类物品，请使用「.使用」指令。`);
+    if (item.type !== "interact") return seal.replyToSender(ctx, msg, `⚠️ [${item.name}] 不是互动类物品，请使用「使用」指令。`);
 
     // 2. 检查目标是否存在
     const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
@@ -2459,6 +2322,169 @@ cmd_apply.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["施加"] = cmd_apply;
+
+// ========================
+// 特殊道具使用
+// ========================
+
+let cmd_special_use = seal.ext.newCmdItemInfo();
+cmd_special_use.name = "特殊使用";
+cmd_special_use.help = `使用特殊道具（SPEC类）
+追踪器：特殊使用 追踪器 目标角色 [时间]
+万能钥匙：特殊使用 万能钥匙 地点名
+望远镜：特殊使用 望远镜 目标角色
+羽毛笔：特殊使用 羽毛笔 目标角色
+捕鼠器：特殊使用 捕鼠器 目标角色 时间（整点，如 14）`;
+
+cmd_special_use.solve = (ctx, msg, cmdArgs) => {
+    const main = getMainExt();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
+
+    const roleName = getRoleName(ctx, msg);
+    if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+
+    const inputCode = cmdArgs.getArgN(1);
+    if (!inputCode) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+
+    const platform = msg.platform;
+    const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+    const uid = getPrimaryUid(platform, rawUid);
+    const roleKey = `${platform}:${uid}`;
+    const reg = getRegistry();
+    const item = findItem(reg, inputCode);
+
+    if (!item) return seal.replyToSender(ctx, msg, `❌ 未知道具「${inputCode}」`);
+    if (item.type !== "preset") return seal.replyToSender(ctx, msg, `❌ [${item.code}]${item.name} 不是特殊道具。`);
+
+    const inv = getInv(roleKey);
+    if (!inv.find(e => e.code === item.code && e.count > 0)) {
+        return seal.replyToSender(ctx, msg, `❌ 背包中没有可用的「${item.name}」。`);
+    }
+
+    // ── SPEC_001 追踪器 ──
+    if (item.code === "SPEC_001") {
+        const targetName = cmdArgs.getArgN(2);
+        if (!targetName) return seal.replyToSender(ctx, msg, "🔍 请指定要追踪的角色：特殊使用 追踪器 角色名 [时间]");
+        // 新结构：通过 roleName 反查 uid
+        const trackerTargetUid = getRoleUid(platform, targetName);
+        if (!trackerTargetUid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${targetName}」。`);
+
+        const globalDay = main.storageGet("global_days");
+        if (!globalDay) return seal.replyToSender(ctx, msg, "⚠️ 未设置游戏天数。");
+
+        const timeRestrict = main.storageGet("item_tracker_time_restrict") !== "false";
+        let timeRange;
+        if (timeRestrict) {
+            const h = new Date().getHours();
+            timeRange = `${h.toString().padStart(2,'0')}:00-${h === 23 ? "23:59" : (h+1).toString().padStart(2,'0')+":00"}`;
+        } else {
+            const timeArg = cmdArgs.getArgN(3);
+            if (!timeArg) return seal.replyToSender(ctx, msg, "🔍 请指定追踪时间：特殊使用 追踪器 角色名 时间（如 14 或 14:30）");
+            let hour, minute = 0;
+            if (/^\d{1,2}$/.test(timeArg)) { hour = parseInt(timeArg); }
+            else if (/^\d{1,2}:\d{2}$/.test(timeArg)) {
+                [hour, minute] = timeArg.split(':').map(Number);
+                if (minute < 0 || minute > 59) return seal.replyToSender(ctx, msg, "⚠️ 分钟应在00-59之间");
+            } else return seal.replyToSender(ctx, msg, "⚠️ 时间格式错误，请使用：14 或 14:30");
+            if (hour < 0 || hour > 23) return seal.replyToSender(ctx, msg, "⚠️ 小时应在0-23之间");
+            const start = `${hour.toString().padStart(2,'0')}:${minute.toString().padStart(2,'0')}`;
+            let endH = hour + 1, endM = minute;
+            if (endH >= 24) { endH = 23; endM = 59; }
+            timeRange = `${start}-${endH.toString().padStart(2,'0')}:${endM.toString().padStart(2,'0')}`;
+        }
+
+        const b_confirmedSchedule = JSON.parse(main.storageGet("b_confirmedSchedule") || "{}");
+        const targetKey = `${platform}:${trackerTargetUid}`;
+        const matchingEvent = (b_confirmedSchedule[targetKey] || []).find(ev => ev.day === globalDay && timeOverlap(ev.time, timeRange));
+        const successRate = parseInt(main.storageGet("item_tracker_success_rate") || "70");
+        const showPartner = main.storageGet("item_tracker_show_partner") !== "false";
+        const isSuccess = Math.random() * 100 < successRate;
+
+        if (!removeFromInv(roleKey, "SPEC_001", 1)) return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的追踪器。");
+        if (!matchingEvent) return seal.replyToSender(ctx, msg, `🔍 未能发现「${targetName}」的行踪。\n（追踪器已消耗）`);
+        if (!isSuccess) return seal.replyToSender(ctx, msg, `🔍 信号干扰，定位失败。\n（追踪器已消耗）`);
+
+        let resultMsg = `🔍 追踪到「${targetName}」在 ${globalDay} ${matchingEvent.time} 出现在「${matchingEvent.place || "某处"}」`;
+        if (showPartner && matchingEvent.partner && matchingEvent.partner !== "独自一人") resultMsg += `，与 ${matchingEvent.partner} 一起`;
+        resultMsg += `。\n（追踪器已消耗）`;
+        return seal.replyToSender(ctx, msg, resultMsg);
+    }
+
+    // ── SPEC_002 万能钥匙 ──
+    if (item.code === "SPEC_002") {
+        const placeName = cmdArgs.args.slice(1).join(' ').trim();
+        if (!placeName) return seal.replyToSender(ctx, msg, "🔑 请指定要兑换钥匙的地点：特殊使用 万能钥匙 地点名");
+        const availablePlaces = JSON.parse(main.storageGet("available_places") || "{}");
+        if (!availablePlaces[placeName]) {
+            const placeList = Object.keys(availablePlaces).join("、") || "（暂无）";
+            return seal.replyToSender(ctx, msg, `❌ 未找到地点「${placeName}」。\n📍 可用地点：${placeList}`);
+        }
+        let placeKeys = JSON.parse(main.storageGet("place_keys") || "{}");
+        if (!placeKeys[platform]) placeKeys[platform] = {};
+        if (!placeKeys[platform][roleName]) placeKeys[platform][roleName] = [];
+        if (placeKeys[platform][roleName].includes(placeName))
+            return seal.replyToSender(ctx, msg, `🔑 你已经拥有「${placeName}」的钥匙了。`);
+        if (!removeFromInv(roleKey, "SPEC_002", 1)) return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的万能钥匙。");
+        placeKeys[platform][roleName].push(placeName);
+        main.storageSet("place_keys", JSON.stringify(placeKeys));
+        return seal.replyToSender(ctx, msg, `🔑 成功兑换「${placeName}」的钥匙！（万能钥匙已消耗）`);
+    }
+
+    // ── SPEC_003 望远镜 / SPEC_004 羽毛笔 ──
+    if (item.code === "SPEC_003" || item.code === "SPEC_004") {
+        const targetName = cmdArgs.getArgN(2);
+        if (!targetName) return seal.replyToSender(ctx, msg, `✉️ 请指定目标：特殊使用 ${item.name} 角色名`);
+        const featureToggle = JSON.parse(main.storageGet("global_feature_toggle") || "{}");
+        if (!featureToggle.enable_direct_letter) return seal.replyToSender(ctx, msg, "✉️ 发送信件功能未启用。");
+        const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
+        if (!apg[platform]?.[targetName]) return seal.replyToSender(ctx, msg, `❌ 未找到目标角色「${targetName}」。`);
+        if (!removeFromInv(roleKey, item.code, 1)) return seal.replyToSender(ctx, msg, `❌ 背包中没有可用的「${item.name}」。`);
+        const effectsKey = item.code === "SPEC_003" ? "letter_telescope_effects" : "letter_quill_pen_effects";
+        const effects = JSON.parse(main.storageGet(effectsKey) || "{}");
+        if (!effects[targetName]) effects[targetName] = [];
+        effects[targetName].push({ applier: roleName, applyTime: Date.now(), itemCode: item.code });
+        main.storageSet(effectsKey, JSON.stringify(effects));
+        return seal.replyToSender(ctx, msg, `✅ 你已向「${targetName}」施加了「${item.name}」！`);
+    }
+
+    // ── SPEC_005 捕鼠器 ──
+    if (item.code === "SPEC_005") {
+        const targetName = cmdArgs.getArgN(2);
+        const timeArg = cmdArgs.getArgN(3);
+        if (!targetName) return seal.replyToSender(ctx, msg, "🪤 请指定目标：特殊使用 捕鼠器 角色名 时间（如 14）");
+        if (!timeArg) return seal.replyToSender(ctx, msg, "🪤 请指定锁定时间：特殊使用 捕鼠器 角色名 时间（如 14）");
+        if (!/^\d{1,2}$/.test(timeArg)) return seal.replyToSender(ctx, msg, "⚠️ 时间格式错误，请使用整点小时，如：14");
+        const hour = parseInt(timeArg);
+        if (hour < 0 || hour > 23) return seal.replyToSender(ctx, msg, "⚠️ 小时应在0-23之间");
+        const endH = hour === 23 ? 23 : hour + 1;
+        const endM = hour === 23 ? 59 : 0;
+        const timeRange = `${hour.toString().padStart(2,'0')}:00-${endH.toString().padStart(2,'0')}:${endM.toString().padStart(2,'0')}`;
+
+        const globalDay = main.storageGet("global_days");
+        if (!globalDay) return seal.replyToSender(ctx, msg, "⚠️ 未设置游戏天数。");
+
+        // 新结构：通过 roleName 反查 uid
+        const trapTargetUid = getRoleUid(platform, targetName);
+        if (!trapTargetUid) return seal.replyToSender(ctx, msg, `❌ 未找到目标角色「${targetName}」。`);
+        const targetKey = `${platform}:${trapTargetUid}`;
+
+        if (!removeFromInv(roleKey, "SPEC_005", 1)) return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的捕鼠器。");
+
+        let a_lockedSlots = JSON.parse(main.storageGet("a_lockedSlots") || "{}");
+        if (!a_lockedSlots[targetKey]) a_lockedSlots[targetKey] = {};
+        if (!a_lockedSlots[targetKey][globalDay]) a_lockedSlots[targetKey][globalDay] = [];
+        if (!a_lockedSlots[targetKey][globalDay].includes(timeRange)) {
+            a_lockedSlots[targetKey][globalDay].push(timeRange);
+        }
+        main.storageSet("a_lockedSlots", JSON.stringify(a_lockedSlots));
+
+        notifyPlayer(ctx, platform, targetName, `🪤 你在 ${globalDay} ${timeRange} 踩中了捕鼠器，该时段内无法发起或接受私约、电话，也无法摘心愿。`);
+        return seal.replyToSender(ctx, msg, `🪤 捕鼠器已激活！「${targetName}」在 ${globalDay} ${timeRange} 的行动被锁定。\n（捕鼠器已消耗）`);
+    }
+
+    return seal.replyToSender(ctx, msg, `❌ 未知的特殊道具 [${item.code}]，请联系管理员。`);
+};
+ext.cmdMap["特殊使用"] = cmd_special_use;
 
 // ========================
 // 合成系统
@@ -2581,9 +2607,11 @@ ext.onNotCommandReceived = (ctx, msg) => {
     if (raw === "我的状态") {
         const roleName = getRoleName(ctx, msg);
         if (!roleName) return seal.replyToSender(ctx, msg, "❌ 未绑定角色");
+        const myStatusUid = getPrimaryUid(platform, msg.sender.userId.replace(/^[a-z]+:/i, ""));
         const defs = getAttrDefs();
         const charAttrs = getCharAttrs();
-        const roleAttrs = charAttrs[roleName] || {};
+        // 新结构：charAttrs 以 uid 为 key
+        const roleAttrs = charAttrs[myStatusUid] || {};
         const attrNames = Object.keys(defs);
         if (!attrNames.length) return seal.replyToSender(ctx, msg, `🎭 【${roleName}】暂无属性，管理员可用「我创建属性」添加。`);
 
@@ -2646,10 +2674,54 @@ ext.onNotCommandReceived = (ctx, msg) => {
         return seal.replyToSender(ctx, msg, result);
     }
 
-    // 我创建属性（管理员，无前缀）
+    // 我创建属性（管理员，无前缀）换行批量：每行 属性名 [最小 最大 默认]
     if (raw.startsWith("我创建属性") && isAdmin) {
-        const rest = raw.slice(5).trim().split(/\s+/);
-        return cmd_reg_attr.solve(ctx, msg, fa(rest.length && rest[0] ? rest : [""]));
+        const body = raw.slice(5).trim();
+        if (!body) return seal.replyToSender(ctx, msg, "❌ 请提供属性定义，格式：属性名 最小 最大 默认");
+        const lines = body.split(/\n/).map(l => l.trim()).filter(Boolean);
+        const reg = getRegistry();
+        const currencyNames = new Set(Object.values(reg).filter(r => r.type === "currency").map(r => r.name));
+        const defs = getAttrDefs();
+        const results = [];
+        for (const line of lines) {
+            const parts = line.split(/\s+/);
+            const name = parts[0];
+            if (!name) continue;
+            if (currencyNames.has(name)) { results.push(`❌ 「${name}」已被货币占用`); continue; }
+            if (parts[1] !== undefined && !isNaN(Number(parts[1]))) {
+                const min = Number(parts[1]);
+                const max = parts[2] !== undefined && !isNaN(Number(parts[2])) ? Number(parts[2]) : null;
+                const def = parts[3] !== undefined && !isNaN(Number(parts[3])) ? Number(parts[3]) : 0;
+                const isNew = !defs[name];
+                defs[name] = { min, max, default: def, desc: defs[name]?.desc || "" };
+                results.push(`${isNew ? "✅ 新增" : "🔄 更新"}「${name}」：${min}~${max ?? "∞"} 默认${def}`);
+            } else {
+                const isNew = !defs[name];
+                if (isNew) defs[name] = { min: null, max: null, default: 0, desc: "" };
+                results.push(`${isNew ? "✅ 新增" : "⏭️ 已存在"}「${name}」`);
+            }
+        }
+        saveAttrDefs(defs);
+        return seal.replyToSender(ctx, msg, results.join("\n"));
+    }
+    if (raw.startsWith("我移除属性") && isAdmin) {
+        const body = raw.slice(5).trim();
+        if (!body) return seal.replyToSender(ctx, msg, "❌ 请指定要移除的属性名。");
+        const names = body.split(/\n/).map(l => l.trim()).filter(Boolean);
+        const defs = getAttrDefs();
+        const charAttrs = getCharAttrs();
+        const results = [];
+        for (const attrName of names) {
+            if (!defs[attrName]) { results.push(`❌ 「${attrName}」不存在`); continue; }
+            delete defs[attrName];
+            for (const role of Object.keys(charAttrs)) delete charAttrs[role][attrName];
+            results.push(`✅ 已移除「${attrName}」`);
+        }
+        saveAttrDefs(defs);
+        saveCharAttrs(charAttrs);
+        const remaining = Object.keys(defs);
+        results.push(`当前属性：${remaining.length ? remaining.join("、") : "（无）"}`);
+        return seal.replyToSender(ctx, msg, results.join("\n"));
     }
 
     // 角色:属性++值 / 角色:属性--值 / 角色:货币++值（管理员批量改属性或货币）
@@ -2660,7 +2732,11 @@ ext.onNotCommandReceived = (ctx, msg) => {
             const main = getMainExt();
             if (!main) return;
             const priv = JSON.parse(main.storageGet("a_private_group") || "{}")[platform] || {};
-            const roles = rolesPart === "全体" ? Object.keys(priv) : rolesPart.split(/[、,，]/).map(r => r.trim());
+            // 新结构：priv 以 uid 为 key，value[0] 是 roleName
+            // roles 统一为 roleName 列表
+            const roles = rolesPart === "全体"
+                ? Object.values(priv).map(v => v[0]).filter(Boolean)
+                : rolesPart.split(/[、,，]/).map(r => r.trim());
             const vals = valsPart.split(/[、,，]/).map(v => parseInt(v));
             const res = [];
 
@@ -2674,12 +2750,14 @@ ext.onNotCommandReceived = (ctx, msg) => {
                 const charAttrs = getCharAttrs();
                 const notifyList = [];
                 roles.forEach((r, i) => {
-                    if (!priv[r]) return;
-                    if (!charAttrs[r]) charAttrs[r] = {};
+                    // 新结构：通过 roleName 反查 uid
+                    const rUidAttr = getRoleUid(platform, r);
+                    if (!rUidAttr) return;
+                    if (!charAttrs[rUidAttr]) charAttrs[rUidAttr] = {};
                     const v = isNaN(vals[i]) ? vals[0] : vals[i];
-                    const old = charAttrs[r][attrName] ?? (defs[attrName].default ?? 0);
+                    const old = charAttrs[rUidAttr][attrName] ?? (defs[attrName].default ?? 0);
                     const next = clampAttr(defs[attrName], op === "++" ? old + v : old - v);
-                    charAttrs[r][attrName] = next;
+                    charAttrs[rUidAttr][attrName] = next;
                     res.push(`${r}：${old}→${next}`);
                     notifyList.push({ r, old, next });
                 });
@@ -2694,7 +2772,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
                 // 处理货币
                 const notifyList = [];
                 roles.forEach((r, i) => {
-                    if (!priv[r]) return;
+                    // 新结构：通过 roleName 反查 uid
                     const rUid = getRoleUid(platform, r);
                     if (!rUid) return;
                     const roleKey = `${platform}:${rUid}`;
@@ -2747,7 +2825,8 @@ ext.onNotCommandReceived = (ctx, msg) => {
             const roleKey = `${platform}:${uid}`;
             const inv = getInv(roleKey);
             const charAttrs = getCharAttrs();
-            const roleAttrs = charAttrs[roleName] || {};
+            // 新结构：charAttrs 以 uid 为 key
+            const roleAttrs = charAttrs[uid] || {};
             const defs = getAttrDefs();
 
             // 检查限制条件
@@ -2794,7 +2873,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
                 }
             }
             if (Object.keys(roleAttrs).length) {
-                charAttrs[roleName] = roleAttrs;
+                charAttrs[uid] = roleAttrs;
                 saveCharAttrs(charAttrs);
             }
 
@@ -2842,6 +2921,10 @@ ext.onNotCommandReceived = (ctx, msg) => {
         const parts = raw.slice(2).trim().split(/\s+/);
         if (parts[0]) return cmd_use.solve(ctx, msg, fa(parts));
     }
+    if (raw.startsWith("特殊使用")) {
+        const parts = raw.slice(4).trim().split(/\s+/);
+        if (parts[0]) return cmd_special_use.solve(ctx, msg, fa(parts));
+    }
     if (raw.startsWith("售卖")) {
         const parts = raw.slice(2).trim().split(/\s+/);
         if (parts.length >= 3) return cmd_sell.solve(ctx, msg, fa(parts));
@@ -2865,9 +2948,11 @@ ext.onNotCommandReceived = (ctx, msg) => {
     if (raw === "我的状态") {
         const roleName = getRoleName(ctx, msg);
         if (!roleName) return seal.replyToSender(ctx, msg, "❌ 未绑定角色");
+        const myStatusUid = getPrimaryUid(platform, msg.sender.userId.replace(/^[a-z]+:/i, ""));
         const defs = getAttrDefs();
         const charAttrs = getCharAttrs();
-        const roleAttrs = charAttrs[roleName] || {};
+        // 新结构：charAttrs 以 uid 为 key
+        const roleAttrs = charAttrs[myStatusUid] || {};
         const attrNames = Object.keys(defs);
         if (!attrNames.length) return seal.replyToSender(ctx, msg, `🎭 【${roleName}】暂无属性，管理员可用「我创建属性」添加。`);
 
@@ -2930,10 +3015,54 @@ ext.onNotCommandReceived = (ctx, msg) => {
         return seal.replyToSender(ctx, msg, result);
     }
 
-    // 我创建属性（管理员，无前缀）
+    // 我创建属性（管理员，无前缀）换行批量：每行 属性名 [最小 最大 默认]
     if (raw.startsWith("我创建属性") && isAdmin) {
-        const rest = raw.slice(5).trim().split(/\s+/);
-        return cmd_reg_attr.solve(ctx, msg, fa(rest.length && rest[0] ? rest : [""]));
+        const body = raw.slice(5).trim();
+        if (!body) return seal.replyToSender(ctx, msg, "❌ 请提供属性定义，格式：属性名 最小 最大 默认");
+        const lines = body.split(/\n/).map(l => l.trim()).filter(Boolean);
+        const reg = getRegistry();
+        const currencyNames = new Set(Object.values(reg).filter(r => r.type === "currency").map(r => r.name));
+        const defs = getAttrDefs();
+        const results = [];
+        for (const line of lines) {
+            const parts = line.split(/\s+/);
+            const name = parts[0];
+            if (!name) continue;
+            if (currencyNames.has(name)) { results.push(`❌ 「${name}」已被货币占用`); continue; }
+            if (parts[1] !== undefined && !isNaN(Number(parts[1]))) {
+                const min = Number(parts[1]);
+                const max = parts[2] !== undefined && !isNaN(Number(parts[2])) ? Number(parts[2]) : null;
+                const def = parts[3] !== undefined && !isNaN(Number(parts[3])) ? Number(parts[3]) : 0;
+                const isNew = !defs[name];
+                defs[name] = { min, max, default: def, desc: defs[name]?.desc || "" };
+                results.push(`${isNew ? "✅ 新增" : "🔄 更新"}「${name}」：${min}~${max ?? "∞"} 默认${def}`);
+            } else {
+                const isNew = !defs[name];
+                if (isNew) defs[name] = { min: null, max: null, default: 0, desc: "" };
+                results.push(`${isNew ? "✅ 新增" : "⏭️ 已存在"}「${name}」`);
+            }
+        }
+        saveAttrDefs(defs);
+        return seal.replyToSender(ctx, msg, results.join("\n"));
+    }
+    if (raw.startsWith("我移除属性") && isAdmin) {
+        const body = raw.slice(5).trim();
+        if (!body) return seal.replyToSender(ctx, msg, "❌ 请指定要移除的属性名。");
+        const names = body.split(/\n/).map(l => l.trim()).filter(Boolean);
+        const defs = getAttrDefs();
+        const charAttrs = getCharAttrs();
+        const results = [];
+        for (const attrName of names) {
+            if (!defs[attrName]) { results.push(`❌ 「${attrName}」不存在`); continue; }
+            delete defs[attrName];
+            for (const role of Object.keys(charAttrs)) delete charAttrs[role][attrName];
+            results.push(`✅ 已移除「${attrName}」`);
+        }
+        saveAttrDefs(defs);
+        saveCharAttrs(charAttrs);
+        const remaining = Object.keys(defs);
+        results.push(`当前属性：${remaining.length ? remaining.join("、") : "（无）"}`);
+        return seal.replyToSender(ctx, msg, results.join("\n"));
     }
 
     // 重复代码已删除（属性++/--在上面的 2347-2402 行已完整处理）
@@ -3850,8 +3979,12 @@ cmd_battle_attrs.solve = (ctx, msg, cmdArgs) => {
 
     // 查看自己或指定玩家的属性
     if (!subCmd || (subCmd && !["设置", "修改"].includes(subCmd))) {
-        const targetName = subCmd || getRoleName(ctx, msg);
+        const self = getRoleName(ctx, msg);
+        const targetName = subCmd || self;
         if (!targetName) return seal.replyToSender(ctx, msg, "❌ 无法获取角色信息。");
+        if (targetName !== self && !isUserAdmin(ctx, msg)) {
+            return seal.replyToSender(ctx, msg, "❌ 权限不足，无法查看他人属性。");
+        }
 
         const attrs = getPlayerBattleAttrs(targetName);
         let info = `⚔️ ${targetName} 的战斗属性\n\n`;
@@ -4425,6 +4558,8 @@ cmd_equip.solve = (ctx, msg, cmdArgs) => {
 
     // 列表
     if (subCmd === "列表" || subCmd === "列表") {
+        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+
         const equips = Object.values(registry).filter(e => e.type === "equipment");
         if (!equips.length) return seal.replyToSender(ctx, msg, "❌ 还没有注册任何装备。");
 
@@ -4732,36 +4867,36 @@ function saveLevelUpRules(rules) {
     if (main) main.storageSet("level_up_rules", JSON.stringify(rules));
 }
 
-// 获取玩家当前等级
-function getPlayerLevel(roleName) {
+// 获取玩家当前等级（新结构：uid 为 key）
+function getPlayerLevel(uid) {
     const main = getMainExt();
     if (!main) return 1;
     const data = JSON.parse(main.storageGet("player_level") || "{}");
-    return data[roleName] || 1;
+    return data[uid] || 1;
 }
 
-function setPlayerLevel(roleName, level) {
+function setPlayerLevel(uid, level) {
     const main = getMainExt();
     if (!main) return;
     const data = JSON.parse(main.storageGet("player_level") || "{}");
-    data[roleName] = level;
+    data[uid] = level;
     main.storageSet("player_level", JSON.stringify(data));
 }
 
-// 获取玩家升级历史
-function getLevelHistory(roleName) {
+// 获取玩家升级历史（新结构：uid 为 key）
+function getLevelHistory(uid) {
     const main = getMainExt();
     if (!main) return [];
     const data = JSON.parse(main.storageGet("player_level_history") || "{}");
-    return data[roleName] || [];
+    return data[uid] || [];
 }
 
-function addLevelHistory(roleName, record) {
+function addLevelHistory(uid, record) {
     const main = getMainExt();
     if (!main) return;
     const data = JSON.parse(main.storageGet("player_level_history") || "{}");
-    if (!data[roleName]) data[roleName] = [];
-    data[roleName].push(record);
+    if (!data[uid]) data[uid] = [];
+    data[uid].push(record);
     main.storageSet("player_level_history", JSON.stringify(data));
 }
 
@@ -4936,9 +5071,10 @@ function cmd_level_list(msg, cmdArgs) {
 }
 
 // 检查玩家是否满足消耗条件
-function checkConsumables(roleName, roleKey, consume) {
+function checkConsumables(uid, roleKey, consume) {
     const charAttrs = getCharAttrs();
-    const playerAttrs = charAttrs[roleName] || {};
+    // 新结构：charAttrs 以 uid 为 key
+    const playerAttrs = charAttrs[uid] || {};
     const currencies = JSON.parse(getMainExt().storageGet("item_currencies") || "{}");
     const main = getMainExt();
 
@@ -4985,15 +5121,15 @@ function checkConsumables(roleName, roleKey, consume) {
 }
 
 // 消耗资源
-function consumeResources(roleName, roleKey, consume) {
+function consumeResources(uid, roleKey, consume) {
     const charAttrs = getCharAttrs();
     const currencies = JSON.parse(getMainExt().storageGet("item_currencies") || "{}");
 
-    // 消耗属性
+    // 消耗属性（新结构：charAttrs 以 uid 为 key）
     if (consume.attributes) {
-        if (!charAttrs[roleName]) charAttrs[roleName] = {};
+        if (!charAttrs[uid]) charAttrs[uid] = {};
         for (const [attrName, amount] of Object.entries(consume.attributes)) {
-            charAttrs[roleName][attrName] = (charAttrs[roleName][attrName] || 0) - amount;
+            charAttrs[uid][attrName] = (charAttrs[uid][attrName] || 0) - amount;
         }
         saveCharAttrs(charAttrs);
     }
@@ -5017,15 +5153,15 @@ function consumeResources(roleName, roleKey, consume) {
 }
 
 // 发放奖励
-function grantRewards(roleName, roleKey, rewards) {
+function grantRewards(uid, roleKey, rewards) {
     const charAttrs = getCharAttrs();
     const currencies = JSON.parse(getMainExt().storageGet("item_currencies") || "{}");
 
-    // 发放属性
+    // 发放属性（新结构：charAttrs 以 uid 为 key）
     if (rewards.rewards) {
-        if (!charAttrs[roleName]) charAttrs[roleName] = {};
+        if (!charAttrs[uid]) charAttrs[uid] = {};
         for (const [attrName, amount] of Object.entries(rewards.rewards)) {
-            charAttrs[roleName][attrName] = (charAttrs[roleName][attrName] || 0) + amount;
+            charAttrs[uid][attrName] = (charAttrs[uid][attrName] || 0) + amount;
         }
         saveCharAttrs(charAttrs);
     }
@@ -5065,7 +5201,7 @@ function cmd_do_levelup(msg, cmdArgs, ctx) {
     const combatRawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
     const combatUid = getPrimaryUid(combatPlatform, combatRawUid);
     const roleKey = `${combatPlatform}:${combatUid}`;
-    const curLevel = getPlayerLevel(roleName);
+    const curLevel = getPlayerLevel(combatUid);
     const maxLevel = rules.max_level || 100;
 
     if (curLevel >= maxLevel) {
@@ -5080,7 +5216,7 @@ function cmd_do_levelup(msg, cmdArgs, ctx) {
     }
 
     // 检查消耗品
-    const checkResult = checkConsumables(roleName, roleKey, rule.consume);
+    const checkResult = checkConsumables(combatUid, roleKey, rule.consume);
     if (!checkResult.ok) {
         return seal.replyToSender(ctx, msg, `❌ 升级失败！\n${checkResult.reason}`);
     }
@@ -5090,8 +5226,8 @@ function cmd_do_levelup(msg, cmdArgs, ctx) {
     const isSuccess = Math.random() * 100 < successRate;
 
     if (!isSuccess) {
-        consumeResources(roleName, roleKey, rule.consume);
-        addLevelHistory(roleName, {
+        consumeResources(combatUid, roleKey, rule.consume);
+        addLevelHistory(combatUid, {
             timestamp: new Date().toLocaleString(),
             from_level: curLevel,
             to_level: nextLevel,
@@ -5103,16 +5239,16 @@ function cmd_do_levelup(msg, cmdArgs, ctx) {
     }
 
     // 升级成功：消耗资源
-    consumeResources(roleName, roleKey, rule.consume);
+    consumeResources(combatUid, roleKey, rule.consume);
 
     // 发放奖励
-    grantRewards(roleName, roleKey, rule.rewards);
+    grantRewards(combatUid, roleKey, rule.rewards);
 
     // 提升等级
-    setPlayerLevel(roleName, nextLevel);
+    setPlayerLevel(combatUid, nextLevel);
 
     // 记录历史
-    addLevelHistory(roleName, {
+    addLevelHistory(combatUid, {
         timestamp: new Date().toLocaleString(),
         from_level: curLevel,
         to_level: nextLevel,
@@ -5155,7 +5291,8 @@ function cmd_levelup_info(msg, cmdArgs, ctx) {
         return seal.replyToSender(ctx, msg, "❌ 无法识别角色");
     }
 
-    const curLevel = getPlayerLevel(roleName);
+    const infoUid = getPrimaryUid(msg.platform, msg.sender.userId.replace(/^[a-z]+:/i, ""));
+    const curLevel = getPlayerLevel(infoUid);
     const rules = getLevelUpRules();
     const nextLevel = curLevel + 1;
     const maxLevel = rules.max_level || 100;
