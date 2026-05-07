@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📝 小纸条 · 使用指南 v2.2</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+            color: #333;
+            min-height: 100vh;
+        }
+        .container { max-width: 1000px; margin: 0 auto; padding: 24px 16px; }
+
+        header {
+            background: white; border-radius: 16px;
+            padding: 32px 28px 24px; margin-bottom: 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.10); text-align: center;
+        }
+        header h1 { font-size: 28px; color: #e07b54; margin-bottom: 8px; }
+        header p { color: #888; font-size: 14px; line-height: 1.7; }
+        .version { display: inline-block; background: #fff3ed; color: #e07b54; font-size: 12px; font-weight: 700; padding: 2px 10px; border-radius: 20px; margin-top: 8px; }
+
+        /* ── 概念说明条 ── */
+        .concept-bar {
+            background: white; border-radius: 12px;
+            padding: 16px 20px; margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.07);
+            display: flex; gap: 24px; flex-wrap: wrap;
+        }
+        .concept-item { display: flex; align-items: flex-start; gap: 10px; flex: 1; min-width: 200px; }
+        .concept-icon { font-size: 22px; line-height: 1; }
+        .concept-text { font-size: 13px; line-height: 1.6; color: #555; }
+        .concept-text strong { color: #e07b54; display: block; margin-bottom: 2px; }
+
+        /* ── Tab 导航 ── */
+        .nav { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+        .nav-btn {
+            flex: 1; min-width: 100px; padding: 11px 14px;
+            border: none; border-radius: 10px;
+            background: rgba(255,255,255,0.80); color: #e07b54;
+            font-size: 13px; font-weight: 600; cursor: pointer;
+            transition: all 0.25s; box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        }
+        .nav-btn.active, .nav-btn:hover {
+            background: white; color: #c05a34;
+            box-shadow: 0 4px 14px rgba(224,123,84,0.28); transform: translateY(-1px);
+        }
+        .nav-btn.active { font-weight: 700; }
+
+        .panel { display: none; }
+        .panel.active { display: block; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* ── 卡片 ── */
+        .card {
+            background: white; border-radius: 14px;
+            margin-bottom: 14px; box-shadow: 0 2px 12px rgba(0,0,0,0.07); overflow: hidden;
+        }
+        .card-head {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 15px 20px; cursor: pointer; user-select: none;
+        }
+        .card-head.admin-head { background: linear-gradient(135deg, #fcb69f 0%, #e07b54 100%); color: white; }
+        .card-head.player-head { background: linear-gradient(135deg, #a8edea 0%, #4ecdc4 100%); color: white; }
+        .card-head:hover { filter: brightness(1.05); }
+        .card-head-left { display: flex; align-items: center; gap: 10px; }
+        .card-badge {
+            background: rgba(255,255,255,0.28); border-radius: 6px;
+            padding: 2px 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.3px;
+        }
+        .card-title { font-weight: 700; font-size: 15px; }
+        .card-desc { font-size: 12px; opacity: 0.88; margin-top: 1px; }
+        .card-arrow { font-size: 16px; transition: transform 0.3s; }
+        .card-arrow.open { transform: rotate(180deg); }
+        .card-body { display: none; padding: 18px 20px 20px; }
+        .card-body.open { display: block; }
+
+        /* ── 功能说明 ── */
+        .desc-box {
+            background: #fdf6f3; border-left: 3px solid #fcb69f;
+            border-radius: 0 8px 8px 0; padding: 10px 14px;
+            font-size: 13px; color: #555; line-height: 1.7; margin-bottom: 14px;
+        }
+        .desc-box .tip { font-size: 12px; color: #aaa; margin-top: 6px; }
+
+        /* ── 可选参数说明 ── */
+        .optional-row {
+            display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px;
+        }
+        .opt-tag {
+            background: #fff3ed; color: #e07b54;
+            border-radius: 6px; padding: 3px 10px; font-size: 12px; font-weight: 600;
+        }
+        .opt-tag.opt-required { background: #fdecea; color: #c0392b; }
+        .opt-tag.opt-optional { background: #eafaf1; color: #1e8449; }
+
+        /* ── 代码块 ── */
+        .cmd-section { margin-top: 4px; }
+        .cmd-section-title {
+            font-size: 11px; font-weight: 700; color: #bbb;
+            text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 7px;
+        }
+        .cmd-list {
+            background: #1e1e2e; border-radius: 10px;
+            overflow: hidden; font-family: 'SF Mono','Fira Code','Consolas',monospace;
+            font-size: 13px;
+        }
+        .cmd-comment {
+            padding: 7px 16px 2px;
+            color: #6c7086; font-size: 12px; line-height: 1.5;
+            user-select: none;
+        }
+        .cmd-row {
+            display: flex; align-items: center;
+            padding: 5px 10px 5px 16px; gap: 8px;
+            transition: background 0.15s;
+        }
+        .cmd-row:hover { background: rgba(255,255,255,0.05); }
+        .cmd-row code {
+            flex: 1; color: #cdd6f4; line-height: 1.7;
+            white-space: pre-wrap; word-break: break-all;
+        }
+        .c-cmd { color: #cba6f7; }
+        .c-arg { color: #a6e3a1; }
+        .c-val { color: #f9e2af; }
+        .c-opt { color: #89dceb; }
+        .cp-btn {
+            flex-shrink: 0;
+            background: rgba(255,255,255,0.08);
+            border: none; border-radius: 5px;
+            color: #7f849c; font-size: 11px;
+            padding: 3px 9px; cursor: pointer;
+            transition: all 0.15s; white-space: nowrap;
+        }
+        .cp-btn:hover { background: rgba(255,255,255,0.15); color: #cdd6f4; }
+        .cp-btn.ok { color: #a6e3a1; background: rgba(166,227,161,0.12); }
+
+        /* 整块复制按钮 */
+        .copy-all-row {
+            display: flex; justify-content: flex-end;
+            padding: 6px 10px 8px;
+            border-top: 1px solid rgba(255,255,255,0.06);
+        }
+        .copy-all-btn {
+            background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+            color: #7f849c; font-size: 11px; border-radius: 6px;
+            padding: 4px 12px; cursor: pointer; transition: all 0.15s;
+        }
+        .copy-all-btn:hover { background: rgba(255,255,255,0.12); color: #cdd6f4; }
+        .copy-all-btn.ok { color: #a6e3a1; border-color: rgba(166,227,161,0.3); }
+
+        /* ── 流程图 ── */
+        .flow {
+            display: flex; flex-wrap: wrap; gap: 0; align-items: center;
+            margin: 14px 0; padding: 14px 16px;
+            background: #fdf6f3; border-radius: 10px;
+        }
+        .flow-step {
+            display: flex; align-items: center; gap: 6px; flex-wrap: nowrap;
+        }
+        .flow-box {
+            background: white; border: 1.5px solid #fcb69f;
+            border-radius: 8px; padding: 6px 12px;
+            font-size: 12px; font-weight: 600; color: #e07b54;
+            white-space: nowrap;
+        }
+        .flow-arrow { color: #fcb69f; font-size: 18px; padding: 0 4px; }
+
+        @media (max-width: 600px) {
+            header h1 { font-size: 22px; }
+            .card-title { font-size: 14px; }
+            .flow { gap: 4px; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+
+    <header>
+        <h1>📝 小纸条插件</h1>
+        <p>支持多玩法类型配额 · 检定公示 · 收发箱查询</p>
+        <span class="version">v2.2</span>
+    </header>
+
+    <!-- 概念说明 -->
+    <div class="concept-bar">
+        <div class="concept-item">
+            <span class="concept-icon">🏷️</span>
+            <div class="concept-text">
+                <strong>玩法类型</strong>
+                可以有多种（默认类型：「小纸条」），每种类型的配额独立管理，互不影响。
+            </div>
+        </div>
+        <div class="concept-item">
+            <span class="concept-icon">📢</span>
+            <div class="concept-text">
+                <strong>公示群</strong>
+                骰主指定的群聊，当纸条通过检定「掉落」时，内容会自动发送到该群。
+            </div>
+        </div>
+        <div class="concept-item">
+            <span class="concept-icon">🎲</span>
+            <div class="concept-text">
+                <strong>检定率</strong>
+                每次发送后按该概率随机判定是否公示（0% = 绝不公示，100% = 必定公示）。
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab 导航 -->
+    <div class="nav">
+        <button class="nav-btn active" onclick="switchTab('admin')">👑 骰主命令</button>
+        <button class="nav-btn" onclick="switchTab('player')">🎭 玩家命令</button>
+        <button class="nav-btn" onclick="switchTab('flow')">📖 使用流程</button>
+    </div>
+
+    <!-- ══════════════════════════════════════
+         骰主 Panel
+    ══════════════════════════════════════ -->
+    <div class="panel active" id="panel-admin">
+
+        <!-- 给纸条 -->
+        <div class="card">
+            <div class="card-head admin-head" onclick="toggleCard(this)">
+                <div class="card-head-left">
+                    <span class="card-badge">配额</span>
+                    <div>
+                        <div class="card-title">.给纸条</div>
+                        <div class="card-desc">给玩家增加指定类型的纸条数量</div>
+                    </div>
+                </div>
+                <span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+                <div class="desc-box">
+                    立刻为一名或多名玩家增加 n 张纸条配额。多个玩家用顿号 <code style="background:#f0f0f0;padding:1px 5px;border-radius:3px;">、</code> 或逗号分隔。
+                    <div class="tip">💡 不指定类型时使用默认类型「小纸条」</div>
+                </div>
+                <div class="cmd-section">
+                    <div class="cmd-section-title">示例命令</div>
+                    <div class="cmd-list">
+                        <div class="cmd-comment"># 默认类型（数字在前）</div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.给纸条</span> <span class="c-val">5</span> <span class="c-arg">猫头鹰、兔子</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.给纸条 5 猫头鹰、兔子')">复制</button>
+                        </div>
+                        <div class="cmd-comment"># 指定类型（数字在后）</div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.给纸条</span> <span class="c-opt">礼物</span> <span class="c-arg">猫头鹰、兔子</span> <span class="c-val">5</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.给纸条 礼物 猫头鹰、兔子 5')">复制</button>
+                        </div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.给纸条</span> <span class="c-opt">信件</span> <span class="c-arg">松鼠</span> <span class="c-val">3</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.给纸条 信件 松鼠 3')">复制</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 扣除纸条 -->
+        <div class="card">
+            <div class="card-head admin-head" onclick="toggleCard(this)">
+                <div class="card-head-left">
+                    <span class="card-badge">配额</span>
+                    <div>
+                        <div class="card-title">.扣除纸条</div>
+                        <div class="card-desc">扣除玩家的纸条数量（不低于0）</div>
+                    </div>
+                </div>
+                <span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+                <div class="desc-box">格式与 .给纸条 相同。扣除后不会低于 0。</div>
+                <div class="cmd-section">
+                    <div class="cmd-section-title">示例命令</div>
+                    <div class="cmd-list">
+                        <div class="cmd-comment"># 默认类型</div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.扣除纸条</span> <span class="c-val">2</span> <span class="c-arg">猫头鹰、兔子</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.扣除纸条 2 猫头鹰、兔子')">复制</button>
+                        </div>
+                        <div class="cmd-comment"># 指定类型</div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.扣除纸条</span> <span class="c-opt">礼物</span> <span class="c-arg">猫头鹰、兔子</span> <span class="c-val">2</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.扣除纸条 礼物 猫头鹰、兔子 2')">复制</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 纸条清零 -->
+        <div class="card">
+            <div class="card-head admin-head" onclick="toggleCard(this)">
+                <div class="card-head-left">
+                    <span class="card-badge">配额</span>
+                    <div>
+                        <div class="card-title">.纸条清零</div>
+                        <div class="card-desc">将指定玩家的配额归零</div>
+                    </div>
+                </div>
+                <span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+                <div class="cmd-section">
+                    <div class="cmd-list">
+                        <div class="cmd-comment"># 默认类型</div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.纸条清零</span> <span class="c-arg">猫头鹰、兔子</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.纸条清零 猫头鹰、兔子')">复制</button>
+                        </div>
+                        <div class="cmd-comment"># 指定类型</div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.纸条清零</span> <span class="c-opt">礼物</span> <span class="c-arg">猫头鹰、兔子</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.纸条清零 礼物 猫头鹰、兔子')">复制</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 玩家管理 -->
+        <div class="card">
+            <div class="card-head admin-head" onclick="toggleCard(this)">
+                <div class="card-head-left">
+                    <span class="card-badge">玩家</span>
+                    <div>
+                        <div class="card-title">.删除小纸条玩家 / .纸条玩家列表</div>
+                        <div class="card-desc">注销玩家 · 查看已绑定列表</div>
+                    </div>
+                </div>
+                <span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+                <div class="cmd-section">
+                    <div class="cmd-list">
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.删除小纸条玩家</span> <span class="c-arg">猫头鹰</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.删除小纸条玩家 猫头鹰')">复制</button>
+                        </div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.纸条玩家列表</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.纸条玩家列表')">复制</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 公示群 & 重置 -->
+        <div class="card">
+            <div class="card-head admin-head" onclick="toggleCard(this)">
+                <div class="card-head-left">
+                    <span class="card-badge">系统</span>
+                    <div>
+                        <div class="card-title">.绑定纸条公示群 / .重置小纸条 / .重置纸条时间轴</div>
+                        <div class="card-desc">公示群设置 · 全局重置 · 时间轴管理</div>
+                    </div>
+                </div>
+                <span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+                <div class="desc-box">
+                    「绑定纸条公示群」必须在目标群内发送。<br>
+                    「重置小纸条」会清空所有数据，请谨慎使用。<br>
+                    「重置纸条时间轴」将时间轴归零为 D0，并为无日期记录打上 D0 标签。
+                </div>
+                <div class="cmd-section">
+                    <div class="cmd-list">
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.绑定纸条公示群</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.绑定纸条公示群')">复制</button>
+                        </div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.重置纸条时间轴</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.重置纸条时间轴')">复制</button>
+                        </div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.重置小纸条</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.重置小纸条')">复制</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 查看收件 / 寄件 -->
+        <div class="card">
+            <div class="card-head admin-head" onclick="toggleCard(this)">
+                <div class="card-head-left">
+                    <span class="card-badge">查询</span>
+                    <div>
+                        <div class="card-title">.查看纸条收件 / .查看纸条寄出</div>
+                        <div class="card-desc">以合并转发形式查看指定玩家的纸条记录</div>
+                    </div>
+                </div>
+                <span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+                <div class="desc-box">
+                    参数顺序：<code style="background:#f0f0f0;padding:1px 5px;border-radius:3px;">[玩法类型] [dx] 玩家名</code><br>
+                    类型和日期均可省略，省略则查全部。
+                </div>
+                <div class="cmd-section">
+                    <div class="cmd-section-title">收件查询</div>
+                    <div class="cmd-list">
+                        <div class="cmd-comment"># 查看全部收件</div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.查看纸条收件</span> <span class="c-arg">猫头鹰</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.查看纸条收件 猫头鹰')">复制</button>
+                        </div>
+                        <div class="cmd-comment"># 指定类型 + 日期</div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.查看纸条收件</span> <span class="c-opt">礼物</span> <span class="c-val">d1</span> <span class="c-arg">猫头鹰</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.查看纸条收件 礼物 d1 猫头鹰')">复制</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="cmd-section" style="margin-top:12px;">
+                    <div class="cmd-section-title">寄件查询</div>
+                    <div class="cmd-list">
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.查看纸条寄出</span> <span class="c-arg">猫头鹰</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.查看纸条寄出 猫头鹰')">复制</button>
+                        </div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.查看纸条寄出</span> <span class="c-opt">礼物</span> <span class="c-val">d1</span> <span class="c-arg">猫头鹰</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.查看纸条寄出 礼物 d1 猫头鹰')">复制</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 检定设置 -->
+        <div class="card">
+            <div class="card-head admin-head" onclick="toggleCard(this)">
+                <div class="card-head-left">
+                    <span class="card-badge">检定</span>
+                    <div>
+                        <div class="card-title">.设置检定 / .设置公示文案 / .设置隐藏检定</div>
+                        <div class="card-desc">配置公示行为</div>
+                    </div>
+                </div>
+                <span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+                <div class="desc-box">
+                    检定率针对的是<strong>收件人</strong>设置，表示该玩家收到该类型纸条后的公示概率。<br>
+                    0% = 绝不公示 &nbsp;·&nbsp; 100% = 必定公示
+                </div>
+                <div class="cmd-section">
+                    <div class="cmd-section-title">设置检定率（0-100）</div>
+                    <div class="cmd-list">
+                        <div class="cmd-comment"># 默认类型，单玩家</div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.设置检定</span> <span class="c-val">30</span> <span class="c-arg">猫头鹰</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.设置检定 30 猫头鹰')">复制</button>
+                        </div>
+                        <div class="cmd-comment"># 指定类型，多玩家</div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.设置检定</span> <span class="c-opt">礼物</span> <span class="c-val">100</span> <span class="c-arg">猫头鹰、兔子、松鼠</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.设置检定 礼物 100 猫头鹰、兔子、松鼠')">复制</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="cmd-section" style="margin-top:12px;">
+                    <div class="cmd-section-title">设置公示文案</div>
+                    <div class="cmd-list">
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.设置公示文案</span> <span class="c-arg">纸条掉出来啦！</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.设置公示文案 纸条掉出来啦！')">复制</button>
+                        </div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.设置公示文案</span> <span class="c-opt">礼物</span> <span class="c-arg">礼物掉出来啦！</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.设置公示文案 礼物 礼物掉出来啦！')">复制</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="cmd-section" style="margin-top:12px;">
+                    <div class="cmd-section-title">隐藏检定率（公示消息中不显示概率数字）</div>
+                    <div class="cmd-list">
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.设置隐藏检定</span> <span class="c-val">是</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.设置隐藏检定 是')">复制</button>
+                        </div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.设置隐藏检定</span> <span class="c-opt">礼物</span> <span class="c-val">是</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.设置隐藏检定 礼物 是')">复制</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 禁用 / 解禁 -->
+        <div class="card">
+            <div class="card-head admin-head" onclick="toggleCard(this)">
+                <div class="card-head-left">
+                    <span class="card-badge">管控</span>
+                    <div>
+                        <div class="card-title">.禁用纸条 / .解禁纸条</div>
+                        <div class="card-desc">禁止或恢复指定玩家的发送权限</div>
+                    </div>
+                </div>
+                <span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+                <div class="cmd-section">
+                    <div class="cmd-list">
+                        <div class="cmd-comment"># 默认类型</div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.禁用纸条</span> <span class="c-arg">猫头鹰</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.禁用纸条 猫头鹰')">复制</button>
+                        </div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.解禁纸条</span> <span class="c-arg">猫头鹰</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.解禁纸条 猫头鹰')">复制</button>
+                        </div>
+                        <div class="cmd-comment"># 指定类型</div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.禁用纸条</span> <span class="c-opt">礼物</span> <span class="c-arg">猫头鹰</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.禁用纸条 礼物 猫头鹰')">复制</button>
+                        </div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.解禁纸条</span> <span class="c-opt">礼物</span> <span class="c-arg">猫头鹰</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.解禁纸条 礼物 猫头鹰')">复制</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 统计 -->
+        <div class="card">
+            <div class="card-head admin-head" onclick="toggleCard(this)">
+                <div class="card-head-left">
+                    <span class="card-badge">统计</span>
+                    <div>
+                        <div class="card-title">.显示小纸条计数</div>
+                        <div class="card-desc">查看各类型纸条的发送总数</div>
+                    </div>
+                </div>
+                <span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+                <div class="cmd-section">
+                    <div class="cmd-list">
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.显示小纸条计数</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.显示小纸条计数')">复制</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /panel-admin -->
+
+
+    <!-- ══════════════════════════════════════
+         玩家 Panel
+    ══════════════════════════════════════ -->
+    <div class="panel" id="panel-player">
+
+        <!-- 绑定 -->
+        <div class="card">
+            <div class="card-head player-head" onclick="toggleCard(this)">
+                <div class="card-head-left">
+                    <span class="card-badge">必做</span>
+                    <div>
+                        <div class="card-title">.纸条绑定 / .解除纸条绑定</div>
+                        <div class="card-desc">注册进入系统，发送前必须先绑定</div>
+                    </div>
+                </div>
+                <span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+                <div class="desc-box">每个 QQ 号只能绑定一个角色名。角色名不能与他人重复。</div>
+                <div class="cmd-section">
+                    <div class="cmd-list">
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.纸条绑定</span> <span class="c-arg">猫头鹰</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.纸条绑定 猫头鹰')">复制</button>
+                        </div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.解除纸条绑定</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.解除纸条绑定')">复制</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 发送纸条 -->
+        <div class="card">
+            <div class="card-head player-head" onclick="toggleCard(this)">
+                <div class="card-head-left">
+                    <span class="card-badge">核心</span>
+                    <div>
+                        <div class="card-title">.to — 发送小纸条</div>
+                        <div class="card-desc">向另一名玩家发送纸条，会扣除对应类型的配额</div>
+                    </div>
+                </div>
+                <span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+                <div class="desc-box">
+                    格式：<code style="background:#f0f0f0;padding:2px 7px;border-radius:4px;font-size:12px;">.to 收件人 [署名|]&lt;类型·标题&gt; 时间：dx 内容：……</code><br><br>
+                    • <code style="background:#f0f0f0;padding:1px 5px;border-radius:3px;">署名</code> 可省略，省略时公示显示真实角色名<br>
+                    • <code style="background:#f0f0f0;padding:1px 5px;border-radius:3px;">&lt;类型·标题&gt;</code> 可省略，省略时使用默认类型「小纸条」<br>
+                    • <code style="background:#f0f0f0;padding:1px 5px;border-radius:3px;">时间：dx</code> 可省略，省略时使用当前全局天数
+                    <div class="tip">💡 &lt;&gt; 内用 · （中文间隔号）分隔类型和标题</div>
+                </div>
+                <div class="cmd-section">
+                    <div class="cmd-section-title">完整格式</div>
+                    <div class="cmd-list">
+                        <div class="cmd-comment"># 完整写法：带自定义署名 + 类型 + 标题 + 日期</div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.to</span> <span class="c-arg">兔子</span> <span class="c-val">匿名</span>|&lt;<span class="c-opt">小纸条</span>·<span class="c-val">秘密</span>&gt; 时间：<span class="c-val">d1</span> 内容：<span class="c-arg">你好呀</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.to 兔子 匿名|<小纸条·秘密> 时间：d1 内容：你好呀')">复制</button>
+                        </div>
+                        <div class="cmd-comment"># 匿名，不写署名部分</div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.to</span> <span class="c-arg">兔子</span> &lt;<span class="c-opt">礼物</span>·<span class="c-val">小礼盒</span>&gt; 时间：<span class="c-val">d2</span> 内容：<span class="c-arg">送给你的</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.to 兔子 <礼物·小礼盒> 时间：d2 内容：送给你的')">复制</button>
+                        </div>
+                        <div class="cmd-comment"># 最简写法：省略署名和类型，省略日期</div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.to</span> <span class="c-arg">兔子</span> 内容：<span class="c-arg">这是一张小纸条</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.to 兔子 内容：这是一张小纸条')">复制</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 参数说明表 -->
+                <div style="margin-top:14px;background:#f9f9f9;border-radius:8px;overflow:hidden;">
+                    <div style="padding:8px 14px;background:#e8f8f5;font-size:11px;font-weight:700;color:#4ecdc4;letter-spacing:0.5px;">格式拆解</div>
+                    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                        <tr style="border-bottom:1px solid #eee;">
+                            <td style="padding:8px 14px;color:#e07b54;font-weight:700;white-space:nowrap;">收件人</td>
+                            <td style="padding:8px 14px;color:#555;">目标玩家的角色名，必须已绑定</td>
+                            <td style="padding:8px 14px;"><span style="background:#fdecea;color:#c0392b;border-radius:4px;padding:1px 7px;font-size:11px;">必填</span></td>
+                        </tr>
+                        <tr style="border-bottom:1px solid #eee;">
+                            <td style="padding:8px 14px;color:#e07b54;font-weight:700;white-space:nowrap;">署名|</td>
+                            <td style="padding:8px 14px;color:#555;">公示消息中显示的落款名，后接竖线 |</td>
+                            <td style="padding:8px 14px;"><span style="background:#eafaf1;color:#1e8449;border-radius:4px;padding:1px 7px;font-size:11px;">可省略</span></td>
+                        </tr>
+                        <tr style="border-bottom:1px solid #eee;">
+                            <td style="padding:8px 14px;color:#e07b54;font-weight:700;white-space:nowrap;">&lt;类型·标题&gt;</td>
+                            <td style="padding:8px 14px;color:#555;">用 · 分隔类型和标题，整体用 &lt;&gt; 包裹</td>
+                            <td style="padding:8px 14px;"><span style="background:#eafaf1;color:#1e8449;border-radius:4px;padding:1px 7px;font-size:11px;">可省略</span></td>
+                        </tr>
+                        <tr style="border-bottom:1px solid #eee;">
+                            <td style="padding:8px 14px;color:#e07b54;font-weight:700;white-space:nowrap;">时间：dx</td>
+                            <td style="padding:8px 14px;color:#555;">纸条对应的游戏内日期，如 d1 d2</td>
+                            <td style="padding:8px 14px;"><span style="background:#eafaf1;color:#1e8449;border-radius:4px;padding:1px 7px;font-size:11px;">可省略</span></td>
+                        </tr>
+                        <tr>
+                            <td style="padding:8px 14px;color:#e07b54;font-weight:700;white-space:nowrap;">内容：……</td>
+                            <td style="padding:8px 14px;color:#555;">纸条正文，支持多行</td>
+                            <td style="padding:8px 14px;"><span style="background:#fdecea;color:#c0392b;border-radius:4px;padding:1px 7px;font-size:11px;">必填</span></td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 收件箱 / 寄件箱 -->
+        <div class="card">
+            <div class="card-head player-head" onclick="toggleCard(this)">
+                <div class="card-head-left">
+                    <span class="card-badge">查询</span>
+                    <div>
+                        <div class="card-title">.我的纸条收件箱 / .我的纸条寄件箱</div>
+                        <div class="card-desc">以合并转发形式查看自己的纸条</div>
+                    </div>
+                </div>
+                <span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+                <div class="desc-box">参数均可省略，省略则查看全部。</div>
+                <div class="cmd-section">
+                    <div class="cmd-section-title">收件箱</div>
+                    <div class="cmd-list">
+                        <div class="cmd-comment"># 查看全部</div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.我的纸条收件箱</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.我的纸条收件箱')">复制</button>
+                        </div>
+                        <div class="cmd-comment"># 按类型 + 日期筛选</div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.我的纸条收件箱</span> <span class="c-opt">礼物</span> <span class="c-val">d1</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.我的纸条收件箱 礼物 d1')">复制</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="cmd-section" style="margin-top:12px;">
+                    <div class="cmd-section-title">寄件箱</div>
+                    <div class="cmd-list">
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.我的纸条寄件箱</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.我的纸条寄件箱')">复制</button>
+                        </div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.我的纸条寄件箱</span> <span class="c-opt">礼物</span> <span class="c-val">d1</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.我的纸条寄件箱 礼物 d1')">复制</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 我的小纸条 + 帮助 -->
+        <div class="card">
+            <div class="card-head player-head" onclick="toggleCard(this)">
+                <div class="card-head-left">
+                    <span class="card-badge">其他</span>
+                    <div>
+                        <div class="card-title">.我的小纸条 / .小纸条帮助</div>
+                        <div class="card-desc">查看配额余量 · 显示帮助</div>
+                    </div>
+                </div>
+                <span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+                <div class="cmd-section">
+                    <div class="cmd-list">
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.我的小纸条</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.我的小纸条')">复制</button>
+                        </div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.小纸条帮助</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.小纸条帮助')">复制</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /panel-player -->
+
+
+    <!-- ══════════════════════════════════════
+         使用流程 Panel
+    ══════════════════════════════════════ -->
+    <div class="panel" id="panel-flow">
+
+        <!-- 开局准备 -->
+        <div class="card">
+            <div class="card-head admin-head" onclick="toggleCard(this)">
+                <div class="card-head-left">
+                    <span class="card-badge">Step 1</span>
+                    <div>
+                        <div class="card-title">骰主：开局准备</div>
+                        <div class="card-desc">在正式游戏前完成的设置</div>
+                    </div>
+                </div>
+                <span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+                <div class="flow">
+                    <div class="flow-step">
+                        <div class="flow-box">① 去公示群</div>
+                        <span class="flow-arrow">→</span>
+                    </div>
+                    <div class="flow-step">
+                        <div class="flow-box">② .绑定纸条公示群</div>
+                        <span class="flow-arrow">→</span>
+                    </div>
+                    <div class="flow-step">
+                        <div class="flow-box">③ 设置检定率 & 文案</div>
+                        <span class="flow-arrow">→</span>
+                    </div>
+                    <div class="flow-step">
+                        <div class="flow-box">④ 给玩家发放配额</div>
+                    </div>
+                </div>
+                <div class="cmd-section" style="margin-top:8px;">
+                    <div class="cmd-section-title">骰主准备命令参考</div>
+                    <div class="cmd-list">
+                        <div class="cmd-comment"># 1. 在公示群内绑定</div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.绑定纸条公示群</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.绑定纸条公示群')">复制</button>
+                        </div>
+                        <div class="cmd-comment"># 2. 设置检定率（所有玩家 30%）</div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.设置检定</span> <span class="c-val">30</span> <span class="c-arg">猫头鹰、兔子、松鼠</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.设置检定 30 猫头鹰、兔子、松鼠')">复制</button>
+                        </div>
+                        <div class="cmd-comment"># 3. 设置公示文案</div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.设置公示文案</span> <span class="c-arg">📌 有纸条掉落了！</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.设置公示文案 📌 有纸条掉落了！')">复制</button>
+                        </div>
+                        <div class="cmd-comment"># 4. 给所有玩家 3 张默认纸条</div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.给纸条</span> <span class="c-val">3</span> <span class="c-arg">猫头鹰、兔子、松鼠</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.给纸条 3 猫头鹰、兔子、松鼠')">复制</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 玩家加入 -->
+        <div class="card">
+            <div class="card-head player-head" onclick="toggleCard(this)">
+                <div class="card-head-left">
+                    <span class="card-badge">Step 2</span>
+                    <div>
+                        <div class="card-title">玩家：加入系统</div>
+                        <div class="card-desc">每个玩家在游戏开始前完成绑定</div>
+                    </div>
+                </div>
+                <span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+                <div class="cmd-section">
+                    <div class="cmd-list">
+                        <div class="cmd-comment"># 绑定自己的角色名</div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.纸条绑定</span> <span class="c-arg">猫头鹰</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.纸条绑定 猫头鹰')">复制</button>
+                        </div>
+                        <div class="cmd-comment"># 确认自己的配额</div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.我的小纸条</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.我的小纸条')">复制</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 游戏进行 -->
+        <div class="card">
+            <div class="card-head player-head" onclick="toggleCard(this)">
+                <div class="card-head-left">
+                    <span class="card-badge">Step 3</span>
+                    <div>
+                        <div class="card-title">玩家：游戏中发送纸条</div>
+                        <div class="card-desc">发送后自动扣除配额并触发检定</div>
+                    </div>
+                </div>
+                <span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+                <div class="flow" style="margin-top:0;">
+                    <div class="flow-step">
+                        <div class="flow-box">发送 .to</div>
+                        <span class="flow-arrow">→</span>
+                    </div>
+                    <div class="flow-step">
+                        <div class="flow-box">配额 -1</div>
+                        <span class="flow-arrow">→</span>
+                    </div>
+                    <div class="flow-step">
+                        <div class="flow-box">触发检定</div>
+                        <span class="flow-arrow">→</span>
+                    </div>
+                    <div class="flow-step">
+                        <div class="flow-box">掉落？推送公示群</div>
+                    </div>
+                </div>
+                <div class="cmd-section">
+                    <div class="cmd-list">
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.to</span> <span class="c-arg">兔子</span> <span class="c-val">匿名</span>|&lt;<span class="c-opt">小纸条</span>·<span class="c-val">悄悄话</span>&gt; 时间：<span class="c-val">d1</span> 内容：<span class="c-arg">今晚的星星好美</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.to 兔子 匿名|<小纸条·悄悄话> 时间：d1 内容：今晚的星星好美')">复制</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 查看 -->
+        <div class="card">
+            <div class="card-head admin-head" onclick="toggleCard(this)">
+                <div class="card-head-left">
+                    <span class="card-badge">Step 4</span>
+                    <div>
+                        <div class="card-title">骰主 / 玩家：查看纸条</div>
+                        <div class="card-desc">合并转发查阅收发箱</div>
+                    </div>
+                </div>
+                <span class="card-arrow">▼</span>
+            </div>
+            <div class="card-body">
+                <div class="cmd-section">
+                    <div class="cmd-section-title">骰主查看（指定玩家）</div>
+                    <div class="cmd-list">
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.查看纸条收件</span> <span class="c-arg">兔子</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.查看纸条收件 兔子')">复制</button>
+                        </div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.查看纸条寄出</span> <span class="c-arg">猫头鹰</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.查看纸条寄出 猫头鹰')">复制</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="cmd-section" style="margin-top:12px;">
+                    <div class="cmd-section-title">玩家自查</div>
+                    <div class="cmd-list">
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.我的纸条收件箱</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.我的纸条收件箱')">复制</button>
+                        </div>
+                        <div class="cmd-row">
+                            <code><span class="c-cmd">.我的纸条寄件箱</span></code>
+                            <button class="cp-btn" onclick="copyCmd(this, '.我的纸条寄件箱')">复制</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /panel-flow -->
+
+</div><!-- /container -->
+
+<script>
+function switchTab(tab) {
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('panel-' + tab).classList.add('active');
+    event.currentTarget.classList.add('active');
+}
+
+function toggleCard(head) {
+    const body = head.nextElementSibling;
+    const arrow = head.querySelector('.card-arrow');
+    body.classList.toggle('open');
+    arrow.classList.toggle('open');
+}
+
+function copyCmd(btn, text) {
+    navigator.clipboard.writeText(text).then(() => {
+        btn.textContent = '✓';
+        btn.classList.add('ok');
+        setTimeout(() => { btn.textContent = '复制'; btn.classList.remove('ok'); }, 1500);
+    }).catch(() => {
+        const ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        btn.textContent = '✓'; btn.classList.add('ok');
+        setTimeout(() => { btn.textContent = '复制'; btn.classList.remove('ok'); }, 1500);
+    });
+}
+</script>
+</body>
+</html>
