@@ -3619,53 +3619,63 @@ cmd_view_expired_groups.solve = (ctx, msg, cmdArgs) => {
         const platform = msg.platform;
         const action = cmdArgs.getArgN(1);
         const now = Date.now();
+        
+        // 读取并解析存储
         const groupExpireInfo = JSON.parse(ext.storageGet("group_expire_info") || "{}");
-        const [expiredGroups, activeGroups] = Object.entries(groupExpireInfo).reduce(([exp, act], [gid, info]) => ((now > info.expireTime ? exp : act).push({ gid, ...info }), [exp, act]), [[], []]);
+        
+        // 核心修改：[indexKey, info] 对应 ["239689865", {对象内容}]
+        const expiredGroups = [];
+        for (const [indexKey, info] of Object.entries(groupExpireInfo)) {
+            if (now > info.expireTime) {
+                expiredGroups.push({ indexKey, ...info });
+            }
+        }
         
         const formatTime = (ts) => new Date(ts).toLocaleString("zh-CN", { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
         
+        // 1. 查看列表
         if (!action) {
             if (!expiredGroups.length) return seal.replyToSender(ctx, msg, "📭 当前没有已到期的群组。"), seal.ext.newCmdExecuteResult(true);
             let result = `⏰ 已到期群组列表（共${expiredGroups.length}个）：\n\n`;
             expiredGroups.forEach((g, idx) => {
                 const overdue = (now - g.expireTime) / 60000;
                 const overdueDays = Math.floor(overdue / 1440), overdueHours = Math.floor((overdue % 1440) / 60), overdueMins = Math.floor(overdue % 60);
-                result += `📌 群组 ${idx+1}:\n  群号：${g.gid}\n  类型：${g.subtype || '小群'}\n  时间：${g.day} ${g.time}\n  地点：${g.place}\n  参与者：${g.participants.join('、')}\n  到期时间：${formatTime(g.expireTime)}\n  已超时：${overdueDays?`${overdueDays}天`:''}${overdueHours?`${overdueHours}小时`:''}${overdueMins}分钟\n\n`;
+                
+                result += `📌 群号：${g.indexKey}\n`; // 这里显示 239689865
+                result += `  类型：${g.subtype || '小群'}\n  时间：${g.day} ${g.time}\n  地点：${g.place}\n  参与者：${g.participants.join('、')}\n  到期时间：${formatTime(g.expireTime)}\n  已超时：${overdueDays?`${overdueDays}天`:''}${overdueHours?`${overdueHours}小时`:''}${overdueMins}分钟\n\n`;
             });
-            result += `💡 提示：使用「。查看到期群 提醒」向所有已到期群组发送提醒消息`;
+            result += `💡 提示：使用「。查看到期群 提醒」向到期群发送消息`;
             return seal.replyToSender(ctx, msg, result), seal.ext.newCmdExecuteResult(true);
         }
         
+        // 2. 发送提醒
         if (action === "提醒") {
             if (!expiredGroups.length) return seal.replyToSender(ctx, msg, "📭 当前没有已到期的群组，无需提醒。"), seal.ext.newCmdExecuteResult(true);
-            let successCount = 0, failCount = 0, failDetails = [];
+            let successCount = 0, failCount = 0;
+            
             for (const group of expiredGroups) {
                 try {
                     const groupMsg = seal.newMessage();
                     groupMsg.messageType = "group";
-                    groupMsg.groupId = `${platform}-Group:${group.gid}`;
+                    // 关键：发消息必须用内部真正的 gid
+                    groupMsg.groupId = `${platform}-Group:${group.gid}`; 
+                    
                     const groupCtx = seal.createTempCtx(ctx.endPoint, groupMsg);
-                    const overdue = (now - group.expireTime) / 60000;
-                    const overdueDays = Math.floor(overdue / 1440), overdueHours = Math.floor((overdue % 1440) / 60), overdueMins = Math.floor(overdue % 60);
-                    const overdueText = overdueDays ? `${overdueDays}天${overdueHours}小时${overdueMins}分钟` : (overdueHours ? `${overdueHours}小时${overdueMins}分钟` : `${overdueMins}分钟`);
-                    const reminderMsg = `⏰ 温馨提示：\n\n本群互动时间已经超过预定结束时间 ${overdueText} 啦～\n\n如果各位已经完成互动，可以请管理员帮忙结束本群，\n使用指令「。结束私约」即可。\n\n📋 群组信息：\n• 类型：${group.subtype || '小群'}\n• 时间：${group.day} ${group.time}\n• 地点：${group.place}\n• 参与者：${group.participants.join('、')}\n\n感谢各位的参与～`;
+                    const reminderMsg = `⏰ 温馨提示：\n本群互动时间已经超时了哦～\n\n📋 记录号：${group.indexKey}\n• 时间：${group.day} ${group.time}\n• 地点：${group.place}\n\n如果互动已结束，请使用「。结束私约」`;
+                    
                     seal.replyToSender(groupCtx, groupMsg, reminderMsg);
                     successCount++;
-                } catch (error) {
+                } catch (e) {
                     failCount++;
-                    failDetails.push(`群组 ${group.gid}: ${error.message}`);
                 }
             }
-            let result = `📢 到期提醒发送完成：\n\n✅ 成功提醒：${successCount} 个群组\n`;
-            if (failCount) result += `⚠️ 提醒失败：${failCount} 个群组\n${failDetails.length && failDetails.length<=5 ? `失败详情：\n${failDetails.map(d=>`• ${d}`).join('\n')}\n` : ''}`;
-            result += `\n💡 小提示：\n• 已到期的群组会继续在列表中显示\n• 管理员可在相应群内使用「。结束私约」结束群组`;
-            return seal.replyToSender(ctx, msg, result), seal.ext.newCmdExecuteResult(true);
+            return seal.replyToSender(ctx, msg, `📢 提醒发送完成！\n✅ 成功：${successCount}\n❌ 失败：${failCount}`), seal.ext.newCmdExecuteResult(true);
         }
         
-        return seal.replyToSender(ctx, msg, "⚠️ 参数错误，请使用：\n。查看到期群 - 查看列表\n。查看到期群 提醒 - 发送提醒"), seal.ext.newCmdExecuteResult(true);
+        return seal.replyToSender(ctx, msg, "⚠️ 参数错误。"), seal.ext.newCmdExecuteResult(true);
     } catch (error) {
-        console.log(`[异常] .查看到期群 崩溃: ${error.stack || error}`);
-        return seal.replyToSender(ctx, msg, "⚠️ 指令执行出错，请检查日志"), seal.ext.newCmdExecuteResult(true);
+        console.log(`[异常] .查看到期群: ${error.stack}`);
+        return seal.replyToSender(ctx, msg, "⚠️ 执行出错，请检查后台日志。"), seal.ext.newCmdExecuteResult(true);
     }
 };
 
@@ -6865,6 +6875,11 @@ ext.onNotCommandReceived = (ctx, msg) => {
         if (rest) return cmd_reply_post.solve(ctx, msg, makeFakeCmdArgs(rest.split(/\s+/)));
     }
 
+    if (raw.startsWith("查看帖子")) {
+        const rest = raw.slice(4).trim();
+        return cmd_view_posts.solve(ctx, msg, makeFakeCmdArgs(rest ? [rest] : []));
+    }
+
     if (raw.startsWith("发送心动信")) {
         return cmd_send_lovemail.solve(ctx, msg, makeFakeCmdArgs([]));
     }
@@ -7239,12 +7254,28 @@ ext.onNotCommandReceived = (ctx, msg) => {
 
 
     // 5. 信息收集系统 & 设定NPC
-    const projects = getS("sys_info_projects");
+    const projects = getS("sys_info_projects"); // 获取已有的项目列表
     const subM = raw.match(/^我提交\s*(.+?)[:：\s]\s*([\s\S]+)$/);
-    if (subM && projects.includes(subM[1].trim())) {
-        const t = subM[1].trim(); let d = getS("sys_info_collection");
-        (d[t] = d[t] || []).push({ sender: getRoleName(ctx, msg), time: new Date().toLocaleString(), text: subM[2].trim() });
-        ext.storageSet("sys_info_collection", JSON.stringify(d)); return seal.replyToSender(ctx, msg, `✅ 已记录至「${t}」。`);
+
+    if (subM) {
+        const t = subM[1].trim(); // 用户尝试提交的项目名
+        const content = subM[2].trim(); // 提交的内容
+
+        // 检查项目是否存在于 projects 列表中
+        if (projects.includes(t)) {
+            // 逻辑 A: 项目存在，正常记录数据
+            let d = getS("sys_info_collection");
+            (d[t] = d[t] || []).push({ 
+                sender: getRoleName(ctx, msg), 
+                time: new Date().toLocaleString(), 
+                text: content 
+            });
+            ext.storageSet("sys_info_collection", JSON.stringify(d));
+            return seal.replyToSender(ctx, msg, `✅ 已记录至「${t}」。`);
+        } else {
+            // 逻辑 B: 项目不存在，提示联系管理员
+            return seal.replyToSender(ctx, msg, `❌ 错误：尚未创建收集集「${t}」，请联系管理员创建后再提交。`);
+        }
     }
 
     // --- 所有人可用的查看功能 ---
@@ -7662,6 +7693,12 @@ let cmd_post_forum = seal.ext.newCmdItemInfo();
 cmd_post_forum.name = "发帖";
 cmd_post_forum.help = ".发帖 (署名) [内容] —— 发表一篇新帖子";
 cmd_post_forum.solve = (ctx, msg, cmdArgs) => {
+    const senderRoleName = getRoleName(ctx, msg);
+    if (!senderRoleName) {
+        seal.replyToSender(ctx, msg, "✨ 你还不是本系统的会员，请先使用「创建新角色」来认领你的身份吧。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
     const roleName = RelationshipUtils.getRoleName(ctx, msg, msg.platform) || ctx.player.name;
     if (roleName) {
         // 新结构：通过 uid 查询功能权限
@@ -7709,6 +7746,12 @@ let cmd_reply_post = seal.ext.newCmdItemInfo();
 cmd_reply_post.name = "回复帖子";
 cmd_reply_post.help = ".回复帖子 [贴号] (署名) [内容] —— 回复现有帖子";
 cmd_reply_post.solve = (ctx, msg, cmdArgs) => {
+    const senderRoleName = getRoleName(ctx, msg);
+    if (!senderRoleName) {
+        seal.replyToSender(ctx, msg, "✨ 你还不是本系统的会员，请先使用「创建新角色」来认领你的身份吧。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
     const postId = cmdArgs.getArgN(1);
     const roleName = RelationshipUtils.getRoleName(ctx, msg, msg.platform) || ctx.player.name;
     let author, content;
@@ -7747,6 +7790,12 @@ ext.cmdMap["回复帖子"] = cmd_reply_post;
 // 👍 指令：点赞 / 点踩
 // ========================
 function handleVote(ctx, msg, cmdArgs, isLike) {
+    const senderRoleName = getRoleName(ctx, msg);
+    if (!senderRoleName) {
+        seal.replyToSender(ctx, msg, "✨ 你还不是本系统的会员，请先使用「创建新角色」来认领你的身份吧。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
     const postId = cmdArgs.getArgN(1);
     const author = cmdArgs.getArgN(2);
     if (!postId || !author) return seal.ext.newCmdExecuteResult(true);
@@ -7799,6 +7848,12 @@ ext.cmdMap["点踩"] = cmd_dislike;
 let cmd_view_posts = seal.ext.newCmdItemInfo();
 cmd_view_posts.name = "查看帖子";
 cmd_view_posts.solve = (ctx, msg, cmdArgs) => {
+    const senderRoleName = getRoleName(ctx, msg);
+    if (!senderRoleName) {
+        seal.replyToSender(ctx, msg, "✨ 你还不是本系统的会员，请先使用「创建新角色」来认领你的身份吧。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
     const postId = cmdArgs.getArgN(1);
     let allPosts = getForumPosts().filter(p => p.status === "active");
 
@@ -8052,6 +8107,12 @@ ext.cmdMap["查看信箱"] = cmd_view_mylovemails;
 let cmd_revoke_lovemail = seal.ext.newCmdItemInfo();
 cmd_revoke_lovemail.name = "撤回心动信";
 cmd_revoke_lovemail.solve = (ctx, msg, cmdArgs) => {
+    const senderRoleName = getRoleName(ctx, msg);
+    if (!senderRoleName) {
+        seal.replyToSender(ctx, msg, "✨ 你还不是本系统的会员，请先使用「创建新角色」来认领你的身份吧。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    
     const platform = msg.platform;
     const uid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
     const idx = parseInt(cmdArgs.getArgN(1)) - 1;
