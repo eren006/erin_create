@@ -49,7 +49,9 @@ function sendToPrivateGroup(ctx, endPoint, platform, roleName, message) {
 
     try {
         const a_private_group = JSON.parse(main.storageGet("a_private_group") || "{}");
-        const targetEntry = a_private_group[platform]?.[roleName];
+        const roles = a_private_group[platform] || {};
+        // 新结构 key=uid，value=[roleName, gid]，按 roleName 反查
+        const targetEntry = Object.values(roles).find(v => v[0] === roleName);
 
         if (!targetEntry || !targetEntry[1]) {
             console.error(`[牌局] 找不到${roleName}的个人群信息`);
@@ -81,15 +83,25 @@ function saveCardGameData(data) {
     if (main) main.storageSet("card_game_data", JSON.stringify(data));
 }
 
+function getPrimaryUid(platform, uid) {
+    const main = getMainExt();
+    if (!main) return uid;
+    try {
+        const extras = JSON.parse(main.storageGet("extra_accounts") || "{}");
+        return extras[`${platform}:${uid}`] || uid;
+    } catch (e) { return uid; }
+}
+
+// 新结构：a_private_group[platform][uid] = [roleName, gid]
 function getRoleName(ctx, msg) {
     const main = getMainExt();
     if (!main) return null;
     try {
         const platform = msg.platform;
-        const uid = msg.sender.userId.replace(`${platform}:`, "");
-        const a_private_group = JSON.parse(main.storageGet("a_private_group") || "{}");
-        const roles = a_private_group[platform] || {};
-        return Object.entries(roles).find(([_, val]) => val[0] === uid)?.[0] || null;
+        const rawUid = msg.sender.userId.replace(`${platform}:`, "");
+        const uid = getPrimaryUid(platform, rawUid);
+        const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
+        return apg[platform]?.[uid]?.[0] || null;
     } catch (e) {
         return null;
     }

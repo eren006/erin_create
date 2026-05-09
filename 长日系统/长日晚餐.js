@@ -61,14 +61,8 @@ function getChangriRoleName(ctx, msg) {
         const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
         const currentUid = getChangriPrimaryUid(crExt, platform, rawUid);
 
-        for (let plt in charPlatform) {
-            let platformData = charPlatform[plt];
-            for (let name in platformData) {
-                if (Array.isArray(platformData[name]) && platformData[name][0] === currentUid) {
-                    return name;
-                }
-            }
-        }
+        // 新结构：key=uid，value[0]=roleName
+        return charPlatform[platform]?.[currentUid]?.[0] || null;
     } catch (e) {
         console.log("晚餐系统读取主插件数据失败: " + e.message);
     }
@@ -825,7 +819,7 @@ cmd_poke.solve = (ctx, msg, cmdArgs) => {
 
     // 获取平台和发送者纯UID
     const platform = msg.platform;
-    const uid = msg.sender.userId.replace(`${platform}:`, "");
+    const rawUid = msg.sender.userId.replace(`${platform}:`, "");
 
     // 读取主插件的角色绑定数据
     let crExt = seal.ext.find('changri');
@@ -833,6 +827,8 @@ cmd_poke.solve = (ctx, msg, cmdArgs) => {
         seal.replyToSender(ctx, msg, "❌ 未找到主插件 changri，无法使用此功能");
         return seal.ext.newCmdExecuteResult(true);
     }
+
+    const uid = getChangriPrimaryUid(crExt, platform, rawUid);
 
     // 获取 a_private_group
     let rawData = crExt.storageGet("a_private_group");
@@ -851,16 +847,15 @@ cmd_poke.solve = (ctx, msg, cmdArgs) => {
 
     if (!charPlatform[platform]) charPlatform[platform] = {};
 
-    // 获取发送者角色名
-    const sendName = Object.entries(charPlatform[platform])
-        .find(([_, val]) => val[0] === uid)?.[0];
+    // 获取发送者角色名（新结构：key=uid，value[0]=roleName）
+    const sendName = charPlatform[platform]?.[uid]?.[0];
     if (!sendName) {
         seal.replyToSender(ctx, msg, `❌ 你还没有绑定角色，请先使用「创建新角色」`);
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    // 检查目标是否存在
-    const targetEntry = charPlatform[platform][targetName];
+    // 检查目标是否存在（按 roleName 反查）
+    const targetEntry = Object.values(charPlatform[platform]).find(v => v[0] === targetName);
     if (!targetEntry) {
         seal.replyToSender(ctx, msg, `❌ 未找到角色「${targetName}」的绑定信息`);
         return seal.ext.newCmdExecuteResult(true);

@@ -496,6 +496,14 @@ function initPresetItems() {
         reg["SPEC_002"] = { code: "SPEC_002", name: "万能钥匙", desc: "一把泛着银光的万能钥匙，据说能开启世间任何一扇被锁住的门。", type: "preset", attrs: null };
         changed = true;
     }
+    if (!reg["SPEC_003"]) {
+        reg["SPEC_003"] = { code: "SPEC_003", name: "望远镜", desc: "一架精致的望远镜，使用后可在目标下次发信时悄悄抄录一份副本。", type: "preset", attrs: null };
+        changed = true;
+    }
+    if (!reg["SPEC_004"]) {
+        reg["SPEC_004"] = { code: "SPEC_004", name: "羽毛笔", desc: "一支神奇的羽毛笔，使用后可截获目标发出的下一封信并在发送前修改内容。", type: "preset", attrs: null };
+        changed = true;
+    }
     if (!reg["SPEC_005"]) {
         reg["SPEC_005"] = { code: "SPEC_005", name: "捕鼠器", desc: "一个精巧的捕鼠器，激活后将锁定目标指定小时内的行动，使其无法私约、电话或摘心愿。", type: "preset", attrs: null };
         changed = true;
@@ -914,7 +922,7 @@ cmd_shop_add.solve = (ctx, msg, cmdArgs) => {
         const letterExt = seal.ext.find("changri");
         if (letterExt) {
             const config = JSON.parse(letterExt.storageGet("global_feature_toggle") || "{}");
-            if (!config.enable_letter_system) {
+            if (!config.enable_direct_letter) {
                 return seal.replyToSender(ctx, msg, `❌ 「${item.name}」只有在启用写信综模式后才能上架。`);
             }
         } else {
@@ -1018,7 +1026,7 @@ cmd_pool_add.solve = (ctx, msg, cmdArgs) => {
             const letterExt = seal.ext.find("changri");
             if (letterExt) {
                 const config = JSON.parse(letterExt.storageGet("global_feature_toggle") || "{}");
-                if (!config.enable_letter_system) {
+                if (!config.enable_direct_letter) {
                     results.push(`❌ 「${item.name}」只有在启用写信综模式后才能添加到池子。`);
                     continue;
                 }
@@ -2354,7 +2362,10 @@ cmd_special_use.solve = (ctx, msg, cmdArgs) => {
     const item = findItem(reg, inputCode);
 
     if (!item) return seal.replyToSender(ctx, msg, `❌ 未知道具「${inputCode}」`);
-    if (item.type !== "preset") return seal.replyToSender(ctx, msg, `❌ [${item.code}]${item.name} 不是特殊道具。`);
+    if (!item.code.startsWith("SPEC_")) return seal.replyToSender(ctx, msg, `❌ [${item.code}]${item.name} 不是特殊道具。`);
+    if ((item.code === "SPEC_003" || item.code === "SPEC_004") && !seal.ext.find("letter_system")) {
+        return seal.replyToSender(ctx, msg, "❌ 此道具需要写信综插件开启才能使用。");
+    }
 
     const inv = getInv(roleKey);
     if (!inv.find(e => e.code === item.code && e.count > 0)) {
@@ -2437,7 +2448,7 @@ cmd_special_use.solve = (ctx, msg, cmdArgs) => {
         const featureToggle = JSON.parse(main.storageGet("global_feature_toggle") || "{}");
         if (!featureToggle.enable_direct_letter) return seal.replyToSender(ctx, msg, "✉️ 发送信件功能未启用。");
         const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
-        if (!apg[platform]?.[targetName]) return seal.replyToSender(ctx, msg, `❌ 未找到目标角色「${targetName}」。`);
+        if (!Object.values(apg[platform] || {}).some(v => v[0] === targetName)) return seal.replyToSender(ctx, msg, `❌ 未找到目标角色「${targetName}」。`);
         if (!removeFromInv(roleKey, item.code, 1)) return seal.replyToSender(ctx, msg, `❌ 背包中没有可用的「${item.name}」。`);
         const effectsKey = item.code === "SPEC_003" ? "letter_telescope_effects" : "letter_quill_pen_effects";
         const effects = JSON.parse(main.storageGet(effectsKey) || "{}");

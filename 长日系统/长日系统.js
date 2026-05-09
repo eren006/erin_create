@@ -4626,6 +4626,10 @@ async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, co
         return seal.replyToSender(ctx, msg, "🕊️ 寄信功能已关闭。");
     }
 
+    if (toname === sendname) {
+        return seal.replyToSender(ctx, msg, "📱 短信不可发给自己。");
+    }
+
     const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
     const toUidForLetter = getUidByRoleName(platform, toname);
     if (!toUidForLetter) {
@@ -6816,7 +6820,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
         }
 
         // 【修改点】如果开启了自定义，不再强制要求 snd 必须存在于 priv 绑定中
-        if (snd && (allowCustom || priv[snd])) {
+        if (snd && (allowCustom || Object.values(priv).some(v => v[0] === snd))) {
             return handleNaturalChaosLetter(ctx, msg, platform, snd, letM[2].trim(), letM[3].trim());
         } else {
             return seal.replyToSender(ctx, msg, "❌ 角色识别失败");

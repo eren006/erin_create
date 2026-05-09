@@ -146,14 +146,27 @@ function ensureLetterSpecialItems() {
 // 【2】工具函数
 // ========================
 
-/**
- * 获取玩家角色名
- */
+function getPrimaryUid(platform, uid) {
+    const main = getMainExt();
+    if (!main) return uid;
+    try {
+        const extras = JSON.parse(main.storageGet("extra_accounts") || "{}");
+        return extras[`${platform}:${uid}`] || uid;
+    } catch (e) { return uid; }
+}
+
+// 新结构：a_private_group[platform][uid] = [roleName, gid]
 function getRoleName(ctx, msg) {
     const platform = msg.platform;
-    const uid = msg.sender.userId.replace(`${platform}:`, "");
+    const rawUid = msg.sender.userId.replace(`${platform}:`, "");
+    const uid = getPrimaryUid(platform, rawUid);
     const groups = JSON.parse(getMainStorage("a_private_group") || "{}");
-    return Object.entries(groups[platform] || {}).find(([_, v]) => v[0] === uid)?.[0];
+    return groups[platform]?.[uid]?.[0] || null;
+}
+
+// 按 roleName 反查 entry（返回 [roleName, gid] 或 null）
+function getEntryByRoleName(apg, platform, roleName) {
+    return Object.values(apg[platform] || {}).find(v => v[0] === roleName) || null;
 }
 
 /**
@@ -181,7 +194,7 @@ function processExpiredQuillPens() {
                 // 超时，发送原文
                 try {
                     const platform = letterData.platform;
-                    const targetEntry = a_private_group[platform]?.[letterData.receiverName];
+                    const targetEntry = getEntryByRoleName(a_private_group, platform, letterData.receiverName);
                     if (targetEntry) {
                         let originalLetter = `✉️ ${letterData.receiverName}，你收到一封信：\n`;
                         if (letterData.dateTag) originalLetter += `📅 日期：${letterData.dateTag}\n`;
@@ -318,11 +331,11 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
 
     // 4. 验证必填项
     if (!receiver) {
-        seal.replyToSender(ctx, msg, `⚠️ 请指定【收件人】。\n\n示例：\n。发送信件\n【收件人】小明\n【内容】你好呀`);
+        seal.replyToSender(ctx, msg, `⚠️ 请指定【收件人】。\n\n示例：\n。发送信件\n【收件人】小明\n【内容】亲爱的小明，今天天气真好...\n【日期】2026年4月28日\n【附件】随信附上一份礼物\n【署名】小红`);
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    if (!a_private_group[platform]?.[receiver]) {
+    if (!getEntryByRoleName(a_private_group, platform, receiver)) {
         seal.replyToSender(ctx, msg, `⚠️ 找不到角色「${receiver}」。`);
         return seal.ext.newCmdExecuteResult(true);
     }
@@ -384,6 +397,46 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
         effectToHandle = { type: "telescope", data: telescopeAppliers[0] };
     }
 
+    // 6. 赏金机制（提前计算，羽毛笔路径也需要）
+    const minChars = parseInt(getMainStorage("direct_letter_min_chars") || "0");
+    const rewardPerLetter = parseInt(getMainStorage("direct_letter_reward") || "0");
+    const contentLength = content.replace(/\s/g, "").length;
+    const meetsMinChars = minChars === 0 || contentLength >= minChars;
+
+    // 通用：发放赏金 + 更新计数 + 回复发信人
+    const giveRewardAndReply = () => {
+        let rewardGiven = 0;
+        let totalCoins = 0;
+        if (rewardPerLetter > 0 && meetsMinChars) {
+            const roleKey = `${platform}:${uid}`;
+            const itemReg = JSON.parse(getMainStorage("item_registry") || "{}");
+            const coinEntry = Object.entries(itemReg).find(([, v]) => v.name === "写信币");
+            if (coinEntry) {
+                const [coinCode, coinDef] = coinEntry;
+                const invs = JSON.parse(getMainStorage("global_inventories") || "{}");
+                const inv = invs[roleKey] || [];
+                const initialUses = coinDef.maxUses ?? -1;
+                const existing = inv.find(e => e.code === coinCode && (e.remainingUses ?? -1) === initialUses);
+                if (existing) { existing.count += rewardPerLetter; }
+                else { inv.push({ code: coinCode, count: rewardPerLetter, remainingUses: initialUses }); }
+                invs[roleKey] = inv;
+                setMainStorage("global_inventories", JSON.stringify(invs));
+                totalCoins = inv.filter(e => e.code === coinCode).reduce((sum, e) => sum + e.count, 0);
+            }
+            rewardGiven = rewardPerLetter;
+        }
+        dlCounts[userKey].count = currentCount + 1;
+        setMainStorage("letter_day_counts", JSON.stringify(dlCounts));
+        let reply = `✉️ 信件已送达「${receiver}」！\n`;
+        reply += `🖋️ 落款：${signature}\n`;
+        reply += `📅 ${gameDay}（今日剩余：${dailyLimit - (currentCount + 1)}/${dailyLimit}）`;
+        if (rewardPerLetter > 0) {
+            reply += meetsMinChars ? `\n💰 写信币 +${rewardGiven}（共 ${totalCoins}）` : `\n📝 提示：字数不足 ${minChars}，未获得赏金。`;
+        }
+        seal.replyToSender(ctx, msg, reply);
+        recordActivity("发送信件", platform, ctx, ctx.endPoint);
+    };
+
     // 处理羽毛笔效果（优先级最高时）
     if (effectToHandle?.type === "quill" && receiver !== quillPenApplier.applier) {
         let pendingLetters = JSON.parse(getMainStorage("letter_pending_quill_pens") || "{}");
@@ -407,7 +460,7 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
         setMainStorage("letter_pending_quill_pens", JSON.stringify(pendingLetters));
 
         // CC 原始信件给施加人
-        const applierEntry = a_private_group[platform]?.[quillPenApplier.applier];
+        const applierEntry = getEntryByRoleName(a_private_group, platform, quillPenApplier.applier);
         if (applierEntry) {
             const idx = pendingLetters[quillPenApplier.applier].length;
             let originalPreview = `✉️ ${receiver}，你收到一封信：\n`;
@@ -425,14 +478,10 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
         quillPenEffects[senderRoleName] = quillPenEffects[senderRoleName].filter(e => e !== quillPenApplier);
         setMainStorage("letter_quill_pen_effects", JSON.stringify(quillPenEffects));
 
+        // 照常给发信人回执、计数、写信币
+        giveRewardAndReply();
         return seal.ext.newCmdExecuteResult(true);
     }
-
-    // 6. 赏金机制
-    const minChars = parseInt(getMainStorage("direct_letter_min_chars") || "0");
-    const rewardPerLetter = parseInt(getMainStorage("direct_letter_reward") || "0");
-    const contentLength = content.replace(/\s/g, "").length;
-    const meetsMinChars = minChars === 0 || contentLength >= minChars;
 
     // 7. 组装信件内容
     let finalLetter = `✉️ ${receiver}，你收到一封信：\n`;
@@ -441,7 +490,7 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
     if (attachment) finalLetter += `\n\n附件：\n--------------------\n${attachment}`;
 
     // 8. 投递到收件人私人群
-    const targetEntry = a_private_group[platform][receiver];
+    const targetEntry = getEntryByRoleName(a_private_group, platform, receiver);
     const deliverMsg = seal.newMessage();
     deliverMsg.messageType = "group";
     deliverMsg.groupId = `${platform}-Group:${targetEntry[1]}`;
@@ -451,7 +500,7 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
     // 8.5 处理望远镜效果：抄录一份给施加人
     if (effectToHandle?.type === "telescope") {
         const telescopeApplier = effectToHandle.data;
-        const applierEntry = a_private_group[platform]?.[telescopeApplier.applier];
+        const applierEntry = getEntryByRoleName(a_private_group, platform, telescopeApplier.applier);
         if (applierEntry) {
             const copyMsg = seal.newMessage();
             copyMsg.messageType = "group";
@@ -463,45 +512,8 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
         setMainStorage("letter_telescope_effects", JSON.stringify(telescopeEffects));
     }
 
-    // 9. 发放赏金（写入 global_inventories，与 RPG 背包一致）
-    let rewardGiven = 0;
-    let totalCoins = 0;
-    if (rewardPerLetter > 0 && meetsMinChars) {
-        const roleKey = `${platform}:${uid}`;
-        const itemReg = JSON.parse(getMainStorage("item_registry") || "{}");
-        const coinEntry = Object.entries(itemReg).find(([, v]) => v.name === "写信币");
-        if (coinEntry) {
-            const [coinCode, coinDef] = coinEntry;
-            const invs = JSON.parse(getMainStorage("global_inventories") || "{}");
-            const inv = invs[roleKey] || [];
-            const initialUses = coinDef.maxUses ?? -1;
-            const existing = inv.find(e => e.code === coinCode && (e.remainingUses ?? -1) === initialUses);
-            if (existing) {
-                existing.count += rewardPerLetter;
-            } else {
-                inv.push({ code: coinCode, count: rewardPerLetter, remainingUses: initialUses });
-            }
-            invs[roleKey] = inv;
-            setMainStorage("global_inventories", JSON.stringify(invs));
-            totalCoins = inv.filter(e => e.code === coinCode).reduce((sum, e) => sum + e.count, 0);
-        }
-        rewardGiven = rewardPerLetter;
-    }
-
-    // 10. 更新计数
-    dlCounts[userKey].count = currentCount + 1;
-    setMainStorage("letter_day_counts", JSON.stringify(dlCounts));
-
-    // 11. 回复发信人
-    let reply = `✉️ 信件已送达「${receiver}」！\n`;
-    reply += `🖋️ 落款：${signature}\n`;
-    reply += `📅 ${gameDay}（今日剩余：${dailyLimit - (currentCount + 1)}/${dailyLimit}）`;
-    if (rewardPerLetter > 0) {
-        reply += meetsMinChars ? `\n💰 写信币 +${rewardGiven}（共 ${totalCoins}）` : `\n📝 提示：字数不足 ${minChars}，未获得赏金。`;
-    }
-
-    seal.replyToSender(ctx, msg, reply);
-    recordActivity("发送信件", platform, ctx, ctx.endPoint);
+    // 9. 发放赏金 + 计数 + 回执
+    giveRewardAndReply();
 
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -680,7 +692,7 @@ cmd_quill_pen_modify.solve = (ctx, msg, cmdArgs) => {
     finalLetter += `\n「${newContent}」\n\n—— ${letterData.signature}`;
     if (letterData.attachment) finalLetter += `\n\n附件：\n--------------------\n${letterData.attachment}`;
 
-    const targetEntry = a_private_group[platform][letterData.receiverName];
+    const targetEntry = getEntryByRoleName(a_private_group, platform, letterData.receiverName);
     const deliverMsg = seal.newMessage();
     deliverMsg.messageType = "group";
     deliverMsg.groupId = `${platform}-Group:${targetEntry[1]}`;
