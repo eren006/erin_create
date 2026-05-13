@@ -2871,6 +2871,74 @@ cmd_remove_group.solve = (ctx, msg, cmdArgs) => {
 }
 ext.cmdMap["移除群号"] = cmd_remove_group;
 
+// 驱逐指定QQ
+let cmd_kick_qq = seal.ext.newCmdItemInfo();
+cmd_kick_qq.name = "驱逐";
+cmd_kick_qq.help = "使用方法：。驱逐 QQ号\n从群号池所有群中踢出指定QQ";
+cmd_kick_qq.solve = async (ctx, msg, cmdArgs) => {
+    if (!msg.isMaster && !isUserAdmin(ctx, msg)) {
+        seal.replyToSender(ctx, msg, `此指令仅限骰主或管理员使用`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const targetQQ = cmdArgs.getArgN(1);
+    if (!targetQQ || !/^\d+$/.test(targetQQ)) {
+        const ret = seal.ext.newCmdExecuteResult(true);
+        ret.showHelp = true;
+        return ret;
+    }
+
+    const platform = msg.platform;
+    const extras = JSON.parse(ext.storageGet("extra_accounts") || "{}");
+    // 找到主账号（若 targetQQ 本身是额外账号则找到其主账号）
+    const primaryUid = extras[`${platform}:${targetQQ}`] || targetQQ;
+    // 收集主账号 + 所有额外账号
+    const extraQQs = Object.entries(extras)
+        .filter(([k, v]) => k.startsWith(`${platform}:`) && v === primaryUid)
+        .map(([k]) => k.replace(`${platform}:`, ""));
+    const allTargetQQs = [...new Set([primaryUid, ...extraQQs])];
+
+    const groups = JSON.parse(ext.storageGet("group") || "[]")
+        .map(g => g.replace(/_占用$/, ""));
+
+    if (groups.length === 0) {
+        seal.replyToSender(ctx, msg, `❌ 群号池为空，无群可操作。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const extraTip = allTargetQQs.length > 1 ? `（含额外账号：${allTargetQQs.filter(q => q !== primaryUid).join("、")}）` : "";
+    seal.replyToSender(ctx, msg, `🔍 正在从 ${groups.length} 个群中搜索并踢出 ${targetQQ}${extraTip}...`);
+
+    let countKick = 0;
+    let countNotIn = 0;
+
+    for (const gid of groups) {
+        const members = await getGroupMembersSilent(gid, ctx, msg);
+        const memberIds = members.map(m => m.user_id.toString());
+        for (const tqq of allTargetQQs) {
+            if (memberIds.includes(tqq)) {
+                ws({
+                    action: "set_group_kick",
+                    params: {
+                        group_id: parseInt(gid),
+                        user_id: parseInt(tqq)
+                    }
+                }, ctx, msg, null);
+                countKick++;
+            } else {
+                countNotIn++;
+            }
+        }
+    }
+
+    const result = countKick > 0
+        ? `✅ 已向 ${countKick} 个群/账号发出踢出指令（不在其中: ${countNotIn} 次）。`
+        : `ℹ️ 该QQ及其额外账号不在群号池的任何群中。`;
+    seal.replyToSender(ctx, msg, result);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["驱逐"] = cmd_kick_qq;
+
 
 let cmd_admin_view_active = seal.ext.newCmdItemInfo();
 cmd_admin_view_active.name = "查看进行中";
@@ -3412,53 +3480,56 @@ cmd_fix_noquit.solve = async (ctx, msg, cmdArgs) => {
 
     const platform = msg.platform;
     const roles = (getRoleStorage()[platform] || {});
-    const npcs = JSON.parse(ext.storageGet("a_npc_list") || "[]");
-    const groups = JSON.parse(ext.storageGet("group") || "[]").map(g => g.replace(/_占用$/, ""));
-    const noquit = JSON.parse(ext.storageGet("noquit") || "{}");
+    const npcs = JSON.parse(ext.storageGet(“a_npc_list”) || “[]”);
+    const groups = JSON.parse(ext.storageGet(“group”) || “[]”).map(g => g.replace(/_占用$/, “”));
+    const noquit = JSON.parse(ext.storageGet(“noquit”) || “{}”);
+    const extras = JSON.parse(ext.storageGet(“extra_accounts”) || “{}”);
 
     let countUpdate = 0; // 新增记录数
     let countKick = 0;   // 尝试踢人计数
 
-    // 检查是否包含“驱逐”参数
-    const shouldKick = cmdArgs.getArgN(1) === "驱逐";
+    // 检查是否包含”驱逐”参数
+    const shouldKick = cmdArgs.getArgN(1) === “驱逐”;
+
+    // 根据主账号 uid 获取其所有额外账号 QQ 列表
+    const getExtraQQs = (primaryQQ) => Object.entries(extras)
+        .filter(([k, v]) => k.startsWith(`${platform}:`) && v === primaryQQ)
+        .map(([k]) => k.replace(`${platform}:`, “”));
 
     // 遍历所有群
     for (let gid of groups) {
         const members = await getGroupMembersSilent(gid, ctx, msg);
         for (let m of members) {
             const qq = m.user_id.toString();
-            // 找角色名
-            const roleName = Object.keys(roles).find(k => roles[k][0] === qq);
+            // 找角色名（新结构 key=uid，value[0]=roleName）
+            const roleName = roles[qq]?.[0];
 
             // 如果是玩家且不是NPC
             if (roleName && !npcs.includes(roleName)) {
-                let isNewRecord = false;
                 if (!noquit[qq]) {
                     noquit[qq] = [];
                 }
                 if (!noquit[qq].includes(gid)) {
                     noquit[qq].push(gid);
-                    isNewRecord = true;
                     countUpdate++;
                 }
 
-                // 如果是驱逐模式，且该玩家在违规群里，直接踢出
-                if (shouldKick && isNewRecord) {
-                    try {
-                        // 构造踢人指令
-                        // 注意：这里直接 await ws()，因为 ws 函数内部会处理连接和发送
-                        await ws({
-                            action: "set_group_kick",
-                            params: {
-                                group_id: parseInt(gid),
-                                user_id: parseInt(qq)
-                                // reject_add_request 默认为 false，不加这个参数
-                            }
-                        }, ctx, msg, null); // 第四个参数是 successreply，这里不需要回复，传 null
-                        
-                        countKick++;
-                    } catch (e) {
-                        console.error(`[踢人] 发送指令失败:`, e);
+                // 驱逐模式：本次扫描到还在群里就踢出（含额外账号）
+                if (shouldKick) {
+                    const allKickQQs = [qq, ...getExtraQQs(qq)];
+                    for (const kqq of allKickQQs) {
+                        try {
+                            await ws({
+                                action: “set_group_kick”,
+                                params: {
+                                    group_id: parseInt(gid),
+                                    user_id: parseInt(kqq)
+                                }
+                            }, ctx, msg, null);
+                            countKick++;
+                        } catch (e) {
+                            console.error(`[踢人] 发送指令失败:`, e);
+                        }
                     }
                 }
             }
@@ -7119,6 +7190,8 @@ ext.onNotCommandReceived = (ctx, msg) => {
             const extraQQ = rest.trim();
             const extraKey = `${platform}:${extraQQ}`;
             if (extras[extraKey]) return seal.replyToSender(ctx, msg, `❌ 该账号已被绑定为其他角色的额外账号`);
+            const rolesStorageCheck = store.get("a_private_group")[platform] || {};
+            if (rolesStorageCheck[extraQQ]) return seal.replyToSender(ctx, msg, `❌ 该账号已是主账号（角色：${rolesStorageCheck[extraQQ][0]}），无法绑定为额外账号`);
             extras[extraKey] = uid;
             store.set("extra_accounts", extras);
 
@@ -7649,9 +7722,17 @@ cmd_remind_timeouts.solve = (ctx, msg, cmdArgs) => {
                 seal.replyToSender(seal.createTempCtx(ctx.endPoint, m1), m1, text);
             }
 
-            // 2. 发送到公共群
+            // 2. 发送到公共群，@主账号和所有额外账号
+            const roleUid2 = getUidByRoleName(platform, name);
+            const extras2 = JSON.parse(ext.storageGet("extra_accounts") || "{}");
+            const allAtUids = roleUid2 && !/^npc_/.test(roleUid2)
+                ? [roleUid2, ...Object.entries(extras2)
+                    .filter(([k, v]) => k.startsWith(`${platform}:`) && v === roleUid2)
+                    .map(([k]) => k.replace(`${platform}:`, ""))]
+                : [];
+            const atStr2 = allAtUids.map(u => `[CQ:at,qq=${u}]`).join("") + (allAtUids.length ? "\n" : "");
             const m2 = seal.newMessage(); m2.messageType = "group"; m2.groupId = `${platform}-Group:${gid}`;
-            seal.replyToSender(seal.createTempCtx(ctx.endPoint, m2), m2, `🌷 温馨提示：${name} 已经忙碌 ${timeStr} 啦，我们再耐心等一下ta吧～`);
+            seal.replyToSender(seal.createTempCtx(ctx.endPoint, m2), m2, `${atStr2}🌷 温馨提示：${name} 已经忙碌 ${timeStr} 啦，我们再耐心等一下ta吧～`);
 
             s.remindedTimes = (s.remindedTimes || 0) + 1;
             sentCount++;
@@ -7960,11 +8041,29 @@ cmd_post_forum.solve = (ctx, msg, cmdArgs) => {
 ext.cmdMap["发帖"] = cmd_post_forum;
 
 // ========================
-// 💬 指令：回复帖子 (修正版)
+// 💬 指令：回复帖子
 // ========================
+
+// 从内容中提取有效的 @角色名
+function extractMentions(content, platform) {
+    const priv = store.get("a_private_group")[platform] || {};
+    const validNames = new Set(Object.values(priv).map(v => v[0]));
+    const matches = [...(content.matchAll(/@(\S+)/g) || [])].map(m => m[1]);
+    return [...new Set(matches.filter(n => validNames.has(n)))];
+}
+
+// 向被 @ 的角色私人群发提醒
+function sendMentionNotice(platform, mentionedName, postId, authorName) {
+    const uid = getUidByRoleName(platform, mentionedName);
+    if (!uid || /^npc_/.test(uid)) return;
+    const pGid = store.get("a_private_group")[platform]?.[uid]?.[1];
+    if (!pGid || pGid === "0") return;
+    sendTextToGroup(platform, pGid, `📣 「${authorName}」在论坛帖子 [${postId}] 的回复中提到了你！`);
+}
+
 let cmd_reply_post = seal.ext.newCmdItemInfo();
 cmd_reply_post.name = "回复帖子";
-cmd_reply_post.help = ".回复帖子 [贴号] (署名) [内容] —— 回复现有帖子";
+cmd_reply_post.help = ".回复帖子 [贴号] (引用N|署名) [内容] —— 回复现有帖子；引用N可引用第N楼（0=楼主）";
 cmd_reply_post.solve = (ctx, msg, cmdArgs) => {
     const senderRoleName = getRoleName(ctx, msg);
     if (!senderRoleName) {
@@ -7974,10 +8073,19 @@ cmd_reply_post.solve = (ctx, msg, cmdArgs) => {
 
     const postId = cmdArgs.getArgN(1);
     const roleName = RelationshipUtils.getRoleName(ctx, msg, msg.platform) || ctx.player.name;
-    let author, content;
+    let author, content, quoteFloor = null, quoteContent = null;
 
-    if (cmdArgs.args.length > 2) {
-        author = cmdArgs.getArgN(2);
+    const arg2 = cmdArgs.getArgN(2);
+    const quoteMatch = arg2 && arg2.match(/^引用(\d+)$/);
+
+    if (quoteMatch) {
+        // 格式：回复帖子 帖ID 引用N 内容
+        quoteFloor = parseInt(quoteMatch[1]);
+        author = roleName;
+        content = msg.message.replace(/^[。.]?回复帖子\s+\S+\s+\S+\s*/, "").trim();
+    } else if (cmdArgs.args.length > 2) {
+        // 格式：回复帖子 帖ID 署名 内容
+        author = arg2;
         content = msg.message.replace(/^[。.]?回复帖子\s+\S+\s+\S+\s*/, "").trim();
     } else {
         author = roleName;
@@ -7985,7 +8093,7 @@ cmd_reply_post.solve = (ctx, msg, cmdArgs) => {
     }
 
     if (!postId || !content) {
-        seal.replyToSender(ctx, msg, "❌ 格式错误！\n格式：.回复帖子 [贴号] 内容");
+        seal.replyToSender(ctx, msg, "❌ 格式错误！\n格式：回复帖子 贴号 内容\n引用楼层：回复帖子 贴号 引用N 内容（引用0=楼主）");
         return seal.ext.newCmdExecuteResult(true);
     }
 
@@ -7995,19 +8103,44 @@ cmd_reply_post.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
+    // 解析引用内容
+    if (quoteFloor !== null) {
+        const srcPost = result.post;
+        if (quoteFloor === 0) {
+            const c = srcPost.content;
+            quoteContent = c.length > 60 ? c.substring(0, 60) + "…" : c;
+        } else {
+            const qReply = srcPost.replies[quoteFloor - 1];
+            if (!qReply) {
+                seal.replyToSender(ctx, msg, `❌ 楼层 L${quoteFloor} 不存在（当前共 ${srcPost.replies.length} 楼）`);
+                return seal.ext.newCmdExecuteResult(true);
+            }
+            const c = qReply.content;
+            quoteContent = c.length > 60 ? c.substring(0, 60) + "…" : c;
+        }
+    }
+
     const posts = getForumPosts();
-    // 💡 回复不分配ID，直接追加到 replies 数组
-    posts[result.index].replies.push({ author, content, timestamp: new Date().toLocaleString() });
+    const newReply = { author, content, timestamp: new Date().toLocaleString(), likes: [], dislikes: [] };
+    if (quoteFloor !== null) { newReply.quoteFloor = quoteFloor; newReply.quoteContent = quoteContent; }
+    posts[result.index].replies.push(newReply);
     saveForumPosts(posts);
 
     seal.replyToSender(ctx, msg, `✅ 已回复到帖子 [${postId}]`);
     sendToAnnounceGroup(ctx, msg.platform, `💬 【论坛回复】\n📌 贴号：${postId}\n👤 ${author}\n📝 ${content}`);
+
+    // @提醒
+    const platform = msg.platform;
+    extractMentions(content, platform).forEach(name => {
+        if (name !== author) sendMentionNotice(platform, name, postId, author);
+    });
+
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["回复帖子"] = cmd_reply_post;
 
 // ========================
-// 👍 指令：点赞 / 点踩
+// 👍 指令：点赞 / 点踩（主帖）
 // ========================
 function handleVote(ctx, msg, cmdArgs, isLike) {
     const senderRoleName = getRoleName(ctx, msg);
@@ -8025,7 +8158,7 @@ function handleVote(ctx, msg, cmdArgs, isLike) {
 
     const posts = getForumPosts();
     const post = posts[result.index];
-    
+
     const myList = isLike ? post.likes : post.dislikes;
     const otherList = isLike ? post.dislikes : post.likes;
 
@@ -8042,25 +8175,83 @@ function handleVote(ctx, msg, cmdArgs, isLike) {
 
     const typeStr = isLike ? "点赞" : "点踩";
     seal.replyToSender(ctx, msg, `✅ ${typeStr}成功！`);
-    
-    // 同步公告 (调用改造后的函数)
     sendToAnnounceGroup(ctx, msg.platform, `${isLike ? '❤️' : '👎'} 【论坛动态】\n👤 ${author} 对帖子 [${postId}] 进行了${typeStr}\n🔥 赞：${post.likes.length} | ❄️ 踩：${post.dislikes.length}`);
     return seal.ext.newCmdExecuteResult(true);
 }
 
 let cmd_like = seal.ext.newCmdItemInfo();
 cmd_like.name = "点赞";
-cmd_like.solve = (ctx, msg, cmdArgs) => {
-    return handleVote(ctx, msg, cmdArgs, true);
-}
+cmd_like.solve = (ctx, msg, cmdArgs) => handleVote(ctx, msg, cmdArgs, true);
 ext.cmdMap["点赞"] = cmd_like;
 
 let cmd_dislike = seal.ext.newCmdItemInfo();
 cmd_dislike.name = "点踩";
-cmd_dislike.solve = (ctx, msg, cmdArgs) => {
-    return handleVote(ctx, msg, cmdArgs, false);
-}
+cmd_dislike.solve = (ctx, msg, cmdArgs) => handleVote(ctx, msg, cmdArgs, false);
 ext.cmdMap["点踩"] = cmd_dislike;
+
+// ========================
+// 👍 指令：点赞楼层 / 点踩楼层
+// ========================
+function handleFloorVote(ctx, msg, cmdArgs, isLike) {
+    const senderRoleName = getRoleName(ctx, msg);
+    if (!senderRoleName) {
+        seal.replyToSender(ctx, msg, "✨ 你还不是本系统的会员，请先使用「创建新角色」来认领你的身份吧。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const postId = cmdArgs.getArgN(1);
+    const floorStr = cmdArgs.getArgN(2);
+    const author = cmdArgs.getArgN(3) || senderRoleName;
+    const typeStr = isLike ? "点赞" : "点踩";
+
+    if (!postId || !floorStr || !/^\d+$/.test(floorStr)) {
+        seal.replyToSender(ctx, msg, `格式：${typeStr}楼层 帖ID 楼层号 署名`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const floorNum = parseInt(floorStr);
+    const result = findPostById(postId);
+    if (!result) {
+        seal.replyToSender(ctx, msg, `❌ 找不到帖子 [${postId}]`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const posts = getForumPosts();
+    const reply = posts[result.index].replies[floorNum - 1];
+    if (!reply) {
+        seal.replyToSender(ctx, msg, `❌ 楼层 L${floorNum} 不存在`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    if (!reply.likes) reply.likes = [];
+    if (!reply.dislikes) reply.dislikes = [];
+
+    const myList = isLike ? reply.likes : reply.dislikes;
+    const otherList = isLike ? reply.dislikes : reply.likes;
+
+    if (myList.includes(author)) {
+        seal.replyToSender(ctx, msg, "⚠️ 你已经表过态啦～");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const idx = otherList.indexOf(author);
+    if (idx !== -1) otherList.splice(idx, 1);
+    myList.push(author);
+    saveForumPosts(posts);
+
+    seal.replyToSender(ctx, msg, `✅ 对 L${floorNum} ${typeStr}成功！👍 ${reply.likes.length} | 👎 ${reply.dislikes.length}`);
+    return seal.ext.newCmdExecuteResult(true);
+}
+
+let cmd_like_floor = seal.ext.newCmdItemInfo();
+cmd_like_floor.name = "点赞楼层";
+cmd_like_floor.solve = (ctx, msg, cmdArgs) => handleFloorVote(ctx, msg, cmdArgs, true);
+ext.cmdMap["点赞楼层"] = cmd_like_floor;
+
+let cmd_dislike_floor = seal.ext.newCmdItemInfo();
+cmd_dislike_floor.name = "点踩楼层";
+cmd_dislike_floor.solve = (ctx, msg, cmdArgs) => handleFloorVote(ctx, msg, cmdArgs, false);
+ext.cmdMap["点踩楼层"] = cmd_dislike_floor;
 
 // ========================
 // 📋 指令：查看帖子
@@ -8095,7 +8286,15 @@ cmd_view_posts.solve = (ctx, msg, cmdArgs) => {
         });
 
         post.replies.forEach((r, i) => {
-            nodes.push({ type: "node", data: { name: `${r.author} (L${i + 1})`, uin: "2852199344", content: r.content } });
+            let replyContent = "";
+            if (r.quoteFloor !== undefined && r.quoteFloor !== null) {
+                const floorLabel = r.quoteFloor === 0 ? "楼主" : `L${r.quoteFloor}`;
+                replyContent += `「引用 ${floorLabel}」\n${r.quoteContent}\n${"─".repeat(14)}\n`;
+            }
+            replyContent += r.content;
+            const rl = (r.likes || []).length, rd = (r.dislikes || []).length;
+            if (rl > 0 || rd > 0) replyContent += `\n👍 ${rl} | 👎 ${rd}`;
+            nodes.push({ type: "node", data: { name: `${r.author} (L${i + 1})`, uin: "2852199344", content: replyContent } });
         });
         sendForumForward(ctx, msg, nodes);
     } else {
@@ -8636,6 +8835,50 @@ cmd_set_npc.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["设为npc"] = cmd_set_npc;
+
+// 创建NPC（管理员直接创建带NPC身份的角色，不绑定真实用户）
+let cmd_create_npc = seal.ext.newCmdItemInfo();
+cmd_create_npc.name = "创建NPC";
+cmd_create_npc.help = "用法：。创建NPC [角色名]\n说明：直接创建一个带NPC身份的角色，无需绑定真实用户。";
+cmd_create_npc.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) {
+        seal.replyToSender(ctx, msg, "⚠️ 仅限管理员使用此功能。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const name = cmdArgs.getArgN(1);
+    if (!name) {
+        const ret = seal.ext.newCmdExecuteResult(true);
+        ret.showHelp = true;
+        return ret;
+    }
+
+    const platform = msg.platform;
+    const storage = getRoleStorage();
+    if (!storage[platform]) storage[platform] = {};
+
+    const existingUid = Object.entries(storage[platform]).find(([_, v]) => v[0] === name)?.[0];
+    if (existingUid) {
+        seal.replyToSender(ctx, msg, `❌ 角色名「${name}」已被占用。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const uid = `npc_${name}`;
+    storage[platform][uid] = [name, "0"];
+    ext.storageSet("a_private_group", JSON.stringify(storage));
+
+    initCharProfile(platform, name);
+
+    const npcList = JSON.parse(ext.storageGet("a_npc_list") || "[]");
+    if (!npcList.includes(name)) {
+        npcList.push(name);
+        ext.storageSet("a_npc_list", JSON.stringify(npcList));
+    }
+
+    seal.replyToSender(ctx, msg, `✅ NPC「${name}」创建成功！已自动设为NPC身份。`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["创建NPC"] = cmd_create_npc;
 
 // ========================
 // ========================

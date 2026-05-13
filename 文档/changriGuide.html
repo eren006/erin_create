@@ -1192,9 +1192,12 @@ body.admin-unlocked .section-card.admin-content {
   <div class="cmd-list">
     <div class="cmd-item"><span class="cmd-text">发帖 署名 内容</span><span class="cmd-desc">在论坛发表帖子</span><button class="cmd-copy" onclick="copyCmd(this,'发帖 ')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">查看帖子</span><span class="cmd-desc">浏览所有论坛讨论</span><button class="cmd-copy" onclick="copyCmd(this,'查看帖子')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">回复帖子 帖ID 署名 内容</span><span class="cmd-desc">回复别人的帖子</span><button class="cmd-copy" onclick="copyCmd(this,'回复帖子 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">回复帖子 帖ID 内容</span><span class="cmd-desc">回复帖子；回复中写 @角色名 会向对方私人群发提醒</span><button class="cmd-copy" onclick="copyCmd(this,'回复帖子 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">回复帖子 帖ID 引用N 内容</span><span class="cmd-desc">引用第N楼回复（引用0=楼主正文），再附上自己的内容</span><button class="cmd-copy" onclick="copyCmd(this,'回复帖子 ')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">点赞 帖ID 署名</span><span class="cmd-desc">支持一个帖子</span><button class="cmd-copy" onclick="copyCmd(this,'点赞 ')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">点踩 帖ID 署名</span><span class="cmd-desc">反对一个帖子</span><button class="cmd-copy" onclick="copyCmd(this,'点踩 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">点赞楼层 帖ID 楼层号 署名</span><span class="cmd-desc">对某一楼的回复单独点赞</span><button class="cmd-copy" onclick="copyCmd(this,'点赞楼层 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">点踩楼层 帖ID 楼层号 署名</span><span class="cmd-desc">对某一楼的回复单独点踩</span><button class="cmd-copy" onclick="copyCmd(this,'点踩楼层 ')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">点歌</span><span class="cmd-desc">查看点歌用法（需回复音乐卡片使用）</span><button class="cmd-copy" onclick="copyCmd(this,'点歌')">复制</button></div>
   </div>
 </div>
@@ -1209,7 +1212,7 @@ body.admin-unlocked .section-card.admin-content {
   </div>
   <div class="callout tip" style="margin-top:10px">
     <div class="callout-title">💡 额外账号说明</div>
-    <p>绑定时系统会清除辅助账号的商城/图鉴数据（避免双号重复抽取）。每个 QQ 号只能绑定为一个角色的额外账号。</p>
+    <p>绑定时系统会清除辅助账号的商城/图鉴数据（避免双号重复抽取）。每个 QQ 号只能绑定为一个角色的额外账号，且不能与已有主账号重复。额外账号会在超时提醒、驱逐等操作中与主账号一同被处理。</p>
   </div>
 </div>
 
@@ -1802,7 +1805,8 @@ body.admin-unlocked .section-card.admin-content {
     <p>如果管理员账号同时在玩家私人群内，<strong>必须将自己的角色设为 NPC</strong>，否则系统会持续推送提醒、计入分组、触发邀约逻辑，造成干扰。创建所有角色后立即执行。</p>
   </div>
   <div class="cmd-list">
-    <div class="cmd-item"><span class="cmd-text">设为npc [角色名]</span><span class="cmd-desc">标记为NPC，跳过自动分组/提醒（再次发送可取消）</span><button class="cmd-copy" onclick="copyCmd(this,'设为npc ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">创建NPC [角色名]</span><span class="cmd-desc">直接创建带NPC身份的角色，无需绑定真实账号，创建即为NPC</span><button class="cmd-copy" onclick="copyCmd(this,'创建NPC ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">设为npc [角色名]</span><span class="cmd-desc">将已有角色标记为NPC，跳过自动分组/提醒（再次发送可取消）</span><button class="cmd-copy" onclick="copyCmd(this,'设为npc ')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">创建新角色 [角色名]</span><span class="cmd-desc">为玩家创建游戏角色并绑定账号</span><button class="cmd-copy" onclick="copyCmd(this,'创建新角色 ')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">修改名字 [新名字]</span><span class="cmd-desc">修改当前角色名（玩家自用）/ 管理员可代改</span><button class="cmd-copy" onclick="copyCmd(this,'修改名字 ')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">清除玩家 [角色名]</span><span class="cmd-desc">⚠️ 删除角色及全部数据（不可恢复）</span><button class="cmd-copy" onclick="copyCmd(this,'清除玩家 ')">复制</button></div>
@@ -1816,6 +1820,9 @@ body.admin-unlocked .section-card.admin-content {
     <div class="cmd-item"><span class="cmd-text">添加群号 [群号1,群号2,…]</span><span class="cmd-desc">将群号加入可用池，多个用逗号分隔</span><button class="cmd-copy" onclick="copyCmd(this,'添加群号 ')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">查看群号</span><span class="cmd-desc">查看当前可用群号池（含占用状态）</span><button class="cmd-copy" onclick="copyCmd(this,'查看群号')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">移除群号 [群号1,群号2,…]</span><span class="cmd-desc">从池中移除指定群号</span><button class="cmd-copy" onclick="copyCmd(this,'移除群号 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">驱逐 [QQ号]</span><span class="cmd-desc">从群号池所有群中踢出指定QQ及其所有额外账号（逐群扫描，不在则跳过）</span><button class="cmd-copy" onclick="copyCmd(this,'驱逐 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">更新未退群</span><span class="cmd-desc">扫描全服，记录仍在群中的玩家违规信息</span><button class="cmd-copy" onclick="copyCmd(this,'更新未退群')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">更新未退群 驱逐</span><span class="cmd-desc">扫描全服并直接踢出仍在群中的所有玩家及其额外账号</span><button class="cmd-copy" onclick="copyCmd(this,'更新未退群 驱逐')">复制</button></div>
   </div>
 </div>
 
@@ -1836,7 +1843,7 @@ body.admin-unlocked .section-card.admin-content {
     <div class="cmd-item"><span class="cmd-text">发起官约 D1 14:00-15:00 地点 参与者1/参与者2/...</span><span class="cmd-desc">发起官方约会，系统自动建群并推送邀请</span><button class="cmd-copy" onclick="copyCmd(this,'发起官约 ')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">查看进行中</span><span class="cmd-desc">查看所有正在进行的邀约</span><button class="cmd-copy" onclick="copyCmd(this,'查看进行中')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">结束私约 [邀约ID]</span><span class="cmd-desc">结束超时的私约</span><button class="cmd-copy" onclick="copyCmd(this,'结束私约 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">提醒超时</span><span class="cmd-desc">提醒已超时的邀约</span><button class="cmd-copy" onclick="copyCmd(this,'提醒超时')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">提醒超时</span><span class="cmd-desc">在邀约群内 @ 超时玩家的主账号及所有额外账号发送催回提醒</span><button class="cmd-copy" onclick="copyCmd(this,'提醒超时')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">设置邀约时间 [时段1] [时段2]…</span><span class="cmd-desc">限制所有玩家的可邀约时段</span><button class="cmd-copy" onclick="copyCmd(this,'设置邀约时间 ')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">清空邀约时间</span><span class="cmd-desc">解除时间限制</span><button class="cmd-copy" onclick="copyCmd(this,'清空邀约时间')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">时间锁定 锁定 [角色/全体] [D1] [14:00-16:00]</span><span class="cmd-desc">锁定指定角色或全体在某天某时段内无法参与邀约</span><button class="cmd-copy" onclick="copyCmd(this,'时间锁定 锁定 ')">复制</button></div>

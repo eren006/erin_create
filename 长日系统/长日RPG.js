@@ -5502,6 +5502,3 @@ cmd_batch_give.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["批量发放"] = cmd_batch_give;
-
-// 插件加载时自动初始化预设物品（如主插件已就绪）
-initPresetItems();
