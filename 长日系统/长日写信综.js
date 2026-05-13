@@ -178,49 +178,6 @@ function recordActivity(actType, platform, ctx, endpoint) {
     }
 }
 
-/**
- * 处理超时的待审信件（3小时未修改则发送原文）
- */
-function processExpiredQuillPens() {
-    const TIMEOUT_MS = 3 * 60 * 60 * 1000; // 3小时
-    const now = Date.now();
-    let pendingLetters = JSON.parse(getMainStorage("letter_pending_quill_pens") || "{}");
-    const a_private_group = JSON.parse(getMainStorage("a_private_group") || "{}");
-
-    for (const [modifierRoleName, letters] of Object.entries(pendingLetters)) {
-        for (let i = letters.length - 1; i >= 0; i--) {
-            const letterData = letters[i];
-            if (now - letterData.applyTime > TIMEOUT_MS) {
-                // 超时，发送原文
-                try {
-                    const platform = letterData.platform;
-                    const targetEntry = getEntryByRoleName(a_private_group, platform, letterData.receiverName);
-                    if (targetEntry) {
-                        let originalLetter = `✉️ ${letterData.receiverName}，你收到一封信：\n`;
-                        if (letterData.dateTag) originalLetter += `📅 日期：${letterData.dateTag}\n`;
-                        originalLetter += `\n「${letterData.content}」\n\n—— ${letterData.signature}`;
-                        if (letterData.attachment) originalLetter += `\n\n附件：\n--------------------\n${letterData.attachment}`;
-                        originalLetter += `\n\n⏰ (此信件已超时3小时，自动发送原文)`;
-
-                        const msg = seal.newMessage();
-                        msg.messageType = "group";
-                        msg.groupId = `${platform}-Group:${targetEntry[1]}`;
-                        const msgCtx = seal.createTempCtx({endPoint: {cmdPrefix: "。"}}, msg);
-                        seal.replyToSender(msgCtx, msg, originalLetter);
-                    }
-                } catch (e) {
-                    console.error("发送超时待审信件失败:", e);
-                }
-
-                // 删除该待审信件
-                letters.splice(i, 1);
-            }
-        }
-    }
-
-    setMainStorage("letter_pending_quill_pens", JSON.stringify(pendingLetters));
-}
-
 // ========================
 // 【3】启用写信综（管理员命令）
 // ========================
@@ -295,8 +252,6 @@ cmd_send_letter.help = `📮 发送正式信件
 【署名】小红`;
 
 cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
-    // 检查并处理超时的待审信件
-    processExpiredQuillPens();
 
     // 1. 检查写信综是否启用
     if (!isLetterSystemEnabled()) {

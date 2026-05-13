@@ -822,8 +822,8 @@ cmd_reg_currency.solve = (ctx, msg, cmdArgs) => {
     const desc = (parts[1] || "").trim() || "暂无描述";
     if (!name) return seal.replyToSender(ctx, msg, "❌ 货币名不能为空。");
     const reg = getRegistry();
-    const existing = Object.values(reg).find(r => r.name === name && r.type === "currency");
-    if (existing) return seal.replyToSender(ctx, msg, `⚠️ 货币「${name}」已存在 [${existing.code}]`);
+    const existing = Object.values(reg).find(r => r.name === name);
+    if (existing) return seal.replyToSender(ctx, msg, `⚠️ 「${name}」已存在 [${existing.code}]（${existing.type}），货币名不能重复`);
     const validAttrs = getValidAttrs();
     if (validAttrs.includes(name)) return seal.replyToSender(ctx, msg, `❌ 「${name}」已被注册为属性，货币名不能与属性重复`);
     const code = genCurrencyCode(reg);
@@ -837,7 +837,7 @@ ext.cmdMap["注册货币"] = cmd_reg_currency;
 
 let cmd_item_list = seal.ext.newCmdItemInfo();
 cmd_item_list.name = "物品列表";
-cmd_item_list.help = "查看所有已注册物品/货币\n物品列表 [物品|货币|预设|全部]";
+cmd_item_list.help = "查看所有已注册物品/货币\n物品列表 [物品|互动|货币|预设|全部]";
 cmd_item_list.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
 
@@ -847,6 +847,7 @@ cmd_item_list.solve = (ctx, msg, cmdArgs) => {
         if (filter === "货币") return e.type === "currency";
         if (filter === "物品") return e.type === "item";
         if (filter === "预设") return e.type === "preset";
+        if (filter === "互动") return e.type === "interact";
         return true;
     });
     if (!entries.length) return seal.replyToSender(ctx, msg, `📋 暂无${filter === "全部" ? "" : filter}。`);
@@ -1150,36 +1151,57 @@ ext.cmdMap["删除池子"] = cmd_del_pool;
 
 let cmd_adjust = seal.ext.newCmdItemInfo();
 cmd_adjust.name = "调整";
-cmd_adjust.help = "【管理员】直接调整玩家背包数量\n调整 角色名 物品码 +N 或 -N\n示例：调整 张三 ITEM_001 +3";
+cmd_adjust.help = "【管理员】直接调整玩家背包数量\n调整 角色名 物品码 +N [物品码2 +N2 ...]\n示例：调整 张三 ITEM_001 +3\n多个：调整 张三 ITEM_001 +3 ITEM_002 -1 SPEC_005 +2";
 cmd_adjust.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
     const roleName = cmdArgs.getArgN(1);
-    const inputCode = cmdArgs.getArgN(2);
-    const deltaStr = cmdArgs.getArgN(3);
-    if (!roleName || !inputCode || !deltaStr) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
-    const delta = parseInt(deltaStr);
-    if (isNaN(delta)) return seal.replyToSender(ctx, msg, "❌ 数量格式错误，示例：+3 或 -2");
+    if (!roleName || !cmdArgs.getArgN(2)) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
     const main = getMainExt();
     if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
-    const reg = getRegistry();
-    const item = findItem(reg, inputCode);
-    if (!item) return seal.replyToSender(ctx, msg, `❌ 找不到物品「${inputCode}」`);
     const platform = msg.platform;
-    // 新结构：通过 roleName 反查 uid
     const uid = getRoleUid(platform, roleName);
     if (!uid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${roleName}」。`);
     const roleKey = `${platform}:${uid}`;
-    if (delta > 0) {
-        addToInv(roleKey, item.code, delta);
-        seal.replyToSender(ctx, msg, `✅ [${item.code}]${item.name} ×${delta} 已加入「${roleName}」背包。`);
-        notifyPlayer(ctx, platform, roleName, `📦【背包更新】${item.name} ×${delta} 已加入你的背包。`);
-    } else if (delta < 0) {
-        if (!removeFromInv(roleKey, item.code, -delta)) return seal.replyToSender(ctx, msg, `❌ 「${roleName}」背包中数量不足。`);
-        seal.replyToSender(ctx, msg, `✅ 已从「${roleName}」背包扣除 [${item.code}]${item.name} ×${-delta}。`);
-        notifyPlayer(ctx, platform, roleName, `📦【背包更新】${item.name} ×${-delta} 已从你的背包中移除。`);
-    } else {
-        seal.replyToSender(ctx, msg, "⚠️ 调整量为0，无变化。");
+    const reg = getRegistry();
+
+    // 收集所有 物品码+数量 对（从 arg2 开始，每两个一组）
+    const pairs = [];
+    let i = 2;
+    while (true) {
+        const code = cmdArgs.getArgN(i);
+        const deltaStr = cmdArgs.getArgN(i + 1);
+        if (!code) break;
+        if (!deltaStr) { pairs.push({ err: `「${code}」缺少数量` }); break; }
+        const delta = parseInt(deltaStr);
+        if (isNaN(delta)) { pairs.push({ err: `「${code}」数量格式错误：${deltaStr}` }); break; }
+        const item = findItem(reg, code);
+        if (!item) { pairs.push({ err: `找不到物品「${code}」` }); i += 2; continue; }
+        pairs.push({ item, delta });
+        i += 2;
     }
+
+    if (!pairs.length) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+
+    const lines = [];
+    for (const p of pairs) {
+        if (p.err) { lines.push(`❌ ${p.err}`); continue; }
+        const { item, delta } = p;
+        if (delta === 0) { lines.push(`⚠️ ${item.name} 调整量为0，跳过`); continue; }
+        if (delta > 0) {
+            addToInv(roleKey, item.code, delta);
+            lines.push(`✅ [${item.code}]${item.name} ×${delta} 已加入背包`);
+            notifyPlayer(ctx, platform, roleName, `📦【背包更新】${item.name} ×${delta} 已加入你的背包。`);
+        } else {
+            if (!removeFromInv(roleKey, item.code, -delta)) {
+                lines.push(`❌ [${item.code}]${item.name} 背包数量不足，跳过`);
+            } else {
+                lines.push(`✅ [${item.code}]${item.name} ×${-delta} 已扣除`);
+                notifyPlayer(ctx, platform, roleName, `📦【背包更新】${item.name} ×${-delta} 已从你的背包中移除。`);
+            }
+        }
+    }
+
+    seal.replyToSender(ctx, msg, `📦 调整「${roleName}」背包（共${pairs.length}项）：\n${lines.join("\n")}`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["调整"] = cmd_adjust;
@@ -2264,7 +2286,8 @@ cmd_apply.solve = (ctx, msg, cmdArgs) => {
 
     // 2. 检查目标是否存在
     const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
-    if (!apg[platform]?.[targetName]) return seal.replyToSender(ctx, msg, `❌ 未找到目标角色「${targetName}」。`);
+    const targetUid = getRoleUid(platform, targetName);
+    if (!targetUid) return seal.replyToSender(ctx, msg, `❌ 未找到目标角色「${targetName}」。`);
 
     // 3. 检查发起者背包
     let inv = getInv(roleKey);
@@ -2326,6 +2349,7 @@ cmd_apply.solve = (ctx, msg, cmdArgs) => {
         feedback += `\n(暴露概率：${exposeRate}%，本次${isExposed ? "已暴露名字" : "保持匿名"})`;
     }
     feedback += `\n📊 目标属性变化：${effectStr}`;
+    seal.replyToSender(ctx, msg, feedback);
 
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -2935,6 +2959,10 @@ ext.onNotCommandReceived = (ctx, msg) => {
     if (raw.startsWith("特殊使用")) {
         const parts = raw.slice(4).trim().split(/\s+/);
         if (parts[0]) return cmd_special_use.solve(ctx, msg, fa(parts));
+    }
+    if (raw.startsWith("上架二手")) {
+        const parts = raw.slice(4).trim().split(/\s+/);
+        if (parts.length >= 3) return cmd_sell.solve(ctx, msg, fa(parts));
     }
     if (raw.startsWith("售卖")) {
         const parts = raw.slice(2).trim().split(/\s+/);
@@ -5369,3 +5397,111 @@ cmd_level_info.solve = (ctx, msg, cmdArgs) => {
     return cmd_levelup_info(msg, cmdArgs, ctx);
 };
 ext.cmdMap["查看升级信息"] = cmd_level_info;
+
+// ========================
+// 角色档案
+// ========================
+let cmd_profile = seal.ext.newCmdItemInfo();
+cmd_profile.name = "角色档案";
+cmd_profile.help = "【管理员】查看角色综合档案\n角色档案 角色名";
+cmd_profile.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const roleName = cmdArgs.getArgN(1);
+    if (!roleName) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const main = getMainExt();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
+    const platform = msg.platform;
+    const uid = getRoleUid(platform, roleName);
+    if (!uid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${roleName}」。`);
+    const roleKey = `${platform}:${uid}`;
+
+    // 属性
+    const defs = getAttrDefs();
+    const allAttrs = getCharAttrs();
+    const myAttrs = allAttrs[roleName] || {};
+    const attrStr = Object.keys(defs).length
+        ? Object.keys(defs).map(k => `${k}: ${myAttrs[k] ?? defs[k].default ?? 0}`).join(" | ")
+        : "暂无属性";
+
+    // 背包
+    const reg = getRegistry();
+    const inv = getInv(roleKey);
+    const invStr = inv.length
+        ? inv.map(e => `${reg[e.code]?.name || e.code} ×${e.count}`).join(" | ")
+        : "空";
+
+    // 关系线（读主插件存储）
+    let relCount = 0, initiated = 0, received = 0, confirmed = 0;
+    try {
+        const relData = JSON.parse(main.storageGet("relationship_lines") || "{}");
+        const myRels = relData[platform]?.[uid] || {};
+        relCount = Object.keys(myRels).length;
+        for (const rel of Object.values(myRels)) {
+            if (rel.confirmed) confirmed++;
+            if (rel.initiator === roleName) initiated++; else received++;
+        }
+    } catch(e) {}
+
+    const lines = [
+        `📋 角色档案：${roleName}`,
+        ``,
+        `【属性】${attrStr}`,
+        ``,
+        `【关系线】共 ${relCount} 条（发起 ${initiated} / 收到 ${received} / 已确认 ${confirmed}）`,
+        ``,
+        `【背包】${invStr}`,
+    ];
+    seal.replyToSender(ctx, msg, lines.join('\n'));
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["角色档案"] = cmd_profile;
+
+// ========================
+// 批量发放
+// ========================
+let cmd_batch_give = seal.ext.newCmdItemInfo();
+cmd_batch_give.name = "批量发放";
+cmd_batch_give.help = "【管理员】批量发放物品\n批量发放 物品码/名 +N 角色1 角色2 ...\n批量发放 物品码/名 +N 全员";
+cmd_batch_give.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const inputCode = cmdArgs.getArgN(1);
+    const deltaStr = cmdArgs.getArgN(2);
+    const firstTarget = cmdArgs.getArgN(3);
+    if (!inputCode || !deltaStr || !firstTarget) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const delta = parseInt(deltaStr);
+    if (isNaN(delta) || delta <= 0) return seal.replyToSender(ctx, msg, "❌ 数量必须为正整数，示例：+3");
+    const main = getMainExt();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
+    const reg = getRegistry();
+    const item = findItem(reg, inputCode);
+    if (!item) return seal.replyToSender(ctx, msg, `❌ 找不到物品「${inputCode}」`);
+    const platform = msg.platform;
+
+    let targets = [];
+    if (firstTarget === "全员") {
+        const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
+        targets = Object.values(apg[platform] || {}).map(v => v[0]).filter(Boolean);
+    } else {
+        let i = 3;
+        while (cmdArgs.getArgN(i)) { targets.push(cmdArgs.getArgN(i)); i++; }
+    }
+    if (!targets.length) return seal.replyToSender(ctx, msg, "❌ 未找到目标角色。");
+
+    const errs = [];
+    for (const name of targets) {
+        const uid = getRoleUid(platform, name);
+        if (!uid) { errs.push(name); continue; }
+        addToInv(`${platform}:${uid}`, item.code, delta);
+        notifyPlayer(ctx, platform, name, `📦【背包更新】${item.name} ×${delta} 已加入你的背包。`);
+    }
+
+    const ok = targets.length - errs.length;
+    let reply = `📦 批量发放 [${item.code}]${item.name} ×${delta}（共 ${targets.length} 人）：成功 ${ok} | 失败 ${errs.length}`;
+    if (errs.length) reply += `\n找不到角色：${errs.join("、")}`;
+    seal.replyToSender(ctx, msg, reply);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["批量发放"] = cmd_batch_give;
+
+// 插件加载时自动初始化预设物品（如主插件已就绪）
+initPresetItems();

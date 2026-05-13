@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         长日将尽系统
 // @author       长日将尽
-// @version      1.3.0
+// @version      1.3.4
 // @description  无
 // @timestamp    1742205760
 // @license      MIT
@@ -4446,6 +4446,53 @@ ext.cmdMap["查看功能权限"] = cmd_view_user_feature;
 // ========================
 // 🌠 心愿系统
 // ========================
+
+// 心愿悬赏奖励用：直接操作 changri 存储里的背包数据
+function wishCheckInv(roleKey, code, count) {
+    const invs = JSON.parse(ext.storageGet("global_inventories") || "{}");
+    const total = (invs[roleKey] || []).filter(e => e.code === code).reduce((s, e) => s + (e.count || 0), 0);
+    return total >= count;
+}
+function wishAddToInv(roleKey, code, count) {
+    const reg = JSON.parse(ext.storageGet("item_registry") || "{}");
+    const item = reg[code];
+    if (!item) return;
+    const invs = JSON.parse(ext.storageGet("global_inventories") || "{}");
+    const inv = invs[roleKey] || [];
+    const initialUses = item.maxUses !== undefined ? item.maxUses : -1;
+    const entry = inv.find(e => e.code === code && (e.remainingUses !== undefined ? e.remainingUses : -1) === initialUses);
+    if (entry) { entry.count += count; } else { inv.push({ code, count, remainingUses: initialUses }); }
+    invs[roleKey] = inv;
+    ext.storageSet("global_inventories", JSON.stringify(invs));
+}
+function wishGetDailyCount(uid, day, type) {
+    const key = type === 'post' ? "wish_daily_post_counts" : "wish_daily_pick_counts";
+    const counts = JSON.parse(ext.storageGet(key) || "{}");
+    const rec = counts[uid] || { day: "", count: 0 };
+    return rec.day === day ? rec.count : 0;
+}
+function wishIncrDailyCount(uid, day, type) {
+    const key = type === 'post' ? "wish_daily_post_counts" : "wish_daily_pick_counts";
+    const counts = JSON.parse(ext.storageGet(key) || "{}");
+    const rec = counts[uid] || { day: "", count: 0 };
+    counts[uid] = { day, count: rec.day === day ? rec.count + 1 : 1 };
+    ext.storageSet(key, JSON.stringify(counts));
+}
+
+function wishRemoveFromInv(roleKey, code, count) {
+    const invs = JSON.parse(ext.storageGet("global_inventories") || "{}");
+    const inv = invs[roleKey] || [];
+    let rem = count;
+    for (const e of inv.filter(e => e.code === code)) {
+        if (rem <= 0) break;
+        const take = Math.min(e.count, rem);
+        e.count -= take;
+        rem -= take;
+    }
+    invs[roleKey] = inv.filter(e => e.count > 0);
+    ext.storageSet("global_inventories", JSON.stringify(invs));
+}
+
 const WishUtils = {
     getPool: () => {
         const now = Date.now(), exp = 86400000;
@@ -4461,7 +4508,8 @@ const WishUtils = {
         const now = Date.now(), exp = 86400000;
         return `📜 ${title}：\n` + pool.map(w => {
             const rem = Math.ceil((exp - (now - w.timestamp)) / 3600000);
-            return `编号：${w.id}｜${w.day} ${w.time}｜${w.place}｜剩${rem}h｜内容：${w.content}`;
+            const rewardStr = w.rewardCode ? `｜🎁 ${w.rewardName} ×${w.rewardCount}` : "";
+            return `编号：${w.id}｜${w.day} ${w.time}｜${w.place}｜剩${rem}h${rewardStr}｜内容：${w.content}`;
         }).join('\n');
     }
 };
@@ -4497,7 +4545,12 @@ cmd_post_wish.solve = (ctx, msg, cmdArgs) => {
     if (conflicts.length) return seal.replyToSender(ctx, msg, `⚠️ 时间冲突：\n${conflicts.join('\n')}`);
 
     let pool = WishUtils.getPool();
-    if (pool.filter(w => w.fromId === uid).length >= 3) return seal.replyToSender(ctx, msg, "⚠️ 最多同时挂3个心愿");
+    const wishMaxConcurrent = parseInt(ext.storageGet("wish_max_concurrent") || "3");
+    if (pool.filter(w => w.fromId === uid).length >= wishMaxConcurrent) return seal.replyToSender(ctx, msg, `⚠️ 最多同时挂${wishMaxConcurrent}个心愿`);
+    const wishDailyPostLimit = parseInt(ext.storageGet("wish_daily_post_limit") || "0");
+    if (wishDailyPostLimit > 0 && wishGetDailyCount(uid, day, 'post') >= wishDailyPostLimit) {
+        return seal.replyToSender(ctx, msg, `⚠️ 今日发布心愿次数已达上限（${wishDailyPostLimit}次）`);
+    }
 
     // Bug2修复：所有验证通过后再扣写信币
     let wishCoinCheck = null;
@@ -4512,6 +4565,7 @@ cmd_post_wish.solve = (ctx, msg, cmdArgs) => {
     const id = Math.random().toString(36).slice(2, 9).toUpperCase();
     pool.push({ id, day, time, place, content, fromId: uid, timestamp: Date.now() });
     WishUtils.savePool(pool);
+    wishIncrDailyCount(uid, day, 'post');
 
     let wishSuccessMsg = `✅ 心愿已漂走！编号：${id}\n有效期：24小时`;
     if (wishCoinCheck?.cost > 0) wishSuccessMsg += `\n💰 已消耗写信币 ${wishCoinCheck.cost} 枚`;
@@ -4564,8 +4618,15 @@ cmd_pick_wish.solve = async (ctx, msg, cmdArgs) => {
     const errs = [...check(uid, name), ...check(wish.fromId, fromName)];
     if (errs.length) return seal.replyToSender(ctx, msg, `⚠️ 无法建立联系：\n${errs.join('\n')}`);
 
+    const wishDailyPickLimit = parseInt(ext.storageGet("wish_daily_pick_limit") || "0");
+    const currentDay = ext.storageGet("global_days") || "";
+    if (wishDailyPickLimit > 0 && wishGetDailyCount(uid, currentDay, 'pick') >= wishDailyPickLimit) {
+        return seal.replyToSender(ctx, msg, `⚠️ 今日摘取心愿次数已达上限（${wishDailyPickLimit}次）`);
+    }
+
     // 移除并成交
     WishUtils.savePool(pool.filter(w => w.id !== wid));
+    wishIncrDailyCount(uid, currentDay, 'pick');
 
     const item = {
         id: wid, type: "小群", subtype: "心愿", sendname: fromName, sendid: wish.fromId.replace(`${platform}:`, ""),
@@ -4590,7 +4651,13 @@ cmd_pick_wish.solve = async (ctx, msg, cmdArgs) => {
         }
     });
 
-    seal.replyToSender(ctx, msg, `🎉 摘取成功！专属小群已建立。`);
+    let pickReply = `🎉 摘取成功！专属小群已建立。`;
+    if (wish.rewardCode) {
+        const pickerRoleKey = `${platform}:${uid.replace(`${platform}:`, "")}`;
+        wishAddToInv(pickerRoleKey, wish.rewardCode, wish.rewardCount);
+        pickReply += `\n🎁 悬赏奖励：${wish.rewardName} ×${wish.rewardCount} 已加入你的背包！`;
+    }
+    seal.replyToSender(ctx, msg, pickReply);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["摘心愿"] = cmd_pick_wish;
@@ -4609,13 +4676,113 @@ cmd_withdraw_wish.solve = (ctx, msg, cmdArgs) => {
 
     if (!wid) return seal.replyToSender(ctx, msg, WishUtils.formatList(myWishes, "你发布的心愿") + "\n\n使用「。撤心愿 编号」撤回");
 
-    if (!myWishes.some(w => w.id === wid)) return seal.replyToSender(ctx, msg, "❌ 编号错误或该心愿不属于你");
+    const withdrawWish = myWishes.find(w => w.id === wid);
+    if (!withdrawWish) return seal.replyToSender(ctx, msg, "❌ 编号错误或该心愿不属于你");
 
     WishUtils.savePool(pool.filter(w => w.id !== wid));
-    seal.replyToSender(ctx, msg, `✅ 已撤回心愿 ${wid}`);
+    let withdrawReply = `✅ 已撤回心愿 ${wid}`;
+    if (withdrawWish.rewardCode) {
+        const platform = msg.platform;
+        const rawUid = uid.replace(`${platform}:`, "");
+        wishAddToInv(`${platform}:${rawUid}`, withdrawWish.rewardCode, withdrawWish.rewardCount);
+        withdrawReply += `\n🎁 悬赏物品「${withdrawWish.rewardName}」×${withdrawWish.rewardCount} 已退回背包。`;
+    }
+    seal.replyToSender(ctx, msg, withdrawReply);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["撤心愿"] = cmd_withdraw_wish;
+
+// ==========================================
+// 悬赏心愿
+// ==========================================
+let cmd_bounty_wish = seal.ext.newCmdItemInfo();
+cmd_bounty_wish.name = "悬赏心愿";
+cmd_bounty_wish.help = "挂出带物品奖励的心愿\n格式：悬赏心愿 时间 地点 内容 | 物品名/码 数量\n示例：悬赏心愿 1400-1500 图书馆 陪我看书 | 滋补汤 1";
+cmd_bounty_wish.solve = (ctx, msg, cmdArgs) => {
+    const cfg = JSON.parse(ext.storageGet("global_feature_toggle") || "{}");
+    if (cfg.enable_wish_system === false) return seal.replyToSender(ctx, msg, "🌠 心愿功能已关闭。");
+    if (ext.storageGet("wish_bounty_enabled") === "false") return seal.replyToSender(ctx, msg, "🎁 悬赏心愿功能已关闭。");
+
+    const platform = msg.platform, uid = msg.sender.userId, name = getUserRoleName(platform, uid);
+    const day = ext.storageGet("global_days");
+    if (!name) return seal.replyToSender(ctx, msg, "请先绑定角色");
+    if (!day) return seal.replyToSender(ctx, msg, "请先设置全局天数");
+
+    const rawFull = msg.message.trim().replace(/^[。.]\s*悬赏心愿\s*/, "");
+    const pipeIdx = rawFull.search(/[|｜]/);
+    if (pipeIdx === -1) return seal.replyToSender(ctx, msg, "格式：悬赏心愿 时间 地点 内容 | 物品名 数量\n示例：悬赏心愿 1400-1500 图书馆 陪我看书 | 滋补汤 1");
+
+    const wishPart = rawFull.slice(0, pipeIdx).trim();
+    const rewardPart = rawFull.slice(pipeIdx + 1).trim();
+
+    const wishArgs = wishPart.split(/\s+/);
+    const rawT = wishArgs[0], place = wishArgs[1];
+    const content = wishArgs.slice(2).join(" ").trim();
+    if (!rawT || !place || !content) return seal.replyToSender(ctx, msg, "格式：悬赏心愿 时间 地点 内容 | 物品名 数量");
+
+    const rewardArgs = rewardPart.split(/\s+/);
+    if (rewardArgs.length < 2) return seal.replyToSender(ctx, msg, "❌ 悬赏格式：| 物品名 数量");
+    const rewardCount = parseInt(rewardArgs[rewardArgs.length - 1]);
+    if (isNaN(rewardCount) || rewardCount <= 0) return seal.replyToSender(ctx, msg, "❌ 悬赏数量必须为正整数");
+    const rewardInput = rewardArgs.slice(0, -1).join(" ");
+
+    const reg = JSON.parse(ext.storageGet("item_registry") || "{}");
+    const rewardItem = Object.values(reg).find(r => r.code === rewardInput.toUpperCase() || r.name === rewardInput);
+    if (!rewardItem) return seal.replyToSender(ctx, msg, `❌ 找不到物品「${rewardInput}」`);
+
+    const rawUid = uid.replace(`${platform}:`, "");
+    const roleKey = `${platform}:${rawUid}`;
+    if (!wishCheckInv(roleKey, rewardItem.code, rewardCount)) {
+        return seal.replyToSender(ctx, msg, `❌ 背包中「${rewardItem.name}」数量不足（需要 ${rewardCount}）`);
+    }
+
+    const timeResult = parseAndValidateTime(rawT, [], 0, "心愿");
+    if (!timeResult.valid) return seal.replyToSender(ctx, msg, timeResult.errorMsg);
+    const time = timeResult.time;
+    if (!checkRealityHourLimit(time, ctx, msg)) return;
+    const pCheck = checkPlaceCommon(platform, name, place, "悬赏心愿");
+    if (!pCheck.valid) return seal.replyToSender(ctx, msg, pCheck.errorMsg);
+    const conflicts = checkAcceptanceConflicts(platform, rawUid, name, day, time);
+    if (conflicts.length) return seal.replyToSender(ctx, msg, `⚠️ 时间冲突：\n${conflicts.join('\n')}`);
+
+    let pool = WishUtils.getPool();
+    const wishMaxConcurrentB = parseInt(ext.storageGet("wish_max_concurrent") || "3");
+    if (pool.filter(w => w.fromId === uid).length >= wishMaxConcurrentB) return seal.replyToSender(ctx, msg, `⚠️ 最多同时挂${wishMaxConcurrentB}个心愿`);
+    const wishDailyPostLimitB = parseInt(ext.storageGet("wish_daily_post_limit") || "0");
+    if (wishDailyPostLimitB > 0 && wishGetDailyCount(uid, day, 'post') >= wishDailyPostLimitB) {
+        return seal.replyToSender(ctx, msg, `⚠️ 今日发布心愿次数已达上限（${wishDailyPostLimitB}次）`);
+    }
+
+    let wishCoinCheck = null;
+    if (isLetterSystemEnabled()) {
+        wishCoinCheck = checkAndCostLetterCoin(ctx, msg, "wish");
+        if (!wishCoinCheck.success) { seal.replyToSender(ctx, msg, wishCoinCheck.errorMsg); return seal.ext.newCmdExecuteResult(true); }
+    }
+
+    wishRemoveFromInv(roleKey, rewardItem.code, rewardCount);
+
+    const id = Math.random().toString(36).slice(2, 9).toUpperCase();
+    pool.push({ id, day, time, place, content, fromId: uid, timestamp: Date.now(), rewardCode: rewardItem.code, rewardName: rewardItem.name, rewardCount });
+    WishUtils.savePool(pool);
+    wishIncrDailyCount(uid, day, 'post');
+
+    let successMsg = `✅ 悬赏心愿已发出！编号：${id}\n🎁 悬赏：${rewardItem.name} ×${rewardCount}（已从背包扣除）\n有效期：24小时`;
+    if (wishCoinCheck?.cost > 0) successMsg += `\n💰 已消耗写信币 ${wishCoinCheck.cost} 枚`;
+    seal.replyToSender(ctx, msg, successMsg);
+
+    if (JSON.parse(ext.storageGet("wish_public_send") || "false")) {
+        const gid = JSON.parse(ext.storageGet("adminAnnounceGroupId") || "null");
+        if (gid) {
+            const profile = getCharProfile(platform, name);
+            const genderEmoji = profile.gender === "男" ? "👨" : "👩";
+            const m = seal.newMessage(); m.messageType = "group"; m.groupId = `${platform}-Group:${gid}`;
+            seal.replyToSender(seal.createTempCtx(ctx.endPoint, m), m,
+                `🌠 新悬赏心愿 [${id}]\n${genderEmoji} ${name}\n📅 ${day} ${time.replace('-', ' ~ ')}\n📍 ${place}\n💌 ${content}\n🎁 悬赏：${rewardItem.name} ×${rewardCount}\n✨ 摘取：。摘心愿 ${id}`);
+        }
+    }
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["悬赏心愿"] = cmd_bounty_wish;
 
 // ========================
 // 🕊️ 寄信与关系线系统
@@ -4756,10 +4923,10 @@ function sendCombinedDetails(ctx, msg, toRoleName, fromRoleName, details, self) 
     const platform = msg.platform;
     const groups = JSON.parse(ext.storageGet("a_private_group") || "{}");
 
-    // 1. 获取对方的绑定信息（用于头像和可能的目标群）
-    const toAddr = groups[platform]?.[toRoleName];
+    // 1. 获取对方的绑定信息（uid为key的新结构）
+    const toUid = getUidByRoleName(platform, toRoleName);
+    const toAddr = toUid ? groups[platform]?.[toUid] : null;
     if (!toAddr || !details || details.length === 0) return;
-    const toUid = toAddr[0]; // 对方真实QQ
 
     // 2. 获取自己的真实QQ
     const sourceUid = msg.sender.userId.replace(`${platform}:`, "");
@@ -4768,7 +4935,8 @@ function sendCombinedDetails(ctx, msg, toRoleName, fromRoleName, details, self) 
     let targetGid;
     if (self) {
         // 发到自己群：用当前用户角色名获取自己的群
-        const selfAddr = groups[platform]?.[fromRoleName];
+        const fromUidKey = getUidByRoleName(platform, fromRoleName);
+        const selfAddr = fromUidKey ? groups[platform]?.[fromUidKey] : null;
         if (!selfAddr) return; // 自己未绑定群
         targetGid = selfAddr[1];
     } else {
@@ -7250,6 +7418,25 @@ ext.onNotCommandReceived = (ctx, msg) => {
         }
         if (raw === "查看全员统计") return cmd_all_stats.solve(ctx, msg, makeFakeCmdArgs([]));
         if (raw === "关系线统计") return cmd_rel_stats.solve(ctx, msg, makeFakeCmdArgs([]));
+        if (raw.startsWith("关系线设置")) {
+            const param = raw.slice(5).trim();
+            if (!param) {
+                const maxChars = ext.storageGet("max_detail_chars") || "500";
+                const maxRel = ext.storageGet("max_relationships_per_user") || "20";
+                return seal.replyToSender(ctx, msg, `📐 关系线设置\n字数上限：${maxChars} 字\n关系线上限：${maxRel} 条\n\n格式：\n关系线设置 字数上限 N\n关系线设置 关系上限 N`);
+            }
+            const m = param.match(/^(字数上限|关系上限)\s+(\d+)$/);
+            if (!m) return seal.replyToSender(ctx, msg, "格式：关系线设置 字数上限 500\n  或：关系线设置 关系上限 20");
+            const val = parseInt(m[2]);
+            if (val <= 0) return seal.replyToSender(ctx, msg, "❌ 数值必须为正整数");
+            if (m[1] === "字数上限") {
+                ext.storageSet("max_detail_chars", String(val));
+                return seal.replyToSender(ctx, msg, `✅ 单条拉线字数上限已设为 ${val} 字`);
+            } else {
+                ext.storageSet("max_relationships_per_user", String(val));
+                return seal.replyToSender(ctx, msg, `✅ 关系线上限已设为 ${val} 条`);
+            }
+        }
         if (raw.startsWith("发起官约")) {
             const rest = raw.slice(4).trim();
             if (rest) return cmd_create_official_appointment.solve(ctx, msg, makeFakeCmdArgs(rest.split(/\s+/)));
@@ -7280,6 +7467,35 @@ ext.onNotCommandReceived = (ctx, msg) => {
             // 逻辑 B: 项目不存在，提示联系管理员
             return seal.replyToSender(ctx, msg, `❌ 错误：尚未创建收集集「${t}」，请联系管理员创建后再提交。`);
         }
+    }
+
+    // --- 删除上传：用户撤回自己的提交 ---
+    if (raw.startsWith("删除上传")) {
+        const delArg = raw.slice(4).trim();
+        const delM = delArg.match(/^(.+?)\s+(\d+)$/);
+        if (!delM) {
+            return seal.replyToSender(ctx, msg, `📤 删除上传格式：删除上传 项目名 序号\n示例：删除上传 人物档案 3\n（先用「查看收集 项目名」查看序号）`);
+        }
+        const delProject = delM[1].trim();
+        const delIdx = parseInt(delM[2]) - 1;
+        const myName = getRoleName(ctx, msg);
+        const projectsList2 = getS("sys_info_projects");
+        if (!projectsList2.includes(delProject)) {
+            return seal.replyToSender(ctx, msg, `❌ 未找到项目「${delProject}」`);
+        }
+        let delData = getS("sys_info_collection");
+        const recs = delData[delProject] || [];
+        if (delIdx < 0 || delIdx >= recs.length) {
+            return seal.replyToSender(ctx, msg, `❌ 序号超出范围（共 ${recs.length} 条）`);
+        }
+        const target = recs[delIdx];
+        if (!isAdmin && target.sender !== myName) {
+            return seal.replyToSender(ctx, msg, `❌ 只能删除自己的提交（该条由「${target.sender || "未知"}」提交）`);
+        }
+        recs.splice(delIdx, 1);
+        delData[delProject] = recs;
+        ext.storageSet("sys_info_collection", JSON.stringify(delData));
+        return seal.replyToSender(ctx, msg, `✅ 已删除「${delProject}」第 ${delIdx + 1} 条提交。`);
     }
 
     // --- 所有人可用的查看功能 ---

@@ -714,6 +714,64 @@ function applyItemParam(name, val) {
 }
 
 // ========================
+// 心愿设置模块
+// ========================
+function showWishSettings(ctx, msg) {
+    const main = getMainExt();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件");
+    const cfg = JSON.parse(main.storageGet("global_feature_toggle") || "{}");
+    const wishEnabled = cfg.enable_wish_system !== false;
+    const bountyEnabled = main.storageGet("wish_bounty_enabled") !== "false";
+    const maxConcurrent = parseInt(main.storageGet("wish_max_concurrent") || "3");
+    const dailyPostLimit = parseInt(main.storageGet("wish_daily_post_limit") || "0");
+    const dailyPickLimit = parseInt(main.storageGet("wish_daily_pick_limit") || "0");
+    seal.replyToSender(ctx, msg, [
+        ".设置 心愿设置",
+        `【心愿系统】${wishEnabled ? '开启' : '关闭'}`,
+        `【悬赏开关】${bountyEnabled ? '开启' : '关闭'}`,
+        `【同时上限】${maxConcurrent}（每人最多同时存在的心愿数）`,
+        `【每日发布上限】${dailyPostLimit === 0 ? '不限' : dailyPostLimit + '次'}`,
+        `【每日摘取上限】${dailyPickLimit === 0 ? '不限' : dailyPickLimit + '次'}`,
+    ].join('\n'));
+}
+
+function applyWishParam(name, val) {
+    const main = getMainExt();
+    if (!main) return { success: false, message: "无法连接主插件" };
+    if (name === '心愿系统') {
+        const enabled = val === '开启' || val === '开' || val === 'true';
+        const cfg = JSON.parse(main.storageGet("global_feature_toggle") || "{}");
+        cfg.enable_wish_system = enabled;
+        main.storageSet("global_feature_toggle", JSON.stringify(cfg));
+        return { success: true, message: `【心愿系统】已${enabled ? '开启' : '关闭'}` };
+    }
+    if (name === '悬赏开关') {
+        const enabled = val === '开启' || val === '开' || val === 'true';
+        main.storageSet("wish_bounty_enabled", enabled ? "true" : "false");
+        return { success: true, message: `【悬赏开关】已${enabled ? '开启' : '关闭'}` };
+    }
+    if (name === '同时上限') {
+        const num = parseInt(val);
+        if (isNaN(num) || num < 1) return { success: false, message: "【同时上限】必须是 ≥1 的整数" };
+        main.storageSet("wish_max_concurrent", num.toString());
+        return { success: true, message: `【同时上限】已设为 ${num} 个` };
+    }
+    if (name === '每日发布上限') {
+        const num = parseInt(val);
+        if (isNaN(num) || num < 0) return { success: false, message: "【每日发布上限】必须是 ≥0 的整数（0=不限）" };
+        main.storageSet("wish_daily_post_limit", num.toString());
+        return { success: true, message: `【每日发布上限】已设为 ${num === 0 ? '不限' : num + '次'}` };
+    }
+    if (name === '每日摘取上限') {
+        const num = parseInt(val);
+        if (isNaN(num) || num < 0) return { success: false, message: "【每日摘取上限】必须是 ≥0 的整数（0=不限）" };
+        main.storageSet("wish_daily_pick_limit", num.toString());
+        return { success: true, message: `【每日摘取上限】已设为 ${num === 0 ? '不限' : num + '次'}` };
+    }
+    return { success: false, message: `未知参数：${name}` };
+}
+
+// ========================
 // 群组管理设置模块 - 简化版
 // ========================
 
@@ -796,6 +854,10 @@ function ensureDefaults(main) {
         "auto_day_reset_enabled": "false",
         "item_pool_mode": "自由池",
         "shop_refresh_hours": "24",
+        "wish_bounty_enabled": "true",
+        "wish_max_concurrent": "3",
+        "wish_daily_post_limit": "0",
+        "wish_daily_pick_limit": "0",
     };
     for (const [key, val] of Object.entries(defaults)) {
         const existing = main.storageGet(key);
@@ -1589,6 +1651,7 @@ cmd_settings.solve = (ctx, msg, cmdArgs) => {
         info += "· 。设置 群组设置\n";
         info += "· 。设置 礼品店设置\n";
         info += "· 。设置 攻防\n";
+        info += "· 。设置 心愿设置\n";
         return seal.replyToSender(ctx, msg, info);
     }
 
@@ -1596,7 +1659,7 @@ cmd_settings.solve = (ctx, msg, cmdArgs) => {
     const subCmdAliases = {
         '基础': '基础设置', '互动': '互动设置', '信件': '信件设置',
         '发送信件': '发送信件设置', '公告': '公告设置', '心动信': '心动信设置',
-        '道具': '道具设置', '拍卖': '拍卖设置', '群组': '群组设置', '礼品店': '礼品店设置'
+        '道具': '道具设置', '拍卖': '拍卖设置', '群组': '群组设置', '礼品店': '礼品店设置', '心愿': '心愿设置'
     };
     const resolvedCmd = subCmdAliases[subCmd] || subCmd;
 
@@ -1643,6 +1706,10 @@ cmd_settings.solve = (ctx, msg, cmdArgs) => {
 
         case "攻防":
             return showAttackDefenseSettings(ctx, msg);
+
+        case "心愿设置":
+            if (rawMsg.includes('\n')) return handleApply(ctx, msg, rawMsg, applyWishParam);
+            return showWishSettings(ctx, msg);
 
         default:
             return seal.replyToSender(ctx, msg, `❌ 未知的设置类别: ${subCmd}\n请输入 \`。设置\` 查看可用列表`);
