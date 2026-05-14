@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RPG系统
 // @author       长日将尽
-// @version      1.3.6
+// @version      1.3.7
 // @description  物品注册、背包、商城、抽取池、二手市场。所有数据存储在主插件 changri 中。
 // @timestamp    1745568000
 // @license      MIT
@@ -165,6 +165,18 @@ function getInvAll() {
 function saveInvAll(invs) {
     const main = getMainExt();
     if (main) main.storageSet("global_inventories", JSON.stringify(invs));
+}
+
+function pruneExpiredItems(roleKey) {
+    const invs = getInvAll();
+    const inv = invs[roleKey];
+    if (!inv) return;
+    const now = Date.now();
+    const pruned = inv.filter(e => !e.expiresAt || e.expiresAt > now);
+    if (pruned.length !== inv.length) {
+        invs[roleKey] = pruned;
+        saveInvAll(invs);
+    }
 }
 
 function saveInv(roleKey, inv) {
@@ -359,10 +371,11 @@ function modCharAttrs(platform, roleName, changesStr) {
 
     const uid = getRoleUid(platform, roleName);
     if (!uid) return;
-    const roleKey = `${platform}:${uid}`;
+    const primaryUid = getPrimaryUid(platform, uid);
+    const roleKey = `${platform}:${primaryUid}`;
     const charAttrs = getCharAttrs();
     // 新结构：charAttrs 以 uid 为 key
-    const roleAttrs = charAttrs[uid] || {};
+    const roleAttrs = charAttrs[primaryUid] || {};
     let attrsChanged = false;
 
     for (const [attr, delta] of Object.entries(changes)) {
@@ -378,7 +391,7 @@ function modCharAttrs(platform, roleName, changesStr) {
     }
 
     if (attrsChanged) {
-        charAttrs[uid] = roleAttrs;
+        charAttrs[primaryUid] = roleAttrs;
         saveCharAttrs(charAttrs);
     }
 }
@@ -891,11 +904,12 @@ cmd_set_attr.solve = (ctx, msg, cmdArgs) => {
     // 新结构：通过 roleName 反查 uid
     const setAttrUid = getRoleUid(msg.platform, roleName);
     if (!setAttrUid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${roleName}」`);
+    const setAttrPrimaryUid = getPrimaryUid(msg.platform, setAttrUid);
     const defs = getAttrDefs();
     const clamped = clampAttr(defs[attrName], val);
     const charAttrs = getCharAttrs();
-    if (!charAttrs[setAttrUid]) charAttrs[setAttrUid] = {};
-    charAttrs[setAttrUid][attrName] = clamped;
+    if (!charAttrs[setAttrPrimaryUid]) charAttrs[setAttrPrimaryUid] = {};
+    charAttrs[setAttrPrimaryUid][attrName] = clamped;
     saveCharAttrs(charAttrs);
     const note = clamped !== val ? `（已截断至范围内：${clamped}）` : "";
     seal.replyToSender(ctx, msg, `✅ 【${roleName}】${attrName} 已设为 ${clamped}${note}`);
@@ -1197,7 +1211,7 @@ cmd_adjust.solve = (ctx, msg, cmdArgs) => {
     const platform = msg.platform;
     const uid = getRoleUid(platform, roleName);
     if (!uid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${roleName}」。`);
-    const roleKey = `${platform}:${uid}`;
+    const roleKey = `${platform}:${getPrimaryUid(platform, uid)}`;
     const reg = getRegistry();
 
     // 收集所有 物品码+数量 对（从 arg2 开始，每两个一组）
@@ -1257,7 +1271,7 @@ cmd_grant_draws.solve = (ctx, msg, cmdArgs) => {
     // 新结构：通过 roleName 反查 uid
     const uid = getRoleUid(platform, roleName);
     if (!uid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${roleName}」。`);
-    const drRec = getPlayerDrawRec(platform, uid);
+    const drRec = getPlayerDrawRec(platform, getPrimaryUid(platform, uid));
     if (!drRec) return seal.replyToSender(ctx, msg, "❌ 无法读取抽取记录。");
     const { records, key, rec } = drRec;
     let poolName = null, n;
@@ -1289,7 +1303,7 @@ cmd_admin_bag.solve = (ctx, msg, cmdArgs) => {
     const adminPlatform = msg.platform;
     const adminTargetUid = getRoleUid(adminPlatform, roleName);
     if (!adminTargetUid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${roleName}」。`);
-    seal.replyToSender(ctx, msg, formatInventory(`${adminPlatform}:${adminTargetUid}`, roleName, getRegistry()));
+    seal.replyToSender(ctx, msg, formatInventory(`${adminPlatform}:${getPrimaryUid(adminPlatform, adminTargetUid)}`, roleName, getRegistry()));
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["查看背包"] = cmd_admin_bag;
@@ -1415,7 +1429,7 @@ cmd_give_item.solve = (ctx, msg, cmdArgs) => {
     // 2. 目标校验（新结构：通过 roleName 反查 uid）
     const toTargetUid = getRoleUid(platform, targetName);
     if (!toTargetUid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${targetName}」。`);
-    const toRoleKey = `${platform}:${toTargetUid}`; // 接收者Key
+    const toRoleKey = `${platform}:${getPrimaryUid(platform, toTargetUid)}`; // 接收者Key
 
     // 3. 物品与次数校验
     const reg = getRegistry();
@@ -1666,7 +1680,8 @@ cmd_cancel_sell.solve = (ctx, msg, cmdArgs) => {
     delete market[shCode];
     saveMarket(market);
     const cancelSellerUid = getRoleUid(platform, listing.sellerRole);
-    addToInv(cancelSellerUid ? `${platform}:${cancelSellerUid}` : `${platform}:${listing.sellerRole}`, listing.code, listing.count);
+    const cancelSellerPrimaryUid = cancelSellerUid ? getPrimaryUid(platform, cancelSellerUid) : listing.sellerRole;
+    addToInv(`${platform}:${cancelSellerPrimaryUid}`, listing.code, listing.count);
     const reg = getRegistry();
     seal.replyToSender(ctx, msg, `✅ 卖单 #${shCode} 已撤销，[${listing.code}]${reg[listing.code]?.name || listing.code} ×${listing.count} 已退回背包。`);
     return seal.ext.newCmdExecuteResult(true);
@@ -1700,7 +1715,8 @@ cmd_market.solve = (ctx, msg, cmdArgs) => {
         const buyerUid = getPrimaryUid(platform, buyerRawUid);
         const buyerRoleKey = `${platform}:${buyerUid}`;
         const sellerUid = getRoleUid(platform, listing.sellerRole);
-        const sellerRoleKey = sellerUid ? `${platform}:${sellerUid}` : `${platform}:${listing.sellerRole}`;
+        const sellerPrimaryUid = sellerUid ? getPrimaryUid(platform, sellerUid) : listing.sellerRole;
+        const sellerRoleKey = `${platform}:${sellerPrimaryUid}`;
 
         // 计算费用
         const totalPrice = listing.price * listing.count;
@@ -1873,6 +1889,7 @@ cmd_bag.solve = (ctx, msg, cmdArgs) => {
     const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
     const uid = getPrimaryUid(platform, rawUid);
     const roleKey = `${platform}:${uid}`;
+    pruneExpiredItems(roleKey);
     const reg = getRegistry();
 
     if (arg1 === "搜" || arg1 === "搜索") {
@@ -2465,7 +2482,7 @@ cmd_special_use.solve = (ctx, msg, cmdArgs) => {
         }
 
         const b_confirmedSchedule = JSON.parse(main.storageGet("b_confirmedSchedule") || "{}");
-        const targetKey = `${platform}:${trackerTargetUid}`;
+        const targetKey = `${platform}:${getPrimaryUid(platform, trackerTargetUid)}`;
         const matchingEvent = (b_confirmedSchedule[targetKey] || []).find(ev => ev.day === globalDay && timeOverlap(ev.time, timeRange));
         const successRate = parseInt(main.storageGet("item_tracker_success_rate") || "70");
         const showPartner = main.storageGet("item_tracker_show_partner") !== "false";
@@ -2537,7 +2554,7 @@ cmd_special_use.solve = (ctx, msg, cmdArgs) => {
         // 新结构：通过 roleName 反查 uid
         const trapTargetUid = getRoleUid(platform, targetName);
         if (!trapTargetUid) return seal.replyToSender(ctx, msg, `❌ 未找到目标角色「${targetName}」。`);
-        const targetKey = `${platform}:${trapTargetUid}`;
+        const targetKey = `${platform}:${getPrimaryUid(platform, trapTargetUid)}`;
 
         if (!removeFromInv(roleKey, "SPEC_005", 1)) return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的捕鼠器。");
 
@@ -2824,11 +2841,12 @@ ext.onNotCommandReceived = (ctx, msg) => {
                     // 新结构：通过 roleName 反查 uid
                     const rUidAttr = getRoleUid(platform, r);
                     if (!rUidAttr) return;
-                    if (!charAttrs[rUidAttr]) charAttrs[rUidAttr] = {};
+                    const rPrimaryUidAttr = getPrimaryUid(platform, rUidAttr);
+                    if (!charAttrs[rPrimaryUidAttr]) charAttrs[rPrimaryUidAttr] = {};
                     const v = isNaN(vals[i]) ? vals[0] : vals[i];
-                    const old = charAttrs[rUidAttr][attrName] ?? (defs[attrName].default ?? 0);
+                    const old = charAttrs[rPrimaryUidAttr][attrName] ?? (defs[attrName].default ?? 0);
                     const next = clampAttr(defs[attrName], op === "++" ? old + v : old - v);
-                    charAttrs[rUidAttr][attrName] = next;
+                    charAttrs[rPrimaryUidAttr][attrName] = next;
                     res.push(`${r}：${old}→${next}`);
                     notifyList.push({ r, old, next });
                 });
@@ -2846,7 +2864,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
                     // 新结构：通过 roleName 反查 uid
                     const rUid = getRoleUid(platform, r);
                     if (!rUid) return;
-                    const roleKey = `${platform}:${rUid}`;
+                    const roleKey = `${platform}:${getPrimaryUid(platform, rUid)}`;
                     const v = isNaN(vals[i]) ? vals[0] : vals[i];
                     const inv = getInv(roleKey);
                     const entry = inv.find(e => e.code === currencyCode);
@@ -5449,12 +5467,13 @@ cmd_profile.solve = (ctx, msg, cmdArgs) => {
     const platform = msg.platform;
     const uid = getRoleUid(platform, roleName);
     if (!uid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${roleName}」。`);
-    const roleKey = `${platform}:${uid}`;
+    const primaryUid = getPrimaryUid(platform, uid);
+    const roleKey = `${platform}:${primaryUid}`;
 
     // 属性
     const defs = getAttrDefs();
     const allAttrs = getCharAttrs();
-    const myAttrs = allAttrs[roleName] || {};
+    const myAttrs = allAttrs[primaryUid] || {};
     const attrStr = Object.keys(defs).length
         ? Object.keys(defs).map(k => `${k}: ${myAttrs[k] ?? defs[k].default ?? 0}`).join(" | ")
         : "暂无属性";
@@ -5527,7 +5546,7 @@ cmd_batch_give.solve = (ctx, msg, cmdArgs) => {
     for (const name of targets) {
         const uid = getRoleUid(platform, name);
         if (!uid) { errs.push(name); continue; }
-        addToInv(`${platform}:${uid}`, item.code, delta);
+        addToInv(`${platform}:${getPrimaryUid(platform, uid)}`, item.code, delta);
         notifyPlayer(ctx, platform, name, `📦【背包更新】${item.name} ×${delta} 已加入你的背包。`);
     }
 

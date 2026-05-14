@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         长日设置
 // @author       长日将尽
-// @version      1.3.6
+// @version      1.3.7
 // @description  独立的设置控制台（基础、互动、信件、公告）及天数系统、统计报告。所有数据统一存储在主插件 changri 中。
 // @timestamp    1743292800
 // @license      MIT
@@ -637,7 +637,7 @@ function applyAuctionParam(name, val) {
         return { success: true, message: `【展示最高出价者】已${v ? "开启" : "关闭"}` };
     }
     if (name === '拍卖货币') {
-        const attr = val.trim();
+        const attr = val.trim().replace(/（[^）]*）$/, '').trim();
         if (!attr) return { success: false, message: "【拍卖货币】不能为空" };
         const presets = JSON.parse(main.storageGet("sys_attr_presets") || "[]");
         const reg = JSON.parse(main.storageGet("item_registry") || "{}");
