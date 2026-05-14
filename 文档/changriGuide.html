@@ -37,48 +37,26 @@ body {
 }
 
 /* ── TOP NAV ─── */
-.topnav {
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  background: var(--black);
-  border-bottom: 2px solid var(--gold);
-  display: flex;
-  align-items: center;
-  gap: 0;
-  padding: 0 32px;
-  height: 52px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.topnav::-webkit-scrollbar { display: none; }
-.topnav-brand {
-  font-family: 'Playfair Display', serif;
-  font-size: 13px;
-  letter-spacing: 5px;
-  color: var(--gold);
-  text-transform: uppercase;
-  white-space: nowrap;
-  margin-right: 32px;
-  flex-shrink: 0;
-}
-.topnav a {
-  font-family: 'Cormorant Garamond', serif;
-  font-size: 11.5px;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: rgba(247,244,238,0.65);
-  text-decoration: none;
-  padding: 0 16px;
-  height: 52px;
-  display: flex;
-  align-items: center;
-  white-space: nowrap;
-  border-right: 1px solid rgba(255,255,255,0.08);
-  transition: color 0.2s, background 0.2s;
-}
-.topnav a:first-of-type { border-left: 1px solid rgba(255,255,255,0.08); }
-.topnav a:hover { color: var(--gold-light); background: rgba(184,154,106,0.1); }
+.topnav { position: sticky; top: 0; z-index: 100; background: var(--black); border-bottom: 2px solid var(--gold); display: flex; align-items: center; height: 52px; padding: 0 0 0 24px; }
+.topnav-brand { font-family: 'Playfair Display', serif; font-size: 13px; letter-spacing: 5px; color: var(--gold); text-transform: uppercase; white-space: nowrap; flex-shrink: 0; padding-right: 20px; border-right: 1px solid rgba(255,255,255,0.08); }
+
+/* desktop link strip */
+.nav-links { display: flex; align-items: center; flex: 1; overflow-x: auto; scrollbar-width: none; min-width: 0; }
+.nav-links::-webkit-scrollbar { display: none; }
+.nav-links a { font-family: 'Cormorant Garamond', serif; font-size: 11.5px; letter-spacing: 2px; text-transform: uppercase; color: rgba(247,244,238,0.65); text-decoration: none; padding: 0 15px; height: 52px; display: flex; align-items: center; white-space: nowrap; border-right: 1px solid rgba(255,255,255,0.08); transition: color 0.2s, background 0.2s; }
+.nav-links a:first-child { border-left: 1px solid rgba(255,255,255,0.08); }
+.nav-links a:hover, .nav-links a.active { color: var(--gold-light); background: rgba(184,154,106,0.1); }
+
+/* right-side action buttons */
+.nav-actions { display: flex; align-items: center; flex-shrink: 0; margin-left: auto; }
+
+/* hamburger — hidden on desktop */
+.nav-hamburger { display: none; background: none; border: none; border-left: 1px solid rgba(255,255,255,0.08); color: rgba(247,244,238,0.6); height: 52px; width: 48px; cursor: pointer; flex-direction: column; align-items: center; justify-content: center; gap: 5px; transition: color 0.2s; flex-shrink: 0; }
+.nav-hamburger:hover { color: var(--gold-light); background: rgba(184,154,106,0.08); }
+.nav-hamburger span { display: block; width: 18px; height: 1.5px; background: currentColor; border-radius: 2px; transition: transform 0.25s, opacity 0.25s; transform-origin: center; }
+.nav-hamburger.open span:nth-child(1) { transform: translateY(6.5px) rotate(45deg); }
+.nav-hamburger.open span:nth-child(2) { opacity: 0; transform: scaleX(0); }
+.nav-hamburger.open span:nth-child(3) { transform: translateY(-6.5px) rotate(-45deg); }
 
 /* ── HERO ─── */
 .hero {
@@ -475,110 +453,21 @@ p { margin-bottom: 12px; color: #3A3630; }
   .hero { grid-template-columns: 1fr; padding: 48px 24px; }
   .hero-right { border-left: none; padding-left: 0; border-top: 1px solid rgba(184,154,106,0.3); padding-top: 32px; }
   .page { padding: 0 20px 60px; }
-  .topnav { padding: 0 16px; }
+  .topnav { padding: 0 0 0 16px; }
+  .topnav-brand { font-size: 11px; letter-spacing: 3px; }
   .cmd-desc { display: none; }
-}
 
-/* ── ADMIN LOCK ─── */
-.admin-content { display: none !important; }
-body.admin-unlocked .admin-content { display: block !important; }
-body.admin-unlocked .admin-content.section-header { display: flex !important; }
-.nav-lock-btn {
-  margin-left: auto;
-  background: none;
-  border: 1px solid rgba(184,154,106,0.4);
-  color: var(--gold-light);
-  padding: 5px 16px;
-  border-radius: 20px;
-  cursor: pointer;
-  font-size: 13px;
-  font-family: 'Noto Serif SC', serif;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  transition: all 0.2s;
-  white-space: nowrap;
+  /* hide desktop link strip, show hamburger */
+  .nav-links { display: none; flex-direction: column; position: absolute; top: 52px; left: 0; right: 0; background: var(--black); border-bottom: 2px solid var(--gold); z-index: 99; max-height: calc(100vh - 52px); overflow-y: auto; flex: none; width: 100%; }
+  .nav-links.open { display: flex; }
+  .nav-links a { height: auto; padding: 15px 24px; border-right: none; border-left: none !important; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 13px; letter-spacing: 1.5px; width: 100%; }
+  .nav-links a:last-child { border-bottom: none; }
+  .nav-hamburger { display: flex; }
+
+  /* hide search text on mobile */
+  .search-btn .search-label { display: none; }
+  .search-btn { padding: 0 14px; }
 }
-.nav-lock-btn:hover { background: rgba(184,154,106,0.15); border-color: var(--gold); }
-.lock-overlay {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: rgba(12,11,9,0.78);
-  z-index: 1000;
-  align-items: center;
-  justify-content: center;
-  backdrop-filter: blur(4px);
-}
-.lock-overlay.open { display: flex; }
-.lock-modal {
-  background: var(--warm-white);
-  border: 1px solid var(--gold);
-  border-radius: 14px;
-  padding: 44px 52px;
-  max-width: 360px;
-  width: 90%;
-  text-align: center;
-  animation: modal-in 0.22s ease;
-}
-@keyframes modal-in {
-  from { opacity: 0; transform: scale(0.92) translateY(14px); }
-  to   { opacity: 1; transform: scale(1)    translateY(0); }
-}
-.lock-modal-icon { font-size: 42px; margin-bottom: 14px; }
-.lock-modal-title { font-size: 20px; font-weight: 600; margin-bottom: 6px; }
-.lock-modal-desc  { font-size: 13px; color: var(--muted); margin-bottom: 22px; line-height: 1.6; }
-.lock-modal input {
-  width: 100%;
-  padding: 10px 16px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 18px;
-  font-family: 'Noto Serif SC', serif;
-  background: var(--cream);
-  color: var(--black);
-  text-align: center;
-  letter-spacing: 6px;
-  margin-bottom: 14px;
-  outline: none;
-  transition: border-color 0.2s;
-}
-.lock-modal input:focus { border-color: var(--gold); }
-.lock-modal input.shake { border-color: var(--red); animation: shake 0.35s ease; }
-@keyframes shake {
-  0%,100%{transform:translateX(0)} 20%{transform:translateX(-8px)} 60%{transform:translateX(8px)} 80%{transform:translateX(-4px)}
-}
-.lock-modal-btn {
-  width: 100%;
-  padding: 10px;
-  background: var(--black);
-  color: var(--gold-light);
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-family: 'Noto Serif SC', serif;
-  cursor: pointer;
-  transition: background 0.2s;
-  margin-bottom: 10px;
-}
-.lock-modal-btn:hover { background: #222; }
-.lock-modal-cancel { font-size: 12px; color: var(--muted); cursor: pointer; text-decoration: underline; }
-.admin-lock-hint {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 11px 18px;
-  background: var(--section-bg);
-  border: 1px dashed var(--border);
-  border-radius: 8px;
-  margin: 8px 0 16px;
-  color: var(--muted);
-  font-size: 13px;
-  cursor: pointer;
-  transition: border-color 0.2s, color 0.2s;
-}
-.admin-lock-hint:hover { border-color: var(--gold); color: var(--black); }
-body.admin-unlocked .admin-lock-hint { display: none !important; }
 
 /* ── SETTINGS GRID ─── */
 .settings-grid {
@@ -910,57 +799,6 @@ body.admin-unlocked .admin-lock-hint { display: none !important; }
   to   { transform: translateX(115%); opacity: 0; }
 }
 
-/* ── ADMIN LOCK: THEATRICS ── */
-.lock-modal { overflow: hidden; }
-.lock-modal-scan-header {
-  margin: -44px -52px 28px;
-  padding: 11px 20px;
-  background: var(--black);
-  border-bottom: 1px solid rgba(184,154,106,0.3);
-  position: relative;
-  overflow: hidden;
-  border-radius: 14px 14px 0 0;
-}
-.lock-modal-security-level {
-  font-family: 'Courier New', monospace;
-  font-size: 9px;
-  letter-spacing: 3px;
-  text-transform: uppercase;
-  color: var(--gold);
-  text-align: center;
-  position: relative;
-  z-index: 1;
-}
-.lock-modal-scan-line {
-  position: absolute;
-  left: 0; right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(184,154,106,0.5), transparent);
-  animation: lock-scan 2s linear infinite;
-  pointer-events: none;
-}
-@keyframes lock-scan {
-  from { top: 0; }
-  to   { top: 100%; }
-}
-.lock-modal-error {
-  font-family: 'Courier New', monospace;
-  font-size: 10px;
-  letter-spacing: 1.5px;
-  color: var(--red);
-  text-align: center;
-  min-height: 16px;
-  margin: -6px 0 10px;
-  opacity: 0;
-}
-.lock-modal-error.show {
-  animation: error-flash 0.3s ease forwards;
-}
-@keyframes error-flash {
-  0%   { opacity: 0; transform: translateY(-4px); }
-  100% { opacity: 1; transform: translateY(0); }
-}
-
 /* ── TABLE ROW SCAN ── */
 .guide-table tbody tr:hover td {
   background: var(--gold-dim);
@@ -1032,16 +870,10 @@ footer.footer { position: relative; z-index: 1; }
   will-change: transform, opacity;
 }
 .section-card.in-view { opacity: 1; transform: translateY(0); }
-.section-card.admin-content { display: none !important; }
-body.admin-unlocked .section-card.admin-content {
-  display: block !important; opacity: 1; transform: translateY(0);
-}
 .section-card .section-header { margin-top: 0; }
-.admin-lock-hint { margin: 24px 48px; }
 
 @media (max-width: 768px) {
   .section-card { padding: 0 20px 40px; border-radius: 14px 14px 0 0; }
-  .admin-lock-hint { margin: 16px 20px; }
 }
 
 /* ── CLICK RIPPLES ── */
@@ -1066,6 +898,40 @@ body.admin-unlocked .section-card.admin-content {
   from { transform: translate(-50%, -50%) scale(0); opacity: 0.9; }
   to   { transform: translate(-50%, -50%) scale(1); opacity: 0; }
 }
+
+/* ── SEARCH ─── */
+.search-btn { flex-shrink: 0; background: none; border: none; border-left: 1px solid rgba(255,255,255,0.08); color: rgba(247,244,238,0.5); height: 52px; padding: 0 18px; cursor: pointer; display: flex; align-items: center; gap: 7px; font-family: 'Cormorant Garamond', serif; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; transition: color 0.2s, background 0.2s; white-space: nowrap; }
+.search-btn:hover { color: var(--gold-light); background: rgba(184,154,106,0.1); }
+.search-btn svg { flex-shrink: 0; }
+
+.search-overlay { position: fixed; inset: 0; z-index: 400; background: rgba(12,11,9,0.84); backdrop-filter: blur(6px); display: flex; flex-direction: column; align-items: center; padding-top: 80px; padding-left: 16px; padding-right: 16px; opacity: 0; pointer-events: none; transition: opacity 0.18s; }
+.search-overlay.open { opacity: 1; pointer-events: all; }
+
+.search-box { width: 100%; max-width: 680px; background: var(--black); border: 1px solid rgba(184,154,106,0.4); position: relative; box-shadow: 0 24px 64px rgba(0,0,0,0.6); }
+.search-box::before { content: ''; position: absolute; top: -1px; left: -1px; width: 14px; height: 14px; border-top: 1px solid var(--gold); border-left: 1px solid var(--gold); pointer-events: none; }
+.search-box::after  { content: ''; position: absolute; bottom: -1px; right: -1px; width: 14px; height: 14px; border-bottom: 1px solid var(--gold); border-right: 1px solid var(--gold); pointer-events: none; }
+
+.search-input-row { display: flex; align-items: center; padding: 0 18px; gap: 12px; border-bottom: 1px solid rgba(184,154,106,0.15); }
+.search-input { flex: 1; background: none; border: none; outline: none; font-family: 'Noto Serif SC', serif; font-size: 17px; color: var(--cream); padding: 18px 0; }
+.search-input::placeholder { color: rgba(247,244,238,0.2); }
+.search-count-label { font-family: 'Cormorant Garamond', serif; font-size: 12px; letter-spacing: 1px; color: var(--muted); white-space: nowrap; flex-shrink: 0; min-width: 56px; text-align: right; }
+.search-close-btn { background: none; border: none; color: rgba(247,244,238,0.35); font-size: 17px; cursor: pointer; padding: 0 0 0 10px; line-height: 1; transition: color 0.15s; flex-shrink: 0; }
+.search-close-btn:hover { color: rgba(247,244,238,0.7); }
+
+.search-results-list { max-height: 380px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(184,154,106,0.25) transparent; }
+.search-result-item { display: flex; align-items: flex-start; gap: 14px; padding: 13px 18px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.04); transition: background 0.1s; }
+.search-result-item:hover { background: rgba(184,154,106,0.09); }
+.search-result-item:last-child { border-bottom: none; }
+.sr-num { font-family: 'Cormorant Garamond', serif; font-size: 11px; color: rgba(184,154,106,0.4); min-width: 22px; margin-top: 2px; flex-shrink: 0; }
+.sr-text { font-family: 'Noto Serif SC', serif; font-size: 13px; color: rgba(247,244,238,0.7); line-height: 1.65; }
+.sr-text mark { background: rgba(184,154,106,0.3); color: var(--gold-light); border-radius: 2px; padding: 0 2px; font-style: normal; }
+.search-empty-msg { padding: 28px 18px; font-family: 'Cormorant Garamond', serif; font-size: 14px; color: rgba(247,244,238,0.3); letter-spacing: 1px; text-align: center; }
+.search-hint-bar { padding: 9px 18px; border-top: 1px solid rgba(184,154,106,0.1); display: flex; gap: 18px; }
+.search-hint-bar span { font-family: 'Cormorant Garamond', serif; font-size: 11px; letter-spacing: 1px; color: rgba(247,244,238,0.2); display: flex; align-items: center; gap: 5px; }
+.search-hint-bar kbd { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 3px; padding: 0 5px; font-size: 10px; font-family: 'Courier New', monospace; }
+
+@keyframes search-flash { 0%,100% { background-color: transparent; } 30% { background-color: rgba(184,154,106,0.28); } }
+.search-flash { animation: search-flash 1.4s ease; border-radius: 3px; }
 </style>
 </head>
 <body>
@@ -1073,19 +939,28 @@ body.admin-unlocked .section-card.admin-content {
 <!-- NAV -->
 <nav class="topnav">
   <div class="topnav-brand">长日 RPG</div>
-  <button class="nav-lock-btn" id="navLockBtn" onclick="toggleLock()" title="解锁管理员内容">🔒 管理员</button>
-  <a href="#overview">系统概览</a>
-  <a href="#player">玩家指令</a>
-  <a href="#invitation">邀约系统</a>
-  <a href="#relation">关系与信件</a>
-  <a href="#shop">礼品与商城</a>
-  <a href="#items">物品系统</a>
-  <a href="#battle">攻防战斗</a>
-  <a href="#admin">管理操作</a>
-  <a href="#settings">系统设置</a>
-  <a href="#letter">写信综</a>
-  <a href="#dinner">晚餐系统</a>
-  <a href="#templates">配置模版</a>
+
+  <div class="nav-links" id="navLinks">
+    <a href="#overview" onclick="closeNavMenu()">系统概览</a>
+    <a href="#player" onclick="closeNavMenu()">玩家指令</a>
+    <a href="#invitation" onclick="closeNavMenu()">邀约系统</a>
+    <a href="#relation" onclick="closeNavMenu()">关系与信件</a>
+    <a href="#shop" onclick="closeNavMenu()">礼品与商城</a>
+    <a href="#items" onclick="closeNavMenu()">物品系统</a>
+    <a href="#battle" onclick="closeNavMenu()">攻防战斗</a>
+    <a href="#letter" onclick="closeNavMenu()">写信综</a>
+    <a href="#dinner" onclick="closeNavMenu()">晚餐系统</a>
+  </div>
+
+  <div class="nav-actions">
+    <button class="search-btn" onclick="openSearch()">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="6" cy="6" r="4.5"/><line x1="9.5" y1="9.5" x2="13" y2="13"/></svg>
+      <span class="search-label">搜索</span>
+    </button>
+    <button class="nav-hamburger" id="navHamburger" onclick="toggleNavMenu()" aria-label="菜单">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
 </nav>
 
 <!-- HERO -->
@@ -1238,10 +1113,15 @@ body.admin-unlocked .section-card.admin-content {
 
 <div class="sub-section">
   <h3 class="sub-title">地点系统</h3>
+  <p style="font-size:14px;color:var(--muted);margin-bottom:12px">发起私约时需填写地点。地点系统开启后，只有可进入的地点才能用于邀约；钥匙决定能否进入上锁的地点。</p>
   <div class="cmd-list">
-    <div class="cmd-item"><span class="cmd-text">地点 查看</span><span class="cmd-desc">查看可邀约的地点列表</span><button class="cmd-copy" onclick="copyCmd(this,'地点 查看')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">地点 钥匙</span><span class="cmd-desc">查看你拥有的私人房间钥匙</span><button class="cmd-copy" onclick="copyCmd(this,'地点 钥匙')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">查看可私约地点</span><span class="cmd-desc">查看允许私约的地点</span><button class="cmd-copy" onclick="copyCmd(this,'查看可私约地点')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">地点 查看</span><span class="cmd-desc">查看所有地点及你的进入权限：📍 开放 · 🔑 已解锁 · 🔒 需要钥匙</span><button class="cmd-copy" onclick="copyCmd(this,'地点 查看')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">地点 钥匙</span><span class="cmd-desc">查看你持有的所有钥匙，含地点是否仍存在、是否当前上锁</span><button class="cmd-copy" onclick="copyCmd(this,'地点 钥匙')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">查看可私约地点</span><span class="cmd-desc">查看允许私约的地点列表</span><button class="cmd-copy" onclick="copyCmd(this,'查看可私约地点')">复制</button></div>
+  </div>
+  <div class="callout tip" style="margin-top:12px">
+    <div class="callout-title">🏠 私人房间</div>
+    <p>除公共地点外，也可使用「<strong>[角色名]的房间</strong>」格式进行私约（需管理员开启私人房间功能）。进入地点被拒绝时，系统会自动列出你可进入的地点，方便直接替换。</p>
   </div>
 </div>
 
@@ -1513,43 +1393,6 @@ body.admin-unlocked .section-card.admin-content {
   </table>
 </div>
 
-<div class="sub-section admin-content">
-  <h3 class="sub-title">商城（管理员配置）<span class="tag tag-admin" style="margin-left:8px">管理员</span></h3>
-  <div class="cmd-list">
-    <div class="cmd-item"><span class="cmd-text">上传预设礼物 #编号&礼物名&内容描述</span><span class="cmd-desc">添加单件预设礼物</span><button class="cmd-copy" onclick="copyCmd(this,'上传预设礼物 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">上传预设礼物 导出</span><span class="cmd-desc">导出所有礼物为 JSON 格式（备份用）</span><button class="cmd-copy" onclick="copyCmd(this,'上传预设礼物 导出')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">删除预设礼物 礼物编号</span><span class="cmd-desc">从商城移除礼物，支持逗号分隔批量删除</span><button class="cmd-copy" onclick="copyCmd(this,'删除预设礼物 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">商城</span><span class="cmd-desc">查看所有上架物品</span><button class="cmd-copy" onclick="copyCmd(this,'商城')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">上架商城 [物品码]*[价格]</span><span class="cmd-desc">上架物品到商城</span><button class="cmd-copy" onclick="copyCmd(this,'上架商城 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">商城下架 [物品码]</span><span class="cmd-desc">下架商城物品</span><button class="cmd-copy" onclick="copyCmd(this,'商城下架 ')">复制</button></div>
-  </div>
-
-  <div class="code-block" style="margin-top:14px">
-    <div class="code-block-header">
-      <span class="code-block-label">上传预设礼物 · 格式与案例</span>
-      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
-    </div>
-    <pre><span class="comment"># 单件格式：#编号&礼物名&内容描述</span>
-上传预设礼物 #1&玫瑰花&一束盛开的红玫瑰，花语是爱与热情
-
-<span class="comment"># 批量格式：多件用 $ 分隔，一次发送</span>
-上传预设礼物 #1&玫瑰花&一束盛开的红玫瑰$#2&巧克力&精选手工黑巧克力礼盒$#3&星空瓶&装满流星碎片的玻璃瓶
-
-<span class="comment"># 编号可自定义，重复编号会覆盖已有礼物</span>
-<span class="comment"># 导出备份所有礼物数据：</span>
-上传预设礼物 导出</pre>
-  </div>
-</div>
-
-<div class="sub-section admin-content">
-  <h3 class="sub-title">拍卖系统<span class="tag tag-admin" style="margin-left:8px">管理员</span></h3>
-  <div class="cmd-list">
-    <div class="cmd-item"><span class="cmd-text">添加拍卖物品 [物品] [初始价格]</span><span class="cmd-desc">上架拍卖物品</span><button class="cmd-copy" onclick="copyCmd(this,'添加拍卖物品 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">删除拍卖物品 [物品ID]</span><span class="cmd-desc">取消拍卖</span><button class="cmd-copy" onclick="copyCmd(this,'删除拍卖物品 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">结算拍卖 [物品ID]</span><span class="cmd-desc">完成拍卖，给最高价出价者</span><button class="cmd-copy" onclick="copyCmd(this,'结算拍卖 ')">复制</button></div>
-  </div>
-</div>
-
 <!-- ═══════════════════════════════════════════════ SECTION: ITEMS -->
 <div id="items" class="section-header">
   <div class="section-icon">🎒</div>
@@ -1610,66 +1453,6 @@ body.admin-unlocked .section-card.admin-content {
       <div class="cmd-item"><span class="cmd-text">合成 [物品名] [数量]</span><span class="cmd-desc">执行合成</span><button class="cmd-copy" onclick="copyCmd(this,'合成 ')">复制</button></div>
       <div class="cmd-item"><span class="cmd-text">上架二手 [物品码] [价格]</span><span class="cmd-desc">在二手市场出售物品</span><button class="cmd-copy" onclick="copyCmd(this,'上架二手 ')">复制</button></div>
       <div class="cmd-item"><span class="cmd-text">赠送道具 [角色名] [物品码] [数量]</span><span class="cmd-desc">赠送背包物品给其他玩家（数量省略默认 1）</span><button class="cmd-copy" onclick="copyCmd(this,'赠送道具 ')">复制</button></div>
-    </div>
-  </div>
-</div>
-
-<!-- 管理员配置 -->
-<div class="sub-section admin-content">
-  <h3 class="sub-title">管理员配置<span class="tag tag-admin" style="margin-left:8px">管理员</span></h3>
-
-  <div class="cmd-group">
-    <div class="cmd-group-label">属性 · 货币</div>
-    <div class="cmd-list">
-      <div class="cmd-item"><span class="cmd-text">我创建属性 [属性名] [最小] [最大] [默认]</span><span class="cmd-desc">注册属性（支持换行批量，每行一条）</span><button class="cmd-copy" onclick="copyCmd(this,'我创建属性 ')">复制</button></div>
-      <div class="cmd-item"><span class="cmd-text">我移除属性 [属性名]</span><span class="cmd-desc">删除属性定义并清除所有角色的对应数值（支持换行批量）</span><button class="cmd-copy" onclick="copyCmd(this,'我移除属性 ')">复制</button></div>
-      <div class="cmd-item"><span class="cmd-text">注册货币 [货币名]*[描述]</span><span class="cmd-desc">注册新货币</span><button class="cmd-copy" onclick="copyCmd(this,'注册货币 ')">复制</button></div>
-    </div>
-  </div>
-
-  <div class="cmd-group">
-    <div class="cmd-group-label">物品注册</div>
-    <div class="cmd-list">
-      <div class="cmd-item"><span class="cmd-text">上载物品 [物品名]*[描述]*[次数]*[效果]*[允许二手]</span><span class="cmd-desc">注册普通物品（支持换行批量）</span><button class="cmd-copy" onclick="copyCmd(this,'上载物品 ')">复制</button></div>
-      <div class="cmd-item"><span class="cmd-text">上载互动物品 [物品名]*[描述]*[次数]*[效果]*[允许二手]</span><span class="cmd-desc">注册互动物品（可对他人使用）</span><button class="cmd-copy" onclick="copyCmd(this,'上载互动物品 ')">复制</button></div>
-      <div class="cmd-item"><span class="cmd-text">删除物品 [物品码或名称]</span><span class="cmd-desc">彻底删除物品，自动清出背包/商城/池子/配方/二手</span><button class="cmd-copy" onclick="copyCmd(this,'删除物品 ')">复制</button></div>
-    </div>
-    <div class="code-block" style="margin-top:12px">
-      <div class="code-block-header">
-        <span class="code-block-label">上载物品 · 批量格式</span>
-        <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
-      </div>
-      <pre><span class="comment"># 物品名*描述*次数*效果*允许二手</span>
-<span class="comment"># 次数：-1 无限 / 0 一次性 / N 指定次数</span>
-上载物品
-医疗包*恢复生命*3*HP+50*Y
-魔法卷轴*一次性法术*0*MP+30*N
-永久属性书*永久增强*-1*ATK+5*N</pre>
-    </div>
-  </div>
-
-  <div class="cmd-group">
-    <div class="cmd-group-label">装备 · 池子 · 合成</div>
-    <div class="cmd-list">
-      <div class="cmd-item"><span class="cmd-text">物品列表</span><span class="cmd-desc">查看所有已注册物品</span><button class="cmd-copy" onclick="copyCmd(this,'物品列表')">复制</button></div>
-      <div class="cmd-item"><span class="cmd-text">装备列表</span><span class="cmd-desc">查看所有可用装备</span><button class="cmd-copy" onclick="copyCmd(this,'装备列表')">复制</button></div>
-      <div class="cmd-item"><span class="cmd-text">查看配方</span><span class="cmd-desc">查看所有合成配方</span><button class="cmd-copy" onclick="copyCmd(this,'查看配方')">复制</button></div>
-      <div class="cmd-item"><span class="cmd-text">注册装备 [装备名]*[描述]*[槽位]*[属性]</span><span class="cmd-desc">注册新装备</span><button class="cmd-copy" onclick="copyCmd(this,'注册装备 ')">复制</button></div>
-      <div class="cmd-item"><span class="cmd-text">注册池子 [池子名] [fixed/free]</span><span class="cmd-desc">创建抽取池</span><button class="cmd-copy" onclick="copyCmd(this,'注册池子 ')">复制</button></div>
-      <div class="cmd-item"><span class="cmd-text">上架池子 [池子名] [物品码]*[权重/数量]</span><span class="cmd-desc">向池子添加物品</span><button class="cmd-copy" onclick="copyCmd(this,'上架池子 ')">复制</button></div>
-      <div class="cmd-item"><span class="cmd-text">从池移除 [池子名] [物品码]</span><span class="cmd-desc">从池子移除物品</span><button class="cmd-copy" onclick="copyCmd(this,'从池移除 ')">复制</button></div>
-      <div class="cmd-item"><span class="cmd-text">池子设定 [池子名]:[次数]</span><span class="cmd-desc">配置每日抽取限制</span><button class="cmd-copy" onclick="copyCmd(this,'池子设定 ')">复制</button></div>
-      <div class="cmd-item"><span class="cmd-text">上传配方 [产物]*[材料:数量,...]*[成功率]</span><span class="cmd-desc">注册合成配方</span><button class="cmd-copy" onclick="copyCmd(this,'上传配方 ')">复制</button></div>
-    </div>
-  </div>
-
-  <div class="cmd-group">
-    <div class="cmd-group-label">背包调整</div>
-    <div class="cmd-list">
-      <div class="cmd-item"><span class="cmd-text">调整 [角色名] [物品码] [+/-数量] ...</span><span class="cmd-desc">直接修改玩家背包，支持一次多件：调整 张三 ITEM_001 +3 ITEM_002 -1</span><button class="cmd-copy" onclick="copyCmd(this,'调整 ')">复制</button></div>
-      <div class="cmd-item"><span class="cmd-text">批量发放 [物品码/名] [+数量] [角色1] [角色2]...</span><span class="cmd-desc">同一物品发给多人；末尾填「全员」则发给所有已注册角色</span><button class="cmd-copy" onclick="copyCmd(this,'批量发放 ')">复制</button></div>
-      <div class="cmd-item"><span class="cmd-text">角色档案 [角色名]</span><span class="cmd-desc">查看角色的属性、关系线汇总、背包概览</span><button class="cmd-copy" onclick="copyCmd(this,'角色档案 ')">复制</button></div>
-      <div class="cmd-item"><span class="cmd-text">发放抽取 [角色名] [次数]</span><span class="cmd-desc">增加玩家额外抽取次数</span><button class="cmd-copy" onclick="copyCmd(this,'发放抽取 ')">复制</button></div>
     </div>
   </div>
 </div>
@@ -1741,391 +1524,6 @@ body.admin-unlocked .section-card.admin-content {
   </div>
 </div>
 
-<div class="sub-section admin-content">
-  <h3 class="sub-title">战斗管理<span class="tag tag-admin" style="margin-left:8px">管理员</span></h3>
-  <div class="cmd-list">
-    <div class="cmd-item"><span class="cmd-text">攻防 开</span><span class="cmd-desc">启用攻防系统</span><button class="cmd-copy" onclick="copyCmd(this,'攻防 开')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">攻防 关</span><span class="cmd-desc">禁用攻防系统</span><button class="cmd-copy" onclick="copyCmd(this,'攻防 关')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">攻防 查看</span><span class="cmd-desc">查看当前所有配置</span><button class="cmd-copy" onclick="copyCmd(this,'攻防 查看')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">攻防 设置 [参数] [值]</span><span class="cmd-desc">修改战斗参数</span><button class="cmd-copy" onclick="copyCmd(this,'攻防 设置 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">添加人员 [玩家名] [玩家2]...</span><span class="cmd-desc">手动创建战斗并加入指定玩家</span><button class="cmd-copy" onclick="copyCmd(this,'添加人员 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">属性 设置 [玩家] [属性] [值]</span><span class="cmd-desc">修改玩家的战斗属性</span><button class="cmd-copy" onclick="copyCmd(this,'属性 设置 ')">复制</button></div>
-  </div>
-
-  <table class="guide-table" style="margin-top:20px">
-    <thead><tr><th>参数</th><th>说明</th><th>默认值</th></tr></thead>
-    <tbody>
-      <tr><td><code>每日发起</code></td><td>每位玩家每天最多发起战斗次数</td><td>10</td></tr>
-      <tr><td><code>每日拒绝</code></td><td>每位玩家每天最多拒绝战斗次数</td><td>10</td></tr>
-      <tr><td><code>默认回合</code></td><td>新战斗的默认回合数</td><td>10</td></tr>
-      <tr><td><code>逃脱率</code></td><td>投降逃脱的成功概率(0-100%)</td><td>30</td></tr>
-      <tr><td><code>伤害随机</code></td><td>伤害值随机性（如"0-20"）</td><td>0</td></tr>
-      <tr><td><code>最小人数</code></td><td>开始战斗的最少玩家数</td><td>2</td></tr>
-      <tr><td><code>强制参战</code></td><td>是否强制参加战斗</td><td>否</td></tr>
-    </tbody>
-  </table>
-</div>
-
-<!-- ═══════════════════════════════════════════════ SECTION: ADMIN -->
-<div class="admin-lock-hint" onclick="toggleLock()">🔒 管理员内容 · 点击解锁查看</div>
-
-<div id="admin" class="section-header admin-content">
-  <div class="section-icon">🛡️</div>
-  <div class="section-title-wrap">
-    <div class="section-eyebrow">Section 08</div>
-    <h2 class="section-title">管理员操作</h2>
-  </div>
-</div>
-
-<div class="sub-section admin-content">
-  <h3 class="sub-title">初始化流程</h3>
-  <div class="steps">
-    <div class="step"><div class="step-num">1</div><div class="step-body"><div class="step-title">权限设置</div><p>为副管理员授予权限，确认管理员列表</p></div></div>
-    <div class="step"><div class="step-num">2</div><div class="step-body"><div class="step-title">创建角色</div><p>为每位玩家创建游戏角色，设置初始信息</p></div></div>
-    <div class="step"><div class="step-num">3</div><div class="step-body"><div class="step-title">配置地点</div><p>设置约会地点权限，发放私人房间钥匙</p></div></div>
-    <div class="step"><div class="step-num">4</div><div class="step-body"><div class="step-title">群组设置</div><p>添加关联QQ群，配置公告群</p></div></div>
-    <div class="step"><div class="step-num">5</div><div class="step-body"><div class="step-title">发起第一场官约</div><p>发布游戏说明公告，正式开始游戏</p></div></div>
-  </div>
-</div>
-
-<div class="sub-section admin-content">
-  <h3 class="sub-title">权限管理</h3>
-  <div class="cmd-list">
-    <div class="cmd-item"><span class="cmd-text">授予管理员 [角色名]</span><span class="cmd-desc">提升用户权限</span><button class="cmd-copy" onclick="copyCmd(this,'授予管理员 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">收回管理员 [角色名]</span><span class="cmd-desc">降权用户</span><button class="cmd-copy" onclick="copyCmd(this,'收回管理员 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">管理员列表</span><span class="cmd-desc">显示当前管理员</span><button class="cmd-copy" onclick="copyCmd(this,'管理员列表')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">清空管理员</span><span class="cmd-desc">⚠️ 清除所有管理员（慎用）</span><button class="cmd-copy" onclick="copyCmd(this,'清空管理员')">复制</button></div>
-  </div>
-</div>
-
-<div class="sub-section admin-content">
-  <h3 class="sub-title">角色管理</h3>
-  <div class="callout danger" style="margin-bottom:14px">
-    <div class="callout-title">🚨 必须操作：管理员设为NPC</div>
-    <p>如果管理员账号同时在玩家私人群内，<strong>必须将自己的角色设为 NPC</strong>，否则系统会持续推送提醒、计入分组、触发邀约逻辑，造成干扰。创建所有角色后立即执行。</p>
-  </div>
-  <div class="cmd-list">
-    <div class="cmd-item"><span class="cmd-text">创建NPC [角色名]</span><span class="cmd-desc">直接创建带NPC身份的角色，无需绑定真实账号，创建即为NPC</span><button class="cmd-copy" onclick="copyCmd(this,'创建NPC ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">设为npc [角色名]</span><span class="cmd-desc">将已有角色标记为NPC，跳过自动分组/提醒（再次发送可取消）</span><button class="cmd-copy" onclick="copyCmd(this,'设为npc ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">创建新角色 [角色名]</span><span class="cmd-desc">为玩家创建游戏角色并绑定账号</span><button class="cmd-copy" onclick="copyCmd(this,'创建新角色 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">修改名字 [新名字]</span><span class="cmd-desc">修改当前角色名（玩家自用）/ 管理员可代改</span><button class="cmd-copy" onclick="copyCmd(this,'修改名字 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">清除玩家 [角色名]</span><span class="cmd-desc">⚠️ 删除角色及全部数据（不可恢复）</span><button class="cmd-copy" onclick="copyCmd(this,'清除玩家 ')">复制</button></div>
-  </div>
-</div>
-
-<div class="sub-section admin-content">
-  <h3 class="sub-title">群号管理</h3>
-  <p style="font-size:14px;color:var(--muted);margin-bottom:12px">系统从群号池中自动分配私约群。初始化时需先将所有备用群号录入池中。</p>
-  <div class="cmd-list">
-    <div class="cmd-item"><span class="cmd-text">添加群号 [群号1,群号2,…]</span><span class="cmd-desc">将群号加入可用池，多个用逗号分隔</span><button class="cmd-copy" onclick="copyCmd(this,'添加群号 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">查看群号</span><span class="cmd-desc">查看当前可用群号池（含占用状态）</span><button class="cmd-copy" onclick="copyCmd(this,'查看群号')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">移除群号 [群号1,群号2,…]</span><span class="cmd-desc">从池中移除指定群号</span><button class="cmd-copy" onclick="copyCmd(this,'移除群号 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">驱逐 [QQ号]</span><span class="cmd-desc">从群号池所有群中踢出指定QQ及其所有额外账号（逐群扫描，不在则跳过）</span><button class="cmd-copy" onclick="copyCmd(this,'驱逐 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">更新未退群</span><span class="cmd-desc">扫描全服，记录仍在群中的玩家违规信息</span><button class="cmd-copy" onclick="copyCmd(this,'更新未退群')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">更新未退群 驱逐</span><span class="cmd-desc">扫描全服并直接踢出仍在群中的所有玩家及其额外账号</span><button class="cmd-copy" onclick="copyCmd(this,'更新未退群 驱逐')">复制</button></div>
-  </div>
-</div>
-
-<div class="sub-section admin-content">
-  <h3 class="sub-title">地点管理</h3>
-  <div class="cmd-list">
-    <div class="cmd-item"><span class="cmd-text">地点管理</span><span class="cmd-desc">管理地点权限</span><button class="cmd-copy" onclick="copyCmd(this,'地点管理')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">批量设置地点 [地点] [角色1] [角色2]...</span><span class="cmd-desc">批量分配地点权限</span><button class="cmd-copy" onclick="copyCmd(this,'批量设置地点 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">批量发放钥匙 [地点] [角色1] [角色2]...</span><span class="cmd-desc">批量发放私人房间钥匙</span><button class="cmd-copy" onclick="copyCmd(this,'批量发放钥匙 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">查看地点详情 [地点名]</span><span class="cmd-desc">查看地点信息和权限分配</span><button class="cmd-copy" onclick="copyCmd(this,'查看地点详情 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">查看钥匙分配</span><span class="cmd-desc">显示所有钥匙开放情况</span><button class="cmd-copy" onclick="copyCmd(this,'查看钥匙分配')">复制</button></div>
-  </div>
-</div>
-
-<div class="sub-section admin-content">
-  <h3 class="sub-title">邀约管理</h3>
-  <div class="cmd-list">
-    <div class="cmd-item"><span class="cmd-text">发起官约 D1 14:00-15:00 地点 参与者1/参与者2/...</span><span class="cmd-desc">发起官方约会，系统自动建群并推送邀请</span><button class="cmd-copy" onclick="copyCmd(this,'发起官约 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">查看进行中</span><span class="cmd-desc">查看所有正在进行的邀约</span><button class="cmd-copy" onclick="copyCmd(this,'查看进行中')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">结束私约 [邀约ID]</span><span class="cmd-desc">结束超时的私约</span><button class="cmd-copy" onclick="copyCmd(this,'结束私约 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">提醒超时</span><span class="cmd-desc">在邀约群内 @ 超时玩家的主账号及所有额外账号发送催回提醒</span><button class="cmd-copy" onclick="copyCmd(this,'提醒超时')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">设置邀约时间 [时段1] [时段2]…</span><span class="cmd-desc">限制所有玩家的可邀约时段</span><button class="cmd-copy" onclick="copyCmd(this,'设置邀约时间 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">清空邀约时间</span><span class="cmd-desc">解除时间限制</span><button class="cmd-copy" onclick="copyCmd(this,'清空邀约时间')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">时间锁定 锁定 [角色/全体] [D1] [14:00-16:00]</span><span class="cmd-desc">锁定指定角色或全体在某天某时段内无法参与邀约</span><button class="cmd-copy" onclick="copyCmd(this,'时间锁定 锁定 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">时间锁定 解锁 [角色/全体] [D1] [14:00-16:00]</span><span class="cmd-desc">解除时间锁定</span><button class="cmd-copy" onclick="copyCmd(this,'时间锁定 解锁 ')">复制</button></div>
-  </div>
-
-  <div class="code-block" style="margin-top:12px">
-    <div class="code-block-header">
-      <span class="code-block-label">发起官约 格式</span>
-      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
-    </div>
-    <pre>发起官约 D1 14:00-15:00 咖啡厅 角色A/角色B/角色C</pre>
-  </div>
-  <p style="font-size:13px;color:var(--muted);margin:8px 0 14px">参数依次为：天数、时间段、地点、参与者（用 / 分隔）。系统会自动创建官约群并向所有参与者发送邀请推送。</p>
-
-  <table class="guide-table" style="margin-top:12px">
-    <thead><tr><th>示例</th><th>效果</th></tr></thead>
-    <tbody>
-      <tr><td><code>时间锁定 锁定 张三 D2 14:00-16:00</code></td><td>锁定张三 D2 的 14–16 点</td></tr>
-      <tr><td><code>时间锁定 锁定 角色A/角色B D3 20:00-22:00</code></td><td>同时锁定多人（/ 分隔）</td></tr>
-      <tr><td><code>时间锁定 锁定 全体 D1 09:00-10:00</code></td><td>全体锁定指定时段</td></tr>
-      <tr><td><code>时间锁定 解锁 张三 D2 14:00-16:00</code></td><td>解除单人锁定</td></tr>
-    </tbody>
-  </table>
-</div>
-
-<div class="sub-section admin-content">
-  <h3 class="sub-title">统计与数据</h3>
-  <div class="cmd-list">
-    <div class="cmd-item"><span class="cmd-text">本场统计</span><span class="cmd-desc">查看当场邀约的互动统计</span><button class="cmd-copy" onclick="copyCmd(this,'本场统计')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">查看全员统计</span><span class="cmd-desc">查看所有角色的数据排行</span><button class="cmd-copy" onclick="copyCmd(this,'查看全员统计')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">关系线统计</span><span class="cmd-desc">查看全员关系线排行和热门CP</span><button class="cmd-copy" onclick="copyCmd(this,'关系线统计')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">关系线设置</span><span class="cmd-desc">查看当前关系线字数/条数上限配置</span><button class="cmd-copy" onclick="copyCmd(this,'关系线设置')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">关系线设置 字数上限 N</span><span class="cmd-desc">修改单条拉线最高字数（默认 500）</span><button class="cmd-copy" onclick="copyCmd(this,'关系线设置 字数上限 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">关系线设置 关系上限 N</span><span class="cmd-desc">修改每人最多关系线数量（默认 20）</span><button class="cmd-copy" onclick="copyCmd(this,'关系线设置 关系上限 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">同步名片</span><span class="cmd-desc">将所有角色名片同步更新到名片群</span><button class="cmd-copy" onclick="copyCmd(this,'同步名片')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">存入统计</span><span class="cmd-desc">保存当前统计数据（备份）</span><button class="cmd-copy" onclick="copyCmd(this,'存入统计')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">信箱统计</span><span class="cmd-desc">查看心动信统计数据</span><button class="cmd-copy" onclick="copyCmd(this,'信箱统计')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">统一送心动信 [角色列表] [内容]</span><span class="cmd-desc">群发心动信（推进剧情）</span><button class="cmd-copy" onclick="copyCmd(this,'统一送心动信 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">随机分组 [人数]</span><span class="cmd-desc">随机分组（小游戏用）</span><button class="cmd-copy" onclick="copyCmd(this,'随机分组 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">查看计时器</span><span class="cmd-desc">查看各项计时器运行状态</span><button class="cmd-copy" onclick="copyCmd(this,'查看计时器')">复制</button></div>
-  </div>
-</div>
-
-<div class="sub-section admin-content">
-  <h3 class="sub-title">时间线修复</h3>
-  <p style="font-size:14px;color:var(--muted);margin-bottom:12px">「修改时间线」在约会群内使用，修改当前约会的天数和时间段；「删除时间线」按邀约 ID 删除记录（管理员权限）。玩家端退出约会请用「拒绝时间线」。</p>
-  <div class="cmd-list">
-    <div class="cmd-item"><span class="cmd-text">修改时间线 [D天数] [时间段]</span><span class="cmd-desc">在约会群内修改当前约会时间，如：修改时间线 D1 1400-1500</span><button class="cmd-copy" onclick="copyCmd(this,'修改时间线 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">拒绝时间线 [群号]</span><span class="cmd-desc">退出约会并通知相关参与者（玩家在任意群使用）</span><button class="cmd-copy" onclick="copyCmd(this,'拒绝时间线 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">删除时间线 [邀约ID]</span><span class="cmd-desc">管理员删除某条时间线记录</span><button class="cmd-copy" onclick="copyCmd(this,'删除时间线 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">清空关系线</span><span class="cmd-desc">⚠️ 重置所有关系线</span><button class="cmd-copy" onclick="copyCmd(this,'清空关系线')">复制</button></div>
-  </div>
-</div>
-
-<div class="sub-section admin-content">
-  <h3 class="sub-title">每日维护与天数管理</h3>
-
-  <div class="cmd-list">
-    <div class="cmd-item"><span class="cmd-text">设置天数 D[n]</span><span class="cmd-desc">推进全局天数，自动清空所有计数、心愿池、心动信池</span><button class="cmd-copy" onclick="copyCmd(this,'设置天数 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">开启自动天数</span><span class="cmd-desc">每天 23:59 自动 +1 天并清空计数</span><button class="cmd-copy" onclick="copyCmd(this,'开启自动天数')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">关闭自动天数</span><span class="cmd-desc">停止自动推进天数</span><button class="cmd-copy" onclick="copyCmd(this,'关闭自动天数')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">设置邀约时间 [时段1] [时段2]…</span><span class="cmd-desc">限定玩家只能在指定时间窗口内发起邀约</span><button class="cmd-copy" onclick="copyCmd(this,'设置邀约时间 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">清空邀约时间</span><span class="cmd-desc">解除时间限制，恢复全天可约</span><button class="cmd-copy" onclick="copyCmd(this,'清空邀约时间')">复制</button></div>
-  </div>
-
-  <table class="guide-table" style="margin-top:14px">
-    <thead><tr><th>场景</th><th>指令示例</th><th>说明</th></tr></thead>
-    <tbody>
-      <tr><td>手动换天</td><td><code>设置天数 D2</code></td><td>从 D1 推进到 D2，同时发送统计报告</td></tr>
-      <tr><td>自动换天</td><td><code>开启自动天数</code></td><td>每日 23:59 触发，天数 +1 并清空计数</td></tr>
-      <tr><td>限定邀约时段</td><td><code>设置邀约时间 14:00-16:00 20:00-22:00</code></td><td>玩家只能在这两个窗口内发起私约/电话</td></tr>
-      <tr><td>开放全天</td><td><code>清空邀约时间</code></td><td>移除所有时间限制</td></tr>
-    </tbody>
-  </table>
-
-  <div class="callout" style="margin-top:14px">
-    <div class="callout-title">设置天数会自动清空</div>
-    <p>所有会面计数（私约/电话/信件/礼物/心愿/官约）、每日信件限制、心愿池、心动信池。统计报告会同步发送至后台群（如已配置）。</p>
-  </div>
-</div>
-
-<div class="sub-section admin-content">
-  <h3 class="sub-title">设置监听参数</h3>
-  <p style="font-size:14px;color:var(--muted);margin-bottom:12px">控制各类私约群内的字数超时判定。字数达到阈值或超过时限后，系统视为该场景「已完成」并可触发相关奖励/统计。</p>
-  <div class="code-block">
-    <div class="code-block-header">
-      <span class="code-block-label">格式：类型=最低字数/超时小时数</span>
-      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
-    </div>
-    <pre>设置监听参数 电话=20/1 私密=150/3 心愿=100/2 官约=80/2 所有=100/2</pre>
-  </div>
-  <table class="guide-table" style="margin-top:12px">
-    <thead><tr><th>类型</th><th>适用场景</th><th>示例</th></tr></thead>
-    <tbody>
-      <tr><td><code>电话</code></td><td>电话群（轻互动）</td><td><code>电话=20/1</code> — 20字或1小时</td></tr>
-      <tr><td><code>私密</code></td><td>私约群（深度约会）</td><td><code>私密=150/3</code> — 150字或3小时</td></tr>
-      <tr><td><code>心愿</code></td><td>心愿场景群</td><td><code>心愿=100/2</code> — 100字或2小时</td></tr>
-      <tr><td><code>官约</code></td><td>官方活动群</td><td><code>官约=80/2</code> — 80字或2小时</td></tr>
-      <tr><td><code>所有</code></td><td>统一设置所有类型</td><td><code>所有=100/2</code> — 全类型覆盖</td></tr>
-    </tbody>
-  </table>
-  <div class="callout" style="margin-top:12px">
-    <div class="callout-title">说明</div>
-    <p>可同时设置多个类型，用空格分隔。「超时」指群建立后经过的小时数，字数与超时任一达到即触发判定。</p>
-  </div>
-</div>
-
-<div class="sub-section admin-content">
-  <h3 class="sub-title">结戏加成</h3>
-  <p style="font-size:14px;color:var(--muted);margin-bottom:12px">基于规则引擎的结戏奖励系统。用 <code>and</code>（独立并行块）/ <code>or</code>（降级择一块）定义逻辑，支持固定奖励和概率池。配置后每次「结戏加成 执行」即自动判定并发放。</p>
-  <div class="cmd-list">
-    <div class="cmd-item"><span class="cmd-text">结戏加成 查看</span><span class="cmd-desc">查看所有已配置的加成模版</span><button class="cmd-copy" onclick="copyCmd(this,'结戏加成 查看')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">结戏加成 执行</span><span class="cmd-desc">触发结戏加成，系统自动对每位玩家判定并发放</span><button class="cmd-copy" onclick="copyCmd(this,'结戏加成 执行')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">结戏加成 清空</span><span class="cmd-desc">删除所有加成模版</span><button class="cmd-copy" onclick="copyCmd(this,'结戏加成 清空')">复制</button></div>
-  </div>
-
-  <div class="code-block" style="margin-top:16px">
-    <div class="code-block-header">
-      <span class="code-block-label">案例 A · 基础字数奖励（and 块）</span>
-      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
-    </div>
-    <pre><span class="comment"># and 块：条件满足就发，多个 and 块各自独立判断</span>
-结戏加成 批量 基础字数奖励
-<span class="value">and</span>
-<span class="param">字数 >= 200</span>
-<span class="value">奖励 金币 10</span></pre>
-  </div>
-
-  <div class="code-block" style="margin-top:12px">
-    <div class="code-block-header">
-      <span class="code-block-label">案例 B · 字数档位制（or 降级块）</span>
-      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
-    </div>
-    <pre><span class="comment"># or 块：从上往下找第一个满足的，只发一档</span>
-结戏加成 批量 字数档位
-<span class="value">or</span>
-<span class="param">字数 >= 1000</span>
-<span class="value">奖励 金币 50</span>
-<span class="value">or</span>
-<span class="param">字数 >= 500</span>
-<span class="value">奖励 金币 20</span>
-<span class="value">or</span>
-<span class="param">字数 >= 200</span>
-<span class="value">奖励 金币 5</span></pre>
-  </div>
-
-  <div class="code-block" style="margin-top:12px">
-    <div class="code-block-header">
-      <span class="code-block-label">案例 C · 双线并行（字数 + 段数各自结算）</span>
-      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
-    </div>
-    <pre><span class="comment"># 两个 and 块互相独立，同时判断，都满足就都发</span>
-结戏加成 批量 双线并行
-<span class="value">and</span>
-<span class="param">字数 >= 300</span>
-<span class="value">奖励 金币 15</span>
-<span class="value">and</span>
-<span class="param">段数 >= 6</span>
-<span class="value">奖励 好感度 3</span></pre>
-  </div>
-
-  <div class="code-block" style="margin-top:12px">
-    <div class="code-block-header">
-      <span class="code-block-label">案例 D · 全员参与奖励（无条件发放）</span>
-      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
-    </div>
-    <pre><span class="comment"># 条件行留空 → 所有参与玩家都发</span>
-结戏加成 批量 参与奖励
-<span class="value">and</span>
-<span class="value">奖励 金币 5</span></pre>
-  </div>
-
-  <table class="guide-table" style="margin-top:16px">
-    <thead><tr><th>关键字</th><th>说明</th></tr></thead>
-    <tbody>
-      <tr><td><code>and</code></td><td>独立块，各块条件单独判断，满足就发（多块可同时触发）</td></tr>
-      <tr><td><code>or</code></td><td>降级块，从上到下找第一个满足的，只发一档</td></tr>
-      <tr><td><code>字数 >= N</code></td><td>本场个人总字数</td></tr>
-      <tr><td><code>段数 >= N</code></td><td>本场个人发言段数</td></tr>
-      <tr><td><code>奖励 [货币] [数量]</code></td><td>发放固定奖励，货币需已注册</td></tr>
-    </tbody>
-  </table>
-
-  <div class="callout tip" style="margin-top:12px">
-    <div class="callout-title">💡 更多用法</div>
-    <p>完整案例（概率池、约会类型过滤、混合逻辑等）请参见「<strong>结戏加成使用指南.html</strong>」。</p>
-  </div>
-</div>
-
-<div class="callout danger">
-  <div class="callout-title">⚠️ 危险操作</div>
-  <p>以下操作不可恢复：<strong>清除玩家</strong>（删除角色全部数据）、<strong>清空管理员</strong>（失去所有管理权限）、<strong>清空关系线</strong>（重置感情线数据）。执行前务必确认。</p>
-</div>
-
-<!-- ═══════════════════════════════════════════════ SECTION: SETTINGS -->
-<div class="admin-lock-hint" onclick="toggleLock()">🔒 管理员内容 · 点击解锁查看</div>
-
-<div id="settings" class="section-header admin-content">
-  <div class="section-icon">⚙️</div>
-  <div class="section-title-wrap">
-    <div class="section-eyebrow">Section 09</div>
-    <h2 class="section-title">系统设置</h2>
-  </div>
-</div>
-
-<div class="admin-content">
-
-<p class="lead">游戏的统一配置控制台。发送 <code>.设置 [模块名]</code> 查看当前值，系统会返回一段文本——直接修改其中的数值，整块重新发送即可提交。</p>
-
-<div class="settings-grid">
-  <div class="settings-tile">
-    <div><div class="settings-tile-cmd">.设置 基础</div><div class="settings-tile-desc">游戏名称、功能总开关、后台群号</div></div>
-    <button class="settings-tile-copy" onclick="copyCmd(this,'.设置 基础')">复制</button>
-  </div>
-  <div class="settings-tile">
-    <div><div class="settings-tile-cmd">.设置 互动</div><div class="settings-tile-desc">冷却时间、私约时长上限、地点系统</div></div>
-    <button class="settings-tile-copy" onclick="copyCmd(this,'.设置 互动')">复制</button>
-  </div>
-  <div class="settings-tile">
-    <div><div class="settings-tile-cmd">.设置 信件</div><div class="settings-tile-desc">混乱信件概率、每日发信上限</div></div>
-    <button class="settings-tile-copy" onclick="copyCmd(this,'.设置 信件')">复制</button>
-  </div>
-  <div class="settings-tile">
-    <div><div class="settings-tile-cmd">.设置 发送信件</div><div class="settings-tile-desc">正式信件字数限制与写信币奖励</div></div>
-    <button class="settings-tile-copy" onclick="copyCmd(this,'.设置 发送信件')">复制</button>
-  </div>
-  <div class="settings-tile">
-    <div><div class="settings-tile-cmd">.设置 心动信</div><div class="settings-tile-desc">发送时间窗口、意外曝光概率</div></div>
-    <button class="settings-tile-copy" onclick="copyCmd(this,'.设置 心动信')">复制</button>
-  </div>
-  <div class="settings-tile">
-    <div><div class="settings-tile-cmd">.设置 公告</div><div class="settings-tile-desc">互动播报规则、公开概率</div></div>
-    <button class="settings-tile-copy" onclick="copyCmd(this,'.设置 公告')">复制</button>
-  </div>
-  <div class="settings-tile">
-    <div><div class="settings-tile-cmd">.设置 道具</div><div class="settings-tile-desc">追踪器、每日抽取上限、施加参数</div></div>
-    <button class="settings-tile-copy" onclick="copyCmd(this,'.设置 道具')">复制</button>
-  </div>
-  <div class="settings-tile">
-    <div><div class="settings-tile-cmd">.设置 商城</div><div class="settings-tile-desc">礼品店刷新间隔</div></div>
-    <button class="settings-tile-copy" onclick="copyCmd(this,'.设置 商城')">复制</button>
-  </div>
-  <div class="settings-tile">
-    <div><div class="settings-tile-cmd">.设置 拍卖</div><div class="settings-tile-desc">拍卖群群号、匿名出价开关、货币类型</div></div>
-    <button class="settings-tile-copy" onclick="copyCmd(this,'.设置 拍卖')">复制</button>
-  </div>
-  <div class="settings-tile">
-    <div><div class="settings-tile-cmd">.设置 群组</div><div class="settings-tile-desc">小群管理、私约规则、目击系统参数</div></div>
-    <button class="settings-tile-copy" onclick="copyCmd(this,'.设置 群组')">复制</button>
-  </div>
-  <div class="settings-tile">
-    <div><div class="settings-tile-cmd">.设置信箱上限 D0:3 D1:5 D2:2</div><div class="settings-tile-desc">按天数分别设置心动信上限</div></div>
-    <button class="settings-tile-copy" onclick="copyCmd(this,'.设置信箱上限 D0:3 D1:5 D2:2')">复制</button>
-  </div>
-  <div class="settings-tile">
-    <div><div class="settings-tile-cmd">.设置信箱上限 默认 3</div><div class="settings-tile-desc">设置全局默认心动信上限</div></div>
-    <button class="settings-tile-copy" onclick="copyCmd(this,'.设置信箱上限 默认 3')">复制</button>
-  </div>
-</div>
-
-<div class="sub-section">
-  <h3 class="sub-title">目击系统</h3>
-  <p style="font-size:14px;color:var(--muted);margin-bottom:14px">当两个角色的邀约时段存在重叠时，系统自动向相关角色发送目击报告，增加世界观真实感。通过 <code>.设置 群组</code> 配置以下参数：</p>
-  <table class="guide-table">
-    <thead><tr><th>参数</th><th>值</th><th>说明</th></tr></thead>
-    <tbody>
-      <tr><td><code>目击报告</code></td><td>开启 / 关闭</td><td>总开关，关闭后不触发任何目击通知</td></tr>
-      <tr><td><code>目击报告方式</code></td><td>双向通知 / 单向通知</td><td>双向：双方都收到；单向：仅目击者收到</td></tr>
-      <tr><td><code>目击每日上限</code></td><td>数字（如 3）</td><td>每人每天最多触发的目击次数</td></tr>
-      <tr><td><code>时间重叠阈值</code></td><td>分钟数（如 30）</td><td>重叠时长超过此值才算触发目击</td></tr>
-      <tr><td><code>包含已结束</code></td><td>是 / 否</td><td>已结束的邀约是否也参与目击判定</td></tr>
-    </tbody>
-  </table>
-  <div class="callout" style="margin-top:12px">
-    <div class="callout-title">触发逻辑</div>
-    <p>系统在邀约开始时检测：若该时段内有其他角色的进行中邀约，且重叠时长超过阈值，则触发目击。触发后双方（或单方）收到提示消息，内容不含对方身份。</p>
-  </div>
-</div>
-
-</div><!-- /settings-body -->
-
 <!-- ═══════════════════════════════════════════════ SECTION: LETTER -->
 <div id="letter" class="section-header">
   <div class="section-icon">✉️</div>
@@ -2147,19 +1545,6 @@ body.admin-unlocked .section-card.admin-content {
 <div class="callout danger">
   <div class="callout-title">⚠️ 系统联动</div>
   <p>启用写信综后：① 电话功能自动禁用；② 如配置了心愿/私约成本，玩家需消费写信币才能发起；③ SPEC_003 望远镜、SPEC_004 羽毛笔才可正常使用。</p>
-</div>
-
-<div class="sub-section admin-content">
-  <h3 class="sub-title">管理员操作<span class="tag tag-admin" style="margin-left:8px">管理员</span></h3>
-  <div class="cmd-list">
-    <div class="cmd-item"><span class="cmd-text">启用写信综 开启</span><span class="cmd-desc">启用系统，自动注册写信币货币</span><button class="cmd-copy" onclick="copyCmd(this,'启用写信综 开启')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">启用写信综 关闭</span><span class="cmd-desc">禁用系统，恢复电话功能</span><button class="cmd-copy" onclick="copyCmd(this,'启用写信综 关闭')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">信件设置 日限 [数量]</span><span class="cmd-desc">每日最多可发信件数（默认5）</span><button class="cmd-copy" onclick="copyCmd(this,'信件设置 日限 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">信件设置 赏金 [数量]</span><span class="cmd-desc">每封信获得的写信币数（0为禁用）</span><button class="cmd-copy" onclick="copyCmd(this,'信件设置 赏金 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">信件设置 最小字数 [数量]</span><span class="cmd-desc">获得赏金的最低字数要求</span><button class="cmd-copy" onclick="copyCmd(this,'信件设置 最小字数 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">信件设置 心愿成本 [数量]</span><span class="cmd-desc">发送心愿需消费的写信币（0为禁用）</span><button class="cmd-copy" onclick="copyCmd(this,'信件设置 心愿成本 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">信件设置 私约成本 [数量]</span><span class="cmd-desc">发送私约需消费的写信币（0为禁用）</span><button class="cmd-copy" onclick="copyCmd(this,'信件设置 私约成本 ')">复制</button></div>
-  </div>
 </div>
 
 <div class="sub-section">
@@ -2197,65 +1582,6 @@ body.admin-unlocked .section-card.admin-content {
   </div>
 </div>
 
-<div class="sub-section admin-content">
-  <h3 class="sub-title">推荐配置模版</h3>
-
-  <div class="code-block">
-    <div class="code-block-header">
-      <span class="code-block-label">方案一 · 纯社交向（无赏金）</span>
-      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
-    </div>
-    <pre>启用写信综 开启
-信件设置 日限 10
-信件设置 赏金 0</pre>
-  </div>
-
-  <div class="code-block" style="margin-top:16px">
-    <div class="code-block-header">
-      <span class="code-block-label">方案二 · 激励向（推荐）</span>
-      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
-    </div>
-    <pre>启用写信综 开启
-信件设置 日限 5
-信件设置 赏金 5
-信件设置 最小字数 20</pre>
-  </div>
-
-  <div class="code-block" style="margin-top:16px">
-    <div class="code-block-header">
-      <span class="code-block-label">方案三 · 含系统联动（写信币驱动心愿/私约）</span>
-      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
-    </div>
-    <pre>启用写信综 开启
-信件设置 日限 5
-信件设置 赏金 5
-信件设置 最小字数 20
-信件设置 心愿成本 3
-信件设置 私约成本 5
-<span class="comment"># 注意：启用后电话功能自动禁用</span></pre>
-  </div>
-
-  <div class="code-block" style="margin-top:16px">
-    <div class="code-block-header">
-      <span class="code-block-label">方案四 · 含特殊道具（完整写信生态）</span>
-      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
-    </div>
-    <pre>启用写信综 开启
-信件设置 日限 5
-信件设置 赏金 10
-信件设置 最小字数 30
-信件设置 心愿成本 3
-信件设置 私约成本 5
-
-<span class="comment"># 在物品系统中配置特殊道具来源</span>
-上架商城 SPEC_003*50写信币    <span class="comment"># 望远镜</span>
-上架商城 SPEC_004*100写信币   <span class="comment"># 羽毛笔</span>
-注册池子 信件池 fixed
-上架池子 信件池 SPEC_003*30
-上架池子 信件池 SPEC_004*20</pre>
-  </div>
-</div>
-
 <div class="sub-section">
   <h3 class="sub-title">常见问题</h3>
   <table class="guide-table">
@@ -2271,7 +1597,7 @@ body.admin-unlocked .section-card.admin-content {
   </table>
 </div>
 
-<!-- ═══════════════════════════════════════════════ SECTION: TEMPLATES -->
+<!-- ═══════════════════════════════════════════════ SECTION: DINNER -->
 <div id="dinner" class="section-header">
   <div class="section-number">11</div>
   <div>
@@ -2297,30 +1623,6 @@ body.admin-unlocked .section-card.admin-content {
   </div>
 </div>
 
-<div class="sub-section admin-content">
-  <h3 class="sub-title">管理员操作 <span class="tag tag-admin">仅管理员</span></h3>
-  <div class="cmd-list">
-    <div class="cmd-item"><span class="cmd-text">开始晚餐 [人数] [风格]</span><span class="cmd-desc">开桌，风格可选见下表，默认现代中餐</span><button class="cmd-copy" onclick="copyCmd(this,'开始晚餐 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">结束晚餐</span><span class="cmd-desc">结束当前晚餐（同时终止所有游戏）</span><button class="cmd-copy" onclick="copyCmd(this,'结束晚餐')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">重置晚餐</span><span class="cmd-desc">强制清空状态，等同于结束晚餐</span><button class="cmd-copy" onclick="copyCmd(this,'重置晚餐')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">结束游戏</span><span class="cmd-desc">强制终止当前游戏，保留晚餐座位</span><button class="cmd-copy" onclick="copyCmd(this,'结束游戏')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">跳过</span><span class="cmd-desc">跳过当前玩家的回合（泡泡/轮盘均支持）</span><button class="cmd-copy" onclick="copyCmd(this,'跳过')">复制</button></div>
-  </div>
-
-  <table class="guide-table" style="margin-top:16px">
-    <thead><tr><th>菜谱风格</th><th>说明</th></tr></thead>
-    <tbody>
-      <tr><td>现代中餐</td><td>东坡肉、宫保鸡丁等现代中餐菜肴（默认）</td></tr>
-      <tr><td>现代西餐</td><td>惠灵顿牛排、松露意面等西式料理</td></tr>
-      <tr><td>古代中餐</td><td>花炊鹌子、螃蟹酿橙等古典中式菜谱</td></tr>
-      <tr><td>古代西餐</td><td>烤野猪肉、炖孔雀等中世纪欧式料理</td></tr>
-      <tr><td>诡秘深渊</td><td>不可名状的触手羹、修格斯半流体慕斯等克苏鲁风</td></tr>
-      <tr><td>赛博未来</td><td>合成蛋白块、仿生鳗鱼冻等未来科技料理</td></tr>
-      <tr><td>无菜</td><td>不生成菜谱，仅维持座位功能</td></tr>
-    </tbody>
-  </table>
-</div>
-
 <div class="sub-section">
   <h3 class="sub-title">玩家操作</h3>
   <div class="cmd-list">
@@ -2333,7 +1635,7 @@ body.admin-unlocked .section-card.admin-content {
   <h3 class="sub-title">戳泡泡游戏</h3>
   <p style="font-size:14px;color:var(--muted);margin-bottom:12px">按座位顺序轮流选一个泡泡戳破，找到所有珊瑚即获胜。</p>
   <div class="cmd-list">
-    <div class="admin-content" style="margin:0"><div class="cmd-item"><span class="cmd-text">开始泡泡 [总数量] [珊瑚数量]</span><span class="cmd-desc">管理员开启，总数量≤100，珊瑚数量＜总数量</span><button class="cmd-copy" onclick="copyCmd(this,'开始泡泡 ')">复制</button></div></div>
+    <div class="cmd-item"><span class="cmd-text">开始泡泡 [总数量] [珊瑚数量]</span><span class="cmd-desc">管理员开启，总数量≤100，珊瑚数量＜总数量</span><button class="cmd-copy" onclick="copyCmd(this,'开始泡泡 ')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">戳泡泡 [编号]</span><span class="cmd-desc">轮到自己时选择编号戳破</span><button class="cmd-copy" onclick="copyCmd(this,'戳泡泡 ')">复制</button></div>
   </div>
 </div>
@@ -2342,7 +1644,7 @@ body.admin-unlocked .section-card.admin-content {
   <h3 class="sub-title">俄罗斯轮盘游戏</h3>
   <p style="font-size:14px;color:var(--muted);margin-bottom:12px">按座位顺序轮流扣动扳机，中弹即出局，最后存活者获胜；子弹全部打空则所有存活者获胜。</p>
   <div class="cmd-list">
-    <div class="admin-content" style="margin:0"><div class="cmd-item"><span class="cmd-text">开始轮盘 [弹巢数=6] [子弹数=1]</span><span class="cmd-desc">管理员开启，参数可省略使用默认值</span><button class="cmd-copy" onclick="copyCmd(this,'开始轮盘')">复制</button></div></div>
+    <div class="cmd-item"><span class="cmd-text">开始轮盘 [弹巢数=6] [子弹数=1]</span><span class="cmd-desc">管理员开启，参数可省略使用默认值</span><button class="cmd-copy" onclick="copyCmd(this,'开始轮盘')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">开枪</span><span class="cmd-desc">轮到自己时扣动扳机</span><button class="cmd-copy" onclick="copyCmd(this,'开枪')">复制</button></div>
   </div>
   <table class="guide-table" style="margin-top:12px">
@@ -2356,334 +1658,6 @@ body.admin-unlocked .section-card.admin-content {
   </table>
 </div>
 
-<div class="admin-lock-hint" onclick="toggleLock()">🔒 管理员内容 · 点击解锁查看</div>
-
-<div id="templates" class="section-header admin-content">
-  <div class="section-icon">📋</div>
-  <div class="section-title-wrap">
-    <div class="section-eyebrow">Section 10</div>
-    <h2 class="section-title">配置模版</h2>
-  </div>
-</div>
-
-<p class="lead">以下模版可直接复制修改后提交，机器人会自动识别第一行标识符并应用修改。</p>
-
-<div class="sub-section admin-content">
-  <h3 class="sub-title">基础设置模版</h3>
-  <div class="code-block">
-    <div class="code-block-header">
-      <span class="code-block-label">基础设置 · 复制修改后提交</span>
-      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
-    </div>
-    <pre>.设置 基础设置
-<span class="param">【恋综名】</span><span class="value">我的恋综</span>
-<span class="param">【微信】</span><span class="value">开启</span>
-<span class="param">【礼物】</span><span class="value">开启</span>
-<span class="param">【心愿】</span><span class="value">开启</span>
-<span class="param">【发起邀约】</span><span class="value">开启</span>
-<span class="param">【关系线系统】</span><span class="value">开启</span>
-<span class="param">【关系线上限】</span><span class="value">5</span>
-<span class="param">【点歌群】</span><span class="value">未设置</span>
-<span class="param">【后台群】</span><span class="value">未设置</span>
-<span class="param">【公告群】</span><span class="value">未设置</span>
-<span class="param">【水群】</span><span class="value">未设置</span></pre>
-  </div>
-</div>
-
-<div class="sub-section admin-content">
-  <h3 class="sub-title">互动设置模版</h3>
-  <div class="code-block">
-    <div class="code-block-header">
-      <span class="code-block-label">互动设置 · 复制修改后提交</span>
-      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
-    </div>
-    <pre>.设置 互动设置
-<span class="param">【地点系统】</span><span class="value">开启</span>
-<span class="param">【结戏抽取】</span><span class="value">开启</span>
-<span class="param">【电话最小时长】</span><span class="value">29</span>          <span class="comment"># 单位：分钟</span>
-<span class="param">【私密最小时长】</span><span class="value">59</span>          <span class="comment"># 单位：分钟，建议 ≥ 电话时长</span>
-<span class="param">【寄信冷却时间】</span><span class="value">60</span>          <span class="comment"># 单位：秒，防止刷屏</span>
-<span class="param">【送礼冷却时间】</span><span class="value">30</span>          <span class="comment"># 单位：秒</span>
-<span class="param">【送礼模式】</span><span class="value">0</span>              <span class="comment"># 0=只计算赠送者 1=双向冷却</span></pre>
-  </div>
-</div>
-
-<div class="sub-section admin-content">
-  <h3 class="sub-title">信件混乱设置模版（三档）</h3>
-  <div class="code-block">
-    <div class="code-block-header">
-      <span class="code-block-label">温和模式 · 休闲向</span>
-      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
-    </div>
-    <pre>.设置 信件设置
-<span class="param">【寄信】</span><span class="value">开启</span>
-<span class="param">【寄信每日上限】</span><span class="value">3</span>
-<span class="param">【寄信混乱送错】</span><span class="value">5</span>           <span class="comment"># 信件被送到错误接收者</span>
-<span class="param">【寄信混乱涂改】</span><span class="value">10</span>          <span class="comment"># 内容显示异常</span>
-<span class="param">【寄信混乱丢失】</span><span class="value">5</span>           <span class="comment"># 内容丢失</span>
-<span class="param">【寄信混乱反义】</span><span class="value">5</span>           <span class="comment"># 词义反转</span>
-<span class="param">【寄信混乱乱序】</span><span class="value">5</span>           <span class="comment"># 内容顺序混乱</span>
-<span class="param">【寄信混乱混淆】</span><span class="value">10</span>          <span class="comment"># 签名混淆</span>
-<span class="param">【寄信混乱诗意】</span><span class="value">10</span>          <span class="comment"># 签名被诗意化</span></pre>
-  </div>
-
-  <div class="code-block" style="margin-top:16px">
-    <div class="code-block-header">
-      <span class="code-block-label">标准模式 · 推荐</span>
-      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
-    </div>
-    <pre>.设置 信件设置
-<span class="param">【寄信】</span><span class="value">开启</span>
-<span class="param">【寄信每日上限】</span><span class="value">5</span>
-<span class="param">【寄信混乱送错】</span><span class="value">10</span>
-<span class="param">【寄信混乱涂改】</span><span class="value">15</span>
-<span class="param">【寄信混乱丢失】</span><span class="value">10</span>
-<span class="param">【寄信混乱反义】</span><span class="value">10</span>
-<span class="param">【寄信混乱乱序】</span><span class="value">10</span>
-<span class="param">【寄信混乱混淆】</span><span class="value">15</span>
-<span class="param">【寄信混乱诗意】</span><span class="value">15</span></pre>
-  </div>
-
-  <div class="code-block" style="margin-top:16px">
-    <div class="code-block-header">
-      <span class="code-block-label">刺激模式 · 主题向</span>
-      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
-    </div>
-    <pre>.设置 信件设置
-<span class="param">【寄信】</span><span class="value">开启</span>
-<span class="param">【寄信每日上限】</span><span class="value">8</span>
-<span class="param">【寄信混乱送错】</span><span class="value">20</span>
-<span class="param">【寄信混乱涂改】</span><span class="value">25</span>
-<span class="param">【寄信混乱丢失】</span><span class="value">20</span>
-<span class="param">【寄信混乱反义】</span><span class="value">15</span>
-<span class="param">【寄信混乱乱序】</span><span class="value">15</span>
-<span class="param">【寄信混乱混淆】</span><span class="value">20</span>
-<span class="param">【寄信混乱诗意】</span><span class="value">20</span></pre>
-  </div>
-</div>
-
-<div class="sub-section admin-content">
-  <h3 class="sub-title">公告设置模版</h3>
-  <div class="code-block">
-    <div class="code-block-header">
-      <span class="code-block-label">公告设置 · 复制修改后提交</span>
-      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
-    </div>
-    <pre>.设置 公告设置
-<span class="param">【心愿公开提醒】</span><span class="value">开启</span>
-<span class="param">【送礼公开发送】</span><span class="value">开启</span>
-<span class="param">【寄信公开发送】</span><span class="value">开启</span>
-<span class="param">【寄信公开概率】</span><span class="value">30</span>          <span class="comment"># 混乱信被公开的概率</span>
-<span class="param">【礼物公开概率】</span><span class="value">50</span>          <span class="comment"># 礼物被公开的概率</span>
-<span class="param">【每日礼物上限】</span><span class="value">100</span>
-<span class="param">【公告触发频率】</span><span class="value">5</span></pre>
-  </div>
-</div>
-
-<div class="sub-section admin-content">
-  <h3 class="sub-title">道具系统设置模版</h3>
-  <div class="code-block">
-    <div class="code-block-header">
-      <span class="code-block-label">道具设置 · 复制修改后提交</span>
-      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
-    </div>
-    <pre>.设置 道具设置
-<span class="param">【追踪器成功率】</span><span class="value">70</span>          <span class="comment"># 0-100，默认70%</span>
-<span class="param">【每日抽取上限】</span><span class="value">2</span>           <span class="comment"># 每天最多抽取次数</span>
-<span class="param">【追踪器显示伙伴】</span><span class="value">开启</span>      <span class="comment"># 追踪结果是否显示伙伴信息</span>
-<span class="param">【追踪器时间限制】</span><span class="value">开启</span>
-<span class="param">【物品池模式】</span><span class="value">自由池</span>
-<span class="param">【施加是否提醒】</span><span class="value">开启</span>
-<span class="param">【暴露名字概率】</span><span class="value">20</span>          <span class="comment"># 施加时泄露使用者的概率</span>
-<span class="param">【施加可用时段】</span><span class="value">18-23</span>       <span class="comment"># 或 "不限" / "9-12,14-18"</span></pre>
-  </div>
-</div>
-
-<div class="sub-section admin-content">
-  <h3 class="sub-title">心愿设置模版</h3>
-  <div class="code-block">
-    <div class="code-block-header">
-      <span class="code-block-label">心愿设置 · 复制修改后提交</span>
-      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
-    </div>
-    <pre>.设置 心愿设置
-<span class="param">【心愿系统】</span><span class="value">开启</span>            <span class="comment"># 整个心愿功能的开关</span>
-<span class="param">【悬赏开关】</span><span class="value">开启</span>            <span class="comment"># 关闭后只能用「挂心愿」，不能「悬赏心愿」</span>
-<span class="param">【同时上限】</span><span class="value">3</span>               <span class="comment"># 每人同时最多挂几个心愿</span>
-<span class="param">【每日发布上限】</span><span class="value">0</span>           <span class="comment"># 每天最多发几个，0=不限</span>
-<span class="param">【每日摘取上限】</span><span class="value">0</span>           <span class="comment"># 每天最多摘几个，0=不限</span></pre>
-  </div>
-</div>
-
-<div class="sub-section admin-content">
-  <h3 class="sub-title">拍卖设置模版</h3>
-  <div class="code-block">
-    <div class="code-block-header">
-      <span class="code-block-label">拍卖设置 · 复制修改后提交</span>
-      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
-    </div>
-    <pre>.设置 拍卖设置
-<span class="param">【拍卖展示群】</span><span class="value">123456789</span>   <span class="comment"># 填写目标群号</span>
-<span class="param">【允许匿名出价】</span><span class="value">开启</span>
-<span class="param">【出价播报】</span><span class="value">开启</span>
-<span class="param">【展示最高出价者】</span><span class="value">开启</span>
-<span class="param">【拍卖货币】</span><span class="value">金币</span>            <span class="comment"># 需已注册的货币</span></pre>
-  </div>
-</div>
-
-<div class="sub-section admin-content">
-  <h3 class="sub-title">物品系统快速初始化</h3>
-  <div class="code-block">
-    <div class="code-block-header">
-      <span class="code-block-label">Step 1 · 创建基础属性</span>
-      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
-    </div>
-    <pre><span class="comment"># 依次发送以下指令</span>
-我创建属性 HP 0 1000 100
-我创建属性 MP 0 500 50
-我创建属性 ATK 0 100 40
-我创建属性 DEF 0 50 30
-我创建属性 AGI 0 50 40</pre>
-  </div>
-
-  <div class="code-block" style="margin-top:16px">
-    <div class="code-block-header">
-      <span class="code-block-label">Step 2 · 注册货币</span>
-      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
-    </div>
-    <pre>注册货币 金币*通用流通货币，主要来源于任务和转售
-注册货币 钻石*高级货币，需充值或特殊任务获得
-注册货币 积分*任务奖励，可兑换物品</pre>
-  </div>
-
-  <div class="code-block" style="margin-top:16px">
-    <div class="code-block-header">
-      <span class="code-block-label">Step 3 · 注册物品</span>
-      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
-    </div>
-    <pre><span class="comment"># 格式：上载物品 物品名*描述*使用次数*属性效果*允许二手</span>
-<span class="comment"># 使用次数：-1无限 / 0一次性 / N指定次数</span>
-上载物品 医疗包*恢复生命*3*HP+50*Y
-上载物品 魔法卷轴*一次性法术*0*MP+30*N
-上载物品 永久属性书*永久增强*-1*ATK+5*N
-<span class="comment"># 互动物品（对他人使用）</span>
-上载互动物品 治疗术*为他人治疗*5*HP+50*N
-上载互动物品 诅咒术*对他人诅咒*1*理智-30*N</pre>
-  </div>
-
-  <div class="code-block" style="margin-top:16px">
-    <div class="code-block-header">
-      <span class="code-block-label">Step 4 · 注册装备</span>
-      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
-    </div>
-    <pre><span class="comment"># 格式：注册装备 装备名*描述*槽位*属性加成</span>
-<span class="comment"># 槽位：head / chest / hand / leg / foot</span>
-注册装备 铁制短剑*普通短剑*hand*ATK+15
-注册装备 皮革甲胄*防御甲胄*chest*DEF+20,HP+50
-注册装备 铁制头盔*头部防御*head*DEF+10
-注册装备 护腿*腿部防护*leg*DEF+5,AGI+3
-注册装备 敏捷靴子*加快移速*foot*AGI+5</pre>
-  </div>
-
-  <div class="code-block" style="margin-top:16px">
-    <div class="code-block-header">
-      <span class="code-block-label">Step 5 · 创建抽取池子</span>
-      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
-    </div>
-    <pre><span class="comment"># 固定池（加权随机，不减少数量）</span>
-注册池子 常驻池 fixed
-上架池子 常驻池 ITEM_001*50    <span class="comment"># 权重50</span>
-上架池子 常驻池 ITEM_002*30    <span class="comment"># 权重30</span>
-上架池子 常驻池 EQUIP_001*20   <span class="comment"># 权重20</span>
-池子设定 常驻池:3              <span class="comment"># 每日限3次</span>
-
-<span class="comment"># 自由池（有限数量，抽完即止）</span>
-注册池子 活动池 free
-上架池子 活动池 ITEM_003*10    <span class="comment"># 数量10个</span>
-上架池子 活动池 EQUIP_002*3    <span class="comment"># 数量3个</span>
-池子设定 活动池:1              <span class="comment"># 每日限1次</span></pre>
-  </div>
-
-  <div class="code-block" style="margin-top:16px">
-    <div class="code-block-header">
-      <span class="code-block-label">Step 6 · 注册合成配方</span>
-      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
-    </div>
-    <pre><span class="comment"># 格式：上传配方 产物名*材料名:数量,材料名:数量*成功率</span>
-上传配方 简易绷带*干净的布:2,酒精:1          <span class="comment"># 100%成功</span>
-上传配方 高级丹*初级丹:3,金币:100*80          <span class="comment"># 80%成功</span>
-上传配方 传奇装备*高级装备:5,魔晶石:10*60     <span class="comment"># 60%成功</span></pre>
-  </div>
-
-  <div class="code-block" style="margin-top:16px">
-    <div class="code-block-header">
-      <span class="code-block-label">或 · 一键初始化（创建标准配置）</span>
-      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
-    </div>
-    <pre>一键初始化   <span class="comment"># 自动创建5属性、5装备、4种药品并启用攻防系统</span></pre>
-  </div>
-</div>
-
-<div class="sub-section admin-content">
-  <h3 class="sub-title">日常运营检查清单</h3>
-
-  <div class="code-block">
-    <div class="code-block-header">
-      <span class="code-block-label">开局初始化（首次使用必做）</span>
-      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
-    </div>
-    <pre><span class="comment"># 1. 设置天数（开局第一天）</span>
-设置天数 D1
-
-<span class="comment"># 2. 修改基础设置（游戏名、群号等）</span>
-.设置 基础
-
-<span class="comment"># 3. 添加私约群号池</span>
-添加群号 123456789,987654321    <span class="comment"># 用逗号分隔多个群号</span>
-
-<span class="comment"># 4. 为每位玩家创建角色（在各自私人群内执行）</span>
-创建新角色 张三
-
-<span class="comment"># 5. 将管理员账号设为 NPC（避免干扰系统逻辑）</span>
-设为npc 管理员角色名
-
-<span class="comment"># 6. 配置地点与钥匙</span>
-地点管理
-批量设置地点 咖啡厅 张三/李四/王五
-批量发放钥匙 花园 张三/李四
-
-<span class="comment"># 7. 发起第一场官约，正式开始游戏</span>
-发起官约 D1 14:00-15:00 大厅 张三/李四/王五</pre>
-  </div>
-
-  <div class="code-block" style="margin-top:16px">
-    <div class="code-block-header">
-      <span class="code-block-label">管理员每日流程</span>
-      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
-    </div>
-    <pre><span class="comment"># 换天时</span>
-设置天数 D2          <span class="comment"># 推进天数，自动清空计数与心愿池</span>
-
-<span class="comment"># 邀约前</span>
-玩家名单             <span class="comment"># 确认参与者</span>
-查看群号             <span class="comment"># 确认群号池是否充足</span>
-查看进行中           <span class="comment"># 检查进行中的邀约状态</span>
-查看计时器           <span class="comment"># 关注超时情况</span>
-
-<span class="comment"># 邀约中</span>
-查看进行中           <span class="comment"># 定期监控</span>
-提醒超时             <span class="comment"># 处理超时邀约</span>
-
-<span class="comment"># 邀约后</span>
-本场统计             <span class="comment"># 收集当场数据</span>
-结戏加成 执行        <span class="comment"># 触发结戏加成（如已配置）</span>
-统一送心动信 [角色列表] [推进剧情内容]
-存入统计             <span class="comment"># 备份数据</span>
-关系线统计           <span class="comment"># 观察感情线进展</span></pre>
-  </div>
-</div>
-
-<hr class="divider">
 
 <div class="callout tip">
   <div class="callout-title">🚀 快速上手建议</div>
@@ -2737,56 +1711,6 @@ function copyBlock(btn) {
     btn.textContent = '✗ 失败';
     setTimeout(() => { btn.textContent = '复制全部'; }, 1800);
   });
-}
-
-// ── Admin lock ──
-(function(){
-  if(sessionStorage.getItem('adminUnlocked')==='1'){
-    document.body.classList.add('admin-unlocked');
-    var btn=document.getElementById('navLockBtn');
-    if(btn) btn.textContent='🔓 管理员';
-  }
-})();
-
-function toggleLock(){
-  if(document.body.classList.contains('admin-unlocked')){
-    document.body.classList.remove('admin-unlocked');
-    sessionStorage.removeItem('adminUnlocked');
-    document.getElementById('navLockBtn').textContent='🔒 管理员';
-  } else {
-    document.getElementById('lockOverlay').classList.add('open');
-    setTimeout(function(){ document.getElementById('lockInput').focus(); }, 80);
-  }
-}
-
-function tryUnlock(){
-  var input=document.getElementById('lockInput');
-  var errEl=document.getElementById('lockError');
-  if(input.value==='ra9'){
-    if(errEl){errEl.textContent='';errEl.classList.remove('show');}
-    document.body.classList.add('admin-unlocked');
-    sessionStorage.setItem('adminUnlocked','1');
-    document.getElementById('navLockBtn').textContent='🔓 管理员';
-    input.value='';
-    closeLock();
-  } else {
-    input.classList.add('shake');
-    input.value='';
-    if(errEl){
-      errEl.textContent='ACCESS DENIED · DEVIATION DETECTED';
-      errEl.classList.remove('show');
-      void errEl.offsetWidth; // restart animation
-      errEl.classList.add('show');
-    }
-    setTimeout(function(){ input.classList.remove('shake'); }, 400);
-  }
-}
-
-function closeLock(){
-  document.getElementById('lockOverlay').classList.remove('open');
-  document.getElementById('lockInput').value='';
-  var errEl=document.getElementById('lockError');
-  if(errEl){errEl.textContent='';errEl.classList.remove('show');}
 }
 
 // ── MARCUS ANDROID INTERFACE ──
@@ -2872,22 +1796,6 @@ function closeLock(){
 })();
 </script>
 
-<div class="lock-overlay" id="lockOverlay" onclick="if(event.target===this)closeLock()">
-  <div class="lock-modal">
-    <div class="lock-modal-scan-header">
-      <div class="lock-modal-scan-line"></div>
-      <div class="lock-modal-security-level">SECURITY LEVEL: RESTRICTED</div>
-    </div>
-    <div class="lock-modal-icon" id="lockModalIcon">🔒</div>
-    <div class="lock-modal-title">管理员解锁</div>
-    <div class="lock-modal-desc">输入密码查看管理员专属内容</div>
-    <input type="password" id="lockInput" placeholder="••••" autocomplete="off"
-           onkeydown="if(event.key==='Enter')tryUnlock()">
-    <div class="lock-modal-error" id="lockError"></div>
-    <button class="lock-modal-btn" onclick="tryUnlock()">解锁</button>
-    <div class="lock-modal-cancel" onclick="closeLock()">取消</div>
-  </div>
-</div>
 <script>
 // ── MEMORY TOAST ──
 (function() {
@@ -3004,7 +1912,6 @@ document.addEventListener('click', function(e) {
   sections.forEach(function(header) {
     var card = document.createElement('div');
     card.className = 'section-card';
-    if (header.classList.contains('admin-content')) card.classList.add('admin-content');
     page.insertBefore(card, header);
     card.appendChild(header);
 
@@ -3015,8 +1922,7 @@ document.addEventListener('click', function(e) {
         continue;
       }
       if (next.nodeType === 1 &&
-          (next.classList.contains('section-header') ||
-           next.classList.contains('admin-lock-hint'))) break;
+          next.classList.contains('section-header')) break;
       card.appendChild(next);
     }
   });
@@ -3140,6 +2046,118 @@ document.addEventListener('click', function(e) {
 
   setTimeout(function() { runLines(0); }, 400);
 })();
+</script>
+
+<!-- ── SEARCH OVERLAY ─── -->
+<div class="search-overlay" id="searchOverlay" onclick="if(event.target===this)closeSearch()">
+  <div class="search-box">
+    <div class="search-input-row">
+      <svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="rgba(184,154,106,0.7)" stroke-width="1.5" stroke-linecap="round" style="flex-shrink:0"><circle cx="6" cy="6" r="4.5"/><line x1="9.5" y1="9.5" x2="13" y2="13"/></svg>
+      <input class="search-input" id="searchInput" placeholder="输入关键词搜索…" autocomplete="off" spellcheck="false">
+      <span class="search-count-label" id="searchCount"></span>
+      <button class="search-close-btn" onclick="closeSearch()">✕</button>
+    </div>
+    <div class="search-results-list" id="searchResults"></div>
+    <div class="search-hint-bar">
+      <span><kbd>↵</kbd> 跳转</span>
+      <span><kbd>Esc</kbd> 关闭</span>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  var INDEX = [];
+
+  function buildIndex() {
+    INDEX = [];
+    var sel = '.phase-title,.sub-title,.cmd-text,.cmd-desc,p,td,li,th,.hero-title,.hero-desc,.card-title,.card-desc,.section-title';
+    document.querySelectorAll(sel).forEach(function(el) {
+      var t = el.textContent.replace(/\s+/g, ' ').trim();
+      if (t.length > 3 && !el.closest('.search-overlay')) INDEX.push({ el: el, text: t });
+    });
+  }
+
+  function esc(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+  function excerpt(text, q) {
+    var lo = text.toLowerCase(), qi = lo.indexOf(q.toLowerCase());
+    if (qi < 0) return text.slice(0, 100);
+    var s = Math.max(0, qi - 35), e = Math.min(text.length, qi + q.length + 55);
+    var snippet = (s > 0 ? '…' : '') + text.slice(s, e) + (e < text.length ? '…' : '');
+    return snippet.replace(new RegExp('(' + esc(q) + ')', 'gi'), '<mark>$1</mark>');
+  }
+
+  function doSearch(q) {
+    var list = document.getElementById('searchResults');
+    var countEl = document.getElementById('searchCount');
+    list.innerHTML = '';
+    if (!q) { countEl.textContent = ''; return; }
+    var hits = INDEX.filter(function(n) { return n.text.toLowerCase().includes(q.toLowerCase()); });
+    countEl.textContent = hits.length ? hits.length + ' 个结果' : '';
+    if (!hits.length) {
+      list.innerHTML = '<div class="search-empty-msg">没有找到「' + q + '」相关内容</div>';
+      return;
+    }
+    hits.forEach(function(h, i) {
+      var div = document.createElement('div');
+      div.className = 'search-result-item';
+      div.innerHTML = '<span class="sr-num">' + (i + 1) + '</span><span class="sr-text">' + excerpt(h.text, q) + '</span>';
+      div.addEventListener('click', function() {
+        closeSearch();
+        h.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        h.el.classList.add('search-flash');
+        setTimeout(function() { h.el.classList.remove('search-flash'); }, 1400);
+      });
+      list.appendChild(div);
+    });
+  }
+
+  window.openSearch = function() {
+    if (!INDEX.length) buildIndex();
+    var overlay = document.getElementById('searchOverlay');
+    var input   = document.getElementById('searchInput');
+    overlay.classList.add('open');
+    document.getElementById('searchResults').innerHTML = '';
+    document.getElementById('searchCount').textContent = '';
+    input.value = '';
+    setTimeout(function() { input.focus(); }, 60);
+  };
+
+  window.closeSearch = function() {
+    document.getElementById('searchOverlay').classList.remove('open');
+  };
+
+  document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('searchInput').addEventListener('input', function() {
+      doSearch(this.value.trim());
+    });
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') { closeSearch(); closeNavMenu(); }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); openSearch(); }
+    });
+    // close nav menu on outside click
+    document.addEventListener('click', function(e) {
+      var nav = document.getElementById('navLinks');
+      var btn = document.getElementById('navHamburger');
+      if (nav && nav.classList.contains('open') && !nav.contains(e.target) && !btn.contains(e.target)) {
+        closeNavMenu();
+      }
+    });
+  });
+})();
+
+// hamburger menu
+function toggleNavMenu() {
+  var nav = document.getElementById('navLinks');
+  var btn = document.getElementById('navHamburger');
+  var isOpen = nav.classList.toggle('open');
+  btn.classList.toggle('open', isOpen);
+}
+function closeNavMenu() {
+  document.getElementById('navLinks').classList.remove('open');
+  document.getElementById('navHamburger').classList.remove('open');
+}
 </script>
 </body>
 </html>

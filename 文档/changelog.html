@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>长日 · 更新日志</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Noto+Serif+SC:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --black: #0C0B09;
+  --cream: #F7F4EE;
+  --warm-white: #FDFBF7;
+  --gold: #B89A6A;
+  --gold-light: #D4B896;
+  --gold-dim: rgba(184,154,106,0.15);
+  --muted: #7A7570;
+  --border: #E2DDD5;
+  --section-bg: #F3EFE8;
+  --code-bg: #1A1915;
+  --code-fg: #E8DFC8;
+  --green: #4A7C5E;
+  --red: #8B3A3A;
+  --blue: #3A5F8B;
+  --purple: #6B4A8B;
+  --orange: #8B5E3A;
+}
+
+html { scroll-behavior: smooth; }
+body { font-family: 'Noto Serif SC', serif; background: var(--warm-white); color: var(--black); overflow-x: hidden; line-height: 1.7; }
+
+/* ── TOP NAV ─── */
+.topnav { position: sticky; top: 0; z-index: 100; background: var(--black); border-bottom: 2px solid var(--gold); display: flex; align-items: center; gap: 0; padding: 0 32px; height: 52px; overflow-x: auto; scrollbar-width: none; }
+.topnav::-webkit-scrollbar { display: none; }
+.topnav-brand { font-family: 'Playfair Display', serif; font-size: 13px; letter-spacing: 5px; color: var(--gold); text-transform: uppercase; white-space: nowrap; margin-right: 32px; flex-shrink: 0; }
+.topnav a { font-family: 'Cormorant Garamond', serif; font-size: 11.5px; letter-spacing: 2px; text-transform: uppercase; color: rgba(247,244,238,0.65); text-decoration: none; padding: 0 16px; height: 52px; display: flex; align-items: center; white-space: nowrap; border-right: 1px solid rgba(255,255,255,0.08); transition: color 0.2s, background 0.2s; }
+.topnav a:first-of-type { border-left: 1px solid rgba(255,255,255,0.08); }
+.topnav a:hover { color: var(--gold-light); background: rgba(184,154,106,0.1); }
+
+/* ── HERO ─── */
+.hero { background: var(--black); background-image: radial-gradient(circle, rgba(184,154,106,0.09) 1px, transparent 1px); background-size: 26px 26px; padding: 80px 64px 70px; display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; border-bottom: 3px solid var(--gold); position: relative; overflow: hidden; }
+.hero-eyebrow { font-family: 'Cormorant Garamond', serif; font-size: 11px; letter-spacing: 6px; text-transform: uppercase; color: var(--gold); margin-bottom: 20px; }
+.hero-title { font-family: 'Playfair Display', serif; font-size: clamp(32px, 4.5vw, 52px); line-height: 1.1; color: var(--cream); margin-bottom: 20px; }
+.hero-title em { font-style: italic; color: var(--gold-light); }
+.hero-desc { font-family: 'Cormorant Garamond', serif; font-size: 17px; color: rgba(247,244,238,0.6); line-height: 1.8; max-width: 460px; }
+.hero-right { border-left: 1px solid rgba(184,154,106,0.3); padding-left: 48px; }
+.hero-stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.hero-stat { background: rgba(247,244,238,0.05); border: 1px solid rgba(184,154,106,0.2); padding: 20px; position: relative; }
+.hero-stat::before, .hero-stat::after { content: ''; position: absolute; width: 8px; height: 8px; pointer-events: none; }
+.hero-stat::before { top: -2px; left: -2px; border-top: 1px solid rgba(184,154,106,0.5); border-left: 1px solid rgba(184,154,106,0.5); }
+.hero-stat::after { bottom: -2px; right: -2px; border-bottom: 1px solid rgba(184,154,106,0.5); border-right: 1px solid rgba(184,154,106,0.5); }
+.hero-stat-num { font-family: 'Playfair Display', serif; font-size: 32px; color: var(--gold); line-height: 1; margin-bottom: 6px; }
+.hero-stat-label { font-family: 'Cormorant Garamond', serif; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; color: rgba(247,244,238,0.5); }
+.hero-scanline { position: absolute; top: 0; left: 0; right: 0; height: 1.5px; background: linear-gradient(90deg, transparent 0%, rgba(212,184,150,0) 8%, rgba(212,184,150,0.75) 50%, rgba(184,154,106,0) 92%, transparent 100%); pointer-events: none; z-index: 5; animation: hero-scan 2s ease-out 0.5s 1 forwards; opacity: 0; }
+@keyframes hero-scan { 0% { top: 0; opacity: 0; } 6% { opacity: 1; } 94% { opacity: 0.5; } 100% { top: 100%; opacity: 0; } }
+
+/* ── LAYOUT ─── */
+.page { max-width: 900px; margin: 0 auto; padding: 0 48px 80px; }
+
+/* ── TIMELINE ─── */
+.timeline { position: relative; margin-top: 16px; }
+.timeline::before { content: ''; position: absolute; left: 120px; top: 0; bottom: 0; width: 1px; background: var(--border); }
+
+.version-block { display: flex; gap: 0; margin-bottom: 0; position: relative; }
+.version-block + .version-block { border-top: 1px solid var(--border); }
+
+.version-meta { width: 120px; flex-shrink: 0; padding: 32px 28px 32px 0; text-align: right; }
+.version-num { font-family: 'Playfair Display', serif; font-size: 15px; color: var(--black); display: block; }
+.version-date { font-family: 'Cormorant Garamond', serif; font-size: 11px; letter-spacing: 1.5px; color: var(--muted); display: block; margin-top: 3px; }
+
+.version-dot { flex-shrink: 0; width: 0; position: relative; }
+.version-dot::before { content: ''; position: absolute; left: -5px; top: 38px; width: 9px; height: 9px; border-radius: 50%; background: var(--gold); border: 2px solid var(--warm-white); box-shadow: 0 0 0 1px var(--gold); z-index: 1; }
+.version-block.latest .version-dot::before { background: var(--black); box-shadow: 0 0 0 2px var(--gold); width: 11px; height: 11px; left: -6px; top: 37px; animation: dot-pulse 2.5s ease-in-out infinite; }
+@keyframes dot-pulse { 0%, 100% { box-shadow: 0 0 0 2px var(--gold), 0 0 8px rgba(184,154,106,0.4); } 50% { box-shadow: 0 0 0 2px var(--gold), 0 0 16px rgba(184,154,106,0.2); } }
+
+.version-content { flex: 1; padding: 32px 0 32px 40px; }
+.version-title { font-family: 'Playfair Display', serif; font-size: 18px; margin-bottom: 4px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.version-subtitle { font-family: 'Cormorant Garamond', serif; font-size: 14px; color: var(--muted); margin-bottom: 16px; letter-spacing: 0.5px; }
+
+/* ── LATEST BADGE ─── */
+.tag-latest { display: inline-block; font-family: 'Cormorant Garamond', serif; font-size: 9.5px; letter-spacing: 2px; text-transform: uppercase; padding: 2px 9px; border-radius: 2px; border: 1px solid var(--gold); color: var(--gold); background: var(--gold-dim); vertical-align: middle; }
+
+/* ── CHANGE ITEMS ─── */
+.change-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.change-item { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; line-height: 1.65; }
+.change-tag { flex-shrink: 0; font-family: 'Cormorant Garamond', serif; font-size: 9.5px; letter-spacing: 1.5px; text-transform: uppercase; padding: 2px 8px; border-radius: 2px; border: 1px solid; margin-top: 2px; white-space: nowrap; }
+.tag-new    { color: var(--green);  border-color: var(--green);  background: rgba(74,124,94,0.08); }
+.tag-fix    { color: var(--red);    border-color: var(--red);    background: rgba(139,58,58,0.08); }
+.tag-update { color: var(--blue);   border-color: var(--blue);   background: rgba(58,95,139,0.08); }
+.tag-refactor { color: var(--purple); border-color: var(--purple); background: rgba(107,74,139,0.08); }
+.tag-docs   { color: var(--orange); border-color: var(--orange); background: rgba(139,94,58,0.08); }
+
+.change-text { flex: 1; color: #3A3630; }
+.change-text code { font-family: 'Courier New', monospace; font-size: 12.5px; background: var(--section-bg); padding: 1px 5px; border-radius: 2px; }
+
+/* ── SECTION DIVIDER IN CHANGE LIST ─── */
+.change-group-label { font-family: 'Cormorant Garamond', serif; font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: var(--muted); padding: 12px 0 4px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+
+/* ── FOOTER ─── */
+.footer { background: var(--black); color: rgba(247,244,238,0.4); text-align: center; padding: 40px; font-family: 'Cormorant Garamond', serif; font-size: 13px; letter-spacing: 2px; border-top: 2px solid var(--gold); margin-top: 80px; }
+.footer strong { color: var(--gold); }
+
+/* ── RESPONSIVE ─── */
+@media (max-width: 768px) {
+  .hero { grid-template-columns: 1fr; padding: 48px 24px; }
+  .hero-right { border-left: none; padding-left: 0; border-top: 1px solid rgba(184,154,106,0.3); padding-top: 32px; }
+  .page { padding: 0 20px 60px; }
+  .topnav { padding: 0 16px; }
+  .timeline::before { left: 72px; }
+  .version-meta { width: 72px; padding-right: 20px; }
+  .version-num { font-size: 12px; }
+  .version-date { display: none; }
+  .version-content { padding-left: 28px; }
+}
+</style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-brand">长日</div>
+  <a href="changriGuide.html">玩家指南</a>
+  <a href="managementGuide.html">管理指南</a>
+  <a href="changelog.html">更新日志</a>
+</nav>
+
+<div class="hero">
+  <div class="hero-scanline"></div>
+  <div class="hero-left">
+    <div class="hero-eyebrow">Changri System · Release Notes</div>
+    <h1 class="hero-title">更新<br><em>日志</em></h1>
+    <p class="hero-desc">记录长日系统各版本的功能新增、问题修复与结构调整。</p>
+  </div>
+  <div class="hero-right">
+    <div class="hero-stat-grid">
+      <div class="hero-stat">
+        <div class="hero-stat-num">1.3.6</div>
+        <div class="hero-stat-label">Latest</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-num">12</div>
+        <div class="hero-stat-label">Releases</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-num">便捷</div>
+        <div class="hero-stat-label">官约系统</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-num">uid</div>
+        <div class="hero-stat-label">索引架构</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="page">
+<div class="timeline">
+
+  <!-- ── v1.3.6 ─── -->
+  <div class="version-block latest" id="v1.3.6">
+    <div class="version-meta">
+      <span class="version-num">1.3.6</span>
+      <span class="version-date">最新</span>
+    </div>
+    <div class="version-dot"></div>
+    <div class="version-content">
+      <div class="version-title">便捷官约系统 <span class="tag-latest">Latest</span></div>
+      <div class="version-subtitle">新增计划官约与执行官约两条指令，实现一键批量发起官约</div>
+      <ul class="change-list">
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">新增 <code>计划官约</code> 指令：输入是否需要异性、组数、天数、时间段、地点列表，自动将所有非 NPC 玩家分组并分配地点，生成官约方案</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">新增 <code>执行官约</code> 指令：一键执行已保存的官约方案，同时发起所有分组官约（分配群号、更新日程、向各玩家私群推送、启动计时器）</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">异性搭配模式：填写「是」时按性别交替分桶，尽量保证同组内男女混搭</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-update">Update</span>
+          <span class="change-text">地点数量与组数不一致时提前拦截，提示「建设不成功」；任何玩家有时间冲突（锁定或已有安排）时同样拦截</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-update">Update</span>
+          <span class="change-text">执行前二次校验时间冲突，防止方案保存后因其他约会占用而出现错误；执行完毕后自动清空方案存储</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-docs">Docs</span>
+          <span class="change-text">changriGuide 与 managementGuide 同步新增便捷官约说明、指令条目及流程代码块</span>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ── v1.3.5 ─── -->
+  <div class="version-block" id="v1.3.5">
+    <div class="version-meta">
+      <span class="version-num">1.3.5</span>
+      <span class="version-date">文档系统</span>
+    </div>
+    <div class="version-dot"></div>
+    <div class="version-content">
+      <div class="version-title">HTML 文档体系建立</div>
+      <div class="version-subtitle">玩家快速指南与管理员流程指南正式上线</div>
+      <ul class="change-list">
+        <li class="change-item">
+          <span class="change-tag tag-docs">Docs</span>
+          <span class="change-text">新增 <code>changriGuide.html</code> 玩家快速指南，涵盖注册、约会、道具、论坛等全流程说明</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-docs">Docs</span>
+          <span class="change-text">新增 <code>managementGuide.html</code> 管理员流程指南，包含开场流程、群号配置、每日运营、参数配置等完整模块</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-docs">Docs</span>
+          <span class="change-text">所有指令均带一键复制按钮，代码块支持整段复制</span>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ── v1.3.4 ─── -->
+  <div class="version-block" id="v1.3.4">
+    <div class="version-meta">
+      <span class="version-num">1.3.4</span>
+      <span class="version-date">小纸条</span>
+    </div>
+    <div class="version-dot"></div>
+    <div class="version-content">
+      <div class="version-title">小纸条系统完善</div>
+      <div class="version-subtitle">每日限额、收件通知、掉落显示优化</div>
+      <ul class="change-list">
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">小纸条新增每日限额系统及当日计数统计</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">发纸条成功后通知收件人所在群</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-update">Update</span>
+          <span class="change-text">给纸条指令支持负数扣除；掉落显示优化</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-update">Update</span>
+          <span class="change-text">移除收件箱指令，简化交互逻辑</span>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ── v1.3.3 ─── -->
+  <div class="version-block" id="v1.3.3">
+    <div class="version-meta">
+      <span class="version-num">1.3.3</span>
+      <span class="version-date">论坛 & NPC</span>
+    </div>
+    <div class="version-dot"></div>
+    <div class="version-content">
+      <div class="version-title">论坛功能 · NPC 指令 · 额外账号增强</div>
+      <div class="version-subtitle">三项论坛新功能，完善 NPC 管理与多账号体系</div>
+      <ul class="change-list">
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">论坛新增三项互动功能</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">新增创建 NPC 专用指令，支持直接通过指令注册 NPC 角色</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-update">Update</span>
+          <span class="change-text">额外账号相关逻辑增强，修复多账号绑定边界情况</span>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ── v1.3.2 ─── -->
+  <div class="version-block" id="v1.3.2">
+    <div class="version-meta">
+      <span class="version-num">1.3.2</span>
+      <span class="version-date">功能完善</span>
+    </div>
+    <div class="version-dot"></div>
+    <div class="version-content">
+      <div class="version-title">多项功能与系统完善</div>
+      <div class="version-subtitle">约会系统、物品系统、统计系统全面强化</div>
+      <ul class="change-list">
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">管理员操作成功后自动通知玩家并艾特</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">监听统计新增本场段数、字数、平均字数；查看计时器同步展示</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">新增捕鼠器等特殊道具</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-update">Update</span>
+          <span class="change-text">物品 / 拍卖系统多项逻辑完善</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-update">Update</span>
+          <span class="change-text">礼品店统一改为抽卡模式，移除商城购买指令</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-fix">Fix</span>
+          <span class="change-text">修复所有指令因 <code>msg.message</code> 含指令名导致参数解析错位的问题</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-fix">Fix</span>
+          <span class="change-text">写信综货币从背包正确读取与扣除；私约心愿成功时显示扣币提示</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-fix">Fix</span>
+          <span class="change-text">私约 / 电话无可用群时不再错误提示成功</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-fix">Fix</span>
+          <span class="change-text">修复微信群号泄漏漏洞；新增查看微信群指令</span>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ── v1.3.1 ─── -->
+  <div class="version-block" id="v1.3.1">
+    <div class="version-meta">
+      <span class="version-num">1.3.1</span>
+      <span class="version-date">查询修正</span>
+    </div>
+    <div class="version-dot"></div>
+    <div class="version-content">
+      <div class="version-title">新格式查询逻辑全面修正</div>
+      <div class="version-subtitle">修复 uid 迁移后遗留的查询问题</div>
+      <ul class="change-list">
+        <li class="change-item">
+          <span class="change-tag tag-fix">Fix</span>
+          <span class="change-text">全面修正 <code>a_private_group</code> 新格式（uid 为 key）的查询逻辑，消除迁移后遗留的反查错误</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-fix">Fix</span>
+          <span class="change-text">修复跨插件查找时的错误 <code>ext</code> 名称引用</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-fix">Fix</span>
+          <span class="change-text">结戏加成「结戏最多耗费时间」起点计算修正</span>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ── v1.3.0 ─── -->
+  <div class="version-block" id="v1.3.0">
+    <div class="version-meta">
+      <span class="version-num">1.3.0</span>
+      <span class="version-date">架构重构</span>
+    </div>
+    <div class="version-dot"></div>
+    <div class="version-content">
+      <div class="version-title">全面改用 uid 作为存储索引</div>
+      <div class="version-subtitle">底层存储架构重构，提升查找效率与数据一致性</div>
+      <ul class="change-list">
+        <li class="change-item">
+          <span class="change-tag tag-refactor">Refactor</span>
+          <span class="change-text"><code>a_private_group</code> 存储结构从 <code>roleName → [uid, gid]</code> 迁移为 <code>uid → [roleName, gid]</code>，所有查找改为 O(1)</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-refactor">Refactor</span>
+          <span class="change-text">新增 <code>store</code> 工具对象统一封装 storageGet / storageSet 的 JSON 序列化</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">新增 <code>getPrimaryUid</code> 辅助账号解析，支持多账号绑定场景下的主账号映射</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-update">Update</span>
+          <span class="change-text">复盘群按游戏天数分流，与基础设置合并统一管理</span>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ── v1.2.x ─── -->
+  <div class="version-block" id="v1.2">
+    <div class="version-meta">
+      <span class="version-num">1.2.x</span>
+      <span class="version-date">约会 & 加成</span>
+    </div>
+    <div class="version-dot"></div>
+    <div class="version-content">
+      <div class="version-title">私约通知重构 · 结戏加成引擎</div>
+      <div class="version-subtitle">结戏加成改为模版规则引擎，私约 / 电话通知逻辑全面重写</div>
+      <ul class="change-list">
+        <li class="change-item">
+          <span class="change-tag tag-refactor">Refactor</span>
+          <span class="change-text">结戏加成重构为模版规则引擎，支持批量写入、多类型模版（心意 / 官约 / 私约 / 电话 / 通用）</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-refactor">Refactor</span>
+          <span class="change-text">私约 / 电话约会确认通知全面重构，统一推送逻辑</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">羽毛笔道具功能升级：截获信件时不再向发信人发送任何消息</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">追踪器在目标时间为空时也正常消耗道具</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-update">Update</span>
+          <span class="change-text">统一所有群占用后缀为 <code>_占用</code>，移除 <code>_微信占用</code> 区分</span>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ── v1.1.x ─── -->
+  <div class="version-block" id="v1.1">
+    <div class="version-meta">
+      <span class="version-num">1.1.x</span>
+      <span class="version-date">背包 & 写信</span>
+    </div>
+    <div class="version-dot"></div>
+    <div class="version-content">
+      <div class="version-title">写信综 · RPG 背包 · 礼品店</div>
+      <div class="version-subtitle">道具与经济系统初步成型</div>
+      <ul class="change-list">
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">写信综与 RPG 背包系统统一重构，货币与道具读写逻辑标准化</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">礼品店系统上线，支持商品配置与购买流程</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">小纸条插件初版上线</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">「设置监听参数」指令上线，支持按约会类型配置字数 / 时间阈值</span>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ── v1.0.x ─── -->
+  <div class="version-block" id="v1.0">
+    <div class="version-meta">
+      <span class="version-num">1.0.x</span>
+      <span class="version-date">初始版本</span>
+    </div>
+    <div class="version-dot"></div>
+    <div class="version-content">
+      <div class="version-title">长日系统初始版本</div>
+      <div class="version-subtitle">核心系统搭建：角色绑定、私约、官约、心愿、目击</div>
+      <ul class="change-list">
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">角色绑定与私群系统：创建新角色、绑定私群、角色档案（性别 / 年龄 / 皮相）</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">邀约系统：私约、电话、官约三种模式，自动建群、时间冲突检测、日程写入</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">心愿系统：发布心愿、摘取心愿、悬赏心愿</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">目击报告系统：同时间同地点约会自动触发目击通知</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">群号池管理：群号分配、占用检测、过期自动回收</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">时间线系统：查看人物历史互动记录</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">NPC 列表管理：标记 NPC 角色，自动从约会分配中排除</span>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<div class="footer">
+  <strong>长日系统</strong> &nbsp;·&nbsp; Changelog &nbsp;·&nbsp; 记录每一次迭代
+</div>
+
+</body>
+</html>

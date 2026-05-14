@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         长日设置
 // @author       长日将尽
-// @version      1.1.0
+// @version      1.3.6
 // @description  独立的设置控制台（基础、互动、信件、公告）及天数系统、统计报告。所有数据统一存储在主插件 changri 中。
 // @timestamp    1743292800
 // @license      MIT
@@ -158,7 +158,7 @@ const settingsConfig = {
             { label: '发起邀约', key: 'global_feature_toggle', nested: 'enable_general_appointment', type: 'bool', default: true },
             { label: '关系线系统', key: 'relationship_system_enabled', type: 'bool', default: true },
             { label: '关系线上限', key: 'max_relationships_per_user', type: 'string', default: '5' },
-            { label: '点歌群', key: 'song_group_id', type: 'string', default: '未设置', raw: true },
+            { label: '戏群', key: 'song_group_id', type: 'string', default: '未设置', raw: true },
             { label: '后台群', key: 'background_group_id', type: 'string', default: '未设置', raw: true },
             { label: '公告群', key: 'adminAnnounceGroupId', type: 'string', default: '未设置', raw: true },
             { label: '水群', key: 'water_group_id', type: 'string', default: '未设置', raw: true },
@@ -315,6 +315,10 @@ function applyInteractionParam(name, val) {
     const config = settingsConfig['互动设置'];
     const param = config.params.find(p => p.label === name);
     if (!param) return { success: false, message: `未知参数：${name}` };
+    if (param.validate) {
+        const err = param.validate(val);
+        if (err) return { success: false, message: `❌ ${err}` };
+    }
     setConfigParamValue(param, val);
     return { success: true, message: `【${name}】已更新` };
 }
@@ -531,10 +535,8 @@ function showItemSettings(ctx, msg) {
     if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件");
 
     const trackerRate = parseInt(main.storageGet("item_tracker_success_rate") || "70");
-    const drawLimit = parseInt(main.storageGet("item_daily_draw_limit") || "2");
     const showPartner = main.storageGet("item_tracker_show_partner") !== "false";
     const timeRestrict = main.storageGet("item_tracker_time_restrict") !== "false";
-    const itemPoolMode = getMainStorage("item_pool_mode", "自由池");
     const applyNotify = main.storageGet("apply_item_notification") !== "false";
     const exposeNameRate = parseInt(main.storageGet("apply_item_expose_rate") || "0");
     const applyHours = main.storageGet("apply_item_hours") || "不限";
@@ -542,10 +544,8 @@ function showItemSettings(ctx, msg) {
     const results = [
         ".设置 道具设置",
         `【追踪器成功率】${trackerRate}`,
-        `【每日抽取上限】${drawLimit}`,
         `【追踪器显示伙伴】${showPartner ? "开启" : "关闭"}`,
         `【追踪器时间限制】${timeRestrict ? "开启" : "关闭"}`,
-        `【物品池模式】${itemPoolMode}`,
         `【施加是否提醒】${applyNotify ? '开启' : '关闭'}`,
         `【暴露名字概率】${exposeNameRate}%`,
         `【施加可用时段】${applyHours}`
@@ -661,14 +661,6 @@ function applyItemParam(name, val) {
         main.storageSet("item_tracker_success_rate", num.toString());
         return { success: true, message: `【追踪器成功率】已设为 ${num}%` };
     }
-    if (name === '每日抽取上限') {
-        const num = parseInt(val);
-        if (isNaN(num) || num < 1) {
-            return { success: false, message: "【每日抽取上限】必须是 ≥1 的整数" };
-        }
-        main.storageSet("item_daily_draw_limit", num.toString());
-        return { success: true, message: `【每日抽取上限】已设为 ${num} 次` };
-    }
     if (name === '追踪器显示伙伴') {
         const enabled = (val === '开启' || val === '开' || val === 'true');
         main.storageSet("item_tracker_show_partner", enabled ? "true" : "false");
@@ -702,13 +694,6 @@ function applyItemParam(name, val) {
         }
         main.storageSet("apply_item_hours", val);
         return { success: true, message: `【施加可用时段】已设为：${val}` };
-    }
-    if (name === '物品池模式') {
-        if (val !== '自由池' && val !== '固定池') {
-            return { success: false, message: "【物品池模式】必须是「自由池」或「固定池」" };
-        }
-        setMainStorage("item_pool_mode", val);
-        return { success: true, message: `【物品池模式】已切换为 ${val}` };
     }
     return { success: false, message: `未知参数：${name}` };
 }
@@ -1279,13 +1264,16 @@ cmd_end_bonus.help = `结戏加成 — 管理结戏自动发放奖励规则
 and
 段数 >= 5
 奖励 好感度 2
+地点池 1
 池 金币 30 60 TJ00 1 40
 or
 字数 >= 800
 奖励 金币 40
 or
 字数 >= 300
-奖励 金币 15`;
+奖励 金币 15
+
+地点池 N：发放结戏群地点同名抽取池的 N 次机会，池不存在时跳过并提示`;
 
 cmd_end_bonus.solve = function(ctx, msg, argv) {
     if (!isUserAdmin(ctx, msg)) {
@@ -1339,7 +1327,8 @@ cmd_end_bonus.solve = function(ctx, msg, argv) {
 📌 可用奖励目标：
 • 已注册货币（货币名）
 • 已注册道具（道具码）
-• 已注册属性（属性名）`);
+• 已注册属性（属性名）
+• 地点池（写法：地点池 N，发放结戏群地点同名抽取池的 N 次抽取机会；若该池不存在则跳过并提示）`);
         return seal.ext.newCmdExecuteResult(true);
     }
 
@@ -1373,6 +1362,8 @@ cmd_end_bonus.solve = function(ctx, msg, argv) {
                             `${it.target}×${it.amount}(${total > 0 ? Math.round(it.weight / total * 100) : 0}%)`
                         ).join(" / ");
                         lines.push(`【概率池】${poolStr || "（空）"}`);
+                    } else if (r.type === "location_draw") {
+                        lines.push(`【地点池抽取】×${r.amount}（结戏群地点同名池）`);
                     }
                 });
                 lines.push(`  （块 #${blockNum}）`);
@@ -1448,6 +1439,14 @@ cmd_end_bonus.solve = function(ctx, msg, argv) {
                 const amount = parseInt(parts[1]);
                 if (isNaN(amount)) { errors.push(`奖励数量不是数字：${line}`); continue; }
                 currentBlock.rewards.push({ type: "fixed", target: parts[0], targetType: detectTargetType(parts[0]), amount });
+                continue;
+            }
+
+            // 地点池 N
+            if (line.startsWith("地点池 ")) {
+                const amount = parseInt(line.slice(4).trim());
+                if (isNaN(amount) || amount < 1) { errors.push(`地点池次数需为正整数：${line}`); continue; }
+                currentBlock.rewards.push({ type: "location_draw", amount });
                 continue;
             }
 

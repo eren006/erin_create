@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RPG系统
 // @author       长日将尽
-// @version      2.0.0
+// @version      1.3.6
 // @description  物品注册、背包、商城、抽取池、二手市场。所有数据存储在主插件 changri 中。
 // @timestamp    1745568000
 // @license      MIT
@@ -1148,6 +1148,42 @@ cmd_del_pool.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["删除池子"] = cmd_del_pool;
+
+let cmd_batch_create_pools = seal.ext.newCmdItemInfo();
+cmd_batch_create_pools.name = "一键建池";
+cmd_batch_create_pools.help = "【管理员】根据地点列表批量创建同名自由池\n一键建池 —— 为所有已注册地点创建「地点名池」（free类型，已存在的跳过）";
+cmd_batch_create_pools.solve = (ctx, msg) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const main = getMainExt();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
+
+    const places = JSON.parse(main.storageGet("available_places") || "{}");
+    const placeNames = Object.keys(places);
+    if (!placeNames.length) return seal.replyToSender(ctx, msg, "❌ 暂无已注册地点，请先用「地点 添加 地点名」添加地点。");
+
+    const defs = getPoolDefs();
+    const created = [];
+    const skipped = [];
+
+    for (const placeName of placeNames) {
+        const poolName = `${placeName}池`;
+        if (defs[poolName]) {
+            skipped.push(poolName);
+        } else {
+            defs[poolName] = { name: poolName, type: "free", items: [], enabled: true };
+            created.push(poolName);
+        }
+    }
+
+    if (created.length) savePoolDefs(defs);
+
+    const lines = [];
+    if (created.length) lines.push(`✅ 已创建（${created.length}个）：${created.join("、")}`);
+    if (skipped.length) lines.push(`⏭️ 已跳过（${skipped.length}个，已存在）：${skipped.join("、")}`);
+    seal.replyToSender(ctx, msg, `🎲 一键建池完成：\n${lines.join("\n")}\n\n💡 请用「上架池子 池子名 物品码*数量」往池子里加物品。`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["一键建池"] = cmd_batch_create_pools;
 
 let cmd_adjust = seal.ext.newCmdItemInfo();
 cmd_adjust.name = "调整";

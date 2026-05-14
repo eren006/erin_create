@@ -1,0 +1,1110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>长日 · 管理员流程指南</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Noto+Serif+SC:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --black: #0C0B09;
+  --cream: #F7F4EE;
+  --warm-white: #FDFBF7;
+  --gold: #B89A6A;
+  --gold-light: #D4B896;
+  --gold-dim: rgba(184,154,106,0.15);
+  --muted: #7A7570;
+  --border: #E2DDD5;
+  --section-bg: #F3EFE8;
+  --code-bg: #1A1915;
+  --code-fg: #E8DFC8;
+  --green: #4A7C5E;
+  --red: #8B3A3A;
+  --blue: #3A5F8B;
+  --purple: #6B4A8B;
+  --orange: #8B5E3A;
+}
+
+html { scroll-behavior: smooth; }
+body { font-family: 'Noto Serif SC', serif; background: var(--warm-white); color: var(--black); overflow-x: hidden; line-height: 1.7; }
+
+/* ── TOP NAV ─── */
+.topnav { position: sticky; top: 0; z-index: 100; background: var(--black); border-bottom: 2px solid var(--gold); display: flex; align-items: center; gap: 0; padding: 0 32px; height: 52px; overflow-x: auto; scrollbar-width: none; }
+.topnav::-webkit-scrollbar { display: none; }
+.topnav-brand { font-family: 'Playfair Display', serif; font-size: 13px; letter-spacing: 5px; color: var(--gold); text-transform: uppercase; white-space: nowrap; margin-right: 32px; flex-shrink: 0; }
+.topnav a { font-family: 'Cormorant Garamond', serif; font-size: 11.5px; letter-spacing: 2px; text-transform: uppercase; color: rgba(247,244,238,0.65); text-decoration: none; padding: 0 16px; height: 52px; display: flex; align-items: center; white-space: nowrap; border-right: 1px solid rgba(255,255,255,0.08); transition: color 0.2s, background 0.2s; }
+.topnav a:first-of-type { border-left: 1px solid rgba(255,255,255,0.08); }
+.topnav a:hover, .topnav a.active { color: var(--gold-light); background: rgba(184,154,106,0.1); }
+
+/* ── HERO ─── */
+.hero { background: var(--black); background-image: radial-gradient(circle, rgba(184,154,106,0.09) 1px, transparent 1px); background-size: 26px 26px; padding: 80px 64px 70px; display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; border-bottom: 3px solid var(--gold); position: relative; overflow: hidden; }
+.hero-eyebrow { font-family: 'Cormorant Garamond', serif; font-size: 11px; letter-spacing: 6px; text-transform: uppercase; color: var(--gold); margin-bottom: 20px; }
+.hero-title { font-family: 'Playfair Display', serif; font-size: clamp(32px, 4.5vw, 52px); line-height: 1.1; color: var(--cream); margin-bottom: 20px; }
+.hero-title em { font-style: italic; color: var(--gold-light); }
+.hero-desc { font-family: 'Cormorant Garamond', serif; font-size: 17px; color: rgba(247,244,238,0.6); line-height: 1.8; max-width: 460px; }
+.hero-right { border-left: 1px solid rgba(184,154,106,0.3); padding-left: 48px; }
+.hero-stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.hero-stat { background: rgba(247,244,238,0.05); border: 1px solid rgba(184,154,106,0.2); padding: 20px; position: relative; }
+.hero-stat::before, .hero-stat::after { content: ''; position: absolute; width: 8px; height: 8px; pointer-events: none; }
+.hero-stat::before { top: -2px; left: -2px; border-top: 1px solid rgba(184,154,106,0.5); border-left: 1px solid rgba(184,154,106,0.5); }
+.hero-stat::after { bottom: -2px; right: -2px; border-bottom: 1px solid rgba(184,154,106,0.5); border-right: 1px solid rgba(184,154,106,0.5); }
+.hero-stat-num { font-family: 'Playfair Display', serif; font-size: 32px; color: var(--gold); line-height: 1; margin-bottom: 6px; transition: text-shadow 0.3s; }
+.hero-stat:hover .hero-stat-num { text-shadow: 0 0 24px rgba(184,154,106,0.55); }
+.hero-stat-label { font-family: 'Cormorant Garamond', serif; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; color: rgba(247,244,238,0.5); }
+.hero-scanline { position: absolute; top: 0; left: 0; right: 0; height: 1.5px; background: linear-gradient(90deg, transparent 0%, rgba(212,184,150,0) 8%, rgba(212,184,150,0.75) 50%, rgba(184,154,106,0) 92%, transparent 100%); pointer-events: none; z-index: 5; animation: hero-scan 2s ease-out 0.5s 1 forwards; opacity: 0; }
+@keyframes hero-scan { 0% { top: 0; opacity: 0; } 6% { opacity: 1; } 94% { opacity: 0.5; } 100% { top: 100%; opacity: 0; } }
+
+/* ── LAYOUT ─── */
+.page { max-width: 1100px; margin: 0 auto; padding: 0 48px 80px; }
+
+/* ── PHASE HEADER ─── */
+.phase-header { margin: 64px 0 0; padding: 48px 0 28px; border-bottom: 2px solid var(--black); display: flex; align-items: flex-end; gap: 24px; position: relative; }
+.phase-icon { font-size: 32px; line-height: 1; }
+.phase-title-wrap {}
+.phase-eyebrow { font-family: 'Cormorant Garamond', serif; font-size: 10px; letter-spacing: 4px; text-transform: uppercase; color: var(--gold); margin-bottom: 4px; display: flex; align-items: center; gap: 7px; }
+.led-dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--gold); flex-shrink: 0; animation: led-pulse 2.5s ease-in-out infinite; }
+@keyframes led-pulse { 0%, 100% { opacity: 1; box-shadow: 0 0 5px rgba(184,154,106,0.8); } 50% { opacity: 0.3; box-shadow: 0 0 2px rgba(184,154,106,0.2); } }
+.phase-title { font-family: 'Playfair Display', serif; font-size: 28px; line-height: 1.2; }
+.sys-id { position: absolute; right: 0; bottom: 8px; font-family: 'Courier New', monospace; font-size: 9px; letter-spacing: 2.5px; color: rgba(184,154,106,0.28); text-transform: uppercase; user-select: none; }
+
+/* ── REQUIRED / OPTIONAL BADGE ─── */
+.badge { display: inline-block; font-family: 'Cormorant Garamond', serif; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; padding: 2px 8px; border-radius: 2px; border: 1px solid; margin-left: 10px; vertical-align: middle; }
+.badge-req { color: var(--red); border-color: var(--red); background: rgba(139,58,58,0.08); }
+.badge-opt { color: var(--blue); border-color: var(--blue); background: rgba(58,95,139,0.08); }
+.badge-adv { color: var(--purple); border-color: var(--purple); background: rgba(107,74,139,0.08); }
+
+/* ── SUB SECTION ─── */
+.sub-section { margin-top: 40px; padding-top: 32px; border-top: 1px solid var(--border); }
+.sub-section:first-child { border-top: none; }
+.sub-title { font-family: 'Playfair Display', serif; font-size: 18px; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; }
+.sub-title::before { content: ''; display: inline-block; width: 3px; height: 18px; background: var(--gold); border-radius: 2px; flex-shrink: 0; }
+
+/* ── PROSE ─── */
+p { margin-bottom: 12px; color: #3A3630; }
+.lead { font-family: 'Cormorant Garamond', serif; font-size: 18px; line-height: 1.85; color: var(--muted); margin: 20px 0 28px; }
+
+/* ── COMMAND BLOCK ─── */
+.cmd-list { display: flex; flex-direction: column; gap: 6px; }
+.cmd-item { display: flex; align-items: center; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; background: var(--cream); position: relative; }
+.cmd-item::before { content: ''; position: absolute; top: 0; left: -150%; width: 45%; height: 100%; background: linear-gradient(90deg, transparent, rgba(184,154,106,0.11), transparent); transform: skewX(-20deg); pointer-events: none; z-index: 0; }
+.cmd-item:hover::before { animation: cmd-shimmer 0.5s ease forwards; }
+@keyframes cmd-shimmer { from { left: -150%; } to { left: 190%; } }
+.cmd-text { flex: 1; font-family: 'Courier New', Courier, monospace; font-size: 13.5px; padding: 9px 14px; color: var(--black); background: transparent; border: none; outline: none; cursor: text; user-select: all; }
+.cmd-desc { font-family: 'Noto Serif SC', serif; font-size: 12px; color: var(--muted); padding: 0 14px; border-left: 1px solid var(--border); white-space: nowrap; line-height: 1; }
+.cmd-copy { background: var(--black); border: none; color: var(--gold-light); font-family: 'Cormorant Garamond', serif; font-size: 11px; letter-spacing: 1px; padding: 0 14px; height: 100%; min-height: 38px; cursor: pointer; white-space: nowrap; transition: background 0.15s, color 0.15s; border-left: 1px solid rgba(255,255,255,0.1); }
+.cmd-copy:hover { background: var(--gold); color: var(--black); }
+.cmd-copy.copied { background: var(--green); color: white; }
+
+/* ── CODE BLOCK ─── */
+.code-block { position: relative; margin: 20px 0; border-radius: 4px; overflow: hidden; border: 1px solid var(--border); }
+.code-block-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #252318; border-bottom: 1px solid rgba(255,255,255,0.08); }
+.code-block-label { font-family: 'Cormorant Garamond', serif; font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: var(--gold); }
+.code-copy-btn { background: rgba(184,154,106,0.15); border: 1px solid rgba(184,154,106,0.3); color: var(--gold-light); font-family: 'Cormorant Garamond', serif; font-size: 11px; letter-spacing: 1px; padding: 4px 12px; border-radius: 2px; cursor: pointer; transition: background 0.15s; }
+.code-copy-btn:hover { background: rgba(184,154,106,0.3); }
+.code-copy-btn.copied { background: rgba(74,124,94,0.4); color: #8fcca8; border-color: rgba(74,124,94,0.5); }
+.code-block pre { background: var(--code-bg); color: var(--code-fg); font-family: 'Courier New', Courier, monospace; font-size: 13px; line-height: 1.7; padding: 20px; overflow-x: auto; margin: 0; }
+.code-block pre .comment { color: rgba(232,223,200,0.4); }
+.code-block pre .param { color: #C9A96E; }
+.code-block pre .value { color: #8FC9A0; }
+
+/* ── TABLE ─── */
+.guide-table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px; }
+.guide-table th { font-family: 'Cormorant Garamond', serif; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); padding: 10px 14px; text-align: left; border-bottom: 2px solid var(--black); white-space: nowrap; }
+.guide-table td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; line-height: 1.6; }
+.guide-table tr:hover td { background: var(--gold-dim); }
+.guide-table code { font-family: 'Courier New', monospace; font-size: 12.5px; background: var(--section-bg); padding: 2px 6px; border-radius: 2px; }
+
+/* ── CALLOUT ─── */
+.callout { margin: 20px 0; padding: 16px 20px; border-left: 3px solid var(--gold); background: var(--gold-dim); border-radius: 0 4px 4px 0; }
+.callout.danger { border-left-color: var(--red); background: rgba(139,58,58,0.07); }
+.callout.tip { border-left-color: var(--green); background: rgba(74,124,94,0.07); }
+.callout.info { border-left-color: var(--blue); background: rgba(58,95,139,0.07); }
+.callout-title { font-family: 'Cormorant Garamond', serif; font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: var(--gold); margin-bottom: 6px; }
+.callout.danger .callout-title { color: var(--red); }
+.callout.tip .callout-title { color: var(--green); }
+.callout.info .callout-title { color: var(--blue); }
+.callout p { color: var(--black); margin: 0; font-size: 14px; }
+
+/* ── STEPS ─── */
+.steps { margin: 20px 0; }
+.step { display: flex; gap: 16px; margin-bottom: 20px; }
+.step-num { flex-shrink: 0; width: 32px; height: 32px; background: var(--black); color: var(--gold); font-family: 'Playfair Display', serif; font-size: 14px; display: flex; align-items: center; justify-content: center; border-radius: 50%; }
+.step-body {}
+.step-title { font-family: 'Cormorant Garamond', serif; font-size: 15px; font-weight: 500; margin-bottom: 6px; }
+.step-body p { font-size: 14px; color: var(--muted); margin: 0; }
+
+/* ── SYSTEM CARD GRID ─── */
+.sys-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; margin: 24px 0; }
+.sys-card { border: 1px solid var(--border); padding: 20px; background: var(--cream); border-radius: 4px; position: relative; transition: border-color 0.2s; cursor: default; }
+.sys-card:hover { border-color: var(--gold-light); }
+.sys-card::before, .sys-card::after { content: ''; position: absolute; width: 10px; height: 10px; pointer-events: none; transition: width 0.25s, height 0.25s; }
+.sys-card::before { top: -1px; left: -1px; border-top: 1.5px solid var(--gold); border-left: 1.5px solid var(--gold); }
+.sys-card::after { bottom: -1px; right: -1px; border-bottom: 1.5px solid var(--gold); border-right: 1.5px solid var(--gold); }
+.sys-card:hover::before, .sys-card:hover::after { width: 16px; height: 16px; }
+.sys-card-icon { font-size: 24px; margin-bottom: 10px; }
+.sys-card-title { font-family: 'Playfair Display', serif; font-size: 15px; margin-bottom: 6px; }
+.sys-card-desc { font-size: 13px; color: var(--muted); line-height: 1.6; }
+.sys-card-cmd { font-family: 'Courier New', monospace; font-size: 12px; color: var(--black); margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px; }
+
+/* ── CHECKLIST ─── */
+.checklist { list-style: none; margin: 16px 0; }
+.checklist li { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px; line-height: 1.6; }
+.checklist li:last-child { border-bottom: none; }
+.check-box { flex-shrink: 0; width: 18px; height: 18px; border: 1.5px solid var(--gold); border-radius: 2px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.15s; margin-top: 2px; }
+.check-box.checked { background: var(--gold); }
+.check-box.checked::after { content: '✓'; color: var(--black); font-size: 11px; font-weight: 700; }
+.check-label { flex: 1; }
+.check-label code { font-family: 'Courier New', monospace; font-size: 12.5px; background: var(--section-bg); padding: 1px 5px; border-radius: 2px; }
+.check-opt { flex-shrink: 0; font-family: 'Cormorant Garamond', serif; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); }
+
+/* ── SPECIAL GROUP TABLE ─── */
+.sg-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13.5px; }
+.sg-table th { background: var(--black); color: var(--gold); font-family: 'Cormorant Garamond', serif; font-size: 10px; letter-spacing: 3px; text-transform: uppercase; padding: 10px 14px; text-align: left; }
+.sg-table td { padding: 12px 14px; border-bottom: 1px solid var(--border); vertical-align: top; line-height: 1.6; }
+.sg-table tr:hover td { background: var(--gold-dim); }
+.sg-table .key { font-family: 'Courier New', monospace; color: var(--muted); font-size: 11px; }
+
+/* ── DIVIDER ─── */
+.divider { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+
+/* ── FOOTER ─── */
+.footer { background: var(--black); color: rgba(247,244,238,0.4); text-align: center; padding: 40px; font-family: 'Cormorant Garamond', serif; font-size: 13px; letter-spacing: 2px; border-top: 2px solid var(--gold); }
+.footer strong { color: var(--gold); }
+
+/* ── MEMORY TOAST ─── */
+.memory-toast { position: fixed; bottom: 28px; right: 28px; background: var(--black); color: var(--gold-light); font-family: 'Courier New', monospace; font-size: 11px; letter-spacing: 2px; padding: 8px 16px; border: 1px solid rgba(184,154,106,0.4); border-radius: 3px; opacity: 0; transform: translateY(8px); transition: opacity 0.2s, transform 0.2s; pointer-events: none; z-index: 500; }
+.memory-toast.show { opacity: 1; transform: translateY(0); }
+.memory-toast.hide { opacity: 0; transform: translateY(8px); }
+
+/* ── RESPONSIVE ─── */
+@media (max-width: 768px) {
+  .hero { grid-template-columns: 1fr; padding: 48px 24px; }
+  .hero-right { border-left: none; padding-left: 0; border-top: 1px solid rgba(184,154,106,0.3); padding-top: 32px; }
+  .page { padding: 0 20px 60px; }
+  .topnav { padding: 0 16px; }
+  .cmd-desc { display: none; }
+  .sys-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── TOP NAV ─── -->
+<nav class="topnav">
+  <div class="topnav-brand">长日 Admin</div>
+  <a href="#prepare">准备</a>
+  <a href="#groups">群号配置</a>
+  <a href="#basics">天数与基础</a>
+  <a href="#roles">角色与NPC</a>
+  <a href="#collection">公知与收集</a>
+  <a href="#optional">可选系统</a>
+  <a href="#launch">开场</a>
+</nav>
+
+<!-- ── HERO ─── -->
+<div class="hero">
+  <div class="hero-scanline"></div>
+  <div class="hero-left">
+    <div class="hero-eyebrow">Admin Setup Guide</div>
+    <h1 class="hero-title">长日 <em>RPG</em><br>管理员流程</h1>
+    <p class="hero-desc">从零配置到正式开场的完整操作流程。必须步骤按顺序执行，可选系统按需开启。</p>
+  </div>
+  <div class="hero-right">
+    <div class="hero-stat-grid">
+      <div class="hero-stat">
+        <div class="hero-stat-num">4</div>
+        <div class="hero-stat-label">必须步骤</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-num">6</div>
+        <div class="hero-stat-label">可选系统</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-num">3</div>
+        <div class="hero-stat-label">特殊群配置</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat-num">1</div>
+        <div class="hero-stat-label">开场指令</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="page">
+
+<!-- ══════════════════════════════════ PHASE 0: PREPARE -->
+<div id="prepare" class="phase-header">
+  <div class="phase-icon">🔑</div>
+  <div class="phase-title-wrap">
+    <div class="phase-eyebrow"><span class="led-dot"></span>Phase 00 · Required</div>
+    <h2 class="phase-title">准备：权限与密令 <span class="badge badge-req">必须</span></h2>
+  </div>
+  <span class="sys-id">AX·000</span>
+</div>
+
+<div class="sub-section">
+  <h3 class="sub-title">管理员授权</h3>
+  <p style="font-size:14px;color:var(--muted);margin-bottom:14px">第一次使用时，需要在插件配置面板（Seal 后台）设置初始密令，然后用密令授权自己。授权后可更改密令，旧密令作废。</p>
+  <div class="cmd-list">
+    <div class="cmd-item"><span class="cmd-text">授予管理员 QQ号 密令</span><span class="cmd-desc">将指定 QQ 设为管理员，需在群内发送</span><button class="cmd-copy" onclick="copyCmd(this,'授予管理员 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">更改密令 新密令</span><span class="cmd-desc">更改授权密令（至少4位，旧密令立即失效）</span><button class="cmd-copy" onclick="copyCmd(this,'更改密令 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">管理员列表</span><span class="cmd-desc">查看当前所有管理员</span><button class="cmd-copy" onclick="copyCmd(this,'管理员列表')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">收回管理员 QQ号 密令</span><span class="cmd-desc">撤销指定 QQ 的管理员身份</span><button class="cmd-copy" onclick="copyCmd(this,'收回管理员 ')">复制</button></div>
+  </div>
+
+  <div class="code-block" style="margin-top:14px">
+    <div class="code-block-header">
+      <span class="code-block-label">首次授权流程</span>
+      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
+    </div>
+    <pre><span class="comment"># Step 1: 在 Seal 插件配置面板设置初始密令（后台 UI 操作）</span>
+
+<span class="comment"># Step 2: 在任意群内发送（QQ号替换为你自己的）</span>
+授予管理员 <span class="param">123456789</span> <span class="param">初始密令</span>
+
+<span class="comment"># Step 3: 授权成功后，立即更改密令</span>
+更改密令 <span class="param">你的新密令</span></pre>
+  </div>
+
+  <div class="callout danger" style="margin-top:14px">
+    <div class="callout-title">⚠️ 安全提示</div>
+    <p>密令直接决定谁能获得管理员权限。初始密令在后台明文可见，授权后请立即更改。勿将密令分享给不信任的人。</p>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════ PHASE 1: GROUPS -->
+<div id="groups" class="phase-header">
+  <div class="phase-icon">🏘️</div>
+  <div class="phase-title-wrap">
+    <div class="phase-eyebrow"><span class="led-dot"></span>Phase 01 · Required</div>
+    <h2 class="phase-title">群号配置 <span class="badge badge-req">必须</span></h2>
+  </div>
+  <span class="sys-id">GR·100</span>
+</div>
+
+<div class="sub-section">
+  <h3 class="sub-title">约会群池（私约群号）</h3>
+  <p style="font-size:14px;color:var(--muted);margin-bottom:14px">玩家发起私约时，系统从群池中自动分配一个空闲群号。需要提前将所有准备好的空群添加进来。</p>
+  <div class="cmd-list">
+    <div class="cmd-item"><span class="cmd-text">添加群号 群号</span><span class="cmd-desc">将群号加入约会群池（可逗号分隔多个）</span><button class="cmd-copy" onclick="copyCmd(this,'添加群号 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">查看群号</span><span class="cmd-desc">查看所有已注册群号及当前使用状态</span><button class="cmd-copy" onclick="copyCmd(this,'查看群号')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">移除群号 群号</span><span class="cmd-desc">从群池中移除指定群号</span><button class="cmd-copy" onclick="copyCmd(this,'移除群号 ')">复制</button></div>
+  </div>
+
+  <div class="code-block" style="margin-top:14px">
+    <div class="code-block-header">
+      <span class="code-block-label">批量添加群号</span>
+      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
+    </div>
+    <pre>添加群号 <span class="param">111111111,222222222,333333333</span>   <span class="comment"># 用逗号分隔，一次添加多个</span></pre>
+  </div>
+
+  <div class="callout tip">
+    <div class="callout-title">💡 准备多少个群</div>
+    <p>群池数量应 ≥ 同时段最大预期约会数。每场约会只占用一个群号，约会结束后自动释放。建议比预期多准备 2–3 个作为缓冲。</p>
+  </div>
+</div>
+
+<div class="sub-section">
+  <h3 class="sub-title">特殊群配置（.设置 群组面板）</h3>
+  <p style="font-size:14px;color:var(--muted);margin-bottom:14px">三个特殊群通过 <code>.设置 群组</code> 在面板中配置，填入对应的群号。每个群承担不同的系统功能。</p>
+
+  <table class="sg-table">
+    <thead><tr><th>群类型</th><th>作用</th><th>建议配置</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>公告群</strong><br><span class="key">adminAnnounceGroupId</span></td>
+        <td>系统自动公告的发送群：礼物公告、心动信派送预告、公开互动广播等。<strong>玩家也需要在这个群里</strong>才能收到公告。</td>
+        <td>玩家和管理都在的公告群</td>
+      </tr>
+      <tr>
+        <td><strong>水群（玩家大群）</strong><br><span class="key">water_group_id</span></td>
+        <td>同步名片操作（<code>同步名片</code>）会把所有角色名片同步到这个群，方便玩家互相认识。</td>
+        <td>所有玩家都在的主群</td>
+      </tr>
+      <tr>
+        <td><strong>戏群</strong><br><span class="key">song_group_id</span></td>
+        <td>论坛系统的公告群：发帖/回复/点赞会自动推送到这里。也是点歌结果的发送群。在设置面板中标注为「戏群」。</td>
+        <td>公告频道群或玩家都在的主群</td>
+      </tr>
+      <tr>
+        <td><strong>后台群（复盘群）</strong><br><span class="key">在 设置 基础 中配置</span></td>
+        <td>仅管理员在内的私群。玩家用「转发复盘」结束约会时，记录自动转发至此，管理员在这里查看所有复盘内容。</td>
+        <td>管理员专用私群，<strong>不需要玩家在里面</strong></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="cmd-list">
+    <div class="cmd-item"><span class="cmd-text">设置 群组</span><span class="cmd-desc">打开群组配置面板，在此填写三个特殊群群号</span><button class="cmd-copy" onclick="copyCmd(this,'设置 群组')">复制</button></div>
+  </div>
+
+  <div class="callout info" style="margin-top:14px">
+    <div class="callout-title">ℹ️ 三群可以是同一个</div>
+    <p>如果玩家较少，三个特殊群可以指向同一个群号，不影响功能。只需要确保机器人在该群有发消息权限。</p>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════ PHASE 2: BASICS -->
+<div id="basics" class="phase-header">
+  <div class="phase-icon">📅</div>
+  <div class="phase-title-wrap">
+    <div class="phase-eyebrow"><span class="led-dot"></span>Phase 02 · Required</div>
+    <h2 class="phase-title">天数与基础设置 <span class="badge badge-req">必须</span></h2>
+  </div>
+  <span class="sys-id">DY·200</span>
+</div>
+
+<div class="sub-section">
+  <h3 class="sub-title">设置游戏天数</h3>
+  <p style="font-size:14px;color:var(--muted);margin-bottom:14px">天数是整个系统的核心参数。玩家发起私约、心愿、官约时都需要绑定天数。未设置时所有约会功能无法使用。</p>
+  <div class="cmd-list">
+    <div class="cmd-item"><span class="cmd-text">设置天数 D1</span><span class="cmd-desc">设置当前游戏天数，发起邀约时会以此天数记录</span><button class="cmd-copy" onclick="copyCmd(this,'设置天数 D1')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">开启自动天数</span><span class="cmd-desc">每天 23:59 自动推进天数（D1→D2→...）</span><button class="cmd-copy" onclick="copyCmd(this,'开启自动天数')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">关闭自动天数</span><span class="cmd-desc">关闭自动推进，需手动切换天数</span><button class="cmd-copy" onclick="copyCmd(this,'关闭自动天数')">复制</button></div>
+  </div>
+  <div class="callout">
+    <div class="callout-title">📌 开场前先设 D0</div>
+    <p>建议在正式开场前将天数设为 D0（准备阶段），开场时再改为 D1，避免测试数据污染正式记录。</p>
+  </div>
+</div>
+
+<div class="sub-section">
+  <h3 class="sub-title">长日设置面板参考</h3>
+  <p style="font-size:14px;color:var(--muted);margin-bottom:6px">用 <code>设置 面板名</code> 查看当前值，直接回复面板输出并换行添加 <code>【字段名】新值</code> 即可批量修改。</p>
+  <div class="cmd-list" style="margin-bottom:20px">
+    <div class="cmd-item"><span class="cmd-text">设置</span><span class="cmd-desc">列出所有可用设置面板</span><button class="cmd-copy" onclick="copyCmd(this,'设置')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">初始化设置</span><span class="cmd-desc">一键补全所有缺失的默认配置（首次部署后建议执行）</span><button class="cmd-copy" onclick="copyCmd(this,'初始化设置')">复制</button></div>
+  </div>
+
+  <!-- 基础设置 -->
+  <h4 style="font-family:'Playfair Display',serif;font-size:15px;margin:24px 0 8px;border-left:3px solid var(--gold);padding-left:10px">设置 基础设置</h4>
+  <table class="guide-table">
+    <thead><tr><th>字段</th><th>默认值</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td><code>【恋综名】</code></td><td>未设置</td><td>游戏名称，显示在各类公告中</td></tr>
+      <tr><td><code>【微信】</code></td><td>开启</td><td>微信互动功能总开关</td></tr>
+      <tr><td><code>【礼物】</code></td><td>开启</td><td>送礼功能总开关</td></tr>
+      <tr><td><code>【心愿】</code></td><td>开启</td><td>心愿系统总开关</td></tr>
+      <tr><td><code>【发起邀约】</code></td><td>开启</td><td>玩家发起私约/电话的功能开关</td></tr>
+      <tr><td><code>【关系线系统】</code></td><td>开启</td><td>关系线功能总开关</td></tr>
+      <tr><td><code>【关系线上限】</code></td><td>5</td><td>每人最多同时持有的关系线数量</td></tr>
+      <tr><td><code>【戏群】</code></td><td>未设置</td><td>论坛公告 / 点歌发送群，填群号</td></tr>
+      <tr><td><code>【后台群】</code></td><td>未设置</td><td>管理复盘专用群，仅管理员，填群号</td></tr>
+      <tr><td><code>【公告群】</code></td><td>未设置</td><td>系统自动公告群（玩家需在此群），填群号</td></tr>
+      <tr><td><code>【水群】</code></td><td>未设置</td><td>名片同步目标群（玩家大群），填群号</td></tr>
+      <tr><td><code>【复盘群分流】</code></td><td>关闭</td><td>开启后按天数把复盘分流到不同后台群</td></tr>
+      <tr><td><code>【复盘群分流群】</code></td><td>未设置</td><td>分流映射（D1:群号 D2:群号 ...）</td></tr>
+    </tbody>
+  </table>
+
+  <!-- 互动设置 -->
+  <h4 style="font-family:'Playfair Display',serif;font-size:15px;margin:24px 0 8px;border-left:3px solid var(--gold);padding-left:10px">设置 互动设置</h4>
+  <table class="guide-table">
+    <thead><tr><th>字段</th><th>默认值</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td><code>【地点系统】</code></td><td>关闭</td><td>开启后私约必须填写已注册的地点</td></tr>
+      <tr><td><code>【结戏抽取】</code></td><td>关闭</td><td>结戏时触发物品抽取奖励（旧方式，推荐改用结戏加成的「地点池」奖励类型）</td></tr>
+      <tr><td><code>【电话最小时长】</code></td><td>29</td><td>电话最少持续分钟数（含）</td></tr>
+      <tr><td><code>【私密最小时长】</code></td><td>59</td><td>私约最少持续分钟数（含）</td></tr>
+      <tr><td><code>【寄信冷却时间】</code></td><td>60</td><td>寄信两次之间的最短冷却分钟数</td></tr>
+      <tr><td><code>【送礼冷却时间】</code></td><td>30</td><td>送礼两次之间的最短冷却分钟数</td></tr>
+      <tr><td><code>【送礼模式】</code></td><td>0</td><td>0=标准模式，其他值见礼物系统说明</td></tr>
+    </tbody>
+  </table>
+
+  <!-- 信件设置 -->
+  <h4 style="font-family:'Playfair Display',serif;font-size:15px;margin:24px 0 8px;border-left:3px solid var(--gold);padding-left:10px">设置 信件设置（匿名寄信）</h4>
+  <table class="guide-table">
+    <thead><tr><th>字段</th><th>默认值</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td><code>【寄信】</code></td><td>开启</td><td>匿名寄信功能开关</td></tr>
+      <tr><td><code>【寄信每日上限】</code></td><td>5</td><td>每人每天最多发送的信件数</td></tr>
+      <tr><td><code>【寄信允许自定义名字】</code></td><td>关闭</td><td>开启后玩家可以用任意署名发信</td></tr>
+      <tr><td><code>【寄信混乱送错】</code></td><td>0</td><td>信件送达错误人的概率（%）</td></tr>
+      <tr><td><code>【寄信混乱涂改】</code></td><td>0</td><td>内容被随机涂黑的概率（%）</td></tr>
+      <tr><td><code>【寄信混乱丢失】</code></td><td>0</td><td>信件丢失不送达的概率（%）</td></tr>
+      <tr><td><code>【寄信混乱反义】</code></td><td>0</td><td>关键词替换为反义词的概率（%）</td></tr>
+      <tr><td><code>【寄信混乱乱序】</code></td><td>0</td><td>句子顺序打乱的概率（%）</td></tr>
+      <tr><td><code>【寄信混乱混淆】</code></td><td>0</td><td>署名与他人混淆的概率（%）</td></tr>
+      <tr><td><code>【寄信混乱诗意】</code></td><td>0</td><td>内容改写为诗意表达的概率（%）</td></tr>
+    </tbody>
+  </table>
+
+  <!-- 发送信件设置 -->
+  <h4 style="font-family:'Playfair Display',serif;font-size:15px;margin:24px 0 8px;border-left:3px solid var(--gold);padding-left:10px">设置 发送信件设置（实名直发）</h4>
+  <table class="guide-table">
+    <thead><tr><th>字段</th><th>默认值</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td><code>【发送信件】</code></td><td>关闭</td><td>实名直发信件功能开关（区别于匿名寄信）</td></tr>
+      <tr><td><code>【发送信件每日上限】</code></td><td>5</td><td>每人每天最多直发数</td></tr>
+      <tr><td><code>【发送信件最低字数】</code></td><td>0</td><td>信件内容最少字数，0 为不限</td></tr>
+      <tr><td><code>【发送信件赏金】</code></td><td>0</td><td>发信后奖励的货币数量，0 为不奖励</td></tr>
+    </tbody>
+  </table>
+
+  <!-- 公告设置 -->
+  <h4 style="font-family:'Playfair Display',serif;font-size:15px;margin:24px 0 8px;border-left:3px solid var(--gold);padding-left:10px">设置 公告设置</h4>
+  <table class="guide-table">
+    <thead><tr><th>字段</th><th>默认值</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td><code>【心愿公开提醒】</code></td><td>关闭</td><td>心愿配对成功后是否向公告群播报</td></tr>
+      <tr><td><code>【送礼公开发送】</code></td><td>关闭</td><td>礼物是否有概率在公告群公开</td></tr>
+      <tr><td><code>【寄信公开发送】</code></td><td>关闭</td><td>信件是否有概率在公告群公开</td></tr>
+      <tr><td><code>【寄信公开概率】</code></td><td>50</td><td>信件公开的概率（%），需开启公开发送</td></tr>
+      <tr><td><code>【礼物公开概率】</code></td><td>50</td><td>礼物公告的概率（%），需开启公开发送</td></tr>
+      <tr><td><code>【每日礼物上限】</code></td><td>100</td><td>每人每天最多送出礼物数</td></tr>
+      <tr><td><code>【公告触发频率】</code></td><td>5</td><td>互动播报的触发间隔（分钟）</td></tr>
+    </tbody>
+  </table>
+
+  <!-- 心动信设置 -->
+  <h4 style="font-family:'Playfair Display',serif;font-size:15px;margin:24px 0 8px;border-left:3px solid var(--gold);padding-left:10px">设置 心动信设置</h4>
+  <table class="guide-table">
+    <thead><tr><th>字段</th><th>默认值</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td><code>【心动信】</code></td><td>开启</td><td>心动信功能总开关</td></tr>
+      <tr><td><code>【心动信送达时间】</code></td><td>22:00</td><td>每日统一派送时间（24小时制，格式 HH:MM）</td></tr>
+      <tr><td><code>【心动信曝光】</code></td><td>关闭</td><td>开启后信件内容可能被公开披露</td></tr>
+      <tr><td><code>【心动信曝光概率】</code></td><td>10</td><td>被公开的概率（%），需开启曝光</td></tr>
+    </tbody>
+  </table>
+  <div class="cmd-list" style="margin-top:10px">
+    <div class="cmd-item"><span class="cmd-text">设置信箱上限 默认 3</span><span class="cmd-desc">每人每天最多可收到的心动信数量（建议开场前设置）</span><button class="cmd-copy" onclick="copyCmd(this,'设置信箱上限 默认 ')">复制</button></div>
+  </div>
+
+  <!-- 心愿设置 -->
+  <h4 style="font-family:'Playfair Display',serif;font-size:15px;margin:24px 0 8px;border-left:3px solid var(--gold);padding-left:10px">设置 心愿设置</h4>
+  <table class="guide-table">
+    <thead><tr><th>字段</th><th>默认值</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td><code>【心愿系统】</code></td><td>开启</td><td>心愿功能总开关</td></tr>
+      <tr><td><code>【悬赏开关】</code></td><td>开启</td><td>心愿悬赏功能（玩家可为心愿附加物品悬赏）</td></tr>
+      <tr><td><code>【同时上限】</code></td><td>3</td><td>每人同时挂出的心愿最大数量</td></tr>
+      <tr><td><code>【每日发布上限】</code></td><td>0</td><td>每人每天最多发布心愿次数，0 为不限</td></tr>
+      <tr><td><code>【每日摘取上限】</code></td><td>0</td><td>每人每天最多摘取心愿次数，0 为不限</td></tr>
+    </tbody>
+  </table>
+
+  <!-- 道具设置 -->
+  <h4 style="font-family:'Playfair Display',serif;font-size:15px;margin:24px 0 8px;border-left:3px solid var(--gold);padding-left:10px">设置 道具设置</h4>
+  <table class="guide-table">
+    <thead><tr><th>字段</th><th>默认值</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td><code>【追踪器成功率】</code></td><td>70</td><td>追踪器道具的成功概率（%）</td></tr>
+      <tr><td><code>【追踪器显示伙伴】</code></td><td>开启</td><td>追踪成功时是否显示目标当前约会伙伴</td></tr>
+      <tr><td><code>【追踪器时间限制】</code></td><td>开启</td><td>开启后追踪器只能在邀约时段内使用</td></tr>
+      <tr><td><code>【施加是否提醒】</code></td><td>开启</td><td>互动物品被施加时是否通知目标</td></tr>
+      <tr><td><code>【暴露名字概率】</code></td><td>0</td><td>施加时暴露使用者身份的概率（%），0 为匿名</td></tr>
+      <tr><td><code>【施加可用时段】</code></td><td>不限</td><td>互动物品可施加的时段限制</td></tr>
+    </tbody>
+  </table>
+
+  <!-- 群组设置 -->
+  <h4 style="font-family:'Playfair Display',serif;font-size:15px;margin:24px 0 8px;border-left:3px solid var(--gold);padding-left:10px">设置 群组设置</h4>
+  <table class="guide-table">
+    <thead><tr><th>字段</th><th>默认值</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td><code>【小群过期时间】</code></td><td>48</td><td>约会群在结束后多少小时自动失效（小时）</td></tr>
+      <tr><td><code>【允许加入已有私约】</code></td><td>开启</td><td>开启后玩家可中途加入进行中的约会</td></tr>
+      <tr><td><code>【自动合并重合私约】</code></td><td>关闭</td><td>同时段同地点的约会是否自动合并</td></tr>
+      <tr><td><code>【复盘强制结束】</code></td><td>开启</td><td>要求先完成复盘才能结束约会</td></tr>
+      <tr><td><code>【目击报告】</code></td><td>关闭</td><td>目击系统开关（需同时开启地点系统）</td></tr>
+      <tr><td><code>【目击报告方式】</code></td><td>双向通知</td><td>双向通知 / 单向通知</td></tr>
+      <tr><td><code>【目击每日上限】</code></td><td>3</td><td>每人每天最多收到的目击报告条数</td></tr>
+      <tr><td><code>【时间重叠阈值】</code></td><td>30%</td><td>触发目击所需的时间重叠比例下限</td></tr>
+      <tr><td><code>【包含已结束】</code></td><td>是</td><td>已结束的约会是否也计入同场检测</td></tr>
+    </tbody>
+  </table>
+
+  <!-- 礼品店设置 -->
+  <h4 style="font-family:'Playfair Display',serif;font-size:15px;margin:24px 0 8px;border-left:3px solid var(--gold);padding-left:10px">设置 礼品店设置</h4>
+  <table class="guide-table">
+    <thead><tr><th>字段</th><th>默认值</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td><code>【礼品店刷新间隔】</code></td><td>24</td><td>每人的礼品店多少小时刷新一次（小时）</td></tr>
+      <tr><td><code>【收到即入图鉴】</code></td><td>关闭</td><td>开启后收到礼物时自动解锁礼物图鉴</td></tr>
+    </tbody>
+  </table>
+
+  <div class="cmd-list" style="margin-top:20px">
+    <div class="cmd-item"><span class="cmd-text">设置邀约时间 09:00-12:00 14:00-18:00</span><span class="cmd-desc">可选：限制玩家只能在指定时段发起邀约</span><button class="cmd-copy" onclick="copyCmd(this,'设置邀约时间 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">清空邀约时间</span><span class="cmd-desc">解除邀约时间限制，允许任意时段</span><button class="cmd-copy" onclick="copyCmd(this,'清空邀约时间')">复制</button></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════ PHASE 3: ROLES & NPC -->
+<div id="roles" class="phase-header">
+  <div class="phase-icon">👤</div>
+  <div class="phase-title-wrap">
+    <div class="phase-eyebrow"><span class="led-dot"></span>Phase 03 · Required</div>
+    <h2 class="phase-title">角色与 NPC <span class="badge badge-req">必须</span></h2>
+  </div>
+  <span class="sys-id">RL·300</span>
+</div>
+
+<div class="sub-section">
+  <h3 class="sub-title">玩家创建角色</h3>
+  <p style="font-size:14px;color:var(--muted);margin-bottom:14px">玩家在自己的私人群内自行创建，管理员无需代操作。每人限一个角色，绑定到账号 QQ。</p>
+  <div class="cmd-list">
+    <div class="cmd-item"><span class="cmd-text">创建新角色 角色名</span><span class="cmd-desc">玩家在私人群内发送，绑定账号并创建角色</span><button class="cmd-copy" onclick="copyCmd(this,'创建新角色 ')">复制</button></div>
+  </div>
+  <div class="callout tip" style="margin-top:14px">
+    <div class="callout-title">💡 同步名片</div>
+    <p>所有玩家创建角色后，执行 <code>同步名片</code> 将所有人的群名片更新为角色名，水群和戏群都会同步。</p>
+  </div>
+</div>
+
+<div class="sub-section">
+  <h3 class="sub-title">创建 NPC</h3>
+  <p style="font-size:14px;color:var(--muted);margin-bottom:14px">NPC 是不绑定真实玩家的角色，不占用约会时段、不参与自动分组，适合用于剧情角色、系统角色或管理员操控的配角。</p>
+
+  <div class="cmd-list">
+    <div class="cmd-item"><span class="cmd-text">创建NPC NPC名</span><span class="cmd-desc">直接创建 NPC 角色，无需绑定真实 QQ</span><button class="cmd-copy" onclick="copyCmd(this,'创建NPC ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">设为npc 角色名</span><span class="cmd-desc">将已有角色标记为 NPC（再次执行可取消）</span><button class="cmd-copy" onclick="copyCmd(this,'设为npc ')">复制</button></div>
+  </div>
+
+  <table class="guide-table" style="margin-top:16px">
+    <thead><tr><th>方式</th><th>适用场景</th><th>备注</th></tr></thead>
+    <tbody>
+      <tr><td><code>创建NPC 角色名</code></td><td>剧情 NPC、系统机器人角色</td><td>无绑定账号，管理员代操控</td></tr>
+      <tr><td><code>设为npc 角色名</code></td><td>管理员自己的测试角色、运营账号角色</td><td>已有角色转换，再执行一次可取消</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout danger">
+    <div class="callout-title">⚠️ 管理员角色要设为 NPC</div>
+    <p>如果管理员也注册了游戏角色，务必 <code>设为npc 管理员角色名</code>，否则会被系统误判为普通玩家，干扰分组和邀约逻辑。</p>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════ PHASE 4: 公知与收集 -->
+<div id="collection" class="phase-header">
+  <div class="phase-icon">📋</div>
+  <div class="phase-title-wrap">
+    <div class="phase-eyebrow"><span class="led-dot"></span>Phase 04 · Optional</div>
+    <h2 class="phase-title">公知与信息收集 <span class="badge badge-opt">可选</span></h2>
+  </div>
+  <span class="sys-id">CL·400</span>
+</div>
+
+<div class="sub-section">
+  <h3 class="sub-title">信息收集系统</h3>
+  <p style="font-size:14px;color:var(--muted);margin-bottom:14px">用于向玩家收集问卷答案、角色设定、选择题等结构化信息。玩家用 <code>我提交</code> 提交内容，管理员用 <code>查看收集</code> 汇总查看。</p>
+
+  <div class="cmd-list">
+    <div class="cmd-item"><span class="cmd-text">我提交 项目名: 内容</span><span class="cmd-desc">玩家提交内容到指定收集项目（如：我提交 问卷: 我选A）</span><button class="cmd-copy" onclick="copyCmd(this,'我提交 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">查看收集</span><span class="cmd-desc">列出所有收集项目及提交数量</span><button class="cmd-copy" onclick="copyCmd(this,'查看收集')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">查看收集 项目名</span><span class="cmd-desc">查看指定项目的所有提交内容</span><button class="cmd-copy" onclick="copyCmd(this,'查看收集 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">删除上传 项目名</span><span class="cmd-desc">删除整个收集项目的所有数据</span><button class="cmd-copy" onclick="copyCmd(this,'删除上传 ')">复制</button></div>
+  </div>
+
+  <div class="callout tip" style="margin-top:14px">
+    <div class="callout-title">💡 使用场景</div>
+    <p>适合收集：角色背景资料、活动报名、投票选择、赛前信息等。项目名自由定义，玩家直接发送即可提交，无需额外注册。</p>
+  </div>
+
+  <div class="code-block" style="margin-top:14px">
+    <div class="code-block-header">
+      <span class="code-block-label">收集流程示例</span>
+      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
+    </div>
+    <pre><span class="comment"># 管理员发布收集通知（在群里说明）</span>
+<span class="comment"># 玩家在自己私人群发送：</span>
+我提交 角色背景: 张三，来自北方小城，性格内敛
+
+<span class="comment"># 管理员查看汇总</span>
+查看收集               <span class="comment"># 看所有项目</span>
+查看收集 角色背景       <span class="comment"># 看该项目所有提交</span></pre>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════ PHASE 5: OPTIONAL SYSTEMS -->
+<div id="optional" class="phase-header">
+  <div class="phase-icon">⚙️</div>
+  <div class="phase-title-wrap">
+    <div class="phase-eyebrow"><span class="led-dot"></span>Phase 05 · Optional</div>
+    <h2 class="phase-title">可选系统 <span class="badge badge-opt">按需开启</span></h2>
+  </div>
+  <span class="sys-id">SY·500</span>
+</div>
+
+<div class="sub-section">
+  <p style="font-size:14px;color:var(--muted);margin-bottom:4px">以下系统相互独立，按游戏需要选择开启。不使用的系统无需配置，不影响核心功能。</p>
+  <div class="sys-grid">
+    <div class="sys-card">
+      <div class="sys-card-icon">📍</div>
+      <div class="sys-card-title">地点系统</div>
+      <div class="sys-card-desc">控制玩家可用的私约场所，支持上锁/钥匙权限、私人房间。</div>
+      <div class="sys-card-cmd">地点管理 / 批量设置地点</div>
+    </div>
+    <div class="sys-card">
+      <div class="sys-card-icon">🔨</div>
+      <div class="sys-card-title">拍卖系统</div>
+      <div class="sys-card-desc">玩家竞价出价，到期自动结算，支持匿名出价和播报。</div>
+      <div class="sys-card-cmd">设置 拍卖 / 添加拍卖物品</div>
+    </div>
+    <div class="sys-card">
+      <div class="sys-card-icon">🧬</div>
+      <div class="sys-card-title">RPG 属性</div>
+      <div class="sys-card-desc">HP/MP/ATK 等属性体系，支持属性修改、装备、合成。</div>
+      <div class="sys-card-cmd">注册属性 / 我创建属性</div>
+    </div>
+    <div class="sys-card">
+      <div class="sys-card-icon">🎒</div>
+      <div class="sys-card-title">物品与商城</div>
+      <div class="sys-card-desc">注册物品/货币，建立商城和抽取池，支持背包和二手市场。</div>
+      <div class="sys-card-cmd">上载物品 / 注册货币</div>
+    </div>
+    <div class="sys-card">
+      <div class="sys-card-icon">🎁</div>
+      <div class="sys-card-title">礼品店</div>
+      <div class="sys-card-desc">预设礼物库，玩家随机抽取解锁，支持图鉴收集和赠送。</div>
+      <div class="sys-card-cmd">上传预设礼物 / 设置 礼品店设置</div>
+    </div>
+    <div class="sys-card">
+      <div class="sys-card-icon">✨</div>
+      <div class="sys-card-title">结戏加成</div>
+      <div class="sys-card-desc">根据约会内容质量自动触发奖励，按条件配置模版。</div>
+      <div class="sys-card-cmd">结戏加成 新建 / 结戏加成 开启</div>
+    </div>
+  </div>
+</div>
+
+<!-- 地点系统 -->
+<div class="sub-section">
+  <h3 class="sub-title">地点系统 <span class="badge badge-opt">可选</span></h3>
+  <p style="font-size:14px;color:var(--muted);margin-bottom:14px">开启后玩家发起私约时必须使用已注册的地点。关闭时不做任何校验。</p>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <div class="step-title">添加地点</div>
+        <p><code>地点管理 添加 地点名:描述</code> 或批量用 <code>批量设置地点 地点1:描述/地点2</code></p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <div class="step-title">（可选）设置上锁地点</div>
+        <p>上锁地点只有持有该地点钥匙的角色才能使用，适合设定为「私密场所」或特定剧情场地。</p>
+        <table class="guide-table" style="margin-top:10px">
+          <thead><tr><th>操作</th><th>指令</th></tr></thead>
+          <tbody>
+            <tr><td>上锁 / 解锁地点</td><td><code>地点管理 开关 地点名</code>（再次执行切换状态）</td></tr>
+            <tr><td>发放单把钥匙</td><td><code>地点管理 钥匙 角色名 地点名</code></td></tr>
+            <tr><td>批量发放钥匙</td><td><code>批量发放钥匙 角色1/角色2 地点1/地点2</code></td></tr>
+            <tr><td>查看角色持有钥匙</td><td><code>地点管理 查看钥匙 角色名</code></td></tr>
+            <tr><td>解除钥匙（收回）</td><td><code>地点管理 钥匙 角色名 地点名</code>（已有钥匙时再次执行即收回）</td></tr>
+          </tbody>
+        </table>
+        <p style="margin-top:8px;font-size:13px;color:var(--muted)">🔒 上锁地点在 <code>地点 查看</code> 中会显示为「🔒 需要钥匙」，持钥匙者显示为「🔑」。删除地点时系统自动清理相关钥匙。</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <div class="step-title">（可选）开启私人房间</div>
+        <p><code>地点管理 私人房间 on</code> 开启后玩家可使用「[角色名]的房间」格式进行私约。</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-body">
+        <div class="step-title">在设置面板开启地点系统</div>
+        <p>进入 Seal 插件配置，将地点系统开关设为启用，地点校验正式生效。</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="code-block">
+    <div class="code-block-header">
+      <span class="code-block-label">地点系统快速配置</span>
+      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
+    </div>
+    <pre><span class="comment"># 批量添加地点</span>
+批量设置地点 图书馆:安静的阅读场所/咖啡厅:温馨小店/庭院:阳光充足的小院
+
+<span class="comment"># 上锁一个地点</span>
+地点管理 开关 图书馆
+
+<span class="comment"># 给指定角色发放钥匙</span>
+地点管理 钥匙 张三 图书馆
+
+<span class="comment"># 批量发放钥匙</span>
+批量发放钥匙 张三/李四 图书馆/咖啡厅
+
+<span class="comment"># 开启私人房间</span>
+地点管理 私人房间 on
+
+<span class="comment"># 查看完整配置</span>
+查看地点详情</pre>
+  </div>
+</div>
+
+<!-- 目击系统 -->
+<div class="sub-section">
+  <h3 class="sub-title">目击报告系统 <span class="badge badge-opt">可选</span></h3>
+  <p style="font-size:14px;color:var(--muted);margin-bottom:14px">当两组角色在同一地点、时间段重叠的约会时，系统会自动向双方参与者发送「目击报告」。制造偶遇感和信息流通。<strong>需要地点系统同时开启才能生效。</strong></p>
+
+  <div class="callout info" style="margin-bottom:16px">
+    <div class="callout-title">ℹ️ 工作原理</div>
+    <p>每次成功分配约会小群时，系统检查同一地点是否有时间重叠的其他约会（重叠比例超过阈值即触发）。符合条件时向约会参与者私发目击提示，不在群内公开。</p>
+  </div>
+
+  <p style="font-size:13px;color:var(--muted);margin-bottom:10px">通过 <code>设置 目击</code> 面板配置（或在长日设置中找到目击相关字段）：</p>
+
+  <table class="guide-table">
+    <thead><tr><th>面板字段</th><th>默认值</th><th>可选值 / 说明</th></tr></thead>
+    <tbody>
+      <tr><td><code>【目击报告】</code></td><td>关闭</td><td>开启 / 关闭</td></tr>
+      <tr><td><code>【目击报告方式】</code></td><td>双向通知</td><td>双向通知（双方都收到）/ 单向通知（仅目击者收到）</td></tr>
+      <tr><td><code>【目击每日上限】</code></td><td>3</td><td>每人每天最多收到的目击报告条数</td></tr>
+      <tr><td><code>【时间重叠阈值】</code></td><td>30%</td><td>触发目击所需的时间重叠比例下限</td></tr>
+      <tr><td><code>【包含已结束】</code></td><td>是</td><td>是 / 否（已结束的约会是否也算作在场）</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout" style="margin-top:14px">
+    <div class="callout-title">📌 前置条件</div>
+    <p>目击系统依赖地点系统。地点系统未启用时，即使 <code>enabled: true</code> 也不会触发目击报告。请确保先开启地点系统并配置好地点。</p>
+  </div>
+</div>
+
+<!-- 拍卖系统 -->
+<div class="sub-section">
+  <h3 class="sub-title">拍卖系统 <span class="badge badge-opt">可选</span></h3>
+  <div class="cmd-list">
+    <div class="cmd-item"><span class="cmd-text">设置 拍卖</span><span class="cmd-desc">打开拍卖配置面板（展示群、货币、匿名等设置）</span><button class="cmd-copy" onclick="copyCmd(this,'设置 拍卖')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">添加拍卖物品 名称%描述%起拍价%最低加价%时长(h)</span><span class="cmd-desc">上架拍卖物品，多件用 $ 分隔</span><button class="cmd-copy" onclick="copyCmd(this,'添加拍卖物品 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">结算拍卖</span><span class="cmd-desc">手动结算所有到期拍卖</span><button class="cmd-copy" onclick="copyCmd(this,'结算拍卖')">复制</button></div>
+  </div>
+
+  <div class="code-block" style="margin-top:14px">
+    <div class="code-block-header">
+      <span class="code-block-label">上架拍卖物品示例</span>
+      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
+    </div>
+    <pre><span class="comment"># 单件</span>
+添加拍卖物品 魔法棒%闪亮的棒子%100%10%24
+
+<span class="comment"># 多件（用 $ 分隔）</span>
+添加拍卖物品 魔法棒%闪亮棒%100%10%24$神秘药水%恢复用%50%5%12</pre>
+  </div>
+</div>
+
+<!-- RPG 属性 -->
+<div class="sub-section">
+  <h3 class="sub-title">RPG 属性系统 <span class="badge badge-opt">可选</span></h3>
+  <p style="font-size:14px;color:var(--muted);margin-bottom:14px">注册自定义属性（HP、MP、体力等），然后通过指令或结戏加成自动调整属性值。</p>
+  <div class="cmd-list">
+    <div class="cmd-item"><span class="cmd-text">注册属性 属性名1 属性名2 ...</span><span class="cmd-desc">注册属性名（防止与货币重名）</span><button class="cmd-copy" onclick="copyCmd(this,'注册属性 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">我创建属性 属性名 最小值 最大值 初始值</span><span class="cmd-desc">为所有角色创建带范围的属性</span><button class="cmd-copy" onclick="copyCmd(this,'我创建属性 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">张三:体力++10</span><span class="cmd-desc">修改指定角色属性（格式：角色名:属性++数量）</span><button class="cmd-copy" onclick="copyCmd(this,'')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">全体:精力++5</span><span class="cmd-desc">全体属性调整</span><button class="cmd-copy" onclick="copyCmd(this,'全体:')">复制</button></div>
+  </div>
+</div>
+
+<!-- 物品与商城 -->
+<div class="sub-section">
+  <h3 class="sub-title">物品与商城 <span class="badge badge-opt">可选</span></h3>
+  <p style="font-size:14px;color:var(--muted);margin-bottom:14px">注册货币和物品，建立商城或抽取池。物品可带属性效果，支持多行批量上载。</p>
+
+  <h4 style="font-size:13px;letter-spacing:1px;color:var(--muted);margin:0 0 10px;text-transform:uppercase">货币与物品注册</h4>
+  <div class="cmd-list">
+    <div class="cmd-item"><span class="cmd-text">注册货币 名称*描述</span><span class="cmd-desc">创建游戏货币，如：注册货币 金币*通用货币</span><button class="cmd-copy" onclick="copyCmd(this,'注册货币 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">上载物品 名称*描述*属性效果</span><span class="cmd-desc">注册普通物品（玩家自己使用），属性效果可选；支持多行批量</span><button class="cmd-copy" onclick="copyCmd(this,'上载物品 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">上载互动物品 名称*描述*次数*属性效果*允许二手</span><span class="cmd-desc">注册互动物品（对他人使用）；次数 -1 为无限；允许二手填 Y/N；支持多行批量</span><button class="cmd-copy" onclick="copyCmd(this,'上载互动物品 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">上架商城 物品码*价格货币名</span><span class="cmd-desc">将物品上架商城，如：上架商城 AA00*10金币</span><button class="cmd-copy" onclick="copyCmd(this,'上架商城 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">调整 角色名 物品码 +N</span><span class="cmd-desc">直接调整角色的物品或货币数量</span><button class="cmd-copy" onclick="copyCmd(this,'调整 ')">复制</button></div>
+  </div>
+
+  <div class="callout tip" style="margin-top:10px">
+    <div class="callout-title">💡 普通物品 vs 互动物品</div>
+    <p>普通物品（<code>上载物品</code>）：玩家在自己的群用「使用 物品名」自用。<br>互动物品（<code>上载互动物品</code>）：玩家用「施加 目标名 物品名」对他人使用，适合道具攻击、增益类物品。</p>
+  </div>
+
+  <h4 style="font-size:13px;letter-spacing:1px;color:var(--muted);margin:18px 0 10px;text-transform:uppercase">抽取池</h4>
+  <div class="cmd-list">
+    <div class="cmd-item"><span class="cmd-text">注册池子 池子名 fixed</span><span class="cmd-desc">创建加权随机池（fixed=按权重抽取，无限供应）</span><button class="cmd-copy" onclick="copyCmd(this,'注册池子 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">注册池子 池子名 free</span><span class="cmd-desc">创建存量池（free=有限数量，抽完为止）</span><button class="cmd-copy" onclick="copyCmd(this,'注册池子 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">一键建池</span><span class="cmd-desc">根据地点列表自动创建「地点名池」（free 类型），已存在的跳过</span><button class="cmd-copy" onclick="copyCmd(this,'一键建池')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">上架池子 池子名 物品码*数量</span><span class="cmd-desc">向池子加入物品，fixed池填权重，free池填数量；支持多行批量</span><button class="cmd-copy" onclick="copyCmd(this,'上架池子 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">发放抽取 角色名 N</span><span class="cmd-desc">给角色额外抽取次数（不指定池子=全部池子通用）</span><button class="cmd-copy" onclick="copyCmd(this,'发放抽取 ')">复制</button></div>
+  </div>
+
+  <div class="callout tip" style="margin-top:12px">
+    <div class="callout-title">📊 两层抽取次数限制</div>
+    <p>抽取次数有两层独立限制，<strong>同时生效</strong>，玩家必须两层都未超限才能抽取：</p>
+    <ul style="margin:8px 0 0 16px;font-size:13px;line-height:1.8">
+      <li><strong>总量上限</strong>：每人每天能抽的总次数（跨所有池子）<br>设置方式：<code>池子设定 总量:N</code>（N=具体数字，或 <code>总量:无限</code>）</li>
+      <li><strong>单池上限</strong>：每人每天在某个池子最多抽几次<br>设置方式：<code>池子设定 池子名:N</code></li>
+    </ul>
+    <p style="margin-top:8px;font-size:13px">用 <code>池子设定 查看</code> 查看当前设置。玩家用 <code>抽取次数</code> 查看自己的剩余次数。</p>
+  </div>
+
+  <div class="callout tip" style="margin-top:10px">
+    <div class="callout-title">🎲 结戏发放地点池抽取机会</div>
+    <p>在结戏加成模版中，可以用 <code>地点池 N</code> 奖励类型，结戏时自动向参与者发放与结戏群地点同名的抽取池（「地点名池」）的 N 次机会。</p>
+    <ul style="margin:8px 0 0 16px;font-size:13px;line-height:1.8">
+      <li>若该池不存在 → 跳过并在结戏公告中提示</li>
+      <li>推荐配合 <code>一键建池</code> 预先创建所有地点对应的池子</li>
+    </ul>
+    <p style="margin-top:8px;font-size:13px">写法示例（结戏加成 批量 格式中）：<code>地点池 1</code>（发放 1 次）、<code>地点池 2</code>（发放 2 次）</p>
+  </div>
+
+  <div class="code-block" style="margin-top:14px">
+    <div class="code-block-header">
+      <span class="code-block-label">地点池 + 结戏加成配置示例</span>
+      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
+    </div>
+    <pre><span class="comment"># 1. 先创建所有地点同名的自由池</span>
+一键建池
+
+<span class="comment"># 2. 向各池子添加物品（每个池子单独上架）</span>
+上架池子 咖啡馆池 AA00*3
+上架池子 公园池 AA01*5
+
+<span class="comment"># 3. 设置两层抽取限制</span>
+池子设定 总量:3          <span class="comment"># 每人每天最多抽 3 次（跨所有池）</span>
+池子设定 咖啡馆池:1      <span class="comment"># 咖啡馆池每人每天最多抽 1 次</span>
+
+<span class="comment"># 4. 结戏加成模版中加入地点池奖励</span>
+结戏加成 批量 基础奖励
+and
+段数 >= 3
+奖励 金币 10
+地点池 1</pre>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════ PHASE 6: LAUNCH -->
+<div id="launch" class="phase-header">
+  <div class="phase-icon">🚀</div>
+  <div class="phase-title-wrap">
+    <div class="phase-eyebrow"><span class="led-dot"></span>Phase 06 · Launch</div>
+    <h2 class="phase-title">开场流程 <span class="badge badge-req">必须</span></h2>
+  </div>
+  <span class="sys-id">LN·600</span>
+</div>
+
+<div class="sub-section">
+  <h3 class="sub-title">开场前检查清单</h3>
+  <ul class="checklist" id="checklist">
+    <li>
+      <div class="check-box" onclick="toggleCheck(this)"></div>
+      <div class="check-label">群号池已添加，<code>查看群号</code> 确认状态正常</div>
+      <div class="check-opt">必须</div>
+    </li>
+    <li>
+      <div class="check-box" onclick="toggleCheck(this)"></div>
+      <div class="check-label">三个特殊群（公告群/水群/戏群）已在 <code>设置 群组</code> 中配置</div>
+      <div class="check-opt">必须</div>
+    </li>
+    <li>
+      <div class="check-box" onclick="toggleCheck(this)"></div>
+      <div class="check-label">天数已设置：<code>设置天数 D0</code>（准备阶段先设 D0，开场时再改 D1）</div>
+      <div class="check-opt">必须</div>
+    </li>
+    <li>
+      <div class="check-box" onclick="toggleCheck(this)"></div>
+      <div class="check-label">所有玩家已在私人群内完成 <code>创建新角色</code></div>
+      <div class="check-opt">必须</div>
+    </li>
+    <li>
+      <div class="check-box" onclick="toggleCheck(this)"></div>
+      <div class="check-label">管理员自己的角色已 <code>设为npc</code></div>
+      <div class="check-opt">必须</div>
+    </li>
+    <li>
+      <div class="check-box" onclick="toggleCheck(this)"></div>
+      <div class="check-label"><code>同步名片</code> 已执行，水群和戏群名片已更新</div>
+      <div class="check-opt">建议</div>
+    </li>
+    <li>
+      <div class="check-box" onclick="toggleCheck(this)"></div>
+      <div class="check-label">地点系统已配置（若使用）：地点已添加，开关已设置</div>
+      <div class="check-opt">可选</div>
+    </li>
+    <li>
+      <div class="check-box" onclick="toggleCheck(this)"></div>
+      <div class="check-label">可选系统已按需配置完毕（拍卖/RPG/物品/礼品店）</div>
+      <div class="check-opt">可选</div>
+    </li>
+  </ul>
+</div>
+
+<div class="sub-section">
+  <h3 class="sub-title">开场指令</h3>
+  <div class="cmd-list">
+    <div class="cmd-item"><span class="cmd-text">同步名片</span><span class="cmd-desc">将所有角色名片同步到水群和戏群</span><button class="cmd-copy" onclick="copyCmd(this,'同步名片')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">设置天数 D1</span><span class="cmd-desc">正式开场，切换到第一天</span><button class="cmd-copy" onclick="copyCmd(this,'设置天数 D1')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">发起官约 D1 14:00-15:00 地点 角色A/角色B</span><span class="cmd-desc">发起第一场官方约会，系统自动建群推送</span><button class="cmd-copy" onclick="copyCmd(this,'发起官约 ')">复制</button></div>
+  </div>
+
+  <div class="code-block" style="margin-top:14px">
+    <div class="code-block-header">
+      <span class="code-block-label">完整开场执行顺序</span>
+      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
+    </div>
+    <pre><span class="comment"># 1. 同步所有角色名片</span>
+同步名片
+
+<span class="comment"># 2. 切换天数为正式第一天</span>
+设置天数 D1
+
+<span class="comment"># 3. 发起第一场官约（可选，按需使用）</span>
+发起官约 D1 14:00-15:00 咖啡厅 角色A/角色B/角色C</pre>
+  </div>
+</div>
+
+<div class="sub-section">
+  <h3 class="sub-title">每日运营参考</h3>
+  <div class="cmd-list">
+    <div class="cmd-item"><span class="cmd-text">查看进行中</span><span class="cmd-desc">查看所有当前进行中的约会</span><button class="cmd-copy" onclick="copyCmd(this,'查看进行中')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">提醒超时</span><span class="cmd-desc">向超时未结束的约会群发送催回提醒</span><button class="cmd-copy" onclick="copyCmd(this,'提醒超时')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">更新未退群</span><span class="cmd-desc">检查仍留在约会群的玩家，可选驱逐</span><button class="cmd-copy" onclick="copyCmd(this,'更新未退群')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">查看全员统计</span><span class="cmd-desc">所有角色互动数据排行（合并转发）</span><button class="cmd-copy" onclick="copyCmd(this,'查看全员统计')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">关系线统计</span><span class="cmd-desc">全员关系线数量和热门 CP</span><button class="cmd-copy" onclick="copyCmd(this,'关系线统计')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">设置天数 D2</span><span class="cmd-desc">手动推进到下一天（如未开启自动天数）</span><button class="cmd-copy" onclick="copyCmd(this,'设置天数 D2')">复制</button></div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<div class="callout tip">
+  <div class="callout-title">🗺️ 快速导航</div>
+  <p>完整指令参考见 <strong>changriGuide.html</strong>。本文件仅覆盖配置流程和首次开场，日常运营指令（时间锁定、钥匙管理、物品调整等）请查阅完整指南。</p>
+</div>
+
+</div><!-- /page -->
+
+<footer class="footer">
+  <strong>长日 RPG</strong> · 管理员流程指南<br>
+  <span style="font-size:11px;opacity:0.6;margin-top:8px;display:block">4 必须阶段 · 6 可选系统 · 1 开场清单</span>
+</footer>
+
+<script>
+function _copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    return navigator.clipboard.writeText(text);
+  }
+  return new Promise((resolve, reject) => {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    ok ? resolve() : reject();
+  });
+}
+
+function copyCmd(btn, text) {
+  _copyText(text).then(() => {
+    btn.textContent = '✓ 已复制'; btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = '复制'; btn.classList.remove('copied'); }, 1500);
+  }).catch(() => {
+    btn.textContent = '✗ 失败';
+    setTimeout(() => { btn.textContent = '复制'; }, 1500);
+  });
+}
+
+function copyBlock(btn) {
+  const pre = btn.closest('.code-block').querySelector('pre');
+  const text = pre.innerText || pre.textContent;
+  _copyText(text).then(() => {
+    btn.textContent = '✓ 已复制'; btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = '复制全部'; btn.classList.remove('copied'); }, 1800);
+  }).catch(() => {
+    btn.textContent = '✗ 失败';
+    setTimeout(() => { btn.textContent = '复制全部'; }, 1800);
+  });
+}
+
+function toggleCheck(box) {
+  box.classList.toggle('checked');
+}
+
+// Memory toast
+(function() {
+  var toast = null, toastTimer = null;
+  function showToast() {
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.className = 'memory-toast';
+      toast.innerHTML = '<span>▸</span> COPIED';
+      document.body.appendChild(toast);
+    }
+    clearTimeout(toastTimer);
+    toast.className = 'memory-toast show';
+    toastTimer = setTimeout(() => { toast.className = 'memory-toast hide'; }, 1800);
+  }
+  var oc = window.copyCmd, ob = window.copyBlock;
+  window.copyCmd = function(btn, text) { showToast(); oc(btn, text); };
+  window.copyBlock = function(btn) { showToast(); ob(btn); };
+})();
+
+// Marcus interface
+(function() {
+  // Hero scanline
+  var hero = document.querySelector('.hero');
+  if (hero) {
+    var sl = document.createElement('div');
+    sl.className = 'hero-scanline';
+    hero.insertBefore(sl, hero.firstChild);
+  }
+
+  // Hero stat counter animation
+  function animateCount(el, target, suffix, delay) {
+    setTimeout(function() {
+      var start = null, duration = 1300;
+      function step(ts) {
+        if (!start) start = ts;
+        var p = Math.min((ts - start) / duration, 1);
+        var eased = 1 - Math.pow(1 - p, 3);
+        el.textContent = Math.round(eased * target) + suffix;
+        if (p < 1) requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+    }, delay);
+  }
+  document.querySelectorAll('.hero-stat-num').forEach(function(el, i) {
+    var text = el.textContent.trim();
+    var suffix = text.replace(/[0-9]/g, '');
+    var num = parseInt(text, 10);
+    if (!isNaN(num)) { el.textContent = '0' + suffix; animateCount(el, num, suffix, 400 + i * 120); }
+  });
+
+  // Hero title glitch
+  var ht = document.querySelector('.hero-title');
+  if (ht) {
+    setTimeout(function() {
+      ht.style.animation = 'glitch-once 0.45s steps(2) 1';
+      ht.addEventListener('animationend', function() { ht.style.animation = ''; }, { once: true });
+    }, 900);
+  }
+
+  // Active nav
+  var navAs = Array.from(document.querySelectorAll('.topnav a[href^="#"]'));
+  var targets = navAs.map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+  if (targets.length && window.IntersectionObserver) {
+    var io = new IntersectionObserver(function(entries) {
+      entries.forEach(function(entry) {
+        if (entry.isIntersecting) {
+          var id = entry.target.id;
+          navAs.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + id));
+        }
+      });
+    }, { rootMargin: '-10% 0px -75% 0px' });
+    targets.forEach(t => io.observe(t));
+  }
+})();
+</script>
+</body>
+</html>
