@@ -421,7 +421,7 @@ p { margin-bottom: 12px; color: #1E2C3A; }
       </tr>
       <tr>
         <td><strong>水群（玩家大群）</strong><br><span class="key">water_group_id</span></td>
-        <td>同步名片操作（<code>同步名片</code>）会把所有角色名片同步到这个群，方便玩家互相认识。</td>
+        <td>同步名片操作（<code>同步名片 水群</code>）会把所有角色名片同步到这个群，方便玩家互相认识。</td>
         <td>所有玩家都在的主群</td>
       </tr>
       <tr>
@@ -653,7 +653,7 @@ p { margin-bottom: 12px; color: #1E2C3A; }
   </div>
   <div class="callout tip" style="margin-top:14px">
     <div class="callout-title">💡 同步名片</div>
-    <p>所有玩家创建角色后，执行 <code>同步名片</code> 将所有人的群名片更新为角色名，水群和戏群都会同步。</p>
+    <p>所有玩家创建角色后，执行 <code>同步名片 公告</code> / <code>同步名片 戏群</code> / <code>同步名片 水群</code> 将所有人的群名片更新为角色名，每次指定一个目标群。</p>
   </div>
 </div>
 
@@ -677,6 +677,29 @@ p { margin-bottom: 12px; color: #1E2C3A; }
   <div class="callout danger">
     <div class="callout-title">⚠️ 管理员角色要设为 NPC</div>
     <p>如果管理员也注册了游戏角色，务必 <code>设为npc 管理员角色名</code>，否则会被系统误判为普通玩家，干扰分组和邀约逻辑。</p>
+  </div>
+</div>
+
+<div class="sub-section">
+  <h3 class="sub-title">角色 Tag 管理</h3>
+  <p style="font-size:14px;color:var(--muted);margin-bottom:14px">管理员可创建自定义 binary tag，标记角色的非性别二元属性（如贵族身份、阵营归属等），并可作为便捷官约的交替分桶依据。</p>
+  <div class="cmd-list">
+    <div class="cmd-item"><span class="cmd-text">修改tag tag名字 种类1:姓名1，姓名2 种类2:姓名3，姓名4</span><span class="cmd-desc">创建或覆盖更新一个 binary tag，将角色分配到指定分类（至少两个种类）</span><button class="cmd-copy" onclick="copyCmd(this,'修改tag ')">复制</button></div>
+  </div>
+  <div class="code-block" style="margin-top:14px">
+    <div class="code-block-header">
+      <span class="code-block-label">示例</span>
+      <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
+    </div>
+    <pre><span class="comment"># 创建「贵族」tag，将角色分为贵族和平民两类</span>
+修改tag 贵族 贵族:张三，李四，王五 平民:赵六，孙七
+
+<span class="comment"># 计划官约时按此 tag 交替分桶</span>
+计划官约 贵族 3 D1 14:00-16:00 庄园，广场，茶馆</pre>
+  </div>
+  <div class="callout tip" style="margin-top:12px">
+    <div class="callout-title">💡 与便捷官约联动</div>
+    <p>在「计划官约」的第一个参数填写 tag 名字，系统会按该 tag 的各分类交替塞入分组；未被 tag 覆盖的玩家随机补入。填写「无」则纯随机分组。</p>
   </div>
 </div>
 
@@ -1021,7 +1044,7 @@ and
     </li>
     <li>
       <div class="check-box" onclick="toggleCheck(this)"></div>
-      <div class="check-label"><code>同步名片</code> 已执行，水群和戏群名片已更新</div>
+      <div class="check-label"><code>同步名片 公告</code> / <code>同步名片 戏群</code> / <code>同步名片 水群</code> 已分别执行，各群名片已更新</div>
       <div class="check-opt">建议</div>
     </li>
     <li>
@@ -1040,10 +1063,10 @@ and
 <div class="sub-section">
   <h3 class="sub-title">开场指令</h3>
   <div class="cmd-list">
-    <div class="cmd-item"><span class="cmd-text">同步名片</span><span class="cmd-desc">将所有角色名片同步到水群和戏群</span><button class="cmd-copy" onclick="copyCmd(this,'同步名片')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">同步名片 公告/戏群/水群</span><span class="cmd-desc">将所有角色名片同步到指定群（三选一）</span><button class="cmd-copy" onclick="copyCmd(this,'同步名片 ')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">设置天数 D1</span><span class="cmd-desc">正式开场，切换到第一天</span><button class="cmd-copy" onclick="copyCmd(this,'设置天数 D1')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">发起官约 D1 14:00-15:00 地点 角色A/角色B</span><span class="cmd-desc">发起官方约会，系统自动建群推送</span><button class="cmd-copy" onclick="copyCmd(this,'发起官约 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">计划官约 是/否 组数 D几 时间段 地点1，地点2，...</span><span class="cmd-desc">生成便捷官约方案：自动剔除NPC分组，可选异性搭配，地点数须与组数一致</span><button class="cmd-copy" onclick="copyCmd(this,'计划官约 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">计划官约 tag名字/无 组数 D几 时间段 地点1，地点2，...</span><span class="cmd-desc">生成便捷官约方案：自动剔除NPC分组，按指定 tag 交替分桶或纯随机，地点数须与组数一致</span><button class="cmd-copy" onclick="copyCmd(this,'计划官约 ')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">执行官约</span><span class="cmd-desc">一键执行已保存的官约方案，同时发起所有分组官约</span><button class="cmd-copy" onclick="copyCmd(this,'执行官约')">复制</button></div>
   </div>
 
@@ -1052,8 +1075,10 @@ and
       <span class="code-block-label">完整开场执行顺序</span>
       <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
     </div>
-    <pre><span class="comment"># 1. 同步所有角色名片</span>
-同步名片
+    <pre><span class="comment"># 1. 同步所有角色名片（分群执行）</span>
+同步名片 公告
+同步名片 戏群
+同步名片 水群
 
 <span class="comment"># 2. 切换天数为正式第一天</span>
 设置天数 D1
@@ -1062,7 +1087,7 @@ and
 发起官约 D1 14:00-15:00 咖啡厅 角色A/角色B/角色C
 
 <span class="comment"># 3b. 或使用便捷官约（自动分组全体非NPC玩家）</span>
-计划官约 是 3 D1 14:00-16:00 咖啡厅，公园，书店
+计划官约 贵族 3 D1 14:00-16:00 咖啡厅，公园，书店
 <span class="comment"># 确认方案后执行：</span>
 执行官约</pre>
   </div>
@@ -1190,7 +1215,7 @@ and
   <h3 class="sub-title">邀约管理</h3>
   <div class="cmd-list">
     <div class="cmd-item"><span class="cmd-text">发起官约 D1 14:00-15:00 地点 参与者1/参与者2/...</span><span class="cmd-desc">发起官方约会，系统自动建群并推送邀请</span><button class="cmd-copy" onclick="copyCmd(this,'发起官约 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">计划官约 是/否 组数 D几 时间段 地点1，地点2，...</span><span class="cmd-desc">生成便捷官约方案：自动剔除NPC后分组，可选异性搭配；地点数须与组数相同，有时间冲突则不成功</span><button class="cmd-copy" onclick="copyCmd(this,'计划官约 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">计划官约 tag名字/无 组数 D几 时间段 地点1，地点2，...</span><span class="cmd-desc">生成便捷官约方案：自动剔除NPC后分组，按 tag 交替分桶或纯随机；地点数须与组数相同，有时间冲突则不成功</span><button class="cmd-copy" onclick="copyCmd(this,'计划官约 ')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">执行官约</span><span class="cmd-desc">一键执行已保存的官约方案，同时发起所有分组官约</span><button class="cmd-copy" onclick="copyCmd(this,'执行官约')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">查看进行中</span><span class="cmd-desc">查看所有正在进行的邀约</span><button class="cmd-copy" onclick="copyCmd(this,'查看进行中')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">结束私约 [邀约ID]</span><span class="cmd-desc">结束超时的私约</span><button class="cmd-copy" onclick="copyCmd(this,'结束私约 ')">复制</button></div>
@@ -1213,15 +1238,18 @@ and
       <span class="code-block-label">便捷官约 流程</span>
       <button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button>
     </div>
-    <pre><span class="comment"># 第一步：生成分组方案（异性搭配，3组，每组对应一个地点）</span>
-计划官约 是 3 D2 14:00-16:00 咖啡厅，公园，书店
+    <pre><span class="comment"># 第一步：生成分组方案（按「贵族」tag 交替分桶，3组，每组对应一个地点）</span>
+计划官约 贵族 3 D2 14:00-16:00 咖啡厅，公园，书店
+
+<span class="comment"># 不需要交替分桶时填「无」</span>
+计划官约 无 3 D2 14:00-16:00 咖啡厅，公园，书店
 
 <span class="comment"># 系统会展示分组预览，可反复计划直到满意</span>
 
 <span class="comment"># 第二步：一键发起所有官约</span>
 执行官约</pre>
   </div>
-  <p style="font-size:13px;color:var(--muted);margin:8px 0 14px">便捷官约会自动剔除NPC，将所有非NPC玩家分组并分配地点。地点数须与组数完全一致；任何玩家有时间冲突均会提示失败。方案保存后可随时执行，执行前会再次验证冲突。</p>
+  <p style="font-size:13px;color:var(--muted);margin:8px 0 14px">便捷官约会自动剔除NPC，将所有非NPC玩家分组并分配地点。第一个参数填写已创建的 tag 名字可按分类交替分桶，填「无」则纯随机分组。未被 tag 覆盖的玩家随机补入。地点数须与组数完全一致；任何玩家有时间冲突均会提示失败。方案保存后可随时执行，执行前会再次验证冲突。</p>
   <table class="guide-table" style="margin-top:12px">
     <thead><tr><th>示例</th><th>效果</th></tr></thead>
     <tbody>
@@ -1242,7 +1270,7 @@ and
     <div class="cmd-item"><span class="cmd-text">关系线设置</span><span class="cmd-desc">查看当前关系线字数/条数上限配置</span><button class="cmd-copy" onclick="copyCmd(this,'关系线设置')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">关系线设置 字数上限 N</span><span class="cmd-desc">修改单条拉线最高字数（默认 500）</span><button class="cmd-copy" onclick="copyCmd(this,'关系线设置 字数上限 ')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">关系线设置 关系上限 N</span><span class="cmd-desc">修改每人最多关系线数量（默认 20）</span><button class="cmd-copy" onclick="copyCmd(this,'关系线设置 关系上限 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">同步名片</span><span class="cmd-desc">将所有角色名片同步更新到名片群</span><button class="cmd-copy" onclick="copyCmd(this,'同步名片')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">同步名片 公告/戏群/水群</span><span class="cmd-desc">将所有角色名片同步到指定群（三选一）</span><button class="cmd-copy" onclick="copyCmd(this,'同步名片 ')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">存入统计</span><span class="cmd-desc">保存当前统计数据（备份）</span><button class="cmd-copy" onclick="copyCmd(this,'存入统计')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">信箱统计</span><span class="cmd-desc">查看心动信统计数据</span><button class="cmd-copy" onclick="copyCmd(this,'信箱统计')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">统一送心动信 [角色列表] [内容]</span><span class="cmd-desc">群发心动信（推进剧情）</span><button class="cmd-copy" onclick="copyCmd(this,'统一送心动信 ')">复制</button></div>

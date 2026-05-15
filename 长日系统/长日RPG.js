@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RPG系统
 // @author       长日将尽
-// @version      1.3.7
+// @version      1.3.8
 // @description  物品注册、背包、商城、抽取池、二手市场。所有数据存储在主插件 changri 中。
 // @timestamp    1745568000
 // @license      MIT
@@ -2881,9 +2881,9 @@ ext.onNotCommandReceived = (ctx, msg) => {
                 });
                 if (res.length) {
                     notifyList.forEach(({ r, old, next }) => {
-                        notifyPlayer(ctx, platform, r, `${op === "++" ? "📈" : "📉"}【属性变动】你的「${attrName}」：${old} → ${next}`);
+                        notifyPlayer(ctx, platform, r, `${op === "++" ? "💰" : "💸"}【货币变动】你的「${attrName}」：${old} → ${next}`);
                     });
-                    return seal.replyToSender(ctx, msg, `${op === "++" ? "📈" : "📉"} ${attrName} 变更：\n${res.join("\n")}`);
+                    return seal.replyToSender(ctx, msg, `${op === "++" ? "💰" : "💸"} 货币「${attrName}」变更：\n${res.join("\n")}`);
                 }
             }
         }

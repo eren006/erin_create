@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         长日将尽系统
 // @author       长日将尽
-// @version      1.3.7
+// @version      1.3.8
 // @description  无
 // @timestamp    1742205760
 // @license      MIT
@@ -577,17 +577,6 @@ function checkAcceptanceConflicts(platform, userId, roleName, day, time, exclude
       results.push(`在 ${day} ${time} 已接受其他多人小群邀请`);
       break;
     }
-  }
-
-  // 7. 检查已摘取的心愿（在已确认日程中）
-  const myWishConfirmed = confirmedList.filter(ev => 
-    ev.subtype === "心愿" &&
-    ev.day === day &&
-    timeOverlap(ev.time, time)
-  );
-  
-  if (myWishConfirmed.length > 0) {
-    results.push(`在 ${day} ${time} 已有安排`);
   }
 
   return results;
@@ -4663,7 +4652,9 @@ const WishUtils = {
         return `📜 ${title}：\n` + pool.map(w => {
             const rem = Math.ceil((exp - (now - w.timestamp)) / 3600000);
             const rewardStr = w.rewardCode ? `｜🎁 ${w.rewardName} ×${w.rewardCount}` : "";
-            return `编号：${w.id}｜${w.day} ${w.time}｜${w.place}｜剩${rem}h${rewardStr}｜内容：${w.content}`;
+            const genderStr = w.gender === "男" ? "👨" : w.gender === "女" ? "👩" : "";
+            const label = w.displayName ? `${genderStr} ${w.displayName}` : genderStr;
+            return `编号：${w.id}｜${label}｜${w.day} ${w.time}｜${w.place}｜剩${rem}h${rewardStr}｜内容：${w.content}`;
         }).join('\n');
     }
 };
@@ -4681,9 +4672,16 @@ cmd_post_wish.solve = (ctx, msg, cmdArgs) => {
     const day = ext.storageGet("global_days");
     if (!name || !day) return seal.replyToSender(ctx, msg, !name ? "请先绑定角色" : "请先设置全局天数");
 
-    let [rawT, place, ...contentArr] = cmdArgs.args;
+    const rawFull = msg.message.trim().replace(/^[。.]\s*挂心愿\s*/, "");
+    const pipeIdx = rawFull.indexOf("|");
+    const mainPart = pipeIdx !== -1 ? rawFull.slice(0, pipeIdx).trim() : rawFull.trim();
+    const customNick = pipeIdx !== -1 ? rawFull.slice(pipeIdx + 1).trim() : "";
+    if (customNick.length > 10) return seal.replyToSender(ctx, msg, "⚠️ 昵称最多10个字");
+
+    const mainArgs = mainPart.split(/\s+/);
+    let [rawT, place, ...contentArr] = mainArgs;
     const content = contentArr.join(" ").trim();
-    if (!rawT || !place || !content) return seal.replyToSender(ctx, msg, "用法：挂心愿 1400-1500 地点 内容");
+    if (!rawT || !place || !content) return seal.replyToSender(ctx, msg, "用法：挂心愿 1400-1500 地点 内容 [| 昵称]");
 
     // Bug1修复：用 parseAndValidateTime 替代未定义的 parseWishTime
     const timeResult = parseAndValidateTime(rawT, [], 0, "心愿");
@@ -4717,11 +4715,13 @@ cmd_post_wish.solve = (ctx, msg, cmdArgs) => {
     }
 
     const id = Math.random().toString(36).slice(2, 9).toUpperCase();
-    pool.push({ id, day, time, place, content, fromId: uid, timestamp: Date.now() });
+    const wishProfile = getCharProfile(platform, name);
+    pool.push({ id, day, time, place, content, fromId: uid, timestamp: Date.now(), gender: wishProfile.gender, displayName: customNick || "" });
     WishUtils.savePool(pool);
     wishIncrDailyCount(uid, day, 'post');
 
     let wishSuccessMsg = `✅ 心愿已漂走！编号：${id}\n有效期：24小时`;
+    if (customNick) wishSuccessMsg += `\n🏷️ 显示昵称：${customNick}`;
     if (wishCoinCheck?.cost > 0) wishSuccessMsg += `\n💰 已消耗写信币 ${wishCoinCheck.cost} 枚`;
     seal.replyToSender(ctx, msg, wishSuccessMsg);
 
@@ -4729,10 +4729,10 @@ cmd_post_wish.solve = (ctx, msg, cmdArgs) => {
     if (JSON.parse(ext.storageGet("wish_public_send") || "false")) {
         const gid = JSON.parse(ext.storageGet("adminAnnounceGroupId") || "null");
         if (gid) {
-            const profile = getCharProfile(platform, name);
-            const genderEmoji = profile.gender === "男" ? "👨" : "👩";
+            const genderEmoji = wishProfile.gender === "男" ? "👨" : "👩";
+            const displayLabel = customNick ? `${genderEmoji} ${customNick}` : genderEmoji;
             const m = seal.newMessage(); m.messageType = "group"; m.groupId = `${platform}-Group:${gid}`;
-            seal.replyToSender(seal.createTempCtx(ctx.endPoint, m), m, `🌠 新心愿 [${id}]\n${genderEmoji} ${name}\n📅 ${day} ${time.replace('-', ' ~ ')}\n📍 ${place}\n💌 ${content}\n✨ 摘取：。摘心愿 ${id}`);
+            seal.replyToSender(seal.createTempCtx(ctx.endPoint, m), m, `🌠 新心愿 [${id}]\n${displayLabel}\n📅 ${day} ${time.replace('-', ' ~ ')}\n📍 ${place}\n💌 ${content}\n✨ 摘取：。摘心愿 ${id}`);
         }
     }
     return seal.ext.newCmdExecuteResult(true);
@@ -4864,10 +4864,20 @@ cmd_bounty_wish.solve = (ctx, msg, cmdArgs) => {
 
     const rawFull = msg.message.trim().replace(/^[。.]\s*悬赏心愿\s*/, "");
     const pipeIdx = rawFull.search(/[|｜]/);
-    if (pipeIdx === -1) return seal.replyToSender(ctx, msg, "格式：悬赏心愿 时间 地点 内容 | 物品名 数量\n示例：悬赏心愿 1400-1500 图书馆 陪我看书 | 滋补汤 1");
+    if (pipeIdx === -1) return seal.replyToSender(ctx, msg, "格式：悬赏心愿 时间 地点 内容 | 物品名 数量 [| 昵称]\n示例：悬赏心愿 1400-1500 图书馆 陪我看书 | 滋补汤 1 | 神秘人A");
 
     const wishPart = rawFull.slice(0, pipeIdx).trim();
-    const rewardPart = rawFull.slice(pipeIdx + 1).trim();
+    const afterFirstPipe = rawFull.slice(pipeIdx + 1);
+    const secondPipeIdx = afterFirstPipe.search(/[|｜]/);
+    let rewardPart, customNick;
+    if (secondPipeIdx !== -1) {
+        rewardPart = afterFirstPipe.slice(0, secondPipeIdx).trim();
+        customNick = afterFirstPipe.slice(secondPipeIdx + 1).trim();
+    } else {
+        rewardPart = afterFirstPipe.trim();
+        customNick = "";
+    }
+    if (customNick.length > 10) return seal.replyToSender(ctx, msg, "⚠️ 昵称最多10个字");
 
     const wishArgs = wishPart.split(/\s+/);
     const rawT = wishArgs[0], place = wishArgs[1];
@@ -4916,22 +4926,24 @@ cmd_bounty_wish.solve = (ctx, msg, cmdArgs) => {
     wishRemoveFromInv(roleKey, rewardItem.code, rewardCount);
 
     const id = Math.random().toString(36).slice(2, 9).toUpperCase();
-    pool.push({ id, day, time, place, content, fromId: uid, timestamp: Date.now(), rewardCode: rewardItem.code, rewardName: rewardItem.name, rewardCount });
+    const bountyProfile = getCharProfile(platform, name);
+    pool.push({ id, day, time, place, content, fromId: uid, timestamp: Date.now(), gender: bountyProfile.gender, displayName: customNick || "", rewardCode: rewardItem.code, rewardName: rewardItem.name, rewardCount });
     WishUtils.savePool(pool);
     wishIncrDailyCount(uid, day, 'post');
 
     let successMsg = `✅ 悬赏心愿已发出！编号：${id}\n🎁 悬赏：${rewardItem.name} ×${rewardCount}（已从背包扣除）\n有效期：24小时`;
+    if (customNick) successMsg += `\n🏷️ 显示昵称：${customNick}`;
     if (wishCoinCheck?.cost > 0) successMsg += `\n💰 已消耗写信币 ${wishCoinCheck.cost} 枚`;
     seal.replyToSender(ctx, msg, successMsg);
 
     if (JSON.parse(ext.storageGet("wish_public_send") || "false")) {
         const gid = JSON.parse(ext.storageGet("adminAnnounceGroupId") || "null");
         if (gid) {
-            const profile = getCharProfile(platform, name);
-            const genderEmoji = profile.gender === "男" ? "👨" : "👩";
+            const genderEmoji = bountyProfile.gender === "男" ? "👨" : "👩";
+            const displayLabel = customNick ? `${genderEmoji} ${customNick}` : genderEmoji;
             const m = seal.newMessage(); m.messageType = "group"; m.groupId = `${platform}-Group:${gid}`;
             seal.replyToSender(seal.createTempCtx(ctx.endPoint, m), m,
-                `🌠 新悬赏心愿 [${id}]\n${genderEmoji} ${name}\n📅 ${day} ${time.replace('-', ' ~ ')}\n📍 ${place}\n💌 ${content}\n🎁 悬赏：${rewardItem.name} ×${rewardCount}\n✨ 摘取：。摘心愿 ${id}`);
+                `🌠 新悬赏心愿 [${id}]\n${displayLabel}\n📅 ${day} ${time.replace('-', ' ~ ')}\n📍 ${place}\n💌 ${content}\n🎁 悬赏：${rewardItem.name} ×${rewardCount}\n✨ 摘取：。摘心愿 ${id}`);
         }
     }
     return seal.ext.newCmdExecuteResult(true);
@@ -5752,12 +5764,62 @@ cmd_create_official_appointment.solve = async (ctx, msg, cmdArgs) => {
 ext.cmdMap["发起官约"] = cmd_create_official_appointment;
 
 // ========================
+// 📋 Binary Tag 管理
+// ========================
+
+let cmd_modify_tag = seal.ext.newCmdItemInfo();
+cmd_modify_tag.name = "修改tag";
+cmd_modify_tag.help = "。修改tag tag名字 种类1:姓名1，姓名2 种类2:姓名3，姓名4（管理员专用，创建/更新 binary tag 并分配玩家）";
+
+cmd_modify_tag.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) {
+        seal.replyToSender(ctx, msg, "只有管理员可以使用此功能");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const raw = msg.message.trim().replace(/^[。.]\S+\s*/, "");
+    const spaceIdx = raw.search(/\s+/);
+    if (spaceIdx === -1) {
+        seal.replyToSender(ctx, msg, "格式：。修改tag tag名字 种类1:姓名1，姓名2 种类2:姓名3，姓名4");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const tagName = raw.slice(0, spaceIdx).trim();
+    const rest = raw.slice(spaceIdx).trim();
+
+    // 解析 "种类1:姓名1，姓名2 种类2:姓名3，姓名4"
+    const catPattern = /([^\s：:]+)[：:]\s*([^：:]+?)(?=\s+[^\s：:]+[：:]|$)/g;
+    const catMatches = [...rest.matchAll(catPattern)];
+
+    if (catMatches.length < 2) {
+        seal.replyToSender(ctx, msg, "格式错误：需要至少两个种类。\n格式：。修改tag tag名字 种类1:姓名1，姓名2 种类2:姓名3，姓名4");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const tags = store.get("sys_binary_tags");
+    tags[tagName] = {};
+    for (const m of catMatches) {
+        const catName = m[1].trim();
+        const names = m[2].trim().split(/[，,、\s]+/).map(s => s.trim()).filter(Boolean);
+        tags[tagName][catName] = names;
+    }
+    store.set("sys_binary_tags", tags);
+
+    let reply = `✅ 已更新 tag「${tagName}」：\n`;
+    for (const [cat, names] of Object.entries(tags[tagName])) {
+        reply += `  · ${cat}：${names.join("、")}\n`;
+    }
+    seal.replyToSender(ctx, msg, reply.trim());
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["修改tag"] = cmd_modify_tag;
+
 // 📋 便捷官约：计划官约 + 执行官约
 // ========================
 
 let cmd_plan_official = seal.ext.newCmdItemInfo();
 cmd_plan_official.name = "计划官约";
-cmd_plan_official.help = "。计划官约 是/否 组数 D几 时间段 地点1，地点2，...（管理员专用，生成官约分组方案）";
+cmd_plan_official.help = "。计划官约 tag名字/无 组数 D几 时间段 地点1，地点2，...（管理员专用，生成官约分组方案）";
 
 cmd_plan_official.solve = (ctx, msg, cmdArgs) => {
   if (!isUserAdmin(ctx, msg)) {
@@ -5765,14 +5827,14 @@ cmd_plan_official.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
   }
 
-  const needOpposite = cmdArgs.getArgN(1);
-  const groupCount   = parseInt(cmdArgs.getArgN(2));
-  const day          = cmdArgs.getArgN(3);
-  const time         = cmdArgs.getArgN(4);
-  const placesRaw    = cmdArgs.getArgN(5);
+  const tagArg     = cmdArgs.getArgN(1);
+  const groupCount = parseInt(cmdArgs.getArgN(2));
+  const day        = cmdArgs.getArgN(3);
+  const time       = cmdArgs.getArgN(4);
+  const placesRaw  = cmdArgs.getArgN(5);
 
-  if (!needOpposite || isNaN(groupCount) || groupCount <= 0 || !day || !time || !placesRaw) {
-    seal.replyToSender(ctx, msg, `格式：。计划官约 是/否 组数 D几 时间段 地点1，地点2，...\n示例：。计划官约 是 2 D1 14:00-16:00 咖啡厅，公园`);
+  if (!tagArg || isNaN(groupCount) || groupCount <= 0 || !day || !time || !placesRaw) {
+    seal.replyToSender(ctx, msg, `格式：。计划官约 tag名字/无 组数 D几 时间段 地点1，地点2，...\n示例：。计划官约 贵族 2 D1 14:00-16:00 咖啡厅，公园\n示例：。计划官约 无 2 D1 14:00-16:00 咖啡厅，公园`);
     return seal.ext.newCmdExecuteResult(true);
   }
 
@@ -5781,7 +5843,7 @@ cmd_plan_official.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
   }
 
-  const wantOpposite = (needOpposite === "是");
+  const wantTag = (tagArg !== "无");
   const platform = msg.platform;
 
   // 解析地点（支持中英文逗号）
@@ -5838,16 +5900,34 @@ cmd_plan_official.solve = (ctx, msg, cmdArgs) => {
   };
 
   let groups = Array.from({ length: groupCount }, () => []);
-  if (wantOpposite) {
-    const profiles = store.get("sys_char_profiles");
-    const males   = shuffle(allPlayers.filter(p => (profiles[`${platform}:${p.uid}`]?.gender || "女") === "男"));
-    const females = shuffle(allPlayers.filter(p => (profiles[`${platform}:${p.uid}`]?.gender || "女") !== "男"));
-    let mi = 0, fi = 0;
-    const maxRounds = Math.max(males.length, females.length);
-    for (let r = 0; r < maxRounds; r++) {
-      if (mi < males.length)   groups[r % groupCount].push(males[mi++].name);
-      if (fi < females.length) groups[r % groupCount].push(females[fi++].name);
+  if (wantTag) {
+    const allTags = store.get("sys_binary_tags");
+    const tagData = allTags[tagArg];
+    if (!tagData || Object.keys(tagData).length === 0) {
+      seal.replyToSender(ctx, msg, `❌ 未找到 tag「${tagArg}」，请先使用「。修改tag」创建`);
+      return seal.ext.newCmdExecuteResult(true);
     }
+
+    const nameToPlayer = {};
+    for (const p of allPlayers) nameToPlayer[p.name] = p;
+
+    const buckets = Object.values(tagData).map(names =>
+      shuffle(names.filter(n => nameToPlayer[n]).map(n => nameToPlayer[n]))
+    );
+
+    const assignedNames = new Set(Object.values(tagData).flat());
+    const unassigned = shuffle(allPlayers.filter(p => !assignedNames.has(p.name)));
+
+    const maxLen = Math.max(...buckets.map(b => b.length), 0);
+    const indices = buckets.map(() => 0);
+    for (let r = 0; r < maxLen; r++) {
+      for (let b = 0; b < buckets.length; b++) {
+        if (indices[b] < buckets[b].length) {
+          groups[r % groupCount].push(buckets[b][indices[b]++].name);
+        }
+      }
+    }
+    unassigned.forEach((p, idx) => { groups[idx % groupCount].push(p.name); });
   } else {
     shuffle(allPlayers).forEach((p, idx) => { groups[idx % groupCount].push(p.name); });
   }
@@ -5858,7 +5938,7 @@ cmd_plan_official.solve = (ctx, msg, cmdArgs) => {
   ext.storageSet("a_quick_official_plan", JSON.stringify(plan));
 
   // 展示方案
-  let resp = `📋 官约方案已生成${wantOpposite ? "（异性搭配模式）" : ""}：\n`;
+  let resp = `📋 官约方案已生成${wantTag ? `（${tagArg} 交替模式）` : ""}：\n`;
   resp += `📅 ${day} ${time}\n━━━━━━━━━━━━━━\n`;
   planGroups.forEach((g, i) => {
     resp += `第 ${i + 1} 组 📍${g.place}：${g.participants.join("、")}\n`;
@@ -10556,48 +10636,46 @@ ext.cmdMap["删除时间线"] = cmd_delete_timeline_precise;
 
 let cmd_sync_now = seal.ext.newCmdItemInfo();
 cmd_sync_now.name = "同步名片";
-cmd_sync_now.solve = (ctx, msg) => {
+cmd_sync_now.help = "同步名片 公告/戏群/水群";
+cmd_sync_now.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return;
+
+    const groupTypeMap = {
+        "公告": "adminAnnounceGroupId",
+        "戏群": "song_group_id",
+        "水群": "water_group_id",
+    };
+    const typeArg = (cmdArgs.args[0] || "").trim();
+    const storageKey = groupTypeMap[typeArg];
+    if (!storageKey) return seal.replyToSender(ctx, msg, "⚠️ 请指定群类型：同步名片 公告 / 戏群 / 水群");
+
+    const targetGid = JSON.parse(ext.storageGet(storageKey) || "null");
+    if (!targetGid || targetGid === "未设置") return seal.replyToSender(ctx, msg, `⚠️ ${typeArg}群号未配置`);
+    const cleanTargetGid = parseInt(targetGid.toString().replace(/[^\d]/g, ""));
+    if (isNaN(cleanTargetGid)) return seal.replyToSender(ctx, msg, `⚠️ ${typeArg}群号无效`);
 
     const platform = msg.platform, storage = getRoleStorage();
     const pData = storage[platform] || {};
-    const specials = ["adminAnnounceGroupId", "water_group_id", "song_group_id"]
-        .map(k => JSON.parse(ext.storageGet(k) || "null"))
-        .filter(id => id && id !== "未设置");
-
     const names = Object.keys(pData);
     if (!names.length) return seal.replyToSender(ctx, msg, "📭 数据库为空");
 
-    // 构建所有需要发送的请求队列
     const requestQueue = [];
-    names.forEach(name => {
-        const data = pData[name];
+    names.forEach(uidKey => {
+        const data = pData[uidKey];
         if (!Array.isArray(data) || data.length < 2 || !data[0]) return;
-
-        const [uid, pGid] = data;
-        const cleanUid = parseInt(uid.toString().replace(/[^\d]/g, ""));
+        const roleName = data[0];
+        const cleanUid = parseInt(uidKey.toString().replace(/[^\d]/g, ""));
         if (isNaN(cleanUid)) return;
-
-        const targets = [...new Set([pGid, ...specials])].filter(id => id && id !== "0");
-        targets.forEach(gid => {
-            const cleanGid = parseInt(gid.toString().replace(/[^\d]/g, ""));
-            if (!isNaN(cleanGid)) {
-                requestQueue.push({
-                    action: "set_group_card",
-                    params: { group_id: cleanGid, user_id: cleanUid, card: name }
-                });
-            }
+        requestQueue.push({
+            action: "set_group_card",
+            params: { group_id: cleanTargetGid, user_id: cleanUid, card: roleName }
         });
     });
 
-    if (!requestQueue.length) {
-        return seal.replyToSender(ctx, msg, "⚠️ 没有有效的同步目标");
-    }
+    if (!requestQueue.length) return seal.replyToSender(ctx, msg, "⚠️ 没有有效的同步目标");
 
-    // 使用单个 WebSocket 连接按顺序发送所有请求
     wsBatchSync(requestQueue, ctx, msg);
-
-    seal.replyToSender(ctx, msg, `🔄 正在同步 ${names.length} 个角色的名片...\n总共需要 ${requestQueue.length} 次操作`);
+    seal.replyToSender(ctx, msg, `🔄 正在向${typeArg}同步 ${names.length} 个角色的名片...\n总共需要 ${requestQueue.length} 次操作`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["同步名片"] = cmd_sync_now;

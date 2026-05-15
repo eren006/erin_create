@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         长日设置
 // @author       长日将尽
-// @version      1.3.7
+// @version      1.3.8
 // @description  独立的设置控制台（基础、互动、信件、公告）及天数系统、统计报告。所有数据统一存储在主插件 changri 中。
 // @timestamp    1743292800
 // @license      MIT
