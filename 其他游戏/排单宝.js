@@ -50,14 +50,35 @@ cmdAdmin.solve = (ctx, msg, cmdArgs) => {
     
     let admins = getDb("paidan_adminList");
     if (!admins[msg.platform]) admins[msg.platform] = [];
-    if (!admins[msg.platform].includes(targetQQ)) {
-        admins[msg.platform].push(targetQQ);
-        setDb("paidan_adminList", admins);
-        seal.replyToSender(ctx, msg, `✅ 已将 ${targetQQ} 设为排单管理员`);
+    if (admins[msg.platform].includes(targetQQ)) {
+        seal.replyToSender(ctx, msg, `⚠️ ${targetQQ} 已经是排单管理员了。`);
+        return seal.ext.newCmdExecuteResult(true);
     }
+    admins[msg.platform].push(targetQQ);
+    setDb("paidan_adminList", admins);
+    seal.replyToSender(ctx, msg, `✅ 已将 ${targetQQ} 设为排单管理员`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["添加排单管理员"] = cmdAdmin;
+
+let cmdRemoveAdmin = seal.ext.newCmdItemInfo();
+cmdRemoveAdmin.name = "移除排单管理员";
+cmdRemoveAdmin.solve = (ctx, msg, cmdArgs) => {
+    if (ctx.privilegeLevel < 100) return;
+    const targetQQ = cmdArgs.getArgN(1);
+    if (!targetQQ) return seal.replyToSender(ctx, msg, "❌ 请输入QQ号");
+
+    let admins = getDb("paidan_adminList");
+    if (!admins[msg.platform] || !admins[msg.platform].includes(targetQQ)) {
+        seal.replyToSender(ctx, msg, `⚠️ ${targetQQ} 不在管理员列表中。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    admins[msg.platform] = admins[msg.platform].filter(id => id !== targetQQ);
+    setDb("paidan_adminList", admins);
+    seal.replyToSender(ctx, msg, `✅ 已移除排单管理员：${targetQQ}`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["移除排单管理员"] = cmdRemoveAdmin;
 
 // ======================== 指令：系统配置 ========================
 
@@ -65,13 +86,24 @@ let cmdConfig = seal.ext.newCmdItemInfo();
 cmdConfig.name = "设置下单格式";
 cmdConfig.solve = (ctx, msg, cmdArgs) => {
     if (!isOrderAdmin(ctx, msg)) return;
-    const format = msg.message.replace(".设置下单格式", "").trim();
+    const format = msg.message.replace(/^[.。]设置下单格式\s*/, "").trim();
     if (!format) return seal.replyToSender(ctx, msg, "❌ 格式不能为空");
-    
+
+    // 校验每个非空行必须含有 ：
+    const lines = format.split("\n").filter(l => l.trim());
+    const invalidLines = lines.filter(l => !l.includes("：") && !l.includes(":"));
+    if (invalidLines.length > 0) {
+        return seal.replyToSender(ctx, msg, `❌ 格式设置有误，以下行缺少冒号，每行必须是「字段名：提示说明」的格式：\n${invalidLines.join("\n")}`);
+    }
+
+    // 自动提取字段名（冒号前面的部分，兼容全角半角）
+    const fields = lines.map(l => l.split(/[：:]/)[0].trim()).filter(f => f);
+
     let config = getDb("paidan_config");
     config.orderFormat = format;
+    config.orderFields = fields;
     setDb("paidan_config", config);
-    seal.replyToSender(ctx, msg, `✅ 下单格式已更新为：\n${format}`);
+    seal.replyToSender(ctx, msg, `✅ 下单格式已更新，共解析 ${fields.length} 个字段：\n${fields.join("、")}\n\n用户下单时将自动校验以上字段是否全部填写。`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["设置下单格式"] = cmdConfig;
@@ -87,6 +119,20 @@ cmdWorkGroup.solve = (ctx, msg) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["设置排单工作群"] = cmdWorkGroup;
+
+let cmdNotice = seal.ext.newCmdItemInfo();
+cmdNotice.name = "设置排单公告";
+cmdNotice.help = ".设置排单公告 <内容>  （留空则清空公告）";
+cmdNotice.solve = (ctx, msg) => {
+    if (!isOrderAdmin(ctx, msg)) return;
+    const notice = msg.message.replace(/^[.。]设置排单公告\s*/, "").trim();
+    let config = getDb("paidan_config");
+    config.notice = notice;
+    setDb("paidan_config", config);
+    seal.replyToSender(ctx, msg, notice ? `✅ 公告已更新：\n${notice}` : "✅ 公告已清空。");
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["设置排单公告"] = cmdNotice;
 
 // ======================== 指令：用户流程 ========================
 
@@ -119,7 +165,7 @@ cmdReg.solve = (ctx, msg, cmdArgs) => {
 };
 ext.cmdMap["排单注册"] = cmdReg;
 
-// 2. 下单 (核心解析逻辑)
+// 2. 下单 (两步流程：先展示格式，填写后再提交)
 let cmdOrder = seal.ext.newCmdItemInfo();
 cmdOrder.name = "下单";
 cmdOrder.solve = (ctx, msg) => {
@@ -131,12 +177,39 @@ cmdOrder.solve = (ctx, msg) => {
     if (new Date(user.expiry) < new Date()) return seal.replyToSender(ctx, msg, `⚠️ 您的卡片已于 ${user.expiry} 过期，无法下单。`);
     if (user.balance <= 0) return seal.replyToSender(ctx, msg, "⚠️ 您的剩余数量不足，请联系管理增补。");
 
-    const orderId = "P" + Date.now().toString().slice(-6);
+    const content = msg.message.replace(/^[.。]下单\s*/, "").trim();
+
+    // 第一步：无内容时展示公告 + 格式模板
+    if (!content) {
+        const config = getDb("paidan_config");
+        const format = config.orderFormat || "（管理员尚未设置下单格式，请联系管理员）";
+        let reply = "";
+        if (config.notice) reply += `📢 【公告】\n${config.notice}\n\n`;
+        reply += `📋 请按以下格式填写，然后发送【.下单 <填写内容>】提交：\n\n${format}`;
+        return seal.replyToSender(ctx, msg, reply);
+    }
+
+    // 限制：同一用户不能同时存在进行中的订单
+    const config = getDb("paidan_config");
     let orders = getDb("paidan_orders");
+    const hasActive = Object.values(orders).some(
+        o => o.uid === uid && o.status !== "已完成" && o.status !== "已拒绝" && o.status !== "已撤单"
+    );
+    if (hasActive) return seal.replyToSender(ctx, msg, "⚠️ 您有一笔订单尚未完成，请等待当前订单完成后再下新单。");
+
+    // 字段格式校验
+    if (config.orderFields && config.orderFields.length > 0) {
+        const missing = config.orderFields.filter(f => !content.includes(f + "：") && !content.includes(f + ":"));
+        if (missing.length > 0) {
+            return seal.replyToSender(ctx, msg, `❌ 下单格式不完整，以下字段未填写：\n${missing.map(f => `· ${f}`).join("\n")}\n\n请发送【.下单】查看完整格式后重新提交。`);
+        }
+    }
+
+    const orderId = "P" + Date.now().toString().slice(-6);
     orders[orderId] = {
         id: orderId,
         uid: uid,
-        content: msg.message.replace(".下单", "").trim(),
+        content: content,
         status: "待接单",
         group: msg.groupId,
         timestamp: Date.now()
@@ -144,11 +217,9 @@ cmdOrder.solve = (ctx, msg) => {
     setDb("paidan_orders", orders);
 
     seal.replyToSender(ctx, msg, `✅ 下单成功！订单编号：${orderId}\n状态：等待管理员接单`);
-    
-    // 工作群同步
-    const config = getDb("paidan_config");
+
     if (config.adminGroupId) {
-        const text = `🔥 【新订单：${orderId}】\n客户：${user.name}\n内容：\n${orders[orderId].content}`;
+        const text = `🔥 【新订单：${orderId}】\n客户：${user.name}\n内容：\n${content}`;
         sendNotify(config.adminGroupId, null, text);
     }
     return seal.ext.newCmdExecuteResult(true);
@@ -166,11 +237,16 @@ cmdCheck.solve = (ctx, msg, cmdArgs) => {
     const realCount = parseInt(cmdArgs.getArgN(2));
     const expiry = cmdArgs.getArgN(3); // YYYY-MM-DD
 
+    if (isNaN(realCount)) return seal.replyToSender(ctx, msg, "❌ 请输入有效的数量（数字）");
+    if (!expiry || !/^\d{4}-\d{1,2}-\d{1,2}$/.test(expiry)) return seal.replyToSender(ctx, msg, "❌ 有效期格式应为 YYYY-MM-DD，例如：2026-12-31");
+    const [ey, em, ed] = expiry.split("-");
+    const normalizedExpiry = `${ey}-${em.padStart(2,"0")}-${ed.padStart(2,"0")}`;
+
     let users = getDb("paidan_users");
     if (!users[targetUid]) return seal.replyToSender(ctx, msg, "❌ 找不到该用户");
 
     users[targetUid].balance = realCount;
-    users[targetUid].expiry = expiry;
+    users[targetUid].expiry = normalizedExpiry;
     users[targetUid].verified = true;
     users[targetUid].expiryReminded = false;
     setDb("paidan_users", users);
@@ -178,10 +254,60 @@ cmdCheck.solve = (ctx, msg, cmdArgs) => {
     seal.replyToSender(ctx, msg, `✅ 用户 ${users[targetUid].name} 核对完成。`);
     
     // 回执到用户群
-    sendNotify(users[targetUid].group, targetUid, `✨ 管理员已完成您的资产核对！\n核定数量：${realCount}\n有效期至：${expiry}`);
+    sendNotify(users[targetUid].group, targetUid, `✨ 管理员已完成您的资产核对！\n核定数量：${realCount}\n有效期至：${normalizedExpiry}`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["排单核对"] = cmdCheck;
+
+let cmdAddBalance = seal.ext.newCmdItemInfo();
+cmdAddBalance.name = "增补余额";
+cmdAddBalance.help = ".增补余额 <UID> <数量>";
+cmdAddBalance.solve = (ctx, msg, cmdArgs) => {
+    if (!isOrderAdmin(ctx, msg)) return;
+    const targetUid = cmdArgs.getArgN(1);
+    const amount = parseInt(cmdArgs.getArgN(2));
+    if (!targetUid) return seal.replyToSender(ctx, msg, "❌ 请提供用户UID");
+    if (isNaN(amount) || amount <= 0) return seal.replyToSender(ctx, msg, "❌ 请输入有效的增补数量（正整数）");
+
+    let users = getDb("paidan_users");
+    if (!users[targetUid]) return seal.replyToSender(ctx, msg, "❌ 找不到该用户");
+
+    users[targetUid].balance += amount;
+    setDb("paidan_users", users);
+
+    addOrderLog(`管理员为 ${targetUid} 增补余额 ${amount}，当前余额 ${users[targetUid].balance}`);
+    seal.replyToSender(ctx, msg, `✅ 已为 ${users[targetUid].name} 增补 ${amount} 张，当前余额：${users[targetUid].balance} 张。`);
+    sendNotify(users[targetUid].group, targetUid, `💳 管理员为您增补了 ${amount} 张卡片！\n当前余额：${users[targetUid].balance} 张`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["增补余额"] = cmdAddBalance;
+
+let cmdExtend = seal.ext.newCmdItemInfo();
+cmdExtend.name = "延期";
+cmdExtend.help = ".延期 <UID> <新有效期 YYYY-MM-DD>";
+cmdExtend.solve = (ctx, msg, cmdArgs) => {
+    if (!isOrderAdmin(ctx, msg)) return;
+    const targetUid = cmdArgs.getArgN(1);
+    const newExpiry = cmdArgs.getArgN(2);
+    if (!targetUid) return seal.replyToSender(ctx, msg, "❌ 请提供用户UID");
+    if (!newExpiry || !/^\d{4}-\d{1,2}-\d{1,2}$/.test(newExpiry)) return seal.replyToSender(ctx, msg, "❌ 有效期格式应为 YYYY-MM-DD，例如：2026-12-31");
+    const [ny, nm, nd] = newExpiry.split("-");
+    const normalizedNewExpiry = `${ny}-${nm.padStart(2,"0")}-${nd.padStart(2,"0")}`;
+
+    let users = getDb("paidan_users");
+    if (!users[targetUid]) return seal.replyToSender(ctx, msg, "❌ 找不到该用户");
+
+    const oldExpiry = users[targetUid].expiry;
+    users[targetUid].expiry = normalizedNewExpiry;
+    users[targetUid].expiryReminded = false;
+    setDb("paidan_users", users);
+
+    addOrderLog(`管理员将 ${targetUid} 有效期从 ${oldExpiry} 延至 ${normalizedNewExpiry}`);
+    seal.replyToSender(ctx, msg, `✅ 已将 ${users[targetUid].name} 有效期延至：${normalizedNewExpiry}`);
+    sendNotify(users[targetUid].group, targetUid, `📅 管理员已为您续期！\n新有效期至：${normalizedNewExpiry}`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["延期"] = cmdExtend;
 
 // ======================== 模块一：接单（带工期设置） ========================
 let cmdAccept = seal.ext.newCmdItemInfo();
@@ -208,6 +334,38 @@ cmdAccept.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["接单"] = cmdAccept;
+
+// ======================== 拒绝接单 ========================
+let cmdReject = seal.ext.newCmdItemInfo();
+cmdReject.name = "拒绝接单";
+cmdReject.help = ".拒绝接单 <编号> <理由>";
+cmdReject.solve = (ctx, msg, cmdArgs) => {
+    if (!isOrderAdmin(ctx, msg)) return;
+    const orderId = cmdArgs.getArgN(1);
+    if (!orderId) return seal.replyToSender(ctx, msg, "❌ 请提供订单编号");
+
+    // 提取理由：去掉指令名和编号，剩余部分为理由
+    const raw = msg.message.replace(/^[.。]拒绝接单\s*/, "").trim();
+    const spaceIdx = raw.indexOf(" ");
+    const reason = spaceIdx === -1 ? "" : raw.slice(spaceIdx + 1).trim();
+
+    let orders = getDb("paidan_orders");
+    if (!orders[orderId]) return seal.replyToSender(ctx, msg, "❌ 订单不存在");
+    if (orders[orderId].status === "已完成") return seal.replyToSender(ctx, msg, "❌ 订单已完成，无法拒绝");
+    if (orders[orderId].status === "已拒绝") return seal.replyToSender(ctx, msg, "❌ 订单已是拒绝状态");
+
+    orders[orderId].status = "已拒绝";
+    orders[orderId].rejectReason = reason || "管理员未说明原因";
+    setDb("paidan_orders", orders);
+
+    addOrderLog(`管理员拒绝了订单 ${orderId}，理由：${reason || "未说明"}`);
+    seal.replyToSender(ctx, msg, `✅ 订单 ${orderId} 已拒绝。`);
+    sendNotify(orders[orderId].group, orders[orderId].uid,
+        `❌ 您的订单 [${orderId}] 已被拒绝。\n理由：${reason || "管理员未说明原因"}\n如有疑问请联系管理员，确认后可重新下单。`
+    );
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["拒绝接单"] = cmdReject;
 
 // ======================== 模块二：反向防催单系统 ========================
 let cmdUrge = seal.ext.newCmdItemInfo();
@@ -295,14 +453,16 @@ cmdFinish.solve = (ctx, msg, cmdArgs) => {
     if (!orders[orderId]) return seal.replyToSender(ctx, msg, "❌ 订单不存在");
 
     const uid = orders[orderId].uid;
+    if (!users[uid]) return seal.replyToSender(ctx, msg, "❌ 找不到对应用户数据，请联系开发者检查。");
+    if (users[uid].balance < decr) return seal.replyToSender(ctx, msg, `❌ 余额不足，当前余额 ${users[uid].balance} 张，无法扣除 ${decr} 张。`);
+
     users[uid].balance -= decr;
     orders[orderId].status = "已完成";
-    
+
     setDb("paidan_orders", orders);
     setDb("paidan_users", users);
 
     seal.replyToSender(ctx, msg, `✅ 订单 ${orderId} 扣卡成功，剩余 ${users[uid].balance} 张。`);
-    
     sendNotify(orders[orderId].group, uid, `🎉 您的订单 [${orderId}] 已制作完成！\n本次扣除：${decr}\n剩余卡片数量：${users[uid].balance}`);
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -326,7 +486,8 @@ cmdQueue.solve = (ctx, msg, cmdArgs) => {
     const users = getDb("paidan_users");
     let res = "📋 【待接单排队】\n";
     queue.forEach(o => {
-        res += `编号：${o.id}\n客户：${users[o.uid]?.name || '未知'}\n群号：${o.group}\n内容：${o.content.slice(0, 30)}...\n————\n`;
+        const preview = o.content.length > 30 ? o.content.slice(0, 30) + "..." : o.content;
+        res += `编号：${o.id}\n客户：${users[o.uid]?.name || '未知'}\n群号：${o.group}\n内容：${preview}\n————\n`;
     });
     seal.replyToSender(ctx, msg, res);
     return seal.ext.newCmdExecuteResult(true);
@@ -358,6 +519,98 @@ cmdTodoList.solve = (ctx, msg, cmdArgs) => {
 ext.cmdMap["查看待完成"] = cmdTodoList;
 ext.cmdMap["待完成列表"] = cmdTodoList;
 
+let cmdUserList = seal.ext.newCmdItemInfo();
+cmdUserList.name = "用户列表";
+cmdUserList.solve = (ctx, msg) => {
+    if (!isOrderAdmin(ctx, msg)) return;
+    const users = getDb("paidan_users");
+    const list = Object.entries(users);
+    if (list.length === 0) return seal.replyToSender(ctx, msg, "暂无任何注册用户。");
+
+    let res = `👥 【排单用户列表】共 ${list.length} 人\n`;
+    list.forEach(([uid, u]) => {
+        if (u.verified) {
+            const daysLeft = Math.ceil((new Date(u.expiry) - Date.now()) / (1000 * 60 * 60 * 24));
+            const expNote = daysLeft > 0 ? `期至${u.expiry}` : `已过期`;
+            res += `${u.name}（${uid}）✅ 余额${u.balance}张 | ${expNote}\n`;
+        } else {
+            res += `${u.name}（${uid}）⏳ 待核对\n`;
+        }
+    });
+    seal.replyToSender(ctx, msg, res);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["用户列表"] = cmdUserList;
+
+let cmdCleanExpired = seal.ext.newCmdItemInfo();
+cmdCleanExpired.name = "清理过期用户";
+cmdCleanExpired.solve = (ctx, msg) => {
+    if (!isOrderAdmin(ctx, msg)) return;
+
+    let users = getDb("paidan_users");
+    const orders = getDb("paidan_orders");
+    const now = new Date();
+    const removed = [];
+    const skipped = [];
+
+    for (const [uid, u] of Object.entries(users)) {
+        if (!u.verified || u.expiry === "待核对") continue;
+        if (new Date(u.expiry) >= now) continue;
+
+        // 有进行中的订单则跳过，避免数据悬空
+        const hasActive = Object.values(orders).some(
+            o => o.uid === uid && o.status !== "已完成" && o.status !== "已拒绝" && o.status !== "已撤单"
+        );
+        if (hasActive) {
+            skipped.push(`${u.name}（${uid}）`);
+        } else {
+            removed.push(`${u.name}（${uid}）`);
+            delete users[uid];
+        }
+    }
+
+    setDb("paidan_users", users);
+
+    let res = removed.length > 0
+        ? `✅ 已清理 ${removed.length} 位过期用户：\n${removed.join("\n")}`
+        : "✅ 没有需要清理的过期用户。";
+    if (skipped.length > 0) {
+        res += `\n\n⚠️ 以下用户已过期但有进行中的订单，已跳过：\n${skipped.join("\n")}`;
+    }
+    if (removed.length > 0) addOrderLog(`清理过期用户 ${removed.length} 人：${removed.join("、")}`);
+
+    seal.replyToSender(ctx, msg, res);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["清理过期用户"] = cmdCleanExpired;
+
+let cmdRemoveUser = seal.ext.newCmdItemInfo();
+cmdRemoveUser.name = "移除用户";
+cmdRemoveUser.help = ".移除用户 <UID>";
+cmdRemoveUser.solve = (ctx, msg, cmdArgs) => {
+    if (!isOrderAdmin(ctx, msg)) return;
+    const targetUid = cmdArgs.getArgN(1);
+    if (!targetUid) return seal.replyToSender(ctx, msg, "❌ 请提供用户UID");
+
+    let users = getDb("paidan_users");
+    if (!users[targetUid]) return seal.replyToSender(ctx, msg, "❌ 找不到该用户");
+
+    const orders = getDb("paidan_orders");
+    const hasActive = Object.values(orders).some(
+        o => o.uid === targetUid && o.status !== "已完成" && o.status !== "已拒绝" && o.status !== "已撤单"
+    );
+    if (hasActive) return seal.replyToSender(ctx, msg, `❌ 该用户有进行中的订单，请先处理完再移除。`);
+
+    const name = users[targetUid].name;
+    delete users[targetUid];
+    setDb("paidan_users", users);
+
+    addOrderLog(`管理员移除了用户 ${name}（${targetUid}）`);
+    seal.replyToSender(ctx, msg, `✅ 已移除用户：${name}（${targetUid}）`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["移除用户"] = cmdRemoveUser;
+
 let cmdMy = seal.ext.newCmdItemInfo();
 cmdMy.name = "查看订单状态";
 cmdMy.solve = (ctx, msg) => {
@@ -369,12 +622,57 @@ cmdMy.solve = (ctx, msg) => {
     
     let res = "🔍 【进行中订单】\n";
     my.forEach(o => {
-        res += `编号：${o.id}\n状态：${o.status}\n内容摘要：${o.content.slice(0,15)}...\n————\n`;
+        const summary = o.content.length > 15 ? o.content.slice(0, 15) + "..." : o.content;
+        res += `编号：${o.id}\n状态：${o.status}\n内容摘要：${summary}\n————\n`;
     });
     seal.replyToSender(ctx, msg, res);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["查看订单状态"] = cmdMy;
+
+let cmdBalance = seal.ext.newCmdItemInfo();
+cmdBalance.name = "查余额";
+cmdBalance.solve = (ctx, msg) => {
+    const uid = msg.sender.userId.replace(`${msg.platform}:`, "");
+    const users = getDb("paidan_users");
+    const user = users[uid];
+    if (!user) return seal.replyToSender(ctx, msg, "❌ 您尚未注册，请先使用 .排单注册。");
+    if (!user.verified) return seal.replyToSender(ctx, msg, "⏳ 您的注册尚未通过管理员核对。");
+
+    const daysLeft = Math.ceil((new Date(user.expiry) - Date.now()) / (1000 * 60 * 60 * 24));
+    const expiryNote = daysLeft > 0 ? `（还剩 ${daysLeft} 天）` : "（已过期）";
+    seal.replyToSender(ctx, msg, `💳 【您的排单余额】\n姓名：${user.name}\n剩余数量：${user.balance} 张\n有效期至：${user.expiry} ${expiryNote}`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["查余额"] = cmdBalance;
+
+let cmdCancel = seal.ext.newCmdItemInfo();
+cmdCancel.name = "撤单";
+cmdCancel.help = ".撤单 <订单编号>  （仅限「待接单」状态可撤）";
+cmdCancel.solve = (ctx, msg, cmdArgs) => {
+    const uid = msg.sender.userId.replace(`${msg.platform}:`, "");
+    const orderId = cmdArgs.getArgN(1);
+    if (!orderId) return seal.replyToSender(ctx, msg, "❌ 请提供订单编号，格式：.撤单 <编号>");
+
+    let orders = getDb("paidan_orders");
+    const o = orders[orderId];
+    if (!o) return seal.replyToSender(ctx, msg, "❌ 订单不存在。");
+    if (o.uid !== uid) return seal.replyToSender(ctx, msg, "❌ 这不是您的订单。");
+    if (o.status !== "待接单") return seal.replyToSender(ctx, msg, `❌ 订单已处于「${o.status}」状态，无法自行撤回。如需取消请联系管理员。`);
+
+    orders[orderId].status = "已撤单";
+    setDb("paidan_orders", orders);
+
+    addOrderLog(`用户 ${uid} 撤回了订单 ${orderId}`);
+    seal.replyToSender(ctx, msg, `✅ 订单 ${orderId} 已撤回。如需重新下单请使用 .下单。`);
+
+    const config = getDb("paidan_config");
+    if (config.adminGroupId) {
+        sendNotify(config.adminGroupId, null, `📭 用户 ${uid} 撤回了订单 [${orderId}]。`);
+    }
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["撤单"] = cmdCancel;
 
 // ======================== 进度与权重模块 ========================
 
@@ -420,7 +718,7 @@ let cmdKanban = seal.ext.newCmdItemInfo();
 cmdKanban.name = "排单看板";
 cmdKanban.solve = (ctx, msg) => {
     const orders = getDb("paidan_orders");
-    const activeOrders = Object.values(orders).filter(o => o.status !== "已完成");
+    const activeOrders = Object.values(orders).filter(o => o.status !== "已完成" && o.status !== "已拒绝" && o.status !== "已撤单");
     
     if (activeOrders.length === 0) return seal.replyToSender(ctx, msg, "🟢 当前工坊空闲，暂无排单。");
 
@@ -487,7 +785,7 @@ function runOrderMonitor() {
     // 1. 检查订单超时 (超过3天未完成)
     for (let id in orders) {
         let o = orders[id];
-        if (o.status !== "已完成") {
+        if (o.status !== "已完成" && o.status !== "已拒绝" && o.status !== "已撤单") {
             let days = Math.floor((Date.now() - o.timestamp) / (1000 * 60 * 60 * 24));
             if (days >= 3 && !o.timeoutReminded) {
                 sendNotify(config.adminGroupId, null, `⏳ 【订单积压预警】\n订单 [${id}] 已停滞 ${days} 天，请管理留意进度。`);

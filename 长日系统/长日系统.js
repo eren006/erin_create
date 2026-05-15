@@ -5608,7 +5608,7 @@ cmd_rel_stats.solve = (ctx, msg) => {
 
     // 构造合并转发消息
     const nodes = [];
-    const header = `📊 角色关系线统计（${platform} 平台）\n共 ${stats.length} 个角色拥有关系线\n━━━━━━━━━━━━━━━`;
+    const header = `📊 角色关系线统计（${platform} 平台）\n共 ${stats.length} 个角色拥有关系线\n— 以上 —`;
     nodes.push({
         type: "node",
         data: {
@@ -7221,7 +7221,7 @@ cmd_my_stats.solve = (ctx, msg, cmdArgs) => {
     // 本场数据块
     if (sessionStat && sessionStat.replies > 0) {
         const avgPerReply = sessionStat.replies > 0 ? Math.round(sessionStat.words / sessionStat.replies) : 0;
-        reply += `━━━ 本场 ━━━━━━━━━━━━\n`;
+        reply += `\n【本场】\n`;
         reply += `🔸 写了：${sessionStat.replies} 段\n`;
         reply += `🔸 总字数：${sessionStat.words} 字\n`;
         reply += `🔸 平均每段：${avgPerReply} 字\n`;
@@ -7244,35 +7244,35 @@ cmd_my_stats.solve = (ctx, msg, cmdArgs) => {
             const apptFE = getTop3Text(iCountsEarly.appt_received);
             const apptTE = getTop3Text(iCountsEarly.appt_sent);
             if (smsFE || smsTE) {
-                reply += `━━━ 短信 ━━━━━━━━━━━━\n`;
+                reply += `【短信】\n`;
                 if (smsFE) reply += `📨 最喜欢给你发短信：\n${smsFE}\n`;
                 if (smsTE) reply += `📤 你最喜欢发短信给：\n${smsTE}\n`;
             }
             if (giftFE || giftTE) {
-                reply += `━━━ 礼物 ━━━━━━━━━━━━\n`;
+                reply += `【礼物】\n`;
                 if (giftFE) reply += `🎀 最喜欢送你礼物：\n${giftFE}\n`;
                 if (giftTE) reply += `🎁 你最喜欢送礼给：\n${giftTE}\n`;
             }
             if (apptFE || apptTE) {
-                reply += `━━━ 约会 ━━━━━━━━━━━━\n`;
+                reply += `【约会】\n`;
                 if (apptFE) reply += `📅 最喜欢约你（私约/电话）：\n${apptFE}\n`;
                 if (apptTE) reply += `💌 你最喜欢约（私约/电话）：\n${apptTE}\n`;
             }
             const wishFE = getTop3Text(iCountsEarly.wish_received);
             const wishTE = getTop3Text(iCountsEarly.wish_sent);
             if (wishFE || wishTE) {
-                reply += `━━━ 心愿 ━━━━━━━━━━━━\n`;
+                reply += `【心愿】\n`;
                 if (wishFE) reply += `🌠 最喜欢摘你心愿：\n${wishFE}\n`;
                 if (wishTE) reply += `✨ 你最喜欢摘谁的心愿：\n${wishTE}\n`;
             }
         }
-        reply += `━━━━━━━━━━━━━━━`;
+        reply += `— 以上 —`;
         seal.replyToSender(ctx, msg, reply);
         return seal.ext.newCmdExecuteResult(true);
     }
 
     // 历史累计数据块
-    reply += `━━━ 历史 ━━━━━━━━━━━━\n`;
+    reply += `【历史】\n`;
     reply += `🔹 累计回复：${globalStat.totalReplies} 次\n`;
     reply += `🔹 累计字数：${globalStat.totalWords} 字\n`;
     reply += `🔹 平均每条：${globalStat.avgWords} 字\n`;
@@ -7292,29 +7292,29 @@ cmd_my_stats.solve = (ctx, msg, cmdArgs) => {
     const apptTo   = getTop3Text(iCounts.appt_sent);
 
     if (smsFrom || smsTo) {
-        reply += `━━━ 短信 ━━━━━━━━━━━━\n`;
+        reply += `【短信】\n`;
         if (smsFrom) reply += `📨 最喜欢给你发短信：\n${smsFrom}\n`;
         if (smsTo)   reply += `📤 你最喜欢发短信给：\n${smsTo}\n`;
     }
     if (giftFrom || giftTo) {
-        reply += `━━━ 礼物 ━━━━━━━━━━━━\n`;
+        reply += `【礼物】\n`;
         if (giftFrom) reply += `🎀 最喜欢送你礼物：\n${giftFrom}\n`;
         if (giftTo)   reply += `🎁 你最喜欢送礼给：\n${giftTo}\n`;
     }
     if (apptFrom || apptTo) {
-        reply += `━━━ 约会 ━━━━━━━━━━━━\n`;
+        reply += `【约会】\n`;
         if (apptFrom) reply += `📅 最喜欢约你（私约/电话）：\n${apptFrom}\n`;
         if (apptTo)   reply += `💌 你最喜欢约（私约/电话）：\n${apptTo}\n`;
     }
     const wishFrom = getTop3Text(iCounts.wish_received);
     const wishTo   = getTop3Text(iCounts.wish_sent);
     if (wishFrom || wishTo) {
-        reply += `━━━ 心愿 ━━━━━━━━━━━━\n`;
+        reply += `【心愿】\n`;
         if (wishFrom) reply += `🌠 最喜欢摘你心愿：\n${wishFrom}\n`;
         if (wishTo)   reply += `✨ 你最喜欢摘谁的心愿：\n${wishTo}\n`;
     }
 
-    reply += `━━━━━━━━━━━━━━━`;
+    reply += `— 以上 —`;
 
     seal.replyToSender(ctx, msg, reply);
     return seal.ext.newCmdExecuteResult(true);
@@ -7468,7 +7468,7 @@ cmd_all_stats.solve = (ctx, msg, cmdArgs) => {
         const bindUid = statUid || botUid;
 
         let info = `第 ${index + 1} 名：【${displayName}】\n`;
-        info += `━━━━━━━━━━━━━━━\n`;
+        info += `— 以上 —\n`;
         info += `🔹 总回复：${user.totalReplies} 次\n`;
         info += `🔹 总字数：${user.totalWords} 字\n`;
         info += `🔹 平均字数：${user.avgWords} 字/条\n`;
@@ -8233,7 +8233,7 @@ cmd_view_timers.solve = (ctx, msg) => {
 
         nodes.push({
             type: "node",
-            data: { name: `群组 ${gid} | ${t.subtype}`, uin: "10001", content: `📍 模式：${t.timerMode === 'turn_taking' ? '轮流' : '独立'}\n━━━━━━━━━━━━━━━\n${detail}` }
+            data: { name: `群组 ${gid} | ${t.subtype}`, uin: "10001", content: `📍 模式：${t.timerMode === 'turn_taking' ? '轮流' : '独立'}\n— 以上 —\n${detail}` }
         });
     });
 
@@ -8415,7 +8415,7 @@ cmd_set_monitor_params.solve = (ctx, msg, cmdArgs) => {
     // 1. 无参数时：显示当前配置快照
     if (!cmdArgs.getArgN(1)) {
         let rep = "🌸 当前监听系统配置 🌸\n";
-        rep += "━━━━━━━━━━━━━━━\n\n";
+        rep += "— 以上 —\n\n";
         
         const configMap = [
             { label: "📞 电话", w: settings.min_words_phone, t: settings.timeout_phone },
@@ -8430,7 +8430,7 @@ cmd_set_monitor_params.solve = (ctx, msg, cmdArgs) => {
         });
         
         rep += `📊 活跃计时群组：${Object.keys(getGroupTimers()).length} 个\n`;
-        rep += "━━━━━━━━━━━━━━━\n";
+        rep += "— 以上 —\n";
         rep += "💡 格式：类型=字数/超时 (小时)";
         
         seal.replyToSender(ctx, msg, rep.trim());
@@ -9016,7 +9016,7 @@ function generateMailReport(records, title = "📮 心动信派送清单") {
         data: {
             name: "心动邮局·系统日志",
             uin: "2852199344",
-            content: `${title}\n🕐 ${new Date().toLocaleString()}\n📬 待派送信件总数：${records.length} 封\n━━━━━━━━━━━━━━━`
+            content: `${title}\n🕐 ${new Date().toLocaleString()}\n📬 待派送信件总数：${records.length} 封\n— 以上 —`
         }
     }];
 
