@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         长日设置
 // @author       长日将尽
-// @version      1.3.8
+// @version      1.3.9
 // @description  独立的设置控制台（基础、互动、信件、公告）及天数系统、统计报告。所有数据统一存储在主插件 changri 中。
 // @timestamp    1743292800
 // @license      MIT
@@ -348,7 +348,9 @@ settingsConfig['信件设置'] = {
         { label: '寄信混乱反义', key: 'chaos_letter_config', nested: 'antonymReplace', type: 'number', default: 0 },
         { label: '寄信混乱乱序', key: 'chaos_letter_config', nested: 'reverseOrder', type: 'number', default: 0 },
         { label: '寄信混乱混淆', key: 'chaos_letter_config', nested: 'mistakenSignature', type: 'number', default: 0 },
-        { label: '寄信混乱诗意', key: 'chaos_letter_config', nested: 'poeticSignature', type: 'number', default: 0 }
+        { label: '寄信混乱诗意', key: 'chaos_letter_config', nested: 'poeticSignature', type: 'number', default: 0 },
+        { label: '送礼混乱丢失', key: 'chaos_letter_config', nested: 'giftLost', type: 'number', default: 0 },
+        { label: '送礼混乱送错', key: 'chaos_letter_config', nested: 'giftMisdelivery', type: 'number', default: 0 }
     ]
 };
 
@@ -826,7 +828,7 @@ function applyGroupParam(name, val) {
 function ensureDefaults(main) {
     const defaults = {
         "global_feature_toggle": JSON.stringify({ enable_general_letter: true, enable_general_gift: true, enable_general_appointment: true, enable_chaos_letter: true, enable_secret_letter: true, enable_wish_system: true, enable_lovemail: true }),
-        "chaos_letter_config": JSON.stringify({ misdelivery: 0, blackoutText: 0, loseContent: 0, antonymReplace: 0, reverseOrder: 0, mistakenSignature: 0, poeticSignature: 0, dailyLimit: 5, publicChance: 50 }),
+        "chaos_letter_config": JSON.stringify({ misdelivery: 0, blackoutText: 0, loseContent: 0, antonymReplace: 0, reverseOrder: 0, mistakenSignature: 0, poeticSignature: 0, dailyLimit: 5, publicChance: 50, giftLost: 0, giftMisdelivery: 0 }),
         "sighting_system_config": JSON.stringify({ enabled: true, send_to_all: true, max_reports_per_day: 5, include_ended_meetings: false, time_overlap_threshold: 0.3 }),
         "place_system_config": JSON.stringify({ enabled: true, require_key_by_default: false }),
         "appointment_duration_config": JSON.stringify({ phone: 29, private: 59 }),

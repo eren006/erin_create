@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RPG系统
 // @author       长日将尽
-// @version      1.3.8
+// @version      1.3.9
 // @description  物品注册、背包、商城、抽取池、二手市场。所有数据存储在主插件 changri 中。
 // @timestamp    1745568000
 // @license      MIT

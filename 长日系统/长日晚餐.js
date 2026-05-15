@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         晚餐系统
 // @author       长日将尽
-// @version      1.3.8
+// @version      1.3.9
 // @description  独立的晚餐系统。自动读取“changri”插件中的角色名与管理列表。支持多游戏框架，俄罗斯轮盘可自定义弹巢数和子弹数。
 // @timestamp    1740292337
 // @license      CC BY-NC-SA
@@ -854,9 +854,9 @@ cmd_poke.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    // 检查目标是否存在（按 roleName 反查）
-    const targetEntry = Object.values(charPlatform[platform]).find(v => v[0] === targetName);
-    if (!targetEntry) {
+    // 检查目标是否存在（按 roleName 反查，取 uid key）
+    const targetUidEntry = Object.entries(charPlatform[platform]).find(([_, v]) => v[0] === targetName);
+    if (!targetUidEntry) {
         seal.replyToSender(ctx, msg, `❌ 未找到角色「${targetName}」的绑定信息`);
         return seal.ext.newCmdExecuteResult(true);
     }
@@ -923,8 +923,8 @@ cmd_poke.solve = (ctx, msg, cmdArgs) => {
     ext.storageSet(cooldownKey, now.toString());
 
     // 获取目标私密群信息
-    const targetUid = targetEntry[0];
-    const targetGroupId = targetEntry[1];
+    const [targetUid, targetVal] = targetUidEntry;
+    const targetGroupId = targetVal[1];
 
     // 构造发送给目标群的消息
     const pokeMsg = seal.newMessage();

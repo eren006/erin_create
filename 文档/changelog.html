@@ -134,7 +134,7 @@ body { font-family: 'Noto Serif SC', serif; background: var(--warm-white); color
   <div class="hero-right">
     <div class="hero-stat-grid">
       <div class="hero-stat">
-        <div class="hero-stat-num">1.3.8</div>
+        <div class="hero-stat-num">1.3.9</div>
         <div class="hero-stat-label">Latest</div>
       </div>
       <div class="hero-stat">
@@ -156,15 +156,56 @@ body { font-family: 'Noto Serif SC', serif; background: var(--warm-white); color
 <div class="page">
 <div class="timeline">
 
-  <!-- ── v1.3.8 ─── -->
-  <div class="version-block latest" id="v1.3.8">
+  <!-- ── v1.3.9 ─── -->
+  <div class="version-block latest" id="v1.3.9">
     <div class="version-meta">
-      <span class="version-num">1.3.8</span>
+      <span class="version-num">1.3.9</span>
       <span class="version-date">最新</span>
     </div>
     <div class="version-dot"></div>
     <div class="version-content">
-      <div class="version-title">心愿隐私优化 · 便捷官约重构 <span class="tag-latest">Latest</span></div>
+      <div class="version-title">本场统计扩展 · 礼物混乱投递 <span class="tag-latest">Latest</span></div>
+      <div class="version-subtitle">短信/礼物/约会/心愿双向互动 Top3；礼物新增丢失与送错概率</div>
+      <ul class="change-list">
+        <li class="change-group-label">本场统计</li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text"><code>本场统计</code> 新增互动 Top3 模块：展示最喜欢给你发短信 / 你最喜欢发短信给的前三角色（仅计发送成功次数）</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">礼物同样记录双向计数：最喜欢送你礼物 / 你最喜欢送礼给的 Top3</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">私约与电话合并计数：最喜欢约你 / 你最喜欢约的 Top3（支持多人约批量记录）</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">心愿摘取双向计数：<code>摘心愿</code> 成功建群后记录；展示最喜欢摘你心愿 / 你最喜欢摘谁的心愿前三角色</span>
+        </li>
+        <li class="change-group-label">礼物系统</li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">新增「<strong>送礼混乱丢失</strong>」概率（%）：礼物概率丢失，双方均显示正常（发件人看到成功提示，收件人无任何消息）；丢失时仅记发件人 sent 计数，不记收件人 received，不触发公开广播</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">新增「<strong>送礼混乱送错</strong>」概率（%）：礼物概率被送至随机其他角色，发件人提示仍显示原收件人（不知情）；图鉴与互动计数记录实际收件人</span>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ── v1.3.8 ─── -->
+  <div class="version-block" id="v1.3.8">
+    <div class="version-meta">
+      <span class="version-num">1.3.8</span>
+      <span class="version-date">官约重构</span>
+    </div>
+    <div class="version-dot"></div>
+    <div class="version-content">
+      <div class="version-title">心愿隐私优化 · 便捷官约重构</div>
       <div class="version-subtitle">心愿匿名署名、同步名片指定群类型、binary tag 分组系统</div>
       <ul class="change-list">
         <li class="change-group-label">心愿系统</li>

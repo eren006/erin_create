@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         长日将尽系统
 // @author       长日将尽
-// @version      1.3.8
+// @version      1.3.9
 // @description  无
 // @timestamp    1742205760
 // @license      MIT
@@ -1869,6 +1869,7 @@ async function directCreateAndFinalizeAppointment({
         if (ok === false) return { success: false };
     }
 
+    names.forEach(n => recordInteractionStat(platform, sendname, n, "appt"));
     return { success: true, isMulti, names };
 }
 
@@ -2804,28 +2805,54 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
         giftContent = giftInput;
     }
 
-    // 6. 投递（新结构：通过 toUid 查找 gid）
-    const targetEntry = a_private_group[platform][toUid]; // [roleName, gid]
+    // 6. 混乱投递（丢失 / 送错）
+    const chaosGiftCfg = JSON.parse(ext.storageGet("chaos_letter_config") || "{}");
+    const giftLostChance = chaosGiftCfg.giftLost || 0;
+    const giftMisdeliveryChance = chaosGiftCfg.giftMisdelivery || 0;
 
-    // 收到即入图鉴：若设置开启，且是预设礼物，将礼物加入收件人图鉴
-    if (giftInput.startsWith('#') && ext.storageGet("shop_gift_catalog_on_receive") === "true") {
-        const recipientPrimaryUid = getPrimaryUid(platform, toUid);
-        const recipientKey = `${platform}:${recipientPrimaryUid}`;
-        const sightings = JSON.parse(ext.storageGet("gift_sightings") || "{}");
-        if (!sightings[recipientKey]) sightings[recipientKey] = { unlocked_gifts: [] };
-        if (!sightings[recipientKey].unlocked_gifts.includes(giftInput)) {
-            sightings[recipientKey].unlocked_gifts.push(giftInput);
-            ext.storageSet("gift_sightings", JSON.stringify(sightings));
+    let actualToname = toname;
+    let actualToUid = toUid;
+    let isLost = false;
+
+    if (giftLostChance > 0 && Math.random() * 100 < giftLostChance) {
+        isLost = true;
+    } else if (giftMisdeliveryChance > 0 && Math.random() * 100 < giftMisdeliveryChance) {
+        const otherEntries = Object.entries(a_private_group[platform] || {})
+            .filter(([uid, v]) => v[0] !== toname && v[0] !== sendname);
+        if (otherEntries.length) {
+            const pick = otherEntries[Math.floor(Math.random() * otherEntries.length)];
+            actualToUid = pick[0];
+            actualToname = pick[1][0];
         }
     }
 
-    const newmsg = seal.newMessage();
-    newmsg.messageType = "group";
-    newmsg.groupId = `${platform}-Group:${targetEntry[1]}`;
-    const newctx = seal.createTempCtx(ctx.endPoint, newmsg);
-    const targetQQ = toUid;
-    const recipientMsg = `[CQ:at,qq=${targetQQ}]\n🎀 ${toname}，有一份来自「${sendname}」的快递：\n礼物：${giftDisplayName}\n寄语：「${giftContent}」`;
-    seal.replyToSender(newctx, newmsg, recipientMsg);
+    // 投递（通过 actualToUid 查找 gid）
+    if (!isLost) {
+        const targetEntry = a_private_group[platform][actualToUid];
+
+        // 收到即入图鉴：若设置开启，且是预设礼物，将礼物加入实际收件人图鉴
+        if (giftInput.startsWith('#') && ext.storageGet("shop_gift_catalog_on_receive") === "true") {
+            const recipientPrimaryUid = getPrimaryUid(platform, actualToUid);
+            const recipientKey = `${platform}:${recipientPrimaryUid}`;
+            const sightings = JSON.parse(ext.storageGet("gift_sightings") || "{}");
+            if (!sightings[recipientKey]) sightings[recipientKey] = { unlocked_gifts: [] };
+            if (!sightings[recipientKey].unlocked_gifts.includes(giftInput)) {
+                sightings[recipientKey].unlocked_gifts.push(giftInput);
+                ext.storageSet("gift_sightings", JSON.stringify(sightings));
+            }
+        }
+
+        const newmsg = seal.newMessage();
+        newmsg.messageType = "group";
+        newmsg.groupId = `${platform}-Group:${targetEntry[1]}`;
+        const newctx = seal.createTempCtx(ctx.endPoint, newmsg);
+        const recipientMsg = `[CQ:at,qq=${actualToUid}]\n🎀 ${actualToname}，有一份来自「${sendname}」的快递：\n礼物：${giftDisplayName}\n寄语：「${giftContent}」`;
+        seal.replyToSender(newctx, newmsg, recipientMsg);
+        recordInteractionStat(platform, sendname, actualToname, "gift");
+    } else {
+        // 丢失：仅记发送方 sent，不记收件方 received（双方均不知情）
+        recordInteractionStat(platform, sendname, toname, "gift", true);
+    }
 
     // 7. 更新数据
     userStat.count += 1;
@@ -2834,23 +2861,26 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
     ext.storageSet("global_gift_stats", JSON.stringify(globalStats));
     ext.storageSet("global_gift_cooldowns", JSON.stringify(globalCooldowns));
 
+    // 丢失与正常均显示相同提示，发送方不知情
     seal.replyToSender(ctx, msg, `🎁 已成功将 ${giftDisplayName} 送往「${toname}」的房间。\n(今日第 ${userStat.count}份)`);
 
-    // 8. 公开广播逻辑 (保持原样)
-    const publicGroupId = JSON.parse(ext.storageGet("adminAnnounceGroupId") || "null");
-    const giftPublicEnabled = JSON.parse(ext.storageGet("gift_public_send") || "false");
-    if (giftPublicEnabled && publicGroupId) {
-        const publicChance = parseInt(ext.storageGet("giftPublicChance") || "50", 10);
-        if ((Math.floor(Math.random() * 100) + 1) <= publicChance) {
-            const pubMsg = seal.newMessage();
-            pubMsg.messageType = "group";
-            pubMsg.groupId = `${platform}-Group:${publicGroupId}`;
-            const pubCtx = seal.createTempCtx(ctx.endPoint, pubMsg);
-            const publicNotice = `🎁 公告：来自「${sendname}」送给「${toname}」的礼物：${giftDisplayName}\n寄语：「${giftContent}」`;
-            seal.replyToSender(pubCtx, pubMsg, publicNotice);
+    // 8. 公开广播逻辑（丢失时跳过）
+    if (!isLost) {
+        const publicGroupId = JSON.parse(ext.storageGet("adminAnnounceGroupId") || "null");
+        const giftPublicEnabled = JSON.parse(ext.storageGet("gift_public_send") || "false");
+        if (giftPublicEnabled && publicGroupId) {
+            const publicChance = parseInt(ext.storageGet("giftPublicChance") || "50", 10);
+            if ((Math.floor(Math.random() * 100) + 1) <= publicChance) {
+                const pubMsg = seal.newMessage();
+                pubMsg.messageType = "group";
+                pubMsg.groupId = `${platform}-Group:${publicGroupId}`;
+                const pubCtx = seal.createTempCtx(ctx.endPoint, pubMsg);
+                const publicNotice = `🎁 公告：来自「${sendname}」送给「${toname}」的礼物：${giftDisplayName}\n寄语：「${giftContent}」`;
+                seal.replyToSender(pubCtx, pubMsg, publicNotice);
+            }
         }
     }
-    
+
     recordMeetingAndAnnounce("礼物", platform, ctx, ctx.endPoint);
 }
 
@@ -3128,8 +3158,7 @@ function endWechatGroup(ctx, msg, gid, platform, uid) {
 
     // 获取操作者角色名（仅用于记录）
     const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
-    const userRole = Object.entries(a_private_group[platform] || {})
-        .find(([_, val]) => val[0] === uid)?.[0] || "管理员";
+    const userRole = a_private_group[platform]?.[uid]?.[0] || "管理员";
 
     // 更新群状态
     groupInfo.status = "ended";
@@ -4788,8 +4817,11 @@ cmd_pick_wish.solve = async (ctx, msg, cmdArgs) => {
     };
 
     // 异步下发
-    await finalizeGroupCreation(platform, ctx, msg, item, [fromName, name]);
-    
+    const wishOk = await finalizeGroupCreation(platform, ctx, msg, item, [fromName, name]);
+    if (wishOk !== false) {
+        recordInteractionStat(platform, name, fromName, "wish");
+    }
+
     // 通知双方
     const priv = JSON.parse(ext.storageGet("a_private_group") || "{}")[platform] || {};
     const fromProfile = getCharProfile(platform, fromName);
@@ -5047,6 +5079,7 @@ async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, co
 
     const notice = `[CQ:at,qq=${trueRecipientUid}]\n📱 ${toname}，你收到一条短信：\n「${content}」\n\n${finalSignature}`;
     seal.replyToSender(newctx, newmsg, notice);
+    recordInteractionStat(platform, sendname, trueRecipientName, "sms");
 
     // 7. 更新数据
     ext.storageSet(cooldownKey, now.toString());
@@ -6435,6 +6468,45 @@ function saveUserStats(stats) {
     ext.storageSet("user_stats", JSON.stringify(stats));
 }
 
+function getInteractionCounts() {
+    return JSON.parse(ext.storageGet("interaction_counts") || "{}");
+}
+
+function saveInteractionCounts(counts) {
+    ext.storageSet("interaction_counts", JSON.stringify(counts));
+}
+
+// type: "sms" | "gift" | "appt"；skipReceived=true 时只记发送方 sent，不记收件方 received
+function recordInteractionStat(platform, fromRole, toRole, type, skipReceived = false) {
+    if (!fromRole || !toRole || fromRole === toRole) return;
+    const counts = getInteractionCounts();
+    const fromKey = `${platform}:${fromRole}`;
+    const toKey = `${platform}:${toRole}`;
+    const sentField = `${type}_sent`;
+    const recvField = `${type}_received`;
+
+    if (!counts[fromKey]) counts[fromKey] = {};
+    if (!counts[fromKey][sentField]) counts[fromKey][sentField] = {};
+    counts[fromKey][sentField][toRole] = (counts[fromKey][sentField][toRole] || 0) + 1;
+
+    if (!skipReceived) {
+        if (!counts[toKey]) counts[toKey] = {};
+        if (!counts[toKey][recvField]) counts[toKey][recvField] = {};
+        counts[toKey][recvField][fromRole] = (counts[toKey][recvField][fromRole] || 0) + 1;
+    }
+
+    saveInteractionCounts(counts);
+}
+
+function getTop3Text(countMap) {
+    if (!countMap || !Object.keys(countMap).length) return null;
+    return Object.entries(countMap)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([name, count], i) => `  ${i + 1}. ${name}（${count}次）`)
+        .join("\n");
+}
+
 function getSessionStats() {
     return JSON.parse(ext.storageGet("group_session_stats") || "{}");
 }
@@ -7129,7 +7201,7 @@ cmd_my_stats.solve = (ctx, msg, cmdArgs) => {
     const platform = msg.platform;
     const storage = getRoleStorage();
     const uid = msg.sender.userId.replace(`${platform}:`, "");
-    const roleName = Object.keys(storage[platform] || {}).find(key => storage[platform][key][0] === uid);
+    const roleName = storage[platform]?.[uid]?.[0];
 
     if (!roleName) {
         seal.replyToSender(ctx, msg, "❌ 未找到你的角色绑定信息，请先创建角色。");
@@ -7156,9 +7228,43 @@ cmd_my_stats.solve = (ctx, msg, cmdArgs) => {
     }
 
     if (!globalStat) {
+        const iCountsEarly = getInteractionCounts()[`${platform}:${roleName}`] || {};
+        const hasInteraction = Object.keys(iCountsEarly).length > 0;
         if (!sessionStat || sessionStat.replies === 0) {
-            seal.replyToSender(ctx, msg, `📊 【${roleName}】暂无统计数据，快去参与邀约吧！`);
-            return seal.ext.newCmdExecuteResult(true);
+            if (!hasInteraction) {
+                seal.replyToSender(ctx, msg, `📊 【${roleName}】暂无统计数据，快去参与邀约吧！`);
+                return seal.ext.newCmdExecuteResult(true);
+            }
+        }
+        if (hasInteraction) {
+            const smsFE = getTop3Text(iCountsEarly.sms_received);
+            const smsTE = getTop3Text(iCountsEarly.sms_sent);
+            const giftFE = getTop3Text(iCountsEarly.gift_received);
+            const giftTE = getTop3Text(iCountsEarly.gift_sent);
+            const apptFE = getTop3Text(iCountsEarly.appt_received);
+            const apptTE = getTop3Text(iCountsEarly.appt_sent);
+            if (smsFE || smsTE) {
+                reply += `━━━ 短信 ━━━━━━━━━━━━\n`;
+                if (smsFE) reply += `📨 最喜欢给你发短信：\n${smsFE}\n`;
+                if (smsTE) reply += `📤 你最喜欢发短信给：\n${smsTE}\n`;
+            }
+            if (giftFE || giftTE) {
+                reply += `━━━ 礼物 ━━━━━━━━━━━━\n`;
+                if (giftFE) reply += `🎀 最喜欢送你礼物：\n${giftFE}\n`;
+                if (giftTE) reply += `🎁 你最喜欢送礼给：\n${giftTE}\n`;
+            }
+            if (apptFE || apptTE) {
+                reply += `━━━ 约会 ━━━━━━━━━━━━\n`;
+                if (apptFE) reply += `📅 最喜欢约你（私约/电话）：\n${apptFE}\n`;
+                if (apptTE) reply += `💌 你最喜欢约（私约/电话）：\n${apptTE}\n`;
+            }
+            const wishFE = getTop3Text(iCountsEarly.wish_received);
+            const wishTE = getTop3Text(iCountsEarly.wish_sent);
+            if (wishFE || wishTE) {
+                reply += `━━━ 心愿 ━━━━━━━━━━━━\n`;
+                if (wishFE) reply += `🌠 最喜欢摘你心愿：\n${wishFE}\n`;
+                if (wishTE) reply += `✨ 你最喜欢摘谁的心愿：\n${wishTE}\n`;
+            }
         }
         reply += `━━━━━━━━━━━━━━━`;
         seal.replyToSender(ctx, msg, reply);
@@ -7176,6 +7282,38 @@ cmd_my_stats.solve = (ctx, msg, cmdArgs) => {
     if (sub) {
         reply += `🔹 极限速度：${sub.fastestReply || '--'} min (最快)\n`;
     }
+
+    const iCounts = getInteractionCounts()[`${platform}:${roleName}`] || {};
+    const smsFrom = getTop3Text(iCounts.sms_received);
+    const smsTo   = getTop3Text(iCounts.sms_sent);
+    const giftFrom = getTop3Text(iCounts.gift_received);
+    const giftTo   = getTop3Text(iCounts.gift_sent);
+    const apptFrom = getTop3Text(iCounts.appt_received);
+    const apptTo   = getTop3Text(iCounts.appt_sent);
+
+    if (smsFrom || smsTo) {
+        reply += `━━━ 短信 ━━━━━━━━━━━━\n`;
+        if (smsFrom) reply += `📨 最喜欢给你发短信：\n${smsFrom}\n`;
+        if (smsTo)   reply += `📤 你最喜欢发短信给：\n${smsTo}\n`;
+    }
+    if (giftFrom || giftTo) {
+        reply += `━━━ 礼物 ━━━━━━━━━━━━\n`;
+        if (giftFrom) reply += `🎀 最喜欢送你礼物：\n${giftFrom}\n`;
+        if (giftTo)   reply += `🎁 你最喜欢送礼给：\n${giftTo}\n`;
+    }
+    if (apptFrom || apptTo) {
+        reply += `━━━ 约会 ━━━━━━━━━━━━\n`;
+        if (apptFrom) reply += `📅 最喜欢约你（私约/电话）：\n${apptFrom}\n`;
+        if (apptTo)   reply += `💌 你最喜欢约（私约/电话）：\n${apptTo}\n`;
+    }
+    const wishFrom = getTop3Text(iCounts.wish_received);
+    const wishTo   = getTop3Text(iCounts.wish_sent);
+    if (wishFrom || wishTo) {
+        reply += `━━━ 心愿 ━━━━━━━━━━━━\n`;
+        if (wishFrom) reply += `🌠 最喜欢摘你心愿：\n${wishFrom}\n`;
+        if (wishTo)   reply += `✨ 你最喜欢摘谁的心愿：\n${wishTo}\n`;
+    }
+
     reply += `━━━━━━━━━━━━━━━`;
 
     seal.replyToSender(ctx, msg, reply);
@@ -8132,8 +8270,10 @@ cmd_remind_timeouts.solve = (ctx, msg, cmdArgs) => {
             const h = Math.floor(elapsed / 3600000), m = Math.floor((elapsed % 3600000) / 60000);
             const timeStr = h > 0 ? `${h}h${m}m` : `${m}m`;
 
+            const roleUid2 = getUidByRoleName(platform, name);
+
             // 1. 发送给个人小群
-            const pGid = priv[platform]?.[name]?.[1];
+            const pGid = roleUid2 ? priv[platform]?.[roleUid2]?.[1] : null;
             if (pGid) {
                 const text = `✨ 亲爱的 ${name}，在「${timer.subtype}」里大家等你 ${timeStr} 啦。如果不忙的话，记得回一下小伙伴们哦～ ❤️`;
                 const m1 = seal.newMessage(); m1.messageType = "group"; m1.groupId = `${platform}-Group:${pGid}`;
@@ -8141,7 +8281,6 @@ cmd_remind_timeouts.solve = (ctx, msg, cmdArgs) => {
             }
 
             // 2. 发送到公共群，@主账号和所有额外账号
-            const roleUid2 = getUidByRoleName(platform, name);
             const extras2 = JSON.parse(ext.storageGet("extra_accounts") || "{}");
             const allAtUids = roleUid2 && !/^npc_/.test(roleUid2)
                 ? [roleUid2, ...Object.entries(extras2)
