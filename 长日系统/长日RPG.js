@@ -3,7 +3,7 @@
 // @author       长日将尽
 // @version      1.3.9
 // @description  物品注册、背包、商城、抽取池、二手市场。所有数据存储在主插件 changri 中。
-// @timestamp    1745568000
+// @timestamp    1778742000
 // @license      MIT
 // @homepageURL  https://github.com/eren006/erin_create
 // @updateUrl    https://raw.gitmirror.com/eren006/erin_create/main/%E9%95%BF%E6%97%A5%E7%B3%BB%E7%BB%9F/%E9%95%BF%E6%97%A5RPG.js

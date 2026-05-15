@@ -3,7 +3,7 @@
 // @author       长日将尽
 // @version      1.3.9
 // @description  独立的正式信件系统，支持发送信件、写信币赏金、配置管理
-// @timestamp    1745568000
+// @timestamp    1778742000
 // @license      MIT
 // @homepageURL  https://github.com/eren006/erin_create
 // @updateUrl    https://raw.gitmirror.com/eren006/erin_create/main/%E9%95%BF%E6%97%A5%E7%B3%BB%E7%BB%9F/%E9%95%BF%E6%97%A5%E5%86%99%E4%BF%A1%E7%BB%BC.js
