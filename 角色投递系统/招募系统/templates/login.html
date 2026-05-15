@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>管理员登录</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: #2a1f16;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 48px 44px;
+    width: 100%;
+    max-width: 380px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.3);
+  }
+  .logo {
+    text-align: center;
+    margin-bottom: 32px;
+  }
+  .logo h1 {
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: 4px;
+    color: #3d2410;
+  }
+  .logo p {
+    font-size: 11px;
+    color: #a89070;
+    letter-spacing: 1.5px;
+    margin-top: 4px;
+    text-transform: uppercase;
+  }
+  .field { margin-bottom: 18px; }
+  label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    color: #7a5c40;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+  }
+  input {
+    width: 100%;
+    padding: 11px 14px;
+    border: 1.5px solid #e0d5c5;
+    border-radius: 8px;
+    font-size: 15px;
+    font-family: inherit;
+    color: #2c1f14;
+    background: #fdfaf6;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  input:focus { border-color: #b08060; background: #fff; }
+  .error {
+    background: #fdf0ec;
+    border: 1px solid #e8c0b0;
+    color: #a04020;
+    border-radius: 7px;
+    padding: 10px 14px;
+    font-size: 13px;
+    margin-bottom: 18px;
+    text-align: center;
+  }
+  button {
+    width: 100%;
+    padding: 13px;
+    background: #3d2410;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    font-family: inherit;
+    font-weight: 600;
+    letter-spacing: 3px;
+    cursor: pointer;
+    margin-top: 8px;
+    transition: background 0.2s;
+  }
+  button:hover { background: #5a3820; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">
+    <h1>管理员入口</h1>
+    <p>Admin Access</p>
+  </div>
+  {% if error %}
+  <div class="error">{{ error }}</div>
+  {% endif %}
+  <form method="POST">
+    <div class="field">
+      <label>用户名</label>
+      <input type="text" name="username" autocomplete="username" autofocus required>
+    </div>
+    <div class="field">
+      <label>密码</label>
+      <input type="password" name="password" autocomplete="current-password" required>
+    </div>
+    <button type="submit">登 录</button>
+  </form>
+</div>
+</body>
+</html>

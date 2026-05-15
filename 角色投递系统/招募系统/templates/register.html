@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>角色投递</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: #f5f0ea;
+    color: #2c1f14;
+    min-height: 100vh;
+    padding: 40px 16px 60px;
+  }
+  .page-wrap { max-width: 680px; margin: 0 auto; }
+  .page-header { text-align: center; margin-bottom: 36px; }
+  .page-header h1 { font-size: 28px; font-weight: 600; letter-spacing: 4px; color: #3d2410; }
+  .page-header p { margin-top: 8px; font-size: 13px; color: #8a7060; letter-spacing: 1px; }
+  .card { background: #fff; border-radius: 12px; padding: 32px 36px; box-shadow: 0 2px 16px rgba(60,30,10,0.07); }
+  .field { margin-bottom: 28px; }
+  label { display: block; font-size: 13px; font-weight: 600; letter-spacing: 1.5px; color: #7a5c40; margin-bottom: 8px; text-transform: uppercase; }
+  .hint { font-size: 12px; color: #a89070; margin-bottom: 10px; line-height: 1.5; }
+  input[type="text"], textarea {
+    width: 100%; padding: 11px 14px; border: 1.5px solid #e0d5c5; border-radius: 8px;
+    font-size: 15px; font-family: inherit; color: #2c1f14; background: #fdfaf6;
+    transition: border-color 0.2s; outline: none; resize: vertical;
+  }
+  input[type="text"]:focus, textarea:focus { border-color: #b08060; background: #fff; }
+  textarea.short { min-height: 80px; }
+  textarea.long  { min-height: 150px; }
+
+  .time-grid-wrap { border: 1.5px solid #e0d5c5; border-radius: 8px; overflow: hidden; background: #fdfaf6; }
+  .hour-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 7px; padding: 14px; }
+  .hour-cell {
+    padding: 9px 4px; text-align: center; border-radius: 7px; border: 1.5px solid #e0d5c5;
+    cursor: pointer; font-size: 12px; font-weight: 500; color: #8a7060; background: #fff;
+    transition: all 0.15s; user-select: none;
+  }
+  .hour-cell:hover { border-color: #c8895a; color: #c8895a; }
+  .hour-cell.selected { background: #c8895a; border-color: #c8895a; color: #fff; font-weight: 700; }
+  .time-legend { padding: 7px 14px; font-size: 11px; color: #a89070; background: #f7f2ec; border-top: 1px solid #ede5d8; }
+
+  .submit-btn {
+    width: 100%; padding: 14px; background: #a06840; color: #fff; border: none; border-radius: 8px;
+    font-size: 16px; font-family: inherit; font-weight: 600; letter-spacing: 3px; cursor: pointer;
+    transition: background 0.2s, transform 0.1s; margin-top: 8px;
+  }
+  .submit-btn:hover { background: #8a5630; }
+  .submit-btn:active { transform: scale(0.99); }
+  .divider { border: none; border-top: 1px solid #ede5d8; margin: 28px 0; }
+  .required { color: #c07050; margin-left: 2px; }
+</style>
+</head>
+<body>
+<div class="page-wrap">
+  <div class="page-header">
+    <h1>角色投递</h1>
+    <p>请如实填写以下信息，提交后无法修改</p>
+  </div>
+
+  <form class="card" action="/submit" method="POST" id="main-form">
+
+    <div class="field">
+      <label>QQ 号 <span class="required">*</span></label>
+      <input type="text" name="qq" required placeholder="请输入您的 QQ 号码" inputmode="numeric">
+    </div>
+
+    <hr class="divider">
+
+    <div class="field">
+      <label>在线时间</label>
+      <p class="hint">请标注你一定在线的时间，可多选。</p>
+      <div class="time-grid-wrap">
+        <div class="hour-grid" id="hour-grid"></div>
+        <div class="time-legend">点击选择时间段 / 再次点击取消</div>
+      </div>
+      <input type="hidden" name="online_time_data" id="online_time_data" value="[]">
+      <textarea name="online_time_note" class="short" style="margin-top:10px;"
+                placeholder="在线时间补充说明，例如：周末时间更充裕，工作日仅晚上在线……"></textarea>
+    </div>
+
+    <hr class="divider">
+
+    <div class="field">
+      <label>弧长</label>
+      <p class="hint">请写明您自己的弧长——明句戏、短戏、长戏各大概需要多久。</p>
+      <textarea name="arc_length" class="short" placeholder="例如：明句戏约15~30分钟，短戏1~2小时，长戏3小时以上……"></textarea>
+    </div>
+
+    {% for field in custom_fields %}
+    <div class="field">
+      <label>{{ field.label }}</label>
+      {% if field.type == 'textarea' %}
+      <textarea name="{{ field.id }}" class="{{ field.size }}" placeholder="{{ field.placeholder }}"></textarea>
+      {% else %}
+      <input type="text" name="{{ field.id }}" placeholder="{{ field.placeholder }}">
+      {% endif %}
+    </div>
+    {% endfor %}
+
+    <button type="submit" class="submit-btn">提 交 投 递</button>
+  </form>
+</div>
+
+<script>
+const selected = new Set();
+const grid = document.getElementById('hour-grid');
+const hiddenInput = document.getElementById('online_time_data');
+
+for (let h = 0; h < 24; h++) {
+  const label = String(h).padStart(2, '0') + ':00';
+  const cell = document.createElement('div');
+  cell.className = 'hour-cell';
+  cell.textContent = label;
+  cell.addEventListener('click', () => {
+    if (selected.has(label)) {
+      selected.delete(label);
+      cell.classList.remove('selected');
+    } else {
+      selected.add(label);
+      cell.classList.add('selected');
+    }
+    hiddenInput.value = JSON.stringify([...selected].sort());
+  });
+  grid.appendChild(cell);
+}
+
+document.getElementById('main-form').addEventListener('submit', () => {
+  hiddenInput.value = JSON.stringify([...selected].sort());
+});
+</script>
+</body>
+</html>

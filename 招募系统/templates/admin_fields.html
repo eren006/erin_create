@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>字段管理</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #f0ebe3; color: #2c1f14; min-height: 100vh; }
+  .topbar { background: #2a1f16; color: #d4c4b0; padding: 0 32px; height: 52px; display: flex; align-items: center; justify-content: space-between; }
+  .topbar h1 { font-size: 15px; letter-spacing: 3px; font-weight: 600; }
+  .topbar a { font-size: 12px; color: #a89070; text-decoration: none; letter-spacing: 1px; transition: color 0.2s; }
+  .topbar a:hover { color: #d4c4b0; }
+
+  .container { max-width: 640px; margin: 0 auto; padding: 32px 16px 60px; }
+  .section-title { font-size: 11px; font-weight: 700; letter-spacing: 2px; color: #a89070; text-transform: uppercase; margin-bottom: 12px; }
+
+  .field-list { background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 8px rgba(60,30,10,0.06); margin-bottom: 28px; }
+  .field-row { display: flex; align-items: center; padding: 14px 20px; border-bottom: 1px solid #f0ebe3; gap: 12px; }
+  .field-row:last-child { border-bottom: none; }
+  .field-row.fixed { background: #fdfaf6; }
+  .field-name { font-size: 14px; font-weight: 600; color: #3d2410; flex: 1; }
+  .field-type { font-size: 11px; color: #b0987a; background: #f0ebe3; padding: 2px 8px; border-radius: 10px; }
+  .field-fixed-tag { font-size: 11px; color: #a89070; }
+  .delete-btn { padding: 5px 14px; border-radius: 7px; border: 1.5px solid #e0b0b0; background: #fdf5f5; color: #a03030; font-size: 12px; font-family: inherit; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+  .delete-btn:hover { background: #fde8e8; border-color: #c05050; }
+
+  .add-card { background: #fff; border-radius: 10px; padding: 24px; box-shadow: 0 1px 8px rgba(60,30,10,0.06); }
+  .form-row { margin-bottom: 16px; }
+  .form-row label { display: block; font-size: 11px; font-weight: 700; letter-spacing: 1.5px; color: #7a5c40; text-transform: uppercase; margin-bottom: 6px; }
+  .form-row input, .form-row select {
+    width: 100%; padding: 10px 13px; border: 1.5px solid #e0d5c5; border-radius: 8px;
+    font-size: 14px; font-family: inherit; color: #2c1f14; background: #fdfaf6; outline: none; transition: border-color 0.2s;
+  }
+  .form-row input:focus, .form-row select:focus { border-color: #b08060; background: #fff; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .add-btn { width: 100%; padding: 12px; background: #3d2410; color: #fff; border: none; border-radius: 8px; font-size: 14px; font-family: inherit; font-weight: 600; letter-spacing: 2px; cursor: pointer; margin-top: 4px; transition: background 0.2s; }
+  .add-btn:hover { background: #5a3820; }
+  .msg { font-size: 13px; margin-top: 12px; padding: 8px 12px; border-radius: 7px; display: none; }
+  .msg.ok  { background: #e8f5ee; color: #3a7a50; }
+  .msg.err { background: #fde8e8; color: #a03030; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>字段管理</h1>
+  <a href="/admin">← 返回看板</a>
+</div>
+
+<div class="container">
+
+  <div class="section-title">固定字段（不可删除）</div>
+  <div class="field-list" style="margin-bottom:28px;">
+    <div class="field-row fixed">
+      <span class="field-name">QQ 号</span>
+      <span class="field-type">单行文字</span>
+      <span class="field-fixed-tag">固定</span>
+    </div>
+    <div class="field-row fixed">
+      <span class="field-name">在线时间</span>
+      <span class="field-type">时间选择</span>
+      <span class="field-fixed-tag">固定</span>
+    </div>
+    <div class="field-row fixed">
+      <span class="field-name">弧长</span>
+      <span class="field-type">多行文字</span>
+      <span class="field-fixed-tag">固定</span>
+    </div>
+  </div>
+
+  <div class="section-title">自定义字段</div>
+  <div class="field-list" id="custom-field-list">
+    {% if custom_fields %}
+    {% for field in custom_fields %}
+    <div class="field-row" id="row-{{ field.id }}">
+      <span class="field-name">{{ field.label }}</span>
+      <span class="field-type">{% if field.type == 'textarea' %}多行文字{% else %}单行文字{% endif %}</span>
+      <button class="delete-btn" onclick="deleteField('{{ field.id }}', this)">删除</button>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="field-row" id="empty-hint" style="color:#b0987a;font-size:13px;">暂无自定义字段</div>
+    {% endif %}
+  </div>
+
+  <div class="section-title">添加新字段</div>
+  <div class="add-card">
+    <div class="form-row">
+      <label>字段名称 *</label>
+      <input type="text" id="new-label" placeholder="例如：微博、擅长类型……">
+    </div>
+    <div class="form-grid">
+      <div class="form-row">
+        <label>输入类型</label>
+        <select id="new-type">
+          <option value="textarea">多行文字</option>
+          <option value="text">单行文字</option>
+        </select>
+      </div>
+      <div class="form-row" id="size-row">
+        <label>文本框大小</label>
+        <select id="new-size">
+          <option value="short">短（2~3行）</option>
+          <option value="long">长（5~6行）</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <label>占位提示（可选）</label>
+      <input type="text" id="new-placeholder" placeholder="填写提示文字……">
+    </div>
+    <button class="add-btn" onclick="addField()">+ 添加字段</button>
+    <div class="msg" id="msg"></div>
+  </div>
+
+</div>
+
+<script>
+document.getElementById('new-type').addEventListener('change', function() {
+  document.getElementById('size-row').style.display = this.value === 'textarea' ? '' : 'none';
+});
+
+function showMsg(text, type) {
+  const el = document.getElementById('msg');
+  el.textContent = text;
+  el.className = 'msg ' + type;
+  el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 2500);
+}
+
+function addField() {
+  const label = document.getElementById('new-label').value.trim();
+  if (!label) { showMsg('请填写字段名称', 'err'); return; }
+  const type = document.getElementById('new-type').value;
+  const size = document.getElementById('new-size').value;
+  const placeholder = document.getElementById('new-placeholder').value.trim();
+
+  fetch('/admin/fields/add', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({label, type, size, placeholder})
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (!data.ok) { showMsg('添加失败', 'err'); return; }
+    const list = document.getElementById('custom-field-list');
+    const hint = document.getElementById('empty-hint');
+    if (hint) hint.remove();
+    const row = document.createElement('div');
+    row.className = 'field-row';
+    row.id = 'row-' + data.id;
+    row.innerHTML = `<span class="field-name">${label}</span>
+      <span class="field-type">${type === 'textarea' ? '多行文字' : '单行文字'}</span>
+      <button class="delete-btn" onclick="deleteField('${data.id}', this)">删除</button>`;
+    list.appendChild(row);
+    document.getElementById('new-label').value = '';
+    document.getElementById('new-placeholder').value = '';
+    showMsg('字段已添加', 'ok');
+  });
+}
+
+function deleteField(id, btn) {
+  if (!confirm('确定删除这个字段？已收到的投递中该字段数据不会丢失，但不再显示。')) return;
+  fetch('/admin/fields/delete', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({id})
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      const row = document.getElementById('row-' + id);
+      row.remove();
+      if (!document.querySelector('#custom-field-list .field-row')) {
+        const list = document.getElementById('custom-field-list');
+        list.innerHTML = '<div class="field-row" id="empty-hint" style="color:#b0987a;font-size:13px;">暂无自定义字段</div>';
+      }
+    }
+  });
+}
+</script>
+</body>
+</html>

@@ -70,6 +70,18 @@ main { position: relative; z-index: 1; flex: 1; display: flex; flex-direction: c
 /* version chip */
 .version-chip { position: absolute; top: 14px; right: 16px; font-family: 'Courier New', monospace; font-size: 9px; letter-spacing: 1.5px; color: rgba(184,154,106,0.35); }
 
+/* ── CREDITS ─── */
+.credits { position: relative; z-index: 1; width: 100%; max-width: 860px; margin: 0 auto; padding: 48px 24px 20px; }
+.credits-eyebrow { font-family: 'Cormorant Garamond', serif; font-size: 10px; letter-spacing: 5px; text-transform: uppercase; color: var(--gold); text-align: center; margin-bottom: 28px; display: flex; align-items: center; justify-content: center; gap: 14px; }
+.credits-eyebrow::before, .credits-eyebrow::after { content: ''; width: 60px; height: 1px; background: var(--gold); opacity: 0.3; }
+.credits-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px 32px; }
+.credits-row { display: flex; align-items: baseline; gap: 10px; padding: 10px 0; border-bottom: 1px solid rgba(184,154,106,0.08); }
+.credits-row:last-child { border-bottom: none; }
+.credits-role { font-family: 'Cormorant Garamond', serif; font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: rgba(184,154,106,0.6); white-space: nowrap; flex-shrink: 0; min-width: 100px; }
+.credits-name { font-family: 'Noto Serif SC', serif; font-size: 13px; color: rgba(247,244,238,0.55); letter-spacing: 1px; line-height: 1.6; }
+.credits-row.full { grid-column: 1 / -1; }
+@media (max-width: 700px) { .credits-grid { grid-template-columns: 1fr; } .credits-row.full { grid-column: 1; } }
+
 /* ── FOOTER ─── */
 footer { position: relative; z-index: 1; text-align: center; padding: 28px; font-family: 'Cormorant Garamond', serif; font-size: 12px; letter-spacing: 2px; color: rgba(247,244,238,0.2); border-top: 1px solid rgba(184,154,106,0.12); }
 
@@ -157,6 +169,32 @@ footer { position: relative; z-index: 1; text-align: center; padding: 28px; font
 
   </div>
 </main>
+
+<section class="credits">
+  <div class="credits-eyebrow">Credits &amp; Acknowledgements</div>
+  <div class="credits-grid">
+    <div class="credits-row full">
+      <span class="credits-role">创始人</span>
+      <span class="credits-name">长日将尽</span>
+    </div>
+    <div class="credits-row full">
+      <span class="credits-role">首席执行团队</span>
+      <span class="credits-name">Claude</span>
+    </div>
+    <div class="credits-row">
+      <span class="credits-role">首席技术指导</span>
+      <span class="credits-name">饮月光</span>
+    </div>
+    <div class="credits-row">
+      <span class="credits-role">首席产品经理</span>
+      <span class="credits-name">眠眠岁岁</span>
+    </div>
+    <div class="credits-row full">
+      <span class="credits-role">首席测试员团队</span>
+      <span class="credits-name">小乔 &nbsp;·&nbsp; 齐白雪 &nbsp;·&nbsp; 季候风 &nbsp;·&nbsp; 猫头鹰 &nbsp;·&nbsp; 野有春麦</span>
+    </div>
+  </div>
+</section>
 
 <footer>长日系统 &nbsp;·&nbsp; v1.3.8</footer>
 

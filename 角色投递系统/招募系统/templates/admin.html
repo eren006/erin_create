@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>投递管理</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #f0ebe3; color: #2c1f14; min-height: 100vh; }
+
+  .topbar {
+    background: #2a1f16; color: #d4c4b0; padding: 0 32px; height: 52px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 100; gap: 16px;
+  }
+  .topbar h1 { font-size: 15px; letter-spacing: 3px; font-weight: 600; }
+  .topbar-links { display: flex; gap: 20px; align-items: center; }
+  .topbar a { font-size: 12px; color: #a89070; text-decoration: none; letter-spacing: 1px; transition: color 0.2s; white-space: nowrap; }
+  .topbar a:hover { color: #d4c4b0; }
+  .topbar a.danger:hover { color: #e09080; }
+
+  .stats-row { display: flex; gap: 12px; padding: 24px 32px 0; flex-wrap: wrap; }
+  .stat-card { background: #fff; border-radius: 10px; padding: 16px 24px; flex: 1; min-width: 100px; box-shadow: 0 1px 8px rgba(60,30,10,0.06); text-align: center; }
+  .stat-card .num { font-size: 28px; font-weight: 700; color: #3d2410; }
+  .stat-card .lbl { font-size: 11px; color: #a89070; letter-spacing: 1px; margin-top: 2px; }
+  .stat-card.s-interested .num { color: #c8893a; }
+  .stat-card.s-pending .num { color: #5a88b0; }
+  .stat-card.s-pass .num { color: #b05050; }
+
+  .filter-row { display: flex; gap: 8px; padding: 20px 32px 0; flex-wrap: wrap; }
+  .filter-btn { padding: 6px 18px; border-radius: 20px; border: 1.5px solid #d4c4b0; background: #fff; font-size: 13px; font-family: inherit; color: #7a5c40; cursor: pointer; transition: all 0.15s; font-weight: 500; }
+  .filter-btn:hover { border-color: #b08060; color: #5a3820; }
+  .filter-btn.active { background: #3d2410; border-color: #3d2410; color: #fff; }
+
+  .cards { padding: 20px 32px 48px; }
+  .entry-card { background: #fff; border-radius: 10px; margin-bottom: 14px; box-shadow: 0 1px 8px rgba(60,30,10,0.06); overflow: hidden; transition: box-shadow 0.15s; }
+  .entry-card:hover { box-shadow: 0 3px 16px rgba(60,30,10,0.1); }
+
+  .card-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; cursor: pointer; gap: 12px; user-select: none; }
+  .head-left { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+  .head-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .qq-badge { font-size: 15px; font-weight: 700; color: #3d2410; white-space: nowrap; }
+  .date-lbl { font-size: 11px; color: #b0987a; white-space: nowrap; }
+  .status-badge { font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 12px; white-space: nowrap; }
+  .status-badge.interested { background: #fdf0d8; color: #a06820; }
+  .status-badge.pending    { background: #e8f0f8; color: #3a6898; }
+  .status-badge.pass       { background: #fde8e8; color: #a03030; }
+  .status-badge.none       { background: #f0ebe3; color: #a89070; }
+  .toggle-arrow { color: #c0a888; font-size: 12px; transition: transform 0.2s; }
+  .entry-card.open .toggle-arrow { transform: rotate(180deg); }
+
+  .card-body { display: none; padding: 0 20px 20px; border-top: 1px solid #f0ebe3; }
+  .entry-card.open .card-body { display: block; }
+
+  .fields-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+  .field-block.full { grid-column: 1 / -1; }
+  .field-label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: #a89070; text-transform: uppercase; margin-bottom: 5px; }
+  .field-value { font-size: 14px; color: #3d2410; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
+  .field-value.empty { color: #c0a888; font-style: italic; }
+
+  .time-ranges { display: flex; flex-wrap: wrap; gap: 6px; }
+  .time-range { background: #c8895a; color: #fff; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 5px; }
+  .time-note { font-size: 13px; color: #5a3820; margin-top: 7px; line-height: 1.6; }
+
+  .action-row { display: flex; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
+  .mark-btn { padding: 7px 16px; border-radius: 8px; border: 1.5px solid #e0d5c5; background: #fdfaf6; font-size: 13px; font-family: inherit; cursor: pointer; transition: all 0.15s; font-weight: 500; }
+  .mark-btn:hover { border-color: #b08060; }
+  .mark-btn.active-interested { background: #fdf0d8; border-color: #c8893a; color: #a06820; }
+  .mark-btn.active-pending    { background: #e8f0f8; border-color: #5a88b0; color: #3a6898; }
+  .mark-btn.active-pass       { background: #fde8e8; border-color: #c05050; color: #a03030; }
+
+  .note-wrap { margin-top: 14px; }
+  .note-wrap .field-label { margin-bottom: 6px; }
+  .admin-note-input { width: 100%; padding: 9px 12px; border: 1.5px solid #e0d5c5; border-radius: 7px; font-size: 13px; font-family: inherit; color: #3d2410; background: #fdfaf6; resize: vertical; min-height: 60px; outline: none; transition: border-color 0.2s; }
+  .admin-note-input:focus { border-color: #b08060; background: #fff; }
+  .note-saved { font-size: 11px; color: #a89070; margin-top: 4px; display: none; }
+
+  .empty { text-align: center; padding: 60px 20px; color: #b0987a; font-size: 14px; }
+
+  /* Clear modal */
+  .modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 200; align-items: center; justify-content: center; }
+  .modal-bg.open { display: flex; }
+  .modal { background: #fff; border-radius: 12px; padding: 32px; max-width: 360px; width: 90%; box-shadow: 0 8px 40px rgba(0,0,0,0.2); }
+  .modal h2 { font-size: 16px; font-weight: 600; color: #3d2410; margin-bottom: 8px; }
+  .modal p { font-size: 13px; color: #8a7060; margin-bottom: 20px; line-height: 1.6; }
+  .modal-btns { display: flex; gap: 8px; flex-direction: column; }
+  .modal-btn { padding: 10px 16px; border-radius: 8px; border: 1.5px solid #e0d5c5; background: #fdfaf6; font-size: 13px; font-family: inherit; cursor: pointer; text-align: left; transition: all 0.15s; }
+  .modal-btn:hover { border-color: #b08060; }
+  .modal-btn.danger { border-color: #e0b0b0; color: #a03030; background: #fdf5f5; }
+  .modal-btn.danger:hover { background: #fde8e8; border-color: #c05050; }
+  .modal-btn.cancel { color: #a89070; }
+
+  @media (max-width: 600px) {
+    .stats-row, .filter-row, .cards { padding-left: 16px; padding-right: 16px; }
+    .fields-grid { grid-template-columns: 1fr; }
+    .card-head { flex-wrap: wrap; }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>投递管理后台</h1>
+  <div class="topbar-links">
+    <a href="/admin/fields">⚙ 字段管理</a>
+    <a href="/admin/password">🔑 修改密码</a>
+    <a href="#" class="danger" onclick="openClearModal();return false;">🗑 清空投递</a>
+    <a href="/admin/logout">退出登录</a>
+  </div>
+</div>
+
+<div class="stats-row">
+  <div class="stat-card"><div class="num">{{ stats.total }}</div><div class="lbl">全部</div></div>
+  <div class="stat-card s-interested"><div class="num">{{ stats.interested }}</div><div class="lbl">意向录取</div></div>
+  <div class="stat-card s-pending"><div class="num">{{ stats.pending }}</div><div class="lbl">待定</div></div>
+  <div class="stat-card s-pass"><div class="num">{{ stats.pass }}</div><div class="lbl">Pass</div></div>
+  <div class="stat-card"><div class="num">{{ stats.unmarked }}</div><div class="lbl">未标记</div></div>
+</div>
+
+<div class="filter-row">
+  <button class="filter-btn active" data-filter="all">全部</button>
+  <button class="filter-btn" data-filter="interested">⭐ 意向录取</button>
+  <button class="filter-btn" data-filter="pending">? 待定</button>
+  <button class="filter-btn" data-filter="pass">✕ Pass</button>
+  <button class="filter-btn" data-filter="none">未标记</button>
+</div>
+
+<div class="cards">
+{% if entries %}
+{% for e in entries %}
+<div class="entry-card" data-id="{{ e.id }}" data-status="{{ e.status or 'none' }}">
+  <div class="card-head" onclick="toggleCard(this.parentElement)">
+    <div class="head-left">
+      <div class="qq-badge">{{ e.qq or '（未填）' }}</div>
+    </div>
+    <div class="head-right">
+      <div class="status-badge {{ e.status or 'none' }}" id="badge-{{ e.id }}">
+        {% if e.status == 'interested' %}⭐ 意向录取
+        {% elif e.status == 'pending' %}? 待定
+        {% elif e.status == 'pass' %}✕ Pass
+        {% else %}— 未标记{% endif %}
+      </div>
+      <div class="date-lbl">{{ e.submitted_at }}</div>
+      <span class="toggle-arrow">▼</span>
+    </div>
+  </div>
+
+  <div class="card-body">
+    <div class="fields-grid">
+
+      <div class="field-block full">
+        <div class="field-label">在线时间</div>
+        {% set ranges = group_hours(e.online_time) %}
+        {% if ranges %}
+        <div class="time-ranges">
+          {% for r in ranges %}<span class="time-range">{{ r }}</span>{% endfor %}
+        </div>
+        {% if e.online_time_note %}
+        <div class="time-note">{{ e.online_time_note }}</div>
+        {% endif %}
+        {% else %}
+        <div class="field-value empty">未填写</div>
+        {% endif %}
+      </div>
+
+      <div class="field-block full">
+        <div class="field-label">弧长</div>
+        <div class="field-value {% if not e.arc_length %}empty{% endif %}">{{ e.arc_length or '未填写' }}</div>
+      </div>
+
+      {% for field in custom_fields %}
+      <div class="field-block {% if field.size == 'long' %}full{% endif %}">
+        <div class="field-label">{{ field.label }}</div>
+        <div class="field-value {% if not e.get(field.id) %}empty{% endif %}">{{ e.get(field.id) or '未填写' }}</div>
+      </div>
+      {% endfor %}
+
+    </div>
+
+    <div class="action-row">
+      <button class="mark-btn {% if e.status == 'interested' %}active-interested{% endif %}"
+              data-id="{{ e.id }}" data-status="interested" onclick="markEntry(this)">⭐ 意向录取</button>
+      <button class="mark-btn {% if e.status == 'pending' %}active-pending{% endif %}"
+              data-id="{{ e.id }}" data-status="pending" onclick="markEntry(this)">? 待定</button>
+      <button class="mark-btn {% if e.status == 'pass' %}active-pass{% endif %}"
+              data-id="{{ e.id }}" data-status="pass" onclick="markEntry(this)">✕ Pass</button>
+    </div>
+
+    <div class="note-wrap">
+      <div class="field-label">内部备注</div>
+      <textarea class="admin-note-input" data-id="{{ e.id }}"
+                placeholder="仅自己可见的备注…">{{ e.admin_note or '' }}</textarea>
+      <div class="note-saved" id="saved-{{ e.id }}">已保存</div>
+    </div>
+  </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="empty">暂无投递记录</div>
+{% endif %}
+</div>
+
+<!-- Clear modal -->
+<div class="modal-bg" id="clear-modal">
+  <div class="modal">
+    <h2>清空投递记录</h2>
+    <p>请选择要清空的范围，此操作不可撤销。</p>
+    <div class="modal-btns">
+      <button class="modal-btn danger" onclick="doClear(null)">清空全部投递</button>
+      <button class="modal-btn danger" onclick="doClear(30)">清空 30 天前的投递</button>
+      <button class="modal-btn danger" onclick="doClear(7)">清空 7 天前的投递</button>
+      <button class="modal-btn cancel" onclick="closeClearModal()">取消</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function toggleCard(card) { card.classList.toggle('open'); }
+
+function markEntry(btn) {
+  const id = btn.dataset.id, status = btn.dataset.status;
+  fetch('/admin/mark', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({id, status}) })
+  .then(r => r.json()).then(data => {
+    const newStatus = data.status;
+    const card = document.querySelector(`.entry-card[data-id="${id}"]`);
+    card.dataset.status = newStatus || 'none';
+    const badge = document.getElementById('badge-' + id);
+    if (newStatus === 'interested')      { badge.className = 'status-badge interested'; badge.textContent = '⭐ 意向录取'; }
+    else if (newStatus === 'pending')    { badge.className = 'status-badge pending';    badge.textContent = '? 待定'; }
+    else if (newStatus === 'pass')       { badge.className = 'status-badge pass';       badge.textContent = '✕ Pass'; }
+    else                                 { badge.className = 'status-badge none';       badge.textContent = '— 未标记'; }
+    card.querySelectorAll('.mark-btn').forEach(b => b.classList.remove('active-interested','active-pending','active-pass'));
+    if (newStatus) btn.classList.add('active-' + newStatus);
+    applyFilter(currentFilter);
+  });
+}
+
+document.querySelectorAll('.admin-note-input').forEach(ta => {
+  let timer;
+  ta.addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      fetch('/admin/note', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({id: ta.dataset.id, note: ta.value}) })
+      .then(() => { const s = document.getElementById('saved-' + ta.dataset.id); s.style.display='block'; setTimeout(()=>s.style.display='none', 1800); });
+    }, 800);
+  });
+});
+
+let currentFilter = 'all';
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentFilter = btn.dataset.filter;
+    applyFilter(currentFilter);
+  });
+});
+function applyFilter(f) {
+  document.querySelectorAll('.entry-card').forEach(card => {
+    const s = card.dataset.status || 'none';
+    card.style.display = (f === 'all' || s === f) ? '' : 'none';
+  });
+}
+
+function openClearModal()  { document.getElementById('clear-modal').classList.add('open'); }
+function closeClearModal() { document.getElementById('clear-modal').classList.remove('open'); }
+function doClear(days) {
+  fetch('/admin/clear', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({days}) })
+  .then(() => location.reload());
+}
+</script>
+</body>
+</html>

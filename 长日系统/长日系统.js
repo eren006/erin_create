@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         长日将尽系统
 // @author       长日将尽
-// @version      1.3.9
+// @version      1.3.10
 // @description  无
 // @timestamp    1778742000
 // @license      MIT
@@ -12,7 +12,7 @@
 
 let ext = seal.ext.find("changri")
 if (!ext) {
-    ext = seal.ext.new("changri", "长日将尽", "1.2.0");
+    ext = seal.ext.new("changri", "长日将尽", "1.3.10");
     // 注册扩展
     seal.ext.register(ext);
     ext.autoActive = true;
@@ -1664,29 +1664,38 @@ function mergeIntoExistingAppointment(ctx, msg, existingAppointment, newNames, p
         ext.storageSet("group_timers", JSON.stringify(groupTimers));
     }
     
+    // 更新群名
+    const nameTag = allParticipants.length > 2 ? "多人" : allParticipants.join("、");
+    const newGroupName = `私密 ${day} ${time} ${place} ${nameTag}`;
+    const renameMsg = seal.newMessage();
+    renameMsg.messageType = "group";
+    renameMsg.groupId = `${platform}-Group:${groupId}`;
+    const renameCtx = seal.createTempCtx(ctx.endPoint, renameMsg);
+    setGroupName(renameCtx, renameMsg, groupId, newGroupName);
+
     const groupMsg = seal.newMessage();
     groupMsg.messageType = "group";
     groupMsg.groupId = `${platform}-Group:${groupId}`;
     const groupCtx = seal.createTempCtx(ctx.endPoint, groupMsg);
     const joinNotice = `🎉 欢迎新伙伴加入！\n\n${newNames.join("、")} 也选择了在 ${day} ${time} 前往【${place}】。\n现在你们可以一起进行这场约会啦！\n\n当前参与者：${allParticipants.join("、")}`;
     seal.replyToSender(groupCtx, groupMsg, joinNotice);
-    
+
+    // 通知新成员（跳过发起者 sendname，发起者由私约指令的 successMsg 告知）
     for (let newName of newNames) {
-        // 新结构：通过 roleName 反查 uid
+        if (newName === sendname) continue;
         const newNameUid2 = getUidByRoleName(platform, newName);
         const targetInfo = newNameUid2 ? a_private_group[platform][newNameUid2] : null;
         if (targetInfo) {
             const targetGroupId = targetInfo[1];
-            const targetUid = newNameUid2;
             const privateMsg = seal.newMessage();
             privateMsg.messageType = "group";
             privateMsg.groupId = `${platform}-Group:${targetGroupId}`;
             const privateCtx = seal.createTempCtx(ctx.endPoint, privateMsg);
-            const notice = `✨ 你发起的私约已自动合并到现有约会中！\n\n📅 时间：${day} ${time}\n📍 地点：${place}\n👥 参与者：${allParticipants.join("、")}\n💬 群号：${groupId}\n\n请自行申请入群，享受约会时光~`;
+            const notice = `✨ ${sendname} 发起的私约已自动合并到现有约会中！\n\n📅 时间：${day} ${time}\n📍 地点：${place}\n👥 参与者：${allParticipants.join("、")}\n💬 群号：${groupId}\n\n请自行申请入群，享受约会时光~`;
             seal.replyToSender(privateCtx, privateMsg, notice);
         }
     }
-    
+
     return true;
 }
 
@@ -1841,8 +1850,10 @@ async function directCreateAndFinalizeAppointment({
         names.forEach(n => groupData.targetList[n] = "accepted");
         
         const participants = [sendname, ...names];
-        const ok = await finalizeGroupCreation(platform, ctx, msg, groupData, participants);
-        if (ok === false) return { success: false };
+        const gid = await finalizeGroupCreation(platform, ctx, msg, groupData, participants);
+        if (gid === false) return { success: false };
+        names.forEach(n => recordInteractionStat(platform, sendname, n, "appt"));
+        return { success: true, isMulti, names, gid };
     } else {
         const toname = names[0];
         // 新结构：通过 roleName 反查 uid，再取 gid
@@ -1865,12 +1876,11 @@ async function directCreateAndFinalizeAppointment({
         };
 
         const participants = [sendname, toname];
-        const ok = await finalizeGroupCreation(platform, ctx, msg, item, participants);
-        if (ok === false) return { success: false };
+        const gid = await finalizeGroupCreation(platform, ctx, msg, item, participants);
+        if (gid === false) return { success: false };
+        names.forEach(n => recordInteractionStat(platform, sendname, n, "appt"));
+        return { success: true, isMulti, names, gid };
     }
-
-    names.forEach(n => recordInteractionStat(platform, sendname, n, "appt"));
-    return { success: true, isMulti, names };
 }
 
 // ========================
@@ -1990,8 +2000,8 @@ cmd_phone.solve = async (ctx, msg, cmdArgs) => {
 
     if (result.success) {
         const successMsg = isMulti
-            ? `✅ 你已成功向 ${names.join("、")} 发起多人电话，通讯频段已自动建立！`
-            : `✅ 你已成功与 ${names[0]} 连线，通讯频段已自动建立！`;
+            ? `✅ 你已成功向 ${names.join("、")} 发起多人电话，通讯频段已自动建立！\n💬 频段：${result.gid}`
+            : `✅ 你已成功与 ${names[0]} 连线，通讯频段已自动建立！\n💬 频段：${result.gid}`;
         seal.replyToSender(ctx, msg, successMsg);
     }
     return seal.ext.newCmdExecuteResult(true);
@@ -2060,8 +2070,8 @@ cmd_appointment_private.solve = async (ctx, msg, cmdArgs) => {
 
     if (result.success) {
         let successMsg = isMulti
-            ? `✅ 你已成功与 ${names.join("、")} 开启多方私约，私人空间已自动建立！`
-            : `✅ 你已成功与 ${names[0]} 开启私约，私人空间已自动建立！`;
+            ? `✅ 你已成功与 ${names.join("、")} 开启多方私约，私人空间已自动建立！\n💬 群号：${result.gid}`
+            : `✅ 你已成功与 ${names[0]} 开启私约，私人空间已自动建立！\n💬 群号：${result.gid}`;
         if (coinCheck.cost > 0) successMsg += `\n💰 已消耗写信币 ${coinCheck.cost} 枚`;
         seal.replyToSender(ctx, msg, successMsg);
     }
@@ -2174,28 +2184,24 @@ cmd_wechat.solve = async (ctx, msg, cmdArgs) => {
         };
         ext.storageSet("wechat_groups", JSON.stringify(wechatGroups));
 
-        const groupNotice = `💬 微信群创建成功\n\n📱 群号：${gid}\n👤 创建者：${sendname}\n👥 成员：${sendname}、${toname}\n\n💡 这是一个长期群聊，无时间限制，每个微信关系只能有一个活跃群。\n\n进群后请发送：.ext all on（开启机器人指令）`;
+        // 戏群公告
         const groupMsg = seal.newMessage();
         groupMsg.messageType = "group";
         groupMsg.groupId = `${platform}-Group:${gid}`;
         const groupCtx = seal.createTempCtx(ctx.endPoint, groupMsg);
-        seal.replyToSender(groupCtx, groupMsg, groupNotice);
+        seal.replyToSender(groupCtx, groupMsg, `💬 微信群已建立\n\n👥 成员：${sendname}、${toname}\n\n💡 长期群聊，无时间限制，每个微信关系只能有一个活跃群。`);
         setGroupName(groupCtx, groupMsg, gid, `微信:${sendname}&${toname}`);
 
-        const participants = [sendname, toname];
-        for (let participant of participants) {
-            // 新结构：通过 roleName 反查 uid
-            const pUidLookup = getUidByRoleName(platform, participant);
-            const info = pUidLookup ? a_private_group[platform][pUidLookup] : null;
-            if (info) {
-                const pUid = pUidLookup;
-                const pGid = info[1];
-                const notifyMsg = seal.newMessage();
-                notifyMsg.messageType = "group";
-                notifyMsg.groupId = `${platform}-Group:${pGid}`;
-                const notifyCtx = seal.createTempCtx(ctx.endPoint, notifyMsg);
-                seal.replyToSender(notifyCtx, notifyMsg, `💬 你已被加入微信群\n📱 群号：${gid}\n👤 创建者：${sendname}\n👥 成员：${sendname}、${toname}\n\n💡 这是一个长期群聊，无时间限制。`);
-            }
+        // 通知对方（发起者已通过下方 successMsg 得到回执）
+        const toUidLookup = getUidByRoleName(platform, toname);
+        const toInfo = toUidLookup ? a_private_group[platform][toUidLookup] : null;
+        if (toInfo) {
+            const toBindGid = toInfo[1];
+            const notifyMsg = seal.newMessage();
+            notifyMsg.messageType = "group";
+            notifyMsg.groupId = `${platform}-Group:${toBindGid}`;
+            const notifyCtx = seal.createTempCtx(ctx.endPoint, notifyMsg);
+            seal.replyToSender(notifyCtx, notifyMsg, `💬 ${sendname} 邀你加入微信群\n\n📱 群号：${gid}\n👥 成员：${sendname}、${toname}\n\n💡 长期群聊，无时间限制。`);
         }
 
         seal.replyToSender(ctx, msg, `✅ 微信群创建成功！\n📱 群号：${gid}\n👥 成员：${sendname}、${toname}`);
@@ -2602,15 +2608,28 @@ cmd_accept_join.solve = (ctx, msg, cmdArgs) => {
         ext.storageSet("group_timers", JSON.stringify(groupTimers));
     }
 
-    // 在群内发送通知
+    // 更新群名（加人后重新计算参与者数量）
+    const updatedParticipants = groupExpireInfo[groupId]?.participants || [];
+    if (updatedParticipants.length > 0) {
+        const nameTag = updatedParticipants.length > 2 ? "多人" : updatedParticipants.join("、");
+        const newGroupName = `${targetSchedule.subtype || "私密"} ${day} ${time} ${targetSchedule.place ? targetSchedule.place + " " : ""}${nameTag}`;
+        const renameMsg = seal.newMessage();
+        renameMsg.messageType = "group";
+        renameMsg.groupId = `${platform}-Group:${targetGroupId}`;
+        const renameCtx = seal.createTempCtx(ctx.endPoint, renameMsg);
+        setGroupName(renameCtx, renameMsg, targetGroupId, newGroupName);
+    }
+
+    // 在约会群内发送通知
     const groupMsg = seal.newMessage();
     groupMsg.messageType = "group";
     groupMsg.groupId = `${platform}-Group:${targetGroupId}`;
     const groupCtx = seal.createTempCtx(ctx.endPoint, groupMsg);
     seal.replyToSender(groupCtx, groupMsg, `✨ ${fullRequest.from} 已经到来，正在加入你们的约会。`);
-    
-    // 通知发起人（发送群号）
-    const fromGroupId = fromInfo[1];
+
+    // 通知申请人（发送群号）
+    const fromInfo = a_private_group[platform][fromUid];
+    const fromGroupId = fromInfo?.[1];
     if (fromGroupId) {
         const fromMsg = seal.newMessage();
         fromMsg.messageType = "group";
@@ -2618,7 +2637,7 @@ cmd_accept_join.solve = (ctx, msg, cmdArgs) => {
         const fromCtx = seal.createTempCtx(ctx.endPoint, fromMsg);
         seal.replyToSender(fromCtx, fromMsg, `✅ 你已成功加入 ${fullRequest.to} 的私约，群号：${targetGroupId}\n请自行申请入群。`);
     }
-    
+
     seal.replyToSender(ctx, msg, `✅ 已同意 ${fullRequest.from} 加入你的私约。`);
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -3285,6 +3304,111 @@ cmd_grouplist_release.solve = (ctx, msg, cmdArgs) => {
 };
 ext.cmdMap["结束私约"] = cmd_grouplist_release;
 
+// 管理员强结指令：执行所有清理但不发放任何结戏奖励
+// 用法：强结私约 [群号]  —— 不填群号则对当前群操作
+const cmd_force_end = seal.ext.newCmdItemInfo();
+cmd_force_end.name = "强结私约";
+cmd_force_end.help = "。强结私约 [群号]（管理员专用）：强制结束指定群（不填则当前群），跳过复盘检查，不发放结戏奖励，并在目标群 @ 成员提示退群。";
+cmd_force_end.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) {
+        seal.replyToSender(ctx, msg, "⚠️ 该指令仅限管理员使用");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const platform = msg.platform;
+    const argGid = (cmdArgs.getArgN(1) || "").trim();
+    const gid = argGid || msg.groupId.replace(`${platform}-Group:`, "");
+    const isRemote = !!argGid; // 是否在外部群操作
+
+    // 构造目标群的 msg/ctx，用于在目标群发消息和改群名
+    const targetMsg = seal.newMessage();
+    targetMsg.messageType = "group";
+    targetMsg.groupId = `${platform}-Group:${gid}`;
+    const targetCtx = seal.createTempCtx(ctx.endPoint, targetMsg);
+
+    let group = JSON.parse(ext.storageGet("group") || "[]");
+
+    // 微信群：复用原有清理函数
+    const wechatGroups = JSON.parse(ext.storageGet("wechat_groups") || "{}");
+    if (wechatGroups[platform]?.[gid]?.status === "active") {
+        endWechatGroup(targetCtx, targetMsg, gid, platform, msg.sender.userId.replace(`${platform}:`, ""));
+        if (isRemote) seal.replyToSender(ctx, msg, `✅ 已强结微信群 ${gid}。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const fullId = `${gid}_占用`;
+    if (!group.includes(fullId)) {
+        seal.replyToSender(ctx, msg, `⚠️ 群号 ${gid} 未处于占用状态，无法结束`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 释放群号
+    group.splice(group.indexOf(fullId), 1);
+    group.push(gid);
+    ext.storageSet("group", JSON.stringify(group));
+
+    // 重置写帖进度
+    let progress = JSON.parse(ext.storageGet("group_write_progress") || "{}");
+    if (progress[gid]) {
+        delete progress[gid];
+        ext.storageSet("group_write_progress", JSON.stringify(progress));
+    }
+
+    // 更新 b_confirmedSchedule，同时收集参与者 uid
+    const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
+    let b_confirmedSchedule = JSON.parse(ext.storageGet("b_confirmedSchedule") || "{}");
+    let modified = false;
+    const participantUids = new Set();
+    for (let uidKey in b_confirmedSchedule) {
+        for (let ev of b_confirmedSchedule[uidKey]) {
+            if (ev.group === gid && ev.status !== "ended") {
+                ev.status = "ended";
+                modified = true;
+                participantUids.add(uidKey);
+            }
+        }
+    }
+    if (modified) ext.storageSet("b_confirmedSchedule", JSON.stringify(b_confirmedSchedule));
+
+    // 若 b_confirmedSchedule 没有记录，也尝试从 a_private_group 收集（gid 匹配者）
+    if (participantUids.size === 0) {
+        Object.entries(a_private_group[platform] || {}).forEach(([uid, data]) => {
+            if (data[1] === gid) participantUids.add(uid);
+        });
+    }
+
+    // 清除到期记录
+    let groupExpireInfo = JSON.parse(ext.storageGet("group_expire_info") || "{}");
+    if (groupExpireInfo[gid]) {
+        delete groupExpireInfo[gid];
+        ext.storageSet("group_expire_info", JSON.stringify(groupExpireInfo));
+    }
+
+    // 清除计时器和 session 统计
+    cleanupGroupTimer(gid);
+    const sessionStats = getSessionStats();
+    if (sessionStats[gid]) {
+        delete sessionStats[gid];
+        saveSessionStats(sessionStats);
+    }
+
+    // 在目标群发送提示，@ 所有参与者请其退群
+    const atParts = [...participantUids].map(uid => `[CQ:at,qq=${uid}]`).join(" ");
+    const targetNotice = atParts
+        ? `${atParts}\n⚠️ 本群已被管理员强制结束，不发放结戏奖励，请各位退群。`
+        : `⚠️ 本群已被管理员强制结束，不发放结戏奖励，请各位退群。`;
+    seal.replyToSender(targetCtx, targetMsg, targetNotice);
+    setGroupName(targetCtx, targetMsg, gid, `备用`);
+
+    // 向发令者确认（在外部群操作时才需要额外回复，在目标群操作时目标群已有消息）
+    if (isRemote) {
+        seal.replyToSender(ctx, msg, `✅ 群 ${gid} 已强制结束，已在目标群通知成员退群。`);
+    }
+
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["强结私约"] = cmd_force_end;
+
 function cleanupConflictsAndNotify(platform, toid, toname, day, time, ctx, msg) {
     const myId = `${platform}:${toid}`;
     const allAppointments = JSON.parse(ext.storageGet("appointmentList") || "[]");
@@ -3717,9 +3841,10 @@ async function finalizeGroupCreation(platform, ctx, msg, groupData, participants
         ? `\n同行：${otherNames.join("、")}`
         : (otherNames.length === 1 ? "" : "");
 
-    let noticeText;
     const guide = `\n\n修改时间 ➜ 。修改时间线 ${groupData.day} 新时间\n不想参加 ➜ 。拒绝时间线 ${gid}`;
 
+    // 发给各参与者私群的邀请通知（保留"邀你"措辞）
+    let noticeText;
     if (groupData.subtype === "电话") {
         const titleLine = groupData.title ? ` · ${groupData.title}` : "";
         const peersLine = participants.length > 2 ? `\n同话：${otherNames.join("、")}` : "";
@@ -3739,8 +3864,31 @@ ${groupData.sendname} 约你 ${groupData.day} ${groupData.time} 在 ${groupData.
 有效至 ${timeStr}${guide}`;
     }
 
-    // 5. 向所有参与者发送私聊/绑定群通知
+    // 发到约会群本身的公告（列出全部参与者，去掉"邀你"措辞）
+    let groupAnnouncement;
+    if (groupData.subtype === "电话") {
+        const titleLine = groupData.title ? ` · ${groupData.title}` : "";
+        groupAnnouncement = `📞 通话已接通${titleLine}
+
+🕐 ${groupData.day} ${groupData.time}
+👥 参与者：${participantsText}
+
+频段：${gid}
+有效至 ${timeStr}${guide}`;
+    } else {
+        groupAnnouncement = `💌 约会已确认
+
+📅 ${groupData.day} ${groupData.time}
+📍 ${groupData.place}
+👥 参与者：${participantsText}
+
+群号：${gid}
+有效至 ${timeStr}${guide}`;
+    }
+
+    // 5. 向所有参与者发送私聊/绑定群通知（跳过发起者，发起者由指令回执告知）
     participants.forEach(name => {
+        if (name === groupData.sendname) return;
         const { uid, gid: bindGid } = getRoleDetails(platform, name);
         if (uid && bindGid) {
             const m = seal.newMessage();
@@ -3756,8 +3904,8 @@ ${groupData.sendname} 约你 ${groupData.day} ${groupData.time} 在 ${groupData.
     targetMsg.messageType = "group";
     targetMsg.groupId = `${platform}-Group:${gid}`;
     const targetCtx = seal.createTempCtx(ctx.endPoint, targetMsg);
-    
-    seal.replyToSender(targetCtx, targetMsg, noticeText);
+
+    seal.replyToSender(targetCtx, targetMsg, groupAnnouncement);
     setGroupName(targetCtx, targetMsg, gid, finalGroupName);
 
     // 6.5 在每人的个人绑定群单独发一条 @提醒，提示在约会群发 .ext all on
@@ -3775,6 +3923,7 @@ ${groupData.sendname} 约你 ${groupData.day} ${groupData.time} 在 ${groupData.
     triggerSightingCheck(platform, groupData.day, groupData.time, groupData.place, participants, gid, groupData.subtype, ctx, msg);
     recordMeetingAndAnnounce(groupData.subtype, platform, ctx, ctx.endPoint);
     if (groupData.subtype) initGroupTimer(platform, gid, groupData.subtype, participants, participants[0]);
+    return gid;
 }
 
 // ========================
@@ -4817,27 +4966,20 @@ cmd_pick_wish.solve = async (ctx, msg, cmdArgs) => {
     };
 
     // 异步下发
-    const wishOk = await finalizeGroupCreation(platform, ctx, msg, item, [fromName, name]);
-    if (wishOk !== false) {
+    const wishGid = await finalizeGroupCreation(platform, ctx, msg, item, [fromName, name]);
+    if (wishGid !== false) {
         recordInteractionStat(platform, name, fromName, "wish");
     }
 
-    // 通知双方
-    const priv = JSON.parse(ext.storageGet("a_private_group") || "{}")[platform] || {};
-    const fromProfile = getCharProfile(platform, fromName);
-    const toProfile = getCharProfile(platform, name);
-    const fromGenderEmoji = fromProfile.gender === "男" ? "👨" : "👩";
-    const toGenderEmoji = toProfile.gender === "男" ? "👨" : "👩";
+    // 通知挂心愿者（finalizeGroupCreation 已跳过 sendname，需单独发）
+    const { uid: fromUid, gid: fromBindGid } = getRoleDetails(platform, fromName);
+    if (fromUid && fromBindGid) {
+        const m = seal.newMessage(); m.messageType = "group"; m.groupId = `${platform}-Group:${fromBindGid}`;
+        seal.replyToSender(seal.createTempCtx(ctx.endPoint, m), m,
+            `💫 你的心愿被 ${name} 摘取了！\n📍 ${wish.place} | ⏰ ${wish.day} ${wish.time}\n💬 群号：${wishGid}`);
+    }
 
-    [ {id: uid, t: fromName, gender: fromGenderEmoji}, {id: wish.fromId, t: name, gender: toGenderEmoji} ].forEach(p => {
-        const gid = priv[p.t === fromName ? name : fromName]?.[1];
-        if (gid) {
-            const m = seal.newMessage(); m.messageType = "group"; m.groupId = `${platform}-Group:${gid}`;
-            seal.replyToSender(seal.createTempCtx(ctx.endPoint, m), m, `💫 摘心愿成功！与 ${p.gender}${p.t} 的小群已开启。\n📍 ${wish.place} | ⏰ ${wish.day} ${wish.time}`);
-        }
-    });
-
-    let pickReply = `🎉 摘取成功！专属小群已建立。`;
+    let pickReply = `🎉 摘取成功！专属小群已建立。\n💬 群号：${wishGid}`;
     if (wish.rewardCode) {
         const pickerRoleKey = `${platform}:${uid.replace(`${platform}:`, "")}`;
         wishAddToInv(pickerRoleKey, wish.rewardCode, wish.rewardCount);
@@ -5108,549 +5250,6 @@ async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, co
 }
 
 // ========================
-
-/**
- * 将关系线细节平铺转发到目标群 (登记名 + 真实QQ头像)
- * @param {object} ctx 上下文
- * @param {object} msg 消息对象
- * @param {string} toRoleName 对方角色名（用于获取对方QQ和可能的群）
- * @param {string} fromRoleName 当前用户角色名（用于获取自己的群，也用于节点判断）
- * @param {Array} details 细节数组
- * @param {boolean} self true=发到自己群，false=发到对方群
- */
-function sendCombinedDetails(ctx, msg, toRoleName, fromRoleName, details, self) {
-    const platform = msg.platform;
-    const groups = JSON.parse(ext.storageGet("a_private_group") || "{}");
-
-    // 1. 获取对方的绑定信息（uid为key的新结构）
-    const toUid = getUidByRoleName(platform, toRoleName);
-    const toAddr = toUid ? groups[platform]?.[toUid] : null;
-    if (!toAddr || !details || details.length === 0) return;
-
-    // 2. 获取自己的真实QQ
-    const sourceUid = msg.sender.userId.replace(`${platform}:`, "");
-
-    // 3. 确定目标群ID
-    let targetGid;
-    if (self) {
-        // 发到自己群：用当前用户角色名获取自己的群
-        const fromUidKey = getUidByRoleName(platform, fromRoleName);
-        const selfAddr = fromUidKey ? groups[platform]?.[fromUidKey] : null;
-        if (!selfAddr) return; // 自己未绑定群
-        targetGid = selfAddr[1];
-    } else {
-        // 发到对方群：直接用对方的群
-        targetGid = toAddr[1];
-    }
-
-    // 4. 获取当前用户角色名（也可直接用 fromRoleName，但保持与原有逻辑一致）
-    const sourceRoleName = RelationshipUtils.getRoleName(ctx, msg, platform);
-
-    // 5. 统计总字数
-    const totalChars = details.reduce((sum, d) => sum + (d.text?.length || 0), 0);
-    const MAX_DETAIL_CHARS = parseInt(ext.storageGet("max_detail_chars") || "500");
-    const SPLIT_THRESHOLD = parseInt(ext.storageGet("forward_split_threshold") || "4000");
-    const gid = parseInt(targetGid.replace(/[^\d]/g, ""), 10);
-
-    // 6. 构造节点的辅助函数
-    const makeNode = d => {
-        const isFromMe = (d.from === sourceRoleName);
-        return {
-            type: "node",
-            data: {
-                name: d.from,
-                uin: isFromMe ? sourceUid : toUid,
-                content: d.text
-            }
-        };
-    };
-
-    // 7. 页眉文字
-    const headerBase = self
-        ? `📜 你与「${toRoleName}」的关系细节`
-        : `📜 角色「${sourceRoleName}」更新了与你的关系细节`;
-    const charInfo = `共 ${details.length} 条 | 单条上限 ${MAX_DETAIL_CHARS} 字 | 累计 ${totalChars} 字`;
-
-    // 8. 判断是否需要拆分
-    if (totalChars > SPLIT_THRESHOLD) {
-        const mid = Math.ceil(details.length / 2);
-        const part1 = details.slice(0, mid);
-        const part2 = details.slice(mid);
-
-        const header1 = {
-            type: "node",
-            data: { name: "关系线档案", uin: "10001",
-                content: `${headerBase}\n${charInfo}\n⚠️ 内容较多，已拆分为2条转发 · 第1部分（共${mid}条）` }
-        };
-        const header2 = {
-            type: "node",
-            data: { name: "关系线档案", uin: "10001",
-                content: `${headerBase}\n第2部分（共${details.length - mid}条）` }
-        };
-
-        ws({ action: "send_group_forward_msg", params: { group_id: gid, messages: [header1, ...part1.map(makeNode)] } }, ctx, msg, "");
-        ws({ action: "send_group_forward_msg", params: { group_id: gid, messages: [header2, ...part2.map(makeNode)] } }, ctx, msg, "");
-    } else {
-        const header = {
-            type: "node",
-            data: { name: "关系线档案", uin: "10001",
-                content: `${headerBase}\n${charInfo}` }
-        };
-        ws({ action: "send_group_forward_msg", params: { group_id: gid, messages: [header, ...details.map(makeNode)] } }, ctx, msg, "");
-    }
-}
-
-// 辅助函数：获取对方绑定的 [uid, gid]（新结构：uid为key）
-function getTargetAddr(platform, roleName) {
-    const groups = JSON.parse(ext.storageGet("a_private_group") || "{}");
-    const uid = getUidByRoleName(platform, roleName);
-    if (!uid) return null;
-    const entry = groups[platform]?.[uid];
-    return entry ? [uid, entry[1]] : null;
-}
-
-const RelationshipUtils = {
-    getRoleName: (ctx, msg, platform) => {
-        const rawUid = msg.sender.userId.replace(`${platform}:`, "");
-        const uid = getPrimaryUid(platform, rawUid);
-        const groups = JSON.parse(ext.storageGet("a_private_group") || "{}");
-        // 新结构：uid为key，roleName在value[0]
-        return groups[platform]?.[uid]?.[0] || null;
-    },
-    getData: (key) => JSON.parse(ext.storageGet(key) || "{}"),
-    setData: (key, data) => ext.storageSet(key, JSON.stringify(data)),
-    isEnabled: () => JSON.parse(ext.storageGet("relationship_system_enabled") || "true")
-};
-
-let cmd_add_rel_detail = seal.ext.newCmdItemInfo();
-cmd_add_rel_detail.name = "拉线";
-cmd_add_rel_detail.solve = (ctx, msg, cmdArgs) => {
-    if (!RelationshipUtils.isEnabled()) return seal.replyToSender(ctx, msg, "❌ 系统已关闭");
-
-    const platform = msg.platform;
-    const sendName = RelationshipUtils.getRoleName(ctx, msg, platform);
-    const toName = cmdArgs.getArgN(1);
-    const content = cmdArgs.args.slice(1).join(' ').trim();
-
-    if (!sendName || !toName || !content) return seal.replyToSender(ctx, msg, "格式：。拉线 对方名 内容");
-    if (sendName === toName) return seal.replyToSender(ctx, msg, "⚠️ 你不能跟自己建立关系线哦。");
-
-    const MAX_DETAIL_CHARS = parseInt(ext.storageGet("max_detail_chars") || "500");
-    const charCount = content.length;
-    if (charCount > MAX_DETAIL_CHARS) {
-        return seal.replyToSender(ctx, msg, `⚠️ 内容过长（${charCount} 字），单条拉线上限为 ${MAX_DETAIL_CHARS} 字，请精简后再提交。`);
-    }
-
-    let relData = RelationshipUtils.getData("relationship_lines") || {};
-    if (!relData[platform]) relData[platform] = {};
-
-    // 新结构：relationship_lines[platform][uid][uid]，内部 initiator/from 仍用 roleName 显示
-    const sendUid = getUidByRoleName(platform, sendName);
-    const toUid = getUidByRoleName(platform, toName);
-    if (!sendUid || !toUid) return seal.replyToSender(ctx, msg, "❌ 找不到角色");
-
-    // 1. 确保 uid 节点存在
-    if (!relData[platform][sendUid]) relData[platform][sendUid] = {};
-    if (!relData[platform][toUid]) relData[platform][toUid] = {};
-
-    // 2. 获取现有关系引用（双向兼容）
-    let rel = relData[platform][sendUid][toUid] || relData[platform][toUid][sendUid];
-
-    // 3. 如果是新关系，进行初始化
-    if (!rel) {
-        const maxRel = parseInt(ext.storageGet("max_relationships_per_user") || "20");
-        const currentCount = Object.values(relData[platform][sendUid]).filter(r => r.initiator === sendName).length;
-
-        if (currentCount >= maxRel) return seal.replyToSender(ctx, msg, `⚠️ 你的发起额度已达上限 (${maxRel})`);
-
-        // initiator 存 roleName（显示用）
-        rel = {
-            initiator: sendName,
-            confirmed: false,
-            details: []
-        };
-
-        seal.replyToSender(ctx, msg, `✨ 已成功向「${toName}」发起关系线邀请并记录细节。`);
-    }
-
-    // 4. 再次检查细节数组是否存在（防范未知异常）
-    if (!rel.details) rel.details = [];
-
-    // 5. 记录细节（from 存 roleName，显示用）
-    rel.details.push({ text: content, from: sendName });
-
-    // 6. 镜像存储引用
-    relData[platform][sendUid][toUid] = rel;
-    relData[platform][toUid][sendUid] = rel;
-
-    RelationshipUtils.setData("relationship_lines", relData);
-
-    // 7. 同步通知
-    const totalCharsNow = rel.details.reduce((sum, d) => sum + (d.text?.length || 0), 0);
-    const SPLIT_THRESHOLD = parseInt(ext.storageGet("forward_split_threshold") || "4000");
-    const splitHint = totalCharsNow > SPLIT_THRESHOLD ? `（总字数 ${totalCharsNow} 字，查看时将自动拆分为2条转发）` : `（本条 ${charCount} 字，累计 ${totalCharsNow}/${SPLIT_THRESHOLD} 字）`;
-
-    const addr = getTargetAddr(platform, toName);
-    if (addr) {
-        sendNewDetailNotification(ctx, msg, toName, content, sendName, addr[1]);
-        sendCombinedDetails(ctx, msg, toName, sendName, rel.details, false);
-        seal.replyToSender(ctx, msg, `✅ 细节已同步至「${toName}」的绑定群 (${addr[1]})\n${splitHint}`);
-    } else {
-        seal.replyToSender(ctx, msg, `✅ 细节已记录，但「${toName}」尚未绑定注册群，无法实时同步。\n${splitHint}`);
-    }
-
-    // 8. 全局计数公告（与其他互动类型统一频率）
-    recordMeetingAndAnnounce("拉线", platform, ctx, ctx.endPoint);
-
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["拉线"] = cmd_add_rel_detail;
-
-/**
- * 向对方绑定群发送一条新细节通知（普通消息）
- */
-function sendNewDetailNotification(ctx, msg, toRoleName, content, fromRoleName, targetGid) {
-    const platform = msg.platform;
-    const groups = JSON.parse(ext.storageGet("a_private_group") || "{}");
-    // 新结构：通过 roleName 反查 uid，再取 gid
-    const toUid = getUidByRoleName(platform, toRoleName);
-    const toAddr = toUid ? groups[platform]?.[toUid] : null;
-    if (!toAddr) return;
-
-    // 提取纯数字群号
-    const targetGidNum = parseInt(targetGid.replace(/[^\d]/g, ""), 10);
-    if (isNaN(targetGidNum)) return;
-
-    // 构造消息文本（可自定义格式）
-    const message = `📝 来自「${fromRoleName}」的新关系细节：\n${content}\n\n（使用「。查看关系线 ${fromRoleName}」查看完整记录）`;
-
-    ws({
-        action: "send_group_msg",
-        params: {
-            group_id: targetGidNum,
-            message: message
-        }
-    }, ctx, msg, "");
-}
-
-let cmd_confirm_relationship = seal.ext.newCmdItemInfo();
-cmd_confirm_relationship.name = "确认关系线";
-cmd_confirm_relationship.solve = (ctx, msg, cmdArgs) => {
-    const platform = msg.platform;
-    const sendName = RelationshipUtils.getRoleName(ctx, msg, platform);
-    const toName = cmdArgs.getArgN(1);
-
-    let relData = RelationshipUtils.getData("relationship_lines");
-    // 新结构：uid为key
-    const sendUid = getUidByRoleName(platform, sendName);
-    const toUid = getUidByRoleName(platform, toName);
-    if (!sendUid || !toUid || !relData[platform]?.[sendUid]?.[toUid]) return seal.replyToSender(ctx, msg, "未找到该关系线");
-
-    relData[platform][sendUid][toUid].confirmed = true;
-    if (relData[platform][toUid]?.[sendUid]) relData[platform][toUid][sendUid].confirmed = true;
-
-    RelationshipUtils.setData("relationship_lines", relData);
-    seal.replyToSender(ctx, msg, `✅ 你已确认与「${toName}」的关系线为完成状态。`);
-
-    // Notify 对方
-    const addr = getTargetAddr(platform, toName);
-    if (addr) {
-        ws({ "action": "send_group_msg", "params": { "group_id": parseInt(addr[1]), "message": `🤝 「${sendName}」已确认并完成了你们的关系线！` } }, ctx, msg, "");
-    }
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["确认关系线"] = cmd_confirm_relationship;
-
-let cmd_set_forced_rel = seal.ext.newCmdItemInfo();
-cmd_set_forced_rel.name = "设置强制关系线";
-cmd_set_forced_rel.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "权限不足");
-    const platform = msg.platform;
-    const nameA = cmdArgs.getArgN(1);
-    const nameB = cmdArgs.getArgN(2);
-
-    // 修正：从索引 2 开始切片（即第3个参数开始的所有内容）
-    const content = cmdArgs.args.slice(2).join(' ').trim();
-
-    if (!nameA || !nameB || !content) {
-        return seal.replyToSender(ctx, msg, "格式：。设置强制关系线 角色A 角色B 描述内容");
-    }
-
-    let relData = RelationshipUtils.getData("relationship_lines");
-    const forceNode = {
-        initiator: "SYSTEM", // 系统发起，不占份额
-        confirmed: true,
-        isMandatory: true,
-        details: [{ text: `[系统设定] ${content}`, time: new Date().toLocaleString(), from: "管理员" }]
-    };
-
-    // 新结构：uid为key
-    const uidA = getUidByRoleName(platform, nameA);
-    const uidB = getUidByRoleName(platform, nameB);
-    if (!uidA || !uidB) return seal.replyToSender(ctx, msg, `❌ 找不到角色「${!uidA ? nameA : nameB}」`);
-
-    if (!relData[platform]) relData[platform] = {};
-    if (!relData[platform][uidA]) relData[platform][uidA] = {};
-    if (!relData[platform][uidB]) relData[platform][uidB] = {};
-
-    relData[platform][uidA][uidB] = forceNode;
-    relData[platform][uidB][uidA] = { ...forceNode, received: true }; // B 端标记为收到
-
-    RelationshipUtils.setData("relationship_lines", relData);
-    seal.replyToSender(ctx, msg, `✅ 已成功为「${nameA}」与「${nameB}」建立强制关系线。`);
-
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["设置强制关系线"] = cmd_set_forced_rel;
-
-// 删除
-let cmd_del_rel = seal.ext.newCmdItemInfo();
-cmd_del_rel.name = "删除关系线";
-cmd_del_rel.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return;
-    const platform = msg.platform, nameA = cmdArgs.getArgN(1), nameB = cmdArgs.getArgN(2);
-    let data = RelationshipUtils.getData("relationship_lines");
-    if (data[platform]) {
-        // 新结构：uid为key
-        const uidA = getUidByRoleName(platform, nameA);
-        const uidB = getUidByRoleName(platform, nameB);
-        if (uidA && data[platform][uidA]) delete data[platform][uidA][uidB];
-        if (uidB && data[platform][uidB]) delete data[platform][uidB][uidA];
-        RelationshipUtils.setData("relationship_lines", data);
-        seal.replyToSender(ctx, msg, "✅ 已删除该关系线");
-    }
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["删除关系线"] = cmd_del_rel;
-
-// 清空 (含验证码)
-let cmd_clear_rel = seal.ext.newCmdItemInfo();
-cmd_clear_rel.name = "清空关系线";
-cmd_clear_rel.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return;
-    const code = cmdArgs.getArgN(1);
-    const expected = `${String(new Date().getMonth() + 1).padStart(2,'0')}${String(new Date().getDate()).padStart(2,'0')}`;
-    if (code !== expected) return seal.replyToSender(ctx, msg, `⚠️ 危险操作！输入确认码：${expected}`);
-    
-    let data = RelationshipUtils.getData("relationship_lines");
-    delete data[msg.platform];
-    RelationshipUtils.setData("relationship_lines", data);
-    seal.replyToSender(ctx, msg, "🔥 已清空当前平台所有关系线");
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["清空关系线"] = cmd_clear_rel;
-
-// ========================
-// ✏️ 指令：撤回关系（按内容匹配）
-// ========================
-let cmd_withdraw_relation = seal.ext.newCmdItemInfo();
-cmd_withdraw_relation.name = "撤回关系";
-cmd_withdraw_relation.help = "。撤回关系 对方角色名 要撤回的内容（精确匹配，仅撤回自己发送的细节）";
-
-cmd_withdraw_relation.solve = (ctx, msg, cmdArgs) => {
-    const platform = msg.platform;
-    const sendName = RelationshipUtils.getRoleName(ctx, msg, platform);
-    const toName = cmdArgs.getArgN(1);
-    // 从第二个参数之后的所有内容作为要撤回的内容（支持空格）
-    const content = cmdArgs.args.slice(1).join(' ').trim();
-
-    if (!sendName || !toName || !content) {
-        return seal.replyToSender(ctx, msg, "格式：。撤回关系 对方角色名 要撤回的内容");
-    }
-
-    let relData = RelationshipUtils.getData("relationship_lines");
-    // 新结构：uid为key
-    const sendUid = getUidByRoleName(platform, sendName);
-    const toUid = getUidByRoleName(platform, toName);
-    let rel = sendUid && toUid ? (relData[platform]?.[sendUid]?.[toUid] || relData[platform]?.[toUid]?.[sendUid]) : null;
-    if (!rel || !rel.details || rel.details.length === 0) {
-        return seal.replyToSender(ctx, msg, "没有可撤回的细节记录。");
-    }
-
-    // 查找自己发送的、内容精确匹配的第一条细节（from 仍是 roleName）
-    const idx = rel.details.findIndex(d => d.from === sendName && d.text === content);
-    if (idx === -1) {
-        return seal.replyToSender(ctx, msg, `未找到你发送的匹配内容：「${content}」\n可使用「。查看关系线 ${toName}」查看所有细节。`);
-    }
-
-    const removed = rel.details[idx];
-    // 删除自己的记录
-    rel.details.splice(idx, 1);
-
-    // 同步删除对方存储中的相同记录（按内容 + 发送人匹配）
-    const otherRel = toUid && sendUid ? (relData[platform]?.[toUid]?.[sendUid] || relData[platform]?.[sendUid]?.[toUid]) : null;
-    if (otherRel && otherRel.details && otherRel !== rel) {
-        const otherIdx = otherRel.details.findIndex(d => d.from === sendName && d.text === content);
-        if (otherIdx !== -1) otherRel.details.splice(otherIdx, 1);
-    }
-
-    RelationshipUtils.setData("relationship_lines", relData);
-    seal.replyToSender(ctx, msg, `✅ 已成功撤回你发送的细节：\n"${removed.text}"`);
-
-    // 可选：通知对方
-    const addr = getTargetAddr(platform, toName);
-    if (addr) {
-        ws({
-            action: "send_group_msg",
-            params: {
-                group_id: parseInt(addr[1], 10),
-                message: `🗑️ 「${sendName}」撤回了一条发给你的关系细节：\n"${removed.text}"`
-            }
-        }, ctx, msg, "");
-    }
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["撤回关系"] = cmd_withdraw_relation;
-
-let cmd_view_relationship = seal.ext.newCmdItemInfo();
-cmd_view_relationship.name = "查看关系线";
-cmd_view_relationship.help = "。查看关系线 [对方名]\n(不加名字：看列表；加名字：发送合并转发细节)";
-
-cmd_view_relationship.solve = (ctx, msg, cmdArgs) => {
-    const platform = msg.platform;
-    const sendName = RelationshipUtils.getRoleName(ctx, msg, platform);
-    if (!sendName) return seal.replyToSender(ctx, msg, "请先绑定角色");
-
-    const toName = cmdArgs.getArgN(1);
-    let relData = RelationshipUtils.getData("relationship_lines");
-    // 新结构：uid为key
-    const myUid = getUidByRoleName(platform, sendName);
-    const myRelsRaw = myUid ? (relData[platform]?.[myUid] || {}) : {};
-    // 将 uid key 转换为 roleName key 用于显示
-    const myRels = {};
-    for (const [uid, rel] of Object.entries(myRelsRaw)) {
-        const name = resolveUidToName(platform, uid);
-        myRels[name] = rel;
-    }
-
-    // --- 场景 A: 后面加了名字，执行合并转发查看 ---
-    if (toName) {
-        const rel = myRels[toName];
-        if (!rel) return seal.replyToSender(ctx, msg, `你与「${toName}」之间暂无关系记录。`);
-        
-        if (!rel.details || rel.details.length === 0) {
-            return seal.replyToSender(ctx, msg, `你与「${toName}」虽有关系线，但尚未添加任何细节。`);
-        }
-
-        // 执行合并转发
-        sendCombinedDetails(ctx, msg, toName, sendName,rel.details,true);
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    // --- 场景 B: 没加名字，显示关系线汇总列表 ---
-    let reply = `📚 「${sendName}」的关系线列表：\n`;
-    const maxRel = parseInt(ext.storageGet("max_relationships_per_user") || "20");
-    
-    // 统计主动发起的条数 (排除 SYSTEM 发起的强制线)
-    let activeCount = 0;
-    let listContent = "";
-
-    Object.entries(myRels).forEach(([name, data]) => {
-        const isSystem = data.initiator === "SYSTEM";
-        if (!isSystem && data.initiator === sendName) activeCount++;
-        
-        const statusIcon = data.confirmed ? "✅" : "⏳";
-        const typeTag = isSystem ? "【强制】" : (data.initiator === sendName ? "【发起】" : "【收到】");
-        const detailCount = data.details ? data.details.length : 0;
-        const totalChars = data.details ? data.details.reduce((sum, d) => sum + (d.text?.length || 0), 0) : 0;
-        const SPLIT_THRESHOLD = parseInt(ext.storageGet("forward_split_threshold") || "4000");
-        const charHint = totalChars > SPLIT_THRESHOLD ? `⚠️${totalChars}字·将拆分` : `${totalChars}字`;
-
-        listContent += `${statusIcon} ${typeTag} 与「${name}」(${detailCount}条 | ${charHint})\n`;
-    });
-
-    if (!listContent) {
-        reply += "（暂无任何记录）";
-    } else {
-        reply += listContent;
-        reply += `\n📊 额度占用：${activeCount}/${maxRel}`;
-        reply += `\n💡 输入「。查看关系线 名字」同步合并转发细节`;
-    }
-
-    seal.replyToSender(ctx, msg, reply);
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["查看关系线"] = cmd_view_relationship;
-
-// ========================
-// 📊 关系线统计（管理员专用）
-// ========================
-let cmd_rel_stats = seal.ext.newCmdItemInfo();
-cmd_rel_stats.name = "关系线统计";
-cmd_rel_stats.help = "。关系线统计 —— 查看所有角色的关系线数量（管理员专用）";
-cmd_rel_stats.solve = (ctx, msg) => {
-    if (!isUserAdmin(ctx, msg)) {
-        seal.replyToSender(ctx, msg, "⚠️ 此指令仅限管理员使用");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    const platform = msg.platform;
-    const relData = JSON.parse(ext.storageGet("relationship_lines") || "{}");
-    const platformData = relData[platform] || {};
-
-    // 收集所有角色及关系线数量（新结构：uid为key，显示时转为roleName）
-    const stats = [];
-    for (const [uid, links] of Object.entries(platformData)) {
-        const count = Object.keys(links).length;
-        if (count > 0) {
-            const role = resolveUidToName(platform, uid);
-            stats.push({ role, count });
-        }
-    }
-
-    // 按关系线数量降序排序
-    stats.sort((a, b) => b.count - a.count);
-
-    if (stats.length === 0) {
-        seal.replyToSender(ctx, msg, "📭 当前平台没有任何关系线记录");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    // 构造合并转发消息
-    const nodes = [];
-    const header = `📊 角色关系线统计（${platform} 平台）\n共 ${stats.length} 个角色拥有关系线\n— 以上 —`;
-    nodes.push({
-        type: "node",
-        data: {
-            name: "关系线统计员",
-            uin: "10001",
-            content: header
-        }
-    });
-
-    // 每 20 个角色打包成一个节点，避免单条消息过长
-    const chunkSize = 20;
-    for (let i = 0; i < stats.length; i += chunkSize) {
-        const chunk = stats.slice(i, i + chunkSize);
-        let content = "";
-        chunk.forEach((item, idx) => {
-            content += `${i + idx + 1}. ${item.role}：${item.count} 条关系线\n`;
-        });
-        nodes.push({
-            type: "node",
-            data: {
-                name: `角色列表 (${Math.floor(i / chunkSize) + 1})`,
-                uin: "2852199344",
-                content: content.trim()
-            }
-        });
-    }
-
-    // 发送合并转发
-    const targetGid = msg.groupId.replace(/[^\d]/g, "");
-    ws({
-        action: "send_group_forward_msg",
-        params: {
-            group_id: parseInt(targetGid, 10),
-            messages: nodes
-        }
-    }, ctx, msg, "");
-
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["关系线统计"] = cmd_rel_stats;
-
-// ========================
 // 🏢 官约与目击系统
 // ========================
 
@@ -5772,15 +5371,30 @@ cmd_create_official_appointment.solve = async (ctx, msg, cmdArgs) => {
   };
   ext.storageSet("group_expire_info", JSON.stringify(groupInfo));
 
+  // 改群名
+  const groupNameTag = validParticipants.length > 2 ? "多人" : validParticipants.join("、");
+  const finalGroupName = `官约 ${day} ${time} ${place} ${groupNameTag}`;
+  const targetMsg = seal.newMessage();
+  targetMsg.messageType = "group";
+  targetMsg.groupId = `${platform}-Group:${gid}`;
+  const targetCtx = seal.createTempCtx(ctx.endPoint, targetMsg);
+  setGroupName(targetCtx, targetMsg, gid, finalGroupName);
+
+  // 向戏群发公告
+  const officialGuide = `\n\n修改时间 ➜ 。修改时间线 ${day} 新时间\n不想参加 ➜ 。拒绝时间线 ${gid}`;
+  const officialAnnouncement = `🎖️ 官约已确认\n\n📅 ${day} ${time}\n📍 ${place}\n👥 参与者：${validParticipants.join("、")}\n\n群号：${gid}\n有效至 ${new Date(expireTime).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}${officialGuide}`;
+  seal.replyToSender(targetCtx, targetMsg, officialAnnouncement);
+
   // 向每位参与者的绑定群发送群号
   for (let name of validParticipants) {
     const nameUid = getUidByRoleName(platform, name);
     const boundGroupId = nameUid ? a_private_group[platform][nameUid]?.[1] : null;
+    if (!boundGroupId) continue;
     const newmsg = seal.newMessage();
     newmsg.messageType = "group";
     newmsg.groupId = `${platform}-Group:${boundGroupId}`;
     const newctx = seal.createTempCtx(ctx.endPoint, newmsg);
-    seal.replyToSender(newctx, newmsg, `📅 ${day} ${time}\n📍 ${place}\n💬 官约群号：${gid}`);
+    seal.replyToSender(newctx, newmsg, `🎖️ 官约通知\n\n📅 ${day} ${time}\n📍 ${place}\n👥 参与者：${validParticipants.join("、")}\n\n💬 官约群号：${gid}`);
   }
 
   // --- 核心：启动计时器 ---
@@ -6076,7 +5690,21 @@ cmd_execute_official.solve = async (ctx, msg, cmdArgs) => {
     groupInfo[gid] = { acceptTime, expireTime, participants, subtype: "官约", day, time, place };
     ext.storageSet("group_expire_info", JSON.stringify(groupInfo));
 
-    // 向每位参与者的绑定群发送群号
+    // 改群名
+    const groupNameTag = participants.length > 2 ? "多人" : participants.join("、");
+    const finalGroupName = `官约 ${day} ${time} ${place} ${groupNameTag}`;
+    const targetMsg = seal.newMessage();
+    targetMsg.messageType = "group";
+    targetMsg.groupId = `${platform}-Group:${gid}`;
+    const targetCtx = seal.createTempCtx(ctx.endPoint, targetMsg);
+    setGroupName(targetCtx, targetMsg, gid, finalGroupName);
+
+    // 向戏群发公告
+    const execGuide = `\n\n修改时间 ➜ 。修改时间线 ${day} 新时间\n不想参加 ➜ 。拒绝时间线 ${gid}`;
+    const execExpireStr = new Date(expireTime).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+    seal.replyToSender(targetCtx, targetMsg, `🎖️ 官约已确认\n\n📅 ${day} ${time}\n📍 ${place}\n👥 参与者：${participants.join("、")}\n\n群号：${gid}\n有效至 ${execExpireStr}${execGuide}`);
+
+    // 向每位参与者的绑定群发送通知
     for (let name of participants) {
       const uid = getUidByRoleName(platform, name);
       const boundGroupId = uid ? apg[platform]?.[uid]?.[1] : null;
@@ -6085,7 +5713,7 @@ cmd_execute_official.solve = async (ctx, msg, cmdArgs) => {
       newmsg.messageType = "group";
       newmsg.groupId = `${platform}-Group:${boundGroupId}`;
       const newctx = seal.createTempCtx(ctx.endPoint, newmsg);
-      seal.replyToSender(newctx, newmsg, `📅 ${day} ${time}\n📍 ${place}\n💬 官约群号：${gid}`);
+      seal.replyToSender(newctx, newmsg, `🎖️ 官约通知\n\n📅 ${day} ${time}\n📍 ${place}\n👥 参与者：${participants.join("、")}\n\n💬 官约群号：${gid}`);
     }
 
     // 启动计时器
@@ -7706,27 +7334,6 @@ ext.onNotCommandReceived = (ctx, msg) => {
         if (rest) return cmd_apply_join.solve(ctx, msg, makeFakeCmdArgs(rest.split(/\s+/)));
     }
 
-    // 4.6 关系线（无前缀，所有人可用）
-    if (raw.startsWith("拉线")) {
-        const rest = raw.slice(2).trim();
-        if (rest) return cmd_add_rel_detail.solve(ctx, msg, makeFakeCmdArgs(rest.split(/\s+/)));
-    }
-
-    if (raw.startsWith("确认关系线")) {
-        const rest = raw.slice(5).trim();
-        if (rest) return cmd_confirm_relationship.solve(ctx, msg, makeFakeCmdArgs([rest]));
-    }
-
-    if (raw.startsWith("撤回关系")) {
-        const rest = raw.slice(4).trim();
-        if (rest) return cmd_withdraw_relation.solve(ctx, msg, makeFakeCmdArgs(rest.split(/\s+/)));
-    }
-
-    if (raw.startsWith("查看关系线")) {
-        const rest = raw.slice(5).trim();
-        return cmd_view_relationship.solve(ctx, msg, makeFakeCmdArgs(rest ? [rest] : []));
-    }
-
     // 4.7 额外账号（无前缀，本人操作）
     if (raw.startsWith("额外账号")) {
         const rest = raw.slice(4).trim();
@@ -8046,7 +7653,6 @@ ext.onNotCommandReceived = (ctx, msg) => {
             return cmd_remind_timeouts.solve(ctx, msg, makeFakeCmdArgs(rest ? [rest] : []));
         }
         if (raw === "查看全员统计") return cmd_all_stats.solve(ctx, msg, makeFakeCmdArgs([]));
-        if (raw === "关系线统计") return cmd_rel_stats.solve(ctx, msg, makeFakeCmdArgs([]));
         if (raw.startsWith("设定关系线")) {
             const param = raw.slice(5).trim();
             if (!param) {
@@ -8502,408 +8108,6 @@ cmd_set_monitor_params.solve = (ctx, msg, cmdArgs) => {
 ext.cmdMap["设置监听参数"] = cmd_set_monitor_params;
 
 // ========================
-// 🗨️ 秘密论坛系统 (WS公告集成版)
-// ========================
-
-// --- 📋 系统配置 ---
-seal.ext.registerIntConfig(ext, "forumMaxLength", 500, "论坛内容最大长度", "发帖和回复的最大字符数");
-
-
-// --- 🔧 核心辅助函数 ---
-const getForumPosts = () => JSON.parse(ext.storageGet("forum_posts") || "[]");
-const saveForumPosts = (posts) => ext.storageSet("forum_posts", JSON.stringify(posts));
-/**
- * 💡 改造后的公告函数：
- * 放弃 WS 手动构造，直接调用你已有的 sendTextToGroup
- */
-function sendToAnnounceGroup(ctx, platform, text) {
-    const announceGid = ext.storageGet("song_group_id");
-
-    if (announceGid) {
-        sendTextToGroup(platform, announceGid, text);
-    } else {
-        console.log("[论坛系统] 尚未配置 song_group_id，跳过公告。");
-    }
-}
-
-function sendForumForward(ctx, msg, nodes) {
-    const gid = msg.groupId.replace(/[^\d]/g, "");
-    ws({
-        "action": "send_group_forward_msg",
-        "params": {
-            "group_id": parseInt(gid, 10),
-            "messages": nodes
-        }
-    }, ctx, msg, "");
-}
-
-function findPostById(postId) {
-    const posts = getForumPosts();
-    const index = posts.findIndex(p => p.id === postId && p.status === "active");
-    return index !== -1 ? { post: posts[index], index: index } : null;
-}
-
-
-// ========================
-// 📝 指令：发帖 (智能署名版)
-// ========================
-let cmd_post_forum = seal.ext.newCmdItemInfo();
-cmd_post_forum.name = "发帖";
-cmd_post_forum.help = ".发帖 (署名) [内容] —— 发表一篇新帖子";
-cmd_post_forum.solve = (ctx, msg, cmdArgs) => {
-    const senderRoleName = getRoleName(ctx, msg);
-    if (!senderRoleName) {
-        seal.replyToSender(ctx, msg, "✨ 你还不是本系统的会员，请先使用「创建新角色」来认领你的身份吧。");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    const roleName = RelationshipUtils.getRoleName(ctx, msg, msg.platform) || ctx.player.name;
-    if (roleName) {
-        // 新结构：通过 uid 查询功能权限
-        const forumPlatform = msg.platform;
-        const forumUid = getUidByRoleName(forumPlatform, roleName);
-        if (forumUid && !isUserFeatureEnabled(forumUid, "enable_forum")) {
-            seal.replyToSender(ctx, msg, "🚫 你的论坛功能已被关闭。");
-            return seal.ext.newCmdExecuteResult(true);
-        }
-    }
-    let author, content;
-
-    if (cmdArgs.args.length > 1) {
-        author = cmdArgs.getArgN(1);
-        content = msg.message.replace(/^[。.]?发帖\s+\S+\s*/, "").trim();
-    } else {
-        author = roleName;
-        content = cmdArgs.getArgN(1) || "";
-    }
-
-    if (!content) {
-        seal.replyToSender(ctx, msg, "💡 请输入帖子内容！\n格式：.发帖 内容 或 .发帖 署名 内容");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    const posts = getForumPosts();
-    const postId = Math.random().toString(36).substring(2, 7).toUpperCase();
-    
-    posts.push({
-        id: postId, author, content, timestamp: new Date().toLocaleString(),
-        replies: [], likes: [], dislikes: [], status: "active"
-    });
-
-    saveForumPosts(posts);
-    seal.replyToSender(ctx, msg, `✅ 帖子 [${postId}] 发布成功！`);
-    sendToAnnounceGroup(ctx, msg.platform, `📢 【论坛新帖】\n🆔 ${postId}\n👤 ${author}\n📜 ${content}`);
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["发帖"] = cmd_post_forum;
-
-// ========================
-// 💬 指令：回复帖子
-// ========================
-
-// 从内容中提取有效的 @角色名
-function extractMentions(content, platform) {
-    const priv = store.get("a_private_group")[platform] || {};
-    const validNames = new Set(Object.values(priv).map(v => v[0]));
-    const matches = [...(content.matchAll(/@(\S+)/g) || [])].map(m => m[1]);
-    return [...new Set(matches.filter(n => validNames.has(n)))];
-}
-
-// 向被 @ 的角色私人群发提醒
-function sendMentionNotice(platform, mentionedName, postId, authorName) {
-    const uid = getUidByRoleName(platform, mentionedName);
-    if (!uid || /^npc_/.test(uid)) return;
-    const pGid = store.get("a_private_group")[platform]?.[uid]?.[1];
-    if (!pGid || pGid === "0") return;
-    sendTextToGroup(platform, pGid, `📣 「${authorName}」在论坛帖子 [${postId}] 的回复中提到了你！`);
-}
-
-let cmd_reply_post = seal.ext.newCmdItemInfo();
-cmd_reply_post.name = "回复帖子";
-cmd_reply_post.help = ".回复帖子 [贴号] (引用N|署名) [内容] —— 回复现有帖子；引用N可引用第N楼（0=楼主）";
-cmd_reply_post.solve = (ctx, msg, cmdArgs) => {
-    const senderRoleName = getRoleName(ctx, msg);
-    if (!senderRoleName) {
-        seal.replyToSender(ctx, msg, "✨ 你还不是本系统的会员，请先使用「创建新角色」来认领你的身份吧。");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    const postId = cmdArgs.getArgN(1);
-    const roleName = RelationshipUtils.getRoleName(ctx, msg, msg.platform) || ctx.player.name;
-    let author, content, quoteFloor = null, quoteContent = null;
-
-    const arg2 = cmdArgs.getArgN(2);
-    const quoteMatch = arg2 && arg2.match(/^引用(\d+)$/);
-
-    if (quoteMatch) {
-        // 格式：回复帖子 帖ID 引用N 内容
-        quoteFloor = parseInt(quoteMatch[1]);
-        author = roleName;
-        content = msg.message.replace(/^[。.]?回复帖子\s+\S+\s+\S+\s*/, "").trim();
-    } else if (cmdArgs.args.length > 2) {
-        // 格式：回复帖子 帖ID 署名 内容
-        author = arg2;
-        content = msg.message.replace(/^[。.]?回复帖子\s+\S+\s+\S+\s*/, "").trim();
-    } else {
-        author = roleName;
-        content = msg.message.replace(/^[。.]?回复帖子\s+\S+\s*/, "").trim();
-    }
-
-    if (!postId || !content) {
-        seal.replyToSender(ctx, msg, "❌ 格式错误！\n格式：回复帖子 贴号 内容\n引用楼层：回复帖子 贴号 引用N 内容（引用0=楼主）");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    const result = findPostById(postId);
-    if (!result) {
-        seal.replyToSender(ctx, msg, `❌ 找不到帖子 [${postId}]`);
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    // 解析引用内容
-    if (quoteFloor !== null) {
-        const srcPost = result.post;
-        if (quoteFloor === 0) {
-            const c = srcPost.content;
-            quoteContent = c.length > 60 ? c.substring(0, 60) + "…" : c;
-        } else {
-            const qReply = srcPost.replies[quoteFloor - 1];
-            if (!qReply) {
-                seal.replyToSender(ctx, msg, `❌ 楼层 L${quoteFloor} 不存在（当前共 ${srcPost.replies.length} 楼）`);
-                return seal.ext.newCmdExecuteResult(true);
-            }
-            const c = qReply.content;
-            quoteContent = c.length > 60 ? c.substring(0, 60) + "…" : c;
-        }
-    }
-
-    const posts = getForumPosts();
-    const newReply = { author, content, timestamp: new Date().toLocaleString(), likes: [], dislikes: [] };
-    if (quoteFloor !== null) { newReply.quoteFloor = quoteFloor; newReply.quoteContent = quoteContent; }
-    posts[result.index].replies.push(newReply);
-    saveForumPosts(posts);
-
-    seal.replyToSender(ctx, msg, `✅ 已回复到帖子 [${postId}]`);
-    sendToAnnounceGroup(ctx, msg.platform, `💬 【论坛回复】\n📌 贴号：${postId}\n👤 ${author}\n📝 ${content}`);
-
-    // @提醒
-    const platform = msg.platform;
-    extractMentions(content, platform).forEach(name => {
-        if (name !== author) sendMentionNotice(platform, name, postId, author);
-    });
-
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["回复帖子"] = cmd_reply_post;
-
-// ========================
-// 👍 指令：点赞 / 点踩（主帖）
-// ========================
-function handleVote(ctx, msg, cmdArgs, isLike) {
-    const senderRoleName = getRoleName(ctx, msg);
-    if (!senderRoleName) {
-        seal.replyToSender(ctx, msg, "✨ 你还不是本系统的会员，请先使用「创建新角色」来认领你的身份吧。");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    const postId = cmdArgs.getArgN(1);
-    const author = cmdArgs.getArgN(2);
-    if (!postId || !author) return seal.ext.newCmdExecuteResult(true);
-
-    const result = findPostById(postId);
-    if (!result) return seal.ext.newCmdExecuteResult(true);
-
-    const posts = getForumPosts();
-    const post = posts[result.index];
-
-    const myList = isLike ? post.likes : post.dislikes;
-    const otherList = isLike ? post.dislikes : post.likes;
-
-    if (myList.includes(author)) {
-        seal.replyToSender(ctx, msg, "⚠️ 你已经表过态啦～");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    const idx = otherList.indexOf(author);
-    if (idx !== -1) otherList.splice(idx, 1);
-
-    myList.push(author);
-    saveForumPosts(posts);
-
-    const typeStr = isLike ? "点赞" : "点踩";
-    seal.replyToSender(ctx, msg, `✅ ${typeStr}成功！`);
-    sendToAnnounceGroup(ctx, msg.platform, `${isLike ? '❤️' : '👎'} 【论坛动态】\n👤 ${author} 对帖子 [${postId}] 进行了${typeStr}\n🔥 赞：${post.likes.length} | ❄️ 踩：${post.dislikes.length}`);
-    return seal.ext.newCmdExecuteResult(true);
-}
-
-let cmd_like = seal.ext.newCmdItemInfo();
-cmd_like.name = "点赞";
-cmd_like.solve = (ctx, msg, cmdArgs) => handleVote(ctx, msg, cmdArgs, true);
-ext.cmdMap["点赞"] = cmd_like;
-
-let cmd_dislike = seal.ext.newCmdItemInfo();
-cmd_dislike.name = "点踩";
-cmd_dislike.solve = (ctx, msg, cmdArgs) => handleVote(ctx, msg, cmdArgs, false);
-ext.cmdMap["点踩"] = cmd_dislike;
-
-// ========================
-// 👍 指令：点赞楼层 / 点踩楼层
-// ========================
-function handleFloorVote(ctx, msg, cmdArgs, isLike) {
-    const senderRoleName = getRoleName(ctx, msg);
-    if (!senderRoleName) {
-        seal.replyToSender(ctx, msg, "✨ 你还不是本系统的会员，请先使用「创建新角色」来认领你的身份吧。");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    const postId = cmdArgs.getArgN(1);
-    const floorStr = cmdArgs.getArgN(2);
-    const author = cmdArgs.getArgN(3) || senderRoleName;
-    const typeStr = isLike ? "点赞" : "点踩";
-
-    if (!postId || !floorStr || !/^\d+$/.test(floorStr)) {
-        seal.replyToSender(ctx, msg, `格式：${typeStr}楼层 帖ID 楼层号 署名`);
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    const floorNum = parseInt(floorStr);
-    const result = findPostById(postId);
-    if (!result) {
-        seal.replyToSender(ctx, msg, `❌ 找不到帖子 [${postId}]`);
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    const posts = getForumPosts();
-    const reply = posts[result.index].replies[floorNum - 1];
-    if (!reply) {
-        seal.replyToSender(ctx, msg, `❌ 楼层 L${floorNum} 不存在`);
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    if (!reply.likes) reply.likes = [];
-    if (!reply.dislikes) reply.dislikes = [];
-
-    const myList = isLike ? reply.likes : reply.dislikes;
-    const otherList = isLike ? reply.dislikes : reply.likes;
-
-    if (myList.includes(author)) {
-        seal.replyToSender(ctx, msg, "⚠️ 你已经表过态啦～");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    const idx = otherList.indexOf(author);
-    if (idx !== -1) otherList.splice(idx, 1);
-    myList.push(author);
-    saveForumPosts(posts);
-
-    seal.replyToSender(ctx, msg, `✅ 对 L${floorNum} ${typeStr}成功！👍 ${reply.likes.length} | 👎 ${reply.dislikes.length}`);
-    return seal.ext.newCmdExecuteResult(true);
-}
-
-let cmd_like_floor = seal.ext.newCmdItemInfo();
-cmd_like_floor.name = "点赞楼层";
-cmd_like_floor.solve = (ctx, msg, cmdArgs) => handleFloorVote(ctx, msg, cmdArgs, true);
-ext.cmdMap["点赞楼层"] = cmd_like_floor;
-
-let cmd_dislike_floor = seal.ext.newCmdItemInfo();
-cmd_dislike_floor.name = "点踩楼层";
-cmd_dislike_floor.solve = (ctx, msg, cmdArgs) => handleFloorVote(ctx, msg, cmdArgs, false);
-ext.cmdMap["点踩楼层"] = cmd_dislike_floor;
-
-// ========================
-// 📋 指令：查看帖子
-// ========================
-let cmd_view_posts = seal.ext.newCmdItemInfo();
-cmd_view_posts.name = "查看帖子";
-cmd_view_posts.solve = (ctx, msg, cmdArgs) => {
-    const senderRoleName = getRoleName(ctx, msg);
-    if (!senderRoleName) {
-        seal.replyToSender(ctx, msg, "✨ 你还不是本系统的会员，请先使用「创建新角色」来认领你的身份吧。");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    const postId = cmdArgs.getArgN(1);
-    let allPosts = getForumPosts().filter(p => p.status === "active");
-
-    if (allPosts.length === 0) {
-        seal.replyToSender(ctx, msg, "📭 论坛空空如也");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    const nodes = [];
-    if (postId) {
-        const post = allPosts.find(p => p.id === postId);
-        if (!post) return seal.ext.newCmdExecuteResult(true);
-
-        nodes.push({
-            type: "node", data: {
-                name: `${post.author} (楼主)`, uin: "10001",
-                content: `📜 【正文】\n\n${post.content}\n\n${"━".repeat(12)}\n👍 ${post.likes.length} | 👎 ${post.dislikes.length}`
-            }
-        });
-
-        post.replies.forEach((r, i) => {
-            let replyContent = "";
-            if (r.quoteFloor !== undefined && r.quoteFloor !== null) {
-                const floorLabel = r.quoteFloor === 0 ? "楼主" : `L${r.quoteFloor}`;
-                replyContent += `「引用 ${floorLabel}」\n${r.quoteContent}\n${"─".repeat(14)}\n`;
-            }
-            replyContent += r.content;
-            const rl = (r.likes || []).length, rd = (r.dislikes || []).length;
-            if (rl > 0 || rd > 0) replyContent += `\n👍 ${rl} | 👎 ${rd}`;
-            nodes.push({ type: "node", data: { name: `${r.author} (L${i + 1})`, uin: "2852199344", content: replyContent } });
-        });
-        sendForumForward(ctx, msg, nodes);
-    } else {
-        allPosts.sort((a, b) => (b.replies.length * 2 + b.likes.length) - (a.replies.length * 2 + a.likes.length));
-
-        nodes.push({ type: "node", data: { name: "论坛热榜", uin: "2852199344", content: "🔥 当前最受关注的 10 篇帖子" } });
-
-        allPosts.slice(0, 10).forEach(p => {
-            nodes.push({
-                type: "node", data: {
-                    name: `ID: ${p.id} | ${p.author}`, uin: "10001",
-                    content: `📜 ${p.content.substring(0, 30)}...\n💬 ${p.replies.length} | 👍 ${p.likes.length}`
-                }
-            });
-        });
-        sendForumForward(ctx, msg, nodes);
-    }
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["查看帖子"] = cmd_view_posts;
-
-// ========================
-// 🗑️ 管理：删除帖子
-// ========================
-let cmd_delete_post = seal.ext.newCmdItemInfo();
-cmd_delete_post.name = "删除帖子";
-cmd_delete_post.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) {
-        seal.replyToSender(ctx, msg, "⚠️ 该权限仅限管理员使用。");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    const postId = cmdArgs.getArgN(1);
-    const result = findPostById(postId);
-
-    if (result) {
-        const posts = getForumPosts();
-        posts[result.index].status = "deleted";
-        saveForumPosts(posts);
-
-        seal.replyToSender(ctx, msg, `🗑️ 帖子 [${postId}] 已成功下架。`);
-        
-        // 同步通知公告群 (WS)
-        sendToAnnounceGroup(ctx, msg.platform, `🛡️ 【论坛管理】\n管理员删除了帖子：[${postId}]\n理由：违反社区规范`);
-    } else {
-        seal.replyToSender(ctx, msg, "❌ 找不到该帖子或已被删除。");
-    }
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["删除帖子"] = cmd_delete_post;
-
-// ========================
 // 💌 心动信系统
 // ========================
 
@@ -8922,7 +8126,6 @@ cmd_send_lovemail.solve = (ctx, msg, cmdArgs) => {
     const uid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
     const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
 
-    // 身份核验
     const senderRoleName = getRoleName(ctx, msg);
     if (!senderRoleName) {
         seal.replyToSender(ctx, msg, "✨ 远方的旅人，寄信前请先使用「创建新角色」来认领你的身份吧。");
@@ -8930,8 +8133,6 @@ cmd_send_lovemail.solve = (ctx, msg, cmdArgs) => {
     }
 
     const raw = msg.message.trim();
-
-    // 解析标签
     const getTag = (tag) => {
         const regex = new RegExp(`【${tag}】([\\s\\S]*?)(?=【|$)`, "i");
         const match = raw.match(regex);
@@ -8943,8 +8144,7 @@ cmd_send_lovemail.solve = (ctx, msg, cmdArgs) => {
     let content = getTag("内容") || "";
 
     if (!receiver) {
-        let helpMsg = `⚠️ 格式错误！请指定发送对象。\n\n标准格式：\n发送心动信\n【发送对象】角色名\n【内容】想说的话\n【署名】自定义昵称（选填）\n`;
-        seal.replyToSender(ctx, msg, helpMsg);
+        seal.replyToSender(ctx, msg, `⚠️ 格式错误！请指定发送对象。\n\n标准格式：\n发送心动信\n【发送对象】角色名\n【内容】想说的话\n【署名】自定义昵称（选填）`);
         return seal.ext.newCmdExecuteResult(true);
     }
 
@@ -8954,21 +8154,17 @@ cmd_send_lovemail.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    // ========== 按游戏天数进行限额检查 ==========
-    // 获取当前游戏天数（例如 "D0", "D1"）
     let globalDay = ext.storageGet("global_days");
     if (!globalDay) {
         seal.replyToSender(ctx, msg, "⚠️ 当前未设置游戏天数，请联系管理员设置「。设置天数 D0」");
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    // 读取上限配置
     const dayLimits = JSON.parse(ext.storageGet("lovemail_day_limits") || "{}");
     const defaultLimit = parseInt(ext.storageGet("lovemail_default_limit") || "3");
     let maxPerDay = dayLimits[globalDay] !== undefined ? dayLimits[globalDay] : defaultLimit;
-    if (maxPerDay < 1) maxPerDay = 1; // 安全保护
+    if (maxPerDay < 1) maxPerDay = 1;
 
-    // 读取该用户在当前游戏天数内已发送的数量
     let dayCounts = JSON.parse(ext.storageGet("lovemail_day_counts") || "{}");
     if (!dayCounts[uid]) dayCounts[uid] = {};
     const currentCount = dayCounts[uid][globalDay] || 0;
@@ -8978,24 +8174,14 @@ cmd_send_lovemail.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    // ========== 保存信件 ==========
     const mailKey = "lovemail_pool";
     let records = JSON.parse(ext.storageGet(mailKey) || "[]");
-    records.push({
-        uid,
-        receiver,
-        content,
-        signature,
-        gameDay: globalDay,          // 记录所属游戏天数（便于后续统计）
-        timestamp: Date.now()
-    });
+    records.push({ uid, receiver, content, signature, gameDay: globalDay, timestamp: Date.now() });
     ext.storageSet(mailKey, JSON.stringify(records));
 
-    // 更新该用户在当前游戏天数内的计数
     dayCounts[uid][globalDay] = currentCount + 1;
     ext.storageSet("lovemail_day_counts", JSON.stringify(dayCounts));
 
-    // 回复用户
     let reply = `💌 心动信已成功投递至「${receiver}」的信箱！\n`;
     reply += `📝 署名：${signature}\n`;
     reply += `📅 游戏天数：${globalDay}（今日剩余次数：${maxPerDay - (currentCount + 1)}/${maxPerDay}）\n`;
@@ -9007,24 +8193,18 @@ ext.cmdMap["发送心动信"] = cmd_send_lovemail;
 
 function generateMailReport(records, title = "📮 心动信派送清单") {
     if (!records?.length) return [];
-
-    // 分组（一行搞定）
     const mailBox = records.reduce((map, r) => ((map[r.receiver] ??= []).push(r), map), {});
-
     const nodes = [{
         type: "node",
         data: {
-            name: "心动邮局·系统日志",
-            uin: "2852199344",
+            name: "心动邮局·系统日志", uin: "2852199344",
             content: `${title}\n🕐 ${new Date().toLocaleString()}\n📬 待派送信件总数：${records.length} 封\n— 以上 —`
         }
     }];
-
     const MAX = 1200;
     for (const [receiver, mails] of Object.entries(mailBox)) {
         let text = `👤 收件人：${receiver}\n📨 信件数量：${mails.length} 封\n┈┈┈┈┈┈┈┈┈┈\n`;
         let part = 1;
-
         mails.forEach((mail, idx) => {
             const letter = `【信件 ${idx + 1}】\n📝 署名：${mail.signature}\n📜 内容：${mail.content}\n${idx < mails.length - 1 ? '┈┈┈┈┈┈┈┈┈┈\n' : ''}`;
             if ((text + letter).length > MAX) {
@@ -9033,7 +8213,6 @@ function generateMailReport(records, title = "📮 心动信派送清单") {
                 part++;
             } else text += letter;
         });
-
         nodes.push({ type: "node", data: { name: part === 1 ? `致 ${receiver} 的信件` : `致 ${receiver} 的信件 (终卷)`, uin: "10001", content: text.trim() } });
     }
     return nodes;
@@ -9043,7 +8222,6 @@ let cmd_stat_lovemail = seal.ext.newCmdItemInfo();
 cmd_stat_lovemail.name = "信箱统计";
 cmd_stat_lovemail.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "✨ 抱歉，这里只有邮局守护者才能进入哦。");
-
     const records = JSON.parse(ext.storageGet("lovemail_pool") || "[]");
     if (!records.length) return seal.replyToSender(ctx, msg, "🕊️ 此时的邮局静悄悄的，还没有待投递的心意。");
 
@@ -9061,7 +8239,6 @@ cmd_stat_lovemail.solve = (ctx, msg, cmdArgs) => {
 };
 ext.cmdMap["信箱统计"] = cmd_stat_lovemail;
 
-// === 玩家功能：查看我的信件 ===
 let cmd_view_mylovemails = seal.ext.newCmdItemInfo();
 cmd_view_mylovemails.name = "查看信箱";
 cmd_view_mylovemails.solve = (ctx, msg, cmdArgs) => {
@@ -9069,9 +8246,7 @@ cmd_view_mylovemails.solve = (ctx, msg, cmdArgs) => {
     const uid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
     const records = JSON.parse(ext.storageGet("lovemail_pool") || "[]");
     const my = records.filter(r => r.uid === uid);
-
     if (!my.length) return seal.replyToSender(ctx, msg, "📭 你目前没有待投递的信件。");
-    
     let res = "📄 你待投递的信件如下：\n";
     my.forEach((r, i) => res += `\n#${i + 1} | 接收者: ${r.receiver}\n内容: ${r.content}\n`);
     seal.replyToSender(ctx, msg, res);
@@ -9079,7 +8254,6 @@ cmd_view_mylovemails.solve = (ctx, msg, cmdArgs) => {
 };
 ext.cmdMap["查看信箱"] = cmd_view_mylovemails;
 
-// === 玩家功能：撤回信件 ===
 let cmd_revoke_lovemail = seal.ext.newCmdItemInfo();
 cmd_revoke_lovemail.name = "撤回心动信";
 cmd_revoke_lovemail.solve = (ctx, msg, cmdArgs) => {
@@ -9088,166 +8262,70 @@ cmd_revoke_lovemail.solve = (ctx, msg, cmdArgs) => {
         seal.replyToSender(ctx, msg, "✨ 你还不是本系统的会员，请先使用「创建新角色」来认领你的身份吧。");
         return seal.ext.newCmdExecuteResult(true);
     }
-    
     const platform = msg.platform;
     const uid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
     const idx = parseInt(cmdArgs.getArgN(1)) - 1;
     let records = JSON.parse(ext.storageGet("lovemail_pool") || "[]");
-
     const my = records.filter(r => r.uid === uid);
     if (isNaN(idx) || idx < 0 || idx >= my.length) {
         return seal.replyToSender(ctx, msg, "⚠️ 请输入正确的序号，例如：。撤回心动信 1");
     }
-
-    const targetMail = my[idx];                     // 获取完整信件对象
+    const targetMail = my[idx];
     const targetTimestamp = targetMail.timestamp;
     const finalRecords = records.filter(r => r.timestamp !== targetTimestamp);
-    
-    // ========== 恢复该信件所属游戏天数的发送次数 ==========
+
     let dayCounts = JSON.parse(ext.storageGet("lovemail_day_counts") || "{}");
-    const gameDay = targetMail.gameDay;             // 信件发送时的游戏天数
+    const gameDay = targetMail.gameDay;
     if (dayCounts[uid] && dayCounts[uid][gameDay] && dayCounts[uid][gameDay] > 0) {
         dayCounts[uid][gameDay]--;
-        if (dayCounts[uid][gameDay] === 0) {
-            delete dayCounts[uid][gameDay];
-        }
-        if (Object.keys(dayCounts[uid]).length === 0) {
-            delete dayCounts[uid];
-        }
+        if (dayCounts[uid][gameDay] === 0) delete dayCounts[uid][gameDay];
+        if (Object.keys(dayCounts[uid]).length === 0) delete dayCounts[uid];
         ext.storageSet("lovemail_day_counts", JSON.stringify(dayCounts));
     }
-    
     ext.storageSet("lovemail_pool", JSON.stringify(finalRecords));
     seal.replyToSender(ctx, msg, `✅ 已成功撤回发送给「${targetMail.receiver}」的信件。\n📪 已恢复你在「${gameDay}」的 1 次发送机会。`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["撤回心动信"] = cmd_revoke_lovemail;
 
+let loveMailTimer = null;
 
-let loveMailTimer = null; // 全局定时器句柄
-
-/**
- * 核心工具函数：安全地"借"一个 EndPoint
- * 能够有效避免 seal.createTempCtx(undefined, ...) 导致的 nil pointer 崩溃
- */
 function getSafeEndPoint(platform = "QQ") {
     const eps = seal.getEndPoints();
     if (!eps || eps.length === 0) return null;
-
-    // 1. 优先寻找对应平台且在线的 (state 1 为在线)
     let target = eps.find(e => e.platform === platform && e.state === 1);
-    
-    // 2. 找不到就找任何一个在线的
     if (!target) target = eps.find(e => e.state === 1);
-    
-    // 3. 还找不到就拿第一个 (最后的保底)
     if (!target) target = eps[0];
-
     return target;
 }
 
-function registerLoveMailSystem() {
-    
-    if (loveMailTimer) {
-        clearInterval(loveMailTimer);
-        loveMailTimer = null;
+const sendTextToGroup = (platform, gid, text) => {
+    try {
+        const ep = getSafeEndPoint(platform);
+        if (!ep) return;
+        const target = `${platform}-Group:${gid.toString().replace(/\D/g, "")}`;
+        const m = seal.newMessage();
+        m.messageType = "group";
+        m.groupId = target;
+        seal.replyToSender(seal.createTempCtx(ep, m), m, text);
+    } catch (e) {
+        console.error(`[LoveMail] sendTextToGroup 异常:`, e);
     }
+};
 
-    let lastTriggerMinute = -1;
-
-    loveMailTimer = setInterval(() => {
-        // --- 1. 检查开关 ---
-        if (!isLoveMailEnabled()) return;
-
-        const now = new Date();
-        const currentHour = now.getHours();
-        const currentMinute = now.getMinutes();
-        const currentTimeTotal = currentHour * 60 + currentMinute;
-
-        // 避免同一分钟重复触发
-        if (currentMinute === lastTriggerMinute) return;
-
-        // --- 2. 读取并解析派送时间 (增加容错处理) ---
-        let deliveryTimeRaw = ext.storageGet("lovemail_delivery_time") || "\"22:00\"";
-        let deliveryTime = "22:00";
-        try {
-            // 彻底清洗可能存在的冗余引号
-            deliveryTime = JSON.parse(deliveryTimeRaw).replace(/\"/g, "");
-        } catch (e) {
-            deliveryTime = "22:00";
-        }
-
-        const timeParts = deliveryTime.split(':').map(Number);
-        if (timeParts.length !== 2) return;
-        const [targetH, targetM] = timeParts;
-        const targetTimeTotal = targetH * 60 + targetM;
-
-        const getOffsetTotal = (offset) => {
-            let t = targetTimeTotal + offset;
-            if (t < 0) t += 1440;
-            return t % 1440;
-        };
-
-        // --- 3. 逻辑检查点 (Log监测) ---
-
-        // A. 正式派送时间
-        if (currentTimeTotal === targetTimeTotal) {
-            console.log(`[心动信箱] 【命中目标】当前时间 ${currentHour}:${currentMinute}，开始执行自动派送...`);
-            const backgroundGroupId = JSON.parse(ext.storageGet("background_group_id") || "null");
-            
-            try {
-                const result = performLoveMailDelivery(null, { platform: "QQ" }, backgroundGroupId); 
-                console.log(`[心动信箱] 自动派送任务结束，反馈结果: ${JSON.stringify(result)}`);
-            } catch (err) {
-                console.error(`[心动信箱] 自动派送执行期间发生异常: ${err.message}`);
-            }
-            lastTriggerMinute = currentMinute;
-        }
-        // B. 派送预告 (提前5分钟)
-        else if (currentTimeTotal === getOffsetTotal(-5)) {
-            console.log(`[心动信箱] 触发5分钟预告推送...`);
-            const announceGid = JSON.parse(ext.storageGet("adminAnnounceGroupId") || "null");
-            if (announceGid) {
-                sendTextToGroup("QQ", announceGid, `📬 邮差正在整理信箱，心动信件即将在 5 分钟后开始派送，请注意查收。`);
-            }
-            lastTriggerMinute = currentMinute;
-        } 
-        // C. 截稿提醒 (提前10分钟)
-        else if (currentTimeTotal === getOffsetTotal(-10)) {
-            console.log(`[心动信箱] 触发10分钟截稿提醒...`);
-            const platform = "QQ";
-            const groups = JSON.parse(ext.storageGet("a_private_group") || "{}")[platform] || {};
-            const targetGids = [...new Set(Object.values(groups).map(v => v[1]))];
-            targetGids.forEach(gid => {
-                sendTextToGroup(platform, gid, `⌛ 投递截止预告：\n心动信箱将于 10 分钟后截止收稿并开始派送，还没投递的小伙伴要抓紧咯～`);
-            });
-            lastTriggerMinute = currentMinute;
-        }
-
-    }, 30000); // 30秒轮询一次
-
-    console.log(`[心动信箱] 轮询系统已启动。当前系统时间: ${new Date().getHours()}:${new Date().getMinutes()}`);
-    console.log(`[心动信箱] 设定派送时间: ${ext.storageGet("lovemail_delivery_time") || "未设定(默认22:00)"}`);
-}
+const isLoveMailEnabled = () => JSON.parse(ext.storageGet("global_feature_toggle") || "{}").enable_lovemail !== false;
 
 function performLoveMailDelivery(ctx, msg, backgroundGroupId) {
     const platform = msg?.platform ?? "QQ";
     const mailKey = "lovemail_pool";
-    
     let records = [];
     try {
         records = JSON.parse(ext.storageGet(mailKey) || "[]");
-    } catch(e) {
+    } catch (e) {
         console.error(`[心动信箱] 无法读取信件池: ${e.message}`);
     }
+    if (!records.length) return { success: 0, fail: 0, empty: true, status: "信池为空" };
 
-    console.log(`[心动信箱] 进入派送函数，信件池现有封数: ${records.length}`);
-
-    if (!records.length) {
-        return { success: 0, fail: 0, empty: true, status: "信池为空" };
-    }
-
-    // 获取新鲜的 EndPoint，确保上下文不为空
     const ep = (ctx && ctx.endPoint) ? ctx.endPoint : getSafeEndPoint(platform);
     if (!ep) {
         console.error("[心动信箱] 致命错误：无可用的 EndPoint，派送中止");
@@ -9263,12 +8341,9 @@ function performLoveMailDelivery(ctx, msg, backgroundGroupId) {
         ws({ action: "send_group_forward_msg", params: { group_id: parseInt(raw, 10), messages: nodes } }, c, m, "");
     };
 
-    // 1. 发送后台清单 (如果配置了)
     if (backgroundGroupId && records.length) {
-        if (typeof generateMailReport === 'function') {
-            const reportNodes = generateMailReport(records, "📋 心动信自动派送清单");
-            if (reportNodes.length) sendForward(backgroundGroupId, reportNodes);
-        }
+        const reportNodes = generateMailReport(records, "📋 心动信自动派送清单");
+        if (reportNodes.length) sendForward(backgroundGroupId, reportNodes);
     }
 
     const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
@@ -9281,14 +8356,12 @@ function performLoveMailDelivery(ctx, msg, backgroundGroupId) {
     let success = 0, fail = 0, publicCount = 0;
     const publicNodes = [];
 
-    // 2. 遍历信箱派送（新结构：通过 roleName 反查 uid，再取 gid）
     for (const [receiver, mails] of Object.entries(mailBox)) {
         const recvUid = getUidByRoleName(platform, receiver);
         const addr = recvUid ? a_private_group[platform]?.[recvUid] : null;
         if (addr) {
             const targetGidRaw = (addr[1] || "").replace(/\D/g, "");
             const personalNodes = [{ type: "node", data: { name: "心动邮局·派送员", uin: "2852199344", content: `💌 亲爱的 ${receiver}，你有一份包含 ${mails.length} 封信件的包裹待启封。` } }];
-            
             mails.forEach((mail, idx) => {
                 personalNodes.push({ type: "node", data: { name: `第 ${idx + 1} 封信件`, uin: "10001", content: `「 ${mail.content} 」\n┈┈┈┈┈┈┈┈┈┈┈┈\n📝 署名：${mail.signature}` } });
                 success++;
@@ -9305,36 +8378,61 @@ function performLoveMailDelivery(ctx, msg, backgroundGroupId) {
         }
     }
 
-    // 3. 公共曝光
     if (publicNodes.length && announceGroupId) {
         sendForward(announceGroupId, [{ type: "node", data: { name: "心动天使", uin: "2852199344", content: `✨ 哎呀，有 ${publicNodes.length} 份心意在飞往信箱的途中，不小心飘落到了公告区...` } }, ...publicNodes]);
     }
-    
-    // 4. 清理并反馈
+
     ext.storageSet(mailKey, "[]");
     if (success > 0) recordMeetingAndAnnounce("心动信", platform, ctx, ep);
     return { success, fail, publicCount, empty: false, status: "派送完成" };
 }
 
-// 辅助函数：发文本到群
-const sendTextToGroup = (platform, gid, text) => {
-    try {
-        const ep = getSafeEndPoint(platform);
-        if (!ep) return;
-        const target = `${platform}-Group:${gid.toString().replace(/\D/g, "")}`;
-        const m = seal.newMessage();
-        m.messageType = "group";
-        m.groupId = target;
-        seal.replyToSender(seal.createTempCtx(ep, m), m, text);
-    } catch (e) {
-        console.error(`[LoveMail] sendTextToGroup 异常:`, e);
+function registerLoveMailSystem() {
+    if (loveMailTimer) {
+        clearInterval(loveMailTimer);
+        loveMailTimer = null;
     }
-};
+    let lastTriggerMinute = -1;
+    loveMailTimer = setInterval(() => {
+        if (!isLoveMailEnabled()) return;
+        const now = new Date();
+        const currentHour = now.getHours();
+        const currentMinute = now.getMinutes();
+        const currentTimeTotal = currentHour * 60 + currentMinute;
+        if (currentMinute === lastTriggerMinute) return;
 
-// 功能开关检查
-const isLoveMailEnabled = () => JSON.parse(ext.storageGet("global_feature_toggle") || "{}").enable_lovemail !== false;
+        let deliveryTimeRaw = ext.storageGet("lovemail_delivery_time") || "\"22:00\"";
+        let deliveryTime = "22:00";
+        try { deliveryTime = JSON.parse(deliveryTimeRaw).replace(/\"/g, ""); } catch (e) { deliveryTime = "22:00"; }
 
-// 统一送心动信指令
+        const timeParts = deliveryTime.split(':').map(Number);
+        if (timeParts.length !== 2) return;
+        const [targetH, targetM] = timeParts;
+        const targetTimeTotal = targetH * 60 + targetM;
+        const getOffsetTotal = (offset) => { let t = targetTimeTotal + offset; if (t < 0) t += 1440; return t % 1440; };
+
+        if (currentTimeTotal === targetTimeTotal) {
+            const backgroundGroupId = JSON.parse(ext.storageGet("background_group_id") || "null");
+            try {
+                performLoveMailDelivery(null, { platform: "QQ" }, backgroundGroupId);
+            } catch (err) {
+                console.error(`[心动信箱] 自动派送异常: ${err.message}`);
+            }
+            lastTriggerMinute = currentMinute;
+        } else if (currentTimeTotal === getOffsetTotal(-5)) {
+            const announceGid = JSON.parse(ext.storageGet("adminAnnounceGroupId") || "null");
+            if (announceGid) sendTextToGroup("QQ", announceGid, `📬 邮差正在整理信箱，心动信件即将在 5 分钟后开始派送，请注意查收。`);
+            lastTriggerMinute = currentMinute;
+        } else if (currentTimeTotal === getOffsetTotal(-10)) {
+            const platform = "QQ";
+            const groups = JSON.parse(ext.storageGet("a_private_group") || "{}")[platform] || {};
+            const targetGids = [...new Set(Object.values(groups).map(v => v[1]))];
+            targetGids.forEach(gid => sendTextToGroup(platform, gid, `⌛ 投递截止预告：\n心动信箱将于 10 分钟后截止收稿并开始派送，还没投递的小伙伴要抓紧咯～`));
+            lastTriggerMinute = currentMinute;
+        }
+    }, 30000);
+}
+
 let cmd_deliver_lovemail = seal.ext.newCmdItemInfo();
 cmd_deliver_lovemail.name = "统一送心动信";
 cmd_deliver_lovemail.solve = (ctx, msg, cmdArgs) => {
