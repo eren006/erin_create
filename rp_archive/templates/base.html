@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}长日存档{% endblock %}</title>
+<style>
+:root {
+  --bg: #0f0f13;
+  --surface: #1a1a22;
+  --surface2: #22222e;
+  --border: #2e2e3e;
+  --accent: #8b7cf6;
+  --accent2: #c084fc;
+  --text: #e2e2ec;
+  --muted: #7878a0;
+  --red: #f87171;
+  --green: #86efac;
+  --gold: #fcd34d;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 14px; line-height: 1.7; min-height: 100vh;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent2); }
+
+.topbar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  display: flex; align-items: center; gap: 16px;
+  height: 52px; position: sticky; top: 0; z-index: 100;
+}
+.topbar .logo { font-size: 16px; font-weight: 600; color: var(--accent2); white-space: nowrap; }
+.topbar .nav { display: flex; gap: 12px; flex: 1; }
+.topbar .nav a { color: var(--muted); font-size: 13px; padding: 4px 8px; border-radius: 6px; }
+.topbar .nav a:hover { color: var(--text); background: var(--surface2); }
+.search-form { display: flex; gap: 8px; }
+.search-form input {
+  background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text); border-radius: 8px; padding: 5px 12px; font-size: 13px; width: 180px;
+}
+.search-form input:focus { outline: none; border-color: var(--accent); }
+.search-form button {
+  background: var(--accent); color: #fff; border: none;
+  border-radius: 8px; padding: 5px 14px; cursor: pointer; font-size: 13px;
+}
+.search-form button:hover { background: var(--accent2); }
+.logout { color: var(--muted); font-size: 12px; margin-left: auto; white-space: nowrap; }
+
+.page { max-width: 1100px; margin: 0 auto; padding: 28px 20px; }
+.page-title {
+  font-size: 20px; font-weight: 600; color: var(--accent2);
+  margin-bottom: 20px; padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 18px 20px; margin-bottom: 14px;
+  transition: border-color .2s;
+}
+.card:hover { border-color: var(--accent); }
+.card-title { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+.card-meta { color: var(--muted); font-size: 12px; display: flex; gap: 14px; flex-wrap: wrap; }
+.card-meta span { display: flex; align-items: center; gap: 4px; }
+
+.tag {
+  display: inline-block; padding: 2px 9px; border-radius: 20px;
+  font-size: 11px; font-weight: 600;
+}
+.tag-private  { background: #2d1f4e; color: #c084fc; }
+.tag-call     { background: #1a2d3a; color: #60c8ff; }
+.tag-official { background: #1f2d1a; color: #86efac; }
+.tag-forced   { background: #3a1a1a; color: #f87171; }
+.tag-normal   { background: #1e2a1e; color: #86efac; }
+
+.pill {
+  display: inline-block; background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 20px; padding: 2px 10px; font-size: 12px; color: var(--muted);
+  margin: 2px;
+}
+
+.empty { color: var(--muted); text-align: center; padding: 48px 0; font-size: 14px; }
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media(max-width:700px) { .grid-2 { grid-template-columns: 1fr; } }
+</style>
+{% block head %}{% endblock %}
+</head>
+<body>
+<div class="topbar">
+  <span class="logo">📖 长日存档</span>
+  <nav class="nav">
+    <a href="{{ url_for('home') }}">场次</a>
+    <a href="{{ url_for('interactions_index') }}">互动</a>
+    <a href="{{ url_for('admin') }}">后台</a>
+  </nav>
+  <form class="search-form" action="{{ url_for('search') }}" method="get">
+    <input name="q" placeholder="搜索角色名…" autocomplete="off">
+    <button type="submit">搜索</button>
+  </form>
+  <a class="logout" href="{{ url_for('logout') }}">退出</a>
+</div>
+{% block body %}{% endblock %}
+</body>
+</html>

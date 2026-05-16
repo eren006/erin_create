@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}长日存档 · {{ role_name }}{% endblock %}
+
+{% block body %}
+<div class="page">
+  <div style="margin-bottom:14px;">
+    <a href="{{ url_for('home') }}" style="color:var(--muted);font-size:13px;">← 返回主页</a>
+  </div>
+  <div class="page-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+    <div>
+      <span style="color:var(--muted);font-weight:400;font-size:16px;">角色：</span>{{ role_name }}
+      <span style="color:var(--muted);font-size:14px;font-weight:400;margin-left:12px;">共 {{ sessions|length }} 场</span>
+    </div>
+    <a href="{{ url_for('character_interactions', role_name=role_name) }}"
+       style="font-size:13px;background:var(--surface2);border:1px solid var(--border);
+              border-radius:8px;padding:5px 14px;color:var(--muted);">
+      💌 心动信 / 短信 / 礼物 →
+    </a>
+  </div>
+
+  {% if sessions %}
+  {% for s in sessions %}
+  {% set tag_class = 'tag-forced' if s.forced else ('tag-call' if s.subtype=='电话' else ('tag-official' if s.subtype=='官约' else 'tag-private')) %}
+  <a href="{{ url_for('session_view', session_id=s.id) }}" style="display:block;text-decoration:none;">
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+        <span class="tag {{ tag_class }}">{{ s.game_day }}</span>
+        <span class="card-title">{{ s.place or '未知地点' }}</span>
+        <span class="tag {{ tag_class }}" style="margin-left:auto;">{{ s.subtype or '私密' }}</span>
+        {% if s.forced %}<span class="tag tag-forced">强结</span>{% endif %}
+      </div>
+      <div class="card-meta" style="margin-bottom:10px;">
+        <span>🕐 {{ s.game_time or '时间未记录' }}</span>
+        <span>📅 {{ s.start_str }}</span>
+        <span>💬 {{ s.total_replies }} 回复 · {{ s.total_words }} 字</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;">
+        {% for p in s.participants %}
+        <span class="pill" style="{{ 'background:#2d1f4e;color:#c084fc;border-color:#6d28d9;' if p == role_name else '' }}">{{ p }}</span>
+        {% endfor %}
+      </div>
+      {% if s.stats and s.stats.get(role_name) %}
+      {% set st = s.stats[role_name] %}
+      <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);
+                  font-size:12px;color:var(--muted);">
+        {{ role_name }} 本场：<b style="color:var(--text)">{{ st.replies }}</b> 回复 ·
+        <b style="color:var(--text)">{{ st.words }}</b> 字
+      </div>
+      {% endif %}
+    </div>
+  </a>
+  {% endfor %}
+  {% else %}
+  <div class="empty">未找到「{{ role_name }}」的参与记录。</div>
+  {% endif %}
+</div>
+{% endblock %}

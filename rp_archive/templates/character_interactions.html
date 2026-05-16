@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% block title %}长日存档 · {{ role_name }} 互动记录{% endblock %}
+
+{% block head %}
+<style>
+.tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+.tab-btn {
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--muted); border-radius: 8px; padding: 6px 16px;
+  cursor: pointer; font-size: 13px; font-family: inherit;
+  transition: all .15s;
+}
+.tab-btn:hover { border-color: var(--accent); color: var(--text); }
+.tab-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tab-count { font-size: 11px; opacity: .8; margin-left: 4px; }
+
+.section { display: none; }
+.section.active { display: block; }
+
+.ix-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px 16px; margin-bottom: 10px;
+}
+.ix-header {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 8px; flex-wrap: wrap;
+}
+.ix-dir {
+  font-size: 11px; font-weight: 700; letter-spacing: .5px;
+  padding: 2px 8px; border-radius: 10px;
+}
+.dir-sent { background: #1f2d3a; color: #60c8ff; }
+.dir-recv { background: #2d1f4e; color: #c084fc; }
+
+.ix-from { font-weight: 600; color: var(--accent); font-size: 13px; }
+.ix-arrow { color: var(--muted); margin: 0 4px; }
+.ix-to   { font-weight: 600; color: var(--accent2); font-size: 13px; }
+
+.ix-body {
+  color: var(--text); font-size: 13px; line-height: 1.8;
+  white-space: pre-wrap; word-break: break-word;
+  margin-top: 6px;
+}
+.ix-sub  { color: var(--muted); font-size: 11px; margin-top: 5px; }
+.ix-meta { color: var(--muted); font-size: 11px; margin-top: 6px;
+           display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.ix-link { font-size: 11px; color: var(--accent); }
+.gift-name { color: var(--gold); font-weight: 600; }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="page">
+  <div style="margin-bottom:14px;display:flex;gap:16px;align-items:center;flex-wrap:wrap;">
+    <a href="{{ url_for('interactions_index') }}" style="color:var(--muted);font-size:13px;">← 互动索引</a>
+    <a href="{{ url_for('character_view', role_name=role_name) }}" style="color:var(--muted);font-size:13px;">场次记录 →</a>
+  </div>
+
+  <div class="page-title">
+    <span style="color:var(--muted);font-weight:400;font-size:16px;">互动记录：</span>{{ role_name }}
+  </div>
+
+  <!-- 标签页切换 -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('lovemail', this)">
+      💌 心动信<span class="tab-count">{{ lovemails|length }}</span>
+    </button>
+    <button class="tab-btn" onclick="switchTab('sms', this)">
+      📱 短信<span class="tab-count">{{ smss|length }}</span>
+    </button>
+    <button class="tab-btn" onclick="switchTab('gift', this)">
+      🎁 礼物<span class="tab-count">{{ gifts|length }}</span>
+    </button>
+  </div>
+
+  <!-- 心动信 -->
+  <div id="sec-lovemail" class="section active">
+    {% if lovemails %}
+    {% for e in lovemails %}
+    {% set is_sent = (e.from_role == role_name) %}
+    <div class="ix-card">
+      <div class="ix-header">
+        <span class="ix-dir {{ 'dir-sent' if is_sent else 'dir-recv' }}">
+          {{ '发出' if is_sent else '收到' }}
+        </span>
+        <span class="ix-from">{{ e.from_role }}</span>
+        <span class="ix-arrow">→</span>
+        <span class="ix-to">{{ e.to_role }}</span>
+      </div>
+      <div class="ix-body">{{ e.content }}</div>
+      {% if e.extra_info.signature %}
+      <div class="ix-sub">署名：{{ e.extra_info.signature }}</div>
+      {% endif %}
+      <div class="ix-meta">
+        {% if e.game_day %}<span>{{ e.game_day }}</span>{% endif %}
+        {% if e.time_str %}<span>{{ e.time_str }}</span>{% endif %}
+        {% if e.session_id %}
+        <a class="ix-link" href="{{ url_for('session_view', session_id=e.session_id) }}">查看场次 →</a>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="empty">{{ role_name }} 暂无心动信记录。</div>
+    {% endif %}
+  </div>
+
+  <!-- 短信 -->
+  <div id="sec-sms" class="section">
+    {% if smss %}
+    {% for e in smss %}
+    {% set is_sent = (e.from_role == role_name) %}
+    <div class="ix-card">
+      <div class="ix-header">
+        <span class="ix-dir {{ 'dir-sent' if is_sent else 'dir-recv' }}">
+          {{ '发出' if is_sent else '收到' }}
+        </span>
+        <span class="ix-from">{{ e.from_role }}</span>
+        <span class="ix-arrow">→</span>
+        <span class="ix-to">{{ e.to_role }}</span>
+      </div>
+      {% if e.extra_info.is_chaos %}
+      <div style="font-size:10px;color:var(--red);margin-bottom:4px;">⚠ 混乱
+        {% if e.extra_info.is_misdelivered %} · 误送给「{{ e.to_role }}」{% endif %}
+        {% if e.extra_info.is_content_chaos %} · 内容被侵蚀{% endif %}
+        {% if e.extra_info.is_signature_chaos %} · 署名错乱{% endif %}
+      </div>
+      {% endif %}
+      <div class="ix-body">{{ e.content }}</div>
+      {% if e.extra_info.intended_to and e.extra_info.is_misdelivered %}
+      <div class="ix-sub">原本寄给：{{ e.extra_info.intended_to }}</div>
+      {% endif %}
+      {% if e.extra_info.delivered and e.extra_info.delivered != e.content %}
+      <div class="ix-sub">实际送达：{{ e.extra_info.delivered }}</div>
+      {% endif %}
+      <div class="ix-meta">
+        {% if e.game_day %}<span>{{ e.game_day }}</span>{% endif %}
+        {% if e.time_str %}<span>{{ e.time_str }}</span>{% endif %}
+        {% if e.session_id %}
+        <a class="ix-link" href="{{ url_for('session_view', session_id=e.session_id) }}">查看场次 →</a>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="empty">{{ role_name }} 暂无短信记录。</div>
+    {% endif %}
+  </div>
+
+  <!-- 礼物 -->
+  <div id="sec-gift" class="section">
+    {% if gifts %}
+    {% for e in gifts %}
+    {% set is_sent = (e.from_role == role_name) %}
+    <div class="ix-card">
+      <div class="ix-header">
+        <span class="ix-dir {{ 'dir-sent' if is_sent else 'dir-recv' }}">
+          {{ '发出' if is_sent else '收到' }}
+        </span>
+        <span class="ix-from">{{ e.from_role }}</span>
+        <span class="ix-arrow">→</span>
+        <span class="ix-to">{{ e.to_role }}</span>
+        {% if e.extra_info.isLost %}<span style="color:var(--red);font-size:11px;">已丢失</span>{% endif %}
+      </div>
+      {% if e.extra_info.giftName %}
+      <div style="margin-top:4px;font-size:13px;">
+        礼物：<span class="gift-name">{{ e.extra_info.giftName }}</span>
+      </div>
+      {% endif %}
+      {% if e.content %}
+      <div class="ix-body">寄语：{{ e.content }}</div>
+      {% endif %}
+      <div class="ix-meta">
+        {% if e.game_day %}<span>{{ e.game_day }}</span>{% endif %}
+        {% if e.time_str %}<span>{{ e.time_str }}</span>{% endif %}
+        {% if e.session_id %}
+        <a class="ix-link" href="{{ url_for('session_view', session_id=e.session_id) }}">查看场次 →</a>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="empty">{{ role_name }} 暂无礼物记录。</div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+function switchTab(type, btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('sec-' + type).classList.add('active');
+}
+</script>
+{% endblock %}

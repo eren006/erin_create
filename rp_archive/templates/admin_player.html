@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}长日存档 · 玩家详情 · {{ player.role_name or player.qq }}{% endblock %}
+
+{% block head %}
+<style>
+.info-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 24px;
+}
+@media(max-width:700px) { .info-grid { grid-template-columns: repeat(2, 1fr); } }
+
+.info-box {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 16px 18px;
+}
+.info-box .lbl { font-size: 11px; color: var(--muted); margin-bottom: 4px; letter-spacing: .5px; }
+.info-box .val { font-size: 15px; font-weight: 600; color: var(--text); }
+.info-box .val.accent { color: var(--accent2); }
+
+.admin-section { margin-bottom: 28px; }
+.admin-section h3 {
+  font-size: 14px; font-weight: 700; color: var(--muted);
+  letter-spacing: 1px; text-transform: uppercase;
+  margin-bottom: 12px; padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.timing-row {
+  display: flex; gap: 24px; flex-wrap: wrap; padding: 12px 0;
+  border-bottom: 1px solid var(--border); font-size: 13px;
+}
+.timing-row:last-child { border-bottom: none; }
+.timing-label { color: var(--muted); min-width: 120px; }
+.timing-val { color: var(--text); font-weight: 600; }
+.timing-meta { color: var(--muted); font-size: 12px; }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="page">
+  <div style="margin-bottom:16px;">
+    <a href="{{ url_for('admin') }}" style="color:var(--muted);font-size:13px;">← 管理后台</a>
+  </div>
+
+  <div class="page-title">
+    {{ player.role_name or '未知角色' }}
+    {% if player.show_name %}<span style="font-size:14px;color:var(--muted);font-weight:400;margin-left:10px;">{{ player.show_name }}</span>{% endif %}
+  </div>
+
+  <!-- 基本信息 -->
+  <div class="info-grid" style="margin-bottom:24px;">
+    <div class="info-box">
+      <div class="lbl">QQ</div>
+      <div class="val" style="font-family:monospace;">{{ player.qq }}</div>
+    </div>
+    <div class="info-box">
+      <div class="lbl">角色名</div>
+      <div class="val accent">{{ player.role_name or '—' }}</div>
+    </div>
+    <div class="info-box">
+      <div class="lbl">恋综</div>
+      <div class="val">{{ player.show_name or '—' }}</div>
+    </div>
+    <div class="info-box">
+      <div class="lbl">参与场次</div>
+      <div class="val accent">{{ player_sessions | length }}</div>
+    </div>
+    <div class="info-box">
+      <div class="lbl">总回复</div>
+      <div class="val">{{ player.total_replies }}</div>
+    </div>
+    <div class="info-box">
+      <div class="lbl">总字数</div>
+      <div class="val">{{ player.total_words }}</div>
+    </div>
+  </div>
+
+  <!-- 回复时间统计 -->
+  <div class="admin-section">
+    <h3>回复时间统计</h3>
+    {% if timing_stats %}
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:4px 18px;">
+      {% for t in timing_stats %}
+      <div class="timing-row">
+        <span class="timing-label">
+          <a href="{{ url_for('session_view', session_id=t.session_id) }}" style="color:var(--accent);">
+            {{ t.game_day }} {{ t.place or '场次' }}
+          </a>
+        </span>
+        <span>
+          <span class="timing-meta">均</span>
+          <span class="timing-val">{{ fmt_seconds(t.avg) }}</span>
+        </span>
+        <span>
+          <span class="timing-meta">最快</span>
+          <span class="timing-val" style="color:var(--green);">{{ fmt_seconds(t.min) }}</span>
+        </span>
+        <span>
+          <span class="timing-meta">最慢</span>
+          <span class="timing-val" style="color:var(--red);">{{ fmt_seconds(t.max) }}</span>
+        </span>
+        <span class="timing-meta">（共 {{ t.count }} 次回复）</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty">暂无足够的 RP 数据来计算回复时间。</div>
+    {% endif %}
+  </div>
+
+  <!-- 参与场次 -->
+  <div class="admin-section">
+    <h3>参与场次（{{ player_sessions | length }} 场）</h3>
+    {% if player_sessions %}
+      {% for s in player_sessions %}
+      <div class="card">
+        <div class="card-title">
+          <a href="{{ url_for('session_view', session_id=s.id) }}">
+            {{ s.place or '未知地点' }}
+            {% if s.subtype %}<span class="tag tag-private" style="font-size:11px;margin-left:6px;">{{ s.subtype }}</span>{% endif %}
+            {% if s.forced %}<span class="tag tag-forced" style="font-size:11px;margin-left:4px;">强结</span>{% endif %}
+          </a>
+        </div>
+        <div class="card-meta">
+          <span>📅 {{ s.game_day }}</span>
+          {% if s.game_time %}<span>🕐 {{ s.game_time }}</span>{% endif %}
+          <span>🕰 {{ s.start_str }}</span>
+          <span>💬 {{ s.total_replies }} 回复</span>
+          <span>📝 {{ s.total_words }} 字</span>
+        </div>
+        <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px;">
+          {% for p in s.participants %}<span class="pill">{{ p }}</span>{% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+    <div class="empty">该玩家暂无参与的场次记录。</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

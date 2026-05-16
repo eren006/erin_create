@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}长日存档 · 互动记录{% endblock %}
+
+{% block body %}
+<div class="page">
+  <div class="page-title">互动记录索引</div>
+
+  {% if roles %}
+  <div class="grid-2">
+    {% for r in roles %}
+    <a href="{{ url_for('character_interactions', role_name=r.role_name) }}" style="display:block;text-decoration:none;">
+      <div class="card" style="padding:14px 18px;">
+        <div style="font-size:15px;font-weight:600;color:var(--accent2);margin-bottom:8px;">{{ r.role_name }}</div>
+        <div style="display:flex;gap:14px;font-size:12px;color:var(--muted);">
+          {% if r.lovemails %}<span>💌 心动信 <b style="color:var(--text)">{{ r.lovemails }}</b></span>{% endif %}
+          {% if r.smss     %}<span>📱 短信 <b style="color:var(--text)">{{ r.smss }}</b></span>{% endif %}
+          {% if r.gifts    %}<span>🎁 礼物 <b style="color:var(--text)">{{ r.gifts }}</b></span>{% endif %}
+        </div>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty">暂无互动记录（心动信 / 短信 / 礼物）。</div>
+  {% endif %}
+</div>
+{% endblock %}

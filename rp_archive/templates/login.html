@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>长日存档 · 登录</title>
+<style>
+:root {
+  --bg:#0f0f13; --surface:#1a1a22; --border:#2e2e3e;
+  --accent:#8b7cf6; --accent2:#c084fc; --text:#e2e2ec; --muted:#7878a0; --red:#f87171;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:"PingFang SC","Microsoft YaHei",sans-serif;
+  display:flex;align-items:center;justify-content:center;min-height:100vh;}
+.box{
+  background:var(--surface);border:1px solid var(--border);border-radius:16px;
+  padding:40px 36px;width:340px;
+}
+.logo{text-align:center;font-size:22px;font-weight:700;color:var(--accent2);margin-bottom:6px;}
+.sub{text-align:center;color:var(--muted);font-size:13px;margin-bottom:28px;}
+label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px;}
+input[type=password]{
+  width:100%;background:#22222e;border:1px solid var(--border);color:var(--text);
+  border-radius:8px;padding:10px 14px;font-size:14px;
+}
+input[type=password]:focus{outline:none;border-color:var(--accent);}
+.btn{
+  width:100%;margin-top:18px;background:var(--accent);color:#fff;border:none;
+  border-radius:8px;padding:11px;font-size:14px;cursor:pointer;font-weight:600;
+}
+.btn:hover{background:var(--accent2);}
+.error{color:var(--red);font-size:13px;margin-top:12px;text-align:center;}
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="logo">📖 长日存档</div>
+  <div class="sub">请输入密钥以进入存档</div>
+  <form method="post">
+    <label>访问密钥</label>
+    <input type="password" name="password" autofocus placeholder="••••••••">
+    <button class="btn" type="submit">进入</button>
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  </form>
+</div>
+</body>
+</html>

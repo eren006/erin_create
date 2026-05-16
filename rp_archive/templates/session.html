@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+{% block title %}长日存档 · {{ sess.place or '场次详情' }}{% endblock %}
+
+{% block head %}
+<style>
+.session-layout { display: grid; grid-template-columns: 1fr 320px; gap: 20px; align-items: start; }
+@media(max-width:820px){ .session-layout { grid-template-columns: 1fr; } }
+
+/* 左栏 RP */
+.rp-feed { display: flex; flex-direction: column; gap: 12px; }
+.rp-block {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px 16px;
+}
+.rp-role {
+  font-size: 12px; font-weight: 700; color: var(--accent2);
+  margin-bottom: 6px; letter-spacing: .5px;
+}
+.rp-content {
+  color: var(--text); font-size: 14px; line-height: 1.85;
+  white-space: pre-wrap; word-break: break-word;
+}
+.rp-time { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+/* 右栏 侧边事件 */
+.sidebar { position: sticky; top: 72px; }
+.side-section { margin-bottom: 18px; }
+.side-label {
+  font-size: 11px; font-weight: 700; letter-spacing: 1px;
+  color: var(--muted); text-transform: uppercase; margin-bottom: 8px;
+}
+.event-card {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; font-size: 13px;
+}
+.event-from { color: var(--accent); font-weight: 600; }
+.event-arrow { color: var(--muted); margin: 0 4px; }
+.event-to   { color: var(--accent2); font-weight: 600; }
+.event-body { color: var(--text); margin-top: 5px; white-space: pre-wrap; word-break: break-word; }
+.event-sub  { color: var(--muted); font-size: 11px; margin-top: 4px; }
+
+/* meta 头部 */
+.sess-header {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 18px 20px; margin-bottom: 20px;
+}
+.sess-header h2 { font-size: 18px; color: var(--accent2); margin-bottom: 10px; }
+.meta-row { display: flex; flex-wrap: wrap; gap: 16px; color: var(--muted); font-size: 13px; margin-bottom: 10px; }
+.meta-row b { color: var(--text); }
+.stat-row { display: flex; flex-wrap: wrap; gap: 18px; padding-top: 10px; border-top: 1px solid var(--border); }
+.stat-item { font-size: 12px; color: var(--muted); }
+.stat-item b { color: var(--text); font-size: 14px; }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="page">
+  <div style="margin-bottom:14px;display:flex;gap:12px;align-items:center;">
+    <a href="{{ url_for('date_view', game_day=sess.game_day) }}" style="color:var(--muted);font-size:13px;">← {{ sess.game_day }}</a>
+    <a href="{{ url_for('session_download', session_id=sess.id) }}"
+       style="font-size:12px;background:var(--surface2);border:1px solid var(--border);
+              border-radius:6px;padding:4px 12px;color:var(--muted);">
+      ↓ 下载 txt
+    </a>
+  </div>
+
+  <!-- 场次信息头 -->
+  <div class="sess-header">
+    <h2>
+      {{ sess.place or '未知地点' }}
+      {% if sess.subtype %}<span class="tag tag-private" style="font-size:13px;margin-left:8px;">{{ sess.subtype }}</span>{% endif %}
+      {% if sess.forced %}<span class="tag tag-forced" style="font-size:13px;margin-left:4px;">强结</span>{% endif %}
+    </h2>
+    <div class="meta-row">
+      <span>🕐 <b>{{ sess.game_time or '—' }}</b></span>
+      <span>📅 游戏日 <b>{{ sess.game_day }}</b></span>
+      <span>🕰 开始 <b>{{ sess.start_str }}</b></span>
+      {% if sess.end_str %}<span>🏁 结束 <b>{{ sess.end_str }}</b></span>{% endif %}
+    </div>
+    <div style="margin-bottom:10px;display:flex;flex-wrap:wrap;gap:4px;">
+      {% for p in sess.participants %}<span class="pill">{{ p }}</span>{% endfor %}
+    </div>
+    <div class="stat-row">
+      <div class="stat-item"><b>{{ sess.total_replies }}</b><br>总回复</div>
+      <div class="stat-item"><b>{{ sess.total_words }}</b><br>总字数</div>
+      {% for role, st in sess.stats.items() %}
+      <div class="stat-item">
+        <b>{{ st.replies }}</b> 回 · <b>{{ st.words }}</b> 字
+        <br><span style="color:var(--accent2)">{{ role }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="session-layout">
+    <!-- 左栏：RP正文 -->
+    <div>
+      {% if rp %}
+      <div class="rp-feed">
+        {% for entry in rp %}
+        <div class="rp-block">
+          <div class="rp-role">{{ entry.role_name }}</div>
+          <div class="rp-content">{{ entry.content }}</div>
+          <div class="rp-time">{{ ts_to_str(entry.timestamp) }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty">暂无RP正文记录（本场在开启存档传输前结戏，或无符合格式的发言）。</div>
+      {% endif %}
+    </div>
+
+    <!-- 右栏：侧边事件 -->
+    <div class="sidebar">
+      {% set lovemails = events | selectattr('type','eq','lovemail') | list %}
+      {% set smss      = events | selectattr('type','eq','sms')      | list %}
+      {% set gifts     = events | selectattr('type','eq','gift')      | list %}
+
+      {% if lovemails %}
+      <div class="side-section">
+        <div class="side-label">💌 心动信</div>
+        {% for e in lovemails %}
+        <div class="event-card">
+          <div>
+            <span class="event-from">{{ e.from_role }}</span>
+            <span class="event-arrow">→</span>
+            <span class="event-to">{{ e.to_role }}</span>
+          </div>
+          <div class="event-body">{{ e.content }}</div>
+          {% if e.extra_info.signature %}
+          <div class="event-sub">署名：{{ e.extra_info.signature }}</div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% if smss %}
+      <div class="side-section">
+        <div class="side-label">📱 短信</div>
+        {% for e in smss %}
+        <div class="event-card">
+          <div>
+            <span class="event-from">{{ e.from_role }}</span>
+            <span class="event-arrow">→</span>
+            <span class="event-to">{{ e.to_role }}</span>
+          </div>
+          {% if e.extra_info.is_chaos %}
+          <div style="margin-top:3px;font-size:10px;color:var(--red);">⚠ 混乱
+            {% if e.extra_info.is_misdelivered %} · 误送给「{{ e.to_role }}」{% endif %}
+            {% if e.extra_info.is_content_chaos %} · 内容被侵蚀{% endif %}
+            {% if e.extra_info.is_signature_chaos %} · 署名错乱{% endif %}
+          </div>
+          {% endif %}
+          <div class="event-body">{{ e.content }}</div>
+          {% if e.extra_info.intended_to and e.extra_info.is_misdelivered %}
+          <div class="event-sub">原本寄给：{{ e.extra_info.intended_to }}</div>
+          {% endif %}
+          {% if e.extra_info.delivered and e.extra_info.delivered != e.content %}
+          <div class="event-sub">实际送达：{{ e.extra_info.delivered }}</div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% if gifts %}
+      <div class="side-section">
+        <div class="side-label">🎁 礼物</div>
+        {% for e in gifts %}
+        <div class="event-card">
+          <div>
+            <span class="event-from">{{ e.from_role }}</span>
+            <span class="event-arrow">→</span>
+            <span class="event-to">{{ e.to_role }}</span>
+          </div>
+          {% if e.extra_info.giftName %}
+          <div class="event-sub" style="margin-top:4px;">
+            礼物：<b style="color:var(--gold)">{{ e.extra_info.giftName }}</b>
+            {% if e.extra_info.isLost %}<span style="color:var(--red)">（丢失）</span>{% endif %}
+          </div>
+          {% endif %}
+          {% if e.content %}
+          <div class="event-body">寄语：{{ e.content }}</div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% if not lovemails and not smss and not gifts %}
+      <div style="color:var(--muted);font-size:13px;padding:16px 0;">本场无心动信 / 短信 / 礼物记录。</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

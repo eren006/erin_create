@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}长日存档 · {{ game_day }}{% endblock %}
+
+{% block body %}
+<div class="page">
+  <div style="margin-bottom:16px;">
+    <a href="{{ url_for('home') }}" style="color:var(--muted);font-size:13px;">← 返回主页</a>
+  </div>
+  <div class="page-title">{{ game_day }} · 全部场次</div>
+
+  {% if sessions %}
+  {% for s in sessions %}
+  {% set tag_class = 'tag-forced' if s.forced else ('tag-call' if s.subtype=='电话' else ('tag-official' if s.subtype=='官约' else 'tag-private')) %}
+  <a href="{{ url_for('session_view', session_id=s.id) }}" style="display:block;text-decoration:none;">
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+        <span class="card-title">
+          {% if s.place %}{{ s.place }}{% else %}未知地点{% endif %}
+        </span>
+        <span class="tag {{ tag_class }}">{{ s.subtype or '私密' }}</span>
+        {% if s.forced %}<span class="tag tag-forced">强结</span>{% endif %}
+      </div>
+      <div class="card-meta" style="margin-bottom:10px;">
+        <span>🕐 {{ s.game_time or '时间未记录' }}</span>
+        <span>📅 {{ s.start_str }}</span>
+        <span>💬 {{ s.total_replies }} 回复 · {{ s.total_words }} 字</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;">
+        {% for p in s.participants %}
+        <span class="pill">{{ p }}</span>
+        {% endfor %}
+      </div>
+      {% if s.stats %}
+      <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);
+                  display:flex;flex-wrap:wrap;gap:16px;">
+        {% for role, st in s.stats.items() %}
+        <span style="font-size:12px;color:var(--muted);">
+          <b style="color:var(--text);">{{ role }}</b>
+          · {{ st.replies }}回 · {{ st.words }}字
+        </span>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+  </a>
+  {% endfor %}
+  {% else %}
+  <div class="empty">{{ game_day }} 暂无记录。</div>
+  {% endif %}
+</div>
+{% endblock %}
