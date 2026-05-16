@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         晚餐系统
 // @author       长日将尽
-// @version      1.3.9
+// @version      1.4.0
 // @description  独立的晚餐系统。自动读取“changri”插件中的角色名与管理列表。支持多游戏框架，俄罗斯轮盘可自定义弹巢数和子弹数。
 // @timestamp    1778742000
 // @license      CC BY-NC-SA

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         长日写信综
 // @author       长日将尽
-// @version      1.3.9
+// @version      1.4.0
 // @description  独立的正式信件系统，支持发送信件、写信币赏金、配置管理
 // @timestamp    1778742000
 // @license      MIT

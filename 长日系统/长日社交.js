@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         社交系统
 // @author       长日将尽
-// @version      1.3.9
+// @version      1.4.0
 // @description  秘密论坛、寄信与关系线系统。所有数据存储在主插件 changri 中。
 // @timestamp    1778742000
 // @license      MIT
@@ -21,7 +21,7 @@ function getMainExt() {
 
 let ext = seal.ext.find('changriV1');
 if (!ext) {
-    ext = seal.ext.new("changriV1", "长日将尽", "1.3.9");
+    ext = seal.ext.new("changriV1", "长日将尽", "1.4.0");
     seal.ext.register(ext);
 }
 
