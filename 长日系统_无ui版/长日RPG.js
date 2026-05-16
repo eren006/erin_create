@@ -1,0 +1,5559 @@
+// ==UserScript==
+// @name         RPG系统
+// @author       长日将尽
+// @version      1.4.0
+// @description  物品注册、背包、商城、抽取池、二手市场。所有数据存储在主插件 changri 中。
+// @timestamp    1778742000
+// @license      MIT
+// @homepageURL  https://github.com/eren006/erin_create
+// @updateUrl    https://raw.gitmirror.com/eren006/erin_create/main/%E9%95%BF%E6%97%A5%E7%B3%BB%E7%BB%9F/%E9%95%BF%E6%97%A5RPG.js
+// @updateUrl    https://raw.githubusercontent.com/eren006/erin_create/main/%E9%95%BF%E6%97%A5%E7%B3%BB%E7%BB%9F/%E9%95%BF%E6%97%A5RPG.js
+// ==/UserScript==
+
+function getMainExt() {
+    const main = seal.ext.find('changri');
+    if (!main) {
+        console.error("❌ RPG系统错误：未找到主插件 changri，请检查主插件是否已加载");
+        return null;
+    }
+    return main;
+}
+
+let ext = seal.ext.find('changriRPG');
+if (!ext) {
+    ext = seal.ext.new("changriRPG", "长日将尽", "2.0.0");
+    seal.ext.register(ext);
+}
+
+// ========================
+// 核心依赖：获取主插件 changri
+// ========================
+
+function getPrimaryUid(platform, uid) {
+    const main = getMainExt();
+    if (!main) return uid;
+    try {
+        const extras = JSON.parse(main.storageGet("extra_accounts") || "{}");
+        return extras[`${platform}:${uid}`] || uid;
+    } catch (e) { return uid; }
+}
+
+// 新结构：a_private_group[platform][uid] = [roleName, gid]
+// getRoleName：O(1) 直接用 uid 查
+function getRoleName(ctx, msg) {
+    const main = getMainExt();
+    if (!main) return null;
+    try {
+        const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
+        const platform = msg.platform;
+        const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+        const uid = getPrimaryUid(platform, rawUid);
+        return apg[platform]?.[uid]?.[0] || null;
+    } catch (e) { console.log("[物品V2] getRoleName: " + e.message); }
+    return null;
+}
+
+// getRoleUid：新结构下需要 O(n) 扫描（key 是 uid，value[0] 是 roleName）
+function getRoleUid(platform, roleName) {
+    const main = getMainExt();
+    if (!main) return null;
+    try {
+        const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
+        const roles = apg[platform] || {};
+        const entry = Object.entries(roles).find(([_, v]) => v[0] === roleName);
+        return entry ? entry[0] : null;
+    } catch (e) { return null; }
+}
+
+function isUserAdmin(ctx, msg) {
+    const platform = msg.platform;
+    const uid = msg.sender.userId.replace(`${platform}:`, "");
+    const main = getMainExt();
+    if (!main) return false;
+    try {
+        const a_adminList = JSON.parse(main.storageGet("a_adminList") || "{}");
+        return ctx.privilegeLevel === 100 || (a_adminList[platform] && a_adminList[platform].includes(uid));
+    } catch (e) { return false; }
+}
+
+// ========================
+// 存储辅助
+// ========================
+
+function getRegistry() {
+    const main = getMainExt();
+    return main ? JSON.parse(main.storageGet("item_registry") || "{}") : {};
+}
+function saveRegistry(reg) {
+    const main = getMainExt();
+    if (main) main.storageSet("item_registry", JSON.stringify(reg));
+}
+
+// RPG 属性定义：{ attrName: { min, max, default, desc } }
+// 兼容迁移旧格式 sys_attr_presets (数组) 和 item_valid_attrs (数组)
+function getAttrDefs() {
+    const main = getMainExt();
+    if (!main) return {};
+    let defs = {};
+    try { defs = JSON.parse(main.storageGet("rpg_attr_defs") || "{}"); } catch(e) {}
+    if (!Object.keys(defs).length) {
+        let migrated = false;
+        for (const key of ["sys_attr_presets", "item_valid_attrs"]) {
+            try {
+                const arr = JSON.parse(main.storageGet(key) || "[]");
+                if (Array.isArray(arr)) arr.forEach(n => { if (n && !defs[n]) { defs[n] = { min: null, max: null, default: 0, desc: "" }; migrated = true; } });
+            } catch(e) {}
+        }
+        if (migrated) {
+            main.storageSet("rpg_attr_defs", JSON.stringify(defs));
+            main.storageSet("sys_attr_presets", JSON.stringify(Object.keys(defs)));
+        }
+    }
+    return defs;
+}
+function saveAttrDefs(defs) {
+    const main = getMainExt();
+    if (!main) return;
+    main.storageSet("rpg_attr_defs", JSON.stringify(defs));
+    // 保持 sys_attr_presets 同步，这样其他脚本调用时不会出错
+    main.storageSet("sys_attr_presets", JSON.stringify(Object.keys(defs)));
+}
+
+// 角色属性数值：{ roleName: { attrName: value } }
+function getCharAttrs() {
+    const main = getMainExt();
+    return main ? JSON.parse(main.storageGet("sys_character_attrs") || "{}") : {};
+}
+function saveCharAttrs(attrs) {
+    const main = getMainExt();
+    if (main) main.storageSet("sys_character_attrs", JSON.stringify(attrs));
+}
+
+function clampAttr(def, value) {
+    if (!def) return value;
+    if (def.min !== null && def.min !== undefined && value < def.min) return def.min;
+    if (def.max !== null && def.max !== undefined && value > def.max) return def.max;
+    return value;
+}
+
+function getValidAttrs() {
+    return Object.keys(getAttrDefs());
+}
+function saveValidAttrs(attrs) {
+    const defs = getAttrDefs();
+    const newDefs = {};
+    for (const a of attrs) {
+        newDefs[a] = defs[a] || { min: null, max: null, default: 0, desc: "" };
+    }
+    saveAttrDefs(newDefs);
+}
+
+// 合成系统
+function getCraftRecipes() {
+    const main = getMainExt();
+    return main ? JSON.parse(main.storageGet("craft_recipes") || "{}") : {};
+}
+function saveCraftRecipes(recipes) {
+    const main = getMainExt();
+    if (main) main.storageSet("craft_recipes", JSON.stringify(recipes));
+}
+
+function getInvAll() {
+    const main = getMainExt();
+    return main ? JSON.parse(main.storageGet("global_inventories") || "{}") : {};
+}
+function saveInvAll(invs) {
+    const main = getMainExt();
+    if (main) main.storageSet("global_inventories", JSON.stringify(invs));
+}
+
+function pruneExpiredItems(roleKey) {
+    const invs = getInvAll();
+    const inv = invs[roleKey];
+    if (!inv) return;
+    const now = Date.now();
+    const pruned = inv.filter(e => !e.expiresAt || e.expiresAt > now);
+    if (pruned.length !== inv.length) {
+        invs[roleKey] = pruned;
+        saveInvAll(invs);
+    }
+}
+
+function saveInv(roleKey, inv) {
+    const invs = getInvAll();
+    invs[roleKey] = inv;
+    saveInvAll(invs);
+}
+function getInv(roleKey) {
+    return getInvAll()[roleKey] || [];
+}
+function addToInv(roleKey, code, count) {
+    const invs = getInvAll();
+    const inv = invs[roleKey] || [];
+    const reg = getRegistry(); // 必须获取注册表
+    const itemInfo = reg[code]; // 获取该物品的定义信息
+
+    if (!itemInfo) {
+        console.error(`[物品系统] 尝试添加不存在的物品代码: ${code}`);
+        return;
+    }
+
+    // 获取该物品应有的初始次数 (如果注册表里没写，默认 -1 无限)
+    const initialUses = itemInfo.maxUses ?? -1;
+
+    // 查找背包里是否有【代码相同】且【剩余次数也相同】的物品进行堆叠
+    // 这样可以区分"用过一半的"和"全新的"
+    const entry = inv.find(e => e.code === code && (e.remainingUses ?? -1) === initialUses);
+
+    if (entry) {
+        entry.count += count;
+    } else {
+        inv.push({ 
+            code, 
+            count, 
+            remainingUses: initialUses // 初始化剩余次数
+        });
+    }
+
+    invs[roleKey] = inv;
+    saveInvAll(invs);
+}
+function removeFromInv(roleKey, code, count) {
+    const invs = getInvAll();
+    const inv = invs[roleKey] || [];
+    
+    // 过滤出所有符合代码的项，按次数从高到低排序，确保扣除逻辑的一致性
+    let entries = inv.filter(e => e.code === code).sort((a, b) => (b.remainingUses || 0) - (a.remainingUses || 0));
+    
+    let remainingToRemove = count;
+    for (let entry of entries) {
+        if (remainingToRemove <= 0) break;
+        const take = Math.min(entry.count, remainingToRemove);
+        entry.count -= take;
+        remainingToRemove -= take;
+    }
+
+    // 清理数量归零的项
+    const newInv = inv.filter(e => e.count > 0);
+    invs[roleKey] = newInv;
+    saveInvAll(invs);
+    
+    return remainingToRemove === 0;
+}
+
+function getInvCount(roleKey, code) {
+    // 获取全部背包数据
+    const allInv = getInvAll(); 
+    // 获取该角色的背包数组，如果不存在则默认为空数组
+    const roleInv = allInv[roleKey] || [];
+    
+    // 查找匹配 code 的物品条目
+    const entry = roleInv.find(e => e.code === code);
+    
+    // 如果找到了返回 count，否则返回 0
+    return entry ? (entry.count || 0) : 0;
+}
+
+function getPoolDefs() {
+    const main = getMainExt();
+    return main ? JSON.parse(main.storageGet("pool_definitions") || "{}") : {};
+}
+function savePoolDefs(defs) {
+    const main = getMainExt();
+    if (main) main.storageSet("pool_definitions", JSON.stringify(defs));
+}
+
+function getDrawConfig() {
+    const main = getMainExt();
+    return main ? JSON.parse(main.storageGet("pool_draw_config") || '{"total":2,"pools":{}}') : { total: 2, pools: {} };
+}
+function saveDrawConfig(cfg) {
+    const main = getMainExt();
+    if (main) main.storageSet("pool_draw_config", JSON.stringify(cfg));
+}
+
+function getShop() {
+    const main = getMainExt();
+    return main ? JSON.parse(main.storageGet("shop_listings") || "[]") : [];
+}
+function saveShop(shop) {
+    const main = getMainExt();
+    if (main) main.storageSet("shop_listings", JSON.stringify(shop));
+}
+
+function getMarket() {
+    const main = getMainExt();
+    return main ? JSON.parse(main.storageGet("secondhand_market") || "{}") : {};
+}
+function saveMarket(market) {
+    const main = getMainExt();
+    if (main) main.storageSet("secondhand_market", JSON.stringify(market));
+}
+
+function getMarketConfig() {
+    const main = getMainExt();
+    return main ? JSON.parse(main.storageGet("market_config") || '{"fee":3,"enabled":true}') : { fee: 3, enabled: true };
+}
+function saveMarketConfig(cfg) {
+    const main = getMainExt();
+    if (main) main.storageSet("market_config", JSON.stringify(cfg));
+}
+
+// ========================
+// 代码生成器
+// ========================
+
+function genItemCode(reg) {
+    for (let d = 1; d < 10000; d++) {
+        const code = `ITEM_${String(d).padStart(3, '0')}`;
+        if (!reg[code]) return code;
+    }
+    return null;
+}
+
+function genInteractionCode(reg) {
+    for (let d = 1; d < 10000; d++) {
+        const code = `INTER_${String(d).padStart(3, '0')}`;
+        if (!reg[code]) return code;
+    }
+    return null;
+}
+
+function genCurrencyCode(reg) {
+    for (let d = 1; d < 10000; d++) {
+        const code = `CUR_${String(d).padStart(3, '0')}`;
+        if (!reg[code]) return code;
+    }
+    return null;
+}
+
+function genSecondhandCode(market) {
+    for (let d = 1; d < 10000; d++) {
+        const code = `MARK_${String(d).padStart(4, '0')}`;
+        if (!market[code]) return code;
+    }
+    return null;
+}
+
+// 按代码或名称查找物品
+function findItem(reg, input) {
+    if (!input) return null;
+    const code = input.toUpperCase();
+    if (reg[code]) return reg[code];
+    return Object.values(reg).find(r => r.name === input) || null;
+}
+
+// ========================
+// 属性效果
+// ========================
+
+function parseAttrEffects(str) {
+    if (!str) return {};
+    const result = {};
+    for (const part of str.split(/[,，]/)) {
+        const m = part.trim().match(/^(.+?)([+-]\d+)$/);
+        if (m) result[m[1]] = parseInt(m[2]);
+    }
+    return result;
+}
+
+function modCharAttrs(platform, roleName, changesStr) {
+    if (!changesStr) return;
+    const changes = parseAttrEffects(changesStr);
+    if (!Object.keys(changes).length) return;
+
+    const reg = getRegistry();
+    const defs = getAttrDefs();
+    const currencyByName = {};
+    for (const item of Object.values(reg)) {
+        if (item.type === "currency") currencyByName[item.name] = item.code;
+    }
+
+    const uid = getRoleUid(platform, roleName);
+    if (!uid) return;
+    const primaryUid = getPrimaryUid(platform, uid);
+    const roleKey = `${platform}:${primaryUid}`;
+    const charAttrs = getCharAttrs();
+    // 新结构：charAttrs 以 uid 为 key
+    const roleAttrs = charAttrs[primaryUid] || {};
+    let attrsChanged = false;
+
+    for (const [attr, delta] of Object.entries(changes)) {
+        if (currencyByName[attr]) {
+            if (delta > 0) addToInv(roleKey, currencyByName[attr], delta);
+            else if (delta < 0) removeFromInv(roleKey, currencyByName[attr], -delta);
+        } else {
+            const def = defs[attr];
+            const cur = parseInt(roleAttrs[attr] ?? (def?.default ?? 0));
+            roleAttrs[attr] = clampAttr(def, cur + delta);
+            attrsChanged = true;
+        }
+    }
+
+    if (attrsChanged) {
+        charAttrs[primaryUid] = roleAttrs;
+        saveCharAttrs(charAttrs);
+    }
+}
+
+// ========================
+// 抽取次数系统
+// ========================
+
+function getPlayerDrawRec(platform, uid) {
+    const main = getMainExt();
+    if (!main) return null;
+    const records = JSON.parse(main.storageGet("player_draw_records") || "{}");
+    const key = `${platform}:${uid}`;
+    let rec = records[key] || { day: "", used: {}, extra: {} };
+    const currentDay = main.storageGet("global_days") || "";
+    if (rec.day !== currentDay) { rec.day = currentDay; rec.used = {}; }
+    return { records, key, rec };
+}
+
+function savePlayerDrawRec(records, key, rec) {
+    const main = getMainExt();
+    if (!main) return;
+    records[key] = rec;
+    main.storageSet("player_draw_records", JSON.stringify(records));
+}
+
+function canDraw(rec, config, poolName) {
+    const usedTotal = rec.used._total || 0;
+    const extraTotal = rec.extra._total || 0;
+    const totalBase = (config.total !== null && config.total !== undefined) ? config.total : Infinity;
+    if (usedTotal >= totalBase + extraTotal) return { ok: false, reason: "今日总抽取次数已用完" };
+    if (poolName) {
+        const poolBase = config.pools?.[poolName];
+        if (poolBase !== null && poolBase !== undefined) {
+            const usedPool = rec.used[poolName] || 0;
+            const extraPool = rec.extra[poolName] || 0;
+            if (usedPool >= poolBase + extraPool) return { ok: false, reason: `「${poolName}」今日抽取次数已用完` };
+        }
+    }
+    return { ok: true };
+}
+
+function consumeDraw(rec, poolName) {
+    rec.used._total = (rec.used._total || 0) + 1;
+    if (poolName) rec.used[poolName] = (rec.used[poolName] || 0) + 1;
+}
+
+function drawFromFixed(pool, reg) {
+    const valid = (pool.items || []).filter(i => reg[i.code]);
+    if (!valid.length) return null;
+    const total = valid.reduce((s, i) => s + (i.weight || 1), 0);
+    let rand = Math.random() * total;
+    for (const item of valid) {
+        rand -= (item.weight || 1);
+        if (rand <= 0) return item.code;
+    }
+    return valid[valid.length - 1].code;
+}
+
+function drawFromFree(pool, defs) {
+    const available = (pool.items || []).filter(i => i.count > 0);
+    if (!available.length) return null;
+    const picked = available[Math.floor(Math.random() * available.length)];
+    picked.count -= 1;
+    if (picked.count <= 0) pool.items.splice(pool.items.indexOf(picked), 1);
+    savePoolDefs(defs);
+    return picked.code;
+}
+
+// ========================
+// 通知辅助
+// ========================
+
+function notifyPlayer(ctx, platform, roleName, text) {
+    const main = getMainExt();
+    if (!main) return;
+    const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
+    // 新结构：通过 roleName 反查 uid，再取 gid
+    const uid = getRoleUid(platform, roleName);
+    if (!uid) return;
+    const info = apg[platform]?.[uid];
+    if (!info) return;
+    const notifyMsg = seal.newMessage();
+    notifyMsg.messageType = "group";
+    notifyMsg.groupId = `${platform}-Group:${info[1]}`;
+    const notifyCtx = seal.createTempCtx(ctx.endPoint, notifyMsg);
+    seal.replyToSender(notifyCtx, notifyMsg, `[CQ:at,qq=${uid}]\n${text}`);
+}
+
+// ========================
+// 时间辅助
+// ========================
+
+function timeOverlap(t1, t2) {
+    const toMin = t => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+    const [s1, e1] = t1.split("-").map(toMin);
+    const [s2, e2] = t2.split("-").map(toMin);
+    return !(e1 <= s2 || e2 <= s1);
+}
+
+// ========================
+// 预设物品初始化
+// ========================
+
+function initPresetItems() {
+    const main = getMainExt();
+    if (!main) return;
+    const reg = getRegistry();
+    let changed = false;
+    if (!reg["SPEC_001"]) {
+        reg["SPEC_001"] = { code: "SPEC_001", name: "追踪器", desc: "一枚散发着微光的微型追踪器，轻轻按动便能感知目标此刻的行踪。", type: "preset", attrs: null };
+        changed = true;
+    }
+    if (!reg["SPEC_002"]) {
+        reg["SPEC_002"] = { code: "SPEC_002", name: "万能钥匙", desc: "一把泛着银光的万能钥匙，据说能开启世间任何一扇被锁住的门。", type: "preset", attrs: null };
+        changed = true;
+    }
+    if (!reg["SPEC_003"]) {
+        reg["SPEC_003"] = { code: "SPEC_003", name: "望远镜", desc: "一架精致的望远镜，使用后可在目标下次发信时悄悄抄录一份副本。", type: "preset", attrs: null };
+        changed = true;
+    }
+    if (!reg["SPEC_004"]) {
+        reg["SPEC_004"] = { code: "SPEC_004", name: "羽毛笔", desc: "一支神奇的羽毛笔，使用后可截获目标发出的下一封信并在发送前修改内容。", type: "preset", attrs: null };
+        changed = true;
+    }
+    if (!reg["SPEC_005"]) {
+        reg["SPEC_005"] = { code: "SPEC_005", name: "捕鼠器", desc: "一个精巧的捕鼠器，激活后将锁定目标指定小时内的行动，使其无法私约、电话或摘心愿。", type: "preset", attrs: null };
+        changed = true;
+    }
+    // 默认货币：金币、银币（按名称判断，避免重复注册）
+    const currencyNames = new Set(Object.values(reg).filter(r => r.type === "currency").map(r => r.name));
+    if (!currencyNames.has("金币")) {
+        const code = genCurrencyCode(reg);
+        if (code) { reg[code] = { code, name: "金币", desc: "流通于玩家间的基础货币。", type: "currency", attrs: null }; changed = true; }
+    }
+    if (!currencyNames.has("银币")) {
+        const code = genCurrencyCode(reg);
+        if (code) { reg[code] = { code, name: "银币", desc: "比金币更零碎的辅助货币。", type: "currency", attrs: null }; changed = true; }
+    }
+    if (changed) saveRegistry(reg);
+}
+
+// ========================
+// 特殊物品使用逻辑
+// ========================
+
+
+// ========================
+// 使用记录
+// ========================
+
+function logItemUsage(platform, roleName, code, itemName) {
+    const main = getMainExt();
+    if (!main) return;
+    const log = JSON.parse(main.storageGet("item_usage_log") || "[]");
+    log.push({ timestamp: Date.now(), platform, roleName, code, name: itemName });
+    if (log.length > 500) log.splice(0, log.length - 500);
+    main.storageSet("item_usage_log", JSON.stringify(log));
+}
+
+// ========================
+// 背包显示（手机版紧凑格式）
+// ========================
+
+function formatItemEntry(entry, info) {
+    const name = info.name || entry.code;
+    const shortName = name.length > 8 ? name.slice(0, 8) : name;
+    const codeShort = entry.code.slice(-3);
+    const desc = (info.desc || "").slice(0, 15);
+    const uses = (entry.remainingUses ?? info.maxUses ?? -1);
+    const usesStr = uses === -1 ? "∞次" : `余${uses}次`;
+
+    let tags = "";
+    if (info.type === "preset") tags += "🎯";
+    if (info.canResell === false) tags += "🔒";
+    if (info.canResell === true) tags += "✨";
+
+    let line1 = `·${shortName}[${codeShort}]${tags}`;
+    let line2 = `数量×${entry.count}|${usesStr}`;
+    let line3 = desc || "无描述";
+
+    let result = `${line1}\n${line2}\n${line3}`;
+
+    if (info.attrs) {
+        const attrsShort = info.attrs.slice(0, 22);
+        result += `\n${attrsShort}`;
+    }
+
+    return result;
+}
+
+function formatInventory(roleKey, roleName, reg, category = "全部", page = 1) {
+    const inv = getInv(roleKey).filter(e => e.count > 0);
+
+    const currencies = [], presets = [], items = [];
+    // 所有注册货币都显示，即使玩家没有记录也补0
+    for (const [code, info] of Object.entries(reg)) {
+        if (info.type !== "currency") continue;
+        const entry = inv.find(e => e.code === code) || { code, count: 0 };
+        currencies.push({ entry, info });
+    }
+    for (const entry of inv) {
+        const info = reg[entry.code] || { name: entry.code, type: "item" };
+        if (info.type === "currency") continue;
+        else if (info.type === "preset") presets.push({ entry, info });
+        else items.push({ entry, info });
+    }
+
+    if (!currencies.length && !presets.length && !items.length) return `🎒【${roleName}】背包空空`;
+
+    const PAGE_SIZE = 6;
+    const catList = [];
+    if (currencies.length) catList.push({ name: "货币", emoji: "💰", items: currencies });
+    if (presets.length) catList.push({ name: "道具", emoji: "⚙️", items: presets });
+    if (items.length) catList.push({ name: "物品", emoji: "📦", items });
+
+    let lines = [`背包|${roleName}`];
+
+    if (category === "全部") {
+        for (const cat of catList) {
+            const displayItems = cat.items.slice(0, 3);
+            lines.push(`${cat.emoji}${cat.name}(${cat.items.length})`);
+            for (const { entry, info } of displayItems) {
+                if (info.type === "currency") {
+                    lines.push(`${info.name}：${entry.count}`);
+                } else {
+                    lines.push(formatItemEntry(entry, info));
+                }
+            }
+            if (cat.items.length > 3) {
+                lines.push(`>查看全部${cat.items.length - 3}项`);
+            }
+        }
+        lines.push("");
+        lines.push("指令:");
+        lines.push(".背包 货币/道具/物品");
+        lines.push(".背包 搜 关键词");
+    } else {
+        const catMap = { "货币": "currency", "道具": "preset", "物品": "item" };
+        const typeFilter = catMap[category];
+        const filtered = catList.find(c => {
+            if (typeFilter === "currency") return c.emoji === "💰";
+            if (typeFilter === "preset") return c.emoji === "⚙️";
+            if (typeFilter === "item") return c.emoji === "📦";
+            return false;
+        });
+
+        if (!filtered || !filtered.items.length) {
+            return `🎒背包无${category}`;
+        }
+
+        const total = filtered.items.length;
+        const start = (page - 1) * PAGE_SIZE;
+        const end = Math.min(start + PAGE_SIZE, total);
+        const pageItems = filtered.items.slice(start, end);
+        const totalPages = Math.ceil(total / PAGE_SIZE);
+
+        lines.push(`${filtered.emoji}${category} ${page}/${totalPages}`);
+        for (const { entry, info } of pageItems) {
+            if (info.type === "currency") {
+                lines.push(`${info.name}：${entry.count}`);
+            } else {
+                lines.push(formatItemEntry(entry, info));
+            }
+        }
+
+        if (totalPages > 1) {
+            lines.push("");
+            if (page > 1) lines.push(`⬅️.背包 ${category} ${page-1}`);
+            if (page < totalPages) lines.push(`➡️.背包 ${category} ${page+1}`);
+        }
+        lines.push(".背包");
+    }
+
+    return lines.join("\n");
+}
+
+// ========================
+// 管理员指令
+// ========================
+
+let cmd_reg_attr = seal.ext.newCmdItemInfo();
+cmd_reg_attr.name = "注册属性";
+cmd_reg_attr.help = `【管理员】注册/查看 RPG 属性
+注册属性 列表
+注册属性 名称                     无范围限制，默认值0
+注册属性 名称 min max             有范围，默认值=min
+注册属性 名称 min max default
+注册属性 名称 min max default 描述`;
+cmd_reg_attr.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const defs = getAttrDefs();
+    if (cmdArgs.getArgN(1) === "列表") {
+        const attrs = getValidAttrs();
+        return seal.replyToSender(ctx, msg, attrs.length ? `📋 已注册属性：${attrs.join("、")}` : "📋 暂无已注册属性。");
+    }
+    const arg1 = cmdArgs.getArgN(1);
+    if (!arg1) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const arg2 = cmdArgs.getArgN(2);
+    const arg3 = cmdArgs.getArgN(3);
+    const arg4 = cmdArgs.getArgN(4);
+
+    const reg = getRegistry();
+    const currencyNames = new Set(Object.values(reg).filter(r => r.type === "currency").map(r => r.name));
+
+    // 格式：我创建属性 [名] [最小] [最大] [默认]
+    if (arg2 !== "" && !isNaN(Number(arg2))) {
+        if (currencyNames.has(arg1)) return seal.replyToSender(ctx, msg, `❌ 属性名「${arg1}」已被货币占用`);
+        const min = Number(arg2);
+        const max = arg3 !== "" && !isNaN(Number(arg3)) ? Number(arg3) : null;
+        const defaultVal = arg4 !== "" && !isNaN(Number(arg4)) ? Number(arg4) : 0;
+        const existDefs = getAttrDefs();
+        const isNew = !existDefs[arg1];
+        existDefs[arg1] = { min, max, default: defaultVal, desc: existDefs[arg1]?.desc || "" };
+        saveAttrDefs(existDefs);
+        return seal.replyToSender(ctx, msg, `✅ ${isNew ? "新增" : "更新"}属性「${arg1}」：最小${min} 最大${max ?? "无限"} 默认${defaultVal}`);
+    }
+
+    // 旧格式：批量注册属性名（无范围）
+    const newAttrs = [arg1];
+    for (let i = 2; ; i++) { const a = cmdArgs.getArgN(i); if (!a) break; newAttrs.push(a); }
+    const conflicted = newAttrs.filter(a => currencyNames.has(a));
+    if (conflicted.length) return seal.replyToSender(ctx, msg, `❌ 以下属性名已被货币占用：${conflicted.join("、")}`);
+
+    const attrs = getValidAttrs();
+    let added = 0;
+    for (const a of newAttrs) if (!attrs.includes(a)) { attrs.push(a); added++; }
+    saveValidAttrs(attrs);
+    seal.replyToSender(ctx, msg, `✅ 新增 ${added} 个属性。当前：${attrs.join("、")}`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["注册属性"] = cmd_reg_attr;
+
+// ========================
+// 初始化预设物品
+// ========================
+
+let cmd_init_preset = seal.ext.newCmdItemInfo();
+cmd_init_preset.name = "初始化预设物品";
+cmd_init_preset.help = "【管理员】初始化系统预设物品（追踪器、万能钥匙、金币、银币）\n格式：。初始化预设物品";
+cmd_init_preset.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) {
+        return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+    }
+
+    initPresetItems();
+    seal.replyToSender(ctx, msg, "✅ 已初始化系统预设物品：追踪器、万能钥匙、金币、银币");
+    return seal.ext.newCmdExecuteResult(true);
+};
+
+ext.cmdMap["初始化预设物品"] = cmd_init_preset;
+
+let cmd_upload_item = seal.ext.newCmdItemInfo();
+cmd_upload_item.name = "上载物品";
+cmd_upload_item.help = "【管理员】注册新物品\n格式：名称*描述*次数*属性效果*允许二手\n次数：-1为无限，正数为次数\n效果：属性+10,属性-5（仅限已注册属性或货币，多个逗号隔开，可为空）\n允许二手：Y/N，默认N\n支持多行批量上载";
+
+cmd_upload_item.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+
+    const rawMsg = msg.message.trim();
+    const msgParts = rawMsg.split(/\r?\n/);
+
+    // 第一行去掉指令前缀后的剩余内容
+    const firstLineRest = msgParts[0].replace(/^[。.]\s*上载物品\s*/, "").trim();
+    const extraLines = msgParts.slice(1).map(l => l.trim()).filter(l => l);
+    const itemLines = [...(firstLineRest ? [firstLineRest] : []), ...extraLines];
+
+    if (!itemLines.length) {
+        const validAttrs = getValidAttrs();
+        const attrList = validAttrs.length ? validAttrs.join("、") : "（暂无，请先注册属性）";
+        return seal.replyToSender(ctx, msg, `📦 上载物品格式：\n名称*描述*次数*属性效果*允许二手\n\n· 次数：-1 为无限，正数为使用次数\n· 效果：属性+数字,属性-数字（可为空）\n· 允许二手：Y 或 N（默认 N）\n· 支持多行批量，每行一条\n\n当前可用属性：${attrList}`);
+    }
+
+    const reg = getRegistry();
+    const defs = getAttrDefs();
+    const currencyNames = new Set(Object.values(reg).filter(i => i.type === "currency").map(i => i.name));
+    const results = [];
+
+    for (const line of itemLines) {
+        const parts = line.split(/[*＊]/);
+        if (parts.length < 3) {
+            results.push(`❌ 格式错误：「${line.substring(0, 15)}」需至少包含 名称*描述*次数`);
+            continue;
+        }
+
+        const name = (parts[0] || "").trim();
+        const desc = (parts[1] || "").trim() || "暂无描述";
+        const maxUses = parseInt((parts[2] || "").trim());
+        const attrsRaw = (parts[3] || "").trim();
+        const canResell = ((parts[4] || "").trim().toUpperCase() === "Y");
+
+        if (!name) { results.push(`❌ 名称不能为空`); continue; }
+        if (isNaN(maxUses)) { results.push(`❌ 「${name}」次数必须是数字`); continue; }
+
+        // 效果格式校验
+        let attrsStr = null;
+        if (attrsRaw) {
+            const segments = attrsRaw.split(/[,，]/);
+            let attrErr = null;
+            for (const seg of segments) {
+                const m = seg.trim().match(/^(.+?)([+-]\d+)$/);
+                if (!m) { attrErr = `效果格式错误「${seg.trim()}」，需为：属性+数字 或 属性-数字`; break; }
+                const attrName = m[1];
+                if (!defs[attrName] && !currencyNames.has(attrName)) {
+                    attrErr = `未知属性「${attrName}」，请先注册属性`; break;
+                }
+            }
+            if (attrErr) { results.push(`❌ 「${name}」${attrErr}`); continue; }
+            attrsStr = attrsRaw;
+        }
+
+        const existing = Object.values(reg).find(r => r.name === name);
+        if (existing) { results.push(`⚠️ 「${name}」已存在 [${existing.code}]，跳过`); continue; }
+
+        const code = genItemCode(reg);
+        if (!code) { results.push("❌ 代码空间已满，无法继续注册"); break; }
+
+        reg[code] = { code, name, desc, type: "item", maxUses, attrs: attrsStr, price: 0, canResell };
+
+        const useText = maxUses === -1 ? "无限" : `${maxUses}次`;
+        const resellText = canResell ? "可二手" : "不可二手";
+        results.push(`✅ [${code}] ${name} | ${useText} | 效果:${attrsStr || "无"} | ${resellText}`);
+    }
+
+    saveRegistry(reg);
+    seal.replyToSender(ctx, msg, `📦 物品注册结果（共${results.length}条）：\n${results.join("\n")}`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+
+ext.cmdMap["上载物品"] = cmd_upload_item;
+
+let cmd_reg_currency = seal.ext.newCmdItemInfo();
+cmd_reg_currency.name = "注册货币";
+cmd_reg_currency.help = "【管理员】注册新货币\n注册货币 名称*描述\n示例：注册货币 金币*流通货币";
+cmd_reg_currency.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const raw = cmdArgs.getArgN(1);
+    if (!raw) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const parts = raw.split(/[*＊]/);
+    const name = (parts[0] || "").trim();
+    const desc = (parts[1] || "").trim() || "暂无描述";
+    if (!name) return seal.replyToSender(ctx, msg, "❌ 货币名不能为空。");
+    const reg = getRegistry();
+    const existing = Object.values(reg).find(r => r.name === name);
+    if (existing) return seal.replyToSender(ctx, msg, `⚠️ 「${name}」已存在 [${existing.code}]（${existing.type}），货币名不能重复`);
+    const validAttrs = getValidAttrs();
+    if (validAttrs.includes(name)) return seal.replyToSender(ctx, msg, `❌ 「${name}」已被注册为属性，货币名不能与属性重复`);
+    const code = genCurrencyCode(reg);
+    if (!code) return seal.replyToSender(ctx, msg, "❌ 货币代码空间已满。");
+    reg[code] = { code, name, desc, type: "currency", attrs: null };
+    saveRegistry(reg);
+    seal.replyToSender(ctx, msg, `✅ 货币「${name}」已注册，代码 [${code}]`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["注册货币"] = cmd_reg_currency;
+
+let cmd_item_list = seal.ext.newCmdItemInfo();
+cmd_item_list.name = "物品列表";
+cmd_item_list.help = "查看所有已注册物品/货币\n物品列表 [物品|互动|货币|预设|全部]";
+cmd_item_list.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+
+    const reg = getRegistry();
+    const filter = cmdArgs.getArgN(1) || "全部";
+    const entries = Object.values(reg).filter(e => {
+        if (filter === "货币") return e.type === "currency";
+        if (filter === "物品") return e.type === "item";
+        if (filter === "预设") return e.type === "preset";
+        if (filter === "互动") return e.type === "interact";
+        return true;
+    });
+    if (!entries.length) return seal.replyToSender(ctx, msg, `📋 暂无${filter === "全部" ? "" : filter}。`);
+    const lines = entries.map(e => {
+        const icon = e.type === "currency" ? "💰" : e.type === "preset" ? "⚙️" : "📦";
+        const attrStr = e.attrs ? ` (${e.attrs})` : "";
+        return `${icon} [${e.code}] ${e.name}${attrStr}\n   └ ${e.desc}`;
+    });
+    seal.replyToSender(ctx, msg, `📋 ${filter}列表（${entries.length}）：\n${lines.join("\n")}`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["物品列表"] = cmd_item_list;
+
+let cmd_del_attr = seal.ext.newCmdItemInfo();
+cmd_del_attr.name = "删除属性";
+cmd_del_attr.help = "【管理员】删除已注册属性\n删除属性 名称";
+cmd_del_attr.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const name = cmdArgs.getArgN(1);
+    if (!name) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const defs = getAttrDefs();
+    if (!defs[name]) return seal.replyToSender(ctx, msg, `❌ 未找到属性「${name}」`);
+    delete defs[name];
+    saveAttrDefs(defs);
+    seal.replyToSender(ctx, msg, `✅ 属性「${name}」已删除（已有角色的数值不受影响）`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["删除属性"] = cmd_del_attr;
+
+let cmd_set_attr = seal.ext.newCmdItemInfo();
+cmd_set_attr.name = "设置属性";
+cmd_set_attr.help = "【管理员】直接设置角色属性值\n设置属性 角色名 属性名 值\n示例：设置属性 张三 体力 80";
+cmd_set_attr.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const roleName = cmdArgs.getArgN(1), attrName = cmdArgs.getArgN(2), valStr = cmdArgs.getArgN(3);
+    if (!roleName || !attrName || !valStr) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const val = parseInt(valStr);
+    if (isNaN(val)) return seal.replyToSender(ctx, msg, "❌ 值必须为整数。");
+    const main = getMainExt();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
+    // 新结构：通过 roleName 反查 uid
+    const setAttrUid = getRoleUid(msg.platform, roleName);
+    if (!setAttrUid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${roleName}」`);
+    const setAttrPrimaryUid = getPrimaryUid(msg.platform, setAttrUid);
+    const defs = getAttrDefs();
+    const clamped = clampAttr(defs[attrName], val);
+    const charAttrs = getCharAttrs();
+    if (!charAttrs[setAttrPrimaryUid]) charAttrs[setAttrPrimaryUid] = {};
+    charAttrs[setAttrPrimaryUid][attrName] = clamped;
+    saveCharAttrs(charAttrs);
+    const note = clamped !== val ? `（已截断至范围内：${clamped}）` : "";
+    seal.replyToSender(ctx, msg, `✅ 【${roleName}】${attrName} 已设为 ${clamped}${note}`);
+    notifyPlayer(ctx, msg.platform, roleName, `📊【属性更新】你的「${attrName}」已设定为 ${clamped}${note}`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["设置属性"] = cmd_set_attr;
+
+let cmd_shop_add = seal.ext.newCmdItemInfo();
+cmd_shop_add.name = "上架商城";
+cmd_shop_add.help = "【管理员】上架物品\n上架商城 物品码*价格货币名\n示例：上架商城 ITEM_001*10金币";
+cmd_shop_add.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const raw = cmdArgs.getArgN(1);
+    if (!raw) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const parts = raw.split(/[*＊]/);
+    const inputCode = (parts[0] || "").trim();
+    const priceStr = (parts[1] || "").trim();
+    const reg = getRegistry();
+    const item = findItem(reg, inputCode);
+    if (!item) return seal.replyToSender(ctx, msg, `❌ 找不到物品「${inputCode}」`);
+
+    // 检查特殊道具限制（SPEC_003望远镜、SPEC_004羽毛笔）
+    if ((item.code === "SPEC_003" || item.code === "SPEC_004")) {
+        const letterExt = seal.ext.find("changri");
+        if (letterExt) {
+            const config = JSON.parse(letterExt.storageGet("global_feature_toggle") || "{}");
+            if (!config.enable_direct_letter) {
+                return seal.replyToSender(ctx, msg, `❌ 「${item.name}」只有在启用写信综模式后才能上架。`);
+            }
+        } else {
+            return seal.replyToSender(ctx, msg, `❌ 写信系统未找到。`);
+        }
+    }
+
+    const priceMatch = priceStr.match(/^(\d+)(.+)$/);
+    if (!priceMatch) return seal.replyToSender(ctx, msg, "❌ 价格格式错误，示例：10金币");
+    const amount = parseInt(priceMatch[1]);
+    const currencyName = priceMatch[2].trim();
+    const currency = Object.values(reg).find(r => r.name === currencyName && r.type === "currency");
+    if (!currency) return seal.replyToSender(ctx, msg, `❌ 未找到货币「${currencyName}」，请先注册。`);
+    if (item.type === "currency") {
+        const currencyCount = Object.values(reg).filter(r => r.type === "currency").length;
+        if (currencyCount < 2) return seal.replyToSender(ctx, msg, "❌ 上架货币需先注册至少2种货币。");
+    }
+    const shop = getShop();
+    const existingIdx = shop.findIndex(s => s.code === item.code);
+    if (existingIdx !== -1) {
+        shop[existingIdx].price = amount;
+        shop[existingIdx].currencyCode = currency.code;
+        shop[existingIdx].currencyName = currencyName;
+    } else {
+        shop.push({ code: item.code, price: amount, currencyCode: currency.code, currencyName });
+    }
+    saveShop(shop);
+    seal.replyToSender(ctx, msg, `✅ [${item.code}]${item.name} 已${existingIdx !== -1 ? "更新价格" : "上架"}，售价 ${amount}${currencyName}`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["上架商城"] = cmd_shop_add;
+
+let cmd_shop_remove = seal.ext.newCmdItemInfo();
+cmd_shop_remove.name = "商城下架";
+cmd_shop_remove.help = "【管理员】将物品从商城下架\n商城下架 物品码或名称";
+cmd_shop_remove.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const input = cmdArgs.getArgN(1);
+    if (!input) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const reg = getRegistry();
+    const item = findItem(reg, input);
+    if (!item) return seal.replyToSender(ctx, msg, `❌ 找不到物品「${input}」`);
+    const shop = getShop();
+    const idx = shop.findIndex(s => s.code === item.code);
+    if (idx === -1) return seal.replyToSender(ctx, msg, `❌ 商城中没有 [${item.code}]${item.name}`);
+    shop.splice(idx, 1);
+    saveShop(shop);
+    seal.replyToSender(ctx, msg, `✅ [${item.code}]${item.name} 已从商城下架。`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["商城下架"] = cmd_shop_remove;
+
+let cmd_reg_pool = seal.ext.newCmdItemInfo();
+cmd_reg_pool.name = "注册池子";
+cmd_reg_pool.help = "【管理员】创建抽取池\n注册池子 池子名 fixed —— 固定池（加权随机，不减少）\n注册池子 池子名 free —— 自由池（有限数量，抽完即止）";
+cmd_reg_pool.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const poolName = cmdArgs.getArgN(1);
+    const poolType = cmdArgs.getArgN(2);
+    if (!poolName || !["fixed", "free"].includes(poolType)) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const defs = getPoolDefs();
+    if (defs[poolName]) return seal.replyToSender(ctx, msg, `⚠️ 池子「${poolName}」已存在。`);
+    defs[poolName] = { name: poolName, type: poolType, items: [], enabled: true };
+    savePoolDefs(defs);
+    seal.replyToSender(ctx, msg, `✅ 池子「${poolName}」已创建（${poolType === "fixed" ? "固定池" : "自由池"}）`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["注册池子"] = cmd_reg_pool;
+
+let cmd_pool_add = seal.ext.newCmdItemInfo();
+cmd_pool_add.name = "上架池子";
+cmd_pool_add.help = "【管理员】向池子添加物品\n固定池：上架池子 池子名 物品码*权重\n自由池：上架池子 池子名 物品码*数量\n支持多行批量";
+cmd_pool_add.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const poolName = cmdArgs.getArgN(1);
+    if (!poolName) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const defs = getPoolDefs();
+    const pool = defs[poolName];
+    if (!pool) return seal.replyToSender(ctx, msg, `❌ 未找到池子「${poolName}」。`);
+    const rawMsg = msg.message.trim();
+    const msgParts = rawMsg.split(/\r?\n/);
+    let itemLines;
+    if (msgParts.length > 1) {
+        itemLines = msgParts.slice(1).filter(l => l.trim());
+    } else {
+        const rest = cmdArgs.getArgN(2);
+        itemLines = rest ? [rest] : [];
+    }
+    if (!itemLines.length) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const reg = getRegistry();
+    const results = [];
+    for (const line of itemLines) {
+        const parts = line.trim().split(/[*＊]/);
+        const inputCode = (parts[0] || "").trim();
+        const num = parseInt((parts[1] || "1").trim());
+        const item = findItem(reg, inputCode);
+        if (!item) { results.push(`❌ 未知物品「${inputCode}」`); continue; }
+
+        // 检查特殊道具限制（SPEC_003望远镜、SPEC_004羽毛笔）
+        if ((item.code === "SPEC_003" || item.code === "SPEC_004")) {
+            const letterExt = seal.ext.find("changri");
+            if (letterExt) {
+                const config = JSON.parse(letterExt.storageGet("global_feature_toggle") || "{}");
+                if (!config.enable_direct_letter) {
+                    results.push(`❌ 「${item.name}」只有在启用写信综模式后才能添加到池子。`);
+                    continue;
+                }
+            } else {
+                results.push(`❌ 写信系统未找到。`);
+                continue;
+            }
+        }
+
+        if (isNaN(num) || num <= 0) { results.push(`❌ 数值无效: ${parts[1]}`); continue; }
+        if (pool.type === "fixed") {
+            if (num > 999) { results.push(`❌ 权重最大999: [${item.code}]`); continue; }
+            const existing = pool.items.find(i => i.code === item.code);
+            if (existing) { existing.weight = num; results.push(`🔄 [${item.code}]${item.name} 权重更新为 ${num}`); }
+            else { pool.items.push({ code: item.code, weight: num }); results.push(`✅ [${item.code}]${item.name} 权重 ${num}`); }
+        } else {
+            const existing = pool.items.find(i => i.code === item.code);
+            if (existing) { existing.count += num; results.push(`🔄 [${item.code}]${item.name} 数量+${num}（共${existing.count}）`); }
+            else { pool.items.push({ code: item.code, count: num }); results.push(`✅ [${item.code}]${item.name} ×${num}`); }
+        }
+    }
+    savePoolDefs(defs);
+    seal.replyToSender(ctx, msg, `池子「${poolName}」更新：\n${results.join("\n")}`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["上架池子"] = cmd_pool_add;
+
+let cmd_pool_remove = seal.ext.newCmdItemInfo();
+cmd_pool_remove.name = "从池移除";
+cmd_pool_remove.help = "【管理员】从池子中移除物品\n从池移除 池子名 物品码或名称";
+cmd_pool_remove.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const poolName = cmdArgs.getArgN(1);
+    const inputCode = cmdArgs.getArgN(2);
+    if (!poolName || !inputCode) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const defs = getPoolDefs();
+    const pool = defs[poolName];
+    if (!pool) return seal.replyToSender(ctx, msg, `❌ 未找到池子「${poolName}」。`);
+    const reg = getRegistry();
+    const item = findItem(reg, inputCode);
+    const code = item ? item.code : inputCode.toUpperCase();
+    const idx = pool.items.findIndex(i => i.code === code);
+    if (idx === -1) return seal.replyToSender(ctx, msg, `❌ 池子中没有 [${code}]`);
+    pool.items.splice(idx, 1);
+    savePoolDefs(defs);
+    seal.replyToSender(ctx, msg, `✅ 已从「${poolName}」移除 [${code}]${item?.name || ""}`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["从池移除"] = cmd_pool_remove;
+
+let cmd_pool_config = seal.ext.newCmdItemInfo();
+cmd_pool_config.name = "池子设定";
+cmd_pool_config.help = "【管理员】设置每游戏日抽取次数\n池子设定 查看\n池子设定 总量:N —— 全局每日总次数\n池子设定 总量:无限 —— 无限制\n池子设定 池子名:N —— 特定池每日次数";
+cmd_pool_config.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const arg = cmdArgs.getArgN(1);
+    if (!arg || arg === "查看") {
+        const cfg = getDrawConfig();
+        let text = `📊 抽取次数设定：\n总量：${cfg.total !== null && cfg.total !== undefined ? cfg.total + "次" : "无限"}`;
+        for (const [pn, n] of Object.entries(cfg.pools || {})) text += `\n  · ${pn}：${n}次`;
+        return seal.replyToSender(ctx, msg, text);
+    }
+    const colonIdx = arg.indexOf(":");
+    if (colonIdx === -1) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const key = arg.substring(0, colonIdx);
+    const valStr = arg.substring(colonIdx + 1);
+    const cfg = getDrawConfig();
+    if (key === "总量") {
+        cfg.total = valStr === "无限" ? null : parseInt(valStr);
+        saveDrawConfig(cfg);
+        return seal.replyToSender(ctx, msg, `✅ 总量限制：${cfg.total !== null ? cfg.total + "次" : "无限"}`);
+    }
+    const n = parseInt(valStr);
+    if (isNaN(n) || n < 0) return seal.replyToSender(ctx, msg, "❌ 次数必须为非负整数。");
+    if (!cfg.pools) cfg.pools = {};
+    cfg.pools[key] = n;
+    saveDrawConfig(cfg);
+    seal.replyToSender(ctx, msg, `✅ 池子「${key}」每日次数：${n}次`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["池子设定"] = cmd_pool_config;
+
+function makePoolToggleCmd(cmdName, enableValue) {
+    let cmd = seal.ext.newCmdItemInfo();
+    cmd.name = cmdName;
+    cmd.help = `【管理员】${cmdName} 池子名`;
+    cmd.solve = (ctx, msg, cmdArgs) => {
+        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+        const poolName = cmdArgs.getArgN(1);
+        if (!poolName) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+        const defs = getPoolDefs();
+        if (!defs[poolName]) return seal.replyToSender(ctx, msg, `❌ 未找到池子「${poolName}」。`);
+        defs[poolName].enabled = enableValue;
+        savePoolDefs(defs);
+        seal.replyToSender(ctx, msg, `✅ 池子「${poolName}」已${enableValue ? "开启" : "关闭"}。`);
+        return seal.ext.newCmdExecuteResult(true);
+    };
+    return cmd;
+}
+
+function registerPoolToggleCmds() {
+    ext.cmdMap["开启池子"] = makePoolToggleCmd("开启池子", true);
+    ext.cmdMap["关闭池子"] = makePoolToggleCmd("关闭池子", false);
+}
+
+let cmd_del_pool = seal.ext.newCmdItemInfo();
+cmd_del_pool.name = "删除池子";
+cmd_del_pool.help = "【管理员】彻底删除池子\n删除池子 池子名";
+cmd_del_pool.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const poolName = cmdArgs.getArgN(1);
+    if (!poolName) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const defs = getPoolDefs();
+    if (!defs[poolName]) return seal.replyToSender(ctx, msg, `❌ 未找到池子「${poolName}」。`);
+    delete defs[poolName];
+    savePoolDefs(defs);
+    seal.replyToSender(ctx, msg, `✅ 池子「${poolName}」已删除。`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["删除池子"] = cmd_del_pool;
+
+let cmd_batch_create_pools = seal.ext.newCmdItemInfo();
+cmd_batch_create_pools.name = "一键建池";
+cmd_batch_create_pools.help = "【管理员】根据地点列表批量创建同名自由池\n一键建池 —— 为所有已注册地点创建「地点名池」（free类型，已存在的跳过）";
+cmd_batch_create_pools.solve = (ctx, msg) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const main = getMainExt();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
+
+    const places = JSON.parse(main.storageGet("available_places") || "{}");
+    const placeNames = Object.keys(places);
+    if (!placeNames.length) return seal.replyToSender(ctx, msg, "❌ 暂无已注册地点，请先用「地点 添加 地点名」添加地点。");
+
+    const defs = getPoolDefs();
+    const created = [];
+    const skipped = [];
+
+    for (const placeName of placeNames) {
+        const poolName = `${placeName}池`;
+        if (defs[poolName]) {
+            skipped.push(poolName);
+        } else {
+            defs[poolName] = { name: poolName, type: "free", items: [], enabled: true };
+            created.push(poolName);
+        }
+    }
+
+    if (created.length) savePoolDefs(defs);
+
+    const lines = [];
+    if (created.length) lines.push(`✅ 已创建（${created.length}个）：${created.join("、")}`);
+    if (skipped.length) lines.push(`⏭️ 已跳过（${skipped.length}个，已存在）：${skipped.join("、")}`);
+    seal.replyToSender(ctx, msg, `🎲 一键建池完成：\n${lines.join("\n")}\n\n💡 请用「上架池子 池子名 物品码*数量」往池子里加物品。`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["一键建池"] = cmd_batch_create_pools;
+
+let cmd_adjust = seal.ext.newCmdItemInfo();
+cmd_adjust.name = "调整";
+cmd_adjust.help = "【管理员】直接调整玩家背包数量\n调整 角色名 物品码 +N [物品码2 +N2 ...]\n示例：调整 张三 ITEM_001 +3\n多个：调整 张三 ITEM_001 +3 ITEM_002 -1 SPEC_005 +2";
+cmd_adjust.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const roleName = cmdArgs.getArgN(1);
+    if (!roleName || !cmdArgs.getArgN(2)) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const main = getMainExt();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
+    const platform = msg.platform;
+    const uid = getRoleUid(platform, roleName);
+    if (!uid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${roleName}」。`);
+    const roleKey = `${platform}:${getPrimaryUid(platform, uid)}`;
+    const reg = getRegistry();
+
+    // 收集所有 物品码+数量 对（从 arg2 开始，每两个一组）
+    const pairs = [];
+    let i = 2;
+    while (true) {
+        const code = cmdArgs.getArgN(i);
+        const deltaStr = cmdArgs.getArgN(i + 1);
+        if (!code) break;
+        if (!deltaStr) { pairs.push({ err: `「${code}」缺少数量` }); break; }
+        const delta = parseInt(deltaStr);
+        if (isNaN(delta)) { pairs.push({ err: `「${code}」数量格式错误：${deltaStr}` }); break; }
+        const item = findItem(reg, code);
+        if (!item) { pairs.push({ err: `找不到物品「${code}」` }); i += 2; continue; }
+        pairs.push({ item, delta });
+        i += 2;
+    }
+
+    if (!pairs.length) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+
+    const lines = [];
+    for (const p of pairs) {
+        if (p.err) { lines.push(`❌ ${p.err}`); continue; }
+        const { item, delta } = p;
+        if (delta === 0) { lines.push(`⚠️ ${item.name} 调整量为0，跳过`); continue; }
+        if (delta > 0) {
+            addToInv(roleKey, item.code, delta);
+            lines.push(`✅ [${item.code}]${item.name} ×${delta} 已加入背包`);
+            notifyPlayer(ctx, platform, roleName, `📦【背包更新】${item.name} ×${delta} 已加入你的背包。`);
+        } else {
+            if (!removeFromInv(roleKey, item.code, -delta)) {
+                lines.push(`❌ [${item.code}]${item.name} 背包数量不足，跳过`);
+            } else {
+                lines.push(`✅ [${item.code}]${item.name} ×${-delta} 已扣除`);
+                notifyPlayer(ctx, platform, roleName, `📦【背包更新】${item.name} ×${-delta} 已从你的背包中移除。`);
+            }
+        }
+    }
+
+    seal.replyToSender(ctx, msg, `📦 调整「${roleName}」背包（共${pairs.length}项）：\n${lines.join("\n")}`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["调整"] = cmd_adjust;
+
+let cmd_grant_draws = seal.ext.newCmdItemInfo();
+cmd_grant_draws.name = "发放抽取";
+cmd_grant_draws.help = "【管理员】给玩家额外抽取次数（永久，不随游戏日重置）\n发放抽取 角色名 N —— 总量额外N次\n发放抽取 角色名 池子名 N —— 特定池额外N次";
+cmd_grant_draws.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const roleName = cmdArgs.getArgN(1);
+    const arg2 = cmdArgs.getArgN(2);
+    const arg3 = cmdArgs.getArgN(3);
+    if (!roleName || !arg2) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const main = getMainExt();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
+    const platform = msg.platform;
+    // 新结构：通过 roleName 反查 uid
+    const uid = getRoleUid(platform, roleName);
+    if (!uid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${roleName}」。`);
+    const drRec = getPlayerDrawRec(platform, getPrimaryUid(platform, uid));
+    if (!drRec) return seal.replyToSender(ctx, msg, "❌ 无法读取抽取记录。");
+    const { records, key, rec } = drRec;
+    let poolName = null, n;
+    if (arg3) { poolName = arg2; n = parseInt(arg3); }
+    else { n = parseInt(arg2); }
+    if (isNaN(n) || n <= 0) return seal.replyToSender(ctx, msg, "❌ 次数必须为正整数。");
+    if (!rec.extra) rec.extra = {};
+    if (poolName) {
+        rec.extra[poolName] = (rec.extra[poolName] || 0) + n;
+        seal.replyToSender(ctx, msg, `✅ 已为「${roleName}」发放「${poolName}」额外次数 ×${n}`);
+        notifyPlayer(ctx, platform, roleName, `✨【机会降临】你在「${poolName}」中获得了 ${n} 次额外抽取机会！`);
+    } else {
+        rec.extra._total = (rec.extra._total || 0) + n;
+        seal.replyToSender(ctx, msg, `✅ 已为「${roleName}」发放总额外次数 ×${n}`);
+        notifyPlayer(ctx, platform, roleName, `✨【机会降临】你获得了 ${n} 次额外抽取机会！`);
+    }
+    savePlayerDrawRec(records, key, rec);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["发放抽取"] = cmd_grant_draws;
+
+let cmd_admin_bag = seal.ext.newCmdItemInfo();
+cmd_admin_bag.name = "查看背包";
+cmd_admin_bag.help = "【管理员】查看指定角色背包\n查看背包 角色名";
+cmd_admin_bag.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const roleName = cmdArgs.getArgN(1);
+    if (!roleName) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const adminPlatform = msg.platform;
+    const adminTargetUid = getRoleUid(adminPlatform, roleName);
+    if (!adminTargetUid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${roleName}」。`);
+    seal.replyToSender(ctx, msg, formatInventory(`${adminPlatform}:${getPrimaryUid(adminPlatform, adminTargetUid)}`, roleName, getRegistry()));
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["查看背包"] = cmd_admin_bag;
+
+let cmd_usage_log = seal.ext.newCmdItemInfo();
+cmd_usage_log.name = "物品使用记录";
+cmd_usage_log.help = "【管理员】查看今日物品使用记录\n物品使用记录 [N] —— 默认20条";
+cmd_usage_log.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const main = getMainExt();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
+    const n = parseInt(cmdArgs.getArgN(1)) || 20;
+    const log = JSON.parse(main.storageGet("item_usage_log") || "[]");
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+    const todayLog = log.filter(e => e.timestamp >= todayStart.getTime()).sort((a, b) => a.timestamp - b.timestamp);
+    if (!todayLog.length) return seal.replyToSender(ctx, msg, "📭 今天还没有物品使用记录。");
+    const slice = todayLog.slice(-n);
+    const lines = slice.map((e, i) => {
+        const t = new Date(e.timestamp).toLocaleTimeString("zh-CN", { hour: '2-digit', minute: '2-digit' });
+        return `${i + 1}. ${t} ${e.roleName} 使用了 [${e.code}]${e.name}`;
+    });
+    seal.replyToSender(ctx, msg, `📜 今日记录（${slice.length}/${todayLog.length}）：\n${lines.join("\n")}`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["物品使用记录"] = cmd_usage_log;
+
+let cmd_market_config = seal.ext.newCmdItemInfo();
+cmd_market_config.name = "二手设定";
+cmd_market_config.help = "【管理员】配置二手市场\n二手设定 手续费:N —— 设置手续费百分比（2-5）\n二手设定 开启 / 关闭\n二手设定 查看";
+cmd_market_config.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const arg = cmdArgs.getArgN(1);
+    const cfg = getMarketConfig();
+    if (!arg || arg === "查看") {
+        return seal.replyToSender(ctx, msg, `🏬 二手市场设定：\n状态：${cfg.enabled ? "开启" : "关闭"}\n手续费：${cfg.fee}%（买家承担，向上取整）`);
+    }
+    if (arg === "开启") { cfg.enabled = true; saveMarketConfig(cfg); return seal.replyToSender(ctx, msg, "✅ 二手市场已开启。"); }
+    if (arg === "关闭") { cfg.enabled = false; saveMarketConfig(cfg); return seal.replyToSender(ctx, msg, "✅ 二手市场已关闭。"); }
+    const colonIdx = arg.indexOf(":");
+    if (colonIdx !== -1 && arg.substring(0, colonIdx) === "手续费") {
+        const fee = parseInt(arg.substring(colonIdx + 1));
+        if (isNaN(fee) || fee < 2 || fee > 5) return seal.replyToSender(ctx, msg, "❌ 手续费需在2-5之间。");
+        cfg.fee = fee;
+        saveMarketConfig(cfg);
+        return seal.replyToSender(ctx, msg, `✅ 手续费已设为 ${fee}%`);
+    }
+    const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r;
+};
+ext.cmdMap["二手设定"] = cmd_market_config;
+
+// ========================
+// 玩家指令
+// ========================
+
+let cmd_shop_view = seal.ext.newCmdItemInfo();
+cmd_shop_view.name = "商城";
+cmd_shop_view.help = "查看商城物品列表";
+cmd_shop_view.solve = (ctx, msg) => {
+    const shop = getShop();
+    const reg = getRegistry();
+    if (!shop.length) return seal.replyToSender(ctx, msg, "🏪 商城暂无上架物品。");
+    const lines = shop.map(s => {
+        const item = reg[s.code] || { name: s.code, desc: "" };
+        return `[${s.code}] ${item.name} — ${s.price}${s.currencyName}\n   └ ${item.desc}`;
+    });
+    seal.replyToSender(ctx, msg, `🏪 商城（${shop.length}件）：\n${lines.join("\n")}`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["商城"] = cmd_shop_view;
+
+let cmd_buy = seal.ext.newCmdItemInfo();
+cmd_buy.name = "购买";
+cmd_buy.help = "从商城购买物品\n购买 物品码 [数量]";
+cmd_buy.solve = (ctx, msg, cmdArgs) => {
+    const roleName = getRoleName(ctx, msg);
+    if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+    const platform = msg.platform;
+    const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+    const uid = getPrimaryUid(platform, rawUid);
+    const roleKey = `${platform}:${uid}`;
+    const inputCode = cmdArgs.getArgN(1);
+    const count = parseInt(cmdArgs.getArgN(2)) || 1;
+    if (!inputCode || count <= 0) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const reg = getRegistry();
+    const item = findItem(reg, inputCode);
+    if (!item) return seal.replyToSender(ctx, msg, `❌ 找不到物品「${inputCode}」`);
+    const shop = getShop();
+    const listing = shop.find(s => s.code === item.code);
+    if (!listing) return seal.replyToSender(ctx, msg, `❌ 商城中没有 [${item.code}]${item.name}，发送「商城」查看。`);
+    const totalCost = listing.price * count;
+    const hasCurrency = getInvCount(roleKey, listing.currencyCode);
+    if (hasCurrency < totalCost) return seal.replyToSender(ctx, msg, `❌ ${listing.currencyName}不足。需要 ${totalCost}，持有 ${hasCurrency}。`);
+    removeFromInv(roleKey, listing.currencyCode, totalCost);
+    addToInv(roleKey, item.code, count);
+    seal.replyToSender(ctx, msg, `✅ 购买成功！获得 [${item.code}]${item.name} ×${count}，花费 ${totalCost}${listing.currencyName}`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["购买"] = cmd_buy;
+
+let cmd_give_item = seal.ext.newCmdItemInfo();
+cmd_give_item.name = "赠送道具";
+cmd_give_item.help = "将背包中的物品送给其他玩家\n赠送道具 角色名 物品码 [数量]";
+cmd_give_item.solve = (ctx, msg, cmdArgs) => {
+    const roleName = getRoleName(ctx, msg);
+    if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+    const platform = msg.platform;
+    const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+    const uid = getPrimaryUid(platform, rawUid);
+    const fromRoleKey = `${platform}:${uid}`; // 赠送者Key
+    
+    const targetName = cmdArgs.getArgN(1);
+    const inputCode = cmdArgs.getArgN(2);
+    const count = parseInt(cmdArgs.getArgN(3)) || 1;
+
+    // 1. 基础校验
+    if (isNaN(count) || count <= 0) return seal.replyToSender(ctx, msg, "❌ 赠送数量必须是正整数。");
+    if (!targetName || !inputCode) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    if (targetName === roleName) return seal.replyToSender(ctx, msg, "⚠️ 不能赠送给自己。");
+
+    const main = getMainExt();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
+
+    // 2. 目标校验（新结构：通过 roleName 反查 uid）
+    const toTargetUid = getRoleUid(platform, targetName);
+    if (!toTargetUid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${targetName}」。`);
+    const toRoleKey = `${platform}:${getPrimaryUid(platform, toTargetUid)}`; // 接收者Key
+
+    // 3. 物品与次数校验
+    const reg = getRegistry();
+    const itemInfo = findItem(reg, inputCode);
+    if (!itemInfo) return seal.replyToSender(ctx, msg, `❌ 未知物品「${inputCode}」`);
+
+    // --- 核心修改：手动处理背包转移以保留 remainingUses ---
+    let fromInv = getInv(fromRoleKey);
+    let itemIdx = fromInv.findIndex(i => i.code === itemInfo.code);
+
+    if (itemIdx === -1 || fromInv[itemIdx].count < count) {
+        const has = itemIdx === -1 ? 0 : fromInv[itemIdx].count;
+        return seal.replyToSender(ctx, msg, `❌ [${itemInfo.code}]${itemInfo.name} 不足（持有 ${has}，需要 ${count}）。`);
+    }
+
+    // 记录赠送者当前的剩余次数
+    const currentRemaining = fromInv[itemIdx].remainingUses ?? (itemInfo.maxUses ?? -1);
+
+    // 4. 执行扣除（从赠送者背包）
+    fromInv[itemIdx].count -= count;
+    if (fromInv[itemIdx].count <= 0) {
+        fromInv.splice(itemIdx, 1);
+    }
+    saveInv(fromRoleKey, fromInv);
+
+    // 5. 执行增加（到接收者背包）
+    let toInv = getInv(toRoleKey);
+    // 只有代码相同且剩余次数也相同的物品才堆叠，否则分两叠放（保证次数不被洗掉）
+    let existing = toInv.find(i => i.code === itemInfo.code && i.remainingUses === currentRemaining);
+    
+    if (existing) {
+        existing.count += count;
+    } else {
+        toInv.push({
+            code: itemInfo.code,
+            name: itemInfo.name,
+            count: count,
+            remainingUses: currentRemaining // 完美继承次数
+        });
+    }
+    saveInv(toRoleKey, toInv);
+
+    // 6. 反馈
+    const usageText = (currentRemaining !== -1) ? `(余${currentRemaining}次)` : "";
+    notifyPlayer(ctx, platform, targetName, `📦 「${roleName}」赠送给你 [${itemInfo.code}]${itemInfo.name}${usageText} ×${count}，已加入背包。`);
+    seal.replyToSender(ctx, msg, `✅ 已将 [${itemInfo.code}]${itemInfo.name}${usageText} ×${count} 赠送给「${targetName}」。`);
+    
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["赠送道具"] = cmd_give_item;
+
+let cmd_use = seal.ext.newCmdItemInfo();
+cmd_use.name = "使用";
+cmd_use.help = "使用背包中的普通物品\n使用 物品码或名称\n示例：使用 ITEM_001\n特殊道具（SPEC类）请使用「特殊使用」指令";
+
+cmd_use.solve = (ctx, msg, cmdArgs) => {
+    const roleName = getRoleName(ctx, msg);
+    if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+    const platform = msg.platform;
+    const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+    const uid = getPrimaryUid(platform, rawUid);
+    const roleKey = `${platform}:${uid}`;
+    const inputCode = cmdArgs.getArgN(1);
+
+    if (!inputCode) { 
+        const r = seal.ext.newCmdExecuteResult(true); 
+        r.showHelp = true; 
+        return r; 
+    }
+
+    const reg = getRegistry();
+    const item = findItem(reg, inputCode);
+    if (!item) return seal.replyToSender(ctx, msg, `❌ 未知物品「${inputCode}」`);
+
+    // 检查是否为互动物品
+    if (item.type === "interact") {
+        return seal.replyToSender(ctx, msg, `❌ [${item.code}]${item.name} 是互动物品，请使用「施加 目标名 ${item.code}」来对其他人使用。`);
+    }
+
+    // 1. 获取玩家背包，寻找该物品实例
+    let inv = getInv(roleKey);
+    let invIndex = inv.findIndex(i => i.code === item.code);
+
+    if (invIndex === -1 || inv[invIndex].count <= 0) {
+        return seal.replyToSender(ctx, msg, `❌ 背包中没有 [${item.code}]${item.name}。`);
+    }
+
+    let userItem = inv[invIndex];
+
+    // 2. 特殊道具须使用专属指令
+    if (item.type === "preset") {
+        return seal.replyToSender(ctx, msg, `⚙️ [${item.code}]${item.name} 是特殊道具，请使用「特殊使用 ${item.name} [参数]」`);
+    }
+
+    // 3. 处理属性变更 (支持多属性同时影响)
+    let effectReply = "";
+    if (item.attrs) {
+        // 调用你系统中的属性变更函数
+        modCharAttrs(platform, roleName, item.attrs); 
+        const changes = parseAttrEffects(item.attrs);
+        effectReply = `\n📊 属性变化：${Object.entries(changes).map(([k, v]) => `${k}${v > 0 ? '+' : ''}${v}`).join("，")}`;
+    }
+
+    // 4. 【核心逻辑】处理使用次数扣减
+    let usageStatus = "";
+    
+    // 如果 remainingUses 未定义(老数据)，则初始化为注册表的 maxUses
+    if (userItem.remainingUses === undefined) {
+        userItem.remainingUses = item.maxUses ?? -1;
+    }
+
+    if (userItem.remainingUses !== -1) {
+        // 消耗一次次数
+        userItem.remainingUses -= 1;
+
+        if (userItem.remainingUses <= 0) {
+            // 次数耗尽，扣除一个堆叠数量
+            userItem.count -= 1;
+            if (userItem.count <= 0) {
+                inv.splice(invIndex, 1); // 彻底用光，移除物品
+                usageStatus = "(已耗尽)";
+            } else {
+                // 如果还有叠层，重置次数到最大值
+                userItem.remainingUses = item.maxUses;
+                usageStatus = `(消耗1份，余${userItem.count}份)`;
+            }
+        } else {
+            usageStatus = `(余${userItem.remainingUses}次)`;
+        }
+    } else {
+        // 无限次数物品，使用即扣除 1 个数量
+        userItem.count -= 1;
+        if (userItem.count <= 0) {
+            inv.splice(invIndex, 1);
+        }
+    }
+
+    // 5. 保存背包更新
+    saveInv(roleKey, inv);
+
+    // 6. 记录日志并反馈
+    logItemUsage(platform, roleName, item.code, item.name);
+    let reply = `⚙️ 【${roleName}】使用了 [${item.code}]${item.name} ${usageStatus}。${effectReply}`;
+    seal.replyToSender(ctx, msg, reply);
+
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["使用"] = cmd_use;
+
+let cmd_sell = seal.ext.newCmdItemInfo();
+cmd_sell.name = "售卖";
+cmd_sell.help = "将物品上架二手市场\n售卖 物品码 价格 货币名 [数量]\n示例：售卖 ITEM_001 8 金币 2";
+
+cmd_sell.solve = (ctx, msg, cmdArgs) => {
+    const roleName = getRoleName(ctx, msg);
+    if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+
+    const platform = msg.platform;
+    const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+    const uid = getPrimaryUid(platform, rawUid);
+    const roleKey = `${platform}:${uid}`;
+    const cfg = getMarketConfig();
+    if (!cfg.enabled) return seal.replyToSender(ctx, msg, "❌ 二手市场暂未开放。");
+
+    const inputCode = cmdArgs.getArgN(1);
+    const priceStr = cmdArgs.getArgN(2);
+    const currencyName = cmdArgs.getArgN(3);
+    const count = parseInt(cmdArgs.getArgN(4)) || 1;
+
+    if (!inputCode || !priceStr || !currencyName) { 
+        const r = seal.ext.newCmdExecuteResult(true); 
+        r.showHelp = true; 
+        return r; 
+    }
+    if (count <= 0 || isNaN(count)) return seal.replyToSender(ctx, msg, "❌ 数量必须为正整数。");
+
+    const price = parseInt(priceStr);
+    if (isNaN(price) || price <= 0) return seal.replyToSender(ctx, msg, "❌ 价格必须为正整数。");
+
+    const reg = getRegistry();
+    const item = findItem(reg, inputCode);
+    if (!item) return seal.replyToSender(ctx, msg, `❌ 未知物品「${inputCode}」`);
+    if (item.type === "preset") return seal.replyToSender(ctx, msg, "❌ 特殊道具不可在二手市场售卖。");
+    if (!item.canResell) return seal.replyToSender(ctx, msg, `❌ [${item.code}]${item.name} 不允许在二手市场售卖。`);
+
+    const currency = Object.values(reg).find(r => r.name === currencyName && r.type === "currency");
+    if (!currency) return seal.replyToSender(ctx, msg, `❌ 未找到货币「${currencyName}」。`);
+
+    // --- 核心逻辑修改：手动处理背包扣除，以获取 remainingUses ---
+    let inv = getInv(roleKey);
+    let invIndex = inv.findIndex(i => i.code === item.code);
+
+    if (invIndex === -1 || inv[invIndex].count < count) {
+        const has = invIndex === -1 ? 0 : inv[invIndex].count;
+        return seal.replyToSender(ctx, msg, `❌ [${item.code}]${item.name} 不足（持有 ${has}，需要 ${count}）。`);
+    }
+
+    let userItem = inv[invIndex];
+    // 获取该物品目前的剩余次数（如果是旧数据则取注册表默认值）
+    const currentRemaining = userItem.remainingUses ?? (item.maxUses ?? -1);
+
+    // 执行扣除
+    userItem.count -= count;
+    if (userItem.count <= 0) {
+        inv.splice(invIndex, 1);
+    }
+    saveInv(roleKey, inv);
+
+    // --- 写入市场数据 ---
+    const market = getMarket();
+    const shCode = genSecondhandCode(market);
+    if (!shCode) return seal.replyToSender(ctx, msg, "❌ 二手市场编号已满。");
+
+    market[shCode] = { 
+        sellerRole: roleName, 
+        code: item.code, 
+        count: count, 
+        price: price, 
+        currencyCode: currency.code, 
+        currencyName: currencyName, 
+        listedAt: Date.now(),
+        // 【新增字段】记录售卖时的剩余次数
+        remainingUses: currentRemaining 
+    };
+
+    saveMarket(market);
+
+    let usageText = (currentRemaining !== -1) ? `(余${currentRemaining}次)` : "";
+    seal.replyToSender(ctx, msg, `✅ [${item.code}]${item.name}${usageText} ×${count} 已上架二手市场 #${shCode}\n售价：${price * count} ${currencyName}`);
+    
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["售卖"] = cmd_sell;
+
+let cmd_cancel_sell = seal.ext.newCmdItemInfo();
+cmd_cancel_sell.name = "撤销卖单";
+cmd_cancel_sell.help = "撤销二手市场的卖单\n撤销卖单 编号（如 0001）";
+cmd_cancel_sell.solve = (ctx, msg, cmdArgs) => {
+    const roleName = getRoleName(ctx, msg);
+    if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+    const platform = msg.platform;
+    const shCode = (cmdArgs.getArgN(1) || "").padStart(4, '0');
+    if (shCode.length !== 4) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const market = getMarket();
+    const listing = market[shCode];
+    if (!listing) return seal.replyToSender(ctx, msg, `❌ 未找到卖单 #${shCode}`);
+    if (listing.sellerRole !== roleName && !isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 只能撤销自己的卖单。");
+    delete market[shCode];
+    saveMarket(market);
+    const cancelSellerUid = getRoleUid(platform, listing.sellerRole);
+    const cancelSellerPrimaryUid = cancelSellerUid ? getPrimaryUid(platform, cancelSellerUid) : listing.sellerRole;
+    addToInv(`${platform}:${cancelSellerPrimaryUid}`, listing.code, listing.count);
+    const reg = getRegistry();
+    seal.replyToSender(ctx, msg, `✅ 卖单 #${shCode} 已撤销，[${listing.code}]${reg[listing.code]?.name || listing.code} ×${listing.count} 已退回背包。`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["撤销卖单"] = cmd_cancel_sell;
+
+let cmd_market = seal.ext.newCmdItemInfo();
+cmd_market.name = "二手市场";
+cmd_market.help = "查看/购买二手市场物品\n二手市场 —— 查看所有在售\n二手市场 买 编号 —— 购买指定编号";
+
+cmd_market.solve = (ctx, msg, cmdArgs) => {
+    const cfg = getMarketConfig();
+    if (!cfg.enabled) return seal.replyToSender(ctx, msg, "❌ 二手市场暂未开放。");
+    
+    const action = cmdArgs.getArgN(1);
+    const market = getMarket();
+    const reg = getRegistry();
+
+    // --- 购买逻辑 ---
+    if (action === "买") {
+        const shCode = (cmdArgs.getArgN(2) || "").padStart(4, '0');
+        const listing = market[shCode];
+        if (!listing) return seal.replyToSender(ctx, msg, `❌ 未找到编号 #${shCode} 的卖单。`);
+
+        const roleName = getRoleName(ctx, msg);
+        if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+        if (listing.sellerRole === roleName) return seal.replyToSender(ctx, msg, "❌ 不能购买自己的卖单。");
+
+        const platform = msg.platform;
+        const buyerRawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+        const buyerUid = getPrimaryUid(platform, buyerRawUid);
+        const buyerRoleKey = `${platform}:${buyerUid}`;
+        const sellerUid = getRoleUid(platform, listing.sellerRole);
+        const sellerPrimaryUid = sellerUid ? getPrimaryUid(platform, sellerUid) : listing.sellerRole;
+        const sellerRoleKey = `${platform}:${sellerPrimaryUid}`;
+
+        // 计算费用
+        const totalPrice = listing.price * listing.count;
+        const fee = Math.ceil(totalPrice * cfg.fee / 100);
+        const totalCost = totalPrice + fee;
+
+        // 检查买家余额
+        const hasCurrency = getInvCount(buyerRoleKey, listing.currencyCode);
+        if (hasCurrency < totalCost) {
+            return seal.replyToSender(ctx, msg, `❌ ${listing.currencyName}不足。需要 ${totalCost}（含费），持有 ${hasCurrency}。`);
+        }
+
+        // --- 执行交易 ---
+        // 1. 扣除买家钱款
+        removeFromInv(buyerRoleKey, listing.currencyCode, totalCost);
+        // 2. 将原价（不含手续费）给卖家
+        addToInv(sellerRoleKey, listing.currencyCode, totalPrice);
+
+        // 3. 【核心修改】买家获得物品，且必须继承剩余次数
+        let buyerInv = getInv(buyerRoleKey);
+        const itemInfo = reg[listing.code];
+        
+        // 查找背包里是否有【代码相同】且【剩余次数也相同】的物品进行堆叠
+        let existing = buyerInv.find(i => i.code === listing.code && i.remainingUses === listing.remainingUses);
+        if (existing) {
+            existing.count += listing.count;
+        } else {
+            buyerInv.push({
+                code: listing.code,
+                name: itemInfo?.name || listing.code,
+                count: listing.count,
+                remainingUses: listing.remainingUses ?? (itemInfo?.maxUses ?? -1)
+            });
+        }
+        saveInv(buyerRoleKey, buyerInv);
+
+        // 4. 清理市场单据
+        delete market[shCode];
+        saveMarket(market);
+
+        const itemName = itemInfo?.name || listing.code;
+        const usageText = (listing.remainingUses !== -1) ? `(余${listing.remainingUses}次)` : "";
+
+        // 5. 通知与反馈
+        notifyPlayer(ctx, platform, listing.sellerRole, `💰 卖单 #${shCode} [${listing.code}]${itemName}${usageText} ×${listing.count} 已售出，获得 ${totalPrice}${listing.currencyName}。`);
+        seal.replyToSender(ctx, msg, `✅ 购买成功！获得 [${listing.code}]${itemName}${usageText} ×${listing.count}，花费 ${totalCost}${listing.currencyName}`);
+        
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // --- 查看逻辑 ---
+    const listings = Object.entries(market);
+    if (!listings.length) return seal.replyToSender(ctx, msg, "🏬 二手市场暂无在售物品。");
+
+    const lines = listings.map(([shCode, l]) => {
+        const itemInfo = reg[l.code];
+        const itemName = itemInfo?.name || l.code;
+        const fee = Math.ceil(l.price * l.count * cfg.fee / 100);
+        
+        // 增加剩余次数显示
+        let usageText = "";
+        if (l.remainingUses !== undefined && l.remainingUses !== -1) {
+            usageText = `(余${l.remainingUses}次)`;
+        }
+
+        return `#${shCode} [${l.code}]${itemName}${usageText} ×${l.count} — ${l.price * l.count}${l.currencyName}\n   └ 卖家：${l.sellerRole}`;
+    });
+
+    seal.replyToSender(ctx, msg, `🏬 二手市场（${listings.length}件）：\n${lines.join("\n")}\n\n💡 发送「二手市场 买 编号」购买`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["二手市场"] = cmd_market;
+
+let cmd_draw = seal.ext.newCmdItemInfo();
+cmd_draw.name = "抽取";
+cmd_draw.help = "从抽取池获得物品\n抽取 —— 从第一个开放池抽取\n抽取 池子名 —— 从指定池子抽取";
+cmd_draw.solve = (ctx, msg, cmdArgs) => {
+    const roleName = getRoleName(ctx, msg);
+    if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+    const platform = msg.platform;
+    const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+    const uid = getPrimaryUid(platform, rawUid);
+    const roleKey = `${platform}:${uid}`;
+    const drRec = getPlayerDrawRec(platform, uid);
+    if (!drRec) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
+    const { records, key, rec } = drRec;
+    const defs = getPoolDefs();
+    const enabledPools = Object.values(defs).filter(p => p.enabled);
+    if (!enabledPools.length) return seal.replyToSender(ctx, msg, "❌ 当前没有开放的抽取池。");
+    let poolName = cmdArgs.getArgN(1);
+    let pool;
+    if (poolName) {
+        pool = defs[poolName];
+        if (!pool) return seal.replyToSender(ctx, msg, `❌ 未找到池子「${poolName}」。`);
+        if (!pool.enabled) return seal.replyToSender(ctx, msg, `❌ 池子「${poolName}」当前未开放。`);
+    } else {
+        pool = enabledPools[0];
+        poolName = pool.name;
+    }
+    const config = getDrawConfig();
+    const check = canDraw(rec, config, poolName);
+    if (!check.ok) return seal.replyToSender(ctx, msg, `⚠️ ${check.reason}`);
+    const reg = getRegistry();
+    let drawnCode;
+    if (pool.type === "fixed") {
+        drawnCode = drawFromFixed(pool, reg);
+    } else {
+        drawnCode = drawFromFree(pool, defs);
+    }
+    if (!drawnCode) return seal.replyToSender(ctx, msg, `❌ 池子「${poolName}」已空。`);
+    consumeDraw(rec, poolName);
+    savePlayerDrawRec(records, key, rec);
+    addToInv(roleKey, drawnCode, 1);
+    const item = reg[drawnCode] || { name: drawnCode, desc: "" };
+    const totalUsed = rec.used._total || 0;
+    const totalBase = (config.total !== null && config.total !== undefined) ? config.total : "∞";
+    seal.replyToSender(ctx, msg, `🎲 【${roleName}】从「${poolName}」抽到：[${drawnCode}]${item.name}\n描述：${item.desc}\n（今日总抽取：${totalUsed}/${totalBase}）`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["抽取"] = cmd_draw;
+
+let cmd_draw_count = seal.ext.newCmdItemInfo();
+cmd_draw_count.name = "我的抽取次数";
+cmd_draw_count.help = "查看今日抽取次数情况";
+cmd_draw_count.solve = (ctx, msg) => {
+    const roleName = getRoleName(ctx, msg);
+    if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+    const platform = msg.platform;
+    const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+    const uid = getPrimaryUid(platform, rawUid);
+    const drRec = getPlayerDrawRec(platform, uid);
+    if (!drRec) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
+    const { rec } = drRec;
+    const config = getDrawConfig();
+    const usedTotal = rec.used._total || 0;
+    const extraTotal = rec.extra._total || 0;
+    const totalBase = (config.total !== null && config.total !== undefined) ? config.total : null;
+    const totalMax = totalBase !== null ? totalBase + extraTotal : null;
+    const remaining = totalMax !== null ? Math.max(0, totalMax - usedTotal) : "∞";
+    let text = `🎲 【${roleName}】今日抽取：\n总量：${usedTotal}/${totalMax !== null ? totalMax : "∞"}，剩余 ${remaining}`;
+    if (extraTotal > 0) text += `（含额外 ${extraTotal} 次）`;
+    const defs = getPoolDefs();
+    for (const [pn, base] of Object.entries(config.pools || {})) {
+        if (defs[pn]?.enabled) {
+            const usedP = rec.used[pn] || 0;
+            const extraP = rec.extra[pn] || 0;
+            text += `\n  · ${pn}：${usedP}/${base + extraP}`;
+        }
+    }
+    seal.replyToSender(ctx, msg, text);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["我的抽取次数"] = cmd_draw_count;
+ext.cmdMap["抽取次数"] = cmd_draw_count;
+
+let cmd_bag = seal.ext.newCmdItemInfo();
+cmd_bag.name = "我的背包";
+cmd_bag.help = `查看自己的背包
+。背包                     查看背包全览
+。背包 货币/道具/物品      按分类查看
+。背包 [分类] [页码]      翻页查看（如：。背包 道具 2）
+。背包 搜 [关键词]        搜索物品`;
+cmd_bag.solve = (ctx, msg, cmdArgs) => {
+    const roleName = getRoleName(ctx, msg);
+    if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+
+    const arg1 = cmdArgs.getArgN(1) || "全部";
+    const arg2 = cmdArgs.getArgN(2) || "1";
+    const platform = msg.platform;
+    const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+    const uid = getPrimaryUid(platform, rawUid);
+    const roleKey = `${platform}:${uid}`;
+    pruneExpiredItems(roleKey);
+    const reg = getRegistry();
+
+    if (arg1 === "搜" || arg1 === "搜索") {
+        const keyword = arg2;
+        if (!keyword) return seal.replyToSender(ctx, msg, "❌ 请输入搜索关键词\n使用: 。背包 搜 关键词");
+
+        const inv = getInv(roleKey).filter(e => e.count > 0);
+        const results = inv.filter(entry => {
+            const info = reg[entry.code] || { name: entry.code };
+            const name = info.name || "";
+            const desc = info.desc || "";
+            return name.includes(keyword) || desc.includes(keyword);
+        });
+
+        if (!results.length) return seal.replyToSender(ctx, msg, `🔍 未找到「${keyword}」`);
+
+        const lines = [`搜索「${keyword}」(${results.length})`];
+        for (const entry of results.slice(0, 8)) {
+            const info = reg[entry.code] || { name: entry.code, type: "item" };
+            lines.push(formatItemEntry(entry, info));
+        }
+        if (results.length > 8) lines.push(`...还有${results.length - 8}项`);
+        seal.replyToSender(ctx, msg, lines.join("\n"));
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const validCategories = ["全部", "货币", "道具", "物品"];
+    const category = validCategories.includes(arg1) ? arg1 : "全部";
+    const page = Math.max(1, parseInt(arg2) || 1);
+
+    seal.replyToSender(ctx, msg, formatInventory(roleKey, roleName, reg, category, page));
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["我的背包"] = cmd_bag;
+ext.cmdMap["背包"] = cmd_bag;
+
+let cmd_item_detail = seal.ext.newCmdItemInfo();
+cmd_item_detail.name = "物品详情";
+cmd_item_detail.help = "查看物品详情\n物品详情 物品码或名称";
+cmd_item_detail.solve = (ctx, msg, cmdArgs) => {
+    const input = cmdArgs.getArgN(1);
+    if (!input) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const reg = getRegistry();
+    const item = findItem(reg, input);
+    if (!item) return seal.replyToSender(ctx, msg, `❌ 未找到物品「${input}」`);
+    const typeLabel = { item: "普通物品", currency: "货币", preset: "特殊道具" }[item.type] || item.type;
+    let text = `📦 [${item.code}] ${item.name}\n类型：${typeLabel}\n描述：${item.desc}`;
+    if (item.attrs) text += `\n属性效果：${item.attrs}`;
+    const listing = getShop().find(s => s.code === item.code);
+    if (listing) text += `\n🏪 商城售价：${listing.price}${listing.currencyName}`;
+    seal.replyToSender(ctx, msg, text);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["物品详情"] = cmd_item_detail;
+
+let cmd_upload_recipe = seal.ext.newCmdItemInfo();
+cmd_upload_recipe.name = "上传配方";
+cmd_upload_recipe.help = "【管理员】注册合成配方\n格式：上传配方 目标物品名*材料名:数量,材料名:数量[*成功率]\n成功率：可选，0-100，默认100\n示例：上传配方 简易绷带*干净的布:2,酒精:1\n     上传配方 高级丹*初级丹:3*80";
+cmd_upload_recipe.solve = (ctx, msg, cmdArgs) => {
+    if (ctx.privilegeLevel < 40) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+
+    const rest = msg.message.replace(/^[。.]\s*上传配方\s*/, "").trim();
+    if (!rest) return seal.ext.newCmdExecuteResult(true);
+
+    const parts = rest.split(/[*＊]/);
+    if (parts.length < 2) return seal.replyToSender(ctx, msg, "❌ 格式错误。需为：目标物品*材料1:数量,材料2:数量[*成功率]");
+
+    const targetName = parts[0].trim();
+    const ingredientsStr = parts[1].trim();
+    const successRateStr = parts[2]?.trim();
+
+    let successRate = 100;
+    if (successRateStr) {
+        successRate = parseInt(successRateStr);
+        if (isNaN(successRate) || successRate < 0 || successRate > 100) {
+            return seal.replyToSender(ctx, msg, "❌ 成功率必须是 0-100 之间的整数");
+        }
+    }
+
+    const reg = getRegistry();
+    const targetItem = Object.values(reg).find(i => i.name === targetName);
+    if (!targetItem) return seal.replyToSender(ctx, msg, `❌ 未找到目标物品「${targetName}」`);
+
+    const ingredients = [];
+    const ingParts = ingredientsStr.split(/[,，]/);
+    for (let p of ingParts) {
+        const [name, count] = p.split(/[:：]/);
+        const item = Object.values(reg).find(i => i.name === name.trim());
+        if (!item) return seal.replyToSender(ctx, msg, `❌ 未找到材料「${name}」`);
+        ingredients.push({ code: item.code, name: item.name, count: parseInt(count) || 1 });
+    }
+
+    const main = getMainExt();
+    const recipes = JSON.parse(main.storageGet("item_recipes") || "{}");
+    recipes[targetItem.code] = { targetCode: targetItem.code, targetName: targetItem.name, ingredients, successRate };
+    main.storageSet("item_recipes", JSON.stringify(recipes));
+
+    const ingText = ingredients.map(i => `${i.name}x${i.count}`).join(", ");
+    const rateText = successRate === 100 ? "" : `，成功率 ${successRate}%`;
+    seal.replyToSender(ctx, msg, `✅ 配方已注册：[${targetItem.name}] ← ${ingText}${rateText}`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["上传配方"] = cmd_upload_recipe;
+
+let cmd_craft = seal.ext.newCmdItemInfo();
+cmd_craft.name = "合成";
+cmd_craft.help = "消耗材料制作物品\n格式：合成 物品名 [数量]\n示例：合成 简易绷带";
+cmd_craft.solve = (ctx, msg, cmdArgs) => {
+    const roleName = getRoleName(ctx, msg);
+    if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+    
+    const targetInput = cmdArgs.getArgN(1);
+    const craftCount = parseInt(cmdArgs.getArgN(2)) || 1;
+    if (!targetInput) return seal.replyToSender(ctx, msg, "❌ 请输入要合成的物品名。");
+
+    const main = getMainExt();
+    const recipes = JSON.parse(main.storageGet("item_recipes") || "{}");
+    const reg = getRegistry();
+    
+    // 查找配方
+    const recipe = Object.values(recipes).find(r => r.targetName === targetInput || r.targetCode === targetInput);
+    if (!recipe) return seal.replyToSender(ctx, msg, `❌ 没有关于「${targetInput}」的配方。`);
+
+    const platform = msg.platform;
+    const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+    const uid = getPrimaryUid(platform, rawUid);
+    const roleKey = `${platform}:${uid}`;
+    const inv = getInv(roleKey);
+
+    // 1. 检查材料是否充足
+    for (let ing of recipe.ingredients) {
+        const needed = ing.count * craftCount;
+        const owned = getInvCount(roleKey, ing.code);
+        if (owned < needed) {
+            return seal.replyToSender(ctx, msg, `❌ 材料不足：需要 ${ing.name}x${needed}，当前仅有 ${owned}。`);
+        }
+    }
+
+    // 2. 扣除材料
+    for (let ing of recipe.ingredients) {
+        removeFromInv(roleKey, ing.code, ing.count * craftCount);
+    }
+
+    // 3. 检查成功率
+    const successRate = recipe.successRate || 100;
+    let successCount = 0;
+    for (let i = 0; i < craftCount; i++) {
+        if (Math.random() * 100 < successRate) {
+            successCount++;
+        }
+    }
+
+    // 4. 增加产物 (继承注册表的初始次数)
+    if (successCount > 0) {
+        const targetItemInfo = reg[recipe.targetCode];
+        addToInv(roleKey, recipe.targetCode, successCount);
+    }
+
+    if (successCount === craftCount) {
+        seal.replyToSender(ctx, msg, `🛠️ 合成成功！消耗材料制作了 [${recipe.targetName}] x${craftCount}。`);
+    } else if (successCount === 0) {
+        seal.replyToSender(ctx, msg, `❌ 合成失败！消耗了材料，但未能制作出 [${recipe.targetName}]。`);
+    } else {
+        seal.replyToSender(ctx, msg, `⚠️ 合成部分成功！消耗材料制作了 [${recipe.targetName}] x${successCount}/${craftCount}。`);
+    }
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["合成"] = cmd_craft;
+
+let cmd_recipe_list = seal.ext.newCmdItemInfo();
+cmd_recipe_list.name = "查看配方";
+cmd_recipe_list.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+
+    const main = getMainExt();
+    const recipes = JSON.parse(main.storageGet("item_recipes") || "{}");
+    const list = Object.values(recipes);
+    if (!list.length) return seal.replyToSender(ctx, msg, "📜 暂无已知配方。");
+
+    const lines = list.map(r => `• ${r.targetName}: ${r.ingredients.map(i => `${i.name}x${i.count}`).join(" + ")}`);
+    seal.replyToSender(ctx, msg, `📜 已知配方列表：\n${lines.join("\n")}`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["查看配方"] = cmd_recipe_list;
+
+let cmd_upload_interact = seal.ext.newCmdItemInfo();
+cmd_upload_interact.name = "上载互动物品";
+cmd_upload_interact.help = "【管理员】注册互动类物品（对他人使用）\n格式：名称*描述*次数*属性效果*允许二手\n次数：-1为无限，正数为次数\n效果：属性+10,属性-5（仅限已注册属性或货币，多个逗号隔开，可为空）\n允许二手：Y/N，默认N\n支持多行批量上载";
+cmd_upload_interact.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+
+    const rawMsg = msg.message.trim();
+    const msgParts = rawMsg.split(/\r?\n/);
+
+    const firstLineRest = msgParts[0].replace(/^[。.]\s*上载互动物品\s*/, "").trim();
+    const extraLines = msgParts.slice(1).map(l => l.trim()).filter(l => l);
+    const itemLines = [...(firstLineRest ? [firstLineRest] : []), ...extraLines];
+
+    if (!itemLines.length) {
+        const validAttrs = getValidAttrs();
+        const attrList = validAttrs.length ? validAttrs.join("、") : "（暂无，请先注册属性）";
+        return seal.replyToSender(ctx, msg, `🎭 上载互动物品格式：\n名称*描述*次数*属性效果*允许二手\n\n· 次数：-1 为无限，正数为使用次数\n· 效果：属性+数字,属性-数字（可为空）\n· 允许二手：Y 或 N（默认 N）\n· 支持多行批量，每行一条\n\n当前可用属性：${attrList}`);
+    }
+
+    const reg = getRegistry();
+    const defs = getAttrDefs();
+    const currencyNames = new Set(Object.values(reg).filter(i => i.type === "currency").map(i => i.name));
+    const results = [];
+
+    for (const line of itemLines) {
+        const parts = line.split(/[*＊]/);
+        if (parts.length < 3) {
+            results.push(`❌ 格式错误：「${line.substring(0, 15)}」需至少包含 名称*描述*次数`);
+            continue;
+        }
+
+        const name = (parts[0] || "").trim();
+        const desc = (parts[1] || "").trim() || "暂无描述";
+        const maxUses = parseInt((parts[2] || "").trim());
+        const attrsRaw = (parts[3] || "").trim();
+        const canResell = ((parts[4] || "").trim().toUpperCase() === "Y");
+
+        if (!name) { results.push(`❌ 名称不能为空`); continue; }
+        if (isNaN(maxUses)) { results.push(`❌ 「${name}」次数必须是数字`); continue; }
+
+        // 效果格式校验
+        let attrsStr = null;
+        if (attrsRaw) {
+            const segments = attrsRaw.split(/[,，]/);
+            let attrErr = null;
+            for (const seg of segments) {
+                const m = seg.trim().match(/^(.+?)([+-]\d+)$/);
+                if (!m) { attrErr = `效果格式错误「${seg.trim()}」，需为：属性+数字 或 属性-数字`; break; }
+                const attrName = m[1];
+                if (!defs[attrName] && !currencyNames.has(attrName)) {
+                    attrErr = `未知属性「${attrName}」，请先注册属性`; break;
+                }
+            }
+            if (attrErr) { results.push(`❌ 「${name}」${attrErr}`); continue; }
+            attrsStr = attrsRaw;
+        }
+
+        const existing = Object.values(reg).find(r => r.name === name);
+        if (existing) { results.push(`⚠️ 「${name}」已存在 [${existing.code}]，跳过`); continue; }
+
+        const code = genInteractionCode(reg);
+        if (!code) { results.push("❌ 代码空间已满，无法继续注册"); break; }
+
+        reg[code] = { code, name, desc, type: "interact", maxUses, attrs: attrsStr, price: 0, canResell };
+
+        const useText = maxUses === -1 ? "无限" : `${maxUses}次`;
+        const resellText = canResell ? "可二手" : "不可二手";
+        results.push(`✅ [${code}] ${name} | ${useText} | 效果:${attrsStr || "无"} | ${resellText}`);
+    }
+
+    saveRegistry(reg);
+    seal.replyToSender(ctx, msg, `🎭 互动物品注册结果（共${results.length}条）：\n${results.join("\n")}`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["上载互动物品"] = cmd_upload_interact;
+
+let cmd_delete_item = seal.ext.newCmdItemInfo();
+cmd_delete_item.name = "删除物品";
+cmd_delete_item.help = "【管理员】彻底删除物品定义，自动清出所有背包/商城/池子/配方/二手市场\n删除物品 物品码或名称";
+cmd_delete_item.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const input = cmdArgs.getArgN(1);
+    if (!input) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+
+    const reg = getRegistry();
+    const item = findItem(reg, input);
+    if (!item) return seal.replyToSender(ctx, msg, `❌ 未找到物品「${input}」。`);
+    const code = item.code;
+    const name = item.name;
+    const log = [];
+
+    // 1. 清出所有背包
+    const invAll = getInvAll();
+    let bagCount = 0;
+    for (const roleKey of Object.keys(invAll)) {
+        const inv = invAll[roleKey];
+        const before = inv.reduce((s, e) => e.code === code ? s + e.count : s, 0);
+        if (before > 0) {
+            invAll[roleKey] = inv.filter(e => e.code !== code);
+            bagCount += before;
+        }
+    }
+    saveInvAll(invAll);
+    if (bagCount > 0) log.push(`🎒 背包：清出 ×${bagCount}`);
+
+    // 2. 商城下架
+    const shop = getShop();
+    const shopBefore = shop.length;
+    const shopAfter = shop.filter(l => l.code !== code);
+    if (shopAfter.length < shopBefore) {
+        saveShop(shopAfter);
+        log.push(`🏪 商城：移除 ${shopBefore - shopAfter.length} 条上架`);
+    }
+
+    // 3. 从所有池子移除
+    const defs = getPoolDefs();
+    let poolLog = [];
+    for (const poolName of Object.keys(defs)) {
+        const pool = defs[poolName];
+        if (!pool.items) continue;
+        const before = pool.items.length;
+        pool.items = pool.items.filter(i => i.code !== code);
+        if (pool.items.length < before) poolLog.push(poolName);
+    }
+    if (poolLog.length > 0) {
+        savePoolDefs(defs);
+        log.push(`🎰 池子：从「${poolLog.join("、")}」移除`);
+    }
+
+    // 4. 从 item_recipes 移除（作为产物）及作为材料的配方
+    const main = getMainExt();
+    const itemRecipes = JSON.parse(main.storageGet("item_recipes") || "{}");
+    let recipeLog = [];
+    // 作为产物
+    if (itemRecipes[code]) {
+        delete itemRecipes[code];
+        recipeLog.push("作为产物的配方");
+    }
+    // 作为材料
+    for (const targetCode of Object.keys(itemRecipes)) {
+        const recipe = itemRecipes[targetCode];
+        if (recipe.ingredients && recipe.ingredients.some(ing => ing.code === code)) {
+            recipe.ingredients = recipe.ingredients.filter(ing => ing.code !== code);
+            recipeLog.push(`「${recipe.targetName}」的材料`);
+        }
+    }
+    main.storageSet("item_recipes", JSON.stringify(itemRecipes));
+
+    // 5. 从 craft_recipes 移除
+    const craftRecipes = getCraftRecipes();
+    if (craftRecipes[code]) {
+        delete craftRecipes[code];
+        recipeLog.push("合成配方（产物）");
+    }
+    for (const targetCode of Object.keys(craftRecipes)) {
+        const recipe = craftRecipes[targetCode];
+        if (recipe.materials && recipe.materials.some(m => m.code === code)) {
+            recipe.materials = recipe.materials.filter(m => m.code !== code);
+            recipeLog.push(`「${recipe.targetName || targetCode}」合成配方的材料`);
+        }
+    }
+    saveCraftRecipes(craftRecipes);
+    if (recipeLog.length > 0) log.push(`📋 配方：移除 ${recipeLog.join("、")}`);
+
+    // 6. 二手市场撤单
+    const market = getMarket();
+    let marketCount = 0;
+    for (const shCode of Object.keys(market)) {
+        if (market[shCode].code === code) {
+            delete market[shCode];
+            marketCount++;
+        }
+    }
+    if (marketCount > 0) {
+        saveMarket(market);
+        log.push(`🔄 二手市场：撤销 ${marketCount} 条挂单`);
+    }
+
+    // 7. 删除物品定义
+    delete reg[code];
+    saveRegistry(reg);
+    log.push(`🗑️ 物品定义 [${code}]${name} 已删除`);
+
+    seal.replyToSender(ctx, msg, `✅ 删除完成：\n${log.join("\n")}`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["删除物品"] = cmd_delete_item;
+
+function isApplyTimeValid(main) {
+    const hoursStr = main.storageGet("apply_item_hours");
+    if (!hoursStr) return true; // 未设置则全天可用
+
+    const now = new Date();
+    const currentHour = now.getHours(); // 获取当前现实小时 (0-23)
+    
+    // 解析 9-12,14-18 这种格式
+    const periods = hoursStr.split(/[,，]/);
+    for (let p of periods) {
+        const [start, end] = p.split('-').map(v => parseInt(v));
+        if (!isNaN(start) && !isNaN(end)) {
+            if (currentHour >= start && currentHour < end) return true;
+        } else if (!isNaN(start)) { // 处理单小时配置
+            if (currentHour === start) return true;
+        }
+    }
+    return false;
+}
+
+let cmd_apply = seal.ext.newCmdItemInfo();
+cmd_apply.name = "施加";
+cmd_apply.help = "对他人使用互动道具（INTER类）\n格式：施加 目标姓名 物品名/代码\n示例：施加 张三 治疗术\n\n特殊道具（SPEC类）请使用「特殊使用」指令\n\n【管理设置】\n施加 设置  或  施加 查看  查看施加系统设置";
+cmd_apply.solve = (ctx, msg, cmdArgs) => {
+    const main = getMainExt();
+    const targetName = cmdArgs.getArgN(1);
+    const inputCode = cmdArgs.getArgN(2);
+
+    // 显示施加设置
+    if (!targetName || targetName === "设置" || targetName === "查看") {
+        const applyNotify = main.storageGet("apply_item_notification") !== "false";
+        const exposeRate = parseInt(main.storageGet("apply_item_expose_rate") || "0");
+        const applyHours = main.storageGet("apply_item_hours") || "不限";
+
+        const results = [
+            "【互动物品施加设置】",
+            `施加是否提醒：${applyNotify ? '开启' : '关闭'} (${applyNotify ? '告知对方' : '不告知对方'})`,
+            `暴露名字概率：${exposeRate}% (${exposeRate === 0 ? '完全匿名' : exposeRate === 100 ? '完全暴露' : '随机暴露'})`,
+            `施加可用时段：${applyHours}`,
+        ];
+        return seal.replyToSender(ctx, msg, results.join('\n'));
+    }
+
+    // --- 新增：时段检查 ---
+    if (!isApplyTimeValid(main)) {
+        const hoursStr = main.storageGet("apply_item_hours");
+        return seal.replyToSender(ctx, msg, `❌ 当前不在道具施加时段内。\n当前可用时段：${hoursStr}`);
+    }
+    const roleName = getRoleName(ctx, msg);
+    if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+
+    if (!targetName || !inputCode) {
+        const r = seal.ext.newCmdExecuteResult(true);
+        r.showHelp = true;
+        return r;
+    }
+
+    const platform = msg.platform;
+    const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+    const uid = getPrimaryUid(platform, rawUid);
+    const roleKey = `${platform}:${uid}`;
+    const reg = getRegistry();
+    const item = findItem(reg, inputCode);
+
+    // 1. 基础校验
+    if (!item) return seal.replyToSender(ctx, msg, `❌ 未知物品「${inputCode}」`);
+
+    // 特殊道具须使用专属指令
+    if (item.type === "preset") {
+        return seal.replyToSender(ctx, msg, `⚙️ [${item.code}]${item.name} 是特殊道具，请使用「特殊使用 ${item.name} [参数]」`);
+    }
+
+    if (item.type !== "interact") return seal.replyToSender(ctx, msg, `⚠️ [${item.name}] 不是互动类物品，请使用「使用」指令。`);
+
+    // 2. 检查目标是否存在
+    const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
+    const targetUid = getRoleUid(platform, targetName);
+    if (!targetUid) return seal.replyToSender(ctx, msg, `❌ 未找到目标角色「${targetName}」。`);
+
+    // 3. 检查发起者背包
+    let inv = getInv(roleKey);
+    let invIndex = inv.findIndex(i => i.code === item.code);
+    if (invIndex === -1 || inv[invIndex].count <= 0) {
+        return seal.replyToSender(ctx, msg, `❌ 你的背包里没有 [${item.code}]${item.name}。`);
+    }
+
+    // 4. 执行效果 (施加给目标)
+    if (item.attrs) {
+        modCharAttrs(platform, targetName, item.attrs);
+    }
+
+    // 5. 扣除发起者的消耗次数
+    let userItem = inv[invIndex];
+    let usageStatus = "";
+    if (userItem.remainingUses !== -1) {
+        userItem.remainingUses--;
+        if (userItem.remainingUses <= 0) {
+            userItem.count--;
+            if (userItem.count <= 0) {
+                inv.splice(invIndex, 1);
+                usageStatus = "(已耗尽)";
+            } else {
+                userItem.remainingUses = item.maxUses;
+                usageStatus = `(消耗1份，余${userItem.count}份)`;
+            }
+        } else {
+            usageStatus = `(余${userItem.remainingUses}次)`;
+        }
+    } else {
+        userItem.count--;
+        if (userItem.count <= 0) inv.splice(invIndex, 1);
+    }
+
+    // 6. 保存数据
+    saveInv(roleKey, inv);
+
+    // 7. 渲染反馈
+    const changes = parseAttrEffects(item.attrs);
+    const effectStr = Object.entries(changes).map(([k, v]) => `${k}${v > 0 ? '+' : ''}${v}`).join("，");
+    const shouldNotify = main.storageGet("apply_item_notification") !== "false";
+    const exposeRate = parseInt(main.storageGet("apply_item_expose_rate") || "0");
+    const isExposed = Math.random() * 100 < exposeRate;
+
+    // 通知被施加者
+    if (shouldNotify) {
+        // 根据概率决定是否暴露名字
+        const displayName = isExposed ? `角色「${roleName}」` : "某人";
+
+        notifyPlayer(ctx, platform, targetName, `💉 ${displayName} 对你使用了 [${item.name}]！\n📊 你的属性变化：${effectStr}`);
+    }
+
+    // 给发起者的反馈（发起者始终能看到详细信息）
+    let feedback = `✅ 你成功对「${targetName}」使用了 [${item.name}] ${usageStatus}。`;
+    if (!shouldNotify) {
+        feedback += "\n(已根据设置隐藏对目标的通知)";
+    } else {
+        feedback += `\n(暴露概率：${exposeRate}%，本次${isExposed ? "已暴露名字" : "保持匿名"})`;
+    }
+    feedback += `\n📊 目标属性变化：${effectStr}`;
+    seal.replyToSender(ctx, msg, feedback);
+
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["施加"] = cmd_apply;
+
+// ========================
+// 特殊道具使用
+// ========================
+
+let cmd_special_use = seal.ext.newCmdItemInfo();
+cmd_special_use.name = "特殊使用";
+cmd_special_use.help = `使用特殊道具（SPEC类）
+追踪器：特殊使用 追踪器 目标角色 [时间]
+万能钥匙：特殊使用 万能钥匙 地点名
+望远镜：特殊使用 望远镜 目标角色
+羽毛笔：特殊使用 羽毛笔 目标角色
+捕鼠器：特殊使用 捕鼠器 目标角色 时间（整点，如 14）`;
+
+cmd_special_use.solve = (ctx, msg, cmdArgs) => {
+    const main = getMainExt();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
+
+    const roleName = getRoleName(ctx, msg);
+    if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+
+    const inputCode = cmdArgs.getArgN(1);
+    if (!inputCode) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+
+    const platform = msg.platform;
+    const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+    const uid = getPrimaryUid(platform, rawUid);
+    const roleKey = `${platform}:${uid}`;
+    const reg = getRegistry();
+    const item = findItem(reg, inputCode);
+
+    if (!item) return seal.replyToSender(ctx, msg, `❌ 未知道具「${inputCode}」`);
+    if (!item.code.startsWith("SPEC_")) return seal.replyToSender(ctx, msg, `❌ [${item.code}]${item.name} 不是特殊道具。`);
+    if ((item.code === "SPEC_003" || item.code === "SPEC_004") && !seal.ext.find("letter_system")) {
+        return seal.replyToSender(ctx, msg, "❌ 此道具需要写信综插件开启才能使用。");
+    }
+
+    const inv = getInv(roleKey);
+    if (!inv.find(e => e.code === item.code && e.count > 0)) {
+        return seal.replyToSender(ctx, msg, `❌ 背包中没有可用的「${item.name}」。`);
+    }
+
+    // ── SPEC_001 追踪器 ──
+    if (item.code === "SPEC_001") {
+        const targetName = cmdArgs.getArgN(2);
+        if (!targetName) return seal.replyToSender(ctx, msg, "🔍 请指定要追踪的角色：特殊使用 追踪器 角色名 [时间]");
+        // 新结构：通过 roleName 反查 uid
+        const trackerTargetUid = getRoleUid(platform, targetName);
+        if (!trackerTargetUid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${targetName}」。`);
+
+        const globalDay = main.storageGet("global_days");
+        if (!globalDay) return seal.replyToSender(ctx, msg, "⚠️ 未设置游戏天数。");
+
+        const timeRestrict = main.storageGet("item_tracker_time_restrict") !== "false";
+        let timeRange;
+        if (timeRestrict) {
+            const h = new Date().getHours();
+            timeRange = `${h.toString().padStart(2,'0')}:00-${h === 23 ? "23:59" : (h+1).toString().padStart(2,'0')+":00"}`;
+        } else {
+            const timeArg = cmdArgs.getArgN(3);
+            if (!timeArg) return seal.replyToSender(ctx, msg, "🔍 请指定追踪时间：特殊使用 追踪器 角色名 时间（如 14 或 14:30）");
+            let hour, minute = 0;
+            if (/^\d{1,2}$/.test(timeArg)) { hour = parseInt(timeArg); }
+            else if (/^\d{1,2}:\d{2}$/.test(timeArg)) {
+                [hour, minute] = timeArg.split(':').map(Number);
+                if (minute < 0 || minute > 59) return seal.replyToSender(ctx, msg, "⚠️ 分钟应在00-59之间");
+            } else return seal.replyToSender(ctx, msg, "⚠️ 时间格式错误，请使用：14 或 14:30");
+            if (hour < 0 || hour > 23) return seal.replyToSender(ctx, msg, "⚠️ 小时应在0-23之间");
+            const start = `${hour.toString().padStart(2,'0')}:${minute.toString().padStart(2,'0')}`;
+            let endH = hour + 1, endM = minute;
+            if (endH >= 24) { endH = 23; endM = 59; }
+            timeRange = `${start}-${endH.toString().padStart(2,'0')}:${endM.toString().padStart(2,'0')}`;
+        }
+
+        const b_confirmedSchedule = JSON.parse(main.storageGet("b_confirmedSchedule") || "{}");
+        const targetKey = `${platform}:${getPrimaryUid(platform, trackerTargetUid)}`;
+        const matchingEvent = (b_confirmedSchedule[targetKey] || []).find(ev => ev.day === globalDay && timeOverlap(ev.time, timeRange));
+        const successRate = parseInt(main.storageGet("item_tracker_success_rate") || "70");
+        const showPartner = main.storageGet("item_tracker_show_partner") !== "false";
+        const isSuccess = Math.random() * 100 < successRate;
+
+        if (!removeFromInv(roleKey, "SPEC_001", 1)) return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的追踪器。");
+        if (!matchingEvent) return seal.replyToSender(ctx, msg, `🔍 未能发现「${targetName}」的行踪。\n（追踪器已消耗）`);
+        if (!isSuccess) return seal.replyToSender(ctx, msg, `🔍 信号干扰，定位失败。\n（追踪器已消耗）`);
+
+        let resultMsg = `🔍 追踪到「${targetName}」在 ${globalDay} ${matchingEvent.time} 出现在「${matchingEvent.place || "某处"}」`;
+        if (showPartner && matchingEvent.partner && matchingEvent.partner !== "独自一人") resultMsg += `，与 ${matchingEvent.partner} 一起`;
+        resultMsg += `。\n（追踪器已消耗）`;
+        return seal.replyToSender(ctx, msg, resultMsg);
+    }
+
+    // ── SPEC_002 万能钥匙 ──
+    if (item.code === "SPEC_002") {
+        const placeName = cmdArgs.args.slice(1).join(' ').trim();
+        if (!placeName) return seal.replyToSender(ctx, msg, "🔑 请指定要兑换钥匙的地点：特殊使用 万能钥匙 地点名");
+        const availablePlaces = JSON.parse(main.storageGet("available_places") || "{}");
+        if (!availablePlaces[placeName]) {
+            const placeList = Object.keys(availablePlaces).join("、") || "（暂无）";
+            return seal.replyToSender(ctx, msg, `❌ 未找到地点「${placeName}」。\n📍 可用地点：${placeList}`);
+        }
+        let placeKeys = JSON.parse(main.storageGet("place_keys") || "{}");
+        if (!placeKeys[platform]) placeKeys[platform] = {};
+        if (!placeKeys[platform][roleName]) placeKeys[platform][roleName] = [];
+        if (placeKeys[platform][roleName].includes(placeName))
+            return seal.replyToSender(ctx, msg, `🔑 你已经拥有「${placeName}」的钥匙了。`);
+        if (!removeFromInv(roleKey, "SPEC_002", 1)) return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的万能钥匙。");
+        placeKeys[platform][roleName].push(placeName);
+        main.storageSet("place_keys", JSON.stringify(placeKeys));
+        return seal.replyToSender(ctx, msg, `🔑 成功兑换「${placeName}」的钥匙！（万能钥匙已消耗）`);
+    }
+
+    // ── SPEC_003 望远镜 / SPEC_004 羽毛笔 ──
+    if (item.code === "SPEC_003" || item.code === "SPEC_004") {
+        const targetName = cmdArgs.getArgN(2);
+        if (!targetName) return seal.replyToSender(ctx, msg, `✉️ 请指定目标：特殊使用 ${item.name} 角色名`);
+        const featureToggle = JSON.parse(main.storageGet("global_feature_toggle") || "{}");
+        if (!featureToggle.enable_direct_letter) return seal.replyToSender(ctx, msg, "✉️ 发送信件功能未启用。");
+        const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
+        if (!Object.values(apg[platform] || {}).some(v => v[0] === targetName)) return seal.replyToSender(ctx, msg, `❌ 未找到目标角色「${targetName}」。`);
+        if (!removeFromInv(roleKey, item.code, 1)) return seal.replyToSender(ctx, msg, `❌ 背包中没有可用的「${item.name}」。`);
+        const effectsKey = item.code === "SPEC_003" ? "letter_telescope_effects" : "letter_quill_pen_effects";
+        const effects = JSON.parse(main.storageGet(effectsKey) || "{}");
+        if (!effects[targetName]) effects[targetName] = [];
+        effects[targetName].push({ applier: roleName, applyTime: Date.now(), itemCode: item.code });
+        main.storageSet(effectsKey, JSON.stringify(effects));
+        return seal.replyToSender(ctx, msg, `✅ 你已向「${targetName}」施加了「${item.name}」！`);
+    }
+
+    // ── SPEC_005 捕鼠器 ──
+    if (item.code === "SPEC_005") {
+        const targetName = cmdArgs.getArgN(2);
+        const timeArg = cmdArgs.getArgN(3);
+        if (!targetName) return seal.replyToSender(ctx, msg, "🪤 请指定目标：特殊使用 捕鼠器 角色名 时间（如 14）");
+        if (!timeArg) return seal.replyToSender(ctx, msg, "🪤 请指定锁定时间：特殊使用 捕鼠器 角色名 时间（如 14）");
+        if (!/^\d{1,2}$/.test(timeArg)) return seal.replyToSender(ctx, msg, "⚠️ 时间格式错误，请使用整点小时，如：14");
+        const hour = parseInt(timeArg);
+        if (hour < 0 || hour > 23) return seal.replyToSender(ctx, msg, "⚠️ 小时应在0-23之间");
+        const endH = hour === 23 ? 23 : hour + 1;
+        const endM = hour === 23 ? 59 : 0;
+        const timeRange = `${hour.toString().padStart(2,'0')}:00-${endH.toString().padStart(2,'0')}:${endM.toString().padStart(2,'0')}`;
+
+        const globalDay = main.storageGet("global_days");
+        if (!globalDay) return seal.replyToSender(ctx, msg, "⚠️ 未设置游戏天数。");
+
+        // 新结构：通过 roleName 反查 uid
+        const trapTargetUid = getRoleUid(platform, targetName);
+        if (!trapTargetUid) return seal.replyToSender(ctx, msg, `❌ 未找到目标角色「${targetName}」。`);
+        const targetKey = `${platform}:${getPrimaryUid(platform, trapTargetUid)}`;
+
+        if (!removeFromInv(roleKey, "SPEC_005", 1)) return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的捕鼠器。");
+
+        let a_lockedSlots = JSON.parse(main.storageGet("a_lockedSlots") || "{}");
+        if (!a_lockedSlots[targetKey]) a_lockedSlots[targetKey] = {};
+        if (!a_lockedSlots[targetKey][globalDay]) a_lockedSlots[targetKey][globalDay] = [];
+        if (!a_lockedSlots[targetKey][globalDay].includes(timeRange)) {
+            a_lockedSlots[targetKey][globalDay].push(timeRange);
+        }
+        main.storageSet("a_lockedSlots", JSON.stringify(a_lockedSlots));
+
+        notifyPlayer(ctx, platform, targetName, `🪤 你在 ${globalDay} ${timeRange} 踩中了捕鼠器，该时段内无法发起或接受私约、电话，也无法摘心愿。`);
+        return seal.replyToSender(ctx, msg, `🪤 捕鼠器已激活！「${targetName}」在 ${globalDay} ${timeRange} 的行动被锁定。\n（捕鼠器已消耗）`);
+    }
+
+    return seal.replyToSender(ctx, msg, `❌ 未知的特殊道具 [${item.code}]，请联系管理员。`);
+};
+ext.cmdMap["特殊使用"] = cmd_special_use;
+
+// ========================
+// 合成系统
+// ========================
+
+let cmd_reg_craft = seal.ext.newCmdItemInfo();
+cmd_reg_craft.name = "注册合成";
+cmd_reg_craft.help = "【管理员】注册合成配方\n注册合成 产物代码*描述*材料代码1:数量1,材料代码2:数量2[*限制条件]\n限制格式：attr:属性名:最小值,currency:货币名:最小值\n示例：注册合成 高级丹*升级丹药*初级丹:3,金币:100*attr:体力:50,currency:金币:50";
+cmd_reg_craft.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const raw = cmdArgs.getArgN(1);
+    if (!raw) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+
+    const parts = raw.split(/[*＊]/);
+    const outputCode = (parts[0] || "").trim();
+    const desc = (parts[1] || "").trim();
+    const materialsStr = (parts[2] || "").trim();
+    const limitsStr = (parts[3] || "").trim();
+
+    if (!outputCode || !materialsStr) return seal.replyToSender(ctx, msg, "❌ 格式错误，至少需要产物代码和材料。");
+
+    const reg = getRegistry();
+    if (!reg[outputCode]) return seal.replyToSender(ctx, msg, `❌ 产物代码 [${outputCode}] 不存在。`);
+
+    // 解析材料
+    const materials = {};
+    const matParts = materialsStr.split(",");
+    for (const mat of matParts) {
+        const [code, countStr] = mat.split(":").map(s => s.trim());
+        if (!code || !countStr) return seal.replyToSender(ctx, msg, "❌ 材料格式错误，应为 代码:数量");
+        const count = parseInt(countStr);
+        if (isNaN(count) || count <= 0) return seal.replyToSender(ctx, msg, "❌ 材料数量必须为正整数。");
+        if (!reg[code]) return seal.replyToSender(ctx, msg, `❌ 材料代码 [${code}] 不存在。`);
+        materials[code] = count;
+    }
+
+    // 解析限制条件
+    const limits = { attrs: {}, currencies: {} };
+    if (limitsStr) {
+        const limitParts = limitsStr.split(",");
+        for (const limit of limitParts) {
+            const [type, name, valueStr] = limit.split(":").map(s => s.trim());
+            if (!type || !name || !valueStr) return seal.replyToSender(ctx, msg, "❌ 限制格式错误，应为 type:名称:数值");
+            const value = parseInt(valueStr);
+            if (isNaN(value)) return seal.replyToSender(ctx, msg, "❌ 限制数值必须为整数。");
+
+            if (type === "attr") {
+                limits.attrs[name] = value;
+            } else if (type === "currency") {
+                limits.currencies[name] = value;
+            } else {
+                return seal.replyToSender(ctx, msg, "❌ 限制类型应为 attr 或 currency");
+            }
+        }
+    }
+
+    const recipes = getCraftRecipes();
+    recipes[outputCode] = { materials, output: outputCode, desc: desc || "暂无描述", limits };
+    saveCraftRecipes(recipes);
+
+    const matStr = Object.entries(materials).map(([c, cnt]) => `${reg[c].name}×${cnt}`).join(" + ");
+    let msg_text = `✅ 合成配方已注册：${matStr} → ${reg[outputCode].name}`;
+    if (desc) msg_text += `\n📝 ${desc}`;
+    if (Object.keys(limits.attrs).length || Object.keys(limits.currencies).length) {
+        msg_text += "\n⚠️ 限制条件：";
+        for (const [attr, val] of Object.entries(limits.attrs)) msg_text += `\n  · ${attr} ≥ ${val}`;
+        for (const [curr, val] of Object.entries(limits.currencies)) msg_text += `\n  · ${curr} ≥ ${val}`;
+    }
+    seal.replyToSender(ctx, msg, msg_text);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["注册合成"] = cmd_reg_craft;
+
+let cmd_view_craft = seal.ext.newCmdItemInfo();
+cmd_view_craft.name = "查看合成";
+cmd_view_craft.help = "查看所有合成配方\n查看合成 [搜索关键词]";
+cmd_view_craft.solve = (ctx, msg, cmdArgs) => {
+    const recipes = getCraftRecipes();
+    const reg = getRegistry();
+    if (!Object.keys(recipes).length) return seal.replyToSender(ctx, msg, "📋 暂无合成配方。");
+
+    const filter = cmdArgs.getArgN(1) || "";
+    const filtered = Object.entries(recipes).filter(([code]) => !filter || code.includes(filter) || reg[code]?.name.includes(filter));
+
+    if (!filtered.length) return seal.replyToSender(ctx, msg, `📋 未找到包含「${filter}」的配方。`);
+
+    const lines = filtered.map(([code, recipe]) => {
+        const matStr = Object.entries(recipe.materials).map(([c, cnt]) => `${reg[c]?.name || c}×${cnt}`).join(" + ");
+        let line = `[${code}] ${reg[code]?.name || code}`;
+        if (recipe.desc && recipe.desc !== "暂无描述") line += ` - ${recipe.desc}`;
+        line += `\n   ← ${matStr}`;
+
+        const limits = recipe.limits || {};
+        if (Object.keys(limits.attrs || {}).length || Object.keys(limits.currencies || {}).length) {
+            line += "\n   ⚠️ 需求：";
+            for (const [attr, val] of Object.entries(limits.attrs || {})) line += ` ${attr}≥${val},`;
+            for (const [curr, val] of Object.entries(limits.currencies || {})) line += ` ${curr}≥${val},`;
+            line = line.slice(0, -1);
+        }
+        return line;
+    });
+    seal.replyToSender(ctx, msg, `📋 合成配方（${filtered.length}/${Object.keys(recipes).length}）：\n${lines.join("\n")}`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["查看合成"] = cmd_view_craft;
+
+// ========================
+// 无前缀指令触发
+// ========================
+
+ext.onNotCommandReceived = (ctx, msg) => {
+    const raw = msg.message.trim();
+    const fa = (parts) => ({ getArgN: (n) => parts[n - 1] || "", args: parts });
+    const isAdmin = isUserAdmin(ctx, msg);
+    const platform = msg.platform;
+
+    // ── RPG 属性 ──
+
+    // 我的状态
+    if (raw === "我的状态") {
+        const roleName = getRoleName(ctx, msg);
+        if (!roleName) return seal.replyToSender(ctx, msg, "❌ 未绑定角色");
+        const myStatusUid = getPrimaryUid(platform, msg.sender.userId.replace(/^[a-z]+:/i, ""));
+        const defs = getAttrDefs();
+        const charAttrs = getCharAttrs();
+        // 新结构：charAttrs 以 uid 为 key
+        const roleAttrs = charAttrs[myStatusUid] || {};
+        const attrNames = Object.keys(defs);
+        if (!attrNames.length) return seal.replyToSender(ctx, msg, `🎭 【${roleName}】暂无属性，管理员可用「我创建属性」添加。`);
+
+        // 分类属性
+        const limitedAttrs = [];
+        const unlimitedAttrs = [];
+        const BAR = 8;
+
+        attrNames.forEach(name => {
+            const def = defs[name];
+            const val = roleAttrs[name] ?? (def.default ?? 0);
+            if (def.max !== null && def.max !== undefined && def.min !== null) {
+                const pct = def.max === def.min ? 1 : (val - def.min) / (def.max - def.min);
+                const filled = Math.round(Math.max(0, Math.min(1, pct)) * BAR);
+                const bar = "▓".repeat(filled) + "░".repeat(BAR - filled);
+                const percent = Math.round(pct * 100);
+                limitedAttrs.push(`【${name}】${bar} ${val}/${def.max}`);
+            } else {
+                const minText = def.min !== null ? ` [最低:${def.min}]` : "";
+                unlimitedAttrs.push(`【${name}】${val}${minText}`);
+            }
+        });
+
+        // 获取货币信息
+        const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+        const uid = getPrimaryUid(platform, rawUid);
+        const roleKey = `${platform}:${uid}`;
+        const inv = getInv(roleKey);
+        const registry = getRegistry();
+        const currencies = inv.filter(e => {
+            const item = registry[e.code];
+            return item && item.type === "currency";
+        }).sort((a, b) => a.code.localeCompare(b.code));
+
+        let result = `\n★━━━━━━━━━━━━━━━━━━★\n🎭 【${roleName}】的状态\n★━━━━━━━━━━━━━━━━━━★\n`;
+
+        if (limitedAttrs.length > 0) {
+            result += `\n📊 核心属性\n`;
+            limitedAttrs.forEach(l => {
+                result += `${l}\n`;
+            });
+        }
+
+        if (unlimitedAttrs.length > 0) {
+            result += `\n📈 资源属性\n`;
+            unlimitedAttrs.forEach(l => {
+                result += `${l}\n`;
+            });
+        }
+
+        if (currencies.length > 0) {
+            result += `\n💰 货币\n`;
+            currencies.forEach(curr => {
+                const currName = registry[curr.code]?.name || curr.code;
+                result += `${currName}: ${curr.count}\n`;
+            });
+        }
+
+        result += `★━━━━━━━━━━━━━━━━━━★`;
+        return seal.replyToSender(ctx, msg, result);
+    }
+
+    // 我创建属性（管理员，无前缀）换行批量：每行 属性名 [最小 最大 默认]
+    if (raw.startsWith("我创建属性") && isAdmin) {
+        const body = raw.slice(5).trim();
+        if (!body) return seal.replyToSender(ctx, msg, "❌ 请提供属性定义，格式：属性名 最小 最大 默认");
+        const lines = body.split(/\n/).map(l => l.trim()).filter(Boolean);
+        const reg = getRegistry();
+        const currencyNames = new Set(Object.values(reg).filter(r => r.type === "currency").map(r => r.name));
+        const defs = getAttrDefs();
+        const results = [];
+        for (const line of lines) {
+            const parts = line.split(/\s+/);
+            const name = parts[0];
+            if (!name) continue;
+            if (currencyNames.has(name)) { results.push(`❌ 「${name}」已被货币占用`); continue; }
+            if (parts[1] !== undefined && !isNaN(Number(parts[1]))) {
+                const min = Number(parts[1]);
+                const max = parts[2] !== undefined && !isNaN(Number(parts[2])) ? Number(parts[2]) : null;
+                const def = parts[3] !== undefined && !isNaN(Number(parts[3])) ? Number(parts[3]) : 0;
+                const isNew = !defs[name];
+                defs[name] = { min, max, default: def, desc: defs[name]?.desc || "" };
+                results.push(`${isNew ? "✅ 新增" : "🔄 更新"}「${name}」：${min}~${max ?? "∞"} 默认${def}`);
+            } else {
+                const isNew = !defs[name];
+                if (isNew) defs[name] = { min: null, max: null, default: 0, desc: "" };
+                results.push(`${isNew ? "✅ 新增" : "⏭️ 已存在"}「${name}」`);
+            }
+        }
+        saveAttrDefs(defs);
+        return seal.replyToSender(ctx, msg, results.join("\n"));
+    }
+    if (raw.startsWith("我移除属性") && isAdmin) {
+        const body = raw.slice(5).trim();
+        if (!body) return seal.replyToSender(ctx, msg, "❌ 请指定要移除的属性名。");
+        const names = body.split(/\n/).map(l => l.trim()).filter(Boolean);
+        const defs = getAttrDefs();
+        const charAttrs = getCharAttrs();
+        const results = [];
+        for (const attrName of names) {
+            if (!defs[attrName]) { results.push(`❌ 「${attrName}」不存在`); continue; }
+            delete defs[attrName];
+            for (const role of Object.keys(charAttrs)) delete charAttrs[role][attrName];
+            results.push(`✅ 已移除「${attrName}」`);
+        }
+        saveAttrDefs(defs);
+        saveCharAttrs(charAttrs);
+        const remaining = Object.keys(defs);
+        results.push(`当前属性：${remaining.length ? remaining.join("、") : "（无）"}`);
+        return seal.replyToSender(ctx, msg, results.join("\n"));
+    }
+
+    // 角色:属性++值 / 角色:属性--值 / 角色:货币++值（管理员批量改属性或货币）
+    if (isAdmin) {
+        const attrM = raw.match(/^(.+?)[:：](.+?)([+\-]{2})([\d、,，]+)$/);
+        if (attrM) {
+            const [, rolesPart, attrName, op, valsPart] = attrM;
+            const main = getMainExt();
+            if (!main) return;
+            const priv = JSON.parse(main.storageGet("a_private_group") || "{}")[platform] || {};
+            // 新结构：priv 以 uid 为 key，value[0] 是 roleName
+            // roles 统一为 roleName 列表
+            const roles = rolesPart === "全体"
+                ? Object.values(priv).map(v => v[0]).filter(Boolean)
+                : rolesPart.split(/[、,，]/).map(r => r.trim());
+            const vals = valsPart.split(/[、,，]/).map(v => parseInt(v));
+            const res = [];
+
+            // 检查是属性还是货币
+            const defs = getAttrDefs();
+            const reg = getRegistry();
+            const currencyCode = Object.entries(reg).find(([_, info]) => info.type === "currency" && info.name === attrName)?.[0];
+
+            if (defs[attrName]) {
+                // 处理属性
+                const charAttrs = getCharAttrs();
+                const notifyList = [];
+                roles.forEach((r, i) => {
+                    // 新结构：通过 roleName 反查 uid
+                    const rUidAttr = getRoleUid(platform, r);
+                    if (!rUidAttr) return;
+                    const rPrimaryUidAttr = getPrimaryUid(platform, rUidAttr);
+                    if (!charAttrs[rPrimaryUidAttr]) charAttrs[rPrimaryUidAttr] = {};
+                    const v = isNaN(vals[i]) ? vals[0] : vals[i];
+                    const old = charAttrs[rPrimaryUidAttr][attrName] ?? (defs[attrName].default ?? 0);
+                    const next = clampAttr(defs[attrName], op === "++" ? old + v : old - v);
+                    charAttrs[rPrimaryUidAttr][attrName] = next;
+                    res.push(`${r}：${old}→${next}`);
+                    notifyList.push({ r, old, next });
+                });
+                if (res.length) {
+                    saveCharAttrs(charAttrs);
+                    notifyList.forEach(({ r, old, next }) => {
+                        notifyPlayer(ctx, platform, r, `${op === "++" ? "📈" : "📉"}【属性变动】你的「${attrName}」：${old} → ${next}`);
+                    });
+                    return seal.replyToSender(ctx, msg, `${op === "++" ? "📈" : "📉"} ${attrName} 变更：\n${res.join("\n")}`);
+                }
+            } else if (currencyCode) {
+                // 处理货币
+                const notifyList = [];
+                roles.forEach((r, i) => {
+                    // 新结构：通过 roleName 反查 uid
+                    const rUid = getRoleUid(platform, r);
+                    if (!rUid) return;
+                    const roleKey = `${platform}:${getPrimaryUid(platform, rUid)}`;
+                    const v = isNaN(vals[i]) ? vals[0] : vals[i];
+                    const inv = getInv(roleKey);
+                    const entry = inv.find(e => e.code === currencyCode);
+                    const old = entry?.count || 0;
+                    if (op === "++") {
+                        addToInv(roleKey, currencyCode, v);
+                    } else {
+                        removeFromInv(roleKey, currencyCode, Math.min(v, old));
+                    }
+                    const newEntry = getInv(roleKey).find(e => e.code === currencyCode);
+                    const next = newEntry?.count || 0;
+                    res.push(`${r}：${old}→${next}`);
+                    notifyList.push({ r, old, next });
+                });
+                if (res.length) {
+                    notifyList.forEach(({ r, old, next }) => {
+                        notifyPlayer(ctx, platform, r, `${op === "++" ? "💰" : "💸"}【货币变动】你的「${attrName}」：${old} → ${next}`);
+                    });
+                    return seal.replyToSender(ctx, msg, `${op === "++" ? "💰" : "💸"} 货币「${attrName}」变更：\n${res.join("\n")}`);
+                }
+            }
+        }
+    }
+
+    // ── 合成系统 ──
+    if (raw === "合成列表") {
+        return cmd_view_craft.solve(ctx, msg, fa([]));
+    }
+    if (raw.startsWith("合成")) {
+        const rest = raw.slice(2).trim();
+        if (rest) {
+            // 格式：合成 产物代码 或 合成 产物代码 数量
+            const craftParts = rest.split(/\s+/);
+            const outputCode = craftParts[0];
+            const count = craftParts[1] ? parseInt(craftParts[1]) : 1;
+
+            const roleName = getRoleName(ctx, msg);
+            if (!roleName) return seal.replyToSender(ctx, msg, "❌ 未绑定角色");
+
+            const recipes = getCraftRecipes();
+            const recipe = recipes[outputCode];
+            if (!recipe) return seal.replyToSender(ctx, msg, `❌ 合成配方 [${outputCode}] 不存在`);
+
+            const reg = getRegistry();
+            const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+            const uid = getPrimaryUid(platform, rawUid);
+            const roleKey = `${platform}:${uid}`;
+            const inv = getInv(roleKey);
+            const charAttrs = getCharAttrs();
+            // 新结构：charAttrs 以 uid 为 key
+            const roleAttrs = charAttrs[uid] || {};
+            const defs = getAttrDefs();
+
+            // 检查限制条件
+            const limits = recipe.limits || {};
+            const unmet = [];
+            for (const [attr, minVal] of Object.entries(limits.attrs || {})) {
+                const have = roleAttrs[attr] || 0;
+                if (have < minVal) unmet.push(`${attr} 需≥${minVal}（当前${have}）`);
+            }
+            for (const [currencyName, minVal] of Object.entries(limits.currencies || {})) {
+                const currencyCode = Object.entries(reg).find(([_, info]) => info.type === "currency" && info.name === currencyName)?.[0];
+                if (currencyCode) {
+                    const currEntry = inv.find(e => e.code === currencyCode);
+                    const have = currEntry?.count || 0;
+                    if (have < minVal) unmet.push(`${currencyName} 需≥${minVal}（当前${have}）`);
+                }
+            }
+            if (unmet.length) {
+                return seal.replyToSender(ctx, msg, `❌ 不满足合成条件：\n${unmet.join("\n")}`);
+            }
+
+            // 检查材料是否足够
+            const lacking = [];
+            for (const [matCode, matCount] of Object.entries(recipe.materials)) {
+                const needed = matCount * count;
+                const matEntry = inv.find(e => e.code === matCode);
+                const have = matEntry?.count || (roleAttrs[matCode] || 0);
+                if (have < needed) {
+                    lacking.push(`${reg[matCode]?.name || matCode} (需${needed}，只有${have})`);
+                }
+            }
+            if (lacking.length) {
+                return seal.replyToSender(ctx, msg, `❌ 材料不足：\n${lacking.join("\n")}`);
+            }
+
+            // 扣除材料
+            for (const [matCode, matCount] of Object.entries(recipe.materials)) {
+                const matEntry = inv.find(e => e.code === matCode);
+                if (matEntry) {
+                    removeFromInv(roleKey, matCode, matCount * count);
+                } else if (defs[matCode]) {
+                    const oldVal = roleAttrs[matCode] || 0;
+                    roleAttrs[matCode] = oldVal - matCount * count;
+                }
+            }
+            if (Object.keys(roleAttrs).length) {
+                charAttrs[uid] = roleAttrs;
+                saveCharAttrs(charAttrs);
+            }
+
+            // 给予产物
+            addToInv(roleKey, outputCode, count);
+
+            const matStr = Object.entries(recipe.materials)
+                .map(([c, cnt]) => `${reg[c]?.name || c}×${cnt * count}`)
+                .join(" + ");
+            return seal.replyToSender(ctx, msg, `✨ 合成成功！\n消耗：${matStr}\n获得：${reg[outputCode]?.name || outputCode}×${count}`);
+        }
+    }
+
+    // ── 道具 ──
+    if (raw === "商城") return cmd_shop_view.solve(ctx, msg, fa([]));
+    if (raw === "我的背包" || raw === "背包") return cmd_bag.solve(ctx, msg, fa([]));
+    if (raw === "我的抽取次数" || raw === "抽取次数") return cmd_draw_count.solve(ctx, msg, fa([]));
+    if (raw === "二手市场") return cmd_market.solve(ctx, msg, fa([]));
+
+
+    if (raw.startsWith("抽取")) {
+        const rest = raw.slice(2).trim();
+        return cmd_draw.solve(ctx, msg, fa(rest ? [rest] : []));
+    }
+    // 新增：合成 (支持 合成 物品名 [数量])
+    if (raw.startsWith("合成")) {
+        const parts = raw.slice(2).trim().split(/\s+/);
+        if (parts[0]) return cmd_craft.solve(ctx, msg, fa(parts));
+    }
+
+    // 新增：施加 (支持 施加 目标 物品)
+    if (raw.startsWith("施加")) {
+        const parts = raw.slice(2).trim().split(/\s+/);
+        if (parts.length >= 2) return cmd_apply.solve(ctx, msg, fa(parts));
+    }
+    if (raw.startsWith("购买")) {
+        const parts = raw.slice(2).trim().split(/\s+/);
+        if (parts[0]) return cmd_buy.solve(ctx, msg, fa(parts));
+    }
+    if (raw.startsWith("赠送道具")) {
+        const parts = raw.slice(4).trim().split(/\s+/);
+        if (parts.length >= 2) return cmd_give_item.solve(ctx, msg, fa(parts));
+    }
+    if (raw.startsWith("使用")) {
+        const parts = raw.slice(2).trim().split(/\s+/);
+        if (parts[0]) return cmd_use.solve(ctx, msg, fa(parts));
+    }
+    if (raw.startsWith("特殊使用")) {
+        const parts = raw.slice(4).trim().split(/\s+/);
+        if (parts[0]) return cmd_special_use.solve(ctx, msg, fa(parts));
+    }
+    if (raw.startsWith("上架二手")) {
+        const parts = raw.slice(4).trim().split(/\s+/);
+        if (parts.length >= 3) return cmd_sell.solve(ctx, msg, fa(parts));
+    }
+    if (raw.startsWith("售卖")) {
+        const parts = raw.slice(2).trim().split(/\s+/);
+        if (parts.length >= 3) return cmd_sell.solve(ctx, msg, fa(parts));
+    }
+    if (raw.startsWith("物品详情")) {
+        const parts = raw.slice(4).trim().split(/\s+/);
+        if (parts[0]) return cmd_item_detail.solve(ctx, msg, fa(parts));
+    }
+    if (raw.startsWith("二手市场 买")) {
+        const parts = raw.slice("二手市场".length).trim().split(/\s+/);
+        return cmd_market.solve(ctx, msg, fa(parts));
+    }
+    if (raw.startsWith("撤销卖单")) {
+        const parts = raw.slice(4).trim().split(/\s+/);
+        if (parts[0]) return cmd_cancel_sell.solve(ctx, msg, fa(parts));
+    }
+
+    // ── RPG 属性 ──
+
+    // 我的状态
+    if (raw === "我的状态") {
+        const roleName = getRoleName(ctx, msg);
+        if (!roleName) return seal.replyToSender(ctx, msg, "❌ 未绑定角色");
+        const myStatusUid = getPrimaryUid(platform, msg.sender.userId.replace(/^[a-z]+:/i, ""));
+        const defs = getAttrDefs();
+        const charAttrs = getCharAttrs();
+        // 新结构：charAttrs 以 uid 为 key
+        const roleAttrs = charAttrs[myStatusUid] || {};
+        const attrNames = Object.keys(defs);
+        if (!attrNames.length) return seal.replyToSender(ctx, msg, `🎭 【${roleName}】暂无属性，管理员可用「我创建属性」添加。`);
+
+        // 分类属性
+        const limitedAttrs = [];
+        const unlimitedAttrs = [];
+        const BAR = 8;
+
+        attrNames.forEach(name => {
+            const def = defs[name];
+            const val = roleAttrs[name] ?? (def.default ?? 0);
+            if (def.max !== null && def.max !== undefined && def.min !== null) {
+                const pct = def.max === def.min ? 1 : (val - def.min) / (def.max - def.min);
+                const filled = Math.round(Math.max(0, Math.min(1, pct)) * BAR);
+                const bar = "▓".repeat(filled) + "░".repeat(BAR - filled);
+                const percent = Math.round(pct * 100);
+                limitedAttrs.push(`【${name}】${bar} ${val}/${def.max}`);
+            } else {
+                const minText = def.min !== null ? ` [最低:${def.min}]` : "";
+                unlimitedAttrs.push(`【${name}】${val}${minText}`);
+            }
+        });
+
+        // 获取货币信息
+        const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+        const uid = getPrimaryUid(platform, rawUid);
+        const roleKey = `${platform}:${uid}`;
+        const inv = getInv(roleKey);
+        const registry = getRegistry();
+        const currencies = inv.filter(e => {
+            const item = registry[e.code];
+            return item && item.type === "currency";
+        }).sort((a, b) => a.code.localeCompare(b.code));
+
+        let result = `\n★━━━━━━━━━━━━━━━━━━★\n🎭 【${roleName}】的状态\n★━━━━━━━━━━━━━━━━━━★\n`;
+
+        if (limitedAttrs.length > 0) {
+            result += `\n📊 核心属性\n`;
+            limitedAttrs.forEach(l => {
+                result += `${l}\n`;
+            });
+        }
+
+        if (unlimitedAttrs.length > 0) {
+            result += `\n📈 资源属性\n`;
+            unlimitedAttrs.forEach(l => {
+                result += `${l}\n`;
+            });
+        }
+
+        if (currencies.length > 0) {
+            result += `\n💰 货币\n`;
+            currencies.forEach(curr => {
+                const currName = registry[curr.code]?.name || curr.code;
+                result += `${currName}: ${curr.count}\n`;
+            });
+        }
+
+        result += `★━━━━━━━━━━━━━━━━━━★`;
+        return seal.replyToSender(ctx, msg, result);
+    }
+
+    // 我创建属性（管理员，无前缀）换行批量：每行 属性名 [最小 最大 默认]
+    if (raw.startsWith("我创建属性") && isAdmin) {
+        const body = raw.slice(5).trim();
+        if (!body) return seal.replyToSender(ctx, msg, "❌ 请提供属性定义，格式：属性名 最小 最大 默认");
+        const lines = body.split(/\n/).map(l => l.trim()).filter(Boolean);
+        const reg = getRegistry();
+        const currencyNames = new Set(Object.values(reg).filter(r => r.type === "currency").map(r => r.name));
+        const defs = getAttrDefs();
+        const results = [];
+        for (const line of lines) {
+            const parts = line.split(/\s+/);
+            const name = parts[0];
+            if (!name) continue;
+            if (currencyNames.has(name)) { results.push(`❌ 「${name}」已被货币占用`); continue; }
+            if (parts[1] !== undefined && !isNaN(Number(parts[1]))) {
+                const min = Number(parts[1]);
+                const max = parts[2] !== undefined && !isNaN(Number(parts[2])) ? Number(parts[2]) : null;
+                const def = parts[3] !== undefined && !isNaN(Number(parts[3])) ? Number(parts[3]) : 0;
+                const isNew = !defs[name];
+                defs[name] = { min, max, default: def, desc: defs[name]?.desc || "" };
+                results.push(`${isNew ? "✅ 新增" : "🔄 更新"}「${name}」：${min}~${max ?? "∞"} 默认${def}`);
+            } else {
+                const isNew = !defs[name];
+                if (isNew) defs[name] = { min: null, max: null, default: 0, desc: "" };
+                results.push(`${isNew ? "✅ 新增" : "⏭️ 已存在"}「${name}」`);
+            }
+        }
+        saveAttrDefs(defs);
+        return seal.replyToSender(ctx, msg, results.join("\n"));
+    }
+    if (raw.startsWith("我移除属性") && isAdmin) {
+        const body = raw.slice(5).trim();
+        if (!body) return seal.replyToSender(ctx, msg, "❌ 请指定要移除的属性名。");
+        const names = body.split(/\n/).map(l => l.trim()).filter(Boolean);
+        const defs = getAttrDefs();
+        const charAttrs = getCharAttrs();
+        const results = [];
+        for (const attrName of names) {
+            if (!defs[attrName]) { results.push(`❌ 「${attrName}」不存在`); continue; }
+            delete defs[attrName];
+            for (const role of Object.keys(charAttrs)) delete charAttrs[role][attrName];
+            results.push(`✅ 已移除「${attrName}」`);
+        }
+        saveAttrDefs(defs);
+        saveCharAttrs(charAttrs);
+        const remaining = Object.keys(defs);
+        results.push(`当前属性：${remaining.length ? remaining.join("、") : "（无）"}`);
+        return seal.replyToSender(ctx, msg, results.join("\n"));
+    }
+
+    // 重复代码已删除（属性++/--在上面的 2347-2402 行已完整处理）
+};
+
+// ========================
+// 同步踩点池命令
+// ========================
+
+let cmd_sync_spot_pools = seal.ext.newCmdItemInfo();
+cmd_sync_spot_pools.name = "同步踩点池";
+cmd_sync_spot_pools.help = "【管理员】同步地点系统中的所有地点到抽取池\n同步踩点池\n  将自动为每个地点创建相应的池子（若已存在则跳过）\n  不删除任何已有的池子";
+cmd_sync_spot_pools.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+
+    const main = getMainExt();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
+
+    // 读取地点系统配置（检查是否启用）
+    let placeSystemEnabled = true;
+    try {
+        const placeConfig = JSON.parse(main.storageGet("place_system_config") || "{}");
+        placeSystemEnabled = placeConfig.enabled !== false;
+    } catch(e) {}
+
+    if (!placeSystemEnabled) {
+        return seal.replyToSender(ctx, msg, "⚠️ 地点系统未启用，无法同步踩点池。");
+    }
+
+    // 读取所有地点
+    let places = {};
+    try {
+        places = JSON.parse(main.storageGet("available_places") || "{}");
+    } catch(e) {
+        return seal.replyToSender(ctx, msg, "❌ 无法读取地点数据。");
+    }
+
+    if (Object.keys(places).length === 0) {
+        return seal.replyToSender(ctx, msg, "⚠️ 地点系统中没有地点数据。");
+    }
+
+    // 获取当前的池子定义
+    const poolDefs = getPoolDefs();
+
+    let created = [];
+    let skipped = [];
+
+    // 为每个地点创建对应的池子（如果不存在）
+    for (const placeName in places) {
+        const poolName = `${placeName}池`;
+
+        if (poolDefs[poolName]) {
+            skipped.push(placeName);
+        } else {
+            // 创建新的固定池
+            poolDefs[poolName] = {
+                name: poolName,
+                type: "fixed",
+                items: [],
+                enabled: true
+            };
+            created.push(placeName);
+        }
+    }
+
+    // 保存更新后的池子定义
+    savePoolDefs(poolDefs);
+
+    let resultMsg = "✅ 踩点池同步完成！\n";
+    if (created.length > 0) {
+        resultMsg += `\n📝 新建池子 (${created.length})：\n` + created.map(p => `  · ${p}池`).join("\n");
+    }
+    if (skipped.length > 0) {
+        resultMsg += `\n⏭️  已存在，跳过 (${skipped.length})：\n` + skipped.map(p => `  · ${p}池`).join("\n");
+    }
+    resultMsg += `\n\n💡 现在可使用「上架池子」命令向这些池子添加物品。`;
+
+    seal.replyToSender(ctx, msg, resultMsg);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["同步踩点池"] = cmd_sync_spot_pools;
+
+// ========================
+// 攻防系统 - 存储和配置
+// ========================
+
+function getAttackDefenseConfig() {
+    const main = getMainExt();
+    if (!main) return {};
+    try {
+        return JSON.parse(main.storageGet("attack_defense_config") || "{}");
+    } catch(e) { return {}; }
+}
+
+function saveAttackDefenseConfig(config) {
+    const main = getMainExt();
+    if (main) main.storageSet("attack_defense_config", JSON.stringify(config));
+}
+
+function getAttackDefenseData() {
+    const main = getMainExt();
+    if (!main) return { battles: {}, playerStats: {}, skills: {} };
+    try {
+        return JSON.parse(main.storageGet("attack_defense_data") || "{}");
+    } catch(e) { return { battles: {}, playerStats: {}, skills: {} }; }
+}
+
+function saveAttackDefenseData(data) {
+    const main = getMainExt();
+    if (main) main.storageSet("attack_defense_data", JSON.stringify(data));
+}
+
+// 初始化玩家战斗属性
+function initPlayerBattleAttrs(name) {
+    return {
+        ATK: 50,      // 攻击力
+        DEF: 30,      // 防御力
+        AGI: 40,      // 敏捷
+        HP: 100,      // 生命值
+        TMP_SHIELD: 0, // 临时盾
+        MP: 50,       // 魔法值
+        MP_REGEN: 5   // 每回合魔法恢复
+    };
+}
+
+// 获取玩家当前属性
+function getPlayerBattleAttrs(name) {
+    const data = getAttackDefenseData();
+    if (!data.playerStats) data.playerStats = {};
+    if (!data.playerStats[name]) {
+        data.playerStats[name] = initPlayerBattleAttrs(name);
+        saveAttackDefenseData(data);
+    }
+    return data.playerStats[name];
+}
+
+function savePlayerBattleAttrs(name, attrs) {
+    const data = getAttackDefenseData();
+    if (!data.playerStats) data.playerStats = {};
+    data.playerStats[name] = attrs;
+    saveAttackDefenseData(data);
+}
+
+// ========================
+// 攻防系统 - 战斗管理
+// ========================
+
+function generateBattleId() {
+    return "BATTLE_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
+}
+
+function createBattle(initiator, mode = "free-for-all") {
+    const battleId = generateBattleId();
+    const config = getAttackDefenseConfig();
+
+    return {
+        id: battleId,
+        initiator: initiator,
+        mode: mode,
+        status: "pending", // pending(待接受), preparing(准备中), ongoing(进行中), ended(已结束)
+        players: [initiator],
+        turns: config.defaultTurns || 10,
+        currentTurn: 0,
+        turnOrder: [initiator],
+        currentPlayerIndex: 0,
+        createdAt: Date.now(),
+        turnStartTime: Date.now(),
+        turnTimeout: config.turnTimeout || 3600000, // 默认1小时
+        actions: [], // 所有行动记录
+        playerStates: {
+            [initiator]: {
+                hp: getPlayerBattleAttrs(initiator).HP,
+                mp: getPlayerBattleAttrs(initiator).MP,
+                shield: 0,
+                alive: true,
+                damage_taken: 0,
+                skills_used: []
+            }
+        },
+        rewards: null,
+        winner: null
+    };
+}
+
+function addPlayerToBattle(battleId, playerName) {
+    const data = getAttackDefenseData();
+    if (!data.battles) data.battles = {};
+    const battle = data.battles[battleId];
+    if (!battle || battle.status !== "pending") return false;
+
+    if (battle.players.includes(playerName)) return false;
+
+    battle.players.push(playerName);
+    const attrs = getPlayerBattleAttrs(playerName);
+    battle.playerStates[playerName] = {
+        hp: attrs.HP,
+        mp: attrs.MP,
+        shield: 0,
+        alive: true,
+        damage_taken: 0,
+        skills_used: []
+    };
+
+    saveAttackDefenseData(data);
+    return true;
+}
+
+function startBattle(battleId) {
+    const data = getAttackDefenseData();
+    if (!data.battles) data.battles = {};
+    const battle = data.battles[battleId];
+    if (!battle) return false;
+
+    battle.status = "preparing";
+    // 按敏捷排序
+    const agiScores = {};
+    battle.players.forEach(p => {
+        agiScores[p] = getPlayerBattleAttrs(p).AGI;
+    });
+    battle.turnOrder = battle.players.sort((a, b) => agiScores[b] - agiScores[a]);
+    battle.currentPlayerIndex = 0;
+    battle.status = "ongoing";
+    battle.currentTurn = 1;
+    battle.turnStartTime = Date.now();
+
+    saveAttackDefenseData(data);
+    return true;
+}
+
+function getCurrentBattlePlayer(battle) {
+    if (!battle || battle.status !== "ongoing") return null;
+    return battle.turnOrder[battle.currentPlayerIndex];
+}
+
+function recordAction(battleId, action) {
+    const data = getAttackDefenseData();
+    if (!data.battles) data.battles = {};
+    const battle = data.battles[battleId];
+    if (!battle) return false;
+
+    action.timestamp = Date.now();
+    action.turn = battle.currentTurn;
+    battle.actions.push(action);
+
+    saveAttackDefenseData(data);
+    return true;
+}
+
+// ========================
+// 攻防系统 - 战斗计算
+// ========================
+
+function calculateNormalAttack(attacker, defender) {
+    const atkAttrs = getPlayerBattleAttrs(attacker);
+    const defAttrs = getPlayerBattleAttrs(defender);
+    const config = getAttackDefenseConfig();
+
+    let baseDamage = atkAttrs.ATK;
+    let defReduction = Math.max(0, defAttrs.DEF * 0.1);
+
+    // 应用伤害随机性
+    let randomRange = config.damageRandomness;
+    if (!randomRange || randomRange === 0) {
+        baseDamage = baseDamage - defReduction;
+    } else if (typeof randomRange === 'string' && randomRange.includes('-')) {
+        const [min, max] = randomRange.split('-').map(Number);
+        const random = Math.floor(Math.random() * (max - min + 1)) + min;
+        baseDamage = baseDamage + (min - 1 + random) - defReduction;
+    }
+
+    return Math.max(1, Math.round(baseDamage));
+}
+
+function applyDamage(battleId, targetName, damage) {
+    const data = getAttackDefenseData();
+    if (!data.battles) return 0;
+    const battle = data.battles[battleId];
+    if (!battle || !battle.playerStates[targetName]) return 0;
+
+    const state = battle.playerStates[targetName];
+    let actualDamage = damage;
+
+    // 先扣盾，再扣HP
+    if (state.shield > 0) {
+        const shieldDamage = Math.min(state.shield, actualDamage);
+        state.shield -= shieldDamage;
+        actualDamage -= shieldDamage;
+    }
+
+    if (actualDamage > 0) {
+        state.hp -= actualDamage;
+        state.damage_taken += actualDamage;
+        if (state.hp <= 0) {
+            state.alive = false;
+        }
+    }
+
+    saveAttackDefenseData(data);
+    return damage;
+}
+
+function getAlivePlayersCount(battle) {
+    let count = 0;
+    for (const player of battle.players) {
+        if (battle.playerStates[player] && battle.playerStates[player].alive) {
+            count++;
+        }
+    }
+    return count;
+}
+
+// ========================
+// 攻防系统 - 命令: 发起战斗
+// ========================
+
+let cmd_pk = seal.ext.newCmdItemInfo();
+cmd_pk.name = "PK";
+cmd_pk.help = "发起或接受战斗\n发起 [对手1] [对手2]...\n发起  （不指定对手时进入自由模式）\n接受 <战斗ID>\n拒绝 <战斗ID>";
+cmd_pk.solve = (ctx, msg, cmdArgs) => {
+    const config = getAttackDefenseConfig();
+    if (!config.enabled) return seal.replyToSender(ctx, msg, "❌ 攻防系统未启用。");
+
+    const player = getRoleName(ctx, msg);
+    if (!player) return seal.replyToSender(ctx, msg, "❌ 无法获取你的角色信息。");
+
+    const subCmd = cmdArgs.getArgN(1);
+    const data = getAttackDefenseData();
+    if (!data.battles) data.battles = {};
+    if (!data.playerStats) data.playerStats = {};
+
+    // 发起战斗
+    if (subCmd === "发起") {
+        // 检查每日发起次数限制
+        const today = new Date().toDateString();
+        if (!data.playerStats[player]) data.playerStats[player] = initPlayerBattleAttrs(player);
+        if (!data.playerStats[player].initiations) data.playerStats[player].initiations = {};
+        if (!data.playerStats[player].initiations[today]) data.playerStats[player].initiations[today] = 0;
+
+        const maxInitiations = config.maxInitiations || 10;
+        if (data.playerStats[player].initiations[today] >= maxInitiations) {
+            return seal.replyToSender(ctx, msg, `❌ 今日发起战斗次数已达上限 (${maxInitiations}次)。`);
+        }
+
+        const battle = createBattle(player);
+
+        // 如果指定了对手，自动添加他们（混战模式）
+        const opponents = [];
+        for (let i = 2; i <= cmdArgs.getArgCount(); i++) {
+            opponents.push(cmdArgs.getArgN(i));
+        }
+
+        if (opponents.length > 0) {
+            opponents.forEach(opp => addPlayerToBattle(battle.id, opp));
+            battle.status = "preparing";
+        }
+
+        data.battles[battle.id] = battle;
+        data.playerStats[player].initiations[today]++;
+        saveAttackDefenseData(data);
+
+        let msg_text = `⚔️ ${player} 发起了一场战斗！\n\n战斗ID: ${battle.id}\n\n`;
+        if (opponents.length > 0) {
+            msg_text += `参战者: ${[player, ...opponents].join(", ")}\n\n`;
+            msg_text += `输入「PK 接受 ${battle.id}」开始战斗。`;
+        } else {
+            msg_text += `这是一个开放战斗，其他人可以:\n\n输入「PK 接受 ${battle.id}」加入战斗`;
+        }
+
+        return seal.replyToSender(ctx, msg, msg_text);
+    }
+
+    // 接受战斗
+    if (subCmd === "接受") {
+        const battleId = cmdArgs.getArgN(2);
+        if (!battleId || !data.battles[battleId]) {
+            return seal.replyToSender(ctx, msg, "❌ 无效的战斗ID。");
+        }
+
+        const battle = data.battles[battleId];
+        if (battle.status !== "pending" && battle.status !== "preparing") {
+            return seal.replyToSender(ctx, msg, "❌ 该战斗已不可加入。");
+        }
+
+        if (battle.players.includes(player)) {
+            return seal.replyToSender(ctx, msg, "❌ 你已加入该战斗。");
+        }
+
+        // 检查拒绝限制（如果启用强制参战则无需检查）
+        if (!config.forceParticipate) {
+            const today = new Date().toDateString();
+            if (!data.playerStats[player].refusals) data.playerStats[player].refusals = {};
+            if (!data.playerStats[player].refusals[today]) data.playerStats[player].refusals[today] = 0;
+
+            const maxRefusals = config.maxRefusals || 10;
+            if (data.playerStats[player].refusals[today] >= maxRefusals) {
+                return seal.replyToSender(ctx, msg, `❌ 由于你今日拒绝次数过多，无法接受新的战斗。`);
+            }
+        }
+
+        addPlayerToBattle(battleId, player);
+
+        // 如果有足够的人，自动开始战斗
+        if (battle.players.length >= (config.minPlayers || 2) && !config.manualStart) {
+            startBattle(battleId);
+            return seal.replyToSender(ctx, msg, `✅ ${player} 加入了战斗！\n\n⚔️ 战斗已开始！\n\n当前玩家: ${getCurrentBattlePlayer(battle)}\n\n输入「PK 攻击 <对手名字>」发动攻击。`);
+        }
+
+        saveAttackDefenseData(data);
+        return seal.replyToSender(ctx, msg, `✅ ${player} 加入了战斗 ${battleId}!\n\n当前参战者: ${battle.players.join(", ")}`);
+    }
+
+    // 拒绝战斗
+    if (subCmd === "拒绝") {
+        const battleId = cmdArgs.getArgN(2);
+        if (!battleId || !data.battles[battleId]) {
+            return seal.replyToSender(ctx, msg, "❌ 无效的战斗ID。");
+        }
+
+        const battle = data.battles[battleId];
+        if (battle.status !== "pending" && battle.status !== "preparing") {
+            return seal.replyToSender(ctx, msg, "❌ 该战斗已不可拒绝。");
+        }
+
+        const today = new Date().toDateString();
+        if (!data.playerStats[player].refusals) data.playerStats[player].refusals = {};
+        if (!data.playerStats[player].refusals[today]) data.playerStats[player].refusals[today] = 0;
+        data.playerStats[player].refusals[today]++;
+
+        saveAttackDefenseData(data);
+        return seal.replyToSender(ctx, msg, `✅ 你拒绝了战斗 ${battleId}。\n\n今日已拒绝 ${data.playerStats[player].refusals[today]} 次。`);
+    }
+};
+
+ext.cmdMap["PK"] = cmd_pk;
+
+// ========================
+// 攻防系统 - 命令: 战斗操作
+// ========================
+
+let cmd_attack = seal.ext.newCmdItemInfo();
+cmd_attack.name = "攻击";
+cmd_attack.help = "在战斗中发动攻击\n攻击 <对手名字>";
+cmd_attack.solve = (ctx, msg, cmdArgs) => {
+    const config = getAttackDefenseConfig();
+    if (!config.enabled) return seal.replyToSender(ctx, msg, "❌ 攻防系统未启用。");
+
+    const player = getRoleName(ctx, msg);
+    if (!player) return seal.replyToSender(ctx, msg, "❌ 无法获取你的角色信息。");
+
+    const targetName = cmdArgs.getArgN(1);
+    if (!targetName) return seal.replyToSender(ctx, msg, "❌ 请指定攻击目标。");
+
+    const data = getAttackDefenseData();
+    if (!data.battles) return seal.replyToSender(ctx, msg, "❌ 没有进行中的战斗。");
+
+    // 找到玩家所在的战斗
+    let battle = null;
+    for (const bid in data.battles) {
+        if (data.battles[bid].players.includes(player) && data.battles[bid].status === "ongoing") {
+            battle = data.battles[bid];
+            break;
+        }
+    }
+
+    if (!battle) return seal.replyToSender(ctx, msg, "❌ 你未参加进行中的战斗。");
+
+    const currentPlayer = getCurrentBattlePlayer(battle);
+    if (currentPlayer !== player) {
+        return seal.replyToSender(ctx, msg, `❌ 现在不是你的回合。当前轮到: ${currentPlayer}`);
+    }
+
+    if (!battle.playerStates[targetName]) {
+        return seal.replyToSender(ctx, msg, "❌ 目标不存在或未参加此战斗。");
+    }
+
+    if (!battle.playerStates[targetName].alive) {
+        return seal.replyToSender(ctx, msg, "❌ 目标已被击败。");
+    }
+
+    if (targetName === player) {
+        return seal.replyToSender(ctx, msg, "❌ 无法攻击自己。");
+    }
+
+    // 计算伤害
+    const damage = calculateNormalAttack(player, targetName);
+    applyDamage(battle.id, targetName, damage);
+
+    // 记录行动
+    recordAction(battle.id, {
+        actor: player,
+        action: "attack",
+        target: targetName,
+        damage: damage,
+        targetHP: battle.playerStates[targetName].hp
+    });
+
+    let result = `⚔️ ${player} 攻击了 ${targetName}！\n\n伤害: ${damage}\n${targetName} 剩余HP: ${Math.max(0, battle.playerStates[targetName].hp)}`;
+
+    // 检查目标是否被击败
+    if (!battle.playerStates[targetName].alive) {
+        result += `\n\n☠️ ${targetName} 被击败了！`;
+    }
+
+    // 检查战斗是否结束
+    if (getAlivePlayersCount(battle) <= 1) {
+        battle.status = "ended";
+        const survivors = battle.players.filter(p => battle.playerStates[p] && battle.playerStates[p].alive);
+        if (survivors.length === 1) {
+            battle.winner = survivors[0];
+            result += `\n\n🏆 战斗结束！${survivors[0]} 胜利！`;
+        } else {
+            result += `\n\n⚔️ 战斗结束，平手！`;
+        }
+    } else {
+        // 进到下一个回合
+        battle.currentPlayerIndex = (battle.currentPlayerIndex + 1) % battle.turnOrder.length;
+        // 跳过已击败的玩家
+        let attempts = 0;
+        while (!battle.playerStates[battle.turnOrder[battle.currentPlayerIndex]].alive && attempts < battle.turnOrder.length) {
+            battle.currentPlayerIndex = (battle.currentPlayerIndex + 1) % battle.turnOrder.length;
+            attempts++;
+        }
+
+        if (battle.currentPlayerIndex === 0) {
+            battle.currentTurn++;
+        }
+        battle.turnStartTime = Date.now();
+
+        result += `\n\n➡️ 轮到 ${getCurrentBattlePlayer(battle)} 的回合。`;
+    }
+
+    saveAttackDefenseData(data);
+    return seal.replyToSender(ctx, msg, result);
+};
+
+ext.cmdMap["攻击"] = cmd_attack;
+
+// ========================
+// 攻防系统 - 命令: 防守
+// ========================
+
+let cmd_defend = seal.ext.newCmdItemInfo();
+cmd_defend.name = "防守";
+cmd_defend.help = "在战斗中防守一回合（增加防御力）\n防守";
+cmd_defend.solve = (ctx, msg, cmdArgs) => {
+    const config = getAttackDefenseConfig();
+    if (!config.enabled) return seal.replyToSender(ctx, msg, "❌ 攻防系统未启用。");
+
+    const player = getRoleName(ctx, msg);
+    if (!player) return seal.replyToSender(ctx, msg, "❌ 无法获取你的角色信息。");
+
+    const data = getAttackDefenseData();
+    if (!data.battles) return seal.replyToSender(ctx, msg, "❌ 没有进行中的战斗。");
+
+    let battle = null;
+    for (const bid in data.battles) {
+        if (data.battles[bid].players.includes(player) && data.battles[bid].status === "ongoing") {
+            battle = data.battles[bid];
+            break;
+        }
+    }
+
+    if (!battle) return seal.replyToSender(ctx, msg, "❌ 你未参加进行中的战斗。");
+
+    const currentPlayer = getCurrentBattlePlayer(battle);
+    if (currentPlayer !== player) {
+        return seal.replyToSender(ctx, msg, `❌ 现在不是你的回合。当前轮到: ${currentPlayer}`);
+    }
+
+    // 记录防守行动
+    recordAction(battle.id, {
+        actor: player,
+        action: "defend",
+        defenseBonus: 50
+    });
+
+    // 进到下一个回合
+    battle.currentPlayerIndex = (battle.currentPlayerIndex + 1) % battle.turnOrder.length;
+    let attempts = 0;
+    while (!battle.playerStates[battle.turnOrder[battle.currentPlayerIndex]].alive && attempts < battle.turnOrder.length) {
+        battle.currentPlayerIndex = (battle.currentPlayerIndex + 1) % battle.turnOrder.length;
+        attempts++;
+    }
+
+    if (battle.currentPlayerIndex === 0) {
+        battle.currentTurn++;
+    }
+    battle.turnStartTime = Date.now();
+
+    saveAttackDefenseData(data);
+    return seal.replyToSender(ctx, msg, `🛡️ ${player} 进入防守姿态！\n\n➡️ 轮到 ${getCurrentBattlePlayer(battle)} 的回合。`);
+};
+
+ext.cmdMap["防守"] = cmd_defend;
+
+// ========================
+// 攻防系统 - 命令: 投降/逃跑
+// ========================
+
+let cmd_surrender = seal.ext.newCmdItemInfo();
+cmd_surrender.name = "投降";
+cmd_surrender.help = "在战斗中投降或尝试逃跑\n投降";
+cmd_surrender.solve = (ctx, msg, cmdArgs) => {
+    const config = getAttackDefenseConfig();
+    if (!config.enabled) return seal.replyToSender(ctx, msg, "❌ 攻防系统未启用。");
+
+    const player = getRoleName(ctx, msg);
+    if (!player) return seal.replyToSender(ctx, msg, "❌ 无法获取你的角色信息。");
+
+    const data = getAttackDefenseData();
+    if (!data.battles) return seal.replyToSender(ctx, msg, "❌ 没有进行中的战斗。");
+
+    let battle = null;
+    for (const bid in data.battles) {
+        if (data.battles[bid].players.includes(player) && data.battles[bid].status === "ongoing") {
+            battle = data.battles[bid];
+            break;
+        }
+    }
+
+    if (!battle) return seal.replyToSender(ctx, msg, "❌ 你未参加进行中的战斗。");
+
+    const escapeRate = config.escapeRate !== undefined ? config.escapeRate : 30;
+    const escapeRoll = Math.random() * 100;
+
+    recordAction(battle.id, {
+        actor: player,
+        action: "escape",
+        success: escapeRoll < escapeRate
+    });
+
+    if (escapeRoll < escapeRate) {
+        // 成功逃脱
+        battle.playerStates[player].alive = false;
+
+        let result = `💨 ${player} 成功逃离了战斗！`;
+
+        if (getAlivePlayersCount(battle) <= 1) {
+            battle.status = "ended";
+            const survivors = battle.players.filter(p => battle.playerStates[p] && battle.playerStates[p].alive);
+            if (survivors.length === 1) {
+                battle.winner = survivors[0];
+                result += `\n\n🏆 战斗结束！${survivors[0]} 胜利！`;
+            } else {
+                result += `\n\n⚔️ 战斗结束，平手！`;
+            }
+        } else {
+            // 进到下一个回合
+            battle.currentPlayerIndex = (battle.currentPlayerIndex + 1) % battle.turnOrder.length;
+            let attempts = 0;
+            while (!battle.playerStates[battle.turnOrder[battle.currentPlayerIndex]].alive && attempts < battle.turnOrder.length) {
+                battle.currentPlayerIndex = (battle.currentPlayerIndex + 1) % battle.turnOrder.length;
+                attempts++;
+            }
+
+            if (battle.currentPlayerIndex === 0) {
+                battle.currentTurn++;
+            }
+            battle.turnStartTime = Date.now();
+
+            result += `\n\n➡️ 轮到 ${getCurrentBattlePlayer(battle)} 的回合。`;
+        }
+
+        saveAttackDefenseData(data);
+        return seal.replyToSender(ctx, msg, result);
+    } else {
+        // 逃脱失败
+        const nextPlayerIndex = (battle.currentPlayerIndex + 1) % battle.turnOrder.length;
+        let attempts = 0;
+        while (!battle.playerStates[battle.turnOrder[nextPlayerIndex]].alive && attempts < battle.turnOrder.length && attempts < 1) {
+            attempts++;
+        }
+
+        saveAttackDefenseData(data);
+        return seal.replyToSender(ctx, msg, `❌ ${player} 逃脱失败！\n\n(成功率: ${escapeRate}%)`);
+    }
+};
+
+ext.cmdMap["投降"] = cmd_surrender;
+ext.cmdMap["逃跑"] = cmd_surrender;
+
+// ========================
+// 攻防系统 - 管理员命令: 开关/设置
+// ========================
+
+let cmd_attack_defense_admin = seal.ext.newCmdItemInfo();
+cmd_attack_defense_admin.name = "攻防";
+cmd_attack_defense_admin.help = "【管理员】攻防系统管理\n攻防 开 / 关     - 启用/禁用系统\n攻防 查看        - 查看配置\n攻防 设置 参数 值 - 设置配置参数";
+cmd_attack_defense_admin.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+
+    const subCmd = cmdArgs.getArgN(1);
+    let config = getAttackDefenseConfig();
+
+    // 开启系统
+    if (subCmd === "开") {
+        config.enabled = true;
+        saveAttackDefenseConfig(config);
+        return seal.replyToSender(ctx, msg, "✅ 攻防系统已启用。");
+    }
+
+    // 关闭系统
+    if (subCmd === "关") {
+        config.enabled = false;
+        saveAttackDefenseConfig(config);
+        return seal.replyToSender(ctx, msg, "✅ 攻防系统已禁用。");
+    }
+
+    // 查看配置
+    if (subCmd === "查看") {
+        let info = "🎮 攻防系统配置:\n\n";
+        info += `启用状态: ${config.enabled ? "✅ 已启用" : "❌ 已禁用"}\n`;
+        info += `\n⚙️ 参数:\n`;
+        info += `· 每日最大发起次数: ${config.maxInitiations || 10}\n`;
+        info += `· 每日最大拒绝次数: ${config.maxRefusals || 10}\n`;
+        info += `· 每回合超时(ms): ${config.turnTimeout || 3600000}\n`;
+        info += `· 默认回合数: ${config.defaultTurns || 10}\n`;
+        info += `· 逃脱成功率(%): ${config.escapeRate !== undefined ? config.escapeRate : 30}\n`;
+        info += `· 伤害随机性: ${config.damageRandomness || "无 (纯数值)"}\n`;
+        info += `· 强制参战模式: ${config.forceParticipate ? "是" : "否"}\n`;
+        info += `· 最小参战人数: ${config.minPlayers || 2}\n`;
+        info += `· 手动开始模式: ${config.manualStart ? "是" : "否"}\n`;
+
+        return seal.replyToSender(ctx, msg, info);
+    }
+
+    // 设置参数
+    if (subCmd === "设置") {
+        const paramName = cmdArgs.getArgN(2);
+        const paramValue = cmdArgs.getArgN(3);
+
+        if (!paramName || !paramValue) {
+            return seal.replyToSender(ctx, msg, "❌ 请指定参数名和值。");
+        }
+
+        switch(paramName) {
+            case "每日发起":
+                config.maxInitiations = parseInt(paramValue);
+                break;
+            case "每日拒绝":
+                config.maxRefusals = parseInt(paramValue);
+                break;
+            case "回合超时":
+                config.turnTimeout = parseInt(paramValue);
+                break;
+            case "默认回合":
+                config.defaultTurns = parseInt(paramValue);
+                break;
+            case "逃脱率":
+                config.escapeRate = parseInt(paramValue);
+                break;
+            case "伤害随机":
+                config.damageRandomness = paramValue === "无" ? 0 : paramValue;
+                break;
+            case "强制参战":
+                config.forceParticipate = paramValue === "是";
+                break;
+            case "最小人数":
+                config.minPlayers = parseInt(paramValue);
+                break;
+            case "手动开始":
+                config.manualStart = paramValue === "是";
+                break;
+            default:
+                return seal.replyToSender(ctx, msg, `❌ 未知参数: ${paramName}`);
+        }
+
+        saveAttackDefenseConfig(config);
+        return seal.replyToSender(ctx, msg, `✅ 设置成功: ${paramName} = ${paramValue}`);
+    }
+
+    return seal.replyToSender(ctx, msg, "❌ 无效命令。");
+};
+
+ext.cmdMap["攻防"] = cmd_attack_defense_admin;
+
+// ========================
+// 攻防系统 - 管理员命令: 添加人员
+// ========================
+
+let cmd_add_player = seal.ext.newCmdItemInfo();
+cmd_add_player.name = "添加人员";
+cmd_add_player.help = "【管理员】手动将玩家加入战斗\n添加人员 <玩家名> [玩家2] [玩家3]...";
+cmd_add_player.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+
+    const config = getAttackDefenseConfig();
+    if (!config.enabled) return seal.replyToSender(ctx, msg, "❌ 攻防系统未启用。");
+
+    const initiator = cmdArgs.getArgN(1);
+    if (!initiator) return seal.replyToSender(ctx, msg, "❌ 请指定玩家名。");
+
+    const data = getAttackDefenseData();
+    const battle = createBattle(initiator, "free-for-all");
+
+    // 添加其他玩家
+    for (let i = 2; i <= cmdArgs.getArgCount(); i++) {
+        const playerName = cmdArgs.getArgN(i);
+        if (playerName) addPlayerToBattle(battle.id, playerName);
+    }
+
+    data.battles[battle.id] = battle;
+    saveAttackDefenseData(data);
+
+    let msg_text = `✅ 已创建战斗!\n\n战斗ID: ${battle.id}\n`;
+    msg_text += `参战者: ${battle.players.join(", ")}\n\n`;
+    msg_text += `输入「PK 接受 ${battle.id}」开始战斗。`;
+
+    return seal.replyToSender(ctx, msg, msg_text);
+};
+
+ext.cmdMap["添加人员"] = cmd_add_player;
+
+// ========================
+// 攻防系统 - 管理员命令: 添加技能
+// ========================
+
+let cmd_add_skill = seal.ext.newCmdItemInfo();
+cmd_add_skill.name = "添加技能";
+cmd_add_skill.help = "【管理员】为玩家解锁技能\n添加技能 <玩家名> <技能名>";
+cmd_add_skill.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+
+    const config = getAttackDefenseConfig();
+    if (!config.enabled) return seal.replyToSender(ctx, msg, "❌ 攻防系统未启用。");
+
+    const playerName = cmdArgs.getArgN(1);
+    const skillName = cmdArgs.getArgN(2);
+
+    if (!playerName || !skillName) {
+        return seal.replyToSender(ctx, msg, "❌ 请指定玩家名和技能名。");
+    }
+
+    const data = getAttackDefenseData();
+    if (!data.skills) data.skills = {};
+    if (!data.skills[playerName]) data.skills[playerName] = [];
+
+    if (data.skills[playerName].includes(skillName)) {
+        return seal.replyToSender(ctx, msg, `❌ ${playerName} 已经拥有技能 ${skillName}。`);
+    }
+
+    data.skills[playerName].push(skillName);
+    saveAttackDefenseData(data);
+
+    return seal.replyToSender(ctx, msg, `✅ 已为 ${playerName} 解锁技能: ${skillName}`);
+};
+
+ext.cmdMap["添加技能"] = cmd_add_skill;
+
+// ========================
+// 攻防系统 - 查看战斗状态
+// ========================
+
+let cmd_battle_status = seal.ext.newCmdItemInfo();
+cmd_battle_status.name = "战斗状态";
+cmd_battle_status.help = "查看当前战斗状态\n战斗状态 [战斗ID]";
+cmd_battle_status.solve = (ctx, msg, cmdArgs) => {
+    const config = getAttackDefenseConfig();
+    if (!config.enabled) return seal.replyToSender(ctx, msg, "❌ 攻防系统未启用。");
+
+    const player = getRoleName(ctx, msg);
+    if (!player) return seal.replyToSender(ctx, msg, "❌ 无法获取你的角色信息。");
+
+    const battleId = cmdArgs.getArgN(1);
+    const data = getAttackDefenseData();
+    if (!data.battles) return seal.replyToSender(ctx, msg, "❌ 没有战斗信息。");
+
+    let battle = null;
+
+    if (battleId) {
+        battle = data.battles[battleId];
+        if (!battle) return seal.replyToSender(ctx, msg, "❌ 战斗不存在。");
+    } else {
+        // 查找玩家参加的战斗
+        for (const bid in data.battles) {
+            if (data.battles[bid].players.includes(player) && data.battles[bid].status === "ongoing") {
+                battle = data.battles[bid];
+                break;
+            }
+        }
+        if (!battle) return seal.replyToSender(ctx, msg, "❌ 你未参加任何进行中的战斗。");
+    }
+
+    let info = `⚔️ 战斗状态\n\n`;
+    info += `战斗ID: ${battle.id}\n`;
+    info += `状态: ${battle.status}\n`;
+    info += `回合: ${battle.currentTurn}/${battle.turns}\n`;
+    info += `\n当前轮到: ${getCurrentBattlePlayer(battle)}\n\n`;
+
+    info += `参战者:\n`;
+    battle.players.forEach(p => {
+        const state = battle.playerStates[p];
+        const status = state.alive ? "🟢 存活" : "💀 已败";
+        info += `· ${p}: ${state.hp}/${getPlayerBattleAttrs(p).HP} HP | ${state.shield} 盾 | ${status}\n`;
+    });
+
+    return seal.replyToSender(ctx, msg, info);
+};
+
+ext.cmdMap["战斗状态"] = cmd_battle_status;
+
+// ========================
+// 攻防系统 - 查看属性
+// ========================
+
+let cmd_battle_attrs = seal.ext.newCmdItemInfo();
+cmd_battle_attrs.name = "属性";
+cmd_battle_attrs.help = "查看或管理战斗属性\n属性              - 查看自己的属性\n属性 <玩家名>     - 查看其他玩家属性\n【管理员】\n属性 设置 <玩家> <属性> <值> - 修改属性";
+cmd_battle_attrs.solve = (ctx, msg, cmdArgs) => {
+    const config = getAttackDefenseConfig();
+    if (!config.enabled) return seal.replyToSender(ctx, msg, "❌ 攻防系统未启用。");
+
+    const subCmd = cmdArgs.getArgN(1);
+
+    // 查看自己或指定玩家的属性
+    if (!subCmd || (subCmd && !["设置", "修改"].includes(subCmd))) {
+        const self = getRoleName(ctx, msg);
+        const targetName = subCmd || self;
+        if (!targetName) return seal.replyToSender(ctx, msg, "❌ 无法获取角色信息。");
+        if (targetName !== self && !isUserAdmin(ctx, msg)) {
+            return seal.replyToSender(ctx, msg, "❌ 权限不足，无法查看他人属性。");
+        }
+
+        const attrs = getPlayerBattleAttrs(targetName);
+        let info = `⚔️ ${targetName} 的战斗属性\n\n`;
+        info += `攻击力 (ATK):    ${attrs.ATK}\n`;
+        info += `防御力 (DEF):    ${attrs.DEF}\n`;
+        info += `敏捷 (AGI):      ${attrs.AGI}\n`;
+        info += `生命值 (HP):     ${attrs.HP}\n`;
+        info += `护盾 (TMP_SHIELD): ${attrs.TMP_SHIELD}\n`;
+        info += `魔法值 (MP):     ${attrs.MP}\n`;
+        info += `回复/回合 (MP_REGEN): ${attrs.MP_REGEN}\n`;
+
+        return seal.replyToSender(ctx, msg, info);
+    }
+
+    // 管理员修改属性
+    if (subCmd === "设置" || subCmd === "修改") {
+        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+
+        const playerName = cmdArgs.getArgN(2);
+        const attrName = cmdArgs.getArgN(3);
+        const value = parseInt(cmdArgs.getArgN(4));
+
+        if (!playerName || !attrName || isNaN(value)) {
+            return seal.replyToSender(ctx, msg, "❌ 用法: 属性 设置 <玩家> <属性> <值>");
+        }
+
+        const validAttrs = ["ATK", "DEF", "AGI", "HP", "TMP_SHIELD", "MP", "MP_REGEN"];
+        if (!validAttrs.includes(attrName)) {
+            return seal.replyToSender(ctx, msg, `❌ 无效属性。有效属性: ${validAttrs.join(", ")}`);
+        }
+
+        const attrs = getPlayerBattleAttrs(playerName);
+        const oldValue = attrs[attrName];
+        attrs[attrName] = value;
+        savePlayerBattleAttrs(playerName, attrs);
+
+        return seal.replyToSender(ctx, msg, `✅ 已修改 ${playerName} 的 ${attrName}: ${oldValue} → ${value}`);
+    }
+};
+
+ext.cmdMap["属性"] = cmd_battle_attrs;
+
+// ========================
+// 攻防系统 - 战斗历史
+// ========================
+
+let cmd_battle_history = seal.ext.newCmdItemInfo();
+cmd_battle_history.name = "战斗历史";
+cmd_battle_history.help = "查看战斗历史和统计\n战斗历史 <战斗ID> [页码]";
+cmd_battle_history.solve = (ctx, msg, cmdArgs) => {
+    const config = getAttackDefenseConfig();
+    if (!config.enabled) return seal.replyToSender(ctx, msg, "❌ 攻防系统未启用。");
+
+    const battleId = cmdArgs.getArgN(1);
+    if (!battleId) return seal.replyToSender(ctx, msg, "❌ 请指定战斗ID。");
+
+    const data = getAttackDefenseData();
+    if (!data.battles || !data.battles[battleId]) {
+        return seal.replyToSender(ctx, msg, "❌ 战斗不存在。");
+    }
+
+    const battle = data.battles[battleId];
+    const pageNum = parseInt(cmdArgs.getArgN(2)) || 1;
+    const pageSize = 10;
+    const totalActions = battle.actions.length;
+    const totalPages = Math.ceil(totalActions / pageSize);
+
+    if (pageNum > totalPages || pageNum < 1) {
+        return seal.replyToSender(ctx, msg, `❌ 页码范围: 1-${totalPages}`);
+    }
+
+    let info = `📋 战斗历史 - ${battle.id}\n`;
+    info += `状态: ${battle.status} | 赢家: ${battle.winner || "进行中"}\n\n`;
+    info += `第 ${pageNum}/${totalPages} 页:\n\n`;
+
+    const start = (pageNum - 1) * pageSize;
+    const end = Math.min(start + pageSize, totalActions);
+
+    for (let i = start; i < end; i++) {
+        const action = battle.actions[i];
+        info += `[T${action.turn}] ${action.actor}:`;
+
+        if (action.action === "attack") {
+            info += ` 攻击 ${action.target} → ${action.damage} 伤害\n`;
+        } else if (action.action === "defend") {
+            info += ` 防守 (防御+${action.defenseBonus})\n`;
+        } else if (action.action === "escape") {
+            info += ` 尝试逃脱 → ${action.success ? "成功" : "失败"}\n`;
+        } else if (action.action === "skill") {
+            info += ` 使用技能 ${action.skill} → ${action.damage} 伤害\n`;
+        }
+    }
+
+    return seal.replyToSender(ctx, msg, info);
+};
+
+ext.cmdMap["战斗历史"] = cmd_battle_history;
+
+// ========================
+// 攻防系统 - 设置中文显示名
+// ========================
+
+let cmd_set_display_name = seal.ext.newCmdItemInfo();
+cmd_set_display_name.name = "设置昵称";
+cmd_set_display_name.help = "设置战斗中显示的昵称\n设置昵称 <昵称>";
+cmd_set_display_name.solve = (ctx, msg, cmdArgs) => {
+    const config = getAttackDefenseConfig();
+    if (!config.enabled) return seal.replyToSender(ctx, msg, "❌ 攻防系统未启用。");
+
+    const player = getRoleName(ctx, msg);
+    if (!player) return seal.replyToSender(ctx, msg, "❌ 无法获取你的角色信息。");
+
+    const displayName = cmdArgs.getArgN(1);
+    if (!displayName) return seal.replyToSender(ctx, msg, "❌ 请指定昵称。");
+
+    const data = getAttackDefenseData();
+    if (!data.playerStats) data.playerStats = {};
+    if (!data.playerStats[player]) data.playerStats[player] = initPlayerBattleAttrs(player);
+
+    data.playerStats[player].displayName = displayName;
+    saveAttackDefenseData(data);
+
+    return seal.replyToSender(ctx, msg, `✅ 昵称已设置为: ${displayName}`);
+};
+
+ext.cmdMap["设置昵称"] = cmd_set_display_name;
+
+// ========================
+// 一键初始化 - 快速启用攻防系统
+// ========================
+
+let cmd_quick_init = seal.ext.newCmdItemInfo();
+cmd_quick_init.name = "一键初始化";
+cmd_quick_init.help = "【管理员】一键初始化攻防系统 - 注册属性和回血药\n一键初始化\n  将自动创建：\n  · 5个RPG属性（HP、MP、ATK、DEF、AGI）\n  · 4种回血药（小、中、大、满）\n  · 启用攻防系统";
+cmd_quick_init.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+
+    const main = getMainExt();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
+
+    // 获取当前属性和物品定义
+    const defs = getAttrDefs();
+    const registry = getRegistry();
+
+    let results = [];
+    let errors = [];
+
+    // ========== 创建RPG属性 ==========
+    const attrs = [
+        { name: "HP", min: 0, max: 100, default: 50, desc: "生命值" },
+        { name: "MP", min: 0, max: 100, default: 50, desc: "魔法值" },
+        { name: "ATK", min: 0, max: 100, default: 40, desc: "攻击力" },
+        { name: "DEF", min: 0, max: 100, default: 30, desc: "防御力" },
+        { name: "AGI", min: 0, max: 100, default: 40, desc: "敏捷" }
+    ];
+
+    attrs.forEach(attr => {
+        if (defs[attr.name]) {
+            errors.push(`⏭️ 属性「${attr.name}」已存在`);
+        } else {
+            defs[attr.name] = {
+                min: attr.min,
+                max: attr.max,
+                default: attr.default,
+                desc: attr.desc
+            };
+            results.push(`✅ 已创建属性：${attr.name}`);
+        }
+    });
+
+    saveAttrDefs(defs);
+
+    // ========== 创建回血药物品 ==========
+    const potions = [
+        {
+            name: "小回血药",
+            desc: "恢复少量HP",
+            uses: -1,
+            effects: "HP+30",
+            resellable: "Y",
+            code: "ITEM_POT_S"
+        },
+        {
+            name: "中回血药",
+            desc: "恢复中等HP",
+            uses: -1,
+            effects: "HP+60",
+            resellable: "Y",
+            code: "ITEM_POT_M"
+        },
+        {
+            name: "大回血药",
+            desc: "恢复大量HP",
+            uses: -1,
+            effects: "HP+100",
+            resellable: "Y",
+            code: "ITEM_POT_L"
+        },
+        {
+            name: "全恢复药",
+            desc: "完全恢复HP和MP",
+            uses: 0,
+            effects: "HP+100,MP+100",
+            resellable: "N",
+            code: "ITEM_POT_FULL"
+        }
+    ];
+
+    potions.forEach(potion => {
+        if (registry[potion.code]) {
+            errors.push(`⏭️ 物品「${potion.name}」(${potion.code})已存在`);
+        } else {
+            registry[potion.code] = {
+                code: potion.code,
+                name: potion.name,
+                type: "normal",
+                desc: potion.desc,
+                useTimes: parseInt(potion.uses),
+                attrs: potion.effects.split(",").map(e => {
+                    const [attr, val] = e.trim().split("+");
+                    return { attr: attr.trim(), value: parseInt(val) };
+                }),
+                canResell: potion.resellable === "Y"
+            };
+            results.push(`✅ 已创建物品：${potion.name} (${potion.code})`);
+        }
+    });
+
+    saveRegistry(registry);
+
+    // ========== 启用攻防系统 ==========
+    let attackDefenseConfig = getAttackDefenseConfig();
+    if (!attackDefenseConfig.enabled) {
+        attackDefenseConfig.enabled = true;
+        attackDefenseConfig.maxInitiations = attackDefenseConfig.maxInitiations || 10;
+        attackDefenseConfig.maxRefusals = attackDefenseConfig.maxRefusals || 10;
+        attackDefenseConfig.turnTimeout = attackDefenseConfig.turnTimeout || 3600000;
+        attackDefenseConfig.defaultTurns = attackDefenseConfig.defaultTurns || 10;
+        attackDefenseConfig.escapeRate = attackDefenseConfig.escapeRate !== undefined ? attackDefenseConfig.escapeRate : 30;
+        attackDefenseConfig.damageRandomness = attackDefenseConfig.damageRandomness || 0;
+        attackDefenseConfig.forceParticipate = false;
+        attackDefenseConfig.minPlayers = 2;
+        attackDefenseConfig.manualStart = false;
+        saveAttackDefenseConfig(attackDefenseConfig);
+        results.push(`✅ 已启用攻防系统（休闲模式配置）`);
+    } else {
+        errors.push(`⏭️ 攻防系统已启用`);
+    }
+
+    // ========== 创建基础装备 ==========
+    const equipRegistry = getEquipRegistry();
+    const baseEquips = [
+        {
+            name: "铁制短剑",
+            desc: "一把普通的短剑",
+            slot: "hand",
+            baseAttrs: { ATK: 15 },
+            code: "EQUIP_SWORD_01"
+        },
+        {
+            name: "皮革甲胄",
+            desc: "轻便的皮甲防御",
+            slot: "chest",
+            baseAttrs: { DEF: 20, HP: 50 },
+            code: "EQUIP_CHEST_01"
+        },
+        {
+            name: "铁制头盔",
+            desc: "保护头部的头盔",
+            slot: "head",
+            baseAttrs: { DEF: 10 },
+            code: "EQUIP_HEAD_01"
+        },
+        {
+            name: "腰部护甲",
+            desc: "增强体力的护甲",
+            slot: "hand",
+            baseAttrs: { HP: 30 },
+            code: "EQUIP_WAIST_01"
+        },
+        {
+            name: "敏捷靴子",
+            desc: "提升速度的靴子",
+            slot: "foot",
+            baseAttrs: { AGI: 5 },
+            code: "EQUIP_FOOT_01"
+        }
+    ];
+
+    let equipCount = 0;
+    baseEquips.forEach(equip => {
+        if (!equipRegistry[equip.code]) {
+            equipRegistry[equip.code] = {
+                code: equip.code,
+                name: equip.name,
+                desc: equip.desc,
+                type: "equipment",
+                slot: equip.slot,
+                baseAttrs: equip.baseAttrs
+            };
+            equipCount++;
+        }
+    });
+
+    if (equipCount > 0) {
+        saveEquipRegistry(equipRegistry);
+        results.push(`✅ 已创建装备系统（${equipCount}件基础装备）`);
+    } else {
+        errors.push(`⏭️ 装备系统已初始化`);
+    }
+
+    // ========== 返回结果 ==========
+    let reply = `🚀 一键初始化完成！\n\n`;
+
+    if (results.length > 0) {
+        reply += `✅ 成功项目 (${results.length})：\n` + results.join("\n") + "\n\n";
+    }
+
+    if (errors.length > 0) {
+        reply += `⏭️ 已跳过 (${errors.length})：\n` + errors.join("\n") + "\n\n";
+    }
+
+    reply += `📋 已创建：\n`;
+    reply += `· 5个属性：HP、MP、ATK、DEF、AGI\n`;
+    reply += `· 4种药品：小/中/大回血药 + 全恢复药\n`;
+    reply += `· 5件装备：铁剑、皮甲、头盔、腰甲、靴子\n`;
+    reply += `· 攻防系统已启用\n\n`;
+    reply += `💡 下一步：\n`;
+    reply += `· 上架商城：上架商城 ITEM_POT_S*50金币\n`;
+    reply += `· 上架装备：上架商城 EQUIP_SWORD_01*500金币\n`;
+    reply += `· 配置攻防：攻防 设置 参数 值\n`;
+    reply += `· 创建池子：注册池子 回血药池 fixed`;
+
+    // 注册池子开启/关闭命令
+    registerPoolToggleCmds();
+    reply += `\n· 已启用池子控制命令：开启池子、关闭池子`;
+
+    seal.replyToSender(ctx, msg, reply);
+    return seal.ext.newCmdExecuteResult(true);
+};
+
+ext.cmdMap["一键初始化"] = cmd_quick_init;
+
+// ========================
+// 装备系统 - 存储和配置
+// ========================
+
+function getEquipRegistry() {
+    const main = getMainExt();
+    if (!main) return {};
+    try {
+        return JSON.parse(main.storageGet("equipment_registry") || "{}");
+    } catch(e) { return {}; }
+}
+
+function saveEquipRegistry(reg) {
+    const main = getMainExt();
+    if (main) main.storageSet("equipment_registry", JSON.stringify(reg));
+}
+
+function getEquipConfig() {
+    const main = getMainExt();
+    if (!main) return {};
+    try {
+        return JSON.parse(main.storageGet("equipment_config") || "{}");
+    } catch(e) { return {}; }
+}
+
+function saveEquipConfig(config) {
+    const main = getMainExt();
+    if (main) main.storageSet("equipment_config", JSON.stringify(config));
+}
+
+function getEquipSlots() {
+    const main = getMainExt();
+    if (!main) return ["head", "chest", "hand", "leg", "foot"];
+    try {
+        const slots = JSON.parse(main.storageGet("equipment_slots") || "[]");
+        return slots.length > 0 ? slots : ["head", "chest", "hand", "leg", "foot"];
+    } catch(e) {
+        return ["head", "chest", "hand", "leg", "foot"];
+    }
+}
+
+function saveEquipSlots(slots) {
+    const main = getMainExt();
+    if (main) main.storageSet("equipment_slots", JSON.stringify(slots));
+}
+
+function getSlotDisplayNames() {
+    const main = getMainExt();
+    if (!main) return {};
+    try {
+        return JSON.parse(main.storageGet("equipment_slot_names") || "{}");
+    } catch(e) {
+        return {};
+    }
+}
+
+function saveSlotDisplayNames(names) {
+    const main = getMainExt();
+    if (main) main.storageSet("equipment_slot_names", JSON.stringify(names));
+}
+
+function getSlotDisplayName(slot) {
+    const names = getSlotDisplayNames();
+    return names[slot] || slot;
+}
+
+function getPlayerEquips(roleKey) {
+    const main = getMainExt();
+    if (!main) return null;
+    try {
+        const data = JSON.parse(main.storageGet("player_equipments") || "{}");
+        if (!data[roleKey]) {
+            const slots = getEquipSlots();
+            data[roleKey] = {};
+            slots.forEach(slot => {
+                data[roleKey][slot] = null;
+            });
+            main.storageSet("player_equipments", JSON.stringify(data));
+        }
+        return data[roleKey];
+    } catch(e) { return null; }
+}
+
+function savePlayerEquips(roleKey, equips) {
+    const main = getMainExt();
+    if (!main) return;
+    try {
+        const data = JSON.parse(main.storageGet("player_equipments") || "{}");
+        data[roleKey] = equips;
+        main.storageSet("player_equipments", JSON.stringify(data));
+    } catch(e) {}
+}
+
+function generateEquipCode(registry) {
+    let i = 1;
+    while (registry[`EQUIP_${String(i).padStart(3, '0')}`]) i++;
+    return `EQUIP_${String(i).padStart(3, '0')}`;
+}
+
+function findEquip(registry, input) {
+    if (registry[input]) return registry[input];
+    for (const code in registry) {
+        if (registry[code].name === input) return registry[code];
+    }
+    return null;
+}
+
+function getEquipBonus(equip) {
+    if (!equip || !equip.baseAttrs) return {};
+
+    const bonus = {};
+    for (const attr in equip.baseAttrs) {
+        bonus[attr] = equip.baseAttrs[attr];
+    }
+
+    return bonus;
+}
+
+function getTotalEquipBonus(playerEquips, registry) {
+    const totalBonus = {};
+
+    for (const slot in playerEquips) {
+        const equipped = playerEquips[slot];
+        if (!equipped || !equipped.code) continue;
+
+        const equip = registry[equipped.code];
+        if (!equip) continue;
+
+        const bonus = getEquipBonus(equip);
+        for (const attr in bonus) {
+            totalBonus[attr] = (totalBonus[attr] || 0) + bonus[attr];
+        }
+    }
+
+    return totalBonus;
+}
+
+// ========================
+// 装备系统 - 玩家命令：装备管理
+// ========================
+
+let cmd_equip = seal.ext.newCmdItemInfo();
+cmd_equip.name = "装备";
+cmd_equip.help = "装备或查看装备\n装备 <装备名或代码>    - 穿上装备\n脱装备 <槽位>          - 卸下装备\n查看装备                - 显示当前装备及属性加成\n装备列表                - 查看所有可用装备\n装备详情 <装备码>       - 查看装备详细信息\n\n💡 槽位由管理员定义，执行「槽位 查看」看可用槽位。";
+cmd_equip.solve = (ctx, msg, cmdArgs) => {
+    const player = getRoleName(ctx, msg);
+    if (!player) return seal.replyToSender(ctx, msg, "❌ 无法获取你的角色信息。");
+
+    const subCmd = cmdArgs.getArgN(1);
+    const registry = getEquipRegistry();
+    const main = getMainExt();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
+
+    // 获取roleKey
+    const parts = msg.sender.userId.split(':');
+    const platform = parts[0];
+    const rawUid = parts[1];
+    const uid = getPrimaryUid(platform, rawUid);
+    const roleKey = `${platform}:${uid}`;
+
+    // 查看装备
+    if (!subCmd) {
+        const equips = getPlayerEquips(roleKey);
+        if (!equips) return seal.replyToSender(ctx, msg, "❌ 无法读取装备数据。");
+
+        let info = `⚔️ ${player} 的装备:\n\n`;
+        let hasEquip = false;
+
+        for (const slot in equips) {
+            const equipped = equips[slot];
+            if (!equipped || !equipped.code) {
+                info += `${getSlotEmoji(slot)} ${getSlotName(slot)}: 空\n`;
+            } else {
+                hasEquip = true;
+                const equip = registry[equipped.code];
+                if (equip) {
+                    const bonus = getEquipBonus(equip);
+                    const bonusStr = Object.entries(bonus).map(([k, v]) => `${k}${v > 0 ? '+' : ''}${v}`).join(',');
+                    info += `${getSlotEmoji(slot)} ${getSlotName(slot)}: ${equip.name} (${bonusStr})\n`;
+                }
+            }
+        }
+
+        if (hasEquip) {
+            const totalBonus = getTotalEquipBonus(equips, registry);
+            info += `\n📊 总属性加成:\n`;
+            for (const attr in totalBonus) {
+                info += `· ${attr}${totalBonus[attr] > 0 ? '+' : ''}${totalBonus[attr]}\n`;
+            }
+        }
+
+        return seal.replyToSender(ctx, msg, info);
+    }
+
+    // 穿上装备
+    if (!subCmd.match(/^(脱|查|装|列|详)/)) {
+        const equipName = subCmd;
+        const equip = findEquip(registry, equipName);
+        if (!equip) return seal.replyToSender(ctx, msg, `❌ 未找到装备「${equipName}」。`);
+
+        const equips = getPlayerEquips(roleKey);
+        if (!equips) return seal.replyToSender(ctx, msg, "❌ 无法读取装备数据。");
+
+        const slot = equip.slot;
+        const allSlots = getEquipSlots();
+
+        // 检查槽位是否有效
+        if (!allSlots.includes(slot)) {
+            return seal.replyToSender(ctx, msg, `❌ 装备槽位「${slot}」不存在或已被删除。`);
+        }
+
+        const oldEquip = equips[slot];
+
+        equips[slot] = { code: equip.code };
+        savePlayerEquips(roleKey, equips);
+
+        let msg_text = `✅ 你穿上了 ${equip.name}！\n\n`;
+        const bonus = getEquipBonus(equip);
+        const bonusStr = Object.entries(bonus).map(([k, v]) => `${k}+${v}`).join(', ');
+        msg_text += `属性加成: ${bonusStr}`;
+
+        if (oldEquip && oldEquip.code && registry[oldEquip.code]) {
+            msg_text += `\n\n(原装备 ${registry[oldEquip.code].name} 已卸下)`;
+        }
+
+        return seal.replyToSender(ctx, msg, msg_text);
+    }
+
+    // 列表
+    if (subCmd === "列表" || subCmd === "列表") {
+        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+
+        const equips = Object.values(registry).filter(e => e.type === "equipment");
+        if (!equips.length) return seal.replyToSender(ctx, msg, "❌ 还没有注册任何装备。");
+
+        let info = `📋 装备列表 (${equips.length}件):\n\n`;
+        equips.forEach(equip => {
+            const bonus = Object.entries(equip.baseAttrs || {}).map(([k, v]) => `${k}+${v}`).join(', ');
+            info += `· [${equip.code}] ${equip.name} (${getSlotName(equip.slot)})\n  ${equip.desc}\n  属性: ${bonus}\n\n`;
+        });
+
+        return seal.replyToSender(ctx, msg, info);
+    }
+
+    // 详情
+    if (subCmd === "详情") {
+        const equipCode = cmdArgs.getArgN(2);
+        if (!equipCode || !registry[equipCode]) {
+            return seal.replyToSender(ctx, msg, "❌ 请指定有效的装备代码。");
+        }
+
+        const equip = registry[equipCode];
+        let info = `⚔️ ${equip.name}\n\n`;
+        info += `代码: ${equip.code}\n`;
+        info += `槽位: ${getSlotName(equip.slot)}\n`;
+        info += `描述: ${equip.desc}\n\n`;
+        info += `基础属性加成:\n`;
+        for (const attr in equip.baseAttrs) {
+            info += `· ${attr}+${equip.baseAttrs[attr]}\n`;
+        }
+
+        return seal.replyToSender(ctx, msg, info);
+    }
+
+    return seal.replyToSender(ctx, msg, cmd_equip.help);
+};
+
+ext.cmdMap["装备"] = cmd_equip;
+
+// 辅助函数
+function getSlotName(slot) {
+    const displayNames = getSlotDisplayNames();
+    if (displayNames[slot]) return displayNames[slot];
+
+    const names = { head: "头部", chest: "胸部", hand: "手部", leg: "腿部", foot: "脚部" };
+    return names[slot] || slot;
+}
+
+function getSlotEmoji(slot) {
+    const emojis = { head: "🎩", chest: "🛡️", hand: "⚔️", leg: "👖", foot: "👢" };
+    return emojis[slot] || "📦";
+}
+
+// ========================
+// 装备系统 - 玩家命令：脱装备
+// ========================
+
+let cmd_unequip = seal.ext.newCmdItemInfo();
+cmd_unequip.name = "脱装备";
+cmd_unequip.help = "卸下装备\n脱装备 <槽位>\n\n执行「槽位 查看」查看所有可用槽位。";
+cmd_unequip.solve = (ctx, msg, cmdArgs) => {
+    const player = getRoleName(ctx, msg);
+    if (!player) return seal.replyToSender(ctx, msg, "❌ 无法获取你的角色信息。");
+
+    const slot = cmdArgs.getArgN(1);
+    if (!slot) return seal.replyToSender(ctx, msg, "❌ 请指定槽位。");
+
+    const allSlots = getEquipSlots();
+    if (!allSlots.includes(slot)) {
+        return seal.replyToSender(ctx, msg, `❌ 无效的槽位。有效槽位: ${allSlots.join(", ")}`);
+    }
+
+    const parts = msg.sender.userId.split(':');
+    const platform = parts[0];
+    const rawUid = parts[1];
+    const uid = getPrimaryUid(platform, rawUid);
+    const roleKey = `${platform}:${uid}`;
+
+    const equips = getPlayerEquips(roleKey);
+    if (!equips) return seal.replyToSender(ctx, msg, "❌ 无法读取装备数据。");
+
+    if (!equips[slot] || !equips[slot].code) {
+        return seal.replyToSender(ctx, msg, `❌ ${getSlotName(slot)}槽位没有装备。`);
+    }
+
+    const equipCode = equips[slot].code;
+    const registry = getEquipRegistry();
+    const equip = registry[equipCode];
+
+    equips[slot] = null;
+    savePlayerEquips(roleKey, equips);
+
+    let msg_text = `✅ 你卸下了 ${equip.name}！`;
+    return seal.replyToSender(ctx, msg, msg_text);
+};
+
+ext.cmdMap["脱装备"] = cmd_unequip;
+
+// ========================
+// 装备系统 - 管理员命令：注册装备
+// ========================
+
+let cmd_register_equip = seal.ext.newCmdItemInfo();
+cmd_register_equip.name = "注册装备";
+cmd_register_equip.help = "【管理员】注册新装备\n注册装备 <装备名>*<描述>*<槽位>*<基础属性>\n\n属性格式: ATK+15,DEF+10 (用逗号分隔多个属性)\n属性必须已注册，执行「我创建属性」可注册新属性\n槽位：执行「槽位 查看」查看所有可用槽位\n\n示例:\n注册装备 铁制短剑*普通短剑*hand*ATK+15\n注册装备 钢铁胸甲*防御胸甲*chest*DEF+20,HP+50\n注册装备 智者法杖*法术武器*hand*智力+20,MP+50";
+cmd_register_equip.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+
+    const input = msg.messageType === "group" ?
+        msg.rawMessage.substring(msg.rawMessage.indexOf(" ") + 1) :
+        msg.rawMessage.substring(msg.rawMessage.indexOf(" ") + 1);
+
+    const parts = input.split(/[*]/);
+    if (parts.length < 4) {
+        return seal.replyToSender(ctx, msg, "❌ 参数不足。格式: 装备名*描述*槽位*基础属性");
+    }
+
+    const name = parts[0].trim();
+    const desc = parts[1].trim();
+    const slot = parts[2].trim();
+    const baseAttrStr = parts[3].trim();
+
+    const allSlots = getEquipSlots();
+    if (!allSlots.includes(slot)) {
+        return seal.replyToSender(ctx, msg, `❌ 无效槽位。有效槽位: ${allSlots.join(", ")}`);
+    }
+
+    // 解析属性
+    const parseAttrs = (str) => {
+        const attrs = {};
+        if (!str) return attrs;
+        const matches = str.split(',');
+        matches.forEach(m => {
+            const match = m.trim().match(/^(\w+)([\+\-])(\d+)$/);
+            if (match) {
+                const [, attrName, op, value] = match;
+                attrs[attrName] = parseInt(value) * (op === '+' ? 1 : -1);
+            }
+        });
+        return attrs;
+    };
+
+    const baseAttrs = parseAttrs(baseAttrStr);
+
+    if (Object.keys(baseAttrs).length === 0) {
+        return seal.replyToSender(ctx, msg, "❌ 基础属性格式错误。格式: ATK+15,DEF+10");
+    }
+
+    // 验证所有属性是否已注册
+    const attrDefs = getAttrDefs();
+    const allAttrNames = new Set([...Object.keys(baseAttrs)]);
+
+    const unregisteredAttrs = [];
+    for (const attrName of allAttrNames) {
+        if (!attrDefs[attrName]) {
+            unregisteredAttrs.push(attrName);
+        }
+    }
+
+    if (unregisteredAttrs.length > 0) {
+        return seal.replyToSender(ctx, msg, `❌ 以下属性未注册: ${unregisteredAttrs.join(", ")}\n\n请先执行 \"我创建属性 <属性名>\" 来注册这些属性。`);
+    }
+
+    const registry = getEquipRegistry();
+    const code = generateEquipCode(registry);
+
+    registry[code] = {
+        code: code,
+        name: name,
+        desc: desc,
+        type: "equipment",
+        slot: slot,
+        baseAttrs: baseAttrs
+    };
+
+    saveEquipRegistry(registry);
+
+    let msg_text = `✅ 装备已注册！\n\n`;
+    msg_text += `代码: ${code}\n`;
+    msg_text += `名称: ${name}\n`;
+    msg_text += `槽位: ${getSlotName(slot)}\n`;
+    msg_text += `基础属性: ${Object.entries(baseAttrs).map(([k, v]) => `${k}${v > 0 ? '+' : ''}${v}`).join(', ')}\n`;
+
+    return seal.replyToSender(ctx, msg, msg_text);
+};
+
+ext.cmdMap["注册装备"] = cmd_register_equip;
+
+// ========================
+// 装备系统 - 管理员命令：槽位管理
+// ========================
+
+let cmd_equip_slots = seal.ext.newCmdItemInfo();
+cmd_equip_slots.name = "槽位";
+cmd_equip_slots.help = "【管理员】管理装备槽位\n槽位 查看               - 查看所有槽位\n槽位 添加 <槽位码> <名称> - 添加新槽位\n槽位 删除 <槽位码>      - 删除槽位\n槽位 重置              - 重置为默认5个槽位\n\n示例:\n槽位 添加 ring1 戒指1\n槽位 添加 wing 翅膀\n槽位 删除 ring1";
+cmd_equip_slots.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+
+    const subCmd = cmdArgs.getArgN(1);
+    let slots = getEquipSlots();
+    let slotNames = getSlotDisplayNames();
+
+    if (subCmd === "查看") {
+        let info = `📋 装备槽位列表 (${slots.length}个):\n\n`;
+        slots.forEach((slot, idx) => {
+            const displayName = slotNames[slot] || slot;
+            info += `${idx + 1}. [${slot}] ${displayName}\n`;
+        });
+        return seal.replyToSender(ctx, msg, info);
+    }
+
+    if (subCmd === "添加") {
+        const slotCode = cmdArgs.getArgN(2);
+        const slotName = cmdArgs.getArgN(3);
+
+        if (!slotCode || !slotName) {
+            return seal.replyToSender(ctx, msg, "❌ 请指定槽位码和显示名称。");
+        }
+
+        if (slots.includes(slotCode)) {
+            return seal.replyToSender(ctx, msg, `❌ 槽位「${slotCode}」已存在。`);
+        }
+
+        // 检查槽位码格式（只允许字母数字）
+        if (!/^[a-z0-9_]+$/i.test(slotCode)) {
+            return seal.replyToSender(ctx, msg, "❌ 槽位码只能包含字母、数字和下划线。");
+        }
+
+        slots.push(slotCode);
+        slotNames[slotCode] = slotName;
+
+        saveEquipSlots(slots);
+        saveSlotDisplayNames(slotNames);
+
+        return seal.replyToSender(ctx, msg, `✅ 已添加槽位「${slotCode}」(${slotName})。\n\n现在共有 ${slots.length} 个槽位。`);
+    }
+
+    if (subCmd === "删除") {
+        const slotCode = cmdArgs.getArgN(2);
+
+        if (!slotCode) {
+            return seal.replyToSender(ctx, msg, "❌ 请指定要删除的槽位码。");
+        }
+
+        if (!slots.includes(slotCode)) {
+            return seal.replyToSender(ctx, msg, `❌ 槽位「${slotCode}」不存在。`);
+        }
+
+        if (slots.length <= 1) {
+            return seal.replyToSender(ctx, msg, "❌ 至少需要保留1个槽位。");
+        }
+
+        slots = slots.filter(s => s !== slotCode);
+        delete slotNames[slotCode];
+
+        saveEquipSlots(slots);
+        saveSlotDisplayNames(slotNames);
+
+        // 同时从所有玩家的装备数据中移除这个槽位
+        const main = getMainExt();
+        if (main) {
+            try {
+                const data = JSON.parse(main.storageGet("player_equipments") || "{}");
+                for (const roleKey in data) {
+                    delete data[roleKey][slotCode];
+                }
+                main.storageSet("player_equipments", JSON.stringify(data));
+            } catch(e) {}
+        }
+
+        return seal.replyToSender(ctx, msg, `✅ 已删除槽位「${slotCode}」。\n\n现在共有 ${slots.length} 个槽位。\n\n⚠️ 该槽位上的装备已卸除。`);
+    }
+
+    if (subCmd === "重置") {
+        const defaultSlots = ["head", "chest", "hand", "leg", "foot"];
+        const defaultNames = {
+            head: "头部",
+            chest: "胸部",
+            hand: "手部",
+            leg: "腿部",
+            foot: "脚部"
+        };
+
+        saveEquipSlots(defaultSlots);
+        saveSlotDisplayNames(defaultNames);
+
+        return seal.replyToSender(ctx, msg, `✅ 已重置为默认5个槽位:\n\n${defaultSlots.map(s => `· [${s}] ${defaultNames[s]}`).join("\n")}`);
+    }
+
+    return seal.replyToSender(ctx, msg, cmd_equip_slots.help);
+};
+
+ext.cmdMap["槽位"] = cmd_equip_slots;
+
+// ========================
+// 升级系统 (PlayerLevel)
+// ========================
+
+// 获取升级规则
+function getLevelUpRules() {
+    const main = getMainExt();
+    return main ? JSON.parse(main.storageGet("level_up_rules") || '{"max_level":100,"enabled":true,"level_up_rules":{}}') : {};
+}
+
+function saveLevelUpRules(rules) {
+    const main = getMainExt();
+    if (main) main.storageSet("level_up_rules", JSON.stringify(rules));
+}
+
+// 获取玩家当前等级（新结构：uid 为 key）
+function getPlayerLevel(uid) {
+    const main = getMainExt();
+    if (!main) return 1;
+    const data = JSON.parse(main.storageGet("player_level") || "{}");
+    return data[uid] || 1;
+}
+
+function setPlayerLevel(uid, level) {
+    const main = getMainExt();
+    if (!main) return;
+    const data = JSON.parse(main.storageGet("player_level") || "{}");
+    data[uid] = level;
+    main.storageSet("player_level", JSON.stringify(data));
+}
+
+// 获取玩家升级历史（新结构：uid 为 key）
+function getLevelHistory(uid) {
+    const main = getMainExt();
+    if (!main) return [];
+    const data = JSON.parse(main.storageGet("player_level_history") || "{}");
+    return data[uid] || [];
+}
+
+function addLevelHistory(uid, record) {
+    const main = getMainExt();
+    if (!main) return;
+    const data = JSON.parse(main.storageGet("player_level_history") || "{}");
+    if (!data[uid]) data[uid] = [];
+    data[uid].push(record);
+    main.storageSet("player_level_history", JSON.stringify(data));
+}
+
+// 递增公式：基础 + (级数-1) × 增幅
+function calculateValue(baseStr, level) {
+    if (!baseStr.includes('+')) return parseInt(baseStr) || 0;
+    const [base, increment] = baseStr.split('+').map(x => parseFloat(x) || 0);
+    return Math.floor(base + (level - 1) * increment);
+}
+
+// 替换描述中的 {等级}
+function replaceDescTemplate(desc, level) {
+    return desc.replace(/{等级}/g, level);
+}
+
+// 解析消耗品/奖励品字符串，返回 {消耗品类型: {名称: 数值}}
+function parseConsumables(str, level) {
+    if (!str || str.trim() === '') return {};
+    const result = {};
+    const items = str.split(',').map(s => s.trim()).filter(s => s);
+
+    items.forEach(item => {
+        if (item.includes(':')) {
+            const [name, value] = item.split(':');
+            const actualValue = calculateValue(value, level);
+
+            // 判断是物品、互动物品、货币还是属性
+            const itemReg = getRegistry();
+            const isItem = itemReg[name];
+            const currencies = JSON.parse(getMainExt().storageGet("item_currencies") || "{}");
+            const isCurrency = currencies[name];
+            const attrDefs = getAttrDefs();
+            const isAttr = attrDefs[name];
+
+            if (isItem) {
+                if (!result.items) result.items = {};
+                result.items[name] = actualValue;
+            } else if (isCurrency) {
+                if (!result.currencies) result.currencies = {};
+                result.currencies[name] = actualValue;
+            } else if (isAttr) {
+                if (!result.attributes) result.attributes = {};
+                result.attributes[name] = actualValue;
+            }
+        } else if (item.includes('+')) {
+            const [name, value] = item.split('+');
+            const actualValue = calculateValue(value, level);
+            if (!result.rewards) result.rewards = {};
+            result.rewards[name] = actualValue;
+        }
+    });
+
+    return result;
+}
+
+// 展开等级范围 "1-50" → [1, 2, ..., 50]
+function expandLevelRange(rangeStr) {
+    if (!rangeStr.includes('-')) return [parseInt(rangeStr)];
+    const [start, end] = rangeStr.split('-').map(x => parseInt(x));
+    const levels = [];
+    for (let i = start; i <= end; i++) levels.push(i);
+    return levels;
+}
+
+// 上传升级等级命令
+function cmd_upload_level_rule(msg, cmdArgs, ctx) {
+    const main = getMainExt();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 未找到主插件");
+
+    const rest = msg.message.replace(/^[。.]\s*上传升级等级\s*/, "").trim();
+    const parts = rest.split('*').map(p => p.trim());
+
+    if (parts.length < 3) {
+        return seal.replyToSender(ctx, msg, "❌ 格式错误\n格式：上传升级等级 <等级|范围> <描述> * <消耗品> * <奖励品> [*成功率]\n示例：上传升级等级 1-10 * {等级}级冒险者 * 金币:50+50 * HP+5+5");
+    }
+
+    const levelRange = parts[0];
+    const description = parts[1];
+    const consumables = parts[2] || '';
+    const rewards = parts[3] || '';
+    const successRate = parts[4] ? Math.max(0, Math.min(100, parseInt(parts[4]) || 100)) : 100;
+
+    const levels = expandLevelRange(levelRange);
+    const rules = getLevelUpRules();
+    if (!rules.level_up_rules) rules.level_up_rules = {};
+
+    // 成功率是否递减（范围）
+    let successRates = {};
+    if (successRate < 100 && successRate > 0) {
+        const step = (100 - successRate) / (levels.length - 1);
+        levels.forEach((lv, idx) => {
+            successRates[lv] = Math.floor(100 - idx * step);
+        });
+    } else {
+        levels.forEach(lv => {
+            successRates[lv] = successRate;
+        });
+    }
+
+    // 为每个等级创建配置
+    levels.forEach(level => {
+        const desc = replaceDescTemplate(description, level);
+        const consume = parseConsumables(consumables, level);
+        const reward = parseConsumables(rewards, level);
+
+        rules.level_up_rules[level] = {
+            description: desc,
+            consume: consume,
+            rewards: reward,
+            success_rate: successRates[level] || 100
+        };
+    });
+
+    saveLevelUpRules(rules);
+
+    return seal.replyToSender(ctx, msg, `✅ 已配置 ${levels.length} 个等级的升级规则 (等级 ${levels[0]}-${levels[levels.length-1]})`);
+}
+
+// 查看升级配置
+function cmd_view_level_rule(msg, cmdArgs) {
+    const levelStr = cmdArgs.getArgN(2);
+    if (!levelStr) {
+        const rules = getLevelUpRules();
+        const levels = Object.keys(rules.level_up_rules || {}).sort((a,b) => parseInt(a) - parseInt(b));
+        const levelCount = levels.length;
+        const maxLevel = rules.max_level || 100;
+        return seal.replyToSender(ctx, msg, `📊 升级系统配置\n\n最大等级: ${maxLevel}\n已配置等级: ${levelCount}个\n等级范围: ${levels[0]}-${levels[levels.length-1]}`);
+    }
+
+    const level = parseInt(levelStr);
+    const rules = getLevelUpRules();
+    const rule = rules.level_up_rules[level];
+
+    if (!rule) {
+        return seal.replyToSender(ctx, msg, `❌ 等级 ${level} 未配置`);
+    }
+
+    let msg_text = `📋 等级 ${level}: ${rule.description}\n\n`;
+    msg_text += `消耗品:\n`;
+    if (rule.consume.items) Object.entries(rule.consume.items).forEach(([name, qty]) => { msg_text += `  · ${name}: ${qty}\n`; });
+    if (rule.consume.currencies) Object.entries(rule.consume.currencies).forEach(([name, qty]) => { msg_text += `  · ${name}: ${qty}\n`; });
+    if (rule.consume.attributes) Object.entries(rule.consume.attributes).forEach(([name, qty]) => { msg_text += `  · ${name}: ${qty}\n`; });
+    if (!rule.consume.items && !rule.consume.currencies && !rule.consume.attributes) msg_text += `  · (无)\n`;
+
+    msg_text += `\n奖励品:\n`;
+    if (rule.rewards.rewards) Object.entries(rule.rewards.rewards).forEach(([attr, val]) => { msg_text += `  · ${attr}+${val}\n`; });
+    if (rule.rewards.currencies) Object.entries(rule.rewards.currencies).forEach(([name, qty]) => { msg_text += `  · ${name}: ${qty}\n`; });
+    if (rule.rewards.items) Object.entries(rule.rewards.items).forEach(([name, qty]) => { msg_text += `  · ${name}: ${qty}\n`; });
+    if (!rule.rewards.rewards && !rule.rewards.currencies && !rule.rewards.items) msg_text += `  · (无)\n`;
+
+    msg_text += `\n成功率: ${rule.success_rate}%`;
+
+    return seal.replyToSender(ctx, msg, msg_text);
+}
+
+// 升级列表
+function cmd_level_list(msg, cmdArgs) {
+    const rules = getLevelUpRules();
+    const levels = Object.keys(rules.level_up_rules || {}).sort((a,b) => parseInt(a) - parseInt(b));
+
+    if (levels.length === 0) {
+        return seal.replyToSender(ctx, msg, "❌ 尚未配置任何升级等级");
+    }
+
+    let msg_text = `📜 升级等级列表 (共 ${levels.length} 级)\n\n`;
+    levels.forEach(lv => {
+        const rule = rules.level_up_rules[lv];
+        msg_text += `${lv}. ${rule.description}\n`;
+    });
+
+    return seal.replyToSender(ctx, msg, msg_text);
+}
+
+// 检查玩家是否满足消耗条件
+function checkConsumables(uid, roleKey, consume) {
+    const charAttrs = getCharAttrs();
+    // 新结构：charAttrs 以 uid 为 key
+    const playerAttrs = charAttrs[uid] || {};
+    const currencies = JSON.parse(getMainExt().storageGet("item_currencies") || "{}");
+    const main = getMainExt();
+
+    // 检查属性
+    if (consume.attributes) {
+        for (const [attrName, required] of Object.entries(consume.attributes)) {
+            const current = playerAttrs[attrName] || 0;
+            if (current < required) {
+                return { ok: false, reason: `${attrName}不足（需要${required}，当前${current}）` };
+            }
+        }
+    }
+
+    // 检查货币
+    if (consume.currencies) {
+        for (const [curName, required] of Object.entries(consume.currencies)) {
+            const curCode = Object.keys(currencies).find(code => currencies[code].name === curName);
+            if (!curCode) {
+                return { ok: false, reason: `货币「${curName}」不存在` };
+            }
+            const current = getInvCount(roleKey, curCode) || 0;
+            if (current < required) {
+                return { ok: false, reason: `${curName}不足（需要${required}，当前${current}）` };
+            }
+        }
+    }
+
+    // 检查物品
+    if (consume.items) {
+        for (const [itemName, required] of Object.entries(consume.items)) {
+            const reg = getRegistry();
+            const itemCode = Object.keys(reg).find(code => reg[code].name === itemName);
+            if (!itemCode) {
+                return { ok: false, reason: `物品「${itemName}」不存在` };
+            }
+            const current = getInvCount(roleKey, itemCode) || 0;
+            if (current < required) {
+                return { ok: false, reason: `${itemName}不足（需要${required}，当前${current}）` };
+            }
+        }
+    }
+
+    return { ok: true };
+}
+
+// 消耗资源
+function consumeResources(uid, roleKey, consume) {
+    const charAttrs = getCharAttrs();
+    const currencies = JSON.parse(getMainExt().storageGet("item_currencies") || "{}");
+
+    // 消耗属性（新结构：charAttrs 以 uid 为 key）
+    if (consume.attributes) {
+        if (!charAttrs[uid]) charAttrs[uid] = {};
+        for (const [attrName, amount] of Object.entries(consume.attributes)) {
+            charAttrs[uid][attrName] = (charAttrs[uid][attrName] || 0) - amount;
+        }
+        saveCharAttrs(charAttrs);
+    }
+
+    // 消耗货币
+    if (consume.currencies) {
+        for (const [curName, amount] of Object.entries(consume.currencies)) {
+            const curCode = Object.keys(currencies).find(code => currencies[code].name === curName);
+            if (curCode) removeFromInv(roleKey, curCode, amount);
+        }
+    }
+
+    // 消耗物品
+    if (consume.items) {
+        for (const [itemName, amount] of Object.entries(consume.items)) {
+            const reg = getRegistry();
+            const itemCode = Object.keys(reg).find(code => reg[code].name === itemName);
+            if (itemCode) removeFromInv(roleKey, itemCode, amount);
+        }
+    }
+}
+
+// 发放奖励
+function grantRewards(uid, roleKey, rewards) {
+    const charAttrs = getCharAttrs();
+    const currencies = JSON.parse(getMainExt().storageGet("item_currencies") || "{}");
+
+    // 发放属性（新结构：charAttrs 以 uid 为 key）
+    if (rewards.rewards) {
+        if (!charAttrs[uid]) charAttrs[uid] = {};
+        for (const [attrName, amount] of Object.entries(rewards.rewards)) {
+            charAttrs[uid][attrName] = (charAttrs[uid][attrName] || 0) + amount;
+        }
+        saveCharAttrs(charAttrs);
+    }
+
+    // 发放货币
+    if (rewards.currencies) {
+        for (const [curName, amount] of Object.entries(rewards.currencies)) {
+            const curCode = Object.keys(currencies).find(code => currencies[code].name === curName);
+            if (curCode) addToInv(roleKey, curCode, amount);
+        }
+    }
+
+    // 发放物品
+    if (rewards.items) {
+        for (const [itemName, amount] of Object.entries(rewards.items)) {
+            const reg = getRegistry();
+            const itemCode = Object.keys(reg).find(code => reg[code].name === itemName);
+            if (itemCode) addToInv(roleKey, itemCode, amount);
+        }
+    }
+}
+
+// 玩家升级命令
+function cmd_do_levelup(msg, cmdArgs, ctx) {
+    const roleName = getRoleName(ctx, msg);
+    if (!roleName) {
+        return seal.replyToSender(ctx, msg, "❌ 无法识别角色");
+    }
+
+    const rules = getLevelUpRules();
+    if (!rules.enabled) {
+        return seal.replyToSender(ctx, msg, "❌ 升级系统已关闭");
+    }
+
+    const main = getMainExt();
+    const combatPlatform = msg.platform;
+    const combatRawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+    const combatUid = getPrimaryUid(combatPlatform, combatRawUid);
+    const roleKey = `${combatPlatform}:${combatUid}`;
+    const curLevel = getPlayerLevel(combatUid);
+    const maxLevel = rules.max_level || 100;
+
+    if (curLevel >= maxLevel) {
+        return seal.replyToSender(ctx, msg, `✨ 您已达到最高等级 ${maxLevel}`);
+    }
+
+    const nextLevel = curLevel + 1;
+    const rule = rules.level_up_rules[nextLevel];
+
+    if (!rule) {
+        return seal.replyToSender(ctx, msg, `⚠️ 等级 ${nextLevel} 尚未配置`);
+    }
+
+    // 检查消耗品
+    const checkResult = checkConsumables(combatUid, roleKey, rule.consume);
+    if (!checkResult.ok) {
+        return seal.replyToSender(ctx, msg, `❌ 升级失败！\n${checkResult.reason}`);
+    }
+
+    // 判断成功率
+    const successRate = rule.success_rate || 100;
+    const isSuccess = Math.random() * 100 < successRate;
+
+    if (!isSuccess) {
+        consumeResources(combatUid, roleKey, rule.consume);
+        addLevelHistory(combatUid, {
+            timestamp: new Date().toLocaleString(),
+            from_level: curLevel,
+            to_level: nextLevel,
+            success: false,
+            consumed: rule.consume,
+            reason: "升级失败"
+        });
+        return seal.replyToSender(ctx, msg, `❌ 升级失败！\n消耗已扣除（成功率${successRate}%）`);
+    }
+
+    // 升级成功：消耗资源
+    consumeResources(combatUid, roleKey, rule.consume);
+
+    // 发放奖励
+    grantRewards(combatUid, roleKey, rule.rewards);
+
+    // 提升等级
+    setPlayerLevel(combatUid, nextLevel);
+
+    // 记录历史
+    addLevelHistory(combatUid, {
+        timestamp: new Date().toLocaleString(),
+        from_level: curLevel,
+        to_level: nextLevel,
+        success: true,
+        consumed: rule.consume,
+        gained: rule.rewards
+    });
+
+    // 返回成功消息
+    let msg_text = `✅ 恭喜！升级成功！\n\n`;
+    msg_text += `${rule.description}\n`;
+    msg_text += `等级: ${curLevel} → ${nextLevel}\n\n`;
+
+    if (rule.rewards.rewards) {
+        msg_text += `获得属性:\n`;
+        Object.entries(rule.rewards.rewards).forEach(([attr, val]) => {
+            msg_text += `  · ${attr}+${val}\n`;
+        });
+    }
+    if (rule.rewards.currencies) {
+        msg_text += `获得货币:\n`;
+        Object.entries(rule.rewards.currencies).forEach(([cur, val]) => {
+            msg_text += `  · ${cur}×${val}\n`;
+        });
+    }
+    if (rule.rewards.items) {
+        msg_text += `获得物品:\n`;
+        Object.entries(rule.rewards.items).forEach(([item, val]) => {
+            msg_text += `  · ${item}×${val}\n`;
+        });
+    }
+
+    return seal.replyToSender(ctx, msg, msg_text);
+}
+
+// 查看升级信息
+function cmd_levelup_info(msg, cmdArgs, ctx) {
+    const roleName = getRoleName(ctx, msg);
+    if (!roleName) {
+        return seal.replyToSender(ctx, msg, "❌ 无法识别角色");
+    }
+
+    const infoUid = getPrimaryUid(msg.platform, msg.sender.userId.replace(/^[a-z]+:/i, ""));
+    const curLevel = getPlayerLevel(infoUid);
+    const rules = getLevelUpRules();
+    const nextLevel = curLevel + 1;
+    const maxLevel = rules.max_level || 100;
+
+    let msg_text = `📊 升级信息\n\n`;
+    msg_text += `当前等级: ${curLevel}\n`;
+    msg_text += `最大等级: ${maxLevel}\n\n`;
+
+    if (curLevel >= maxLevel) {
+        msg_text += `✨ 您已达到最高等级！`;
+    } else {
+        const rule = rules.level_up_rules[nextLevel];
+        if (rule) {
+            msg_text += `下一等级: ${nextLevel} - ${rule.description}\n\n`;
+            msg_text += `升级需要:\n`;
+            if (rule.consume.items) Object.entries(rule.consume.items).forEach(([name, qty]) => { msg_text += `  · ${name}: ${qty}\n`; });
+            if (rule.consume.currencies) Object.entries(rule.consume.currencies).forEach(([name, qty]) => { msg_text += `  · ${name}: ${qty}\n`; });
+            if (rule.consume.attributes) Object.entries(rule.consume.attributes).forEach(([name, qty]) => { msg_text += `  · 消耗${name}${qty}点\n`; });
+        }
+    }
+
+    return seal.replyToSender(ctx, msg, msg_text);
+}
+
+// 创建命令对象（规范格式）
+let cmd_upload_level = seal.ext.newCmdItemInfo();
+cmd_upload_level.name = "上传升级等级";
+cmd_upload_level.help = "【管理员】配置升级规则\n上传升级等级 <等级|范围> <描述> * <消耗品> * <奖励品> [*成功率]\n消耗品格式：物品名:数量 或 物品名:基础+增幅\n奖励品格式：属性名+数值 或 属性名+基础+增幅\n示例：\n  上传升级等级 1-10 * {等级}级冒险者 * 金币:50+50 * HP+5+5\n  上传升级等级 20 * 传奇战士 * 金币:1000,晶体:3 * ATK+20,DEF+10 * 80";
+cmd_upload_level.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足");
+    return cmd_upload_level_rule(msg, cmdArgs, ctx);
+};
+ext.cmdMap["上传升级等级"] = cmd_upload_level;
+
+let cmd_view_level = seal.ext.newCmdItemInfo();
+cmd_view_level.name = "查看升级配置";
+cmd_view_level.help = "查看升级配置\n查看升级配置 [等级号]";
+cmd_view_level.solve = (ctx, msg, cmdArgs) => {
+    return cmd_view_level_rule(msg, cmdArgs);
+};
+ext.cmdMap["查看升级配置"] = cmd_view_level;
+
+let cmd_level_listing = seal.ext.newCmdItemInfo();
+cmd_level_listing.name = "升级列表";
+cmd_level_listing.help = "查看所有已配置的升级等级";
+cmd_level_listing.solve = (ctx, msg, cmdArgs) => {
+    return cmd_level_list(msg, cmdArgs);
+};
+ext.cmdMap["升级列表"] = cmd_level_listing;
+
+let cmd_do_upgrade = seal.ext.newCmdItemInfo();
+cmd_do_upgrade.name = "升级";
+cmd_do_upgrade.help = "升级一次\n格式：升级";
+cmd_do_upgrade.solve = (ctx, msg, cmdArgs) => {
+    return cmd_do_levelup(msg, cmdArgs, ctx);
+};
+ext.cmdMap["升级"] = cmd_do_upgrade;
+
+let cmd_level_info = seal.ext.newCmdItemInfo();
+cmd_level_info.name = "查看升级信息";
+cmd_level_info.help = "查看升级进度和下一等级要求\n格式：查看升级信息";
+cmd_level_info.solve = (ctx, msg, cmdArgs) => {
+    return cmd_levelup_info(msg, cmdArgs, ctx);
+};
+ext.cmdMap["查看升级信息"] = cmd_level_info;
+
+// ========================
+// 角色档案
+// ========================
+let cmd_profile = seal.ext.newCmdItemInfo();
+cmd_profile.name = "角色档案";
+cmd_profile.help = "【管理员】查看角色综合档案\n角色档案 角色名";
+cmd_profile.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const roleName = cmdArgs.getArgN(1);
+    if (!roleName) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const main = getMainExt();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
+    const platform = msg.platform;
+    const uid = getRoleUid(platform, roleName);
+    if (!uid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${roleName}」。`);
+    const primaryUid = getPrimaryUid(platform, uid);
+    const roleKey = `${platform}:${primaryUid}`;
+
+    // 属性
+    const defs = getAttrDefs();
+    const allAttrs = getCharAttrs();
+    const myAttrs = allAttrs[primaryUid] || {};
+    const attrStr = Object.keys(defs).length
+        ? Object.keys(defs).map(k => `${k}: ${myAttrs[k] ?? defs[k].default ?? 0}`).join(" | ")
+        : "暂无属性";
+
+    // 背包
+    const reg = getRegistry();
+    const inv = getInv(roleKey);
+    const invStr = inv.length
+        ? inv.map(e => `${reg[e.code]?.name || e.code} ×${e.count}`).join(" | ")
+        : "空";
+
+    // 关系线（读主插件存储）
+    let relCount = 0, initiated = 0, received = 0, confirmed = 0;
+    try {
+        const relData = JSON.parse(main.storageGet("relationship_lines") || "{}");
+        const myRels = relData[platform]?.[uid] || {};
+        relCount = Object.keys(myRels).length;
+        for (const rel of Object.values(myRels)) {
+            if (rel.confirmed) confirmed++;
+            if (rel.initiator === roleName) initiated++; else received++;
+        }
+    } catch(e) {}
+
+    const lines = [
+        `📋 角色档案：${roleName}`,
+        ``,
+        `【属性】${attrStr}`,
+        ``,
+        `【关系线】共 ${relCount} 条（发起 ${initiated} / 收到 ${received} / 已确认 ${confirmed}）`,
+        ``,
+        `【背包】${invStr}`,
+    ];
+    seal.replyToSender(ctx, msg, lines.join('\n'));
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["角色档案"] = cmd_profile;
+
+// ========================
+// 批量发放
+// ========================
+let cmd_batch_give = seal.ext.newCmdItemInfo();
+cmd_batch_give.name = "批量发放";
+cmd_batch_give.help = "【管理员】批量发放物品\n批量发放 物品码/名 +N 角色1 角色2 ...\n批量发放 物品码/名 +N 全员";
+cmd_batch_give.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const inputCode = cmdArgs.getArgN(1);
+    const deltaStr = cmdArgs.getArgN(2);
+    const firstTarget = cmdArgs.getArgN(3);
+    if (!inputCode || !deltaStr || !firstTarget) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const delta = parseInt(deltaStr);
+    if (isNaN(delta) || delta <= 0) return seal.replyToSender(ctx, msg, "❌ 数量必须为正整数，示例：+3");
+    const main = getMainExt();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
+    const reg = getRegistry();
+    const item = findItem(reg, inputCode);
+    if (!item) return seal.replyToSender(ctx, msg, `❌ 找不到物品「${inputCode}」`);
+    const platform = msg.platform;
+
+    let targets = [];
+    if (firstTarget === "全员") {
+        const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
+        targets = Object.values(apg[platform] || {}).map(v => v[0]).filter(Boolean);
+    } else {
+        let i = 3;
+        while (cmdArgs.getArgN(i)) { targets.push(cmdArgs.getArgN(i)); i++; }
+    }
+    if (!targets.length) return seal.replyToSender(ctx, msg, "❌ 未找到目标角色。");
+
+    const errs = [];
+    for (const name of targets) {
+        const uid = getRoleUid(platform, name);
+        if (!uid) { errs.push(name); continue; }
+        addToInv(`${platform}:${getPrimaryUid(platform, uid)}`, item.code, delta);
+        notifyPlayer(ctx, platform, name, `📦【背包更新】${item.name} ×${delta} 已加入你的背包。`);
+    }
+
+    const ok = targets.length - errs.length;
+    let reply = `📦 批量发放 [${item.code}]${item.name} ×${delta}（共 ${targets.length} 人）：成功 ${ok} | 失败 ${errs.length}`;
+    if (errs.length) reply += `\n找不到角色：${errs.join("、")}`;
+    seal.replyToSender(ctx, msg, reply);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["批量发放"] = cmd_batch_give;

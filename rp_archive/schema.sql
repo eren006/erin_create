@@ -50,3 +50,8 @@ CREATE TABLE IF NOT EXISTS players (
     last_updated   INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_players_role ON players(role_name);
+
+CREATE TABLE IF NOT EXISTS site_config (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL DEFAULT ''
+);

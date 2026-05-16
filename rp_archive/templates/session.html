@@ -76,9 +76,12 @@
       <span>📅 游戏日 <b>{{ sess.game_day }}</b></span>
       <span>🕰 开始 <b>{{ sess.start_str }}</b></span>
       {% if sess.end_str %}<span>🏁 结束 <b>{{ sess.end_str }}</b></span>{% endif %}
+      {% if sess.duration_str %}<span>⏱ <b>{{ sess.duration_str }}</b></span>{% endif %}
     </div>
     <div style="margin-bottom:10px;display:flex;flex-wrap:wrap;gap:4px;">
-      {% for p in sess.participants %}<span class="pill">{{ p }}</span>{% endfor %}
+      {% for p in sess.participants %}
+      <span class="pill">{{ p }}{% if show_names.get(p) %}<span style="color:var(--muted);font-size:10px;"> · {{ show_names[p] }}</span>{% endif %}</span>
+      {% endfor %}
     </div>
     <div class="stat-row">
       <div class="stat-item"><b>{{ sess.total_replies }}</b><br>总回复</div>
@@ -86,7 +89,7 @@
       {% for role, st in sess.stats.items() %}
       <div class="stat-item">
         <b>{{ st.replies }}</b> 回 · <b>{{ st.words }}</b> 字
-        <br><span style="color:var(--accent2)">{{ role }}</span>
+        <br><span style="color:var(--accent2)">{{ role }}</span>{% if show_names.get(role) %}<span style="color:var(--muted);font-size:10px;"> · {{ show_names[role] }}</span>{% endif %}
       </div>
       {% endfor %}
     </div>

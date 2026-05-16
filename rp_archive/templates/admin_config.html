@@ -1,0 +1,424 @@
+{% extends "base.html" %}
+{% block title %}长日存档 · 配置{% endblock %}
+
+{% block head %}
+<style>
+/* ── Cards ──────────────────────────────── */
+.cfg-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 20px 22px; margin-bottom: 16px;
+}
+.cfg-card-title {
+  font-size: 11px; font-weight: 700; color: var(--muted);
+  letter-spacing: 1.5px; text-transform: uppercase;
+  margin-bottom: 14px; padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px;
+}
+.cfg-badge {
+  font-size: 10px; background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 4px; padding: 1px 7px; color: var(--muted);
+  letter-spacing: 0; text-transform: none; font-weight: 500;
+}
+.cfg-desc {
+  font-size: 12px; color: var(--muted); opacity: .75;
+  margin-top: -6px; margin-bottom: 14px;
+}
+
+/* ── Column layouts ─────────────────────── */
+.cfg-cols-3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-bottom: 16px; }
+.cfg-cols-2 { display: grid; grid-template-columns: repeat(2,1fr); gap: 16px; margin-bottom: 16px; }
+@media(max-width:800px) { .cfg-cols-3 { grid-template-columns: repeat(2,1fr); } }
+@media(max-width:600px) { .cfg-cols-3, .cfg-cols-2 { grid-template-columns: 1fr; } }
+
+/* ── Field grid within a card ───────────── */
+.cfg-grid         { display: grid; grid-template-columns: repeat(auto-fill, minmax(175px,1fr)); gap: 12px 16px; }
+.cfg-grid-compact { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px,1fr)); gap: 10px 12px; }
+.cfg-grid-wide    { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px,1fr)); gap: 12px 16px; }
+
+.cfg-field  { display: flex; flex-direction: column; gap: 4px; }
+.cfg-label  { font-size: 12px; color: var(--muted); font-weight: 500; }
+.cfg-note   { font-size: 11px; color: var(--muted); opacity: .6; margin-top: 2px; }
+
+/* ── Inputs ─────────────────────────────── */
+.cfg-input {
+  background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text); border-radius: 8px; padding: 7px 11px;
+  font-size: 13px; font-family: inherit; width: 100%; box-sizing: border-box;
+}
+.cfg-input:focus { outline: none; border-color: var(--accent); }
+select.cfg-input { cursor: pointer; }
+
+/* ── Toggle switch ──────────────────────── */
+.toggle { position: relative; width: 38px; height: 21px; flex-shrink: 0; display: inline-block; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute; inset: 0; background: #232330;
+  border-radius: 21px; cursor: pointer; transition: background .18s;
+  border: 1px solid var(--border);
+}
+.toggle-slider::before {
+  content: ''; position: absolute;
+  width: 15px; height: 15px; left: 2px; top: 2px;
+  background: #555; border-radius: 50%; transition: transform .18s, background .18s;
+}
+.toggle input:checked + .toggle-slider { background: var(--accent); border-color: var(--accent); }
+.toggle input:checked + .toggle-slider::before { transform: translateX(17px); background: #fff; }
+
+/* ── Toggle-list (功能开关 style) ────────── */
+.toggle-list { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; }
+@media(max-width:560px) { .toggle-list { grid-template-columns: 1fr; } }
+.toggle-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 10px; border-radius: 8px; transition: background .15s; gap: 8px;
+}
+.toggle-row:hover { background: var(--surface2); }
+.toggle-row-label { font-size: 13px; color: var(--text); }
+
+/* ── Inline bool in a grid ──────────────── */
+.cfg-field-bool { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+/* ── Subsection divider ─────────────────── */
+.cfg-sub {
+  font-size: 10px; font-weight: 700; letter-spacing: 1.5px;
+  text-transform: uppercase; color: var(--muted); opacity: .6;
+  margin: 16px 0 10px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.cfg-sub:first-child { margin-top: 0; }
+
+/* ── Chaos card (amber tint) ────────────── */
+.cfg-card-chaos { border-color: #4a3515; }
+.cfg-card-chaos .cfg-card-title { color: #c8902a; border-bottom-color: #3a2a10; }
+
+/* ── Collapsible advanced block ─────────── */
+.cfg-collapsible {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; margin-bottom: 16px; overflow: hidden;
+}
+.cfg-collapsible > summary {
+  list-style: none; cursor: pointer; user-select: none;
+  padding: 15px 22px;
+  font-size: 11px; font-weight: 700; color: var(--muted);
+  letter-spacing: 1.5px; text-transform: uppercase;
+  display: flex; align-items: center; gap: 8px;
+}
+.cfg-collapsible > summary::after {
+  content: '▶'; font-size: 9px; color: var(--muted); opacity: .45;
+  margin-left: auto; transition: transform .2s;
+}
+.cfg-collapsible[open] > summary::after { transform: rotate(90deg); }
+.cfg-collapsible > summary::-webkit-details-marker { display: none; }
+.cfg-collapsible-inner { padding: 0 22px 20px; }
+.cfg-collapsible-inner .cfg-sub:first-child { margin-top: 0; }
+
+/* ── Save bar ───────────────────────────── */
+.save-bar {
+  position: sticky; bottom: 0; background: var(--bg);
+  border-top: 1px solid var(--border); padding: 14px 0;
+  display: flex; gap: 12px; align-items: center; margin-top: 4px;
+  z-index: 10;
+}
+.btn-save {
+  background: var(--accent); color: #fff; border: none;
+  border-radius: 8px; padding: 9px 28px; font-size: 14px;
+  font-family: inherit; font-weight: 600; cursor: pointer;
+}
+.btn-save:hover { background: var(--accent2); }
+.saved-tip {
+  background: #1a3a1a; border: 1px solid #2a5a2a; color: var(--green);
+  border-radius: 8px; padding: 8px 16px; font-size: 13px;
+}
+.save-hint { font-size: 12px; color: var(--muted); margin-left: auto; }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="page">
+  <div style="margin-bottom:16px;">
+    <a href="{{ url_for('admin') }}" style="color:var(--muted);font-size:13px;">← 后台</a>
+  </div>
+  <div class="page-title" style="display:flex;align-items:center;justify-content:space-between;">
+    <span>系统配置</span>
+    <a href="{{ url_for('admin_logout') }}" style="font-size:12px;color:var(--muted);font-weight:400;">退出后台</a>
+  </div>
+  <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;
+              padding:11px 16px;margin-bottom:20px;font-size:13px;color:var(--muted);">
+    修改后点击保存，然后在 QQ 发 <b style="color:var(--accent)">。同步设置</b> 即可同步到海豹。
+  </div>
+
+  {% if saved %}
+  <div class="saved-tip" style="margin-bottom:18px;">✅ 配置已保存，发送「。同步设置」生效。</div>
+  {% endif %}
+
+  {# ── Index sections by name ── #}
+  {% set s = {} %}
+  {% for sec in schema %}{% if s.update({sec.section: sec}) %}{% endif %}{% endfor %}
+
+  {# ── Macros ── #}
+  {% macro field(f, jp) %}
+    {% set db_key = (jp + '__' + f.key) if jp else f.key %}
+    {% set cur = flat.get(db_key, f.default|string) %}
+    {% if f.type == 'bool' %}
+    <div class="cfg-field">
+      <div class="cfg-field-bool">
+        <span class="cfg-label">{{ f.label }}</span>
+        <label class="toggle">
+          <input type="checkbox" name="{{ db_key }}" value="1" {{ 'checked' if cur == 'true' else '' }}>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      {% if f.note is defined %}<div class="cfg-note">{{ f.note }}</div>{% endif %}
+    </div>
+    {% elif f.type == 'select' %}
+    <div class="cfg-field">
+      <label class="cfg-label" for="{{ db_key }}">{{ f.label }}</label>
+      <select class="cfg-input" name="{{ db_key }}" id="{{ db_key }}">
+        {% for opt in f.options %}
+        <option value="{{ opt }}" {{ 'selected' if cur == opt else '' }}>{{ opt }}</option>
+        {% endfor %}
+      </select>
+      {% if f.note is defined %}<div class="cfg-note">{{ f.note }}</div>{% endif %}
+    </div>
+    {% elif f.type == 'number' %}
+    <div class="cfg-field">
+      <label class="cfg-label" for="{{ db_key }}">{{ f.label }}</label>
+      <input class="cfg-input" type="number" name="{{ db_key }}" id="{{ db_key }}" value="{{ cur }}"
+             {{ ('min="' + f.min|string + '"') if f.min is defined else '' }}
+             {{ ('max="' + f.max|string + '"') if f.max is defined else '' }}>
+      {% if f.note is defined %}<div class="cfg-note">{{ f.note }}</div>{% endif %}
+    </div>
+    {% elif f.type == 'routing' %}
+    <div class="cfg-field" style="grid-column: 1 / -1;">
+      <label class="cfg-label" for="{{ db_key }}">{{ f.label }}</label>
+      <input class="cfg-input" type="text" name="{{ db_key }}" id="{{ db_key }}"
+             value="{{ routing_display.get(db_key, '') }}"
+             placeholder="D1:群号 D2:群号"
+             data-validate="routing">
+      {% if f.note is defined %}<div class="cfg-note">{{ f.note }}</div>{% endif %}
+    </div>
+    {% else %}
+    <div class="cfg-field">
+      <label class="cfg-label" for="{{ db_key }}">{{ f.label }}</label>
+      <input class="cfg-input" type="text" name="{{ db_key }}" id="{{ db_key }}" value="{{ cur }}"
+             {% if f.note is defined and f.key not in ['lovemail_delivery_time', 'apply_item_hours'] %}placeholder="{{ f.note }}"{% endif %}>
+      {% if f.note is defined %}<div class="cfg-note">{{ f.note }}</div>{% endif %}
+    </div>
+    {% endif %}
+  {% endmacro %}
+
+  {% macro grid(sec, cls='cfg-grid') %}
+    {% set jp = sec.get('json_parent', '') %}
+    <div class="{{ cls }}">
+      {% for f in sec.fields %}{{ field(f, jp) }}{% endfor %}
+    </div>
+  {% endmacro %}
+
+  {% macro toggle_list(sec) %}
+    {% set jp = sec.get('json_parent', '') %}
+    <div class="toggle-list">
+      {% for f in sec.fields %}
+        {% set db_key = (jp + '__' + f.key) if jp else f.key %}
+        {% set cur = flat.get(db_key, f.default|string) %}
+        <div class="toggle-row">
+          <span class="toggle-row-label">{{ f.label }}</span>
+          <label class="toggle">
+            <input type="checkbox" name="{{ db_key }}" value="1" {{ 'checked' if cur == 'true' else '' }}>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      {% endfor %}
+    </div>
+  {% endmacro %}
+
+  <form method="post">
+
+    {# ═══════════════════════════════════════════ #}
+    {# 1. 基础 + 群组 ID                          #}
+    {# ═══════════════════════════════════════════ #}
+
+    <div class="cfg-card">
+      <div class="cfg-card-title">基础设置</div>
+      {{ grid(s['基础'], 'cfg-grid-wide') }}
+    </div>
+
+    <div class="cfg-card">
+      <div class="cfg-card-title">群组 ID <span class="cfg-badge">填群号，留空不广播</span></div>
+      <div class="cfg-desc">各类消息的发送目标群</div>
+      {{ grid(s['群组 ID'], 'cfg-grid') }}
+    </div>
+
+    {# ═══════════════════════════════════════════ #}
+    {# 2. 功能开关                                 #}
+    {# ═══════════════════════════════════════════ #}
+
+    <div class="cfg-card">
+      <div class="cfg-card-title">功能开关</div>
+      {{ toggle_list(s['功能开关']) }}
+    </div>
+
+    {# ═══════════════════════════════════════════ #}
+    {# 3. 公告 · 礼物与互动 · 邀约（三列）        #}
+    {# ═══════════════════════════════════════════ #}
+
+    <div class="cfg-cols-3">
+
+      <div class="cfg-card" style="margin-bottom:0;">
+        <div class="cfg-card-title">公告</div>
+        <div class="cfg-desc">控制各类事件的公开广播</div>
+        {{ grid(s['公告']) }}
+      </div>
+
+      <div class="cfg-card" style="margin-bottom:0;">
+        <div class="cfg-card-title">礼物与互动</div>
+        {{ grid(s['礼物与互动']) }}
+      </div>
+
+      <div class="cfg-card" style="margin-bottom:0;">
+        <div class="cfg-card-title">邀约</div>
+        <div class="cfg-sub">规则</div>
+        {{ grid(s['邀约']) }}
+        <div class="cfg-sub">时长要求（分钟）</div>
+        {{ grid(s['邀约时长（分钟）']) }}
+      </div>
+
+    </div>
+    <div style="height:0;margin-bottom:16px;"></div>
+
+    {# ═══════════════════════════════════════════ #}
+    {# 4. 心动信 · 发送信件 · 心愿系统（三列）    #}
+    {# ═══════════════════════════════════════════ #}
+
+    <div class="cfg-cols-3">
+
+      <div class="cfg-card" style="margin-bottom:0;">
+        <div class="cfg-card-title">心动信</div>
+        {{ grid(s['心动信']) }}
+      </div>
+
+      <div class="cfg-card" style="margin-bottom:0;">
+        <div class="cfg-card-title">发送信件 <span class="cfg-badge">写信综</span></div>
+        {{ grid(s['发送信件']) }}
+      </div>
+
+      <div class="cfg-card" style="margin-bottom:0;">
+        <div class="cfg-card-title">心愿系统</div>
+        {{ grid(s['心愿系统']) }}
+      </div>
+
+    </div>
+    <div style="height:0;margin-bottom:16px;"></div>
+
+    {# ═══════════════════════════════════════════ #}
+    {# 5. 目击系统 + 场所系统（两列）             #}
+    {# ═══════════════════════════════════════════ #}
+
+    <div class="cfg-cols-2">
+
+      <div class="cfg-card" style="margin-bottom:0;">
+        <div class="cfg-card-title">目击系统</div>
+        {{ grid(s['目击系统']) }}
+      </div>
+
+      <div class="cfg-card" style="margin-bottom:0;">
+        <div class="cfg-card-title">场所系统</div>
+        {{ grid(s['场所系统']) }}
+      </div>
+
+    </div>
+    <div style="height:0;margin-bottom:16px;"></div>
+
+    {# ═══════════════════════════════════════════ #}
+    {# 6. 混沌配置（可折叠）                      #}
+    {# ═══════════════════════════════════════════ #}
+
+    <details class="cfg-collapsible cfg-card-chaos">
+      <summary>混沌效果配置 <span class="cfg-badge" style="color:#c8902a;border-color:#4a3515;">0 = 关闭</span></summary>
+      <div class="cfg-collapsible-inner">
+        <div class="cfg-desc" style="margin-top:0;margin-bottom:14px;">各效果填 0 即关闭；播报概率等全局参数在下方。</div>
+        <div class="cfg-sub">触发概率（%）</div>
+        {% set jp_chaos = s['混沌配置（% · 0=关闭）'].get('json_parent', '') %}
+        <div class="cfg-grid-compact">
+          {% for f in s['混沌配置（% · 0=关闭）'].fields %}
+            {% if f.key not in ['dailyLimit', 'publicChance', 'giftLost', 'giftMisdelivery'] %}
+              {{ field(f, jp_chaos) }}
+            {% endif %}
+          {% endfor %}
+        </div>
+        <div class="cfg-sub">全局参数</div>
+        <div class="cfg-grid">
+          {% for f in s['混沌配置（% · 0=关闭）'].fields %}
+            {% if f.key in ['dailyLimit', 'publicChance', 'giftLost', 'giftMisdelivery'] %}
+              {{ field(f, jp_chaos) }}
+            {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+    </details>
+
+    {# ═══════════════════════════════════════════ #}
+    {# 7. 高级设置：道具 + 拍卖（可折叠）         #}
+    {# ═══════════════════════════════════════════ #}
+
+    <details class="cfg-collapsible">
+      <summary>高级设置 <span class="cfg-badge">道具 · 拍卖</span></summary>
+      <div class="cfg-collapsible-inner">
+        <div class="cfg-sub">道具</div>
+        {{ grid(s['道具']) }}
+        <div class="cfg-sub">拍卖</div>
+        {{ grid(s['拍卖']) }}
+      </div>
+    </details>
+
+    {# ── 保存栏 ── #}
+    <div class="save-bar">
+      <button type="submit" class="btn-save">保存配置</button>
+      <span class="save-hint">保存后在 QQ 发「。同步设置」立即生效</span>
+    </div>
+
+  </form>
+
+<script>
+document.querySelector('form').addEventListener('submit', function(e) {
+  const errors = [];
+
+  // 群号字段：必须纯数字
+  const groupKeys = ['adminAnnounceGroupId','song_group_id','background_group_id',
+                     'water_group_id','auction_display_group'];
+  groupKeys.forEach(function(name) {
+    const el = document.querySelector('[name="' + name + '"]');
+    if (el && el.value.trim() && !/^\d+$/.test(el.value.trim())) {
+      const lbl = el.closest('.cfg-field').querySelector('.cfg-label');
+      errors.push('「' + (lbl ? lbl.textContent.trim() : name) + '」应为纯数字群号');
+    }
+  });
+
+  // 复盘分流群：每组必须是 D数字:数字
+  const routing = document.querySelector('[data-validate="routing"]');
+  if (routing && routing.value.trim()) {
+    const bad = routing.value.trim().split(/\s+/).filter(function(p) {
+      return p && !/^D\d+[：:]\d+$/i.test(p);
+    });
+    if (bad.length) errors.push('分流群配置格式错误，示例：D1:12345 D2:67890（空格分隔，每组 D天数:群号）');
+  }
+
+  // 心动信送达时间：HH:MM 格式
+  const lmTime = document.querySelector('[name="lovemail_delivery_time"]');
+  if (lmTime && lmTime.value.trim() && !/^\d{1,2}:\d{2}$/.test(lmTime.value.trim())) {
+    errors.push('心动信送达时间格式应为 HH:MM，如 22:00');
+  }
+
+  // 施加可用时段：数字、连字符、逗号，或留空
+  const hours = document.querySelector('[name="apply_item_hours"]');
+  if (hours && hours.value.trim() && !/^[\d\-,，]+$/.test(hours.value.trim())) {
+    errors.push('施加可用时段格式错误，示例：18-23 或 9-12,14-18，留空表示全天');
+  }
+
+  if (errors.length) {
+    e.preventDefault();
+    alert('保存前请修正以下问题：\n\n• ' + errors.join('\n• '));
+  }
+});
+</script>
+</div>
+{% endblock %}

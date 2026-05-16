@@ -9,6 +9,7 @@
   <div class="page-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
     <div>
       <span style="color:var(--muted);font-weight:400;font-size:16px;">角色：</span>{{ role_name }}
+      {% if show_names.get(role_name) %}<span style="color:var(--muted);font-size:14px;font-weight:400;margin-left:8px;">· {{ show_names[role_name] }}</span>{% endif %}
       <span style="color:var(--muted);font-size:14px;font-weight:400;margin-left:12px;">共 {{ sessions|length }} 场</span>
     </div>
     <a href="{{ url_for('character_interactions', role_name=role_name) }}"
@@ -32,11 +33,12 @@
       <div class="card-meta" style="margin-bottom:10px;">
         <span>🕐 {{ s.game_time or '时间未记录' }}</span>
         <span>📅 {{ s.start_str }}</span>
+        {% if s.duration_str %}<span>⏱ {{ s.duration_str }}</span>{% endif %}
         <span>💬 {{ s.total_replies }} 回复 · {{ s.total_words }} 字</span>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:4px;">
         {% for p in s.participants %}
-        <span class="pill" style="{{ 'background:#2d1f4e;color:#c084fc;border-color:#6d28d9;' if p == role_name else '' }}">{{ p }}</span>
+        <span class="pill" style="{{ 'background:#2d1f4e;color:#c084fc;border-color:#6d28d9;' if p == role_name else '' }}">{{ p }}{% if show_names.get(p) %}<span style="color:var(--muted);font-size:10px;{% if p == role_name %}color:#9d6dff;{% endif %}"> · {{ show_names[p] }}</span>{% endif %}</span>
         {% endfor %}
       </div>
       {% if s.stats and s.stats.get(role_name) %}

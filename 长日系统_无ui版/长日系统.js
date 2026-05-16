@@ -23,10 +23,6 @@ seal.ext.registerStringConfig(ext, "ws地址", "ws://localhost:3001");
     seal.ext.registerStringConfig(ext, "ws Access token", '', "输入与上方端口对应的token，没有则留空");
     seal.ext.registerStringConfig(ext, "群管插件使用需要满足的条件", '1', "使用豹语表达式，例如：$t群号_RAW=='2001'，1为所有群可用");
     seal.ext.registerBoolConfig(ext, "开启现实时段校验", false, "是否限制玩家只能发起与当前现实时间对应的剧情时段邀约");
-    seal.ext.registerBoolConfig(ext, "启用RP存档传输", false, "开启后，监听到的RP正文、短信、礼物将在结戏时发送到存档服务器");
-    seal.ext.registerStringConfig(ext, "RP存档服务器地址", "http://localhost:6666", "Flask存档服务器地址，末尾不带/");
-    seal.ext.registerStringConfig(ext, "RP存档Token", "", "存档服务器API验证Token，与服务器端RP_API_TOKEN环境变量一致，留空则不验证");
-    seal.ext.registerStringConfig(ext, "恋综名称", "", "恋综/游戏名称，用于玩家数据库归档（「更新玩家数据库」指令需先填写此项）");
 
 // ========================
 // 🌐 WebSocket 通信模块
@@ -313,85 +309,6 @@ function handleForwardAction(ctx, msg, data, currentWs) {
 
     // 延迟关闭连接
     setTimeout(() => { if (currentWs.readyState === 1) currentWs.close(1000, "FINISH"); }, 2000);
-}
-// ========================
-// 📦 RP存档模块
-// ========================
-
-function isArchiveEnabled() {
-    return seal.ext.getBoolConfig(ext, "启用RP存档传输");
-}
-
-async function postToArchive(endpoint, data) {
-    const base = (seal.ext.getStringConfig(ext, "RP存档服务器地址") || "").replace(/\/$/, "");
-    const token = seal.ext.getStringConfig(ext, "RP存档Token") || "";
-    if (!base) return;
-    try {
-        const resp = await fetch(base + endpoint, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "X-Archive-Token": token },
-            body: JSON.stringify(data)
-        });
-        if (!resp.ok) console.error(`[RP存档] ${endpoint} 返回 ${resp.status}`);
-    } catch (e) {
-        console.error(`[RP存档] 发送失败 ${endpoint}:`, e.message || String(e));
-    }
-}
-
-function getActiveSessionId(platform, senderName) {
-    const uid = getUidByRoleName(platform, senderName);
-    if (!uid) return "";
-    const key = `${platform}:${uid}`;
-    const bSched = JSON.parse(ext.storageGet("b_confirmedSchedule") || "{}");
-    const active = (bSched[key] || []).find(e => e.status === "active" && e.group);
-    if (!active) return "";
-    const startTs = (getSessionStats()[active.group] || {})._startTime;
-    return startTs ? `${active.group}_${startTs}` : "";
-}
-
-function buildSessionArchive(gid, platform, forced) {
-    const timers = getGroupTimers();
-    const timer  = timers[gid] || {};
-    const ss     = getSessionStats()[gid] || {};
-
-    const startTs = ss._startTime || Date.now();
-    const endTs   = Date.now();
-    const sessionId = `${gid}_${startTs}`;
-
-    const participants = timer.participants || [];
-
-    // 每人统计（uid → roleName 映射后输出）
-    const stats = {};
-    participants.forEach(roleName => {
-        const uid = getUidByRoleName(platform, roleName);
-        if (uid && ss[uid]) {
-            stats[roleName] = { replies: ss[uid].replies || 0, words: ss[uid].words || 0 };
-        }
-    });
-
-    const expireInfo = JSON.parse(ext.storageGet("group_expire_info") || "{}")[gid] || {};
-    const gameDay    = expireInfo.day  || timer.day || ext.storageGet("global_days") || "";
-
-    // 心动信/短信/礼物均已在事件发生时实时 POST /api/event，此处不再批量附带
-    // （心动信 pool 投完即清空，批量读取必然为空；短信/礼物实时上传已含 session_id）
-
-    return {
-        session_id:   sessionId,
-        group_id:     gid,
-        platform:     platform,
-        game_day:     gameDay,
-        game_time:    expireInfo.time    || timer.time    || "",
-        place:        expireInfo.place   || timer.place   || "",
-        subtype:      timer.subtype      || expireInfo.subtype || "",
-        participants: participants,
-        start_ts:     startTs,
-        end_ts:       endTs,
-        forced:       forced ? 1 : 0,
-        stats:        stats,
-        lovemails:    [],
-        sms:          [],
-        gifts:        gifts
-    };
 }
 
 // ========================
@@ -2964,20 +2881,6 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
     ext.storageSet("global_gift_stats", JSON.stringify(globalStats));
     ext.storageSet("global_gift_cooldowns", JSON.stringify(globalCooldowns));
 
-    // 礼物实时存档
-    if (isArchiveEnabled()) {
-        postToArchive("/api/event", {
-            type:       "gift",
-            from_role:  sendname,
-            to_role:    actualToname,
-            content:    giftContent || "",
-            extra_info: { giftName: giftDisplayName, isLost: isLost },
-            game_day:   ext.storageGet("global_days") || "D?",
-            session_id: "",
-            timestamp:  Date.now()
-        });
-    }
-
     // 丢失与正常均显示相同提示，发送方不知情
     seal.replyToSender(ctx, msg, `🎁 已成功将 ${giftDisplayName} 送往「${toname}」的房间。\n(今日第 ${userStat.count}份)`);
 
@@ -3381,11 +3284,6 @@ cmd_grouplist_release.solve = (ctx, msg, cmdArgs) => {
             ext.storageSet("b_confirmedSchedule", JSON.stringify(b_confirmedSchedule));
         }
 
-        // 存档必须在清除 group_expire_info 之前，否则拿不到 day/time/place
-        if (isArchiveEnabled()) {
-            postToArchive("/api/session_end", buildSessionArchive(gid, platform, false));
-        }
-
         // 清除到期记录
         let groupExpireInfo = JSON.parse(ext.storageGet("group_expire_info") || "{}");
         if (groupExpireInfo[gid]) {
@@ -3478,11 +3376,6 @@ cmd_force_end.solve = (ctx, msg, cmdArgs) => {
         Object.entries(a_private_group[platform] || {}).forEach(([uid, data]) => {
             if (data[1] === gid) participantUids.add(uid);
         });
-    }
-
-    // 存档必须在清除 group_expire_info 之前，否则拿不到 day/time/place
-    if (isArchiveEnabled()) {
-        postToArchive("/api/session_end", buildSessionArchive(gid, platform, true));
     }
 
     // 清除到期记录
@@ -5330,31 +5223,6 @@ async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, co
     seal.replyToSender(newctx, newmsg, notice);
     recordInteractionStat(platform, sendname, trueRecipientName, "sms");
 
-    // 短信实时存档
-    if (isArchiveEnabled()) {
-        const isMisdelivered    = trueRecipientName !== toname;
-        const isContentChaos    = content !== contentOriginal;
-        const isSignatureChaos  = finalSignature !== `落款：${sendname}`;
-        postToArchive("/api/event", {
-            type:       "sms",
-            from_role:  sendname,
-            to_role:    trueRecipientName,
-            content:    contentOriginal,
-            extra_info: {
-                delivered:       content,
-                signature:       finalSignature,
-                intended_to:     toname,
-                is_misdelivered: isMisdelivered,
-                is_content_chaos: isContentChaos,
-                is_signature_chaos: isSignatureChaos,
-                is_chaos:        isMisdelivered || isContentChaos || isSignatureChaos
-            },
-            game_day:   gameDay,
-            session_id: "",
-            timestamp:  Date.now()
-        });
-    }
-
     // 7. 更新数据
     ext.storageSet(cooldownKey, now.toString());
     userRec.count += 1;
@@ -6689,25 +6557,6 @@ function handleReply(platform, groupId, roleName, message) {
     if (!roleStatus) {
         console.warn(`[监听系统] 处理失败: 角色 [${roleName}] 不在参与者名单中`);
         return false;
-    }
-
-    // RP存档：只要角色在活跃会话中（无论是否轮到），都捕获正确格式的RP正文
-    if (isArchiveEnabled()) {
-        const lines = message.split("\n");
-        if (lines[0].trim() === roleName) {
-            const content = lines.slice(1).join("\n").trim();
-            if (content) {
-                const _archiveSS = getSessionStats()[groupId] || {};
-                const _startTs = _archiveSS._startTime || Date.now();
-                postToArchive("/api/rp", {
-                    session_id: `${groupId}_${_startTs}`,
-                    group_id:   groupId,
-                    role_name:  roleName,
-                    content:    content,
-                    timestamp:  Date.now()
-                });
-            }
-        }
     }
 
     // 1. 检查计时状态
@@ -8516,20 +8365,6 @@ function performLoveMailDelivery(ctx, msg, backgroundGroupId) {
             mails.forEach((mail, idx) => {
                 personalNodes.push({ type: "node", data: { name: `第 ${idx + 1} 封信件`, uin: "10001", content: `「 ${mail.content} 」\n┈┈┈┈┈┈┈┈┈┈┈┈\n📝 署名：${mail.signature}` } });
                 success++;
-                // 心动信实时存档（投递时上传，pool 投完即清空故不能靠 session_end）
-                if (isArchiveEnabled()) {
-                    const fromRole = a_private_group[platform]?.[mail.uid]?.[0] || mail.uid;
-                    postToArchive("/api/event", {
-                        type:       "lovemail",
-                        from_role:  fromRole,
-                        to_role:    receiver,
-                        content:    mail.content,
-                        extra_info: { signature: mail.signature },
-                        game_day:   mail.gameDay || "",
-                        session_id: "",
-                        timestamp:  mail.timestamp || Date.now()
-                    });
-                }
                 if (isPublicEnabled && announceGroupId) {
                     if (Math.floor(Math.random() * 100) + 1 <= publicChance) {
                         publicCount++;
@@ -10305,67 +10140,3 @@ cmd_abolish_schedule.solve = (ctx, msg, cmdArgs) => {
 };
 ext.cmdMap["拒绝时间线"] = cmd_abolish_schedule;
 
-// ── 更新玩家数据库 ───────────────────────────────────────────────────────────
-let cmd_update_players = seal.ext.newCmdItemInfo();
-cmd_update_players.name = "更新玩家数据库";
-cmd_update_players.help = "。更新玩家数据库（管理员专用：将当前所有玩家角色名+QQ同步到RP存档服务器）";
-cmd_update_players.solve = (ctx, msg, cmdArgs) => {
-    const platform = msg.platform;
-
-    if (!isUserAdmin(ctx, msg)) {
-        seal.replyToSender(ctx, msg, "❌ 该指令仅限管理员使用。");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    if (!isArchiveEnabled()) {
-        seal.replyToSender(ctx, msg, "❌ 未启用RP存档传输，请先在设置中开启。");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    const showName = (seal.ext.getStringConfig(ext, "恋综名称") || "").trim();
-    if (!showName) {
-        seal.replyToSender(ctx, msg, "❌ 请先在长日设置中填写「恋综名称」后再同步玩家数据库。");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    const apg = JSON.parse(ext.storageGet("a_private_group") || "{}");
-    const platformData = apg[platform] || {};
-    const players = [];
-    for (const [qqUid, entry] of Object.entries(platformData)) {
-        const roleName = entry[0];
-        if (roleName) {
-            players.push({ qq: qqUid, role_name: roleName });
-        }
-    }
-
-    if (players.length === 0) {
-        seal.replyToSender(ctx, msg, "⚠️ 暂无玩家数据可同步。");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    const base  = (seal.ext.getStringConfig(ext, "RP存档服务器地址") || "").replace(/\/$/, "");
-    const token = seal.ext.getStringConfig(ext, "RP存档Token") || "";
-    const headers = { "Content-Type": "application/json" };
-    if (token) headers["X-Archive-Token"] = token;
-
-    (async () => {
-        try {
-            const resp = await fetch(`${base}/api/update_players`, {
-                method: "POST",
-                headers,
-                body: JSON.stringify({ show_name: showName, players })
-            });
-            if (resp.ok) {
-                const result = await resp.json();
-                seal.replyToSender(ctx, msg, `✅ 已同步 ${result.count || players.length} 名玩家数据到存档服务器（恋综：${showName}）。`);
-            } else {
-                seal.replyToSender(ctx, msg, `❌ 同步失败，服务器返回 ${resp.status}。`);
-            }
-        } catch (e) {
-            seal.replyToSender(ctx, msg, `❌ 同步失败：${e.message || String(e)}`);
-        }
-    })();
-
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["更新玩家数据库"] = cmd_update_players;

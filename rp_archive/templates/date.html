@@ -1,6 +1,21 @@
 {% extends "base.html" %}
 {% block title %}长日存档 · {{ game_day }}{% endblock %}
 
+{% block head %}
+<style>
+.filter-bar { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
+.ftab {
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--muted); border-radius: 8px; padding: 5px 14px;
+  cursor: pointer; font-size: 13px; font-family: inherit; transition: all .15s;
+}
+.ftab:hover { border-color: var(--accent); color: var(--text); }
+.ftab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ftab-count { font-size: 11px; opacity: .75; margin-left: 3px; }
+.no-match { display: none; color: var(--muted); text-align: center; padding: 40px 0; font-size: 14px; }
+</style>
+{% endblock %}
+
 {% block body %}
 <div class="page">
   <div style="margin-bottom:16px;">
@@ -9,9 +24,27 @@
   <div class="page-title">{{ game_day }} · 全部场次</div>
 
   {% if sessions %}
+  <!-- 筛选栏 -->
+  {% set counts = {'all': sessions|length, '私密': 0, '电话': 0, '官约': 0, '强结': 0} %}
+  {% for s in sessions %}
+    {% if s.forced %}{% set _ = counts.update({'强结': counts['强结'] + 1}) %}{% endif %}
+    {% if s.subtype == '电话' %}{% set _ = counts.update({'电话': counts['电话'] + 1}) %}{% endif %}
+    {% if s.subtype == '官约' %}{% set _ = counts.update({'官约': counts['官约'] + 1}) %}{% endif %}
+    {% if not s.forced and s.subtype != '电话' and s.subtype != '官约' %}{% set _ = counts.update({'私密': counts['私密'] + 1}) %}{% endif %}
+  {% endfor %}
+  <div class="filter-bar">
+    <button class="ftab active" onclick="filterSessions('all',this)">全部<span class="ftab-count">{{ counts['all'] }}</span></button>
+    {% if counts['私密'] %}<button class="ftab" onclick="filterSessions('私密',this)">私密<span class="ftab-count">{{ counts['私密'] }}</span></button>{% endif %}
+    {% if counts['电话'] %}<button class="ftab" onclick="filterSessions('电话',this)">电话<span class="ftab-count">{{ counts['电话'] }}</span></button>{% endif %}
+    {% if counts['官约'] %}<button class="ftab" onclick="filterSessions('官约',this)">官约<span class="ftab-count">{{ counts['官约'] }}</span></button>{% endif %}
+    {% if counts['强结'] %}<button class="ftab" onclick="filterSessions('强结',this)">强结<span class="ftab-count">{{ counts['强结'] }}</span></button>{% endif %}
+  </div>
+
   {% for s in sessions %}
   {% set tag_class = 'tag-forced' if s.forced else ('tag-call' if s.subtype=='电话' else ('tag-official' if s.subtype=='官约' else 'tag-private')) %}
-  <a href="{{ url_for('session_view', session_id=s.id) }}" style="display:block;text-decoration:none;">
+  <a href="{{ url_for('session_view', session_id=s.id) }}" class="session-card"
+     data-subtype="{{ s.subtype or '私密' }}" data-forced="{{ '1' if s.forced else '0' }}"
+     style="display:block;text-decoration:none;">
     <div class="card">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
         <span class="card-title">
@@ -23,11 +56,12 @@
       <div class="card-meta" style="margin-bottom:10px;">
         <span>🕐 {{ s.game_time or '时间未记录' }}</span>
         <span>📅 {{ s.start_str }}</span>
+        {% if s.duration_str %}<span>⏱ {{ s.duration_str }}</span>{% endif %}
         <span>💬 {{ s.total_replies }} 回复 · {{ s.total_words }} 字</span>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:4px;">
         {% for p in s.participants %}
-        <span class="pill">{{ p }}</span>
+        <span class="pill">{{ p }}{% if show_names.get(p) %}<span style="color:var(--muted);font-size:10px;"> · {{ show_names[p] }}</span>{% endif %}</span>
         {% endfor %}
       </div>
       {% if s.stats %}
@@ -35,7 +69,7 @@
                   display:flex;flex-wrap:wrap;gap:16px;">
         {% for role, st in s.stats.items() %}
         <span style="font-size:12px;color:var(--muted);">
-          <b style="color:var(--text);">{{ role }}</b>
+          <b style="color:var(--text);">{{ role }}</b>{% if show_names.get(role) %}<span style="font-size:10px;"> · {{ show_names[role] }}</span>{% endif %}
           · {{ st.replies }}回 · {{ st.words }}字
         </span>
         {% endfor %}
@@ -44,8 +78,31 @@
     </div>
   </a>
   {% endfor %}
+  <div class="no-match" id="no-match-tip">该类型暂无场次。</div>
+
   {% else %}
   <div class="empty">{{ game_day }} 暂无记录。</div>
   {% endif %}
 </div>
+
+<script>
+function filterSessions(type, btn) {
+  document.querySelectorAll('.ftab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  let visible = 0;
+  document.querySelectorAll('.session-card').forEach(card => {
+    let show = false;
+    if (type === 'all') {
+      show = true;
+    } else if (type === '强结') {
+      show = card.dataset.forced === '1';
+    } else {
+      show = card.dataset.subtype === type && card.dataset.forced !== '1';
+    }
+    card.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  document.getElementById('no-match-tip').style.display = visible === 0 ? 'block' : 'none';
+}
+</script>
 {% endblock %}
