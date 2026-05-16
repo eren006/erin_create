@@ -3346,8 +3346,6 @@ cmd_grouplist_release.solve = (ctx, msg, cmdArgs) => {
             }
             // URL 合法 → 存档
             AutoLog.saveEntry(gid, urlArg);
-            // 清理 recording 状态（log end 已由「自动复盘」指令触发）
-            delete AutoLog._recording[`${platform}-Group:${gid}`];
 
         } else if (requireFupan) {
             // 旧模式：检查 ev.fupan（转发复盘工作流）
@@ -3412,15 +3410,13 @@ cmd_grouplist_release.solve = (ctx, msg, cmdArgs) => {
         setGroupName(ctx, msg, ctx.group.groupId, `备用`);
         cleanupGroupTimer(gid);
 
-        // 非 autoLog 模式下兜底停录；autoLog 模式下已由「自动复盘」指令结束
-        if (!seal.ext.getBoolConfig(ext, "自动复盘记录")) {
-            try {
-                const _lm = seal.newMessage();
-                _lm.messageType = "group";
-                _lm.groupId = `${platform}-Group:${gid}`;
-                AutoLog.endLog(seal.createTempCtx(ctx.endPoint, _lm), _lm);
-            } catch(e) { console.log("[AutoLog] 结束记录失败:", e); }
-        }
+        // 兜底停录：endLog 内部检查 _recording，已结束则幂等跳过
+        try {
+            const _lm = seal.newMessage();
+            _lm.messageType = "group";
+            _lm.groupId = `${platform}-Group:${gid}`;
+            AutoLog.endLog(seal.createTempCtx(ctx.endPoint, _lm), _lm);
+        } catch(e) { console.log("[AutoLog] 结束记录失败:", e); }
 
         applyEndGameBonuses(ctx, msg, gid, platform);
     } else {
@@ -3544,9 +3540,8 @@ cmd_force_end.solve = (ctx, msg, cmdArgs) => {
         saveSessionStats(sessionStats);
     }
 
-    // 兜底停录（autoLog 模式下 log 已由「自动复盘」结束；否则此处兜底）
+    // 兜底停录：endLog 内部检查 _recording，已结束则幂等跳过
     try { AutoLog.endLog(targetCtx, targetMsg); } catch(e) { console.log("[AutoLog] 强结记录失败:", e); }
-    if (urlArg) delete AutoLog._recording[`${platform}-Group:${gid}`];
 
     // 在目标群发送提示，@ 所有参与者请其退群
     const atParts = [...participantUids].map(uid => `[CQ:at,qq=${uid}]`).join(" ");
