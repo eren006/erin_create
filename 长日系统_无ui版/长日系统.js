@@ -23,6 +23,73 @@ seal.ext.registerStringConfig(ext, "ws地址", "ws://localhost:3001");
     seal.ext.registerStringConfig(ext, "ws Access token", '', "输入与上方端口对应的token，没有则留空");
     seal.ext.registerStringConfig(ext, "群管插件使用需要满足的条件", '1', "使用豹语表达式，例如：$t群号_RAW=='2001'，1为所有群可用");
     seal.ext.registerBoolConfig(ext, "开启现实时段校验", false, "是否限制玩家只能发起与当前现实时间对应的剧情时段邀约");
+    seal.ext.registerBoolConfig(ext, "自动复盘记录", true, "开启后，群组开始私约时自动触发 .log new，结束时自动 .log end");
+    seal.ext.registerStringConfig(ext, "复盘打包服务地址", "http://127.0.0.1:9999", "trigger_server.py 监听地址，用于「打包复盘」指令");
+
+// ========================
+// 📝 AutoLog 自动复盘模块
+// ========================
+const AutoLog = {
+    _recording: {},   // { [groupId]: true }
+
+    _findLogCmd: function() {
+        const names = ["log", "core", "跑团日志", "logger", "logging", "record"];
+        for (const n of names) {
+            const e = seal.ext.find(n);
+            if (e && e.cmdMap && e.cmdMap["log"]) return e.cmdMap["log"];
+        }
+        for (const e of seal.ext.list()) {
+            if (e.cmdMap && e.cmdMap["log"]) return e.cmdMap["log"];
+        }
+        return null;
+    },
+
+    _makeArgs: function(argsArr, rawStr) {
+        return {
+            command: "log", args: argsArr, kwargs: [], at: [],
+            rawArgs: rawStr, amIBeMentioned: false, amIBeMentionedFirst: false,
+            cleanArgs: rawStr,
+            getArgN: function(n) { return this.args[n - 1] || ""; },
+            getKwarg: function() { return ""; },
+            isArgEqual: function(n, v) { return this.getArgN(n) === v; }
+        };
+    },
+
+    startLog: function(ctx, msg, logName) {
+        try {
+            if (!seal.ext.getBoolConfig(ext, "自动复盘记录")) return;
+            const gid = msg.groupId;
+            if (this._recording[gid]) return;
+            const safeName = logName.replace(/ /g, "_").replace(/:/g, "").replace(/[\/\\]/g, "_");
+            const cmd = this._findLogCmd();
+            if (cmd && typeof cmd.solve === "function") {
+                cmd.solve(ctx, msg, this._makeArgs(["new", safeName], `new ${safeName}`));
+                this._recording[gid] = true;
+                console.log(`[AutoLog] 开始记录群 ${gid}：${safeName}`);
+            } else {
+                console.log("[AutoLog] 未找到 log 扩展，跳过自动记录");
+            }
+        } catch(e) {
+            console.log("[AutoLog] startLog 错误:", e);
+        }
+    },
+
+    endLog: function(ctx, msg) {
+        try {
+            if (!seal.ext.getBoolConfig(ext, "自动复盘记录")) return;
+            const gid = msg.groupId;
+            if (!this._recording[gid]) return;
+            const cmd = this._findLogCmd();
+            if (cmd && typeof cmd.solve === "function") {
+                cmd.solve(ctx, msg, this._makeArgs(["end"], "end"));
+                delete this._recording[gid];
+                console.log(`[AutoLog] 结束记录群 ${gid}`);
+            }
+        } catch(e) {
+            console.log("[AutoLog] endLog 错误:", e);
+        }
+    }
+};
 
 // ========================
 // 🌐 WebSocket 通信模块
@@ -3296,6 +3363,16 @@ cmd_grouplist_release.solve = (ctx, msg, cmdArgs) => {
         seal.replyToSender(ctx, msg, `✅ 本群（${gid}）本轮小群已结束，可再次发起新小群，所有相关记录已标记"已结束"`);
         setGroupName(ctx, msg, ctx.group.groupId, `备用`);
         cleanupGroupTimer(gid);
+
+        // 自动结束复盘记录
+        try {
+            const endLogMsg = seal.newMessage();
+            endLogMsg.messageType = "group";
+            endLogMsg.groupId = `${platform}-Group:${gid}`;
+            const endLogCtx = seal.createTempCtx(ctx.endPoint, endLogMsg);
+            AutoLog.endLog(endLogCtx, endLogMsg);
+        } catch(e) { console.log("[AutoLog] 结束记录失败:", e); }
+
         applyEndGameBonuses(ctx, msg, gid, platform);
     } else {
         seal.replyToSender(ctx, msg, `⚠️ 当前群号未处于占用状态，无法结束`);
@@ -3391,6 +3468,9 @@ cmd_force_end.solve = (ctx, msg, cmdArgs) => {
         delete sessionStats[gid];
         saveSessionStats(sessionStats);
     }
+
+    // 自动结束复盘记录
+    try { AutoLog.endLog(targetCtx, targetMsg); } catch(e) { console.log("[AutoLog] 强结记录失败:", e); }
 
     // 在目标群发送提示，@ 所有参与者请其退群
     const atParts = [...participantUids].map(uid => `[CQ:at,qq=${uid}]`).join(" ");
@@ -3923,6 +4003,20 @@ ${groupData.sendname} 约你 ${groupData.day} ${groupData.time} 在 ${groupData.
     triggerSightingCheck(platform, groupData.day, groupData.time, groupData.place, participants, gid, groupData.subtype, ctx, msg);
     recordMeetingAndAnnounce(groupData.subtype, platform, ctx, ctx.endPoint);
     if (groupData.subtype) initGroupTimer(platform, gid, groupData.subtype, participants, participants[0]);
+
+    // 8. 自动开始复盘记录
+    setTimeout(() => {
+        try {
+            const logMsg = seal.newMessage();
+            logMsg.messageType = "group";
+            logMsg.groupId = `${platform}-Group:${gid}`;
+            const logCtx = seal.createTempCtx(ctx.endPoint, logMsg);
+            AutoLog.startLog(logCtx, logMsg, finalGroupName);
+        } catch(e) {
+            console.log("[AutoLog] 启动延迟记录失败:", e);
+        }
+    }, 800);
+
     return gid;
 }
 
@@ -10139,4 +10233,82 @@ cmd_abolish_schedule.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["拒绝时间线"] = cmd_abolish_schedule;
+
+// ========================
+// 📦 打包复盘 / 清理复盘
+// ========================
+
+const cmd_pack_log = seal.ext.newCmdItemInfo();
+cmd_pack_log.name = "打包复盘";
+cmd_pack_log.help = "打包当前群的海豹日志并上传到群文件\n用法：。打包复盘 [自定义文件名]";
+cmd_pack_log.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) {
+        seal.replyToSender(ctx, msg, "⚠️ 该指令仅限管理员使用");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const groupId = ctx.group.groupId.replace(/^[^:]+:/, "").replace(/^Group:/, "");
+    const customName = (cmdArgs && cmdArgs.cleanArgs) ? cmdArgs.cleanArgs.trim() : "";
+    const hint = customName
+        ? `📦 正在打包复盘日志「${customName}」，请稍候……`
+        : `📦 正在打包复盘日志，请稍候……`;
+    seal.replyToSender(ctx, msg, hint);
+
+    const triggerUrl = seal.ext.getStringConfig(ext, "复盘打包服务地址") || "http://127.0.0.1:9999";
+
+    fetch(triggerUrl + "/pack", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ group_id: groupId, custom_name: customName })
+    })
+    .then(r => r.text())
+    .then(text => {
+        try {
+            const d = JSON.parse(text);
+            seal.replyToSender(ctx, msg, (d.status === "ok" ? "✅ " : "❌ ") + d.message);
+        } catch(e) {
+            seal.replyToSender(ctx, msg, "❌ 返回数据解析失败: " + text.substring(0, 100));
+        }
+    })
+    .catch(err => {
+        seal.replyToSender(ctx, msg, "❌ 触发服务连接失败（是否已启动 trigger_server.py？）: " + err.toString());
+    });
+
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["打包复盘"] = cmd_pack_log;
+
+const cmd_clean_log = seal.ext.newCmdItemInfo();
+cmd_clean_log.name = "清理复盘";
+cmd_clean_log.help = "清理原始日志zip文件，只保留已解压的txt\n用法：。清理复盘";
+cmd_clean_log.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) {
+        seal.replyToSender(ctx, msg, "⚠️ 该指令仅限管理员使用");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    seal.replyToSender(ctx, msg, "🧹 正在清理原始日志文件……");
+    const triggerUrl = seal.ext.getStringConfig(ext, "复盘打包服务地址") || "http://127.0.0.1:9999";
+
+    fetch(triggerUrl + "/clean", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({})
+    })
+    .then(r => r.text())
+    .then(text => {
+        try {
+            const d = JSON.parse(text);
+            seal.replyToSender(ctx, msg, (d.status === "ok" ? "✅ " : "❌ ") + d.message);
+        } catch(e) {
+            seal.replyToSender(ctx, msg, "❌ 返回数据解析失败: " + text.substring(0, 100));
+        }
+    })
+    .catch(err => {
+        seal.replyToSender(ctx, msg, "❌ 触发服务连接失败: " + err.toString());
+    });
+
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["清理复盘"] = cmd_clean_log;
 
