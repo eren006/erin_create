@@ -105,6 +105,27 @@ const AutoLog = {
                 AutoLog.startLog(seal.createTempCtx(endPoint, m), m, groupName);
             } catch(e) { console.log("[AutoLog] scheduleStart 错误:", e); }
         }, 600);
+    },
+
+    // 把 URL + group_expire_info 快照存入 autolog_entries
+    saveEntry: function(rawGid, url) {
+        const info = JSON.parse(ext.storageGet("group_expire_info") || "{}")[rawGid] || {};
+        const participants = info.participants || [];
+        const nameTag = participants.length > 2 ? "多人" : participants.join("×");
+        const entries = JSON.parse(ext.storageGet("autolog_entries") || "[]");
+        entries.push({
+            url,
+            gid: rawGid,
+            groupName: [info.subtype, info.day, info.time, info.place, nameTag].filter(Boolean).join(" "),
+            subtype:      info.subtype      || "未知",
+            day:          info.day          || "",
+            time:         info.time         || "",
+            place:        info.place        || "",
+            participants: participants,
+            timestamp:    Date.now()
+        });
+        ext.storageSet("autolog_entries", JSON.stringify(entries));
+        console.log(`[AutoLog] 存入复盘 ${rawGid} → ${url}`);
     }
 };
 
@@ -3310,32 +3331,41 @@ cmd_grouplist_release.solve = (ctx, msg, cmdArgs) => {
     // 非微信群：原有结束逻辑
     const fullId = `${gid}_占用`;
     if (group.includes(fullId)) {
-        // ----- 读取"复盘强制结束"开关 -----
+        // ----- 复盘检查 -----
         const requireFupan = JSON.parse(ext.storageGet("require_fupan_before_end") || "true");
-        if (requireFupan) {
-            // ----- 复盘检查（参照更新 status 的遍历方式）-----
-            const b_confirmedSchedule = JSON.parse(ext.storageGet("b_confirmedSchedule") || "{}");
-            let needFupan = false;  // 是否需要复盘（存在未复盘的活跃记录）
+        const autoLogOn    = seal.ext.getBoolConfig(ext, "自动复盘记录");
 
+        if (requireFupan && autoLogOn) {
+            // 新模式：必须附带日志 URL
+            const urlArg = (cmdArgs.getArgN(1) || "").trim();
+            if (!/^https?:\/\//.test(urlArg)) {
+                seal.replyToSender(ctx, msg,
+                    `⚠️ 强制复盘已开启。\n请先在本群发送「自动复盘」触发日志上传，\n获取链接后任何人发送：\n结束私约 [链接]`);
+                return seal.ext.newCmdExecuteResult(true);
+            }
+            // URL 合法 → 存档
+            AutoLog.saveEntry(gid, urlArg);
+            // 清理 recording 状态（log end 已由「自动复盘」指令触发）
+            delete AutoLog._recording[`${platform}-Group:${gid}`];
+
+        } else if (requireFupan) {
+            // 旧模式：检查 ev.fupan（转发复盘工作流）
+            const b_confirmedSchedule = JSON.parse(ext.storageGet("b_confirmedSchedule") || "{}");
+            let needFupan = false;
             for (let uidKey in b_confirmedSchedule) {
                 for (let ev of b_confirmedSchedule[uidKey]) {
-                    if (ev.group === gid && ev.status === "active") {
-                        // 如果该活跃记录没有 fupan 字段或 fupan !== true，则要求复盘
-                        if (!ev.fupan) {
-                            needFupan = true;
-                            break;
-                        }
+                    if (ev.group === gid && ev.status === "active" && !ev.fupan) {
+                        needFupan = true; break;
                     }
                 }
                 if (needFupan) break;
             }
-
             if (needFupan) {
                 seal.replyToSender(ctx, msg, `⚠️ 请先完成当前小群的复盘（合并记录并在回复该合并记录"转发复盘"指令），然后再结束私约。`);
                 return seal.ext.newCmdExecuteResult(true);
             }
         }
-        // 如果开关关闭，直接跳过复盘检查，继续结束流程
+        // 复盘检查通过（或已关闭），继续结束流程
 
         // ----- 复盘检查通过（或已关闭），继续原有结束逻辑 -----
         // 将占用状态移除，使该群可复用
@@ -3381,13 +3411,15 @@ cmd_grouplist_release.solve = (ctx, msg, cmdArgs) => {
         setGroupName(ctx, msg, ctx.group.groupId, `备用`);
         cleanupGroupTimer(gid);
 
-        // 自动结束复盘记录
-        try {
-            const _lm = seal.newMessage();
-            _lm.messageType = "group";
-            _lm.groupId = `${platform}-Group:${gid}`;
-            AutoLog.endLog(seal.createTempCtx(ctx.endPoint, _lm), _lm);
-        } catch(e) { console.log("[AutoLog] 结束记录失败:", e); }
+        // 非 autoLog 模式下兜底停录；autoLog 模式下已由「自动复盘」指令结束
+        if (!seal.ext.getBoolConfig(ext, "自动复盘记录")) {
+            try {
+                const _lm = seal.newMessage();
+                _lm.messageType = "group";
+                _lm.groupId = `${platform}-Group:${gid}`;
+                AutoLog.endLog(seal.createTempCtx(ctx.endPoint, _lm), _lm);
+            } catch(e) { console.log("[AutoLog] 结束记录失败:", e); }
+        }
 
         applyEndGameBonuses(ctx, msg, gid, platform);
     } else {
@@ -3410,9 +3442,35 @@ cmd_force_end.solve = (ctx, msg, cmdArgs) => {
     }
 
     const platform = msg.platform;
-    const argGid = (cmdArgs.getArgN(1) || "").trim();
-    const gid = argGid || msg.groupId.replace(`${platform}-Group:`, "");
-    const isRemote = !!argGid; // 是否在外部群操作
+    // 参数解析：支持 「强结私约 URL」「强结私约 GID」「强结私约 GID URL」
+    const arg1 = (cmdArgs.getArgN(1) || "").trim();
+    const arg2 = (cmdArgs.getArgN(2) || "").trim();
+    const isArg1Url = /^https?:\/\//.test(arg1);
+    const isArg1Gid = /^\d+$/.test(arg1);
+    let gid, urlArg, isRemote;
+    if (isArg1Url) {
+        gid      = msg.groupId.replace(`${platform}-Group:`, "");
+        urlArg   = arg1;
+        isRemote = false;
+    } else if (isArg1Gid) {
+        gid      = arg1;
+        urlArg   = /^https?:\/\//.test(arg2) ? arg2 : null;
+        isRemote = true;
+    } else {
+        gid      = msg.groupId.replace(`${platform}-Group:`, "");
+        urlArg   = null;
+        isRemote = false;
+    }
+
+    // 强制复盘检查
+    const requireFupan = JSON.parse(ext.storageGet("require_fupan_before_end") || "true");
+    const autoLogOn    = seal.ext.getBoolConfig(ext, "自动复盘记录");
+    if (requireFupan && autoLogOn && !urlArg) {
+        seal.replyToSender(ctx, msg,
+            `⚠️ 强制复盘已开启。\n请先在群 ${gid} 发送「自动复盘」触发日志上传，\n获取链接后发送：\n强结私约 ${isRemote ? gid + " " : ""}[链接]`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    if (urlArg) AutoLog.saveEntry(gid, urlArg);
 
     // 构造目标群的 msg/ctx，用于在目标群发消息和改群名
     const targetMsg = seal.newMessage();
@@ -3485,8 +3543,9 @@ cmd_force_end.solve = (ctx, msg, cmdArgs) => {
         saveSessionStats(sessionStats);
     }
 
-    // 自动结束复盘记录（强结）
+    // 兜底停录（autoLog 模式下 log 已由「自动复盘」结束；否则此处兜底）
     try { AutoLog.endLog(targetCtx, targetMsg); } catch(e) { console.log("[AutoLog] 强结记录失败:", e); }
+    if (urlArg) delete AutoLog._recording[`${platform}-Group:${gid}`];
 
     // 在目标群发送提示，@ 所有参与者请其退群
     const atParts = [...participantUids].map(uid => `[CQ:at,qq=${uid}]`).join(" ");
@@ -10244,6 +10303,126 @@ cmd_abolish_schedule.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["拒绝时间线"] = cmd_abolish_schedule;
+
+// ========================
+// 📋 复盘归档系统
+// ========================
+
+// 「自动复盘」：触发 log end，让 seal 发出上传 URL，之后任何人发「结束私约 URL」完成结戏
+const cmd_auto_fupan = seal.ext.newCmdItemInfo();
+cmd_auto_fupan.name = "自动复盘";
+cmd_auto_fupan.help = "在当前小群触发日志上传，获取链接后发送「结束私约 [链接]」完成结戏";
+cmd_auto_fupan.solve = (ctx, msg, cmdArgs) => {
+    const platform = msg.platform;
+    const gid = msg.groupId.replace(`${platform}-Group:`, "");
+
+    // 必须是占用中的群
+    const group = JSON.parse(ext.storageGet("group") || "[]");
+    if (!group.includes(`${gid}_占用`)) {
+        seal.replyToSender(ctx, msg, "⚠️ 当前群不处于占用状态，无法触发复盘。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    if (!seal.ext.getBoolConfig(ext, "自动复盘记录")) {
+        seal.replyToSender(ctx, msg, "⚠️ 自动复盘记录未开启，请在 WebUI 中启用后再试。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const fullGid = `${platform}-Group:${gid}`;
+    if (!AutoLog._recording[fullGid]) {
+        seal.replyToSender(ctx, msg, "ℹ️ 当前群未在自动记录中（可能已手动 .log end）。\n日志已结束，请直接发送：结束私约 [链接]");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 触发 log end
+    AutoLog.endLog(ctx, msg);
+    seal.replyToSender(ctx, msg, "📋 复盘日志已触发上传，请将上方链接作为参数发送：\n结束私约 [链接]");
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["自动复盘"] = cmd_auto_fupan;
+
+// 「导出复盘」：格式化输出所有归档记录（管理员）
+const cmd_export_fupan = seal.ext.newCmdItemInfo();
+cmd_export_fupan.name = "导出复盘";
+cmd_export_fupan.help = "导出本季全部复盘归档记录（管理员）";
+cmd_export_fupan.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) {
+        seal.replyToSender(ctx, msg, "⚠️ 该指令仅限管理员使用");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const entries = JSON.parse(ext.storageGet("autolog_entries") || "[]");
+    if (entries.length === 0) {
+        seal.replyToSender(ctx, msg, "📭 暂无复盘记录。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 按 day 分组，day 内按 timestamp 排序
+    const byDay = {};
+    for (const e of entries) {
+        const d = e.day || "未知";
+        if (!byDay[d]) byDay[d] = [];
+        byDay[d].push(e);
+    }
+
+    const subtypeIcon = { "私密": "💌", "官约": "🎖️", "电话": "📞" };
+    let out = "📚 复盘归档\n━━━━━━━━━━━━\n";
+    for (const day of Object.keys(byDay).sort()) {
+        out += `【${day}】\n`;
+        for (const e of byDay[day]) {
+            const icon = subtypeIcon[e.subtype] || "🔸";
+            const who  = e.participants.length ? e.participants.join("×") : "未知";
+            out += `${icon} ${e.subtype} · ${e.place || "未知地点"}\n`;
+            out += `   ${who}`;
+            if (e.time) out += ` · ${e.time}`;
+            out += `\n   🔗 ${e.url}\n`;
+        }
+        out += "\n";
+    }
+    out += `━━━━━━━━━━━━\n共 ${entries.length} 条`;
+
+    seal.replyToSender(ctx, msg, out);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["导出复盘"] = cmd_export_fupan;
+
+// 「存入复盘」：手动补录 URL（管理员，补救用）
+const cmd_save_fupan = seal.ext.newCmdItemInfo();
+cmd_save_fupan.name = "存入复盘";
+cmd_save_fupan.help = "手动存入复盘链接（管理员）\n用法：。存入复盘 [URL]";
+cmd_save_fupan.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) {
+        seal.replyToSender(ctx, msg, "⚠️ 该指令仅限管理员使用");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    const url = (cmdArgs.getArgN(1) || "").trim();
+    if (!/^https?:\/\//.test(url)) {
+        seal.replyToSender(ctx, msg, "❌ 请提供有效的日志链接，例：\n存入复盘 http://log.weizaima.com/?key=xxx");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    const platform = msg.platform;
+    const gid = msg.groupId.replace(`${platform}-Group:`, "");
+    AutoLog.saveEntry(gid, url);
+    seal.replyToSender(ctx, msg, "✅ 已存入复盘记录。");
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["存入复盘"] = cmd_save_fupan;
+
+// 「清空复盘记录」：一季结束后清空（管理员）
+const cmd_clear_fupan = seal.ext.newCmdItemInfo();
+cmd_clear_fupan.name = "清空复盘记录";
+cmd_clear_fupan.help = "清空本季全部复盘归档记录（管理员，不可恢复）";
+cmd_clear_fupan.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) {
+        seal.replyToSender(ctx, msg, "⚠️ 该指令仅限管理员使用");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    const entries = JSON.parse(ext.storageGet("autolog_entries") || "[]");
+    ext.storageSet("autolog_entries", "[]");
+    seal.replyToSender(ctx, msg, `🗑️ 已清空 ${entries.length} 条复盘记录。`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["清空复盘记录"] = cmd_clear_fupan;
 
 // ========================
 // 📦 打包复盘 / 清理复盘
