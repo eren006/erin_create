@@ -108,15 +108,16 @@ const AutoLog = {
     },
 
     // 把 URL + group_expire_info 快照存入 autolog_entries
-    saveEntry: function(rawGid, url) {
+    saveEntry: function(rawGid, url, title) {
         const info = JSON.parse(ext.storageGet("group_expire_info") || "{}")[rawGid] || {};
         const participants = info.participants || [];
         const nameTag = participants.length > 2 ? "多人" : participants.join("×");
         const entries = JSON.parse(ext.storageGet("autolog_entries") || "[]");
         entries.push({
             url,
-            gid: rawGid,
-            groupName: [info.subtype, info.day, info.time, info.place, nameTag].filter(Boolean).join(" "),
+            title:        title || "",
+            gid:          rawGid,
+            groupName:    [info.subtype, info.day, info.time, info.place, nameTag].filter(Boolean).join(" "),
             subtype:      info.subtype      || "未知",
             day:          info.day          || "",
             time:         info.time         || "",
@@ -125,7 +126,7 @@ const AutoLog = {
             timestamp:    Date.now()
         });
         ext.storageSet("autolog_entries", JSON.stringify(entries));
-        console.log(`[AutoLog] 存入复盘 ${rawGid} → ${url}`);
+        console.log(`[AutoLog] 存入复盘 ${rawGid}${title ? " 「" + title + "」" : ""} → ${url}`);
     }
 };
 
@@ -3434,7 +3435,7 @@ ext.cmdMap["结束私约"] = cmd_grouplist_release;
 // 用法：强结私约 [群号]  —— 不填群号则对当前群操作
 const cmd_force_end = seal.ext.newCmdItemInfo();
 cmd_force_end.name = "强结私约";
-cmd_force_end.help = "。强结私约 [群号]（管理员专用）：强制结束指定群（不填则当前群），跳过复盘检查，不发放结戏奖励，并在目标群 @ 成员提示退群。";
+cmd_force_end.help = "。强结私约 [URL|群号] [URL]（管理员专用）：强制结束群（不填群号则当前群），不发放结戏奖励。开启强制复盘时需附日志 URL。";
 cmd_force_end.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) {
         seal.replyToSender(ctx, msg, "⚠️ 该指令仅限管理员使用");
@@ -10372,7 +10373,7 @@ cmd_export_fupan.solve = (ctx, msg, cmdArgs) => {
         for (const e of byDay[day]) {
             const icon = subtypeIcon[e.subtype] || "🔸";
             const who  = e.participants.length ? e.participants.join("×") : "未知";
-            out += `${icon} ${e.subtype} · ${e.place || "未知地点"}\n`;
+            out += `${icon} ${e.title ? `【${e.title}】` : `${e.subtype} · ${e.place || "未知地点"}`}\n`;
             out += `   ${who}`;
             if (e.time) out += ` · ${e.time}`;
             out += `\n   🔗 ${e.url}\n`;
@@ -10389,21 +10390,26 @@ ext.cmdMap["导出复盘"] = cmd_export_fupan;
 // 「存入复盘」：手动补录 URL（管理员，补救用）
 const cmd_save_fupan = seal.ext.newCmdItemInfo();
 cmd_save_fupan.name = "存入复盘";
-cmd_save_fupan.help = "手动存入复盘链接（管理员）\n用法：。存入复盘 [URL]";
+cmd_save_fupan.help = "手动存入复盘链接（管理员）\n用法：。存入复盘 [URL] [可选标题]";
 cmd_save_fupan.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) {
         seal.replyToSender(ctx, msg, "⚠️ 该指令仅限管理员使用");
         return seal.ext.newCmdExecuteResult(true);
     }
-    const url = (cmdArgs.getArgN(1) || "").trim();
+    // URL 是第一段，标题是 URL 之后的所有内容（允许带空格）
+    const raw = (cmdArgs.cleanArgs || "").trim();
+    const spaceIdx = raw.indexOf(" ");
+    const url   = spaceIdx > -1 ? raw.substring(0, spaceIdx).trim() : raw;
+    const title = spaceIdx > -1 ? raw.substring(spaceIdx + 1).trim() : "";
+
     if (!/^https?:\/\//.test(url)) {
-        seal.replyToSender(ctx, msg, "❌ 请提供有效的日志链接，例：\n存入复盘 http://log.weizaima.com/?key=xxx");
+        seal.replyToSender(ctx, msg, "❌ 请提供有效的日志链接，例：\n存入复盘 http://log.weizaima.com/?key=xxx D1私约咖啡馆");
         return seal.ext.newCmdExecuteResult(true);
     }
     const platform = msg.platform;
     const gid = msg.groupId.replace(`${platform}-Group:`, "");
-    AutoLog.saveEntry(gid, url);
-    seal.replyToSender(ctx, msg, "✅ 已存入复盘记录。");
+    AutoLog.saveEntry(gid, url, title);
+    seal.replyToSender(ctx, msg, `✅ 已存入复盘记录${title ? `「${title}」` : ""}。`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["存入复盘"] = cmd_save_fupan;
