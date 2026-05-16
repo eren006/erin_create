@@ -23,18 +23,18 @@ seal.ext.registerStringConfig(ext, "ws地址", "ws://localhost:3001");
     seal.ext.registerStringConfig(ext, "ws Access token", '', "输入与上方端口对应的token，没有则留空");
     seal.ext.registerStringConfig(ext, "群管插件使用需要满足的条件", '1', "使用豹语表达式，例如：$t群号_RAW=='2001'，1为所有群可用");
     seal.ext.registerBoolConfig(ext, "开启现实时段校验", false, "是否限制玩家只能发起与当前现实时间对应的剧情时段邀约");
-    seal.ext.registerBoolConfig(ext, "自动复盘记录", true, "开启后，群组开始私约时自动触发 .log new，结束时自动 .log end");
+    seal.ext.registerBoolConfig(ext, "自动复盘记录", true, "私约/官约开始时自动 .log new，结束时自动 .log end；关闭后「打包复盘」指令仍可用");
     seal.ext.registerStringConfig(ext, "复盘打包服务地址", "http://127.0.0.1:9999", "trigger_server.py 监听地址，用于「打包复盘」指令");
 
 // ========================
 // 📝 AutoLog 自动复盘模块
 // ========================
 const AutoLog = {
-    _recording: {},   // { [groupId]: true }
+    _recording: {},   // { [platform-Group:gid]: true }
 
+    // 查找海豹 log 扩展的 log 命令（优先 core/log，fallback 全局扫描）
     _findLogCmd: function() {
-        const names = ["log", "core", "跑团日志", "logger", "logging", "record"];
-        for (const n of names) {
+        for (const n of ["log", "core"]) {
             const e = seal.ext.find(n);
             if (e && e.cmdMap && e.cmdMap["log"]) return e.cmdMap["log"];
         }
@@ -44,31 +44,37 @@ const AutoLog = {
         return null;
     },
 
-    _makeArgs: function(argsArr, rawStr) {
+    // 把群名转成合法的日志文件名
+    _safe: function(name) {
+        return name
+            .replace(/[\s　]+/g, "_")          // 空格
+            .replace(/[\/\\：:，、·×＊\*！!？?]/g, "_")  // 特殊符号
+            .replace(/_+/g, "_")               // 连续下划线合并
+            .replace(/^_|_$/g, "");            // 首尾下划线去掉
+    },
+
+    _args: function(arr, raw) {
         return {
-            command: "log", args: argsArr, kwargs: [], at: [],
-            rawArgs: rawStr, amIBeMentioned: false, amIBeMentionedFirst: false,
-            cleanArgs: rawStr,
-            getArgN: function(n) { return this.args[n - 1] || ""; },
-            getKwarg: function() { return ""; },
-            isArgEqual: function(n, v) { return this.getArgN(n) === v; }
+            command: "log", args: arr, kwargs: [], at: [],
+            rawArgs: raw, cleanArgs: raw,
+            amIBeMentioned: false, amIBeMentionedFirst: false,
+            getArgN(n) { return this.args[n - 1] || ""; },
+            getKwarg() { return ""; },
+            isArgEqual(n, v) { return this.getArgN(n) === v; }
         };
     },
 
-    startLog: function(ctx, msg, logName) {
+    startLog: function(ctx, msg, groupName) {
         try {
             if (!seal.ext.getBoolConfig(ext, "自动复盘记录")) return;
             const gid = msg.groupId;
-            if (this._recording[gid]) return;
-            const safeName = logName.replace(/ /g, "_").replace(/:/g, "").replace(/[\/\\]/g, "_");
+            if (this._recording[gid]) return;          // 已在录制，跳过
+            const safeName = this._safe(groupName);
             const cmd = this._findLogCmd();
-            if (cmd && typeof cmd.solve === "function") {
-                cmd.solve(ctx, msg, this._makeArgs(["new", safeName], `new ${safeName}`));
-                this._recording[gid] = true;
-                console.log(`[AutoLog] 开始记录群 ${gid}：${safeName}`);
-            } else {
-                console.log("[AutoLog] 未找到 log 扩展，跳过自动记录");
-            }
+            if (!cmd) { console.log("[AutoLog] 未找到 log 扩展"); return; }
+            cmd.solve(ctx, msg, this._args(["new", safeName], `new ${safeName}`));
+            this._recording[gid] = true;
+            console.log(`[AutoLog] ▶ 开始记录 ${gid} → ${safeName}`);
         } catch(e) {
             console.log("[AutoLog] startLog 错误:", e);
         }
@@ -78,16 +84,27 @@ const AutoLog = {
         try {
             if (!seal.ext.getBoolConfig(ext, "自动复盘记录")) return;
             const gid = msg.groupId;
-            if (!this._recording[gid]) return;
+            if (!this._recording[gid]) return;          // 本次没有记录，跳过
             const cmd = this._findLogCmd();
-            if (cmd && typeof cmd.solve === "function") {
-                cmd.solve(ctx, msg, this._makeArgs(["end"], "end"));
-                delete this._recording[gid];
-                console.log(`[AutoLog] 结束记录群 ${gid}`);
-            }
+            if (!cmd) return;
+            cmd.solve(ctx, msg, this._args(["end"], "end"));
+            delete this._recording[gid];
+            console.log(`[AutoLog] ■ 结束记录 ${gid}`);
         } catch(e) {
             console.log("[AutoLog] endLog 错误:", e);
         }
+    },
+
+    // 统一的"在目标群触发 startLog"工具，外部传 platform + rawGid + groupName + endPoint
+    scheduleStart: function(endPoint, platform, rawGid, groupName) {
+        setTimeout(() => {
+            try {
+                const m = seal.newMessage();
+                m.messageType = "group";
+                m.groupId = `${platform}-Group:${rawGid}`;
+                AutoLog.startLog(seal.createTempCtx(endPoint, m), m, groupName);
+            } catch(e) { console.log("[AutoLog] scheduleStart 错误:", e); }
+        }, 600);
     }
 };
 
@@ -3366,11 +3383,10 @@ cmd_grouplist_release.solve = (ctx, msg, cmdArgs) => {
 
         // 自动结束复盘记录
         try {
-            const endLogMsg = seal.newMessage();
-            endLogMsg.messageType = "group";
-            endLogMsg.groupId = `${platform}-Group:${gid}`;
-            const endLogCtx = seal.createTempCtx(ctx.endPoint, endLogMsg);
-            AutoLog.endLog(endLogCtx, endLogMsg);
+            const _lm = seal.newMessage();
+            _lm.messageType = "group";
+            _lm.groupId = `${platform}-Group:${gid}`;
+            AutoLog.endLog(seal.createTempCtx(ctx.endPoint, _lm), _lm);
         } catch(e) { console.log("[AutoLog] 结束记录失败:", e); }
 
         applyEndGameBonuses(ctx, msg, gid, platform);
@@ -3469,7 +3485,7 @@ cmd_force_end.solve = (ctx, msg, cmdArgs) => {
         saveSessionStats(sessionStats);
     }
 
-    // 自动结束复盘记录
+    // 自动结束复盘记录（强结）
     try { AutoLog.endLog(targetCtx, targetMsg); } catch(e) { console.log("[AutoLog] 强结记录失败:", e); }
 
     // 在目标群发送提示，@ 所有参与者请其退群
@@ -4005,17 +4021,7 @@ ${groupData.sendname} 约你 ${groupData.day} ${groupData.time} 在 ${groupData.
     if (groupData.subtype) initGroupTimer(platform, gid, groupData.subtype, participants, participants[0]);
 
     // 8. 自动开始复盘记录
-    setTimeout(() => {
-        try {
-            const logMsg = seal.newMessage();
-            logMsg.messageType = "group";
-            logMsg.groupId = `${platform}-Group:${gid}`;
-            const logCtx = seal.createTempCtx(ctx.endPoint, logMsg);
-            AutoLog.startLog(logCtx, logMsg, finalGroupName);
-        } catch(e) {
-            console.log("[AutoLog] 启动延迟记录失败:", e);
-        }
-    }, 800);
+    AutoLog.scheduleStart(ctx.endPoint, platform, gid, finalGroupName);
 
     return gid;
 }
@@ -5492,10 +5498,12 @@ cmd_create_official_appointment.solve = async (ctx, msg, cmdArgs) => {
   }
 
   // --- 核心：启动计时器 ---
-  // 官约模式下，默认发起人为管理员，这里可以使用 validParticipants[0] 作为逻辑上的发起者
   if (typeof initGroupTimer === "function") {
       initGroupTimer(platform, gid, "官约", validParticipants, validParticipants[0]);
   }
+
+  // 自动开始复盘记录
+  AutoLog.scheduleStart(ctx.endPoint, platform, gid, finalGroupName);
 
   recordMeetingAndAnnounce("官约", platform, ctx, ctx.endPoint);
   seal.replyToSender(ctx, msg, `✅ 官约创建成功！群号：${gid}`);
@@ -5814,6 +5822,9 @@ cmd_execute_official.solve = async (ctx, msg, cmdArgs) => {
     if (typeof initGroupTimer === "function") {
       initGroupTimer(platform, gid, "官约", participants, participants[0]);
     }
+
+    // 自动开始复盘记录
+    AutoLog.scheduleStart(ctx.endPoint, platform, gid, finalGroupName);
 
     recordMeetingAndAnnounce("官约", platform, ctx, ctx.endPoint);
     results.push(`第${i + 1}组 [${gid}]：${participants.join("、")} @ ${place}`);
