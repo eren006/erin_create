@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>{{ code }} · 长日存档</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #060608;
+  --surface: #0e0e14;
+  --border: #1e1e2a;
+  --text: #c8ccd8;
+  --muted: #505068;
+  --led: {% if code == 500 %}#ff1744{% else %}#ffcc00{% endif %};
+  --led-glow: {% if code == 500 %}rgba(255,23,68,.35){% else %}rgba(255,204,0,.28){% endif %};
+  --accent: #e8eaf0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 24px;
+  overflow: hidden;
+}
+
+/* 扫描线背景 */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(255,255,255,.012) 2px,
+    rgba(255,255,255,.012) 4px
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+.wrap {
+  position: relative; z-index: 1;
+  max-width: 560px; width: 100%;
+  text-align: center;
+}
+
+/* LED 圆环 */
+.led-ring {
+  width: 80px; height: 80px;
+  border-radius: 50%;
+  border: 2px solid var(--led);
+  box-shadow: 0 0 18px var(--led-glow), inset 0 0 10px var(--led-glow);
+  margin: 0 auto 32px;
+  display: flex; align-items: center; justify-content: center;
+  animation: pulse 2.4s ease-in-out infinite;
+}
+.led-dot {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: var(--led);
+  box-shadow: 0 0 12px var(--led);
+  animation: pulse-dot 2.4s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 18px var(--led-glow), inset 0 0 10px var(--led-glow); }
+  50%       { box-shadow: 0 0 36px var(--led-glow), inset 0 0 18px var(--led-glow); }
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: .55; }
+}
+
+/* 错误码 */
+.code {
+  font-size: 11px; font-weight: 700; letter-spacing: 3px;
+  text-transform: uppercase; color: var(--led);
+  margin-bottom: 16px;
+  font-family: 'Courier New', monospace;
+}
+
+/* 标题 */
+.title {
+  font-size: 28px; font-weight: 700;
+  color: var(--accent); line-height: 1.25;
+  margin-bottom: 10px;
+}
+
+/* 副标题 */
+.lead {
+  font-size: 14px; color: var(--led);
+  letter-spacing: .5px; margin-bottom: 20px;
+  font-style: italic;
+}
+
+/* 正文（马库斯的话） */
+.body-text {
+  font-size: 14px; color: var(--text);
+  line-height: 1.85; max-width: 420px; margin: 0 auto 36px;
+  opacity: .82;
+}
+
+/* 分隔线 */
+.divider {
+  width: 40px; height: 1px;
+  background: var(--border); margin: 28px auto;
+}
+
+/* 回去按钮 */
+.back-btn {
+  display: inline-flex; align-items: center; gap: 10px;
+  background: none; border: 1px solid var(--led);
+  color: var(--led); border-radius: 8px;
+  padding: 11px 28px; font-size: 14px; font-weight: 600;
+  cursor: pointer; text-decoration: none;
+  transition: background .2s, box-shadow .2s;
+  font-family: inherit;
+}
+.back-btn:hover {
+  background: var(--led-glow);
+  box-shadow: 0 0 16px var(--led-glow);
+}
+.back-btn svg { flex-shrink: 0; }
+
+/* 小字署名 */
+.sig {
+  margin-top: 40px; font-size: 11px; color: var(--muted);
+  letter-spacing: 1.5px; text-transform: uppercase;
+  font-family: 'Courier New', monospace;
+}
+
+/* 故障闪烁（仅 500） */
+{% if code == 500 %}
+.title {
+  animation: glitch 4.5s steps(1) infinite;
+}
+@keyframes glitch {
+  0%, 94%, 100% { clip-path: none; transform: none; }
+  95% { clip-path: polygon(0 20%, 100% 20%, 100% 40%, 0 40%);
+        transform: translateX(-3px); }
+  96% { clip-path: polygon(0 60%, 100% 60%, 100% 75%, 0 75%);
+        transform: translateX(3px); }
+  97% { clip-path: none; transform: none; }
+}
+{% endif %}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="led-ring"><div class="led-dot"></div></div>
+
+  <div class="code">ERROR · {{ code }}</div>
+  <div class="title">{{ title }}</div>
+  <div class="lead">{{ lead }}</div>
+
+  <div class="divider"></div>
+
+  <p class="body-text">{{ body }}</p>
+
+  <a class="back-btn" href="javascript:history.length>1?history.back():location.replace('/')">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="15 18 9 12 15 6"/>
+    </svg>
+    送我回去
+  </a>
+
+  <div class="sig">— Marcus · Jericho System</div>
+</div>
+</body>
+</html>

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{% block title %}长日存档{% endblock %}</title>
+<title>{% block title %}{{ show.name }} · 长日存档{% endblock %}</title>
 <style>
 :root {
   --bg: #0f0f13;
@@ -37,59 +37,17 @@ a:hover { color: var(--accent2); }
 }
 .topbar::-webkit-scrollbar { display: none; }
 .topbar .logo { font-size: 15px; font-weight: 600; color: var(--accent2); white-space: nowrap; flex-shrink: 0; }
+.topbar .show-name { font-size: 13px; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
 .topbar .nav { display: flex; gap: 4px; flex-shrink: 0; }
 .topbar .nav a { color: var(--muted); font-size: 13px; padding: 4px 8px; border-radius: 6px; white-space: nowrap; }
 .topbar .nav a:hover { color: var(--text); background: var(--surface2); }
-.search-form { display: flex; gap: 6px; flex-shrink: 0; }
-.search-form input {
-  background: var(--surface2); border: 1px solid var(--border);
-  color: var(--text); border-radius: 8px; padding: 5px 10px; font-size: 13px; width: 130px;
+.readonly-badge {
+  font-size: 11px; color: var(--muted); background: var(--surface2);
+  border: 1px solid var(--border); border-radius: 20px; padding: 2px 10px; white-space: nowrap;
+  flex-shrink: 0; margin-left: auto;
 }
-.search-form input:focus { outline: none; border-color: var(--accent); }
-.search-form button {
-  background: var(--accent); color: #fff; border: none;
-  border-radius: 8px; padding: 5px 10px; cursor: pointer; font-size: 13px; white-space: nowrap;
-}
-.search-form button:hover { background: var(--accent2); }
-.logout { color: var(--muted); font-size: 12px; margin-left: auto; white-space: nowrap; flex-shrink: 0; }
-@media(max-width:600px) {
-  .search-form { display: none; }
-  .logout { display: none; }
-}
-
-.show-pills { display: flex; align-items: center; gap: 4px; }
-.show-pill {
-  background: var(--surface2); border: 1px solid var(--border); color: var(--muted);
-  border-radius: 20px; padding: 3px 12px; font-size: 12px; cursor: pointer;
-  font-family: inherit; transition: all .15s; white-space: nowrap; position: relative;
-}
-.show-pill:hover { border-color: var(--accent); color: var(--text); }
-.show-pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-.live-dot {
-  display: inline-block; width: 6px; height: 6px; background: #86efac;
-  border-radius: 50%; margin-left: 5px; vertical-align: middle;
-  animation: pulse 2s infinite;
-}
-@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
-.show-pill-manage {
-  color: var(--muted); font-size: 14px; padding: 2px 6px; border-radius: 6px;
-  text-decoration: none; transition: color .15s;
-}
-.show-pill-manage:hover { color: var(--accent); }
 
 .page { max-width: 1100px; margin: 0 auto; padding: 28px 20px; }
-@media(max-width:600px) { .page { padding: 16px 14px; } }
-
-.superadmin-bar {
-  background: #1a1200; border-bottom: 1px solid #5a3a00;
-  padding: 8px 20px; display: flex; align-items: center; gap: 12px;
-  font-size: 12px; color: #fcd34d;
-}
-.superadmin-bar form button {
-  background: #3a2800; border: 1px solid #5a3a00; color: #fcd34d;
-  border-radius: 6px; padding: 3px 12px; font-size: 11px; cursor: pointer;
-}
-.superadmin-bar form button:hover { background: #4a3500; }
 .page-title {
   font-size: 20px; font-weight: 600; color: var(--accent2);
   margin-bottom: 20px; padding-bottom: 12px;
@@ -114,7 +72,6 @@ a:hover { color: var(--accent2); }
 .tag-call     { background: #1a2d3a; color: #60c8ff; }
 .tag-official { background: #1f2d1a; color: #86efac; }
 .tag-forced   { background: #3a1a1a; color: #f87171; }
-.tag-normal   { background: #1e2a1e; color: #86efac; }
 
 .pill {
   display: inline-block; background: var(--surface2); border: 1px solid var(--border);
@@ -123,9 +80,6 @@ a:hover { color: var(--accent2); }
 }
 
 .empty { color: var(--muted); text-align: center; padding: 48px 0; font-size: 14px; }
-
-.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-@media(max-width:700px) { .grid-2 { grid-template-columns: 1fr; } }
 [data-theme=spring]{--bg:#0f0a10;--surface:#1a1020;--surface2:#22152a;--border:#3e2040;--accent:#f472b6;--accent2:#e879f9;--text:#fce7f3;--muted:#a07898}
 [data-theme=summer]{--bg:#080f10;--surface:#0d1a1c;--surface2:#122225;--border:#1a3a40;--accent:#06b6d4;--accent2:#22d3ee;--text:#e0f7fa;--muted:#507880}
 [data-theme=autumn]{--bg:#100a04;--surface:#1c1008;--surface2:#261508;--border:#4a2a08;--accent:#f59e0b;--accent2:#f97316;--text:#fef3c7;--muted:#907050}
@@ -141,47 +95,18 @@ a:hover { color: var(--accent2); }
 :is([data-theme=spring-day],[data-theme=summer-day],[data-theme=autumn-day],[data-theme=winter-day],[data-theme=monet-day]) .tag-call{background:#e0f2fe;color:#0369a1}
 :is([data-theme=spring-day],[data-theme=summer-day],[data-theme=autumn-day],[data-theme=winter-day],[data-theme=monet-day]) .tag-official{background:#dcfce7;color:#15803d}
 :is([data-theme=spring-day],[data-theme=summer-day],[data-theme=autumn-day],[data-theme=winter-day],[data-theme=monet-day]) .tag-forced{background:#fee2e2;color:#dc2626}
-:is([data-theme=spring-day],[data-theme=summer-day],[data-theme=autumn-day],[data-theme=winter-day],[data-theme=monet-day]) .tag-normal{background:#dcfce7;color:#15803d}
 </style>
 <script>(function(){var t=localStorage.getItem('rp_theme');if(t&&t!=='default')document.documentElement.setAttribute('data-theme',t)})()</script>
 {% block head %}{% endblock %}
 </head>
 <body>
-{% if session.get('superadmin_acting') %}
-<div class="superadmin-bar">
-  ⚠️ 超管模式：正在操作租户「{{ session.get('tenant_display_name') or session.get('tenant_username') }}」的数据
-  <form method="post" action="{{ url_for('superadmin_exit_tenant') }}" style="margin-left:auto;">
-    <button type="submit">← 返回超管面板</button>
-  </form>
-</div>
-{% endif %}
 <div class="topbar">
-  <span class="logo">📖 长日存档</span>
-
-  {% if all_shows %}
-  <div class="show-pills">
-    {% for s in all_shows %}
-    <form method="post" action="{{ url_for('admin_show_view', sid=s.id) }}" style="display:inline">
-      <button type="submit" class="show-pill {% if s.id == current_show_id %}active{% endif %}" title="{{ '当前活跃弧（机器人写入此弧）' if s.is_current else '' }}">
-        {{ s.name }}{% if s.is_current %}<span class="live-dot"></span>{% endif %}
-      </button>
-    </form>
-    {% endfor %}
-    <a class="show-pill-manage" href="{{ url_for('admin_shows') }}" title="管理弧">⚙</a>
-  </div>
-  {% endif %}
-
+  <span class="logo">📖 {{ show.name }}</span>
+  <span class="show-name">长日存档 · 公开视图</span>
   <nav class="nav">
-    <a href="{{ url_for('home') }}">场次</a>
-    <a href="{{ url_for('interactions_index') }}">互动</a>
-    <a href="{{ url_for('admin') }}">后台</a>
+    <a href="/view/{{ token }}">场次</a>
   </nav>
-  <form class="search-form" action="{{ url_for('search') }}" method="get">
-    <input name="q" placeholder="搜索角色名…" autocomplete="off">
-    <button type="submit">搜索</button>
-  </form>
-  <span style="color:var(--muted);font-size:12px;flex-shrink:0;">{{ session.get('tenant_display_name') or session.get('tenant_username') }}</span>
-  <a class="logout" href="{{ url_for('logout') }}">退出</a>
+  <span class="readonly-badge">只读</span>
 </div>
 {% block body %}{% endblock %}
 <div id="tp"><button id="tp-btn" onclick="document.getElementById('tp-panel').classList.toggle('open')" title="切换主题">🎨</button><div id="tp-panel"><div class="tp-item" onclick="setTheme('default')"><span class="tp-dot" style="background:#8b7cf6"></span>默认</div><div class="tp-item" onclick="setTheme('spring')"><span class="tp-dot" style="background:#f472b6"></span>春 · 樱</div><div class="tp-item" onclick="setTheme('summer')"><span class="tp-dot" style="background:#06b6d4"></span>夏 · 海</div><div class="tp-item" onclick="setTheme('autumn')"><span class="tp-dot" style="background:#f59e0b"></span>秋 · 枫</div><div class="tp-item" onclick="setTheme('winter')"><span class="tp-dot" style="background:#7dd3fc"></span>冬 · 冰</div><div class="tp-item" onclick="setTheme('monet')"><span class="tp-dot" style="background:#a8d8ea"></span>莫奈</div><div class="tp-item" onclick="setTheme('detroit')"><span class="tp-dot" style="background:#00b4ff"></span>底特律</div><div class="tp-sep">日间 ☀</div><div class="tp-item" onclick="setTheme('spring-day')"><span class="tp-dot" style="background:#db2777"></span>春 · 樱</div><div class="tp-item" onclick="setTheme('summer-day')"><span class="tp-dot" style="background:#0284c7"></span>夏 · 海</div><div class="tp-item" onclick="setTheme('autumn-day')"><span class="tp-dot" style="background:#b45309"></span>秋 · 枫</div><div class="tp-item" onclick="setTheme('winter-day')"><span class="tp-dot" style="background:#1d6fa0"></span>冬 · 冰</div><div class="tp-item" onclick="setTheme('monet-day')"><span class="tp-dot" style="background:#4a8fa8"></span>莫奈</div></div></div>

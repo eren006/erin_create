@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>长日存档 · 租户管理</title>
+<style>
+:root {
+  --bg:#0f0f13; --surface:#1a1a22; --surface2:#22222e; --border:#2e2e3e;
+  --accent:#f59e0b; --accent2:#fcd34d; --text:#e2e2ec; --muted:#7878a0;
+  --red:#f87171; --green:#86efac;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:"PingFang SC","Microsoft YaHei",sans-serif;font-size:14px;line-height:1.7;}
+a{color:var(--accent);text-decoration:none;}
+a:hover{color:var(--accent2);}
+
+.topbar{
+  background:var(--surface);border-bottom:1px solid var(--border);
+  padding:0 24px;display:flex;align-items:center;gap:16px;height:52px;
+  position:sticky;top:0;z-index:100;
+}
+.topbar .logo{font-size:16px;font-weight:700;color:var(--accent2);}
+.topbar .logout{margin-left:auto;font-size:12px;color:var(--muted);}
+
+.page{max-width:900px;margin:0 auto;padding:28px 20px;}
+.page-title{font-size:20px;font-weight:600;color:var(--accent2);margin-bottom:20px;
+  padding-bottom:12px;border-bottom:1px solid var(--border);}
+
+.banner{border-radius:8px;padding:10px 16px;margin-bottom:18px;font-size:13px;}
+.banner-ok{background:#1a3a1a;border:1px solid #2a5a2a;color:var(--green);}
+.banner-err{background:#3a1a1a;border:1px solid #5a2a2a;color:var(--red);}
+
+/* 新建租户表单 */
+.new-form{
+  background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:20px 24px;margin-bottom:28px;
+}
+.new-form h3{font-size:13px;font-weight:700;color:var(--muted);letter-spacing:1px;
+  text-transform:uppercase;margin-bottom:16px;}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+@media(max-width:600px){.form-grid{grid-template-columns:1fr;}}
+.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px;}
+.field input{
+  width:100%;background:var(--surface2);border:1px solid var(--border);
+  color:var(--text);border-radius:8px;padding:8px 12px;font-size:13px;
+}
+.field input:focus{outline:none;border-color:var(--accent);}
+.form-footer{margin-top:14px;display:flex;align-items:center;gap:12px;}
+.btn-create{
+  background:var(--accent);color:#0f0f13;border:none;border-radius:8px;
+  padding:8px 22px;font-size:13px;cursor:pointer;font-weight:700;
+}
+.btn-create:hover{background:var(--accent2);}
+
+/* 租户列表 */
+.tenant-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:18px 20px;margin-bottom:14px;
+}
+.tenant-header{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
+.tenant-name{font-size:15px;font-weight:700;}
+.tenant-display{font-size:13px;color:var(--muted);}
+.tenant-meta{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-bottom:14px;}
+.token-box{
+  background:var(--surface2);border:1px solid var(--border);border-radius:8px;
+  padding:8px 14px;font-family:monospace;font-size:12px;color:var(--accent2);
+  word-break:break-all;margin-bottom:12px;
+  display:flex;align-items:center;gap:10px;
+}
+.copy-btn{
+  background:none;border:1px solid var(--border);color:var(--muted);
+  border-radius:6px;padding:2px 10px;font-size:11px;cursor:pointer;white-space:nowrap;
+}
+.copy-btn:hover{color:var(--text);border-color:var(--accent);}
+.actions{display:flex;gap:8px;flex-wrap:wrap;}
+.btn-sm{
+  border:none;border-radius:6px;padding:5px 14px;font-size:12px;cursor:pointer;font-weight:600;
+}
+.btn-reset{background:#1a2d3a;color:#60c8ff;}
+.btn-reset:hover{background:#1f3a4a;}
+.btn-delete{background:#3a1a1a;color:var(--red);border:1px solid #5a2a2a;}
+.btn-delete:hover{background:#4a1f1f;}
+.pw-form{
+  display:none; margin-top:12px; background:var(--surface2);
+  border:1px solid var(--border); border-radius:8px; padding:12px 14px;
+}
+.pw-form label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;}
+.pw-form input{
+  width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);
+  border-radius:6px;padding:7px 10px;font-size:13px;margin-bottom:8px;
+}
+.pw-form input:focus{outline:none;border-color:var(--accent);}
+.pw-radios{display:flex;gap:16px;margin-bottom:10px;font-size:13px;}
+.pw-radios label{color:var(--text);margin-bottom:0;}
+.btn-pw-submit{
+  background:var(--accent);color:#0f0f13;border:none;border-radius:6px;
+  padding:5px 16px;font-size:12px;cursor:pointer;font-weight:700;
+}
+.btn-pw-cancel{
+  background:none;border:1px solid var(--border);color:var(--muted);
+  border-radius:6px;padding:5px 12px;font-size:12px;cursor:pointer;margin-left:6px;
+}
+.stat-chip{
+  display:inline-block;background:var(--surface2);border:1px solid var(--border);
+  border-radius:20px;padding:2px 10px;font-size:11px;color:var(--muted);
+}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <span class="logo">⚙️ 超级管理员</span>
+  <nav style="display:flex;gap:4px;">
+    <a href="{{ url_for('superadmin') }}" style="color:var(--accent2);font-size:13px;padding:4px 10px;border-radius:6px;background:var(--surface2);">租户管理</a>
+    <a href="{{ url_for('superadmin_players') }}" style="color:var(--muted);font-size:13px;padding:4px 10px;border-radius:6px;">玩家档案</a>
+  </nav>
+  <a class="logout" href="{{ url_for('superadmin_logout') }}">退出超管</a>
+</div>
+
+<div class="page">
+  <div class="page-title">租户管理</div>
+
+  {% if created %}
+  <div class="banner banner-ok">✅ 操作成功。</div>
+  {% endif %}
+  {% if deleted %}
+  <div class="banner banner-ok">🗑 租户及其所有数据已删除。</div>
+  {% endif %}
+  {% if error == 'missing_fields' %}
+  <div class="banner banner-err">⚠️ 请填写所有必填字段。</div>
+  {% elif error == 'duplicate' %}
+  <div class="banner banner-err">⚠️ 该用户名已被使用，请换一个。</div>
+  {% endif %}
+
+  <!-- 新建租户 -->
+  <div class="new-form">
+    <h3>新建租户</h3>
+    <form method="post" action="{{ url_for('superadmin_tenant_new') }}">
+      <div class="form-grid">
+        <div class="field">
+          <label>用户名 <span style="color:var(--red)">*</span></label>
+          <input type="text" name="username" placeholder="如 sakura_team" autocomplete="off" required>
+        </div>
+        <div class="field">
+          <label>团名（展示用）</label>
+          <input type="text" name="display_name" placeholder="如 樱花恋综" autocomplete="off">
+        </div>
+        <div class="field">
+          <label>查看密码 <span style="color:var(--red)">*</span></label>
+          <input type="password" name="view_password" placeholder="发给团员的密码" autocomplete="new-password" required>
+        </div>
+        <div class="field">
+          <label>管理密码 <span style="color:var(--red)">*</span></label>
+          <input type="password" name="admin_password" placeholder="主办自己保管" autocomplete="new-password" required>
+        </div>
+      </div>
+      <div class="form-footer">
+        <button type="submit" class="btn-create">＋ 创建</button>
+        <span style="font-size:12px;color:var(--muted)">API Token 将自动生成</span>
+      </div>
+    </form>
+  </div>
+
+  <!-- 租户列表 -->
+  {% if tenants %}
+    {% for t in tenants %}
+    <div class="tenant-card">
+      <div class="tenant-header">
+        <span class="tenant-name">{{ t.username }}</span>
+        {% if t.display_name %}
+        <span class="tenant-display">· {{ t.display_name }}</span>
+        {% endif %}
+        <span class="stat-chip">{{ t.session_count }} 场次</span>
+      </div>
+
+      <div class="tenant-meta">
+        <span>ID: {{ t.id }}</span>
+        <span>创建: {{ t.created_at_str or '—' }}</span>
+      </div>
+
+      <div class="token-box">
+        <span id="token-{{ t.id }}">{{ t.api_token }}</span>
+        <button class="copy-btn" onclick="copyToken('{{ t.api_token }}', this)">复制</button>
+      </div>
+
+      <div class="actions">
+        <form method="post" action="{{ url_for('superadmin_enter_tenant', tid=t.id) }}">
+          <button type="submit" class="btn-sm" style="background:#1a2d1a;color:#86efac;">👁 进入此租户</button>
+        </form>
+        <button class="btn-sm" style="background:#2d1f4e;color:#c084fc;"
+                onclick="togglePwForm('pw-{{ t.id }}')">🔑 重置密码</button>
+        <form method="post" action="{{ url_for('superadmin_tenant_reset_token', tid=t.id) }}"
+              onsubmit="return confirm('重置 Token 后旧 Token 立即失效，需要通知对方更新海豹配置。确认？')">
+          <button type="submit" class="btn-sm btn-reset">🔄 重置 Token</button>
+        </form>
+        <form method="post" action="{{ url_for('superadmin_tenant_delete', tid=t.id) }}"
+              onsubmit="return confirm('删除「{{ t.username }}」及其所有数据？此操作不可撤销。')">
+          <button type="submit" class="btn-sm btn-delete">🗑 删除租户</button>
+        </form>
+      </div>
+
+      <div class="pw-form" id="pw-{{ t.id }}">
+        <form method="post" action="{{ url_for('superadmin_set_password', tid=t.id) }}">
+          <div class="pw-radios">
+            <label><input type="radio" name="pw_type" value="view" checked> 查看密码</label>
+            <label><input type="radio" name="pw_type" value="admin"> 管理密码</label>
+          </div>
+          <label>新密码</label>
+          <input type="password" name="new_password" placeholder="输入新密码" autocomplete="new-password" required>
+          <button type="submit" class="btn-pw-submit">确认重置</button>
+          <button type="button" class="btn-pw-cancel" onclick="togglePwForm('pw-{{ t.id }}')">取消</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div style="color:var(--muted);text-align:center;padding:48px 0;">暂无租户。</div>
+  {% endif %}
+</div>
+
+<script>
+function copyToken(token, btn) {
+  navigator.clipboard.writeText(token).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = '已复制';
+    setTimeout(() => btn.textContent = orig, 1500);
+  });
+}
+function togglePwForm(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const visible = el.style.display === 'block';
+  el.style.display = visible ? 'none' : 'block';
+  if (!visible) el.querySelector('input[type="password"]')?.focus();
+}
+</script>
+</body>
+</html>

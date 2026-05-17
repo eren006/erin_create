@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+{% block title %}群号组管理 · 长日存档{% endblock %}
+
+{% block head %}
+<style>
+.sub-nav { display:flex; gap:6px; margin-bottom:24px; }
+.sub-nav a { font-size:13px; padding:5px 14px; border-radius:8px; background:var(--surface); border:1px solid var(--border); color:var(--muted); }
+.sub-nav a:hover { color:var(--text); border-color:var(--accent); }
+.sub-nav a.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+
+.banner { border-radius:8px; padding:9px 16px; margin-bottom:18px; font-size:13px; }
+.banner-ok  { background:#1a3a1a; border:1px solid #2a5a2a; color:var(--green); }
+.banner-err { background:#3a1a1a; border:1px solid #5a2a2a; color:var(--red); }
+
+/* 新建组 */
+.new-set-card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:12px; padding:16px 20px; margin-bottom:24px;
+  display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;
+}
+.new-set-card label { font-size:12px; color:var(--muted); display:block; margin-bottom:4px; }
+.new-set-card input {
+  background:var(--surface2); border:1px solid var(--border);
+  color:var(--text); border-radius:8px; padding:7px 12px; font-size:13px; width:200px;
+}
+.new-set-card input:focus { outline:none; border-color:var(--accent); }
+
+/* 群号组区块 */
+.set-block {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:12px; margin-bottom:20px; overflow:hidden;
+}
+.set-header {
+  display:flex; align-items:center; gap:12px;
+  padding:12px 18px; border-bottom:1px solid var(--border);
+  background:var(--surface2);
+}
+.set-name { font-size:15px; font-weight:600; color:var(--accent2); flex:1; }
+.set-count { font-size:12px; color:var(--muted); }
+
+/* 添加群号表单 */
+.add-row {
+  display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+  padding:12px 18px; border-bottom:1px solid var(--border);
+}
+.add-row input {
+  background:var(--surface2); border:1px solid var(--border);
+  color:var(--text); border-radius:8px; padding:6px 10px; font-size:13px;
+}
+.add-row input[name="group_id"] { width:140px; }
+.add-row input[name="name"]     { width:150px; }
+.add-row input:focus { outline:none; border-color:var(--accent); }
+
+/* 群号列表 */
+.gid-list { padding:10px 18px; }
+.gid-row {
+  display:flex; align-items:center; gap:10px;
+  padding:7px 0; border-bottom:1px solid var(--border);
+}
+.gid-row:last-child { border-bottom:none; }
+.gid-pill {
+  font-family:monospace; font-size:13px; color:var(--accent2);
+  background:var(--surface2); border:1px solid var(--border);
+  border-radius:6px; padding:2px 10px; flex-shrink:0;
+}
+.gid-note { font-size:12px; color:var(--muted); flex:1; }
+.gid-actions { display:flex; gap:6px; }
+
+/* 按钮 */
+.btn-add  { background:var(--accent); color:#fff; border:none; border-radius:8px; padding:6px 16px; font-size:13px; cursor:pointer; font-weight:600; white-space:nowrap; }
+.btn-add:hover { background:var(--accent2); }
+.btn-del  { background:#3a1a1a; color:var(--red); border:1px solid #5a2a2a; border-radius:6px; padding:3px 10px; font-size:12px; cursor:pointer; }
+.btn-del:hover { background:#4a1f1f; }
+.btn-del-set { background:none; color:var(--muted); border:1px solid var(--border); border-radius:6px; padding:3px 10px; font-size:12px; cursor:pointer; }
+.btn-del-set:hover { color:var(--red); border-color:var(--red); }
+
+/* 消散动效 */
+.gid-row { transition: transform .2s ease, opacity .2s ease, max-height .25s ease .2s, padding .25s ease .2s, margin .25s ease .2s; overflow:hidden; }
+.gid-row.vanishing { transform:translateX(20px); opacity:0; }
+.gid-row.vanished  { max-height:0 !important; padding-top:0 !important; padding-bottom:0 !important; margin:0 !important; border:none !important; }
+.set-block { transition: max-height .3s ease, opacity .3s ease, margin .3s ease; overflow:hidden; }
+.set-block.vanishing { opacity:0; transform:translateX(20px); transition: transform .2s ease, opacity .2s ease; }
+.set-block.vanished  { max-height:0 !important; margin-bottom:0 !important; }
+
+.empty-set { padding:16px 18px; color:var(--muted); font-size:13px; }
+
+.api-hint { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:14px 18px; margin-top:24px; font-size:12px; }
+.api-hint code { background:var(--surface2); border:1px solid var(--border); border-radius:5px; padding:1px 8px; font-family:monospace; color:var(--accent2); }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="page">
+  <div class="page-title">后台管理</div>
+
+  <div class="sub-nav">
+    <a href="{{ url_for('admin') }}">总览</a>
+    <a href="{{ url_for('admin_config_page') }}">游戏配置</a>
+    <a href="{{ url_for('admin_groups') }}" class="active">群号组</a>
+    <a href="{{ url_for('admin_rewards') }}">结戏奖励</a>
+    <a href="{{ url_for('admin_shows') }}">弧管理</a>
+  </div>
+
+  {% if msg == 'added' %}
+  <div class="banner banner-ok">✅ 群号已添加。</div>
+  {% elif msg == 'deleted' %}
+  <div class="banner banner-ok">🗑 群号已移除。</div>
+  {% elif msg == 'set_deleted' %}
+  <div class="banner banner-ok">🗑 群号组已删除。</div>
+  {% elif msg == 'edited' %}
+  <div class="banner banner-ok">✅ 已保存。</div>
+  {% elif msg == 'set_created' %}
+  <div class="banner banner-ok">✅ 添加第一个群号后群号组自动创建。</div>
+  {% endif %}
+
+  <!-- 新建群号组 -->
+  <div class="new-set-card">
+    <div>
+      <label>新建群号组</label>
+      <form method="post" style="display:flex;gap:8px;align-items:center">
+        <input type="hidden" name="action" value="add_set">
+        <input type="text" name="set_name" placeholder="群号组名称（如：第一弧私约群）" required autocomplete="off" style="width:240px">
+        <button type="submit" class="btn-add">＋ 新建</button>
+      </form>
+    </div>
+    <div style="font-size:12px;color:var(--muted);align-self:center;padding-top:18px">
+      建好组名后，再往下各组里添加 QQ 群号
+    </div>
+  </div>
+
+  <!-- 各群号组 -->
+  {% for set_name, members in sets.items() %}
+  <div class="set-block">
+    <div class="set-header">
+      <span class="set-name">📂 {{ set_name }}</span>
+      <span class="set-count">{{ members|length }} 个群号</span>
+      <button class="btn-del-set" onclick="deleteSet(this, '{{ set_name|e }}')">删除整组</button>
+    </div>
+
+    <!-- 添加群号到本组 -->
+    <div class="add-row">
+      <form method="post" style="display:contents">
+        <input type="hidden" name="action" value="add">
+        <input type="hidden" name="set_name" value="{{ set_name }}">
+        <input type="text" name="group_id" placeholder="群号（必填）" required autocomplete="off">
+        <input type="text" name="name" placeholder="备注（可选）" autocomplete="off">
+        <button type="submit" class="btn-add" style="padding:6px 12px;font-size:12px">＋ 添加</button>
+      </form>
+    </div>
+
+    <!-- 群号列表 -->
+    {% if members %}
+    <div class="gid-list">
+      {% for g in members %}
+      <div class="gid-row">
+        <span class="gid-pill">{{ g.group_id }}</span>
+        <span class="gid-note">{{ g.name or '' }}</span>
+        <div class="gid-actions">
+          <button class="btn-del" onclick="deleteRow(this, {{ g.id }}, '{{ g.group_id }}')">移除</button>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-set">暂无群号，使用上方表单添加。</div>
+    {% endif %}
+  </div>
+  {% else %}
+  <div style="color:var(--muted);text-align:center;padding:48px 0;font-size:14px">
+    暂无群号组。使用上方「新建群号组」创建，再往里录入 QQ 群号。
+  </div>
+  {% endfor %}
+
+  <div class="api-hint">
+    <strong>机器人指令</strong>：
+    在长日系统中运行「<code>。开启群号组 组名</code>」，将从
+    <code>GET /api/group_set/组名</code> 拉取该组所有群号注入可用池；
+    「<code>。关闭群号组 组名</code>」则从池中移除（占用中的群无法移除）。
+  </div>
+</div>
+
+<script>
+function vanishRow(el, cb) {
+  el.classList.add('vanishing');
+  el.addEventListener('transitionend', function handler(e) {
+    if (e.propertyName !== 'opacity') return;
+    el.removeEventListener('transitionend', handler);
+    el.classList.add('vanished');
+    setTimeout(cb, 260);
+  }, { once: false });
+}
+
+async function deleteRow(btn, rowId, groupId) {
+  if (!confirm('移除 ' + groupId + '？')) return;
+  btn.disabled = true;
+  var row = btn.closest('.gid-row');
+  try {
+    var fd = new FormData();
+    fd.append('action', 'delete');
+    fd.append('row_id', rowId);
+    var resp = await fetch(window.location.pathname, {
+      method: 'POST', headers: { 'X-Fetch': '1' }, body: fd
+    });
+    var json = await resp.json();
+    if (json.ok) {
+      vanishRow(row, function() { row.remove(); });
+    }
+  } catch(e) {
+    btn.disabled = false;
+    alert('操作失败，请重试。');
+  }
+}
+
+async function deleteSet(btn, setName) {
+  if (!confirm('删除群号组「' + setName + '」及其内所有群号？')) return;
+  btn.disabled = true;
+  var block = btn.closest('.set-block');
+  try {
+    var fd = new FormData();
+    fd.append('action', 'delete_set');
+    fd.append('set_name', setName);
+    var resp = await fetch(window.location.pathname, {
+      method: 'POST', headers: { 'X-Fetch': '1' }, body: fd
+    });
+    var json = await resp.json();
+    if (json.ok) {
+      vanishRow(block, function() { block.remove(); });
+    }
+  } catch(e) {
+    btn.disabled = false;
+    alert('操作失败，请重试。');
+  }
+}
+</script>
+{% endblock %}

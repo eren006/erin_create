@@ -27,16 +27,25 @@ function isOrderAdmin(ctx, msg) {
     return ctx.privilegeLevel === 100 || (admins[platform] && admins[platform].includes(uid));
 }
 
+// 返回 true 表示成功发送，false 表示 groupId 为空无法发送
+// 遍历所有 endpoint 尝试发送，解决多 bot 账号时 eps[0] 不在目标群的问题
 function sendNotify(groupId, userId, text) {
     const eps = seal.getEndPoints();
-    if (eps.length > 0 && groupId) {
+    console.log(`[排单宝] sendNotify 调用 | groupId=${groupId} userId=${userId} eps数量=${eps.length}`);
+    if (!groupId || eps.length === 0) {
+        console.log(`[排单宝] sendNotify 跳过：groupId为空或无endpoint`);
+        return false;
+    }
+    const at = userId ? `[CQ:at,qq=${userId}] ` : "";
+    for (const ep of eps) {
+        console.log(`[排单宝] sendNotify 尝试通过 ep(${ep.userId ?? ep.id ?? '未知'}) 发送到群 ${groupId}`);
         const fakeMsg = seal.newMessage();
         fakeMsg.groupId = groupId;
         fakeMsg.messageType = 'group';
-        const targetCtx = seal.createTempCtx(eps[0], fakeMsg);
-        const at = userId ? `[CQ:at,qq=${userId}] ` : "";
+        const targetCtx = seal.createTempCtx(ep, fakeMsg);
         seal.replyToSender(targetCtx, fakeMsg, at + text);
     }
+    return true;
 }
 
 // ======================== 指令：管理员管理 ========================
@@ -251,10 +260,9 @@ cmdCheck.solve = (ctx, msg, cmdArgs) => {
     users[targetUid].expiryReminded = false;
     setDb("paidan_users", users);
 
-    seal.replyToSender(ctx, msg, `✅ 用户 ${users[targetUid].name} 核对完成。`);
-    
-    // 回执到用户群
-    sendNotify(users[targetUid].group, targetUid, `✨ 管理员已完成您的资产核对！\n核定数量：${realCount}\n有效期至：${normalizedExpiry}`);
+    const sent = sendNotify(users[targetUid].group, targetUid, `✨ 管理员已完成您的资产核对！\n核定数量：${realCount}\n有效期至：${normalizedExpiry}`);
+    const warnMsg = sent ? "" : "\n⚠️ 注意：该用户无群记录，回执未能发出，请手动通知。";
+    seal.replyToSender(ctx, msg, `✅ 用户 ${users[targetUid].name} 核对完成。${warnMsg}`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["排单核对"] = cmdCheck;
@@ -320,17 +328,27 @@ cmdAccept.solve = (ctx, msg, cmdArgs) => {
 
     let orders = getDb("paidan_orders");
     if (!orders[orderId]) return seal.replyToSender(ctx, msg, "❌ 订单不存在");
+    if (orders[orderId].status === "已完成" || orders[orderId].status === "已拒绝") {
+        return seal.replyToSender(ctx, msg, `❌ 订单 ${orderId} 已是「${orders[orderId].status}」状态，无法接单。`);
+    }
+    if (orders[orderId].status === "制作中" || orders[orderId].status === "草图阶段") {
+        // 允许修改工期，但不重新发通知
+        orders[orderId].duration = duration;
+        setDb("paidan_orders", orders);
+        addOrderLog(`管理员 ${msg.sender.nickname} 修改订单 ${orderId} 工期为 ${duration} 天`);
+        return seal.replyToSender(ctx, msg, `✅ 订单 ${orderId} 工期已更新为 ${duration} 天（状态不变，不重发通知）。`);
+    }
 
     orders[orderId].status = "制作中";
-    orders[orderId].acceptTime = Date.now(); // 记录接单确切时间
+    orders[orderId].acceptTime = Date.now();
     orders[orderId].duration = duration;
     setDb("paidan_orders", orders);
 
-    // 写入日志
     addOrderLog(`管理员 ${msg.sender.nickname} 接收了订单 ${orderId}，预计工期 ${duration} 天`);
 
-    seal.replyToSender(ctx, msg, `✅ 订单 ${orderId} 已接单，预计工期 ${duration} 天。`);
-    sendNotify(orders[orderId].group, orders[orderId].uid, `🔔 管理员已接单！预计交付：${duration}天内。请给劳斯一点创作时间哦~`);
+    const sent = sendNotify(orders[orderId].group, orders[orderId].uid, `🔔 管理员已接单！预计交付：${duration}天内。请给劳斯一点创作时间哦~`);
+    const warnMsg = sent ? "" : "\n⚠️ 注意：订单来源群无记录，接单回执未能发出，请手动通知客户。";
+    seal.replyToSender(ctx, msg, `✅ 订单 ${orderId} 已接单，预计工期 ${duration} 天。${warnMsg}`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["接单"] = cmdAccept;
@@ -462,8 +480,9 @@ cmdFinish.solve = (ctx, msg, cmdArgs) => {
     setDb("paidan_orders", orders);
     setDb("paidan_users", users);
 
-    seal.replyToSender(ctx, msg, `✅ 订单 ${orderId} 扣卡成功，剩余 ${users[uid].balance} 张。`);
-    sendNotify(orders[orderId].group, uid, `🎉 您的订单 [${orderId}] 已制作完成！\n本次扣除：${decr}\n剩余卡片数量：${users[uid].balance}`);
+    const sent = sendNotify(orders[orderId].group, uid, `🎉 您的订单 [${orderId}] 已制作完成！\n本次扣除：${decr}\n剩余卡片数量：${users[uid].balance}`);
+    const warnMsg = sent ? "" : "\n⚠️ 注意：订单来源群无记录，完成回执未能发出，请手动通知客户。";
+    seal.replyToSender(ctx, msg, `✅ 订单 ${orderId} 扣卡成功，剩余 ${users[uid].balance} 张。${warnMsg}`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["扣卡"] = cmdFinish;
@@ -773,6 +792,44 @@ cmdReport.solve = (ctx, msg) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["排单月报"] = cmdReport;
+
+// ======================== 群发公告 ========================
+
+let cmdBroadcast = seal.ext.newCmdItemInfo();
+cmdBroadcast.name = "排单群发";
+cmdBroadcast.help = ".排单群发 <内容>  向所有已核对客户发送公告";
+cmdBroadcast.solve = (ctx, msg) => {
+    if (!isOrderAdmin(ctx, msg)) return;
+    const content = msg.message.replace(/^[.。]排单群发\s*/, "").trim();
+    if (!content) return seal.replyToSender(ctx, msg, "❌ 内容不能为空，用法：.排单群发 <内容>");
+
+    const users = getDb("paidan_users");
+    const verified = Object.entries(users).filter(([, u]) => u.verified);
+    if (verified.length === 0) return seal.replyToSender(ctx, msg, "⚠️ 当前没有已核对的客户。");
+
+    const text = `📢 【工坊公告】\n${content}`;
+    let sent = 0, failed = 0;
+
+    // 按群去重：同一个群只发一条，避免同群多人收到重复消息
+    const groupMap = new Map(); // groupId → [uid, ...]
+    for (const [uid, u] of verified) {
+        if (!u.group) { failed++; continue; }
+        if (!groupMap.has(u.group)) groupMap.set(u.group, []);
+        groupMap.get(u.group).push(uid);
+    }
+
+    for (const [groupId, uids] of groupMap) {
+        // 同群多人时合并 @ 列表
+        const at = uids.map(uid => `[CQ:at,qq=${uid}]`).join(" ");
+        const ok = sendNotify(groupId, null, at + " " + text);
+        if (ok) sent += uids.length; else failed += uids.length;
+    }
+
+    addOrderLog(`管理员群发公告，成功 ${sent} 人，失败 ${failed} 人`);
+    seal.replyToSender(ctx, msg, `✅ 群发完成。成功：${sent} 人，无群记录跳过：${failed} 人`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["排单群发"] = cmdBroadcast;
 
 // ======================== 后台巡检任务 ========================
 

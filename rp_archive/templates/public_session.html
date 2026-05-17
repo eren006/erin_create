@@ -1,78 +1,23 @@
-{% extends "base.html" %}
-{% block title %}长日存档 · {{ sess.place or '场次详情' }}{% endblock %}
+{% extends "public_base.html" %}
+{% block title %}{{ show.name }} · {{ sess.place or '场次详情' }}{% endblock %}
 
 {% block head %}
 <style>
 .session-layout { display: grid; grid-template-columns: 1fr 320px; gap: 20px; align-items: start; }
 @media(max-width:820px){ .session-layout { grid-template-columns: 1fr; } }
 
-/* 左栏 RP */
 .rp-feed { display: flex; flex-direction: column; gap: 12px; }
 .rp-block {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: 10px; padding: 14px 16px;
 }
-.rp-role {
-  font-size: 12px; font-weight: 700; color: var(--accent2);
-  margin-bottom: 6px; letter-spacing: .5px;
-}
-.rp-content {
-  color: var(--text); font-size: 14px; line-height: 1.85;
-  white-space: pre-wrap; word-break: break-word;
-}
+.rp-role { font-size: 12px; font-weight: 700; color: var(--accent2); margin-bottom: 6px; letter-spacing: .5px; }
+.rp-content { color: var(--text); font-size: 14px; line-height: 1.85; white-space: pre-wrap; word-break: break-word; }
 .rp-time { font-size: 11px; color: var(--muted); margin-top: 6px; }
-.rp-admin-bar {
-  display: flex; gap: 6px; margin-top: 8px; padding-top: 8px;
-  border-top: 1px dashed var(--border); flex-wrap: wrap;
-}
-.rp-btn {
-  background: none; border: 1px solid var(--border); color: var(--muted);
-  border-radius: 6px; padding: 2px 10px; font-size: 11px; cursor: pointer;
-  font-family: inherit; transition: all .15s;
-}
-.rp-btn:hover { color: var(--text); border-color: var(--accent); }
-.rp-btn-del:hover { color: var(--red); border-color: var(--red); }
-.insert-form, .edit-form {
-  display: none; margin-top: 10px; background: var(--surface2);
-  border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px;
-}
-.insert-form input, .insert-form textarea,
-.edit-form textarea {
-  width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text);
-  border-radius: 6px; padding: 7px 10px; font-size: 13px; font-family: inherit; resize: vertical;
-  margin-bottom: 8px;
-}
-.insert-form input:focus, .insert-form textarea:focus,
-.edit-form textarea:focus { outline: none; border-color: var(--accent); }
-.form-btns { display: flex; gap: 8px; }
-.btn-confirm {
-  background: var(--accent); color: #fff; border: none; border-radius: 6px;
-  padding: 5px 14px; font-size: 12px; cursor: pointer; font-weight: 600;
-}
-.btn-cancel {
-  background: var(--surface); border: 1px solid var(--border); color: var(--muted);
-  border-radius: 6px; padding: 5px 12px; font-size: 12px; cursor: pointer;
-}
-.add-section {
-  margin-top: 16px; background: var(--surface2);
-  border: 2px dashed var(--border); border-radius: 10px; padding: 14px 16px;
-}
-.add-section input, .add-section textarea {
-  width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text);
-  border-radius: 6px; padding: 7px 10px; font-size: 13px; font-family: inherit;
-  resize: vertical; margin-bottom: 8px;
-}
-.add-section input:focus, .add-section textarea:focus { outline: none; border-color: var(--accent); }
-.add-section-label { font-size: 11px; font-weight: 700; color: var(--muted);
-  letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px; }
 
-/* 右栏 侧边事件 */
 .sidebar { position: sticky; top: 72px; }
 .side-section { margin-bottom: 18px; }
-.side-label {
-  font-size: 11px; font-weight: 700; letter-spacing: 1px;
-  color: var(--muted); text-transform: uppercase; margin-bottom: 8px;
-}
+.side-label { font-size: 11px; font-weight: 700; letter-spacing: 1px; color: var(--muted); text-transform: uppercase; margin-bottom: 8px; }
 .event-card {
   background: var(--surface2); border: 1px solid var(--border);
   border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; font-size: 13px;
@@ -83,7 +28,6 @@
 .event-body { color: var(--text); margin-top: 5px; white-space: pre-wrap; word-break: break-word; }
 .event-sub  { color: var(--muted); font-size: 11px; margin-top: 4px; }
 
-/* meta 头部 */
 .sess-header {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: 12px; padding: 18px 20px; margin-bottom: 20px;
@@ -99,16 +43,10 @@
 
 {% block body %}
 <div class="page">
-  <div style="margin-bottom:14px;display:flex;gap:12px;align-items:center;">
-    <a href="{{ url_for('date_view', game_day=sess.game_day) }}" style="color:var(--muted);font-size:13px;">← {{ sess.game_day }}</a>
-    <a href="{{ url_for('session_download', session_id=sess.id) }}"
-       style="font-size:12px;background:var(--surface2);border:1px solid var(--border);
-              border-radius:6px;padding:4px 12px;color:var(--muted);">
-      ↓ 下载 txt
-    </a>
+  <div style="margin-bottom:14px;">
+    <a href="/view/{{ token }}/date/{{ sess.game_day }}" style="color:var(--muted);font-size:13px;">← {{ sess.game_day }}</a>
   </div>
 
-  <!-- 场次信息头 -->
   <div class="sess-header">
     <h2>
       {{ sess.place or '未知地点' }}
@@ -124,7 +62,9 @@
     </div>
     <div style="margin-bottom:10px;display:flex;flex-wrap:wrap;gap:4px;">
       {% for p in sess.participants %}
-      <span class="pill">{{ p }}{% if show_names.get(p) %}<span style="color:var(--muted);font-size:10px;"> · {{ show_names[p] }}</span>{% endif %}</span>
+      <a href="/view/{{ token }}/character/{{ p }}" class="pill" style="color:var(--accent);">
+        {{ p }}{% if show_names.get(p) %}<span style="color:var(--muted);font-size:10px;"> · {{ show_names[p] }}</span>{% endif %}
+      </a>
       {% endfor %}
     </div>
     <div class="stat-row">
@@ -140,75 +80,22 @@
   </div>
 
   <div class="session-layout">
-    <!-- 左栏：RP正文 -->
     <div>
       {% if rp %}
       <div class="rp-feed">
         {% for entry in rp %}
         <div class="rp-block">
           <div class="rp-role">{{ entry.role_name }}</div>
-          <div class="rp-content" id="content-{{ entry.id }}">{{ entry.content }}</div>
+          <div class="rp-content">{{ entry.content }}</div>
           <div class="rp-time">{{ ts_to_str(entry.timestamp) }}</div>
-
-          {% if is_admin %}
-          <div class="rp-admin-bar">
-            <form method="post" action="{{ url_for('rp_delete', session_id=sess.id, entry_id=entry.id) }}"
-                  onsubmit="return confirm('删除这条片段？')" style="display:inline">
-              <button type="submit" class="rp-btn rp-btn-del">删除</button>
-            </form>
-            <button class="rp-btn" onclick="toggleForm('edit-{{ entry.id }}')">编辑</button>
-            <button class="rp-btn" onclick="toggleForm('ins-{{ entry.id }}')">在此之后插入</button>
-          </div>
-
-          <!-- 编辑表单 -->
-          <div class="edit-form" id="edit-{{ entry.id }}">
-            <form method="post" action="{{ url_for('rp_edit', session_id=sess.id, entry_id=entry.id) }}">
-              <textarea name="content" rows="4">{{ entry.content }}</textarea>
-              <div class="form-btns">
-                <button type="submit" class="btn-confirm">保存</button>
-                <button type="button" class="btn-cancel" onclick="toggleForm('edit-{{ entry.id }}')">取消</button>
-              </div>
-            </form>
-          </div>
-
-          <!-- 插入表单 -->
-          <div class="insert-form" id="ins-{{ entry.id }}">
-            <form method="post" action="{{ url_for('rp_add', session_id=sess.id) }}">
-              <input type="hidden" name="after_id" value="{{ entry.id }}">
-              <input name="role_name" placeholder="角色名" list="role-list" autocomplete="off">
-              <textarea name="content" placeholder="RP 内容…" rows="3"></textarea>
-              <div class="form-btns">
-                <button type="submit" class="btn-confirm">插入</button>
-                <button type="button" class="btn-cancel" onclick="toggleForm('ins-{{ entry.id }}')">取消</button>
-              </div>
-            </form>
-          </div>
-          {% endif %}
         </div>
         {% endfor %}
-
-        {% if is_admin %}
-        <datalist id="role-list">
-          {% for p in sess.participants %}<option value="{{ p }}">{% endfor %}
-        </datalist>
-        <div class="add-section">
-          <div class="add-section-label">＋ 在末尾追加片段</div>
-          <form method="post" action="{{ url_for('rp_add', session_id=sess.id) }}">
-            <input name="role_name" placeholder="角色名" list="role-list" autocomplete="off">
-            <textarea name="content" placeholder="RP 内容…" rows="3"></textarea>
-            <div class="form-btns">
-              <button type="submit" class="btn-confirm">添加</button>
-            </div>
-          </form>
-        </div>
-        {% endif %}
       </div>
       {% else %}
-      <div class="empty">暂无RP正文记录（本场在开启存档传输前结戏，或无符合格式的发言）。</div>
+      <div class="empty">暂无RP正文记录。</div>
       {% endif %}
     </div>
 
-    <!-- 右栏：侧边事件 -->
     <div class="sidebar">
       {% set lovemails = events | selectattr('type','eq','lovemail') | list %}
       {% set smss      = events | selectattr('type','eq','sms')      | list %}
@@ -286,16 +173,10 @@
       </div>
       {% endif %}
 
+      {% if not lovemails and not smss and not gifts %}
+      <div style="color:var(--muted);font-size:13px;padding:16px 0;">本场无心动信 / 短信 / 礼物记录。</div>
+      {% endif %}
     </div>
   </div>
 </div>
-<script>
-function toggleForm(id) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  const visible = el.style.display === 'block';
-  el.style.display = visible ? 'none' : 'block';
-  if (!visible) el.querySelector('textarea,input[name="role_name"]')?.focus();
-}
-</script>
 {% endblock %}

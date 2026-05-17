@@ -1,0 +1,43 @@
+{% extends "public_base.html" %}
+{% block title %}{{ show.name }} · 所有游戏日{% endblock %}
+
+{% block head %}
+<style>
+.day-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); gap: 14px; }
+.day-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 20px 22px;
+  transition: border-color .2s, transform .15s;
+  display: block;
+}
+.day-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.day-label { font-size: 22px; font-weight: 700; color: var(--accent2); margin-bottom: 10px; }
+.day-stats { display: flex; gap: 18px; color: var(--muted); font-size: 12px; }
+.day-stats b { color: var(--text); font-size: 14px; }
+.day-date { color: var(--muted); font-size: 11px; margin-top: 10px; }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="page">
+  <div class="page-title">{{ show.name }} · 所有游戏日</div>
+
+  {% if days %}
+  <div class="day-grid">
+    {% for d in days %}
+    <a class="day-card" href="/view/{{ token }}/date/{{ d.game_day }}">
+      <div class="day-label">{{ d.game_day }}</div>
+      <div class="day-stats">
+        <div><b>{{ d.session_count }}</b><br>场次</div>
+        <div><b>{{ d.total_replies or 0 }}</b><br>总回复</div>
+        <div><b>{{ d.total_words or 0 }}</b><br>总字数</div>
+      </div>
+      <div class="day-date">首次记录：{{ d.first_date }}</div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty">本弧暂无存档记录。</div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -266,7 +266,7 @@ cmdRandom.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    let pool = Object.values(userCards).filter(c => getDaysDiff(c.expiry) > 0);
+    let pool = Object.values(userCards).filter(c => getDaysDiff(c.expiry) >= 0);
     if (filterType) {
         if (!VALID_TYPES.includes(filterType)) {
             seal.replyToSender(ctx, msg, `❌ 可选类型：${VALID_TYPES.join('/')}`);

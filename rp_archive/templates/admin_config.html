@@ -3,18 +3,33 @@
 
 {% block head %}
 <style>
-/* ── Cards ──────────────────────────────── */
+/* ── Cards (glassmorphism) ───────────────── */
 .cfg-card {
-  background: var(--surface); border: 1px solid var(--border);
+  background: rgba(26,26,34,0.82); border: 1px solid rgba(255,255,255,0.07);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
   border-radius: 12px; padding: 20px 22px; margin-bottom: 16px;
 }
 .cfg-card-title {
   font-size: 11px; font-weight: 700; color: var(--muted);
   letter-spacing: 1.5px; text-transform: uppercase;
   margin-bottom: 14px; padding-bottom: 10px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(255,255,255,0.07);
   display: flex; align-items: center; gap: 8px;
+  cursor: pointer; user-select: none;
 }
+.cfg-card-title::after {
+  content: '▾'; font-size: 10px; margin-left: auto;
+  opacity: .45; transition: transform .28s ease;
+}
+.cfg-card.acc-collapsed .cfg-card-title::after { transform: rotate(-90deg); }
+
+/* ── Accordion body ─────────────────────── */
+.cfg-card-body {
+  overflow: hidden;
+  max-height: 3000px; opacity: 1;
+  transition: max-height .35s ease, opacity .3s ease;
+}
+.cfg-card.acc-collapsed .cfg-card-body { max-height: 0; opacity: 0; }
 .cfg-badge {
   font-size: 10px; background: var(--surface2); border: 1px solid var(--border);
   border-radius: 4px; padding: 1px 7px; color: var(--muted);
@@ -93,7 +108,8 @@ select.cfg-input { cursor: pointer; }
 
 /* ── Collapsible advanced block ─────────── */
 .cfg-collapsible {
-  background: var(--surface); border: 1px solid var(--border);
+  background: rgba(26,26,34,0.82); border: 1px solid rgba(255,255,255,0.07);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
   border-radius: 12px; margin-bottom: 16px; overflow: hidden;
 }
 .cfg-collapsible > summary {
@@ -114,8 +130,9 @@ select.cfg-input { cursor: pointer; }
 
 /* ── Save bar ───────────────────────────── */
 .save-bar {
-  position: sticky; bottom: 0; background: var(--bg);
-  border-top: 1px solid var(--border); padding: 14px 0;
+  position: sticky; bottom: 0;
+  background: rgba(15,15,19,0.88); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border-top: 1px solid rgba(255,255,255,0.07); padding: 14px 0;
   display: flex; gap: 12px; align-items: center; margin-top: 4px;
   z-index: 10;
 }
@@ -123,24 +140,62 @@ select.cfg-input { cursor: pointer; }
   background: var(--accent); color: #fff; border: none;
   border-radius: 8px; padding: 9px 28px; font-size: 14px;
   font-family: inherit; font-weight: 600; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  min-width: 110px; transition: background .2s, opacity .2s;
 }
-.btn-save:hover { background: var(--accent2); }
+.btn-save:hover:not(:disabled) { background: var(--accent2); }
+.btn-save:disabled { opacity: .7; cursor: not-allowed; }
+.btn-save-spinner {
+  display: none; width: 15px; height: 15px;
+  border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff;
+  border-radius: 50%; animation: cfg-spin .65s linear infinite; flex-shrink: 0;
+}
+@keyframes cfg-spin { to { transform: rotate(360deg); } }
+.btn-save.is-loading .btn-save-text { display: none; }
+.btn-save.is-loading .btn-save-spinner { display: block; }
+
 .saved-tip {
   background: #1a3a1a; border: 1px solid #2a5a2a; color: var(--green);
   border-radius: 8px; padding: 8px 16px; font-size: 13px;
 }
 .save-hint { font-size: 12px; color: var(--muted); margin-left: auto; }
+
+/* ── Typewriter toast ───────────────────── */
+#cfg-toast {
+  position: fixed; bottom: 80px; right: 24px; z-index: 9000;
+  background: #07120a; border: 1px solid #1a4a22;
+  border-radius: 10px; padding: 14px 18px;
+  font-family: 'Courier New', Courier, monospace; font-size: 12px;
+  color: #4ade80; min-width: 300px; max-width: 400px;
+  line-height: 1.7;
+  opacity: 0; transform: translateY(12px);
+  transition: opacity .25s ease, transform .25s ease;
+  pointer-events: none; box-shadow: 0 8px 32px rgba(0,0,0,.6);
+}
+#cfg-toast.visible { opacity: 1; transform: translateY(0); }
+#cfg-toast-cursor {
+  display: inline-block; width: 7px; height: 13px;
+  background: #4ade80; margin-left: 1px; vertical-align: middle;
+  animation: blink .7s step-end infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
 </style>
 {% endblock %}
 
 {% block body %}
 <div class="page">
-  <div style="margin-bottom:16px;">
-    <a href="{{ url_for('admin') }}" style="color:var(--muted);font-size:13px;">← 后台</a>
-  </div>
   <div class="page-title" style="display:flex;align-items:center;justify-content:space-between;">
-    <span>系统配置</span>
+    <span>管理后台</span>
     <a href="{{ url_for('admin_logout') }}" style="font-size:12px;color:var(--muted);font-weight:400;">退出后台</a>
+  </div>
+
+  <div style="display:flex;gap:6px;margin-bottom:24px;flex-wrap:wrap;">
+    <a href="{{ url_for('admin') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">总览</a>
+    <a href="{{ url_for('admin_config_page') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--accent);border:1px solid var(--accent);color:#fff;">游戏配置</a>
+    <a href="{{ url_for('admin_groups') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">已知群</a>
+    <a href="{{ url_for('admin_rewards') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">结戏奖励</a>
+    <a href="{{ url_for('admin_shows') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">弧管理</a>
+    <a href="{{ url_for('admin_config_history') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">配置历史</a>
   </div>
   <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;
               padding:11px 16px;margin-bottom:20px;font-size:13px;color:var(--muted);">
@@ -372,53 +427,130 @@ select.cfg-input { cursor: pointer; }
 
     {# ── 保存栏 ── #}
     <div class="save-bar">
-      <button type="submit" class="btn-save">保存配置</button>
+      <button type="submit" class="btn-save" id="cfg-save-btn">
+        <span class="btn-save-text">保存配置</span>
+        <span class="btn-save-spinner"></span>
+      </button>
       <span class="save-hint">保存后在 QQ 发「。同步设置」立即生效</span>
     </div>
 
   </form>
 
-<script>
-document.querySelector('form').addEventListener('submit', function(e) {
-  const errors = [];
+  <!-- 打字机 Toast -->
+  <div id="cfg-toast"><span id="cfg-toast-body"></span><span id="cfg-toast-cursor"></span></div>
 
-  // 群号字段：必须纯数字
-  const groupKeys = ['adminAnnounceGroupId','song_group_id','background_group_id',
+<script>
+(function() {
+
+  /* ── 字段校验 ─────────────────────────── */
+  function validateConfig() {
+    var errors = [];
+    var groupKeys = ['adminAnnounceGroupId','song_group_id','background_group_id',
                      'water_group_id','auction_display_group'];
-  groupKeys.forEach(function(name) {
-    const el = document.querySelector('[name="' + name + '"]');
-    if (el && el.value.trim() && !/^\d+$/.test(el.value.trim())) {
-      const lbl = el.closest('.cfg-field').querySelector('.cfg-label');
-      errors.push('「' + (lbl ? lbl.textContent.trim() : name) + '」应为纯数字群号');
+    groupKeys.forEach(function(name) {
+      var el = document.querySelector('[name="' + name + '"]');
+      if (el && el.value.trim() && !/^\d+$/.test(el.value.trim())) {
+        var lbl = el.closest('.cfg-field') && el.closest('.cfg-field').querySelector('.cfg-label');
+        errors.push('「' + (lbl ? lbl.textContent.trim() : name) + '」应为纯数字群号');
+      }
+    });
+    var routing = document.querySelector('[data-validate="routing"]');
+    if (routing && routing.value.trim()) {
+      var bad = routing.value.trim().split(/\s+/).filter(function(p) {
+        return p && !/^D\d+[：:]\d+$/i.test(p);
+      });
+      if (bad.length) errors.push('分流群配置格式错误，示例：D1:12345 D2:67890');
+    }
+    var lmTime = document.querySelector('[name="lovemail_delivery_time"]');
+    if (lmTime && lmTime.value.trim() && !/^\d{1,2}:\d{2}$/.test(lmTime.value.trim()))
+      errors.push('心动信送达时间格式应为 HH:MM，如 22:00');
+    var hours = document.querySelector('[name="apply_item_hours"]');
+    if (hours && hours.value.trim() && !/^[\d\-,，]+$/.test(hours.value.trim()))
+      errors.push('施加可用时段格式错误，示例：18-23 或 9-12,14-18，留空表示全天');
+    return errors;
+  }
+
+  /* ── 打字机 Toast ────────────────────── */
+  var _twTimer = null;
+  function typewriterToast(lines) {
+    var toast  = document.getElementById('cfg-toast');
+    var body   = document.getElementById('cfg-toast-body');
+    var cursor = document.getElementById('cfg-toast-cursor');
+    if (_twTimer) clearTimeout(_twTimer);
+    body.innerHTML = '';
+    cursor.style.display = 'inline-block';
+    toast.classList.add('visible');
+
+    var text = lines.join('\n'), i = 0;
+    function tick() {
+      if (i >= text.length) { cursor.style.display = 'none'; return; }
+      if (text[i] === '\n') body.innerHTML += '<br>';
+      else body.appendChild(document.createTextNode(text[i]));
+      i++;
+      setTimeout(tick, i < 60 ? 18 : 10);
+    }
+    tick();
+
+    _twTimer = setTimeout(function() {
+      toast.classList.remove('visible');
+    }, 5500);
+  }
+
+  /* ── Fetch 保存 ──────────────────────── */
+  var form = document.querySelector('form');
+  var btn  = document.getElementById('cfg-save-btn');
+  form.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    var errors = validateConfig();
+    if (errors.length) { alert('保存前请修正：\n\n• ' + errors.join('\n• ')); return; }
+
+    btn.classList.add('is-loading');
+    btn.disabled = true;
+    try {
+      var fd = new FormData(form);
+      var resp = await fetch(window.location.pathname, {
+        method: 'POST', headers: { 'X-Fetch': '1' }, body: fd
+      });
+      var json = await resp.json();
+      if (json.ok) {
+        typewriterToast([
+          '> Handshake acknowledged.',
+          '> Writing config to persistent store... OK',
+          '> System config updated.',
+          '> Day phase synchronized with SealDice.',
+          '> Send「。同步设置」to apply in-game.'
+        ]);
+      }
+    } catch(err) {
+      alert('保存失败，请检查网络后重试。');
+    } finally {
+      btn.classList.remove('is-loading');
+      btn.disabled = false;
     }
   });
 
-  // 复盘分流群：每组必须是 D数字:数字
-  const routing = document.querySelector('[data-validate="routing"]');
-  if (routing && routing.value.trim()) {
-    const bad = routing.value.trim().split(/\s+/).filter(function(p) {
-      return p && !/^D\d+[：:]\d+$/i.test(p);
+  /* ── Accordion ───────────────────────── */
+  document.querySelectorAll('.cfg-card').forEach(function(card) {
+    var title = card.querySelector('.cfg-card-title');
+    if (!title) return;
+
+    // 把 title 之后的所有内容包进 .cfg-card-body
+    var body = document.createElement('div');
+    body.className = 'cfg-card-body';
+    var next = title.nextSibling;
+    while (next) {
+      var tmp = next.nextSibling;
+      body.appendChild(next);
+      next = tmp;
+    }
+    card.appendChild(body);
+
+    title.addEventListener('click', function() {
+      card.classList.toggle('acc-collapsed');
     });
-    if (bad.length) errors.push('分流群配置格式错误，示例：D1:12345 D2:67890（空格分隔，每组 D天数:群号）');
-  }
+  });
 
-  // 心动信送达时间：HH:MM 格式
-  const lmTime = document.querySelector('[name="lovemail_delivery_time"]');
-  if (lmTime && lmTime.value.trim() && !/^\d{1,2}:\d{2}$/.test(lmTime.value.trim())) {
-    errors.push('心动信送达时间格式应为 HH:MM，如 22:00');
-  }
-
-  // 施加可用时段：数字、连字符、逗号，或留空
-  const hours = document.querySelector('[name="apply_item_hours"]');
-  if (hours && hours.value.trim() && !/^[\d\-,，]+$/.test(hours.value.trim())) {
-    errors.push('施加可用时段格式错误，示例：18-23 或 9-12,14-18，留空表示全天');
-  }
-
-  if (errors.length) {
-    e.preventDefault();
-    alert('保存前请修正以下问题：\n\n• ' + errors.join('\n• '));
-  }
-});
+})();
 </script>
 </div>
 {% endblock %}

@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block title %}配置历史 · 长日存档{% endblock %}
+
+{% block head %}
+<style>
+.sub-nav { display:flex; gap:6px; margin-bottom:24px; flex-wrap:wrap; }
+.sub-nav a {
+  font-size:13px; padding:5px 14px; border-radius:8px;
+  background:var(--surface); border:1px solid var(--border); color:var(--muted);
+  text-decoration:none;
+}
+.sub-nav a:hover { color:var(--text); border-color:var(--accent); }
+.sub-nav a.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+
+.banner { border-radius:8px; padding:9px 16px; margin-bottom:18px; font-size:13px; }
+.banner-ok  { background:#1a3a1a; border:1px solid #2a5a2a; color:var(--green); }
+.banner-err { background:#3a1a1a; border:1px solid #5a2a2a; color:var(--red); }
+
+/* 时间轴容器 */
+.timeline { position:relative; padding-left:28px; }
+.timeline::before {
+  content:''; position:absolute; left:7px; top:8px; bottom:8px;
+  width:1px; background:var(--border);
+}
+
+/* 单条历史卡片 */
+.hist-card {
+  position:relative; margin-bottom:14px;
+  background:rgba(26,26,34,.82); border:1px solid rgba(255,255,255,.07);
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  border-radius:12px; padding:16px 20px;
+  transition:border-color .2s;
+}
+.hist-card:hover { border-color:rgba(139,124,246,.35); }
+.hist-card.is-latest { border-color:rgba(139,124,246,.5); }
+
+/* 时间轴圆点 */
+.hist-card::before {
+  content:''; position:absolute;
+  left:-23px; top:20px;
+  width:9px; height:9px; border-radius:50%;
+  background:var(--border); border:2px solid var(--bg);
+  transition:background .2s;
+}
+.hist-card.is-latest::before { background:var(--accent); }
+
+/* 卡头 */
+.hist-head {
+  display:flex; align-items:center; gap:10px;
+  margin-bottom:10px; flex-wrap:wrap;
+}
+.hist-time {
+  font-family:'Courier New',monospace; font-size:12px;
+  color:var(--muted); flex-shrink:0;
+}
+.hist-operator {
+  font-size:12px; color:var(--accent2); font-weight:600;
+}
+.hist-badge-latest {
+  font-size:10px; padding:1px 8px; border-radius:10px;
+  background:rgba(139,124,246,.15); border:1px solid rgba(139,124,246,.3);
+  color:var(--accent); font-weight:700; letter-spacing:.5px;
+}
+.hist-badge-rollback {
+  font-size:10px; padding:1px 8px; border-radius:10px;
+  background:rgba(251,191,36,.1); border:1px solid rgba(251,191,36,.25);
+  color:#f59e0b; font-weight:600;
+}
+
+/* 摘要行 */
+.hist-meta {
+  display:flex; gap:16px; flex-wrap:wrap;
+  font-size:12px; color:var(--muted); margin-bottom:12px;
+}
+.hist-meta span { display:flex; align-items:center; gap:4px; }
+
+/* 操作区 */
+.hist-actions { display:flex; gap:8px; align-items:center; }
+.btn-rollback {
+  background:#2a1a0e; color:#f59e0b;
+  border:1px solid #4a3010; border-radius:7px;
+  padding:5px 14px; font-size:12px; cursor:pointer; font-weight:600;
+  transition:background .2s;
+}
+.btn-rollback:hover:not(:disabled) { background:#3a2515; }
+.btn-rollback:disabled { opacity:.5; cursor:not-allowed; }
+.btn-rollback.is-loading { opacity:.7; }
+
+.rollback-hint {
+  font-size:11px; color:var(--muted);
+  font-style:italic;
+}
+
+.empty {
+  text-align:center; color:var(--muted); padding:60px 0; font-size:14px;
+}
+
+/* 消散动效 */
+.hist-card {
+  transition:
+    border-color .2s,
+    transform .2s ease,
+    opacity .2s ease,
+    max-height .28s ease .18s,
+    margin .28s ease .18s,
+    padding .28s ease .18s;
+  overflow:hidden;
+}
+.hist-card.vanishing { transform:translateX(16px); opacity:0; }
+.hist-card.vanished  { max-height:0!important; margin-bottom:0!important; padding:0!important; border:none!important; }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="page">
+  <div class="page-title">配置历史</div>
+
+  <div class="sub-nav">
+    <a href="{{ url_for('admin') }}">总览</a>
+    <a href="{{ url_for('admin_config_page') }}">游戏配置</a>
+    <a href="{{ url_for('admin_groups') }}">已知群</a>
+    <a href="{{ url_for('admin_rewards') }}">结戏奖励</a>
+    <a href="{{ url_for('admin_shows') }}">弧管理</a>
+    <a href="{{ url_for('admin_config_history') }}" class="active">配置历史</a>
+  </div>
+
+  {% if request.args.get('rolled') %}
+  <div class="banner banner-ok">✅ 已回滚成功，当前配置已恢复至所选快照。</div>
+  {% endif %}
+
+  <div style="font-size:12px;color:var(--muted);margin-bottom:20px;">
+    每次保存配置都会生成一条快照，最多显示最近 50 条。点击「回滚」可将配置恢复至该版本（回滚本身也会生成新快照，可再次撤回）。
+  </div>
+
+  {% if entries %}
+  <div class="timeline">
+    {% for e in entries %}
+    <div class="hist-card {% if loop.first %}is-latest{% endif %}" id="hist-{{ e.id }}">
+      <div class="hist-head">
+        <span class="hist-time">{{ e.time_str }}</span>
+        <span class="hist-operator">{{ e.operator }}</span>
+        {% if loop.first %}
+        <span class="hist-badge-latest">● 当前版本</span>
+        {% endif %}
+        {% if '回滚' in e.operator %}
+        <span class="hist-badge-rollback">↩ 回滚记录</span>
+        {% endif %}
+      </div>
+
+      <div class="hist-meta">
+        {% if e.show_name %}
+        <span>🎭 {{ e.show_name }}</span>
+        {% endif %}
+        {% if e.days %}
+        <span>📅 {{ e.days }}</span>
+        {% endif %}
+        <span>🔑 {{ e.key_count }} 项配置</span>
+        <span style="font-family:monospace;opacity:.5;">#{{ e.id }}</span>
+      </div>
+
+      <div class="hist-actions">
+        {% if not loop.first %}
+        <button class="btn-rollback" onclick="doRollback(this, {{ e.id }}, '{{ e.time_str }}')">
+          ↩ 回滚至此版本
+        </button>
+        <span class="rollback-hint">恢复为 {{ e.time_str }} 保存的配置</span>
+        {% else %}
+        <span class="rollback-hint" style="color:var(--accent);opacity:.7;">这是当前生效的配置</span>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% else %}
+  <div class="empty">
+    暂无配置历史。<br>
+    <span style="font-size:12px;margin-top:6px;display:block;">下次在「游戏配置」页面保存后，这里会出现第一条快照。</span>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+async function doRollback(btn, hid, timeStr) {
+  if (!confirm('将配置回滚至「' + timeStr + '」保存的版本？\n\n此操作会生成新快照，可随时再次撤回。')) return;
+
+  btn.disabled = true;
+  btn.classList.add('is-loading');
+  const origText = btn.textContent;
+  btn.textContent = '回滚中…';
+
+  try {
+    const resp = await fetch('/admin/config/history/' + hid + '/rollback', {
+      method: 'POST',
+      headers: { 'X-Fetch': '1' }
+    });
+    const json = await resp.json();
+    if (!json.ok) throw new Error('server error');
+
+    // 把被回滚的卡片标记为"已回滚至此"，并刷新页面顶部
+    btn.textContent = '✓ 已回滚';
+    btn.style.background = '#1a3a1a';
+    btn.style.color = 'var(--green)';
+    btn.style.borderColor = '#2a5a2a';
+
+    // 短暂提示后刷新，让新快照出现在列表顶部
+    setTimeout(function() { location.reload(); }, 900);
+
+  } catch(e) {
+    btn.disabled = false;
+    btn.classList.remove('is-loading');
+    btn.textContent = origText;
+    alert('回滚失败，请重试。');
+  }
+}
+</script>
+{% endblock %}

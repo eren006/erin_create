@@ -23,14 +23,26 @@ seal.ext.registerStringConfig(ext, "ws地址", "ws://localhost:3001");
     seal.ext.registerStringConfig(ext, "ws Access token", '', "输入与上方端口对应的token，没有则留空");
     seal.ext.registerStringConfig(ext, "群管插件使用需要满足的条件", '1', "使用豹语表达式，例如：$t群号_RAW=='2001'，1为所有群可用");
     seal.ext.registerBoolConfig(ext, "开启现实时段校验", false, "是否限制玩家只能发起与当前现实时间对应的剧情时段邀约");
-    seal.ext.registerBoolConfig(ext, "自动复盘记录", true, "私约/官约开始时自动 .log new，结束时自动 .log end；关闭后「打包复盘」指令仍可用");
+    seal.ext.registerBoolConfig(ext, "自动复盘记录", false, "私约/官约开始时自动 .log new，结束时自动 .log end；关闭后「打包复盘」指令仍可用");
     seal.ext.registerStringConfig(ext, "复盘打包服务地址", "http://127.0.0.1:9999", "trigger_server.py 监听地址，用于「打包复盘」指令");
 
 // ========================
 // 📝 AutoLog 自动复盘模块
 // ========================
 const AutoLog = {
-    _recording: {},   // { [platform-Group:gid]: true }
+    _recording: {},   // 内存缓存，启动时从 storage 恢复，写时同步持久化
+
+    // 从 storage 恢复重启前的录制状态
+    _load: function() {
+        try {
+            this._recording = JSON.parse(ext.storageGet("autolog_recording") || "{}");
+        } catch(e) { this._recording = {}; }
+    },
+
+    // 每次 _recording 变更后写入 storage
+    _persist: function() {
+        ext.storageSet("autolog_recording", JSON.stringify(this._recording));
+    },
 
     // 查找海豹 log 扩展的 log 命令（优先 core/log，fallback 全局扫描）
     _findLogCmd: function() {
@@ -74,6 +86,7 @@ const AutoLog = {
             if (!cmd) { console.log("[AutoLog] 未找到 log 扩展"); return; }
             cmd.solve(ctx, msg, this._args(["new", safeName], `new ${safeName}`));
             this._recording[gid] = true;
+            this._persist();
             console.log(`[AutoLog] ▶ 开始记录 ${gid} → ${safeName}`);
         } catch(e) {
             console.log("[AutoLog] startLog 错误:", e);
@@ -89,6 +102,7 @@ const AutoLog = {
             if (!cmd) return;
             cmd.solve(ctx, msg, this._args(["end"], "end"));
             delete this._recording[gid];
+            this._persist();
             console.log(`[AutoLog] ■ 结束记录 ${gid}`);
         } catch(e) {
             console.log("[AutoLog] endLog 错误:", e);
@@ -129,6 +143,9 @@ const AutoLog = {
         console.log(`[AutoLog] 存入复盘 ${rawGid}${title ? " 「" + title + "」" : ""} → ${url}`);
     }
 };
+
+// 插件加载时从 storage 恢复录制状态（骰子重启后不丢失）
+AutoLog._load();
 
 // ========================
 // 🌐 WebSocket 通信模块
@@ -1612,7 +1629,8 @@ function checkParticipantConflicts(platform, day, time, sendname, names, a_priva
     for (let toname of names) {
         // 新结构：通过 roleName 反查 uid
         const toUidLookup2 = Object.entries(a_private_group[platform] || {}).find(([_, v]) => v[0] === toname)?.[0];
-        const toKey = toUidLookup2 ? `${platform}:${toUidLookup2}` : `${platform}:${toname}`;
+        if (!toUidLookup2) continue;
+        const toKey = `${platform}:${toUidLookup2}`;
         
         let hasConflict = false;
         let conflictSchedule = null;
@@ -2142,8 +2160,9 @@ function generatePrivateInvitationMessage(sendname, place, day, time, isMulti, o
 
 cmd_appointment_private.solve = async (ctx, msg, cmdArgs) => {
     // 检查写信系统启用时是否需要消费写信币
+    let coinCheck = { success: true, cost: 0 };
     if (isLetterSystemEnabled()) {
-        const coinCheck = checkAndCostLetterCoin(ctx, msg, "appointment");
+        coinCheck = checkAndCostLetterCoin(ctx, msg, "appointment");
         if (!coinCheck.success) {
             seal.replyToSender(ctx, msg, coinCheck.errorMsg);
             return seal.ext.newCmdExecuteResult(true);
@@ -2377,12 +2396,16 @@ cmd_view_schedule.solve = (ctx, msg) => {
         const icon = { "电话": "📞", "微信群": "💬" }[ev.subtype] || "🎭";
         let progressText = "";
         if (ev.group && !ev.isWechat) {
-            const grpProg = JSON.parse(ext.storageGet("group_write_progress") || "{}")[ev.group] || {};
+            // ended 用存档快照，进行中用实时计数
+            const grpProg = ev.finalProgress || JSON.parse(ext.storageGet("group_write_progress") || "{}")[ev.group] || {};
             const privGrp = store.get("a_private_group")[platform] || {};
             const parts = [myName, ...ev.partner.split(/[、,，]/).map(s => s.trim()).filter(Boolean)]
                 .filter((v, i, a) => a.indexOf(v) === i);
-            const counts = parts.map(n => grpProg[privGrp[n]?.[0]] || 0);
-            if (counts.some(c => c > 0)) progressText = `\n✍️ 当前进度：${counts.join('v')}`;
+            const counts = parts.map(n => {
+                const uid = Object.entries(privGrp).find(([_, v]) => v[0] === n)?.[0];
+                return uid ? (grpProg[uid] || 0) : 0;
+            });
+            if (counts.some(c => c > 0)) progressText = `\n✍️ ${ev.status === "ended" ? "最终段数" : "当前进度"}：${counts.join('v')}`;
         }
         ev.displayText = `【${ev.day} ${ev.time}】\n${icon} ${ev.subtype} · ${tag}\n📍 地点：${ev.place || "未知"}\n👥 伙伴：${ev.partner}${progressText}`;
     });
@@ -2398,7 +2421,8 @@ cmd_view_schedule.solve = (ctx, msg) => {
             nodes.push({ type: "node", data: { name: "📅 日程管家", uin: botUid, content: ev.isWechat ? "💬 我的微信群" : `✨ ==== ${ev.day} 的日程 ==== ✨` } });
             curDay = ev.day;
         }
-        const pUid = privGroup[platform]?.[ev.partner.split(/[、,]/)[0]]?.[0] || botUid;
+        const partnerName = ev.partner.split(/[、,]/)[0];
+        const pUid = getUidByRoleName(platform, partnerName) || botUid;
         nodes.push({ type: "node", data: { name: ev.partner.split(/[、,]/)[0] || "助手", uin: pUid, content: ev.displayText } });
     });
 
@@ -3019,19 +3043,12 @@ let cmd_add_group = seal.ext.newCmdItemInfo();
 cmd_add_group.name = "添加群号";
 cmd_add_group.help = "。添加群号 群号（多个用逗号隔开）";
 cmd_add_group.solve = (ctx, msg, cmdArgs) => {
-    let temp = isUserAdmin(ctx, msg);
-    if (!msg.isMaster && !temp) {
+    if (!msg.isMaster && !isUserAdmin(ctx, msg)) {
         seal.replyToSender(ctx, msg, `此指令仅限骰主或管理员使用`);
         return seal.ext.newCmdExecuteResult(true);
     }
-
     let grouplist = cmdArgs.getArgN(1);
-    if (!grouplist) {
-        const ret = seal.ext.newCmdExecuteResult(true);
-        ret.showHelp = true;
-        return ret;
-    }
-
+    if (!grouplist) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
     grouplist = grouplist.replace(/，/g, ",").split(",");
     let group = JSON.parse(ext.storageGet("group") || "[]");
     for (let i = 0; i < grouplist.length; i++) {
@@ -3039,65 +3056,152 @@ cmd_add_group.solve = (ctx, msg, cmdArgs) => {
             group.push(grouplist[i]);
         }
     }
-
     ext.storageSet("group", JSON.stringify(group));
     seal.replyToSender(ctx, msg, `✅ 已添加群号，当前可用共 ${group.length} 个。`);
     return seal.ext.newCmdExecuteResult(true);
 }
 ext.cmdMap["添加群号"] = cmd_add_group;
 
-// 查看群号
-let cmd_show_group = seal.ext.newCmdItemInfo();
-cmd_show_group.name = "查看群号";
-cmd_show_group.help = "。查看群号";
-cmd_show_group.solve = (ctx, msg, cmdArgs) => {
-    let temp = isUserAdmin(ctx, msg);
-    if (!msg.isMaster && !temp) {
-        seal.replyToSender(ctx, msg, `此指令仅限骰主或管理员使用`);
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    let group = JSON.parse(ext.storageGet("group") || "[]");
-    let rep = `📜 当前可用群号（共 ${group.length} 个）：\n`;
-    for (let i = 0; i < group.length; i++) {
-        rep += `• ${group[i]}\n`;
-    }
-
-    seal.replyToSender(ctx, msg, rep.trim());
-    return seal.ext.newCmdExecuteResult(true);
-}
-ext.cmdMap["查看群号"] = cmd_show_group;
-
 // 移除群号
 let cmd_remove_group = seal.ext.newCmdItemInfo();
 cmd_remove_group.name = "移除群号";
 cmd_remove_group.help = "。移除群号 群号（多个用逗号隔开）";
 cmd_remove_group.solve = (ctx, msg, cmdArgs) => {
-    let temp = isUserAdmin(ctx, msg);
-    if (!msg.isMaster && !temp) {
+    if (!msg.isMaster && !isUserAdmin(ctx, msg)) {
         seal.replyToSender(ctx, msg, `此指令仅限骰主或管理员使用`);
         return seal.ext.newCmdExecuteResult(true);
     }
-
     let grouplist = cmdArgs.getArgN(1);
-    if (!grouplist) {
-        const ret = seal.ext.newCmdExecuteResult(true);
-        ret.showHelp = true;
-        return ret;
-    }
-
+    if (!grouplist) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
     grouplist = grouplist.replace(/，/g, ",").split(",");
     let group = JSON.parse(ext.storageGet("group") || "[]");
     for (let i = 0; i < grouplist.length; i++) {
         let idx = group.indexOf(grouplist[i]);
         if (idx !== -1) group.splice(idx, 1);
     }
-
     ext.storageSet("group", JSON.stringify(group));
     seal.replyToSender(ctx, msg, `✅ 指定群号已移除，当前可用共 ${group.length} 个。`);
     return seal.ext.newCmdExecuteResult(true);
 }
 ext.cmdMap["移除群号"] = cmd_remove_group;
+
+// 查看群号
+let cmd_show_group = seal.ext.newCmdItemInfo();
+cmd_show_group.name = "查看群号";
+cmd_show_group.help = "。查看群号";
+cmd_show_group.solve = (ctx, msg, cmdArgs) => {
+    if (!msg.isMaster && !isUserAdmin(ctx, msg)) {
+        seal.replyToSender(ctx, msg, `此指令仅限骰主或管理员使用`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    let group = JSON.parse(ext.storageGet("group") || "[]");
+    let rep = `📜 当前可用群号（共 ${group.length} 个）：\n`;
+    for (let i = 0; i < group.length; i++) {
+        const isOccupied = group[i].endsWith("_占用");
+        rep += `• ${isOccupied ? group[i].replace(/_占用$/, "") + " 🔴占用中" : group[i]}\n`;
+    }
+    seal.replyToSender(ctx, msg, rep.trim());
+    return seal.ext.newCmdExecuteResult(true);
+}
+ext.cmdMap["查看群号"] = cmd_show_group;
+
+// 开启群号组（从 rp_archive 拉取组内 QQ 号批量注入）
+let cmd_open_group_set = seal.ext.newCmdItemInfo();
+cmd_open_group_set.name = "开启群号组";
+cmd_open_group_set.help = "。开启群号组 组名\n从 rp_archive 后台读取该组所有群号，批量加入可用池";
+cmd_open_group_set.solve = async (ctx, msg, cmdArgs) => {
+    if (!msg.isMaster && !isUserAdmin(ctx, msg)) {
+        seal.replyToSender(ctx, msg, `此指令仅限骰主或管理员使用`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    const setName = cmdArgs.getArgN(1);
+    if (!setName) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const base  = (seal.ext.getStringConfig(ext, "RP存档服务器地址") || "").replace(/\/$/, "");
+    const token = seal.ext.getStringConfig(ext, "RP存档Token") || "";
+    if (!base) {
+        seal.replyToSender(ctx, msg, `❌ 未配置 RP 存档服务器地址。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    try {
+        const resp = await fetch(`${base}/api/group_set/${encodeURIComponent(setName)}`, {
+            headers: { "X-Archive-Token": token }
+        });
+        if (!resp.ok) {
+            seal.replyToSender(ctx, msg, `❌ 服务器返回 ${resp.status}，请检查组名是否正确。`);
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        const data = await resp.json();
+        if (!data.ok || !data.group_ids || data.group_ids.length === 0) {
+            seal.replyToSender(ctx, msg, `⚠️ 群号组「${setName}」在后台不存在或暂无群号。`);
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        let group = JSON.parse(ext.storageGet("group") || "[]");
+        let added = 0;
+        for (const gid of data.group_ids) {
+            if (!group.includes(gid) && !group.includes(gid + "_占用")) {
+                group.push(gid);
+                added++;
+            }
+        }
+        ext.storageSet("group", JSON.stringify(group));
+        seal.replyToSender(ctx, msg, `✅ 群号组「${setName}」已开启，新注入 ${added} 个群号（共 ${data.group_ids.length} 个），当前可用池共 ${group.length} 个。`);
+    } catch (e) {
+        seal.replyToSender(ctx, msg, `❌ 请求失败：${e.message || String(e)}`);
+    }
+    return seal.ext.newCmdExecuteResult(true);
+}
+ext.cmdMap["开启群号组"] = cmd_open_group_set;
+
+// 关闭群号组（从 rp_archive 拉取组内 QQ 号批量移除，占用中的无法移除）
+let cmd_close_group_set = seal.ext.newCmdItemInfo();
+cmd_close_group_set.name = "关闭群号组";
+cmd_close_group_set.help = "。关闭群号组 组名\n将该组所有群号从可用池移除（占用中的群无法移除）";
+cmd_close_group_set.solve = async (ctx, msg, cmdArgs) => {
+    if (!msg.isMaster && !isUserAdmin(ctx, msg)) {
+        seal.replyToSender(ctx, msg, `此指令仅限骰主或管理员使用`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    const setName = cmdArgs.getArgN(1);
+    if (!setName) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const base  = (seal.ext.getStringConfig(ext, "RP存档服务器地址") || "").replace(/\/$/, "");
+    const token = seal.ext.getStringConfig(ext, "RP存档Token") || "";
+    if (!base) {
+        seal.replyToSender(ctx, msg, `❌ 未配置 RP 存档服务器地址。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    try {
+        const resp = await fetch(`${base}/api/group_set/${encodeURIComponent(setName)}`, {
+            headers: { "X-Archive-Token": token }
+        });
+        if (!resp.ok) {
+            seal.replyToSender(ctx, msg, `❌ 服务器返回 ${resp.status}，请检查组名是否正确。`);
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        const data = await resp.json();
+        if (!data.ok || !data.group_ids || data.group_ids.length === 0) {
+            seal.replyToSender(ctx, msg, `⚠️ 群号组「${setName}」在后台不存在或暂无群号。`);
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        let group = JSON.parse(ext.storageGet("group") || "[]");
+        let removed = 0, skipped = [];
+        for (const gid of data.group_ids) {
+            if (group.includes(gid + "_占用")) {
+                skipped.push(gid);
+            } else {
+                const idx = group.indexOf(gid);
+                if (idx !== -1) { group.splice(idx, 1); removed++; }
+            }
+        }
+        ext.storageSet("group", JSON.stringify(group));
+        let rep = `✅ 群号组「${setName}」已关闭，移除 ${removed} 个群号，当前可用池剩 ${group.length} 个。`;
+        if (skipped.length > 0) rep += `\n⚠️ 以下群正在占用中，无法移除：\n${skipped.map(g => `• ${g}`).join("\n")}`;
+        seal.replyToSender(ctx, msg, rep);
+    } catch (e) {
+        seal.replyToSender(ctx, msg, `❌ 请求失败：${e.message || String(e)}`);
+    }
+    return seal.ext.newCmdExecuteResult(true);
+}
+ext.cmdMap["关闭群号组"] = cmd_close_group_set;
 
 // 驱逐指定QQ
 let cmd_kick_qq = seal.ext.newCmdItemInfo();
@@ -3372,15 +3476,10 @@ cmd_grouplist_release.solve = (ctx, msg, cmdArgs) => {
         group.push(gid);
         ext.storageSet("group", JSON.stringify(group));
 
-        // 【新增：重置该群的写帖进度计数】
+        // 更新 b_confirmedSchedule 中所有 status 为 ended，并快照 V 数
         let progress = JSON.parse(ext.storageGet("group_write_progress") || "{}");
-        if (progress[gid]) {
-            delete progress[gid]; // 删除该群下所有人的计数记录
-            ext.storageSet("group_write_progress", JSON.stringify(progress));
-            console.log(`[DEBUG] 已重置群组 ${gid} 的写帖进度计数`);
-        }
+        const finalProgress = progress[gid] ? { ...progress[gid] } : null;
 
-        // 更新 b_confirmedSchedule 中所有 status 为 ended
         let b_confirmedSchedule = JSON.parse(ext.storageGet("b_confirmedSchedule") || "{}");
         let modified = false;
         let matchCount = 0;
@@ -3388,6 +3487,7 @@ cmd_grouplist_release.solve = (ctx, msg, cmdArgs) => {
             for (let ev of b_confirmedSchedule[uidKey]) {
                 if (ev.group === gid && ev.status !== "ended") {
                     ev.status = "ended";
+                    if (finalProgress) ev.finalProgress = finalProgress;
                     modified = true;
                     matchCount++;
                 }
@@ -3395,6 +3495,12 @@ cmd_grouplist_release.solve = (ctx, msg, cmdArgs) => {
         }
         if (modified) {
             ext.storageSet("b_confirmedSchedule", JSON.stringify(b_confirmedSchedule));
+        }
+
+        // 重置该群的写帖进度计数
+        if (progress[gid]) {
+            delete progress[gid];
+            ext.storageSet("group_write_progress", JSON.stringify(progress));
         }
 
         // 清除到期记录
@@ -6308,8 +6414,14 @@ function saveSessionStats(s) {
  */
 function applyEndGameBonuses(ctx, msg, gid, platform) {
     const templates = JSON.parse(ext.storageGet("end_game_bonus_templates") || "[]");
-    const groupExpireInfo = JSON.parse(ext.storageGet("group_expire_info") || "{}");
-    const groupSubtype = groupExpireInfo[gid]?.subtype || "";
+    // group_expire_info[gid] 在结束流程里已先被删，改从 b_confirmedSchedule 读 subtype
+    const _bSched = JSON.parse(ext.storageGet("b_confirmedSchedule") || "{}");
+    let groupSubtype = "";
+    outer: for (const evList of Object.values(_bSched)) {
+        for (const ev of evList) {
+            if (ev.group === gid && ev.subtype) { groupSubtype = ev.subtype; break outer; }
+        }
+    }
     // 模版用用户可读名称，群记录用内部名称，做映射对齐
     const tplTypeToStored = { "私约": "私密", "心意": "心愿" };
     const enabled = templates.filter(t => {
@@ -6554,12 +6666,11 @@ function applyEndGameDraws(ctx, msg, gid, platform) {
     const records = JSON.parse(ext.storageGet("player_draw_records") || "{}");
     const awardedList = [];
 
-    for (const roleName of participants) {
+    const apgPlatform = JSON.parse(ext.storageGet("a_private_group") || "{}")[platform] || {};
+    for (const uid of participants) {
+        if (uid === "_startTime") continue;
         // 概率检定
         if (Math.random() * 100 >= chance) continue;
-
-        const uid = getUidByRoleName(platform, roleName);
-        if (!uid) continue;
 
         const key = `${platform}:${uid}`;
         let rec = records[key] || { day: "", used: {}, extra: {} };
@@ -6569,7 +6680,7 @@ function applyEndGameDraws(ctx, msg, gid, platform) {
 
         rec.extra[poolName] = (rec.extra[poolName] || 0) + count;
         records[key] = rec;
-        awardedList.push(roleName);
+        awardedList.push(apgPlatform[uid]?.[0] || uid);
     }
 
     if (awardedList.length) {
@@ -6999,10 +7110,10 @@ cmd_my_stats.solve = (ctx, msg, cmdArgs) => {
     // 本场数据（当前群这个定时器的会话统计）
     const groupId = msg.groupId;
     const sessionStats = getSessionStats();
-    const sessionStat = groupId ? sessionStats[groupId]?.[roleName] : null;
+    const sessionStat = groupId ? sessionStats[groupId]?.[uid] : null;
 
     const stats = getUserStats();
-    const globalStat = stats[`${platform}:${roleName}`];
+    const globalStat = stats[`${platform}:${uid}`];
 
     let reply = `📊 【${roleName}】统计报告\n`;
 
@@ -10332,7 +10443,7 @@ cmd_auto_fupan.solve = (ctx, msg, cmdArgs) => {
 
     // 触发 log end
     AutoLog.endLog(ctx, msg);
-    seal.replyToSender(ctx, msg, "📋 复盘日志已触发上传，请将上方链接作为参数发送：\n结束私约 [链接]");
+    seal.replyToSender(ctx, msg, "📋 复盘日志已触发上传，请将骰子发出的日志链接作为参数发送：\n结束私约 [链接]");
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["自动复盘"] = cmd_auto_fupan;

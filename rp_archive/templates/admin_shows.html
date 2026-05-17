@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+{% block title %}长日存档 · 弧管理{% endblock %}
+
+{% block head %}
+<style>
+.show-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 20px 22px; margin-bottom: 14px;
+}
+.show-card.is-current { border-color: var(--accent); }
+.show-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.show-title { font-size: 16px; font-weight: 700; }
+.badge {
+  display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 700;
+}
+.badge-current { background: #1a3a1a; color: var(--green); }
+.badge-public  { background: #1a2d3a; color: #60c8ff; }
+.badge-archive { background: var(--surface2); color: var(--muted); }
+.show-meta { color: var(--muted); font-size: 12px; margin-bottom: 14px; display: flex; gap: 16px; flex-wrap: wrap; }
+.token-row {
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 14px; display: flex; align-items: center; gap: 10px;
+  font-family: monospace; font-size: 12px; color: var(--accent2);
+  margin-bottom: 14px; word-break: break-all;
+}
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn { border: none; border-radius: 8px; padding: 6px 16px; font-size: 13px; cursor: pointer; font-weight: 600; }
+.btn-view    { background: var(--accent); color: #fff; }
+.btn-view:hover { background: var(--accent2); }
+.btn-activate { background: #1a3a1a; color: var(--green); border: 1px solid #2a5a2a; }
+.btn-activate:hover { background: #1f4a1f; }
+.btn-toggle  { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+.btn-toggle:hover { border-color: var(--accent); }
+.btn-danger  { background: #3a1a1a; color: var(--red); border: 1px solid #5a2a2a; }
+.btn-danger:hover { background: #4a1f1f; }
+.btn-copy { background: none; border: 1px solid var(--border); color: var(--muted);
+            border-radius: 6px; padding: 2px 10px; font-size: 11px; cursor: pointer; white-space: nowrap; }
+.btn-copy:hover { color: var(--text); border-color: var(--accent); }
+
+/* 消散 + 玻璃 */
+.show-card {
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  background: rgba(26,26,34,0.82); border: 1px solid rgba(255,255,255,0.07);
+  transition: transform .2s ease, opacity .2s ease, max-height .28s ease .2s, margin .28s ease .2s, padding .28s ease .2s;
+  overflow: hidden;
+}
+.show-card.is-current { border-color: rgba(139,124,246,0.5); }
+.show-card.vanishing { transform: translateX(20px); opacity: 0; }
+.show-card.vanished  { max-height: 0 !important; margin-bottom: 0 !important; padding: 0 !important; border: none !important; }
+
+.new-card {
+  background: var(--surface); border: 2px dashed var(--border);
+  border-radius: 12px; padding: 20px 22px; margin-bottom: 28px;
+}
+.new-card h3 { font-size: 13px; font-weight: 700; color: var(--muted);
+               letter-spacing: 1px; text-transform: uppercase; margin-bottom: 14px; }
+.form-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+.field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+.field input { background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+               border-radius: 8px; padding: 7px 12px; font-size: 13px; width: 200px; }
+.field input:focus { outline: none; border-color: var(--accent); }
+.banner { border-radius: 8px; padding: 10px 16px; margin-bottom: 16px; font-size: 13px; }
+.banner-ok  { background: #1a3a1a; border: 1px solid #2a5a2a; color: var(--green); }
+.banner-err { background: #3a1a1a; border: 1px solid #5a2a2a; color: var(--red); }
+.public-url { font-size: 12px; color: var(--accent); word-break: break-all; }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="page">
+  <div class="page-title">弧 / 档期管理</div>
+
+  {% if msg == 'created' %}
+  <div class="banner banner-ok">✅ 新弧已创建。</div>
+  {% elif msg == 'activated' %}
+  <div class="banner banner-ok">✅ 已切换当前活跃弧，机器人数据将写入此弧。</div>
+  {% elif msg == 'deleted' %}
+  <div class="banner banner-ok">🗑 弧及其所有数据已删除。</div>
+  {% elif msg == 'cannot_delete_current' %}
+  <div class="banner banner-err">⚠️ 无法删除当前活跃弧，请先切换到其他弧再删除。</div>
+  {% elif msg == 'empty_name' %}
+  <div class="banner banner-err">⚠️ 弧名不能为空。</div>
+  {% endif %}
+
+  <!-- 新建 -->
+  <div class="new-card">
+    <h3>新建弧</h3>
+    <form method="post" action="{{ url_for('admin_show_new') }}">
+      <div class="form-row">
+        <div class="field">
+          <label>弧名 <span style="color:var(--red)">*</span></label>
+          <input type="text" name="name" placeholder="如 第二弧 / 夏季档" required>
+        </div>
+        <div class="field">
+          <label>备注（可选）</label>
+          <input type="text" name="description" placeholder="简短说明">
+        </div>
+        <button type="submit" class="btn btn-view" style="margin-bottom:1px;">＋ 创建</button>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px;">
+        新弧默认不是活跃弧，创建后点「设为活跃」才会让机器人往里写数据。
+      </div>
+    </form>
+  </div>
+
+  <!-- 弧列表 -->
+  {% for s in shows %}
+  <div class="show-card {% if s.is_current %}is-current{% endif %}">
+    <div class="show-header">
+      <span class="show-title">{{ s.name }}</span>
+      {% if s.is_current %}
+      <span class="badge badge-current">● 活跃弧</span>
+      {% else %}
+      <span class="badge badge-archive">已归档</span>
+      {% endif %}
+      {% if s.public_view_enabled %}
+      <span class="badge badge-public">🌐 公开</span>
+      {% endif %}
+    </div>
+
+    <div class="show-meta">
+      <span>{{ s.session_count }} 场次</span>
+      <span>创建 {{ s.created_at_str or '—' }}</span>
+      {% if s.description %}<span>{{ s.description }}</span>{% endif %}
+    </div>
+
+    <!-- 公开链接 -->
+    <div style="margin-bottom:12px;">
+      {% if s.public_view_enabled %}
+      <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">公开查看链接（分享给围观者）：</div>
+      <div class="token-row">
+        <span id="url-{{ s.id }}">/view/{{ s.public_token }}</span>
+        <button class="btn-copy" onclick="copyUrl('{{ s.public_token }}', this)">复制链接</button>
+      </div>
+      {% else %}
+      <div style="font-size:12px;color:var(--muted);">公开查看已关闭。开启后生成分享链接供围观者访问。</div>
+      {% endif %}
+    </div>
+
+    <div class="actions">
+      <!-- 查看此弧数据（保留普通 form，跳转主页） -->
+      <form method="post" action="{{ url_for('admin_show_view', sid=s.id) }}">
+        <button type="submit" class="btn btn-view">👁 查看此弧</button>
+      </form>
+
+      <!-- 设为活跃 -->
+      {% if not s.is_current %}
+      <button class="btn btn-activate" id="btn-activate-{{ s.id }}"
+              onclick="activateShow(this, {{ s.id }}, '{{ s.name|e }}')">⚡ 设为活跃</button>
+      {% endif %}
+
+      <!-- 公开开关 -->
+      <button class="btn btn-toggle" id="btn-public-{{ s.id }}"
+              data-enabled="{{ '1' if s.public_view_enabled else '0' }}"
+              onclick="togglePublic(this, {{ s.id }})">
+        {{ '🔒 关闭公开' if s.public_view_enabled else '🌐 开启公开' }}
+      </button>
+
+      <!-- 重置公开 token（低频操作保留 form） -->
+      <form method="post" action="{{ url_for('admin_show_reset_token', sid=s.id) }}"
+            onsubmit="return confirm('重置后旧链接立即失效，需要重新分享新链接。确认？')">
+        <button type="submit" class="btn btn-toggle">🔄 重置链接</button>
+      </form>
+
+      <!-- 删除 -->
+      {% if not s.is_current %}
+      <button class="btn btn-danger"
+              onclick="deleteShow(this, {{ s.id }}, '{{ s.name|e }}')">🗑 删除此弧</button>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<script>
+function copyUrl(token, btn) {
+  const url = window.location.origin + '/view/' + token;
+  navigator.clipboard.writeText(url).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = '已复制';
+    setTimeout(() => btn.textContent = orig, 1500);
+  });
+}
+
+function vanishCard(card, cb) {
+  card.classList.add('vanishing');
+  card.addEventListener('transitionend', function h(e) {
+    if (e.propertyName !== 'opacity') return;
+    card.removeEventListener('transitionend', h);
+    card.classList.add('vanished');
+    setTimeout(cb, 280);
+  });
+}
+
+async function fetchShow(url, btn) {
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = '…';
+  try {
+    const resp = await fetch(url, { method: 'POST', headers: { 'X-Fetch': '1' } });
+    return await resp.json();
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = orig;
+    alert('操作失败，请重试。');
+    return null;
+  }
+}
+
+async function activateShow(btn, sid, name) {
+  if (!confirm('切换活跃弧后，机器人数据将写入「' + name + '」。确认？')) return;
+  const json = await fetchShow('/admin/shows/' + sid + '/activate', btn);
+  if (!json || !json.ok) { btn.disabled = false; btn.textContent = '⚡ 设为活跃'; return; }
+  // 把其他弧的「活跃」徽章和状态全部刷新
+  document.querySelectorAll('.badge-current').forEach(b => {
+    b.closest('.show-card').classList.remove('is-current');
+    b.remove();
+  });
+  document.querySelectorAll('[id^="btn-activate-"]').forEach(b => { b.disabled = false; b.textContent = '⚡ 设为活跃'; });
+  const card = btn.closest('.show-card');
+  card.classList.add('is-current');
+  const header = card.querySelector('.show-header');
+  const badge = document.createElement('span');
+  badge.className = 'badge badge-current';
+  badge.textContent = '● 活跃弧';
+  header.insertBefore(badge, header.children[1]);
+  btn.remove();
+}
+
+async function togglePublic(btn, sid) {
+  const json = await fetchShow('/admin/shows/' + sid + '/toggle_public', btn);
+  if (!json || !json.ok) { btn.disabled = false; return; }
+  btn.dataset.enabled = json.enabled ? '1' : '0';
+  btn.textContent = json.enabled ? '🔒 关闭公开' : '🌐 开启公开';
+  btn.disabled = false;
+}
+
+async function deleteShow(btn, sid, name) {
+  if (!confirm('删除「' + name + '」及其所有场次、RP 记录？此操作不可撤销。')) return;
+  const json = await fetchShow('/admin/shows/' + sid + '/delete', btn);
+  if (!json) return;
+  if (!json.ok) {
+    btn.disabled = false;
+    btn.textContent = '🗑 删除此弧';
+    alert(json.error === 'cannot_delete_current' ? '无法删除当前活跃弧，请先切换到其他弧。' : '删除失败。');
+    return;
+  }
+  vanishCard(btn.closest('.show-card'), function() { btn.closest('.show-card').remove(); });
+}
+</script>
+{% endblock %}

@@ -55,3 +55,28 @@ CREATE TABLE IF NOT EXISTS site_config (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL DEFAULT ''
 );
+
+CREATE TABLE IF NOT EXISTS tenants (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    username            TEXT UNIQUE NOT NULL,
+    view_password_hash  TEXT NOT NULL,
+    admin_password_hash TEXT NOT NULL,
+    api_token           TEXT UNIQUE NOT NULL,
+    display_name        TEXT DEFAULT '',
+    created_at          INTEGER DEFAULT 0
+);
+
+-- 弧/档期表：租户内可有多个弧，机器人数据写入 is_current=1 的弧
+CREATE TABLE IF NOT EXISTS shows (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id           INTEGER NOT NULL,
+    name                TEXT NOT NULL DEFAULT '第一弧',
+    description         TEXT DEFAULT '',
+    is_current          INTEGER DEFAULT 0,
+    public_view_enabled INTEGER DEFAULT 0,
+    public_token        TEXT UNIQUE,
+    created_at          INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_shows_tenant ON shows(tenant_id);
+
+-- tenant_id / show_id 列通过 _migrate() 在运行时添加到现有表

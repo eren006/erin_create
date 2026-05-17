@@ -1,5 +1,5 @@
-{% extends "base.html" %}
-{% block title %}长日存档 · {{ game_day }}{% endblock %}
+{% extends "public_base.html" %}
+{% block title %}{{ show.name }} · {{ game_day }}{% endblock %}
 
 {% block head %}
 <style>
@@ -19,12 +19,11 @@
 {% block body %}
 <div class="page">
   <div style="margin-bottom:16px;">
-    <a href="{{ url_for('home') }}" style="color:var(--muted);font-size:13px;">← 返回主页</a>
+    <a href="/view/{{ token }}" style="color:var(--muted);font-size:13px;">← 返回主页</a>
   </div>
   <div class="page-title">{{ game_day }} · 全部场次</div>
 
   {% if sessions %}
-  <!-- 文本搜索 -->
   <div style="margin-bottom:12px;">
     <input id="session-search" type="text" placeholder="搜索地点或参与者名字…"
            oninput="applySearch()"
@@ -32,7 +31,6 @@
                   color:var(--text);border-radius:8px;padding:7px 14px;font-size:13px;">
   </div>
 
-  <!-- 筛选栏 -->
   {% set counts = {'all': sessions|length, '私密': 0, '电话': 0, '官约': 0, '强结': 0} %}
   {% for s in sessions %}
     {% if s.forced %}{% set _ = counts.update({'强结': counts['强结'] + 1}) %}{% endif %}
@@ -50,15 +48,13 @@
 
   {% for s in sessions %}
   {% set tag_class = 'tag-forced' if s.forced else ('tag-call' if s.subtype=='电话' else ('tag-official' if s.subtype=='官约' else 'tag-private')) %}
-  <a href="{{ url_for('session_view', session_id=s.id) }}" class="session-card"
+  <a href="/view/{{ token }}/session/{{ s.id }}" class="session-card"
      data-subtype="{{ s.subtype or '私密' }}" data-forced="{{ '1' if s.forced else '0' }}"
      data-search="{{ (s.place or '') ~ ' ' ~ (s.participants | join(' ')) }}"
      style="display:block;text-decoration:none;">
     <div class="card">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-        <span class="card-title">
-          {% if s.place %}{{ s.place }}{% else %}未知地点{% endif %}
-        </span>
+        <span class="card-title">{{ s.place or '未知地点' }}</span>
         <span class="tag {{ tag_class }}">{{ s.subtype or '私密' }}</span>
         {% if s.forced %}<span class="tag tag-forced">强结</span>{% endif %}
       </div>
@@ -73,17 +69,6 @@
         <span class="pill">{{ p }}{% if show_names.get(p) %}<span style="color:var(--muted);font-size:10px;"> · {{ show_names[p] }}</span>{% endif %}</span>
         {% endfor %}
       </div>
-      {% if s.stats %}
-      <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);
-                  display:flex;flex-wrap:wrap;gap:16px;">
-        {% for role, st in s.stats.items() %}
-        <span style="font-size:12px;color:var(--muted);">
-          <b style="color:var(--text);">{{ role }}</b>{% if show_names.get(role) %}<span style="font-size:10px;"> · {{ show_names[role] }}</span>{% endif %}
-          · {{ st.replies }}回 · {{ st.words }}字
-        </span>
-        {% endfor %}
-      </div>
-      {% endif %}
     </div>
   </a>
   {% endfor %}
@@ -96,14 +81,12 @@
 
 <script>
 let _activeType = 'all';
-
 function filterSessions(type, btn) {
   _activeType = type;
   document.querySelectorAll('.ftab').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   applySearch();
 }
-
 function applySearch() {
   const q = (document.getElementById('session-search').value || '').trim().toLowerCase();
   let visible = 0;

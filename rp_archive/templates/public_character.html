@@ -1,0 +1,59 @@
+{% extends "public_base.html" %}
+{% block title %}{{ show.name }} · {{ role_name }}{% endblock %}
+
+{% block head %}
+<style>
+.char-header {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 20px 22px; margin-bottom: 20px;
+}
+.char-name { font-size: 22px; font-weight: 700; color: var(--accent2); margin-bottom: 6px; }
+.char-sub  { color: var(--muted); font-size: 13px; }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="page">
+  <div style="margin-bottom:16px;">
+    <a href="/view/{{ token }}" style="color:var(--muted);font-size:13px;">← 返回主页</a>
+  </div>
+
+  <div class="char-header">
+    <div class="char-name">{{ role_name }}</div>
+    {% if show_names.get(role_name) %}
+    <div class="char-sub">扮演者：{{ show_names[role_name] }}</div>
+    {% endif %}
+    <div class="char-sub" style="margin-top:4px;">共 {{ sessions | length }} 场记录</div>
+  </div>
+
+  {% if sessions %}
+  {% for s in sessions %}
+  {% set tag_class = 'tag-forced' if s.forced else ('tag-call' if s.subtype=='电话' else ('tag-official' if s.subtype=='官约' else 'tag-private')) %}
+  <a href="/view/{{ token }}/session/{{ s.id }}" style="display:block;text-decoration:none;">
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+        <span class="card-title">{{ s.place or '未知地点' }}</span>
+        <span class="tag {{ tag_class }}">{{ s.subtype or '私密' }}</span>
+        {% if s.forced %}<span class="tag tag-forced">强结</span>{% endif %}
+      </div>
+      <div class="card-meta" style="margin-bottom:10px;">
+        <span>📅 游戏日 {{ s.game_day }}</span>
+        <span>🕐 {{ s.game_time or '—' }}</span>
+        {% if s.duration_str %}<span>⏱ {{ s.duration_str }}</span>{% endif %}
+        <span>💬 {{ s.total_replies }} 回复 · {{ s.total_words }} 字</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;">
+        {% for p in s.participants %}
+        <span class="pill" style="{{ 'color:var(--accent2);border-color:var(--accent);' if p == role_name else '' }}">
+          {{ p }}{% if show_names.get(p) %}<span style="color:var(--muted);font-size:10px;"> · {{ show_names[p] }}</span>{% endif %}
+        </span>
+        {% endfor %}
+      </div>
+    </div>
+  </a>
+  {% endfor %}
+  {% else %}
+  <div class="empty">暂无该角色的场次记录。</div>
+  {% endif %}
+</div>
+{% endblock %}

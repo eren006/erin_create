@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>长日存档 · 全局玩家档案</title>
+<style>
+:root{--bg:#0f0f13;--surface:#1a1a22;--surface2:#22222e;--border:#2e2e3e;
+  --accent:#f59e0b;--accent2:#fcd34d;--text:#e2e2ec;--muted:#7878a0;--red:#f87171;--green:#86efac;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:"PingFang SC","Microsoft YaHei",sans-serif;font-size:14px;line-height:1.7;}
+a{color:var(--accent);text-decoration:none;}a:hover{color:var(--accent2);}
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;
+  display:flex;align-items:center;gap:16px;height:52px;position:sticky;top:0;z-index:100;}
+.topbar .logo{font-size:16px;font-weight:700;color:var(--accent2);}
+.topbar .nav a{color:var(--muted);font-size:13px;padding:4px 10px;border-radius:6px;}
+.topbar .nav a:hover,.topbar .nav a.active{color:var(--text);background:var(--surface2);}
+.topbar .logout{margin-left:auto;font-size:12px;color:var(--muted);}
+.page{max-width:960px;margin:0 auto;padding:28px 20px;}
+.page-title{font-size:20px;font-weight:600;color:var(--accent2);margin-bottom:20px;
+  padding-bottom:12px;border-bottom:1px solid var(--border);}
+
+.search-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:20px 24px;margin-bottom:24px;}
+.search-card h3{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:1px;
+  text-transform:uppercase;margin-bottom:12px;}
+.search-row{display:flex;gap:10px;}
+.search-row input{flex:1;background:var(--surface2);border:1px solid var(--border);
+  color:var(--text);border-radius:8px;padding:8px 14px;font-size:14px;}
+.search-row input:focus{outline:none;border-color:var(--accent);}
+.search-row button{background:var(--accent);color:#0f0f13;border:none;border-radius:8px;
+  padding:8px 22px;font-size:13px;font-weight:700;cursor:pointer;}
+.search-row button:hover{background:var(--accent2);}
+
+.summary-card{background:var(--surface);border:2px solid var(--accent);border-radius:12px;
+  padding:18px 22px;margin-bottom:20px;}
+.summary-qq{font-size:18px;font-weight:700;color:var(--accent2);margin-bottom:12px;font-family:monospace;}
+.summary-stats{display:flex;gap:28px;flex-wrap:wrap;}
+.s-item{font-size:12px;color:var(--muted);}
+.s-item b{display:block;font-size:22px;font-weight:700;color:var(--text);}
+
+.arc-table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:28px;}
+.arc-table th{text-align:left;color:var(--muted);font-weight:600;
+  padding:8px 12px;border-bottom:1px solid var(--border);}
+.arc-table td{padding:9px 12px;border-bottom:1px solid var(--border);}
+.arc-table tr:last-child td{border-bottom:none;}
+.arc-table tr:hover td{background:var(--surface2);}
+.tenant-chip{display:inline-block;background:var(--surface2);border:1px solid var(--border);
+  border-radius:20px;padding:1px 10px;font-size:11px;color:var(--muted);}
+
+.section-title{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:1px;
+  text-transform:uppercase;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border);}
+.top-table{width:100%;border-collapse:collapse;font-size:13px;}
+.top-table th{text-align:left;color:var(--muted);font-weight:600;padding:8px 12px;border-bottom:1px solid var(--border);}
+.top-table td{padding:8px 12px;border-bottom:1px solid var(--border);}
+.top-table tr:hover td{background:var(--surface2);}
+.top-table .qq-link{font-family:monospace;color:var(--accent);}
+.rank{color:var(--muted);font-size:12px;font-weight:700;width:30px;}
+.empty{color:var(--muted);text-align:center;padding:40px 0;}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <span class="logo">⚙️ 超级管理员</span>
+  <nav class="nav" style="display:flex;gap:4px;">
+    <a href="{{ url_for('superadmin') }}">租户管理</a>
+    <a href="{{ url_for('superadmin_players') }}" class="active">玩家档案</a>
+  </nav>
+  <a class="logout" href="{{ url_for('superadmin_logout') }}">退出超管</a>
+</div>
+
+<div class="page">
+  <div class="page-title">全局玩家档案</div>
+
+  <!-- 搜索 -->
+  <div class="search-card">
+    <h3>按 QQ 号查找</h3>
+    <form method="get" action="{{ url_for('superadmin_players') }}">
+      <div class="search-row">
+        <input type="text" name="qq" value="{{ qq }}" placeholder="输入 QQ 号…" autocomplete="off">
+        <button type="submit">查找</button>
+      </div>
+    </form>
+  </div>
+
+  {% if qq %}
+    {% if summary %}
+    <!-- 汇总 -->
+    <div class="summary-card">
+      <div class="summary-qq">{{ summary.qq }}</div>
+      <div class="summary-stats">
+        <div class="s-item"><b>{{ summary.arc_count }}</b>参与弧数</div>
+        <div class="s-item"><b>{{ summary.total_sessions }}</b>总场次</div>
+        <div class="s-item"><b>{{ summary.total_replies }}</b>总回复</div>
+        <div class="s-item"><b>{{ summary.total_words }}</b>总字数</div>
+        {% if summary.total_replies %}
+        <div class="s-item"><b>{{ (summary.total_words // summary.total_replies) }}</b>均字/回</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- 各弧明细 -->
+    <div style="overflow-x:auto;">
+      <table class="arc-table">
+        <thead>
+          <tr>
+            <th>租户</th><th>弧</th><th>角色名</th><th>恋综名</th>
+            <th>场次</th><th>回复</th><th>字数</th><th>最后更新</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td><span class="tenant-chip">{{ r.tenant_display or r.tenant_username }}</span></td>
+            <td>{{ r.arc_name }}</td>
+            <td style="font-weight:600;color:var(--accent2);">{{ r.role_name or '—' }}</td>
+            <td>{{ r.show_name or '—' }}</td>
+            <td>{{ r.sessions_count }}</td>
+            <td>{{ r.total_replies }}</td>
+            <td>{{ r.total_words }}</td>
+            <td style="color:var(--muted);font-size:12px;">{{ r.last_updated_str or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty">未找到 QQ「{{ qq }}」的数据。请先让该玩家所在的团运行「更新玩家数据库」指令。</div>
+    {% endif %}
+  {% endif %}
+
+  <!-- 全局排行 -->
+  <div class="section-title">全局字数排行（Top 50）</div>
+  {% if top %}
+  <div style="overflow-x:auto;">
+    <table class="top-table">
+      <thead>
+        <tr><th class="rank">#</th><th>QQ</th><th>弧数</th><th>总回复</th><th>总字数</th><th>均字/回</th><th>最后活跃</th></tr>
+      </thead>
+      <tbody>
+        {% for r in top %}
+        <tr>
+          <td class="rank">{{ loop.index }}</td>
+          <td><a class="qq-link" href="?qq={{ r.qq }}">{{ r.qq }}</a></td>
+          <td>{{ r.arc_count }}</td>
+          <td>{{ r.replies }}</td>
+          <td>{{ r.words }}</td>
+          <td>{{ (r.words // r.replies) if r.replies else '—' }}</td>
+          <td style="color:var(--muted);font-size:12px;">{{ r.last_updated_str }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">暂无玩家数据。各团运行「更新玩家数据库」后数据将显示于此。</div>
+  {% endif %}
+</div>
+</body>
+</html>

@@ -24,6 +24,7 @@ if (!ext) {
     ext = seal.ext.new("changriV1", "长日将尽", "1.4.0");
     seal.ext.register(ext);
 }
+ext.autoActive = true;
 
 // ========================
 // 核心依赖：主插件 helper 函数
@@ -1008,4 +1009,5 @@ ext.onNotCommandReceived = (ctx, msg) => {
     if (raw === "关系线统计") {
         return cmd_rel_stats.solve(ctx, msg, makeFakeCmdArgs([]));
     }
+
 };
