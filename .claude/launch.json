@@ -6,6 +6,12 @@
       "runtimeExecutable": "python3",
       "runtimeArgs": ["-m", "http.server", "7788", "--directory", "文档"],
       "port": 7788
+    },
+    {
+      "name": "rp_archive",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["rp_archive/app.py"],
+      "port": 5001
     }
   ]
 }

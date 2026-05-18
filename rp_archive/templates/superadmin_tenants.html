@@ -219,13 +219,21 @@ a:hover{color:var(--accent2);}
 </div>
 
 <script>
-function copyToken(token, btn) {
-  navigator.clipboard.writeText(token).then(() => {
-    const orig = btn.textContent;
-    btn.textContent = '已复制';
-    setTimeout(() => btn.textContent = orig, 1500);
-  });
+function copyText(text, btn) {
+  const orig = btn ? btn.textContent : '';
+  function done() { if (!btn) return; btn.textContent = '已复制'; setTimeout(() => btn.textContent = orig, 1500); }
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(done).catch(() => _fbCopy(text, done));
+  } else { _fbCopy(text, done); }
 }
+function _fbCopy(text, cb) {
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+  document.body.appendChild(ta); ta.focus(); ta.select();
+  try { document.execCommand('copy'); cb && cb(); } catch(e) {}
+  document.body.removeChild(ta);
+}
+function copyToken(token, btn) { copyText(token, btn); }
 function togglePwForm(id) {
   const el = document.getElementById(id);
   if (!el) return;

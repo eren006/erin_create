@@ -162,12 +162,12 @@ a:hover { color: var(--accent2); }
   <div class="show-pills">
     {% for s in all_shows %}
     <form method="post" action="{{ url_for('admin_show_view', sid=s.id) }}" style="display:inline">
-      <button type="submit" class="show-pill {% if s.id == current_show_id %}active{% endif %}" title="{{ '当前活跃弧（机器人写入此弧）' if s.is_current else '' }}">
+      <button type="submit" class="show-pill {% if s.id == current_show_id %}active{% endif %}" title="{{ '当前活跃季（机器人写入此季）' if s.is_current else '' }}">
         {{ s.name }}{% if s.is_current %}<span class="live-dot"></span>{% endif %}
       </button>
     </form>
     {% endfor %}
-    <a class="show-pill-manage" href="{{ url_for('admin_shows') }}" title="管理弧">⚙</a>
+    <a class="show-pill-manage" href="{{ url_for('admin_shows') }}" title="管理季">⚙</a>
   </div>
   {% endif %}
 
@@ -213,6 +213,28 @@ function setTheme(t){
   document.querySelectorAll('.tp-item').forEach((el,i)=>el.classList.toggle('tp-active',_THEMES[i]===t));
 })();
 document.addEventListener('click',function(e){if(!document.getElementById('tp').contains(e.target))document.getElementById('tp-panel').classList.remove('open')});
+function copyText(text, btn, label) {
+  const orig = btn ? btn.textContent : '';
+  function done() {
+    if (!btn) return;
+    btn.textContent = '已复制';
+    setTimeout(() => btn.textContent = orig, 1500);
+  }
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(done).catch(() => fallback(text, done));
+  } else {
+    fallback(text, done);
+  }
+}
+function fallback(text, cb) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+  document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  try { document.execCommand('copy'); cb && cb(); } catch(e) {}
+  document.body.removeChild(ta);
+}
 </script>
 </body>
 </html>

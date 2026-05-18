@@ -89,7 +89,7 @@ a{color:var(--accent);text-decoration:none;}a:hover{color:var(--accent2);}
     <div class="summary-card">
       <div class="summary-qq">{{ summary.qq }}</div>
       <div class="summary-stats">
-        <div class="s-item"><b>{{ summary.arc_count }}</b>参与弧数</div>
+        <div class="s-item"><b>{{ summary.arc_count }}</b>参与季数</div>
         <div class="s-item"><b>{{ summary.total_sessions }}</b>总场次</div>
         <div class="s-item"><b>{{ summary.total_replies }}</b>总回复</div>
         <div class="s-item"><b>{{ summary.total_words }}</b>总字数</div>
@@ -99,12 +99,12 @@ a{color:var(--accent);text-decoration:none;}a:hover{color:var(--accent2);}
       </div>
     </div>
 
-    <!-- 各弧明细 -->
+    <!-- 各季明细 -->
     <div style="overflow-x:auto;">
       <table class="arc-table">
         <thead>
           <tr>
-            <th>租户</th><th>弧</th><th>角色名</th><th>恋综名</th>
+            <th>租户</th><th>季</th><th>角色名</th><th>恋综名</th>
             <th>场次</th><th>回复</th><th>字数</th><th>最后更新</th>
           </tr>
         </thead>
@@ -135,7 +135,7 @@ a{color:var(--accent);text-decoration:none;}a:hover{color:var(--accent2);}
   <div style="overflow-x:auto;">
     <table class="top-table">
       <thead>
-        <tr><th class="rank">#</th><th>QQ</th><th>弧数</th><th>总回复</th><th>总字数</th><th>均字/回</th><th>最后活跃</th></tr>
+        <tr><th class="rank">#</th><th>QQ</th><th>季数</th><th>总回复</th><th>总字数</th><th>均字/回</th><th>最后活跃</th></tr>
       </thead>
       <tbody>
         {% for r in top %}

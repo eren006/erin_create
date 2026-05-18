@@ -182,7 +182,7 @@ footer {
     <h1>把每一场小群<br>永久留存下来<span>。</span></h1>
     <p>
       接入海豹机器人，自动捕获私约正文、心动信、短信与礼物，
-      按D日分类归档，支持多弧管理与公开观看链接，
+      按D日分类归档，支持多季管理与公开观看链接，
       让每段故事都有迹可查。
     </p>
     <div class="hero-actions">
@@ -210,8 +210,8 @@ footer {
     </div>
     <div class="feat-card">
       <div class="feat-icon">📂</div>
-      <div class="feat-title">多弧管理</div>
-      <div class="feat-desc">支持创建多个弧档期，上一弧保留可查，新弧继续运行，数据完全隔离。</div>
+      <div class="feat-title">多季管理</div>
+      <div class="feat-desc">支持创建多个季档期，上一季保留可查，新季继续运行，数据完全隔离。</div>
     </div>
     <div class="feat-card">
       <div class="feat-icon">💌</div>
@@ -240,7 +240,7 @@ footer {
             <br><br>
             · <b>用户名</b>：登录网站时使用<br>
             · <b>查看密码</b>：供普通成员只读查看<br>
-            · <b>管理员密码</b>：管理场次、配置弧、导出数据<br>
+            · <b>管理员密码</b>：管理场次、配置季、导出数据<br>
             · <b>API Token</b>：填入海豹长日系统，供机器人推送数据
           </div>
         </div>
@@ -258,7 +258,7 @@ footer {
             <span class="key">API Token：</span><span class="val">（管理员分发的 Token）</span>
           </div>
           <div class="note">
-            💡 配置后，每次结戏指令执行完毕，该场次的 RP 正文与特殊事件将自动推送到存档。机器人数据写入当前活跃弧。
+            💡 配置后，每次结戏指令执行完毕，该场次的 RP 正文与特殊事件将自动推送到存档。机器人数据写入当前活跃季。
           </div>
         </div>
       </div>
@@ -285,10 +285,10 @@ footer {
             登录后，点击顶栏「<b>后台</b>」，输入管理员密码进入管理模式。管理员可以：
             <br><br>
             · 查看全体角色统计（回复数 / 字数）<br>
-            · 配置弧信息（弧名、游戏设定）<br>
+            · 配置季信息（季名、游戏设定）<br>
             · 导出 JSON 数据备份<br>
             · 开启 / 关闭公开查看链接<br>
-            · 创建新弧、切换活跃弧
+            · 创建新季、切换活跃季
           </div>
         </div>
       </div>
@@ -298,7 +298,7 @@ footer {
         <div class="step-body">
           <div class="step-heading">分享公开链接（围观玩家）</div>
           <div class="step-text">
-            在「后台 → 弧管理（⚙）」中，找到对应弧，点击「<b>🌐 开启公开</b>」生成分享链接。<br><br>
+            在「后台 → 季管理（⚙）」中，找到对应季，点击「<b>🌐 开启公开</b>」生成分享链接。<br><br>
             · 复制链接发给围观玩家，无需账号即可查看<br>
             · 公开视图为只读，无任何管理功能<br>
             · 点击「<b>🔄 重置链接</b>」可立即失效旧链接并生成新链接<br>
@@ -310,17 +310,17 @@ footer {
       <div class="step">
         <div class="step-num">6</div>
         <div class="step-body">
-          <div class="step-heading">多弧管理</div>
+          <div class="step-heading">多季管理</div>
           <div class="step-text">
-            当一弧结束、需要开启新弧时，在「⚙ 弧管理」中：
+            当一季结束、需要开启新季时，在「⚙ 季管理」中：
             <br><br>
-            · 点击「<b>＋ 创建</b>」新建一个弧（例如：第二弧、夏季档）<br>
-            · 点击新弧的「<b>⚡ 设为活跃</b>」，机器人数据将写入此弧<br>
-            · 旧弧数据完整保留，点击「<b>👁 查看此弧</b>」或顶栏弧切换器可随时切回查看<br>
-            · 每个弧可独立配置公开链接
+            · 点击「<b>＋ 创建</b>」新建一个季（例如：第二季、夏季档）<br>
+            · 点击新季的「<b>⚡ 设为活跃</b>」，机器人数据将写入此季<br>
+            · 旧季数据完整保留，点击「<b>👁 查看此季</b>」或顶栏季切换器可随时切回查看<br>
+            · 每个季可独立配置公开链接
           </div>
           <div class="note">
-            💡 顶栏中带 <span style="display:inline-block;width:6px;height:6px;background:#86efac;border-radius:50%;vertical-align:middle;"></span> 绿点的弧是当前活跃弧（机器人数据写入此处）。
+            💡 顶栏中带 <span style="display:inline-block;width:6px;height:6px;background:#86efac;border-radius:50%;vertical-align:middle;"></span> 绿点的季是当前活跃季（机器人数据写入此处）。
           </div>
         </div>
       </div>
@@ -345,11 +345,11 @@ footer {
 
     <div class="faq-item">
       <div class="faq-q" onclick="toggleFaq(this)">
-        开启新弧后，旧弧还能看吗？
+        开启新季后，旧季还能看吗？
         <span class="arrow">▼</span>
       </div>
       <div class="faq-a">
-        可以。旧弧数据完整保留，通过顶栏的弧切换器或「后台 → 弧管理」中的「👁 查看此弧」均可访问。旧弧的公开链接也独立有效，不受新弧影响。
+        可以。旧季数据完整保留，通过顶栏的季切换器或「后台 → 季管理」中的「👁 查看此季」均可访问。旧季的公开链接也独立有效，不受新季影响。
       </div>
     </div>
 
@@ -369,7 +369,7 @@ footer {
         <span class="arrow">▼</span>
       </div>
       <div class="faq-a">
-        公开链接仅展示该弧的 RP 场次、正文、心动信、短信与礼物等记录内容，不含任何管理功能、其他弧数据、或账号信息。关闭公开后链接立即失效。
+        公开链接仅展示该季的 RP 场次、正文、心动信、短信与礼物等记录内容，不含任何管理功能、其他季数据、或账号信息。关闭公开后链接立即失效。
       </div>
     </div>
 
@@ -379,7 +379,7 @@ footer {
         <span class="arrow">▼</span>
       </div>
       <div class="faq-a">
-        查看密码用于登录网站后查看存档，无法修改任何数据。管理员密码在登录后再次验证，解锁后台管理功能（配置、弧管理、导出等）。两个密码可以设置为不同值，按需分发给团组成员。
+        查看密码用于登录网站后查看存档，无法修改任何数据。管理员密码在登录后再次验证，解锁后台管理功能（配置、季管理、导出等）。两个密码可以设置为不同值，按需分发给团组成员。
       </div>
     </div>
 

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}长日存档 · 搜索「{{ q }}」{% endblock %}
+
+{% block body %}
+<div class="page">
+  <div style="margin-bottom:14px;">
+    <a href="{{ url_for('home') }}" style="color:var(--muted);font-size:13px;">← 返回主页</a>
+  </div>
+  <div class="page-title">
+    搜索「{{ q }}」
+    <span style="color:var(--muted);font-size:14px;font-weight:400;margin-left:10px;">
+      共 {{ results|length }} 个角色
+    </span>
+  </div>
+
+  {% if results %}
+  <div class="grid-2">
+    {% for role in results %}
+    <a href="{{ url_for('character_view', role_name=role) }}" style="display:block;text-decoration:none;">
+      <div class="card" style="padding:14px 18px;">
+        <div style="font-size:15px;font-weight:600;color:var(--accent2);">{{ role }}</div>
+        {% if show_names.get(role) %}
+        <div style="font-size:12px;color:var(--muted);margin-top:4px;">{{ show_names[role] }}</div>
+        {% endif %}
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty">没有找到包含「{{ q }}」的角色名或显示名。</div>
+  {% endif %}
+</div>
+{% endblock %}

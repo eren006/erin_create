@@ -1828,5 +1828,233 @@ cmd_sync_settings.solve = async (ctx, msg, argv) => {
 
 ext.cmdMap["同步设置"] = cmd_sync_settings;
 
+// ========================
+// 同步到服务端指令（机器人 → 存档 UI）
+// ========================
+
+// 与 CONFIG_SCHEMA 对应的直存键列表
+const SYNC_DIRECT_KEYS = [
+    "item_registry", "rpg_attr_defs", "sys_attr_presets",
+    "love_show_name", "global_days", "auto_day_reset_enabled", "item_pool_mode",
+    "adminAnnounceGroupId", "song_group_id", "background_group_id", "water_group_id",
+    "auction_display_group", "fupan_routing_enabled", "fupan_routing_groups",
+    "enable_join_existing_appointment", "require_fupan_before_end", "group_expire_hours",
+    "mailCooldown", "allow_custom_letter_sign", "letter_public_send",
+    "giftCooldown", "gift_public_send", "giftPublicChance", "giftDailyLimit",
+    "shop_refresh_hours", "allow_private_rooms", "announceFrequency",
+    "lovemail_default_limit", "lovemail_delivery_time", "lovemail_expose", "lovemail_expose_chance",
+    "direct_letter_daily_limit", "direct_letter_min_chars", "direct_letter_reward",
+    "wish_public_send", "wish_bounty_enabled", "wish_max_concurrent",
+    "wish_daily_post_limit", "wish_daily_pick_limit",
+    "relationship_system_enabled", "max_relationships_per_user",
+    "item_tracker_success_rate", "item_tracker_show_partner", "item_tracker_time_restrict",
+    "apply_item_notification", "apply_item_expose_rate", "apply_item_hours",
+    "shop_gift_catalog_on_receive",
+    "auction_allow_anon", "auction_broadcast", "auction_show_top_bidder", "auction_currency",
+];
+
+// json_parent 键 → 子字段列表（与 CONFIG_SCHEMA json_parent 对应）
+const SYNC_JSON_PARENT_KEYS = {
+    "global_feature_toggle": [
+        "enable_general_letter", "enable_general_gift", "enable_general_appointment",
+        "enable_chaos_letter", "enable_wish_system", "enable_lovemail",
+        "enable_wechat", "enable_direct_letter"
+    ],
+    "chaos_letter_config": [
+        "misdelivery", "blackoutText", "loseContent", "antonymReplace",
+        "reverseOrder", "mistakenSignature", "poeticSignature",
+        "dailyLimit", "publicChance", "giftLost", "giftMisdelivery"
+    ],
+    "appointment_duration_config": ["phone", "private"],
+    "sighting_system_config": [
+        "enabled", "send_to_all", "max_reports_per_day",
+        "include_ended_meetings", "time_overlap_threshold"
+    ],
+    "place_system_config": ["enabled", "require_key_by_default"],
+};
+
+let cmd_push_to_server = seal.ext.newCmdItemInfo();
+cmd_push_to_server.name = "同步到服务端";
+cmd_push_to_server.help = "【管理员】将机器人当前配置推送到存档 UI 服务器，UI 将显示最新数值\n使用方法：。同步到服务端";
+cmd_push_to_server.solve = async (ctx, msg, argv) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足");
+
+    const main = getMainExt();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件 changri");
+
+    const base = (seal.ext.getStringConfig(main, "RP存档服务器地址") || "").replace(/\/$/, "");
+    const token = seal.ext.getStringConfig(main, "RP存档Token") || "";
+    if (!base) return seal.replyToSender(ctx, msg, "❌ 未配置存档服务器地址（在海豹插件设置里填写）");
+
+    seal.replyToSender(ctx, msg, "⏳ 正在推送配置到服务端…");
+
+    const payload = {};
+
+    // 直存键：直接读取
+    for (const key of SYNC_DIRECT_KEYS) {
+        const val = main.storageGet(key);
+        if (val !== null && val !== undefined && val !== "") {
+            payload[key] = val;
+        }
+    }
+
+    // json_parent 键：展开子字段，以 parent__subKey 格式写入
+    for (const [parent, subKeys] of Object.entries(SYNC_JSON_PARENT_KEYS)) {
+        const raw = main.storageGet(parent);
+        if (!raw) continue;
+        try {
+            const obj = JSON.parse(raw);
+            for (const subKey of subKeys) {
+                if (obj[subKey] !== undefined) {
+                    payload[`${parent}__${subKey}`] = String(obj[subKey]);
+                }
+            }
+        } catch (e) { console.warn(`[同步到服务端] 解析 ${parent} 失败: ${e.message}`); }
+    }
+
+    try {
+        const resp = await fetch(`${base}/api/sync_config`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-Archive-Token": token
+            },
+            body: JSON.stringify(payload)
+        });
+        if (resp.status === 401 || resp.status === 403) {
+            seal.replyToSender(ctx, msg, "❌ Token 无效或未配置，请检查插件设置里的「RP存档Token」");
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        if (!resp.ok) {
+            seal.replyToSender(ctx, msg, `❌ 服务端返回错误：${resp.status}`);
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        const result = await resp.json();
+        seal.replyToSender(ctx, msg,
+            `✅ 推送完成！已同步 ${result.synced || Object.keys(payload).length} 项配置到存档 UI。\n` +
+            "管理员打开后台配置页即可看到最新数值。"
+        );
+    } catch (e) {
+        seal.replyToSender(ctx, msg, `❌ 推送失败：${e.message}`);
+    }
+
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["同步到服务端"] = cmd_push_to_server;
+
+// ========================
+// 全量同步指令（配置 + 物品注册 + 结戏加成模版，一次推送全部）
+// ========================
+const SYNC_BLOB_KEYS = [
+    "item_registry", "rpg_attr_defs", "sys_attr_presets",
+    "end_game_bonus_templates", "end_game_draw_config"
+];
+
+let cmd_full_sync = seal.ext.newCmdItemInfo();
+cmd_full_sync.name = "全量同步";
+cmd_full_sync.help = "【管理员】将机器人所有配置（设置项 + 物品注册 + 结戏加成模版）全部推送到存档 UI\n使用方法：。全量同步";
+cmd_full_sync.solve = async (ctx, msg, argv) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足");
+
+    const main = getMainExt();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件 changri");
+
+    const base  = (seal.ext.getStringConfig(main, "RP存档服务器地址") || "").replace(/\/$/, "");
+    const token = seal.ext.getStringConfig(main, "RP存档Token") || "";
+    if (!base) return seal.replyToSender(ctx, msg, "❌ 未配置存档服务器地址");
+
+    seal.replyToSender(ctx, msg, "⏳ 正在全量推送到服务端（配置 + 注册表 + 结戏模版）…");
+
+    const payload = {};
+
+    // 直存配置键
+    for (const key of SYNC_DIRECT_KEYS) {
+        const val = main.storageGet(key);
+        if (val !== null && val !== undefined && val !== "") payload[key] = val;
+    }
+
+    // json_parent 展开键
+    for (const [parent, subKeys] of Object.entries(SYNC_JSON_PARENT_KEYS)) {
+        const raw = main.storageGet(parent);
+        if (!raw) continue;
+        try {
+            const obj = JSON.parse(raw);
+            for (const subKey of subKeys) {
+                if (obj[subKey] !== undefined) payload[`${parent}__${subKey}`] = String(obj[subKey]);
+            }
+        } catch (e) { console.warn(`[全量同步] 解析 ${parent} 失败: ${e.message}`); }
+    }
+
+    // blob 键（物品注册、结戏模版等）
+    for (const key of SYNC_BLOB_KEYS) {
+        const val = main.storageGet(key);
+        if (val !== null && val !== undefined && val !== "") payload[key] = val;
+    }
+
+    // 处理网页端待同步物品：从服务端取 pending → 分配编号 → merge 进 item_registry
+    let pendingMerged = 0;
+    try {
+        const pendingResp = await fetch(`${base}/api/pending_items`, {
+            headers: { "X-Archive-Token": token }
+        });
+        if (pendingResp.ok) {
+            const pendingData = await pendingResp.json();
+            const pending = pendingData.pending || [];
+            if (pending.length > 0) {
+                const reg = JSON.parse(main.storageGet("item_registry") || "{}");
+                for (const p of pending) {
+                    // 跳过名称已存在的
+                    if (Object.values(reg).some(r => r.name === p.name)) continue;
+                    // 分配编号
+                    const codePrefix = p.type === "interact" ? "INTER_" : "ITEM_";
+                    const padLen = 3;
+                    let code = null;
+                    for (let d = 1; d < 10000; d++) {
+                        const c = codePrefix + String(d).padStart(padLen, "0");
+                        if (!reg[c]) { code = c; break; }
+                    }
+                    if (!code) continue;
+                    reg[code] = { code, name: p.name, desc: p.desc, type: p.type,
+                                  maxUses: p.maxUses, attrs: p.attrs, price: 0, canResell: p.canResell };
+                    pendingMerged++;
+                }
+                main.storageSet("item_registry", JSON.stringify(reg));
+                payload["item_registry"] = JSON.stringify(reg);
+            }
+            // 无论是否有 pending，都清空服务端的待同步列表
+            payload["item_registry_pending"] = "[]";
+        }
+    } catch (e) {
+        console.warn(`[全量同步] 处理待上载物品失败: ${e.message}`);
+    }
+
+    try {
+        const resp = await fetch(`${base}/api/sync_config`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Archive-Token": token },
+            body: JSON.stringify(payload)
+        });
+        if (resp.status === 401 || resp.status === 403) {
+            seal.replyToSender(ctx, msg, "❌ Token 无效或未配置，请检查插件设置里的「RP存档Token」");
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        if (!resp.ok) {
+            seal.replyToSender(ctx, msg, `❌ 服务端返回错误：${resp.status}`);
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        const result = await resp.json();
+        const pendingNote = pendingMerged > 0 ? `\n📦 已为 ${pendingMerged} 件待上载物品分配编号并合并。` : "";
+        seal.replyToSender(ctx, msg,
+            `✅ 全量推送完成！已同步 ${result.synced || Object.keys(payload).length} 项到存档 UI。\n` +
+            "配置设置、物品注册表、结戏加成模版均已更新。" + pendingNote
+        );
+    } catch (e) {
+        seal.replyToSender(ctx, msg, `❌ 推送失败：${e.message}`);
+    }
+
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["全量同步"] = cmd_full_sync;
+
 // 启动自动天数轮询
 registerAutoDaySystem();

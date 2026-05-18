@@ -148,7 +148,11 @@
         <div class="rp-block">
           <div class="rp-role">{{ entry.role_name }}</div>
           <div class="rp-content" id="content-{{ entry.id }}">{{ entry.content }}</div>
-          <div class="rp-time">{{ ts_to_str(entry.timestamp) }}</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+            <span class="rp-time">{{ ts_to_str(entry.timestamp) }}</span>
+            <button class="rp-btn" style="font-size:10px;padding:1px 8px;"
+              onclick="copyText(document.getElementById('content-{{ entry.id }}').innerText, this)">复制</button>
+          </div>
 
           {% if is_admin %}
           <div class="rp-admin-bar">

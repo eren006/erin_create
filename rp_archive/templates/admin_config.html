@@ -102,9 +102,9 @@ select.cfg-input { cursor: pointer; }
 }
 .cfg-sub:first-child { margin-top: 0; }
 
-/* ── Chaos card (amber tint) ────────────── */
-.cfg-card-chaos { border-color: #4a3515; }
-.cfg-card-chaos .cfg-card-title { color: #c8902a; border-bottom-color: #3a2a10; }
+/* ── SMS card (amber tint) ──────────────── */
+.cfg-card-sms { border-color: #4a3515; }
+.cfg-card-sms .cfg-card-title { color: #c8902a; border-bottom-color: #3a2a10; }
 
 /* ── Collapsible advanced block ─────────── */
 .cfg-collapsible {
@@ -179,6 +179,316 @@ select.cfg-input { cursor: pointer; }
   animation: blink .7s step-end infinite;
 }
 @keyframes blink { 50% { opacity: 0; } }
+
+/* ── Slider (percent fields) ────────────── */
+.cfg-slider {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 4px; border-radius: 2px;
+  background: linear-gradient(to right, var(--accent) 0%, var(--accent) var(--pct, 50%), var(--surface2) var(--pct, 50%));
+  border: none; outline: none; cursor: pointer; margin-top: 6px;
+}
+.cfg-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--accent); cursor: pointer; border: 2px solid rgba(255,255,255,0.2);
+  box-shadow: 0 0 4px rgba(0,0,0,.5); transition: transform .12s;
+}
+.cfg-slider::-webkit-slider-thumb:hover { transform: scale(1.18); }
+.cfg-slider::-moz-range-thumb {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--accent); cursor: pointer; border: none;
+}
+.cfg-pct-val {
+  font-size: 13px; font-weight: 700; color: var(--accent);
+  min-width: 36px; text-align: right; font-variant-numeric: tabular-nums;
+}
+
+/* ── Registry management ────────────────── */
+.reg-tabs { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
+.reg-tab {
+  font-size: 12px; padding: 5px 14px; border-radius: 7px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface2); color: var(--muted);
+  transition: background .15s, color .15s, border-color .15s; user-select: none;
+}
+.reg-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.reg-panel { display: none; }
+.reg-panel.active { display: block; }
+.reg-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.reg-table th {
+  text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border);
+  font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted);
+  font-weight: 700;
+}
+.reg-table td { padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.reg-table tr:last-child td { border-bottom: none; }
+.reg-table tr:hover td { background: rgba(255,255,255,0.02); }
+.reg-code { font-family: 'Courier New', monospace; color: var(--muted); font-size: 11px; }
+.reg-type-badge {
+  font-size: 10px; border-radius: 4px; padding: 1px 6px; font-weight: 600;
+  letter-spacing: .5px;
+}
+.reg-type-currency { background: #2a3a1a; color: #7ec850; border: 1px solid #3a5a22; }
+.reg-type-item     { background: #1a2a3a; color: #60a0d0; border: 1px solid #224a6a; }
+.reg-type-interact { background: #2a1a3a; color: #c070e0; border: 1px solid #4a2a6a; }
+.reg-type-attr     { background: #3a2a1a; color: #d08040; border: 1px solid #6a4a22; }
+.reg-del-btn {
+  background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 5px;
+  padding: 2px 8px; font-size: 11px; cursor: pointer; transition: background .15s, color .15s;
+}
+.reg-del-btn:hover { background: #3a1a1a; border-color: #6a2a2a; color: #f07070; }
+.reg-add-form {
+  display: grid; gap: 10px 12px; margin-top: 16px; padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.reg-add-form.cols-2 { grid-template-columns: 1fr 1fr; }
+.reg-add-form.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+.reg-add-form.cols-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+@media(max-width:700px) { .reg-add-form.cols-3, .reg-add-form.cols-4 { grid-template-columns: 1fr 1fr; } }
+@media(max-width:500px) { .reg-add-form { grid-template-columns: 1fr !important; } }
+.reg-add-row-full { grid-column: 1 / -1; }
+.reg-add-btn {
+  grid-column: 1 / -1; background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+  border-radius: 8px; padding: 8px 0; font-size: 13px; font-family: inherit;
+  cursor: pointer; transition: background .15s, border-color .15s;
+}
+.reg-add-btn:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+.reg-empty { color: var(--muted); font-size: 12px; padding: 14px 10px; opacity: .6; }
+/* ── 待同步物品 ─────────────────────────── */
+.reg-pending-section { margin: 4px 0 14px; }
+.reg-pending-label {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+  color: #c07830; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;
+}
+.reg-pending-count {
+  background: rgba(208,128,48,.18); border: 1px solid rgba(208,128,48,.3);
+  border-radius: 10px; padding: 0 7px; font-size: 10px; color: #d08848;
+}
+.reg-pending-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px; border-radius: 7px; margin-bottom: 4px; font-size: 12px;
+  background: rgba(208,128,48,.07); border: 1px solid rgba(208,128,48,.18);
+}
+.reg-pending-name { font-weight: 600; color: var(--text); }
+.reg-pending-meta { color: var(--muted); font-size: 11px; flex: 1; }
+.reg-pending-tag {
+  font-size: 10px; background: rgba(208,128,48,.15); color: #d09050;
+  border: 1px solid rgba(208,128,48,.25); border-radius: 8px; padding: 1px 7px;
+  white-space: nowrap; letter-spacing: .3px;
+}
+.attr-effects-wrap { display: flex; flex-direction: column; gap: 6px; }
+.attr-chips { display: flex; flex-wrap: wrap; gap: 4px; min-height: 18px; }
+.attr-chip {
+  background: var(--surface1); border: 1px solid var(--border);
+  border-radius: 12px; padding: 2px 8px; font-size: 11px;
+  display: inline-flex; align-items: center; gap: 4px; color: var(--text);
+}
+.attr-chip-pos { border-color: #2a5a3a; color: #70d090; }
+.attr-chip-neg { border-color: #5a2a2a; color: #d07070; }
+.attr-chip-rm {
+  background: none; border: none; color: var(--muted);
+  cursor: pointer; padding: 0 1px; font-size: 13px; line-height: 1;
+}
+.attr-chip-rm:hover { color: #f07070; }
+.attr-picker-row { display: flex; gap: 6px; align-items: center; }
+.attr-picker-row .cfg-select { flex: 1; font-size: 12px; padding: 5px 8px; }
+.attr-picker-row .cfg-input  { width: 72px; font-size: 12px; }
+.attr-picker-add {
+  background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+  border-radius: 7px; padding: 5px 12px; font-size: 12px; font-family: inherit;
+  cursor: pointer; white-space: nowrap; transition: background .15s;
+}
+.attr-picker-add:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* ── 结戏加成 ────────────────────────────── */
+.bonus-tpl-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+}
+.bonus-tpl-row:last-child { border-bottom: none; }
+.bonus-tpl-name { font-size: 13px; font-weight: 600; flex: 1; }
+.bonus-subtype-badge {
+  font-size: 10px; border-radius: 4px; padding: 1px 7px; font-weight: 600;
+  letter-spacing: .4px; background: #1a2a4a; color: #80b0e8; border: 1px solid #2a4a7a;
+}
+.bonus-tpl-status { font-size: 11px; min-width: 28px; text-align: center; }
+.bonus-tpl-actions { display: flex; gap: 5px; }
+.bonus-action-btn {
+  background: none; border: 1px solid var(--border); color: var(--muted);
+  border-radius: 5px; padding: 2px 9px; font-size: 11px; cursor: pointer;
+  font-family: inherit; transition: background .15s, color .15s;
+}
+.bonus-action-btn:hover { background: var(--surface2); color: var(--text); }
+.bonus-action-del:hover { background: #3a1a1a; border-color: #6a2a2a; color: #f07070; }
+.bonus-action-edit:hover { background: #1a2a3a; border-color: #2a5a8a; color: #80b0e8; }
+.bonus-list-empty { color: var(--muted); font-size: 12px; padding: 18px 14px; opacity: .6; }
+.bonus-card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--border);
+}
+/* Editor overlay */
+#bonus-editor-overlay {
+  position: fixed; inset: 0; z-index: 9000;
+  background: rgba(0,0,0,.72); backdrop-filter: blur(4px);
+  overflow-y: auto; display: none;
+}
+#bonus-editor-modal {
+  background: var(--surface1); border: 1px solid var(--border);
+  border-radius: 14px; padding: 24px 28px; max-width: 700px;
+  margin: 40px auto 60px; box-shadow: 0 20px 60px rgba(0,0,0,.7);
+}
+.bonus-modal-header {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 20px;
+}
+.bonus-modal-title { font-size: 15px; font-weight: 700; color: var(--text); flex: 1; }
+.bonus-modal-close {
+  background: none; border: 1px solid var(--border); color: var(--muted);
+  border-radius: 6px; padding: 3px 10px; font-size: 14px; cursor: pointer;
+  font-family: inherit; line-height: 1;
+}
+.bonus-modal-close:hover { background: var(--surface2); color: var(--text); }
+.bonus-meta-row {
+  display: grid; grid-template-columns: 1fr auto; gap: 10px; margin-bottom: 18px;
+}
+/* Block cards */
+.bonus-block-card {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px 16px; margin-bottom: 4px;
+}
+.bonus-block-header {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+}
+.bonus-block-num {
+  font-size: 10px; font-weight: 700; letter-spacing: 1px;
+  text-transform: uppercase; color: var(--muted); flex: 1;
+}
+.bonus-block-del {
+  background: none; border: 1px solid var(--border); color: var(--muted);
+  border-radius: 5px; padding: 2px 8px; font-size: 11px; cursor: pointer;
+  font-family: inherit;
+}
+.bonus-block-del:hover { background: #3a1a1a; border-color: #6a2a2a; color: #f07070; }
+/* Connectors */
+.bonus-conn-row { display: flex; justify-content: center; padding: 6px 0; }
+.bonus-conn-btn {
+  border-radius: 20px; padding: 3px 18px; font-size: 11px; font-weight: 700;
+  letter-spacing: .8px; cursor: pointer; font-family: inherit; text-transform: uppercase;
+  transition: background .15s, border-color .15s;
+}
+.bonus-conn-and { background: #1a2a4a; border: 1px solid #2a4a8a; color: #80b0f0; }
+.bonus-conn-and:hover { background: #243560; }
+.bonus-conn-or  { background: #3a1a2a; border: 1px solid #7a2a4a; color: #f08098; }
+.bonus-conn-or:hover  { background: #4a2038; }
+/* Condition / reward rows */
+.bonus-section-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase;
+  color: var(--muted); margin: 10px 0 6px;
+}
+.bonus-cond-row {
+  display: grid; grid-template-columns: 1.5fr 80px 1fr auto; gap: 6px;
+  align-items: center; margin-bottom: 6px;
+}
+.bonus-reward-row {
+  display: grid; grid-template-columns: 120px 1fr 70px auto; gap: 6px;
+  align-items: center; margin-bottom: 6px;
+}
+.bonus-pool-items { padding-left: 16px; margin-bottom: 6px; }
+.bonus-pool-row {
+  display: grid; grid-template-columns: 1fr 60px 60px auto; gap: 6px;
+  align-items: center; margin-bottom: 4px;
+}
+.bonus-input {
+  background: var(--surface1); border: 1px solid var(--border); color: var(--text);
+  border-radius: 6px; padding: 5px 8px; font-size: 12px; font-family: inherit;
+  width: 100%; box-sizing: border-box;
+}
+.bonus-select {
+  background: var(--surface1); border: 1px solid var(--border); color: var(--text);
+  border-radius: 6px; padding: 5px 8px; font-size: 12px; font-family: inherit;
+  width: 100%;
+}
+.bonus-rm-btn {
+  background: none; border: 1px solid var(--border); color: var(--muted);
+  border-radius: 5px; padding: 2px 7px; font-size: 11px; cursor: pointer;
+  line-height: 1.4; white-space: nowrap;
+}
+.bonus-rm-btn:hover { background: #3a1a1a; border-color: #6a2a2a; color: #f07070; }
+.bonus-add-link {
+  font-size: 12px; color: var(--accent); cursor: pointer;
+  background: none; border: none; padding: 2px 0; font-family: inherit;
+  display: inline-block; margin-top: 4px;
+}
+.bonus-add-link:hover { text-decoration: underline; }
+.bonus-add-block-row { display: flex; gap: 8px; justify-content: center; margin: 14px 0 8px; }
+.bonus-add-block-btn {
+  background: var(--surface2); border: 1px dashed var(--border); color: var(--muted);
+  border-radius: 8px; padding: 6px 20px; font-size: 12px; cursor: pointer;
+  font-family: inherit; transition: background .15s, color .15s;
+}
+.bonus-add-block-btn:hover { background: var(--surface1); color: var(--text); }
+.bonus-editor-footer {
+  display: flex; gap: 10px; justify-content: flex-end;
+  margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border);
+}
+.bonus-save-btn {
+  background: var(--accent); border: none; color: #fff;
+  border-radius: 8px; padding: 9px 24px; font-size: 13px; font-weight: 600;
+  font-family: inherit; cursor: pointer; transition: background .18s;
+}
+.bonus-save-btn:hover { background: var(--accent2); }
+.bonus-cancel-btn {
+  background: var(--surface2); border: 1px solid var(--border); color: var(--muted);
+  border-radius: 8px; padding: 9px 20px; font-size: 13px;
+  font-family: inherit; cursor: pointer; transition: background .15s;
+}
+.bonus-cancel-btn:hover { background: var(--surface1); color: var(--text); }
+@media(max-width:600px) {
+  .bonus-cond-row { grid-template-columns: 1fr 60px; }
+  .bonus-cond-row > :nth-child(3) { grid-column: 1; }
+  .bonus-cond-row > :nth-child(4) { grid-column: 2; }
+  .bonus-reward-row { grid-template-columns: 1fr 60px; }
+}
+
+/* ── Dirty modal ────────────────────────── */
+#dirty-modal-overlay {
+  position: fixed; inset: 0; z-index: 8000;
+  background: rgba(0,0,0,.55); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; pointer-events: none;
+  transition: opacity .2s ease;
+}
+#dirty-modal-overlay.visible { opacity: 1; pointer-events: auto; }
+#dirty-modal {
+  background: rgba(26,26,34,0.97); border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 14px; padding: 28px 32px; max-width: 420px; width: 90%;
+  box-shadow: 0 16px 48px rgba(0,0,0,.7);
+  transform: translateY(10px); transition: transform .22s ease;
+}
+#dirty-modal-overlay.visible #dirty-modal { transform: translateY(0); }
+.dirty-modal-title {
+  font-size: 15px; font-weight: 700; color: var(--text);
+  margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
+}
+.dirty-modal-body { font-size: 13px; color: var(--muted); line-height: 1.75; margin-bottom: 20px; }
+.dirty-modal-body code {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 5px; padding: 1px 6px; color: var(--accent); font-size: 13px;
+}
+.dirty-modal-steps { margin: 10px 0 0; padding: 0; list-style: none; }
+.dirty-modal-steps li { display: flex; align-items: baseline; gap: 8px; margin-bottom: 7px; }
+.dirty-modal-steps li::before {
+  content: attr(data-n); flex-shrink: 0;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--accent); color: #fff;
+  font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.btn-dirty-ok {
+  background: var(--accent); color: #fff; border: none;
+  border-radius: 8px; padding: 9px 24px; font-size: 13px;
+  font-family: inherit; font-weight: 600; cursor: pointer;
+  transition: background .18s;
+}
+.btn-dirty-ok:hover { background: var(--accent2); }
 </style>
 {% endblock %}
 
@@ -186,7 +496,16 @@ select.cfg-input { cursor: pointer; }
 <div class="page">
   <div class="page-title" style="display:flex;align-items:center;justify-content:space-between;">
     <span>管理后台</span>
-    <a href="{{ url_for('admin_logout') }}" style="font-size:12px;color:var(--muted);font-weight:400;">退出后台</a>
+    <div style="display:flex;align-items:center;gap:14px;">
+      {% if last_sync %}
+      <span style="font-size:11px;color:var(--muted);font-weight:400;">
+        机器人上次同步：<b style="color:var(--text);">{{ last_sync }}</b>
+      </span>
+      {% else %}
+      <span style="font-size:11px;color:var(--muted);font-weight:400;">机器人尚未同步过</span>
+      {% endif %}
+      <a href="{{ url_for('admin_logout') }}" style="font-size:12px;color:var(--muted);font-weight:400;">退出后台</a>
+    </div>
   </div>
 
   <div style="display:flex;gap:6px;margin-bottom:24px;flex-wrap:wrap;">
@@ -194,12 +513,13 @@ select.cfg-input { cursor: pointer; }
     <a href="{{ url_for('admin_config_page') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--accent);border:1px solid var(--accent);color:#fff;">游戏配置</a>
     <a href="{{ url_for('admin_groups') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">已知群</a>
     <a href="{{ url_for('admin_rewards') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">结戏奖励</a>
-    <a href="{{ url_for('admin_shows') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">弧管理</a>
+    <a href="{{ url_for('admin_shows') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">季管理</a>
     <a href="{{ url_for('admin_config_history') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">配置历史</a>
   </div>
   <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;
               padding:11px 16px;margin-bottom:20px;font-size:13px;color:var(--muted);">
     修改后点击保存，然后在 QQ 发 <b style="color:var(--accent)">。同步设置</b> 即可同步到海豹。
+    如需将机器人当前配置推送到此 UI，发送 <b style="color:var(--accent)">。同步到服务端</b>。
   </div>
 
   {% if saved %}
@@ -233,6 +553,18 @@ select.cfg-input { cursor: pointer; }
         <option value="{{ opt }}" {{ 'selected' if cur == opt else '' }}>{{ opt }}</option>
         {% endfor %}
       </select>
+      {% if f.note is defined %}<div class="cfg-note">{{ f.note }}</div>{% endif %}
+    </div>
+    {% elif f.type == 'number' and f.min is defined and f.min == 0 and f.max is defined and f.max == 100 %}
+    <div class="cfg-field">
+      <div class="cfg-field-bool">
+        <label class="cfg-label">{{ f.label }}</label>
+        <span class="cfg-pct-val" id="{{ db_key }}-val">{{ cur }}%</span>
+      </div>
+      <input class="cfg-slider" type="range" name="{{ db_key }}" id="{{ db_key }}"
+             value="{{ cur }}" min="0" max="100" step="1"
+             style="--pct:{{ cur }}%"
+             oninput="this.style.setProperty('--pct',this.value+'%');document.getElementById('{{ db_key }}-val').textContent=this.value+'%'">
       {% if f.note is defined %}<div class="cfg-note">{{ f.note }}</div>{% endif %}
     </div>
     {% elif f.type == 'number' %}
@@ -286,16 +618,20 @@ select.cfg-input { cursor: pointer; }
     </div>
   {% endmacro %}
 
-  <form method="post">
+  <form method="post" id="cfg-form">
 
     {# ═══════════════════════════════════════════ #}
-    {# 1. 基础 + 群组 ID                          #}
+    {# 1. 基础                                    #}
     {# ═══════════════════════════════════════════ #}
 
     <div class="cfg-card">
       <div class="cfg-card-title">基础设置</div>
       {{ grid(s['基础'], 'cfg-grid-wide') }}
     </div>
+
+    {# ═══════════════════════════════════════════ #}
+    {# 2. 群组 ID                                 #}
+    {# ═══════════════════════════════════════════ #}
 
     <div class="cfg-card">
       <div class="cfg-card-title">群组 ID <span class="cfg-badge">填群号，留空不广播</span></div>
@@ -304,7 +640,7 @@ select.cfg-input { cursor: pointer; }
     </div>
 
     {# ═══════════════════════════════════════════ #}
-    {# 2. 功能开关                                 #}
+    {# 3. 功能开关                                 #}
     {# ═══════════════════════════════════════════ #}
 
     <div class="cfg-card">
@@ -313,35 +649,34 @@ select.cfg-input { cursor: pointer; }
     </div>
 
     {# ═══════════════════════════════════════════ #}
-    {# 3. 公告 · 礼物与互动 · 邀约（三列）        #}
+    {# 4. 邀约 · 寄信 · 礼物（三列）              #}
     {# ═══════════════════════════════════════════ #}
 
     <div class="cfg-cols-3">
 
       <div class="cfg-card" style="margin-bottom:0;">
-        <div class="cfg-card-title">公告</div>
-        <div class="cfg-desc">控制各类事件的公开广播</div>
-        {{ grid(s['公告']) }}
-      </div>
-
-      <div class="cfg-card" style="margin-bottom:0;">
-        <div class="cfg-card-title">礼物与互动</div>
-        {{ grid(s['礼物与互动']) }}
-      </div>
-
-      <div class="cfg-card" style="margin-bottom:0;">
         <div class="cfg-card-title">邀约</div>
         <div class="cfg-sub">规则</div>
         {{ grid(s['邀约']) }}
-        <div class="cfg-sub">时长要求（分钟）</div>
+        <div class="cfg-sub">时长门槛（分钟）</div>
         {{ grid(s['邀约时长（分钟）']) }}
+      </div>
+
+      <div class="cfg-card" style="margin-bottom:0;">
+        <div class="cfg-card-title">寄信</div>
+        {{ grid(s['寄信']) }}
+      </div>
+
+      <div class="cfg-card" style="margin-bottom:0;">
+        <div class="cfg-card-title">礼物</div>
+        {{ grid(s['礼物']) }}
       </div>
 
     </div>
     <div style="height:0;margin-bottom:16px;"></div>
 
     {# ═══════════════════════════════════════════ #}
-    {# 4. 心动信 · 发送信件 · 心愿系统（三列）    #}
+    {# 5. 心动信 · 发送信件 · 心愿系统（三列）    #}
     {# ═══════════════════════════════════════════ #}
 
     <div class="cfg-cols-3">
@@ -365,10 +700,15 @@ select.cfg-input { cursor: pointer; }
     <div style="height:0;margin-bottom:16px;"></div>
 
     {# ═══════════════════════════════════════════ #}
-    {# 5. 目击系统 + 场所系统（两列）             #}
+    {# 6. 关系系统 · 目击系统 · 场所系统（三列）  #}
     {# ═══════════════════════════════════════════ #}
 
-    <div class="cfg-cols-2">
+    <div class="cfg-cols-3">
+
+      <div class="cfg-card" style="margin-bottom:0;">
+        <div class="cfg-card-title">关系系统</div>
+        {{ grid(s['关系系统']) }}
+      </div>
 
       <div class="cfg-card" style="margin-bottom:0;">
         <div class="cfg-card-title">目击系统</div>
@@ -384,27 +724,27 @@ select.cfg-input { cursor: pointer; }
     <div style="height:0;margin-bottom:16px;"></div>
 
     {# ═══════════════════════════════════════════ #}
-    {# 6. 混沌配置（可折叠）                      #}
+    {# 7. 短信效果配置（可折叠）                   #}
     {# ═══════════════════════════════════════════ #}
 
-    <details class="cfg-collapsible cfg-card-chaos">
-      <summary>混沌效果配置 <span class="cfg-badge" style="color:#c8902a;border-color:#4a3515;">0 = 关闭</span></summary>
+    <details class="cfg-collapsible cfg-card-sms">
+      <summary>短信效果配置 <span class="cfg-badge" style="color:#c8902a;border-color:#4a3515;">0 = 关闭</span></summary>
       <div class="cfg-collapsible-inner">
         <div class="cfg-desc" style="margin-top:0;margin-bottom:14px;">各效果填 0 即关闭；播报概率等全局参数在下方。</div>
         <div class="cfg-sub">触发概率（%）</div>
-        {% set jp_chaos = s['混沌配置（% · 0=关闭）'].get('json_parent', '') %}
+        {% set jp_sms = s['短信效果配置（% · 0=关闭）'].get('json_parent', '') %}
         <div class="cfg-grid-compact">
-          {% for f in s['混沌配置（% · 0=关闭）'].fields %}
+          {% for f in s['短信效果配置（% · 0=关闭）'].fields %}
             {% if f.key not in ['dailyLimit', 'publicChance', 'giftLost', 'giftMisdelivery'] %}
-              {{ field(f, jp_chaos) }}
+              {{ field(f, jp_sms) }}
             {% endif %}
           {% endfor %}
         </div>
         <div class="cfg-sub">全局参数</div>
         <div class="cfg-grid">
-          {% for f in s['混沌配置（% · 0=关闭）'].fields %}
+          {% for f in s['短信效果配置（% · 0=关闭）'].fields %}
             {% if f.key in ['dailyLimit', 'publicChance', 'giftLost', 'giftMisdelivery'] %}
-              {{ field(f, jp_chaos) }}
+              {{ field(f, jp_sms) }}
             {% endif %}
           {% endfor %}
         </div>
@@ -412,7 +752,7 @@ select.cfg-input { cursor: pointer; }
     </details>
 
     {# ═══════════════════════════════════════════ #}
-    {# 7. 高级设置：道具 + 拍卖（可折叠）         #}
+    {# 8. 高级设置：道具 + 拍卖（可折叠）         #}
     {# ═══════════════════════════════════════════ #}
 
     <details class="cfg-collapsible">
@@ -425,6 +765,180 @@ select.cfg-input { cursor: pointer; }
       </div>
     </details>
 
+    {# ═══════════════════════════════════════════ #}
+    {# 9. 物品注册管理                            #}
+    {# ═══════════════════════════════════════════ #}
+
+    <input type="hidden" name="item_registry"         id="item-registry-input" value="{{ item_registry_json | e }}">
+    <input type="hidden" name="rpg_attr_defs"         id="attr-defs-input"     value="{{ attr_defs_json | e }}">
+    <input type="hidden" name="item_registry_pending" id="item-pending-input"  value="{{ item_pending_json | e }}">
+
+    <div class="cfg-card" id="registry-card">
+      <div class="cfg-card-title">物品注册管理</div>
+
+      <div class="reg-tabs">
+        <div class="reg-tab active" data-tab="currency">货币</div>
+        <div class="reg-tab" data-tab="item">物品</div>
+        <div class="reg-tab" data-tab="interact">互动物品</div>
+        <div class="reg-tab" data-tab="attr">属性</div>
+      </div>
+
+      {# ── 货币 ── #}
+      <div class="reg-panel active" id="reg-panel-currency">
+        <table class="reg-table" id="reg-table-currency">
+          <thead><tr><th>编号</th><th>名称</th><th>描述</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="reg-add-form cols-2" id="reg-add-currency">
+          <div class="cfg-field">
+            <label class="cfg-label">名称</label>
+            <input class="cfg-input" id="reg-cur-name" placeholder="金币">
+          </div>
+          <div class="cfg-field">
+            <label class="cfg-label">描述</label>
+            <input class="cfg-input" id="reg-cur-desc" placeholder="流通货币">
+          </div>
+          <button type="button" class="reg-add-btn" onclick="Registry.addCurrency()">+ 注册货币</button>
+        </div>
+      </div>
+
+      {# ── 物品 ── #}
+      <div class="reg-panel" id="reg-panel-item">
+        <table class="reg-table" id="reg-table-item">
+          <thead><tr><th>编号</th><th>名称</th><th>描述</th><th>次数</th><th>效果</th><th>二手</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div id="reg-pending-item"></div>
+        <div class="reg-add-form cols-4" id="reg-add-item">
+          <div class="cfg-field">
+            <label class="cfg-label">名称</label>
+            <input class="cfg-input" id="reg-item-name" placeholder="急救包">
+          </div>
+          <div class="cfg-field">
+            <label class="cfg-label">描述</label>
+            <input class="cfg-input" id="reg-item-desc" placeholder="紧急治疗用品">
+          </div>
+          <div class="cfg-field">
+            <label class="cfg-label">使用次数（-1=无限）</label>
+            <input class="cfg-input" id="reg-item-uses" type="number" value="-1">
+          </div>
+          <div class="cfg-field reg-add-row-full">
+            <label class="cfg-label">属性效果</label>
+            <div class="attr-effects-wrap">
+              <div class="attr-chips" id="reg-item-effect-chips"></div>
+              <div class="attr-picker-row">
+                <select class="cfg-select attr-picker-select" id="reg-item-effect-attr">
+                  <option value="">— 选择属性 —</option>
+                </select>
+                <input class="cfg-input attr-picker-val" id="reg-item-effect-val" type="number" placeholder="+20">
+                <button type="button" class="attr-picker-add" onclick="Registry.addEffect('item')">添加</button>
+              </div>
+              <input type="hidden" id="reg-item-attrs">
+            </div>
+          </div>
+          <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px;">
+            <label class="cfg-label">允许二手</label>
+            <label class="toggle" style="margin-top:0;">
+              <input type="checkbox" id="reg-item-resell">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <button type="button" class="reg-add-btn" onclick="Registry.addItem('item')">+ 上载物品</button>
+        </div>
+      </div>
+
+      {# ── 互动物品 ── #}
+      <div class="reg-panel" id="reg-panel-interact">
+        <table class="reg-table" id="reg-table-interact">
+          <thead><tr><th>编号</th><th>名称</th><th>描述</th><th>次数</th><th>效果</th><th>二手</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div id="reg-pending-interact"></div>
+        <div class="reg-add-form cols-4" id="reg-add-interact">
+          <div class="cfg-field">
+            <label class="cfg-label">名称</label>
+            <input class="cfg-input" id="reg-int-name" placeholder="追踪器">
+          </div>
+          <div class="cfg-field">
+            <label class="cfg-label">描述</label>
+            <input class="cfg-input" id="reg-int-desc" placeholder="追踪他人位置">
+          </div>
+          <div class="cfg-field">
+            <label class="cfg-label">使用次数（-1=无限）</label>
+            <input class="cfg-input" id="reg-int-uses" type="number" value="1">
+          </div>
+          <div class="cfg-field reg-add-row-full">
+            <label class="cfg-label">属性效果</label>
+            <div class="attr-effects-wrap">
+              <div class="attr-chips" id="reg-int-effect-chips"></div>
+              <div class="attr-picker-row">
+                <select class="cfg-select attr-picker-select" id="reg-int-effect-attr">
+                  <option value="">— 选择属性 —</option>
+                </select>
+                <input class="cfg-input attr-picker-val" id="reg-int-effect-val" type="number" placeholder="+20">
+                <button type="button" class="attr-picker-add" onclick="Registry.addEffect('interact')">添加</button>
+              </div>
+              <input type="hidden" id="reg-int-attrs">
+            </div>
+          </div>
+          <div class="cfg-field" style="flex-direction:row;align-items:center;gap:8px;">
+            <label class="cfg-label">允许二手</label>
+            <label class="toggle" style="margin-top:0;">
+              <input type="checkbox" id="reg-int-resell">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <button type="button" class="reg-add-btn" onclick="Registry.addItem('interact')">+ 上载互动物品</button>
+        </div>
+      </div>
+
+      {# ── 属性 ── #}
+      <div class="reg-panel" id="reg-panel-attr">
+        <table class="reg-table" id="reg-table-attr">
+          <thead><tr><th>名称</th><th>默认值</th><th>最小</th><th>最大</th><th>描述</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="reg-add-form cols-4" id="reg-add-attr">
+          <div class="cfg-field">
+            <label class="cfg-label">属性名</label>
+            <input class="cfg-input" id="reg-attr-name" placeholder="体力">
+          </div>
+          <div class="cfg-field">
+            <label class="cfg-label">默认值</label>
+            <input class="cfg-input" id="reg-attr-default" type="number" value="0">
+          </div>
+          <div class="cfg-field">
+            <label class="cfg-label">最小（空=不限）</label>
+            <input class="cfg-input" id="reg-attr-min" type="number" placeholder="">
+          </div>
+          <div class="cfg-field">
+            <label class="cfg-label">最大（空=不限）</label>
+            <input class="cfg-input" id="reg-attr-max" type="number" placeholder="">
+          </div>
+          <div class="cfg-field reg-add-row-full">
+            <label class="cfg-label">描述</label>
+            <input class="cfg-input" id="reg-attr-desc" placeholder="角色体力值">
+          </div>
+          <button type="button" class="reg-add-btn" onclick="Registry.addAttr()">+ 注册属性</button>
+        </div>
+      </div>
+
+    </div>
+
+    {# ═══════════════════════════════════════════ #}
+    {# 10. 结戏加成模版                           #}
+    {# ═══════════════════════════════════════════ #}
+
+    <input type="hidden" name="end_game_bonus_templates" id="end-bonus-templates-input" value="{{ end_bonus_templates_json | e }}">
+
+    <div class="cfg-card" id="bonus-tpl-card">
+      <div class="bonus-card-header">
+        <div class="cfg-card-title" style="margin:0;border:none;padding:0;">结戏加成模版</div>
+        <button type="button" class="reg-add-btn" style="grid-column:auto;width:auto;padding:6px 16px;" onclick="BonusEditor.openNew()">+ 新建模版</button>
+      </div>
+      <div id="bonus-template-list"></div>
+    </div>
+
     {# ── 保存栏 ── #}
     <div class="save-bar">
       <button type="submit" class="btn-save" id="cfg-save-btn">
@@ -436,10 +950,66 @@ select.cfg-input { cursor: pointer; }
 
   </form>
 
+  <!-- 结戏加成编辑器 -->
+  <div id="bonus-editor-overlay">
+    <div id="bonus-editor-modal">
+      <div class="bonus-modal-header">
+        <div class="bonus-modal-title">结戏加成模版编辑</div>
+        <button class="bonus-modal-close" onclick="BonusEditor.closeEditor()">✕</button>
+      </div>
+      <div class="bonus-meta-row">
+        <div class="cfg-field" style="margin:0;">
+          <label class="cfg-label">模版名称</label>
+          <input class="cfg-input" id="bonus-tpl-name" placeholder="如：标准字数奖励">
+        </div>
+        <div class="cfg-field" style="margin:0;">
+          <label class="cfg-label">适用类型</label>
+          <select class="cfg-select" id="bonus-tpl-subtype">
+            <option value="通用">通用</option>
+            <option value="心意">心意</option>
+            <option value="官约">官约</option>
+            <option value="私约">私约</option>
+            <option value="电话">电话</option>
+          </select>
+        </div>
+      </div>
+      <div id="bonus-editor-blocks"></div>
+      <div class="bonus-add-block-row">
+        <button class="bonus-add-block-btn" onclick="BonusEditor.addBlock('and')">+ AND 块</button>
+        <button class="bonus-add-block-btn" onclick="BonusEditor.addBlock('or')">+ OR 块</button>
+      </div>
+      <div class="bonus-editor-footer">
+        <button class="bonus-cancel-btn" onclick="BonusEditor.closeEditor()">取消</button>
+        <button class="bonus-save-btn" onclick="BonusEditor.saveTemplate()">保存模版</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 已修改提示弹窗 -->
+  <div id="dirty-modal-overlay">
+    <div id="dirty-modal">
+      <div class="dirty-modal-title">⚠️ 检测到配置修改</div>
+      <div class="dirty-modal-body">
+        修改完成后，请按以下步骤让配置生效：
+        <ul class="dirty-modal-steps">
+          <li data-n="1">点击页面底部的 <b>「保存配置」</b> 按钮</li>
+          <li data-n="2">在 QQ 群发送指令 <code>。同步设置</code>，机器人将读取最新配置</li>
+        </ul>
+      </div>
+      <button class="btn-dirty-ok" id="dirty-modal-ok">我知道了</button>
+    </div>
+  </div>
+
   <!-- 打字机 Toast -->
   <div id="cfg-toast"><span id="cfg-toast-body"></span><span id="cfg-toast-cursor"></span></div>
 
 <script>
+/* ── 共享工具 ─────────────────────────────── */
+var cfgMarkDirty = function() {};  // 由主 IIFE 绑定，供 Registry/BonusEditor 调用
+var cfgEsc = function(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+};
+
 (function() {
 
   /* ── 字段校验 ─────────────────────────── */
@@ -497,7 +1067,7 @@ select.cfg-input { cursor: pointer; }
   }
 
   /* ── Fetch 保存 ──────────────────────── */
-  var form = document.querySelector('form');
+  var form = document.getElementById('cfg-form');
   var btn  = document.getElementById('cfg-save-btn');
   form.addEventListener('submit', async function(e) {
     e.preventDefault();
@@ -513,6 +1083,7 @@ select.cfg-input { cursor: pointer; }
       });
       var json = await resp.json();
       if (json.ok) {
+        _isDirty = false;
         typewriterToast([
           '> Handshake acknowledged.',
           '> Writing config to persistent store... OK',
@@ -529,12 +1100,42 @@ select.cfg-input { cursor: pointer; }
     }
   });
 
+  /* ── 已修改弹窗 ──────────────────────── */
+  var _isDirty = false;
+  var overlay  = document.getElementById('dirty-modal-overlay');
+  var okBtn    = document.getElementById('dirty-modal-ok');
+
+  function showDirtyModal() {
+    overlay.classList.add('visible');
+  }
+  cfgMarkDirty = function() {
+    if (!_isDirty) { _isDirty = true; showDirtyModal(); }
+  };
+  okBtn.addEventListener('click', function() {
+    overlay.classList.remove('visible');
+  });
+  overlay.addEventListener('click', function(e) {
+    if (e.target === overlay) overlay.classList.remove('visible');
+  });
+
+  form.addEventListener('change', function() {
+    if (!_isDirty) {
+      _isDirty = true;
+      showDirtyModal();
+    }
+  });
+  form.addEventListener('input', function() {
+    if (!_isDirty) {
+      _isDirty = true;
+      showDirtyModal();
+    }
+  });
+
   /* ── Accordion ───────────────────────── */
   document.querySelectorAll('.cfg-card').forEach(function(card) {
     var title = card.querySelector('.cfg-card-title');
     if (!title) return;
 
-    // 把 title 之后的所有内容包进 .cfg-card-body
     var body = document.createElement('div');
     body.className = 'cfg-card-body';
     var next = title.nextSibling;
@@ -550,6 +1151,646 @@ select.cfg-input { cursor: pointer; }
     });
   });
 
+})();
+
+/* ── 物品注册管理 ─────────────────────── */
+var Registry = (function() {
+  var reg    = {};  // item_registry
+  var attrs  = {};  // rpg_attr_defs
+  var _fx    = { item: [], interact: [] };  // 待提交的属性效果列表
+
+  /* ── 属性效果选择器 ── */
+  function populateEffectDropdowns() {
+    var names = Object.keys(attrs);
+    var opts  = '<option value="">— 选择属性 —</option>' +
+      names.map(function(n) { return '<option value="' + cfgEsc(n) + '">' + cfgEsc(n) + '</option>'; }).join('');
+    ['reg-item-effect-attr', 'reg-int-effect-attr'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) { var prev = el.value; el.innerHTML = opts; el.value = prev; }
+    });
+  }
+
+  function renderEffectChips(type) {
+    var prefix = type === 'interact' ? 'int' : 'item';
+    var chips  = document.getElementById('reg-' + prefix + '-effect-chips');
+    var hidden = document.getElementById('reg-' + prefix + '-attrs');
+    if (!chips) return;
+    var list = _fx[type];
+    chips.innerHTML = list.length
+      ? list.map(function(e, i) {
+          var sign  = e.delta >= 0 ? '+' : '';
+          var cls   = e.delta >= 0 ? 'attr-chip-pos' : 'attr-chip-neg';
+          return '<span class="attr-chip ' + cls + '">' + cfgEsc(e.attr) + sign + e.delta +
+            '<button class="attr-chip-rm" onclick="Registry.removeEffect(\'' + type + '\',' + i + ')" title="移除">×</button></span>';
+        }).join('')
+      : '<span style="font-size:11px;color:var(--muted);opacity:.6;">无效果</span>';
+    if (hidden) hidden.value = list.map(function(e) {
+      return e.attr + (e.delta >= 0 ? '+' : '') + e.delta;
+    }).join(',');
+  }
+
+  function addEffect(type) {
+    var prefix  = type === 'interact' ? 'int' : 'item';
+    var attrEl  = document.getElementById('reg-' + prefix + '-effect-attr');
+    var valEl   = document.getElementById('reg-' + prefix + '-effect-val');
+    var attr    = attrEl ? attrEl.value.trim() : '';
+    var delta   = parseInt(valEl ? valEl.value : '');
+    if (!attr)        { alert('请先选择属性'); return; }
+    if (isNaN(delta)) { alert('请输入数值（可为负数）'); return; }
+    if (_fx[type].some(function(e) { return e.attr === attr; })) { alert('该属性已添加'); return; }
+    _fx[type].push({ attr: attr, delta: delta });
+    if (attrEl) attrEl.value = '';
+    if (valEl)  valEl.value  = '';
+    renderEffectChips(type);
+  }
+
+  function removeEffect(type, idx) {
+    _fx[type].splice(idx, 1);
+    renderEffectChips(type);
+  }
+
+  /* ── 待同步 pending ── */
+  var _pending = [];
+
+  function loadPending() {
+    try { _pending = JSON.parse(document.getElementById('item-pending-input').value || '[]'); }
+    catch(e) { _pending = []; }
+  }
+
+  function savePending() {
+    document.getElementById('item-pending-input').value = JSON.stringify(_pending);
+    cfgMarkDirty();
+  }
+
+  function renderPending(type) {
+    var el = document.getElementById('reg-pending-' + type);
+    if (!el) return;
+    var items = _pending.map(function(p, i) { return { p: p, i: i }; })
+                        .filter(function(x) { return x.p.type === type; });
+    if (!items.length) { el.innerHTML = ''; return; }
+    el.innerHTML =
+      '<div class="reg-pending-section">' +
+      '<div class="reg-pending-label">待同步 <span class="reg-pending-count">' + items.length + '</span>' +
+      '<span style="font-weight:400;font-size:10px;color:var(--muted);text-transform:none;letter-spacing:0"> — 全量同步后由机器人分配编号</span></div>' +
+      items.map(function(x) {
+        var p = x.p;
+        var meta = (p.maxUses === -1 ? '无限次' : p.maxUses + '次') +
+                   (p.attrs ? ' · ' + cfgEsc(p.attrs) : '') +
+                   (p.canResell ? ' · 可二手' : '');
+        return '<div class="reg-pending-row">' +
+          '<span class="reg-pending-tag">⏳ 待分配</span>' +
+          '<span class="reg-pending-name">' + cfgEsc(p.name) + '</span>' +
+          '<span class="reg-pending-meta">' + cfgEsc(p.desc || '') +
+            (meta ? ' <span style="opacity:.7">— ' + meta + '</span>' : '') + '</span>' +
+          '<button class="reg-del-btn" onclick="Registry.removePending(' + x.i + ')">移除</button>' +
+          '</div>';
+      }).join('') +
+      '</div>';
+  }
+
+  function removePending(idx) {
+    if (!confirm('移除待上载「' + (_pending[idx] ? _pending[idx].name : '') + '」？')) return;
+    _pending.splice(idx, 1);
+    savePending();
+    renderPending('item');
+    renderPending('interact');
+  }
+
+  function load() {
+    try { reg   = JSON.parse(document.getElementById('item-registry-input').value || '{}'); } catch(e) { reg = {}; }
+    try { attrs = JSON.parse(document.getElementById('attr-defs-input').value || '{}');     } catch(e) { attrs = {}; }
+    loadPending();
+  }
+
+  function save() {
+    document.getElementById('item-registry-input').value = JSON.stringify(reg);
+    // 同步 sys_attr_presets（属性名数组，机器人兼容层需要）
+    var presets = Object.keys(attrs);
+    document.getElementById('attr-defs-input').value = JSON.stringify(attrs);
+    // 把 sys_attr_presets 也挂上去（通过追加 hidden input 或复用）
+    var sp = document.getElementById('sys-attr-presets-input');
+    if (!sp) { sp = document.createElement('input'); sp.type = 'hidden'; sp.name = 'sys_attr_presets'; sp.id = 'sys-attr-presets-input'; document.getElementById('cfg-form').appendChild(sp); }
+    sp.value = JSON.stringify(presets);
+    cfgMarkDirty();
+  }
+
+  // 代码生成（与 RPG.js 规则一致）
+  function genCode(prefix, pad) {
+    for (var d = 1; d < 10000; d++) {
+      var code = prefix + String(d).padStart(pad, '0');
+      if (!reg[code]) return code;
+    }
+    return null;
+  }
+
+  // ── 渲染 ──
+  function renderAll() {
+    renderType('currency');
+    renderType('item');
+    renderType('interact');
+    renderAttrs();
+    populateEffectDropdowns();
+    renderEffectChips('item');
+    renderEffectChips('interact');
+    renderPending('item');
+    renderPending('interact');
+  }
+
+  var esc = cfgEsc;
+
+  function typeBadge(type) {
+    var cls = { currency: 'reg-type-currency', item: 'reg-type-item', interact: 'reg-type-interact' }[type] || 'reg-type-attr';
+    var label = { currency: '货币', item: '物品', interact: '互动' }[type] || type;
+    return '<span class="reg-type-badge ' + cls + '">' + label + '</span>';
+  }
+
+  function renderType(type) {
+    var tbody = document.querySelector('#reg-table-' + type + ' tbody');
+    if (!tbody) return;
+    var items = Object.values(reg).filter(function(r) { return r.type === type; });
+    if (!items.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="reg-empty">暂无记录</td></tr>';
+      return;
+    }
+    tbody.innerHTML = items.map(function(r) {
+      if (type === 'currency') {
+        return '<tr>' +
+          '<td class="reg-code">' + esc(r.code) + '</td>' +
+          '<td><b>' + esc(r.name) + '</b></td>' +
+          '<td style="color:var(--muted)">' + esc(r.desc || '') + '</td>' +
+          '<td><button class="reg-del-btn" onclick="Registry.del(\'' + esc(r.code) + '\')">删除</button></td>' +
+          '</tr>';
+      }
+      return '<tr>' +
+        '<td class="reg-code">' + esc(r.code) + '</td>' +
+        '<td><b>' + esc(r.name) + '</b></td>' +
+        '<td style="color:var(--muted)">' + esc(r.desc || '') + '</td>' +
+        '<td style="color:var(--muted)">' + (r.maxUses === -1 ? '无限' : r.maxUses) + '</td>' +
+        '<td style="color:var(--muted);font-size:11px">' + esc(r.attrs || '—') + '</td>' +
+        '<td>' + (r.canResell ? '✓' : '—') + '</td>' +
+        '<td><button class="reg-del-btn" onclick="Registry.del(\'' + esc(r.code) + '\')">删除</button></td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  function renderAttrs() {
+    var tbody = document.querySelector('#reg-table-attr tbody');
+    if (!tbody) return;
+    var names = Object.keys(attrs);
+    if (!names.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="reg-empty">暂无属性</td></tr>';
+      return;
+    }
+    tbody.innerHTML = names.map(function(name) {
+      var d = attrs[name] || {};
+      return '<tr>' +
+        '<td><b>' + esc(name) + '</b></td>' +
+        '<td style="color:var(--muted)">' + (d['default'] !== undefined ? d['default'] : 0) + '</td>' +
+        '<td style="color:var(--muted)">' + (d.min !== null && d.min !== undefined ? d.min : '—') + '</td>' +
+        '<td style="color:var(--muted)">' + (d.max !== null && d.max !== undefined ? d.max : '—') + '</td>' +
+        '<td style="color:var(--muted)">' + esc(d.desc || '') + '</td>' +
+        '<td><button class="reg-del-btn" onclick="Registry.delAttr(\'' + esc(name) + '\')">删除</button></td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  // ── 增删 ──
+  function addCurrency() {
+    var name = document.getElementById('reg-cur-name').value.trim();
+    var desc = document.getElementById('reg-cur-desc').value.trim() || '暂无描述';
+    if (!name) { alert('请填写货币名称'); return; }
+    if (Object.values(reg).some(function(r) { return r.name === name; })) { alert('「' + name + '」已存在'); return; }
+    var code = genCode('CUR_', 3);
+    if (!code) { alert('编号空间已满'); return; }
+    reg[code] = { code: code, name: name, desc: desc, type: 'currency', attrs: null };
+    document.getElementById('reg-cur-name').value = '';
+    document.getElementById('reg-cur-desc').value = '';
+    save(); renderType('currency');
+  }
+
+  function addItem(type) {
+    var prefix   = type === 'interact' ? 'int' : 'item';
+    var name     = document.getElementById('reg-' + prefix + '-name').value.trim();
+    var desc     = document.getElementById('reg-' + prefix + '-desc').value.trim() || '暂无描述';
+    var uses     = parseInt(document.getElementById('reg-' + prefix + '-uses').value);
+    var attrsVal = document.getElementById('reg-' + prefix + '-attrs').value.trim();
+    var resell   = document.getElementById('reg-' + prefix + '-resell').checked;
+    if (!name) { alert('请填写名称'); return; }
+    if (isNaN(uses)) { alert('次数必须是数字'); return; }
+    if (Object.values(reg).some(function(r) { return r.name === name; })) {
+      alert('「' + name + '」已存在于注册表'); return;
+    }
+    if (_pending.some(function(p) { return p.name === name; })) {
+      alert('「' + name + '」已在待同步列表中'); return;
+    }
+    _pending.push({ name: name, desc: desc, type: type, maxUses: uses,
+                    attrs: attrsVal || null, canResell: resell });
+    document.getElementById('reg-' + prefix + '-name').value = '';
+    document.getElementById('reg-' + prefix + '-desc').value = '';
+    document.getElementById('reg-' + prefix + '-resell').checked = false;
+    _fx[type] = [];
+    renderEffectChips(type);
+    savePending();
+    renderPending(type);
+  }
+
+  function addAttr() {
+    var name   = document.getElementById('reg-attr-name').value.trim();
+    var defVal = parseInt(document.getElementById('reg-attr-default').value) || 0;
+    var minEl  = document.getElementById('reg-attr-min').value.trim();
+    var maxEl  = document.getElementById('reg-attr-max').value.trim();
+    var desc   = document.getElementById('reg-attr-desc').value.trim();
+    if (!name) { alert('请填写属性名'); return; }
+    if (attrs[name]) { alert('「' + name + '」已存在'); return; }
+    attrs[name] = {
+      'default': defVal,
+      min: minEl !== '' ? parseInt(minEl) : null,
+      max: maxEl !== '' ? parseInt(maxEl) : null,
+      desc: desc
+    };
+    document.getElementById('reg-attr-name').value = '';
+    document.getElementById('reg-attr-desc').value = '';
+    save(); renderAttrs(); populateEffectDropdowns();
+  }
+
+  function del(code) {
+    if (!confirm('删除 [' + code + '] ' + (reg[code] ? reg[code].name : '') + '？')) return;
+    delete reg[code];
+    save(); renderAll();
+  }
+
+  function delAttr(name) {
+    if (!confirm('删除属性「' + name + '」？')) return;
+    delete attrs[name];
+    save(); renderAttrs();
+  }
+
+  // ── Tab 切换 ──
+  function initTabs() {
+    document.querySelectorAll('.reg-tab').forEach(function(tab) {
+      tab.addEventListener('click', function() {
+        var t = tab.dataset.tab;
+        document.querySelectorAll('.reg-tab').forEach(function(x) { x.classList.remove('active'); });
+        document.querySelectorAll('.reg-panel').forEach(function(x) { x.classList.remove('active'); });
+        tab.classList.add('active');
+        var p = document.getElementById('reg-panel-' + t);
+        if (p) p.classList.add('active');
+      });
+    });
+  }
+
+  load(); initTabs(); renderAll();
+
+  return { addCurrency: addCurrency, addItem: addItem, addAttr: addAttr, del: del, delAttr: delAttr,
+           addEffect: addEffect, removeEffect: removeEffect, removePending: removePending };
+})();
+
+/* ── 结戏加成编辑器 ────────────────────── */
+var BonusEditor = (function() {
+
+  var PARAMS = [
+    "本场个人段数", "本场个人总字数", "本场个人平均每段字数", "结戏最多耗费时间"
+  ];
+  var OPS = [">=", "<=", "=", "!=", "range"];
+  var SUBTYPES = ["通用","心意","官约","私约","电话"];
+
+  var templates = [];
+  var editIdx   = -1;     // -1 = new
+  var flatBlocks = [];    // editor working state
+
+  /* ── persistence ── */
+  function load() {
+    try { templates = JSON.parse(document.getElementById('end-bonus-templates-input').value || '[]'); }
+    catch(e) { templates = []; }
+  }
+  function saveToInput() {
+    document.getElementById('end-bonus-templates-input').value = JSON.stringify(templates);
+    cfgMarkDirty();
+  }
+
+  /* ── groups ↔ flatBlocks conversion ── */
+  function groupsToFlat(groups) {
+    var flat = [];
+    (groups || []).forEach(function(group) {
+      (group.blocks || []).forEach(function(block, bi) {
+        flat.push({
+          connector: (flat.length === 0) ? 'and' : (bi === 0 ? group.op : 'or'),
+          conditions: (block.conditions || []).map(function(c) {
+            return { param: c.param, op: c.op, value: c.value };
+          }),
+          rewards: (block.rewards || []).map(function(r) { return JSON.parse(JSON.stringify(r)); })
+        });
+      });
+    });
+    return flat;
+  }
+
+  function flatToGroups(flat) {
+    var groups = [];
+    flat.forEach(function(fb, i) {
+      var conn = i === 0 ? 'and' : fb.connector;
+      var block = { conditions: fb.conditions, rewards: fb.rewards };
+      if (conn === 'or' && groups.length > 0 && groups[groups.length-1].op === 'or') {
+        groups[groups.length-1].blocks.push(block);
+      } else {
+        groups.push({ op: conn, blocks: [block] });
+      }
+    });
+    return groups;
+  }
+
+  /* ── template list ── */
+  function renderList() {
+    var el = document.getElementById('bonus-template-list');
+    if (!el) return;
+    if (!templates.length) {
+      el.innerHTML = '<div class="bonus-list-empty">暂无模版 — 点击「新建模版」创建</div>';
+      return;
+    }
+    el.innerHTML = templates.map(function(tpl, i) {
+      var st = tpl.subtype || '通用';
+      var on = tpl.enabled !== false;
+      return '<div class="bonus-tpl-row">' +
+        '<span class="bonus-tpl-status">' + (on ? '✅' : '⏸️') + '</span>' +
+        '<span class="bonus-tpl-name">' + esc(tpl.name) + '</span>' +
+        '<span class="bonus-subtype-badge">' + esc(st) + '</span>' +
+        '<div class="bonus-tpl-actions">' +
+          '<button class="bonus-action-btn bonus-action-edit" onclick="BonusEditor.openEditor(' + i + ')">编辑</button>' +
+          '<button class="bonus-action-btn" onclick="BonusEditor.toggleEnabled(' + i + ',' + (!on) + ')">' + (on ? '禁用' : '启用') + '</button>' +
+          '<button class="bonus-action-btn bonus-action-del" onclick="BonusEditor.deleteTpl(' + i + ')">删除</button>' +
+        '</div></div>';
+    }).join('');
+  }
+
+  /* ── open / close editor ── */
+  function openNew() {
+    editIdx    = -1;
+    flatBlocks = [{ connector: 'and', conditions: [], rewards: [] }];
+    document.getElementById('bonus-tpl-name').value    = '';
+    document.getElementById('bonus-tpl-subtype').value = '通用';
+    renderEditorModal();
+    document.getElementById('bonus-editor-overlay').style.display = 'block';
+  }
+
+  function openEditor(idx) {
+    editIdx    = idx;
+    var tpl    = templates[idx];
+    flatBlocks = groupsToFlat(tpl.groups || []);
+    if (!flatBlocks.length) flatBlocks = [{ connector: 'and', conditions: [], rewards: [] }];
+    document.getElementById('bonus-tpl-name').value    = tpl.name || '';
+    document.getElementById('bonus-tpl-subtype').value = tpl.subtype || '通用';
+    renderEditorModal();
+    document.getElementById('bonus-editor-overlay').style.display = 'block';
+  }
+
+  function closeEditor() {
+    document.getElementById('bonus-editor-overlay').style.display = 'none';
+  }
+
+  /* ── render editor blocks area ── */
+  function buildTargetDatalist() {
+    var opts = '';
+    try {
+      var reg = JSON.parse(document.getElementById('item-registry-input').value || '{}');
+      Object.values(reg).forEach(function(r) {
+        if (r.name) opts += '<option value="' + cfgEsc(r.name) + '">';
+        if (r.code && r.type !== 'currency') opts += '<option value="' + cfgEsc(r.code) + '">';
+      });
+    } catch(e) {}
+    try {
+      var attrs = JSON.parse(document.getElementById('attr-defs-input').value || '{}');
+      Object.keys(attrs).forEach(function(k) { opts += '<option value="' + cfgEsc(k) + '">'; });
+    } catch(e) {}
+    var dl = document.getElementById('bonus-target-list');
+    if (!dl) {
+      dl = document.createElement('datalist');
+      dl.id = 'bonus-target-list';
+      document.getElementById('bonus-editor-modal').appendChild(dl);
+    }
+    dl.innerHTML = opts;
+  }
+
+  function renderEditorModal() {
+    buildTargetDatalist();
+    var container = document.getElementById('bonus-editor-blocks');
+    var html = '';
+    flatBlocks.forEach(function(fb, bi) {
+      if (bi > 0) {
+        var cls = fb.connector === 'or' ? 'bonus-conn-or' : 'bonus-conn-and';
+        html += '<div class="bonus-conn-row">' +
+          '<button class="bonus-conn-btn ' + cls + '" onclick="BonusEditor.toggleConn(' + bi + ')">' +
+            (fb.connector === 'or' ? 'OR' : 'AND') +
+          '</button></div>';
+      }
+      html += '<div class="bonus-block-card">';
+      html += '<div class="bonus-block-header">';
+      html += '<span class="bonus-block-num">块 #' + (bi+1) + '</span>';
+      if (flatBlocks.length > 1) {
+        html += '<button class="bonus-block-del" onclick="BonusEditor.removeBlock(' + bi + ')">删除块</button>';
+      }
+      html += '</div>';
+
+      // conditions
+      html += '<div class="bonus-section-label">条件</div>';
+      fb.conditions.forEach(function(c, ci) {
+        html += '<div class="bonus-cond-row">';
+        html += '<select class="bonus-select" onchange="BonusEditor.setCondParam(' + bi + ',' + ci + ',this.value)">';
+        PARAMS.forEach(function(p) {
+          html += '<option' + (c.param === p ? ' selected' : '') + '>' + p + '</option>';
+        });
+        html += '</select>';
+        html += '<select class="bonus-select" onchange="BonusEditor.setCondOp(' + bi + ',' + ci + ',this.value)">';
+        OPS.forEach(function(op) {
+          html += '<option' + (c.op === op ? ' selected' : '') + '>' + op + '</option>';
+        });
+        html += '</select>';
+        if (c.op === 'range') {
+          var v0 = Array.isArray(c.value) ? c.value[0] : '';
+          var v1 = Array.isArray(c.value) ? c.value[1] : '';
+          html += '<div style="display:flex;gap:4px;">' +
+            '<input class="bonus-input" type="number" placeholder="最小" value="' + v0 + '" oninput="BonusEditor.setCondVal(' + bi + ',' + ci + ',[this.value,this.parentNode.children[1].value])" style="width:50%">' +
+            '<input class="bonus-input" type="number" placeholder="最大" value="' + v1 + '" oninput="BonusEditor.setCondVal(' + bi + ',' + ci + ',[this.parentNode.children[0].value,this.value])" style="width:50%">' +
+            '</div>';
+        } else {
+          var val = Array.isArray(c.value) ? '' : (c.value === undefined ? '' : c.value);
+          html += '<input class="bonus-input" type="number" value="' + val + '" oninput="BonusEditor.setCondVal(' + bi + ',' + ci + ',this.value)">';
+        }
+        html += '<button class="bonus-rm-btn" onclick="BonusEditor.removeCond(' + bi + ',' + ci + ')">✕</button>';
+        html += '</div>';
+      });
+      html += '<button class="bonus-add-link" onclick="BonusEditor.addCond(' + bi + ')">+ 添加条件</button>';
+
+      // rewards
+      html += '<div class="bonus-section-label" style="margin-top:12px;">奖励</div>';
+      fb.rewards.forEach(function(r, ri) {
+        var rtype = r.type || 'fixed';
+        html += '<div class="bonus-reward-row">';
+        html += '<select class="bonus-select" onchange="BonusEditor.setRewardType(' + bi + ',' + ri + ',this.value)">';
+        [['fixed','固定奖励'],['pool','概率池'],['location_draw','地点池抽取']].forEach(function(pair) {
+          html += '<option value="' + pair[0] + '"' + (rtype === pair[0] ? ' selected' : '') + '>' + pair[1] + '</option>';
+        });
+        html += '</select>';
+        if (rtype === 'fixed') {
+          var tgt = r.target || '';
+          var amt = r.amount !== undefined ? r.amount : '';
+          html += '<input class="bonus-input" list="bonus-target-list" placeholder="货币名/属性名" value="' + esc(tgt) + '" oninput="BonusEditor.setRewardTarget(' + bi + ',' + ri + ',this.value)">';
+          html += '<input class="bonus-input" type="number" placeholder="数量" value="' + amt + '" oninput="BonusEditor.setRewardAmount(' + bi + ',' + ri + ',this.value)">';
+        } else if (rtype === 'location_draw') {
+          var amt2 = r.amount !== undefined ? r.amount : '';
+          html += '<div style="grid-column:span 2;display:flex;align-items:center;gap:6px;">' +
+            '<span style="font-size:12px;color:var(--muted);">次数</span>' +
+            '<input class="bonus-input" type="number" placeholder="次数" value="' + amt2 + '" oninput="BonusEditor.setRewardAmount(' + bi + ',' + ri + ',this.value)" style="width:80px">' +
+            '</div>';
+        } else {
+          html += '<span style="grid-column:span 2;font-size:11px;color:var(--muted);">（见下方池条目）</span>';
+        }
+        html += '<button class="bonus-rm-btn" onclick="BonusEditor.removeReward(' + bi + ',' + ri + ')">✕</button>';
+        html += '</div>';
+        if (rtype === 'pool') {
+          html += '<div class="bonus-pool-items" id="pool-' + bi + '-' + ri + '">';
+          (r.items || []).forEach(function(it, ii) {
+            html += '<div class="bonus-pool-row">';
+            html += '<input class="bonus-input" list="bonus-target-list" placeholder="目标" value="' + esc(it.target||'') + '" oninput="BonusEditor.setPoolTarget(' + bi + ',' + ri + ',' + ii + ',this.value)">';
+            html += '<input class="bonus-input" type="number" placeholder="数量" value="' + (it.amount||'') + '" oninput="BonusEditor.setPoolAmount(' + bi + ',' + ri + ',' + ii + ',this.value)">';
+            html += '<input class="bonus-input" type="number" placeholder="权重" value="' + (it.weight||'') + '" oninput="BonusEditor.setPoolWeight(' + bi + ',' + ri + ',' + ii + ',this.value)">';
+            html += '<button class="bonus-rm-btn" onclick="BonusEditor.removePoolItem(' + bi + ',' + ri + ',' + ii + ')">✕</button>';
+            html += '</div>';
+          });
+          html += '<button class="bonus-add-link" style="font-size:11px;" onclick="BonusEditor.addPoolItem(' + bi + ',' + ri + ')">+ 添加池条目</button>';
+          html += '</div>';
+        }
+      });
+      html += '<button class="bonus-add-link" onclick="BonusEditor.addReward(' + bi + ')">+ 添加奖励</button>';
+
+      html += '</div>'; // bonus-block-card
+    });
+    container.innerHTML = html;
+  }
+
+  /* ── block ops ── */
+  function addBlock(conn) {
+    flatBlocks.push({ connector: conn, conditions: [], rewards: [] });
+    renderEditorModal();
+  }
+  function removeBlock(bi) {
+    flatBlocks.splice(bi, 1);
+    if (flatBlocks.length === 0) flatBlocks = [{ connector: 'and', conditions: [], rewards: [] }];
+    renderEditorModal();
+  }
+  function toggleConn(bi) {
+    flatBlocks[bi].connector = flatBlocks[bi].connector === 'or' ? 'and' : 'or';
+    renderEditorModal();
+  }
+
+  /* ── condition ops ── */
+  function addCond(bi) {
+    flatBlocks[bi].conditions.push({ param: PARAMS[0], op: '>=', value: 0 });
+    renderEditorModal();
+  }
+  function removeCond(bi, ci) {
+    flatBlocks[bi].conditions.splice(ci, 1);
+    renderEditorModal();
+  }
+  function setCondParam(bi, ci, v)  { flatBlocks[bi].conditions[ci].param = v; }
+  function setCondOp(bi, ci, v) {
+    flatBlocks[bi].conditions[ci].op = v;
+    flatBlocks[bi].conditions[ci].value = v === 'range' ? [0, 100] : 0;
+    renderEditorModal();
+  }
+  function setCondVal(bi, ci, v) {
+    if (Array.isArray(v)) {
+      flatBlocks[bi].conditions[ci].value = [parseInt(v[0])||0, parseInt(v[1])||0];
+    } else {
+      flatBlocks[bi].conditions[ci].value = parseInt(v) || 0;
+    }
+  }
+
+  /* ── reward ops ── */
+  function addReward(bi) {
+    flatBlocks[bi].rewards.push({ type: 'fixed', target: '', amount: 0 });
+    renderEditorModal();
+  }
+  function removeReward(bi, ri) {
+    flatBlocks[bi].rewards.splice(ri, 1);
+    renderEditorModal();
+  }
+  function setRewardType(bi, ri, v) {
+    var r = flatBlocks[bi].rewards[ri];
+    r.type = v;
+    if (v === 'pool' && !r.items) r.items = [];
+    renderEditorModal();
+  }
+  function setRewardTarget(bi, ri, v) { flatBlocks[bi].rewards[ri].target = v; }
+  function setRewardAmount(bi, ri, v) { flatBlocks[bi].rewards[ri].amount = parseInt(v) || 0; }
+
+  /* ── pool item ops ── */
+  function addPoolItem(bi, ri) {
+    if (!flatBlocks[bi].rewards[ri].items) flatBlocks[bi].rewards[ri].items = [];
+    flatBlocks[bi].rewards[ri].items.push({ target: '', amount: 0, weight: 10 });
+    renderEditorModal();
+  }
+  function removePoolItem(bi, ri, ii) {
+    if (!confirm('删除此池条目？')) return;
+    flatBlocks[bi].rewards[ri].items.splice(ii, 1);
+    renderEditorModal();
+  }
+  function setPoolTarget(bi, ri, ii, v) { flatBlocks[bi].rewards[ri].items[ii].target = v; }
+  function setPoolAmount(bi, ri, ii, v) { flatBlocks[bi].rewards[ri].items[ii].amount = parseInt(v) || 0; }
+  function setPoolWeight(bi, ri, ii, v) { flatBlocks[bi].rewards[ri].items[ii].weight = parseInt(v) || 0; }
+
+  /* ── save template ── */
+  function saveTemplate() {
+    var name    = document.getElementById('bonus-tpl-name').value.trim();
+    var subtype = document.getElementById('bonus-tpl-subtype').value;
+    if (!name) { alert('请输入模版名称'); return; }
+    var groups = flatToGroups(flatBlocks);
+    if (!groups.length) { alert('请至少添加一个规则块'); return; }
+    var tpl = {
+      id:      editIdx >= 0 ? (templates[editIdx].id || Date.now()) : Date.now(),
+      name:    name,
+      subtype: subtype,
+      enabled: editIdx >= 0 ? (templates[editIdx].enabled !== false) : true,
+      groups:  groups
+    };
+    if (editIdx >= 0) {
+      templates[editIdx] = tpl;
+    } else {
+      templates.push(tpl);
+    }
+    saveToInput();
+    closeEditor();
+    renderList();
+  }
+
+  /* ── list ops ── */
+  function deleteTpl(idx) {
+    if (!confirm('删除模版「' + templates[idx].name + '」？')) return;
+    templates.splice(idx, 1);
+    if (editIdx >= idx) editIdx = -1;
+    saveToInput();
+    renderList();
+  }
+  function toggleEnabled(idx, val) {
+    templates[idx].enabled = val;
+    saveToInput();
+    renderList();
+  }
+
+  var esc = cfgEsc;
+
+  load(); renderList();
+
+  return {
+    openNew: openNew, openEditor: openEditor, closeEditor: closeEditor,
+    addBlock: addBlock, removeBlock: removeBlock, toggleConn: toggleConn,
+    addCond: addCond, removeCond: removeCond,
+    setCondParam: setCondParam, setCondOp: setCondOp, setCondVal: setCondVal,
+    addReward: addReward, removeReward: removeReward,
+    setRewardType: setRewardType, setRewardTarget: setRewardTarget, setRewardAmount: setRewardAmount,
+    addPoolItem: addPoolItem, removePoolItem: removePoolItem,
+    setPoolTarget: setPoolTarget, setPoolAmount: setPoolAmount, setPoolWeight: setPoolWeight,
+    saveTemplate: saveTemplate, deleteTpl: deleteTpl, toggleEnabled: toggleEnabled
+  };
 })();
 </script>
 </div>

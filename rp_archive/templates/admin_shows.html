@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}长日存档 · 弧管理{% endblock %}
+{% block title %}长日存档 · 季管理{% endblock %}
 
 {% block head %}
 <style>
@@ -68,28 +68,28 @@
 
 {% block body %}
 <div class="page">
-  <div class="page-title">弧 / 档期管理</div>
+  <div class="page-title">季管理</div>
 
   {% if msg == 'created' %}
-  <div class="banner banner-ok">✅ 新弧已创建。</div>
+  <div class="banner banner-ok">✅ 新季已创建。</div>
   {% elif msg == 'activated' %}
-  <div class="banner banner-ok">✅ 已切换当前活跃弧，机器人数据将写入此弧。</div>
+  <div class="banner banner-ok">✅ 已切换当前活跃季，机器人数据将写入此季。</div>
   {% elif msg == 'deleted' %}
-  <div class="banner banner-ok">🗑 弧及其所有数据已删除。</div>
+  <div class="banner banner-ok">🗑 季及其所有数据已删除。</div>
   {% elif msg == 'cannot_delete_current' %}
-  <div class="banner banner-err">⚠️ 无法删除当前活跃弧，请先切换到其他弧再删除。</div>
+  <div class="banner banner-err">⚠️ 无法删除当前活跃季，请先切换到其他季再删除。</div>
   {% elif msg == 'empty_name' %}
-  <div class="banner banner-err">⚠️ 弧名不能为空。</div>
+  <div class="banner banner-err">⚠️ 季名不能为空。</div>
   {% endif %}
 
   <!-- 新建 -->
   <div class="new-card">
-    <h3>新建弧</h3>
+    <h3>新建季</h3>
     <form method="post" action="{{ url_for('admin_show_new') }}">
       <div class="form-row">
         <div class="field">
-          <label>弧名 <span style="color:var(--red)">*</span></label>
-          <input type="text" name="name" placeholder="如 第二弧 / 夏季档" required>
+          <label>季名 <span style="color:var(--red)">*</span></label>
+          <input type="text" name="name" placeholder="如 第二季 / 夏季档" required>
         </div>
         <div class="field">
           <label>备注（可选）</label>
@@ -98,18 +98,18 @@
         <button type="submit" class="btn btn-view" style="margin-bottom:1px;">＋ 创建</button>
       </div>
       <div style="font-size:11px;color:var(--muted);margin-top:8px;">
-        新弧默认不是活跃弧，创建后点「设为活跃」才会让机器人往里写数据。
+        新季默认不是活跃季，创建后点「设为活跃」才会让机器人往里写数据。
       </div>
     </form>
   </div>
 
-  <!-- 弧列表 -->
+  <!-- 季列表 -->
   {% for s in shows %}
   <div class="show-card {% if s.is_current %}is-current{% endif %}">
     <div class="show-header">
       <span class="show-title">{{ s.name }}</span>
       {% if s.is_current %}
-      <span class="badge badge-current">● 活跃弧</span>
+      <span class="badge badge-current">● 活跃季</span>
       {% else %}
       <span class="badge badge-archive">已归档</span>
       {% endif %}
@@ -138,9 +138,9 @@
     </div>
 
     <div class="actions">
-      <!-- 查看此弧数据（保留普通 form，跳转主页） -->
+      <!-- 查看此季数据（保留普通 form，跳转主页） -->
       <form method="post" action="{{ url_for('admin_show_view', sid=s.id) }}">
-        <button type="submit" class="btn btn-view">👁 查看此弧</button>
+        <button type="submit" class="btn btn-view">👁 查看此季</button>
       </form>
 
       <!-- 设为活跃 -->
@@ -165,7 +165,7 @@
       <!-- 删除 -->
       {% if not s.is_current %}
       <button class="btn btn-danger"
-              onclick="deleteShow(this, {{ s.id }}, '{{ s.name|e }}')">🗑 删除此弧</button>
+              onclick="deleteShow(this, {{ s.id }}, '{{ s.name|e }}')">🗑 删除此季</button>
       {% endif %}
     </div>
   </div>
@@ -175,11 +175,7 @@
 <script>
 function copyUrl(token, btn) {
   const url = window.location.origin + '/view/' + token;
-  navigator.clipboard.writeText(url).then(() => {
-    const orig = btn.textContent;
-    btn.textContent = '已复制';
-    setTimeout(() => btn.textContent = orig, 1500);
-  });
+  copyText(url, btn);
 }
 
 function vanishCard(card, cb) {
@@ -208,10 +204,10 @@ async function fetchShow(url, btn) {
 }
 
 async function activateShow(btn, sid, name) {
-  if (!confirm('切换活跃弧后，机器人数据将写入「' + name + '」。确认？')) return;
+  if (!confirm('切换活跃季后，机器人数据将写入「' + name + '」。确认？')) return;
   const json = await fetchShow('/admin/shows/' + sid + '/activate', btn);
   if (!json || !json.ok) { btn.disabled = false; btn.textContent = '⚡ 设为活跃'; return; }
-  // 把其他弧的「活跃」徽章和状态全部刷新
+  // 把其他季的「活跃」徽章和状态全部刷新
   document.querySelectorAll('.badge-current').forEach(b => {
     b.closest('.show-card').classList.remove('is-current');
     b.remove();
@@ -222,7 +218,7 @@ async function activateShow(btn, sid, name) {
   const header = card.querySelector('.show-header');
   const badge = document.createElement('span');
   badge.className = 'badge badge-current';
-  badge.textContent = '● 活跃弧';
+  badge.textContent = '● 活跃季';
   header.insertBefore(badge, header.children[1]);
   btn.remove();
 }
@@ -241,8 +237,8 @@ async function deleteShow(btn, sid, name) {
   if (!json) return;
   if (!json.ok) {
     btn.disabled = false;
-    btn.textContent = '🗑 删除此弧';
-    alert(json.error === 'cannot_delete_current' ? '无法删除当前活跃弧，请先切换到其他弧。' : '删除失败。');
+    btn.textContent = '🗑 删除此季';
+    alert(json.error === 'cannot_delete_current' ? '无法删除当前活跃季，请先切换到其他季。' : '删除失败。');
     return;
   }
   vanishCard(btn.closest('.show-card'), function() { btn.closest('.show-card').remove(); });

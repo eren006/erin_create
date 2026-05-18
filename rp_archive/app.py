@@ -51,13 +51,10 @@ PLAYERS_PER_PAGE = 50
 # ── Config schema ────────────────────────────────────────────────────────────
 CONFIG_SCHEMA = [
     {"section": "基础", "fields": [
-        {"key": "love_show_name",             "label": "恋综名",              "type": "text",   "default": ""},
-        {"key": "global_days",                "label": "当前游戏日",           "type": "text",   "default": "D1",   "note": "如 D1 / D2 / D3"},
-        {"key": "auto_day_reset_enabled",     "label": "自动天数推进",         "type": "bool",   "default": "false"},
-        {"key": "relationship_system_enabled","label": "关系系统",             "type": "bool",   "default": "true"},
-        {"key": "max_relationships_per_user", "label": "每人最大关系数",       "type": "number", "default": "5"},
-        {"key": "lovemail_default_limit",     "label": "心动信每日上限",       "type": "number", "default": "3"},
-        {"key": "item_pool_mode",             "label": "道具池模式",           "type": "select", "default": "自由池", "options": ["自由池", "抽取池"]},
+        {"key": "love_show_name",         "label": "恋综名",      "type": "text",   "default": ""},
+        {"key": "global_days",            "label": "当前游戏日",   "type": "text",   "default": "D1", "note": "如 D1 / D2 / D3"},
+        {"key": "auto_day_reset_enabled", "label": "自动天数推进", "type": "bool",   "default": "false"},
+        {"key": "item_pool_mode",         "label": "道具池模式",   "type": "select", "default": "自由池", "options": ["自由池", "抽取池"]},
     ]},
     {"section": "群组 ID", "fields": [
         {"key": "adminAnnounceGroupId",  "label": "公告群",     "type": "text",    "default": "", "note": "群号，留空不广播"},
@@ -69,29 +66,14 @@ CONFIG_SCHEMA = [
         {"key": "fupan_routing_groups",  "label": "分流群配置", "type": "routing", "default": "", "note": "格式：D1:群号 D2:群号"},
     ]},
     {"section": "功能开关", "json_parent": "global_feature_toggle", "fields": [
-        {"key": "enable_general_letter",      "label": "普通信件",        "type": "bool", "default": "true"},
-        {"key": "enable_general_gift",        "label": "普通礼物",        "type": "bool", "default": "true"},
-        {"key": "enable_general_appointment", "label": "普通邀约",        "type": "bool", "default": "true"},
-        {"key": "enable_chaos_letter",        "label": "短信",            "type": "bool", "default": "true"},
-        {"key": "enable_wish_system",         "label": "心愿系统",        "type": "bool", "default": "true"},
-        {"key": "enable_lovemail",            "label": "心动信",          "type": "bool", "default": "true"},
-        {"key": "enable_wechat",              "label": "微信",            "type": "bool", "default": "true"},
-        {"key": "enable_direct_letter",       "label": "发送信件（写信综）","type": "bool", "default": "false"},
-    ]},
-    {"section": "公告", "fields": [
-        {"key": "letter_public_send",  "label": "寄信公开发送",     "type": "bool",   "default": "false"},
-        {"key": "gift_public_send",    "label": "送礼公开发送",     "type": "bool",   "default": "false"},
-        {"key": "wish_public_send",    "label": "心愿公开提醒",     "type": "bool",   "default": "false"},
-        {"key": "giftPublicChance",    "label": "礼物公开概率（%）", "type": "number", "default": "50", "min": 0, "max": 100},
-        {"key": "giftDailyLimit",      "label": "每日礼物上限",     "type": "number", "default": "100"},
-        {"key": "announceFrequency",   "label": "公告触发频率",     "type": "number", "default": "5"},
-    ]},
-    {"section": "礼物与互动", "fields": [
-        {"key": "allow_private_rooms",      "label": "允许私人房间",       "type": "bool",   "default": "true"},
-        {"key": "mailCooldown",             "label": "寄信冷却（分钟）",   "type": "number", "default": "60"},
-        {"key": "giftCooldown",             "label": "送礼冷却（分钟）",   "type": "number", "default": "30"},
-        {"key": "allow_custom_letter_sign", "label": "寄信自定义名字",    "type": "bool",   "default": "false"},
-        {"key": "shop_refresh_hours",       "label": "礼品店刷新（小时）", "type": "number", "default": "24"},
+        {"key": "enable_general_letter",      "label": "普通信件",          "type": "bool", "default": "true"},
+        {"key": "enable_general_gift",        "label": "普通礼物",          "type": "bool", "default": "true"},
+        {"key": "enable_general_appointment", "label": "普通邀约",          "type": "bool", "default": "true"},
+        {"key": "enable_chaos_letter",        "label": "短信",              "type": "bool", "default": "true"},
+        {"key": "enable_wish_system",         "label": "心愿系统",          "type": "bool", "default": "true"},
+        {"key": "enable_lovemail",            "label": "心动信",            "type": "bool", "default": "true"},
+        {"key": "enable_wechat",              "label": "微信",              "type": "bool", "default": "true"},
+        {"key": "enable_direct_letter",       "label": "发送信件（写信综）", "type": "bool", "default": "false"},
     ]},
     {"section": "邀约", "fields": [
         {"key": "enable_join_existing_appointment", "label": "允许加入已有私约", "type": "bool",   "default": "true"},
@@ -102,23 +84,25 @@ CONFIG_SCHEMA = [
         {"key": "phone",   "label": "电话门槛", "type": "number", "default": "29"},
         {"key": "private", "label": "私密门槛", "type": "number", "default": "59"},
     ]},
-    {"section": "混沌配置（% · 0=关闭）", "json_parent": "chaos_letter_config", "fields": [
-        {"key": "misdelivery",       "label": "误送",          "type": "number", "default": "0",  "min": 0, "max": 100},
-        {"key": "blackoutText",      "label": "黑化文字",      "type": "number", "default": "0",  "min": 0, "max": 100},
-        {"key": "loseContent",       "label": "内容丢失",      "type": "number", "default": "0",  "min": 0, "max": 100},
-        {"key": "antonymReplace",    "label": "词语替换",      "type": "number", "default": "0",  "min": 0, "max": 100},
-        {"key": "reverseOrder",      "label": "逆序",          "type": "number", "default": "0",  "min": 0, "max": 100},
-        {"key": "mistakenSignature", "label": "署名错乱",      "type": "number", "default": "0",  "min": 0, "max": 100},
-        {"key": "poeticSignature",   "label": "诗意署名",      "type": "number", "default": "0",  "min": 0, "max": 100},
-        {"key": "dailyLimit",        "label": "每日混沌上限",  "type": "number", "default": "5"},
-        {"key": "publicChance",      "label": "播报概率（%）", "type": "number", "default": "50", "min": 0, "max": 100},
-        {"key": "giftLost",          "label": "礼物丢失（%）", "type": "number", "default": "0",  "min": 0, "max": 100},
-        {"key": "giftMisdelivery",   "label": "礼物误送（%）", "type": "number", "default": "0",  "min": 0, "max": 100},
+    {"section": "寄信", "fields": [
+        {"key": "mailCooldown",             "label": "寄信冷却（分钟）", "type": "number", "default": "60"},
+        {"key": "allow_custom_letter_sign", "label": "寄信自定义名字",  "type": "bool",   "default": "false"},
+        {"key": "letter_public_send",       "label": "寄信公开发送",    "type": "bool",   "default": "false"},
+    ]},
+    {"section": "礼物", "fields": [
+        {"key": "giftCooldown",             "label": "送礼冷却（分钟）",  "type": "number", "default": "30"},
+        {"key": "gift_public_send",         "label": "礼物公开发送",      "type": "bool",   "default": "false"},
+        {"key": "giftPublicChance",         "label": "礼物公开概率（%）", "type": "number", "default": "50", "min": 0, "max": 100},
+        {"key": "giftDailyLimit",           "label": "每日礼物上限",      "type": "number", "default": "100"},
+        {"key": "shop_refresh_hours",       "label": "礼品店刷新（小时）","type": "number", "default": "24"},
+        {"key": "allow_private_rooms",      "label": "允许私人房间",      "type": "bool",   "default": "true"},
+        {"key": "announceFrequency",        "label": "公告触发频率",      "type": "number", "default": "5"},
     ]},
     {"section": "心动信", "fields": [
-        {"key": "lovemail_delivery_time",  "label": "送达时间",       "type": "text",   "default": "22:00"},
-        {"key": "lovemail_expose",         "label": "曝光",           "type": "bool",   "default": "false"},
-        {"key": "lovemail_expose_chance",  "label": "曝光概率（%）",  "type": "number", "default": "10", "min": 0, "max": 100},
+        {"key": "lovemail_default_limit",  "label": "每日上限",     "type": "number", "default": "3"},
+        {"key": "lovemail_delivery_time",  "label": "送达时间",     "type": "text",   "default": "22:00"},
+        {"key": "lovemail_expose",         "label": "曝光",         "type": "bool",   "default": "false"},
+        {"key": "lovemail_expose_chance",  "label": "曝光概率（%）","type": "number", "default": "10", "min": 0, "max": 100},
     ]},
     {"section": "发送信件", "fields": [
         {"key": "direct_letter_daily_limit", "label": "每日上限",   "type": "number", "default": "5"},
@@ -126,30 +110,48 @@ CONFIG_SCHEMA = [
         {"key": "direct_letter_reward",      "label": "写信币赏金", "type": "number", "default": "0"},
     ]},
     {"section": "心愿系统", "fields": [
+        {"key": "wish_public_send",      "label": "心愿公开提醒",          "type": "bool",   "default": "false"},
         {"key": "wish_bounty_enabled",   "label": "悬赏功能",              "type": "bool",   "default": "true"},
         {"key": "wish_max_concurrent",   "label": "最大同时心愿数",         "type": "number", "default": "3"},
         {"key": "wish_daily_post_limit", "label": "每日发布上限（0=不限）", "type": "number", "default": "0"},
         {"key": "wish_daily_pick_limit", "label": "每日接取上限（0=不限）", "type": "number", "default": "0"},
     ]},
+    {"section": "关系系统", "fields": [
+        {"key": "relationship_system_enabled", "label": "关系系统",     "type": "bool",   "default": "true"},
+        {"key": "max_relationships_per_user",  "label": "每人最大关系数","type": "number", "default": "5"},
+    ]},
     {"section": "目击系统", "json_parent": "sighting_system_config", "fields": [
-        {"key": "enabled",               "label": "启用目击",       "type": "bool",   "default": "true"},
-        {"key": "send_to_all",           "label": "双向通知",       "type": "bool",   "default": "true"},
-        {"key": "max_reports_per_day",   "label": "每日最大目击数", "type": "number", "default": "5"},
-        {"key": "include_ended_meetings","label": "包含已结束场次", "type": "bool",   "default": "false"},
-        {"key": "time_overlap_threshold","label": "时间重叠阈值",   "type": "number", "default": "0.3"},
+        {"key": "enabled",                "label": "启用目击",       "type": "bool",   "default": "true"},
+        {"key": "send_to_all",            "label": "双向通知",       "type": "bool",   "default": "true"},
+        {"key": "max_reports_per_day",    "label": "每日最大目击数", "type": "number", "default": "5"},
+        {"key": "include_ended_meetings", "label": "包含已结束场次", "type": "bool",   "default": "false"},
+        {"key": "time_overlap_threshold", "label": "时间重叠阈值",   "type": "number", "default": "0.3"},
     ]},
     {"section": "场所系统", "json_parent": "place_system_config", "fields": [
-        {"key": "enabled",               "label": "启用场所系统", "type": "bool", "default": "true"},
-        {"key": "require_key_by_default","label": "默认需要钥匙", "type": "bool", "default": "false"},
+        {"key": "enabled",                "label": "启用场所系统", "type": "bool", "default": "true"},
+        {"key": "require_key_by_default", "label": "默认需要钥匙", "type": "bool", "default": "false"},
+    ]},
+    {"section": "短信效果配置（% · 0=关闭）", "json_parent": "chaos_letter_config", "fields": [
+        {"key": "misdelivery",       "label": "误送",          "type": "number", "default": "0",  "min": 0, "max": 100},
+        {"key": "blackoutText",      "label": "黑化文字",      "type": "number", "default": "0",  "min": 0, "max": 100},
+        {"key": "loseContent",       "label": "内容丢失",      "type": "number", "default": "0",  "min": 0, "max": 100},
+        {"key": "antonymReplace",    "label": "词语替换",      "type": "number", "default": "0",  "min": 0, "max": 100},
+        {"key": "reverseOrder",      "label": "逆序",          "type": "number", "default": "0",  "min": 0, "max": 100},
+        {"key": "mistakenSignature", "label": "署名错乱",      "type": "number", "default": "0",  "min": 0, "max": 100},
+        {"key": "poeticSignature",   "label": "诗意署名",      "type": "number", "default": "0",  "min": 0, "max": 100},
+        {"key": "dailyLimit",        "label": "每日上限",      "type": "number", "default": "5"},
+        {"key": "publicChance",      "label": "播报概率（%）", "type": "number", "default": "50", "min": 0, "max": 100},
+        {"key": "giftLost",          "label": "礼物丢失（%）", "type": "number", "default": "0",  "min": 0, "max": 100},
+        {"key": "giftMisdelivery",   "label": "礼物误送（%）", "type": "number", "default": "0",  "min": 0, "max": 100},
     ]},
     {"section": "道具", "fields": [
-        {"key": "item_tracker_success_rate", "label": "追踪器成功率（%）",  "type": "number", "default": "70", "min": 0, "max": 100},
-        {"key": "item_tracker_show_partner", "label": "追踪器显示伙伴",    "type": "bool",   "default": "true"},
-        {"key": "item_tracker_time_restrict","label": "追踪器时间限制",    "type": "bool",   "default": "true"},
-        {"key": "apply_item_notification",   "label": "施加道具提醒",      "type": "bool",   "default": "true"},
-        {"key": "apply_item_expose_rate",    "label": "施加暴露概率（%）", "type": "number", "default": "0", "min": 0, "max": 100},
-        {"key": "apply_item_hours",          "label": "施加可用时段",      "type": "text",   "default": ""},
-        {"key": "shop_gift_catalog_on_receive","label": "收到即入图鉴",    "type": "bool",   "default": "false"},
+        {"key": "item_tracker_success_rate",   "label": "追踪器成功率（%）",  "type": "number", "default": "70", "min": 0, "max": 100},
+        {"key": "item_tracker_show_partner",   "label": "追踪器显示伙伴",    "type": "bool",   "default": "true"},
+        {"key": "item_tracker_time_restrict",  "label": "追踪器时间限制",    "type": "bool",   "default": "true"},
+        {"key": "apply_item_notification",     "label": "施加道具提醒",      "type": "bool",   "default": "true"},
+        {"key": "apply_item_expose_rate",      "label": "施加暴露概率（%）", "type": "number", "default": "0", "min": 0, "max": 100},
+        {"key": "apply_item_hours",            "label": "施加可用时段",      "type": "text",   "default": ""},
+        {"key": "shop_gift_catalog_on_receive","label": "收到即入图鉴",      "type": "bool",   "default": "false"},
     ]},
     {"section": "拍卖", "fields": [
         {"key": "auction_allow_anon",      "label": "允许匿名出价",   "type": "bool", "default": "true"},
@@ -188,6 +190,12 @@ def assemble_bot_config(flat):
         else:
             for f in sec["fields"]:
                 result[f["key"]] = flat.get(f["key"], str(f["default"]))
+    # 透传 blob 键（机器人以 JSON 字符串形式存储，原样透传）
+    for blob_key in ("item_registry", "rpg_attr_defs", "sys_attr_presets",
+                     "end_game_bonus_templates", "end_game_draw_config"):
+        val = flat.get(blob_key)
+        if val:
+            result[blob_key] = val
     return result
 
 
@@ -289,7 +297,7 @@ def _migrate(conn):
         CREATE TABLE IF NOT EXISTS shows (
             id                  INTEGER PRIMARY KEY AUTOINCREMENT,
             tenant_id           INTEGER NOT NULL,
-            name                TEXT NOT NULL DEFAULT '第一弧',
+            name                TEXT NOT NULL DEFAULT '第一季',
             description         TEXT DEFAULT '',
             is_current          INTEGER DEFAULT 0,
             public_view_enabled INTEGER DEFAULT 0,
@@ -299,13 +307,13 @@ def _migrate(conn):
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_shows_tenant ON shows(tenant_id)")
 
-    # 为每个租户创建默认弧
+    # 为每个租户创建默认季
     for (tid,) in conn.execute("SELECT id FROM tenants").fetchall():
         if not conn.execute("SELECT id FROM shows WHERE tenant_id=?", (tid,)).fetchone():
             conn.execute(
                 "INSERT INTO shows (tenant_id,name,is_current,public_view_enabled,public_token,created_at) "
                 "VALUES (?,?,1,0,?,?)",
-                (tid, "第一弧", secrets.token_urlsafe(24), int(time.time() * 1000))
+                (tid, "第一季", secrets.token_urlsafe(24), int(time.time() * 1000))
             )
 
     # ── 5. 数据表加 show_id ──────────────────────────────────────────────────
@@ -403,6 +411,19 @@ def _migrate(conn):
     if "set_name" not in _col_names(conn, "known_groups"):
         conn.execute("ALTER TABLE known_groups ADD COLUMN set_name TEXT NOT NULL DEFAULT ''")
 
+    # ── 6b. known_group_sets 表（群号组名单独存储，支持空组）────────────────
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS known_group_sets (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            show_id    INTEGER NOT NULL,
+            tenant_id  INTEGER NOT NULL DEFAULT 1,
+            set_name   TEXT NOT NULL,
+            created_at INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(show_id, set_name)
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_known_group_sets_show ON known_group_sets(show_id)")
+
     # ── 8. config_history 表 ───────────────────────────────────────────────
     conn.execute("""
         CREATE TABLE IF NOT EXISTS config_history (
@@ -460,7 +481,7 @@ def current_tenant_id():
     return session.get("tenant_id")
 
 def get_show_id():
-    """当前管理员正在查看的弧 ID（存于 session）。"""
+    """当前管理员正在查看的季 ID（存于 session）。"""
     sid = session.get("view_show_id")
     if sid:
         return sid
@@ -477,7 +498,7 @@ def get_show_id():
     return None
 
 def get_current_show_id_for_tenant(tenant_id):
-    """API 用：找该租户当前活跃弧的 ID。"""
+    """API 用：找该租户当前活跃季的 ID。"""
     db  = get_db()
     row = db.execute("SELECT id FROM shows WHERE tenant_id=? AND is_current=1", (tenant_id,)).fetchone()
     if not row:
@@ -726,13 +747,13 @@ def superadmin_tenant_new():
              token, display_name, now)
         )
         db.commit()
-        # 自动为新租户创建第一弧
+        # 自动为新租户创建第一季
         new_tenant = db.execute("SELECT id FROM tenants WHERE username=?", (username,)).fetchone()
         if new_tenant:
             db.execute(
                 "INSERT INTO shows (tenant_id,name,is_current,public_view_enabled,public_token,created_at) "
                 "VALUES (?,?,1,0,?,?)",
-                (new_tenant["id"], "第一弧", secrets.token_urlsafe(24), now)
+                (new_tenant["id"], "第一季", secrets.token_urlsafe(24), now)
             )
             db.commit()
     except sqlite3.IntegrityError:
@@ -772,7 +793,7 @@ def superadmin_set_password(tid):
     return redirect(url_for("superadmin") + "?created=1")
 
 
-# ── 弧管理路由 ───────────────────────────────────────────────────────────────
+# ── 季管理路由 ───────────────────────────────────────────────────────────────
 
 @app.route("/admin/shows")
 @require_admin
@@ -812,7 +833,7 @@ def admin_show_new():
 @app.route("/admin/shows/<int:sid>/activate", methods=["POST"])
 @require_admin
 def admin_show_activate(sid):
-    """将指定弧设为「当前弧」（机器人数据写入此弧）。"""
+    """将指定季设为「当前季」（机器人数据写入此季）。"""
     tid = current_tenant_id()
     db  = get_db()
     if not db.execute("SELECT id FROM shows WHERE id=? AND tenant_id=?", (sid, tid)).fetchone():
@@ -828,7 +849,7 @@ def admin_show_activate(sid):
 @app.route("/admin/shows/<int:sid>/view", methods=["POST"])
 @require_admin
 def admin_show_view(sid):
-    """切换管理员当前查看的弧。"""
+    """切换管理员当前查看的季。"""
     tid = current_tenant_id()
     if not get_db().execute("SELECT id FROM shows WHERE id=? AND tenant_id=?", (sid, tid)).fetchone():
         abort(404)
@@ -916,6 +937,17 @@ def admin_config_page():
                 else:
                     value = request.form.get(db_key, str(f["default"]))
                 new_flat[db_key] = value
+        # 保存物品注册表与属性定义（JSON blob，不经过 CONFIG_SCHEMA）
+        for blob_key in ("item_registry", "rpg_attr_defs", "sys_attr_presets",
+                         "end_game_bonus_templates", "end_game_draw_config",
+                         "item_registry_pending"):
+            raw = request.form.get(blob_key, "")
+            if raw:
+                try:
+                    json.loads(raw)
+                    new_flat[blob_key] = raw
+                except json.JSONDecodeError:
+                    pass
         # 快照到 config_history
         operator = (session.get("tenant_display_name") or
                     session.get("tenant_username") or "unknown")
@@ -941,9 +973,19 @@ def admin_config_page():
             if f["type"] == "routing":
                 db_key = _cfg_db_key(sec, f["key"])
                 routing_display[db_key] = _routing_to_display(flat.get(db_key, ""))
+    last_sync_ts = flat.get("_last_bot_sync")
+    last_sync = ts_to_str(int(last_sync_ts)) if last_sync_ts else None
+    item_registry_json       = flat.get("item_registry", "{}")
+    attr_defs_json           = flat.get("rpg_attr_defs", "{}")
+    end_bonus_templates_json = flat.get("end_game_bonus_templates", "[]")
+    item_pending_json        = flat.get("item_registry_pending", "[]")
     return render_template("admin_config.html", schema=CONFIG_SCHEMA,
                            flat=flat, routing_display=routing_display,
-                           saved=request.args.get("saved"))
+                           saved=request.args.get("saved"), last_sync=last_sync,
+                           item_registry_json=item_registry_json,
+                           attr_defs_json=attr_defs_json,
+                           end_bonus_templates_json=end_bonus_templates_json,
+                           item_pending_json=item_pending_json)
 
 
 # ── 配置历史路由 ─────────────────────────────────────────────────────────────
@@ -1371,7 +1413,58 @@ def search():
     q = request.args.get("q", "").strip()
     if not q:
         return redirect(url_for("home"))
-    return redirect(url_for("character_view", role_name=q))
+    sid = get_show_id()
+    db  = get_db()
+    q_lower = q.lower()
+
+    # 收集所有 distinct role_name（来自 sessions 的 participants 字段）
+    rows = db.execute("SELECT DISTINCT participants FROM sessions WHERE show_id=?", (sid,)).fetchall()
+    all_roles = set()
+    for r in rows:
+        try:
+            parts = json.loads(r["participants"] or "[]")
+            all_roles.update(parts)
+        except Exception:
+            pass
+
+    # 同时收集 players 表中的角色
+    player_rows = db.execute("SELECT role_name FROM players WHERE show_id=?", (sid,)).fetchall()
+    for r in player_rows:
+        if r["role_name"]:
+            all_roles.add(r["role_name"])
+
+    # 收集 extra_events 中的发送/接收角色（只有短信记录但无场次的角色也能被搜到）
+    event_rows = db.execute(
+        "SELECT DISTINCT from_role, to_role FROM extra_events WHERE show_id=?", (sid,)
+    ).fetchall()
+    for r in event_rows:
+        if r["from_role"]: all_roles.add(r["from_role"])
+        if r["to_role"]:   all_roles.add(r["to_role"])
+
+    show_names = get_show_names(db, sid)
+    # show_name → role_name 反查表（小写）
+    show_to_role = {v.lower(): k for k, v in show_names.items()}
+
+    matched = set()
+    for role in all_roles:
+        if q_lower in role.lower():
+            matched.add(role)
+        sn = show_names.get(role, "")
+        if sn and q_lower in sn.lower():
+            matched.add(role)
+    # 也从 show_name 反查中匹配
+    for sn_lower, role in show_to_role.items():
+        if q_lower in sn_lower and role in all_roles:
+            matched.add(role)
+
+    matched = sorted(matched)
+
+    if len(matched) == 1:
+        return redirect(url_for("character_view", role_name=matched[0]))
+    if len(matched) == 0:
+        # 无结果也给个页面而不是空角色页
+        return render_template("search_results.html", q=q, results=[], show_names=show_names)
+    return render_template("search_results.html", q=q, results=matched, show_names=show_names)
 
 
 # ── 公开视图路由 ─────────────────────────────────────────────────────────────
@@ -1449,6 +1542,47 @@ def api_config():
     if not show_id: abort(503)
     flat = get_flat_config(get_db(), show_id)
     return jsonify(assemble_bot_config(flat))
+
+@app.route("/api/sync_config", methods=["POST"])
+def api_sync_config():
+    tid     = get_tenant_from_token()
+    show_id = get_current_show_id_for_tenant(tid)
+    if not show_id: abort(503)
+    data = request.json or {}
+    if not data:
+        return jsonify({"ok": False, "error": "empty payload"}), 400
+    db = get_db()
+    for key, value in data.items():
+        db.execute(
+            "INSERT INTO site_config(show_id,tenant_id,key,value) VALUES(?,?,?,?) "
+            "ON CONFLICT(show_id,key) DO UPDATE SET value=excluded.value",
+            (show_id, tid, key, str(value))
+        )
+    db.execute(
+        "INSERT INTO site_config(show_id,tenant_id,key,value) VALUES(?,?,?,?) "
+        "ON CONFLICT(show_id,key) DO UPDATE SET value=excluded.value",
+        (show_id, tid, "_last_bot_sync", str(int(time.time() * 1000)))
+    )
+    db.commit()
+    return jsonify({"ok": True, "synced": len(data)})
+
+@app.route("/api/pending_items", methods=["GET"])
+def api_pending_items():
+    tid     = get_tenant_from_token()
+    show_id = get_current_show_id_for_tenant(tid)
+    if not show_id: abort(503)
+    db  = get_db()
+    row = db.execute(
+        "SELECT value FROM site_config WHERE show_id=? AND key='item_registry_pending'",
+        (show_id,)
+    ).fetchone()
+    pending = []
+    if row and row["value"]:
+        try:
+            pending = json.loads(row["value"])
+        except (json.JSONDecodeError, TypeError):
+            pending = []
+    return jsonify({"pending": pending})
 
 @app.route("/api/event", methods=["POST"])
 def api_event():
@@ -1590,8 +1724,16 @@ def admin_groups():
                 msg = "added"
         elif action == "add_set":
             set_name = request.form.get("set_name","").strip()
-            # 群号组本身不需要单独存，首次添加群号时自动创建；这里只做校验
-            msg = "set_created" if set_name else None
+            if set_name:
+                try:
+                    db.execute(
+                        "INSERT OR IGNORE INTO known_group_sets(show_id,tenant_id,set_name,created_at) VALUES(?,?,?,?)",
+                        (sid, tid, set_name, int(time.time()*1000))
+                    )
+                    db.commit()
+                    msg = "set_created"
+                except Exception:
+                    msg = None
         elif action == "delete":
             row_id = request.form.get("row_id", type=int)
             if row_id:
@@ -1604,6 +1746,7 @@ def admin_groups():
             set_name = request.form.get("set_name","").strip()
             if set_name:
                 db.execute("DELETE FROM known_groups WHERE show_id=? AND set_name=?", (sid, set_name))
+                db.execute("DELETE FROM known_group_sets WHERE show_id=? AND set_name=?", (sid, set_name))
                 db.commit()
             if request.headers.get("X-Fetch") == "1":
                 return jsonify({"ok": True})
@@ -1615,14 +1758,20 @@ def admin_groups():
                 db.execute("UPDATE known_groups SET name=? WHERE id=? AND show_id=?", (note, row_id, sid))
                 db.commit()
             msg = "edited"
-    rows = db.execute(
+    # 所有已创建的组名（含空组）
+    set_name_rows = db.execute(
+        "SELECT set_name FROM known_group_sets WHERE show_id=? ORDER BY created_at",
+        (sid,)
+    ).fetchall()
+    member_rows = db.execute(
         "SELECT * FROM known_groups WHERE show_id=? ORDER BY set_name, created_at",
         (sid,)
     ).fetchall()
-    # 按 set_name 分组
     from collections import OrderedDict
     sets = OrderedDict()
-    for r in rows:
+    for r in set_name_rows:
+        sets.setdefault(r["set_name"], [])
+    for r in member_rows:
         sn = r["set_name"] or "（未分组）"
         sets.setdefault(sn, []).append(dict(r))
     return render_template("admin_groups.html", sets=sets, msg=msg)
@@ -1632,8 +1781,9 @@ def admin_groups():
 
 def _get_reward_config(db, show_id):
     rows = db.execute(
-        "SELECT key,value FROM site_config WHERE show_id=? AND key IN (?,?,?)",
-        (show_id, "reward_bonus_templates", "reward_draw_config", "reward_item_registry")
+        "SELECT key,value FROM site_config WHERE show_id=? AND key IN (?,?,?,?)",
+        (show_id, "reward_bonus_templates", "reward_draw_config",
+         "reward_item_registry", "item_registry")
     ).fetchall()
     cfg = {r["key"]: r["value"] for r in rows}
     try:
@@ -1644,10 +1794,16 @@ def _get_reward_config(db, show_id):
         draw_config = json.loads(cfg.get("reward_draw_config") or "{}")
     except Exception:
         draw_config = {}
+    # 优先读主注册表 item_registry，回退到 reward_item_registry（旧数据兼容）
     try:
-        item_registry = json.loads(cfg.get("reward_item_registry") or "{}")
+        item_registry = json.loads(cfg.get("item_registry") or "{}")
     except Exception:
         item_registry = {}
+    if not item_registry:
+        try:
+            item_registry = json.loads(cfg.get("reward_item_registry") or "{}")
+        except Exception:
+            item_registry = {}
     return bonus_templates, draw_config, item_registry
 
 
@@ -1702,18 +1858,28 @@ def admin_rewards_save_config():
             parsed = json.loads(raw)
             val = json.dumps(parsed, ensure_ascii=False)
         except Exception:
+            if request.headers.get("X-Fetch") == "1":
+                return jsonify({"ok": False, "error": "json_parse"})
             return redirect(url_for("admin_rewards") + "?err=json")
+        # 同时写主注册表（机器人拉取）和兼容 key
+        _save_reward_config_key(db, sid, tid, "item_registry", val)
         _save_reward_config_key(db, sid, tid, "reward_item_registry", val)
         db.commit()
+        if request.headers.get("X-Fetch") == "1":
+            return jsonify({"ok": True})
     elif section == "bonus":
         raw = request.form.get("bonus_templates_json","").strip()
         try:
             parsed = json.loads(raw)
             val = json.dumps(parsed, ensure_ascii=False)
         except Exception:
+            if request.headers.get("X-Fetch") == "1":
+                return jsonify({"ok": False, "error": "json_parse"})
             return redirect(url_for("admin_rewards") + "?err=json")
         _save_reward_config_key(db, sid, tid, "reward_bonus_templates", val)
         db.commit()
+        if request.headers.get("X-Fetch") == "1":
+            return jsonify({"ok": True})
     return redirect(url_for("admin_rewards") + "?saved=1")
 
 
@@ -1803,6 +1969,22 @@ def api_reward_result():
         )
     db.commit()
     return jsonify({"ok": True, "count": len(results)})
+
+
+@app.route("/api/reward_config", methods=["GET"])
+def api_reward_config():
+    """机器人拉取结戏奖励配置（道具注册表 + 奖励模版 + 抽奖配置）。"""
+    tid     = get_tenant_from_token()
+    show_id = get_current_show_id_for_tenant(tid)
+    if not show_id: abort(503)
+    db = get_db()
+    bonus_templates, draw_config, item_registry = _get_reward_config(db, show_id)
+    return jsonify({
+        "ok": True,
+        "item_registry":     item_registry,
+        "bonus_templates":   bonus_templates,
+        "draw_config":       draw_config,
+    })
 
 
 if __name__ == "__main__":
