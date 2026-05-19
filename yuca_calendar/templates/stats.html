@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% block title %}年度统计 · 语擦日历{% endblock %}
+{% block head %}
+<style>
+.year-nav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
+.year-btn {
+  background: var(--surface2); border: 1px solid var(--border); color: var(--muted);
+  border-radius: 20px; padding: 4px 16px; font-size: 13px; cursor: pointer;
+  font-family: inherit; transition: all .15s; text-decoration: none; display: inline-block;
+}
+.year-btn:hover { border-color: var(--accent); color: var(--text); }
+.year-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 20px; }
+@media(max-width:700px) { .stat-row { grid-template-columns: repeat(2, 1fr); } }
+@media(max-width:400px) { .stat-row { grid-template-columns: 1fr 1fr; } }
+.stat-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 16px 18px; text-align: center;
+}
+.stat-num { font-size: 28px; font-weight: 700; color: var(--accent2); line-height: 1.2; }
+.stat-label { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+.section-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 18px 20px; margin-bottom: 14px;
+}
+.section-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 14px; }
+
+.distrib-item { margin-bottom: 10px; }
+.distrib-label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
+.distrib-val { color: var(--text); }
+.distrib-pct { color: var(--muted); font-size: 12px; }
+.distrib-bar-wrap { background: var(--surface2); border-radius: 4px; height: 6px; overflow: hidden; }
+.distrib-bar { background: var(--accent); border-radius: 4px; height: 100%; transition: width .4s; }
+
+.char-item {
+  display: flex; align-items: center; gap: 8px; padding: 5px 0;
+  border-bottom: 1px solid var(--border); font-size: 13px;
+}
+.char-item:last-child { border-bottom: none; }
+.char-show { color: var(--muted); flex: 1; }
+.char-val { color: var(--text); }
+
+.involve-item {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 20px; padding: 3px 12px; font-size: 12px; margin: 3px;
+}
+.involve-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+.day-progress { margin-top: 6px; }
+.day-progress-bar-wrap {
+  background: var(--surface2); border-radius: 6px; height: 10px; overflow: hidden; margin: 6px 0;
+}
+.day-progress-bar { background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 6px; height: 100%; }
+.day-sub { display: flex; gap: 16px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+</style>
+{% endblock %}
+{% block body %}
+<div class="page">
+  <h1 class="page-title">年度统计</h1>
+
+  <div class="year-nav">
+    {% for y in years %}
+    <a href="{{ url_for('stats', year=y) }}"
+       class="year-btn {% if y == year %}active{% endif %}">{{ y }}年</a>
+    {% endfor %}
+  </div>
+
+  {% if data.total == 0 %}
+  <div class="empty">{{ data.label }}暂无档期数据</div>
+  {% else %}
+
+  <!-- 数字概览 -->
+  <div class="stat-row">
+    <div class="stat-card">
+      <div class="stat-num">{{ data.total }}</div>
+      <div class="stat-label">涉及恋综</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num">{{ data.covered_days }}</div>
+      <div class="stat-label">语擦天数</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num">{{ data.pct }}%</div>
+      <div class="stat-label">占比</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num">{{ data.weekend }}</div>
+      <div class="stat-label">周末语擦</div>
+    </div>
+  </div>
+
+  <!-- 天数进度 -->
+  <div class="section-card">
+    <div class="section-title">📅 {{ data.label }}语擦天数</div>
+    <div style="font-size:13px;color:var(--muted)">
+      共 {{ data.total_days }} 天中，有档期覆盖 {{ data.covered_days }} 天（{{ data.pct }}%）
+    </div>
+    <div class="day-progress">
+      <div class="day-progress-bar-wrap">
+        <div class="day-progress-bar" style="width:{{ data.pct }}%"></div>
+      </div>
+      <div class="day-sub">
+        <span>周中 {{ data.weekday }} 天</span>
+        <span>周末 {{ data.weekend }} 天</span>
+        <span>空闲 {{ data.total_days - data.covered_days }} 天</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 涉及恋综 -->
+  <div class="section-card">
+    <div class="section-title">📌 涉及的恋综（{{ data.total }} 个）</div>
+    {% for s in data.involved %}
+    <span class="involve-item">
+      <span class="involve-dot" style="background:{{ show_color(s.id) }}"></span>
+      {{ s.show_name }}
+    </span>
+    {% endfor %}
+  </div>
+
+  <div class="grid-2">
+    <!-- 皮相 -->
+    <div class="section-card">
+      <div class="section-title">🎭 皮相使用</div>
+      {% if data.characters %}
+        {% for c in data.characters %}
+        <div class="char-item">
+          <span class="char-show">{{ c.name }}</span>
+          <span class="char-val">{{ c.char }}</span>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div style="color:var(--muted);font-size:13px">无非未知记录</div>
+      {% endif %}
+    </div>
+
+    <!-- 主题题材 -->
+    <div class="section-card">
+      <div class="section-title">🎨 主题题材分布</div>
+      {% if data.themes %}
+        {% for item in data.themes %}
+        <div class="distrib-item">
+          <div class="distrib-label">
+            <span class="distrib-val">{{ item.value }}</span>
+            <span class="distrib-pct">{{ item.count }} 个 · {{ item.pct }}%</span>
+          </div>
+          <div class="distrib-bar-wrap">
+            <div class="distrib-bar" style="width:{{ item.pct }}%"></div>
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div style="color:var(--muted);font-size:13px">无非未知记录</div>
+      {% endif %}
+    </div>
+
+    <!-- 性向 -->
+    <div class="section-card">
+      <div class="section-title">❤️ 性向分布</div>
+      {% if data.orientations %}
+        {% for item in data.orientations %}
+        <div class="distrib-item">
+          <div class="distrib-label">
+            <span class="distrib-val">{{ item.value }}</span>
+            <span class="distrib-pct">{{ item.count }} 个 · {{ item.pct }}%</span>
+          </div>
+          <div class="distrib-bar-wrap">
+            <div class="distrib-bar" style="width:{{ item.pct }}%;background:var(--accent2)"></div>
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div style="color:var(--muted);font-size:13px">无非未知记录</div>
+      {% endif %}
+    </div>
+
+    <!-- 性别 -->
+    <div class="section-card">
+      <div class="section-title">🚻 性别分布</div>
+      {% if data.genders %}
+        {% for item in data.genders %}
+        <div class="distrib-item">
+          <div class="distrib-label">
+            <span class="distrib-val">{{ item.value }}</span>
+            <span class="distrib-pct">{{ item.count }} 个 · {{ item.pct }}%</span>
+          </div>
+          <div class="distrib-bar-wrap">
+            <div class="distrib-bar" style="width:{{ item.pct }}%;background:#34d399"></div>
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div style="color:var(--muted);font-size:13px">无非未知记录</div>
+      {% endif %}
+    </div>
+
+    <!-- 结局 -->
+    <div class="section-card">
+      <div class="section-title">🎬 结局分布</div>
+      {% if data.outcomes %}
+        {% for item in data.outcomes %}
+        <div class="distrib-item">
+          <div class="distrib-label">
+            <span class="distrib-val">{{ item.value }}</span>
+            <span class="distrib-pct">{{ item.count }} 个 · {{ item.pct }}%</span>
+          </div>
+          <div class="distrib-bar-wrap">
+            <div class="distrib-bar" style="width:{{ item.pct }}%;background:#fbbf24"></div>
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div style="color:var(--muted);font-size:13px">无非未知记录</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+{% block title %}长日存档 · 信件复盘{% endblock %}
+
+{% block head %}
+<style>
+/* ── Lock screen ─────────────────────────────── */
+.lock-wrap {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-height: 60vh; gap: 16px; color: var(--muted);
+}
+.lock-icon { font-size: 48px; opacity: .4; }
+.lock-title { font-size: 18px; font-weight: 600; color: var(--text); }
+.lock-desc { font-size: 13px; text-align: center; max-width: 340px; line-height: 1.8; }
+
+/* ── Filter bar ──────────────────────────────── */
+.lt-filter {
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 14px 18px; margin-bottom: 20px;
+}
+.lt-filter label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px; }
+.lt-filter input, .lt-filter select {
+  background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text); border-radius: 8px; padding: 6px 10px;
+  font-size: 13px; font-family: inherit; min-width: 110px;
+}
+.lt-filter input:focus, .lt-filter select:focus { outline: none; border-color: var(--accent); }
+.lt-filter-btn {
+  background: var(--accent); color: #fff; border: none; border-radius: 8px;
+  padding: 7px 16px; font-size: 13px; cursor: pointer; font-family: inherit; align-self: flex-end;
+}
+.lt-filter-btn:hover { background: var(--accent2); }
+.lt-clear { color: var(--muted); font-size: 12px; align-self: flex-end; }
+
+/* ── Letter cards ────────────────────────────── */
+.lt-grid {
+  display: flex; flex-direction: column; gap: 14px;
+}
+.lt-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 0; overflow: hidden;
+  transition: border-color .15s;
+}
+.lt-card:hover { border-color: rgba(139,124,246,.35); }
+
+.lt-card-head {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px 18px; border-bottom: 1px solid var(--border);
+  background: rgba(255,255,255,.02);
+}
+.lt-envelope { font-size: 18px; flex-shrink: 0; }
+.lt-from {
+  font-size: 14px; font-weight: 600; color: var(--text);
+}
+.lt-arrow { color: var(--muted); font-size: 12px; }
+.lt-to { font-size: 14px; color: var(--accent2); font-weight: 600; }
+.lt-meta { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.lt-day {
+  background: var(--surface2); border: 1px solid var(--border);
+  color: var(--muted); border-radius: 20px; padding: 2px 10px; font-size: 11px;
+}
+.lt-ts { font-size: 11px; color: var(--muted); }
+
+.lt-card-body { padding: 14px 18px; }
+.lt-date-tag { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+
+.lt-content {
+  font-size: 13px; line-height: 1.9; color: var(--text);
+  white-space: pre-wrap; word-break: break-word;
+}
+.lt-content-quote {
+  border-left: 3px solid rgba(139,124,246,.4);
+  padding-left: 12px; margin: 6px 0;
+}
+.lt-sign {
+  margin-top: 12px; font-size: 13px; color: var(--muted);
+  text-align: right; font-style: italic;
+}
+.lt-attachment {
+  margin-top: 12px; background: var(--surface2);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px 14px; font-size: 12px; color: var(--muted);
+}
+.lt-attachment-label {
+  font-size: 11px; font-weight: 700; letter-spacing: .5px;
+  color: var(--muted); margin-bottom: 5px;
+}
+
+/* ── Empty state ─────────────────────────────── */
+.lt-empty {
+  text-align: center; padding: 60px 0;
+  font-size: 14px; color: var(--muted);
+}
+
+/* ── Stats bar ───────────────────────────────── */
+.lt-stats {
+  font-size: 12px; color: var(--muted);
+  margin-bottom: 14px; display: flex; gap: 16px; flex-wrap: wrap;
+}
+.lt-stats b { color: var(--text); }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="page">
+  <div class="page-title">信件复盘</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:20px;">写信综模式下发送的正式信件归档</div>
+
+  {% if locked %}
+  <!-- ── Lock screen ── -->
+  <div class="lock-wrap">
+    <div class="lock-icon">📮</div>
+    <div class="lock-title">尚无信件记录</div>
+    <div class="lock-desc">
+      {% if not enabled %}
+        当前档期未启用写信综模式。<br>
+        在后台配置中开启「发送信件（写信综）」后，<br>玩家发送的信件将在此处归档。
+      {% else %}
+        写信综已启用，但本档期还没有玩家发送信件。<br>
+        有信件送出后会自动显示在这里。
+      {% endif %}
+    </div>
+  </div>
+
+  {% else %}
+
+  <!-- ── Filter bar ── -->
+  <form class="lt-filter" method="get">
+    <div>
+      <label>发信人</label>
+      <input type="text" name="from" value="{{ q_from }}" placeholder="角色名…" list="role-list">
+      <datalist id="role-list">
+        {% for r in all_roles %}<option value="{{ r }}">{% endfor %}
+      </datalist>
+    </div>
+    <div>
+      <label>收信人</label>
+      <input type="text" name="to" value="{{ q_to }}" placeholder="角色名…">
+    </div>
+    <div>
+      <label>游戏日</label>
+      <select name="day">
+        <option value="">全部</option>
+        {% for d in all_days %}
+        <option value="{{ d }}" {{ 'selected' if q_day == d else '' }}>{{ d }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="lt-filter-btn" type="submit">筛选</button>
+    {% if q_from or q_to or q_day %}
+    <a class="lt-clear" href="{{ url_for('letters_view') }}">清除</a>
+    {% endif %}
+  </form>
+
+  <!-- ── Stats ── -->
+  <div class="lt-stats">
+    共 <b>{{ letters|length }}</b> 封信件
+    {% if q_from or q_to or q_day %}<span>（已筛选）</span>{% endif %}
+  </div>
+
+  <!-- ── Cards ── -->
+  {% if letters %}
+  <div class="lt-grid">
+    {% for l in letters %}
+    <div class="lt-card">
+      <div class="lt-card-head">
+        <span class="lt-envelope">✉️</span>
+        <span class="lt-from">{{ l.from_role }}</span>
+        <span class="lt-arrow">→</span>
+        <span class="lt-to">{{ l.to_role }}</span>
+        <div class="lt-meta">
+          {% if l.game_day %}<span class="lt-day">{{ l.game_day }}</span>{% endif %}
+          <span class="lt-ts">{{ l.ts_str }}</span>
+        </div>
+      </div>
+      <div class="lt-card-body">
+        {% if l.date_tag %}
+        <div class="lt-date-tag">📅 {{ l.date_tag }}</div>
+        {% endif %}
+        <div class="lt-content lt-content-quote">{{ l.content }}</div>
+        <div class="lt-sign">—— {{ l.signature }}</div>
+        {% if l.attachment %}
+        <div class="lt-attachment">
+          <div class="lt-attachment-label">附件</div>
+          {{ l.attachment }}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="lt-empty">没有符合条件的信件</div>
+  {% endif %}
+
+  {% endif %}
+</div>
+{% endblock %}

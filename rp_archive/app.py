@@ -62,11 +62,11 @@ CONFIG_SCHEMA = [
         {"key": "background_group_id",   "label": "后台群",     "type": "text",    "default": ""},
         {"key": "water_group_id",        "label": "水群",       "type": "text",    "default": ""},
         {"key": "auction_display_group", "label": "拍卖展示群", "type": "text",    "default": ""},
-        {"key": "fupan_routing_enabled", "label": "复盘群分流", "type": "bool",    "default": "false", "note": "启用后复盘消息按天数路由到对应群"},
-        {"key": "fupan_routing_groups",  "label": "分流群配置", "type": "routing", "default": "", "note": "格式：D1:群号 D2:群号"},
+        {"key": "fupan_routing_enabled", "label": "复盘群分流",  "type": "bool",    "default": "false", "note": "启用后复盘消息按天数路由到对应群"},
+        {"key": "fupan_routing_groups",  "label": "分流群配置",  "type": "routing", "default": "", "note": "格式：D1:群号 D2:群号"},
+        {"key": "announceFrequency",     "label": "公告触发频率","type": "number",  "default": "5", "note": "每 N 条互动触发一次公告广播"},
     ]},
     {"section": "功能开关", "json_parent": "global_feature_toggle", "fields": [
-        {"key": "enable_general_letter",      "label": "普通信件",          "type": "bool", "default": "true"},
         {"key": "enable_general_gift",        "label": "普通礼物",          "type": "bool", "default": "true"},
         {"key": "enable_general_appointment", "label": "普通邀约",          "type": "bool", "default": "true"},
         {"key": "enable_chaos_letter",        "label": "短信",              "type": "bool", "default": "true"},
@@ -77,7 +77,7 @@ CONFIG_SCHEMA = [
     ]},
     {"section": "邀约", "fields": [
         {"key": "enable_join_existing_appointment", "label": "允许加入已有私约", "type": "bool",   "default": "true"},
-        {"key": "require_fupan_before_end",         "label": "复盘强制结束",     "type": "bool",   "default": "true"},
+        {"key": "require_fupan_before_end",         "label": "强制转发复盘",     "type": "bool",   "default": "true"},
         {"key": "group_expire_hours",               "label": "小群过期（小时）", "type": "number", "default": "48"},
     ]},
     {"section": "邀约时长（分钟）", "json_parent": "appointment_duration_config", "fields": [
@@ -95,8 +95,6 @@ CONFIG_SCHEMA = [
         {"key": "giftPublicChance",         "label": "礼物公开概率（%）", "type": "number", "default": "50", "min": 0, "max": 100},
         {"key": "giftDailyLimit",           "label": "每日礼物上限",      "type": "number", "default": "100"},
         {"key": "shop_refresh_hours",       "label": "礼品店刷新（小时）","type": "number", "default": "24"},
-        {"key": "allow_private_rooms",      "label": "允许私人房间",      "type": "bool",   "default": "true"},
-        {"key": "announceFrequency",        "label": "公告触发频率",      "type": "number", "default": "5"},
     ]},
     {"section": "心动信", "fields": [
         {"key": "lovemail_default_limit",  "label": "每日上限",     "type": "number", "default": "3"},
@@ -131,6 +129,9 @@ CONFIG_SCHEMA = [
         {"key": "enabled",                "label": "启用场所系统", "type": "bool", "default": "true"},
         {"key": "require_key_by_default", "label": "默认需要钥匙", "type": "bool", "default": "false"},
     ]},
+    {"section": "私人房间", "fields": [
+        {"key": "allow_private_rooms",    "label": "允许私人房间", "type": "bool",   "default": "true"},
+    ]},
     {"section": "短信效果配置（% · 0=关闭）", "json_parent": "chaos_letter_config", "fields": [
         {"key": "misdelivery",       "label": "误送",          "type": "number", "default": "0",  "min": 0, "max": 100},
         {"key": "blackoutText",      "label": "黑化文字",      "type": "number", "default": "0",  "min": 0, "max": 100},
@@ -139,10 +140,11 @@ CONFIG_SCHEMA = [
         {"key": "reverseOrder",      "label": "逆序",          "type": "number", "default": "0",  "min": 0, "max": 100},
         {"key": "mistakenSignature", "label": "署名错乱",      "type": "number", "default": "0",  "min": 0, "max": 100},
         {"key": "poeticSignature",   "label": "诗意署名",      "type": "number", "default": "0",  "min": 0, "max": 100},
-        {"key": "dailyLimit",        "label": "每日上限",      "type": "number", "default": "5"},
-        {"key": "publicChance",      "label": "播报概率（%）", "type": "number", "default": "50", "min": 0, "max": 100},
-        {"key": "giftLost",          "label": "礼物丢失（%）", "type": "number", "default": "0",  "min": 0, "max": 100},
-        {"key": "giftMisdelivery",   "label": "礼物误送（%）", "type": "number", "default": "0",  "min": 0, "max": 100},
+        {"key": "dailyLimit",        "label": "每日上限",          "type": "number", "default": "5"},
+        {"key": "publicChance",      "label": "播报概率（%）",     "type": "number", "default": "50", "min": 0, "max": 100},
+        {"key": "publicShowEffect",  "label": "公开时显示扰乱效果","type": "bool",   "default": "false"},
+        {"key": "giftLost",          "label": "礼物丢失（%）",     "type": "number", "default": "0",  "min": 0, "max": 100},
+        {"key": "giftMisdelivery",   "label": "礼物误送（%）",     "type": "number", "default": "0",  "min": 0, "max": 100},
     ]},
     {"section": "道具", "fields": [
         {"key": "item_tracker_success_rate",   "label": "追踪器成功率（%）",  "type": "number", "default": "70", "min": 0, "max": 100},
@@ -158,6 +160,23 @@ CONFIG_SCHEMA = [
         {"key": "auction_broadcast",       "label": "出价播报",       "type": "bool", "default": "true"},
         {"key": "auction_show_top_bidder", "label": "展示最高出价者", "type": "bool", "default": "true"},
         {"key": "auction_currency",        "label": "拍卖货币",       "type": "text", "default": "金币"},
+    ]},
+    {"section": "监听参数", "json_parent": "monitor_settings", "fields": [
+        {"key": "enabled",                "label": "启用监听系统",       "type": "bool",   "default": "true"},
+        {"key": "auto_monitor_all_groups","label": "自动监控所有群组",   "type": "bool",   "default": "true"},
+        {"key": "min_words_phone",        "label": "电话最低字数",       "type": "number", "default": "20"},
+        {"key": "min_words_private",      "label": "私密最低字数",       "type": "number", "default": "150"},
+        {"key": "min_words_wish",         "label": "心愿最低字数",       "type": "number", "default": "150"},
+        {"key": "min_words_official",     "label": "官约最低字数",       "type": "number", "default": "150"},
+        {"key": "timeout_phone",          "label": "电话超时（小时）",   "type": "number", "default": "1"},
+        {"key": "timeout_private",        "label": "私密超时（小时）",   "type": "number", "default": "3"},
+        {"key": "timeout_wish",           "label": "心愿超时（小时）",   "type": "number", "default": "3"},
+        {"key": "timeout_official",       "label": "官约超时（小时）",   "type": "number", "default": "3"},
+    ]},
+    {"section": "公开链接", "fields": [
+        {"key": "public_show_sms",      "label": "公开短信",   "type": "bool", "default": "true"},
+        {"key": "public_show_gift",     "label": "公开礼物",   "type": "bool", "default": "true"},
+        {"key": "public_show_lovemail", "label": "公开心动信", "type": "bool", "default": "true"},
     ]},
 ]
 
@@ -186,6 +205,11 @@ def assemble_bot_config(flat):
                         obj[f["key"]] = f["default"]
                 else:
                     obj[f["key"]] = raw
+            # timeout fields in monitor_settings are stored as hours in UI, bot expects ms
+            if jp == "monitor_settings":
+                for tkey in ("timeout_phone", "timeout_private", "timeout_wish", "timeout_official"):
+                    if tkey in obj and isinstance(obj[tkey], (int, float)):
+                        obj[tkey] = int(obj[tkey] * 3_600_000)
             result[jp] = json.dumps(obj, ensure_ascii=False)
         else:
             for f in sec["fields"]:
@@ -453,6 +477,21 @@ def _migrate(conn):
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_reward_records_show ON reward_records(show_id)")
 
+    # ── 9. blacklist 表 ─────────────────────────────────────────────────────
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS blacklist (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            tenant_id  INTEGER NOT NULL,
+            qq         TEXT NOT NULL DEFAULT '',
+            role_name  TEXT DEFAULT '',
+            content    TEXT DEFAULT '',
+            tags       TEXT DEFAULT '',
+            added_by   TEXT DEFAULT '',
+            created_at INTEGER DEFAULT 0
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_blacklist_tenant ON blacklist(tenant_id)")
+
     conn.commit()
 
 def init_db():
@@ -473,6 +512,10 @@ def ts_to_str(ts):
         return datetime.fromtimestamp(int(ts) / 1000).strftime("%Y-%m-%d %H:%M")
     except Exception:
         return ""
+
+def fmt_seconds(secs):
+    secs = int(secs)
+    return f"{secs//60}分{secs%60}秒" if secs >= 60 else f"{secs}秒"
 
 
 # ── Auth ─────────────────────────────────────────────────────────────────────
@@ -700,20 +743,57 @@ def superadmin_players():
             FROM players p
             JOIN tenants t ON p.tenant_id = t.id
             JOIN shows   s ON p.show_id   = s.id
-            WHERE p.qq = ?
+            WHERE p.qq = ? OR p.role_name = ?
             ORDER BY p.last_updated DESC
-        """, (qq,)).fetchall()
+        """, (qq, qq)).fetchall()
         rows = [dict(r) for r in rows]
         for r in rows:
             r["last_updated_str"] = ts_to_str(r["last_updated"])
+            r["is_placeholder"] = (r["qq"] == r["role_name"])
         if rows:
+            # Compute global average reply time across all sessions for this QQ
+            role_names = list({r["role_name"] for r in rows if r["role_name"]})
+            all_reply_times = []
+            if role_names:
+                ph = ",".join("?" * len(role_names))
+                all_entries = db.execute(
+                    f"SELECT session_id,role_name,timestamp FROM rp_entries WHERE role_name IN ({ph}) AND timestamp > 0 ORDER BY session_id,seq,timestamp",
+                    role_names
+                ).fetchall()
+                by_sess = defaultdict(list)
+                for e in all_entries:
+                    by_sess[e["session_id"]].append(dict(e))
+                for entries in by_sess.values():
+                    for rn in role_names:
+                        times = [
+                            (entries[i]["timestamp"] - entries[i-1]["timestamp"]) / 1000
+                            for i in range(1, len(entries))
+                            if entries[i]["role_name"] == rn and entries[i-1]["role_name"] != rn
+                            and 0 < (entries[i]["timestamp"] - entries[i-1]["timestamp"]) / 1000 < 7200
+                        ]
+                        all_reply_times.extend(times)
+            global_avg_reply = sum(all_reply_times) / len(all_reply_times) if all_reply_times else None
+
             summary = {
                 "qq": qq,
                 "total_sessions": sum(r["sessions_count"] for r in rows),
                 "total_replies":  sum(r["total_replies"]  for r in rows),
                 "total_words":    sum(r["total_words"]    for r in rows),
                 "arc_count":      len(rows),
+                "global_avg_reply": global_avg_reply,
             }
+    # blacklist records for this QQ (across all tenants)
+    bl_records = []
+    if qq:
+        bl_rows = db.execute("""
+            SELECT b.*, t.display_name AS tenant_display, t.username AS tenant_username
+            FROM blacklist b
+            JOIN tenants t ON b.tenant_id = t.id
+            WHERE b.qq = ?
+            ORDER BY b.created_at DESC
+        """, (qq,)).fetchall()
+        bl_records = [dict(r) for r in bl_rows]
+
     # top players across all tenants (for browse view)
     top = db.execute("""
         SELECT qq, SUM(total_replies) AS replies, SUM(total_words) AS words,
@@ -725,7 +805,8 @@ def superadmin_players():
     for r in top:
         r["last_updated_str"] = ts_to_str(r["last_updated"])
     return render_template("superadmin_players.html",
-                           qq=qq, rows=rows, summary=summary, top=top)
+                           qq=qq, rows=rows, summary=summary, top=top,
+                           fmt_seconds=fmt_seconds, bl_records=bl_records, ts_to_str=ts_to_str)
 
 @app.route("/superadmin/tenant/new", methods=["POST"])
 @require_superadmin
@@ -1320,12 +1401,211 @@ def admin_player(qq):
                                      "place": s.get("place",""), "avg": sum(times)/len(times),
                                      "max": max(times), "min": min(times), "count": len(times)})
 
-    def fmt_seconds(secs):
-        secs = int(secs)
-        return f"{secs//60}分{secs%60}秒" if secs >= 60 else f"{secs}秒"
+    # Hourly activity for this player
+    role_name_str = role_name or ""
+    hourly_rp = [0] * 24
+    if role_name_str:
+        rp_ts_rows = db.execute(
+            "SELECT timestamp FROM rp_entries WHERE show_id=? AND role_name=? AND timestamp > 0",
+            (sid, role_name_str)
+        ).fetchall()
+        for e in rp_ts_rows:
+            try:
+                hourly_rp[datetime.fromtimestamp(int(e["timestamp"]) / 1000).hour] += 1
+            except Exception:
+                pass
+        evt_ts_rows = db.execute(
+            "SELECT timestamp FROM extra_events WHERE show_id=? AND from_role=? AND type IN ('sms','gift') AND timestamp > 0",
+            (sid, role_name_str)
+        ).fetchall()
+        for e in evt_ts_rows:
+            try:
+                hourly_rp[datetime.fromtimestamp(int(e["timestamp"]) / 1000).hour] += 1
+            except Exception:
+                pass
+
+    # Per-session player stat from sessions.stats
+    session_player_stats = []
+    for s in player_sessions:
+        st = s.get("stats", {}).get(role_name_str, {})
+        session_player_stats.append({
+            "session": s,
+            "replies": st.get("replies", 0),
+            "words":   st.get("words",   0),
+        })
+
+    all_times = []
+    for t in timing_stats:
+        all_times.extend([t["avg"]] * t["count"])
+    global_avg_reply = sum(all_times) / len(all_times) if all_times else None
+
+    # 从 session_player_stats 实时算累计（比 players 表存储值更准确）
+    computed_replies = sum(s["replies"] for s in session_player_stats)
+    computed_words   = sum(s["words"]   for s in session_player_stats)
 
     return render_template("admin_player.html", player=player, player_sessions=player_sessions,
-                           timing_stats=timing_stats, fmt_seconds=fmt_seconds, ts_to_str=ts_to_str)
+                           timing_stats=timing_stats, fmt_seconds=fmt_seconds, ts_to_str=ts_to_str,
+                           hourly_rp=hourly_rp, max_hourly=max(hourly_rp) or 1,
+                           session_player_stats=session_player_stats,
+                           global_avg_reply=global_avg_reply,
+                           computed_replies=computed_replies, computed_words=computed_words)
+
+
+@app.route("/admin/stats")
+@require_admin
+def admin_stats():
+    sid = get_show_id()
+    db  = get_db()
+
+    sessions = [_enrich_session(dict(s)) for s in
+                db.execute("SELECT * FROM sessions WHERE show_id=? ORDER BY start_ts ASC", (sid,)).fetchall()]
+    players  = [dict(p) for p in
+                db.execute("SELECT * FROM players WHERE show_id=? AND role_name != '' ORDER BY total_replies DESC", (sid,)).fetchall()]
+    player_map = {p["role_name"]: p for p in players}
+
+    # 兜底：从 rp_entries 和 extra_events 收集所有出现过的角色名
+    seen = list(player_map.keys())
+    for r in db.execute("SELECT DISTINCT role_name FROM rp_entries WHERE show_id=? AND role_name != ''", (sid,)).fetchall():
+        if r["role_name"] not in seen: seen.append(r["role_name"])
+    for r in db.execute("SELECT DISTINCT from_role FROM extra_events WHERE show_id=? AND from_role != ''", (sid,)).fetchall():
+        if r["from_role"] not in seen: seen.append(r["from_role"])
+    role_names = seen
+
+    # 从 sessions.stats 实时算每个角色的累计段数/字数/场次
+    role_totals = defaultdict(lambda: {"total_replies": 0, "total_words": 0, "participated": 0})
+    for s in sessions:
+        stats = s.get("stats", {})
+        parts = s.get("participants", [])
+        for rn, st in stats.items():
+            role_totals[rn]["total_replies"] += st.get("replies", 0)
+            role_totals[rn]["total_words"]   += st.get("words",   0)
+        for rn in parts:
+            role_totals[rn]["participated"]  += 1
+
+    # 如果 players 表里没有某个角色，补一个空记录供模板使用；并覆盖 total_replies/total_words
+    for rn in role_names:
+        if rn not in player_map:
+            player_map[rn] = {"role_name": rn, "qq": "", "total_replies": 0, "total_words": 0}
+        t = role_totals.get(rn, {})
+        player_map[rn]["total_replies"] = t.get("total_replies", 0)
+        player_map[rn]["total_words"]   = t.get("total_words",   0)
+    players = [player_map[rn] for rn in role_names]
+
+    # Per-player hourly activity (rp_entries + sms/gift，心动信不计入)
+    hourly = defaultdict(lambda: [0] * 24)
+    for e in db.execute("SELECT role_name, timestamp FROM rp_entries WHERE show_id=? AND timestamp > 0", (sid,)).fetchall():
+        try:
+            hourly[e["role_name"]][datetime.fromtimestamp(int(e["timestamp"]) / 1000).hour] += 1
+        except Exception:
+            pass
+    for e in db.execute("SELECT from_role, timestamp FROM extra_events WHERE show_id=? AND type IN ('sms','gift') AND timestamp > 0", (sid,)).fetchall():
+        try:
+            hourly[e["from_role"]][datetime.fromtimestamp(int(e["timestamp"]) / 1000).hour] += 1
+        except Exception:
+            pass
+
+    hourly_data = {role: hourly[role] for role in role_names}
+    max_hourly  = max((max(v) for v in hourly_data.values() if v), default=1)
+
+    return render_template("admin_stats.html",
+                           sessions=sessions, players=players, role_names=role_names,
+                           hourly_data=hourly_data, max_hourly=max_hourly,
+                           ts_to_str=ts_to_str)
+
+
+
+@app.route("/admin/blacklist", methods=["GET", "POST"])
+@require_admin
+def admin_blacklist():
+    tid = current_tenant_id()
+    db  = get_db()
+    error = None
+    success = None
+
+    if request.method == "POST":
+        action = request.form.get("action", "add")
+        if action == "delete":
+            bid = request.form.get("id", "")
+            if bid:
+                db.execute("DELETE FROM blacklist WHERE id=? AND tenant_id=?", (bid, tid))
+                db.commit()
+                success = "已删除"
+        else:
+            qq        = request.form.get("qq", "").strip()
+            role_name = request.form.get("role_name", "").strip()
+            content   = request.form.get("content", "").strip()
+            tags      = request.form.get("tags", "").strip()
+            added_by  = request.form.get("added_by", "").strip()
+            if not qq and not role_name:
+                error = "QQ 号或角色名至少填写一项"
+            else:
+                db.execute(
+                    "INSERT INTO blacklist (tenant_id,qq,role_name,content,tags,added_by,created_at) VALUES (?,?,?,?,?,?,?)",
+                    (tid, qq, role_name, content, tags, added_by, int(time.time() * 1000))
+                )
+                db.commit()
+                success = "已添加"
+
+    records = [dict(r) for r in db.execute(
+        "SELECT * FROM blacklist WHERE tenant_id=? ORDER BY created_at DESC", (tid,)
+    ).fetchall()]
+
+    return render_template("admin_blacklist.html", records=records, error=error, success=success, ts_to_str=ts_to_str)
+
+
+# ── 写信综复盘 ───────────────────────────────────────────────────────────────
+
+def _get_letters(db, show_id):
+    """返回该档期所有 direct_letter 事件，按时间倒序。"""
+    rows = db.execute("""
+        SELECT id, from_role, to_role, content, extra_info, timestamp, game_day
+        FROM extra_events
+        WHERE show_id=? AND type='direct_letter'
+        ORDER BY timestamp DESC
+    """, (show_id,)).fetchall()
+    result = []
+    for r in rows:
+        ei = {}
+        try: ei = json.loads(r["extra_info"] or "{}")
+        except Exception: pass
+        result.append({
+            "id":         r["id"],
+            "from_role":  r["from_role"],
+            "to_role":    r["to_role"],
+            "content":    r["content"],
+            "signature":  ei.get("signature", r["from_role"]),
+            "date_tag":   ei.get("date_tag", ""),
+            "attachment": ei.get("attachment", ""),
+            "timestamp":  r["timestamp"],
+            "game_day":   r["game_day"],
+            "ts_str":     ts_to_str(r["timestamp"]),
+        })
+    return result
+
+@app.route("/letters")
+@require_login
+def letters_view():
+    db      = get_db()
+    show_id = get_show_id()
+    flat    = get_flat_config(db, show_id) if show_id else {}
+    enabled = flat.get("enable_direct_letter", "false") == "true"
+    letters = _get_letters(db, show_id) if show_id else []
+    locked  = not letters  # 没有记录就锁页
+    # 筛选
+    q_from = request.args.get("from", "").strip()
+    q_to   = request.args.get("to",   "").strip()
+    q_day  = request.args.get("day",  "").strip()
+    if not locked:
+        if q_from: letters = [l for l in letters if q_from in l["from_role"]]
+        if q_to:   letters = [l for l in letters if q_to   in l["to_role"]]
+        if q_day:  letters = [l for l in letters if l["game_day"] == q_day]
+    all_days    = sorted({l["game_day"] for l in _get_letters(db, show_id)} if show_id else [], reverse=True)
+    all_roles   = sorted({l["from_role"] for l in _get_letters(db, show_id)} if show_id else [])
+    return render_template("letters.html",
+                           letters=letters, locked=locked,
+                           enabled=enabled,
+                           q_from=q_from, q_to=q_to, q_day=q_day,
+                           all_days=all_days, all_roles=all_roles)
 
 
 # ── 角色 / 互动路由 ──────────────────────────────────────────────────────────
@@ -1487,11 +1767,25 @@ def public_home(token):
         FROM sessions WHERE show_id=?
         GROUP BY game_day ORDER BY first_ts DESC
     """, (show["id"],)).fetchall()
+    # event counts per game_day
+    ev_rows = db.execute("""
+        SELECT game_day,
+               SUM(CASE WHEN type='sms'      THEN 1 ELSE 0 END) AS sms_count,
+               SUM(CASE WHEN type='gift'     THEN 1 ELSE 0 END) AS gift_count,
+               SUM(CASE WHEN type='lovemail' THEN 1 ELSE 0 END) AS lovemail_count
+        FROM extra_events WHERE show_id=? AND type IN ('sms','gift','lovemail')
+        GROUP BY game_day
+    """, (show["id"],)).fetchall()
+    ev_by_day = {r["game_day"]: dict(r) for r in ev_rows}
     days = []
     for r in rows:
         d = dict(r)
         d["first_date"] = ts_to_str(d["first_ts"])
         if d["game_day"].strip():
+            ev = ev_by_day.get(d["game_day"], {})
+            d["sms_count"]      = ev.get("sms_count", 0) or 0
+            d["gift_count"]     = ev.get("gift_count", 0) or 0
+            d["lovemail_count"] = ev.get("lovemail_count", 0) or 0
             days.append(d)
     return render_template("public_home.html", show=show, days=days, token=token)
 
@@ -1500,11 +1794,26 @@ def public_date(token, game_day):
     show = _get_public_show(token)
     if not show: abort(404)
     db   = get_db()
+    flat = get_flat_config(db, show["id"])
+    _true = ("true", "1", "True")
+    show_sms      = flat.get("public_show_sms",      "true") in _true
+    show_gift     = flat.get("public_show_gift",     "true") in _true
+    show_lovemail = flat.get("public_show_lovemail", "true") in _true
+    allowed = [t for t, ok in [("sms", show_sms), ("gift", show_gift), ("lovemail", show_lovemail)] if ok]
     rows = db.execute(
         "SELECT * FROM sessions WHERE show_id=? AND game_day=? ORDER BY start_ts DESC", (show["id"], game_day)
     ).fetchall()
+    day_events = []
+    if allowed:
+        ph = ",".join("?" * len(allowed))
+        ev_rows = db.execute(
+            f"SELECT * FROM extra_events WHERE show_id=? AND game_day=? AND type IN ({ph}) ORDER BY timestamp ASC",
+            [show["id"], game_day] + allowed
+        ).fetchall()
+        day_events = _parse_events(ev_rows)
     show_names = get_show_names(db, show["id"])
     return render_template("public_date.html", show=show, token=token,
+                           day_events=day_events,
                            game_day=game_day, sessions=_enrich_sessions(rows), show_names=show_names)
 
 @app.route("/view/<token>/session/<path:session_id>")
@@ -1516,10 +1825,47 @@ def public_session_view(token, session_id):
     if not sess: abort(404)
     sess       = _enrich_session(dict(sess))
     rp         = db.execute("SELECT * FROM rp_entries WHERE session_id=? AND show_id=? ORDER BY seq,timestamp", (session_id, show["id"])).fetchall()
-    events     = _parse_events(db.execute("SELECT * FROM extra_events WHERE session_id=? AND show_id=? ORDER BY timestamp", (session_id, show["id"])).fetchall())
+    flat       = get_flat_config(db, show["id"])
+    _true      = ("true", "1", "True")
+    show_sms      = flat.get("public_show_sms",      "true") in _true
+    show_gift     = flat.get("public_show_gift",     "true") in _true
+    show_lovemail = flat.get("public_show_lovemail", "true") in _true
+    allowed   = {t for t, ok in [("sms", show_sms), ("gift", show_gift), ("lovemail", show_lovemail)] if ok}
+    all_events = _parse_events(db.execute("SELECT * FROM extra_events WHERE session_id=? AND show_id=? ORDER BY timestamp", (session_id, show["id"])).fetchall())
+    events     = [e for e in all_events if e["type"] in allowed]
     show_names = get_show_names(db, show["id"])
     return render_template("public_session.html", show=show, token=token,
                            sess=sess, rp=rp, events=events, show_names=show_names, ts_to_str=ts_to_str)
+
+@app.route("/view/<token>/events")
+def public_events(token):
+    show = _get_public_show(token)
+    if not show: abort(404)
+    db   = get_db()
+    flat = get_flat_config(db, show["id"])
+    _true = ("true", "1", "True")
+    show_sms      = flat.get("public_show_sms",      "true") in _true
+    show_gift     = flat.get("public_show_gift",     "true") in _true
+    show_lovemail = flat.get("public_show_lovemail", "true") in _true
+    allowed = [t for t, ok in [("sms", show_sms), ("gift", show_gift), ("lovemail", show_lovemail)] if ok]
+    if not allowed:
+        events = []
+    else:
+        ph = ",".join("?" * len(allowed))
+        rows = db.execute(
+            f"SELECT * FROM extra_events WHERE show_id=? AND type IN ({ph}) ORDER BY timestamp DESC",
+            [show["id"]] + allowed
+        ).fetchall()
+        events = _parse_events(rows)
+    counts = {
+        "sms":      sum(1 for e in events if e["type"] == "sms"),
+        "gift":     sum(1 for e in events if e["type"] == "gift"),
+        "lovemail": sum(1 for e in events if e["type"] == "lovemail"),
+    }
+    return render_template("public_events.html", show=show, token=token,
+                           events=events, counts=counts, ts_to_str=ts_to_str,
+                           show_sms=show_sms, show_gift=show_gift, show_lovemail=show_lovemail)
+
 
 @app.route("/view/<token>/character/<role_name>")
 def public_character(token, role_name):
@@ -1591,17 +1937,51 @@ def api_event():
     if not show_id: abort(503)
     data       = request.json or {}
     event_type = data.get("type", "")
-    if event_type not in ("lovemail", "sms", "gift"):
+    if event_type not in ("lovemail", "sms", "gift", "direct_letter"):
         return jsonify({"ok": False, "error": "invalid type"}), 400
-    db = get_db()
+    db        = get_db()
+    from_role = data.get("from_role","").strip()
+    from_qq   = str(data.get("from_qq","")).strip()
+    to_role   = data.get("to_role","").strip()
+    to_qq     = str(data.get("to_qq","")).strip()
+    now       = int(time.time() * 1000)
     db.execute("""
         INSERT INTO extra_events
           (show_id,tenant_id,session_id,type,from_role,to_role,content,extra_info,timestamp,game_day)
         VALUES (?,?,?,?,?,?,?,?,?,?)
     """, (show_id, tid, data.get("session_id") or "", event_type,
-          data.get("from_role",""), data.get("to_role",""), data.get("content",""),
+          from_role, to_role, data.get("content",""),
           json.dumps(data.get("extra_info",{}), ensure_ascii=False),
           data.get("timestamp",0), data.get("game_day","")))
+
+    def _upsert_event_player(role, qq):
+        if not role:
+            return
+        effective_qq = qq if qq and qq != role else role  # 有真实QQ用真实QQ，否则placeholder
+        existing = db.execute(
+            "SELECT qq FROM players WHERE show_id=? AND role_name=?", (show_id, role)
+        ).fetchone()
+        if existing:
+            # 如果现有记录是placeholder且现在有真实QQ，升级
+            if existing["qq"] == role and effective_qq != role:
+                db.execute(
+                    "UPDATE players SET qq=?, last_updated=? WHERE show_id=? AND role_name=?",
+                    (effective_qq, now, show_id, role)
+                )
+            else:
+                db.execute("UPDATE players SET last_updated=? WHERE show_id=? AND role_name=?",
+                           (now, show_id, role))
+        else:
+            db.execute("""
+                INSERT OR IGNORE INTO players
+                  (show_id,tenant_id,qq,role_name,sessions_count,total_replies,total_words,last_updated)
+                VALUES (?,?,?,?,0,0,0,?)
+            """, (show_id, tid, effective_qq, role, now))
+
+    # 短信/礼物/写信综：发送方和收件方都注册；心动信不计入活跃
+    if event_type in ("sms", "gift", "direct_letter"):
+        _upsert_event_player(from_role, from_qq)
+        _upsert_event_player(to_role, to_qq)
     db.commit()
     return jsonify({"ok": True})
 
@@ -1637,6 +2017,97 @@ def api_rp():
     db.commit()
     return jsonify({"ok": True})
 
+def _compute_player_totals(db, show_id, role_name):
+    """从 sessions.stats 重算指定角色的累计回复数、字数、场次数。"""
+    all_sessions = db.execute(
+        "SELECT stats, participants FROM sessions WHERE show_id=?", (show_id,)
+    ).fetchall()
+    total_replies = 0
+    total_words   = 0
+    sessions_count = 0
+    for s in all_sessions:
+        try:
+            stats = json.loads(s["stats"] or "{}")
+            parts = json.loads(s["participants"] or "[]")
+        except Exception:
+            continue
+        if role_name in stats:
+            total_replies  += stats[role_name].get("replies", 0)
+            total_words    += stats[role_name].get("words",   0)
+        if role_name in parts:
+            sessions_count += 1
+    return total_replies, total_words, sessions_count
+
+
+def _upsert_players_from_list(db, show_id, tid, players_list):
+    """从 [{qq, role_name}] 批量 upsert 玩家表，并从 sessions.stats 重算累计数据。
+    若该角色名已有占位行（qq=role_name），将其升级为真实 QQ。"""
+    now = int(time.time() * 1000)
+    for p in players_list:
+        qq        = str(p.get("qq","")).strip()
+        role_name = str(p.get("role_name","")).strip()
+        if not qq or not role_name: continue
+
+        total_replies, total_words, sessions_count = _compute_player_totals(db, show_id, role_name)
+
+        # 如果存在以 role_name 为占位 QQ 的行，直接把 QQ 更新为真实值
+        placeholder = db.execute(
+            "SELECT 1 FROM players WHERE show_id=? AND qq=? AND role_name=?",
+            (show_id, role_name, role_name)
+        ).fetchone()
+        if placeholder and qq != role_name:
+            db.execute("""
+                UPDATE players SET qq=?, sessions_count=?, total_replies=?, total_words=?, last_updated=?
+                WHERE show_id=? AND qq=? AND role_name=?
+            """, (qq, sessions_count, total_replies, total_words, now, show_id, role_name, role_name))
+        else:
+            db.execute("""
+                INSERT INTO players (show_id,tenant_id,qq,role_name,sessions_count,total_replies,total_words,last_updated)
+                VALUES (?,?,?,?,?,?,?,?)
+                ON CONFLICT(show_id,qq) DO UPDATE SET
+                    role_name=excluded.role_name,
+                    sessions_count=excluded.sessions_count,
+                    total_replies=excluded.total_replies,
+                    total_words=excluded.total_words,
+                    last_updated=excluded.last_updated
+            """, (show_id, tid, qq, role_name, sessions_count, total_replies, total_words, now))
+
+
+@app.route("/api/session_stats", methods=["POST"])
+def api_session_stats():
+    """实时更新正在进行中的场次 stats（每次有效 RP 回复后 bot 主动推送）。"""
+    tid     = get_tenant_from_token()
+    show_id = get_current_show_id_for_tenant(tid)
+    if not show_id: abort(503)
+    data  = request.json or {}
+    sid   = data.get("session_id","")
+    if not sid:
+        return jsonify({"ok": False, "error": "missing session_id"}), 400
+    stats = data.get("stats", {})
+    db    = get_db()
+    total_replies = sum(v.get("replies",0) for v in stats.values())
+    total_words   = sum(v.get("words",0)   for v in stats.values())
+    stats_json    = json.dumps(stats, ensure_ascii=False)
+    existing = db.execute("SELECT id FROM sessions WHERE id=? AND show_id=?", (sid, show_id)).fetchone()
+    if existing:
+        db.execute("""
+            UPDATE sessions SET total_replies=?, total_words=?, stats=?
+            WHERE id=? AND show_id=?
+        """, (total_replies, total_words, stats_json, sid, show_id))
+    else:
+        # 场次还未正式建立（session_end 尚未到来），先建占位行
+        db.execute("""
+            INSERT OR IGNORE INTO sessions
+              (id,show_id,tenant_id,group_id,platform,game_day,game_time,place,subtype,
+               participants,start_ts,end_ts,forced,total_replies,total_words,stats)
+            VALUES (?,?,?,  '','','','','','', '[]', ?,0,0, ?,?,?)
+        """, (sid, show_id, tid, int(time.time()*1000),
+              total_replies, total_words, stats_json))
+    _upsert_players_from_list(db, show_id, tid, data.get("players", []))
+    db.commit()
+    return jsonify({"ok": True})
+
+
 @app.route("/api/session_end", methods=["POST"])
 def api_session_end():
     tid     = get_tenant_from_token()
@@ -1664,6 +2135,8 @@ def api_session_end():
           sum(v.get("replies",0) for v in stats.values()),
           sum(v.get("words",0)   for v in stats.values()),
           json.dumps(stats, ensure_ascii=False)))
+    # 自动同步玩家数据（无需手动执行「更新玩家数据库」）
+    _upsert_players_from_list(db, show_id, tid, data.get("players", []))
     db.commit()
     return jsonify({"ok": True})
 
@@ -1722,6 +2195,28 @@ def admin_groups():
                     )
                     db.commit()
                 msg = "added"
+        elif action == "bulk_add":
+            set_name = request.form.get("set_name","").strip()
+            raw      = request.form.get("group_ids","")
+            if set_name and raw:
+                import re
+                gids = [g.strip() for g in re.split(r"[\s,，;；]+", raw) if g.strip().isdigit()]
+                now  = int(time.time()*1000)
+                added = 0
+                for gid in gids:
+                    existing = db.execute(
+                        "SELECT id FROM known_groups WHERE show_id=? AND group_id=? AND set_name=?",
+                        (sid, gid, set_name)
+                    ).fetchone()
+                    if not existing:
+                        db.execute(
+                            "INSERT INTO known_groups(show_id,tenant_id,group_id,set_name,name,created_at) VALUES(?,?,?,?,?,?)",
+                            (sid, tid, gid, set_name, "", now)
+                        )
+                        added += 1
+                if added:
+                    db.commit()
+                msg = f"bulk_added_{added}"
         elif action == "add_set":
             set_name = request.form.get("set_name","").strip()
             if set_name:

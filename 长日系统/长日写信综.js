@@ -25,6 +25,23 @@
 // 核心依赖：获取主插件 changri
 // ========================
 
+function sendLetterForward(groupIdRaw, nodes, ctx) {
+    const main = getMainExt();
+    if (!main) return;
+    const wsUrl = seal.ext.getStringConfig(main, "ws地址");
+    const token = seal.ext.getStringConfig(main, "ws Access token");
+    if (!wsUrl) return;
+    let url = wsUrl;
+    if (token) url += (url.includes("?") ? "&" : "?") + "access_token=" + encodeURIComponent(token);
+    const gid = parseInt(String(groupIdRaw).replace(/[^\d]/g, ""), 10);
+    const socket = new WebSocket(url);
+    socket.onopen = () => {
+        socket.send(JSON.stringify({ action: "send_group_forward_msg", params: { group_id: gid, messages: nodes }, echo: "letter_forward_" + Date.now() }));
+        socket.close();
+    };
+    socket.onerror = (e) => { console.error("[写信综] 合并转发发送失败", e.message); };
+}
+
 function getMainExt() {
     const main = seal.ext.find('changri');
     if (!main) {
@@ -260,7 +277,7 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
     }
 
     const platform = msg.platform;
-    const uid = msg.sender.userId.replace(`${platform}:`, "");
+    const uid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
     const a_private_group = JSON.parse(getMainStorage("a_private_group") || "{}");
 
     // 2. 身份核验
@@ -393,7 +410,11 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
     };
 
     // 处理羽毛笔效果（优先级最高时）
-    if (effectToHandle?.type === "quill" && receiver !== quillPenApplier.applier) {
+    // 收信人是施加人本人时，羽毛笔不拦截，但仍需消耗效果
+    if (effectToHandle?.type === "quill" && receiver === quillPenApplier.applier) {
+        quillPenEffects[senderRoleName] = quillPenEffects[senderRoleName].filter(e => e !== quillPenApplier);
+        setMainStorage("letter_quill_pen_effects", JSON.stringify(quillPenEffects));
+    } else if (effectToHandle?.type === "quill") {
         let pendingLetters = JSON.parse(getMainStorage("letter_pending_quill_pens") || "{}");
         if (!pendingLetters[quillPenApplier.applier]) {
             pendingLetters[quillPenApplier.applier] = [];
@@ -444,13 +465,13 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
     finalLetter += `\n「${content}」\n\n—— ${signature}`;
     if (attachment) finalLetter += `\n\n附件：\n--------------------\n${attachment}`;
 
-    // 8. 投递到收件人私人群
+    // 8. 投递到收件人私人群（合并转发）
     const targetEntry = getEntryByRoleName(a_private_group, platform, receiver);
-    const deliverMsg = seal.newMessage();
-    deliverMsg.messageType = "group";
-    deliverMsg.groupId = `${platform}-Group:${targetEntry[1]}`;
-    const deliverCtx = seal.createTempCtx(ctx.endPoint, deliverMsg);
-    seal.replyToSender(deliverCtx, deliverMsg, finalLetter);
+    const letterNodes = [
+        { type: "node", data: { name: signature, uin: "10001", content: `✉️ 寄给 ${receiver} 的信` } },
+        { type: "node", data: { name: signature, uin: "10001", content: finalLetter.replace(/^✉️[^\n]*\n/, "") } }
+    ];
+    sendLetterForward(targetEntry[1], letterNodes, ctx);
 
     // 8.5 处理望远镜效果：抄录一份给施加人
     if (effectToHandle?.type === "telescope") {
@@ -467,7 +488,28 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
         setMainStorage("letter_telescope_effects", JSON.stringify(telescopeEffects));
     }
 
-    // 9. 发放赏金 + 计数 + 回执
+    // 9. 存档：实时上报信件到 rp_archive
+    if (typeof isArchiveEnabled === "function" && isArchiveEnabled() &&
+        typeof postToArchive === "function") {
+        postToArchive("/api/event", {
+            type:       "direct_letter",
+            from_role:  senderRoleName,
+            from_qq:    uid,
+            to_role:    receiver,
+            to_qq:      "",
+            content:    content,
+            extra_info: {
+                signature:  signature,
+                date_tag:   dateTag   || "",
+                attachment: attachment || ""
+            },
+            game_day:   gameDay,
+            session_id: "",
+            timestamp:  Date.now()
+        });
+    }
+
+    // 10. 发放赏金 + 计数 + 回执
     giveRewardAndReply();
 
     return seal.ext.newCmdExecuteResult(true);
@@ -556,7 +598,7 @@ cmd_letter_status.solve = (ctx, msg, cmdArgs) => {
     }
 
     const platform = msg.platform;
-    const uid = msg.sender.userId.replace(`${platform}:`, "");
+    const uid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
     const gameDay = getMainStorage("global_days") || "D0";
 
     const dailyLimit = parseInt(getMainStorage("direct_letter_daily_limit") || "5");
@@ -565,7 +607,7 @@ cmd_letter_status.solve = (ctx, msg, cmdArgs) => {
 
     const userKey = `${platform}:${uid}`;
     let dlCounts = JSON.parse(getMainStorage("letter_day_counts") || "{}");
-    const used = dlCounts[userKey]?.count || 0;
+    const used = (dlCounts[userKey]?.day === gameDay ? dlCounts[userKey]?.count : 0) || 0;
 
     let info = `📊 发送信件系统状态\n\n`;
     info += `📅 游戏日期：${gameDay}\n\n`;
@@ -648,11 +690,15 @@ cmd_quill_pen_modify.solve = (ctx, msg, cmdArgs) => {
     if (letterData.attachment) finalLetter += `\n\n附件：\n--------------------\n${letterData.attachment}`;
 
     const targetEntry = getEntryByRoleName(a_private_group, platform, letterData.receiverName);
-    const deliverMsg = seal.newMessage();
-    deliverMsg.messageType = "group";
-    deliverMsg.groupId = `${platform}-Group:${targetEntry[1]}`;
-    const deliverCtx = seal.createTempCtx(ctx.endPoint, deliverMsg);
-    seal.replyToSender(deliverCtx, deliverMsg, finalLetter);
+    if (!targetEntry) {
+        seal.replyToSender(ctx, msg, `❌ 投递失败：找不到「${letterData.receiverName}」所在群组。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    const modLetterNodes = [
+        { type: "node", data: { name: letterData.signature, uin: "10001", content: `✉️ 寄给 ${letterData.receiverName} 的信（经羽毛笔修改）` } },
+        { type: "node", data: { name: letterData.signature, uin: "10001", content: finalLetter.replace(/^✉️[^\n]*\n/, "") } }
+    ];
+    sendLetterForward(targetEntry[1], modLetterNodes, ctx);
 
     myPending.splice(idx - 1, 1);
     if (myPending.length === 0) {
@@ -667,6 +713,67 @@ cmd_quill_pen_modify.solve = (ctx, msg, cmdArgs) => {
 };
 
 ext.cmdMap["羽毛笔修改"] = cmd_quill_pen_modify;
+
+// ========================
+// 【8】写信综指南
+// ========================
+
+ext.onNotCommandReceived = (ctx, msg) => {
+    const raw = (msg.rawMessage || msg.message || "").trim();
+    if (raw !== "写信综指南") return;
+
+    if (!msg.groupId) {
+        seal.replyToSender(ctx, msg, "请在群内使用此指令。");
+        return;
+    }
+
+    const sections = [
+        ["📖 写信综指南", ""],
+        ["【私约】",
+         "私约 1120-1230 地点 对方角色名[/对方2/...]",
+         "例：私约 1400-1500 咖啡厅 张三"],
+        ["【修改时间线】（在约会群内使用）",
+         "。修改时间线 D1 1400-1500",
+         "",
+         "【拒绝时间线】",
+         "。拒绝时间线 群号"],
+        ["【发送信件】",
+         "。发送信件",
+         "【收件人】角色名",
+         "【内容】信件内容",
+         "【日期】日期（选填）",
+         "【附件】附加内容（选填）",
+         "【署名】落款（选填，默认角色名）"],
+        ["【短信】",
+         "[署名]短信 收信人 内容",
+         "例：短信 张三 你好！",
+         "例：李四短信 张三 你好！",
+         "",
+         "【送礼】",
+         "送礼 对方名 礼物内容",
+         "送礼 对方名 #编号（图鉴内礼物，可无限送）"],
+        ["【道具：望远镜】",
+         "效果：施加给目标后，目标发出信件时自动抄录一份给你",
+         "使用：。特殊使用 望远镜 角色名",
+         "",
+         "【道具：羽毛笔】",
+         "效果：施加给目标后，目标下一封信将先发给你，由你修改后再发出",
+         "使用：。特殊使用 羽毛笔 角色名",
+         "查看待修改：。羽毛笔修改",
+         "修改并发出：。羽毛笔修改 序号 新内容"],
+        ["【背包】",
+         "。背包              查看背包全览",
+         "。背包 货币/道具/物品  按分类查看",
+         "。背包 [分类] [页码]  翻页（如：。背包 道具 2）"],
+    ];
+
+    const nodes = sections.map(lines => ({
+        type: "node",
+        data: { name: "写信综指南", uin: "10001", content: lines.join("\n") }
+    }));
+
+    sendLetterForward(msg.groupId, nodes, ctx);
+};
 
 // ========================
 // 【9】初始化

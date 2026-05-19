@@ -640,6 +640,16 @@ select.cfg-input { cursor: pointer; }
     </div>
 
     {# ═══════════════════════════════════════════ #}
+    {# 2b. 公开链接                               #}
+    {# ═══════════════════════════════════════════ #}
+
+    <div class="cfg-card">
+      <div class="cfg-card-title">公开链接 <span class="cfg-badge">围观者可见内容</span></div>
+      <div class="cfg-desc">开启公开查看后，控制哪些互动内容对围观者可见</div>
+      {{ toggle_list(s['公开链接']) }}
+    </div>
+
+{# ═══════════════════════════════════════════ #}
     {# 3. 功能开关                                 #}
     {# ═══════════════════════════════════════════ #}
 
@@ -663,13 +673,45 @@ select.cfg-input { cursor: pointer; }
       </div>
 
       <div class="cfg-card" style="margin-bottom:0;">
-        <div class="cfg-card-title">寄信</div>
+        <div class="cfg-card-title">寄信 / 短信</div>
         {{ grid(s['寄信']) }}
+        {% set jp_sms = s['短信效果配置（% · 0=关闭）'].get('json_parent', '') %}
+        <details class="cfg-collapsible cfg-card-sms" style="margin-top:10px;">
+          <summary>短信效果 <span class="cfg-badge" style="color:#c8902a;border-color:#4a3515;">0 = 关闭</span></summary>
+          <div class="cfg-collapsible-inner">
+            <div class="cfg-desc" style="margin-top:0;margin-bottom:10px;">各效果填 0 即关闭</div>
+            <div class="cfg-sub">触发概率（%）</div>
+            <div class="cfg-grid-compact">
+              {% for f in s['短信效果配置（% · 0=关闭）'].fields %}
+                {% if f.key not in ['dailyLimit', 'publicChance', 'giftLost', 'giftMisdelivery'] %}
+                  {{ field(f, jp_sms) }}
+                {% endif %}
+              {% endfor %}
+            </div>
+            <div class="cfg-sub">全局参数</div>
+            <div class="cfg-grid">
+              {% for f in s['短信效果配置（% · 0=关闭）'].fields %}
+                {% if f.key in ['dailyLimit', 'publicChance', 'publicShowEffect'] %}
+                  {{ field(f, jp_sms) }}
+                {% endif %}
+              {% endfor %}
+            </div>
+          </div>
+        </details>
       </div>
 
       <div class="cfg-card" style="margin-bottom:0;">
         <div class="cfg-card-title">礼物</div>
         {{ grid(s['礼物']) }}
+        {% set jp_sms = s['短信效果配置（% · 0=关闭）'].get('json_parent', '') %}
+        <div class="cfg-sub" style="margin-top:10px;">混乱效果</div>
+        <div class="cfg-grid">
+          {% for f in s['短信效果配置（% · 0=关闭）'].fields %}
+            {% if f.key in ['giftLost', 'giftMisdelivery'] %}
+              {{ field(f, jp_sms) }}
+            {% endif %}
+          {% endfor %}
+        </div>
       </div>
 
     </div>
@@ -718,50 +760,27 @@ select.cfg-input { cursor: pointer; }
       <div class="cfg-card" style="margin-bottom:0;">
         <div class="cfg-card-title">场所系统</div>
         {{ grid(s['场所系统']) }}
+        {{ grid(s['私人房间']) }}
       </div>
 
     </div>
     <div style="height:0;margin-bottom:16px;"></div>
 
-    {# ═══════════════════════════════════════════ #}
-    {# 7. 短信效果配置（可折叠）                   #}
-    {# ═══════════════════════════════════════════ #}
-
-    <details class="cfg-collapsible cfg-card-sms">
-      <summary>短信效果配置 <span class="cfg-badge" style="color:#c8902a;border-color:#4a3515;">0 = 关闭</span></summary>
-      <div class="cfg-collapsible-inner">
-        <div class="cfg-desc" style="margin-top:0;margin-bottom:14px;">各效果填 0 即关闭；播报概率等全局参数在下方。</div>
-        <div class="cfg-sub">触发概率（%）</div>
-        {% set jp_sms = s['短信效果配置（% · 0=关闭）'].get('json_parent', '') %}
-        <div class="cfg-grid-compact">
-          {% for f in s['短信效果配置（% · 0=关闭）'].fields %}
-            {% if f.key not in ['dailyLimit', 'publicChance', 'giftLost', 'giftMisdelivery'] %}
-              {{ field(f, jp_sms) }}
-            {% endif %}
-          {% endfor %}
-        </div>
-        <div class="cfg-sub">全局参数</div>
-        <div class="cfg-grid">
-          {% for f in s['短信效果配置（% · 0=关闭）'].fields %}
-            {% if f.key in ['dailyLimit', 'publicChance', 'giftLost', 'giftMisdelivery'] %}
-              {{ field(f, jp_sms) }}
-            {% endif %}
-          {% endfor %}
-        </div>
-      </div>
-    </details>
+    {# 短信效果配置已移入「寄信 / 短信」卡片；礼物丢失/误送已移入「礼物」卡片 #}
 
     {# ═══════════════════════════════════════════ #}
     {# 8. 高级设置：道具 + 拍卖（可折叠）         #}
     {# ═══════════════════════════════════════════ #}
 
     <details class="cfg-collapsible">
-      <summary>高级设置 <span class="cfg-badge">道具 · 拍卖</span></summary>
+      <summary>高级设置 <span class="cfg-badge">道具 · 拍卖 · 监听参数</span></summary>
       <div class="cfg-collapsible-inner">
         <div class="cfg-sub">道具</div>
         {{ grid(s['道具']) }}
         <div class="cfg-sub">拍卖</div>
         {{ grid(s['拍卖']) }}
+        <div class="cfg-sub">监听参数 <span class="cfg-badge" style="text-transform:none;letter-spacing:0;font-weight:400;">超时单位：小时 · 保存后「。同步设置」生效</span></div>
+        {{ grid(s['监听参数']) }}
       </div>
     </details>
 

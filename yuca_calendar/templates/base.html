@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}语擦日历{% endblock %}</title>
+<style>
+:root {
+  --bg: #0f0f13; --surface: #1a1a22; --surface2: #22222e;
+  --border: #2e2e3e; --accent: #8b7cf6; --accent2: #c084fc;
+  --text: #e2e2ec; --muted: #7878a0;
+  --red: #f87171; --green: #86efac; --gold: #fcd34d; --warn: #fbbf24;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 14px; line-height: 1.7; min-height: 100vh;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent2); }
+
+.topbar {
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: 0 20px; display: flex; align-items: center; gap: 12px;
+  height: 52px; position: sticky; top: 0; z-index: 100;
+  overflow-x: auto; overflow-y: hidden;
+}
+.topbar::-webkit-scrollbar { display: none; }
+.topbar .logo { font-size: 15px; font-weight: 600; color: var(--accent2); white-space: nowrap; flex-shrink: 0; }
+.topbar .nav { display: flex; gap: 4px; flex-shrink: 0; }
+.topbar .nav a { color: var(--muted); font-size: 13px; padding: 4px 8px; border-radius: 6px; white-space: nowrap; }
+.topbar .nav a:hover, .topbar .nav a.active { color: var(--text); background: var(--surface2); }
+.topbar .spacer { flex: 1; }
+.topbar .user-info { color: var(--muted); font-size: 12px; white-space: nowrap; flex-shrink: 0; }
+.topbar .logout-btn { color: var(--muted); font-size: 12px; white-space: nowrap; flex-shrink: 0; }
+
+.flash-bar {
+  background: var(--surface2); border-bottom: 1px solid var(--border);
+  padding: 10px 20px; font-size: 13px; color: var(--text);
+  display: flex; align-items: center; gap: 8px;
+}
+.flash-bar.warn { background: #1a1400; border-color: #4a3a00; color: var(--warn); }
+
+.page { max-width: 1100px; margin: 0 auto; padding: 28px 20px; }
+@media(max-width:640px) { .page { padding: 16px 12px; } }
+.page-title { font-size: 20px; font-weight: 600; color: var(--accent2); margin-bottom: 20px; }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; margin-bottom: 14px; }
+.card:hover { border-color: var(--accent); }
+
+.btn { display: inline-flex; align-items: center; gap: 5px; padding: 7px 16px; border-radius: 8px; font-size: 13px; font-family: inherit; cursor: pointer; border: none; transition: all .15s; text-decoration: none; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent2); color: #fff; }
+.btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--muted); }
+.btn-ghost:hover { border-color: var(--accent); color: var(--text); }
+.btn-danger { background: #2a1515; border: 1px solid #4a2020; color: var(--red); }
+.btn-danger:hover { background: #3a1818; }
+.btn-warn { background: #1a1400; border: 1px solid #4a3a00; color: var(--warn); }
+.btn-warn:hover { background: #2a2000; }
+.btn-sm { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
+
+.form-group { margin-bottom: 14px; }
+.form-label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+.form-label .req { color: var(--red); margin-left: 2px; }
+.form-input, .form-select, .form-textarea { width: 100%; background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 8px 12px; font-size: 13px; font-family: inherit; }
+.form-input:focus, .form-select:focus, .form-textarea:focus { outline: none; border-color: var(--accent); }
+.form-input::placeholder { color: var(--muted); }
+.form-hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.form-errors { margin-bottom: 16px; }
+.form-error { background: #2a1515; border: 1px solid #4a2020; border-radius: 8px; padding: 8px 14px; color: var(--red); font-size: 13px; margin-bottom: 6px; }
+.form-success { background: #1a2d1a; border: 1px solid #2a4a2a; border-radius: 8px; padding: 8px 14px; color: var(--green); font-size: 13px; margin-bottom: 6px; }
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media(max-width:640px) { .grid-2 { grid-template-columns: 1fr; } }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+@media(max-width:700px) { .grid-3 { grid-template-columns: 1fr 1fr; } }
+
+.empty { color: var(--muted); text-align: center; padding: 48px 0; font-size: 14px; }
+.badge { display: inline-block; padding: 1px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+.badge-active { background: #1e2d1e; color: var(--green); }
+.badge-inactive { background: #2a1515; color: var(--red); }
+
+/* ── Themes ── */
+/* 春夏秋冬 + 莫奈 (夜间) */
+[data-theme=spring]{--bg:#0f0a10;--surface:#1a1020;--surface2:#22152a;--border:#3e2040;--accent:#f472b6;--accent2:#e879f9;--text:#fce7f3;--muted:#a07898}
+[data-theme=summer]{--bg:#080f10;--surface:#0d1a1c;--surface2:#122225;--border:#1a3a40;--accent:#06b6d4;--accent2:#22d3ee;--text:#e0f7fa;--muted:#507880}
+[data-theme=autumn]{--bg:#100a04;--surface:#1c1008;--surface2:#261508;--border:#4a2a08;--accent:#f59e0b;--accent2:#f97316;--text:#fef3c7;--muted:#907050}
+[data-theme=winter]{--bg:#080b0f;--surface:#0d1520;--surface2:#111e2c;--border:#1c3048;--accent:#7dd3fc;--accent2:#93c5fd;--text:#e0eeff;--muted:#4a7090}
+[data-theme=monet] {--bg:#0a0c10;--surface:#12181f;--surface2:#19222e;--border:#283848;--accent:#a8d8ea;--accent2:#d4b5d0;--text:#e5eef5;--muted:#608098}
+/* 梵高 · 星夜 */
+[data-theme=vangogh]{--bg:#07091a;--surface:#0d1228;--surface2:#12193a;--border:#1c2c60;--accent:#e8b840;--accent2:#f5d060;--text:#e0e4f8;--muted:#4a6090;--red:#f87171;--green:#86efac;--gold:#f5d060}
+/* 毕加索 · 玫瑰时期 */
+[data-theme=picasso]{--bg:#100a0a;--surface:#1e1210;--surface2:#281a16;--border:#4a2a20;--accent:#e06840;--accent2:#f08060;--text:#f5ece8;--muted:#906050;--red:#f87171;--green:#86efac;--gold:#fcd34d}
+
+/* 日间版 */
+[data-theme=spring-day] {--bg:#fef2f8;--surface:#fce7f4;--surface2:#f9d0e8;--border:#f0a8d0;--accent:#db2777;--accent2:#be185d;--text:#1f0610;--muted:#9d5a7a;--red:#dc2626;--green:#15803d;--gold:#b45309}
+[data-theme=summer-day] {--bg:#f0faff;--surface:#e0f5ff;--surface2:#c8ecfc;--border:#7dd3f0;--accent:#0284c7;--accent2:#0ea5e9;--text:#082030;--muted:#3e7a94;--red:#dc2626;--green:#15803d;--gold:#b45309}
+[data-theme=autumn-day] {--bg:#fffbf0;--surface:#fef6e4;--surface2:#feebc8;--border:#fbbf60;--accent:#b45309;--accent2:#c2410c;--text:#1c0d00;--muted:#92632e;--red:#dc2626;--green:#15803d;--gold:#b45309}
+[data-theme=winter-day] {--bg:#f0f8ff;--surface:#e2f0ff;--surface2:#cce4fa;--border:#8ec8f0;--accent:#1d6fa0;--accent2:#2779bd;--text:#0a1828;--muted:#4a7a98;--red:#dc2626;--green:#15803d;--gold:#b45309}
+[data-theme=monet-day]  {--bg:#f5f7fa;--surface:#eaf1f8;--surface2:#d8e8f5;--border:#a8c8e0;--accent:#4a8fa8;--accent2:#8a6aaa;--text:#18283a;--muted:#5c7d90;--red:#c05050;--green:#2d7a50;--gold:#9a7020}
+[data-theme=vangogh-day]{--bg:#f5f3e8;--surface:#ede8d0;--surface2:#e0d8b8;--border:#c8bc80;--accent:#1a4a9a;--accent2:#2860c0;--text:#1a1810;--muted:#606040;--red:#dc2626;--green:#15803d;--gold:#b45309}
+[data-theme=picasso-day]{--bg:#fff5f2;--surface:#feece8;--surface2:#fdd8d0;--border:#f0b0a0;--accent:#c04828;--accent2:#e06040;--text:#1a0a08;--muted:#906050;--red:#dc2626;--green:#15803d;--gold:#b45309}
+
+/* 达芬奇 · 晕涂 */
+[data-theme=davinci]{--bg:#0c0804;--surface:#191008;--surface2:#241808;--border:#4a3010;--accent:#c8882a;--accent2:#e0aa40;--text:#f0e8d8;--muted:#806040;--red:#f87171;--green:#86efac;--gold:#e0aa40}
+[data-theme=davinci-day]{--bg:#f8f2e4;--surface:#f0e8d0;--surface2:#e8dab8;--border:#c8a060;--accent:#8a3c10;--accent2:#b05020;--text:#1c0e04;--muted:#806040;--red:#dc2626;--green:#15803d;--gold:#b45309}
+/* 顾恺之 · 丹青 */
+[data-theme=gukaizhi]{--bg:#090808;--surface:#130e0c;--surface2:#1e1612;--border:#3a2820;--accent:#c03830;--accent2:#d85040;--text:#f0ece0;--muted:#7a6858;--red:#f87171;--green:#86efac;--gold:#fcd34d}
+[data-theme=gukaizhi-day]{--bg:#faf6ec;--surface:#f4ecdc;--surface2:#ece0c8;--border:#c8b090;--accent:#9a2018;--accent2:#c03028;--text:#180a08;--muted:#887060;--red:#dc2626;--green:#15803d;--gold:#b45309}
+/* 米开朗基罗 · 西斯廷 */
+[data-theme=michelangelo]{--bg:#070812;--surface:#0e1124;--surface2:#141832;--border:#252c58;--accent:#c8a050;--accent2:#e0c068;--text:#ece8f8;--muted:#5060a0;--red:#f87171;--green:#86efac;--gold:#e0c068}
+[data-theme=michelangelo-day]{--bg:#f5f0e8;--surface:#ece6d8;--surface2:#e2d8c4;--border:#c4ad88;--accent:#7a3e18;--accent2:#9a5228;--text:#180e08;--muted:#907060;--red:#dc2626;--green:#15803d;--gold:#b45309}
+/* 安迪·沃霍尔 · 波普 */
+[data-theme=warhol]{--bg:#080600;--surface:#120e00;--surface2:#1c1800;--border:#3c3000;--accent:#ffd700;--accent2:#ffe840;--text:#fff8e0;--muted:#806000;--red:#f87171;--green:#86efac;--gold:#ffd700}
+[data-theme=warhol-day]{--bg:#fff8f8;--surface:#fff0f0;--surface2:#ffe0e0;--border:#ff8080;--accent:#cc0000;--accent2:#ee2020;--text:#100000;--muted:#a04040;--red:#dc2626;--green:#15803d;--gold:#b45309}
+
+/* ── Mobile nav ── */
+.mob-nav-btn{display:none;background:none;border:1px solid var(--border);color:var(--muted);border-radius:8px;cursor:pointer;font-size:18px;padding:4px 9px;line-height:1;flex-shrink:0}
+.mob-nav-btn:hover{border-color:var(--accent);color:var(--text)}
+@media(max-width:640px){
+  .topbar .nav{display:none}
+  .topbar .user-info{display:none}
+  .mob-nav-btn{display:flex;align-items:center}
+}
+.mob-drawer{display:none;background:var(--surface);border-bottom:1px solid var(--border);padding:10px 14px;flex-direction:column;gap:2px}
+.mob-drawer.open{display:flex}
+.mob-drawer a{color:var(--muted);font-size:14px;padding:10px 14px;border-radius:8px;text-decoration:none;display:block}
+.mob-drawer a:hover,.mob-drawer a.active{background:var(--surface2);color:var(--text)}
+.mob-drawer-foot{display:flex;align-items:center;justify-content:space-between;padding:10px 14px 2px;border-top:1px solid var(--border);margin-top:4px;font-size:12px;color:var(--muted)}
+
+/* ── 使用指南 ── */
+.guide-btn{background:none;border:1px solid var(--border);color:var(--muted);border-radius:20px;padding:3px 10px;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;transition:all .15s}
+.guide-btn:hover{border-color:var(--accent);color:var(--text)}
+.guide-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9000;backdrop-filter:blur(2px)}
+.guide-overlay.open{display:block}
+.guide-panel{position:fixed;top:0;right:0;bottom:0;width:400px;max-width:100vw;background:var(--surface);border-left:1px solid var(--border);overflow-y:auto;z-index:9001;padding:0 24px 48px;transform:translateX(100%);transition:transform .25s ease}
+.guide-panel.open{transform:translateX(0)}
+.guide-head{position:sticky;top:0;background:var(--surface);padding:20px 0 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;z-index:1;margin-bottom:20px}
+.guide-head-title{font-size:16px;font-weight:600;color:var(--accent2)}
+.guide-close-btn{background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:4px 12px;cursor:pointer;font-size:13px;font-family:inherit}
+.guide-close-btn:hover{border-color:var(--accent);color:var(--text)}
+.g-sec{margin-bottom:22px}
+.g-sec-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.g-sec p,.g-sec li{font-size:13px;color:var(--muted);line-height:1.85}
+.g-sec ul{padding-left:18px;margin:0}
+.g-sep{border:none;border-top:1px solid var(--border);margin:18px 0}
+.g-code{background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-family:monospace;font-size:12px;color:var(--text)}
+.g-tip{background:var(--surface2);border-left:3px solid var(--accent);border-radius:0 8px 8px 0;padding:8px 12px;font-size:12px;color:var(--muted);margin-top:8px;line-height:1.7}
+@media(max-width:480px){.guide-panel{padding:0 16px 48px}}
+
+/* ── Mobile touch targets ── */
+@media(max-width:640px){
+  .btn{min-height:38px}
+  .btn-sm{min-height:32px;padding:5px 10px}
+  .nav-btn{padding:7px 14px}
+  .form-input,.form-select,.form-textarea{font-size:16px}/* prevent iOS zoom */
+}
+
+/* theme-picker */
+#tp{position:fixed;bottom:20px;right:20px;z-index:9999}
+#tp-btn{background:var(--surface);border:1px solid var(--border);border-radius:50%;width:40px;height:40px;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.5)}
+#tp-btn:hover{border-color:var(--accent)}
+#tp-panel{display:none;position:absolute;bottom:48px;right:0;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:8px;min-width:160px;box-shadow:0 4px 20px rgba(0,0,0,.6);max-height:480px;overflow-y:auto}
+#tp-panel.open{display:block}
+.tp-item{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:6px;cursor:pointer;font-size:13px;color:var(--text)}
+.tp-item:hover{background:var(--surface2)}
+.tp-item.tp-active{color:var(--accent)}
+.tp-dot{width:14px;height:14px;border-radius:50%;flex-shrink:0;outline:2px solid transparent;outline-offset:2px}
+.tp-item.tp-active .tp-dot{outline-color:var(--accent)}
+.tp-sep{font-size:11px;color:var(--muted);text-align:center;padding:5px 0 3px;margin-top:4px;border-top:1px solid var(--border)}
+</style>
+<script>
+(function(){
+  var t = {{ user_theme | tojson }};
+  if (!t) t = localStorage.getItem('yuca_theme') || 'default';
+  if (t && t !== 'default') document.documentElement.setAttribute('data-theme', t);
+})();
+</script>
+{% block head %}{% endblock %}
+</head>
+<body>
+{% with msgs = get_flashed_messages() %}
+{% if msgs %}{% for msg in msgs %}
+<div class="flash-bar {% if '⚠️' in msg %}warn{% endif %}">{{ msg }}</div>
+{% endfor %}{% endif %}
+{% endwith %}
+
+{% if session.get('user_id') %}
+{% set _ep = request.endpoint %}
+<div class="topbar">
+  <span class="logo">📅 语擦日历</span>
+  <nav class="nav">
+    <a href="{{ url_for('calendar') }}"   {% if _ep=='calendar'    %}class="active"{% endif %}>我的档期</a>
+    <a href="{{ url_for('drama_list') }}" {% if _ep in ('drama_list','drama_new','drama_edit') %}class="active"{% endif %}>戏录</a>
+    <a href="{{ url_for('tools') }}"      {% if _ep=='tools'       %}class="active"{% endif %}>小工具</a>
+    <a href="{{ url_for('partners') }}"  {% if _ep in ('partners','partner_add','partner_edit') %}class="active"{% endif %}>CP档案</a>
+    <a href="{{ url_for('diary_list') }}" {% if _ep in ('diary_list','diary_new','diary_edit') %}class="active"{% endif %}>日记</a>
+    <a href="{{ url_for('wishlist') }}"  {% if _ep=='wishlist'    %}class="active"{% endif %}>心愿单</a>
+    <a href="{{ url_for('timeline') }}"  {% if _ep=='timeline'    %}class="active"{% endif %}>时间轴</a>
+    <a href="{{ url_for('blacklist') }}"  {% if _ep=='blacklist'   %}class="active"{% endif %}>黑名单</a>
+    <a href="{{ url_for('stats') }}"      {% if _ep=='stats'       %}class="active"{% endif %}>年度统计</a>
+    <a href="{{ url_for('export') }}"     {% if _ep=='export'      %}class="active"{% endif %}>导出</a>
+    <a href="{{ url_for('settings') }}"   {% if _ep=='settings'    %}class="active"{% endif %}>设置</a>
+  </nav>
+  <div class="spacer"></div>
+  <button class="guide-btn" onclick="openGuide()">使用指南</button>
+  <button class="guide-btn" onclick="openFeedback()" style="color:var(--accent)">💬 反馈</button>
+  <span class="user-info">{{ session.get('display_name') or session.get('username') }}</span>
+  <a class="logout-btn" href="{{ url_for('logout') }}">退出</a>
+  <button class="mob-nav-btn" id="mob-nav-btn" onclick="toggleMobNav()" aria-label="菜单">☰</button>
+</div>
+<div class="mob-drawer" id="mob-drawer">
+  <a href="{{ url_for('calendar') }}"   {% if _ep=='calendar'    %}class="active"{% endif %}>📅 我的档期</a>
+  <a href="{{ url_for('drama_list') }}" {% if _ep in ('drama_list','drama_new','drama_edit') %}class="active"{% endif %}>📝 戏录</a>
+  <a href="{{ url_for('tools') }}"      {% if _ep=='tools'       %}class="active"{% endif %}>🔧 小工具</a>
+  <a href="{{ url_for('partners') }}"  {% if _ep in ('partners','partner_add','partner_edit') %}class="active"{% endif %}>💑 CP档案</a>
+  <a href="{{ url_for('diary_list') }}" {% if _ep in ('diary_list','diary_new','diary_edit') %}class="active"{% endif %}>📔 日记</a>
+  <a href="{{ url_for('wishlist') }}"  {% if _ep=='wishlist'    %}class="active"{% endif %}>✨ 心愿单</a>
+  <a href="{{ url_for('timeline') }}"  {% if _ep=='timeline'    %}class="active"{% endif %}>📊 时间轴</a>
+  <a href="{{ url_for('blacklist') }}"  {% if _ep=='blacklist'   %}class="active"{% endif %}>🚫 黑名单</a>
+  <a href="{{ url_for('stats') }}"      {% if _ep=='stats'       %}class="active"{% endif %}>📊 年度统计</a>
+  <a href="{{ url_for('export') }}"     {% if _ep=='export'      %}class="active"{% endif %}>⬇ 导出</a>
+  <a href="{{ url_for('settings') }}"   {% if _ep=='settings'    %}class="active"{% endif %}>⚙ 设置</a>
+  <div class="mob-drawer-foot">
+    <span>{{ session.get('display_name') or session.get('username') }}</span>
+    <a href="{{ url_for('logout') }}" style="color:var(--muted)">退出登录</a>
+  </div>
+</div>
+{% elif session.get('superadmin') %}
+<div class="topbar">
+  <span class="logo">📅 语擦日历</span>
+  <nav class="nav">
+    <a href="{{ url_for('superadmin') }}" {% if request.endpoint=='superadmin' %}class="active"{% endif %}>用户管理</a>
+    <a href="{{ url_for('superadmin_feedbacks') }}" {% if request.endpoint=='superadmin_feedbacks' %}class="active"{% endif %} style="display:flex;align-items:center;gap:4px">
+      反馈{% if unread_feedback_count > 0 %}<span style="background:var(--red);color:#fff;border-radius:20px;padding:0 5px;font-size:10px;line-height:1.6">{{ unread_feedback_count }}</span>{% endif %}
+    </a>
+  </nav>
+  <div class="spacer"></div>
+  <form method="post" action="{{ url_for('superadmin_logout') }}" style="display:inline">
+    <button class="btn btn-ghost btn-sm" type="submit">退出超管</button>
+  </form>
+</div>
+{% endif %}
+
+{% block body %}{% endblock %}
+
+<!-- Bug 引导提示 -->
+{% if session.get('user_id') %}
+<div id="fb-hint" style="display:none;position:fixed;bottom:20px;left:20px;z-index:9998;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;max-width:240px;box-shadow:0 4px 16px rgba(0,0,0,.5)">
+  <div style="font-size:13px;font-weight:600;margin-bottom:5px">👋 遇到 bug 了？</div>
+  <div style="color:var(--muted);font-size:12px;line-height:1.7;margin-bottom:10px">点顶栏的「💬 反馈」按钮告诉我，也可以在那里许愿新功能！</div>
+  <div style="display:flex;gap:8px">
+    <button class="btn btn-primary btn-sm" onclick="openFeedback();closeFbHint()">去反馈</button>
+    <button class="btn btn-ghost btn-sm" onclick="closeFbHint()">知道了</button>
+  </div>
+</div>
+{% endif %}
+
+<!-- 反馈面板 -->
+<div class="guide-overlay" id="fb-overlay" onclick="closeFeedback()"></div>
+<div class="guide-panel" id="fb-panel" style="max-width:360px">
+  <div class="guide-head">
+    <span class="guide-head-title">💬 提交反馈</span>
+    <button class="guide-close-btn" onclick="closeFeedback()">关闭 ×</button>
+  </div>
+  <div id="fb-success" style="display:none;background:#1a2d1a;border:1px solid #2a4a2a;border-radius:8px;padding:12px 16px;color:var(--green);font-size:13px;margin-bottom:16px">
+    ✅ 反馈已提交，谢谢！
+  </div>
+  <form id="fb-form">
+    <div class="form-group">
+      <label class="form-label">类型</label>
+      <div style="display:flex;gap:14px;margin-top:4px">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:var(--text)">
+          <input type="radio" name="type" value="bug" checked style="accent-color:var(--red)"> 🐛 报告 Bug
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:var(--text)">
+          <input type="radio" name="type" value="wish" style="accent-color:var(--accent)"> ✨ 功能许愿
+        </label>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">内容 <span class="req">*</span></label>
+      <textarea class="form-textarea" name="content" rows="5"
+                placeholder="请详细描述……" maxlength="1000" required></textarea>
+    </div>
+    <div id="fb-error" style="display:none;color:var(--red);font-size:12px;margin-bottom:8px"></div>
+    <button class="btn btn-primary" type="submit" id="fb-submit">提交</button>
+  </form>
+</div>
+
+<!-- 使用指南 -->
+<div class="guide-overlay" id="guide-overlay" onclick="closeGuide()"></div>
+<div class="guide-panel" id="guide-panel">
+  <div class="guide-head">
+    <span class="guide-head-title">📖 使用指南</span>
+    <button class="guide-close-btn" onclick="closeGuide()">关闭 ×</button>
+  </div>
+
+  <div class="g-sec">
+    <div class="g-sec-title">📅 档期日历</div>
+    <ul>
+      <li>点击右上角「＋ 录入档期」新增一条恋综档期，填写开始/结束日期即可</li>
+      <li>跨年档期直接选跨年日期，如 12月1日 至次年 2月1日</li>
+      <li>档期颜色可自定义，或留空自动分配；撞档时日历格变红</li>
+      <li><strong>投设状态</strong>：录入时可选观望中（虚线）、一表中（点线）、已录取（实线），在日历条形上有视觉区别</li>
+    </ul>
+    <div class="g-tip">月视图 / 年视图 可在左上角切换；右侧显示本月在档恋综和空闲日</div>
+  </div>
+
+  <hr class="g-sep">
+
+  <div class="g-sec">
+    <div class="g-sec-title">⏰ 截止日期提醒</div>
+    <ul>
+      <li>录入档期时可设置二表、公知、关系线三类截止日期</li>
+      <li><strong>7天内</strong>有截止的档期会在日历顶部自动弹出提醒横幅，今天/明天显示为红色</li>
+      <li>点「关闭」当天不再显示，次日重现；日历格内也显示截止日期标记及所属组名</li>
+    </ul>
+  </div>
+
+  <hr class="g-sep">
+
+  <div class="g-sec">
+    <div class="g-sec-title">📌 自定义事项</div>
+    <ul>
+      <li>鼠标悬浮在日历格子底部，出现「＋ 事项」按钮</li>
+      <li>点击后填写标题和颜色，即可在当天添加语擦之外的任意事项</li>
+      <li>事项以 📌 图钉条显示在日历上，点击 × 可直接删除，无需刷页面</li>
+    </ul>
+  </div>
+
+  <hr class="g-sep">
+
+  <div class="g-sec">
+    <div class="g-sec-title">📝 戏录</div>
+    <ul>
+      <li>用于保存语言 cosplay 的写作内容</li>
+      <li>标签分为固定标签（古原/现原/欧原/其他）和最多 2 个自定义标签</li>
+      <li>点击「复制」可一键复制全文；「⬇ 导出全部」下载所有戏录为 .txt 文件</li>
+      <li>每人最多保存 50 篇</li>
+    </ul>
+  </div>
+
+  <hr class="g-sep">
+
+  <div class="g-sec">
+    <div class="g-sec-title">🔧 小工具 · 文化人专区</div>
+    <ul>
+      <li><strong>姓名生成器</strong>：选择时代（古代/欧洲/现代）和性别，生成随机角色名</li>
+      <li><strong>关系设定生成器</strong>：输入两个角色名（可选），生成关系类型和羁绊细节</li>
+      <li><strong>爱好 / 性格生成器</strong>：随机分配爱好特质与性格标签</li>
+      <li><strong>🌺 花语词典</strong>：输入花名查询花语（约 40 种），支持模糊搜索；「🎲 随便来一个」随机探索</li>
+      <li><strong>💎 宝石图鉴</strong>：18 种宝石的象征含义、传说与矿物信息，点击查看</li>
+    </ul>
+  </div>
+
+  <hr class="g-sep">
+
+  <div class="g-sec">
+    <div class="g-sec-title">💬 反馈</div>
+    <p>点击顶栏的「💬 反馈」按钮可提交 Bug 报告或功能许愿，管理员会第一时间看到。</p>
+  </div>
+
+  <hr class="g-sep">
+
+  <div class="g-sec">
+    <div class="g-sec-title">🔗 公开分享 · ⬇ 导出</div>
+    <ul>
+      <li>在「设置」中开启公开链接后，任何人可只读查看你的档期日历（无需登录）</li>
+      <li>「导出」页面将所有档期导出为纯文本，按年份分组，可直接粘贴分享</li>
+    </ul>
+  </div>
+
+  <hr class="g-sep">
+
+  <div class="g-sec">
+    <div class="g-sec-title">🎨 主题切换 · 📊 年度统计</div>
+    <ul>
+      <li>点击右下角 🎨 按钮切换界面主题，共 <strong>23 套</strong>，夜间/日间版均有，选择后自动同步账号</li>
+      <li>「年度统计」查看指定年份的档期覆盖率、皮相/性向/结局分布等数据</li>
+    </ul>
+  </div>
+
+  <div style="text-align:center;margin-top:28px">
+    <a href="{{ url_for('calendar') if session.get('user_id') else '/' }}" class="btn btn-primary" onclick="closeGuide()">回到主页</a>
+  </div>
+</div>
+
+<!-- theme picker -->
+<div id="tp">
+  <button id="tp-btn" onclick="document.getElementById('tp-panel').classList.toggle('open')" title="切换主题">🎨</button>
+  <div id="tp-panel">
+    <div class="tp-sep" style="border:none;margin-top:0;padding-top:2px">🌙 夜间</div>
+    <div class="tp-item" onclick="setTheme('default')">  <span class="tp-dot" style="background:#8b7cf6"></span>默认</div>
+    <div class="tp-item" onclick="setTheme('spring')">   <span class="tp-dot" style="background:#f472b6"></span>春 · 樱</div>
+    <div class="tp-item" onclick="setTheme('summer')">   <span class="tp-dot" style="background:#06b6d4"></span>夏 · 海</div>
+    <div class="tp-item" onclick="setTheme('autumn')">   <span class="tp-dot" style="background:#f59e0b"></span>秋 · 枫</div>
+    <div class="tp-item" onclick="setTheme('winter')">   <span class="tp-dot" style="background:#7dd3fc"></span>冬 · 冰</div>
+    <div class="tp-item" onclick="setTheme('monet')">    <span class="tp-dot" style="background:#a8d8ea"></span>莫奈</div>
+    <div class="tp-item" onclick="setTheme('vangogh')">  <span class="tp-dot" style="background:#e8b840"></span>梵高 · 星夜</div>
+    <div class="tp-item" onclick="setTheme('picasso')">      <span class="tp-dot" style="background:#e06840"></span>毕加索 · 玫瑰</div>
+    <div class="tp-sep">🖌 大师</div>
+    <div class="tp-item" onclick="setTheme('davinci')">      <span class="tp-dot" style="background:#c8882a"></span>达芬奇 · 晕涂</div>
+    <div class="tp-item" onclick="setTheme('gukaizhi')">     <span class="tp-dot" style="background:#c03830"></span>顾恺之 · 丹青</div>
+    <div class="tp-item" onclick="setTheme('michelangelo')"> <span class="tp-dot" style="background:#c8a050"></span>米开朗基罗 · 西斯廷</div>
+    <div class="tp-item" onclick="setTheme('warhol')">       <span class="tp-dot" style="background:#ffd700"></span>沃霍尔 · 波普</div>
+    <div class="tp-sep">☀️ 日间</div>
+    <div class="tp-item" onclick="setTheme('spring-day')"> <span class="tp-dot" style="background:#db2777"></span>春 · 樱</div>
+    <div class="tp-item" onclick="setTheme('summer-day')"> <span class="tp-dot" style="background:#0284c7"></span>夏 · 海</div>
+    <div class="tp-item" onclick="setTheme('autumn-day')"> <span class="tp-dot" style="background:#b45309"></span>秋 · 枫</div>
+    <div class="tp-item" onclick="setTheme('winter-day')"> <span class="tp-dot" style="background:#1d6fa0"></span>冬 · 冰</div>
+    <div class="tp-item" onclick="setTheme('monet-day')">  <span class="tp-dot" style="background:#4a8fa8"></span>莫奈</div>
+    <div class="tp-item" onclick="setTheme('vangogh-day')"><span class="tp-dot" style="background:#1a4a9a"></span>梵高 · 星夜</div>
+    <div class="tp-item" onclick="setTheme('picasso-day')">      <span class="tp-dot" style="background:#c04828"></span>毕加索 · 玫瑰</div>
+    <div class="tp-sep">🖌 大师</div>
+    <div class="tp-item" onclick="setTheme('davinci-day')">      <span class="tp-dot" style="background:#8a3c10"></span>达芬奇 · 晕涂</div>
+    <div class="tp-item" onclick="setTheme('gukaizhi-day')">     <span class="tp-dot" style="background:#9a2018"></span>顾恺之 · 丹青</div>
+    <div class="tp-item" onclick="setTheme('michelangelo-day')"> <span class="tp-dot" style="background:#7a3e18"></span>米开朗基罗 · 西斯廷</div>
+    <div class="tp-item" onclick="setTheme('warhol-day')">       <span class="tp-dot" style="background:#cc0000"></span>沃霍尔 · 波普</div>
+  </div>
+</div>
+
+<script>
+const _THEMES = [
+  'default',
+  'spring','summer','autumn','winter','monet','vangogh','picasso',
+  'davinci','gukaizhi','michelangelo','warhol',
+  'spring-day','summer-day','autumn-day','winter-day','monet-day','vangogh-day','picasso-day',
+  'davinci-day','gukaizhi-day','michelangelo-day','warhol-day'
+];
+const _LOGGED_IN = {{ ('true' if session.get('user_id') else 'false') }};
+
+function setTheme(t) {
+  if (t === 'default') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', t);
+  localStorage.setItem('yuca_theme', t);
+  document.querySelectorAll('.tp-item').forEach((el, i) => el.classList.toggle('tp-active', _THEMES[i] === t));
+  document.getElementById('tp-panel').classList.remove('open');
+  if (_LOGGED_IN) {
+    fetch('/api/theme', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({theme: t === 'default' ? '' : t})
+    });
+  }
+}
+
+(function() {
+  var t = {{ user_theme | tojson }} || localStorage.getItem('yuca_theme') || 'default';
+  if (t && t !== 'default') document.documentElement.setAttribute('data-theme', t);
+  document.querySelectorAll('.tp-item').forEach((el, i) => el.classList.toggle('tp-active', _THEMES[i] === t));
+})();
+
+document.addEventListener('click', function(e) {
+  if (!document.getElementById('tp').contains(e.target))
+    document.getElementById('tp-panel').classList.remove('open');
+  const drawer = document.getElementById('mob-drawer');
+  const btn = document.getElementById('mob-nav-btn');
+  if (drawer && btn && !drawer.contains(e.target) && !btn.contains(e.target))
+    drawer.classList.remove('open');
+});
+
+function toggleMobNav() {
+  document.getElementById('mob-drawer').classList.toggle('open');
+}
+function openGuide() {
+  document.getElementById('guide-overlay').classList.add('open');
+  document.getElementById('guide-panel').classList.add('open');
+  const d = document.getElementById('mob-drawer');
+  if (d) d.classList.remove('open');
+}
+function closeFbHint() {
+  const el = document.getElementById('fb-hint');
+  if (el) el.style.display = 'none';
+  localStorage.setItem('fb-hint-ts', Date.now());
+}
+(function() {
+  const el = document.getElementById('fb-hint');
+  if (!el) return;
+  const last = parseInt(localStorage.getItem('fb-hint-ts') || '0');
+  const days = (Date.now() - last) / 86400000;
+  if (days >= 7) setTimeout(() => { el.style.display = 'block'; }, 4000);
+})();
+
+function closeGuide() {
+  document.getElementById('guide-overlay').classList.remove('open');
+  document.getElementById('guide-panel').classList.remove('open');
+}
+
+function openFeedback() {
+  document.getElementById('fb-overlay').classList.add('open');
+  document.getElementById('fb-panel').classList.add('open');
+  document.getElementById('fb-success').style.display = 'none';
+  document.getElementById('fb-error').style.display = 'none';
+}
+function closeFeedback() {
+  document.getElementById('fb-overlay').classList.remove('open');
+  document.getElementById('fb-panel').classList.remove('open');
+}
+document.getElementById('fb-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  const btn = document.getElementById('fb-submit');
+  btn.disabled = true; btn.textContent = '提交中…';
+  const err = document.getElementById('fb-error');
+  err.style.display = 'none';
+  try {
+    const res = await fetch('/feedback', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: new URLSearchParams(new FormData(this))
+    });
+    const data = await res.json();
+    if (data.ok) {
+      document.getElementById('fb-success').style.display = 'block';
+      this.reset();
+      setTimeout(closeFeedback, 2000);
+    } else {
+      err.textContent = data.error || '提交失败，请重试';
+      err.style.display = 'block';
+    }
+  } catch(_) {
+    err.textContent = '网络错误，请重试';
+    err.style.display = 'block';
+  }
+  btn.disabled = false; btn.textContent = '提交';
+});
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') { closeGuide(); closeFeedback(); }
+});
+
+function copyText(text, btn) {
+  const orig = btn ? btn.textContent : '';
+  function done() { if (!btn) return; btn.textContent = '已复制'; setTimeout(() => btn.textContent = orig, 1500); }
+  if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done).catch(() => fb(text, done));
+  else fb(text, done);
+}
+function fb(text, cb) {
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+  document.body.appendChild(ta); ta.focus(); ta.select();
+  try { document.execCommand('copy'); cb && cb(); } catch(e) {}
+  document.body.removeChild(ta);
+}
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

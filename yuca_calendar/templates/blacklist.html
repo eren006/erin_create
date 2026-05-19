@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}黑名单 · 语擦日历{% endblock %}
+{% block head %}
+<style>
+.bl-add-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px 24px; margin-bottom: 20px; }
+.bl-add-title { font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 14px; }
+.bl-entry { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; display: flex; align-items: flex-start; gap: 12px; }
+.bl-entry:hover { border-color: var(--red); }
+.bl-bar { width: 3px; border-radius: 3px; background: var(--red); flex-shrink: 0; align-self: stretch; min-height: 36px; }
+.bl-body { flex: 1; min-width: 0; }
+.bl-name { font-size: 14px; font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.bl-qq { font-size: 12px; color: var(--muted); background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 7px; font-family: monospace; }
+.bl-reason { font-size: 13px; color: var(--text); margin-bottom: 3px; }
+.bl-meta { font-size: 11px; color: var(--muted); }
+.bl-notes { font-size: 12px; color: var(--muted); font-style: italic; margin-top: 4px; }
+.bl-actions { flex-shrink: 0; }
+.search-bar { display: flex; gap: 8px; margin-bottom: 16px; }
+.count-badge { display: inline-block; background: var(--surface2); border: 1px solid var(--border); border-radius: 20px; padding: 1px 10px; font-size: 12px; color: var(--muted); margin-left: 8px; vertical-align: middle; }
+</style>
+{% endblock %}
+{% block body %}
+<div class="page">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap">
+    <a href="{{ url_for('calendar') }}" class="btn btn-ghost btn-sm">← 返回</a>
+    <h1 class="page-title" style="margin:0">黑名单<span class="count-badge">{{ entries|length }}</span></h1>
+  </div>
+
+  <div style="font-size:12px;color:var(--muted);margin-bottom:16px;padding:10px 14px;background:var(--surface2);border-radius:8px;border:1px solid var(--border)">
+    🔒 黑名单仅自己可见，记录不良互动经历，方便日后参考。
+  </div>
+
+  <!-- 新增 -->
+  <div class="bl-add-card">
+    <div class="bl-add-title">＋ 添加黑名单记录</div>
+    <form method="post" action="{{ url_for('blacklist_add') }}">
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">QQ 号</label>
+          <input class="form-input" type="text" name="qq" placeholder="QQ 号码" inputmode="numeric">
+        </div>
+        <div class="form-group">
+          <label class="form-label">昵称</label>
+          <input class="form-input" type="text" name="nickname" placeholder="对方的常用名/群昵称">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">事由 <span class="req">*</span></label>
+        <input class="form-input" type="text" name="reason" placeholder="简述发生了什么" required>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">发生时间（可选）</label>
+          <input class="form-input" type="date" name="happened_at">
+        </div>
+        <div class="form-group">
+          <label class="form-label">备注（可选）</label>
+          <input class="form-input" type="text" name="notes" placeholder="补充说明…">
+        </div>
+      </div>
+      <button class="btn btn-danger" type="submit">拉黑</button>
+    </form>
+  </div>
+
+  <!-- 搜索 -->
+  <form class="search-bar" method="get">
+    <input class="form-input" type="text" name="q" value="{{ q }}" placeholder="搜索 QQ / 昵称 / 事由…" style="max-width:320px">
+    <button class="btn btn-ghost" type="submit">搜索</button>
+    {% if q %}<a href="{{ url_for('blacklist') }}" class="btn btn-ghost">清除</a>{% endif %}
+  </form>
+
+  {% if entries %}
+    {% for e in entries %}
+    <div class="bl-entry">
+      <div class="bl-bar"></div>
+      <div class="bl-body">
+        <div class="bl-name">
+          {% if e.nickname %}<span>{{ e.nickname }}</span>{% endif %}
+          {% if e.qq %}<span class="bl-qq">{{ e.qq }}</span>{% endif %}
+        </div>
+        {% if e.reason %}<div class="bl-reason">{{ e.reason }}</div>{% endif %}
+        <div class="bl-meta">
+          {% if e.happened_at %}{{ e.happened_at }} ·{% endif %}
+          拉黑于 {{ e.created_at | datetimeformat }}
+        </div>
+        {% if e.notes %}<div class="bl-notes">{{ e.notes }}</div>{% endif %}
+      </div>
+      <div class="bl-actions">
+        <form method="post" action="{{ url_for('blacklist_delete', bid=e.id) }}"
+              onsubmit="return confirm('确定从黑名单移除「{{ e.nickname or e.qq }}」？')">
+          <button class="btn btn-ghost btn-sm" type="submit">移除</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty">
+      {% if q %}没有匹配「{{ q }}」的记录{% else %}暂无黑名单记录{% endif %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

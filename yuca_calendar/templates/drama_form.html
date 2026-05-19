@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}{{ '编辑' if action == 'edit' else '新建' }}戏录 · 语擦日历{% endblock %}
+{% block head %}
+<style>
+.tag-check-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.tag-check-label {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 20px; padding: 4px 12px; font-size: 12px; color: var(--muted);
+  cursor: pointer; transition: all .15s; user-select: none;
+}
+.tag-check-label:hover { border-color: var(--accent); color: var(--text); }
+.tag-check-label input { display: none; }
+.tag-check-label.checked { background: var(--accent); border-color: var(--accent); color: #fff; }
+.wc-hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+</style>
+{% endblock %}
+{% block body %}
+<div class="page" style="max-width:760px">
+  <h1 class="page-title">{{ '编辑戏录' if action == 'edit' else '新建戏录' }}</h1>
+
+  {% if errors %}
+  <div class="form-errors">
+    {% for e in errors %}<div class="form-error">⚠ {{ e }}</div>{% endfor %}
+  </div>
+  {% endif %}
+
+  <form method="post">
+    <!-- 标题 -->
+    <div class="form-group">
+      <label class="form-label">标题 <span class="req">*</span></label>
+      <input class="form-input" type="text" name="title"
+             value="{{ form.title if form else default_title }}"
+             placeholder="同一账号标题唯一" autocomplete="off" required>
+    </div>
+
+    <!-- 标签 -->
+    <div class="form-group">
+      <label class="form-label">标签</label>
+      <div class="tag-check-row">
+        {% set cur_tags = drama.tags_list if drama else [] %}
+        {% for t in fixed_tags %}
+        {% set checked = t in cur_tags or (form and request.form.get('tag_' + t)) %}
+        <label class="tag-check-label {{ 'checked' if checked else '' }}"
+               onclick="toggleTag(this)">
+          <input type="checkbox" name="tag_{{ t }}"
+                 {% if checked %}checked{% endif %}>{{ t }}
+        </label>
+        {% endfor %}
+      </div>
+      <!-- 自定义标签 -->
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        {% set c1 = '' %}{% set c2 = '' %}
+        {% if drama %}
+          {% set extra = drama.tags_list | reject('in', fixed_tags) | list %}
+          {% set c1 = extra[0] if extra|length > 0 else '' %}
+          {% set c2 = extra[1] if extra|length > 1 else '' %}
+        {% endif %}
+        <div style="flex:1;min-width:120px">
+          <input class="form-input" type="text" name="custom_tag1"
+                 value="{{ request.form.get('custom_tag1', c1) }}"
+                 placeholder="自定义标签 1（选填）" maxlength="10">
+        </div>
+        <div style="flex:1;min-width:120px">
+          <input class="form-input" type="text" name="custom_tag2"
+                 value="{{ request.form.get('custom_tag2', c2) }}"
+                 placeholder="自定义标签 2（选填）" maxlength="10">
+        </div>
+      </div>
+    </div>
+
+    <!-- 写作日期 -->
+    <div class="form-group">
+      <label class="form-label">写作日期（选填）</label>
+      {% set wt_val = '' %}
+      {% if drama and drama.writing_time %}
+        {% set wt_val = drama.writing_time | datetimeformat %}
+      {% elif form and form.get('writing_time') %}
+        {% set wt_val = form.get('writing_time') %}
+      {% endif %}
+      <input class="form-input" type="date" name="writing_time" value="{{ wt_val }}" style="max-width:200px">
+    </div>
+
+    <!-- 正文 -->
+    <div class="form-group">
+      <label class="form-label">正文</label>
+      <textarea class="form-textarea" name="content" id="content-ta" rows="18"
+                oninput="updateWC(this)"
+                placeholder="在这里写下你的戏录内容…">{{ form.content if form else '' }}</textarea>
+      <div class="wc-hint" id="wc-hint">字数：<span id="wc-count">0</span></div>
+    </div>
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-primary" type="submit">{{ '保存修改' if action == 'edit' else '创建戏录' }}</button>
+      <a href="{{ url_for('drama_list') }}" class="btn btn-ghost">取消</a>
+      {% if action == 'edit' and drama %}
+      <form method="post" action="{{ url_for('drama_delete', did=drama.id) }}" style="margin:0"
+            onsubmit="return confirm('确定删除「{{ drama.title }}」？')">
+        <button class="btn btn-danger" type="submit">删除此戏录</button>
+      </form>
+      {% endif %}
+    </div>
+  </form>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function toggleTag(label) {
+  const cb = label.querySelector('input[type=checkbox]');
+  cb.checked = !cb.checked;
+  label.classList.toggle('checked', cb.checked);
+}
+
+function countWords(text) {
+  if (!text) return 0;
+  const chinese = (text.match(/[一-鿿㐀-䶿]/g) || []).length;
+  const rest = text.replace(/[一-鿿㐀-䶿]/g, ' ');
+  const english = (rest.match(/[a-zA-Z0-9]+/g) || []).length;
+  return chinese + english;
+}
+
+function updateWC(ta) {
+  document.getElementById('wc-count').textContent = countWords(ta.value);
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  const ta = document.getElementById('content-ta');
+  if (ta) updateWC(ta);
+});
+</script>
+{% endblock %}

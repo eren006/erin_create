@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+{% block title %}长日存档 · 数据统计{% endblock %}
+
+{% block head %}
+<style>
+/* ── 本场统计（按人） ────────────────────────────────── */
+.ptab {
+  background: var(--surface2); border: 1px solid var(--border);
+  color: var(--muted); border-radius: 20px; padding: 5px 14px;
+  font-size: 13px; cursor: pointer; font-family: inherit; transition: all .15s; white-space: nowrap;
+}
+.ptab:hover { border-color: var(--accent); color: var(--text); }
+.ptab.active { border-color: var(--accent2); color: var(--accent2); background: var(--surface); font-weight: 600; }
+
+.ps-summary {
+  display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 14px;
+  background: var(--surface2); border-radius: 10px; padding: 12px 16px;
+  font-size: 13px;
+}
+.ps-summary .lbl { color: var(--muted); font-size: 11px; margin-bottom: 2px; }
+.ps-summary .val { font-size: 18px; font-weight: 700; color: var(--accent2); }
+.ps-summary .val-sub { font-size: 12px; color: var(--muted); font-weight: 400; }
+
+.ps-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ps-table th {
+  background: var(--surface2); color: var(--muted);
+  font-size: 11px; font-weight: 700; letter-spacing: .5px;
+  padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border);
+}
+.ps-table td { padding: 9px 12px; border-bottom: 1px solid var(--border); }
+.ps-table tr:last-child td { border-bottom: none; }
+.ps-table tr:hover td { background: var(--surface2); }
+.ps-table .num { font-weight: 700; color: var(--text); }
+.ps-table .muted { color: var(--muted); font-size: 12px; }
+.ps-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+
+/* ── 活跃时段热力图 ───────────────────────────────────── */
+.activity-grid {
+  display: grid; gap: 20px;
+}
+.activity-row {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 16px 18px;
+}
+.activity-role {
+  font-size: 13px; font-weight: 700; color: var(--accent2);
+  margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
+}
+.activity-role a { color: var(--accent2); font-size: 12px; }
+.activity-role .act-total { color: var(--muted); font-size: 11px; font-weight: 400; }
+.bar-chart {
+  display: flex; align-items: flex-end; gap: 3px; height: 64px;
+}
+.bar-col { display: flex; flex-direction: column; align-items: center; flex: 1; height: 100%; }
+.bar-bg { flex: 1; width: 100%; display: flex; align-items: flex-end; }
+.bar-fill {
+  width: 100%; background: var(--accent);
+  border-radius: 3px 3px 0 0; transition: background .2s;
+  min-height: 0;
+}
+.bar-fill:hover { background: var(--accent2); }
+.bar-lbl { font-size: 9px; color: var(--muted); margin-top: 3px; line-height: 1; }
+.bar-val { font-size: 9px; color: var(--muted); margin-bottom: 2px; display: none; }
+.bar-col:hover .bar-val { display: block; }
+
+/* 时段汇总线 */
+.hour-summary {
+  display: flex; gap: 0; margin-top: 8px;
+  border-radius: 6px; overflow: hidden; height: 6px;
+}
+.hour-seg { flex: 1; }
+
+/* ── 区块标题 ─────────────────────────────────────────── */
+.section-title {
+  font-size: 14px; font-weight: 700; color: var(--muted);
+  letter-spacing: 1px; text-transform: uppercase;
+  margin-bottom: 14px; padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* 无数据提示 */
+.legend {
+  display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px;
+  font-size: 11px; color: var(--muted);
+}
+.legend-item { display: flex; align-items: center; gap: 5px; }
+.legend-dot { width: 10px; height: 10px; border-radius: 2px; }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="page">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid var(--border);">
+    <div class="page-title" style="margin-bottom:0;padding-bottom:0;border-bottom:none;">数据统计</div>
+    <div style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px;">
+      <span style="width:7px;height:7px;background:var(--green);border-radius:50%;display:inline-block;animation:pulse 2s infinite;"></span>
+      自动刷新 <span id="refresh-cd" style="color:var(--text);font-weight:600;min-width:18px;display:inline-block;">30</span> 秒
+      <button onclick="window.location.reload()" style="background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;font-family:inherit;">立即刷新</button>
+    </div>
+  </div>
+
+  <!-- ── 本场统计（按人） ─────────────────────────────── -->
+  <div class="admin-section" style="margin-bottom:36px;">
+    <div class="section-title">本场统计</div>
+    {% if role_names %}
+
+    <!-- 角色 tab -->
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;">
+      {% for role in role_names %}
+      <button class="ptab{% if loop.first %} active{% endif %}"
+              onclick="switchPlayer({{ loop.index0 }}, this)">{{ role }}</button>
+      {% endfor %}
+    </div>
+
+    <!-- 每个角色的面板 -->
+    {% for role in role_names %}
+    {% set p = players | selectattr('role_name','eq',role) | first | default({'total_replies':0,'total_words':0,'qq':''}) %}
+    {% set role_sessions = sessions | selectattr('stats.' ~ role, 'defined') | list %}
+    {# 包含参与了但 stats 里可能没写满的场次 #}
+    {% set participated = [] %}
+    {% for s in sessions %}
+      {% if role in s.participants or s.stats.get(role) %}
+        {% set _ = participated.append(s) %}
+      {% endif %}
+    {% endfor %}
+
+    <div class="player-panel" id="ppanel-{{ loop.index0 }}"
+         style="display:{% if loop.first %}block{% else %}none{% endif %};">
+
+      <!-- 汇总数字 -->
+      <div class="ps-summary">
+        <div>
+          <div class="lbl">累计段数</div>
+          <div class="val">{{ p.total_replies }}<span class="val-sub"> 段</span></div>
+        </div>
+        <div>
+          <div class="lbl">累计字数</div>
+          <div class="val">{{ p.total_words }}<span class="val-sub"> 字</span></div>
+        </div>
+        {% if p.total_replies %}
+        <div>
+          <div class="lbl">均字/段</div>
+          <div class="val">{{ (p.total_words / p.total_replies) | int }}<span class="val-sub"> 字</span></div>
+        </div>
+        {% endif %}
+        <div>
+          <div class="lbl">参与场次</div>
+          <div class="val">{{ participated | length }}<span class="val-sub"> 场</span></div>
+        </div>
+        {% if p.qq and p.qq != role %}
+        <div style="margin-left:auto;align-self:center;">
+          <a href="{{ url_for('admin_player', qq=p.qq) }}"
+             style="font-size:12px;color:var(--accent);background:var(--surface);
+                    border:1px solid var(--border);border-radius:8px;padding:5px 12px;">
+            查看详情 →
+          </a>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- 场次明细 -->
+      {% if participated %}
+      <div class="ps-wrap">
+        <table class="ps-table">
+          <thead>
+            <tr>
+              <th>场次</th>
+              <th>游戏日</th>
+              <th style="text-align:right;">段数</th>
+              <th style="text-align:right;">字数</th>
+              <th style="text-align:right;">均字/段</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in participated | reverse %}
+            {% set st = s.stats.get(role, {}) %}
+            {% set r = st.get('replies', 0) %}
+            {% set w = st.get('words', 0) %}
+            <tr>
+              <td>
+                <a href="{{ url_for('session_view', session_id=s.id) }}" style="color:var(--accent);">
+                  {{ s.place or '未知地点' }}
+                </a>
+                {% if s.subtype %}<span class="tag tag-private" style="font-size:10px;padding:1px 5px;margin-left:4px;">{{ s.subtype }}</span>{% endif %}
+                {% if s.forced %}<span class="tag tag-forced" style="font-size:10px;padding:1px 5px;margin-left:2px;">强结</span>{% endif %}
+              </td>
+              <td class="muted">{{ s.game_day }}</td>
+              <td style="text-align:right;">{% if r %}<span class="num">{{ r }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+              <td style="text-align:right;">{% if w %}<span class="num">{{ w }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+              <td style="text-align:right;" class="muted">{% if r %}{{ (w/r)|int }}{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty" style="padding:24px 0;">该角色暂无场次数据。</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+
+    {% else %}
+    <div class="empty">暂无玩家数据。</div>
+    {% endif %}
+  </div>
+
+  <!-- ── 活跃时段分析 ──────────────────────────────────── -->
+  <div class="admin-section">
+    <div class="section-title">活跃时段分析</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:16px;">
+      统计来源：RP 正文回复 + 短信发送（按现实时间小时分布）
+    </div>
+    {% if role_names %}
+    <div class="activity-grid">
+      {% for role in role_names %}
+        {% set data = hourly_data.get(role, [0]*24) %}
+        {% set total = data | sum %}
+        {% if total > 0 %}
+        <div class="activity-row">
+          <div class="activity-role">
+            {% set player = players | selectattr('role_name','eq',role) | first | default(none) %}
+            {% if player %}
+            <a href="{{ url_for('admin_player', qq=player.qq) }}" style="color:var(--accent2)">{{ role }}</a>
+            {% else %}
+            {{ role }}
+            {% endif %}
+            <span class="act-total">共 {{ total }} 次活跃记录</span>
+          </div>
+          <div class="bar-chart">
+            {% for h in range(24) %}
+            {% set cnt = data[h] %}
+            {% set pct = (cnt / max_hourly * 100) | int %}
+            <div class="bar-col" title="{{ h }}:00  {{ cnt }} 次">
+              <div class="bar-bg">
+                <div class="bar-fill" style="height:{{ pct }}%;opacity:{{ [0.35 + cnt/max_hourly*0.65, 1] | min | round(2) }};"></div>
+              </div>
+              <div class="bar-lbl">{{ h if h % 3 == 0 else '' }}</div>
+            </div>
+            {% endfor %}
+          </div>
+          <!-- 最活跃时段 -->
+          {% set peak_hour = data.index(data | max) %}
+          {% set peak_cnt  = data | max %}
+          <div style="margin-top:8px;font-size:11px;color:var(--muted);">
+            峰值：<b style="color:var(--accent2)">{{ peak_hour }}:00–{{ peak_hour+1 }}:00</b>（{{ peak_cnt }} 次）
+            &nbsp;·&nbsp;
+            {% set night = data[0:6] | sum %}
+            {% set morning = data[6:12] | sum %}
+            {% set afternoon = data[12:18] | sum %}
+            {% set evening = data[18:24] | sum %}
+            凌晨 {{ night }} · 上午 {{ morning }} · 下午 {{ afternoon }} · 晚上 {{ evening }}
+          </div>
+        </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty">暂无玩家数据。</div>
+    {% endif %}
+  </div>
+</div>
+<script>
+function switchPlayer(idx, btn) {
+  document.querySelectorAll('.ptab').forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+  document.querySelectorAll('.player-panel').forEach(function(p){ p.style.display = 'none'; });
+  var panel = document.getElementById('ppanel-' + idx);
+  if (panel) panel.style.display = 'block';
+}
+(function(){
+  var cd = 30;
+  var el = document.getElementById('refresh-cd');
+  setInterval(function(){
+    cd--;
+    if (el) el.textContent = cd;
+    if (cd <= 0) window.location.reload();
+  }, 1000);
+})();
+</script>
+{% endblock %}

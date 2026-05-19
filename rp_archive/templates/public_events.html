@@ -1,0 +1,155 @@
+{% extends "public_base.html" %}
+{% block title %}{{ show.name }} · 互动记录{% endblock %}
+
+{% block head %}
+<style>
+.summary-bar {
+  display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 20px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 14px 20px; align-items: center;
+}
+.summary-item { font-size: 12px; color: var(--muted); }
+.summary-item b { color: var(--text); font-size: 20px; font-weight: 700; display: block; line-height: 1.2; }
+
+.filter-section { margin-bottom: 14px; }
+.filter-label { font-size: 11px; color: var(--muted); letter-spacing: .5px; margin-bottom: 6px; }
+.filter-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.filter-btn {
+  background: var(--surface2); border: 1px solid var(--border);
+  color: var(--muted); border-radius: 20px; padding: 4px 12px;
+  font-size: 12px; cursor: pointer; font-family: inherit; transition: all .15s;
+}
+.filter-btn:hover { border-color: var(--accent); color: var(--text); }
+.filter-btn.active { border-color: var(--accent2); color: var(--accent2); background: var(--surface); }
+
+.ev-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 14px 18px; margin-bottom: 10px;
+  transition: border-color .2s;
+}
+.ev-card:hover { border-color: var(--accent); }
+.ev-header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.ev-type-badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+.badge-sms      { background: #1a2830; color: #60c8ff; }
+.badge-gift     { background: #2a2000; color: #fcd34d; }
+.badge-lovemail { background: #2d1f4e; color: #c084fc; }
+.ev-from { color: var(--accent);  font-weight: 700; font-size: 14px; }
+.ev-arrow { color: var(--muted); }
+.ev-to   { color: var(--accent2); font-weight: 700; font-size: 14px; }
+.ev-day  { font-size: 11px; color: var(--muted); background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 1px 7px; }
+.ev-time { color: var(--muted); font-size: 11px; margin-left: auto; white-space: nowrap; }
+.ev-body { color: var(--text); font-size: 13px; line-height: 1.8; white-space: pre-wrap; word-break: break-word; }
+.ev-sub  { color: var(--muted); font-size: 11px; margin-top: 5px; }
+.ev-chaos { font-size: 10px; color: var(--red); margin-top: 3px; }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="page">
+  <div class="page-title">互动记录</div>
+
+  <!-- 汇总 -->
+  <div class="summary-bar">
+    {% if show_lovemail %}<div class="summary-item"><b>{{ counts.lovemail }}</b>💌 心动信</div>{% endif %}
+    {% if show_sms %}<div class="summary-item"><b>{{ counts.sms }}</b>📱 短信</div>{% endif %}
+    {% if show_gift %}<div class="summary-item"><b>{{ counts.gift }}</b>🎁 礼物</div>{% endif %}
+    <div class="summary-item" style="margin-left:auto;"><b style="font-size:14px;">{{ events|length }}</b>条记录</div>
+  </div>
+
+  {% if events %}
+  <!-- 按人筛选 -->
+  {% set all_roles = [] %}
+  {% for e in events %}
+    {% if e.from_role and e.from_role not in all_roles %}{% set _ = all_roles.append(e.from_role) %}{% endif %}
+    {% if e.to_role   and e.to_role   not in all_roles %}{% set _ = all_roles.append(e.to_role)   %}{% endif %}
+  {% endfor %}
+
+  <div class="filter-section">
+    <div class="filter-label">按角色筛选</div>
+    <div class="filter-row" id="role-filters">
+      <button class="filter-btn active" data-role="all" onclick="filterRole('all',this)">全部</button>
+      {% for role in all_roles | sort %}
+      <button class="filter-btn" data-role="{{ role }}" onclick="filterRole('{{ role }}',this)">{{ role }}</button>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- 类型次筛选 -->
+  <div class="filter-section" style="margin-bottom:20px;">
+    <div class="filter-label">按类型筛选</div>
+    <div class="filter-row" id="type-filters">
+      <button class="filter-btn active" data-type="all" onclick="filterType('all',this)">全部</button>
+      {% if show_lovemail %}<button class="filter-btn" data-type="lovemail" onclick="filterType('lovemail',this)">💌 心动信</button>{% endif %}
+      {% if show_sms %}<button class="filter-btn" data-type="sms" onclick="filterType('sms',this)">📱 短信</button>{% endif %}
+      {% if show_gift %}<button class="filter-btn" data-type="gift" onclick="filterType('gift',this)">🎁 礼物</button>{% endif %}
+    </div>
+  </div>
+
+  <div id="ev-list">
+    {% for e in events %}
+    <div class="ev-card" data-type="{{ e.type }}" data-from="{{ e.from_role }}" data-to="{{ e.to_role }}">
+      <div class="ev-header">
+        {% if e.type == 'lovemail' %}<span class="ev-type-badge badge-lovemail">💌 心动信</span>
+        {% elif e.type == 'sms' %}<span class="ev-type-badge badge-sms">📱 短信</span>
+        {% elif e.type == 'gift' %}<span class="ev-type-badge badge-gift">🎁 礼物</span>{% endif %}
+        <span class="ev-from">{{ e.from_role }}</span>
+        <span class="ev-arrow">→</span>
+        <span class="ev-to">{{ e.to_role }}</span>
+        {% if e.game_day %}<span class="ev-day">{{ e.game_day }}</span>{% endif %}
+        <span class="ev-time">{{ ts_to_str(e.timestamp) }}</span>
+      </div>
+
+      {% if e.type == 'lovemail' %}
+        {% if e.content %}<div class="ev-body">{{ e.content }}</div>{% endif %}
+        {% if e.extra_info.signature %}<div class="ev-sub">署名：{{ e.extra_info.signature }}</div>{% endif %}
+
+      {% elif e.type == 'sms' %}
+        {% if e.extra_info.is_chaos %}
+        <div class="ev-chaos">⚠ 混乱效果{% if e.extra_info.is_misdelivered %} · 误送{% endif %}{% if e.extra_info.is_content_chaos %} · 内容侵蚀{% endif %}{% if e.extra_info.is_signature_chaos %} · 署名错乱{% endif %}</div>
+        {% endif %}
+        {% if e.content %}<div class="ev-body">{{ e.content }}</div>{% endif %}
+        {% if e.extra_info.intended_to and e.extra_info.is_misdelivered %}<div class="ev-sub">原本寄给：{{ e.extra_info.intended_to }}</div>{% endif %}
+
+      {% elif e.type == 'gift' %}
+        {% if e.extra_info.giftName %}
+        <div class="ev-sub" style="margin-bottom:4px;margin-top:0;">礼物：<b style="color:var(--gold)">{{ e.extra_info.giftName }}</b>{% if e.extra_info.isLost %} <span style="color:var(--red)">(丢失)</span>{% endif %}</div>
+        {% endif %}
+        {% if e.content %}<div class="ev-body">寄语：{{ e.content }}</div>{% endif %}
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  <div id="no-result" style="display:none;" class="empty">没有符合条件的记录。</div>
+
+  {% else %}
+  <div class="empty">暂无互动记录。</div>
+  {% endif %}
+</div>
+<script>
+var _role = 'all', _type = 'all';
+function filterRole(role, btn) {
+  _role = role;
+  document.querySelectorAll('#role-filters .filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  applyFilter();
+}
+function filterType(type, btn) {
+  _type = type;
+  document.querySelectorAll('#type-filters .filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  applyFilter();
+}
+function applyFilter() {
+  var cards = document.querySelectorAll('#ev-list .ev-card');
+  var visible = 0;
+  cards.forEach(function(c) {
+    var roleMatch = _role === 'all' || c.dataset.from === _role || c.dataset.to === _role;
+    var typeMatch = _type === 'all' || c.dataset.type === _type;
+    var show = roleMatch && typeMatch;
+    c.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  document.getElementById('no-result').style.display = visible === 0 ? 'block' : 'none';
+}
+</script>
+{% endblock %}

@@ -375,6 +375,12 @@ function buildSessionArchive(gid, platform, forced) {
     // 心动信/短信/礼物均已在事件发生时实时 POST /api/event，此处不再批量附带
     // （心动信 pool 投完即清空，批量读取必然为空；短信/礼物实时上传已含 session_id）
 
+    // 顺带附上 QQ→角色映射，服务器自动更新玩家数据库，无需手动同步
+    const playersList = participants.map(roleName => {
+        const uid = getUidByRoleName(platform, roleName);
+        return uid ? { qq: uid, role_name: roleName } : null;
+    }).filter(Boolean);
+
     return {
         session_id:   sessionId,
         group_id:     gid,
@@ -388,9 +394,7 @@ function buildSessionArchive(gid, platform, forced) {
         end_ts:       endTs,
         forced:       forced ? 1 : 0,
         stats:        stats,
-        lovemails:    [],
-        sms:          [],
-        gifts:        gifts
+        players:      playersList,
     };
 }
 
@@ -2952,6 +2956,10 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
             }
         }
 
+        if (!targetEntry) {
+            seal.replyToSender(ctx, msg, "❌ 礼物投递失败：找不到收件人所在群组。");
+            return;
+        }
         const newmsg = seal.newMessage();
         newmsg.messageType = "group";
         newmsg.groupId = `${platform}-Group:${targetEntry[1]}`;
@@ -2994,7 +3002,9 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
         postToArchive("/api/event", {
             type:       "gift",
             from_role:  sendname,
+            from_qq:    uid,
             to_role:    actualToname,
+            to_qq:      actualToUid,
             content:    giftContent || "",
             extra_info: { giftName: giftDisplayName, isLost: isLost, isPublic: isPublicDrop },
             game_day:   ext.storageGet("global_days") || "D?",
@@ -4159,16 +4169,19 @@ cmd_view_expired_groups.solve = (ctx, msg, cmdArgs) => {
         // 1. 查看列表
         if (!action) {
             if (!expiredGroups.length) return seal.replyToSender(ctx, msg, "📭 当前没有已到期的群组。"), seal.ext.newCmdExecuteResult(true);
-            let result = `⏰ 已到期群组列表（共${expiredGroups.length}个）：\n\n`;
-            expiredGroups.forEach((g, idx) => {
+            if (!msg.groupId) return seal.replyToSender(ctx, msg, "⚠️ 请在群内使用此指令。"), seal.ext.newCmdExecuteResult(true);
+            const botUid = ctx.endPoint.userId;
+            const nodes = [];
+            nodes.push({ type: "node", data: { name: "到期群总览", uin: botUid, content: `⏰ 已到期群组列表（共 ${expiredGroups.length} 个）\n💡 使用「。查看到期群 提醒」向到期群发送消息` } });
+            expiredGroups.forEach(g => {
                 const overdue = (now - g.expireTime) / 60000;
                 const overdueDays = Math.floor(overdue / 1440), overdueHours = Math.floor((overdue % 1440) / 60), overdueMins = Math.floor(overdue % 60);
-                
-                result += `📌 群号：${g.indexKey}\n`; // 这里显示 239689865
-                result += `  类型：${g.subtype || '小群'}\n  时间：${g.day} ${g.time}\n  地点：${g.place}\n  参与者：${g.participants.join('、')}\n  到期时间：${formatTime(g.expireTime)}\n  已超时：${overdueDays?`${overdueDays}天`:''}${overdueHours?`${overdueHours}小时`:''}${overdueMins}分钟\n\n`;
+                const overdueStr = `${overdueDays?`${overdueDays}天`:''}${overdueHours?`${overdueHours}小时`:''}${overdueMins}分钟`;
+                const content = `📌 群号：${g.indexKey}\n类型：${g.subtype || '小群'}\n时间：${g.day} ${g.time}\n地点：${g.place}\n参与者：${g.participants.join('、')}\n到期时间：${formatTime(g.expireTime)}\n已超时：${overdueStr}`;
+                nodes.push({ type: "node", data: { name: g.participants.join('、') || "未知", uin: botUid, content } });
             });
-            result += `💡 提示：使用「。查看到期群 提醒」向到期群发送消息`;
-            return seal.replyToSender(ctx, msg, result), seal.ext.newCmdExecuteResult(true);
+            ws({ action: "send_group_forward_msg", params: { group_id: parseInt(msg.groupId.replace(/[^\d]/g, ""), 10), messages: nodes } }, ctx, msg, "");
+            return seal.ext.newCmdExecuteResult(true);
         }
         
         // 2. 发送提醒
@@ -5415,7 +5428,11 @@ async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, co
         }
     }
 
-    const targetEntry = a_private_group[platform][trueRecipientUid];
+    const targetEntry = a_private_group[platform]?.[trueRecipientUid];
+    if (!targetEntry) {
+        seal.replyToSender(ctx, msg, "❌ 短信投递失败：找不到收件人所在群组。");
+        return;
+    }
     const newmsg = seal.newMessage();
     newmsg.messageType = "group";
     newmsg.groupId = `${platform}-Group:${targetEntry[1]}`;
@@ -5433,7 +5450,9 @@ async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, co
         postToArchive("/api/event", {
             type:       "sms",
             from_role:  sendname,
+            from_qq:    uid,
             to_role:    trueRecipientName,
+            to_qq:      trueRecipientUid,
             content:    contentOriginal,
             extra_info: {
                 delivered:       content,
@@ -5460,14 +5479,15 @@ async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, co
 
     // 公开逻辑
     const letterPublicEnabled = JSON.parse(ext.storageGet("letter_public_send") || "false");
-    if (letterPublicEnabled && (Math.random() * 100 <= chaosConfig.publicChance)) {
+    if (letterPublicEnabled && (Math.floor(Math.random() * 100) + 1 <= chaosConfig.publicChance)) {
         const adminGid = JSON.parse(ext.storageGet("adminAnnounceGroupId") || "null");
         if (adminGid) {
             const pMsg = seal.newMessage();
             pMsg.messageType = "group";
             pMsg.groupId = `${platform}-Group:${adminGid}`;
             const pCtx = seal.createTempCtx(ctx.endPoint, pMsg);
-            seal.replyToSender(pCtx, pMsg, `💌 公开信件：\n「${sendname}」→「${toname}」\n内容：「${content}」`);
+            const publicContent = chaosConfig.publicShowEffect ? content : contentOriginal;
+            seal.replyToSender(pCtx, pMsg, `💌 公开信件：\n「${sendname}」→「${toname}」\n内容：「${publicContent}」`);
         }
     }
 
@@ -6865,6 +6885,28 @@ function handleReply(platform, groupId, roleName, message) {
     roleStatus.sessionReplies += 1;
     roleStatus.sessionWords += wordCount;
 
+    // 实时推送本场 stats 到存档服务器（自动更新统计页面 + 玩家数据库）
+    if (isArchiveEnabled() && sessionUid) {
+        const _ss2 = getSessionStats()[groupId] || {};
+        const _startTs2 = _ss2._startTime || Date.now();
+        const liveStats = {};
+        (timer.participants || []).forEach(rn => {
+            const ruid = getUidByRoleName(platform, rn);
+            if (ruid && _ss2[ruid]) {
+                liveStats[rn] = { replies: _ss2[ruid].replies || 0, words: _ss2[ruid].words || 0 };
+            }
+        });
+        const livePlayers = (timer.participants || []).map(rn => {
+            const ruid = getUidByRoleName(platform, rn);
+            return ruid ? { qq: ruid, role_name: rn } : null;
+        }).filter(Boolean);
+        postToArchive("/api/session_stats", {
+            session_id: `${groupId}_${_startTs2}`,
+            stats:      liveStats,
+            players:    livePlayers,
+        });
+    }
+
     // 7. 处理计时器流转 (轮流模式/独立模式)
     if (timer.timerMode === "turn_taking") {
         const otherParticipant = timer.participants.find(p => p !== roleName);
@@ -7895,6 +7937,52 @@ ext.onNotCommandReceived = (ctx, msg) => {
     // 4.14 本场统计
     if (raw === "本场统计") return cmd_my_stats.solve(ctx, msg, makeFakeCmdArgs([]));
 
+    // 4.14.1 基础指南
+    if (raw === "基础指南") {
+        if (!msg.groupId) {
+            return seal.replyToSender(ctx, msg, "请在群内使用此指令。");
+        }
+        const sections = [
+            ["📖 基础指南", ""],
+            ["【私约】",
+             "私约 1120-1230 地点 对方角色名[/对方2/...]",
+             "例：私约 1400-1500 咖啡厅 张三",
+             "例：私约 1400-1500 咖啡厅 张三/李四"],
+            ["【修改时间线】（在约会群内使用）",
+             "。修改时间线 D1 1400-1500",
+             "",
+             "【拒绝时间线】",
+             "。拒绝时间线 群号"],
+            ["【电话】",
+             "。电话 1100-1200 邀请人1[/邀请人2/...]",
+             "例：。电话 1400-1500 张三"],
+            ["【短信】",
+             "[署名]短信 收信人 内容",
+             "例：短信 张三 你好！",
+             "例：李四短信 张三 你好！",
+             "",
+             "【送礼】",
+             "送礼 对方名 礼物内容",
+             "送礼 对方名 #编号（图鉴内礼物，可无限送）"],
+            ["【心动信】",
+             "发送心动信",
+             "【发送对象】角色名",
+             "【内容】想说的话",
+             "【署名】自定义昵称（选填）"],
+        ];
+        const gidRaw = parseInt(msg.groupId.replace(/\D/g, ""), 10);
+        const nodes = sections.map(lines => ({
+            type: "node",
+            data: { name: "基础指南", uin: "10001", content: lines.join("\n") }
+        }));
+        const m = seal.newMessage();
+        m.messageType = "group";
+        m.groupId = msg.groupId;
+        const c = seal.createTempCtx(ctx.endPoint, m);
+        ws({ action: "send_group_forward_msg", params: { group_id: gidRaw, messages: nodes } }, c, m, "");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
     // 4.15 管理员无前缀指令
     if (isAdmin) {
         if (raw === "查看计时器") return cmd_view_timers.solve(ctx, msg, makeFakeCmdArgs([]));
@@ -8414,7 +8502,10 @@ cmd_send_lovemail.solve = (ctx, msg, cmdArgs) => {
     const dayLimits = JSON.parse(ext.storageGet("lovemail_day_limits") || "{}");
     const defaultLimit = parseInt(ext.storageGet("lovemail_default_limit") || "3");
     let maxPerDay = dayLimits[globalDay] !== undefined ? dayLimits[globalDay] : defaultLimit;
-    if (maxPerDay < 1) maxPerDay = 1;
+    if (maxPerDay <= 0) {
+        seal.replyToSender(ctx, msg, `📪 当前游戏天数 ${globalDay} 的心动信投稿已关闭。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
 
     let dayCounts = JSON.parse(ext.storageGet("lovemail_day_counts") || "{}");
     if (!dayCounts[uid]) dayCounts[uid] = {};
@@ -8522,8 +8613,10 @@ cmd_revoke_lovemail.solve = (ctx, msg, cmdArgs) => {
         return seal.replyToSender(ctx, msg, "⚠️ 请输入正确的序号，例如：。撤回心动信 1");
     }
     const targetMail = my[idx];
-    const targetTimestamp = targetMail.timestamp;
-    const finalRecords = records.filter(r => r.timestamp !== targetTimestamp);
+    const originalIdx = records.indexOf(targetMail);
+    const finalRecords = originalIdx !== -1
+        ? records.slice(0, originalIdx).concat(records.slice(originalIdx + 1))
+        : records.filter(r => r !== targetMail);
 
     let dayCounts = JSON.parse(ext.storageGet("lovemail_day_counts") || "{}");
     const gameDay = targetMail.gameDay;
@@ -8606,6 +8699,7 @@ function performLoveMailDelivery(ctx, msg, backgroundGroupId) {
     const mailBox = records.reduce((map, r) => ((map[r.receiver] ??= []).push(r), map), {});
     let success = 0, fail = 0, publicCount = 0;
     const publicNodes = [];
+    const failedRecords = [];
 
     for (const [receiver, mails] of Object.entries(mailBox)) {
         const recvUid = getUidByRoleName(platform, receiver);
@@ -8618,10 +8712,11 @@ function performLoveMailDelivery(ctx, msg, backgroundGroupId) {
                 success++;
                 // 心动信实时存档（投递时上传，pool 投完即清空故不能靠 session_end）
                 if (isArchiveEnabled()) {
-                    const fromRole = a_private_group[platform]?.[mail.uid]?.[0] || mail.uid;
+                    const fromRole = a_private_group[platform]?.[mail.uid]?.[0];
+                    if (!fromRole) console.warn(`[心动信] 派送存档找不到发件人角色名，UID: ${mail.uid}`);
                     postToArchive("/api/event", {
                         type:       "lovemail",
-                        from_role:  fromRole,
+                        from_role:  fromRole || mail.uid,
                         to_role:    receiver,
                         content:    mail.content,
                         extra_info: { signature: mail.signature },
@@ -8639,6 +8734,7 @@ function performLoveMailDelivery(ctx, msg, backgroundGroupId) {
             });
             sendForward(targetGidRaw, personalNodes);
         } else {
+            failedRecords.push(...mails);
             fail += mails.length;
         }
     }
@@ -8647,7 +8743,8 @@ function performLoveMailDelivery(ctx, msg, backgroundGroupId) {
         sendForward(announceGroupId, [{ type: "node", data: { name: "心动天使", uin: "2852199344", content: `✨ 哎呀，有 ${publicNodes.length} 份心意在飞往信箱的途中，不小心飘落到了公告区...` } }, ...publicNodes]);
     }
 
-    ext.storageSet(mailKey, "[]");
+    // 只清除已成功派送的信，保留投递失败的信以便重试
+    ext.storageSet(mailKey, JSON.stringify(failedRecords));
     if (success > 0) recordMeetingAndAnnounce("心动信", platform, ctx, ep);
     return { success, fail, publicCount, empty: false, status: "派送完成" };
 }
@@ -9167,6 +9264,7 @@ cmd_guide.solve = (ctx, msg, cmdArgs) => {
                     "",
                     "私约 时间 地点 对方名[/对方2/...]",
                     "  例：私约 1400-1500 咖啡厅 张三",
+                    "  例：私约 1400-1500 咖啡厅 张三/李四",
                     "",
                     "申请加入 角色名 时间点",
                     "  例：申请加入 张三 14:30",
@@ -9176,8 +9274,12 @@ cmd_guide.solve = (ctx, msg, cmdArgs) => {
                     "拒绝加入 请求编号",
                     "",
                     "时间线         查看自己的日程安排",
-                    "修改时间线 [参数]",
-                    "拒绝时间线 [群号]   退出或取消约会记录",
+                    "",
+                    "修改时间线 D1 1400-1500",
+                    "  在约会群内使用，修改当前约会的时间",
+                    "",
+                    "拒绝时间线 群号",
+                    "  退出约会并通知相关者，取消约会记录",
                     "",
                     "结束私约       在约会群中结束本场（需先复盘）",
                     "  先：回复合并转发消息并发送「转发复盘」",
@@ -9233,6 +9335,11 @@ cmd_guide.solve = (ctx, msg, cmdArgs) => {
                     "  例：使用 TJ00 张三    （追踪器）",
                     "  例：使用 WN00 图书馆  （万能钥匙）",
                     "  例：使用 AA00",
+                    "",
+                    "特殊使用 望远镜 角色名",
+                    "  施加后，目标发出信件时自动抄录一份给你",
+                    "特殊使用 羽毛笔 角色名",
+                    "  施加后，目标下一封信先发给你修改后再发出",
                 ]),
                 section("🏪 商城与二手市场", [
                     "商城",
@@ -9296,6 +9403,20 @@ cmd_guide.solve = (ctx, msg, cmdArgs) => {
         "5": {
             label: "💌 信件与论坛",
             nodes: () => [
+                section("✉️ 发送信件（写信综）", [
+                    "。发送信件",
+                    "【收件人】角色名",
+                    "【内容】信件内容",
+                    "【日期】日期（选填）",
+                    "【附件】附加内容（选填）",
+                    "【署名】落款（选填，默认角色名）",
+                    "",
+                    "信件状态   查看今日发信额度与赏金设置",
+                    "",
+                    "【羽毛笔修改】",
+                    "羽毛笔修改          查看待修改信件清单",
+                    "羽毛笔修改 序号 新内容  修改后发出",
+                ]),
                 section("💌 心动信 & 信箱", [
                     "发送心动信",
                     "【发送对象】角色名",
@@ -9305,8 +9426,6 @@ cmd_guide.solve = (ctx, msg, cmdArgs) => {
                     "撤回心动信 编号   撤回已投递的信",
                     "",
                     "查看信箱   查看收到的心动信",
-                    "",
-
                 ]),
                 section("🗨️ 论坛", [
                     "发帖 内容",
@@ -9359,6 +9478,7 @@ cmd_guide.solve = (ctx, msg, cmdArgs) => {
             ...Object.entries(chapters).map(([k, v]) => `${k}. ${v.label}`),
             "",
             "以下指令无需句号，直接发送即可触发。",
+            "发送「基础指南」或「写信综指南」可查看快速格式参考。",
         ].join("\n");
         seal.replyToSender(ctx, msg, index);
         return seal.ext.newCmdExecuteResult(true);

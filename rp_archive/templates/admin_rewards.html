@@ -135,40 +135,27 @@
 .empty-tpl { color:var(--muted); font-size:13px; text-align:center; padding:24px 0; }
 
 /* ── 道具注册表 ── */
-.item-cards { display:flex; flex-direction:column; gap:8px; margin-top:12px; }
-.ir-card { background:var(--surface2); border:1px solid var(--border); border-radius:10px; overflow:hidden; }
-.ir-card-head { display:flex; align-items:center; gap:10px; padding:10px 14px; }
-.ir-code { font-family:monospace; font-size:13px; font-weight:700; color:var(--accent2); background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:2px 9px; flex-shrink:0; }
-.ir-name { font-size:14px; font-weight:600; color:var(--text); flex:1; }
-.ir-badge { font-size:11px; padding:2px 9px; border-radius:20px; border:1px solid var(--border); background:var(--surface); color:var(--muted); white-space:nowrap; }
-.ir-badge.currency { color:#f0c040; border-color:#5a4510; background:#2a2000; }
-.ir-badge.item      { color:var(--accent2); border-color:#3a2060; background:#1a1030; }
-.ir-badge.special   { color:#e080f0; border-color:#5a2080; background:#200030; }
-.ir-badge.equipment { color:#60d080; border-color:#2a5a30; background:#102010; }
-.ir-badge.interactive { color:var(--green); border-color:#2a5a2a; background:#0e2410; }
-
-/* item editor (inline form) */
-.ir-editor { border-top:1px solid var(--border); padding:14px 16px 16px; background:var(--surface); }
-.ir-editor-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px 16px; margin-bottom:12px; }
-@media(max-width:600px) { .ir-editor-grid { grid-template-columns:1fr; } }
-.ir-field label { display:block; font-size:11px; color:var(--muted); margin-bottom:5px; font-weight:600; }
-.ir-field input[type=text], .ir-field input[type=number], .ir-field select, .ir-field textarea {
-  width:100%; background:var(--surface2); border:1px solid var(--border); color:var(--text);
-  border-radius:8px; padding:6px 10px; font-size:13px;
-}
-.ir-field input:focus, .ir-field select:focus, .ir-field textarea:focus { outline:none; border-color:var(--accent); }
-.ir-field textarea { resize:vertical; min-height:60px; }
-.ir-field-row { display:flex; gap:12px; align-items:center; margin-bottom:10px; flex-wrap:wrap; }
-.ir-field-row label { font-size:13px; color:var(--text); cursor:pointer; display:flex; align-items:center; gap:6px; }
-.ir-actions { display:flex; gap:8px; align-items:center; margin-top:4px; }
-.btn-save-item { background:var(--accent); color:#fff; border:none; border-radius:8px; padding:6px 18px; font-size:13px; font-weight:600; cursor:pointer; }
-.btn-save-item:hover { background:var(--accent2); }
-.btn-cancel-item { background:none; color:var(--muted); border:1px solid var(--border); border-radius:8px; padding:6px 14px; font-size:13px; cursor:pointer; }
-.btn-cancel-item:hover { color:var(--text); border-color:var(--text); }
-
-/* new item editor (outside cards) */
-#item-editor { border:2px solid var(--accent); border-radius:12px; padding:16px 18px; margin-bottom:12px; background:var(--surface); }
-#item-editor h5 { font-size:13px; font-weight:700; color:var(--accent2); margin-bottom:14px; }
+.ir-tabs { display:flex; gap:0; border-bottom:1px solid var(--border); margin-bottom:16px; }
+.ir-tab { padding:7px 18px; font-size:13px; cursor:pointer; color:var(--muted); border-bottom:2px solid transparent; margin-bottom:-1px; }
+.ir-tab:hover { color:var(--text); }
+.ir-tab.active { color:var(--accent2); border-bottom-color:var(--accent); font-weight:600; }
+.ir-panel { display:none; }
+.ir-panel.active { display:block; }
+.ir-table { width:100%; border-collapse:collapse; font-size:13px; margin-bottom:16px; }
+.ir-table th { text-align:left; color:var(--muted); font-size:11px; font-weight:700; letter-spacing:.5px; padding:6px 10px; border-bottom:1px solid var(--border); }
+.ir-table td { padding:8px 10px; border-bottom:1px solid var(--border); }
+.ir-table tr:last-child td { border-bottom:none; }
+.ir-table tr:hover td { background:var(--surface2); }
+.ir-tcode { font-family:monospace; font-size:11px; color:var(--muted); white-space:nowrap; }
+.ir-add-form { display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; padding:12px 14px; background:var(--surface2); border:1px solid var(--border); border-radius:10px; }
+.ir-field { display:flex; flex-direction:column; gap:4px; }
+.ir-field label { font-size:11px; color:var(--muted); font-weight:600; }
+.ir-field input[type=text], .ir-field input[type=number] { background:var(--surface); border:1px solid var(--border); color:var(--text); border-radius:7px; padding:6px 10px; font-size:13px; }
+.ir-field input:focus { outline:none; border-color:var(--accent); }
+.ir-field-check { display:flex; align-items:center; padding-bottom:2px; }
+.ir-field-check label { font-size:13px; color:var(--text); cursor:pointer; display:flex; align-items:center; gap:6px; }
+.btn-add-ir { background:var(--accent); color:#fff; border:none; border-radius:8px; padding:7px 16px; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap; align-self:flex-end; }
+.btn-add-ir:hover { background:var(--accent2); }
 
 /* sync table */
 .sync-table { display:flex; flex-direction:column; gap:0; border:1px solid var(--border); border-radius:10px; overflow:hidden; margin-bottom:14px; }
@@ -180,7 +167,19 @@
 .sync-note { font-size:11px; color:var(--muted); padding:10px 14px; }
 .sync-hint { font-size:12px; color:var(--muted); margin-top:4px; }
 .sync-hint code { font-family:monospace; font-size:11px; color:var(--accent2); }
-@media(max-width:700px) { .sync-row { grid-template-columns:1fr; } .sync-cmd,.sync-name,.sync-note { border-right:none; border-bottom:1px solid var(--border); } .sync-row:last-child .sync-note { border-bottom:none; } }
+
+.sync-direction { }
+.sync-dir-label { font-size:11px; font-weight:700; letter-spacing:.5px; padding:5px 10px 5px 12px; border-radius:6px 6px 0 0; display:inline-block; margin-bottom:0; }
+.dir-ui2bot  { background:#1a2a3a; color:#60b8ff; border:1px solid #2a4a6a; border-bottom:none; }
+.dir-bot2ui  { background:#1a3a2a; color:#60d890; border:1px solid #2a5a3a; border-bottom:none; }
+.dir-bonus   { background:#2a2a1a; color:#d0b840; border:1px solid #4a4a2a; border-bottom:none; }
+.sync-table  { border:1px solid var(--border); border-radius:0 8px 8px 8px; overflow:hidden; }
+.sync-row    { display:grid; grid-template-columns:220px 1fr; border-bottom:1px solid var(--border); }
+.sync-row:last-child { border-bottom:none; }
+.sync-name   { padding:10px 14px; border-right:1px solid var(--border); background:var(--surface2); display:flex; align-items:center; }
+.sync-note   { font-size:12px; color:var(--muted); padding:10px 14px; display:flex; align-items:center; }
+.cmd-code    { font-family:monospace; font-size:13px; font-weight:700; color:var(--accent2); background:none; border:none; padding:0; }
+@media(max-width:600px) { .sync-row { grid-template-columns:1fr; } .sync-name { border-right:none; border-bottom:1px solid var(--border); } }
 </style>
 {% endblock %}
 
@@ -230,45 +229,146 @@
 
   <!-- 道具注册表（可视化） -->
   <div class="section-card">
-    <h3>
-      <span>道具注册表</span>
-      <button class="btn-new-tpl" onclick="openItemEditor(null)">＋ 新建道具</button>
-    </h3>
+    <h3><span>道具注册表</span></h3>
 
-    <!-- 道具编辑器（默认隐藏）-->
-    <div id="item-editor" style="display:none;"></div>
+    <div class="ir-tabs" id="ir-tabs">
+      <div class="ir-tab active" data-tab="currency">货币</div>
+      <div class="ir-tab" data-tab="item">上载物品</div>
+      <div class="ir-tab" data-tab="interact">互动物品</div>
+    </div>
 
-    <!-- 道具列表 -->
-    <div id="item-cards"></div>
+    <!-- 货币 -->
+    <div class="ir-panel active" id="ir-panel-currency">
+      <table class="ir-table" id="ir-table-currency">
+        <thead><tr><th>编号</th><th>名称</th><th>描述</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="ir-add-form">
+        <div class="ir-field">
+          <label>名称</label>
+          <input type="text" id="ir-cur-name" placeholder="金币" style="width:120px">
+        </div>
+        <div class="ir-field">
+          <label>描述</label>
+          <input type="text" id="ir-cur-desc" placeholder="流通货币" style="width:180px">
+        </div>
+        <button type="button" class="btn-add-ir" onclick="irAddCurrency()">＋ 注册货币</button>
+      </div>
+    </div>
+
+    <!-- 上载物品 -->
+    <div class="ir-panel" id="ir-panel-item">
+      <table class="ir-table" id="ir-table-item">
+        <thead><tr><th>编号</th><th>名称</th><th>描述</th><th>次数</th><th>属性效果</th><th>二手</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="ir-add-form">
+        <div class="ir-field">
+          <label>名称</label>
+          <input type="text" id="ir-item-name" placeholder="急救包" style="width:120px">
+        </div>
+        <div class="ir-field">
+          <label>描述</label>
+          <input type="text" id="ir-item-desc" placeholder="紧急治疗用品" style="width:180px">
+        </div>
+        <div class="ir-field">
+          <label>次数（-1=无限）</label>
+          <input type="number" id="ir-item-uses" value="-1" style="width:80px">
+        </div>
+        <div class="ir-field">
+          <label>属性效果</label>
+          <input type="text" id="ir-item-attrs" placeholder="体力+20,好感度-10" style="width:160px">
+        </div>
+        <div class="ir-field ir-field-check">
+          <label><input type="checkbox" id="ir-item-resell"> 允许二手</label>
+        </div>
+        <button type="button" class="btn-add-ir" onclick="irAddItem('item')">＋ 上载物品</button>
+      </div>
+    </div>
+
+    <!-- 互动物品 -->
+    <div class="ir-panel" id="ir-panel-interact">
+      <table class="ir-table" id="ir-table-interact">
+        <thead><tr><th>编号</th><th>名称</th><th>描述</th><th>次数</th><th>属性效果</th><th>二手</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="ir-add-form">
+        <div class="ir-field">
+          <label>名称</label>
+          <input type="text" id="ir-int-name" placeholder="追踪器" style="width:120px">
+        </div>
+        <div class="ir-field">
+          <label>描述</label>
+          <input type="text" id="ir-int-desc" placeholder="追踪他人位置" style="width:180px">
+        </div>
+        <div class="ir-field">
+          <label>次数（-1=无限）</label>
+          <input type="number" id="ir-int-uses" value="1" style="width:80px">
+        </div>
+        <div class="ir-field">
+          <label>属性效果</label>
+          <input type="text" id="ir-int-attrs" placeholder="体力+20,好感度-10" style="width:160px">
+        </div>
+        <div class="ir-field ir-field-check">
+          <label><input type="checkbox" id="ir-int-resell"> 允许二手</label>
+        </div>
+        <button type="button" class="btn-add-ir" onclick="irAddItem('interact')">＋ 上载互动物品</button>
+      </div>
+    </div>
   </div>
 
   <!-- 机器人同步指令 -->
   <div class="section-card">
-    <h3>机器人同步指令 <span>在长日系统中执行，手动触发各类配置同步</span></h3>
-    <div class="sync-table">
-      <div class="sync-row">
-        <div class="sync-name">拉取奖励配置（道具表 + 模版 + 抽奖）</div>
-        <div class="sync-cmd"><code>GET /api/reward_config</code></div>
-        <div class="sync-note">机器人每次结戏时自动调用；或手动触发更新</div>
-      </div>
-      <div class="sync-row">
-        <div class="sync-name">拉取待处理道具</div>
-        <div class="sync-cmd"><code>GET /api/pending_items</code></div>
-        <div class="sync-note">返回 item_registry_pending 队列里的待发放道具</div>
-      </div>
-      <div class="sync-row">
-        <div class="sync-name">拉取全量游戏配置</div>
-        <div class="sync-cmd"><code>GET /api/config</code></div>
-        <div class="sync-note">包含所有游戏开关、群号、追踪器参数等</div>
-      </div>
-      <div class="sync-row">
-        <div class="sync-name">上报结戏奖励发放结果</div>
-        <div class="sync-cmd"><code>POST /api/reward_result</code></div>
-        <div class="sync-note">机器人结戏后推送，记录在「发放历史」里</div>
+    <h3>机器人同步指令 <span>在 QQ 群里对骰子发送，【管理员】权限</span></h3>
+
+    <div class="sync-direction">
+      <div class="sync-dir-label dir-ui2bot">UI → 机器人（在此页改完后，让机器人拉取最新配置）</div>
+      <div class="sync-table">
+        <div class="sync-row">
+          <div class="sync-name"><code class="cmd-code">。同步设置</code></div>
+          <div class="sync-note">从存档 UI 拉取并强制覆盖机器人的所有配置（道具表、奖励模版等全部更新）</div>
+        </div>
       </div>
     </div>
-    <div class="sync-hint">
-      所有 API 均需在请求头携带 <code>X-Archive-Token: &lt;你的Token&gt;</code>，Token 在「游戏配置」页查看。
+
+    <div class="sync-direction" style="margin-top:14px;">
+      <div class="sync-dir-label dir-bot2ui">机器人 → UI（机器人里改了东西，推到存档界面）</div>
+      <div class="sync-table">
+        <div class="sync-row">
+          <div class="sync-name"><code class="cmd-code">。全量同步</code></div>
+          <div class="sync-note">将机器人当前所有配置（设置项 + 道具注册表 + 结戏加成模版）全部推送到存档 UI，同时自动拉取并分配 pending 道具编号</div>
+        </div>
+        <div class="sync-row">
+          <div class="sync-name"><code class="cmd-code">。同步到服务端</code></div>
+          <div class="sync-note">只推送设置项（不含道具注册表和结戏模版），适合只改了设置参数的情况</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sync-direction" style="margin-top:14px;">
+      <div class="sync-dir-label dir-bonus">结戏加成模版（也可直接在机器人里编辑）</div>
+      <div class="sync-table">
+        <div class="sync-row">
+          <div class="sync-name"><code class="cmd-code">。结戏加成 模版列表</code></div>
+          <div class="sync-note">查看所有已有模版</div>
+        </div>
+        <div class="sync-row">
+          <div class="sync-name"><code class="cmd-code">。结戏加成 批量 模版名 [类型]</code></div>
+          <div class="sync-note">多行写入模版（类型：心意/官约/私约/电话/通用）；在此页的可视化构建器编辑后，机器人执行「。同步设置」即可同步</div>
+        </div>
+        <div class="sync-row">
+          <div class="sync-name"><code class="cmd-code">。结戏加成 开启/关闭 模版名</code></div>
+          <div class="sync-note">启用或禁用某个模版</div>
+        </div>
+        <div class="sync-row">
+          <div class="sync-name"><code class="cmd-code">。结戏加成 查看 模版名</code></div>
+          <div class="sync-note">查看某模版的详细规则</div>
+        </div>
+        <div class="sync-row">
+          <div class="sync-name"><code class="cmd-code">。设置 道具设置</code></div>
+          <div class="sync-note">查看/修改追踪器成功率、施加是否提醒、施加暴露概率等道具相关参数</div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -685,147 +785,102 @@ renderList();
 // ════════════════════════════════════════════════════════════════════════════
 // 道具注册表
 // ════════════════════════════════════════════════════════════════════════════
-var ITEM_TYPES = [
-  {val:'currency',  label:'货币'},
-  {val:'item',      label:'道具'},
-  {val:'special',   label:'特殊道具'},
-  {val:'equipment', label:'装备'},
-];
-var editingItemCode = null; // null=hidden, ''=new, 'CODE'=editing existing
 
-function irTypeLabel(t) {
-  var m = {currency:'货币', item:'道具', special:'特殊道具', equipment:'装备'};
-  return m[t] || t || '道具';
-}
-function irTypeCls(t) {
-  return {currency:'currency', item:'item', special:'special', equipment:'equipment'}[t] || 'item';
+document.querySelectorAll('#ir-tabs .ir-tab').forEach(function(tab) {
+  tab.addEventListener('click', function() {
+    document.querySelectorAll('#ir-tabs .ir-tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.ir-panel').forEach(function(p) { p.classList.remove('active'); });
+    tab.classList.add('active');
+    var panel = document.getElementById('ir-panel-' + tab.dataset.tab);
+    if (panel) panel.classList.add('active');
+  });
+});
+
+function irGenCode(prefix, pad) {
+  for (var d = 1; d < 10000; d++) {
+    var code = prefix + String(d).padStart(pad, '0');
+    if (!itemReg[code]) return code;
+  }
+  return null;
 }
 
-// ── 渲染列表 ────────────────────────────────────────────────────────────────
-function renderItemList() {
-  var el = document.getElementById('item-cards');
-  var entries = Object.entries(itemReg);
-  if (!entries.length) {
-    el.innerHTML = '<div class="empty-tpl">暂无道具，点击右上角「新建道具」创建。</div>';
+function irRenderAll() {
+  irRenderTable('currency');
+  irRenderTable('item');
+  irRenderTable('interact');
+  currencies = Object.entries(itemReg)
+    .filter(function(kv) { return kv[1].type === 'currency'; })
+    .map(function(kv) { return {code: kv[0], name: kv[1].name || kv[0]}; });
+}
+
+function irRenderTable(type) {
+  var tbody = document.querySelector('#ir-table-' + type + ' tbody');
+  if (!tbody) return;
+  var items = Object.values(itemReg).filter(function(r) { return r.type === type; });
+  if (!items.length) {
+    var cols = type === 'currency' ? 4 : 7;
+    tbody.innerHTML = '<tr><td colspan="' + cols + '" style="color:var(--muted);padding:12px;text-align:center;font-size:12px">暂无记录</td></tr>';
     return;
   }
-  el.innerHTML = '<div class="item-cards">'
-    + entries.map(function(kv) {
-        var code = kv[0], it = kv[1];
-        var badges = '<span class="ir-badge '+irTypeCls(it.type)+'">'+irTypeLabel(it.type)+'</span>';
-        if (it.interactive) badges += ' <span class="ir-badge interactive">上载+互动</span>';
-        else badges += ' <span class="ir-badge">仅上载</span>';
-        if (it.stackable) badges += ' <span class="ir-badge">可叠加×'+(it.max_stack||'∞')+'</span>';
-        if (it.draw_weight) badges += ' <span class="ir-badge">抽取权重 '+it.draw_weight+'</span>';
-        return '<div class="ir-card" id="irc-'+esc(code)+'">'
-          +'<div class="ir-card-head">'
-          +'<span class="ir-code">'+esc(code)+'</span>'
-          +'<span class="ir-name">'+esc(it.name||code)+'</span>'
-          + badges
-          +'<button class="btn-edit-tpl" onclick="openItemEditor(\''+esc(code)+'\')">编辑</button>'
-          +'<button class="btn-del-tpl" onclick="deleteItem(\''+esc(code)+'\')">删除</button>'
-          +'</div>'
-          +(it.description ? '<div style="padding:0 14px 10px;font-size:12px;color:var(--muted)">'+esc(it.description)+'</div>' : '')
-          +(editingItemCode === code ? '<div class="ir-editor">'+renderItemForm(code, it)+'</div>' : '')
-          +'</div>';
-      }).join('')
-    +'</div>';
-}
-
-// ── 编辑器渲染 ──────────────────────────────────────────────────────────────
-function renderItemForm(code, it) {
-  it = it || {};
-  var typeOpts = ITEM_TYPES.map(function(t) {
-    return '<option value="'+t.val+'"'+(it.type===t.val?' selected':'')+'>'+t.label+'</option>';
-  }).join('');
-  return '<div class="ir-editor-grid">'
-    +'<div class="ir-field"><label>道具码（大写，唯一）</label>'
-    +'<input type="text" id="ir-code" value="'+esc(code)+'" placeholder="如 TJ00" oninput="this.value=this.value.toUpperCase()"'+(code?'':'')+' style="font-family:monospace;font-weight:700"></div>'
-    +'<div class="ir-field"><label>显示名称</label>'
-    +'<input type="text" id="ir-name" value="'+esc(it.name||'')+'" placeholder="如 追踪器"></div>'
-    +'<div class="ir-field"><label>类型</label>'
-    +'<select id="ir-type">'+typeOpts+'</select></div>'
-    +'<div class="ir-field"><label>上载模式</label>'
-    +'<select id="ir-mode">'
-    +'<option value="0"'+(it.interactive?'':' selected')+'>上载（直接加入背包）</option>'
-    +'<option value="1"'+(it.interactive?' selected':'')+'>上载+互动（可施加给他人）</option>'
-    +'</select></div>'
-    +'<div class="ir-field"><label>叠加上限（0=不限）</label>'
-    +'<input type="number" id="ir-maxstack" value="'+esc(it.max_stack||0)+'" min="0" placeholder="0=不限"></div>'
-    +'<div class="ir-field"><label>抽取权重（0=不参与抽取池）</label>'
-    +'<input type="number" id="ir-weight" value="'+esc(it.draw_weight||0)+'" min="0" placeholder="0"></div>'
-    +'</div>'
-    +'<div class="ir-field" style="margin-bottom:12px"><label>描述（可选）</label>'
-    +'<textarea id="ir-desc" placeholder="道具说明…">'+esc(it.description||'')+'</textarea></div>'
-    +'<div class="ir-actions">'
-    +'<button class="btn-save-item" onclick="saveItem(\''+esc(code)+'\')">保存道具</button>'
-    +'<button class="btn-cancel-item" onclick="closeItemEditor()">取消</button>'
-    +'<span class="save-status" id="ir-status"></span>'
-    +'</div>';
-}
-
-// ── 动作 ────────────────────────────────────────────────────────────────────
-function openItemEditor(code) {
-  // code=null → 新建（在顶部面板），code='TJ00' → 编辑已有（内嵌在card）
-  editingItemCode = (code === null) ? '' : code;
-  if (code === null) {
-    var el = document.getElementById('item-editor');
-    el.style.display = '';
-    el.innerHTML = '<h5>＋ 新建道具</h5>' + renderItemForm('', {});
-    el.scrollIntoView({behavior:'smooth', block:'start'});
-  }
-  renderItemList();
-}
-
-function closeItemEditor() {
-  editingItemCode = null;
-  document.getElementById('item-editor').style.display = 'none';
-  renderItemList();
-}
-
-function saveItem(oldCode) {
-  var newCode = (document.getElementById('ir-code').value || '').trim().toUpperCase();
-  if (!newCode) { irStatus('请填写道具码', true); return; }
-  var name      = document.getElementById('ir-name').value.trim();
-  var type      = document.getElementById('ir-type').value;
-  var mode      = document.getElementById('ir-mode').value;
-  var maxstack  = parseInt(document.getElementById('ir-maxstack').value) || 0;
-  var weight    = parseFloat(document.getElementById('ir-weight').value) || 0;
-  var desc      = document.getElementById('ir-desc').value.trim();
-
-  // remove old key if code changed
-  if (oldCode && oldCode !== newCode) delete itemReg[oldCode];
-
-  itemReg[newCode] = {
-    code:        newCode,
-    name:        name || newCode,
-    type:        type,
-    interactive: mode === '1',
-    stackable:   maxstack !== 1,
-    max_stack:   maxstack || null,
-    draw_weight: weight || null,
-    description: desc || null,
-  };
-  // clean nulls
-  Object.keys(itemReg[newCode]).forEach(function(k) {
-    if (itemReg[newCode][k] === null) delete itemReg[newCode][k];
-  });
-
-  persistItems().then(function(ok) {
-    if (ok) {
-      // refresh currencies for template builder
-      currencies = Object.entries(itemReg)
-        .filter(function(kv){ return kv[1].type === 'currency'; })
-        .map(function(kv){ return {code: kv[0], name: kv[1].name || kv[0]}; });
-      closeItemEditor();
+  tbody.innerHTML = items.map(function(r) {
+    if (type === 'currency') {
+      return '<tr>'
+        + '<td class="ir-tcode">' + esc(r.code) + '</td>'
+        + '<td><b>' + esc(r.name) + '</b></td>'
+        + '<td style="color:var(--muted)">' + esc(r.desc || '') + '</td>'
+        + '<td><button class="btn-del" onclick="irDel(\'' + esc(r.code) + '\')">删除</button></td>'
+        + '</tr>';
     }
-  });
+    return '<tr>'
+      + '<td class="ir-tcode">' + esc(r.code) + '</td>'
+      + '<td><b>' + esc(r.name) + '</b></td>'
+      + '<td style="color:var(--muted)">' + esc(r.desc || '') + '</td>'
+      + '<td style="color:var(--muted)">' + (r.maxUses === -1 ? '无限' : (r.maxUses || '—')) + '</td>'
+      + '<td style="color:var(--muted);font-size:11px">' + esc(r.attrs || '—') + '</td>'
+      + '<td>' + (r.canResell ? '✓' : '—') + '</td>'
+      + '<td><button class="btn-del" onclick="irDel(\'' + esc(r.code) + '\')">删除</button></td>'
+      + '</tr>';
+  }).join('');
 }
 
-function deleteItem(code) {
-  if (!confirm('删除道具「'+code+'」？')) return;
+function irAddCurrency() {
+  var name = document.getElementById('ir-cur-name').value.trim();
+  var desc = document.getElementById('ir-cur-desc').value.trim() || '暂无描述';
+  if (!name) { alert('请填写货币名称'); return; }
+  if (Object.values(itemReg).some(function(r) { return r.name === name; })) { alert('「' + name + '」已存在'); return; }
+  var code = irGenCode('CUR_', 3);
+  if (!code) { alert('编号空间已满'); return; }
+  itemReg[code] = { code: code, name: name, desc: desc, type: 'currency' };
+  document.getElementById('ir-cur-name').value = '';
+  document.getElementById('ir-cur-desc').value = '';
+  persistItems().then(function(ok) { if (ok) irRenderAll(); });
+}
+
+function irAddItem(type) {
+  var prefix = type === 'interact' ? 'int' : 'item';
+  var name   = document.getElementById('ir-' + prefix + '-name').value.trim();
+  var desc   = document.getElementById('ir-' + prefix + '-desc').value.trim() || '暂无描述';
+  var uses   = parseInt(document.getElementById('ir-' + prefix + '-uses').value);
+  var attrs  = document.getElementById('ir-' + prefix + '-attrs').value.trim();
+  var resell = document.getElementById('ir-' + prefix + '-resell').checked;
+  if (!name) { alert('请填写名称'); return; }
+  if (isNaN(uses)) { alert('次数必须是数字'); return; }
+  if (Object.values(itemReg).some(function(r) { return r.name === name; })) { alert('「' + name + '」已存在'); return; }
+  var codePrefix = type === 'interact' ? 'INT_' : 'ITM_';
+  var code = irGenCode(codePrefix, 3);
+  if (!code) { alert('编号空间已满'); return; }
+  itemReg[code] = { code: code, name: name, desc: desc, type: type, maxUses: uses, attrs: attrs || null, canResell: resell };
+  document.getElementById('ir-' + prefix + '-name').value = '';
+  document.getElementById('ir-' + prefix + '-desc').value = '';
+  document.getElementById('ir-' + prefix + '-attrs').value = '';
+  document.getElementById('ir-' + prefix + '-resell').checked = false;
+  persistItems().then(function(ok) { if (ok) irRenderAll(); });
+}
+
+function irDel(code) {
+  if (!confirm('删除「' + code + '」？')) return;
   delete itemReg[code];
-  persistItems().then(function(ok) { if (ok) renderItemList(); });
+  persistItems().then(function(ok) { if (ok) irRenderAll(); });
 }
 
 async function persistItems() {
@@ -835,19 +890,12 @@ async function persistItems() {
   try {
     var resp = await fetch(SAVE_URL, {method:'POST', headers:{'X-Fetch':'1'}, body:fd});
     var j = await resp.json();
-    if (!j.ok) { irStatus('保存失败', true); return false; }
+    if (!j.ok) { alert('保存失败'); return false; }
     return true;
-  } catch(e) { irStatus('网络错误', true); return false; }
-}
-
-function irStatus(msg, isErr) {
-  var el = document.getElementById('ir-status');
-  if (!el) return;
-  el.textContent = msg;
-  el.className = 'save-status' + (isErr ? ' err' : '');
+  } catch(e) { alert('网络错误'); return false; }
 }
 
 // ── 初始化（道具） ──────────────────────────────────────────────────────────
-renderItemList();
+irRenderAll();
 </script>
 {% endblock %}

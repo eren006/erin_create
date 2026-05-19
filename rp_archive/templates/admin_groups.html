@@ -38,18 +38,19 @@
 .set-name { font-size:15px; font-weight:600; color:var(--accent2); flex:1; }
 .set-count { font-size:12px; color:var(--muted); }
 
-/* 添加群号表单 */
-.add-row {
-  display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+/* 批量添加 */
+.bulk-add-row {
+  display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap;
   padding:12px 18px; border-bottom:1px solid var(--border);
 }
-.add-row input {
+.bulk-textarea {
+  flex:1; min-width:200px;
   background:var(--surface2); border:1px solid var(--border);
-  color:var(--text); border-radius:8px; padding:6px 10px; font-size:13px;
+  color:var(--text); border-radius:8px; padding:7px 10px;
+  font-size:13px; font-family:monospace; resize:vertical;
+  line-height:1.6;
 }
-.add-row input[name="group_id"] { width:140px; }
-.add-row input[name="name"]     { width:150px; }
-.add-row input:focus { outline:none; border-color:var(--accent); }
+.bulk-textarea:focus { outline:none; border-color:var(--accent); }
 
 /* 群号列表 */
 .gid-list { padding:10px 18px; }
@@ -101,7 +102,9 @@
     <a href="{{ url_for('admin_shows') }}">季管理</a>
   </div>
 
-  {% if msg == 'added' %}
+  {% if msg and msg.startswith('bulk_added_') %}
+  <div class="banner banner-ok">✅ 已批量添加 {{ msg.split('_')[-1] }} 个群号（重复的已跳过）。</div>
+  {% elif msg == 'added' %}
   <div class="banner banner-ok">✅ 群号已添加。</div>
   {% elif msg == 'deleted' %}
   <div class="banner banner-ok">🗑 群号已移除。</div>
@@ -137,14 +140,13 @@
       <button class="btn-del-set" onclick="deleteSet(this, '{{ set_name|e }}')">删除整组</button>
     </div>
 
-    <!-- 添加群号到本组 -->
-    <div class="add-row">
+    <!-- 批量添加群号 -->
+    <div class="bulk-add-row">
       <form method="post" style="display:contents">
-        <input type="hidden" name="action" value="add">
+        <input type="hidden" name="action" value="bulk_add">
         <input type="hidden" name="set_name" value="{{ set_name }}">
-        <input type="text" name="group_id" placeholder="群号（必填）" required autocomplete="off">
-        <input type="text" name="name" placeholder="备注（可选）" autocomplete="off">
-        <button type="submit" class="btn-add" style="padding:6px 12px;font-size:12px">＋ 添加</button>
+        <textarea name="group_ids" class="bulk-textarea" placeholder="每行一个群号，可直接粘贴一批&#10;123456789&#10;987654321&#10;..." rows="3" autocomplete="off" required></textarea>
+        <button type="submit" class="btn-add" style="align-self:flex-end;padding:6px 14px;font-size:12px;white-space:nowrap">＋ 批量添加</button>
       </form>
     </div>
 

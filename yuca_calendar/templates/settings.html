@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block title %}设置 · 语擦日历{% endblock %}
+{% block head %}
+<style>
+.settings-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px 28px; max-width: 580px; margin-bottom: 20px; }
+.settings-title { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 18px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.share-url-box { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; font-size: 12px; color: var(--muted); font-family: monospace; word-break: break-all; margin: 10px 0; }
+.share-url-box a { color: var(--accent); }
+.share-toggle { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; }
+.share-toggle-label { font-size: 13px; color: var(--text); }
+.share-state { font-size: 12px; color: var(--muted); }
+.share-state.on { color: var(--green); }
+</style>
+{% endblock %}
+{% block body %}
+<div class="page">
+  <h1 class="page-title">设置</h1>
+
+  {% if errors %}
+  <div class="form-errors">{% for e in errors %}<div class="form-error">⚠ {{ e }}</div>{% endfor %}</div>
+  {% endif %}
+  {% if success %}
+  <div class="form-success" style="margin-bottom:16px">✅ {{ success }}</div>
+  {% endif %}
+
+  <!-- 个人信息 -->
+  <div class="settings-card">
+    <div class="settings-title">👤 个人信息</div>
+    <form method="post">
+      <input type="hidden" name="action" value="profile">
+      <div class="form-group">
+        <label class="form-label">显示名</label>
+        <input class="form-input" type="text" name="display_name"
+               value="{{ user.display_name or user.username }}" placeholder="日历上显示的名字">
+        <div class="form-hint">可以是任意昵称，不影响登录用户名</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">用户名（不可修改）</label>
+        <input class="form-input" type="text" value="{{ user.username }}" disabled>
+      </div>
+      <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px">修改密码（不修改则留空）</div>
+        <div class="grid-2">
+          <div class="form-group">
+            <label class="form-label">当前密码 <span class="req">*</span></label>
+            <input class="form-input" type="password" name="current_password"
+                   placeholder="需验证当前密码" autocomplete="current-password">
+          </div>
+          <div class="form-group">
+            <label class="form-label">新密码</label>
+            <input class="form-input" type="password" name="new_password"
+                   placeholder="留空则不修改" autocomplete="new-password">
+          </div>
+        </div>
+      </div>
+      <button class="btn btn-primary" type="submit">保存修改</button>
+    </form>
+  </div>
+
+  <!-- 双开模式 -->
+  <div class="settings-card">
+    <div class="settings-title">⚡ 双开模式</div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:14px">
+      开启后，时间重叠的档期不再显示撞档警告，录入时也不提醒。适合同时跑多个档期的情况。
+    </p>
+    <div class="share-toggle">
+      <div>
+        <div class="share-toggle-label">双开模式</div>
+        <div class="share-state {% if user.dual_mode %}on{% endif %}">
+          {{ '已开启 · 撞档提醒已关闭' if user.dual_mode else '已关闭 · 正常检测撞档' }}
+        </div>
+      </div>
+      <form method="post">
+        <input type="hidden" name="action" value="dual_mode_toggle">
+        <button class="btn {% if user.dual_mode %}btn-warn{% else %}btn-primary{% endif %} btn-sm" type="submit">
+          {{ '关闭双开' if user.dual_mode else '开启双开' }}
+        </button>
+      </form>
+    </div>
+    {% if user.dual_mode %}
+    <div style="font-size:12px;color:var(--warn);margin-top:10px;padding:8px 12px;background:#2a1800;border:1px solid #5a3200;border-radius:8px">
+      ⚡ 双开模式已开启——日历中不会显示撞档标记，录入档期时也不会提醒时间冲突。
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- 公开分享 -->
+  <div class="settings-card">
+    <div class="settings-title">🔗 公开分享链接</div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:14px">
+      开启后，任何人都可以通过分享链接查看你的档期日历（只读，不需要登录）。
+    </p>
+    <div class="share-toggle">
+      <div>
+        <div class="share-toggle-label">分享链接</div>
+        <div class="share-state {% if user.share_enabled %}on{% endif %}">
+          {{ '已开启' if user.share_enabled else '已关闭' }}
+        </div>
+      </div>
+      <form method="post">
+        <input type="hidden" name="action" value="share_toggle">
+        <button class="btn {% if user.share_enabled %}btn-warn{% else %}btn-primary{% endif %} btn-sm" type="submit">
+          {{ '关闭分享' if user.share_enabled else '开启分享' }}
+        </button>
+      </form>
+    </div>
+
+    {% if user.share_enabled and user.share_token %}
+    <div class="share-url-box">
+      <a href="{{ url_for('public_view', token=user.share_token, _external=True) }}" target="_blank">
+        {{ request.host_url }}u/{{ user.share_token }}
+      </a>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-ghost btn-sm"
+              onclick="copyText('{{ request.host_url }}u/{{ user.share_token }}', this)">
+        复制链接
+      </button>
+      <form method="post">
+        <input type="hidden" name="action" value="share_regen">
+        <button class="btn btn-ghost btn-sm" type="submit"
+                onclick="return confirm('重新生成后旧链接将失效，确定吗？')">重新生成链接</button>
+      </form>
+    </div>
+    {% endif %}
+
+    <!-- 分享内容选择 -->
+    {% set sv = user.share_view if user.share_view else 'calendar' %}
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+      <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:10px">分享内容</div>
+      <form method="post" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input type="hidden" name="action" value="share_view_set">
+        <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer">
+          <input type="radio" name="share_view" value="calendar" {% if sv == 'calendar' %}checked{% endif %}>
+          本月日历
+        </label>
+        <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer">
+          <input type="radio" name="share_view" value="stats" {% if sv == 'stats' %}checked{% endif %}>
+          年度总结
+        </label>
+        <button class="btn btn-ghost btn-sm" type="submit">保存</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- 主题 -->
+  <div class="settings-card">
+    <div class="settings-title">🎨 外观主题</div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:14px">
+      点击右下角的 🎨 按钮可以快速切换，选择后自动同步到账号。
+    </p>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      {% set themes = [
+        ('default',           '#8b7cf6', '默认'),
+        ('spring',            '#f472b6', '春·樱'),
+        ('summer',            '#06b6d4', '夏·海'),
+        ('autumn',            '#f59e0b', '秋·枫'),
+        ('winter',            '#7dd3fc', '冬·冰'),
+        ('monet',             '#a8d8ea', '莫奈'),
+        ('vangogh',           '#e8b840', '梵高·星夜'),
+        ('picasso',           '#e06840', '毕加索·玫瑰'),
+        ('davinci',           '#c8882a', '达芬奇·晕涂'),
+        ('gukaizhi',          '#c03830', '顾恺之·丹青'),
+        ('michelangelo',      '#c8a050', '米开朗基罗·西斯廷'),
+        ('warhol',            '#ffd700', '沃霍尔·波普'),
+        ('spring-day',        '#db2777', '春·樱 ☀'),
+        ('summer-day',        '#0284c7', '夏·海 ☀'),
+        ('autumn-day',        '#b45309', '秋·枫 ☀'),
+        ('winter-day',        '#1d6fa0', '冬·冰 ☀'),
+        ('monet-day',         '#4a8fa8', '莫奈 ☀'),
+        ('vangogh-day',       '#1a4a9a', '梵高 ☀'),
+        ('picasso-day',       '#c04828', '毕加索 ☀'),
+        ('davinci-day',       '#8a3c10', '达芬奇 ☀'),
+        ('gukaizhi-day',      '#9a2018', '顾恺之 ☀'),
+        ('michelangelo-day',  '#7a3e18', '米开朗基罗 ☀'),
+        ('warhol-day',        '#cc0000', '沃霍尔 ☀'),
+      ] %}
+      {% for tid, color, label in themes %}
+      <button class="btn btn-ghost btn-sm" onclick="setTheme('{{ tid }}')"
+              style="display:flex;align-items:center;gap:6px">
+        <span style="width:12px;height:12px;border-radius:50%;background:{{ color }};flex-shrink:0;display:inline-block"></span>
+        {{ label }}
+      </button>
+      {% endfor %}
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:10px">当前：<span id="cur-theme-label">—</span></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+// Show current theme name
+(function() {
+  const t = {{ user_theme | tojson }} || localStorage.getItem('yuca_theme') || 'default';
+  const labels = {
+    'default':'默认','spring':'春·樱','summer':'夏·海','autumn':'秋·枫','winter':'冬·冰',
+    'monet':'莫奈','vangogh':'梵高·星夜','picasso':'毕加索·玫瑰',
+    'davinci':'达芬奇·晕涂','gukaizhi':'顾恺之·丹青','michelangelo':'米开朗基罗·西斯廷','warhol':'沃霍尔·波普',
+    'spring-day':'春·樱 ☀','summer-day':'夏·海 ☀','autumn-day':'秋·枫 ☀','winter-day':'冬·冰 ☀',
+    'monet-day':'莫奈 ☀','vangogh-day':'梵高 ☀','picasso-day':'毕加索 ☀',
+    'davinci-day':'达芬奇 ☀','gukaizhi-day':'顾恺之 ☀','michelangelo-day':'米开朗基罗 ☀','warhol-day':'沃霍尔 ☀',
+  };
+  const el = document.getElementById('cur-theme-label');
+  if (el) el.textContent = labels[t] || t;
+})();
+</script>
+{% endblock %}

@@ -74,10 +74,10 @@ a{color:var(--accent);text-decoration:none;}a:hover{color:var(--accent2);}
 
   <!-- 搜索 -->
   <div class="search-card">
-    <h3>按 QQ 号查找</h3>
+    <h3>按 QQ 号或角色名查找</h3>
     <form method="get" action="{{ url_for('superadmin_players') }}">
       <div class="search-row">
-        <input type="text" name="qq" value="{{ qq }}" placeholder="输入 QQ 号…" autocomplete="off">
+        <input type="text" name="qq" value="{{ qq }}" placeholder="输入 QQ 号或角色名…" autocomplete="off">
         <button type="submit">查找</button>
       </div>
     </form>
@@ -96,8 +96,27 @@ a{color:var(--accent);text-decoration:none;}a:hover{color:var(--accent2);}
         {% if summary.total_replies %}
         <div class="s-item"><b>{{ (summary.total_words // summary.total_replies) }}</b>均字/回</div>
         {% endif %}
+        <div class="s-item"><b>{{ fmt_seconds(summary.global_avg_reply) if summary.global_avg_reply else '未知' }}</b>平均回复时间</div>
       </div>
     </div>
+
+    <!-- 黑名单记录 -->
+    {% if bl_records %}
+    <div style="background:#1a0a0a;border:1px solid var(--red);border-radius:12px;padding:16px 20px;margin-bottom:20px;">
+      <div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:12px;">⚠ 黑名单记录（{{ bl_records|length }} 条）</div>
+      {% for r in bl_records %}
+      <div style="border-top:{% if loop.first %}none{% else %}1px solid rgba(248,113,113,.2){% endif %};padding:{% if loop.first %}0 0 10px{% else %}10px 0{% endif %};">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:{% if r.content %}6{% else %}0{% endif %}px;">
+          <span style="font-size:11px;background:rgba(248,113,113,.15);border:1px solid var(--red);color:var(--red);border-radius:6px;padding:1px 8px;">{{ r.tenant_display or r.tenant_username }}</span>
+          {% for tag in (r.tags or '').split(',') %}{% set tag=tag.strip() %}{% if tag %}<span style="font-size:11px;background:var(--surface2);border:1px solid var(--border);color:var(--muted);border-radius:20px;padding:1px 8px;">{{ tag }}</span>{% endif %}{% endfor %}
+          {% if r.role_name %}<span style="color:var(--accent2);font-size:12px;font-weight:600;">{{ r.role_name }}</span>{% endif %}
+          <span style="margin-left:auto;font-size:11px;color:var(--muted);">{{ r.added_by or '' }}{% if r.added_by %} · {% endif %}{{ ts_to_str(r.created_at) }}</span>
+        </div>
+        {% if r.content %}<div style="font-size:13px;color:var(--text);line-height:1.7;white-space:pre-wrap;">{{ r.content }}</div>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
 
     <!-- 各季明细 -->
     <div style="overflow-x:auto;">
@@ -113,7 +132,9 @@ a{color:var(--accent);text-decoration:none;}a:hover{color:var(--accent2);}
           <tr>
             <td><span class="tenant-chip">{{ r.tenant_display or r.tenant_username }}</span></td>
             <td>{{ r.arc_name }}</td>
-            <td style="font-weight:600;color:var(--accent2);">{{ r.role_name or '—' }}</td>
+            <td style="font-weight:600;color:var(--accent2);">{{ r.role_name or '—' }}
+              {% if r.is_placeholder %}<span style="font-size:10px;color:var(--red);font-weight:400;margin-left:4px;" title="QQ 未同步，当前以角色名代替存储">⚠ QQ未同步</span>{% endif %}
+            </td>
             <td>{{ r.show_name or '—' }}</td>
             <td>{{ r.sessions_count }}</td>
             <td>{{ r.total_replies }}</td>

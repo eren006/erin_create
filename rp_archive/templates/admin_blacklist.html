@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}长日存档 · 黑名单{% endblock %}
+
+{% block head %}
+<style>
+.bl-form {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 20px 22px; margin-bottom: 28px;
+}
+.bl-form-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;
+}
+@media(max-width:600px) { .bl-form-grid { grid-template-columns: 1fr; } }
+.bl-form label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+.bl-form input, .bl-form textarea {
+  width: 100%; background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text); border-radius: 8px; padding: 8px 12px; font-size: 13px; font-family: inherit;
+}
+.bl-form input:focus, .bl-form textarea:focus { outline: none; border-color: var(--accent); }
+.bl-form textarea { resize: vertical; min-height: 68px; }
+
+.bl-submit {
+  background: var(--accent); color: #fff; border: none; border-radius: 8px;
+  padding: 9px 20px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;
+}
+.bl-submit:hover { background: var(--accent2); }
+
+.bl-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.bl-table th {
+  background: var(--surface2); color: var(--muted);
+  font-size: 11px; font-weight: 700; letter-spacing: .5px;
+  padding: 9px 14px; text-align: left; border-bottom: 1px solid var(--border);
+}
+.bl-table td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.bl-table tr:last-child td { border-bottom: none; }
+.bl-table tr:hover td { background: var(--surface2); }
+
+.bl-tag {
+  display: inline-block; padding: 2px 8px; border-radius: 20px;
+  font-size: 11px; font-weight: 600; margin: 2px 2px 2px 0;
+  background: var(--surface2); border: 1px solid var(--border); color: var(--muted);
+}
+.bl-del {
+  background: none; border: 1px solid var(--border); color: var(--red);
+  border-radius: 6px; padding: 3px 10px; font-size: 11px; cursor: pointer; font-family: inherit;
+}
+.bl-del:hover { background: rgba(248,113,113,.1); border-color: var(--red); }
+.bl-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="page">
+  <div class="page-title">黑名单</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:20px;">跨团共享记录 · 仅限当前账号可见</div>
+
+  {% if error %}<div style="color:var(--red);font-size:13px;margin-bottom:14px;">{{ error }}</div>{% endif %}
+  {% if success %}<div style="color:var(--green);font-size:13px;margin-bottom:14px;">✓ {{ success }}</div>{% endif %}
+
+  <!-- 添加表单 -->
+  <div class="bl-form">
+    <div style="font-size:13px;font-weight:700;color:var(--muted);margin-bottom:14px;letter-spacing:.5px;">添加记录</div>
+    <form method="post">
+      <input type="hidden" name="action" value="add">
+      <div class="bl-form-grid">
+        <div>
+          <label>QQ 号</label>
+          <input type="text" name="qq" placeholder="例：123456789">
+        </div>
+        <div>
+          <label>角色名（可选）</label>
+          <input type="text" name="role_name" placeholder="在团内使用的角色名">
+        </div>
+        <div>
+          <label>标签（逗号分隔）</label>
+          <input type="text" name="tags" placeholder="例：跑团、刷分、骚扰">
+        </div>
+        <div>
+          <label>记录人（可选）</label>
+          <input type="text" name="added_by" placeholder="你的角色名或团名">
+        </div>
+      </div>
+      <div style="margin-bottom:14px;">
+        <label>发生了什么</label>
+        <textarea name="content" placeholder="简述事件经过…"></textarea>
+      </div>
+      <button class="bl-submit" type="submit">添加到黑名单</button>
+    </form>
+  </div>
+
+  <!-- 列表 -->
+  {% if records %}
+  <div class="bl-wrap">
+    <table class="bl-table">
+      <thead>
+        <tr>
+          <th style="width:120px;">QQ / 角色名</th>
+          <th>事件</th>
+          <th style="width:120px;">标签</th>
+          <th style="width:120px;">记录人 / 时间</th>
+          <th style="width:60px;"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in records %}
+        <tr>
+          <td>
+            {% if r.qq %}<div style="font-family:monospace;font-size:12px;color:var(--accent);">{{ r.qq }}</div>{% endif %}
+            {% if r.role_name %}<div style="color:var(--accent2);font-weight:600;">{{ r.role_name }}</div>{% endif %}
+          </td>
+          <td style="color:var(--text);line-height:1.7;white-space:pre-wrap;">{{ r.content or '—' }}</td>
+          <td>
+            {% for tag in (r.tags or '').split(',') %}
+              {% set tag = tag.strip() %}
+              {% if tag %}<span class="bl-tag">{{ tag }}</span>{% endif %}
+            {% endfor %}
+          </td>
+          <td style="font-size:12px;color:var(--muted);">
+            {% if r.added_by %}<div>{{ r.added_by }}</div>{% endif %}
+            <div>{{ ts_to_str(r.created_at) }}</div>
+          </td>
+          <td>
+            <form method="post" onsubmit="return confirm('确认删除？')">
+              <input type="hidden" name="action" value="delete">
+              <input type="hidden" name="id" value="{{ r.id }}">
+              <button class="bl-del" type="submit">删除</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">暂无黑名单记录。</div>
+  {% endif %}
+</div>
+{% endblock %}

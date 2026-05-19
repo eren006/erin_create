@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}CP 档案 · 语擦日历{% endblock %}
+{% block body %}
+<div class="page">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+    <h1 class="page-title" style="margin-bottom:0">CP 档案</h1>
+    <a href="{{ url_for('partner_add') }}" class="btn btn-primary">＋ 新增档案</a>
+  </div>
+
+  {% if not partners %}
+  <div class="empty">
+    <div style="font-size:32px;margin-bottom:12px">💑</div>
+    <div>还没有 CP 档案</div>
+    <div style="margin-top:12px"><a href="{{ url_for('partner_add') }}" class="btn btn-primary">＋ 新增第一个</a></div>
+  </div>
+  {% else %}
+  <div class="grid-2">
+  {% for p in partners %}
+  <div class="card" style="position:relative">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px">
+      <div>
+        <span style="font-size:16px;font-weight:600;color:var(--text)">{{ p.nickname }}</span>
+        {% if p.qq %}<code style="font-size:11px;color:var(--muted);margin-left:8px;background:var(--surface2);padding:1px 6px;border-radius:4px">{{ p.qq }}</code>{% endif %}
+      </div>
+      <div style="font-size:16px;white-space:nowrap;letter-spacing:2px">
+        {% for i in range(5) %}{% if i < p.rating %}★{% else %}☆{% endif %}{% endfor %}
+      </div>
+    </div>
+
+    {% if p.tags_list %}
+    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px">
+      {% for tag in p.tags_list %}
+      <span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;background:var(--surface2);border:1px solid var(--border);color:var(--muted)">{{ tag }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if p.linked_schedules %}
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px">
+      关联档期：{% for s in p.linked_schedules %}<span style="color:{{ show_color(s) }};margin-right:6px">{{ s.show_name }}</span>{% endfor %}
+    </div>
+    {% endif %}
+
+    {% if p.notes %}
+    <div style="font-size:13px;color:var(--muted);margin-bottom:10px">{{ p.notes[:50] }}{% if p.notes|length > 50 %}…{% endif %}</div>
+    {% endif %}
+
+    <div style="display:flex;gap:8px;margin-top:6px">
+      <a href="{{ url_for('partner_edit', pid=p.id) }}" class="btn btn-ghost btn-sm">编辑</a>
+      <form method="post" action="{{ url_for('partner_delete', pid=p.id) }}" onsubmit="return confirm('确认删除「{{ p.nickname }}」的档案？')">
+        <button class="btn btn-danger btn-sm" type="submit">删除</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

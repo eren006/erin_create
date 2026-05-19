@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}注册 · 语擦日历{% endblock %}
+{% block body %}
+<style>
+.login-wrap {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.login-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 16px; padding: 36px 32px; width: 100%; max-width: 380px;
+}
+.login-logo  { text-align: center; font-size: 32px; margin-bottom: 8px; }
+.login-title { text-align: center; font-size: 20px; font-weight: 600; color: var(--accent2); margin-bottom: 4px; }
+.login-sub   { text-align: center; color: var(--muted); font-size: 12px; margin-bottom: 28px; }
+.login-footer { text-align: center; margin-top: 20px; }
+.login-footer a { font-size: 12px; color: var(--muted); }
+.login-footer a:hover { color: var(--accent); }
+</style>
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="login-logo">🎟</div>
+    <div class="login-title">邀请码注册</div>
+    <div class="login-sub">需要有效的邀请码才能注册</div>
+
+    {% if errors %}
+    <div class="form-errors">
+      {% for e in errors %}<div class="form-error">⚠ {{ e }}</div>{% endfor %}
+    </div>
+    {% endif %}
+
+    <form method="post">
+      <div class="form-group">
+        <label class="form-label">邀请码 <span class="req">*</span></label>
+        <input class="form-input" type="text" name="code"
+               value="{{ form.get('code','') }}"
+               placeholder="向管理员索取" autocomplete="off" required autofocus>
+      </div>
+      <div class="form-group">
+        <label class="form-label">用户名 <span class="req">*</span></label>
+        <input class="form-input" type="text" name="username"
+               value="{{ form.get('username','') }}"
+               placeholder="登录用，唯一" autocomplete="username" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">显示名</label>
+        <input class="form-input" type="text" name="display_name"
+               value="{{ form.get('display_name','') }}"
+               placeholder="可不填，默认同用户名">
+      </div>
+      <div class="form-group">
+        <label class="form-label">密码 <span class="req">*</span></label>
+        <input class="form-input" type="password" name="password"
+               placeholder="至少 4 位" autocomplete="new-password" required>
+      </div>
+      <button class="btn btn-primary" type="submit"
+              style="width:100%;justify-content:center;margin-top:8px">注册</button>
+    </form>
+
+    <div class="login-footer">
+      <a href="{{ url_for('login') }}">← 已有账号，去登录</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

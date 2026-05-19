@@ -89,6 +89,47 @@ cmdRemoveAdmin.solve = (ctx, msg, cmdArgs) => {
 };
 ext.cmdMap["移除排单管理员"] = cmdRemoveAdmin;
 
+let cmdSetUnlimited = seal.ext.newCmdItemInfo();
+cmdSetUnlimited.name = "设置无限下单";
+cmdSetUnlimited.help = ".设置无限下单 <QQ号>  授予该账号无限并发下单权限";
+cmdSetUnlimited.solve = (ctx, msg, cmdArgs) => {
+    if (!isOrderAdmin(ctx, msg)) return;
+    const targetQQ = cmdArgs.getArgN(1);
+    if (!targetQQ) return seal.replyToSender(ctx, msg, "❌ 请输入QQ号");
+
+    let unlimited = getDb("paidan_unlimitedUsers");
+    if (!unlimited[msg.platform]) unlimited[msg.platform] = [];
+    if (unlimited[msg.platform].includes(targetQQ)) {
+        seal.replyToSender(ctx, msg, `⚠️ ${targetQQ} 已拥有无限下单权限。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    unlimited[msg.platform].push(targetQQ);
+    setDb("paidan_unlimitedUsers", unlimited);
+    seal.replyToSender(ctx, msg, `✅ 已为 ${targetQQ} 开启无限下单权限（可同时存在多笔进行中订单）`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["设置无限下单"] = cmdSetUnlimited;
+
+let cmdUnsetUnlimited = seal.ext.newCmdItemInfo();
+cmdUnsetUnlimited.name = "取消无限下单";
+cmdUnsetUnlimited.help = ".取消无限下单 <QQ号>  撤销该账号的无限并发下单权限";
+cmdUnsetUnlimited.solve = (ctx, msg, cmdArgs) => {
+    if (!isOrderAdmin(ctx, msg)) return;
+    const targetQQ = cmdArgs.getArgN(1);
+    if (!targetQQ) return seal.replyToSender(ctx, msg, "❌ 请输入QQ号");
+
+    let unlimited = getDb("paidan_unlimitedUsers");
+    if (!unlimited[msg.platform] || !unlimited[msg.platform].includes(targetQQ)) {
+        seal.replyToSender(ctx, msg, `⚠️ ${targetQQ} 没有无限下单权限。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    unlimited[msg.platform] = unlimited[msg.platform].filter(id => id !== targetQQ);
+    setDb("paidan_unlimitedUsers", unlimited);
+    seal.replyToSender(ctx, msg, `✅ 已撤销 ${targetQQ} 的无限下单权限`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["取消无限下单"] = cmdUnsetUnlimited;
+
 // ======================== 指令：系统配置 ========================
 
 let cmdConfig = seal.ext.newCmdItemInfo();
@@ -198,13 +239,17 @@ cmdOrder.solve = (ctx, msg) => {
         return seal.replyToSender(ctx, msg, reply);
     }
 
-    // 限制：同一用户不能同时存在进行中的订单
+    // 限制：同一用户不能同时存在进行中的订单（无限下单白名单用户跳过）
     const config = getDb("paidan_config");
     let orders = getDb("paidan_orders");
-    const hasActive = Object.values(orders).some(
-        o => o.uid === uid && o.status !== "已完成" && o.status !== "已拒绝" && o.status !== "已撤单"
-    );
-    if (hasActive) return seal.replyToSender(ctx, msg, "⚠️ 您有一笔订单尚未完成，请等待当前订单完成后再下新单。");
+    const unlimitedUsers = getDb("paidan_unlimitedUsers");
+    const isUnlimited = Array.isArray(unlimitedUsers[msg.platform]) && unlimitedUsers[msg.platform].includes(uid);
+    if (!isUnlimited) {
+        const hasActive = Object.values(orders).some(
+            o => o.uid === uid && o.status !== "已完成" && o.status !== "已拒绝" && o.status !== "已撤单"
+        );
+        if (hasActive) return seal.replyToSender(ctx, msg, "⚠️ 您有一笔订单尚未完成，请等待当前订单完成后再下新单。");
+    }
 
     // 字段格式校验
     if (config.orderFields && config.orderFields.length > 0) {
@@ -505,9 +550,10 @@ cmdQueue.solve = (ctx, msg, cmdArgs) => {
     const users = getDb("paidan_users");
     let res = "📋 【待接单排队】\n";
     queue.forEach(o => {
-        const preview = o.content.length > 30 ? o.content.slice(0, 30) + "..." : o.content;
-        res += `编号：${o.id}\n客户：${users[o.uid]?.name || '未知'}\n群号：${o.group}\n内容：${preview}\n————\n`;
+        const preview = o.content.length > 50 ? o.content.slice(0, 50) + "…" : o.content;
+        res += `【${o.id}】${preview}\n`;
     });
+    res += "\n💡 发送「.查看订单详情 <编号>」查看完整内容";
     seal.replyToSender(ctx, msg, res);
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -530,8 +576,11 @@ cmdTodoList.solve = (ctx, msg, cmdArgs) => {
     const users = getDb("paidan_users");
     let res = "🛠️ 【待完成任务清单】\n";
     todoList.forEach(o => {
-        res += `编号：${o.id}\n客户：${users[o.uid]?.name || '未知'}\n群号：${o.group}\n需求：${o.content}\n————\n`;
+        const preview = o.content.length > 50 ? o.content.slice(0, 50) + "…" : o.content;
+        const urgent = o.isUrgent ? "⚡" : "";
+        res += `【${o.id}】${urgent}${o.status} ${preview}\n`;
     });
+    res += "\n💡 发送「.查看订单详情 <编号>」查看完整内容";
     seal.replyToSender(ctx, msg, res);
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -629,6 +678,36 @@ cmdRemoveUser.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["移除用户"] = cmdRemoveUser;
+
+let cmdDetail = seal.ext.newCmdItemInfo();
+cmdDetail.name = "查看订单详情";
+cmdDetail.help = ".查看订单详情 <编号>  查看指定订单的完整内容";
+cmdDetail.solve = (ctx, msg, cmdArgs) => {
+    const orderId = cmdArgs.getArgN(1);
+    if (!orderId) return seal.replyToSender(ctx, msg, "❌ 请提供订单编号，格式：.查看订单详情 <编号>");
+
+    const orders = getDb("paidan_orders");
+    const o = orders[orderId];
+    if (!o) return seal.replyToSender(ctx, msg, "❌ 订单不存在。");
+
+    // 普通用户只能查看自己的订单
+    const uid = msg.sender.userId.replace(`${msg.platform}:`, "");
+    if (!isOrderAdmin(ctx, msg) && o.uid !== uid) {
+        return seal.replyToSender(ctx, msg, "❌ 这不是您的订单。");
+    }
+
+    const users = getDb("paidan_users");
+    const urgent = o.isUrgent ? " ⚡急单" : "";
+    let res = `📄 【订单详情：${orderId}】\n`;
+    res += `客户：${users[o.uid]?.name || '未知'}（${o.uid}）\n`;
+    res += `状态：${o.status}${urgent}\n`;
+    res += `来源群：${o.group}\n`;
+    res += `下单时间：${new Date(o.timestamp).toLocaleString()}\n`;
+    res += `————\n${o.content}`;
+    seal.replyToSender(ctx, msg, res);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["查看订单详情"] = cmdDetail;
 
 let cmdMy = seal.ext.newCmdItemInfo();
 cmdMy.name = "查看订单状态";

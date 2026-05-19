@@ -77,6 +77,38 @@
   {% else %}
   <div class="empty">{{ game_day }} 暂无记录。</div>
   {% endif %}
+
+  {% if day_events %}
+  <div style="margin-top:32px;padding-top:24px;border-top:1px solid var(--border);">
+    <div style="font-size:14px;font-weight:700;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:16px;">
+      {{ game_day }} 互动记录
+    </div>
+    {% for e in day_events %}
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;
+                padding:12px 16px;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:{% if e.content %}8{% else %}0{% endif %}px;">
+        {% if e.type == 'lovemail' %}<span style="background:#2d1f4e;color:#c084fc;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;">💌 心动信</span>
+        {% elif e.type == 'sms' %}<span style="background:#1a2830;color:#60c8ff;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;">📱 短信</span>
+        {% elif e.type == 'gift' %}<span style="background:#2a2000;color:#fcd34d;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;">🎁 礼物</span>
+        {% endif %}
+        <span style="color:var(--accent);font-weight:700;">{{ e.from_role }}</span>
+        <span style="color:var(--muted);">→</span>
+        <span style="color:var(--accent2);font-weight:700;">{{ e.to_role }}</span>
+        {% if e.type == 'gift' and e.extra_info.giftName %}
+        <span style="color:var(--gold);font-size:12px;">{{ e.extra_info.giftName }}{% if e.extra_info.isLost %}<span style="color:var(--red);"> (丢失)</span>{% endif %}</span>
+        {% endif %}
+        <span style="margin-left:auto;font-size:11px;color:var(--muted);">{{ ts_to_str(e.timestamp) }}</span>
+      </div>
+      {% if e.content %}
+      <div style="color:var(--text);font-size:13px;line-height:1.8;white-space:pre-wrap;word-break:break-word;">{% if e.type == 'gift' %}寄语：{% endif %}{{ e.content }}</div>
+      {% endif %}
+      {% if e.type == 'sms' and e.extra_info.is_chaos %}
+      <div style="font-size:10px;color:var(--red);margin-top:4px;">⚠ 混乱效果{% if e.extra_info.is_misdelivered %} · 误送{% endif %}{% if e.extra_info.is_content_chaos %} · 内容侵蚀{% endif %}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
 </div>
 
 <script>

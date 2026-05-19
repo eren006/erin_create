@@ -1856,14 +1856,14 @@ const SYNC_DIRECT_KEYS = [
 // json_parent 键 → 子字段列表（与 CONFIG_SCHEMA json_parent 对应）
 const SYNC_JSON_PARENT_KEYS = {
     "global_feature_toggle": [
-        "enable_general_letter", "enable_general_gift", "enable_general_appointment",
+        "enable_general_gift", "enable_general_appointment",
         "enable_chaos_letter", "enable_wish_system", "enable_lovemail",
         "enable_wechat", "enable_direct_letter"
     ],
     "chaos_letter_config": [
         "misdelivery", "blackoutText", "loseContent", "antonymReplace",
         "reverseOrder", "mistakenSignature", "poeticSignature",
-        "dailyLimit", "publicChance", "giftLost", "giftMisdelivery"
+        "dailyLimit", "publicChance", "publicShowEffect", "giftLost", "giftMisdelivery"
     ],
     "appointment_duration_config": ["phone", "private"],
     "sighting_system_config": [
@@ -1871,6 +1871,11 @@ const SYNC_JSON_PARENT_KEYS = {
         "include_ended_meetings", "time_overlap_threshold"
     ],
     "place_system_config": ["enabled", "require_key_by_default"],
+    "monitor_settings": [
+        "enabled", "auto_monitor_all_groups",
+        "min_words_phone", "min_words_private", "min_words_wish", "min_words_official",
+        "timeout_phone", "timeout_private", "timeout_wish", "timeout_official"
+    ],
 };
 
 let cmd_push_to_server = seal.ext.newCmdItemInfo();

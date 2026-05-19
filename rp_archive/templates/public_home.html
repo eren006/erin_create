@@ -3,7 +3,7 @@
 
 {% block head %}
 <style>
-.day-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); gap: 14px; }
+.day-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px,1fr)); gap: 14px; }
 .day-card {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: 12px; padding: 20px 22px;
@@ -11,9 +11,16 @@
   display: block;
 }
 .day-card:hover { border-color: var(--accent); transform: translateY(-2px); }
-.day-label { font-size: 22px; font-weight: 700; color: var(--accent2); margin-bottom: 10px; }
-.day-stats { display: flex; gap: 18px; color: var(--muted); font-size: 12px; }
-.day-stats b { color: var(--text); font-size: 14px; }
+.day-label { font-size: 22px; font-weight: 700; color: var(--accent2); margin-bottom: 12px; }
+.day-stats { display: flex; gap: 18px; color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+.day-stats b { color: var(--text); font-size: 14px; display: block; }
+.day-events {
+  display: flex; gap: 10px; flex-wrap: wrap;
+  padding-top: 10px; border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--muted);
+}
+.day-ev-badge { display: flex; align-items: center; gap: 3px; }
+.day-ev-badge b { color: var(--text); }
 .day-date { color: var(--muted); font-size: 11px; margin-top: 10px; }
 </style>
 {% endblock %}
@@ -28,10 +35,17 @@
     <a class="day-card" href="/view/{{ token }}/date/{{ d.game_day }}">
       <div class="day-label">{{ d.game_day }}</div>
       <div class="day-stats">
-        <div><b>{{ d.session_count }}</b><br>场次</div>
-        <div><b>{{ d.total_replies or 0 }}</b><br>总回复</div>
-        <div><b>{{ d.total_words or 0 }}</b><br>总字数</div>
+        <div><b>{{ d.session_count }}</b>场次</div>
+        <div><b>{{ d.total_replies or 0 }}</b>总回复</div>
+        <div><b>{{ d.total_words or 0 }}</b>总字数</div>
       </div>
+      {% if d.sms_count or d.gift_count or d.lovemail_count %}
+      <div class="day-events">
+        {% if d.lovemail_count %}<span class="day-ev-badge">💌 <b>{{ d.lovemail_count }}</b></span>{% endif %}
+        {% if d.sms_count %}<span class="day-ev-badge">📱 <b>{{ d.sms_count }}</b></span>{% endif %}
+        {% if d.gift_count %}<span class="day-ev-badge">🎁 <b>{{ d.gift_count }}</b></span>{% endif %}
+      </div>
+      {% endif %}
       <div class="day-date">首次记录：{{ d.first_date }}</div>
     </a>
     {% endfor %}

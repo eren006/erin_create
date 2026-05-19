@@ -66,17 +66,120 @@
     </div>
     <div class="info-box">
       <div class="lbl">总回复</div>
-      <div class="val">{{ player.total_replies }}</div>
+      <div class="val">{{ computed_replies }}</div>
     </div>
     <div class="info-box">
       <div class="lbl">总字数</div>
-      <div class="val">{{ player.total_words }}</div>
+      <div class="val">{{ computed_words }}</div>
     </div>
+    <div class="info-box">
+      <div class="lbl">平均回复时间</div>
+      <div class="val accent">{% if global_avg_reply %}{{ fmt_seconds(global_avg_reply) }}{% else %}—{% endif %}</div>
+    </div>
+  </div>
+
+  <!-- 本场数据明细 -->
+  <div class="admin-section">
+    <h3>本场数据明细</h3>
+    {% if session_player_stats %}
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr style="background:var(--surface2);">
+            <th style="text-align:left;padding:9px 14px;color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.5px;">场次</th>
+            <th style="padding:9px 12px;color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.5px;">日期</th>
+            <th style="padding:9px 12px;color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.5px;">段数</th>
+            <th style="padding:9px 12px;color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.5px;">字数</th>
+            <th style="padding:9px 12px;color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.5px;">均字/段</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in session_player_stats %}
+          {% set s = item.session %}
+          <tr style="border-top:1px solid var(--border);">
+            <td style="padding:9px 14px;">
+              <a href="{{ url_for('session_view', session_id=s.id) }}" style="color:var(--accent);">
+                {{ s.place or '未知地点' }}
+              </a>
+              {% if s.subtype %}<span class="tag tag-private" style="font-size:10px;padding:1px 6px;margin-left:4px;">{{ s.subtype }}</span>{% endif %}
+              {% if s.forced %}<span class="tag tag-forced" style="font-size:10px;padding:1px 6px;margin-left:2px;">强结</span>{% endif %}
+            </td>
+            <td style="padding:9px 12px;text-align:center;color:var(--muted);font-size:12px;">{{ s.game_day }}</td>
+            <td style="padding:9px 12px;text-align:center;">
+              {% if item.replies %}
+              <b style="color:var(--accent2);">{{ item.replies }}</b>
+              {% else %}<span style="color:var(--border);">—</span>{% endif %}
+            </td>
+            <td style="padding:9px 12px;text-align:center;">
+              {% if item.words %}
+              <b>{{ item.words }}</b>
+              {% else %}<span style="color:var(--border);">—</span>{% endif %}
+            </td>
+            <td style="padding:9px 12px;text-align:center;color:var(--muted);font-size:12px;">
+              {% if item.replies %}{{ (item.words / item.replies) | int }}{% else %}—{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr style="border-top:2px solid var(--border);background:var(--surface2);">
+            <td colspan="2" style="padding:9px 14px;font-weight:700;color:var(--muted);font-size:12px;">合计</td>
+            <td style="padding:9px 12px;text-align:center;"><b style="color:var(--accent2);">{{ computed_replies }}</b></td>
+            <td style="padding:9px 12px;text-align:center;"><b>{{ computed_words }}</b></td>
+            <td style="padding:9px 12px;text-align:center;color:var(--muted);font-size:12px;">
+              {% if computed_replies %}{{ (computed_words / computed_replies) | int }}{% else %}—{% endif %}
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty">暂无场次数据。</div>
+    {% endif %}
+  </div>
+
+  <!-- 活跃时段 -->
+  <div class="admin-section">
+    <h3>活跃时段</h3>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">基于 RP 正文回复 + 短信发送的现实时间分布</div>
+    {% if max_hourly > 0 and hourly_rp | sum > 0 %}
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px;">
+      <div style="display:flex;align-items:flex-end;gap:3px;height:80px;">
+        {% for h in range(24) %}
+        {% set cnt = hourly_rp[h] %}
+        {% set pct = (cnt / max_hourly * 100) | int %}
+        <div style="display:flex;flex-direction:column;align-items:center;flex:1;height:100%;"
+             title="{{ h }}:00  {{ cnt }} 次">
+          <div style="flex:1;width:100%;display:flex;align-items:flex-end;">
+            <div style="width:100%;background:var(--accent);border-radius:3px 3px 0 0;
+                        height:{{ pct }}%;min-height:{{ '2px' if cnt else '0' }};
+                        opacity:{{ [0.3 + cnt/max_hourly*0.7, 1] | min | round(2) }};"></div>
+          </div>
+          <div style="font-size:9px;color:var(--muted);margin-top:3px;line-height:1;">{{ h if h % 3 == 0 else '' }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% set peak_hour = hourly_rp.index(hourly_rp | max) %}
+      {% set night = hourly_rp[0:6] | sum %}
+      {% set morning = hourly_rp[6:12] | sum %}
+      {% set afternoon = hourly_rp[12:18] | sum %}
+      {% set evening = hourly_rp[18:24] | sum %}
+      <div style="margin-top:10px;font-size:12px;color:var(--muted);display:flex;gap:20px;flex-wrap:wrap;">
+        <span>峰值时段：<b style="color:var(--accent2);">{{ peak_hour }}:00–{{ peak_hour+1 }}:00</b>（{{ hourly_rp[peak_hour] }} 次）</span>
+        <span>凌晨 <b>{{ night }}</b></span>
+        <span>上午 <b>{{ morning }}</b></span>
+        <span>下午 <b>{{ afternoon }}</b></span>
+        <span>晚上 <b>{{ evening }}</b></span>
+      </div>
+    </div>
+    {% else %}
+    <div class="empty">暂无足够数据来分析活跃时段。</div>
+    {% endif %}
   </div>
 
   <!-- 回复时间统计 -->
   <div class="admin-section">
-    <h3>回复时间统计</h3>
+    <h3>场内回复速度</h3>
     {% if timing_stats %}
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:4px 18px;">
       {% for t in timing_stats %}

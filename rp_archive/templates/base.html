@@ -127,11 +127,11 @@ a:hover { color: var(--accent2); }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 @media(max-width:700px) { .grid-2 { grid-template-columns: 1fr; } }
 [data-theme=spring]{--bg:#0f0a10;--surface:#1a1020;--surface2:#22152a;--border:#3e2040;--accent:#f472b6;--accent2:#e879f9;--text:#fce7f3;--muted:#a07898}
-[data-theme=summer]{--bg:#080f10;--surface:#0d1a1c;--surface2:#122225;--border:#1a3a40;--accent:#06b6d4;--accent2:#22d3ee;--text:#e0f7fa;--muted:#507880}
-[data-theme=autumn]{--bg:#100a04;--surface:#1c1008;--surface2:#261508;--border:#4a2a08;--accent:#f59e0b;--accent2:#f97316;--text:#fef3c7;--muted:#907050}
-[data-theme=winter]{--bg:#080b0f;--surface:#0d1520;--surface2:#111e2c;--border:#1c3048;--accent:#7dd3fc;--accent2:#93c5fd;--text:#e0eeff;--muted:#4a7090}
+[data-theme=summer]{--bg:#080f10;--surface:#0d1a1c;--surface2:#122225;--border:#1a3a40;--accent:#06b6d4;--accent2:#22d3ee;--text:#e0f7fa;--muted:#70a8ba}
+[data-theme=autumn]{--bg:#100a04;--surface:#1c1008;--surface2:#261508;--border:#4a2a08;--accent:#f59e0b;--accent2:#f97316;--text:#fef3c7;--muted:#a07a58}
+[data-theme=winter]{--bg:#080b0f;--surface:#0d1520;--surface2:#111e2c;--border:#1c3048;--accent:#7dd3fc;--accent2:#93c5fd;--text:#e0eeff;--muted:#6898bc}
 [data-theme=monet]{--bg:#0a0c10;--surface:#12181f;--surface2:#19222e;--border:#283848;--accent:#a8d8ea;--accent2:#d4b5d0;--text:#e5eef5;--muted:#608098;--red:#fca5a5}
-[data-theme=detroit]{--bg:#07090c;--surface:#0e1218;--surface2:#141b24;--border:#1e2a38;--accent:#00b4ff;--accent2:#33ccff;--text:#c8d8e8;--muted:#4a6070;--red:#ff1744;--green:#00e676;--gold:#ffd740}
+[data-theme=detroit]{--bg:#07090c;--surface:#0e1218;--surface2:#141b24;--border:#1e2a38;--accent:#00b4ff;--accent2:#33ccff;--text:#c8d8e8;--muted:#6c8ca4;--red:#ff1744;--green:#00e676;--gold:#ffd740}
 [data-theme=spring-day]{--bg:#fef2f8;--surface:#fce7f4;--surface2:#f9d0e8;--border:#f0a8d0;--accent:#db2777;--accent2:#be185d;--text:#1f0610;--muted:#9d5a7a;--red:#dc2626;--green:#15803d;--gold:#b45309}
 [data-theme=summer-day]{--bg:#f0faff;--surface:#e0f5ff;--surface2:#c8ecfc;--border:#7dd3f0;--accent:#0284c7;--accent2:#0ea5e9;--text:#082030;--muted:#3e7a94;--red:#dc2626;--green:#15803d;--gold:#b45309}
 [data-theme=autumn-day]{--bg:#fffbf0;--surface:#fef6e4;--surface2:#feebc8;--border:#fbbf60;--accent:#b45309;--accent2:#c2410c;--text:#1c0d00;--muted:#92632e;--red:#dc2626;--green:#15803d;--gold:#b45309}
@@ -174,6 +174,9 @@ a:hover { color: var(--accent2); }
   <nav class="nav">
     <a href="{{ url_for('home') }}">场次</a>
     <a href="{{ url_for('interactions_index') }}">互动</a>
+    <a href="{{ url_for('admin_stats') }}">数据</a>
+    <a href="{{ url_for('admin_blacklist') }}">黑名单</a>
+    <a href="{{ url_for('letters_view') }}">信件</a>
     <a href="{{ url_for('admin') }}">后台</a>
   </nav>
   <form class="search-form" action="{{ url_for('search') }}" method="get">

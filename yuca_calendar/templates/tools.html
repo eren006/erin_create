@@ -1,0 +1,747 @@
+{% extends "base.html" %}
+{% block title %}小工具 · 语擦日历{% endblock %}
+{% block head %}
+<style>
+.tools-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media(max-width:700px) { .tools-grid { grid-template-columns: 1fr; } }
+
+.tool-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; padding: 22px 24px;
+}
+.tool-title { font-size: 16px; font-weight: 600; color: var(--accent2); margin-bottom: 6px; }
+.tool-desc  { font-size: 12px; color: var(--muted); margin-bottom: 16px; }
+
+.opt-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.opt-btn {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 20px; padding: 4px 14px; font-size: 12px; color: var(--muted);
+  cursor: pointer; font-family: inherit; transition: all .15s;
+}
+.opt-btn:hover  { border-color: var(--accent); color: var(--text); }
+.opt-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.result-box {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px 16px; min-height: 52px;
+  font-size: 15px; color: var(--text); letter-spacing: .05em;
+  margin-bottom: 12px; word-break: break-all;
+}
+.result-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+.result-tag {
+  background: var(--accent); color: #fff;
+  border-radius: 20px; padding: 4px 14px; font-size: 13px;
+}
+
+.gen-btn {
+  background: var(--accent); color: #fff;
+  border: none; border-radius: 8px; padding: 8px 22px;
+  font-size: 13px; font-family: inherit; cursor: pointer; transition: all .15s;
+}
+.gen-btn:hover { background: var(--accent2); }
+</style>
+{% endblock %}
+{% block body %}
+<div class="page">
+  <h1 class="page-title">小工具</h1>
+
+  <div class="tools-grid">
+
+    <!-- ── 名字生成器 ── -->
+    <div class="tool-card" style="grid-column: 1 / -1">
+      <div class="tool-title">姓名生成器</div>
+      <div class="tool-desc">随机生成一个角色名，适合各种时代背景</div>
+      <div class="opt-row" id="era-opts">
+        <button class="opt-btn active" onclick="setOpt('era','ancient',this)">古代</button>
+        <button class="opt-btn"        onclick="setOpt('era','european',this)">欧洲</button>
+        <button class="opt-btn"        onclick="setOpt('era','modern',this)">现代</button>
+      </div>
+      <div class="opt-row" id="gender-opts">
+        <button class="opt-btn active" onclick="setOpt('gender','male',this)">男</button>
+        <button class="opt-btn"        onclick="setOpt('gender','female',this)">女</button>
+        <button class="opt-btn"        onclick="setOpt('gender','neutral',this)">中性</button>
+      </div>
+      <div class="result-box" id="name-result" style="font-size:22px;font-weight:600;letter-spacing:.15em">—</div>
+      <button class="gen-btn" onclick="genName()">生成名字</button>
+    </div>
+
+    <!-- ── 关系设定生成器 ── -->
+    <div class="tool-card" style="grid-column: 1 / -1">
+      <div class="tool-title">关系设定生成器</div>
+      <div class="tool-desc">随机生成两个角色之间的背景关系与羁绊细节</div>
+      <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+        <input class="form-input" id="rel-a" type="text" placeholder="角色甲（选填）" style="flex:1;min-width:120px;max-width:200px">
+        <input class="form-input" id="rel-b" type="text" placeholder="角色乙（选填）" style="flex:1;min-width:120px;max-width:200px">
+      </div>
+      <div class="result-box" id="rel-result" style="font-size:13px;line-height:1.9;white-space:pre-wrap">—</div>
+      <button class="gen-btn" onclick="genRelation()">生成关系</button>
+    </div>
+
+    <!-- ── 爱好生成器 ── -->
+    <div class="tool-card">
+      <div class="tool-title">爱好生成器</div>
+      <div class="tool-desc">随机给角色分配 3–5 个爱好特质</div>
+      <div class="result-box" id="hobby-result">—</div>
+      <button class="gen-btn" onclick="genHobby()">生成爱好</button>
+    </div>
+
+    <!-- ── 性格生成器 ── -->
+    <div class="tool-card">
+      <div class="tool-title">性格生成器</div>
+      <div class="tool-desc">随机生成 5–8 个性格标签</div>
+      <div class="result-box" id="persona-result"><div class="result-tags" id="persona-tags"></div></div>
+      <button class="gen-btn" onclick="genPersona()">生成性格</button>
+    </div>
+
+  </div>
+
+  <!-- ══ 文化人专区 ══ -->
+  <div style="margin-top:32px;margin-bottom:20px;display:flex;align-items:center;gap:14px">
+    <span style="font-size:17px;font-weight:700;color:var(--accent2)">🌸 文化人专区</span>
+    <div style="flex:1;height:1px;background:var(--border)"></div>
+  </div>
+
+  <div class="tools-grid">
+
+    <!-- ── 花语词典 ── -->
+    <div class="tool-card" style="grid-column:1/-1">
+      <div class="tool-title">🌺 花语词典</div>
+      <div class="tool-desc">输入花名查询花语，或点击「随便来一个」探索冷门花卉</div>
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+        <input class="form-input" id="flower-input" placeholder="玫瑰、樱花、薰衣草……"
+               style="flex:1;min-width:180px" onkeydown="if(event.key==='Enter')lookupFlower()">
+        <button class="gen-btn" onclick="lookupFlower()">查询花语</button>
+        <button class="gen-btn" onclick="luckyFlower()"
+                style="background:var(--surface2);border:1px solid var(--border);color:var(--muted)">🎲 随便来一个</button>
+      </div>
+      <div id="flower-result" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px 20px">
+        <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px">
+          <span id="fr-name" style="font-size:20px;font-weight:700"></span>
+          <span id="fr-sub"  style="font-size:12px;color:var(--muted)"></span>
+        </div>
+        <div id="fr-lang" style="font-size:14px;font-weight:600;margin-bottom:8px;color:var(--accent2)"></div>
+        <div id="fr-detail" style="font-size:13px;color:var(--muted);line-height:1.9"></div>
+      </div>
+      <div id="flower-none" style="display:none;color:var(--muted);font-size:13px;padding:10px 0">没有找到对应的花语，换个词试试？</div>
+    </div>
+
+    <!-- ── 宝石图鉴 ── -->
+    <div class="tool-card" style="grid-column:1/-1">
+      <div class="tool-title">💎 宝石图鉴</div>
+      <div class="tool-desc">点击宝石查看象征含义与传说</div>
+      <div id="gem-list" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px"></div>
+      <div id="gem-detail" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px 20px">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+          <span id="gd-dot" style="width:32px;height:32px;border-radius:50%;flex-shrink:0;display:inline-block"></span>
+          <div>
+            <div id="gd-name" style="font-size:18px;font-weight:700"></div>
+            <div id="gd-en"   style="font-size:12px;color:var(--muted)"></div>
+          </div>
+        </div>
+        <div id="gd-meaning" style="font-size:14px;font-weight:600;color:var(--accent2);margin-bottom:8px"></div>
+        <div id="gd-detail"  style="font-size:13px;color:var(--muted);line-height:1.9"></div>
+        <div id="gd-meta"    style="display:flex;gap:12px;margin-top:10px;flex-wrap:wrap"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+// ════════════════════════════════
+// 花语词典
+// ════════════════════════════════
+const _flowers = [
+  { name:'玫瑰', alias:['rose','蔷薇玫瑰'], color:'#f87171',
+    sub:'Rosa', lang:'爱情·热情·勇气',
+    detail:'红玫瑰象征热烈的爱情与深深的敬意；粉玫瑰代表初恋与温柔；白玫瑰代表纯洁与尊重；黄玫瑰如今多代表友谊与关怀。玫瑰也是西方传统中维纳斯的象征。' },
+  { name:'月季', alias:['China rose','长春花','四季玫瑰'], color:'#fb7185',
+    sub:'Rosa chinensis', lang:'坚贞的爱·永不凋谢·希望',
+    detail:'月季被称为"花中皇后"，四季常开，象征对爱情的坚守与永不放弃。与玫瑰同为蔷薇属，但月季更具韧性，花期更长，代表经得住时间考验的情感。' },
+  { name:'百合', alias:['lily','白百合'], color:'#f0fdf4',
+    sub:'Lilium', lang:'纯洁·优雅·庄严',
+    detail:'白百合是圣母玛利亚的象征，代表纯洁与神圣；在中国文化中百合寓意"百年好合"，是婚礼与祝福的常用花卉。' },
+  { name:'虎百合', alias:['tiger lily','卷丹','虎皮百合'], color:'#f97316',
+    sub:'Lilium lancifolium', lang:'勇敢地爱·财富·骄傲',
+    detail:'橙色虎纹的虎百合张扬而热烈，在西方花语中象征"让我们充满激情地相爱"，也代表一种富有感染力的自信与骄傲。在中国寓意财富与富足。' },
+  { name:'樱花', alias:['cherry blossom','山樱','吉野樱','染井吉野'], color:'#fda4af',
+    sub:'Prunus serrulata', lang:'生命之无常·纯洁的爱·别离',
+    detail:'樱花盛开不过一两周，日本文化中象征武士道精神"刹那即永恒"，也代表青春的短暂美丽。花落时如雪，是离别与重逢的意象。' },
+  { name:'向日葵', alias:['sunflower','太阳花'], color:'#fbbf24',
+    sub:'Helianthus annuus', lang:'忠诚·崇拜·热情',
+    detail:'向日葵始终朝向阳光，象征对光明的追随与忠诚的心。在西方花语中也代表"我只仰望你"，是浓烈却温暖的表白。' },
+  { name:'郁金香', alias:['tulip','튤립'], color:'#f472b6',
+    sub:'Tulipa', lang:'完美的爱·荣誉',
+    detail:'红郁金香是"热烈的爱的宣言"；紫郁金香代表无尽的爱；白郁金香象征纯洁与宽恕；黄郁金香则有"无望的爱"之意。' },
+  { name:'风信子', alias:['hyacinth','洋水仙'], color:'#818cf8',
+    sub:'Hyacinthus orientalis', lang:'游戏·嫉妒·悲伤中的胜出',
+    detail:'源自希腊神话：阿波罗挚爱的美少年雅辛托斯意外死去，从其血液中生长出风信子。紫色风信子代表悲伤与遗憾；蓝色代表真诚；粉色代表温柔的爱慕。' },
+  { name:'薰衣草', alias:['lavender','拉文德'], color:'#a78bfa',
+    sub:'Lavandula', lang:'等待·宁静·优雅的爱',
+    detail:'薰衣草的紫色象征等待中的心，以及对爱情的忠诚守候。它的芳香也被认为能驱走噩梦、带来平静。普罗旺斯的薰衣草田是浪漫的代名词。' },
+  { name:'茉莉', alias:['jasmine','茉莉花'], color:'#f5f5f4',
+    sub:'Jasminum', lang:'爱情·柔情·优雅',
+    detail:'茉莉洁白芬芳，在东方文化中是纯洁爱情的象征；在波斯文化中茉莉是"神之花"；中国茶文化中以茉莉入茶，代表清雅与美好。' },
+  { name:'桂花', alias:['osmanthus','木犀','金桂','银桂'], color:'#fcd34d',
+    sub:'Osmanthus fragrans', lang:'高贵·荣誉·功成名就',
+    detail:'桂花香飘十里，古代科举及第称"折桂"，象征最高荣誉。也寓意"贵人相助"与思乡之情，中秋月下的桂花是团圆与乡愁的意象。' },
+  { name:'莲花', alias:['lotus','荷花','睡莲','水莲'], color:'#f9a8d4',
+    sub:'Nelumbo nucifera', lang:'出淤泥而不染·圣洁·重生',
+    detail:'莲花生于淤泥却洁白无瑕，是佛教圣洁的象征，也代表君子的高洁品格。"接天莲叶无穷碧"中的莲是诗人最爱的意象之一。' },
+  { name:'梅花', alias:['plum blossom','红梅','腊梅','蜡梅'], color:'#fda4af',
+    sub:'Prunus mume', lang:'坚韧·高洁·不屈',
+    detail:'梅花在严冬独自绽放，是中国传统文化中最具精神象征的花卉之一，与松、竹并称"岁寒三友"。象征在逆境中坚守气节的君子品格。' },
+  { name:'牡丹', alias:['peony','洛阳红','国色天香'], color:'#f9a8d4',
+    sub:'Paeonia suffruticosa', lang:'富贵·雍容·圆满',
+    detail:'牡丹是中国的"国花"候选，古称"花王"，象征繁荣、富贵与圆满。唐代以牡丹为盛世之花，武则天时期洛阳牡丹甲天下。' },
+  { name:'水仙', alias:['narcissus','凌波仙子'], color:'#fef9c3',
+    sub:'Narcissus', lang:'自恋·孤芳自赏·思念',
+    detail:'西方神话中水仙源自爱上自己倒影的少年纳西索斯；在中国则是凌波仙子，象征清雅与思念。春节前后水仙盛开，也寓意吉祥。' },
+  { name:'勿忘我', alias:['forget-me-not','勿忘草'], color:'#93c5fd',
+    sub:'Myosotis', lang:'永恒的记忆·请不要忘记我',
+    detail:'传说一位骑士在河边为爱人采花，不慎落水，临死前将花抛给爱人说"forget me not"。小小的蓝花成为了永恒爱情与记忆的象征。' },
+  { name:'雏菊', alias:['daisy','延命菊'], color:'#fef3c7',
+    sub:'Bellis perennis', lang:'纯真·希望·我会想你',
+    detail:'雏菊花瓣游戏"爱我·不爱我"源于欧洲民间，象征对爱情的纯真期待。也代表孩子般无忧无虑的快乐与童年的美好。' },
+  { name:'紫罗兰', alias:['violet','香堇菜'], color:'#a78bfa',
+    sub:'Viola', lang:'永恒的美·羞涩·心中的秘密',
+    detail:'紫罗兰是古希腊雅典的市花，拿破仑最爱的花。它代表低调中的永恒之美，以及深藏心底不敢说出口的爱意。' },
+  { name:'海棠', alias:['crabapple','垂丝海棠','西府海棠','贴梗海棠'], color:'#fca5a5',
+    sub:'Malus', lang:'相思·苦恋·温柔的悲哀',
+    detail:'海棠花娇艳欲滴，古诗中常与"春睡未足"联系，是文人笔下思念与怜惜的意象。李清照以"绿肥红瘦"咏海棠，成千古名句。' },
+  { name:'木兰', alias:['magnolia','玉兰','白玉兰'], color:'#e5e7eb',
+    sub:'Magnolia', lang:'高洁·尊贵·坚强的女性',
+    detail:'木兰花在叶子未展开前先行开放，象征高洁的气节与不依附的独立精神。花木兰的故事使木兰花也成为巾帼精神的象征。' },
+  { name:'丁香', alias:['lilac','紫丁香'], color:'#c4b5fd',
+    sub:'Syringa', lang:'初恋·青涩的心动·无悔的等待',
+    detail:'戴望舒《雨巷》中"丁香一样的姑娘"将丁香定格为含苞待放的初恋意象。丁香花开在春末，香气朦胧，象征青春懵懂的心动。' },
+  { name:'栀子花', alias:['gardenia','薝葡'], color:'#f0fdf4',
+    sub:'Gardenia jasminoides', lang:'永恒的爱·我爱你·守候',
+    detail:'栀子花洁白芬芳，花期短暂却香气浓郁。在中国江南，栀子花是送别与思念的花；在西方，gardenia是秘密爱慕的象征。' },
+  { name:'山茶花', alias:['camellia','茶花','椿花'], color:'#f43f5e',
+    sub:'Camellia japonica', lang:'命中注定的爱·谦逊的美德',
+    detail:'山茶花是小仲马《茶花女》中的主角意象，象征苦难中的美丽与无法言说的爱情。日本文化中山茶花整朵凋落，也被武士视为壮烈。' },
+  { name:'鸢尾', alias:['iris','爱丽斯','鸢尾花'], color:'#818cf8',
+    sub:'Iris', lang:'信念·智慧·希望',
+    detail:'鸢尾是法国王室的象征（百合花徽），也是梵高最爱的花之一。希腊神话中彩虹女神Iris将信息送达，因此鸢尾代表信念与希望的传递。' },
+  { name:'蒲公英', alias:['dandelion','婆婆丁'], color:'#fbbf24',
+    sub:'Taraxacum', lang:'无法停留的爱·许愿·随风而去',
+    detail:'蒲公英的种子随风飘散，象征无法把握的离别与随遇而安的洒脱心态。孩子对着蒲公英许愿吹气，是最纯真的愿望仪式。' },
+  { name:'芍药', alias:['Chinese peony','将离'], color:'#fda4af',
+    sub:'Paeonia lactiflora', lang:'惜别·含羞·思念',
+    detail:'古称"将离"，是古人送别时的赠花。《诗经》中"赠之以芍药"即是情人的定情之礼。芍药与牡丹合称"花相"与"花王"，地位仅次于牡丹。' },
+  { name:'铃兰', alias:['lily of the valley','君影草','风铃草'], color:'#d1fae5',
+    sub:'Convallaria majalis', lang:'幸福再临·纯洁·谦逊',
+    detail:'铃兰是法国5月1日劳动节的传统礼物，象征幸福的到来。欧洲传说中铃兰是圣母玛利亚的眼泪所化，散发出天国的芬芳。' },
+  { name:'满天星', alias:['baby\'s breath','丝石竹'], color:'#f1f5f9',
+    sub:'Gypsophila', lang:'纯粹的爱·永恒·陪伴',
+    detail:'满天星常作配花，却有着"在你的世界里做一颗小星星"的深情含义，象征甘愿成为对方生命中低调却恒久的存在。' },
+  { name:'康乃馨', alias:['carnation','麝香石竹'], color:'#fca5a5',
+    sub:'Dianthus caryophyllus', lang:'母爱·温暖·感恩',
+    detail:'康乃馨是母亲节的代表花卉，红色康乃馨献给在世的母亲，白色献给已故的母亲。它也代表纯洁的爱与深深的感激之情。' },
+  { name:'桔梗', alias:['balloon flower','桔梗花','岩桔梗'], color:'#818cf8',
+    sub:'Platycodon grandiflorus', lang:'永恒的爱·不变的心·诚实',
+    detail:'韩国传统花卉，朝鲜民谣《桔梗谣》让它家喻户晓。花开如气球膨胀，象征对爱情满溢的期待，以及永不动摇的心意。' },
+  { name:'桃花', alias:['peach blossom','碧桃'], color:'#fda4af',
+    sub:'Prunus persica', lang:'爱情运势·桃花运·春日缘分',
+    detail:'"桃花运"一词源于桃花象征浪漫缘分。桃园结义、世外桃源使桃花也代表美好理想之地与义气。春日桃花纷飞是无数诗人最爱的意象。' },
+  { name:'兰花', alias:['orchid','国兰','春兰','墨兰'], color:'#a78bfa',
+    sub:'Orchidaceae', lang:'高洁·君子·淡泊名利',
+    detail:'兰花是"花中四君子"之首，象征君子的高洁品格与淡泊名利的情怀。孔子曰"芝兰生于幽谷，不以无人而不芳"，是君子自处之道。' },
+  { name:'昙花', alias:['Dutchman\'s pipe cactus','月下美人'], color:'#e0e7ff',
+    sub:'Epiphyllum oxypetalum', lang:'刹那的永恒·转瞬即逝的美',
+    detail:'"昙花一现"是中文最美的成语之一。昙花只在深夜开放，且仅持续数小时，象征世间最珍贵而短暂的美丽，以及把握当下的哲学。' },
+  { name:'菊花', alias:['chrysanthemum','秋菊','黄菊'], color:'#fcd34d',
+    sub:'Chrysanthemum', lang:'长寿·高洁·傲霜',
+    detail:'菊花是"花中四君子"之一，陶渊明"采菊东篱下"使菊成为隐逸与洒脱的象征。重阳节登高赏菊，菊花酒象征延年益寿。' },
+  { name:'紫藤', alias:['wisteria','藤萝','紫藤花'], color:'#c4b5fd',
+    sub:'Wisteria', lang:'沉醉的爱·依恋·欢迎归来',
+    detail:'紫藤花穗垂落如瀑布，极具梦幻感。日本文化中紫藤象征爱情的深沉依恋与柔韧，《源氏物语》中以紫藤比拟最深情的女子。' },
+  { name:'雪莲', alias:['snow lotus','天山雪莲'], color:'#e0f2fe',
+    sub:'Saussurea involucrata', lang:'坚忍的爱·圣洁·天赐',
+    detail:'生长于海拔4000米以上的雪莲是极稀有的高山植物，须数年才开一花。象征在极端环境中仍坚守的爱与信念，是武侠世界中神药的原型。' },
+  { name:'三色堇', alias:['pansy','蝴蝶花','人面花'], color:'#a78bfa',
+    sub:'Viola tricolor', lang:'想念你·思慕·我在想你',
+    detail:'pansy源自法语"pensée（思念）"，三色堇的花纹像一张脸，象征彼此的凝视与深深的思念。莎士比亚《仲夏夜之梦》中爱情药水就来自三色堇。' },
+  { name:'天竺葵', alias:['geranium','石蜡红','洋绣球'], color:'#fca5a5',
+    sub:'Pelargonium', lang:'温柔的安慰·陪伴·你在我心中',
+    detail:'天竺葵香气独特，维多利亚时代被认为能传递微妙的情感信息。红色象征深情；粉色代表温柔问候；白色则是纯粹的安慰与陪伴。' },
+  { name:'石榴花', alias:['pomegranate flower','安石榴'], color:'#ef4444',
+    sub:'Punica granatum', lang:'子孙繁盛·热烈·成熟之美',
+    detail:'石榴花火红如燃，古代婚礼必备，寓意"多子多福"。在西方神话中石榴是冥界的果实，象征生死轮回与爱情的永恒羁绊。' },
+  { name:'梨花', alias:['pear blossom','白梨花'], color:'#f8fafc',
+    sub:'Pyrus', lang:'纯情·离别·脉脉温柔',
+    detail:'"梨花带雨"是古典美人哭泣时的意象，洁白如雪的梨花代表纯洁而脆弱的情感。春日梨花盛开，有"不知春色早，但觉日光新"之感。' },
+  { name:'彼岸花', alias:['red spider lily','曼珠沙华','石蒜','龙爪花'], color:'#dc2626',
+    sub:'Lycoris radiata', lang:'悲伤的回忆·相见在彼岸·永别',
+    detail:'佛教传说中彼岸花开在通往冥界的路上，花叶永不相见。"花开彼岸，忘却前尘"，它象征着爱而不得的凄美与彼岸重逢的渴望，日本文化中秋彼岸日盛开。' },
+  { name:'绣球花', alias:['hydrangea','八仙花','粉团花'], color:'#93c5fd',
+    sub:'Hydrangea macrophylla', lang:'善变·希望·青春的喜悦',
+    detail:'绣球花会随土壤酸碱度改变颜色，因此在欧洲花语中有"善变"之意，但也象征在变化中永不失去的美好。在日本花语中蓝色绣球代表谦虚与辛勤。' },
+  { name:'波斯菊', alias:['cosmos','秋英','大波斯菊'], color:'#f9a8d4',
+    sub:'Cosmos bipinnatus', lang:'纯情·少女的心·天真烂漫',
+    detail:'波斯菊轻盈如蝶，随风摇曳，象征少女心中未经世故的纯粹与对爱情单纯的期待。秋日野地里漫山遍野的波斯菊是平凡却动人的美丽。' },
+  { name:'合欢花', alias:['silk tree','夜合花','马缨花'], color:'#fda4af',
+    sub:'Albizia julibrissin', lang:'合家欢乐·相悦·夫妻和睦',
+    detail:'合欢花在夜间将叶片合拢，白天舒展，古人称之为"有情树"，以此比拟夫妻相知相伴。《诗经》中有"赠之以合欢"，是古代婚嫁的吉祥花卉。' },
+  { name:'含羞草', alias:['mimosa','sensitive plant','知羞草'], color:'#a3e635',
+    sub:'Mimosa pudica', lang:'羞涩·敏感·我只为你敞开',
+    detail:'含羞草一旦被触碰便迅速合拢叶片，如少女见到心上人时的脸红躲避。它的花语是"只有你靠近时，我才会这样"，象征极度敏感而真实的心动。' },
+  { name:'杜鹃花', alias:['azalea','映山红','山踯躅'], color:'#f43f5e',
+    sub:'Rhododendron', lang:'思乡·爱的喜悦·勤俭节制',
+    detail:'杜鹃鸟声声泣血，古人"望帝春心托杜鹃"，使杜鹃花成为思乡与悲情的意象。但在现代西方花语中，杜鹃代表爱的喜悦与女性的美丽。' },
+  { name:'大丽花', alias:['dahlia','天竺牡丹','西番莲'], color:'#c084fc',
+    sub:'Dahlia', lang:'华丽·优雅·背叛与不稳定',
+    detail:'大丽花花形富丽，原产墨西哥，是阿兹特克文明的神圣花卉。维多利亚时代因其复杂的花瓣结构被视为多重性格的象征，既代表华丽也暗示多变。' },
+  { name:'凤仙花', alias:['impatiens','指甲花','别碰我'], color:'#f472b6',
+    sub:'Impatiens balsamina', lang:'别碰我·急切·无法承受的重',
+    detail:'凤仙花的学名"Impatiens"意为"没有耐心"，果实成熟后一触即裂弹出种子，英文名"Touch-me-not（别碰我）"。象征着看似坚强内里极度敏感的心。' },
+  { name:'千日红', alias:['globe amaranth','千日菊','百日红'], color:'#db2777',
+    sub:'Gomphrena globosa', lang:'永不褪色的爱·不朽·坚守',
+    detail:'千日红花朵干燥后颜色依然鲜艳，象征永不褪色的情感与坚守到底的心意。中国民间以千日红入药，寓意长寿；在花语中是"我的爱永远不会改变"。' },
+  { name:'凌霄花', alias:['trumpet creeper','凌霄','紫葳'], color:'#f97316',
+    sub:'Campsis grandiflora', lang:'思念·博取功名·依附',
+    detail:'凌霄花攀援而上，红橙色的花朵凌空而开，古代文人用凌霄比拟攀附权贵。舒婷《致橡树》中批判了凌霄花式的依附之爱，但它本身也象征对高处的渴望与思念。' },
+  { name:'金鱼草', alias:['snapdragon','龙头花','狮子口'], color:'#fb923c',
+    sub:'Antirrhinum majus', lang:'傲慢与力量·欲言又止·保护',
+    detail:'金鱼草的花朵形似张开的嘴，捏住侧面会让它"开口说话"，也叫"龙嘴花"。花语含有"傲慢"与"我已厌倦"，但也象征守护——用牙齿保护所爱之人。' },
+  { name:'君子兰', alias:['clivia','大花君子兰'], color:'#f59e0b',
+    sub:'Clivia miniata', lang:'高雅·坚毅·君子之风',
+    detail:'君子兰不艳不娇，却端庄大方，象征具有君子品格的人——不争不抢，却自有光芒。橙黄色的花朵寓意吉祥与富贵，是中国家庭常见的吉祥植物。' },
+  { name:'木槿', alias:['rose of sharon','朝开暮落花','无穷花'], color:'#c084fc',
+    sub:'Hibiscus syriacus', lang:'柔美·永恒之美·短暂而珍贵',
+    detail:'木槿朝开暮落，每日更替新花，韩国国花"无穷花"即是木槿，取其"生生不息"之意。花语象征虽短暂却永续轮回的美，以及对生命的珍惜。' },
+  { name:'芙蓉花', alias:['cotton rose','木芙蓉','拒霜花','府南花'], color:'#f9a8d4',
+    sub:'Hibiscus mutabilis', lang:'贞节·纯洁·一日三变的美',
+    detail:'芙蓉花一日之内颜色变化——晨开白色，午转粉红，暮为深红，故称"三醉芙蓉"。成都别称"蓉城"即源于此。花语取其独特的气质与在一天内展现完整生命的美。' },
+  { name:'牵牛花', alias:['morning glory','喇叭花','碧蝉花'], color:'#818cf8',
+    sub:'Ipomoea purpurea', lang:'爱情的羁绊·短暂·平凡中的爱',
+    detail:'牵牛花清晨盛开、午后凋谢，象征短暂而真实的爱。日本七夕传说中牵牛（牛郎）与织女的故事，使牵牛花成为隔河相望、一年一见的相思之花。' },
+  { name:'迷迭香', alias:['rosemary','海露珠'], color:'#4ade80',
+    sub:'Rosmarinus officinalis', lang:'记忆·忠诚·思念你',
+    detail:'莎士比亚《哈姆雷特》中奥菲利娅说"迷迭香，是为了帮助记忆"，自古便是记忆与忠诚的象征。古希腊学生戴迷迭香环考试以助记忆，也是婚礼与葬礼共用的花。' },
+  { name:'虞美人', alias:['corn poppy','野罂粟','丽春花'], color:'#f87171',
+    sub:'Papaver rhoeas', lang:'安慰·慰藉·短暂的美丽',
+    detail:'虞美人因项羽宠妃虞姬而得名，象征"生死相随的爱"。一战后欧洲战场上漫野盛开的虞美人成为悼念士兵的符号，代表短暂生命中永恒的美与哀思。' },
+  { name:'香豌豆', alias:['sweet pea','香碗豆'], color:'#f0abfc',
+    sub:'Lathyrus odoratus', lang:'微妙的快乐·出发·再见',
+    detail:'香豌豆是维多利亚时代最受喜爱的花，送别友人时赠予，花语是"感谢你给我的快乐时光，再见"。浓郁的甜香令人沉醉，象征已经过去的美好将被永远珍存。' },
+  { name:'金盏花', alias:['calendula','marigold','金盏菊'], color:'#fb923c',
+    sub:'Calendula officinalis', lang:'失去的爱·悲伤·神圣的守护',
+    detail:'金盏花象征太阳，墨西哥用金盏花装点亡灵节，引导亡魂回家。在亚洲文化中是神圣的供奉之花；在西方花语中橙色金盏花代表悲痛中的温暖记忆。' },
+  { name:'紫苑', alias:['aster','江边菊','紫菊'], color:'#a78bfa',
+    sub:'Aster', lang:'追忆·深远的爱·我将永远记得你',
+    detail:'紫苑花语来自希腊神话，传说是众神的眼泪化成了满天繁星，落地便成紫苑。9月出生的人的代表花，象征对遥远之人的追忆与隔着时空仍在的深情。' },
+  { name:'木绣球', alias:['snowball viburnum','绣球荚蒾','斗球'], color:'#f8fafc',
+    sub:'Viburnum macrocephalum', lang:'希望·严格·冷静的心',
+    detail:'白色球形花簇如覆雪的圆球，日本传统中木绣球象征无私的爱与为对方着想的克制。整个春天它都安静地开着，不张扬，代表内敛而坚定的深情。' },
+];
+
+
+function lookupFlower() {
+  const q = document.getElementById('flower-input').value.trim();
+  if (!q) { luckyFlower(); return; }
+  const matches = _flowers.filter(f =>
+    f.name.includes(q) || q.includes(f.name) ||
+    f.alias.some(a => a.toLowerCase().includes(q.toLowerCase()) || q.toLowerCase().includes(a.toLowerCase()))
+  );
+  document.getElementById('flower-none').style.display = 'none';
+  if (matches.length === 0) {
+    document.getElementById('flower-result').style.display = 'none';
+    document.getElementById('flower-none').style.display = 'block';
+  } else {
+    showFlower(matches[0]);
+  }
+}
+
+function luckyFlower() {
+  const f = _flowers[Math.floor(Math.random() * _flowers.length)];
+  document.getElementById('flower-input').value = '';
+  document.getElementById('flower-none').style.display = 'none';
+  showFlower(f);
+}
+
+function showFlower(f) {
+  document.getElementById('fr-name').textContent = f.name;
+  document.getElementById('fr-name').style.color = f.color;
+  document.getElementById('fr-sub').textContent = f.sub;
+  document.getElementById('fr-lang').textContent = '花语：' + f.lang;
+  document.getElementById('fr-detail').textContent = f.detail;
+  document.getElementById('flower-result').style.display = 'block';
+}
+
+// ════════════════════════════════
+// 宝石图鉴
+// ════════════════════════════════
+const _gems = [
+  { name:'红宝石', en:'Ruby', color:'#dc2626',
+    meaning:'热情·勇气·永恒的爱',
+    detail:'被誉为"宝石之王"，其深红色象征炽热的爱与无畏的勇气。中世纪欧洲骑士将红宝石镶嵌在盔甲上以求保护。7月生辰石，代表高贵与忠诚。',
+    tags:['7月生辰石','硬度9','刚玉族'] },
+  { name:'蓝宝石', en:'Sapphire', color:'#2563eb',
+    meaning:'智慧·忠诚·神圣',
+    detail:'古代祭司和国王认为蓝宝石代表天堂的颜色，象征神圣的保护。戴安娜王妃的订婚戒指上镶嵌了一颗缅甸蓝宝石，使其成为爱情忠贞的象征。9月生辰石。',
+    tags:['9月生辰石','硬度9','刚玉族'] },
+  { name:'祖母绿', en:'Emerald', color:'#059669',
+    meaning:'重生·希望·永恒的春天',
+    detail:'古埃及艳后克利奥帕特拉酷爱祖母绿，并拥有自己的祖母绿矿。深绿色象征生命力的永续与春天的重生。5月生辰石，也是维纳斯的宝石，代表爱与美。',
+    tags:['5月生辰石','硬度7.5-8','绿柱石族'] },
+  { name:'钻石', en:'Diamond', color:'#e2e8f0',
+    meaning:'永恒·纯洁·无与伦比的爱',
+    detail:'"钻石恒久远，一颗永流传"。钻石是自然界最坚硬的物质，象征永不磨灭的爱情与誓言。4月生辰石。古印度人认为钻石是神的眼泪，能带来勇气与力量。',
+    tags:['4月生辰石','硬度10','碳元素'] },
+  { name:'翡翠', en:'Jade (Jadeite)', color:'#16a34a',
+    meaning:'长寿·健康·君子之德',
+    detail:'中华文明中最重要的宝石，"君子无故，玉不去身"。翡翠分翠（绿）和翡（红），满绿的"帝王绿"极为珍贵。古人认为翡翠能辟邪护体，是子孙传承的信物。',
+    tags:['缅甸产','硬度6.5-7','辉石族'] },
+  { name:'珍珠', en:'Pearl', color:'#f8fafc',
+    meaning:'纯洁·智慧·月之泪',
+    detail:'古罗马人视珍珠为最高贵的宝石。阿拉伯传说中珍珠是月光与海浪相遇时产生的眼泪。6月生辰石，象征纯洁、智慧与隐忍之美——经历了沙粒的磨砺才成就圆润。',
+    tags:['6月生辰石','有机宝石','海水/淡水'] },
+  { name:'紫水晶', en:'Amethyst', color:'#7c3aed',
+    meaning:'平静·保护·清醒',
+    detail:'希腊文amethystos意为"不醉"，古人相信紫水晶能防止醉酒与冲动。中世纪主教将其作为圣洁与克制的象征。2月生辰石，现代水晶疗愈中紫晶代表第三眼与直觉。',
+    tags:['2月生辰石','硬度7','石英族'] },
+  { name:'月光石', en:'Moonstone', color:'#bfdbfe',
+    meaning:'直觉·新的开始·女性之力',
+    detail:'月光石内部有蓝白色光晕，随角度流动如月光，古罗马人认为它是月亮女神狄安娜的化身。代表直觉与感知力的增强，以及每个新月周期带来的新的开始。',
+    tags:['6月生辰石','硬度6-6.5','长石族'] },
+  { name:'石榴石', en:'Garnet', color:'#991b1b',
+    meaning:'激情·忠诚·守护旅人',
+    detail:'中世纪的旅行者随身携带石榴石以保平安，认为它在黑暗中发光。深红色石榴石象征炽热的情感与对承诺的忠诚，也是1月生辰石，代表新年的热情。',
+    tags:['1月生辰石','硬度6.5-7.5','石榴石族'] },
+  { name:'青金石', en:'Lapis Lazuli', color:'#1d4ed8',
+    meaning:'智慧·皇权·星空',
+    detail:'古埃及人将青金石研磨成颜料绘制眼影与壁画，是法老的专用宝石。中世纪欧洲画家用青金石提炼群青色，梵高《星夜》中那片深蓝便是它的颜色。',
+    tags:['不透明宝石','硬度5-6','含方解石金点'] },
+  { name:'粉晶', en:'Rose Quartz', color:'#fda4af',
+    meaning:'无条件的爱·温柔·自我疗愈',
+    detail:'粉晶被称为"爱情石"，象征无条件的爱与内心的柔软。古罗马与希腊人用粉晶制作护身符传递爱意。现代水晶疗愈中粉晶对应心轮，帮助疗愈情感创伤。',
+    tags:['硬度7','石英族','常见产于巴西'] },
+  { name:'黑曜石', en:'Obsidian', color:'#1c1917',
+    meaning:'保护·揭示真相·破除幻象',
+    detail:'黑曜石是火山熔岩急速冷却形成的天然玻璃，阿兹特克祭司用它作神圣镜子以窥见真相。现代灵性文化中黑曜石象征切断负能量与守护内在边界。',
+    tags:['火山岩玻璃','硬度5-5.5','天然玻璃'] },
+  { name:'琥珀', en:'Amber', color:'#d97706',
+    meaning:'时间·疗愈·被封存的温柔',
+    detail:'琥珀是数千万年前的树脂化石，偶有昆虫被封存其中。波罗的海沿岸古代人视琥珀为"北方黄金"，认为它携带太阳的能量，可以疗愈与驱邪。有机宝石。',
+    tags:['有机宝石','8月生辰石之一','最古老宝石'] },
+  { name:'海蓝宝石', en:'Aquamarine', color:'#38bdf8',
+    meaning:'清明·勇气·海洋的祝福',
+    detail:'名字来源于拉丁文"海水"，古代水手携带它以保佑平安渡海。蓝绿色的光泽象征平静的心境与清晰的思维，也代表永不褪色的年轻与开朗。3月生辰石。',
+    tags:['3月生辰石','硬度7.5-8','绿柱石族'] },
+  { name:'欧泊', en:'Opal', color:'#a855f7',
+    meaning:'创造力·变幻·希望之彩',
+    detail:'欧泊是唯一会变色的宝石，一颗欧泊中藏有红橙黄绿蓝紫所有颜色，古罗马人称其为"宝石之祖"。10月生辰石，象征无限的创意与充满可能性的未来。',
+    tags:['10月生辰石','含水二氧化硅','变彩效应'] },
+  { name:'绿松石', en:'Turquoise', color:'#0d9488',
+    meaning:'守护·幸运·友谊',
+    detail:'人类最古老的护身宝石之一，古埃及、波斯、阿兹特克文明都视之为神圣。中国藏族文化中绿松石是天空之石，能沟通神明。12月生辰石，象征守护与好运。',
+    tags:['12月生辰石','硬度5-6','古老护身石'] },
+  { name:'托帕石', en:'Topaz', color:'#f59e0b',
+    meaning:'友谊·清晰·太阳之石',
+    detail:'黄色托帕石古称"太阳石"，古埃及人认为它从太阳神拉的金色光芒中获得力量。蓝色托帕石（现代）代表清明的思维与真诚的沟通，11月生辰石。',
+    tags:['11月生辰石','硬度8','最硬硅酸盐之一'] },
+  { name:'猫眼石', en:'Cat\'s Eye', color:'#ca8a04',
+    meaning:'守护·直觉·幸运之眼',
+    detail:'猫眼石内部有一条随光线变化的光带，如猫瞳般灵动。斯里兰卡与缅甸出产最顶级的猫眼石，被认为是守护主人免受邪目侵扰的护身宝物，象征第六感。',
+    tags:['硬度8.5','金绿宝石族','猫眼效应'] },
+  { name:'碧玺', en:'Tourmaline', color:'#ec4899',
+    meaning:'创造·情感平衡·彩虹之石',
+    detail:'碧玺是颜色最丰富的宝石，一块碧玺中可同时出现多种颜色，中国清代慈禧太后极爱碧玺，随葬品中有大量碧玺莲花。"西瓜碧玺"外红内绿如切开的西瓜，是极品。10月生辰石之一。',
+    tags:['10月生辰石','硬度7-7.5','复杂硅酸盐'] },
+  { name:'坦桑石', en:'Tanzanite', color:'#4f46e5',
+    meaning:'蜕变·神秘·无限可能',
+    detail:'坦桑石1967年才在坦桑尼亚发现，是目前已知全球唯一产地的宝石。深蓝紫色极为迷人，被蒂芙尼公司誉为"二十世纪最美的宝石"，象征稀有而珍贵的缘分。',
+    tags:['12月生辰石','硬度6-7','黝帘石族'] },
+  { name:'亚历山大变石', en:'Alexandrite', color:'#7c3aed',
+    meaning:'双重性·奇迹·幸运',
+    detail:'亚历山大变石在日光下呈绿色，在灯光下变为红色，因此有"白天是祖母绿，夜晚是红宝石"之称。以俄国沙皇亚历山大二世命名，极为稀有，象征命运的奇迹与双重魅力。',
+    tags:['6月生辰石','硬度8.5','金绿宝石族','变色效应'] },
+  { name:'虎眼石', en:'Tiger\'s Eye', color:'#b45309',
+    meaning:'专注·毅力·大地之力',
+    detail:'虎眼石内部有金色丝状光带随光线流动，如猛虎的眼睛。古罗马士兵随身携带以增添勇气，南非祖鲁族视之为天地力量的汇聚。象征专注目标、排除干扰的意志力。',
+    tags:['硬度7','石英族','丝绢光泽'] },
+  { name:'孔雀石', en:'Malachite', color:'#15803d',
+    meaning:'转变·冒险·守护心脏',
+    detail:'孔雀石以绿色同心圆花纹著称，古埃及人将其研磨成绿色眼影，中世纪欧洲认为它能防止摔倒与噩运。绿色象征成长与转变，以及对变化的勇敢迎接。',
+    tags:['硬度3.5-4','碳酸铜','不透明宝石'] },
+  { name:'拉长石', en:'Labradorite', color:'#475569',
+    meaning:'神秘·魔法·北极光',
+    detail:'拉长石外表灰暗，转动角度却爆发出蓝绿金紫的彩虹光晕，称为"拉长效应"。因纽特传说中这是被困在石头里的极光。象征隐藏的魔法与超乎预期的内在光芒。',
+    tags:['硬度6-6.5','长石族','晕彩效应'] },
+  { name:'红纹石', en:'Rhodochrosite', color:'#f43f5e',
+    meaning:'爱的复苏·怜悯·情感疗愈',
+    detail:'红纹石以粉红色和白色条纹交织而成，阿根廷土著认为它是远古国王与王后的心血凝结，称为"印加玫瑰"。象征对受伤心灵的温柔抚慰，以及重新爱上自己的勇气。',
+    tags:['硬度3.5-4','碳酸锰','印加玫瑰'] },
+  { name:'珊瑚', en:'Coral', color:'#f97316',
+    meaning:'生命之树·保护·海洋的祝福',
+    detail:'珊瑚是有生命的有机宝石，古罗马人将红珊瑚佩戴在儿童颈上以驱邪保平安。中国传统中红珊瑚象征吉祥富贵，是藏传佛教中的七宝之一，被称为"海底红树"。',
+    tags:['有机宝石','3月生辰石之一','珊瑚虫骨骼'] },
+  { name:'白水晶', en:'Clear Quartz', color:'#f1f5f9',
+    meaning:'澄明·放大·万用之石',
+    detail:'白水晶被称为"水晶之王"，古代人认为它是永久冻结的冰。在水晶疗愈体系中白水晶能放大其他宝石的能量、净化空间。象征清明的头脑与对真相的追求。',
+    tags:['硬度7','石英族','压电效应'] },
+  { name:'发晶', en:'Rutilated Quartz', color:'#fbbf24',
+    meaning:'洞察·转化·金色之网',
+    detail:'发晶是含有金色、银色或红色针状金红石的水晶，被形容为"维纳斯的发丝"或"爱神之箭"。金发晶象征财富与智慧；银发晶象征直觉；红发晶象征激情与力量。',
+    tags:['硬度7','石英族','含金红石针'] },
+  { name:'尖晶石', en:'Spinel', color:'#e11d48',
+    meaning:'振兴·更新·坚韧的心',
+    detail:'历史上许多著名的"红宝石"其实是尖晶石——英国王室皇冠上"黑太子红宝石"便是一颗重约170克拉的红色尖晶石。象征在逆境中依然焕发光彩的不服输精神。',
+    tags:['8月生辰石','硬度8','常被误认红宝石'] },
+  { name:'天河石', en:'Amazonite', color:'#2dd4bf',
+    meaning:'勇气·真实·战士之石',
+    detail:'天河石因其蓝绿色如亚马逊河流而得名，古埃及法老图坦卡蒙的面具旁就有天河石装饰。据传能给予说出真相的勇气，帮助战胜对未知的恐惧，是现代的"勇气石"。',
+    tags:['硬度6-6.5','长石族','含铅致色'] },
+  { name:'黄水晶', en:'Citrine', color:'#fcd34d',
+    meaning:'丰盛·喜悦·商人之石',
+    detail:'黄水晶温暖的金黄色被认为携带太阳的能量，是水晶中少数"不需要净化"的宝石。商人将其放在钱柜以招财，因此得名"商人石"。11月生辰石之一，象征乐观与创造力。',
+    tags:['11月生辰石','硬度7','石英族'] },
+  { name:'烟晶', en:'Smoky Quartz', color:'#78716c',
+    meaning:'扎根·释放·守护边界',
+    detail:'烟晶的灰褐色如烟雾缭绕，是苏格兰的国家宝石，凯尔特德鲁伊教士用它举行仪式。象征将人连接到大地与现实，化解焦虑与散漫，守护心理边界不被侵扰。',
+    tags:['硬度7','石英族','辐照着色'] },
+  { name:'黄铁矿', en:'Pyrite', color:'#a16207',
+    meaning:'意志·显化·愚人黄金',
+    detail:'黄铁矿因金色外表被淘金者误认为黄金，得名"愚人金"。但它的英文pyrite来自希腊语"火"，与燧石相击可点火。象征意志的显化与将想法落地为现实的行动力。',
+    tags:['硬度6-6.5','硫化铁','金属光泽'] },
+];
+
+
+let _selectedGem = null;
+function initGems() {
+  const list = document.getElementById('gem-list');
+  _gems.forEach((g, i) => {
+    const btn = document.createElement('button');
+    btn.style.cssText = `display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;border:1px solid ${g.color}60;background:${g.color}18;color:${g.color};font-size:13px;cursor:pointer;font-family:inherit;transition:all .15s`;
+    btn.innerHTML = `<span style="width:10px;height:10px;border-radius:50%;background:${g.color};flex-shrink:0"></span>${g.name}`;
+    btn.addEventListener('mouseenter', () => btn.style.background = g.color + '30');
+    btn.addEventListener('mouseleave', () => btn.style.background = _selectedGem === i ? g.color + '30' : g.color + '18');
+    btn.onclick = () => showGem(g, i, btn);
+    list.appendChild(btn);
+  });
+}
+
+function showGem(g, idx, btn) {
+  _selectedGem = idx;
+  document.getElementById('gd-dot').style.background = g.color;
+  document.getElementById('gd-name').textContent = g.name;
+  document.getElementById('gd-en').textContent = g.en;
+  document.getElementById('gd-meaning').textContent = '象征：' + g.meaning;
+  document.getElementById('gd-detail').textContent = g.detail;
+  const meta = document.getElementById('gd-meta');
+  meta.innerHTML = g.tags.map(t => `<span style="background:${g.color}20;border:1px solid ${g.color}60;border-radius:20px;padding:2px 10px;font-size:11px;color:${g.color}">${t}</span>`).join('');
+  document.getElementById('gem-detail').style.display = 'block';
+  btn.scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
+initGems();
+
+// ── Options state ──
+const _opts = { era: 'ancient', gender: 'male' };
+function setOpt(key, val, btn) {
+  _opts[key] = val;
+  btn.closest('.opt-row').querySelectorAll('.opt-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+// ── Name data ──
+const _names = {
+  ancient: {
+    surnames: ['李','王','张','刘','陈','杨','赵','黄','周','吴','林','孙','徐','朱','马','胡','萧','白','崔','慕容','上官','欧阳','司马','诸葛','公孙'],
+    male:    ['君临','怀瑾','子墨','景行','元卿','云深','烛明','长风','清晏','凌霄','玄月','思远','逸尘','如玉','承安','夜行','孤星','望川','振羽','明徽'],
+    female:  ['芷晴','月华','凌雪','素言','芙蓉','若溪','青瑶','皎皎','含烟','莺歌','晚霜','听雨','云鬟','碧落','锦衣','朝云','秋水','幽兰','澜漪','玲珑'],
+    neutral: ['逍遥','云游','忘尘','静水','微澜','虚白','如初','无极','明月','清风'],
+  },
+  european: {
+    male:    ['Aldric','Bastian','Caspian','Dorian','Evander','Florian','Gareth','Hadrian',
+              'Idris','Jasper','Keiran','Leander','Marcus','Nikolai','Orion','Percival',
+              'Quinlan','Roland','Sebastien','Theron','Ulric','Valerian','Wren','Xander','Yorick','Zephyr'],
+    female:  ['Aelindra','Beatrix','Celestine','Delphine','Evangeline','Fiora','Genevieve',
+              'Helena','Isadora','Juliette','Katalina','Liora','Mirabelle','Nathalya',
+              'Ophelia','Persephone','Rosalind','Seraphina','Theodora','Vivienne','Wisteria','Ysabel'],
+    neutral: ['Aerin','Blythe','Caelum','Daire','Emrys','Fenix','Gray','Haven','Ivo','Jules'],
+    surnames:['Ashford','Blackwell','Crowe','Devereaux','Fairfax','Harlow','Kingsley','Langdon',
+              'Moreau','Nightingale','Oakhurst','Pemberton','Ravenscroft','Sterling','Thorne',
+              'Vance','Whitmore','Aldgate','Beaumont','Castlemore'],
+  },
+  modern: {
+    surnames: ['林','陈','张','李','王','吴','刘','周','黄','郑','谢','许','徐','苏','何','叶','罗','江','韩','唐',
+               '方','蔡','赵','邓','胡','冯','杨','余','曾','秦'],
+    male:    ['宇轩','子涵','浩然','俊熙','志远','明泽','嘉诚','博文','天宇','凯旋',
+              '晟哲','承远','泽宇','昊天','子默','景泽','铭扬','峻熙','逸飞','宸睿',
+              '瑞霖','煜城','梓豪','楷瑞','嘉禾','绍远','彦博','弘毅','思齐','翰林',
+              '子骞','俊逸','熙远','沐阳','宸轩','旭东','浩宇','睿哲','智渊','修远'],
+    female:  ['晨希','安然','若薇','思涵','慕晴','雨桐','嘉瑶','诗颜','妍希','可欣',
+              '芷晴','梦瑶','语嫣','雪瑶','欣妍','依诺','若汐','梓涵','子萱','悦心',
+              '清荷','灵犀','晓彤','碧瑶','雨欣','婧怡','诗涵','若兰','沐晴','紫萱',
+              '乐瑶','语晴','欣悦','心悦','晴岚','沁雨','紫嫣','梦溪','芸熙','霜晴'],
+    neutral: ['一诺','云逸','以晴','洛川','星河','知恩','晴川','明熙','悠然','沐白',
+              '昱辰','澄心','向晚','远帆','默笙','夕颜','时雨','云起','暮雪','清风'],
+  },
+};
+
+function genName() {
+  const era    = _opts.era;
+  const gender = _opts.gender;
+  const d = _names[era];
+  function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+  let name = '';
+  if (era === 'european') {
+    const g = gender === 'neutral' ? 'neutral' : (gender === 'male' ? 'male' : 'female');
+    name = pick(d[g]) + ' ' + pick(d.surnames);
+  } else {
+    const g = gender === 'neutral' ? 'neutral' : (gender === 'male' ? 'male' : 'female');
+    name = pick(d.surnames) + pick(d[g]);
+  }
+  document.getElementById('name-result').textContent = name;
+}
+
+// ── Hobby data ──
+const _hobbies = [
+  // 文艺创作
+  '读古典文学','写长篇同人','画水彩插画','练书法','写诗','翻译文章','设计字体',
+  '剪辑视频','做播客','写剧本','学素描','做手账','制作相册','学油画',
+  // 音乐
+  '弹古筝','玩电子琴','学吉他','玩合成器','组建乐队','研究黑胶唱片',
+  // 室内/桌游
+  '下围棋','玩桌游','拼装模型','玩策略游戏','玩RPG跑团','解密游戏',
+  '收集旧邮票','收藏香水','整理胶卷相机','拼乐高',
+  // 户外运动
+  '打羽毛球','骑行','徒步爬山','游泳','攀岩','跑步','溜旱冰','打太极','练剑术',
+  // 饮食手作
+  '煮咖啡','烘焙曲奇','做日式便当','调鸡尾酒','研究茶道','做手工皮具',
+  '刺绣','学花道','做蜡烛','制作香皂',
+  // 科技/学术
+  '研究历史地图','学编程','逛博物馆','研究古代服饰','自学天文学','学手语','学乐理',
+  // 生活方式
+  '冥想','练瑜伽','养多肉植物','养猫','观星','逛二手书店','去跳蚤市场',
+  '追纪录片','追韩剧','看独立电影','跑步听播客',
+];
+
+function genHobby() {
+  const n = 3 + Math.floor(Math.random() * 3);
+  const shuffled = _hobbies.slice().sort(() => Math.random() - 0.5);
+  document.getElementById('hobby-result').textContent = shuffled.slice(0, n).join('　/　');
+}
+
+// ── Relation data ──
+const _relTypes = [
+  { type: '青梅竹马', desc: ['从小一起长大，彼此是对方最熟悉的陌生人', '幼时形影不离，长大后各奔东西，重逢时才发现心里从未真正放下', '一起爬过的树、吃过的冰棍，是只属于两人的秘密宇宙'] },
+  { type: '宿敌', desc: ['每次相遇都是唇枪舌战，却谁也没办法真正无视对方', '明面上针锋相对，私底下却比任何人都了解彼此的弱点', '恨意里藏着一种奇异的依赖，少了这个对手，生活会变得无趣'] },
+  { type: '萍水相逢', desc: ['在异乡的雨夜偶然相遇，没有来由地聊了一整夜', '本是擦肩而过的陌生人，命运却一再把两人推向同一个坐标', '没有过去，没有身份，只有那一刻真实存在的彼此'] },
+  { type: '救命之恩', desc: ['一方在对方最灰暗的时刻伸出了手，从此成了对方心里无法归还的债', '恩情太重，反而成了距离——一个不敢靠近，一个不知如何回报', '施救者以为不过是举手之劳，被救者却把那一刻刻进了骨子里'] },
+  { type: '前任', desc: ['曾经以为是一生的人，最后成了彼此最懂又最陌生的存在', '分开的理由说不清楚，再见面时更说不清心里翻涌的是什么', '没有恨，只有一种叫做「如果当时」的绵长遗憾'] },
+  { type: '主仆／雇佣', desc: ['名分上是主从，相处久了早已界限模糊', '一个习惯了被服侍，一个习惯了付出，直到有一天两人都开始慌乱', '明面上的规矩越森严，私底下越藏不住那点逾矩的心思'] },
+  { type: '同门师兄妹', desc: ['同一个师父教出来，功夫一样，脾气却天差地别', '年少时争强好胜，如今同门之情早已胜过血亲', '一方早早出师闯荡，另一方守在原地，久别重逢才发现对方已面目全非'] },
+  { type: '政敌／商业对手', desc: ['台面上你来我往，台面下谁也没轻视过对方一分', '第一次交锋时就知道，这个人将会是最难缠的存在', '赢了对方是目标，但没有这个对手的世界，竟然会让人感到空洞'] },
+  { type: '网友／笔友', desc: ['隔着屏幕说过无数心里话，线下见面的那一刻却手足无措', '对方是那个见过最真实自我的人，偏偏从来没见过真实的脸', '文字里的默契是真实的，见面后的局促也是真实的'] },
+  { type: '异父／异母兄妹', desc: ['血缘上是家人，相处方式却更像陌生人小心翼翼地靠近', '父母的婚事把两个毫无关联的人捆绑在了同一屋檐下', '不知道该用哪种眼神看对方，于是选择了最安全的——假装漠然'] },
+  { type: '故人之后', desc: ['两人的父辈之间有一段未了的恩怨，这一代的相遇像是命运的续章', '甲认识乙的时候，就知道对方身上背着什么，却选择了不说', '旧人的故事横在两人中间，亲近一分就离那段历史更近一分'] },
+  { type: '伪装成陌生人', desc: ['甲知道乙是谁，乙却不知道甲的身份，这场相遇从一开始就不对等', '两人在另一个身份下建立了感情，真相一旦说出口，一切都会碎', '甲不断告诉自己这只是任务，却发现假装的次数多了，假装本身也成了真'] },
+  { type: '失忆与被记得', desc: ['一方忘了，另一方什么都还记得，这份记忆的重量只能一个人扛', '甲对乙来说是陌生人，乙对甲来说是整段失去的岁月', '被遗忘的人要装作第一次认识对方，这场重新开始比想象中更难'] },
+  { type: '共同秘密', desc: ['两人意外共享了一个不能说出口的秘密，从此谁也离不开谁', '秘密是锁链也是纽带——甲和乙都清楚，若非这件事，两人的世界永远不会有交集', '守着同一个秘密的人，最终会比任何人都了解彼此的底线'] },
+  { type: '师徒', desc: ['一个传授，一个吸收，权力不对等的关系里最容易生出复杂的情感', '乙早已超越了甲，但甲永远是那个第一个看见乙的人', '甲以为自己在教乙，后来才发现是乙改变了甲'] },
+  { type: '邻居／室友', desc: ['近到听得见彼此的脚步声，远到不知道对方在想什么', '朝夕相处让人懒得设防，细节就这样悄悄渗进了心里', '某个普通的傍晚，甲突然意识到，乙已经成了一种背景音，少了会不习惯'] },
+  { type: '旅途同伴', desc: ['在同一段路上偶然结伴，说好只是暂时，走着走着忘了分开', '旅途有终点，但有些对话和眼神没有', '离开之后各自归于生活，只有风景会偶尔提醒甲，曾经有个人站在同一片夕阳里'] },
+  { type: '互相救赎', desc: ['甲不知道自己破碎，直到乙到来；乙以为自己无药可救，直到甲出现', '两个都在下沉的人，不知道怎么就互相拉住了', '没有谁是光，但两人在一起时，黑暗好像没那么重了'] },
+];
+const _relDetails = [
+  '有一个只有两人知道的暗号或约定',
+  '曾经在最狼狈的时候被对方看见过',
+  '各自都以为自己付出得更多',
+  '有一件事永远没有说清楚，成了两人之间隐形的结',
+  '第一印象极差，后来却成了转折点',
+  '一方比另一方先动心，自己知道，对方不知道',
+  '有过一次彻夜长谈，之后两人关系悄悄变了',
+  '外人以为两人关系普通，只有当事人知道有多复杂',
+  '共同经历过一件危险或难忘的事',
+  '一方习惯了主动，一方习惯了等待',
+  '曾经误会过对方，后来才明白真相',
+  '对方的某个小习惯，已经被自己记在心里很久了',
+  '两人之间有一句话说了一半，永远没说完',
+  '甲在乙面前展示过一个不给任何人看的侧面',
+  '乙曾经离开过，甲没有挽留，这件事两人都没再提',
+  '有一个地方对两人来说有特殊的意义，说不清楚为什么',
+  '乙总是在甲最不需要帮助的时候出现，在甲最需要的时候不在',
+  '甲第一次对乙说谎，是为了保护乙',
+  '两人曾经在某件事上达成过默契，一个眼神就够了',
+  '乙送给甲一件东西，甲一直带着但从未提起',
+  '甲知道一件乙以为没人知道的事，选择了假装不知道',
+  '两人有过一次争吵，表面上和好了，但什么都不同了',
+  '乙曾经在甲不知情的情况下帮了甲一个大忙',
+  '甲对乙说过一句话，当时是玩笑，后来成了真',
+  '两人都在等对方先开口，结果谁都没有开口',
+  '甲有一个脆弱的瞬间，全世界只有乙见过',
+  '乙无意间说的一句话，甲记了很久',
+  '有人误解过两人的关系，两人都没有解释',
+];
+
+function genRelation() {
+  const a = document.getElementById('rel-a').value.trim() || '甲';
+  const b = document.getElementById('rel-b').value.trim() || '乙';
+  function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+  const rel = pick(_relTypes);
+  const detail1 = pick(_relDetails);
+  let detail2 = pick(_relDetails);
+  while (detail2 === detail1) detail2 = pick(_relDetails);
+  const lines = [
+    `关系类型：${rel.type}`,
+    ``,
+    `${pick(rel.desc)}`,
+    ``,
+    `细节一：${detail1}`,
+    `细节二：${detail2}`,
+  ];
+  document.getElementById('rel-result').textContent = lines.join('\n').replace(/甲/g, a).replace(/乙/g, b);
+}
+
+// ── Persona data ──
+const _personas = [
+  // 基础底色
+  '温柔体贴','冷静理性','热情开朗','内敛深沉','随遇而安','独立自主','完美主义',
+  '善解人意','自由散漫','极度自律','感性优先','理性压倒一切','天生乐观',
+  '习惯性悲观','清醒且克制','敏锐但不说破',
+  // 嘴与心的反差
+  '毒舌嘴硬','傲娇在心','刀子嘴豆腐心','口嫌体正直','嘴上说不要但行动出卖了自己',
+  '表面淡漠私下超在意','说话冲但从不真的伤人','嘴上让你走身体拉着你留',
+  // 情感模式
+  '占有欲强','依赖型人格','容易共情','情绪化','超级保护欲','容易吃醋','护短',
+  '慢热','高冷','外冷内热','神经质式敏感','极度敏感的自尊心',
+  '一旦喜欢就缴械投降','理智知道不对但感情不听','把喜欢藏得很深以为没人看出来',
+  '越在乎越不敢靠近','分离焦虑但死撑着不表现出来',
+  // 行为特征
+  '天然呆','腹黑一笑','行动派','话少但在意','大方洒脱','习惯默默关心',
+  '不擅长拒绝别人','对承诺极度认真','不轻易哭泣','喜欢用沉默传递情绪',
+  '慢慢熟起来后超黏人','会撒娇但死不承认','会替对方着想到委屈自己',
+  '对喜欢的人格外不知所措','平静外表下情感极深','表面强硬实则脆弱',
+  '习惯把道歉说成玩笑','宁可自己难受也不肯开口求助','用忙碌回避情绪',
+  '记得所有细节却装作无所谓','把关心藏进日常小事里',
+  // 思维方式
+  '喜欢掌控感却嘴上说随便','极度怕麻烦别人','记仇但也记恩','讲话直接有时显得莽撞',
+  '容易陷入反刍思维','外表迷糊内心精明','表情管理一流内心戏十分丰富',
+  '想太多导致行动迟缓','把假设当成现实来担心','脑子转得快嘴跟不上',
+  '事后复盘型选手永远在想如果当时','直觉很准但喜欢用逻辑说服自己',
+  // 社交模式
+  '很少主动但一旦主动就全力以赴','有点社恐但喜欢的人面前变话痨',
+  '对陌生人礼貌对熟人反而没大没小','处理情绪靠一个人待着消化',
+  '不会表白但擅长用行动暗示','逞强惯了忘记了可以软下来',
+  '人多的时候安静人少的时候话多','看起来好相处但真正走进来的人极少',
+  '朋友圈只有三个人但都是真的','帮别人解决问题但自己的事扛着不说',
+  // 特殊气质
+  '身上有种说不清的孤独感','眼神里总有一点没说完的话','笑起来很好看但眼睛不一定跟着笑',
+  '有时候像个大人有时候又非常幼稚','偶尔会冒出一句让人心疼的话然后假装没说',
+  '总在照顾别人情绪但没人照顾他','见过一些事所以比同龄人想得透',
+];
+
+function genPersona() {
+  const n = 5 + Math.floor(Math.random() * 4);
+  const shuffled = _personas.slice().sort(() => Math.random() - 0.5);
+  const tags = shuffled.slice(0, n);
+  const container = document.getElementById('persona-tags');
+  container.innerHTML = tags.map(t => `<span class="result-tag">${t}</span>`).join('');
+}
+</script>
+{% endblock %}
