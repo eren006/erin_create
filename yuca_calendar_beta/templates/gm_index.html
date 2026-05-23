@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}本主面板 · 语擦日历{% endblock %}
+{% block body %}
+<div class="page">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+    <h1 class="page-title" style="margin-bottom:0">本主面板</h1>
+    <div style="display:flex;gap:8px">
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('calendar') }}">我的日历</a>
+      <a class="btn btn-primary btn-sm" href="{{ url_for('gm_recruit_new') }}">+ 发布招募</a>
+    </div>
+  </div>
+
+  {% if not recs %}
+  <div class="empty">还没有发布过招募<br>
+    <a href="{{ url_for('gm_recruit_new') }}" class="btn btn-primary" style="margin-top:14px;display:inline-flex">发布第一个招募</a>
+  </div>
+  {% else %}
+  <div style="display:grid;gap:14px">
+  {% for r in recs %}
+  {% set p = r.time_range %}
+  <div class="card">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-size:15px;font-weight:600;color:var(--text)">{{ r.title }}</span>
+          {% if r.status == 'open' %}
+            <span class="badge badge-active">招募中</span>
+          {% else %}
+            <span class="badge badge-inactive">已关闭</span>
+          {% endif %}
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">
+          {{ r.start_year }}年 {{ p[:2] }}月{{ p[2:4] }}日 —
+          {% if p[5:7]|int < p[:2]|int %}{{ r.start_year + 1 }}年 {% endif %}
+          {{ p[5:7] }}月{{ p[7:9] }}日
+        </div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:13px;color:var(--text);font-weight:600">
+          {{ r.total_apps }} 份投递
+          {% if r.pending_apps > 0 %}
+          <span style="color:var(--gold);font-size:12px">（{{ r.pending_apps }} 待审）</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('gm_recruit_detail', rid=r.id) }}">查看投递</a>
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('plaza_detail', rid=r.id) }}" target="_blank">广场预览</a>
+    </div>
+  </div>
+  {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

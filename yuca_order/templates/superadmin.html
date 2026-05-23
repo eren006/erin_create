@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% block title %}超管 — 账户列表{% endblock %}
+{% block body %}
+<div class="page">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+    <div class="page-title" style="margin-bottom:0;">账户管理</div>
+    <div class="spacer"></div>
+    <a href="{{ url_for('superadmin_tenant_new') }}" class="btn btn-primary btn-sm">＋ 新建账户</a>
+    <a href="{{ url_for('superadmin_logout') }}" class="btn btn-ghost btn-sm">退出超管</a>
+  </div>
+
+  {% if tenants %}
+  <div class="card" style="padding:0;overflow:hidden;">
+    <table>
+      <thead><tr>
+        <th>账户名</th><th>Slug</th><th>管理员</th><th>用户</th>
+        <th>订单</th><th>待处理</th><th>状态</th><th></th>
+      </tr></thead>
+      <tbody>
+        {% for t in tenants %}
+        <tr>
+          <td style="font-weight:500;">{{ t.display_name or t.slug }}</td>
+          <td class="mono muted">{{ t.slug }}</td>
+          <td>{{ t.admin_count }}</td>
+          <td>{{ t.user_count }}</td>
+          <td>{{ t.order_count }}</td>
+          <td>
+            {% if t.pending_count %}
+            <span style="color:var(--warn);font-weight:500;">{{ t.pending_count }}</span>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            {% if t.is_active %}
+              <span class="badge" style="background:var(--green)22;color:var(--green);">启用</span>
+            {% else %}
+              <span class="badge" style="background:var(--red)22;color:var(--red);">停用</span>
+            {% endif %}
+          </td>
+          <td><a href="{{ url_for('superadmin_tenant', tid=t.id) }}" class="btn btn-ghost btn-sm">管理</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card" style="text-align:center;color:var(--muted);padding:40px;">
+    暂无账户 &nbsp;<a href="{{ url_for('superadmin_tenant_new') }}">创建第一个</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

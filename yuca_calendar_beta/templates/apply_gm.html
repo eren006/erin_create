@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}申请成为本主 · 语擦日历{% endblock %}
+{% block body %}
+<div class="page" style="max-width:560px">
+  <h1 class="page-title">申请成为本主</h1>
+
+  {% if user.is_gm %}
+  <div class="form-success">您已经是本主，可以直接进入本主面板。</div>
+  <a class="btn btn-primary" href="{{ url_for('gm_index') }}">进入本主面板</a>
+
+  {% elif pending %}
+  <div class="card">
+    <div style="font-size:15px;font-weight:600;color:var(--gold);margin-bottom:8px">申请审核中</div>
+    <p style="font-size:13px;color:var(--muted);line-height:1.8">
+      您的申请已提交，正在等待超管审批。审批通过后即可使用本主面板。
+    </p>
+    <div style="margin-top:14px;font-size:12px;color:var(--muted)">
+      申请理由：{{ pending.reason or '（未填写）' }}
+    </div>
+  </div>
+  <a class="btn btn-ghost" href="{{ url_for('settings') }}" style="margin-top:12px">返回设置</a>
+
+  {% else %}
+  <div class="card" style="margin-bottom:20px">
+    <p style="font-size:13px;color:var(--muted);line-height:1.8">
+      本主可以在招募广场发布招募，查看和管理玩家投递。<br>
+      申请需由超管审批。审批通过后，您可以同时使用玩家端和本主端。
+    </p>
+  </div>
+  <form method="post">
+    <div class="form-group">
+      <label class="form-label">申请理由（选填）</label>
+      <textarea class="form-textarea" name="reason" rows="4"
+                placeholder="简单介绍一下你想开本的类型或计划..."></textarea>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-primary" type="submit">提交申请</button>
+      <a class="btn btn-ghost" href="{{ url_for('settings') }}">取消</a>
+    </div>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

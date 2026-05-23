@@ -1,0 +1,192 @@
+{% extends 'base.html' %}
+{% block title %}订单 {{ order.order_no }}{% endblock %}
+{% block body %}
+<div class="page" style="max-width:800px;">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap;">
+    <a href="{{ url_for('admin_orders') }}" class="btn btn-ghost btn-sm">← 返回列表</a>
+    <span class="mono" style="color:var(--accent);">{{ order.order_no }}</span>
+    <span class="badge" style="background:{{ order.status|sc }}22;color:{{ order.status|sc }};border:1px solid {{ order.status|sc }}44;">
+      {{ order.status|sl }}
+    </span>
+  </div>
+
+  <!-- 基本信息 -->
+  <div class="card">
+    <div class="g2">
+      <div><div class="fl">客户称呼</div><div>{{ order.customer_name }}</div></div>
+      <div><div class="fl">联系方式</div><div>{{ order.customer_contact }}</div></div>
+      <div><div class="fl">服务类型</div><div>{{ order.service_type }}</div></div>
+      <div><div class="fl">提交时间</div><div>{{ order.created_at|fmt }}</div></div>
+    </div>
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+      <div class="fl">标题</div>
+      <div style="font-size:15px;font-weight:500;margin-top:2px;">{{ order.title }}</div>
+    </div>
+    {% if order.description %}
+    <div style="margin-top:10px;">
+      <div class="fl">详细说明</div>
+      <div style="font-size:13px;color:var(--muted);white-space:pre-wrap;margin-top:4px;">{{ order.description }}</div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- 参考图片 -->
+  {% if images %}
+  <div class="card">
+    <div class="fl" style="margin-bottom:10px;">参考图片（{{ images|length }} 张）</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;">
+      {% for img in images %}
+      <a href="{{ url_for('serve_upload', filename=img.filename) }}" target="_blank">
+        <img src="{{ url_for('serve_upload', filename=img.filename) }}"
+             title="{{ img.original_name }}"
+             style="width:100px;height:100px;object-fit:cover;border-radius:6px;border:1px solid var(--border);">
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- 操作区 -->
+  {% if order.status == 'pending' %}
+  <div class="card">
+    <div class="fl" style="margin-bottom:10px;">操作</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <form method="post" action="{{ url_for('admin_accept', oid=order.id) }}">
+        <button class="btn btn-green">接单</button>
+      </form>
+      <button class="btn btn-danger btn-sm" onclick="document.getElementById('reject-form').style.display='block'">拒绝</button>
+    </div>
+    <div id="reject-form" style="display:none;margin-top:12px;">
+      <form method="post" action="{{ url_for('admin_reject', oid=order.id) }}">
+        <div class="fg">
+          <label class="fl">拒绝原因</label>
+          <input class="fi" name="reason" placeholder="告知客户原因（可选）">
+        </div>
+        <button class="btn btn-danger btn-sm" type="submit">确认拒绝</button>
+      </form>
+    </div>
+  </div>
+
+  {% elif order.status == 'accepted' %}
+  <div class="card">
+    <div class="fl" style="margin-bottom:10px;">操作</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <form method="post" action="{{ url_for('admin_start', oid=order.id) }}">
+        <button class="btn btn-primary btn-sm">开始制作</button>
+      </form>
+      <button class="btn btn-warn btn-sm" onclick="document.getElementById('complete-form').style.display='block'">直接完成</button>
+      <form method="post" action="{{ url_for('admin_cancel', oid=order.id) }}"
+            onsubmit="return confirm('确认取消？')">
+        <button class="btn btn-ghost btn-sm" type="submit">取消订单</button>
+      </form>
+    </div>
+    <div id="complete-form" style="display:none;margin-top:12px;">
+      <form method="post" action="{{ url_for('admin_complete', oid=order.id) }}" enctype="multipart/form-data">
+        <div class="fg">
+          <label class="fl">完成说明 / 成品链接</label>
+          <textarea class="ft" name="result_text" placeholder="（可选）">{{ order.result_text }}</textarea>
+        </div>
+        <div class="fg">
+          <label class="fl">上传成品图</label>
+          <input type="file" name="result_images" accept="image/*" multiple class="fi" style="padding:5px;">
+        </div>
+        <button class="btn btn-green btn-sm" type="submit">确认完成</button>
+      </form>
+    </div>
+  </div>
+
+  {% elif order.status == 'processing' %}
+  <div class="card">
+    <div class="fl" style="margin-bottom:10px;">完成订单</div>
+    <form method="post" action="{{ url_for('admin_complete', oid=order.id) }}" enctype="multipart/form-data">
+      <div class="fg">
+        <label class="fl">完成说明 / 成品链接</label>
+        <textarea class="ft" name="result_text" placeholder="（可选）">{{ order.result_text }}</textarea>
+      </div>
+      <div class="fg">
+        <label class="fl">上传成品图（最多 10 张）</label>
+        <input type="file" name="result_images" accept="image/*" multiple class="fi" style="padding:5px;">
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-green" type="submit">标记完成</button>
+        <form method="post" action="{{ url_for('admin_cancel', oid=order.id) }}"
+              onsubmit="return confirm('确认取消？')" style="display:inline;">
+          <button class="btn btn-ghost btn-sm" type="submit">取消订单</button>
+        </form>
+      </div>
+    </form>
+  </div>
+
+  {% elif order.status == 'completed' %}
+  <div class="card" style="border-color:color-mix(in srgb,var(--green) 35%,var(--border));">
+    <div style="color:var(--green);font-weight:500;margin-bottom:8px;">✅ 已完成</div>
+    {% if order.result_text %}<div style="font-size:13px;white-space:pre-wrap;">{{ order.result_text }}</div>{% endif %}
+    {% if result_imgs %}
+    <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:8px;">
+      {% for img in result_imgs %}
+      <a href="{{ url_for('serve_upload', filename=img.filename) }}" target="_blank">
+        <img src="{{ url_for('serve_upload', filename=img.filename) }}"
+             style="width:110px;height:110px;object-fit:cover;border-radius:6px;border:1px solid var(--border);">
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+    <!-- 补充成品 -->
+    <details style="margin-top:12px;">
+      <summary style="font-size:12px;color:var(--muted);cursor:pointer;">补充成品图 / 说明</summary>
+      <form method="post" action="{{ url_for('admin_complete', oid=order.id) }}" enctype="multipart/form-data" style="margin-top:8px;">
+        <div class="fg">
+          <textarea class="ft" name="result_text" style="min-height:60px;">{{ order.result_text }}</textarea>
+        </div>
+        <div class="fg">
+          <input type="file" name="result_images" accept="image/*" multiple class="fi" style="padding:5px;">
+        </div>
+        <button class="btn btn-ghost btn-sm" type="submit">更新</button>
+      </form>
+    </details>
+  </div>
+  {% endif %}
+
+  <!-- 分配负责人 -->
+  {% if admins %}
+  <div class="card">
+    <div class="fl" style="margin-bottom:10px;">负责人</div>
+    <form method="post" action="{{ url_for('admin_assign', oid=order.id) }}" style="display:flex;gap:8px;align-items:center;">
+      <select name="admin_id" class="fs" style="flex:1;max-width:200px;">
+        <option value="">— 未分配 —</option>
+        {% for a in admins %}
+        <option value="{{ a.id }}" {% if order.assigned_admin==a.id %}selected{% endif %}>{{ a.display_name or a.username }}</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-ghost btn-sm" type="submit">保存</button>
+    </form>
+  </div>
+  {% endif %}
+
+  <!-- 管理备注 -->
+  <div class="card">
+    <div class="fl" style="margin-bottom:10px;">内部备注（客户不可见）</div>
+    <form method="post" action="{{ url_for('admin_note', oid=order.id) }}">
+      <div class="fg">
+        <textarea class="ft" name="admin_notes" style="min-height:70px;">{{ order.admin_notes }}</textarea>
+      </div>
+      <button class="btn btn-ghost btn-sm" type="submit">保存备注</button>
+    </form>
+  </div>
+
+  <!-- 操作日志 -->
+  {% if logs %}
+  <div class="card">
+    <div class="fl" style="margin-bottom:10px;">操作日志</div>
+    {% for l in logs %}
+    <div style="display:flex;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px;">
+      <span style="color:var(--muted);font-size:11px;white-space:nowrap;min-width:120px;">{{ l.created_at|fmt }}</span>
+      <span>{{ l.action }}</span>
+      <span style="color:var(--muted);font-size:12px;">{{ l.actor }}</span>
+      {% if l.note %}<span style="color:var(--muted);font-size:12px;">— {{ l.note }}</span>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

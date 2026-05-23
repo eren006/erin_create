@@ -1,0 +1,336 @@
+{% extends 'base.html' %}
+{% block title %}使用指南{% endblock %}
+{% block head %}
+<style>
+.guide-section{margin-bottom:28px;}
+.guide-section h2{font-size:14px;font-weight:600;color:var(--accent2);margin-bottom:12px;
+  padding-bottom:6px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;}
+pre,code{font-family:"JetBrains Mono","Cascadia Code",monospace;}
+.code-block{
+  background:#f0f6ff;border:1px solid var(--border);border-radius:10px;
+  padding:14px 16px;font-size:12px;color:#1e3a6e;
+  overflow-x:auto;line-height:1.8;position:relative;
+}
+.copy-btn{
+  position:absolute;top:8px;right:10px;font-size:11px;padding:3px 10px;
+  background:rgba(59,130,246,.1);border:1px solid var(--border);
+  color:var(--muted);border-radius:6px;cursor:pointer;transition:.15s;
+}
+.copy-btn:hover{color:var(--text);border-color:var(--accent);}
+
+.cmd-table{width:100%;border-collapse:collapse;}
+.cmd-table td{padding:7px 10px;border-bottom:1px solid var(--border);font-size:13px;vertical-align:top;}
+.cmd-table tr:last-child td{border-bottom:none;}
+.cmd-table .cmd{font-family:monospace;color:var(--accent2);font-size:12px;white-space:nowrap;}
+.cmd-table .desc{color:var(--text);}
+.cmd-table .note{color:var(--muted);font-size:11px;}
+.cmd-group td{font-size:11px;font-weight:600;color:var(--muted);padding:6px 10px;
+  background:rgba(59,130,246,.06);letter-spacing:.05em;}
+
+.step{display:flex;gap:12px;margin-bottom:12px;}
+.step-num{flex-shrink:0;width:24px;height:24px;background:var(--accent);border-radius:50%;
+  display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;margin-top:1px;}
+.step-body{flex:1;}
+.step-title{font-size:13px;font-weight:500;color:var(--text);margin-bottom:4px;}
+
+.flow-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0;}
+.flow-box{background:var(--surface2);border:1px solid var(--border);border-radius:8px;
+  padding:5px 12px;font-size:12px;color:var(--text);}
+.flow-arr{color:var(--muted);font-size:13px;}
+.flow-box.hl{background:rgba(59,130,246,.1);border-color:rgba(59,130,246,.3);color:var(--accent2);}
+</style>
+{% endblock %}
+{% block body %}
+<div class="page" style="max-width:820px;">
+  <div class="page-title">使用指南</div>
+
+  <!-- ── 系统架构 ── -->
+  <div class="guide-section">
+    <h2>🗺️ 系统架构</h2>
+    <div class="card-sm" style="font-size:13px;line-height:2;">
+      <div class="flow-row">
+        <div class="flow-box">客户网页下单</div>
+        <div class="flow-arr">→</div>
+        <div class="flow-box hl">Flask 散单队列</div>
+        <div class="flow-arr">←→ <code style="font-size:11px;">.拉取散单 / .同步网页端</code> →</div>
+        <div class="flow-box hl">排单宝.js (Bot)</div>
+      </div>
+      <div class="flow-row">
+        <div class="flow-box">Bot 用户 .下单</div>
+        <div class="flow-arr">→</div>
+        <div class="flow-box hl">Bot paidan_orders</div>
+        <div class="flow-arr">→ <code style="font-size:11px;">.同步网页端</code> →</div>
+        <div class="flow-box">网页排单看板</div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px;">
+        两种下单方式最终汇入同一个管理队列。散单由 <strong>.拉取散单</strong> 拉入 Bot，Bot 用 <strong>.同步网页端</strong> 把所有状态推回网页。
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Bot 配置 ── -->
+  <div class="guide-section">
+    <h2>🤖 Bot 配置（Seal Dice）</h2>
+    <div class="card-sm" style="margin-bottom:10px;">
+      <div style="font-size:13px;font-weight:500;margin-bottom:10px;">
+        将 <code style="color:var(--accent2);">排单宝.js</code> 放入 Seal 的
+        <code style="color:var(--accent2);">data/scripts/</code> 目录，在插件设置中填写：
+      </div>
+      <table class="cmd-table">
+        <tr>
+          <td class="cmd" style="width:120px;">网页端地址</td>
+          <td class="desc"><code>http://47.99.64.227:5237</code></td>
+        </tr>
+        <tr>
+          <td class="cmd">网页端Token</td>
+          <td class="desc">超管后台 → 账户管理 → 对应账户 → 复制 API Token</td>
+        </tr>
+      </table>
+    </div>
+    <div class="fh">
+      超管入口：<a href="/superadmin/login" target="_blank">http://47.99.64.227:5237/superadmin/login</a>
+      &nbsp;·&nbsp; 默认密码见 app.py 第 25 行 <code>SUPERADMIN_PASS</code>
+    </div>
+  </div>
+
+  <!-- ── Bot 指令 ── -->
+  <div class="guide-section">
+    <h2>📋 Bot 指令一览</h2>
+    <div class="card" style="padding:0;overflow:hidden;">
+      <table class="cmd-table">
+
+        <tr class="cmd-group"><td colspan="3">🔗 网页端同步（管理员）</td></tr>
+        <tr>
+          <td class="cmd">.同步网页端</td>
+          <td class="desc">把 Bot 全部订单 / 用户数据推送到网页看板</td>
+          <td class="note">改完状态后手动触发</td>
+        </tr>
+        <tr>
+          <td class="cmd">.拉取散单</td>
+          <td class="desc">从网页拉取新提交的散单，加入 Bot 排单队列</td>
+          <td class="note">拉取后自动回推一次</td>
+        </tr>
+
+        <tr class="cmd-group"><td colspan="3">📦 用户操作</td></tr>
+        <tr>
+          <td class="cmd">.排单注册 姓名 数量</td>
+          <td class="desc">用户自助注册，提交后等管理员核对</td>
+          <td class="note"></td>
+        </tr>
+        <tr>
+          <td class="cmd">.下单</td>
+          <td class="desc">查看公告和下单格式；<code>.下单 &lt;内容&gt;</code> 正式提交</td>
+          <td class="note">需通过核对且卡余量 &gt; 0</td>
+        </tr>
+        <tr>
+          <td class="cmd">.查看订单状态 编号</td>
+          <td class="desc">查询自己的订单当前进度</td>
+          <td class="note"></td>
+        </tr>
+        <tr>
+          <td class="cmd">.查余额</td>
+          <td class="desc">查询自己的剩余卡数和有效期</td>
+          <td class="note"></td>
+        </tr>
+        <tr>
+          <td class="cmd">.撤单 编号</td>
+          <td class="desc">撤回「待接单」状态的订单</td>
+          <td class="note">已接单无法撤</td>
+        </tr>
+        <tr>
+          <td class="cmd">.催单 编号</td>
+          <td class="desc">对进行中的订单发起催单提醒</td>
+          <td class="note">次数会显示在看板</td>
+        </tr>
+
+        <tr class="cmd-group"><td colspan="3">🛠️ 管理员 — 订单处理</td></tr>
+        <tr>
+          <td class="cmd">.接单 编号 [天数]</td>
+          <td class="desc">接受订单，可选附上预计工期天数（默认 2）</td>
+          <td class="note"></td>
+        </tr>
+        <tr>
+          <td class="cmd">.扣卡 编号</td>
+          <td class="desc">完成订单并扣除用户一张卡</td>
+          <td class="note">完成的最终操作</td>
+        </tr>
+        <tr>
+          <td class="cmd">.反馈草图 编号</td>
+          <td class="desc">将订单状态标为「草图阶段」</td>
+          <td class="note"></td>
+        </tr>
+        <tr>
+          <td class="cmd">.拒绝接单 编号 原因</td>
+          <td class="desc">拒绝并注明原因</td>
+          <td class="note"></td>
+        </tr>
+        <tr>
+          <td class="cmd">.设为急单 编号</td>
+          <td class="desc">标记加急，看板橙色高亮</td>
+          <td class="note"></td>
+        </tr>
+        <tr>
+          <td class="cmd">.查看订单详情 编号</td>
+          <td class="desc">查看完整订单内容</td>
+          <td class="note"></td>
+        </tr>
+        <tr>
+          <td class="cmd">.查看待接单</td>
+          <td class="desc">列出所有「待接单」订单</td>
+          <td class="note"></td>
+        </tr>
+        <tr>
+          <td class="cmd">.查看待完成 / .待完成列表</td>
+          <td class="desc">列出已接单、待扣卡的任务</td>
+          <td class="note"></td>
+        </tr>
+        <tr>
+          <td class="cmd">.排单看板</td>
+          <td class="desc">Bot 内显示全部进行中订单概况</td>
+          <td class="note"></td>
+        </tr>
+        <tr>
+          <td class="cmd">.排单日志</td>
+          <td class="desc">查看最近操作记录</td>
+          <td class="note"></td>
+        </tr>
+        <tr>
+          <td class="cmd">.排单月报</td>
+          <td class="desc">当月完成数量统计</td>
+          <td class="note"></td>
+        </tr>
+
+        <tr class="cmd-group"><td colspan="3">👥 管理员 — 用户 / 卡管理</td></tr>
+        <tr>
+          <td class="cmd">.排单核对 UID 数量 有效期</td>
+          <td class="desc">核对用户注册信息，设置卡数和有效期</td>
+          <td class="note">核对后才能下单</td>
+        </tr>
+        <tr>
+          <td class="cmd">.增补余额 UID 数量</td>
+          <td class="desc">为用户增加卡余量</td>
+          <td class="note"></td>
+        </tr>
+        <tr>
+          <td class="cmd">.延期 UID 新有效期</td>
+          <td class="desc">修改用户卡的有效期（格式 YYYY-MM-DD）</td>
+          <td class="note"></td>
+        </tr>
+        <tr>
+          <td class="cmd">.用户列表</td>
+          <td class="desc">列出所有注册用户及卡余量</td>
+          <td class="note"></td>
+        </tr>
+        <tr>
+          <td class="cmd">.移除用户 UID</td>
+          <td class="desc">删除该用户的注册信息</td>
+          <td class="note"></td>
+        </tr>
+        <tr>
+          <td class="cmd">.清理过期用户</td>
+          <td class="desc">批量删除卡已过期的用户</td>
+          <td class="note"></td>
+        </tr>
+        <tr>
+          <td class="cmd">.排单群发 内容</td>
+          <td class="desc">向所有已核对用户发送公告</td>
+          <td class="note"></td>
+        </tr>
+
+        <tr class="cmd-group"><td colspan="3">⚙️ 管理员 — 系统配置</td></tr>
+        <tr>
+          <td class="cmd">.设置排单工作群</td>
+          <td class="desc">将当前群设为接单通知群</td>
+          <td class="note">新订单通知发到这里</td>
+        </tr>
+        <tr>
+          <td class="cmd">.设置排单公告 内容</td>
+          <td class="desc">设置用户 .下单 时看到的公告（留空清空）</td>
+          <td class="note"></td>
+        </tr>
+        <tr>
+          <td class="cmd">.设置下单格式 内容</td>
+          <td class="desc">设置下单时展示的格式模板</td>
+          <td class="note"></td>
+        </tr>
+        <tr>
+          <td class="cmd">.设置无限下单 QQ号</td>
+          <td class="desc">授予该用户并发多单权限</td>
+          <td class="note">默认一人只能有一笔进行中</td>
+        </tr>
+        <tr>
+          <td class="cmd">.添加排单管理员 QQ号</td>
+          <td class="desc">添加排单管理权限</td>
+          <td class="note"></td>
+        </tr>
+        <tr>
+          <td class="cmd">.移除排单管理员 QQ号</td>
+          <td class="desc">撤销管理权限</td>
+          <td class="note"></td>
+        </tr>
+
+      </table>
+    </div>
+  </div>
+
+  <!-- ── 网页管理功能 ── -->
+  <div class="guide-section">
+    <h2>🖥️ 网页管理功能</h2>
+    <div class="card" style="padding:0;overflow:hidden;">
+      <table class="cmd-table">
+        <tr class="cmd-group"><td colspan="2">管理员登录后可用</td></tr>
+        <tr>
+          <td class="cmd" style="width:120px;">概览</td>
+          <td class="desc">散单统计、Bot 订单进度、急单 / 催单汇总</td>
+        </tr>
+        <tr>
+          <td class="cmd">订单</td>
+          <td class="desc">散单完整列表，可搜索 / 筛选状态，点进去可接单 / 完成 / 拒绝</td>
+        </tr>
+        <tr>
+          <td class="cmd">卡管理</td>
+          <td class="desc">上半部分显示 Bot 快照用户余额（需先 .同步网页端），下半部分可手动增删</td>
+        </tr>
+        <tr>
+          <td class="cmd">排单看板</td>
+          <td class="desc">Bot 订单实时看板（需 .同步网页端 更新），含进行中 / 已完成 / 用户余额三个 Tab</td>
+        </tr>
+        <tr>
+          <td class="cmd">设置</td>
+          <td class="desc">开关散单接受 / 设置最大并发散单数，超出后网页自动提示队列已满</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── 常用地址 ── -->
+  <div class="guide-section">
+    <h2>🔗 常用地址</h2>
+    <div class="card-sm">
+      <table class="cmd-table">
+        <tr><td class="cmd" style="width:120px;">客户下单</td><td><a href="/" target="_blank">http://47.99.64.227:5237/</a></td></tr>
+        <tr><td class="cmd">查回执进度</td><td><a href="/" target="_blank">http://47.99.64.227:5237/#query</a></td></tr>
+        <tr><td class="cmd">管理员登录</td><td><a href="/admin/login" target="_blank">http://47.99.64.227:5237/admin/login</a></td></tr>
+        <tr><td class="cmd">超管后台</td><td><a href="/superadmin/login" target="_blank">http://47.99.64.227:5237/superadmin/login</a></td></tr>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function copyCode(id) {
+  const el = document.getElementById(id);
+  const btn = el.querySelector('.copy-btn');
+  const orig = btn.textContent;
+  btn.style.display = 'none';
+  const text = el.innerText.trim();
+  btn.style.display = '';
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = '已复制 ✓';
+    btn.style.color = 'var(--green)';
+    setTimeout(() => { btn.textContent = orig; btn.style.color = ''; }, 1800);
+  });
+}
+</script>
+{% endblock %}

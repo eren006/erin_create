@@ -80,11 +80,18 @@
   <div class="banner banner-err">⚠️ 无法删除当前活跃季，请先切换到其他季再删除。</div>
   {% elif msg == 'empty_name' %}
   <div class="banner banner-err">⚠️ 季名不能为空。</div>
+  {% elif msg == 'limit_reached' %}
+  <div class="banner banner-err">⚠️ 每个存档最多 5 个季，请先删除一个再创建新季。</div>
   {% endif %}
 
   <!-- 新建 -->
   <div class="new-card">
     <h3>新建季</h3>
+    {% if shows|length >= 5 %}
+    <div style="color:var(--muted);font-size:13px;">
+      已达上限（5 个季）。请先删除一个旧季，再创建新季。
+    </div>
+    {% else %}
     <form method="post" action="{{ url_for('admin_show_new') }}">
       <div class="form-row">
         <div class="field">
@@ -99,8 +106,10 @@
       </div>
       <div style="font-size:11px;color:var(--muted);margin-top:8px;">
         新季默认不是活跃季，创建后点「设为活跃」才会让机器人往里写数据。
+        （{{ shows|length }}/5）
       </div>
     </form>
+    {% endif %}
   </div>
 
   <!-- 季列表 -->

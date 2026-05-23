@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block title %}订单已提交{% endblock %}
+{% block body %}
+<div class="page" style="max-width:560px;">
+  <div class="card" style="text-align:center;padding:36px 28px;">
+    <div style="font-size:36px;margin-bottom:12px;">✅</div>
+    <div style="font-size:18px;font-weight:600;color:var(--green);margin-bottom:8px;">订单已提交！</div>
+    <p class="muted" style="margin-bottom:24px;font-size:13px;">请保存以下信息，凭订单号和验证码可随时查询进度。</p>
+
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:20px;text-align:left;">
+      <div style="margin-bottom:10px;">
+        <div class="fl">订单号</div>
+        <div style="font-size:18px;font-weight:600;color:var(--accent);font-family:monospace;">{{ order_no }}</div>
+      </div>
+      <div>
+        <div class="fl">验证码（访问订单时需要）</div>
+        <div style="font-size:22px;font-weight:700;color:var(--gold);letter-spacing:4px;font-family:monospace;">{{ verify_code }}</div>
+      </div>
+    </div>
+
+    <div style="font-size:12px;color:var(--muted);margin-bottom:20px;line-height:1.8;">
+      请截图或记录以上信息<br>
+      验证码丢失后无法找回，请妥善保存
+    </div>
+
+    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+      <a href="{{ url_for('order_status', order_no=order_no) }}" class="btn btn-primary">查看订单</a>
+      <a href="{{ url_for('order_new') }}" class="btn btn-ghost">再提交一单</a>
+      <a href="{{ url_for('index') }}" class="btn btn-ghost">返回首页</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

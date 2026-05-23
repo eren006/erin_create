@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}{{ rec.title }} · 招募广场{% endblock %}
+{% block body %}
+<div class="page" style="max-width:680px">
+  <a href="{{ url_for('plaza') }}" style="font-size:12px;color:var(--muted)">&larr; 返回广场</a>
+
+  <!-- 招募信息 -->
+  <div class="card" style="margin-top:14px">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:18px;font-weight:600;color:var(--text)">{{ rec.title }}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">
+          本主：{{ rec.gm_name }}
+          {% set p = rec.time_range %}
+          &nbsp;·&nbsp; {{ rec.start_year }}年 {{ p[:2] }}月{{ p[2:4] }}日 —
+          {% if p[5:7]|int < p[:2]|int %}{{ rec.start_year + 1 }}年 {% endif %}
+          {{ p[5:7] }}月{{ p[7:9] }}日
+        </div>
+      </div>
+      {% if rec.status == 'open' %}
+        <span class="badge badge-active">招募中</span>
+      {% else %}
+        <span class="badge badge-inactive">已关闭</span>
+      {% endif %}
+    </div>
+    {% if rec.description %}
+    <div style="margin-top:14px;font-size:13px;color:var(--muted);line-height:1.8;white-space:pre-wrap">{{ rec.description }}</div>
+    {% endif %}
+  </div>
+
+  <!-- 投递表单 -->
+  <div style="margin-top:24px">
+    <div style="font-size:15px;font-weight:600;color:var(--accent2);margin-bottom:14px">
+      {% if rec.status != 'open' %}
+        招募已关闭，不再接受投递
+      {% elif already_applied %}
+        您已投递此招募
+      {% else %}
+        提交投递
+      {% endif %}
+    </div>
+
+    {% if rec.status == 'open' and not already_applied %}
+    {% if errors %}
+    <div class="form-errors">{% for e in errors %}<div class="form-error">⚠ {{ e }}</div>{% endfor %}</div>
+    {% endif %}
+
+    <form method="post">
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">称呼 <span class="req">*</span></label>
+          <input class="form-input" type="text" name="applicant_name"
+                 value="{{ user_info.display_name if user_info else request.form.get('applicant_name','') }}"
+                 placeholder="你的 RP 昵称" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">弧长 <span class="req">*</span></label>
+          <input class="form-input" type="text" name="arc_length"
+                 value="{{ user_info.arc_length if user_info and user_info.arc_length else request.form.get('arc_length','') }}"
+                 placeholder="如：3-6个月" required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">在线时间 <span class="req">*</span></label>
+        <input class="form-input" type="text" name="online_hours"
+               value="{{ user_info.online_hours if user_info and user_info.online_hours else request.form.get('online_hours','') }}"
+               placeholder="如：晚8-11点，周末全天" required>
+      </div>
+
+      {% if dramas %}
+      <div class="form-group">
+        <label class="form-label">戏录（选填，可多选）</label>
+        <div style="display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px">
+          {% for d in dramas %}
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+            <input type="checkbox" name="drama_ids" value="{{ d.id }}"
+                   {% if request.form.getlist('drama_ids') and d.id|string in request.form.getlist('drama_ids') %}checked{% endif %}>
+            {{ d.title }}
+          </label>
+          {% endfor %}
+        </div>
+        <div class="form-hint">选中的戏录将作为参演经历展示给本主</div>
+      </div>
+      {% else %}
+      <div class="form-group">
+        <label class="form-label">参演经历（选填）</label>
+        <input class="form-input" type="text" name="drama_text"
+               value="{{ request.form.get('drama_text','') }}"
+               placeholder="简述参演经历，或留空">
+        {% if session.get('user_id') %}
+        <div class="form-hint">登录后在戏录里记录的剧会出现在上方可勾选</div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      <div class="form-group">
+        <label class="form-label">补充说明（选填）</label>
+        <textarea class="form-textarea" name="note" rows="3"
+                  placeholder="想对本主说的话...">{{ request.form.get('note','') }}</textarea>
+      </div>
+
+      {% if not session.get('user_id') %}
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--muted);margin-bottom:14px">
+        未登录投递：弧长/在线时间需手动填写，投递成功后不会自动加入日历。
+        <a href="{{ url_for('login') }}" style="color:var(--accent)">登录</a>可享受自动填写和日历联动。
+      </div>
+      {% endif %}
+
+      <button class="btn btn-primary" type="submit">提交投递</button>
+    </form>
+
+    {% elif already_applied %}
+    <div class="card" style="border-color:var(--accent)">
+      <div style="font-size:13px;color:var(--muted)">
+        您已向此招募提交了投递，等待本主审核。
+        <a href="{{ url_for('my_applications') }}" style="color:var(--accent)">查看我的投递</a>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,58 @@
+name: yuca_app
+description: "Yuca Helper - 角色扮演日程管理"
+publish_to: 'none'
+
+version: 1.0.1+2
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # 网络请求
+  dio: ^5.7.0
+
+  # 本地存储 Token
+  flutter_secure_storage: ^9.2.2
+
+  # 状态管理
+  provider: ^6.1.2
+
+  # 日历组件
+  table_calendar: ^3.1.2
+
+  # 本地时间格式化
+  intl: ^0.19.0
+
+  # 本地推送提醒
+  flutter_local_notifications: ^18.0.1
+  timezone: ^0.9.4
+
+  # 桌面小组件
+  home_widget: ^0.7.0
+
+  # 系统日历同步
+  device_calendar: ^4.3.3
+
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.3
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon/app_icon.png"
+  min_sdk_android: 21
+  adaptive_icon_background: "#1a1a2e"
+  adaptive_icon_foreground: "assets/icon/app_icon.png"
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icon/

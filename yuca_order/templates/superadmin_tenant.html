@@ -1,0 +1,187 @@
+{% extends 'base.html' %}
+{% block title %}账户：{{ tenant.display_name }}{% endblock %}
+{% block body %}
+<div class="page" style="max-width:760px;">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap;">
+    <a href="{{ url_for('superadmin_index') }}" class="btn btn-ghost btn-sm">← 返回</a>
+    <div class="page-title" style="margin-bottom:0;">{{ tenant.display_name or tenant.slug }}</div>
+    <span class="mono muted" style="font-size:12px;">{{ tenant.slug }}</span>
+    {% if not tenant.is_active %}<span class="badge" style="background:var(--red)22;color:var(--red);">已停用</span>{% endif %}
+  </div>
+
+  {% for e in errors %}<div class="err-msg">{{ e }}</div>{% endfor %}
+
+  <!-- 统计 -->
+  <div class="g3" style="margin-bottom:16px;">
+    <div class="card-sm" style="text-align:center;">
+      <div style="font-size:22px;font-weight:700;color:var(--accent);">{{ stats.orders }}</div>
+      <div class="fl">总订单</div>
+    </div>
+    <div class="card-sm" style="text-align:center;">
+      <div style="font-size:22px;font-weight:700;color:var(--warn);">{{ stats.pending }}</div>
+      <div class="fl">待处理</div>
+    </div>
+    <div class="card-sm" style="text-align:center;">
+      <div style="font-size:22px;font-weight:700;color:var(--green);">{{ stats.users }}</div>
+      <div class="fl">注册用户</div>
+    </div>
+  </div>
+
+  <!-- 基本设置 -->
+  <div class="card">
+    <div style="font-size:13px;font-weight:500;margin-bottom:12px;">账户设置</div>
+    <form method="post">
+      <input type="hidden" name="action" value="update">
+      <div class="g2">
+        <div class="fg">
+          <label class="fl">账户名称</label>
+          <input class="fi" name="display_name" value="{{ tenant.display_name }}">
+        </div>
+        <div class="fg">
+          <label class="fl">启用状态</label>
+          <label style="display:flex;align-items:center;gap:8px;padding:8px 0;cursor:pointer;">
+            <input type="checkbox" name="is_active" {% if tenant.is_active %}checked{% endif %}>
+            <span style="font-size:13px;">启用此账户</span>
+          </label>
+        </div>
+      </div>
+      <div class="fg">
+        <label class="fl">账户描述</label>
+        <textarea class="ft" name="description" style="min-height:60px;">{{ tenant.description }}</textarea>
+      </div>
+      <div class="fg">
+        <label class="fl">服务类型（每行一个）</label>
+        <textarea class="ft" name="service_types" style="min-height:100px;">{{ st_str }}</textarea>
+      </div>
+      <button class="btn btn-primary btn-sm" type="submit">保存设置</button>
+    </form>
+  </div>
+
+  <!-- API Token -->
+  <div class="card">
+    <div style="font-size:13px;font-weight:500;margin-bottom:10px;">API Token（长日系统对接）</div>
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-family:monospace;font-size:12px;word-break:break-all;margin-bottom:10px;color:var(--gold);">
+      {{ tenant.api_token }}
+    </div>
+    <form method="post" onsubmit="return confirm('重新生成 Token 后旧 Token 立即失效，需更新长日系统配置，确认？')">
+      <input type="hidden" name="action" value="regen_token">
+      <button class="btn btn-warn btn-sm" type="submit">重新生成 Token</button>
+    </form>
+    <div class="fh" style="margin-top:8px;">
+      API 端点：<code>GET /api/orders?token=&lt;token&gt;</code>
+      <code>POST /api/orders/&lt;order_no&gt;/accept</code>
+      <code>POST /api/orders/&lt;order_no&gt;/complete</code>
+    </div>
+  </div>
+
+  <!-- 管理员列表 -->
+  <div class="card">
+    <div style="font-size:13px;font-weight:500;margin-bottom:12px;">管理员（{{ admins|length }}）</div>
+    {% for a in admins %}
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);flex-wrap:wrap;">
+      <span style="font-weight:500;min-width:100px;">{{ a.display_name or a.username }}</span>
+      <span class="mono muted" style="font-size:12px;">{{ a.username }}</span>
+      <span class="badge {% if a.is_active %}style="background:var(--green)22;color:var(--green);"{% else %}style="background:var(--red)22;color:var(--red);"{% endif %}">
+        {{ '启用' if a.is_active else '停用' }}
+      </span>
+      <span class="muted" style="font-size:11px;">{{ a.created_at|fmt }}</span>
+      <div class="spacer"></div>
+      <form method="post" style="display:inline;">
+        <input type="hidden" name="action" value="toggle_admin">
+        <input type="hidden" name="admin_id" value="{{ a.id }}">
+        <button class="btn btn-ghost btn-sm" type="submit">{{ '停用' if a.is_active else '启用' }}</button>
+      </form>
+      <form method="post" style="display:inline;" onsubmit="
+        const np=prompt('设置新密码（至少6位）');
+        if(!np||np.length<6){alert('密码太短');return false;}
+        this.new_password.value=np;return true;">
+        <input type="hidden" name="action" value="reset_admin_pw">
+        <input type="hidden" name="admin_id" value="{{ a.id }}">
+        <input type="hidden" name="new_password" value="">
+        <button class="btn btn-ghost btn-sm" type="submit">重置密码</button>
+      </form>
+      <form method="post" style="display:inline;" onsubmit="return confirm('确认删除管理员 {{ a.username }}？')">
+        <input type="hidden" name="action" value="delete_admin">
+        <input type="hidden" name="admin_id" value="{{ a.id }}">
+        <button class="btn btn-danger btn-sm" type="submit">删除</button>
+      </form>
+    </div>
+    {% endfor %}
+
+    <!-- 新增管理员 -->
+    <div style="margin-top:14px;">
+      <div class="fl" style="margin-bottom:8px;">添加管理员</div>
+      <form method="post">
+        <input type="hidden" name="action" value="add_admin">
+        <div class="g2">
+          <div class="fg">
+            <label class="fl">用户名</label>
+            <input class="fi" name="new_admin_username" placeholder="至少 3 字符">
+          </div>
+          <div class="fg">
+            <label class="fl">显示名</label>
+            <input class="fi" name="new_admin_display_name" placeholder="留空同用户名">
+          </div>
+        </div>
+        <div class="fg">
+          <label class="fl">密码</label>
+          <input class="fi" type="password" name="new_admin_password" placeholder="至少 6 字符">
+        </div>
+        <button class="btn btn-green btn-sm" type="submit">添加</button>
+      </form>
+    </div>
+  </div>
+  <!-- 危险区域 -->
+  <div class="card" style="border-color:color-mix(in srgb,var(--red) 30%,var(--border));margin-top:8px;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+      <span style="font-size:15px;">⚠️</span>
+      <span style="font-size:13px;font-weight:700;color:var(--red);">危险操作</span>
+    </div>
+    <div style="font-size:12px;color:var(--muted);line-height:1.8;margin-bottom:14px;">
+      <b>重置全部数据</b>：清空该组织的所有订单、图片、Bot 快照、Bot 用户、网页注册用户。<br>
+      账户设置与管理员账号<b>不受影响</b>。此操作<b>不可撤销</b>。
+    </div>
+    <div id="reset-zone">
+      <button type="button" class="btn btn-danger btn-sm" onclick="document.getElementById('reset-zone').classList.add('open')">
+        🗑️ 重置该组织数据…
+      </button>
+    </div>
+    <div id="reset-form-wrap" style="display:none;">
+      <form method="post" onsubmit="return checkReset(this)">
+        <input type="hidden" name="action" value="reset_data">
+        <div class="fg" style="margin-bottom:10px;">
+          <label class="fl">输入组织名称 <b>「{{ tenant.display_name or tenant.slug }}」</b> 以确认</label>
+          <input class="fi" name="confirm_name" id="confirm_name" placeholder="{{ tenant.display_name or tenant.slug }}" autocomplete="off">
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button type="submit" class="btn btn-danger btn-sm">确认清空</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="hideReset()">取消</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+document.getElementById('reset-zone').addEventListener('click', function() {
+  if (this.classList.contains('open')) {
+    this.style.display = 'none';
+    document.getElementById('reset-form-wrap').style.display = '';
+    document.getElementById('confirm_name').focus();
+  }
+});
+function hideReset() {
+  document.getElementById('reset-zone').style.display = '';
+  document.getElementById('reset-zone').classList.remove('open');
+  document.getElementById('reset-form-wrap').style.display = 'none';
+}
+function checkReset(form) {
+  const expected = {{ (tenant.display_name or tenant.slug) | tojson }};
+  if (form.confirm_name.value.trim() !== expected) {
+    alert('名称不匹配，请重新输入');
+    return false;
+  }
+  return confirm('最后确认：即将清空「' + expected + '」的全部数据，无法恢复！');
+}
+</script>
+{% endblock %}

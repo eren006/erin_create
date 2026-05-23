@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+{% block title %}错误 {{ code }}{% endblock %}
+{% block body %}
+<div class="page" style="max-width:480px;text-align:center;padding-top:60px;">
+  <div style="font-size:48px;margin-bottom:12px;">{{ '🔍' if code==404 else '⚠️' }}</div>
+  <div style="font-size:24px;font-weight:600;color:var(--accent2);margin-bottom:8px;">{{ code }}</div>
+  <div style="color:var(--muted);margin-bottom:24px;">{{ msg }}</div>
+  <a href="{{ url_for('index') }}" class="btn btn-ghost">返回首页</a>
+</div>
+{% endblock %}

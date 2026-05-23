@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
@@ -123,27 +124,31 @@ class ToolboxScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // watch AuthService → 主题切换时自动重建
+    final accent = themeToColor(context.watch<AuthService>().user?.theme);
+    final cs     = Theme.of(context).colorScheme;
+
     final items = [
-      _ToolItem(Icons.book_outlined,     '日记',   const Color(0xFF60a5fa),
+      _ToolItem(Icons.book_outlined,     '日记',    const Color(0xFF60a5fa),
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DiaryScreen()))),
-      _ToolItem(Icons.star_outline,      '心愿单', const Color(0xFFfbbf24),
+      _ToolItem(Icons.star_outline,      '心愿单',  const Color(0xFFfbbf24),
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WishlistScreen()))),
-      _ToolItem(Icons.people_outline,    '必吃榜', const Color(0xFF34d399),
+      _ToolItem(Icons.people_outline,    '必吃榜',  const Color(0xFF34d399),
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PartnersScreen()))),
-      _ToolItem(Icons.block_outlined,    '黑名单', const Color(0xFFf87171),
+      _ToolItem(Icons.block_outlined,    '黑名单',  const Color(0xFFf87171),
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BlacklistScreen()))),
-      _ToolItem(Icons.style_outlined,    '卡救星', const Color(0xFFfb923c),
+      _ToolItem(Icons.style_outlined,    '卡救星',  const Color(0xFFfb923c),
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CardScreen()))),
-      _ToolItem(Icons.timeline_outlined, '时间轴', const Color(0xFFa78bfa), () {}),
-      _ToolItem(Icons.build_outlined,   '小工具', const Color(0xFFfb923c),
+      _ToolItem(Icons.timeline_outlined, '时间轴',  const Color(0xFFa78bfa), () {}),
+      _ToolItem(Icons.build_outlined,    '小工具',  const Color(0xFFfb923c),
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ToolsScreen()))),
-      _ToolItem(Icons.flag_outlined,    '公开检举', const Color(0xFFe879f9),
+      _ToolItem(Icons.flag_outlined,     '公开检举', const Color(0xFFe879f9),
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportsScreen()))),
     ];
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('百宝箱', style: TextStyle()),
+        title: const Text('百宝箱'),
       ),
       body: GridView.builder(
         padding: const EdgeInsets.all(16),
@@ -156,14 +161,14 @@ class ToolboxScreen extends StatelessWidget {
         itemCount: items.length,
         itemBuilder: (ctx, i) {
           final item = items[i];
-          final cs = Theme.of(ctx).colorScheme;
           return GestureDetector(
             onTap: item.onTap,
             child: Container(
               decoration: BoxDecoration(
-                color: cs.surfaceContainer,
+                // 背景：用 surfaceContainer 加上一点 accent 色调
+                color: Color.lerp(cs.surfaceContainer, accent, 0.06),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: cs.primary.withAlpha(80)),
+                border: Border.all(color: accent.withAlpha(90), width: 1.2),
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -171,14 +176,18 @@ class ToolboxScreen extends StatelessWidget {
                   Container(
                     width: 48, height: 48,
                     decoration: BoxDecoration(
-                      color: item.color.withAlpha(30),
+                      color: item.color.withAlpha(35),
                       shape: BoxShape.circle,
+                      border: Border.all(color: item.color.withAlpha(60)),
                     ),
                     child: Icon(item.icon, color: item.color, size: 24),
                   ),
                   const SizedBox(height: 10),
                   Text(item.label,
-                      style: TextStyle(color: cs.onSurface, fontSize: 13)),
+                      style: TextStyle(
+                          color: cs.onSurface,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500)),
                 ],
               ),
             ),
@@ -230,7 +239,7 @@ class _StatsScreenState extends State<StatsScreen> {
       // 从 involved 列表推断可用年份
       if (_years.isEmpty) {
         final now = DateTime.now().year;
-        _years = List.generate(now - 2023, (i) => now - i)
+        _years = List.generate(math.max(0, now - 2023), (i) => now - i)
             .where((y) => y >= 2024).toList();
         if (!_years.contains(now)) _years.insert(0, now);
       }
@@ -653,6 +662,178 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  void _showFeedback(BuildContext context) {
+    final typeNotifier = ValueNotifier<String>('bug');
+    final ctrl = TextEditingController();
+    bool sending = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        child: StatefulBuilder(
+          builder: (ctx, setState) => Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 把手
+              Center(
+                child: Container(
+                  margin: const EdgeInsets.only(top: 12, bottom: 8),
+                  width: 36, height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6b7280).withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('反馈 / 报告问题',
+                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 4),
+                    const Text('你的反馈将直接发送给开发者',
+                        style: TextStyle(color: Color(0xFF6b7280), fontSize: 12)),
+                    const SizedBox(height: 16),
+                    // 类型切换
+                    ValueListenableBuilder<String>(
+                      valueListenable: typeNotifier,
+                      builder: (_, type, __) => Row(children: [
+                        _fbTypeChip(ctx, '🐛 报告 Bug', 'bug', type,
+                            () { typeNotifier.value = 'bug'; setState(() {}); }),
+                        const SizedBox(width: 10),
+                        _fbTypeChip(ctx, '✨ 功能建议', 'wish', type,
+                            () { typeNotifier.value = 'wish'; setState(() {}); }),
+                      ]),
+                    ),
+                    const SizedBox(height: 12),
+                    // 内容输入
+                    TextField(
+                      controller: ctrl,
+                      maxLines: 5,
+                      maxLength: 1000,
+                      style: const TextStyle(fontSize: 14),
+                      decoration: InputDecoration(
+                        hintText: typeNotifier.value == 'bug'
+                            ? '描述一下遇到了什么问题？在哪个页面？怎么触发的？'
+                            : '说说你希望有什么新功能或改进…',
+                        hintStyle: const TextStyle(color: Color(0xFF4b5563), fontSize: 13),
+                        filled: true,
+                        fillColor: Theme.of(ctx).colorScheme.surface,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: Color(0xFFfb923c)),
+                        ),
+                        contentPadding: const EdgeInsets.all(14),
+                        counterStyle: const TextStyle(color: Color(0xFF6b7280), fontSize: 11),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: sending
+                              ? const Color(0xFF374151)
+                              : const Color(0xFFfb923c),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          elevation: 0,
+                        ),
+                        onPressed: sending ? null : () async {
+                          final text = ctrl.text.trim();
+                          if (text.isEmpty) {
+                            ScaffoldMessenger.of(ctx).showSnackBar(
+                              const SnackBar(content: Text('请填写反馈内容')));
+                            return;
+                          }
+                          setState(() => sending = true);
+                          try {
+                            final auth = context.read<AuthService>();
+                            await ApiService(auth).submitFeedback(
+                              type: typeNotifier.value,
+                              content: text,
+                            );
+                            if (ctx.mounted) {
+                              Navigator.pop(ctx);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('感谢你的反馈！开发者已收到 ✓'),
+                                  duration: Duration(seconds: 3),
+                                ),
+                              );
+                            }
+                          } catch (_) {
+                            setState(() => sending = false);
+                            if (ctx.mounted) {
+                              ScaffoldMessenger.of(ctx).showSnackBar(
+                                const SnackBar(content: Text('发送失败，请检查网络')));
+                            }
+                          }
+                        },
+                        child: sending
+                            ? const SizedBox(width: 18, height: 18,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white))
+                            : const Text('提交反馈',
+                                style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _fbTypeChip(BuildContext ctx, String label, String value,
+      String current, VoidCallback onTap) {
+    final selected = current == value;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected
+              ? const Color(0xFFfb923c).withOpacity(0.15)
+              : Theme.of(ctx).colorScheme.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected
+                ? const Color(0xFFfb923c)
+                : const Color(0xFF374151),
+          ),
+        ),
+        child: Text(label,
+            style: TextStyle(
+              fontSize: 13,
+              color: selected
+                  ? const Color(0xFFfb923c)
+                  : const Color(0xFF9ca3af),
+              fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+            )),
+      ),
+    );
+  }
+
   void _showAbout(BuildContext context) {
     final accent = themeToColor(context.read<AuthService>().user?.theme);
     showDialog(
@@ -661,8 +842,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('关于语擦日历', style: TextStyle()),
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('语擦日历 App',
-              style: TextStyle(color: accent, fontSize: 15, fontWeight: FontWeight.bold)),
+          Row(
+            children: [
+              Text('语擦助手',
+                  style: TextStyle(color: accent, fontSize: 15, fontWeight: FontWeight.bold)),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: accent.withAlpha(30),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: accent.withAlpha(80)),
+                ),
+                child: Text('v1.0.0',
+                    style: TextStyle(color: accent, fontSize: 11, fontWeight: FontWeight.w600)),
+              ),
+            ],
+          ),
           const SizedBox(height: 8),
           const Text('记录你的恋综档期、搭档和心情，让每一次语c都有迹可循。',
               style: TextStyle(color: Color(0xFF9ca3af), fontSize: 13, height: 1.65)),
@@ -838,6 +1034,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
             label: '关于语擦日历',
             color: const Color(0xFF60a5fa),
             onTap: () => _showAbout(context),
+          ),
+          _SettingTile(
+            icon: Icons.bug_report_outlined,
+            label: '反馈 / 报告问题',
+            color: const Color(0xFFfb923c),
+            onTap: () => _showFeedback(context),
           ),
 
           const SizedBox(height: 8),

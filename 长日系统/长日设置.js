@@ -987,7 +987,7 @@ function generateStatisticsReport(ctx, msg, newDay, previousDay, isCleared = fal
 
     const a_private_group = JSON.parse(main.storageGet("a_private_group") || "{}");
     const playerCount = a_private_group[platform] ? Object.keys(a_private_group[platform]).length : 0;
-    const loveshow_name = JSON.parse(main.storageGet("love_show_name") || "\"未设置\"");
+    const loveshow_name = main.storageGet("love_show_name") || "未设置";
 
     const appointmentList = JSON.parse(main.storageGet("appointmentList") || "[]");
     const pendingRequests = appointmentList.length;
@@ -1956,8 +1956,8 @@ const SYNC_BLOB_KEYS = [
 ];
 
 let cmd_full_sync = seal.ext.newCmdItemInfo();
-cmd_full_sync.name = "全量同步";
-cmd_full_sync.help = "【管理员】将机器人所有配置（设置项 + 物品注册 + 结戏加成模版）全部推送到存档 UI\n使用方法：。全量同步";
+cmd_full_sync.name = "全量上传";
+cmd_full_sync.help = "【管理员】将机器人所有配置（设置项 + 物品注册 + 结戏加成模版）全部推送到存档 UI\n使用方法：。全量上传";
 cmd_full_sync.solve = async (ctx, msg, argv) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足");
 
@@ -2059,7 +2059,99 @@ cmd_full_sync.solve = async (ctx, msg, argv) => {
 
     return seal.ext.newCmdExecuteResult(true);
 };
-ext.cmdMap["全量同步"] = cmd_full_sync;
+ext.cmdMap["全量上传"] = cmd_full_sync;
+
+// ── 同步指南 ──────────────────────────────────────────────────────────────────
+
+function sendSyncGuideForward(groupId) {
+    const main = getMainExt();
+    if (!main) return;
+    const wsUrl = seal.ext.getStringConfig(main, "ws地址");
+    const token = seal.ext.getStringConfig(main, "ws Access token");
+    if (!wsUrl) return;
+    let url = wsUrl;
+    if (token) url += (url.includes("?") ? "&" : "?") + "access_token=" + encodeURIComponent(token);
+    const gid = parseInt(String(groupId).replace(/[^\d]/g, ""), 10);
+
+    const sections = [
+        ["📡 同步指南",
+         "RP 存档系统同步命令速查",
+         "",
+         "⬇  存档服务器 → 机器人（拉取，覆盖本地）",
+         "⬆  机器人 → 存档服务器（推送，覆盖网页）",
+         "",
+         "发送「同步指南」随时查阅"],
+
+        ["🌐 全量操作",
+         "─────────────────────────────",
+         "⬇ 全量同步（长日系统插件）",
+         "从存档服务器拉取全部数据，覆盖本地",
+         "涵盖：物品/货币注册表、属性定义、结戏奖励模板、抽取池",
+         "用法：全量同步",
+         "预览（不写入）：全量同步 预览",
+         "",
+         "⬆ 全量上传（长日设置插件）",
+         "将机器人当前配置全量推送到存档 UI",
+         "涵盖：设置项 + 物品注册表 + 结戏加成模版",
+         "用法：全量上传"],
+
+        ["⚙️ 设置配置（长日设置插件）",
+         "─────────────────────────────",
+         "⬇ 同步设置",
+         "从存档 UI 拉取并强制覆盖所有系统配置",
+         "用法：同步设置",
+         "",
+         "⬆ 同步到服务端",
+         "将机器人当前配置推送到存档 UI（UI 显示最新数值）",
+         "用法：同步到服务端"],
+
+        ["🎲 抽取池（长日RPG插件）",
+         "─────────────────────────────",
+         "⬇ 同步池子",
+         "从存档服务器拉取池子配置，覆盖本地池子定义和次数设定",
+         "用法：同步池子",
+         "预览（不写入）：同步池子 预览",
+         "",
+         "⬆ 上传池子",
+         "将本地池子配置推送到存档服务器（覆盖网页端的配置）",
+         "用法：上传池子"],
+
+        ["💡 常用场景速查",
+         "─────────────────────────────",
+         "网页端编辑完池子 → 同步池子",
+         "网页端改完系统设置 → 同步设置",
+         "新部署机器人 / 初始化 → 全量同步（长日系统）",
+         "机器人调整了配置，要同步给网页 → 同步到服务端",
+         "机器人物品/模板有改动，全量推给网页 → 全量上传",
+         "机器人本地池子有改动，要同步给网页 → 上传池子"],
+    ];
+
+    const nodes = sections.map(lines => ({
+        type: "node",
+        data: { name: "同步指南", uin: "10001", content: lines.join("\n") }
+    }));
+
+    const socket = new WebSocket(url);
+    socket.onopen = () => {
+        socket.send(JSON.stringify({
+            action: "send_group_forward_msg",
+            params: { group_id: gid, messages: nodes },
+            echo: "sync_guide_" + Date.now()
+        }));
+        socket.close();
+    };
+    socket.onerror = (e) => { console.error("[同步指南] 合并转发发送失败", e.message); };
+}
+
+ext.onNotCommandReceived = (ctx, msg) => {
+    const raw = (msg.rawMessage || msg.message || "").trim();
+    if (raw !== "同步指南") return;
+    if (!msg.groupId) {
+        seal.replyToSender(ctx, msg, "请在群内使用此指令。");
+        return;
+    }
+    sendSyncGuideForward(msg.groupId);
+};
 
 // 启动自动天数轮询
 registerAutoDaySystem();

@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}我的公会 · 语擦日历{% endblock %}
+{% block head %}
+<style>
+.guild-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; }
+.guild-card:hover { border-color: var(--accent); }
+.guild-name { font-size: 15px; font-weight: 600; color: var(--text); }
+.guild-slug { font-size: 12px; color: var(--muted); background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 7px; font-family: monospace; }
+.guild-sig  { font-size: 13px; color: var(--muted); margin-top: 6px; }
+.pending-badge { background: #1a1400; border: 1px solid #4a3a00; color: var(--warn); border-radius: 20px; padding: 1px 8px; font-size: 11px; font-weight: 600; }
+.create-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px 24px; }
+</style>
+{% endblock %}
+{% block body %}
+<div class="page">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
+    <h1 class="page-title" style="margin-bottom:0">公会</h1>
+    <a href="{{ url_for('guild_discover') }}" class="btn btn-ghost">🔍 发现公会</a>
+  </div>
+
+  <!-- 我创建的公会 -->
+  {% if owned %}
+  <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em">我创建的</div>
+  <div class="grid-2" style="margin-bottom:24px">
+  {% for g in owned %}
+  <div class="guild-card">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+      <span class="guild-name">{{ g.name }}</span>
+      <span class="guild-slug">#{{ g.slug }}</span>
+      {% if pending_counts[g.id] > 0 %}
+      <span class="pending-badge">{{ pending_counts[g.id] }} 待审</span>
+      {% endif %}
+    </div>
+    {% if g.signature %}<div class="guild-sig">{{ g.signature }}</div>{% endif %}
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <a href="{{ url_for('guild_detail', gid=g.id) }}" class="btn btn-primary btn-sm">进入</a>
+      <a href="{{ url_for('guild_edit', gid=g.id) }}" class="btn btn-ghost btn-sm">编辑</a>
+      <form method="post" action="{{ url_for('guild_delete', gid=g.id) }}"
+            onsubmit="return confirm('确认解散公会「{{ g.name }}」？此操作不可恢复！')">
+        <button class="btn btn-danger btn-sm" type="submit">解散</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- 我加入的公会 -->
+  {% if member %}
+  <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em">我加入的</div>
+  <div class="grid-2" style="margin-bottom:24px">
+  {% for g in member %}
+  <div class="guild-card">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+      <span class="guild-name">{{ g.name }}</span>
+      <span class="guild-slug">#{{ g.slug }}</span>
+    </div>
+    {% if g.signature %}<div class="guild-sig">{{ g.signature }}</div>{% endif %}
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <a href="{{ url_for('guild_detail', gid=g.id) }}" class="btn btn-primary btn-sm">进入</a>
+      <form method="post" action="{{ url_for('guild_leave', gid=g.id) }}"
+            onsubmit="return confirm('确认退出公会「{{ g.name }}」？')">
+        <button class="btn btn-ghost btn-sm" type="submit">退出</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- 待审申请 -->
+  {% if my_pending %}
+  <div style="font-size:12px;font-weight:600;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em">待审核的申请</div>
+  <div style="margin-bottom:24px">
+  {% for p in my_pending %}
+  <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:13px;color:var(--muted)">
+    申请加入 <span style="color:var(--text);font-weight:600">{{ p.name }}</span>
+    <span class="guild-slug">#{{ p.slug }}</span>
+    — 等待审核
+  </div>
+  {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if not owned and not member and not my_pending %}
+  <div class="empty">
+    <div style="font-size:32px;margin-bottom:12px">🏰</div>
+    <div>还没有加入或创建任何公会</div>
+    <div style="margin-top:12px"><a href="{{ url_for('guild_discover') }}" class="btn btn-primary">🔍 发现公会</a></div>
+  </div>
+  {% endif %}
+
+  <!-- 创建公会 -->
+  <div style="font-size:12px;font-weight:600;color:var(--muted);margin:24px 0 12px;text-transform:uppercase;letter-spacing:.06em">创建新公会</div>
+  <div class="create-card">
+    <form method="post" action="{{ url_for('guild_create') }}">
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">公会名 <span class="req">*</span></label>
+          <input class="form-input" type="text" name="name" placeholder="如：日落语擦团" maxlength="30" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">公会 ID <span class="req">*</span></label>
+          <input class="form-input" type="text" name="slug" placeholder="如：sunset-crew（小写字母/数字/-/_）" maxlength="30" required>
+          <div class="form-hint">用于搜索发现，创建后不可修改</div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">公会签名（可选）</label>
+        <input class="form-input" type="text" name="signature" placeholder="一句话介绍公会…" maxlength="100">
+      </div>
+      <button class="btn btn-primary" type="submit">创建公会</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,481 @@
+{% extends "base.html" %}
+{% block title %}公开检举 · 语擦日历{% endblock %}
+{% block head %}
+<style>
+.rp-wall { max-width: 760px; margin: 0 auto; }
+
+.rp-scope {
+  background: color-mix(in srgb, var(--gold) 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--gold) 28%, var(--surface));
+  border-radius: 10px; padding: 12px 16px; font-size: 12px;
+  color: var(--gold); margin-bottom: 16px; line-height: 1.85;
+}
+.rp-scope strong { color: var(--gold); }
+.rp-scope .rp-scope-no {
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--red) 25%, var(--surface));
+  border-radius: 6px; padding: 6px 12px; margin-top: 8px;
+  font-size: 12px; line-height: 1.7;
+}
+
+/* collapsible card */
+.rp-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; margin-bottom: 20px; overflow: hidden;
+}
+.rp-card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px; background: var(--surface2);
+  cursor: pointer; user-select: none; gap: 10px; flex-wrap: wrap;
+}
+.rp-card-header:hover { background: var(--border); }
+.rp-card-title { font-size: 14px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.rp-toggle { font-size: 12px; color: var(--muted); flex-shrink: 0; }
+.rp-card-body { padding: 20px 24px; }
+.rp-card-body.hidden { display: none; }
+
+.rp-anon-note {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 14px; font-size: 12px;
+  color: var(--muted); margin-bottom: 18px; line-height: 1.7;
+}
+
+/* group */
+.rp-group {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; margin-bottom: 16px; overflow: hidden;
+}
+.rp-group:hover { border-color: var(--accent); }
+.rp-group-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px; background: var(--surface2);
+  border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 8px;
+}
+.rp-qq { font-size: 15px; font-weight: 700; color: var(--text); letter-spacing: .5px; font-family: monospace; }
+.rp-count { background: var(--red); color: #fff; border-radius: 20px; padding: 2px 10px; font-size: 12px; font-weight: 700; }
+.rp-entry { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
+.rp-entry:last-child { border-bottom: none; }
+.rp-tags { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.rp-tag { background: color-mix(in srgb, var(--red) 12%, var(--surface)); border: 1px solid color-mix(in srgb, var(--red) 28%, var(--surface)); color: var(--red); border-radius: 20px; padding: 2px 10px; font-size: 11px; font-weight: 600; }
+.rp-reason { font-size: 13px; color: var(--text); line-height: 1.7; }
+.rp-meta { font-size: 11px; color: var(--muted); }
+.rp-empty { color: var(--muted); text-align: center; padding: 48px 0; font-size: 14px; }
+.rp-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media(max-width:560px) { .rp-form-row { grid-template-columns: 1fr; } }
+
+.rp-extra { display: none; }
+.rp-expand-btn {
+  display: block; width: 100%; padding: 10px; text-align: center;
+  font-size: 12px; color: var(--accent); background: none; border: none;
+  border-top: 1px solid var(--border); cursor: pointer; font-family: inherit;
+}
+.rp-expand-btn:hover { background: var(--surface2); }
+
+/* appeal button */
+.rp-appeal-btn {
+  font-size: 11px; color: var(--muted); background: none; border: 1px solid var(--border);
+  border-radius: 20px; padding: 2px 10px; cursor: pointer; font-family: inherit;
+  transition: border-color .15s, color .15s;
+}
+.rp-appeal-btn:hover { border-color: var(--accent); color: var(--accent); }
+.rp-appeal-btn.appealed { color: var(--green); border-color: color-mix(in srgb, var(--green) 40%, var(--border)); cursor: default; }
+
+/* modal */
+.rp-modal-backdrop {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45);
+  z-index: 1000; align-items: center; justify-content: center; padding: 20px;
+}
+.rp-modal-backdrop.open { display: flex; }
+.rp-modal {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+  padding: 24px; width: 100%; max-width: 480px; box-shadow: 0 8px 40px rgba(0,0,0,.25);
+}
+.rp-modal h3 { font-size: 15px; font-weight: 700; color: var(--text); margin: 0 0 6px; }
+.rp-modal .rp-modal-sub { font-size: 12px; color: var(--muted); margin-bottom: 16px; line-height: 1.6; }
+.rp-modal .rp-modal-target {
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px 14px; font-size: 12px; color: var(--muted); margin-bottom: 16px; line-height: 1.6;
+}
+.rp-modal .rp-modal-target strong { color: var(--text); font-family: monospace; font-size: 13px; }
+.rp-modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+</style>
+{% endblock %}
+{% block body %}
+<div class="page rp-wall">
+  <div class="page-title">🚨 公开检举</div>
+
+  <!-- 范围声明 -->
+  <div class="rp-scope">
+    <strong>📌 本墙仅限恋综 / 恋德相关检举</strong>
+    <div style="margin-top:6px;opacity:.85">
+      适用范围：在恋综活动中的诈骗飞单、多角欺骗、恶意拆对、造谣污蔑、骚扰威胁等影响圈内生态的行为。
+    </div>
+    <div class="rp-scope-no">
+      ❌ <strong>不受理：</strong>私人情感纠纷、圈外矛盾、单纯口角、人际不合等与恋综恋德无关的内容。
+    </div>
+  </div>
+
+  {% if appeal_ok %}
+  <div class="form-success" style="margin-bottom:14px">✅ 撤回申请已提交，等待管理员审核。</div>
+  {% endif %}
+  {% if appeal_err %}
+  <div class="form-error" style="margin-bottom:14px">{{ appeal_err }}</div>
+  {% endif %}
+  {% if session.pop('edit_success', False) %}
+  <div class="form-success" style="margin-bottom:14px">✅ 已提交修改，等待管理员重新审核。</div>
+  {% endif %}
+
+  <!-- 提交检举（可折叠） -->
+  <div class="rp-card">
+    <div class="rp-card-header" onclick="rpToggle('form-body','form-toggle','收起 ▲','展开 ▼')">
+      <span class="rp-card-title">📋 提交检举</span>
+      <span class="rp-toggle" id="form-toggle">{% if error %}展开 ▼{% else %}收起 ▲{% endif %}</span>
+    </div>
+    <div class="rp-card-body {% if error %}{% else %}{% endif %}" id="form-body">
+      <div class="rp-anon-note">
+        🔒 你的身份对其他用户<strong>完全匿名</strong>，管理员审核通过后方才公开展示。
+      </div>
+      {% if success %}
+      <div class="form-success" style="margin-bottom:16px">✅ 已提交，等待管理员审核后将公开展示。</div>
+      {% endif %}
+      {% if error %}
+      <div class="form-error" style="margin-bottom:16px">{{ error }}</div>
+      {% endif %}
+      <form method="post" action="{{ url_for('reports') }}">
+        <div class="rp-form-row">
+          <div class="form-group">
+            <label class="form-label">被检举 QQ <span class="req">*</span></label>
+            <input class="form-input" type="text" name="target_qq"
+                   placeholder="填写被检举人的QQ号" maxlength="12"
+                   pattern="\d{5,12}" inputmode="numeric" required
+                   value="{{ request.form.get('target_qq','') if not success else '' }}">
+            <div class="form-hint">仅限数字，5-12位</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">检举标签</label>
+            <input class="form-input" type="text" name="tag"
+                   placeholder="如：飞单、多角欺骗、骚扰……" maxlength="30"
+                   value="{{ request.form.get('tag','') if not success else '' }}">
+            <div class="form-hint">简短描述问题类型（可选）</div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">检举原因 <span class="req">*</span></label>
+          <textarea class="form-textarea" name="reason" rows="4"
+                    placeholder="详细描述被检举人在恋综/恋德方面的行为……" maxlength="1000" required>{{ request.form.get('reason','') if not success else '' }}</textarea>
+        </div>
+        <button class="btn btn-danger" type="submit">🚨 提交检举</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- 我的检举（可折叠，默认收起） -->
+  {% if session.get('user_id') and my_total > 0 %}
+  <div class="rp-card">
+    <div class="rp-card-header" onclick="rpToggle('my-body','my-toggle','收起 ▲','展开 ▼')">
+      <span class="rp-card-title">
+        📂 我的检举
+        <span style="font-size:12px;color:var(--muted);font-weight:400">共 {{ my_total }} 条{% if my_total_pages > 1 %} · 第 {{ mypage }}/{{ my_total_pages }} 页{% endif %}</span>
+      </span>
+      <span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:12px;color:var(--muted)">
+          已通过 <strong style="color:{% if is_vip %}var(--gold){% else %}var(--accent){% endif %}">{{ approved_count }}</strong>/{{ VIP_THRESHOLD }}
+          {% if is_vip %}<span style="background:linear-gradient(135deg,#c8780a,#e8a820);color:#fff;border-radius:8px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:2px">✦ 守护者</span>{% endif %}
+        </span>
+        <span class="rp-toggle" id="my-toggle">展开 ▼</span>
+      </span>
+    </div>
+    <div class="rp-card-body hidden" id="my-body" style="padding:0">
+      {% for r in my_reports %}
+      <div style="padding:12px 20px;border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px">
+              <span style="font-size:13px;font-weight:600;font-family:monospace;color:var(--text)">{{ r.target_qq }}</span>
+              {% if r.tag %}<span class="rp-tag">{{ r.tag }}</span>{% endif %}
+              {% if r.status == 'approved' %}
+              <span class="status-approved" style="font-size:11px;padding:1px 8px;border-radius:12px">✓ 已通过</span>
+              {% elif r.status == 'rejected' %}
+              <span class="status-rejected" style="font-size:11px;padding:1px 8px;border-radius:12px">✕ 已驳回</span>
+              {% elif r.status == 'editing' %}
+              <span style="background:color-mix(in srgb,var(--warn) 15%,var(--surface));border:1px solid color-mix(in srgb,var(--warn) 35%,var(--surface));color:var(--warn);font-size:11px;padding:1px 8px;border-radius:12px">✏ 需要修改</span>
+              {% else %}
+              <span class="status-pending" style="font-size:11px;padding:1px 8px;border-radius:12px">⏳ 待审核</span>
+              {% endif %}
+              <span style="font-size:11px;color:var(--muted)">{{ r.created_at | datetimeformat }}</span>
+            </div>
+            <div style="font-size:12px;color:var(--muted);line-height:1.6">{{ r.reason[:80] }}{% if r.reason|length > 80 %}…{% endif %}</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap">
+            {% if r.status == 'editing' %}
+            <button class="btn btn-ghost btn-sm" type="button"
+                    onclick="myToggleEdit({{ r.id }})">✏ 编辑</button>
+            {% endif %}
+            {% set locked = (r.status == 'approved' and approved_count <= 2) %}
+            {% set del_msg = '确定删除这条检举？删除已通过的检举会减少守护者进度。' if r.status == 'approved' else '确定删除这条检举？' %}
+            <form method="post" action="{{ url_for('report_self_delete', rid=r.id) }}"
+                  onsubmit="return confirm('{{ del_msg }}')">
+              <button class="btn btn-danger btn-sm" type="submit"
+                      {% if locked %}disabled title="至少需要保留 2 条已通过的检举"{% endif %}>删除</button>
+            </form>
+          </div>
+        </div>
+        {% if r.status == 'editing' %}
+        <!-- 管理员修改建议 -->
+        {% if r.edit_note %}
+        <div style="margin-top:8px;font-size:12px;padding:7px 11px;border-radius:7px;line-height:1.65;
+                    background:color-mix(in srgb,var(--warn) 8%,var(--surface));
+                    border:1px solid color-mix(in srgb,var(--warn) 25%,var(--surface));color:var(--warn)">
+          💬 管理员建议：{{ r.edit_note }}
+        </div>
+        {% endif %}
+        <!-- 编辑表单（默认折叠） -->
+        <form method="post" action="{{ url_for('report_user_edit', rid=r.id) }}"
+              id="my-edit-{{ r.id }}"
+              style="display:none;flex-direction:column;gap:10px;margin-top:10px;
+                     background:var(--surface2);border:1px solid var(--border);
+                     border-radius:10px;padding:14px">
+          <div style="font-size:12px;font-weight:600;color:var(--text)">修改检举内容</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div class="form-group" style="margin-bottom:0">
+              <label class="form-label" style="font-size:12px">被检举 QQ</label>
+              <input class="form-input" type="text" value="{{ r.target_qq }}" disabled
+                     style="font-size:13px;opacity:.7">
+            </div>
+            <div class="form-group" style="margin-bottom:0">
+              <label class="form-label" style="font-size:12px">标签</label>
+              <input class="form-input" type="text" name="tag"
+                     value="{{ r.tag }}" maxlength="30" placeholder="（可选）" style="font-size:13px">
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label" style="font-size:12px">检举原因 <span class="req">*</span></label>
+            <textarea class="form-textarea" name="reason" rows="3"
+                      maxlength="1000" required style="font-size:13px">{{ r.reason }}</textarea>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-sm" style="background:var(--accent);color:#fff" type="submit">提交修改</button>
+            <button class="btn btn-ghost btn-sm" type="button"
+                    onclick="myToggleEdit({{ r.id }})">取消</button>
+          </div>
+        </form>
+        {% endif %}
+      </div>
+      {% endfor %}
+      {% if my_total_pages > 1 %}
+      <div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:12px 20px;flex-wrap:wrap">
+        {% if mypage > 1 %}
+        <a href="?{% if q %}q={{ q }}&{% endif %}page={{ page }}&mypage={{ mypage - 1 }}" class="btn btn-ghost btn-sm">← 上一页</a>
+        {% endif %}
+        {% for p in range(1, my_total_pages + 1) %}
+          {% if p == mypage %}
+          <span style="padding:4px 12px;border-radius:6px;background:var(--accent);color:#fff;font-size:13px">{{ p }}</span>
+          {% else %}
+          <a href="?{% if q %}q={{ q }}&{% endif %}page={{ page }}&mypage={{ p }}" class="btn btn-ghost btn-sm">{{ p }}</a>
+          {% endif %}
+        {% endfor %}
+        {% if mypage < my_total_pages %}
+        <a href="?{% if q %}q={{ q }}&{% endif %}page={{ page }}&mypage={{ mypage + 1 }}" class="btn btn-ghost btn-sm">下一页 →</a>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- 解锁进度 -->
+  {% if not can_view %}
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px 24px;text-align:center;margin-bottom:20px">
+    <div style="font-size:28px;margin-bottom:10px">🔒</div>
+    <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:6px">检举墙尚未解锁</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.7">
+      需要 <strong style="color:var(--accent2)">2 条</strong> 检举通过审核后才能查看检举墙内容。<br>
+      你当前已通过 <strong style="color:var(--accent)">{{ approved_count }} / 2</strong> 条。
+    </div>
+    <div style="display:flex;gap:6px;justify-content:center">
+      {% for i in range(2) %}
+      <div style="width:48px;height:8px;border-radius:4px;background:{% if i < approved_count %}var(--accent){% else %}var(--border){% endif %}"></div>
+      {% endfor %}
+    </div>
+  </div>
+  {% else %}
+
+  <!-- 搜索栏 -->
+  <form method="get" action="{{ url_for('reports') }}" style="display:flex;gap:8px;margin-bottom:16px">
+    <input class="form-input" type="text" name="q" value="{{ q }}"
+           placeholder="搜索 QQ 号……" inputmode="numeric" maxlength="12"
+           style="max-width:220px">
+    <button class="btn btn-ghost" type="submit">🔍 搜索</button>
+    {% if q %}<a href="{{ url_for('reports') }}" class="btn btn-ghost">✕ 清除</a>{% endif %}
+  </form>
+
+  <div style="font-size:13px;color:var(--muted);margin-bottom:14px">
+    {% if q %}搜索「{{ q }}」共 {{ total_groups }} 个结果
+    {% else %}共 {{ total_groups }} 个被检举 QQ（已通过审核）{% endif %}
+    {% if total_pages > 1 %}· 第 {{ page }} / {{ total_pages }} 页{% endif %}
+  </div>
+
+  {% if not groups %}
+  <div class="rp-empty">{% if q %}未找到 QQ 号包含「{{ q }}」的检举记录{% else %}暂无已审核的检举记录{% endif %}</div>
+  {% else %}
+  {% for qq, entries in groups %}
+  {% set gid = loop.index %}
+  <div class="rp-group">
+    <div class="rp-group-header">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="rp-qq">{{ qq }}</span>
+        <span class="rp-count">{{ entries|length }} 条</span>
+      </div>
+    </div>
+    {% for e in entries %}
+    <div class="rp-entry{% if loop.index > 3 %} rp-extra rp-extra-{{ gid }}{% endif %}">
+      <div class="rp-tags">
+        {% if e.tag %}<span class="rp-tag">{{ e.tag }}</span>{% else %}<span style="font-size:11px;color:var(--muted)">无标签</span>{% endif %}
+        <span class="rp-meta">{{ e.created_at | datetimeformat }}</span>
+        {% if session.get('user_id') %}
+          {% if e.id in appealed_ids %}
+          <button class="rp-appeal-btn appealed" disabled>✓ 已申请撤回</button>
+          {% else %}
+          <button class="rp-appeal-btn"
+                  data-rid="{{ e.id }}"
+                  data-qq="{{ e.target_qq }}"
+                  data-tag="{{ e.tag }}"
+                  onclick="rpOpenAppeal(this)">申请撤回</button>
+          {% endif %}
+        {% else %}
+        <button class="rp-appeal-btn" onclick="alert('请先登录后再申请撤回')">申请撤回</button>
+        {% endif %}
+      </div>
+      <div class="rp-reason">{{ e.reason }}</div>
+    </div>
+    {% endfor %}
+    {% if entries|length > 3 %}
+    <button class="rp-expand-btn" id="expand-btn-{{ gid }}"
+            onclick="rpExpandGroup({{ gid }}, {{ entries|length }})">
+      展开全部 {{ entries|length }} 条 ▼
+    </button>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  <!-- 翻页 -->
+  {% if total_pages > 1 %}
+  <div style="display:flex;align-items:center;justify-content:center;gap:6px;margin-top:20px;flex-wrap:wrap">
+    {% if page > 1 %}
+    <a href="?{% if q %}q={{ q }}&{% endif %}page={{ page - 1 }}" class="btn btn-ghost btn-sm">← 上一页</a>
+    {% endif %}
+    {% for p in range(1, total_pages + 1) %}
+      {% if p == page %}
+      <span style="padding:4px 12px;border-radius:6px;background:var(--accent);color:#fff;font-size:13px">{{ p }}</span>
+      {% elif p == 1 or p == total_pages or (p >= page - 2 and p <= page + 2) %}
+      <a href="?{% if q %}q={{ q }}&{% endif %}page={{ p }}" class="btn btn-ghost btn-sm">{{ p }}</a>
+      {% elif p == page - 3 or p == page + 3 %}
+      <span style="color:var(--muted);font-size:13px;padding:0 4px">…</span>
+      {% endif %}
+    {% endfor %}
+    {% if page < total_pages %}
+    <a href="?{% if q %}q={{ q }}&{% endif %}page={{ page + 1 }}" class="btn btn-ghost btn-sm">下一页 →</a>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% endif %}
+  {% endif %}{# end can_view #}
+
+</div>
+
+<!-- 申请撤回弹窗 -->
+<div class="rp-modal-backdrop" id="appeal-modal" onclick="if(event.target===this)rpCloseAppeal()">
+  <div class="rp-modal">
+    <h3>📨 申请撤回检举</h3>
+    <div class="rp-modal-sub">
+      如认为该检举内容不实或存在误解，请填写申请理由。<br>
+      管理员审核后决定是否撤下，<strong>虚假申请可能影响你的账号</strong>。
+    </div>
+    <div class="rp-modal-target" id="appeal-target-info">—</div>
+    <form method="post" id="appeal-form" action="">
+      <div class="form-group">
+        <label class="form-label">申请理由 <span class="req">*</span></label>
+        <textarea class="form-textarea" name="reason" rows="4"
+                  placeholder="说明为何申请撤回，如内容不实请描述实际情况或附上截图说明……"
+                  maxlength="1000" required></textarea>
+      </div>
+      <div class="rp-modal-actions">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="rpCloseAppeal()">取消</button>
+        <button type="submit" class="btn btn-sm" style="background:var(--accent);color:#fff">提交申请</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function rpToggle(bodyId, toggleId, openText, closeText) {
+  const body = document.getElementById(bodyId);
+  const tog  = document.getElementById(toggleId);
+  const hidden = body.classList.contains('hidden');
+  body.classList.toggle('hidden', !hidden);
+  if (tog) tog.textContent = hidden ? openText : closeText;
+}
+
+function rpExpandGroup(gid, total) {
+  document.querySelectorAll('.rp-extra-' + gid).forEach(el => el.style.display = 'flex');
+  const btn = document.getElementById('expand-btn-' + gid);
+  if (btn) {
+    btn.textContent = '收起 ▲';
+    btn.onclick = function() { rpCollapseGroup(gid, total); };
+  }
+}
+function rpCollapseGroup(gid, total) {
+  document.querySelectorAll('.rp-extra-' + gid).forEach(el => el.style.display = 'none');
+  const btn = document.getElementById('expand-btn-' + gid);
+  if (btn) {
+    btn.textContent = '展开全部 ' + total + ' 条 ▼';
+    btn.onclick = function() { rpExpandGroup(gid, total); };
+  }
+}
+
+// ── 我的检举内嵌编辑 ──
+function myToggleEdit(rid) {
+  var form = document.getElementById('my-edit-' + rid);
+  if (!form) return;
+  var open = form.style.display === 'flex';
+  form.style.display = open ? 'none' : 'flex';
+}
+
+// ── 申请撤回弹窗 ──
+function rpOpenAppeal(btn) {
+  var rid  = btn.dataset.rid;
+  var qq   = btn.dataset.qq;
+  var tag  = btn.dataset.tag;
+  var info = document.getElementById('appeal-target-info');
+  if (!info) return;
+  info.innerHTML = '<strong>' + qq + '</strong>' + (tag ? ' &nbsp;·&nbsp; ' + tag : '');
+  document.getElementById('appeal-form').action = '/reports/' + rid + '/appeal';
+  document.getElementById('appeal-form').querySelector('textarea').value = '';
+  document.getElementById('appeal-modal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function rpCloseAppeal() {
+  var modal = document.getElementById('appeal-modal');
+  if (modal) modal.classList.remove('open');
+  document.body.style.overflow = '';
+}
+document.addEventListener('keydown', function(ev){ if(ev.key==='Escape') rpCloseAppeal(); });
+
+// 有错误时自动展开提交表单
+{% if error %}
+document.getElementById('form-body').classList.remove('hidden');
+document.getElementById('form-toggle').textContent = '收起 ▲';
+{% endif %}
+// 翻页后保持我的检举展开
+{% if request.args.get('mypage') %}
+(function(){
+  var b = document.getElementById('my-body');
+  var t = document.getElementById('my-toggle');
+  if(b){ b.classList.remove('hidden'); }
+  if(t){ t.textContent = '收起 ▲'; }
+})();
+{% endif %}
+</script>
+{% endblock %}

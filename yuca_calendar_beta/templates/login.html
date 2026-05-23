@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}登录 · 语擦日历{% endblock %}
+{% block body %}
+<style>
+.login-wrap {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.login-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 16px; padding: 36px 32px; width: 100%; max-width: 360px;
+}
+.login-logo { text-align: center; font-size: 32px; margin-bottom: 8px; }
+.login-title { text-align: center; font-size: 20px; font-weight: 600; color: var(--accent2); margin-bottom: 4px; }
+.login-sub { text-align: center; color: var(--muted); font-size: 12px; margin-bottom: 28px; }
+.login-error {
+  background: #2a1515; border: 1px solid #4a2020; border-radius: 8px;
+  padding: 10px 14px; color: var(--red); font-size: 13px; margin-bottom: 16px;
+  text-align: center;
+}
+.login-footer { text-align: center; margin-top: 20px; }
+.login-footer a { font-size: 12px; color: var(--muted); }
+.login-footer a:hover { color: var(--accent); }
+</style>
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="login-logo">📅</div>
+    <div class="login-title">语擦日历</div>
+    <!-- 模式切换 -->
+    <div style="display:flex;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:3px;margin-bottom:20px;gap:3px">
+      <button type="button" id="tab-player"
+              onclick="setMode('player')"
+              style="flex:1;padding:7px;border-radius:7px;border:none;font-size:13px;font-family:inherit;cursor:pointer;transition:all .15s"
+              class="{% if active_mode != 'gm' %}tab-active{% else %}tab-inactive{% endif %}">
+        玩家登录
+      </button>
+      <button type="button" id="tab-gm"
+              onclick="setMode('gm')"
+              style="flex:1;padding:7px;border-radius:7px;border:none;font-size:13px;font-family:inherit;cursor:pointer;transition:all .15s"
+              class="{% if active_mode == 'gm' %}tab-active{% else %}tab-inactive{% endif %}">
+        本主登录
+      </button>
+    </div>
+    <div id="mode-hint-gm" style="font-size:12px;color:var(--muted);text-align:center;margin-bottom:12px;display:{% if active_mode == 'gm' %}block{% else %}none{% endif %}">
+      本主登录后进入本主面板（需有本主权限）
+    </div>
+    {% if error %}
+    <div class="login-error">{{ error }}</div>
+    {% endif %}
+    <form method="post">
+      <input type="hidden" name="login_mode" id="login_mode" value="{{ active_mode if active_mode == 'gm' else 'player' }}">
+      <div class="form-group">
+        <label class="form-label">用户名</label>
+        <input class="form-input" type="text" name="username"
+               value="{{ request.form.get('username','') }}"
+               placeholder="请输入用户名" autocomplete="username" required autofocus>
+      </div>
+      <div class="form-group">
+        <label class="form-label">密码</label>
+        <input class="form-input" type="password" name="password"
+               placeholder="请输入密码" autocomplete="current-password" required>
+      </div>
+      <button class="btn btn-primary" type="submit" style="width:100%;justify-content:center;margin-top:8px">
+        登录
+      </button>
+    </form>
+    <div class="login-footer" style="display:flex;justify-content:space-between">
+      <a href="{{ url_for('register') }}">用邀请码注册</a>
+      <a href="{{ url_for('superadmin_login') }}">超级管理员</a>
+    </div>
+<style>
+.tab-active  { background: var(--accent); color: #fff; }
+.tab-inactive { background: transparent; color: var(--muted); }
+</style>
+<script>
+function setMode(m) {
+  document.getElementById('login_mode').value = m;
+  var isGm = m === 'gm';
+  document.getElementById('tab-player').className = isGm ? 'tab-inactive' : 'tab-active';
+  document.getElementById('tab-gm').className    = isGm ? 'tab-active' : 'tab-inactive';
+  document.getElementById('mode-hint-gm').style.display = isGm ? 'block' : 'none';
+}
+</script>
+  </div>
+</div>
+{% endblock %}

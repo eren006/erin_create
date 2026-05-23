@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}超管登录 · 语擦日历{% endblock %}
+{% block body %}
+<style>
+.login-wrap {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.login-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 16px; padding: 36px 32px; width: 100%; max-width: 360px;
+}
+.login-logo { text-align: center; font-size: 32px; margin-bottom: 8px; }
+.login-title { text-align: center; font-size: 18px; font-weight: 600; color: var(--gold); margin-bottom: 4px; }
+.login-sub { text-align: center; color: var(--muted); font-size: 12px; margin-bottom: 28px; }
+.login-error {
+  background: #2a1515; border: 1px solid #4a2020; border-radius: 8px;
+  padding: 10px 14px; color: var(--red); font-size: 13px; margin-bottom: 16px; text-align: center;
+}
+.login-footer { text-align: center; margin-top: 20px; }
+.login-footer a { font-size: 12px; color: var(--muted); }
+.login-footer a:hover { color: var(--accent); }
+</style>
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="login-logo">🔑</div>
+    <div class="login-title">超级管理员</div>
+    <div class="login-sub">语擦日历 · 账号管理后台</div>
+    {% if error %}
+    <div class="login-error">{{ error }}</div>
+    {% endif %}
+    <form method="post">
+      <div class="form-group">
+        <label class="form-label">管理员密码</label>
+        <input class="form-input" type="password" name="password"
+               placeholder="请输入超管密码" autocomplete="current-password" required autofocus>
+      </div>
+      <button class="btn btn-primary" type="submit" style="width:100%;justify-content:center;margin-top:8px;background:var(--gold);color:#1a1000">
+        进入管理后台
+      </button>
+    </form>
+    <div class="login-footer">
+      <a href="{{ url_for('login') }}">← 返回用户登录</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

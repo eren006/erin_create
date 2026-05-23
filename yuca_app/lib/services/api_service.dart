@@ -314,4 +314,16 @@ class ApiService {
         queryParameters: type.isNotEmpty ? {'type': type} : {});
     return resp.data as Map<String, dynamic>;
   }
+
+  Future<void> submitFeedback({
+    required String type,    // 'bug' | 'wish'
+    required String content,
+    String appVersion = '1.0.0',
+  }) async {
+    await _dio.post('/api/v1/feedback', data: {
+      'type': type,
+      'content': content,
+      'app_version': appVersion,
+    });
+  }
 }

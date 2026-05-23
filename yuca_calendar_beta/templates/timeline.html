@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}时间轴 · 语擦日历{% endblock %}
+{% block head %}
+<style>
+.tl-outer { overflow-x: auto; padding-bottom: 16px; }
+.tl-year-block { display: flex; gap: 0; margin-bottom: 24px; min-width: 560px; }
+.tl-year-label { width: 52px; flex-shrink: 0; font-size: 15px; font-weight: 700; color: var(--accent2); text-align: right; padding-right: 12px; padding-top: 18px; /* align with bar rows */ }
+.tl-right { flex: 1; min-width: 0; }
+
+/* month header */
+.tl-month-header { position: relative; height: 22px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+.tl-month-tick { position: absolute; top: 2px; font-size: 10px; color: var(--muted); transform: translateX(-50%); white-space: nowrap; line-height: 1; }
+
+/* bars area */
+.tl-bars { position: relative; }
+.tl-gridline { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--border); opacity: .35; pointer-events: none; z-index: 0; }
+.tl-today-line { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--red); opacity: .75; z-index: 5; pointer-events: none; }
+.tl-today-label { position: absolute; top: -18px; font-size: 10px; color: var(--red); font-weight: 700; transform: translateX(-50%); white-space: nowrap; }
+
+.tl-bar-row { position: relative; height: 26px; margin-bottom: 3px; z-index: 1; }
+.tl-bar { position: absolute; top: 2px; height: 22px; border-radius: 4px; display: flex; align-items: center; padding: 0 8px; font-size: 11px; font-weight: 600; overflow: hidden; cursor: default; box-sizing: border-box; transition: filter .12s, z-index 0s; }
+.tl-bar:hover { filter: brightness(1.25); z-index: 10; overflow: visible; white-space: nowrap; }
+.tl-bar-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-bar:hover .tl-bar-text { overflow: visible; }
+
+.tl-empty { font-size: 12px; color: var(--muted); padding: 8px 0; }
+.tl-legend { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
+.tl-legend-item { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); }
+.tl-legend-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+</style>
+{% endblock %}
+{% block body %}
+<div class="page">
+  <h1 class="page-title">时间轴</h1>
+
+  {% if not timeline_years %}
+  <div class="empty">
+    <div style="font-size:32px;margin-bottom:12px">📊</div>
+    还没有任何档期，请先录入档期
+  </div>
+  {% else %}
+
+  <!-- 图例 -->
+  {% set seen = namespace(names=[]) %}
+  <div class="tl-legend">
+    {% for yd in timeline_years %}
+      {% for bar in yd.bars %}
+        {% if bar.schedule.show_name not in seen.names %}
+          {% if seen.names.append(bar.schedule.show_name) %}{% endif %}
+          <div class="tl-legend-item">
+            <div class="tl-legend-dot" style="background:{{ show_color(bar.schedule) }}"></div>
+            <span>{{ bar.schedule.show_name }}</span>
+          </div>
+        {% endif %}
+      {% endfor %}
+    {% endfor %}
+  </div>
+
+  <div class="tl-outer">
+    {% for yd in timeline_years %}
+    <div class="tl-year-block">
+      <div class="tl-year-label">{{ yd.year }}</div>
+      <div class="tl-right">
+
+        <!-- 月份刻度行 -->
+        <div class="tl-month-header">
+          {% for mm in yd.month_markers %}
+          <span class="tl-month-tick" style="left:{{ mm.pct }}%">{{ mm.month }}月</span>
+          {% endfor %}
+        </div>
+
+        <!-- 条带区 -->
+        <div class="tl-bars" style="min-height:{{ [yd.bars|length, 1]|max * 29 }}px">
+
+          <!-- 月份网格线 -->
+          {% for mm in yd.month_markers %}
+          <div class="tl-gridline" style="left:{{ mm.pct }}%"></div>
+          {% endfor %}
+
+          <!-- 今日线 -->
+          {% if yd.year == now_year %}
+          <div class="tl-today-line" style="left:{{ today_pct }}%">
+            <span class="tl-today-label">今日</span>
+          </div>
+          {% endif %}
+
+          <!-- 档期条 -->
+          {% if yd.bars %}
+            {% for bar in yd.bars %}
+            {% set c = show_color(bar.schedule) %}
+            <div class="tl-bar-row">
+              <div class="tl-bar"
+                   style="left:{{ bar.left }}%;width:{{ bar.width }}%;background:{{ c }}28;border:1px solid {{ c }}90;color:{{ c }}"
+                   title="{{ bar.schedule.show_name }}{% if bar.suffix %} {{ bar.suffix }}{% endif %}&#10;{{ bar.schedule.start_year }}/{{ bar.schedule.time_range[:4] }}–{{ bar.schedule.time_range[5:] }}">
+                <span class="tl-bar-text">{{ bar.schedule.show_name }}{% if bar.suffix %}&nbsp;<span style="opacity:.65;font-size:10px">{{ bar.suffix }}</span>{% endif %}</span>
+              </div>
+            </div>
+            {% endfor %}
+          {% else %}
+            <div class="tl-empty">本年无档期记录</div>
+          {% endif %}
+
+        </div><!-- /tl-bars -->
+      </div><!-- /tl-right -->
+    </div><!-- /tl-year-block -->
+    {% endfor %}
+  </div><!-- /tl-outer -->
+
+  {% endif %}
+</div>
+{% endblock %}

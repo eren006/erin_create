@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+{% block title %}会员注册{% endblock %}
+{% block body %}
+<div class="page" style="max-width:460px;">
+  <div class="page-title">会员注册</div>
+
+  {% if already_used %}
+  <div class="card" style="text-align:center;padding:32px;">
+    <div style="font-size:40px;margin-bottom:12px;">🔒</div>
+    <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:8px;">邀请码已使用</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:20px;">
+      此邀请链接已完成注册，每个邀请码只能使用一次。<br>
+      如需帮助，请联系图编。
+    </div>
+    <a href="{{ url_for('user_login') }}" class="btn btn-primary">去登录</a>
+  </div>
+
+  {% else %}
+
+  <div class="card" style="background:color-mix(in srgb,var(--accent) 6%,var(--surface));border-color:color-mix(in srgb,var(--accent) 25%,var(--border));margin-bottom:14px;">
+    <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">邀请方</div>
+    <div style="font-size:14px;font-weight:600;color:var(--accent2);">{{ tenant.display_name or tenant.slug }}</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:6px;">
+      注册后可使用会员通道下单，并查看订单状态。
+    </div>
+  </div>
+
+  {% for e in errors %}<div class="err-msg">{{ e }}</div>{% endfor %}
+
+  <div class="card">
+    <form method="post">
+      <div class="fg">
+        <label class="fl">QQ 号（用户名）</label>
+        <input class="fi" value="{{ invite.platform_uid }}" readonly
+               style="background:var(--surface2);color:var(--muted);cursor:default;">
+        <span class="fh">由图编预设，不可修改</span>
+      </div>
+      <div class="fg">
+        <label class="fl">昵称</label>
+        <input class="fi" value="{{ invite.display_name or invite.platform_uid }}" readonly
+               style="background:var(--surface2);color:var(--muted);cursor:default;">
+      </div>
+      <div class="fg">
+        <label class="fl">设置密码 <span class="req">*</span></label>
+        <input class="fi" type="password" name="password" placeholder="至少 6 个字符" autocomplete="new-password">
+      </div>
+      <div class="fg">
+        <label class="fl">确认密码 <span class="req">*</span></label>
+        <input class="fi" type="password" name="password2" placeholder="再次输入密码" autocomplete="new-password">
+      </div>
+      <button class="btn btn-primary" type="submit" style="width:100%;">完成注册</button>
+    </form>
+    <div style="margin-top:14px;font-size:12px;color:var(--muted);text-align:center;">
+      已有账号？<a href="{{ url_for('user_login') }}">去登录</a>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

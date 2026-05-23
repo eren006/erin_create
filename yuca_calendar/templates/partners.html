@@ -1,16 +1,27 @@
 {% extends "base.html" %}
-{% block title %}CP 档案 · 语擦日历{% endblock %}
+{% block title %}必吃榜 · 语擦日历{% endblock %}
+{% block head %}
+<style>
+.share-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:8000;backdrop-filter:blur(2px)}
+.share-modal-overlay.open{display:flex;align-items:center;justify-content:center}
+.share-modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px 24px;width:340px;max-width:90vw;box-shadow:0 8px 32px rgba(0,0,0,.6)}
+.share-modal-title{font-size:14px;font-weight:600;color:var(--accent2);margin-bottom:14px}
+.share-guild-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)}
+.share-guild-row:last-of-type{border-bottom:none}
+.share-guild-row label{flex:1;font-size:13px;cursor:pointer;color:var(--text)}
+</style>
+{% endblock %}
 {% block body %}
 <div class="page">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px">
-    <h1 class="page-title" style="margin-bottom:0">CP 档案</h1>
+    <h1 class="page-title" style="margin-bottom:0">🍽 必吃榜</h1>
     <a href="{{ url_for('partner_add') }}" class="btn btn-primary">＋ 新增档案</a>
   </div>
 
   {% if not partners %}
   <div class="empty">
-    <div style="font-size:32px;margin-bottom:12px">💑</div>
-    <div>还没有 CP 档案</div>
+    <div style="font-size:32px;margin-bottom:12px">🍽</div>
+    <div>还没有必吃榜档案</div>
     <div style="margin-top:12px"><a href="{{ url_for('partner_add') }}" class="btn btn-primary">＋ 新增第一个</a></div>
   </div>
   {% else %}
@@ -45,8 +56,15 @@
     <div style="font-size:13px;color:var(--muted);margin-bottom:10px">{{ p.notes[:50] }}{% if p.notes|length > 50 %}…{% endif %}</div>
     {% endif %}
 
-    <div style="display:flex;gap:8px;margin-top:6px">
+    {% if p.shared_guilds_list %}
+    <div style="font-size:11px;color:var(--accent);margin-bottom:8px">已分享到 {{ p.shared_guilds_list|length }} 个公会</div>
+    {% endif %}
+
+    <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
       <a href="{{ url_for('partner_edit', pid=p.id) }}" class="btn btn-ghost btn-sm">编辑</a>
+      {% if my_guilds %}
+      <button class="btn btn-ghost btn-sm" onclick="openShareModal({{ p.id }}, {{ p.shared_guilds_list | tojson }})">分享到公会</button>
+      {% endif %}
       <form method="post" action="{{ url_for('partner_delete', pid=p.id) }}" onsubmit="return confirm('确认删除「{{ p.nickname }}」的档案？')">
         <button class="btn btn-danger btn-sm" type="submit">删除</button>
       </form>
@@ -56,4 +74,60 @@
   </div>
   {% endif %}
 </div>
+
+<!-- 分享到公会 Modal -->
+{% if my_guilds %}
+<div class="share-modal-overlay" id="share-overlay" onclick="closeShareModal()">
+  <div class="share-modal" onclick="event.stopPropagation()">
+    <div class="share-modal-title">分享到公会</div>
+    <div id="share-guild-list">
+      {% for g in my_guilds %}
+      <div class="share-guild-row">
+        <input type="checkbox" id="sg_{{ g.id }}" value="{{ g.id }}" style="accent-color:var(--accent)">
+        <label for="sg_{{ g.id }}">{{ g.name }} <span style="font-size:11px;color:var(--muted)">#{{ g.slug }}</span></label>
+      </div>
+      {% endfor %}
+    </div>
+    <div style="display:flex;gap:10px;margin-top:16px">
+      <button class="btn btn-primary btn-sm" onclick="saveShare()">保存</button>
+      <button class="btn btn-ghost btn-sm" onclick="closeShareModal()">取消</button>
+    </div>
+    <div id="share-status" style="font-size:12px;color:var(--green);margin-top:8px;display:none">✅ 已保存</div>
+  </div>
+</div>
+{% endif %}
+
+{% block scripts %}
+<script>
+let _sharePid = null;
+function openShareModal(pid, currentGuildIds) {
+  _sharePid = pid;
+  document.querySelectorAll('#share-guild-list input[type=checkbox]').forEach(cb => {
+    cb.checked = currentGuildIds.includes(parseInt(cb.value));
+  });
+  document.getElementById('share-status').style.display = 'none';
+  document.getElementById('share-overlay').classList.add('open');
+}
+function closeShareModal() {
+  document.getElementById('share-overlay').classList.remove('open');
+  _sharePid = null;
+}
+async function saveShare() {
+  if (!_sharePid) return;
+  const guildIds = Array.from(document.querySelectorAll('#share-guild-list input[type=checkbox]:checked'))
+    .map(cb => parseInt(cb.value));
+  const res = await fetch(`/api/partners/${_sharePid}/guild-share`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({guild_ids: guildIds})
+  });
+  const data = await res.json();
+  if (data.ok) {
+    document.getElementById('share-status').style.display = 'block';
+    setTimeout(() => { closeShareModal(); location.reload(); }, 800);
+  }
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeShareModal(); });
+</script>
+{% endblock %}
 {% endblock %}

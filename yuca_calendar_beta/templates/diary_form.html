@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}{{ '编辑日记' if action == 'edit' else '写日记' }} · 语擦日历{% endblock %}
+{% block body %}
+<div class="page">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+    <a href="{{ url_for('diary_list') }}" class="btn btn-ghost btn-sm">← 返回</a>
+    <h1 class="page-title" style="margin:0">{{ '编辑日记' if action == 'edit' else '写日记' }}</h1>
+  </div>
+
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px 28px;max-width:760px">
+    <form method="post">
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">标题（可选）</label>
+          <input class="form-input" type="text" name="title"
+                 value="{{ form.get('title','') or '' }}"
+                 placeholder="留空则以日期为标题">
+        </div>
+        <div class="form-group">
+          <label class="form-label">日期</label>
+          <input class="form-input" type="date" name="diary_date"
+                 value="{{ form.get('diary_date', today) or today }}" required>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">心情</label>
+          <select class="form-select" name="mood">
+            {% for opt in mood_options %}
+            <option value="{{ opt }}" {% if (form.get('mood') or '') == opt or (opt == '不填' and not form.get('mood')) %}selected{% endif %}>{{ opt }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">关联档期（可选）</label>
+          <select class="form-select" name="schedule_id">
+            <option value="">— 不关联 —</option>
+            {% set ns = namespace(cur_year=0) %}
+            {% for s in all_schedules %}
+              {% if s.start_year != ns.cur_year %}
+                <option disabled>── {{ s.start_year }} 年 ──</option>
+                {% set ns.cur_year = s.start_year %}
+              {% endif %}
+              <option value="{{ s.id }}"
+                {% if form.get('schedule_id') and form.get('schedule_id')|int == s.id %}selected{% endif %}>
+                {{ s.show_name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">内容</label>
+        <textarea class="form-textarea" name="content" rows="14"
+                  placeholder="写下今天的感受、复盘、随想…">{{ form.get('content','') or '' }}</textarea>
+      </div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">
+        <button class="btn btn-primary" type="submit">{{ '保存修改' if action == 'edit' else '保存日记' }}</button>
+        <a href="{{ url_for('diary_list') }}" class="btn btn-ghost">取消</a>
+        {% if action == 'edit' and form.get('id') %}
+        <form method="post" action="{{ url_for('diary_delete', did=form.id) }}"
+              style="margin-left:auto" onsubmit="return confirm('确认删除这篇日记？')">
+          <button class="btn btn-danger" type="submit">删除</button>
+        </form>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

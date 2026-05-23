@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block title %}验证订单{% endblock %}
+{% block body %}
+<div class="page" style="max-width:440px;">
+  <div class="page-title">查询订单</div>
+  <div class="card">
+    <p style="font-size:13px;color:var(--muted);margin-bottom:16px;">
+      订单号：<span style="color:var(--accent);font-family:monospace;">{{ order_no }}</span><br>
+      请输入下单时收到的 6 位验证码
+    </p>
+    {% if error %}<div class="err-msg">{{ error }}</div>{% endif %}
+    <form method="post">
+      <div class="fg">
+        <label class="fl">验证码</label>
+        <input class="fi" name="verify_code" placeholder="如：A1B2C3" maxlength="6"
+               style="font-size:20px;letter-spacing:4px;text-transform:uppercase;" autofocus>
+      </div>
+      <button class="btn btn-primary" type="submit">验证</button>
+    </form>
+    <div style="margin-top:14px;font-size:12px;color:var(--muted);">
+      验证码在提交订单后的确认页面显示，如已登录账号则无需验证码。
+    </div>
+  </div>
+</div>
+{% endblock %}

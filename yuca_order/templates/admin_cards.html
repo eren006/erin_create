@@ -1,0 +1,317 @@
+{% extends 'base.html' %}
+{% block title %}卡管理{% endblock %}
+{% block head %}
+<style>
+.card-bar-bg{background:rgba(59,130,246,.1);border-radius:10px;height:6px;flex:1;overflow:hidden;}
+.card-bar{height:100%;border-radius:10px;transition:width .3s;}
+.urow{display:grid;grid-template-columns:1fr 80px 150px 120px;gap:12px;align-items:center;
+  padding:11px 0;}
+@media(max-width:640px){.urow{grid-template-columns:1fr 70px;}.hide-sm{display:none;}}
+.edit-form{display:none;margin-top:8px;padding:10px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);}
+.edit-form.open{display:block;}
+.uid-tag{font-size:11px;color:var(--muted);font-family:monospace;}
+.sync-note{font-size:12px;color:var(--muted);margin-bottom:18px;display:flex;align-items:center;gap:8px;}
+.snap-header{font-size:11px;color:var(--muted);display:grid;grid-template-columns:1fr 80px 150px 90px;
+  gap:12px;padding-bottom:6px;border-bottom:1px solid var(--border);margin-bottom:4px;}
+@media(max-width:640px){.snap-header{grid-template-columns:1fr 70px;}}
+</style>
+{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-title">卡管理</div>
+
+  <!-- ⚠️ 已删除用户预警 -->
+  {% if deleted_users %}
+  <div class="card" style="border-color:color-mix(in srgb,var(--red) 35%,var(--border));background:color-mix(in srgb,var(--red) 5%,var(--surface));margin-bottom:16px;">
+    <div style="font-size:13px;font-weight:600;color:var(--red);margin-bottom:10px;">
+      ⚠️ 检测到 {{ deleted_users|length }} 个用户已从 Bot 删除，请确认处理
+    </div>
+    {% for u in deleted_users %}
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid color-mix(in srgb,var(--red) 15%,var(--border));">
+      <div style="flex:1;">
+        <span style="font-weight:500;">{{ u.display_name or u.platform_uid }}</span>
+        <span class="uid-tag" style="margin-left:6px;">{{ u.platform_uid }}</span>
+        <div style="font-size:11px;color:var(--muted);">卡余额 {{ u.card_remaining }} / {{ u.card_total }}
+          · 删除于 {{ u.deleted_at|fmt if u.deleted_at else '未知' }}
+        </div>
+      </div>
+      <!-- 充值（充值后同时取消删除标记） -->
+      <form method="post" action="{{ url_for('admin_recharge_user') }}" style="display:flex;gap:6px;align-items:center;">
+        <input type="hidden" name="platform_uid" value="{{ u.platform_uid }}">
+        <input type="hidden" name="display_name" value="{{ u.display_name or u.platform_uid }}">
+        <input class="fi" name="add_cards" type="number" min="1" placeholder="充值张数" style="width:90px;padding:4px 8px;font-size:12px;">
+        <button class="btn btn-green btn-sm" type="submit">充值</button>
+      </form>
+      <!-- 确认删除 -->
+      <form method="post" action="{{ url_for('admin_confirm_delete_bot_user', uid=u.id) }}"
+            onsubmit="return confirm('确认删除该用户？')">
+        {% set has_web = u.platform_uid in registered_uids %}
+        {% if has_web %}
+        <label style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:4px;margin-bottom:4px;">
+          <input type="checkbox" name="delete_web" value="1"> 同时删除网页账号
+        </label>
+        {% endif %}
+        <button class="btn btn-danger btn-sm" type="submit">确认删除</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Bot 快照用户 -->
+  <div class="card" style="margin-bottom:20px;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+      <div style="font-size:13px;font-weight:600;color:var(--accent2);">
+        Bot 注册用户卡余额
+        <span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:6px;">共 {{ snap_users|length }} 人</span>
+      </div>
+      {% if bot_sync_time %}
+      <div style="margin-left:auto;font-size:11px;color:var(--muted);">
+        <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:4px;vertical-align:middle;"></span>
+        最后同步 {{ bot_sync_time }}
+      </div>
+      {% else %}
+      <div style="margin-left:auto;font-size:11px;color:var(--warn);">⚠️ 尚未同步，发送 <code>.同步网页端</code></div>
+      {% endif %}
+    </div>
+
+    {% if not snap_users %}
+    <div style="color:var(--muted);text-align:center;padding:24px 0;font-size:13px;">
+      暂无 Bot 用户数据，请在 bot 发送 <code style="color:var(--accent2);">.同步网页端</code> 同步
+    </div>
+    {% else %}
+
+    <div class="snap-header">
+      <span>用户</span><span>剩余卡</span><span class="hide-sm">有效期</span><span>状态</span>
+    </div>
+
+    {% for uid, u in snap_users.items() | sort(attribute='0') %}
+    {% set bal = u.balance | default(0) | int %}
+    {% set bar_color = 'var(--green)' if bal > 3 else ('var(--warn)' if bal > 0 else 'var(--red)') %}
+    {% set uid_codes = invite_map.get(uid, []) %}
+    {% set uid_registered = uid in registered_uids %}
+    <div style="border-bottom:1px solid var(--border);padding:10px 0;" class="snap-user-row">
+      <div class="urow" style="border-bottom:none;padding:0;">
+        <div>
+          <div style="font-size:13px;font-weight:500;">{{ u.name | default(uid) }}</div>
+          <div class="uid-tag">{{ uid }}</div>
+        </div>
+        <div style="text-align:center;">
+          <span style="font-size:18px;font-weight:700;color:{{ bar_color }};">{{ bal }}</span>
+          <span style="color:var(--muted);font-size:11px;"> 张</span>
+        </div>
+        <div class="hide-sm" style="font-size:12px;color:var(--muted);">
+          {% if u.expiry and u.expiry != '待核对' %}{{ u.expiry }}{% else %}—{% endif %}
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          {% if uid_registered %}
+            <span style="font-size:11px;color:var(--green);">已注册</span>
+          {% else %}
+            <button class="btn btn-ghost btn-sm" onclick="toggleInvite('inv-{{ loop.index }}')">邀请码</button>
+          {% endif %}
+          <button class="btn btn-green btn-sm" onclick="toggleRecharge('rc-{{ loop.index }}')">充值</button>
+          {% if u.verified %}
+            <span style="font-size:11px;color:var(--green);">已核对</span>
+          {% else %}
+            <span style="font-size:11px;color:var(--muted);">待核对</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- 充值面板 -->
+      <div id="rc-{{ loop.index }}" style="display:none;margin-top:8px;padding:10px;background:color-mix(in srgb,var(--green) 6%,var(--surface));border-radius:8px;border:1px solid color-mix(in srgb,var(--green) 22%,var(--border));">
+        <form method="post" action="{{ url_for('admin_recharge_user') }}" style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
+          <input type="hidden" name="platform_uid" value="{{ uid }}">
+          <input type="hidden" name="display_name" value="{{ u.name | default(uid) }}">
+          <div class="fg" style="margin-bottom:0;min-width:100px;">
+            <label class="fl">充值张数</label>
+            <input class="fi" name="add_cards" type="number" min="1" value="1" style="width:90px;">
+          </div>
+          <button class="btn btn-green btn-sm" type="submit">确认充值</button>
+          <span style="font-size:11px;color:var(--muted);align-self:center;">当前余额 {{ bal }} 张</span>
+        </form>
+      </div>
+
+      {% if not uid_registered %}
+      <div id="inv-{{ loop.index }}" style="display:none;margin-top:8px;padding:10px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);">
+        <!-- 已有未使用的邀请码 -->
+        {% set active_codes = uid_codes | selectattr('used', 'equalto', 0) | list %}
+        {% if active_codes %}
+        <div style="margin-bottom:8px;">
+          {% for c in active_codes %}
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap;">
+            <code style="font-size:12px;color:var(--accent2);background:var(--surface);border:1px solid var(--border);padding:2px 8px;border-radius:5px;word-break:break-all;">
+              {{ request.host_url.rstrip('/') }}{{ url_for('invite_register', code=c.code) }}
+            </code>
+            <form method="post" action="{{ url_for('admin_delete_invite', iid=c.id) }}" style="display:inline;" onsubmit="return confirm('删除此邀请码？')">
+              <button class="btn btn-danger btn-sm" type="submit">删除</button>
+            </form>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">暂无有效邀请码，点击下方生成</div>
+        {% endif %}
+        <form method="post" action="{{ url_for('admin_gen_invite') }}">
+          <input type="hidden" name="platform_uid" value="{{ uid }}">
+          <input type="hidden" name="display_name" value="{{ u.name | default(uid) }}">
+          <button class="btn btn-green btn-sm" type="submit">生成新邀请链接</button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% endif %}
+  </div>
+
+  <!-- 手动 DB 用户（备用/兼容旧数据） -->
+  <div class="card">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+      <div style="font-size:13px;font-weight:600;color:var(--accent2);">
+        手动管理
+        <span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:4px;">{{ users|length }} 条本地记录</span>
+      </div>
+      <div style="margin-left:auto;font-size:11px;color:var(--muted);">独立于 Bot 快照，可手动增减</div>
+    </div>
+
+    <!-- 添加用户 -->
+    <details style="margin-bottom:14px;">
+      <summary style="font-size:12px;color:var(--accent2);cursor:pointer;user-select:none;">＋ 添加本地用户</summary>
+      <form method="post" action="{{ url_for('admin_add_card_user') }}" style="margin-top:10px;">
+        <div class="g2" style="margin-bottom:10px;">
+          <div class="fg" style="margin-bottom:0;">
+            <label class="fl">平台 UID（QQ号等）<span class="req">*</span></label>
+            <input class="fi" name="platform_uid" placeholder="如 123456789" required>
+          </div>
+          <div class="fg" style="margin-bottom:0;">
+            <label class="fl">昵称</label>
+            <input class="fi" name="display_name" placeholder="可留空">
+          </div>
+        </div>
+        <div class="g2" style="margin-bottom:10px;">
+          <div class="fg" style="margin-bottom:0;">
+            <label class="fl">总卡数</label>
+            <input class="fi" name="card_total" type="number" min="0" value="0">
+          </div>
+          <div class="fg" style="margin-bottom:0;">
+            <label class="fl">备注</label>
+            <input class="fi" name="notes" placeholder="可选">
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" type="submit">添加</button>
+      </form>
+    </details>
+
+    {% if not users %}
+    <div style="color:var(--muted);text-align:center;padding:16px 0;font-size:13px;">暂无本地记录</div>
+    {% else %}
+
+    <div style="font-size:11px;color:var(--muted);display:grid;grid-template-columns:1fr 90px 160px 100px;gap:12px;padding-bottom:6px;border-bottom:1px solid var(--border);margin-bottom:4px;">
+      <span>用户</span><span>剩余/总计</span><span class="hide-sm">进度</span><span>操作</span>
+    </div>
+
+    {% for u in users %}
+    {% set pct = (u.card_remaining / u.card_total * 100)|int if u.card_total > 0 else 0 %}
+    {% set bar_color = '#22c55e' if pct > 50 else ('#f59e0b' if pct > 20 else '#ef4444') %}
+    <div>
+      <div style="display:grid;grid-template-columns:1fr 90px 160px 100px;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid var(--border);">
+        <div>
+          <div style="font-size:13px;font-weight:500;color:var(--text);">{{ u.display_name or u.platform_uid }}</div>
+          <div class="uid-tag">{{ u.platform_uid }}</div>
+          {% if u.notes %}<div style="font-size:11px;color:var(--muted);margin-top:2px;">{{ u.notes }}</div>{% endif %}
+        </div>
+        <div style="text-align:center;">
+          <span style="font-size:16px;font-weight:700;color:{{ bar_color }};">{{ u.card_remaining }}</span>
+          <span style="color:var(--muted);font-size:11px;">/{{ u.card_total }}</span>
+        </div>
+        <div class="hide-sm" style="display:flex;align-items:center;gap:8px;">
+          <div class="card-bar-bg">
+            <div class="card-bar" style="width:{{ pct }}%;background:{{ bar_color }};"></div>
+          </div>
+          <span style="font-size:11px;color:var(--muted);width:32px;text-align:right;">{{ pct }}%</span>
+        </div>
+        <div>
+          <button class="btn btn-ghost btn-sm" onclick="toggleEdit({{ u.id }})">编辑</button>
+        </div>
+      </div>
+
+      <div class="edit-form" id="edit-{{ u.id }}">
+        <form method="post" action="{{ url_for('admin_edit_card', uid=u.id) }}" style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;">
+          <input type="hidden" name="action" value="set">
+          <div class="fg" style="margin-bottom:0;min-width:100px;">
+            <label class="fl">总卡数</label>
+            <input class="fi" name="card_total" type="number" min="0" value="{{ u.card_total }}" style="width:90px;">
+          </div>
+          <div class="fg" style="margin-bottom:0;min-width:100px;">
+            <label class="fl">剩余</label>
+            <input class="fi" name="card_remaining" type="number" min="0" value="{{ u.card_remaining }}" style="width:90px;">
+          </div>
+          <div class="fg" style="margin-bottom:0;flex:1;min-width:140px;">
+            <label class="fl">备注</label>
+            <input class="fi" name="notes" value="{{ u.notes or '' }}">
+          </div>
+          <button class="btn btn-primary btn-sm" type="submit">保存</button>
+        </form>
+        <form method="post" action="{{ url_for('admin_edit_card', uid=u.id) }}" style="margin-top:6px;" onsubmit="return confirm('确认删除？')">
+          <input type="hidden" name="action" value="delete">
+          <button class="btn btn-danger btn-sm" type="submit">删除</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+    {% endif %}
+  </div>
+
+  <!-- 公告管理 -->
+  <div class="card" style="margin-top:6px;">
+    <div style="font-size:13px;font-weight:600;color:var(--accent2);margin-bottom:12px;">
+      📢 公告管理
+      <span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:6px;">登录用户可见 · Bot 群发时自动同步</span>
+    </div>
+
+    <form method="post" action="{{ url_for('admin_post_announcement') }}" style="margin-bottom:14px;">
+      <div style="display:flex;gap:8px;align-items:flex-end;">
+        <div class="fg" style="flex:1;margin-bottom:0;">
+          <label class="fl">发布新公告</label>
+          <textarea class="ft" name="content" rows="2" placeholder="公告内容…" style="min-height:60px;"></textarea>
+        </div>
+        <button class="btn btn-primary btn-sm" type="submit" style="flex-shrink:0;">发布</button>
+      </div>
+    </form>
+
+    {% if announcements %}
+    <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">历史公告（最近 {{ announcements|length }} 条）</div>
+    {% for a in announcements %}
+    <div style="display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--border);">
+      <div style="flex:1;">
+        <div style="font-size:13px;white-space:pre-wrap;line-height:1.6;">{{ a.content }}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px;">
+          {{ a.created_by }} · {{ a.created_at|fmt }}
+        </div>
+      </div>
+      <form method="post" action="{{ url_for('admin_delete_announcement', aid=a.id) }}"
+            onsubmit="return confirm('删除此公告？')">
+        <button class="btn btn-danger btn-sm" type="submit">删除</button>
+      </form>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div style="color:var(--muted);font-size:13px;text-align:center;padding:16px 0;">暂无公告</div>
+    {% endif %}
+  </div>
+
+</div>
+<script>
+function toggleEdit(id) {
+  document.getElementById('edit-' + id).classList.toggle('open');
+}
+function toggleInvite(id) {
+  const el = document.getElementById(id);
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+function toggleRecharge(id) {
+  const el = document.getElementById(id);
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+</script>
+{% endblock %}

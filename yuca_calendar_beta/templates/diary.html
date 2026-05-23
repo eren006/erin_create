@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}日记 · 语擦日历{% endblock %}
+{% block head %}
+<style>
+.diary-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; display: flex; gap: 14px; transition: border-color .15s; }
+.diary-card:hover { border-color: var(--accent); }
+.diary-date-col { flex-shrink: 0; width: 64px; text-align: center; padding-top: 2px; }
+.diary-date-day { font-size: 28px; font-weight: 700; color: var(--accent2); line-height: 1; }
+.diary-date-ym  { font-size: 11px; color: var(--muted); margin-top: 3px; }
+.diary-body { flex: 1; min-width: 0; }
+.diary-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+.diary-meta  { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 6px; }
+.mood-badge  { display: inline-block; padding: 1px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; border: 1px solid currentColor; opacity: .85; }
+.diary-preview { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.diary-actions { flex-shrink: 0; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; justify-content: flex-start; }
+.filter-row { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+</style>
+{% endblock %}
+{% block body %}
+<div class="page">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+    <h1 class="page-title" style="margin:0">日记<span style="font-size:13px;color:var(--muted);font-weight:400;margin-left:10px">共 {{ diaries|length }} 篇</span></h1>
+    <a href="{{ url_for('diary_new') }}" class="btn btn-primary">＋ 写新日记</a>
+  </div>
+
+  <!-- 筛选 -->
+  <div class="filter-row">
+    <span style="font-size:12px;color:var(--muted)">按档期筛选：</span>
+    <a class="btn btn-ghost btn-sm {% if not sch_filter %}active{% endif %}"
+       href="{{ url_for('diary_list') }}"
+       style="{% if not sch_filter %}border-color:var(--accent);color:var(--accent);{% endif %}">全部</a>
+    {% for s in all_schedules %}
+    <a class="btn btn-ghost btn-sm"
+       href="{{ url_for('diary_list', schedule=s.id) }}"
+       style="{% if sch_filter == s.id|string %}border-color:{{ show_color(s) }};color:{{ show_color(s) }};{% endif %}">{{ s.show_name }}</a>
+    {% endfor %}
+  </div>
+
+  {% if diaries %}
+    {% for d in diaries %}
+    {% set parts = d.diary_date.split('-') if d.diary_date else ['','',''] %}
+    <div class="diary-card">
+      <div class="diary-date-col">
+        <div class="diary-date-day">{{ parts[2] if parts|length > 2 else '—' }}</div>
+        <div class="diary-date-ym">{{ parts[0] }}/{{ parts[1] }}</div>
+      </div>
+      <div class="diary-body">
+        <div class="diary-title">{{ d.title or '（无标题）' }}</div>
+        <div class="diary-meta">
+          {% if d.mood %}
+          <span class="mood-badge" style="color:{{ mood_color(d.mood) }}">{{ d.mood }}</span>
+          {% endif %}
+          {% if d.schedule_name %}
+          <span style="font-size:11px;color:var(--muted)">📌 {{ d.schedule_name }}</span>
+          {% endif %}
+        </div>
+        {% if d.content %}
+        <div class="diary-preview">{{ d.content[:100] }}{% if d.content|length > 100 %}…{% endif %}</div>
+        {% endif %}
+      </div>
+      <div class="diary-actions">
+        <a href="{{ url_for('diary_edit', did=d.id) }}" class="btn btn-ghost btn-sm">编辑</a>
+        <form method="post" action="{{ url_for('diary_delete', did=d.id) }}"
+              onsubmit="return confirm('确认删除这篇日记？')">
+          <button class="btn btn-danger btn-sm" type="submit">删除</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty">
+      {% if sch_filter %}该档期暂无日记{% else %}
+      <div style="font-size:32px;margin-bottom:12px">📔</div>
+      还没有任何日记<br>
+      <a href="{{ url_for('diary_new') }}" style="color:var(--accent);font-size:13px;margin-top:8px;display:inline-block">点击写第一篇 →</a>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

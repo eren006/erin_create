@@ -992,31 +992,44 @@ ext.cmdMap["商城下架"] = cmd_shop_remove;
 
 let cmd_reg_pool = seal.ext.newCmdItemInfo();
 cmd_reg_pool.name = "注册池子";
-cmd_reg_pool.help = "【管理员】创建抽取池\n注册池子 池子名 fixed —— 固定池（加权随机，不减少）\n注册池子 池子名 free —— 自由池（有限数量，抽完即止）";
+cmd_reg_pool.help = "【管理员】创建抽取池\n注册池子 池子名 数量 —— 数量池（有限个数，抽完即止）\n注册池子 池子名 权重 —— 权重池（加权随机，不减少）\n💡 也可直接「上架池子」，池子不存在时会自动创建为数量池";
 cmd_reg_pool.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
     const poolName = cmdArgs.getArgN(1);
-    const poolType = cmdArgs.getArgN(2);
-    if (!poolName || !["fixed", "free"].includes(poolType)) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const poolTypeRaw = cmdArgs.getArgN(2);
+    const typeMap = { "数量": "free", "自由": "free", "free": "free", "权重": "fixed", "固定": "fixed", "fixed": "fixed" };
+    const poolType = typeMap[poolTypeRaw];
+    if (!poolName || !poolType) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
     const defs = getPoolDefs();
-    if (defs[poolName]) return seal.replyToSender(ctx, msg, `⚠️ 池子「${poolName}」已存在。`);
+    if (defs[poolName]) return seal.replyToSender(ctx, msg, `⚠️ 池子「${poolName}」已存在（${defs[poolName].type === "fixed" ? "权重池" : "数量池"}）。`);
     defs[poolName] = { name: poolName, type: poolType, items: [], enabled: true };
     savePoolDefs(defs);
-    seal.replyToSender(ctx, msg, `✅ 池子「${poolName}」已创建（${poolType === "fixed" ? "固定池" : "自由池"}）`);
+    seal.replyToSender(ctx, msg, `✅ 池子「${poolName}」已创建（${poolType === "fixed" ? "权重池" : "数量池"}）`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["注册池子"] = cmd_reg_pool;
 
 let cmd_pool_add = seal.ext.newCmdItemInfo();
 cmd_pool_add.name = "上架池子";
-cmd_pool_add.help = "【管理员】向池子添加物品\n固定池：上架池子 池子名 物品码*权重\n自由池：上架池子 池子名 物品码*数量\n支持多行批量";
+cmd_pool_add.help = `【管理员】向池子添加物品（池子不存在时自动创建为数量池）
+数量池：上架池子 池子名 物品码*数量
+权重池：上架池子 池子名 物品码*权重
+多行批量（推荐）：
+。上架池子 池子名
+物品码*数量
+物品码2*数量2`;
 cmd_pool_add.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
     const poolName = cmdArgs.getArgN(1);
     if (!poolName) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
     const defs = getPoolDefs();
-    const pool = defs[poolName];
-    if (!pool) return seal.replyToSender(ctx, msg, `❌ 未找到池子「${poolName}」。`);
+    let pool = defs[poolName];
+    let autoCreated = false;
+    if (!pool) {
+        defs[poolName] = { name: poolName, type: "free", items: [], enabled: true };
+        pool = defs[poolName];
+        autoCreated = true;
+    }
     const rawMsg = msg.message.trim();
     const msgParts = rawMsg.split(/\r?\n/);
     let itemLines;
@@ -1064,62 +1077,108 @@ cmd_pool_add.solve = (ctx, msg, cmdArgs) => {
         }
     }
     savePoolDefs(defs);
-    seal.replyToSender(ctx, msg, `池子「${poolName}」更新：\n${results.join("\n")}`);
+    const header = autoCreated ? `🆕 池子「${poolName}」不存在，已自动创建为数量池。\n` : "";
+    seal.replyToSender(ctx, msg, `${header}上架结果：\n${results.join("\n")}`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["上架池子"] = cmd_pool_add;
 
 let cmd_pool_remove = seal.ext.newCmdItemInfo();
 cmd_pool_remove.name = "从池移除";
-cmd_pool_remove.help = "【管理员】从池子中移除物品\n从池移除 池子名 物品码或名称";
+cmd_pool_remove.help = `【管理员】从池子中移除物品，支持多行批量
+从池移除 池子名 物品码   —— 移除单个
+多行批量：
+。从池移除 池子名
+物品码1
+物品码2`;
 cmd_pool_remove.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
     const poolName = cmdArgs.getArgN(1);
-    const inputCode = cmdArgs.getArgN(2);
-    if (!poolName || !inputCode) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    if (!poolName) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
     const defs = getPoolDefs();
     const pool = defs[poolName];
     if (!pool) return seal.replyToSender(ctx, msg, `❌ 未找到池子「${poolName}」。`);
+    const rawMsg = msg.message.trim();
+    const msgParts = rawMsg.split(/\r?\n/);
+    let inputCodes;
+    if (msgParts.length > 1) {
+        inputCodes = msgParts.slice(1).map(l => l.trim()).filter(l => l);
+    } else {
+        const single = cmdArgs.getArgN(2);
+        if (!single) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+        inputCodes = [single];
+    }
     const reg = getRegistry();
-    const item = findItem(reg, inputCode);
-    const code = item ? item.code : inputCode.toUpperCase();
-    const idx = pool.items.findIndex(i => i.code === code);
-    if (idx === -1) return seal.replyToSender(ctx, msg, `❌ 池子中没有 [${code}]`);
-    pool.items.splice(idx, 1);
+    const results = [];
+    for (const inputCode of inputCodes) {
+        const item = findItem(reg, inputCode);
+        const code = item ? item.code : inputCode.toUpperCase();
+        const idx = pool.items.findIndex(i => i.code === code);
+        if (idx === -1) { results.push(`❌ [${code}] 不在池子中`); continue; }
+        pool.items.splice(idx, 1);
+        results.push(`✅ 已移除 [${code}]${item?.name || ""}`);
+    }
     savePoolDefs(defs);
-    seal.replyToSender(ctx, msg, `✅ 已从「${poolName}」移除 [${code}]${item?.name || ""}`);
+    seal.replyToSender(ctx, msg, `从「${poolName}」移除：\n${results.join("\n")}`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["从池移除"] = cmd_pool_remove;
 
 let cmd_pool_config = seal.ext.newCmdItemInfo();
 cmd_pool_config.name = "池子设定";
-cmd_pool_config.help = "【管理员】设置每游戏日抽取次数\n池子设定 查看\n池子设定 总量:N —— 全局每日总次数\n池子设定 总量:无限 —— 无限制\n池子设定 池子名:N —— 特定池每日次数";
+cmd_pool_config.help = `【管理员】查看或设置每游戏日抽取次数
+池子设定              —— 查看全部设定与池子状态
+池子设定 总量 N       —— 全局每日总次数
+池子设定 总量 无限    —— 全局无限制
+池子设定 池子名 N     —— 给特定池设专属次数
+池子设定 池子名 无限  —— 移除该池专属次数限制`;
 cmd_pool_config.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
-    const arg = cmdArgs.getArgN(1);
-    if (!arg || arg === "查看") {
+    const arg1 = cmdArgs.getArgN(1);
+    const arg2 = cmdArgs.getArgN(2);
+    if (!arg1 || arg1 === "查看") {
         const cfg = getDrawConfig();
-        let text = `📊 抽取次数设定：\n总量：${cfg.total !== null && cfg.total !== undefined ? cfg.total + "次" : "无限"}`;
-        for (const [pn, n] of Object.entries(cfg.pools || {})) text += `\n  · ${pn}：${n}次`;
+        const defs = getPoolDefs();
+        const totalStr = (cfg.total !== null && cfg.total !== undefined) ? `${cfg.total}次/天` : "无限";
+        let text = `📊 池子设定一览 | 全局总量：${totalStr}\n`;
+        const poolList = Object.values(defs);
+        if (!poolList.length) {
+            text += "\n（暂无池子）";
+        } else {
+            for (const pool of poolList) {
+                const icon = pool.enabled ? "✅" : "❌";
+                const typeStr = pool.type === "fixed" ? "权重" : "数量";
+                const poolLimit = cfg.pools?.[pool.name];
+                const limitStr = poolLimit !== undefined ? `${poolLimit}次/天` : "跟随全局";
+                const itemCount = pool.items.length;
+                const stockStr = pool.type === "free"
+                    ? `${pool.items.reduce((s, i) => s + (i.count || 0), 0)}个`
+                    : `${itemCount}种`;
+                text += `\n${icon} 【${pool.name}】${typeStr}池 | 库存${stockStr} | ${limitStr}`;
+            }
+        }
         return seal.replyToSender(ctx, msg, text);
     }
-    const colonIdx = arg.indexOf(":");
-    if (colonIdx === -1) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
-    const key = arg.substring(0, colonIdx);
-    const valStr = arg.substring(colonIdx + 1);
     const cfg = getDrawConfig();
-    if (key === "总量") {
-        cfg.total = valStr === "无限" ? null : parseInt(valStr);
+    if (arg1 === "总量") {
+        if (!arg2) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+        cfg.total = arg2 === "无限" ? null : parseInt(arg2);
+        if (arg2 !== "无限" && isNaN(cfg.total)) return seal.replyToSender(ctx, msg, "❌ 次数必须为正整数或「无限」。");
         saveDrawConfig(cfg);
-        return seal.replyToSender(ctx, msg, `✅ 总量限制：${cfg.total !== null ? cfg.total + "次" : "无限"}`);
+        return seal.replyToSender(ctx, msg, `✅ 全局总量：${cfg.total !== null ? cfg.total + "次/天" : "无限"}`);
     }
-    const n = parseInt(valStr);
-    if (isNaN(n) || n < 0) return seal.replyToSender(ctx, msg, "❌ 次数必须为非负整数。");
+    if (!arg2) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    if (arg2 === "无限") {
+        if (cfg.pools) delete cfg.pools[arg1];
+        saveDrawConfig(cfg);
+        return seal.replyToSender(ctx, msg, `✅ 已移除「${arg1}」的专属次数限制（跟随全局）`);
+    }
+    const n = parseInt(arg2);
+    if (isNaN(n) || n < 0) return seal.replyToSender(ctx, msg, "❌ 次数必须为非负整数或「无限」。");
     if (!cfg.pools) cfg.pools = {};
-    cfg.pools[key] = n;
+    cfg.pools[arg1] = n;
     saveDrawConfig(cfg);
-    seal.replyToSender(ctx, msg, `✅ 池子「${key}」每日次数：${n}次`);
+    seal.replyToSender(ctx, msg, `✅ 池子「${arg1}」每日次数：${n}次`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["池子设定"] = cmd_pool_config;
@@ -1198,6 +1257,81 @@ cmd_batch_create_pools.solve = (ctx, msg) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["一键建池"] = cmd_batch_create_pools;
+
+let cmd_view_pool = seal.ext.newCmdItemInfo();
+cmd_view_pool.name = "查看池子";
+cmd_view_pool.help = `【管理员】查看池子详情
+查看池子          —— 列出所有池子状态（等同于「池子设定」查看）
+查看池子 池子名   —— 显示该池子的全部物品`;
+cmd_view_pool.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const poolName = cmdArgs.getArgN(1);
+    const defs = getPoolDefs();
+    const cfg = getDrawConfig();
+    const reg = getRegistry();
+    if (!poolName) {
+        const poolList = Object.values(defs);
+        if (!poolList.length) return seal.replyToSender(ctx, msg, "📭 当前没有任何池子。\n💡 用「上架池子 池子名 物品码*数量」创建并上架。");
+        const totalStr = (cfg.total !== null && cfg.total !== undefined) ? `${cfg.total}次/天` : "无限";
+        let text = `🎲 抽取池一览（${poolList.length}个）| 全局总量：${totalStr}`;
+        for (const pool of poolList) {
+            const icon = pool.enabled ? "✅" : "❌";
+            const typeStr = pool.type === "fixed" ? "权重池" : "数量池";
+            const poolLimit = cfg.pools?.[pool.name];
+            const limitStr = poolLimit !== undefined ? `${poolLimit}次/天` : "全局";
+            const totalStock = pool.type === "free"
+                ? pool.items.reduce((s, i) => s + (i.count || 0), 0) + "个"
+                : pool.items.length + "种";
+            text += `\n${icon} 【${pool.name}】${typeStr} | 库存${totalStock} | ${limitStr}`;
+        }
+        return seal.replyToSender(ctx, msg, text);
+    }
+    const pool = defs[poolName];
+    if (!pool) return seal.replyToSender(ctx, msg, `❌ 未找到池子「${poolName}」。`);
+    const typeStr = pool.type === "fixed" ? "权重池" : "数量池";
+    const statusStr = pool.enabled ? "已开启" : "已关闭";
+    const poolLimit = cfg.pools?.[poolName];
+    const totalStr = (cfg.total !== null && cfg.total !== undefined) ? `${cfg.total}次` : "无限";
+    const limitStr = poolLimit !== undefined ? `${poolLimit}次/天（专属）` : `跟随全局（${totalStr}/天）`;
+    let text = `📦 【${poolName}】${typeStr} · ${statusStr} | 抽取：${limitStr}`;
+    if (!pool.items.length) {
+        text += "\n\n📭 池子内暂无物品。";
+    } else {
+        text += `\n\n📋 物品列表（${pool.items.length}种）：`;
+        for (const entry of pool.items) {
+            const item = reg[entry.code] || { name: entry.code };
+            if (pool.type === "fixed") {
+                text += `\n  · ${item.name} [${entry.code}] 权重×${entry.weight}`;
+            } else {
+                text += `\n  · ${item.name} [${entry.code}] ×${entry.count}`;
+            }
+        }
+        if (pool.type === "free") {
+            const total = pool.items.reduce((s, i) => s + (i.count || 0), 0);
+            text += `\n\n合计库存：${total} 个`;
+        }
+    }
+    return seal.replyToSender(ctx, msg, text);
+};
+ext.cmdMap["查看池子"] = cmd_view_pool;
+
+let cmd_clear_pool = seal.ext.newCmdItemInfo();
+cmd_clear_pool.name = "清空池子";
+cmd_clear_pool.help = "【管理员】清空池子内所有物品（保留池子结构和设定）\n清空池子 池子名";
+cmd_clear_pool.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const poolName = cmdArgs.getArgN(1);
+    if (!poolName) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const defs = getPoolDefs();
+    const pool = defs[poolName];
+    if (!pool) return seal.replyToSender(ctx, msg, `❌ 未找到池子「${poolName}」。`);
+    const count = pool.items.length;
+    pool.items = [];
+    savePoolDefs(defs);
+    seal.replyToSender(ctx, msg, `✅ 已清空「${poolName}」（移除 ${count} 种物品）。\n💡 池子结构和次数设定保留，可直接「上架池子」补货。`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["清空池子"] = cmd_clear_pool;
 
 let cmd_adjust = seal.ext.newCmdItemInfo();
 cmd_adjust.name = "调整";
@@ -1553,7 +1687,7 @@ cmd_use.solve = (ctx, msg, cmdArgs) => {
                 usageStatus = "(已耗尽)";
             } else {
                 // 如果还有叠层，重置次数到最大值
-                userItem.remainingUses = item.maxUses;
+                userItem.remainingUses = item.maxUses ?? -1;
                 usageStatus = `(消耗1份，余${userItem.count}份)`;
             }
         } else {
@@ -2357,6 +2491,9 @@ cmd_apply.solve = (ctx, msg, cmdArgs) => {
     // 5. 扣除发起者的消耗次数
     let userItem = inv[invIndex];
     let usageStatus = "";
+    if (userItem.remainingUses === undefined) {
+        userItem.remainingUses = item.maxUses ?? -1;
+    }
     if (userItem.remainingUses !== -1) {
         userItem.remainingUses--;
         if (userItem.remainingUses <= 0) {
@@ -2365,7 +2502,7 @@ cmd_apply.solve = (ctx, msg, cmdArgs) => {
                 inv.splice(invIndex, 1);
                 usageStatus = "(已耗尽)";
             } else {
-                userItem.remainingUses = item.maxUses;
+                userItem.remainingUses = item.maxUses ?? -1;
                 usageStatus = `(消耗1份，余${userItem.count}份)`;
             }
         } else {
@@ -3237,6 +3374,76 @@ cmd_sync_spot_pools.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["同步踩点池"] = cmd_sync_spot_pools;
+
+// ── 从 RP 存档服务器同步池子 ─────────────────────────────────────────────────
+let cmd_sync_pools_from_archive = seal.ext.newCmdItemInfo();
+cmd_sync_pools_from_archive.name = "同步池子";
+cmd_sync_pools_from_archive.help = "【管理员】从RP存档服务器拉取池子配置（在存档网页编辑后使用）\n同步池子       —— 拉取并覆盖本地池子定义和抽取设定\n同步池子 预览  —— 只显示存档中的池子，不实际同步";
+cmd_sync_pools_from_archive.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const main = getMainExt();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
+
+    const archiveEnabled = seal.ext.getBoolConfig(main, "启用RP存档传输");
+    if (!archiveEnabled) return seal.replyToSender(ctx, msg, "❌ 未启用RP存档传输，请先在长日设置中开启。");
+
+    const base  = (seal.ext.getStringConfig(main, "RP存档服务器地址") || "").replace(/\/$/, "");
+    const token = seal.ext.getStringConfig(main, "RP存档Token") || "";
+    if (!base) return seal.replyToSender(ctx, msg, "❌ 未配置存档服务器地址。");
+
+    const previewOnly = (cmdArgs.getArgN(1) || "") === "预览";
+    const headers = {};
+    if (token) headers["X-Archive-Token"] = token;
+
+    (async () => {
+        try {
+            const resp = await fetch(`${base}/api/pool_config`, { headers });
+            if (!resp.ok) {
+                seal.replyToSender(ctx, msg, `❌ 拉取失败，服务器返回 ${resp.status}。`);
+                return;
+            }
+            const data = await resp.json();
+            if (!data.ok) {
+                seal.replyToSender(ctx, msg, `❌ 拉取失败：${data.error || "未知错误"}`);
+                return;
+            }
+            const defs = data.pool_definitions || {};
+            const cfg  = data.pool_draw_config  || { total: null, pools: {} };
+            const poolNames = Object.keys(defs);
+
+            if (previewOnly) {
+                if (!poolNames.length) {
+                    seal.replyToSender(ctx, msg, "📭 存档中暂无池子配置。");
+                    return;
+                }
+                const totalStr = cfg.total != null ? `${cfg.total}次/天` : "无限";
+                let preview = `👁️ 存档池子预览（${poolNames.length}个）| 全局：${totalStr}\n`;
+                for (const name of poolNames) {
+                    const p = defs[name];
+                    const typeStr = p.type === "fixed" ? "权重池" : "数量池";
+                    const stock = p.type === "free"
+                        ? p.items.reduce((s, i) => s + (i.count || 0), 0) + "个"
+                        : p.items.length + "种";
+                    const perDay = cfg.pools?.[name];
+                    const limitStr = perDay != null ? `${perDay}次/天` : "跟随全局";
+                    preview += `\n${p.enabled ? "✅" : "❌"} 【${name}】${typeStr} | 库存${stock} | ${limitStr}`;
+                }
+                preview += "\n\n💡 确认无误后发送「同步池子」正式同步。";
+                seal.replyToSender(ctx, msg, preview);
+                return;
+            }
+
+            main.storageSet("pool_definitions", JSON.stringify(defs));
+            main.storageSet("pool_draw_config", JSON.stringify(cfg));
+            const totalStr = cfg.total != null ? `${cfg.total}次/天` : "无限";
+            seal.replyToSender(ctx, msg, `✅ 池子已同步（${poolNames.length} 个池子，全局次数：${totalStr}）。`);
+        } catch (e) {
+            seal.replyToSender(ctx, msg, `❌ 同步失败：${e.message || String(e)}`);
+        }
+    })();
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["同步池子"] = cmd_sync_pools_from_archive;
 
 // ========================
 // 攻防系统 - 存储和配置

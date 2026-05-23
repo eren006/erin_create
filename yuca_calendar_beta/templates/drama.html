@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}戏录 · 语擦日历{% endblock %}
+{% block head %}
+<style>
+.drama-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 20px; flex-wrap: wrap; gap: 10px;
+}
+.tag-filter {
+  display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+  margin-bottom: 20px;
+}
+.tag-btn {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 20px; padding: 3px 12px; font-size: 12px; color: var(--muted);
+  cursor: pointer; font-family: inherit; transition: all .15s;
+}
+.tag-btn:hover { border-color: var(--accent); color: var(--text); }
+.tag-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.drama-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 16px 18px; margin-bottom: 10px;
+  display: flex; gap: 14px; align-items: flex-start;
+}
+.drama-card:hover { border-color: var(--accent); }
+.drama-body { flex: 1; min-width: 0; }
+.drama-title { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+.drama-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.drama-tag {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 20px; padding: 1px 9px; font-size: 11px; color: var(--muted);
+}
+.drama-wc { font-size: 11px; color: var(--muted); }
+.drama-date { font-size: 11px; color: var(--muted); }
+.drama-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+@media(max-width:520px) {
+  .drama-card { flex-direction: column; gap: 10px; }
+  .drama-actions { width: 100%; justify-content: flex-end; }
+}
+
+.copy-btn {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 5px 12px; font-size: 12px; color: var(--muted);
+  cursor: pointer; font-family: inherit; transition: all .15s;
+}
+.copy-btn:hover { border-color: var(--accent); color: var(--text); }
+.copy-btn.copied { border-color: var(--green); color: var(--green); }
+
+.count-badge {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 20px; padding: 3px 12px; font-size: 12px; color: var(--muted);
+}
+</style>
+{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="drama-header">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <h1 class="page-title" style="margin:0">戏录</h1>
+      <span class="count-badge">共 {{ total_count }} 篇 · {{ total_wc }} 字</span>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      {% if total_count %}
+      <a href="{{ url_for('drama_export') }}" class="btn btn-ghost">⬇ 导出全部</a>
+      {% endif %}
+      <a href="{{ url_for('drama_new') }}" class="btn btn-primary">＋ 新建戏录</a>
+    </div>
+  </div>
+
+  <!-- Tag filter -->
+  <div class="tag-filter">
+    <span style="font-size:12px;color:var(--muted);flex-shrink:0">筛选：</span>
+    <a href="{{ url_for('drama_list') }}" class="tag-btn {% if not tag_filter %}active{% endif %}">全部</a>
+    {% for t in fixed_tags %}
+    <a href="{{ url_for('drama_list', tag=t) }}" class="tag-btn {% if tag_filter == t %}active{% endif %}">{{ t }}</a>
+    {% endfor %}
+    {% for t in custom_tags %}
+    <a href="{{ url_for('drama_list', tag=t) }}" class="tag-btn {% if tag_filter == t %}active{% endif %}">{{ t }}</a>
+    {% endfor %}
+  </div>
+
+  {% if dramas %}
+    {% for d in dramas %}
+    <div class="drama-card" id="card-{{ d.id }}">
+      <div class="drama-body">
+        <div class="drama-title">{{ d.title }}</div>
+        <div class="drama-meta">
+          {% for t in d.tags_list %}
+          <span class="drama-tag">{{ t }}</span>
+          {% endfor %}
+          <span class="drama-wc">{{ d.wc }} 字</span>
+          {% if d.writing_time %}
+          <span class="drama-date">写于 {{ d.writing_time | datetimeformat }}</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="drama-actions">
+        <button class="copy-btn" onclick="copyDrama({{ d.id }}, this)" title="复制全文">复制</button>
+        <a href="{{ url_for('drama_view', did=d.id) }}" class="btn btn-ghost btn-sm">查看</a>
+        <a href="{{ url_for('drama_edit', did=d.id) }}" class="btn btn-ghost btn-sm">编辑</a>
+        <form method="post" action="{{ url_for('drama_delete', did=d.id) }}"
+              onsubmit="return confirm('确定删除「{{ d.title }}」？')">
+          <button class="btn btn-danger btn-sm" type="submit">删除</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty">
+      {% if tag_filter %}没有带「{{ tag_filter }}」标签的戏录{% else %}还没有戏录，点击右上角新建{% endif %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function copyDrama(id, btn) {
+  fetch('/drama/' + id + '/content')
+    .then(r => r.json())
+    .then(data => {
+      _doCopy(data.content, btn);
+    })
+    .catch(() => btn.textContent = '失败');
+}
+
+function _doCopy(text, btn) {
+  const orig = btn.textContent;
+  function ok() {
+    btn.textContent = '已复制 ✓';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 2000);
+  }
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(ok).catch(() => _fallback(text, btn, orig));
+  } else {
+    _fallback(text, btn, orig);
+  }
+}
+
+function _fallback(text, btn, orig) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;top:-999px;left:-999px;opacity:0';
+  document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  try {
+    document.execCommand('copy');
+    btn.textContent = '已复制 ✓';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 2000);
+  } catch(e) {
+    btn.textContent = '请手动复制';
+  }
+  document.body.removeChild(ta);
+}
+</script>
+{% endblock %}

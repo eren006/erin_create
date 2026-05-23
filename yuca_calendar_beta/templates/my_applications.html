@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}我的投递 · 语擦日历{% endblock %}
+{% block body %}
+<div class="page">
+  <h1 class="page-title">我的投递记录</h1>
+
+  {% if not apps %}
+  <div class="empty">还没有投递记录<br><a href="{{ url_for('plaza') }}">去招募广场看看</a></div>
+  {% else %}
+  {% for a in apps %}
+  {% set status_map = {'pending': ('审核中', 'var(--gold)'), 'accepted': ('已录取', 'var(--green)'), 'rejected': ('已拒绝', 'var(--red)')} %}
+  {% set sc = status_map.get(a.status, ('未知', 'var(--muted)')) %}
+  <div class="card">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:15px;font-weight:600;color:var(--text)">{{ a.rec_title }}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:3px">
+          本主：{{ a.gm_name }} &nbsp;·&nbsp;
+          {{ a.rec_year }}年 {{ a.rec_range[:2] }}月{{ a.rec_range[2:4] }}日 —
+          {% if a.rec_range[5:7]|int < a.rec_range[:2]|int %}{{ a.rec_year + 1 }}年 {% endif %}
+          {{ a.rec_range[5:7] }}月{{ a.rec_range[7:9] }}日
+        </div>
+      </div>
+      <span style="font-size:12px;font-weight:600;color:{{ sc[1] }};white-space:nowrap">{{ sc[0] }}</span>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted)">
+      <span>弧长：{{ a.arc_length or '—' }}</span>
+      <span>在线时间：{{ a.online_hours or '—' }}</span>
+    </div>
+    {% if a.note %}
+    <div style="margin-top:8px;font-size:12px;color:var(--muted)">备注：{{ a.note }}</div>
+    {% endif %}
+    <div style="margin-top:8px;font-size:11px;color:var(--muted)">
+      投递于 {{ a.created_at | datetimeformat }}
+      {% if a.status == 'accepted' and a.player_schedule_id %}
+        &nbsp;·&nbsp; <a href="{{ url_for('calendar') }}" style="color:var(--green)">查看档期</a>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  <div style="margin-top:16px">
+    <a class="btn btn-ghost" href="{{ url_for('plaza') }}">返回招募广场</a>
+  </div>
+</div>
+{% endblock %}

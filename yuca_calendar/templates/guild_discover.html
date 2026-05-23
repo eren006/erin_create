@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}发现公会 · 语擦日历{% endblock %}
+{% block body %}
+<div class="page">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap">
+    <a href="{{ url_for('guilds') }}" class="btn btn-ghost btn-sm">← 我的公会</a>
+    <h1 class="page-title" style="margin:0">发现公会</h1>
+  </div>
+
+  <form method="get" style="display:flex;gap:8px;margin-bottom:20px">
+    <input class="form-input" type="text" name="q" value="{{ q }}" placeholder="搜索公会名或 ID…" style="max-width:320px">
+    <button class="btn btn-ghost" type="submit">搜索</button>
+    {% if q %}<a href="{{ url_for('guild_discover') }}" class="btn btn-ghost">清除</a>{% endif %}
+  </form>
+
+  {% if guilds %}
+  <div class="grid-2">
+  {% for g in guilds %}
+  <div class="card" style="display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span style="font-size:15px;font-weight:600">{{ g.name }}</span>
+      <code style="font-size:11px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 7px">#{{ g.slug }}</code>
+    </div>
+    {% if g.signature %}
+    <div style="font-size:13px;color:var(--muted)">{{ g.signature }}</div>
+    {% endif %}
+    <div style="font-size:12px;color:var(--muted)">
+      公会主：{{ g.owner_name }} · {{ g.member_count }} 名成员
+    </div>
+    <div style="margin-top:4px">
+      {% if g.is_owner %}
+        <a href="{{ url_for('guild_detail', gid=g.id) }}" class="btn btn-primary btn-sm">进入管理</a>
+      {% elif g.my_status == 'approved' %}
+        <a href="{{ url_for('guild_detail', gid=g.id) }}" class="btn btn-primary btn-sm">进入公会</a>
+      {% elif g.my_status == 'pending' %}
+        <span class="btn btn-ghost btn-sm" style="cursor:default;opacity:.7">申请待审中…</span>
+      {% else %}
+        <form method="post" action="{{ url_for('guild_join', gid=g.id) }}" style="display:inline">
+          <button class="btn btn-ghost btn-sm" type="submit">申请加入</button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty">
+    {% if q %}没有找到匹配「{{ q }}」的公会{% else %}还没有公会，快去创建第一个吧{% endif %}
+    <div style="margin-top:12px"><a href="{{ url_for('guilds') }}" class="btn btn-primary">创建公会</a></div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

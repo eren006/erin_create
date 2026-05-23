@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}{{ '编辑 CP 档案' if action == 'edit' else '新增 CP 档案' }} · 语擦日历{% endblock %}
+{% block head %}
+<style>
+.pf-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px 28px; max-width: 700px; }
+.sec-title { font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; margin: 20px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.sec-title:first-child { margin-top: 0; }
+.star-wrap { display: flex; gap: 6px; }
+.star { font-size: 24px; cursor: pointer; color: var(--border); transition: color .1s; line-height: 1; }
+.star.lit { color: var(--gold); }
+.ptag-label { display: inline-flex; align-items: center; gap: 5px; padding: 4px 11px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface2); cursor: pointer; font-size: 12px; color: var(--muted); transition: all .15s; }
+.ptag-label:hover { border-color: var(--accent); color: var(--text); }
+.ptag-label input:checked ~ span, input:checked + .ptag-label { color: var(--accent); border-color: var(--accent); background: var(--accent)15; }
+.ptag-cb:checked + .ptag-label { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.sch-year-group { margin-bottom: 10px; }
+.sch-year-label { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+.sch-cb-wrap { display: flex; flex-wrap: wrap; gap: 6px; }
+.sch-cb-label { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface2); cursor: pointer; font-size: 12px; color: var(--muted); transition: all .15s; }
+.sch-cb-label:hover { border-color: var(--accent); color: var(--text); }
+</style>
+{% endblock %}
+{% block body %}
+<div class="page">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+    <a href="{{ url_for('partners') }}" class="btn btn-ghost btn-sm">← 返回</a>
+    <h1 class="page-title" style="margin:0">{{ '编辑 CP 档案' if action == 'edit' else '新增 CP 档案' }}</h1>
+  </div>
+
+  <div class="pf-card">
+    <form method="post">
+      <div class="sec-title">基本信息</div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">昵称 <span class="req">*</span></label>
+          <input class="form-input" type="text" name="nickname" value="{{ form.get('nickname','') or '' }}" required autofocus>
+        </div>
+        <div class="form-group">
+          <label class="form-label">QQ 号</label>
+          <input class="form-input" type="text" name="qq" value="{{ form.get('qq','') or '' }}" inputmode="numeric" placeholder="可留空">
+        </div>
+      </div>
+
+      <div class="sec-title">默契度</div>
+      <div class="form-group">
+        <div class="star-wrap" id="stars">
+          {% set cur_rating = form.get('rating', 0)|int %}
+          {% for i in range(1, 6) %}
+          <span class="star {% if i <= cur_rating %}lit{% endif %}" data-val="{{ i }}" onclick="setRating({{ i }})">★</span>
+          {% endfor %}
+        </div>
+        <input type="hidden" name="rating" id="rating-val" value="{{ cur_rating }}">
+        <div class="form-hint">点星星设置默契度（1–5），再次点击同颗取消</div>
+      </div>
+
+      <div class="sec-title">标签</div>
+      <div class="form-group">
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+          {% set cur_tags = form.get('tags_list') or [] %}
+          {% for tag in preset_tags %}
+          {% set checked = form.get('ptag_' + tag) or (tag in cur_tags) %}
+          <input type="checkbox" name="ptag_{{ tag }}" id="ptag_{{ tag }}" value="1" {% if checked %}checked{% endif %} style="display:none" class="ptag-cb">
+          <label class="ptag-label" for="ptag_{{ tag }}">{{ tag }}</label>
+          {% endfor %}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <input class="form-input" type="text" name="custom_tag"
+                 value="{{ form.get('custom_tag','') or '' }}"
+                 placeholder="自定义标签（可选）" style="max-width:200px">
+        </div>
+      </div>
+
+      <div class="sec-title">关联档期</div>
+      <div class="form-group">
+        {% if all_schedules %}
+          {% set ns = namespace(cur_year=0) %}
+          {% for s in all_schedules %}
+            {% if s.start_year != ns.cur_year %}
+              {% if ns.cur_year != 0 %}</div></div>{% endif %}
+              <div class="sch-year-group">
+              <div class="sch-year-label">{{ s.start_year }} 年</div>
+              <div class="sch-cb-wrap">{% set ns.cur_year = s.start_year %}
+            {% endif %}
+            {% set sel = s.id in selected_sids %}
+            <input type="checkbox" name="schedule_ids" id="sid_{{ s.id }}" value="{{ s.id }}" {% if sel %}checked{% endif %} style="display:none">
+            <label class="sch-cb-label" for="sid_{{ s.id }}"
+                   style="{% if sel %}border-color:{{ show_color(s) }};color:{{ show_color(s) }};background:{{ show_color(s) }}18;{% endif %}">
+              <span style="width:8px;height:8px;border-radius:50%;background:{{ show_color(s) }};display:inline-block;flex-shrink:0"></span>
+              {{ s.show_name }}
+            </label>
+          {% endfor %}
+          {% if ns.cur_year != 0 %}</div></div>{% endif %}
+        {% else %}
+          <div style="font-size:12px;color:var(--muted)">暂无档期，请先录入档期</div>
+        {% endif %}
+      </div>
+
+      <div class="sec-title">备注</div>
+      <div class="form-group">
+        <textarea class="form-textarea" name="notes" rows="4" placeholder="可以写相处感受、注意事项等…">{{ form.get('notes','') or '' }}</textarea>
+      </div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
+        <button class="btn btn-primary" type="submit">{{ '保存修改' if action == 'edit' else '添加档案' }}</button>
+        <a href="{{ url_for('partners') }}" class="btn btn-ghost">取消</a>
+        {% if action == 'edit' and partner %}
+        <form method="post" action="{{ url_for('partner_delete', pid=partner.id) }}" style="margin-left:auto"
+              onsubmit="return confirm('确认删除「{{ partner.nickname }}」的档案？')">
+          <button class="btn btn-danger" type="submit">删除此档案</button>
+        </form>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function setRating(n) {
+  const cur = parseInt(document.getElementById('rating-val').value) || 0;
+  const newVal = cur === n ? 0 : n;
+  document.getElementById('rating-val').value = newVal;
+  document.querySelectorAll('.star').forEach((el, i) => {
+    el.classList.toggle('lit', i < newVal);
+  });
+}
+// Color selected schedule labels dynamically
+document.querySelectorAll('[id^="sid_"]').forEach(cb => {
+  cb.addEventListener('change', function() {
+    const lbl = document.querySelector(`label[for="${this.id}"]`);
+    if (this.checked) {
+      lbl.style.borderColor = lbl.querySelector('span').style.background;
+      lbl.style.color       = lbl.querySelector('span').style.background;
+      lbl.style.background  = lbl.querySelector('span').style.background.replace(')', ', 0.1)').replace('rgb', 'rgba');
+    } else {
+      lbl.style.borderColor = ''; lbl.style.color = ''; lbl.style.background = '';
+    }
+  });
+});
+</script>
+{% endblock %}

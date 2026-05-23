@@ -461,6 +461,15 @@ function drawFromFree(pool, defs) {
     return picked.code;
 }
 
+function drawFromTierFree(tier) {
+    const available = (tier.items || []).filter(i => i.count > 0);
+    if (!available.length) return null;
+    const picked = available[Math.floor(Math.random() * available.length)];
+    picked.count -= 1;
+    if (picked.count <= 0) tier.items.splice(tier.items.indexOf(picked), 1);
+    return picked.code; // caller saves defs
+}
+
 // ========================
 // 通知辅助
 // ========================
@@ -883,6 +892,9 @@ cmd_del_attr.solve = (ctx, msg, cmdArgs) => {
     if (!name) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
     const defs = getAttrDefs();
     if (!defs[name]) return seal.replyToSender(ctx, msg, `❌ 未找到属性「${name}」`);
+    const poolDefs = getPoolDefs();
+    const boundPools = Object.values(poolDefs).filter(p => p.type === "tiered" && p.attr === name).map(p => p.name);
+    if (boundPools.length) return seal.replyToSender(ctx, msg, `❌ 属性「${name}」正被分段池「${boundPools.join("、")}」绑定，无法删除。\n请先删除或修改这些池子。`);
     delete defs[name];
     saveAttrDefs(defs);
     seal.replyToSender(ctx, msg, `✅ 属性「${name}」已删除（已有角色的数值不受影响）`);
@@ -992,31 +1004,44 @@ ext.cmdMap["商城下架"] = cmd_shop_remove;
 
 let cmd_reg_pool = seal.ext.newCmdItemInfo();
 cmd_reg_pool.name = "注册池子";
-cmd_reg_pool.help = "【管理员】创建抽取池\n注册池子 池子名 fixed —— 固定池（加权随机，不减少）\n注册池子 池子名 free —— 自由池（有限数量，抽完即止）";
+cmd_reg_pool.help = "【管理员】创建抽取池\n注册池子 池子名 数量 —— 数量池（有限个数，抽完即止）\n注册池子 池子名 权重 —— 权重池（加权随机，不减少）\n💡 也可直接「上架池子」，池子不存在时会自动创建为数量池";
 cmd_reg_pool.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
     const poolName = cmdArgs.getArgN(1);
-    const poolType = cmdArgs.getArgN(2);
-    if (!poolName || !["fixed", "free"].includes(poolType)) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const poolTypeRaw = cmdArgs.getArgN(2);
+    const typeMap = { "数量": "free", "自由": "free", "free": "free", "权重": "fixed", "固定": "fixed", "fixed": "fixed" };
+    const poolType = typeMap[poolTypeRaw];
+    if (!poolName || !poolType) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
     const defs = getPoolDefs();
-    if (defs[poolName]) return seal.replyToSender(ctx, msg, `⚠️ 池子「${poolName}」已存在。`);
+    if (defs[poolName]) return seal.replyToSender(ctx, msg, `⚠️ 池子「${poolName}」已存在（${defs[poolName].type === "fixed" ? "权重池" : "数量池"}）。`);
     defs[poolName] = { name: poolName, type: poolType, items: [], enabled: true };
     savePoolDefs(defs);
-    seal.replyToSender(ctx, msg, `✅ 池子「${poolName}」已创建（${poolType === "fixed" ? "固定池" : "自由池"}）`);
+    seal.replyToSender(ctx, msg, `✅ 池子「${poolName}」已创建（${poolType === "fixed" ? "权重池" : "数量池"}）`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["注册池子"] = cmd_reg_pool;
 
 let cmd_pool_add = seal.ext.newCmdItemInfo();
 cmd_pool_add.name = "上架池子";
-cmd_pool_add.help = "【管理员】向池子添加物品\n固定池：上架池子 池子名 物品码*权重\n自由池：上架池子 池子名 物品码*数量\n支持多行批量";
+cmd_pool_add.help = `【管理员】向池子添加物品（池子不存在时自动创建为数量池）
+数量池：上架池子 池子名 物品码*数量
+权重池：上架池子 池子名 物品码*权重
+多行批量（推荐）：
+。上架池子 池子名
+物品码*数量
+物品码2*数量2`;
 cmd_pool_add.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
     const poolName = cmdArgs.getArgN(1);
     if (!poolName) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
     const defs = getPoolDefs();
-    const pool = defs[poolName];
-    if (!pool) return seal.replyToSender(ctx, msg, `❌ 未找到池子「${poolName}」。`);
+    let pool = defs[poolName];
+    let autoCreated = false;
+    if (!pool) {
+        defs[poolName] = { name: poolName, type: "free", items: [], enabled: true };
+        pool = defs[poolName];
+        autoCreated = true;
+    }
     const rawMsg = msg.message.trim();
     const msgParts = rawMsg.split(/\r?\n/);
     let itemLines;
@@ -1064,62 +1089,108 @@ cmd_pool_add.solve = (ctx, msg, cmdArgs) => {
         }
     }
     savePoolDefs(defs);
-    seal.replyToSender(ctx, msg, `池子「${poolName}」更新：\n${results.join("\n")}`);
+    const header = autoCreated ? `🆕 池子「${poolName}」不存在，已自动创建为数量池。\n` : "";
+    seal.replyToSender(ctx, msg, `${header}上架结果：\n${results.join("\n")}`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["上架池子"] = cmd_pool_add;
 
 let cmd_pool_remove = seal.ext.newCmdItemInfo();
 cmd_pool_remove.name = "从池移除";
-cmd_pool_remove.help = "【管理员】从池子中移除物品\n从池移除 池子名 物品码或名称";
+cmd_pool_remove.help = `【管理员】从池子中移除物品，支持多行批量
+从池移除 池子名 物品码   —— 移除单个
+多行批量：
+。从池移除 池子名
+物品码1
+物品码2`;
 cmd_pool_remove.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
     const poolName = cmdArgs.getArgN(1);
-    const inputCode = cmdArgs.getArgN(2);
-    if (!poolName || !inputCode) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    if (!poolName) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
     const defs = getPoolDefs();
     const pool = defs[poolName];
     if (!pool) return seal.replyToSender(ctx, msg, `❌ 未找到池子「${poolName}」。`);
+    const rawMsg = msg.message.trim();
+    const msgParts = rawMsg.split(/\r?\n/);
+    let inputCodes;
+    if (msgParts.length > 1) {
+        inputCodes = msgParts.slice(1).map(l => l.trim()).filter(l => l);
+    } else {
+        const single = cmdArgs.getArgN(2);
+        if (!single) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+        inputCodes = [single];
+    }
     const reg = getRegistry();
-    const item = findItem(reg, inputCode);
-    const code = item ? item.code : inputCode.toUpperCase();
-    const idx = pool.items.findIndex(i => i.code === code);
-    if (idx === -1) return seal.replyToSender(ctx, msg, `❌ 池子中没有 [${code}]`);
-    pool.items.splice(idx, 1);
+    const results = [];
+    for (const inputCode of inputCodes) {
+        const item = findItem(reg, inputCode);
+        const code = item ? item.code : inputCode.toUpperCase();
+        const idx = pool.items.findIndex(i => i.code === code);
+        if (idx === -1) { results.push(`❌ [${code}] 不在池子中`); continue; }
+        pool.items.splice(idx, 1);
+        results.push(`✅ 已移除 [${code}]${item?.name || ""}`);
+    }
     savePoolDefs(defs);
-    seal.replyToSender(ctx, msg, `✅ 已从「${poolName}」移除 [${code}]${item?.name || ""}`);
+    seal.replyToSender(ctx, msg, `从「${poolName}」移除：\n${results.join("\n")}`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["从池移除"] = cmd_pool_remove;
 
 let cmd_pool_config = seal.ext.newCmdItemInfo();
 cmd_pool_config.name = "池子设定";
-cmd_pool_config.help = "【管理员】设置每游戏日抽取次数\n池子设定 查看\n池子设定 总量:N —— 全局每日总次数\n池子设定 总量:无限 —— 无限制\n池子设定 池子名:N —— 特定池每日次数";
+cmd_pool_config.help = `【管理员】查看或设置每游戏日抽取次数
+池子设定              —— 查看全部设定与池子状态
+池子设定 总量 N       —— 全局每日总次数
+池子设定 总量 无限    —— 全局无限制
+池子设定 池子名 N     —— 给特定池设专属次数
+池子设定 池子名 无限  —— 移除该池专属次数限制`;
 cmd_pool_config.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
-    const arg = cmdArgs.getArgN(1);
-    if (!arg || arg === "查看") {
+    const arg1 = cmdArgs.getArgN(1);
+    const arg2 = cmdArgs.getArgN(2);
+    if (!arg1 || arg1 === "查看") {
         const cfg = getDrawConfig();
-        let text = `📊 抽取次数设定：\n总量：${cfg.total !== null && cfg.total !== undefined ? cfg.total + "次" : "无限"}`;
-        for (const [pn, n] of Object.entries(cfg.pools || {})) text += `\n  · ${pn}：${n}次`;
+        const defs = getPoolDefs();
+        const totalStr = (cfg.total !== null && cfg.total !== undefined) ? `${cfg.total}次/天` : "无限";
+        let text = `📊 池子设定一览 | 全局总量：${totalStr}\n`;
+        const poolList = Object.values(defs);
+        if (!poolList.length) {
+            text += "\n（暂无池子）";
+        } else {
+            for (const pool of poolList) {
+                const icon = pool.enabled ? "✅" : "❌";
+                const typeStr = pool.type === "fixed" ? "权重" : "数量";
+                const poolLimit = cfg.pools?.[pool.name];
+                const limitStr = poolLimit !== undefined ? `${poolLimit}次/天` : "跟随全局";
+                const itemCount = pool.items.length;
+                const stockStr = pool.type === "free"
+                    ? `${pool.items.reduce((s, i) => s + (i.count || 0), 0)}个`
+                    : `${itemCount}种`;
+                text += `\n${icon} 【${pool.name}】${typeStr}池 | 库存${stockStr} | ${limitStr}`;
+            }
+        }
         return seal.replyToSender(ctx, msg, text);
     }
-    const colonIdx = arg.indexOf(":");
-    if (colonIdx === -1) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
-    const key = arg.substring(0, colonIdx);
-    const valStr = arg.substring(colonIdx + 1);
     const cfg = getDrawConfig();
-    if (key === "总量") {
-        cfg.total = valStr === "无限" ? null : parseInt(valStr);
+    if (arg1 === "总量") {
+        if (!arg2) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+        cfg.total = arg2 === "无限" ? null : parseInt(arg2);
+        if (arg2 !== "无限" && isNaN(cfg.total)) return seal.replyToSender(ctx, msg, "❌ 次数必须为正整数或「无限」。");
         saveDrawConfig(cfg);
-        return seal.replyToSender(ctx, msg, `✅ 总量限制：${cfg.total !== null ? cfg.total + "次" : "无限"}`);
+        return seal.replyToSender(ctx, msg, `✅ 全局总量：${cfg.total !== null ? cfg.total + "次/天" : "无限"}`);
     }
-    const n = parseInt(valStr);
-    if (isNaN(n) || n < 0) return seal.replyToSender(ctx, msg, "❌ 次数必须为非负整数。");
+    if (!arg2) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    if (arg2 === "无限") {
+        if (cfg.pools) delete cfg.pools[arg1];
+        saveDrawConfig(cfg);
+        return seal.replyToSender(ctx, msg, `✅ 已移除「${arg1}」的专属次数限制（跟随全局）`);
+    }
+    const n = parseInt(arg2);
+    if (isNaN(n) || n < 0) return seal.replyToSender(ctx, msg, "❌ 次数必须为非负整数或「无限」。");
     if (!cfg.pools) cfg.pools = {};
-    cfg.pools[key] = n;
+    cfg.pools[arg1] = n;
     saveDrawConfig(cfg);
-    seal.replyToSender(ctx, msg, `✅ 池子「${key}」每日次数：${n}次`);
+    seal.replyToSender(ctx, msg, `✅ 池子「${arg1}」每日次数：${n}次`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["池子设定"] = cmd_pool_config;
@@ -1198,6 +1269,97 @@ cmd_batch_create_pools.solve = (ctx, msg) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["一键建池"] = cmd_batch_create_pools;
+
+let cmd_view_pool = seal.ext.newCmdItemInfo();
+cmd_view_pool.name = "查看池子";
+cmd_view_pool.help = `【管理员】查看池子详情
+查看池子          —— 列出所有池子状态（等同于「池子设定」查看）
+查看池子 池子名   —— 显示该池子的全部物品`;
+cmd_view_pool.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const poolName = cmdArgs.getArgN(1);
+    const defs = getPoolDefs();
+    const cfg = getDrawConfig();
+    const reg = getRegistry();
+    if (!poolName) {
+        const poolList = Object.values(defs);
+        if (!poolList.length) return seal.replyToSender(ctx, msg, "📭 当前没有任何池子。\n💡 用「上架池子 池子名 物品码*数量」创建并上架。");
+        const totalStr = (cfg.total !== null && cfg.total !== undefined) ? `${cfg.total}次/天` : "无限";
+        let text = `🎲 抽取池一览（${poolList.length}个）| 全局总量：${totalStr}`;
+        for (const pool of poolList) {
+            const icon = pool.enabled ? "✅" : "❌";
+            const typeStr = pool.type === "fixed" ? "权重池" : pool.type === "tiered" ? "分段池" : "数量池";
+            const poolLimit = cfg.pools?.[pool.name];
+            const limitStr = poolLimit !== undefined ? `${poolLimit}次/天` : "全局";
+            let totalStock;
+            if (pool.type === "tiered") {
+                const tiers = pool.tiers || [];
+                totalStock = `${tiers.length}段`;
+            } else if (pool.type === "free") {
+                totalStock = pool.items.reduce((s, i) => s + (i.count || 0), 0) + "个";
+            } else {
+                totalStock = pool.items.length + "种";
+            }
+            text += `\n${icon} 【${pool.name}】${typeStr} | 库存${totalStock} | ${limitStr}`;
+        }
+        return seal.replyToSender(ctx, msg, text);
+    }
+    const pool = defs[poolName];
+    if (!pool) return seal.replyToSender(ctx, msg, `❌ 未找到池子「${poolName}」。`);
+    const typeStr = pool.type === "fixed" ? "权重池" : pool.type === "tiered" ? "分段池" : "数量池";
+    const statusStr = pool.enabled ? "已开启" : "已关闭";
+    const poolLimit = cfg.pools?.[poolName];
+    const totalStr = (cfg.total !== null && cfg.total !== undefined) ? `${cfg.total}次` : "无限";
+    const limitStr = poolLimit !== undefined ? `${poolLimit}次/天（专属）` : `跟随全局（${totalStr}/天）`;
+    let text = `📦 【${poolName}】${typeStr} · ${statusStr} | 抽取：${limitStr}`;
+    if (pool.type === "tiered") {
+        const tiers = pool.tiers || [];
+        text += `\n绑定属性：${pool.attr || "未设置"} | 共 ${tiers.length} 个分段`;
+        for (const t of tiers) {
+            const lo = t.min !== null && t.min !== undefined ? t.min : "-∞";
+            const hi = t.max !== null && t.max !== undefined ? t.max : "+∞";
+            const tType = t.type === "fixed" ? "权重" : "数量";
+            const label = t.label ? `[${t.label}] ` : "";
+            text += `\n  · ${label}${lo} ≤ ${pool.attr} < ${hi}（${tType}，${t.items?.length || 0}种）`;
+        }
+    } else if (!pool.items.length) {
+        text += "\n\n📭 池子内暂无物品。";
+    } else {
+        text += `\n\n📋 物品列表（${pool.items.length}种）：`;
+        for (const entry of pool.items) {
+            const item = reg[entry.code] || { name: entry.code };
+            if (pool.type === "fixed") {
+                text += `\n  · ${item.name} [${entry.code}] 权重×${entry.weight}`;
+            } else {
+                text += `\n  · ${item.name} [${entry.code}] ×${entry.count}`;
+            }
+        }
+        if (pool.type === "free") {
+            const total = pool.items.reduce((s, i) => s + (i.count || 0), 0);
+            text += `\n\n合计库存：${total} 个`;
+        }
+    }
+    return seal.replyToSender(ctx, msg, text);
+};
+ext.cmdMap["查看池子"] = cmd_view_pool;
+
+let cmd_clear_pool = seal.ext.newCmdItemInfo();
+cmd_clear_pool.name = "清空池子";
+cmd_clear_pool.help = "【管理员】清空池子内所有物品（保留池子结构和设定）\n清空池子 池子名";
+cmd_clear_pool.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const poolName = cmdArgs.getArgN(1);
+    if (!poolName) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const defs = getPoolDefs();
+    const pool = defs[poolName];
+    if (!pool) return seal.replyToSender(ctx, msg, `❌ 未找到池子「${poolName}」。`);
+    const count = pool.items.length;
+    pool.items = [];
+    savePoolDefs(defs);
+    seal.replyToSender(ctx, msg, `✅ 已清空「${poolName}」（移除 ${count} 种物品）。\n💡 池子结构和次数设定保留，可直接「上架池子」补货。`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["清空池子"] = cmd_clear_pool;
 
 let cmd_adjust = seal.ext.newCmdItemInfo();
 cmd_adjust.name = "调整";
@@ -1553,7 +1715,7 @@ cmd_use.solve = (ctx, msg, cmdArgs) => {
                 usageStatus = "(已耗尽)";
             } else {
                 // 如果还有叠层，重置次数到最大值
-                userItem.remainingUses = item.maxUses;
+                userItem.remainingUses = item.maxUses ?? -1;
                 usageStatus = `(消耗1份，余${userItem.count}份)`;
             }
         } else {
@@ -1681,7 +1843,17 @@ cmd_cancel_sell.solve = (ctx, msg, cmdArgs) => {
     saveMarket(market);
     const cancelSellerUid = getRoleUid(platform, listing.sellerRole);
     const cancelSellerPrimaryUid = cancelSellerUid ? getPrimaryUid(platform, cancelSellerUid) : listing.sellerRole;
-    addToInv(`${platform}:${cancelSellerPrimaryUid}`, listing.code, listing.count);
+    const cancelRoleKey = `${platform}:${cancelSellerPrimaryUid}`;
+    // 还原挂单时记录的剩余次数，而不是用 addToInv 重置为初始次数
+    const cancelInv = getInv(cancelRoleKey);
+    const cancelRemaining = listing.remainingUses ?? (getRegistry()[listing.code]?.maxUses ?? -1);
+    const existingEntry = cancelInv.find(e => e.code === listing.code && (e.remainingUses ?? -1) === cancelRemaining);
+    if (existingEntry) {
+        existingEntry.count += listing.count;
+    } else {
+        cancelInv.push({ code: listing.code, count: listing.count, remainingUses: cancelRemaining });
+    }
+    saveInv(cancelRoleKey, cancelInv);
     const reg = getRegistry();
     seal.replyToSender(ctx, msg, `✅ 卖单 #${shCode} 已撤销，[${listing.code}]${reg[listing.code]?.name || listing.code} ×${listing.count} 已退回背包。`);
     return seal.ext.newCmdExecuteResult(true);
@@ -1821,8 +1993,25 @@ cmd_draw.solve = (ctx, msg, cmdArgs) => {
     if (!check.ok) return seal.replyToSender(ctx, msg, `⚠️ ${check.reason}`);
     const reg = getRegistry();
     let drawnCode;
+    let tierLabel = null;
     if (pool.type === "fixed") {
         drawnCode = drawFromFixed(pool, reg);
+    } else if (pool.type === "tiered") {
+        const allAttrs = getCharAttrs();
+        const attrVal = Number((allAttrs[uid] || {})[pool.attr] ?? 0);
+        const tier = (pool.tiers || []).find(t => {
+            const lo = t.min !== null && t.min !== undefined ? Number(t.min) : -Infinity;
+            const hi = t.max !== null && t.max !== undefined ? Number(t.max) : Infinity;
+            return attrVal >= lo && attrVal < hi;
+        });
+        if (!tier) return seal.replyToSender(ctx, msg, `⚠️ 你的「${pool.attr}」（${attrVal}）不在任何分段范围内，无法抽取。`);
+        tierLabel = tier.label || null;
+        if (tier.type === "fixed") {
+            drawnCode = drawFromFixed(tier, reg);
+        } else {
+            drawnCode = drawFromTierFree(tier);
+            if (drawnCode) savePoolDefs(defs);
+        }
     } else {
         drawnCode = drawFromFree(pool, defs);
     }
@@ -1833,7 +2022,8 @@ cmd_draw.solve = (ctx, msg, cmdArgs) => {
     const item = reg[drawnCode] || { name: drawnCode, desc: "" };
     const totalUsed = rec.used._total || 0;
     const totalBase = (config.total !== null && config.total !== undefined) ? config.total : "∞";
-    seal.replyToSender(ctx, msg, `🎲 【${roleName}】从「${poolName}」抽到：[${drawnCode}]${item.name}\n描述：${item.desc}\n（今日总抽取：${totalUsed}/${totalBase}）`);
+    const tierNote = tierLabel ? ` [${tierLabel}]` : "";
+    seal.replyToSender(ctx, msg, `🎲 【${roleName}】从「${poolName}」${tierNote}抽到：[${drawnCode}]${item.name}\n描述：${item.desc}\n（今日总抽取：${totalUsed}/${totalBase}）`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["抽取"] = cmd_draw;
@@ -1945,135 +2135,87 @@ cmd_item_detail.solve = (ctx, msg, cmdArgs) => {
 };
 ext.cmdMap["物品详情"] = cmd_item_detail;
 
-let cmd_upload_recipe = seal.ext.newCmdItemInfo();
-cmd_upload_recipe.name = "上传配方";
-cmd_upload_recipe.help = "【管理员】注册合成配方\n格式：上传配方 目标物品名*材料名:数量,材料名:数量[*成功率]\n成功率：可选，0-100，默认100\n示例：上传配方 简易绷带*干净的布:2,酒精:1\n     上传配方 高级丹*初级丹:3*80";
-cmd_upload_recipe.solve = (ctx, msg, cmdArgs) => {
-    if (ctx.privilegeLevel < 40) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
-
-    const rest = msg.message.replace(/^[。.]\s*上传配方\s*/, "").trim();
-    if (!rest) return seal.ext.newCmdExecuteResult(true);
-
-    const parts = rest.split(/[*＊]/);
-    if (parts.length < 2) return seal.replyToSender(ctx, msg, "❌ 格式错误。需为：目标物品*材料1:数量,材料2:数量[*成功率]");
-
-    const targetName = parts[0].trim();
-    const ingredientsStr = parts[1].trim();
-    const successRateStr = parts[2]?.trim();
-
-    let successRate = 100;
-    if (successRateStr) {
-        successRate = parseInt(successRateStr);
-        if (isNaN(successRate) || successRate < 0 || successRate > 100) {
-            return seal.replyToSender(ctx, msg, "❌ 成功率必须是 0-100 之间的整数");
-        }
-    }
-
-    const reg = getRegistry();
-    const targetItem = Object.values(reg).find(i => i.name === targetName);
-    if (!targetItem) return seal.replyToSender(ctx, msg, `❌ 未找到目标物品「${targetName}」`);
-
-    const ingredients = [];
-    const ingParts = ingredientsStr.split(/[,，]/);
-    for (let p of ingParts) {
-        const [name, count] = p.split(/[:：]/);
-        const item = Object.values(reg).find(i => i.name === name.trim());
-        if (!item) return seal.replyToSender(ctx, msg, `❌ 未找到材料「${name}」`);
-        ingredients.push({ code: item.code, name: item.name, count: parseInt(count) || 1 });
-    }
-
-    const main = getMainExt();
-    const recipes = JSON.parse(main.storageGet("item_recipes") || "{}");
-    recipes[targetItem.code] = { targetCode: targetItem.code, targetName: targetItem.name, ingredients, successRate };
-    main.storageSet("item_recipes", JSON.stringify(recipes));
-
-    const ingText = ingredients.map(i => `${i.name}x${i.count}`).join(", ");
-    const rateText = successRate === 100 ? "" : `，成功率 ${successRate}%`;
-    seal.replyToSender(ctx, msg, `✅ 配方已注册：[${targetItem.name}] ← ${ingText}${rateText}`);
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["上传配方"] = cmd_upload_recipe;
-
 let cmd_craft = seal.ext.newCmdItemInfo();
 cmd_craft.name = "合成";
-cmd_craft.help = "消耗材料制作物品\n格式：合成 物品名 [数量]\n示例：合成 简易绷带";
+cmd_craft.help = "消耗材料合成物品\n合成 产物代码 [数量]\n示例：合成 ITEM_001\n合成 ITEM_001 3\n用「查看合成」查看所有配方";
 cmd_craft.solve = (ctx, msg, cmdArgs) => {
     const roleName = getRoleName(ctx, msg);
     if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
-    
-    const targetInput = cmdArgs.getArgN(1);
-    const craftCount = parseInt(cmdArgs.getArgN(2)) || 1;
-    if (!targetInput) return seal.replyToSender(ctx, msg, "❌ 请输入要合成的物品名。");
 
-    const main = getMainExt();
-    const recipes = JSON.parse(main.storageGet("item_recipes") || "{}");
+    const outputInput = cmdArgs.getArgN(1);
+    const count = parseInt(cmdArgs.getArgN(2)) || 1;
+    if (!outputInput) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+
     const reg = getRegistry();
-    
-    // 查找配方
-    const recipe = Object.values(recipes).find(r => r.targetName === targetInput || r.targetCode === targetInput);
-    if (!recipe) return seal.replyToSender(ctx, msg, `❌ 没有关于「${targetInput}」的配方。`);
+    const targetItem = findItem(reg, outputInput);
+    const outputCode = targetItem ? targetItem.code : outputInput.toUpperCase();
+
+    const recipes = getCraftRecipes();
+    const recipe = recipes[outputCode];
+    if (!recipe) return seal.replyToSender(ctx, msg, `❌ 没有关于「${outputInput}」的合成配方。用「查看合成」查看所有配方。`);
 
     const platform = msg.platform;
     const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
     const uid = getPrimaryUid(platform, rawUid);
     const roleKey = `${platform}:${uid}`;
     const inv = getInv(roleKey);
+    const charAttrs = getCharAttrs();
+    const roleAttrs = charAttrs[uid] || {};
 
-    // 1. 检查材料是否充足
-    for (let ing of recipe.ingredients) {
-        const needed = ing.count * craftCount;
-        const owned = getInvCount(roleKey, ing.code);
-        if (owned < needed) {
-            return seal.replyToSender(ctx, msg, `❌ 材料不足：需要 ${ing.name}x${needed}，当前仅有 ${owned}。`);
+    // 检查限制条件
+    const limits = recipe.limits || {};
+    const unmet = [];
+    for (const [attr, minVal] of Object.entries(limits.attrs || {})) {
+        const have = roleAttrs[attr] || 0;
+        if (have < minVal) unmet.push(`${attr} 需≥${minVal}（当前${have}）`);
+    }
+    for (const [currencyName, minVal] of Object.entries(limits.currencies || {})) {
+        const currencyCode = Object.entries(reg).find(([_, info]) => info.type === "currency" && info.name === currencyName)?.[0];
+        if (currencyCode) {
+            const have = getInvCount(roleKey, currencyCode);
+            if (have < minVal) unmet.push(`${currencyName} 需≥${minVal}（当前${have}）`);
         }
     }
+    if (unmet.length) return seal.replyToSender(ctx, msg, `❌ 不满足合成条件：\n${unmet.join("\n")}`);
 
-    // 2. 扣除材料
-    for (let ing of recipe.ingredients) {
-        removeFromInv(roleKey, ing.code, ing.count * craftCount);
+    // 检查材料是否足够
+    const lacking = [];
+    for (const [matCode, matCount] of Object.entries(recipe.materials)) {
+        const needed = matCount * count;
+        const have = getInvCount(roleKey, matCode);
+        if (have < needed) lacking.push(`${reg[matCode]?.name || matCode} (需${needed}，只有${have})`);
+    }
+    if (lacking.length) return seal.replyToSender(ctx, msg, `❌ 材料不足：\n${lacking.join("\n")}`);
+
+    // 扣除材料
+    for (const [matCode, matCount] of Object.entries(recipe.materials)) {
+        removeFromInv(roleKey, matCode, matCount * count);
     }
 
-    // 3. 检查成功率
-    const successRate = recipe.successRate || 100;
+    // 成功率
+    const successRate = recipe.successRate ?? 100;
     let successCount = 0;
-    for (let i = 0; i < craftCount; i++) {
-        if (Math.random() * 100 < successRate) {
-            successCount++;
-        }
+    for (let i = 0; i < count; i++) {
+        if (Math.random() * 100 < successRate) successCount++;
     }
 
-    // 4. 增加产物 (继承注册表的初始次数)
-    if (successCount > 0) {
-        const targetItemInfo = reg[recipe.targetCode];
-        addToInv(roleKey, recipe.targetCode, successCount);
-    }
+    if (successCount > 0) addToInv(roleKey, outputCode, successCount);
 
-    if (successCount === craftCount) {
-        seal.replyToSender(ctx, msg, `🛠️ 合成成功！消耗材料制作了 [${recipe.targetName}] x${craftCount}。`);
+    const matStr = Object.entries(recipe.materials)
+        .map(([c, cnt]) => `${reg[c]?.name || c}×${cnt * count}`)
+        .join(" + ");
+    const outputName = reg[outputCode]?.name || outputCode;
+
+    if (successCount === count) {
+        seal.replyToSender(ctx, msg, `✨ 合成成功！\n消耗：${matStr}\n获得：${outputName}×${count}`);
     } else if (successCount === 0) {
-        seal.replyToSender(ctx, msg, `❌ 合成失败！消耗了材料，但未能制作出 [${recipe.targetName}]。`);
+        seal.replyToSender(ctx, msg, `❌ 合成失败！消耗了材料，但未能制作出「${outputName}」。`);
     } else {
-        seal.replyToSender(ctx, msg, `⚠️ 合成部分成功！消耗材料制作了 [${recipe.targetName}] x${successCount}/${craftCount}。`);
+        seal.replyToSender(ctx, msg, `⚠️ 合成部分成功（${successCount}/${count}）！\n消耗：${matStr}\n获得：${outputName}×${successCount}`);
     }
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["合成"] = cmd_craft;
-
-let cmd_recipe_list = seal.ext.newCmdItemInfo();
-cmd_recipe_list.name = "查看配方";
-cmd_recipe_list.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
-
-    const main = getMainExt();
-    const recipes = JSON.parse(main.storageGet("item_recipes") || "{}");
-    const list = Object.values(recipes);
-    if (!list.length) return seal.replyToSender(ctx, msg, "📜 暂无已知配方。");
-
-    const lines = list.map(r => `• ${r.targetName}: ${r.ingredients.map(i => `${i.name}x${i.count}`).join(" + ")}`);
-    seal.replyToSender(ctx, msg, `📜 已知配方列表：\n${lines.join("\n")}`);
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["查看配方"] = cmd_recipe_list;
 
 let cmd_upload_interact = seal.ext.newCmdItemInfo();
 cmd_upload_interact.name = "上载互动物品";
@@ -2204,36 +2346,19 @@ cmd_delete_item.solve = (ctx, msg, cmdArgs) => {
         log.push(`🎰 池子：从「${poolLog.join("、")}」移除`);
     }
 
-    // 4. 从 item_recipes 移除（作为产物）及作为材料的配方
+    // 4. 从 craft_recipes 移除
     const main = getMainExt();
-    const itemRecipes = JSON.parse(main.storageGet("item_recipes") || "{}");
-    let recipeLog = [];
-    // 作为产物
-    if (itemRecipes[code]) {
-        delete itemRecipes[code];
-        recipeLog.push("作为产物的配方");
-    }
-    // 作为材料
-    for (const targetCode of Object.keys(itemRecipes)) {
-        const recipe = itemRecipes[targetCode];
-        if (recipe.ingredients && recipe.ingredients.some(ing => ing.code === code)) {
-            recipe.ingredients = recipe.ingredients.filter(ing => ing.code !== code);
-            recipeLog.push(`「${recipe.targetName}」的材料`);
-        }
-    }
-    main.storageSet("item_recipes", JSON.stringify(itemRecipes));
-
-    // 5. 从 craft_recipes 移除
     const craftRecipes = getCraftRecipes();
+    let recipeLog = [];
     if (craftRecipes[code]) {
         delete craftRecipes[code];
         recipeLog.push("合成配方（产物）");
     }
     for (const targetCode of Object.keys(craftRecipes)) {
         const recipe = craftRecipes[targetCode];
-        if (recipe.materials && recipe.materials.some(m => m.code === code)) {
-            recipe.materials = recipe.materials.filter(m => m.code !== code);
-            recipeLog.push(`「${recipe.targetName || targetCode}」合成配方的材料`);
+        if (recipe.materials && recipe.materials[code]) {
+            delete recipe.materials[code];
+            recipeLog.push(`「${reg[targetCode]?.name || targetCode}」合成配方的材料`);
         }
     }
     saveCraftRecipes(craftRecipes);
@@ -2357,6 +2482,9 @@ cmd_apply.solve = (ctx, msg, cmdArgs) => {
     // 5. 扣除发起者的消耗次数
     let userItem = inv[invIndex];
     let usageStatus = "";
+    if (userItem.remainingUses === undefined) {
+        userItem.remainingUses = item.maxUses ?? -1;
+    }
     if (userItem.remainingUses !== -1) {
         userItem.remainingUses--;
         if (userItem.remainingUses <= 0) {
@@ -2365,7 +2493,7 @@ cmd_apply.solve = (ctx, msg, cmdArgs) => {
                 inv.splice(invIndex, 1);
                 usageStatus = "(已耗尽)";
             } else {
-                userItem.remainingUses = item.maxUses;
+                userItem.remainingUses = item.maxUses ?? -1;
                 usageStatus = `(消耗1份，余${userItem.count}份)`;
             }
         } else {
@@ -2580,7 +2708,7 @@ ext.cmdMap["特殊使用"] = cmd_special_use;
 
 let cmd_reg_craft = seal.ext.newCmdItemInfo();
 cmd_reg_craft.name = "注册合成";
-cmd_reg_craft.help = "【管理员】注册合成配方\n注册合成 产物代码*描述*材料代码1:数量1,材料代码2:数量2[*限制条件]\n限制格式：attr:属性名:最小值,currency:货币名:最小值\n示例：注册合成 高级丹*升级丹药*初级丹:3,金币:100*attr:体力:50,currency:金币:50";
+cmd_reg_craft.help = "【管理员】注册合成配方\n注册合成 产物代码*描述*材料代码1:数量1,材料代码2:数量2[*限制条件[*成功率]]\n限制格式：attr:属性名:最小值,currency:货币名:最小值\n成功率：0-100，默认100（消耗材料后按此概率获得产物）\n示例：注册合成 高级丹*升级丹药*初级丹:3,金币:100*attr:体力:50*80";
 cmd_reg_craft.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
     const raw = cmdArgs.getArgN(1);
@@ -2591,6 +2719,7 @@ cmd_reg_craft.solve = (ctx, msg, cmdArgs) => {
     const desc = (parts[1] || "").trim();
     const materialsStr = (parts[2] || "").trim();
     const limitsStr = (parts[3] || "").trim();
+    const successRateStr = (parts[4] || "").trim();
 
     if (!outputCode || !materialsStr) return seal.replyToSender(ctx, msg, "❌ 格式错误，至少需要产物代码和材料。");
 
@@ -2629,13 +2758,21 @@ cmd_reg_craft.solve = (ctx, msg, cmdArgs) => {
         }
     }
 
+    let successRate = 100;
+    if (successRateStr) {
+        successRate = parseInt(successRateStr);
+        if (isNaN(successRate) || successRate < 0 || successRate > 100)
+            return seal.replyToSender(ctx, msg, "❌ 成功率必须是 0-100 之间的整数");
+    }
+
     const recipes = getCraftRecipes();
-    recipes[outputCode] = { materials, output: outputCode, desc: desc || "暂无描述", limits };
+    recipes[outputCode] = { materials, output: outputCode, desc: desc || "暂无描述", limits, successRate };
     saveCraftRecipes(recipes);
 
     const matStr = Object.entries(materials).map(([c, cnt]) => `${reg[c].name}×${cnt}`).join(" + ");
     let msg_text = `✅ 合成配方已注册：${matStr} → ${reg[outputCode].name}`;
     if (desc) msg_text += `\n📝 ${desc}`;
+    if (successRate < 100) msg_text += `\n🎲 成功率：${successRate}%`;
     if (Object.keys(limits.attrs).length || Object.keys(limits.currencies).length) {
         msg_text += "\n⚠️ 限制条件：";
         for (const [attr, val] of Object.entries(limits.attrs)) msg_text += `\n  · ${attr} ≥ ${val}`;
@@ -2893,88 +3030,6 @@ ext.onNotCommandReceived = (ctx, msg) => {
     if (raw === "合成列表") {
         return cmd_view_craft.solve(ctx, msg, fa([]));
     }
-    if (raw.startsWith("合成")) {
-        const rest = raw.slice(2).trim();
-        if (rest) {
-            // 格式：合成 产物代码 或 合成 产物代码 数量
-            const craftParts = rest.split(/\s+/);
-            const outputCode = craftParts[0];
-            const count = craftParts[1] ? parseInt(craftParts[1]) : 1;
-
-            const roleName = getRoleName(ctx, msg);
-            if (!roleName) return seal.replyToSender(ctx, msg, "❌ 未绑定角色");
-
-            const recipes = getCraftRecipes();
-            const recipe = recipes[outputCode];
-            if (!recipe) return seal.replyToSender(ctx, msg, `❌ 合成配方 [${outputCode}] 不存在`);
-
-            const reg = getRegistry();
-            const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
-            const uid = getPrimaryUid(platform, rawUid);
-            const roleKey = `${platform}:${uid}`;
-            const inv = getInv(roleKey);
-            const charAttrs = getCharAttrs();
-            // 新结构：charAttrs 以 uid 为 key
-            const roleAttrs = charAttrs[uid] || {};
-            const defs = getAttrDefs();
-
-            // 检查限制条件
-            const limits = recipe.limits || {};
-            const unmet = [];
-            for (const [attr, minVal] of Object.entries(limits.attrs || {})) {
-                const have = roleAttrs[attr] || 0;
-                if (have < minVal) unmet.push(`${attr} 需≥${minVal}（当前${have}）`);
-            }
-            for (const [currencyName, minVal] of Object.entries(limits.currencies || {})) {
-                const currencyCode = Object.entries(reg).find(([_, info]) => info.type === "currency" && info.name === currencyName)?.[0];
-                if (currencyCode) {
-                    const currEntry = inv.find(e => e.code === currencyCode);
-                    const have = currEntry?.count || 0;
-                    if (have < minVal) unmet.push(`${currencyName} 需≥${minVal}（当前${have}）`);
-                }
-            }
-            if (unmet.length) {
-                return seal.replyToSender(ctx, msg, `❌ 不满足合成条件：\n${unmet.join("\n")}`);
-            }
-
-            // 检查材料是否足够
-            const lacking = [];
-            for (const [matCode, matCount] of Object.entries(recipe.materials)) {
-                const needed = matCount * count;
-                const matEntry = inv.find(e => e.code === matCode);
-                const have = matEntry?.count || (roleAttrs[matCode] || 0);
-                if (have < needed) {
-                    lacking.push(`${reg[matCode]?.name || matCode} (需${needed}，只有${have})`);
-                }
-            }
-            if (lacking.length) {
-                return seal.replyToSender(ctx, msg, `❌ 材料不足：\n${lacking.join("\n")}`);
-            }
-
-            // 扣除材料
-            for (const [matCode, matCount] of Object.entries(recipe.materials)) {
-                const matEntry = inv.find(e => e.code === matCode);
-                if (matEntry) {
-                    removeFromInv(roleKey, matCode, matCount * count);
-                } else if (defs[matCode]) {
-                    const oldVal = roleAttrs[matCode] || 0;
-                    roleAttrs[matCode] = oldVal - matCount * count;
-                }
-            }
-            if (Object.keys(roleAttrs).length) {
-                charAttrs[uid] = roleAttrs;
-                saveCharAttrs(charAttrs);
-            }
-
-            // 给予产物
-            addToInv(roleKey, outputCode, count);
-
-            const matStr = Object.entries(recipe.materials)
-                .map(([c, cnt]) => `${reg[c]?.name || c}×${cnt * count}`)
-                .join(" + ");
-            return seal.replyToSender(ctx, msg, `✨ 合成成功！\n消耗：${matStr}\n获得：${reg[outputCode]?.name || outputCode}×${count}`);
-        }
-    }
 
     // ── 道具 ──
     if (raw === "商城") return cmd_shop_view.solve(ctx, msg, fa([]));
@@ -3035,130 +3090,6 @@ ext.onNotCommandReceived = (ctx, msg) => {
         if (parts[0]) return cmd_cancel_sell.solve(ctx, msg, fa(parts));
     }
 
-    // ── RPG 属性 ──
-
-    // 我的状态
-    if (raw === "我的状态") {
-        const roleName = getRoleName(ctx, msg);
-        if (!roleName) return seal.replyToSender(ctx, msg, "❌ 未绑定角色");
-        const myStatusUid = getPrimaryUid(platform, msg.sender.userId.replace(/^[a-z]+:/i, ""));
-        const defs = getAttrDefs();
-        const charAttrs = getCharAttrs();
-        // 新结构：charAttrs 以 uid 为 key
-        const roleAttrs = charAttrs[myStatusUid] || {};
-        const attrNames = Object.keys(defs);
-        if (!attrNames.length) return seal.replyToSender(ctx, msg, `🎭 【${roleName}】暂无属性，管理员可用「我创建属性」添加。`);
-
-        // 分类属性
-        const limitedAttrs = [];
-        const unlimitedAttrs = [];
-        const BAR = 8;
-
-        attrNames.forEach(name => {
-            const def = defs[name];
-            const val = roleAttrs[name] ?? (def.default ?? 0);
-            if (def.max !== null && def.max !== undefined && def.min !== null) {
-                const pct = def.max === def.min ? 1 : (val - def.min) / (def.max - def.min);
-                const filled = Math.round(Math.max(0, Math.min(1, pct)) * BAR);
-                const bar = "▓".repeat(filled) + "░".repeat(BAR - filled);
-                const percent = Math.round(pct * 100);
-                limitedAttrs.push(`【${name}】${bar} ${val}/${def.max}`);
-            } else {
-                const minText = def.min !== null ? ` [最低:${def.min}]` : "";
-                unlimitedAttrs.push(`【${name}】${val}${minText}`);
-            }
-        });
-
-        // 获取货币信息
-        const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
-        const uid = getPrimaryUid(platform, rawUid);
-        const roleKey = `${platform}:${uid}`;
-        const inv = getInv(roleKey);
-        const registry = getRegistry();
-        const currencies = inv.filter(e => {
-            const item = registry[e.code];
-            return item && item.type === "currency";
-        }).sort((a, b) => a.code.localeCompare(b.code));
-
-        let result = `\n★━━━━━━━━━━━━━━━━━━★\n🎭 【${roleName}】的状态\n★━━━━━━━━━━━━━━━━━━★\n`;
-
-        if (limitedAttrs.length > 0) {
-            result += `\n📊 核心属性\n`;
-            limitedAttrs.forEach(l => {
-                result += `${l}\n`;
-            });
-        }
-
-        if (unlimitedAttrs.length > 0) {
-            result += `\n📈 资源属性\n`;
-            unlimitedAttrs.forEach(l => {
-                result += `${l}\n`;
-            });
-        }
-
-        if (currencies.length > 0) {
-            result += `\n💰 货币\n`;
-            currencies.forEach(curr => {
-                const currName = registry[curr.code]?.name || curr.code;
-                result += `${currName}: ${curr.count}\n`;
-            });
-        }
-
-        result += `★━━━━━━━━━━━━━━━━━━★`;
-        return seal.replyToSender(ctx, msg, result);
-    }
-
-    // 我创建属性（管理员，无前缀）换行批量：每行 属性名 [最小 最大 默认]
-    if (raw.startsWith("我创建属性") && isAdmin) {
-        const body = raw.slice(5).trim();
-        if (!body) return seal.replyToSender(ctx, msg, "❌ 请提供属性定义，格式：属性名 最小 最大 默认");
-        const lines = body.split(/\n/).map(l => l.trim()).filter(Boolean);
-        const reg = getRegistry();
-        const currencyNames = new Set(Object.values(reg).filter(r => r.type === "currency").map(r => r.name));
-        const defs = getAttrDefs();
-        const results = [];
-        for (const line of lines) {
-            const parts = line.split(/\s+/);
-            const name = parts[0];
-            if (!name) continue;
-            if (currencyNames.has(name)) { results.push(`❌ 「${name}」已被货币占用`); continue; }
-            if (parts[1] !== undefined && !isNaN(Number(parts[1]))) {
-                const min = Number(parts[1]);
-                const max = parts[2] !== undefined && !isNaN(Number(parts[2])) ? Number(parts[2]) : null;
-                const def = parts[3] !== undefined && !isNaN(Number(parts[3])) ? Number(parts[3]) : 0;
-                const isNew = !defs[name];
-                defs[name] = { min, max, default: def, desc: defs[name]?.desc || "" };
-                results.push(`${isNew ? "✅ 新增" : "🔄 更新"}「${name}」：${min}~${max ?? "∞"} 默认${def}`);
-            } else {
-                const isNew = !defs[name];
-                if (isNew) defs[name] = { min: null, max: null, default: 0, desc: "" };
-                results.push(`${isNew ? "✅ 新增" : "⏭️ 已存在"}「${name}」`);
-            }
-        }
-        saveAttrDefs(defs);
-        return seal.replyToSender(ctx, msg, results.join("\n"));
-    }
-    if (raw.startsWith("我移除属性") && isAdmin) {
-        const body = raw.slice(5).trim();
-        if (!body) return seal.replyToSender(ctx, msg, "❌ 请指定要移除的属性名。");
-        const names = body.split(/\n/).map(l => l.trim()).filter(Boolean);
-        const defs = getAttrDefs();
-        const charAttrs = getCharAttrs();
-        const results = [];
-        for (const attrName of names) {
-            if (!defs[attrName]) { results.push(`❌ 「${attrName}」不存在`); continue; }
-            delete defs[attrName];
-            for (const role of Object.keys(charAttrs)) delete charAttrs[role][attrName];
-            results.push(`✅ 已移除「${attrName}」`);
-        }
-        saveAttrDefs(defs);
-        saveCharAttrs(charAttrs);
-        const remaining = Object.keys(defs);
-        results.push(`当前属性：${remaining.length ? remaining.join("、") : "（无）"}`);
-        return seal.replyToSender(ctx, msg, results.join("\n"));
-    }
-
-    // 重复代码已删除（属性++/--在上面的 2347-2402 行已完整处理）
 };
 
 // ========================
@@ -3237,6 +3168,120 @@ cmd_sync_spot_pools.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["同步踩点池"] = cmd_sync_spot_pools;
+
+// ── 从 RP 存档服务器同步池子 ─────────────────────────────────────────────────
+let cmd_sync_pools_from_archive = seal.ext.newCmdItemInfo();
+cmd_sync_pools_from_archive.name = "同步池子";
+cmd_sync_pools_from_archive.help = "【管理员】从RP存档服务器拉取池子配置（在存档网页编辑后使用）\n同步池子       —— 拉取并覆盖本地池子定义和抽取设定\n同步池子 预览  —— 只显示存档中的池子，不实际同步";
+cmd_sync_pools_from_archive.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const main = getMainExt();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
+
+    const archiveEnabled = seal.ext.getBoolConfig(main, "启用RP存档传输");
+    if (!archiveEnabled) return seal.replyToSender(ctx, msg, "❌ 未启用RP存档传输，请先在长日设置中开启。");
+
+    const base  = (seal.ext.getStringConfig(main, "RP存档服务器地址") || "").replace(/\/$/, "");
+    const token = seal.ext.getStringConfig(main, "RP存档Token") || "";
+    if (!base) return seal.replyToSender(ctx, msg, "❌ 未配置存档服务器地址。");
+
+    const previewOnly = (cmdArgs.getArgN(1) || "") === "预览";
+    const headers = {};
+    if (token) headers["X-Archive-Token"] = token;
+
+    (async () => {
+        try {
+            const resp = await fetch(`${base}/api/pool_config`, { headers });
+            if (!resp.ok) {
+                seal.replyToSender(ctx, msg, `❌ 拉取失败，服务器返回 ${resp.status}。`);
+                return;
+            }
+            const data = await resp.json();
+            if (!data.ok) {
+                seal.replyToSender(ctx, msg, `❌ 拉取失败：${data.error || "未知错误"}`);
+                return;
+            }
+            const defs = data.pool_definitions || {};
+            const cfg  = data.pool_draw_config  || { total: null, pools: {} };
+            const poolNames = Object.keys(defs);
+
+            if (previewOnly) {
+                if (!poolNames.length) {
+                    seal.replyToSender(ctx, msg, "📭 存档中暂无池子配置。");
+                    return;
+                }
+                const totalStr = cfg.total != null ? `${cfg.total}次/天` : "无限";
+                let preview = `👁️ 存档池子预览（${poolNames.length}个）| 全局：${totalStr}\n`;
+                for (const name of poolNames) {
+                    const p = defs[name];
+                    const typeStr = p.type === "fixed" ? "权重池" : p.type === "tiered" ? "分段池" : "数量池";
+                    const stock = p.type === "tiered"
+                        ? (p.tiers?.length || 0) + "段"
+                        : p.type === "free"
+                            ? p.items.reduce((s, i) => s + (i.count || 0), 0) + "个"
+                            : p.items.length + "种";
+                    const perDay = cfg.pools?.[name];
+                    const limitStr = perDay != null ? `${perDay}次/天` : "跟随全局";
+                    preview += `\n${p.enabled ? "✅" : "❌"} 【${name}】${typeStr} | 库存${stock} | ${limitStr}`;
+                }
+                preview += "\n\n💡 确认无误后发送「同步池子」正式同步。";
+                seal.replyToSender(ctx, msg, preview);
+                return;
+            }
+
+            main.storageSet("pool_definitions", JSON.stringify(defs));
+            main.storageSet("pool_draw_config", JSON.stringify(cfg));
+            const totalStr = cfg.total != null ? `${cfg.total}次/天` : "无限";
+            seal.replyToSender(ctx, msg, `✅ 池子已同步（${poolNames.length} 个池子，全局次数：${totalStr}）。`);
+        } catch (e) {
+            seal.replyToSender(ctx, msg, `❌ 同步失败：${e.message || String(e)}`);
+        }
+    })();
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["同步池子"] = cmd_sync_pools_from_archive;
+
+let cmd_push_pools = seal.ext.newCmdItemInfo();
+cmd_push_pools.name = "上传池子";
+cmd_push_pools.help = "【管理员】将本地池子配置推送到RP存档服务器（覆盖网页端的配置）\n上传池子";
+cmd_push_pools.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const main = getMainExt();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
+    const archiveEnabled = seal.ext.getBoolConfig(main, "启用RP存档传输");
+    if (!archiveEnabled) return seal.replyToSender(ctx, msg, "❌ 未启用RP存档传输，请先在长日设置中开启。");
+    const base  = (seal.ext.getStringConfig(main, "RP存档服务器地址") || "").replace(/\/$/, "");
+    const token = seal.ext.getStringConfig(main, "RP存档Token") || "";
+    if (!base) return seal.replyToSender(ctx, msg, "❌ 未配置存档服务器地址。");
+    const defs = getPoolDefs();
+    const cfg  = getDrawConfig();
+    const poolCount = Object.keys(defs).length;
+    const headers = { "Content-Type": "application/json" };
+    if (token) headers["X-Archive-Token"] = token;
+    (async () => {
+        try {
+            const resp = await fetch(`${base}/api/pool_config`, {
+                method: "POST",
+                headers,
+                body: JSON.stringify({ pool_definitions: defs, pool_draw_config: cfg })
+            });
+            if (!resp.ok) {
+                seal.replyToSender(ctx, msg, `❌ 上传失败，服务器返回 ${resp.status}。`);
+                return;
+            }
+            const data = await resp.json();
+            if (data.ok) {
+                seal.replyToSender(ctx, msg, `✅ 已将 ${poolCount} 个池子上传到存档服务器。`);
+            } else {
+                seal.replyToSender(ctx, msg, `❌ 上传失败：${data.error || "未知错误"}`);
+            }
+        } catch (e) {
+            seal.replyToSender(ctx, msg, `❌ 上传失败：${e.message || String(e)}`);
+        }
+    })();
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["上传池子"] = cmd_push_pools;
 
 // ========================
 // 攻防系统 - 存储和配置
@@ -3454,7 +3499,7 @@ function applyDamage(battleId, targetName, damage) {
     }
 
     saveAttackDefenseData(data);
-    return damage;
+    return actualDamage;
 }
 
 function getAlivePlayersCount(battle) {
@@ -3822,15 +3867,20 @@ cmd_surrender.solve = (ctx, msg, cmdArgs) => {
         saveAttackDefenseData(data);
         return seal.replyToSender(ctx, msg, result);
     } else {
-        // 逃脱失败
-        const nextPlayerIndex = (battle.currentPlayerIndex + 1) % battle.turnOrder.length;
+        // 逃脱失败，消耗当前回合
+        battle.currentPlayerIndex = (battle.currentPlayerIndex + 1) % battle.turnOrder.length;
         let attempts = 0;
-        while (!battle.playerStates[battle.turnOrder[nextPlayerIndex]].alive && attempts < battle.turnOrder.length && attempts < 1) {
+        while (!battle.playerStates[battle.turnOrder[battle.currentPlayerIndex]].alive && attempts < battle.turnOrder.length) {
+            battle.currentPlayerIndex = (battle.currentPlayerIndex + 1) % battle.turnOrder.length;
             attempts++;
         }
+        if (battle.currentPlayerIndex === 0) {
+            battle.currentTurn++;
+        }
+        battle.turnStartTime = Date.now();
 
         saveAttackDefenseData(data);
-        return seal.replyToSender(ctx, msg, `❌ ${player} 逃脱失败！\n\n(成功率: ${escapeRate}%)`);
+        return seal.replyToSender(ctx, msg, `❌ ${player} 逃脱失败！回合已消耗。\n\n➡️ 轮到 ${getCurrentBattlePlayer(battle)} 的回合。\n(成功率: ${escapeRate}%)`);
     }
 };
 
@@ -4293,13 +4343,10 @@ cmd_quick_init.solve = (ctx, msg, cmdArgs) => {
             registry[potion.code] = {
                 code: potion.code,
                 name: potion.name,
-                type: "normal",
+                type: "item",
                 desc: potion.desc,
-                useTimes: parseInt(potion.uses),
-                attrs: potion.effects.split(",").map(e => {
-                    const [attr, val] = e.trim().split("+");
-                    return { attr: attr.trim(), value: parseInt(val) };
-                }),
+                maxUses: parseInt(potion.uses),
+                attrs: potion.effects,
                 canResell: potion.resellable === "Y"
             };
             results.push(`✅ 已创建物品：${potion.name} (${potion.code})`);

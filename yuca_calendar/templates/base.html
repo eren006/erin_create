@@ -40,7 +40,7 @@ a:hover { color: var(--accent2); }
   padding: 10px 20px; font-size: 13px; color: var(--text);
   display: flex; align-items: center; gap: 8px;
 }
-.flash-bar.warn { background: #1a1400; border-color: #4a3a00; color: var(--warn); }
+.flash-bar.warn { background: color-mix(in srgb, var(--warn) 12%, var(--surface)); border-color: color-mix(in srgb, var(--warn) 35%, var(--surface)); color: var(--warn); }
 
 .page { max-width: 1100px; margin: 0 auto; padding: 28px 20px; }
 @media(max-width:640px) { .page { padding: 16px 12px; } }
@@ -54,10 +54,12 @@ a:hover { color: var(--accent2); }
 .btn-primary:hover { background: var(--accent2); color: #fff; }
 .btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--muted); }
 .btn-ghost:hover { border-color: var(--accent); color: var(--text); }
-.btn-danger { background: #2a1515; border: 1px solid #4a2020; color: var(--red); }
-.btn-danger:hover { background: #3a1818; }
-.btn-warn { background: #1a1400; border: 1px solid #4a3a00; color: var(--warn); }
-.btn-warn:hover { background: #2a2000; }
+.btn-danger { background: color-mix(in srgb, var(--red) 14%, var(--surface)); border: 1px solid color-mix(in srgb, var(--red) 30%, var(--surface)); color: var(--red); }
+.btn-danger:hover { background: color-mix(in srgb, var(--red) 22%, var(--surface)); }
+.btn-warn { background: color-mix(in srgb, var(--warn) 12%, var(--surface)); border: 1px solid color-mix(in srgb, var(--warn) 30%, var(--surface)); color: var(--warn); }
+.btn-warn:hover { background: color-mix(in srgb, var(--warn) 20%, var(--surface)); }
+.btn-approve { background: color-mix(in srgb, var(--green) 14%, var(--surface)); border: 1px solid color-mix(in srgb, var(--green) 30%, var(--surface)); color: var(--green); }
+.btn-approve:hover { background: color-mix(in srgb, var(--green) 22%, var(--surface)); }
 .btn-sm { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
 
 .form-group { margin-bottom: 14px; }
@@ -68,8 +70,8 @@ a:hover { color: var(--accent2); }
 .form-input::placeholder { color: var(--muted); }
 .form-hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
 .form-errors { margin-bottom: 16px; }
-.form-error { background: #2a1515; border: 1px solid #4a2020; border-radius: 8px; padding: 8px 14px; color: var(--red); font-size: 13px; margin-bottom: 6px; }
-.form-success { background: #1a2d1a; border: 1px solid #2a4a2a; border-radius: 8px; padding: 8px 14px; color: var(--green); font-size: 13px; margin-bottom: 6px; }
+.form-error { background: color-mix(in srgb, var(--red) 12%, var(--surface)); border: 1px solid color-mix(in srgb, var(--red) 28%, var(--surface)); border-radius: 8px; padding: 8px 14px; color: var(--red); font-size: 13px; margin-bottom: 6px; }
+.form-success { background: color-mix(in srgb, var(--green) 12%, var(--surface)); border: 1px solid color-mix(in srgb, var(--green) 28%, var(--surface)); border-radius: 8px; padding: 8px 14px; color: var(--green); font-size: 13px; margin-bottom: 6px; }
 
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 @media(max-width:640px) { .grid-2 { grid-template-columns: 1fr; } }
@@ -78,8 +80,11 @@ a:hover { color: var(--accent2); }
 
 .empty { color: var(--muted); text-align: center; padding: 48px 0; font-size: 14px; }
 .badge { display: inline-block; padding: 1px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
-.badge-active { background: #1e2d1e; color: var(--green); }
-.badge-inactive { background: #2a1515; color: var(--red); }
+.badge-active { background: color-mix(in srgb, var(--green) 14%, var(--surface)); color: var(--green); }
+.badge-inactive { background: color-mix(in srgb, var(--red) 14%, var(--surface)); color: var(--red); }
+.status-approved { background: color-mix(in srgb, var(--green) 14%, var(--surface)); border: 1px solid color-mix(in srgb, var(--green) 28%, var(--surface)); color: var(--green); }
+.status-rejected { background: color-mix(in srgb, var(--red) 14%, var(--surface)); border: 1px solid color-mix(in srgb, var(--red) 28%, var(--surface)); color: var(--red); }
+.status-pending  { background: var(--surface2); border: 1px solid var(--border); color: var(--muted); }
 
 /* ── Themes ── */
 /* 春夏秋冬 + 莫奈 (夜间) */
@@ -101,6 +106,10 @@ a:hover { color: var(--accent2); }
 [data-theme=monet-day]  {--bg:#f5f7fa;--surface:#eaf1f8;--surface2:#d8e8f5;--border:#a8c8e0;--accent:#4a8fa8;--accent2:#8a6aaa;--text:#18283a;--muted:#5c7d90;--red:#c05050;--green:#2d7a50;--gold:#9a7020}
 [data-theme=vangogh-day]{--bg:#f5f3e8;--surface:#ede8d0;--surface2:#e0d8b8;--border:#c8bc80;--accent:#1a4a9a;--accent2:#2860c0;--text:#1a1810;--muted:#606040;--red:#dc2626;--green:#15803d;--gold:#b45309}
 [data-theme=picasso-day]{--bg:#fff5f2;--surface:#feece8;--surface2:#fdd8d0;--border:#f0b0a0;--accent:#c04828;--accent2:#e06040;--text:#1a0a08;--muted:#906050;--red:#dc2626;--green:#15803d;--gold:#b45309}
+
+/* ── VIP 专属日间主题 ── */
+[data-theme=vip-gold]{--bg:#fdf6ed;--surface:#f8ece0;--surface2:#f0dfc8;--border:#d4a868;--accent:#b8660a;--accent2:#d47a18;--text:#1a0c00;--muted:#806040;--red:#c82020;--green:#1a6a30;--gold:#b8660a}
+[data-theme=vip-jade]{--bg:#f0faf6;--surface:#dff5ec;--surface2:#c8edde;--border:#60c8a0;--accent:#007858;--accent2:#009870;--text:#001810;--muted:#306858;--red:#c82020;--green:#007858;--gold:#a07820}
 
 /* 达芬奇 · 晕涂 */
 [data-theme=davinci]{--bg:#0c0804;--surface:#191008;--surface2:#241808;--border:#4a3010;--accent:#c8882a;--accent2:#e0aa40;--text:#f0e8d8;--muted:#806040;--red:#f87171;--green:#86efac;--gold:#e0aa40}
@@ -194,11 +203,14 @@ a:hover { color: var(--accent2); }
     <a href="{{ url_for('calendar') }}"   {% if _ep=='calendar'    %}class="active"{% endif %}>我的档期</a>
     <a href="{{ url_for('drama_list') }}" {% if _ep in ('drama_list','drama_new','drama_edit') %}class="active"{% endif %}>戏录</a>
     <a href="{{ url_for('tools') }}"      {% if _ep=='tools'       %}class="active"{% endif %}>小工具</a>
-    <a href="{{ url_for('partners') }}"  {% if _ep in ('partners','partner_add','partner_edit') %}class="active"{% endif %}>CP档案</a>
+    <a href="{{ url_for('partners') }}"  {% if _ep in ('partners','partner_add','partner_edit') %}class="active"{% endif %}>必吃榜</a>
+    <a href="{{ url_for('guilds') }}"    {% if _ep in ('guilds','guild_detail','guild_discover','guild_edit') %}class="active"{% endif %}>公会</a>
     <a href="{{ url_for('diary_list') }}" {% if _ep in ('diary_list','diary_new','diary_edit') %}class="active"{% endif %}>日记</a>
+    <a href="{{ url_for('cards') }}"      {% if _ep in ('cards','cards_add','cards_edit','cards_consume','cards_delete','cards_clean') %}class="active"{% endif %}>卡包</a>
     <a href="{{ url_for('wishlist') }}"  {% if _ep=='wishlist'    %}class="active"{% endif %}>心愿单</a>
     <a href="{{ url_for('timeline') }}"  {% if _ep=='timeline'    %}class="active"{% endif %}>时间轴</a>
     <a href="{{ url_for('blacklist') }}"  {% if _ep=='blacklist'   %}class="active"{% endif %}>黑名单</a>
+    <a href="{{ url_for('reports') }}"   {% if _ep=='reports'     %}class="active"{% endif %}>公开检举</a>
     <a href="{{ url_for('stats') }}"      {% if _ep=='stats'       %}class="active"{% endif %}>年度统计</a>
     <a href="{{ url_for('export') }}"     {% if _ep=='export'      %}class="active"{% endif %}>导出</a>
     <a href="{{ url_for('settings') }}"   {% if _ep=='settings'    %}class="active"{% endif %}>设置</a>
@@ -206,7 +218,10 @@ a:hover { color: var(--accent2); }
   <div class="spacer"></div>
   <button class="guide-btn" onclick="openGuide()">使用指南</button>
   <button class="guide-btn" onclick="openFeedback()" style="color:var(--accent)">💬 反馈</button>
-  <span class="user-info">{{ session.get('display_name') or session.get('username') }}</span>
+  <span class="user-info">
+    {{ session.get('display_name') or session.get('username') }}
+    {% if is_vip %}<span style="background:linear-gradient(135deg,#c8780a,#e8a820);color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:700;letter-spacing:.3px;margin-left:5px;flex-shrink:0">✦ 守护者</span>{% endif %}
+  </span>
   <a class="logout-btn" href="{{ url_for('logout') }}">退出</a>
   <button class="mob-nav-btn" id="mob-nav-btn" onclick="toggleMobNav()" aria-label="菜单">☰</button>
 </div>
@@ -214,11 +229,14 @@ a:hover { color: var(--accent2); }
   <a href="{{ url_for('calendar') }}"   {% if _ep=='calendar'    %}class="active"{% endif %}>📅 我的档期</a>
   <a href="{{ url_for('drama_list') }}" {% if _ep in ('drama_list','drama_new','drama_edit') %}class="active"{% endif %}>📝 戏录</a>
   <a href="{{ url_for('tools') }}"      {% if _ep=='tools'       %}class="active"{% endif %}>🔧 小工具</a>
-  <a href="{{ url_for('partners') }}"  {% if _ep in ('partners','partner_add','partner_edit') %}class="active"{% endif %}>💑 CP档案</a>
+  <a href="{{ url_for('partners') }}"  {% if _ep in ('partners','partner_add','partner_edit') %}class="active"{% endif %}>🍽 必吃榜</a>
+  <a href="{{ url_for('guilds') }}"    {% if _ep in ('guilds','guild_detail','guild_discover','guild_edit') %}class="active"{% endif %}>🏰 公会</a>
   <a href="{{ url_for('diary_list') }}" {% if _ep in ('diary_list','diary_new','diary_edit') %}class="active"{% endif %}>📔 日记</a>
+  <a href="{{ url_for('cards') }}"      {% if _ep in ('cards','cards_add','cards_edit','cards_consume','cards_delete','cards_clean') %}class="active"{% endif %}>🃏 卡包</a>
   <a href="{{ url_for('wishlist') }}"  {% if _ep=='wishlist'    %}class="active"{% endif %}>✨ 心愿单</a>
   <a href="{{ url_for('timeline') }}"  {% if _ep=='timeline'    %}class="active"{% endif %}>📊 时间轴</a>
   <a href="{{ url_for('blacklist') }}"  {% if _ep=='blacklist'   %}class="active"{% endif %}>🚫 黑名单</a>
+  <a href="{{ url_for('reports') }}"   {% if _ep=='reports'     %}class="active"{% endif %}>🚨 公开检举</a>
   <a href="{{ url_for('stats') }}"      {% if _ep=='stats'       %}class="active"{% endif %}>📊 年度统计</a>
   <a href="{{ url_for('export') }}"     {% if _ep=='export'      %}class="active"{% endif %}>⬇ 导出</a>
   <a href="{{ url_for('settings') }}"   {% if _ep=='settings'    %}class="active"{% endif %}>⚙ 设置</a>
@@ -235,6 +253,7 @@ a:hover { color: var(--accent2); }
     <a href="{{ url_for('superadmin_feedbacks') }}" {% if request.endpoint=='superadmin_feedbacks' %}class="active"{% endif %} style="display:flex;align-items:center;gap:4px">
       反馈{% if unread_feedback_count > 0 %}<span style="background:var(--red);color:#fff;border-radius:20px;padding:0 5px;font-size:10px;line-height:1.6">{{ unread_feedback_count }}</span>{% endif %}
     </a>
+    <a href="{{ url_for('superadmin_reports') }}" {% if request.endpoint=='superadmin_reports' %}class="active"{% endif %}>🚨 检举管理</a>
   </nav>
   <div class="spacer"></div>
   <form method="post" action="{{ url_for('superadmin_logout') }}" style="display:inline">
@@ -264,7 +283,7 @@ a:hover { color: var(--accent2); }
     <span class="guide-head-title">💬 提交反馈</span>
     <button class="guide-close-btn" onclick="closeFeedback()">关闭 ×</button>
   </div>
-  <div id="fb-success" style="display:none;background:#1a2d1a;border:1px solid #2a4a2a;border-radius:8px;padding:12px 16px;color:var(--green);font-size:13px;margin-bottom:16px">
+  <div id="fb-success" class="form-success" style="display:none;padding:12px 16px;margin-bottom:16px">
     ✅ 反馈已提交，谢谢！
   </div>
   <form id="fb-form">
@@ -418,6 +437,18 @@ a:hover { color: var(--accent2); }
     <div class="tp-item" onclick="setTheme('gukaizhi-day')">     <span class="tp-dot" style="background:#9a2018"></span>顾恺之 · 丹青</div>
     <div class="tp-item" onclick="setTheme('michelangelo-day')"> <span class="tp-dot" style="background:#7a3e18"></span>米开朗基罗 · 西斯廷</div>
     <div class="tp-item" onclick="setTheme('warhol-day')">       <span class="tp-dot" style="background:#cc0000"></span>沃霍尔 · 波普</div>
+    <div class="tp-sep">✦ 守护者专属</div>
+    {% if is_vip %}
+    <div class="tp-item" onclick="setTheme('vip-gold')"><span class="tp-dot" style="background:#d47a18;outline:2px solid #e8a820;outline-offset:1px"></span>赤金·晴</div>
+    <div class="tp-item" onclick="setTheme('vip-jade')"><span class="tp-dot" style="background:#009870;outline:2px solid #60c8a0;outline-offset:1px"></span>碧玉·晴</div>
+    {% else %}
+    <div class="tp-item" style="opacity:.45;cursor:not-allowed" onclick="alert('需要 {{ VIP_THRESHOLD }} 条审核通过的检举才能解锁守护者专属主题')">
+      <span class="tp-dot" style="background:#888"></span>赤金·晴 🔒
+    </div>
+    <div class="tp-item" style="opacity:.45;cursor:not-allowed" onclick="alert('需要 {{ VIP_THRESHOLD }} 条审核通过的检举才能解锁守护者专属主题')">
+      <span class="tp-dot" style="background:#888"></span>碧玉·晴 🔒
+    </div>
+    {% endif %}
   </div>
 </div>
 
@@ -427,11 +458,15 @@ const _THEMES = [
   'spring','summer','autumn','winter','monet','vangogh','picasso',
   'davinci','gukaizhi','michelangelo','warhol',
   'spring-day','summer-day','autumn-day','winter-day','monet-day','vangogh-day','picasso-day',
-  'davinci-day','gukaizhi-day','michelangelo-day','warhol-day'
+  'davinci-day','gukaizhi-day','michelangelo-day','warhol-day',
+  'vip-gold','vip-jade'
 ];
+const _IS_VIP = {{ 'true' if is_vip else 'false' }};
+const _VIP_THEMES = ['vip-gold','vip-jade'];
 const _LOGGED_IN = {{ ('true' if session.get('user_id') else 'false') }};
 
 function setTheme(t) {
+  if (_VIP_THEMES.includes(t) && !_IS_VIP) return;
   if (t === 'default') document.documentElement.removeAttribute('data-theme');
   else document.documentElement.setAttribute('data-theme', t);
   localStorage.setItem('yuca_theme', t);

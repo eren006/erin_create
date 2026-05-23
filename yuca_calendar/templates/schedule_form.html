@@ -195,6 +195,25 @@
                   placeholder="可以填写任何补充说明……">{{ form.notes or '' }}</textarea>
       </div>
 
+      <div class="form-section-title">可见范围</div>
+      <div class="form-group">
+        <div style="display:flex;gap:20px;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:var(--text)">
+            <input type="radio" name="visibility" value="public"
+                   {% if (form.get('visibility') or 'public') != 'private' %}checked{% endif %}
+                   style="accent-color:var(--accent)">
+            🌐 所有人可见（默认）
+          </label>
+          <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:var(--text)">
+            <input type="radio" name="visibility" value="private"
+                   {% if form.get('visibility') == 'private' %}checked{% endif %}
+                   style="accent-color:var(--accent)">
+            🔒 仅自己可见
+          </label>
+        </div>
+        <div class="form-hint">设为「仅自己可见」的档期不会出现在公会成员视图和年度统计共享中</div>
+      </div>
+
       <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap">
         <button class="btn btn-primary" type="submit">
           {{ '保存修改' if action == 'edit' else '录入档期' }}

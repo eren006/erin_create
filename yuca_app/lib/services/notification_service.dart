@@ -44,15 +44,27 @@ class NotificationService {
     int notifId = 1000; // 从 1000 开始，避免和其他通知冲突
 
     for (final s in schedules) {
+      // API 返回的是 time_range（"MMDD MMDD"）和 start_year，没有 end_date 字段
+      DateTime? endDate;
       final endDateStr = s['end_date'] as String?;
-      if (endDateStr == null || endDateStr.isEmpty) continue;
-
-      DateTime endDate;
-      try {
-        endDate = DateTime.parse(endDateStr);
-      } catch (_) {
-        continue;
+      if (endDateStr != null && endDateStr.isNotEmpty) {
+        try { endDate = DateTime.parse(endDateStr); } catch (_) {}
       }
+      if (endDate == null) {
+        // 从 time_range 解析结束日期
+        try {
+          final tr = s['time_range'] as String? ?? '';
+          final sy = s['start_year'] as int? ?? DateTime.now().year;
+          if (tr.length == 9) {
+            final sm = int.parse(tr.substring(0, 2));
+            final em = int.parse(tr.substring(5, 7));
+            final ed = int.parse(tr.substring(7, 9));
+            final ey = em < sm ? sy + 1 : sy;
+            endDate = DateTime(ey, em, ed);
+          }
+        } catch (_) {}
+      }
+      if (endDate == null) continue;
 
       // 提醒时间：结束日的前一天上午 9:00
       final reminderDay = endDate.subtract(const Duration(days: 1));

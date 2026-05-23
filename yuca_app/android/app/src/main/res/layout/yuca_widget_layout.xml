@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/widget_background"
+    android:padding="12dp">
+
+    <!-- 标题行 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+        <TextView
+            android:id="@+id/tv_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="语擦助手"
+            android:textColor="#FFFFFF"
+            android:textSize="13sp"
+            android:textStyle="bold"/>
+        <TextView
+            android:id="@+id/tv_month"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="本月"
+            android:textColor="#9ca3af"
+            android:textSize="11sp"/>
+    </LinearLayout>
+
+    <!-- 分隔线 -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="6dp"
+        android:layout_marginBottom="6dp"
+        android:background="#33FFFFFF"/>
+
+    <!-- 档期数量 -->
+    <TextView
+        android:id="@+id/tv_count"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="本月暂无档期"
+        android:textColor="#9ca3af"
+        android:textSize="11sp"
+        android:layout_marginBottom="4dp"/>
+
+    <!-- 档期条目 0 -->
+    <LinearLayout android:id="@+id/row_0"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:gravity="center_vertical"
+        android:visibility="gone" android:layout_marginTop="3dp">
+        <TextView android:id="@+id/dot_0" android:layout_width="14dp"
+            android:layout_height="14dp" android:text="●"
+            android:textSize="8sp" android:gravity="center"/>
+        <TextView android:id="@+id/name_0" android:layout_width="0dp"
+            android:layout_height="wrap_content" android:layout_weight="1"
+            android:textColor="#FFFFFF" android:textSize="12sp"
+            android:maxLines="1" android:ellipsize="end"
+            android:layout_marginStart="6dp"/>
+        <TextView android:id="@+id/date_0" android:layout_width="wrap_content"
+            android:layout_height="wrap_content" android:textColor="#9ca3af"
+            android:textSize="10sp"/>
+    </LinearLayout>
+
+    <!-- 档期条目 1 -->
+    <LinearLayout android:id="@+id/row_1"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:gravity="center_vertical"
+        android:visibility="gone" android:layout_marginTop="3dp">
+        <TextView android:id="@+id/dot_1" android:layout_width="14dp"
+            android:layout_height="14dp" android:text="●"
+            android:textSize="8sp" android:gravity="center"/>
+        <TextView android:id="@+id/name_1" android:layout_width="0dp"
+            android:layout_height="wrap_content" android:layout_weight="1"
+            android:textColor="#FFFFFF" android:textSize="12sp"
+            android:maxLines="1" android:ellipsize="end"
+            android:layout_marginStart="6dp"/>
+        <TextView android:id="@+id/date_1" android:layout_width="wrap_content"
+            android:layout_height="wrap_content" android:textColor="#9ca3af"
+            android:textSize="10sp"/>
+    </LinearLayout>
+
+    <!-- 档期条目 2 -->
+    <LinearLayout android:id="@+id/row_2"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:gravity="center_vertical"
+        android:visibility="gone" android:layout_marginTop="3dp">
+        <TextView android:id="@+id/dot_2" android:layout_width="14dp"
+            android:layout_height="14dp" android:text="●"
+            android:textSize="8sp" android:gravity="center"/>
+        <TextView android:id="@+id/name_2" android:layout_width="0dp"
+            android:layout_height="wrap_content" android:layout_weight="1"
+            android:textColor="#FFFFFF" android:textSize="12sp"
+            android:maxLines="1" android:ellipsize="end"
+            android:layout_marginStart="6dp"/>
+        <TextView android:id="@+id/date_2" android:layout_width="wrap_content"
+            android:layout_height="wrap_content" android:textColor="#9ca3af"
+            android:textSize="10sp"/>
+    </LinearLayout>
+
+    <!-- 档期条目 3 -->
+    <LinearLayout android:id="@+id/row_3"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:gravity="center_vertical"
+        android:visibility="gone" android:layout_marginTop="3dp">
+        <TextView android:id="@+id/dot_3" android:layout_width="14dp"
+            android:layout_height="14dp" android:text="●"
+            android:textSize="8sp" android:gravity="center"/>
+        <TextView android:id="@+id/name_3" android:layout_width="0dp"
+            android:layout_height="wrap_content" android:layout_weight="1"
+            android:textColor="#FFFFFF" android:textSize="12sp"
+            android:maxLines="1" android:ellipsize="end"
+            android:layout_marginStart="6dp"/>
+        <TextView android:id="@+id/date_3" android:layout_width="wrap_content"
+            android:layout_height="wrap_content" android:textColor="#9ca3af"
+            android:textSize="10sp"/>
+    </LinearLayout>
+
+    <!-- 档期条目 4 -->
+    <LinearLayout android:id="@+id/row_4"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:gravity="center_vertical"
+        android:visibility="gone" android:layout_marginTop="3dp">
+        <TextView android:id="@+id/dot_4" android:layout_width="14dp"
+            android:layout_height="14dp" android:text="●"
+            android:textSize="8sp" android:gravity="center"/>
+        <TextView android:id="@+id/name_4" android:layout_width="0dp"
+            android:layout_height="wrap_content" android:layout_weight="1"
+            android:textColor="#FFFFFF" android:textSize="12sp"
+            android:maxLines="1" android:ellipsize="end"
+            android:layout_marginStart="6dp"/>
+        <TextView android:id="@+id/date_4" android:layout_width="wrap_content"
+            android:layout_height="wrap_content" android:textColor="#9ca3af"
+            android:textSize="10sp"/>
+    </LinearLayout>
+
+    <!-- 更多提示 -->
+    <TextView
+        android:id="@+id/tv_more"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textColor="#6b7280"
+        android:textSize="10sp"
+        android:layout_marginTop="3dp"
+        android:visibility="gone"/>
+
+</LinearLayout>

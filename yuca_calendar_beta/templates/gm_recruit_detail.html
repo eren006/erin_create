@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}{{ rec.title }} · 本主面板{% endblock %}
+{% block body %}
+<div class="page">
+  <a href="{{ url_for('gm_index') }}" style="font-size:12px;color:var(--muted)">&larr; 返回本主面板</a>
+
+  <!-- 招募信息 -->
+  <div class="card" style="margin-top:14px;margin-bottom:20px">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-size:17px;font-weight:600;color:var(--text)">{{ rec.title }}</span>
+          {% if rec.status == 'open' %}
+            <span class="badge badge-active">招募中</span>
+          {% else %}
+            <span class="badge badge-inactive">已关闭</span>
+          {% endif %}
+        </div>
+        {% set p = rec.time_range %}
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">
+          {{ rec.start_year }}年 {{ p[:2] }}月{{ p[2:4] }}日 —
+          {% if p[5:7]|int < p[:2]|int %}{{ rec.start_year + 1 }}年 {% endif %}
+          {{ p[5:7] }}月{{ p[7:9] }}日
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0">
+        <a class="btn btn-ghost btn-sm" href="{{ url_for('plaza_detail', rid=rec.id) }}" target="_blank">广场预览</a>
+        {% if rec.status == 'open' %}
+          <form method="post" action="{{ url_for('gm_recruit_close', rid=rec.id) }}" style="display:inline">
+            <button class="btn btn-warn btn-sm" type="submit">关闭招募</button>
+          </form>
+        {% else %}
+          <form method="post" action="{{ url_for('gm_recruit_reopen', rid=rec.id) }}" style="display:inline">
+            <button class="btn btn-ghost btn-sm" type="submit">重新开放</button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+    {% if rec.description %}
+    <div style="margin-top:12px;font-size:13px;color:var(--muted);white-space:pre-wrap">{{ rec.description }}</div>
+    {% endif %}
+  </div>
+
+  <!-- 投递列表 -->
+  <div style="font-size:15px;font-weight:600;color:var(--accent2);margin-bottom:14px">
+    投递记录（{{ apps|length }} 份）
+  </div>
+
+  {% if not apps %}
+  <div class="empty">还没有人投递</div>
+  {% else %}
+
+  <!-- 待审核 -->
+  {% set pending_apps = apps | selectattr('status', 'equalto', 'pending') | list %}
+  {% if pending_apps %}
+  <div style="font-size:12px;color:var(--gold);font-weight:600;margin-bottom:8px">待审核（{{ pending_apps|length }}）</div>
+  {% for a in pending_apps %}
+  <div class="card" style="border-color:var(--gold);margin-bottom:10px">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:600;color:var(--text)">
+          {{ a.applicant_name }}
+          {% if a.player_name %}<span style="font-size:11px;color:var(--muted);font-weight:normal">（{{ a.player_name }}）</span>{% endif %}
+        </div>
+        <div style="margin-top:6px;display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted)">
+          <span>弧长：{{ a.arc_length or '—' }}</span>
+          <span>在线：{{ a.online_hours or '—' }}</span>
+        </div>
+        {% if a.drama_refs and a.drama_refs != '[]' and a.drama_refs != '' %}
+        <div style="margin-top:6px;font-size:12px;color:var(--muted)">戏录：{{ a.drama_refs }}</div>
+        {% endif %}
+        {% if a.note %}
+        <div style="margin-top:6px;font-size:12px;color:var(--muted)">备注：{{ a.note }}</div>
+        {% endif %}
+        <div style="margin-top:6px;font-size:11px;color:var(--muted)">{{ a.created_at | datetimeformat }}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
+        <form method="post" action="{{ url_for('gm_recruit_accept', rid=rec.id, aid=a.id) }}">
+          <button class="btn btn-primary btn-sm" type="submit">录取</button>
+        </form>
+        <form method="post" action="{{ url_for('gm_recruit_reject', rid=rec.id, aid=a.id) }}"
+              onsubmit="return confirm('拒绝后对方档期将删除，确定吗？')">
+          <button class="btn btn-danger btn-sm" type="submit">拒绝</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  <!-- 已录取 -->
+  {% set accepted_apps = apps | selectattr('status', 'equalto', 'accepted') | list %}
+  {% if accepted_apps %}
+  <div style="font-size:12px;color:var(--green);font-weight:600;margin-top:16px;margin-bottom:8px">已录取（{{ accepted_apps|length }}）</div>
+  {% for a in accepted_apps %}
+  <div class="card" style="border-color:var(--green);margin-bottom:8px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div>
+        <span style="font-size:14px;font-weight:600;color:var(--text)">{{ a.applicant_name }}</span>
+        {% if a.player_name %}<span style="font-size:11px;color:var(--muted)"> （{{ a.player_name }}）</span>{% endif %}
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">
+          弧长：{{ a.arc_length or '—' }} &nbsp;·&nbsp; 在线：{{ a.online_hours or '—' }}
+        </div>
+      </div>
+      <span style="font-size:12px;color:var(--green);font-weight:600">已录取</span>
+    </div>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  <!-- 已拒绝 -->
+  {% set rejected_apps = apps | selectattr('status', 'equalto', 'rejected') | list %}
+  {% if rejected_apps %}
+  <div style="font-size:12px;color:var(--muted);font-weight:600;margin-top:16px;margin-bottom:8px">已拒绝（{{ rejected_apps|length }}）</div>
+  {% for a in rejected_apps %}
+  <div class="card" style="opacity:.6;margin-bottom:8px">
+    <span style="font-size:13px;color:var(--muted)">{{ a.applicant_name }}</span>
+    <span style="font-size:11px;color:var(--red);margin-left:8px">已拒绝</span>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% endif %}
+</div>
+{% endblock %}

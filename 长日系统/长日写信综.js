@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         长日写信综
 // @author       长日将尽
-// @version      1.4.0
+// @version      1.5.0
 // @description  独立的正式信件系统，支持发送信件、写信币赏金、配置管理
 // @timestamp    1778742000
 // @license      MIT
@@ -56,6 +56,39 @@ let ext = seal.ext.find("letter_system");
 if (!ext) {
     ext = seal.ext.new("letter_system", "长日将尽", "1.0.0");
     seal.ext.register(ext);
+}
+
+// ========================
+// RP存档（从主插件读配置，各插件上下文隔离，无法共用主插件的函数）
+// ========================
+
+function isArchiveEnabled() {
+    const main = getMainExt();
+    if (!main) return false;
+    return seal.ext.getBoolConfig(main, "启用RP存档传输");
+}
+
+function isLetterSyncEnabled() {
+    if (!isArchiveEnabled()) return false;
+    return getMainStorage("direct_letter_sync_enabled", "false") === "true";
+}
+
+async function postToArchive(endpoint, data) {
+    const main = getMainExt();
+    if (!main) return;
+    const base = (seal.ext.getStringConfig(main, "RP存档服务器地址") || "").replace(/\/$/, "");
+    const token = seal.ext.getStringConfig(main, "RP存档Token") || "";
+    if (!base) return;
+    try {
+        const resp = await fetch(base + endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Archive-Token": token },
+            body: JSON.stringify(data)
+        });
+        if (!resp.ok) console.error(`[写信综·RP存档] ${endpoint} 返回 ${resp.status}`);
+    } catch (e) {
+        console.error(`[写信综·RP存档] 发送失败 ${endpoint}:`, e.message || String(e));
+    }
 }
 
 // ========================
@@ -333,6 +366,17 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
+    // 5.5 冷却检查
+    const cdMinutes = parseInt(getMainStorage("direct_letter_cooldown") || "0");
+    if (cdMinutes > 0) {
+        const lastSendTime = dlCounts[userKey].lastSendTime || 0;
+        const cdRemain = cdMinutes - Math.floor((Date.now() - lastSendTime) / 60000);
+        if (cdRemain > 0) {
+            seal.replyToSender(ctx, msg, `⏳ 发信冷却中，还需等待 ${cdRemain} 分钟。`);
+            return seal.ext.newCmdExecuteResult(true);
+        }
+    }
+
     // 6. 检查特殊道具效果（望远镜、羽毛笔）
     let telescopeAppliers = []; // 施加望远镜的人列表
     let quillPenApplier = null; // 施加羽毛笔的人
@@ -398,6 +442,7 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
             rewardGiven = rewardPerLetter;
         }
         dlCounts[userKey].count = currentCount + 1;
+        dlCounts[userKey].lastSendTime = Date.now();
         setMainStorage("letter_day_counts", JSON.stringify(dlCounts));
         let reply = `✉️ 信件已送达「${receiver}」！\n`;
         reply += `🖋️ 落款：${signature}\n`;
@@ -447,7 +492,7 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
             ccMsg.messageType = "group";
             ccMsg.groupId = `${platform}-Group:${applierEntry[1]}`;
             const ccCtx = seal.createTempCtx(ctx.endPoint, ccMsg);
-            seal.replyToSender(ccCtx, ccMsg, `✏️【羽毛笔截获】第 ${idx} 封\n${originalPreview}\n\n使用「羽毛笔修改 ${idx} 新内容」来修改后发出`);
+            seal.replyToSender(ccCtx, ccMsg, `✏️【羽毛笔截获】第 ${idx} 封\n${originalPreview}\n\n使用「。羽毛笔修改 ${idx} 新内容」来修改后发出`);
         }
 
         // 清除已使用的羽毛笔效果
@@ -489,8 +534,7 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
     }
 
     // 9. 存档：实时上报信件到 rp_archive
-    if (typeof isArchiveEnabled === "function" && isArchiveEnabled() &&
-        typeof postToArchive === "function") {
+    if (isLetterSyncEnabled()) {
         postToArchive("/api/event", {
             type:       "direct_letter",
             from_role:  senderRoleName,
@@ -530,15 +574,19 @@ cmd_letter_config.help = `⚙️ 【管理员】配置发送信件系统
 - 日限：每日最多可发送的信件数（默认5）
 - 赏金：每封信获得的写信币数（默认0，即禁用赏金）
 - 最小字数：获得赏金的最少字数（默认0）
+- 发送cd：两封信之间的冷却时间（分钟，默认0即无冷却）
 - 心愿成本：发送心愿需要消费的写信币数（默认0，即禁用消费）
 - 私约成本：发送私约需要消费的写信币数（默认0，即禁用消费）
+- 同步：是否将信件（含羽毛笔修改后）同步至RP存档（开/关）
 
 示例：
 。信件设置 日限 10
 。信件设置 赏金 5
 。信件设置 最小字数 10
+。信件设置 发送cd 30
 。信件设置 心愿成本 3
-。信件设置 私约成本 5`;
+。信件设置 私约成本 5
+。信件设置 同步 开`;
 
 cmd_letter_config.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) {
@@ -566,9 +614,20 @@ cmd_letter_config.solve = (ctx, msg, cmdArgs) => {
     } else if (param === "心愿成本") {
         setMainStorage("wish_coin_cost", value);
         modified = true;
+    } else if (param === "发送cd") {
+        setMainStorage("direct_letter_cooldown", value);
+        modified = true;
     } else if (param === "私约成本") {
         setMainStorage("appointment_coin_cost", value);
         modified = true;
+    } else if (param === "同步") {
+        if (value !== "开" && value !== "关") {
+            seal.replyToSender(ctx, msg, "⚠️ 同步参数只能填「开」或「关」。");
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        setMainStorage("direct_letter_sync_enabled", value === "开" ? "true" : "false");
+        seal.replyToSender(ctx, msg, `✅ 信件同步已${value === "开" ? "开启（发送信件与羽毛笔修改均会同步至RP存档）" : "关闭"}`);
+        return seal.ext.newCmdExecuteResult(true);
     }
 
     if (modified) {
@@ -604,18 +663,32 @@ cmd_letter_status.solve = (ctx, msg, cmdArgs) => {
     const dailyLimit = parseInt(getMainStorage("direct_letter_daily_limit") || "5");
     const reward = parseInt(getMainStorage("direct_letter_reward") || "0");
     const minChars = parseInt(getMainStorage("direct_letter_min_chars") || "0");
+    const cdMinutes = parseInt(getMainStorage("direct_letter_cooldown") || "0");
 
     const userKey = `${platform}:${uid}`;
     let dlCounts = JSON.parse(getMainStorage("letter_day_counts") || "{}");
     const used = (dlCounts[userKey]?.day === gameDay ? dlCounts[userKey]?.count : 0) || 0;
+
+    const syncEnabled = getMainStorage("direct_letter_sync_enabled", "false") === "true";
+    const hasMinChars = minChars > 0;
+    const hasCd = cdMinutes > 0;
+
+    // 计算各行是否是最后一行（用于选 ├ 或 └）
+    const tail = (isLast) => isLast ? "└" : "├";
 
     let info = `📊 发送信件系统状态\n\n`;
     info += `📅 游戏日期：${gameDay}\n\n`;
     info += `├ 每日限额：${dailyLimit} 封\n`;
     info += `├ 今日已用：${used} 封\n`;
     info += `├ 剩余额度：${Math.max(0, dailyLimit - used)} 封\n`;
-    info += `├ 写信币赏：${reward > 0 ? reward + " 币/封" : "禁用"}\n`;
-    if (minChars > 0) info += `└ 最小字数：${minChars}`;
+    info += `${tail(!hasMinChars && !hasCd && !syncEnabled)} 写信币赏：${reward > 0 ? reward + " 币/封" : "禁用"}\n`;
+    if (hasMinChars) info += `${tail(!hasCd && !syncEnabled)} 最小字数：${minChars}\n`;
+    if (hasCd) {
+        const lastSendTime = (dlCounts[userKey]?.day === gameDay ? dlCounts[userKey]?.lastSendTime : 0) || 0;
+        const cdRemain = Math.max(0, cdMinutes - Math.floor((Date.now() - lastSendTime) / 60000));
+        info += `${tail(!syncEnabled)} 发信冷却：${cdMinutes} 分钟（${cdRemain > 0 ? "剩余 " + cdRemain + " 分钟" : "已就绪"}）\n`;
+    }
+    if (syncEnabled) info += `└ RP同步：已开启`;
 
     seal.replyToSender(ctx, msg, info);
     return seal.ext.newCmdExecuteResult(true);
@@ -660,7 +733,7 @@ cmd_quill_pen_modify.solve = (ctx, msg, cmdArgs) => {
                 const preview = l.content.length > 20 ? l.content.slice(0, 20) + "..." : l.content;
                 list += `${i + 1}. ${l.senderName} → ${l.receiverName}：${preview}\n`;
             });
-            list += `\n使用「羽毛笔修改 序号 新内容」来修改后发出`;
+            list += `\n使用「。羽毛笔修改 序号 新内容」来修改后发出`;
             seal.replyToSender(ctx, msg, list);
         }
         return seal.ext.newCmdExecuteResult(true);
@@ -700,6 +773,27 @@ cmd_quill_pen_modify.solve = (ctx, msg, cmdArgs) => {
     ];
     sendLetterForward(targetEntry[1], modLetterNodes, ctx);
 
+    // 同步到 rp_archive（若开关开启）
+    if (isLetterSyncEnabled()) {
+        postToArchive("/api/event", {
+            type:       "direct_letter",
+            from_role:  letterData.senderName,
+            from_qq:    letterData.userId,
+            to_role:    letterData.receiverName,
+            to_qq:      "",
+            content:    newContent,
+            extra_info: {
+                signature:      letterData.signature,
+                date_tag:       letterData.dateTag   || "",
+                attachment:     letterData.attachment || "",
+                quill_modified: true
+            },
+            game_day:   letterData.gameDay,
+            session_id: "",
+            timestamp:  Date.now()
+        });
+    }
+
     myPending.splice(idx - 1, 1);
     if (myPending.length === 0) {
         delete pendingLetters[modifierRoleName];
@@ -733,10 +827,10 @@ ext.onNotCommandReceived = (ctx, msg) => {
          "私约 1120-1230 地点 对方角色名[/对方2/...]",
          "例：私约 1400-1500 咖啡厅 张三"],
         ["【修改时间线】（在约会群内使用）",
-         "。修改时间线 D1 1400-1500",
+         "修改时间线 D1 1400-1500",
          "",
          "【拒绝时间线】",
-         "。拒绝时间线 群号"],
+         "拒绝时间线 群号"],
         ["【发送信件】",
          "。发送信件",
          "【收件人】角色名",

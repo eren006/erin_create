@@ -489,6 +489,44 @@ select.cfg-input { cursor: pointer; }
   transition: background .18s;
 }
 .btn-dirty-ok:hover { background: var(--accent2); }
+
+/* ── 配置预设 ─────────────────────────────── */
+.tpl-card {
+  background: rgba(26,26,34,0.82); border: 1px solid rgba(255,255,255,0.07);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border-radius: 12px; padding: 16px 20px; margin-bottom: 20px;
+}
+.tpl-header {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+}
+.tpl-title { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: 1.5px; text-transform: uppercase; }
+.tpl-count { font-size: 11px; color: var(--muted); margin-left: auto; }
+.tpl-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.tpl-row {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 12px;
+}
+.tpl-name { font-size: 13px; color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tpl-time { font-size: 11px; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+.btn-tpl { border: none; border-radius: 6px; padding: 4px 12px; font-size: 12px; cursor: pointer; font-family: inherit; font-weight: 600; white-space: nowrap; flex-shrink: 0; }
+.btn-tpl-apply { background: var(--accent); color: #fff; }
+.btn-tpl-apply:hover { background: var(--accent2); }
+.btn-tpl-del { background: #3a1a1a; color: var(--red); border: 1px solid #5a2a2a; }
+.btn-tpl-del:hover { background: #4a1f1f; }
+.tpl-save-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.tpl-save-input {
+  background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text); border-radius: 8px; padding: 6px 11px;
+  font-size: 13px; font-family: inherit; flex: 1; min-width: 150px;
+}
+.tpl-save-input:focus { outline: none; border-color: var(--accent); }
+.btn-tpl-save { background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px 16px; font-size: 13px; cursor: pointer; font-family: inherit; font-weight: 600; white-space: nowrap; }
+.btn-tpl-save:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.btn-tpl-save:disabled { opacity: .45; cursor: not-allowed; }
+.tpl-msg { font-size: 12px; padding: 6px 12px; border-radius: 6px; }
+.tpl-msg-ok  { background: #1a3a1a; color: var(--green); }
+.tpl-msg-err { background: #3a1a1a; color: var(--red); }
 </style>
 {% endblock %}
 
@@ -525,6 +563,59 @@ select.cfg-input { cursor: pointer; }
   {% if saved %}
   <div class="saved-tip" style="margin-bottom:18px;">✅ 配置已保存，发送「。同步设置」生效。</div>
   {% endif %}
+
+  {# ── 配置预设面板 ── #}
+  <div class="tpl-card">
+    <div class="tpl-header">
+      <span class="tpl-title">配置预设</span>
+      <span style="font-size:11px;color:var(--muted);font-weight:400;">不含物品注册 / 结戏加成，可跨季复用</span>
+      <span class="tpl-count">{{ cfg_templates|length }}/{{ tpl_max }}</span>
+    </div>
+
+    {% if tpl_msg == 'saved' %}
+    <div class="tpl-msg tpl-msg-ok" style="margin-bottom:10px;">✅ 预设已保存。</div>
+    {% elif tpl_msg == 'deleted' %}
+    <div class="tpl-msg tpl-msg-ok" style="margin-bottom:10px;">🗑 预设已删除。</div>
+    {% elif tpl_msg == 'limit' %}
+    <div class="tpl-msg tpl-msg-err" style="margin-bottom:10px;">⚠️ 最多 {{ tpl_max }} 个预设，请先删除一个。</div>
+    {% elif tpl_msg == 'empty_name' %}
+    <div class="tpl-msg tpl-msg-err" style="margin-bottom:10px;">⚠️ 预设名不能为空。</div>
+    {% endif %}
+
+    {% if cfg_templates %}
+    {% for t in cfg_templates %}
+    <script type="application/json" id="tpl-json-{{ t.id }}">{{ t.data|tojson }}</script>
+    {% endfor %}
+    <div class="tpl-list" id="tpl-list">
+      {% for t in cfg_templates %}
+      <div class="tpl-row" id="tpl-row-{{ t.id }}">
+        <span class="tpl-name" title="{{ t.name }}">{{ t.name }}</span>
+        <span class="tpl-time">{{ t.time_str or '' }}</span>
+        <button type="button" class="btn-tpl btn-tpl-apply"
+                data-id="{{ t.id }}" data-name="{{ t.name|e }}"
+                onclick="applyTemplateById(this.dataset.id, this.dataset.name)">应用</button>
+        <button type="button" class="btn-tpl btn-tpl-del"
+                data-id="{{ t.id }}" data-name="{{ t.name|e }}"
+                onclick="deleteTpl(this, this.dataset.id, this.dataset.name)">删除</button>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div style="font-size:13px;color:var(--muted);margin-bottom:12px;">暂无预设，保存当前配置为预设后可一键复用。</div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('admin_config_template_save') }}" class="tpl-save-row">
+      <input type="text" name="name" class="tpl-save-input" placeholder="预设名称，如：主线标准配置"
+             maxlength="40" {% if cfg_templates|length >= tpl_max %}disabled{% endif %}>
+      <button type="submit" class="btn-tpl-save"
+              {% if cfg_templates|length >= tpl_max %}disabled{% endif %}>
+        保存当前配置为预设
+      </button>
+      {% if cfg_templates|length >= tpl_max %}
+      <span style="font-size:12px;color:var(--muted);">已达上限，请先删除一个</span>
+      {% endif %}
+    </form>
+  </div>
 
   {# ── Index sections by name ── #}
   {% set s = {} %}
@@ -791,6 +882,7 @@ select.cfg-input { cursor: pointer; }
     <input type="hidden" name="item_registry"         id="item-registry-input" value="{{ item_registry_json | e }}">
     <input type="hidden" name="rpg_attr_defs"         id="attr-defs-input"     value="{{ attr_defs_json | e }}">
     <input type="hidden" name="item_registry_pending" id="item-pending-input"  value="{{ item_pending_json | e }}">
+    <input type="hidden" id="pool-defs-input" value="{{ pool_defs_json | e }}">
 
     <div class="cfg-card" id="registry-card">
       <div class="cfg-card-title">物品注册管理</div>
@@ -1025,6 +1117,61 @@ select.cfg-input { cursor: pointer; }
 <script>
 /* ── 共享工具 ─────────────────────────────── */
 var cfgMarkDirty = function() {};  // 由主 IIFE 绑定，供 Registry/BonusEditor 调用
+
+/* ── 配置预设 ─────────────────────────────── */
+function applyTemplateById(id, name) {
+  var el = document.getElementById('tpl-json-' + id);
+  if (!el) { alert('找不到预设数据，请刷新页面重试。'); return; }
+  var data;
+  try { data = JSON.parse(el.textContent); } catch(e) { alert('预设数据解析失败，请重新保存该预设。'); return; }
+  applyTemplate(data, name);
+}
+
+function applyTemplate(data, name) {
+  if (!confirm('将用预设「' + name + '」覆盖当前表单的配置字段（不含物品注册/结戏加成），继续？\n\n仍需点「保存配置」才会写入数据库。')) return;
+  var form = document.getElementById('cfg-form');
+  var filled = 0;
+  Object.keys(data).forEach(function(key) {
+    var val = data[key];
+    var el = form.querySelector('[name="' + key + '"]');
+    if (!el) return;
+    if (el.type === 'checkbox') {
+      el.checked = (val === 'true' || val === true);
+    } else {
+      el.value = val;
+      if (el.classList.contains('cfg-slider')) el.dispatchEvent(new Event('input'));
+    }
+    filled++;
+  });
+  cfgMarkDirty();
+  var old = document.getElementById('tpl-apply-tip');
+  if (old) old.remove();
+  var tip = document.createElement('div');
+  tip.id = 'tpl-apply-tip';
+  tip.className = 'saved-tip';
+  tip.style.cssText = 'margin-bottom:12px;background:#1a2d3a;border-color:#1a4060;color:#60c8ff;';
+  tip.textContent = '✔ 已将预设「' + name + '」填入 ' + filled + ' 个字段，请检查后点「保存配置」生效。';
+  document.querySelector('.tpl-card').insertAdjacentElement('afterend', tip);
+  setTimeout(function() { tip.remove(); }, 8000);
+}
+
+async function deleteTpl(btn, id, name) {
+  if (!confirm('删除预设「' + name + '」？')) return;
+  btn.disabled = true;
+  try {
+    var resp = await fetch('/admin/config/templates/' + id + '/delete', { method: 'POST', headers: { 'X-Fetch': '1' } });
+    var json = await resp.json();
+    if (json.ok) {
+      var row = document.getElementById('tpl-row-' + id);
+      if (row) row.remove();
+      var countEl = document.querySelector('.tpl-count');
+      if (countEl) {
+        var m = countEl.textContent.match(/(\d+)\/(\d+)/);
+        if (m) countEl.textContent = (parseInt(m[1]) - 1) + '/' + m[2];
+      }
+    }
+  } catch(e) { btn.disabled = false; alert('删除失败，请重试。'); }
+}
 var cfgEsc = function(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 };
@@ -1439,6 +1586,13 @@ var Registry = (function() {
   }
 
   function delAttr(name) {
+    var poolDefs = {};
+    try { poolDefs = JSON.parse(document.getElementById('pool-defs-input').value || '{}'); } catch(e) {}
+    var bound = Object.values(poolDefs).filter(function(p){ return p.type === 'tiered' && p.attr === name; }).map(function(p){ return p.name; });
+    if (bound.length) {
+      alert('❌ 属性「' + name + '」正被分段池「' + bound.join('、') + '」绑定，无法删除。\n请先删除或修改这些池子。');
+      return;
+    }
     if (!confirm('删除属性「' + name + '」？')) return;
     delete attrs[name];
     save(); renderAttrs();

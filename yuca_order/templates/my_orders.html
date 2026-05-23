@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% block title %}我的订单{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-title">我的订单</div>
+
+  {% if announcements %}
+  <div class="card" style="margin-bottom:16px;border-color:color-mix(in srgb,var(--accent) 28%,var(--border));background:color-mix(in srgb,var(--accent) 5%,var(--surface));">
+    <div style="font-size:12px;font-weight:600;color:var(--accent2);margin-bottom:10px;display:flex;align-items:center;gap:6px;">
+      📢 工坊公告
+    </div>
+    {% for a in announcements %}
+    <div style="{% if not loop.last %}padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--border);{% endif %}">
+      <div style="font-size:13px;line-height:1.7;white-space:pre-wrap;">{{ a.content }}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;">{{ a.created_at|fmt }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if orders %}
+  <div class="card" style="padding:0;overflow:hidden;">
+    <table>
+      <thead><tr>
+        <th>订单号</th><th>接单方</th><th>类型</th><th>标题</th><th>状态</th><th>提交时间</th>
+      </tr></thead>
+      <tbody>
+        {% for o in orders %}
+        <tr style="cursor:pointer;" onclick="location.href='{{ url_for('order_status', order_no=o.order_no) }}'">
+          <td class="mono" style="color:var(--accent);">{{ o.order_no }}</td>
+          <td>{{ o.tenant_name }}</td>
+          <td>{{ o.service_type }}</td>
+          <td>{{ o.title }}</td>
+          <td>
+            <span class="badge" style="background:{{ o.status|sc }}22;color:{{ o.status|sc }};">
+              {{ o.status|sl }}
+            </span>
+          </td>
+          <td class="muted">{{ o.created_at|fmt }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card" style="text-align:center;color:var(--muted);padding:40px;">
+    暂无订单 &nbsp;<a href="{{ url_for('order_new') }}">去下单</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

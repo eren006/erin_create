@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}导出档期 · 语擦日历{% endblock %}
+{% block head %}
+<style>
+.export-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 20px 24px; max-width: 700px;
+}
+.export-textarea {
+  width: 100%; background: var(--bg); border: 1px solid var(--border);
+  color: var(--text); border-radius: 8px; padding: 14px; font-size: 13px;
+  font-family: "PingFang SC", "Microsoft YaHei", monospace;
+  line-height: 1.8; resize: vertical; min-height: 360px;
+}
+.export-textarea:focus { outline: none; border-color: var(--accent); }
+</style>
+{% endblock %}
+{% block body %}
+<div class="page">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+    <a href="{{ url_for('calendar') }}" class="btn btn-ghost btn-sm">← 返回</a>
+    <h1 class="page-title" style="margin:0">导出档期</h1>
+  </div>
+  <div class="export-card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+      <span style="font-size:13px;color:var(--muted)">可复制以下文本，格式与骰子插件输出相同</span>
+      <button class="btn btn-primary btn-sm" onclick="copyExport(this)">复制全部</button>
+    </div>
+    <textarea class="export-textarea" id="export-text" readonly>{{ text }}</textarea>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function copyExport(btn) {
+  const text = document.getElementById('export-text').value;
+  copyText(text, btn);
+}
+</script>
+{% endblock %}

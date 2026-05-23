@@ -1,0 +1,1207 @@
+{% extends "base.html" %}
+{% block title %}抽取池 · 长日存档{% endblock %}
+
+{% block head %}
+<style>
+/* ── Layout ─────────────────────────────────────────────────────────────── */
+.pools-layout {
+  display: grid;
+  grid-template-columns: 252px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 860px) { .pools-layout { grid-template-columns: 1fr; } }
+
+/* ── Library panel ───────────────────────────────────────────────────────── */
+.lib-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  position: sticky;
+  top: 16px;
+}
+.panel-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+.item-search {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+.item-search:focus { outline: none; border-color: var(--accent); }
+
+.item-filters {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.item-filter {
+  font-size: 11px;
+  padding: 2px 9px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  transition: background .15s, color .15s;
+}
+.item-filter.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.item-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: calc(100vh - 260px);
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.item-grid::-webkit-scrollbar { width: 4px; }
+.item-grid::-webkit-scrollbar-track { background: transparent; }
+.item-grid::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+.lib-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  cursor: grab;
+  user-select: none;
+  transition: border-color .15s, transform .1s;
+}
+.lib-card:hover { border-color: var(--accent); }
+.lib-card:active { cursor: grabbing; }
+.lib-card.is-dragging { opacity: .35; transform: scale(.97); }
+.lib-card-icon { font-size: 17px; flex-shrink: 0; line-height: 1; }
+.lib-card-info { flex: 1; min-width: 0; }
+.lib-card-name { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lib-card-code { font-size: 10px; color: var(--muted); font-family: monospace; }
+.type-chip {
+  font-size: 10px;
+  border-radius: 4px;
+  padding: 1px 5px;
+  flex-shrink: 0;
+  font-weight: 600;
+}
+.chip-currency { background: #2a2000; color: #c9a227; border: 1px solid #4a3800; }
+.chip-item     { background: #1a1030; color: #9a7fe8; border: 1px solid #3a2060; }
+.chip-interact { background: #0d1f30; color: #4eaad5; border: 1px solid #1a3d5a; }
+
+/* ── Right panel ─────────────────────────────────────────────────────────── */
+.pools-right-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pools-right-header h2 {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.global-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 9px 14px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.global-bar label { font-size: 12px; color: var(--muted); }
+.global-bar input[type=number] {
+  width: 60px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 13px;
+  color: var(--text);
+  text-align: center;
+}
+.global-bar input:focus { outline: none; border-color: var(--accent); }
+.global-bar .hint { font-size: 11px; color: var(--muted); }
+
+/* ── Top toolbar ─────────────────────────────────────────────────────────── */
+.top-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 14px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.toolbar-label { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.toolbar-limit-input {
+  width: 54px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 13px;
+  color: var(--text);
+  text-align: center;
+}
+.toolbar-limit-input:focus { outline: none; border-color: var(--accent); }
+.toolbar-hint { font-size: 11px; color: var(--muted); }
+.toolbar-sep { flex: 1; }
+.toolbar-count { font-size: 12px; color: var(--muted); white-space: nowrap; }
+
+/* ── Sync tip ────────────────────────────────────────────────────────────── */
+.sync-tip {
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 14px;
+  margin-bottom: 12px;
+}
+.sync-tip code {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 12px;
+  color: var(--accent);
+  font-family: monospace;
+}
+
+/* ── New-pool form ───────────────────────────────────────────────────────── */
+.new-pool-form {
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  display: none;
+}
+.new-pool-form.open { display: block; }
+.new-pool-form h4 {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  margin: 0 0 10px;
+}
+.nf-row { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; }
+.nf-name {
+  flex: 1;
+  min-width: 120px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 13px;
+  color: var(--text);
+}
+.nf-name:focus { outline: none; border-color: var(--accent); }
+.type-toggle {
+  display: flex;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.type-toggle button {
+  padding: 6px 13px;
+  font-size: 12px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  background: var(--surface2);
+  color: var(--muted);
+  transition: background .15s, color .15s;
+}
+.type-toggle button.active { background: var(--accent); color: #fff; }
+
+/* ── Pool cards ──────────────────────────────────────────────────────────── */
+.pools-list { display: flex; flex-direction: column; gap: 12px; }
+
+.pool-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface);
+  transition: border-color .15s, box-shadow .15s;
+}
+.pool-card.drop-over {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+.pool-card.pool-disabled { opacity: .6; }
+
+.pool-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.pool-title { font-size: 14px; font-weight: 600; flex: 1; min-width: 80px; }
+.pool-type-chip {
+  font-size: 10px;
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.ptype-free  { background: #0d2a1a; color: #4aba7a; border: 1px solid #1a5a30; }
+.ptype-fixed { background: #2a1a0d; color: #d08030; border: 1px solid #5a3a10; }
+
+/* Toggle switch */
+.tog {
+  position: relative;
+  width: 32px;
+  height: 17px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.tog input { opacity: 0; width: 0; height: 0; position: absolute; }
+.tog-track {
+  position: absolute;
+  inset: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  transition: .2s;
+}
+.tog-track::before {
+  content: '';
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  left: 2px;
+  top: 2px;
+  background: var(--muted);
+  border-radius: 50%;
+  transition: .2s;
+}
+.tog input:checked + .tog-track { background: var(--accent); border-color: var(--accent); }
+.tog input:checked + .tog-track::before { transform: translateX(15px); background: #fff; }
+
+.pool-limit-wrap { display: flex; align-items: center; gap: 4px; }
+.pool-limit-wrap label { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.pool-limit-wrap input {
+  width: 46px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 12px;
+  color: var(--text);
+  text-align: center;
+}
+.pool-limit-wrap input:focus { outline: none; border-color: var(--accent); }
+
+.btn-sm {
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color .15s, border-color .15s;
+}
+.btn-sm:hover { color: var(--text); border-color: var(--accent); }
+.btn-sm-del { color: var(--red); }
+.btn-sm-del:hover { border-color: var(--red); color: var(--red); }
+
+/* ── Item rows inside pool ────────────────────────────────────────────────── */
+.pool-body { padding: 0; }
+
+.pool-item-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  transition: background .1s;
+}
+.pool-item-row:last-child { border-bottom: none; }
+.pool-item-row:hover { background: var(--surface2); }
+.pi-code {
+  font-family: monospace;
+  font-size: 10px;
+  color: var(--accent2);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  flex-shrink: 0;
+}
+.pi-name { flex: 1; font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pi-val-wrap { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.pi-val-wrap label { font-size: 10px; color: var(--muted); }
+.pi-val-wrap input {
+  width: 56px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 12px;
+  color: var(--text);
+  text-align: center;
+}
+.pi-val-wrap input:focus { outline: none; border-color: var(--accent); }
+.pi-del {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 15px;
+  padding: 0 2px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color .15s;
+}
+.pi-del:hover { color: var(--red); }
+
+/* Drop zone */
+.pool-dropzone {
+  padding: 14px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+  border-top: 1px dashed var(--border);
+  cursor: default;
+  transition: background .15s, color .15s;
+  user-select: none;
+}
+.pool-card.drop-over .pool-dropzone {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+}
+.pool-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 6px 14px;
+  background: var(--surface2);
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter .15s;
+}
+.btn-primary:hover { filter: brightness(1.15); }
+.btn-primary:disabled { opacity: .5; cursor: not-allowed; filter: none; }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  padding: 7px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.btn-ghost:hover { color: var(--text); }
+
+.btn-save {
+  background: #1a4a2a;
+  color: var(--green);
+  border: 1px solid #2a6a3a;
+  border-radius: 8px;
+  padding: 7px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter .15s;
+}
+.btn-save:hover { filter: brightness(1.15); }
+.btn-save:disabled { opacity: .5; cursor: not-allowed; filter: none; }
+
+/* ── Toast ───────────────────────────────────────────────────────────────── */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 200;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 11px 18px;
+  box-shadow: 0 6px 24px #0009;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: opacity .3s, transform .3s;
+}
+.toast.hidden { opacity: 0; transform: translateY(8px); pointer-events: none; }
+.toast-ok  { color: var(--green); }
+.toast-err { color: var(--red); }
+
+/* ── Empty states ────────────────────────────────────────────────────────── */
+.empty-note {
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  padding: 36px 16px;
+}
+
+/* ── Tiered pool ─────────────────────────────────────────────────────────── */
+.ptype-tiered { background: #1a1a2a; color: #7a9fe0; border: 1px solid #2a2a5a; }
+.attr-chip {
+  font-size: 10px; border-radius: 4px; padding: 2px 7px; font-weight: 600;
+  background: #0d2a1a; color: #6db86d; border: 1px solid #1a5a30;
+  flex-shrink: 0; font-family: monospace;
+}
+.tiered-body { padding: 8px 12px; display: flex; flex-direction: column; gap: 8px; }
+.tiered-body-empty { text-align: center; color: var(--muted); font-size: 12px; padding: 20px 0; }
+.tier-row {
+  border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+  background: var(--surface2); transition: border-color .15s;
+}
+.tier-row.drop-over { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
+.tier-header {
+  display: flex; align-items: center; gap: 6px; padding: 7px 10px;
+  background: var(--surface); border-bottom: 1px solid var(--border); flex-wrap: wrap;
+}
+.tier-label-input {
+  flex: 1; min-width: 70px; max-width: 110px;
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
+  padding: 3px 8px; font-size: 12px; color: var(--text);
+}
+.tier-label-input:focus { outline: none; border-color: var(--accent); }
+.tier-label-input::placeholder { color: var(--muted); }
+.tier-range { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.tier-range-num {
+  width: 52px; background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 5px; padding: 3px 6px; font-size: 12px; color: var(--text); text-align: center;
+}
+.tier-range-num:focus { outline: none; border-color: var(--accent); }
+.tier-range-sep { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.tier-type-mini { display: flex; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); flex-shrink: 0; }
+.tier-type-mini button {
+  padding: 3px 9px; font-size: 11px; font-weight: 600; border: none;
+  cursor: pointer; background: var(--surface2); color: var(--muted); transition: background .15s, color .15s;
+}
+.tier-type-mini button.active { background: var(--accent); color: #fff; }
+.tier-dropzone {
+  padding: 9px; text-align: center; font-size: 11px; color: var(--muted);
+  border-top: 1px dashed var(--border); user-select: none; transition: background .15s, color .15s;
+}
+.tier-row.drop-over .tier-dropzone {
+  background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent);
+}
+.tiered-add-tier {
+  display: flex; justify-content: center; padding: 8px;
+  border-top: 1px solid var(--border); background: var(--surface2);
+}
+
+/* Attr input row in new pool form */
+.nf-attr-row {
+  display: none; align-items: center; gap: 6px; margin-top: 6px;
+}
+.nf-attr-row.visible { display: flex; }
+.nf-attr-row label { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.nf-attr-input {
+  max-width: 180px; background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px 10px; font-size: 12px; color: var(--text);
+  cursor: pointer;
+}
+.nf-attr-input:focus { outline: none; border-color: var(--accent); }
+.nf-attr-input:disabled { opacity: .5; cursor: not-allowed; }
+.nf-attr-input option { background: var(--surface2); color: var(--text); }
+</style>
+{% endblock %}
+
+{% block body %}
+
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:8px;">
+  <h1 style="font-size:18px;font-weight:700;margin:0;">🎲 抽取池管理</h1>
+  <a href="{{ url_for('admin') }}" style="font-size:12px;color:var(--muted);">← 后台</a>
+</div>
+
+<div class="pools-layout">
+
+  <!-- ════════════════════════ LEFT: 物品图鉴 ════════════════════════ -->
+  <div class="lib-panel">
+    <div class="panel-label">📦 物品图鉴</div>
+    <input class="item-search" id="libSearch" type="text" placeholder="搜索名称 / 编码…" autocomplete="off">
+    <div class="item-filters">
+      <span class="item-filter active" data-t="all">全部</span>
+      <span class="item-filter" data-t="currency">货币</span>
+      <span class="item-filter" data-t="item">上载</span>
+      <span class="item-filter" data-t="interact">互动</span>
+    </div>
+    <div class="item-grid" id="libGrid"></div>
+  </div>
+
+  <!-- ════════════════════════ RIGHT: 池子 ════════════════════════ -->
+  <div>
+
+    <!-- 顶部工具栏（全局次数 + 操作按钮合并一行） -->
+    <div class="top-toolbar">
+      <label class="toolbar-label">全局次数/天</label>
+      <input type="number" id="globalLimit" min="0" placeholder="∞" title="留空 = 无限制" class="toolbar-limit-input">
+      <span class="toolbar-hint">留空 = 无限</span>
+      <div class="toolbar-sep"></div>
+      <span id="poolCountLabel" class="toolbar-count"></span>
+      <button class="btn-primary" id="btnNewPool">＋ 新建池子</button>
+      <button class="btn-save" id="btnSave">保存</button>
+    </div>
+
+    <!-- 同步提示 -->
+    <div class="sync-tip">
+      💡 保存后在机器人中发送&nbsp;<code>同步池子</code>&nbsp;即可立即生效
+    </div>
+
+    <!-- 新建池子表单 -->
+    <div class="new-pool-form" id="newPoolForm">
+      <h4>新建抽取池</h4>
+      <div class="nf-row">
+        <input class="nf-name" type="text" id="newPoolName" placeholder="池子名称…" maxlength="30">
+        <div class="type-toggle" id="typeToggle">
+          <button class="active" data-t="free">数量池</button>
+          <button data-t="fixed">权重池</button>
+          <button data-t="tiered">分段池</button>
+        </div>
+        <button class="btn-primary" id="btnCreate" style="padding:7px 14px;">创建</button>
+        <button class="btn-ghost" id="btnCancelNew">取消</button>
+      </div>
+      <div class="nf-attr-row" id="nfAttrRow">
+        <label>绑定属性：</label>
+        {% if attr_defs %}
+        <select class="nf-attr-input" id="newPoolAttr">
+          <option value="">-- 选择属性 --</option>
+          {% for aname in attr_defs %}
+          <option value="{{ aname }}">{{ aname }}</option>
+          {% endfor %}
+        </select>
+        {% else %}
+        <select class="nf-attr-input" id="newPoolAttr" disabled>
+          <option value="">无可用属性</option>
+        </select>
+        {% endif %}
+        <span style="font-size:11px;color:var(--muted);" id="attrHint">
+          {% if attr_defs %}角色的该属性值决定走哪段{% else %}请先在机器人中注册属性并同步设置{% endif %}
+        </span>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.9;">
+        <b>数量池</b>：物品有限个数，抽完即止&emsp;
+        <b>权重池</b>：按权重随机，永不耗尽&emsp;
+        <b>分段池</b>：绑定一个属性（如幸运），按属性值范围匹配不同子池，每段可独立设置为数量或权重
+      </div>
+    </div>
+
+    <!-- 池子列表 -->
+    <div class="pools-list" id="poolsList"></div>
+
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast hidden" id="toast">
+  <span id="toastMsg"></span>
+  <button onclick="hideToast()" style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:17px;line-height:1;padding:0;">×</button>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// 初始数据（由 Flask 注入）
+// ═══════════════════════════════════════════════════════════════
+const ITEMS   = {{ item_registry | tojson }};
+const pools   = {{ pool_defs | tojson }};
+const poolCfg = {{ pool_cfg | tojson }};
+const ATTR_DEFS = {{ attr_defs | tojson }};
+
+// ═══════════════════════════════════════════════════════════════
+// 工具函数
+// ═══════════════════════════════════════════════════════════════
+function typeIcon(t)  { return t==="currency"?"💰":t==="item"?"📦":"🔗"; }
+function typeLabel(t) { return t==="currency"?"货币":t==="item"?"上载":"互动"; }
+function typeChipCls(t){ return "type-chip chip-"+t; }
+function poolTypeLabel(t){ return t==="fixed"?"权重池":t==="tiered"?"分段池":"数量池"; }
+function poolTypeCls(t)  { return t==="fixed"?"ptype-fixed":t==="tiered"?"ptype-tiered":"ptype-free"; }
+
+// 安全的 CSS ID 用于 data-pool 属性
+function safeId(s) { return s.replace(/[^\w一-鿿]/g,"_"); }
+
+// ═══════════════════════════════════════════════════════════════
+// 拖拽状态
+// ═══════════════════════════════════════════════════════════════
+let draggedCode = null;
+
+// ═══════════════════════════════════════════════════════════════
+// 渲染物品图鉴
+// ═══════════════════════════════════════════════════════════════
+let libFilter = "all";
+let libSearch = "";
+
+function renderLib() {
+  const grid = document.getElementById("libGrid");
+  grid.innerHTML = "";
+  const items = Object.values(ITEMS).filter(item => {
+    if (libFilter !== "all" && item.type !== libFilter) return false;
+    if (libSearch) {
+      const q = libSearch.toLowerCase();
+      return item.name.toLowerCase().includes(q) || (item.code||"").toLowerCase().includes(q);
+    }
+    return true;
+  });
+
+  if (!items.length) {
+    grid.innerHTML = `<div style="text-align:center;color:var(--muted);font-size:12px;padding:20px 0;">无匹配物品</div>`;
+    return;
+  }
+
+  items.forEach(item => {
+    const card = document.createElement("div");
+    card.className = "lib-card";
+    card.draggable = true;
+    card.dataset.code = item.code;
+    card.title = item.desc || item.name;
+    card.innerHTML = `
+      <span class="lib-card-icon">${typeIcon(item.type)}</span>
+      <div class="lib-card-info">
+        <div class="lib-card-name">${item.name}</div>
+        <div class="lib-card-code">${item.code}</div>
+      </div>
+      <span class="${typeChipCls(item.type)}">${typeLabel(item.type)}</span>
+    `;
+    card.addEventListener("dragstart", e => {
+      draggedCode = item.code;
+      setTimeout(() => card.classList.add("is-dragging"), 0);
+      e.dataTransfer.effectAllowed = "copy";
+      e.dataTransfer.setData("text/plain", item.code);
+    });
+    card.addEventListener("dragend", () => {
+      draggedCode = null;
+      card.classList.remove("is-dragging");
+    });
+    grid.appendChild(card);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 渲染所有池子
+// ═══════════════════════════════════════════════════════════════
+function renderPools() {
+  const list = document.getElementById("poolsList");
+  list.innerHTML = "";
+  const names = Object.keys(pools);
+  document.getElementById("poolCountLabel").textContent = names.length ? `${names.length} 个池子` : "";
+
+  if (!names.length) {
+    list.innerHTML = `<div class="empty-note">暂无池子 · 点击「新建池子」开始，或直接将物品拖拽到此处</div>`;
+    return;
+  }
+  names.forEach(name => list.appendChild(buildPoolCard(name)));
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 构建单个池子卡片
+// ═══════════════════════════════════════════════════════════════
+function buildPoolCard(name) {
+  const pool = pools[name];
+  if (pool.type === "tiered") return buildTieredPoolCard(name);
+  const perDay = (poolCfg.pools || {})[name];
+  const card = document.createElement("div");
+  card.className = "pool-card" + (pool.enabled ? "" : " pool-disabled");
+  card.dataset.pool = name;
+
+  card.innerHTML = `
+    <div class="pool-header">
+      <span class="pool-title">【${pool.name}】</span>
+      <span class="pool-type-chip ${poolTypeCls(pool.type)}">${poolTypeLabel(pool.type)}</span>
+
+      <label class="tog" title="${pool.enabled ? "点击关闭" : "点击开启"}">
+        <input type="checkbox" ${pool.enabled ? "checked" : ""}>
+        <span class="tog-track"></span>
+      </label>
+
+      <div class="pool-limit-wrap">
+        <label>次/天</label>
+        <input type="number" min="0" value="${perDay != null ? perDay : ""}" placeholder="∞"
+               title="留空 = 跟随全局限制">
+      </div>
+
+      <button class="btn-sm btn-sm-del" data-action="del">删除</button>
+    </div>
+    <div class="pool-body" id="body-${safeId(name)}"></div>
+    <div class="pool-dropzone">⬇ 将物品拖放到这里</div>
+    <div class="pool-footer" id="footer-${safeId(name)}"></div>
+  `;
+
+  // ── 开关 ──
+  const tog = card.querySelector(".tog input");
+  tog.addEventListener("change", () => {
+    pool.enabled = tog.checked;
+    card.classList.toggle("pool-disabled", !tog.checked);
+  });
+
+  // ── 次数输入 ──
+  const limitInput = card.querySelector(".pool-limit-wrap input");
+  limitInput.addEventListener("change", () => {
+    if (!poolCfg.pools) poolCfg.pools = {};
+    const n = parseInt(limitInput.value);
+    if (isNaN(n) || limitInput.value === "") delete poolCfg.pools[name];
+    else poolCfg.pools[name] = n;
+  });
+
+  // ── 删除按钮 ──
+  card.querySelector("[data-action=del]").addEventListener("click", () => {
+    if (!confirm(`确认删除池子「${name}」？此操作不可撤销。`)) return;
+    delete pools[name];
+    if (poolCfg.pools) delete poolCfg.pools[name];
+    renderPools();
+    saveToServer(true);
+  });
+
+  // ── 拖放事件 ──
+  const dz = card.querySelector(".pool-dropzone");
+  card.addEventListener("dragover", e => {
+    if (!draggedCode) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    card.classList.add("drop-over");
+  });
+  card.addEventListener("dragleave", e => {
+    if (!card.contains(e.relatedTarget)) card.classList.remove("drop-over");
+  });
+  card.addEventListener("drop", e => {
+    e.preventDefault();
+    card.classList.remove("drop-over");
+    const code = draggedCode || e.dataTransfer.getData("text/plain");
+    if (!code) return;
+    dropItemIntoPool(name, code);
+  });
+
+  renderPoolBody(name, card);
+  return card;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 渲染池子内物品列表
+// ═══════════════════════════════════════════════════════════════
+function renderPoolBody(poolName, cardEl) {
+  const pool = pools[poolName];
+  const body = (cardEl || document.querySelector(`[data-pool="${CSS.escape(poolName)}"]`))
+                 ?.querySelector(`#body-${safeId(poolName)}`);
+  const footer = (cardEl || document.querySelector(`[data-pool="${CSS.escape(poolName)}"]`))
+                   ?.querySelector(`#footer-${safeId(poolName)}`);
+  if (!body) return;
+
+  body.innerHTML = "";
+  const isFixed = pool.type === "fixed";
+
+  pool.items.forEach((entry, idx) => {
+    const item = ITEMS[entry.code] || { name: entry.code, code: entry.code };
+    const val  = isFixed ? (entry.weight ?? 10) : (entry.count ?? 1);
+    const row  = document.createElement("div");
+    row.className = "pool-item-row";
+    row.innerHTML = `
+      <span class="pi-code">${entry.code}</span>
+      <span class="pi-name">${item.name}</span>
+      <div class="pi-val-wrap">
+        <label>${isFixed ? "权重" : "数量"}</label>
+        <input type="number" min="1" max="${isFixed ? 999 : 9999}" value="${val}">
+      </div>
+      <button class="pi-del" title="从池子移除">×</button>
+    `;
+    row.querySelector("input").addEventListener("change", e => {
+      const n = parseInt(e.target.value);
+      if (isNaN(n) || n <= 0) { e.target.value = val; return; }
+      if (isFixed) pool.items[idx].weight = n;
+      else pool.items[idx].count = n;
+    });
+    row.querySelector(".pi-del").addEventListener("click", () => {
+      pool.items.splice(idx, 1);
+      renderPoolBody(poolName);
+    });
+    body.appendChild(row);
+  });
+
+  // footer 统计
+  if (footer) {
+    if (!isFixed && pool.items.length) {
+      const total = pool.items.reduce((s, i) => s + (i.count || 0), 0);
+      footer.textContent = `共 ${pool.items.length} 种 · ${total} 个`;
+    } else if (isFixed && pool.items.length) {
+      footer.textContent = `共 ${pool.items.length} 种`;
+    } else {
+      footer.textContent = "";
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 拖放物品进池子
+// ═══════════════════════════════════════════════════════════════
+function dropItemIntoPool(poolName, code) {
+  const pool = pools[poolName];
+  const isFixed = pool.type === "fixed";
+  const existing = pool.items.find(i => i.code === code);
+  if (existing) {
+    if (isFixed) existing.weight = (existing.weight || 10) + 10;
+    else existing.count = (existing.count || 0) + 1;
+  } else {
+    if (isFixed) pool.items.push({ code, weight: 10 });
+    else pool.items.push({ code, count: 1 });
+  }
+  renderPoolBody(poolName);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 分段池卡片
+// ═══════════════════════════════════════════════════════════════
+function buildTieredPoolCard(name) {
+  const pool = pools[name];
+  const perDay = (poolCfg.pools || {})[name];
+  const card = document.createElement("div");
+  card.className = "pool-card" + (pool.enabled ? "" : " pool-disabled");
+  card.dataset.pool = name;
+
+  card.innerHTML = `
+    <div class="pool-header">
+      <span class="pool-title">【${pool.name}】</span>
+      <span class="pool-type-chip ptype-tiered">分段池</span>
+      <span class="attr-chip">attr: ${pool.attr || "???"}</span>
+      <label class="tog" title="${pool.enabled ? "点击关闭" : "点击开启"}">
+        <input type="checkbox" ${pool.enabled ? "checked" : ""}>
+        <span class="tog-track"></span>
+      </label>
+      <div class="pool-limit-wrap">
+        <label>次/天</label>
+        <input type="number" min="0" value="${perDay != null ? perDay : ""}" placeholder="∞" title="留空 = 跟随全局限制">
+      </div>
+      <button class="btn-sm btn-sm-del" data-action="del">删除</button>
+    </div>
+    <div class="tiered-body" id="tiered-body-${safeId(name)}"></div>
+    <div class="tiered-add-tier">
+      <button class="btn-sm" id="add-tier-${safeId(name)}">＋ 添加分段</button>
+    </div>
+  `;
+
+  const tog = card.querySelector(".tog input");
+  tog.addEventListener("change", () => {
+    pool.enabled = tog.checked;
+    card.classList.toggle("pool-disabled", !tog.checked);
+  });
+
+  const limitInput = card.querySelector(".pool-limit-wrap input");
+  limitInput.addEventListener("change", () => {
+    if (!poolCfg.pools) poolCfg.pools = {};
+    const n = parseInt(limitInput.value);
+    if (isNaN(n) || limitInput.value === "") delete poolCfg.pools[name];
+    else poolCfg.pools[name] = n;
+  });
+
+  card.querySelector("[data-action=del]").addEventListener("click", () => {
+    if (!confirm(`确认删除池子「${name}」？此操作不可撤销。`)) return;
+    delete pools[name];
+    if (poolCfg.pools) delete poolCfg.pools[name];
+    renderPools();
+    saveToServer(true);
+  });
+
+  card.querySelector(`#add-tier-${safeId(name)}`).addEventListener("click", () => {
+    if (!pool.tiers) pool.tiers = [];
+    pool.tiers.push({ label: "", min: null, max: null, type: "free", items: [] });
+    renderTieredBody(name, card);
+  });
+
+  renderTieredBody(name, card);
+  return card;
+}
+
+function renderTieredBody(poolName, cardEl) {
+  const pool = pools[poolName];
+  if (!cardEl) cardEl = document.querySelector(`[data-pool="${CSS.escape(poolName)}"]`);
+  const body = cardEl?.querySelector(`#tiered-body-${safeId(poolName)}`);
+  if (!body) return;
+  body.innerHTML = "";
+  const tiers = pool.tiers || [];
+  if (!tiers.length) {
+    body.innerHTML = `<div class="tiered-body-empty">暂无分段 · 点击「添加分段」，再将物品拖入各段</div>`;
+    return;
+  }
+  tiers.forEach((tier, idx) => {
+    const attrName = pool.attr || "属性";
+    const minVal = tier.min !== null && tier.min !== undefined ? tier.min : "";
+    const maxVal = tier.max !== null && tier.max !== undefined ? tier.max : "";
+    const isFree = tier.type !== "fixed";
+    const tierEl = document.createElement("div");
+    tierEl.className = "tier-row";
+    tierEl.dataset.tierIdx = idx;
+    tierEl.innerHTML = `
+      <div class="tier-header">
+        <input class="tier-label-input" type="text" placeholder="段名（可选）" value="${tier.label || ""}">
+        <div class="tier-range">
+          <input class="tier-range-num" type="number" value="${minVal}" placeholder="-∞" title="最小值（含）">
+          <span class="tier-range-sep">≤ ${attrName} &lt;</span>
+          <input class="tier-range-num" type="number" value="${maxVal}" placeholder="+∞" title="最大值（不含）">
+        </div>
+        <div class="tier-type-mini">
+          <button data-t="free" ${isFree ? 'class="active"' : ""}>数量</button>
+          <button data-t="fixed" ${!isFree ? 'class="active"' : ""}>权重</button>
+        </div>
+        <button class="btn-sm btn-sm-del" data-action="del-tier">删除</button>
+      </div>
+      <div id="tier-items-${safeId(poolName)}-${idx}"></div>
+      <div class="tier-dropzone">⬇ 将物品拖放到此分段</div>
+    `;
+
+    tierEl.querySelector(".tier-label-input").addEventListener("change", e => {
+      tier.label = e.target.value.trim();
+    });
+
+    const [minIn, maxIn] = tierEl.querySelectorAll(".tier-range-num");
+    minIn.addEventListener("change", () => {
+      const n = parseFloat(minIn.value);
+      tier.min = isNaN(n) || minIn.value === "" ? null : n;
+    });
+    maxIn.addEventListener("change", () => {
+      const n = parseFloat(maxIn.value);
+      tier.max = isNaN(n) || maxIn.value === "" ? null : n;
+    });
+
+    tierEl.querySelectorAll(".tier-type-mini button").forEach(btn => {
+      btn.addEventListener("click", () => {
+        tier.type = btn.dataset.t;
+        tierEl.querySelectorAll(".tier-type-mini button").forEach(b => b.classList.toggle("active", b === btn));
+        renderTierItems(poolName, idx, tierEl);
+      });
+    });
+
+    tierEl.querySelector("[data-action=del-tier]").addEventListener("click", () => {
+      pool.tiers.splice(idx, 1);
+      renderTieredBody(poolName, cardEl);
+    });
+
+    tierEl.addEventListener("dragover", e => {
+      if (!draggedCode) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+      tierEl.classList.add("drop-over");
+    });
+    tierEl.addEventListener("dragleave", e => {
+      if (!tierEl.contains(e.relatedTarget)) tierEl.classList.remove("drop-over");
+    });
+    tierEl.addEventListener("drop", e => {
+      e.preventDefault();
+      tierEl.classList.remove("drop-over");
+      const code = draggedCode || e.dataTransfer.getData("text/plain");
+      if (!code) return;
+      dropItemIntoTier(poolName, idx, code, tierEl);
+    });
+
+    renderTierItems(poolName, idx, tierEl);
+    body.appendChild(tierEl);
+  });
+}
+
+function renderTierItems(poolName, tierIdx, tierEl) {
+  const tier = (pools[poolName].tiers || [])[tierIdx];
+  if (!tier) return;
+  const itemsDiv = tierEl?.querySelector(`#tier-items-${safeId(poolName)}-${tierIdx}`);
+  if (!itemsDiv) return;
+  itemsDiv.innerHTML = "";
+  const isFixed = tier.type === "fixed";
+  (tier.items || []).forEach((entry, i) => {
+    const item = ITEMS[entry.code] || { name: entry.code, code: entry.code };
+    const val = isFixed ? (entry.weight ?? 10) : (entry.count ?? 1);
+    const row = document.createElement("div");
+    row.className = "pool-item-row";
+    row.innerHTML = `
+      <span class="pi-code">${entry.code}</span>
+      <span class="pi-name">${item.name}</span>
+      <div class="pi-val-wrap">
+        <label>${isFixed ? "权重" : "数量"}</label>
+        <input type="number" min="1" max="${isFixed ? 999 : 9999}" value="${val}">
+      </div>
+      <button class="pi-del" title="移除">×</button>
+    `;
+    row.querySelector("input").addEventListener("change", e => {
+      const n = parseInt(e.target.value);
+      if (isNaN(n) || n <= 0) { e.target.value = val; return; }
+      if (isFixed) tier.items[i].weight = n;
+      else tier.items[i].count = n;
+    });
+    row.querySelector(".pi-del").addEventListener("click", () => {
+      tier.items.splice(i, 1);
+      renderTierItems(poolName, tierIdx, tierEl);
+    });
+    itemsDiv.appendChild(row);
+  });
+}
+
+function dropItemIntoTier(poolName, tierIdx, code, tierEl) {
+  const tier = (pools[poolName].tiers || [])[tierIdx];
+  if (!tier) return;
+  const isFixed = tier.type === "fixed";
+  if (!tier.items) tier.items = [];
+  const existing = tier.items.find(i => i.code === code);
+  if (existing) {
+    if (isFixed) existing.weight = (existing.weight || 10) + 10;
+    else existing.count = (existing.count || 0) + 1;
+  } else {
+    if (isFixed) tier.items.push({ code, weight: 10 });
+    else tier.items.push({ code, count: 1 });
+  }
+  renderTierItems(poolName, tierIdx, tierEl);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 新建池子
+// ═══════════════════════════════════════════════════════════════
+let newPoolType = "free";
+
+document.getElementById("btnNewPool").addEventListener("click", () => {
+  const form = document.getElementById("newPoolForm");
+  form.classList.toggle("open");
+  if (form.classList.contains("open")) document.getElementById("newPoolName").focus();
+});
+document.getElementById("btnCancelNew").addEventListener("click", () => {
+  document.getElementById("newPoolForm").classList.remove("open");
+});
+document.querySelectorAll("#typeToggle button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    newPoolType = btn.dataset.t;
+    document.querySelectorAll("#typeToggle button").forEach(b => b.classList.toggle("active", b === btn));
+    document.getElementById("nfAttrRow").classList.toggle("visible", newPoolType === "tiered");
+  });
+});
+document.getElementById("btnCreate").addEventListener("click", () => {
+  const name = document.getElementById("newPoolName").value.trim();
+  if (!name) { document.getElementById("newPoolName").focus(); return; }
+  if (pools[name]) { showToast(`池子「${name}」已存在`, false); return; }
+  if (newPoolType === "tiered") {
+    const attrEl = document.getElementById("newPoolAttr");
+    if (attrEl.disabled) { showToast("❌ 无可用属性，请先在机器人中注册属性并同步设置", false); return; }
+    const attr = attrEl.value;
+    if (!attr) { showToast("请选择绑定属性", false); return; }
+    pools[name] = { name, type: "tiered", attr, enabled: true, items: [], tiers: [] };
+    attrEl.value = "";
+  } else {
+    pools[name] = { name, type: newPoolType, enabled: true, items: [] };
+  }
+  document.getElementById("newPoolName").value = "";
+  document.getElementById("newPoolForm").classList.remove("open");
+  renderPools();
+  saveToServer(true);
+});
+document.getElementById("newPoolName").addEventListener("keydown", e => {
+  if (e.key === "Enter") document.getElementById("btnCreate").click();
+  if (e.key === "Escape") document.getElementById("btnCancelNew").click();
+});
+
+// ═══════════════════════════════════════════════════════════════
+// 全局次数设定
+// ═══════════════════════════════════════════════════════════════
+const gLimitInput = document.getElementById("globalLimit");
+gLimitInput.value = poolCfg.total != null ? poolCfg.total : "";
+gLimitInput.addEventListener("change", () => {
+  const n = parseInt(gLimitInput.value);
+  poolCfg.total = (isNaN(n) || gLimitInput.value === "") ? null : n;
+});
+
+// ═══════════════════════════════════════════════════════════════
+// 物品图鉴过滤
+// ═══════════════════════════════════════════════════════════════
+document.querySelectorAll(".item-filter").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".item-filter").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    libFilter = btn.dataset.t;
+    renderLib();
+  });
+});
+document.getElementById("libSearch").addEventListener("input", e => {
+  libSearch = e.target.value.trim();
+  renderLib();
+});
+
+// ═══════════════════════════════════════════════════════════════
+// 保存（共用函数，创建/删除时自动调用，保存按钮也调用）
+// ═══════════════════════════════════════════════════════════════
+async function saveToServer(silent = false) {
+  const btn = document.getElementById("btnSave");
+  btn.disabled = true;
+  btn.textContent = "保存中…";
+  try {
+    const res = await fetch("{{ url_for('admin_pools_save') }}", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pool_definitions: pools, pool_draw_config: poolCfg })
+    });
+    const data = await res.json();
+    if (!silent) {
+      if (data.ok) showToast("✅ 保存成功！在机器人中发送「同步池子」即可立即生效。", true);
+      else showToast("❌ 保存失败：" + (data.error || "未知错误"), false);
+    } else if (!data.ok) {
+      showToast("❌ 自动保存失败：" + (data.error || "未知错误"), false);
+    }
+  } catch (e) {
+    if (!silent) showToast("❌ 网络错误：" + e.message, false);
+  }
+  btn.disabled = false;
+  btn.textContent = "保存";
+}
+document.getElementById("btnSave").addEventListener("click", () => saveToServer(false));
+
+// ═══════════════════════════════════════════════════════════════
+// Toast
+// ═══════════════════════════════════════════════════════════════
+let toastTimer = null;
+function showToast(msg, ok) {
+  const el = document.getElementById("toast");
+  document.getElementById("toastMsg").textContent = msg;
+  document.getElementById("toastMsg").className = ok ? "toast-ok" : "toast-err";
+  el.classList.remove("hidden");
+  clearTimeout(toastTimer);
+  if (ok) toastTimer = setTimeout(hideToast, 5000);
+}
+function hideToast() {
+  document.getElementById("toast").classList.add("hidden");
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 初始化
+// ═══════════════════════════════════════════════════════════════
+renderLib();
+renderPools();
+</script>
+{% endblock %}

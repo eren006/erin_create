@@ -103,9 +103,10 @@ CONFIG_SCHEMA = [
         {"key": "lovemail_expose_chance",  "label": "曝光概率（%）","type": "number", "default": "10", "min": 0, "max": 100},
     ]},
     {"section": "发送信件", "fields": [
-        {"key": "direct_letter_daily_limit", "label": "每日上限",   "type": "number", "default": "5"},
-        {"key": "direct_letter_min_chars",   "label": "最低字数",   "type": "number", "default": "0"},
-        {"key": "direct_letter_reward",      "label": "写信币赏金", "type": "number", "default": "0"},
+        {"key": "direct_letter_daily_limit", "label": "每日上限",       "type": "number", "default": "5"},
+        {"key": "direct_letter_cooldown",    "label": "发信冷却（分钟）","type": "number", "default": "0"},
+        {"key": "direct_letter_min_chars",   "label": "最低字数",       "type": "number", "default": "0"},
+        {"key": "direct_letter_reward",      "label": "写信币赏金",     "type": "number", "default": "0"},
     ]},
     {"section": "心愿系统", "fields": [
         {"key": "wish_public_send",      "label": "心愿公开提醒",          "type": "bool",   "default": "false"},
@@ -269,6 +270,7 @@ def _migrate(conn):
         conn.execute("ALTER TABLE extra_events ADD COLUMN tenant_id INTEGER NOT NULL DEFAULT 1")
 
     if "tenant_id" not in _col_names(conn, "site_config"):
+        conn.execute("DROP TABLE IF EXISTS site_config_v2")
         conn.execute("""
             CREATE TABLE site_config_v2 (
                 tenant_id INTEGER NOT NULL DEFAULT 1,
@@ -460,6 +462,18 @@ def _migrate(conn):
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_config_history_show ON config_history(show_id, created_at)")
+
+    # ── config_templates 表 ─────────────────────────────────────────────────
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS config_templates (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            tenant_id   INTEGER NOT NULL,
+            name        TEXT NOT NULL,
+            config_data TEXT NOT NULL,
+            created_at  INTEGER DEFAULT 0
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cfg_tpl_tenant ON config_templates(tenant_id)")
 
     # ── 7. reward_records 表 ────────────────────────────────────────────────
     conn.execute("""
@@ -902,6 +916,9 @@ def admin_show_new():
     if not name:
         return redirect(url_for("admin_shows") + "?msg=empty_name")
     db  = get_db()
+    count = db.execute("SELECT COUNT(*) FROM shows WHERE tenant_id=?", (tid,)).fetchone()[0]
+    if count >= 5:
+        return redirect(url_for("admin_shows") + "?msg=limit_reached")
     now = int(time.time() * 1000)
     db.execute(
         "INSERT INTO shows (tenant_id,name,description,is_current,public_view_enabled,public_token,created_at) "
@@ -1058,15 +1075,31 @@ def admin_config_page():
     last_sync = ts_to_str(int(last_sync_ts)) if last_sync_ts else None
     item_registry_json       = flat.get("item_registry", "{}")
     attr_defs_json           = flat.get("rpg_attr_defs", "{}")
+    pool_defs_json           = flat.get("pool_definitions", "{}")
     end_bonus_templates_json = flat.get("end_game_bonus_templates", "[]")
     item_pending_json        = flat.get("item_registry_pending", "[]")
+    tpl_rows = db.execute(
+        "SELECT id, name, config_data, created_at FROM config_templates "
+        "WHERE tenant_id=? ORDER BY created_at DESC",
+        (tid,)
+    ).fetchall()
+    cfg_templates = [
+        {"id": r["id"], "name": r["name"],
+         "data": json.loads(r["config_data"]),
+         "time_str": ts_to_str(r["created_at"])}
+        for r in tpl_rows
+    ]
     return render_template("admin_config.html", schema=CONFIG_SCHEMA,
                            flat=flat, routing_display=routing_display,
                            saved=request.args.get("saved"), last_sync=last_sync,
                            item_registry_json=item_registry_json,
                            attr_defs_json=attr_defs_json,
+                           pool_defs_json=pool_defs_json,
                            end_bonus_templates_json=end_bonus_templates_json,
-                           item_pending_json=item_pending_json)
+                           item_pending_json=item_pending_json,
+                           cfg_templates=cfg_templates,
+                           tpl_msg=request.args.get("tpl_msg"),
+                           tpl_max=_TEMPLATE_MAX)
 
 
 # ── 配置历史路由 ─────────────────────────────────────────────────────────────
@@ -1135,6 +1168,50 @@ def admin_config_rollback(hid):
     if request.headers.get("X-Fetch") == "1":
         return jsonify({"ok": True})
     return redirect(url_for("admin_config_history") + "?rolled=1")
+
+
+# ── 配置预设路由 ─────────────────────────────────────────────────────────────
+
+_TEMPLATE_EXCLUDE_KEYS = frozenset({
+    "item_registry", "item_registry_pending",
+    "rpg_attr_defs", "sys_attr_presets",
+    "end_game_bonus_templates", "end_game_draw_config",
+    "_last_bot_sync",
+})
+_TEMPLATE_MAX = 5
+
+
+@app.route("/admin/config/templates/save", methods=["POST"])
+@require_admin
+def admin_config_template_save():
+    tid  = current_tenant_id()
+    sid  = get_show_id()
+    name = request.form.get("name", "").strip()
+    if not name:
+        return redirect(url_for("admin_config_page") + "?tpl_msg=empty_name")
+    db = get_db()
+    if db.execute("SELECT COUNT(*) FROM config_templates WHERE tenant_id=?", (tid,)).fetchone()[0] >= _TEMPLATE_MAX:
+        return redirect(url_for("admin_config_page") + "?tpl_msg=limit")
+    flat = get_flat_config(db, sid)
+    data = {k: v for k, v in flat.items() if k not in _TEMPLATE_EXCLUDE_KEYS}
+    db.execute(
+        "INSERT INTO config_templates(tenant_id,name,config_data,created_at) VALUES(?,?,?,?)",
+        (tid, name, json.dumps(data, ensure_ascii=False), int(time.time() * 1000))
+    )
+    db.commit()
+    return redirect(url_for("admin_config_page") + "?tpl_msg=saved")
+
+
+@app.route("/admin/config/templates/<int:tplid>/delete", methods=["POST"])
+@require_admin
+def admin_config_template_delete(tplid):
+    tid = current_tenant_id()
+    db  = get_db()
+    db.execute("DELETE FROM config_templates WHERE id=? AND tenant_id=?", (tplid, tid))
+    db.commit()
+    if request.headers.get("X-Fetch") == "1":
+        return jsonify({"ok": True})
+    return redirect(url_for("admin_config_page") + "?tpl_msg=deleted")
 
 
 # ── 数据浏览路由 ─────────────────────────────────────────────────────────────
@@ -1588,7 +1665,7 @@ def letters_view():
     db      = get_db()
     show_id = get_show_id()
     flat    = get_flat_config(db, show_id) if show_id else {}
-    enabled = flat.get("enable_direct_letter", "false") == "true"
+    enabled = flat.get("global_feature_toggle__enable_direct_letter", "false") == "true"
     letters = _get_letters(db, show_id) if show_id else []
     locked  = not letters  # 没有记录就锁页
     # 筛选
@@ -2480,6 +2557,182 @@ def api_reward_config():
         "bonus_templates":   bonus_templates,
         "draw_config":       draw_config,
     })
+
+
+# ── 抽取池管理 ──────────────────────────────────────────────────────────────
+
+def _get_pool_data(db, show_id):
+    flat = get_flat_config(db, show_id)
+    pool_defs = json.loads(flat.get("pool_definitions", "{}") or "{}")
+    pool_cfg  = json.loads(flat.get("pool_draw_config", '{"total":null,"pools":{}}') or '{"total":null,"pools":{}}')
+    item_registry = json.loads(flat.get("item_registry", "{}") or "{}")
+    if not item_registry:
+        item_registry = json.loads(flat.get("reward_item_registry", "{}") or "{}")
+    return pool_defs, pool_cfg, item_registry
+
+
+@app.route("/admin/pools", methods=["GET"])
+@require_admin
+def admin_pools():
+    sid = get_show_id()
+    db  = get_db()
+    pool_defs, pool_cfg, item_registry = _get_pool_data(db, sid)
+    flat = get_flat_config(db, sid)
+    attr_defs = json.loads(flat.get("rpg_attr_defs", "{}") or "{}")
+    return render_template("admin_pools.html",
+                           pool_defs=pool_defs,
+                           pool_cfg=pool_cfg,
+                           item_registry=item_registry,
+                           attr_defs=attr_defs)
+
+
+@app.route("/admin/pools/save", methods=["POST"])
+@require_admin
+def admin_pools_save():
+    sid = get_show_id()
+    tid = current_tenant_id()
+    db  = get_db()
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"ok": False, "error": "no data"}), 400
+    pool_defs = data.get("pool_definitions", {})
+    pool_cfg  = data.get("pool_draw_config", {"total": None, "pools": {}})
+    for key, val in (("pool_definitions", pool_defs), ("pool_draw_config", pool_cfg)):
+        db.execute(
+            "INSERT INTO site_config(show_id,tenant_id,key,value) VALUES(?,?,?,?) "
+            "ON CONFLICT(show_id,key) DO UPDATE SET value=excluded.value",
+            (sid, tid, key, json.dumps(val, ensure_ascii=False))
+        )
+    db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/pool_config", methods=["GET"])
+def api_pool_config():
+    """机器人拉取抽取池配置。"""
+    tid     = get_tenant_from_token()
+    show_id = get_current_show_id_for_tenant(tid)
+    if not show_id:
+        abort(503)
+    db = get_db()
+    pool_defs, pool_cfg, _ = _get_pool_data(db, show_id)
+    return jsonify({"ok": True, "pool_definitions": pool_defs, "pool_draw_config": pool_cfg})
+
+
+@app.route("/api/pool_config", methods=["POST"])
+def api_pool_config_push():
+    """机器人推送本地池子配置到存档服务器（覆盖）。"""
+    tid     = get_tenant_from_token()
+    show_id = get_current_show_id_for_tenant(tid)
+    if not show_id:
+        abort(503)
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"ok": False, "error": "no data"}), 400
+    db = get_db()
+    updates = []
+    if "pool_definitions" in data:
+        updates.append(("pool_definitions", data["pool_definitions"]))
+    if "pool_draw_config" in data:
+        updates.append(("pool_draw_config", data["pool_draw_config"]))
+    if not updates:
+        return jsonify({"ok": False, "error": "missing pool_definitions or pool_draw_config"}), 400
+    for key, val in updates:
+        db.execute(
+            "INSERT INTO site_config(show_id,tenant_id,key,value) VALUES(?,?,?,?) "
+            "ON CONFLICT(show_id,key) DO UPDATE SET value=excluded.value",
+            (show_id, tid, key, json.dumps(val, ensure_ascii=False))
+        )
+    db.commit()
+    pool_count = len(data.get("pool_definitions", {}))
+    return jsonify({"ok": True, "pools": pool_count})
+
+
+@app.route("/admin/auctions", methods=["GET"])
+@require_admin
+def admin_auctions():
+    sid = get_show_id()
+    db  = get_db()
+    flat = get_flat_config(db, sid)
+    queue    = json.loads(flat.get("auction_queue",    "[]") or "[]")
+    snapshot = json.loads(flat.get("auction_snapshot", "{}") or "{}")
+    item_registry = json.loads(flat.get("item_registry", "{}") or "{}")
+    if not item_registry:
+        item_registry = json.loads(flat.get("reward_item_registry", "{}") or "{}")
+    return render_template("admin_auctions.html",
+                           queue=queue, snapshot=snapshot,
+                           item_registry=item_registry)
+
+
+@app.route("/admin/auctions/save", methods=["POST"])
+@require_admin
+def admin_auctions_save():
+    sid = get_show_id()
+    tid = current_tenant_id()
+    db  = get_db()
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"ok": False, "error": "no data"}), 400
+    queue = data.get("queue", [])
+    db.execute(
+        "INSERT INTO site_config(show_id,tenant_id,key,value) VALUES(?,?,?,?) "
+        "ON CONFLICT(show_id,key) DO UPDATE SET value=excluded.value",
+        (sid, tid, "auction_queue", json.dumps(queue, ensure_ascii=False))
+    )
+    db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/auction_queue", methods=["GET"])
+def api_auction_queue_get():
+    """机器人拉取拍卖队列。"""
+    tid     = get_tenant_from_token()
+    show_id = get_current_show_id_for_tenant(tid)
+    if not show_id:
+        abort(503)
+    db = get_db()
+    flat  = get_flat_config(db, show_id)
+    queue = json.loads(flat.get("auction_queue", "[]") or "[]")
+    return jsonify({"ok": True, "queue": queue})
+
+
+@app.route("/api/auction_queue", methods=["DELETE"])
+def api_auction_queue_clear():
+    """机器人拉取完毕后清空队列。"""
+    tid     = get_tenant_from_token()
+    show_id = get_current_show_id_for_tenant(tid)
+    if not show_id:
+        abort(503)
+    db = get_db()
+    tid_w = tid
+    db.execute(
+        "INSERT INTO site_config(show_id,tenant_id,key,value) VALUES(?,?,?,?) "
+        "ON CONFLICT(show_id,key) DO UPDATE SET value=excluded.value",
+        (show_id, tid_w, "auction_queue", "[]")
+    )
+    db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/auction_snapshot", methods=["POST"])
+def api_auction_snapshot():
+    """机器人推送拍卖快照到存档服务器。"""
+    tid     = get_tenant_from_token()
+    show_id = get_current_show_id_for_tenant(tid)
+    if not show_id:
+        abort(503)
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"ok": False, "error": "no data"}), 400
+    snapshot = data.get("snapshot", {})
+    db = get_db()
+    db.execute(
+        "INSERT INTO site_config(show_id,tenant_id,key,value) VALUES(?,?,?,?) "
+        "ON CONFLICT(show_id,key) DO UPDATE SET value=excluded.value",
+        (show_id, tid, "auction_snapshot", json.dumps(snapshot, ensure_ascii=False))
+    )
+    db.commit()
+    return jsonify({"ok": True, "count": len(snapshot)})
 
 
 if __name__ == "__main__":

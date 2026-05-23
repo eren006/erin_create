@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% block title %}超管登录{% endblock %}
+{% block body %}
+<div class="page" style="max-width:380px;">
+  <div class="page-title">超管登录</div>
+  {% for e in errors %}<div class="err-msg">{{ e }}</div>{% endfor %}
+  <div class="card">
+    <form method="post">
+      <div class="fg">
+        <label class="fl">超管密码</label>
+        <input class="fi" type="password" name="password" autofocus>
+      </div>
+      <button class="btn btn-primary" type="submit" style="width:100%;">登录</button>
+    </form>
+    <div style="margin-top:12px;font-size:12px;color:var(--muted);text-align:center;">
+      <a href="{{ url_for('index') }}">返回首页</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

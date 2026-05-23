@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}用户反馈 · 语擦日历{% endblock %}
+{% block head %}
+<style>
+.sa-header { display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:10px }
+.sa-badge { background:#1a1200;border:1px solid #4a3a00;border-radius:20px;padding:4px 14px;font-size:12px;color:var(--gold) }
+.fb-filters { display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px }
+.fb-filter { padding:4px 14px;border-radius:20px;font-size:12px;font-weight:600;border:1px solid var(--border);color:var(--muted);background:var(--surface2);text-decoration:none;transition:all .15s }
+.fb-filter:hover { color:var(--text);border-color:var(--accent) }
+.fb-filter.active { color:#fff;border-color:transparent;background:var(--accent) }
+.table-wrap { background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;overflow-x:auto }
+.fb-table { width:100%;border-collapse:collapse }
+.fb-table th { text-align:left;padding:10px 14px;font-size:12px;font-weight:600;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap }
+.fb-table td { padding:12px 14px;border-bottom:1px solid var(--border);font-size:13px;vertical-align:top }
+.fb-table tr:last-child td { border-bottom:none }
+.fb-table tr:hover td { background:var(--surface2) }
+.fb-table tr.is-read td { opacity:.55 }
+.type-bug  { display:inline-block;background:#2a1515;border:1px solid #4a2020;color:var(--red);border-radius:20px;padding:1px 8px;font-size:11px;white-space:nowrap }
+.type-wish { display:inline-block;background:#1a1200;border:1px solid #4a3a00;color:var(--gold);border-radius:20px;padding:1px 8px;font-size:11px;white-space:nowrap }
+.fb-content { white-space:pre-wrap;word-break:break-all;max-width:480px;line-height:1.7 }
+.action-row { display:flex;gap:6px;flex-wrap:wrap }
+</style>
+{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="sa-header">
+    <div style="display:flex;align-items:center;gap:12px">
+      <a href="{{ url_for('superadmin') }}" class="btn btn-ghost btn-sm">← 用户管理</a>
+      <h1 class="page-title" style="margin:0">用户反馈</h1>
+    </div>
+    <span class="sa-badge">🔑 超级管理员</span>
+  </div>
+
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+    <div class="fb-filters">
+      <a href="{{ url_for('superadmin_feedbacks') }}"
+         class="fb-filter {% if not ftype %}active{% endif %}">全部（{{ total }}）</a>
+      <a href="{{ url_for('superadmin_feedbacks', type='bug') }}"
+         class="fb-filter {% if ftype=='bug' %}active{% endif %}" style="{% if ftype=='bug' %}background:var(--red){% endif %}">🐛 Bug</a>
+      <a href="{{ url_for('superadmin_feedbacks', type='wish') }}"
+         class="fb-filter {% if ftype=='wish' %}active{% endif %}" style="{% if ftype=='wish' %}background:#6a4800{% endif %}">✨ 许愿</a>
+    </div>
+    {% if total > 0 %}
+    <form method="post" action="{{ url_for('superadmin_feedback_read_all') }}">
+      <button class="btn btn-ghost btn-sm" type="submit">全部标为已读</button>
+    </form>
+    {% endif %}
+  </div>
+
+  {% if feedbacks %}
+  <div class="table-wrap">
+    <table class="fb-table">
+      <thead>
+        <tr>
+          <th>类型</th>
+          <th>用户</th>
+          <th>内容</th>
+          <th>时间</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in feedbacks %}
+        <tr class="{{ 'is-read' if f.is_read else '' }}">
+          <td>
+            {% if f.is_read == 0 %}<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--red);margin-right:5px;vertical-align:middle"></span>{% endif %}
+            {% if f.type == 'bug' %}<span class="type-bug">🐛 Bug</span>
+            {% else %}<span class="type-wish">✨ 许愿</span>{% endif %}
+          </td>
+          <td style="white-space:nowrap;color:var(--muted)">
+            {{ f.display_name or f.username }}<br>
+            <span style="font-size:11px">@{{ f.username }}</span>
+          </td>
+          <td><div class="fb-content">{{ f.content }}</div></td>
+          <td style="white-space:nowrap;color:var(--muted);font-size:12px">
+            {{ f.created_at | datetimeformat }}
+          </td>
+          <td>
+            <div class="action-row">
+              {% if not f.is_read %}
+              <form method="post" action="{{ url_for('superadmin_feedback_read', fid=f.id) }}">
+                <button class="btn btn-ghost btn-sm" type="submit">标为已读</button>
+              </form>
+              {% endif %}
+              <form method="post" action="{{ url_for('superadmin_feedback_delete', fid=f.id) }}"
+                    onsubmit="return confirm('删除这条反馈？')">
+                <button class="btn btn-danger btn-sm" type="submit">删除</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if total_pages > 1 %}
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;flex-wrap:wrap;gap:8px">
+    <span style="font-size:12px;color:var(--muted)">共 {{ total }} 条 · 第 {{ page }}/{{ total_pages }} 页</span>
+    <div style="display:flex;gap:6px">
+      {% if page > 1 %}
+      <a href="{{ url_for('superadmin_feedbacks', page=page-1, type=ftype) }}" class="btn btn-ghost btn-sm">← 上一页</a>
+      {% endif %}
+      {% for p in range(1, total_pages+1) %}
+      <a href="{{ url_for('superadmin_feedbacks', page=p, type=ftype) }}"
+         class="btn btn-sm {% if p == page %}btn-primary{% else %}btn-ghost{% endif %}">{{ p }}</a>
+      {% endfor %}
+      {% if page < total_pages %}
+      <a href="{{ url_for('superadmin_feedbacks', page=page+1, type=ftype) }}" class="btn btn-ghost btn-sm">下一页 →</a>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% else %}
+  <div class="empty">还没有任何反馈</div>
+  {% endif %}
+</div>
+{% endblock %}

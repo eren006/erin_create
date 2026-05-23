@@ -1,0 +1,103 @@
+{% extends 'base.html' %}
+{% block title %}订单 {{ order.order_no }}{% endblock %}
+{% block body %}
+<div class="page" style="max-width:720px;">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+    <div class="page-title" style="margin-bottom:0;">订单详情</div>
+    <span class="badge" style="background:{{ order.status|sc }}22;color:{{ order.status|sc }};border:1px solid {{ order.status|sc }}44;">
+      {{ order.status|sl }}
+    </span>
+    <div class="spacer"></div>
+    <span class="mono muted">{{ order.order_no }}</span>
+  </div>
+
+  <div class="card">
+    <div class="g2">
+      <div>
+        <div class="fl">接单方</div>
+        <div>{{ tenant.display_name or tenant.slug }}</div>
+      </div>
+      <div>
+        <div class="fl">提交时间</div>
+        <div>{{ order.created_at|fmt }}</div>
+      </div>
+      <div>
+        <div class="fl">服务类型</div>
+        <div>{{ order.service_type or '—' }}</div>
+      </div>
+      <div>
+        <div class="fl">最后更新</div>
+        <div>{{ order.updated_at|fmt }}</div>
+      </div>
+    </div>
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+      <div class="fl">标题</div>
+      <div style="font-size:15px;font-weight:500;margin-top:2px;">{{ order.title }}</div>
+    </div>
+    {% if order.description %}
+    <div style="margin-top:12px;">
+      <div class="fl">详细说明</div>
+      <div style="margin-top:4px;color:var(--muted);font-size:13px;white-space:pre-wrap;">{{ order.description }}</div>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if images %}
+  <div class="card">
+    <div class="fl" style="margin-bottom:10px;">参考图片</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;">
+      {% for img in images %}
+      <a href="{{ url_for('serve_upload', filename=img.filename) }}" target="_blank">
+        <img src="{{ url_for('serve_upload', filename=img.filename) }}"
+             style="width:90px;height:90px;object-fit:cover;border-radius:6px;border:1px solid var(--border);">
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if order.status == 'completed' %}
+  <div class="card" style="border-color:color-mix(in srgb,var(--green) 35%,var(--border));">
+    <div style="color:var(--green);font-weight:500;margin-bottom:10px;">✅ 已完成</div>
+    {% if order.result_text %}
+    <div style="font-size:13px;white-space:pre-wrap;color:var(--text);">{{ order.result_text }}</div>
+    {% endif %}
+    {% if result_images %}
+    <div style="margin-top:12px;">
+      <div class="fl" style="margin-bottom:8px;">成品</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        {% for img in result_images %}
+        <a href="{{ url_for('serve_upload', filename=img.filename) }}" target="_blank">
+          <img src="{{ url_for('serve_upload', filename=img.filename) }}"
+               style="width:120px;height:120px;object-fit:cover;border-radius:6px;border:1px solid var(--border);">
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% elif order.status == 'rejected' %}
+  <div class="card" style="border-color:color-mix(in srgb,var(--red) 35%,var(--border));">
+    <div style="color:var(--red);font-weight:500;margin-bottom:6px;">已拒绝</div>
+    {% if order.admin_notes %}<div style="font-size:13px;color:var(--muted);">{{ order.admin_notes }}</div>{% endif %}
+  </div>
+  {% endif %}
+
+  {% if logs %}
+  <div class="card">
+    <div class="fl" style="margin-bottom:10px;">进度记录</div>
+    {% for l in logs %}
+    <div style="display:flex;gap:10px;align-items:baseline;padding:5px 0;border-bottom:1px solid var(--border);">
+      <span style="font-size:11px;color:var(--muted);white-space:nowrap;min-width:110px;">{{ l.created_at|fmt }}</span>
+      <span style="font-size:13px;">{{ l.action }}</span>
+      {% if l.note %}<span style="font-size:12px;color:var(--muted);">{{ l.note }}</span>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div style="margin-top:8px;">
+    <a href="{{ url_for('index') }}" class="btn btn-ghost btn-sm">← 返回首页</a>
+  </div>
+</div>
+{% endblock %}

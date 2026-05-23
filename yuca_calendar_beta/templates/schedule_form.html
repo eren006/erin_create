@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% block title %}{{ '编辑档期' if action == 'edit' else '录入档期' }} · 语擦日历{% endblock %}
+{% block head %}
+<style>
+.form-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px 28px; max-width: 700px; }
+.form-section-title { font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; margin: 20px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.form-section-title:first-child { margin-top: 0; }
+.range-hint { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; font-size: 12px; color: var(--muted); margin-bottom: 14px; line-height: 1.8; }
+.range-hint code { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-family: monospace; color: var(--text); font-size: 12px; }
+
+/* 颜色选择器 */
+.color-picker-wrap { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.color-swatch {
+  width: 28px; height: 28px; border-radius: 50%; cursor: pointer;
+  border: 2px solid transparent; transition: all .15s; flex-shrink: 0;
+}
+.color-swatch:hover { transform: scale(1.15); }
+.color-swatch.selected { border-color: var(--text); box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--text); }
+.color-swatch.none-swatch { background: var(--surface2); border: 2px dashed var(--border); position: relative; }
+.color-swatch.none-swatch::after { content: '×'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 14px; color: var(--muted); line-height: 1; }
+.color-custom-wrap { display: flex; align-items: center; gap: 6px; }
+.color-custom-input { width: 36px; height: 28px; border-radius: 6px; border: 1px solid var(--border); cursor: pointer; padding: 2px; background: var(--surface2); }
+</style>
+{% endblock %}
+{% block body %}
+<div class="page">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+    <a href="{{ url_for('calendar') }}" class="btn btn-ghost btn-sm">← 返回</a>
+    <h1 class="page-title" style="margin:0">{{ '编辑档期' if action == 'edit' else '录入新档期' }}</h1>
+  </div>
+
+  {% if errors %}
+  <div class="form-errors">
+    {% for e in errors %}<div class="form-error">⚠ {{ e }}</div>{% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="form-card">
+    <form method="post">
+
+      <div class="form-section-title">必填信息</div>
+      <div class="form-group">
+        <label class="form-label">恋综名 <span class="req">*</span></label>
+        <input class="form-input" type="text" name="show_name"
+               value="{{ form.show_name or '' }}" placeholder="如：长日将尽第三季" required autofocus>
+      </div>
+
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">开始日期 <span class="req">*</span></label>
+          <input class="form-input" type="date" name="start_date"
+                 value="{{ form.get('start_date','') or '' }}" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">结束日期 <span class="req">*</span></label>
+          <input class="form-input" type="date" name="end_date"
+                 value="{{ form.get('end_date','') or '' }}" required>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:14px">跨年档期直接选跨年的日期即可，如 12月1日 至次年 2月1日</div>
+
+      <div class="form-section-title">档期颜色</div>
+      <div class="form-group">
+        <label class="form-label">在日历上显示的颜色（留空使用自动分配）</label>
+        <div class="color-picker-wrap" id="color-picker">
+          <div class="color-swatch none-swatch {% if not form.color %}selected{% endif %}"
+               onclick="pickColor('', this)" title="自动分配"></div>
+          {% set palette = ['#8b7cf6','#f472b6','#34d399','#60a5fa','#fbbf24','#f87171','#a78bfa','#2dd4bf','#fb923c','#e879f9','#4ade80','#38bdf8','#facc15','#c084fc','#fb7185','#a3e635'] %}
+          {% for c in palette %}
+          <div class="color-swatch {% if form.color == c %}selected{% endif %}"
+               style="background:{{ c }}" onclick="pickColor('{{ c }}', this)" title="{{ c }}"></div>
+          {% endfor %}
+          <div class="color-custom-wrap">
+            <input type="color" class="color-custom-input" id="custom-color-input"
+                   value="{{ form.color if form.color else '#8b7cf6' }}"
+                   oninput="pickColor(this.value, null, true)" title="自定义颜色">
+          </div>
+        </div>
+        <input type="hidden" name="color" id="color-value" value="{{ form.color or '' }}">
+      </div>
+
+      <div class="form-section-title">角色信息</div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">角色名</label>
+          <input class="form-input" type="text" name="role_name"
+                 value="{{ '' if form.role_name == '未知' else (form.role_name or '') }}" placeholder="角色名称">
+        </div>
+        <div class="form-group">
+          <label class="form-label">角色类型</label>
+          <input class="form-input" type="text" name="role_type"
+                 value="{{ '' if form.role_type == '未知' else (form.role_type or '') }}" placeholder="自由填写">
+        </div>
+        <div class="form-group">
+          <label class="form-label">性别</label>
+          <input class="form-input" type="text" name="gender" list="list-gender"
+                 value="{{ '' if form.gender == '未知' else (form.gender or '') }}" placeholder="如：男 / 女">
+          <datalist id="list-gender">
+            <option value="男"><option value="女"><option value="无性别"><option value="非人类"><option value="双性">
+          </datalist>
+        </div>
+        <div class="form-group">
+          <label class="form-label">扮演的明星</label>
+          <input class="form-input" type="text" name="character"
+                 value="{{ '' if form.character == '未知' else (form.character or '') }}" placeholder="扮演的明星艺人">
+        </div>
+      </div>
+
+      <div class="form-section-title">档期信息</div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">结局</label>
+          <input class="form-input" type="text" name="outcome" list="list-outcome"
+                 value="{{ '' if form.outcome == '未知' else (form.outcome or '') }}" placeholder="如：HE / BE / TE">
+          <datalist id="list-outcome">
+            <option value="HE"><option value="BE"><option value="TE"><option value="开放结局"><option value="未定">
+          </datalist>
+        </div>
+        <div class="form-group">
+          <label class="form-label">性向</label>
+          <input class="form-input" type="text" name="orientation" list="list-orientation"
+                 value="{{ '' if form.orientation == '未知' else (form.orientation or '') }}" placeholder="如：直向 / 百合 / BL">
+          <datalist id="list-orientation">
+            <option value="直向"><option value="百合"><option value="BL"><option value="双向"><option value="无性向">
+          </datalist>
+        </div>
+        <div class="form-group">
+          <label class="form-label">主题</label>
+          <input class="form-input" type="text" name="theme"
+                 value="{{ '' if form.theme == '未知' else (form.theme or '') }}" placeholder="如：古风 / 现代 / 架空">
+        </div>
+      </div>
+
+      <div class="form-section-title">投设状态</div>
+      <div class="form-group">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          {% set cur_cs = form.get('casting_status', '') %}
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:5px 14px;border-radius:20px;border:1px solid var(--border);background:var(--surface2)">
+            <input type="radio" name="casting_status" value="" {% if not cur_cs %}checked{% endif %} style="width:14px;height:14px">
+            <span style="font-size:13px;color:var(--muted)">未定</span>
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:5px 14px;border-radius:20px;border:1px dashed var(--border);background:var(--surface2)">
+            <input type="radio" name="casting_status" value="观望中" {% if cur_cs == '观望中' %}checked{% endif %} style="width:14px;height:14px">
+            <span style="font-size:13px;color:var(--muted)">观望中 <span style="font-size:11px;opacity:.6">（虚线）</span></span>
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:5px 14px;border-radius:20px;border:1px dotted var(--border);background:var(--surface2)">
+            <input type="radio" name="casting_status" value="一表中" {% if cur_cs == '一表中' %}checked{% endif %} style="width:14px;height:14px">
+            <span style="font-size:13px;color:var(--muted)">一表中 <span style="font-size:11px;opacity:.6">（点线）</span></span>
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:5px 14px;border-radius:20px;border:1px solid var(--accent);background:var(--surface2)">
+            <input type="radio" name="casting_status" value="已录取" {% if cur_cs == '已录取' %}checked{% endif %} style="width:14px;height:14px;accent-color:var(--accent)">
+            <span style="font-size:13px;color:var(--accent)">已录取 <span style="font-size:11px;opacity:.7">（实线）</span></span>
+          </label>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:6px">影响档期在日历上的显示样式</div>
+      </div>
+
+      <div class="form-section-title">档期标签</div>
+      <div class="form-group">
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+          {% set cur_tags = form.get('schedule_tags','') | parse_tags %}
+          {% set cur_stag = form.get('stag', cur_tags[0] if cur_tags else '') %}
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:var(--surface2);transition:all .15s">
+            <input type="radio" name="stag" value="" {% if not cur_stag %}checked{% endif %}
+                   style="width:14px;height:14px">
+            <span style="font-size:13px;font-weight:600;color:var(--muted)">无</span>
+          </label>
+          {% for tag in SCHEDULE_TAGS %}
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:5px 12px;border-radius:20px;border:1px solid {{ stag_color(tag) }}40;background:{{ stag_color(tag) }}15;transition:all .15s">
+            <input type="radio" name="stag" value="{{ tag }}" {% if cur_stag == tag %}checked{% endif %}
+                   style="accent-color:{{ stag_color(tag) }};width:14px;height:14px">
+            <span style="font-size:13px;font-weight:600;color:{{ stag_color(tag) }}">{{ tag }}</span>
+          </label>
+          {% endfor %}
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:6px">三选一，选中后在日历上以不同样式显示并可按标签筛选</div>
+      </div>
+
+      <div class="form-section-title">截止时间</div>
+      <div class="grid-2">
+        {% for col, label in DEADLINE_TYPES %}
+        <div class="form-group">
+          <label class="form-label">{{ label }}截止</label>
+          <input class="form-input" type="date" name="{{ col }}"
+                 value="{{ form.get(col, '') or '' }}"
+                 style="border-color:{{ deadline_color(col) }}60">
+        </div>
+        {% endfor %}
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:14px">截止日期会在日历对应日期上显示提醒标记</div>
+
+      <div class="form-section-title">备注</div>
+      <div class="form-group">
+        <textarea class="form-textarea" name="notes" rows="3"
+                  placeholder="可以填写任何补充说明……">{{ form.notes or '' }}</textarea>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap">
+        <button class="btn btn-primary" type="submit">
+          {{ '保存修改' if action == 'edit' else '录入档期' }}
+        </button>
+        <a href="{{ url_for('calendar') }}" class="btn btn-ghost">取消</a>
+        {% if action == 'edit' and schedule %}
+        <form method="post" action="{{ url_for('delete_schedule', sid=schedule.id) }}"
+              style="margin-left:auto" onsubmit="return confirm('确定删除档期「{{ schedule.show_name }}」？')">
+          <button class="btn btn-danger" type="submit">删除此档期</button>
+        </form>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function pickColor(val, swatch, isCustom) {
+  document.getElementById('color-value').value = val;
+  document.querySelectorAll('.color-swatch').forEach(el => el.classList.remove('selected'));
+  if (swatch) swatch.classList.add('selected');
+  if (val && !isCustom) document.getElementById('custom-color-input').value = val;
+}
+// Init: if there's a pre-selected color not in palette, mark custom
+(function() {
+  const cur = document.getElementById('color-value').value;
+  if (cur) document.getElementById('custom-color-input').value = cur;
+})();
+</script>
+{% endblock %}

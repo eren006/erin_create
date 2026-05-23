@@ -906,6 +906,18 @@ cmdBroadcast.solve = (ctx, msg) => {
 
     addOrderLog(`管理员群发公告，成功 ${sent} 人，失败 ${failed} 人`);
     seal.replyToSender(ctx, msg, `✅ 群发完成。成功：${sent} 人，无群记录跳过：${failed} 人`);
+
+    // 同步推送公告到网页端
+    const base  = seal.ext.getStringConfig(ext, "网页端地址").replace(/\/$/, "");
+    const token = seal.ext.getStringConfig(ext, "网页端Token");
+    if (base && token) {
+        fetch(`${base}/api/announce`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ content, from: "Bot群发" })
+        }).catch(() => {});
+    }
+
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["排单群发"] = cmdBroadcast;
@@ -954,3 +966,112 @@ function runOrderMonitor() {
 
 // 启动延时巡检
 setTimeout(runOrderMonitor, 10000);
+
+// ======================== 网页端同步模块 ========================
+
+seal.ext.registerStringConfig(ext, "网页端地址", "http://47.99.64.227:5237", "排单宝网页端服务器地址，末尾不带/");
+seal.ext.registerStringConfig(ext, "网页端Token", "", "网页端超管后台账户页面的 API Token");
+
+async function pushToWeb(ctx, msg, silent) {
+    const base  = seal.ext.getStringConfig(ext, "网页端地址").replace(/\/$/, "");
+    const token = seal.ext.getStringConfig(ext, "网页端Token");
+    if (!token) {
+        if (!silent) seal.replyToSender(ctx, msg, "❌ 请先在插件设置中填写「网页端Token」");
+        return false;
+    }
+    try {
+        const resp = await fetch(`${base}/api/bot/push`, {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+                paidan_orders:    getDb("paidan_orders"),
+                paidan_users:     getDb("paidan_users"),
+                paidan_config:    getDb("paidan_config"),
+                paidan_adminList: getDb("paidan_adminList"),
+            })
+        });
+        const data = await resp.json();
+        if (!silent) {
+            seal.replyToSender(ctx, msg, data.ok ? "✅ 已同步到网页端" : `❌ 同步失败：${data.error}`);
+        }
+        return data.ok;
+    } catch (e) {
+        if (!silent) seal.replyToSender(ctx, msg, `❌ 网络错误：${String(e)}`);
+        return false;
+    }
+}
+
+// 手动同步指令
+let cmdSyncWeb = seal.ext.newCmdItemInfo();
+cmdSyncWeb.name = "同步网页端";
+cmdSyncWeb.help = ".同步网页端  将当前所有排单数据推送到网页看板";
+cmdSyncWeb.solve = async (ctx, msg, cmdArgs) => {
+    if (!isOrderAdmin(ctx, msg)) return seal.ext.newCmdExecuteResult(true);
+    await pushToWeb(ctx, msg, false);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["同步网页端"] = cmdSyncWeb;
+
+// 拉取网页散单指令
+let cmdPullWeb = seal.ext.newCmdItemInfo();
+cmdPullWeb.name = "拉取散单";
+cmdPullWeb.help = ".拉取散单  从网页端拉取新的散单，合并到排单队列";
+cmdPullWeb.solve = async (ctx, msg, cmdArgs) => {
+    if (!isOrderAdmin(ctx, msg)) return seal.ext.newCmdExecuteResult(true);
+    const base  = seal.ext.getStringConfig(ext, "网页端地址").replace(/\/$/, "");
+    const token = seal.ext.getStringConfig(ext, "网页端Token");
+    if (!token) {
+        seal.replyToSender(ctx, msg, "❌ 请先在插件设置中填写「网页端Token」");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    try {
+        const resp = await fetch(`${base}/api/sync`, {
+            headers: { "Authorization": `Bearer ${token}` }
+        });
+        const data = await resp.json();
+        if (!data.ok) {
+            seal.replyToSender(ctx, msg, `❌ 拉取失败：${data.error}`);
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        if (data.count === 0) {
+            seal.replyToSender(ctx, msg, "✅ 暂无新散单");
+            return seal.ext.newCmdExecuteResult(true);
+        }
+
+        let orders = getDb("paidan_orders");
+        let newCount = 0;
+        const lines = [];
+        for (const o of data.orders) {
+            const key = o.order_no;
+            if (orders[key]) continue;
+            const content = `【网页散单】称呼：${o.customer_name}  联系：${o.customer_contact}\n${o.description || o.title}`;
+            orders[key] = {
+                id:           key,
+                uid:          o.customer_contact,
+                content:      content,
+                status:       "待接单",
+                timestamp:    (o.created_at ? o.created_at * 1000 : Date.now()),
+                isUrgent:     !!o.is_urgent,
+                webOrderNo:   o.order_no,
+                source:       "web",
+                customerName: o.customer_name,
+            };
+            newCount++;
+            lines.push(`· ${key}  ${o.customer_name}`);
+        }
+
+        if (newCount > 0) {
+            setDb("paidan_orders", orders);
+            addOrderLog(`从网页端拉取 ${newCount} 条散单`);
+            await pushToWeb(ctx, msg, true);
+        }
+
+        const detail = lines.length ? "\n" + lines.join("\n") : "";
+        seal.replyToSender(ctx, msg,
+            `✅ 拉取完成，新增 ${newCount} 条散单${detail}\n发送 .排单看板 查看全部队列`);
+    } catch (e) {
+        seal.replyToSender(ctx, msg, `❌ 网络错误：${String(e)}`);
+    }
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["拉取散单"] = cmdPullWeb;

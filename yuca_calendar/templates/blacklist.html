@@ -13,9 +13,16 @@
 .bl-reason { font-size: 13px; color: var(--text); margin-bottom: 3px; }
 .bl-meta { font-size: 11px; color: var(--muted); }
 .bl-notes { font-size: 12px; color: var(--muted); font-style: italic; margin-top: 4px; }
-.bl-actions { flex-shrink: 0; }
+.bl-actions { flex-shrink: 0; display:flex; flex-direction:column; gap:6px; }
 .search-bar { display: flex; gap: 8px; margin-bottom: 16px; }
 .count-badge { display: inline-block; background: var(--surface2); border: 1px solid var(--border); border-radius: 20px; padding: 1px 10px; font-size: 12px; color: var(--muted); margin-left: 8px; vertical-align: middle; }
+.share-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:8000;backdrop-filter:blur(2px)}
+.share-modal-overlay.open{display:flex;align-items:center;justify-content:center}
+.share-modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px 24px;width:340px;max-width:90vw;box-shadow:0 8px 32px rgba(0,0,0,.6)}
+.share-modal-title{font-size:14px;font-weight:600;color:var(--accent2);margin-bottom:14px}
+.share-guild-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)}
+.share-guild-row:last-of-type{border-bottom:none}
+.share-guild-row label{flex:1;font-size:13px;cursor:pointer;color:var(--text)}
 </style>
 {% endblock %}
 {% block body %}
@@ -85,6 +92,11 @@
         {% if e.notes %}<div class="bl-notes">{{ e.notes }}</div>{% endif %}
       </div>
       <div class="bl-actions">
+        {% if my_guilds %}
+        <button class="btn btn-ghost btn-sm" onclick="openShareModal({{ e.id }}, {{ e.shared_guilds_list | tojson }})">
+          {% if e.shared_guilds_list %}🔗 {{ e.shared_guilds_list|length }}{% else %}分享{% endif %}
+        </button>
+        {% endif %}
         <form method="post" action="{{ url_for('blacklist_delete', bid=e.id) }}"
               onsubmit="return confirm('确定从黑名单移除「{{ e.nickname or e.qq }}」？')">
           <button class="btn btn-ghost btn-sm" type="submit">移除</button>
@@ -98,4 +110,59 @@
     </div>
   {% endif %}
 </div>
+
+{% if my_guilds %}
+<div class="share-modal-overlay" id="share-overlay" onclick="closeShareModal()">
+  <div class="share-modal" onclick="event.stopPropagation()">
+    <div class="share-modal-title">分享到公会黑名单</div>
+    <div id="share-guild-list">
+      {% for g in my_guilds %}
+      <div class="share-guild-row">
+        <input type="checkbox" id="sg_{{ g.id }}" value="{{ g.id }}" style="accent-color:var(--accent)">
+        <label for="sg_{{ g.id }}">{{ g.name }} <span style="font-size:11px;color:var(--muted)">#{{ g.slug }}</span></label>
+      </div>
+      {% endfor %}
+    </div>
+    <div style="display:flex;gap:10px;margin-top:16px">
+      <button class="btn btn-primary btn-sm" onclick="saveShare()">保存</button>
+      <button class="btn btn-ghost btn-sm" onclick="closeShareModal()">取消</button>
+    </div>
+    <div id="share-status" style="font-size:12px;color:var(--green);margin-top:8px;display:none">✅ 已保存</div>
+  </div>
+</div>
+{% endif %}
+
+{% block scripts %}
+<script>
+let _shareBid = null;
+function openShareModal(bid, currentGuildIds) {
+  _shareBid = bid;
+  document.querySelectorAll('#share-guild-list input[type=checkbox]').forEach(cb => {
+    cb.checked = currentGuildIds.includes(parseInt(cb.value));
+  });
+  document.getElementById('share-status').style.display = 'none';
+  document.getElementById('share-overlay').classList.add('open');
+}
+function closeShareModal() {
+  document.getElementById('share-overlay').classList.remove('open');
+  _shareBid = null;
+}
+async function saveShare() {
+  if (!_shareBid) return;
+  const guildIds = Array.from(document.querySelectorAll('#share-guild-list input[type=checkbox]:checked'))
+    .map(cb => parseInt(cb.value));
+  const res = await fetch(`/api/blacklist/${_shareBid}/guild-share`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({guild_ids: guildIds})
+  });
+  const data = await res.json();
+  if (data.ok) {
+    document.getElementById('share-status').style.display = 'block';
+    setTimeout(() => { closeShareModal(); location.reload(); }, 800);
+  }
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeShareModal(); });
+</script>
+{% endblock %}
 {% endblock %}

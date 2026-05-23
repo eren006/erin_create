@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}编辑公会 · 语擦日历{% endblock %}
+{% block body %}
+<div class="page">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+    <a href="{{ url_for('guild_detail', gid=guild.id) }}" class="btn btn-ghost btn-sm">← 返回</a>
+    <h1 class="page-title" style="margin:0">编辑公会</h1>
+  </div>
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px 28px;max-width:560px">
+    <form method="post">
+      <div class="form-group">
+        <label class="form-label">公会名 <span class="req">*</span></label>
+        <input class="form-input" type="text" name="name" value="{{ guild.name }}" maxlength="30" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">公会 ID（不可修改）</label>
+        <input class="form-input" type="text" value="{{ guild.slug }}" disabled style="opacity:.5">
+      </div>
+      <div class="form-group">
+        <label class="form-label">公会签名</label>
+        <input class="form-input" type="text" name="signature" value="{{ guild.signature }}" maxlength="100" placeholder="一句话介绍公会…">
+      </div>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-primary" type="submit">保存</button>
+        <a href="{{ url_for('guild_detail', gid=guild.id) }}" class="btn btn-ghost">取消</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

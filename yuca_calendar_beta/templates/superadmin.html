@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+{% block title %}用户管理 · 语擦日历{% endblock %}
+{% block head %}
+<style>
+.sa-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 24px; flex-wrap: wrap; gap: 10px;
+}
+.sa-badge {
+  background: #1a1200; border: 1px solid #4a3a00;
+  border-radius: 20px; padding: 4px 14px; font-size: 12px; color: var(--gold);
+}
+
+/* 创建表单 */
+.create-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 20px 24px; margin-bottom: 24px;
+}
+.create-title { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 16px; }
+.create-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+.create-row .form-group { flex: 1; min-width: 140px; margin-bottom: 0; }
+
+/* 用户表格 */
+.user-table { width: 100%; border-collapse: collapse; }
+.user-table th {
+  text-align: left; padding: 10px 14px; font-size: 12px; font-weight: 600;
+  color: var(--muted); border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+.user-table td {
+  padding: 12px 14px; border-bottom: 1px solid var(--border);
+  font-size: 13px; vertical-align: middle;
+}
+.user-table tr:last-child td { border-bottom: none; }
+.user-table tr:hover td { background: var(--surface2); }
+.user-row-inactive td { opacity: .5; }
+
+.action-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.reset-form { display: flex; gap: 4px; align-items: center; }
+.reset-input {
+  background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+  border-radius: 6px; padding: 3px 8px; font-size: 12px; width: 110px;
+  font-family: inherit;
+}
+.reset-input:focus { outline: none; border-color: var(--accent); }
+
+.gen-pass {
+  background: none; border: none; color: var(--accent); cursor: pointer;
+  font-size: 11px; padding: 0 4px; font-family: inherit;
+}
+.gen-pass:hover { color: var(--accent2); }
+
+.table-wrap {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; overflow: hidden; overflow-x: auto;
+}
+</style>
+{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="sa-header">
+    <h1 class="page-title" style="margin:0">用户管理</h1>
+    <span class="sa-badge">🔑 超级管理员</span>
+  </div>
+
+  <!-- 创建用户 -->
+  <div class="create-card">
+    <div class="create-title">创建新账号</div>
+    {% if create_errors %}
+    <div class="form-errors" style="margin-bottom:12px">
+      {% for e in create_errors %}
+      <div class="form-error">⚠ {{ e }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    <form method="post" action="{{ url_for('superadmin_create_user') }}">
+      <div class="create-row">
+        <div class="form-group">
+          <label class="form-label">用户名 <span class="req">*</span></label>
+          <input class="form-input" type="text" name="username"
+                 value="{{ create_form.username if create_form else '' }}"
+                 placeholder="登录用，唯一" autocomplete="off" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">
+            密码 <span class="req">*</span>
+            <button type="button" class="gen-pass" onclick="genPass(this)">随机生成</button>
+          </label>
+          <input class="form-input" type="text" name="password" id="new-pass"
+                 value="{{ create_form.password if create_form else '' }}"
+                 placeholder="至少 4 位" autocomplete="off" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">显示名</label>
+          <input class="form-input" type="text" name="display_name"
+                 value="{{ create_form.display_name if create_form else '' }}"
+                 placeholder="可不填，默认同用户名">
+        </div>
+        <div style="padding-bottom:1px">
+          <button class="btn btn-primary" type="submit">创建</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <!-- 用户列表 -->
+  <div class="table-wrap">
+    <table class="user-table">
+      <thead>
+        <tr>
+          <th>用户名</th>
+          <th>显示名</th>
+          <th>档期数</th>
+          <th>状态</th>
+          <th>创建时间</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr class="{{ 'user-row-inactive' if not u.is_active else '' }}">
+          <td><strong>{{ u.username }}</strong></td>
+          <td>{{ u.display_name or '—' }}</td>
+          <td>{{ u.schedule_count }}</td>
+          <td>
+            <span class="badge {{ 'badge-active' if u.is_active else 'badge-inactive' }}">
+              {{ '启用' if u.is_active else '停用' }}
+            </span>
+          </td>
+          <td style="color:var(--muted)">
+            {{ (u.created_at | int) | datetimeformat if u.created_at else '—' }}
+          </td>
+          <td>
+            <div class="action-row">
+              <!-- 查看档期 -->
+              <a href="{{ url_for('superadmin_view_user', uid=u.id) }}" class="btn btn-ghost btn-sm">查看档期</a>
+              <!-- 重置密码 -->
+              <form class="reset-form" method="post"
+                    action="{{ url_for('superadmin_reset_password', uid=u.id) }}">
+                <input class="reset-input" type="text" name="new_password"
+                       placeholder="新密码" autocomplete="off">
+                <button class="btn btn-warn btn-sm" type="submit">重置密码</button>
+              </form>
+              <!-- 停用/启用 -->
+              <form method="post" action="{{ url_for('superadmin_toggle_user', uid=u.id) }}">
+                <button class="btn btn-ghost btn-sm" type="submit">
+                  {{ '停用' if u.is_active else '启用' }}
+                </button>
+              </form>
+              <!-- 删除 -->
+              <form method="post" action="{{ url_for('superadmin_delete_user', uid=u.id) }}"
+                    onsubmit="return confirm('确定删除用户「{{ u.username }}」及其所有档期？此操作不可撤销。')">
+                <button class="btn btn-danger btn-sm" type="submit">删除</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" style="text-align:center;color:var(--muted);padding:32px">
+            还没有任何用户
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <!-- 翻页 -->
+  {% if total_pages > 1 %}
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;flex-wrap:wrap;gap:8px">
+    <span style="font-size:12px;color:var(--muted)">共 {{ total_users }} 个用户 · 第 {{ page }}/{{ total_pages }} 页</span>
+    <div style="display:flex;gap:6px">
+      {% if page > 1 %}
+      <a href="{{ url_for('superadmin', page=page-1) }}" class="btn btn-ghost btn-sm">← 上一页</a>
+      {% endif %}
+      {% for p in range(1, total_pages+1) %}
+      <a href="{{ url_for('superadmin', page=p) }}"
+         class="btn btn-sm {% if p == page %}btn-primary{% else %}btn-ghost{% endif %}">{{ p }}</a>
+      {% endfor %}
+      {% if page < total_pages %}
+      <a href="{{ url_for('superadmin', page=page+1) }}" class="btn btn-ghost btn-sm">下一页 →</a>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- 邀请码 -->
+  <div style="margin-top:28px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+      <div style="font-size:15px;font-weight:600">邀请码</div>
+      <form method="post" action="{{ url_for('superadmin_gen_invite') }}">
+        <button class="btn btn-primary btn-sm" type="submit">＋ 生成新邀请码</button>
+      </form>
+    </div>
+    {% if codes or total_codes > 0 %}
+    <div class="table-wrap">
+      <table class="user-table">
+        <thead>
+          <tr>
+            <th>邀请码</th>
+            <th>状态</th>
+            <th>使用者</th>
+            <th>生成时间</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in codes %}
+          <tr class="{{ 'user-row-inactive' if c.is_used else '' }}">
+            <td>
+              <code style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:2px 8px;font-size:13px;letter-spacing:.05em">{{ c.code }}</code>
+            </td>
+            <td>
+              <span class="badge {{ 'badge-inactive' if c.is_used else 'badge-active' }}">
+                {{ '已使用' if c.is_used else '可用' }}
+              </span>
+            </td>
+            <td style="color:var(--muted)">{{ c.used_by_name or '—' }}</td>
+            <td style="color:var(--muted)">{{ c.created_at | datetimeformat }}</td>
+            <td>
+              {% if not c.is_used %}
+              <form method="post" action="{{ url_for('superadmin_del_invite', iid=c.id) }}"
+                    onsubmit="return confirm('撤销该邀请码？')">
+                <button class="btn btn-danger btn-sm" type="submit">撤销</button>
+              </form>
+              {% else %}—{% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="5" style="text-align:center;color:var(--muted);padding:32px">
+              还没有邀请码，点击上方按钮生成
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if total_ipages > 1 %}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;flex-wrap:wrap;gap:8px">
+      <span style="font-size:12px;color:var(--muted)">共 {{ total_codes }} 条 · 第 {{ ipage }}/{{ total_ipages }} 页</span>
+      <div style="display:flex;gap:6px">
+        {% if ipage > 1 %}
+        <a href="{{ url_for('superadmin', page=page, ipage=ipage-1) }}" class="btn btn-ghost btn-sm">← 上一页</a>
+        {% endif %}
+        {% for p in range(1, total_ipages+1) %}
+        <a href="{{ url_for('superadmin', page=page, ipage=p) }}"
+           class="btn btn-sm {% if p == ipage %}btn-primary{% else %}btn-ghost{% endif %}">{{ p }}</a>
+        {% endfor %}
+        {% if ipage < total_ipages %}
+        <a href="{{ url_for('superadmin', page=page, ipage=ipage+1) }}" class="btn btn-ghost btn-sm">下一页 →</a>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+    {% else %}
+    <div style="color:var(--muted);font-size:13px;padding:12px 0">还没有邀请码，点击上方按钮生成</div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function genPass(btn) {
+  const chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  let pass = '';
+  for (let i = 0; i < 10; i++) pass += chars[Math.floor(Math.random() * chars.length)];
+  document.getElementById('new-pass').value = pass;
+  document.getElementById('new-pass').type = 'text';
+}
+</script>
+{% endblock %}

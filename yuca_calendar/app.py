@@ -258,6 +258,9 @@ def _migrate(conn):
     cols_s2 = _col_names(conn, 'schedules')
     if 'visibility' not in cols_s2:
         conn.execute("ALTER TABLE schedules ADD COLUMN visibility TEXT NOT NULL DEFAULT 'public'")
+    cols_dl = _col_names(conn, 'drama_logs')
+    if 'content' not in cols_dl:
+        conn.execute("ALTER TABLE drama_logs ADD COLUMN content TEXT NOT NULL DEFAULT ''")
     cols_p = _col_names(conn, 'partners')
     if 'shared_guilds' not in cols_p:
         conn.execute("ALTER TABLE partners ADD COLUMN shared_guilds TEXT NOT NULL DEFAULT '[]'")
@@ -2864,8 +2867,10 @@ def api_login():
     user = get_db().execute(
         "SELECT * FROM users WHERE username=? AND is_active=1", (username,)
     ).fetchone()
-    if not user or not check_password_hash(user["password_hash"], password):
-        return jsonify({"ok": False, "error": "用户名或密码错误"}), 401
+    if not user:
+        return jsonify({"ok": False, "error": "用户名不存在"}), 401
+    if not check_password_hash(user["password_hash"], password):
+        return jsonify({"ok": False, "error": "密码错误"}), 401
     token = _make_api_token(user["id"])
     return jsonify({
         "ok": True,
@@ -3026,16 +3031,19 @@ def api_schedule_delete(sid):
 @app.route("/api/v1/calendar")
 @_require_token
 def api_calendar():
-    now   = datetime.now()
-    year  = int(request.args.get("year",  now.year))
-    month = int(request.args.get("month", now.month))
+    now = datetime.now()
+    try:
+        year  = int(request.args.get("year",  now.year))
+        month = int(request.args.get("month", now.month))
+    except (ValueError, TypeError):
+        year, month = now.year, now.month
 
     # 从数据库获取日程，全部转为 dict（sqlite3.Row 不能直接 JSON 序列化）
     raw = _get_schedules(g.api_uid)
     schedules = [dict(s) for s in raw]
 
     # 冲突检测
-    conflict_ids = list({sid for pair in find_all_conflicts(schedules) for sid in pair})
+    conflict_ids = list(find_all_conflicts(schedules))
 
     # 本月日程：schedules_for_month 返回 (day_shows, active, days_in)
     day_shows, active, days_in = schedules_for_month(schedules, year, month)
@@ -3081,7 +3089,10 @@ def api_calendar():
 @app.route("/api/v1/stats")
 @_require_token
 def api_stats():
-    year      = int(request.args.get("year", datetime.now().year))
+    try:
+        year = int(request.args.get("year", datetime.now().year))
+    except (ValueError, TypeError):
+        year = datetime.now().year
     schedules = _get_schedules(g.api_uid)
     st        = annual_stats(schedules, year)
     return jsonify({"ok": True, "year": year, "stats": st})
@@ -3195,15 +3206,16 @@ def api_wishlist_list():
 @app.route("/api/v1/wishlist", methods=["POST"])
 @_require_token
 def api_wishlist_add():
-    data  = request.get_json(silent=True) or {}
-    title = data.get("title", "").strip()
-    if not title:
-        return jsonify({"ok": False, "error": "标题不能为空"}), 400
+    data    = request.get_json(silent=True) or {}
+    content = data.get("content", "").strip()
+    wtype   = data.get("wtype", "题材").strip()
+    if not content:
+        return jsonify({"ok": False, "error": "内容不能为空"}), 400
     db = get_db()
     ts = int(datetime.now().timestamp())
     cur = db.execute(
-        "INSERT INTO wishlist (user_id, title, notes, is_done, created_at) VALUES (?,?,?,0,?)",
-        (g.api_uid, title, data.get("notes",""), ts)
+        "INSERT INTO wishlist (user_id, wtype, content, notes, is_done, created_at) VALUES (?,?,?,?,0,?)",
+        (g.api_uid, wtype, content, data.get("notes",""), ts)
     )
     db.commit()
     row = db.execute("SELECT * FROM wishlist WHERE id=?", (cur.lastrowid,)).fetchone()
@@ -3698,8 +3710,8 @@ def api_drama_add():
     cur = db.execute(
         """INSERT INTO drama_logs
            (user_id, title, my_char, partner_char, partner_qq,
-            genre, status, notes, start_ts, end_ts, created_at, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            genre, status, notes, content, start_ts, end_ts, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (
             g.api_uid,
             data.get("title", "").strip(),
@@ -3709,6 +3721,7 @@ def api_drama_add():
             data.get("genre", "").strip(),
             data.get("status", "ongoing").strip(),
             data.get("notes", "").strip(),
+            data.get("content", "").strip(),
             data.get("start_ts"),
             data.get("end_ts"),
             ts, ts,
@@ -3731,7 +3744,7 @@ def api_drama_update(did):
     db.execute(
         """UPDATE drama_logs
            SET title=?, my_char=?, partner_char=?, partner_qq=?,
-               genre=?, status=?, notes=?, start_ts=?, end_ts=?, updated_at=?
+               genre=?, status=?, notes=?, content=?, start_ts=?, end_ts=?, updated_at=?
            WHERE id=? AND user_id=?""",
         (
             data.get("title", "").strip(),
@@ -3741,6 +3754,7 @@ def api_drama_update(did):
             data.get("genre", "").strip(),
             data.get("status", "ongoing").strip(),
             data.get("notes", "").strip(),
+            data.get("content", "").strip(),
             data.get("start_ts"),
             data.get("end_ts"),
             ts, did, g.api_uid,
@@ -3946,6 +3960,32 @@ def api_cards_random():
     card = dict(_random.choice(rows))
     card['days_left'] = _card_days_left_api(card['expiry'])
     return jsonify({"ok": True, "card": card})
+
+
+# ── API: 反馈 ──────────────────────────────────────────────────────────────────
+
+@app.route("/api/v1/feedback", methods=["POST"])
+@_require_token
+def api_submit_feedback():
+    data    = request.get_json(silent=True) or {}
+    ftype   = data.get("type", "bug").strip()
+    content = data.get("content", "").strip()
+    app_ver = data.get("app_version", "").strip()   # 可选：App 版本号
+    if ftype not in ("bug", "wish"):
+        ftype = "bug"
+    if not content:
+        return jsonify({"ok": False, "error": "内容不能为空"})
+    if len(content) > 1000:
+        return jsonify({"ok": False, "error": "内容不能超过 1000 字"})
+    db = get_db()
+    # 把版本号附在内容末尾，方便后台查看
+    full_content = content if not app_ver else f"{content}\n\n[App {app_ver}]"
+    db.execute(
+        "INSERT INTO feedbacks (user_id, type, content, created_at, is_read) VALUES (?,?,?,?,0)",
+        (g.api_uid, ftype, full_content, int(datetime.now().timestamp()))
+    )
+    db.commit()
+    return jsonify({"ok": True})
 
 
 # ── Error handlers ──────────────────────────────────────────────────────────────

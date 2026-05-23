@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}{{ drama.title }} · 戏录 · 语擦日历{% endblock %}
+{% block head %}
+<style>
+.drama-view-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 28px 32px; max-width: 760px;
+}
+.drama-view-title { font-size: 22px; font-weight: 700; color: var(--text); margin-bottom: 12px; }
+.drama-view-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+.drama-tag {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 20px; padding: 2px 10px; font-size: 12px; color: var(--muted);
+}
+.drama-view-body {
+  font-size: 14px; color: var(--text); line-height: 2;
+  white-space: pre-wrap; word-break: break-word;
+}
+</style>
+{% endblock %}
+{% block body %}
+<div class="page">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap">
+    <a href="{{ url_for('drama_list') }}" class="btn btn-ghost btn-sm">← 返回戏录</a>
+    <a href="{{ url_for('drama_edit', did=drama.id) }}" class="btn btn-ghost btn-sm">编辑</a>
+  </div>
+
+  <div class="drama-view-card">
+    <div class="drama-view-title">{{ drama.title }}</div>
+    <div class="drama-view-meta">
+      {% for t in drama.tags_list %}
+      <span class="drama-tag">{{ t }}</span>
+      {% endfor %}
+      <span style="font-size:12px;color:var(--muted)">{{ drama.wc }} 字</span>
+      {% if drama.writing_time %}
+      <span style="font-size:12px;color:var(--muted)">写于 {{ drama.writing_time | datetimeformat }}</span>
+      {% endif %}
+    </div>
+    <div class="drama-view-body">{{ drama.content or '（暂无内容）' }}</div>
+  </div>
+</div>
+{% endblock %}

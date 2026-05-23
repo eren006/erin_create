@@ -1,0 +1,447 @@
+{% extends 'base.html' %}
+{% block title %}提交订单 · 排单宝{% endblock %}
+{% block head %}
+<style>
+/* ══ 整体容器 ══ */
+.on-wrap{
+  max-width:680px;margin:0 auto;
+  padding:28px 16px 60px;min-height:calc(100vh - 50px);
+}
+
+/* ══ Step 1 — 图编选择 ══ */
+#step1{transition:opacity .35s,transform .35s;}
+#step1.leave{opacity:0;transform:translateY(-18px);pointer-events:none;}
+
+.s1-head{text-align:center;padding:20px 0 28px;}
+.s1-title{
+  font-size:28px;font-weight:800;letter-spacing:.04em;
+  background:linear-gradient(135deg,var(--accent2) 20%,color-mix(in srgb,var(--accent) 70%,#6366f1) 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  margin-bottom:6px;
+}
+.s1-sub{font-size:14px;color:var(--muted);}
+
+.tenant-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+@media(max-width:520px){.tenant-grid{grid-template-columns:1fr;gap:10px;}}
+
+.tenant-card{
+  background:var(--surface);border:2px solid var(--border);border-radius:18px;
+  padding:28px 18px 22px;text-align:center;cursor:pointer;
+  transition:transform .22s cubic-bezier(.34,1.56,.64,1),box-shadow .22s,border-color .22s;
+  position:relative;overflow:hidden;
+}
+.tenant-card::after{
+  content:'';position:absolute;inset:0;border-radius:16px;
+  background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 7%,transparent),transparent 60%);
+  opacity:0;transition:opacity .22s;pointer-events:none;
+}
+.tenant-card:hover:not(.closed-card){
+  border-color:var(--accent);
+  box-shadow:0 10px 40px var(--shadow);
+  transform:translateY(-5px) scale(1.01);
+}
+.tenant-card:hover::after{opacity:1;}
+.tenant-card.closed-card{cursor:default;opacity:.65;}
+
+.tc-icon{font-size:40px;margin-bottom:10px;display:block;}
+.tc-name{font-size:16px;font-weight:700;color:var(--text);margin-bottom:5px;}
+.tc-desc{font-size:12px;color:var(--muted);line-height:1.65;}
+.tc-badge{
+  display:inline-flex;align-items:center;gap:4px;
+  margin-top:12px;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:500;
+}
+.tc-open{background:color-mix(in srgb,var(--green) 10%,var(--surface2));color:var(--green);border:1px solid color-mix(in srgb,var(--green) 28%,var(--border));}
+.tc-full{background:color-mix(in srgb,var(--warn) 10%,var(--surface2));color:var(--warn);border:1px solid color-mix(in srgb,var(--warn) 28%,var(--border));}
+.tc-closed{background:var(--surface2);color:var(--muted);border:1px solid var(--border);}
+.tc-dot{width:5px;height:5px;border-radius:50%;background:currentColor;flex-shrink:0;}
+.tc-queue{font-size:11px;color:var(--muted);margin-top:5px;}
+
+/* ══ 过渡特效 ══ */
+#transition-fx{
+  display:none;position:fixed;inset:0;z-index:9999;
+  pointer-events:none;overflow:hidden;
+}
+#transition-fx.run{display:block;}
+.fx-ring{
+  position:fixed;border-radius:50%;
+  background:color-mix(in srgb,var(--accent) 14%,transparent);
+  transform:translate(-50%,-50%) scale(0);
+  animation:ring-expand .55s cubic-bezier(.22,1,.36,1) forwards;
+}
+@keyframes ring-expand{
+  0%  {transform:translate(-50%,-50%) scale(0);opacity:1;}
+  70% {opacity:.6;}
+  100%{transform:translate(-50%,-50%) scale(1);opacity:0;}
+}
+
+/* ══ Step 2 — 表单 ══ */
+#step2{
+  display:none;opacity:0;transform:translateY(22px);
+  transition:opacity .4s .05s,transform .4s .05s;
+}
+#step2.enter{display:block;}
+#step2.visible{opacity:1;transform:translateY(0);}
+
+.s2-head{display:flex;align-items:center;gap:10px;margin-bottom:22px;padding-bottom:14px;border-bottom:1px solid var(--border);}
+.s2-back{
+  width:32px;height:32px;border-radius:50%;
+  border:1.5px solid var(--border);background:var(--surface);
+  display:flex;align-items:center;justify-content:center;
+  font-size:14px;cursor:pointer;color:var(--muted);flex-shrink:0;
+  transition:.15s;
+}
+.s2-back:hover{border-color:var(--accent);color:var(--accent2);}
+.s2-who{flex:1;}
+.s2-name{font-size:16px;font-weight:700;color:var(--text);}
+.s2-sub{font-size:12px;color:var(--muted);}
+
+/* 动态表单字段 */
+.dform .fg{margin-bottom:14px;}
+.dform .fl{font-size:13px;color:var(--text);font-weight:500;}
+.dform .fl .req{color:var(--red);}
+.dform .fh{margin-top:4px;font-size:11.5px;color:var(--muted);line-height:1.55;}
+
+.radio-group{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;}
+.radio-opt{cursor:pointer;position:relative;}
+.radio-opt input{position:absolute;opacity:0;width:0;height:0;}
+.radio-opt span{
+  display:inline-block;padding:6px 16px;border-radius:20px;font-size:13px;
+  border:1.5px solid var(--border);background:var(--surface2);color:var(--muted);
+  transition:all .15s;cursor:pointer;
+}
+.radio-opt input:checked + span{
+  border-color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,var(--surface));
+  color:var(--accent2);font-weight:500;
+}
+.radio-opt span:hover{border-color:var(--accent);color:var(--accent2);}
+
+.dform-heading{
+  font-size:14px;font-weight:700;color:var(--accent2);
+  padding:10px 0 6px;border-bottom:1px solid var(--border);
+  margin:10px 0 14px;letter-spacing:.04em;
+}
+
+.upload-area{
+  border:2px dashed var(--border);border-radius:10px;padding:20px;
+  text-align:center;font-size:12px;color:var(--muted);cursor:pointer;
+  transition:border-color .15s,background .15s;
+  position:relative;
+}
+.upload-area:hover{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 4%,var(--surface));}
+.upload-area input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+.upload-preview{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;position:relative;z-index:1;}
+.upload-thumb{
+  width:64px;height:64px;border-radius:7px;object-fit:cover;
+  border:1.5px solid var(--border);
+}
+
+.submit-row{margin-top:24px;display:flex;gap:10px;align-items:center;}
+.submit-row .btn{padding:11px 28px;font-size:14px;}
+</style>
+{% endblock %}
+{% block body %}
+
+<!-- 过渡特效层 -->
+<div id="transition-fx"></div>
+
+<div class="on-wrap">
+
+  <!-- ── STEP 1: 选择图编 ── -->
+  <div id="step1">
+    <div class="s1-head">
+      <div class="s1-title">选择图编</div>
+      <div class="s1-sub">选好后跳转到对应的下单表单</div>
+    </div>
+
+    <div class="tenant-grid">
+      {% for t in tenant_data %}
+      <div class="tenant-card {% if t.open_status != 'open' %}closed-card{% endif %}"
+           {% if t.open_status == 'open' %}onclick="chooseTenant({{ t.id }}, this)"{% endif %}
+           id="tc-{{ t.id }}">
+        <span class="tc-icon">
+          {% if t.open_status == 'open' %}🎨{% elif t.open_status == 'full' %}⏳{% else %}🔒{% endif %}
+        </span>
+        <div class="tc-name">{{ t.display_name }}</div>
+        {% if t.description %}<div class="tc-desc">{{ t.description }}</div>{% endif %}
+        <div>
+          {% if t.open_status == 'open' %}
+            <span class="tc-badge tc-open"><span class="tc-dot"></span>接单中</span>
+          {% elif t.open_status == 'full' %}
+            <span class="tc-badge tc-full"><span class="tc-dot"></span>队列已满</span>
+          {% else %}
+            <span class="tc-badge tc-closed"><span class="tc-dot"></span>暂停接单</span>
+          {% endif %}
+        </div>
+        {% if t.max_active_orders %}
+          <div class="tc-queue">队列 {{ t.active_cnt }} / {{ t.max_active_orders }}</div>
+        {% elif t.open_status == 'open' %}
+          <div class="tc-queue">无数量限制</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- ── STEP 2: 下单表单 ── -->
+  <div id="step2">
+    <div class="s2-head">
+      <div class="s2-back" onclick="goBack()">←</div>
+      <div class="s2-who">
+        <div class="s2-name" id="s2-name"></div>
+        <div class="s2-sub">填写下单信息</div>
+      </div>
+    </div>
+
+    <div id="form-errors" style="display:none;" class="err-msg" style="margin-bottom:16px;"></div>
+
+    <form method="post" enctype="multipart/form-data" id="order-form">
+      <input type="hidden" name="tenant_id" id="form-tenant-id">
+      <div class="dform" id="dform"></div>
+      <div class="submit-row">
+        <button type="submit" class="btn btn-primary">提交订单 →</button>
+        <span style="font-size:12px;color:var(--muted);">提交后获得回执号</span>
+      </div>
+    </form>
+  </div>
+
+</div>
+
+<script>
+// ── 数据注入 ──────────────────────────────────────────────────────────────────
+const TENANT_DATA = {
+  {% for t in tenant_data %}
+  "{{ t.id }}": {
+    id: {{ t.id }},
+    name: {{ t.display_name | tojson }},
+    open_status: "{{ t.open_status }}",
+    schema: {{ t.schema | tojson }}
+  }{% if not loop.last %},{% endif %}
+  {% endfor %}
+};
+
+const SUBMITTED  = {{ submitted | tojson if submitted else '{}' }};
+const ERROR_TID  = "{{ error_tid }}";
+const PRE_TID    = "{{ pre_tid }}";
+const ERRORS     = {{ errors | tojson if errors else '[]' }};
+const USER_INFO  = {{ user_info | tojson if user_info else '{}' }};
+
+let currentTid = null;
+
+// ── 选择图编 ──────────────────────────────────────────────────────────────────
+function chooseTenant(tid, cardEl) {
+  currentTid = String(tid);
+  const tenant = TENANT_DATA[currentTid];
+  if (!tenant || tenant.open_status !== 'open') return;
+
+  // 涟漪特效
+  const rect  = cardEl ? cardEl.getBoundingClientRect()
+                       : {left:window.innerWidth/2, top:window.innerHeight/2, width:0, height:0};
+  const cx = rect.left + rect.width  / 2;
+  const cy = rect.top  + rect.height / 2;
+  const dim = Math.max(window.innerWidth, window.innerHeight) * 2.2;
+
+  const fx = document.getElementById('transition-fx');
+  fx.innerHTML = `<div class="fx-ring" style="width:${dim}px;height:${dim}px;top:${cy}px;left:${cx}px;"></div>`;
+  fx.classList.add('run');
+
+  document.getElementById('step1').classList.add('leave');
+
+  setTimeout(() => {
+    fx.classList.remove('run');
+    fx.innerHTML = '';
+    showStep2(tenant);
+  }, 400);
+}
+
+function showStep2(tenant) {
+  document.getElementById('step1').style.display = 'none';
+  document.getElementById('form-tenant-id').value = tenant.id;
+  document.getElementById('s2-name').textContent  = tenant.name;
+  renderForm(tenant.schema);
+
+  const s2 = document.getElementById('step2');
+  s2.classList.add('enter');
+  requestAnimationFrame(() => requestAnimationFrame(() => s2.classList.add('visible')));
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function goBack() {
+  const s2 = document.getElementById('step2');
+  s2.classList.remove('visible');
+  setTimeout(() => {
+    s2.classList.remove('enter');
+    const s1 = document.getElementById('step1');
+    s1.style.display = '';
+    s1.classList.remove('leave');
+    window.scrollTo({top:0, behavior:'smooth'});
+  }, 350);
+}
+
+// ── 渲染动态表单 ──────────────────────────────────────────────────────────────
+function renderForm(schema) {
+  const dform = document.getElementById('dform');
+  dform.innerHTML = '';
+
+  schema.forEach(field => {
+    // 分组标题
+    if (field.type === 'heading') {
+      const h = document.createElement('div');
+      h.className = 'dform-heading';
+      h.textContent = field.label;
+      dform.appendChild(h);
+      return;
+    }
+
+    const fg = document.createElement('div');
+    fg.className = 'fg';
+
+    // label
+    const lbl = document.createElement('label');
+    lbl.className = 'fl';
+    const fid = field.type === 'builtin_name' ? '_name'
+              : field.type === 'builtin_qq'   ? '_qq'
+              : field.id;
+    lbl.htmlFor = 'field_' + fid;
+    lbl.innerHTML = escHtml(field.label) + (field.required ? '<span class="req"> *</span>' : '');
+    fg.appendChild(lbl);
+
+    let inputEl = null;
+
+    if (field.type === 'builtin_name' || field.type === 'builtin_qq') {
+      const name = field.type === 'builtin_name' ? '_name' : '_qq';
+      const ph   = field.placeholder || (field.type === 'builtin_name' ? '你的称呼' : 'QQ号 / 联系方式');
+      inputEl = document.createElement('input');
+      inputEl.type = 'text'; inputEl.className = 'fi';
+      inputEl.name = name; inputEl.id = 'field_' + name;
+      inputEl.placeholder = ph;
+      inputEl.value = SUBMITTED[name] || USER_INFO[name] || '';
+      if (USER_INFO[name] && !SUBMITTED[name]) {
+        inputEl.readOnly = true;
+        inputEl.style.background = 'var(--surface2)';
+        inputEl.style.color = 'var(--muted)';
+        inputEl.title = '已由账号自动填写';
+      }
+      if (field.required) inputEl.required = true;
+
+    } else if (field.type === 'short_text') {
+      inputEl = document.createElement('input');
+      inputEl.type = 'text'; inputEl.className = 'fi';
+      inputEl.name = field.id; inputEl.id = 'field_' + field.id;
+      inputEl.placeholder = field.placeholder || '';
+      inputEl.value = SUBMITTED[field.id] || '';
+      if (field.required) inputEl.required = true;
+
+    } else if (field.type === 'textarea') {
+      inputEl = document.createElement('textarea');
+      inputEl.className = 'ft';
+      inputEl.name = field.id; inputEl.id = 'field_' + field.id;
+      inputEl.placeholder = field.placeholder || '';
+      inputEl.rows = 4;
+      inputEl.value = SUBMITTED[field.id] || '';
+      if (field.required) inputEl.required = true;
+
+    } else if (field.type === 'radio') {
+      const grp = document.createElement('div');
+      grp.className = 'radio-group';
+      const saved = SUBMITTED[field.id] || field.default || '';
+      (field.options || []).forEach((opt, i) => {
+        const lab = document.createElement('label');
+        lab.className = 'radio-opt';
+        const inp = document.createElement('input');
+        inp.type = 'radio'; inp.name = field.id; inp.value = opt;
+        if (saved === opt || (!saved && i === 0 && field.default === opt)) inp.checked = true;
+        if (field.required) inp.required = true;
+        const sp = document.createElement('span');
+        sp.textContent = opt;
+        lab.appendChild(inp); lab.appendChild(sp);
+        grp.appendChild(lab);
+      });
+      // 如果有默认值但没有已选中的，设第一个
+      if (!saved && field.default) {
+        const firstMatch = grp.querySelector(`input[value="${CSS.escape(field.default)}"]`);
+        if (firstMatch) firstMatch.checked = true;
+      }
+      inputEl = grp;
+
+    } else if (field.type === 'upload') {
+      const area = document.createElement('div');
+      area.className = 'upload-area';
+      const hintText = field.hint || '最多10张，支持 JPG/PNG/GIF/WebP';
+      const txt = document.createElement('div');
+      txt.innerHTML = `📎 点击或拖拽上传图片<br><span style="font-size:11px">${escHtml(hintText)}</span>`;
+      area.appendChild(txt);
+
+      const inp = document.createElement('input');
+      inp.type = 'file'; inp.name = 'images'; inp.multiple = true;
+      inp.accept = 'image/*'; inp.id = 'field_' + field.id;
+      inp.addEventListener('change', function() { updatePreviews(this, area); });
+      area.appendChild(inp);
+
+      const prev = document.createElement('div');
+      prev.className = 'upload-preview';
+      area.appendChild(prev);
+      inputEl = area;
+    }
+
+    if (inputEl) fg.appendChild(inputEl);
+
+    if (field.hint && field.type !== 'upload') {
+      const fh = document.createElement('div');
+      fh.className = 'fh'; fh.textContent = field.hint;
+      fg.appendChild(fh);
+    }
+
+    dform.appendChild(fg);
+  });
+}
+
+function updatePreviews(inp, area) {
+  const files = Array.from(inp.files).slice(0, 10);
+  const prev = area.querySelector('.upload-preview');
+  prev.innerHTML = '';
+  files.forEach(f => {
+    const img = document.createElement('img');
+    img.className = 'upload-thumb';
+    const reader = new FileReader();
+    reader.onload = e => { img.src = e.target.result; };
+    reader.readAsDataURL(f);
+    prev.appendChild(img);
+  });
+}
+
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── 初始化 ───────────────────────────────────────────────────────────────────
+(function() {
+  // 有错误：直接进入对应 tenant 表单并显示错误
+  if (ERROR_TID && TENANT_DATA[ERROR_TID]) {
+    const tenant = TENANT_DATA[ERROR_TID];
+    document.getElementById('step1').style.display = 'none';
+    document.getElementById('form-tenant-id').value = tenant.id;
+    document.getElementById('s2-name').textContent  = tenant.name;
+    renderForm(tenant.schema);
+    const s2 = document.getElementById('step2');
+    s2.classList.add('enter');
+    requestAnimationFrame(() => requestAnimationFrame(() => s2.classList.add('visible')));
+    if (ERRORS.length) {
+      const errDiv = document.getElementById('form-errors');
+      errDiv.textContent = ERRORS.join(' · ');
+      errDiv.style.display = '';
+    }
+    return;
+  }
+  // URL 带 ?t=xxx 自动进入
+  if (PRE_TID && TENANT_DATA[PRE_TID] && TENANT_DATA[PRE_TID].open_status === 'open') {
+    chooseTenant(parseInt(PRE_TID), null);
+    return;
+  }
+  // 只有一个图编且接单中，自动进入
+  const tids = Object.keys(TENANT_DATA).filter(id => TENANT_DATA[id].open_status === 'open');
+  if (tids.length === 1) {
+    chooseTenant(parseInt(tids[0]), null);
+  }
+})();
+</script>
+{% endblock %}

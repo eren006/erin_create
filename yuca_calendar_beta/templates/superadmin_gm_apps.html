@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}本主申请审批 · 超管{% endblock %}
+{% block body %}
+<div class="page">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+    <h1 class="page-title" style="margin-bottom:0">本主申请审批</h1>
+    <a class="btn btn-ghost btn-sm" href="{{ url_for('superadmin') }}">返回用户管理</a>
+  </div>
+
+  {% set pending = apps | selectattr('status', 'equalto', 'pending') | list %}
+  {% set others  = apps | rejectattr('status', 'equalto', 'pending') | list %}
+
+  {% if not apps %}
+  <div class="empty">暂无申请</div>
+  {% else %}
+
+  {% if pending %}
+  <div style="font-size:13px;font-weight:600;color:var(--gold);margin-bottom:10px">待审核（{{ pending|length }}）</div>
+  {% for a in pending %}
+  <div class="card" style="border-color:var(--gold);margin-bottom:10px">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:14px;font-weight:600;color:var(--text)">
+          {{ a.display_name or a.username }}
+          <span style="font-size:12px;color:var(--muted);font-weight:normal">@{{ a.username }}</span>
+        </div>
+        {% if a.reason %}
+        <div style="margin-top:6px;font-size:13px;color:var(--muted);line-height:1.7">{{ a.reason }}</div>
+        {% else %}
+        <div style="margin-top:6px;font-size:12px;color:var(--muted)">（未填写申请理由）</div>
+        {% endif %}
+        <div style="margin-top:6px;font-size:11px;color:var(--muted)">{{ a.created_at | datetimeformat }}</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-shrink:0">
+        <form method="post" action="{{ url_for('superadmin_approve_gm', aid=a.id) }}">
+          <button class="btn btn-primary btn-sm" type="submit">批准</button>
+        </form>
+        <form method="post" action="{{ url_for('superadmin_reject_gm', aid=a.id) }}"
+              onsubmit="return confirm('确定拒绝吗？')">
+          <button class="btn btn-danger btn-sm" type="submit">拒绝</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% if others %}
+  <div style="font-size:13px;font-weight:600;color:var(--muted);margin-top:20px;margin-bottom:10px">历史记录</div>
+  {% for a in others %}
+  <div class="card" style="margin-bottom:8px;opacity:.7">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div>
+        <span style="font-size:13px;color:var(--text)">{{ a.display_name or a.username }}</span>
+        <span style="font-size:11px;color:var(--muted)"> @{{ a.username }}</span>
+      </div>
+      {% if a.status == 'approved' %}
+        <span style="font-size:12px;color:var(--green);font-weight:600">已批准</span>
+      {% else %}
+        <span style="font-size:12px;color:var(--red);font-weight:600">已拒绝</span>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% endif %}
+</div>
+{% endblock %}

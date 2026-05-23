@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}招募广场 · 语擦日历{% endblock %}
+{% block body %}
+<div class="page">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+    <h1 class="page-title" style="margin-bottom:0">招募广场</h1>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      {% if session.get('user_id') %}
+        <a class="btn btn-ghost btn-sm" href="{{ url_for('my_applications') }}">我的投递</a>
+        {% if session.get('is_gm') %}
+          <a class="btn btn-primary btn-sm" href="{{ url_for('gm_index') }}">本主面板</a>
+        {% endif %}
+      {% else %}
+        <a class="btn btn-ghost btn-sm" href="{{ url_for('login') }}">登录</a>
+        <a class="btn btn-ghost btn-sm" href="{{ url_for('register') }}">注册</a>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if not recs %}
+  <div class="empty">暂无正在招募的剧<br><span style="font-size:12px">本主登录后可发布招募</span></div>
+  {% else %}
+  <div style="display:grid;gap:14px">
+  {% for r in recs %}
+  {% set p = r.time_range %}
+  {% set sm = p[:2] %}{% set sd = p[2:4] %}{% set em = p[5:7] %}{% set ed = p[7:9] %}
+  <a href="{{ url_for('plaza_detail', rid=r.id) }}" style="text-decoration:none">
+    <div class="card" style="cursor:pointer">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:4px">{{ r.title }}</div>
+          <div style="font-size:12px;color:var(--muted)">
+            本主：{{ r.gm_name }} &nbsp;·&nbsp;
+            {{ r.start_year }}年 {{ sm }}月{{ sd }}日 —
+            {% if em|int < sm|int %}{{ r.start_year + 1 }}年 {% endif %}{{ em }}月{{ ed }}日
+          </div>
+          {% if r.description %}
+          <div style="margin-top:8px;font-size:13px;color:var(--muted);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">
+            {{ r.description }}
+          </div>
+          {% endif %}
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <span class="badge badge-active">招募中</span>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">{{ r.applicant_count }} 人已投</div>
+        </div>
+      </div>
+    </div>
+  </a>
+  {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

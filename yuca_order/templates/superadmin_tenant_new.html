@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+{% block title %}新建账户{% endblock %}
+{% block body %}
+<div class="page" style="max-width:540px;">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
+    <a href="{{ url_for('superadmin_index') }}" class="btn btn-ghost btn-sm">← 返回</a>
+    <div class="page-title" style="margin-bottom:0;">新建账户</div>
+  </div>
+  {% for e in errors %}<div class="err-msg">{{ e }}</div>{% endfor %}
+  <form method="post">
+    <div class="card">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px;font-weight:500;">账户信息</div>
+      <div class="g2">
+        <div class="fg">
+          <label class="fl">账户名称 <span class="req">*</span></label>
+          <input class="fi" name="display_name" value="{{ request.form.get('display_name','') }}" placeholder="对外显示的名称">
+        </div>
+        <div class="fg">
+          <label class="fl">Slug <span class="req">*</span></label>
+          <input class="fi" name="slug" value="{{ request.form.get('slug','') }}" placeholder="小写字母/数字/-/_">
+          <span class="fh">唯一标识，创建后不可修改</span>
+        </div>
+      </div>
+      <div class="fg">
+        <label class="fl">账户描述</label>
+        <textarea class="ft" name="description" style="min-height:60px;">{{ request.form.get('description','') }}</textarea>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px;font-weight:500;">初始管理员</div>
+      <div class="g2">
+        <div class="fg">
+          <label class="fl">用户名 <span class="req">*</span></label>
+          <input class="fi" name="admin_username" value="{{ request.form.get('admin_username','') }}" placeholder="至少 3 字符">
+        </div>
+        <div class="fg">
+          <label class="fl">显示名</label>
+          <input class="fi" name="admin_display_name" value="{{ request.form.get('admin_display_name','') }}" placeholder="留空同用户名">
+        </div>
+      </div>
+      <div class="fg">
+        <label class="fl">密码 <span class="req">*</span></label>
+        <input class="fi" type="password" name="admin_password" placeholder="至少 6 字符">
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;">
+      <button class="btn btn-primary" type="submit">创建账户</button>
+      <a href="{{ url_for('superadmin_index') }}" class="btn btn-ghost">取消</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

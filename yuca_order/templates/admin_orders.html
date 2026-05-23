@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+{% block title %}订单管理{% endblock %}
+{% block body %}
+<div class="page">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+    <div class="page-title" style="margin-bottom:0;">订单管理</div>
+    <div class="spacer"></div>
+    <a href="{{ url_for('admin_users') }}" class="btn btn-ghost btn-sm">用户管理</a>
+    <a href="{{ url_for('admin_logout') }}" class="btn btn-ghost btn-sm">退出</a>
+  </div>
+
+  <!-- 状态标签 -->
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;">
+    <a href="{{ url_for('admin_orders') }}" class="btn btn-sm {% if not sf %}btn-primary{% else %}btn-ghost{% endif %}">
+      全部 <span style="opacity:.7;">({{ counts.all }})</span>
+    </a>
+    {% for s, label in STATUS_LABEL.items() %}
+    <a href="{{ url_for('admin_orders', status=s) }}"
+       class="btn btn-sm {% if sf==s %}btn-primary{% else %}btn-ghost{% endif %}"
+       style="{% if sf==s %}background:{{ s|sc }}33;color:{{ s|sc }};border-color:{{ s|sc }}55;{% endif %}">
+      {{ label }} <span style="opacity:.7;">({{ counts[s] }})</span>
+    </a>
+    {% endfor %}
+  </div>
+
+  <!-- 搜索 -->
+  <form method="get" style="display:flex;gap:8px;margin-bottom:16px;">
+    {% if sf %}<input type="hidden" name="status" value="{{ sf }}">{% endif %}
+    <input class="fi" name="q" value="{{ q }}" placeholder="搜索订单号 / 客户名 / 标题…" style="max-width:300px;">
+    <button class="btn btn-ghost btn-sm" type="submit">搜索</button>
+    {% if q %}<a href="{{ url_for('admin_orders', status=sf) }}" class="btn btn-ghost btn-sm">清除</a>{% endif %}
+  </form>
+
+  {% if orders %}
+  <div class="card" style="padding:0;overflow:hidden;">
+    <table>
+      <thead><tr>
+        <th>订单号</th><th>类型</th><th>客户</th><th>标题</th>
+        <th>负责人</th><th>状态</th><th>时间</th><th></th>
+      </tr></thead>
+      <tbody>
+        {% for o in orders %}
+        <tr>
+          <td class="mono" style="color:var(--accent);font-size:12px;">{{ o.order_no }}</td>
+          <td>{{ o.service_type }}</td>
+          <td>
+            <div>{{ o.customer_name }}</div>
+            <div style="font-size:11px;color:var(--muted);">{{ o.customer_contact }}</div>
+          </td>
+          <td>{{ o.title }}</td>
+          <td style="font-size:12px;color:var(--muted);">{{ o.admin_name or '—' }}</td>
+          <td>
+            <span class="badge" style="background:{{ o.status|sc }}22;color:{{ o.status|sc }};">
+              {{ o.status|sl }}
+            </span>
+          </td>
+          <td style="font-size:12px;color:var(--muted);">{{ o.created_at|fmt }}</td>
+          <td><a href="{{ url_for('admin_order_detail', oid=o.id) }}" class="btn btn-ghost btn-sm">详情</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card" style="text-align:center;color:var(--muted);padding:40px;">暂无订单</div>
+  {% endif %}
+</div>
+{% endblock %}

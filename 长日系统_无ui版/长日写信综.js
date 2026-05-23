@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         长日写信综
 // @author       长日将尽
-// @version      1.4.0
+// @version      1.5.0
 // @description  独立的正式信件系统，支持发送信件、写信币赏金、配置管理
 // @timestamp    1778742000
 // @license      MIT
@@ -316,6 +316,17 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
+    // 5.5 冷却检查
+    const cdMinutes = parseInt(getMainStorage("direct_letter_cooldown") || "0");
+    if (cdMinutes > 0) {
+        const lastSendTime = dlCounts[userKey].lastSendTime || 0;
+        const cdRemain = cdMinutes - Math.floor((Date.now() - lastSendTime) / 60000);
+        if (cdRemain > 0) {
+            seal.replyToSender(ctx, msg, `⏳ 发信冷却中，还需等待 ${cdRemain} 分钟。`);
+            return seal.ext.newCmdExecuteResult(true);
+        }
+    }
+
     // 6. 检查特殊道具效果（望远镜、羽毛笔）
     let telescopeAppliers = []; // 施加望远镜的人列表
     let quillPenApplier = null; // 施加羽毛笔的人
@@ -381,6 +392,7 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
             rewardGiven = rewardPerLetter;
         }
         dlCounts[userKey].count = currentCount + 1;
+        dlCounts[userKey].lastSendTime = Date.now();
         setMainStorage("letter_day_counts", JSON.stringify(dlCounts));
         let reply = `✉️ 信件已送达「${receiver}」！\n`;
         reply += `🖋️ 落款：${signature}\n`;
@@ -488,6 +500,7 @@ cmd_letter_config.help = `⚙️ 【管理员】配置发送信件系统
 - 日限：每日最多可发送的信件数（默认5）
 - 赏金：每封信获得的写信币数（默认0，即禁用赏金）
 - 最小字数：获得赏金的最少字数（默认0）
+- 发送cd：两封信之间的冷却时间（分钟，默认0即无冷却）
 - 心愿成本：发送心愿需要消费的写信币数（默认0，即禁用消费）
 - 私约成本：发送私约需要消费的写信币数（默认0，即禁用消费）
 
@@ -495,6 +508,7 @@ cmd_letter_config.help = `⚙️ 【管理员】配置发送信件系统
 。信件设置 日限 10
 。信件设置 赏金 5
 。信件设置 最小字数 10
+。信件设置 发送cd 30
 。信件设置 心愿成本 3
 。信件设置 私约成本 5`;
 
@@ -520,6 +534,9 @@ cmd_letter_config.solve = (ctx, msg, cmdArgs) => {
         modified = true;
     } else if (param === "最小字数") {
         setMainStorage("direct_letter_min_chars", value);
+        modified = true;
+    } else if (param === "发送cd") {
+        setMainStorage("direct_letter_cooldown", value);
         modified = true;
     } else if (param === "心愿成本") {
         setMainStorage("wish_coin_cost", value);
@@ -562,10 +579,11 @@ cmd_letter_status.solve = (ctx, msg, cmdArgs) => {
     const dailyLimit = parseInt(getMainStorage("direct_letter_daily_limit") || "5");
     const reward = parseInt(getMainStorage("direct_letter_reward") || "0");
     const minChars = parseInt(getMainStorage("direct_letter_min_chars") || "0");
+    const cdMinutes = parseInt(getMainStorage("direct_letter_cooldown") || "0");
 
     const userKey = `${platform}:${uid}`;
     let dlCounts = JSON.parse(getMainStorage("letter_day_counts") || "{}");
-    const used = dlCounts[userKey]?.count || 0;
+    const used = (dlCounts[userKey]?.day === gameDay ? dlCounts[userKey]?.count : 0) || 0;
 
     let info = `📊 发送信件系统状态\n\n`;
     info += `📅 游戏日期：${gameDay}\n\n`;
@@ -573,7 +591,12 @@ cmd_letter_status.solve = (ctx, msg, cmdArgs) => {
     info += `├ 今日已用：${used} 封\n`;
     info += `├ 剩余额度：${Math.max(0, dailyLimit - used)} 封\n`;
     info += `├ 写信币赏：${reward > 0 ? reward + " 币/封" : "禁用"}\n`;
-    if (minChars > 0) info += `└ 最小字数：${minChars}`;
+    if (minChars > 0) info += (cdMinutes > 0 ? "├" : "└") + ` 最小字数：${minChars}\n`;
+    if (cdMinutes > 0) {
+        const lastSendTime = (dlCounts[userKey]?.day === gameDay ? dlCounts[userKey]?.lastSendTime : 0) || 0;
+        const cdRemain = Math.max(0, cdMinutes - Math.floor((Date.now() - lastSendTime) / 60000));
+        info += `└ 发信冷却：${cdMinutes} 分钟（${cdRemain > 0 ? "剩余 " + cdRemain + " 分钟" : "已就绪"}）`;
+    }
 
     seal.replyToSender(ctx, msg, info);
     return seal.ext.newCmdExecuteResult(true);

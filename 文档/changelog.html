@@ -134,11 +134,11 @@ body { font-family: 'Noto Serif SC', serif; background: var(--warm-white); color
   <div class="hero-right">
     <div class="hero-stat-grid">
       <div class="hero-stat">
-        <div class="hero-stat-num">1.4.0</div>
+        <div class="hero-stat-num">2.0.0</div>
         <div class="hero-stat-label">Latest</div>
       </div>
       <div class="hero-stat">
-        <div class="hero-stat-num">14</div>
+        <div class="hero-stat-num">15</div>
         <div class="hero-stat-label">Releases</div>
       </div>
       <div class="hero-stat">
@@ -156,15 +156,141 @@ body { font-family: 'Noto Serif SC', serif; background: var(--warm-white); color
 <div class="page">
 <div class="timeline">
 
-  <!-- ── v1.4.0 ─── -->
-  <div class="version-block latest" id="v1.4.0">
+  <!-- ── v2.0.0 ─── -->
+  <div class="version-block latest" id="v2.0.0">
     <div class="version-meta">
-      <span class="version-num">1.4.0</span>
+      <span class="version-num">2.0.0</span>
       <span class="version-date">最新</span>
     </div>
     <div class="version-dot"></div>
     <div class="version-content">
-      <div class="version-title">管理员强结指令 · 官约调整 <span class="tag-latest">Latest</span></div>
+      <div class="version-title">合成系统整合 · 池子全面增强 · 写信综 v1.5 <span class="tag-latest">Latest</span></div>
+      <div class="version-subtitle">RPG 合成双系统合并为一；池子管理指令全面重写；写信综独立升级；修复多处 Bug</div>
+      <ul class="change-list">
+
+        <li class="change-group-label">Bug 修复（长日RPG）</li>
+        <li class="change-item">
+          <span class="change-tag tag-fix">Fix</span>
+          <span class="change-text">修复分段池（tiered）抽取时以 <code>roleName</code> 读取 <code>charAttrs</code> 导致属性永远为空的问题，改为正确使用 <code>uid</code> 作为 key</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-fix">Fix</span>
+          <span class="change-text"><code>applyDamage</code> 返回值错误：之前返回原始伤害值，现修正为返回扣除防御后的实际伤害</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-fix">Fix</span>
+          <span class="change-text">撤销卖单时改用挂单记录的 <code>remainingUses</code> 还原物品，不再错误地用 <code>addToInv</code> 将次数重置为初始值</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-fix">Fix</span>
+          <span class="change-text"><code>使用道具</code> / <code>对他人使用</code>：<code>remainingUses</code> 为 <code>undefined</code> 时统一初始化为 <code>item.maxUses ?? -1</code>，防止次数计算出现 NaN</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-fix">Fix</span>
+          <span class="change-text">删除 <code>onNotCommandReceived</code> 中约 120 行重复的 <code>我的状态</code> / <code>我创建属性</code> / <code>我移除属性</code> handler 块</span>
+        </li>
+
+        <li class="change-group-label">合成系统整合（长日RPG）</li>
+        <li class="change-item">
+          <span class="change-tag tag-refactor">Refactor</span>
+          <span class="change-text">删除旧合成系统（<code>上传配方</code>、<code>查看配方</code>、<code>item_recipes</code> 存储键），全部合并至 <code>craft_recipes</code> 单一系统</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-update">Update</span>
+          <span class="change-text"><code>注册合成</code> 新增可选第 5 段参数「成功率」（0–100），配方支持失败概率；<code>合成</code> 指令改写，完整支持限制条件 + 成功率 + 部分成功回显</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-fix">Fix</span>
+          <span class="change-text"><code>删除物品</code> 清理逻辑只保留对 <code>craft_recipes</code> 的清除，同时修正材料匹配方式（对象 key 查找，而非旧的数组 <code>.some()</code>）</span>
+        </li>
+
+        <li class="change-group-label">池子系统增强（长日RPG）</li>
+        <li class="change-item">
+          <span class="change-tag tag-update">Update</span>
+          <span class="change-text"><code>注册池子</code> 支持中文参数「数量」/「权重」，替代原来的 <code>fixed</code>/<code>free</code>；<code>上架池子</code> 在池子不存在时自动创建为数量池，并支持多行批量上架</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-update">Update</span>
+          <span class="change-text"><code>从池移除</code> 支持多行批量移除；<code>池子设定</code> 完全重写，查看时同时展示所有池子状态（类型/库存/限制），设定改为空格分隔，支持设为「无限」移除专属限制</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">新增 <code>查看池子</code>：无参数时列出所有池子概览，带参数时展示该池的完整物品列表与库存</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">新增 <code>清空池子</code>：清空库存但保留池子结构与次数设定，方便补货</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-fix">Fix</span>
+          <span class="change-text"><code>删除属性</code> 新增绑定检查：若属性正被分段池绑定则拒绝删除，提示需先修改对应池子</span>
+        </li>
+
+        <li class="change-group-label">拍卖系统（长日RPG / 长日系统）</li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">新增 <code>拉取拍卖队列</code>：从存档服务器拉取待拍物品批量激活，并自动清空服务器队列</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">新增 <code>上传拍卖</code>：将当前拍卖快照推送到存档服务器，可在后台「拍卖」页面查看</span>
+        </li>
+
+        <li class="change-group-label">写信综 v1.5.0</li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">新增发信冷却：<code>信件设置 发送cd N</code>，两封信之间强制等待 N 分钟，<code>信件状态</code> 中显示剩余冷却</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">新增 RP 同步开关：<code>信件设置 同步 开/关</code>，启用后发送信件与羽毛笔修改均实时同步至 RP 存档服务器</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-refactor">Refactor</span>
+          <span class="change-text">写信综内置独立的 RP 存档模块（<code>isArchiveEnabled</code>、<code>postToArchive</code>），不再依赖主插件的同名函数，各插件上下文完全隔离</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-update">Update</span>
+          <span class="change-text"><code>信件状态</code> 改为动态树形结构（<code>├</code>/<code>└</code>），仅显示已启用的配置项</span>
+        </li>
+
+        <li class="change-group-label">长日设置</li>
+        <li class="change-item">
+          <span class="change-tag tag-update">Update</span>
+          <span class="change-text"><code>全量同步</code> 指令改名为 <code>全量上传</code>，与「全量同步」（从服务器拉取）方向区分更明确</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">新增触发词 <code>同步指南</code>：发送合并转发速查卡，涵盖全量操作、设置同步、池子同步等所有场景的方向说明</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-fix">Fix</span>
+          <span class="change-text">修正 <code>loveshow_name</code> 的读取方式，防止双重 JSON 序列化导致恋综名称显示为带引号字符串</span>
+        </li>
+
+        <li class="change-group-label">长日系统（主插件）</li>
+        <li class="change-item">
+          <span class="change-tag tag-refactor">Refactor</span>
+          <span class="change-text">将多个仅在 <code>onNotCommandReceived</code> 中触发的指令（电话、私约、微信、时间线、心愿系列、统计系列等）从 <code>cmdMap</code> 中移除，改为纯函数或内部对象，减少帮助指令污染</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-update">Update</span>
+          <span class="change-text"><code>修改名字</code> 触发词新增 <code>修改姓名</code> 别名；<code>修改名字</code> 核心逻辑抽为 <code>doRenameRole</code> 函数</span>
+        </li>
+
+      </ul>
+    </div>
+  </div>
+
+  <!-- ── v1.4.0 ─── -->
+  <div class="version-block" id="v1.4.0">
+    <div class="version-meta">
+      <span class="version-num">1.4.0</span>
+      <span class="version-date">2025</span>
+    </div>
+    <div class="version-dot"></div>
+    <div class="version-content">
+      <div class="version-title">管理员强结指令 · 官约调整</div>
       <div class="version-subtitle">新增强结私约指令；官约指令改名并调整回执格式</div>
       <ul class="change-list">
         <li class="change-item">

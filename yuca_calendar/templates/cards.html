@@ -1,0 +1,369 @@
+{% extends "base.html" %}
+{% block title %}卡包 · 语擦日历{% endblock %}
+{% block head %}
+<style>
+/* ── 类型 badge ── */
+.ct-板写 { color: #f472b6; border-color: #f472b660; background: #f472b614; }
+.ct-溶图 { color: #60a5fa; border-color: #60a5fa60; background: #60a5fa14; }
+.ct-溶写 { color: #a78bfa; border-color: #a78bfa60; background: #a78bfa14; }
+.ct-其他 { color: #2dd4bf; border-color: #2dd4bf60; background: #2dd4bf14; }
+
+.card-type-badge {
+  display: inline-block; padding: 1px 8px; border-radius: 20px;
+  font-size: 11px; font-weight: 600; border: 1px solid; vertical-align: middle;
+}
+
+/* ── urgency colors ── */
+.days-expired  { color: var(--muted); }
+.days-critical { color: var(--red); font-weight: 600; }
+.days-warn     { color: var(--warn); font-weight: 600; }
+.days-ok       { color: var(--green); }
+
+/* ── tabs ── */
+.card-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; align-items: center; }
+.card-tab { padding: 4px 16px; border-radius: 20px; font-size: 13px; font-weight: 600; border: 1px solid var(--border); color: var(--muted); background: var(--surface2); text-decoration: none; transition: all .15s; }
+.card-tab:hover { color: var(--text); border-color: var(--accent); }
+.card-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.card-tab .cnt { font-size: 11px; opacity: .75; margin-left: 4px; }
+
+/* ── add panel ── */
+.add-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; }
+.add-panel summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--accent); list-style: none; display: flex; align-items: center; gap: 6px; }
+.add-panel summary::before { content: '＋'; font-size: 15px; }
+.add-panel[open] summary::before { content: '－'; }
+.add-panel .add-form { margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media(max-width: 600px) { .add-panel .add-form { grid-template-columns: 1fr; } }
+.add-panel .add-form-foot { grid-column: 1 / -1; display: flex; gap: 8px; justify-content: flex-end; margin-top: 2px; }
+
+/* ── card item ── */
+.card-item {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 12px 14px; border-radius: 10px;
+  background: var(--surface); border: 1px solid var(--border);
+  margin-bottom: 8px; transition: border-color .15s;
+}
+.card-item:hover { border-color: var(--accent); }
+.card-item.is-expired { opacity: .5; }
+
+.card-main { flex: 1; min-width: 0; }
+.card-name { font-size: 14px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.card-meta { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--muted); margin-top: 5px; }
+.card-meta span { display: flex; align-items: center; gap: 3px; }
+.card-notes { font-size: 12px; color: var(--muted); margin-top: 4px; font-style: italic; }
+
+.card-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; flex-wrap: wrap; }
+
+/* ── edit modal ── */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 800; backdrop-filter: blur(2px); }
+.modal-overlay.open { display: flex; align-items: center; justify-content: center; padding: 20px; }
+.modal-box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 22px 24px; width: 100%; max-width: 480px; }
+.modal-title { font-size: 15px; font-weight: 600; color: var(--accent2); margin-bottom: 16px; }
+.modal-form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media(max-width: 500px) { .modal-form { grid-template-columns: 1fr; } }
+.modal-form-foot { grid-column: 1 / -1; display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+
+/* ── random result ── */
+.random-result { display: none; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+.random-result.show { display: block; }
+.random-card-name { font-size: 15px; font-weight: 600; color: var(--accent2); margin-bottom: 6px; }
+
+/* ── section label ── */
+.section-label { font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: .06em; margin: 16px 0 8px; padding-bottom: 5px; border-bottom: 1px solid var(--border); }
+
+/* ── urgent banner ── */
+.urgent-banner { background: color-mix(in srgb, var(--warn) 10%, var(--surface)); border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--surface)); border-radius: 8px; padding: 8px 14px; font-size: 13px; color: var(--warn); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+</style>
+{% endblock %}
+{% block body %}
+<div class="page">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+    <div>
+      <h1 class="page-title" style="margin:0">🃏 卡包</h1>
+      <div style="font-size:12px;color:var(--muted);margin-top:3px">管理你的板写 / 溶图 / 溶写卡片，追踪到期日与库存</div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-ghost btn-sm" onclick="openRandom()">🎲 急救箱</button>
+      <form method="post" action="{{ url_for('cards_clean') }}" onsubmit="return confirm('确认清理所有已过期卡片？')">
+        <button class="btn btn-ghost btn-sm" type="submit" style="color:var(--muted)">🗑 清理过期</button>
+      </form>
+    </div>
+  </div>
+
+  {% if urgent > 0 %}
+  <div class="urgent-banner">
+    ⚠️ 有 <strong>{{ urgent }}</strong> 张卡片将在 7 天内到期，记得及时使用！
+  </div>
+  {% endif %}
+
+  <!-- 急救箱结果 -->
+  <div class="random-result" id="random-result">
+    <div style="font-size:12px;color:var(--muted);margin-bottom:6px">🎲 急救箱为你推荐：</div>
+    <div class="random-card-name" id="rr-name"></div>
+    <div style="font-size:13px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap" id="rr-meta"></div>
+    <button class="btn btn-ghost btn-sm" style="margin-top:10px" onclick="closeRandom()">关闭</button>
+  </div>
+
+  <!-- 类型 Tabs -->
+  <div class="card-tabs">
+    <a class="card-tab {% if not type_filter %}active{% endif %}" href="{{ url_for('cards') }}">
+      全部<span class="cnt">{{ all_cards|length }}</span>
+    </a>
+    {% for ct in card_types %}
+    <a class="card-tab {% if type_filter == ct %}active{% endif %} ct-{{ ct }}"
+       href="{{ url_for('cards', type=ct) }}"
+       style="{% if type_filter != ct %}{% endif %}">
+      {{ ct }}<span class="cnt">{{ counts[ct] }}</span>
+    </a>
+    {% endfor %}
+  </div>
+
+  <!-- 添加卡片 -->
+  <details class="add-panel" id="add-panel">
+    <summary>添加新卡片</summary>
+    <form method="post" action="{{ url_for('cards_add') }}" class="add-form">
+      <div class="form-group" style="margin:0">
+        <label class="form-label">名称 <span class="req">*</span></label>
+        <input class="form-input" type="text" name="name" placeholder="如：小白板写" required maxlength="60">
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">到期日 <span class="req">*</span></label>
+        <input class="form-input" type="date" name="expiry" required>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">类型</label>
+        <select class="form-select" name="card_type">
+          {% for ct in card_types %}
+          <option value="{{ ct }}">{{ ct }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">数量</label>
+        <input class="form-input" type="number" name="quantity" value="1" min="0" max="9999">
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">价格（元）</label>
+        <input class="form-input" type="number" name="price" value="0" min="0" step="0.01">
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">备注</label>
+        <input class="form-input" type="text" name="notes" placeholder="可选" maxlength="100">
+      </div>
+      <div class="add-form-foot">
+        <button class="btn btn-primary" type="submit">录入</button>
+      </div>
+    </form>
+  </details>
+
+  <!-- 卡片列表 -->
+  {% if cards %}
+    {% set valid_cards = cards | selectattr('days_left', 'ge', 0) | list %}
+    {% set expired_cards = cards | rejectattr('days_left', 'ge', 0) | list %}
+
+    {% if valid_cards %}
+    <div class="section-label">有效卡片 · {{ valid_cards|length }}</div>
+    {% for c in valid_cards %}
+    <div class="card-item">
+      <div class="card-main">
+        <div class="card-name">
+          <span class="card-type-badge ct-{{ c.card_type }}">{{ c.card_type }}</span>
+          {{ c.name }}
+        </div>
+        <div class="card-meta">
+          <span>
+            {% if c.days_left == 0 %}
+              <span class="days-critical">⚠️ 今天到期</span>
+            {% elif c.days_left <= 2 %}
+              <span class="days-critical">⚠️ 还剩 {{ c.days_left }} 天</span>
+            {% elif c.days_left <= 7 %}
+              <span class="days-warn">⏳ 还剩 {{ c.days_left }} 天</span>
+            {% else %}
+              <span class="days-ok">✓ 还剩 {{ c.days_left }} 天</span>
+            {% endif %}
+            <span style="color:var(--border)">·</span>
+            <span>{{ c.expiry }}</span>
+          </span>
+          <span>📦 库存 <strong style="color:var(--text)">{{ c.quantity }}</strong></span>
+          {% if c.price > 0 %}<span>💰 ¥{{ "%.0f"|format(c.price) if c.price == c.price|int else "%.2f"|format(c.price) }}</span>{% endif %}
+          {% if c.last_consume_str %}
+          <span>🕓 上次 {{ c.last_consume_str }}</span>
+          {% endif %}
+        </div>
+        {% if c.notes %}<div class="card-notes">{{ c.notes }}</div>{% endif %}
+      </div>
+      <div class="card-actions">
+        <form method="post" action="{{ url_for('cards_consume', cid=c.id) }}" style="display:flex;gap:4px;align-items:center">
+          <input type="number" name="count" value="1" min="1" max="{{ c.quantity or 1 }}"
+                 style="width:44px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 6px;font-size:12px;text-align:center">
+          <button class="btn btn-ghost btn-sm" type="submit" title="消耗">−用</button>
+        </form>
+        <button class="btn btn-ghost btn-sm" onclick="openEdit({{ c | tojson }})" title="编辑">✎</button>
+        <form method="post" action="{{ url_for('cards_delete', cid=c.id) }}"
+              onsubmit="return confirm('确认删除「{{ c.name }}」？')">
+          <button class="btn btn-ghost btn-sm" type="submit" style="color:var(--muted)" title="删除">×</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    {% if expired_cards %}
+    <div class="section-label" style="margin-top:20px;color:var(--muted)">已过期 · {{ expired_cards|length }}</div>
+    {% for c in expired_cards %}
+    <div class="card-item is-expired">
+      <div class="card-main">
+        <div class="card-name">
+          <span class="card-type-badge ct-{{ c.card_type }}">{{ c.card_type }}</span>
+          {{ c.name }}
+        </div>
+        <div class="card-meta">
+          <span class="days-expired">已于 {{ c.expiry }} 过期</span>
+          <span>📦 库存 {{ c.quantity }}</span>
+        </div>
+        {% if c.notes %}<div class="card-notes">{{ c.notes }}</div>{% endif %}
+      </div>
+      <div class="card-actions">
+        <form method="post" action="{{ url_for('cards_delete', cid=c.id) }}"
+              onsubmit="return confirm('确认删除「{{ c.name }}」？')">
+          <button class="btn btn-ghost btn-sm" type="submit" style="color:var(--muted)">× 删除</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+  {% else %}
+  <div class="empty">
+    <div style="font-size:32px;margin-bottom:12px">🃏</div>
+    {% if type_filter %}「{{ type_filter }}」分类下没有卡片{% else %}卡包是空的，先录入几张吧{% endif %}
+  </div>
+  {% endif %}
+</div>
+
+<!-- 编辑 modal -->
+<div class="modal-overlay" id="edit-modal" onclick="closeEdit(event)">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-title">✎ 编辑卡片</div>
+    <form id="edit-form" method="post" action="" class="modal-form">
+      <div class="form-group" style="margin:0">
+        <label class="form-label">名称 <span class="req">*</span></label>
+        <input class="form-input" type="text" name="name" id="ef-name" required maxlength="60">
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">到期日 <span class="req">*</span></label>
+        <input class="form-input" type="date" name="expiry" id="ef-expiry" required>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">类型</label>
+        <select class="form-select" name="card_type" id="ef-type">
+          {% for ct in card_types %}
+          <option value="{{ ct }}">{{ ct }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">数量</label>
+        <input class="form-input" type="number" name="quantity" id="ef-qty" min="0" max="9999">
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">价格（元）</label>
+        <input class="form-input" type="number" name="price" id="ef-price" min="0" step="0.01">
+      </div>
+      <div class="form-group" style="margin:0">
+        <label class="form-label">备注</label>
+        <input class="form-input" type="text" name="notes" id="ef-notes" maxlength="100">
+      </div>
+      <div class="modal-form-foot">
+        <button type="button" class="btn btn-ghost" onclick="closeEdit()">取消</button>
+        <button type="submit" class="btn btn-primary">保存</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 急救箱 modal -->
+<div class="modal-overlay" id="random-modal" onclick="closeRandomModal(event)">
+  <div class="modal-box" onclick="event.stopPropagation()" style="max-width:360px">
+    <div class="modal-title">🎲 急救箱</div>
+    <div style="margin-bottom:14px">
+      <label class="form-label">按类型筛选（可选）</label>
+      <select class="form-select" id="rand-type">
+        <option value="">全部类型</option>
+        {% for ct in card_types %}
+        <option value="{{ ct }}">{{ ct }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div id="rand-result" style="display:none;background:var(--surface2);border-radius:8px;padding:12px 14px;margin-bottom:14px">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">命运之手选中了——</div>
+      <div id="rand-name" style="font-size:15px;font-weight:600;color:var(--accent2);margin-bottom:6px"></div>
+      <div id="rand-detail" style="font-size:13px;color:var(--muted);display:flex;flex-wrap:wrap;gap:10px"></div>
+    </div>
+    <div id="rand-err" style="display:none;color:var(--muted);font-size:13px;margin-bottom:12px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="closeRandomModal()">关闭</button>
+      <button class="btn btn-primary" onclick="doRandom()">🎲 再抽一次</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+const EDIT_URL_TPL = "{{ url_for('cards_edit', cid=0) }}";
+
+function openEdit(card) {
+  document.getElementById('edit-form').action = EDIT_URL_TPL.replace('/0/', '/' + card.id + '/');
+  document.getElementById('ef-name').value   = card.name;
+  document.getElementById('ef-expiry').value = card.expiry;
+  document.getElementById('ef-type').value   = card.card_type;
+  document.getElementById('ef-qty').value    = card.quantity;
+  document.getElementById('ef-price').value  = card.price;
+  document.getElementById('ef-notes').value  = card.notes || '';
+  document.getElementById('edit-modal').classList.add('open');
+}
+function closeEdit(e) {
+  if (!e || e.target === document.getElementById('edit-modal'))
+    document.getElementById('edit-modal').classList.remove('open');
+}
+
+function openRandom() {
+  document.getElementById('rand-result').style.display = 'none';
+  document.getElementById('rand-err').style.display = 'none';
+  document.getElementById('random-modal').classList.add('open');
+  doRandom();
+}
+function closeRandomModal(e) {
+  if (!e || e.target === document.getElementById('random-modal'))
+    document.getElementById('random-modal').classList.remove('open');
+}
+async function doRandom() {
+  const type = document.getElementById('rand-type').value;
+  const url  = "{{ url_for('cards_random') }}" + (type ? '?type=' + encodeURIComponent(type) : '');
+  const res  = await fetch(url);
+  const data = await res.json();
+  if (!data.ok) {
+    document.getElementById('rand-result').style.display = 'none';
+    document.getElementById('rand-err').style.display    = 'block';
+    document.getElementById('rand-err').textContent      = data.msg;
+    return;
+  }
+  const c = data.card;
+  document.getElementById('rand-err').style.display    = 'none';
+  document.getElementById('rand-result').style.display = 'block';
+  document.getElementById('rand-name').textContent     = `【${c.card_type}】${c.name}`;
+  const days = c.days_left;
+  let daysStr = days === 0 ? '今天到期' : days > 0 ? `还剩 ${days} 天` : '已过期';
+  document.getElementById('rand-detail').innerHTML =
+    `<span>⏳ ${daysStr} · ${c.expiry}</span><span>📦 库存 ${c.quantity}</span>`
+    + (c.price > 0 ? `<span>💰 ¥${c.price}</span>` : '');
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    document.getElementById('edit-modal').classList.remove('open');
+    document.getElementById('random-modal').classList.remove('open');
+  }
+});
+</script>
+{% endblock %}

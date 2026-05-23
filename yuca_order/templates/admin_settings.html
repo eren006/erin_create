@@ -1,0 +1,115 @@
+{% extends 'base.html' %}
+{% block title %}散单设置{% endblock %}
+{% block head %}
+<style>
+.toggle-wrap{display:flex;align-items:center;gap:14px;padding:14px 0;}
+.toggle-label{font-size:14px;font-weight:500;flex:1;}
+.toggle-sub{font-size:12px;color:var(--muted);margin-top:2px;}
+
+/* 开关 */
+.switch{position:relative;display:inline-block;width:46px;height:26px;flex-shrink:0;}
+.switch input{opacity:0;width:0;height:0;}
+.slider{position:absolute;cursor:pointer;inset:0;background:#c8d5ea;border-radius:26px;transition:.2s;}
+.slider:before{position:absolute;content:"";height:20px;width:20px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 4px rgba(0,0,0,.18);}
+input:checked + .slider{background:var(--accent);}
+input:checked + .slider:before{transform:translateX(20px);}
+
+.setting-row{padding:16px 0;border-bottom:1px solid var(--border);}
+.setting-row:last-child{border-bottom:none;}
+
+.limit-input{display:flex;align-items:center;gap:10px;margin-top:10px;}
+.limit-input .fi{width:100px;text-align:center;}
+.limit-hint{font-size:11px;color:var(--muted);}
+
+.status-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:500;}
+.status-open{background:#dcfce7;color:#166534;}
+.status-closed{background:#fee2e2;color:#991b1b;}
+.status-limited{background:#fef3c7;color:#92400e;}
+</style>
+{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-title">散单设置</div>
+
+  <!-- 当前状态预览 -->
+  <div class="card-sm" style="margin-bottom:18px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+    <span style="font-size:12px;color:var(--muted);">当前散单状态：</span>
+    {% if not tenant.orders_open %}
+      <span class="status-chip status-closed">🔒 已关闭</span>
+    {% elif tenant.max_active_orders and tenant.max_active_orders > 0 and active_cnt >= tenant.max_active_orders %}
+      <span class="status-chip status-limited">⚠️ 队列已满 {{ active_cnt }}/{{ tenant.max_active_orders }}</span>
+    {% elif tenant.max_active_orders and tenant.max_active_orders > 0 %}
+      <span class="status-chip status-open">✅ 开放中（{{ active_cnt }}/{{ tenant.max_active_orders }}）</span>
+    {% else %}
+      <span class="status-chip status-open">✅ 开放中</span>
+    {% endif %}
+    <span style="font-size:11px;color:var(--muted);">进行中订单 {{ active_cnt }} 条</span>
+  </div>
+
+  <form method="post">
+    <div class="card">
+
+      <!-- 散单开关 -->
+      <div class="setting-row">
+        <div class="toggle-wrap">
+          <div style="flex:1;">
+            <div class="toggle-label">接受散单</div>
+            <div class="toggle-sub">关闭后，网页下单入口会显示"暂不接受新散单"，无法提交</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" name="orders_open" id="orders_open"
+              {% if tenant.orders_open %}checked{% endif %}>
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- 数量上限 -->
+      <div class="setting-row">
+        <div style="font-size:14px;font-weight:500;">散单数量上限</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px;margin-bottom:10px;">
+          进行中（含待处理、制作中）的散单达到上限后不再接受新订单。设为 0 表示不限制。
+        </div>
+        <div class="limit-input">
+          <input class="fi" type="number" name="max_active_orders" id="max_active"
+            min="0" max="999"
+            value="{{ tenant.max_active_orders or 0 }}"
+            style="width:100px;text-align:center;">
+          <span style="font-size:13px;color:var(--muted);">条&nbsp;（0 = 不限）</span>
+        </div>
+        <div class="limit-hint" style="margin-top:8px;">
+          当前进行中：<strong>{{ active_cnt }}</strong> 条
+          {% if tenant.max_active_orders and tenant.max_active_orders > 0 %}
+            &nbsp;/&nbsp;上限 {{ tenant.max_active_orders }} 条
+            {% if active_cnt >= tenant.max_active_orders %}
+              &nbsp;<span style="color:var(--red);font-weight:500;">（已满）</span>
+            {% else %}
+              &nbsp;<span style="color:var(--green);">（还可接 {{ tenant.max_active_orders - active_cnt }} 条）</span>
+            {% endif %}
+          {% endif %}
+        </div>
+      </div>
+
+    </div>
+
+    <div style="display:flex;gap:10px;align-items:center;margin-top:4px;">
+      <button class="btn btn-primary" type="submit">保存设置</button>
+      <a href="{{ url_for('admin_dashboard') }}" class="btn btn-ghost">返回概览</a>
+    </div>
+  </form>
+
+  <!-- 图片清理 -->
+  <div class="card" style="margin-top:20px;">
+    <div style="font-size:15px;font-weight:700;margin-bottom:6px;">🧹 图片空间清理</div>
+    <div style="font-size:12px;color:var(--muted);line-height:1.8;margin-bottom:14px;">
+      删除所有<strong>已完成 / 已拒绝 / 已取消</strong>订单的上传图片和成品图。<br>
+      订单记录本身不受影响，只清理磁盘文件。操作不可撤销。
+    </div>
+    <form method="post" action="{{ url_for('admin_cleanup_images') }}"
+          onsubmit="return confirm('确认清理已结束订单的所有图片？此操作不可撤销。')">
+      <button type="submit" class="btn btn-danger">🗑️ 清理已结束订单图片</button>
+    </form>
+  </div>
+
+</div>
+{% endblock %}

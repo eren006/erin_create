@@ -1,0 +1,321 @@
+{% extends "base.html" %}
+{% block title %}{{ guild.name }} · 公会 · 语擦日历{% endblock %}
+{% block head %}
+<style>
+.guild-tabs { display:flex; gap:4px; margin-bottom:20px; flex-wrap:wrap; }
+.guild-tab { padding:7px 16px; border-radius:8px; font-size:13px; cursor:pointer; border:1px solid var(--border); color:var(--muted); background:transparent; text-decoration:none; }
+.guild-tab:hover { border-color:var(--accent); color:var(--text); }
+.guild-tab.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+
+.member-chip { display:inline-flex; align-items:center; gap:5px; background:var(--surface2); border:1px solid var(--border); border-radius:20px; padding:3px 10px; font-size:12px; }
+.member-chip .dot { width:8px; height:8px; border-radius:50%; }
+
+.stat-block { background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:14px 16px; }
+.stat-num { font-size:24px; font-weight:700; color:var(--accent2); }
+.stat-label { font-size:11px; color:var(--muted); margin-top:2px; }
+
+.bl-entry-shared { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:12px 16px; margin-bottom:8px; }
+.bl-entry-shared:hover { border-color:var(--red); }
+.owner-tag { font-size:11px; background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:1px 8px; color:var(--muted); }
+
+.partner-card-shared { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:12px 16px; margin-bottom:8px; }
+.partner-card-shared:hover { border-color:var(--accent); }
+
+/* ── Guild calendar ── */
+.gcal-nav { display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
+.gcal-title { font-size:15px; font-weight:700; color:var(--text); }
+.gcal-legend { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; }
+.gcal-legend-item { display:inline-flex; align-items:center; gap:5px; font-size:12px; color:var(--text); }
+.gcal-legend-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+
+.gcal-table { width:100%; border-collapse:collapse; table-layout:fixed; }
+.gcal-table th { text-align:center; font-size:11px; color:var(--muted); padding:4px 0; font-weight:600; }
+.gcal-cell {
+  border:1px solid var(--border); vertical-align:top;
+  padding:4px 5px; min-height:60px; position:relative;
+}
+.gcal-cell.empty { background:transparent; border-color:transparent; }
+.gcal-day-num { font-size:11px; color:var(--muted); margin-bottom:3px; }
+.gcal-bar {
+  display:block; border-radius:3px; padding:1px 4px;
+  font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  margin-bottom:2px; cursor:default; line-height:1.5;
+}
+@media(max-width:640px) {
+  .gcal-bar { font-size:0; width:100%; padding:3px 0; }
+  .gcal-day-num { font-size:10px; }
+}
+</style>
+{% endblock %}
+{% block body %}
+<div class="page">
+  <!-- Header -->
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+    <div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <a href="{{ url_for('guilds') }}" class="btn btn-ghost btn-sm">← 我的公会</a>
+      </div>
+      <h1 class="page-title" style="margin-bottom:4px">🏰 {{ guild.name }}</h1>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <code style="font-size:12px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 8px">#{{ guild.slug }}</code>
+        <span style="font-size:12px;color:var(--muted)">公会主：{{ guild.owner_name }}</span>
+        <span style="font-size:12px;color:var(--muted)">{{ members|length }} 名成员</span>
+      </div>
+      {% if guild.signature %}
+      <div style="font-size:13px;color:var(--muted);margin-top:6px">{{ guild.signature }}</div>
+      {% endif %}
+    </div>
+    {% if is_owner %}
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <a href="{{ url_for('guild_edit', gid=guild.id) }}" class="btn btn-ghost btn-sm">编辑公会</a>
+    </div>
+    {% else %}
+    <form method="post" action="{{ url_for('guild_leave', gid=guild.id) }}"
+          onsubmit="return confirm('确认退出公会「{{ guild.name }}」？')">
+      <button class="btn btn-ghost btn-sm" type="submit">退出公会</button>
+    </form>
+    {% endif %}
+  </div>
+
+  <!-- Pending requests (owner only) -->
+  {% if is_owner and pending %}
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 18px;margin-bottom:20px">
+    <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px">
+      📬 待审核申请 <span style="background:var(--accent);color:#fff;border-radius:20px;padding:1px 8px;font-size:11px;margin-left:4px">{{ pending|length }}</span>
+    </div>
+    {% for p in pending %}
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);gap:10px;flex-wrap:wrap">
+      <span style="font-size:13px;color:var(--text)">{{ p.display_name or p.username }}</span>
+      <div style="display:flex;gap:6px">
+        <form method="post" action="{{ url_for('guild_approve', gid=guild.id, target_uid=p.id) }}" style="display:inline">
+          <button class="btn btn-approve btn-sm" type="submit">✓ 通过</button>
+        </form>
+        <form method="post" action="{{ url_for('guild_reject', gid=guild.id, target_uid=p.id) }}" style="display:inline">
+          <button class="btn btn-danger btn-sm" type="submit">✕ 拒绝</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Members chips -->
+  <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:20px">
+    {% for m in members %}
+    <span class="member-chip">
+      <span class="dot" style="background:{{ ['#8b7cf6','#f472b6','#34d399','#60a5fa','#fbbf24','#f87171','#a78bfa','#2dd4bf','#fb923c','#e879f9'][loop.index0 % 10] }}"></span>
+      {{ m.display_name or m.username }}
+      {% if is_owner %}
+      <form method="post" action="{{ url_for('guild_kick', gid=guild.id, target_uid=m.id) }}"
+            onsubmit="return confirm('确认移出「{{ m.display_name or m.username }}」？')"
+            style="display:inline;margin:0">
+        <button type="submit" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:0 0 0 2px;line-height:1">×</button>
+      </form>
+      {% endif %}
+    </span>
+    {% endfor %}
+  </div>
+
+  <!-- Tabs -->
+  <div class="guild-tabs">
+    <a href="{{ url_for('guild_detail', gid=guild.id, tab='calendar') }}"
+       class="guild-tab {% if tab=='calendar' %}active{% endif %}">📅 成员档期</a>
+    <a href="{{ url_for('guild_detail', gid=guild.id, tab='partners') }}"
+       class="guild-tab {% if tab=='partners' %}active{% endif %}">🍽 必吃榜</a>
+    <a href="{{ url_for('guild_detail', gid=guild.id, tab='blacklist') }}"
+       class="guild-tab {% if tab=='blacklist' %}active{% endif %}">🚫 黑名单</a>
+    <a href="{{ url_for('guild_detail', gid=guild.id, tab='stats', year=tab_year) }}"
+       class="guild-tab {% if tab=='stats' %}active{% endif %}">📊 年度统计</a>
+  </div>
+
+  <!-- ─── TAB: calendar ─────────────────────────────────────────────────────── -->
+  {% if tab == 'calendar' %}
+  <div style="font-size:12px;color:var(--muted);margin-bottom:14px;padding:8px 12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border)">
+    仅显示成员设为「所有人可见」的档期
+  </div>
+
+  <!-- 月份导航 -->
+  <div class="gcal-nav">
+    <a href="{{ url_for('guild_detail', gid=guild.id, tab='calendar', cal_year=cal_prev_year, cal_month=cal_prev_month) }}" class="btn btn-ghost btn-sm">← 上月</a>
+    <span class="gcal-title">{{ cal_year }} 年 {{ cal_month }} 月</span>
+    <a href="{{ url_for('guild_detail', gid=guild.id, tab='calendar', cal_year=cal_next_year, cal_month=cal_next_month) }}" class="btn btn-ghost btn-sm">下月 →</a>
+  </div>
+
+  <!-- 图例 -->
+  <div class="gcal-legend">
+    {% for leg in guild_cal_legend %}
+    <span class="gcal-legend-item">
+      <span class="gcal-legend-dot" style="background:{{ leg.color }}"></span>
+      {{ leg.name }}
+    </span>
+    {% endfor %}
+  </div>
+
+  <!-- 月历格 -->
+  {% if guild_cal_grid %}
+  <div style="overflow-x:auto">
+  <table class="gcal-table">
+    <thead>
+      <tr>
+        {% for d in ['日','一','二','三','四','五','六'] %}
+        <th>{{ d }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+    {% for row in guild_cal_grid.rows %}
+    <tr>
+      {% for day in row %}
+      {% if day is none %}
+      <td class="gcal-cell empty"></td>
+      {% else %}
+      <td class="gcal-cell">
+        <div class="gcal-day-num">{{ day }}</div>
+        {% for md in guild_cal_grid.member_day_data %}
+          {% set shows = md.day_shows.get(day, []) %}
+          {% if shows %}
+          <span class="gcal-bar" style="background:{{ md.color }}30;color:{{ md.color }};border-left:2px solid {{ md.color }}"
+                title="{{ md.name }}：{% for s in shows %}{{ s.show_name }}{% if not loop.last %}、{% endif %}{% endfor %}">
+            {{ md.name }}
+          </span>
+          {% endif %}
+        {% endfor %}
+      </td>
+      {% endif %}
+      {% endfor %}
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <div class="empty">公会里还没有成员档期</div>
+  {% endif %}
+  {% endif %}
+
+  <!-- ─── TAB: partners (必吃榜) ───────────────────────────────────────────── -->
+  {% if tab == 'partners' %}
+  <div style="font-size:12px;color:var(--muted);margin-bottom:16px;padding:8px 12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border)">
+    仅显示成员主动分享到本公会的必吃榜条目
+  </div>
+  {% if shared_partners %}
+  {% for p in shared_partners %}
+  <div class="partner-card-shared">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap">
+      <div>
+        <span style="font-size:14px;font-weight:600">{{ p.nickname }}</span>
+        {% if p.qq %}<code style="font-size:11px;color:var(--muted);margin-left:8px;background:var(--surface2);padding:1px 6px;border-radius:4px">{{ p.qq }}</code>{% endif %}
+        <span class="owner-tag" style="margin-left:8px">by {{ p.owner_name }}</span>
+      </div>
+      <div style="font-size:14px;letter-spacing:2px">
+        {% for i in range(5) %}{% if i < p.rating %}★{% else %}☆{% endif %}{% endfor %}
+      </div>
+    </div>
+    {% if p.tags_list %}
+    <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">
+      {% for tag in p.tags_list %}
+      <span style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:1px 8px;font-size:11px;color:var(--muted)">{{ tag }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if p.notes %}
+    <div style="font-size:12px;color:var(--muted);margin-top:6px">{{ p.notes[:80] }}{% if p.notes|length > 80 %}…{% endif %}</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% else %}
+  <div class="empty">还没有成员分享必吃榜到本公会</div>
+  {% endif %}
+  {% endif %}
+
+  <!-- ─── TAB: blacklist ────────────────────────────────────────────────────── -->
+  {% if tab == 'blacklist' %}
+  <div style="font-size:12px;color:var(--muted);margin-bottom:16px;padding:8px 12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border)">
+    仅显示成员主动分享到本公会的黑名单条目
+  </div>
+  {% if shared_blacklist %}
+  {% for e in shared_blacklist %}
+  <div class="bl-entry-shared">
+    <div style="display:flex;align-items:flex-start;gap:10px">
+      <div style="width:3px;border-radius:3px;background:var(--red);flex-shrink:0;align-self:stretch;min-height:36px"></div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:600;margin-bottom:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          {% if e.nickname %}<span>{{ e.nickname }}</span>{% endif %}
+          {% if e.qq %}<code style="font-size:11px;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 6px">{{ e.qq }}</code>{% endif %}
+          <span class="owner-tag">by {{ e.owner_name }}</span>
+        </div>
+        {% if e.reason %}<div style="font-size:13px;color:var(--text);margin-bottom:3px">{{ e.reason }}</div>{% endif %}
+        <div style="font-size:11px;color:var(--muted)">
+          {% if e.happened_at %}{{ e.happened_at }} ·{% endif %}
+          拉黑于 {{ e.created_at | datetimeformat }}
+        </div>
+        {% if e.notes %}<div style="font-size:12px;color:var(--muted);font-style:italic;margin-top:3px">{{ e.notes }}</div>{% endif %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+  {% else %}
+  <div class="empty">还没有成员分享黑名单到本公会</div>
+  {% endif %}
+  {% endif %}
+
+  <!-- ─── TAB: stats ────────────────────────────────────────────────────────── -->
+  {% if tab == 'stats' %}
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap">
+    {% for y in range(now_year - 2, now_year + 2) %}
+    <a href="{{ url_for('guild_detail', gid=guild.id, tab='stats', year=y) }}"
+       class="btn {% if y == tab_year %}btn-primary{% else %}btn-ghost{% endif %} btn-sm">{{ y }}</a>
+    {% endfor %}
+    <span style="font-size:12px;color:var(--muted)">（仅统计公开档期）</span>
+  </div>
+  {% if member_stats %}
+  {% for st in member_stats %}
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px;margin-bottom:16px">
+    <div style="font-size:14px;font-weight:600;margin-bottom:14px;color:var(--accent2)">
+      {{ st.user.display_name or st.user.username }}
+      <span style="font-size:12px;color:var(--muted);font-weight:400;margin-left:6px">{{ st.label }}</span>
+    </div>
+    <div class="grid-3" style="gap:10px;margin-bottom:12px">
+      <div class="stat-block">
+        <div class="stat-num">{{ st.total }}</div>
+        <div class="stat-label">参与恋综</div>
+      </div>
+      <div class="stat-block">
+        <div class="stat-num">{{ st.covered_days }}</div>
+        <div class="stat-label">在档天数</div>
+      </div>
+      <div class="stat-block">
+        <div class="stat-num">{{ st.pct }}%</div>
+        <div class="stat-label">档期覆盖率</div>
+      </div>
+    </div>
+    {% if st.total == 0 %}
+    <div style="font-size:12px;color:var(--muted)">该年度暂无公开档期</div>
+    {% else %}
+    <div style="display:flex;gap:20px;flex-wrap:wrap;font-size:12px;color:var(--muted)">
+      {% if st.orientations %}
+      <div><span style="color:var(--text);font-weight:600">性向：</span>
+        {% for o in st.orientations[:3] %}{{ o.value }}({{ o.pct }}%) {% endfor %}
+      </div>
+      {% endif %}
+      {% if st.genders %}
+      <div><span style="color:var(--text);font-weight:600">皮相：</span>
+        {% for g in st.genders[:3] %}{{ g.value }}({{ g.pct }}%) {% endfor %}
+      </div>
+      {% endif %}
+      {% if st.outcomes %}
+      <div><span style="color:var(--text);font-weight:600">结局：</span>
+        {% for o in st.outcomes[:3] %}{{ o.value }}({{ o.pct }}%) {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% else %}
+  <div class="empty">暂无成员统计数据</div>
+  {% endif %}
+  {% endif %}
+
+</div>
+{% endblock %}

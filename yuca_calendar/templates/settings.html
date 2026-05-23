@@ -147,9 +147,12 @@
   <div class="settings-card">
     <div class="settings-title">🎨 外观主题</div>
     <p style="font-size:13px;color:var(--muted);margin-bottom:14px">
-      点击右下角的 🎨 按钮可以快速切换，选择后自动同步到账号。
+      点击右下角的 🎨 按钮可以快速切换，选择后自动同步到账号。同步到 App 需重新登录生效。
     </p>
-    <div style="display:flex;flex-wrap:wrap;gap:8px">
+
+    <!-- 普通主题 -->
+    <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:8px;letter-spacing:.5px">普通主题</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px">
       {% set themes = [
         ('default',           '#8b7cf6', '默认'),
         ('spring',            '#f472b6', '春·樱'),
@@ -183,7 +186,47 @@
       </button>
       {% endfor %}
     </div>
-    <div style="font-size:11px;color:var(--muted);margin-top:10px">当前：<span id="cur-theme-label">—</span></div>
+
+    <!-- VIP 主题 -->
+    <div style="font-size:11px;font-weight:600;color:#f59e0b;margin-bottom:8px;letter-spacing:.5px">
+      ★ VIP 专属主题
+      {% if not is_vip %}
+      <span style="font-weight:400;color:var(--muted)">（累计 {{ VIP_THRESHOLD }} 条有效检举解锁）</span>
+      {% endif %}
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px">
+      {% set vip_themes = [('vip-gold','#f59e0b','烈金 ★'),('vip-jade','#10b981','翡翠 ★')] %}
+      {% for tid, color, label in vip_themes %}
+      <button class="btn btn-ghost btn-sm"
+              {% if is_vip %}onclick="setTheme('{{ tid }}')"{% else %}disabled title="VIP 专属，累计 {{ VIP_THRESHOLD }} 条有效检举解锁"{% endif %}
+              style="display:flex;align-items:center;gap:6px;{% if not is_vip %}opacity:.45;cursor:not-allowed{% endif %}">
+        <span style="width:12px;height:12px;border-radius:50%;background:{{ color }};flex-shrink:0;display:inline-block"></span>
+        {% if not is_vip %}🔒 {% endif %}{{ label }}
+      </button>
+      {% endfor %}
+    </div>
+
+    <!-- 成就主题 -->
+    <div style="font-size:11px;font-weight:600;color:#e879f9;margin-bottom:8px;letter-spacing:.5px">🏆 成就主题</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+      {% set achieve_themes = [
+        ('achieve-first-drama', '#e879f9', '初心·破茧', '记录第一篇戏录'),
+        ('achieve-sched-10',    '#22d3ee', '积羽·十档', '累计录入 10 个日程'),
+        ('achieve-sched-50',    '#f59e0b', '百炼·五十档','累计录入 50 个日程'),
+      ] %}
+      {% for tid, color, label, cond in achieve_themes %}
+      {% set unlocked = tid in unlocked_achievements %}
+      <button class="btn btn-ghost btn-sm"
+              {% if unlocked %}onclick="setTheme('{{ tid }}')"{% else %}disabled title="解锁条件：{{ cond }}"{% endif %}
+              style="display:flex;align-items:center;gap:6px;{% if not unlocked %}opacity:.45;cursor:not-allowed{% endif %}">
+        <span style="width:12px;height:12px;border-radius:50%;background:{{ color }};flex-shrink:0;display:inline-block"></span>
+        {% if not unlocked %}🔒 {% endif %}{{ label }}
+        {% if not unlocked %}<span style="font-size:10px;color:var(--muted)">· {{ cond }}</span>{% endif %}
+      </button>
+      {% endfor %}
+    </div>
+
+    <div style="font-size:11px;color:var(--muted);margin-top:6px">当前：<span id="cur-theme-label">—</span></div>
   </div>
 </div>
 {% endblock %}
@@ -199,6 +242,8 @@
     'spring-day':'春·樱 ☀','summer-day':'夏·海 ☀','autumn-day':'秋·枫 ☀','winter-day':'冬·冰 ☀',
     'monet-day':'莫奈 ☀','vangogh-day':'梵高 ☀','picasso-day':'毕加索 ☀',
     'davinci-day':'达芬奇 ☀','gukaizhi-day':'顾恺之 ☀','michelangelo-day':'米开朗基罗 ☀','warhol-day':'沃霍尔 ☀',
+    'vip-gold':'烈金 ★','vip-jade':'翡翠 ★',
+    'achieve-first-drama':'初心·破茧','achieve-sched-10':'积羽·十档','achieve-sched-50':'百炼·五十档',
   };
   const el = document.getElementById('cur-theme-label');
   if (el) el.textContent = labels[t] || t;

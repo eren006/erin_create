@@ -1,0 +1,517 @@
+{% extends "base.html" %}
+{% block title %}拍卖管理 · 长日存档{% endblock %}
+
+{% block head %}
+<style>
+.auctions-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 900px) { .auctions-layout { grid-template-columns: 1fr; } }
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.panel-title {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 0;
+}
+.panel-body {
+  padding: 14px 16px;
+}
+
+/* ── Sync tip ── */
+.sync-tip {
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 14px;
+  margin-bottom: 14px;
+  line-height: 1.8;
+}
+.sync-tip code {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 12px;
+  color: var(--accent);
+  font-family: monospace;
+}
+
+/* ── Add form ── */
+.add-form {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.add-form h4 {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  margin: 0 0 10px;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+@media (max-width: 600px) { .form-grid { grid-template-columns: 1fr; } }
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.form-field label {
+  font-size: 11px;
+  color: var(--muted);
+}
+.form-field input, .form-field select {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--text);
+  font-family: inherit;
+}
+.form-field input:focus, .form-field select:focus { outline: none; border-color: var(--accent); }
+.form-field input::placeholder { color: var(--muted); }
+.form-field select option { background: var(--surface2); }
+.form-row-full {
+  grid-column: 1 / -1;
+}
+.btn-add {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter .15s;
+}
+.btn-add:hover { filter: brightness(1.15); }
+
+/* ── Queue list ── */
+.queue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.queue-item {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 10px 13px;
+  background: var(--surface2);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.qi-code {
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--accent2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 7px;
+  flex-shrink: 0;
+}
+.qi-info {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+}
+.qi-info .qi-price {
+  color: var(--gold);
+  font-weight: 600;
+}
+.qi-info .qi-sub {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.qi-del {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0 2px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color .15s;
+}
+.qi-del:hover { color: var(--red); }
+
+/* ── Snapshot ── */
+.snap-item {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 10px 13px;
+  background: var(--surface2);
+  margin-bottom: 8px;
+}
+.snap-item:last-child { margin-bottom: 0; }
+.snap-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+.snap-id {
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--accent);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.snap-name {
+  font-size: 13px;
+  font-weight: 600;
+  flex: 1;
+}
+.snap-status {
+  font-size: 10px;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.status-active  { background: #0d2a1a; color: #4aba7a; border: 1px solid #1a5a30; }
+.status-settled { background: #1a1030; color: #8080c0; border: 1px solid #3a2060; }
+.status-unsold  { background: #2a1a0d; color: #a07040; border: 1px solid #5a3010; }
+.snap-meta {
+  font-size: 11px;
+  color: var(--muted);
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.snap-bids {
+  font-size: 11px;
+  color: var(--muted);
+}
+.snap-top-bid {
+  color: var(--gold);
+  font-weight: 600;
+}
+.snap-winner {
+  font-size: 11px;
+  background: #1a2a1a;
+  border: 1px solid #2a5a2a;
+  border-radius: 6px;
+  padding: 4px 8px;
+  color: var(--green);
+  margin-top: 4px;
+}
+.snap-ts {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
+  margin-top: 6px;
+}
+
+/* ── Buttons ── */
+.btn-save {
+  background: #1a4a2a;
+  color: var(--green);
+  border: 1px solid #2a6a3a;
+  border-radius: 8px;
+  padding: 7px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter .15s;
+}
+.btn-save:hover { filter: brightness(1.15); }
+.btn-save:disabled { opacity: .5; cursor: not-allowed; filter: none; }
+.btn-ghost {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.btn-ghost:hover { color: var(--text); border-color: var(--accent); }
+
+/* ── Empty ── */
+.empty-note {
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  padding: 28px 0;
+}
+
+/* ── Toast ── */
+.toast {
+  position: fixed; bottom: 24px; right: 24px; z-index: 200;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 11px 18px;
+  box-shadow: 0 6px 24px #0009; font-size: 13px;
+  display: flex; align-items: center; gap: 10px;
+  transition: opacity .3s, transform .3s;
+}
+.toast.hidden { opacity: 0; transform: translateY(8px); pointer-events: none; }
+.toast-ok  { color: var(--green); }
+.toast-err { color: var(--red); }
+</style>
+{% endblock %}
+
+{% block body %}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:8px;">
+  <h1 style="font-size:18px;font-weight:700;margin:0;">🔨 拍卖管理</h1>
+  <a href="{{ url_for('admin') }}" style="font-size:12px;color:var(--muted);">← 后台</a>
+</div>
+
+<div class="sync-tip">
+  💡 <b>同步流程：</b>
+  在网页添加待拍卖物品后，在机器人发送&nbsp;<code>拉取拍卖队列</code>&nbsp;即可激活；
+  发送&nbsp;<code>上传拍卖</code>&nbsp;可将机器人当前拍卖状态推送到此页面查看。
+</div>
+
+<div class="auctions-layout">
+
+  <!-- ════ LEFT: 待拍队列 ════ -->
+  <div>
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">📋 待拍队列</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span style="font-size:12px;color:var(--muted);" id="queueCountLabel"></span>
+          <button class="btn-save" id="btnSave">保存</button>
+        </div>
+      </div>
+      <div class="panel-body">
+
+        <!-- 添加表单 -->
+        <div class="add-form">
+          <h4>添加物品到队列</h4>
+          <div class="form-grid">
+            <div class="form-field form-row-full">
+              <label>物品代码 *</label>
+              {% if item_registry %}
+              <select id="newCode">
+                <option value="">-- 选择物品 --</option>
+                {% for code, item in item_registry.items() %}
+                <option value="{{ code }}">{{ item.name }} ({{ code }})</option>
+                {% endfor %}
+              </select>
+              {% else %}
+              <input type="text" id="newCode" placeholder="物品代码，如 ITEM_001" autocomplete="off">
+              {% endif %}
+            </div>
+            <div class="form-field">
+              <label>起拍价 *</label>
+              <input type="number" id="newStartPrice" min="0" placeholder="如 100">
+            </div>
+            <div class="form-field">
+              <label>最低加价 *</label>
+              <input type="number" id="newMinIncrement" min="1" placeholder="如 10">
+            </div>
+            <div class="form-field">
+              <label>拍卖时长（小时）*</label>
+              <input type="number" id="newDuration" min="0.1" step="0.5" placeholder="如 24">
+            </div>
+            <div class="form-field">
+              <label>得主持有时长（小时，留空=永久）</label>
+              <input type="number" id="newExpire" min="0.1" step="1" placeholder="留空 = 永久">
+            </div>
+          </div>
+          <button class="btn-add" id="btnAddItem">＋ 加入队列</button>
+        </div>
+
+        <!-- 队列列表 -->
+        <div class="queue-list" id="queueList"></div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ RIGHT: 机器人快照 ════ -->
+  <div>
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">📡 机器人实时状态</span>
+        <span style="font-size:11px;color:var(--muted);">由机器人推送 · 只读</span>
+      </div>
+      <div class="panel-body">
+        {% if snapshot %}
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">
+          共 {{ snapshot|length }} 件 · 上次推送于机器人发送「上传拍卖」时
+        </div>
+        {% for id, item in snapshot.items() %}
+        {% set status_label = "进行中" if item.status == "active" else ("已成交" if item.status == "settled" else "已流拍") %}
+        {% set status_cls = "status-active" if item.status == "active" else ("status-settled" if item.status == "settled" else "status-unsold") %}
+        <div class="snap-item">
+          <div class="snap-header">
+            <span class="snap-id">{{ id }}</span>
+            <span class="snap-name">{{ item.name }}</span>
+            <span class="snap-status {{ status_cls }}">{{ status_label }}</span>
+          </div>
+          <div class="snap-meta">
+            <span>起拍 <b style="color:var(--gold)">{{ item.startPrice }}</b></span>
+            <span>加价 ≥{{ item.minIncrement }}</span>
+            <span>时长 {{ item.durationHours }}h</span>
+            {% if item.expireHours %}<span>失效 {{ item.expireHours }}h</span>{% endif %}
+            <span style="font-family:monospace;font-size:10px;color:var(--muted)">{{ item.code }}</span>
+          </div>
+          {% if item.bids %}
+          {% set top = item.bids | sort(attribute='amount') | last %}
+          <div class="snap-bids">
+            出价 {{ item.bids | length }} 次 · 最高 <span class="snap-top-bid">{{ top.amount }}</span>
+            {% if not top.anon %}（{{ top.bidder }}）{% else %}（匿名）{% endif %}
+          </div>
+          {% else %}
+          <div class="snap-bids">暂无出价</div>
+          {% endif %}
+          {% if item.winner %}
+          <div class="snap-winner">
+            🏆 成交 {{ item.winner.amount }} · 得主：{{ item.winner.name or item.winner.bidder }}
+          </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="empty-note">暂无快照<br>在机器人中发送「上传拍卖」即可推送</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Toast -->
+<div class="toast hidden" id="toast">
+  <span id="toastMsg"></span>
+  <button onclick="hideToast()" style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:17px;line-height:1;padding:0;">×</button>
+</div>
+
+<script>
+const ITEM_REG = {{ item_registry | tojson }};
+let queue = {{ queue | tojson }};
+
+function renderQueue() {
+  const list = document.getElementById("queueList");
+  const countEl = document.getElementById("queueCountLabel");
+  list.innerHTML = "";
+  countEl.textContent = queue.length ? `${queue.length} 件待拍` : "";
+
+  if (!queue.length) {
+    list.innerHTML = `<div class="empty-note">队列为空<br>添加物品后保存，再在机器人中发送「拉取拍卖队列」</div>`;
+    return;
+  }
+
+  queue.forEach((item, idx) => {
+    const reg = ITEM_REG[item.code] || {};
+    const name = reg.name || item.code;
+    const expireText = item.expireHours ? `失效 ${item.expireHours}h` : "永久有效";
+    const el = document.createElement("div");
+    el.className = "queue-item";
+    el.innerHTML = `
+      <span class="qi-code">${item.code}</span>
+      <div class="qi-info">
+        <div>${name} <span class="qi-price">${item.startPrice} 起</span></div>
+        <div class="qi-sub">加价 ≥${item.minIncrement} · 时长 ${item.durationHours}h · ${expireText}</div>
+      </div>
+      <button class="qi-del" title="从队列移除">×</button>
+    `;
+    el.querySelector(".qi-del").addEventListener("click", () => {
+      queue.splice(idx, 1);
+      renderQueue();
+    });
+    list.appendChild(el);
+  });
+}
+
+document.getElementById("btnAddItem").addEventListener("click", () => {
+  const codeEl = document.getElementById("newCode");
+  const code = (codeEl.value || "").trim();
+  const startPrice = parseInt(document.getElementById("newStartPrice").value);
+  const minIncrement = parseInt(document.getElementById("newMinIncrement").value);
+  const durationHours = parseFloat(document.getElementById("newDuration").value);
+  const expireVal = document.getElementById("newExpire").value.trim();
+  const expireHours = expireVal ? parseFloat(expireVal) : null;
+
+  if (!code) { showToast("请填写物品代码", false); return; }
+  if (isNaN(startPrice) || startPrice < 0) { showToast("起拍价无效", false); return; }
+  if (isNaN(minIncrement) || minIncrement < 1) { showToast("最低加价无效（最小 1）", false); return; }
+  if (isNaN(durationHours) || durationHours <= 0) { showToast("时长无效", false); return; }
+
+  queue.push({ code, startPrice, minIncrement, durationHours, expireHours });
+  codeEl.value = "";
+  document.getElementById("newStartPrice").value = "";
+  document.getElementById("newMinIncrement").value = "";
+  document.getElementById("newDuration").value = "";
+  document.getElementById("newExpire").value = "";
+  renderQueue();
+});
+
+async function saveQueue() {
+  const btn = document.getElementById("btnSave");
+  btn.disabled = true;
+  btn.textContent = "保存中…";
+  try {
+    const res = await fetch("{{ url_for('admin_auctions_save') }}", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ queue })
+    });
+    const data = await res.json();
+    if (data.ok) showToast("✅ 保存成功！在机器人中发送「拉取拍卖队列」即可激活。", true);
+    else showToast("❌ 保存失败：" + (data.error || "未知错误"), false);
+  } catch (e) {
+    showToast("❌ 网络错误：" + e.message, false);
+  }
+  btn.disabled = false;
+  btn.textContent = "保存";
+}
+
+document.getElementById("btnSave").addEventListener("click", saveQueue);
+
+let toastTimer = null;
+function showToast(msg, ok) {
+  const el = document.getElementById("toast");
+  document.getElementById("toastMsg").textContent = msg;
+  document.getElementById("toastMsg").className = ok ? "toast-ok" : "toast-err";
+  el.classList.remove("hidden");
+  clearTimeout(toastTimer);
+  if (ok) toastTimer = setTimeout(hideToast, 5000);
+}
+function hideToast() {
+  document.getElementById("toast").classList.add("hidden");
+}
+
+renderQueue();
+</script>
+{% endblock %}

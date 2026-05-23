@@ -4,3 +4,7 @@ rp_archive/rp_data.db
 rp_archive/logs/
 yuca_calendar/yuca_data.db
 yuca_calendar/logs/
+yuca_calendar_beta/yuca_data.db
+yuca_calendar_beta/logs/
+yuca_order/order_data.db
+yuca_order/logs/
