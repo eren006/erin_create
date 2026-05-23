@@ -24,6 +24,33 @@ _logger.addHandler(_err_handler)
 DB_PATH        = os.path.join(os.path.dirname(__file__), "yuca_data.db")
 SUPERADMIN_PASS = os.environ.get("SUPERADMIN_PASS", "yuca_admin_2025")
 
+VIP_THRESHOLD = 10
+VIP_THEMES = {'vip-gold', 'vip-jade'}
+
+# 成就主题：{theme_id: (条件描述, 检测函数key)}
+ACHIEVEMENT_THEMES = {
+    'achieve-first-drama': '记录第一篇戏录',
+    'achieve-sched-10':    '累计录入 10 个日程',
+    'achieve-sched-50':    '累计录入 50 个日程',
+}
+
+def _get_unlocked_achievements(db, uid):
+    """返回该用户已解锁的成就主题 id 集合"""
+    unlocked = set()
+    drama_cnt = db.execute(
+        "SELECT COUNT(*) FROM drama_logs WHERE user_id=?", (uid,)
+    ).fetchone()[0]
+    if drama_cnt >= 1:
+        unlocked.add('achieve-first-drama')
+    sched_cnt = db.execute(
+        "SELECT COUNT(*) FROM schedules WHERE user_id=?", (uid,)
+    ).fetchone()[0]
+    if sched_cnt >= 10:
+        unlocked.add('achieve-sched-10')
+    if sched_cnt >= 50:
+        unlocked.add('achieve-sched-50')
+    return unlocked
+
 SHOW_COLORS = [
     '#8b7cf6', '#f472b6', '#34d399', '#60a5fa', '#fbbf24',
     '#f87171', '#a78bfa', '#2dd4bf', '#fb923c', '#818cf8',
@@ -35,6 +62,8 @@ SCHEDULE_TAGS = ['带本', '下组', '打工']
 SCHEDULE_TAG_COLORS = {'带本': '#fb923c', '下组': '#60a5fa', '打工': '#a78bfa'}
 
 CASTING_STATUS = ['观望中', '一表中', '已录取']
+
+CARD_TYPES = ['板写', '溶图', '溶写', '其他']
 
 DEADLINE_TYPES = [
     ('deadline_form2',    '二表'),
@@ -178,6 +207,21 @@ def _migrate(conn):
         is_done    INTEGER NOT NULL DEFAULT 0,
         created_at INTEGER NOT NULL
     )''')
+    conn.execute('''CREATE TABLE IF NOT EXISTS drama_logs (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id      INTEGER NOT NULL REFERENCES users(id),
+        title        TEXT NOT NULL DEFAULT '',
+        my_char      TEXT NOT NULL DEFAULT '',
+        partner_char TEXT NOT NULL DEFAULT '',
+        partner_qq   TEXT NOT NULL DEFAULT '',
+        genre        TEXT NOT NULL DEFAULT '',
+        status       TEXT NOT NULL DEFAULT 'ongoing',
+        notes        TEXT NOT NULL DEFAULT '',
+        start_ts     INTEGER,
+        end_ts       INTEGER,
+        created_at   INTEGER NOT NULL,
+        updated_at   INTEGER NOT NULL
+    )''')
     conn.execute('''CREATE TABLE IF NOT EXISTS day_events (
         id         INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id    INTEGER NOT NULL REFERENCES users(id),
@@ -193,6 +237,75 @@ def _migrate(conn):
         content    TEXT NOT NULL,
         created_at INTEGER NOT NULL,
         is_read    INTEGER NOT NULL DEFAULT 0
+    )''')
+    conn.execute('''CREATE TABLE IF NOT EXISTS guilds (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        name        TEXT NOT NULL,
+        slug        TEXT UNIQUE NOT NULL,
+        signature   TEXT NOT NULL DEFAULT '',
+        owner_id    INTEGER NOT NULL REFERENCES users(id),
+        created_at  INTEGER NOT NULL
+    )''')
+    conn.execute('''CREATE TABLE IF NOT EXISTS guild_memberships (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        guild_id    INTEGER NOT NULL REFERENCES guilds(id),
+        user_id     INTEGER NOT NULL REFERENCES users(id),
+        status      TEXT NOT NULL DEFAULT 'pending',
+        created_at  INTEGER NOT NULL,
+        approved_at INTEGER,
+        UNIQUE(guild_id, user_id)
+    )''')
+    cols_s2 = _col_names(conn, 'schedules')
+    if 'visibility' not in cols_s2:
+        conn.execute("ALTER TABLE schedules ADD COLUMN visibility TEXT NOT NULL DEFAULT 'public'")
+    cols_p = _col_names(conn, 'partners')
+    if 'shared_guilds' not in cols_p:
+        conn.execute("ALTER TABLE partners ADD COLUMN shared_guilds TEXT NOT NULL DEFAULT '[]'")
+    cols_b = _col_names(conn, 'blacklist')
+    if 'shared_guilds' not in cols_b:
+        conn.execute("ALTER TABLE blacklist ADD COLUMN shared_guilds TEXT NOT NULL DEFAULT '[]'")
+    conn.execute('''CREATE TABLE IF NOT EXISTS reports (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        target_qq        TEXT NOT NULL,
+        tag              TEXT NOT NULL DEFAULT '',
+        reason           TEXT NOT NULL DEFAULT '',
+        submitter_user_id INTEGER REFERENCES users(id),
+        status           TEXT NOT NULL DEFAULT 'pending',
+        created_at       INTEGER NOT NULL
+    )''')
+    cols_rp = _col_names(conn, 'reports')
+    if 'status' not in cols_rp:
+        conn.execute("ALTER TABLE reports ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'")
+    if 'edit_note' not in cols_rp:
+        conn.execute("ALTER TABLE reports ADD COLUMN edit_note TEXT NOT NULL DEFAULT ''")
+    conn.execute('''CREATE TABLE IF NOT EXISTS report_appeals (
+        id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+        report_id          INTEGER NOT NULL REFERENCES reports(id),
+        submitter_user_id  INTEGER REFERENCES users(id),
+        reason             TEXT NOT NULL DEFAULT '',
+        status             TEXT NOT NULL DEFAULT 'pending',
+        admin_note         TEXT NOT NULL DEFAULT '',
+        created_at         INTEGER NOT NULL
+    )''')
+    conn.execute('''CREATE TABLE IF NOT EXISTS api_tokens (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id    INTEGER NOT NULL REFERENCES users(id),
+        token      TEXT UNIQUE NOT NULL,
+        expires_at INTEGER NOT NULL,
+        created_at INTEGER NOT NULL
+    )''')
+    conn.execute('''CREATE TABLE IF NOT EXISTS cards (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id      INTEGER NOT NULL REFERENCES users(id),
+        name         TEXT NOT NULL,
+        expiry       TEXT NOT NULL,
+        quantity     INTEGER NOT NULL DEFAULT 1,
+        price        REAL NOT NULL DEFAULT 0,
+        card_type    TEXT NOT NULL DEFAULT '其他',
+        notes        TEXT NOT NULL DEFAULT '',
+        last_consume INTEGER,
+        created_at   INTEGER NOT NULL,
+        updated_at   INTEGER NOT NULL
     )''')
     conn.commit()
 
@@ -427,9 +540,40 @@ def casting_bar_style(s):
         return f'background:{color}18;color:{color};border-left:2px dotted {color}'
     return f'background:{color}28;color:{color};border-left:2px solid {color}'
 
+def _is_vip(db):
+    uid = session.get('user_id')
+    if not uid:
+        return False
+    cnt = db.execute(
+        "SELECT COUNT(*) FROM reports WHERE submitter_user_id=? AND status='approved'", (uid,)
+    ).fetchone()[0]
+    return cnt >= VIP_THRESHOLD
+
 @app.context_processor
 def inject_constants():
     return {'SCHEDULE_TAGS': SCHEDULE_TAGS, 'DEADLINE_TYPES': DEADLINE_TYPES, 'CASTING_STATUS': CASTING_STATUS}
+
+@app.context_processor
+def inject_vip():
+    if session.get('user_id'):
+        try:
+            db  = get_db()
+            vip = _is_vip(db)
+            achievements = _get_unlocked_achievements(db, session['user_id'])
+        except Exception:
+            vip, achievements = False, set()
+        return {
+            'is_vip': vip,
+            'VIP_THRESHOLD': VIP_THRESHOLD,
+            'unlocked_achievements': achievements,
+            'ACHIEVEMENT_THEMES': ACHIEVEMENT_THEMES,
+        }
+    return {
+        'is_vip': False,
+        'VIP_THRESHOLD': VIP_THRESHOLD,
+        'unlocked_achievements': set(),
+        'ACHIEVEMENT_THEMES': ACHIEVEMENT_THEMES,
+    }
 
 @app.context_processor
 def inject_feedback_badge():
@@ -451,7 +595,10 @@ def inject_user_theme():
     if session.get('user_id'):
         db = get_db()
         row = db.execute('SELECT theme FROM users WHERE id=?', (session['user_id'],)).fetchone()
-        return {'user_theme': row['theme'] if row else ''}
+        theme = row['theme'] if row else ''
+        if theme in VIP_THEMES and not _is_vip(db):
+            theme = ''
+        return {'user_theme': theme}
     return {'user_theme': ''}
 
 def _get_schedules(uid):
@@ -751,6 +898,7 @@ def _save_schedule_fields(form):
         'deadline_relation': d('deadline_relation'),
         'schedule_tags':     json.dumps(tags, ensure_ascii=False),
         'casting_status':    cs if cs in CASTING_STATUS else '',
+        'visibility':        'private' if form.get('visibility') == 'private' else 'public',
     }
 
 def _enrich_schedules(schedules):
@@ -793,14 +941,14 @@ def add_schedule():
             (user_id, show_name, start_year, time_range, status, character, orientation,
              theme, role_name, role_type, gender, outcome, color, notes,
              deadline_form2, deadline_public, deadline_relation, schedule_tags,
-             casting_status, created_at, updated_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+             casting_status, visibility, created_at, updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
             (uid, show_name, start_year, time_range,
              flds['status'], flds['character'], flds['orientation'], flds['theme'],
              flds['role_name'], flds['role_type'], flds['gender'], flds['outcome'],
              flds['color'], flds['notes'],
              flds['deadline_form2'], flds['deadline_public'], flds['deadline_relation'],
-             flds['schedule_tags'], flds['casting_status'], ts, ts))
+             flds['schedule_tags'], flds['casting_status'], flds['visibility'], ts, ts))
         db.commit()
         msg = f'✅ 档期「{show_name}」已录入'
         if conflicts: msg += f'　⚠️ 撞档提醒：{"、".join(conflicts)}'
@@ -831,14 +979,15 @@ def edit_schedule(sid):
             show_name=?, start_year=?, time_range=?, status=?, character=?, orientation=?,
             theme=?, role_name=?, role_type=?, gender=?, outcome=?, color=?, notes=?,
             deadline_form2=?, deadline_public=?, deadline_relation=?, schedule_tags=?,
-            casting_status=?, updated_at=?
+            casting_status=?, visibility=?, updated_at=?
             WHERE id=? AND user_id=?''',
             (show_name, start_year, time_range,
              flds['status'], flds['character'], flds['orientation'], flds['theme'],
              flds['role_name'], flds['role_type'], flds['gender'], flds['outcome'],
              flds['color'], flds['notes'],
              flds['deadline_form2'], flds['deadline_public'], flds['deadline_relation'],
-             flds['schedule_tags'], flds['casting_status'], int(datetime.now().timestamp()), sid, uid))
+             flds['schedule_tags'], flds['casting_status'], flds['visibility'],
+             int(datetime.now().timestamp()), sid, uid))
         db.commit()
         msg = f'✅ 档期「{show_name}」已更新'
         if conflicts: msg += f'　⚠️ 撞档提醒：{"、".join(conflicts)}'
@@ -918,7 +1067,11 @@ def blacklist():
     ).fetchall()]
     if q:
         rows = [r for r in rows if q in r['qq'] or q in r['nickname'] or q in r['reason'] or q in r['notes']]
-    return render_template('blacklist.html', entries=rows, q=q)
+    for r in rows:
+        r['shared_guilds_list'] = json.loads(r.get('shared_guilds') or '[]')
+    owned, member = _get_my_guilds(uid)
+    my_guilds = owned + member
+    return render_template('blacklist.html', entries=rows, q=q, my_guilds=my_guilds)
 
 @app.route('/blacklist/add', methods=['POST'])
 @require_login
@@ -1061,8 +1214,13 @@ def settings():
 @require_login
 def api_set_theme():
     theme = (request.json or {}).get('theme', '') if request.is_json else request.form.get('theme', '')
-    db = get_db()
-    db.execute('UPDATE users SET theme=? WHERE id=?', (theme, session['user_id']))
+    db  = get_db()
+    uid = session['user_id']
+    if theme in VIP_THEMES and not _is_vip(db):
+        return jsonify({'ok': False, 'error': 'vip_required'})
+    if theme in ACHIEVEMENT_THEMES and theme not in _get_unlocked_achievements(db, uid):
+        return jsonify({'ok': False, 'error': 'achievement_locked'})
+    db.execute('UPDATE users SET theme=? WHERE id=?', (theme, uid))
     db.commit()
     return jsonify({'ok': True})
 
@@ -1216,6 +1374,287 @@ def public_view(token):
         next_year=next_year, next_month=next_month,
         now_year=now.year, now_month=now.month, now_day=now.day,
     )
+
+
+# ── 公开检举 ────────────────────────────────────────────────────────────────────
+
+
+@app.route('/reports', methods=['GET', 'POST'])
+@require_login
+def reports():
+    db = get_db()
+    error = None
+    success = False
+    if request.method == 'POST':
+        target_qq = (request.form.get('target_qq') or '').strip()
+        tag        = (request.form.get('tag')       or '').strip()
+        reason     = (request.form.get('reason')    or '').strip()
+        if not target_qq:
+            error = 'QQ 号不能为空'
+        elif not re.match(r'^\d{5,12}$', target_qq):
+            error = 'QQ 号格式不正确（5-12位数字）'
+        elif not reason:
+            error = '检举原因不能为空'
+        else:
+            db.execute(
+                'INSERT INTO reports (target_qq, tag, reason, submitter_user_id, status, created_at) VALUES (?,?,?,?,?,?)',
+                (target_qq, tag, reason, session['user_id'], 'pending', int(datetime.now().timestamp()))
+            )
+            db.commit()
+            session['report_just_submitted'] = True
+            return redirect(url_for('reports'))
+
+    success    = session.pop('report_just_submitted', False)
+    appeal_ok  = session.pop('appeal_just_submitted', False)
+    appeal_err = session.pop('appeal_error', None)
+    uid = session.get('user_id')
+    approved_count = db.execute(
+        "SELECT COUNT(*) FROM reports WHERE submitter_user_id=? AND status='approved'", (uid,)
+    ).fetchone()[0] if uid else 0
+    can_view = approved_count >= 2
+
+    GROUPS_PER_PAGE = 8
+    q = (request.args.get('q') or '').strip()
+    try:
+        page = max(1, int(request.args.get('page', 1)))
+    except (ValueError, TypeError):
+        page = 1
+
+    groups = []
+    total_groups = 0
+    total_pages = 1
+    if can_view:
+        if q:
+            rows = db.execute(
+                "SELECT id, target_qq, tag, reason, created_at FROM reports WHERE status='approved' AND target_qq LIKE ? ORDER BY created_at DESC",
+                (f'%{q}%',)
+            ).fetchall()
+        else:
+            rows = db.execute(
+                "SELECT id, target_qq, tag, reason, created_at FROM reports WHERE status='approved' ORDER BY created_at DESC"
+            ).fetchall()
+        from collections import defaultdict
+        grp = defaultdict(list)
+        for r in rows:
+            grp[r['target_qq']].append(r)
+        all_groups = sorted(grp.items(), key=lambda x: len(x[1]), reverse=True)
+        total_groups = len(all_groups)
+        total_pages = max(1, (total_groups + GROUPS_PER_PAGE - 1) // GROUPS_PER_PAGE)
+        page = min(page, total_pages)
+        groups = all_groups[(page - 1) * GROUPS_PER_PAGE : page * GROUPS_PER_PAGE]
+
+    MY_PER_PAGE = 5
+    try: mypage = max(1, int(request.args.get('mypage', 1)))
+    except (ValueError, TypeError): mypage = 1
+
+    my_reports = []
+    my_total = 0
+    my_total_pages = 1
+    appealed_ids = set()
+    if uid:
+        my_total = db.execute(
+            'SELECT COUNT(*) FROM reports WHERE submitter_user_id=?', (uid,)
+        ).fetchone()[0]
+        my_total_pages = max(1, (my_total + MY_PER_PAGE - 1) // MY_PER_PAGE)
+        mypage = min(mypage, my_total_pages)
+        my_reports = [dict(r) for r in db.execute(
+            'SELECT * FROM reports WHERE submitter_user_id=? ORDER BY created_at DESC LIMIT ? OFFSET ?',
+            (uid, MY_PER_PAGE, (mypage - 1) * MY_PER_PAGE)
+        ).fetchall()]
+        appealed_ids = {r['report_id'] for r in db.execute(
+            "SELECT report_id FROM report_appeals WHERE submitter_user_id=? AND status IN ('pending','approved')",
+            (uid,)
+        ).fetchall()}
+
+    return render_template('reports.html', groups=groups, error=error, success=success,
+                           appeal_ok=appeal_ok, appeal_err=appeal_err,
+                           can_view=can_view, approved_count=approved_count,
+                           q=q, page=page, total_pages=total_pages, total_groups=total_groups,
+                           my_reports=my_reports, my_total=my_total,
+                           mypage=mypage, my_total_pages=my_total_pages,
+                           appealed_ids=appealed_ids)
+
+@app.route('/reports/<int:rid>/self-delete', methods=['POST'])
+@require_login
+def report_self_delete(rid):
+    db = get_db()
+    row = db.execute('SELECT submitter_user_id, status FROM reports WHERE id=?', (rid,)).fetchone()
+    if not row or row['submitter_user_id'] != session['user_id']:
+        abort(403)
+    if row['status'] == 'approved':
+        approved_count = db.execute(
+            "SELECT COUNT(*) FROM reports WHERE submitter_user_id=? AND status='approved'", (session['user_id'],)
+        ).fetchone()[0]
+        if approved_count <= 2:
+            flash('至少需要保留 2 条已通过的检举，无法删除。', 'error')
+            return redirect(url_for('reports'))
+    db.execute('DELETE FROM reports WHERE id=?', (rid,))
+    db.commit()
+    return redirect(url_for('reports'))
+
+@app.route('/reports/<int:rid>/delete', methods=['POST'])
+@require_superadmin
+def report_delete(rid):
+    db = get_db()
+    db.execute('DELETE FROM reports WHERE id=?', (rid,))
+    db.commit()
+    return redirect(url_for('superadmin_reports'))
+
+@app.route('/reports/<int:rid>/approve', methods=['POST'])
+@require_superadmin
+def report_approve(rid):
+    db = get_db()
+    db.execute("UPDATE reports SET status='approved' WHERE id=?", (rid,))
+    db.commit()
+    return redirect(url_for('superadmin_reports'))
+
+@app.route('/reports/<int:rid>/revoke', methods=['POST'])
+@require_superadmin
+def report_revoke(rid):
+    db = get_db()
+    db.execute("UPDATE reports SET status='pending' WHERE id=?", (rid,))
+    db.commit()
+    return redirect(url_for('superadmin_reports', tab='approved'))
+
+@app.route('/reports/<int:rid>/reject', methods=['POST'])
+@require_superadmin
+def report_reject(rid):
+    db = get_db()
+    db.execute("UPDATE reports SET status='rejected' WHERE id=?", (rid,))
+    db.commit()
+    return redirect(url_for('superadmin_reports'))
+
+@app.route('/reports/<int:rid>/request-edit', methods=['POST'])
+@require_superadmin
+def report_request_edit(rid):
+    db = get_db()
+    note = (request.form.get('edit_note') or '').strip()
+    db.execute("UPDATE reports SET status='editing', edit_note=? WHERE id=?", (note, rid))
+    db.commit()
+    tab = request.form.get('from_tab', 'pending')
+    return redirect(url_for('superadmin_reports', tab=tab))
+
+@app.route('/reports/<int:rid>/user-edit', methods=['POST'])
+@require_login
+def report_user_edit(rid):
+    db = get_db()
+    row = db.execute("SELECT submitter_user_id, status FROM reports WHERE id=?", (rid,)).fetchone()
+    if not row or row['submitter_user_id'] != session['user_id']:
+        abort(403)
+    if row['status'] != 'editing':
+        abort(403)
+    tag    = (request.form.get('tag')    or '').strip()
+    reason = (request.form.get('reason') or '').strip()
+    if not reason:
+        session['edit_error'] = rid
+        return redirect(url_for('reports', mypage=request.args.get('mypage', 1)))
+    db.execute("UPDATE reports SET tag=?, reason=?, status='pending', edit_note='' WHERE id=?",
+               (tag, reason, rid))
+    db.commit()
+    session['edit_success'] = True
+    return redirect(url_for('reports'))
+
+@app.route('/reports/<int:rid>/appeal', methods=['POST'])
+@require_login
+def report_appeal(rid):
+    db = get_db()
+    uid = session['user_id']
+    reason = (request.form.get('reason') or '').strip()
+    if not reason:
+        session['appeal_error'] = '申请理由不能为空'
+        return redirect(url_for('reports'))
+    row = db.execute("SELECT id FROM reports WHERE id=? AND status='approved'", (rid,)).fetchone()
+    if not row:
+        session['appeal_error'] = '该检举不存在或已被撤下'
+        return redirect(url_for('reports'))
+    existing = db.execute(
+        "SELECT id FROM report_appeals WHERE report_id=? AND submitter_user_id=? AND status='pending'",
+        (rid, uid)
+    ).fetchone()
+    if existing:
+        session['appeal_error'] = '你已对这条检举提交过撤回申请，请等待审核'
+        return redirect(url_for('reports'))
+    db.execute(
+        'INSERT INTO report_appeals (report_id, submitter_user_id, reason, status, created_at) VALUES (?,?,?,?,?)',
+        (rid, uid, reason, 'pending', int(datetime.now().timestamp()))
+    )
+    db.commit()
+    session['appeal_just_submitted'] = True
+    return redirect(url_for('reports'))
+
+@app.route('/reports/appeals/<int:aid>/approve', methods=['POST'])
+@require_superadmin
+def appeal_approve(aid):
+    db = get_db()
+    appeal = db.execute('SELECT * FROM report_appeals WHERE id=?', (aid,)).fetchone()
+    if appeal:
+        db.execute("UPDATE report_appeals SET status='approved' WHERE id=?", (aid,))
+        db.execute("UPDATE reports SET status='pending' WHERE id=?", (appeal['report_id'],))
+        db.commit()
+    return redirect(url_for('superadmin_reports', tab='appeals'))
+
+@app.route('/reports/appeals/<int:aid>/reject', methods=['POST'])
+@require_superadmin
+def appeal_reject(aid):
+    db = get_db()
+    note = (request.form.get('admin_note') or '').strip()
+    db.execute("UPDATE report_appeals SET status='rejected', admin_note=? WHERE id=?", (note, aid))
+    db.commit()
+    return redirect(url_for('superadmin_reports', tab='appeals'))
+
+@app.route('/superadmin/reports')
+@require_superadmin
+def superadmin_reports():
+    db = get_db()
+    tab = request.args.get('tab', 'pending')
+    if tab not in ('pending', 'approved', 'rejected', 'appeals', 'editing'):
+        tab = 'pending'
+
+    counts = {s: db.execute("SELECT COUNT(*) FROM reports WHERE status=?", (s,)).fetchone()[0]
+              for s in ('pending', 'approved', 'rejected', 'editing')}
+    counts['appeals'] = db.execute(
+        "SELECT COUNT(*) FROM report_appeals WHERE status='pending'"
+    ).fetchone()[0]
+
+    appeals = []
+    groups = []
+    sorted_groups = []
+
+    if tab == 'appeals':
+        appeals = [dict(r) for r in db.execute('''
+            SELECT a.id, a.report_id, a.reason, a.created_at,
+                   r.target_qq, r.tag, r.reason AS report_reason,
+                   u.username AS submitter_name, u.display_name AS submitter_display
+            FROM report_appeals a
+            JOIN reports r ON r.id = a.report_id
+            LEFT JOIN users u ON u.id = a.submitter_user_id
+            WHERE a.status = 'pending'
+            ORDER BY a.created_at DESC
+        ''').fetchall()]
+    else:
+        if tab == 'pending':
+            rows = db.execute('''
+                SELECT r.*, u.username AS submitter_name, u.display_name AS submitter_display
+                FROM reports r LEFT JOIN users u ON u.id=r.submitter_user_id
+                WHERE r.status IN ('pending', 'editing')
+                ORDER BY r.created_at DESC
+            ''').fetchall()
+        else:
+            rows = db.execute('''
+                SELECT r.*, u.username AS submitter_name, u.display_name AS submitter_display
+                FROM reports r LEFT JOIN users u ON u.id=r.submitter_user_id
+                WHERE r.status=?
+                ORDER BY r.created_at DESC
+            ''', (tab,)).fetchall()
+        from collections import defaultdict
+        groups = defaultdict(list)
+        for r in rows:
+            groups[r['target_qq']].append(r)
+        sorted_groups = sorted(groups.items(), key=lambda x: len(x[1]), reverse=True)
+
+    return render_template('superadmin_reports.html',
+                           groups=sorted_groups, appeals=appeals,
+                           tab=tab, counts=counts)
 
 
 # ── Superadmin ──────────────────────────────────────────────────────────────────
@@ -1560,10 +1999,13 @@ def partners():
     all_schedules = _get_schedules(uid)
     sch_map = {s['id']: s for s in all_schedules}
     for p in rows:
-        p['tags_list']      = json.loads(p['tags']) if p['tags'] else []
+        p['tags_list']        = json.loads(p['tags']) if p['tags'] else []
         p['schedule_id_list'] = json.loads(p['schedule_ids']) if p['schedule_ids'] else []
         p['linked_schedules'] = [sch_map[sid] for sid in p['schedule_id_list'] if sid in sch_map]
-    return render_template('partners.html', partners=rows)
+        p['shared_guilds_list'] = json.loads(p.get('shared_guilds') or '[]')
+    owned, member = _get_my_guilds(uid)
+    my_guilds = owned + member
+    return render_template('partners.html', partners=rows, my_guilds=my_guilds)
 
 @app.route('/partners/add', methods=['GET', 'POST'])
 @require_login
@@ -1794,6 +2236,176 @@ def wishlist_delete(wid):
     return redirect(url_for('wishlist'))
 
 
+# ── 卡包 ─────────────────────────────────────────────────────────────────────────
+
+def _card_days_left(expiry_str):
+    try:
+        return (date_cls.fromisoformat(expiry_str) - date_cls.today()).days
+    except Exception:
+        return 999
+
+@app.route('/cards')
+@require_login
+def cards():
+    uid = session['user_id']
+    type_filter = request.args.get('type', '')
+    rows = [dict(r) for r in get_db().execute(
+        'SELECT * FROM cards WHERE user_id=? ORDER BY expiry ASC, created_at ASC', (uid,)
+    ).fetchall()]
+    for c in rows:
+        c['days_left'] = _card_days_left(c['expiry'])
+        if c['last_consume']:
+            dt = datetime.fromtimestamp(c['last_consume'])
+            c['last_consume_str'] = f"{dt.month}/{dt.day} {dt.hour}:{dt.minute:02d}"
+        else:
+            c['last_consume_str'] = ''
+    counts = {t: sum(1 for r in rows if r['card_type'] == t) for t in CARD_TYPES}
+    urgent = sum(1 for r in rows if 0 <= r['days_left'] <= 7)
+    if type_filter and type_filter in CARD_TYPES:
+        display = [r for r in rows if r['card_type'] == type_filter]
+    else:
+        type_filter = ''
+        display = rows
+    return render_template('cards.html', cards=display, all_cards=rows,
+                           card_types=CARD_TYPES, type_filter=type_filter,
+                           counts=counts, urgent=urgent)
+
+@app.route('/cards/add', methods=['POST'])
+@require_login
+def cards_add():
+    uid = session['user_id']
+    name      = request.form.get('name', '').strip()
+    expiry    = request.form.get('expiry', '').strip()
+    quantity  = request.form.get('quantity', '1').strip()
+    price     = request.form.get('price', '0').strip()
+    card_type = request.form.get('card_type', '其他').strip()
+    notes     = request.form.get('notes', '').strip()
+    if not name or not expiry:
+        flash('❌ 名称和到期日不能为空')
+        return redirect(url_for('cards'))
+    if card_type not in CARD_TYPES:
+        card_type = '其他'
+    try:
+        date_cls.fromisoformat(expiry)
+    except ValueError:
+        flash('❌ 日期格式不正确，请使用 YYYY-MM-DD')
+        return redirect(url_for('cards'))
+    try: quantity = max(0, int(quantity))
+    except (ValueError, TypeError): quantity = 1
+    try: price = max(0.0, float(price))
+    except (ValueError, TypeError): price = 0.0
+    now = int(datetime.now().timestamp())
+    get_db().execute(
+        'INSERT INTO cards (user_id, name, expiry, quantity, price, card_type, notes, created_at, updated_at) '
+        'VALUES (?,?,?,?,?,?,?,?,?)',
+        (uid, name, expiry, quantity, price, card_type, notes, now, now))
+    get_db().commit()
+    flash(f'✅ 已录入「{name}」')
+    return redirect(url_for('cards'))
+
+@app.route('/cards/<int:cid>/edit', methods=['POST'])
+@require_login
+def cards_edit(cid):
+    uid = session['user_id']; db = get_db()
+    card = db.execute('SELECT id FROM cards WHERE id=? AND user_id=?', (cid, uid)).fetchone()
+    if not card:
+        flash('❌ 卡片不存在')
+        return redirect(url_for('cards'))
+    name      = request.form.get('name', '').strip()
+    expiry    = request.form.get('expiry', '').strip()
+    quantity  = request.form.get('quantity', '1').strip()
+    price     = request.form.get('price', '0').strip()
+    card_type = request.form.get('card_type', '其他').strip()
+    notes     = request.form.get('notes', '').strip()
+    if not name or not expiry:
+        flash('❌ 名称和到期日不能为空')
+        return redirect(url_for('cards'))
+    if card_type not in CARD_TYPES:
+        card_type = '其他'
+    try:
+        date_cls.fromisoformat(expiry)
+    except ValueError:
+        flash('❌ 日期格式不正确')
+        return redirect(url_for('cards'))
+    try: quantity = max(0, int(quantity))
+    except (ValueError, TypeError): quantity = 1
+    try: price = max(0.0, float(price))
+    except (ValueError, TypeError): price = 0.0
+    now = int(datetime.now().timestamp())
+    db.execute(
+        'UPDATE cards SET name=?, expiry=?, quantity=?, price=?, card_type=?, notes=?, updated_at=? '
+        'WHERE id=? AND user_id=?',
+        (name, expiry, quantity, price, card_type, notes, now, cid, uid))
+    db.commit()
+    flash(f'✅ 已更新「{name}」')
+    return redirect(url_for('cards'))
+
+@app.route('/cards/<int:cid>/consume', methods=['POST'])
+@require_login
+def cards_consume(cid):
+    uid = session['user_id']; db = get_db()
+    try: count = max(1, int(request.form.get('count', '1') or '1'))
+    except (ValueError, TypeError): count = 1
+    card = db.execute('SELECT * FROM cards WHERE id=? AND user_id=?', (cid, uid)).fetchone()
+    if not card:
+        flash('❌ 卡片不存在')
+        return redirect(url_for('cards'))
+    new_qty = max(0, card['quantity'] - count)
+    now = int(datetime.now().timestamp())
+    db.execute('UPDATE cards SET quantity=?, last_consume=?, updated_at=? WHERE id=? AND user_id=?',
+               (new_qty, now, now, cid, uid))
+    db.commit()
+    flash(f'📉 「{card["name"]}」消耗 {count}，剩余 {new_qty}')
+    return redirect(url_for('cards'))
+
+@app.route('/cards/<int:cid>/delete', methods=['POST'])
+@require_login
+def cards_delete(cid):
+    uid = session['user_id']; db = get_db()
+    card = db.execute('SELECT name FROM cards WHERE id=? AND user_id=?', (cid, uid)).fetchone()
+    if card:
+        db.execute('DELETE FROM cards WHERE id=? AND user_id=?', (cid, uid))
+        db.commit()
+        flash(f'🗑️ 已删除「{card["name"]}」')
+    return redirect(url_for('cards'))
+
+@app.route('/cards/clean', methods=['POST'])
+@require_login
+def cards_clean():
+    uid = session['user_id']; db = get_db()
+    today = date_cls.today().isoformat()
+    expired = db.execute(
+        "SELECT name FROM cards WHERE user_id=? AND expiry < ?", (uid, today)
+    ).fetchall()
+    if expired:
+        db.execute("DELETE FROM cards WHERE user_id=? AND expiry < ?", (uid, today))
+        db.commit()
+        flash(f'🗑️ 已清理 {len(expired)} 张过期卡片')
+    else:
+        flash('✅ 没有过期卡片，卡包干净~')
+    return redirect(url_for('cards'))
+
+@app.route('/cards/random')
+@require_login
+def cards_random():
+    import random as _random
+    uid = session['user_id']
+    type_filter = request.args.get('type', '')
+    today = date_cls.today().isoformat()
+    db = get_db()
+    q = "SELECT * FROM cards WHERE user_id=? AND expiry >= ? AND quantity > 0"
+    params = [uid, today]
+    if type_filter and type_filter in CARD_TYPES:
+        q += " AND card_type=?"
+        params.append(type_filter)
+    rows = db.execute(q, params).fetchall()
+    if not rows:
+        return jsonify({'ok': False, 'msg': '没有可用的卡片（试试去掉类型筛选）'})
+    card = dict(_random.choice(rows))
+    card['days_left'] = _card_days_left(card['expiry'])
+    return jsonify({'ok': True, 'card': card})
+
+
 # ── 时间轴 ───────────────────────────────────────────────────────────────────────
 
 @app.route('/timeline')
@@ -1809,6 +2421,1531 @@ def timeline():
                       / (366 if isleap(yr) else 365) * 100, 2)
     return render_template('timeline.html', timeline_years=tdata,
                            now_year=yr, today_pct=today_pct)
+
+
+# ── 公会 ────────────────────────────────────────────────────────────────────────
+
+def _guild_member_schedules(uid):
+    """Return public schedules for a user (for guild calendar display)."""
+    rows = [dict(r) for r in get_db().execute(
+        "SELECT * FROM schedules WHERE user_id=? AND visibility='public' ORDER BY start_year, time_range", (uid,)
+    ).fetchall()]
+    return _enrich_schedules(rows)
+
+def _get_my_guilds(uid):
+    """Return (owned, member) guild lists for a user."""
+    db = get_db()
+    owned = [dict(r) for r in db.execute(
+        'SELECT g.* FROM guilds g WHERE g.owner_id=? ORDER BY g.created_at DESC', (uid,)
+    ).fetchall()]
+    member = [dict(r) for r in db.execute(
+        '''SELECT g.*, gm.status FROM guilds g
+           JOIN guild_memberships gm ON gm.guild_id=g.id
+           WHERE gm.user_id=? AND gm.status='approved' ORDER BY gm.approved_at DESC''', (uid,)
+    ).fetchall()]
+    return owned, member
+
+def _guild_approved_uids(gid):
+    rows = get_db().execute(
+        "SELECT user_id FROM guild_memberships WHERE guild_id=? AND status='approved'", (gid,)
+    ).fetchall()
+    return [r['user_id'] for r in rows]
+
+def _user_approved_guild_ids(uid):
+    db = get_db()
+    member_ids = [r['guild_id'] for r in db.execute(
+        "SELECT guild_id FROM guild_memberships WHERE user_id=? AND status='approved'", (uid,)
+    ).fetchall()]
+    owned_ids = [r['id'] for r in db.execute(
+        "SELECT id FROM guilds WHERE owner_id=?", (uid,)
+    ).fetchall()]
+    return list(set(member_ids + owned_ids))
+
+@app.route('/guilds')
+@require_login
+def guilds():
+    uid = session['user_id']
+    owned, member = _get_my_guilds(uid)
+    db = get_db()
+    # pending requests on my owned guilds
+    pending_counts = {}
+    for g in owned:
+        cnt = db.execute(
+            "SELECT COUNT(*) FROM guild_memberships WHERE guild_id=? AND status='pending'", (g['id'],)
+        ).fetchone()[0]
+        pending_counts[g['id']] = cnt
+    # my pending join requests
+    my_pending = [dict(r) for r in db.execute(
+        '''SELECT g.name, g.slug, gm.created_at FROM guilds g
+           JOIN guild_memberships gm ON gm.guild_id=g.id
+           WHERE gm.user_id=? AND gm.status='pending' ORDER BY gm.created_at DESC''', (uid,)
+    ).fetchall()]
+    return render_template('guilds.html', owned=owned, member=member,
+                           pending_counts=pending_counts, my_pending=my_pending)
+
+@app.route('/guilds/create', methods=['POST'])
+@require_login
+def guild_create():
+    uid = session['user_id']
+    name = request.form.get('name', '').strip()
+    slug = request.form.get('slug', '').strip().lower()
+    sig  = request.form.get('signature', '').strip()
+    if not name:
+        flash('❌ 公会名不能为空'); return redirect(url_for('guilds'))
+    if not slug or not re.match(r'^[a-z0-9_-]{2,30}$', slug):
+        flash('❌ 公会 ID 只能含小写字母/数字/下划线/连字符，长度 2-30'); return redirect(url_for('guilds'))
+    db = get_db()
+    if db.execute('SELECT id FROM guilds WHERE slug=?', (slug,)).fetchone():
+        flash(f'❌ 公会 ID「{slug}」已被使用'); return redirect(url_for('guilds'))
+    ts = int(datetime.now().timestamp())
+    gid = db.execute(
+        'INSERT INTO guilds (name, slug, signature, owner_id, created_at) VALUES (?,?,?,?,?)',
+        (name, slug, sig, uid, ts)
+    ).lastrowid
+    db.commit()
+    flash(f'✅ 公会「{name}」已创建')
+    return redirect(url_for('guild_detail', gid=gid))
+
+@app.route('/guilds/discover')
+@require_login
+def guild_discover():
+    uid = session['user_id']
+    q = request.args.get('q', '').strip()
+    db = get_db()
+    if q:
+        guilds_list = [dict(r) for r in db.execute(
+            "SELECT g.*, u.display_name AS owner_name FROM guilds g JOIN users u ON u.id=g.owner_id WHERE g.name LIKE ? OR g.slug LIKE ? ORDER BY g.created_at DESC",
+            (f'%{q}%', f'%{q}%')
+        ).fetchall()]
+    else:
+        guilds_list = [dict(r) for r in db.execute(
+            "SELECT g.*, u.display_name AS owner_name FROM guilds g JOIN users u ON u.id=g.owner_id ORDER BY g.created_at DESC"
+        ).fetchall()]
+    my_guild_ids = set()
+    for r in db.execute(
+        "SELECT guild_id FROM guild_memberships WHERE user_id=?", (uid,)
+    ).fetchall():
+        my_guild_ids.add(r['guild_id'])
+    owned_ids = {r['id'] for r in db.execute('SELECT id FROM guilds WHERE owner_id=?', (uid,)).fetchall()}
+    for g in guilds_list:
+        g['is_owner']  = g['id'] in owned_ids
+        g['my_status'] = None
+        if g['id'] in my_guild_ids:
+            row = db.execute("SELECT status FROM guild_memberships WHERE guild_id=? AND user_id=?",
+                             (g['id'], uid)).fetchone()
+            g['my_status'] = row['status'] if row else None
+        cnt = db.execute("SELECT COUNT(*) FROM guild_memberships WHERE guild_id=? AND status='approved'",
+                         (g['id'],)).fetchone()[0]
+        g['member_count'] = cnt
+    return render_template('guild_discover.html', guilds=guilds_list, q=q)
+
+@app.route('/guilds/<int:gid>')
+@require_login
+def guild_detail(gid):
+    uid = session['user_id']
+    db  = get_db()
+    g = db.execute('SELECT * FROM guilds WHERE id=?', (gid,)).fetchone()
+    if not g: abort(404)
+    g = dict(g)
+    is_owner = (g['owner_id'] == uid)
+    my_mem = db.execute("SELECT status FROM guild_memberships WHERE guild_id=? AND user_id=?",
+                        (gid, uid)).fetchone()
+    is_member = my_mem and my_mem['status'] == 'approved'
+    if not is_owner and not is_member:
+        flash('❌ 你不是该公会成员'); return redirect(url_for('guild_discover'))
+
+    # members (approved memberships)
+    members = [dict(r) for r in db.execute(
+        '''SELECT u.id, u.display_name, u.username, gm.approved_at
+           FROM guild_memberships gm JOIN users u ON u.id=gm.user_id
+           WHERE gm.guild_id=? AND gm.status='approved' ORDER BY gm.approved_at''', (gid,)
+    ).fetchall()]
+    # ensure owner is always in members list
+    if not any(m['id'] == g['owner_id'] for m in members):
+        owner_user = db.execute('SELECT id, display_name, username FROM users WHERE id=?', (g['owner_id'],)).fetchone()
+        if owner_user:
+            members.insert(0, {'id': owner_user['id'], 'display_name': owner_user['display_name'],
+                                'username': owner_user['username'], 'approved_at': g['created_at']})
+    pending = []
+    if is_owner:
+        pending = [dict(r) for r in db.execute(
+            '''SELECT u.id, u.display_name, u.username, gm.created_at
+               FROM guild_memberships gm JOIN users u ON u.id=gm.user_id
+               WHERE gm.guild_id=? AND gm.status='pending' ORDER BY gm.created_at''', (gid,)
+        ).fetchall()]
+
+    member_uids = [m['id'] for m in members]
+    owner_row = db.execute('SELECT display_name, username FROM users WHERE id=?', (g['owner_id'],)).fetchone()
+    g['owner_name'] = owner_row['display_name'] or owner_row['username'] if owner_row else '未知'
+
+    # tab
+    tab = request.args.get('tab', 'calendar')
+    tab_year = request.args.get('year', str(datetime.now().year))
+    try: tab_year = int(tab_year)
+    except: tab_year = datetime.now().year
+
+    now = datetime.now()
+    try: cal_year  = int(request.args.get('cal_year',  now.year))
+    except: cal_year  = now.year
+    try: cal_month = int(request.args.get('cal_month', now.month))
+    except: cal_month = now.month
+    cal_month = max(1, min(12, cal_month))
+
+    # guild calendar: all members' public schedules grouped by user
+    MEMBER_COLORS = ['#8b7cf6','#f472b6','#34d399','#60a5fa','#fbbf24',
+                     '#f87171','#a78bfa','#2dd4bf','#fb923c','#e879f9']
+    member_schedules = {}
+    for m in members:
+        member_schedules[m['id']] = {
+            'user': m,
+            'schedules': _guild_member_schedules(m['id'])
+        }
+
+    # month grid for calendar tab
+    guild_cal_grid = None
+    guild_cal_legend = []
+    cal_prev_year, cal_prev_month = (cal_year, cal_month - 1) if cal_month > 1 else (cal_year - 1, 12)
+    cal_next_year, cal_next_month = (cal_year, cal_month + 1) if cal_month < 12 else (cal_year + 1, 1)
+    if tab == 'calendar':
+        days_in = monthrange(cal_year, cal_month)[1]
+        first_wd = (date_cls(cal_year, cal_month, 1).weekday() + 1) % 7
+        # per-member day coverage
+        member_day_data = []
+        for i, m in enumerate(members):
+            color = MEMBER_COLORS[i % len(MEMBER_COLORS)]
+            schs = member_schedules[m['id']]['schedules']
+            day_shows_m, _, _ = schedules_for_month(schs, cal_year, cal_month)
+            member_day_data.append({'color': color, 'name': m['display_name'] or m['username'], 'day_shows': day_shows_m})
+            guild_cal_legend.append({'color': color, 'name': m['display_name'] or m['username']})
+        # build grid rows
+        cells = [None] * first_wd + list(range(1, days_in + 1))
+        cells += [None] * ((7 - len(cells) % 7) % 7)
+        rows = [cells[i:i+7] for i in range(0, len(cells), 7)]
+        guild_cal_grid = {'rows': rows, 'days_in': days_in, 'member_day_data': member_day_data}
+
+    # shared 必吃榜
+    shared_partners = []
+    if tab == 'partners':
+        for mid in member_uids:
+            rows = [dict(r) for r in db.execute(
+                "SELECT p.*, u.display_name AS owner_name FROM partners p JOIN users u ON u.id=p.user_id WHERE p.user_id=?", (mid,)
+            ).fetchall()]
+            for p in rows:
+                sg = json.loads(p.get('shared_guilds') or '[]')
+                if gid in sg:
+                    p['tags_list'] = json.loads(p['tags']) if p['tags'] else []
+                    shared_partners.append(p)
+
+    # shared 黑名单
+    shared_blacklist = []
+    if tab == 'blacklist':
+        for mid in member_uids:
+            rows = [dict(r) for r in db.execute(
+                "SELECT b.*, u.display_name AS owner_name FROM blacklist b JOIN users u ON u.id=b.user_id WHERE b.user_id=?", (mid,)
+            ).fetchall()]
+            for b in rows:
+                sg = json.loads(b.get('shared_guilds') or '[]')
+                if gid in sg:
+                    shared_blacklist.append(b)
+
+    # 年度统计 per member
+    member_stats = []
+    if tab == 'stats':
+        for m in members:
+            schs = _guild_member_schedules(m['id'])
+            st = annual_stats(schs, tab_year)
+            st['user'] = m
+            member_stats.append(st)
+
+    return render_template('guild_detail.html',
+        guild=g, is_owner=is_owner, members=members, pending=pending,
+        member_schedules=member_schedules,
+        shared_partners=shared_partners, shared_blacklist=shared_blacklist,
+        member_stats=member_stats, tab=tab, tab_year=tab_year,
+        guild_cal_grid=guild_cal_grid, guild_cal_legend=guild_cal_legend,
+        cal_year=cal_year, cal_month=cal_month,
+        cal_prev_year=cal_prev_year, cal_prev_month=cal_prev_month,
+        cal_next_year=cal_next_year, cal_next_month=cal_next_month,
+        now_year=datetime.now().year)
+
+@app.route('/guilds/<int:gid>/join', methods=['POST'])
+@require_login
+def guild_join(gid):
+    uid = session['user_id']
+    db  = get_db()
+    g = db.execute('SELECT id, name, owner_id FROM guilds WHERE id=?', (gid,)).fetchone()
+    if not g: abort(404)
+    if g['owner_id'] == uid:
+        flash('❌ 你是公会创建者'); return redirect(url_for('guild_detail', gid=gid))
+    existing = db.execute("SELECT status FROM guild_memberships WHERE guild_id=? AND user_id=?", (gid, uid)).fetchone()
+    if existing:
+        flash('❌ 你已申请或加入该公会'); return redirect(url_for('guild_discover'))
+    db.execute("INSERT INTO guild_memberships (guild_id, user_id, status, created_at) VALUES (?,?,'pending',?)",
+               (gid, uid, int(datetime.now().timestamp())))
+    db.commit()
+    flash(f'✅ 已发送加入申请，等待「{g["name"]}」公会主审核')
+    return redirect(url_for('guild_discover'))
+
+@app.route('/guilds/<int:gid>/approve/<int:target_uid>', methods=['POST'])
+@require_login
+def guild_approve(gid, target_uid):
+    uid = session['user_id']
+    db  = get_db()
+    g = db.execute('SELECT owner_id FROM guilds WHERE id=?', (gid,)).fetchone()
+    if not g or g['owner_id'] != uid: abort(403)
+    ts = int(datetime.now().timestamp())
+    db.execute("UPDATE guild_memberships SET status='approved', approved_at=? WHERE guild_id=? AND user_id=? AND status='pending'",
+               (ts, gid, target_uid))
+    db.commit()
+    flash('✅ 已通过申请')
+    return redirect(url_for('guild_detail', gid=gid))
+
+@app.route('/guilds/<int:gid>/reject/<int:target_uid>', methods=['POST'])
+@require_login
+def guild_reject(gid, target_uid):
+    uid = session['user_id']
+    db  = get_db()
+    g = db.execute('SELECT owner_id FROM guilds WHERE id=?', (gid,)).fetchone()
+    if not g or g['owner_id'] != uid: abort(403)
+    db.execute("DELETE FROM guild_memberships WHERE guild_id=? AND user_id=? AND status='pending'",
+               (gid, target_uid))
+    db.commit()
+    flash('已拒绝申请')
+    return redirect(url_for('guild_detail', gid=gid))
+
+@app.route('/guilds/<int:gid>/kick/<int:target_uid>', methods=['POST'])
+@require_login
+def guild_kick(gid, target_uid):
+    uid = session['user_id']
+    db  = get_db()
+    g = db.execute('SELECT owner_id FROM guilds WHERE id=?', (gid,)).fetchone()
+    if not g or g['owner_id'] != uid: abort(403)
+    db.execute("DELETE FROM guild_memberships WHERE guild_id=? AND user_id=?", (gid, target_uid))
+    db.commit()
+    flash('已移出成员')
+    return redirect(url_for('guild_detail', gid=gid))
+
+@app.route('/guilds/<int:gid>/leave', methods=['POST'])
+@require_login
+def guild_leave(gid):
+    uid = session['user_id']
+    db  = get_db()
+    g = db.execute('SELECT owner_id, name FROM guilds WHERE id=?', (gid,)).fetchone()
+    if not g: abort(404)
+    if g['owner_id'] == uid:
+        flash('❌ 公会主不能退出，请先解散公会'); return redirect(url_for('guild_detail', gid=gid))
+    db.execute("DELETE FROM guild_memberships WHERE guild_id=? AND user_id=?", (gid, uid))
+    db.commit()
+    flash(f'已退出公会「{g["name"]}」')
+    return redirect(url_for('guilds'))
+
+@app.route('/guilds/<int:gid>/edit', methods=['GET', 'POST'])
+@require_login
+def guild_edit(gid):
+    uid = session['user_id']
+    db  = get_db()
+    g = db.execute('SELECT * FROM guilds WHERE id=? AND owner_id=?', (gid, uid)).fetchone()
+    if not g: abort(403)
+    g = dict(g)
+    if request.method == 'POST':
+        name = request.form.get('name', '').strip()
+        sig  = request.form.get('signature', '').strip()
+        if not name:
+            flash('❌ 公会名不能为空')
+            return render_template('guild_edit.html', guild=g)
+        db.execute('UPDATE guilds SET name=?, signature=? WHERE id=?', (name, sig, gid))
+        db.commit()
+        flash('✅ 公会信息已更新')
+        return redirect(url_for('guild_detail', gid=gid))
+    return render_template('guild_edit.html', guild=g)
+
+@app.route('/guilds/<int:gid>/delete', methods=['POST'])
+@require_login
+def guild_delete(gid):
+    uid = session['user_id']
+    db  = get_db()
+    g = db.execute('SELECT name FROM guilds WHERE id=? AND owner_id=?', (gid, uid)).fetchone()
+    if not g: abort(403)
+    db.execute('DELETE FROM guild_memberships WHERE guild_id=?', (gid,))
+    db.execute('DELETE FROM guilds WHERE id=?', (gid,))
+    db.commit()
+    flash(f'已解散公会「{g["name"]}」')
+    return redirect(url_for('guilds'))
+
+@app.route('/api/partners/<int:pid>/guild-share', methods=['POST'])
+@require_login
+def api_partner_guild_share(pid):
+    uid = session['user_id']
+    db  = get_db()
+    p = db.execute('SELECT id FROM partners WHERE id=? AND user_id=?', (pid, uid)).fetchone()
+    if not p: return jsonify({'ok': False}), 404
+    guild_ids = [int(x) for x in request.json.get('guild_ids', []) if str(x).isdigit()]
+    # only allow guilds the user is actually a member of
+    allowed = set(_user_approved_guild_ids(uid))
+    guild_ids = [g for g in guild_ids if g in allowed]
+    db.execute('UPDATE partners SET shared_guilds=? WHERE id=?',
+               (json.dumps(guild_ids), pid))
+    db.commit()
+    return jsonify({'ok': True})
+
+@app.route('/api/blacklist/<int:bid>/guild-share', methods=['POST'])
+@require_login
+def api_blacklist_guild_share(bid):
+    uid = session['user_id']
+    db  = get_db()
+    b = db.execute('SELECT id FROM blacklist WHERE id=? AND user_id=?', (bid, uid)).fetchone()
+    if not b: return jsonify({'ok': False}), 404
+    guild_ids = [int(x) for x in request.json.get('guild_ids', []) if str(x).isdigit()]
+    allowed = set(_user_approved_guild_ids(uid))
+    guild_ids = [g for g in guild_ids if g in allowed]
+    db.execute('UPDATE blacklist SET shared_guilds=? WHERE id=?',
+               (json.dumps(guild_ids), bid))
+    db.commit()
+    return jsonify({'ok': True})
+
+
+# ── Mobile API v1 ───────────────────────────────────────────────────────────────
+#
+#  所有接口以 /api/v1/ 开头，使用随机 Token 认证（存储在数据库中）。
+#  现有的 session-based 网页路由完全不受影响。
+#
+
+API_TOKEN_EXPIRE_DAYS = 30
+
+
+def _make_api_token(user_id):
+    """生成随机 token 并存入数据库"""
+    token = secrets.token_urlsafe(32)
+    now   = int(datetime.now().timestamp())
+    exp   = now + API_TOKEN_EXPIRE_DAYS * 86400
+    db    = get_db()
+    db.execute(
+        "INSERT INTO api_tokens (user_id, token, expires_at, created_at) VALUES (?,?,?,?)",
+        (user_id, token, exp, now)
+    )
+    db.commit()
+    return token
+
+
+def _require_token(f):
+    """API 路由的认证装饰器，从 Authorization: Bearer <token> 中查找用户"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return jsonify({"ok": False, "error": "未登录"}), 401
+        token = auth_header[7:].strip()
+        now   = int(datetime.now().timestamp())
+        db    = get_db()
+        row   = db.execute(
+            """SELECT t.user_id, u.username, u.display_name
+               FROM api_tokens t JOIN users u ON u.id = t.user_id
+               WHERE t.token = ? AND t.expires_at > ? AND u.is_active = 1""",
+            (token, now)
+        ).fetchone()
+        if not row:
+            return jsonify({"ok": False, "error": "token 无效或已过期"}), 401
+        g.api_uid          = row["user_id"]
+        g.api_username     = row["username"]
+        g.api_display_name = row["display_name"]
+        return f(*args, **kwargs)
+    return decorated
+
+
+# ── 认证 ────────────────────────────────────────────────────────────────────────
+
+@app.route("/api/v1/login", methods=["POST"])
+def api_login():
+    data     = request.get_json(silent=True) or {}
+    username = data.get("username", "").strip()
+    password = data.get("password", "")
+    if not username or not password:
+        return jsonify({"ok": False, "error": "用户名和密码不能为空"}), 400
+    user = get_db().execute(
+        "SELECT * FROM users WHERE username=? AND is_active=1", (username,)
+    ).fetchone()
+    if not user or not check_password_hash(user["password_hash"], password):
+        return jsonify({"ok": False, "error": "用户名或密码错误"}), 401
+    token = _make_api_token(user["id"])
+    return jsonify({
+        "ok": True,
+        "token": token,
+        "user": {
+            "id":           user["id"],
+            "username":     user["username"],
+            "display_name": user["display_name"] or user["username"],
+            "theme":        user["theme"],
+        }
+    })
+
+
+@app.route("/api/v1/me")
+@_require_token
+def api_me():
+    db   = get_db()
+    user = db.execute(
+        "SELECT id, username, display_name, theme FROM users WHERE id=?", (g.api_uid,)
+    ).fetchone()
+    if not user:
+        return jsonify({"ok": False, "error": "用户不存在"}), 404
+    cnt  = db.execute(
+        "SELECT COUNT(*) FROM reports WHERE submitter_user_id=? AND status='approved'",
+        (g.api_uid,)
+    ).fetchone()[0]
+    u = dict(user)
+    u['is_vip']               = cnt >= VIP_THRESHOLD
+    u['unlocked_achievements'] = list(_get_unlocked_achievements(db, g.api_uid))
+    return jsonify({"ok": True, "user": u})
+
+
+@app.route("/api/v1/theme", methods=["POST"])
+@_require_token
+def api_set_theme_v1():
+    data  = request.get_json(silent=True) or {}
+    theme = data.get("theme", "").strip()
+    db    = get_db()
+    cnt   = db.execute(
+        "SELECT COUNT(*) FROM reports WHERE submitter_user_id=? AND status='approved'",
+        (g.api_uid,)
+    ).fetchone()[0]
+    is_vip = cnt >= VIP_THRESHOLD
+    if theme in VIP_THEMES and not is_vip:
+        return jsonify({"ok": False, "error": "vip_required"}), 403
+    if theme in ACHIEVEMENT_THEMES and theme not in _get_unlocked_achievements(db, g.api_uid):
+        return jsonify({"ok": False, "error": "achievement_locked"}), 403
+    db.execute("UPDATE users SET theme=? WHERE id=?", (theme, g.api_uid))
+    db.commit()
+    return jsonify({"ok": True, "theme": theme})
+
+
+# ── 日程 ────────────────────────────────────────────────────────────────────────
+
+@app.route("/api/v1/schedules")
+@_require_token
+def api_schedules_list():
+    rows = get_db().execute(
+        "SELECT * FROM schedules WHERE user_id=? ORDER BY start_year DESC, created_at DESC",
+        (g.api_uid,)
+    ).fetchall()
+    return jsonify({"ok": True, "schedules": [dict(r) for r in rows]})
+
+
+@app.route("/api/v1/schedules/<int:sid>")
+@_require_token
+def api_schedule_get(sid):
+    row = get_db().execute(
+        "SELECT * FROM schedules WHERE id=? AND user_id=?", (sid, g.api_uid)
+    ).fetchone()
+    if not row:
+        return jsonify({"ok": False, "error": "不存在"}), 404
+    return jsonify({"ok": True, "schedule": dict(row)})
+
+
+@app.route("/api/v1/schedules", methods=["POST"])
+@_require_token
+def api_schedule_add():
+    data   = request.get_json(silent=True) or {}
+    errors, show_name, time_range, sy = _validate_schedule_form(data)
+    if errors:
+        return jsonify({"ok": False, "errors": errors}), 400
+    fields = _save_schedule_fields(data)
+    ts  = int(datetime.now().timestamp())
+    db  = get_db()
+    visibility = 'private' if data.get('visibility') == 'private' else 'public'
+    cur = db.execute(
+        """INSERT INTO schedules
+           (user_id, show_name, start_year, time_range, status, character, orientation,
+            theme, role_name, role_type, gender, outcome, color, notes,
+            deadline_form2, deadline_public, deadline_relation,
+            schedule_tags, casting_status, visibility, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (g.api_uid, show_name, sy, time_range,
+         fields["status"], fields["character"], fields["orientation"], fields["theme"],
+         fields["role_name"], fields["role_type"], fields["gender"], fields["outcome"],
+         fields["color"], fields["notes"],
+         fields.get("deadline_form2",""), fields.get("deadline_public",""),
+         fields.get("deadline_relation",""),
+         fields.get("schedule_tags","[]"), fields.get("casting_status",""),
+         visibility, ts, ts)
+    )
+    db.commit()
+    row = db.execute("SELECT * FROM schedules WHERE id=?", (cur.lastrowid,)).fetchone()
+    return jsonify({"ok": True, "schedule": dict(row)}), 201
+
+
+@app.route("/api/v1/schedules/<int:sid>", methods=["PUT"])
+@_require_token
+def api_schedule_edit(sid):
+    db  = get_db()
+    row = db.execute("SELECT id FROM schedules WHERE id=? AND user_id=?",
+                     (sid, g.api_uid)).fetchone()
+    if not row:
+        return jsonify({"ok": False, "error": "不存在"}), 404
+    data   = request.get_json(silent=True) or {}
+    errors, show_name, time_range, sy = _validate_schedule_form(data)
+    if errors:
+        return jsonify({"ok": False, "errors": errors}), 400
+    fields = _save_schedule_fields(data)
+    ts  = int(datetime.now().timestamp())
+    visibility = 'private' if data.get('visibility') == 'private' else 'public'
+    db.execute(
+        """UPDATE schedules SET
+           show_name=?, start_year=?, time_range=?, status=?, character=?,
+           orientation=?, theme=?, role_name=?, role_type=?, gender=?, outcome=?,
+           color=?, notes=?, deadline_form2=?, deadline_public=?, deadline_relation=?,
+           schedule_tags=?, casting_status=?, visibility=?, updated_at=?
+           WHERE id=? AND user_id=?""",
+        (show_name, sy, time_range,
+         fields["status"], fields["character"], fields["orientation"], fields["theme"],
+         fields["role_name"], fields["role_type"], fields["gender"], fields["outcome"],
+         fields["color"], fields["notes"],
+         fields.get("deadline_form2",""), fields.get("deadline_public",""),
+         fields.get("deadline_relation",""),
+         fields.get("schedule_tags","[]"), fields.get("casting_status",""),
+         visibility, ts, sid, g.api_uid)
+    )
+    db.commit()
+    updated = db.execute("SELECT * FROM schedules WHERE id=?", (sid,)).fetchone()
+    return jsonify({"ok": True, "schedule": dict(updated)})
+
+
+@app.route("/api/v1/schedules/<int:sid>", methods=["DELETE"])
+@_require_token
+def api_schedule_delete(sid):
+    db = get_db()
+    row = db.execute("SELECT id FROM schedules WHERE id=? AND user_id=?", (sid, g.api_uid)).fetchone()
+    if not row:
+        return jsonify({"ok": False, "error": "不存在"}), 404
+    db.execute("DELETE FROM schedules WHERE id=?", (sid,))
+    db.commit()
+    return jsonify({"ok": True})
+
+
+# ── 日历视图 ─────────────────────────────────────────────────────────────────────
+
+@app.route("/api/v1/calendar")
+@_require_token
+def api_calendar():
+    now   = datetime.now()
+    year  = int(request.args.get("year",  now.year))
+    month = int(request.args.get("month", now.month))
+
+    # 从数据库获取日程，全部转为 dict（sqlite3.Row 不能直接 JSON 序列化）
+    raw = _get_schedules(g.api_uid)
+    schedules = [dict(s) for s in raw]
+
+    # 冲突检测
+    conflict_ids = list({sid for pair in find_all_conflicts(schedules) for sid in pair})
+
+    # 本月日程：schedules_for_month 返回 (day_shows, active, days_in)
+    day_shows, active, days_in = schedules_for_month(schedules, year, month)
+
+    # 本月出现过的日程列表（去重）
+    seen = set()
+    month_schedules = []
+    for item in active:
+        s = item['schedule']
+        if s['id'] not in seen:
+            seen.add(s['id'])
+            month_schedules.append(s)
+
+    # 每天有哪些日程 id（供日历格子显示小点用）
+    day_markers = {
+        str(day): [s['id'] for s in shows]
+        for day, shows in day_shows.items() if shows
+    }
+
+    # 近 7 天即将开始/结束的日程
+    upcoming_raw = upcoming_schedules(schedules)
+    upcoming = [
+        {**dict(item['schedule']),
+         'starting': item['starting'],
+         'ending':   item['ending']}
+        for item in upcoming_raw
+    ]
+
+    return jsonify({
+        "ok":              True,
+        "year":            year,
+        "month":           month,
+        "days_in":         days_in,
+        "month_schedules": month_schedules,
+        "day_markers":     day_markers,
+        "upcoming":        upcoming,
+        "conflict_ids":    conflict_ids,
+    })
+
+
+# ── 统计 ─────────────────────────────────────────────────────────────────────────
+
+@app.route("/api/v1/stats")
+@_require_token
+def api_stats():
+    year      = int(request.args.get("year", datetime.now().year))
+    schedules = _get_schedules(g.api_uid)
+    st        = annual_stats(schedules, year)
+    return jsonify({"ok": True, "year": year, "stats": st})
+
+
+# ── 搭档 ─────────────────────────────────────────────────────────────────────────
+
+@app.route("/api/v1/partners")
+@_require_token
+def api_partners_list():
+    rows = get_db().execute(
+        "SELECT * FROM partners WHERE user_id=? ORDER BY created_at DESC", (g.api_uid,)
+    ).fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["tags_list"] = json.loads(d["tags"]) if d.get("tags") else []
+        result.append(d)
+    return jsonify({"ok": True, "partners": result})
+
+
+@app.route("/api/v1/partners", methods=["POST"])
+@_require_token
+def api_partner_add():
+    data     = request.get_json(silent=True) or {}
+    nickname = data.get("nickname", "").strip()
+    if not nickname:
+        return jsonify({"ok": False, "error": "搭档名不能为空"}), 400
+    db   = get_db()
+    ts   = int(datetime.now().timestamp())
+    tags = json.dumps(data.get("tags", []))
+    rating = int(data.get("rating", 0)) if str(data.get("rating","")).isdigit() else 0
+    cur  = db.execute(
+        "INSERT INTO partners (user_id, qq, nickname, rating, tags, notes, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)",
+        (g.api_uid, data.get("qq","").strip(), nickname, rating, tags, data.get("notes",""), ts, ts)
+    )
+    db.commit()
+    row = db.execute("SELECT * FROM partners WHERE id=?", (cur.lastrowid,)).fetchone()
+    d = dict(row)
+    d["tags_list"] = json.loads(d["tags"]) if d.get("tags") else []
+    return jsonify({"ok": True, "partner": d}), 201
+
+
+@app.route("/api/v1/partners/<int:pid>", methods=["DELETE"])
+@_require_token
+def api_partner_delete(pid):
+    db = get_db()
+    row = db.execute("SELECT id FROM partners WHERE id=? AND user_id=?", (pid, g.api_uid)).fetchone()
+    if not row:
+        return jsonify({"ok": False, "error": "不存在"}), 404
+    db.execute("DELETE FROM partners WHERE id=?", (pid,))
+    db.commit()
+    return jsonify({"ok": True})
+
+
+# ── 日记 ─────────────────────────────────────────────────────────────────────────
+
+@app.route("/api/v1/diary")
+@_require_token
+def api_diary_list():
+    rows = get_db().execute(
+        "SELECT * FROM diaries WHERE user_id=? ORDER BY created_at DESC", (g.api_uid,)
+    ).fetchall()
+    return jsonify({"ok": True, "entries": [dict(r) for r in rows]})
+
+
+@app.route("/api/v1/diary", methods=["POST"])
+@_require_token
+def api_diary_add():
+    data    = request.get_json(silent=True) or {}
+    content = data.get("content", "").strip()
+    if not content:
+        return jsonify({"ok": False, "error": "内容不能为空"}), 400
+    db = get_db()
+    ts = int(datetime.now().timestamp())
+    title      = data.get("title", "").strip()
+    mood       = data.get("mood", "").strip()
+    diary_date = data.get("diary_date", "").strip()
+    cur = db.execute(
+        "INSERT INTO diaries (user_id, title, content, mood, diary_date, created_at, updated_at) VALUES (?,?,?,?,?,?,?)",
+        (g.api_uid, title, content, mood, diary_date, ts, ts)
+    )
+    db.commit()
+    row = db.execute("SELECT * FROM diaries WHERE id=?", (cur.lastrowid,)).fetchone()
+    return jsonify({"ok": True, "entry": dict(row)}), 201
+
+
+@app.route("/api/v1/diary/<int:did>", methods=["DELETE"])
+@_require_token
+def api_diary_delete(did):
+    db = get_db()
+    row = db.execute("SELECT id FROM diaries WHERE id=? AND user_id=?", (did, g.api_uid)).fetchone()
+    if not row:
+        return jsonify({"ok": False, "error": "不存在"}), 404
+    db.execute("DELETE FROM diaries WHERE id=?", (did,))
+    db.commit()
+    return jsonify({"ok": True})
+
+
+# ── 愿望单 ───────────────────────────────────────────────────────────────────────
+
+@app.route("/api/v1/wishlist")
+@_require_token
+def api_wishlist_list():
+    rows = get_db().execute(
+        "SELECT * FROM wishlist WHERE user_id=? ORDER BY created_at DESC", (g.api_uid,)
+    ).fetchall()
+    return jsonify({"ok": True, "items": [dict(r) for r in rows]})
+
+
+@app.route("/api/v1/wishlist", methods=["POST"])
+@_require_token
+def api_wishlist_add():
+    data  = request.get_json(silent=True) or {}
+    title = data.get("title", "").strip()
+    if not title:
+        return jsonify({"ok": False, "error": "标题不能为空"}), 400
+    db = get_db()
+    ts = int(datetime.now().timestamp())
+    cur = db.execute(
+        "INSERT INTO wishlist (user_id, title, notes, is_done, created_at) VALUES (?,?,?,0,?)",
+        (g.api_uid, title, data.get("notes",""), ts)
+    )
+    db.commit()
+    row = db.execute("SELECT * FROM wishlist WHERE id=?", (cur.lastrowid,)).fetchone()
+    return jsonify({"ok": True, "item": dict(row)}), 201
+
+
+@app.route("/api/v1/wishlist/<int:wid>/toggle", methods=["POST"])
+@_require_token
+def api_wishlist_toggle(wid):
+    db  = get_db()
+    row = db.execute("SELECT * FROM wishlist WHERE id=? AND user_id=?", (wid, g.api_uid)).fetchone()
+    if not row:
+        return jsonify({"ok": False, "error": "不存在"}), 404
+    new_val = 0 if row["is_done"] else 1
+    db.execute("UPDATE wishlist SET is_done=? WHERE id=?", (new_val, wid))
+    db.commit()
+    return jsonify({"ok": True, "is_done": bool(new_val)})
+
+
+@app.route("/api/v1/wishlist/<int:wid>", methods=["DELETE"])
+@_require_token
+def api_wishlist_delete(wid):
+    db  = get_db()
+    row = db.execute("SELECT id FROM wishlist WHERE id=? AND user_id=?", (wid, g.api_uid)).fetchone()
+    if not row:
+        return jsonify({"ok": False, "error": "不存在"}), 404
+    db.execute("DELETE FROM wishlist WHERE id=?", (wid,))
+    db.commit()
+    return jsonify({"ok": True})
+
+
+# ── 黑名单 ───────────────────────────────────────────────────────────────────────
+
+@app.route("/api/v1/blacklist")
+@_require_token
+def api_blacklist_list():
+    rows = get_db().execute(
+        "SELECT * FROM blacklist WHERE user_id=? ORDER BY created_at DESC", (g.api_uid,)
+    ).fetchall()
+    return jsonify({"ok": True, "items": [dict(r) for r in rows]})
+
+
+@app.route("/api/v1/blacklist", methods=["POST"])
+@_require_token
+def api_blacklist_add():
+    data     = request.get_json(silent=True) or {}
+    nickname = data.get("nickname", "").strip()
+    if not nickname:
+        return jsonify({"ok": False, "error": "昵称不能为空"}), 400
+    db = get_db()
+    ts = int(datetime.now().timestamp())
+    cur = db.execute(
+        "INSERT INTO blacklist (user_id, qq, nickname, reason, happened_at, notes, created_at) VALUES (?,?,?,?,?,?,?)",
+        (g.api_uid, data.get("qq","").strip(), nickname,
+         data.get("reason","").strip(), data.get("happened_at","").strip(),
+         data.get("notes","").strip(), ts)
+    )
+    db.commit()
+    row = db.execute("SELECT * FROM blacklist WHERE id=?", (cur.lastrowid,)).fetchone()
+    return jsonify({"ok": True, "item": dict(row)}), 201
+
+
+@app.route("/api/v1/blacklist/<int:bid>", methods=["DELETE"])
+@_require_token
+def api_blacklist_delete(bid):
+    db  = get_db()
+    row = db.execute("SELECT id FROM blacklist WHERE id=? AND user_id=?", (bid, g.api_uid)).fetchone()
+    if not row:
+        return jsonify({"ok": False, "error": "不存在"}), 404
+    db.execute("DELETE FROM blacklist WHERE id=?", (bid,))
+    db.commit()
+    return jsonify({"ok": True})
+
+
+# ── 公会 ─────────────────────────────────────────────────────────────────────────
+
+@app.route("/api/v1/guilds")
+@_require_token
+def api_guilds_mine():
+    uid = g.api_uid
+    db  = get_db()
+    owned, member = _get_my_guilds(uid)
+    # 我创建的公会附带待审核人数
+    for gd in owned:
+        gd['pending_count'] = db.execute(
+            "SELECT COUNT(*) FROM guild_memberships WHERE guild_id=? AND status='pending'",
+            (gd['id'],)
+        ).fetchone()[0]
+        gd['is_owner'] = True
+    # 我加入的公会
+    for gd in member:
+        gd['pending_count'] = 0
+        gd['is_owner'] = False
+    # 我申请中但未批准的
+    my_pending = [dict(r) for r in db.execute(
+        '''SELECT g.id, g.name, g.slug, gm.created_at as applied_at
+           FROM guilds g JOIN guild_memberships gm ON gm.guild_id=g.id
+           WHERE gm.user_id=? AND gm.status='pending' ORDER BY gm.created_at DESC''', (uid,)
+    ).fetchall()]
+    return jsonify({"ok": True, "owned": owned, "member": member, "pending": my_pending})
+
+
+@app.route("/api/v1/guilds/discover")
+@_require_token
+def api_guilds_discover():
+    uid = g.api_uid
+    q   = request.args.get("q", "").strip()
+    db  = get_db()
+    if q:
+        rows = db.execute(
+            "SELECT g.*, u.display_name AS owner_name FROM guilds g JOIN users u ON u.id=g.owner_id WHERE g.name LIKE ? OR g.slug LIKE ? ORDER BY g.created_at DESC",
+            (f'%{q}%', f'%{q}%')
+        ).fetchall()
+    else:
+        rows = db.execute(
+            "SELECT g.*, u.display_name AS owner_name FROM guilds g JOIN users u ON u.id=g.owner_id ORDER BY g.created_at DESC"
+        ).fetchall()
+    owned_ids  = {r['id'] for r in db.execute('SELECT id FROM guilds WHERE owner_id=?', (uid,)).fetchall()}
+    my_memberships = {r['guild_id']: r['status'] for r in db.execute(
+        "SELECT guild_id, status FROM guild_memberships WHERE user_id=?", (uid,)
+    ).fetchall()}
+    result = []
+    for r in rows:
+        gd = dict(r)
+        gd['is_owner']    = gd['id'] in owned_ids
+        gd['my_status']   = my_memberships.get(gd['id'])
+        gd['member_count'] = db.execute(
+            "SELECT COUNT(*) FROM guild_memberships WHERE guild_id=? AND status='approved'",
+            (gd['id'],)
+        ).fetchone()[0]
+        result.append(gd)
+    return jsonify({"ok": True, "guilds": result})
+
+
+@app.route("/api/v1/guilds", methods=["POST"])
+@_require_token
+def api_guild_create():
+    uid  = g.api_uid
+    data = request.get_json(silent=True) or {}
+    name = data.get("name", "").strip()
+    slug = data.get("slug", "").strip().lower()
+    sig  = data.get("signature", "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "公会名不能为空"}), 400
+    if not slug or not re.match(r'^[a-z0-9_-]{2,30}$', slug):
+        return jsonify({"ok": False, "error": "公会 ID 只能含小写字母/数字/下划线/连字符，长度 2-30"}), 400
+    db = get_db()
+    if db.execute('SELECT id FROM guilds WHERE slug=?', (slug,)).fetchone():
+        return jsonify({"ok": False, "error": f"公会 ID「{slug}」已被使用"}), 400
+    ts  = int(datetime.now().timestamp())
+    gid = db.execute(
+        'INSERT INTO guilds (name, slug, signature, owner_id, created_at) VALUES (?,?,?,?,?)',
+        (name, slug, sig, uid, ts)
+    ).lastrowid
+    db.commit()
+    row = db.execute('SELECT * FROM guilds WHERE id=?', (gid,)).fetchone()
+    return jsonify({"ok": True, "guild": dict(row)}), 201
+
+
+@app.route("/api/v1/guilds/<int:gid>")
+@_require_token
+def api_guild_detail(gid):
+    uid = g.api_uid
+    db  = get_db()
+    guild = db.execute(
+        'SELECT g.*, u.display_name AS owner_name FROM guilds g JOIN users u ON u.id=g.owner_id WHERE g.id=?', (gid,)
+    ).fetchone()
+    if not guild:
+        return jsonify({"ok": False, "error": "公会不存在"}), 404
+    guild = dict(guild)
+    is_owner = guild['owner_id'] == uid
+    my_mem   = db.execute("SELECT status FROM guild_memberships WHERE guild_id=? AND user_id=?", (gid, uid)).fetchone()
+    is_member = is_owner or (my_mem and my_mem['status'] == 'approved')
+    if not is_member:
+        return jsonify({"ok": False, "error": "你不是该公会成员"}), 403
+    members = [dict(r) for r in db.execute(
+        '''SELECT u.id, u.display_name, u.username, gm.approved_at
+           FROM guild_memberships gm JOIN users u ON u.id=gm.user_id
+           WHERE gm.guild_id=? AND gm.status='approved' ORDER BY gm.approved_at''', (gid,)
+    ).fetchall()]
+    pending = []
+    if is_owner:
+        pending = [dict(r) for r in db.execute(
+            '''SELECT u.id, u.display_name, u.username, gm.created_at as applied_at
+               FROM guild_memberships gm JOIN users u ON u.id=gm.user_id
+               WHERE gm.guild_id=? AND gm.status='pending' ORDER BY gm.created_at''', (gid,)
+        ).fetchall()]
+    return jsonify({
+        "ok": True, "guild": guild,
+        "is_owner": is_owner, "members": members, "pending": pending
+    })
+
+
+@app.route("/api/v1/guilds/<int:gid>/join", methods=["POST"])
+@_require_token
+def api_guild_join(gid):
+    uid = g.api_uid
+    db  = get_db()
+    guild = db.execute('SELECT id, owner_id FROM guilds WHERE id=?', (gid,)).fetchone()
+    if not guild: return jsonify({"ok": False, "error": "公会不存在"}), 404
+    if guild['owner_id'] == uid: return jsonify({"ok": False, "error": "你是该公会创建者"}), 400
+    existing = db.execute("SELECT status FROM guild_memberships WHERE guild_id=? AND user_id=?", (gid, uid)).fetchone()
+    if existing: return jsonify({"ok": False, "error": f"你已{existing['status']}该公会"}), 400
+    db.execute("INSERT INTO guild_memberships (guild_id, user_id, status, created_at) VALUES (?,?,'pending',?)",
+               (gid, uid, int(datetime.now().timestamp())))
+    db.commit()
+    return jsonify({"ok": True, "message": "已发送加入申请"})
+
+
+@app.route("/api/v1/guilds/<int:gid>/leave", methods=["POST"])
+@_require_token
+def api_guild_leave(gid):
+    uid = g.api_uid
+    db  = get_db()
+    guild = db.execute('SELECT owner_id FROM guilds WHERE id=?', (gid,)).fetchone()
+    if not guild: return jsonify({"ok": False, "error": "公会不存在"}), 404
+    if guild['owner_id'] == uid: return jsonify({"ok": False, "error": "会长不能离开公会"}), 400
+    db.execute("DELETE FROM guild_memberships WHERE guild_id=? AND user_id=?", (gid, uid))
+    db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/v1/guilds/<int:gid>/approve/<int:target_uid>", methods=["POST"])
+@_require_token
+def api_guild_approve(gid, target_uid):
+    uid = g.api_uid
+    db  = get_db()
+    guild = db.execute('SELECT owner_id FROM guilds WHERE id=?', (gid,)).fetchone()
+    if not guild or guild['owner_id'] != uid: return jsonify({"ok": False, "error": "无权限"}), 403
+    db.execute("UPDATE guild_memberships SET status='approved', approved_at=? WHERE guild_id=? AND user_id=? AND status='pending'",
+               (int(datetime.now().timestamp()), gid, target_uid))
+    db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/v1/guilds/<int:gid>/reject/<int:target_uid>", methods=["POST"])
+@_require_token
+def api_guild_reject(gid, target_uid):
+    uid = g.api_uid
+    db  = get_db()
+    guild = db.execute('SELECT owner_id FROM guilds WHERE id=?', (gid,)).fetchone()
+    if not guild or guild['owner_id'] != uid: return jsonify({"ok": False, "error": "无权限"}), 403
+    db.execute("DELETE FROM guild_memberships WHERE guild_id=? AND user_id=? AND status='pending'", (gid, target_uid))
+    db.commit()
+    return jsonify({"ok": True})
+
+
+# ── Guild shared content API ────────────────────────────────────────────────────
+
+@app.route("/api/v1/guilds/<int:gid>/schedules")
+@_require_token
+def api_guild_schedules(gid):
+    uid = g.api_uid
+    db  = get_db()
+    # verify membership
+    row = db.execute('SELECT owner_id FROM guilds WHERE id=?', (gid,)).fetchone()
+    if not row: return jsonify({"ok": False, "error": "公会不存在"}), 404
+    is_owner = row['owner_id'] == uid
+    if not is_owner:
+        mem = db.execute("SELECT status FROM guild_memberships WHERE guild_id=? AND user_id=?", (gid, uid)).fetchone()
+        if not mem or mem['status'] != 'approved':
+            return jsonify({"ok": False, "error": "无权限"}), 403
+    # get all approved member uids
+    member_rows = db.execute(
+        "SELECT u.id, u.username, u.display_name FROM guild_memberships gm JOIN users u ON u.id=gm.user_id WHERE gm.guild_id=? AND gm.status='approved'",
+        (gid,)
+    ).fetchall()
+    # also include owner if not already in memberships
+    owner_row = db.execute("SELECT id, username, display_name FROM users WHERE id=?", (row['owner_id'],)).fetchone()
+    all_members = {r['id']: dict(r) for r in member_rows}
+    if owner_row: all_members[owner_row['id']] = dict(owner_row)
+
+    result = []
+    for mid, user in all_members.items():
+        schs = _guild_member_schedules(mid)
+        if schs:
+            result.append({
+                'user': user,
+                'schedules': schs,
+            })
+    return jsonify({"ok": True, "members": result})
+
+
+@app.route("/api/v1/guilds/<int:gid>/partners")
+@_require_token
+def api_guild_partners(gid):
+    uid = g.api_uid
+    db  = get_db()
+    row = db.execute('SELECT owner_id FROM guilds WHERE id=?', (gid,)).fetchone()
+    if not row: return jsonify({"ok": False, "error": "公会不存在"}), 404
+    is_owner = row['owner_id'] == uid
+    if not is_owner:
+        mem = db.execute("SELECT status FROM guild_memberships WHERE guild_id=? AND user_id=?", (gid, uid)).fetchone()
+        if not mem or mem['status'] != 'approved':
+            return jsonify({"ok": False, "error": "无权限"}), 403
+    member_uids = [r['user_id'] for r in db.execute(
+        "SELECT user_id FROM guild_memberships WHERE guild_id=? AND status='approved'", (gid,)
+    ).fetchall()]
+    if row['owner_id'] not in member_uids:
+        member_uids.append(row['owner_id'])
+    shared_partners = []
+    for mid in member_uids:
+        rows = [dict(r) for r in db.execute(
+            "SELECT p.*, u.display_name AS owner_name FROM partners p JOIN users u ON u.id=p.user_id WHERE p.user_id=?", (mid,)
+        ).fetchall()]
+        for p in rows:
+            sg = json.loads(p.get('shared_guilds') or '[]')
+            if gid in sg:
+                p['tags_list'] = json.loads(p['tags']) if p.get('tags') else []
+                shared_partners.append(p)
+    return jsonify({"ok": True, "partners": shared_partners})
+
+
+@app.route("/api/v1/guilds/<int:gid>/blacklist")
+@_require_token
+def api_guild_blacklist(gid):
+    uid = g.api_uid
+    db  = get_db()
+    row = db.execute('SELECT owner_id FROM guilds WHERE id=?', (gid,)).fetchone()
+    if not row: return jsonify({"ok": False, "error": "公会不存在"}), 404
+    is_owner = row['owner_id'] == uid
+    if not is_owner:
+        mem = db.execute("SELECT status FROM guild_memberships WHERE guild_id=? AND user_id=?", (gid, uid)).fetchone()
+        if not mem or mem['status'] != 'approved':
+            return jsonify({"ok": False, "error": "无权限"}), 403
+    member_uids = [r['user_id'] for r in db.execute(
+        "SELECT user_id FROM guild_memberships WHERE guild_id=? AND status='approved'", (gid,)
+    ).fetchall()]
+    if row['owner_id'] not in member_uids:
+        member_uids.append(row['owner_id'])
+    shared_blacklist = []
+    for mid in member_uids:
+        rows = [dict(r) for r in db.execute(
+            "SELECT b.*, u.display_name AS owner_name FROM blacklist b JOIN users u ON u.id=b.user_id WHERE b.user_id=?", (mid,)
+        ).fetchall()]
+        for b in rows:
+            sg = json.loads(b.get('shared_guilds') or '[]')
+            if gid in sg:
+                shared_blacklist.append(b)
+    return jsonify({"ok": True, "blacklist": shared_blacklist})
+
+
+# ── Reports API ─────────────────────────────────────────────────────────────────
+
+@app.route("/api/v1/reports", methods=["GET"])
+@_require_token
+def api_reports_get():
+    uid = g.api_uid
+    db  = get_db()
+    approved_count = db.execute(
+        "SELECT COUNT(*) FROM reports WHERE submitter_user_id=? AND status='approved'", (uid,)
+    ).fetchone()[0]
+    can_view = approved_count >= 2
+
+    # my reports
+    my_reports = [dict(r) for r in db.execute(
+        'SELECT * FROM reports WHERE submitter_user_id=? ORDER BY created_at DESC', (uid,)
+    ).fetchall()]
+    appealed_ids = [r['report_id'] for r in db.execute(
+        "SELECT report_id FROM report_appeals WHERE submitter_user_id=? AND status IN ('pending','approved')", (uid,)
+    ).fetchall()]
+
+    # public approved list (grouped by qq)
+    groups = []
+    if can_view:
+        rows = [dict(r) for r in db.execute(
+            "SELECT id, target_qq, tag, reason, created_at FROM reports WHERE status='approved' ORDER BY created_at DESC"
+        ).fetchall()]
+        from collections import defaultdict
+        grp = defaultdict(list)
+        for r in rows:
+            grp[r['target_qq']].append(r)
+        groups = [{'qq': qq, 'reports': rlist, 'count': len(rlist)}
+                  for qq, rlist in sorted(grp.items(), key=lambda x: len(x[1]), reverse=True)]
+
+    return jsonify({
+        "ok": True,
+        "can_view": can_view,
+        "approved_count": approved_count,
+        "my_reports": my_reports,
+        "appealed_ids": appealed_ids,
+        "groups": groups,
+    })
+
+
+@app.route("/api/v1/reports", methods=["POST"])
+@_require_token
+def api_reports_submit():
+    uid  = g.api_uid
+    data = request.get_json(silent=True) or {}
+    target_qq = (data.get('target_qq') or '').strip()
+    tag        = (data.get('tag')       or '').strip()
+    reason     = (data.get('reason')    or '').strip()
+    if not target_qq:
+        return jsonify({"ok": False, "error": "QQ 号不能为空"}), 400
+    if not re.match(r'^\d{5,12}$', target_qq):
+        return jsonify({"ok": False, "error": "QQ 号格式不正确（5-12位数字）"}), 400
+    if not reason:
+        return jsonify({"ok": False, "error": "检举原因不能为空"}), 400
+    db = get_db()
+    db.execute(
+        'INSERT INTO reports (target_qq, tag, reason, submitter_user_id, status, created_at) VALUES (?,?,?,?,?,?)',
+        (target_qq, tag, reason, uid, 'pending', int(datetime.now().timestamp()))
+    )
+    db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/v1/reports/<int:rid>", methods=["DELETE"])
+@_require_token
+def api_report_self_delete(rid):
+    uid = g.api_uid
+    db  = get_db()
+    row = db.execute('SELECT submitter_user_id, status FROM reports WHERE id=?', (rid,)).fetchone()
+    if not row or row['submitter_user_id'] != uid:
+        return jsonify({"ok": False, "error": "无权限"}), 403
+    if row['status'] == 'approved':
+        approved_count = db.execute(
+            "SELECT COUNT(*) FROM reports WHERE submitter_user_id=? AND status='approved'", (uid,)
+        ).fetchone()[0]
+        if approved_count <= 2:
+            return jsonify({"ok": False, "error": "至少需要保留 2 条已通过的检举，无法删除"}), 400
+    db.execute('DELETE FROM reports WHERE id=?', (rid,))
+    db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/v1/reports/<int:rid>", methods=["PUT"])
+@_require_token
+def api_report_user_edit(rid):
+    uid  = g.api_uid
+    db   = get_db()
+    row  = db.execute("SELECT submitter_user_id, status FROM reports WHERE id=?", (rid,)).fetchone()
+    if not row or row['submitter_user_id'] != uid:
+        return jsonify({"ok": False, "error": "无权限"}), 403
+    if row['status'] != 'editing':
+        return jsonify({"ok": False, "error": "当前状态不允许编辑"}), 400
+    data   = request.get_json(silent=True) or {}
+    tag    = (data.get('tag')    or '').strip()
+    reason = (data.get('reason') or '').strip()
+    if not reason:
+        return jsonify({"ok": False, "error": "检举原因不能为空"}), 400
+    db.execute("UPDATE reports SET tag=?, reason=?, status='pending', edit_note='' WHERE id=?",
+               (tag, reason, rid))
+    db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/v1/reports/<int:rid>/appeal", methods=["POST"])
+@_require_token
+def api_report_appeal(rid):
+    uid  = g.api_uid
+    db   = get_db()
+    data = request.get_json(silent=True) or {}
+    reason = (data.get('reason') or '').strip()
+    if not reason:
+        return jsonify({"ok": False, "error": "申请理由不能为空"}), 400
+    row = db.execute("SELECT id FROM reports WHERE id=? AND status='approved'", (rid,)).fetchone()
+    if not row:
+        return jsonify({"ok": False, "error": "该检举不存在或已被撤下"}), 404
+    existing = db.execute(
+        "SELECT id FROM report_appeals WHERE report_id=? AND submitter_user_id=? AND status='pending'",
+        (rid, uid)
+    ).fetchone()
+    if existing:
+        return jsonify({"ok": False, "error": "你已对这条检举提交过撤回申请，请等待审核"}), 400
+    db.execute(
+        'INSERT INTO report_appeals (report_id, submitter_user_id, reason, status, created_at) VALUES (?,?,?,?,?)',
+        (rid, uid, reason, 'pending', int(datetime.now().timestamp()))
+    )
+    db.commit()
+    return jsonify({"ok": True})
+
+
+# ── 戏录（App） ───────────────────────────────────────────────────────────────────
+
+@app.route("/api/v1/drama")
+@_require_token
+def api_drama_list():
+    rows = get_db().execute(
+        "SELECT * FROM drama_logs WHERE user_id=? ORDER BY created_at DESC", (g.api_uid,)
+    ).fetchall()
+    return jsonify({"ok": True, "entries": [dict(r) for r in rows]})
+
+
+@app.route("/api/v1/drama", methods=["POST"])
+@_require_token
+def api_drama_add():
+    data = request.get_json(silent=True) or {}
+    ts = int(datetime.now().timestamp())
+    db = get_db()
+    cur = db.execute(
+        """INSERT INTO drama_logs
+           (user_id, title, my_char, partner_char, partner_qq,
+            genre, status, notes, start_ts, end_ts, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            g.api_uid,
+            data.get("title", "").strip(),
+            data.get("my_char", "").strip(),
+            data.get("partner_char", "").strip(),
+            data.get("partner_qq", "").strip(),
+            data.get("genre", "").strip(),
+            data.get("status", "ongoing").strip(),
+            data.get("notes", "").strip(),
+            data.get("start_ts"),
+            data.get("end_ts"),
+            ts, ts,
+        )
+    )
+    db.commit()
+    row = db.execute("SELECT * FROM drama_logs WHERE id=?", (cur.lastrowid,)).fetchone()
+    return jsonify({"ok": True, "entry": dict(row)}), 201
+
+
+@app.route("/api/v1/drama/<int:did>", methods=["PUT"])
+@_require_token
+def api_drama_update(did):
+    db = get_db()
+    row = db.execute("SELECT id FROM drama_logs WHERE id=? AND user_id=?", (did, g.api_uid)).fetchone()
+    if not row:
+        return jsonify({"ok": False, "error": "不存在"}), 404
+    data = request.get_json(silent=True) or {}
+    ts = int(datetime.now().timestamp())
+    db.execute(
+        """UPDATE drama_logs
+           SET title=?, my_char=?, partner_char=?, partner_qq=?,
+               genre=?, status=?, notes=?, start_ts=?, end_ts=?, updated_at=?
+           WHERE id=? AND user_id=?""",
+        (
+            data.get("title", "").strip(),
+            data.get("my_char", "").strip(),
+            data.get("partner_char", "").strip(),
+            data.get("partner_qq", "").strip(),
+            data.get("genre", "").strip(),
+            data.get("status", "ongoing").strip(),
+            data.get("notes", "").strip(),
+            data.get("start_ts"),
+            data.get("end_ts"),
+            ts, did, g.api_uid,
+        )
+    )
+    db.commit()
+    updated = db.execute("SELECT * FROM drama_logs WHERE id=?", (did,)).fetchone()
+    return jsonify({"ok": True, "entry": dict(updated)})
+
+
+@app.route("/api/v1/drama/<int:did>/status", methods=["PATCH"])
+@_require_token
+def api_drama_status(did):
+    db = get_db()
+    row = db.execute("SELECT id FROM drama_logs WHERE id=? AND user_id=?", (did, g.api_uid)).fetchone()
+    if not row:
+        return jsonify({"ok": False, "error": "不存在"}), 404
+    data   = request.get_json(silent=True) or {}
+    status = data.get("status", "ongoing").strip()
+    if status not in ("ongoing", "completed", "dropped"):
+        return jsonify({"ok": False, "error": "无效状态"}), 400
+    ts = int(datetime.now().timestamp())
+    db.execute("UPDATE drama_logs SET status=?, updated_at=? WHERE id=? AND user_id=?",
+               (status, ts, did, g.api_uid))
+    db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/v1/drama/<int:did>", methods=["DELETE"])
+@_require_token
+def api_drama_delete(did):
+    db = get_db()
+    row = db.execute("SELECT id FROM drama_logs WHERE id=? AND user_id=?", (did, g.api_uid)).fetchone()
+    if not row:
+        return jsonify({"ok": False, "error": "不存在"}), 404
+    db.execute("DELETE FROM drama_logs WHERE id=? AND user_id=?", (did, g.api_uid))
+    db.commit()
+    return jsonify({"ok": True})
+
+
+# ── 卡包 API ─────────────────────────────────────────────────────────────────────
+
+CARD_TYPES_API = ['板写', '溶图', '溶写', '其他']
+
+def _card_days_left_api(expiry_str):
+    try:
+        from datetime import date as _date
+        exp = _date.fromisoformat(expiry_str)
+        return (exp - _date.today()).days
+    except Exception:
+        return None
+
+
+@app.route("/api/v1/cards", methods=["GET"])
+@_require_token
+def api_cards_list():
+    db = get_db()
+    type_filter = request.args.get('type', '').strip()
+    q = "SELECT * FROM cards WHERE user_id=? ORDER BY expiry ASC, created_at ASC"
+    rows = [dict(r) for r in db.execute(q, (g.api_uid,)).fetchall()]
+    for r in rows:
+        r['days_left'] = _card_days_left_api(r['expiry'])
+    if type_filter and type_filter in CARD_TYPES_API:
+        rows = [r for r in rows if r['card_type'] == type_filter]
+    counts = {t: sum(1 for r in rows if r.get('card_type') == t) for t in CARD_TYPES_API}
+    return jsonify({"ok": True, "cards": rows, "counts": counts, "types": CARD_TYPES_API})
+
+
+@app.route("/api/v1/cards", methods=["POST"])
+@_require_token
+def api_cards_add():
+    db   = get_db()
+    data = request.get_json(force=True) or {}
+    name      = (data.get('name') or '').strip()
+    expiry    = (data.get('expiry') or '').strip()
+    quantity  = int(data.get('quantity') or 1)
+    price     = float(data.get('price') or 0)
+    card_type = (data.get('card_type') or '其他').strip()
+    notes     = (data.get('notes') or '').strip()
+
+    if not name or not expiry:
+        return jsonify({"ok": False, "error": "名称和到期日不能为空"}), 400
+    try:
+        datetime.strptime(expiry, '%Y-%m-%d')
+    except ValueError:
+        return jsonify({"ok": False, "error": "日期格式应为 YYYY-MM-DD"}), 400
+    if card_type not in CARD_TYPES_API:
+        card_type = '其他'
+    if db.execute("SELECT id FROM cards WHERE user_id=? AND name=?", (g.api_uid, name)).fetchone():
+        return jsonify({"ok": False, "error": f"名称「{name}」已存在"}), 400
+
+    now = int(datetime.now().timestamp())
+    cur = db.execute(
+        "INSERT INTO cards (user_id, name, expiry, quantity, price, card_type, notes, created_at, updated_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        (g.api_uid, name, expiry, quantity, price, card_type, notes, now, now)
+    )
+    db.commit()
+    row = dict(db.execute("SELECT * FROM cards WHERE id=?", (cur.lastrowid,)).fetchone())
+    row['days_left'] = _card_days_left_api(row['expiry'])
+    return jsonify({"ok": True, "card": row})
+
+
+@app.route("/api/v1/cards/<int:cid>", methods=["PUT"])
+@_require_token
+def api_cards_edit(cid):
+    db  = get_db()
+    row = db.execute("SELECT id FROM cards WHERE id=? AND user_id=?", (cid, g.api_uid)).fetchone()
+    if not row:
+        return jsonify({"ok": False, "error": "不存在"}), 404
+    data      = request.get_json(force=True) or {}
+    name      = (data.get('name') or '').strip()
+    expiry    = (data.get('expiry') or '').strip()
+    quantity  = int(data.get('quantity') or 1)
+    price     = float(data.get('price') or 0)
+    card_type = (data.get('card_type') or '其他').strip()
+    notes     = (data.get('notes') or '').strip()
+
+    if not name or not expiry:
+        return jsonify({"ok": False, "error": "名称和到期日不能为空"}), 400
+    try:
+        datetime.strptime(expiry, '%Y-%m-%d')
+    except ValueError:
+        return jsonify({"ok": False, "error": "日期格式应为 YYYY-MM-DD"}), 400
+    if card_type not in CARD_TYPES_API:
+        card_type = '其他'
+    dup = db.execute("SELECT id FROM cards WHERE user_id=? AND name=? AND id!=?",
+                     (g.api_uid, name, cid)).fetchone()
+    if dup:
+        return jsonify({"ok": False, "error": f"名称「{name}」已被占用"}), 400
+
+    now = int(datetime.now().timestamp())
+    db.execute(
+        "UPDATE cards SET name=?, expiry=?, quantity=?, price=?, card_type=?, notes=?, updated_at=? "
+        "WHERE id=? AND user_id=?",
+        (name, expiry, quantity, price, card_type, notes, now, cid, g.api_uid)
+    )
+    db.commit()
+    updated = dict(db.execute("SELECT * FROM cards WHERE id=?", (cid,)).fetchone())
+    updated['days_left'] = _card_days_left_api(updated['expiry'])
+    return jsonify({"ok": True, "card": updated})
+
+
+@app.route("/api/v1/cards/<int:cid>/consume", methods=["POST"])
+@_require_token
+def api_cards_consume(cid):
+    db  = get_db()
+    row = db.execute("SELECT * FROM cards WHERE id=? AND user_id=?", (cid, g.api_uid)).fetchone()
+    if not row:
+        return jsonify({"ok": False, "error": "不存在"}), 404
+    data  = request.get_json(force=True) or {}
+    count = int(data.get('count') or 1)
+    new_qty = max(0, row['quantity'] - count)
+    now = int(datetime.now().timestamp())
+    db.execute("UPDATE cards SET quantity=?, last_consume=?, updated_at=? WHERE id=? AND user_id=?",
+               (new_qty, now, now, cid, g.api_uid))
+    db.commit()
+    updated = dict(db.execute("SELECT * FROM cards WHERE id=?", (cid,)).fetchone())
+    updated['days_left'] = _card_days_left_api(updated['expiry'])
+    return jsonify({"ok": True, "card": updated})
+
+
+@app.route("/api/v1/cards/<int:cid>", methods=["DELETE"])
+@_require_token
+def api_cards_delete(cid):
+    db  = get_db()
+    row = db.execute("SELECT name FROM cards WHERE id=? AND user_id=?", (cid, g.api_uid)).fetchone()
+    if not row:
+        return jsonify({"ok": False, "error": "不存在"}), 404
+    db.execute("DELETE FROM cards WHERE id=? AND user_id=?", (cid, g.api_uid))
+    db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/v1/cards/clean", methods=["POST"])
+@_require_token
+def api_cards_clean():
+    db    = get_db()
+    today = date_cls.today().isoformat()
+    expired = [r['name'] for r in db.execute(
+        "SELECT name FROM cards WHERE user_id=? AND expiry < ?", (g.api_uid, today)).fetchall()]
+    if expired:
+        db.execute("DELETE FROM cards WHERE user_id=? AND expiry < ?", (g.api_uid, today))
+        db.commit()
+    return jsonify({"ok": True, "cleaned": len(expired), "names": expired})
+
+
+@app.route("/api/v1/cards/random", methods=["GET"])
+@_require_token
+def api_cards_random():
+    import random as _random
+    db          = get_db()
+    today       = date_cls.today().isoformat()
+    type_filter = request.args.get('type', '').strip()
+    q      = "SELECT * FROM cards WHERE user_id=? AND expiry >= ? AND quantity > 0"
+    params = [g.api_uid, today]
+    if type_filter and type_filter in CARD_TYPES_API:
+        q += " AND card_type=?"
+        params.append(type_filter)
+    rows = db.execute(q, params).fetchall()
+    if not rows:
+        return jsonify({"ok": False, "error": "没有可用的卡片"})
+    card = dict(_random.choice(rows))
+    card['days_left'] = _card_days_left_api(card['expiry'])
+    return jsonify({"ok": True, "card": card})
 
 
 # ── Error handlers ──────────────────────────────────────────────────────────────
