@@ -107,9 +107,9 @@
         {% for e in lovemails %}
         <div class="event-card">
           <div>
-            <span class="event-from">{{ e.from_role }}</span>
+            <span class="event-from">{{ e.from_role }}{% if e.extra_info.from_custom_name %}<span style="font-size:10px;opacity:.8;">（{{ e.extra_info.from_custom_name }}）</span>{% endif %}</span>
             <span class="event-arrow">→</span>
-            <span class="event-to">{{ e.to_role }}</span>
+            <span class="event-to">{{ e.to_role }}{% if e.extra_info.to_custom_name %}<span style="font-size:10px;opacity:.8;">（{{ e.extra_info.to_custom_name }}）</span>{% endif %}</span>
           </div>
           <div class="event-body">{{ e.content }}</div>
           {% if e.extra_info.signature %}
@@ -126,9 +126,9 @@
         {% for e in smss %}
         <div class="event-card">
           <div>
-            <span class="event-from">{{ e.from_role }}</span>
+            <span class="event-from">{{ e.from_role }}{% if e.extra_info.from_custom_name %}<span style="font-size:10px;opacity:.8;">（{{ e.extra_info.from_custom_name }}）</span>{% endif %}</span>
             <span class="event-arrow">→</span>
-            <span class="event-to">{{ e.to_role }}</span>
+            <span class="event-to">{{ e.to_role }}{% if e.extra_info.to_custom_name and not e.extra_info.is_misdelivered %}<span style="font-size:10px;opacity:.8;">（{{ e.extra_info.to_custom_name }}）</span>{% endif %}</span>
           </div>
           {% if e.extra_info.is_chaos %}
           <div style="margin-top:3px;font-size:10px;color:var(--red);">⚠ 混乱
@@ -155,9 +155,9 @@
         {% for e in gifts %}
         <div class="event-card">
           <div>
-            <span class="event-from">{{ e.from_role }}</span>
+            <span class="event-from">{{ e.from_role }}{% if e.extra_info.from_custom_name %}<span style="font-size:10px;opacity:.8;">（{{ e.extra_info.from_custom_name }}）</span>{% endif %}</span>
             <span class="event-arrow">→</span>
-            <span class="event-to">{{ e.to_role }}</span>
+            <span class="event-to">{{ e.to_role }}{% if e.extra_info.to_custom_name %}<span style="font-size:10px;opacity:.8;">（{{ e.extra_info.to_custom_name }}）</span>{% endif %}</span>
           </div>
           {% if e.extra_info.giftName %}
           <div class="event-sub" style="margin-top:4px;">

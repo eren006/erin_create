@@ -119,9 +119,13 @@ function setMainStorage(key, value) {
     main.storageSet(key, value);
 }
 
+// ========================
+// 设置配置辅助函数
+// ========================
+
 // 目击配置
 function getSightingConfig() {
-    const defaultConfig = { enabled: true, send_to_all: true, max_reports_per_day: 5, include_ended_meetings: false, time_overlap_threshold: 0.3 };
+    const defaultConfig = { enabled: false, send_to_all: true, max_reports_per_day: 5, include_ended_meetings: false, time_overlap_threshold: 0.3 };
     try {
         return { ...defaultConfig, ...JSON.parse(getMainStorage("sighting_system_config", "{}")) };
     } catch (e) { return defaultConfig; }
@@ -133,7 +137,7 @@ function setSightingConfig(config) {
 
 // 地点系统配置
 function getPlaceSystemConfig() {
-    const defaultConfig = { enabled: true, require_key_by_default: false };
+    const defaultConfig = { enabled: false, require_key_by_default: false };
     try {
         return { ...defaultConfig, ...JSON.parse(getMainStorage("place_system_config", "{}")) };
     } catch (e) { return defaultConfig; }
@@ -143,58 +147,75 @@ function setPlaceSystemConfig(config) {
     setMainStorage("place_system_config", JSON.stringify(config));
 }
 
+// 攻防系统配置
+function getAttackDefenseConfig() {
+    const defaultConfig = { enabled: false };
+    try {
+        const main = getMainExt();
+        if (!main) return defaultConfig;
+        const val = main.storageGet("attack_defense_config");
+        return val ? { ...defaultConfig, ...JSON.parse(val) } : defaultConfig;
+    } catch(e) { return defaultConfig; }
+}
+
+function setAttackDefenseConfig(config) {
+    const main = getMainExt();
+    if (!main) return;
+    main.storageSet("attack_defense_config", JSON.stringify(config));
+}
+
+// DLC 检查
+function isDLC(key) {
+    const main = getMainExt();
+    if (!main) return false;
+    try { return JSON.parse(main.storageGet('global_feature_toggle') || '{}')[key] === true; }
+    catch(e) { return false; }
+}
+
 // ========================
-// 参数模板系统
+// 统一参数系统
 // ========================
 
-const settingsConfig = {
-    基础设置: {
-        title: ".设置 基础设置",
-        params: [
-            { label: '恋综名', key: 'love_show_name', type: 'string', default: '未设置', raw: true },
-            { label: '微信', key: 'global_feature_toggle', nested: 'enable_wechat', type: 'bool', default: true },
-            { label: '礼物', key: 'global_feature_toggle', nested: 'enable_general_gift', type: 'bool', default: true },
-            { label: '心愿', key: 'global_feature_toggle', nested: 'enable_wish_system', type: 'bool', default: true },
-            { label: '发起邀约', key: 'global_feature_toggle', nested: 'enable_general_appointment', type: 'bool', default: true },
-            { label: '关系线系统', key: 'relationship_system_enabled', type: 'bool', default: true },
-            { label: '关系线上限', key: 'max_relationships_per_user', type: 'string', default: '5' },
-            { label: '戏群', key: 'song_group_id', type: 'string', default: '未设置', raw: true },
-            { label: '后台群', key: 'background_group_id', type: 'string', default: '未设置', raw: true },
-            { label: '公告群', key: 'adminAnnounceGroupId', type: 'string', default: '未设置', raw: true },
-            { label: '水群', key: 'water_group_id', type: 'string', default: '未设置', raw: true },
-            { label: '复盘群分流', key: 'fupan_routing_enabled', type: 'bool', default: false },
-            { label: '复盘群分流群', key: 'fupan_routing_groups', type: 'routing', default: '未设置' }
-        ]
+const settingsConfig = {};
+
+function getUnifiedParamValue(param) {
+    if (param.getter) return param.getter();
+    if (param.type === 'bool_string') {
+        return getMainStorage(param.key, param.default ? "true" : "false") === "true" ? '开启' : '关闭';
     }
-};
-
-function getParamValue(param) {
-    const raw = getMainStorage(param.key, JSON.stringify(param.default));
-    if (param.raw) return raw.replace(/"/g, '');
+    if (param.type === 'string_raw') {
+        return getMainStorage(param.key, String(param.default)).replace(/^"|"$/g, '');
+    }
     if (param.type === 'routing') {
         try {
-            const map = JSON.parse(raw);
+            const map = JSON.parse(getMainStorage(param.key, "{}"));
             if (!map || !Object.keys(map).length) return '未设置';
             return Object.entries(map).map(([d, g]) => `${d}:${g}`).join('，');
-        } catch (e) { return '未设置'; }
+        } catch(e) { return '未设置'; }
     }
+    const raw = getMainStorage(param.key, JSON.stringify(param.default));
     try {
         const parsed = JSON.parse(raw);
         if (param.nested) {
-            // 修正：判断布尔值 true 或 字符串 '开启'
-            return (parsed[param.nested] === true || parsed[param.nested] === '开启') ? '开启' : '关闭';
+            const v = parsed[param.nested];
+            if (param.type === 'bool') return (v === true || v === '开启') ? '开启' : '关闭';
+            return v !== undefined ? v : param.default;
         }
-        // 修正：判断布尔值 true、字符串 'true' 或 字符串 '开启'
-        if (param.type === 'bool') {
-            return (parsed === true || parsed === 'true' || parsed === '开启') ? '开启' : '关闭';
-        }
+        if (param.type === 'bool') return (parsed === true || parsed === 'true' || parsed === '开启') ? '开启' : '关闭';
         return parsed;
-    } catch (e) {
-        return param.default;
-    }
+    } catch(e) { return param.default; }
 }
 
-function setParamValue(param, val) {
+function setUnifiedParamValue(param, val) {
+    if (param.setter) { param.setter(val); return; }
+    if (param.type === 'bool_string') {
+        setMainStorage(param.key, val === '开启' ? "true" : "false");
+        return;
+    }
+    if (param.type === 'string_raw') {
+        setMainStorage(param.key, val);
+        return;
+    }
     if (param.type === 'routing') {
         const pairs = val.split(/[，,\s]+/);
         const map = {};
@@ -206,8 +227,11 @@ function setParamValue(param, val) {
         return;
     }
     if (param.nested) {
-        let cfg = JSON.parse(getMainStorage(param.key, "{}"));
-        cfg[param.nested] = (val === '开启');
+        let cfg = {};
+        try { cfg = JSON.parse(getMainStorage(param.key, "{}")); } catch(e) {}
+        if (param.type === 'bool') cfg[param.nested] = (val === '开启');
+        else if (param.type === 'number') cfg[param.nested] = parseInt(val);
+        else cfg[param.nested] = val;
         setMainStorage(param.key, JSON.stringify(cfg));
     } else if (param.type === 'bool') {
         setMainStorage(param.key, JSON.stringify(val === '开启'));
@@ -218,130 +242,112 @@ function setParamValue(param, val) {
     }
 }
 
-function showSettings(ctx, msg, category) {
+function showPanel(ctx, msg, category, sections) {
     const config = settingsConfig[category];
-    if (!config) return seal.replyToSender(ctx, msg, "❌ 未知的设置类别");
-
+    if (!config) return seal.replyToSender(ctx, msg, `❌ 未知设置类别: ${category}`);
     const results = [config.title];
-    for (const param of config.params) {
-        const val = getParamValue(param);
-        results.push(`【${param.label}】${val}`);
-    }
-    seal.replyToSender(ctx, msg, results.join('\n'));
-}
-
-function applyParam(name, val, category) {
-    const config = settingsConfig[category];
-    if (!config) return { success: false, message: "❌ 未知的设置类别" };
-
-    const param = config.params.find(p => p.label === name);
-    if (!param) return { success: false, message: `未知参数：${name}` };
-
-    setParamValue(param, val);
-    if (param.type === 'bool') {
-        return { success: true, message: `【${name}】已${val}` };
-    }
-    return { success: true, message: `【${name}】已更新` };
-}
-
-// 保留旧接口以兼容现有命令
-function showBasicSettings(ctx, msg) {
-    showSettings(ctx, msg, '基础设置');
-}
-
-function applyBasicParam(name, val) {
-    return applyParam(name, val, '基础设置');
-}
-
-// ========================
-// 互动设置模块
-// ========================
-
-settingsConfig['互动设置'] = {
-    title: ".设置 互动设置",
-    params: [
-        { label: '地点系统', getter: () => getPlaceSystemConfig().enabled ? '开启' : '关闭', setter: (v) => { let c = getPlaceSystemConfig(); c.enabled = (v === '开启'); setPlaceSystemConfig(c); } },
-        { label: '结戏抽取', key: 'end_game_draw_config', nested: 'enabled', type: 'bool', default: false },
-        { label: '电话最小时长', key: 'appointment_duration_config', nested: 'phone', type: 'number', default: 29 },
-        { label: '私密最小时长', key: 'appointment_duration_config', nested: 'private', type: 'number', default: 59 },
-        { label: '寄信冷却时间', key: 'mailCooldown', type: 'string', default: '60' },
-        { label: '送礼冷却时间', key: 'giftCooldown', type: 'string', default: '30' },
-        { label: '送礼模式', key: 'giftMode', type: 'string', default: '0' }
-    ]
-};
-
-function getConfigParamValue(param) {
-    if (param.getter) return param.getter();
-    const raw = getMainStorage(param.key, JSON.stringify(param.default));
-    try {
-        const parsed = JSON.parse(raw);
-        if (param.nested) {
-            if (param.type === 'bool') {
-                return parsed[param.nested] !== false ? '开启' : '关闭';
+    if (sections) {
+        for (const sec of sections) {
+            results.push(sec.header);
+            for (const label of sec.labels) {
+                const param = config.params.find(p => p.label === label);
+                if (param) results.push(`【${param.label}】${getUnifiedParamValue(param)}`);
             }
-            return parsed[param.nested];
         }
-        if (param.type === 'bool') return parsed === true || parsed === '开启' ? '开启' : '关闭';
-        return parsed;
-    } catch (e) {
-        return param.default;
-    }
-}
-
-function setConfigParamValue(param, val) {
-    if (param.setter) { param.setter(val); return; }
-    if (param.nested) {
-        let cfg = JSON.parse(getMainStorage(param.key, "{}"));
-        cfg[param.nested] = param.type === 'bool' ? (val === '开启') : (param.type === 'number' ? parseInt(val) : val);
-        setMainStorage(param.key, JSON.stringify(cfg));
-    } else if (param.type === 'bool') {
-        setMainStorage(param.key, JSON.stringify(val === '开启'));
     } else {
-        setMainStorage(param.key, val);
-    }
-}
-
-function showInteractionSettings(ctx, msg) {
-    const config = settingsConfig['互动设置'];
-    const results = [config.title];
-    for (const param of config.params) {
-        const val = getConfigParamValue(param);
-        results.push(`【${param.label}】${val}`);
+        for (const param of config.params) {
+            results.push(`【${param.label}】${getUnifiedParamValue(param)}`);
+        }
     }
     seal.replyToSender(ctx, msg, results.join('\n'));
 }
 
-function applyInteractionParam(name, val) {
-    const config = settingsConfig['互动设置'];
+function applyPanelParam(name, val, category) {
+    const config = settingsConfig[category];
+    if (!config) return { success: false, message: `❌ 未知类别: ${category}` };
     const param = config.params.find(p => p.label === name);
     if (!param) return { success: false, message: `未知参数：${name}` };
     if (param.validate) {
         const err = param.validate(val);
         if (err) return { success: false, message: `❌ ${err}` };
     }
-    setConfigParamValue(param, val);
+    setUnifiedParamValue(param, val);
+    if (param.type === 'bool' || param.type === 'bool_string') return { success: true, message: `【${name}】已${val}` };
     return { success: true, message: `【${name}】已更新` };
 }
 
 // ========================
-// 信件设置模块 - 简化版
+// 板块1：基础设置
 // ========================
-
-function getOrParseJson(key, defaults) {
-    const raw = getMainStorage(key, "{}");
-    try {
-        return { ...defaults, ...JSON.parse(raw) };
-    } catch (e) {
-        return defaults;
-    }
-}
-
-settingsConfig['信件设置'] = {
-    title: ".设置 信件设置",
+settingsConfig['基础设置'] = {
+    title: "。设置 基础设置",
     params: [
+        { label: '恋综名', key: 'love_show_name', type: 'string', default: '未设置', raw: true },
+        { label: '戏群', key: 'song_group_id', type: 'string', default: '未设置', raw: true },
+        { label: '后台群', key: 'background_group_id', type: 'string', default: '未设置', raw: true },
+        { label: '公告群', key: 'adminAnnounceGroupId', type: 'string', default: '未设置', raw: true },
+        { label: '水群', key: 'water_group_id', type: 'string', default: '未设置', raw: true },
+        { label: '关系线系统', key: 'relationship_system_enabled', type: 'bool', default: false },
+        { label: '关系线上限', key: 'max_relationships_per_user', type: 'string', default: '5' },
+        { label: '拉线字数上限', key: 'max_detail_chars', type: 'string', default: '500' },
+    ]
+};
+
+// ========================
+// 板块2：功能开关
+// ========================
+settingsConfig['功能开关'] = {
+    title: "。设置 功能开关",
+    params: [
+        { label: '微信', key: 'global_feature_toggle', nested: 'enable_wechat', type: 'bool', default: false },
+        { label: '礼物', key: 'global_feature_toggle', nested: 'enable_general_gift', type: 'bool', default: true },
+        { label: '发起邀约', key: 'global_feature_toggle', nested: 'enable_general_appointment', type: 'bool', default: true },
         { label: '寄信', key: 'global_feature_toggle', nested: 'enable_chaos_letter', type: 'bool', default: true },
+        { label: '发送信件', key: 'global_feature_toggle', nested: 'enable_direct_letter', type: 'bool', default: false },
+        { label: '心愿', key: 'global_feature_toggle', nested: 'enable_wish_system', type: 'bool', default: true },
+        { label: '心动信', key: 'global_feature_toggle', nested: 'enable_lovemail', type: 'bool', default: false },
+        { label: '地点系统',
+          getter: () => getPlaceSystemConfig().enabled ? '开启' : '关闭',
+          setter: (v) => { let c = getPlaceSystemConfig(); c.enabled = (v === '开启'); setPlaceSystemConfig(c); } },
+        { label: '结戏抽取', key: 'end_game_draw_config', nested: 'enabled', type: 'bool', default: false },
+    ]
+};
+
+// ========================
+// 板块3：互动参数
+// ========================
+settingsConfig['互动参数'] = {
+    title: "。设置 互动参数",
+    params: [
+        { label: '电话最短所需时长', key: 'appointment_duration_config', nested: 'phone', type: 'number', default: 29 },
+        { label: '私密最短所需时长', key: 'appointment_duration_config', nested: 'private', type: 'number', default: 59 },
+        { label: '寄信冷却', key: 'mailCooldown', type: 'string', default: '60' },
+        { label: '送礼冷却', key: 'giftCooldown', type: 'string', default: '30' },
+        { label: '送礼模式', key: 'giftMode', type: 'string', default: '0' },
+        { label: '小群过期时间', key: 'group_expire_hours', type: 'string', default: '48' },
+        { label: '允许私人房间', key: 'allow_private_rooms', type: 'bool', default: true },
+        { label: '允许加入已有私约', key: 'enable_join_existing_appointment', type: 'bool', default: false },
+        { label: '自动合并重合私约', key: 'auto_merge_duplicate_private', type: 'bool', default: false },
+        { label: '超时时间',
+          getter: () => { try { return String(Math.round((JSON.parse(getMainStorage('monitor_settings', '{}')).timeout || 10800000) / 60000)); } catch(e) { return '180'; } },
+          setter: (v) => { let c = {}; try { c = JSON.parse(getMainStorage('monitor_settings', '{}')); } catch(e) {} c.timeout = parseInt(v) * 60000; setMainStorage('monitor_settings', JSON.stringify(c)); },
+          validate: (v) => { const n = parseInt(v); return (isNaN(n) || n < 1) ? "请填写分钟数（正整数）" : null; } },
+        { label: '提醒间隔',
+          getter: () => { try { return String(Math.round((JSON.parse(getMainStorage('monitor_settings', '{}')).remind_interval || 10800000) / 60000)); } catch(e) { return '180'; } },
+          setter: (v) => { let c = {}; try { c = JSON.parse(getMainStorage('monitor_settings', '{}')); } catch(e) {} c.remind_interval = parseInt(v) * 60000; setMainStorage('monitor_settings', JSON.stringify(c)); },
+          validate: (v) => { const n = parseInt(v); return (isNaN(n) || n < 1) ? "请填写分钟数（正整数）" : null; } },
+    ]
+};
+
+// ========================
+// 板块4：信件与礼品（分节展示）
+// ========================
+settingsConfig['信件与礼品'] = {
+    title: "。设置 信件与礼品",
+    params: [
+        // 寄信
         { label: '寄信每日上限', key: 'chaos_letter_config', nested: 'dailyLimit', type: 'number', default: 5 },
-        { label: '寄信允许自定义名字', key: 'allow_custom_letter_sign', type: 'bool_string', default: false },
+        { label: '寄信自定义署名', key: 'allow_custom_letter_sign', type: 'bool_string', default: false },
         { label: '寄信混乱送错', key: 'chaos_letter_config', nested: 'misdelivery', type: 'number', default: 0 },
         { label: '寄信混乱涂改', key: 'chaos_letter_config', nested: 'blackoutText', type: 'number', default: 0 },
         { label: '寄信混乱丢失', key: 'chaos_letter_config', nested: 'loseContent', type: 'number', default: 0 },
@@ -349,507 +355,304 @@ settingsConfig['信件设置'] = {
         { label: '寄信混乱乱序', key: 'chaos_letter_config', nested: 'reverseOrder', type: 'number', default: 0 },
         { label: '寄信混乱混淆', key: 'chaos_letter_config', nested: 'mistakenSignature', type: 'number', default: 0 },
         { label: '寄信混乱诗意', key: 'chaos_letter_config', nested: 'poeticSignature', type: 'number', default: 0 },
+        // 送礼
+        { label: '每日礼物上限', key: 'giftDailyLimit', type: 'string', default: '100' },
+        { label: '送礼自定义署名', key: 'allow_custom_gift_sign', type: 'bool_string', default: false },
+        { label: '掉落曝光隐藏收件人', key: 'drop_hide_receiver', type: 'bool_string', default: false },
         { label: '送礼混乱丢失', key: 'chaos_letter_config', nested: 'giftLost', type: 'number', default: 0 },
-        { label: '送礼混乱送错', key: 'chaos_letter_config', nested: 'giftMisdelivery', type: 'number', default: 0 }
-    ]
-};
-
-function getLetterParamValue(param) {
-    if (param.type === 'bool_string') {
-        return getMainStorage(param.key, "false") === "true" ? '开启' : '关闭';
-    }
-    const raw = getMainStorage(param.key, JSON.stringify(param.default));
-    try {
-        const parsed = JSON.parse(raw);
-        if (param.nested) {
-            if (param.type === 'bool') return parsed[param.nested] !== false ? '开启' : '关闭';
-            return parsed[param.nested];
-        }
-        return parsed;
-    } catch (e) {
-        return param.default;
-    }
-}
-
-function setLetterParamValue(param, val) {
-    if (param.type === 'bool_string') {
-        setMainStorage(param.key, val === '开启' ? "true" : "false");
-        return;
-    }
-    if (param.nested) {
-        let cfg = JSON.parse(getMainStorage(param.key, "{}"));
-        cfg[param.nested] = param.type === 'bool' ? (val === '开启') : parseInt(val);
-        setMainStorage(param.key, JSON.stringify(cfg));
-    } else {
-        setMainStorage(param.key, val);
-    }
-}
-
-function showLetterSettings(ctx, msg) {
-    const config = settingsConfig['信件设置'];
-    const results = [config.title];
-    for (const param of config.params) {
-        const val = getLetterParamValue(param);
-        results.push(`【${param.label}】${val}`);
-    }
-    seal.replyToSender(ctx, msg, results.join('\n'));
-}
-
-function applyLetterParam(name, val) {
-    const config = settingsConfig['信件设置'];
-    const param = config.params.find(p => p.label === name);
-    if (!param) return { success: false, message: `未知参数：${name}` };
-    setLetterParamValue(param, val);
-    return { success: true, message: `【${name}】已更新` };
-}
-
-// ========================
-// 发送信件设置模块
-// ========================
-
-settingsConfig['发送信件设置'] = {
-    title: ".设置 发送信件设置",
-    params: [
-        { label: '发送信件', key: 'global_feature_toggle', nested: 'enable_direct_letter', type: 'bool', default: false },
+        { label: '送礼混乱送错', key: 'chaos_letter_config', nested: 'giftMisdelivery', type: 'number', default: 0 },
+        { label: '收到礼物入图鉴', key: 'shop_gift_catalog_on_receive', type: 'bool_string', default: false },
+        // 发送信件
         { label: '发送信件每日上限', key: 'direct_letter_daily_limit', type: 'string', default: '5' },
+        { label: '发送信件冷却', key: 'direct_letter_cooldown', type: 'string', default: '0' },
         { label: '发送信件最低字数', key: 'direct_letter_min_chars', type: 'string', default: '0' },
-        { label: '发送信件赏金', key: 'direct_letter_reward', type: 'string', default: '0' }
+        { label: '发送信件赏金', key: 'direct_letter_reward', type: 'string', default: '0' },
+        // 心动信
+        { label: '心动信送达时间', key: 'lovemail_delivery_time', type: 'string_raw', default: '22:00' },
+        { label: '心动信曝光', key: 'lovemail_expose', type: 'bool_string', default: false },
+        { label: '心动信曝光概率', key: 'lovemail_expose_chance', type: 'string', default: '10',
+          validate: (v) => { const n = parseInt(v); if (isNaN(n) || n < 0 || n > 100) return "概率请填 0-100 的整数"; return null; } },
+        // 心愿
+        { label: '心愿公开提醒', key: 'wish_public_send', type: 'bool_string', default: true },
+        { label: '悬赏开关', key: 'wish_bounty_enabled', type: 'bool_string', default: true },
+        { label: '心愿同时上限', key: 'wish_max_concurrent', type: 'string', default: '3',
+          validate: (v) => { const n = parseInt(v); if (isNaN(n) || n < 1) return "必须是 ≥1 的整数"; return null; } },
+        { label: '心愿每日发布上限', key: 'wish_daily_post_limit', type: 'string', default: '0',
+          validate: (v) => { const n = parseInt(v); if (isNaN(n) || n < 0) return "必须是 ≥0 的整数（0=不限）"; return null; } },
+        { label: '心愿每日摘取上限', key: 'wish_daily_pick_limit', type: 'string', default: '0',
+          validate: (v) => { const n = parseInt(v); if (isNaN(n) || n < 0) return "必须是 ≥0 的整数（0=不限）"; return null; } },
+        // 礼品店
+        { label: '礼品店刷新间隔',
+          getter: () => getMainStorage('shop_refresh_hours', '24'),
+          setter: (v) => { const h = parseInt(v); setMainStorage('shop_refresh_hours', h.toString()); setMainStorage('shop_personal_display', '{}'); },
+          validate: (v) => { const n = parseInt(v); if (isNaN(n) || n < 1) return "必须是 ≥1 的整数（单位：小时）"; return null; } },
+        // 道具
+        { label: '追踪器成功率', key: 'item_tracker_success_rate', type: 'string', default: '70',
+          validate: (v) => { const n = parseInt(v); if (isNaN(n) || n < 0 || n > 100) return "必须是 0-100 之间的整数"; return null; } },
+        { label: '追踪器显示伙伴', key: 'item_tracker_show_partner', type: 'bool_string', default: true },
+        { label: '追踪器时间限制', key: 'item_tracker_time_restrict', type: 'bool_string', default: true },
+        { label: '道具施加提醒', key: 'apply_item_notification', type: 'bool_string', default: true },
+        { label: '暴露名字概率', key: 'apply_item_expose_rate', type: 'string', default: '0',
+          validate: (v) => { const n = parseInt(v); if (isNaN(n) || n < 0 || n > 100) return "必须是 0-100 之间的数字"; return null; } },
+        { label: '施加可用时段',
+          getter: () => { const v = getMainStorage('apply_item_hours', ''); return (!v || v === '' || v === '""') ? '不限' : v; },
+          setter: (v) => { setMainStorage('apply_item_hours', (v === '不限' || v === '全部') ? '' : v); },
+          validate: (v) => { if (v === '不限' || v === '全部') return null; if (!/^[\d\-,，]+$/.test(v)) return "格式错误。示例：18-23 或 9-12,14-18"; return null; } },
     ]
 };
 
-function showDirectLetterSettings(ctx, msg) {
-    const config = settingsConfig['发送信件设置'];
-    const results = [config.title];
-    for (const param of config.params) {
-        const val = getConfigParamValue(param);
-        results.push(`【${param.label}】${val}`);
-    }
-    seal.replyToSender(ctx, msg, results.join('\n'));
-}
-
-function applyDirectLetterParam(name, val) {
-    const config = settingsConfig['发送信件设置'];
-    const param = config.params.find(p => p.label === name);
-    if (!param) return { success: false, message: `未知参数：${name}` };
-    setConfigParamValue(param, val);
-    return { success: true, message: `【${name}】已更新` };
-}
+const PANEL4_SECTIONS = [
+    { header: '─── 寄信 ───', labels: ['寄信每日上限','寄信自定义署名','寄信混乱送错','寄信混乱涂改','寄信混乱丢失','寄信混乱反义','寄信混乱乱序','寄信混乱混淆','寄信混乱诗意'] },
+    { header: '─── 送礼 ───', labels: ['每日礼物上限','送礼自定义署名','掉落曝光隐藏收件人','送礼混乱丢失','送礼混乱送错'] },
+    { header: '─── 发送信件 ───', labels: ['发送信件每日上限','发送信件最低字数','发送信件赏金'] },
+    { header: '─── 心动信 ───', labels: ['心动信送达时间','心动信曝光','心动信曝光概率'] },
+    { header: '─── 心愿 ───', labels: ['悬赏开关','心愿同时上限','心愿每日发布上限','心愿每日摘取上限'] },
+    { header: '─── 礼品店 ───', labels: ['礼品店刷新间隔'] },
+    { header: '─── 道具 ───', labels: ['追踪器成功率','追踪器显示伙伴','追踪器时间限制','道具施加提醒','暴露名字概率','施加可用时段'] },
+];
 
 // ========================
-// 公告设置模块
+// 板块5：公告设置
 // ========================
-
 settingsConfig['公告设置'] = {
-    title: ".设置 公告设置",
+    title: "。设置 公告设置",
     params: [
-        { label: '心愿公开提醒', key: 'wish_public_send', type: 'bool_string', default: false },
         { label: '送礼公开发送', key: 'gift_public_send', type: 'bool_string', default: false },
         { label: '寄信公开发送', key: 'letter_public_send', type: 'bool_string', default: false },
         { label: '寄信公开概率', key: 'chaos_letter_config', nested: 'publicChance', type: 'number', default: 50 },
         { label: '礼物公开概率', key: 'giftPublicChance', type: 'string', default: '50' },
-        { label: '每日礼物上限', key: 'giftDailyLimit', type: 'string', default: '100' },
-        { label: '公告触发频率', key: 'announceFrequency', type: 'string', default: '5' }
+        { label: '公告触发频率', key: 'announceFrequency', type: 'string', default: '5' },
     ]
 };
 
-function showPublicSettings(ctx, msg) {
-    const config = settingsConfig['公告设置'];
-    const results = [config.title];
-    for (const param of config.params) {
-        let val;
-        if (param.type === 'bool_string') {
-            val = getMainStorage(param.key, "false") === "true" ? '开启' : '关闭';
-        } else {
-            val = getConfigParamValue(param);
-        }
-        results.push(`【${param.label}】${val}`);
-    }
-    seal.replyToSender(ctx, msg, results.join('\n'));
-}
-
-function applyPublicParam(name, val) {
-    const config = settingsConfig['公告设置'];
-    const param = config.params.find(p => p.label === name);
-    if (!param) return { success: false, message: `未知参数：${name}` };
-    if (param.type === 'bool_string') {
-        setMainStorage(param.key, val === '开启' ? "true" : "false");
-    } else {
-        setConfigParamValue(param, val);
-    }
-    return { success: true, message: `【${name}】已更新` };
-}
-
 // ========================
-// 心动信设置模块
+// DLC 开关面板
 // ========================
-
-settingsConfig['心动信设置'] = {
-    title: ".设置 心动信设置",
+settingsConfig['DLC'] = {
+    title: "。设置 DLC",
     params: [
-        { label: '心动信', key: 'global_feature_toggle', nested: 'enable_lovemail', type: 'bool', default: true },
-        { label: '心动信送达时间', key: 'lovemail_delivery_time', type: 'string_raw', default: '22:00' },
-        { label: '心动信曝光', key: 'lovemail_expose', type: 'bool_string', default: false },
-        { label: '心动信曝光概率', key: 'lovemail_expose_chance', type: 'string', default: '10', validate: (v) => {
-            const n = parseInt(v);
-            if (isNaN(n) || n < 0 || n > 100) return "概率请填 0-100 的整数";
-            return null;
-        }}
+        { label: '目击报告DLC', key: 'global_feature_toggle', nested: 'dlc_sighting', type: 'bool', default: false },
+        { label: '复盘群DLC', key: 'global_feature_toggle', nested: 'dlc_fupan', type: 'bool', default: false },
+        { label: '拍卖DLC', key: 'global_feature_toggle', nested: 'dlc_auction', type: 'bool', default: false },
+        { label: '攻防DLC', key: 'global_feature_toggle', nested: 'dlc_attack', type: 'bool', default: false },
+        { label: '论坛DLC', key: 'global_feature_toggle', nested: 'dlc_forum', type: 'bool', default: false },
+        { label: '自动天数DLC', key: 'global_feature_toggle', nested: 'dlc_auto_day', type: 'bool', default: false },
     ]
 };
 
-function showLovemailSettings(ctx, msg) {
-    const config = settingsConfig['心动信设置'];
-    const results = [config.title];
-    for (const param of config.params) {
-        let val;
-        if (param.type === 'string_raw') {
-            val = getMainStorage(param.key, param.default).replace(/"/g, '');
-        } else if (param.type === 'bool_string') {
-            val = getMainStorage(param.key, param.default) === "true" ? '开启' : '关闭';
-        } else {
-            val = getConfigParamValue(param);
+// ========================
+// DLC: 目击设置
+// ========================
+settingsConfig['目击设置'] = {
+    title: "。设置 目击设置",
+    params: [
+        { label: '目击报告',
+          getter: () => getSightingConfig().enabled ? '开启' : '关闭',
+          setter: (v) => { let c = getSightingConfig(); c.enabled = (v === '开启'); setSightingConfig(c); } },
+        { label: '目击每日上限',
+          getter: () => String(getSightingConfig().max_reports_per_day),
+          setter: (v) => { let c = getSightingConfig(); c.max_reports_per_day = parseInt(v); setSightingConfig(c); },
+          validate: (v) => isNaN(parseInt(v)) ? "请填写整数" : null },
+        { label: '目击重叠时间判定比例',
+          getter: () => String(Math.round(getSightingConfig().time_overlap_threshold * 100)),
+          setter: (v) => { let c = getSightingConfig(); c.time_overlap_threshold = parseInt(v) / 100; setSightingConfig(c); },
+          validate: (v) => { const n = parseInt(v); return (isNaN(n) || n < 0 || n > 100) ? "请填 0-100 的整数" : null; } },
+        { label: '目击报告方式',
+          getter: () => getSightingConfig().send_to_all ? '双向通知' : '单向通知',
+          setter: (v) => { let c = getSightingConfig(); c.send_to_all = (v === '双向通知'); setSightingConfig(c); } },
+        { label: '包含已结束',
+          getter: () => getSightingConfig().include_ended_meetings ? '是' : '否',
+          setter: (v) => { let c = getSightingConfig(); c.include_ended_meetings = (v === '是'); setSightingConfig(c); } },
+    ]
+};
+
+// ========================
+// DLC: 复盘设置
+// ========================
+settingsConfig['复盘设置'] = {
+    title: "。设置 复盘设置",
+    params: [
+        { label: '复盘群分流', key: 'fupan_routing_enabled', type: 'bool', default: false },
+        { label: '复盘群分流群', key: 'fupan_routing_groups', type: 'routing', default: '未设置' },
+        { label: '复盘强制结束', key: 'require_fupan_before_end', type: 'bool', default: false },
+    ]
+};
+
+// ========================
+// DLC: 拍卖设置
+// ========================
+settingsConfig['拍卖设置'] = {
+    title: "。设置 拍卖设置",
+    params: [
+        { label: '允许匿名出价', key: 'auction_allow_anon', type: 'bool_string', default: true },
+        { label: '出价播报', key: 'auction_broadcast', type: 'bool_string', default: true },
+        { label: '展示最高出价者', key: 'auction_show_top_bidder', type: 'bool_string', default: true },
+        { label: '拍卖货币',
+          getter: () => {
+            const currency = getMainStorage('auction_currency', '金币');
+            const main = getMainExt();
+            if (!main) return currency;
+            const reg = JSON.parse(main.storageGet("item_registry") || "{}");
+            const currencies = Object.values(reg).filter(r => r.type === "currency").map(r => r.name);
+            return currencies.length ? `${currency}（可选：${currencies.join("、")}）` : currency;
+          },
+          setter: (v) => {
+            const attr = v.trim().replace(/（[^）]*）$/, '').trim();
+            setMainStorage('auction_currency', attr);
+          },
+          validate: (v) => {
+            const attr = v.trim().replace(/（[^）]*）$/, '').trim();
+            if (!attr) return "不能为空";
+            const main = getMainExt();
+            if (!main) return null;
+            const presets = JSON.parse(main.storageGet("sys_attr_presets") || "[]");
+            const reg = JSON.parse(main.storageGet("item_registry") || "{}");
+            const isCurrency = Object.values(reg).some(i => i.type === "currency" && i.name === attr);
+            if (!presets.includes(attr) && !isCurrency) return `「${attr}」不是已注册的属性或货币。请先注册属性（注册属性 ${attr}）或货币（注册货币 ${attr}*描述）`;
+            return null;
+          }
+        },
+    ]
+};
+
+// ========================
+// DLC: 攻防设置
+// ========================
+function adcParam(key, defaultVal, type) {
+    return {
+        getter: () => {
+            const c = getAttackDefenseConfig();
+            const v = c[key] !== undefined ? c[key] : defaultVal;
+            return type === 'bool' ? (v ? '开启' : '关闭') : String(v !== undefined ? v : defaultVal);
+        },
+        setter: (v) => {
+            let c = getAttackDefenseConfig();
+            if (type === 'bool') c[key] = (v === '开启');
+            else if (type === 'number') c[key] = parseInt(v);
+            else c[key] = v;
+            setAttackDefenseConfig(c);
         }
-        results.push(`【${param.label}】${val}`);
-    }
-    seal.replyToSender(ctx, msg, results.join('\n'));
+    };
 }
 
-function applyLovemailParam(name, val) {
-    const config = settingsConfig['心动信设置'];
-    const param = config.params.find(p => p.label === name);
-    if (!param) return { success: false, message: `未知参数：${name}` };
-    if (param.validate) {
-        const err = param.validate(val);
-        if (err) return { success: false, message: `❌ ${err}` };
-    }
-    if (param.type === 'string_raw') {
-        setMainStorage(param.key, JSON.stringify(val));
-    } else if (param.type === 'bool_string') {
-        setMainStorage(param.key, val === '开启' ? "true" : "false");
-    } else {
-        setConfigParamValue(param, val);
-    }
-    return { success: true, message: `【${name}】已更新` };
-}
-
-function showItemSettings(ctx, msg) {
-    const main = getMainExt();
-    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件");
-
-    const trackerRate = parseInt(main.storageGet("item_tracker_success_rate") || "70");
-    const showPartner = main.storageGet("item_tracker_show_partner") !== "false";
-    const timeRestrict = main.storageGet("item_tracker_time_restrict") !== "false";
-    const applyNotify = main.storageGet("apply_item_notification") !== "false";
-    const exposeNameRate = parseInt(main.storageGet("apply_item_expose_rate") || "0");
-    const applyHours = main.storageGet("apply_item_hours") || "不限";
-
-    const results = [
-        ".设置 道具设置",
-        `【追踪器成功率】${trackerRate}`,
-        `【追踪器显示伙伴】${showPartner ? "开启" : "关闭"}`,
-        `【追踪器时间限制】${timeRestrict ? "开启" : "关闭"}`,
-        `【施加是否提醒】${applyNotify ? '开启' : '关闭'}`,
-        `【暴露名字概率】${exposeNameRate}%`,
-        `【施加可用时段】${applyHours}`
-    ];
-    seal.replyToSender(ctx, msg, results.join('\n'));
-}
+settingsConfig['攻防设置'] = {
+    title: "。设置 攻防设置",
+    params: [
+        { label: '攻防系统', ...adcParam('enabled', false, 'bool') },
+        { label: '每日最大发起次数', ...adcParam('maxInitiations', 10, 'number'),
+          validate: (v) => isNaN(parseInt(v)) ? "请填整数" : null },
+        { label: '每日最大拒绝次数', ...adcParam('maxRefusals', 10, 'number'),
+          validate: (v) => isNaN(parseInt(v)) ? "请填整数" : null },
+        { label: '单回合超时(毫秒)', ...adcParam('turnTimeout', 3600000, 'number') },
+        { label: '默认回合数', ...adcParam('defaultTurns', 10, 'number') },
+        { label: '逃脱成功率', ...adcParam('escapeRate', 30, 'number'),
+          validate: (v) => { const n = parseInt(v); return (isNaN(n) || n < 0 || n > 100) ? "请填 0-100 整数" : null; } },
+        { label: '伤害随机性', ...adcParam('damageRandomness', '无', 'string') },
+        { label: '强制参战模式', ...adcParam('forceParticipate', false, 'bool') },
+        { label: '最小参战人数', ...adcParam('minPlayers', 2, 'number') },
+        { label: '手动开始模式', ...adcParam('manualStart', false, 'bool') },
+    ]
+};
 
 // ========================
-// 礼品店设置模块
-// ========================
-function showShopSettings(ctx, msg) {
-    const main = getMainExt();
-    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件");
-
-    const refreshHours = parseInt(main.storageGet("shop_refresh_hours") || "24");
-    const catalogOnReceive = main.storageGet("shop_gift_catalog_on_receive") === "true" ? "开启" : "关闭";
-
-    seal.replyToSender(ctx, msg, [
-        ".设置 礼品店设置",
-        `【礼品店刷新间隔】${refreshHours}`,
-        `【收到即入图鉴】${catalogOnReceive}`,
-    ].join('\n'));
-}
-
-function applyShopParam(name, val) {
-    const main = getMainExt();
-    if (!main) return { success: false, message: "无法连接主插件" };
-
-    if (name === '礼品店刷新间隔') {
-        const hours = parseInt(val);
-        if (isNaN(hours) || hours < 1) return { success: false, message: "【礼品店刷新间隔】必须是 ≥1 的整数（单位：小时）" };
-        main.storageSet("shop_refresh_hours", hours.toString());
-        main.storageSet("shop_personal_display", "{}");
-        return { success: true, message: `【礼品店刷新间隔】已设为 ${hours} 小时（所有人下次进入礼品店生效）` };
-    }
-    if (name === '收到即入图鉴') {
-        const enabled = val === "开启" || val === "true";
-        main.storageSet("shop_gift_catalog_on_receive", enabled ? "true" : "false");
-        return { success: true, message: `【收到即入图鉴】已${enabled ? "开启" : "关闭"}` };
-    }
-    return { success: false, message: `未知参数：${name}` };
-}
-
-function showAuctionSettings(ctx, msg) {
-    const main = getMainExt();
-    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件");
-    const displayGroup = main.storageGet("auction_display_group") || "未设置";
-    const allowAnon = main.storageGet("auction_allow_anon") !== "false" ? "开启" : "关闭";
-    const broadcast = main.storageGet("auction_broadcast") !== "false" ? "开启" : "关闭";
-    const showTop = main.storageGet("auction_show_top_bidder") !== "false" ? "开启" : "关闭";
-    const currency = main.storageGet("auction_currency") || "金币";
-    const reg = JSON.parse(main.storageGet("item_registry") || "{}");
-    const registeredCurrencies = Object.values(reg).filter(r => r.type === "currency").map(r => r.name);
-    const currencyLine = registeredCurrencies.length
-        ? `【拍卖货币】${currency}（可选：${registeredCurrencies.join("、")}）`
-        : `【拍卖货币】${currency}（暂无已注册货币）`;
-    seal.replyToSender(ctx, msg, [
-        ".设置 拍卖设置",
-        `【拍卖展示群】${displayGroup}`,
-        `【允许匿名出价】${allowAnon}`,
-        `【出价播报】${broadcast}`,
-        `【展示最高出价者】${showTop}`,
-        currencyLine,
-    ].join('\n'));
-}
-
-function applyAuctionParam(name, val) {
-    const main = getMainExt();
-    if (!main) return { success: false, message: "无法连接主插件" };
-    if (name === '拍卖展示群') {
-        const gid = val.trim();
-        if (!/^\d+$/.test(gid)) return { success: false, message: "【拍卖展示群】请填写纯数字群号" };
-        main.storageSet("auction_display_group", gid);
-        return { success: true, message: `【拍卖展示群】已设为 ${gid}` };
-    }
-    if (name === '允许匿名出价') {
-        const v = val.trim() === "开启";
-        main.storageSet("auction_allow_anon", v ? "true" : "false");
-        return { success: true, message: `【允许匿名出价】已${v ? "开启" : "关闭"}` };
-    }
-    if (name === '出价播报') {
-        const v = val.trim() === "开启";
-        main.storageSet("auction_broadcast", v ? "true" : "false");
-        return { success: true, message: `【出价播报】已${v ? "开启" : "关闭"}` };
-    }
-    if (name === '展示最高出价者') {
-        const v = val.trim() === "开启";
-        main.storageSet("auction_show_top_bidder", v ? "true" : "false");
-        return { success: true, message: `【展示最高出价者】已${v ? "开启" : "关闭"}` };
-    }
-    if (name === '拍卖货币') {
-        const attr = val.trim().replace(/（[^）]*）$/, '').trim();
-        if (!attr) return { success: false, message: "【拍卖货币】不能为空" };
-        const presets = JSON.parse(main.storageGet("sys_attr_presets") || "[]");
-        const reg = JSON.parse(main.storageGet("item_registry") || "{}");
-        const isCurrency = Object.values(reg).some(i => i.type === "currency" && i.name === attr);
-        if (!presets.includes(attr) && !isCurrency) return { success: false, message: `❌ 「${attr}」不是已注册的属性或货币。\n请先注册属性（注册属性 ${attr}）或货币（注册货币 ${attr}*描述）` };
-        main.storageSet("auction_currency", attr);
-        return { success: true, message: `【拍卖货币】已设为「${attr}」${isCurrency ? "（货币物品）" : "（属性）"}` };
-    }
-    return { success: false, message: `未知参数：${name}` };
-}
-
-function applyItemParam(name, val) {
-    const main = getMainExt();
-    if (!main) return { success: false, message: "无法连接主插件" };
-
-    if (name === '追踪器成功率') {
-        const num = parseInt(val);
-        if (isNaN(num) || num < 0 || num > 100) {
-            return { success: false, message: "【追踪器成功率】必须是 0-100 之间的整数" };
-        }
-        main.storageSet("item_tracker_success_rate", num.toString());
-        return { success: true, message: `【追踪器成功率】已设为 ${num}%` };
-    }
-    if (name === '追踪器显示伙伴') {
-        const enabled = (val === '开启' || val === '开' || val === 'true');
-        main.storageSet("item_tracker_show_partner", enabled ? "true" : "false");
-        return { success: true, message: `【追踪器显示伙伴】已${enabled ? "开启" : "关闭"}` };
-    }
-    if (name === '追踪器时间限制') {
-        const enabled = (val === '开启' || val === '开' || val === 'true');
-        main.storageSet("item_tracker_time_restrict", enabled ? "true" : "false");
-        return { success: true, message: `【追踪器时间限制】已${enabled ? "开启" : "关闭"}` };
-    }
-    if (name === '施加是否提醒') {
-        const isOpen = (val === '开启');
-        main.storageSet("apply_item_notification", isOpen ? "true" : "false");
-        return { success: true, message: `【施加是否提醒】已${val}` };
-    }
-    if (name === '暴露名字概率') {
-        const rate = parseInt(val);
-        if (isNaN(rate) || rate < 0 || rate > 100) {
-            return { success: false, message: "❌ 暴露名字概率必须是 0-100 之间的数字" };
-        }
-        main.storageSet("apply_item_expose_rate", rate.toString());
-        return { success: true, message: `【暴露名字概率】已设为：${rate}%` };
-    }
-    if (name === '施加可用时段') {
-    if (val === '不限' || val === '全部') {
-        main.storageSet("apply_item_hours", "");
-        return { success: true, message: `【施加可用时段】已设为全天可用` };
-    }
-    if (!/^[\d\-,，]+$/.test(val)) {
-            return { success: false, message: "❌ 格式错误。示例：18-23 或 9-12,14-18" };
-        }
-        main.storageSet("apply_item_hours", val);
-        return { success: true, message: `【施加可用时段】已设为：${val}` };
-    }
-    return { success: false, message: `未知参数：${name}` };
-}
-
-// ========================
-// 心愿设置模块
-// ========================
-function showWishSettings(ctx, msg) {
-    const main = getMainExt();
-    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件");
-    const cfg = JSON.parse(main.storageGet("global_feature_toggle") || "{}");
-    const wishEnabled = cfg.enable_wish_system !== false;
-    const bountyEnabled = main.storageGet("wish_bounty_enabled") !== "false";
-    const maxConcurrent = parseInt(main.storageGet("wish_max_concurrent") || "3");
-    const dailyPostLimit = parseInt(main.storageGet("wish_daily_post_limit") || "0");
-    const dailyPickLimit = parseInt(main.storageGet("wish_daily_pick_limit") || "0");
-    seal.replyToSender(ctx, msg, [
-        ".设置 心愿设置",
-        `【心愿系统】${wishEnabled ? '开启' : '关闭'}`,
-        `【悬赏开关】${bountyEnabled ? '开启' : '关闭'}`,
-        `【同时上限】${maxConcurrent}（每人最多同时存在的心愿数）`,
-        `【每日发布上限】${dailyPostLimit === 0 ? '不限' : dailyPostLimit + '次'}`,
-        `【每日摘取上限】${dailyPickLimit === 0 ? '不限' : dailyPickLimit + '次'}`,
-    ].join('\n'));
-}
-
-function applyWishParam(name, val) {
-    const main = getMainExt();
-    if (!main) return { success: false, message: "无法连接主插件" };
-    if (name === '心愿系统') {
-        const enabled = val === '开启' || val === '开' || val === 'true';
-        const cfg = JSON.parse(main.storageGet("global_feature_toggle") || "{}");
-        cfg.enable_wish_system = enabled;
-        main.storageSet("global_feature_toggle", JSON.stringify(cfg));
-        return { success: true, message: `【心愿系统】已${enabled ? '开启' : '关闭'}` };
-    }
-    if (name === '悬赏开关') {
-        const enabled = val === '开启' || val === '开' || val === 'true';
-        main.storageSet("wish_bounty_enabled", enabled ? "true" : "false");
-        return { success: true, message: `【悬赏开关】已${enabled ? '开启' : '关闭'}` };
-    }
-    if (name === '同时上限') {
-        const num = parseInt(val);
-        if (isNaN(num) || num < 1) return { success: false, message: "【同时上限】必须是 ≥1 的整数" };
-        main.storageSet("wish_max_concurrent", num.toString());
-        return { success: true, message: `【同时上限】已设为 ${num} 个` };
-    }
-    if (name === '每日发布上限') {
-        const num = parseInt(val);
-        if (isNaN(num) || num < 0) return { success: false, message: "【每日发布上限】必须是 ≥0 的整数（0=不限）" };
-        main.storageSet("wish_daily_post_limit", num.toString());
-        return { success: true, message: `【每日发布上限】已设为 ${num === 0 ? '不限' : num + '次'}` };
-    }
-    if (name === '每日摘取上限') {
-        const num = parseInt(val);
-        if (isNaN(num) || num < 0) return { success: false, message: "【每日摘取上限】必须是 ≥0 的整数（0=不限）" };
-        main.storageSet("wish_daily_pick_limit", num.toString());
-        return { success: true, message: `【每日摘取上限】已设为 ${num === 0 ? '不限' : num + '次'}` };
-    }
-    return { success: false, message: `未知参数：${name}` };
-}
-
-// ========================
-// 群组管理设置模块 - 简化版
-// ========================
-
-function parseBoolValue(key, def) {
-    try {
-        const val = getMainStorage(key, String(def));
-        return val === "true" || JSON.parse(val) === true;
-    } catch (e) { return def; }
-}
-
-function showGroupSettings(ctx, msg) {
-    const sighting = getSightingConfig();
-    const enableJoin = getMainStorage("enable_join_existing_appointment", "true") !== "false";
-    const autoMerge = parseBoolValue("auto_merge_duplicate_private", false);
-    const requireFupan = parseBoolValue("require_fupan_before_end", true);
-    const expireHours = getMainStorage("group_expire_hours", "48");
-
-    const results = [
-        ".设置 群组设置",
-        `【小群过期时间】${expireHours}`,
-        `【允许加入已有私约】${enableJoin ? "开启" : "关闭"}`,
-        `【自动合并重合私约】${autoMerge ? "开启" : "关闭"}`,
-        `【复盘强制结束】${requireFupan ? "开启" : "关闭"}`,
-        `【目击报告】${sighting.enabled ? '开启' : '关闭'}`,
-        `【目击每日上限】${sighting.max_reports_per_day}`,
-        `【时间重叠阈值】${Math.round(sighting.time_overlap_threshold * 100)}%`,
-        `【目击报告方式】${sighting.send_to_all ? '双向通知' : '单向通知'}`,
-        `【包含已结束】${sighting.include_ended_meetings ? '是' : '否'}`
-    ];
-    seal.replyToSender(ctx, msg, results.join('\n'));
-}
-
-function applyGroupParam(name, val) {
-    const sightingFields = { '目击报告': 'enabled', '目击报告方式': 'send_to_all', '目击每日上限': 'max_reports_per_day', '时间重叠阈值': 'threshold', '包含已结束': 'include_ended_meetings' };
-    if (sightingFields[name]) {
-        let c = getSightingConfig();
-        if (name === '目击报告') c.enabled = (val === '开启');
-        else if (name === '目击报告方式') c.send_to_all = (val === '双向通知');
-        else if (name === '目击每日上限') c.max_reports_per_day = parseInt(val);
-        else if (name === '时间重叠阈值') c.time_overlap_threshold = parseInt(val) / 100;
-        else if (name === '包含已结束') c.include_ended_meetings = (val === '是');
-        setSightingConfig(c);
-        return { success: true, message: `【${name}】已更新` };
-    }
-
-    const boolFields = { '允许加入已有私约': 'enable_join_existing_appointment', '自动合并重合私约': 'auto_merge_duplicate_private', '复盘强制结束': 'require_fupan_before_end' };
-    if (boolFields[name]) {
-        setMainStorage(boolFields[name], JSON.stringify(val === '开启'));
-        return { success: true, message: `【${name}】已${val}` };
-    }
-
-    if (name === '小群过期时间') {
-        setMainStorage("group_expire_hours", val);
-        return { success: true, message: `【小群过期时间】已设为 ${val} 小时` };
-    }
-
-    return { success: false, message: `未知参数：${name}` };
-}
-
-// ========================
-// 设置指令主体
-// ========================
-
-// ========================
-// 懒加载默认值（首次使用设置时初始化缺失的关键配置）
+// 懒加载默认值
 // ========================
 function ensureDefaults(main) {
     const defaults = {
-        "global_feature_toggle": JSON.stringify({ enable_general_letter: true, enable_general_gift: true, enable_general_appointment: true, enable_chaos_letter: true, enable_secret_letter: true, enable_wish_system: true, enable_lovemail: true }),
+        "global_feature_toggle": JSON.stringify({
+            enable_general_letter: true, enable_general_gift: true, enable_general_appointment: true,
+            enable_chaos_letter: true, enable_secret_letter: true, enable_wish_system: true,
+            enable_lovemail: false, enable_wechat: false, enable_direct_letter: false,
+            dlc_sighting: false, dlc_fupan: false, dlc_auction: false,
+            dlc_attack: false, dlc_forum: false, dlc_auto_day: false
+        }),
         "chaos_letter_config": JSON.stringify({ misdelivery: 0, blackoutText: 0, loseContent: 0, antonymReplace: 0, reverseOrder: 0, mistakenSignature: 0, poeticSignature: 0, dailyLimit: 5, publicChance: 50, giftLost: 0, giftMisdelivery: 0 }),
-        "sighting_system_config": JSON.stringify({ enabled: true, send_to_all: true, max_reports_per_day: 5, include_ended_meetings: false, time_overlap_threshold: 0.3 }),
-        "place_system_config": JSON.stringify({ enabled: true, require_key_by_default: false }),
+        "sighting_system_config": JSON.stringify({ enabled: false, send_to_all: true, max_reports_per_day: 5, include_ended_meetings: false, time_overlap_threshold: 0.3 }),
+        "place_system_config": JSON.stringify({ enabled: false, require_key_by_default: false }),
         "appointment_duration_config": JSON.stringify({ phone: 29, private: 59 }),
-        "monitor_settings": JSON.stringify({ enabled: true, min_words_phone: 20, min_words_private: 150, min_words_wish: 150, min_words_official: 150, timeout_phone: 3600000, timeout_private: 10800000, timeout_wish: 10800000, timeout_official: 10800000, remind_interval_phone: 5400000, remind_interval_private: 10800000, remind_interval_wish: 10800000, remind_interval_official: 10800000 }),
+        "monitor_settings": JSON.stringify({ enabled: true, timeout: 10800000, remind_interval: 10800000, auto_monitor_all_groups: true }),
+        // 固定开启项
+        "wish_public_send": "true",
+        "shop_gift_catalog_on_receive": "true",
+        // 群组
         "group_expire_hours": "48",
-        "relationship_system_enabled": "true",
+        "require_fupan_before_end": "false",
+        "enable_join_existing_appointment": "false",
+        "auto_merge_duplicate_private": "false",
+        "relationship_system_enabled": "false",
         "max_relationships_per_user": "5",
+        "max_detail_chars": "500",
+        // 互动参数
+        "mailCooldown": "60",
+        "giftCooldown": "30",
+        "giftMode": "0",
+        "end_game_draw_config": JSON.stringify({ enabled: false }),
+        // 信件
+        "allow_custom_letter_sign": "false",
+        "allow_custom_gift_sign": "false",
+        "drop_hide_receiver": "false",
+        "giftDailyLimit": "100",
+        // 发送信件
+        "direct_letter_daily_limit": "5",
+        "direct_letter_min_chars": "0",
+        "direct_letter_reward": "0",
+        // 心动信
+        "lovemail_delivery_time": "22:00",
+        "lovemail_expose": "false",
+        "lovemail_expose_chance": "10",
         "lovemail_default_limit": "3",
         "lovemail_day_limits": "{}",
-        "auto_day_reset_enabled": "false",
-        "item_pool_mode": "自由池",
-        "shop_refresh_hours": "24",
+        // 心愿
         "wish_bounty_enabled": "true",
         "wish_max_concurrent": "3",
         "wish_daily_post_limit": "0",
         "wish_daily_pick_limit": "0",
+        // 礼品店
+        "shop_refresh_hours": "24",
+        // 道具
+        "item_tracker_success_rate": "70",
+        "item_tracker_show_partner": "true",
+        "item_tracker_time_restrict": "true",
+        "apply_item_notification": "true",
+        "apply_item_expose_rate": "0",
+        "apply_item_hours": "",
+        // 公告
+        "gift_public_send": "false",
+        "letter_public_send": "false",
+        "giftPublicChance": "50",
+        "announceFrequency": "5",
+        // DLC 拍卖
+        "auction_allow_anon": "true",
+        "auction_broadcast": "true",
+        "auction_show_top_bidder": "true",
+        "auction_currency": "金币",
+        "attack_defense_config": JSON.stringify({ enabled: false, maxInitiations: 10, maxRefusals: 10, turnTimeout: 3600000, defaultTurns: 10, escapeRate: 30, forceParticipate: false, minPlayers: 2, manualStart: false }),
+        // 系统
+        "global_days": "D99",
+        "auto_day_reset_enabled": "false",
+        "item_pool_mode": "自由池",
     };
     for (const [key, val] of Object.entries(defaults)) {
         const existing = main.storageGet(key);
         if (!existing || existing.trim() === "") main.storageSet(key, val);
     }
+    // 迁移：为已存在的 global_feature_toggle 补充新增字段（兼容旧数据）
+    try {
+        const existingFt = main.storageGet("global_feature_toggle");
+        if (existingFt && existingFt.trim()) {
+            const ft = JSON.parse(existingFt);
+            const newFields = {
+                enable_direct_letter: false,
+                dlc_sighting: false, dlc_fupan: false, dlc_auction: false,
+                dlc_attack: false, dlc_forum: false, dlc_auto_day: false
+            };
+            let changed = false;
+            for (const [k, v] of Object.entries(newFields)) {
+                if (ft[k] === undefined) { ft[k] = v; changed = true; }
+            }
+            if (changed) main.storageSet("global_feature_toggle", JSON.stringify(ft));
+        }
+    } catch(e) {}
 }
 
 // 已移除重复的cmd_settings声明，使用下面的新版本
@@ -1207,8 +1010,8 @@ function registerAutoDaySystem() {
         if (!JSON.parse(main.storageGet("auto_day_reset_enabled") || "false")) return;
         const now = new Date();
         if (now.getHours() === 23 && now.getMinutes() === 59) {
-            const todayKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
-            if (parseInt(main.storageGet("auto_day_last_reset") || "0") === todayKey) return;
+            const todayKey = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+            if (main.storageGet("auto_day_last_reset") === todayKey) return;
             let cur = main.storageGet("global_days") || "D0";
             let m = cur.match(/^D(\d+)$/i);
             if (!m) { cur = "D0"; m = ["D0","0"]; }
@@ -1590,131 +1393,83 @@ cmd_end_bonus.solve = function(ctx, msg, argv) {
 ext.cmdMap["结戏加成"] = cmd_end_bonus;
 
 // ========================
-// 攻防系统配置管理
+// 设置指令
 // ========================
-
-function getAttackDefenseConfig() {
-    const defaultConfig = { enabled: false };
-    try {
-        const main = getMainExt();
-        if (!main) return defaultConfig;
-        const val = main.storageGet("attack_defense_config");
-        return val ? { ...defaultConfig, ...JSON.parse(val) } : defaultConfig;
-    } catch(e) { return defaultConfig; }
-}
-
-function setAttackDefenseConfig(config) {
-    const main = getMainExt();
-    if (!main) return;
-    main.storageSet("attack_defense_config", JSON.stringify(config));
-}
-
-function showAttackDefenseSettings(ctx, msg) {
-    let config = getAttackDefenseConfig();
-    let info = "⚔️ 攻防系统设置\n\n";
-    info += `${config.enabled ? "✅" : "❌"} 系统状态: ${config.enabled ? "已启用" : "已禁用"}\n\n`;
-    info += "⚙️ 参数配置:\n";
-    info += `· 每日最大发起次数: ${config.maxInitiations || 10}\n`;
-    info += `· 每日最大拒绝次数: ${config.maxRefusals || 10}\n`;
-    info += `· 单个回合超时(毫秒): ${config.turnTimeout || 3600000}\n`;
-    info += `· 默认回合数: ${config.defaultTurns || 10}\n`;
-    info += `· 逃脱成功率(%): ${config.escapeRate !== undefined ? config.escapeRate : 30}\n`;
-    info += `· 伤害随机性: ${config.damageRandomness ? config.damageRandomness : "无(纯数值)"}\n`;
-    info += `· 强制参战模式: ${config.forceParticipate ? "是" : "否"}\n`;
-    info += `· 最小参战人数: ${config.minPlayers || 2}\n`;
-    info += `· 手动开始模式: ${config.manualStart ? "是" : "否"}\n`;
-    info += `\n输入「攻防 设置 参数 值」来修改配置。`;
-    seal.replyToSender(ctx, msg, info);
-}
 
 let cmd_settings = seal.ext.newCmdItemInfo();
 cmd_settings.name = "设置";
-cmd_settings.help = "【管理员】查看和管理各系统设置\n。设置               - 显示所有设置类别\n。设置 基础设置      - 查看/修改基础设置\n。设置 互动设置      - 查看/修改互动设置\n。设置 信件设置      - 查看/修改信件系统\n。设置 道具设置      - 查看/修改道具参数";
+cmd_settings.help = `【管理员】查看和管理各系统设置
+。设置               - 显示所有设置类别
+。设置 基础设置      - 群组配置、关系线
+。设置 功能开关      - 所有功能 开启/关闭
+。设置 互动参数      - 时长、冷却、私约参数
+。设置 信件与礼品    - 信件、送礼、心动信、心愿、礼品店、道具
+。设置 公告设置      - 公开发送、公告频率
+。设置 DLC          - 管理 DLC 模块开关`;
+
 cmd_settings.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足");
 
     const subCmd = cmdArgs.getArgN(1);
-    const rawMsg = msg.message; // 用于 handleApply 解析批量修改格式
+    const rawMsg = msg.message;
 
-    // 1. 如果是直接输入 "。设置" 或 "。设置 查看"
     if (!subCmd || subCmd === "查看") {
         let info = "🎮 长日系统设置面板\n\n";
-        info += "🔹 使用方法：`。设置 类别` 查看，或按照【格式】换行批量修改\n\n";
-        info += "可用类别：\n";
+        info += "🔹 查看：。设置 类别\n🔹 修改：。设置 类别（换行）【参数名】值\n\n";
+        info += "【基础包】\n";
         info += "· 。设置 基础设置\n";
-        info += "· 。设置 互动设置\n";
-        info += "· 。设置 信件设置\n";
-        info += "· 。设置 发送信件设置\n";
+        info += "· 。设置 功能开关\n";
+        info += "· 。设置 互动参数\n";
+        info += "· 。设置 信件与礼品\n";
         info += "· 。设置 公告设置\n";
-        info += "· 。设置 心动信设置\n";
-        info += "· 。设置 道具设置\n";
-        info += "· 。设置 拍卖设置\n";
-        info += "· 。设置 群组设置\n";
-        info += "· 。设置 礼品店设置\n";
-        info += "· 。设置 攻防\n";
-        info += "· 。设置 心愿设置\n";
+        info += "\n【DLC 管理】\n";
+        info += "· 。设置 DLC\n";
+        if (isDLC('dlc_sighting')) info += "· 。设置 目击设置\n";
+        if (isDLC('dlc_fupan')) info += "· 。设置 复盘设置\n";
+        if (isDLC('dlc_auction')) info += "· 。设置 拍卖设置\n";
+        if (isDLC('dlc_attack')) info += "· 。设置 攻防设置\n";
         return seal.replyToSender(ctx, msg, info);
     }
 
-    // 2. 路由分发：处理各个子模块的查看与修改
-    const subCmdAliases = {
-        '基础': '基础设置', '互动': '互动设置', '信件': '信件设置',
-        '发送信件': '发送信件设置', '公告': '公告设置', '心动信': '心动信设置',
-        '道具': '道具设置', '拍卖': '拍卖设置', '群组': '群组设置', '礼品店': '礼品店设置', '心愿': '心愿设置'
+    // 别名映射（兼容旧指令名）
+    const aliases = {
+        '基础': '基础设置',
+        '功能': '功能开关',
+        '互动': '互动参数', '互动设置': '互动参数',
+        '信件': '信件与礼品', '信件设置': '信件与礼品',
+        '礼品': '信件与礼品', '发送信件': '信件与礼品',
+        '公告': '公告设置',
+        '目击': '目击设置',
+        '复盘': '复盘设置',
+        '拍卖': '拍卖设置',
+        '攻防': '攻防设置',
+        // 旧板块名兼容
+        '道具': '信件与礼品', '道具设置': '信件与礼品',
+        '礼品店': '信件与礼品', '礼品店设置': '信件与礼品',
+        '心动信': '信件与礼品', '心动信设置': '信件与礼品',
+        '心愿': '信件与礼品', '心愿设置': '信件与礼品',
+        '发送信件设置': '信件与礼品',
+        '群组': '互动参数', '群组设置': '互动参数',
     };
-    const resolvedCmd = subCmdAliases[subCmd] || subCmd;
+    const resolved = aliases[subCmd] || subCmd;
 
-    switch (resolvedCmd) {
-        case "基础设置":
-            if (rawMsg.includes('\n')) return handleApply(ctx, msg, rawMsg, (n, v) => applyParam(n, v, '基础设置'));
-            return showSettings(ctx, msg, '基础设置');
-            
-        case "互动设置":
-            if (rawMsg.includes('\n')) return handleApply(ctx, msg, rawMsg, applyInteractionParam);
-            return showInteractionSettings(ctx, msg);
-
-        case "信件设置":
-            if (rawMsg.includes('\n')) return handleApply(ctx, msg, rawMsg, applyLetterParam);
-            return showLetterSettings(ctx, msg);
-
-        case "发送信件设置":
-            if (rawMsg.includes('\n')) return handleApply(ctx, msg, rawMsg, applyDirectLetterParam);
-            return showDirectLetterSettings(ctx, msg);
-
-        case "公告设置":
-            if (rawMsg.includes('\n')) return handleApply(ctx, msg, rawMsg, applyPublicParam);
-            return showPublicSettings(ctx, msg);
-
-        case "心动信设置":
-            if (rawMsg.includes('\n')) return handleApply(ctx, msg, rawMsg, applyLovemailParam);
-            return showLovemailSettings(ctx, msg);
-
-        case "道具设置":
-            if (rawMsg.includes('\n')) return handleApply(ctx, msg, rawMsg, applyItemParam);
-            return showItemSettings(ctx, msg);
-
-        case "拍卖设置":
-            if (rawMsg.includes('\n')) return handleApply(ctx, msg, rawMsg, applyAuctionParam);
-            return showAuctionSettings(ctx, msg);
-
-        case "群组设置":
-            if (rawMsg.includes('\n')) return handleApply(ctx, msg, rawMsg, applyGroupParam);
-            return showGroupSettings(ctx, msg);
-
-        case "礼品店设置":
-            if (rawMsg.includes('\n')) return handleApply(ctx, msg, rawMsg, applyShopParam);
-            return showShopSettings(ctx, msg);
-
-        case "攻防":
-            return showAttackDefenseSettings(ctx, msg);
-
-        case "心愿设置":
-            if (rawMsg.includes('\n')) return handleApply(ctx, msg, rawMsg, applyWishParam);
-            return showWishSettings(ctx, msg);
-
-        default:
-            return seal.replyToSender(ctx, msg, `❌ 未知的设置类别: ${subCmd}\n请输入 \`。设置\` 查看可用列表`);
+    // DLC 板块门控
+    const dlcGate = { '目击设置': 'dlc_sighting', '复盘设置': 'dlc_fupan', '拍卖设置': 'dlc_auction', '攻防设置': 'dlc_attack' };
+    if (dlcGate[resolved] && !isDLC(dlcGate[resolved])) {
+        return seal.replyToSender(ctx, msg, `❌ 「${resolved}」是 DLC 功能，请先在「。设置 DLC」中开启对应选项`);
     }
+
+    if (!settingsConfig[resolved]) {
+        return seal.replyToSender(ctx, msg, `❌ 未知的设置类别: ${subCmd}\n请输入「。设置」查看可用列表`);
+    }
+
+    if (resolved === '信件与礼品') {
+        if (rawMsg.includes('\n')) return handleApply(ctx, msg, rawMsg, (n, v) => applyPanelParam(n, v, resolved));
+        return showPanel(ctx, msg, resolved, PANEL4_SECTIONS);
+    }
+
+    if (rawMsg.includes('\n')) return handleApply(ctx, msg, rawMsg, (n, v) => applyPanelParam(n, v, resolved));
+    return showPanel(ctx, msg, resolved);
 };
 
 ext.cmdMap["设置"] = cmd_settings;
@@ -1837,16 +1592,17 @@ const SYNC_DIRECT_KEYS = [
     "item_registry", "rpg_attr_defs", "sys_attr_presets",
     "love_show_name", "global_days", "auto_day_reset_enabled", "item_pool_mode",
     "adminAnnounceGroupId", "song_group_id", "background_group_id", "water_group_id",
-    "auction_display_group", "fupan_routing_enabled", "fupan_routing_groups",
+    "fupan_routing_enabled", "fupan_routing_groups",
     "enable_join_existing_appointment", "require_fupan_before_end", "group_expire_hours",
     "mailCooldown", "allow_custom_letter_sign", "letter_public_send",
     "giftCooldown", "gift_public_send", "giftPublicChance", "giftDailyLimit",
+    "allow_custom_gift_sign", "drop_hide_receiver",
     "shop_refresh_hours", "allow_private_rooms", "announceFrequency",
     "lovemail_default_limit", "lovemail_delivery_time", "lovemail_expose", "lovemail_expose_chance",
     "direct_letter_daily_limit", "direct_letter_min_chars", "direct_letter_reward",
     "wish_public_send", "wish_bounty_enabled", "wish_max_concurrent",
     "wish_daily_post_limit", "wish_daily_pick_limit",
-    "relationship_system_enabled", "max_relationships_per_user",
+    "relationship_system_enabled", "max_relationships_per_user", "max_detail_chars",
     "item_tracker_success_rate", "item_tracker_show_partner", "item_tracker_time_restrict",
     "apply_item_notification", "apply_item_expose_rate", "apply_item_hours",
     "shop_gift_catalog_on_receive",
@@ -1872,9 +1628,7 @@ const SYNC_JSON_PARENT_KEYS = {
     ],
     "place_system_config": ["enabled", "require_key_by_default"],
     "monitor_settings": [
-        "enabled", "auto_monitor_all_groups",
-        "min_words_phone", "min_words_private", "min_words_wish", "min_words_official",
-        "timeout_phone", "timeout_private", "timeout_wish", "timeout_official"
+        "enabled", "auto_monitor_all_groups", "timeout", "remind_interval"
     ],
 };
 

@@ -57,6 +57,22 @@ a{color:var(--accent);text-decoration:none;}a:hover{color:var(--accent2);}
 .top-table .qq-link{font-family:monospace;color:var(--accent);}
 .rank{color:var(--muted);font-size:12px;font-weight:700;width:30px;}
 .empty{color:var(--muted);text-align:center;padding:40px 0;}
+
+.analysis-panel{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+.analysis-header{display:flex;justify-content:space-between;align-items:center;
+  padding:14px 20px;cursor:pointer;user-select:none;transition:background .15s;}
+.analysis-header:hover{background:var(--surface2);}
+.analysis-header>span:first-child{font-size:13px;font-weight:700;color:var(--accent2);}
+.subtype-table{width:100%;border-collapse:collapse;font-size:13px;}
+.subtype-table th{text-align:left;color:var(--muted);font-weight:600;
+  padding:6px 10px;border-bottom:1px solid var(--border);font-size:11px;}
+.subtype-table td{padding:7px 10px;border-bottom:1px solid var(--border);}
+.subtype-table tr:last-child td{border-bottom:none;}
+.stype-badge{display:inline-block;border-radius:4px;padding:1px 8px;font-size:11px;font-weight:700;}
+.stype-私密{background:#1a1e30;color:#818cf8;}
+.stype-电话{background:#1a2a1a;color:#86efac;}
+.stype-官约{background:#2a1a10;color:#fb923c;}
+.stype-心愿{background:#2a1a2a;color:#e879f9;}
 </style>
 </head>
 <body>
@@ -65,6 +81,7 @@ a{color:var(--accent);text-decoration:none;}a:hover{color:var(--accent2);}
   <nav class="nav" style="display:flex;gap:4px;">
     <a href="{{ url_for('superadmin') }}">租户管理</a>
     <a href="{{ url_for('superadmin_players') }}" class="active">玩家档案</a>
+    <a href="{{ url_for('superadmin_analysis') }}">数据分析</a>
   </nav>
   <a class="logout" href="{{ url_for('superadmin_logout') }}">退出超管</a>
 </div>
@@ -87,7 +104,13 @@ a{color:var(--accent);text-decoration:none;}a:hover{color:var(--accent2);}
     {% if summary %}
     <!-- 汇总 -->
     <div class="summary-card">
-      <div class="summary-qq">{{ summary.qq }}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+        <div class="summary-qq">{{ summary.qq }}</div>
+        <a href="{{ url_for('superadmin_analysis') }}?qq={{ summary.qq }}"
+           style="padding:6px 16px;background:var(--accent2);color:#fff;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;">
+          📈 数据分析
+        </a>
+      </div>
       <div class="summary-stats">
         <div class="s-item"><b>{{ summary.arc_count }}</b>参与季数</div>
         <div class="s-item"><b>{{ summary.total_sessions }}</b>总场次</div>
@@ -99,6 +122,80 @@ a{color:var(--accent);text-decoration:none;}a:hover{color:var(--accent2);}
         <div class="s-item"><b>{{ fmt_seconds(summary.global_avg_reply) if summary.global_avg_reply else '未知' }}</b>平均回复时间</div>
       </div>
     </div>
+
+    <!-- 场次类型分析 -->
+    {% if global_subtype %}
+    <div class="analysis-panel" style="margin-bottom:20px;">
+      <div class="analysis-header" onclick="toggleAnalysis()">
+        <span>📊 场次类型分析</span>
+        <span id="analysis-toggle-icon" style="font-size:12px;color:var(--muted);">▼ 展开</span>
+      </div>
+      <div id="analysis-body" style="display:none;">
+        <!-- 全局汇总 -->
+        <div style="padding:16px 20px 8px;">
+          <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;">全局汇总</div>
+          <table class="subtype-table">
+            <thead><tr><th>类型</th><th>场次</th><th>回复</th><th>字数</th><th>均字/回</th></tr></thead>
+            <tbody>
+              {% set _gtotal_w = namespace(v=0) %}{% set _gtotal_r = namespace(v=0) %}{% set _gtotal_s = namespace(v=0) %}
+              {% for stype in tracked_subtypes %}
+              {% set st = global_subtype[stype] %}
+              {% if st.sessions > 0 %}
+              {% set _gtotal_w.v = _gtotal_w.v + st.words %}
+              {% set _gtotal_r.v = _gtotal_r.v + st.replies %}
+              {% set _gtotal_s.v = _gtotal_s.v + st.sessions %}
+              <tr>
+                <td><span class="stype-badge stype-{{ stype }}">{{ stype }}</span></td>
+                <td>{{ st.sessions }}</td>
+                <td>{{ st.replies }}</td>
+                <td><b>{{ st.words }}</b></td>
+                <td style="color:var(--muted);">{{ (st.words // st.replies) if st.replies else '—' }}</td>
+              </tr>
+              {% endif %}
+              {% endfor %}
+            </tbody>
+            <tfoot>
+              <tr style="border-top:1px solid var(--border);color:var(--muted);font-size:12px;">
+                <td>合计</td><td>{{ _gtotal_s.v }}</td><td>{{ _gtotal_r.v }}</td>
+                <td><b style="color:var(--text);">{{ _gtotal_w.v }}</b></td>
+                <td>{{ (_gtotal_w.v // _gtotal_r.v) if _gtotal_r.v else '—' }}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <!-- 按弧展开 -->
+        {% for r in rows %}
+        {% set arc_st = arc_subtype.get(r.show_id, {}) %}
+        {% set arc_has_data = arc_st.values() | selectattr('sessions', '>', 0) | list | length > 0 %}
+        {% if arc_has_data %}
+        <div style="border-top:1px solid var(--border);padding:12px 20px 8px;">
+          <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.5px;margin-bottom:8px;">
+            {{ r.tenant_display or r.tenant_username }} · {{ r.arc_name }}
+            <span style="color:var(--accent2);font-weight:400;margin-left:6px;">{{ r.role_name }}</span>
+          </div>
+          <table class="subtype-table">
+            <thead><tr><th>类型</th><th>场次</th><th>回复</th><th>字数</th><th>均字/回</th></tr></thead>
+            <tbody>
+              {% for stype in tracked_subtypes %}
+              {% set st = arc_st[stype] %}
+              {% if st.sessions > 0 %}
+              <tr>
+                <td><span class="stype-badge stype-{{ stype }}">{{ stype }}</span></td>
+                <td>{{ st.sessions }}</td>
+                <td>{{ st.replies }}</td>
+                <td><b>{{ st.words }}</b></td>
+                <td style="color:var(--muted);">{{ (st.words // st.replies) if st.replies else '—' }}</td>
+              </tr>
+              {% endif %}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
 
     <!-- 黑名单记录 -->
     {% if bl_records %}
@@ -177,5 +274,14 @@ a{color:var(--accent);text-decoration:none;}a:hover{color:var(--accent2);}
   <div class="empty">暂无玩家数据。各团运行「更新玩家数据库」后数据将显示于此。</div>
   {% endif %}
 </div>
+<script>
+function toggleAnalysis() {
+  const body = document.getElementById('analysis-body');
+  const icon = document.getElementById('analysis-toggle-icon');
+  const open = body.style.display === 'none';
+  body.style.display = open ? 'block' : 'none';
+  icon.textContent = open ? '▲ 收起' : '▼ 展开';
+}
+</script>
 </body>
 </html>

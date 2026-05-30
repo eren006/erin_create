@@ -1,6 +1,6 @@
 import io, os, json, functools, secrets, time, hmac, logging, traceback
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, date as _date
 from flask import (Flask, render_template, request, redirect,
                    url_for, session, jsonify, abort, send_file, g)
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -58,26 +58,26 @@ CONFIG_SCHEMA = [
     ]},
     {"section": "群组 ID", "fields": [
         {"key": "adminAnnounceGroupId",  "label": "公告群",     "type": "text",    "default": "", "note": "群号，留空不广播"},
-        {"key": "song_group_id",         "label": "戏群",       "type": "text",    "default": ""},
+        {"key": "song_group_id",         "label": "戏群（兼作拍卖展示群）", "type": "text",    "default": ""},
         {"key": "background_group_id",   "label": "后台群",     "type": "text",    "default": ""},
         {"key": "water_group_id",        "label": "水群",       "type": "text",    "default": ""},
-        {"key": "auction_display_group", "label": "拍卖展示群", "type": "text",    "default": ""},
         {"key": "fupan_routing_enabled", "label": "复盘群分流",  "type": "bool",    "default": "false", "note": "启用后复盘消息按天数路由到对应群"},
         {"key": "fupan_routing_groups",  "label": "分流群配置",  "type": "routing", "default": "", "note": "格式：D1:群号 D2:群号"},
         {"key": "announceFrequency",     "label": "公告触发频率","type": "number",  "default": "5", "note": "每 N 条互动触发一次公告广播"},
+        {"key": "drop_hide_receiver",    "label": "掉落/曝光隐藏收件人", "type": "bool", "default": "false", "note": "开启后礼物掉落/短信公开/心动信曝光的播报中收件人显示为「某人」"},
     ]},
     {"section": "功能开关", "json_parent": "global_feature_toggle", "fields": [
         {"key": "enable_general_gift",        "label": "普通礼物",          "type": "bool", "default": "true"},
         {"key": "enable_general_appointment", "label": "普通邀约",          "type": "bool", "default": "true"},
         {"key": "enable_chaos_letter",        "label": "短信",              "type": "bool", "default": "true"},
         {"key": "enable_wish_system",         "label": "心愿系统",          "type": "bool", "default": "true"},
-        {"key": "enable_lovemail",            "label": "心动信",            "type": "bool", "default": "true"},
-        {"key": "enable_wechat",              "label": "微信",              "type": "bool", "default": "true"},
+        {"key": "enable_lovemail",            "label": "心动信",            "type": "bool", "default": "false"},
+        {"key": "enable_wechat",              "label": "微信",              "type": "bool", "default": "false"},
         {"key": "enable_direct_letter",       "label": "发送信件（写信综）", "type": "bool", "default": "false"},
     ]},
     {"section": "邀约", "fields": [
-        {"key": "enable_join_existing_appointment", "label": "允许加入已有私约", "type": "bool",   "default": "true"},
-        {"key": "require_fupan_before_end",         "label": "强制转发复盘",     "type": "bool",   "default": "true"},
+        {"key": "enable_join_existing_appointment", "label": "允许加入已有私约", "type": "bool",   "default": "false"},
+        {"key": "require_fupan_before_end",         "label": "强制转发复盘",     "type": "bool",   "default": "false"},
         {"key": "group_expire_hours",               "label": "小群过期（小时）", "type": "number", "default": "48"},
     ]},
     {"section": "邀约时长（分钟）", "json_parent": "appointment_duration_config", "fields": [
@@ -95,6 +95,7 @@ CONFIG_SCHEMA = [
         {"key": "giftPublicChance",         "label": "礼物公开概率（%）", "type": "number", "default": "50", "min": 0, "max": 100},
         {"key": "giftDailyLimit",           "label": "每日礼物上限",      "type": "number", "default": "100"},
         {"key": "shop_refresh_hours",       "label": "礼品店刷新（小时）","type": "number", "default": "24"},
+        {"key": "allow_custom_gift_sign",      "label": "送礼自定义名字",      "type": "bool",   "default": "false"},
     ]},
     {"section": "心动信", "fields": [
         {"key": "lovemail_default_limit",  "label": "每日上限",     "type": "number", "default": "3"},
@@ -109,25 +110,25 @@ CONFIG_SCHEMA = [
         {"key": "direct_letter_reward",      "label": "写信币赏金",     "type": "number", "default": "0"},
     ]},
     {"section": "心愿系统", "fields": [
-        {"key": "wish_public_send",      "label": "心愿公开提醒",          "type": "bool",   "default": "false"},
+        {"key": "wish_public_send",      "label": "心愿公开提醒",          "type": "bool",   "default": "true"},
         {"key": "wish_bounty_enabled",   "label": "悬赏功能",              "type": "bool",   "default": "true"},
         {"key": "wish_max_concurrent",   "label": "最大同时心愿数",         "type": "number", "default": "3"},
         {"key": "wish_daily_post_limit", "label": "每日发布上限（0=不限）", "type": "number", "default": "0"},
         {"key": "wish_daily_pick_limit", "label": "每日接取上限（0=不限）", "type": "number", "default": "0"},
     ]},
     {"section": "关系系统", "fields": [
-        {"key": "relationship_system_enabled", "label": "关系系统",     "type": "bool",   "default": "true"},
+        {"key": "relationship_system_enabled", "label": "关系系统",     "type": "bool",   "default": "false"},
         {"key": "max_relationships_per_user",  "label": "每人最大关系数","type": "number", "default": "5"},
     ]},
     {"section": "目击系统", "json_parent": "sighting_system_config", "fields": [
-        {"key": "enabled",                "label": "启用目击",       "type": "bool",   "default": "true"},
+        {"key": "enabled",                "label": "启用目击",       "type": "bool",   "default": "false"},
         {"key": "send_to_all",            "label": "双向通知",       "type": "bool",   "default": "true"},
         {"key": "max_reports_per_day",    "label": "每日最大目击数", "type": "number", "default": "5"},
         {"key": "include_ended_meetings", "label": "包含已结束场次", "type": "bool",   "default": "false"},
         {"key": "time_overlap_threshold", "label": "时间重叠阈值",   "type": "number", "default": "0.3"},
     ]},
     {"section": "场所系统", "json_parent": "place_system_config", "fields": [
-        {"key": "enabled",                "label": "启用场所系统", "type": "bool", "default": "true"},
+        {"key": "enabled",                "label": "启用场所系统", "type": "bool", "default": "false"},
         {"key": "require_key_by_default", "label": "默认需要钥匙", "type": "bool", "default": "false"},
     ]},
     {"section": "私人房间", "fields": [
@@ -506,6 +507,52 @@ def _migrate(conn):
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_blacklist_tenant ON blacklist(tenant_id)")
 
+    # ── 10. players 加回复时间累计列 ────────────────────────────────────────
+    if "reply_time_sum" not in _col_names(conn, "players"):
+        conn.execute("ALTER TABLE players ADD COLUMN reply_time_sum  INTEGER NOT NULL DEFAULT 0")
+    if "reply_time_count" not in _col_names(conn, "players"):
+        conn.execute("ALTER TABLE players ADD COLUMN reply_time_count INTEGER NOT NULL DEFAULT 0")
+
+    # ── 11. players 加 is_npc 标记列 ─────────────────────────────────────────
+    if "is_npc" not in _col_names(conn, "players"):
+        conn.execute("ALTER TABLE players ADD COLUMN is_npc INTEGER NOT NULL DEFAULT 0")
+
+    # ── 12. rp_entries 加 reply_time_ms 列并回填历史数据 ──────────────────────
+    if "reply_time_ms" not in _col_names(conn, "rp_entries"):
+        conn.execute("ALTER TABLE rp_entries ADD COLUMN reply_time_ms INTEGER")
+        # 回填：对每条 entry，找同 session 内上一条不同角色的 entry，计算时间差
+        entries = conn.execute(
+            "SELECT id, session_id, role_name, timestamp FROM rp_entries WHERE timestamp > 0 ORDER BY session_id, seq"
+        ).fetchall()
+        # 按 session 分组，追踪每个 session 里最后一条不同角色的 timestamp
+        last_other: dict = {}  # session_id → {role_name → last_ts_of_other_roles}
+        for e in entries:
+            eid, sid, role, ts = e["id"], e["session_id"], e["role_name"], e["timestamp"]
+            if sid not in last_other:
+                last_other[sid] = {}
+            # 找这个 session 里，其他角色最近一条的 ts
+            others = [t for r, t in last_other[sid].items() if r != role]
+            if others:
+                prev_ts = max(others)
+                diff = ts - prev_ts
+                if 0 < diff < 7_200_000:  # 0~2小时内有效
+                    conn.execute("UPDATE rp_entries SET reply_time_ms=? WHERE id=?", (diff, eid))
+            # 更新这个角色在这个 session 的最后 ts
+            last_other[sid][role] = ts
+        print(f"[migrate] rp_entries reply_time_ms 回填完成，共 {len(entries)} 条")
+
+    # ── 13. rp_entries 加 is_excluded 标记列 ─────────────────────────────────
+    if "is_excluded" not in _col_names(conn, "rp_entries"):
+        conn.execute("ALTER TABLE rp_entries ADD COLUMN is_excluded INTEGER NOT NULL DEFAULT 0")
+
+    # ── 14. shows 加档期三列（MMDD 格式，空串 = 不限制）──────────────────────
+    if "schedule_start" not in _col_names(conn, "shows"):
+        conn.execute("ALTER TABLE shows ADD COLUMN schedule_start TEXT NOT NULL DEFAULT ''")
+    if "schedule_end" not in _col_names(conn, "shows"):
+        conn.execute("ALTER TABLE shows ADD COLUMN schedule_end TEXT NOT NULL DEFAULT ''")
+    if "supplement_end" not in _col_names(conn, "shows"):
+        conn.execute("ALTER TABLE shows ADD COLUMN supplement_end TEXT NOT NULL DEFAULT ''")
+
     conn.commit()
 
 def init_db():
@@ -561,6 +608,62 @@ def get_current_show_id_for_tenant(tenant_id):
     if not row:
         row = db.execute("SELECT id FROM shows WHERE tenant_id=? ORDER BY id DESC", (tenant_id,)).fetchone()
     return row["id"] if row else None
+
+def get_current_show_for_tenant(tenant_id):
+    """API 用：返回当前活跃季的完整行（dict），含档期字段。"""
+    db  = get_db()
+    row = db.execute("SELECT * FROM shows WHERE tenant_id=? AND is_current=1", (tenant_id,)).fetchone()
+    if not row:
+        row = db.execute("SELECT * FROM shows WHERE tenant_id=? ORDER BY id DESC", (tenant_id,)).fetchone()
+    return dict(row) if row else None
+
+# ── 档期时区工具 ──────────────────────────────────────────────────────────────
+def _parse_mmdd(mmdd, ref_year=None):
+    """将 "MMDD" 字符串解析为 date 对象；格式不合法则返回 None。"""
+    if not mmdd or len(mmdd) != 4:
+        return None
+    try:
+        year = ref_year or _date.today().year
+        return _date(year, int(mmdd[:2]), int(mmdd[2:]))
+    except (ValueError, TypeError):
+        return None
+
+def _schedule_zone(show, now_ts_ms=None):
+    """
+    返回当前时刻相对于该季档期所处的区段：
+      'pre'        – schedule_start 之前（不记录）
+      'main'       – schedule_start ~ schedule_end（正常记录）
+      'supplement' – schedule_end+1 ~ supplement_end（只记录场次，不计弧长）
+      'post'       – supplement_end 之后（不记录）
+
+    未设置档期（schedule_start 为空）→ 始终返回 'main'。
+    """
+    if not show:
+        return 'main'
+    start_str = show.get("schedule_start") or ""
+    if not start_str:
+        return 'main'
+
+    if now_ts_ms:
+        today = datetime.fromtimestamp(now_ts_ms / 1000).date()
+    else:
+        today = _date.today()
+
+    year  = today.year
+    start = _parse_mmdd(start_str, year)
+    end   = _parse_mmdd(show.get("schedule_end") or start_str, year)
+    supp  = _parse_mmdd(show.get("supplement_end") or "", year)
+
+    if not start or not end:
+        return 'main'
+
+    if today < start:
+        return 'pre'
+    if today <= end:
+        return 'main'
+    if supp and today <= supp:
+        return 'supplement'
+    return 'post'
 
 @app.context_processor
 def inject_show_context():
@@ -750,8 +853,9 @@ def superadmin_players():
     summary = None
     if qq:
         rows = db.execute("""
-            SELECT p.qq, p.role_name, p.show_name,
+            SELECT p.qq, p.role_name, p.show_name, p.show_id,
                    p.sessions_count, p.total_replies, p.total_words, p.last_updated,
+                   p.reply_time_sum, p.reply_time_count,
                    t.username AS tenant_username, t.display_name AS tenant_display,
                    s.name AS arc_name
             FROM players p
@@ -765,28 +869,34 @@ def superadmin_players():
             r["last_updated_str"] = ts_to_str(r["last_updated"])
             r["is_placeholder"] = (r["qq"] == r["role_name"])
         if rows:
-            # Compute global average reply time across all sessions for this QQ
-            role_names = list({r["role_name"] for r in rows if r["role_name"]})
-            all_reply_times = []
-            if role_names:
-                ph = ",".join("?" * len(role_names))
-                all_entries = db.execute(
-                    f"SELECT session_id,role_name,timestamp FROM rp_entries WHERE role_name IN ({ph}) AND timestamp > 0 ORDER BY session_id,seq,timestamp",
-                    role_names
-                ).fetchall()
-                by_sess = defaultdict(list)
-                for e in all_entries:
-                    by_sess[e["session_id"]].append(dict(e))
-                for entries in by_sess.values():
-                    for rn in role_names:
-                        times = [
-                            (entries[i]["timestamp"] - entries[i-1]["timestamp"]) / 1000
-                            for i in range(1, len(entries))
-                            if entries[i]["role_name"] == rn and entries[i-1]["role_name"] != rn
-                            and 0 < (entries[i]["timestamp"] - entries[i-1]["timestamp"]) / 1000 < 7200
-                        ]
-                        all_reply_times.extend(times)
-            global_avg_reply = sum(all_reply_times) / len(all_reply_times) if all_reply_times else None
+            # 优先用 players 表累计的回复时间（即使 rp_entries 已清空也有数据）
+            total_rts = sum(r.get("reply_time_sum", 0)   for r in rows)
+            total_rtc = sum(r.get("reply_time_count", 0) for r in rows)
+            if total_rtc > 0:
+                global_avg_reply = (total_rts / total_rtc) / 1000  # 转秒
+            else:
+                # 回落：从 rp_entries 实时计算（旧数据兼容）
+                role_names = list({r["role_name"] for r in rows if r["role_name"]})
+                all_reply_times = []
+                if role_names:
+                    ph = ",".join("?" * len(role_names))
+                    all_entries = db.execute(
+                        f"SELECT session_id,role_name,timestamp FROM rp_entries WHERE role_name IN ({ph}) AND timestamp > 0 ORDER BY session_id,seq,timestamp",
+                        role_names
+                    ).fetchall()
+                    by_sess = defaultdict(list)
+                    for e in all_entries:
+                        by_sess[e["session_id"]].append(dict(e))
+                    for entries in by_sess.values():
+                        for rn in role_names:
+                            times = [
+                                (entries[i]["timestamp"] - entries[i-1]["timestamp"]) / 1000
+                                for i in range(1, len(entries))
+                                if entries[i]["role_name"] == rn and entries[i-1]["role_name"] != rn
+                                and 0 < (entries[i]["timestamp"] - entries[i-1]["timestamp"]) / 1000 < 7200
+                            ]
+                            all_reply_times.extend(times)
+                global_avg_reply = sum(all_reply_times) / len(all_reply_times) if all_reply_times else None
 
             summary = {
                 "qq": qq,
@@ -796,6 +906,32 @@ def superadmin_players():
                 "arc_count":      len(rows),
                 "global_avg_reply": global_avg_reply,
             }
+
+            # ── 按场次类型拆分统计 ────────────────────────────────────────
+            _TRACKED = ["私密", "电话", "官约", "心愿"]
+            def _empty_subtype(): return {t: {"sessions": 0, "replies": 0, "words": 0} for t in _TRACKED}
+            global_subtype = _empty_subtype()
+            arc_subtype    = {}   # show_id → {subtype → {...}}
+            for r in rows:
+                sid_key   = r["show_id"]
+                role_name = r["role_name"]
+                if not role_name: continue
+                arc_subtype[sid_key] = _empty_subtype()
+                sess_rows = db.execute(
+                    "SELECT subtype, stats FROM sessions WHERE show_id=? AND participants LIKE ?",
+                    (sid_key, f'%{json.dumps(role_name, ensure_ascii=False)}%')
+                ).fetchall()
+                for s in sess_rows:
+                    stype = (s["subtype"] or "私密").strip()
+                    if stype not in _TRACKED: continue
+                    try:
+                        role_st = json.loads(s["stats"] or "{}").get(role_name, {})
+                        for dest in (global_subtype[stype], arc_subtype[sid_key][stype]):
+                            dest["sessions"] += 1
+                            dest["replies"]  += role_st.get("replies", 0)
+                            dest["words"]    += role_st.get("words",   0)
+                    except Exception:
+                        pass
     # blacklist records for this QQ (across all tenants)
     bl_records = []
     if qq:
@@ -808,11 +944,11 @@ def superadmin_players():
         """, (qq,)).fetchall()
         bl_records = [dict(r) for r in bl_rows]
 
-    # top players across all tenants (for browse view)
+    # top players across all tenants (for browse view, 排除 NPC)
     top = db.execute("""
         SELECT qq, SUM(total_replies) AS replies, SUM(total_words) AS words,
                COUNT(*) AS arc_count, MAX(last_updated) AS last_updated
-        FROM players GROUP BY qq
+        FROM players WHERE is_npc=0 GROUP BY qq
         ORDER BY words DESC LIMIT 50
     """).fetchall()
     top = [dict(r) for r in top]
@@ -820,7 +956,213 @@ def superadmin_players():
         r["last_updated_str"] = ts_to_str(r["last_updated"])
     return render_template("superadmin_players.html",
                            qq=qq, rows=rows, summary=summary, top=top,
-                           fmt_seconds=fmt_seconds, bl_records=bl_records, ts_to_str=ts_to_str)
+                           fmt_seconds=fmt_seconds, bl_records=bl_records, ts_to_str=ts_to_str,
+                           global_subtype=global_subtype if summary else {},
+                           arc_subtype=arc_subtype if summary else {},
+                           tracked_subtypes=["私密", "电话", "官约", "心愿"])
+
+@app.route("/superadmin/analysis")
+@require_superadmin
+def superadmin_analysis():
+    qq = request.args.get("qq", "").strip()
+    return render_template("superadmin_analysis.html", qq=qq)
+
+@app.route("/superadmin/api/all_players")
+@require_superadmin
+def superadmin_api_all_players():
+    """返回所有有 rp_entries 的玩家列表，供分析页 dropdown 使用。"""
+    db = get_db()
+    # 按 QQ 聚合，同时返回每个 (role_name, show_name) 配对，避免跨租户同名角色混淆
+    rows = db.execute("""
+        SELECT p.qq,
+               COUNT(DISTINCT e.id)  AS entry_count,
+               COUNT(DISTINCT p.show_id) AS show_count,
+               GROUP_CONCAT(DISTINCT p.role_name || '|' || COALESCE(sh.name,'?')) AS role_shows
+        FROM players p
+        JOIN rp_entries e ON e.role_name = p.role_name AND e.show_id = p.show_id
+        LEFT JOIN shows sh ON p.show_id = sh.id
+        WHERE p.qq != '' AND p.is_npc = 0 AND e.timestamp > 0
+        GROUP BY p.qq
+        ORDER BY entry_count DESC
+    """).fetchall()
+    result = []
+    for r in rows:
+        pairs = []
+        seen = set()
+        for item in (r["role_shows"] or "").split(","):
+            if "|" in item and item not in seen:
+                seen.add(item)
+                role, show = item.split("|", 1)
+                pairs.append({"role": role, "show": show})
+        result.append({
+            "qq": r["qq"],
+            "entry_count": r["entry_count"],
+            "show_count": r["show_count"],
+            "roles": pairs,
+        })
+    return jsonify({"ok": True, "players": result})
+
+@app.route("/superadmin/api/player_entries")
+@require_superadmin
+def superadmin_api_player_entries():
+    """返回某 QQ 所有 rp_entries 的 JSON，供前端图表使用。"""
+    qq = request.args.get("qq", "").strip()
+    if not qq:
+        return jsonify({"ok": False, "error": "missing qq"}), 400
+    db = get_db()
+    # 找到该 QQ 的所有 (role_name, show_id) 配对，跨租户但不跨角色
+    player_rows = db.execute(
+        "SELECT role_name, show_id FROM players WHERE qq=? AND role_name!=''", (qq,)
+    ).fetchall()
+    if not player_rows:
+        return jsonify({"ok": True, "entries": [], "roles": []})
+
+    # 用 (role_name, show_id) 配对过滤，避免不同租户同名角色串数据
+    pairs = [(r["role_name"], r["show_id"]) for r in player_rows]
+    role_names = list({r["role_name"] for r in player_rows})
+
+    # 构造 WHERE (e.role_name=? AND e.show_id=?) OR ...
+    pair_clauses = " OR ".join(["(e.role_name=? AND e.show_id=?)"] * len(pairs))
+    pair_params  = [v for p in pairs for v in p]
+
+    entries = db.execute(
+        f"""SELECT e.id, e.session_id, e.role_name, e.seq, e.timestamp,
+                   e.reply_time_ms, e.is_excluded,
+                   length(e.content) AS char_count,
+                   s.subtype, s.game_day, e.show_id,
+                   sh.name AS show_name
+            FROM rp_entries e
+            JOIN sessions s ON e.session_id = s.id
+            LEFT JOIN shows sh ON e.show_id = sh.id
+            WHERE ({pair_clauses}) AND e.timestamp > 0
+            ORDER BY e.timestamp ASC""",
+        pair_params
+    ).fetchall()
+    return jsonify({
+        "ok": True,
+        "roles": role_names,
+        "entries": [dict(e) for e in entries]
+    })
+
+@app.route("/superadmin/entry/<int:entry_id>/toggle_exclude", methods=["POST"])
+@require_superadmin
+def superadmin_toggle_exclude(entry_id):
+    db = get_db()
+    row = db.execute("SELECT is_excluded FROM rp_entries WHERE id=?", (entry_id,)).fetchone()
+    if not row:
+        return jsonify({"ok": False, "error": "not found"}), 404
+    new_val = 0 if row["is_excluded"] else 1
+    db.execute("UPDATE rp_entries SET is_excluded=? WHERE id=?", (new_val, entry_id))
+    db.commit()
+    return jsonify({"ok": True, "is_excluded": new_val})
+
+@app.route("/api/new_season", methods=["POST"])
+def api_new_season():
+    tid  = get_tenant_from_token()
+    data = request.json or {}
+    name = (data.get("name") or "").strip()
+    mode = (data.get("mode") or "review").strip()   # "review" | "no_review"
+    if not name:
+        return jsonify({"ok": False, "error": "missing name"}), 400
+
+    # 档期字段（MMDD 格式，可选）
+    sched_start = (data.get("schedule_start") or "").strip()
+    sched_end   = (data.get("schedule_end")   or "").strip()
+    supp_end    = (data.get("supplement_end") or "").strip()
+
+    db = get_db()
+    # 把已有 is_current=1 的 show 全部关掉（处理 JSCLEAR 未先结束季度的情况）
+    db.execute("UPDATE shows SET is_current=0 WHERE tenant_id=? AND is_current=1", (tid,))
+    # 建新 show
+    token = secrets.token_urlsafe(24)
+    db.execute(
+        "INSERT INTO shows (tenant_id,name,description,is_current,public_view_enabled,public_token,"
+        "created_at,schedule_start,schedule_end,supplement_end) "
+        "VALUES (?,?,?,1,0,?,?,?,?,?)",
+        (tid, name, mode, token, int(time.time() * 1000),
+         sched_start, sched_end, supp_end)
+    )
+    db.commit()
+    show = db.execute("SELECT id FROM shows WHERE public_token=?", (token,)).fetchone()
+    return jsonify({"ok": True, "show_id": show["id"], "name": name, "mode": mode,
+                    "schedule_start": sched_start, "schedule_end": sched_end,
+                    "supplement_end": supp_end})
+
+@app.route("/api/current_season", methods=["POST"])
+def api_current_season():
+    """返回该租户当前活跃 show 的信息，供 bot 初始化 season_show_name。"""
+    tid = get_tenant_from_token()
+    db  = get_db()
+    show = db.execute(
+        "SELECT id, name, description FROM shows WHERE tenant_id=? AND is_current=1", (tid,)
+    ).fetchone()
+    if not show:
+        # 没有 is_current=1，取最新的
+        show = db.execute(
+            "SELECT id, name, description FROM shows WHERE tenant_id=? ORDER BY id DESC LIMIT 1", (tid,)
+        ).fetchone()
+    if not show:
+        return jsonify({"ok": False, "error": "no show found"}), 404
+    mode = show["description"] if show["description"] in ("review", "no_review") else "review"
+    return jsonify({"ok": True, "show_id": show["id"], "name": show["name"], "mode": mode,
+                    "schedule_start": show["schedule_start"] or "",
+                    "schedule_end":   show["schedule_end"]   or "",
+                    "supplement_end": show["supplement_end"] or ""})
+
+@app.route("/api/update_schedule", methods=["POST"])
+def api_update_schedule():
+    """Bot 用：更新当前活跃季的档期（Token 鉴权）。"""
+    tid  = get_tenant_from_token()
+    show = get_current_show_for_tenant(tid)
+    if not show:
+        return jsonify({"ok": False, "error": "no active season"}), 404
+    data  = request.json or {}
+    start = (data.get("schedule_start") or "").strip()
+    end   = (data.get("schedule_end")   or "").strip()
+    supp  = (data.get("supplement_end") or "").strip()
+    for v in (start, end, supp):
+        if v and (len(v) != 4 or not v.isdigit()):
+            return jsonify({"ok": False, "error": f"格式错误：{v}，需为 MMDD 四位数字"}), 400
+    db = get_db()
+    db.execute(
+        "UPDATE shows SET schedule_start=?, schedule_end=?, supplement_end=? WHERE id=?",
+        (start, end, supp, show["id"])
+    )
+    db.commit()
+    return jsonify({"ok": True, "show_id": show["id"],
+                    "schedule_start": start, "schedule_end": end, "supplement_end": supp})
+
+@app.route("/api/end_season", methods=["POST"])
+def api_end_season():
+    tid = get_tenant_from_token()
+    db  = get_db()
+    show = db.execute(
+        "SELECT id, name, public_token FROM shows WHERE tenant_id=? AND is_current=1", (tid,)
+    ).fetchone()
+    if not show:
+        return jsonify({"ok": False, "error": "no active season"}), 404
+    db.execute("UPDATE shows SET is_current=0 WHERE id=?", (show["id"],))
+    db.commit()
+    base_url = request.host_url.rstrip("/")
+    public_url = f"{base_url}/public/{show['public_token']}" if show["public_token"] else base_url
+    return jsonify({"ok": True, "show_id": show["id"], "name": show["name"], "public_url": public_url})
+
+@app.route("/superadmin/cleanup_empty_sessions", methods=["POST"])
+@require_superadmin
+def superadmin_cleanup_empty_sessions():
+    db = get_db()
+    # 找出已结束（end_ts>0）且无任何 rp_entries 的 session
+    rows = db.execute("""
+        SELECT s.id FROM sessions s
+        WHERE s.end_ts > 0
+        AND (SELECT count(*) FROM rp_entries e WHERE e.session_id = s.id) = 0
+    """).fetchall()
+    ids = [r[0] for r in rows]
+    if ids:
+        ph = ",".join("?" * len(ids))
+        db.execute(f"DELETE FROM sessions WHERE id IN ({ph})", ids)
+        db.commit()
+    return jsonify({"ok": True, "deleted": len(ids), "ids": ids})
 
 @app.route("/superadmin/tenant/new", methods=["POST"])
 @require_superadmin
@@ -968,6 +1310,29 @@ def admin_show_toggle_public(sid):
     if request.headers.get("X-Fetch") == "1":
         return jsonify({"ok": True, "enabled": bool(new_state)})
     return redirect(url_for("admin_shows"))
+
+@app.route("/admin/shows/<int:sid>/schedule", methods=["POST"])
+@require_admin
+def admin_show_schedule(sid):
+    """更新该季的档期设置。"""
+    tid = current_tenant_id()
+    db  = get_db()
+    if not db.execute("SELECT id FROM shows WHERE id=? AND tenant_id=?", (sid, tid)).fetchone():
+        abort(404)
+    data = request.json or {}
+    start = (data.get("schedule_start") or "").strip()
+    end   = (data.get("schedule_end")   or "").strip()
+    supp  = (data.get("supplement_end") or "").strip()
+    # 简单格式校验：空串或 4 位数字
+    for v in (start, end, supp):
+        if v and (len(v) != 4 or not v.isdigit()):
+            return jsonify({"ok": False, "error": f"格式错误：{v}，需为 MMDD 四位数字"}), 400
+    db.execute(
+        "UPDATE shows SET schedule_start=?, schedule_end=?, supplement_end=? WHERE id=?",
+        (start, end, supp, sid)
+    )
+    db.commit()
+    return jsonify({"ok": True})
 
 @app.route("/admin/shows/<int:sid>/reset_token", methods=["POST"])
 @require_admin
@@ -1233,7 +1598,7 @@ def home():
     for r in rows:
         d = dict(r)
         d["first_date"] = ts_to_str(d["first_ts"])
-        (days if d["game_day"].strip() else incomplete).append(d)
+        (days if (d["game_day"] or "").strip() else incomplete).append(d)
     return render_template("home.html", days=days, incomplete=incomplete)
 
 @app.route("/date/<game_day>")
@@ -1401,7 +1766,7 @@ def admin():
 def admin_clear_all():
     sid = get_show_id()
     db  = get_db()
-    for table in ("rp_entries", "extra_events", "sessions", "players"):
+    for table in ("rp_entries", "extra_events", "sessions"):
         db.execute(f"DELETE FROM {table} WHERE show_id=?", (sid,))
     db.commit()
     return redirect(url_for("admin") + "?cleared=1")
@@ -2009,26 +2374,40 @@ def api_pending_items():
 
 @app.route("/api/event", methods=["POST"])
 def api_event():
-    tid     = get_tenant_from_token()
-    show_id = get_current_show_id_for_tenant(tid)
-    if not show_id: abort(503)
+    tid  = get_tenant_from_token()
+    show = get_current_show_for_tenant(tid)
+    if not show: abort(503)
+    show_id = show["id"]
     data       = request.json or {}
     event_type = data.get("type", "")
     if event_type not in ("lovemail", "sms", "gift", "direct_letter"):
         return jsonify({"ok": False, "error": "invalid type"}), 400
+
+    # 档期门控：仅主档期内的互动事件才写入
+    zone = _schedule_zone(show, data.get("timestamp"))
+    if zone != 'main':
+        return jsonify({"ok": True, "skipped": zone})
     db        = get_db()
     from_role = data.get("from_role","").strip()
     from_qq   = str(data.get("from_qq","")).strip()
     to_role   = data.get("to_role","").strip()
     to_qq     = str(data.get("to_qq","")).strip()
     now       = int(time.time() * 1000)
+    extra_info = data.get("extra_info",{})
+    # 自定义名字：归属到真实角色，但在 extra_info 中保留显示用名
+    from_custom = data.get("from_custom_name","").strip()
+    to_custom   = data.get("to_custom_name","").strip()
+    if from_custom and from_custom != from_role:
+        extra_info["from_custom_name"] = from_custom
+    if to_custom and to_custom != to_role:
+        extra_info["to_custom_name"] = to_custom
     db.execute("""
         INSERT INTO extra_events
           (show_id,tenant_id,session_id,type,from_role,to_role,content,extra_info,timestamp,game_day)
         VALUES (?,?,?,?,?,?,?,?,?,?)
     """, (show_id, tid, data.get("session_id") or "", event_type,
           from_role, to_role, data.get("content",""),
-          json.dumps(data.get("extra_info",{}), ensure_ascii=False),
+          json.dumps(extra_info, ensure_ascii=False),
           data.get("timestamp",0), data.get("game_day","")))
 
     def _upsert_event_player(role, qq):
@@ -2077,20 +2456,65 @@ def api_rp():
             INSERT OR IGNORE INTO sessions
               (id,show_id,tenant_id,group_id,platform,game_day,game_time,place,subtype,
                participants,start_ts,end_ts,forced,total_replies,total_words,stats)
-            VALUES (?,?,?,?,'',' ','','','','[]',?,0,0,0,0,'{}')
-        """, (sid, show_id, tid, data.get("group_id",""), data.get("timestamp",0)))
+            VALUES (?,?,?,?,?,?,?,?,?,'[]',?,0,0,0,0,'{}')
+        """, (sid, show_id, tid,
+              data.get("group_id",""),
+              data.get("platform",""),
+              data.get("game_day","") or "",
+              data.get("game_time",""),
+              data.get("place",""),
+              data.get("subtype",""),
+              data.get("timestamp",0)))
     max_seq = db.execute(
         "SELECT COALESCE(MAX(seq),0) FROM rp_entries WHERE session_id=? AND show_id=?", (sid, show_id)
     ).fetchone()[0]
+    # 计算 reply_time_ms：距同 session 内上一条不同角色的 entry
+    cur_ts    = data.get("timestamp", 0)
+    role_name_rp = data.get("role_name", "")
+    reply_time_ms = None
+    if cur_ts and role_name_rp:
+        prev_other = db.execute(
+            "SELECT timestamp FROM rp_entries WHERE session_id=? AND show_id=? AND role_name!=? AND timestamp>0 ORDER BY seq DESC LIMIT 1",
+            (sid, show_id, role_name_rp)
+        ).fetchone()
+        if prev_other:
+            diff = cur_ts - prev_other["timestamp"]
+            if 0 < diff < 7_200_000:
+                reply_time_ms = diff
     db.execute("""
-        INSERT INTO rp_entries (show_id,tenant_id,session_id,role_name,content,seq,timestamp)
-        VALUES (?,?,?,?,?,?,?)
-    """, (show_id, tid, sid, data.get("role_name",""), data.get("content",""),
-          max_seq+1, data.get("timestamp",0)))
+        INSERT INTO rp_entries (show_id,tenant_id,session_id,role_name,content,seq,timestamp,reply_time_ms)
+        VALUES (?,?,?,?,?,?,?,?)
+    """, (show_id, tid, sid, role_name_rp, data.get("content",""),
+          max_seq+1, cur_ts, reply_time_ms))
     db.execute(
         "UPDATE sessions SET total_replies=total_replies+1, total_words=total_words+? WHERE id=? AND show_id=?",
         (len(data.get("content","")), sid, show_id)
     )
+
+    # 计算本次回复时间（距上一条不同角色的 entry）并累计到 players
+    role_name = data.get("role_name", "")
+    cur_ts    = data.get("timestamp", 0)
+    is_npc    = bool(data.get("is_npc", False))
+    # 若 is_npc，标记 players 表
+    if role_name and is_npc:
+        db.execute(
+            "UPDATE players SET is_npc=1 WHERE show_id=? AND role_name=?",
+            (show_id, role_name)
+        )
+    if role_name and cur_ts and not is_npc:
+        prev = db.execute(
+            "SELECT timestamp FROM rp_entries WHERE session_id=? AND show_id=? AND role_name!=? AND timestamp>0 ORDER BY seq DESC LIMIT 1",
+            (sid, show_id, role_name)
+        ).fetchone()
+        if prev:
+            diff_ms = cur_ts - prev["timestamp"]
+            if 0 < diff_ms < 7_200_000:  # 0~2小时内视为有效
+                db.execute("""
+                    UPDATE players
+                    SET reply_time_sum=reply_time_sum+?, reply_time_count=reply_time_count+1
+                    WHERE show_id=? AND role_name=?
+                """, (diff_ms, show_id, role_name))
+
     db.commit()
     return jsonify({"ok": True})
 
@@ -2117,13 +2541,26 @@ def _compute_player_totals(db, show_id, role_name):
 
 
 def _upsert_players_from_list(db, show_id, tid, players_list):
-    """从 [{qq, role_name}] 批量 upsert 玩家表，并从 sessions.stats 重算累计数据。
-    若该角色名已有占位行（qq=role_name），将其升级为真实 QQ。"""
+    """从 [{qq, role_name, is_npc?}] 批量 upsert 玩家表，并从 sessions.stats 重算累计数据。
+    若该角色名已有占位行（qq=role_name），将其升级为真实 QQ。
+    NPC 玩家：只更新 is_npc 标记，不计弧长统计。"""
     now = int(time.time() * 1000)
     for p in players_list:
         qq        = str(p.get("qq","")).strip()
         role_name = str(p.get("role_name","")).strip()
+        is_npc    = bool(p.get("is_npc", False))
         if not qq or not role_name: continue
+
+        if is_npc:
+            # NPC：只确保行存在并标记 is_npc=1，不更新弧长数据
+            db.execute("""
+                INSERT INTO players (show_id,tenant_id,qq,role_name,sessions_count,total_replies,total_words,last_updated,is_npc)
+                VALUES (?,?,?,?,0,0,0,?,1)
+                ON CONFLICT(show_id,qq) DO UPDATE SET
+                    role_name=excluded.role_name,
+                    is_npc=1
+            """, (show_id, tid, qq, role_name, now))
+            continue
 
         total_replies, total_words, sessions_count = _compute_player_totals(db, show_id, role_name)
 
@@ -2153,13 +2590,19 @@ def _upsert_players_from_list(db, show_id, tid, players_list):
 @app.route("/api/session_stats", methods=["POST"])
 def api_session_stats():
     """实时更新正在进行中的场次 stats（每次有效 RP 回复后 bot 主动推送）。"""
-    tid     = get_tenant_from_token()
-    show_id = get_current_show_id_for_tenant(tid)
-    if not show_id: abort(503)
+    tid  = get_tenant_from_token()
+    show = get_current_show_for_tenant(tid)
+    if not show: abort(503)
+    show_id = show["id"]
     data  = request.json or {}
     sid   = data.get("session_id","")
     if not sid:
         return jsonify({"ok": False, "error": "missing session_id"}), 400
+
+    zone = _schedule_zone(show)
+    if zone == 'pre':
+        return jsonify({"ok": True, "skipped": "pre_schedule"})
+
     stats = data.get("stats", {})
     db    = get_db()
     total_replies = sum(v.get("replies",0) for v in stats.values())
@@ -2177,26 +2620,48 @@ def api_session_stats():
             INSERT OR IGNORE INTO sessions
               (id,show_id,tenant_id,group_id,platform,game_day,game_time,place,subtype,
                participants,start_ts,end_ts,forced,total_replies,total_words,stats)
-            VALUES (?,?,?,  '','','','','','', '[]', ?,0,0, ?,?,?)
-        """, (sid, show_id, tid, int(time.time()*1000),
+            VALUES (?,?,?,?,?,?,?,?,?,'[]',?,0,0,?,?,?)
+        """, (sid, show_id, tid,
+              data.get("group_id",""),
+              data.get("platform",""),
+              data.get("game_day","") or "",
+              data.get("game_time",""),
+              data.get("place",""),
+              data.get("subtype",""),
+              int(time.time()*1000),
               total_replies, total_words, stats_json))
-    _upsert_players_from_list(db, show_id, tid, data.get("players", []))
+    # 补戏期只保存场次 stats，不更新玩家弧长
+    if zone != 'supplement':
+        _upsert_players_from_list(db, show_id, tid, data.get("players", []))
     db.commit()
     return jsonify({"ok": True})
 
 
 @app.route("/api/session_end", methods=["POST"])
 def api_session_end():
-    tid     = get_tenant_from_token()
-    show_id = get_current_show_id_for_tenant(tid)
-    if not show_id: abort(503)
+    tid  = get_tenant_from_token()
+    show = get_current_show_for_tenant(tid)
+    if not show: abort(503)
+    show_id = show["id"]
     data = request.json or {}
     sid  = data.get("session_id","")
     if not sid:
         return jsonify({"ok": False, "error": "missing session_id"}), 400
+
+    # 档期门控
+    zone = _schedule_zone(show)
+    if zone == 'pre':
+        return jsonify({"ok": True, "skipped": "pre_schedule"})
+
     stats = data.get("stats",{})
     parts = data.get("participants",[])
     db    = get_db()
+
+    # supplement 期间标记场次为"补戏"，方便界面区分
+    subtype_val = data.get("subtype","")
+    if zone == 'supplement':
+        subtype_val = (subtype_val + "|补戏").lstrip("|")
+
     db.execute("""
         INSERT OR REPLACE INTO sessions
           (id,show_id,tenant_id,group_id,platform,game_day,game_time,place,subtype,
@@ -2205,7 +2670,7 @@ def api_session_end():
     """, (sid, show_id, tid,
           data.get("group_id",""), data.get("platform",""),
           data.get("game_day",""), data.get("game_time",""),
-          data.get("place",""),    data.get("subtype",""),
+          data.get("place",""),    subtype_val,
           json.dumps(parts, ensure_ascii=False),
           data.get("start_ts",0), data.get("end_ts",0),
           1 if data.get("forced") else 0,
@@ -2213,9 +2678,11 @@ def api_session_end():
           sum(v.get("words",0)   for v in stats.values()),
           json.dumps(stats, ensure_ascii=False)))
     # 自动同步玩家数据（无需手动执行「更新玩家数据库」）
-    _upsert_players_from_list(db, show_id, tid, data.get("players", []))
+    # 补戏期：只保存场次记录，不计弧长
+    if zone != 'supplement':
+        _upsert_players_from_list(db, show_id, tid, data.get("players", []))
     db.commit()
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "zone": zone})
 
 @app.route("/api/update_players", methods=["POST"])
 def api_update_players():

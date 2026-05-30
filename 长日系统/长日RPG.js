@@ -29,6 +29,16 @@ if (!ext) {
 // 核心依赖：获取主插件 changri
 // ========================
 
+// 读取主插件整数型设置，兼容 JSON 编码的 '"70"' 与裸字符串 '70' 两种格式
+function getMainStorageInt(key, defaultVal) {
+    const main = getMainExt();
+    if (!main) return defaultVal;
+    const raw = main.storageGet(key);
+    if (!raw) return defaultVal;
+    try { return parseInt(JSON.parse(raw)) || defaultVal; }
+    catch (e) { return parseInt(raw) || defaultVal; }
+}
+
 function getPrimaryUid(platform, uid) {
     const main = getMainExt();
     if (!main) return uid;
@@ -242,16 +252,9 @@ function removeFromInv(roleKey, code, count) {
 }
 
 function getInvCount(roleKey, code) {
-    // 获取全部背包数据
-    const allInv = getInvAll(); 
-    // 获取该角色的背包数组，如果不存在则默认为空数组
-    const roleInv = allInv[roleKey] || [];
-    
-    // 查找匹配 code 的物品条目
-    const entry = roleInv.find(e => e.code === code);
-    
-    // 如果找到了返回 count，否则返回 0
-    return entry ? (entry.count || 0) : 0;
+    const roleInv = (getInvAll()[roleKey]) || [];
+    // 同一物品可能因 remainingUses 不同存在多条 entry，汇总所有
+    return roleInv.filter(e => e.code === code).reduce((sum, e) => sum + (e.count || 0), 0);
 }
 
 function getPoolDefs() {
@@ -2419,7 +2422,7 @@ cmd_apply.solve = (ctx, msg, cmdArgs) => {
     // 显示施加设置
     if (!targetName || targetName === "设置" || targetName === "查看") {
         const applyNotify = main.storageGet("apply_item_notification") !== "false";
-        const exposeRate = parseInt(main.storageGet("apply_item_expose_rate") || "0");
+        const exposeRate = getMainStorageInt("apply_item_expose_rate", 0);
         const applyHours = main.storageGet("apply_item_hours") || "不限";
 
         const results = [
@@ -2511,7 +2514,7 @@ cmd_apply.solve = (ctx, msg, cmdArgs) => {
     const changes = parseAttrEffects(item.attrs);
     const effectStr = Object.entries(changes).map(([k, v]) => `${k}${v > 0 ? '+' : ''}${v}`).join("，");
     const shouldNotify = main.storageGet("apply_item_notification") !== "false";
-    const exposeRate = parseInt(main.storageGet("apply_item_expose_rate") || "0");
+    const exposeRate = getMainStorageInt("apply_item_expose_rate", 0);
     const isExposed = Math.random() * 100 < exposeRate;
 
     // 通知被施加者
@@ -2612,7 +2615,7 @@ cmd_special_use.solve = (ctx, msg, cmdArgs) => {
         const b_confirmedSchedule = JSON.parse(main.storageGet("b_confirmedSchedule") || "{}");
         const targetKey = `${platform}:${getPrimaryUid(platform, trackerTargetUid)}`;
         const matchingEvent = (b_confirmedSchedule[targetKey] || []).find(ev => ev.day === globalDay && timeOverlap(ev.time, timeRange));
-        const successRate = parseInt(main.storageGet("item_tracker_success_rate") || "70");
+        const successRate = getMainStorageInt("item_tracker_success_rate", 70);
         const showPartner = main.storageGet("item_tracker_show_partner") !== "false";
         const isSuccess = Math.random() * 100 < successRate;
 

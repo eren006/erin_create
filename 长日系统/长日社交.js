@@ -89,6 +89,16 @@ function isUserFeatureEnabled(uid, key, defaultValue = true) {
     return defaultValue;
 }
 
+// 读取主插件存储的整数型设置（兼容 JSON 编码的 '"500"' 与裸字符串 '500' 两种格式）
+function getMainStorageInt(key, defaultVal) {
+    const main = getMainExt();
+    if (!main) return defaultVal;
+    const raw = main.storageGet(key);
+    if (!raw) return defaultVal;
+    try { return parseInt(JSON.parse(raw)) || defaultVal; }
+    catch (e) { return parseInt(raw) || defaultVal; }
+}
+
 function recordMeetingAndAnnounce(subtype, platform, ctx, endPoint) {
     const main = getMainExt();
     if (!main) return;
@@ -591,8 +601,8 @@ function sendCombinedDetails(ctx, msg, toRoleName, fromRoleName, details, self) 
 
     // 5. 统计总字数
     const totalChars = details.reduce((sum, d) => sum + (d.text?.length || 0), 0);
-    const MAX_DETAIL_CHARS = parseInt(getMainExt().storageGet("max_detail_chars") || "500");
-    const SPLIT_THRESHOLD = parseInt(getMainExt().storageGet("forward_split_threshold") || "4000");
+    const MAX_DETAIL_CHARS = getMainStorageInt("max_detail_chars", 500);
+    const SPLIT_THRESHOLD = getMainStorageInt("forward_split_threshold", 4000);
     const gid = parseInt(targetGid.replace(/[^\d]/g, ""), 10);
 
     const makeNode = d => {
@@ -639,7 +649,7 @@ const RelationshipUtils = {
     },
     getData: (key) => JSON.parse(getMainExt().storageGet(key) || "{}"),
     setData: (key, data) => getMainExt().storageSet(key, JSON.stringify(data)),
-    isEnabled: () => JSON.parse(getMainExt().storageGet("relationship_system_enabled") || "true")
+    isEnabled: () => JSON.parse(getMainExt().storageGet("relationship_system_enabled") || "false")
 };
 
 let cmd_add_rel_detail = seal.ext.newCmdItemInfo();
@@ -655,7 +665,7 @@ cmd_add_rel_detail.solve = (ctx, msg, cmdArgs) => {
     if (!sendName || !toName || !content) return seal.replyToSender(ctx, msg, "格式：。拉线 对方名 内容");
     if (sendName === toName) return seal.replyToSender(ctx, msg, "⚠️ 你不能跟自己建立关系线哦。");
 
-    const MAX_DETAIL_CHARS = parseInt(getMainExt().storageGet("max_detail_chars") || "500");
+    const MAX_DETAIL_CHARS = getMainStorageInt("max_detail_chars", 500);
     const charCount = content.length;
     if (charCount > MAX_DETAIL_CHARS) {
         return seal.replyToSender(ctx, msg, `⚠️ 内容过长（${charCount} 字），单条拉线上限为 ${MAX_DETAIL_CHARS} 字，请精简后再提交。`);
@@ -672,15 +682,15 @@ cmd_add_rel_detail.solve = (ctx, msg, cmdArgs) => {
     if (!relData[platform][toUid]) relData[platform][toUid] = {};
 
     let rel = relData[platform][sendUid][toUid] || relData[platform][toUid][sendUid];
+    const isNewRel = !rel;
 
-    if (!rel) {
-        const maxRel = parseInt(getMainExt().storageGet("max_relationships_per_user") || "20");
+    if (isNewRel) {
+        const maxRel = getMainStorageInt("max_relationships_per_user", 20);
         const currentCount = Object.values(relData[platform][sendUid]).filter(r => r.initiator === sendName).length;
 
         if (currentCount >= maxRel) return seal.replyToSender(ctx, msg, `⚠️ 你的发起额度已达上限 (${maxRel})`);
 
         rel = { initiator: sendName, confirmed: false, details: [] };
-        seal.replyToSender(ctx, msg, `✨ 已成功向「${toName}」发起关系线邀请并记录细节。`);
     }
 
     if (!rel.details) rel.details = [];
@@ -692,16 +702,17 @@ cmd_add_rel_detail.solve = (ctx, msg, cmdArgs) => {
     RelationshipUtils.setData("relationship_lines", relData);
 
     const totalCharsNow = rel.details.reduce((sum, d) => sum + (d.text?.length || 0), 0);
-    const SPLIT_THRESHOLD = parseInt(getMainExt().storageGet("forward_split_threshold") || "4000");
+    const SPLIT_THRESHOLD = getMainStorageInt("forward_split_threshold", 4000);
     const splitHint = totalCharsNow > SPLIT_THRESHOLD ? `（总字数 ${totalCharsNow} 字，查看时将自动拆分为2条转发）` : `（本条 ${charCount} 字，累计 ${totalCharsNow}/${SPLIT_THRESHOLD} 字）`;
+    const newRelHint = isNewRel ? "✨ 关系线已建立。\n" : "";
 
     const addr = getTargetAddr(platform, toName);
     if (addr) {
         sendNewDetailNotification(ctx, msg, toName, content, sendName, addr[1]);
         sendCombinedDetails(ctx, msg, toName, sendName, rel.details, false);
-        seal.replyToSender(ctx, msg, `✅ 细节已同步至「${toName}」的绑定群 (${addr[1]})\n${splitHint}`);
+        seal.replyToSender(ctx, msg, `${newRelHint}✅ 细节已同步至「${toName}」的绑定群 (${addr[1]})\n${splitHint}`);
     } else {
-        seal.replyToSender(ctx, msg, `✅ 细节已记录，但「${toName}」尚未绑定注册群，无法实时同步。\n${splitHint}`);
+        seal.replyToSender(ctx, msg, `${newRelHint}✅ 细节已记录，但「${toName}」尚未绑定注册群，无法实时同步。\n${splitHint}`);
     }
 
     recordMeetingAndAnnounce("拉线", platform, ctx, ctx.endPoint);
@@ -793,11 +804,13 @@ cmd_del_rel.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return;
     const platform = msg.platform, nameA = cmdArgs.getArgN(1), nameB = cmdArgs.getArgN(2);
     let data = RelationshipUtils.getData("relationship_lines");
+    const uidA = getUidByRoleName(platform, nameA);
+    const uidB = getUidByRoleName(platform, nameB);
+    if (!uidA) return seal.replyToSender(ctx, msg, `❌ 找不到角色「${nameA}」`);
+    if (!uidB) return seal.replyToSender(ctx, msg, `❌ 找不到角色「${nameB}」`);
     if (data[platform]) {
-        const uidA = getUidByRoleName(platform, nameA);
-        const uidB = getUidByRoleName(platform, nameB);
-        if (uidA && data[platform][uidA]) delete data[platform][uidA][uidB];
-        if (uidB && data[platform][uidB]) delete data[platform][uidB][uidA];
+        if (data[platform][uidA]) delete data[platform][uidA][uidB];
+        if (data[platform][uidB]) delete data[platform][uidB][uidA];
         RelationshipUtils.setData("relationship_lines", data);
         seal.replyToSender(ctx, msg, "✅ 已删除该关系线");
     }
@@ -807,6 +820,7 @@ ext.cmdMap["删除关系线"] = cmd_del_rel;
 
 let cmd_clear_rel = seal.ext.newCmdItemInfo();
 cmd_clear_rel.name = "清空关系线";
+cmd_clear_rel.help = "。清空关系线 MMDD\n清空当前平台全部关系线（需输入当日日期码确认，如0526）";
 cmd_clear_rel.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return;
     const code = cmdArgs.getArgN(1);
@@ -899,7 +913,8 @@ cmd_view_relationship.solve = (ctx, msg, cmdArgs) => {
     }
 
     let reply = `📚 「${sendName}」的关系线列表：\n`;
-    const maxRel = parseInt(getMainExt().storageGet("max_relationships_per_user") || "20");
+    const maxRel = getMainStorageInt("max_relationships_per_user", 20);
+    const SPLIT_THRESHOLD = getMainStorageInt("forward_split_threshold", 4000);
     let activeCount = 0;
     let listContent = "";
 
@@ -910,7 +925,6 @@ cmd_view_relationship.solve = (ctx, msg, cmdArgs) => {
         const typeTag = isSystem ? "【强制】" : (data.initiator === sendName ? "【发起】" : "【收到】");
         const detailCount = data.details ? data.details.length : 0;
         const totalChars = data.details ? data.details.reduce((sum, d) => sum + (d.text?.length || 0), 0) : 0;
-        const SPLIT_THRESHOLD = parseInt(getMainExt().storageGet("forward_split_threshold") || "4000");
         const charHint = totalChars > SPLIT_THRESHOLD ? `⚠️${totalChars}字·将拆分` : `${totalChars}字`;
         listContent += `${statusIcon} ${typeTag} 与「${name}」(${detailCount}条 | ${charHint})\n`;
     });

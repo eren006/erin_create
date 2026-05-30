@@ -113,6 +113,7 @@ a:hover{color:var(--accent2);}
   <nav style="display:flex;gap:4px;">
     <a href="{{ url_for('superadmin') }}" style="color:var(--accent2);font-size:13px;padding:4px 10px;border-radius:6px;background:var(--surface2);">租户管理</a>
     <a href="{{ url_for('superadmin_players') }}" style="color:var(--muted);font-size:13px;padding:4px 10px;border-radius:6px;">玩家档案</a>
+    <a href="{{ url_for('superadmin_analysis') }}" style="color:var(--muted);font-size:13px;padding:4px 10px;border-radius:6px;">数据分析</a>
   </nav>
   <a class="logout" href="{{ url_for('superadmin_logout') }}">退出超管</a>
 </div>
@@ -131,6 +132,18 @@ a:hover{color:var(--accent2);}
   {% elif error == 'duplicate' %}
   <div class="banner banner-err">⚠️ 该用户名已被使用，请换一个。</div>
   {% endif %}
+
+  <!-- 数据库维护 -->
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+    <div>
+      <div style="font-size:13px;font-weight:700;color:var(--accent2);margin-bottom:4px;">数据库维护</div>
+      <div style="font-size:12px;color:var(--muted);">清除已结束且无任何 RP 记录的空 session</div>
+    </div>
+    <button onclick="cleanupSessions()" style="padding:7px 18px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:13px;cursor:pointer;" id="cleanupBtn">
+      🗑 清除空 session
+    </button>
+    <span id="cleanupResult" style="font-size:12px;color:var(--muted);"></span>
+  </div>
 
   <!-- 新建租户 -->
   <div class="new-form">
@@ -240,6 +253,29 @@ function togglePwForm(id) {
   const visible = el.style.display === 'block';
   el.style.display = visible ? 'none' : 'block';
   if (!visible) el.querySelector('input[type="password"]')?.focus();
+}
+
+async function cleanupSessions() {
+  const btn = document.getElementById('cleanupBtn');
+  const res = document.getElementById('cleanupResult');
+  btn.disabled = true;
+  btn.textContent = '处理中…';
+  try {
+    const resp = await fetch('{{ url_for("superadmin_cleanup_empty_sessions") }}', {method:'POST'});
+    const data = await resp.json();
+    if (data.ok) {
+      res.style.color = 'var(--green)';
+      res.textContent = data.deleted > 0 ? `✅ 已删除 ${data.deleted} 个空 session` : '✅ 没有需要清除的空 session';
+    } else {
+      res.style.color = 'var(--red)';
+      res.textContent = '操作失败';
+    }
+  } catch(e) {
+    res.style.color = 'var(--red)';
+    res.textContent = '请求出错：' + e.message;
+  }
+  btn.disabled = false;
+  btn.textContent = '🗑 清除空 session';
 }
 </script>
 </body>

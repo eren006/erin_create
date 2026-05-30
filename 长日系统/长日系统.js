@@ -19,6 +19,14 @@ if (!ext) {
 }
 ext.autoActive = true;
 
+// 读取整数型设置，兼容 JSON 编码的 '"48"' 与裸字符串 '48' 两种格式
+function getStorageInt(key, defaultVal) {
+    const raw = ext.storageGet(key);
+    if (!raw) return defaultVal;
+    try { return parseInt(JSON.parse(raw)) || defaultVal; }
+    catch (e) { return parseInt(raw) || defaultVal; }
+}
+
 seal.ext.registerStringConfig(ext, "ws地址", "ws://localhost:3001");
     seal.ext.registerStringConfig(ext, "ws Access token", '', "输入与上方端口对应的token，没有则留空");
     seal.ext.registerStringConfig(ext, "群管插件使用需要满足的条件", '1', "使用豹语表达式，例如：$t群号_RAW=='2001'，1为所有群可用");
@@ -376,9 +384,10 @@ function buildSessionArchive(gid, platform, forced) {
     // （心动信 pool 投完即清空，批量读取必然为空；短信/礼物实时上传已含 session_id）
 
     // 顺带附上 QQ→角色映射，服务器自动更新玩家数据库，无需手动同步
+    const _npcListBuild = JSON.parse(ext.storageGet("a_npc_list") || "[]");
     const playersList = participants.map(roleName => {
         const uid = getUidByRoleName(platform, roleName);
-        return uid ? { qq: uid, role_name: roleName } : null;
+        return uid ? { qq: uid, role_name: roleName, is_npc: _npcListBuild.includes(roleName) } : null;
     }).filter(Boolean);
 
     return {
@@ -598,7 +607,7 @@ function recordMeetingAndAnnounce(subtype, platform, ctx, endPoint) {
         const getStageText = (subtype, count) => {
             // --- 核心修改部分：从配置项获取频率 ---
             // 获取用户在插件设置里填写的数字，默认为 5
-            const frequency = parseInt(ext.storageGet("announceFrequency") || "5");
+            const frequency = getStorageInt("announceFrequency", 5);
             
             // 检查是否应该触发公告：使用动态频率
             let shouldAnnounce = (count % frequency === 0);
@@ -702,6 +711,21 @@ function getRoleStorage() {
 // 👤 角色与权限管理
 // ========================
 
+// ── 季度工具函数 ──────────────────────────────────────────────────────────────
+function getSeasonShowName() { return ext.storageGet("season_show_name") || ""; }
+function getSeasonMode()     { return ext.storageGet("season_mode") || "review"; }
+function hasActiveSeason()   { return !!getSeasonShowName(); }
+
+// a_private_group 是否已无任何角色（所有 platform 下都无 uid entry）
+function isRoleStorageEmpty() {
+    const storage = getRoleStorage();
+    for (const platform of Object.keys(storage)) {
+        if (Object.keys(storage[platform] || {}).length > 0) return false;
+    }
+    return true;
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 // 1. 创建新角色
 let cmd_bind_role = {};
 cmd_bind_role.solve =(ctx, msg, cmdArgs) => {
@@ -710,6 +734,11 @@ cmd_bind_role.solve =(ctx, msg, cmdArgs) => {
         const ret = seal.ext.newCmdExecuteResult(true);
         ret.showHelp = true;
         return ret;
+    }
+
+    if (isArchiveEnabled() && !hasActiveSeason()) {
+        seal.replyToSender(ctx, msg, "⚠️ 当前没有活跃的季度，请联系主办发起「创建新季度」后再创建角色。");
+        return seal.ext.newCmdExecuteResult(true);
     }
 
     let platform = msg.platform;
@@ -786,6 +815,64 @@ function doRenameRole(ctx, msg, newName) {
         ext.storageSet("relationship_lines", JSON.stringify(relData));
     }
 
+    // 同步 b_confirmedSchedule 中的 partner 字段
+    const bcs = JSON.parse(ext.storageGet("b_confirmedSchedule") || "{}");
+    let bcsChanged = false;
+    for (const schedList of Object.values(bcs)) {
+        for (const ev of schedList) {
+            if (ev.partner && ev.partner !== "多人小群") {
+                const parts = ev.partner.split(/[、,]/).map(s => s.trim());
+                const idx = parts.indexOf(oldName);
+                if (idx !== -1) { parts[idx] = newName; ev.partner = parts.join("、"); bcsChanged = true; }
+            }
+        }
+    }
+    if (bcsChanged) ext.storageSet("b_confirmedSchedule", JSON.stringify(bcs));
+
+    // 同步 group_expire_info 中的 participants
+    const gei = JSON.parse(ext.storageGet("group_expire_info") || "{}");
+    let geiChanged = false;
+    for (const info of Object.values(gei)) {
+        if (Array.isArray(info.participants)) {
+            const i = info.participants.indexOf(oldName);
+            if (i !== -1) { info.participants[i] = newName; geiChanged = true; }
+        }
+    }
+    if (geiChanged) ext.storageSet("group_expire_info", JSON.stringify(gei));
+
+    // 同步 group_timers 中的 participants 和 timerStatus key
+    const timers = JSON.parse(ext.storageGet("group_timers") || "{}");
+    let timersChanged = false;
+    for (const timer of Object.values(timers)) {
+        if (Array.isArray(timer.participants)) {
+            const i = timer.participants.indexOf(oldName);
+            if (i !== -1) { timer.participants[i] = newName; timersChanged = true; }
+        }
+        if (timer.timerStatus && timer.timerStatus[oldName]) {
+            timer.timerStatus[newName] = timer.timerStatus[oldName];
+            delete timer.timerStatus[oldName];
+            timersChanged = true;
+        }
+    }
+    if (timersChanged) ext.storageSet("group_timers", JSON.stringify(timers));
+
+    // 同步 interaction_counts 中的 roleName key 和内层统计 key
+    const ic = JSON.parse(ext.storageGet("interaction_counts") || "{}");
+    let icChanged = false;
+    const oldKey = `${platform}:${oldName}`;
+    const newKey = `${platform}:${newName}`;
+    if (ic[oldKey]) { ic[newKey] = ic[oldKey]; delete ic[oldKey]; icChanged = true; }
+    for (const entry of Object.values(ic)) {
+        for (const field of Object.keys(entry)) {
+            if (entry[field] && typeof entry[field] === "object" && entry[field][oldName] !== undefined) {
+                entry[field][newName] = entry[field][oldName];
+                delete entry[field][oldName];
+                icChanged = true;
+            }
+        }
+    }
+    if (icChanged) ext.storageSet("interaction_counts", JSON.stringify(ic));
+
     seal.replyToSender(ctx, msg, `✅ 角色名已由「${oldName}」改为「${newName}」。`);
     return seal.ext.newCmdExecuteResult(true);
 }
@@ -846,9 +933,97 @@ cmd_del_role.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    delete storage[platform][targetUidEntry[0]];
+    const uid = targetUidEntry[0];
+    const uidKey = `${platform}:${uid}`;
+
+    // 1. 绑定记录
+    delete storage[platform][uid];
     ext.storageSet("a_private_group", JSON.stringify(storage));
-    seal.replyToSender(ctx, msg, `✅ 已成功清除玩家「${delName}」的数据`);
+
+    // 2. 时间锁定
+    const lockedSlots = JSON.parse(ext.storageGet("a_lockedSlots") || "{}");
+    delete lockedSlots[uidKey];
+    ext.storageSet("a_lockedSlots", JSON.stringify(lockedSlots));
+
+    // 3. 已确认日程
+    const confirmed = JSON.parse(ext.storageGet("b_confirmedSchedule") || "{}");
+    delete confirmed[uidKey];
+    ext.storageSet("b_confirmedSchedule", JSON.stringify(confirmed));
+
+    // 4. 地点钥匙
+    const placeKeys = JSON.parse(ext.storageGet("place_keys") || "{}");
+    if (placeKeys[platform]) {
+        delete placeKeys[platform][uid];
+        ext.storageSet("place_keys", JSON.stringify(placeKeys));
+    }
+
+    // 5. 角色档案（性别/皮相/签名/年龄）
+    const profiles = JSON.parse(ext.storageGet("sys_char_profiles") || "{}");
+    delete profiles[uidKey];
+    ext.storageSet("sys_char_profiles", JSON.stringify(profiles));
+
+    // 6. 关系线（删除该玩家的条目，及其他人对该玩家的条目）
+    const relData = JSON.parse(ext.storageGet("relationship_lines") || "{}");
+    if (relData[platform]) {
+        delete relData[platform][uid];
+        for (const otherUid of Object.keys(relData[platform])) {
+            delete relData[platform][otherUid][uid];
+        }
+        ext.storageSet("relationship_lines", JSON.stringify(relData));
+    }
+
+    // 7. 心动信发送次数记录
+    const lovemailCounts = JSON.parse(ext.storageGet("lovemail_day_counts") || "{}");
+    delete lovemailCounts[uid];
+    ext.storageSet("lovemail_day_counts", JSON.stringify(lovemailCounts));
+
+    // 7.5 交互统计（interaction_counts key 为 platform:roleName）
+    const ic = JSON.parse(ext.storageGet("interaction_counts") || "{}");
+    const icKey = `${platform}:${delName}`;
+    let icChanged = false;
+    if (ic[icKey]) { delete ic[icKey]; icChanged = true; }
+    // 清除其他人记录中对该角色的引用
+    for (const entry of Object.values(ic)) {
+        for (const field of Object.keys(entry)) {
+            if (entry[field] && typeof entry[field] === "object" && entry[field][delName] !== undefined) {
+                delete entry[field][delName];
+                icChanged = true;
+            }
+        }
+    }
+    if (icChanged) ext.storageSet("interaction_counts", JSON.stringify(ic));
+
+    // 8. RPG数据（背包/属性/抽取记录/二手市场挂单）
+    const rpgExt = seal.ext.find("changriRPG");
+    if (rpgExt) {
+        // 背包
+        const invs = JSON.parse(rpgExt.storageGet("global_inventories") || "{}");
+        delete invs[uidKey];
+        rpgExt.storageSet("global_inventories", JSON.stringify(invs));
+
+        // RPG属性
+        const charAttrs = JSON.parse(rpgExt.storageGet("sys_character_attrs") || "{}");
+        delete charAttrs[uid];
+        rpgExt.storageSet("sys_character_attrs", JSON.stringify(charAttrs));
+
+        // 抽取记录
+        const drawRecs = JSON.parse(rpgExt.storageGet("player_draw_records") || "{}");
+        delete drawRecs[uidKey];
+        rpgExt.storageSet("player_draw_records", JSON.stringify(drawRecs));
+
+        // 二手市场：撤销该角色的所有挂单（物品退回已删除，直接移除）
+        const market = JSON.parse(rpgExt.storageGet("secondhand_market") || "{}");
+        let marketChanged = false;
+        for (const code of Object.keys(market)) {
+            if (market[code].sellerRole === delName) {
+                delete market[code];
+                marketChanged = true;
+            }
+        }
+        if (marketChanged) rpgExt.storageSet("secondhand_market", JSON.stringify(market));
+    }
+
+    seal.replyToSender(ctx, msg, `✅ 已成功清除玩家「${delName}」的全部数据`);
     return seal.ext.newCmdExecuteResult(true);
 }
 ext.cmdMap["清除玩家"] = cmd_del_role;
@@ -1645,7 +1820,7 @@ function mergeIntoExistingAppointment(ctx, msg, existingAppointment, newNames, p
     } else {
         groupExpireInfo[groupId] = {
             acceptTime: Date.now(),
-            expireTime: Date.now() + (parseInt(ext.storageGet("group_expire_hours") || "48") * 3600000),
+            expireTime: Date.now() + (getStorageInt("group_expire_hours", 48) * 3600000),
             participants: allParticipants,
             subtype: "私密",
             day: day,
@@ -1802,9 +1977,9 @@ async function checkAppointmentPreflight(ctx, msg, cmdArgs, subtype, minDuration
         const exampleTime = getExampleTimeRange();
         let helpMsg = "";
         if (subtype === "电话") {
-            helpMsg = `⚠️ 参数不足，正确格式：\n。电话 ${exampleTime} 邀请人1[/邀请人2/...] [标题]\n示例：\n。电话 ${exampleTime} 张三\n。电话 ${exampleTime} 李四/王五 一起聊聊`;
+            helpMsg = `⚠️ 参数不足，正确格式：\n电话 ${exampleTime} 邀请人1[/邀请人2/...] [标题]\n示例：\n电话 ${exampleTime} 张三\n电话 ${exampleTime} 李四/王五 一起聊聊`;
         } else {
-            helpMsg = `⚠️ 参数不足，正确格式：\n。私约 ${exampleTime} 地点 对方角色名[/对方2/...]\n示例：\n。私约 ${exampleTime} 咖啡厅 张三\n。私约 ${exampleTime} 餐厅 李四/王五`;
+            helpMsg = `⚠️ 参数不足，正确格式：\n私约 ${exampleTime} 地点 对方角色名[/对方2/...]\n示例：\n私约 ${exampleTime} 咖啡厅 张三\n私约 ${exampleTime} 餐厅 李四/王五`;
         }
         return { valid: false, errorMsg: helpMsg };
     }
@@ -2382,7 +2557,7 @@ cmd_apply_join.solve =async (ctx, msg, cmdArgs) => {
     const targetName = cmdArgs.getArgN(1);
     const rawTime = cmdArgs.getArgN(2);
     if (!targetName || !rawTime) {
-        return seal.replyToSender(ctx, msg, "⚠️ 参数不足，正确格式：。申请加入 角色名 时间点\n示例：。申请加入 张三 14:30");
+        return seal.replyToSender(ctx, msg, "⚠️ 参数不足，正确格式：申请加入 角色名 时间点\n示例：申请加入 张三 14:30");
     }
 
     const platform = msg.platform;
@@ -2800,7 +2975,7 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
     if (!autoSendname) {
         return seal.replyToSender(ctx, msg, `❌ 请先创建新角色再使用该功能`);
     }
-    const allowCustomSign = ext.storageGet("allow_custom_letter_sign") === "true";
+    const allowCustomSign = ext.storageGet("allow_custom_gift_sign") === "true";
     const sendname = allowCustomSign && customSenderName ? customSenderName : autoSendname;
 
     // 违规检查
@@ -2810,7 +2985,7 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
     if (!isUserFeatureEnabled(uid, "enable_general_gift")) {
         return seal.replyToSender(ctx, msg, `🎁 ${sendname} 被限制使用礼物功能。`);
     }
-    if (toname === sendname) {
+    if (toname === autoSendname) {
         return seal.replyToSender(ctx, msg, `🌸 礼不自赠，情当他寄。`);
     }
     // 新结构：通过 roleName 反查 uid
@@ -2821,8 +2996,8 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
 
     // 4. 冷却与限次检查
     const gameDay = ext.storageGet("global_days") || "D0";
-    const dailyLimit = parseInt(ext.storageGet("giftDailyLimit") || "100");
-    const cooldownMin = parseInt(ext.storageGet("giftCooldown") || "30");
+    const dailyLimit = getStorageInt("giftDailyLimit", 100);
+    const cooldownMin = getStorageInt("giftCooldown", 30);
     const isPreset = giftInput.startsWith('#');
 
     let globalStats = JSON.parse(ext.storageGet("global_gift_stats") || "{}");
@@ -2843,7 +3018,7 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
     }
 
     // 模式检查
-    const giftMode = parseInt(ext.storageGet("giftMode") || "0");
+    const giftMode = getStorageInt("giftMode", 0);
     if (giftMode === 1 && !isPreset) {
         return seal.replyToSender(ctx, msg, "❌ 当前仅允许使用预设礼物（以 # 开头）");
     }
@@ -2940,7 +3115,7 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
         publicGroupId = JSON.parse(ext.storageGet("adminAnnounceGroupId") || "null");
         const giftPublicEnabled = JSON.parse(ext.storageGet("gift_public_send") || "false");
         if (giftPublicEnabled && publicGroupId) {
-            const publicChance = parseInt(ext.storageGet("giftPublicChance") || "50", 10);
+            const publicChance = getStorageInt("giftPublicChance", 50);
             if ((Math.floor(Math.random() * 100) + 1) <= publicChance) {
                 isPublicDrop = true;
                 pubMsgForGift = seal.newMessage();
@@ -2951,19 +3126,22 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
         }
     }
 
+    const hideReceiverOnDrop = ext.storageGet("drop_hide_receiver") === "true";
+
     // 礼物实时存档
     if (isArchiveEnabled()) {
         postToArchive("/api/event", {
-            type:       "gift",
-            from_role:  sendname,
-            from_qq:    uid,
-            to_role:    actualToname,
-            to_qq:      actualToUid,
-            content:    giftContent || "",
-            extra_info: { giftName: giftDisplayName, isLost: isLost, isPublic: isPublicDrop },
-            game_day:   ext.storageGet("global_days") || "D?",
-            session_id: "",
-            timestamp:  Date.now()
+            type:            "gift",
+            from_role:       autoSendname,
+            from_custom_name: sendname !== autoSendname ? sendname : undefined,
+            from_qq:         uid,
+            to_role:         actualToname,
+            to_qq:           actualToUid,
+            content:         giftContent || "",
+            extra_info:      { giftName: giftDisplayName, isLost: isLost, isPublic: isPublicDrop, hide_receiver: isPublicDrop && hideReceiverOnDrop },
+            game_day:        ext.storageGet("global_days") || "D?",
+            session_id:      "",
+            timestamp:       Date.now()
         });
     }
 
@@ -2971,7 +3149,8 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
     seal.replyToSender(ctx, msg, `🎁 已成功将 ${giftDisplayName} 送往「${toname}」的房间。\n(今日第 ${userStat.count}份)`);
 
     if (isPublicDrop && pubCtxForGift && pubMsgForGift) {
-        const publicNotice = `🎁 公告：来自「${sendname}」送给「${toname}」的礼物：${giftDisplayName}\n寄语：「${giftContent}」`;
+        const dropReceiver = hideReceiverOnDrop ? "某人" : toname;
+        const publicNotice = `🎁 公告：来自「${sendname}」送给「${dropReceiver}」的礼物：${giftDisplayName}\n寄语：「${giftContent}」`;
         seal.replyToSender(pubCtxForGift, pubMsgForGift, publicNotice);
     }
 
@@ -3374,7 +3553,7 @@ cmd_grouplist_release.solve = (ctx, msg, cmdArgs) => {
     const fullId = `${gid}_占用`;
     if (group.includes(fullId)) {
         // ----- 读取"复盘强制结束"开关 -----
-        const requireFupan = JSON.parse(ext.storageGet("require_fupan_before_end") || "true");
+        const requireFupan = JSON.parse(ext.storageGet("require_fupan_before_end") || "false");
         if (requireFupan) {
             // ----- 复盘检查（参照更新 status 的遍历方式）-----
             const b_confirmedSchedule = JSON.parse(ext.storageGet("b_confirmedSchedule") || "{}");
@@ -3434,7 +3613,7 @@ cmd_grouplist_release.solve = (ctx, msg, cmdArgs) => {
         }
 
         // 存档必须在清除 group_expire_info 之前，否则拿不到 day/time/place
-        if (isArchiveEnabled()) {
+        if (isArchiveEnabled() && getSeasonMode() !== "no_review") {
             postToArchive("/api/session_end", buildSessionArchive(gid, platform, false));
         }
 
@@ -3532,7 +3711,7 @@ cmd_force_end.solve = (ctx, msg, cmdArgs) => {
     }
 
     // 存档必须在清除 group_expire_info 之前，否则拿不到 day/time/place
-    if (isArchiveEnabled()) {
+    if (isArchiveEnabled() && getSeasonMode() !== "no_review") {
         postToArchive("/api/session_end", buildSessionArchive(gid, platform, true));
     }
 
@@ -3746,12 +3925,18 @@ async function allocateGroup(platform, ctx, msg) {
     }
 
     for (let gid of freeGroups) {
+        // 先抢占（重新读取防止并发后已被占用），再检查群内成员
+        const gl = JSON.parse(ext.storageGet("group") || "[]");
+        if (!gl.includes(gid)) continue; // 已被其他并发调用占走
+        ext.storageSet("group", JSON.stringify(gl.map(g => g === gid ? gid + "_占用" : g)));
+
         const hasNonNPC = await checkGroupHasNonNPC(platform, gid, ctx, msg);
         if (!hasNonNPC) {
-            const newGroupList = groupList.map(g => g === gid ? gid + "_占用" : g);
-            ext.storageSet("group", JSON.stringify(newGroupList));
             return gid;
         }
+        // 群内有非NPC玩家，释放占用后继续找下一个
+        const gl2 = JSON.parse(ext.storageGet("group") || "[]");
+        ext.storageSet("group", JSON.stringify(gl2.map(g => g === gid + "_占用" ? gid : g)));
     }
     return null;
 }
@@ -3838,25 +4023,66 @@ async function checkNoQuitBlocker(qq, ctx, msg) {
 let cmd_fix_noquit = seal.ext.newCmdItemInfo();
 cmd_fix_noquit.name = "更新未退群";
 cmd_fix_noquit.solve = async (ctx, msg, cmdArgs) => {
-    seal.replyToSender(ctx, msg, "🔍 正在扫描全服...");
-
     const platform = msg.platform;
     const roles = (getRoleStorage()[platform] || {});
     const npcs = JSON.parse(ext.storageGet("a_npc_list") || "[]");
-    const groups = JSON.parse(ext.storageGet("group") || "[]").map(g => g.replace(/_占用$/, ""));
-    const noquit = JSON.parse(ext.storageGet("noquit") || "{}");
     const extras = JSON.parse(ext.storageGet("extra_accounts") || "{}");
 
-    let countUpdate = 0; // 新增记录数
-    let countKick = 0;   // 尝试踢人计数
-
+    const arg1 = cmdArgs.getArgN(1);
     // 检查是否包含"驱逐"参数
-    const shouldKick = cmdArgs.getArgN(1) === "驱逐";
+    const shouldKick = arg1 === "驱逐";
+    // 进行中模式：清空所有非NPC的noquit，只扫描未占用的群
+    const isInProgress = arg1 === "进行中";
 
     // 根据主账号 uid 获取其所有额外账号 QQ 列表
     const getExtraQQs = (primaryQQ) => Object.entries(extras)
         .filter(([k, v]) => k.startsWith(`${platform}:`) && v === primaryQQ)
         .map(([k]) => k.replace(`${platform}:`, ""));
+
+    if (isInProgress) {
+        seal.replyToSender(ctx, msg, "🔍 进行中模式：正在清空非NPC未退群记录并扫描空闲群...");
+
+        const rawGroups = JSON.parse(ext.storageGet("group") || "[]");
+        // 只扫描未占用的群（跳过含 _占用 后缀的）
+        const freeGroups = rawGroups.filter(g => !g.endsWith("_占用"));
+
+        // 清空所有非NPC玩家的 noquit 记录
+        const noquit = JSON.parse(ext.storageGet("noquit") || "{}");
+        for (const qq of Object.keys(noquit)) {
+            const roleName = roles[qq]?.[0];
+            if (roleName && !npcs.includes(roleName)) {
+                delete noquit[qq];
+            }
+        }
+
+        let countUpdate = 0;
+        for (let gid of freeGroups) {
+            const members = await getGroupMembersSilent(gid, ctx, msg);
+            for (let m of members) {
+                const qq = m.user_id.toString();
+                const roleName = roles[qq]?.[0];
+                if (roleName && !npcs.includes(roleName)) {
+                    if (!noquit[qq]) noquit[qq] = [];
+                    if (!noquit[qq].includes(gid)) {
+                        noquit[qq].push(gid);
+                        countUpdate++;
+                    }
+                }
+            }
+        }
+
+        ext.storageSet("noquit", JSON.stringify(noquit));
+        seal.replyToSender(ctx, msg, `✅ 进行中扫描完成！\n已清空并重建非NPC未退群记录\n空闲群扫描新增: ${countUpdate} 条记录`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    seal.replyToSender(ctx, msg, "🔍 正在扫描全服...");
+
+    const groups = JSON.parse(ext.storageGet("group") || "[]").map(g => g.replace(/_占用$/, ""));
+    const noquit = JSON.parse(ext.storageGet("noquit") || "{}");
+
+    let countUpdate = 0; // 新增记录数
+    let countKick = 0;   // 尝试踢人计数
 
     // 遍历所有群
     for (let gid of groups) {
@@ -3932,7 +4158,7 @@ async function finalizeGroupCreation(platform, ctx, msg, groupData, participants
         return false;
     }
 
-    const expireHours = parseInt(ext.storageGet("group_expire_hours") || "48");
+    const expireHours = getStorageInt("group_expire_hours", 48);
     const expireTime = Date.now() + expireHours * 3600000;
     const timeStr = new Date(expireTime).toLocaleString("zh-CN", { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 
@@ -3978,7 +4204,7 @@ async function finalizeGroupCreation(platform, ctx, msg, groupData, participants
         ? `\n同行：${otherNames.join("、")}`
         : (otherNames.length === 1 ? "" : "");
 
-    const guide = `\n\n修改时间 ➜ 。修改时间线 ${groupData.day} 新时间\n不想参加 ➜ 。拒绝时间线 ${gid}`;
+    const guide = `\n\n修改时间 ➜ 修改时间线 ${groupData.day} 新时间\n不想参加 ➜ 拒绝时间线 ${gid}\n结束互动 ➜ 在约会群发「结束私约」`;
 
     // 发给各参与者私群的邀请通知（保留"邀你"措辞）
     let noticeText;
@@ -4122,7 +4348,7 @@ cmd_view_expired_groups.solve = (ctx, msg, cmdArgs) => {
                     groupMsg.groupId = `${platform}-Group:${group.indexKey}`;
                     
                     const groupCtx = seal.createTempCtx(ctx.endPoint, groupMsg);
-                    const reminderMsg = `⏰ 温馨提示：\n本群互动时间已经超时了哦～\n\n📋 记录号：${group.indexKey}\n• 时间：${group.day} ${group.time}\n• 地点：${group.place}\n\n如果互动已结束，请使用「。结束私约」`;
+                    const reminderMsg = `⏰ 温馨提示：\n本群互动时间已经超时了哦～\n\n📋 记录号：${group.indexKey}\n• 时间：${group.day} ${group.time}\n• 地点：${group.place}\n\n如果互动已结束，请使用「结束私约」`;
                     
                     seal.replyToSender(groupCtx, groupMsg, reminderMsg);
                     successCount++;
@@ -4954,6 +5180,11 @@ function wishRemoveFromInv(roleKey, code, count) {
     ext.storageSet("global_inventories", JSON.stringify(invs));
 }
 
+// 兼容 fromId 带/不带 platform 前缀两种历史格式
+function wishIsOwner(platform, uid, rawUid, fromId) {
+    return fromId === uid || fromId === rawUid || fromId.replace(`${platform}:`, "") === rawUid;
+}
+
 const WishUtils = {
     getPool: () => {
         const now = Date.now(), exp = 86400000;
@@ -4986,12 +5217,15 @@ cmd_post_wish.solve =(ctx, msg, cmdArgs) => {
     if (cfg.enable_wish_system === false) return seal.replyToSender(ctx, msg, "🌠 心愿功能已关闭。");
 
     const platform = msg.platform;
-    const uid = `${platform}:${getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""))}`;
+    const rawUid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
+    const uid = `${platform}:${rawUid}`;
     const name = getUserRoleName(platform, uid);
     const day = ext.storageGet("global_days");
     if (!name || !day) return seal.replyToSender(ctx, msg, !name ? "请先绑定角色" : "请先设置全局天数");
+    if (!isUserFeatureEnabled(rawUid, "enable_wish_system"))
+        return seal.replyToSender(ctx, msg, "❌ 你已被限制使用心愿功能");
 
-    const rawFull = msg.message.trim().replace(/^[。.]\s*挂心愿\s*/, "");
+    const rawFull = msg.message.trim().replace(/^[。.]?\s*挂心愿\s*/, "");
     const pipeIdx = rawFull.indexOf("|");
     const mainPart = pipeIdx !== -1 ? rawFull.slice(0, pipeIdx).trim() : rawFull.trim();
     const customNick = pipeIdx !== -1 ? rawFull.slice(pipeIdx + 1).trim() : "";
@@ -5002,7 +5236,6 @@ cmd_post_wish.solve =(ctx, msg, cmdArgs) => {
     const content = contentArr.join(" ").trim();
     if (!rawT || !place || !content) return seal.replyToSender(ctx, msg, "用法：挂心愿 1400-1500 地点 内容 [| 昵称]");
 
-    // Bug1修复：用 parseAndValidateTime 替代未定义的 parseWishTime
     const timeResult = parseAndValidateTime(rawT, [], 0, "心愿");
     if (!timeResult.valid) return seal.replyToSender(ctx, msg, timeResult.errorMsg);
     const time = timeResult.time;
@@ -5012,13 +5245,13 @@ cmd_post_wish.solve =(ctx, msg, cmdArgs) => {
     const pCheck = checkPlaceCommon(platform, name, place, "挂心愿");
     if (!pCheck.valid) return seal.replyToSender(ctx, msg, pCheck.errorMsg);
 
-    const conflicts = checkAcceptanceConflicts(platform, uid.replace(`${platform}:`, ""), name, day, time);
+    const conflicts = checkAcceptanceConflicts(platform, rawUid, name, day, time);
     if (conflicts.length) return seal.replyToSender(ctx, msg, `⚠️ 时间冲突：\n${conflicts.join('\n')}`);
 
     let pool = WishUtils.getPool();
-    const wishMaxConcurrent = parseInt(ext.storageGet("wish_max_concurrent") || "3");
-    if (pool.filter(w => w.fromId === uid).length >= wishMaxConcurrent) return seal.replyToSender(ctx, msg, `⚠️ 最多同时挂${wishMaxConcurrent}个心愿`);
-    const wishDailyPostLimit = parseInt(ext.storageGet("wish_daily_post_limit") || "0");
+    const wishMaxConcurrent = getStorageInt("wish_max_concurrent", 3);
+    if (pool.filter(w => wishIsOwner(platform, uid, rawUid, w.fromId)).length >= wishMaxConcurrent) return seal.replyToSender(ctx, msg, `⚠️ 最多同时挂${wishMaxConcurrent}个心愿`);
+    const wishDailyPostLimit = getStorageInt("wish_daily_post_limit", 0);
     if (wishDailyPostLimit > 0 && wishGetDailyCount(uid, day, 'post') >= wishDailyPostLimit) {
         return seal.replyToSender(ctx, msg, `⚠️ 今日发布心愿次数已达上限（${wishDailyPostLimit}次）`);
     }
@@ -5045,13 +5278,13 @@ cmd_post_wish.solve =(ctx, msg, cmdArgs) => {
     seal.replyToSender(ctx, msg, wishSuccessMsg);
 
     // 公共频道推送
-    if (JSON.parse(ext.storageGet("wish_public_send") || "false")) {
+    if (JSON.parse(ext.storageGet("wish_public_send") || "true")) {
         const gid = JSON.parse(ext.storageGet("adminAnnounceGroupId") || "null");
         if (gid) {
             const genderEmoji = wishProfile.gender === "男" ? "👨" : "👩";
             const displayLabel = customNick ? `${genderEmoji} ${customNick}` : genderEmoji;
             const m = seal.newMessage(); m.messageType = "group"; m.groupId = `${platform}-Group:${gid}`;
-            seal.replyToSender(seal.createTempCtx(ctx.endPoint, m), m, `🌠 新心愿 [${id}]\n${displayLabel}\n📅 ${day} ${time.replace('-', ' ~ ')}\n📍 ${place}\n💌 ${content}\n✨ 摘取：。摘心愿 ${id}`);
+            seal.replyToSender(seal.createTempCtx(ctx.endPoint, m), m, `🌠 新心愿 [${id}]\n${displayLabel}\n📅 ${day} ${time.replace('-', ' ~ ')}\n📍 ${place}\n💌 ${content}\n✨ 摘取：摘心愿 ${id}`);
         }
     }
     return seal.ext.newCmdExecuteResult(true);
@@ -5075,22 +5308,23 @@ cmd_pick_wish.solve =async (ctx, msg, cmdArgs) => {
     if (cfg.enable_wish_system === false) return seal.replyToSender(ctx, msg, "🌠 心愿功能已关闭。");
     const wid = cmdArgs.getArgN(1)?.toUpperCase();
     const platform = msg.platform;
-    const uid = `${platform}:${getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""))}`;
+    const rawUid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
+    const uid = `${platform}:${rawUid}`;
     const name = getUserRoleName(platform, uid);
-    if (!wid || !name) return seal.replyToSender(ctx, msg, !wid ? "格式：。摘心愿 编号" : "请先绑定角色");
+    if (!wid || !name) return seal.replyToSender(ctx, msg, !wid ? "格式：摘心愿 编号" : "请先绑定角色");
 
     let pool = WishUtils.getPool();
     const wish = pool.find(w => w.id === wid);
-    if (!wish || wish.fromId === uid) return seal.replyToSender(ctx, msg, !wish ? "心愿不存在或已过期" : "不能摘自己的心愿");
+    if (!wish || wishIsOwner(platform, uid, rawUid, wish.fromId)) return seal.replyToSender(ctx, msg, !wish ? "心愿不存在或已过期" : "不能摘自己的心愿");
 
-    const fromName = getUserRoleName(platform, wish.fromId);
-    
+    const fromName = getUserRoleName(platform, wish.fromId) || wish.fromId;
+
     // 摘取冲突双向检查
     const check = (u, n) => checkAcceptanceConflicts(platform, u.replace(`${platform}:`, ""), n, wish.day, wish.time);
     const errs = [...check(uid, name), ...check(wish.fromId, fromName)];
     if (errs.length) return seal.replyToSender(ctx, msg, `⚠️ 无法建立联系：\n${errs.join('\n')}`);
 
-    const wishDailyPickLimit = parseInt(ext.storageGet("wish_daily_pick_limit") || "0");
+    const wishDailyPickLimit = getStorageInt("wish_daily_pick_limit", 0);
     const currentDay = ext.storageGet("global_days") || "";
     if (wishDailyPickLimit > 0 && wishGetDailyCount(uid, currentDay, 'pick') >= wishDailyPickLimit) {
         return seal.replyToSender(ctx, msg, `⚠️ 今日摘取心愿次数已达上限（${wishDailyPickLimit}次）`);
@@ -5121,8 +5355,7 @@ cmd_pick_wish.solve =async (ctx, msg, cmdArgs) => {
 
     let pickReply = `🎉 摘取成功！专属小群已建立。\n💬 群号：${wishGid}`;
     if (wish.rewardCode) {
-        const pickerRoleKey = `${platform}:${uid.replace(`${platform}:`, "")}`;
-        wishAddToInv(pickerRoleKey, wish.rewardCode, wish.rewardCount);
+        wishAddToInv(uid, wish.rewardCode, wish.rewardCount);
         pickReply += `\n🎁 悬赏奖励：${wish.rewardName} ×${wish.rewardCount} 已加入你的背包！`;
     }
     seal.replyToSender(ctx, msg, pickReply);
@@ -5138,14 +5371,18 @@ cmd_withdraw_wish.solve =(ctx, msg, cmdArgs) => {
     if (cfg.enable_wish_system === false) return seal.replyToSender(ctx, msg, "🌠 心愿功能已关闭。");
     const wid = cmdArgs.getArgN(1)?.toUpperCase();
     const platform = msg.platform;
-    const uid = `${platform}:${getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""))}`;
+    const rawUid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
+    const uid = `${platform}:${rawUid}`;
     let pool = WishUtils.getPool();
-    const myWishes = pool.filter(w => w.fromId === uid);
 
-    if (!wid) return seal.replyToSender(ctx, msg, WishUtils.formatList(myWishes, "你发布的心愿") + "\n\n使用「。撤心愿 编号」撤回");
+    if (!wid) {
+        const myWishes = pool.filter(w => wishIsOwner(platform, uid, rawUid, w.fromId));
+        return seal.replyToSender(ctx, msg, WishUtils.formatList(myWishes, "你发布的心愿") + "\n\n使用「撤心愿 编号」撤回");
+    }
 
-    const withdrawWish = myWishes.find(w => w.id === wid);
-    if (!withdrawWish) return seal.replyToSender(ctx, msg, "❌ 编号错误或该心愿不属于你");
+    const withdrawWish = pool.find(w => w.id === wid);
+    if (!withdrawWish) return seal.replyToSender(ctx, msg, `❌ 找不到编号「${wid}」的心愿，可能已过期或被摘取`);
+    if (!wishIsOwner(platform, uid, rawUid, withdrawWish.fromId)) return seal.replyToSender(ctx, msg, "❌ 该心愿不属于你");
 
     WishUtils.savePool(pool.filter(w => w.id !== wid));
     let withdrawReply = `✅ 已撤回心愿 ${wid}`;
@@ -5169,13 +5406,16 @@ cmd_bounty_wish.solve = (ctx, msg, cmdArgs) => {
     if (ext.storageGet("wish_bounty_enabled") === "false") return seal.replyToSender(ctx, msg, "🎁 悬赏心愿功能已关闭。");
 
     const platform = msg.platform;
-    const uid = `${platform}:${getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""))}`;
+    const rawUid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
+    const uid = `${platform}:${rawUid}`;
     const name = getUserRoleName(platform, uid);
     const day = ext.storageGet("global_days");
     if (!name) return seal.replyToSender(ctx, msg, "请先绑定角色");
     if (!day) return seal.replyToSender(ctx, msg, "请先设置全局天数");
+    if (!isUserFeatureEnabled(rawUid, "enable_wish_system"))
+        return seal.replyToSender(ctx, msg, "❌ 你已被限制使用心愿功能");
 
-    const rawFull = msg.message.trim().replace(/^[。.]\s*悬赏心愿\s*/, "");
+    const rawFull = msg.message.trim().replace(/^[。.]?\s*悬赏心愿\s*/, "");
     const pipeIdx = rawFull.search(/[|｜]/);
     if (pipeIdx === -1) return seal.replyToSender(ctx, msg, "格式：悬赏心愿 时间 地点 内容 | 物品名 数量 [| 昵称]\n示例：悬赏心愿 1400-1500 图书馆 陪我看书 | 滋补汤 1 | 神秘人A");
 
@@ -5207,8 +5447,7 @@ cmd_bounty_wish.solve = (ctx, msg, cmdArgs) => {
     const rewardItem = Object.values(reg).find(r => r.code === rewardInput.toUpperCase() || r.name === rewardInput);
     if (!rewardItem) return seal.replyToSender(ctx, msg, `❌ 找不到物品「${rewardInput}」`);
 
-    const rawUid = uid.replace(`${platform}:`, "");
-    const roleKey = `${platform}:${rawUid}`;
+    const roleKey = uid;
     if (!wishCheckInv(roleKey, rewardItem.code, rewardCount)) {
         return seal.replyToSender(ctx, msg, `❌ 背包中「${rewardItem.name}」数量不足（需要 ${rewardCount}）`);
     }
@@ -5223,9 +5462,9 @@ cmd_bounty_wish.solve = (ctx, msg, cmdArgs) => {
     if (conflicts.length) return seal.replyToSender(ctx, msg, `⚠️ 时间冲突：\n${conflicts.join('\n')}`);
 
     let pool = WishUtils.getPool();
-    const wishMaxConcurrentB = parseInt(ext.storageGet("wish_max_concurrent") || "3");
-    if (pool.filter(w => w.fromId === uid).length >= wishMaxConcurrentB) return seal.replyToSender(ctx, msg, `⚠️ 最多同时挂${wishMaxConcurrentB}个心愿`);
-    const wishDailyPostLimitB = parseInt(ext.storageGet("wish_daily_post_limit") || "0");
+    const wishMaxConcurrentB = getStorageInt("wish_max_concurrent", 3);
+    if (pool.filter(w => wishIsOwner(platform, uid, rawUid, w.fromId)).length >= wishMaxConcurrentB) return seal.replyToSender(ctx, msg, `⚠️ 最多同时挂${wishMaxConcurrentB}个心愿`);
+    const wishDailyPostLimitB = getStorageInt("wish_daily_post_limit", 0);
     if (wishDailyPostLimitB > 0 && wishGetDailyCount(uid, day, 'post') >= wishDailyPostLimitB) {
         return seal.replyToSender(ctx, msg, `⚠️ 今日发布心愿次数已达上限（${wishDailyPostLimitB}次）`);
     }
@@ -5249,14 +5488,14 @@ cmd_bounty_wish.solve = (ctx, msg, cmdArgs) => {
     if (wishCoinCheck?.cost > 0) successMsg += `\n💰 已消耗写信币 ${wishCoinCheck.cost} 枚`;
     seal.replyToSender(ctx, msg, successMsg);
 
-    if (JSON.parse(ext.storageGet("wish_public_send") || "false")) {
+    if (JSON.parse(ext.storageGet("wish_public_send") || "true")) {
         const gid = JSON.parse(ext.storageGet("adminAnnounceGroupId") || "null");
         if (gid) {
             const genderEmoji = bountyProfile.gender === "男" ? "👨" : "👩";
             const displayLabel = customNick ? `${genderEmoji} ${customNick}` : genderEmoji;
             const m = seal.newMessage(); m.messageType = "group"; m.groupId = `${platform}-Group:${gid}`;
             seal.replyToSender(seal.createTempCtx(ctx.endPoint, m), m,
-                `🌠 新悬赏心愿 [${id}]\n${displayLabel}\n📅 ${day} ${time.replace('-', ' ~ ')}\n📍 ${place}\n💌 ${content}\n🎁 悬赏：${rewardItem.name} ×${rewardCount}\n✨ 摘取：。摘心愿 ${id}`);
+                `🌠 新悬赏心愿 [${id}]\n${displayLabel}\n📅 ${day} ${time.replace('-', ' ~ ')}\n📍 ${place}\n💌 ${content}\n🎁 悬赏：${rewardItem.name} ×${rewardCount}\n✨ 摘取：摘心愿 ${id}`);
         }
     }
     return seal.ext.newCmdExecuteResult(true);
@@ -5272,7 +5511,10 @@ async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, co
         return seal.replyToSender(ctx, msg, "🕊️ 寄信功能已关闭。");
     }
 
-    if (toname === sendname) {
+    // 真实角色名（sendname 可能是自定义署名，realSendname 始终是绑定角色）
+    const realSendname = getRoleName(ctx, msg) || sendname;
+
+    if (toname === realSendname) {
         return seal.replyToSender(ctx, msg, "📱 短信不可发给自己。");
     }
 
@@ -5295,7 +5537,7 @@ async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, co
     const cooldownKey = `chaos_letter_cooldown_${platform}:${uid}`;
     const lastSent = parseInt(ext.storageGet(cooldownKey) || "0");
     const now = Date.now();
-    const mailCooldownMin = parseInt(ext.storageGet("mailCooldown") || "60");
+    const mailCooldownMin = getStorageInt("mailCooldown", 60);
     
     if (now - lastSent < mailCooldownMin * 60 * 1000) {
         const rem = Math.ceil((mailCooldownMin * 60 * 1000 - (now - lastSent)) / 60000);
@@ -5366,26 +5608,36 @@ async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, co
     seal.replyToSender(newctx, newmsg, notice);
     recordInteractionStat(platform, sendname, trueRecipientName, "sms");
 
+    // 提前判断是否公开（需在存档前确定，以便写入 hide_receiver）
+    const hideReceiverOnDrop = ext.storageGet("drop_hide_receiver") === "true";
+    const letterPublicEnabled = JSON.parse(ext.storageGet("letter_public_send") || "false");
+    const adminGidForSms = JSON.parse(ext.storageGet("adminAnnounceGroupId") || "null");
+    const isPublicSms = letterPublicEnabled && adminGidForSms &&
+        (Math.floor(Math.random() * 100) + 1 <= chaosConfig.publicChance);
+
     // 短信实时存档
     if (isArchiveEnabled()) {
         const isMisdelivered    = trueRecipientName !== toname;
         const isContentChaos    = content !== contentOriginal;
         const isSignatureChaos  = finalSignature !== `落款：${sendname}`;
         postToArchive("/api/event", {
-            type:       "sms",
-            from_role:  sendname,
-            from_qq:    uid,
-            to_role:    trueRecipientName,
-            to_qq:      trueRecipientUid,
-            content:    contentOriginal,
+            type:            "sms",
+            from_role:       realSendname,
+            from_custom_name: sendname !== realSendname ? sendname : undefined,
+            from_qq:         uid,
+            to_role:         trueRecipientName,
+            to_qq:           trueRecipientUid,
+            content:         contentOriginal,
             extra_info: {
-                delivered:       content,
-                signature:       finalSignature,
-                intended_to:     toname,
-                is_misdelivered: isMisdelivered,
-                is_content_chaos: isContentChaos,
+                delivered:          content,
+                signature:          finalSignature,
+                intended_to:        toname,
+                is_misdelivered:    isMisdelivered,
+                is_content_chaos:   isContentChaos,
                 is_signature_chaos: isSignatureChaos,
-                is_chaos:        isMisdelivered || isContentChaos || isSignatureChaos
+                is_chaos:           isMisdelivered || isContentChaos || isSignatureChaos,
+                isPublic:           isPublicSms,
+                hide_receiver:      isPublicSms && hideReceiverOnDrop
             },
             game_day:   gameDay,
             session_id: "",
@@ -5402,17 +5654,14 @@ async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, co
     seal.replyToSender(ctx, msg, `🕊️ 信件已由鸽子衔往 ${toname} 处。今日已发 ${userRec.count}/${chaosConfig.dailyLimit}。`);
 
     // 公开逻辑
-    const letterPublicEnabled = JSON.parse(ext.storageGet("letter_public_send") || "false");
-    if (letterPublicEnabled && (Math.floor(Math.random() * 100) + 1 <= chaosConfig.publicChance)) {
-        const adminGid = JSON.parse(ext.storageGet("adminAnnounceGroupId") || "null");
-        if (adminGid) {
-            const pMsg = seal.newMessage();
-            pMsg.messageType = "group";
-            pMsg.groupId = `${platform}-Group:${adminGid}`;
-            const pCtx = seal.createTempCtx(ctx.endPoint, pMsg);
-            const publicContent = chaosConfig.publicShowEffect ? content : contentOriginal;
-            seal.replyToSender(pCtx, pMsg, `💌 公开信件：\n「${sendname}」→「${toname}」\n内容：「${publicContent}」`);
-        }
+    if (isPublicSms) {
+        const pMsg = seal.newMessage();
+        pMsg.messageType = "group";
+        pMsg.groupId = `${platform}-Group:${adminGidForSms}`;
+        const pCtx = seal.createTempCtx(ctx.endPoint, pMsg);
+        const publicContent = chaosConfig.publicShowEffect ? content : contentOriginal;
+        const publicTo = hideReceiverOnDrop ? "某人" : toname;
+        seal.replyToSender(pCtx, pMsg, `💌 公开信件：\n「${sendname}」→「${publicTo}」\n内容：「${publicContent}」`);
     }
 
     if (typeof recordMeetingAndAnnounce === "function") {
@@ -5507,7 +5756,7 @@ cmd_create_official_appointment.solve = async (ctx, msg, cmdArgs) => {
 
   // --- 新增：过期与计时逻辑 ---
   const acceptTime = Date.now();
-  const expireHours = parseInt(ext.storageGet("group_expire_hours") || "48");
+  const expireHours = getStorageInt("group_expire_hours", 48);
   const expireTime = acceptTime + expireHours * 60 * 60 * 1000;
   const formatTime = (ts) => new Date(ts).toLocaleString("zh-CN", { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
   const expireNotice = `⏰ 本群将在 ${formatTime(expireTime)} 自动结束（${expireHours}小时有效期）`;
@@ -5552,7 +5801,7 @@ cmd_create_official_appointment.solve = async (ctx, msg, cmdArgs) => {
   setGroupName(targetCtx, targetMsg, gid, finalGroupName);
 
   // 向戏群发公告
-  const officialGuide = `\n\n修改时间 ➜ 。修改时间线 ${day} 新时间\n不想参加 ➜ 。拒绝时间线 ${gid}`;
+  const officialGuide = `\n\n修改时间 ➜ 修改时间线 ${day} 新时间\n不想参加 ➜ 拒绝时间线 ${gid}`;
   const officialAnnouncement = `🎖️ 官约已确认\n\n📅 ${day} ${time}\n📍 ${place}\n👥 参与者：${validParticipants.join("、")}\n\n群号：${gid}\n有效至 ${new Date(expireTime).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}${officialGuide}`;
   seal.replyToSender(targetCtx, targetMsg, officialAnnouncement);
 
@@ -5820,7 +6069,7 @@ cmd_execute_official.solve = async (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
   }
 
-  const expireHours = parseInt(ext.storageGet("group_expire_hours") || "48");
+  const expireHours = getStorageInt("group_expire_hours", 48);
   const formatTime = (ts) => new Date(ts).toLocaleString("zh-CN", { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
 
   let results = [];
@@ -5871,7 +6120,7 @@ cmd_execute_official.solve = async (ctx, msg, cmdArgs) => {
     setGroupName(targetCtx, targetMsg, gid, finalGroupName);
 
     // 向戏群发公告
-    const execGuide = `\n\n修改时间 ➜ 。修改时间线 ${day} 新时间\n不想参加 ➜ 。拒绝时间线 ${gid}`;
+    const execGuide = `\n\n修改时间 ➜ 修改时间线 ${day} 新时间\n不想参加 ➜ 拒绝时间线 ${gid}`;
     const execExpireStr = new Date(expireTime).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
     seal.replyToSender(targetCtx, targetMsg, `🎖️ 官约已确认\n\n📅 ${day} ${time}\n📍 ${place}\n👥 参与者：${participants.join("、")}\n\n群号：${gid}\n有效至 ${execExpireStr}${execGuide}`);
 
@@ -6216,19 +6465,9 @@ function triggerSightingCheck(platform, day, time, place, participants, groupId,
 function getMonitorSettings() {
     const defaultSettings = {
         enabled: true,
-        min_words_phone: 20,
-        min_words_private: 150,
-        min_words_wish: 150,
-        min_words_official: 150,
-        timeout_phone: 3600000,
-        timeout_private: 10800000,
-        timeout_wish: 10800000,
-        timeout_official: 10800000,
-        remind_interval_phone: 5400000,
-        remind_interval_private: 10800000,
-        remind_interval_wish: 10800000,
-        remind_interval_official: 10800000,
-        auto_monitor_all_groups: true  // 新增：自动监控所有群组
+        timeout: 10800000,          // 180分钟，统一超时时间
+        remind_interval: 10800000,  // 180分钟，统一提醒间隔
+        auto_monitor_all_groups: true
     };
     
     const settings = JSON.parse(ext.storageGet("monitor_settings") || "{}");
@@ -6627,16 +6866,8 @@ function initGroupTimer(platform, groupId, subtype, participants, initiator) {
     const timers = getGroupTimers();
     const now = Date.now();
     
-    // 根据类型获取超时时间
-    const getTimeout = (type) => {
-        switch(type) {
-            case "电话": return settings.timeout_phone;
-            case "私密": return settings.timeout_private;
-            case "心愿": return settings.timeout_wish;
-            case "官方约会": return settings.timeout_official;
-            default: return settings.timeout_private;
-        }
-    };
+    // 获取超时时间（统一）
+    const getTimeout = () => settings.timeout;
     
     // 判断计时模式：2人使用轮流模式，多人使用独立模式
     const isTwoPerson = activeParticipants.length === 2;
@@ -6650,7 +6881,7 @@ function initGroupTimer(platform, groupId, subtype, participants, initiator) {
         participants: activeParticipants, // 使用过滤后的参与者
         timerStatus: {},
         lastRemindTime: null,
-        timeoutDuration: getTimeout(subtype),
+        timeoutDuration: getTimeout(),
         timerMode: isTwoPerson ? "turn_taking" : "independent"
     };
     
@@ -6735,21 +6966,44 @@ function handleReply(platform, groupId, roleName, message) {
         return false;
     }
 
-    // RP存档：只要角色在活跃会话中（无论是否轮到），都捕获正确格式的RP正文
-    if (isArchiveEnabled()) {
-        const lines = message.split("\n");
-        if (lines[0].trim() === roleName) {
-            const content = lines.slice(1).join("\n").trim();
+    // RP存档（不复盘模式跳过 entry 记录）
+    if (isArchiveEnabled() && getSeasonMode() !== "no_review") {
+        const _archiveSS = getSessionStats()[groupId] || {};
+        const _startTs = _archiveSS._startTime || Date.now();
+        const _expireInfo = JSON.parse(ext.storageGet("group_expire_info") || "{}")[groupId] || {};
+        const _gameDay = _expireInfo.day || timer.day || ext.storageGet("global_days") || "";
+        const _npcList = JSON.parse(ext.storageGet("a_npc_list") || "[]");
+        const _logTypes = ["私密", "电话", "官约", "心愿"];
+        const _archivePayload = {
+            session_id: `${groupId}_${_startTs}`,
+            group_id:   groupId,
+            role_name:  roleName,
+            is_npc:     _npcList.includes(roleName),
+            game_day:   _gameDay,
+            game_time:  _expireInfo.time  || timer.time  || "",
+            place:      _expireInfo.place || timer.place || "",
+            subtype:    timer.subtype || "",
+            timestamp:  Date.now()
+        };
+
+        if (timer.subtype === "电话" || _npcList.includes(roleName)) {
+            // 电话 / NPC：无视格式，全量记录，归属由QQ反查角色名
+            const content = message.trim();
             if (content) {
-                const _archiveSS = getSessionStats()[groupId] || {};
-                const _startTs = _archiveSS._startTime || Date.now();
-                postToArchive("/api/rp", {
-                    session_id: `${groupId}_${_startTs}`,
-                    group_id:   groupId,
-                    role_name:  roleName,
-                    content:    content,
-                    timestamp:  Date.now()
-                });
+                postToArchive("/api/rp", { ..._archivePayload, content });
+                if (_logTypes.includes(timer.subtype))
+                    console.log(`[存档] ${timer.subtype} | ${_gameDay} | ${roleName}(NPC) | ${content.slice(0,30)}…`);
+            }
+        } else {
+            // 其他场次：首行必须是角色名
+            const lines = message.split("\n");
+            if (lines[0].trim() === roleName) {
+                const content = lines.slice(1).join("\n").trim();
+                if (content) {
+                    postToArchive("/api/rp", { ..._archivePayload, content });
+                    if (_logTypes.includes(timer.subtype))
+                        console.log(`[存档] ${timer.subtype} | ${_gameDay} | ${roleName} | ${content.slice(0,30)}…`);
+                }
             }
         }
     }
@@ -6759,15 +7013,10 @@ function handleReply(platform, groupId, roleName, message) {
         return false;
     }
 
-    // 2. 字数统计与校验
+    // 2. 字数统计
     const wordCount = countWords(message);
-    const minWords = getMinWords(timer.subtype);
-    if (wordCount < minWords) {
-        // 字数不足不触发计数和状态更新
-        return false; 
-    }
 
-    // --- 校验通过，开始更新数据 ---
+    // --- 开始更新数据 ---
 
     // 3. 记录回复状态
     roleStatus.status = "replied";
@@ -6810,7 +7059,9 @@ function handleReply(platform, groupId, roleName, message) {
     roleStatus.sessionWords += wordCount;
 
     // 实时推送本场 stats 到存档服务器（自动更新统计页面 + 玩家数据库）
-    if (isArchiveEnabled() && sessionUid) {
+    // NPC 回复不触发 stats 推送，避免污染数据分析
+    const _npcListStats = JSON.parse(ext.storageGet("a_npc_list") || "[]");
+    if (isArchiveEnabled() && sessionUid && !_npcListStats.includes(roleName)) {
         const _ss2 = getSessionStats()[groupId] || {};
         const _startTs2 = _ss2._startTime || Date.now();
         const liveStats = {};
@@ -6822,10 +7073,16 @@ function handleReply(platform, groupId, roleName, message) {
         });
         const livePlayers = (timer.participants || []).map(rn => {
             const ruid = getUidByRoleName(platform, rn);
-            return ruid ? { qq: ruid, role_name: rn } : null;
+            return ruid ? { qq: ruid, role_name: rn, is_npc: _npcListStats.includes(rn) } : null;
         }).filter(Boolean);
+        const _expireInfo2 = JSON.parse(ext.storageGet("group_expire_info") || "{}")[groupId] || {};
         postToArchive("/api/session_stats", {
             session_id: `${groupId}_${_startTs2}`,
+            group_id:   groupId,
+            game_day:   _expireInfo2.day  || timer.day   || ext.storageGet("global_days") || "",
+            game_time:  _expireInfo2.time || timer.time  || "",
+            place:      _expireInfo2.place|| timer.place || "",
+            subtype:    timer.subtype || "",
             stats:      liveStats,
             players:    livePlayers,
         });
@@ -6869,19 +7126,6 @@ function countWords(text) {
     return chineseChars + englishWords;
 }
 
-/**
- * 获取最低字数要求
- */
-function getMinWords(subtype) {
-    const settings = getMonitorSettings();
-    switch(subtype) {
-        case "电话": return settings.min_words_phone;
-        case "私密": return settings.min_words_private;
-        case "心愿": return settings.min_words_wish;
-        case "官方约会": return settings.min_words_official;
-        default: return settings.min_words_private;
-    }
-}
 
 /**
  * 更新用户统计
@@ -6948,15 +7192,8 @@ function updateUserStats(platform, uid, wordCount, startTime, repliedTime) {
 /**
  * 获取提醒间隔
  */
-function getRemindInterval(subtype) {
-    const settings = getMonitorSettings();
-    switch(subtype) {
-        case "电话": return settings.remind_interval_phone;
-        case "私密": return settings.remind_interval_private;
-        case "心愿": return settings.remind_interval_wish;
-        case "官方约会": return settings.remind_interval_official;
-        default: return settings.remind_interval_private;
-    }
+function getRemindInterval() {
+    return getMonitorSettings().remind_interval;
 }
 
 /**
@@ -7385,6 +7622,11 @@ ext.onNotCommandReceived = (ctx, msg) => {
             return ws({ action: "get_msg", params: { message_id: wdId } }, ctx, msg);
         }
         if (raw.includes("转发复盘")) {
+            // 防重复：检查当前群是否已复盘
+            const bSchedCheck = getS("b_confirmedSchedule");
+            const alreadyFupan = Object.values(bSchedCheck).flat().some(ev => ev.group === groupId && ev.status === "active" && ev.fupan);
+            if (alreadyFupan) return seal.replyToSender(ctx, msg, "⚠️ 当前群已完成复盘，请勿重复转发");
+
             const fupanRouting = ext.storageGet("fupan_routing_enabled") === "true";
             let targetId;
             if (fupanRouting) {
@@ -7393,9 +7635,8 @@ ext.onNotCommandReceived = (ctx, msg) => {
                 const firstRoutingId = Object.values(routingMap)[0];
                 if (!firstRoutingId) return seal.replyToSender(ctx, msg, "❌ 未配置复盘群分流群，请先用「。复盘群分流群」配置");
                 // 找当前群对应约会的天数，然后查路由表
-                const bSched = getS("b_confirmedSchedule");
                 let appointmentDay = null;
-                for (const evList of Object.values(bSched)) {
+                for (const evList of Object.values(bSchedCheck)) {
                     for (const ev of evList) {
                         if (ev.group === groupId && ev.status === "active") {
                             appointmentDay = ev.day || null;
@@ -7410,7 +7651,8 @@ ext.onNotCommandReceived = (ctx, msg) => {
                 targetId = ext.storageGet("background_group_id");
                 if (!targetId) return seal.replyToSender(ctx, msg, "未配置目标群");
             }
-            ext.storageSet("temp_target_gid", targetId); ext.storageSet("temp_task_type", "forward"); ext.storageSet("temp_source_group_name", ctx.group.groupName);
+            const sourceName = ctx.group?.groupName || "未知群聊";
+            ext.storageSet("temp_target_gid", targetId); ext.storageSet("temp_task_type", "forward"); ext.storageSet("temp_source_group_name", sourceName);
             let bSched = getS("b_confirmedSchedule");
             Object.values(bSched).flat().forEach(ev => { if(ev.group === groupId && ev.status === "active") ev.fupan = true; });
             ext.storageSet("b_confirmedSchedule", JSON.stringify(bSched));
@@ -7884,7 +8126,10 @@ ext.onNotCommandReceived = (ctx, msg) => {
              "发送心动信",
              "【发送对象】角色名",
              "【内容】想说的话",
-             "【署名】自定义昵称（选填）"],
+             "【署名】自定义昵称（选填，不超过20字）",
+             "",
+             "。撤回心动信 编号   撤回已投递的信",
+             "查看信箱            查看收到的心动信"],
         ];
         const gidRaw = parseInt(msg.groupId.replace(/\D/g, ""), 10);
         const nodes = sections.map(lines => ({
@@ -8074,9 +8319,8 @@ cmd_view_timers.solve =(ctx, msg) => {
     const tKeys = Object.keys(timers);
     if (!tKeys.length) return seal.replyToSender(ctx, msg, "📭 当前没有活跃的计时器");
 
-    const nodes = [{ type: "node", data: { name: "计时监控中心", uin: "2852199344", content: `📊 运行中：${tKeys.length} 个\n更新：${new Date().toLocaleTimeString()}` } }];
-
     let totalOverdue = 0;
+    const timerNodes = [];
     tKeys.forEach(gid => {
         const t = timers[gid];
         const detail = Object.entries(t.timerStatus).map(([name, s]) => {
@@ -8094,15 +8338,25 @@ cmd_view_timers.solve =(ctx, msg) => {
             return `${isOver ? "🔴" : "⏳"} ${name}: ${Math.abs(Math.round(diff / 60000))}min${isOver ? "!" : ""}\n${statLine}`;
         }).join('\n');
 
-        nodes.push({
+        timerNodes.push({
             type: "node",
             data: { name: `群组 ${gid} | ${t.subtype}`, uin: "10001", content: `📍 模式：${t.timerMode === 'turn_taking' ? '轮流' : '独立'}\n— 以上 —\n${detail}` }
         });
     });
 
     const gId = parseInt(msg.groupId.replace(/[^\d]/g, ""), 10);
-    ws({ action: "send_group_forward_msg", params: { group_id: gId, messages: nodes } }, ctx, msg, "");
-    seal.replyToSender(ctx, msg, `✅ 报表已生成\n⏳ 超时：${totalOverdue} 人\n(详情见下方合并消息)`);
+    const CHUNK = 10;
+    const totalBatches = Math.ceil(timerNodes.length / CHUNK);
+    const timeStr = new Date().toLocaleTimeString();
+
+    for (let i = 0; i < totalBatches; i++) {
+        const batchLabel = totalBatches > 1 ? `（第${i + 1}批/共${totalBatches}批）` : "";
+        const header = { type: "node", data: { name: "计时监控中心", uin: "2852199344", content: `📊 运行中：${tKeys.length} 个${batchLabel}\n更新：${timeStr}` } };
+        const chunk = [header, ...timerNodes.slice(i * CHUNK, (i + 1) * CHUNK)];
+        ws({ action: "send_group_forward_msg", params: { group_id: gId, messages: chunk } }, ctx, msg, "");
+    }
+
+    seal.replyToSender(ctx, msg, `✅ 报表已生成${totalBatches > 1 ? `（共${totalBatches}批）` : ""}\n⏳ 超时：${totalOverdue} 人\n(详情见下方合并消息)`);
     return seal.ext.newCmdExecuteResult(true);
 };
 
@@ -8172,194 +8426,20 @@ cmd_remind_timeouts.solve =(ctx, msg, cmdArgs) => {
 };
 
 // ========================
-// ⚙️ 设置监听参数指令（增强版 - 应用到进行中计时器）
 // ========================
-
-/**
- * 更新所有活跃计时器的超时设置
- * @param {Object} newSettings 新的监控设置
- * @returns {Object} 更新结果 { updated: number, total: number }
- */
-function updateActiveTimerSettings(newSettings) {
+// 更新活跃计时器超时（供设置变更时调用）
+function updateActiveTimerSettings(newTimeout, newRemindInterval) {
     const timers = getGroupTimers();
-    let updatedCount = 0;
-    const now = Date.now();
-    
-    for (const [groupId, timer] of Object.entries(timers)) {
-        let needUpdate = false;
-        
-        // 根据计时器类型更新超时时间
-        const oldTimeout = timer.timeoutDuration;
-        let newTimeout = oldTimeout;
-        
-        switch(timer.subtype) {
-            case "电话":
-                newTimeout = newSettings.timeout_phone;
-                break;
-            case "私密":
-                newTimeout = newSettings.timeout_private;
-                break;
-            case "心愿":
-                newTimeout = newSettings.timeout_wish;
-                break;
-            case "官方约会":
-                newTimeout = newSettings.timeout_official;
-                break;
-            default:
-                newTimeout = newSettings.timeout_private;
-        }
-        
-        // 如果超时时间发生变化
-        if (newTimeout !== oldTimeout) {
+    let changed = false;
+    for (const timer of Object.values(timers)) {
+        if (timer.timeoutDuration !== newTimeout) {
             timer.timeoutDuration = newTimeout;
-            needUpdate = true;
-            
-            // 记录变化日志
-            console.log(`[监听系统] 群组 ${groupId}（${timer.subtype}）超时时间已更新：${oldTimeout/3600000}小时 -> ${newTimeout/3600000}小时`);
+            changed = true;
         }
-        
-        // 更新提醒间隔信息
-        timer.remindInterval = getRemindInterval(timer.subtype);
-        
-        if (needUpdate) {
-            updatedCount++;
-            
-            // 检查是否需要调整状态（如果新的超时时间已过）
-            for (const [roleName, status] of Object.entries(timer.timerStatus)) {
-                if (status.status === "timing" && status.startTime) {
-                    const elapsed = now - status.startTime;
-                    if (elapsed > newTimeout) {
-                        // 如果已经超过新的超时时间，标记为超时
-                        console.log(`[监听系统] 注意：${roleName} 在新的超时设置下已超时`);
-                    }
-                }
-            }
-        }
+        timer.remindInterval = newRemindInterval;
     }
-    
-    if (updatedCount > 0) {
-        saveGroupTimers(timers);
-    }
-    
-    return {
-        updated: updatedCount,
-        total: Object.keys(timers).length
-    };
+    if (changed) saveGroupTimers(timers);
 }
-let cmd_set_monitor_params = seal.ext.newCmdItemInfo();
-cmd_set_monitor_params.name = "设置监听参数";
-cmd_set_monitor_params.help = `⚙️ 设置监听参数 [参数]
-
-📌 格式：类型=字数/超时
-（提醒间隔已移除，仅需设置两个参数）
-
-🔹 类型：电话、私密、心愿、官约、所有
-🔹 字数：最小回复字数限制
-🔹 超时：允许最长不说话时间（小时）
-
-✅ 示例：
-  。设置监听参数 电话=20/1
-  。设置监听参数 私密=150/3
-  。设置监听参数 所有=100/2
-
-✨ 生效后将同步至所有进行中的计时器`;
-
-cmd_set_monitor_params.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) {
-        seal.replyToSender(ctx, msg, "亲爱的管理员，这个指令需要管理员权限哦～ 🌸");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-    
-    const settings = getMonitorSettings();
-    
-    // 1. 无参数时：显示当前配置快照
-    if (!cmdArgs.getArgN(1)) {
-        let rep = "🌸 当前监听系统配置 🌸\n";
-        rep += "— 以上 —\n\n";
-        
-        const configMap = [
-            { label: "📞 电话", w: settings.min_words_phone, t: settings.timeout_phone },
-            { label: "🤫 私密", w: settings.min_words_private, t: settings.timeout_private },
-            { label: "💌 心愿", w: settings.min_words_wish, t: settings.timeout_wish },
-            { label: "🏛️ 官约", w: settings.min_words_official, t: settings.timeout_official }
-        ];
-
-        configMap.forEach(item => {
-            rep += `${item.label}\n`;
-            rep += `┗ 📝 ${item.w}字 | ⏰ ${item.t / 3600000}h\n\n`;
-        });
-        
-        rep += `📊 活跃计时群组：${Object.keys(getGroupTimers()).length} 个\n`;
-        rep += "— 以上 —\n";
-        rep += "💡 格式：类型=字数/超时 (小时)";
-        
-        seal.replyToSender(ctx, msg, rep.trim());
-        return seal.ext.newCmdExecuteResult(true);
-    }
-    
-    // 2. 解析参数 (格式：类型=字数/超时)
-    let updates = [];
-    let errors = [];
-    let hasUpdate = false;
-    
-    for (let i = 1; ; i++) {
-        const arg = cmdArgs.getArgN(i);
-        if (!arg) break;
-        
-        // 正则修改：只匹配 两个 参数 (字数/超时)
-        const match = arg.match(/^(\S+)=(\d+)\/([\d.]+)$/);
-        if (!match) {
-            errors.push(`${arg} (格式需为: 类型=字数/超时)`);
-            continue;
-        }
-        
-        const type = match[1].toLowerCase();
-        const words = parseInt(match[2]);
-        const timeoutMs = parseFloat(match[3]) * 3600000;
-
-        const targetTypes = [];
-        if (["所有", "all", "*"].includes(type)) {
-            targetTypes.push("phone", "private", "wish", "official");
-        } else if (type === "电话" || type === "phone") targetTypes.push("phone");
-        else if (type === "私密" || type === "private") targetTypes.push("private");
-        else if (type === "心愿" || type === "wish") targetTypes.push("wish");
-        else if (type === "官约" || type === "official") targetTypes.push("official");
-        else {
-            errors.push(`未知类型: ${type}`);
-            continue;
-        }
-
-        targetTypes.forEach(t => {
-            settings[`min_words_${t}`] = words;
-            settings[`timeout_${t}`] = timeoutMs;
-        });
-        
-        updates.push(`${type} → ${words}字/${match[3]}h`);
-        hasUpdate = true;
-    }
-    
-    // 3. 保存并反馈
-    if (hasUpdate) {
-        setMonitorSettings(settings);
-        // 调用同步函数，让正在计时的群组也变掉
-        updateActiveTimerSettings(settings); 
-
-        let res = "✅ 监听参数更新完成\n";
-        res += "───────────────\n";
-        updates.forEach(u => res += `· ${u}\n`);
-        if (errors.length > 0) {
-            res += "\n❌ 部分失败：\n";
-            errors.forEach(e => res += `· ${e}\n`);
-        }
-        seal.replyToSender(ctx, msg, res.trim());
-    } else {
-        seal.replyToSender(ctx, msg, "❌ 更新失败：\n" + errors.join("\n"));
-    }
-    
-    return seal.ext.newCmdExecuteResult(true);
-};
-
-ext.cmdMap["设置监听参数"] = cmd_set_monitor_params;
 
 // ========================
 // 💌 心动信系统
@@ -8393,6 +8473,15 @@ cmd_send_lovemail.solve =(ctx, msg, cmdArgs) => {
     const signature = getTag("署名") || "匿名";
     const receiver = getTag("发送对象") || getTag("收件人");
     let content = getTag("内容") || "";
+
+    if (/\[CQ:image[^\]]*\]/.test(signature)) {
+        seal.replyToSender(ctx, msg, `⚠️ 署名不能包含图片，请修改后重新投递。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    if (signature.length > 20) {
+        seal.replyToSender(ctx, msg, `⚠️ 署名不得超过 20 个字（当前 ${signature.length} 个字），请修改后重新投递。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
 
     if (!receiver) {
         seal.replyToSender(ctx, msg, `⚠️ 格式错误！请指定发送对象。\n\n标准格式：\n发送心动信\n【发送对象】角色名\n【内容】想说的话\n【署名】自定义昵称（选填）`);
@@ -8601,7 +8690,8 @@ function performLoveMailDelivery(ctx, msg, backgroundGroupId) {
 
     const a_private_group = JSON.parse(ext.storageGet("a_private_group") || "{}");
     const isPublicEnabled = ext.storageGet("lovemail_expose") === "true";
-    const publicChance = parseInt(ext.storageGet("lovemail_expose_chance") || "10");
+    const publicChance = getStorageInt("lovemail_expose_chance", 10);
+    const hideReceiverOnDrop = ext.storageGet("drop_hide_receiver") === "true";
     let announceGroupId = JSON.parse(ext.storageGet("adminAnnounceGroupId") || "null");
     if (!announceGroupId || announceGroupId === "null") announceGroupId = null;
 
@@ -8616,32 +8706,46 @@ function performLoveMailDelivery(ctx, msg, backgroundGroupId) {
         if (addr) {
             const targetGidRaw = (addr[1] || "").replace(/\D/g, "");
             const personalNodes = [{ type: "node", data: { name: "心动邮局·派送员", uin: "2852199344", content: `💌 亲爱的 ${receiver}，你有一份包含 ${mails.length} 封信件的包裹待启封。` } }];
+            const imageGroups = []; // 每封信提取出的图片 CQ 码，与 mails 下标对应
             mails.forEach((mail, idx) => {
-                personalNodes.push({ type: "node", data: { name: `第 ${idx + 1} 封信件`, uin: "10001", content: `「 ${mail.content} 」\n┈┈┈┈┈┈┈┈┈┈┈┈\n📝 署名：${mail.signature}` } });
+                const imgMatches = mail.content.match(/\[CQ:image[^\]]*\]/g) || [];
+                const textOnly = mail.content.replace(/\[CQ:image[^\]]*\]/g, "").trim();
+                imageGroups.push(imgMatches);
+                personalNodes.push({ type: "node", data: { name: `第 ${idx + 1} 封信件`, uin: "10001", content: `「 ${textOnly || "（图片见下方）"} 」\n┈┈┈┈┈┈┈┈┈┈┈┈\n📝 署名：${mail.signature}` } });
                 success++;
+                // 提前判断本封信是否会被曝光（需在存档前确定，以便写入 hide_receiver）
+                const isThisMailPublic = isPublicEnabled && announceGroupId &&
+                    (Math.floor(Math.random() * 100) + 1 <= publicChance);
                 // 心动信实时存档（投递时上传，pool 投完即清空故不能靠 session_end）
                 if (isArchiveEnabled()) {
                     const fromRole = a_private_group[platform]?.[mail.uid]?.[0];
                     if (!fromRole) console.warn(`[心动信] 派送存档找不到发件人角色名，UID: ${mail.uid}`);
                     postToArchive("/api/event", {
-                        type:       "lovemail",
-                        from_role:  fromRole || mail.uid,
-                        to_role:    receiver,
-                        content:    mail.content,
-                        extra_info: { signature: mail.signature },
-                        game_day:   mail.gameDay || "",
-                        session_id: "",
-                        timestamp:  mail.timestamp || Date.now()
+                        type:            "lovemail",
+                        from_role:       fromRole || mail.uid,
+                        from_custom_name: mail.signature && mail.signature !== (fromRole || mail.uid) ? mail.signature : undefined,
+                        to_role:         receiver,
+                        content:         mail.content,
+                        extra_info:      { signature: mail.signature, isPublic: isThisMailPublic, hide_receiver: isThisMailPublic && hideReceiverOnDrop },
+                        game_day:        mail.gameDay || "",
+                        session_id:      "",
+                        timestamp:       mail.timestamp || Date.now()
                     });
                 }
-                if (isPublicEnabled && announceGroupId) {
-                    if (Math.floor(Math.random() * 100) + 1 <= publicChance) {
-                        publicCount++;
-                        publicNodes.push({ type: "node", data: { name: "飘落的信笺", uin: "2852199344", content: `📩 寄给「${receiver}」的心动信\n来自「${mail.signature}」\n内容：「${mail.content}」` } });
-                    }
+                if (isThisMailPublic) {
+                    publicCount++;
+                    const publicReceiver = hideReceiverOnDrop ? "某人" : receiver;
+                    publicNodes.push({ type: "node", data: { name: "飘落的信笺", uin: "2852199344", content: `📩 寄给「${publicReceiver}」的心动信\n来自「${mail.signature}」\n内容：「${mail.content}」` } });
                 }
             });
             sendForward(targetGidRaw, personalNodes);
+            // 图片单独发：转发节点不渲染图片，逐封追发
+            mails.forEach((mail, idx) => {
+                const imgs = imageGroups[idx];
+                if (!imgs.length) return;
+                const label = `📎 第 ${idx + 1} 封信件（署名：${mail.signature}）附带的图片：`;
+                sendTextToGroup(platform, targetGidRaw, label + "\n" + imgs.join("\n"));
+            });
         } else {
             failedRecords.push(...mails);
             fail += mails.length;
@@ -8658,6 +8762,28 @@ function performLoveMailDelivery(ctx, msg, backgroundGroupId) {
     return { success, fail, publicCount, empty: false, status: "派送完成" };
 }
 
+// 返回今天的 MMDD 字符串，如 "0528"
+function getTodayMMDD() {
+    const d = new Date();
+    return String(d.getMonth() + 1).padStart(2, '0') + String(d.getDate()).padStart(2, '0');
+}
+
+// 档期自动 D0：每分钟检查一次，档期开始日当天 global_days 为空时自动设置 D0
+let _lastAutoD0Date = "";
+function checkAutoD0() {
+    const schedStart = ext.storageGet("season_schedule_start") || "";
+    if (!schedStart) return;
+    const today = getTodayMMDD();
+    if (today !== schedStart) return;
+    if (_lastAutoD0Date === today) return;          // 今天已处理过
+    const current = ext.storageGet("global_days") || "";
+    if (current) return;                             // 已有天数，不覆盖
+    ext.storageSet("global_days", "D0");
+    _lastAutoD0Date = today;
+    const announceGid = JSON.parse(ext.storageGet("adminAnnounceGroupId") || "null");
+    if (announceGid) sendTextToGroup("QQ", announceGid, `🗓️ 档期正式开始！游戏天数已自动设置为 D0。`);
+}
+
 function registerLoveMailSystem() {
     if (loveMailTimer) {
         clearInterval(loveMailTimer);
@@ -8665,6 +8791,7 @@ function registerLoveMailSystem() {
     }
     let lastTriggerMinute = -1;
     loveMailTimer = setInterval(() => {
+        checkAutoD0();
         if (!isLoveMailEnabled()) return;
         const now = new Date();
         const currentHour = now.getHours();
@@ -8672,9 +8799,7 @@ function registerLoveMailSystem() {
         const currentTimeTotal = currentHour * 60 + currentMinute;
         if (currentMinute === lastTriggerMinute) return;
 
-        let deliveryTimeRaw = ext.storageGet("lovemail_delivery_time") || "\"22:00\"";
-        let deliveryTime = "22:00";
-        try { deliveryTime = JSON.parse(deliveryTimeRaw).replace(/\"/g, ""); } catch (e) { deliveryTime = "22:00"; }
+        let deliveryTime = (ext.storageGet("lovemail_delivery_time") || "22:00").replace(/"/g, "").trim() || "22:00";
 
         const timeParts = deliveryTime.split(':').map(Number);
         if (timeParts.length !== 2) return;
@@ -8762,41 +8887,67 @@ cmd_set_npc.solve = (ctx, msg, cmdArgs) => {
 };
 ext.cmdMap["设为npc"] = cmd_set_npc;
 
-// 创建NPC（管理员直接创建带NPC身份的角色，不绑定真实用户）
+// 创建NPC（与创建新角色逻辑相同，额外加入 npc_list）
 let cmd_create_npc = seal.ext.newCmdItemInfo();
 cmd_create_npc.name = "创建NPC";
-cmd_create_npc.help = "用法：。创建NPC [角色名]\n说明：直接创建一个带NPC身份的角色，无需绑定真实用户。";
+cmd_create_npc.help = "用法：。创建NPC [角色名]\n说明：创建角色并自动标记为NPC身份（不计入弧长统计）。";
 cmd_create_npc.solve = (ctx, msg, cmdArgs) => {
     const name = cmdArgs.getArgN(1);
-    if (!name) {
+    if (!name || name === "help") {
         const ret = seal.ext.newCmdExecuteResult(true);
         ret.showHelp = true;
         return ret;
     }
 
-    const platform = msg.platform;
-    const storage = getRoleStorage();
-    if (!storage[platform]) storage[platform] = {};
-
-    const existingUid = Object.entries(storage[platform]).find(([_, v]) => v[0] === name)?.[0];
-    if (existingUid) {
-        seal.replyToSender(ctx, msg, `❌ 角色名「${name}」已被占用。`);
+    // archive 开启时必须先有活跃季度
+    if (isArchiveEnabled() && !hasActiveSeason()) {
+        seal.replyToSender(ctx, msg, "❌ 当前无活跃季度。请先运行「创建新季度 恋综名 复盘/不复盘」。");
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    const uid = `npc_${name}`;
-    storage[platform][uid] = [name, "0"];
-    ext.storageSet("a_private_group", JSON.stringify(storage));
+    const platform = msg.platform;
+    const gid = msg.groupId ? msg.groupId.replace(`${platform}-Group:`, "") : "0";
+    const uid = msg.sender.userId.replace(`${platform}:`, "");
+    const storage = getRoleStorage();
+    if (!storage[platform]) storage[platform] = {};
 
+    // 检查名称是否被他人占用
+    const existingUidForName = Object.entries(storage[platform]).find(([k, v]) => v[0] === name && k !== uid)?.[0];
+    if (existingUidForName) {
+        seal.replyToSender(ctx, msg, `❌ 名称「${name}」已被其他用户占用`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 已有角色则拒绝
+    if (storage[platform][uid]) {
+        const existingName = storage[platform][uid][0];
+        seal.replyToSender(ctx, msg, `⚠️ 你已有角色「${existingName}」。若想改名，请发送「修改名字 新名字」。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    storage[platform][uid] = [name, gid];
+    ext.storageSet("a_private_group", JSON.stringify(storage));
     initCharProfile(platform, name);
 
+    // 加入 NPC 列表
     const npcList = JSON.parse(ext.storageGet("a_npc_list") || "[]");
     if (!npcList.includes(name)) {
         npcList.push(name);
         ext.storageSet("a_npc_list", JSON.stringify(npcList));
     }
 
-    seal.replyToSender(ctx, msg, `✅ NPC「${name}」创建成功！已自动设为NPC身份。`);
+    const profile = getCharProfile(platform, name);
+    seal.replyToSender(ctx, msg,
+        `✅ NPC「${name}」创建成功！已自动标记为NPC身份。\n` +
+        `\n以下是初始档案：\n` +
+        `👤 性别：${profile.gender}　年龄：${profile.age}\n` +
+        `🌸 皮相：${profile.look}\n` +
+        `\n💡 可发送以下消息定制角色：\n` +
+        `  修改性别 男/女\n` +
+        `  修改年龄 数字\n` +
+        `  修改皮相 明星名\n` +
+        `  修改签名 你的签名`
+    );
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["创建NPC"] = cmd_create_npc;
@@ -8909,7 +9060,7 @@ function saveAuctions(data) {
 }
 function getAuctionSettings() {
     return {
-        displayGroup: ext.storageGet("auction_display_group") || "",
+        displayGroup: JSON.parse(ext.storageGet("song_group_id") || "null") || "",
         allowAnon: ext.storageGet("auction_allow_anon") !== "false",
         broadcast: ext.storageGet("auction_broadcast") !== "false",
         showTopBidder: ext.storageGet("auction_show_top_bidder") !== "false",
@@ -9386,11 +9537,11 @@ cmd_guide.solve = (ctx, msg, cmdArgs) => {
                     "【附件】附加内容（选填）",
                     "【署名】落款（选填，默认角色名）",
                     "",
-                    "信件状态   查看今日发信额度与赏金设置",
+                    "。信件状态   查看今日发信额度与赏金设置",
                     "",
                     "【羽毛笔修改】",
-                    "羽毛笔修改          查看待修改信件清单",
-                    "羽毛笔修改 序号 新内容  修改后发出",
+                    "。羽毛笔修改          查看待修改信件清单",
+                    "。羽毛笔修改 序号 新内容  修改后发出",
                 ]),
                 section("💌 心动信 & 信箱", [
                     "发送心动信",
@@ -9398,7 +9549,7 @@ cmd_guide.solve = (ctx, msg, cmdArgs) => {
                     "【内容】想说的话（支持空行）",
                     "【署名】自定义昵称（选填）",
                     "",
-                    "撤回心动信 编号   撤回已投递的信",
+                    "。撤回心动信 编号   撤回已投递的信",
                     "",
                     "查看信箱   查看收到的心动信",
                 ]),
@@ -9411,6 +9562,9 @@ cmd_guide.solve = (ctx, msg, cmdArgs) => {
                     "回复帖子 贴号 内容",
                     "  例：回复帖子 A1B2C 同感！",
                     "回复帖子 贴号 署名 内容",
+                    "",
+                    "查看帖子        查看所有帖子",
+                    "查看帖子 贴号   查看该帖子及回复",
                 ]),
             ]
         },
@@ -9433,8 +9587,7 @@ cmd_guide.solve = (ctx, msg, cmdArgs) => {
                     "查看收集          列出所有项目",
                     "查看收集 项目名   查看该项目全部内容",
                     "",
-                    "写了   在帖子群记录本角色写了一段",
-                    "  （进度在时间线中查看）",
+                    "  （写帖进度自动记录，可在时间线中查看）",
                 ]),
                 section("📊 统计", [
                     "本场统计   查看自己的本场互动数据",
@@ -9702,8 +9855,8 @@ cmd_admin_guide.solve = (ctx, msg) => {
             "。删除关系线 角色A 角色B",
             "  删除两人之间的关系线",
             "",
-            "。清空关系线 角色名",
-            "  清空该角色全部关系线",
+            "。清空关系线 MMDD",
+            "  清空当前平台全部关系线（需输入当日日期码，如0526）",
         ]),
         section("🔨 拍卖系统管理", [
             "【设置（.设置 拍卖）】",
@@ -10344,6 +10497,14 @@ cmd_update_schedule.solve =(ctx, msg, cmdArgs) => {
     }
     ext.storageSet("b_confirmedSchedule", JSON.stringify(b_confirmedSchedule));
 
+    // C. 同步 group_timers 中的 day/time
+    const groupTimersForUpdate = JSON.parse(ext.storageGet("group_timers") || "{}");
+    if (groupTimersForUpdate[gid]) {
+        groupTimersForUpdate[gid].day  = newDay;
+        groupTimersForUpdate[gid].time = newTime;
+        ext.storageSet("group_timers", JSON.stringify(groupTimersForUpdate));
+    }
+
     // 5. 修改群名片并通知
     const nameTag = participants.length > 2 ? "多人" : participants.join("/");
     const newGroupName = `${subtype} ${newDay} ${newTime} ${info.place} ${nameTag}`;
@@ -10480,11 +10641,33 @@ cmd_abolish_schedule.solve =(ctx, msg, cmdArgs) => {
                 b_confirmedSchedule[rejecterKey] = b_confirmedSchedule[rejecterKey].filter(ev => ev.group !== targetGid);
             }
         }
+        // 同步其他参与者的 partner 字段，移除已退出者
+        for (const uidKey of Object.keys(b_confirmedSchedule)) {
+            for (const ev of b_confirmedSchedule[uidKey]) {
+                if (ev.group === targetGid && ev.partner && ev.partner !== "多人小群") {
+                    const parts = ev.partner.split(/[、,]/).map(s => s.trim()).filter(n => n !== rejecterName);
+                    ev.partner = parts.length === 1 ? parts[0] : parts.join("、");
+                }
+            }
+        }
         ext.storageSet("b_confirmedSchedule", JSON.stringify(b_confirmedSchedule));
 
         // 更新参与者列表，约会继续
         groupExpireInfo[targetGid].participants = remaining;
         ext.storageSet("group_expire_info", JSON.stringify(groupExpireInfo));
+
+        // 清理 group_timers 中拒绝者的条目
+        const timersForReject = JSON.parse(ext.storageGet("group_timers") || "{}");
+        const timerEntry = timersForReject[targetGid];
+        if (timerEntry) {
+            if (Array.isArray(timerEntry.participants)) {
+                timerEntry.participants = timerEntry.participants.filter(n => n !== rejecterName);
+            }
+            if (timerEntry.timerStatus) {
+                delete timerEntry.timerStatus[rejecterName];
+            }
+            ext.storageSet("group_timers", JSON.stringify(timersForReject));
+        }
 
         seal.replyToSender(ctx, msg, `✅ 你已退出群 ${targetGid} 的约会，剩余参与者：${remaining.join("、")}。`);
     }
@@ -10604,3 +10787,247 @@ cmd_full_sync.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["全量同步"] = cmd_full_sync;
+
+
+// ── 创建新季度 ────────────────────────────────────────────────────────────────
+let cmd_new_season = seal.ext.newCmdItemInfo();
+cmd_new_season.name = "创建新季度";
+cmd_new_season.help = `用法：。创建新季度 恋综名 复盘/不复盘 [MMDD-MMDD] [补戏MMDD]
+前提：须先 JSCLEAR（角色存储为空）
+
+参数说明：
+  恋综名       季度显示名
+  复盘/不复盘  是否生成复盘存档
+  MMDD-MMDD    可选，正式档期范围，如 0528-0601
+                 · 开始日前：短信/礼物等互动不记录
+                 · 开始日自动设为 D0
+  补戏MMDD     可选，补戏截止日（如 0604）
+                 · 补戏期：场次记录，但不计弧长
+
+示例：
+  创建新季度 某某恋综 复盘
+  创建新季度 某某恋综 复盘 0528-0601
+  创建新季度 某某恋综 复盘 0528-0601 0604`;
+
+cmd_new_season.solve = (ctx, msg, cmdArgs) => {
+    const seasonName = cmdArgs.getArgN(1);
+    const modeArg    = cmdArgs.getArgN(2);
+    const scheduleArg = cmdArgs.getArgN(3); // "MMDD-MMDD" or empty
+    const suppArg     = cmdArgs.getArgN(4); // "MMDD" or empty
+
+    if (!seasonName || seasonName === "help") {
+        const ret = seal.ext.newCmdExecuteResult(true);
+        ret.showHelp = true;
+        return ret;
+    }
+
+    // 已有活跃季度
+    if (hasActiveSeason()) {
+        seal.replyToSender(ctx, msg, `❌ 已有活跃季度「${getSeasonShowName()}」，请先「结束季度」再开新季度。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 角色存储必须为空
+    if (!isRoleStorageEmpty()) {
+        seal.replyToSender(ctx, msg, "❌ 请先执行 .MASTER JSCLEAR changri 清空角色数据，再创建新季度。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 解析档期
+    let scheduleStart = "", scheduleEnd = "", supplementEnd = "";
+    if (scheduleArg && /^\d{4}-\d{4}$/.test(scheduleArg)) {
+        [scheduleStart, scheduleEnd] = scheduleArg.split("-");
+    } else if (scheduleArg) {
+        seal.replyToSender(ctx, msg, `⚠️ 档期格式错误，应为 MMDD-MMDD（如 0528-0601），已忽略。`);
+    }
+    if (suppArg && /^\d{4}$/.test(suppArg)) {
+        supplementEnd = suppArg;
+    } else if (suppArg) {
+        seal.replyToSender(ctx, msg, `⚠️ 补戏日期格式错误，应为 MMDD（如 0604），已忽略。`);
+    }
+
+    const isReview  = !modeArg || modeArg === "复盘";
+    const mode      = isReview ? "review" : "no_review";
+    const modeLabel = isReview ? "复盘" : "不复盘";
+
+    (async () => {
+        const base  = (seal.ext.getStringConfig(ext, "RP存档服务器地址") || "").replace(/\/$/, "");
+        const token = seal.ext.getStringConfig(ext, "RP存档Token") || "";
+        if (!base) {
+            seal.replyToSender(ctx, msg, "❌ 未配置 RP 存档服务器地址，无法创建季度。");
+            return;
+        }
+        try {
+            const resp = await fetch(`${base}/api/new_season`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "X-Archive-Token": token },
+                body: JSON.stringify({ name: seasonName, mode,
+                    schedule_start: scheduleStart,
+                    schedule_end:   scheduleEnd,
+                    supplement_end: supplementEnd })
+            });
+            const data = await resp.json();
+            if (!data.ok) {
+                seal.replyToSender(ctx, msg, `❌ 创建季度失败：${data.error || resp.status}`);
+                return;
+            }
+
+            // 存储本地
+            ext.storageSet("season_show_name", seasonName);
+            ext.storageSet("season_mode", mode);
+            ext.storageSet("season_schedule_start", scheduleStart);
+            ext.storageSet("season_schedule_end",   scheduleEnd);
+            ext.storageSet("season_supplement_end", supplementEnd);
+
+            // 构建档期提示
+            let scheduleHint = "";
+            if (scheduleStart && scheduleEnd) {
+                const mm1 = scheduleStart.slice(0,2), dd1 = scheduleStart.slice(2);
+                const mm2 = scheduleEnd.slice(0,2),   dd2 = scheduleEnd.slice(2);
+                scheduleHint = `\n📅 档期：${parseInt(mm1)}/${parseInt(dd1)} – ${parseInt(mm2)}/${parseInt(dd2)}`;
+                if (supplementEnd) {
+                    const mms = supplementEnd.slice(0,2), dds = supplementEnd.slice(2);
+                    scheduleHint += `（补戏至 ${parseInt(mms)}/${parseInt(dds)}）`;
+                }
+                scheduleHint += `\n   · 档期前：互动不记录 · 开始日自动 D0`;
+                if (supplementEnd) scheduleHint += `\n   · 补戏期：场次记录，弧长不计`;
+            }
+
+            seal.replyToSender(ctx, msg,
+                `✅ 季度「${seasonName}」已开启（${modeLabel}模式）${scheduleHint}\n\n` +
+                `现在可以使用：\n` +
+                `• 创建新角色 角色名\n` +
+                `• 创建NPC 角色名\n\n` +
+                (isReview ? `💡 复盘模式：所有戏和场次均会存档。\n记得所有 NPC 也需要「创建NPC」，否则无法自动复盘。` :
+                            `💡 不复盘模式：戏和场次不存档，仅记录玩家数据到超管后台。`)
+            );
+        } catch (e) {
+            seal.replyToSender(ctx, msg, `❌ 请求失败：${e.message || String(e)}`);
+        }
+    })();
+
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["创建新季度"] = cmd_new_season;
+
+// ── 修改档期 ──────────────────────────────────────────────────────────────────
+let cmd_set_schedule = seal.ext.newCmdItemInfo();
+cmd_set_schedule.name = "修改档期";
+cmd_set_schedule.help = `用法：。修改档期 MMDD-MMDD [补戏MMDD]
+同步更新存档服务器和本地缓存的档期设置。
+
+示例：
+  修改档期 0528-0601          仅设主档期
+  修改档期 0528-0601 0604     主档期 + 补戏截止
+  修改档期 清空               清空所有档期限制`;
+cmd_set_schedule.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足");
+    if (!isArchiveEnabled()) return seal.replyToSender(ctx, msg, "❌ 未启用RP存档传输");
+
+    const arg1 = cmdArgs.getArgN(1);
+    const arg2 = cmdArgs.getArgN(2);
+
+    if (!arg1 || arg1 === "help") {
+        const ret = seal.ext.newCmdExecuteResult(true);
+        ret.showHelp = true;
+        return ret;
+    }
+
+    let scheduleStart = "", scheduleEnd = "", supplementEnd = "";
+
+    if (arg1 === "清空") {
+        // 清空档期
+    } else if (/^\d{4}-\d{4}$/.test(arg1)) {
+        [scheduleStart, scheduleEnd] = arg1.split("-");
+        if (arg2 && /^\d{4}$/.test(arg2)) {
+            supplementEnd = arg2;
+        } else if (arg2) {
+            return seal.replyToSender(ctx, msg, `⚠️ 补戏日期格式错误，应为 MMDD（如 0604）`);
+        }
+    } else {
+        return seal.replyToSender(ctx, msg, `⚠️ 档期格式错误，应为 MMDD-MMDD（如 0528-0601）`);
+    }
+
+    (async () => {
+        const base  = (seal.ext.getStringConfig(ext, "RP存档服务器地址") || "").replace(/\/$/, "");
+        const token = seal.ext.getStringConfig(ext, "RP存档Token") || "";
+        if (!base) return seal.replyToSender(ctx, msg, "❌ 未配置存档服务器地址");
+
+        try {
+            const resp = await fetch(`${base}/api/update_schedule`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "X-Archive-Token": token },
+                body: JSON.stringify({ schedule_start: scheduleStart, schedule_end: scheduleEnd, supplement_end: supplementEnd })
+            });
+            const data = await resp.json();
+            if (!data.ok) return seal.replyToSender(ctx, msg, `❌ 更新失败：${data.error || resp.status}`);
+
+            // 更新本地缓存
+            ext.storageSet("season_schedule_start", scheduleStart);
+            ext.storageSet("season_schedule_end",   scheduleEnd);
+            ext.storageSet("season_supplement_end", supplementEnd);
+
+            if (!scheduleStart) {
+                seal.replyToSender(ctx, msg, "✅ 档期已清空，存档不再限制时间范围。");
+            } else {
+                const fmt = s => `${parseInt(s.slice(0,2))}/${parseInt(s.slice(2))}`;
+                let hint = `✅ 档期已更新：${fmt(scheduleStart)} – ${fmt(scheduleEnd)}`;
+                if (supplementEnd) hint += `（补戏至 ${fmt(supplementEnd)}）`;
+                seal.replyToSender(ctx, msg, hint);
+            }
+        } catch (e) {
+            seal.replyToSender(ctx, msg, `❌ 请求失败：${e.message || String(e)}`);
+        }
+    })();
+
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["修改档期"] = cmd_set_schedule;
+
+// ── 结束季度 ──────────────────────────────────────────────────────────────────
+let cmd_end_season = seal.ext.newCmdItemInfo();
+cmd_end_season.name = "结束季度";
+cmd_end_season.help = "用法：。结束季度\n封存当前季度并获取公开存档链接";
+cmd_end_season.solve = (ctx, msg, cmdArgs) => {
+    if (!hasActiveSeason()) {
+        seal.replyToSender(ctx, msg, "❌ 当前没有活跃季度。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const currentName = getSeasonShowName();
+
+    (async () => {
+        const base  = (seal.ext.getStringConfig(ext, "RP存档服务器地址") || "").replace(/\/$/, "");
+        const token = seal.ext.getStringConfig(ext, "RP存档Token") || "";
+        if (!base) {
+            seal.replyToSender(ctx, msg, "❌ 未配置 RP 存档服务器地址。");
+            return;
+        }
+        try {
+            const resp = await fetch(`${base}/api/end_season`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "X-Archive-Token": token },
+                body: JSON.stringify({})
+            });
+            const data = await resp.json();
+            if (!data.ok) {
+                seal.replyToSender(ctx, msg, `❌ 结束季度失败：${data.error || resp.status}`);
+                return;
+            }
+            seal.replyToSender(ctx, msg,
+                `✅ 季度「${currentName}」已封存\n` +
+                `📎 公开存档：${data.public_url}\n` +
+                `─────────────────────\n` +
+                `请确认存档内容无误后：\n` +
+                `第一步：.MASTER JSCLEAR changri\n` +
+                `第二步：创建新季度 恋综名 复盘/不复盘`
+            );
+            // 注意：此处不清除 season_show_name，交由 JSCLEAR 完成
+        } catch (e) {
+            seal.replyToSender(ctx, msg, `❌ 请求失败：${e.message || String(e)}`);
+        }
+    })();
+
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["结束季度"] = cmd_end_season;

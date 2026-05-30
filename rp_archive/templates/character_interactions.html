@@ -108,9 +108,9 @@
     <div class="ix-card">
       <div class="ix-header">
         <span class="ix-dir {{ 'dir-sent' if is_sent else 'dir-recv' }}">{{ '发出' if is_sent else '收到' }}</span>
-        <span class="ix-from">{{ e.from_role }}{% if show_names.get(e.from_role) %}<span style="color:var(--muted);font-size:10px;font-weight:400;"> · {{ show_names[e.from_role] }}</span>{% endif %}</span>
+        <span class="ix-from">{{ e.from_role }}{% if e.extra_info.from_custom_name %}<span style="color:var(--accent);font-size:10px;font-weight:400;opacity:.8;">（{{ e.extra_info.from_custom_name }}）</span>{% endif %}{% if show_names.get(e.from_role) %}<span style="color:var(--muted);font-size:10px;font-weight:400;"> · {{ show_names[e.from_role] }}</span>{% endif %}</span>
         <span class="ix-arrow">→</span>
-        <span class="ix-to">{{ e.to_role }}{% if show_names.get(e.to_role) %}<span style="color:var(--muted);font-size:10px;font-weight:400;"> · {{ show_names[e.to_role] }}</span>{% endif %}</span>
+        <span class="ix-to">{{ e.to_role }}{% if e.extra_info.to_custom_name %}<span style="color:var(--accent2);font-size:10px;font-weight:400;opacity:.8;">（{{ e.extra_info.to_custom_name }}）</span>{% endif %}{% if show_names.get(e.to_role) %}<span style="color:var(--muted);font-size:10px;font-weight:400;"> · {{ show_names[e.to_role] }}</span>{% endif %}</span>
       </div>
       <div class="ix-body">{{ e.content }}</div>
       {% if e.extra_info.signature %}
@@ -148,9 +148,9 @@
       <div class="ix-header">
         <span class="ix-dir {{ 'dir-sent' if is_sent else 'dir-recv' }}">{{ '发出' if is_sent else '收到' }}</span>
         {% set display_to = e.extra_info.intended_to if (e.extra_info.is_misdelivered and e.extra_info.intended_to) else e.to_role %}
-        <span class="ix-from">{{ e.from_role }}{% if show_names.get(e.from_role) %}<span style="color:var(--muted);font-size:10px;font-weight:400;"> · {{ show_names[e.from_role] }}</span>{% endif %}</span>
+        <span class="ix-from">{{ e.from_role }}{% if e.extra_info.from_custom_name %}<span style="color:var(--accent);font-size:10px;font-weight:400;opacity:.8;">（{{ e.extra_info.from_custom_name }}）</span>{% endif %}{% if show_names.get(e.from_role) %}<span style="color:var(--muted);font-size:10px;font-weight:400;"> · {{ show_names[e.from_role] }}</span>{% endif %}</span>
         <span class="ix-arrow">→</span>
-        <span class="ix-to">{{ display_to }}{% if show_names.get(display_to) %}<span style="color:var(--muted);font-size:10px;font-weight:400;"> · {{ show_names[display_to] }}</span>{% endif %}</span>
+        <span class="ix-to">{{ display_to }}{% if e.extra_info.to_custom_name and not e.extra_info.is_misdelivered %}<span style="color:var(--accent2);font-size:10px;font-weight:400;opacity:.8;">（{{ e.extra_info.to_custom_name }}）</span>{% endif %}{% if show_names.get(display_to) %}<span style="color:var(--muted);font-size:10px;font-weight:400;"> · {{ show_names[display_to] }}</span>{% endif %}</span>
       </div>
       {% if e.extra_info.is_chaos %}
       <div style="font-size:10px;color:var(--red);margin-bottom:4px;">⚠ 混乱
@@ -187,9 +187,9 @@
     <div class="ix-card">
       <div class="ix-header">
         <span class="ix-dir {{ 'dir-sent' if is_sent else 'dir-recv' }}">{{ '发出' if is_sent else '收到' }}</span>
-        <span class="ix-from">{{ e.from_role }}{% if show_names.get(e.from_role) %}<span style="color:var(--muted);font-size:10px;font-weight:400;"> · {{ show_names[e.from_role] }}</span>{% endif %}</span>
+        <span class="ix-from">{{ e.from_role }}{% if e.extra_info.from_custom_name %}<span style="color:var(--accent);font-size:10px;font-weight:400;opacity:.8;">（{{ e.extra_info.from_custom_name }}）</span>{% endif %}{% if show_names.get(e.from_role) %}<span style="color:var(--muted);font-size:10px;font-weight:400;"> · {{ show_names[e.from_role] }}</span>{% endif %}</span>
         <span class="ix-arrow">→</span>
-        <span class="ix-to">{{ e.to_role }}{% if show_names.get(e.to_role) %}<span style="color:var(--muted);font-size:10px;font-weight:400;"> · {{ show_names[e.to_role] }}</span>{% endif %}</span>
+        <span class="ix-to">{{ e.to_role }}{% if e.extra_info.to_custom_name %}<span style="color:var(--accent2);font-size:10px;font-weight:400;opacity:.8;">（{{ e.extra_info.to_custom_name }}）</span>{% endif %}{% if show_names.get(e.to_role) %}<span style="color:var(--muted);font-size:10px;font-weight:400;"> · {{ show_names[e.to_role] }}</span>{% endif %}</span>
         {% if e.extra_info.isLost %}<span style="color:var(--red);font-size:11px;">已丢失</span>{% endif %}
         {% if e.extra_info.isPublic %}<span style="color:var(--accent2);font-size:11px;">公开掉落</span>{% endif %}
       </div>

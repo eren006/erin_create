@@ -92,9 +92,9 @@
         {% if e.type == 'lovemail' %}<span class="ev-type-badge badge-lovemail">💌 心动信</span>
         {% elif e.type == 'sms' %}<span class="ev-type-badge badge-sms">📱 短信</span>
         {% elif e.type == 'gift' %}<span class="ev-type-badge badge-gift">🎁 礼物</span>{% endif %}
-        <span class="ev-from">{{ e.from_role }}</span>
+        <span class="ev-from">{{ e.from_role }}{% if e.extra_info.from_custom_name %}<span style="font-size:10px;opacity:.75;">（{{ e.extra_info.from_custom_name }}）</span>{% endif %}</span>
         <span class="ev-arrow">→</span>
-        <span class="ev-to">{{ e.to_role }}</span>
+        <span class="ev-to">{{ e.to_role }}{% if e.extra_info.to_custom_name %}<span style="font-size:10px;opacity:.75;">（{{ e.extra_info.to_custom_name }}）</span>{% endif %}</span>
         {% if e.game_day %}<span class="ev-day">{{ e.game_day }}</span>{% endif %}
         <span class="ev-time">{{ ts_to_str(e.timestamp) }}</span>
       </div>

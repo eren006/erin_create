@@ -103,6 +103,14 @@ function getMainStorage(key, defaultValue) {
     return val;
 }
 
+// 读取整数型设置，兼容 JSON 编码的 '"5"' 与裸字符串 '5' 两种格式
+function getMainStorageInt(key, defaultVal) {
+    const raw = getMainStorage(key);
+    if (raw === undefined || raw === null) return defaultVal;
+    try { return parseInt(JSON.parse(raw)) || defaultVal; }
+    catch (e) { return parseInt(raw) || defaultVal; }
+}
+
 function setMainStorage(key, value) {
     const main = getMainExt();
     if (!main) return;
@@ -352,7 +360,7 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
 
     // 5. 每日限额检查
     const gameDay = getMainStorage("global_days") || "D0";
-    const dailyLimit = parseInt(getMainStorage("direct_letter_daily_limit") || "5");
+    const dailyLimit = getMainStorageInt("direct_letter_daily_limit", 5);
     const userKey = `${platform}:${uid}`;
     let dlCounts = JSON.parse(getMainStorage("letter_day_counts") || "{}");
 
@@ -367,7 +375,7 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
     }
 
     // 5.5 冷却检查
-    const cdMinutes = parseInt(getMainStorage("direct_letter_cooldown") || "0");
+    const cdMinutes = getMainStorageInt("direct_letter_cooldown", 0);
     if (cdMinutes > 0) {
         const lastSendTime = dlCounts[userKey].lastSendTime || 0;
         const cdRemain = cdMinutes - Math.floor((Date.now() - lastSendTime) / 60000);
@@ -414,8 +422,8 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
     }
 
     // 6. 赏金机制（提前计算，羽毛笔路径也需要）
-    const minChars = parseInt(getMainStorage("direct_letter_min_chars") || "0");
-    const rewardPerLetter = parseInt(getMainStorage("direct_letter_reward") || "0");
+    const minChars = getMainStorageInt("direct_letter_min_chars", 0);
+    const rewardPerLetter = getMainStorageInt("direct_letter_reward", 0);
     const contentLength = content.replace(/\s/g, "").length;
     const meetsMinChars = minChars === 0 || contentLength >= minChars;
 
@@ -660,10 +668,10 @@ cmd_letter_status.solve = (ctx, msg, cmdArgs) => {
     const uid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
     const gameDay = getMainStorage("global_days") || "D0";
 
-    const dailyLimit = parseInt(getMainStorage("direct_letter_daily_limit") || "5");
-    const reward = parseInt(getMainStorage("direct_letter_reward") || "0");
-    const minChars = parseInt(getMainStorage("direct_letter_min_chars") || "0");
-    const cdMinutes = parseInt(getMainStorage("direct_letter_cooldown") || "0");
+    const dailyLimit = getMainStorageInt("direct_letter_daily_limit", 5);
+    const reward = getMainStorageInt("direct_letter_reward", 0);
+    const minChars = getMainStorageInt("direct_letter_min_chars", 0);
+    const cdMinutes = getMainStorageInt("direct_letter_cooldown", 0);
 
     const userKey = `${platform}:${uid}`;
     let dlCounts = JSON.parse(getMainStorage("letter_day_counts") || "{}");

@@ -63,6 +63,73 @@
 .banner-ok  { background: #1a3a1a; border: 1px solid #2a5a2a; color: var(--green); }
 .banner-err { background: #3a1a1a; border: 1px solid #5a2a2a; color: var(--red); }
 .public-url { font-size: 12px; color: var(--accent); word-break: break-all; }
+
+/* ── 档期徽章 ─────────────────────────── */
+.badge-schedule {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 4px; padding: 1px 8px;
+  font-size: 11px; font-weight: 500; color: var(--muted);
+}
+
+/* ── 档期编辑 ─────────────────────────── */
+.schedule-details {
+  margin-top: 12px; margin-bottom: 2px;
+}
+.schedule-details > summary {
+  font-size: 12px; color: var(--muted); cursor: pointer;
+  list-style: none; display: inline-flex; align-items: center; gap: 4px;
+  opacity: .7; transition: opacity .15s;
+}
+.schedule-details > summary::-webkit-details-marker { display: none; }
+.schedule-details[open] > summary { opacity: 1; }
+.schedule-details > summary::before { content: '▶'; font-size: 9px; transition: transform .2s; }
+.schedule-details[open] > summary::before { transform: rotate(90deg); }
+.schedule-form {
+  margin-top: 12px; padding: 14px 16px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.sched-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+.sched-field { display: flex; flex-direction: column; gap: 4px; }
+.sched-field label { font-size: 11px; color: var(--muted); }
+.sched-field small { font-size: 10px; opacity: .7; }
+.sched-input {
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); border-radius: 6px; padding: 5px 10px;
+  font-size: 13px; width: 90px; font-family: monospace;
+}
+.sched-input:focus { outline: none; border-color: var(--accent); }
+.sched-note {
+  font-size: 11px; color: var(--muted); opacity: .7;
+  margin-top: 10px; line-height: 1.7;
+}
+.sched-msg { font-size: 12px; margin-top: 8px; }
+.sched-msg.ok  { color: var(--green); }
+.sched-msg.err { color: var(--red); }
+
+/* day theme fixes */
+:is([data-theme=spring-day],[data-theme=summer-day],[data-theme=autumn-day],[data-theme=winter-day],[data-theme=monet-day]) .show-card {
+  background: var(--surface); border-color: var(--border);
+}
+:is([data-theme=spring-day],[data-theme=summer-day],[data-theme=autumn-day],[data-theme=winter-day],[data-theme=monet-day]) .show-card.is-current {
+  border-color: var(--accent);
+}
+:is([data-theme=spring-day],[data-theme=summer-day],[data-theme=autumn-day],[data-theme=winter-day],[data-theme=monet-day]) .badge-current {
+  background: #dcfce7; color: var(--green);
+}
+:is([data-theme=spring-day],[data-theme=summer-day],[data-theme=autumn-day],[data-theme=winter-day],[data-theme=monet-day]) .btn-activate {
+  background: #dcfce7; border-color: #86efac;
+}
+:is([data-theme=spring-day],[data-theme=summer-day],[data-theme=autumn-day],[data-theme=winter-day],[data-theme=monet-day]) .btn-danger {
+  background: #fee2e2; border-color: #fca5a5;
+}
+:is([data-theme=spring-day],[data-theme=summer-day],[data-theme=autumn-day],[data-theme=winter-day],[data-theme=monet-day]) .banner-ok {
+  background: #dcfce7; border-color: #86efac; color: var(--green);
+}
+:is([data-theme=spring-day],[data-theme=summer-day],[data-theme=autumn-day],[data-theme=winter-day],[data-theme=monet-day]) .banner-err {
+  background: #fee2e2; border-color: #fca5a5; color: var(--red);
+}
 </style>
 {% endblock %}
 
@@ -131,7 +198,53 @@
       <span>{{ s.session_count }} 场次</span>
       <span>创建 {{ s.created_at_str or '—' }}</span>
       {% if s.description %}<span>{{ s.description }}</span>{% endif %}
+      {% if s.schedule_start %}
+      <span class="badge-schedule">
+        📅 {{ s.schedule_start[:2]|int }}/{{ s.schedule_start[2:]|int }}
+        –
+        {{ s.schedule_end[:2]|int }}/{{ s.schedule_end[2:]|int }}
+        {% if s.supplement_end %}
+        <span style="opacity:.7">· 补戏至 {{ s.supplement_end[:2]|int }}/{{ s.supplement_end[2:]|int }}</span>
+        {% endif %}
+      </span>
+      {% endif %}
     </div>
+
+    <!-- 档期编辑（可展开） -->
+    <details class="schedule-details" id="sched-{{ s.id }}">
+      <summary>🗓 编辑档期</summary>
+      <div class="schedule-form">
+        <div class="sched-row">
+          <div class="sched-field">
+            <label>档期开始 <small>MMDD</small></label>
+            <input class="sched-input" id="sched-start-{{ s.id }}"
+                   placeholder="0528" maxlength="4"
+                   value="{{ s.schedule_start or '' }}">
+          </div>
+          <div class="sched-field">
+            <label>档期结束 <small>MMDD</small></label>
+            <input class="sched-input" id="sched-end-{{ s.id }}"
+                   placeholder="0601" maxlength="4"
+                   value="{{ s.schedule_end or '' }}">
+          </div>
+          <div class="sched-field">
+            <label>补戏截止 <small>MMDD，可空</small></label>
+            <input class="sched-input" id="sched-supp-{{ s.id }}"
+                   placeholder="0604（可选）" maxlength="4"
+                   value="{{ s.supplement_end or '' }}">
+          </div>
+          <button class="btn btn-view" style="margin-bottom:1px;white-space:nowrap;"
+                  onclick="saveSchedule({{ s.id }}, this)">保存档期</button>
+        </div>
+        <div class="sched-note">
+          档期前（如沟通期）：互动事件不写入存档 ·
+          档期内：正常记录 ·
+          补戏期：只记场次，弧长不计 ·
+          补戏后：不再记录
+        </div>
+        <div class="sched-msg" id="sched-msg-{{ s.id }}"></div>
+      </div>
+    </details>
 
     <!-- 公开链接 -->
     <div style="margin-bottom:12px;">
@@ -185,6 +298,43 @@
 function copyUrl(token, btn) {
   const url = window.location.origin + '/view/' + token;
   copyText(url, btn);
+}
+
+async function saveSchedule(sid, btn) {
+  const start = document.getElementById(`sched-start-${sid}`).value.trim();
+  const end   = document.getElementById(`sched-end-${sid}`).value.trim();
+  const supp  = document.getElementById(`sched-supp-${sid}`).value.trim();
+  const msg   = document.getElementById(`sched-msg-${sid}`);
+
+  // 简单前端校验
+  const valid4 = v => !v || (v.length === 4 && /^\d+$/.test(v));
+  if (!valid4(start) || !valid4(end) || !valid4(supp)) {
+    msg.textContent = '⚠️ 格式错误，请填写 MMDD 四位数字（如 0528）';
+    msg.className = 'sched-msg err'; return;
+  }
+
+  btn.disabled = true;
+  try {
+    const r = await fetch(`/admin/shows/${sid}/schedule`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ schedule_start: start, schedule_end: end, supplement_end: supp })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      msg.textContent = '✅ 档期已保存';
+      msg.className = 'sched-msg ok';
+      setTimeout(() => location.reload(), 800);
+    } else {
+      msg.textContent = '❌ ' + (d.error || '保存失败');
+      msg.className = 'sched-msg err';
+    }
+  } catch (e) {
+    msg.textContent = '❌ 请求失败：' + e.message;
+    msg.className = 'sched-msg err';
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 function vanishCard(card, cb) {

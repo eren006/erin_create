@@ -134,11 +134,11 @@ body { font-family: 'Noto Serif SC', serif; background: var(--warm-white); color
   <div class="hero-right">
     <div class="hero-stat-grid">
       <div class="hero-stat">
-        <div class="hero-stat-num">2.0.0</div>
+        <div class="hero-stat-num">2.0.1</div>
         <div class="hero-stat-label">Latest</div>
       </div>
       <div class="hero-stat">
-        <div class="hero-stat-num">15</div>
+        <div class="hero-stat-num">16</div>
         <div class="hero-stat-label">Releases</div>
       </div>
       <div class="hero-stat">
@@ -156,15 +156,69 @@ body { font-family: 'Noto Serif SC', serif; background: var(--warm-white); color
 <div class="page">
 <div class="timeline">
 
+  <!-- ── v2.0.1 ─── -->
+  <div class="version-block latest" id="v2.0.1">
+    <div class="version-meta">
+      <span class="version-num">2.0.1</span>
+      <span class="version-date">最新</span>
+    </div>
+    <div class="version-dot"></div>
+    <div class="version-content">
+      <div class="version-title">多处数据一致性修复 <span class="tag-latest">Latest</span></div>
+      <div class="version-subtitle">改名级联更新、群分配竞态、自发检查绕过、计时器清理、背包计数等 8 处 Bug 修复</div>
+      <ul class="change-list">
+
+        <li class="change-group-label">长日系统（主插件）</li>
+        <li class="change-item">
+          <span class="change-tag tag-fix">Fix</span>
+          <span class="change-text"><code>修改名字</code> 现在同步更新所有存储中的旧名字：<code>b_confirmedSchedule</code> 的 <code>partner</code> 字段、<code>group_expire_info</code>/<code>group_timers</code> 的参与者列表、<code>group_timers</code> 的计时器 key、<code>interaction_counts</code> 的统计 key 和内层引用</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-fix">Fix</span>
+          <span class="change-text"><code>清除玩家</code> 补充清理 <code>interaction_counts</code> 中该角色的全部统计数据（含被他人记录的引用）</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-fix">Fix</span>
+          <span class="change-text"><code>allocateGroup</code> 修复竞态条件：改为先原子性标记群为「占用」再执行 <code>await</code> 检查，若检查不通过则回滚，防止两场并发约会被分配到同一个群</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-fix">Fix</span>
+          <span class="change-text"><code>拒绝时间线</code>（多人场景）退出后现在同步清理 <code>group_timers</code> 中拒绝者的 <code>participants</code> 和 <code>timerStatus</code> 条目，并更新其他参与者日程中的 <code>partner</code> 字段，防止向已退出者发送超时催稿提醒</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-fix">Fix</span>
+          <span class="change-text"><code>修改时间线</code> 现在同步更新 <code>group_timers</code> 中的 <code>day</code>/<code>time</code> 字段，与 <code>group_expire_info</code> 保持一致</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-fix">Fix</span>
+          <span class="change-text">短信 / 礼物「不可发给自己」检查改为对比真实绑定角色名，修复自定义署名开启时可绕过自发限制的漏洞</span>
+        </li>
+
+        <li class="change-group-label">长日设置</li>
+        <li class="change-item">
+          <span class="change-tag tag-fix">Fix</span>
+          <span class="change-text">自动天数防重复比较去掉错误的 <code>parseInt()</code>（类型不匹配导致比较恒为 false），并将 <code>getMonth()</code> 修正为 <code>getMonth() + 1</code>（原始值为 0–11）；修复后服务器在 23:59 重启不会触发重复推进</span>
+        </li>
+
+        <li class="change-group-label">长日RPG</li>
+        <li class="change-item">
+          <span class="change-tag tag-fix">Fix</span>
+          <span class="change-text"><code>getInvCount</code> 改为汇总同物品码所有 entry 的 count（原来只取第一条）；修复物品经赠送/使用分裂为多条 entry 后数量被低报导致购买/合成检查误判为不足的问题</span>
+        </li>
+
+      </ul>
+    </div>
+  </div>
+
   <!-- ── v2.0.0 ─── -->
-  <div class="version-block latest" id="v2.0.0">
+  <div class="version-block" id="v2.0.0">
     <div class="version-meta">
       <span class="version-num">2.0.0</span>
       <span class="version-date">最新</span>
     </div>
     <div class="version-dot"></div>
     <div class="version-content">
-      <div class="version-title">合成系统整合 · 池子全面增强 · 写信综 v1.5 <span class="tag-latest">Latest</span></div>
+      <div class="version-title">合成系统整合 · 池子全面增强 · 写信综 v1.5</div>
       <div class="version-subtitle">RPG 合成双系统合并为一；池子管理指令全面重写；写信综独立升级；修复多处 Bug</div>
       <ul class="change-list">
 
@@ -321,7 +375,7 @@ body { font-family: 'Noto Serif SC', serif; background: var(--warm-white); color
     </div>
     <div class="version-dot"></div>
     <div class="version-content">
-      <div class="version-title">本场统计扩展 · 礼物混乱投递 <span class="tag-latest">Latest</span></div>
+      <div class="version-title">本场统计扩展 · 礼物混乱投递</div>
       <div class="version-subtitle">短信/礼物/约会/心愿双向互动 Top3；礼物新增丢失与送错概率</div>
       <ul class="change-list">
         <li class="change-group-label">本场统计</li>

@@ -47,7 +47,7 @@
     <div style="font-size:13px;color:var(--muted);margin-bottom:12px;">未完成结戏的场次（实时捕获，未收到结戏信号）</div>
     <div class="day-grid">
       {% for d in incomplete %}
-      <a class="day-card" href="{{ url_for('date_view', game_day=d.game_day) }}"
+      <a class="day-card" href="{{ url_for('date_view', game_day=d.game_day) if d.game_day else url_for('home') }}"
          style="border-color:#3a2a1a;">
         <div class="day-label" style="color:var(--gold);font-size:16px;">未结戏</div>
         <div class="day-stats">

@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>长日存档 · 数据分析</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root{--bg:#0f0f13;--surface:#1a1a22;--surface2:#22222e;--border:#2e2e3e;
+  --accent:#f59e0b;--accent2:#fcd34d;--text:#e2e2ec;--muted:#7878a0;--red:#f87171;--green:#86efac;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:"PingFang SC","Microsoft YaHei",sans-serif;font-size:14px;line-height:1.7;}
+a{color:var(--accent);text-decoration:none;}a:hover{color:var(--accent2);}
+
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;
+  display:flex;align-items:center;gap:16px;height:52px;position:sticky;top:0;z-index:100;}
+.topbar .logo{font-size:16px;font-weight:700;color:var(--accent2);}
+.topbar .nav{display:flex;gap:4px;}
+.topbar .nav a{color:var(--muted);font-size:13px;padding:4px 10px;border-radius:6px;}
+.topbar .nav a:hover,.topbar .nav a.active{color:var(--text);background:var(--surface2);}
+.topbar .logout{margin-left:auto;font-size:12px;color:var(--muted);}
+
+.page{max-width:1100px;margin:0 auto;padding:28px 20px;}
+.page-title{font-size:20px;font-weight:600;color:var(--accent2);margin-bottom:20px;
+  padding-bottom:12px;border-bottom:1px solid var(--border);}
+
+.search-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:20px 24px;margin-bottom:24px;}
+.search-row{display:flex;gap:10px;}
+.search-row input{flex:1;background:var(--surface2);border:1px solid var(--border);
+  color:var(--text);border-radius:8px;padding:8px 14px;font-size:14px;}
+.search-row input:focus{outline:none;border-color:var(--accent);}
+.search-row button{background:var(--accent);color:#0f0f13;border:none;border-radius:8px;
+  padding:8px 22px;font-size:13px;font-weight:700;cursor:pointer;}
+.search-row button:hover{background:var(--accent2);}
+.dropdown-label{font-size:11px;color:var(--muted);margin:12px 0 6px;}
+.player-dropdown{width:100%;background:var(--surface2);border:1px solid var(--border);
+  color:var(--text);border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;}
+.player-dropdown:focus{outline:none;border-color:var(--accent);}
+
+.stat-row{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;
+  padding:14px 18px;min-width:130px;}
+.stat-card .val{font-size:22px;font-weight:700;color:var(--accent2);}
+.stat-card .lbl{font-size:11px;color:var(--muted);margin-top:2px;}
+
+.charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;}
+.chart-box{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;}
+.chart-box h3{font-size:13px;font-weight:700;color:var(--accent2);margin:0 0 12px;}
+.chart-wrap{position:relative;height:280px;}
+
+.filter-row{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;}
+.filter-label{font-size:11px;color:var(--muted);margin-right:2px;}
+.filter-btn{padding:3px 12px;border-radius:20px;border:1px solid var(--border);
+  background:none;color:var(--muted);font-size:12px;cursor:pointer;transition:all .15s;}
+.filter-btn.on{border-color:var(--accent2);color:var(--accent2);background:rgba(252,211,77,.1);}
+.filter-preset{font-weight:700;}
+
+.entries-table{width:100%;border-collapse:collapse;font-size:12px;}
+.entries-table th{text-align:left;padding:6px 10px;color:var(--muted);
+  border-bottom:1px solid var(--border);font-weight:600;font-size:11px;white-space:nowrap;}
+.entries-table td{padding:6px 10px;border-bottom:1px solid var(--border);vertical-align:middle;}
+.entries-table tr.excluded td{opacity:.35;}
+.entries-table tr:hover td{background:var(--surface2);}
+.excl-btn{background:none;border:1px solid var(--border);border-radius:4px;
+  padding:2px 8px;font-size:11px;color:var(--muted);cursor:pointer;transition:all .15s;}
+.excl-btn:hover{border-color:var(--red);color:var(--red);}
+.excl-btn.active{border-color:#444;color:#555;background:var(--surface2);}
+
+.empty{color:var(--muted);text-align:center;padding:40px 0;}
+.loading{color:var(--muted);text-align:center;padding:30px 0;}
+.section-title{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:1px;
+  text-transform:uppercase;margin-bottom:10px;}
+.boxplot-wrap{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:16px 20px;margin-bottom:24px;}
+.boxplot-wrap h3{font-size:13px;font-weight:700;color:var(--accent2);margin:0 0 14px;}
+.quartile-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;}
+.q-chip{background:var(--surface2);border:1px solid var(--border);border-radius:8px;
+  padding:8px 14px;min-width:80px;text-align:center;}
+.q-chip .q-val{font-size:15px;font-weight:700;color:var(--accent2);}
+.q-chip .q-lbl{font-size:10px;color:var(--muted);margin-top:2px;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="logo">⚙️ 超级管理员</span>
+  <nav class="nav">
+    <a href="{{ url_for('superadmin') }}">租户管理</a>
+    <a href="{{ url_for('superadmin_players') }}">玩家档案</a>
+    <a href="{{ url_for('superadmin_analysis') }}" class="active">数据分析</a>
+  </nav>
+  <a class="logout" href="{{ url_for('superadmin_logout') }}">退出超管</a>
+</div>
+
+<div class="page">
+  <div class="page-title">玩家数据分析</div>
+
+  <div class="search-card">
+    <form id="searchForm">
+      <div class="search-row">
+        <input type="text" id="qqInput" placeholder="输入 QQ 号" value="{{ qq }}" autocomplete="off">
+        <button type="submit">分析</button>
+      </div>
+    </form>
+    <div class="dropdown-label">或从已有玩家中选择</div>
+    <select class="player-dropdown" id="playerDropdown" onchange="onDropdownSelect(this.value)">
+      <option value="">— 加载中 —</option>
+    </select>
+  </div>
+
+  <div id="result">
+    {% if not qq %}<div class="empty">输入 QQ 号或角色名查看数据分析</div>{% endif %}
+  </div>
+</div>
+
+<script>
+const TOGGLE_URL = id => `/superadmin/entry/${id}/toggle_exclude`;
+let allEntries = [], activeRoles = new Set(), activeSubtypes = new Set(), activeShows = new Set(), charts = {};
+let _argStore = {}, _argIdx = 0;
+function _storeArg(v) { const k='_a'+(++_argIdx); _argStore[k]=v; return k; }
+function _callWithArg(fn, k) { window[fn](_argStore[k]); }
+function btn(label, isOn, fn, arg, bold) {
+  const k = _storeArg(arg);
+  return `<button class="filter-btn${isOn?' on':''}${bold?' filter-preset':''}" onclick="_callWithArg('${fn}','${k}')">${label}</button>`;
+}
+
+// 加载 dropdown 选项
+async function loadPlayerDropdown() {
+  const sel = document.getElementById('playerDropdown');
+  try {
+    const resp = await fetch('/superadmin/api/all_players');
+    const data = await resp.json();
+    if (!data.ok) { sel.innerHTML = '<option value="">（加载失败）</option>'; return; }
+    const currentQQ = document.getElementById('qqInput').value.trim();
+    let html = '<option value="">— 选择玩家 —</option>';
+    for (const p of data.players) {
+      const selected = p.qq === currentQQ ? ' selected' : '';
+      const showTag = p.show_count > 1 ? `  ·  ${p.show_count}个恋综` : '';
+      html += `<option value="${p.qq}"${selected}>${p.qq}${showTag}  (${p.entry_count}条)</option>`;
+    }
+    sel.innerHTML = html;
+  } catch { sel.innerHTML = '<option value="">（加载失败）</option>'; }
+}
+
+function onDropdownSelect(qq) {
+  if (!qq) return;
+  document.getElementById('qqInput').value = qq;
+  window.history.pushState({}, '', `?qq=${encodeURIComponent(qq)}`);
+  loadData(qq);
+}
+
+document.getElementById('searchForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const qq = document.getElementById('qqInput').value.trim();
+  if (!qq) return;
+  window.history.pushState({}, '', `?qq=${encodeURIComponent(qq)}`);
+  loadData(qq);
+});
+
+window.addEventListener('DOMContentLoaded', () => {
+  loadPlayerDropdown();
+  {% if qq %}loadData({{ qq | tojson }});{% endif %}
+});
+
+async function loadData(qq) {
+  document.getElementById('result').innerHTML = '<div class="loading">加载中…</div>';
+  try {
+    const resp = await fetch(`/superadmin/api/player_entries?qq=${encodeURIComponent(qq)}`);
+    const data = await resp.json();
+    if (!data.ok || !data.entries.length) {
+      document.getElementById('result').innerHTML = '<div class="empty">未找到该玩家的 RP 记录。</div>';
+      return;
+    }
+    allEntries = data.entries;
+    activeRoles    = new Set(data.roles);
+    activeSubtypes = new Set(allEntries.map(e => e.subtype || '私密'));
+    activeShows    = new Set(allEntries.map(e => e.show_name || '未知'));
+    render(qq);
+  } catch(err) {
+    document.getElementById('result').innerHTML =
+      `<div class="empty" style="color:var(--red)">加载错误：${err.message}</div>`;
+  }
+}
+
+function getFiltered() {
+  return allEntries.filter(e =>
+    activeShows.has(e.show_name || '未知') &&
+    activeRoles.has(e.role_name) &&
+    activeSubtypes.has(e.subtype || '私密')
+  );
+}
+function getActive(entries) { return entries.filter(e => !e.is_excluded); }
+
+function btn(label, active, fn, arg, bold) {
+  // 用 data-arg 避免 JSON 双引号破坏 onclick 属性
+  const enc = encodeURIComponent(JSON.stringify(arg));
+  return `<button class="filter-btn${active?' on':''}${bold?' filter-preset':''}"`
+       + ` onclick="${fn}(JSON.parse(decodeURIComponent('${enc}')))">${label}</button>`;
+}
+
+function render(qq) {
+  try {
+  _argStore = {}; _argIdx = 0;
+  const filtered = getFiltered();
+  const active   = getActive(filtered);
+  Object.values(charts).forEach(c => { try{c.destroy();}catch(e){} });
+  charts = {};
+
+  const allShows    = new Set(allEntries.map(e => e.show_name || '未知'));
+  const allRoles    = new Set(allEntries.map(e => e.role_name));
+  const allSubtypes = new Set(allEntries.map(e => e.subtype || '私密'));
+  const totalEntries = active.length;
+  const avgChars = totalEntries ? Math.round(active.reduce((s,e)=>s+e.char_count,0)/totalEntries) : 0;
+  const validT = active.filter(e=>e.reply_time_ms>0);
+  const avgReply = validT.length ? Math.round(validT.reduce((s,e)=>s+e.reply_time_ms,0)/validT.length/1000) : null;
+  const sessions = new Set(active.map(e=>e.session_id)).size;
+
+  // ── filter HTML（先算好，避免模板里嵌套引号）──────────────────────
+  const showFilterHtml = allShows.size > 1
+    ? '<div class="filter-row"><span class="filter-label">季度：</span>'
+      + [...allShows].map(s => btn(s, activeShows.has(s), 'toggleShow', s, false)).join('')
+      + '</div>' : '';
+
+  const roleFilterHtml = '<div class="filter-row"><span class="filter-label">角色：</span>'
+    + [...allRoles].map(r => btn(r, activeRoles.has(r), 'toggleRole', r, false)).join('')
+    + '</div>';
+
+  const PHONE   = ['电话'];
+  const OFFLINE = ['私约','官约','心愿'];
+  const curSet  = JSON.stringify([...activeSubtypes].sort());
+  const presets = [
+    {label:'全部', set:[...allSubtypes]},
+    {label:'线下', set:OFFLINE.filter(s=>allSubtypes.has(s))},
+    {label:'仅电话', set:PHONE.filter(s=>allSubtypes.has(s))},
+  ].filter(p=>p.set.length>0);
+  const presetBtns  = presets.map(p => btn(p.label, JSON.stringify(p.set.slice().sort())===curSet, 'applySubtypePreset', p.set, true)).join('');
+  const indivBtns   = [...allSubtypes].map(s => btn(s, activeSubtypes.has(s), 'applySubtypePreset', activeSubtypes.has(s)&&activeSubtypes.size===1?[...allSubtypes]:[s], false)).join('');
+  const subtypeFilterHtml = '<div class="filter-row" style="margin-bottom:20px;"><span class="filter-label">类型：</span>'
+    + presetBtns
+    + '<span style="color:var(--border);margin:0 6px;font-size:16px;">|</span>'
+    + indivBtns + '</div>';
+  // ────────────────────────────────────────────────────────────────────
+
+  document.getElementById('result').innerHTML = `
+    <div class="stat-row">
+      <div class="stat-card"><div class="val">${totalEntries}</div><div class="lbl">有效回复数</div></div>
+      <div class="stat-card"><div class="val">${avgChars}</div><div class="lbl">均字/回</div></div>
+      <div class="stat-card"><div class="val">${avgReply!==null?fmtTime(avgReply):'—'}</div><div class="lbl">均回复用时</div></div>
+      <div class="stat-card"><div class="val">${sessions}</div><div class="lbl">场次数</div></div>
+      <div class="stat-card"><div class="val">${filtered.length-totalEntries}</div><div class="lbl">已废弃</div></div>
+    </div>
+    ${showFilterHtml}
+    ${roleFilterHtml}
+    ${subtypeFilterHtml}
+
+    <div class="charts-grid">
+      <div class="chart-box">
+        <h3>字数 vs 弧长 · 线性回归</h3>
+        <div class="chart-wrap"><canvas id="chartRegression"></canvas></div>
+      </div>
+      <div class="chart-box">
+        <h3>弧长分布 · 累计尾部</h3>
+        <div class="chart-wrap"><canvas id="chartDist"></canvas></div>
+      </div>
+    </div>
+
+    <div class="boxplot-wrap" id="boxplotSection" style="display:none;">
+      <h3>弧长分布 · Box Plot</h3>
+      <div id="chartBoxPlotWrap" style="position:relative;"><canvas id="chartBoxPlot"></canvas></div>
+      <div class="quartile-row" id="quartileRow"></div>
+    </div>
+
+    <div class="section-title" style="margin-bottom:8px;">回复明细
+      <span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:8px;text-transform:none;">「废弃」将该条排除出分析，不影响原始存档</span>
+    </div>
+    <div style="overflow-x:auto;">
+      <table class="entries-table">
+        <thead><tr>
+          <th>#</th><th>角色</th><th>季度</th><th>类型</th><th>游戏日</th>
+          <th>字数</th><th>回复用时</th><th>操作</th>
+        </tr></thead>
+        <tbody id="entriesTbody"></tbody>
+      </table>
+    </div>`;
+
+  drawRegression(active);
+  drawDistribution(active);
+  drawBoxPlot(active);
+  renderTable(filtered);
+  } catch(err) {
+    document.getElementById('result').innerHTML =
+      `<div class="empty" style="color:var(--red)">渲染错误：${err.message}<br><pre style="font-size:10px;text-align:left;white-space:pre-wrap">${err.stack||''}</pre></div>`;
+  }
+}
+
+function drawRegression(entries) {
+  // 只用有弧长的条目做回归
+  const pts = entries.filter(e => e.reply_time_ms > 0)
+                     .map(e => ({x: e.reply_time_ms / 1000, y: e.char_count}));
+  if (!pts.length) return;
+
+  const xs = pts.map(p=>p.x), ys = pts.map(p=>p.y);
+  const n=xs.length, sx=xs.reduce((a,b)=>a+b,0), sy=ys.reduce((a,b)=>a+b,0);
+  const sxy=xs.reduce((a,b,i)=>a+b*ys[i],0), sx2=xs.reduce((a,b)=>a+b*b,0);
+  const slope=(n*sxy-sx*sy)/(n*sx2-sx*sx)||0, intercept=(sy-slope*sx)/n;
+  const xMin=Math.min(...xs), xMax=Math.max(...xs);
+
+  const ctx = document.getElementById('chartRegression').getContext('2d');
+  charts.regression = new Chart(ctx, {
+    data:{datasets:[
+      {type:'scatter', label:'回复', data:pts,
+       backgroundColor:'rgba(139,124,246,.75)', pointRadius:4, pointHoverRadius:6, order:2},
+      {type:'line', label:'趋势',
+       data:[{x:xMin, y:intercept+slope*xMin}, {x:xMax, y:intercept+slope*xMax}],
+       borderColor:'rgba(252,211,77,.85)', borderWidth:2, borderDash:[4,3], pointRadius:0, fill:false, order:1}
+    ]},
+    options:{responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>{
+        const d=c.raw; return [`字数：${d.y}`, `弧长：${fmtTime(Math.round(d.x))}`];
+      }}}},
+      scales:{
+        x:{title:{display:true, text:'弧长（回复用时）', color:'#7878a0', font:{size:11}},
+           grid:{color:'rgba(255,255,255,.04)'}, ticks:{color:'#7878a0', callback:v=>fmtTime(Math.round(v))}},
+        y:{title:{display:true, text:'字数', color:'#7878a0', font:{size:11}},
+           grid:{color:'rgba(255,255,255,.04)'}, ticks:{color:'#7878a0'}, min:0}
+      }}
+  });
+}
+
+function drawDistribution(entries) {
+  // 只取有 reply_time_ms 的条目，单位转为秒
+  const valid = entries.filter(e => e.reply_time_ms > 0);
+  if (!valid.length) return;
+  const vals = valid.map(e => e.reply_time_ms / 1000).sort((a,b)=>a-b);
+  const maxV = vals[vals.length-1];
+  // bin 单位：秒，最小 30s，最多 20 个 bin
+  const BIN = Math.max(30, Math.round(maxV / 18));
+  const bins = [];
+  for (let lo=0; lo<maxV+BIN; lo+=BIN) bins.push({lo, count:0});
+  vals.forEach(v => { const idx=Math.min(Math.floor(v/BIN), bins.length-1); bins[idx].count++; });
+  let cum = 0;
+  const cdf = bins.map(b => { cum+=b.count; return +(cum/vals.length*100).toFixed(1); });
+
+  // x 轴标签：秒 → 友好格式
+  const xLabels = bins.map(b => b.lo < 60 ? b.lo+'s' : b.lo < 3600 ? Math.round(b.lo/60)+'min' : (b.lo/3600).toFixed(1)+'h');
+
+  const ctx = document.getElementById('chartDist').getContext('2d');
+  charts.dist = new Chart(ctx, {
+    data:{labels: xLabels, datasets:[
+      {type:'bar', label:'频次', data:bins.map(b=>b.count),
+       backgroundColor:'rgba(139,124,246,.45)', borderColor:'rgba(139,124,246,.8)', borderWidth:1, yAxisID:'y', order:2},
+      {type:'line', label:'累计%', data:cdf,
+       borderColor:'rgba(252,211,77,.9)', borderWidth:2, pointRadius:2, fill:false, yAxisID:'y2', order:1, tension:.3}
+    ]},
+    options:{responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{position:'top', labels:{color:'#7878a0', font:{size:11}, boxWidth:12}},
+               tooltip:{callbacks:{title:([c])=>`弧长：${xLabels[c.dataIndex]} – ${xLabels[c.dataIndex+1]||'+'}`}}},
+      scales:{
+        x:{title:{display:true, text:'弧长（回复用时）', color:'#7878a0', font:{size:11}}, ticks:{maxRotation:30, color:'#7878a0', font:{size:10}}, grid:{color:'rgba(255,255,255,.04)'}},
+        y:{title:{display:true, text:'频次', color:'#7878a0', font:{size:11}}, grid:{color:'rgba(255,255,255,.04)'}, ticks:{color:'#7878a0'}, min:0},
+        y2:{position:'right', title:{display:true, text:'累计%', color:'#7878a0', font:{size:11}},
+          min:0, max:100, grid:{display:false}, ticks:{callback:v=>v+'%', color:'#7878a0', font:{size:10}}}
+      }}
+  });
+}
+
+function quantile(sorted, q) {
+  const pos = (sorted.length - 1) * q;
+  const lo = Math.floor(pos), hi = Math.ceil(pos);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+}
+
+function drawBoxPlot(entries) {
+  const section = document.getElementById('boxplotSection');
+  if (charts.boxplot) { charts.boxplot.destroy(); delete charts.boxplot; }
+
+  const valid = entries.filter(e => e.reply_time_ms > 0);
+  if (!valid.length) { section.style.display = 'none'; return; }
+  section.style.display = '';
+
+  const roles = [...new Set(valid.map(e => e.role_name))];
+  const palette = ['rgba(139,124,246,.65)','rgba(252,211,77,.65)','rgba(134,239,172,.65)','rgba(248,113,113,.65)'];
+
+  const boxes = roles.map((r, i) => {
+    const vals = valid.filter(e => e.role_name === r).map(e => e.reply_time_ms / 1000).sort((a,b) => a-b);
+    return { role: r, color: palette[i % palette.length],
+      min: vals[0], q1: quantile(vals,.25), median: quantile(vals,.5),
+      q3: quantile(vals,.75), max: vals[vals.length-1] };
+  });
+
+  const rowH = 60, padTop = 20, padBot = 36;
+  const totalH = padTop + roles.length * rowH + padBot;
+  document.getElementById('chartBoxPlotWrap').style.height = totalH + 'px';
+
+  const allMax = Math.max(...valid.map(e => e.reply_time_ms / 1000));
+
+  // inline plugin: draws boxes after Chart.js renders axes
+  const boxPlugin = {
+    id: 'inlineBox',
+    afterDatasetsDraw(chart) {
+      const {ctx, scales: {x, y}} = chart;
+      const bh = 28;
+      boxes.forEach((d, i) => {
+        const cy  = y.getPixelForValue(i);
+        const x1  = x.getPixelForValue(d.min);
+        const xQ1 = x.getPixelForValue(d.q1);
+        const xM  = x.getPixelForValue(d.median);
+        const xQ3 = x.getPixelForValue(d.q3);
+        const x2  = x.getPixelForValue(d.max);
+        const solid = d.color.replace('.65)', '1)');
+        ctx.save();
+        ctx.lineWidth = 1.5; ctx.strokeStyle = solid; ctx.setLineDash([]);
+        // whisker line
+        ctx.beginPath(); ctx.moveTo(x1, cy); ctx.lineTo(x2, cy); ctx.stroke();
+        // whisker caps
+        ctx.beginPath();
+        ctx.moveTo(x1, cy-7); ctx.lineTo(x1, cy+7);
+        ctx.moveTo(x2, cy-7); ctx.lineTo(x2, cy+7);
+        ctx.stroke();
+        // IQR box
+        ctx.fillStyle = d.color; ctx.strokeStyle = solid;
+        ctx.fillRect(xQ1, cy-bh/2, xQ3-xQ1, bh);
+        ctx.strokeRect(xQ1, cy-bh/2, xQ3-xQ1, bh);
+        // median
+        ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(xM, cy-bh/2); ctx.lineTo(xM, cy+bh/2); ctx.stroke();
+        ctx.restore();
+      });
+    }
+  };
+
+  const ctx = document.getElementById('chartBoxPlot').getContext('2d');
+  charts.boxplot = new Chart(ctx, {
+    type: 'scatter',
+    data: { datasets: [{ data: [] }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { min: 0, max: allMax * 1.05,
+             ticks: { color:'#7878a0', callback: v => fmtTime(Math.round(v)), font:{size:10} },
+             grid: { color:'rgba(255,255,255,.04)' } },
+        y: { type:'category', labels: roles, offset: true, reverse: false,
+             ticks: { color:'#7878a0', font:{size:12} },
+             grid: { color:'rgba(255,255,255,.04)' } }
+      }
+    },
+    plugins: [boxPlugin]
+  });
+
+  // 分位数 chips（所有角色合并）
+  const allSorted = valid.map(e => e.reply_time_ms/1000).sort((a,b) => a-b);
+  const stats = [
+    {lbl:'最小值', val: fmtTime(Math.round(allSorted[0]))},
+    {lbl:'Q1',     val: fmtTime(Math.round(quantile(allSorted,.25)))},
+    {lbl:'中位数', val: fmtTime(Math.round(quantile(allSorted,.5)))},
+    {lbl:'Q3',     val: fmtTime(Math.round(quantile(allSorted,.75)))},
+    {lbl:'最大值', val: fmtTime(Math.round(allSorted[allSorted.length-1]))},
+    {lbl:'IQR',    val: fmtTime(Math.round(quantile(allSorted,.75)-quantile(allSorted,.25)))},
+  ];
+  document.getElementById('quartileRow').innerHTML = stats.map(s =>
+    `<div class="q-chip"><div class="q-val">${s.val}</div><div class="q-lbl">${s.lbl}</div></div>`
+  ).join('');
+}
+
+function renderTable(entries) {
+  const tbody = document.getElementById('entriesTbody');
+  if (!tbody) return;
+  let idx=0;
+  tbody.innerHTML = entries.map(e=>{
+    if(!e.is_excluded) idx++;
+    return `<tr class="${e.is_excluded?'excluded':''}" id="row-${e.id}">
+      <td style="color:var(--muted)">${e.is_excluded?'—':idx}</td>
+      <td style="color:var(--accent2);font-weight:600">${e.role_name}</td>
+      <td style="color:var(--muted);font-size:11px">${e.show_name||'—'}</td>
+      <td>${e.subtype||'—'}</td>
+      <td>${e.game_day||'—'}</td>
+      <td><b>${e.char_count}</b></td>
+      <td style="color:var(--muted)">${e.reply_time_ms?fmtTime(Math.round(e.reply_time_ms/1000)):'—'}</td>
+      <td><button class="excl-btn ${e.is_excluded?'active':''}" onclick="toggleExclude(${e.id})">${e.is_excluded?'恢复':'废弃'}</button></td>
+    </tr>`;
+  }).join('');
+}
+
+async function toggleExclude(id) {
+  const resp = await fetch(TOGGLE_URL(id),{method:'POST'});
+  const data = await resp.json();
+  if (!data.ok) return;
+  allEntries.find(e=>e.id===id).is_excluded = data.is_excluded;
+  render(document.getElementById('qqInput').value.trim());
+}
+
+function toggleShow(s) {
+  if(activeShows.has(s)){if(activeShows.size>1)activeShows.delete(s);}
+  else activeShows.add(s);
+  render(document.getElementById('qqInput').value.trim());
+}
+function toggleRole(r) {
+  if(activeRoles.has(r)){if(activeRoles.size>1)activeRoles.delete(r);}
+  else activeRoles.add(r);
+  render(document.getElementById('qqInput').value.trim());
+}
+function applySubtypePreset(set) {
+  activeSubtypes = new Set(Array.isArray(set)?set:[set]);
+  render(document.getElementById('qqInput').value.trim());
+}
+function fmtTime(s){return s<60?s+'s':s<3600?Math.round(s/60)+'min':(s/3600).toFixed(1)+'h';}
+</script>
+</body>
+</html>

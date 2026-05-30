@@ -1037,7 +1037,7 @@ footer.footer { position: relative; z-index: 1; }
   <p style="font-size:14px;color:var(--muted);margin-bottom:12px">在自己的私人群中创建角色，每人限一个。创建后可随时修改个人信息。</p>
   <div class="cmd-list">
     <div class="cmd-item"><span class="cmd-text">创建新角色 角色名</span><span class="cmd-desc">绑定账号，创建你的游戏角色（每人限一个）</span><button class="cmd-copy" onclick="copyCmd(this,'创建新角色 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">修改名字 新名字</span><span class="cmd-desc">更改角色名</span><button class="cmd-copy" onclick="copyCmd(this,'修改名字 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">修改名字 新名字</span><span class="cmd-desc">更改角色名（自动同步所有日程、约会记录与互动统计）</span><button class="cmd-copy" onclick="copyCmd(this,'修改名字 ')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">修改性别 男/女</span><span class="cmd-desc">设置角色性别</span><button class="cmd-copy" onclick="copyCmd(this,'修改性别 ')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">修改年龄 数字</span><span class="cmd-desc">设置角色年龄</span><button class="cmd-copy" onclick="copyCmd(this,'修改年龄 ')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">修改皮相 明星名</span><span class="cmd-desc">设置角色外貌参考（2小时冷却）</span><button class="cmd-copy" onclick="copyCmd(this,'修改皮相 ')">复制</button></div>
@@ -1058,7 +1058,7 @@ footer.footer { position: relative; z-index: 1; }
     <div class="cmd-item"><span class="cmd-text">背包</span><span class="cmd-desc">查看你的物品和资源</span><button class="cmd-copy" onclick="copyCmd(this,'背包')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">查看关系线</span><span class="cmd-desc">查看你的所有感情线</span><button class="cmd-copy" onclick="copyCmd(this,'查看关系线')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">本场统计</span><span class="cmd-desc">互动 Top3 统计：短信、礼物、约会（私约/电话）、心愿摘取双向排行</span><button class="cmd-copy" onclick="copyCmd(this,'本场统计')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">指令指南</span><span class="cmd-desc">查看所有命令帮助</span><button class="cmd-copy" onclick="copyCmd(this,'指令指南')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">。指令指南</span><span class="cmd-desc">查看所有命令帮助</span><button class="cmd-copy" onclick="copyCmd(this,'。指令指南')">复制</button></div>
   </div>
 </div>
 
@@ -1069,10 +1069,10 @@ footer.footer { position: relative; z-index: 1; }
     <div class="cmd-item"><span class="cmd-text">查看帖子</span><span class="cmd-desc">浏览所有论坛讨论</span><button class="cmd-copy" onclick="copyCmd(this,'查看帖子')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">回复帖子 帖ID 内容</span><span class="cmd-desc">回复帖子；回复中写 @角色名 会向对方私人群发提醒</span><button class="cmd-copy" onclick="copyCmd(this,'回复帖子 ')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">回复帖子 帖ID 引用N 内容</span><span class="cmd-desc">引用第N楼回复（引用0=楼主正文），再附上自己的内容</span><button class="cmd-copy" onclick="copyCmd(this,'回复帖子 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">点赞 帖ID 署名</span><span class="cmd-desc">支持一个帖子</span><button class="cmd-copy" onclick="copyCmd(this,'点赞 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">点踩 帖ID 署名</span><span class="cmd-desc">反对一个帖子</span><button class="cmd-copy" onclick="copyCmd(this,'点踩 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">点赞楼层 帖ID 楼层号 署名</span><span class="cmd-desc">对某一楼的回复单独点赞</span><button class="cmd-copy" onclick="copyCmd(this,'点赞楼层 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">点踩楼层 帖ID 楼层号 署名</span><span class="cmd-desc">对某一楼的回复单独点踩</span><button class="cmd-copy" onclick="copyCmd(this,'点踩楼层 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">。点赞 帖ID 署名</span><span class="cmd-desc">支持一个帖子</span><button class="cmd-copy" onclick="copyCmd(this,'。点赞 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">。点踩 帖ID 署名</span><span class="cmd-desc">反对一个帖子</span><button class="cmd-copy" onclick="copyCmd(this,'。点踩 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">。点赞楼层 帖ID 楼层号 署名</span><span class="cmd-desc">对某一楼的回复单独点赞</span><button class="cmd-copy" onclick="copyCmd(this,'。点赞楼层 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">。点踩楼层 帖ID 楼层号 署名</span><span class="cmd-desc">对某一楼的回复单独点踩</span><button class="cmd-copy" onclick="copyCmd(this,'。点踩楼层 ')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">点歌</span><span class="cmd-desc">查看点歌用法（需回复音乐卡片使用）</span><button class="cmd-copy" onclick="copyCmd(this,'点歌')">复制</button></div>
   </div>
 </div>
@@ -1115,9 +1115,9 @@ footer.footer { position: relative; z-index: 1; }
   <h3 class="sub-title">地点系统</h3>
   <p style="font-size:14px;color:var(--muted);margin-bottom:12px">发起私约时需填写地点。地点系统开启后，只有可进入的地点才能用于邀约；钥匙决定能否进入上锁的地点。</p>
   <div class="cmd-list">
-    <div class="cmd-item"><span class="cmd-text">地点 查看</span><span class="cmd-desc">查看所有地点及你的进入权限：📍 开放 · 🔑 已解锁 · 🔒 需要钥匙</span><button class="cmd-copy" onclick="copyCmd(this,'地点 查看')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">地点 钥匙</span><span class="cmd-desc">查看你持有的所有钥匙，含地点是否仍存在、是否当前上锁</span><button class="cmd-copy" onclick="copyCmd(this,'地点 钥匙')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">查看可私约地点</span><span class="cmd-desc">查看允许私约的地点列表</span><button class="cmd-copy" onclick="copyCmd(this,'查看可私约地点')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">。地点 查看</span><span class="cmd-desc">查看所有地点及你的进入权限：📍 开放 · 🔑 已解锁 · 🔒 需要钥匙</span><button class="cmd-copy" onclick="copyCmd(this,'。地点 查看')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">。地点 钥匙</span><span class="cmd-desc">查看你持有的所有钥匙，含地点是否仍存在、是否当前上锁</span><button class="cmd-copy" onclick="copyCmd(this,'。地点 钥匙')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">查看地点</span><span class="cmd-desc">查看所有可私约地点及你的进入权限</span><button class="cmd-copy" onclick="copyCmd(this,'查看地点')">复制</button></div>
   </div>
   <div class="callout tip" style="margin-top:12px">
     <div class="callout-title">🏠 私人房间</div>
@@ -1153,7 +1153,7 @@ footer.footer { position: relative; z-index: 1; }
   </div>
   <div class="cmd-list" style="margin-top:12px">
     <div class="cmd-item"><span class="cmd-text">结束私约</span><span class="cmd-desc">标记当前群的约会为已结束状态，正常触发结戏奖励</span><button class="cmd-copy" onclick="copyCmd(this,'结束私约')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">修改时间线 D天数 时间段</span><span class="cmd-desc">在约会群内修改当前约会的天数与时间（如确认后需调整）</span><button class="cmd-copy" onclick="copyCmd(this,'修改时间线 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">修改时间线 D天数 时间段</span><span class="cmd-desc">在约会群内修改当前约会的天数与时间（同步更新全部参与者日程）</span><button class="cmd-copy" onclick="copyCmd(this,'修改时间线 ')">复制</button></div>
   </div>
   <table class="guide-table" style="margin-top:10px">
     <thead><tr><th>示例</th><th>说明</th></tr></thead>
@@ -1238,7 +1238,7 @@ footer.footer { position: relative; z-index: 1; }
   <div class="cmd-list">
     <div class="cmd-item"><span class="cmd-text">挂心愿 时间段 地点 心愿内容</span><span class="cmd-desc">发布开放式邀约，仅显示性别</span><button class="cmd-copy" onclick="copyCmd(this,'挂心愿 ')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">挂心愿 时间段 地点 内容 | 昵称</span><span class="cmd-desc">自定义显示昵称（最多10字），例：挂心愿 1400-1500 图书馆 想找人聊聊 | 神秘人A</span><button class="cmd-copy" onclick="copyCmd(this,'挂心愿  |  ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">悬赏心愿 时间段 地点 内容 | 物品名 数量 [| 昵称]</span><span class="cmd-desc">带物品奖励的心愿，可选第二个 | 追加自定义昵称（最多10字）；例：悬赏心愿 1400-1500 图书馆 陪我看书 | 滋补汤 1 | 神秘人A</span><button class="cmd-copy" onclick="copyCmd(this,'悬赏心愿 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">。悬赏心愿 时间段 地点 内容 | 物品名 数量 [| 昵称]</span><span class="cmd-desc">带物品奖励的心愿，可选第二个 | 追加自定义昵称（最多10字）；例：悬赏心愿 1400-1500 图书馆 陪我看书 | 滋补汤 1 | 神秘人A</span><button class="cmd-copy" onclick="copyCmd(this,'。悬赏心愿 ')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">看心愿</span><span class="cmd-desc">查看所有可接受的心愿（悬赏心愿会显示奖励）</span><button class="cmd-copy" onclick="copyCmd(this,'看心愿')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">摘心愿 心愿编号</span><span class="cmd-desc">响应他人的心愿邀约；成功建群后计入双向互动统计；若有悬赏则奖励自动入背包</span><button class="cmd-copy" onclick="copyCmd(this,'摘心愿 ')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">撤心愿 心愿编号</span><span class="cmd-desc">撤回你发布的心愿；悬赏物品自动归还</span><button class="cmd-copy" onclick="copyCmd(this,'撤心愿 ')">复制</button></div>
@@ -1264,8 +1264,8 @@ footer.footer { position: relative; z-index: 1; }
   <h3 class="sub-title">修改时间线 / 拒绝时间线</h3>
   <p style="font-size:14px;color:var(--muted);margin-bottom:12px">约会确认后若需调整时间，或中途不想参加，在约会群内使用以下指令。</p>
   <div class="cmd-list">
-    <div class="cmd-item"><span class="cmd-text">修改时间线 D天数 时间段</span><span class="cmd-desc">在约会群内修改当前约会的天数和时间，如：修改时间线 D1 1400-1500</span><button class="cmd-copy" onclick="copyCmd(this,'修改时间线 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">拒绝时间线 群号</span><span class="cmd-desc">退出约会并通知相关人员，在任意群使用，参数为约会群号</span><button class="cmd-copy" onclick="copyCmd(this,'拒绝时间线 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">修改时间线 D天数 时间段</span><span class="cmd-desc">在约会群内修改当前约会的天数和时间，同步更新全部参与者日程，如：修改时间线 D1 1400-1500</span><button class="cmd-copy" onclick="copyCmd(this,'修改时间线 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">拒绝时间线 群号</span><span class="cmd-desc">退出约会并通知相关人员；多人场景下自动从所有参与者日程中移除你的信息，在任意群使用，参数为约会群号</span><button class="cmd-copy" onclick="copyCmd(this,'拒绝时间线 ')">复制</button></div>
   </div>
   <table class="guide-table" style="margin-top:12px">
     <thead><tr><th>规则</th><th>说明</th></tr></thead>
@@ -1308,9 +1308,9 @@ footer.footer { position: relative; z-index: 1; }
 <div class="sub-section">
   <h3 class="sub-title">信件系统</h3>
   <div class="cmd-list">
-    <div class="cmd-item"><span class="cmd-text">发送信件 角色名 内容</span><span class="cmd-desc">发送正式信件，格式会自动弹出 <span class="tag tag-admin" style="font-size:10px">需启用写信综</span></span><button class="cmd-copy" onclick="copyCmd(this,'发送信件 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">。发送信件 角色名 内容</span><span class="cmd-desc">发送正式信件，格式会自动弹出 <span class="tag tag-admin" style="font-size:10px">需启用写信综</span></span><button class="cmd-copy" onclick="copyCmd(this,'。发送信件 ')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">发送心动信</span><span class="cmd-desc">发送心动信，格式会自动弹出</span><button class="cmd-copy" onclick="copyCmd(this,'发送心动信 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">撤回心动信 编号</span><span class="cmd-desc">撤回已发送的指定心动信（发送前有效）</span><button class="cmd-copy" onclick="copyCmd(this,'撤回心动信 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">。撤回心动信 编号</span><span class="cmd-desc">撤回已发送的指定心动信（发送前有效）</span><button class="cmd-copy" onclick="copyCmd(this,'。撤回心动信 ')">复制</button></div>
     <div class="cmd-item"><span class="cmd-text">查看信箱</span><span class="cmd-desc">查看收到的心动信，带有编号</span><button class="cmd-copy" onclick="copyCmd(this,'查看信箱')">复制</button></div>
   </div>
   <div class="callout" style="margin-top:10px">
@@ -1325,10 +1325,10 @@ footer.footer { position: relative; z-index: 1; }
 
 <div class="sub-section">
   <h3 class="sub-title">短信</h3>
-  <p style="font-size:14px;color:var(--muted);margin-bottom:12px">发送即时私信给其他角色，对方会在自己的私人群收到通知。可自定义署名，不填则默认使用你的角色名。</p>
+  <p style="font-size:14px;color:var(--muted);margin-bottom:12px">发送即时私信给其他角色，对方会在自己的私人群收到通知。可自定义署名，不填则默认使用你的角色名。收信人须填写对方的真实角色名，不可填写自己。</p>
   <div class="cmd-list">
     <div class="cmd-item"><span class="cmd-text">短信 [收信人] [内容]</span><span class="cmd-desc">以自己角色名发送短信</span><button class="cmd-copy" onclick="copyCmd(this,'短信 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">[署名]短信 [收信人] [内容]</span><span class="cmd-desc">以自定义署名发送短信（署名紧贴"短信"二字）</span><button class="cmd-copy" onclick="copyCmd(this,'短信 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">[署名]短信 [收信人] [内容]</span><span class="cmd-desc">以自定义署名发送短信（署名紧贴"短信"二字，收信人须为他人真实角色名）</span><button class="cmd-copy" onclick="copyCmd(this,'短信 ')">复制</button></div>
   </div>
   <table class="guide-table" style="margin-top:12px">
     <thead><tr><th>示例</th><th>说明</th></tr></thead>
@@ -1375,7 +1375,7 @@ footer.footer { position: relative; z-index: 1; }
   </table>
   <div class="callout" style="margin-top:12px">
     <div class="callout-title">📌 规则</div>
-    <p>叙事礼物（非编号）每日有送礼冷却；图鉴预设礼物（#编号）解锁后可无限赠送，不受冷却影响。收到预设礼物的接收方会同步解锁该礼物入图鉴。</p>
+    <p>叙事礼物（非编号）每日有送礼冷却；图鉴预设礼物（#编号）解锁后可无限赠送，不受冷却影响。收到预设礼物的接收方会同步解锁该礼物入图鉴。收件人须填写对方的真实角色名，不能送礼给自己。</p>
   </div>
 </div>
 
@@ -1428,7 +1428,7 @@ footer.footer { position: relative; z-index: 1; }
   <div class="cmd-group">
     <div class="cmd-group-label">查看</div>
     <div class="cmd-list">
-      <div class="cmd-item"><span class="cmd-text">查看背包</span><span class="cmd-desc">查看自己的背包</span><button class="cmd-copy" onclick="copyCmd(this,'查看背包')">复制</button></div>
+      <div class="cmd-item"><span class="cmd-text">。查看背包</span><span class="cmd-desc">查看自己的背包</span><button class="cmd-copy" onclick="copyCmd(this,'。查看背包')">复制</button></div>
       <div class="cmd-item"><span class="cmd-text">我的状态</span><span class="cmd-desc">查看属性与装备</span><button class="cmd-copy" onclick="copyCmd(this,'我的状态')">复制</button></div>
     </div>
   </div>
@@ -1445,9 +1445,9 @@ footer.footer { position: relative; z-index: 1; }
   <div class="cmd-group">
     <div class="cmd-group-label">装备</div>
     <div class="cmd-list">
-      <div class="cmd-item"><span class="cmd-text">装备</span><span class="cmd-desc">查看当前装备</span><button class="cmd-copy" onclick="copyCmd(this,'装备')">复制</button></div>
-      <div class="cmd-item"><span class="cmd-text">装备 [EQUIP_XXX 或 装备名]</span><span class="cmd-desc">穿上装备</span><button class="cmd-copy" onclick="copyCmd(this,'装备 ')">复制</button></div>
-      <div class="cmd-item"><span class="cmd-text">脱装备 [槽位]</span><span class="cmd-desc">卸下槽位装备（head / chest / hand / leg / foot）</span><button class="cmd-copy" onclick="copyCmd(this,'脱装备 ')">复制</button></div>
+      <div class="cmd-item"><span class="cmd-text">。装备</span><span class="cmd-desc">查看当前装备</span><button class="cmd-copy" onclick="copyCmd(this,'。装备')">复制</button></div>
+      <div class="cmd-item"><span class="cmd-text">。装备 [EQUIP_XXX 或 装备名]</span><span class="cmd-desc">穿上装备</span><button class="cmd-copy" onclick="copyCmd(this,'。装备 ')">复制</button></div>
+      <div class="cmd-item"><span class="cmd-text">。脱装备 [槽位]</span><span class="cmd-desc">卸下槽位装备（head / chest / hand / leg / foot）</span><button class="cmd-copy" onclick="copyCmd(this,'。脱装备 ')">复制</button></div>
     </div>
   </div>
 
@@ -1480,12 +1480,12 @@ footer.footer { position: relative; z-index: 1; }
     <div class="cmd-group-label">使用指令</div>
     <div class="cmd-list">
       <div class="cmd-item"><span class="cmd-text">特殊使用 追踪器 [目标] [时间]</span><span class="cmd-desc">查询目标该时段行踪（✅成功 / ❌失败 / ⚠️无记录）</span><button class="cmd-copy" onclick="copyCmd(this,'特殊使用 追踪器 ')">复制</button></div>
-      <div class="cmd-item"><span class="cmd-text">追踪器成功率 [0-100]</span><span class="cmd-desc">设置追踪成功率（管理员）</span><button class="cmd-copy" onclick="copyCmd(this,'追踪器成功率 ')">复制</button></div>
+      <div class="cmd-item"><span class="cmd-text">。追踪器成功率 [0-100]</span><span class="cmd-desc">设置追踪成功率（管理员）</span><button class="cmd-copy" onclick="copyCmd(this,'。追踪器成功率 ')">复制</button></div>
       <div class="cmd-item"><span class="cmd-text">特殊使用 万能钥匙 [地点名]</span><span class="cmd-desc">兑换指定地点的钥匙</span><button class="cmd-copy" onclick="copyCmd(this,'特殊使用 万能钥匙 ')">复制</button></div>
       <div class="cmd-item"><span class="cmd-text">特殊使用 望远镜 [目标角色]</span><span class="cmd-desc">对目标施加信件抄录效果</span><button class="cmd-copy" onclick="copyCmd(this,'特殊使用 望远镜 ')">复制</button></div>
       <div class="cmd-item"><span class="cmd-text">特殊使用 羽毛笔 [目标角色]</span><span class="cmd-desc">对目标施加信件拦截效果</span><button class="cmd-copy" onclick="copyCmd(this,'特殊使用 羽毛笔 ')">复制</button></div>
-      <div class="cmd-item"><span class="cmd-text">羽毛笔修改</span><span class="cmd-desc">查看待处理的拦截信件清单</span><button class="cmd-copy" onclick="copyCmd(this,'羽毛笔修改')">复制</button></div>
-      <div class="cmd-item"><span class="cmd-text">羽毛笔修改 [序号] [修改后内容]</span><span class="cmd-desc">修改指定信件并发出</span><button class="cmd-copy" onclick="copyCmd(this,'羽毛笔修改 ')">复制</button></div>
+      <div class="cmd-item"><span class="cmd-text">。羽毛笔修改</span><span class="cmd-desc">查看待处理的拦截信件清单</span><button class="cmd-copy" onclick="copyCmd(this,'。羽毛笔修改')">复制</button></div>
+      <div class="cmd-item"><span class="cmd-text">。羽毛笔修改 [序号] [修改后内容]</span><span class="cmd-desc">修改指定信件并发出</span><button class="cmd-copy" onclick="copyCmd(this,'。羽毛笔修改 ')">复制</button></div>
       <div class="cmd-item"><span class="cmd-text">特殊使用 捕鼠器 [目标角色] [时间]</span><span class="cmd-desc">锁定目标指定整点小时（如 14 = 14:00-15:00）</span><button class="cmd-copy" onclick="copyCmd(this,'特殊使用 捕鼠器 ')">复制</button></div>
     </div>
   </div>
@@ -1517,15 +1517,15 @@ footer.footer { position: relative; z-index: 1; }
 <div class="sub-section">
   <h3 class="sub-title">战斗指令（玩家）</h3>
   <div class="cmd-list">
-    <div class="cmd-item"><span class="cmd-text">PK 发起</span><span class="cmd-desc">发起开放战斗，其他人可加入</span><button class="cmd-copy" onclick="copyCmd(this,'PK 发起')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">PK 发起 [玩家名] [玩家名]...</span><span class="cmd-desc">指定对手发起战斗</span><button class="cmd-copy" onclick="copyCmd(this,'PK 发起 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">PK 接受 [战斗ID]</span><span class="cmd-desc">加入一场战斗</span><button class="cmd-copy" onclick="copyCmd(this,'PK 接受 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">PK 拒绝 [战斗ID]</span><span class="cmd-desc">拒绝参加战斗</span><button class="cmd-copy" onclick="copyCmd(this,'PK 拒绝 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">攻击 [对手名字]</span><span class="cmd-desc">发动普通攻击（轮到你时）</span><button class="cmd-copy" onclick="copyCmd(this,'攻击 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">防守</span><span class="cmd-desc">进入防守姿态（增加防御）</span><button class="cmd-copy" onclick="copyCmd(this,'防守')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">投降</span><span class="cmd-desc">尝试逃跑（有成功率限制）</span><button class="cmd-copy" onclick="copyCmd(this,'投降')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">战斗状态</span><span class="cmd-desc">查看当前战斗情况</span><button class="cmd-copy" onclick="copyCmd(this,'战斗状态')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">战斗历史 [战斗ID] [页码]</span><span class="cmd-desc">查看战斗行动记录</span><button class="cmd-copy" onclick="copyCmd(this,'战斗历史 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">。PK 发起</span><span class="cmd-desc">发起开放战斗，其他人可加入</span><button class="cmd-copy" onclick="copyCmd(this,'。PK 发起')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">。PK 发起 [玩家名] [玩家名]...</span><span class="cmd-desc">指定对手发起战斗</span><button class="cmd-copy" onclick="copyCmd(this,'。PK 发起 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">。PK 接受 [战斗ID]</span><span class="cmd-desc">加入一场战斗</span><button class="cmd-copy" onclick="copyCmd(this,'。PK 接受 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">。PK 拒绝 [战斗ID]</span><span class="cmd-desc">拒绝参加战斗</span><button class="cmd-copy" onclick="copyCmd(this,'。PK 拒绝 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">。攻击 [对手名字]</span><span class="cmd-desc">发动普通攻击（轮到你时）</span><button class="cmd-copy" onclick="copyCmd(this,'。攻击 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">。防守</span><span class="cmd-desc">进入防守姿态（增加防御）</span><button class="cmd-copy" onclick="copyCmd(this,'。防守')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">。投降</span><span class="cmd-desc">尝试逃跑（有成功率限制）</span><button class="cmd-copy" onclick="copyCmd(this,'。投降')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">。战斗状态</span><span class="cmd-desc">查看当前战斗情况</span><button class="cmd-copy" onclick="copyCmd(this,'。战斗状态')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">。战斗历史 [战斗ID] [页码]</span><span class="cmd-desc">查看战斗行动记录</span><button class="cmd-copy" onclick="copyCmd(this,'。战斗历史 ')">复制</button></div>
   </div>
 </div>
 
@@ -1555,9 +1555,9 @@ footer.footer { position: relative; z-index: 1; }
 <div class="sub-section">
   <h3 class="sub-title">玩家操作</h3>
   <div class="cmd-list">
-    <div class="cmd-item"><span class="cmd-text">信件状态</span><span class="cmd-desc">查看今日额度、写信币余额、系统配置</span><button class="cmd-copy" onclick="copyCmd(this,'信件状态')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">羽毛笔修改</span><span class="cmd-desc">查看待处理的拦截信件清单</span><button class="cmd-copy" onclick="copyCmd(this,'羽毛笔修改')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">羽毛笔修改 [序号] [修改后内容]</span><span class="cmd-desc">修改指定序号的信件并发出</span><button class="cmd-copy" onclick="copyCmd(this,'羽毛笔修改 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">。信件状态</span><span class="cmd-desc">查看今日额度、写信币余额、系统配置</span><button class="cmd-copy" onclick="copyCmd(this,'。信件状态')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">。羽毛笔修改</span><span class="cmd-desc">查看待处理的拦截信件清单</span><button class="cmd-copy" onclick="copyCmd(this,'。羽毛笔修改')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">。羽毛笔修改 [序号] [修改后内容]</span><span class="cmd-desc">修改指定序号的信件并发出</span><button class="cmd-copy" onclick="copyCmd(this,'。羽毛笔修改 ')">复制</button></div>
   </div>
 </div>
 
@@ -1631,8 +1631,8 @@ footer.footer { position: relative; z-index: 1; }
 <div class="sub-section">
   <h3 class="sub-title">玩家操作</h3>
   <div class="cmd-list">
-    <div class="cmd-item"><span class="cmd-text">入座 [座位号]</span><span class="cmd-desc">坐到指定座位，已入座可换座，不可抢占他人</span><button class="cmd-copy" onclick="copyCmd(this,'入座 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">戳你一下 [对方角色名]</span><span class="cmd-desc">戳相邻座位的玩家（首尾循环算相邻，5分钟冷却）</span><button class="cmd-copy" onclick="copyCmd(this,'戳你一下 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">。入座 [座位号]</span><span class="cmd-desc">坐到指定座位，已入座可换座，不可抢占他人</span><button class="cmd-copy" onclick="copyCmd(this,'。入座 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">。戳你一下 [对方角色名]</span><span class="cmd-desc">戳相邻座位的玩家（首尾循环算相邻，5分钟冷却）</span><button class="cmd-copy" onclick="copyCmd(this,'。戳你一下 ')">复制</button></div>
   </div>
 </div>
 
@@ -1640,8 +1640,8 @@ footer.footer { position: relative; z-index: 1; }
   <h3 class="sub-title">戳泡泡游戏</h3>
   <p style="font-size:14px;color:var(--muted);margin-bottom:12px">按座位顺序轮流选一个泡泡戳破，找到所有珊瑚即获胜。</p>
   <div class="cmd-list">
-    <div class="cmd-item"><span class="cmd-text">开始泡泡 [总数量] [珊瑚数量]</span><span class="cmd-desc">管理员开启，总数量≤100，珊瑚数量＜总数量</span><button class="cmd-copy" onclick="copyCmd(this,'开始泡泡 ')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">戳泡泡 [编号]</span><span class="cmd-desc">轮到自己时选择编号戳破</span><button class="cmd-copy" onclick="copyCmd(this,'戳泡泡 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">。开始泡泡 [总数量] [珊瑚数量]</span><span class="cmd-desc">管理员开启，总数量≤100，珊瑚数量＜总数量</span><button class="cmd-copy" onclick="copyCmd(this,'。开始泡泡 ')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">。戳泡泡 [编号]</span><span class="cmd-desc">轮到自己时选择编号戳破</span><button class="cmd-copy" onclick="copyCmd(this,'。戳泡泡 ')">复制</button></div>
   </div>
 </div>
 
@@ -1649,8 +1649,8 @@ footer.footer { position: relative; z-index: 1; }
   <h3 class="sub-title">俄罗斯轮盘游戏</h3>
   <p style="font-size:14px;color:var(--muted);margin-bottom:12px">按座位顺序轮流扣动扳机，中弹即出局，最后存活者获胜；子弹全部打空则所有存活者获胜。</p>
   <div class="cmd-list">
-    <div class="cmd-item"><span class="cmd-text">开始轮盘 [弹巢数=6] [子弹数=1]</span><span class="cmd-desc">管理员开启，参数可省略使用默认值</span><button class="cmd-copy" onclick="copyCmd(this,'开始轮盘')">复制</button></div>
-    <div class="cmd-item"><span class="cmd-text">开枪</span><span class="cmd-desc">轮到自己时扣动扳机</span><button class="cmd-copy" onclick="copyCmd(this,'开枪')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">。开始轮盘 [弹巢数=6] [子弹数=1]</span><span class="cmd-desc">管理员开启，参数可省略使用默认值</span><button class="cmd-copy" onclick="copyCmd(this,'。开始轮盘')">复制</button></div>
+    <div class="cmd-item"><span class="cmd-text">。开枪</span><span class="cmd-desc">轮到自己时扣动扳机</span><button class="cmd-copy" onclick="copyCmd(this,'。开枪')">复制</button></div>
   </div>
   <table class="guide-table" style="margin-top:12px">
     <thead><tr><th>结果</th><th>效果</th></tr></thead>

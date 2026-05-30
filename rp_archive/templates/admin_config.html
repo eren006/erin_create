@@ -106,6 +106,71 @@ select.cfg-input { cursor: pointer; }
 .cfg-card-sms { border-color: #4a3515; }
 .cfg-card-sms .cfg-card-title { color: #c8902a; border-bottom-color: #3a2a10; }
 
+/* ── Day theme overrides ─────────────────── */
+:is([data-theme=spring-day],[data-theme=summer-day],[data-theme=autumn-day],[data-theme=winter-day],[data-theme=monet-day]) .cfg-card {
+  background: var(--surface);
+  border-color: var(--border);
+}
+:is([data-theme=spring-day],[data-theme=summer-day],[data-theme=autumn-day],[data-theme=winter-day],[data-theme=monet-day]) .cfg-card-title {
+  border-bottom-color: var(--border);
+}
+:is([data-theme=spring-day],[data-theme=summer-day],[data-theme=autumn-day],[data-theme=winter-day],[data-theme=monet-day]) .cfg-collapsible {
+  background: var(--surface);
+  border-color: var(--border);
+}
+:is([data-theme=spring-day],[data-theme=summer-day],[data-theme=autumn-day],[data-theme=winter-day],[data-theme=monet-day]) .save-bar {
+  background: var(--bg);
+  border-top-color: var(--border);
+}
+:is([data-theme=spring-day],[data-theme=summer-day],[data-theme=autumn-day],[data-theme=winter-day],[data-theme=monet-day]) .toggle-slider {
+  background: var(--surface2);
+}
+:is([data-theme=spring-day],[data-theme=summer-day],[data-theme=autumn-day],[data-theme=winter-day],[data-theme=monet-day]) .toggle-slider::before {
+  background: var(--muted);
+}
+:is([data-theme=spring-day],[data-theme=summer-day],[data-theme=autumn-day],[data-theme=winter-day],[data-theme=monet-day]) .cfg-card-sms {
+  border-color: #d97706;
+}
+:is([data-theme=spring-day],[data-theme=summer-day],[data-theme=autumn-day],[data-theme=winter-day],[data-theme=monet-day]) .cfg-card-sms .cfg-card-title {
+  color: #b45309;
+  border-bottom-color: #fde68a;
+}
+:is([data-theme=spring-day],[data-theme=summer-day],[data-theme=autumn-day],[data-theme=winter-day],[data-theme=monet-day]) .saved-tip {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: var(--green);
+}
+:is([data-theme=spring-day],[data-theme=summer-day],[data-theme=autumn-day],[data-theme=winter-day],[data-theme=monet-day]) #cfg-toast {
+  background: #f0fdf4;
+  border-color: #86efac;
+  color: #15803d;
+  box-shadow: 0 8px 32px rgba(0,0,0,.12);
+}
+:is([data-theme=spring-day],[data-theme=summer-day],[data-theme=autumn-day],[data-theme=winter-day],[data-theme=monet-day]) #cfg-toast-cursor {
+  background: #15803d;
+}
+:is([data-theme=spring-day],[data-theme=summer-day],[data-theme=autumn-day],[data-theme=winter-day],[data-theme=monet-day]) #dirty-modal {
+  background: var(--surface);
+  border-color: var(--border);
+  box-shadow: 0 16px 48px rgba(0,0,0,.12);
+}
+:is([data-theme=spring-day],[data-theme=summer-day],[data-theme=autumn-day],[data-theme=winter-day],[data-theme=monet-day]) .tpl-card {
+  background: var(--surface);
+  border-color: var(--border);
+}
+:is([data-theme=spring-day],[data-theme=summer-day],[data-theme=autumn-day],[data-theme=winter-day],[data-theme=monet-day]) .btn-tpl-del {
+  background: #fee2e2;
+  border-color: #fca5a5;
+}
+:is([data-theme=spring-day],[data-theme=summer-day],[data-theme=autumn-day],[data-theme=winter-day],[data-theme=monet-day]) .tpl-msg-ok {
+  background: #dcfce7;
+  color: var(--green);
+}
+:is([data-theme=spring-day],[data-theme=summer-day],[data-theme=autumn-day],[data-theme=winter-day],[data-theme=monet-day]) .tpl-msg-err {
+  background: #fee2e2;
+  color: var(--red);
+}
+
 /* ── Collapsible advanced block ─────────── */
 .cfg-collapsible {
   background: rgba(26,26,34,0.82); border: 1px solid rgba(255,255,255,0.07);
@@ -559,6 +624,20 @@ select.cfg-input { cursor: pointer; }
     修改后点击保存，然后在 QQ 发 <b style="color:var(--accent)">。同步设置</b> 即可同步到海豹。
     如需将机器人当前配置推送到此 UI，发送 <b style="color:var(--accent)">。同步到服务端</b>。
   </div>
+
+  {% if current_show and not current_show.is_current %}
+  <div style="background:rgba(220,140,0,0.13);border:1px solid rgba(220,140,0,0.45);
+              border-radius:10px;padding:11px 16px;margin-bottom:16px;
+              font-size:13px;color:#e8a020;display:flex;align-items:center;gap:10px;">
+    <span style="font-size:16px;">⚠️</span>
+    <span>
+      当前查看的是非活跃季「<b>{{ current_show.name }}</b>」，此处保存的配置
+      <b>不会</b>被「。同步设置」读取（机器人只拉取活跃季的配置）。
+      如需修改机器人配置，请先在「<a href="{{ url_for('admin_shows') }}"
+      style="color:#e8a020;text-decoration:underline;">季管理</a>」切换到活跃季。
+    </span>
+  </div>
+  {% endif %}
 
   {% if saved %}
   <div class="saved-tip" style="margin-bottom:18px;">✅ 配置已保存，发送「。同步设置」生效。</div>
