@@ -193,6 +193,25 @@ select.cfg-input { cursor: pointer; }
 .cfg-collapsible-inner { padding: 0 22px 20px; }
 .cfg-collapsible-inner .cfg-sub:first-child { margin-top: 0; }
 
+/* ── Message template editor ────────────── */
+.cfg-tpl-block { margin-bottom: 18px; }
+.cfg-tpl-header { display: flex; align-items: center; gap: 0; margin-bottom: 2px; }
+.cfg-tpl-header .cfg-label { flex: 1; }
+.cfg-tpl-reset, .cfg-tpl-fill-all-btn {
+  background: none; border: 1px solid var(--border); color: var(--muted);
+  border-radius: 4px; padding: 2px 8px; font-size: 11px; cursor: pointer;
+  transition: border-color .15s, color .15s;
+}
+.cfg-tpl-reset:hover, .cfg-tpl-fill-all-btn:hover { border-color: var(--accent); color: var(--accent); }
+.cfg-tpl-textarea {
+  width: 100%; box-sizing: border-box;
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); font-family: inherit; font-size: 13px;
+  padding: 8px 10px; resize: vertical; min-height: 90px;
+  transition: border-color .2s;
+}
+.cfg-tpl-textarea:focus { outline: none; border-color: var(--accent); }
+
 /* ── Save bar ───────────────────────────── */
 .save-bar {
   position: sticky; bottom: 0;
@@ -364,155 +383,6 @@ select.cfg-input { cursor: pointer; }
 }
 .attr-picker-add:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
 
-/* ── 结戏加成 ────────────────────────────── */
-.bonus-tpl-row {
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 14px; border-bottom: 1px solid var(--border);
-}
-.bonus-tpl-row:last-child { border-bottom: none; }
-.bonus-tpl-name { font-size: 13px; font-weight: 600; flex: 1; }
-.bonus-subtype-badge {
-  font-size: 10px; border-radius: 4px; padding: 1px 7px; font-weight: 600;
-  letter-spacing: .4px; background: #1a2a4a; color: #80b0e8; border: 1px solid #2a4a7a;
-}
-.bonus-tpl-status { font-size: 11px; min-width: 28px; text-align: center; }
-.bonus-tpl-actions { display: flex; gap: 5px; }
-.bonus-action-btn {
-  background: none; border: 1px solid var(--border); color: var(--muted);
-  border-radius: 5px; padding: 2px 9px; font-size: 11px; cursor: pointer;
-  font-family: inherit; transition: background .15s, color .15s;
-}
-.bonus-action-btn:hover { background: var(--surface2); color: var(--text); }
-.bonus-action-del:hover { background: #3a1a1a; border-color: #6a2a2a; color: #f07070; }
-.bonus-action-edit:hover { background: #1a2a3a; border-color: #2a5a8a; color: #80b0e8; }
-.bonus-list-empty { color: var(--muted); font-size: 12px; padding: 18px 14px; opacity: .6; }
-.bonus-card-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--border);
-}
-/* Editor overlay */
-#bonus-editor-overlay {
-  position: fixed; inset: 0; z-index: 9000;
-  background: rgba(0,0,0,.72); backdrop-filter: blur(4px);
-  overflow-y: auto; display: none;
-}
-#bonus-editor-modal {
-  background: var(--surface1); border: 1px solid var(--border);
-  border-radius: 14px; padding: 24px 28px; max-width: 700px;
-  margin: 40px auto 60px; box-shadow: 0 20px 60px rgba(0,0,0,.7);
-}
-.bonus-modal-header {
-  display: flex; align-items: center; gap: 10px; margin-bottom: 20px;
-}
-.bonus-modal-title { font-size: 15px; font-weight: 700; color: var(--text); flex: 1; }
-.bonus-modal-close {
-  background: none; border: 1px solid var(--border); color: var(--muted);
-  border-radius: 6px; padding: 3px 10px; font-size: 14px; cursor: pointer;
-  font-family: inherit; line-height: 1;
-}
-.bonus-modal-close:hover { background: var(--surface2); color: var(--text); }
-.bonus-meta-row {
-  display: grid; grid-template-columns: 1fr auto; gap: 10px; margin-bottom: 18px;
-}
-/* Block cards */
-.bonus-block-card {
-  background: var(--surface2); border: 1px solid var(--border);
-  border-radius: 10px; padding: 14px 16px; margin-bottom: 4px;
-}
-.bonus-block-header {
-  display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
-}
-.bonus-block-num {
-  font-size: 10px; font-weight: 700; letter-spacing: 1px;
-  text-transform: uppercase; color: var(--muted); flex: 1;
-}
-.bonus-block-del {
-  background: none; border: 1px solid var(--border); color: var(--muted);
-  border-radius: 5px; padding: 2px 8px; font-size: 11px; cursor: pointer;
-  font-family: inherit;
-}
-.bonus-block-del:hover { background: #3a1a1a; border-color: #6a2a2a; color: #f07070; }
-/* Connectors */
-.bonus-conn-row { display: flex; justify-content: center; padding: 6px 0; }
-.bonus-conn-btn {
-  border-radius: 20px; padding: 3px 18px; font-size: 11px; font-weight: 700;
-  letter-spacing: .8px; cursor: pointer; font-family: inherit; text-transform: uppercase;
-  transition: background .15s, border-color .15s;
-}
-.bonus-conn-and { background: #1a2a4a; border: 1px solid #2a4a8a; color: #80b0f0; }
-.bonus-conn-and:hover { background: #243560; }
-.bonus-conn-or  { background: #3a1a2a; border: 1px solid #7a2a4a; color: #f08098; }
-.bonus-conn-or:hover  { background: #4a2038; }
-/* Condition / reward rows */
-.bonus-section-label {
-  font-size: 10px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase;
-  color: var(--muted); margin: 10px 0 6px;
-}
-.bonus-cond-row {
-  display: grid; grid-template-columns: 1.5fr 80px 1fr auto; gap: 6px;
-  align-items: center; margin-bottom: 6px;
-}
-.bonus-reward-row {
-  display: grid; grid-template-columns: 120px 1fr 70px auto; gap: 6px;
-  align-items: center; margin-bottom: 6px;
-}
-.bonus-pool-items { padding-left: 16px; margin-bottom: 6px; }
-.bonus-pool-row {
-  display: grid; grid-template-columns: 1fr 60px 60px auto; gap: 6px;
-  align-items: center; margin-bottom: 4px;
-}
-.bonus-input {
-  background: var(--surface1); border: 1px solid var(--border); color: var(--text);
-  border-radius: 6px; padding: 5px 8px; font-size: 12px; font-family: inherit;
-  width: 100%; box-sizing: border-box;
-}
-.bonus-select {
-  background: var(--surface1); border: 1px solid var(--border); color: var(--text);
-  border-radius: 6px; padding: 5px 8px; font-size: 12px; font-family: inherit;
-  width: 100%;
-}
-.bonus-rm-btn {
-  background: none; border: 1px solid var(--border); color: var(--muted);
-  border-radius: 5px; padding: 2px 7px; font-size: 11px; cursor: pointer;
-  line-height: 1.4; white-space: nowrap;
-}
-.bonus-rm-btn:hover { background: #3a1a1a; border-color: #6a2a2a; color: #f07070; }
-.bonus-add-link {
-  font-size: 12px; color: var(--accent); cursor: pointer;
-  background: none; border: none; padding: 2px 0; font-family: inherit;
-  display: inline-block; margin-top: 4px;
-}
-.bonus-add-link:hover { text-decoration: underline; }
-.bonus-add-block-row { display: flex; gap: 8px; justify-content: center; margin: 14px 0 8px; }
-.bonus-add-block-btn {
-  background: var(--surface2); border: 1px dashed var(--border); color: var(--muted);
-  border-radius: 8px; padding: 6px 20px; font-size: 12px; cursor: pointer;
-  font-family: inherit; transition: background .15s, color .15s;
-}
-.bonus-add-block-btn:hover { background: var(--surface1); color: var(--text); }
-.bonus-editor-footer {
-  display: flex; gap: 10px; justify-content: flex-end;
-  margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border);
-}
-.bonus-save-btn {
-  background: var(--accent); border: none; color: #fff;
-  border-radius: 8px; padding: 9px 24px; font-size: 13px; font-weight: 600;
-  font-family: inherit; cursor: pointer; transition: background .18s;
-}
-.bonus-save-btn:hover { background: var(--accent2); }
-.bonus-cancel-btn {
-  background: var(--surface2); border: 1px solid var(--border); color: var(--muted);
-  border-radius: 8px; padding: 9px 20px; font-size: 13px;
-  font-family: inherit; cursor: pointer; transition: background .15s;
-}
-.bonus-cancel-btn:hover { background: var(--surface1); color: var(--text); }
-@media(max-width:600px) {
-  .bonus-cond-row { grid-template-columns: 1fr 60px; }
-  .bonus-cond-row > :nth-child(3) { grid-column: 1; }
-  .bonus-cond-row > :nth-child(4) { grid-column: 2; }
-  .bonus-reward-row { grid-template-columns: 1fr 60px; }
-}
-
 /* ── Dirty modal ────────────────────────── */
 #dirty-modal-overlay {
   position: fixed; inset: 0; z-index: 8000;
@@ -616,8 +486,11 @@ select.cfg-input { cursor: pointer; }
     <a href="{{ url_for('admin_config_page') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--accent);border:1px solid var(--accent);color:#fff;">游戏配置</a>
     <a href="{{ url_for('admin_groups') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">已知群</a>
     <a href="{{ url_for('admin_rewards') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">结戏奖励</a>
+    <a href="{{ url_for('admin_player_controls') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">玩家控制</a>
     <a href="{{ url_for('admin_shows') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">季管理</a>
     <a href="{{ url_for('admin_config_history') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">配置历史</a>
+    <a href="{{ url_for('admin_command_guides') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">指令指南</a>
+    <a href="{{ url_for('admin_time_schedule') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">时间调度</a>
   </div>
   <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;
               padding:11px 16px;margin-bottom:20px;font-size:13px;color:var(--muted);">
@@ -703,7 +576,7 @@ select.cfg-input { cursor: pointer; }
   {# ── Macros ── #}
   {% macro field(f, jp) %}
     {% set db_key = (jp + '__' + f.key) if jp else f.key %}
-    {% set cur = flat.get(db_key, f.default|string) %}
+    {% set cur = flat.get(db_key, f.default|string) | strip_json_str %}
     {% if f.type == 'bool' %}
     <div class="cfg-field">
       <div class="cfg-field-bool">
@@ -776,7 +649,7 @@ select.cfg-input { cursor: pointer; }
     <div class="toggle-list">
       {% for f in sec.fields %}
         {% set db_key = (jp + '__' + f.key) if jp else f.key %}
-        {% set cur = flat.get(db_key, f.default|string) %}
+        {% set cur = flat.get(db_key, f.default|string) | strip_json_str %}
         <div class="toggle-row">
           <span class="toggle-row-label">{{ f.label }}</span>
           <label class="toggle">
@@ -826,6 +699,15 @@ select.cfg-input { cursor: pointer; }
     <div class="cfg-card">
       <div class="cfg-card-title">功能开关</div>
       {{ toggle_list(s['功能开关']) }}
+    </div>
+
+    {# ═══════════════════════════════════════════ #}
+    {# 3b. 类型显示别名                            #}
+    {# ═══════════════════════════════════════════ #}
+
+    <div class="cfg-card">
+      <div class="cfg-card-title">类型显示别名 <span class="cfg-badge">仅影响 QQ 群名与时间线，存档记录不变</span></div>
+      {{ grid(s['类型显示别名']) }}
     </div>
 
     {# ═══════════════════════════════════════════ #}
@@ -937,6 +819,15 @@ select.cfg-input { cursor: pointer; }
     <div style="height:0;margin-bottom:16px;"></div>
 
     {# 短信效果配置已移入「寄信 / 短信」卡片；礼物丢失/误送已移入「礼物」卡片 #}
+
+    {# ═══════════════════════════════════════════ #}
+    {# 7b. 季末报告                               #}
+    {# ═══════════════════════════════════════════ #}
+
+    <div class="cfg-card">
+      <div class="cfg-card-title">季末报告 <span class="cfg-badge">结束季度时群发个人互动报告</span></div>
+      {{ grid(s['季末报告']) }}
+    </div>
 
     {# ═══════════════════════════════════════════ #}
     {# 8. 高级设置：道具 + 拍卖（可折叠）         #}
@@ -1115,19 +1006,79 @@ select.cfg-input { cursor: pointer; }
 
     </div>
 
-    {# ═══════════════════════════════════════════ #}
-    {# 10. 结戏加成模版                           #}
-    {# ═══════════════════════════════════════════ #}
+    {# ── 消息模板编辑器 ── #}
+    <input type="hidden" name="custom_message_templates" id="msg-tpl-input"
+           value="{{ flat.get('custom_message_templates', '{}') | e }}">
 
-    <input type="hidden" name="end_game_bonus_templates" id="end-bonus-templates-input" value="{{ end_bonus_templates_json | e }}">
+    <details class="cfg-collapsible" id="msg-tpl-section">
+      <summary>消息模板 <span class="cfg-badge">私约 · 电话 · 微信 · 心愿 · 短信 · 礼物 通知文案</span></summary>
+      <div class="cfg-collapsible-inner">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+          <button type="button" id="msg-tpl-fill-all" class="cfg-tpl-fill-all-btn" style="padding:4px 14px;font-size:12px;">
+            填入所有默认值
+          </button>
+          <span class="cfg-note">填入后点页面底部「保存配置」即可存入数据库</span>
+        </div>
+        <p class="cfg-note" style="margin-bottom:12px;">
+          留空则使用系统默认文案。用 <code>{变量名}</code> 插入动态内容。<br>
+          标有 <span style="color:#e05c5c;">★必填</span> 的变量如果删除，同步时会被拒绝。
+        </p>
 
-    <div class="cfg-card" id="bonus-tpl-card">
-      <div class="bonus-card-header">
-        <div class="cfg-card-title" style="margin:0;border:none;padding:0;">结戏加成模版</div>
-        <button type="button" class="reg-add-btn" style="grid-column:auto;width:auto;padding:6px 16px;" onclick="BonusEditor.openNew()">+ 新建模版</button>
+        {% set tpl_defs = [
+          ("private_notice",       "私约通知（发给被邀者）",   "★必填：{群号} {发起者} {时间}",
+           "{发起者} {日期} {时间} {地点} {同行} {群号} {有效期} {操作指引}"),
+          ("private_announcement", "私约群公告",               "★必填：{日期} {时间} {地点}",
+           "{日期} {时间} {地点} {参与者} {群号} {有效期} {操作指引}"),
+          ("private_success",      "私约发起者回执",           "★必填：{群号} {对方}",
+           "{对方} {群号} {费用}"),
+          ("phone_notice",         "电话通知（发给被邀者）",   "★必填：{群号} {发起者} {时间}",
+           "{发起者} {日期} {时间} {标题} {同话} {群号} {有效期} {操作指引}"),
+          ("phone_announcement",   "电话群公告",               "★必填：{标题} {时间}",
+           "{标题} {日期} {时间} {参与者} {群号} {有效期} {操作指引}"),
+          ("phone_success",        "电话发起者回执",           "★必填：{群号} {对方}",
+           "{对方} {群号}"),
+          ("wechat_announcement",  "微信群内公告",             "★必填：{发起者} {对方}",
+           "{发起者} {对方}"),
+          ("wechat_notice",        "微信邀请通知（发给对方）", "★必填：{群号} {发起者} {对方}",
+           "{发起者} {对方} {群号}"),
+          ("wish_broadcast",       "心愿广播",                 "★必填：{编号} {内容}",
+           "{编号} {发布者} {日期} {时间} {地点} {内容}"),
+          ("wish_bounty_broadcast","悬赏心愿广播",             "★必填：{编号} {内容} {悬赏物}",
+           "{编号} {发布者} {日期} {时间} {地点} {内容} {悬赏物} {悬赏数量}"),
+          ("wish_post_success",    "挂心愿发布者回执",         "★必填：{编号}",
+           "{编号} {昵称行} {费用行}"),
+          ("wish_bounty_post_success","悬赏心愿发布者回执",    "★必填：{编号} {悬赏物}",
+           "{编号} {悬赏物} {悬赏数量} {昵称行} {费用行}"),
+          ("wish_pick_success",    "摘心愿摘取者回执",         "★必填：{群号}",
+           "{群号} {悬赏奖励行}"),
+          ("wish_picked_notify",   "心愿被摘→通知发布者",      "★必填：{群号} {摘取者}",
+           "{摘取者} {地点} {日期} {时间} {群号}"),
+          ("wish_withdraw_success","撤心愿回执",               "★必填：{编号}",
+           "{编号} {悬赏退回行}"),
+          ("sms_notice",           "短信通知（发给收件人）",   "★必填：{内容} {落款}",
+           "{收件人} {收件人QQ} {内容} {落款}"),
+          ("sms_broadcast",        "短信公开播报",             "★必填：{发送者} {内容}",
+           "{发送者} {收件人} {内容}"),
+          ("gift_notice",          "礼物通知（发给收件人）",   "★必填：{发送者} {礼物名}",
+           "{收件人} {收件人QQ} {发送者} {礼物名} {寄语}"),
+          ("gift_broadcast",       "礼物公开播报",             "★必填：{发送者} {收件人} {礼物名}",
+           "{发送者} {收件人} {礼物名} {寄语}"),
+        ] %}
+
+        {% for key, label, required, vars in tpl_defs %}
+        <div class="cfg-tpl-block">
+          <div class="cfg-tpl-header">
+            <span class="cfg-label">{{ label }}</span>
+            {% if required %}<span style="color:#e05c5c;font-size:12px;margin-left:6px;">{{ required }}</span>{% endif %}
+            <button type="button" class="cfg-tpl-reset" data-key="{{ key }}">恢复默认</button>
+          </div>
+          <div class="cfg-note" style="margin:2px 0 4px;">可用变量：{{ vars }}</div>
+          <textarea class="cfg-tpl-textarea" data-key="{{ key }}" rows="5"
+                    placeholder="留空则使用系统默认"></textarea>
+        </div>
+        {% endfor %}
       </div>
-      <div id="bonus-template-list"></div>
-    </div>
+    </details>
 
     {# ── 保存栏 ── #}
     <div class="save-bar">
@@ -1139,41 +1090,6 @@ select.cfg-input { cursor: pointer; }
     </div>
 
   </form>
-
-  <!-- 结戏加成编辑器 -->
-  <div id="bonus-editor-overlay">
-    <div id="bonus-editor-modal">
-      <div class="bonus-modal-header">
-        <div class="bonus-modal-title">结戏加成模版编辑</div>
-        <button class="bonus-modal-close" onclick="BonusEditor.closeEditor()">✕</button>
-      </div>
-      <div class="bonus-meta-row">
-        <div class="cfg-field" style="margin:0;">
-          <label class="cfg-label">模版名称</label>
-          <input class="cfg-input" id="bonus-tpl-name" placeholder="如：标准字数奖励">
-        </div>
-        <div class="cfg-field" style="margin:0;">
-          <label class="cfg-label">适用类型</label>
-          <select class="cfg-select" id="bonus-tpl-subtype">
-            <option value="通用">通用</option>
-            <option value="心意">心意</option>
-            <option value="官约">官约</option>
-            <option value="私约">私约</option>
-            <option value="电话">电话</option>
-          </select>
-        </div>
-      </div>
-      <div id="bonus-editor-blocks"></div>
-      <div class="bonus-add-block-row">
-        <button class="bonus-add-block-btn" onclick="BonusEditor.addBlock('and')">+ AND 块</button>
-        <button class="bonus-add-block-btn" onclick="BonusEditor.addBlock('or')">+ OR 块</button>
-      </div>
-      <div class="bonus-editor-footer">
-        <button class="bonus-cancel-btn" onclick="BonusEditor.closeEditor()">取消</button>
-        <button class="bonus-save-btn" onclick="BonusEditor.saveTemplate()">保存模版</button>
-      </div>
-    </div>
-  </div>
 
   <!-- 已修改提示弹窗 -->
   <div id="dirty-modal-overlay">
@@ -1195,7 +1111,7 @@ select.cfg-input { cursor: pointer; }
 
 <script>
 /* ── 共享工具 ─────────────────────────────── */
-var cfgMarkDirty = function() {};  // 由主 IIFE 绑定，供 Registry/BonusEditor 调用
+var cfgMarkDirty = function() {};  // 由主 IIFE 绑定，供 Registry 调用
 
 /* ── 配置预设 ─────────────────────────────── */
 function applyTemplateById(id, name) {
@@ -1697,352 +1613,107 @@ var Registry = (function() {
            addEffect: addEffect, removeEffect: removeEffect, removePending: removePending };
 })();
 
-/* ── 结戏加成编辑器 ────────────────────── */
-var BonusEditor = (function() {
 
-  var PARAMS = [
-    "本场个人段数", "本场个人总字数", "本场个人平均每段字数", "结戏最多耗费时间"
-  ];
-  var OPS = [">=", "<=", "=", "!=", "range"];
-  var SUBTYPES = ["通用","心意","官约","私约","电话"];
 
-  var templates = [];
-  var editIdx   = -1;     // -1 = new
-  var flatBlocks = [];    // editor working state
+/* ── 消息模板编辑器 ───────────────────────────────────────────────── */
+(function() {
+  var DEFAULTS = {
+    private_notice:
+      "💌 私约\n\n{发起者} 约你 {日期} {时间} 在 {地点} 相见{同行}\n\n群号：{群号}\n有效至 {有效期}{操作指引}",
+    private_announcement:
+      "💌 约会已确认\n\n📅 {日期} {时间}\n📍 {地点}\n👥 参与者：{参与者}\n\n群号：{群号}\n有效至 {有效期}{操作指引}",
+    private_success:
+      "✅ 你已成功与 {对方} 开启私约，私人空间已自动建立！\n💬 群号：{群号}{费用}",
+    phone_notice:
+      "📞 来电\n\n{发起者} 邀你接听通话{标题}\n🕐 {日期} {时间}{同话}\n\n频段：{群号}\n有效至 {有效期}{操作指引}",
+    phone_announcement:
+      "📞 通话已接通{标题}\n\n🕐 {日期} {时间}\n👥 参与者：{参与者}\n\n频段：{群号}\n有效至 {有效期}{操作指引}",
+    phone_success:
+      "✅ 你已成功向 {对方} 发起通话，通讯频段已自动建立！\n💬 频段：{群号}",
+    wechat_announcement:
+      "💬 微信群已建立\n\n👥 成员：{发起者}、{对方}\n\n💡 长期群聊，无时间限制，每个微信关系只能有一个活跃群。",
+    wechat_notice:
+      "💬 {发起者} 邀你加入微信群\n\n📱 群号：{群号}\n👥 成员：{发起者}、{对方}\n\n💡 长期群聊，无时间限制。",
+    wish_broadcast:
+      "🌠 新心愿 [{编号}]\n{发布者}\n📅 {日期} {时间}\n📍 {地点}\n💌 {内容}\n✨ 摘取：摘心愿 {编号}",
+    wish_bounty_broadcast:
+      "🌠 新悬赏心愿 [{编号}]\n{发布者}\n📅 {日期} {时间}\n📍 {地点}\n💌 {内容}\n🎁 悬赏：{悬赏物} ×{悬赏数量}\n✨ 摘取：摘心愿 {编号}",
+    wish_post_success:
+      "✅ 心愿已漂走！编号：{编号}\n有效期：24小时{昵称行}{费用行}",
+    wish_bounty_post_success:
+      "✅ 悬赏心愿已发出！编号：{编号}\n🎁 悬赏：{悬赏物} ×{悬赏数量}（已从背包扣除）\n有效期：24小时{昵称行}{费用行}",
+    wish_pick_success:
+      "🎉 摘取成功！专属小群已建立。\n💬 群号：{群号}{悬赏奖励行}",
+    wish_picked_notify:
+      "💫 你的心愿被 {摘取者} 摘取了！\n📍 {地点} | ⏰ {日期} {时间}\n💬 群号：{群号}",
+    wish_withdraw_success:
+      "✅ 已撤回心愿 {编号}{悬赏退回行}",
+  };
 
-  /* ── persistence ── */
-  function load() {
-    try { templates = JSON.parse(document.getElementById('end-bonus-templates-input').value || '[]'); }
-    catch(e) { templates = []; }
-  }
-  function saveToInput() {
-    document.getElementById('end-bonus-templates-input').value = JSON.stringify(templates);
-    cfgMarkDirty();
-  }
+  // 必填变量（保存时校验）
+  var REQUIRED = {
+    private_notice: ["{群号}"], private_success: ["{群号}"],
+    phone_notice: ["{群号}"],   phone_success: ["{群号}"],
+    wechat_notice: ["{群号}"],
+    wish_broadcast: ["{编号}"], wish_bounty_broadcast: ["{编号}"],
+    wish_pick_success: ["{群号}"], wish_picked_notify: ["{群号}"],
+  };
 
-  /* ── groups ↔ flatBlocks conversion ── */
-  function groupsToFlat(groups) {
-    var flat = [];
-    (groups || []).forEach(function(group) {
-      (group.blocks || []).forEach(function(block, bi) {
-        flat.push({
-          connector: (flat.length === 0) ? 'and' : (bi === 0 ? group.op : 'or'),
-          conditions: (block.conditions || []).map(function(c) {
-            return { param: c.param, op: c.op, value: c.value };
-          }),
-          rewards: (block.rewards || []).map(function(r) { return JSON.parse(JSON.stringify(r)); })
-        });
+  var hiddenInput = document.getElementById("msg-tpl-input");
+  if (!hiddenInput) return;
+
+  // 读取当前存储的模板 JSON
+  var current = {};
+  try { current = JSON.parse(hiddenInput.value || "{}"); } catch(e) {}
+
+  // 初始化：把已存储的值填入 textarea
+  document.querySelectorAll(".cfg-tpl-textarea").forEach(function(ta) {
+    var key = ta.dataset.key;
+    ta.value = current[key] || "";
+  });
+
+  // 填入所有默认值按钮
+  var fillAllBtn = document.getElementById("msg-tpl-fill-all");
+  if (fillAllBtn) {
+    fillAllBtn.addEventListener("click", function() {
+      document.querySelectorAll(".cfg-tpl-textarea").forEach(function(ta) {
+        ta.value = DEFAULTS[ta.dataset.key] || "";
       });
     });
-    return flat;
   }
 
-  function flatToGroups(flat) {
-    var groups = [];
-    flat.forEach(function(fb, i) {
-      var conn = i === 0 ? 'and' : fb.connector;
-      var block = { conditions: fb.conditions, rewards: fb.rewards };
-      if (conn === 'or' && groups.length > 0 && groups[groups.length-1].op === 'or') {
-        groups[groups.length-1].blocks.push(block);
-      } else {
-        groups.push({ op: conn, blocks: [block] });
-      }
+  // 恢复默认按钮（单条）
+  document.querySelectorAll(".cfg-tpl-reset").forEach(function(btn) {
+    btn.addEventListener("click", function() {
+      var key = btn.dataset.key;
+      var ta = document.querySelector('.cfg-tpl-textarea[data-key="' + key + '"]');
+      if (ta) { ta.value = DEFAULTS[key] || ""; }
     });
-    return groups;
-  }
+  });
 
-  /* ── template list ── */
-  function renderList() {
-    var el = document.getElementById('bonus-template-list');
-    if (!el) return;
-    if (!templates.length) {
-      el.innerHTML = '<div class="bonus-list-empty">暂无模版 — 点击「新建模版」创建</div>';
+  // 表单提交前：序列化 → hidden input，校验必填
+  var form = document.getElementById("cfg-form");
+  if (!form) return;
+  form.addEventListener("submit", function(e) {
+    var result = {};
+    var errors = [];
+    document.querySelectorAll(".cfg-tpl-textarea").forEach(function(ta) {
+      var key = ta.dataset.key;
+      var val = ta.value.trim();
+      if (!val) return; // 留空 = 用默认
+      var reqs = REQUIRED[key] || [];
+      reqs.forEach(function(r) {
+        if (val.indexOf(r) === -1) errors.push("「" + ta.closest(".cfg-tpl-block").querySelector(".cfg-label").textContent + "」缺少必填变量 " + r);
+      });
+      result[key] = val;
+    });
+    if (errors.length) {
+      e.preventDefault();
+      alert("保存失败，请检查以下问题：\n\n" + errors.join("\n"));
       return;
     }
-    el.innerHTML = templates.map(function(tpl, i) {
-      var st = tpl.subtype || '通用';
-      var on = tpl.enabled !== false;
-      return '<div class="bonus-tpl-row">' +
-        '<span class="bonus-tpl-status">' + (on ? '✅' : '⏸️') + '</span>' +
-        '<span class="bonus-tpl-name">' + esc(tpl.name) + '</span>' +
-        '<span class="bonus-subtype-badge">' + esc(st) + '</span>' +
-        '<div class="bonus-tpl-actions">' +
-          '<button class="bonus-action-btn bonus-action-edit" onclick="BonusEditor.openEditor(' + i + ')">编辑</button>' +
-          '<button class="bonus-action-btn" onclick="BonusEditor.toggleEnabled(' + i + ',' + (!on) + ')">' + (on ? '禁用' : '启用') + '</button>' +
-          '<button class="bonus-action-btn bonus-action-del" onclick="BonusEditor.deleteTpl(' + i + ')">删除</button>' +
-        '</div></div>';
-    }).join('');
-  }
-
-  /* ── open / close editor ── */
-  function openNew() {
-    editIdx    = -1;
-    flatBlocks = [{ connector: 'and', conditions: [], rewards: [] }];
-    document.getElementById('bonus-tpl-name').value    = '';
-    document.getElementById('bonus-tpl-subtype').value = '通用';
-    renderEditorModal();
-    document.getElementById('bonus-editor-overlay').style.display = 'block';
-  }
-
-  function openEditor(idx) {
-    editIdx    = idx;
-    var tpl    = templates[idx];
-    flatBlocks = groupsToFlat(tpl.groups || []);
-    if (!flatBlocks.length) flatBlocks = [{ connector: 'and', conditions: [], rewards: [] }];
-    document.getElementById('bonus-tpl-name').value    = tpl.name || '';
-    document.getElementById('bonus-tpl-subtype').value = tpl.subtype || '通用';
-    renderEditorModal();
-    document.getElementById('bonus-editor-overlay').style.display = 'block';
-  }
-
-  function closeEditor() {
-    document.getElementById('bonus-editor-overlay').style.display = 'none';
-  }
-
-  /* ── render editor blocks area ── */
-  function buildTargetDatalist() {
-    var opts = '';
-    try {
-      var reg = JSON.parse(document.getElementById('item-registry-input').value || '{}');
-      Object.values(reg).forEach(function(r) {
-        if (r.name) opts += '<option value="' + cfgEsc(r.name) + '">';
-        if (r.code && r.type !== 'currency') opts += '<option value="' + cfgEsc(r.code) + '">';
-      });
-    } catch(e) {}
-    try {
-      var attrs = JSON.parse(document.getElementById('attr-defs-input').value || '{}');
-      Object.keys(attrs).forEach(function(k) { opts += '<option value="' + cfgEsc(k) + '">'; });
-    } catch(e) {}
-    var dl = document.getElementById('bonus-target-list');
-    if (!dl) {
-      dl = document.createElement('datalist');
-      dl.id = 'bonus-target-list';
-      document.getElementById('bonus-editor-modal').appendChild(dl);
-    }
-    dl.innerHTML = opts;
-  }
-
-  function renderEditorModal() {
-    buildTargetDatalist();
-    var container = document.getElementById('bonus-editor-blocks');
-    var html = '';
-    flatBlocks.forEach(function(fb, bi) {
-      if (bi > 0) {
-        var cls = fb.connector === 'or' ? 'bonus-conn-or' : 'bonus-conn-and';
-        html += '<div class="bonus-conn-row">' +
-          '<button class="bonus-conn-btn ' + cls + '" onclick="BonusEditor.toggleConn(' + bi + ')">' +
-            (fb.connector === 'or' ? 'OR' : 'AND') +
-          '</button></div>';
-      }
-      html += '<div class="bonus-block-card">';
-      html += '<div class="bonus-block-header">';
-      html += '<span class="bonus-block-num">块 #' + (bi+1) + '</span>';
-      if (flatBlocks.length > 1) {
-        html += '<button class="bonus-block-del" onclick="BonusEditor.removeBlock(' + bi + ')">删除块</button>';
-      }
-      html += '</div>';
-
-      // conditions
-      html += '<div class="bonus-section-label">条件</div>';
-      fb.conditions.forEach(function(c, ci) {
-        html += '<div class="bonus-cond-row">';
-        html += '<select class="bonus-select" onchange="BonusEditor.setCondParam(' + bi + ',' + ci + ',this.value)">';
-        PARAMS.forEach(function(p) {
-          html += '<option' + (c.param === p ? ' selected' : '') + '>' + p + '</option>';
-        });
-        html += '</select>';
-        html += '<select class="bonus-select" onchange="BonusEditor.setCondOp(' + bi + ',' + ci + ',this.value)">';
-        OPS.forEach(function(op) {
-          html += '<option' + (c.op === op ? ' selected' : '') + '>' + op + '</option>';
-        });
-        html += '</select>';
-        if (c.op === 'range') {
-          var v0 = Array.isArray(c.value) ? c.value[0] : '';
-          var v1 = Array.isArray(c.value) ? c.value[1] : '';
-          html += '<div style="display:flex;gap:4px;">' +
-            '<input class="bonus-input" type="number" placeholder="最小" value="' + v0 + '" oninput="BonusEditor.setCondVal(' + bi + ',' + ci + ',[this.value,this.parentNode.children[1].value])" style="width:50%">' +
-            '<input class="bonus-input" type="number" placeholder="最大" value="' + v1 + '" oninput="BonusEditor.setCondVal(' + bi + ',' + ci + ',[this.parentNode.children[0].value,this.value])" style="width:50%">' +
-            '</div>';
-        } else {
-          var val = Array.isArray(c.value) ? '' : (c.value === undefined ? '' : c.value);
-          html += '<input class="bonus-input" type="number" value="' + val + '" oninput="BonusEditor.setCondVal(' + bi + ',' + ci + ',this.value)">';
-        }
-        html += '<button class="bonus-rm-btn" onclick="BonusEditor.removeCond(' + bi + ',' + ci + ')">✕</button>';
-        html += '</div>';
-      });
-      html += '<button class="bonus-add-link" onclick="BonusEditor.addCond(' + bi + ')">+ 添加条件</button>';
-
-      // rewards
-      html += '<div class="bonus-section-label" style="margin-top:12px;">奖励</div>';
-      fb.rewards.forEach(function(r, ri) {
-        var rtype = r.type || 'fixed';
-        html += '<div class="bonus-reward-row">';
-        html += '<select class="bonus-select" onchange="BonusEditor.setRewardType(' + bi + ',' + ri + ',this.value)">';
-        [['fixed','固定奖励'],['pool','概率池'],['location_draw','地点池抽取']].forEach(function(pair) {
-          html += '<option value="' + pair[0] + '"' + (rtype === pair[0] ? ' selected' : '') + '>' + pair[1] + '</option>';
-        });
-        html += '</select>';
-        if (rtype === 'fixed') {
-          var tgt = r.target || '';
-          var amt = r.amount !== undefined ? r.amount : '';
-          html += '<input class="bonus-input" list="bonus-target-list" placeholder="货币名/属性名" value="' + esc(tgt) + '" oninput="BonusEditor.setRewardTarget(' + bi + ',' + ri + ',this.value)">';
-          html += '<input class="bonus-input" type="number" placeholder="数量" value="' + amt + '" oninput="BonusEditor.setRewardAmount(' + bi + ',' + ri + ',this.value)">';
-        } else if (rtype === 'location_draw') {
-          var amt2 = r.amount !== undefined ? r.amount : '';
-          html += '<div style="grid-column:span 2;display:flex;align-items:center;gap:6px;">' +
-            '<span style="font-size:12px;color:var(--muted);">次数</span>' +
-            '<input class="bonus-input" type="number" placeholder="次数" value="' + amt2 + '" oninput="BonusEditor.setRewardAmount(' + bi + ',' + ri + ',this.value)" style="width:80px">' +
-            '</div>';
-        } else {
-          html += '<span style="grid-column:span 2;font-size:11px;color:var(--muted);">（见下方池条目）</span>';
-        }
-        html += '<button class="bonus-rm-btn" onclick="BonusEditor.removeReward(' + bi + ',' + ri + ')">✕</button>';
-        html += '</div>';
-        if (rtype === 'pool') {
-          html += '<div class="bonus-pool-items" id="pool-' + bi + '-' + ri + '">';
-          (r.items || []).forEach(function(it, ii) {
-            html += '<div class="bonus-pool-row">';
-            html += '<input class="bonus-input" list="bonus-target-list" placeholder="目标" value="' + esc(it.target||'') + '" oninput="BonusEditor.setPoolTarget(' + bi + ',' + ri + ',' + ii + ',this.value)">';
-            html += '<input class="bonus-input" type="number" placeholder="数量" value="' + (it.amount||'') + '" oninput="BonusEditor.setPoolAmount(' + bi + ',' + ri + ',' + ii + ',this.value)">';
-            html += '<input class="bonus-input" type="number" placeholder="权重" value="' + (it.weight||'') + '" oninput="BonusEditor.setPoolWeight(' + bi + ',' + ri + ',' + ii + ',this.value)">';
-            html += '<button class="bonus-rm-btn" onclick="BonusEditor.removePoolItem(' + bi + ',' + ri + ',' + ii + ')">✕</button>';
-            html += '</div>';
-          });
-          html += '<button class="bonus-add-link" style="font-size:11px;" onclick="BonusEditor.addPoolItem(' + bi + ',' + ri + ')">+ 添加池条目</button>';
-          html += '</div>';
-        }
-      });
-      html += '<button class="bonus-add-link" onclick="BonusEditor.addReward(' + bi + ')">+ 添加奖励</button>';
-
-      html += '</div>'; // bonus-block-card
-    });
-    container.innerHTML = html;
-  }
-
-  /* ── block ops ── */
-  function addBlock(conn) {
-    flatBlocks.push({ connector: conn, conditions: [], rewards: [] });
-    renderEditorModal();
-  }
-  function removeBlock(bi) {
-    flatBlocks.splice(bi, 1);
-    if (flatBlocks.length === 0) flatBlocks = [{ connector: 'and', conditions: [], rewards: [] }];
-    renderEditorModal();
-  }
-  function toggleConn(bi) {
-    flatBlocks[bi].connector = flatBlocks[bi].connector === 'or' ? 'and' : 'or';
-    renderEditorModal();
-  }
-
-  /* ── condition ops ── */
-  function addCond(bi) {
-    flatBlocks[bi].conditions.push({ param: PARAMS[0], op: '>=', value: 0 });
-    renderEditorModal();
-  }
-  function removeCond(bi, ci) {
-    flatBlocks[bi].conditions.splice(ci, 1);
-    renderEditorModal();
-  }
-  function setCondParam(bi, ci, v)  { flatBlocks[bi].conditions[ci].param = v; }
-  function setCondOp(bi, ci, v) {
-    flatBlocks[bi].conditions[ci].op = v;
-    flatBlocks[bi].conditions[ci].value = v === 'range' ? [0, 100] : 0;
-    renderEditorModal();
-  }
-  function setCondVal(bi, ci, v) {
-    if (Array.isArray(v)) {
-      flatBlocks[bi].conditions[ci].value = [parseInt(v[0])||0, parseInt(v[1])||0];
-    } else {
-      flatBlocks[bi].conditions[ci].value = parseInt(v) || 0;
-    }
-  }
-
-  /* ── reward ops ── */
-  function addReward(bi) {
-    flatBlocks[bi].rewards.push({ type: 'fixed', target: '', amount: 0 });
-    renderEditorModal();
-  }
-  function removeReward(bi, ri) {
-    flatBlocks[bi].rewards.splice(ri, 1);
-    renderEditorModal();
-  }
-  function setRewardType(bi, ri, v) {
-    var r = flatBlocks[bi].rewards[ri];
-    r.type = v;
-    if (v === 'pool' && !r.items) r.items = [];
-    renderEditorModal();
-  }
-  function setRewardTarget(bi, ri, v) { flatBlocks[bi].rewards[ri].target = v; }
-  function setRewardAmount(bi, ri, v) { flatBlocks[bi].rewards[ri].amount = parseInt(v) || 0; }
-
-  /* ── pool item ops ── */
-  function addPoolItem(bi, ri) {
-    if (!flatBlocks[bi].rewards[ri].items) flatBlocks[bi].rewards[ri].items = [];
-    flatBlocks[bi].rewards[ri].items.push({ target: '', amount: 0, weight: 10 });
-    renderEditorModal();
-  }
-  function removePoolItem(bi, ri, ii) {
-    if (!confirm('删除此池条目？')) return;
-    flatBlocks[bi].rewards[ri].items.splice(ii, 1);
-    renderEditorModal();
-  }
-  function setPoolTarget(bi, ri, ii, v) { flatBlocks[bi].rewards[ri].items[ii].target = v; }
-  function setPoolAmount(bi, ri, ii, v) { flatBlocks[bi].rewards[ri].items[ii].amount = parseInt(v) || 0; }
-  function setPoolWeight(bi, ri, ii, v) { flatBlocks[bi].rewards[ri].items[ii].weight = parseInt(v) || 0; }
-
-  /* ── save template ── */
-  function saveTemplate() {
-    var name    = document.getElementById('bonus-tpl-name').value.trim();
-    var subtype = document.getElementById('bonus-tpl-subtype').value;
-    if (!name) { alert('请输入模版名称'); return; }
-    var groups = flatToGroups(flatBlocks);
-    if (!groups.length) { alert('请至少添加一个规则块'); return; }
-    var tpl = {
-      id:      editIdx >= 0 ? (templates[editIdx].id || Date.now()) : Date.now(),
-      name:    name,
-      subtype: subtype,
-      enabled: editIdx >= 0 ? (templates[editIdx].enabled !== false) : true,
-      groups:  groups
-    };
-    if (editIdx >= 0) {
-      templates[editIdx] = tpl;
-    } else {
-      templates.push(tpl);
-    }
-    saveToInput();
-    closeEditor();
-    renderList();
-  }
-
-  /* ── list ops ── */
-  function deleteTpl(idx) {
-    if (!confirm('删除模版「' + templates[idx].name + '」？')) return;
-    templates.splice(idx, 1);
-    if (editIdx >= idx) editIdx = -1;
-    saveToInput();
-    renderList();
-  }
-  function toggleEnabled(idx, val) {
-    templates[idx].enabled = val;
-    saveToInput();
-    renderList();
-  }
-
-  var esc = cfgEsc;
-
-  load(); renderList();
-
-  return {
-    openNew: openNew, openEditor: openEditor, closeEditor: closeEditor,
-    addBlock: addBlock, removeBlock: removeBlock, toggleConn: toggleConn,
-    addCond: addCond, removeCond: removeCond,
-    setCondParam: setCondParam, setCondOp: setCondOp, setCondVal: setCondVal,
-    addReward: addReward, removeReward: removeReward,
-    setRewardType: setRewardType, setRewardTarget: setRewardTarget, setRewardAmount: setRewardAmount,
-    addPoolItem: addPoolItem, removePoolItem: removePoolItem,
-    setPoolTarget: setPoolTarget, setPoolAmount: setPoolAmount, setPoolWeight: setPoolWeight,
-    saveTemplate: saveTemplate, deleteTpl: deleteTpl, toggleEnabled: toggleEnabled
-  };
+    hiddenInput.value = JSON.stringify(result);
+  });
 })();
 </script>
 </div>

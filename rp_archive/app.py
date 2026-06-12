@@ -1,6 +1,8 @@
 import io, os, json, functools, secrets, time, hmac, logging, traceback
 from collections import defaultdict
-from datetime import datetime, date as _date
+from datetime import datetime, date as _date, timezone, timedelta
+
+TZ_BEIJING = timezone(timedelta(hours=8))
 from flask import (Flask, render_template, request, redirect,
                    url_for, session, jsonify, abort, send_file, g)
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -43,10 +45,673 @@ def _fromjson(s):
     try: return json.loads(s or "{}")
     except Exception: return {}
 
+def _strip_json_str(val):
+    """去掉 bot 推来的 JSON string 包装，如 '"12345"' → '12345'。"""
+    s = str(val).strip()
+    if len(s) >= 2 and s[0] == '"' and s[-1] == '"':
+        try:
+            decoded = json.loads(s)
+            if isinstance(decoded, str):
+                return decoded
+        except Exception:
+            pass
+    return s
+
+@app.template_filter("strip_json_str")
+def _tpl_strip_json_str(s):
+    return _strip_json_str(s or "")
+
 DB_PATH         = os.path.join(os.path.dirname(__file__), "rp_data.db")
 SUPERADMIN_PASS = os.environ.get("SUPERADMIN_PASS",
                   os.environ.get("RP_ADMIN_PASSWORD", "pDynLBeLGEjd"))
 PLAYERS_PER_PAGE = 50
+
+# ── Command guide blocks ──────────────────────────────────────────────────────
+COMMAND_BLOCKS = [
+    # ══════════════════════════════
+    #  玩家指令
+    # ══════════════════════════════
+    {"key": "intro", "label": "🌟 入门 — 角色与账号", "category": "player", "lines": [
+        "创建新角色 角色名",
+        "  例：创建新角色 张三",
+        "  注册角色，获得初始档案（性别/年龄/皮相）",
+        "",
+        "修改名字 新名字   （改名并同步所有数据）",
+        "修改性别 男/女",
+        "修改年龄 数字",
+        "修改皮相 明星名  （2小时冷却）",
+        "修改签名 内容     （12小时冷却）",
+        "",
+        "额外账号 QQ号       绑定小号",
+        "额外账号 删除 QQ号  解绑小号",
+        "额外账号            查看已有",
+        "",
+        "玩家名单   查看所有角色及档案",
+        "角色卡     查看自己的角色卡（属性/装备/货币）",
+        "地点查看   查看可用地点列表",
+    ]},
+    {"key": "relationship", "label": "🔗 关系线", "category": "player", "lines": [
+        "拉线 对方名 关系内容",
+        "  向对方发起关系线并记录细节",
+        "  例：拉线 张三 两人曾在大学相识",
+        "",
+        "确认关系线 对方名",
+        "  确认对方向你发起的关系线",
+        "",
+        "撤回关系 对方名 要撤回的内容",
+        "  精确匹配撤回自己的细节",
+        "",
+        "查看关系线          查看所有关系对象",
+        "查看关系线 角色名   查看与该角色的完整细节",
+    ]},
+    {"key": "appointment", "label": "💕 约会与邀约", "category": "player", "lines": [
+        "电话 时间 对方名 [标题]",
+        "  例：电话 1400-1500 张三",
+        "  例：电话 1400-1500 张三/李四 一起聊聊",
+        "",
+        "私约 时间 地点 对方名[/对方2/...]",
+        "  例：私约 1400-1500 咖啡厅 张三",
+        "  例：私约 1400-1500 咖啡厅 张三/李四",
+        "",
+        "申请加入 角色名 时间点",
+        "  例：申请加入 张三 14:30",
+        "",
+        "加入请求       查看收到的加入请求",
+        "同意加入 请求编号",
+        "拒绝加入 请求编号",
+        "",
+        "时间线         查看自己的日程安排",
+        "",
+        "修改时间线 D1 1400-1500",
+        "  在约会群内使用，修改当前约会的时间",
+        "",
+        "拒绝时间线 群号",
+        "  退出约会并通知相关者，取消约会记录",
+        "",
+        "结束私约       在约会群中结束本场后退群",
+    ]},
+    {"key": "social", "label": "💬 微信 & 心愿 & 短信", "category": "player", "lines": [
+        "微信 对方名   建立长期微信群",
+        "",
+        "挂心愿 时间 地点 内容",
+        "  例：挂心愿 1400-1500 图书馆 想找人聊聊",
+        "看心愿          查看所有漂流心愿",
+        "摘心愿 编号     例：摘心愿 A1B2C3",
+        "撤心愿 [编号]   不带编号→列出自己的心愿",
+        "",
+        "。悬赏心愿 时间 地点 内容 [悬赏物 数量]",
+        "  发布带悬赏的心愿，摘取者可获得奖励",
+        "",
+        "[署名]短信 收信人 内容",
+        "  例：张三短信 李四 你好！",
+    ]},
+    {"key": "bag", "label": "🎒 背包与道具", "category": "player", "lines": [
+        "背包",
+        "  查看背包全览（各分类最多3项）",
+        "",
+        "背包 货币 / 背包 道具 / 背包 物品",
+        "  按分类查看背包（支持分页）",
+        "",
+        "背包 [分类] [页码]",
+        "  翻页查看（例：背包 道具 2）",
+        "",
+        "背包 搜 [关键词]",
+        "  搜索物品名称或描述",
+        "  例：背包 搜 钥匙",
+        "",
+        "物品详情 物品码或名称",
+        "  查看物品描述、属性效果、商城价格",
+        "",
+        "抽取 [池子名]",
+        "  从抽取池随机获得物品",
+        "  例：抽取 / 抽取 普通池",
+        "",
+        "我的抽取次数 / 抽取次数",
+        "  查看今日已用/剩余次数",
+        "",
+        "我的保底 / 保底进度",
+        "  查看保底计数（如有保底机制）",
+        "",
+        "赠送道具 对方名 物品码 [数量]",
+        "  例：赠送道具 张三 AA00 2",
+        "",
+        "使用 物品码或名称 [参数]",
+        "  例：使用 TJ00 张三    （追踪器）",
+        "  例：使用 WN00 图书馆  （万能钥匙）",
+        "  例：使用 AA00",
+        "",
+        "特殊使用 望远镜 角色名",
+        "  施加后，目标发出信件时自动抄录一份给你",
+        "特殊使用 羽毛笔 角色名",
+        "  施加后，目标下一封信先发给你修改后再发出",
+    ]},
+    {"key": "equip", "label": "🛡️ 装备系统", "category": "player", "lines": [
+        "。装备 装备名或物品码",
+        "  将指定装备穿戴到对应槽位",
+        "",
+        "。脱装备 槽位",
+        "  卸下指定槽位的装备",
+        "",
+        "。槽位",
+        "  查看当前装备槽位及穿戴状态",
+    ]},
+    {"key": "upgrade", "label": "⬆️ 升级系统", "category": "player", "lines": [
+        "。升级",
+        "  消耗材料进行角色升级",
+        "",
+        "。查看升级信息",
+        "  查看当前等级及升级所需材料",
+        "",
+        "升级列表",
+        "  查看所有可升级配置（无需句号）",
+    ]},
+    {"key": "market", "label": "🏪 商城与二手市场", "category": "player", "lines": [
+        "商城",
+        "  查看当前在售物品及价格",
+        "",
+        "售卖 物品码 价格 货币名 [数量]",
+        "  将背包物品挂上二手市场",
+        "  例：售卖 AA00 8 金币 2",
+        "",
+        "二手市场",
+        "  查看所有在售卖单",
+        "",
+        "二手市场 买 编号",
+        "  购买指定卖单（手续费由买方承担）",
+        "  例：二手市场 买 0001",
+        "",
+        "撤销卖单 编号   撤回自己的卖单并退货",
+    ]},
+    {"key": "gift_shop", "label": "🛒 礼品店", "category": "player", "lines": [
+        "礼品店   随机抽一件礼物，解锁入图鉴",
+        "",
+        "图鉴        查看收藏进度与全服热度排名",
+        "图鉴 #编号  查看该礼物完整描述",
+        "",
+        "送礼 对方名 礼物内容  叙事礼物",
+        "  例：送礼 张三 一束花",
+        "送礼 对方 #编号   图鉴内礼物可无限送礼",
+    ]},
+    {"key": "craft", "label": "🧪 合成系统", "category": "player", "lines": [
+        "合成列表 / 查看合成",
+        "  查看所有可用合成配方",
+        "合成列表 关键词",
+        "  搜索包含关键词的配方",
+        "",
+        "合成 产物代码",
+        "  执行一次合成",
+        "  例：合成 高级丹",
+        "",
+        "合成 产物代码 数量",
+        "  批量合成多次",
+        "  例：合成 高级丹 5",
+    ]},
+    {"key": "rpg_attr", "label": "🎭 RPG 属性", "category": "player", "lines": [
+        "我的状态",
+        "  查看当前角色的所有属性值",
+        "  （属性显示为进度条形式）",
+        "",
+        "角色:属性++值   （无需句号，直接发送）",
+        "  例：张三:体力++10   增加体力10点",
+        "角色:货币--值",
+        "  例：李四:金币--50   减少金币50枚",
+        "全体:属性++值",
+        "  例：全体:精力++5    所有角色精力+5",
+    ]},
+    {"key": "combat", "label": "⚔️ PK 战斗", "category": "player", "lines": [
+        "。PK 对方名",
+        "  向对方发起 PK 挑战",
+        "",
+        "。攻击 / 。防守 / 。投降 / 。逃跑",
+        "  战斗中的行动指令",
+        "",
+        "。战斗状态",
+        "  查看当前战斗状态与属性",
+        "",
+        "。战斗历史",
+        "  查看历史战斗记录",
+    ]},
+    {"key": "letter", "label": "✉️ 发送信件（写信综）", "category": "player", "lines": [
+        "。发送信件",
+        "【收件人】角色名",
+        "【内容】信件内容",
+        "【日期】日期（选填）",
+        "【附件】附加内容（选填）",
+        "【署名】落款（选填，默认角色名）",
+        "",
+        "。信件状态   查看今日发信额度与赏金设置",
+        "",
+        "。羽毛笔修改          查看待修改信件清单",
+        "。羽毛笔修改 序号 新内容  修改后发出",
+    ]},
+    {"key": "lovemail", "label": "💌 心动信 & 信箱", "category": "player", "lines": [
+        "发送心动信",
+        "【发送对象】角色名",
+        "【内容】想说的话（支持空行）",
+        "【署名】自定义昵称（选填）",
+        "",
+        "。撤回心动信 编号   撤回已投递的信",
+        "",
+        "查看信箱   查看收到的心动信",
+    ]},
+    {"key": "forum", "label": "🗨️ 论坛", "category": "player", "lines": [
+        "发帖 内容",
+        "  例：发帖 今天天气真好",
+        "发帖 署名 内容",
+        "  例：发帖 张三 今天天气真好",
+        "",
+        "回复帖子 贴号 内容",
+        "  例：回复帖子 A1B2C 同感！",
+        "回复帖子 贴号 署名 内容",
+        "",
+        "查看帖子        查看所有帖子",
+        "查看帖子 贴号   查看该帖子及回复",
+        "",
+        "。点赞 贴号",
+        "。点踩 贴号",
+        "。点赞楼层 贴号 楼层号",
+        "。点踩楼层 贴号 楼层号",
+        "",
+        "。删除帖子 贴号   删除自己发的帖子",
+    ]},
+    {"key": "auction", "label": "🔨 拍卖系统", "category": "player", "lines": [
+        "查看拍卖",
+        "  查看所有进行中的拍卖（合并转发）",
+        "",
+        "实名出价 价格 编号",
+        "  例：实名出价 150 #1",
+        "",
+        "匿名出价 价格 编号",
+        "  例：匿名出价 200 #1",
+    ]},
+    {"key": "collect", "label": "📋 信息收集 & 写帖进度", "category": "player", "lines": [
+        "我提交 项目名: 内容",
+        "  例：我提交 问卷: 我选A",
+        "查看收集          列出所有项目",
+        "查看收集 项目名   查看该项目全部内容",
+        "",
+        "定时收集 项目名 内容",
+        "  参与进行中的定时收集项目",
+        "",
+        "  （写帖进度自动记录，可在时间线中查看）",
+    ]},
+    {"key": "alarm", "label": "⏰ 闹钟（加百列）", "category": "player", "lines": [
+        "。提醒 时间 内容",
+        "  时间格式：X分钟后 / HH:MM / 明天HH:MM / 每天HH:MM / 每周一HH:MM",
+        "  例：。提醒 30分钟后 去看消息",
+        "  例：。提醒 22:00 该睡觉了",
+        "",
+        "。我的提醒",
+        "  查看所有已设置的提醒",
+        "",
+        "。删除提醒 编号",
+        "  取消指定提醒",
+        "",
+        "。再提醒我 [X分钟]",
+        "  延迟再提醒一次，默认 10 分钟",
+        "",
+        "。谢谢加百列   向加百列表示感谢（每天一次，提升好感度）",
+        "。加百列好感度  查看与加百列的好感度",
+        "。加百列图鉴   查看从加百列处获得的礼物",
+    ]},
+    {"key": "stats", "label": "📊 统计", "category": "player", "lines": [
+        "本场统计   查看自己的本场互动数据",
+    ]},
+    # ══════════════════════════════
+    #  管理指令
+    # ══════════════════════════════
+    {"key": "adm_account", "label": "🔑 管理员账户", "category": "admin", "lines": [
+        "。授予管理员 QQ号 密码",
+        "  将指定 QQ 设为临时管理员",
+        "",
+        "。收回管理员 QQ号 密码",
+        "  撤销指定 QQ 的管理员身份",
+        "",
+        "。管理员列表",
+        "  查看当前所有管理员",
+        "",
+        "。清空管理员 密码",
+        "  清空所有平台的管理员",
+        "",
+        "。更改密令 新密码",
+        "  更改管理员授权密码（至少4位）",
+    ]},
+    {"key": "adm_perms", "label": "🚫 功能权限管理", "category": "admin", "lines": [
+        "。功能权限 角色名 功能 开启/关闭",
+        "  功能可选：礼物 / 发起邀约 / 寄信 / 心愿 / 心动信",
+        "            论坛 / 抽取 / 全部",
+        "  例：。功能权限 张三 论坛 关闭",
+        "  例：。功能权限 张三 全部 关闭  （一键阻断）",
+        "",
+        "。查看功能权限",
+        "  查看所有被设置过权限的角色",
+        "",
+        "。时间锁定",
+        "  进入时间锁定设置面板",
+        "",
+        "。查看锁定 角色名",
+        "  查看指定角色的时间段锁定情况",
+        "",
+        "。查看他人时间线 角色名",
+        "  查看指定角色的全部时间安排",
+    ]},
+    {"key": "adm_settings", "label": "⚙️ 系统设置", "category": "admin", "lines": [
+        "。设置 基础 / 互动 / 信件 / 公告 / 道具 / 群组 / 季末报告",
+        "  进入对应模块的设置面板",
+        "",
+        "。设置天数 D1 / D2 / D3...",
+        "  切换当前游戏天数",
+        "",
+        "。开启自动天数 / 。关闭自动天数",
+        "  控制每天 23:59 自动推进天数",
+        "",
+        "。设置信箱上限 D0:3 D1:5...",
+        "  设置各天数的心动信每日上限",
+        "  例：。设置信箱上限 默认 3",
+        "",
+        "。初始化设置",
+        "  将所有设置恢复为默认值（慎用）",
+        "",
+        "。同步设置",
+        "  从 rparchive 拉取并覆盖所有系统配置",
+        "",
+        "。同步到服务端",
+        "  将机器人当前配置推送到 rparchive",
+        "",
+        "。全量上传",
+        "  将所有配置（含物品注册/结戏模版）一次性推送到 rparchive",
+        "",
+        "。创建新季度 恋综名 复盘/不复盘 [MMDD-MMDD] [补戏MMDD]",
+        "  新建一个游戏季度，可指定档期",
+        "",
+        "。修改档期 MMDD-MMDD [补戏MMDD]",
+        "  修改当前季度的档期",
+        "",
+        "。结束季度",
+        "  结束当前活跃季度（若开启季末报告则自动群发）",
+        "",
+        "。季末报告 开启/关闭/状态",
+        "  控制结束季度时是否向玩家个人群发送互动报告",
+        "  ⚠️ 开启后请确保 bot 届时仍在各玩家个人群内",
+        "",
+        "。master jsclear 插件名字",
+        "  重置插件存储（替代原强硬初始化）",
+    ]},
+    {"key": "adm_data", "label": "📊 数据统计 & 监控", "category": "admin", "lines": [
+        "查看全员统计（无前缀）",
+        "  查看所有玩家数据排名（合并转发）",
+        "",
+        "查看计时器（无前缀）",
+        "  查看所有活跃群的倒计时状态",
+        "",
+        "查看进行中（无前缀）",
+        "  查看当前所有进行中的约会",
+        "",
+        "提醒超时（无前缀）",
+        "  向超时未结束的约会群发送提醒",
+        "",
+        "关系线统计（无前缀）",
+        "  查看所有角色的关系线数量统计",
+        "",
+        "。存入统计",
+        "  将全场玩家历史数据导出为字段格式",
+        "",
+        "。信箱统计",
+        "  查看心动信投递总量及分类统计",
+        "",
+        "。统一送心动信",
+        "  统一派送所有已投递的心动信",
+        "",
+        "。同步名片 公告/戏群/水群",
+        "  将群内角色名片同步到指定群",
+        "",
+        "。随机分组 [数字] [bg]",
+        "  将在场角色随机分成若干组",
+        "",
+        "。删除时间线 天数 时间 角色名",
+        "  精确删除指定角色的某条时间线记录",
+        "",
+        "。角色档案 角色名",
+        "  查看指定角色的完整档案（管理员视角）",
+    ]},
+    {"key": "adm_groups", "label": "📅 群号 & 邀约管理", "category": "admin", "lines": [
+        "。开启群号组 组名",
+        "  新建并激活一个群号组",
+        "",
+        "。关闭群号组 组名",
+        "  暂停某个群号组（数据保留，不再生效）",
+        "",
+        "。添加群号 组名 群号",
+        "  将群号添加至指定群号组",
+        "",
+        "。移除群号 组名 群号",
+        "  从指定群号组中移除群号",
+        "",
+        "。查看群号 [组名]",
+        "  不带组名列出所有组；带组名显示组内群号",
+        "",
+        "。设置邀约时间 时间段",
+        "  限制玩家可发起邀约的时间范围",
+        "",
+        "。清空邀约时间",
+        "  清除邀约时间限制",
+        "",
+        "。驱逐 QQ号",
+        "  将指定 QQ 踢出当前群",
+        "",
+        "。查看微信群",
+        "  查看所有活跃微信群列表",
+        "",
+        "。更新未退群",
+        "  检测并更新未退出的已结束小群",
+        "",
+        "。查看到期群",
+        "  查看所有已超过有效期的群组",
+        "",
+        "发起官约（无前缀）",
+        "  以系统身份发起官方约会",
+    ]},
+    {"key": "adm_announce", "label": "📢 群管功能", "category": "admin", "lines": [
+        "。群公告发布 内容",
+        "  在当前群发布公告",
+        "",
+        "。群公告发布 权限切换",
+        "  切换公告发布权限（管理员/所有人）",
+        "",
+        "。群头衔 内容",
+        "  更改自己的群头衔",
+        "",
+        "。群头衔 @某人 内容",
+        "  代改他人群头衔",
+        "",
+        "。群头衔 权限切换",
+        "  切换头衔修改权限（管理员/所有人）",
+        "",
+        "。设置加百列群名 群名",
+        "  修改机器人在群内的昵称",
+    ]},
+    {"key": "adm_items", "label": "🎲 物品管理", "category": "admin", "lines": [
+        "【注册】",
+        "。上载物品 名称*描述[*属性效果]  （支持多行批量）",
+        "  例：。上载物品 急救包*紧急治疗用品*体力+20",
+        "。注册货币 名称*描述",
+        "  例：。注册货币 金币*基础流通货币",
+        "。上载互动物品 名称*描述*互动效果",
+        "  注册可施加给他人的互动类道具",
+        "。删除物品 物品码",
+        "  删除已注册的物品",
+        "。物品列表 [物品|货币|预设|全部]",
+        "",
+        "【商城】",
+        "。上架商城 物品码*价格货币名",
+        "  例：。上架商城 AA00*10金币",
+        "。商城下架 物品码",
+        "",
+        "【抽取池】",
+        "。注册池子 池子名 fixed/free",
+        "  fixed=固定池（加权随机），free=自由池（有限存量）",
+        "。一键建池 池子名",
+        "  快速创建标准池（自动设置默认参数）",
+        "。上架池子 池子名 物品码*权重or数量  （支持多行）",
+        "。从池移除 池子名 物品码",
+        "。查看池子 池子名",
+        "  查看该池所有物品及库存",
+        "。清空池子 池子名",
+        "  清空池内所有物品",
+        "。池子设定 总量:N / 池子名:N / 总量:无限 / 查看",
+        "。开启池子/关闭池子/删除池子 池子名",
+        "。发放抽取 角色名 N              总额外次数",
+        "。发放抽取 角色名 池子名 N       特定池额外次数",
+        "。同步踩点池",
+        "  从 rparchive 同步踩点奖励池配置",
+        "。同步池子",
+        "  从 rparchive 同步所有池子配置",
+        "",
+        "【背包操作】",
+        "。调整 角色名 物品码 +N/-N",
+        "  例：。调整 张三 AA00 +3",
+        "。批量发放 物品码 +N 角色名1 角色名2...",
+        "  一次性给多个角色发放物品",
+        "。查看背包 角色名   查看指定角色的背包",
+        "",
+        "【二手市场】",
+        "。二手设定 开启/关闭",
+        "。二手设定 手续费:N  （2-5，默认3）",
+        "",
+        "【记录】",
+        "。物品使用记录 [N]   查看今日最近N条",
+    ]},
+    {"key": "adm_rpg", "label": "🧬 RPG 属性 & 合成", "category": "admin", "lines": [
+        "【属性注册】",
+        "。注册属性 属性名1 属性名2 ...",
+        "  注册可用属性名（防止与货币重名）",
+        "。注册属性 列表",
+        "  查看已注册属性列表",
+        "。删除属性 属性名",
+        "  删除已注册的属性",
+        "。设置属性 角色名 属性名 值",
+        "  直接设置角色某属性为指定值",
+        "",
+        "【属性修改（无需句号）】",
+        "角色:属性++N / 角色:属性--N",
+        "  例：张三:体力++10",
+        "全体:属性++N / 全体:属性--N",
+        "  例：全体:精力++5   所有角色增加",
+        "",
+        "【合成】",
+        "。注册合成 产物码*描述*材料码1:数量1,材料码2:数量2[*限制]",
+        "  例：。注册合成 高级丹*升级丹药*初级丹:3,金币:100",
+        "属性限制：*attr:属性名:最小值",
+        "货币限制：*currency:货币名:最小值",
+        "",
+        "【装备与升级】",
+        "。注册装备 装备名*描述*槽位[*属性效果]",
+        "  注册可穿戴装备",
+        "。上传升级等级 等级配置",
+        "  上传升级等级配置表",
+        "。查看升级配置",
+        "  查看当前升级配置详情",
+        "。升级列表",
+        "  查看所有升级等级列表",
+    ]},
+    {"key": "adm_bonus", "label": "🎁 结戏加成", "category": "admin", "lines": [
+        "。结戏加成 模版列表",
+        "。结戏加成 可用参数",
+        "。结戏加成 查看 模版名",
+        "。结戏加成 新建 模版名",
+        "。结戏加成 新块 模版名 and/or",
+        "。结戏加成 添加条件 模版名 参数 运算符 数值",
+        "。结戏加成 添加奖励 模版名 目标 数量",
+        "。结戏加成 新建概率池 模版名",
+        "。结戏加成 添加池奖励 模版名 目标 数量 权重",
+        "。结戏加成 删除池奖励 模版名 编号",
+        "。结戏加成 删除块 模版名 块编号",
+        "。结戏加成 开启/关闭 模版名",
+        "。结戏加成 删除模版 模版名",
+    ]},
+    {"key": "adm_giftshop", "label": "🛒 礼品店管理", "category": "admin", "lines": [
+        "。上传预设礼物 #1&玫瑰花&一束红玫瑰",
+        "  批量：#1&礼物1&内容$#2&礼物2&内容",
+        "。上传预设礼物 导出  （导出所有礼物 JSON）",
+        "",
+        "。删除预设礼物 编号",
+        "。删除预设礼物 全部 确认  ⚠️",
+    ]},
+    {"key": "adm_relationship", "label": "🔗 关系线管理", "category": "admin", "lines": [
+        "。设置强制关系线 角色A 角色B 描述",
+        "  强制设定两人关系（系统发起，不占名额）",
+        "  例：。设置强制关系线 张三 李四 青梅竹马",
+        "",
+        "。删除关系线 角色A 角色B",
+        "  删除两人之间的关系线",
+        "",
+        "。清空关系线 MMDD",
+        "  清空当前平台全部关系线（需输入当日日期码，如0526）",
+    ]},
+    {"key": "adm_lovemail", "label": "💌 心动信管理", "category": "admin", "lines": [
+        "。统一送心动信",
+        "  统一派送所有投递池中的心动信",
+        "",
+        "。信箱统计",
+        "  查看心动信投递总量及分类统计",
+        "",
+        "。设置信箱上限 D0:3 D1:5...",
+        "  设置各天数的每日投稿上限",
+        "  例：。设置信箱上限 默认 3",
+    ]},
+    {"key": "adm_auction", "label": "🔨 拍卖系统管理", "category": "admin", "lines": [
+        "。添加拍卖物品 物品码或名称%起拍价%最低加价%时长(h)[%失效时长(h)]",
+        "  批量用$分隔多件，最多同时10件",
+        "  例：。添加拍卖物品 魔法棒%100%10%24",
+        "",
+        "。删除拍卖物品 #编号",
+        "",
+        "。结算拍卖 #编号",
+        "  手动结算指定拍卖（无需到期）",
+        "",
+        "。拉取拍卖队列",
+        "  从 rparchive 拉取待上架的拍卖队列",
+        "",
+        "。上传拍卖",
+        "  将当前拍卖状态推送到 rparchive",
+    ]},
+    {"key": "adm_collect", "label": "📋 定时收集管理", "category": "admin", "lines": [
+        "。创建定时收集 时间 项目名",
+        "  例：。创建定时收集 22:00 晚安问卷",
+        "",
+        "。关闭定时收集 项目名",
+        "  停止该项目的定时收集",
+        "",
+        "。查看定时收集 [项目名]",
+        "  不带名称列出所有项目；带名称查看详情",
+    ]},
+    {"key": "adm_role", "label": "👤 角色管理", "category": "admin", "lines": [
+        "。清除玩家 角色名",
+        "  删除该角色的注册数据",
+        "",
+        "。设为npc 角色名",
+        "  将指定角色标记为 NPC",
+        "",
+        "。创建NPC 角色名",
+        "  直接创建一个 NPC 角色（无需玩家绑定）",
+        "",
+        "。随机分组 [数字] [bg]",
+        "  将在场角色随机分成若干组",
+    ]},
+    {"key": "adm_combat", "label": "⚔️ 攻防系统管理", "category": "admin", "lines": [
+        "。攻防 设置 ...",
+        "  进入攻防系统配置面板",
+        "",
+        "。攻防 添加人员 角色名",
+        "  将角色加入攻防系统",
+        "",
+        "。攻防 添加技能 技能名 ...",
+        "  注册可用技能",
+        "",
+        "。攻防 一键初始化",
+        "  重置攻防系统数据",
+    ]},
+]
 
 # ── Config schema ────────────────────────────────────────────────────────────
 CONFIG_SCHEMA = [
@@ -61,24 +726,38 @@ CONFIG_SCHEMA = [
         {"key": "song_group_id",         "label": "戏群（兼作拍卖展示群）", "type": "text",    "default": ""},
         {"key": "background_group_id",   "label": "后台群",     "type": "text",    "default": ""},
         {"key": "water_group_id",        "label": "水群",       "type": "text",    "default": ""},
-        {"key": "fupan_routing_enabled", "label": "复盘群分流",  "type": "bool",    "default": "false", "note": "启用后复盘消息按天数路由到对应群"},
-        {"key": "fupan_routing_groups",  "label": "分流群配置",  "type": "routing", "default": "", "note": "格式：D1:群号 D2:群号"},
         {"key": "announceFrequency",     "label": "公告触发频率","type": "number",  "default": "5", "note": "每 N 条互动触发一次公告广播"},
         {"key": "drop_hide_receiver",    "label": "掉落/曝光隐藏收件人", "type": "bool", "default": "false", "note": "开启后礼物掉落/短信公开/心动信曝光的播报中收件人显示为「某人」"},
     ]},
+    {"section": "复盘群（⚠️ 通常不要动，仅紧急情况调整）", "fields": [
+        {"key": "require_fupan_before_end", "label": "强制转发复盘", "type": "bool",    "default": "false", "note": "开启后结戏前必须先转发复盘，否则无法结束私约"},
+        {"key": "fupan_routing_enabled",    "label": "复盘群分流",   "type": "bool",    "default": "false", "note": "启用后复盘消息按天数路由到对应群"},
+        {"key": "fupan_routing_groups",     "label": "分流群配置",   "type": "routing", "default": "",      "note": "格式：D1:群号 D2:群号"},
+    ]},
     {"section": "功能开关", "json_parent": "global_feature_toggle", "fields": [
+        {"key": "enable_general_letter",      "label": "通用信件",          "type": "bool", "default": "true"},
         {"key": "enable_general_gift",        "label": "普通礼物",          "type": "bool", "default": "true"},
         {"key": "enable_general_appointment", "label": "普通邀约",          "type": "bool", "default": "true"},
         {"key": "enable_chaos_letter",        "label": "短信",              "type": "bool", "default": "true"},
+        {"key": "enable_secret_letter",       "label": "秘密信件",          "type": "bool", "default": "true"},
         {"key": "enable_wish_system",         "label": "心愿系统",          "type": "bool", "default": "true"},
         {"key": "enable_lovemail",            "label": "心动信",            "type": "bool", "default": "false"},
         {"key": "enable_wechat",              "label": "微信",              "type": "bool", "default": "false"},
         {"key": "enable_direct_letter",       "label": "发送信件（写信综）", "type": "bool", "default": "false"},
+        {"key": "dlc_sighting",              "label": "目击报告DLC",       "type": "bool", "default": "false"},
+        {"key": "dlc_fupan",                 "label": "复盘群DLC",         "type": "bool", "default": "false"},
+        {"key": "dlc_auction",               "label": "拍卖DLC",           "type": "bool", "default": "false"},
+        {"key": "dlc_attack",                "label": "攻防DLC",           "type": "bool", "default": "false"},
+        {"key": "dlc_forum",                 "label": "论坛DLC",           "type": "bool", "default": "false"},
+        {"key": "dlc_auto_day",              "label": "自动天数DLC",       "type": "bool", "default": "false"},
+        {"key": "dlc_moments",               "label": "朋友圈DLC",         "type": "bool", "default": "false"},
     ]},
     {"section": "邀约", "fields": [
-        {"key": "enable_join_existing_appointment", "label": "允许加入已有私约", "type": "bool",   "default": "false"},
-        {"key": "require_fupan_before_end",         "label": "强制转发复盘",     "type": "bool",   "default": "false"},
-        {"key": "group_expire_hours",               "label": "小群过期（小时）", "type": "number", "default": "48"},
+        {"key": "enable_join_existing_appointment", "label": "允许加入已有私约",        "type": "bool",   "default": "false"},
+        {"key": "group_expire_hours",               "label": "小群过期（小时）",        "type": "number", "default": "48"},
+        {"key": "rest_hours",                       "label": "休息时段（不计弧长）",    "type": "text",   "default": "", "note": "格式 HHMM-HHMM，如 0200-0800，留空不限制"},
+        {"key": "appointment_coin_cost",            "label": "私约写信币费用",          "type": "number", "default": "0", "note": "发起私约/电话消耗的写信币数（0=免费）"},
+        {"key": "idle_group_name",                  "label": "备用群名",                "type": "text",   "default": "备用", "note": "群结束后修改成的群名，默认为「备用」"},
     ]},
     {"section": "邀约时长（分钟）", "json_parent": "appointment_duration_config", "fields": [
         {"key": "phone",   "label": "电话门槛", "type": "number", "default": "29"},
@@ -98,10 +777,11 @@ CONFIG_SCHEMA = [
         {"key": "allow_custom_gift_sign",      "label": "送礼自定义名字",      "type": "bool",   "default": "false"},
     ]},
     {"section": "心动信", "fields": [
-        {"key": "lovemail_default_limit",  "label": "每日上限",     "type": "number", "default": "3"},
-        {"key": "lovemail_delivery_time",  "label": "送达时间",     "type": "text",   "default": "22:00"},
-        {"key": "lovemail_expose",         "label": "曝光",         "type": "bool",   "default": "false"},
-        {"key": "lovemail_expose_chance",  "label": "曝光概率（%）","type": "number", "default": "10", "min": 0, "max": 100},
+        {"key": "lovemail_default_limit",  "label": "每日上限（默认）",  "type": "number",  "default": "3", "note": "无按天配置时的兜底封数"},
+        {"key": "lovemail_day_limits",     "label": "按天封数上限",      "type": "routing", "default": "",  "note": "格式：D1:封数 D2:封数，留空则全部用默认值"},
+        {"key": "lovemail_delivery_time",  "label": "送达时间",          "type": "text",    "default": "22:00"},
+        {"key": "lovemail_expose",         "label": "曝光",              "type": "bool",    "default": "false"},
+        {"key": "lovemail_expose_chance",  "label": "曝光概率（%）",     "type": "number",  "default": "10", "min": 0, "max": 100},
     ]},
     {"section": "发送信件", "fields": [
         {"key": "direct_letter_daily_limit", "label": "每日上限",       "type": "number", "default": "5"},
@@ -115,17 +795,26 @@ CONFIG_SCHEMA = [
         {"key": "wish_max_concurrent",   "label": "最大同时心愿数",         "type": "number", "default": "3"},
         {"key": "wish_daily_post_limit", "label": "每日发布上限（0=不限）", "type": "number", "default": "0"},
         {"key": "wish_daily_pick_limit", "label": "每日接取上限（0=不限）", "type": "number", "default": "0"},
+        {"key": "wish_coin_cost",        "label": "心愿写信币费用",         "type": "number", "default": "0", "note": "挂心愿消耗的写信币数（0=免费）"},
     ]},
     {"section": "关系系统", "fields": [
-        {"key": "relationship_system_enabled", "label": "关系系统",     "type": "bool",   "default": "false"},
-        {"key": "max_relationships_per_user",  "label": "每人最大关系数","type": "number", "default": "5"},
+        {"key": "relationship_system_enabled", "label": "关系系统",           "type": "bool",   "default": "false"},
+        {"key": "max_relationships_per_user",  "label": "每人最大关系数",     "type": "number", "default": "5"},
+        {"key": "max_detail_chars",            "label": "关系细节单条上限字数","type": "number", "default": "500"},
+        {"key": "max_detail_count",            "label": "关系细节段数上限",    "type": "number", "default": "20"},
+        {"key": "max_rel_total_chars",         "label": "关系细节总字数上限",  "type": "number", "default": "3000"},
+        {"key": "forward_split_threshold",     "label": "关系细节转发拆分阈值","type": "number", "default": "4000"},
+    ]},
+    {"section": "论坛", "fields": [
+        {"key": "forumMaxLength", "label": "帖子/回复字数上限", "type": "number", "default": "500"},
     ]},
     {"section": "目击系统", "json_parent": "sighting_system_config", "fields": [
-        {"key": "enabled",                "label": "启用目击",       "type": "bool",   "default": "false"},
-        {"key": "send_to_all",            "label": "双向通知",       "type": "bool",   "default": "true"},
-        {"key": "max_reports_per_day",    "label": "每日最大目击数", "type": "number", "default": "5"},
-        {"key": "include_ended_meetings", "label": "包含已结束场次", "type": "bool",   "default": "false"},
-        {"key": "time_overlap_threshold", "label": "时间重叠阈值",   "type": "number", "default": "0.3"},
+        {"key": "enabled",                "label": "启用目击",                    "type": "bool",   "default": "false"},
+        {"key": "send_to_all",            "label": "双向通知",                    "type": "bool",   "default": "true"},
+        {"key": "max_reports_per_day",    "label": "每日最大目击数",              "type": "number", "default": "5"},
+        {"key": "include_ended_meetings", "label": "包含已结束场次",              "type": "bool",   "default": "false"},
+        {"key": "time_overlap_threshold", "label": "时间重叠阈值（0~1）",        "type": "number", "default": "0.3", "note": "时间重叠达到此比例才有资格触发目击，如 0.3 = 重叠30%"},
+        {"key": "trigger_chance",         "label": "撞见触发概率（%）",          "type": "number", "default": "50",  "min": 0, "max": 100, "note": "满足重叠条件后实际发出目击报告的概率"},
     ]},
     {"section": "场所系统", "json_parent": "place_system_config", "fields": [
         {"key": "enabled",                "label": "启用场所系统", "type": "bool", "default": "false"},
@@ -179,6 +868,18 @@ CONFIG_SCHEMA = [
         {"key": "public_show_sms",      "label": "公开短信",   "type": "bool", "default": "true"},
         {"key": "public_show_gift",     "label": "公开礼物",   "type": "bool", "default": "true"},
         {"key": "public_show_lovemail", "label": "公开心动信", "type": "bool", "default": "true"},
+        {"key": "public_show_letter",   "label": "公开信件",   "type": "bool", "default": "false"},
+    ]},
+    {"section": "类型显示别名", "json_parent": "custom_type_labels", "fields": [
+        {"key": "私密", "label": "私约别名", "type": "text", "default": "", "note": "留空=默认「私密」，群名超6字自动省略"},
+        {"key": "电话", "label": "电话别名", "type": "text", "default": "", "note": "留空=默认「电话」"},
+        {"key": "官约", "label": "官约别名", "type": "text", "default": "", "note": "留空=默认「官约」"},
+        {"key": "微信", "label": "微信别名", "type": "text", "default": "", "note": "留空=默认「微信」"},
+        {"key": "心愿", "label": "心愿别名", "type": "text", "default": "", "note": "留空=默认「心愿」"},
+    ]},
+    {"section": "季末报告", "fields": [
+        {"key": "end_season_report_enabled", "label": "季末互动报告", "type": "bool", "default": "false",
+         "note": "开启后结束季度时自动向每位玩家个人群发送互动报告，请确保 bot 届时仍在各个人群内"},
     ]},
 ]
 
@@ -218,10 +919,32 @@ def assemble_bot_config(flat):
                 result[f["key"]] = flat.get(f["key"], str(f["default"]))
     # 透传 blob 键（机器人以 JSON 字符串形式存储，原样透传）
     for blob_key in ("item_registry", "rpg_attr_defs", "sys_attr_presets",
-                     "end_game_bonus_templates", "end_game_draw_config"):
+                     "end_game_bonus_templates", "end_game_draw_config",
+                     "custom_message_templates"):
         val = flat.get(blob_key)
         if val:
             result[blob_key] = val
+    # 时间调度：将功能时间窗口转换为机器人使用的 allowed_appointment_times 格式
+    ts_fw_raw = flat.get("ts_feature_windows")
+    if ts_fw_raw:
+        try:
+            fw_list = json.loads(ts_fw_raw)
+            appt_entry = next((fw for fw in fw_list if fw.get("feature") == "enable_general_appointment"), None)
+            if appt_entry:
+                s = int(appt_entry.get("start", 0))
+                e = int(appt_entry.get("end", 24))
+                result["allowed_appointment_times"] = json.dumps(
+                    [f"{s:02d}:00-{e:02d}:00"], ensure_ascii=False
+                )
+            else:
+                result["allowed_appointment_times"] = "[]"
+        except Exception:
+            pass
+    # 透传时间调度原始 blob 键（供机器人扩展使用）
+    for ts_key in ("ts_blocked_by_day", "ts_allowed_durations", "ts_feature_windows", "ts_strict_hour_match"):
+        val = flat.get(ts_key)
+        if val:
+            result[ts_key] = val
     return result
 
 
@@ -426,30 +1149,58 @@ def _migrate(conn):
     conn.execute("""
         CREATE TABLE IF NOT EXISTS known_groups (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            show_id     INTEGER NOT NULL,
+            show_id     INTEGER NOT NULL DEFAULT 0,
             tenant_id   INTEGER NOT NULL,
             group_id    TEXT NOT NULL,
             name        TEXT DEFAULT '',
             description TEXT DEFAULT '',
-            created_at  INTEGER DEFAULT 0
+            created_at  INTEGER DEFAULT 0,
+            set_name    TEXT NOT NULL DEFAULT ''
         )
     """)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_known_groups_show ON known_groups(show_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_known_groups_tenant ON known_groups(tenant_id)")
     if "set_name" not in _col_names(conn, "known_groups"):
         conn.execute("ALTER TABLE known_groups ADD COLUMN set_name TEXT NOT NULL DEFAULT ''")
 
     # ── 6b. known_group_sets 表（群号组名单独存储，支持空组）────────────────
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS known_group_sets (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            show_id    INTEGER NOT NULL,
-            tenant_id  INTEGER NOT NULL DEFAULT 1,
-            set_name   TEXT NOT NULL,
-            created_at INTEGER NOT NULL DEFAULT 0,
-            UNIQUE(show_id, set_name)
-        )
-    """)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_known_group_sets_show ON known_group_sets(show_id)")
+    # 迁移：将旧的 UNIQUE(show_id, set_name) 改为 UNIQUE(tenant_id, set_name)
+    # 检测方式：看 sqlite_master 里 known_group_sets 的建表语句是否含 show_id 唯一约束
+    _kgs_sql = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='known_group_sets'"
+    ).fetchone()
+    _need_kgs_migration = (
+        _kgs_sql is None or
+        ("UNIQUE(show_id" in (_kgs_sql[0] or "") or "unique(show_id" in (_kgs_sql[0] or "").lower())
+    )
+    if _need_kgs_migration and _kgs_sql is not None:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS known_group_sets_v2 (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                show_id    INTEGER NOT NULL DEFAULT 0,
+                tenant_id  INTEGER NOT NULL DEFAULT 1,
+                set_name   TEXT NOT NULL,
+                created_at INTEGER NOT NULL DEFAULT 0,
+                UNIQUE(tenant_id, set_name)
+            )
+        """)
+        conn.execute("""
+            INSERT OR IGNORE INTO known_group_sets_v2(show_id,tenant_id,set_name,created_at)
+            SELECT show_id,tenant_id,set_name,created_at FROM known_group_sets
+        """)
+        conn.execute("DROP TABLE known_group_sets")
+        conn.execute("ALTER TABLE known_group_sets_v2 RENAME TO known_group_sets")
+    elif _kgs_sql is None:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS known_group_sets (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                show_id    INTEGER NOT NULL DEFAULT 0,
+                tenant_id  INTEGER NOT NULL DEFAULT 1,
+                set_name   TEXT NOT NULL,
+                created_at INTEGER NOT NULL DEFAULT 0,
+                UNIQUE(tenant_id, set_name)
+            )
+        """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_known_group_sets_tenant ON known_group_sets(tenant_id)")
 
     # ── 8. config_history 表 ───────────────────────────────────────────────
     conn.execute("""
@@ -506,6 +1257,19 @@ def _migrate(conn):
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_blacklist_tenant ON blacklist(tenant_id)")
+
+    # ── command_guides 表 ─────────────────────────────────────────────────────
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS command_guides (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            tenant_id  INTEGER NOT NULL,
+            name       TEXT    NOT NULL DEFAULT '指令指南',
+            slug       TEXT    NOT NULL UNIQUE,
+            blocks     TEXT    NOT NULL DEFAULT '[]',
+            created_at INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_cmd_guide_tenant ON command_guides(tenant_id)")
 
     # ── 10. players 加回复时间累计列 ────────────────────────────────────────
     if "reply_time_sum" not in _col_names(conn, "players"):
@@ -644,15 +1408,21 @@ def _schedule_zone(show, now_ts_ms=None):
     if not start_str:
         return 'main'
 
+    # 统一按东八区算日期，避免服务器跑 UTC 时凌晨 0-8 点被误判成前一天
     if now_ts_ms:
-        today = datetime.fromtimestamp(now_ts_ms / 1000).date()
+        today = datetime.fromtimestamp(now_ts_ms / 1000, TZ_BEIJING).date()
     else:
-        today = _date.today()
+        today = datetime.now(TZ_BEIJING).date()
 
     year  = today.year
     start = _parse_mmdd(start_str, year)
-    end   = _parse_mmdd(show.get("schedule_end") or start_str, year)
-    supp  = _parse_mmdd(show.get("supplement_end") or "", year)
+    end_str  = show.get("schedule_end") or start_str
+    supp_str = show.get("supplement_end") or ""
+    # 跨年档期：若 end 的 MMDD < start 的 MMDD，说明 end 在下一年
+    end_year  = year + 1 if end_str  and end_str  < start_str else year
+    supp_year = year + 1 if supp_str and supp_str < start_str else year
+    end   = _parse_mmdd(end_str,  end_year)
+    supp  = _parse_mmdd(supp_str, supp_year)
 
     if not start or not end:
         return 'main'
@@ -1147,6 +1917,153 @@ def api_end_season():
     public_url = f"{base_url}/public/{show['public_token']}" if show["public_token"] else base_url
     return jsonify({"ok": True, "show_id": show["id"], "name": show["name"], "public_url": public_url})
 
+_TIME_TITLES = [
+    (0,  2,  "零点主播",   "深夜零点还在线，精神可嘉"),
+    (2,  4,  "破晓前哨",   "凌晨不眠，最爱在无人的黑夜互动"),
+    (4,  6,  "黎明先锋",   "天都没亮就开始活跃，比鸡起得早"),
+    (6,  8,  "晨曦使者",   "清晨第一批上线，精力充沛"),
+    (8,  10, "上午热线王", "上午就已经电话短信满天飞"),
+    (10, 12, "阳光十点半", "上午十点的阳光和你一样活跃"),
+    (12, 14, "午间话题人", "饭都不好好吃，忙着互动呢"),
+    (14, 16, "下午茶常客", "下午茶时间最爱找人聊"),
+    (16, 18, "傍晚漫步者", "放学放工后第一件事就是开始互动"),
+    (18, 20, "黄昏浪漫派", "黄昏时分是你最爱发动攻势的时刻"),
+    (20, 22, "夜间剧情家", "晚间黄金档，你的互动最密集"),
+    (22, 24, "深夜电台长", "深夜还不睡，把私人群当电台在开"),
+]
+
+def _get_time_title(hour_counts):
+    """传入 {hour: count} 字典，返回 (slot_label, title, tagline)。"""
+    if not hour_counts:
+        return None
+    peak_hour = max(hour_counts, key=lambda h: hour_counts[h])
+    for start, end, title, tagline in _TIME_TITLES:
+        if start <= peak_hour < end:
+            label = f"{start:02d}:00–{end:02d}:00"
+            return label, title, tagline
+    return None
+
+
+@app.route("/api/season_report/<int:show_id>", methods=["GET"])
+def api_season_report(show_id):
+    """Bot 用：拉取指定季度的全员互动统计，用于结束时群发个人报告。"""
+    tid = get_tenant_from_token()
+    db  = get_db()
+    if not db.execute("SELECT id FROM shows WHERE id=? AND tenant_id=?", (show_id, tid)).fetchone():
+        return jsonify({"ok": False, "error": "not found"}), 404
+
+    players = {}
+
+    # 场次参与统计 + 找每位玩家字数最多的场次
+    session_rows = db.execute(
+        "SELECT id, participants, stats FROM sessions WHERE show_id=?", (show_id,)
+    ).fetchall()
+    for row in session_rows:
+        try:
+            parts = json.loads(row["participants"] or "[]")
+            stats = json.loads(row["stats"] or "{}")
+        except Exception:
+            parts, stats = [], {}
+        for name in parts:
+            if not (isinstance(name, str) and name):
+                continue
+            p = players.setdefault(name, {})
+            p["sessions"] = p.get("sessions", 0) + 1
+            words = stats.get(name, {}).get("words", 0)
+            if words > p.get("_best_words", 0):
+                p["_best_words"]   = words
+                p["_best_session"] = row["id"]
+
+    # 互动事件统计 + 最活跃时段 + 互动对象计数
+    sent_key = {"sms": "sms_sent", "gift": "gift_sent", "lovemail": "lovemail_sent", "direct_letter": "letter_sent"}
+    recv_key = {"sms": "sms_recv", "gift": "gift_recv", "lovemail": "lovemail_recv", "direct_letter": "letter_recv"}
+    for row in db.execute(
+        "SELECT type, from_role, to_role, timestamp FROM extra_events WHERE show_id=?", (show_id,)
+    ).fetchall():
+        etype = row["type"]
+        fr    = (row["from_role"] or "").strip()
+        tr    = (row["to_role"]   or "").strip()
+        ts    = row["timestamp"] or 0
+        if fr and etype in sent_key:
+            p = players.setdefault(fr, {})
+            p[sent_key[etype]] = p.get(sent_key[etype], 0) + 1
+            if ts > 0:
+                hour = datetime.fromtimestamp(ts / 1000).hour
+                hc   = p.setdefault("_hour_counts", {})
+                hc[hour] = hc.get(hour, 0) + 1
+            if tr:
+                p.setdefault("_sent_to", {}).setdefault(etype, {})
+                p["_sent_to"][etype][tr] = p["_sent_to"][etype].get(tr, 0) + 1
+        if tr and etype in recv_key:
+            p = players.setdefault(tr, {})
+            p[recv_key[etype]] = p.get(recv_key[etype], 0) + 1
+            if fr:
+                p.setdefault("_recv_from", {}).setdefault(etype, {})
+                p["_recv_from"][etype][fr] = p["_recv_from"][etype].get(fr, 0) + 1
+
+    # rp_entries 时间戳也计入活跃时段
+    for row in db.execute(
+        "SELECT role_name, timestamp FROM rp_entries WHERE show_id=? AND timestamp > 0", (show_id,)
+    ).fetchall():
+        name = (row["role_name"] or "").strip()
+        if not name:
+            continue
+        p    = players.setdefault(name, {})
+        hour = datetime.fromtimestamp(row["timestamp"] / 1000).hour
+        hc   = p.setdefault("_hour_counts", {})
+        hc[hour] = hc.get(hour, 0) + 1
+
+    # 最长场次摘录：取前 4 条 rp_entries（每条截 60 字）
+    best_excerpts = {}
+    all_best_sids = {p["_best_session"] for p in players.values() if p.get("_best_session")}
+    if all_best_sids:
+        ph = ",".join("?" * len(all_best_sids))
+        entry_rows = db.execute(
+            f"SELECT session_id, role_name, content FROM rp_entries "
+            f"WHERE show_id=? AND session_id IN ({ph}) ORDER BY session_id, seq",
+            [show_id] + list(all_best_sids)
+        ).fetchall()
+        by_sid = {}
+        for e in entry_rows:
+            by_sid.setdefault(e["session_id"], []).append((e["role_name"], e["content"] or ""))
+        best_excerpts = {sid: lines for sid, lines in by_sid.items()}
+
+    def _top3_partners(counter_dict):
+        return sorted(counter_dict.items(), key=lambda x: -x[1])[:3]
+
+    # 计算时段称号、互动对象 Top3，清理内部字段
+    for name, p in players.items():
+        hc = p.pop("_hour_counts", {})
+        tt = _get_time_title(hc)
+        if tt:
+            p["peak_slot"], p["time_title"], p["time_tagline"] = tt
+
+        sid = p.pop("_best_session", None)
+        p.pop("_best_words", None)
+        if sid and sid in best_excerpts:
+            lines = best_excerpts[sid][:4]
+            p["best_excerpt"] = [
+                {"role": r, "text": t[:60] + ("…" if len(t) > 60 else "")}
+                for r, t in lines
+            ]
+
+        sent_to  = p.pop("_sent_to",  {})
+        recv_from = p.pop("_recv_from", {})
+        if sent_to.get("sms"):
+            p["top_sms_sent_to"]   = _top3_partners(sent_to["sms"])
+        if recv_from.get("sms"):
+            p["top_sms_recv_from"] = _top3_partners(recv_from["sms"])
+        if sent_to.get("gift"):
+            p["top_gift_sent_to"]   = _top3_partners(sent_to["gift"])
+        if recv_from.get("gift"):
+            p["top_gift_recv_from"] = _top3_partners(recv_from["gift"])
+
+    return jsonify({
+        "ok":     True,
+        "players": players,
+    })
+
+
 @app.route("/superadmin/cleanup_empty_sessions", methods=["POST"])
 @require_superadmin
 def superadmin_cleanup_empty_sessions():
@@ -1357,7 +2274,8 @@ def admin_show_delete(sid):
         if request.headers.get("X-Fetch") == "1":
             return jsonify({"ok": False, "error": "cannot_delete_current"})
         return redirect(url_for("admin_shows") + "?msg=cannot_delete_current")
-    for table in ("sessions", "rp_entries", "extra_events", "players", "site_config"):
+    for table in ("sessions", "rp_entries", "extra_events", "players", "site_config",
+                  "config_history", "reward_records"):
         db.execute(f"DELETE FROM {table} WHERE show_id=?", (sid,))
     db.execute("DELETE FROM shows WHERE id=?", (sid,))
     db.commit()
@@ -1398,12 +2316,12 @@ def admin_config_page():
                 elif f["type"] == "routing":
                     value = _parse_routing_text(request.form.get(db_key, ""))
                 else:
-                    value = request.form.get(db_key, str(f["default"]))
+                    value = _strip_json_str(request.form.get(db_key, str(f["default"])))
                 new_flat[db_key] = value
         # 保存物品注册表与属性定义（JSON blob，不经过 CONFIG_SCHEMA）
         for blob_key in ("item_registry", "rpg_attr_defs", "sys_attr_presets",
-                         "end_game_bonus_templates", "end_game_draw_config",
-                         "item_registry_pending"):
+                         "end_game_draw_config",
+                         "item_registry_pending", "custom_message_templates"):
             raw = request.form.get(blob_key, "")
             if raw:
                 try:
@@ -1441,7 +2359,6 @@ def admin_config_page():
     item_registry_json       = flat.get("item_registry", "{}")
     attr_defs_json           = flat.get("rpg_attr_defs", "{}")
     pool_defs_json           = flat.get("pool_definitions", "{}")
-    end_bonus_templates_json = flat.get("end_game_bonus_templates", "[]")
     item_pending_json        = flat.get("item_registry_pending", "[]")
     tpl_rows = db.execute(
         "SELECT id, name, config_data, created_at FROM config_templates "
@@ -1460,7 +2377,6 @@ def admin_config_page():
                            item_registry_json=item_registry_json,
                            attr_defs_json=attr_defs_json,
                            pool_defs_json=pool_defs_json,
-                           end_bonus_templates_json=end_bonus_templates_json,
                            item_pending_json=item_pending_json,
                            cfg_templates=cfg_templates,
                            tpl_msg=request.args.get("tpl_msg"),
@@ -1611,7 +2527,7 @@ def date_view(game_day):
     ).fetchall()
     show_names = get_show_names(db, sid)
     return render_template("date.html", game_day=game_day,
-                           sessions=_enrich_sessions(rows), show_names=show_names)
+                           sessions=_enrich_sessions(rows, _get_rest_pair(db, sid)), show_names=show_names)
 
 @app.route("/session/<path:session_id>")
 @require_login
@@ -1621,7 +2537,7 @@ def session_view(session_id):
     sess = db.execute("SELECT * FROM sessions WHERE id=? AND show_id=?", (session_id, sid)).fetchone()
     if not sess:
         abort(404)
-    sess       = _enrich_session(dict(sess))
+    sess       = _enrich_session(dict(sess), _get_rest_pair(db, sid))
     rp         = db.execute("SELECT * FROM rp_entries WHERE session_id=? AND show_id=? ORDER BY seq,timestamp", (session_id, sid)).fetchall()
     events     = _parse_events(db.execute("SELECT * FROM extra_events WHERE session_id=? AND show_id=? ORDER BY timestamp", (session_id, sid)).fetchall())
     show_names = get_show_names(db, sid)
@@ -1638,8 +2554,8 @@ def session_download(session_id):
     sess = db.execute("SELECT * FROM sessions WHERE id=? AND show_id=?", (session_id, sid)).fetchone()
     if not sess:
         abort(404)
-    sess      = _enrich_session(dict(sess))
     flat      = get_flat_config(db, sid)
+    sess      = _enrich_session(dict(sess), _parse_rest_hours(flat.get("rest_hours", "")))
     show_name = flat.get("love_show_name") or "长日将尽"
     rp        = db.execute("SELECT * FROM rp_entries WHERE session_id=? AND show_id=? ORDER BY seq,timestamp", (session_id, sid)).fetchall()
     events    = _parse_events(db.execute("SELECT * FROM extra_events WHERE session_id=? AND show_id=? ORDER BY timestamp", (session_id, sid)).fetchall())
@@ -1794,9 +2710,10 @@ def admin_export():
         except Exception: ei["extra_info"] = {}
         ev_by[e["session_id"]].append(ei)
 
+    rest_pair = _get_rest_pair(db, sid)
     out = []
     for s in sessions_raw:
-        s = _enrich_session(dict(s))
+        s = _enrich_session(dict(s), rest_pair)
         s["rp_entries"] = rp_by.get(s["id"], [])
         s["extra_events"] = ev_by.get(s["id"], [])
         out.append(s)
@@ -1815,7 +2732,8 @@ def admin_player(qq):
     player = dict(player) if player else {"qq": qq, "role_name": "", "show_name": "", "sessions_count": 0, "total_replies": 0, "total_words": 0, "last_updated": 0}
 
     role_name = player.get("role_name", "")
-    all_sessions = [_enrich_session(dict(s)) for s in
+    rest_pair = _get_rest_pair(db, sid)
+    all_sessions = [_enrich_session(dict(s), rest_pair) for s in
                     db.execute("SELECT * FROM sessions WHERE show_id=? ORDER BY start_ts DESC", (sid,)).fetchall()]
     player_sessions = [s for s in all_sessions if role_name and role_name in s["participants"]]
 
@@ -1885,12 +2803,295 @@ def admin_player(qq):
     computed_replies = sum(s["replies"] for s in session_player_stats)
     computed_words   = sum(s["words"]   for s in session_player_stats)
 
+    # 玩家控制：时间锁定 + 功能权限（从 site_config blob 读取）
+    def _get_config_blob(key):
+        row = db.execute("SELECT value FROM site_config WHERE show_id=? AND key=?", (sid, key)).fetchone()
+        if not row or not row["value"]: return {}
+        try: return json.loads(row["value"])
+        except Exception: return {}
+
+    locked_slots_all = _get_config_blob("a_lockedSlots")
+    feature_blocklist = _get_config_blob("feature_user_blocklist")
+
+    # a_lockedSlots key 格式为 "platform:uid"，匹配所有含该 qq 的 key
+    player_locked_slots = {}
+    for k, v in locked_slots_all.items():
+        if k.endswith(f":{qq}"):
+            player_locked_slots = v
+            break
+
+    player_features = feature_blocklist.get(qq, {})
+
+    FEATURE_LABELS = {
+        "enable_general_gift": "礼物",
+        "enable_general_appointment": "发起邀约",
+        "enable_chaos_letter": "短信",
+        "enable_wish_system": "心愿",
+        "enable_lovemail": "心动信",
+        "enable_forum": "论坛",
+        "enable_item_draw": "抽取",
+    }
+
     return render_template("admin_player.html", player=player, player_sessions=player_sessions,
                            timing_stats=timing_stats, fmt_seconds=fmt_seconds, ts_to_str=ts_to_str,
                            hourly_rp=hourly_rp, max_hourly=max(hourly_rp) or 1,
                            session_player_stats=session_player_stats,
                            global_avg_reply=global_avg_reply,
-                           computed_replies=computed_replies, computed_words=computed_words)
+                           computed_replies=computed_replies, computed_words=computed_words,
+                           player_locked_slots=player_locked_slots,
+                           player_features=player_features,
+                           feature_labels=FEATURE_LABELS)
+
+
+@app.route("/admin/player/<qq>/controls", methods=["POST"])
+@require_admin
+def admin_player_update_controls(qq):
+    """更新单个玩家的时间锁定或功能权限，写回 site_config blob。"""
+    sid = get_show_id()
+    tid = session.get("tenant_id")
+    db  = get_db()
+    data = request.json or {}
+    action = data.get("action")  # "lock_add" | "lock_remove" | "feature_set"
+
+    def _get_blob(key):
+        row = db.execute("SELECT value FROM site_config WHERE show_id=? AND key=?", (sid, key)).fetchone()
+        if not row or not row["value"]: return {}
+        try: return json.loads(row["value"])
+        except Exception: return {}
+
+    def _save_blob(key, obj):
+        db.execute(
+            "INSERT INTO site_config(show_id,tenant_id,key,value) VALUES(?,?,?,?) "
+            "ON CONFLICT(show_id,key) DO UPDATE SET value=excluded.value",
+            (sid, tid, key, json.dumps(obj, ensure_ascii=False))
+        )
+        db.commit()
+
+    if action in ("lock_add", "lock_remove"):
+        day  = (data.get("day") or "").strip()
+        slot = (data.get("slot") or "").strip()
+        if not day or not slot:
+            return jsonify({"ok": False, "error": "missing day/slot"}), 400
+
+        blob = _get_blob("a_lockedSlots")
+        # 找到匹配该 qq 的 key（格式 platform:uid）
+        match_key = next((k for k in blob if k.endswith(f":{qq}")), None)
+        if match_key is None:
+            # 没有现有记录时用 qq 作为 key（bot 下次同步会修正 platform prefix）
+            match_key = qq
+
+        if action == "lock_add":
+            blob.setdefault(match_key, {}).setdefault(day, [])
+            if slot not in blob[match_key][day]:
+                blob[match_key][day].append(slot)
+        else:
+            removed = False
+            if match_key in blob and day in blob[match_key]:
+                try:
+                    blob[match_key][day].remove(slot)
+                    removed = True
+                except ValueError:
+                    pass
+                if not blob[match_key][day]: del blob[match_key][day]
+                if not blob[match_key]: del blob[match_key]
+            if not removed:
+                return jsonify({"ok": False, "error": "锁定不存在或已被移除"}), 404
+
+        _save_blob("a_lockedSlots", blob)
+        return jsonify({"ok": True})
+
+    if action == "feature_set":
+        feat_key = (data.get("feature") or "").strip()
+        enabled  = data.get("enabled")
+        valid_keys = {"enable_general_gift", "enable_general_appointment", "enable_chaos_letter",
+                      "enable_wish_system", "enable_lovemail", "enable_forum", "enable_item_draw"}
+        if feat_key not in valid_keys or not isinstance(enabled, bool):
+            return jsonify({"ok": False, "error": "invalid params"}), 400
+
+        blob = _get_blob("feature_user_blocklist")
+        blob.setdefault(qq, {})[feat_key] = enabled
+        _save_blob("feature_user_blocklist", blob)
+        return jsonify({"ok": True})
+
+    return jsonify({"ok": False, "error": "unknown action"}), 400
+
+
+@app.route("/admin/player_controls")
+@require_admin
+def admin_player_controls():
+    sid = get_show_id()
+    tid = session.get("tenant_id")
+    db  = get_db()
+
+    # 读取当前季所有玩家（非 NPC）
+    players = [dict(p) for p in
+               db.execute("SELECT qq, role_name FROM players WHERE show_id=? AND role_name != '' ORDER BY role_name",
+                          (sid,)).fetchall()]
+
+    def _get_blob(key):
+        row = db.execute("SELECT value FROM site_config WHERE show_id=? AND key=?", (sid, key)).fetchone()
+        if not row or not row["value"]: return {}
+        try: return json.loads(row["value"])
+        except Exception: return {}
+
+    locked_slots_all = _get_blob("a_lockedSlots")
+    feature_blocklist = _get_blob("feature_user_blocklist")
+
+    FEATURE_LABELS = [
+        ("enable_general_gift",        "礼物"),
+        ("enable_general_appointment", "发起邀约"),
+        ("enable_chaos_letter",        "短信"),
+        ("enable_wish_system",         "心愿"),
+        ("enable_lovemail",            "心动信"),
+        ("enable_forum",               "论坛"),
+        ("enable_item_draw",           "抽取"),
+    ]
+
+    # 为每个玩家整理控制数据
+    for p in players:
+        qq = p["qq"]
+        p["features"] = feature_blocklist.get(qq, {})
+        # a_lockedSlots key 格式 "platform:uid"，匹配结尾
+        p["locked_slots"] = next(
+            (v for k, v in locked_slots_all.items() if k.endswith(f":{qq}")),
+            {}
+        )
+
+    last_sync = db.execute(
+        "SELECT value FROM site_config WHERE show_id=? AND key='_last_bot_sync'", (sid,)
+    ).fetchone()
+    last_sync_ts = int(last_sync["value"]) // 1000 if last_sync and last_sync["value"] else None
+
+    return render_template("admin_player_controls.html",
+                           players=players,
+                           feature_labels=FEATURE_LABELS,
+                           last_sync_ts=last_sync_ts,
+                           ts_to_str=ts_to_str)
+
+
+# ── 时间调度配置页 ────────────────────────────────────────────────────────────
+@app.route("/admin/time-schedule")
+@require_admin
+def admin_time_schedule():
+    sid = get_show_id()
+    tid = current_tenant_id()
+    db  = get_db()
+
+    # 当前季信息（含档期）
+    show = db.execute("SELECT * FROM shows WHERE id=?", (sid,)).fetchone() if sid else None
+    show = dict(show) if show else None
+
+    def _get_blob(key):
+        if not sid: return None
+        row = db.execute("SELECT value FROM site_config WHERE show_id=? AND key=?", (sid, key)).fetchone()
+        if not row or not row["value"]: return None
+        try: return json.loads(row["value"])
+        except Exception: return None
+
+    # 按游戏日的禁约配置 {"D1": [hours], "D2": [...], ...}
+    blocked_by_day    = _get_blob("ts_blocked_by_day") or {}
+    allowed_durations = _get_blob("ts_allowed_durations")
+    if allowed_durations is None:
+        allowed_durations = [1, 2, 4, 6, 8, 12, 24]
+    feature_windows   = _get_blob("ts_feature_windows") or []
+    strict_hour_match = _get_blob("ts_strict_hour_match") or False
+
+    # 计算本季游戏日列表
+    day_list = []
+    if show:
+        s_str = show.get("schedule_start") or ""
+        e_str = show.get("schedule_end") or ""
+        s_date = _parse_mmdd(s_str)
+        e_date = _parse_mmdd(e_str) if e_str else s_date
+        if s_date and e_date:
+            if e_date < s_date:  # 跨年
+                from datetime import timedelta as _td
+                e_date = _parse_mmdd(e_str, s_date.year + 1)
+            if e_date and e_date >= s_date:
+                delta = (e_date - s_date).days + 1
+                day_list = ["D0"] + [f"D{i+1}" for i in range(min(delta, 60))]
+    if not day_list:
+        day_list = ["D0"] + [f"D{i+1}" for i in range(7)]
+
+    FEATURE_OPTIONS = [
+        {"key": "enable_general_appointment", "label": "私约/电话"},
+        {"key": "enable_general_gift",        "label": "送礼"},
+        {"key": "enable_general_letter",      "label": "寄信"},
+        {"key": "enable_wish_system",         "label": "心愿"},
+        {"key": "enable_lovemail",            "label": "心动信"},
+        {"key": "enable_forum",               "label": "论坛"},
+        {"key": "enable_item_draw",           "label": "抽取"},
+    ]
+
+    return render_template("admin_time_schedule.html",
+                           show=show,
+                           blocked_by_day=blocked_by_day,
+                           day_list=day_list,
+                           allowed_durations=allowed_durations,
+                           feature_windows=feature_windows,
+                           feature_options=FEATURE_OPTIONS,
+                           strict_hour_match=strict_hour_match)
+
+
+@app.route("/api/time-schedule", methods=["POST"])
+@require_admin
+def api_time_schedule_save():
+    sid = get_show_id()
+    tid = current_tenant_id()
+    if not sid:
+        return jsonify({"ok": False, "error": "no active show"}), 400
+    db   = get_db()
+    data = request.json or {}
+
+    def _save_blob(key, val):
+        db.execute(
+            "INSERT INTO site_config(show_id,tenant_id,key,value) VALUES(?,?,?,?) "
+            "ON CONFLICT(show_id,key) DO UPDATE SET value=excluded.value",
+            (sid, tid, key, json.dumps(val, ensure_ascii=False))
+        )
+
+    field = data.get("field")  # "blocked_hours" | "duration_blocked" | "feature_windows"
+
+    if field == "blocked_by_day":
+        val = data.get("value", {})
+        if not isinstance(val, dict): return jsonify({"ok": False, "error": "bad type"}), 400
+        cleaned = {}
+        for day, hours in val.items():
+            if not isinstance(hours, list): continue
+            cleaned[str(day)] = sorted({int(h) for h in hours if 0 <= int(h) <= 23})
+        _save_blob("ts_blocked_by_day", cleaned)
+
+    elif field == "allowed_durations":
+        val = data.get("value", [])
+        if not isinstance(val, list): return jsonify({"ok": False, "error": "bad type"}), 400
+        cleaned = sorted({d for d in val if d in (1, 2, 4, 6, 8, 12, 24)})
+        _save_blob("ts_allowed_durations", cleaned)
+
+    elif field == "strict_hour_match":
+        val = data.get("value", False)
+        _save_blob("ts_strict_hour_match", bool(val))
+
+    elif field == "feature_windows":
+        val = data.get("value", [])
+        if not isinstance(val, list): return jsonify({"ok": False, "error": "bad type"}), 400
+        VALID_KEYS = {"enable_general_appointment","enable_general_gift","enable_general_letter",
+                      "enable_wish_system","enable_lovemail","enable_forum","enable_item_draw"}
+        cleaned = []
+        for item in val:
+            if not isinstance(item, dict): continue
+            fkey = item.get("feature", "")
+            if fkey not in VALID_KEYS: continue
+            start = max(0, min(23, int(item.get("start", 0))))
+            end   = max(1, min(24, int(item.get("end",  24))))
+            if start >= end: continue
+            cleaned.append({"feature": fkey, "start": start, "end": end})
+        _save_blob("ts_feature_windows", cleaned)
+
+    else:
+        return jsonify({"ok": False, "error": "unknown field"}), 400
+
+    db.commit()
+    return jsonify({"ok": True})
 
 
 @app.route("/admin/stats")
@@ -1899,7 +3100,8 @@ def admin_stats():
     sid = get_show_id()
     db  = get_db()
 
-    sessions = [_enrich_session(dict(s)) for s in
+    rest_pair = _get_rest_pair(db, sid)
+    sessions = [_enrich_session(dict(s), rest_pair) for s in
                 db.execute("SELECT * FROM sessions WHERE show_id=? ORDER BY start_ts ASC", (sid,)).fetchall()]
     players  = [dict(p) for p in
                 db.execute("SELECT * FROM players WHERE show_id=? AND role_name != '' ORDER BY total_replies DESC", (sid,)).fetchall()]
@@ -2049,6 +3251,42 @@ def letters_view():
                            q_from=q_from, q_to=q_to, q_day=q_day,
                            all_days=all_days, all_roles=all_roles)
 
+@app.route("/letters/<int:letter_id>/delete", methods=["POST"])
+@require_login
+def letter_delete(letter_id):
+    if not session.get("admin_logged_in") and not session.get("superadmin_logged_in"):
+        abort(403)
+    db      = get_db()
+    show_id = get_show_id()
+    row = db.execute(
+        "SELECT id FROM extra_events WHERE id=? AND show_id=? AND type='direct_letter'",
+        (letter_id, show_id)
+    ).fetchone()
+    if not row:
+        return jsonify({"ok": False, "error": "not found"}), 404
+    db.execute("DELETE FROM extra_events WHERE id=?", (letter_id,))
+    db.commit()
+    return redirect(url_for("letters_view") + "?" + request.query_string.decode())
+
+
+@app.route("/event/<int:event_id>/delete", methods=["POST"])
+@require_login
+def event_delete(event_id):
+    if not session.get("admin_logged_in") and not session.get("superadmin_logged_in"):
+        abort(403)
+    db      = get_db()
+    show_id = get_show_id()
+    row = db.execute(
+        "SELECT id, type, from_role, to_role FROM extra_events WHERE id=? AND show_id=? AND type IN ('sms','gift','lovemail')",
+        (event_id, show_id)
+    ).fetchone()
+    if not row:
+        return jsonify({"ok": False, "error": "not found"}), 404
+    db.execute("DELETE FROM extra_events WHERE id=?", (event_id,))
+    db.commit()
+    ref = request.form.get("back") or request.referrer or url_for("admin")
+    return redirect(ref)
+
 
 # ── 角色 / 互动路由 ──────────────────────────────────────────────────────────
 
@@ -2059,7 +3297,7 @@ def character_view(role_name):
     db   = get_db()
     rows = db.execute("SELECT * FROM sessions WHERE show_id=? ORDER BY start_ts DESC", (sid,)).fetchall()
     show_names = get_show_names(db, sid)
-    sessions_list = [s for s in _enrich_sessions(rows) if role_name in s["participants"]]
+    sessions_list = [s for s in _enrich_sessions(rows, _get_rest_pair(db, sid)) if role_name in s["participants"]]
     return render_template("character.html", role_name=role_name, sessions=sessions_list, show_names=show_names)
 
 @app.route("/interactions")
@@ -2127,7 +3365,8 @@ def character_interactions(role_name):
     }
     return render_template("character_interactions.html", role_name=role_name,
                            lovemails=lovemails, smss=smss, gifts=gifts,
-                           pairs_list=pairs_list, chaos_stats=chaos_stats, show_names=show_names)
+                           pairs_list=pairs_list, chaos_stats=chaos_stats, show_names=show_names,
+                           is_admin=bool(session.get("admin_logged_in")))
 
 @app.route("/search")
 @require_login
@@ -2241,7 +3480,8 @@ def public_date(token, game_day):
     show_sms      = flat.get("public_show_sms",      "true") in _true
     show_gift     = flat.get("public_show_gift",     "true") in _true
     show_lovemail = flat.get("public_show_lovemail", "true") in _true
-    allowed = [t for t, ok in [("sms", show_sms), ("gift", show_gift), ("lovemail", show_lovemail)] if ok]
+    show_letter   = flat.get("public_show_letter",   "false") in _true
+    allowed = [t for t, ok in [("sms", show_sms), ("gift", show_gift), ("lovemail", show_lovemail), ("direct_letter", show_letter)] if ok]
     rows = db.execute(
         "SELECT * FROM sessions WHERE show_id=? AND game_day=? ORDER BY start_ts DESC", (show["id"], game_day)
     ).fetchall()
@@ -2256,7 +3496,8 @@ def public_date(token, game_day):
     show_names = get_show_names(db, show["id"])
     return render_template("public_date.html", show=show, token=token,
                            day_events=day_events,
-                           game_day=game_day, sessions=_enrich_sessions(rows), show_names=show_names)
+                           game_day=game_day, sessions=_enrich_sessions(rows, _get_rest_pair(db, show["id"])), show_names=show_names,
+                           show_letter=show_letter, ts_to_str=ts_to_str)
 
 @app.route("/view/<token>/session/<path:session_id>")
 def public_session_view(token, session_id):
@@ -2265,19 +3506,21 @@ def public_session_view(token, session_id):
     db   = get_db()
     sess = db.execute("SELECT * FROM sessions WHERE id=? AND show_id=?", (session_id, show["id"])).fetchone()
     if not sess: abort(404)
-    sess       = _enrich_session(dict(sess))
-    rp         = db.execute("SELECT * FROM rp_entries WHERE session_id=? AND show_id=? ORDER BY seq,timestamp", (session_id, show["id"])).fetchall()
     flat       = get_flat_config(db, show["id"])
+    sess       = _enrich_session(dict(sess), _parse_rest_hours(flat.get("rest_hours", "")))
+    rp         = db.execute("SELECT * FROM rp_entries WHERE session_id=? AND show_id=? ORDER BY seq,timestamp", (session_id, show["id"])).fetchall()
     _true      = ("true", "1", "True")
     show_sms      = flat.get("public_show_sms",      "true") in _true
     show_gift     = flat.get("public_show_gift",     "true") in _true
     show_lovemail = flat.get("public_show_lovemail", "true") in _true
-    allowed   = {t for t, ok in [("sms", show_sms), ("gift", show_gift), ("lovemail", show_lovemail)] if ok}
+    show_letter   = flat.get("public_show_letter",   "false") in _true
+    allowed   = {t for t, ok in [("sms", show_sms), ("gift", show_gift), ("lovemail", show_lovemail), ("direct_letter", show_letter)] if ok}
     all_events = _parse_events(db.execute("SELECT * FROM extra_events WHERE session_id=? AND show_id=? ORDER BY timestamp", (session_id, show["id"])).fetchall())
     events     = [e for e in all_events if e["type"] in allowed]
     show_names = get_show_names(db, show["id"])
     return render_template("public_session.html", show=show, token=token,
-                           sess=sess, rp=rp, events=events, show_names=show_names, ts_to_str=ts_to_str)
+                           sess=sess, rp=rp, events=events, show_names=show_names, ts_to_str=ts_to_str,
+                           show_letter=show_letter)
 
 @app.route("/view/<token>/events")
 def public_events(token):
@@ -2289,7 +3532,8 @@ def public_events(token):
     show_sms      = flat.get("public_show_sms",      "true") in _true
     show_gift     = flat.get("public_show_gift",     "true") in _true
     show_lovemail = flat.get("public_show_lovemail", "true") in _true
-    allowed = [t for t, ok in [("sms", show_sms), ("gift", show_gift), ("lovemail", show_lovemail)] if ok]
+    show_letter   = flat.get("public_show_letter",   "false") in _true
+    allowed = [t for t, ok in [("sms", show_sms), ("gift", show_gift), ("lovemail", show_lovemail), ("direct_letter", show_letter)] if ok]
     if not allowed:
         events = []
     else:
@@ -2300,13 +3544,15 @@ def public_events(token):
         ).fetchall()
         events = _parse_events(rows)
     counts = {
-        "sms":      sum(1 for e in events if e["type"] == "sms"),
-        "gift":     sum(1 for e in events if e["type"] == "gift"),
-        "lovemail": sum(1 for e in events if e["type"] == "lovemail"),
+        "sms":           sum(1 for e in events if e["type"] == "sms"),
+        "gift":          sum(1 for e in events if e["type"] == "gift"),
+        "lovemail":      sum(1 for e in events if e["type"] == "lovemail"),
+        "direct_letter": sum(1 for e in events if e["type"] == "direct_letter"),
     }
     return render_template("public_events.html", show=show, token=token,
                            events=events, counts=counts, ts_to_str=ts_to_str,
-                           show_sms=show_sms, show_gift=show_gift, show_lovemail=show_lovemail)
+                           show_sms=show_sms, show_gift=show_gift, show_lovemail=show_lovemail,
+                           show_letter=show_letter)
 
 
 @app.route("/view/<token>/character/<role_name>")
@@ -2316,7 +3562,7 @@ def public_character(token, role_name):
     db   = get_db()
     rows = db.execute("SELECT * FROM sessions WHERE show_id=? ORDER BY start_ts DESC", (show["id"],)).fetchall()
     show_names = get_show_names(db, show["id"])
-    sessions_list = [s for s in _enrich_sessions(rows) if role_name in s["participants"]]
+    sessions_list = [s for s in _enrich_sessions(rows, _get_rest_pair(db, show["id"])) if role_name in s["participants"]]
     return render_template("public_character.html", show=show, token=token,
                            role_name=role_name, sessions=sessions_list, show_names=show_names)
 
@@ -2344,7 +3590,7 @@ def api_sync_config():
         db.execute(
             "INSERT INTO site_config(show_id,tenant_id,key,value) VALUES(?,?,?,?) "
             "ON CONFLICT(show_id,key) DO UPDATE SET value=excluded.value",
-            (show_id, tid, key, str(value))
+            (show_id, tid, key, _strip_json_str(value))
         )
     db.execute(
         "INSERT INTO site_config(show_id,tenant_id,key,value) VALUES(?,?,?,?) "
@@ -2443,13 +3689,18 @@ def api_event():
 
 @app.route("/api/rp", methods=["POST"])
 def api_rp():
-    tid     = get_tenant_from_token()
-    show_id = get_current_show_id_for_tenant(tid)
-    if not show_id: abort(503)
+    tid  = get_tenant_from_token()
+    show = get_current_show_for_tenant(tid)
+    if not show: abort(503)
+    show_id = show["id"]
     data = request.json or {}
     sid  = data.get("session_id","")
     if not sid:
         return jsonify({"ok": False, "error": "missing session_id"}), 400
+    # 与 /api/session_stats、/api/session_end 保持一致：档期开始前不记录，
+    # 否则 entry 单边累加 total_words/total_replies，而 stats 覆盖被 skip，数字永远是错的
+    if _schedule_zone(show, data.get("timestamp")) == 'pre':
+        return jsonify({"ok": True, "skipped": "pre_schedule"})
     db = get_db()
     if not db.execute("SELECT id FROM sessions WHERE id=? AND show_id=?", (sid, show_id)).fetchone():
         db.execute("""
@@ -2729,13 +3980,13 @@ def admin_groups():
             note     = request.form.get("name","").strip()
             if gid and set_name:
                 existing = db.execute(
-                    "SELECT id FROM known_groups WHERE show_id=? AND group_id=? AND set_name=?",
-                    (sid, gid, set_name)
+                    "SELECT id FROM known_groups WHERE tenant_id=? AND group_id=? AND set_name=?",
+                    (tid, gid, set_name)
                 ).fetchone()
                 if not existing:
                     db.execute(
                         "INSERT INTO known_groups(show_id,tenant_id,group_id,set_name,name,created_at) VALUES(?,?,?,?,?,?)",
-                        (sid, tid, gid, set_name, note, int(time.time()*1000))
+                        (0, tid, gid, set_name, note, int(time.time()*1000))
                     )
                     db.commit()
                 msg = "added"
@@ -2744,18 +3995,18 @@ def admin_groups():
             raw      = request.form.get("group_ids","")
             if set_name and raw:
                 import re
-                gids = [g.strip() for g in re.split(r"[\s,，;；]+", raw) if g.strip().isdigit()]
+                gids = [g.strip() for g in re.split(r"[\s,，、;；]+", raw) if g.strip().isdigit()]
                 now  = int(time.time()*1000)
                 added = 0
                 for gid in gids:
                     existing = db.execute(
-                        "SELECT id FROM known_groups WHERE show_id=? AND group_id=? AND set_name=?",
-                        (sid, gid, set_name)
+                        "SELECT id FROM known_groups WHERE tenant_id=? AND group_id=? AND set_name=?",
+                        (tid, gid, set_name)
                     ).fetchone()
                     if not existing:
                         db.execute(
                             "INSERT INTO known_groups(show_id,tenant_id,group_id,set_name,name,created_at) VALUES(?,?,?,?,?,?)",
-                            (sid, tid, gid, set_name, "", now)
+                            (0, tid, gid, set_name, "", now)
                         )
                         added += 1
                 if added:
@@ -2767,7 +4018,7 @@ def admin_groups():
                 try:
                     db.execute(
                         "INSERT OR IGNORE INTO known_group_sets(show_id,tenant_id,set_name,created_at) VALUES(?,?,?,?)",
-                        (sid, tid, set_name, int(time.time()*1000))
+                        (0, tid, set_name, int(time.time()*1000))
                     )
                     db.commit()
                     msg = "set_created"
@@ -2776,7 +4027,7 @@ def admin_groups():
         elif action == "delete":
             row_id = request.form.get("row_id", type=int)
             if row_id:
-                db.execute("DELETE FROM known_groups WHERE id=? AND show_id=?", (row_id, sid))
+                db.execute("DELETE FROM known_groups WHERE id=? AND tenant_id=?", (row_id, tid))
                 db.commit()
             if request.headers.get("X-Fetch") == "1":
                 return jsonify({"ok": True})
@@ -2784,8 +4035,8 @@ def admin_groups():
         elif action == "delete_set":
             set_name = request.form.get("set_name","").strip()
             if set_name:
-                db.execute("DELETE FROM known_groups WHERE show_id=? AND set_name=?", (sid, set_name))
-                db.execute("DELETE FROM known_group_sets WHERE show_id=? AND set_name=?", (sid, set_name))
+                db.execute("DELETE FROM known_groups WHERE tenant_id=? AND set_name=?", (tid, set_name))
+                db.execute("DELETE FROM known_group_sets WHERE tenant_id=? AND set_name=?", (tid, set_name))
                 db.commit()
             if request.headers.get("X-Fetch") == "1":
                 return jsonify({"ok": True})
@@ -2794,17 +4045,17 @@ def admin_groups():
             row_id = request.form.get("row_id", type=int)
             note   = request.form.get("name","").strip()
             if row_id:
-                db.execute("UPDATE known_groups SET name=? WHERE id=? AND show_id=?", (note, row_id, sid))
+                db.execute("UPDATE known_groups SET name=? WHERE id=? AND tenant_id=?", (note, row_id, tid))
                 db.commit()
             msg = "edited"
-    # 所有已创建的组名（含空组）
+    # 所有已创建的组名（含空组），跨季度按 tenant 查询
     set_name_rows = db.execute(
-        "SELECT set_name FROM known_group_sets WHERE show_id=? ORDER BY created_at",
-        (sid,)
+        "SELECT set_name FROM known_group_sets WHERE tenant_id=? ORDER BY created_at",
+        (tid,)
     ).fetchall()
     member_rows = db.execute(
-        "SELECT * FROM known_groups WHERE show_id=? ORDER BY set_name, created_at",
-        (sid,)
+        "SELECT * FROM known_groups WHERE tenant_id=? ORDER BY set_name, created_at",
+        (tid,)
     ).fetchall()
     from collections import OrderedDict
     sets = OrderedDict()
@@ -2846,6 +4097,124 @@ def _get_reward_config(db, show_id):
     return bonus_templates, draw_config, item_registry
 
 
+_PARAM_MAP = {
+    '段数': '本场个人段数',
+    '字数': '本场个人总字数',
+    '总字数': '本场个人总字数',
+    '平均字数': '本场个人平均每段字数',
+    '耗费时间': '结戏最多耗费时间',
+}
+
+def _convert_ui_block(blk):
+    conds = []
+    for c in blk.get('conditions', []):
+        param = _PARAM_MAP.get(c.get('param', ''), c.get('param', ''))
+        cond = {'param': param, 'op': c.get('op', '>=')}
+        if c.get('op') == 'range':
+            cond['value'] = [int(c.get('min', 0)), int(c.get('max', 0))]
+        else:
+            cond['value'] = int(c.get('value', 0))
+        conds.append(cond)
+    rwds = []
+    for r in blk.get('rewards', []):
+        rtype = r.get('rtype', '货币')
+        reward = {'type': 'fixed', 'amount': int(r.get('amount', 0))}
+        prob = r.get('prob')
+        if prob is not None and int(prob) < 100:
+            reward['prob'] = int(prob)
+        if rtype == '货币':
+            reward['target'] = r.get('target', '')
+            reward['targetType'] = 'currency'
+        elif rtype == '道具':
+            reward['target'] = r.get('code', '')
+            reward['targetType'] = 'item'
+        else:
+            reward['target'] = r.get('name', '')
+            reward['targetType'] = 'attr'
+        rwds.append(reward)
+    return {'conditions': conds, 'rewards': rwds}
+
+def _ui_tpls_to_bot_format(tpls):
+    import time as _t
+    result = []
+    for tpl in tpls:
+        blocks = tpl.get('blocks', [])
+        groups = []
+        i = 0
+        while i < len(blocks):
+            blk = blocks[i]
+            group_blocks = [_convert_ui_block(blk)]
+            while blk.get('next_op', 'AND').upper() == 'OR' and i + 1 < len(blocks):
+                i += 1
+                blk = blocks[i]
+                group_blocks.append(_convert_ui_block(blk))
+            groups.append({'op': 'or' if len(group_blocks) > 1 else 'and', 'blocks': group_blocks})
+            i += 1
+        result.append({
+            'id': tpl.get('id', int(_t.time() * 1000)),
+            'name': tpl.get('name', ''),
+            'subtype': tpl.get('subtype', '通用'),
+            'enabled': tpl.get('enabled', True),
+            'groups': groups,
+        })
+    return result
+
+
+_PARAM_MAP_REV = {
+    '本场个人段数':          '段数',
+    '本场个人总字数':        '字数',
+    '本场个人平均每段字数':  '平均字数',
+    '结戏最多耗费时间':      '耗费时间',
+}
+_RTYPE_MAP_REV = {'currency': '货币', 'item': '道具', 'attr': '属性'}
+
+def _bot_tpls_to_ui_format(tpls):
+    result = []
+    for tpl in tpls:
+        flat_blocks = []
+        groups = tpl.get('groups', [])
+        for gi, group in enumerate(groups):
+            blks = group.get('blocks', [])
+            op = group.get('op', 'and').lower()
+            is_last_group = (gi == len(groups) - 1)
+            for bi, blk in enumerate(blks):
+                is_last_in_group = (bi == len(blks) - 1)
+                conds = []
+                for c in blk.get('conditions', []):
+                    param = _PARAM_MAP_REV.get(c.get('param', ''), c.get('param', ''))
+                    cond = {'param': param, 'op': c.get('op', '>=')}
+                    val = c.get('value', 0)
+                    if c.get('op') == 'range':
+                        cond['min'] = val[0] if isinstance(val, list) else 0
+                        cond['max'] = val[1] if isinstance(val, list) and len(val) > 1 else 0
+                    else:
+                        cond['value'] = val
+                    conds.append(cond)
+                rwds = []
+                for r in blk.get('rewards', []):
+                    rtype = _RTYPE_MAP_REV.get(r.get('targetType', ''), '货币')
+                    reward = {'rtype': rtype, 'amount': r.get('amount', 0)}
+                    if r.get('prob') and int(r['prob']) < 100:
+                        reward['prob'] = int(r['prob'])
+                    if rtype == '货币':
+                        reward['target'] = r.get('target', '')
+                    elif rtype == '道具':
+                        reward['code'] = r.get('target', '')
+                    else:
+                        reward['name'] = r.get('target', '')
+                    rwds.append(reward)
+                next_op = 'OR' if (op == 'or' and not is_last_in_group) else 'AND'
+                flat_blocks.append({'conditions': conds, 'rewards': rwds, 'next_op': next_op})
+        result.append({
+            'id':      tpl.get('id', 0),
+            'name':    tpl.get('name', ''),
+            'subtype': tpl.get('subtype', '通用'),
+            'enabled': tpl.get('enabled', True),
+            'blocks':  flat_blocks,
+        })
+    return result
+
+
 def _save_reward_config_key(db, show_id, tid, key, value_str):
     db.execute(
         "INSERT INTO site_config(show_id,tenant_id,key,value) VALUES(?,?,?,?) "
@@ -2859,7 +4228,14 @@ def _save_reward_config_key(db, show_id, tid, key, value_str):
 def admin_rewards():
     sid = get_show_id()
     db  = get_db()
-    bonus_templates, draw_config, item_registry = _get_reward_config(db, sid)
+    _, draw_config, item_registry = _get_reward_config(db, sid)
+    # 从 end_game_bonus_templates（bot 格式）读取并转为 UI 格式
+    flat = get_flat_config(db, sid)
+    try:
+        bot_tpls = json.loads(flat.get("end_game_bonus_templates", "[]"))
+    except Exception:
+        bot_tpls = []
+    bonus_templates = _bot_tpls_to_ui_format(bot_tpls)
     page    = max(1, request.args.get("page", 1, type=int))
     per_page = 30
     total   = db.execute("SELECT COUNT(*) FROM reward_records WHERE show_id=?", (sid,)).fetchone()[0]
@@ -2915,7 +4291,9 @@ def admin_rewards_save_config():
             if request.headers.get("X-Fetch") == "1":
                 return jsonify({"ok": False, "error": "json_parse"})
             return redirect(url_for("admin_rewards") + "?err=json")
-        _save_reward_config_key(db, sid, tid, "reward_bonus_templates", val)
+        # UI 格式 → bot 格式，写到唯一数据源 key
+        bot_val = json.dumps(_ui_tpls_to_bot_format(parsed), ensure_ascii=False)
+        _save_reward_config_key(db, sid, tid, "end_game_bonus_templates", bot_val)
         db.commit()
         if request.headers.get("X-Fetch") == "1":
             return jsonify({"ok": True})
@@ -2940,7 +4318,53 @@ def _parse_events(rows):
         result.append(e)
     return result
 
-def _enrich_session(s):
+def _parse_rest_hours(s):
+    """解析 'HHMM-HHMM' 字符串，返回 (start_min, end_min) 或 None。支持跨夜区间如 2200-0600。"""
+    import re
+    if not s:
+        return None
+    s = s.strip()
+    if not re.match(r'^\d{4}-\d{4}$', s):
+        return None
+    start, end = s.split('-')
+    s_min = int(start[:2]) * 60 + int(start[2:])
+    e_min = int(end[:2])   * 60 + int(end[2:])
+    if s_min == e_min or s_min >= 1440 or e_min > 1440:
+        return None
+    return (s_min, e_min)
+
+
+def _effective_duration_mins(start_ms, end_ms, rest_start_min, rest_end_min):
+    """计算 [start_ms, end_ms] 区间内扣除每日休息时段后的有效分钟数。end<=start 视为跨夜，延伸到次日。"""
+    from datetime import datetime, timedelta
+    if end_ms <= start_ms:
+        return 0
+    start_sec = start_ms / 1000
+    end_sec   = end_ms   / 1000
+    start_dt  = datetime.fromtimestamp(start_sec, TZ_BEIJING)
+    # 从前一天起算，覆盖前一日跨夜休息段延伸到当日的部分
+    cur_day   = datetime(start_dt.year, start_dt.month, start_dt.day, tzinfo=TZ_BEIJING) - timedelta(days=1)
+    wrap      = rest_end_min <= rest_start_min
+    rest_overlap_sec = 0.0
+    while cur_day.timestamp() < end_sec:
+        rest_s = cur_day.timestamp() + rest_start_min * 60
+        rest_e = cur_day.timestamp() + (rest_end_min + (1440 if wrap else 0)) * 60
+        ov_s = max(start_sec, rest_s)
+        ov_e = min(end_sec,   rest_e)
+        if ov_e > ov_s:
+            rest_overlap_sec += ov_e - ov_s
+        cur_day += timedelta(days=1)
+    effective_sec = (end_sec - start_sec) - rest_overlap_sec
+    return max(0, int(effective_sec / 60))
+
+
+def _get_rest_pair(db, show_id):
+    """从配置读取休息时段，返回 (start_min, end_min) 或 None。"""
+    flat = get_flat_config(db, show_id)
+    return _parse_rest_hours(flat.get("rest_hours", ""))
+
+
+def _enrich_session(s, rest_pair=None):
     try: s["participants"] = json.loads(s.get("participants") or "[]")
     except Exception: s["participants"] = []
     try: s["stats"] = json.loads(s.get("stats") or "{}")
@@ -2949,38 +4373,37 @@ def _enrich_session(s):
     s["end_str"]   = ts_to_str(s.get("end_ts"))
     start, end = s.get("start_ts",0), s.get("end_ts",0)
     if start and end and end > start:
-        mins = (end - start) // 60000
-        s["duration_str"] = f"{mins//60}小时{mins%60}分" if mins >= 60 else f"{mins}分钟"
+        if rest_pair:
+            mins = _effective_duration_mins(start, end, rest_pair[0], rest_pair[1])
+        else:
+            mins = (end - start) // 60000
+        s["duration_str"] = f"{mins//60}小时{mins%60}分" if mins >= 60 else (f"{mins}分钟" if mins > 0 else "")
     else:
         s["duration_str"] = ""
     return s
 
-def _enrich_sessions(rows):
-    return [_enrich_session(dict(r)) for r in rows]
+def _enrich_sessions(rows, rest_pair=None):
+    return [_enrich_session(dict(r), rest_pair) for r in rows]
 
 
 @app.route("/api/groups", methods=["GET"])
 def api_groups():
-    tid     = get_tenant_from_token()
-    show_id = get_current_show_id_for_tenant(tid)
-    if not show_id: abort(503)
-    db = get_db()
+    tid = get_tenant_from_token()
+    db  = get_db()
     rows = db.execute(
-        "SELECT group_id, name, description FROM known_groups WHERE show_id=? ORDER BY created_at",
-        (show_id,)
+        "SELECT group_id, name, description FROM known_groups WHERE tenant_id=? ORDER BY created_at",
+        (tid,)
     ).fetchall()
     return jsonify({"ok": True, "groups": [dict(r) for r in rows]})
 
 
 @app.route("/api/group_set/<set_name>", methods=["GET"])
 def api_group_set(set_name):
-    tid     = get_tenant_from_token()
-    show_id = get_current_show_id_for_tenant(tid)
-    if not show_id: abort(503)
+    tid  = get_tenant_from_token()
     db   = get_db()
     rows = db.execute(
-        "SELECT group_id FROM known_groups WHERE show_id=? AND set_name=? ORDER BY created_at",
-        (show_id, set_name)
+        "SELECT group_id FROM known_groups WHERE tenant_id=? AND set_name=? ORDER BY created_at",
+        (tid, set_name)
     ).fetchall()
     return jsonify({"ok": True, "set_name": set_name, "group_ids": [r["group_id"] for r in rows]})
 
@@ -3200,6 +4623,142 @@ def api_auction_snapshot():
     )
     db.commit()
     return jsonify({"ok": True, "count": len(snapshot)})
+
+
+import secrets as _secrets
+
+_GUIDE_MAX = 2
+
+def _guide_slug():
+    return _secrets.token_urlsafe(6)
+
+def _parse_guide_blocks(raw):
+    """兼容旧 array 格式和新 object 格式，统一返回 {key: text_or_None}。"""
+    try:
+        data = json.loads(raw or "{}")
+    except Exception:
+        return {}
+    if isinstance(data, list):          # 旧格式：["key1","key2"]
+        return {k: None for k in data}
+    if isinstance(data, dict):          # 新格式：{"key1": null, "key2": "custom..."}
+        return data
+    return {}
+
+def _build_guide_blocks(raw):
+    """从 blocks 字段构建可渲染的区块列表，含自定义内容。"""
+    mapping  = _parse_guide_blocks(raw)
+    key_defs = {b["key"]: b for b in COMMAND_BLOCKS}
+    result   = []
+    for key, custom_text in mapping.items():
+        b = key_defs.get(key)
+        if not b:
+            continue
+        lines = custom_text.split("\n") if custom_text else b["lines"]
+        result.append({**b, "lines": lines, "has_custom": custom_text is not None})
+    return result
+
+@app.route("/admin/command-guides", methods=["GET"])
+@require_admin
+def admin_command_guides():
+    tid = current_tenant_id()
+    db  = get_db()
+    guides = db.execute(
+        "SELECT id, name, slug, blocks, created_at FROM command_guides WHERE tenant_id=? ORDER BY created_at DESC",
+        (tid,)
+    ).fetchall()
+    guides = [dict(g) for g in guides]
+    for g in guides:
+        g["count"] = len(_parse_guide_blocks(g["blocks"]))
+    return render_template("admin_command_guides.html",
+        guides=guides, blocks=COMMAND_BLOCKS,
+        can_create=len(guides) < _GUIDE_MAX,
+        guide_max=_GUIDE_MAX)
+
+def _collect_blocks_from_form():
+    """从 POST 表单收集 blocks dict：选中的 key → 自定义文本或 None。"""
+    selected_keys = request.form.getlist("blocks")
+    result = {}
+    for key in selected_keys:
+        custom = request.form.get(f"block_text_{key}", "").strip()
+        # 找到默认内容，判断是否真的改动了
+        default_lines = next((b["lines"] for b in COMMAND_BLOCKS if b["key"] == key), None)
+        default_text  = "\n".join(default_lines) if default_lines else ""
+        result[key] = custom if (custom and custom != default_text) else None
+    return json.dumps(result, ensure_ascii=False)
+
+@app.route("/admin/command-guides/new", methods=["GET","POST"])
+@require_admin
+def admin_command_guide_new():
+    tid = current_tenant_id()
+    db  = get_db()
+    if db.execute("SELECT COUNT(*) FROM command_guides WHERE tenant_id=?", (tid,)).fetchone()[0] >= _GUIDE_MAX:
+        return redirect(url_for("admin_command_guides") + "?err=limit")
+    if request.method == "POST":
+        name   = request.form.get("name", "").strip() or "指令指南"
+        blocks = _collect_blocks_from_form()
+        slug   = _guide_slug()
+        while db.execute("SELECT 1 FROM command_guides WHERE slug=?", (slug,)).fetchone():
+            slug = _guide_slug()
+        db.execute(
+            "INSERT INTO command_guides(tenant_id,name,slug,blocks,created_at) VALUES(?,?,?,?,?)",
+            (tid, name, slug, blocks, int(time.time()*1000))
+        )
+        db.commit()
+        return redirect(url_for("admin_command_guides") + "?saved=1")
+    return render_template("admin_command_guide_edit.html",
+        guide=None, blocks=COMMAND_BLOCKS, selected_map={})
+
+@app.route("/admin/command-guides/<int:gid>/edit", methods=["GET","POST"])
+@require_admin
+def admin_command_guide_edit(gid):
+    tid = current_tenant_id()
+    db  = get_db()
+    row = db.execute("SELECT * FROM command_guides WHERE id=? AND tenant_id=?", (gid, tid)).fetchone()
+    if not row: abort(404)
+    if request.method == "POST":
+        name   = request.form.get("name", "").strip() or "指令指南"
+        blocks = _collect_blocks_from_form()
+        db.execute("UPDATE command_guides SET name=?, blocks=? WHERE id=?", (name, blocks, gid))
+        db.commit()
+        return redirect(url_for("admin_command_guides") + "?saved=1")
+    selected_map = _parse_guide_blocks(row["blocks"])
+    return render_template("admin_command_guide_edit.html",
+        guide=dict(row), blocks=COMMAND_BLOCKS, selected_map=selected_map)
+
+@app.route("/admin/command-guides/<int:gid>/delete", methods=["POST"])
+@require_admin
+def admin_command_guide_delete(gid):
+    tid = current_tenant_id()
+    db  = get_db()
+    db.execute("DELETE FROM command_guides WHERE id=? AND tenant_id=?", (gid, tid))
+    db.commit()
+    return redirect(url_for("admin_command_guides"))
+
+@app.route("/api/command_guides", methods=["GET"])
+def api_command_guides():
+    tid  = get_tenant_from_token()
+    db   = get_db()
+    base = request.host_url.rstrip("/")
+    rows = db.execute(
+        "SELECT name, slug FROM command_guides WHERE tenant_id=? ORDER BY created_at DESC",
+        (tid,)
+    ).fetchall()
+    guides = [{"name": r["name"], "url": f"{base}/g/{r['slug']}"} for r in rows]
+    return jsonify({"ok": True, "guides": guides})
+
+
+@app.route("/g/<slug>")
+def public_command_guide(slug):
+    db  = get_db()
+    row = db.execute("SELECT * FROM command_guides WHERE slug=?", (slug,)).fetchone()
+    if not row: abort(404)
+    blocks       = _build_guide_blocks(row["blocks"])
+    player_blocks = [b for b in blocks if b["category"] == "player"]
+    admin_blocks  = [b for b in blocks if b["category"] == "admin"]
+    return render_template("command_guide_public.html",
+        guide=dict(row),
+        player_blocks=player_blocks,
+        admin_blocks=admin_blocks)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,483 @@
+{% extends "base.html" %}
+{% block title %}长日存档 · 时间调度{% endblock %}
+
+{% block head %}
+<style>
+.sub-nav { display:flex; gap:6px; margin-bottom:24px; flex-wrap:wrap; }
+.sub-nav a {
+  font-size:13px; padding:5px 14px; border-radius:8px;
+  background:var(--surface); border:1px solid var(--border); color:var(--muted);
+  text-decoration:none; transition:all .15s;
+}
+.sub-nav a:hover { color:var(--text); border-color:var(--accent); }
+.sub-nav a.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+
+.section-card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:12px; padding:22px 24px; margin-bottom:20px;
+}
+.section-title {
+  font-size:13px; font-weight:700; color:var(--muted);
+  letter-spacing:1px; text-transform:uppercase;
+  padding-bottom:12px; border-bottom:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between;
+}
+.section-desc { font-size:12px; color:var(--muted); margin:10px 0 16px; line-height:1.6; }
+
+/* ── 游戏日 tabs ── */
+.day-tabs {
+  display:flex; gap:4px; flex-wrap:wrap; margin-bottom:14px;
+  overflow-x:auto; padding-bottom:2px;
+}
+.day-tab {
+  font-size:12px; padding:4px 12px; border-radius:6px; cursor:pointer;
+  background:var(--surface2); border:1px solid var(--border); color:var(--muted);
+  transition:all .15s; white-space:nowrap; position:relative; user-select:none;
+}
+.day-tab:hover { border-color:var(--accent); color:var(--text); }
+.day-tab.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+.day-tab.has-block::after {
+  content:''; position:absolute; top:3px; right:3px;
+  width:5px; height:5px; border-radius:50%; background:var(--red);
+}
+
+/* ── 24小时轴 ── */
+.hour-axis {
+  display:grid; grid-template-columns:repeat(24,1fr); gap:3px;
+  user-select:none;
+}
+.hour-cell {
+  aspect-ratio:1; display:flex; align-items:center; justify-content:center;
+  font-size:10px; font-weight:700; border-radius:6px; cursor:pointer;
+  transition:background .12s, transform .1s; border:1px solid transparent;
+}
+.hour-cell:hover { transform:scale(1.1); }
+.hour-cell.allowed {
+  background:rgba(134,239,172,.13); color:var(--green);
+  border-color:rgba(134,239,172,.22);
+}
+.hour-cell.blocked {
+  background:rgba(248,113,113,.15); color:var(--red);
+  border-color:rgba(248,113,113,.3);
+}
+
+/* ── 时长 chips ── */
+.dur-chips { display:flex; gap:10px; flex-wrap:wrap; margin-top:4px; }
+.dur-chip {
+  display:flex; align-items:center; justify-content:center;
+  width:64px; height:44px; border-radius:10px; cursor:pointer;
+  font-size:15px; font-weight:700; transition:all .15s;
+  user-select:none;
+}
+.dur-chip.on {
+  background:rgba(139,124,246,.18); border:2px solid rgba(139,124,246,.5);
+  color:var(--accent);
+}
+.dur-chip.off {
+  background:rgba(120,120,160,.07); border:2px solid rgba(120,120,160,.18);
+  color:var(--muted);
+}
+.dur-chip:hover { transform:scale(1.06); }
+
+/* ── 批量按钮 ── */
+.batch-btns { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px; }
+.batch-btn {
+  font-size:11px; padding:4px 12px; border-radius:6px; cursor:pointer;
+  background:var(--surface2); border:1px solid var(--border); color:var(--muted);
+  transition:all .15s;
+}
+.batch-btn:hover { border-color:var(--accent); color:var(--text); }
+
+/* ── 功能窗口 ── */
+.feature-row {
+  display:grid;
+  grid-template-columns: 90px auto 1fr;
+  gap:12px; align-items:center;
+  padding:11px 0; border-bottom:1px solid var(--border);
+}
+.feature-row:last-child { border-bottom:none; }
+.feature-label { font-size:13px; font-weight:600; }
+.feat-controls { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.feat-toggle-label {
+  display:flex; align-items:center; gap:5px;
+  font-size:12px; color:var(--muted); cursor:pointer; white-space:nowrap;
+}
+.feat-time { display:flex; align-items:center; gap:4px; font-size:12px; color:var(--muted); }
+.time-input {
+  background:var(--surface2); border:1px solid var(--border); color:var(--text);
+  border-radius:6px; padding:3px 8px; width:52px; font-size:12px; text-align:center;
+}
+.time-input:focus { outline:none; border-color:var(--accent); }
+.feat-bar-wrap {
+  height:18px; background:var(--surface2); border-radius:4px; overflow:hidden;
+  position:relative;
+}
+.feat-bar-fill {
+  position:absolute; top:0; height:100%; border-radius:4px;
+  background:rgba(139,124,246,.35); border:1px solid rgba(139,124,246,.5);
+  transition:left .15s, width .15s;
+}
+.feat-bar-fill.inactive {
+  background:rgba(120,120,160,.12); border-color:rgba(120,120,160,.2);
+}
+
+/* ── 保存行 ── */
+.save-row { display:flex; align-items:center; justify-content:flex-end; gap:10px; margin-top:18px; }
+.btn-save {
+  background:var(--accent); color:#fff; border:none;
+  border-radius:8px; padding:7px 22px; font-size:13px; font-weight:600;
+  cursor:pointer; transition:background .15s;
+}
+.btn-save:hover { background:var(--accent2); }
+.save-status { font-size:12px; }
+.save-ok  { color:var(--green); }
+.save-err { color:var(--red); }
+
+.legend { display:flex; gap:14px; font-size:11px; color:var(--muted); margin-top:10px; }
+.ldot { display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:4px; vertical-align:middle; }
+
+.warn-banner {
+  background:#2a1f10; border:1px solid #6b4f20; color:#fcd34d;
+  border-radius:10px; padding:13px 18px; margin-bottom:20px;
+  font-size:13px; display:flex; align-items:center; gap:10px;
+}
+
+@media(max-width:640px) {
+  .hour-axis { grid-template-columns:repeat(12,1fr); }
+  .feature-row { grid-template-columns:1fr; gap:6px; }
+}
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="page">
+  <div class="page-title">时间调度</div>
+
+  <div class="sub-nav">
+    <a href="{{ url_for('admin') }}">总览</a>
+    <a href="{{ url_for('admin_config_page') }}">游戏配置</a>
+    <a href="{{ url_for('admin_groups') }}">群号组</a>
+    <a href="{{ url_for('admin_rewards') }}">结戏奖励</a>
+    <a href="{{ url_for('admin_player_controls') }}">玩家控制</a>
+    <a href="{{ url_for('admin_shows') }}">季管理</a>
+    <a href="{{ url_for('admin_command_guides') }}">指令指南</a>
+    <a href="{{ url_for('admin_time_schedule') }}" class="active">时间调度</a>
+  </div>
+
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 18px;margin-bottom:20px;font-size:13px;line-height:1.8;color:var(--muted);">
+    <strong style="color:var(--text)">时间调度是什么？</strong><br>
+    对本季各功能的可用时段进行精细管控。可以按游戏日设置禁止私约的时间段、限定私约时长档位（即划分几小时为一个时段，然后该时段只能开对应现实时间的），以及为寄信、送礼、心愿等功能单独划定每日开放时段。所有设置实时生效，不影响已进行中的活动。
+  </div>
+
+  {% if not show or not show.schedule_start %}
+  <div class="warn-banner">
+    ⚠️ 当前季尚未设置档期日期。调度配置依然可以保存，建议先在
+    <a href="{{ url_for('admin_shows') }}" style="color:var(--gold);">季管理</a>
+    中配置档期起止日，使规则与活跃档期对应。
+  </div>
+  {% endif %}
+
+  <!-- ── 1. 禁约时间轴（按游戏日）─────────────────────────────── -->
+  <div class="section-card">
+    <div class="section-title">
+      🚫 禁止私约时段
+      <span id="status-blocked" class="save-status"></span>
+    </div>
+    <div class="section-desc">
+      选择游戏日后，点击时格切换禁止 / 允许。<strong style="color:var(--red)">红色</strong> = 该整点起不可发起私约；
+      <strong style="color:var(--green)">绿色</strong> = 正常可约。Tab 右上角红点表示该天有禁约设置。默认全天允许。
+    </div>
+
+    <div class="day-tabs" id="day-tabs">
+      {% for day in day_list %}
+      <div class="day-tab {{ 'has-block' if day in blocked_by_day and blocked_by_day[day] else '' }}"
+           data-day="{{ day }}" onclick="switchDay('{{ day }}', this)">
+        {{ day }}
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="batch-btns">
+      <button class="batch-btn" onclick="blockAllHours()">全天禁止</button>
+      <button class="batch-btn" onclick="clearAllHours()">清空（全允许）</button>
+      <button class="batch-btn" onclick="copyToAllDays()">复制到所有天</button>
+    </div>
+
+    <div class="hour-axis" id="hour-axis">
+      {% for h in range(24) %}
+      <div class="hour-cell allowed" data-h="{{ h }}" onclick="toggleHour({{ h }}, this)">
+        {{ '%02d'|format(h) }}
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="legend" style="margin-top:10px;">
+      <span><span class="ldot" style="background:rgba(134,239,172,.4)"></span>可约</span>
+      <span><span class="ldot" style="background:rgba(248,113,113,.4)"></span>禁止</span>
+    </div>
+    <div class="save-row">
+      <button class="btn-save" onclick="saveBlocked()">保存禁约设置</button>
+    </div>
+  </div>
+
+  <!-- ── 2. 时段校验开关 ──────────────────────────────────────── -->
+  <div class="section-card">
+    <div class="section-title">
+      🕐 现实时段锁定
+      <span id="status-hour-lock" class="save-status"></span>
+    </div>
+    <div class="section-desc">
+      开启后，玩家发起邀约时，戏内时间的<strong>开始小时</strong>必须与当前现实小时一致——
+      即现实 1 点只能约戏内 1 点开始的，2 点只能约 2 点开始的，以此类推。
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;margin:6px 0 4px;">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;">
+        <input type="checkbox" id="hour-lock-toggle"
+               {{ 'checked' if strict_hour_match else '' }}
+               style="width:16px;height:16px;cursor:pointer;">
+        <span>开启现实时段锁定</span>
+      </label>
+    </div>
+    <div class="save-row">
+      <button class="btn-save" onclick="saveHourLock()">保存时段锁定设置</button>
+    </div>
+  </div>
+
+  <!-- ── 3. 可用私约时长 ──────────────────────────────────────── -->
+  <div class="section-card">
+    <div class="section-title">
+      ⏱ 可用弧长档位
+      <span id="status-dur" class="save-status"></span>
+    </div>
+    <div class="section-desc">
+      限定本季私约/电话允许的弧长档位。<strong style="color:var(--accent)">高亮</strong> = 开放；灰色 = 不可用。留空（全灰）表示不限制弧长。
+    </div>
+    <div class="dur-chips" id="dur-chips">
+      {% for d in [1, 2, 4, 6, 8, 12, 24] %}
+      <div class="dur-chip {{ 'off' if d not in allowed_durations else 'on' }}"
+           data-d="{{ d }}" onclick="toggleDurChip({{ d }}, this)">
+        {{ d }}h
+      </div>
+      {% endfor %}
+    </div>
+    <div class="save-row">
+      <button class="btn-save" onclick="saveDuration()">保存弧长设置</button>
+    </div>
+  </div>
+
+  <!-- ── 4. 功能时间窗口 ────────────────────────────────────────── -->
+  <div class="section-card">
+    <div class="section-title">
+      🪟 功能可用时段
+      <span id="status-feat" class="save-status"></span>
+    </div>
+    <div class="section-desc">
+      为各功能限定每日可用时段（24h制）。不勾选「限制时段」表示全天可用。
+    </div>
+    <div id="feature-list">
+      {% set feat_map = namespace(d={}) %}
+      {% for fw in feature_windows %}{% set _ = feat_map.d.update({fw.feature: fw}) %}{% endfor %}
+      {% for fo in feature_options %}
+      {% set fw = feat_map.d.get(fo.key) %}
+      <div class="feature-row" data-feature="{{ fo.key }}">
+        <div class="feature-label">{{ fo.label }}</div>
+        <div class="feat-controls">
+          <label class="feat-toggle-label">
+            <input type="checkbox" class="feat-enabled"
+                   {{ 'checked' if fw else '' }}
+                   onchange="updateFeatRow(this.closest('.feature-row'))">
+            限制时段
+          </label>
+          <div class="feat-time feat-inputs" style="{{ '' if fw else 'opacity:.4;pointer-events:none' }}">
+            <input type="number" class="time-input feat-start" min="0" max="23"
+                   value="{{ fw.start if fw else 0 }}"
+                   oninput="updateFeatRow(this.closest('.feature-row'))">
+            <span>:00 ~</span>
+            <input type="number" class="time-input feat-end" min="1" max="24"
+                   value="{{ fw.end if fw else 24 }}"
+                   oninput="updateFeatRow(this.closest('.feature-row'))">
+            <span>:00</span>
+          </div>
+        </div>
+        <div class="feat-bar-wrap">
+          <div class="feat-bar-fill {{ '' if fw else 'inactive' }}"
+               style="left:{{ ((fw.start / 24 * 100)|round(1)|string + '%') if fw else '0%' }};
+                      width:{{ (((fw.end - fw.start) / 24 * 100)|round(1)|string + '%') if fw else '100%' }}">
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="save-row">
+      <button class="btn-save" onclick="saveFeatures()">保存功能时段</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── state ─────────────────────────────────────────────────────────────────
+// blockedByDay: { "D1": Set([0,1,2,...]), "D2": Set([...]), ... }
+const blockedByDay = {};
+{% for day, hours in blocked_by_day.items() %}
+blockedByDay["{{ day }}"] = new Set({{ hours | tojson }});
+{% endfor %}
+
+let currentDay = null;  // 当前选中的游戏日
+
+const ALL_DURATIONS = [1, 2, 4, 6, 8, 12, 24];
+const allowedDurations = new Set({{ allowed_durations | tojson }});
+
+// ── helpers ───────────────────────────────────────────────────────────────
+async function apiPost(payload) {
+  const r = await fetch('/api/time-schedule', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(payload)
+  });
+  return r.json();
+}
+
+function flash(id, ok) {
+  const el = document.getElementById(id);
+  el.textContent = ok ? '✓ 已保存' : '✗ 保存失败';
+  el.className   = 'save-status ' + (ok ? 'save-ok' : 'save-err');
+  setTimeout(() => { el.textContent = ''; el.className = 'save-status'; }, 2600);
+}
+
+// ── 1. blocked hours (per day) ────────────────────────────────────────────
+function switchDay(day, tabEl) {
+  currentDay = day;
+  document.querySelectorAll('.day-tab').forEach(t => t.classList.remove('active'));
+  tabEl.classList.add('active');
+  renderAxis();
+}
+
+function renderAxis() {
+  const set = blockedByDay[currentDay] || new Set();
+  document.querySelectorAll('.hour-cell').forEach(el => {
+    const h = parseInt(el.dataset.h);
+    el.className = 'hour-cell ' + (set.has(h) ? 'blocked' : 'allowed');
+  });
+}
+
+function toggleHour(h, el) {
+  if (!currentDay) return;
+  if (!blockedByDay[currentDay]) blockedByDay[currentDay] = new Set();
+  const set = blockedByDay[currentDay];
+  if (set.has(h)) { set.delete(h); el.className = 'hour-cell allowed'; }
+  else            { set.add(h);    el.className = 'hour-cell blocked'; }
+  updateTabDot(currentDay);
+}
+
+function blockAllHours() {
+  if (!currentDay) return;
+  blockedByDay[currentDay] = new Set([...Array(24).keys()]);
+  renderAxis();
+  updateTabDot(currentDay);
+}
+
+function clearAllHours() {
+  if (!currentDay) return;
+  delete blockedByDay[currentDay];
+  renderAxis();
+  updateTabDot(currentDay);
+}
+
+function copyToAllDays() {
+  if (!currentDay) return;
+  const src = blockedByDay[currentDay] ? [...blockedByDay[currentDay]] : [];
+  document.querySelectorAll('.day-tab').forEach(tab => {
+    const d = tab.dataset.day;
+    if (src.length) blockedByDay[d] = new Set(src);
+    else            delete blockedByDay[d];
+    updateTabDot(d);
+  });
+}
+
+function updateTabDot(day) {
+  const tab = document.querySelector(`.day-tab[data-day="${day}"]`);
+  if (!tab) return;
+  const hasBlock = blockedByDay[day] && blockedByDay[day].size > 0;
+  tab.classList.toggle('has-block', hasBlock);
+}
+
+async function saveBlocked() {
+  const payload = {};
+  for (const [day, set] of Object.entries(blockedByDay)) {
+    if (set.size) payload[day] = [...set];
+  }
+  const j = await apiPost({field:'blocked_by_day', value:payload});
+  flash('status-blocked', j.ok);
+}
+
+// ── 2. hour lock ──────────────────────────────────────────────────────────
+async function saveHourLock() {
+  const on = document.getElementById('hour-lock-toggle').checked;
+  const j = await apiPost({field: 'strict_hour_match', value: on});
+  flash('status-hour-lock', j.ok);
+}
+
+// ── 3. duration chips ─────────────────────────────────────────────────────
+function toggleDurChip(d, el) {
+  if (allowedDurations.has(d)) {
+    allowedDurations.delete(d);
+    el.className = 'dur-chip off';
+  } else {
+    allowedDurations.add(d);
+    el.className = 'dur-chip on';
+  }
+}
+
+async function saveDuration() {
+  const j = await apiPost({field:'allowed_durations', value:[...allowedDurations]});
+  flash('status-dur', j.ok);
+}
+
+// ── 3. feature windows ────────────────────────────────────────────────────
+function updateFeatRow(row) {
+  const on    = row.querySelector('.feat-enabled').checked;
+  const inputs = row.querySelector('.feat-inputs');
+  const fill  = row.querySelector('.feat-bar-fill');
+  inputs.style.opacity      = on ? '' : '.4';
+  inputs.style.pointerEvents = on ? '' : 'none';
+  if (!fill) return;
+  if (!on) {
+    fill.style.left  = '0%';
+    fill.style.width = '100%';
+    fill.classList.add('inactive');
+  } else {
+    const s = Math.max(0, Math.min(23, parseInt(row.querySelector('.feat-start').value)||0));
+    const e = Math.max(1, Math.min(24, parseInt(row.querySelector('.feat-end').value)||24));
+    fill.style.left  = (s/24*100).toFixed(1)+'%';
+    fill.style.width = (Math.max(e-s,0)/24*100).toFixed(1)+'%';
+    fill.classList.remove('inactive');
+  }
+}
+
+async function saveFeatures() {
+  const windows = [];
+  document.querySelectorAll('#feature-list .feature-row').forEach(row => {
+    if (!row.querySelector('.feat-enabled').checked) return;
+    const s = Math.max(0, Math.min(23, parseInt(row.querySelector('.feat-start').value)||0));
+    const e = Math.max(1, Math.min(24, parseInt(row.querySelector('.feat-end').value)||24));
+    if (s < e) windows.push({feature: row.dataset.feature, start: s, end: e});
+  });
+  const j = await apiPost({field:'feature_windows', value:windows});
+  flash('status-feat', j.ok);
+}
+
+// ── init ──────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  // 自动选中第一个游戏日
+  const firstTab = document.querySelector('.day-tab');
+  if (firstTab) switchDay(firstTab.dataset.day, firstTab);
+
+  // chips: 未保存过时默认全部开放
+  if (allowedDurations.size === 0) {
+    ALL_DURATIONS.forEach(d => allowedDurations.add(d));
+    document.querySelectorAll('.dur-chip').forEach(el => el.className = 'dur-chip on');
+  }
+});
+</script>
+{% endblock %}

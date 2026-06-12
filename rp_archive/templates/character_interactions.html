@@ -166,6 +166,13 @@
       <div class="ix-meta">
         {% if e.game_day %}<span>{{ e.game_day }}</span>{% endif %}
         {% if e.time_str %}<span>{{ e.time_str }}</span>{% endif %}
+        {% if is_admin %}
+        <form method="post" action="{{ url_for('event_delete', event_id=e.id) }}" style="display:inline;margin-left:auto;"
+              onsubmit="return confirm('确认删除这条短信？')">
+          <input type="hidden" name="back" value="{{ request.url }}">
+          <button type="submit" style="font-size:11px;color:var(--red);background:transparent;border:none;cursor:pointer;padding:0 2px;">✕ 删除</button>
+        </form>
+        {% endif %}
       </div>
     </div>
     {% endfor %}

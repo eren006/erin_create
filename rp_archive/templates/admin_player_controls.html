@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+{% block title %}长日存档 · 玩家控制台{% endblock %}
+
+{% block head %}
+<style>
+.nav-tabs { display:flex; gap:6px; margin-bottom:24px; flex-wrap:wrap; }
+.nav-tabs a {
+  font-size:13px; padding:5px 14px; border-radius:8px;
+  background:var(--surface); border:1px solid var(--border); color:var(--muted);
+  text-decoration:none;
+}
+.nav-tabs a.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+
+.ctrl-section { margin-bottom:32px; }
+.ctrl-section h3 {
+  font-size:14px; font-weight:700; color:var(--muted);
+  letter-spacing:1px; text-transform:uppercase;
+  margin-bottom:14px; padding-bottom:8px; border-bottom:1px solid var(--border);
+}
+
+/* 功能权限表格 */
+.feat-table { width:100%; border-collapse:collapse; font-size:12px; }
+.feat-table th {
+  padding:8px 10px; text-align:center; color:var(--muted);
+  font-size:11px; font-weight:700; letter-spacing:.5px;
+  background:var(--surface2); white-space:nowrap;
+}
+.feat-table th.role-col { text-align:left; min-width:90px; }
+.feat-table td { padding:8px 10px; text-align:center; border-top:1px solid var(--border); }
+.feat-table td.role-cell {
+  text-align:left; font-weight:600; color:var(--text); white-space:nowrap;
+}
+.feat-table tr:hover td { background:var(--surface2); }
+
+.feat-btn {
+  display:inline-block; width:28px; height:28px; line-height:28px;
+  border-radius:6px; border:1px solid; cursor:pointer; font-size:14px;
+  background:none; transition:opacity .15s;
+}
+.feat-btn.on  { border-color:var(--green); opacity:.8; }
+.feat-btn.on:hover  { opacity:1; }
+.feat-btn.off { border-color:var(--red);   opacity:.8; }
+.feat-btn.off:hover { opacity:1; }
+
+/* 时间锁定 */
+.lock-row {
+  display:flex; align-items:flex-start; gap:12px; padding:10px 0;
+  border-bottom:1px solid var(--border); flex-wrap:wrap;
+}
+.lock-row:last-child { border-bottom:none; }
+.lock-name { min-width:90px; font-weight:600; font-size:13px; color:var(--text); padding-top:3px; }
+.lock-chips { display:flex; flex-wrap:wrap; gap:6px; flex:1; }
+.lock-chip {
+  display:inline-flex; align-items:center; gap:4px;
+  background:var(--surface2); border:1px solid var(--border);
+  border-radius:20px; padding:3px 10px; font-size:12px; color:var(--muted);
+}
+.lock-chip button {
+  background:none; border:none; color:var(--red);
+  cursor:pointer; font-size:13px; padding:0; line-height:1;
+}
+.lock-add-row { display:flex; gap:6px; align-items:center; }
+.lock-add-row input {
+  padding:4px 8px; border:1px solid var(--border); border-radius:6px;
+  background:var(--surface2); color:var(--text); font-size:12px;
+}
+.lock-add-row button {
+  padding:4px 12px; border-radius:6px; border:1px solid var(--accent);
+  background:var(--accent); color:#fff; font-size:12px; cursor:pointer;
+}
+
+.sync-hint { font-size:11px; color:var(--muted); margin-top:6px; }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="page">
+  <div class="page-title">玩家控制台</div>
+
+  <div class="nav-tabs">
+    <a href="{{ url_for('admin') }}">总览</a>
+    <a href="{{ url_for('admin_config_page') }}">游戏配置</a>
+    <a href="{{ url_for('admin_groups') }}">已知群</a>
+    <a href="{{ url_for('admin_rewards') }}">结戏奖励</a>
+    <a href="{{ url_for('admin_player_controls') }}" class="active">玩家控制</a>
+    <a href="{{ url_for('admin_shows') }}">季管理</a>
+    <a href="{{ url_for('admin_command_guides') }}">指令指南</a>
+    <a href="{{ url_for('admin_time_schedule') }}">时间调度</a>
+  </div>
+
+  {% if last_sync_ts %}
+  <div style="font-size:12px;color:var(--muted);margin-bottom:20px;">
+    📡 上次 bot 同步：{{ ts_to_str(last_sync_ts) }}
+    <span style="margin-left:12px;">修改后在 bot 执行「全量同步」即可生效。</span>
+  </div>
+  {% else %}
+  <div style="font-size:12px;color:var(--muted);margin-bottom:20px;">
+    ⚠️ 尚未同步过 bot 数据。请先在 bot 执行「全量上传」，此页面的数据才会显示。
+  </div>
+  {% endif %}
+
+  {% if not players %}
+  <div class="empty">当前季无玩家数据，请先完成至少一次场次存档。</div>
+  {% else %}
+
+  <!-- ── 功能权限 ── -->
+  <div class="ctrl-section">
+    <h3>功能权限</h3>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;overflow-x:auto;">
+      <table class="feat-table">
+        <thead>
+          <tr>
+            <th class="role-col">角色</th>
+            {% for feat_key, feat_label in feature_labels %}
+            <th>{{ feat_label }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in players %}
+          <tr>
+            <td class="role-cell">
+              <a href="{{ url_for('admin_player', qq=p.qq) }}" style="color:var(--accent);">{{ p.role_name }}</a>
+            </td>
+            {% for feat_key, feat_label in feature_labels %}
+            {% set enabled = p.features.get(feat_key, true) %}
+            <td>
+              <button
+                class="feat-btn {{ 'on' if enabled else 'off' }}"
+                data-qq="{{ p.qq }}"
+                data-feat="{{ feat_key }}"
+                data-enabled="{{ 'true' if enabled else 'false' }}"
+                onclick="toggleFeature(this)"
+                title="{{ feat_label }}：{{ '开启' if enabled else '关闭' }}">
+                {{ '✅' if enabled else '🚫' }}
+              </button>
+            </td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="sync-hint">✅ = 功能开启（正常），🚫 = 已关闭。点击即时更新。</div>
+  </div>
+
+  <!-- ── 时间锁定 ── -->
+  <div class="ctrl-section">
+    <h3>时间锁定</h3>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:4px 20px 16px;">
+      {% for p in players %}
+      {% set slots = p.locked_slots %}
+      <div class="lock-row" id="lockrow-{{ p.qq }}">
+        <div class="lock-name">
+          <a href="{{ url_for('admin_player', qq=p.qq) }}" style="color:var(--accent);">{{ p.role_name }}</a>
+        </div>
+        <div class="lock-chips" id="chips-{{ p.qq }}">
+          {% set has_any = [] %}
+          {% for day, times in slots.items() | sort %}
+            {% for t in times %}
+              {% set _ = has_any.append(1) %}
+              <span class="lock-chip">
+                🔒 {{ day }} {{ t }}
+                <button onclick="removeLock(this,'{{ p.qq }}','{{ day }}','{{ t }}')" title="删除">×</button>
+              </span>
+            {% endfor %}
+          {% endfor %}
+          {% if not has_any %}
+          <span class="no-lock" style="font-size:12px;color:var(--border);">—</span>
+          {% endif %}
+        </div>
+        <div class="lock-add-row">
+          <input placeholder="D1" style="width:52px;" id="day-{{ p.qq }}">
+          <input placeholder="14:00-16:00" style="width:110px;" id="slot-{{ p.qq }}">
+          <button onclick="addLock('{{ p.qq }}','{{ p.role_name }}')">+ 锁定</button>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="sync-hint">× 删除已有锁定段，或填写日期+时段后点「+ 锁定」添加。</div>
+  </div>
+
+  {% endif %}
+</div>
+
+<script>
+async function ctrlPost(qq, body) {
+  const r = await fetch(`/admin/player/${encodeURIComponent(qq)}/controls`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body)
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!d.ok) { alert("操作失败：" + (d.error || r.status)); return false; }
+  return true;
+}
+
+async function toggleFeature(btn) {
+  const qq = btn.dataset.qq;
+  const feat = btn.dataset.feat;
+  const nowEnabled = btn.dataset.enabled === "true";
+  const newEnabled = !nowEnabled;
+  if (!await ctrlPost(qq, {action: "feature_set", feature: feat, enabled: newEnabled})) return;
+  btn.dataset.enabled = newEnabled ? "true" : "false";
+  btn.className = "feat-btn " + (newEnabled ? "on" : "off");
+  btn.textContent = newEnabled ? "✅" : "🚫";
+  btn.title = btn.closest("td").previousElementSibling
+    ? btn.title.replace(/：.*/, "：" + (newEnabled ? "开启" : "关闭")) : btn.title;
+}
+
+async function addLock(qq, roleName) {
+  const day  = document.getElementById("day-"  + qq).value.trim();
+  const slot = document.getElementById("slot-" + qq).value.trim();
+  if (!day || !slot) { alert("请填写日期（如 D1）和时段（如 14:00-16:00）"); return; }
+  if (!await ctrlPost(qq, {action: "lock_add", day, slot})) return;
+
+  const chips = document.getElementById("chips-" + qq);
+  const noLock = chips.querySelector(".no-lock");
+  if (noLock) noLock.remove();
+
+  const chip = document.createElement("span");
+  chip.className = "lock-chip";
+  chip.innerHTML = `🔒 ${day} ${slot} <button onclick="removeLock(this,'${qq}','${day}','${slot}')" title="删除">×</button>`;
+  chips.appendChild(chip);
+
+  document.getElementById("day-"  + qq).value = "";
+  document.getElementById("slot-" + qq).value = "";
+}
+
+async function removeLock(btn, qq, day, slot) {
+  if (!await ctrlPost(qq, {action: "lock_remove", day, slot})) return;
+  const chip = btn.closest(".lock-chip");
+  const chips = chip.parentElement;
+  chip.remove();
+  if (!chips.querySelector(".lock-chip")) {
+    const placeholder = document.createElement("span");
+    placeholder.className = "no-lock";
+    placeholder.style.cssText = "font-size:12px;color:var(--border);";
+    placeholder.textContent = "—";
+    chips.appendChild(placeholder);
+  }
+}
+</script>
+{% endblock %}

@@ -27,23 +27,40 @@ if (!ext) {
 ext.autoActive = true;
 
 // ========================
-// 核心依赖：主插件 helper 函数
+// 核心依赖：主插件共享 API（globalThis.__changriApi，调用时懒获取）
+// 主插件已更新时全部委托给它；否则走下方兼容实现（直读主插件存储）
 // ========================
 
+function getApi() { return globalThis.__changriApi || null; }
+
+function mainStorGet(key) {
+    const api = getApi();
+    if (api) return api.kvGetRaw(key);
+    const m = getMainExt();
+    return m ? m.storageGet(key) : null;
+}
+
+function mainStorSet(key, val) {
+    const api = getApi();
+    if (api) { api.kvSetRaw(key, val); return; }
+    const m = getMainExt();
+    if (m) m.storageSet(key, val);
+}
+
 function getPrimaryUid(platform, uid) {
-    const main = getMainExt();
-    if (!main) return uid;
+    const api = getApi();
+    if (api) return api.getPrimaryUid(platform, uid);
     try {
-        const extras = JSON.parse(main.storageGet("extra_accounts") || "{}");
+        const extras = JSON.parse(mainStorGet("extra_accounts") || "{}");
         return extras[`${platform}:${uid}`] || uid;
     } catch (e) { return uid; }
 }
 
 function getRoleName(ctx, msg) {
-    const main = getMainExt();
-    if (!main) return null;
+    const api = getApi();
+    if (api) return api.getRoleName(ctx, msg);
     try {
-        const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
+        const apg = JSON.parse(mainStorGet("a_private_group") || "{}");
         const platform = msg.platform;
         const rawUid = msg.sender.userId.replace(`${platform}:`, "");
         const uid = getPrimaryUid(platform, rawUid);
@@ -52,38 +69,38 @@ function getRoleName(ctx, msg) {
 }
 
 function getUidByRoleName(platform, roleName) {
-    const main = getMainExt();
-    if (!main) return null;
+    const api = getApi();
+    if (api) return api.getUidByRoleName(platform, roleName);
     try {
-        const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
+        const apg = JSON.parse(mainStorGet("a_private_group") || "{}");
         const roles = apg[platform] || {};
         return Object.entries(roles).find(([_, v]) => v[0] === roleName)?.[0] || null;
     } catch (e) { return null; }
 }
 
 function resolveUidToName(platform, uid) {
-    const main = getMainExt();
-    if (!main) return uid;
+    const api = getApi();
+    if (api) return api.resolveUidToName(platform, uid);
     try {
-        return JSON.parse(main.storageGet("a_private_group") || "{}")?.[platform]?.[uid]?.[0] || uid;
+        return JSON.parse(mainStorGet("a_private_group") || "{}")?.[platform]?.[uid]?.[0] || uid;
     } catch (e) { return uid; }
 }
 
 function isUserAdmin(ctx, msg) {
+    const api = getApi();
+    if (api) return api.isUserAdmin(ctx, msg);
     const platform = msg.platform;
     const uid = msg.sender.userId.replace(`${platform}:`, "");
-    const main = getMainExt();
-    if (!main) return false;
     try {
-        const a_adminList = JSON.parse(main.storageGet("a_adminList") || "{}");
+        const a_adminList = JSON.parse(mainStorGet("a_adminList") || "{}");
         return ctx.privilegeLevel === 100 || (a_adminList[platform] && a_adminList[platform].includes(uid));
     } catch (e) { return false; }
 }
 
 function isUserFeatureEnabled(uid, key, defaultValue = true) {
-    const main = getMainExt();
-    if (!main) return defaultValue;
-    const blockMap = JSON.parse(main.storageGet("feature_user_blocklist") || "{}");
+    const api = getApi();
+    if (api) return api.isUserFeatureEnabled(uid, key, defaultValue);
+    const blockMap = JSON.parse(mainStorGet("feature_user_blocklist") || "{}");
     const personConfig = blockMap[uid];
     if (personConfig && personConfig[key] !== undefined) return personConfig[key];
     return defaultValue;
@@ -91,17 +108,17 @@ function isUserFeatureEnabled(uid, key, defaultValue = true) {
 
 // 读取主插件存储的整数型设置（兼容 JSON 编码的 '"500"' 与裸字符串 '500' 两种格式）
 function getMainStorageInt(key, defaultVal) {
-    const main = getMainExt();
-    if (!main) return defaultVal;
-    const raw = main.storageGet(key);
+    const api = getApi();
+    if (api) return api.getStorageInt(key, defaultVal);
+    const raw = mainStorGet(key);
     if (!raw) return defaultVal;
-    try { return parseInt(JSON.parse(raw)) || defaultVal; }
-    catch (e) { return parseInt(raw) || defaultVal; }
+    try { const v = parseInt(JSON.parse(raw)); return isNaN(v) ? defaultVal : v; }
+    catch (e) { const v = parseInt(raw); return isNaN(v) ? defaultVal : v; }
 }
 
 function recordMeetingAndAnnounce(subtype, platform, ctx, endPoint) {
-    const main = getMainExt();
-    if (!main) return;
+    const api = getApi();
+    if (api) return api.recordMeetingAndAnnounce(subtype, platform, ctx, endPoint);
     const subtypeKeyMap = {
         "电话": "call", "私密": "private", "寄信": "chaosletter",
         "心动信": "lovemail", "礼物": "gift", "心愿": "wish",
@@ -109,13 +126,13 @@ function recordMeetingAndAnnounce(subtype, platform, ctx, endPoint) {
     };
     const keyType = subtypeKeyMap[subtype] || "unknown";
     const storageKey = `a_meetingCount_${keyType}`;
-    let count = parseInt(main.storageGet(storageKey) || "0");
+    let count = parseInt(mainStorGet(storageKey) || "0");
     count++;
-    main.storageSet(storageKey, count.toString());
+    mainStorSet(storageKey, count.toString());
 
-    const groupId = JSON.parse(main.storageGet("adminAnnounceGroupId") || "null");
+    const groupId = JSON.parse(mainStorGet("adminAnnounceGroupId") || "null");
     if (groupId) {
-        const frequency = parseInt(main.storageGet("announceFrequency") || "5");
+        const frequency = parseInt(mainStorGet("announceFrequency") || "5");
         if (count % frequency === 0) {
             const labels = {
                 "电话": ["☎️", "电话"], "私密": ["💫", "私密约会"], "寄信": ["📮", "寄信"],
@@ -138,6 +155,8 @@ function recordMeetingAndAnnounce(subtype, platform, ctx, endPoint) {
 // ========================
 
 function ws(postData, ctx, msg, successreply) {
+    const api = getApi();
+    if (api) return api.ws(postData, ctx, msg, successreply);
     const main = getMainExt();
     if (!main) return;
     const wsUrl = seal.ext.getStringConfig(main, "ws地址");
@@ -217,11 +236,11 @@ const sendTextToGroup = (platform, gid, text) => {
 
 seal.ext.registerIntConfig(ext, "forumMaxLength", 500, "论坛内容最大长度", "发帖和回复的最大字符数");
 
-const getForumPosts = () => JSON.parse(getMainExt()?.storageGet("forum_posts") || "[]");
-const saveForumPosts = (posts) => getMainExt()?.storageSet("forum_posts", JSON.stringify(posts));
+const getForumPosts = () => JSON.parse(mainStorGet("forum_posts") || "[]");
+const saveForumPosts = (posts) => mainStorSet("forum_posts", JSON.stringify(posts));
 
 function sendToAnnounceGroup(ctx, platform, text) {
-    const announceGid = getMainExt()?.storageGet("song_group_id");
+    const announceGid = mainStorGet("song_group_id");
     if (announceGid) {
         sendTextToGroup(platform, announceGid, text);
     } else {
@@ -246,7 +265,7 @@ function findPostById(postId) {
 function extractMentions(content, platform) {
     const main = getMainExt();
     if (!main) return [];
-    const priv = JSON.parse(main.storageGet("a_private_group") || "{}")[platform] || {};
+    const priv = JSON.parse(mainStorGet("a_private_group") || "{}")[platform] || {};
     const validNames = new Set(Object.values(priv).map(v => v[0]));
     const matches = [...(content.matchAll(/@(\S+)/g) || [])].map(m => m[1]);
     return [...new Set(matches.filter(n => validNames.has(n)))];
@@ -257,7 +276,7 @@ function sendMentionNotice(platform, mentionedName, postId, authorName) {
     if (!uid || /^npc_/.test(uid)) return;
     const main = getMainExt();
     if (!main) return;
-    const pGid = JSON.parse(main.storageGet("a_private_group") || "{}")[platform]?.[uid]?.[1];
+    const pGid = JSON.parse(mainStorGet("a_private_group") || "{}")[platform]?.[uid]?.[1];
     if (!pGid || pGid === "0") return;
     sendTextToGroup(platform, pGid, `📣 「${authorName}」在论坛帖子 [${postId}] 的回复中提到了你！`);
 }
@@ -292,6 +311,12 @@ cmd_post_forum.solve = (ctx, msg, cmdArgs) => {
 
     if (!content) {
         seal.replyToSender(ctx, msg, "💡 请输入帖子内容！\n格式：.发帖 内容 或 .发帖 署名 内容");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const forumMaxLen = getMainStorageInt("forum_max_length", 500);
+    if (content.length > forumMaxLen) {
+        seal.replyToSender(ctx, msg, `⚠️ 内容过长（${content.length} 字），论坛发帖上限为 ${forumMaxLen} 字，请精简后再提交。`);
         return seal.ext.newCmdExecuteResult(true);
     }
 
@@ -338,6 +363,12 @@ cmd_reply_post.solve = (ctx, msg, cmdArgs) => {
 
     if (!postId || !content) {
         seal.replyToSender(ctx, msg, "❌ 格式错误！\n格式：回复帖子 贴号 内容\n引用楼层：回复帖子 贴号 引用N 内容（引用0=楼主）");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const forumMaxLen = getMainStorageInt("forum_max_length", 500);
+    if (content.length > forumMaxLen) {
+        seal.replyToSender(ctx, msg, `⚠️ 内容过长（${content.length} 字），论坛回复上限为 ${forumMaxLen} 字，请精简后再提交。`);
         return seal.ext.newCmdExecuteResult(true);
     }
 
@@ -575,7 +606,7 @@ ext.cmdMap["删除帖子"] = cmd_delete_post;
  */
 function sendCombinedDetails(ctx, msg, toRoleName, fromRoleName, details, self) {
     const platform = msg.platform;
-    const groups = JSON.parse(getMainExt().storageGet("a_private_group") || "{}");
+    const groups = JSON.parse(mainStorGet("a_private_group") || "{}");
 
     // 1. 获取对方的绑定信息（uid为key的新结构）
     const toUid = getUidByRoleName(platform, toRoleName);
@@ -633,7 +664,7 @@ function sendCombinedDetails(ctx, msg, toRoleName, fromRoleName, details, self) 
 }
 
 function getTargetAddr(platform, roleName) {
-    const groups = JSON.parse(getMainExt().storageGet("a_private_group") || "{}");
+    const groups = JSON.parse(mainStorGet("a_private_group") || "{}");
     const uid = getUidByRoleName(platform, roleName);
     if (!uid) return null;
     const entry = groups[platform]?.[uid];
@@ -644,12 +675,12 @@ const RelationshipUtils = {
     getRoleName: (ctx, msg, platform) => {
         const rawUid = msg.sender.userId.replace(`${platform}:`, "");
         const uid = getPrimaryUid(platform, rawUid);
-        const groups = JSON.parse(getMainExt().storageGet("a_private_group") || "{}");
+        const groups = JSON.parse(mainStorGet("a_private_group") || "{}");
         return groups[platform]?.[uid]?.[0] || null;
     },
-    getData: (key) => JSON.parse(getMainExt().storageGet(key) || "{}"),
-    setData: (key, data) => getMainExt().storageSet(key, JSON.stringify(data)),
-    isEnabled: () => JSON.parse(getMainExt().storageGet("relationship_system_enabled") || "false")
+    getData: (key) => JSON.parse(mainStorGet(key) || "{}"),
+    setData: (key, data) => mainStorSet(key, JSON.stringify(data)),
+    isEnabled: () => JSON.parse(mainStorGet("relationship_system_enabled") || "false")
 };
 
 let cmd_add_rel_detail = seal.ext.newCmdItemInfo();
@@ -694,6 +725,18 @@ cmd_add_rel_detail.solve = (ctx, msg, cmdArgs) => {
     }
 
     if (!rel.details) rel.details = [];
+
+    const MAX_DETAIL_COUNT = getMainStorageInt("max_detail_count", 20);
+    if (rel.details.length >= MAX_DETAIL_COUNT) {
+        return seal.replyToSender(ctx, msg, `⚠️ 你们的关系线已达段数上限（${MAX_DETAIL_COUNT} 段），无法继续添加。`);
+    }
+
+    const MAX_REL_TOTAL_CHARS = getMainStorageInt("max_rel_total_chars", 3000);
+    const currentTotal = rel.details.reduce((sum, d) => sum + (d.text?.length || 0), 0);
+    if (currentTotal + charCount > MAX_REL_TOTAL_CHARS) {
+        return seal.replyToSender(ctx, msg, `⚠️ 添加后将超过总字数上限（${MAX_REL_TOTAL_CHARS} 字，当前已有 ${currentTotal} 字），请精简内容。`);
+    }
+
     rel.details.push({ text: content, from: sendName });
 
     relData[platform][sendUid][toUid] = rel;
@@ -703,7 +746,9 @@ cmd_add_rel_detail.solve = (ctx, msg, cmdArgs) => {
 
     const totalCharsNow = rel.details.reduce((sum, d) => sum + (d.text?.length || 0), 0);
     const SPLIT_THRESHOLD = getMainStorageInt("forward_split_threshold", 4000);
-    const splitHint = totalCharsNow > SPLIT_THRESHOLD ? `（总字数 ${totalCharsNow} 字，查看时将自动拆分为2条转发）` : `（本条 ${charCount} 字，累计 ${totalCharsNow}/${SPLIT_THRESHOLD} 字）`;
+    const segCount = rel.details.length;
+    const splitNote = totalCharsNow > SPLIT_THRESHOLD ? " · 查看时将拆分为2条转发" : "";
+    const splitHint = `（本条 ${charCount} 字 · 累计 ${totalCharsNow}/${MAX_REL_TOTAL_CHARS} 字 · ${segCount}/${MAX_DETAIL_COUNT} 段${splitNote}）`;
     const newRelHint = isNewRel ? "✨ 关系线已建立。\n" : "";
 
     const addr = getTargetAddr(platform, toName);
@@ -722,7 +767,7 @@ ext.cmdMap["拉线"] = cmd_add_rel_detail;
 
 function sendNewDetailNotification(ctx, msg, toRoleName, content, fromRoleName, targetGid) {
     const platform = msg.platform;
-    const groups = JSON.parse(getMainExt().storageGet("a_private_group") || "{}");
+    const groups = JSON.parse(mainStorGet("a_private_group") || "{}");
     const toUid = getUidByRoleName(platform, toRoleName);
     const toAddr = toUid ? groups[platform]?.[toUid] : null;
     if (!toAddr) return;
@@ -763,7 +808,7 @@ ext.cmdMap["确认关系线"] = cmd_confirm_relationship;
 let cmd_set_forced_rel = seal.ext.newCmdItemInfo();
 cmd_set_forced_rel.name = "设置强制关系线";
 cmd_set_forced_rel.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "权限不足");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "权限不足"), seal.ext.newCmdExecuteResult(true);
     const platform = msg.platform;
     const nameA = cmdArgs.getArgN(1);
     const nameB = cmdArgs.getArgN(2);
@@ -801,7 +846,7 @@ ext.cmdMap["设置强制关系线"] = cmd_set_forced_rel;
 let cmd_del_rel = seal.ext.newCmdItemInfo();
 cmd_del_rel.name = "删除关系线";
 cmd_del_rel.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return;
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "⚠️ 权限不足"), seal.ext.newCmdExecuteResult(true);
     const platform = msg.platform, nameA = cmdArgs.getArgN(1), nameB = cmdArgs.getArgN(2);
     let data = RelationshipUtils.getData("relationship_lines");
     const uidA = getUidByRoleName(platform, nameA);
@@ -822,7 +867,7 @@ let cmd_clear_rel = seal.ext.newCmdItemInfo();
 cmd_clear_rel.name = "清空关系线";
 cmd_clear_rel.help = "。清空关系线 MMDD\n清空当前平台全部关系线（需输入当日日期码确认，如0526）";
 cmd_clear_rel.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return;
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "⚠️ 权限不足"), seal.ext.newCmdExecuteResult(true);
     const code = cmdArgs.getArgN(1);
     const expected = `${String(new Date().getMonth() + 1).padStart(2,'0')}${String(new Date().getDate()).padStart(2,'0')}`;
     if (code !== expected) return seal.replyToSender(ctx, msg, `⚠️ 危险操作！输入确认码：${expected}`);
@@ -952,7 +997,7 @@ cmd_rel_stats.solve = (ctx, msg) => {
     }
 
     const platform = msg.platform;
-    const relData = JSON.parse(getMainExt().storageGet("relationship_lines") || "{}");
+    const relData = JSON.parse(mainStorGet("relationship_lines") || "{}");
     const platformData = relData[platform] || {};
 
     const stats = [];

@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ guide.name }} · 指令指南</title>
+<style>
+:root {
+  --bg: #0f0f13;
+  --surface: #1a1a22;
+  --surface2: #22222e;
+  --border: #2e2e3e;
+  --accent: #8b7cf6;
+  --accent2: #c084fc;
+  --accent-admin: #38bdf8;
+  --accent-admin2: #7dd3fc;
+  --text: #e2e2ec;
+  --muted: #7878a0;
+  --green: #86efac;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", sans-serif;
+  font-size: 14px; line-height: 1.7; min-height: 100vh;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent2); }
+
+.header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 18px 20px 16px;
+  text-align: center;
+}
+.header .title {
+  font-size: 20px; font-weight: 700; color: var(--text);
+  margin-bottom: 4px;
+}
+.header .subtitle {
+  font-size: 12px; color: var(--muted);
+}
+
+.main {
+  max-width: 860px; margin: 0 auto; padding: 24px 16px 48px;
+}
+
+.section-header {
+  display: flex; align-items: center; gap: 10px;
+  margin: 28px 0 16px;
+}
+.section-header h2 {
+  font-size: 15px; font-weight: 700; color: var(--accent2);
+  letter-spacing: 0.5px;
+}
+.section-header.admin-section h2 { color: var(--accent-admin2); }
+.section-header::before {
+  content: ""; display: block;
+  width: 4px; height: 18px; border-radius: 2px;
+  background: var(--accent2);
+  flex-shrink: 0;
+}
+.section-header.admin-section::before { background: var(--accent-admin); }
+
+.blocks-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.block-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  break-inside: avoid;
+}
+.block-card.admin-card {
+  border-color: #1e3a4a;
+  background: #121c24;
+}
+
+.block-card .card-title {
+  font-size: 13px; font-weight: 700; color: var(--text);
+  margin-bottom: 12px; padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.admin-card .card-title { border-bottom-color: #1e3a4a; }
+
+.block-card .lines {
+  font-size: 12.5px; line-height: 1.75;
+}
+.block-card .line-text {
+  display: block; color: var(--text);
+  white-space: pre-wrap; word-break: break-all;
+}
+.block-card .line-indent {
+  display: block; color: var(--muted);
+  padding-left: 1em;
+  white-space: pre-wrap; word-break: break-all;
+}
+.block-card .line-empty {
+  display: block; height: 0.5em;
+}
+
+.footer {
+  text-align: center; padding: 20px; font-size: 12px; color: var(--muted);
+  border-top: 1px solid var(--border); margin-top: 40px;
+}
+
+@media(max-width: 520px) {
+  .blocks-grid { grid-template-columns: 1fr; }
+  .header .title { font-size: 17px; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="title">{{ guide.name }}</div>
+  <div class="subtitle">指令速查手册</div>
+</div>
+
+<div class="main">
+
+  {% if player_blocks %}
+  <div class="section-header">
+    <h2>玩家指令</h2>
+  </div>
+  <div class="blocks-grid">
+    {% for b in player_blocks %}
+    <div class="block-card">
+      <div class="card-title">{{ b.label }}</div>
+      <div class="lines">
+        {% for line in b.lines %}
+          {% if line == "" %}
+          <span class="line-empty"></span>
+          {% elif line.startswith("  ") %}
+          <span class="line-indent">{{ line }}</span>
+          {% else %}
+          <span class="line-text">{{ line }}</span>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if admin_blocks %}
+  <div class="section-header admin-section">
+    <h2>管理指令</h2>
+  </div>
+  <div class="blocks-grid">
+    {% for b in admin_blocks %}
+    <div class="block-card admin-card">
+      <div class="card-title">{{ b.label }}</div>
+      <div class="lines">
+        {% for line in b.lines %}
+          {% if line == "" %}
+          <span class="line-empty"></span>
+          {% elif line.startswith("  ") %}
+          <span class="line-indent">{{ line }}</span>
+          {% else %}
+          <span class="line-text">{{ line }}</span>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if not player_blocks and not admin_blocks %}
+  <div style="text-align:center;color:var(--muted);padding:60px 0;font-size:14px;">
+    此指南暂无内容。
+  </div>
+  {% endif %}
+
+</div>
+
+<div class="footer">
+  由 rparchive 生成
+</div>
+
+</body>
+</html>

@@ -37,17 +37,37 @@ function getMainExt() {
     return main;
 }
 
+// 主插件共享 API（globalThis.__changriApi，调用时懒获取）
+// 主插件已更新时全部委托给它；否则走兼容路径（直读主插件存储）
+function getApi() { return globalThis.__changriApi || null; }
+
+function mainStorGet(key) {
+    const api = getApi();
+    if (api) return api.kvGetRaw(key);
+    const m = getMainExt();
+    return m ? m.storageGet(key) : null;
+}
+
+function mainStorSet(key, val) {
+    const api = getApi();
+    if (api) { api.kvSetRaw(key, val); return; }
+    const m = getMainExt();
+    if (m) m.storageSet(key, val);
+}
+
 /**
  * 权限检查（依赖 changri 的管理员列表）
  */
 function isUserAdmin(ctx, msg) {
+    const api = getApi();
+    if (api) return api.isUserAdmin(ctx, msg);
     if (ctx.privilegeLevel === 100) return true;
 
     const main = getMainExt();
     if (!main) return false;
 
     try {
-        let rawAdmin = main.storageGet("a_adminList");
+        let rawAdmin = mainStorGet("a_adminList");
         if (!rawAdmin) return false;
 
         let a_adminList = JSON.parse(rawAdmin);
@@ -107,7 +127,7 @@ function handleApply(ctx, msg, rawMessage, paramHandler) {
 function getMainStorage(key, defaultValue) {
     const main = getMainExt();
     if (!main) return defaultValue;
-    const val = main.storageGet(key);
+    const val = mainStorGet(key);
     // 增加 val.trim() 检查，防止解析空字符串导致的 EOF 错误
     if (val === null || val === undefined || val.trim() === "") return defaultValue;
     return val;
@@ -116,7 +136,7 @@ function getMainStorage(key, defaultValue) {
 function setMainStorage(key, value) {
     const main = getMainExt();
     if (!main) return;
-    main.storageSet(key, value);
+    mainStorSet(key, value);
 }
 
 // ========================
@@ -125,7 +145,7 @@ function setMainStorage(key, value) {
 
 // 目击配置
 function getSightingConfig() {
-    const defaultConfig = { enabled: false, send_to_all: true, max_reports_per_day: 5, include_ended_meetings: false, time_overlap_threshold: 0.3 };
+    const defaultConfig = { enabled: false, send_to_all: true, max_reports_per_day: 5, include_ended_meetings: false, time_overlap_threshold: 0.3, trigger_chance: 50 };
     try {
         return { ...defaultConfig, ...JSON.parse(getMainStorage("sighting_system_config", "{}")) };
     } catch (e) { return defaultConfig; }
@@ -153,7 +173,7 @@ function getAttackDefenseConfig() {
     try {
         const main = getMainExt();
         if (!main) return defaultConfig;
-        const val = main.storageGet("attack_defense_config");
+        const val = mainStorGet("attack_defense_config");
         return val ? { ...defaultConfig, ...JSON.parse(val) } : defaultConfig;
     } catch(e) { return defaultConfig; }
 }
@@ -161,14 +181,14 @@ function getAttackDefenseConfig() {
 function setAttackDefenseConfig(config) {
     const main = getMainExt();
     if (!main) return;
-    main.storageSet("attack_defense_config", JSON.stringify(config));
+    mainStorSet("attack_defense_config", JSON.stringify(config));
 }
 
 // DLC 检查
 function isDLC(key) {
     const main = getMainExt();
     if (!main) return false;
-    try { return JSON.parse(main.storageGet('global_feature_toggle') || '{}')[key] === true; }
+    try { return JSON.parse(mainStorGet('global_feature_toggle') || '{}')[key] === true; }
     catch(e) { return false; }
 }
 
@@ -290,6 +310,9 @@ settingsConfig['基础设置'] = {
         { label: '关系线系统', key: 'relationship_system_enabled', type: 'bool', default: false },
         { label: '关系线上限', key: 'max_relationships_per_user', type: 'string', default: '5' },
         { label: '拉线字数上限', key: 'max_detail_chars', type: 'string', default: '500' },
+        { label: '拉线段数上限', key: 'max_detail_count', type: 'string', default: '20' },
+        { label: '拉线总字数上限', key: 'max_rel_total_chars', type: 'string', default: '3000' },
+        { label: '论坛字数上限', key: 'forum_max_length', type: 'string', default: '500' },
     ]
 };
 
@@ -328,6 +351,7 @@ settingsConfig['互动参数'] = {
         { label: '允许私人房间', key: 'allow_private_rooms', type: 'bool', default: true },
         { label: '允许加入已有私约', key: 'enable_join_existing_appointment', type: 'bool', default: false },
         { label: '自动合并重合私约', key: 'auto_merge_duplicate_private', type: 'bool', default: false },
+        { label: '备用群名', key: 'idle_group_name', type: 'string_raw', default: '备用' },
         { label: '超时时间',
           getter: () => { try { return String(Math.round((JSON.parse(getMainStorage('monitor_settings', '{}')).timeout || 10800000) / 60000)); } catch(e) { return '180'; } },
           setter: (v) => { let c = {}; try { c = JSON.parse(getMainStorage('monitor_settings', '{}')); } catch(e) {} c.timeout = parseInt(v) * 60000; setMainStorage('monitor_settings', JSON.stringify(c)); },
@@ -425,6 +449,14 @@ settingsConfig['公告设置'] = {
     ]
 };
 
+settingsConfig['季末报告'] = {
+    title: "。设置 季末报告",
+    params: [
+        { label: '季末报告', key: 'end_season_report_enabled', type: 'bool_string', default: false,
+          hint: '开启后结束季度时将向每位玩家个人群发送互动报告，请确保 bot 届时仍在各个人群内' },
+    ]
+};
+
 // ========================
 // DLC 开关面板
 // ========================
@@ -456,6 +488,10 @@ settingsConfig['目击设置'] = {
         { label: '目击重叠时间判定比例',
           getter: () => String(Math.round(getSightingConfig().time_overlap_threshold * 100)),
           setter: (v) => { let c = getSightingConfig(); c.time_overlap_threshold = parseInt(v) / 100; setSightingConfig(c); },
+          validate: (v) => { const n = parseInt(v); return (isNaN(n) || n < 0 || n > 100) ? "请填 0-100 的整数" : null; } },
+        { label: '撞见触发概率',
+          getter: () => String(getSightingConfig().trigger_chance ?? 50),
+          setter: (v) => { let c = getSightingConfig(); c.trigger_chance = parseInt(v); setSightingConfig(c); },
           validate: (v) => { const n = parseInt(v); return (isNaN(n) || n < 0 || n > 100) ? "请填 0-100 的整数" : null; } },
         { label: '目击报告方式',
           getter: () => getSightingConfig().send_to_all ? '双向通知' : '单向通知',
@@ -492,7 +528,7 @@ settingsConfig['拍卖设置'] = {
             const currency = getMainStorage('auction_currency', '金币');
             const main = getMainExt();
             if (!main) return currency;
-            const reg = JSON.parse(main.storageGet("item_registry") || "{}");
+            const reg = JSON.parse(mainStorGet("item_registry") || "{}");
             const currencies = Object.values(reg).filter(r => r.type === "currency").map(r => r.name);
             return currencies.length ? `${currency}（可选：${currencies.join("、")}）` : currency;
           },
@@ -505,8 +541,8 @@ settingsConfig['拍卖设置'] = {
             if (!attr) return "不能为空";
             const main = getMainExt();
             if (!main) return null;
-            const presets = JSON.parse(main.storageGet("sys_attr_presets") || "[]");
-            const reg = JSON.parse(main.storageGet("item_registry") || "{}");
+            const presets = JSON.parse(mainStorGet("sys_attr_presets") || "[]");
+            const reg = JSON.parse(mainStorGet("item_registry") || "{}");
             const isCurrency = Object.values(reg).some(i => i.type === "currency" && i.name === attr);
             if (!presets.includes(attr) && !isCurrency) return `「${attr}」不是已注册的属性或货币。请先注册属性（注册属性 ${attr}）或货币（注册货币 ${attr}*描述）`;
             return null;
@@ -633,12 +669,12 @@ function ensureDefaults(main) {
         "item_pool_mode": "自由池",
     };
     for (const [key, val] of Object.entries(defaults)) {
-        const existing = main.storageGet(key);
-        if (!existing || existing.trim() === "") main.storageSet(key, val);
+        const existing = mainStorGet(key);
+        if (!existing || existing.trim() === "") mainStorSet(key, val);
     }
     // 迁移：为已存在的 global_feature_toggle 补充新增字段（兼容旧数据）
     try {
-        const existingFt = main.storageGet("global_feature_toggle");
+        const existingFt = mainStorGet("global_feature_toggle");
         if (existingFt && existingFt.trim()) {
             const ft = JSON.parse(existingFt);
             const newFields = {
@@ -650,7 +686,7 @@ function ensureDefaults(main) {
             for (const [k, v] of Object.entries(newFields)) {
                 if (ft[k] === undefined) { ft[k] = v; changed = true; }
             }
-            if (changed) main.storageSet("global_feature_toggle", JSON.stringify(ft));
+            if (changed) mainStorSet("global_feature_toggle", JSON.stringify(ft));
         }
     } catch(e) {}
 }
@@ -773,44 +809,44 @@ function generateStatisticsReport(ctx, msg, newDay, previousDay, isCleared = fal
 
     // 读取各种计数
     const meetingCounts = {
-        "电话": parseInt(main.storageGet("a_meetingCount_call") || "0"),
-        "私密": parseInt(main.storageGet("a_meetingCount_private") || "0"),
-        "寄信": parseInt(main.storageGet("a_meetingCount_chaosletter") || "0"),
-        "发送信件": parseInt(main.storageGet("a_meetingCount_directletter") || "0"),
-        "心动信": parseInt(main.storageGet("a_meetingCount_lovemail") || "0"),
-        "礼物": parseInt(main.storageGet("a_meetingCount_gift") || "0"),
-        "心愿": parseInt(main.storageGet("a_meetingCount_wish") || "0"),
-        "官约": parseInt(main.storageGet("a_meetingCount_official") || "0")
+        "电话": parseInt(mainStorGet("a_meetingCount_call") || "0"),
+        "私密": parseInt(mainStorGet("a_meetingCount_private") || "0"),
+        "寄信": parseInt(mainStorGet("a_meetingCount_chaosletter") || "0"),
+        "发送信件": parseInt(mainStorGet("a_meetingCount_directletter") || "0"),
+        "心动信": parseInt(mainStorGet("a_meetingCount_lovemail") || "0"),
+        "礼物": parseInt(mainStorGet("a_meetingCount_gift") || "0"),
+        "心愿": parseInt(mainStorGet("a_meetingCount_wish") || "0"),
+        "官约": parseInt(mainStorGet("a_meetingCount_official") || "0")
     };
 
-    const groupList = JSON.parse(main.storageGet("group") || "[]");
+    const groupList = JSON.parse(mainStorGet("group") || "[]");
     const totalGroups = groupList.length;
     const occupiedGroups = groupList.filter(g => g.endsWith("_占用")).length;
     const availableGroups = totalGroups - occupiedGroups;
 
-    const a_private_group = JSON.parse(main.storageGet("a_private_group") || "{}");
+    const a_private_group = JSON.parse(mainStorGet("a_private_group") || "{}");
     const playerCount = a_private_group[platform] ? Object.keys(a_private_group[platform]).length : 0;
-    const loveshow_name = main.storageGet("love_show_name") || "未设置";
+    const loveshow_name = mainStorGet("love_show_name") || "未设置";
 
-    const appointmentList = JSON.parse(main.storageGet("appointmentList") || "[]");
+    const appointmentList = JSON.parse(mainStorGet("appointmentList") || "[]");
     const pendingRequests = appointmentList.length;
 
-    const b_MultiGroupRequest = JSON.parse(main.storageGet("b_MultiGroupRequest") || "{}");
+    const b_MultiGroupRequest = JSON.parse(mainStorGet("b_MultiGroupRequest") || "{}");
     const multiRequests = Object.keys(b_MultiGroupRequest).length;
 
-    const b_confirmedSchedule = JSON.parse(main.storageGet("b_confirmedSchedule") || "{}");
+    const b_confirmedSchedule = JSON.parse(mainStorGet("b_confirmedSchedule") || "{}");
     let activeMeetings = 0;
     for (const key in b_confirmedSchedule) {
         activeMeetings += b_confirmedSchedule[key].filter(item => item.status === "active").length;
     }
 
-    const wishPool = JSON.parse(main.storageGet("a_wishPool") || "[]");
+    const wishPool = JSON.parse(mainStorGet("a_wishPool") || "[]");
     const wishCount = wishPool.length;
 
-    const lovemailPool = JSON.parse(main.storageGet("lovemail_pool") || "[]");
+    const lovemailPool = JSON.parse(mainStorGet("lovemail_pool") || "[]");
     const lovemailCount = lovemailPool.length;
 
-    const groupExpireInfo = JSON.parse(main.storageGet("group_expire_info") || "{}");
+    const groupExpireInfo = JSON.parse(mainStorGet("group_expire_info") || "{}");
     const expiredGroups = Object.entries(groupExpireInfo)
         .filter(([_, info]) => Date.now() > info.expireTime)
         .length;
@@ -862,11 +898,11 @@ function sendStatisticsToBackgroundGroup(ctx, msg, newDay, statisticsReport, isC
     const main = getMainExt();
     if (!main) return;
 
-    let backgroundGroupId = JSON.parse(main.storageGet("background_group_id") || "null");
-    const fupanRouting = main.storageGet("fupan_routing_enabled") === "true";
+    let backgroundGroupId = JSON.parse(mainStorGet("background_group_id") || "null");
+    const fupanRouting = mainStorGet("fupan_routing_enabled") === "true";
     if (fupanRouting) {
         try {
-            const routingMap = JSON.parse(main.storageGet("fupan_routing_groups") || "{}");
+            const routingMap = JSON.parse(mainStorGet("fupan_routing_groups") || "{}");
             const firstId = Object.values(routingMap)[0];
             if (firstId) backgroundGroupId = firstId;
         } catch (e) {}
@@ -915,42 +951,42 @@ cmd_set_days.solve = (ctx, msg, args) => {
     const main = getMainExt();
     if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件");
 
-    const prev = main.storageGet("global_days") || "未设置";
+    const prev = mainStorGet("global_days") || "未设置";
     const platform = msg.platform;
 
     // ★ 第一步：生成报告（在清空前，基于当前数据）
     const report = generateStatisticsReport(ctx, msg, day, prev);
 
     // ★ 第二步：清空所有计数
-    ["a_meetingCount_call","a_meetingCount_private","a_meetingCount_letter","a_meetingCount_gift","a_meetingCount_wish","a_meetingCount_chaosletter","a_meetingCount_secretletter","a_meetingCount_official"].forEach(k => main.storageSet(k, "0"));
-    const groups = JSON.parse(main.storageGet("a_private_group") || "{}")[platform];
+    ["a_meetingCount_call","a_meetingCount_private","a_meetingCount_letter","a_meetingCount_gift","a_meetingCount_wish","a_meetingCount_chaosletter","a_meetingCount_secretletter","a_meetingCount_official","a_meetingCount_lovemail","a_meetingCount_directletter"].forEach(k => mainStorSet(k, "0"));
+    const groups = JSON.parse(mainStorGet("a_private_group") || "{}")[platform];
     if (groups) {
         // 新结构：key 是 uid，groups[uid][0] 是 roleName
         for (let uid in groups) {
-            main.storageSet(`chaos_letter_daily_${platform}:${uid}_${day}`, "0");
+            mainStorSet(`chaos_letter_daily_${platform}:${uid}_${day}`, "0");
         }
     }
-    main.storageSet("a_wishPool", "[]");
-    main.storageSet("lovemail_pool", "[]");
+    mainStorSet("a_wishPool", "[]");
+    mainStorSet("lovemail_pool", "[]");
 
     // ★ 第三步：设置新天数
-    main.storageSet("global_days", day);
-    main.storageSet("auto_day_last_reset", "0");
+    mainStorSet("global_days", day);
+    mainStorSet("auto_day_last_reset", "0");
 
     let resp = `✅ 已将全局天数从 ${prev} 设置为：${day}`;
     resp += "\n✅ 已自动清空所有会面计数、每日信件计数、寄信限制、心愿池和心动信池";
 
     // ★ 第四步：发送报告
-    const announceGid = JSON.parse(main.storageGet("adminAnnounceGroupId") || "null");
+    const announceGid = JSON.parse(mainStorGet("adminAnnounceGroupId") || "null");
     if (announceGid) {
         sendTextToGroup(platform, announceGid, `📜 全局天数已从 ${prev} 切换到 ${day}（所有计数已自动重置）`);
     }
-    const bgGid = JSON.parse(main.storageGet("background_group_id") || "null");
-    const fupanRoutingForReport = main.storageGet("fupan_routing_enabled") === "true";
+    const bgGid = JSON.parse(mainStorGet("background_group_id") || "null");
+    const fupanRoutingForReport = mainStorGet("fupan_routing_enabled") === "true";
     let reportTarget = bgGid;
     if (fupanRoutingForReport) {
         try {
-            const rm = JSON.parse(main.storageGet("fupan_routing_groups") || "{}");
+            const rm = JSON.parse(mainStorGet("fupan_routing_groups") || "{}");
             const firstId = Object.values(rm)[0];
             if (firstId) reportTarget = firstId;
         } catch (e) {}
@@ -972,31 +1008,31 @@ function performAutoDayReset(newDay, now) {
     const main = getMainExt();
     if (!main) return;
 
-    const prev = main.storageGet("global_days") || "未设置";
+    const prev = mainStorGet("global_days") || "未设置";
     const mockMsg = { platform: "QQ" };
 
     // ★ 第一步：生成报告（在清空前，基于当前数据）
     const report = generateStatisticsReport(null, mockMsg, newDay, prev);
 
     // ★ 第二步：清空所有计数
-    ["a_meetingCount_call","a_meetingCount_private","a_meetingCount_letter","a_meetingCount_gift","a_meetingCount_wish","a_meetingCount_chaosletter","a_meetingCount_secretletter","a_meetingCount_official"].forEach(k => main.storageSet(k, "0"));
-    const groups = JSON.parse(main.storageGet("a_private_group") || "{}")["QQ"];
+    ["a_meetingCount_call","a_meetingCount_private","a_meetingCount_letter","a_meetingCount_gift","a_meetingCount_wish","a_meetingCount_chaosletter","a_meetingCount_secretletter","a_meetingCount_official","a_meetingCount_lovemail","a_meetingCount_directletter"].forEach(k => mainStorSet(k, "0"));
+    const groups = JSON.parse(mainStorGet("a_private_group") || "{}")["QQ"];
     if (groups) {
         // 新结构：key 是 uid，groups[uid][0] 是 roleName
         for (let uid in groups) {
-            main.storageSet(`chaos_letter_daily_QQ:${uid}_${newDay}`, "0");
+            mainStorSet(`chaos_letter_daily_QQ:${uid}_${newDay}`, "0");
         }
     }
-    main.storageSet("a_wishPool", "[]");
-    main.storageSet("lovemail_pool", "[]");
+    mainStorSet("a_wishPool", "[]");
+    mainStorSet("lovemail_pool", "[]");
 
     // ★ 第三步：设置新天数
-    main.storageSet("global_days", newDay);
+    mainStorSet("global_days", newDay);
 
     // ★ 第四步：发送报告
-    const announceGid = JSON.parse(main.storageGet("adminAnnounceGroupId") || "null");
+    const announceGid = JSON.parse(mainStorGet("adminAnnounceGroupId") || "null");
     if (announceGid) sendTextToGroup("QQ", announceGid, `📜 自动天数推进：${prev} → ${newDay}（所有计数已清空）`);
-    const bgGid = JSON.parse(main.storageGet("background_group_id") || "null");
+    const bgGid = JSON.parse(mainStorGet("background_group_id") || "null");
     if (bgGid) sendStatisticsToBackgroundGroup(null, mockMsg, newDay, report, true);
 
     console.log(`[自动天数] 已从 ${prev} 推进至 ${newDay}，并清空所有计数`);
@@ -1007,16 +1043,16 @@ function registerAutoDaySystem() {
     autoDayTimer = setInterval(() => {
         const main = getMainExt();
         if (!main) return;
-        if (!JSON.parse(main.storageGet("auto_day_reset_enabled") || "false")) return;
+        if (!JSON.parse(mainStorGet("auto_day_reset_enabled") || "false")) return;
         const now = new Date();
         if (now.getHours() === 23 && now.getMinutes() === 59) {
             const todayKey = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
-            if (main.storageGet("auto_day_last_reset") === todayKey) return;
-            let cur = main.storageGet("global_days") || "D0";
+            if (mainStorGet("auto_day_last_reset") === todayKey) return;
+            let cur = mainStorGet("global_days") || "D0";
             let m = cur.match(/^D(\d+)$/i);
             if (!m) { cur = "D0"; m = ["D0","0"]; }
             performAutoDayReset(`D${parseInt(m[1])+1}`, now);
-            main.storageSet("auto_day_last_reset", todayKey);
+            mainStorSet("auto_day_last_reset", todayKey);
         }
     }, 60000);
 }
@@ -1030,7 +1066,7 @@ cmd_enable_auto_day.name = "开启自动天数";
 cmd_enable_auto_day.solve = (ctx, msg) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "权限不足");
     const main = getMainExt();
-    if (main) main.storageSet("auto_day_reset_enabled", "true");
+    if (main) mainStorSet("auto_day_reset_enabled", "true");
     seal.replyToSender(ctx, msg, "✅ 自动天数推进已开启，每天 23:59 自动将天数 +1 并清空计数");
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -1041,7 +1077,7 @@ cmd_disable_auto_day.name = "关闭自动天数";
 cmd_disable_auto_day.solve = (ctx, msg) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "权限不足");
     const main = getMainExt();
-    if (main) main.storageSet("auto_day_reset_enabled", "false");
+    if (main) mainStorSet("auto_day_reset_enabled", "false");
     seal.replyToSender(ctx, msg, "⏸️ 自动天数推进已关闭");
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -1089,13 +1125,13 @@ cmd_end_bonus.solve = function(ctx, msg, argv) {
     const main = getMainExt();
     if (!main) return seal.ext.newCmdExecuteResult(true);
 
-    const getTemplates = () => JSON.parse(main.storageGet("end_game_bonus_templates") || "[]");
-    const saveTemplates = (t) => main.storageSet("end_game_bonus_templates", JSON.stringify(t));
+    const getTemplates = () => JSON.parse(mainStorGet("end_game_bonus_templates") || "[]");
+    const saveTemplates = (t) => mainStorSet("end_game_bonus_templates", JSON.stringify(t));
     const findTemplate = (templates, name) => templates.find(t => t.name === name);
 
 
     const detectTargetType = (target) => {
-        const reg = JSON.parse(main.storageGet("item_registry") || "{}");
+        const reg = JSON.parse(mainStorGet("item_registry") || "{}");
         const upperTarget = target.toUpperCase();
         for (const r of Object.values(reg)) {
             if (r.type === "currency" && r.name === target) return "currency";
@@ -1513,9 +1549,9 @@ cmd_init_settings.solve = async (ctx, msg, argv) => {
         if (serverConfig) {
             // 只补空白项：server config 作为默认值，不覆盖已有设置
             for (const [key, value] of Object.entries(serverConfig)) {
-                const existing = main.storageGet(key);
+                const existing = mainStorGet(key);
                 if (!existing || existing.trim() === "") {
-                    main.storageSet(key, String(value));
+                    mainStorSet(key, String(value));
                 }
             }
             ensureDefaults(main); // 补 server config 未覆盖的项
@@ -1567,7 +1603,7 @@ cmd_sync_settings.solve = async (ctx, msg, argv) => {
         }
 
         for (const [key, value] of Object.entries(config)) {
-            main.storageSet(key, String(value));
+            mainStorSet(key, String(value));
         }
 
         seal.replyToSender(ctx, msg,
@@ -1593,16 +1629,16 @@ const SYNC_DIRECT_KEYS = [
     "love_show_name", "global_days", "auto_day_reset_enabled", "item_pool_mode",
     "adminAnnounceGroupId", "song_group_id", "background_group_id", "water_group_id",
     "fupan_routing_enabled", "fupan_routing_groups",
-    "enable_join_existing_appointment", "require_fupan_before_end", "group_expire_hours",
+    "enable_join_existing_appointment", "require_fupan_before_end", "group_expire_hours", "appointment_coin_cost", "idle_group_name",
     "mailCooldown", "allow_custom_letter_sign", "letter_public_send",
     "giftCooldown", "gift_public_send", "giftPublicChance", "giftDailyLimit",
     "allow_custom_gift_sign", "drop_hide_receiver",
     "shop_refresh_hours", "allow_private_rooms", "announceFrequency",
-    "lovemail_default_limit", "lovemail_delivery_time", "lovemail_expose", "lovemail_expose_chance",
+    "lovemail_default_limit", "lovemail_day_limits", "lovemail_delivery_time", "lovemail_expose", "lovemail_expose_chance",
     "direct_letter_daily_limit", "direct_letter_min_chars", "direct_letter_reward",
     "wish_public_send", "wish_bounty_enabled", "wish_max_concurrent",
-    "wish_daily_post_limit", "wish_daily_pick_limit",
-    "relationship_system_enabled", "max_relationships_per_user", "max_detail_chars",
+    "wish_daily_post_limit", "wish_daily_pick_limit", "wish_coin_cost",
+    "relationship_system_enabled", "max_relationships_per_user", "max_detail_chars", "max_detail_count", "max_rel_total_chars",
     "item_tracker_success_rate", "item_tracker_show_partner", "item_tracker_time_restrict",
     "apply_item_notification", "apply_item_expose_rate", "apply_item_hours",
     "shop_gift_catalog_on_receive",
@@ -1612,9 +1648,11 @@ const SYNC_DIRECT_KEYS = [
 // json_parent 键 → 子字段列表（与 CONFIG_SCHEMA json_parent 对应）
 const SYNC_JSON_PARENT_KEYS = {
     "global_feature_toggle": [
-        "enable_general_gift", "enable_general_appointment",
-        "enable_chaos_letter", "enable_wish_system", "enable_lovemail",
-        "enable_wechat", "enable_direct_letter"
+        "enable_general_letter", "enable_general_gift", "enable_general_appointment",
+        "enable_chaos_letter", "enable_secret_letter", "enable_wish_system", "enable_lovemail",
+        "enable_wechat", "enable_direct_letter",
+        "dlc_sighting", "dlc_fupan", "dlc_auction", "dlc_attack",
+        "dlc_forum", "dlc_auto_day", "dlc_moments"
     ],
     "chaos_letter_config": [
         "misdelivery", "blackoutText", "loseContent", "antonymReplace",
@@ -1624,12 +1662,15 @@ const SYNC_JSON_PARENT_KEYS = {
     "appointment_duration_config": ["phone", "private"],
     "sighting_system_config": [
         "enabled", "send_to_all", "max_reports_per_day",
-        "include_ended_meetings", "time_overlap_threshold"
+        "include_ended_meetings", "time_overlap_threshold", "trigger_chance"
     ],
     "place_system_config": ["enabled", "require_key_by_default"],
     "monitor_settings": [
-        "enabled", "auto_monitor_all_groups", "timeout", "remind_interval"
+        "enabled", "auto_monitor_all_groups",
+        "min_words_phone", "min_words_private", "min_words_wish", "min_words_official",
+        "timeout_phone", "timeout_private", "timeout_wish", "timeout_official"
     ],
+    "custom_type_labels": ["私密", "电话", "官约", "微信", "心愿"],
 };
 
 let cmd_push_to_server = seal.ext.newCmdItemInfo();
@@ -1651,7 +1692,7 @@ cmd_push_to_server.solve = async (ctx, msg, argv) => {
 
     // 直存键：直接读取
     for (const key of SYNC_DIRECT_KEYS) {
-        const val = main.storageGet(key);
+        const val = mainStorGet(key);
         if (val !== null && val !== undefined && val !== "") {
             payload[key] = val;
         }
@@ -1659,7 +1700,7 @@ cmd_push_to_server.solve = async (ctx, msg, argv) => {
 
     // json_parent 键：展开子字段，以 parent__subKey 格式写入
     for (const [parent, subKeys] of Object.entries(SYNC_JSON_PARENT_KEYS)) {
-        const raw = main.storageGet(parent);
+        const raw = mainStorGet(parent);
         if (!raw) continue;
         try {
             const obj = JSON.parse(raw);
@@ -1728,13 +1769,13 @@ cmd_full_sync.solve = async (ctx, msg, argv) => {
 
     // 直存配置键
     for (const key of SYNC_DIRECT_KEYS) {
-        const val = main.storageGet(key);
+        const val = mainStorGet(key);
         if (val !== null && val !== undefined && val !== "") payload[key] = val;
     }
 
     // json_parent 展开键
     for (const [parent, subKeys] of Object.entries(SYNC_JSON_PARENT_KEYS)) {
-        const raw = main.storageGet(parent);
+        const raw = mainStorGet(parent);
         if (!raw) continue;
         try {
             const obj = JSON.parse(raw);
@@ -1746,7 +1787,7 @@ cmd_full_sync.solve = async (ctx, msg, argv) => {
 
     // blob 键（物品注册、结戏模版等）
     for (const key of SYNC_BLOB_KEYS) {
-        const val = main.storageGet(key);
+        const val = mainStorGet(key);
         if (val !== null && val !== undefined && val !== "") payload[key] = val;
     }
 
@@ -1760,7 +1801,7 @@ cmd_full_sync.solve = async (ctx, msg, argv) => {
             const pendingData = await pendingResp.json();
             const pending = pendingData.pending || [];
             if (pending.length > 0) {
-                const reg = JSON.parse(main.storageGet("item_registry") || "{}");
+                const reg = JSON.parse(mainStorGet("item_registry") || "{}");
                 for (const p of pending) {
                     // 跳过名称已存在的
                     if (Object.values(reg).some(r => r.name === p.name)) continue;
@@ -1777,7 +1818,7 @@ cmd_full_sync.solve = async (ctx, msg, argv) => {
                                   maxUses: p.maxUses, attrs: p.attrs, price: 0, canResell: p.canResell };
                     pendingMerged++;
                 }
-                main.storageSet("item_registry", JSON.stringify(reg));
+                mainStorSet("item_registry", JSON.stringify(reg));
                 payload["item_registry"] = JSON.stringify(reg);
             }
             // 无论是否有 pending，都清空服务端的待同步列表
@@ -1885,6 +1926,15 @@ function sendSyncGuideForward(groupId) {
         data: { name: "同步指南", uin: "10001", content: lines.join("\n") }
     }));
 
+    const api = getApi();
+    if (api) {
+        api.ws({
+            action: "send_group_forward_msg",
+            params: { group_id: gid, messages: nodes },
+            echo: "sync_guide_" + Date.now()
+        }, null, null, null);
+        return;
+    }
     const socket = new WebSocket(url);
     socket.onopen = () => {
         socket.send(JSON.stringify({

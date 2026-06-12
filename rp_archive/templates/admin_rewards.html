@@ -192,7 +192,10 @@
     <a href="{{ url_for('admin_config_page') }}">游戏配置</a>
     <a href="{{ url_for('admin_groups') }}">群号组</a>
     <a href="{{ url_for('admin_rewards') }}" class="active">结戏奖励</a>
+    <a href="{{ url_for('admin_player_controls') }}">玩家控制</a>
     <a href="{{ url_for('admin_shows') }}">季管理</a>
+    <a href="{{ url_for('admin_command_guides') }}">指令指南</a>
+    <a href="{{ url_for('admin_time_schedule') }}">时间调度</a>
   </div>
 
   {% if request.args.get('saved') %}
@@ -462,7 +465,7 @@ function newBlock() {
   return { conditions:[{param:'字数',op:'>=',value:0}], rewards:[{rtype:'货币',target:'',amount:0}] };
 }
 function newTpl() {
-  return { name:'', enabled:true, blocks:[newBlock()] };
+  return { name:'', enabled:true, subtype:'通用', blocks:[newBlock()] };
 }
 
 // ── 渲染列表 ────────────────────────────────────────────────────────────────
@@ -487,9 +490,11 @@ function renderList() {
       var conn = bi < (tpl.blocks.length-1) ? '<span class="op-chip">'+(blk.next_op||'AND')+'</span>' : '';
       return '<div class="tpl-block-summary">'+conds+' → '+rwds+'</div>'+conn;
     }).join('');
+    var st = tpl.subtype && tpl.subtype !== '通用' ? tpl.subtype : '';
     return '<div class="tpl-card">'
       +'<div class="tpl-card-header">'
       +'<span class="tpl-card-name">'+esc(tpl.name||'（未命名）')+'</span>'
+      +(st ? '<span style="font-size:10px;background:#1a2a4a;color:#80b0e8;border:1px solid #2a4a7a;border-radius:4px;padding:1px 7px;font-weight:600;">'+esc(st)+'</span>' : '')
       +'<span class="tpl-card-badge '+(tpl.enabled?'badge-on':'badge-off')+'">'+( tpl.enabled?'● 启用':'○ 禁用')+'</span>'
       +'<button class="btn-edit-tpl" onclick="openEditor('+idx+')">编辑</button>'
       +'<button class="btn-del-tpl" onclick="deleteTpl('+idx+')">删除</button>'
@@ -541,6 +546,9 @@ function renderEditor() {
     '<h4>'+(isNew ? '＋ 新建模版' : '编辑模版')+'</h4>'
     +'<div class="editor-name-row">'
     +'  <input type="text" id="e-name" placeholder="模版名称（如：基础字数奖励）" value="'+esc(tpl.name)+'">'
+    +'  <select id="e-subtype" style="background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:5px 8px;font-size:12px;">'
+    +  ['通用','心意','官约','私约','电话'].map(function(s){return '<option value="'+s+'"'+(( tpl.subtype||'通用')===s?' selected':'')+'>'+s+'</option>';}).join('')
+    +'  </select>'
     +'  <label class="editor-enabled-toggle">'
     +'    <input type="checkbox" id="e-enabled" '+(tpl.enabled?'checked':'')+'> 启用'
     +'  </label>'
@@ -634,19 +642,25 @@ function renderRewardRow(r, bi, ri) {
     detailHtml += '<input class="e-input" type="number" placeholder="数量" value="'+esc(r.amount||0)+'" onchange="updateReward('+bi+','+ri+',\'amount\',+this.value)">';
   }
 
+  var prob = (r.prob == null) ? 100 : r.prob;
+  var probStyle = prob < 100 ? 'border-color:#f0a020;color:#f0a020;' : '';
   return '<div class="e-rwd-row" id="rwd-'+bi+'-'+ri+'">'
     +'<select onchange="updateRewardType('+bi+','+ri+',this.value)">'+rtypeOpts+'</select>'
     +detailHtml
+    +'<input class="e-input" type="number" min="1" max="100" value="'+esc(prob)+'" title="触发概率（1-100%）" style="width:52px;text-align:center;'+probStyle+'" onchange="updateReward('+bi+','+ri+',\'prob\',Math.max(1,Math.min(100,+this.value||100)))">'
+    +'<span style="font-size:11px;color:var(--muted);">%</span>'
     +'<button class="btn-rm" onclick="removeReward('+bi+','+ri+')" title="删除">✕</button>'
     +'</div>';
 }
 
 // ── 编辑操作（同步 editTpl，然后局部刷新或全刷编辑器）────────────────────
 function syncHeader() {
-  var nameEl = document.getElementById('e-name');
-  var enEl   = document.getElementById('e-enabled');
-  if (nameEl) editTpl.name    = nameEl.value;
-  if (enEl)   editTpl.enabled = enEl.checked;
+  var nameEl    = document.getElementById('e-name');
+  var enEl      = document.getElementById('e-enabled');
+  var subtypeEl = document.getElementById('e-subtype');
+  if (nameEl)    editTpl.name    = nameEl.value;
+  if (enEl)      editTpl.enabled = enEl.checked;
+  if (subtypeEl) editTpl.subtype = subtypeEl.value;
 }
 
 function addBlock() {
@@ -697,7 +711,7 @@ function updateCondOp(bi, ci, op) {
 
 function addReward(bi) {
   syncHeader();
-  editTpl.blocks[bi].rewards.push({rtype:'货币', target: currencies.length ? currencies[0].name : '', amount:0});
+  editTpl.blocks[bi].rewards.push({rtype:'货币', target: currencies.length ? currencies[0].name : '', amount:0, prob:100});
   renderEditor();
 }
 
@@ -715,7 +729,7 @@ function updateReward(bi, ri, key, val) {
 
 function updateRewardType(bi, ri, rtype) {
   syncHeader();
-  var r = {rtype: rtype, amount: editTpl.blocks[bi].rewards[ri].amount || 0};
+  var r = {rtype: rtype, amount: editTpl.blocks[bi].rewards[ri].amount || 0, prob: editTpl.blocks[bi].rewards[ri].prob || 100};
   if (rtype === '货币') {
     var currs = getItemsByKind('currency');
     r.target = currs.length ? currs[0].code : '';

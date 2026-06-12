@@ -36,23 +36,48 @@ const DINNER_MENUS = {
 };
 
 // ========================
-// 核心逻辑：读取主插件存储
+// 核心逻辑：主插件共享 API（globalThis.__changriApi，调用时懒获取）
+// 主插件已更新时全部委托给它；否则走兼容路径（直读主插件存储）
 // ========================
+function getApi() { return globalThis.__changriApi || null; }
+
+function mainStorGet(key) {
+    const api = getApi();
+    if (api) return api.kvGetRaw(key);
+    const m = seal.ext.find('changri');
+    return m ? m.storageGet(key) : null;
+}
+
+function mainStorSet(key, val) {
+    const api = getApi();
+    if (api) { api.kvSetRaw(key, val); return; }
+    const m = seal.ext.find('changri');
+    if (m) m.storageSet(key, val);
+}
+
 function getChangriPrimaryUid(crExt, platform, uid) {
+    const api = getApi();
+    if (api) return api.getPrimaryUid(platform, uid);
     try {
-        const extras = JSON.parse(crExt.storageGet("extra_accounts") || "{}");
+        const extras = JSON.parse(mainStorGet("extra_accounts") || "{}");
         return extras[`${platform}:${uid}`] || uid;
     } catch (e) { return uid; }
 }
 
 function getChangriRoleName(ctx, msg) {
+    const api = getApi();
+    if (api) {
+        // 保留旧语义：主存储里完全没有角色表时回退昵称
+        if (!api.kvGetRaw("a_private_group")) return msg.sender.nickname;
+        return api.getRoleName(ctx, msg);
+    }
     let crExt = seal.ext.find('changri');
     if (!crExt) {
         return msg.sender.nickname;
     }
 
     try {
-        let rawData = crExt.storageGet("a_private_group");
+        let rawData = mainStorGet("a_private_group");
         if (!rawData) return msg.sender.nickname;
 
         let charPlatform = JSON.parse(rawData);
@@ -71,6 +96,8 @@ function getChangriRoleName(ctx, msg) {
 
 // 权限检查
 function isUserAdmin(ctx, msg) {
+    const api = getApi();
+    if (api) return api.isUserAdmin(ctx, msg);
     if (ctx.privilegeLevel === 100) return true;
 
     const platform = msg.platform;
@@ -80,7 +107,7 @@ function isUserAdmin(ctx, msg) {
     if (!crExt) return false;
 
     try {
-        let rawAdmin = crExt.storageGet("a_adminList");
+        let rawAdmin = mainStorGet("a_adminList");
         if (!rawAdmin) return false;
 
         let a_adminList = JSON.parse(rawAdmin);
@@ -664,9 +691,9 @@ cmd_shoot.solve = (ctx, msg, cmdArgs) => {
 
     // 游戏继续，确定下一个开枪的玩家
     if (hasBullet) {
-        // 如果当前玩家死亡，下一个从存活列表中取第一个（按原座位顺序）
-        // 注意：当前玩家已从aliveSeats中移除，所以下一个就是aliveSeats[0]（如果还有的话）
-        game.currentSeat = game.aliveSeats[0];
+        // 死亡后继续往后顺序，取第一个座位号大于 currentSeatIdx 的存活者，找不到则绕回第一个
+        const nextAfterDead = game.aliveSeats.find(idx => idx > currentSeatIdx) ?? game.aliveSeats[0];
+        game.currentSeat = nextAfterDead;
     } else {
         // 安全，按顺序取下一个存活玩家
         const nextSeat = nextAliveSeat(game.aliveSeats, currentSeatIdx);
@@ -831,7 +858,7 @@ cmd_poke.solve = (ctx, msg, cmdArgs) => {
     const uid = getChangriPrimaryUid(crExt, platform, rawUid);
 
     // 获取 a_private_group
-    let rawData = crExt.storageGet("a_private_group");
+    let rawData = mainStorGet("a_private_group");
     if (!rawData) {
         seal.replyToSender(ctx, msg, "❌ 未找到角色绑定数据，请先使用「创建新角色」");
         return seal.ext.newCmdExecuteResult(true);
@@ -945,3 +972,329 @@ cmd_poke.solve = (ctx, msg, cmdArgs) => {
 };
 
 ext.cmdMap["戳你一下"] = cmd_poke;
+
+// =========================
+// 🏰 卫兵巡逻躲藏赛（10 区域 / 逐轮+1卫兵 / 淘汰至前3）
+// =========================
+
+function _gg_getState() {
+  return JSON.parse(ext.storageGet("guard_game_state") || "{}");
+}
+function _gg_saveState(s) {
+  ext.storageSet("guard_game_state", JSON.stringify(s || {}));
+}
+function _gg_aliasOf(fullUid) {
+  try {
+    const crExt = seal.ext.find('changri');
+    if (!crExt) return fullUid;
+    const apg = JSON.parse(mainStorGet("a_private_group") || "{}");
+    const colonIdx = fullUid.indexOf(":");
+    if (colonIdx === -1) return fullUid;
+    const platform = fullUid.slice(0, colonIdx);
+    const uid = fullUid.slice(colonIdx + 1);
+    return apg[platform]?.[uid]?.[0] || fullUid;
+  } catch (e) {
+    return fullUid;
+  }
+}
+function _gg_sampleDistinct(arr, k) {
+  k = Math.min(k, arr.length);
+  const pool = arr.slice();
+  const out = [];
+  while (out.length < k && pool.length) {
+    const i = Math.floor(Math.random() * pool.length);
+    out.push(pool.splice(i, 1)[0]);
+  }
+  return out;
+}
+
+function _gg_sendPrivate(ctx, platform, fullUid, text) {
+  try {
+    const crExt = seal.ext.find('changri');
+    if (!crExt) return;
+    const apg = JSON.parse(mainStorGet("a_private_group") || "{}");
+    const uid = fullUid.replace(`${platform}:`, "");
+    const gid = apg[platform]?.[uid]?.[1];
+    if (!gid) return;
+    const pm = seal.newMessage();
+    pm.messageType = "group";
+    pm.sender = {};
+    pm.sender.userId = fullUid;
+    pm.groupId = `${platform}-Group:${gid}`;
+    const pmCtx = seal.createTempCtx(ctx.endPoint, pm);
+    seal.replyToSender(pmCtx, pm, text);
+  } catch (e) {
+    console.log("[巡逻] 私发失败：" + e.message);
+  }
+}
+
+function _gg_getAnnounceGroup(platform) {
+  try {
+    const crExt = seal.ext.find('changri');
+    if (!crExt) return null;
+    const gid = JSON.parse(mainStorGet("adminAnnounceGroupId") || "null");
+    return gid ? `${platform}-Group:${gid}` : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function _gg_getLocations() {
+  const saved = ext.storageGet("guard_game_locations");
+  if (saved) {
+    try {
+      const locs = JSON.parse(saved);
+      if (Array.isArray(locs) && locs.length >= 2) return locs;
+    } catch (e) {}
+  }
+  return ["伦敦", "巴黎", "罗马", "君士坦丁堡", "北京", "京都", "莫斯科", "维也纳", "开罗", "德里"];
+}
+
+const cmd_guard_set_locations = seal.ext.newCmdItemInfo();
+cmd_guard_set_locations.name = "巡逻设置地点";
+cmd_guard_set_locations.help = "。巡逻设置地点 地点1 地点2 ... —— 设置捉迷藏地点（至少2个，空格分隔，仅管理员）";
+cmd_guard_set_locations.solve = (ctx, msg, args) => {
+  if (!isUserAdmin(ctx, msg)) {
+    seal.replyToSender(ctx, msg, "⚠️ 仅管理员可设置地点。");
+    return seal.ext.newCmdExecuteResult(true);
+  }
+  const raw = args.getRestArgsFrom(1)?.trim();
+  if (!raw) {
+    const current = _gg_getLocations();
+    seal.replyToSender(ctx, msg, `📍 当前地点（${current.length}个）：${current.join("、")}\n\n用法：。巡逻设置地点 地点1 地点2 ...（空格分隔，至少2个）`);
+    return seal.ext.newCmdExecuteResult(true);
+  }
+  const locs = raw.split(/\s+/).map(s => s.trim()).filter(s => s.length > 0);
+  if (locs.length < 2) {
+    seal.replyToSender(ctx, msg, "❌ 至少需要2个地点。");
+    return seal.ext.newCmdExecuteResult(true);
+  }
+  ext.storageSet("guard_game_locations", JSON.stringify(locs));
+  seal.replyToSender(ctx, msg, `✅ 地点已更新（${locs.length}个）：${locs.join("、")}\n下次开局将自动使用这批地点。`);
+  return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["巡逻设置地点"] = cmd_guard_set_locations;
+
+const cmd_guard_init = seal.ext.newCmdItemInfo();
+cmd_guard_init.name = "巡逻开局";
+cmd_guard_init.help = "。巡逻开局 [群号] —— 开局，播报群优先读长日戏群，可手动传群号覆盖（仅管理员）";
+cmd_guard_init.solve = (ctx, msg, args) => {
+  if (!isUserAdmin(ctx, msg)) {
+    seal.replyToSender(ctx, msg, "⚠️ 仅管理员可开局。");
+    return seal.ext.newCmdExecuteResult(true);
+  }
+  const platform = msg.platform;
+  const groupArg = args.getArgN(1)?.trim();
+  const groupId = groupArg
+    ? `${platform}-Group:${groupArg}`
+    : (_gg_getAnnounceGroup(platform) || `${platform}-Group:${msg.groupId?.replace(`${platform}-Group:`, "") || ""}`);
+  if (!groupId || groupId.endsWith("-Group:")) {
+    seal.replyToSender(ctx, msg, "❌ 未找到长日戏群配置，请用「。巡逻开局 群号」手动指定播报群。");
+    return seal.ext.newCmdExecuteResult(true);
+  }
+  const locations = _gg_getLocations();
+  const state = {
+    active: true,
+    round: 0,
+    locations,
+    broadcastGroup: groupId,
+    alive: [],
+    jailed: [],
+    choices: {},
+    lastDangerous: [],
+    winners: []
+  };
+  _gg_saveState(state);
+  seal.replyToSender(ctx, msg,
+    `✅ 开局成功！\n📣 播报群：${groupId}\n📍 地点（${locations.length}）：${locations.join("、")}\n` +
+    `请选手先用「。巡逻报名」登记，再用「。巡逻躲藏 地点名」下注。\n` +
+    `💡 可用「。巡逻设置地点」修改地点。`
+  );
+  return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["巡逻开局"] = cmd_guard_init;
+
+const cmd_guard_join = seal.ext.newCmdItemInfo();
+cmd_guard_join.name = "巡逻报名";
+cmd_guard_join.help = "。巡逻报名 —— 加入本轮巡逻赛（需已注册假面名）";
+cmd_guard_join.solve = (ctx, msg) => {
+  const uid = msg.sender.userId;
+  const alias = _gg_aliasOf(uid);
+  const state = _gg_getState();
+  if (!state.active) {
+    seal.replyToSender(ctx, msg, "📭 尚未开局，请等待管理员「。巡逻开局」。");
+    return seal.ext.newCmdExecuteResult(true);
+  }
+  if (state.round > 0) {
+    seal.replyToSender(ctx, msg, "🚫 巡逻已开始，不接受中途加入。");
+    return seal.ext.newCmdExecuteResult(true);
+  }
+  if (state.jailed.find(j => j.uid === uid)) {
+    seal.replyToSender(ctx, msg, "🚫 你已入狱淘汰，无法再次报名。");
+    return seal.ext.newCmdExecuteResult(true);
+  }
+  if (!state.alive.includes(uid)) {
+    state.alive.push(uid);
+  }
+  _gg_saveState(state);
+  seal.replyToSender(ctx, msg, `🎭 报名成功，${alias}，请用「。巡逻躲藏 地点名」选择藏身处。`);
+  return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["巡逻报名"] = cmd_guard_join;
+
+const cmd_guard_hide = seal.ext.newCmdItemInfo();
+cmd_guard_hide.name = "巡逻躲藏";
+cmd_guard_hide.help = "。巡逻躲藏 地点名 —— 本回合你的藏身处（每轮仅最后一次有效）";
+cmd_guard_hide.solve = (ctx, msg, args) => {
+  const uid = msg.sender.userId;
+  const alias = _gg_aliasOf(uid);
+  const place = args.getRestArgsFrom(1)?.trim();
+  const state = _gg_getState();
+  if (!state.active) {
+    seal.replyToSender(ctx, msg, "📭 尚未开局。");
+    return seal.ext.newCmdExecuteResult(true);
+  }
+  if (!place) {
+    const ret = seal.ext.newCmdExecuteResult(true);
+    ret.showHelp = true;
+    return ret;
+  }
+  if (!state.alive.includes(uid)) {
+    seal.replyToSender(ctx, msg, "⚠️ 你尚未报名或已被淘汰。请先「。巡逻报名」。");
+    return seal.ext.newCmdExecuteResult(true);
+  }
+  if (!state.locations.includes(place)) {
+    seal.replyToSender(ctx, msg, `❌ 无此地点。可选：${state.locations.join("、")}`);
+    return seal.ext.newCmdExecuteResult(true);
+  }
+  state.choices[uid] = place;
+  _gg_saveState(state);
+  seal.replyToSender(ctx, msg, `🫥 已躲入「${place}」。愿群星庇佑你，${alias}。`);
+  return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["巡逻躲藏"] = cmd_guard_hide;
+
+const cmd_guard_call = seal.ext.newCmdItemInfo();
+cmd_guard_call.name = "巡逻";
+cmd_guard_call.help = "。巡逻 —— 结算当前回合：卫兵数量在每轮+1（仅管理员）";
+cmd_guard_call.solve = (ctx, msg) => {
+  if (!isUserAdmin(ctx, msg)) {
+    seal.replyToSender(ctx, msg, "⚠️ 仅管理员可结算巡逻。");
+    return seal.ext.newCmdExecuteResult(true);
+  }
+  const state = _gg_getState();
+  if (!state.active) {
+    seal.replyToSender(ctx, msg, "📭 尚未开局。");
+    return seal.ext.newCmdExecuteResult(true);
+  }
+  if (state.alive.length <= 3) {
+    seal.replyToSender(ctx, msg, "ℹ️ 存活人数 ≤ 3，无需继续巡逻。");
+    return seal.ext.newCmdExecuteResult(true);
+  }
+  state.round += 1;
+  const guardCount = Math.min(state.round, state.locations.length);
+  const dangerous = _gg_sampleDistinct(state.locations, guardCount);
+  state.lastDangerous = dangerous;
+  const eliminated = [];
+  const survived = [];
+  for (const uid of state.alive) {
+    const pick = state.choices[uid];
+    if (!pick || dangerous.includes(pick)) {
+      const alias = _gg_aliasOf(uid);
+      eliminated.push({ uid, alias, roundOut: state.round, place: pick || "未躲藏" });
+    } else {
+      survived.push(uid);
+    }
+  }
+  for (const e of eliminated) state.jailed.push(e);
+  state.alive = survived;
+  state.choices = {};
+  let finaleNote = "";
+  if (state.alive.length <= 3) {
+    const podiumAliases = state.alive.map(_gg_aliasOf);
+    state.winners = podiumAliases.slice(0, 3);
+    state.active = false;
+    finaleNote = `\n🏆 前三名诞生：${podiumAliases.join("、")}（人数不足3则以现存为准）。\n🎉 本场结束。`;
+  }
+  _gg_saveState(state);
+  const platform = msg.platform;
+  for (const e of eliminated) {
+    _gg_sendPrivate(ctx, platform, e.uid,
+      `🚨 第 ${state.round} 轮：你在「${e.place}」被卫兵逮捕，已淘汰。`
+    );
+  }
+  if (state.active) {
+    for (const uid of state.alive) {
+      _gg_sendPrivate(ctx, platform, uid,
+        `✅ 第 ${state.round} 轮幸存！请选择第 ${state.round + 1} 轮的藏身处：\n` +
+        `「。巡逻躲藏 地点名」\n可选：${state.locations.join("、")}`
+      );
+    }
+  } else {
+    for (const uid of state.alive) {
+      _gg_sendPrivate(ctx, platform, uid, `🏆 游戏结束，你是最后的幸存者！`);
+    }
+  }
+  const outMsg = seal.newMessage();
+  outMsg.messageType = "group";
+  outMsg.sender = {};
+  outMsg.groupId = state.broadcastGroup;
+  const gctx = seal.createTempCtx(ctx.endPoint, outMsg);
+  const lines = [];
+  lines.push(`🛡️ 第 ${state.round} 轮巡逻结算`);
+  lines.push(`⚠️ 危险地点（${guardCount}）：${dangerous.join("、")}`);
+  if (eliminated.length) {
+    lines.push(`🚨 本轮被捕（${eliminated.length}）：` +
+      eliminated.map(e => `「${e.alias}」@${e.place}`).join("、"));
+  } else {
+    lines.push(`✅ 本轮无人被捕。`);
+  }
+  lines.push(`🫱 存活人数：${state.alive.length}`);
+  if (finaleNote) lines.push(finaleNote);
+  if (state.active && state.alive.length > 0) {
+    const atStr = state.alive.map(uid => `[CQ:at,qq=${uid.replace(`${platform}:`, "")}]`).join(" ");
+    lines.push(`\n请选择第 ${state.round + 1} 轮藏身处：\n${atStr}`);
+  }
+  seal.replyToSender(gctx, outMsg, lines.join("\n"));
+  seal.replyToSender(ctx, msg, "✅ 已结算并播报。");
+  return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["巡逻"] = cmd_guard_call;
+
+const cmd_guard_status = seal.ext.newCmdItemInfo();
+cmd_guard_status.name = "巡逻状态";
+cmd_guard_status.help = "。巡逻状态 —— 查看当前回合、危险地点、存活/入狱名单";
+cmd_guard_status.solve = (ctx, msg) => {
+  const state = _gg_getState();
+  if (!state.active && !state.round) {
+    seal.replyToSender(ctx, msg, "📭 尚未开局。");
+    return seal.ext.newCmdExecuteResult(true);
+  }
+  const aliveAliases = (state.alive || []).map(_gg_aliasOf);
+  const jailedList = (state.jailed || []).map(j => `「${j.alias}」@${j.place}（R${j.roundOut}）`);
+  const text =
+    `📊 巡逻赛况` +
+    `\n· 状态：${state.active ? "进行中" : "已结束"}` +
+    `\n· 回合：${state.round || 0}` +
+    `\n· 上轮危险：${(state.lastDangerous || []).join("、") || "——"}` +
+    `\n· 存活（${aliveAliases.length}）：${aliveAliases.join("、") || "——"}` +
+    `\n· 入狱（${jailedList.length}）：${jailedList.join("、") || "——"}` +
+    (state.winners?.length ? `\n· 前三名：${state.winners.join("、")}` : "");
+  seal.replyToSender(ctx, msg, text);
+  return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["巡逻状态"] = cmd_guard_status;
+
+const cmd_guard_end = seal.ext.newCmdItemInfo();
+cmd_guard_end.name = "巡逻结束";
+cmd_guard_end.help = "。巡逻结束 —— 强制结束并清空赛局（仅管理员）";
+cmd_guard_end.solve = (ctx, msg) => {
+  if (!isUserAdmin(ctx, msg)) {
+    seal.replyToSender(ctx, msg, "⚠️ 仅管理员可结束赛局。");
+    return seal.ext.newCmdExecuteResult(true);
+  }
+  _gg_saveState({});
+  seal.replyToSender(ctx, msg, "🧹 已清空巡逻赛数据。");
+  return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["巡逻结束"] = cmd_guard_end;

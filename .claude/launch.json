@@ -13,5 +13,11 @@
       "runtimeArgs": ["rp_archive/app.py"],
       "port": 5001
     }
+  ,{
+      "name": "privacy-policy",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8765", "--directory", "yuca_app"],
+      "port": 8765
+    }
   ]
 }

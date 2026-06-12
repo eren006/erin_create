@@ -30,9 +30,10 @@
 .ev-card:hover { border-color: var(--accent); }
 .ev-header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
 .ev-type-badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; }
-.badge-sms      { background: #1a2830; color: #60c8ff; }
-.badge-gift     { background: #2a2000; color: #fcd34d; }
-.badge-lovemail { background: #2d1f4e; color: #c084fc; }
+.badge-sms           { background: #1a2830; color: #60c8ff; }
+.badge-gift          { background: #2a2000; color: #fcd34d; }
+.badge-lovemail      { background: #2d1f4e; color: #c084fc; }
+.badge-direct_letter { background: #1a2a1a; color: #86efac; }
 .ev-from { color: var(--accent);  font-weight: 700; font-size: 14px; }
 .ev-arrow { color: var(--muted); }
 .ev-to   { color: var(--accent2); font-weight: 700; font-size: 14px; }
@@ -53,6 +54,7 @@
     {% if show_lovemail %}<div class="summary-item"><b>{{ counts.lovemail }}</b>💌 心动信</div>{% endif %}
     {% if show_sms %}<div class="summary-item"><b>{{ counts.sms }}</b>📱 短信</div>{% endif %}
     {% if show_gift %}<div class="summary-item"><b>{{ counts.gift }}</b>🎁 礼物</div>{% endif %}
+    {% if show_letter %}<div class="summary-item"><b>{{ counts.direct_letter }}</b>✉ 信件</div>{% endif %}
     <div class="summary-item" style="margin-left:auto;"><b style="font-size:14px;">{{ events|length }}</b>条记录</div>
   </div>
 
@@ -82,6 +84,7 @@
       {% if show_lovemail %}<button class="filter-btn" data-type="lovemail" onclick="filterType('lovemail',this)">💌 心动信</button>{% endif %}
       {% if show_sms %}<button class="filter-btn" data-type="sms" onclick="filterType('sms',this)">📱 短信</button>{% endif %}
       {% if show_gift %}<button class="filter-btn" data-type="gift" onclick="filterType('gift',this)">🎁 礼物</button>{% endif %}
+      {% if show_letter %}<button class="filter-btn" data-type="direct_letter" onclick="filterType('direct_letter',this)">✉ 信件</button>{% endif %}
     </div>
   </div>
 
@@ -91,7 +94,8 @@
       <div class="ev-header">
         {% if e.type == 'lovemail' %}<span class="ev-type-badge badge-lovemail">💌 心动信</span>
         {% elif e.type == 'sms' %}<span class="ev-type-badge badge-sms">📱 短信</span>
-        {% elif e.type == 'gift' %}<span class="ev-type-badge badge-gift">🎁 礼物</span>{% endif %}
+        {% elif e.type == 'gift' %}<span class="ev-type-badge badge-gift">🎁 礼物</span>
+        {% elif e.type == 'direct_letter' %}<span class="ev-type-badge badge-direct_letter">✉ 信件</span>{% endif %}
         <span class="ev-from">{{ e.from_role }}{% if e.extra_info.from_custom_name %}<span style="font-size:10px;opacity:.75;">（{{ e.extra_info.from_custom_name }}）</span>{% endif %}</span>
         <span class="ev-arrow">→</span>
         <span class="ev-to">{{ e.to_role }}{% if e.extra_info.to_custom_name %}<span style="font-size:10px;opacity:.75;">（{{ e.extra_info.to_custom_name }}）</span>{% endif %}</span>
@@ -99,7 +103,13 @@
         <span class="ev-time">{{ ts_to_str(e.timestamp) }}</span>
       </div>
 
-      {% if e.type == 'lovemail' %}
+      {% if e.type == 'direct_letter' %}
+        {% if e.extra_info.date_tag %}<div class="ev-sub" style="margin-bottom:4px;">日期：{{ e.extra_info.date_tag }}</div>{% endif %}
+        {% if e.content %}<div class="ev-body">{{ e.content }}</div>{% endif %}
+        {% if e.extra_info.signature %}<div class="ev-sub">署名：{{ e.extra_info.signature }}</div>{% endif %}
+        {% if e.extra_info.attachment %}<div class="ev-sub">附件：{{ e.extra_info.attachment }}</div>{% endif %}
+
+      {% elif e.type == 'lovemail' %}
         {% if e.content %}<div class="ev-body">{{ e.content }}</div>{% endif %}
         {% if e.extra_info.signature %}<div class="ev-sub">署名：{{ e.extra_info.signature }}</div>{% endif %}
 

@@ -78,6 +78,116 @@
     </div>
   </div>
 
+  <!-- 玩家控制台 -->
+  <div class="admin-section" id="player-controls">
+    <h3>玩家控制</h3>
+
+    <!-- 功能权限 -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin-bottom:14px;">
+      <div style="font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.5px;margin-bottom:12px;">功能权限</div>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;">
+        {% for feat_key, feat_label in feature_labels.items() %}
+        {% set enabled = player_features.get(feat_key, true) %}
+        <button
+          class="feat-toggle {% if enabled %}feat-on{% else %}feat-off{% endif %}"
+          data-feat="{{ feat_key }}"
+          data-enabled="{{ 'true' if enabled else 'false' }}"
+          onclick="toggleFeature(this)"
+          style="padding:5px 14px;border-radius:20px;border:1px solid;font-size:12px;cursor:pointer;transition:all .15s;">
+          {% if enabled %}✅{% else %}🚫{% endif %} {{ feat_label }}
+        </button>
+        {% endfor %}
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:10px;">点击按钮切换开关。修改后需在 bot 执行「全量同步」才会生效。</div>
+    </div>
+
+    <!-- 时间锁定 -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 20px;">
+      <div style="font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.5px;margin-bottom:12px;">时间锁定</div>
+      <div id="lock-list">
+        {% if player_locked_slots %}
+          {% for day, slots in player_locked_slots.items() | sort %}
+            {% for slot in slots %}
+            <div class="lock-entry" style="display:inline-flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:4px 10px;margin:3px;font-size:12px;">
+              <span>🔒 {{ day }} {{ slot }}</span>
+              <button onclick="removeLock(this,'{{ day }}','{{ slot }}')"
+                style="background:none;border:none;color:var(--red);cursor:pointer;font-size:13px;padding:0 2px;line-height:1;">×</button>
+            </div>
+            {% endfor %}
+          {% endfor %}
+        {% else %}
+        <span id="no-lock-hint" style="font-size:12px;color:var(--muted);">无时间锁定</span>
+        {% endif %}
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+        <input id="lock-day" placeholder="D1" style="width:60px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;">
+        <input id="lock-slot" placeholder="14:00-16:00" style="width:130px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);font-size:12px;">
+        <button onclick="addLock()"
+          style="padding:5px 14px;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-size:12px;cursor:pointer;">+ 锁定</button>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px;">修改后需在 bot 执行「全量同步」才会生效。</div>
+    </div>
+  </div>
+
+  <script>
+  const QQ = {{ player.qq | tojson }};
+  const CTRL_URL = `/admin/player/${QQ}/controls`;
+
+  async function ctrlPost(body) {
+    const r = await fetch(CTRL_URL, {
+      method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)
+    });
+    if (!r.ok) { alert("操作失败"); return false; }
+    const d = await r.json();
+    if (!d.ok) { alert("操作失败：" + (d.error || "")); return false; }
+    return true;
+  }
+
+  async function toggleFeature(btn) {
+    const feat = btn.dataset.feat;
+    const nowEnabled = btn.dataset.enabled === "true";
+    const newEnabled = !nowEnabled;
+    if (!await ctrlPost({action: "feature_set", feature: feat, enabled: newEnabled})) return;
+    btn.dataset.enabled = newEnabled ? "true" : "false";
+    btn.classList.toggle("feat-on", newEnabled);
+    btn.classList.toggle("feat-off", !newEnabled);
+    btn.innerHTML = (newEnabled ? "✅ " : "🚫 ") + btn.innerHTML.replace(/^[^ ]+ /, "");
+  }
+
+  async function addLock() {
+    const day  = document.getElementById("lock-day").value.trim();
+    const slot = document.getElementById("lock-slot").value.trim();
+    if (!day || !slot) { alert("请填写日期（如 D1）和时间（如 14:00-16:00）"); return; }
+    if (!await ctrlPost({action: "lock_add", day, slot})) return;
+    const hint = document.getElementById("no-lock-hint");
+    if (hint) hint.remove();
+    const entry = document.createElement("div");
+    entry.className = "lock-entry";
+    entry.style.cssText = "display:inline-flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:4px 10px;margin:3px;font-size:12px;";
+    entry.innerHTML = `<span>🔒 ${day} ${slot}</span><button onclick="removeLock(this,'${day}','${slot}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:13px;padding:0 2px;line-height:1;">×</button>`;
+    document.getElementById("lock-list").appendChild(entry);
+    document.getElementById("lock-day").value = "";
+    document.getElementById("lock-slot").value = "";
+  }
+
+  async function removeLock(btn, day, slot) {
+    if (!await ctrlPost({action: "lock_remove", day, slot})) return;
+    btn.closest(".lock-entry").remove();
+    if (!document.querySelector(".lock-entry")) {
+      const hint = document.createElement("span");
+      hint.id = "no-lock-hint";
+      hint.style.cssText = "font-size:12px;color:var(--muted);";
+      hint.textContent = "无时间锁定";
+      document.getElementById("lock-list").appendChild(hint);
+    }
+  }
+  </script>
+
+  <style>
+  .feat-on  { background: color-mix(in srgb, var(--green) 15%, transparent); border-color: var(--green) !important; color: var(--text); }
+  .feat-off { background: color-mix(in srgb, var(--red) 15%, transparent);   border-color: var(--red)   !important; color: var(--text); }
+  </style>
+
   <!-- 本场数据明细 -->
   <div class="admin-section">
     <h3>本场数据明细</h3>

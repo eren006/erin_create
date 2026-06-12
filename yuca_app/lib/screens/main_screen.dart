@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/auth_service.dart';
 import '../services/api_service.dart';
 import '../utils/theme_utils.dart';
@@ -1034,6 +1035,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
             label: '关于语擦日历',
             color: const Color(0xFF60a5fa),
             onTap: () => _showAbout(context),
+          ),
+          _SettingTile(
+            icon: Icons.privacy_tip_outlined,
+            label: '隐私政策',
+            color: const Color(0xFF34d399),
+            onTap: () => launchUrl(
+              Uri.parse('https://eren006.github.io/yuca-privacy/'),
+              mode: LaunchMode.externalApplication,
+            ),
           ),
           _SettingTile(
             icon: Icons.bug_report_outlined,

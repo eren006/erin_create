@@ -26,6 +26,12 @@
 // ========================
 
 function sendLetterForward(groupIdRaw, nodes, ctx) {
+    const api = getApi();
+    if (api) {
+        const gid = parseInt(String(groupIdRaw).replace(/[^\d]/g, ""), 10);
+        api.ws({ action: "send_group_forward_msg", params: { group_id: gid, messages: nodes }, echo: "letter_forward_" + Date.now() }, ctx, null, null);
+        return;
+    }
     const main = getMainExt();
     if (!main) return;
     const wsUrl = seal.ext.getStringConfig(main, "ws地址");
@@ -49,6 +55,24 @@ function getMainExt() {
         return null;
     }
     return main;
+}
+
+// 主插件共享 API（globalThis.__changriApi，调用时懒获取）
+// 主插件已更新时全部委托给它；否则走兼容路径（直读主插件存储）
+function getApi() { return globalThis.__changriApi || null; }
+
+function mainStorGet(key) {
+    const api = getApi();
+    if (api) return api.kvGetRaw(key);
+    const m = getMainExt();
+    return m ? m.storageGet(key) : null;
+}
+
+function mainStorSet(key, val) {
+    const api = getApi();
+    if (api) { api.kvSetRaw(key, val); return; }
+    const m = getMainExt();
+    if (m) m.storageSet(key, val);
 }
 
 // 本地扩展对象（用于注册命令）
@@ -98,23 +122,25 @@ async function postToArchive(endpoint, data) {
 function getMainStorage(key, defaultValue) {
     const main = getMainExt();
     if (!main) return defaultValue;
-    const val = main.storageGet(key);
+    const val = mainStorGet(key);
     if (val === null || val === undefined || val.trim() === "") return defaultValue;
     return val;
 }
 
 // 读取整数型设置，兼容 JSON 编码的 '"5"' 与裸字符串 '5' 两种格式
 function getMainStorageInt(key, defaultVal) {
+    const api = getApi();
+    if (api) return api.getStorageInt(key, defaultVal);
     const raw = getMainStorage(key);
     if (raw === undefined || raw === null) return defaultVal;
-    try { return parseInt(JSON.parse(raw)) || defaultVal; }
-    catch (e) { return parseInt(raw) || defaultVal; }
+    try { const v = parseInt(JSON.parse(raw)); return isNaN(v) ? defaultVal : v; }
+    catch (e) { const v = parseInt(raw); return isNaN(v) ? defaultVal : v; }
 }
 
 function setMainStorage(key, value) {
     const main = getMainExt();
     if (!main) return;
-    main.storageSet(key, value);
+    mainStorSet(key, value);
 }
 
 // ========================
@@ -122,10 +148,11 @@ function setMainStorage(key, value) {
 // ========================
 
 function isUserAdmin(ctx, msg) {
+    const api = getApi();
+    if (api) return api.isUserAdmin(ctx, msg);
     const platform = msg.platform;
     const uid = msg.sender.userId.replace(`${platform}:`, "");
-    const main = getMainExt();
-    const a_adminList = JSON.parse((main ? main.storageGet("a_adminList") : null) || "{}");
+    const a_adminList = JSON.parse(mainStorGet("a_adminList") || "{}");
     return ctx.privilegeLevel === 100 || (a_adminList[platform] && a_adminList[platform].includes(uid));
 }
 
@@ -205,16 +232,18 @@ function ensureLetterSpecialItems() {
 // ========================
 
 function getPrimaryUid(platform, uid) {
-    const main = getMainExt();
-    if (!main) return uid;
+    const api = getApi();
+    if (api) return api.getPrimaryUid(platform, uid);
     try {
-        const extras = JSON.parse(main.storageGet("extra_accounts") || "{}");
+        const extras = JSON.parse(mainStorGet("extra_accounts") || "{}");
         return extras[`${platform}:${uid}`] || uid;
     } catch (e) { return uid; }
 }
 
 // 新结构：a_private_group[platform][uid] = [roleName, gid]
 function getRoleName(ctx, msg) {
+    const api = getApi();
+    if (api) return api.getRoleName(ctx, msg);
     const platform = msg.platform;
     const rawUid = msg.sender.userId.replace(`${platform}:`, "");
     const uid = getPrimaryUid(platform, rawUid);
@@ -231,6 +260,9 @@ function getEntryByRoleName(apg, platform, roleName) {
  * 记录活动
  */
 function recordActivity(actType, platform, ctx, endpoint) {
+    const api = getApi();
+    if (api) return api.recordMeetingAndAnnounce(actType, platform, ctx, endpoint);
+    // 旧版兼容：插件文件作用域隔离，此探测在旧主插件下永远为 false（历史上即为空操作）
     if (typeof recordMeetingAndAnnounce === "function") {
         recordMeetingAndAnnounce(actType, platform, ctx, endpoint);
     }

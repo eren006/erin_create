@@ -275,6 +275,7 @@
 }
 .ptype-free  { background: #0d2a1a; color: #4aba7a; border: 1px solid #1a5a30; }
 .ptype-fixed { background: #2a1a0d; color: #d08030; border: 1px solid #5a3a10; }
+.ptype-pity  { background: #1a0d2a; color: #c07ae0; border: 1px solid #4a1a6a; }
 
 /* Toggle switch */
 .tog {
@@ -544,6 +545,42 @@
 .nf-attr-input:focus { outline: none; border-color: var(--accent); }
 .nf-attr-input:disabled { opacity: .5; cursor: not-allowed; }
 .nf-attr-input option { background: var(--surface2); color: var(--text); }
+
+/* ── Pity pool ───────────────────────────────────────────────────────────── */
+.pity-threshold-wrap {
+  display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); flex-shrink: 0;
+}
+.pity-threshold-wrap input {
+  width: 48px; background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 3px 6px; font-size: 12px; color: var(--text); text-align: center;
+}
+.pity-threshold-wrap input:focus { outline: none; border-color: #c07ae0; }
+.pity-section-label {
+  font-size: 11px; font-weight: 700; color: var(--muted); padding: 8px 12px 4px; letter-spacing: .05em;
+}
+.pity-section-label.pity-guaranteed { color: #c07ae0; }
+.pity-dropzone-normal, .pity-dropzone-pity {
+  padding: 8px 12px; text-align: center; font-size: 11px; color: var(--muted);
+  border-top: 1px dashed var(--border); user-select: none; transition: background .15s, color .15s;
+}
+.pity-dropzone-pity { border-color: #4a1a6a; color: #9a5aaa; }
+.drop-over-normal .pity-dropzone-normal,
+.drop-over-pity .pity-dropzone-pity {
+  background: color-mix(in srgb, #c07ae0 10%, transparent); color: #c07ae0;
+}
+.pity-section-divider {
+  border: none; border-top: 1px solid var(--border); margin: 0;
+}
+.nf-pity-row {
+  display: none; align-items: center; gap: 6px; margin-top: 6px;
+}
+.nf-pity-row.visible { display: flex; }
+.nf-pity-row label { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.nf-pity-input {
+  width: 64px; background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px 10px; font-size: 12px; color: var(--text); text-align: center;
+}
+.nf-pity-input:focus { outline: none; border-color: #c07ae0; }
 </style>
 {% endblock %}
 
@@ -597,6 +634,7 @@
           <button class="active" data-t="free">数量池</button>
           <button data-t="fixed">权重池</button>
           <button data-t="tiered">分段池</button>
+          <button data-t="pity">保底池</button>
         </div>
         <button class="btn-primary" id="btnCreate" style="padding:7px 14px;">创建</button>
         <button class="btn-ghost" id="btnCancelNew">取消</button>
@@ -619,10 +657,16 @@
           {% if attr_defs %}角色的该属性值决定走哪段{% else %}请先在机器人中注册属性并同步设置{% endif %}
         </span>
       </div>
+      <div class="nf-pity-row" id="nfPityRow">
+        <label>保底阈值：</label>
+        <input class="nf-pity-input" id="newPityThreshold" type="number" min="1" max="999" value="10">
+        <span style="font-size:11px;color:var(--muted);">次后必出保底物品（跨天累计）</span>
+      </div>
       <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.9;">
         <b>数量池</b>：物品有限个数，抽完即止&emsp;
         <b>权重池</b>：按权重随机，永不耗尽&emsp;
-        <b>分段池</b>：绑定一个属性（如幸运），按属性值范围匹配不同子池，每段可独立设置为数量或权重
+        <b>分段池</b>：绑定一个属性，按属性值范围匹配不同子池&emsp;
+        <b>保底池</b>：普通物品按权重随机，累计N次后必出保底物品，计数跨天持久
       </div>
     </div>
 
@@ -653,8 +697,8 @@ const ATTR_DEFS = {{ attr_defs | tojson }};
 function typeIcon(t)  { return t==="currency"?"💰":t==="item"?"📦":"🔗"; }
 function typeLabel(t) { return t==="currency"?"货币":t==="item"?"上载":"互动"; }
 function typeChipCls(t){ return "type-chip chip-"+t; }
-function poolTypeLabel(t){ return t==="fixed"?"权重池":t==="tiered"?"分段池":"数量池"; }
-function poolTypeCls(t)  { return t==="fixed"?"ptype-fixed":t==="tiered"?"ptype-tiered":"ptype-free"; }
+function poolTypeLabel(t){ return t==="fixed"?"权重池":t==="tiered"?"分段池":t==="pity"?"保底池":"数量池"; }
+function poolTypeCls(t)  { return t==="fixed"?"ptype-fixed":t==="tiered"?"ptype-tiered":t==="pity"?"ptype-pity":"ptype-free"; }
 
 // 安全的 CSS ID 用于 data-pool 属性
 function safeId(s) { return s.replace(/[^\w一-鿿]/g,"_"); }
@@ -737,6 +781,7 @@ function renderPools() {
 function buildPoolCard(name) {
   const pool = pools[name];
   if (pool.type === "tiered") return buildTieredPoolCard(name);
+  if (pool.type === "pity")   return buildPityPoolCard(name);
   const perDay = (poolCfg.pools || {})[name];
   const card = document.createElement("div");
   card.className = "pool-card" + (pool.enabled ? "" : " pool-disabled");
@@ -870,8 +915,16 @@ function renderPoolBody(poolName, cardEl) {
 // ═══════════════════════════════════════════════════════════════
 // 拖放物品进池子
 // ═══════════════════════════════════════════════════════════════
-function dropItemIntoPool(poolName, code) {
+function dropItemIntoPool(poolName, code, toPityItems = false) {
   const pool = pools[poolName];
+  if (pool.type === "pity") {
+    const target = toPityItems ? (pool.pityItems || (pool.pityItems = [])) : pool.items;
+    const existing = target.find(i => i.code === code);
+    if (existing) existing.weight = (existing.weight || 10) + 10;
+    else target.push({ code, weight: 10 });
+    renderPityPoolBody(poolName);
+    return;
+  }
   const isFixed = pool.type === "fixed";
   const existing = pool.items.find(i => i.code === code);
   if (existing) {
@@ -882,6 +935,143 @@ function dropItemIntoPool(poolName, code) {
     else pool.items.push({ code, count: 1 });
   }
   renderPoolBody(poolName);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 保底池卡片
+// ═══════════════════════════════════════════════════════════════
+function buildPityPoolCard(name) {
+  const pool = pools[name];
+  if (!pool.pityItems) pool.pityItems = [];
+  const perDay = (poolCfg.pools || {})[name];
+  const card = document.createElement("div");
+  card.className = "pool-card" + (pool.enabled ? "" : " pool-disabled");
+  card.dataset.pool = name;
+
+  card.innerHTML = `
+    <div class="pool-header">
+      <span class="pool-title">【${pool.name}】</span>
+      <span class="pool-type-chip ptype-pity">保底池</span>
+      <label class="tog" title="${pool.enabled ? "点击关闭" : "点击开启"}">
+        <input type="checkbox" ${pool.enabled ? "checked" : ""}>
+        <span class="tog-track"></span>
+      </label>
+      <div class="pool-limit-wrap">
+        <label>次/天</label>
+        <input type="number" min="0" value="${perDay != null ? perDay : ""}" placeholder="∞" title="留空 = 跟随全局限制">
+      </div>
+      <div class="pity-threshold-wrap">
+        <label>保底</label>
+        <input type="number" min="1" max="999" value="${pool.pityThreshold || 10}" title="累计N次后必出保底物品">
+        <label>次</label>
+      </div>
+      <button class="btn-sm btn-sm-del" data-action="del">删除</button>
+    </div>
+    <div class="pity-section-label">普通物品（权重随机）</div>
+    <div id="pbody-normal-${safeId(name)}"></div>
+    <div class="pity-dropzone-normal" id="pdz-normal-${safeId(name)}">⬇ 拖放至此（普通物品）</div>
+    <hr class="pity-section-divider">
+    <div class="pity-section-label pity-guaranteed">🌟 保底物品（触发时必出）</div>
+    <div id="pbody-pity-${safeId(name)}"></div>
+    <div class="pity-dropzone-pity" id="pdz-pity-${safeId(name)}">⬇ 拖放至此（保底物品）</div>
+    <div class="pool-footer" id="pfooter-${safeId(name)}"></div>
+  `;
+
+  // 开关
+  card.querySelector(".tog input").addEventListener("change", e => {
+    pool.enabled = e.target.checked;
+    card.classList.toggle("pool-disabled", !pool.enabled);
+  });
+  // 次/天
+  card.querySelector(".pool-limit-wrap input").addEventListener("change", e => {
+    if (!poolCfg.pools) poolCfg.pools = {};
+    const n = parseInt(e.target.value);
+    if (isNaN(n) || e.target.value === "") delete poolCfg.pools[name];
+    else poolCfg.pools[name] = n;
+  });
+  // 保底阈值
+  card.querySelector(".pity-threshold-wrap input").addEventListener("change", e => {
+    const n = parseInt(e.target.value);
+    if (!isNaN(n) && n >= 1) pool.pityThreshold = n;
+  });
+  // 删除
+  card.querySelector("[data-action=del]").addEventListener("click", () => {
+    if (!confirm(`确认删除池子「${name}」？`)) return;
+    delete pools[name];
+    if (poolCfg.pools) delete poolCfg.pools[name];
+    renderPools();
+    saveToServer(true);
+  });
+
+  // 拖放：普通区
+  const dzNormal = card.querySelector(`#pdz-normal-${safeId(name)}`);
+  dzNormal.addEventListener("dragover", e => { if (!draggedCode) return; e.preventDefault(); card.classList.add("drop-over-normal"); });
+  dzNormal.addEventListener("dragleave", e => { if (!card.contains(e.relatedTarget)) card.classList.remove("drop-over-normal"); });
+  dzNormal.addEventListener("drop", e => {
+    e.preventDefault(); card.classList.remove("drop-over-normal");
+    const code = draggedCode || e.dataTransfer.getData("text/plain");
+    if (code) dropItemIntoPool(name, code, false);
+  });
+  // 拖放：保底区
+  const dzPity = card.querySelector(`#pdz-pity-${safeId(name)}`);
+  dzPity.addEventListener("dragover", e => { if (!draggedCode) return; e.preventDefault(); card.classList.add("drop-over-pity"); });
+  dzPity.addEventListener("dragleave", e => { if (!card.contains(e.relatedTarget)) card.classList.remove("drop-over-pity"); });
+  dzPity.addEventListener("drop", e => {
+    e.preventDefault(); card.classList.remove("drop-over-pity");
+    const code = draggedCode || e.dataTransfer.getData("text/plain");
+    if (code) dropItemIntoPool(name, code, true);
+  });
+
+  renderPityPoolBody(name, card);
+  return card;
+}
+
+function renderPityPoolBody(poolName, cardEl) {
+  const pool = pools[poolName];
+  const el = cardEl || document.querySelector(`[data-pool="${CSS.escape(poolName)}"]`);
+  if (!el) return;
+  const sid = safeId(poolName);
+  const bodyNormal = el.querySelector(`#pbody-normal-${sid}`);
+  const bodyPity   = el.querySelector(`#pbody-pity-${sid}`);
+  const footer     = el.querySelector(`#pfooter-${sid}`);
+  if (!bodyNormal || !bodyPity) return;
+
+  function buildRows(items, isPitySection) {
+    const frag = document.createDocumentFragment();
+    items.forEach((entry, idx) => {
+      const item = ITEMS[entry.code] || { name: entry.code, code: entry.code };
+      const row = document.createElement("div");
+      row.className = "pool-item-row";
+      row.innerHTML = `
+        <span class="pi-code">${entry.code}</span>
+        <span class="pi-name">${item.name}</span>
+        <div class="pi-val-wrap">
+          <label>权重</label>
+          <input type="number" min="1" max="999" value="${entry.weight ?? 10}">
+        </div>
+        <button class="pi-del" title="移除">×</button>
+      `;
+      row.querySelector("input").addEventListener("change", e => {
+        const n = parseInt(e.target.value);
+        if (!isNaN(n) && n > 0) items[idx].weight = n;
+      });
+      row.querySelector(".pi-del").addEventListener("click", () => {
+        items.splice(idx, 1);
+        renderPityPoolBody(poolName);
+      });
+      frag.appendChild(row);
+    });
+    return frag;
+  }
+
+  bodyNormal.innerHTML = "";
+  bodyNormal.appendChild(buildRows(pool.items, false));
+  bodyPity.innerHTML = "";
+  bodyPity.appendChild(buildRows(pool.pityItems || [], true));
+
+  if (footer) {
+    footer.textContent = `普通 ${pool.items.length} 种 · 保底 ${(pool.pityItems || []).length} 种`;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1102,6 +1292,7 @@ document.querySelectorAll("#typeToggle button").forEach(btn => {
     newPoolType = btn.dataset.t;
     document.querySelectorAll("#typeToggle button").forEach(b => b.classList.toggle("active", b === btn));
     document.getElementById("nfAttrRow").classList.toggle("visible", newPoolType === "tiered");
+    document.getElementById("nfPityRow").classList.toggle("visible", newPoolType === "pity");
   });
 });
 document.getElementById("btnCreate").addEventListener("click", () => {
@@ -1115,6 +1306,9 @@ document.getElementById("btnCreate").addEventListener("click", () => {
     if (!attr) { showToast("请选择绑定属性", false); return; }
     pools[name] = { name, type: "tiered", attr, enabled: true, items: [], tiers: [] };
     attrEl.value = "";
+  } else if (newPoolType === "pity") {
+    const threshold = parseInt(document.getElementById("newPityThreshold").value) || 10;
+    pools[name] = { name, type: "pity", enabled: true, items: [], pityItems: [], pityThreshold: threshold };
   } else {
     pools[name] = { name, type: newPoolType, enabled: true, items: [] };
   }

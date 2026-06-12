@@ -99,7 +99,10 @@
     <a href="{{ url_for('admin_config_page') }}">游戏配置</a>
     <a href="{{ url_for('admin_groups') }}" class="active">群号组</a>
     <a href="{{ url_for('admin_rewards') }}">结戏奖励</a>
+    <a href="{{ url_for('admin_player_controls') }}">玩家控制</a>
     <a href="{{ url_for('admin_shows') }}">季管理</a>
+    <a href="{{ url_for('admin_command_guides') }}">指令指南</a>
+    <a href="{{ url_for('admin_time_schedule') }}">时间调度</a>
   </div>
 
   {% if msg and msg.startswith('bulk_added_') %}
@@ -115,6 +118,15 @@
   {% elif msg == 'set_created' %}
   <div class="banner banner-ok">✅ 群号组已创建，现在可以往里添加群号了。</div>
   {% endif %}
+
+  <!-- 说明 -->
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 18px;margin-bottom:20px;font-size:13px;line-height:1.8;color:var(--muted);">
+    <strong style="color:var(--text)">群号组是什么？</strong><br>
+    将多个 QQ 群号归为一组，每次不需要单个输入，可以一键添加群号，供机器人在私约、电话等功能中自动分配使用，清空季度也不影响。<br>
+    <span style="color:var(--accent2)">机器人指令：</span>
+    <code style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 7px;font-family:monospace;font-size:12px;">。开启群号组 组名</code> 启用，
+    <code style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 7px;font-family:monospace;font-size:12px;">。关闭群号组 组名</code> 停用。
+  </div>
 
   <!-- 新建群号组 -->
   <div class="new-set-card">
@@ -145,7 +157,7 @@
       <form method="post" style="display:contents">
         <input type="hidden" name="action" value="bulk_add">
         <input type="hidden" name="set_name" value="{{ set_name }}">
-        <textarea name="group_ids" class="bulk-textarea" placeholder="每行一个群号，可直接粘贴一批&#10;123456789&#10;987654321&#10;..." rows="3" autocomplete="off" required></textarea>
+        <textarea name="group_ids" class="bulk-textarea" placeholder="每行一个群号，或用逗号、顿号、分号分隔&#10;123456789&#10;987654321, 112233445、556677889" rows="3" autocomplete="off" required></textarea>
         <button type="submit" class="btn-add" style="align-self:flex-end;padding:6px 14px;font-size:12px;white-space:nowrap">＋ 批量添加</button>
       </form>
     </div>

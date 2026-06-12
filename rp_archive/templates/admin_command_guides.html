@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}指令指南 · 长日存档{% endblock %}
+
+{% block head %}
+<style>
+.sub-nav { display:flex; gap:6px; margin-bottom:24px; flex-wrap:wrap; }
+.sub-nav a { font-size:13px; padding:5px 14px; border-radius:8px; background:var(--surface); border:1px solid var(--border); color:var(--muted); }
+.sub-nav a:hover { color:var(--text); border-color:var(--accent); }
+.sub-nav a.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+
+.banner { border-radius:8px; padding:9px 16px; margin-bottom:18px; font-size:13px; }
+.banner-ok  { background:#1a3a1a; border:1px solid #2a5a2a; color:var(--green); }
+.banner-err { background:#3a1a1a; border:1px solid #5a2a2a; color:var(--red); }
+
+.section-card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:12px; padding:20px 22px; margin-bottom:20px;
+}
+.section-card h3 {
+  font-size:12px; font-weight:700; color:var(--muted);
+  letter-spacing:1px; text-transform:uppercase;
+  margin-bottom:16px; padding-bottom:10px;
+  border-bottom:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between;
+}
+
+.guide-list { display:flex; flex-direction:column; gap:12px; }
+.guide-item {
+  background:var(--surface2); border:1px solid var(--border);
+  border-radius:10px; padding:14px 18px;
+  display:flex; flex-direction:column; gap:10px;
+}
+.guide-item .name { font-size:14px; font-weight:600; color:var(--text); flex:1; min-width:120px; }
+.guide-item .meta { font-size:12px; color:var(--muted); }
+.guide-item .slug-link {
+  font-family:monospace; font-size:12px; color:var(--accent2);
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:6px; padding:3px 10px; cursor:pointer;
+  white-space:nowrap; display:flex; align-items:center; gap:5px;
+}
+.guide-item .slug-link:hover { border-color:var(--accent); }
+.guide-item .actions { display:flex; gap:6px; align-items:center; }
+.link-row { display:flex; align-items:center; gap:6px; flex:1; min-width:0; }
+.link-input {
+  flex:1; min-width:0; max-width:320px;
+  background:var(--surface); border:1px solid var(--border);
+  color:var(--muted); border-radius:6px; padding:4px 10px;
+  font-family:monospace; font-size:12px; cursor:text;
+}
+.btn-copy {
+  background:var(--accent); color:#fff; border:none;
+  border-radius:6px; padding:4px 12px; font-size:12px;
+  font-weight:600; cursor:pointer; white-space:nowrap;
+}
+.btn-copy:hover { background:var(--accent2); }
+.btn-open {
+  color:var(--accent2); font-size:12px; white-space:nowrap;
+  padding:4px 8px; border-radius:6px; border:1px solid var(--border);
+  background:transparent;
+}
+.btn-open:hover { border-color:var(--accent2); }
+
+.btn-primary { background:var(--accent); color:#fff; border:none; border-radius:8px; padding:6px 16px; font-size:13px; font-weight:600; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:5px; }
+.btn-primary:hover { background:var(--accent2); color:#fff; }
+.btn-outline { background:transparent; color:var(--muted); border:1px solid var(--border); border-radius:8px; padding:5px 14px; font-size:13px; cursor:pointer; text-decoration:none; }
+.btn-outline:hover { color:var(--text); border-color:var(--accent); }
+.btn-danger-sm { background:#3a1a1a; color:var(--red); border:1px solid #5a2a2a; border-radius:8px; padding:5px 12px; font-size:13px; cursor:pointer; }
+.btn-danger-sm:hover { background:#4a1f1f; }
+
+.empty-hint { color:var(--muted); font-size:13px; padding:24px 0; text-align:center; }
+.limit-hint { font-size:12px; color:var(--muted); padding:6px 0; }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="page">
+  <div class="page-title" style="display:flex;align-items:center;justify-content:space-between;">
+    <span>指令指南</span>
+    <a href="{{ url_for('admin_logout') }}" style="font-size:12px;color:var(--muted);font-weight:400;">退出后台</a>
+  </div>
+
+  <div class="sub-nav">
+    <a href="{{ url_for('admin') }}">总览</a>
+    <a href="{{ url_for('admin_config_page') }}">游戏配置</a>
+    <a href="{{ url_for('admin_groups') }}">已知群</a>
+    <a href="{{ url_for('admin_rewards') }}">结戏奖励</a>
+    <a href="{{ url_for('admin_player_controls') }}">玩家控制</a>
+    <a href="{{ url_for('admin_shows') }}">季管理</a>
+    <a href="{{ url_for('admin_command_guides') }}" class="active">指令指南</a>
+    <a href="{{ url_for('admin_time_schedule') }}">时间调度</a>
+  </div>
+
+  {% if request.args.get('saved') %}
+  <div class="banner banner-ok">已保存。</div>
+  {% endif %}
+  {% if request.args.get('err') == 'limit' %}
+  <div class="banner banner-err">已达到指南上限（{{ guide_max }} 个），请先删除旧的再新建。</div>
+  {% endif %}
+
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 18px;margin-bottom:20px;font-size:13px;line-height:1.8;color:var(--muted);">
+    <strong style="color:var(--text)">指令指南是什么？</strong><br>
+    为玩家或管理提供的公开参考页面，在长日系统的众多功能内选择，可以把本季所需的指令用法、规则说明等整理在这里。每份指南生成一个独立链接，可直接分享给群里的玩家查阅，并且可以进行一定的个性化修改。
+  </div>
+
+  <div class="section-card">
+    <h3>
+      <span>已有指南</span>
+      {% if can_create %}
+      <a href="{{ url_for('admin_command_guide_new') }}" class="btn-primary">+ 新建指南</a>
+      {% endif %}
+    </h3>
+
+    {% if guides %}
+    <div class="guide-list">
+      {% for g in guides %}
+      {% set guide_url = request.host_url.rstrip('/') + '/g/' + g.slug %}
+      <div class="guide-item">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div class="name">{{ g.name }}</div>
+          <div class="meta">{{ g.count }} 个区块</div>
+          <div style="margin-left:auto;" class="actions">
+            <a href="{{ url_for('admin_command_guide_edit', gid=g.id) }}" class="btn-outline">编辑</a>
+            <form method="post" action="{{ url_for('admin_command_guide_delete', gid=g.id) }}" style="display:inline" onsubmit="return confirm('确定删除「{{ g.name }}」？')">
+              <button type="submit" class="btn-danger-sm">删除</button>
+            </form>
+          </div>
+        </div>
+        <div class="link-row">
+          <input class="link-input" type="text" value="{{ guide_url }}" readonly onclick="this.select()">
+          <button class="btn-copy" onclick="copyGuideLink('{{ guide_url }}', this)">复制链接</button>
+          <a class="btn-open" href="{{ guide_url }}" target="_blank">预览↗</a>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-hint">还没有指南，点击右上角新建一个。</div>
+    {% endif %}
+
+    {% if not can_create %}
+    <div class="limit-hint">已达上限（{{ guide_max }} 个）。请删除现有指南后再新建。</div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+function copyGuideLink(url, btn) {
+  // 找同一 link-row 里的 input，select 后 execCommand
+  var input = btn.parentElement.querySelector(".link-input");
+  if (input) {
+    input.select();
+    input.setSelectionRange(0, 99999);
+  }
+  var ok = false;
+  try {
+    ok = document.execCommand("copy");
+  } catch(e) {}
+  if (!ok && navigator.clipboard) {
+    navigator.clipboard.writeText(url).catch(function() {});
+  }
+  btn.textContent = "已复制 ✓";
+  setTimeout(function() { btn.textContent = "复制链接"; }, 1500);
+}
+</script>
+{% endblock %}

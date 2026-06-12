@@ -90,6 +90,7 @@
         {% if e.type == 'lovemail' %}<span style="background:#2d1f4e;color:#c084fc;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;">💌 心动信</span>
         {% elif e.type == 'sms' %}<span style="background:#1a2830;color:#60c8ff;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;">📱 短信</span>
         {% elif e.type == 'gift' %}<span style="background:#2a2000;color:#fcd34d;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;">🎁 礼物</span>
+        {% elif e.type == 'direct_letter' %}<span style="background:#1a2a1a;color:#86efac;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;">✉ 信件</span>
         {% endif %}
         <span style="color:var(--accent);font-weight:700;">{{ e.from_role }}</span>
         <span style="color:var(--muted);">→</span>
@@ -99,11 +100,18 @@
         {% endif %}
         <span style="margin-left:auto;font-size:11px;color:var(--muted);">{{ ts_to_str(e.timestamp) }}</span>
       </div>
+      {% if e.type == 'direct_letter' %}
+        {% if e.extra_info.date_tag %}<div style="font-size:11px;color:var(--muted);margin-bottom:4px;">日期：{{ e.extra_info.date_tag }}</div>{% endif %}
+        {% if e.content %}<div style="color:var(--text);font-size:13px;line-height:1.8;white-space:pre-wrap;word-break:break-word;">{{ e.content }}</div>{% endif %}
+        {% if e.extra_info.signature %}<div style="font-size:11px;color:var(--muted);margin-top:4px;">署名：{{ e.extra_info.signature }}</div>{% endif %}
+        {% if e.extra_info.attachment %}<div style="font-size:11px;color:var(--muted);margin-top:2px;">附件：{{ e.extra_info.attachment }}</div>{% endif %}
+      {% else %}
       {% if e.content %}
       <div style="color:var(--text);font-size:13px;line-height:1.8;white-space:pre-wrap;word-break:break-word;">{% if e.type == 'gift' %}寄语：{% endif %}{{ e.content }}</div>
       {% endif %}
       {% if e.type == 'sms' and e.extra_info.is_chaos %}
       <div style="font-size:10px;color:var(--red);margin-top:4px;">⚠ 混乱效果{% if e.extra_info.is_misdelivered %} · 误送{% endif %}{% if e.extra_info.is_content_chaos %} · 内容侵蚀{% endif %}</div>
+      {% endif %}
       {% endif %}
     </div>
     {% endfor %}

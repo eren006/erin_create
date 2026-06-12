@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+{% block title %}{% if guide %}编辑指南{% else %}新建指南{% endif %} · 长日存档{% endblock %}
+
+{% block head %}
+<style>
+.sub-nav { display:flex; gap:6px; margin-bottom:24px; flex-wrap:wrap; }
+.sub-nav a { font-size:13px; padding:5px 14px; border-radius:8px; background:var(--surface); border:1px solid var(--border); color:var(--muted); }
+.sub-nav a:hover { color:var(--text); border-color:var(--accent); }
+.sub-nav a.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+
+.section-card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:12px; padding:20px 22px; margin-bottom:20px;
+}
+.section-card h3 {
+  font-size:12px; font-weight:700; color:var(--muted);
+  letter-spacing:1px; text-transform:uppercase;
+  margin-bottom:16px; padding-bottom:10px;
+  border-bottom:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between;
+}
+
+.name-field { margin-bottom:24px; }
+.name-field label { display:block; font-size:12px; color:var(--muted); margin-bottom:6px; }
+.name-field input {
+  width:100%; max-width:400px;
+  background:var(--surface2); border:1px solid var(--border);
+  color:var(--text); border-radius:8px; padding:8px 14px; font-size:14px;
+}
+.name-field input:focus { outline:none; border-color:var(--accent); }
+
+.blocks-grid {
+  display:grid; grid-template-columns:1fr 1fr; gap:20px;
+}
+@media(max-width:700px) { .blocks-grid { grid-template-columns:1fr; } }
+
+.blocks-col h4 {
+  font-size:13px; font-weight:700; color:var(--text);
+  margin-bottom:12px; padding-bottom:8px;
+  border-bottom:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between;
+}
+.blocks-col h4 .col-actions { display:flex; gap:6px; }
+.btn-selall {
+  font-size:11px; color:var(--muted); background:transparent;
+  border:1px solid var(--border); border-radius:6px;
+  padding:2px 9px; cursor:pointer;
+}
+.btn-selall:hover { color:var(--text); border-color:var(--accent); }
+
+.block-cards { display:flex; flex-direction:column; gap:8px; }
+.block-card {
+  background:var(--surface2); border:2px solid var(--border);
+  border-radius:8px; padding:10px 14px;
+  cursor:pointer; transition:border-color .15s, background .15s, box-shadow .15s;
+  display:flex; align-items:center; gap:10px; user-select:none;
+}
+.block-card:hover { border-color:var(--accent); background:var(--surface); }
+.block-card.selected {
+  border-color:var(--accent);
+  background:color-mix(in srgb, var(--accent) 18%, var(--surface2));
+  box-shadow:0 0 0 1px var(--accent) inset;
+}
+.block-card .check {
+  width:18px; height:18px; border-radius:5px;
+  border:2px solid var(--muted); background:transparent;
+  flex-shrink:0; display:flex; align-items:center; justify-content:center;
+  font-size:12px; font-weight:700; transition:all .15s;
+}
+.block-card.selected .check {
+  border-color:var(--accent); background:var(--accent); color:#fff;
+}
+.block-card .lbl { font-size:13px; color:var(--text); font-weight:400; }
+.block-card.selected .lbl { color:#fff; font-weight:500; }
+
+.block-custom-wrap {
+  display:none; padding:6px 0 4px 28px;
+}
+.block-card.selected + .block-custom-wrap { display:block; }
+.custom-textarea {
+  width:100%; min-height:100px; resize:vertical;
+  background:var(--surface); border:1px solid var(--border);
+  color:var(--text); border-radius:6px; padding:8px 10px;
+  font-size:12px; font-family:monospace; line-height:1.6;
+  box-sizing:border-box;
+}
+.custom-textarea:focus { outline:none; border-color:var(--accent); }
+.custom-hint { font-size:11px; color:var(--muted); margin-top:4px; }
+
+.admin-col-header { color:var(--accent2) !important; }
+
+.bottom-bar {
+  display:flex; gap:10px; align-items:center; margin-top:8px; flex-wrap:wrap;
+}
+.btn-save {
+  background:var(--accent); color:#fff; border:none;
+  border-radius:8px; padding:9px 26px; font-size:14px; font-weight:600; cursor:pointer;
+}
+.btn-save:hover { background:var(--accent2); }
+.btn-cancel {
+  color:var(--muted); font-size:13px; text-decoration:none;
+  padding:9px 16px; border-radius:8px; border:1px solid var(--border); background:transparent;
+}
+.btn-cancel:hover { color:var(--text); border-color:var(--accent); }
+.sel-count { font-size:12px; color:var(--muted); }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="page">
+  <div class="page-title">
+    {% if guide %}编辑指南{% else %}新建指南{% endif %}
+  </div>
+
+  <div class="sub-nav">
+    <a href="{{ url_for('admin') }}">总览</a>
+    <a href="{{ url_for('admin_config_page') }}">游戏配置</a>
+    <a href="{{ url_for('admin_groups') }}">已知群</a>
+    <a href="{{ url_for('admin_rewards') }}">结戏奖励</a>
+    <a href="{{ url_for('admin_player_controls') }}">玩家控制</a>
+    <a href="{{ url_for('admin_shows') }}">季管理</a>
+    <a href="{{ url_for('admin_command_guides') }}" class="active">指令指南</a>
+    <a href="{{ url_for('admin_time_schedule') }}">时间调度</a>
+  </div>
+
+  <form method="post" id="guide-form">
+    <div class="section-card">
+      <h3>基本信息</h3>
+      <div class="name-field">
+        <label>指南名称</label>
+        <input type="text" name="name" value="{{ guide.name if guide else '指令指南' }}" placeholder="指令指南" maxlength="40">
+      </div>
+    </div>
+
+    <div class="section-card">
+      <h3>选择区块</h3>
+      <div class="blocks-grid">
+
+        <!-- 玩家指令 -->
+        <div class="blocks-col" id="col-player">
+          <h4>
+            玩家指令
+            <div class="col-actions">
+              <button type="button" class="btn-selall" onclick="selectAll('player', true)">全选</button>
+              <button type="button" class="btn-selall" onclick="selectAll('player', false)">取消</button>
+            </div>
+          </h4>
+          <div class="block-cards" id="cards-player">
+            {% for b in blocks if b.category == 'player' %}
+            {% set is_sel = b.key in selected_map %}
+            {% set custom_val = selected_map.get(b.key) %}
+            {% set default_text = b.lines | join('\n') %}
+            <label class="block-card {% if is_sel %}selected{% endif %}" data-key="{{ b.key }}" data-cat="player"
+                   data-default="{{ default_text | e }}">
+              <input type="checkbox" name="blocks" value="{{ b.key }}" {% if is_sel %}checked{% endif %} style="display:none">
+              <span class="check">{% if is_sel %}✓{% endif %}</span>
+              <span class="lbl">{{ b.label }}</span>
+            </label>
+            <div class="block-custom-wrap">
+              <textarea class="custom-textarea" name="block_text_{{ b.key }}"
+                        >{{ custom_val if custom_val is not none else default_text }}</textarea>
+              <div class="custom-hint">删掉不需要展示的行即可。
+                <a href="#" onclick="resetDefault(event, '{{ b.key }}')">恢复默认</a>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+
+        <!-- 管理指令 -->
+        <div class="blocks-col" id="col-admin">
+          <h4 class="admin-col-header">
+            管理指令
+            <div class="col-actions">
+              <button type="button" class="btn-selall" onclick="selectAll('admin', true)">全选</button>
+              <button type="button" class="btn-selall" onclick="selectAll('admin', false)">取消</button>
+            </div>
+          </h4>
+          <div class="block-cards" id="cards-admin">
+            {% for b in blocks if b.category == 'admin' %}
+            {% set is_sel = b.key in selected_map %}
+            {% set custom_val = selected_map.get(b.key) %}
+            {% set default_text = b.lines | join('\n') %}
+            <label class="block-card {% if is_sel %}selected{% endif %}" data-key="{{ b.key }}" data-cat="admin"
+                   data-default="{{ default_text | e }}">
+              <input type="checkbox" name="blocks" value="{{ b.key }}" {% if is_sel %}checked{% endif %} style="display:none">
+              <span class="check">{% if is_sel %}✓{% endif %}</span>
+              <span class="lbl">{{ b.label }}</span>
+            </label>
+            <div class="block-custom-wrap">
+              <textarea class="custom-textarea" name="block_text_{{ b.key }}"
+                        >{{ custom_val if custom_val is not none else default_text }}</textarea>
+              <div class="custom-hint">删掉不需要展示的行即可。
+                <a href="#" onclick="resetDefault(event, '{{ b.key }}')">恢复默认</a>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="bottom-bar">
+      <button type="submit" class="btn-save">保存</button>
+      <a href="{{ url_for('admin_command_guides') }}" class="btn-cancel">取消</a>
+      <span class="sel-count" id="sel-count"></span>
+    </div>
+  </form>
+</div>
+
+<script>
+document.querySelectorAll(".block-card").forEach(function(card) {
+  var cb = card.querySelector("input[type=checkbox]");
+  // label 的原生 click 已经切换 checkbox；这里只监听 change 来更新视觉
+  cb.addEventListener("change", function() {
+    var check = card.querySelector(".check");
+    if (cb.checked) {
+      card.classList.add("selected");
+      check.textContent = "✓";
+    } else {
+      card.classList.remove("selected");
+      check.textContent = "";
+      // 取消勾选时把 textarea 内容恢复为默认（hidden 但保留，不影响 POST）
+      var wrap = card.nextElementSibling;
+      if (wrap && wrap.classList.contains("block-custom-wrap")) {
+        var ta = wrap.querySelector("textarea");
+        if (ta) ta.value = card.getAttribute("data-default") || "";
+      }
+    }
+    updateCount();
+  });
+});
+
+function selectAll(cat, val) {
+  document.querySelectorAll(".block-card[data-cat='" + cat + "']").forEach(function(card) {
+    var cb = card.querySelector("input[type=checkbox]");
+    cb.checked = val;
+    var check = card.querySelector(".check");
+    if (val) {
+      card.classList.add("selected");
+      check.textContent = "✓";
+    } else {
+      card.classList.remove("selected");
+      check.textContent = "";
+    }
+  });
+  updateCount();
+}
+
+function updateCount() {
+  var n = document.querySelectorAll(".block-card input:checked").length;
+  document.getElementById("sel-count").textContent = "已选 " + n + " 个区块";
+}
+
+updateCount();
+
+function resetDefault(e, key) {
+  e.preventDefault();
+  var card = document.querySelector(".block-card[data-key='" + key + "']");
+  var ta   = document.querySelector("textarea[name='block_text_" + key + "']");
+  if (card && ta) ta.value = card.getAttribute("data-default") || "";
+}
+</script>
+{% endblock %}

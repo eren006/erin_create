@@ -97,9 +97,10 @@
     </div>
 
     <div class="sidebar">
-      {% set lovemails = events | selectattr('type','eq','lovemail') | list %}
-      {% set smss      = events | selectattr('type','eq','sms')      | list %}
-      {% set gifts     = events | selectattr('type','eq','gift')      | list %}
+      {% set lovemails = events | selectattr('type','eq','lovemail')       | list %}
+      {% set smss      = events | selectattr('type','eq','sms')           | list %}
+      {% set gifts     = events | selectattr('type','eq','gift')          | list %}
+      {% set letters   = events | selectattr('type','eq','direct_letter') | list %}
 
       {% if lovemails %}
       <div class="side-section">
@@ -173,8 +174,27 @@
       </div>
       {% endif %}
 
-      {% if not lovemails and not smss and not gifts %}
-      <div style="color:var(--muted);font-size:13px;padding:16px 0;">本场无心动信 / 短信 / 礼物记录。</div>
+      {% if letters %}
+      <div class="side-section">
+        <div class="side-label">✉ 信件</div>
+        {% for e in letters %}
+        <div class="event-card">
+          <div>
+            <span class="event-from">{{ e.from_role }}</span>
+            <span class="event-arrow">→</span>
+            <span class="event-to">{{ e.to_role }}</span>
+          </div>
+          {% if e.extra_info.date_tag %}<div class="event-sub" style="margin-top:4px;">日期：{{ e.extra_info.date_tag }}</div>{% endif %}
+          {% if e.content %}<div class="event-body">{{ e.content }}</div>{% endif %}
+          {% if e.extra_info.signature %}<div class="event-sub">署名：{{ e.extra_info.signature }}</div>{% endif %}
+          {% if e.extra_info.attachment %}<div class="event-sub">附件：{{ e.extra_info.attachment }}</div>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% if not lovemails and not smss and not gifts and not letters %}
+      <div style="color:var(--muted);font-size:13px;padding:16px 0;">本场无心动信 / 短信 / 礼物 / 信件记录。</div>
       {% endif %}
     </div>
   </div>

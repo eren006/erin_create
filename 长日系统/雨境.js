@@ -477,6 +477,9 @@ cmdAccept.solve = (ctx, msg, cmdArgs) => {
     const day = getGameDay();
     const [iPf, iUid] = target.initiator.split(':');
 
+    if (day >= 2 && day <= 3 && (me.pvpToday || 0) >= 2)
+        return reply('今日参与次数已达上限（Day2-3每人限2次）。');
+
     // 更新防守方计数 & 锁定
     if (day >= 2 && day <= 3) {
         me.pvpToday = (me.pvpToday || 0) + 1;
@@ -715,11 +718,6 @@ cmdExecute.solve = (ctx, msg, cmdArgs) => {
         log += `【结果】${dName} 胜\n获得 ${session.initiatorRaindrops} 颗雨点`;
     }
 
-    // 追加战后双方状态
-    log += `\n\n战后状态：`;
-    log += `\n${iName}｜HP：${iP.hp}｜雨点：${iP.raindrops}`;
-    log += `\n${dName}｜HP：${dP.hp}｜雨点：${dP.raindrops}`;
-
     seal.replyToSender(ctx, msg, log);
 
     // ——HP归零死亡（战斗消耗，早于雨点结算）——
@@ -728,6 +726,12 @@ cmdExecute.solve = (ctx, msg, cmdArgs) => {
 
     // ——雨点转移与死亡检查——
     settlePvp(ctx.endPoint, msg.platform, session, result);
+
+    // 追加战后双方状态（结算后重读保证雨点准确）
+    const iPost = getPlayer(iPf, iUid);
+    const dPost = getPlayer(dPf, dUid);
+    const postLog = `战后状态：\n${iName}｜HP：${iP.hp}｜雨点：${iPost.raindrops}\n${dName}｜HP：${dP.hp}｜雨点：${dPost.raindrops}`;
+    seal.replyToSender(ctx, msg, postLog);
 
     // 战报推送到双方个人群
     notifyPlayer(ctx.endPoint, iPf, iUid,
@@ -985,8 +989,8 @@ cmdRevive.solve = (ctx, msg, cmdArgs) => {
     if (!targetUid) return (seal.replyToSender(ctx, msg, `【雨境】未找到角色「${roleName}」。`), seal.ext.newCmdExecuteResult(true));
 
     const target = getPlayer(platform, targetUid);
-    if (target.isAlive)   return (seal.replyToSender(ctx, msg, '【雨境】对方尚未消散，无需续命。'), seal.ext.newCmdExecuteResult(true));
     if (target.isRevived) return (seal.replyToSender(ctx, msg, '【雨境】对方已处于续命状态中。'), seal.ext.newCmdExecuteResult(true));
+    if (target.isAlive)   return (seal.replyToSender(ctx, msg, '【雨境】对方尚未消散，无需续命。'), seal.ext.newCmdExecuteResult(true));
 
     me.raindrops -= 1;
     target.isAlive   = true;

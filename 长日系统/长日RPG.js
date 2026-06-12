@@ -26,35 +26,62 @@ if (!ext) {
 }
 
 // ========================
-// 核心依赖：获取主插件 changri
+// 核心依赖：主插件共享 API（globalThis.__changriApi，调用时懒获取）
+// 主插件已更新时全部委托给它；否则走下方兼容实现（直读主插件存储）
 // ========================
+
+function getApi() { return globalThis.__changriApi || null; }
+
+function mainStorGet(key) {
+    const api = getApi();
+    if (api) return api.kvGetRaw(key);
+    const m = getMainExt();
+    return m ? m.storageGet(key) : null;
+}
+
+function mainStorSet(key, val) {
+    const api = getApi();
+    if (api) { api.kvSetRaw(key, val); return; }
+    const m = getMainExt();
+    if (m) m.storageSet(key, val);
+}
 
 // 读取主插件整数型设置，兼容 JSON 编码的 '"70"' 与裸字符串 '70' 两种格式
 function getMainStorageInt(key, defaultVal) {
-    const main = getMainExt();
-    if (!main) return defaultVal;
-    const raw = main.storageGet(key);
+    const api = getApi();
+    if (api) return api.getStorageInt(key, defaultVal);
+    const raw = mainStorGet(key);
     if (!raw) return defaultVal;
     try { return parseInt(JSON.parse(raw)) || defaultVal; }
     catch (e) { return parseInt(raw) || defaultVal; }
 }
 
-function getPrimaryUid(platform, uid) {
-    const main = getMainExt();
-    if (!main) return uid;
+function isUserFeatureEnabled(uid, key, defaultValue = true) {
+    const api = getApi();
+    if (api) return api.isUserFeatureEnabled(uid, key, defaultValue);
     try {
-        const extras = JSON.parse(main.storageGet("extra_accounts") || "{}");
+        const blockMap = JSON.parse(mainStorGet("feature_user_blocklist") || "{}");
+        const personConfig = blockMap[uid];
+        if (personConfig && personConfig[key] !== undefined) return personConfig[key];
+    } catch (e) { }
+    return defaultValue;
+}
+
+function getPrimaryUid(platform, uid) {
+    const api = getApi();
+    if (api) return api.getPrimaryUid(platform, uid);
+    try {
+        const extras = JSON.parse(mainStorGet("extra_accounts") || "{}");
         return extras[`${platform}:${uid}`] || uid;
     } catch (e) { return uid; }
 }
 
 // 新结构：a_private_group[platform][uid] = [roleName, gid]
-// getRoleName：O(1) 直接用 uid 查
 function getRoleName(ctx, msg) {
-    const main = getMainExt();
-    if (!main) return null;
+    const api = getApi();
+    if (api) return api.getRoleName(ctx, msg);
     try {
-        const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
+        const apg = JSON.parse(mainStorGet("a_private_group") || "{}");
         const platform = msg.platform;
         const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
         const uid = getPrimaryUid(platform, rawUid);
@@ -63,12 +90,12 @@ function getRoleName(ctx, msg) {
     return null;
 }
 
-// getRoleUid：新结构下需要 O(n) 扫描（key 是 uid，value[0] 是 roleName）
+// getRoleUid：roleName 反查 uid（主插件侧叫 getUidByRoleName）
 function getRoleUid(platform, roleName) {
-    const main = getMainExt();
-    if (!main) return null;
+    const api = getApi();
+    if (api) return api.getUidByRoleName(platform, roleName);
     try {
-        const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
+        const apg = JSON.parse(mainStorGet("a_private_group") || "{}");
         const roles = apg[platform] || {};
         const entry = Object.entries(roles).find(([_, v]) => v[0] === roleName);
         return entry ? entry[0] : null;
@@ -76,12 +103,12 @@ function getRoleUid(platform, roleName) {
 }
 
 function isUserAdmin(ctx, msg) {
+    const api = getApi();
+    if (api) return api.isUserAdmin(ctx, msg);
     const platform = msg.platform;
     const uid = msg.sender.userId.replace(`${platform}:`, "");
-    const main = getMainExt();
-    if (!main) return false;
     try {
-        const a_adminList = JSON.parse(main.storageGet("a_adminList") || "{}");
+        const a_adminList = JSON.parse(mainStorGet("a_adminList") || "{}");
         return ctx.privilegeLevel === 100 || (a_adminList[platform] && a_adminList[platform].includes(uid));
     } catch (e) { return false; }
 }
@@ -92,11 +119,11 @@ function isUserAdmin(ctx, msg) {
 
 function getRegistry() {
     const main = getMainExt();
-    return main ? JSON.parse(main.storageGet("item_registry") || "{}") : {};
+    return main ? JSON.parse(mainStorGet("item_registry") || "{}") : {};
 }
 function saveRegistry(reg) {
     const main = getMainExt();
-    if (main) main.storageSet("item_registry", JSON.stringify(reg));
+    if (main) mainStorSet("item_registry", JSON.stringify(reg));
 }
 
 // RPG 属性定义：{ attrName: { min, max, default, desc } }
@@ -105,18 +132,18 @@ function getAttrDefs() {
     const main = getMainExt();
     if (!main) return {};
     let defs = {};
-    try { defs = JSON.parse(main.storageGet("rpg_attr_defs") || "{}"); } catch(e) {}
+    try { defs = JSON.parse(mainStorGet("rpg_attr_defs") || "{}"); } catch(e) {}
     if (!Object.keys(defs).length) {
         let migrated = false;
         for (const key of ["sys_attr_presets", "item_valid_attrs"]) {
             try {
-                const arr = JSON.parse(main.storageGet(key) || "[]");
+                const arr = JSON.parse(mainStorGet(key) || "[]");
                 if (Array.isArray(arr)) arr.forEach(n => { if (n && !defs[n]) { defs[n] = { min: null, max: null, default: 0, desc: "" }; migrated = true; } });
             } catch(e) {}
         }
         if (migrated) {
-            main.storageSet("rpg_attr_defs", JSON.stringify(defs));
-            main.storageSet("sys_attr_presets", JSON.stringify(Object.keys(defs)));
+            mainStorSet("rpg_attr_defs", JSON.stringify(defs));
+            mainStorSet("sys_attr_presets", JSON.stringify(Object.keys(defs)));
         }
     }
     return defs;
@@ -124,19 +151,19 @@ function getAttrDefs() {
 function saveAttrDefs(defs) {
     const main = getMainExt();
     if (!main) return;
-    main.storageSet("rpg_attr_defs", JSON.stringify(defs));
+    mainStorSet("rpg_attr_defs", JSON.stringify(defs));
     // 保持 sys_attr_presets 同步，这样其他脚本调用时不会出错
-    main.storageSet("sys_attr_presets", JSON.stringify(Object.keys(defs)));
+    mainStorSet("sys_attr_presets", JSON.stringify(Object.keys(defs)));
 }
 
 // 角色属性数值：{ roleName: { attrName: value } }
 function getCharAttrs() {
     const main = getMainExt();
-    return main ? JSON.parse(main.storageGet("sys_character_attrs") || "{}") : {};
+    return main ? JSON.parse(mainStorGet("sys_character_attrs") || "{}") : {};
 }
 function saveCharAttrs(attrs) {
     const main = getMainExt();
-    if (main) main.storageSet("sys_character_attrs", JSON.stringify(attrs));
+    if (main) mainStorSet("sys_character_attrs", JSON.stringify(attrs));
 }
 
 function clampAttr(def, value) {
@@ -161,20 +188,20 @@ function saveValidAttrs(attrs) {
 // 合成系统
 function getCraftRecipes() {
     const main = getMainExt();
-    return main ? JSON.parse(main.storageGet("craft_recipes") || "{}") : {};
+    return main ? JSON.parse(mainStorGet("craft_recipes") || "{}") : {};
 }
 function saveCraftRecipes(recipes) {
     const main = getMainExt();
-    if (main) main.storageSet("craft_recipes", JSON.stringify(recipes));
+    if (main) mainStorSet("craft_recipes", JSON.stringify(recipes));
 }
 
 function getInvAll() {
     const main = getMainExt();
-    return main ? JSON.parse(main.storageGet("global_inventories") || "{}") : {};
+    return main ? JSON.parse(mainStorGet("global_inventories") || "{}") : {};
 }
 function saveInvAll(invs) {
     const main = getMainExt();
-    if (main) main.storageSet("global_inventories", JSON.stringify(invs));
+    if (main) mainStorSet("global_inventories", JSON.stringify(invs));
 }
 
 function pruneExpiredItems(roleKey) {
@@ -259,47 +286,47 @@ function getInvCount(roleKey, code) {
 
 function getPoolDefs() {
     const main = getMainExt();
-    return main ? JSON.parse(main.storageGet("pool_definitions") || "{}") : {};
+    return main ? JSON.parse(mainStorGet("pool_definitions") || "{}") : {};
 }
 function savePoolDefs(defs) {
     const main = getMainExt();
-    if (main) main.storageSet("pool_definitions", JSON.stringify(defs));
+    if (main) mainStorSet("pool_definitions", JSON.stringify(defs));
 }
 
 function getDrawConfig() {
     const main = getMainExt();
-    return main ? JSON.parse(main.storageGet("pool_draw_config") || '{"total":2,"pools":{}}') : { total: 2, pools: {} };
+    return main ? JSON.parse(mainStorGet("pool_draw_config") || '{"total":2,"pools":{}}') : { total: 2, pools: {} };
 }
 function saveDrawConfig(cfg) {
     const main = getMainExt();
-    if (main) main.storageSet("pool_draw_config", JSON.stringify(cfg));
+    if (main) mainStorSet("pool_draw_config", JSON.stringify(cfg));
 }
 
 function getShop() {
     const main = getMainExt();
-    return main ? JSON.parse(main.storageGet("shop_listings") || "[]") : [];
+    return main ? JSON.parse(mainStorGet("shop_listings") || "[]") : [];
 }
 function saveShop(shop) {
     const main = getMainExt();
-    if (main) main.storageSet("shop_listings", JSON.stringify(shop));
+    if (main) mainStorSet("shop_listings", JSON.stringify(shop));
 }
 
 function getMarket() {
     const main = getMainExt();
-    return main ? JSON.parse(main.storageGet("secondhand_market") || "{}") : {};
+    return main ? JSON.parse(mainStorGet("secondhand_market") || "{}") : {};
 }
 function saveMarket(market) {
     const main = getMainExt();
-    if (main) main.storageSet("secondhand_market", JSON.stringify(market));
+    if (main) mainStorSet("secondhand_market", JSON.stringify(market));
 }
 
 function getMarketConfig() {
     const main = getMainExt();
-    return main ? JSON.parse(main.storageGet("market_config") || '{"fee":3,"enabled":true}') : { fee: 3, enabled: true };
+    return main ? JSON.parse(mainStorGet("market_config") || '{"fee":3,"enabled":true}') : { fee: 3, enabled: true };
 }
 function saveMarketConfig(cfg) {
     const main = getMainExt();
-    if (main) main.storageSet("market_config", JSON.stringify(cfg));
+    if (main) mainStorSet("market_config", JSON.stringify(cfg));
 }
 
 // ========================
@@ -406,10 +433,10 @@ function modCharAttrs(platform, roleName, changesStr) {
 function getPlayerDrawRec(platform, uid) {
     const main = getMainExt();
     if (!main) return null;
-    const records = JSON.parse(main.storageGet("player_draw_records") || "{}");
+    const records = JSON.parse(mainStorGet("player_draw_records") || "{}");
     const key = `${platform}:${uid}`;
     let rec = records[key] || { day: "", used: {}, extra: {} };
-    const currentDay = main.storageGet("global_days") || "";
+    const currentDay = mainStorGet("global_days") || "";
     if (rec.day !== currentDay) { rec.day = currentDay; rec.used = {}; }
     return { records, key, rec };
 }
@@ -418,7 +445,7 @@ function savePlayerDrawRec(records, key, rec) {
     const main = getMainExt();
     if (!main) return;
     records[key] = rec;
-    main.storageSet("player_draw_records", JSON.stringify(records));
+    mainStorSet("player_draw_records", JSON.stringify(records));
 }
 
 function canDraw(rec, config, poolName) {
@@ -473,6 +500,25 @@ function drawFromTierFree(tier) {
     return picked.code; // caller saves defs
 }
 
+function getPityCounters() {
+    const main = getMainExt();
+    return main ? JSON.parse(mainStorGet("player_pity_counters") || "{}") : {};
+}
+function savePityCounters(counters) {
+    const main = getMainExt();
+    if (main) mainStorSet("player_pity_counters", JSON.stringify(counters));
+}
+function getPityCount(uid, poolName) {
+    return (getPityCounters()[uid] || {})[poolName] || 0;
+}
+function setPityCount(uid, poolName, val) {
+    const counters = getPityCounters();
+    if (!counters[uid]) counters[uid] = {};
+    if (val <= 0) delete counters[uid][poolName];
+    else counters[uid][poolName] = val;
+    savePityCounters(counters);
+}
+
 // ========================
 // 通知辅助
 // ========================
@@ -480,7 +526,7 @@ function drawFromTierFree(tier) {
 function notifyPlayer(ctx, platform, roleName, text) {
     const main = getMainExt();
     if (!main) return;
-    const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
+    const apg = JSON.parse(mainStorGet("a_private_group") || "{}");
     // 新结构：通过 roleName 反查 uid，再取 gid
     const uid = getRoleUid(platform, roleName);
     if (!uid) return;
@@ -533,6 +579,18 @@ function initPresetItems() {
         reg["SPEC_005"] = { code: "SPEC_005", name: "捕鼠器", desc: "一个精巧的捕鼠器，激活后将锁定目标指定小时内的行动，使其无法私约、电话或摘心愿。", type: "preset", attrs: null };
         changed = true;
     }
+    if (!reg["SPEC_006"]) {
+        reg["SPEC_006"] = { code: "SPEC_006", name: "窃听器", desc: "一枚微型窃听装置，激活后可悄悄截录目标的电话内容——信号有时会有些干扰……", type: "preset", attrs: null };
+        changed = true;
+    }
+    if (!reg["SPEC_007"]) {
+        reg["SPEC_007"] = { code: "SPEC_007", name: "截信器", desc: "一台隐蔽的信号截断仪，激活后可拦截目标发出的短信，但内容偶有失真……", type: "preset", attrs: null };
+        changed = true;
+    }
+    if (!reg["SPEC_008"]) {
+        reg["SPEC_008"] = { code: "SPEC_008", name: "回音壁", desc: "一面奇异的墙壁，贴上后可感知所有投向目标的信件内容——对方收到什么，你便知晓什么。", type: "preset", attrs: null };
+        changed = true;
+    }
     // 默认货币：金币、银币（按名称判断，避免重复注册）
     const currencyNames = new Set(Object.values(reg).filter(r => r.type === "currency").map(r => r.name));
     if (!currencyNames.has("金币")) {
@@ -558,10 +616,10 @@ function initPresetItems() {
 function logItemUsage(platform, roleName, code, itemName) {
     const main = getMainExt();
     if (!main) return;
-    const log = JSON.parse(main.storageGet("item_usage_log") || "[]");
+    const log = JSON.parse(mainStorGet("item_usage_log") || "[]");
     log.push({ timestamp: Date.now(), platform, roleName, code, name: itemName });
     if (log.length > 500) log.splice(0, log.length - 500);
-    main.storageSet("item_usage_log", JSON.stringify(log));
+    mainStorSet("item_usage_log", JSON.stringify(log));
 }
 
 // ========================
@@ -750,7 +808,7 @@ cmd_init_preset.solve = (ctx, msg, cmdArgs) => {
     }
 
     initPresetItems();
-    seal.replyToSender(ctx, msg, "✅ 已初始化系统预设物品：追踪器、万能钥匙、金币、银币");
+    seal.replyToSender(ctx, msg, "✅ 已初始化系统预设物品：追踪器、万能钥匙、望远镜、羽毛笔、捕鼠器、窃听器、截信器、回音壁，以及默认货币金币/银币");
     return seal.ext.newCmdExecuteResult(true);
 };
 
@@ -951,7 +1009,7 @@ cmd_shop_add.solve = (ctx, msg, cmdArgs) => {
     if ((item.code === "SPEC_003" || item.code === "SPEC_004")) {
         const letterExt = seal.ext.find("changri");
         if (letterExt) {
-            const config = JSON.parse(letterExt.storageGet("global_feature_toggle") || "{}");
+            const config = JSON.parse(mainStorGet("global_feature_toggle") || "{}");
             if (!config.enable_direct_letter) {
                 return seal.replyToSender(ctx, msg, `❌ 「${item.name}」只有在启用写信综模式后才能上架。`);
             }
@@ -1007,19 +1065,23 @@ ext.cmdMap["商城下架"] = cmd_shop_remove;
 
 let cmd_reg_pool = seal.ext.newCmdItemInfo();
 cmd_reg_pool.name = "注册池子";
-cmd_reg_pool.help = "【管理员】创建抽取池\n注册池子 池子名 数量 —— 数量池（有限个数，抽完即止）\n注册池子 池子名 权重 —— 权重池（加权随机，不减少）\n💡 也可直接「上架池子」，池子不存在时会自动创建为数量池";
+cmd_reg_pool.help = "【管理员】创建抽取池\n注册池子 池子名 数量 —— 数量池（有限个数，抽完即止）\n注册池子 池子名 权重 —— 权重池（加权随机，不减少）\n注册池子 池子名 保底 —— 保底池（权重随机+累计保底，跨天持久）\n💡 也可直接「上架池子」，池子不存在时会自动创建为数量池";
 cmd_reg_pool.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
     const poolName = cmdArgs.getArgN(1);
     const poolTypeRaw = cmdArgs.getArgN(2);
-    const typeMap = { "数量": "free", "自由": "free", "free": "free", "权重": "fixed", "固定": "fixed", "fixed": "fixed" };
+    const typeMap = { "数量": "free", "自由": "free", "free": "free", "权重": "fixed", "固定": "fixed", "fixed": "fixed", "保底": "pity", "pity": "pity" };
     const poolType = typeMap[poolTypeRaw];
     if (!poolName || !poolType) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
     const defs = getPoolDefs();
-    if (defs[poolName]) return seal.replyToSender(ctx, msg, `⚠️ 池子「${poolName}」已存在（${defs[poolName].type === "fixed" ? "权重池" : "数量池"}）。`);
-    defs[poolName] = { name: poolName, type: poolType, items: [], enabled: true };
+    const existTypeStr = defs[poolName] ? (defs[poolName].type === "fixed" ? "权重池" : defs[poolName].type === "pity" ? "保底池" : "数量池") : "";
+    if (defs[poolName]) return seal.replyToSender(ctx, msg, `⚠️ 池子「${poolName}」已存在（${existTypeStr}）。`);
+    const newPool = { name: poolName, type: poolType, items: [], enabled: true };
+    if (poolType === "pity") { newPool.pityItems = []; newPool.pityThreshold = 10; }
+    defs[poolName] = newPool;
     savePoolDefs(defs);
-    seal.replyToSender(ctx, msg, `✅ 池子「${poolName}」已创建（${poolType === "fixed" ? "权重池" : "数量池"}）`);
+    const typeLabel = poolType === "fixed" ? "权重池" : poolType === "pity" ? "保底池（默认10次触发）" : "数量池";
+    seal.replyToSender(ctx, msg, `✅ 池子「${poolName}」已创建（${typeLabel}）`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["注册池子"] = cmd_reg_pool;
@@ -1068,7 +1130,7 @@ cmd_pool_add.solve = (ctx, msg, cmdArgs) => {
         if ((item.code === "SPEC_003" || item.code === "SPEC_004")) {
             const letterExt = seal.ext.find("changri");
             if (letterExt) {
-                const config = JSON.parse(letterExt.storageGet("global_feature_toggle") || "{}");
+                const config = JSON.parse(mainStorGet("global_feature_toggle") || "{}");
                 if (!config.enable_direct_letter) {
                     results.push(`❌ 「${item.name}」只有在启用写信综模式后才能添加到池子。`);
                     continue;
@@ -1080,7 +1142,7 @@ cmd_pool_add.solve = (ctx, msg, cmdArgs) => {
         }
 
         if (isNaN(num) || num <= 0) { results.push(`❌ 数值无效: ${parts[1]}`); continue; }
-        if (pool.type === "fixed") {
+        if (pool.type === "fixed" || pool.type === "pity") {
             if (num > 999) { results.push(`❌ 权重最大999: [${item.code}]`); continue; }
             const existing = pool.items.find(i => i.code === item.code);
             if (existing) { existing.weight = num; results.push(`🔄 [${item.code}]${item.name} 权重更新为 ${num}`); }
@@ -1162,14 +1224,15 @@ cmd_pool_config.solve = (ctx, msg, cmdArgs) => {
         } else {
             for (const pool of poolList) {
                 const icon = pool.enabled ? "✅" : "❌";
-                const typeStr = pool.type === "fixed" ? "权重" : "数量";
+                const typeStr = pool.type === "fixed" ? "权重" : pool.type === "pity" ? "保底" : "数量";
                 const poolLimit = cfg.pools?.[pool.name];
                 const limitStr = poolLimit !== undefined ? `${poolLimit}次/天` : "跟随全局";
                 const itemCount = pool.items.length;
                 const stockStr = pool.type === "free"
                     ? `${pool.items.reduce((s, i) => s + (i.count || 0), 0)}个`
                     : `${itemCount}种`;
-                text += `\n${icon} 【${pool.name}】${typeStr}池 | 库存${stockStr} | ${limitStr}`;
+                const pityNote = pool.type === "pity" ? `｜保底${pool.pityThreshold || 10}次` : "";
+                text += `\n${icon} 【${pool.name}】${typeStr}池 | 库存${stockStr} | ${limitStr}${pityNote}`;
             }
         }
         return seal.replyToSender(ctx, msg, text);
@@ -1245,7 +1308,7 @@ cmd_batch_create_pools.solve = (ctx, msg) => {
     const main = getMainExt();
     if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
 
-    const places = JSON.parse(main.storageGet("available_places") || "{}");
+    const places = JSON.parse(mainStorGet("available_places") || "{}");
     const placeNames = Object.keys(places);
     if (!placeNames.length) return seal.replyToSender(ctx, msg, "❌ 暂无已注册地点，请先用「地点 添加 地点名」添加地点。");
 
@@ -1291,7 +1354,7 @@ cmd_view_pool.solve = (ctx, msg, cmdArgs) => {
         let text = `🎲 抽取池一览（${poolList.length}个）| 全局总量：${totalStr}`;
         for (const pool of poolList) {
             const icon = pool.enabled ? "✅" : "❌";
-            const typeStr = pool.type === "fixed" ? "权重池" : pool.type === "tiered" ? "分段池" : "数量池";
+            const typeStr = pool.type === "fixed" ? "权重池" : pool.type === "tiered" ? "分段池" : pool.type === "pity" ? "保底池" : "数量池";
             const poolLimit = cfg.pools?.[pool.name];
             const limitStr = poolLimit !== undefined ? `${poolLimit}次/天` : "全局";
             let totalStock;
@@ -1303,18 +1366,40 @@ cmd_view_pool.solve = (ctx, msg, cmdArgs) => {
             } else {
                 totalStock = pool.items.length + "种";
             }
-            text += `\n${icon} 【${pool.name}】${typeStr} | 库存${totalStock} | ${limitStr}`;
+            const pityNote = pool.type === "pity" ? `｜保底${pool.pityThreshold || 10}次` : "";
+            text += `\n${icon} 【${pool.name}】${typeStr} | 库存${totalStock} | ${limitStr}${pityNote}`;
         }
         return seal.replyToSender(ctx, msg, text);
     }
     const pool = defs[poolName];
     if (!pool) return seal.replyToSender(ctx, msg, `❌ 未找到池子「${poolName}」。`);
-    const typeStr = pool.type === "fixed" ? "权重池" : pool.type === "tiered" ? "分段池" : "数量池";
+    const typeStr = pool.type === "fixed" ? "权重池" : pool.type === "tiered" ? "分段池" : pool.type === "pity" ? "保底池" : "数量池";
     const statusStr = pool.enabled ? "已开启" : "已关闭";
     const poolLimit = cfg.pools?.[poolName];
     const totalStr = (cfg.total !== null && cfg.total !== undefined) ? `${cfg.total}次` : "无限";
     const limitStr = poolLimit !== undefined ? `${poolLimit}次/天（专属）` : `跟随全局（${totalStr}/天）`;
     let text = `📦 【${poolName}】${typeStr} · ${statusStr} | 抽取：${limitStr}`;
+    if (pool.type === "pity") {
+        const threshold = pool.pityThreshold || 10;
+        const pityCount = (pool.items || []).length;
+        const pityItemCount = (pool.pityItems || []).length;
+        text += `\n保底阈值：${threshold}次｜普通物品：${pityCount}种｜保底物品：${pityItemCount}种`;
+        if (pool.items.length) {
+            text += `\n\n📋 普通物品（权重池）：`;
+            for (const entry of pool.items) {
+                const item = reg[entry.code] || { name: entry.code };
+                text += `\n  · ${item.name} [${entry.code}] 权重×${entry.weight}`;
+            }
+        }
+        if ((pool.pityItems || []).length) {
+            text += `\n\n🌟 保底物品：`;
+            for (const entry of pool.pityItems) {
+                const item = reg[entry.code] || { name: entry.code };
+                text += `\n  · ${item.name} [${entry.code}] 权重×${entry.weight}`;
+            }
+        }
+        return seal.replyToSender(ctx, msg, text);
+    }
     if (pool.type === "tiered") {
         const tiers = pool.tiers || [];
         text += `\n绑定属性：${pool.attr || "未设置"} | 共 ${tiers.length} 个分段`;
@@ -1481,7 +1566,7 @@ cmd_usage_log.solve = (ctx, msg, cmdArgs) => {
     const main = getMainExt();
     if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
     const n = parseInt(cmdArgs.getArgN(1)) || 20;
-    const log = JSON.parse(main.storageGet("item_usage_log") || "[]");
+    const log = JSON.parse(mainStorGet("item_usage_log") || "[]");
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
     const todayLog = log.filter(e => e.timestamp >= todayStart.getTime()).sort((a, b) => a.timestamp - b.timestamp);
     if (!todayLog.length) return seal.replyToSender(ctx, msg, "📭 今天还没有物品使用记录。");
@@ -1974,6 +2059,9 @@ cmd_draw.solve = (ctx, msg, cmdArgs) => {
     const platform = msg.platform;
     const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
     const uid = getPrimaryUid(platform, rawUid);
+    if (!isUserFeatureEnabled(uid, "enable_item_draw")) {
+        return seal.replyToSender(ctx, msg, "❌ 你的抽取功能已被管理员关闭。");
+    }
     const roleKey = `${platform}:${uid}`;
     const drRec = getPlayerDrawRec(platform, uid);
     if (!drRec) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
@@ -1997,8 +2085,28 @@ cmd_draw.solve = (ctx, msg, cmdArgs) => {
     const reg = getRegistry();
     let drawnCode;
     let tierLabel = null;
+    let isPity = false;
     if (pool.type === "fixed") {
         drawnCode = drawFromFixed(pool, reg);
+    } else if (pool.type === "pity") {
+        const threshold = pool.pityThreshold || 10;
+        const pityItems = (pool.pityItems || []).filter(i => reg[i.code]);
+        const currentCount = getPityCount(uid, pool.name);
+        if (currentCount + 1 >= threshold && pityItems.length > 0) {
+            drawnCode = drawFromFixed({ items: pityItems }, reg);
+            isPity = true;
+            setPityCount(uid, pool.name, 0);
+        } else {
+            const normalItems = (pool.items || []).filter(i => reg[i.code]);
+            if (normalItems.length > 0) {
+                drawnCode = drawFromFixed(pool, reg);
+            } else if (pityItems.length > 0) {
+                drawnCode = drawFromFixed({ items: pityItems }, reg);
+                isPity = true;
+                setPityCount(uid, pool.name, 0);
+            }
+            if (!isPity) setPityCount(uid, pool.name, currentCount + 1);
+        }
     } else if (pool.type === "tiered") {
         const allAttrs = getCharAttrs();
         const attrVal = Number((allAttrs[uid] || {})[pool.attr] ?? 0);
@@ -2026,7 +2134,10 @@ cmd_draw.solve = (ctx, msg, cmdArgs) => {
     const totalUsed = rec.used._total || 0;
     const totalBase = (config.total !== null && config.total !== undefined) ? config.total : "∞";
     const tierNote = tierLabel ? ` [${tierLabel}]` : "";
-    seal.replyToSender(ctx, msg, `🎲 【${roleName}】从「${poolName}」${tierNote}抽到：[${drawnCode}]${item.name}\n描述：${item.desc}\n（今日总抽取：${totalUsed}/${totalBase}）`);
+    const pityNote = pool.type === "pity"
+        ? (isPity ? "\n🌟 保底触发！" : `\n（保底进度：${getPityCount(uid, pool.name)}/${pool.pityThreshold || 10}）`)
+        : "";
+    seal.replyToSender(ctx, msg, `🎲 【${roleName}】从「${poolName}」${tierNote}抽到：[${drawnCode}]${item.name}\n描述：${item.desc}\n（今日总抽取：${totalUsed}/${totalBase}）${pityNote}`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["抽取"] = cmd_draw;
@@ -2064,6 +2175,99 @@ cmd_draw_count.solve = (ctx, msg) => {
 };
 ext.cmdMap["我的抽取次数"] = cmd_draw_count;
 ext.cmdMap["抽取次数"] = cmd_draw_count;
+
+// ========================
+// 保底池专属指令
+// ========================
+
+let cmd_set_pity = seal.ext.newCmdItemInfo();
+cmd_set_pity.name = "设置保底";
+cmd_set_pity.help = "【管理员】设置保底池触发阈值\n设置保底 池子名 N  —— 抽取N次后必出保底物品\n设置保底 池子名    —— 查看当前阈值";
+cmd_set_pity.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const poolName = cmdArgs.getArgN(1);
+    if (!poolName) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const defs = getPoolDefs();
+    const pool = defs[poolName];
+    if (!pool) return seal.replyToSender(ctx, msg, `❌ 未找到池子「${poolName}」。`);
+    if (pool.type !== "pity") return seal.replyToSender(ctx, msg, `❌ 「${poolName}」不是保底池（当前类型：${pool.type === "fixed" ? "权重池" : "数量池"}）。`);
+    const nRaw = cmdArgs.getArgN(2);
+    if (!nRaw) {
+        return seal.replyToSender(ctx, msg, `📊 「${poolName}」保底阈值：${pool.pityThreshold || 10}次\n保底物品：${(pool.pityItems || []).length}种`);
+    }
+    const n = parseInt(nRaw);
+    if (isNaN(n) || n < 1) return seal.replyToSender(ctx, msg, "❌ 阈值必须为正整数。");
+    pool.pityThreshold = n;
+    savePoolDefs(defs);
+    seal.replyToSender(ctx, msg, `✅ 「${poolName}」保底阈值已设为 ${n} 次。`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["设置保底"] = cmd_set_pity;
+
+let cmd_add_pity_item = seal.ext.newCmdItemInfo();
+cmd_add_pity_item.name = "上架保底";
+cmd_add_pity_item.help = `【管理员】向保底池添加保底物品（权重抽取）
+上架保底 池子名 物品码*权重
+多行批量：
+。上架保底 池子名
+物品码*权重
+物品码2*权重2`;
+cmd_add_pity_item.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const poolName = cmdArgs.getArgN(1);
+    if (!poolName) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const defs = getPoolDefs();
+    const pool = defs[poolName];
+    if (!pool) return seal.replyToSender(ctx, msg, `❌ 未找到池子「${poolName}」。`);
+    if (pool.type !== "pity") return seal.replyToSender(ctx, msg, `❌ 「${poolName}」不是保底池。`);
+    if (!pool.pityItems) pool.pityItems = [];
+    const rawMsg = msg.message.trim();
+    const msgParts = rawMsg.split(/\r?\n/);
+    const itemLines = msgParts.length > 1
+        ? msgParts.slice(1).filter(l => l.trim())
+        : (cmdArgs.getArgN(2) ? [cmdArgs.getArgN(2)] : []);
+    if (!itemLines.length) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const reg = getRegistry();
+    const results = [];
+    for (const line of itemLines) {
+        const parts = line.trim().split(/[*＊]/);
+        const inputCode = (parts[0] || "").trim();
+        const num = parseInt((parts[1] || "1").trim());
+        const item = findItem(reg, inputCode);
+        if (!item) { results.push(`❌ 未知物品「${inputCode}」`); continue; }
+        if (isNaN(num) || num <= 0 || num > 999) { results.push(`❌ 权重无效（1~999）: ${parts[1]}`); continue; }
+        const existing = pool.pityItems.find(i => i.code === item.code);
+        if (existing) { existing.weight = num; results.push(`🔄 [${item.code}]${item.name} 保底权重更新为 ${num}`); }
+        else { pool.pityItems.push({ code: item.code, weight: num }); results.push(`✅ [${item.code}]${item.name} 保底权重 ${num}`); }
+    }
+    savePoolDefs(defs);
+    seal.replyToSender(ctx, msg, `「${poolName}」保底物品上架：\n${results.join("\n")}`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["上架保底"] = cmd_add_pity_item;
+
+let cmd_my_pity = seal.ext.newCmdItemInfo();
+cmd_my_pity.name = "我的保底";
+cmd_my_pity.help = "查看自己在各保底池的当前累计次数";
+cmd_my_pity.solve = (ctx, msg) => {
+    const roleName = getRoleName(ctx, msg);
+    if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+    const platform = msg.platform;
+    const uid = getPrimaryUid(platform, msg.sender.userId.replace(/^[a-z]+:/i, ""));
+    const defs = getPoolDefs();
+    const pityPools = Object.values(defs).filter(p => p.type === "pity" && p.enabled);
+    if (!pityPools.length) return seal.replyToSender(ctx, msg, "当前没有开放的保底池。");
+    let text = `🌟 【${roleName}】保底进度：`;
+    for (const pool of pityPools) {
+        const count = getPityCount(uid, pool.name);
+        const threshold = pool.pityThreshold || 10;
+        text += `\n  · ${pool.name}：${count}/${threshold}`;
+    }
+    seal.replyToSender(ctx, msg, text);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["我的保底"] = cmd_my_pity;
+ext.cmdMap["保底进度"] = cmd_my_pity;
 
 let cmd_bag = seal.ext.newCmdItemInfo();
 cmd_bag.name = "我的背包";
@@ -2392,7 +2596,7 @@ cmd_delete_item.solve = (ctx, msg, cmdArgs) => {
 ext.cmdMap["删除物品"] = cmd_delete_item;
 
 function isApplyTimeValid(main) {
-    const hoursStr = main.storageGet("apply_item_hours");
+    const hoursStr = mainStorGet("apply_item_hours");
     if (!hoursStr) return true; // 未设置则全天可用
 
     const now = new Date();
@@ -2421,9 +2625,9 @@ cmd_apply.solve = (ctx, msg, cmdArgs) => {
 
     // 显示施加设置
     if (!targetName || targetName === "设置" || targetName === "查看") {
-        const applyNotify = main.storageGet("apply_item_notification") !== "false";
+        const applyNotify = mainStorGet("apply_item_notification") !== "false";
         const exposeRate = getMainStorageInt("apply_item_expose_rate", 0);
-        const applyHours = main.storageGet("apply_item_hours") || "不限";
+        const applyHours = mainStorGet("apply_item_hours") || "不限";
 
         const results = [
             "【互动物品施加设置】",
@@ -2436,7 +2640,7 @@ cmd_apply.solve = (ctx, msg, cmdArgs) => {
 
     // --- 新增：时段检查 ---
     if (!isApplyTimeValid(main)) {
-        const hoursStr = main.storageGet("apply_item_hours");
+        const hoursStr = mainStorGet("apply_item_hours");
         return seal.replyToSender(ctx, msg, `❌ 当前不在道具施加时段内。\n当前可用时段：${hoursStr}`);
     }
     const roleName = getRoleName(ctx, msg);
@@ -2466,7 +2670,7 @@ cmd_apply.solve = (ctx, msg, cmdArgs) => {
     if (item.type !== "interact") return seal.replyToSender(ctx, msg, `⚠️ [${item.name}] 不是互动类物品，请使用「使用」指令。`);
 
     // 2. 检查目标是否存在
-    const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
+    const apg = JSON.parse(mainStorGet("a_private_group") || "{}");
     const targetUid = getRoleUid(platform, targetName);
     if (!targetUid) return seal.replyToSender(ctx, msg, `❌ 未找到目标角色「${targetName}」。`);
 
@@ -2513,7 +2717,7 @@ cmd_apply.solve = (ctx, msg, cmdArgs) => {
     // 7. 渲染反馈
     const changes = parseAttrEffects(item.attrs);
     const effectStr = Object.entries(changes).map(([k, v]) => `${k}${v > 0 ? '+' : ''}${v}`).join("，");
-    const shouldNotify = main.storageGet("apply_item_notification") !== "false";
+    const shouldNotify = mainStorGet("apply_item_notification") !== "false";
     const exposeRate = getMainStorageInt("apply_item_expose_rate", 0);
     const isExposed = Math.random() * 100 < exposeRate;
 
@@ -2550,7 +2754,10 @@ cmd_special_use.help = `使用特殊道具（SPEC类）
 万能钥匙：特殊使用 万能钥匙 地点名
 望远镜：特殊使用 望远镜 目标角色
 羽毛笔：特殊使用 羽毛笔 目标角色
-捕鼠器：特殊使用 捕鼠器 目标角色 时间（整点，如 14）`;
+捕鼠器：特殊使用 捕鼠器 目标角色 时间（整点，如 14）
+窃听器：特殊使用 窃听器 目标角色 [条数=10] [干扰率=30]
+截信器：特殊使用 截信器 目标角色 [条数=10] [干扰率=30]
+回音壁：特殊使用 回音壁 目标角色 [条数=10] [干扰率=30]`;
 
 cmd_special_use.solve = (ctx, msg, cmdArgs) => {
     const main = getMainExt();
@@ -2588,10 +2795,10 @@ cmd_special_use.solve = (ctx, msg, cmdArgs) => {
         const trackerTargetUid = getRoleUid(platform, targetName);
         if (!trackerTargetUid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${targetName}」。`);
 
-        const globalDay = main.storageGet("global_days");
+        const globalDay = mainStorGet("global_days");
         if (!globalDay) return seal.replyToSender(ctx, msg, "⚠️ 未设置游戏天数。");
 
-        const timeRestrict = main.storageGet("item_tracker_time_restrict") !== "false";
+        const timeRestrict = mainStorGet("item_tracker_time_restrict") !== "false";
         let timeRange;
         if (timeRestrict) {
             const h = new Date().getHours();
@@ -2612,11 +2819,11 @@ cmd_special_use.solve = (ctx, msg, cmdArgs) => {
             timeRange = `${start}-${endH.toString().padStart(2,'0')}:${endM.toString().padStart(2,'0')}`;
         }
 
-        const b_confirmedSchedule = JSON.parse(main.storageGet("b_confirmedSchedule") || "{}");
+        const b_confirmedSchedule = JSON.parse(mainStorGet("b_confirmedSchedule") || "{}");
         const targetKey = `${platform}:${getPrimaryUid(platform, trackerTargetUid)}`;
         const matchingEvent = (b_confirmedSchedule[targetKey] || []).find(ev => ev.day === globalDay && timeOverlap(ev.time, timeRange));
         const successRate = getMainStorageInt("item_tracker_success_rate", 70);
-        const showPartner = main.storageGet("item_tracker_show_partner") !== "false";
+        const showPartner = mainStorGet("item_tracker_show_partner") !== "false";
         const isSuccess = Math.random() * 100 < successRate;
 
         if (!removeFromInv(roleKey, "SPEC_001", 1)) return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的追踪器。");
@@ -2633,19 +2840,19 @@ cmd_special_use.solve = (ctx, msg, cmdArgs) => {
     if (item.code === "SPEC_002") {
         const placeName = cmdArgs.args.slice(1).join(' ').trim();
         if (!placeName) return seal.replyToSender(ctx, msg, "🔑 请指定要兑换钥匙的地点：特殊使用 万能钥匙 地点名");
-        const availablePlaces = JSON.parse(main.storageGet("available_places") || "{}");
+        const availablePlaces = JSON.parse(mainStorGet("available_places") || "{}");
         if (!availablePlaces[placeName]) {
             const placeList = Object.keys(availablePlaces).join("、") || "（暂无）";
             return seal.replyToSender(ctx, msg, `❌ 未找到地点「${placeName}」。\n📍 可用地点：${placeList}`);
         }
-        let placeKeys = JSON.parse(main.storageGet("place_keys") || "{}");
+        let placeKeys = JSON.parse(mainStorGet("place_keys") || "{}");
         if (!placeKeys[platform]) placeKeys[platform] = {};
         if (!placeKeys[platform][roleName]) placeKeys[platform][roleName] = [];
         if (placeKeys[platform][roleName].includes(placeName))
             return seal.replyToSender(ctx, msg, `🔑 你已经拥有「${placeName}」的钥匙了。`);
         if (!removeFromInv(roleKey, "SPEC_002", 1)) return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的万能钥匙。");
         placeKeys[platform][roleName].push(placeName);
-        main.storageSet("place_keys", JSON.stringify(placeKeys));
+        mainStorSet("place_keys", JSON.stringify(placeKeys));
         return seal.replyToSender(ctx, msg, `🔑 成功兑换「${placeName}」的钥匙！（万能钥匙已消耗）`);
     }
 
@@ -2653,16 +2860,16 @@ cmd_special_use.solve = (ctx, msg, cmdArgs) => {
     if (item.code === "SPEC_003" || item.code === "SPEC_004") {
         const targetName = cmdArgs.getArgN(2);
         if (!targetName) return seal.replyToSender(ctx, msg, `✉️ 请指定目标：特殊使用 ${item.name} 角色名`);
-        const featureToggle = JSON.parse(main.storageGet("global_feature_toggle") || "{}");
+        const featureToggle = JSON.parse(mainStorGet("global_feature_toggle") || "{}");
         if (!featureToggle.enable_direct_letter) return seal.replyToSender(ctx, msg, "✉️ 发送信件功能未启用。");
-        const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
+        const apg = JSON.parse(mainStorGet("a_private_group") || "{}");
         if (!Object.values(apg[platform] || {}).some(v => v[0] === targetName)) return seal.replyToSender(ctx, msg, `❌ 未找到目标角色「${targetName}」。`);
         if (!removeFromInv(roleKey, item.code, 1)) return seal.replyToSender(ctx, msg, `❌ 背包中没有可用的「${item.name}」。`);
         const effectsKey = item.code === "SPEC_003" ? "letter_telescope_effects" : "letter_quill_pen_effects";
-        const effects = JSON.parse(main.storageGet(effectsKey) || "{}");
+        const effects = JSON.parse(mainStorGet(effectsKey) || "{}");
         if (!effects[targetName]) effects[targetName] = [];
         effects[targetName].push({ applier: roleName, applyTime: Date.now(), itemCode: item.code });
-        main.storageSet(effectsKey, JSON.stringify(effects));
+        mainStorSet(effectsKey, JSON.stringify(effects));
         return seal.replyToSender(ctx, msg, `✅ 你已向「${targetName}」施加了「${item.name}」！`);
     }
 
@@ -2679,7 +2886,7 @@ cmd_special_use.solve = (ctx, msg, cmdArgs) => {
         const endM = hour === 23 ? 59 : 0;
         const timeRange = `${hour.toString().padStart(2,'0')}:00-${endH.toString().padStart(2,'0')}:${endM.toString().padStart(2,'0')}`;
 
-        const globalDay = main.storageGet("global_days");
+        const globalDay = mainStorGet("global_days");
         if (!globalDay) return seal.replyToSender(ctx, msg, "⚠️ 未设置游戏天数。");
 
         // 新结构：通过 roleName 反查 uid
@@ -2689,16 +2896,76 @@ cmd_special_use.solve = (ctx, msg, cmdArgs) => {
 
         if (!removeFromInv(roleKey, "SPEC_005", 1)) return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的捕鼠器。");
 
-        let a_lockedSlots = JSON.parse(main.storageGet("a_lockedSlots") || "{}");
+        let a_lockedSlots = JSON.parse(mainStorGet("a_lockedSlots") || "{}");
         if (!a_lockedSlots[targetKey]) a_lockedSlots[targetKey] = {};
         if (!a_lockedSlots[targetKey][globalDay]) a_lockedSlots[targetKey][globalDay] = [];
         if (!a_lockedSlots[targetKey][globalDay].includes(timeRange)) {
             a_lockedSlots[targetKey][globalDay].push(timeRange);
         }
-        main.storageSet("a_lockedSlots", JSON.stringify(a_lockedSlots));
+        mainStorSet("a_lockedSlots", JSON.stringify(a_lockedSlots));
 
         notifyPlayer(ctx, platform, targetName, `🪤 你在 ${globalDay} ${timeRange} 踩中了捕鼠器，该时段内无法发起或接受私约、电话，也无法摘心愿。`);
         return seal.replyToSender(ctx, msg, `🪤 捕鼠器已激活！「${targetName}」在 ${globalDay} ${timeRange} 的行动被锁定。\n（捕鼠器已消耗）`);
+    }
+
+    // ── SPEC_006 窃听器 ──
+    if (item.code === "SPEC_006") {
+        const targetName = cmdArgs.getArgN(2);
+        if (!targetName) return seal.replyToSender(ctx, msg, "📡 请指定目标：特殊使用 窃听器 角色名 [条数=10] [干扰率=30]");
+        const countRaw = parseInt(cmdArgs.getArgN(3));
+        const blurRaw = parseInt(cmdArgs.getArgN(4));
+        const remainCount = isNaN(countRaw) || countRaw <= 0 ? 10 : countRaw;
+        const blurProb = isNaN(blurRaw) ? 30 : Math.max(0, Math.min(100, blurRaw));
+
+        const targetUid = getRoleUid(platform, targetName);
+        if (!targetUid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${targetName}」。`);
+        if (!removeFromInv(roleKey, "SPEC_006", 1)) return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的窃听器。");
+
+        const phoneTaps = JSON.parse(mainStorGet("phone_tap_effects") || "{}");
+        phoneTaps[targetName] = { ownerRoleName: roleName, platform, remainCount, blurProb };
+        mainStorSet("phone_tap_effects", JSON.stringify(phoneTaps));
+
+        return seal.replyToSender(ctx, msg, `📡 窃听器已部署！\n目标：${targetName}\n最多截听：${remainCount} 条\n干扰率：${blurProb}%\n（窃听器已消耗）`);
+    }
+
+    // ── SPEC_007 截信器 ──
+    if (item.code === "SPEC_007") {
+        const targetName = cmdArgs.getArgN(2);
+        if (!targetName) return seal.replyToSender(ctx, msg, "📱 请指定目标：特殊使用 截信器 角色名 [条数=10] [干扰率=30]");
+        const countRaw = parseInt(cmdArgs.getArgN(3));
+        const blurRaw = parseInt(cmdArgs.getArgN(4));
+        const remainCount = isNaN(countRaw) || countRaw <= 0 ? 10 : countRaw;
+        const blurProb = isNaN(blurRaw) ? 30 : Math.max(0, Math.min(100, blurRaw));
+
+        const targetUid = getRoleUid(platform, targetName);
+        if (!targetUid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${targetName}」。`);
+        if (!removeFromInv(roleKey, "SPEC_007", 1)) return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的截信器。");
+
+        const smsTaps = JSON.parse(mainStorGet("sms_tap_effects") || "{}");
+        smsTaps[targetName] = { ownerRoleName: roleName, platform, remainCount, blurProb };
+        mainStorSet("sms_tap_effects", JSON.stringify(smsTaps));
+
+        return seal.replyToSender(ctx, msg, `📱 截信器已部署！\n目标：${targetName}\n最多截取：${remainCount} 条\n干扰率：${blurProb}%\n（截信器已消耗）`);
+    }
+
+    // ── SPEC_008 回音壁 ──
+    if (item.code === "SPEC_008") {
+        const targetName = cmdArgs.getArgN(2);
+        if (!targetName) return seal.replyToSender(ctx, msg, "🪞 请指定目标：特殊使用 回音壁 角色名 [条数=10] [干扰率=30]");
+        const countRaw = parseInt(cmdArgs.getArgN(3));
+        const blurRaw  = parseInt(cmdArgs.getArgN(4));
+        const remainCount = isNaN(countRaw) || countRaw <= 0 ? 10 : countRaw;
+        const blurProb    = isNaN(blurRaw) ? 30 : Math.max(0, Math.min(100, blurRaw));
+
+        const targetUid = getRoleUid(platform, targetName);
+        if (!targetUid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${targetName}」。`);
+        if (!removeFromInv(roleKey, "SPEC_008", 1)) return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的回音壁。");
+
+        const echoWalls = JSON.parse(mainStorGet("sms_echo_wall_effects") || "{}");
+        echoWalls[targetName] = { ownerRoleName: roleName, platform, remainCount, blurProb };
+        mainStorSet("sms_echo_wall_effects", JSON.stringify(echoWalls));
+
+        return seal.replyToSender(ctx, msg, `🪞 回音壁已贴附！\n目标：${targetName}\n最多截取：${remainCount} 条\n干扰率：${blurProb}%\n（回音壁已消耗）`);
     }
 
     return seal.replyToSender(ctx, msg, `❌ 未知的特殊道具 [${item.code}]，请联系管理员。`);
@@ -2959,7 +3226,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
             const [, rolesPart, attrName, op, valsPart] = attrM;
             const main = getMainExt();
             if (!main) return;
-            const priv = JSON.parse(main.storageGet("a_private_group") || "{}")[platform] || {};
+            const priv = JSON.parse(mainStorGet("a_private_group") || "{}")[platform] || {};
             // 新结构：priv 以 uid 为 key，value[0] 是 roleName
             // roles 统一为 roleName 列表
             const roles = rolesPart === "全体"
@@ -3111,7 +3378,7 @@ cmd_sync_spot_pools.solve = (ctx, msg, cmdArgs) => {
     // 读取地点系统配置（检查是否启用）
     let placeSystemEnabled = true;
     try {
-        const placeConfig = JSON.parse(main.storageGet("place_system_config") || "{}");
+        const placeConfig = JSON.parse(mainStorGet("place_system_config") || "{}");
         placeSystemEnabled = placeConfig.enabled !== false;
     } catch(e) {}
 
@@ -3122,7 +3389,7 @@ cmd_sync_spot_pools.solve = (ctx, msg, cmdArgs) => {
     // 读取所有地点
     let places = {};
     try {
-        places = JSON.parse(main.storageGet("available_places") || "{}");
+        places = JSON.parse(mainStorGet("available_places") || "{}");
     } catch(e) {
         return seal.replyToSender(ctx, msg, "❌ 无法读取地点数据。");
     }
@@ -3217,7 +3484,7 @@ cmd_sync_pools_from_archive.solve = (ctx, msg, cmdArgs) => {
                 let preview = `👁️ 存档池子预览（${poolNames.length}个）| 全局：${totalStr}\n`;
                 for (const name of poolNames) {
                     const p = defs[name];
-                    const typeStr = p.type === "fixed" ? "权重池" : p.type === "tiered" ? "分段池" : "数量池";
+                    const typeStr = p.type === "fixed" ? "权重池" : p.type === "tiered" ? "分段池" : p.type === "pity" ? "保底池" : "数量池";
                     const stock = p.type === "tiered"
                         ? (p.tiers?.length || 0) + "段"
                         : p.type === "free"
@@ -3232,8 +3499,8 @@ cmd_sync_pools_from_archive.solve = (ctx, msg, cmdArgs) => {
                 return;
             }
 
-            main.storageSet("pool_definitions", JSON.stringify(defs));
-            main.storageSet("pool_draw_config", JSON.stringify(cfg));
+            mainStorSet("pool_definitions", JSON.stringify(defs));
+            mainStorSet("pool_draw_config", JSON.stringify(cfg));
             const totalStr = cfg.total != null ? `${cfg.total}次/天` : "无限";
             seal.replyToSender(ctx, msg, `✅ 池子已同步（${poolNames.length} 个池子，全局次数：${totalStr}）。`);
         } catch (e) {
@@ -3294,26 +3561,26 @@ function getAttackDefenseConfig() {
     const main = getMainExt();
     if (!main) return {};
     try {
-        return JSON.parse(main.storageGet("attack_defense_config") || "{}");
+        return JSON.parse(mainStorGet("attack_defense_config") || "{}");
     } catch(e) { return {}; }
 }
 
 function saveAttackDefenseConfig(config) {
     const main = getMainExt();
-    if (main) main.storageSet("attack_defense_config", JSON.stringify(config));
+    if (main) mainStorSet("attack_defense_config", JSON.stringify(config));
 }
 
 function getAttackDefenseData() {
     const main = getMainExt();
     if (!main) return { battles: {}, playerStats: {}, skills: {} };
     try {
-        return JSON.parse(main.storageGet("attack_defense_data") || "{}");
+        return JSON.parse(mainStorGet("attack_defense_data") || "{}");
     } catch(e) { return { battles: {}, playerStats: {}, skills: {} }; }
 }
 
 function saveAttackDefenseData(data) {
     const main = getMainExt();
-    if (main) main.storageSet("attack_defense_data", JSON.stringify(data));
+    if (main) mainStorSet("attack_defense_data", JSON.stringify(data));
 }
 
 // 初始化玩家战斗属性
@@ -4479,33 +4746,33 @@ function getEquipRegistry() {
     const main = getMainExt();
     if (!main) return {};
     try {
-        return JSON.parse(main.storageGet("equipment_registry") || "{}");
+        return JSON.parse(mainStorGet("equipment_registry") || "{}");
     } catch(e) { return {}; }
 }
 
 function saveEquipRegistry(reg) {
     const main = getMainExt();
-    if (main) main.storageSet("equipment_registry", JSON.stringify(reg));
+    if (main) mainStorSet("equipment_registry", JSON.stringify(reg));
 }
 
 function getEquipConfig() {
     const main = getMainExt();
     if (!main) return {};
     try {
-        return JSON.parse(main.storageGet("equipment_config") || "{}");
+        return JSON.parse(mainStorGet("equipment_config") || "{}");
     } catch(e) { return {}; }
 }
 
 function saveEquipConfig(config) {
     const main = getMainExt();
-    if (main) main.storageSet("equipment_config", JSON.stringify(config));
+    if (main) mainStorSet("equipment_config", JSON.stringify(config));
 }
 
 function getEquipSlots() {
     const main = getMainExt();
     if (!main) return ["head", "chest", "hand", "leg", "foot"];
     try {
-        const slots = JSON.parse(main.storageGet("equipment_slots") || "[]");
+        const slots = JSON.parse(mainStorGet("equipment_slots") || "[]");
         return slots.length > 0 ? slots : ["head", "chest", "hand", "leg", "foot"];
     } catch(e) {
         return ["head", "chest", "hand", "leg", "foot"];
@@ -4514,14 +4781,14 @@ function getEquipSlots() {
 
 function saveEquipSlots(slots) {
     const main = getMainExt();
-    if (main) main.storageSet("equipment_slots", JSON.stringify(slots));
+    if (main) mainStorSet("equipment_slots", JSON.stringify(slots));
 }
 
 function getSlotDisplayNames() {
     const main = getMainExt();
     if (!main) return {};
     try {
-        return JSON.parse(main.storageGet("equipment_slot_names") || "{}");
+        return JSON.parse(mainStorGet("equipment_slot_names") || "{}");
     } catch(e) {
         return {};
     }
@@ -4529,7 +4796,7 @@ function getSlotDisplayNames() {
 
 function saveSlotDisplayNames(names) {
     const main = getMainExt();
-    if (main) main.storageSet("equipment_slot_names", JSON.stringify(names));
+    if (main) mainStorSet("equipment_slot_names", JSON.stringify(names));
 }
 
 function getSlotDisplayName(slot) {
@@ -4541,14 +4808,14 @@ function getPlayerEquips(roleKey) {
     const main = getMainExt();
     if (!main) return null;
     try {
-        const data = JSON.parse(main.storageGet("player_equipments") || "{}");
+        const data = JSON.parse(mainStorGet("player_equipments") || "{}");
         if (!data[roleKey]) {
             const slots = getEquipSlots();
             data[roleKey] = {};
             slots.forEach(slot => {
                 data[roleKey][slot] = null;
             });
-            main.storageSet("player_equipments", JSON.stringify(data));
+            mainStorSet("player_equipments", JSON.stringify(data));
         }
         return data[roleKey];
     } catch(e) { return null; }
@@ -4558,9 +4825,9 @@ function savePlayerEquips(roleKey, equips) {
     const main = getMainExt();
     if (!main) return;
     try {
-        const data = JSON.parse(main.storageGet("player_equipments") || "{}");
+        const data = JSON.parse(mainStorGet("player_equipments") || "{}");
         data[roleKey] = equips;
-        main.storageSet("player_equipments", JSON.stringify(data));
+        mainStorSet("player_equipments", JSON.stringify(data));
     } catch(e) {}
 }
 
@@ -4963,11 +5230,11 @@ cmd_equip_slots.solve = (ctx, msg, cmdArgs) => {
         const main = getMainExt();
         if (main) {
             try {
-                const data = JSON.parse(main.storageGet("player_equipments") || "{}");
+                const data = JSON.parse(mainStorGet("player_equipments") || "{}");
                 for (const roleKey in data) {
                     delete data[roleKey][slotCode];
                 }
-                main.storageSet("player_equipments", JSON.stringify(data));
+                mainStorSet("player_equipments", JSON.stringify(data));
             } catch(e) {}
         }
 
@@ -5002,45 +5269,45 @@ ext.cmdMap["槽位"] = cmd_equip_slots;
 // 获取升级规则
 function getLevelUpRules() {
     const main = getMainExt();
-    return main ? JSON.parse(main.storageGet("level_up_rules") || '{"max_level":100,"enabled":true,"level_up_rules":{}}') : {};
+    return main ? JSON.parse(mainStorGet("level_up_rules") || '{"max_level":100,"enabled":true,"level_up_rules":{}}') : {};
 }
 
 function saveLevelUpRules(rules) {
     const main = getMainExt();
-    if (main) main.storageSet("level_up_rules", JSON.stringify(rules));
+    if (main) mainStorSet("level_up_rules", JSON.stringify(rules));
 }
 
 // 获取玩家当前等级（新结构：uid 为 key）
 function getPlayerLevel(uid) {
     const main = getMainExt();
     if (!main) return 1;
-    const data = JSON.parse(main.storageGet("player_level") || "{}");
+    const data = JSON.parse(mainStorGet("player_level") || "{}");
     return data[uid] || 1;
 }
 
 function setPlayerLevel(uid, level) {
     const main = getMainExt();
     if (!main) return;
-    const data = JSON.parse(main.storageGet("player_level") || "{}");
+    const data = JSON.parse(mainStorGet("player_level") || "{}");
     data[uid] = level;
-    main.storageSet("player_level", JSON.stringify(data));
+    mainStorSet("player_level", JSON.stringify(data));
 }
 
 // 获取玩家升级历史（新结构：uid 为 key）
 function getLevelHistory(uid) {
     const main = getMainExt();
     if (!main) return [];
-    const data = JSON.parse(main.storageGet("player_level_history") || "{}");
+    const data = JSON.parse(mainStorGet("player_level_history") || "{}");
     return data[uid] || [];
 }
 
 function addLevelHistory(uid, record) {
     const main = getMainExt();
     if (!main) return;
-    const data = JSON.parse(main.storageGet("player_level_history") || "{}");
+    const data = JSON.parse(mainStorGet("player_level_history") || "{}");
     if (!data[uid]) data[uid] = [];
     data[uid].push(record);
-    main.storageSet("player_level_history", JSON.stringify(data));
+    mainStorSet("player_level_history", JSON.stringify(data));
 }
 
 // 递增公式：基础 + (级数-1) × 增幅
@@ -5069,7 +5336,7 @@ function parseConsumables(str, level) {
             // 判断是物品、互动物品、货币还是属性
             const itemReg = getRegistry();
             const isItem = itemReg[name];
-            const currencies = JSON.parse(getMainExt().storageGet("item_currencies") || "{}");
+            const currencies = JSON.parse(mainStorGet("item_currencies") || "{}");
             const isCurrency = currencies[name];
             const attrDefs = getAttrDefs();
             const isAttr = attrDefs[name];
@@ -5218,7 +5485,7 @@ function checkConsumables(uid, roleKey, consume) {
     const charAttrs = getCharAttrs();
     // 新结构：charAttrs 以 uid 为 key
     const playerAttrs = charAttrs[uid] || {};
-    const currencies = JSON.parse(getMainExt().storageGet("item_currencies") || "{}");
+    const currencies = JSON.parse(mainStorGet("item_currencies") || "{}");
     const main = getMainExt();
 
     // 检查属性
@@ -5266,7 +5533,7 @@ function checkConsumables(uid, roleKey, consume) {
 // 消耗资源
 function consumeResources(uid, roleKey, consume) {
     const charAttrs = getCharAttrs();
-    const currencies = JSON.parse(getMainExt().storageGet("item_currencies") || "{}");
+    const currencies = JSON.parse(mainStorGet("item_currencies") || "{}");
 
     // 消耗属性（新结构：charAttrs 以 uid 为 key）
     if (consume.attributes) {
@@ -5298,7 +5565,7 @@ function consumeResources(uid, roleKey, consume) {
 // 发放奖励
 function grantRewards(uid, roleKey, rewards) {
     const charAttrs = getCharAttrs();
-    const currencies = JSON.parse(getMainExt().storageGet("item_currencies") || "{}");
+    const currencies = JSON.parse(mainStorGet("item_currencies") || "{}");
 
     // 发放属性（新结构：charAttrs 以 uid 为 key）
     if (rewards.rewards) {
@@ -5538,7 +5805,7 @@ cmd_profile.solve = (ctx, msg, cmdArgs) => {
     // 关系线（读主插件存储）
     let relCount = 0, initiated = 0, received = 0, confirmed = 0;
     try {
-        const relData = JSON.parse(main.storageGet("relationship_lines") || "{}");
+        const relData = JSON.parse(mainStorGet("relationship_lines") || "{}");
         const myRels = relData[platform]?.[uid] || {};
         relCount = Object.keys(myRels).length;
         for (const rel of Object.values(myRels)) {
@@ -5584,7 +5851,7 @@ cmd_batch_give.solve = (ctx, msg, cmdArgs) => {
 
     let targets = [];
     if (firstTarget === "全员") {
-        const apg = JSON.parse(main.storageGet("a_private_group") || "{}");
+        const apg = JSON.parse(mainStorGet("a_private_group") || "{}");
         targets = Object.values(apg[platform] || {}).map(v => v[0]).filter(Boolean);
     } else {
         let i = 3;
@@ -5607,3 +5874,249 @@ cmd_batch_give.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["批量发放"] = cmd_batch_give;
+
+// ========================
+// 定时收集
+// ========================
+
+function getCollections() {
+    return JSON.parse(ext.storageGet("scheduled_collections") || "{}");
+}
+function saveCollections(cols) {
+    ext.storageSet("scheduled_collections", JSON.stringify(cols));
+}
+
+function getSafeEndPointRPG(platform) {
+    const eps = seal.getEndPoints();
+    if (!eps || !eps.length) return null;
+    return eps.find(e => e.platform === platform && e.state === 1) || eps.find(e => e.state === 1) || eps[0];
+}
+
+function sendToAdminGroupRPG(platform, text) {
+    const main = getMainExt();
+    if (!main) return;
+    const gid = JSON.parse(mainStorGet("adminAnnounceGroupId") || "null");
+    if (!gid) return;
+    try {
+        const ep = getSafeEndPointRPG(platform);
+        if (!ep) return;
+        const m = seal.newMessage();
+        m.messageType = "group";
+        m.groupId = `${platform}-Group:${gid}`;
+        seal.replyToSender(seal.createTempCtx(ep, m), m, text);
+    } catch (e) { console.error("[定时收集] sendToAdminGroup:", e.message); }
+}
+
+// withAt=true 时在每个玩家的私人群里单独艾特该玩家
+function broadcastToAllPlayerGroups(platform, text, withAt) {
+    const main = getMainExt();
+    if (!main) return;
+    const apg = JSON.parse(mainStorGet("a_private_group") || "{}");
+    const groups = apg[platform] || {};
+    if (withAt) {
+        // 按群分组，每个玩家各自收到艾特
+        Object.entries(groups).forEach(([uid, info]) => {
+            const gid = info[1];
+            if (!gid) return;
+            try {
+                const ep = getSafeEndPointRPG(platform);
+                if (!ep) return;
+                const m = seal.newMessage();
+                m.messageType = "group";
+                m.groupId = `${platform}-Group:${gid}`;
+                seal.replyToSender(seal.createTempCtx(ep, m), m, `[CQ:at,qq=${uid}]\n${text}`);
+            } catch (e) { console.error("[定时收集] broadcast at:", e.message); }
+        });
+    } else {
+        const gids = [...new Set(Object.values(groups).map(v => v[1]).filter(Boolean))];
+        gids.forEach(gid => {
+            try {
+                const ep = getSafeEndPointRPG(platform);
+                if (!ep) return;
+                const m = seal.newMessage();
+                m.messageType = "group";
+                m.groupId = `${platform}-Group:${gid}`;
+                seal.replyToSender(seal.createTempCtx(ep, m), m, text);
+            } catch (e) { console.error("[定时收集] broadcast:", e.message); }
+        });
+    }
+}
+
+// 解析时间字符串，支持 "2000" / "20:00" 两种格式，返回 { h, m } 或 null
+function parseCollectionTime(str) {
+    str = str.trim();
+    let h, m;
+    if (/^\d{3,4}$/.test(str)) {
+        // 2000 → 20:00, 900 → 9:00
+        h = parseInt(str.slice(0, -2));
+        m = parseInt(str.slice(-2));
+    } else if (/^\d{1,2}:\d{2}$/.test(str)) {
+        [h, m] = str.split(":").map(Number);
+    } else {
+        return null;
+    }
+    if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+    return { h, m };
+}
+
+function formatHM(h, m) {
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+// 每分钟只激活一次，避免重复触发
+let _collectionLastMinute = -1;
+let _collectionTimer = null;
+
+function registerCollectionTimer() {
+    if (_collectionTimer) clearInterval(_collectionTimer);
+    _collectionTimer = setInterval(() => {
+        const now = new Date();
+        const h = now.getHours(), mn = now.getMinutes();
+        const currentTotal = h * 60 + mn;
+        if (currentTotal === _collectionLastMinute) return;
+        _collectionLastMinute = currentTotal;
+
+        const cols = getCollections();
+        let changed = false;
+        for (const name in cols) {
+            const col = cols[name];
+            if (col.active) continue;
+            const targetTotal = col.h * 60 + col.m;
+            // 使用取模处理跨午夜情况，diff 为正表示还有多少分钟
+            const diff = ((targetTotal - currentTotal) + 1440) % 1440;
+            const timeStr = formatHM(col.h, col.m);
+
+            // diff===0 为准点触发；diff>1438 覆盖 bot 重启导致跳过目标分钟的场景（最多容错2分钟）
+            if (diff === 0 || diff >= 1438) {
+                col.active = true;
+                changed = true;
+                broadcastToAllPlayerGroups("QQ", `📋【收集开启】「${name}」现已开始收集！\n请使用：定时收集 ${name} 你的内容`, true);
+                sendToAdminGroupRPG("QQ", `📋【收集开启】「${name}」已于 ${timeStr} 开启。`);
+            } else if (diff === 30 && !col.reminded30) {
+                col.reminded30 = true;
+                changed = true;
+                broadcastToAllPlayerGroups("QQ", `⏰【收集预告】「${name}」将于 ${timeStr}（30分钟后）开始收集，请提前准备！`, true);
+            } else if (diff === 10 && !col.reminded10) {
+                col.reminded10 = true;
+                changed = true;
+                broadcastToAllPlayerGroups("QQ", `⏰【收集预告】「${name}」将于 ${timeStr}（10分钟后）开始收集！`, true);
+            } else if (diff === 5 && !col.reminded5) {
+                col.reminded5 = true;
+                changed = true;
+                broadcastToAllPlayerGroups("QQ", `⏰【收集预告】「${name}」将于 ${timeStr}（5分钟后）开始收集，马上就到！`, true);
+            }
+        }
+        if (changed) saveCollections(cols);
+    }, 30000);
+}
+
+ext.onLoad = () => { registerCollectionTimer(); };
+
+// 管理员：创建定时收集
+let cmd_collection_create = seal.ext.newCmdItemInfo();
+cmd_collection_create.name = "创建定时收集";
+cmd_collection_create.help = "【管理员】创建定时收集\n创建定时收集 时间 项目名字\n时间格式：2000 或 20:00\n示例：创建定时收集 2000 心情调查";
+cmd_collection_create.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const timeStr = cmdArgs.getArgN(1);
+    const name = cmdArgs.getArgN(2);
+    if (!timeStr || !name) {
+        const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r;
+    }
+    const t = parseCollectionTime(timeStr);
+    if (!t) return seal.replyToSender(ctx, msg, "❌ 时间格式无效，请使用 2000 或 20:00。");
+    const cols = getCollections();
+    if (cols[name]) return seal.replyToSender(ctx, msg, `⚠️ 「${name}」已存在，请先用「关闭定时收集 ${name}」删除再创建。`);
+    cols[name] = { name, h: t.h, m: t.m, active: false, createdAt: Date.now(), submissions: [] };
+    saveCollections(cols);
+    seal.replyToSender(ctx, msg, `✅ 定时收集「${name}」已创建，将于 ${formatHM(t.h, t.m)} 自动开启。`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["创建定时收集"] = cmd_collection_create;
+
+// 管理员：关闭定时收集
+let cmd_collection_close = seal.ext.newCmdItemInfo();
+cmd_collection_close.name = "关闭定时收集";
+cmd_collection_close.help = "【管理员】关闭并删除定时收集\n关闭定时收集 项目名字";
+cmd_collection_close.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const name = cmdArgs.getArgN(1);
+    if (!name) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const cols = getCollections();
+    if (!cols[name]) return seal.replyToSender(ctx, msg, `❌ 找不到收集「${name}」。`);
+    delete cols[name];
+    saveCollections(cols);
+    seal.replyToSender(ctx, msg, `✅ 定时收集「${name}」已关闭。`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["关闭定时收集"] = cmd_collection_close;
+
+// 管理员：查看定时收集（无参数=列表，有参数=查看提交内容）
+let cmd_collection_list = seal.ext.newCmdItemInfo();
+cmd_collection_list.name = "查看定时收集";
+cmd_collection_list.help = "【管理员】查看定时收集\n查看定时收集          — 列出所有收集\n查看定时收集 项目名字  — 查看该项目的提交记录";
+cmd_collection_list.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const cols = getCollections();
+    const name = cmdArgs.getArgN(1);
+
+    if (!name) {
+        const keys = Object.keys(cols);
+        if (!keys.length) return seal.replyToSender(ctx, msg, "📋 当前没有定时收集。");
+        const lines = keys.map(n => {
+            const c = cols[n];
+            const count = (c.submissions || []).length;
+            return `· ${n}（${formatHM(c.h, c.m)} 开启）${c.active ? " ✅已激活" : " ⏳等待中"} | ${count} 条提交`;
+        });
+        seal.replyToSender(ctx, msg, `📋 定时收集列表：\n${lines.join("\n")}`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    if (!cols[name]) return seal.replyToSender(ctx, msg, `❌ 找不到收集「${name}」。`);
+    const subs = cols[name].submissions || [];
+    if (!subs.length) return seal.replyToSender(ctx, msg, `📋「${name}」暂无提交记录。`);
+    const lines = subs.map((s, i) => `${i + 1}. 【${s.roleName}】${s.time}\n   ${s.content}`);
+    seal.replyToSender(ctx, msg, `📋「${name}」提交记录（共 ${subs.length} 条）：\n${lines.join("\n")}`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["查看定时收集"] = cmd_collection_list;
+
+// 玩家：提交定时收集内容
+let cmd_collection_submit = seal.ext.newCmdItemInfo();
+cmd_collection_submit.name = "定时收集";
+cmd_collection_submit.help = "提交定时收集内容\n定时收集 项目名字 内容\n示例：定时收集 心情调查 今天很开心！";
+cmd_collection_submit.solve = (ctx, msg, cmdArgs) => {
+    const name = cmdArgs.getArgN(1);
+    if (!name) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const cols = getCollections();
+    if (!cols[name]) return seal.replyToSender(ctx, msg, `❌ 找不到收集「${name}」。`);
+    if (!cols[name].active) {
+        const c = cols[name];
+        return seal.replyToSender(ctx, msg, `⏳ 收集「${name}」尚未开启，将于 ${formatHM(c.h, c.m)} 开始。`);
+    }
+    const roleName = getRoleName(ctx, msg);
+    if (!roleName) return seal.replyToSender(ctx, msg, "❌ 未找到你的角色信息，请确认已绑定角色。");
+
+    // 提取内容：名字之后所有参数拼合
+    let content = "";
+    let i = 2;
+    const parts = [];
+    while (true) {
+        const p = cmdArgs.getArgN(i);
+        if (!p) break;
+        parts.push(p);
+        i++;
+    }
+    content = parts.join(" ").trim();
+    if (!content) return seal.replyToSender(ctx, msg, "❌ 请输入收集内容。");
+
+    const now = new Date();
+    const timeStr = formatHM(now.getHours(), now.getMinutes());
+
+    if (!cols[name].submissions) cols[name].submissions = [];
+    cols[name].submissions.push({ roleName, time: timeStr, content });
+    saveCollections(cols);
+    seal.replyToSender(ctx, msg, `✅ 已提交「${name}」收集，谢谢！`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["定时收集"] = cmd_collection_submit;

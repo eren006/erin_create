@@ -42,8 +42,8 @@ function getConfig() {
     const defaultConfig = {
         allowAnonymous: true,   
         allowCustomName: true,  // 【新增】是否允许自定义署名/匿名
-        cooldownSeconds: 30,    
-        dailyLimit: 10          
+        cooldownSeconds: 30,
+        dailyLimit: 10
     };
     const stored = JSON.parse(ext.storageGet(STORAGE_CONFIG) || "{}");
     return { ...defaultConfig, ...stored };
