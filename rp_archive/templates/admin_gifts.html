@@ -1,0 +1,332 @@
+{% extends "base.html" %}
+{% block title %}预设礼品管理 · 长日存档{% endblock %}
+
+{% block head %}
+<style>
+.gifts-layout { max-width: 760px; margin: 0 auto; padding: 28px 20px; }
+@media(max-width:600px) { .gifts-layout { padding: 16px 14px; } }
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.panel-title { font-size: 14px; font-weight: 700; margin: 0; }
+.panel-body { padding: 14px 16px; }
+
+.sync-tip {
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 14px;
+  margin-bottom: 14px;
+  line-height: 1.8;
+}
+.sync-tip code {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 12px;
+  color: var(--accent);
+  font-family: monospace;
+}
+
+.gifts-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.gifts-table th {
+  text-align: left;
+  color: var(--muted);
+  font-weight: 600;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.gifts-table td { padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.gifts-table tr:last-child td { border-bottom: none; }
+.gifts-table tr:hover td { background: var(--surface2); }
+.gift-code { font-family: monospace; font-size: 12px; color: var(--accent2); }
+.gift-content-cell { color: var(--muted); font-size: 12px; max-width: 300px; white-space: pre-wrap; word-break: break-all; }
+.usage-badge {
+  font-size: 11px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 2px 8px;
+  color: var(--muted);
+}
+.btn-del {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--red, #f87171);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.btn-del:hover { background: var(--surface2); }
+
+.add-form {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+.add-form h4 {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  margin: 0 0 12px;
+}
+.form-row {
+  display: grid;
+  grid-template-columns: 100px 1fr 2fr auto;
+  gap: 8px;
+  align-items: end;
+}
+@media (max-width: 640px) { .form-row { grid-template-columns: 1fr 1fr; } }
+.form-row label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+.form-row input, .form-row textarea {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 7px;
+  padding: 6px 10px;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+.form-row input:focus, .form-row textarea:focus { outline: none; border-color: var(--accent); }
+.btn-add {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  align-self: end;
+}
+.btn-add:hover { opacity: .85; }
+
+.btn-save {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 24px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-save:hover { opacity: .85; }
+.btn-save:disabled { opacity: .5; cursor: not-allowed; }
+
+#toast {
+  position: fixed; bottom: 24px; right: 24px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px 18px;
+  font-size: 13px; display: none; z-index: 999;
+}
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="gifts-layout">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:8px;">
+    <h1 style="font-size:18px;font-weight:700;margin:0;">🎁 预设礼品管理</h1>
+    <a href="{{ url_for('admin') }}" style="font-size:12px;color:var(--muted);">← 后台</a>
+  </div>
+
+  <div class="sync-tip">
+    💡 <b>使用说明：</b>
+    在此添加预设礼品后，在机器人发送&nbsp;<code>全量同步</code>&nbsp;即可将礼品表推送到机器人；
+    玩家可在群内发送&nbsp;<code>礼品店</code>&nbsp;查看，用&nbsp;<code>送礼 对方名 #编号</code>&nbsp;赠送图鉴内礼品。
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">当前预设礼品</span>
+      <span id="count-badge" style="font-size:12px;color:var(--muted);">共 <b id="gift-count">0</b> 件</span>
+    </div>
+    <div class="panel-body" style="padding:0;">
+      <table class="gifts-table" id="gifts-table">
+        <thead>
+          <tr>
+            <th>编号</th>
+            <th>名称</th>
+            <th>内容</th>
+            <th>使用次数</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="gifts-tbody">
+        </tbody>
+      </table>
+      <div id="empty-hint" style="padding:24px;text-align:center;color:var(--muted);font-size:13px;display:none;">
+        暂无预设礼品，请在下方添加。
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">添加礼品</span>
+    </div>
+    <div class="panel-body">
+      <div class="form-row">
+        <div>
+          <label>编号 <span id="next-code-hint" style="color:var(--accent);font-weight:600;"></span></label>
+          <input id="new-code" type="text" placeholder="#001" maxlength="20">
+        </div>
+        <div>
+          <label>名称</label>
+          <input id="new-name" type="text" placeholder="玫瑰花束">
+        </div>
+        <div>
+          <label>内容（发送给收件人的文本）</label>
+          <input id="new-content" type="text" placeholder="一束盛开的玫瑰">
+        </div>
+        <div>
+          <button class="btn-add" onclick="addGift()">添加</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:10px;align-items:center;justify-content:flex-end;">
+    <span id="save-status" style="font-size:12px;color:var(--muted);"></span>
+    <button class="btn-save" id="btn-save" onclick="saveGifts()">保存到存档</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// 从服务器加载初始数据
+let gifts = {{ preset_gifts | tojson }};
+
+function renderTable() {
+  const tbody = document.getElementById('gifts-tbody');
+  const keys = Object.keys(gifts).sort();
+  document.getElementById('gift-count').textContent = keys.length;
+  document.getElementById('empty-hint').style.display = keys.length ? 'none' : 'block';
+  tbody.innerHTML = '';
+  keys.forEach(code => {
+    const g = gifts[code];
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><span class="gift-code">${esc(code)}</span></td>
+      <td>${esc(g.name || '')}</td>
+      <td class="gift-content-cell">${esc(g.content || '')}</td>
+      <td><span class="usage-badge">${g.usage_count || 0} 次</span></td>
+      <td><button class="btn-del" onclick="deleteGift('${esc(code)}')">删除</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function nextCode() {
+  const nums = Object.keys(gifts)
+    .map(k => k.match(/^#(\d+)$/))
+    .filter(Boolean)
+    .map(m => parseInt(m[1], 10));
+  const next = nums.length ? Math.max(...nums) + 1 : 1;
+  return '#' + String(next).padStart(3, '0');
+}
+
+function refreshNextHint() {
+  const inp = document.getElementById('new-code');
+  const hint = document.getElementById('next-code-hint');
+  const suggested = nextCode();
+  hint.textContent = `（下一个：${suggested}）`;
+  if (!inp.dataset.userEdited) inp.value = suggested;
+}
+
+function addGift() {
+  const inp = document.getElementById('new-code');
+  const code = inp.value.trim() || nextCode();
+  const name = document.getElementById('new-name').value.trim();
+  const content = document.getElementById('new-content').value.trim();
+  if (!name || !content) { showToast('❌ 请填写名称和内容'); return; }
+  if (!code.startsWith('#')) { showToast('❌ 编号必须以 # 开头，如 #001'); return; }
+  if (gifts[code]) { showToast('❌ 该编号已存在，请使用其他编号'); return; }
+  gifts[code] = { name, content, usage_count: 0 };
+  inp.value = '';
+  inp.dataset.userEdited = '';
+  document.getElementById('new-name').value = '';
+  document.getElementById('new-content').value = '';
+  renderTable();
+  refreshNextHint();
+  document.getElementById('save-status').textContent = '（有未保存的更改）';
+}
+
+function deleteGift(code) {
+  if (!confirm(`确认删除预设礼品 ${code}「${gifts[code]?.name || ''}」？\n\n已入图鉴的玩家将无法再使用此礼品。`)) return;
+  delete gifts[code];
+  renderTable();
+  refreshNextHint();
+  document.getElementById('save-status').textContent = '（有未保存的更改）';
+}
+
+async function saveGifts() {
+  const btn = document.getElementById('btn-save');
+  btn.disabled = true;
+  btn.textContent = '保存中…';
+  try {
+    const res = await fetch("{{ url_for('admin_gifts_save') }}", {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ preset_gifts: gifts })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showToast('✅ 保存成功！在机器人发送「全量同步」即可推送到机器人。');
+      document.getElementById('save-status').textContent = '';
+    } else {
+      showToast('❌ 保存失败：' + (data.error || '未知错误'));
+    }
+  } catch (e) {
+    showToast('❌ 网络错误：' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '保存到存档';
+  }
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  setTimeout(() => { t.style.display = 'none'; }, 4000);
+}
+
+document.getElementById('new-code').addEventListener('input', function() {
+  this.dataset.userEdited = this.value ? '1' : '';
+});
+
+renderTable();
+refreshNextHint();
+</script>
+{% endblock %}

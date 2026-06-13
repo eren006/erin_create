@@ -220,26 +220,27 @@
     </div>
   </div>
 
-  <!-- ── 2. 时段校验开关 ──────────────────────────────────────── -->
+  <!-- ── 2. 现实/戏内时间对照档位 ──────────────────────────────── -->
   <div class="section-card">
     <div class="section-title">
-      🕐 现实时段锁定
+      🕐 现实 / 戏内时间对照档位
       <span id="status-hour-lock" class="save-status"></span>
     </div>
     <div class="section-desc">
-      开启后，玩家发起邀约时，戏内时间的<strong>开始小时</strong>必须与当前现实小时一致——
-      即现实 1 点只能约戏内 1 点开始的，2 点只能约 2 点开始的，以此类推。
+      选定档位后，玩家只能在对应现实时段内发起戏内该时段的邀约。<br>
+      例如选 <strong>2h</strong>：现实 0:00–1:59 → 只能发起戏内 0–1 点开始的约；现实 2:00–3:59 → 只能发起戏内 2–3 点开始的约，每 2 小时推进一个戏内时段。<br>
+      选<strong>关闭</strong>则不限制。
     </div>
-    <div style="display:flex;align-items:center;gap:12px;margin:6px 0 4px;">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;">
-        <input type="checkbox" id="hour-lock-toggle"
-               {{ 'checked' if strict_hour_match else '' }}
-               style="width:16px;height:16px;cursor:pointer;">
-        <span>开启现实时段锁定</span>
-      </label>
+    <div class="dur-chips" id="slot-chips">
+      {% for s in [0, 1, 2, 3, 4, 6, 8] %}
+      <div class="dur-chip {{ 'on' if reality_slot_size == s else 'off' }}"
+           data-s="{{ s }}" onclick="selectSlotChip({{ s }}, this)">
+        {{ '关闭' if s == 0 else (s|string + 'h') }}
+      </div>
+      {% endfor %}
     </div>
     <div class="save-row">
-      <button class="btn-save" onclick="saveHourLock()">保存时段锁定设置</button>
+      <button class="btn-save" onclick="saveSlotSize()">保存对照档位</button>
     </div>
   </div>
 
@@ -411,10 +412,18 @@ async function saveBlocked() {
   flash('status-blocked', j.ok);
 }
 
-// ── 2. hour lock ──────────────────────────────────────────────────────────
-async function saveHourLock() {
-  const on = document.getElementById('hour-lock-toggle').checked;
-  const j = await apiPost({field: 'strict_hour_match', value: on});
+// ── 2. reality slot size ──────────────────────────────────────────────────
+let currentSlotSize = {{ reality_slot_size }};
+
+function selectSlotChip(s, el) {
+  currentSlotSize = s;
+  document.querySelectorAll('#slot-chips .dur-chip').forEach(c => {
+    c.className = 'dur-chip ' + (parseInt(c.dataset.s) === s ? 'on' : 'off');
+  });
+}
+
+async function saveSlotSize() {
+  const j = await apiPost({field: 'reality_slot_size', value: currentSlotSize});
   flash('status-hour-lock', j.ok);
 }
 

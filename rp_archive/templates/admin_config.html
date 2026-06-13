@@ -849,10 +849,11 @@ select.cfg-input { cursor: pointer; }
     {# 9. 物品注册管理                            #}
     {# ═══════════════════════════════════════════ #}
 
-    <input type="hidden" name="item_registry"         id="item-registry-input" value="{{ item_registry_json | e }}">
-    <input type="hidden" name="rpg_attr_defs"         id="attr-defs-input"     value="{{ attr_defs_json | e }}">
-    <input type="hidden" name="item_registry_pending" id="item-pending-input"  value="{{ item_pending_json | e }}">
+    <input type="hidden" name="item_registry"         id="item-registry-input"   value="{{ item_registry_json | e }}">
+    <input type="hidden" name="rpg_attr_defs"         id="attr-defs-input"       value="{{ attr_defs_json | e }}">
+    <input type="hidden" name="item_registry_pending" id="item-pending-input"    value="{{ item_pending_json | e }}">
     <input type="hidden" id="pool-defs-input" value="{{ pool_defs_json | e }}">
+    <input type="hidden" name="private_appointment_aliases" id="aliases-input"   value="{{ aliases_json | e }}">
 
     <div class="cfg-card" id="registry-card">
       <div class="cfg-card-title">物品注册管理</div>
@@ -1077,6 +1078,19 @@ select.cfg-input { cursor: pointer; }
                     placeholder="留空则使用系统默认"></textarea>
         </div>
         {% endfor %}
+      </div>
+    </details>
+
+    {# ── 自定义约会类型 ── #}
+    <details class="cfg-collapsible">
+      <summary>自定义约会类型 <span class="cfg-badge">私约别名 · 触发词 · 图标 · 最短时长</span></summary>
+      <div class="cfg-collapsible-inner">
+        <div class="cfg-note" style="margin-bottom:12px;">
+          每种类型独立触发、独立结戏奖励模板。保存后在 QQ 发「。同步设置」生效。<br>
+          格式：用户发 <code style="font-size:11px;">触发词 时间 地点 角色名</code>，群名自动带上该类型名称，时间线和结戏奖励按类型名匹配。
+        </div>
+        <div id="aliases-list"></div>
+        <button type="button" class="btn-add-alias" onclick="aliasAddRow()">＋ 添加类型</button>
       </div>
     </details>
 
@@ -1715,6 +1729,94 @@ var Registry = (function() {
     hiddenInput.value = JSON.stringify(result);
   });
 })();
+
+/* ── 自定义约会类型编辑器 ───────────────────────────────────────────── */
+(function() {
+  var aliasData = [];
+  try { aliasData = JSON.parse(document.getElementById('aliases-input').value || '[]'); } catch(e) {}
+
+  function save() {
+    document.getElementById('aliases-input').value = JSON.stringify(aliasData);
+  }
+
+  function render() {
+    var el = document.getElementById('aliases-list');
+    if (!aliasData.length) {
+      el.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:6px 0 10px;">暂无自定义类型</div>';
+      return;
+    }
+    el.innerHTML = aliasData.map(function(a, i) {
+      return '<div class="alias-row" data-idx="'+i+'">'
+        + '<input class="alias-field alias-trigger" placeholder="触发词（如：乐乐的约会）" value="'+esc(a.trigger||'')+'" oninput="aliasUpdate('+i+',\'trigger\',this.value)">'
+        + '<input class="alias-field alias-icon" placeholder="图标（如：🌸）" value="'+esc(a.icon||'')+'" oninput="aliasUpdate('+i+',\'icon\',this.value)">'
+        + '<input class="alias-field alias-dur" type="number" min="1" placeholder="最短分钟" value="'+(a.minDuration!=null?a.minDuration:'')+'" oninput="aliasUpdate('+i+',\'minDuration\',this.value?parseInt(this.value):undefined)">'
+        + '<button type="button" class="alias-del" onclick="aliasDelete('+i+')" title="删除">✕</button>'
+        + '</div>';
+    }).join('');
+  }
+
+  function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  window.aliasAddRow = function() {
+    aliasData.push({ trigger:'', icon:'🎭', minDuration:59 });
+    save(); render();
+    var rows = document.querySelectorAll('.alias-row');
+    if (rows.length) rows[rows.length-1].querySelector('.alias-trigger').focus();
+  };
+  window.aliasUpdate = function(i, key, val) {
+    if (!aliasData[i]) return;
+    if (val === undefined) delete aliasData[i][key];
+    else aliasData[i][key] = val;
+    save();
+  };
+  window.aliasDelete = function(i) {
+    aliasData.splice(i, 1);
+    save(); render();
+  };
+
+  render();
+})();
 </script>
+
+<style>
+.btn-add-alias {
+  margin-top: 8px;
+  padding: 5px 14px;
+  font-size: 13px;
+  border-radius: 7px;
+  border: 1px dashed var(--border);
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+}
+.btn-add-alias:hover { background: var(--surface); }
+.alias-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.alias-field {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 7px;
+  padding: 5px 9px;
+  font-size: 13px;
+}
+.alias-trigger { flex: 2; }
+.alias-icon    { width: 70px; text-align: center; }
+.alias-dur     { width: 90px; }
+.alias-del {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+  border-radius: 5px;
+}
+.alias-del:hover { color: #e05c5c; background: var(--surface); }
+</style>
 </div>
 {% endblock %}

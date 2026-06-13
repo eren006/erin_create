@@ -427,10 +427,10 @@ settingsConfig['信件与礼品'] = {
 
 const PANEL4_SECTIONS = [
     { header: '─── 寄信 ───', labels: ['寄信每日上限','寄信自定义署名','寄信混乱送错','寄信混乱涂改','寄信混乱丢失','寄信混乱反义','寄信混乱乱序','寄信混乱混淆','寄信混乱诗意'] },
-    { header: '─── 送礼 ───', labels: ['每日礼物上限','送礼自定义署名','掉落曝光隐藏收件人','送礼混乱丢失','送礼混乱送错'] },
-    { header: '─── 发送信件 ───', labels: ['发送信件每日上限','发送信件最低字数','发送信件赏金'] },
+    { header: '─── 送礼 ───', labels: ['每日礼物上限','送礼自定义署名','掉落曝光隐藏收件人','送礼混乱丢失','送礼混乱送错','收到礼物入图鉴'] },
+    { header: '─── 发送信件 ───', labels: ['发送信件每日上限','发送信件冷却','发送信件最低字数','发送信件赏金'] },
     { header: '─── 心动信 ───', labels: ['心动信送达时间','心动信曝光','心动信曝光概率'] },
-    { header: '─── 心愿 ───', labels: ['悬赏开关','心愿同时上限','心愿每日发布上限','心愿每日摘取上限'] },
+    { header: '─── 心愿 ───', labels: ['心愿公开提醒','悬赏开关','心愿同时上限','心愿每日发布上限','心愿每日摘取上限'] },
     { header: '─── 礼品店 ───', labels: ['礼品店刷新间隔'] },
     { header: '─── 道具 ───', labels: ['追踪器成功率','追踪器显示伙伴','追踪器时间限制','道具施加提醒','暴露名字概率','施加可用时段'] },
 ];
@@ -1959,3 +1959,87 @@ ext.onNotCommandReceived = (ctx, msg) => {
 
 // 启动自动天数轮询
 registerAutoDaySystem();
+
+// ============================================================
+// 🎲 随机分组（2026-06 自卫星插件并入本文件）
+// ============================================================
+let cmd_random_group = seal.ext.newCmdItemInfo();
+cmd_random_group.name = "随机分组";
+cmd_random_group.help = "用法：.随机分组 [数字] [bg]\n说明：将所有非NPC玩家随机分配到指定数量的组中。加 bg 尽量保证每组男女搭配。";
+cmd_random_group.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) {
+        seal.replyToSender(ctx, msg, "⚠️ 仅限管理员使用分组功能。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    let groupCount = parseInt(cmdArgs.getArgN(1));
+    if (isNaN(groupCount) || groupCount <= 0) {
+        seal.replyToSender(ctx, msg, "❌ 请输入正确的小组数量，例如：.随机分组 2");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    const bgMode = cmdArgs.getArgN(2) === "bg";
+
+    const api = getApi();
+    if (!api) {
+        seal.replyToSender(ctx, msg, "❌ 主插件「长日将尽」未加载，请先加载主插件");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const platform = msg.platform;
+    const storage = api.getRoleStorage();
+    const npcList = JSON.parse(mainStorGet("a_npc_list") || "[]");
+    const players = Object.keys(storage[platform] || {}).filter(n => !npcList.includes(n));
+
+    if (players.length === 0) {
+        seal.replyToSender(ctx, msg, "❌ 当前平台没有可分配的非NPC玩家。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    if (groupCount > players.length) {
+        seal.replyToSender(ctx, msg, `❌ 组数(${groupCount})不能大于玩家总数(${players.length})。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const shuffle = arr => {
+        for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+        return arr;
+    };
+
+    const groups = Array.from({ length: groupCount }, () => []);
+
+    if (bgMode) {
+        const privGrp = api.kvGet("a_private_group", {})[platform] || {};
+        const profiles = api.kvGet("sys_char_profiles", {});
+        const males = shuffle(players.filter(n => {
+            const uid = privGrp[n]?.[0];
+            return uid && (profiles[`${platform}:${uid}`]?.gender || "女") === "男";
+        }));
+        const females = shuffle(players.filter(n => {
+            const uid = privGrp[n]?.[0];
+            return !uid || (profiles[`${platform}:${uid}`]?.gender || "女") !== "男";
+        }));
+        const maxRounds = Math.max(males.length, females.length);
+        let mi = 0, fi = 0;
+        for (let r = 0; r < maxRounds; r++) {
+            if (mi < males.length)   { groups[r % groupCount].push(males[mi++]); }
+            if (fi < females.length) { groups[r % groupCount].push(females[fi++]); }
+        }
+    } else {
+        shuffle(players).forEach((player, index) => {
+            groups[index % groupCount].push(player);
+        });
+    }
+
+    let response = `🎲 【随机分组结果】${bgMode ? "（男女搭配模式）" : ""}\n总人数：${players.length} | 组数：${groupCount}\n`;
+    response += "━━━━━━━━━━━━━━\n";
+    groups.forEach((members, i) => {
+        response += `第 ${i + 1} 组：${members.join("、")}\n`;
+    });
+    response += "━━━━━━━━━━━━━━";
+
+    seal.replyToSender(ctx, msg, response);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["随机分组"] = cmd_random_group;

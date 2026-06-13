@@ -920,7 +920,8 @@ def assemble_bot_config(flat):
     # 透传 blob 键（机器人以 JSON 字符串形式存储，原样透传）
     for blob_key in ("item_registry", "rpg_attr_defs", "sys_attr_presets",
                      "end_game_bonus_templates", "end_game_draw_config",
-                     "custom_message_templates"):
+                     "custom_message_templates", "preset_gifts",
+                     "private_appointment_aliases"):
         val = flat.get(blob_key)
         if val:
             result[blob_key] = val
@@ -941,7 +942,7 @@ def assemble_bot_config(flat):
         except Exception:
             pass
     # 透传时间调度原始 blob 键（供机器人扩展使用）
-    for ts_key in ("ts_blocked_by_day", "ts_allowed_durations", "ts_feature_windows", "ts_strict_hour_match"):
+    for ts_key in ("ts_blocked_by_day", "ts_allowed_durations", "ts_feature_windows", "ts_strict_hour_match", "ts_reality_slot_size"):
         val = flat.get(ts_key)
         if val:
             result[ts_key] = val
@@ -2321,7 +2322,8 @@ def admin_config_page():
         # 保存物品注册表与属性定义（JSON blob，不经过 CONFIG_SCHEMA）
         for blob_key in ("item_registry", "rpg_attr_defs", "sys_attr_presets",
                          "end_game_draw_config",
-                         "item_registry_pending", "custom_message_templates"):
+                         "item_registry_pending", "custom_message_templates",
+                         "private_appointment_aliases"):
             raw = request.form.get(blob_key, "")
             if raw:
                 try:
@@ -2360,6 +2362,7 @@ def admin_config_page():
     attr_defs_json           = flat.get("rpg_attr_defs", "{}")
     pool_defs_json           = flat.get("pool_definitions", "{}")
     item_pending_json        = flat.get("item_registry_pending", "[]")
+    aliases_json             = flat.get("private_appointment_aliases", "[]")
     tpl_rows = db.execute(
         "SELECT id, name, config_data, created_at FROM config_templates "
         "WHERE tenant_id=? ORDER BY created_at DESC",
@@ -2378,6 +2381,7 @@ def admin_config_page():
                            attr_defs_json=attr_defs_json,
                            pool_defs_json=pool_defs_json,
                            item_pending_json=item_pending_json,
+                           aliases_json=aliases_json,
                            cfg_templates=cfg_templates,
                            tpl_msg=request.args.get("tpl_msg"),
                            tpl_max=_TEMPLATE_MAX)
@@ -2994,7 +2998,8 @@ def admin_time_schedule():
     if allowed_durations is None:
         allowed_durations = [1, 2, 4, 6, 8, 12, 24]
     feature_windows   = _get_blob("ts_feature_windows") or []
-    strict_hour_match = _get_blob("ts_strict_hour_match") or False
+    strict_hour_match    = _get_blob("ts_strict_hour_match") or False
+    reality_slot_size    = _get_blob("ts_reality_slot_size") or 0
 
     # 计算本季游戏日列表
     day_list = []
@@ -3030,7 +3035,8 @@ def admin_time_schedule():
                            allowed_durations=allowed_durations,
                            feature_windows=feature_windows,
                            feature_options=FEATURE_OPTIONS,
-                           strict_hour_match=strict_hour_match)
+                           strict_hour_match=strict_hour_match,
+                           reality_slot_size=reality_slot_size)
 
 
 @app.route("/api/time-schedule", methods=["POST"])
@@ -3070,6 +3076,12 @@ def api_time_schedule_save():
     elif field == "strict_hour_match":
         val = data.get("value", False)
         _save_blob("ts_strict_hour_match", bool(val))
+
+    elif field == "reality_slot_size":
+        val = data.get("value", 0)
+        if val not in (0, 1, 2, 3, 4, 6, 8):
+            return jsonify({"ok": False, "error": "invalid slot size"}), 400
+        _save_blob("ts_reality_slot_size", val)
 
     elif field == "feature_windows":
         val = data.get("value", [])
@@ -4236,6 +4248,10 @@ def admin_rewards():
     except Exception:
         bot_tpls = []
     bonus_templates = _bot_tpls_to_ui_format(bot_tpls)
+    try:
+        aliases = json.loads(flat.get("private_appointment_aliases", "[]"))
+    except Exception:
+        aliases = []
     page    = max(1, request.args.get("page", 1, type=int))
     per_page = 30
     total   = db.execute("SELECT COUNT(*) FROM reward_records WHERE show_id=?", (sid,)).fetchone()[0]
@@ -4248,6 +4264,7 @@ def admin_rewards():
                            bonus_templates=bonus_templates,
                            draw_config=draw_config,
                            item_registry=item_registry,
+                           aliases=aliases,
                            records=[dict(r) for r in records],
                            total=total, page=page, total_pages=total_pages,
                            ts_to_str=ts_to_str)
@@ -4568,6 +4585,35 @@ def admin_auctions_save():
         "INSERT INTO site_config(show_id,tenant_id,key,value) VALUES(?,?,?,?) "
         "ON CONFLICT(show_id,key) DO UPDATE SET value=excluded.value",
         (sid, tid, "auction_queue", json.dumps(queue, ensure_ascii=False))
+    )
+    db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/admin/gifts", methods=["GET"])
+@require_admin
+def admin_gifts():
+    sid = get_show_id()
+    db  = get_db()
+    flat = get_flat_config(db, sid)
+    preset_gifts = json.loads(flat.get("preset_gifts", "{}") or "{}")
+    return render_template("admin_gifts.html", preset_gifts=preset_gifts)
+
+
+@app.route("/admin/gifts/save", methods=["POST"])
+@require_admin
+def admin_gifts_save():
+    sid = get_show_id()
+    tid = current_tenant_id()
+    db  = get_db()
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"ok": False, "error": "no data"}), 400
+    gifts = data.get("preset_gifts", {})
+    db.execute(
+        "INSERT INTO site_config(show_id,tenant_id,key,value) VALUES(?,?,?,?) "
+        "ON CONFLICT(show_id,key) DO UPDATE SET value=excluded.value",
+        (sid, tid, "preset_gifts", json.dumps(gifts, ensure_ascii=False))
     )
     db.commit()
     return jsonify({"ok": True})

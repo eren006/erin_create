@@ -1045,6 +1045,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
         args: parts
     });
 
+    // 关系线
     if (raw.startsWith("拉线")) {
         const rest = raw.slice(2).trim();
         if (rest) return cmd_add_rel_detail.solve(ctx, msg, makeFakeCmdArgs(rest.split(/\s+/)));
@@ -1069,4 +1070,1312 @@ ext.onNotCommandReceived = (ctx, msg) => {
         return cmd_rel_stats.solve(ctx, msg, makeFakeCmdArgs([]));
     }
 
+    // 心愿
+    if (raw.startsWith("挂心愿")) {
+        const rest = raw.slice(3).trim();
+        return cmd_post_wish.solve(ctx, msg, makeFakeCmdArgs(rest ? rest.split(/\s+/) : []));
+    }
+
+    if (raw === "看心愿") {
+        return cmd_view_wish.solve(ctx, msg);
+    }
+
+    if (raw.startsWith("摘心愿")) {
+        const rest = raw.slice(3).trim();
+        return cmd_pick_wish.solve(ctx, msg, makeFakeCmdArgs(rest ? [rest] : []));
+    }
+
+    if (raw.startsWith("撤心愿")) {
+        const rest = raw.slice(3).trim();
+        return cmd_withdraw_wish.solve(ctx, msg, makeFakeCmdArgs(rest ? [rest] : []));
+    }
+
+    // 礼物
+    {
+        const giftM = raw.match(/^(.*?)送礼\s+(.+?)\s+([\s\S]+)$/);
+        if (giftM) {
+            if (!requireApi(ctx, msg)) return;
+            const customName = giftM[1].trim() || null;
+            return handleNaturalGift(ctx, msg, msg.platform, giftM[2].trim(), giftM[3].trim(), customName);
+        } else if (/^(.*?)送礼$/.test(raw)) {
+            return seal.replyToSender(ctx, msg, "📦 送礼格式：送礼 对方名 礼物内容\n例：送礼 张三 一束花\n\n图鉴内礼物：送礼 对方名 #编号（可无限送礼）");
+        }
+    }
+
+    if (raw === "礼品店") return cmd_view_preset_gifts.solve(ctx, msg);
+    if (raw === "图鉴" || raw === "我的图鉴" || raw.startsWith("图鉴 ") || raw.startsWith("我的图鉴 ")) {
+        const rest = raw.replace(/^(我的)?图鉴/, "").trim();
+        return cmd_view_my_gift_collection.solve(ctx, msg, makeFakeCmdArgs(rest ? [rest] : []));
+    }
+
+    // 心动信
+    if (raw.startsWith("发送心动信")) {
+        return cmd_send_lovemail.solve(ctx, msg, makeFakeCmdArgs([]));
+    }
+
+    if (raw === "查看信箱") return cmd_view_mylovemails.solve(ctx, msg, makeFakeCmdArgs([]));
+
+    // 本场统计
+    if (raw === "本场统计") return cmd_my_stats.solve(ctx, msg, makeFakeCmdArgs([]));
+
+    // 查看全员统计/本季字数 → 统计管理已迁至 rp_archive 网页端
+    if (raw === "查看全员统计" || raw === "本季字数") {
+        const api = getApi();
+        if (!api || !api.isUserAdmin(ctx, msg)) return;
+        const ep = api.getSafeEndPoint();
+        seal.replyToSender(ctx, msg, `📊 全员统计已迁至网页端，请访问：\n${ep}/admin/stats`);
+        return;
+    }
 };
+
+// ============================================================
+// 🧩 合并模块公共委托
+// 心愿 / 礼物 / 心动信 / 本场统计 四个模块（2026-06 自卫星插件并入本文件），
+// 以下函数仅存在于主插件共享 API（__changriApi），主插件未加载时相关指令报错退出。
+// ============================================================
+function requireApi(ctx, msg) {
+    if (getApi()) return true;
+    seal.replyToSender(ctx, msg, "❌ 该功能需要主插件「长日将尽」，请先加载主插件");
+    return false;
+}
+const cachedGet = mainStorGet;
+const cachedSet = mainStorSet;
+const getStorageInt = getMainStorageInt;
+const getUserRoleName = (...a) => getApi().getUserRoleName(...a);
+const checkTsFeatureWindow = (...a) => getApi().checkTsFeatureWindow(...a);
+const parseAndValidateTime = (...a) => getApi().parseAndValidateTime(...a);
+const checkRealityHourLimit = (...a) => getApi().checkRealityHourLimit(...a);
+const checkPlaceCommon = (...a) => getApi().checkPlaceCommon(...a);
+const checkAcceptanceConflicts = (...a) => getApi().checkAcceptanceConflicts(...a);
+const isLetterSystemEnabled = (...a) => getApi().isLetterSystemEnabled(...a);
+const checkAndCostLetterCoin = (...a) => getApi().checkAndCostLetterCoin(...a);
+const getCharProfile = (...a) => getApi().getCharProfile(...a);
+const finalizeGroupCreation = (...a) => getApi().finalizeGroupCreation(...a);
+const recordInteractionStat = (...a) => getApi().recordInteractionStat(...a);
+const getRoleDetails = (...a) => getApi().getRoleDetails(...a);
+const checkNoQuitBlocker = (...a) => getApi().checkNoQuitBlocker(...a);
+const applyMsgTemplate = (...a) => getApi().applyMsgTemplate(...a);
+const isArchiveEnabled = (...a) => getApi().isArchiveEnabled(...a);
+const postToArchive = (...a) => getApi().postToArchive(...a);
+const getUserStats = (...a) => getApi().getUserStats(...a);
+const getInteractionCounts = (...a) => getApi().getInteractionCounts(...a);
+const getTop3Text = (...a) => getApi().getTop3Text(...a);
+const getRoleStorage = (...a) => getApi().getRoleStorage(...a);
+
+
+// 心愿悬赏奖励用：直接操作 changri 存储里的背包数据
+function wishCheckInv(roleKey, code, count) {
+    const invs = JSON.parse(cachedGet("global_inventories") || "{}");
+    const total = (invs[roleKey] || []).filter(e => e.code === code).reduce((s, e) => s + (e.count || 0), 0);
+    return total >= count;
+}
+function wishAddToInv(roleKey, code, count) {
+    const reg = JSON.parse(cachedGet("item_registry") || "{}");
+    const item = reg[code];
+    if (!item) return;
+    const invs = JSON.parse(cachedGet("global_inventories") || "{}");
+    const inv = invs[roleKey] || [];
+    const initialUses = item.maxUses !== undefined ? item.maxUses : -1;
+    const entry = inv.find(e => e.code === code && (e.remainingUses !== undefined ? e.remainingUses : -1) === initialUses);
+    if (entry) { entry.count += count; } else { inv.push({ code, count, remainingUses: initialUses }); }
+    invs[roleKey] = inv;
+    cachedSet("global_inventories", JSON.stringify(invs));
+}
+function wishGetDailyCount(uid, day, type) {
+    const key = type === 'post' ? "wish_daily_post_counts" : "wish_daily_pick_counts";
+    const counts = JSON.parse(cachedGet(key) || "{}");
+    const rec = counts[uid] || { day: "", count: 0 };
+    return rec.day === day ? rec.count : 0;
+}
+function wishIncrDailyCount(uid, day, type) {
+    const key = type === 'post' ? "wish_daily_post_counts" : "wish_daily_pick_counts";
+    const counts = JSON.parse(cachedGet(key) || "{}");
+    const rec = counts[uid] || { day: "", count: 0 };
+    counts[uid] = { day, count: rec.day === day ? rec.count + 1 : 1 };
+    cachedSet(key, JSON.stringify(counts));
+}
+
+function wishRemoveFromInv(roleKey, code, count) {
+    const invs = JSON.parse(cachedGet("global_inventories") || "{}");
+    const inv = invs[roleKey] || [];
+    let rem = count;
+    for (const e of inv.filter(e => e.code === code)) {
+        if (rem <= 0) break;
+        const take = Math.min(e.count, rem);
+        e.count -= take;
+        rem -= take;
+    }
+    invs[roleKey] = inv.filter(e => e.count > 0);
+    cachedSet("global_inventories", JSON.stringify(invs));
+}
+
+// 兼容 fromId 带/不带 platform 前缀两种历史格式
+function wishIsOwner(platform, uid, rawUid, fromId) {
+    return fromId === uid || fromId === rawUid || fromId.replace(`${platform}:`, "") === rawUid;
+}
+
+const WishUtils = {
+    getPool: () => {
+        const now = Date.now(), exp = 86400000;
+        const raw = JSON.parse(cachedGet("a_wishPool") || "[]");
+        const p = raw.filter(w => now - w.timestamp < exp);
+        // Bug4修复：有过期条目时清理存储
+        if (p.length < raw.length) cachedSet("a_wishPool", JSON.stringify(p));
+        return p;
+    },
+    savePool: (p) => cachedSet("a_wishPool", JSON.stringify(p)),
+    formatList: (pool, title) => {
+        if (!pool.length) return title + "当前没有漂浮的心愿。";
+        const now = Date.now(), exp = 86400000;
+        return `📜 ${title}：\n` + pool.map(w => {
+            const rem = Math.ceil((exp - (now - w.timestamp)) / 3600000);
+            const rewardStr = w.rewardCode ? `｜🎁 ${w.rewardName} ×${w.rewardCount}` : "";
+            const genderStr = w.gender === "男" ? "👨" : w.gender === "女" ? "👩" : "";
+            const label = w.displayName ? `${genderStr} ${w.displayName}` : genderStr;
+            return `编号：${w.id}｜${label}｜${w.day} ${w.time}｜${w.place}｜剩${rem}h${rewardStr}｜内容：${w.content}`;
+        }).join('\n');
+    }
+};
+
+// ==========================================
+// 挂心愿
+// ==========================================
+let cmd_post_wish = {};
+cmd_post_wish.solve =(ctx, msg, cmdArgs) => {
+    if (!requireApi(ctx, msg)) return seal.ext.newCmdExecuteResult(true);
+    const cfg = JSON.parse(cachedGet("global_feature_toggle") || "{}");
+    if (cfg.enable_wish_system === false) return seal.replyToSender(ctx, msg, "🌠 心愿功能已关闭。");
+    { const _fw = checkTsFeatureWindow("enable_wish_system"); if (!_fw.ok) return seal.replyToSender(ctx, msg, _fw.msg); }
+
+    const platform = msg.platform;
+    const rawUid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
+    const uid = `${platform}:${rawUid}`;
+    const name = getUserRoleName(platform, uid);
+    const day = cachedGet("global_days");
+    if (!name || !day) return seal.replyToSender(ctx, msg, !name ? "请先绑定角色" : "请先设置全局天数");
+    if (!isUserFeatureEnabled(rawUid, "enable_wish_system"))
+        return seal.replyToSender(ctx, msg, "❌ 你已被限制使用心愿功能");
+
+    const rawFull = msg.message.trim().replace(/^[。.]?\s*挂心愿\s*/, "");
+    const pipeIdx = rawFull.indexOf("|");
+    const mainPart = pipeIdx !== -1 ? rawFull.slice(0, pipeIdx).trim() : rawFull.trim();
+    const customNick = pipeIdx !== -1 ? rawFull.slice(pipeIdx + 1).trim() : "";
+    if (customNick.length > 10) return seal.replyToSender(ctx, msg, "⚠️ 昵称最多10个字");
+
+    const mainArgs = mainPart.split(/\s+/);
+    let [rawT, place, ...contentArr] = mainArgs;
+    const content = contentArr.join(" ").trim();
+    if (!rawT || !place || !content) return seal.replyToSender(ctx, msg, "用法：挂心愿 1400-1500 地点 内容 [| 昵称]");
+
+    const timeResult = parseAndValidateTime(rawT, [], 0, "心愿");
+    if (!timeResult.valid) return seal.replyToSender(ctx, msg, timeResult.errorMsg);
+    const time = timeResult.time;
+
+    // 冲突与限制检查
+    if (!checkRealityHourLimit(time, ctx, msg)) return;
+    const pCheck = checkPlaceCommon(platform, name, place, "挂心愿");
+    if (!pCheck.valid) return seal.replyToSender(ctx, msg, pCheck.errorMsg);
+
+    const conflicts = checkAcceptanceConflicts(platform, rawUid, name, day, time);
+    if (conflicts.length) return seal.replyToSender(ctx, msg, `⚠️ 时间冲突：\n${conflicts.join('\n')}`);
+
+    let pool = WishUtils.getPool();
+    const wishMaxConcurrent = getStorageInt("wish_max_concurrent", 3);
+    if (pool.filter(w => wishIsOwner(platform, uid, rawUid, w.fromId)).length >= wishMaxConcurrent) return seal.replyToSender(ctx, msg, `⚠️ 最多同时挂${wishMaxConcurrent}个心愿`);
+    const wishDailyPostLimit = getStorageInt("wish_daily_post_limit", 0);
+    if (wishDailyPostLimit > 0 && wishGetDailyCount(uid, day, 'post') >= wishDailyPostLimit) {
+        return seal.replyToSender(ctx, msg, `⚠️ 今日发布心愿次数已达上限（${wishDailyPostLimit}次）`);
+    }
+
+    // Bug2修复：所有验证通过后再扣写信币
+    let wishCoinCheck = null;
+    if (isLetterSystemEnabled()) {
+        wishCoinCheck = checkAndCostLetterCoin(ctx, msg, "wish");
+        if (!wishCoinCheck.success) {
+            seal.replyToSender(ctx, msg, wishCoinCheck.errorMsg);
+            return seal.ext.newCmdExecuteResult(true);
+        }
+    }
+
+    const id = Math.random().toString(36).slice(2, 9).toUpperCase();
+    const wishProfile = getCharProfile(platform, name);
+    pool.push({ id, day, time, place, content, fromId: uid, timestamp: Date.now(), gender: wishProfile.gender, displayName: customNick || "" });
+    WishUtils.savePool(pool);
+    wishIncrDailyCount(uid, day, 'post');
+
+    let wishSuccessMsg = `✅ 心愿已漂走！编号：${id}\n有效期：24小时`;
+    if (customNick) wishSuccessMsg += `\n🏷️ 显示昵称：${customNick}`;
+    if (wishCoinCheck?.cost > 0) wishSuccessMsg += `\n💰 已消耗写信币 ${wishCoinCheck.cost} 枚`;
+    seal.replyToSender(ctx, msg, wishSuccessMsg);
+
+    // 公共频道推送
+    if (JSON.parse(cachedGet("wish_public_send") || "true")) {
+        const gid = JSON.parse(cachedGet("adminAnnounceGroupId") || "null");
+        if (gid) {
+            const genderEmoji = wishProfile.gender === "男" ? "👨" : "👩";
+            const displayLabel = customNick ? `${genderEmoji} ${customNick}` : genderEmoji;
+            const m = seal.newMessage(); m.messageType = "group"; m.groupId = `${platform}-Group:${gid}`;
+            seal.replyToSender(seal.createTempCtx(ctx.endPoint, m), m, `🌠 新心愿 [${id}]\n${displayLabel}\n📅 ${day} ${time.replace('-', ' ~ ')}\n📍 ${place}\n💌 ${content}\n✨ 摘取：摘心愿 ${id}`);
+        }
+    }
+    return seal.ext.newCmdExecuteResult(true);
+};
+
+// ==========================================
+// 看心愿 & 摘心愿
+// ==========================================
+const cmd_view_wish = {
+    solve: (ctx, msg) => {
+        if (!requireApi(ctx, msg)) return seal.ext.newCmdExecuteResult(true);
+        const cfg = JSON.parse(cachedGet("global_feature_toggle") || "{}");
+        if (cfg.enable_wish_system === false) return seal.replyToSender(ctx, msg, "🌠 心愿功能已关闭。");
+        seal.replyToSender(ctx, msg, WishUtils.formatList(WishUtils.getPool(), "当前心愿"));
+        return seal.ext.newCmdExecuteResult(true);
+    }
+};
+
+let cmd_pick_wish = {};
+cmd_pick_wish.solve =async (ctx, msg, cmdArgs) => {
+    if (!requireApi(ctx, msg)) return seal.ext.newCmdExecuteResult(true);
+    const cfg = JSON.parse(cachedGet("global_feature_toggle") || "{}");
+    if (cfg.enable_wish_system === false) return seal.replyToSender(ctx, msg, "🌠 心愿功能已关闭。");
+    const wid = cmdArgs.getArgN(1)?.toUpperCase();
+    const platform = msg.platform;
+    const rawUid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
+    const uid = `${platform}:${rawUid}`;
+    const name = getUserRoleName(platform, uid);
+    if (!wid || !name) return seal.replyToSender(ctx, msg, !wid ? "格式：摘心愿 编号" : "请先绑定角色");
+
+    let pool = WishUtils.getPool();
+    const wish = pool.find(w => w.id === wid);
+    if (!wish || wishIsOwner(platform, uid, rawUid, wish.fromId)) return seal.replyToSender(ctx, msg, !wish ? "心愿不存在或已过期" : "不能摘自己的心愿");
+
+    const fromName = getUserRoleName(platform, wish.fromId) || wish.fromId;
+
+    // 摘取冲突双向检查
+    const check = (u, n) => checkAcceptanceConflicts(platform, u.replace(`${platform}:`, ""), n, wish.day, wish.time);
+    const errs = [...check(uid, name), ...check(wish.fromId, fromName)];
+    if (errs.length) return seal.replyToSender(ctx, msg, `⚠️ 无法建立联系：\n${errs.join('\n')}`);
+
+    const wishDailyPickLimit = getStorageInt("wish_daily_pick_limit", 0);
+    const currentDay = cachedGet("global_days") || "";
+    if (wishDailyPickLimit > 0 && wishGetDailyCount(uid, currentDay, 'pick') >= wishDailyPickLimit) {
+        return seal.replyToSender(ctx, msg, `⚠️ 今日摘取心愿次数已达上限（${wishDailyPickLimit}次）`);
+    }
+
+    // 移除并成交
+    WishUtils.savePool(pool.filter(w => w.id !== wid));
+    wishIncrDailyCount(uid, currentDay, 'pick');
+
+    const item = {
+        id: wid, type: "小群", subtype: "心愿", sendname: fromName, sendid: wish.fromId.replace(`${platform}:`, ""),
+        toname: name, toid: uid.replace(`${platform}:`, ""), day: wish.day, time: wish.time, place: wish.place, title: wish.content
+    };
+
+    // 异步下发
+    const wishGid = await finalizeGroupCreation(platform, ctx, msg, item, [fromName, name]);
+    if (wishGid !== false) {
+        recordInteractionStat(platform, name, fromName, "wish");
+    }
+
+    // 通知挂心愿者（finalizeGroupCreation 已跳过 sendname，需单独发）
+    const { uid: fromUid, gid: fromBindGid } = getRoleDetails(platform, fromName);
+    if (fromUid && fromBindGid) {
+        const m = seal.newMessage(); m.messageType = "group"; m.groupId = `${platform}-Group:${fromBindGid}`;
+        seal.replyToSender(seal.createTempCtx(ctx.endPoint, m), m,
+            `💫 你的心愿被 ${name} 摘取了！\n📍 ${wish.place} | ⏰ ${wish.day} ${wish.time}\n💬 群号：${wishGid}`);
+    }
+
+    let pickReply = `🎉 摘取成功！专属小群已建立。\n💬 群号：${wishGid}`;
+    if (wish.rewardCode) {
+        wishAddToInv(uid, wish.rewardCode, wish.rewardCount);
+        pickReply += `\n🎁 悬赏奖励：${wish.rewardName} ×${wish.rewardCount} 已加入你的背包！`;
+    }
+    seal.replyToSender(ctx, msg, pickReply);
+    return seal.ext.newCmdExecuteResult(true);
+};
+
+// ==========================================
+// 撤心愿
+// ==========================================
+let cmd_withdraw_wish = {};
+cmd_withdraw_wish.solve =(ctx, msg, cmdArgs) => {
+    if (!requireApi(ctx, msg)) return seal.ext.newCmdExecuteResult(true);
+    const cfg = JSON.parse(cachedGet("global_feature_toggle") || "{}");
+    if (cfg.enable_wish_system === false) return seal.replyToSender(ctx, msg, "🌠 心愿功能已关闭。");
+    const wid = cmdArgs.getArgN(1)?.toUpperCase();
+    const platform = msg.platform;
+    const rawUid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
+    const uid = `${platform}:${rawUid}`;
+    let pool = WishUtils.getPool();
+
+    if (!wid) {
+        const myWishes = pool.filter(w => wishIsOwner(platform, uid, rawUid, w.fromId));
+        return seal.replyToSender(ctx, msg, WishUtils.formatList(myWishes, "你发布的心愿") + "\n\n使用「撤心愿 编号」撤回");
+    }
+
+    const withdrawWish = pool.find(w => w.id === wid);
+    if (!withdrawWish) return seal.replyToSender(ctx, msg, `❌ 找不到编号「${wid}」的心愿，可能已过期或被摘取`);
+    if (!wishIsOwner(platform, uid, rawUid, withdrawWish.fromId)) return seal.replyToSender(ctx, msg, "❌ 该心愿不属于你");
+
+    WishUtils.savePool(pool.filter(w => w.id !== wid));
+    let withdrawReply = `✅ 已撤回心愿 ${wid}`;
+    if (withdrawWish.rewardCode) {
+        wishAddToInv(uid, withdrawWish.rewardCode, withdrawWish.rewardCount);
+        withdrawReply += `\n🎁 悬赏物品「${withdrawWish.rewardName}」×${withdrawWish.rewardCount} 已退回背包。`;
+    }
+    seal.replyToSender(ctx, msg, withdrawReply);
+    return seal.ext.newCmdExecuteResult(true);
+};
+
+// ==========================================
+// 悬赏心愿
+// ==========================================
+let cmd_bounty_wish = seal.ext.newCmdItemInfo();
+cmd_bounty_wish.name = "悬赏心愿";
+cmd_bounty_wish.help = "挂出带物品奖励的心愿\n格式：悬赏心愿 时间 地点 内容 | 物品名/码 数量\n示例：悬赏心愿 1400-1500 图书馆 陪我看书 | 滋补汤 1";
+cmd_bounty_wish.solve = (ctx, msg, cmdArgs) => {
+    if (!requireApi(ctx, msg)) return seal.ext.newCmdExecuteResult(true);
+    const cfg = JSON.parse(cachedGet("global_feature_toggle") || "{}");
+    if (cfg.enable_wish_system === false) return seal.replyToSender(ctx, msg, "🌠 心愿功能已关闭。");
+    if (cachedGet("wish_bounty_enabled") === "false") return seal.replyToSender(ctx, msg, "🎁 悬赏心愿功能已关闭。");
+
+    const platform = msg.platform;
+    const rawUid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
+    const uid = `${platform}:${rawUid}`;
+    const name = getUserRoleName(platform, uid);
+    const day = cachedGet("global_days");
+    if (!name) return seal.replyToSender(ctx, msg, "请先绑定角色");
+    if (!day) return seal.replyToSender(ctx, msg, "请先设置全局天数");
+    if (!isUserFeatureEnabled(rawUid, "enable_wish_system"))
+        return seal.replyToSender(ctx, msg, "❌ 你已被限制使用心愿功能");
+
+    const rawFull = msg.message.trim().replace(/^[。.]?\s*悬赏心愿\s*/, "");
+    const pipeIdx = rawFull.search(/[|｜]/);
+    if (pipeIdx === -1) return seal.replyToSender(ctx, msg, "格式：悬赏心愿 时间 地点 内容 | 物品名 数量 [| 昵称]\n示例：悬赏心愿 1400-1500 图书馆 陪我看书 | 滋补汤 1 | 神秘人A");
+
+    const wishPart = rawFull.slice(0, pipeIdx).trim();
+    const afterFirstPipe = rawFull.slice(pipeIdx + 1);
+    const secondPipeIdx = afterFirstPipe.search(/[|｜]/);
+    let rewardPart, customNick;
+    if (secondPipeIdx !== -1) {
+        rewardPart = afterFirstPipe.slice(0, secondPipeIdx).trim();
+        customNick = afterFirstPipe.slice(secondPipeIdx + 1).trim();
+    } else {
+        rewardPart = afterFirstPipe.trim();
+        customNick = "";
+    }
+    if (customNick.length > 10) return seal.replyToSender(ctx, msg, "⚠️ 昵称最多10个字");
+
+    const wishArgs = wishPart.split(/\s+/);
+    const rawT = wishArgs[0], place = wishArgs[1];
+    const content = wishArgs.slice(2).join(" ").trim();
+    if (!rawT || !place || !content) return seal.replyToSender(ctx, msg, "格式：悬赏心愿 时间 地点 内容 | 物品名 数量");
+
+    const rewardArgs = rewardPart.split(/\s+/);
+    if (rewardArgs.length < 2) return seal.replyToSender(ctx, msg, "❌ 悬赏格式：| 物品名 数量");
+    const rewardCount = parseInt(rewardArgs[rewardArgs.length - 1]);
+    if (isNaN(rewardCount) || rewardCount <= 0) return seal.replyToSender(ctx, msg, "❌ 悬赏数量必须为正整数");
+    const rewardInput = rewardArgs.slice(0, -1).join(" ");
+
+    const reg = JSON.parse(cachedGet("item_registry") || "{}");
+    const rewardItem = Object.values(reg).find(r => r.code === rewardInput.toUpperCase() || r.name === rewardInput);
+    if (!rewardItem) return seal.replyToSender(ctx, msg, `❌ 找不到物品「${rewardInput}」`);
+
+    const roleKey = uid;
+    if (!wishCheckInv(roleKey, rewardItem.code, rewardCount)) {
+        return seal.replyToSender(ctx, msg, `❌ 背包中「${rewardItem.name}」数量不足（需要 ${rewardCount}）`);
+    }
+
+    const timeResult = parseAndValidateTime(rawT, [], 0, "心愿");
+    if (!timeResult.valid) return seal.replyToSender(ctx, msg, timeResult.errorMsg);
+    const time = timeResult.time;
+    if (!checkRealityHourLimit(time, ctx, msg)) return;
+    const pCheck = checkPlaceCommon(platform, name, place, "悬赏心愿");
+    if (!pCheck.valid) return seal.replyToSender(ctx, msg, pCheck.errorMsg);
+    const conflicts = checkAcceptanceConflicts(platform, rawUid, name, day, time);
+    if (conflicts.length) return seal.replyToSender(ctx, msg, `⚠️ 时间冲突：\n${conflicts.join('\n')}`);
+
+    let pool = WishUtils.getPool();
+    const wishMaxConcurrentB = getStorageInt("wish_max_concurrent", 3);
+    if (pool.filter(w => wishIsOwner(platform, uid, rawUid, w.fromId)).length >= wishMaxConcurrentB) return seal.replyToSender(ctx, msg, `⚠️ 最多同时挂${wishMaxConcurrentB}个心愿`);
+    const wishDailyPostLimitB = getStorageInt("wish_daily_post_limit", 0);
+    if (wishDailyPostLimitB > 0 && wishGetDailyCount(uid, day, 'post') >= wishDailyPostLimitB) {
+        return seal.replyToSender(ctx, msg, `⚠️ 今日发布心愿次数已达上限（${wishDailyPostLimitB}次）`);
+    }
+
+    let wishCoinCheck = null;
+    if (isLetterSystemEnabled()) {
+        wishCoinCheck = checkAndCostLetterCoin(ctx, msg, "wish");
+        if (!wishCoinCheck.success) { seal.replyToSender(ctx, msg, wishCoinCheck.errorMsg); return seal.ext.newCmdExecuteResult(true); }
+    }
+
+    wishRemoveFromInv(roleKey, rewardItem.code, rewardCount);
+
+    const id = Math.random().toString(36).slice(2, 9).toUpperCase();
+    const bountyProfile = getCharProfile(platform, name);
+    pool.push({ id, day, time, place, content, fromId: uid, timestamp: Date.now(), gender: bountyProfile.gender, displayName: customNick || "", rewardCode: rewardItem.code, rewardName: rewardItem.name, rewardCount });
+    WishUtils.savePool(pool);
+    wishIncrDailyCount(uid, day, 'post');
+
+    let successMsg = `✅ 悬赏心愿已发出！编号：${id}\n🎁 悬赏：${rewardItem.name} ×${rewardCount}（已从背包扣除）\n有效期：24小时`;
+    if (customNick) successMsg += `\n🏷️ 显示昵称：${customNick}`;
+    if (wishCoinCheck?.cost > 0) successMsg += `\n💰 已消耗写信币 ${wishCoinCheck.cost} 枚`;
+    seal.replyToSender(ctx, msg, successMsg);
+
+    if (JSON.parse(cachedGet("wish_public_send") || "true")) {
+        const gid = JSON.parse(cachedGet("adminAnnounceGroupId") || "null");
+        if (gid) {
+            const genderEmoji = bountyProfile.gender === "男" ? "👨" : "👩";
+            const displayLabel = customNick ? `${genderEmoji} ${customNick}` : genderEmoji;
+            const m = seal.newMessage(); m.messageType = "group"; m.groupId = `${platform}-Group:${gid}`;
+            seal.replyToSender(seal.createTempCtx(ctx.endPoint, m), m,
+                `🌠 新悬赏心愿 [${id}]\n${displayLabel}\n📅 ${day} ${time.replace('-', ' ~ ')}\n📍 ${place}\n💌 ${content}\n🎁 悬赏：${rewardItem.name} ×${rewardCount}\n✨ 摘取：摘心愿 ${id}`);
+        }
+    }
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["悬赏心愿"] = cmd_bounty_wish;
+// ========================
+// 🎁 礼物系统
+// ========================
+async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSenderName = null) {
+    // 1. 功能开关检查
+    const config = JSON.parse(cachedGet("global_feature_toggle") || "{}");
+    if (!(config.enable_general_gift ?? true)) {
+        return seal.replyToSender(ctx, msg, "🎁 礼物功能已被禁用。");
+    }
+    { const _fw = checkTsFeatureWindow("enable_general_gift"); if (!_fw.ok) return seal.replyToSender(ctx, msg, _fw.msg); }
+
+    const uid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
+    const a_private_group = JSON.parse(cachedGet("a_private_group") || "{}");
+
+    // 2. 身份识别
+    const autoSendname = getRoleName(ctx, msg);
+    if (!autoSendname) {
+        return seal.replyToSender(ctx, msg, `❌ 请先创建新角色再使用该功能`);
+    }
+    const allowCustomSign = cachedGet("allow_custom_gift_sign") === "true";
+    const sendname = allowCustomSign && customSenderName ? customSenderName : autoSendname;
+
+    // 违规检查
+    if (!(await checkNoQuitBlocker(uid, ctx, msg))) return;
+
+    // 3. 权限与自送检查（新结构：feature_user_blocklist[uid]）
+    if (!isUserFeatureEnabled(uid, "enable_general_gift")) {
+        return seal.replyToSender(ctx, msg, `🎁 ${sendname} 被限制使用礼物功能。`);
+    }
+    if (toname === autoSendname) {
+        return seal.replyToSender(ctx, msg, `🌸 礼不自赠，情当他寄。`);
+    }
+    // 新结构：通过 roleName 反查 uid
+    const toUid = getUidByRoleName(platform, toname);
+    if (!toUid) {
+        return seal.replyToSender(ctx, msg, `❌ 未找到收件人 ${toname}`);
+    }
+
+    // 4. 冷却与限次检查
+    const gameDay = cachedGet("global_days") || "D0";
+    const dailyLimit = getStorageInt("giftDailyLimit", 100);
+    const cooldownMin = getStorageInt("giftCooldown", 30);
+    const isPreset = giftInput.startsWith('#');
+
+    let globalStats = JSON.parse(cachedGet("global_gift_stats") || "{}");
+    let globalCooldowns = JSON.parse(cachedGet("global_gift_cooldowns") || "{}");
+    const userKey = `${platform}:${uid}`;
+    const now = Date.now();
+
+    const lastSent = globalCooldowns[userKey] || 0;
+    if (now - lastSent < cooldownMin * 60 * 1000) {
+        const rem = Math.ceil((cooldownMin * 60 * 1000 - (now - lastSent)) / 1000);
+        return seal.replyToSender(ctx, msg, `⏳ 快递员仍在路上，请等待 ${rem} 秒后再送~`);
+    }
+
+    let userStat = globalStats[userKey] || { day: gameDay, count: 0 };
+    if (userStat.day !== gameDay) userStat = { day: gameDay, count: 0 };
+    if (userStat.count >= dailyLimit) {
+        return seal.replyToSender(ctx, msg, `🎁 今日送礼次数已达上限(${dailyLimit})。`);
+    }
+
+    // 模式检查
+    const giftMode = getStorageInt("giftMode", 0);
+    if (giftMode === 1 && !isPreset) {
+        return seal.replyToSender(ctx, msg, "❌ 当前仅允许使用预设礼物（以 # 开头）");
+    }
+
+    // 5. 礼物内容解析
+    let giftDisplayName = "";
+    let giftContent = giftInput;
+
+    if (giftInput.startsWith('#')) {
+        let presetGifts = JSON.parse(cachedGet("preset_gifts") || "{}");
+        const giftData = presetGifts[giftInput];
+        if (!giftData) return seal.replyToSender(ctx, msg, `❌ 预设礼物 ${giftInput} 不存在`);
+
+        // 抽卡模式：检查图鉴，可无限赠送
+        const sightings = JSON.parse(cachedGet("gift_sightings") || "{}");
+        const owned = sightings[userKey]?.unlocked_gifts || [];
+        if (!owned.includes(giftInput)) {
+            return seal.replyToSender(ctx, msg, `🔒 「${giftData.name}」不在图鉴中，请先发送「礼品店」收集。`);
+        }
+
+        giftDisplayName = `「${giftData.name}」`;
+        giftContent = giftData.content;
+        presetGifts[giftInput].usage_count = (presetGifts[giftInput].usage_count || 0) + 1;
+        cachedSet("preset_gifts", JSON.stringify(presetGifts));
+    } else {
+        giftDisplayName = "一份特别的礼物";
+        giftContent = giftInput;
+    }
+
+    // 6. 混乱投递（丢失 / 送错）
+    const chaosGiftCfg = JSON.parse(cachedGet("chaos_letter_config") || "{}");
+    const giftLostChance = chaosGiftCfg.giftLost || 0;
+    const giftMisdeliveryChance = chaosGiftCfg.giftMisdelivery || 0;
+
+    let actualToname = toname;
+    let actualToUid = toUid;
+    let isLost = false;
+
+    if (giftLostChance > 0 && Math.random() * 100 < giftLostChance) {
+        isLost = true;
+    } else if (giftMisdeliveryChance > 0 && Math.random() * 100 < giftMisdeliveryChance) {
+        const otherEntries = Object.entries(a_private_group[platform] || {})
+            .filter(([uid, v]) => v[0] !== toname && v[0] !== sendname);
+        if (otherEntries.length) {
+            const pick = otherEntries[Math.floor(Math.random() * otherEntries.length)];
+            actualToUid = pick[0];
+            actualToname = pick[1][0];
+        }
+    }
+
+    // 投递（通过 actualToUid 查找 gid）
+    if (!isLost) {
+        const targetEntry = a_private_group[platform][actualToUid];
+
+        // 收到即入图鉴：若设置开启，且是预设礼物，将礼物加入实际收件人图鉴
+        let catalogHint = "";
+        if (giftInput.startsWith('#') && cachedGet("shop_gift_catalog_on_receive") === "true") {
+            const recipientPrimaryUid = getPrimaryUid(platform, actualToUid);
+            const recipientKey = `${platform}:${recipientPrimaryUid}`;
+            const sightings = JSON.parse(cachedGet("gift_sightings") || "{}");
+            if (!sightings[recipientKey]) sightings[recipientKey] = { unlocked_gifts: [] };
+            if (!sightings[recipientKey].unlocked_gifts.includes(giftInput) && Math.random() < 0.5) {
+                sightings[recipientKey].unlocked_gifts.push(giftInput);
+                cachedSet("gift_sightings", JSON.stringify(sightings));
+                const total = Object.keys(JSON.parse(cachedGet("preset_gifts") || "{}")).length;
+                const newCount = sightings[recipientKey].unlocked_gifts.length;
+                catalogHint = `\n✨ 这份礼物悄悄收进了你的图鉴～ 📚 ${newCount}/${total}`;
+            }
+        }
+
+        if (!targetEntry) {
+            seal.replyToSender(ctx, msg, "❌ 礼物投递失败：找不到收件人所在群组。");
+            return;
+        }
+        const newmsg = seal.newMessage();
+        newmsg.messageType = "group";
+        newmsg.groupId = `${platform}-Group:${targetEntry[1]}`;
+        const newctx = seal.createTempCtx(ctx.endPoint, newmsg);
+        const recipientMsg = applyMsgTemplate("gift_notice", {
+            "收件人": actualToname, "收件人QQ": actualToUid,
+            "发送者": sendname, "礼物名": giftDisplayName, "寄语": giftContent
+        }) || `[CQ:at,qq=${actualToUid}]\n🎀 ${actualToname}，有一份来自「${sendname}」的快递：\n礼物：${giftDisplayName}\n寄语：「${giftContent}」${catalogHint}`;
+        seal.replyToSender(newctx, newmsg, recipientMsg);
+        recordInteractionStat(platform, sendname, actualToname, "gift");
+    } else {
+        // 丢失：仅记发送方 sent，不记收件方 received（双方均不知情）
+        recordInteractionStat(platform, sendname, toname, "gift", true);
+    }
+
+    // 7. 更新数据
+    userStat.count += 1;
+    globalStats[userKey] = userStat;
+    globalCooldowns[userKey] = now;
+    cachedSet("global_gift_stats", JSON.stringify(globalStats));
+    cachedSet("global_gift_cooldowns", JSON.stringify(globalCooldowns));
+
+    // 8. 公开广播逻辑（丢失时跳过，存档前先决定是否公开）
+    let isPublicDrop = false;
+    let publicGroupId = null, pubCtxForGift = null, pubMsgForGift = null;
+    if (!isLost) {
+        publicGroupId = JSON.parse(cachedGet("adminAnnounceGroupId") || "null");
+        const giftPublicEnabled = JSON.parse(cachedGet("gift_public_send") || "false");
+        if (giftPublicEnabled && publicGroupId) {
+            const publicChance = getStorageInt("giftPublicChance", 50);
+            if ((Math.floor(Math.random() * 100) + 1) <= publicChance) {
+                isPublicDrop = true;
+                pubMsgForGift = seal.newMessage();
+                pubMsgForGift.messageType = "group";
+                pubMsgForGift.groupId = `${platform}-Group:${publicGroupId}`;
+                pubCtxForGift = seal.createTempCtx(ctx.endPoint, pubMsgForGift);
+            }
+        }
+    }
+
+    const hideReceiverOnDrop = cachedGet("drop_hide_receiver") === "true";
+
+    // 礼物实时存档
+    if (isArchiveEnabled()) {
+        postToArchive("/api/event", {
+            type:            "gift",
+            from_role:       autoSendname,
+            from_custom_name: sendname !== autoSendname ? sendname : undefined,
+            from_qq:         uid,
+            to_role:         actualToname,
+            to_qq:           actualToUid,
+            content:         giftContent || "",
+            extra_info:      { giftName: giftDisplayName, isLost: isLost, isPublic: isPublicDrop, hide_receiver: isPublicDrop && hideReceiverOnDrop },
+            game_day:        cachedGet("global_days") || "D?",
+            session_id:      "",
+            timestamp:       Date.now()
+        });
+    }
+
+    // 丢失与正常均显示相同提示，发送方不知情
+    seal.replyToSender(ctx, msg, `🎁 已成功将 ${giftDisplayName} 送往「${toname}」的房间。\n(今日第 ${userStat.count}份)`);
+
+    if (isPublicDrop && pubCtxForGift && pubMsgForGift) {
+        const dropReceiver = hideReceiverOnDrop ? "某人" : toname;
+        const publicNotice = applyMsgTemplate("gift_broadcast", {
+            "发送者": sendname, "收件人": dropReceiver,
+            "礼物名": giftDisplayName, "寄语": giftContent
+        }) || `🎁 公告：来自「${sendname}」送给「${dropReceiver}」的礼物：${giftDisplayName}\n寄语：「${giftContent}」`;
+        seal.replyToSender(pubCtxForGift, pubMsgForGift, publicNotice);
+    }
+
+    recordMeetingAndAnnounce("礼物", platform, ctx, ctx.endPoint);
+}
+
+// ========================
+// 🛒 礼品店
+// ========================
+
+let cmd_view_preset_gifts = {};
+cmd_view_preset_gifts.solve =(ctx, msg) => {
+    if (!requireApi(ctx, msg)) return seal.ext.newCmdExecuteResult(true);
+    const sendname = getRoleName(ctx, msg);
+    if (!sendname) {
+        seal.replyToSender(ctx, msg, "你想走进去，却发现自己还没有名字。\n先创建一个角色，再来逛吧。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const presetGifts = JSON.parse(cachedGet("preset_gifts") || "{}");
+    const allIds = Object.keys(presetGifts);
+
+    if (allIds.length === 0) return seal.replyToSender(ctx, msg, "你推开门，走了进去。\n货架上什么都没有，空气里只有淡淡的木头气味。\n也许过些时候再来。");
+
+    // 每人独立随机1件，自动加入图鉴，刷新只选未拥有的
+    const refreshHours = parseInt(cachedGet("shop_refresh_hours") || "24");
+    const now = Date.now();
+    const platform = msg.platform;
+    const uid = getPrimaryUid(platform, msg.sender.userId.replace(/^[a-z]+:/i, ""));
+    const userKey = `${platform}:${uid}`;
+
+    const sightings = JSON.parse(cachedGet("gift_sightings") || "{}");
+    const owned = new Set(sightings[userKey]?.unlocked_gifts || []);
+
+    let personalDisplay = {};
+    try { personalDisplay = JSON.parse(cachedGet("shop_personal_display") || "{}"); } catch (e) {}
+
+    const myDisplay = personalDisplay[userKey];
+    const needsRefresh = !myDisplay || (now - myDisplay.refreshedAt) > refreshHours * 3600 * 1000;
+
+    if (needsRefresh) {
+        const unowned = allIds.filter(id => !owned.has(id));
+        if (unowned.length > 0) {
+            const picked = unowned[Math.floor(Math.random() * unowned.length)];
+            personalDisplay[userKey] = { giftId: picked, refreshedAt: now };
+            cachedSet("shop_personal_display", JSON.stringify(personalDisplay));
+        }
+        // 若全部拥有，不刷新 giftId（保留旧展示）
+    }
+
+    const currentGiftId = personalDisplay[userKey]?.giftId;
+    const total = allIds.length;
+    const ownedCount = owned.size;
+
+    if (!currentGiftId || !presetGifts[currentGiftId]) {
+        if (ownedCount >= total) {
+            return seal.replyToSender(ctx, msg, `你走遍了每一格货架，翻过了每一个角落。\n这里所有的 ${total} 件礼物，都已经在你的图鉴里了。\n\n发送「图鉴」看看你收藏的一切。`);
+        }
+        return seal.replyToSender(ctx, msg, "你在货架间走了一圈，今天似乎什么都还没上架。\n过一会儿再来看看。");
+    }
+
+    const gift = presetGifts[currentGiftId];
+    const nextRefreshMs = personalDisplay[userKey].refreshedAt + refreshHours * 3600 * 1000 - now;
+    const nextRefreshHrs = Math.max(1, Math.ceil(nextRefreshMs / 3600000));
+
+    if (owned.has(currentGiftId)) {
+        return seal.replyToSender(ctx, msg,
+            `你在货架上看见了它——\n\n${currentGiftId} 「${gift.name}」\n${gift.content}\n\n这件已经在你的图鉴里了。\n再等 ${nextRefreshHrs} 个小时，也许会有新的东西出现。\n\n📚 图鉴进度：${ownedCount}/${total}`
+        );
+    }
+
+    // 新礼物：自动加入图鉴
+    if (!sightings[userKey]) sightings[userKey] = { unlocked_gifts: [] };
+    sightings[userKey].unlocked_gifts.push(currentGiftId);
+
+    // 50% 概率额外获得第二件未拥有的礼物
+    let bonusGiftId = null;
+    let bonusGift = null;
+    if (Math.random() < 0.5) {
+        const stillUnowned = allIds.filter(id => id !== currentGiftId && !owned.has(id));
+        if (stillUnowned.length > 0) {
+            bonusGiftId = stillUnowned[Math.floor(Math.random() * stillUnowned.length)];
+            bonusGift = presetGifts[bonusGiftId];
+            sightings[userKey].unlocked_gifts.push(bonusGiftId);
+        }
+    }
+
+    cachedSet("gift_sightings", JSON.stringify(sightings));
+
+    const newCount = ownedCount + 1 + (bonusGiftId ? 1 : 0);
+
+    let replyText = `你在货架上发现了一件没见过的东西，拿起来看了看。\n\n${currentGiftId} 「${gift.name}」\n${gift.content}`;
+
+    if (bonusGiftId && bonusGift) {
+        replyText += `\n\n转身要走，视线扫到角落里还有一件——\n\n${bonusGiftId} 「${bonusGift.name}」\n${bonusGift.content}`;
+        replyText += `\n\n✨ 两件都收入图鉴。📚 进度：${newCount}/${total}`;
+    } else {
+        replyText += `\n\n✨ 收入图鉴。📚 进度：${newCount}/${total}`;
+    }
+
+    replyText += `\n下次再来大约要等 ${nextRefreshHrs} 个小时。\n\n想把它送给某人？发送「送礼 对方名 礼物编号」`;
+
+    seal.replyToSender(ctx, msg, replyText);
+    return seal.ext.newCmdExecuteResult(true);
+};
+
+// ========================
+// 📚 我的图鉴
+// ========================
+
+let cmd_view_my_gift_collection = {};
+cmd_view_my_gift_collection.solve =(ctx, msg, cmdArgs) => {
+    if (!requireApi(ctx, msg)) return seal.ext.newCmdExecuteResult(true);
+    const platform = msg.platform;
+    const uid = msg.sender.userId.replace(/^[a-z]+:/i, "");
+    // Resolve via primary account (extra_accounts alias)
+    const primaryUid = getPrimaryUid(platform, uid);
+    const userKey = `${platform}:${primaryUid}`;
+    const queryId = cmdArgs?.getArgN ? cmdArgs.getArgN(1) : "";
+
+    const presetGifts = JSON.parse(cachedGet("preset_gifts") || "{}");
+    const total = Object.keys(presetGifts).length;
+
+    if (total === 0) return seal.replyToSender(ctx, msg, "📚 图鉴暂无礼物，管理员尚未上传任何礼物~");
+
+    const sortedByHeat = Object.entries(presetGifts)
+        .map(([id, g]) => ({ id, name: g.name, content: g.content, count: g.usage_count || 0 }))
+        .sort((a, b) => b.count - a.count);
+    const heatRanks = {};
+    let rank = 1;
+    for (let i = 0; i < sortedByHeat.length; i++) {
+        if (i > 0 && sortedByHeat[i].count < sortedByHeat[i - 1].count) rank = i + 1;
+        heatRanks[sortedByHeat[i].id] = rank;
+    }
+
+    const sightings = JSON.parse(cachedGet("gift_sightings") || "{}");
+    const owned = sightings[userKey]?.unlocked_gifts || [];
+
+    if (queryId && queryId.startsWith('#')) {
+        if (!owned.includes(queryId)) return seal.replyToSender(ctx, msg, `🔒 ${queryId} 不在你的图鉴中`);
+        const gift = presetGifts[queryId];
+        if (!gift) return seal.replyToSender(ctx, msg, `❌ ${queryId} 已下架`);
+        return seal.replyToSender(ctx, msg,
+            `📖 ${queryId} 「${gift.name}」\n🔥 热度第${heatRanks[queryId]}名\n${"━".repeat(14)}\n${gift.content}`
+        );
+    }
+
+    if (owned.length === 0) {
+        return seal.replyToSender(ctx, msg, `📚 图鉴（0/${total}）\n发送「礼品店」开始收集！`);
+    }
+    const sorted = [...owned].sort((a, b) => (parseInt(a.replace('#', '')) || 0) - (parseInt(b.replace('#', '')) || 0));
+    let text = `📚 我的图鉴（${owned.length}/${total}）\n${"━".repeat(14)}\n💌 图鉴内的礼物可无限送礼\n发送「图鉴 #编号」查看详细描述\n`;
+    for (const giftId of sorted) {
+        const gift = presetGifts[giftId];
+        if (!gift) { text += `\n${giftId} （已下架）`; continue; }
+        text += `\n${giftId} 「${gift.name}」 🔥第${heatRanks[giftId]}名`;
+    }
+    seal.replyToSender(ctx, msg, text.trim());
+    return seal.ext.newCmdExecuteResult(true);
+};
+// ========================
+// 💌 心动信系统
+// ========================
+
+let cmd_send_lovemail = {};
+cmd_send_lovemail.solve =(ctx, msg, cmdArgs) => {
+    if (!requireApi(ctx, msg)) return seal.ext.newCmdExecuteResult(true);
+    const config = JSON.parse(cachedGet("global_feature_toggle") || "{}");
+    if (config.enable_lovemail === false) {
+        seal.replyToSender(ctx, msg, "💌 心动信箱已关闭，暂不可投稿");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    { const _fw = checkTsFeatureWindow("enable_lovemail"); if (!_fw.ok) { seal.replyToSender(ctx, msg, _fw.msg); return seal.ext.newCmdExecuteResult(true); } }
+
+    const platform = msg.platform;
+    const uid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
+    const a_private_group = JSON.parse(cachedGet("a_private_group") || "{}");
+
+    const senderRoleName = getRoleName(ctx, msg);
+    if (!senderRoleName) {
+        seal.replyToSender(ctx, msg, "✨ 远方的旅人，寄信前请先使用「创建新角色」来认领你的身份吧。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const raw = msg.message.trim();
+    const getTag = (tag) => {
+        const regex = new RegExp(`【${tag}】([\\s\\S]*?)(?=【|$)`, "i");
+        const match = raw.match(regex);
+        return match ? match[1].trim() : null;
+    };
+
+    const signature = getTag("署名") || "匿名";
+    const receiver = getTag("发送对象") || getTag("收件人");
+    let content = getTag("内容") || "";
+
+    if (/\[CQ:image[^\]]*\]/.test(signature)) {
+        seal.replyToSender(ctx, msg, `⚠️ 署名不能包含图片，请修改后重新投递。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    if (signature.length > 20) {
+        seal.replyToSender(ctx, msg, `⚠️ 署名不得超过 20 个字（当前 ${signature.length} 个字），请修改后重新投递。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    if (!receiver) {
+        seal.replyToSender(ctx, msg, `⚠️ 格式错误！请指定发送对象。\n\n标准格式：\n发送心动信\n【发送对象】角色名\n【内容】想说的话\n【署名】自定义昵称（选填）`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const receiverUid = getUidByRoleName(platform, receiver);
+    if (!a_private_group[platform] || !receiverUid) {
+        seal.replyToSender(ctx, msg, `⚠️ 找不到角色「${receiver}」的投递地址，请确认名字是否正确。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    let globalDay = cachedGet("global_days");
+    if (!globalDay) {
+        seal.replyToSender(ctx, msg, "⚠️ 当前未设置游戏天数，请联系管理员设置「。设置天数 D0」");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const dayLimits = JSON.parse(cachedGet("lovemail_day_limits") || "{}");
+    const defaultLimit = parseInt(cachedGet("lovemail_default_limit") || "3");
+    let maxPerDay = dayLimits[globalDay] !== undefined ? dayLimits[globalDay] : defaultLimit;
+    if (maxPerDay <= 0) {
+        seal.replyToSender(ctx, msg, `📪 当前游戏天数 ${globalDay} 的心动信投稿已关闭。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    let dayCounts = JSON.parse(cachedGet("lovemail_day_counts") || "{}");
+    if (!dayCounts[uid]) dayCounts[uid] = {};
+    const currentCount = dayCounts[uid][globalDay] || 0;
+
+    if (currentCount >= maxPerDay) {
+        seal.replyToSender(ctx, msg, `📪 在当前游戏天数 ${globalDay} 中，你已投稿 ${currentCount} 封（上限 ${maxPerDay} 封）。请等待下一天再试。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const mailKey = "lovemail_pool";
+    let records = JSON.parse(cachedGet(mailKey) || "[]");
+    records.push({ uid, receiver, content, signature, gameDay: globalDay, timestamp: Date.now() });
+    cachedSet(mailKey, JSON.stringify(records));
+
+    dayCounts[uid][globalDay] = currentCount + 1;
+    cachedSet("lovemail_day_counts", JSON.stringify(dayCounts));
+
+    let reply = `💌 心动信已成功投递至「${receiver}」的信箱！\n`;
+    reply += `📝 署名：${signature}\n`;
+    reply += `📅 游戏天数：${globalDay}（今日剩余次数：${maxPerDay - (currentCount + 1)}/${maxPerDay}）\n`;
+    reply += `✨ 提示：管理员统一送出前，你仍可以使用「。撤回心动信」取消本次投递。`;
+    seal.replyToSender(ctx, msg, reply);
+    return seal.ext.newCmdExecuteResult(true);
+};
+
+function generateMailReport(records, title = "📮 心动信派送清单") {
+    if (!records?.length) return [];
+    const mailBox = records.reduce((map, r) => ((map[r.receiver] ??= []).push(r), map), {});
+    const nodes = [{
+        type: "node",
+        data: {
+            name: "心动邮局·系统日志", uin: "2852199344",
+            content: `${title}\n🕐 ${new Date().toLocaleString()}\n📬 待派送信件总数：${records.length} 封\n— 以上 —`
+        }
+    }];
+    const MAX = 1200;
+    for (const [receiver, mails] of Object.entries(mailBox)) {
+        let text = `👤 收件人：${receiver}\n📨 信件数量：${mails.length} 封\n┈┈┈┈┈┈┈┈┈┈\n`;
+        let part = 1;
+        mails.forEach((mail, idx) => {
+            const letter = `【信件 ${idx + 1}】\n📝 署名：${mail.signature}\n📜 内容：${mail.content}\n${idx < mails.length - 1 ? '┈┈┈┈┈┈┈┈┈┈\n' : ''}`;
+            if ((text + letter).length > MAX) {
+                nodes.push({ type: "node", data: { name: `致 ${receiver} 的信件 (分册 ${part})`, uin: "10001", content: text.trim() } });
+                text = `👤 收件人：${receiver} (接前文)\n┈┈┈┈┈┈┈┈┈┈\n${letter}`;
+                part++;
+            } else text += letter;
+        });
+        nodes.push({ type: "node", data: { name: part === 1 ? `致 ${receiver} 的信件` : `致 ${receiver} 的信件 (终卷)`, uin: "10001", content: text.trim() } });
+    }
+    return nodes;
+}
+
+let cmd_stat_lovemail = seal.ext.newCmdItemInfo();
+cmd_stat_lovemail.name = "信箱统计";
+cmd_stat_lovemail.solve = (ctx, msg, cmdArgs) => {
+    if (!requireApi(ctx, msg)) return seal.ext.newCmdExecuteResult(true);
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "✨ 抱歉，这里只有邮局守护者才能进入哦。");
+    const records = JSON.parse(cachedGet("lovemail_pool") || "[]");
+    if (!records.length) return seal.replyToSender(ctx, msg, "🕊️ 此时的邮局静悄悄的，还没有待投递的心意。");
+
+    const nodes = generateMailReport(records, "🌸 心动邮局·巡检手记");
+    nodes[0].data.content = `🌸 此时此刻，共有 ${records.length} 份心意正在等待传递\n🕰️ 巡检时间：${new Date().toLocaleString()}\n愿每一份温柔都能准时抵达。`;
+
+    const targetGid = msg.groupId.replace(/\D/g, "");
+    for (let i = 0; i < nodes.length; i += 90) {
+        ws({ action: "send_group_forward_msg", params: { group_id: parseInt(targetGid, 10), messages: nodes.slice(i, i + 90) } }, ctx, msg, "");
+    }
+
+    const receiverCount = new Set(records.map(r => r.receiver)).size;
+    seal.replyToSender(ctx, msg, `✅ 统计报表已封缄完毕\n📮 发现 ${receiverCount} 位收件人的小小秘密\n✨ 巡检记录共计 ${nodes.length} 页，请您审阅。`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["信箱统计"] = cmd_stat_lovemail;
+
+let cmd_view_mylovemails = {};
+cmd_view_mylovemails.solve =(ctx, msg, cmdArgs) => {
+    if (!requireApi(ctx, msg)) return seal.ext.newCmdExecuteResult(true);
+    const platform = msg.platform;
+    const uid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
+    const records = JSON.parse(cachedGet("lovemail_pool") || "[]");
+    const my = records.filter(r => r.uid === uid);
+    if (!my.length) return seal.replyToSender(ctx, msg, "📭 你目前没有待投递的信件。");
+    let res = "📄 你待投递的信件如下：\n";
+    my.forEach((r, i) => res += `\n#${i + 1} | 接收者: ${r.receiver}\n内容: ${r.content}\n`);
+    seal.replyToSender(ctx, msg, res);
+    return seal.ext.newCmdExecuteResult(true);
+};
+
+let cmd_revoke_lovemail = seal.ext.newCmdItemInfo();
+cmd_revoke_lovemail.name = "撤回心动信";
+cmd_revoke_lovemail.solve = (ctx, msg, cmdArgs) => {
+    if (!requireApi(ctx, msg)) return seal.ext.newCmdExecuteResult(true);
+    const senderRoleName = getRoleName(ctx, msg);
+    if (!senderRoleName) {
+        seal.replyToSender(ctx, msg, "✨ 你还不是本系统的会员，请先使用「创建新角色」来认领你的身份吧。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    const platform = msg.platform;
+    const uid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
+    const idx = parseInt(cmdArgs.getArgN(1)) - 1;
+    let records = JSON.parse(cachedGet("lovemail_pool") || "[]");
+    const my = records.filter(r => r.uid === uid);
+    if (isNaN(idx) || idx < 0 || idx >= my.length) {
+        return seal.replyToSender(ctx, msg, "⚠️ 请输入正确的序号，例如：。撤回心动信 1");
+    }
+    const targetMail = my[idx];
+    const originalIdx = records.indexOf(targetMail);
+    const finalRecords = originalIdx !== -1
+        ? records.slice(0, originalIdx).concat(records.slice(originalIdx + 1))
+        : records.filter(r => r !== targetMail);
+
+    let dayCounts = JSON.parse(cachedGet("lovemail_day_counts") || "{}");
+    const gameDay = targetMail.gameDay;
+    if (dayCounts[uid] && dayCounts[uid][gameDay] && dayCounts[uid][gameDay] > 0) {
+        dayCounts[uid][gameDay]--;
+        if (dayCounts[uid][gameDay] === 0) delete dayCounts[uid][gameDay];
+        if (Object.keys(dayCounts[uid]).length === 0) delete dayCounts[uid];
+        cachedSet("lovemail_day_counts", JSON.stringify(dayCounts));
+    }
+    cachedSet("lovemail_pool", JSON.stringify(finalRecords));
+    seal.replyToSender(ctx, msg, `✅ 已成功撤回发送给「${targetMail.receiver}」的信件。\n📪 已恢复你在「${gameDay}」的 1 次发送机会。`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["撤回心动信"] = cmd_revoke_lovemail;
+
+let loveMailTimer = null;
+
+const isLoveMailEnabled = () => JSON.parse(cachedGet("global_feature_toggle") || "{}").enable_lovemail !== false;
+
+function performLoveMailDelivery(ctx, msg, backgroundGroupId) {
+    const platform = msg?.platform ?? "QQ";
+    const mailKey = "lovemail_pool";
+    let records = [];
+    try {
+        records = JSON.parse(cachedGet(mailKey) || "[]");
+    } catch (e) {
+        console.error(`[心动信箱] 无法读取信件池: ${e.message}`);
+    }
+    if (!records.length) return { success: 0, fail: 0, empty: true, status: "信池为空" };
+
+    const ep = (ctx && ctx.endPoint) ? ctx.endPoint : getSafeEndPoint(platform);
+    if (!ep) {
+        console.error("[心动信箱] 致命错误：无可用的 EndPoint，派送中止");
+        return { success: 0, fail: 0, status: "找不到EndPoint" };
+    }
+
+    const sendForward = (gid, nodes) => {
+        const raw = gid.toString().replace(/\D/g, "");
+        const m = seal.newMessage();
+        m.messageType = "group";
+        m.groupId = `${platform}-Group:${raw}`;
+        const c = seal.createTempCtx(ep, m);
+        ws({ action: "send_group_forward_msg", params: { group_id: parseInt(raw, 10), messages: nodes } }, c, m, "");
+    };
+
+    if (backgroundGroupId && records.length) {
+        const reportNodes = generateMailReport(records, "📋 心动信自动派送清单");
+        if (reportNodes.length) sendForward(backgroundGroupId, reportNodes);
+    }
+
+    const a_private_group = JSON.parse(cachedGet("a_private_group") || "{}");
+    const isPublicEnabled = cachedGet("lovemail_expose") === "true";
+    const publicChance = getStorageInt("lovemail_expose_chance", 10);
+    const hideReceiverOnDrop = cachedGet("drop_hide_receiver") === "true";
+    let announceGroupId = JSON.parse(cachedGet("adminAnnounceGroupId") || "null");
+    if (!announceGroupId || announceGroupId === "null") announceGroupId = null;
+
+    const mailBox = records.reduce((map, r) => ((map[r.receiver] ??= []).push(r), map), {});
+    let success = 0, fail = 0, publicCount = 0;
+    const publicNodes = [];
+    const failedRecords = [];
+
+    for (const [receiver, mails] of Object.entries(mailBox)) {
+        const recvUid = getUidByRoleName(platform, receiver);
+        const addr = recvUid ? a_private_group[platform]?.[recvUid] : null;
+        if (addr) {
+            const targetGidRaw = (addr[1] || "").replace(/\D/g, "");
+            const personalNodes = [{ type: "node", data: { name: "心动邮局·派送员", uin: "2852199344", content: `💌 亲爱的 ${receiver}，你有一份包含 ${mails.length} 封信件的包裹待启封。` } }];
+            const imageGroups = []; // 每封信提取出的图片 CQ 码，与 mails 下标对应
+            mails.forEach((mail, idx) => {
+                const imgMatches = mail.content.match(/\[CQ:image[^\]]*\]/g) || [];
+                const textOnly = mail.content.replace(/\[CQ:image[^\]]*\]/g, "").trim();
+                imageGroups.push(imgMatches);
+                personalNodes.push({ type: "node", data: { name: `第 ${idx + 1} 封信件`, uin: "10001", content: `「 ${textOnly || "（图片见下方）"} 」\n┈┈┈┈┈┈┈┈┈┈┈┈\n📝 署名：${mail.signature}` } });
+                success++;
+                // 提前判断本封信是否会被曝光（需在存档前确定，以便写入 hide_receiver）
+                const isThisMailPublic = isPublicEnabled && announceGroupId &&
+                    (Math.floor(Math.random() * 100) + 1 <= publicChance);
+                // 心动信实时存档（投递时上传，pool 投完即清空故不能靠 session_end）
+                if (isArchiveEnabled()) {
+                    const fromRole = a_private_group[platform]?.[mail.uid]?.[0];
+                    if (!fromRole) console.warn(`[心动信] 派送存档找不到发件人角色名，UID: ${mail.uid}`);
+                    postToArchive("/api/event", {
+                        type:            "lovemail",
+                        from_role:       fromRole || mail.uid,
+                        from_custom_name: mail.signature && mail.signature !== (fromRole || mail.uid) ? mail.signature : undefined,
+                        to_role:         receiver,
+                        content:         mail.content,
+                        extra_info:      { signature: mail.signature, isPublic: isThisMailPublic, hide_receiver: isThisMailPublic && hideReceiverOnDrop },
+                        game_day:        mail.gameDay || "",
+                        session_id:      "",
+                        timestamp:       mail.timestamp || Date.now()
+                    });
+                }
+                if (isThisMailPublic) {
+                    publicCount++;
+                    const publicReceiver = hideReceiverOnDrop ? "某人" : receiver;
+                    publicNodes.push({ type: "node", data: { name: "飘落的信笺", uin: "2852199344", content: `📩 寄给「${publicReceiver}」的心动信\n来自「${mail.signature}」\n内容：「${mail.content}」` } });
+                }
+            });
+            sendForward(targetGidRaw, personalNodes);
+            // 图片单独发：转发节点不渲染图片，逐封追发
+            mails.forEach((mail, idx) => {
+                const imgs = imageGroups[idx];
+                if (!imgs.length) return;
+                const label = `📎 第 ${idx + 1} 封信件（署名：${mail.signature}）附带的图片：`;
+                sendTextToGroup(platform, targetGidRaw, label + "\n" + imgs.join("\n"));
+            });
+        } else {
+            failedRecords.push(...mails);
+            fail += mails.length;
+        }
+    }
+
+    if (publicNodes.length && announceGroupId) {
+        sendForward(announceGroupId, [{ type: "node", data: { name: "心动天使", uin: "2852199344", content: `✨ 哎呀，有 ${publicNodes.length} 份心意在飞往信箱的途中，不小心飘落到了公告区...` } }, ...publicNodes]);
+    }
+
+    // 只清除已成功派送的信，保留投递失败的信以便重试
+    cachedSet(mailKey, JSON.stringify(failedRecords));
+    if (success > 0) recordMeetingAndAnnounce("心动信", platform, ctx, ep);
+    return { success, fail, publicCount, empty: false, status: "派送完成" };
+}
+
+function registerLoveMailSystem() {
+    if (loveMailTimer) {
+        clearInterval(loveMailTimer);
+        loveMailTimer = null;
+    }
+    let lastTriggerMinute = -1;
+    loveMailTimer = setInterval(() => {
+        if (!api()) return;          // 主插件未加载时跳过本轮
+        if (!isLoveMailEnabled()) return;
+        const now = new Date();
+        const currentHour = now.getHours();
+        const currentMinute = now.getMinutes();
+        const currentTimeTotal = currentHour * 60 + currentMinute;
+        if (currentMinute === lastTriggerMinute) return;
+
+        let deliveryTime = (cachedGet("lovemail_delivery_time") || "22:00").replace(/"/g, "").trim() || "22:00";
+
+        const timeParts = deliveryTime.split(':').map(Number);
+        if (timeParts.length !== 2) return;
+        const [targetH, targetM] = timeParts;
+        const targetTimeTotal = targetH * 60 + targetM;
+        const getOffsetTotal = (offset) => { let t = targetTimeTotal + offset; if (t < 0) t += 1440; return t % 1440; };
+
+        if (currentTimeTotal === targetTimeTotal) {
+            const backgroundGroupId = JSON.parse(cachedGet("background_group_id") || "null");
+            try {
+                performLoveMailDelivery(null, { platform: "QQ" }, backgroundGroupId);
+            } catch (err) {
+                console.error(`[心动信箱] 自动派送异常: ${err.message}`);
+            }
+            lastTriggerMinute = currentMinute;
+        } else if (currentTimeTotal === getOffsetTotal(-5)) {
+            const announceGid = JSON.parse(cachedGet("adminAnnounceGroupId") || "null");
+            if (announceGid) sendTextToGroup("QQ", announceGid, `📬 邮差正在整理信箱，心动信件即将在 5 分钟后开始派送，请注意查收。`);
+            lastTriggerMinute = currentMinute;
+        } else if (currentTimeTotal === getOffsetTotal(-10)) {
+            const platform = "QQ";
+            const groups = JSON.parse(cachedGet("a_private_group") || "{}")[platform] || {};
+            const targetGids = [...new Set(Object.values(groups).map(v => v[1]))];
+            targetGids.forEach(gid => sendTextToGroup(platform, gid, `⌛ 投递截止预告：\n心动信箱将于 10 分钟后截止收稿并开始派送，还没投递的小伙伴要抓紧咯～`));
+            lastTriggerMinute = currentMinute;
+        }
+    }, 30000);
+}
+
+let cmd_deliver_lovemail = seal.ext.newCmdItemInfo();
+cmd_deliver_lovemail.name = "统一送心动信";
+cmd_deliver_lovemail.solve = (ctx, msg, cmdArgs) => {
+    if (!requireApi(ctx, msg)) return seal.ext.newCmdExecuteResult(true);
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "⚠️ 权限不足。");
+    const result = performLoveMailDelivery(ctx, msg);
+    if (result.empty) {
+        seal.replyToSender(ctx, msg, "📭 信箱空空如也。");
+    } else {
+        seal.replyToSender(ctx, msg, `📬 手动投递完成！结果: ${result.status} (成功 ${result.success} 封)`);
+    }
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["统一送心动信"] = cmd_deliver_lovemail;
+
+registerLoveMailSystem();
+
+// ========================
+// 📊 玩家指令：查看个人历史统计
+// ========================
+let cmd_my_stats = {};
+cmd_my_stats.solve =(ctx, msg, cmdArgs) => {
+    if (!requireApi(ctx, msg)) return seal.ext.newCmdExecuteResult(true);
+    const platform = msg.platform;
+    const storage = getRoleStorage();
+    const uid = msg.sender.userId.replace(`${platform}:`, "");
+    const roleName = storage[platform]?.[uid]?.[0];
+
+    if (!roleName) {
+        seal.replyToSender(ctx, msg, "❌ 未找到你的角色绑定信息，请先创建角色。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 字数统计以 user_stats 为准（每条有效回复实时累加，从不清空，全季完整）
+    const stats = getUserStats();
+    const globalStat = stats[`${platform}:${uid}`];
+
+    let reply = `📊 【${roleName}】统计报告\n`;
+
+    if (!globalStat) {
+        const iCountsEarly = getInteractionCounts()[`${platform}:${roleName}`] || {};
+        const hasInteraction = Object.keys(iCountsEarly).length > 0;
+        if (!hasInteraction) {
+            seal.replyToSender(ctx, msg, `📊 【${roleName}】暂无统计数据，快去参与邀约吧！`);
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        if (hasInteraction) {
+            const smsFE = getTop3Text(iCountsEarly.sms_received);
+            const smsTE = getTop3Text(iCountsEarly.sms_sent);
+            const giftFE = getTop3Text(iCountsEarly.gift_received);
+            const giftTE = getTop3Text(iCountsEarly.gift_sent);
+            const apptFE = getTop3Text(iCountsEarly.appt_received);
+            const apptTE = getTop3Text(iCountsEarly.appt_sent);
+            if (smsFE || smsTE) {
+                reply += `【短信】\n`;
+                if (smsFE) reply += `📨 最喜欢给你发短信：\n${smsFE}\n`;
+                if (smsTE) reply += `📤 你最喜欢发短信给：\n${smsTE}\n`;
+            }
+            if (giftFE || giftTE) {
+                reply += `【礼物】\n`;
+                if (giftFE) reply += `🎀 最喜欢送你礼物：\n${giftFE}\n`;
+                if (giftTE) reply += `🎁 你最喜欢送礼给：\n${giftTE}\n`;
+            }
+            if (apptFE || apptTE) {
+                reply += `【约会】\n`;
+                if (apptFE) reply += `📅 最喜欢约你（私约/电话）：\n${apptFE}\n`;
+                if (apptTE) reply += `💌 你最喜欢约（私约/电话）：\n${apptTE}\n`;
+            }
+            const wishFE = getTop3Text(iCountsEarly.wish_received);
+            const wishTE = getTop3Text(iCountsEarly.wish_sent);
+            if (wishFE || wishTE) {
+                reply += `【心愿】\n`;
+                if (wishFE) reply += `🌠 最喜欢摘你心愿：\n${wishFE}\n`;
+                if (wishTE) reply += `✨ 你最喜欢摘谁的心愿：\n${wishTE}\n`;
+            }
+        }
+        reply += `— 以上 —`;
+        seal.replyToSender(ctx, msg, reply);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 本季累计数据块（user_stats 实时累加，全季完整）
+    reply += `【本季累计】\n`;
+    reply += `🔹 累计回复：${globalStat.totalReplies} 次\n`;
+    reply += `🔹 累计字数：${globalStat.totalWords} 字\n`;
+    reply += `🔹 平均每条：${globalStat.avgWords} 字\n`;
+    reply += `🔹 平均耗时：${globalStat.avgReplyTimeMin} 分钟\n`;
+
+    const sub = globalStat.subtypeStats?.[platform]?.[uid];
+    if (sub) {
+        reply += `🔹 极限速度：${sub.fastestReply || '--'} min (最快)\n`;
+    }
+
+    const iCounts = getInteractionCounts()[`${platform}:${roleName}`] || {};
+    const smsFrom = getTop3Text(iCounts.sms_received);
+    const smsTo   = getTop3Text(iCounts.sms_sent);
+    const giftFrom = getTop3Text(iCounts.gift_received);
+    const giftTo   = getTop3Text(iCounts.gift_sent);
+    const apptFrom = getTop3Text(iCounts.appt_received);
+    const apptTo   = getTop3Text(iCounts.appt_sent);
+
+    if (smsFrom || smsTo) {
+        reply += `【短信】\n`;
+        if (smsFrom) reply += `📨 最喜欢给你发短信：\n${smsFrom}\n`;
+        if (smsTo)   reply += `📤 你最喜欢发短信给：\n${smsTo}\n`;
+    }
+    if (giftFrom || giftTo) {
+        reply += `【礼物】\n`;
+        if (giftFrom) reply += `🎀 最喜欢送你礼物：\n${giftFrom}\n`;
+        if (giftTo)   reply += `🎁 你最喜欢送礼给：\n${giftTo}\n`;
+    }
+    if (apptFrom || apptTo) {
+        reply += `【约会】\n`;
+        if (apptFrom) reply += `📅 最喜欢约你（私约/电话）：\n${apptFrom}\n`;
+        if (apptTo)   reply += `💌 你最喜欢约（私约/电话）：\n${apptTo}\n`;
+    }
+    const wishFrom = getTop3Text(iCounts.wish_received);
+    const wishTo   = getTop3Text(iCounts.wish_sent);
+    if (wishFrom || wishTo) {
+        reply += `【心愿】\n`;
+        if (wishFrom) reply += `🌠 最喜欢摘你心愿：\n${wishFrom}\n`;
+        if (wishTo)   reply += `✨ 你最喜欢摘谁的心愿：\n${wishTo}\n`;
+    }
+
+    reply += `— 以上 —`;
+
+    seal.replyToSender(ctx, msg, reply);
+    return seal.ext.newCmdExecuteResult(true);
+};
+

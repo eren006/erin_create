@@ -2105,7 +2105,8 @@ cmd_draw.solve = (ctx, msg, cmdArgs) => {
                 isPity = true;
                 setPityCount(uid, pool.name, 0);
             }
-            if (!isPity) setPityCount(uid, pool.name, currentCount + 1);
+            // 只有实际抽到了物品才递增计数器，避免空池时虚增保底进度
+            if (!isPity && drawnCode) setPityCount(uid, pool.name, currentCount + 1);
         }
     } else if (pool.type === "tiered") {
         const allAttrs = getCharAttrs();
@@ -2245,6 +2246,48 @@ cmd_add_pity_item.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["上架保底"] = cmd_add_pity_item;
+
+let cmd_remove_pity_item = seal.ext.newCmdItemInfo();
+cmd_remove_pity_item.name = "从保底移除";
+cmd_remove_pity_item.help = `【管理员】从保底池的保底物品列表中移除物品
+从保底移除 池子名 物品码   —— 移除单个
+多行批量：
+。从保底移除 池子名
+物品码1
+物品码2`;
+cmd_remove_pity_item.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const poolName = cmdArgs.getArgN(1);
+    if (!poolName) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const defs = getPoolDefs();
+    const pool = defs[poolName];
+    if (!pool) return seal.replyToSender(ctx, msg, `❌ 未找到池子「${poolName}」。`);
+    if (pool.type !== "pity") return seal.replyToSender(ctx, msg, `❌ 「${poolName}」不是保底池。`);
+    const rawMsg = msg.message.trim();
+    const msgParts = rawMsg.split(/\r?\n/);
+    let inputCodes;
+    if (msgParts.length > 1) {
+        inputCodes = msgParts.slice(1).map(l => l.trim()).filter(l => l);
+    } else {
+        const single = cmdArgs.getArgN(2);
+        if (!single) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+        inputCodes = [single];
+    }
+    const reg = getRegistry();
+    const results = [];
+    for (const inputCode of inputCodes) {
+        const item = findItem(reg, inputCode);
+        const code = item ? item.code : inputCode.toUpperCase();
+        const idx = (pool.pityItems || []).findIndex(i => i.code === code);
+        if (idx === -1) { results.push(`❌ [${code}] 不在保底列表中`); continue; }
+        pool.pityItems.splice(idx, 1);
+        results.push(`✅ 已移除 [${code}]${item?.name || ""}`);
+    }
+    savePoolDefs(defs);
+    seal.replyToSender(ctx, msg, `从「${poolName}」保底列表移除：\n${results.join("\n")}`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["从保底移除"] = cmd_remove_pity_item;
 
 let cmd_my_pity = seal.ext.newCmdItemInfo();
 cmd_my_pity.name = "我的保底";
