@@ -1,0 +1,175 @@
+{% extends 'base.html' %}
+{% block title %}陷害面板 · 后宫晋升录{% endblock %}
+
+{% block content %}
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1.2rem">
+
+<!-- 左：提交陷害 -->
+<div>
+  <div class="card">
+    <div class="card-title">◆ 布局设局</div>
+    {% if me %}
+    <div style="font-size:.85rem;color:var(--muted);margin-bottom:.8rem">
+      心计：<strong style="color:var(--gold)">{{ me.scheme|int }}</strong> ·
+      银两：<strong style="color:var(--gold)">{{ me.silver }}</strong> ·
+      今日已用体力：-
+    </div>
+    {% endif %}
+
+    {% if pending %}
+    <div class="alert alert-info">今日已有待执行的陷害，明日结算时执行。</div>
+    {% endif %}
+
+    <form id="intrigueForm">
+      <div class="form-group">
+        <label>目标</label>
+        <select name="target_name" id="targetSel" required>
+          <option value="">-- 选择目标 --</option>
+          {% for t in targets %}
+          <option value="{{ t.name }}" data-qq="{{ t.qq or '' }}" data-npc="{{ t.npc_id or '' }}">
+            {{ t.name }}（{{ t.rank }}）{% if not t.qq %} [NPC]{% endif %}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>手段</label>
+        <select name="method" id="methodSel" required onchange="updateMethodInfo()">
+          <option value="">-- 选择手段 --</option>
+          {% for k, m in methods.items() %}
+          <option value="{{ k }}"
+            data-scheme="{{ m.scheme_req }}"
+            data-silver="{{ m.silver }}"
+            data-favor="{{ m.favor }}"
+            data-desc="{{ m.desc }}">
+            {{ k }}（需心计≥{{ m.scheme_req }}，花费{{ m.silver }}两）
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div id="methodInfo" style="display:none;background:rgba(201,168,76,.07);
+           border:1px solid var(--border);border-radius:3px;padding:.7rem;
+           margin-bottom:.9rem;font-size:.85rem;color:var(--text)">
+      </div>
+
+      <button type="button" class="btn btn-red" style="width:100%" onclick="submitIntrigue()">
+        确认设局（下次结算执行）
+      </button>
+    </form>
+  </div>
+
+  <!-- 陷害说明 -->
+  <div class="card">
+    <div class="card-title">◆ 手段说明</div>
+    <table>
+      <thead><tr><th>手段</th><th>需心计</th><th>花费银两</th><th>效果</th></tr></thead>
+      <tbody>
+      {% for k, m in methods.items() %}
+      <tr>
+        <td><strong>{{ k }}</strong></td>
+        <td>{{ m.scheme_req }}</td>
+        <td>{{ m.silver }}</td>
+        <td style="color:var(--muted);font-size:.82rem">{{ m.desc }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p style="color:var(--muted);font-size:.8rem;margin-top:.7rem">
+      被发现概率：max(5%, 35% - (己方心计-目标心计)×0.3%)
+    </p>
+  </div>
+</div>
+
+<!-- 右：历史记录 -->
+<div>
+  <div class="card">
+    <div class="card-title">◆ 待执行队列</div>
+    {% if queue %}
+    {% for q in queue %}
+    <div class="log-entry" style="display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="color:var(--gold);font-size:.88rem">{{ q.method }} → {{ q.target_name }}</div>
+        <div style="color:var(--muted);font-size:.78rem">提交于 {{ q.submitted_at[:16] }}</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="cancelIntrigue({{ q.id }})">取消</button>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div style="color:var(--muted);font-size:.85rem;text-align:center;padding:1rem">暂无待执行设局</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-title">◆ 历史结果</div>
+    {% if history %}
+    {% for h in history %}
+    <div class="log-entry {% if h.result=='success' %}major{% endif %}">
+      <div class="log-day">第{{ h.execute_day }}天 · {{ h.method }} → {{ h.target_name }}</div>
+      <div class="log-content">
+        {% if h.result == 'success' %}
+        <span style="color:#a0e0a0">✓ 成功</span>
+        {% elif h.result == 'found' %}
+        <span style="color:#f08080">✗ 被发现</span>
+        {% elif h.result == 'fail' %}
+        <span style="color:var(--muted)">✗ 失败</span>
+        {% else %}
+        <span style="color:var(--muted)">{{ h.result or '待定' }}</span>
+        {% endif %}
+        {% if h.result_detail %} · {{ h.result_detail }}{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div style="color:var(--muted);font-size:.85rem;text-align:center;padding:1rem">暂无历史记录</div>
+    {% endif %}
+  </div>
+</div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const methods = {{ methods_json | safe }};
+
+function updateMethodInfo(){
+  const sel = document.getElementById('methodSel');
+  const opt = sel.options[sel.selectedIndex];
+  const box = document.getElementById('methodInfo');
+  if(!opt.value){ box.style.display='none'; return; }
+  box.style.display='block';
+  box.innerHTML = `
+    <strong style="color:var(--gold)">${opt.value}</strong><br>
+    ${opt.dataset.desc}<br>
+    <span style="color:var(--muted)">消耗：银两 ${opt.dataset.silver} · 需心计 ${opt.dataset.scheme} · 消耗圣宠 ${opt.dataset.favor}</span>
+  `;
+}
+
+async function submitIntrigue(){
+  const f = document.getElementById('intrigueForm');
+  const sel = document.getElementById('targetSel');
+  const opt = sel.options[sel.selectedIndex];
+  if(!opt.value || !document.querySelector('[name=method]').value){
+    toast('请选择目标和手段','error'); return;
+  }
+  const body = {
+    target_name: opt.value,
+    target_qq: opt.dataset.qq || null,
+    target_npc_id: opt.dataset.npc || null,
+    method: document.querySelector('[name=method]').value
+  };
+  const r = await post('/intrigue/submit', body);
+  if(r.ok){ toast('设局成功，将于下次结算执行','ok'); setTimeout(()=>location.reload(),1200); }
+  else toast(r.error || '提交失败','error');
+}
+
+async function cancelIntrigue(id){
+  if(!confirm('确认取消？')) return;
+  const r = await post('/intrigue/cancel/'+id, {});
+  if(r.ok){ toast('已取消','ok'); setTimeout(()=>location.reload(),800); }
+  else toast(r.error || '取消失败','error');
+}
+</script>
+{% endblock %}

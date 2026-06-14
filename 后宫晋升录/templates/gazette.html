@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% block title %}宫廷公报 · 后宫晋升录{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-title">◆ 宫廷公报</div>
+  <p style="color:var(--muted);font-size:.85rem;margin-bottom:1rem">每日结算后更新 · 当前第 {{ gs.day_num }} 天</p>
+
+  <!-- 日期筛选 -->
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem">
+    <a href="{{ url_for('gazette') }}" class="btn btn-sm {% if not day_filter %}btn-gold{% else %}btn-ghost{% endif %}">全部</a>
+    {% for d in day_list %}
+    <a href="{{ url_for('gazette', day=d) }}" class="btn btn-sm {% if day_filter == d %}btn-gold{% else %}btn-ghost{% endif %}">第{{ d }}天</a>
+    {% endfor %}
+  </div>
+</div>
+
+{% if logs %}
+  {% set ns = namespace(cur_day=None) %}
+  {% for log in logs %}
+    {% if log.day_num != ns.cur_day %}
+      {% if ns.cur_day is not none %}</div>{% endif %}
+      {% set ns.cur_day = log.day_num %}
+      <div class="card">
+      <div class="card-title">◆ 第 {{ log.day_num }} 天</div>
+    {% endif %}
+
+    <div class="log-entry {% if log.is_major %}major{% endif %}">
+      {% if log.title %}
+      <div style="color:var(--gold);font-size:.88rem;margin-bottom:.2rem">【{{ log.title }}】</div>
+      {% endif %}
+      <div class="log-day">{{ log.log_type }}</div>
+      <div class="log-content">{{ log.content }}</div>
+      {% if log.affected %}
+      <div style="color:var(--muted);font-size:.78rem;margin-top:.2rem">涉及：{{ log.affected }}</div>
+      {% endif %}
+    </div>
+
+  {% endfor %}
+  </div>
+{% else %}
+  <div class="card">
+    <div style="color:var(--muted);text-align:center;padding:2rem">尚无公报记录</div>
+  </div>
+{% endif %}
+{% endblock %}

@@ -251,6 +251,26 @@
                         <tr><td><code>摘心愿 心愿ID</code></td><td>接受并摘取他人的心愿</td><td>响应他人的心愿邀请</td></tr>
                         <tr><td><code>撤心愿 心愿ID</code></td><td>撤回已发布的心愿</td><td>取消之前发布的邀请</td></tr>
                     </table>
+
+                    <h3>🏷️ 自定义约会类型（修改私约名字）</h3>
+                    <p>管理员可以在网页后台为私约配置多个自定义触发词，让玩家用「散步」「咖啡」等词代替「私约」发起约会，群名和时间线会自动使用对应的类型名称。</p>
+                    <h3>配置步骤（管理员）</h3>
+                    <div class="example-box">
+                        <strong>第一步</strong>：打开存档后台 → 设置页 → 拉到底部「自定义约会类型」区块<br>
+                        <strong>第二步</strong>：点「＋ 添加类型」，填写以下字段：<br>
+                        &nbsp;&nbsp;&nbsp;• <strong>触发词</strong>：玩家发指令时用的词，如「散步」「喝咖啡」「乐乐的约会」<br>
+                        &nbsp;&nbsp;&nbsp;• <strong>图标</strong>：在群名前显示的表情，如 🌸 🎠 ☕<br>
+                        &nbsp;&nbsp;&nbsp;• <strong>最短分钟</strong>：该类型约会的最短持续时长（分钟）<br>
+                        <strong>第三步</strong>：点「保存配置」<br>
+                        <strong>第四步</strong>：在 QQ 发 <code>。同步设置</code>，配置立即生效
+                    </div>
+                    <h3>玩家使用方式</h3>
+                    <div class="example-box">
+                        配置了「散步」触发词后，玩家直接发：<br>
+                        <code>散步 14:00 公园 角色名</code><br>
+                        效果与 <code>私约 角色名 ...</code> 相同，但群名会显示为「🌸 散步」，时间线也记录为该类型
+                    </div>
+                    <div class="tip">💡 每个触发词可独立绑定不同的结戏奖励模板，在「奖励模板」设置页选择对应类型即可</div>
                 </div>
             </div>
 

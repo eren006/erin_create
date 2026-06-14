@@ -1,0 +1,119 @@
+{% extends 'base.html' %}
+{% block title %}花名册 · 后宫晋升录{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-title">◆ 宫廷花名册</div>
+  <p style="color:var(--muted);font-size:.85rem;margin-bottom:1rem">
+    共 {{ players|length + npcs|length }} 位嫔妃 · 玩家 {{ players|length }} · NPC {{ npcs|length }}
+    {% if session.get('qq') %} · 以 <strong style="color:var(--gold)">{{ session.get('name') }}</strong> 身份登录{% endif %}
+  </p>
+
+  {% set ranks = [
+    ('皇后','rank-8',[]),('皇贵妃','rank-7',[]),('贵妃','rank-7',[]),
+    ('妃','rank-6',[]),('嫔','rank-5',[]),('贵人','rank-4',[]),
+    ('常在','rank-3',[]),('答应','rank-2',[]),('秀女','rank-1',[])
+  ] %}
+
+  {% macro stat_bar(val, max=100) %}
+  <div class="stat-bar" style="display:inline-block;width:70px;vertical-align:middle">
+    <div class="stat-fill" style="width:{{ [val/max*100,100]|min|int }}%"></div>
+  </div>
+  {% endmacro %}
+
+  <!-- 按位阶分组展示 -->
+  {% set all_people = [] %}
+  {% for p in players %}{% set _ = all_people.append({'type':'player','data':p}) %}{% endfor %}
+  {% for n in npcs %}{% set _ = all_people.append({'type':'npc','data':n}) %}{% endfor %}
+
+  {% set rank_order_names = ['秀女','答应','常在','贵人','嫔','妃','贵妃','皇贵妃','皇后'] %}
+
+  {% for rank_name in rank_order_names|reverse %}
+    {% set rank_players = players | selectattr('rank','equalto',rank_name) | list %}
+    {% set rank_npcs = npcs | selectattr('rank','equalto',rank_name) | list %}
+    {% if rank_players or rank_npcs %}
+    <div style="margin-bottom:1.4rem">
+      <div style="display:flex;align-items:center;gap:.7rem;margin-bottom:.5rem">
+        <span class="rank-badge rank-{{ loop.index }}">{{ rank_name }}</span>
+        <span style="color:var(--muted);font-size:.82rem">
+          {{ rank_players|length + rank_npcs|length }} 人
+          · 名额 {{ slot_info.get(rank_name, '?') }}
+        </span>
+      </div>
+      <table>
+        <thead><tr>
+          <th>封号·名讳</th><th>年龄</th>
+          <th>容貌</th><th>才华</th><th>宠爱</th><th>威严</th><th>圣宠</th>
+          <th>状态</th>
+        </tr></thead>
+        <tbody>
+        {% for p in rank_players %}
+        <tr {% if p.qq == session.get('qq') %}style="background:rgba(201,168,76,.12)"{% endif %}>
+          <td>
+            {{ p.title or '' }}
+            <strong style="color:var(--ink)">{{ p.name }}</strong>
+            {% if p.qq == session.get('qq') %}<span style="color:var(--gold);font-size:.75rem"> ◀你</span>{% endif %}
+          </td>
+          <td style="color:var(--muted)">{{ p.age }}岁</td>
+          <td>{{ stat_bar(p.appearance) }} {{ p.appearance|int }}</td>
+          <td>{{ stat_bar(p.talent) }} {{ p.talent|int }}</td>
+          <td>
+            <span style="color:{% if p.love < 20 %}#f08080{% elif p.love >= 60 %}#ffd700{% else %}var(--text){% endif %}">
+              {{ p.love|int }}
+            </span>
+            <span style="color:var(--muted);font-size:.78rem">({{ p.love_stage }})</span>
+          </td>
+          <td>
+            <span style="color:{% if p.prestige < 20 %}#f08080{% else %}var(--text){% endif %}">
+              {{ p.prestige|int }}
+            </span>
+          </td>
+          <td>{{ p.sacred_favor }}</td>
+          <td>
+            {% if p.status == 'pregnant' %}
+            <span style="color:#e8c0f0">孕中</span>
+            {% elif p.status == 'bedridden' %}
+            <span style="color:#f08080">卧床</span>
+            {% elif p.status == 'eliminated' %}
+            <span style="color:var(--muted)">出局</span>
+            {% else %}
+            <span style="color:#a0d0a0">正常</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        {% for n in rank_npcs %}
+        <tr class="npc-row">
+          <td>{{ n.title or '' }} {{ n.name }} <span style="font-size:.75rem">[NPC]</span></td>
+          <td>{{ n.age }}岁</td>
+          <td>{{ stat_bar(n.appearance) }} {{ n.appearance|int }}</td>
+          <td>{{ stat_bar(n.talent) }} {{ n.talent|int }}</td>
+          <td>{{ n.love|int }}</td>
+          <td>{{ n.prestige|int }}</td>
+          <td>-</td>
+          <td>
+            {% if not n.is_alive %}<span style="color:var(--muted)">已离宫</span>
+            {% elif n.pregnant_day > 0 %}<span style="color:#e8c0f0">孕中</span>
+            {% else %}<span style="color:var(--muted)">在位</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  {% endfor %}
+</div>
+
+<!-- 传言区 -->
+{% if rumors %}
+<div class="card">
+  <div class="card-title">◆ 宫中传言（第{{ gs.day_num }}天）</div>
+  {% for r in rumors %}
+  <div class="log-entry">
+    <div class="log-content">{{ r.content }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

@@ -134,11 +134,11 @@ body { font-family: 'Noto Serif SC', serif; background: var(--warm-white); color
   <div class="hero-right">
     <div class="hero-stat-grid">
       <div class="hero-stat">
-        <div class="hero-stat-num">2.0.1</div>
+        <div class="hero-stat-num">2.1.0</div>
         <div class="hero-stat-label">Latest</div>
       </div>
       <div class="hero-stat">
-        <div class="hero-stat-num">16</div>
+        <div class="hero-stat-num">19</div>
         <div class="hero-stat-label">Releases</div>
       </div>
       <div class="hero-stat">
@@ -156,11 +156,123 @@ body { font-family: 'Noto Serif SC', serif; background: var(--warm-white); color
 <div class="page">
 <div class="timeline">
 
+  <!-- ── v2.1.0 ─── -->
+  <div class="version-block latest" id="v2.1.0">
+    <div class="version-meta">
+      <span class="version-num">2.1.0</span>
+      <span class="version-date">最新</span>
+    </div>
+    <div class="version-dot"></div>
+    <div class="version-content">
+      <div class="version-title">私约别名系统 · 时段档位 · 礼品库管理 <span class="tag-latest">Latest</span></div>
+      <div class="version-subtitle">私约可配置多触发词与独立参数；时段锁定改为档位制；存档后台新增礼品管理页与自定义约会类型</div>
+      <ul class="change-list">
+
+        <li class="change-group-label">长日系统（主插件）</li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">私约别名系统：支持自定义多个触发词（如「散步」「咖啡」），每个别名可独立配置 subtype、结戏奖励模板、最小时长、时段限制等参数</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-update">Update</span>
+          <span class="change-text">现实时段校验从布尔开关改为可配档位（1h / 2h / 3h / 4h / 6h / 8h），按 N 小时整块时段匹配，支持跨档位约会灵活配置</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text"><code>上传礼品库</code>：将本地预设礼品表推送到 RP 存档服务器</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-update">Update</span>
+          <span class="change-text"><code>管理帮助</code> 开季流程中「录入群号组」和「创建指令指南」步骤标注由 <code>【后台】</code> 改为 <code>【网页】</code></span>
+        </li>
+
+        <li class="change-group-label">rp_archive（存档后台）</li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">设置页新增「自定义约会类型」管理卡片，奖励模板下拉动态加载私约别名列表</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-update">Update</span>
+          <span class="change-text">时间调度页「现实时段锁定」由开关改为单选档位 chips，与机器人档位配置对齐</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">新增预设礼品管理页（admin_gifts），支持查看与管理礼品库；修复布局居中与内边距问题</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-update">Update</span>
+          <span class="change-text">全量同步新增 <code>private_appointment_aliases</code> 键，私约别名配置可在网页端统一管理</span>
+        </li>
+
+      </ul>
+    </div>
+  </div>
+
+  <!-- ── v2.0.9 ─── -->
+  <div class="version-block" id="v2.0.9">
+    <div class="version-meta">
+      <span class="version-num">2.0.9</span>
+      <span class="version-date">6/12</span>
+    </div>
+    <div class="version-dot"></div>
+    <div class="version-content">
+      <div class="version-title">长日闹钟 · RPG 保底与定时收集 · rp_archive 大幅更新</div>
+      <div class="version-subtitle">新增闹钟插件（加百列）；RPG 补全保底系统与定时收集；存档后台新增指令手册、时间调度、玩家控制台等多个管理页</div>
+      <ul class="change-list">
+
+        <li class="change-group-label">长日闹钟（新插件）</li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">全新闹钟插件「加百列」：支持 <code>提醒</code>、<code>我的提醒</code>、<code>删除提醒</code>、<code>再提醒我</code>、<code>谢谢加百列</code> 等定时提醒功能，附带好感度养成（<code>加百列好感度</code>）、图鉴系统（<code>加百列图鉴</code>）与帮助指令（<code>加百列闹钟帮助</code>）</span>
+        </li>
+
+        <li class="change-group-label">长日RPG</li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">保底系统：新增 <code>设置保底</code>、<code>上架保底</code>、<code>从保底移除</code>、<code>我的保底</code>，支持为玩家配置抽取保底阈值与保底物品</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">定时收集：新增 <code>创建定时收集</code>、<code>关闭定时收集</code>、<code>查看定时收集</code>、<code>定时收集</code>，支持定期向玩家收集文本内容</span>
+        </li>
+
+        <li class="change-group-label">长日系统（主插件）</li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text"><code>管理帮助</code>：新增开季/日常/结季完整流程速查，含后台链接直达</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text"><code>创建新季度</code> 新增必填档期参数（<code>MMDD-MMDD</code>）与可选补戏截止日，开始日自动设为 D0，补戏期记场次但不计弧长</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text"><code>季末报告 开启/关闭/状态</code>：控制季末自动统计报告的开关</span>
+        </li>
+
+        <li class="change-group-label">rp_archive（存档后台）</li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">指令手册系统：新增 <code>admin_command_guides</code> 管理页与 <code>command_guide_public</code> 公开页，支持创建/编辑可分享给玩家的指令指南</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">时间调度页（<code>admin_time_schedule</code>）：可视化配置现实时段、戏内时间对照、时段窗口等参数</span>
+        </li>
+        <li class="change-item">
+          <span class="change-tag tag-new">New</span>
+          <span class="change-text">玩家控制台（<code>admin_player_controls</code>）：新增单个玩家的详细管理操作入口</span>
+        </li>
+
+      </ul>
+    </div>
+  </div>
+
   <!-- ── v2.0.1 ─── -->
-  <div class="version-block latest" id="v2.0.1">
+  <div class="version-block" id="v2.0.1">
     <div class="version-meta">
       <span class="version-num">2.0.1</span>
-      <span class="version-date">最新</span>
+      <span class="version-date">6/11</span>
     </div>
     <div class="version-dot"></div>
     <div class="version-content">

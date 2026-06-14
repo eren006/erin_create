@@ -1043,6 +1043,7 @@ function registerAutoDaySystem() {
     autoDayTimer = setInterval(() => {
         const main = getMainExt();
         if (!main) return;
+        if (!isDLC('dlc_auto_day')) return;
         if (!JSON.parse(mainStorGet("auto_day_reset_enabled") || "false")) return;
         const now = new Date();
         if (now.getHours() === 23 && now.getMinutes() === 59) {

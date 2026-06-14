@@ -1,0 +1,142 @@
+{% extends 'base.html' %}
+{% block title %}结盟 · 后宫晋升录{% endblock %}
+
+{% block content %}
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1.2rem">
+
+<!-- 左：当前盟约 + 发起结盟 -->
+<div>
+  <div class="card">
+    <div class="card-title">◆ 我的盟约</div>
+    {% if my_alliances %}
+    {% for a in my_alliances %}
+    <div class="log-entry" style="display:flex;justify-content:space-between;align-items:center">
+      <div>
+        {% if a.initiator_qq == session.get('qq') %}
+        <div style="color:var(--gold);font-size:.88rem">→ {{ a.target_name }}</div>
+        {% else %}
+        <div style="color:var(--gold);font-size:.88rem">← {{ a.initiator_name }}</div>
+        {% endif %}
+        <div style="font-size:.78rem;color:
+          {% if a.status=='active' %}#a0e0a0
+          {% elif a.status=='pending' %}#e8d49a
+          {% elif a.status=='broken' %}#f08080
+          {% else %}var(--muted){% endif %}">
+          {% if a.status=='active' %}结盟中
+          {% elif a.status=='pending' %}待确认
+          {% elif a.status=='broken' %}已破裂
+          {% elif a.status=='rejected' %}被拒绝
+          {% endif %}
+        </div>
+      </div>
+      {% if a.status == 'active' and a.initiator_qq == session.get('qq') %}
+      <button class="btn btn-red btn-sm" onclick="betray({{ a.id }}, '{{ a.target_name }}')">背刺</button>
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% else %}
+    <div style="color:var(--muted);font-size:.85rem;text-align:center;padding:1rem">暂无盟约</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-title">◆ 发起结盟</div>
+    <p style="color:var(--muted);font-size:.83rem;margin-bottom:.9rem">
+      结盟后双方每天互赠少量威严加成，可随时背刺（代价是大幅降低自身威严）
+    </p>
+    <div class="form-group">
+      <label>盟友</label>
+      <select id="allyTarget">
+        <option value="">-- 选择对象 --</option>
+        {% for p in players %}
+        {% if p.qq != session.get('qq') %}
+        <option value="{{ p.qq }}">{{ p.name }}（{{ p.rank }}）</option>
+        {% endif %}
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn btn-gold" style="width:100%" onclick="sendRequest()">递送盟书</button>
+  </div>
+</div>
+
+<!-- 右：待处理邀请 -->
+<div>
+  <div class="card">
+    <div class="card-title">◆ 收到的盟书</div>
+    {% if pending_requests %}
+    {% for r in pending_requests %}
+    <div class="log-entry">
+      <div style="color:var(--gold);font-size:.88rem;margin-bottom:.4rem">
+        {{ r.initiator_name }}（{{ r.initiator_rank or '?' }}）邀请结盟
+      </div>
+      <div style="display:flex;gap:.5rem">
+        <button class="btn btn-gold btn-sm" onclick="respond({{ r.id }}, 'accept')">接受</button>
+        <button class="btn btn-ghost btn-sm" onclick="respond({{ r.id }}, 'reject')">婉拒</button>
+      </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div style="color:var(--muted);font-size:.85rem;text-align:center;padding:1rem">暂无待处理邀请</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-title">◆ 结盟说明</div>
+    <div style="font-size:.85rem;color:var(--text);line-height:1.7">
+      <div>✦ 结盟双方每天结算时互赠 <strong style="color:var(--gold)">+5 威严</strong></div>
+      <div>✦ 陷害盟友时，被发现概率 <strong style="color:#f08080">+20%</strong></div>
+      <div>✦ 背刺成功后，攻击方威严 <strong style="color:#f08080">-30</strong>，目标视为被陷害一次</div>
+      <div>✦ 背刺会在宫廷公报中公布</div>
+      <div>✦ 同一时间最多持有 <strong style="color:var(--gold)">2</strong> 个有效盟约</div>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<!-- 背刺确认弹窗 -->
+<div id="betrayModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);
+     z-index:200;align-items:center;justify-content:center">
+  <div class="card" style="max-width:360px;width:90%">
+    <div class="card-title" style="color:var(--red)">◆ 确认背刺</div>
+    <input type="hidden" id="betrayId">
+    <p style="color:var(--text);margin-bottom:1rem">
+      背刺 <strong id="betrayName"></strong>？此举将公之于众，你的威严将大幅降低。
+    </p>
+    <div style="display:flex;gap:.7rem">
+      <button class="btn btn-red" style="flex:1" onclick="doBetraye()">确认背刺</button>
+      <button class="btn btn-ghost" style="flex:1" onclick="closeBetrayed()">取消</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function sendRequest(){
+  const target=document.getElementById('allyTarget').value;
+  if(!target){toast('请选择盟友','error');return;}
+  const r=await post('/alliance/request',{target_qq:target});
+  if(r.ok){toast('盟书已送出','ok');setTimeout(()=>location.reload(),800);}
+  else toast(r.error||'失败','error');
+}
+async function respond(id,action){
+  const r=await post('/alliance/respond',{alliance_id:id,action});
+  if(r.ok){toast(action==='accept'?'已结盟':'已婉拒','ok');setTimeout(()=>location.reload(),800);}
+  else toast(r.error||'失败','error');
+}
+function betray(id,name){
+  document.getElementById('betrayId').value=id;
+  document.getElementById('betrayName').textContent=name;
+  document.getElementById('betrayModal').style.display='flex';
+}
+function closeBetrayed(){document.getElementById('betrayModal').style.display='none';}
+async function doBetraye(){
+  const id=document.getElementById('betrayId').value;
+  const r=await post('/alliance/betray',{alliance_id:id});
+  if(r.ok){toast('背刺已执行','ok');setTimeout(()=>location.reload(),1000);}
+  else toast(r.error||'失败','error');
+  closeBetrayed();
+}
+</script>
+{% endblock %}

@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block title %}登录 · 后宫晋升录{% endblock %}
+
+{% block content %}
+<div style="max-width:420px;margin:3rem auto">
+  <div class="card">
+    <div class="card-title">◆ 宫门验牌</div>
+    <p style="color:var(--muted);font-size:.85rem;margin-bottom:1.2rem">
+      请以在海豹骰子注册时使用的QQ号与角色名称入内
+    </p>
+
+    {% if error %}
+    <div class="alert alert-error">{{ error }}</div>
+    {% endif %}
+
+    <form method="POST" action="{{ url_for('login') }}">
+      <div class="form-group">
+        <label>QQ 号</label>
+        <input type="text" name="qq" placeholder="请输入QQ号" required
+               pattern="\d{5,12}" title="纯数字QQ号"
+               value="{{ request.form.get('qq','') }}">
+      </div>
+      <div class="form-group">
+        <label>角色名</label>
+        <input type="text" name="name" placeholder="与海豹注册一致的角色名" required
+               value="{{ request.form.get('name','') }}">
+      </div>
+      <button type="submit" class="btn btn-gold" style="width:100%;margin-top:.5rem">入宫</button>
+    </form>
+
+    <hr class="divider">
+    <p style="color:var(--muted);font-size:.82rem;text-align:center">
+      尚未注册？请在海豹骰子群内发送 <code style="color:var(--gold)">.注册</code> 完成注册
+    </p>
+  </div>
+</div>
+{% endblock %}

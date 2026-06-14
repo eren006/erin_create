@@ -3731,6 +3731,38 @@ cmd_force_end.solve = (ctx, msg, cmdArgs) => {
 };
 ext.cmdMap["强结私约"] = cmd_force_end;
 
+// 修改玩家群号（按 uid 直接替换 a_private_group 中的 gid）
+let cmd_edit_player_group = seal.ext.newCmdItemInfo();
+cmd_edit_player_group.name = "修改玩家群号";
+cmd_edit_player_group.help = "。修改玩家群号 QQ号 新群号\n直接修改该玩家登记的私约群号";
+cmd_edit_player_group.solve = (ctx, msg, cmdArgs) => {
+    if (!msg.isMaster && !isUserAdmin(ctx, msg)) {
+        seal.replyToSender(ctx, msg, `此指令仅限骰主或管理员使用`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    const uidArg = (cmdArgs.getArgN(1) || "").trim();
+    const newGid = (cmdArgs.getArgN(2) || "").trim();
+    if (!uidArg || !newGid) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    if (!/^\d+$/.test(newGid)) {
+        seal.replyToSender(ctx, msg, `❌ 新群号必须为纯数字`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    const platform = ctx.platform || "QQ";
+    const uid = `${platform}:${uidArg}`;
+    const apg = JSON.parse(cachedGet("a_private_group") || "{}");
+    if (!apg[platform] || !apg[platform][uid]) {
+        seal.replyToSender(ctx, msg, `❌ 未找到 ${uidArg} 的登记信息`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    const roleName = apg[platform][uid][0];
+    const oldGid = apg[platform][uid][1];
+    apg[platform][uid][1] = newGid;
+    cachedSet("a_private_group", JSON.stringify(apg));
+    seal.replyToSender(ctx, msg, `✅ 已将「${roleName}」（${uidArg}）的群号从 ${oldGid || "空"} 改为 ${newGid}`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["修改玩家群号"] = cmd_edit_player_group;
+
 function cleanupConflictsAndNotify(platform, toid, toname, day, time, ctx, msg) {
     const myId = `${platform}:${toid}`;
     const allAppointments = JSON.parse(cachedGet("appointmentList") || "[]");
@@ -7591,12 +7623,11 @@ ext.onNotCommandReceived = (ctx, msg) => {
                     if (resp.ok) {
                         const data = await resp.json();
                         if (data.ok && data.guides && data.guides.length > 0) {
-                            const lines = ["📖 指令指南"];
-                            data.guides.forEach(g => {
-                                lines.push(`\n【${g.name}】`);
-                                lines.push(g.url);
-                            });
-                            seal.replyToSender(ctx, msg, lines.join("\n"));
+                            if (data.guides.length === 1) {
+                                seal.replyToSender(ctx, msg, data.guides[0].text);
+                            } else {
+                                data.guides.forEach(g => seal.replyToSender(ctx, msg, g.text));
+                            }
                             return;
                         }
                     }
@@ -8530,9 +8561,9 @@ cmd_admin_help.solve = (ctx, msg) => {
             "━".repeat(14),
             "",
             "【🆕 开季流程】",
-            "1. 【后台】录入群号组：",
+            "1. 【网页】录入群号组：",
             `   ${groupsUrl}`,
-            "2. 【后台】创建指令指南：",
+            "2. 【网页】创建指令指南：",
             `   ${guidesUrl}`,
             "3. 。清空季度数据  ← 扫描残留玩家并清空上季数据",
             "4. 。创建新季度 恋综名 复盘/不复盘 MMDD-MMDD [补戏MMDD]",

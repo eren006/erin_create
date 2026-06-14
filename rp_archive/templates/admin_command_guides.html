@@ -32,33 +32,7 @@
 }
 .guide-item .name { font-size:14px; font-weight:600; color:var(--text); flex:1; min-width:120px; }
 .guide-item .meta { font-size:12px; color:var(--muted); }
-.guide-item .slug-link {
-  font-family:monospace; font-size:12px; color:var(--accent2);
-  background:var(--surface); border:1px solid var(--border);
-  border-radius:6px; padding:3px 10px; cursor:pointer;
-  white-space:nowrap; display:flex; align-items:center; gap:5px;
-}
-.guide-item .slug-link:hover { border-color:var(--accent); }
 .guide-item .actions { display:flex; gap:6px; align-items:center; }
-.link-row { display:flex; align-items:center; gap:6px; flex:1; min-width:0; }
-.link-input {
-  flex:1; min-width:0; max-width:320px;
-  background:var(--surface); border:1px solid var(--border);
-  color:var(--muted); border-radius:6px; padding:4px 10px;
-  font-family:monospace; font-size:12px; cursor:text;
-}
-.btn-copy {
-  background:var(--accent); color:#fff; border:none;
-  border-radius:6px; padding:4px 12px; font-size:12px;
-  font-weight:600; cursor:pointer; white-space:nowrap;
-}
-.btn-copy:hover { background:var(--accent2); }
-.btn-open {
-  color:var(--accent2); font-size:12px; white-space:nowrap;
-  padding:4px 8px; border-radius:6px; border:1px solid var(--border);
-  background:transparent;
-}
-.btn-open:hover { border-color:var(--accent2); }
 
 .btn-primary { background:var(--accent); color:#fff; border:none; border-radius:8px; padding:6px 16px; font-size:13px; font-weight:600; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:5px; }
 .btn-primary:hover { background:var(--accent2); color:#fff; }
@@ -99,7 +73,7 @@
 
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 18px;margin-bottom:20px;font-size:13px;line-height:1.8;color:var(--muted);">
     <strong style="color:var(--text)">指令指南是什么？</strong><br>
-    为玩家或管理提供的公开参考页面，在长日系统的众多功能内选择，可以把本季所需的指令用法、规则说明等整理在这里。每份指南生成一个独立链接，可直接分享给群里的玩家查阅，并且可以进行一定的个性化修改。
+    在长日系统的众多功能内选择，把本季所需的指令用法、规则说明等整理在这里。玩家在群内发送「基础指南」，bot 会直接回复指南文字内容。
   </div>
 
   <div class="section-card">
@@ -113,7 +87,6 @@
     {% if guides %}
     <div class="guide-list">
       {% for g in guides %}
-      {% set guide_url = request.host_url.rstrip('/') + '/g/' + g.slug %}
       <div class="guide-item">
         <div style="display:flex;align-items:center;gap:10px;">
           <div class="name">{{ g.name }}</div>
@@ -124,11 +97,6 @@
               <button type="submit" class="btn-danger-sm">删除</button>
             </form>
           </div>
-        </div>
-        <div class="link-row">
-          <input class="link-input" type="text" value="{{ guide_url }}" readonly onclick="this.select()">
-          <button class="btn-copy" onclick="copyGuideLink('{{ guide_url }}', this)">复制链接</button>
-          <a class="btn-open" href="{{ guide_url }}" target="_blank">预览↗</a>
         </div>
       </div>
       {% endfor %}
@@ -143,23 +111,4 @@
   </div>
 </div>
 
-<script>
-function copyGuideLink(url, btn) {
-  // 找同一 link-row 里的 input，select 后 execCommand
-  var input = btn.parentElement.querySelector(".link-input");
-  if (input) {
-    input.select();
-    input.setSelectionRange(0, 99999);
-  }
-  var ok = false;
-  try {
-    ok = document.execCommand("copy");
-  } catch(e) {}
-  if (!ok && navigator.clipboard) {
-    navigator.clipboard.writeText(url).catch(function() {});
-  }
-  btn.textContent = "已复制 ✓";
-  setTimeout(function() { btn.textContent = "复制链接"; }, 1500);
-}
-</script>
 {% endblock %}

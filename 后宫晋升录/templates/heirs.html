@@ -1,0 +1,130 @@
+{% extends 'base.html' %}
+{% block title %}皇子夺嫡 · 后宫晋升录{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-title">◆ 皇子夺嫡</div>
+  <p style="color:var(--muted);font-size:.85rem;margin-bottom:.8rem">
+    综合得分 = 才华×40% + 威望×30% + 母位加成×20% + 投银支持×10%<br>
+    {% if gs.game_phase == 'dying' %}
+    <span style="color:#f08080">⚠ 皇帝弥留，可投银支持心仪皇子，影响最终结局</span>
+    {% elif gs.game_phase == 'ended' %}
+    <span style="color:var(--muted)">皇帝已驾崩，夺嫡结果已定</span>
+    {% else %}
+    <span>皇帝龙体康健，夺嫡尚早</span>
+    {% endif %}
+  </p>
+</div>
+
+{% if princes %}
+<div class="card">
+  <div class="card-title">◆ 皇子排名</div>
+  <table>
+    <thead><tr>
+      <th>排名</th><th>名讳</th><th>年龄/阶段</th>
+      <th>才华</th><th>威望</th><th>母妃位阶</th>
+      <th>获得支持</th><th>综合得分</th>
+      {% if gs.game_phase in ['dying','ended'] %}<th>操作</th>{% endif %}
+    </tr></thead>
+    <tbody>
+    {% for p in princes %}
+    <tr {% if not p.is_alive %}style="opacity:.4"{% endif %}>
+      <td style="color:var(--gold)">
+        {% if loop.index == 1 %}♛{% else %}{{ loop.index }}{% endif %}
+      </td>
+      <td><strong>{{ p.name or '皇子' }}</strong></td>
+      <td style="color:var(--muted)">{{ p.age }}岁 · {{ p.stage }}</td>
+      <td>
+        <div class="stat-bar" style="display:inline-block;width:60px;vertical-align:middle">
+          <div class="stat-fill" style="width:{{ [p.talent,100]|min|int }}%"></div>
+        </div>
+        {{ p.talent|int }}
+      </td>
+      <td>{{ p.prestige_score|int }}</td>
+      <td>
+        <span class="rank-badge rank-{{ p.mother_rank_order or 1 }}">
+          {{ p.mother_rank or '—' }}
+        </span>
+      </td>
+      <td>{{ p.support_silver }}两</td>
+      <td>
+        <strong style="color:var(--gold)">{{ p.total_score|round(1) }}</strong>
+      </td>
+      {% if gs.game_phase in ['dying','ended'] %}
+      <td>
+        {% if p.is_alive and session.get('qq') %}
+        <button class="btn btn-gold btn-sm" onclick="supportPrince({{ p.id }})">投银支持</button>
+        {% else %}—{% endif %}
+      </td>
+      {% endif %}
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card">
+  <div style="color:var(--muted);text-align:center;padding:2rem">
+    皇子尚未诞生，后宫诸位加油
+  </div>
+</div>
+{% endif %}
+
+{% if princesses %}
+<div class="card">
+  <div class="card-title">◆ 公主</div>
+  <table>
+    <thead><tr><th>名讳</th><th>年龄</th><th>母妃</th><th>才华</th><th>状态</th></tr></thead>
+    <tbody>
+    {% for p in princesses %}
+    <tr {% if not p.is_alive %}style="opacity:.4"{% endif %}>
+      <td>{{ p.name or '公主' }}</td>
+      <td>{{ p.age }}岁 · {{ p.stage }}</td>
+      <td>{{ p.mother_name }}</td>
+      <td>{{ p.talent|int }}</td>
+      <td style="color:var(--muted)">{{ '在世' if p.is_alive else '薨逝' }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<!-- 投银弹窗 -->
+<div id="supportModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);
+     z-index:200;align-items:center;justify-content:center">
+  <div class="card" style="max-width:360px;width:90%">
+    <div class="card-title">◆ 投银支持</div>
+    <input type="hidden" id="supportPrinceId">
+    <div class="form-group">
+      <label>投入银两</label>
+      <input type="number" id="supportAmount" min="10" step="10" placeholder="最少10两">
+    </div>
+    <div style="display:flex;gap:.7rem">
+      <button class="btn btn-gold" style="flex:1" onclick="doSupport()">确认</button>
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal()">取消</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function supportPrince(id){
+  document.getElementById('supportPrinceId').value=id;
+  document.getElementById('supportModal').style.display='flex';
+}
+function closeModal(){
+  document.getElementById('supportModal').style.display='none';
+}
+async function doSupport(){
+  const id=document.getElementById('supportPrinceId').value;
+  const amt=parseInt(document.getElementById('supportAmount').value);
+  if(!amt||amt<10){toast('至少投入10两','error');return;}
+  const r=await post('/heirs/support',{heir_id:id,silver:amt});
+  if(r.ok){toast('投银成功','ok');setTimeout(()=>location.reload(),800);}
+  else toast(r.error||'失败','error');
+  closeModal();
+}
+</script>
+{% endblock %}

@@ -4780,31 +4780,37 @@ def admin_command_guide_delete(gid):
     db.commit()
     return redirect(url_for("admin_command_guides"))
 
+def _guide_to_text(name, blocks_raw):
+    """将指南内容转为纯文字，供 bot 直接发送。"""
+    blocks = _build_guide_blocks(blocks_raw)
+    player_blocks = [b for b in blocks if b["category"] == "player"]
+    admin_blocks  = [b for b in blocks if b["category"] == "admin"]
+    parts = [f"📖 {name}"]
+    def render_section(section_label, blist):
+        parts.append(f"\n【{section_label}】")
+        for b in blist:
+            parts.append(f"\n▸ {b['label']}")
+            for line in b["lines"]:
+                parts.append(line)
+    if player_blocks:
+        render_section("玩家指令", player_blocks)
+    if admin_blocks:
+        render_section("管理指令", admin_blocks)
+    return "\n".join(parts)
+
+
 @app.route("/api/command_guides", methods=["GET"])
 def api_command_guides():
     tid  = get_tenant_from_token()
     db   = get_db()
-    base = request.host_url.rstrip("/")
     rows = db.execute(
-        "SELECT name, slug FROM command_guides WHERE tenant_id=? ORDER BY created_at DESC",
+        "SELECT name, slug, blocks FROM command_guides WHERE tenant_id=? ORDER BY created_at DESC",
         (tid,)
     ).fetchall()
-    guides = [{"name": r["name"], "url": f"{base}/g/{r['slug']}"} for r in rows]
+    guides = [{"name": r["name"], "text": _guide_to_text(r["name"], r["blocks"])} for r in rows]
     return jsonify({"ok": True, "guides": guides})
 
 
-@app.route("/g/<slug>")
-def public_command_guide(slug):
-    db  = get_db()
-    row = db.execute("SELECT * FROM command_guides WHERE slug=?", (slug,)).fetchone()
-    if not row: abort(404)
-    blocks       = _build_guide_blocks(row["blocks"])
-    player_blocks = [b for b in blocks if b["category"] == "player"]
-    admin_blocks  = [b for b in blocks if b["category"] == "admin"]
-    return render_template("command_guide_public.html",
-        guide=dict(row),
-        player_blocks=player_blocks,
-        admin_blocks=admin_blocks)
 
 
 if __name__ == "__main__":
