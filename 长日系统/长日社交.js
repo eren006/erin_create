@@ -1303,9 +1303,10 @@ cmd_post_wish.solve =(ctx, msg, cmdArgs) => {
     WishUtils.savePool(pool);
     wishIncrDailyCount(uid, day, 'post');
 
-    let wishSuccessMsg = `✅ 心愿已漂走！编号：${id}\n有效期：24小时`;
-    if (customNick) wishSuccessMsg += `\n🏷️ 显示昵称：${customNick}`;
-    if (wishCoinCheck?.cost > 0) wishSuccessMsg += `\n💰 已消耗写信币 ${wishCoinCheck.cost} 枚`;
+    const _wishCost = wishCoinCheck?.cost > 0 ? `\n💰 已消耗写信币 ${wishCoinCheck.cost} 枚` : "";
+    const _昵称行 = customNick ? `\n🏷️ 显示昵称：${customNick}` : "";
+    let wishSuccessMsg = applyMsgTemplate("wish_post_success", { 编号: id, 昵称行: _昵称行.trim(), 费用行: _wishCost.trim() })
+        || `✅ 心愿已漂走！编号：${id}\n有效期：24小时${_昵称行}${_wishCost}`;
     seal.replyToSender(ctx, msg, wishSuccessMsg);
 
     // 公共频道推送
@@ -1315,7 +1316,9 @@ cmd_post_wish.solve =(ctx, msg, cmdArgs) => {
             const genderEmoji = wishProfile.gender === "男" ? "👨" : "👩";
             const displayLabel = customNick ? `${genderEmoji} ${customNick}` : genderEmoji;
             const m = seal.newMessage(); m.messageType = "group"; m.groupId = `${platform}-Group:${gid}`;
-            seal.replyToSender(seal.createTempCtx(ctx.endPoint, m), m, `🌠 新心愿 [${id}]\n${displayLabel}\n📅 ${day} ${time.replace('-', ' ~ ')}\n📍 ${place}\n💌 ${content}\n✨ 摘取：摘心愿 ${id}`);
+            seal.replyToSender(seal.createTempCtx(ctx.endPoint, m), m, applyMsgTemplate("wish_broadcast", {
+                编号: id, 发布者: displayLabel, 日期: day, 时间: time.replace('-', ' ~ '), 地点: place, 内容: content
+            }) || `🌠 新心愿 [${id}]\n${displayLabel}\n📅 ${day} ${time.replace('-', ' ~ ')}\n📍 ${place}\n💌 ${content}\n✨ 摘取：摘心愿 ${id}`);
         }
     }
     return seal.ext.newCmdExecuteResult(true);
@@ -1382,15 +1385,15 @@ cmd_pick_wish.solve =async (ctx, msg, cmdArgs) => {
     const { uid: fromUid, gid: fromBindGid } = getRoleDetails(platform, fromName);
     if (fromUid && fromBindGid) {
         const m = seal.newMessage(); m.messageType = "group"; m.groupId = `${platform}-Group:${fromBindGid}`;
-        seal.replyToSender(seal.createTempCtx(ctx.endPoint, m), m,
-            `💫 你的心愿被 ${name} 摘取了！\n📍 ${wish.place} | ⏰ ${wish.day} ${wish.time}\n💬 群号：${wishGid}`);
+        seal.replyToSender(seal.createTempCtx(ctx.endPoint, m), m, applyMsgTemplate("wish_picked_notify", {
+            摘取者: name, 地点: wish.place, 日期: wish.day, 时间: wish.time, 群号: wishGid
+        }) || `💫 你的心愿被 ${name} 摘取了！\n📍 ${wish.place} | ⏰ ${wish.day} ${wish.time}\n💬 群号：${wishGid}`);
     }
 
-    let pickReply = `🎉 摘取成功！专属小群已建立。\n💬 群号：${wishGid}`;
-    if (wish.rewardCode) {
-        wishAddToInv(uid, wish.rewardCode, wish.rewardCount);
-        pickReply += `\n🎁 悬赏奖励：${wish.rewardName} ×${wish.rewardCount} 已加入你的背包！`;
-    }
+    const _悬赏奖励行 = wish.rewardCode ? `\n🎁 悬赏奖励：${wish.rewardName} ×${wish.rewardCount} 已加入你的背包！` : "";
+    if (wish.rewardCode) wishAddToInv(uid, wish.rewardCode, wish.rewardCount);
+    const pickReply = applyMsgTemplate("wish_pick_success", { 群号: wishGid, 悬赏奖励行: _悬赏奖励行.trim() })
+        || `🎉 摘取成功！专属小群已建立。\n💬 群号：${wishGid}${_悬赏奖励行}`;
     seal.replyToSender(ctx, msg, pickReply);
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -1419,11 +1422,10 @@ cmd_withdraw_wish.solve =(ctx, msg, cmdArgs) => {
     if (!wishIsOwner(platform, uid, rawUid, withdrawWish.fromId)) return seal.replyToSender(ctx, msg, "❌ 该心愿不属于你");
 
     WishUtils.savePool(pool.filter(w => w.id !== wid));
-    let withdrawReply = `✅ 已撤回心愿 ${wid}`;
-    if (withdrawWish.rewardCode) {
-        wishAddToInv(uid, withdrawWish.rewardCode, withdrawWish.rewardCount);
-        withdrawReply += `\n🎁 悬赏物品「${withdrawWish.rewardName}」×${withdrawWish.rewardCount} 已退回背包。`;
-    }
+    const _退回行 = withdrawWish.rewardCode ? `\n🎁 悬赏物品「${withdrawWish.rewardName}」×${withdrawWish.rewardCount} 已退回背包。` : "";
+    if (withdrawWish.rewardCode) wishAddToInv(uid, withdrawWish.rewardCode, withdrawWish.rewardCount);
+    const withdrawReply = applyMsgTemplate("wish_withdraw_success", { 编号: wid, 悬赏退回行: _退回行.trim() })
+        || `✅ 已撤回心愿 ${wid}${_退回行}`;
     seal.replyToSender(ctx, msg, withdrawReply);
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -1518,10 +1520,11 @@ cmd_bounty_wish.solve = (ctx, msg, cmdArgs) => {
     WishUtils.savePool(pool);
     wishIncrDailyCount(uid, day, 'post');
 
-    let successMsg = `✅ 悬赏心愿已发出！编号：${id}\n🎁 悬赏：${rewardItem.name} ×${rewardCount}（已从背包扣除）\n有效期：24小时`;
-    if (customNick) successMsg += `\n🏷️ 显示昵称：${customNick}`;
-    if (wishCoinCheck?.cost > 0) successMsg += `\n💰 已消耗写信币 ${wishCoinCheck.cost} 枚`;
-    seal.replyToSender(ctx, msg, successMsg);
+    const _b昵称行 = customNick ? `\n🏷️ 显示昵称：${customNick}` : "";
+    const _b费用行 = wishCoinCheck?.cost > 0 ? `\n💰 已消耗写信币 ${wishCoinCheck.cost} 枚` : "";
+    seal.replyToSender(ctx, msg, applyMsgTemplate("wish_bounty_post_success", {
+        编号: id, 悬赏物: rewardItem.name, 悬赏数量: rewardCount, 昵称行: _b昵称行.trim(), 费用行: _b费用行.trim()
+    }) || `✅ 悬赏心愿已发出！编号：${id}\n🎁 悬赏：${rewardItem.name} ×${rewardCount}（已从背包扣除）\n有效期：24小时${_b昵称行}${_b费用行}`);
 
     if (JSON.parse(cachedGet("wish_public_send") || "true")) {
         const gid = JSON.parse(cachedGet("adminAnnounceGroupId") || "null");
@@ -1529,8 +1532,10 @@ cmd_bounty_wish.solve = (ctx, msg, cmdArgs) => {
             const genderEmoji = bountyProfile.gender === "男" ? "👨" : "👩";
             const displayLabel = customNick ? `${genderEmoji} ${customNick}` : genderEmoji;
             const m = seal.newMessage(); m.messageType = "group"; m.groupId = `${platform}-Group:${gid}`;
-            seal.replyToSender(seal.createTempCtx(ctx.endPoint, m), m,
-                `🌠 新悬赏心愿 [${id}]\n${displayLabel}\n📅 ${day} ${time.replace('-', ' ~ ')}\n📍 ${place}\n💌 ${content}\n🎁 悬赏：${rewardItem.name} ×${rewardCount}\n✨ 摘取：摘心愿 ${id}`);
+            seal.replyToSender(seal.createTempCtx(ctx.endPoint, m), m, applyMsgTemplate("wish_bounty_broadcast", {
+                编号: id, 发布者: displayLabel, 日期: day, 时间: time.replace('-', ' ~ '),
+                地点: place, 内容: content, 悬赏物: rewardItem.name, 悬赏数量: rewardCount
+            }) || `🌠 新悬赏心愿 [${id}]\n${displayLabel}\n📅 ${day} ${time.replace('-', ' ~ ')}\n📍 ${place}\n💌 ${content}\n🎁 悬赏：${rewardItem.name} ×${rewardCount}\n✨ 摘取：摘心愿 ${id}`);
         }
     }
     return seal.ext.newCmdExecuteResult(true);

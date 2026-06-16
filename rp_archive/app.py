@@ -1,4 +1,4 @@
-import io, os, json, functools, secrets, time, hmac, logging, traceback
+import io, os, json, functools, secrets, time, hmac, logging, traceback, zipfile
 from collections import defaultdict
 from datetime import datetime, date as _date, timezone, timedelta
 
@@ -942,7 +942,7 @@ def assemble_bot_config(flat):
         except Exception:
             pass
     # 透传时间调度原始 blob 键（供机器人扩展使用）
-    for ts_key in ("ts_blocked_by_day", "ts_allowed_durations", "ts_feature_windows", "ts_strict_hour_match", "ts_reality_slot_size"):
+    for ts_key in ("ts_blocked_by_day", "ts_allowed_durations", "ts_feature_windows", "ts_strict_hour_match", "ts_reality_slot_size", "ts_slot_mode"):
         val = flat.get(ts_key)
         if val:
             result[ts_key] = val
@@ -2287,6 +2287,245 @@ def admin_show_delete(sid):
     return redirect(url_for("admin_shows") + "?msg=deleted")
 
 
+def _build_show_zip(db, sid):
+    """生成指定 show 的存档 ZIP，返回 (BytesIO, show_name_safe)。"""
+    show = db.execute("SELECT * FROM shows WHERE id=?", (sid,)).fetchone()
+    if not show:
+        return None, None
+    show = dict(show)
+
+    flat      = get_flat_config(db, sid)
+    show_name = flat.get("love_show_name") or show["name"] or "存档"
+    rest_pair = _get_rest_pair(db, sid)
+    _type_labels = {k: v for k in ("私密", "电话", "官约", "微信", "心愿")
+                    if (v := flat.get(f"custom_type_labels__{k}", "").strip())}
+
+    def _type_label(subtype):
+        return _type_labels.get(subtype) or subtype or "私密"
+
+    def _fsafe(s):
+        return (s or "").replace("/", "_").replace("\\", "_").replace(":", "_").strip() or "未知"
+
+    from itertools import groupby as _groupby
+
+    sessions = [_enrich_session(dict(s), rest_pair) for s in
+                db.execute("SELECT * FROM sessions WHERE show_id=? ORDER BY start_ts", (sid,)).fetchall()]
+
+    sms_by_day_role = {}
+    for ev in _parse_events(db.execute(
+        "SELECT * FROM extra_events WHERE show_id=? AND type='sms' ORDER BY timestamp", (sid,)
+    ).fetchall()):
+        key = (_fsafe(ev.get("game_day") or "未归档"), _fsafe(ev.get("from_role") or "未知"))
+        sms_by_day_role.setdefault(key, []).append(ev)
+
+    # 心动信/礼物：收集没有 session_id 的（有 session_id 的已附在各场次文件内）
+    nonsession_by_day_type = {}
+    for ev in _parse_events(db.execute(
+        "SELECT * FROM extra_events WHERE show_id=? AND (session_id IS NULL OR session_id='') AND type != 'sms' ORDER BY timestamp",
+        (sid,)
+    ).fetchall()):
+        day = _fsafe(ev.get("game_day") or "未归档")
+        etype = ev.get("type") or "其他"
+        nonsession_by_day_type.setdefault((day, etype), []).append(ev)
+
+    _etype_names = {"lovemail": "心动信", "gift": "礼物"}
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        players = db.execute(
+            "SELECT role_name, total_replies, total_words FROM players WHERE show_id=? AND is_npc=0 ORDER BY total_words DESC",
+            (sid,)
+        ).fetchall()
+        info_lines = [
+            f"【 {show_name} · 存档 】",
+            f"模式：{show['description'] or '—'}",
+            f"创建时间：{ts_to_str(show.get('created_at') or 0)}",
+            f"场次数：{len(sessions)}",
+            f"玩家数：{len(players)}",
+            "",
+            "── 玩家统计 ──",
+        ]
+        for p in players:
+            r, w = p["total_replies"] or 0, p["total_words"] or 0
+            info_lines.append(f"{p['role_name']}：{r} 回复 · {w} 字 · 均 {w//r if r else 0} 字/回")
+        zf.writestr("弧概览.txt", "\n".join(info_lines))
+
+        fname_count = {}
+        for sess in sessions:
+            gd      = _fsafe(sess.get("game_day") or "未归档")
+            subtype = _fsafe(sess.get("subtype") or "")
+            gtime   = _fsafe(sess.get("game_time") or "")
+            place   = _fsafe(sess.get("place") or "")
+            parts   = sess.get("participants") or []
+            people  = _fsafe("×".join(parts)) if parts else ""
+            fname_parts = [p for p in [subtype, gtime, place, people] if p]
+            base   = "_".join(fname_parts) if fname_parts else "场次"
+            key    = (gd, base)
+            fname_count[key] = fname_count.get(key, 0) + 1
+            suffix = f"_{fname_count[key]}" if fname_count[key] > 1 else ""
+
+            rp = db.execute(
+                "SELECT * FROM rp_entries WHERE session_id=? AND show_id=? ORDER BY seq,timestamp",
+                (str(sess["id"]), sid)
+            ).fetchall()
+            non_sms = _parse_events(db.execute(
+                "SELECT * FROM extra_events WHERE session_id=? AND show_id=? AND type != 'sms' ORDER BY timestamp",
+                (str(sess["id"]), sid)
+            ).fetchall())
+
+            lines = [
+                "=" * 40,
+                f"【 {show_name} · {sess.get('game_day','')} {sess.get('place') or ''} 】",
+                "=" * 40,
+                f"地点：{sess.get('place') or '未记录'}",
+                f"时间段：{sess.get('game_time') or '—'}",
+                f"类型：{_type_label(sess.get('subtype') or '私密')}{'  【强结】' if sess.get('forced') else ''}",
+                f"开始：{sess.get('start_str','')}  结束：{sess.get('end_str') or '—'}",
+                f"参与者：{', '.join(sess.get('participants') or [])}",
+                "",
+                "【统计】",
+                f"总回复：{sess.get('total_replies',0)}  总字数：{sess.get('total_words',0)}",
+            ]
+            for role, st in (sess.get("stats") or {}).items():
+                r2, w2 = st.get("replies", 0), st.get("words", 0)
+                lines.append(f"{role}：{r2} 回复 · {w2} 字 · 均 {w2//r2 if r2 else 0} 字/回")
+            lines += ["", "=" * 40, "【 RP 正文 】", "=" * 40, ""]
+            for e in rp:
+                e = dict(e)
+                lines += [f"▷ {e.get('role_name','')}  {ts_to_str(e.get('timestamp',0))}", "─" * 20, e.get("content",""), ""]
+
+            if non_sms:
+                lines += ["", "=" * 40, "【 互动事件 】", "=" * 40]
+                non_sms.sort(key=lambda x: x.get("type", ""))
+                for etype, grp in _groupby(non_sms, key=lambda x: x.get("type", "")):
+                    lines.append(f"\n── {_etype_names.get(etype, etype)} ──")
+                    for ev in grp:
+                        lines.append(f"{ev.get('from_role','')} → {ev.get('to_role','')}")
+                        if ev.get("content"):
+                            lines.append(ev["content"])
+
+            zf.writestr(f"{gd}/{base}{suffix}.txt", "\n".join(lines))
+
+        for (day, role), evs in sorted(sms_by_day_role.items()):
+            lines = [f"【 {show_name} · {day} · {role} 短信 】", ""]
+            for ev in evs:
+                t_str = ts_to_str(ev.get("timestamp", 0)) if ev.get("timestamp") else "—"
+                lines.append(f"{t_str}  → {ev.get('to_role','')}")
+                if ev.get("content"):
+                    lines.append(ev["content"])
+                lines.append("")
+            zf.writestr(f"{day}/短信_{role}.txt", "\n".join(lines))
+
+        for (day, etype), evs in sorted(nonsession_by_day_type.items()):
+            label = _etype_names.get(etype, etype)
+            lines = [f"【 {show_name} · {day} · {label} 】", ""]
+            for ev in evs:
+                t_str = ts_to_str(ev.get("timestamp", 0)) if ev.get("timestamp") else "—"
+                lines.append(f"{t_str}  {ev.get('from_role','')} → {ev.get('to_role','')}")
+                if ev.get("content"):
+                    lines.append(ev["content"])
+                lines.append("")
+            zf.writestr(f"{day}/{label}.txt", "\n".join(lines))
+
+    buf.seek(0)
+    return buf, _fsafe(show_name)
+
+
+@app.route("/admin/shows/<int:sid>/download_zip")
+@require_admin
+def admin_show_download_zip(sid):
+    try:
+        tid = current_tenant_id()
+        db  = get_db()
+        if not db.execute("SELECT id FROM shows WHERE id=? AND tenant_id=?", (sid, tid)).fetchone():
+            abort(404)
+        buf, safe_name = _build_show_zip(db, sid)
+        if buf is None:
+            abort(404)
+        date_tag = datetime.now(TZ_BEIJING).strftime("%Y%m%d")
+        zip_name = f"{safe_name}_存档_{date_tag}.zip"
+        return send_file(buf, as_attachment=True, download_name=zip_name, mimetype="application/zip")
+    except Exception:
+        import traceback
+        return f"<pre>ZIP 生成失败:\n{traceback.format_exc()}</pre>", 500
+
+
+def _resolve_archive_token():
+    """同时接受 header 和 query param 的 token 认证，返回 tenant_id。"""
+    token = request.headers.get("X-Archive-Token", "") or request.args.get("token", "")
+    if not token:
+        abort(403)
+    row = get_db().execute("SELECT id FROM tenants WHERE api_token=?", (token,)).fetchone()
+    if not row:
+        abort(403)
+    return row["id"]
+
+
+def _current_show_zip(tid):
+    """按需生成当前弧的 ZIP，返回 (BytesIO, zip_name)。"""
+    db = get_db()
+    show_row = db.execute(
+        "SELECT id FROM shows WHERE tenant_id=? AND is_current=1", (tid,)
+    ).fetchone()
+    if not show_row:
+        show_row = db.execute(
+            "SELECT id FROM shows WHERE tenant_id=? ORDER BY id DESC LIMIT 1", (tid,)
+        ).fetchone()
+    if not show_row:
+        abort(404)
+    buf, safe_name = _build_show_zip(db, show_row["id"])
+    if buf is None:
+        abort(500)
+    date_tag = datetime.now(TZ_BEIJING).strftime("%Y%m%d")
+    zip_name = f"{safe_name}_存档_{date_tag}.zip"
+    return buf, zip_name
+
+
+@app.route("/api/latest_archive_info", methods=["GET"])
+def api_latest_archive_info():
+    """返回当前弧存档的文件名（按需生成）。"""
+    tid = _resolve_archive_token()
+    try:
+        _, zip_name = _current_show_zip(tid)
+        return jsonify({"ok": True, "name": zip_name})
+    except Exception:
+        return jsonify({"ok": False, "error": "生成失败"}), 500
+
+
+@app.route("/api/latest_archive", methods=["GET"])
+def api_latest_archive():
+    """返回当前弧存档 ZIP（按需生成；支持 header 或 ?token= 认证）。"""
+    tid = _resolve_archive_token()
+    buf, zip_name = _current_show_zip(tid)
+    return send_file(buf, as_attachment=True, download_name=zip_name, mimetype="application/zip")
+
+
+
+@app.route("/superadmin/shows/<int:sid>/toggle_public", methods=["POST"])
+@require_superadmin
+def superadmin_show_toggle_public(sid):
+    db  = get_db()
+    row = db.execute("SELECT * FROM shows WHERE id=?", (sid,)).fetchone()
+    if not row:
+        abort(404)
+    new_state = 0 if row["public_view_enabled"] else 1
+    db.execute("UPDATE shows SET public_view_enabled=? WHERE id=?", (new_state, sid))
+    db.commit()
+    return redirect(url_for("superadmin") + f"#tenant-{row['tenant_id']}")
+
+
+@app.route("/superadmin/shows/<int:sid>/reset_token", methods=["POST"])
+@require_superadmin
+def superadmin_show_reset_token(sid):
+    db  = get_db()
+    row = db.execute("SELECT * FROM shows WHERE id=?", (sid,)).fetchone()
+    if not row:
+        abort(404)
+    db.execute("UPDATE shows SET public_token=? WHERE id=?", (secrets.token_urlsafe(24), sid))
+    db.commit()
+    return redirect(url_for("superadmin") + f"#tenant-{row['tenant_id']}")
+
+
 # ── 配置路由 ─────────────────────────────────────────────────────────────────
 
 def _parse_routing_text(text):
@@ -2561,12 +2800,15 @@ def session_download(session_id):
     flat      = get_flat_config(db, sid)
     sess      = _enrich_session(dict(sess), _parse_rest_hours(flat.get("rest_hours", "")))
     show_name = flat.get("love_show_name") or "长日将尽"
+    _tlabels  = {k: v for k in ("私密", "电话", "官约", "微信", "心愿")
+                 if (v := flat.get(f"custom_type_labels__{k}", "").strip())}
+    def _tlabel(s): return _tlabels.get(s) or s or "私密"
     rp        = db.execute("SELECT * FROM rp_entries WHERE session_id=? AND show_id=? ORDER BY seq,timestamp", (session_id, sid)).fetchall()
     events    = _parse_events(db.execute("SELECT * FROM extra_events WHERE session_id=? AND show_id=? ORDER BY timestamp", (session_id, sid)).fetchall())
 
     lines = ["=" * 40, f"【 {show_name} · {sess.get('game_day','')} 场次存档 】", "=" * 40]
     lines += [f"地点：{sess.get('place') or '未记录'}", f"时间段：{sess.get('game_time') or '—'}",
-              f"类型：{sess.get('subtype') or '私密'}{'  【强结】' if sess.get('forced') else ''}",
+              f"类型：{_tlabel(sess.get('subtype') or '私密')}{'  【强结】' if sess.get('forced') else ''}",
               f"开始：{sess.get('start_str','')}  结束：{sess.get('end_str') or '—'}",
               f"参与者：{', '.join(sess.get('participants') or [])}", "", "【统计】",
               f"总回复：{sess.get('total_replies',0)}  总字数：{sess.get('total_words',0)}"]
@@ -3000,6 +3242,7 @@ def admin_time_schedule():
     feature_windows   = _get_blob("ts_feature_windows") or []
     strict_hour_match    = _get_blob("ts_strict_hour_match") or False
     reality_slot_size    = _get_blob("ts_reality_slot_size") or 0
+    slot_mode            = _get_blob("ts_slot_mode") or "cumulative"
 
     # 计算本季游戏日列表
     day_list = []
@@ -3036,7 +3279,8 @@ def admin_time_schedule():
                            feature_windows=feature_windows,
                            feature_options=FEATURE_OPTIONS,
                            strict_hour_match=strict_hour_match,
-                           reality_slot_size=reality_slot_size)
+                           reality_slot_size=reality_slot_size,
+                           slot_mode=slot_mode)
 
 
 @app.route("/api/time-schedule", methods=["POST"])
@@ -3082,6 +3326,12 @@ def api_time_schedule_save():
         if val not in (0, 1, 2, 3, 4, 6, 8):
             return jsonify({"ok": False, "error": "invalid slot size"}), 400
         _save_blob("ts_reality_slot_size", val)
+
+    elif field == "slot_mode":
+        val = data.get("value", "cumulative")
+        if val not in ("exact", "cumulative"):
+            return jsonify({"ok": False, "error": "invalid slot_mode"}), 400
+        _save_blob("ts_slot_mode", val)
 
     elif field == "feature_windows":
         val = data.get("value", [])

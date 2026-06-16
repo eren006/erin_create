@@ -34,6 +34,14 @@ function cachedSet(key, val) {
     _kvCache[key] = str;
 }
 
+// 读取自定义类型别名，留空则返回原 subtype 值
+function getCustomTypeLabel(subtype) {
+    try {
+        const labels = JSON.parse(cachedGet("custom_type_labels") || "{}");
+        return (labels[subtype] && labels[subtype].trim()) ? labels[subtype].trim() : subtype;
+    } catch { return subtype; }
+}
+
 // 读取整数型设置，兼容 JSON 编码的 '"48"' 与裸字符串 '48' 两种格式
 function getStorageInt(key, defaultVal) {
     const raw = cachedGet(key);
@@ -660,14 +668,14 @@ function recordMeetingAndAnnounce(subtype, platform, ctx, endPoint) {
             };
 
             // ... 以下逻辑保持不变 ...
-            if (subtype === "电话") return getDirectRecord("电话", count, "☎️");
-            if (subtype === "私密") return getDirectRecord("私密约会", count, "💫");
+            if (subtype === "电话") return getDirectRecord(getCustomTypeLabel("电话"), count, "☎️");
+            if (subtype === "私密") return getDirectRecord(getCustomTypeLabel("私密"), count, "💫");
             if (subtype === "寄信") return getDirectRecord("寄信", count, "📮");
 
             if (subtype === "心动信") return getDirectRecord("心动信派送", count, "💌");
             if (subtype === "礼物") return getDirectRecord("礼物赠送", count, "🎁");
-            if (subtype === "心愿") return getDirectRecord("心愿", count, "🌠");
-            if (subtype === "官约") return getDirectRecord("官方约会", count, "🏢");
+            if (subtype === "心愿") return getDirectRecord(getCustomTypeLabel("心愿"), count, "🌠");
+            if (subtype === "官约") return getDirectRecord(getCustomTypeLabel("官约"), count, "🏢");
             if (subtype === "拉线") return getDirectRecord("关系线记录", count, "🔗");
 
             return getDirectRecord("互动", count, "📝");
@@ -699,7 +707,7 @@ function checkAcceptanceConflicts(platform, userId, roleName, day, time, exclude
   const confirmedList = b_confirmedSchedule[`${platform}:${userId}`] || [];
   for (let sch of confirmedList) {
     if (sch.day === day && timeOverlap(sch.time, time)) {
-      results.push(`在 ${day} ${time} 已有确认的${sch.subtype || '活动'}安排`);
+      results.push(`在 ${day} ${time} 已有确认的${getCustomTypeLabel(sch.subtype || '') || '活动'}安排`);
       break;
     }
   }
@@ -1796,13 +1804,24 @@ function checkRealityHourLimit(timeStr, ctx, msg) {
     const currentSlot = Math.floor(currentHour / sz);
     const startSlot   = Math.floor(startHour   / sz);
 
-    if (startSlot !== currentSlot) {
+    const slotModeRaw = cachedGet("ts_slot_mode") || '';
+    const exactMode = slotModeRaw.replace(/^"|"$/g, '') === 'exact';
+
+    const slotMismatch = exactMode ? (startSlot !== currentSlot) : (startSlot > currentSlot);
+    if (slotMismatch) {
         const slotStart = currentSlot * sz;
-        const slotEnd   = Math.min(slotStart + sz, 24) - 1;
-        seal.replyToSender(ctx, msg,
-            `⚠️ 时段限制：当前现实时间为 ${currentTimeStr}，本时段（现实 ${String(slotStart).padStart(2,'0')}:00–${String(slotEnd).padStart(2,'0')}:59）` +
-            `只能发起戏内 ${String(slotStart).padStart(2,'0')}:xx–${String(slotEnd).padStart(2,'0')}:xx 开始的剧情邀约。\n\n` +
-            `💡 如需取消此限制，请联系管理调整「现实/戏内时间对照档位」。`);
+        const slotEnd   = Math.min(slotStart + sz, 24);
+        if (exactMode) {
+            seal.replyToSender(ctx, msg,
+                `⚠️ 时段限制：当前现实时间为 ${currentTimeStr}，本时段（现实 ${String(slotStart).padStart(2,'0')}:00–${String(slotEnd - 1).padStart(2,'0')}:59）` +
+                `只能发起戏内 ${String(slotStart).padStart(2,'0')}:xx–${String(slotEnd - 1).padStart(2,'0')}:xx 开始的剧情邀约。\n\n` +
+                `💡 如需取消此限制，请联系管理调整「现实/戏内时间对照档位」。`);
+        } else {
+            seal.replyToSender(ctx, msg,
+                `⚠️ 时段限制：当前现实时间为 ${currentTimeStr}，` +
+                `只能发起戏内 00:00–${String(slotEnd).padStart(2,'0')}:00 以前开始的剧情邀约。\n\n` +
+                `💡 如需取消此限制，请联系管理调整「现实/戏内时间对照档位」。`);
+        }
         return false;
     }
     return true;
@@ -1846,7 +1865,7 @@ function parseAndValidateTime(rawTime, allowedRanges, minDuration, subtype) {
         const endMinutes = parseInt(match[3]) * 60 + parseInt(match[4]);
         const duration = endMinutes - startMinutes;
         if (duration < minDuration) {
-            return { valid: false, errorMsg: `⚠️ ${subtype}邀约时间需大于等于 ${minDuration}分钟，请重新设置（如 ${minDuration === 29 ? "1400-1430" : "14:00-15:00"}）` };
+            return { valid: false, errorMsg: `⚠️ ${getCustomTypeLabel(subtype)}邀约时间需大于等于 ${minDuration}分钟，请重新设置（如 ${minDuration === 29 ? "1400-1430" : "14:00-15:00"}）` };
         }
     }
 
@@ -2047,7 +2066,7 @@ function mergeIntoExistingAppointment(ctx, msg, existingAppointment, newNames, p
     
     // 更新群名
     const nameTag = allParticipants.length > 2 ? "多人" : allParticipants.join("、");
-    const newGroupName = `私密 ${day} ${time} ${place} ${nameTag}`;
+    const newGroupName = `${getCustomTypeLabel("私密")} ${day} ${time} ${place} ${nameTag}`;
     const renameMsg = seal.newMessage();
     renameMsg.messageType = "group";
     renameMsg.groupId = `${platform}-Group:${groupId}`;
@@ -2084,7 +2103,7 @@ async function checkAppointmentPreflight(ctx, msg, cmdArgs, subtype, minDuration
     let config = JSON.parse(cachedGet("global_feature_toggle") || "{}");
     let enable_general_appointment = config.enable_general_appointment ?? true;
     if (!enable_general_appointment) {
-        return { valid: false, errorMsg: "📅 当前已禁用通用发起邀约功能，无法发起" + (subtype === "电话" ? "电话" : "私密邀约") + "。" };
+        return { valid: false, errorMsg: "📅 当前已禁用通用发起邀约功能，无法发起" + getCustomTypeLabel(subtype === "电话" ? "电话" : "私密") + "邀约。" };
     }
 
     const platform = msg.platform;
@@ -2164,10 +2183,10 @@ async function checkAppointmentPreflight(ctx, msg, cmdArgs, subtype, minDuration
     let a_lockedSlots = JSON.parse(cachedGet("a_lockedSlots") || "{}");
     const { selfLocked, failed: lockFailed } = checkLockedSlots(platform, day, time, fromKey, sendname, names, a_private_group, a_lockedSlots);
     if (selfLocked) return { valid: false, errorMsg: `⚠️ 你在 ${day} ${time} 段与锁定时间重叠，无法发起预约` };
-    if (lockFailed.length) return { valid: false, errorMsg: `⚠️ 无法发起${subtype}，以下对象不符合条件：\n- ${lockFailed.join("\n- ")}` };
+    if (lockFailed.length) return { valid: false, errorMsg: `⚠️ 无法发起${getCustomTypeLabel(subtype)}，以下对象不符合条件：\n- ${lockFailed.join("\n- ")}` };
 
     if (subtype !== "电话") {
-        const instructionName = subtype === "私密" ? "私约" : subtype;
+        const instructionName = getCustomTypeLabel(subtype);
         const placeCheck = checkPlaceCommon(platform, sendname, placeOrTitle, instructionName);
         if (!placeCheck.valid) return { valid: false, errorMsg: placeCheck.errorMsg };
         if (placeCheck.warningMsg) seal.replyToSender(ctx, msg, placeCheck.warningMsg);
@@ -2188,7 +2207,7 @@ async function checkAppointmentPreflight(ctx, msg, cmdArgs, subtype, minDuration
             }
         });
     }
-    if (conflict) return { valid: false, errorMsg: `⚠️ 你在 ${day} ${time} 时段已有安排，无法发起${subtype}~` };
+    if (conflict) return { valid: false, errorMsg: `⚠️ 你在 ${day} ${time} 时段已有安排，无法发起${getCustomTypeLabel(subtype)}~` };
 
     // 修改点：去除了待处理队列的检查，只检查硬冲突
     const conflictRes = checkParticipantConflicts(platform, day, time, sendname, names, a_private_group, b_confirmedSchedule);
@@ -2408,9 +2427,10 @@ cmd_phone.solve = async (ctx, msg, cmdArgs) => {
     });
 
     if (result.success) {
-        const successMsg = isMulti
-            ? `✅ 你已成功向 ${names.join("、")} 发起多人电话，通讯频段已自动建立！\n💬 频段：${result.gid}`
-            : `✅ 你已成功与 ${names[0]} 连线，通讯频段已自动建立！\n💬 频段：${result.gid}`;
+        const _对方 = isMulti ? names.join("、") : names[0];
+        const successMsg = applyMsgTemplate("phone_success", { 对方: _对方, 群号: result.gid }) || (isMulti
+            ? `✅ 你已成功向 ${_对方} 发起多人电话，通讯频段已自动建立！\n💬 频段：${result.gid}`
+            : `✅ 你已成功与 ${_对方} 连线，通讯频段已自动建立！\n💬 频段：${result.gid}`);
         seal.replyToSender(ctx, msg, successMsg);
     }
     return seal.ext.newCmdExecuteResult(true);
@@ -2485,10 +2505,11 @@ cmd_appointment_private.solve = async (ctx, msg, cmdArgs, aliasConfig) => {
     });
 
     if (result.success) {
-        let successMsg = isMulti
-            ? `✅ 你已成功与 ${names.join("、")} 开启多方${typeName}，私人空间已自动建立！\n💬 群号：${result.gid}`
-            : `✅ 你已成功与 ${names[0]} 开启${typeName}，私人空间已自动建立！\n💬 群号：${result.gid}`;
-        if (coinCheck.cost > 0) successMsg += `\n💰 已消耗写信币 ${coinCheck.cost} 枚`;
+        const _对方 = isMulti ? names.join("、") : names[0];
+        const _费用 = coinCheck.cost > 0 ? `\n💰 已消耗写信币 ${coinCheck.cost} 枚` : "";
+        let successMsg = applyMsgTemplate("private_success", { 对方: _对方, 群号: result.gid, 费用: _费用.trim() }) || (isMulti
+            ? `✅ 你已成功与 ${_对方} 开启多方${typeName}，私人空间已自动建立！\n💬 群号：${result.gid}${_费用}`
+            : `✅ 你已成功与 ${_对方} 开启${typeName}，私人空间已自动建立！\n💬 群号：${result.gid}${_费用}`);
         seal.replyToSender(ctx, msg, successMsg);
     }
     return seal.ext.newCmdExecuteResult(true);
@@ -2601,8 +2622,9 @@ cmd_wechat.solve =async (ctx, msg, cmdArgs) => {
         groupMsg.messageType = "group";
         groupMsg.groupId = `${platform}-Group:${gid}`;
         const groupCtx = seal.createTempCtx(ctx.endPoint, groupMsg);
-        seal.replyToSender(groupCtx, groupMsg, `💬 微信群已建立\n\n👥 成员：${sendname}、${toname}\n\n💡 长期群聊，无时间限制，每个微信关系只能有一个活跃群。`);
-        setGroupName(groupCtx, groupMsg, gid, `微信:${sendname}&${toname}`);
+        seal.replyToSender(groupCtx, groupMsg, applyMsgTemplate("wechat_announcement", { 发起者: sendname, 对方: toname, 群号: gid })
+            || `💬 微信群已建立\n\n👥 成员：${sendname}、${toname}\n\n💡 长期群聊，无时间限制，每个微信关系只能有一个活跃群。`);
+        setGroupName(groupCtx, groupMsg, gid, `${getCustomTypeLabel("微信")}:${sendname}&${toname}`);
 
         // 通知对方（发起者已通过下方 successMsg 得到回执）
         const toUidLookup = getUidByRoleName(platform, toname);
@@ -2613,7 +2635,8 @@ cmd_wechat.solve =async (ctx, msg, cmdArgs) => {
             notifyMsg.messageType = "group";
             notifyMsg.groupId = `${platform}-Group:${toBindGid}`;
             const notifyCtx = seal.createTempCtx(ctx.endPoint, notifyMsg);
-            seal.replyToSender(notifyCtx, notifyMsg, `💬 ${sendname} 邀你加入微信群\n\n📱 群号：${gid}\n👥 成员：${sendname}、${toname}\n\n💡 长期群聊，无时间限制。`);
+            seal.replyToSender(notifyCtx, notifyMsg, applyMsgTemplate("wechat_notice", { 发起者: sendname, 对方: toname, 群号: gid })
+                || `💬 ${sendname} 邀你加入微信群\n\n📱 群号：${gid}\n👥 成员：${sendname}、${toname}\n\n💡 长期群聊，无时间限制。`);
         }
 
         seal.replyToSender(ctx, msg, `✅ 微信群创建成功！\n📱 群号：${gid}\n👥 成员：${sendname}、${toname}`);
@@ -2693,7 +2716,7 @@ cmd_view_schedule.solve =(ctx, msg) => {
             });
             if (counts.some(c => c > 0)) progressText = `\n✍️ ${ev.status === "ended" ? "最终段数" : "当前进度"}：${counts.join('v')}`;
         }
-        ev.displayText = `【${ev.day} ${ev.time}】\n${icon} ${ev.subtype} · ${tag}\n📍 地点：${ev.place || "未知"}\n👥 伙伴：${ev.partner}${progressText}`;
+        ev.displayText = `【${ev.day} ${ev.time}】\n${icon} ${getCustomTypeLabel(ev.subtype)} · ${tag}\n📍 地点：${ev.place || "未知"}\n👥 伙伴：${ev.partner}${progressText}`;
     });
 
     if (!msg.groupId) return seal.replyToSender(ctx, msg, "请在群内使用合并转发。");
@@ -3018,7 +3041,7 @@ cmd_accept_join.solve =(ctx, msg, cmdArgs) => {
     const updatedParticipants = groupExpireInfo[groupId]?.participants || [];
     if (updatedParticipants.length > 0) {
         const nameTag = updatedParticipants.length > 2 ? "多人" : updatedParticipants.join("、");
-        const newGroupName = `${targetSchedule.subtype || "私密"} ${day} ${time} ${targetSchedule.place ? targetSchedule.place + " " : ""}${nameTag}`;
+        const newGroupName = `${getCustomTypeLabel(targetSchedule.subtype || "私密")} ${day} ${time} ${targetSchedule.place ? targetSchedule.place + " " : ""}${nameTag}`;
         const renameMsg = seal.newMessage();
         renameMsg.messageType = "group";
         renameMsg.groupId = `${platform}-Group:${targetGroupId}`;
@@ -3445,7 +3468,7 @@ cmd_admin_view_active.solve =(ctx, msg, cmdArgs) => {
 
   let reply = `📌 ${dayArg} 进行中的邀约：\n\n`;
   entries.forEach(([group, subtype], idx) => {
-    reply += `${idx + 1}️⃣ ${subtype} ｜ 群号：${group}\n`;
+    reply += `${idx + 1}️⃣ ${getCustomTypeLabel(subtype)} ｜ 群号：${group}\n`;
   });
 
   seal.replyToSender(ctx, msg, reply.trim());
@@ -3748,7 +3771,7 @@ cmd_edit_player_group.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
     const platform = ctx.platform || "QQ";
-    const uid = `${platform}:${uidArg}`;
+    const uid = uidArg.replace(`${platform}:`, "");
     const apg = JSON.parse(cachedGet("a_private_group") || "{}");
     if (!apg[platform] || !apg[platform][uid]) {
         seal.replyToSender(ctx, msg, `❌ 未找到 ${uidArg} 的登记信息`);
@@ -4374,7 +4397,7 @@ async function finalizeGroupCreation(platform, ctx, msg, groupData, participants
     // 3. 构建群名：2人显示名字，多于2人显示"多人"
     const participantsText = participants.join("、");
     const groupNameTag = participants.length > 2 ? "多人" : participantsText;
-    const finalGroupName = `${groupData.subtype} ${groupData.day} ${groupData.time} ${groupNameTag}`;
+    const finalGroupName = `${getCustomTypeLabel(groupData.subtype)} ${groupData.day} ${groupData.time} ${groupNameTag}`;
 
     // 4. 构建通知文案
     const otherNames = participants.filter(n => n !== groupData.sendname);
@@ -4387,46 +4410,38 @@ async function finalizeGroupCreation(platform, ctx, msg, groupData, participants
     // 发给各参与者私群的邀请通知（保留"邀你"措辞）
     let noticeText;
     if (groupData.subtype === "电话") {
+        const typeLabel = getCustomTypeLabel("电话");
         const titleLine = groupData.title ? ` · ${groupData.title}` : "";
         const peersLine = participants.length > 2 ? `\n同话：${otherNames.join("、")}` : "";
-        noticeText = `📞 来电
-
-${groupData.sendname} 邀你接听通话${titleLine}
-🕐 ${groupData.day} ${groupData.time}${peersLine}
-
-频段：${gid}
-有效至 ${timeStr}${guide}`;
+        noticeText = applyMsgTemplate("phone_notice", {
+            发起者: groupData.sendname, 日期: groupData.day, 时间: groupData.time,
+            标题: groupData.title || "", 同话: otherNames.join("、"),
+            群号: gid, 有效期: timeStr, 操作指引: guide.trim()
+        }) || `📞 ${typeLabel}\n\n${groupData.sendname} 邀你接听${typeLabel}${titleLine}\n🕐 ${groupData.day} ${groupData.time}${peersLine}\n\n频段：${gid}\n有效至 ${timeStr}${guide}`;
     } else {
-        noticeText = `💌 私约
-
-${groupData.sendname} 约你 ${groupData.day} ${groupData.time} 在 ${groupData.place} 相见${multiLine}
-
-群号：${gid}
-有效至 ${timeStr}${guide}`;
+        const typeLabel = getCustomTypeLabel(groupData.subtype);
+        noticeText = applyMsgTemplate("private_notice", {
+            发起者: groupData.sendname, 日期: groupData.day, 时间: groupData.time,
+            地点: groupData.place, 同行: otherNames.join("、"),
+            群号: gid, 有效期: timeStr, 操作指引: guide.trim()
+        }) || `💌 ${typeLabel}\n\n${groupData.sendname} 约你 ${groupData.day} ${groupData.time} 在 ${groupData.place} 相见${multiLine}\n\n群号：${gid}\n有效至 ${timeStr}${guide}`;
     }
 
     // 发到约会群本身的公告（列出全部参与者，去掉"邀你"措辞）
     let groupAnnouncement;
     if (groupData.subtype === "电话") {
+        const typeLabel = getCustomTypeLabel("电话");
         const titleLine = groupData.title ? ` · ${groupData.title}` : "";
-        groupAnnouncement = `📞 通话已接通${titleLine}
-
-🕐 ${groupData.day} ${groupData.time}
-👥 参与者：${participantsText}
-
-✍️ 戏文格式：首行写自己的角色名，换行后写正文（不符合格式的消息视为闲聊，不计入存档与字数）
-
-频段：${gid}
-有效至 ${timeStr}${guide}`;
+        groupAnnouncement = applyMsgTemplate("phone_announcement", {
+            标题: groupData.title || "", 日期: groupData.day, 时间: groupData.time,
+            参与者: participantsText, 群号: gid, 有效期: timeStr, 操作指引: guide.trim()
+        }) || `📞 ${typeLabel}已接通${titleLine}\n\n🕐 ${groupData.day} ${groupData.time}\n👥 参与者：${participantsText}\n\n✍️ 戏文格式：首行写自己的角色名，换行后写正文（不符合格式的消息视为闲聊，不计入存档与字数）\n\n频段：${gid}\n有效至 ${timeStr}${guide}`;
     } else {
-        groupAnnouncement = `💌 约会已确认
-
-📅 ${groupData.day} ${groupData.time}
-📍 ${groupData.place}
-👥 参与者：${participantsText}
-
-群号：${gid}
-有效至 ${timeStr}${guide}`;
+        const typeLabel = getCustomTypeLabel(groupData.subtype);
+        groupAnnouncement = applyMsgTemplate("private_announcement", {
+            日期: groupData.day, 时间: groupData.time, 地点: groupData.place,
+            参与者: participantsText, 群号: gid, 有效期: timeStr, 操作指引: guide.trim()
+        }) || `💌 ${typeLabel}已确认\n\n📅 ${groupData.day} ${groupData.time}\n📍 ${groupData.place}\n👥 参与者：${participantsText}\n\n群号：${gid}\n有效至 ${timeStr}${guide}`;
     }
 
     // 5. 向所有参与者发送私聊/绑定群通知（跳过发起者，发起者由指令回执告知）
@@ -4508,7 +4523,7 @@ cmd_view_expired_groups.solve = (ctx, msg, cmdArgs) => {
                 const overdue = (now - g.expireTime) / 60000;
                 const overdueDays = Math.floor(overdue / 1440), overdueHours = Math.floor((overdue % 1440) / 60), overdueMins = Math.floor(overdue % 60);
                 const overdueStr = `${overdueDays?`${overdueDays}天`:''}${overdueHours?`${overdueHours}小时`:''}${overdueMins}分钟`;
-                const content = `📌 群号：${g.indexKey}\n类型：${g.subtype || '小群'}\n时间：${g.day} ${g.time}\n地点：${g.place}\n参与者：${g.participants.join('、')}\n到期时间：${formatTime(g.expireTime)}\n已超时：${overdueStr}`;
+                const content = `📌 群号：${g.indexKey}\n类型：${getCustomTypeLabel(g.subtype || '') || '小群'}\n时间：${g.day} ${g.time}\n地点：${g.place}\n参与者：${g.participants.join('、')}\n到期时间：${formatTime(g.expireTime)}\n已超时：${overdueStr}`;
                 nodes.push({ type: "node", data: { name: g.participants.join('、') || "未知", uin: botUid, content } });
             });
             ws({ action: "send_group_forward_msg", params: { group_id: parseInt(msg.groupId.replace(/[^\d]/g, ""), 10), messages: nodes } }, ctx, msg, "");
@@ -4814,7 +4829,7 @@ cmd_view_schedule_other.solve = (ctx, msg, cmdArgs) => {
     rep += `\n📅【${day}】\n`;
     for (let ev of grouped[day]) {
       let marker = ev.subtype === "电话" ? "📞" : "🤫";
-      rep += `${marker} ${ev.time} —— ${ev.partner}（${ev.subtype}小群）\n`;
+      rep += `${marker} ${ev.time} —— ${ev.partner}（${getCustomTypeLabel(ev.subtype)}小群）\n`;
     }
   }
 
@@ -5610,7 +5625,7 @@ cmd_create_official_appointment.solve = async (ctx, msg, cmdArgs) => {
 
   // 改群名
   const groupNameTag = validParticipants.length > 2 ? "多人" : validParticipants.join("、");
-  const finalGroupName = `官约 ${day} ${time} ${place} ${groupNameTag}`;
+  const finalGroupName = `${getCustomTypeLabel("官约")} ${day} ${time} ${place} ${groupNameTag}`;
   const targetMsg = seal.newMessage();
   targetMsg.messageType = "group";
   targetMsg.groupId = `${platform}-Group:${gid}`;
@@ -5929,7 +5944,7 @@ cmd_execute_official.solve = async (ctx, msg, cmdArgs) => {
 
     // 改群名
     const groupNameTag = participants.length > 2 ? "多人" : participants.join("、");
-    const finalGroupName = `官约 ${day} ${time} ${place} ${groupNameTag}`;
+    const finalGroupName = `${getCustomTypeLabel("官约")} ${day} ${time} ${place} ${groupNameTag}`;
     const targetMsg = seal.newMessage();
     targetMsg.messageType = "group";
     targetMsg.groupId = `${platform}-Group:${gid}`;
@@ -7113,7 +7128,7 @@ function sendReminder(platform, groupId, roleName, subtype, elapsedTime,ctx) {
     const ctx1 = seal.createTempCtx(ctx.endPoint, msg1);
 
     seal.replyToSender(ctx1, msg1,
-        `⏰ 提醒：你在 ${subtype} 群 ${groupId} 中已超过 ${hours}小时${minutes}分钟未回复\n请尽快回复！`);
+        `⏰ 提醒：你在 ${getCustomTypeLabel(subtype)} 群 ${groupId} 中已超过 ${hours}小时${minutes}分钟未回复\n请尽快回复！`);
 
     // 发送到群组本身
     const msg2 = seal.newMessage();
@@ -7946,7 +7961,7 @@ cmd_remind_timeouts.solve =(ctx, msg, cmdArgs) => {
             // 1. 发送给个人小群
             const pGid = roleUid2 ? priv[platform]?.[roleUid2]?.[1] : null;
             if (pGid) {
-                const text = `✨ 亲爱的 ${name}，在「${timer.subtype}」里大家等你 ${timeStr} 啦。如果不忙的话，记得回一下小伙伴们哦～ ❤️`;
+                const text = `✨ 亲爱的 ${name}，在「${getCustomTypeLabel(timer.subtype)}」里大家等你 ${timeStr} 啦。如果不忙的话，记得回一下小伙伴们哦～ ❤️`;
                 const m1 = seal.newMessage(); m1.messageType = "group"; m1.groupId = `${platform}-Group:${pGid}`;
                 seal.replyToSender(seal.createTempCtx(ctx.endPoint, m1), m1, text);
             }
@@ -8792,7 +8807,7 @@ cmd_update_schedule.solve =(ctx, msg, cmdArgs) => {
 
     // 5. 修改群名片并通知
     const nameTag = participants.length > 2 ? "多人" : participants.join("/");
-    const newGroupName = `${subtype} ${newDay} ${newTime} ${info.place} ${nameTag}`;
+    const newGroupName = `${getCustomTypeLabel(subtype)} ${newDay} ${newTime} ${info.place} ${nameTag}`;
     setGroupName(ctx, msg, gid, newGroupName);
 
     seal.replyToSender(ctx, msg, `✅ 时间线修改成功！\n📅 新时间：${newDay} ${newTime}\n新的日程已同步至所有参与者的【时间线】。`);
@@ -8824,7 +8839,7 @@ cmd_abolish_schedule.solve =(ctx, msg, cmdArgs) => {
     const groupInfo = groupExpireInfo[targetGid] || {};
     const subtype = groupInfo.subtype || "私密";
     if (subtype === "心愿" || subtype === "官约") {
-        return seal.replyToSender(ctx, msg, `⚠️ ${subtype}约不可拒绝，请通过正常流程处理。`);
+        return seal.replyToSender(ctx, msg, `⚠️ ${getCustomTypeLabel(subtype)}不可拒绝，请通过正常流程处理。`);
     }
 
     // 3. 获取参与者信息
@@ -9457,6 +9472,20 @@ cmd_end_season.solve = (ctx, msg, cmdArgs) => {
                 } catch (reportErr) {
                     console.error("[结束季度] 报告发送失败：", reportErr.message);
                 }
+            }
+
+            // 自动关闭自动天数推进，防止封存后继续推进天数
+            if (cachedGet("auto_day_reset_enabled") === "true") {
+                cachedSet("auto_day_reset_enabled", "false");
+                seal.replyToSender(ctx, msg, "⏹️ 自动天数已自动关闭。");
+            }
+
+            // 自动关闭心动信投递
+            const _ftoggle = JSON.parse(cachedGet("global_feature_toggle") || "{}");
+            if (_ftoggle.enable_lovemail) {
+                _ftoggle.enable_lovemail = false;
+                cachedSet("global_feature_toggle", JSON.stringify(_ftoggle));
+                seal.replyToSender(ctx, msg, "💌 心动信已自动关闭。");
             }
 
             // 注意：此处不清除 season_show_name，交由「清空季度数据」完成
