@@ -319,6 +319,24 @@
 #rpg-toast.err  { border-color: var(--red);   color: var(--red); }
 
 .field-hidden { display: none !important; }
+
+/* ── SPEC 道具列表 ──────────────────────────────────────── */
+.spec-row {
+  display: grid;
+  grid-template-columns: 20px 88px 72px 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  font-size: 12px;
+  transition: background .1s;
+}
+.spec-row:hover { background: var(--surface2); }
+.spec-status-ok   { color: var(--green); font-size: 14px; font-weight: 700; }
+.spec-status-miss { color: var(--muted); font-size: 14px; opacity: .5; }
+.spec-code { font-family: monospace; font-size: 11px; color: var(--muted); }
+.spec-name { font-weight: 600; color: var(--text); }
+.spec-desc { color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 </style>
 {% endblock %}
 
@@ -425,6 +443,13 @@
           <div class="rpg-hint">佩戴后角色属性永久加成，脱装备时取消</div>
         </div>
 
+        <!-- 耐久度（物品 / 装备） -->
+        <div class="rpg-field" id="field-durability">
+          <label class="rpg-label">耐久度 <span style="font-weight:400;font-size:10px;opacity:.6">（可选）</span></label>
+          <input class="rpg-input" id="f-durability" type="number" placeholder="留空 = 不损坏">
+          <div class="rpg-hint">填写正整数时，物品/装备受击或使用后耐久-1，归零自动损毁；留空则无耐久机制</div>
+        </div>
+
         <!-- 允许二手（物品 / 互动物品） -->
         <div class="rpg-toggle-row" id="field-resell">
           <label class="toggle">
@@ -456,6 +481,19 @@
 
     <!-- ══ 右栏：注册表 + 属性 + 槽位 ══ -->
     <div>
+
+      <!-- SPEC 特殊道具 -->
+      <div class="rpg-panel">
+        <div class="rpg-panel-title">
+          🔮 特殊道具 (SPEC)
+          <span class="badge" id="spec-imported-count">0 / 8</span>
+        </div>
+        <div class="info-bar">
+          系统内置的特殊功能道具，固定编号 SPEC_001~008。点按钮后<b>直接写入注册表</b>，无需排队同步，机器人重载后即生效。
+        </div>
+        <div id="spec-list" style="margin: 10px 0;"></div>
+        <button class="rpg-submit" id="spec-import-btn" onclick="RPG.importSpecItems()" style="margin-top:4px;">导入缺少的道具</button>
+      </div>
 
       <!-- 已注册条目 -->
       <div class="rpg-panel">
@@ -544,6 +582,20 @@
         </div>
       </div>
 
+    </div>
+  </div>
+
+  <!-- ══ 议价交易白名单 ══ -->
+  <div style="margin-top:18px;">
+    <div class="rpg-panel">
+      <div class="rpg-panel-title">
+        💱 可交易物品白名单
+        <span class="badge" id="trade-wl-count">0</span>
+      </div>
+      <div class="info-bar">
+        只有在此列表中的物品才能参与玩家议价交易（dlc_trade）。点击开关即时保存，默认全部关闭。
+      </div>
+      <div id="trade-wl-list"></div>
     </div>
   </div>
 
@@ -877,6 +929,7 @@ var attrDefs     = {{ attr_defs        | tojson }};
 var craftRecipes = {{ craft_recipes    | tojson }};
 var skillDefs    = {{ skill_defs       | tojson }};
 var battleAttrs  = {{ battle_attrs     | tojson }};
+var tradeWhitelist = {{ trade_whitelist | tojson }};
 var attackDefenseCfg = {{ attack_defense_cfg | tojson }};
 var playerSkillsMap  = {{ player_skills      | tojson }};
 var battleLog        = {{ battle_log         | tojson }};
@@ -915,6 +968,7 @@ var RPG = (function() {
     tog('field-attrs',      isItem);
     tog('field-base-attrs', isEquip);
     tog('field-resell',     isItem);
+    tog('field-durability', !isCurr);
   }
 
   function tog(id, show) {
@@ -994,6 +1048,9 @@ var RPG = (function() {
       .concat(equipPend.map(function(p) { return p.name; }));
     if (allNames.indexOf(name) !== -1) { toast('「' + name + '」名称已存在', 'err'); return; }
 
+    var durVal = parseInt(document.getElementById('f-durability').value);
+    var durability = (!isNaN(durVal) && durVal > 0) ? durVal : null;
+
     if (currentType === 'currency') {
       itemPend.push({ name: name, desc: desc, type: 'currency' });
     } else if (currentType === 'equip') {
@@ -1001,20 +1058,24 @@ var RPG = (function() {
       var baseAttrs = document.getElementById('hid-base-attrs').value.trim();
       if (!slot) { toast('请选择槽位', 'err'); return; }
       if (!baseAttrs) { toast('装备必须至少有一条基础属性', 'err'); return; }
-      equipPend.push({ name: name, desc: desc, slot: slot, baseAttrs: baseAttrs });
+      var ep = { name: name, desc: desc, slot: slot, baseAttrs: baseAttrs };
+      if (durability) ep.durability = durability;
+      equipPend.push(ep);
     } else {
       var uses   = parseInt(document.getElementById('f-uses').value);
       var attrs  = document.getElementById('hid-attrs').value.trim();
       var resell = document.getElementById('f-resell').checked;
       if (isNaN(uses)) { toast('次数必须是数字', 'err'); return; }
-      itemPend.push({ name: name, desc: desc, type: currentType,
-                      maxUses: uses, attrs: attrs || null, canResell: resell });
+      var ip = { name: name, desc: desc, type: currentType, maxUses: uses, attrs: attrs || null, canResell: resell };
+      if (durability) ip.durability = durability;
+      itemPend.push(ip);
     }
 
     // 清空表单
     document.getElementById('f-name').value = '';
     document.getElementById('f-desc').value = '';
     document.getElementById('f-uses').value = '-1';
+    document.getElementById('f-durability').value = '';
     document.getElementById('f-resell').checked = false;
     fx['attrs'] = [];      renderEffectChips('attrs');
     fx['base-attrs'] = []; renderEffectChips('base-attrs');
@@ -1054,11 +1115,12 @@ var RPG = (function() {
     var meta = '';
     if (typeKey === 'equip') {
       var sn = slotNames[p.slot] || DEFAULT_SLOT_NAMES[p.slot] || p.slot || '';
-      meta = sn + (p.baseAttrs ? ' · ' + p.baseAttrs : '');
+      meta = sn + (p.baseAttrs ? ' · ' + p.baseAttrs : '') + (p.durability ? ' · 耐久' + p.durability : '');
     } else if (typeKey !== 'currency') {
       meta = (p.maxUses === -1 ? '无限次' : (p.maxUses + '次')) +
              (p.attrs ? ' · ' + p.attrs : '') +
-             (p.canResell ? ' · 可二手' : '');
+             (p.canResell ? ' · 可二手' : '') +
+             (p.durability ? ' · 耐久' + p.durability : '');
     }
 
     return '<div class="pending-item">' +
@@ -1121,10 +1183,11 @@ var RPG = (function() {
         var ba = r.baseAttrs
           ? Object.entries(r.baseAttrs).map(function(kv) { return kv[0] + (kv[1] >= 0 ? '+' : '') + kv[1]; }).join(', ')
           : '—';
-        detail = esc(sn) + ' · ' + esc(ba);
+        detail = esc(sn) + ' · ' + esc(ba) + (r.durability ? ' · 耐久' + r.durability : '');
       } else if (typeKey !== 'currency') {
         detail = (r.maxUses === -1 ? '无限次' : (r.maxUses + '次')) +
-                 (r.attrs ? ' · ' + esc(r.attrs) : '');
+                 (r.attrs ? ' · ' + esc(r.attrs) : '') +
+                 (r.durability ? ' · 耐久' + r.durability : '');
       }
 
       var delFn = r._isEquip
@@ -1262,6 +1325,7 @@ var RPG = (function() {
         equipment_slots:            slots,
         equipment_slot_names:       slotNames,
         skill_defs:                 skillDefs,
+        trade_whitelist:            tradeWhitelist,
       })
     })
     .then(function(r) { return r.json(); })
@@ -1274,6 +1338,59 @@ var RPG = (function() {
     return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
+  // ── SPEC 道具 ──────────────────────────────────────
+  var SPEC_ITEMS = [
+    { code: 'SPEC_001', name: '追踪器',  desc: '一枚散发着微光的微型追踪器，轻轻按动便能感知目标此刻的行踪。' },
+    { code: 'SPEC_002', name: '万能钥匙', desc: '一把泛着银光的万能钥匙，据说能开启世间任何一扇被锁住的门。' },
+    { code: 'SPEC_003', name: '望远镜',  desc: '一架精致的望远镜，使用后可在目标下次发信时悄悄抄录一份副本。' },
+    { code: 'SPEC_004', name: '羽毛笔',  desc: '一支神奇的羽毛笔，使用后可截获目标发出的下一封信并在发送前修改内容。' },
+    { code: 'SPEC_005', name: '捕鼠器',  desc: '一个精巧的捕鼠器，激活后将锁定目标指定小时内的行动，使其无法私约、电话或摘心愿。' },
+    { code: 'SPEC_006', name: '窃听器',  desc: '一枚微型窃听装置，激活后可悄悄截录目标的电话内容——信号有时会有些干扰……' },
+    { code: 'SPEC_007', name: '截信器',  desc: '一台隐蔽的信号截断仪，激活后可拦截目标发出的短信，但内容偶有失真……' },
+    { code: 'SPEC_008', name: '回音壁',  desc: '一面奇异的墙壁，贴上后可感知所有投向目标的信件内容——对方收到什么，你便知晓什么。' },
+  ];
+
+  function renderSpecStatus() {
+    var container = document.getElementById('spec-list');
+    var btn       = document.getElementById('spec-import-btn');
+    var badge     = document.getElementById('spec-imported-count');
+    if (!container) return;
+    var imported = SPEC_ITEMS.filter(function(s) { return !!itemReg[s.code]; }).length;
+    var missing  = SPEC_ITEMS.length - imported;
+    badge.textContent = imported + ' / ' + SPEC_ITEMS.length;
+    container.innerHTML = SPEC_ITEMS.map(function(s) {
+      var ok = !!itemReg[s.code];
+      return '<div class="spec-row">' +
+        '<span class="' + (ok ? 'spec-status-ok' : 'spec-status-miss') + '">' + (ok ? '✓' : '○') + '</span>' +
+        '<span class="spec-code">' + esc(s.code) + '</span>' +
+        '<span class="spec-name">' + esc(s.name) + '</span>' +
+        '<span class="spec-desc">' + esc(s.desc) + '</span>' +
+        '</div>';
+    }).join('');
+    if (missing === 0) {
+      btn.textContent = '✓ 全部已导入';
+      btn.disabled = true;
+      btn.style.opacity = '.5';
+    } else {
+      btn.textContent = '导入缺少的 ' + missing + ' 个';
+      btn.disabled = false;
+      btn.style.opacity = '';
+    }
+  }
+
+  function importSpecItems() {
+    var missing = SPEC_ITEMS.filter(function(s) { return !itemReg[s.code]; });
+    if (missing.length === 0) { toast('全部 SPEC 道具已导入', 'ok'); return; }
+    missing.forEach(function(s) {
+      itemReg[s.code] = { code: s.code, name: s.name, desc: s.desc, type: 'preset', attrs: null };
+    });
+    save(function() {
+      toast('已导入 ' + missing.length + ' 个 SPEC 道具 ✓');
+      renderSpecStatus();
+      renderRegistry();
+    });
+  }
+
   // ── 初始化 ─────────────────────────────────────────
   function init() {
     setType('item');
@@ -1283,6 +1400,57 @@ var RPG = (function() {
     renderRegistry();
     renderAttrs();
     renderSlots();
+    renderSpecStatus();
+    renderTradeWhitelist();
+  }
+
+  // ── 议价交易白名单 ──────────────────────────────────
+  function renderTradeWhitelist() {
+    var el = document.getElementById('trade-wl-list');
+    var badge = document.getElementById('trade-wl-count');
+    if (!el) return;
+
+    var allItems = [];
+    Object.values(itemReg).forEach(function(r) {
+      if (r.type === 'preset') return;
+      var typeMap = { item: '物品', interact: '互动', currency: '货币' };
+      allItems.push({ code: r.code, name: r.name, typeKey: r.type || 'item', typeLabel: typeMap[r.type] || r.type });
+    });
+    Object.values(equipReg).forEach(function(r) {
+      allItems.push({ code: r.code, name: r.name, typeKey: 'equip', typeLabel: '装备' });
+    });
+
+    if (badge) badge.textContent = tradeWhitelist.length;
+
+    if (!allItems.length) {
+      el.innerHTML = '<div class="pending-empty" style="padding:16px 0">暂无注册物品，先在上方注册物品/装备</div>';
+      return;
+    }
+
+    el.innerHTML = allItems.map(function(item) {
+      var inList = tradeWhitelist.indexOf(item.code) !== -1;
+      var badgeCls = { item:'badge-item', interact:'badge-interact', equip:'badge-equip', currency:'badge-currency' }[item.typeKey] || 'badge-item';
+      return '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">' +
+        '<span class="pending-type-badge ' + badgeCls + '">' + item.typeLabel + '</span>' +
+        '<span style="flex:1;font-size:13px;font-weight:600">' + esc(item.name) +
+          '<span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:6px">[' + esc(item.code) + ']</span>' +
+        '</span>' +
+        '<label class="toggle">' +
+          '<input type="checkbox"' + (inList ? ' checked' : '') +
+            ' onchange="RPG.toggleTradeWhitelist(\'' + esc(item.code) + '\', this.checked)">' +
+          '<span class="toggle-slider"></span>' +
+        '</label>' +
+      '</div>';
+    }).join('');
+  }
+
+  function toggleTradeWhitelist(code, enabled) {
+    var idx = tradeWhitelist.indexOf(code);
+    if (enabled && idx === -1) tradeWhitelist.push(code);
+    else if (!enabled && idx !== -1) tradeWhitelist.splice(idx, 1);
+    var badge = document.getElementById('trade-wl-count');
+    if (badge) badge.textContent = tradeWhitelist.length;
+    save(function() {});
   }
 
   init();
@@ -1301,6 +1469,9 @@ var RPG = (function() {
     addSlot: addSlot,
     delSlot: delSlot,
     toast: toast,
+    renderSpecStatus: renderSpecStatus,
+    importSpecItems: importSpecItems,
+    toggleTradeWhitelist: toggleTradeWhitelist,
   };
 })();
 </script>

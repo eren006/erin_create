@@ -6134,10 +6134,11 @@ function findSimultaneousMeetings(platform, day, time, place, excludeGroupId = n
 
             // 获取参与者
             const meetingParticipants = [];
+            const isSoloStakeout = meeting.partner === "（独自）";
             if (meetingGroupId && groupExpireInfo[meetingGroupId]?.participants?.length) {
                 meetingParticipants.push(...groupExpireInfo[meetingGroupId].participants);
             } else {
-                if (meeting.partner && meeting.partner !== "多人小群") meetingParticipants.push(meeting.partner);
+                if (!isSoloStakeout && meeting.partner !== "多人小群") meetingParticipants.push(meeting.partner);
                 const [userPlatform, userUid] = userId.split(':');
                 // 新结构：uid为key，roleName在value[0]
                 const roleName = a_private_group[userPlatform]?.[userUid]?.[0];
@@ -6188,7 +6189,9 @@ function sendSightingReports(platform, newMeetingInfo, simultaneousMeetings, ctx
             if (!shouldSendSightingReport(platform, participant)) continue;
 
             const otherParticipantsText = otherMeeting.participants.join('、');
-            const reportMessage = `👀 不会吧，你居然在 ${newMeetingInfo.place} 看见了 ${otherParticipantsText} 在一起！（时间：${otherMeeting.time}）`;
+            const reportMessage = otherMeeting.participants.length === 1
+                ? `👀 不会吧，你居然在 ${newMeetingInfo.place} 看见 ${otherParticipantsText} 一个人去了！（时间：${otherMeeting.time}）`
+                : `👀 不会吧，你居然在 ${newMeetingInfo.place} 看见了 ${otherParticipantsText} 在一起！（时间：${otherMeeting.time}）`;
 
             const newMsg = seal.newMessage();
             newMsg.messageType = "group";
@@ -6240,9 +6243,9 @@ function sendCounterSightingReports(platform, originalMeeting, newMeetingInfo, c
         
         // 构建反向报告消息
         const newParticipantsText = newMeetingInfo.participants.join('、');
-        
-        const reportMessage =
-            `👀 哎呀，你和${originalMeeting.participants.length > 1 ? '伙伴们' : '朋友'}在 ${originalMeeting.place} 的约会被 ${newParticipantsText} 看到了！（时间：${originalMeeting.time}）` ;
+        const reportMessage = originalMeeting.participants.length === 1
+            ? `👀 哎呀，你在 ${originalMeeting.place} 的独自行动被 ${newParticipantsText} 看到了！（时间：${originalMeeting.time}）`
+            : `👀 哎呀，你和${originalMeeting.participants.length > 1 ? '伙伴们' : '朋友'}在 ${originalMeeting.place} 的约会被 ${newParticipantsText} 看到了！（时间：${originalMeeting.time}）`;
         
         // 使用传入的 ctx 创建临时上下文发送报告
         const targetGroupId = participantInfo[1];
@@ -6261,6 +6264,105 @@ function sendCounterSightingReports(platform, originalMeeting, newMeetingInfo, c
         // 增加目击次数（以 uid 为 key）
         if (participantUid) incrementUserSightingCountToday(platform, participantUid);
     }
+}
+
+// 单人踩点：分配小群并记录（绕过需要对方的正常私约流程）
+async function createSoloStakeout(ctx, msg, platform, sendname, day, time, place) {
+    const gid = await allocateGroup(platform, ctx, msg);
+    if (!gid) {
+        seal.replyToSender(ctx, msg, "❌ 暂无可调用的群号，请联系管理员扩容群池。");
+        return;
+    }
+
+    const expireHours = getStorageInt("group_expire_hours", 48);
+    const expireTime = Date.now() + expireHours * 3600000;
+    const timeStr = new Date(expireTime).toLocaleString("zh-CN", { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+
+    const b_confirmedSchedule = JSON.parse(cachedGet("b_confirmedSchedule") || "{}");
+    const groupInfo = JSON.parse(cachedGet("group_expire_info") || "{}");
+
+    const details = getRoleDetails(platform, sendname);
+    if (details && details.uid) {
+        const key = `${platform}:${details.uid.replace(/^[a-z]+:/i, "")}`;
+        if (!b_confirmedSchedule[key]) b_confirmedSchedule[key] = [];
+        b_confirmedSchedule[key].push({
+            day, time, place,
+            partner: "（独自）",
+            subtype: "踩点",
+            group: gid,
+            status: "active"
+        });
+    }
+
+    const groupData = { sendname, subtype: "踩点", day, time, place };
+    groupInfo[gid] = { ...groupData, participants: [sendname], expireTime };
+    cachedSet("b_confirmedSchedule", JSON.stringify(b_confirmedSchedule));
+    cachedSet("group_expire_info", JSON.stringify(groupInfo));
+
+    const finalGroupName = `踩点 ${day} ${time} ${sendname}`;
+    const guide = `\n\n结束互动 ➜ 在群内发「结束私约」`;
+    const announcement = `🕵️ 踩点（独行）\n\n📅 ${day} ${time}\n📍 ${place}\n👤 ${sendname}\n\n群号：${gid}\n有效至 ${timeStr}${guide}`;
+
+    const targetMsg = seal.newMessage();
+    targetMsg.messageType = "group";
+    targetMsg.groupId = `${platform}-Group:${gid}`;
+    const targetCtx = seal.createTempCtx(ctx.endPoint, targetMsg);
+    seal.replyToSender(targetCtx, targetMsg, announcement);
+    setGroupName(targetCtx, targetMsg, gid, finalGroupName);
+
+    if (details && details.uid && details.gid) {
+        const m = seal.newMessage();
+        m.messageType = "group";
+        m.groupId = `${platform}-Group:${details.gid}`;
+        const tempCtx = seal.createTempCtx(ctx.endPoint, m);
+        seal.replyToSender(tempCtx, m, `[CQ:at,qq=${details.uid}]\n⚠️ 请在踩点群（群号：${gid}）发送 .ext all on 开启机器人指令！`);
+    }
+
+    seal.replyToSender(ctx, msg, `✅ 已发起独自踩点！\n📅 ${day} ${time}  📍 ${place}\n群号：${gid}\n有效至 ${timeStr}`);
+
+    triggerSightingCheck(platform, day, time, place, [sendname], gid, "踩点", ctx, msg);
+    initGroupTimer(platform, gid, "踩点", [sendname], sendname);
+}
+
+// 踩点指令处理器（检查DLC + solo开关，分发到正常私约或单人流程）
+async function handleStakeout(ctx, msg, cmdArgs) {
+    const toggle = JSON.parse(cachedGet("global_feature_toggle") || "{}");
+    if (!toggle.dlc_stakeout) {
+        return seal.replyToSender(ctx, msg, "❌ 踩点功能未开启，请联系管理员。");
+    }
+
+    const platform = msg.platform;
+    const uid = msg.sender.userId.replace(`${platform}:`, "");
+    const a_private_group = JSON.parse(cachedGet("a_private_group") || "{}");
+    const sendname = a_private_group[platform]?.[uid]?.[0];
+    if (!sendname) return seal.replyToSender(ctx, msg, "✨ 请先使用「创建新角色」来认领你的身份。");
+
+    // 参数解析：踩点 时间 地点 [目标角色名]
+    const timeArg = cmdArgs.getArgN(1);
+    const placeArg = cmdArgs.getArgN(2);
+    const targetArg = cmdArgs.getArgN(3);
+
+    if (!timeArg || !placeArg) {
+        return seal.replyToSender(ctx, msg, "⚠️ 格式：踩点 时间 地点 [角色名]\n例：踩点 20:00 大图书馆\n例：踩点 20:00 大图书馆 李四");
+    }
+
+    const globalDay = cachedGet("global_day") || "未知日期";
+
+    if (!targetArg) {
+        // 单人踩点
+        if (!toggle.stakeout_allow_solo) {
+            return seal.replyToSender(ctx, msg, "❌ 踩点需要指定陪伴角色名，或由管理员开启「允许单人踩点」。");
+        }
+        return createSoloStakeout(ctx, msg, platform, sendname, globalDay, timeArg, placeArg);
+    }
+
+    // 有目标：走标准私约流程（subtype="踩点"）
+    const aliasConfig = { trigger: "踩点", icon: "🕵️" };
+    const fakeCmdArgs = {
+        getArgN: (n) => [null, timeArg, placeArg, targetArg][n] || "",
+        args: [timeArg, placeArg, targetArg]
+    };
+    return cmd_appointment_private.solve(ctx, msg, fakeCmdArgs, aliasConfig);
 }
 
 // 在分配小群后触发目击检查
@@ -7265,6 +7367,18 @@ ext.onNotCommandReceived = (ctx, msg) => {
     if (raw.startsWith("电话")) {
         const rest = raw.slice(2).trim();
         return cmd_phone.solve(ctx, msg, makeFakeCmdArgs(rest ? rest.split(/\s+/) : []));
+    }
+
+    if (raw.startsWith("踩点")) {
+        const rest = raw.slice(2).trim();
+        return handleStakeout(ctx, msg, makeFakeCmdArgs(rest ? rest.split(/\s+/) : []));
+    }
+
+    if (raw.startsWith("约战")) {
+        const toggle = JSON.parse(cachedGet("global_feature_toggle") || "{}");
+        if (!toggle.dlc_battle_appt) return seal.replyToSender(ctx, msg, "❌ 约战功能未开启，请联系管理员。");
+        const rest = raw.slice(2).trim();
+        return cmd_appointment_private.solve(ctx, msg, makeFakeCmdArgs(rest ? rest.split(/\s+/) : []), { trigger: "约战", icon: "⚔️" });
     }
 
     const _matchedAlias = getPrivateAliases().find(a => a.trigger && raw.startsWith(a.trigger));

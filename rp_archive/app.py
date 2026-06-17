@@ -751,6 +751,9 @@ CONFIG_SCHEMA = [
         {"key": "dlc_forum",                 "label": "论坛DLC",           "type": "bool", "default": "false"},
         {"key": "dlc_auto_day",              "label": "自动天数DLC",       "type": "bool", "default": "false"},
         {"key": "dlc_moments",               "label": "朋友圈DLC",         "type": "bool", "default": "false"},
+        {"key": "dlc_stakeout",              "label": "踩点DLC",            "type": "bool", "default": "false"},
+        {"key": "dlc_battle_appt",           "label": "战斗邀约DLC",        "type": "bool", "default": "false"},
+        {"key": "dlc_trade",                 "label": "议价交易DLC",        "type": "bool", "default": "false"},
     ]},
     {"section": "邀约", "fields": [
         {"key": "enable_join_existing_appointment", "label": "允许加入已有私约",        "type": "bool",   "default": "false"},
@@ -760,8 +763,13 @@ CONFIG_SCHEMA = [
         {"key": "idle_group_name",                  "label": "备用群名",                "type": "text",   "default": "备用", "note": "群结束后修改成的群名，默认为「备用」"},
     ]},
     {"section": "邀约时长（分钟）", "json_parent": "appointment_duration_config", "fields": [
-        {"key": "phone",   "label": "电话门槛", "type": "number", "default": "29"},
-        {"key": "private", "label": "私密门槛", "type": "number", "default": "59"},
+        {"key": "phone",    "label": "电话门槛", "type": "number", "default": "29"},
+        {"key": "private",  "label": "私密门槛", "type": "number", "default": "59"},
+        {"key": "stakeout", "label": "踩点门槛", "type": "number", "default": "59"},
+    ]},
+    {"section": "踩点", "fields": [
+        {"key": "stakeout_allow_solo", "label": "允许单人踩点", "type": "bool", "default": "false",
+         "note": "开启后玩家可发起无伴随的踩点（不填对方角色名）；目击时显示"独自""},
     ]},
     {"section": "寄信", "fields": [
         {"key": "mailCooldown",             "label": "寄信冷却（分钟）", "type": "number", "default": "60"},
@@ -922,7 +930,8 @@ def assemble_bot_config(flat):
                      "end_game_bonus_templates", "end_game_draw_config",
                      "custom_message_templates", "preset_gifts",
                      "private_appointment_aliases",
-                     "equipment_registry", "equipment_slots", "equipment_slot_names"):
+                     "equipment_registry", "equipment_slots", "equipment_slot_names",
+                     "trade_whitelist"):
         val = flat.get(blob_key)
         if val:
             result[blob_key] = val
@@ -4792,6 +4801,7 @@ def admin_rpg():
         player_skills       = _j("player_skills", {}),
         battle_log          = _j("battle_log", []),
         player_list         = player_list,
+        trade_whitelist     = _j("trade_whitelist", []),
     )
 
 
@@ -4808,6 +4818,7 @@ def admin_rpg_save():
         "equipment_registry_pending", "equipment_slots", "equipment_slot_names",
         "craft_recipes", "skill_defs",
         "battle_attrs", "attack_defense_config", "player_skills",
+        "trade_whitelist",
     }
     for key, val in data.items():
         if key not in allowed:

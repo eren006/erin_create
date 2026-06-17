@@ -1649,6 +1649,7 @@ const SYNC_DIRECT_KEYS = [
     "apply_item_notification", "apply_item_expose_rate", "apply_item_hours",
     "shop_gift_catalog_on_receive",
     "auction_allow_anon", "auction_broadcast", "auction_show_top_bidder", "auction_currency",
+    "stakeout_allow_solo",
 ];
 
 // json_parent 键 → 子字段列表（与 CONFIG_SCHEMA json_parent 对应）
@@ -1658,14 +1659,15 @@ const SYNC_JSON_PARENT_KEYS = {
         "enable_chaos_letter", "enable_secret_letter", "enable_wish_system", "enable_lovemail",
         "enable_wechat", "enable_direct_letter",
         "dlc_sighting", "dlc_fupan", "dlc_auction", "dlc_attack",
-        "dlc_forum", "dlc_auto_day", "dlc_moments"
+        "dlc_forum", "dlc_auto_day", "dlc_moments",
+        "dlc_stakeout", "dlc_battle_appt", "dlc_trade"
     ],
     "chaos_letter_config": [
         "misdelivery", "blackoutText", "loseContent", "antonymReplace",
         "reverseOrder", "mistakenSignature", "poeticSignature",
         "dailyLimit", "publicChance", "publicShowEffect", "giftLost", "giftMisdelivery"
     ],
-    "appointment_duration_config": ["phone", "private"],
+    "appointment_duration_config": ["phone", "private", "stakeout"],
     "sighting_system_config": [
         "enabled", "send_to_all", "max_reports_per_day",
         "include_ended_meetings", "time_overlap_threshold", "trigger_chance"
@@ -1754,7 +1756,8 @@ ext.cmdMap["同步到服务端"] = cmd_push_to_server;
 const SYNC_BLOB_KEYS = [
     "item_registry", "rpg_attr_defs", "sys_attr_presets",
     "end_game_bonus_templates", "end_game_draw_config",
-    "equipment_registry", "equipment_slots", "equipment_slot_names"
+    "equipment_registry", "equipment_slots", "equipment_slot_names",
+    "trade_whitelist"
 ];
 
 let cmd_full_sync = seal.ext.newCmdItemInfo();
@@ -1822,7 +1825,8 @@ cmd_full_sync.solve = async (ctx, msg, argv) => {
                     }
                     if (!code) continue;
                     reg[code] = { code, name: p.name, desc: p.desc, type: p.type,
-                                  maxUses: p.maxUses, attrs: p.attrs, price: 0, canResell: p.canResell };
+                                  maxUses: p.maxUses, attrs: p.attrs, price: 0, canResell: p.canResell,
+                                  ...(p.durability != null ? { durability: p.durability } : {}) };
                     pendingMerged++;
                 }
                 mainStorSet("item_registry", JSON.stringify(reg));
@@ -1863,7 +1867,8 @@ cmd_full_sync.solve = async (ctx, msg, argv) => {
                         });
                     }
                     equipReg[code] = { code, name: p.name, desc: p.desc, type: "equipment",
-                                       slot: p.slot, baseAttrs };
+                                       slot: p.slot, baseAttrs,
+                                       ...(p.durability != null ? { durability: p.durability } : {}) };
                     equipPendingMerged++;
                 }
                 mainStorSet("equipment_registry", JSON.stringify(equipReg));
