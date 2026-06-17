@@ -117,6 +117,13 @@ function peekQueue(defenderKey) {
     return (q[defenderKey] || [])[0] || null;
 }
 
+function dequeueChallenge(defenderKey, pvpId) {
+    const q = getQueue();
+    if (!q[defenderKey]) return;
+    q[defenderKey] = q[defenderKey].filter(id => id !== pvpId);
+    setData('pvpQueue', q);
+}
+
 // ========================
 // 角色名 / 个人群 查询（读主插件 a_private_group）
 // a_private_group[platform][uid] = [roleName, gid]
@@ -213,6 +220,45 @@ function getGameDay() {
 function isPvpOpen() { return getData('pvpOpen', false); }
 
 // ========================
+// 北京时间 & 时间槽锁定
+// ========================
+function getBeijingTimeSlot() {
+    const bj = new Date(Date.now() + 8 * 60 * 60 * 1000);
+    const h = String(bj.getUTCHours()).padStart(2, '0');
+    const m = String(bj.getUTCMinutes()).padStart(2, '0');
+    return `${h}:${m}-23:59`;
+}
+
+function lockPlayerSlot(platform, uid, dayStr, slot) {
+    const api = globalThis.__changriApi;
+    if (!api || !slot) return;
+    let slots;
+    try { slots = JSON.parse(api.kvGetRaw('a_lockedSlots') || '{}'); } catch (e) { slots = {}; }
+    const key = `${platform}:${uid}`;
+    if (!slots[key]) slots[key] = {};
+    if (!slots[key][dayStr]) slots[key][dayStr] = [];
+    if (!slots[key][dayStr].includes(slot)) {
+        slots[key][dayStr].push(slot);
+        api.kvSetRaw('a_lockedSlots', JSON.stringify(slots));
+    }
+}
+
+function unlockPlayerSlot(platform, uid, dayStr, slot) {
+    const api = globalThis.__changriApi;
+    if (!api || !dayStr || !slot) return;
+    let slots;
+    try { slots = JSON.parse(api.kvGetRaw('a_lockedSlots') || '{}'); } catch (e) { return; }
+    const key = `${platform}:${uid}`;
+    if (!slots[key]?.[dayStr]) return;
+    const idx = slots[key][dayStr].indexOf(slot);
+    if (idx === -1) return;
+    slots[key][dayStr].splice(idx, 1);
+    if (slots[key][dayStr].length === 0) delete slots[key][dayStr];
+    if (Object.keys(slots[key]).length === 0) delete slots[key];
+    api.kvSetRaw('a_lockedSlots', JSON.stringify(slots));
+}
+
+// ========================
 // 工具函数
 // ========================
 function rd(max) {
@@ -267,6 +313,8 @@ function settlePvp(endPoint, platform, session, result) {
 
     iP.timeLocked = false;
     dP.timeLocked = false;
+    unlockPlayerSlot(iPf, iUid, session.iLockDay, session.iLockSlot);
+    unlockPlayerSlot(dPf, dUid, session.dLockDay, session.dLockSlot);
 
     if (result === 'initiator_win') {
         const take = session.defenderRaindrops;
@@ -290,8 +338,9 @@ function settlePvp(endPoint, platform, session, result) {
     if (result === 'defender_win' && iP.raindrops <= 0)
         handleDeath(endPoint, iPf, iUid, '执念之争落败·雨点归零');
 
-    // 提醒排队
+    // 提醒排队（先出队已结算的条目，再看是否还有下一条）
     [session.initiator, session.defender].forEach(key => {
+        dequeueChallenge(key, session.pvpId);
         const next = peekQueue(key);
         if (next) {
             const [pf, u] = key.split(':');
@@ -320,6 +369,7 @@ function checkTimeouts(endPoint, platform) {
         dP.raindrops = Math.max(0, dP.raindrops - penalty);
         iP.timeLocked = false;
         dP.timeLocked = false;
+        unlockPlayerSlot(iPf, iUid, s.iLockDay, s.iLockSlot);
         savePlayer(iPf, iUid, iP);
         savePlayer(dPf, dUid, dP);
         s.status = 'completed';
@@ -412,8 +462,14 @@ cmdChallenge.solve = (ctx, msg, cmdArgs) => {
 
     const isDefBusy = hasActivePvp(platform, defUid);
     if (isDefBusy) {
-        // 排队，暂不锁定发起方
+        // 排队，暂不锁定发起方，但计数照算（防止绕过每日上限）
         enqueueChallenge(dKey, pvpId);
+        if (day >= 2 && day <= 3) {
+            me.pvpToday = (me.pvpToday || 0) + 1;
+            if (!me.pvpPairsToday) me.pvpPairsToday = [];
+            me.pvpPairsToday.push(defUid);
+            savePlayer(platform, uid, me);
+        }
         seal.replyToSender(ctx, msg,
             `【雨境】已向 ${targetName} 发起执念之争（${pvpId}），对方正在对决中，已排入队列。`);
         sendToMgmt(ctx.endPoint, platform,
@@ -427,6 +483,12 @@ cmdChallenge.solve = (ctx, msg, cmdArgs) => {
             me.pvpPairsToday.push(defUid);
         }
         savePlayer(platform, uid, me);
+
+        const iSlot = getBeijingTimeSlot();
+        session.iLockDay = `D${day}`;
+        session.iLockSlot = iSlot;
+        saveSession(pvpId, session);
+        lockPlayerSlot(platform, uid, `D${day}`, iSlot);
 
         seal.replyToSender(ctx, msg,
             `【雨境】执念之争已发起。携带 ${betRain} 颗雨点，等待 ${targetName} 应战……\nID：${pvpId}`);
@@ -489,6 +551,12 @@ cmdAccept.solve = (ctx, msg, cmdArgs) => {
     me.timeLocked = true;
     savePlayer(platform, uid, me);
 
+    const acceptSlot = getBeijingTimeSlot();
+    const acceptDay  = `D${day}`;
+    target.dLockDay  = acceptDay;
+    target.dLockSlot = acceptSlot;
+    lockPlayerSlot(platform, uid, acceptDay, acceptSlot);
+
     // 锁定发起方（若是从排队里激活的可能还没锁）
     const iP = getPlayer(iPf, iUid);
     if (!iP.timeLocked) {
@@ -499,6 +567,9 @@ cmdAccept.solve = (ctx, msg, cmdArgs) => {
         }
         iP.timeLocked = true;
         savePlayer(iPf, iUid, iP);
+        target.iLockDay  = acceptDay;
+        target.iLockSlot = acceptSlot;
+        lockPlayerSlot(iPf, iUid, acceptDay, acceptSlot);
     }
 
     target.defenderRaindrops = betRain;
@@ -545,6 +616,7 @@ cmdWithdraw.solve = (ctx, msg, cmdArgs) => {
     const me = getPlayer(platform, uid);
     me.timeLocked = false;
     savePlayer(platform, uid, me);
+    unlockPlayerSlot(platform, uid, target.iLockDay, target.iLockSlot);
 
     seal.replyToSender(ctx, msg, `【雨境】执念之争已撤回（${target.pvpId}）。`);
     const [dPf, dUid] = target.defender.split(':');

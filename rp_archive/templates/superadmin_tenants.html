@@ -224,6 +224,34 @@ a:hover{color:var(--accent2);}
           <button type="button" class="btn-pw-cancel" onclick="togglePwForm('pw-{{ t.id }}')">取消</button>
         </form>
       </div>
+
+      {% if t.shows %}
+      <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px;">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em;">公开链接管理</div>
+        {% for s in t.shows %}
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+          <span style="font-size:12px;color:var(--text);min-width:80px;">{{ s.name or '未命名' }}</span>
+          {% if s.public_view_enabled %}
+          <span style="font-size:11px;color:#60c8ff;background:#1a2d3a;padding:1px 6px;border-radius:4px;">🌐 公开中</span>
+          <code style="font-size:11px;color:var(--muted);word-break:break-all;">/view/{{ s.public_token }}</code>
+          {% else %}
+          <span style="font-size:11px;color:var(--muted);">已关闭</span>
+          {% endif %}
+          <form method="post" action="{{ url_for('superadmin_show_toggle_public', sid=s.id) }}" style="margin:0;">
+            <button type="submit" class="btn-sm" style="padding:2px 8px;font-size:11px;">
+              {{ '🔒 关闭' if s.public_view_enabled else '🌐 开启' }}
+            </button>
+          </form>
+          {% if s.public_view_enabled %}
+          <form method="post" action="{{ url_for('superadmin_show_reset_token', sid=s.id) }}" style="margin:0;"
+                onsubmit="return confirm('重置后旧链接立即失效。确认？')">
+            <button type="submit" class="btn-sm btn-reset" style="padding:2px 8px;font-size:11px;">🔄 重置链接</button>
+          </form>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
     </div>
     {% endfor %}
   {% else %}

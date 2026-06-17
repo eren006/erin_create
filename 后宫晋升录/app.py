@@ -1,7 +1,7 @@
 """
 后宫晋升录 · Web 后端
 Flask + SQLite
-职责：花名册（只读）、宫廷公报（只读）、陷害面板、夺嫡、结盟、书信、秘密
+职责：花名册（只读）、宫廷公报（只读）、陷害面板、夺嫡、秘密
 """
 
 import sqlite3, json, os, random, string

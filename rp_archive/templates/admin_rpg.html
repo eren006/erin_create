@@ -1,0 +1,983 @@
+{% extends "base.html" %}
+{% block title %}RPG 管理 · 长日存档{% endblock %}
+
+{% block head %}
+<style>
+/* ── 布局 ────────────────────────────────────────────────── */
+.rpg-layout {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 18px;
+  align-items: start;
+}
+@media (max-width: 900px) { .rpg-layout { grid-template-columns: 1fr; } }
+
+.rpg-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px;
+  margin-bottom: 14px;
+}
+.rpg-panel-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.rpg-panel-title .badge {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* ── 类型选择器 ──────────────────────────────────────────── */
+.type-selector {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.type-btn {
+  background: var(--surface2);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 4px;
+  text-align: center;
+  cursor: pointer;
+  transition: all .15s;
+  font-family: inherit;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.type-btn .type-icon { font-size: 18px; display: block; margin-bottom: 2px; }
+.type-btn:hover { border-color: var(--accent); color: var(--text); }
+.type-btn.active { border-color: var(--accent); background: rgba(139,124,246,.12); color: var(--accent); }
+
+/* ── 表单字段 ────────────────────────────────────────────── */
+.rpg-field { margin-bottom: 12px; }
+.rpg-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.rpg-hint {
+  font-size: 10px;
+  color: var(--muted);
+  opacity: .7;
+  margin-top: 3px;
+  line-height: 1.4;
+}
+.rpg-input {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 7px 10px;
+  font-size: 13px;
+  color: var(--text);
+  font-family: inherit;
+  transition: border-color .15s;
+}
+.rpg-input:focus { outline: none; border-color: var(--accent); }
+.rpg-select {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 7px 10px;
+  font-size: 13px;
+  color: var(--text);
+  font-family: inherit;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath fill='%237878a0' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 28px;
+}
+.rpg-select:focus { outline: none; border-color: var(--accent); }
+
+.rpg-row { display: flex; gap: 8px; }
+.rpg-row .rpg-field { flex: 1; }
+
+/* ── toggle ── */
+.rpg-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.toggle { position: relative; display: inline-block; width: 32px; height: 18px; flex-shrink: 0; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute; inset: 0; background: var(--surface2);
+  border: 1px solid var(--border); border-radius: 18px; cursor: pointer;
+  transition: .2s;
+}
+.toggle-slider:before {
+  content: ""; position: absolute;
+  width: 12px; height: 12px; left: 2px; top: 2px;
+  background: var(--muted); border-radius: 50%; transition: .2s;
+}
+.toggle input:checked + .toggle-slider { background: var(--accent); border-color: var(--accent); }
+.toggle input:checked + .toggle-slider:before { transform: translateX(14px); background: #fff; }
+
+/* ── 属性 chips ── */
+.attr-effects-wrap { display: flex; flex-direction: column; gap: 6px; }
+.attr-chips {
+  display: flex; flex-wrap: wrap; gap: 5px;
+  min-height: 24px; align-items: center;
+}
+.attr-chip {
+  display: inline-flex; align-items: center; gap: 3px;
+  border-radius: 6px; padding: 2px 6px 2px 8px; font-size: 11px; font-weight: 600;
+}
+.attr-chip-pos { background: rgba(134,239,172,.12); color: #86efac; border: 1px solid rgba(134,239,172,.25); }
+.attr-chip-neg { background: rgba(248,113,113,.12); color: #f87171; border: 1px solid rgba(248,113,113,.25); }
+.attr-chip-rm {
+  background: none; border: none; cursor: pointer; color: inherit;
+  opacity: .6; font-size: 12px; padding: 0 1px; line-height: 1;
+}
+.attr-chip-rm:hover { opacity: 1; }
+.attr-picker-row { display: flex; gap: 6px; align-items: center; }
+.attr-picker-row .rpg-select { flex: 1; }
+.attr-picker-row .rpg-input { width: 70px; flex-shrink: 0; }
+.attr-picker-add {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 7px; color: var(--text); padding: 6px 10px;
+  font-size: 12px; cursor: pointer; white-space: nowrap; font-family: inherit;
+  flex-shrink: 0;
+}
+.attr-picker-add:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── 提交按钮 ── */
+.rpg-submit {
+  width: 100%;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 9px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background .15s;
+  margin-top: 4px;
+}
+.rpg-submit:hover { background: var(--accent2); }
+
+/* ── 待同步队列 ────────────────────────────────────────── */
+.pending-empty { font-size: 12px; color: var(--muted); text-align: center; padding: 16px 0; opacity: .6; }
+.pending-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 6px;
+}
+.pending-item:last-child { margin-bottom: 0; }
+.pending-type-badge {
+  flex-shrink: 0;
+  border-radius: 5px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  margin-top: 1px;
+}
+.badge-item    { background: rgba(139,124,246,.15); color: var(--accent); border: 1px solid rgba(139,124,246,.3); }
+.badge-interact{ background: rgba(192,132,252,.15); color: var(--accent2); border: 1px solid rgba(192,132,252,.3); }
+.badge-equip   { background: rgba(252,211,77,.15);  color: var(--gold);   border: 1px solid rgba(252,211,77,.3); }
+.badge-currency{ background: rgba(134,239,172,.15); color: var(--green);  border: 1px solid rgba(134,239,172,.3); }
+.pending-info { flex: 1; min-width: 0; }
+.pending-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.pending-meta { font-size: 11px; color: var(--muted); margin-top: 1px; line-height: 1.4; }
+.pending-del {
+  flex-shrink: 0; background: none; border: 1px solid var(--border);
+  border-radius: 6px; color: var(--muted); padding: 2px 7px; font-size: 11px;
+  cursor: pointer; font-family: inherit;
+}
+.pending-del:hover { border-color: var(--red); color: var(--red); }
+
+/* ── 注册表总览 ────────────────────────────────────────── */
+.reg-search-bar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.reg-search-bar .rpg-input { flex: 1; }
+.reg-search-bar .rpg-select { width: 110px; flex-shrink: 0; }
+
+.reg-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.reg-table th {
+  text-align: left;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .8px;
+  text-transform: uppercase;
+  padding: 0 8px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.reg-table td {
+  padding: 7px 8px;
+  border-bottom: 1px solid rgba(46,46,62,.5);
+  vertical-align: top;
+}
+.reg-table tr:last-child td { border-bottom: none; }
+.reg-table tr:hover td { background: rgba(139,124,246,.04); }
+.reg-code { font-family: monospace; font-size: 11px; color: var(--accent); }
+.reg-del {
+  background: none; border: 1px solid var(--border); border-radius: 5px;
+  color: var(--muted); padding: 1px 6px; font-size: 10px; cursor: pointer;
+  font-family: inherit;
+}
+.reg-del:hover { border-color: var(--red); color: var(--red); }
+.reg-empty { text-align: center; color: var(--muted); padding: 20px; font-size: 12px; opacity: .6; }
+
+/* ── 属性/槽位管理 ────────────────────────────────────── */
+.mgmt-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  margin-bottom: 5px;
+  font-size: 12px;
+}
+.mgmt-row:last-child { margin-bottom: 0; }
+.mgmt-row-name { font-weight: 600; }
+.mgmt-row-meta { color: var(--muted); font-size: 11px; }
+
+.mgmt-add-form {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.mgmt-add-form .rpg-input { flex: 1; min-width: 80px; }
+.mgmt-add-btn {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 7px; color: var(--text); padding: 6px 12px;
+  font-size: 12px; cursor: pointer; white-space: nowrap; font-family: inherit;
+  flex-shrink: 0;
+}
+.mgmt-add-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── 提示信息条 ─────────────────────────────────────────── */
+.info-bar {
+  background: rgba(139,124,246,.08);
+  border: 1px solid rgba(139,124,246,.2);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.6;
+  margin-bottom: 14px;
+}
+.info-bar b { color: var(--accent); }
+
+/* ── toast ──────────────────────────────────────────────── */
+#rpg-toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 9px 18px; font-size: 13px;
+  box-shadow: 0 4px 20px rgba(0,0,0,.4);
+  opacity: 0; pointer-events: none;
+  transition: opacity .2s;
+  z-index: 999;
+}
+#rpg-toast.show { opacity: 1; }
+#rpg-toast.ok   { border-color: var(--green); color: var(--green); }
+#rpg-toast.err  { border-color: var(--red);   color: var(--red); }
+
+.field-hidden { display: none !important; }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="page">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+    <div>
+      <div style="font-size:18px;font-weight:700;margin-bottom:3px;">RPG 管理</div>
+      <div style="font-size:12px;color:var(--muted);">注册物品 · 装备 · 属性 · 槽位，改完后机器人执行「全量上传」同步</div>
+    </div>
+  </div>
+
+  <div class="rpg-layout">
+    <!-- ══ 左栏：注册 + 待同步 ══ -->
+    <div>
+
+      <!-- 注册新条目 -->
+      <div class="rpg-panel">
+        <div class="rpg-panel-title">📦 注册新条目</div>
+
+        <div class="info-bar">
+          在这里填写后点「加入待同步」，条目会进入下方队列。<br>
+          机器人执行 <b>。全量上传</b> 后自动分配编号并正式生效。
+        </div>
+
+        <!-- 类型选择 -->
+        <div class="rpg-field">
+          <div class="rpg-label">类型</div>
+          <div class="type-selector">
+            <button class="type-btn active" data-type="item" onclick="RPG.setType('item')">
+              <span class="type-icon">🎒</span>物品
+            </button>
+            <button class="type-btn" data-type="interact" onclick="RPG.setType('interact')">
+              <span class="type-icon">✨</span>互动物品
+            </button>
+            <button class="type-btn" data-type="equip" onclick="RPG.setType('equip')">
+              <span class="type-icon">⚔️</span>装备
+            </button>
+            <button class="type-btn" data-type="currency" onclick="RPG.setType('currency')">
+              <span class="type-icon">💰</span>货币
+            </button>
+          </div>
+        </div>
+
+        <!-- 名称 + 描述（所有类型共用） -->
+        <div class="rpg-row">
+          <div class="rpg-field">
+            <label class="rpg-label">名称</label>
+            <input class="rpg-input" id="f-name" placeholder="急救包">
+            <div class="rpg-hint">显示名称，全局唯一</div>
+          </div>
+          <div class="rpg-field">
+            <label class="rpg-label">描述</label>
+            <input class="rpg-input" id="f-desc" placeholder="紧急治疗用品">
+            <div class="rpg-hint">查看物品时显示的说明</div>
+          </div>
+        </div>
+
+        <!-- 使用次数（物品 / 互动物品） -->
+        <div class="rpg-field" id="field-uses">
+          <label class="rpg-label">使用次数</label>
+          <input class="rpg-input" id="f-uses" type="number" value="-1">
+          <div class="rpg-hint">-1 = 无限次；正整数 = 消耗品，用完自动移除</div>
+        </div>
+
+        <!-- 槽位（装备） -->
+        <div class="rpg-field field-hidden" id="field-slot">
+          <label class="rpg-label">槽位</label>
+          <select class="rpg-select" id="f-slot"></select>
+          <div class="rpg-hint">装备佩戴的位置，可在右侧「槽位管理」中增减</div>
+        </div>
+
+        <!-- 属性效果（物品 / 互动物品） -->
+        <div class="rpg-field" id="field-attrs">
+          <label class="rpg-label">属性效果 <span style="font-weight:400;font-size:10px;opacity:.6">（使用后生效）</span></label>
+          <div class="attr-effects-wrap">
+            <div class="attr-chips" id="chips-attrs"></div>
+            <div class="attr-picker-row">
+              <select class="rpg-select" id="pick-attr-name">
+                <option value="">— 选择属性 —</option>
+              </select>
+              <input class="rpg-input" id="pick-attr-val" type="number" placeholder="+20">
+              <button class="attr-picker-add" onclick="RPG.addEffect('attrs')">添加</button>
+            </div>
+            <input type="hidden" id="hid-attrs">
+          </div>
+          <div class="rpg-hint">使用该物品对角色属性的加减，如「体力+20」；可留空</div>
+        </div>
+
+        <!-- 基础属性加成（装备） -->
+        <div class="rpg-field field-hidden" id="field-base-attrs">
+          <label class="rpg-label">基础属性加成 <span style="font-weight:400;font-size:10px;opacity:.6">（佩戴期间持续生效）</span></label>
+          <div class="attr-effects-wrap">
+            <div class="attr-chips" id="chips-base-attrs"></div>
+            <div class="attr-picker-row">
+              <select class="rpg-select" id="pick-base-name">
+                <option value="">— 选择属性 —</option>
+              </select>
+              <input class="rpg-input" id="pick-base-val" type="number" placeholder="+15">
+              <button class="attr-picker-add" onclick="RPG.addEffect('base-attrs')">添加</button>
+            </div>
+            <input type="hidden" id="hid-base-attrs">
+          </div>
+          <div class="rpg-hint">佩戴后角色属性永久加成，脱装备时取消</div>
+        </div>
+
+        <!-- 允许二手（物品 / 互动物品） -->
+        <div class="rpg-toggle-row" id="field-resell">
+          <label class="toggle">
+            <input type="checkbox" id="f-resell">
+            <span class="toggle-slider"></span>
+          </label>
+          <div>
+            <div style="font-size:12px;font-weight:600;">允许二手</div>
+            <div class="rpg-hint" style="margin-top:0;">开启后角色可将此物品挂到二手市场出售</div>
+          </div>
+        </div>
+
+        <button class="rpg-submit" onclick="RPG.addPending()">加入待同步队列</button>
+      </div>
+
+      <!-- 待同步队列 -->
+      <div class="rpg-panel">
+        <div class="rpg-panel-title">
+          ⏳ 待同步队列
+          <span class="badge" id="pending-count">0</span>
+        </div>
+        <div class="info-bar" style="margin-bottom:10px;">
+          以下条目已保存到服务端，机器人执行 <b>。全量上传</b> 后正式分配编号。
+        </div>
+        <div id="pending-list"></div>
+      </div>
+
+    </div>
+
+    <!-- ══ 右栏：注册表 + 属性 + 槽位 ══ -->
+    <div>
+
+      <!-- 已注册条目 -->
+      <div class="rpg-panel">
+        <div class="rpg-panel-title">
+          📋 已注册条目
+          <span class="badge" id="reg-count">0</span>
+        </div>
+        <div class="reg-search-bar">
+          <input class="rpg-input" id="reg-search" placeholder="搜索名称或编号…" oninput="RPG.renderRegistry()">
+          <select class="rpg-select" id="reg-filter" onchange="RPG.renderRegistry()">
+            <option value="">全部类型</option>
+            <option value="item">物品</option>
+            <option value="interact">互动物品</option>
+            <option value="equip">装备</option>
+            <option value="currency">货币</option>
+          </select>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="reg-table">
+            <thead>
+              <tr>
+                <th>编号</th>
+                <th>类型</th>
+                <th>名称</th>
+                <th>详情</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="reg-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 属性管理 -->
+      <div class="rpg-panel">
+        <div class="rpg-panel-title">
+          📊 属性管理
+          <span class="badge" id="attr-count">0</span>
+        </div>
+        <div class="info-bar">
+          属性是物品效果和装备加成的基础单位。<b>必须先在这里注册属性</b>，才能在注册条目时引用它。
+        </div>
+        <div id="attr-list"></div>
+        <div class="mgmt-add-form" id="attr-add-form">
+          <div style="flex:2;display:flex;flex-direction:column;gap:4px;">
+            <input class="rpg-input" id="new-attr-name" placeholder="属性名，如：体力">
+            <div class="rpg-hint">名称全局唯一，建议用中文或英文缩写（如 ATK、HP）</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <input class="rpg-input" id="new-attr-default" type="number" value="0" style="width:70px;" placeholder="默认值">
+            <div class="rpg-hint">默认值</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <input class="rpg-input" id="new-attr-min" type="number" placeholder="最小" style="width:60px;">
+            <div class="rpg-hint">最小（空=不限）</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <input class="rpg-input" id="new-attr-max" type="number" placeholder="最大" style="width:60px;">
+            <div class="rpg-hint">最大（空=不限）</div>
+          </div>
+          <button class="mgmt-add-btn" onclick="RPG.addAttr()">+ 注册属性</button>
+        </div>
+      </div>
+
+      <!-- 槽位管理 -->
+      <div class="rpg-panel">
+        <div class="rpg-panel-title">
+          🎯 槽位管理
+          <span class="badge" id="slot-count">0</span>
+        </div>
+        <div class="info-bar">
+          槽位决定装备可以穿在哪个位置，角色每个槽位只能装备一件。
+          默认五个槽位（头/胸/手/腿/脚），可在此增减自定义槽位。
+        </div>
+        <div id="slot-list"></div>
+        <div class="mgmt-add-form">
+          <div style="flex:1;display:flex;flex-direction:column;gap:4px;">
+            <input class="rpg-input" id="new-slot-code" placeholder="槽位码，如 ring1">
+            <div class="rpg-hint">程序内部标识，建议英文小写</div>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:4px;">
+            <input class="rpg-input" id="new-slot-name" placeholder="显示名，如 戒指1">
+            <div class="rpg-hint">玩家看到的名称</div>
+          </div>
+          <button class="mgmt-add-btn" onclick="RPG.addSlot()">+ 添加槽位</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div id="rpg-toast"></div>
+
+<!-- 数据 -->
+<script>
+var itemReg   = {{ item_registry    | tojson }};
+var itemPend  = {{ item_pending     | tojson }};
+var equipReg  = {{ equip_registry   | tojson }};
+var equipPend = {{ equip_pending    | tojson }};
+var slots     = {{ equip_slots      | tojson }};
+var slotNames = {{ equip_slot_names | tojson }};
+var attrDefs  = {{ attr_defs        | tojson }};
+</script>
+
+<script>
+var RPG = (function() {
+  var currentType = 'item';
+  var fx = {};  // {key: [{attr, delta}]}
+
+  var DEFAULT_SLOT_NAMES = { head:'头部', chest:'胸部', hand:'手部', leg:'腿部', foot:'脚部' };
+  var TYPE_LABEL = { item:'物品', interact:'互动物品', equip:'装备', currency:'货币' };
+
+  // ── Toast ──────────────────────────────────────────
+  function toast(msg, type) {
+    var el = document.getElementById('rpg-toast');
+    el.textContent = msg;
+    el.className = 'show ' + (type || 'ok');
+    clearTimeout(el._t);
+    el._t = setTimeout(function() { el.className = ''; }, 2800);
+  }
+
+  // ── 类型切换 ───────────────────────────────────────
+  function setType(t) {
+    currentType = t;
+    document.querySelectorAll('.type-btn').forEach(function(b) {
+      b.classList.toggle('active', b.dataset.type === t);
+    });
+    var isItem    = t === 'item' || t === 'interact';
+    var isEquip   = t === 'equip';
+    var isCurr    = t === 'currency';
+
+    tog('field-uses',       isItem);
+    tog('field-slot',       isEquip);
+    tog('field-attrs',      isItem);
+    tog('field-base-attrs', isEquip);
+    tog('field-resell',     isItem);
+  }
+
+  function tog(id, show) {
+    var el = document.getElementById(id);
+    if (el) el.classList.toggle('field-hidden', !show);
+  }
+
+  // ── 属性效果选择器 ─────────────────────────────────
+  function populateAttrDropdowns() {
+    var names = Object.keys(attrDefs);
+    var opts = '<option value="">— 选择属性 —</option>' +
+      names.map(function(n) { return '<option value="' + esc(n) + '">' + esc(n) + '</option>'; }).join('');
+    ['pick-attr-name', 'pick-base-name'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) { var v = el.value; el.innerHTML = opts; el.value = v; }
+    });
+  }
+
+  function populateSlotDropdown() {
+    var el = document.getElementById('f-slot');
+    if (!el) return;
+    var list = slots.length ? slots : ['head','chest','hand','leg','foot'];
+    el.innerHTML = list.map(function(s) {
+      var label = slotNames[s] || DEFAULT_SLOT_NAMES[s] || s;
+      return '<option value="' + esc(s) + '">' + esc(label) + ' (' + esc(s) + ')</option>';
+    }).join('');
+  }
+
+  function renderEffectChips(key) {
+    var list = fx[key] || [];
+    var chipsEl  = document.getElementById('chips-' + key);
+    var hiddenEl = document.getElementById('hid-' + key);
+    if (!chipsEl) return;
+    chipsEl.innerHTML = list.length
+      ? list.map(function(e, i) {
+          var sign = e.delta >= 0 ? '+' : '';
+          var cls  = e.delta >= 0 ? 'attr-chip-pos' : 'attr-chip-neg';
+          return '<span class="attr-chip ' + cls + '">' + esc(e.attr) + sign + e.delta +
+            '<button class="attr-chip-rm" onclick="RPG.removeEffect(\'' + key + '\',' + i + ')" title="移除">×</button></span>';
+        }).join('')
+      : '<span style="font-size:11px;color:var(--muted);opacity:.5;">无效果</span>';
+    if (hiddenEl) hiddenEl.value = list.map(function(e) {
+      return e.attr + (e.delta >= 0 ? '+' : '') + e.delta;
+    }).join(',');
+  }
+
+  function addEffect(key) {
+    var nameEl = document.getElementById('pick-' + (key === 'base-attrs' ? 'base' : 'attr') + '-name');
+    var valEl  = document.getElementById('pick-' + (key === 'base-attrs' ? 'base' : 'attr') + '-val');
+    var attr  = nameEl ? nameEl.value.trim() : '';
+    var delta = parseInt(valEl ? valEl.value : '');
+    if (!attr)        { toast('请先选择属性', 'err'); return; }
+    if (isNaN(delta)) { toast('请输入数值', 'err'); return; }
+    if (!fx[key]) fx[key] = [];
+    if (fx[key].some(function(e) { return e.attr === attr; })) { toast('该属性已添加', 'err'); return; }
+    fx[key].push({ attr: attr, delta: delta });
+    if (nameEl) nameEl.value = '';
+    if (valEl)  valEl.value  = '';
+    renderEffectChips(key);
+  }
+
+  function removeEffect(key, idx) {
+    if (fx[key]) fx[key].splice(idx, 1);
+    renderEffectChips(key);
+  }
+
+  // ── 加入待同步 ─────────────────────────────────────
+  function addPending() {
+    var name = document.getElementById('f-name').value.trim();
+    var desc = document.getElementById('f-desc').value.trim() || '暂无描述';
+    if (!name) { toast('请填写名称', 'err'); return; }
+
+    // 检查重名
+    var allNames = Object.values(itemReg).map(function(r) { return r.name; })
+      .concat(Object.values(equipReg).map(function(r) { return r.name; }))
+      .concat(itemPend.map(function(p) { return p.name; }))
+      .concat(equipPend.map(function(p) { return p.name; }));
+    if (allNames.indexOf(name) !== -1) { toast('「' + name + '」名称已存在', 'err'); return; }
+
+    if (currentType === 'currency') {
+      itemPend.push({ name: name, desc: desc, type: 'currency' });
+    } else if (currentType === 'equip') {
+      var slot = document.getElementById('f-slot').value;
+      var baseAttrs = document.getElementById('hid-base-attrs').value.trim();
+      if (!slot) { toast('请选择槽位', 'err'); return; }
+      if (!baseAttrs) { toast('装备必须至少有一条基础属性', 'err'); return; }
+      equipPend.push({ name: name, desc: desc, slot: slot, baseAttrs: baseAttrs });
+    } else {
+      var uses   = parseInt(document.getElementById('f-uses').value);
+      var attrs  = document.getElementById('hid-attrs').value.trim();
+      var resell = document.getElementById('f-resell').checked;
+      if (isNaN(uses)) { toast('次数必须是数字', 'err'); return; }
+      itemPend.push({ name: name, desc: desc, type: currentType,
+                      maxUses: uses, attrs: attrs || null, canResell: resell });
+    }
+
+    // 清空表单
+    document.getElementById('f-name').value = '';
+    document.getElementById('f-desc').value = '';
+    document.getElementById('f-uses').value = '-1';
+    document.getElementById('f-resell').checked = false;
+    fx['attrs'] = [];      renderEffectChips('attrs');
+    fx['base-attrs'] = []; renderEffectChips('base-attrs');
+
+    save(function() {
+      toast('已加入待同步队列 ✓');
+      renderPending();
+    });
+  }
+
+  // ── 渲染待同步 ─────────────────────────────────────
+  function renderPending() {
+    var el = document.getElementById('pending-list');
+    var total = itemPend.length + equipPend.length;
+    document.getElementById('pending-count').textContent = total;
+
+    if (!total) {
+      el.innerHTML = '<div class="pending-empty">暂无待同步条目</div>';
+      return;
+    }
+
+    var rows = [];
+    itemPend.forEach(function(p, i) {
+      rows.push(renderPendingRow(p, 'item', i));
+    });
+    equipPend.forEach(function(p, i) {
+      rows.push(renderPendingRow(p, 'equip', i));
+    });
+    el.innerHTML = rows.join('');
+  }
+
+  function renderPendingRow(p, source, i) {
+    var typeKey  = source === 'equip' ? 'equip' : (p.type || 'item');
+    var badgeCls = { item:'badge-item', interact:'badge-interact', equip:'badge-equip', currency:'badge-currency' }[typeKey] || 'badge-item';
+    var label    = TYPE_LABEL[typeKey] || typeKey;
+
+    var meta = '';
+    if (typeKey === 'equip') {
+      var sn = slotNames[p.slot] || DEFAULT_SLOT_NAMES[p.slot] || p.slot || '';
+      meta = sn + (p.baseAttrs ? ' · ' + p.baseAttrs : '');
+    } else if (typeKey !== 'currency') {
+      meta = (p.maxUses === -1 ? '无限次' : (p.maxUses + '次')) +
+             (p.attrs ? ' · ' + p.attrs : '') +
+             (p.canResell ? ' · 可二手' : '');
+    }
+
+    return '<div class="pending-item">' +
+      '<span class="pending-type-badge ' + badgeCls + '">' + esc(label) + '</span>' +
+      '<div class="pending-info">' +
+        '<div class="pending-name">' + esc(p.name) + '</div>' +
+        '<div class="pending-meta">' + esc(p.desc || '') +
+          (meta ? '<br>' + esc(meta) : '') + '</div>' +
+      '</div>' +
+      '<button class="pending-del" onclick="RPG.removePending(\'' + source + '\',' + i + ')">移除</button>' +
+      '</div>';
+  }
+
+  function removePending(source, i) {
+    var list = source === 'equip' ? equipPend : itemPend;
+    var name = list[i] ? list[i].name : '';
+    if (!confirm('移除「' + name + '」？')) return;
+    list.splice(i, 1);
+    save(function() { toast('已移除'); renderPending(); });
+  }
+
+  // ── 注册表总览 ─────────────────────────────────────
+  function renderRegistry() {
+    var tbody  = document.getElementById('reg-tbody');
+    var search = (document.getElementById('reg-search').value || '').toLowerCase();
+    var filter = document.getElementById('reg-filter').value;
+
+    var rows = [];
+
+    // item_registry（货币 + 物品 + 互动）
+    Object.values(itemReg).forEach(function(r) {
+      if (filter && r.type !== filter) return;
+      if (search && !(r.code + r.name).toLowerCase().includes(search)) return;
+      rows.push(r);
+    });
+
+    // equipment_registry
+    if (!filter || filter === 'equip') {
+      Object.values(equipReg).forEach(function(r) {
+        if (search && !(r.code + r.name).toLowerCase().includes(search)) return;
+        rows.push(Object.assign({}, r, { _isEquip: true }));
+      });
+    }
+
+    document.getElementById('reg-count').textContent = rows.length;
+
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="reg-empty">暂无记录</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = rows.map(function(r) {
+      var typeKey = r._isEquip ? 'equip' : (r.type || 'item');
+      var badgeCls = { item:'badge-item', interact:'badge-interact', equip:'badge-equip', currency:'badge-currency' }[typeKey] || 'badge-item';
+      var label = TYPE_LABEL[typeKey] || typeKey;
+
+      var detail = '';
+      if (r._isEquip) {
+        var sn = slotNames[r.slot] || DEFAULT_SLOT_NAMES[r.slot] || r.slot || '';
+        var ba = r.baseAttrs
+          ? Object.entries(r.baseAttrs).map(function(kv) { return kv[0] + (kv[1] >= 0 ? '+' : '') + kv[1]; }).join(', ')
+          : '—';
+        detail = esc(sn) + ' · ' + esc(ba);
+      } else if (typeKey !== 'currency') {
+        detail = (r.maxUses === -1 ? '无限次' : (r.maxUses + '次')) +
+                 (r.attrs ? ' · ' + esc(r.attrs) : '');
+      }
+
+      var delFn = r._isEquip
+        ? 'RPG.delEquip(\'' + esc(r.code) + '\')'
+        : 'RPG.delItem(\'' + esc(r.code) + '\')';
+
+      return '<tr>' +
+        '<td class="reg-code">' + esc(r.code) + '</td>' +
+        '<td><span class="pending-type-badge ' + badgeCls + '">' + label + '</span></td>' +
+        '<td style="font-weight:600">' + esc(r.name) + '</td>' +
+        '<td style="color:var(--muted);font-size:11px">' + (detail || esc(r.desc || '—')) + '</td>' +
+        '<td><button class="reg-del" onclick="' + delFn + '">删除</button></td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  function delItem(code) {
+    var name = itemReg[code] ? itemReg[code].name : code;
+    if (!confirm('删除 [' + code + '] ' + name + '？')) return;
+    delete itemReg[code];
+    save(function() { toast('已删除 ' + name); renderRegistry(); });
+  }
+
+  function delEquip(code) {
+    var name = equipReg[code] ? equipReg[code].name : code;
+    if (!confirm('删除装备 [' + code + '] ' + name + '？')) return;
+    delete equipReg[code];
+    save(function() { toast('已删除 ' + name); renderRegistry(); });
+  }
+
+  // ── 属性管理 ───────────────────────────────────────
+  function renderAttrs() {
+    var el = document.getElementById('attr-list');
+    var names = Object.keys(attrDefs);
+    document.getElementById('attr-count').textContent = names.length;
+    if (!names.length) {
+      el.innerHTML = '<div class="pending-empty">暂无属性，先注册属性才能给物品/装备添加效果</div>';
+      return;
+    }
+    el.innerHTML = names.map(function(name) {
+      var d = attrDefs[name] || {};
+      var meta = '默认 ' + (d['default'] !== undefined ? d['default'] : 0);
+      if (d.min !== null && d.min !== undefined) meta += ' · 最小 ' + d.min;
+      if (d.max !== null && d.max !== undefined) meta += ' · 最大 ' + d.max;
+      return '<div class="mgmt-row">' +
+        '<div><div class="mgmt-row-name">' + esc(name) + '</div>' +
+        '<div class="mgmt-row-meta">' + esc(meta) + (d.desc ? '　' + esc(d.desc) : '') + '</div></div>' +
+        '<button class="reg-del" onclick="RPG.delAttr(\'' + esc(name) + '\')">删除</button>' +
+        '</div>';
+    }).join('');
+    populateAttrDropdowns();
+  }
+
+  function addAttr() {
+    var name   = document.getElementById('new-attr-name').value.trim();
+    var defVal = parseInt(document.getElementById('new-attr-default').value) || 0;
+    var minRaw = document.getElementById('new-attr-min').value.trim();
+    var maxRaw = document.getElementById('new-attr-max').value.trim();
+    if (!name) { toast('请填写属性名', 'err'); return; }
+    if (attrDefs[name]) { toast('「' + name + '」已存在', 'err'); return; }
+    attrDefs[name] = {
+      'default': defVal,
+      min: minRaw !== '' ? parseInt(minRaw) : null,
+      max: maxRaw !== '' ? parseInt(maxRaw) : null,
+      desc: ''
+    };
+    document.getElementById('new-attr-name').value = '';
+    save(function() { toast('属性「' + name + '」已注册 ✓'); renderAttrs(); });
+  }
+
+  function delAttr(name) {
+    if (!confirm('删除属性「' + name + '」？\n注意：已注册物品/装备中引用此属性的效果不会自动更新。')) return;
+    delete attrDefs[name];
+    save(function() { toast('已删除属性 ' + name); renderAttrs(); });
+  }
+
+  // ── 槽位管理 ───────────────────────────────────────
+  function renderSlots() {
+    var el = document.getElementById('slot-list');
+    document.getElementById('slot-count').textContent = slots.length;
+    if (!slots.length) {
+      el.innerHTML = '<div class="pending-empty">暂无槽位</div>';
+      return;
+    }
+    el.innerHTML = slots.map(function(s) {
+      var label = slotNames[s] || DEFAULT_SLOT_NAMES[s] || s;
+      var isDefault = ['head','chest','hand','leg','foot'].indexOf(s) !== -1;
+      return '<div class="mgmt-row">' +
+        '<div>' +
+          '<div class="mgmt-row-name">' + esc(label) +
+            (isDefault ? '<span style="font-size:10px;color:var(--muted);font-weight:400;margin-left:5px;">默认</span>' : '') +
+          '</div>' +
+          '<div class="mgmt-row-meta">槽位码：' + esc(s) + '</div>' +
+        '</div>' +
+        '<button class="reg-del" onclick="RPG.delSlot(\'' + esc(s) + '\')">删除</button>' +
+        '</div>';
+    }).join('');
+    populateSlotDropdown();
+  }
+
+  function addSlot() {
+    var code = document.getElementById('new-slot-code').value.trim();
+    var name = document.getElementById('new-slot-name').value.trim();
+    if (!code) { toast('请填写槽位码', 'err'); return; }
+    if (!name) { toast('请填写显示名', 'err'); return; }
+    if (slots.indexOf(code) !== -1) { toast('槽位码「' + code + '」已存在', 'err'); return; }
+    slots.push(code);
+    slotNames[code] = name;
+    document.getElementById('new-slot-code').value = '';
+    document.getElementById('new-slot-name').value = '';
+    save(function() { toast('槽位「' + name + '」已添加 ✓'); renderSlots(); });
+  }
+
+  function delSlot(code) {
+    var name = slotNames[code] || DEFAULT_SLOT_NAMES[code] || code;
+    if (!confirm('删除槽位「' + name + '」？\n注意：已注册装备的槽位不会自动更新。')) return;
+    slots.splice(slots.indexOf(code), 1);
+    delete slotNames[code];
+    save(function() { toast('已删除槽位 ' + name); renderSlots(); });
+  }
+
+  // ── 保存 ───────────────────────────────────────────
+  function save(cb) {
+    var presets = Object.keys(attrDefs);
+    fetch('/admin/rpg/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        item_registry:              itemReg,
+        rpg_attr_defs:              attrDefs,
+        sys_attr_presets:           presets,
+        item_registry_pending:      itemPend,
+        equipment_registry:         equipReg,
+        equipment_registry_pending: equipPend,
+        equipment_slots:            slots,
+        equipment_slot_names:       slotNames,
+      })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) { if (d.ok && cb) cb(); else toast('保存失败', 'err'); })
+    .catch(function() { toast('网络错误', 'err'); });
+  }
+
+  // ── 工具 ───────────────────────────────────────────
+  function esc(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── 初始化 ─────────────────────────────────────────
+  function init() {
+    setType('item');
+    populateAttrDropdowns();
+    populateSlotDropdown();
+    renderPending();
+    renderRegistry();
+    renderAttrs();
+    renderSlots();
+  }
+
+  init();
+
+  return {
+    setType: setType,
+    addPending: addPending,
+    removePending: removePending,
+    addEffect: addEffect,
+    removeEffect: removeEffect,
+    renderRegistry: renderRegistry,
+    delItem: delItem,
+    delEquip: delEquip,
+    addAttr: addAttr,
+    delAttr: delAttr,
+    addSlot: addSlot,
+    delSlot: delSlot,
+  };
+})();
+</script>
+{% endblock %}

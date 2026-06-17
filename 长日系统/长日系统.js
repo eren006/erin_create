@@ -4763,7 +4763,7 @@ cmdGroupNotice.solve = function(ctx, msg, cmdArgs) {
     }
     
     // 提取公告内容
-    const matchResult = msg.message.match(/^[。.]群公告发布\s+(.+)$/s);
+    const matchResult = (msg.message || "").match(/^[。.]群公告发布\s+(.+)$/s);
     if (!matchResult || !matchResult[1]) {
         seal.replyToSender(ctx, msg, `请输入公告内容。示例：。群公告发布 今晚8点有活动`);
         return seal.ext.newCmdExecuteResult(true);
@@ -5676,15 +5676,12 @@ cmd_modify_tag.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    const raw = msg.message.trim().replace(/^[。.]\S+\s*/, "");
-    const spaceIdx = raw.search(/\s+/);
-    if (spaceIdx === -1) {
+    const tagName = cmdArgs.getArgN(1);
+    const rest = cmdArgs.args.slice(2).join(' ').trim();
+    if (!tagName || !rest) {
         seal.replyToSender(ctx, msg, "格式：。修改tag tag名字 种类1:姓名1，姓名2 种类2:姓名3，姓名4");
         return seal.ext.newCmdExecuteResult(true);
     }
-
-    const tagName = raw.slice(0, spaceIdx).trim();
-    const rest = raw.slice(spaceIdx).trim();
 
     // 解析 "种类1:姓名1，姓名2 种类2:姓名3，姓名4"
     const catPattern = /([^\s：:]+)[：:]\s*([^：:]+?)(?=\s+[^\s：:]+[：:]|$)/g;
@@ -7854,14 +7851,14 @@ ext.onNotCommandReceived = (ctx, msg) => {
         const roleName = a_private_group[platform]?.[uid]?.[0];
 
         if (roleName) {
-            handleReply(platform, groupId, roleName, msg.message);
+            handleReply(platform, groupId, roleName, msg.message || "");
 
             // 格式提示：首行≠角色名时提醒，不计入存档和字数
             // 只在有活跃计时器的群里提示，避免日常闲聊误触发
             const _hintTimers = getGroupTimers();
             const _hintTimer = _hintTimers[groupId];
             if (_hintTimer) {
-                const _hintLines = msg.message.split("\n");
+                const _hintLines = (msg.message || "").split("\n");
                 const _hintFirst = _hintLines[0].trim();
                 if (_hintFirst !== roleName) {
                     const _isPhone = _hintTimer.subtype === "电话";
@@ -8403,7 +8400,7 @@ cmd_add_auction.name = "添加拍卖物品";
 cmd_add_auction.help = "。添加拍卖物品 物品码或名称%起拍价%最低加价%时长(h)[%失效时长(h)]\n批量：多件用$分隔\n例：。添加拍卖物品 ITEM_001%100%10%24\n带失效：。添加拍卖物品 ITEM_001%100%10%24%72";
 cmd_add_auction.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) { seal.replyToSender(ctx, msg, "该指令仅限管理员使用"); return seal.ext.newCmdExecuteResult(true); }
-    const inputArg = msg.message.replace(/^[。.]添加拍卖物品\s*/, "").trim();
+    const inputArg = cmdArgs.args.slice(1).join(' ').trim();
     if (!inputArg) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
 
     const auctions = getAuctions();
@@ -9030,6 +9027,9 @@ cmd_full_sync.solve = (ctx, msg, cmdArgs) => {
                 "item_registry_pending",
                 "preset_gifts",
                 "private_appointment_aliases",
+                "equipment_registry",
+                "equipment_slots",
+                "equipment_slot_names",
             ];
 
             if (previewOnly) {

@@ -242,6 +242,19 @@
     <div class="save-row">
       <button class="btn-save" onclick="saveSlotSize()">保存对照档位</button>
     </div>
+    <div class="section-desc" style="margin-top:14px;">
+      <strong>时段匹配模式</strong>：精确 = 只能开当前时段；累积 = 可开当前及之前所有时段。
+    </div>
+    <div class="dur-chips" id="slot-mode-chips">
+      <div class="dur-chip {{ 'on' if slot_mode == 'cumulative' else 'off' }}"
+           data-m="cumulative" onclick="selectSlotMode('cumulative', this)">累积</div>
+      <div class="dur-chip {{ 'on' if slot_mode == 'exact' else 'off' }}"
+           data-m="exact" onclick="selectSlotMode('exact', this)">精确</div>
+    </div>
+    <div class="save-row">
+      <button class="btn-save" onclick="saveSlotMode()">保存匹配模式</button>
+      <span id="status-slot-mode" class="save-status"></span>
+    </div>
   </div>
 
   <!-- ── 3. 可用私约时长 ──────────────────────────────────────── -->
@@ -425,6 +438,20 @@ function selectSlotChip(s, el) {
 async function saveSlotSize() {
   const j = await apiPost({field: 'reality_slot_size', value: currentSlotSize});
   flash('status-hour-lock', j.ok);
+}
+
+let currentSlotMode = '{{ slot_mode }}';
+
+function selectSlotMode(m, el) {
+  currentSlotMode = m;
+  document.querySelectorAll('#slot-mode-chips .dur-chip').forEach(c => {
+    c.className = 'dur-chip ' + (c.dataset.m === m ? 'on' : 'off');
+  });
+}
+
+async function saveSlotMode() {
+  const j = await apiPost({field: 'slot_mode', value: currentSlotMode});
+  flash('status-slot-mode', j.ok);
 }
 
 // ── 3. duration chips ─────────────────────────────────────────────────────

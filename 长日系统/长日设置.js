@@ -352,6 +352,11 @@ settingsConfig['互动参数'] = {
         { label: '允许加入已有私约', key: 'enable_join_existing_appointment', type: 'bool', default: false },
         { label: '自动合并重合私约', key: 'auto_merge_duplicate_private', type: 'bool', default: false },
         { label: '备用群名', key: 'idle_group_name', type: 'string_raw', default: '备用' },
+        { label: '时段匹配模式',
+          getter: () => { const v = getMainStorage('ts_slot_mode', ''); return v === 'exact' ? '精确' : '累积'; },
+          setter: (v) => { mainStorSet('ts_slot_mode', v === '精确' ? 'exact' : 'cumulative'); },
+          validate: (v) => { return ['精确', '累积'].includes(v) ? null : '请填写「精确」或「累积」'; },
+          note: '精确=只能开当前时段；累积=可开当前及之前所有时段' },
         { label: '超时时间',
           getter: () => { try { return String(Math.round((JSON.parse(getMainStorage('monitor_settings', '{}')).timeout || 10800000) / 60000)); } catch(e) { return '180'; } },
           setter: (v) => { let c = {}; try { c = JSON.parse(getMainStorage('monitor_settings', '{}')); } catch(e) {} c.timeout = parseInt(v) * 60000; setMainStorage('monitor_settings', JSON.stringify(c)); },
@@ -1241,7 +1246,7 @@ cmd_end_bonus.solve = function(ctx, msg, argv) {
         const rawSub = argv.getArgN(3) || "";
         const subtype = validSubtypes.includes(rawSub) ? rawSub : "通用";
 
-        const allLines = msg.message.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+        const allLines = (msg.message || "").split(/\r?\n/).map(l => l.trim()).filter(Boolean);
         const dataLines = allLines.slice(1); // 跳过命令行
 
         const paramAliases = {
@@ -1448,7 +1453,7 @@ cmd_settings.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足");
 
     const subCmd = cmdArgs.getArgN(1);
-    const rawMsg = msg.message;
+    const rawMsg = msg.message || "";
 
     if (!subCmd || subCmd === "查看") {
         let info = "🎮 长日系统设置面板\n\n";
@@ -1748,7 +1753,8 @@ ext.cmdMap["同步到服务端"] = cmd_push_to_server;
 // ========================
 const SYNC_BLOB_KEYS = [
     "item_registry", "rpg_attr_defs", "sys_attr_presets",
-    "end_game_bonus_templates", "end_game_draw_config"
+    "end_game_bonus_templates", "end_game_draw_config",
+    "equipment_registry", "equipment_slots", "equipment_slot_names"
 ];
 
 let cmd_full_sync = seal.ext.newCmdItemInfo();
@@ -1827,6 +1833,46 @@ cmd_full_sync.solve = async (ctx, msg, argv) => {
         }
     } catch (e) {
         console.warn(`[全量同步] 处理待上载物品失败: ${e.message}`);
+    }
+
+    // 处理网页端待同步装备：从服务端取 pending → 分配编号 → merge 进 equipment_registry
+    let equipPendingMerged = 0;
+    try {
+        const equipPendingResp = await fetch(`${base}/api/pending_equips`, {
+            headers: { "X-Archive-Token": token }
+        });
+        if (equipPendingResp.ok) {
+            const equipPendingData = await equipPendingResp.json();
+            const equipPending = equipPendingData.pending || [];
+            if (equipPending.length > 0) {
+                const equipReg = JSON.parse(mainStorGet("equipment_registry") || "{}");
+                for (const p of equipPending) {
+                    if (Object.values(equipReg).some(r => r.name === p.name)) continue;
+                    let code = null;
+                    for (let d = 1; d < 10000; d++) {
+                        const c = "EQUIP_" + String(d).padStart(3, "0");
+                        if (!equipReg[c]) { code = c; break; }
+                    }
+                    if (!code) continue;
+                    // 将 baseAttrs 字符串解析成对象
+                    const baseAttrs = {};
+                    if (p.baseAttrs) {
+                        p.baseAttrs.split(",").forEach(seg => {
+                            const m = seg.trim().match(/^(.+?)([+-]\d+)$/);
+                            if (m) baseAttrs[m[1]] = parseInt(m[2]);
+                        });
+                    }
+                    equipReg[code] = { code, name: p.name, desc: p.desc, type: "equipment",
+                                       slot: p.slot, baseAttrs };
+                    equipPendingMerged++;
+                }
+                mainStorSet("equipment_registry", JSON.stringify(equipReg));
+                payload["equipment_registry"] = JSON.stringify(equipReg);
+            }
+            payload["equipment_registry_pending"] = "[]";
+        }
+    } catch (e) {
+        console.warn(`[全量同步] 处理待注册装备失败: ${e.message}`);
     }
 
     try {
@@ -1960,6 +2006,80 @@ ext.onNotCommandReceived = (ctx, msg) => {
 
 // 启动自动天数轮询
 registerAutoDaySystem();
+
+// ============================================================
+// 📦 拉存档（上传最新 ZIP 到公告群文件）
+// ============================================================
+let cmd_pull_archive = seal.ext.newCmdItemInfo();
+cmd_pull_archive.name = "拉存档";
+cmd_pull_archive.help = "【管理员】将最新存档 ZIP 上传到公告群文件\n用法：。拉存档\n说明：需先在 RP 存档后台点击「下载 ZIP」生成存档，然后用此指令推送到公告群。";
+cmd_pull_archive.solve = async (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) {
+        seal.replyToSender(ctx, msg, "❌ 该指令仅限管理员使用");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const main = getMainExt();
+    if (!main) {
+        seal.replyToSender(ctx, msg, "❌ 无法连接主插件 changri");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const base  = (seal.ext.getStringConfig(main, "RP存档服务器地址") || "").replace(/\/$/, "");
+    const token = seal.ext.getStringConfig(main, "RP存档Token") || "";
+    if (!base || !token) {
+        seal.replyToSender(ctx, msg, "❌ 未配置「RP存档服务器地址」或「RP存档Token」，请先在插件设置中填写");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const announceGid = JSON.parse(mainStorGet("adminAnnounceGroupId") || "null");
+    if (!announceGid) {
+        seal.replyToSender(ctx, msg, "❌ 未配置公告群（adminAnnounceGroupId），请先在长日设置中填写群号");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const api = getApi();
+    if (!api) {
+        seal.replyToSender(ctx, msg, "❌ 无法获取 bot API，请确认 changri 插件已加载");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 查询存档文件名
+    let zipName = "存档.zip";
+    try {
+        const infoResp = await fetch(`${base}/api/latest_archive_info?token=${encodeURIComponent(token)}`);
+        if (infoResp.status === 404) {
+            seal.replyToSender(ctx, msg, "❌ 服务端暂无存档数据");
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        if (infoResp.status === 403) {
+            seal.replyToSender(ctx, msg, "❌ Token 无效，请检查插件设置里的「RP存档Token」");
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        if (infoResp.ok) {
+            const info = await infoResp.json();
+            if (info.name) zipName = info.name;
+        }
+    } catch (e) {
+        seal.replyToSender(ctx, msg, `❌ 连接存档服务器失败：${e.message}`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    seal.replyToSender(ctx, msg, `⏳ 正在上传「${zipName}」到公告群…`);
+
+    const fileUrl = `${base}/api/latest_archive?token=${encodeURIComponent(token)}`;
+    api.ws({
+        action: "upload_group_file",
+        params: { group_id: announceGid, file: fileUrl, name: zipName },
+        echo: "pull_archive_" + Date.now()
+    }, null, null, null);
+
+    await new Promise(r => setTimeout(r, 3000));
+    seal.replyToSender(ctx, msg, `✅ 已请求上传「${zipName}」到公告群，请稍候查看群文件。`);
+
+    return seal.ext.newCmdExecuteResult(true);
+};
+// ext.cmdMap["拉存档"] = cmd_pull_archive;  // 暂时禁用，LLBot 群文件上传超时问题待解决
 
 // ============================================================
 // 🎲 随机分组（2026-06 自卫星插件并入本文件）

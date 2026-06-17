@@ -821,7 +821,7 @@ cmd_upload_item.help = "【管理员】注册新物品\n格式：名称*描述*�
 cmd_upload_item.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
 
-    const rawMsg = msg.message.trim();
+    const rawMsg = (msg.message || "").trim();
     const msgParts = rawMsg.split(/\r?\n/);
 
     // 第一行去掉指令前缀后的剩余内容
@@ -1107,7 +1107,7 @@ cmd_pool_add.solve = (ctx, msg, cmdArgs) => {
         pool = defs[poolName];
         autoCreated = true;
     }
-    const rawMsg = msg.message.trim();
+    const rawMsg = (msg.message || "").trim();
     const msgParts = rawMsg.split(/\r?\n/);
     let itemLines;
     if (msgParts.length > 1) {
@@ -1175,7 +1175,7 @@ cmd_pool_remove.solve = (ctx, msg, cmdArgs) => {
     const defs = getPoolDefs();
     const pool = defs[poolName];
     if (!pool) return seal.replyToSender(ctx, msg, `❌ 未找到池子「${poolName}」。`);
-    const rawMsg = msg.message.trim();
+    const rawMsg = (msg.message || "").trim();
     const msgParts = rawMsg.split(/\r?\n/);
     let inputCodes;
     if (msgParts.length > 1) {
@@ -2222,7 +2222,7 @@ cmd_add_pity_item.solve = (ctx, msg, cmdArgs) => {
     if (!pool) return seal.replyToSender(ctx, msg, `❌ 未找到池子「${poolName}」。`);
     if (pool.type !== "pity") return seal.replyToSender(ctx, msg, `❌ 「${poolName}」不是保底池。`);
     if (!pool.pityItems) pool.pityItems = [];
-    const rawMsg = msg.message.trim();
+    const rawMsg = (msg.message || "").trim();
     const msgParts = rawMsg.split(/\r?\n/);
     const itemLines = msgParts.length > 1
         ? msgParts.slice(1).filter(l => l.trim())
@@ -2263,7 +2263,7 @@ cmd_remove_pity_item.solve = (ctx, msg, cmdArgs) => {
     const pool = defs[poolName];
     if (!pool) return seal.replyToSender(ctx, msg, `❌ 未找到池子「${poolName}」。`);
     if (pool.type !== "pity") return seal.replyToSender(ctx, msg, `❌ 「${poolName}」不是保底池。`);
-    const rawMsg = msg.message.trim();
+    const rawMsg = (msg.message || "").trim();
     const msgParts = rawMsg.split(/\r?\n/);
     let inputCodes;
     if (msgParts.length > 1) {
@@ -2421,7 +2421,9 @@ cmd_craft.solve = (ctx, msg, cmdArgs) => {
     }
     for (const [currencyName, minVal] of Object.entries(limits.currencies || {})) {
         const currencyCode = Object.entries(reg).find(([_, info]) => info.type === "currency" && info.name === currencyName)?.[0];
-        if (currencyCode) {
+        if (!currencyCode) {
+            unmet.push(`${currencyName}（配方中的货币不存在，请联系管理员）`);
+        } else {
             const have = getInvCount(roleKey, currencyCode);
             if (have < minVal) unmet.push(`${currencyName} 需≥${minVal}（当前${have}）`);
         }
@@ -2473,7 +2475,7 @@ cmd_upload_interact.help = "【管理员】注册互动类物品（对他人使�
 cmd_upload_interact.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
 
-    const rawMsg = msg.message.trim();
+    const rawMsg = (msg.message || "").trim();
     const msgParts = rawMsg.split(/\r?\n/);
 
     const firstLineRest = msgParts[0].replace(/^[。.]\s*上载互动物品\s*/, "").trim();
@@ -3129,12 +3131,32 @@ cmd_view_craft.solve = (ctx, msg, cmdArgs) => {
 };
 ext.cmdMap["查看合成"] = cmd_view_craft;
 
+let cmd_del_craft = seal.ext.newCmdItemInfo();
+cmd_del_craft.name = "删除合成";
+cmd_del_craft.help = "【管理员】删除合成配方（不影响物品本身）\n删除合成 产物代码或名称";
+cmd_del_craft.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const input = cmdArgs.getArgN(1);
+    if (!input) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const reg = getRegistry();
+    const target = findItem(reg, input);
+    const code = target ? target.code : input.toUpperCase();
+    const recipes = getCraftRecipes();
+    if (!recipes[code]) return seal.replyToSender(ctx, msg, `❌ 未找到「${input}」的合成配方。`);
+    const name = reg[code]?.name || code;
+    delete recipes[code];
+    saveCraftRecipes(recipes);
+    seal.replyToSender(ctx, msg, `✅ 已删除「${name}」的合成配方。`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["删除合成"] = cmd_del_craft;
+
 // ========================
 // 无前缀指令触发
 // ========================
 
 ext.onNotCommandReceived = (ctx, msg) => {
-    const raw = msg.message.trim();
+    const raw = (msg.message || "").trim();
     const fa = (parts) => ({ getArgN: (n) => parts[n - 1] || "", args: parts });
     const isAdmin = isUserAdmin(ctx, msg);
     const platform = msg.platform;
@@ -5119,9 +5141,7 @@ cmd_register_equip.help = "【管理员】注册新装备\n注册装备 <装备�
 cmd_register_equip.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
 
-    const input = msg.messageType === "group" ?
-        msg.rawMessage.substring(msg.rawMessage.indexOf(" ") + 1) :
-        msg.rawMessage.substring(msg.rawMessage.indexOf(" ") + 1);
+    const input = cmdArgs.args.slice(1).join(' ').trim();
 
     const parts = input.split(/[*]/);
     if (parts.length < 4) {
@@ -5365,44 +5385,59 @@ function replaceDescTemplate(desc, level) {
     return desc.replace(/{等级}/g, level);
 }
 
-// 解析消耗品/奖励品字符串，返回 {消耗品类型: {名称: 数值}}
+// 解析消耗品/奖励品字符串
+// `:` 格式 → 货币/物品/属性，存 code（货币和物品）或名（属性）
+// `+` 格式 → 属性增量奖励，存 { attrs: { attrName: qty } }（仅用于奖励字段）
+// 返回 { result, errors }；errors 非空说明有未知名称
 function parseConsumables(str, level) {
-    if (!str || str.trim() === '') return {};
+    if (!str || str.trim() === '') return { result: {}, errors: [] };
     const result = {};
-    const items = str.split(',').map(s => s.trim()).filter(s => s);
+    const errors = [];
+    const entries = str.split(',').map(s => s.trim()).filter(s => s);
 
-    items.forEach(item => {
-        if (item.includes(':')) {
-            const [name, value] = item.split(':');
+    const itemReg = getRegistry();
+    const attrDefs = getAttrDefs();
+    const currencyByName = {};
+    const itemByName = {};
+    for (const [code, info] of Object.entries(itemReg)) {
+        if (info.type === "currency") currencyByName[info.name] = code;
+        else itemByName[info.name] = code;
+    }
+
+    entries.forEach(entry => {
+        if (entry.includes(':')) {
+            const colonIdx = entry.indexOf(':');
+            const name = entry.slice(0, colonIdx).trim();
+            const value = entry.slice(colonIdx + 1).trim();
             const actualValue = calculateValue(value, level);
 
-            // 判断是物品、互动物品、货币还是属性
-            const itemReg = getRegistry();
-            const isItem = itemReg[name];
-            const currencies = JSON.parse(mainStorGet("item_currencies") || "{}");
-            const isCurrency = currencies[name];
-            const attrDefs = getAttrDefs();
-            const isAttr = attrDefs[name];
-
-            if (isItem) {
-                if (!result.items) result.items = {};
-                result.items[name] = actualValue;
-            } else if (isCurrency) {
+            // 货币优先，其次物品，再次属性
+            if (currencyByName[name]) {
                 if (!result.currencies) result.currencies = {};
-                result.currencies[name] = actualValue;
-            } else if (isAttr) {
+                result.currencies[currencyByName[name]] = actualValue;
+            } else if (itemByName[name]) {
+                if (!result.items) result.items = {};
+                result.items[itemByName[name]] = actualValue;
+            } else if (attrDefs[name]) {
                 if (!result.attributes) result.attributes = {};
                 result.attributes[name] = actualValue;
+            } else {
+                errors.push(`「${name}」不是已注册的物品、货币或属性`);
             }
-        } else if (item.includes('+')) {
-            const [name, value] = item.split('+');
+        } else if (entry.includes('+')) {
+            // `+` 格式仅用于奖励字段（属性增量），消耗字段不应出现
+            const plusIdx = entry.indexOf('+');
+            const name = entry.slice(0, plusIdx).trim();
+            const value = entry.slice(plusIdx + 1).trim();
             const actualValue = calculateValue(value, level);
-            if (!result.rewards) result.rewards = {};
-            result.rewards[name] = actualValue;
+            if (!result.attrs) result.attrs = {};
+            result.attrs[name] = actualValue;
+        } else {
+            errors.push(`「${entry}」格式无法识别（应为 名称:数量 或 属性名+数值）`);
         }
     });
 
-    return result;
+    return { result, errors };
 }
 
 // 展开等级范围 "1-50" → [1, 2, ..., 50]
@@ -5419,64 +5454,81 @@ function cmd_upload_level_rule(msg, cmdArgs, ctx) {
     const main = getMainExt();
     if (!main) return seal.replyToSender(ctx, msg, "❌ 未找到主插件");
 
-    const rest = msg.message.replace(/^[。.]\s*上传升级等级\s*/, "").trim();
+    const rest = cmdArgs.args.slice(1).join(' ').trim();
     const parts = rest.split('*').map(p => p.trim());
 
-    if (parts.length < 3) {
-        return seal.replyToSender(ctx, msg, "❌ 格式错误\n格式：上传升级等级 <等级|范围> <描述> * <消耗品> * <奖励品> [*成功率]\n示例：上传升级等级 1-10 * {等级}级冒险者 * 金币:50+50 * HP+5+5");
+    // 格式：等级范围 * 描述 * 消耗品 * 奖励品 [* 成功率]，共至少4段
+    if (parts.length < 4) {
+        return seal.replyToSender(ctx, msg, "❌ 格式错误\n格式：上传升级等级 <等级|范围> * <描述> * <消耗品> * <奖励品> [*成功率]\n消耗品格式：物品名:数量 或 物品名:基础+增幅（无消耗填-）\n奖励品格式：属性名+数值 或 物品名:数量（无奖励填-）\n示例：\n  上传升级等级 1-10 * {等级}级冒险者 * 金币:50+50 * HP+5+5\n  上传升级等级 20 * 传奇战士 * 金币:1000,晶体:3 * ATK+20,DEF+10 * 80");
     }
 
     const levelRange = parts[0];
     const description = parts[1];
-    const consumables = parts[2] || '';
-    const rewards = parts[3] || '';
+    const consumablesStr = parts[2] === '-' ? '' : parts[2];
+    const rewardsStr = parts[3] === '-' ? '' : parts[3];
     const successRate = parts[4] ? Math.max(0, Math.min(100, parseInt(parts[4]) || 100)) : 100;
 
     const levels = expandLevelRange(levelRange);
+    if (!levels.length || levels.some(isNaN)) {
+        return seal.replyToSender(ctx, msg, `❌ 等级范围「${levelRange}」无法解析`);
+    }
+
+    // 用第一个等级做配置时校验（捕获名称错误）
+    const consumeCheck = parseConsumables(consumablesStr, levels[0]);
+    const rewardCheck = parseConsumables(rewardsStr, levels[0]);
+
+    // 消耗品字段出现 + 格式（属性增量），属于误用
+    const consumeWrongFmt = consumablesStr.split(',').map(s => s.trim()).filter(s => s && s.includes('+') && !s.includes(':'));
+    const allErrors = [
+        ...consumeCheck.errors.map(e => `消耗品：${e}`),
+        ...rewardCheck.errors.map(e => `奖励品：${e}`),
+        ...consumeWrongFmt.map(s => `消耗品：「${s}」请用 名称:数量 格式，+格式仅限奖励品`),
+    ];
+    if (allErrors.length) {
+        return seal.replyToSender(ctx, msg, `❌ 配置校验失败：\n${allErrors.join("\n")}`);
+    }
+
     const rules = getLevelUpRules();
     if (!rules.level_up_rules) rules.level_up_rules = {};
 
-    // 成功率是否递减（范围）
+    // 成功率：范围时首级100%线性递减至末级 successRate%，单级直接用
     let successRates = {};
-    if (successRate < 100 && successRate > 0) {
+    if (successRate < 100 && successRate > 0 && levels.length > 1) {
         const step = (100 - successRate) / (levels.length - 1);
-        levels.forEach((lv, idx) => {
-            successRates[lv] = Math.floor(100 - idx * step);
-        });
+        levels.forEach((lv, idx) => { successRates[lv] = Math.floor(100 - idx * step); });
     } else {
-        levels.forEach(lv => {
-            successRates[lv] = successRate;
-        });
+        levels.forEach(lv => { successRates[lv] = successRate; });
     }
 
     // 为每个等级创建配置
     levels.forEach(level => {
         const desc = replaceDescTemplate(description, level);
-        const consume = parseConsumables(consumables, level);
-        const reward = parseConsumables(rewards, level);
-
+        const { result: consume } = parseConsumables(consumablesStr, level);
+        const { result: reward } = parseConsumables(rewardsStr, level);
         rules.level_up_rules[level] = {
             description: desc,
-            consume: consume,
+            consume,
             rewards: reward,
-            success_rate: successRates[level] || 100
+            success_rate: successRates[level] ?? 100,
         };
     });
 
     saveLevelUpRules(rules);
 
-    return seal.replyToSender(ctx, msg, `✅ 已配置 ${levels.length} 个等级的升级规则 (等级 ${levels[0]}-${levels[levels.length-1]})`);
+    const rangeLabel = levels.length > 1 ? `等级 ${levels[0]}-${levels[levels.length-1]}` : `等级 ${levels[0]}`;
+    return seal.replyToSender(ctx, msg, `✅ 已配置 ${levels.length} 个升级规则（${rangeLabel}）`);
 }
 
 // 查看升级配置
-function cmd_view_level_rule(msg, cmdArgs) {
+function cmd_view_level_rule(ctx, msg, cmdArgs) {
     const levelStr = cmdArgs.getArgN(2);
     if (!levelStr) {
         const rules = getLevelUpRules();
         const levels = Object.keys(rules.level_up_rules || {}).sort((a,b) => parseInt(a) - parseInt(b));
         const levelCount = levels.length;
         const maxLevel = rules.max_level || 100;
-        return seal.replyToSender(ctx, msg, `📊 升级系统配置\n\n最大等级: ${maxLevel}\n已配置等级: ${levelCount}个\n等级范围: ${levels[0]}-${levels[levels.length-1]}`);
+        const rangeStr = levelCount > 0 ? `${levels[0]}-${levels[levels.length-1]}` : "（暂无）";
+        return seal.replyToSender(ctx, msg, `📊 升级系统配置\n\n最大等级: ${maxLevel}\n已配置等级: ${levelCount}个\n等级范围: ${rangeStr}`);
     }
 
     const level = parseInt(levelStr);
@@ -5487,18 +5539,21 @@ function cmd_view_level_rule(msg, cmdArgs) {
         return seal.replyToSender(ctx, msg, `❌ 等级 ${level} 未配置`);
     }
 
+    const viewReg = getRegistry();
+    const cname = (code) => viewReg[code]?.name || code;
+
     let msg_text = `📋 等级 ${level}: ${rule.description}\n\n`;
     msg_text += `消耗品:\n`;
-    if (rule.consume.items) Object.entries(rule.consume.items).forEach(([name, qty]) => { msg_text += `  · ${name}: ${qty}\n`; });
-    if (rule.consume.currencies) Object.entries(rule.consume.currencies).forEach(([name, qty]) => { msg_text += `  · ${name}: ${qty}\n`; });
+    if (rule.consume.items) Object.entries(rule.consume.items).forEach(([code, qty]) => { msg_text += `  · ${cname(code)}: ${qty}\n`; });
+    if (rule.consume.currencies) Object.entries(rule.consume.currencies).forEach(([code, qty]) => { msg_text += `  · ${cname(code)}: ${qty}\n`; });
     if (rule.consume.attributes) Object.entries(rule.consume.attributes).forEach(([name, qty]) => { msg_text += `  · ${name}: ${qty}\n`; });
     if (!rule.consume.items && !rule.consume.currencies && !rule.consume.attributes) msg_text += `  · (无)\n`;
 
     msg_text += `\n奖励品:\n`;
-    if (rule.rewards.rewards) Object.entries(rule.rewards.rewards).forEach(([attr, val]) => { msg_text += `  · ${attr}+${val}\n`; });
-    if (rule.rewards.currencies) Object.entries(rule.rewards.currencies).forEach(([name, qty]) => { msg_text += `  · ${name}: ${qty}\n`; });
-    if (rule.rewards.items) Object.entries(rule.rewards.items).forEach(([name, qty]) => { msg_text += `  · ${name}: ${qty}\n`; });
-    if (!rule.rewards.rewards && !rule.rewards.currencies && !rule.rewards.items) msg_text += `  · (无)\n`;
+    if (rule.rewards.attrs) Object.entries(rule.rewards.attrs).forEach(([attr, val]) => { msg_text += `  · ${attr}+${val}\n`; });
+    if (rule.rewards.currencies) Object.entries(rule.rewards.currencies).forEach(([code, qty]) => { msg_text += `  · ${cname(code)}: ${qty}\n`; });
+    if (rule.rewards.items) Object.entries(rule.rewards.items).forEach(([code, qty]) => { msg_text += `  · ${cname(code)}: ${qty}\n`; });
+    if (!rule.rewards.attrs && !rule.rewards.currencies && !rule.rewards.items) msg_text += `  · (无)\n`;
 
     msg_text += `\n成功率: ${rule.success_rate}%`;
 
@@ -5506,7 +5561,7 @@ function cmd_view_level_rule(msg, cmdArgs) {
 }
 
 // 升级列表
-function cmd_level_list(msg, cmdArgs) {
+function cmd_level_list(ctx, msg, cmdArgs) {
     const rules = getLevelUpRules();
     const levels = Object.keys(rules.level_up_rules || {}).sort((a,b) => parseInt(a) - parseInt(b));
 
@@ -5523,117 +5578,79 @@ function cmd_level_list(msg, cmdArgs) {
     return seal.replyToSender(ctx, msg, msg_text);
 }
 
-// 检查玩家是否满足消耗条件
+// 检查玩家是否满足消耗条件（items/currencies 以 code 为 key）
 function checkConsumables(uid, roleKey, consume) {
-    const charAttrs = getCharAttrs();
-    // 新结构：charAttrs 以 uid 为 key
-    const playerAttrs = charAttrs[uid] || {};
-    const currencies = JSON.parse(mainStorGet("item_currencies") || "{}");
-    const main = getMainExt();
+    const playerAttrs = (getCharAttrs()[uid]) || {};
+    const reg = getRegistry();
 
-    // 检查属性
     if (consume.attributes) {
         for (const [attrName, required] of Object.entries(consume.attributes)) {
             const current = playerAttrs[attrName] || 0;
-            if (current < required) {
+            if (current < required)
                 return { ok: false, reason: `${attrName}不足（需要${required}，当前${current}）` };
-            }
         }
     }
 
-    // 检查货币
     if (consume.currencies) {
-        for (const [curName, required] of Object.entries(consume.currencies)) {
-            const curCode = Object.keys(currencies).find(code => currencies[code].name === curName);
-            if (!curCode) {
-                return { ok: false, reason: `货币「${curName}」不存在` };
-            }
-            const current = getInvCount(roleKey, curCode) || 0;
-            if (current < required) {
-                return { ok: false, reason: `${curName}不足（需要${required}，当前${current}）` };
-            }
+        for (const [code, required] of Object.entries(consume.currencies)) {
+            const name = reg[code]?.name || code;
+            const current = getInvCount(roleKey, code) || 0;
+            if (current < required)
+                return { ok: false, reason: `${name}不足（需要${required}，当前${current}）` };
         }
     }
 
-    // 检查物品
     if (consume.items) {
-        for (const [itemName, required] of Object.entries(consume.items)) {
-            const reg = getRegistry();
-            const itemCode = Object.keys(reg).find(code => reg[code].name === itemName);
-            if (!itemCode) {
-                return { ok: false, reason: `物品「${itemName}」不存在` };
-            }
-            const current = getInvCount(roleKey, itemCode) || 0;
-            if (current < required) {
-                return { ok: false, reason: `${itemName}不足（需要${required}，当前${current}）` };
-            }
+        for (const [code, required] of Object.entries(consume.items)) {
+            const name = reg[code]?.name || code;
+            const current = getInvCount(roleKey, code) || 0;
+            if (current < required)
+                return { ok: false, reason: `${name}不足（需要${required}，当前${current}）` };
         }
     }
 
     return { ok: true };
 }
 
-// 消耗资源
+// 消耗资源（items/currencies 以 code 为 key）
 function consumeResources(uid, roleKey, consume) {
-    const charAttrs = getCharAttrs();
-    const currencies = JSON.parse(mainStorGet("item_currencies") || "{}");
-
-    // 消耗属性（新结构：charAttrs 以 uid 为 key）
     if (consume.attributes) {
+        const charAttrs = getCharAttrs();
         if (!charAttrs[uid]) charAttrs[uid] = {};
-        for (const [attrName, amount] of Object.entries(consume.attributes)) {
+        for (const [attrName, amount] of Object.entries(consume.attributes))
             charAttrs[uid][attrName] = (charAttrs[uid][attrName] || 0) - amount;
-        }
         saveCharAttrs(charAttrs);
     }
 
-    // 消耗货币
     if (consume.currencies) {
-        for (const [curName, amount] of Object.entries(consume.currencies)) {
-            const curCode = Object.keys(currencies).find(code => currencies[code].name === curName);
-            if (curCode) removeFromInv(roleKey, curCode, amount);
-        }
+        for (const [code, amount] of Object.entries(consume.currencies))
+            removeFromInv(roleKey, code, amount);
     }
 
-    // 消耗物品
     if (consume.items) {
-        for (const [itemName, amount] of Object.entries(consume.items)) {
-            const reg = getRegistry();
-            const itemCode = Object.keys(reg).find(code => reg[code].name === itemName);
-            if (itemCode) removeFromInv(roleKey, itemCode, amount);
-        }
+        for (const [code, amount] of Object.entries(consume.items))
+            removeFromInv(roleKey, code, amount);
     }
 }
 
-// 发放奖励
+// 发放奖励（items/currencies 以 code 为 key，属性增量在 attrs）
 function grantRewards(uid, roleKey, rewards) {
-    const charAttrs = getCharAttrs();
-    const currencies = JSON.parse(mainStorGet("item_currencies") || "{}");
-
-    // 发放属性（新结构：charAttrs 以 uid 为 key）
-    if (rewards.rewards) {
+    if (rewards.attrs) {
+        const charAttrs = getCharAttrs();
         if (!charAttrs[uid]) charAttrs[uid] = {};
-        for (const [attrName, amount] of Object.entries(rewards.rewards)) {
+        for (const [attrName, amount] of Object.entries(rewards.attrs))
             charAttrs[uid][attrName] = (charAttrs[uid][attrName] || 0) + amount;
-        }
         saveCharAttrs(charAttrs);
     }
 
-    // 发放货币
     if (rewards.currencies) {
-        for (const [curName, amount] of Object.entries(rewards.currencies)) {
-            const curCode = Object.keys(currencies).find(code => currencies[code].name === curName);
-            if (curCode) addToInv(roleKey, curCode, amount);
-        }
+        for (const [code, amount] of Object.entries(rewards.currencies))
+            addToInv(roleKey, code, amount);
     }
 
-    // 发放物品
     if (rewards.items) {
-        for (const [itemName, amount] of Object.entries(rewards.items)) {
-            const reg = getRegistry();
-            const itemCode = Object.keys(reg).find(code => reg[code].name === itemName);
-            if (itemCode) addToInv(roleKey, itemCode, amount);
-        }
+        for (const [code, amount] of Object.entries(rewards.items))
+            addToInv(roleKey, code, amount);
     }
 }
 
@@ -5715,23 +5732,19 @@ function cmd_do_levelup(msg, cmdArgs, ctx) {
     msg_text += `${rule.description}\n`;
     msg_text += `等级: ${curLevel} → ${nextLevel}\n\n`;
 
-    if (rule.rewards.rewards) {
+    const succReg = getRegistry();
+    const scname = (code) => succReg[code]?.name || code;
+    if (rule.rewards.attrs) {
         msg_text += `获得属性:\n`;
-        Object.entries(rule.rewards.rewards).forEach(([attr, val]) => {
-            msg_text += `  · ${attr}+${val}\n`;
-        });
+        Object.entries(rule.rewards.attrs).forEach(([attr, val]) => { msg_text += `  · ${attr}+${val}\n`; });
     }
     if (rule.rewards.currencies) {
         msg_text += `获得货币:\n`;
-        Object.entries(rule.rewards.currencies).forEach(([cur, val]) => {
-            msg_text += `  · ${cur}×${val}\n`;
-        });
+        Object.entries(rule.rewards.currencies).forEach(([code, val]) => { msg_text += `  · ${scname(code)}×${val}\n`; });
     }
     if (rule.rewards.items) {
         msg_text += `获得物品:\n`;
-        Object.entries(rule.rewards.items).forEach(([item, val]) => {
-            msg_text += `  · ${item}×${val}\n`;
-        });
+        Object.entries(rule.rewards.items).forEach(([code, val]) => { msg_text += `  · ${scname(code)}×${val}\n`; });
     }
 
     return seal.replyToSender(ctx, msg, msg_text);
@@ -5760,9 +5773,11 @@ function cmd_levelup_info(msg, cmdArgs, ctx) {
         const rule = rules.level_up_rules[nextLevel];
         if (rule) {
             msg_text += `下一等级: ${nextLevel} - ${rule.description}\n\n`;
+            const infoReg = getRegistry();
+            const icname = (code) => infoReg[code]?.name || code;
             msg_text += `升级需要:\n`;
-            if (rule.consume.items) Object.entries(rule.consume.items).forEach(([name, qty]) => { msg_text += `  · ${name}: ${qty}\n`; });
-            if (rule.consume.currencies) Object.entries(rule.consume.currencies).forEach(([name, qty]) => { msg_text += `  · ${name}: ${qty}\n`; });
+            if (rule.consume.items) Object.entries(rule.consume.items).forEach(([code, qty]) => { msg_text += `  · ${icname(code)}: ${qty}\n`; });
+            if (rule.consume.currencies) Object.entries(rule.consume.currencies).forEach(([code, qty]) => { msg_text += `  · ${icname(code)}: ${qty}\n`; });
             if (rule.consume.attributes) Object.entries(rule.consume.attributes).forEach(([name, qty]) => { msg_text += `  · 消耗${name}${qty}点\n`; });
         }
     }
@@ -5773,7 +5788,7 @@ function cmd_levelup_info(msg, cmdArgs, ctx) {
 // 创建命令对象（规范格式）
 let cmd_upload_level = seal.ext.newCmdItemInfo();
 cmd_upload_level.name = "上传升级等级";
-cmd_upload_level.help = "【管理员】配置升级规则\n上传升级等级 <等级|范围> <描述> * <消耗品> * <奖励品> [*成功率]\n消耗品格式：物品名:数量 或 物品名:基础+增幅\n奖励品格式：属性名+数值 或 属性名+基础+增幅\n示例：\n  上传升级等级 1-10 * {等级}级冒险者 * 金币:50+50 * HP+5+5\n  上传升级等级 20 * 传奇战士 * 金币:1000,晶体:3 * ATK+20,DEF+10 * 80";
+cmd_upload_level.help = "【管理员】配置升级规则\n上传升级等级 <等级|范围> * <描述> * <消耗品> * <奖励品> [*成功率]\n· 等级与描述之间也用 * 分隔，共4段\n· 消耗品：物品名:数量 或 物品名:基础+增幅，无消耗填 -\n· 奖励品：属性名+数值 或 物品名:数量，无奖励填 -\n· 成功率：0-100，范围配置时从100%线性递减至该值\n示例：\n  上传升级等级 1-10 * {等级}级冒险者 * 金币:50+50 * HP+5+5\n  上传升级等级 20 * 传奇战士 * 金币:1000,晶体:3 * ATK+20,DEF+10 * 80\n  上传升级等级 5 * 铁甲武士 * - * ATK+10";
 cmd_upload_level.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足");
     return cmd_upload_level_rule(msg, cmdArgs, ctx);
@@ -5784,7 +5799,7 @@ let cmd_view_level = seal.ext.newCmdItemInfo();
 cmd_view_level.name = "查看升级配置";
 cmd_view_level.help = "查看升级配置\n查看升级配置 [等级号]";
 cmd_view_level.solve = (ctx, msg, cmdArgs) => {
-    return cmd_view_level_rule(msg, cmdArgs);
+    return cmd_view_level_rule(ctx, msg, cmdArgs);
 };
 ext.cmdMap["查看升级配置"] = cmd_view_level;
 
@@ -5792,7 +5807,7 @@ let cmd_level_listing = seal.ext.newCmdItemInfo();
 cmd_level_listing.name = "升级列表";
 cmd_level_listing.help = "查看所有已配置的升级等级";
 cmd_level_listing.solve = (ctx, msg, cmdArgs) => {
-    return cmd_level_list(msg, cmdArgs);
+    return cmd_level_list(ctx, msg, cmdArgs);
 };
 ext.cmdMap["升级列表"] = cmd_level_listing;
 
@@ -5811,6 +5826,57 @@ cmd_level_info.solve = (ctx, msg, cmdArgs) => {
     return cmd_levelup_info(msg, cmdArgs, ctx);
 };
 ext.cmdMap["查看升级信息"] = cmd_level_info;
+
+let cmd_level_history = seal.ext.newCmdItemInfo();
+cmd_level_history.name = "升级历史";
+cmd_level_history.help = "查看自己的升级历史\n升级历史 [最近N条，默认10]";
+cmd_level_history.solve = (ctx, msg, cmdArgs) => {
+    const roleName = getRoleName(ctx, msg);
+    if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+    const platform = msg.platform;
+    const uid = getPrimaryUid(platform, msg.sender.userId.replace(/^[a-z]+:/i, ""));
+    const limit = Math.min(parseInt(cmdArgs.getArgN(1)) || 10, 50);
+    const history = getLevelHistory(uid);
+    if (!history.length) return seal.replyToSender(ctx, msg, "📜 暂无升级记录。");
+    const recent = history.slice(-limit).reverse();
+    const lines = recent.map(r => {
+        const icon = r.success ? "✅" : "❌";
+        return `${icon} ${r.timestamp}  Lv.${r.from_level} → ${r.success ? `Lv.${r.to_level}` : `Lv.${r.from_level}（失败）`}`;
+    });
+    seal.replyToSender(ctx, msg, `📜 升级历史（最近${recent.length}条）：\n${lines.join("\n")}`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["升级历史"] = cmd_level_history;
+
+let cmd_level_settings = seal.ext.newCmdItemInfo();
+cmd_level_settings.name = "升级系统设置";
+cmd_level_settings.help = "【管理员】升级系统全局设置\n升级系统设置 开启|关闭\n升级系统设置 最大等级 <数字>";
+cmd_level_settings.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const arg1 = cmdArgs.getArgN(1);
+    const arg2 = cmdArgs.getArgN(2);
+    if (!arg1) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const rules = getLevelUpRules();
+    if (arg1 === "开启") {
+        rules.enabled = true;
+        saveLevelUpRules(rules);
+        return seal.replyToSender(ctx, msg, "✅ 升级系统已开启。");
+    }
+    if (arg1 === "关闭") {
+        rules.enabled = false;
+        saveLevelUpRules(rules);
+        return seal.replyToSender(ctx, msg, "✅ 升级系统已关闭。");
+    }
+    if (arg1 === "最大等级") {
+        const n = parseInt(arg2);
+        if (isNaN(n) || n < 1) return seal.replyToSender(ctx, msg, "❌ 最大等级必须为正整数。");
+        rules.max_level = n;
+        saveLevelUpRules(rules);
+        return seal.replyToSender(ctx, msg, `✅ 最大等级已设为 ${n}。`);
+    }
+    const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r;
+};
+ext.cmdMap["升级系统设置"] = cmd_level_settings;
 
 // ========================
 // 角色档案

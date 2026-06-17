@@ -246,19 +246,6 @@
       </div>
     </details>
 
-    <!-- 公开链接 -->
-    <div style="margin-bottom:12px;">
-      {% if s.public_view_enabled %}
-      <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">公开查看链接（分享给围观者）：</div>
-      <div class="token-row">
-        <span id="url-{{ s.id }}">/view/{{ s.public_token }}</span>
-        <button class="btn-copy" onclick="copyUrl('{{ s.public_token }}', this)">复制链接</button>
-      </div>
-      {% else %}
-      <div style="font-size:12px;color:var(--muted);">公开查看已关闭。开启后生成分享链接供围观者访问。</div>
-      {% endif %}
-    </div>
-
     <div class="actions">
       <!-- 查看此季数据（保留普通 form，跳转主页） -->
       <form method="post" action="{{ url_for('admin_show_view', sid=s.id) }}">
@@ -271,18 +258,8 @@
               onclick="activateShow(this, {{ s.id }}, '{{ s.name|e }}')">⚡ 设为活跃</button>
       {% endif %}
 
-      <!-- 公开开关 -->
-      <button class="btn btn-toggle" id="btn-public-{{ s.id }}"
-              data-enabled="{{ '1' if s.public_view_enabled else '0' }}"
-              onclick="togglePublic(this, {{ s.id }})">
-        {{ '🔒 关闭公开' if s.public_view_enabled else '🌐 开启公开' }}
-      </button>
-
-      <!-- 重置公开 token（低频操作保留 form） -->
-      <form method="post" action="{{ url_for('admin_show_reset_token', sid=s.id) }}"
-            onsubmit="return confirm('重置后旧链接立即失效，需要重新分享新链接。确认？')">
-        <button type="submit" class="btn btn-toggle">🔄 重置链接</button>
-      </form>
+      <!-- 下载 ZIP -->
+      <a class="btn btn-toggle" href="{{ url_for('admin_show_download_zip', sid=s.id) }}">📦 下载 ZIP</a>
 
       <!-- 删除 -->
       {% if not s.is_current %}

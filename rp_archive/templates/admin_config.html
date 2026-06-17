@@ -849,11 +849,15 @@ select.cfg-input { cursor: pointer; }
     {# 9. 物品注册管理                            #}
     {# ═══════════════════════════════════════════ #}
 
-    <input type="hidden" name="item_registry"         id="item-registry-input"   value="{{ item_registry_json | e }}">
-    <input type="hidden" name="rpg_attr_defs"         id="attr-defs-input"       value="{{ attr_defs_json | e }}">
-    <input type="hidden" name="item_registry_pending" id="item-pending-input"    value="{{ item_pending_json | e }}">
+    <input type="hidden" name="item_registry"              id="item-registry-input"    value="{{ item_registry_json | e }}">
+    <input type="hidden" name="rpg_attr_defs"              id="attr-defs-input"        value="{{ attr_defs_json | e }}">
+    <input type="hidden" name="item_registry_pending"      id="item-pending-input"     value="{{ item_pending_json | e }}">
     <input type="hidden" id="pool-defs-input" value="{{ pool_defs_json | e }}">
-    <input type="hidden" name="private_appointment_aliases" id="aliases-input"   value="{{ aliases_json | e }}">
+    <input type="hidden" name="private_appointment_aliases" id="aliases-input"         value="{{ aliases_json | e }}">
+    <input type="hidden" name="equipment_registry"         id="equip-registry-input"   value="{{ equip_registry_json | e }}">
+    <input type="hidden" name="equipment_registry_pending" id="equip-pending-input"    value="{{ equip_pending_json | e }}">
+    <input type="hidden" name="equipment_slots"            id="equip-slots-input"      value="{{ equip_slots_json | e }}">
+    <input type="hidden" name="equipment_slot_names"       id="equip-slot-names-input" value="{{ equip_slot_names_json | e }}">
 
     <div class="cfg-card" id="registry-card">
       <div class="cfg-card-title">物品注册管理</div>
@@ -862,6 +866,7 @@ select.cfg-input { cursor: pointer; }
         <div class="reg-tab active" data-tab="currency">货币</div>
         <div class="reg-tab" data-tab="item">物品</div>
         <div class="reg-tab" data-tab="interact">互动物品</div>
+        <div class="reg-tab" data-tab="equip">装备</div>
         <div class="reg-tab" data-tab="attr">属性</div>
       </div>
 
@@ -971,6 +976,44 @@ select.cfg-input { cursor: pointer; }
             </label>
           </div>
           <button type="button" class="reg-add-btn" onclick="Registry.addItem('interact')">+ 上载互动物品</button>
+        </div>
+      </div>
+
+      {# ── 装备 ── #}
+      <div class="reg-panel" id="reg-panel-equip">
+        <table class="reg-table" id="reg-table-equip">
+          <thead><tr><th>编号</th><th>名称</th><th>描述</th><th>槽位</th><th>基础属性</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div id="reg-pending-equip"></div>
+        <div class="reg-add-form cols-4" id="reg-add-equip">
+          <div class="cfg-field">
+            <label class="cfg-label">名称</label>
+            <input class="cfg-input" id="reg-equip-name" placeholder="铁制短剑">
+          </div>
+          <div class="cfg-field">
+            <label class="cfg-label">描述</label>
+            <input class="cfg-input" id="reg-equip-desc" placeholder="普通短剑">
+          </div>
+          <div class="cfg-field">
+            <label class="cfg-label">槽位</label>
+            <select class="cfg-select" id="reg-equip-slot"></select>
+          </div>
+          <div class="cfg-field reg-add-row-full">
+            <label class="cfg-label">基础属性加成</label>
+            <div class="attr-effects-wrap">
+              <div class="attr-chips" id="reg-equip-effect-chips"></div>
+              <div class="attr-picker-row">
+                <select class="cfg-select attr-picker-select" id="reg-equip-effect-attr">
+                  <option value="">— 选择属性 —</option>
+                </select>
+                <input class="cfg-input attr-picker-val" id="reg-equip-effect-val" type="number" placeholder="+15">
+                <button type="button" class="attr-picker-add" onclick="Registry.addEquipEffect()">添加</button>
+              </div>
+              <input type="hidden" id="reg-equip-attrs">
+            </div>
+          </div>
+          <button type="button" class="reg-add-btn" onclick="Registry.addEquip()">+ 注册装备</button>
         </div>
       </div>
 
@@ -1332,25 +1375,44 @@ var cfgEsc = function(s) {
 var Registry = (function() {
   var reg    = {};  // item_registry
   var attrs  = {};  // rpg_attr_defs
-  var _fx    = { item: [], interact: [] };  // 待提交的属性效果列表
+  var _fx    = { item: [], interact: [], equip: [] };  // 待提交的属性效果列表
+  var equipReg   = {};  // equipment_registry
+  var equipSlots = [];  // equipment_slots (array of slot codes)
+  var equipSlotNames = {};  // equipment_slot_names (code -> display name)
+  var _equipPending = [];  // equipment_registry_pending
 
   /* ── 属性效果选择器 ── */
   function populateEffectDropdowns() {
     var names = Object.keys(attrs);
     var opts  = '<option value="">— 选择属性 —</option>' +
       names.map(function(n) { return '<option value="' + cfgEsc(n) + '">' + cfgEsc(n) + '</option>'; }).join('');
-    ['reg-item-effect-attr', 'reg-int-effect-attr'].forEach(function(id) {
+    ['reg-item-effect-attr', 'reg-int-effect-attr', 'reg-equip-effect-attr'].forEach(function(id) {
       var el = document.getElementById(id);
       if (el) { var prev = el.value; el.innerHTML = opts; el.value = prev; }
     });
   }
 
+  function populateSlotDropdown() {
+    var el = document.getElementById('reg-equip-slot');
+    if (!el) return;
+    var defaultNames = { head: '头部', chest: '胸部', hand: '手部', leg: '腿部', foot: '脚部' };
+    var slots = equipSlots.length ? equipSlots : ['head', 'chest', 'hand', 'leg', 'foot'];
+    el.innerHTML = slots.map(function(s) {
+      var label = equipSlotNames[s] || defaultNames[s] || s;
+      return '<option value="' + cfgEsc(s) + '">' + cfgEsc(label) + ' (' + cfgEsc(s) + ')</option>';
+    }).join('');
+  }
+
+  function _effectPrefix(type) {
+    return type === 'interact' ? 'int' : type === 'equip' ? 'equip' : 'item';
+  }
+
   function renderEffectChips(type) {
-    var prefix = type === 'interact' ? 'int' : 'item';
+    var prefix = _effectPrefix(type);
     var chips  = document.getElementById('reg-' + prefix + '-effect-chips');
     var hidden = document.getElementById('reg-' + prefix + '-attrs');
     if (!chips) return;
-    var list = _fx[type];
+    var list = _fx[type] || [];
     chips.innerHTML = list.length
       ? list.map(function(e, i) {
           var sign  = e.delta >= 0 ? '+' : '';
@@ -1365,14 +1427,15 @@ var Registry = (function() {
   }
 
   function addEffect(type) {
-    var prefix  = type === 'interact' ? 'int' : 'item';
+    var prefix  = _effectPrefix(type);
     var attrEl  = document.getElementById('reg-' + prefix + '-effect-attr');
     var valEl   = document.getElementById('reg-' + prefix + '-effect-val');
     var attr    = attrEl ? attrEl.value.trim() : '';
     var delta   = parseInt(valEl ? valEl.value : '');
     if (!attr)        { alert('请先选择属性'); return; }
     if (isNaN(delta)) { alert('请输入数值（可为负数）'); return; }
-    if (_fx[type].some(function(e) { return e.attr === attr; })) { alert('该属性已添加'); return; }
+    if ((_fx[type]||[]).some(function(e) { return e.attr === attr; })) { alert('该属性已添加'); return; }
+    if (!_fx[type]) _fx[type] = [];
     _fx[type].push({ attr: attr, delta: delta });
     if (attrEl) attrEl.value = '';
     if (valEl)  valEl.value  = '';
@@ -1380,11 +1443,13 @@ var Registry = (function() {
   }
 
   function removeEffect(type, idx) {
-    _fx[type].splice(idx, 1);
+    if (_fx[type]) _fx[type].splice(idx, 1);
     renderEffectChips(type);
   }
 
-  /* ── 待同步 pending ── */
+  function addEquipEffect() { addEffect('equip'); }
+
+  /* ── 待同步 pending（物品） ── */
   var _pending = [];
 
   function loadPending() {
@@ -1406,7 +1471,7 @@ var Registry = (function() {
     el.innerHTML =
       '<div class="reg-pending-section">' +
       '<div class="reg-pending-label">待同步 <span class="reg-pending-count">' + items.length + '</span>' +
-      '<span style="font-weight:400;font-size:10px;color:var(--muted);text-transform:none;letter-spacing:0"> — 全量同步后由机器人分配编号</span></div>' +
+      '<span style="font-weight:400;font-size:10px;color:var(--muted);text-transform:none;letter-spacing:0"> — 全量上传后由机器人分配编号</span></div>' +
       items.map(function(x) {
         var p = x.p;
         var meta = (p.maxUses === -1 ? '无限次' : p.maxUses + '次') +
@@ -1431,10 +1496,55 @@ var Registry = (function() {
     renderPending('interact');
   }
 
+  /* ── 待同步 pending（装备） ── */
+  function loadEquipPending() {
+    try { _equipPending = JSON.parse(document.getElementById('equip-pending-input').value || '[]'); }
+    catch(e) { _equipPending = []; }
+  }
+
+  function saveEquipPending() {
+    document.getElementById('equip-pending-input').value = JSON.stringify(_equipPending);
+    cfgMarkDirty();
+  }
+
+  function renderEquipPending() {
+    var el = document.getElementById('reg-pending-equip');
+    if (!el) return;
+    if (!_equipPending.length) { el.innerHTML = ''; return; }
+    var defaultNames = { head: '头部', chest: '胸部', hand: '手部', leg: '腿部', foot: '脚部' };
+    el.innerHTML =
+      '<div class="reg-pending-section">' +
+      '<div class="reg-pending-label">待同步 <span class="reg-pending-count">' + _equipPending.length + '</span>' +
+      '<span style="font-weight:400;font-size:10px;color:var(--muted);text-transform:none;letter-spacing:0"> — 全量上传后由机器人分配编号</span></div>' +
+      _equipPending.map(function(p, i) {
+        var slotLabel = equipSlotNames[p.slot] || defaultNames[p.slot] || p.slot || '';
+        var meta = slotLabel + (p.baseAttrs ? ' · ' + cfgEsc(p.baseAttrs) : '');
+        return '<div class="reg-pending-row">' +
+          '<span class="reg-pending-tag">⏳ 待分配</span>' +
+          '<span class="reg-pending-name">' + cfgEsc(p.name) + '</span>' +
+          '<span class="reg-pending-meta">' + cfgEsc(p.desc || '') +
+            (meta ? ' <span style="opacity:.7">— ' + meta + '</span>' : '') + '</span>' +
+          '<button class="reg-del-btn" onclick="Registry.removeEquipPending(' + i + ')">移除</button>' +
+          '</div>';
+      }).join('') +
+      '</div>';
+  }
+
+  function removeEquipPending(idx) {
+    if (!confirm('移除待注册装备「' + (_equipPending[idx] ? _equipPending[idx].name : '') + '」？')) return;
+    _equipPending.splice(idx, 1);
+    saveEquipPending();
+    renderEquipPending();
+  }
+
   function load() {
     try { reg   = JSON.parse(document.getElementById('item-registry-input').value || '{}'); } catch(e) { reg = {}; }
     try { attrs = JSON.parse(document.getElementById('attr-defs-input').value || '{}');     } catch(e) { attrs = {}; }
+    try { equipReg = JSON.parse(document.getElementById('equip-registry-input').value || '{}'); } catch(e) { equipReg = {}; }
+    try { equipSlots = JSON.parse(document.getElementById('equip-slots-input').value || '[]'); } catch(e) { equipSlots = []; }
+    try { equipSlotNames = JSON.parse(document.getElementById('equip-slot-names-input').value || '{}'); } catch(e) { equipSlotNames = {}; }
     loadPending();
+    loadEquipPending();
   }
 
   function save() {
@@ -1442,10 +1552,10 @@ var Registry = (function() {
     // 同步 sys_attr_presets（属性名数组，机器人兼容层需要）
     var presets = Object.keys(attrs);
     document.getElementById('attr-defs-input').value = JSON.stringify(attrs);
-    // 把 sys_attr_presets 也挂上去（通过追加 hidden input 或复用）
     var sp = document.getElementById('sys-attr-presets-input');
     if (!sp) { sp = document.createElement('input'); sp.type = 'hidden'; sp.name = 'sys_attr_presets'; sp.id = 'sys-attr-presets-input'; document.getElementById('cfg-form').appendChild(sp); }
     sp.value = JSON.stringify(presets);
+    document.getElementById('equip-registry-input').value = JSON.stringify(equipReg);
     cfgMarkDirty();
   }
 
@@ -1463,12 +1573,70 @@ var Registry = (function() {
     renderType('currency');
     renderType('item');
     renderType('interact');
+    renderEquip();
     renderAttrs();
     populateEffectDropdowns();
+    populateSlotDropdown();
     renderEffectChips('item');
     renderEffectChips('interact');
+    renderEffectChips('equip');
     renderPending('item');
     renderPending('interact');
+    renderEquipPending();
+  }
+
+  function renderEquip() {
+    var tbody = document.querySelector('#reg-table-equip tbody');
+    if (!tbody) return;
+    var defaultNames = { head: '头部', chest: '胸部', hand: '手部', leg: '腿部', foot: '脚部' };
+    var items = Object.values(equipReg).filter(function(r) { return r.type === 'equipment'; });
+    if (!items.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="reg-empty">暂无装备</td></tr>';
+      return;
+    }
+    tbody.innerHTML = items.map(function(r) {
+      var slotLabel = equipSlotNames[r.slot] || defaultNames[r.slot] || r.slot || '—';
+      var attrsStr = r.baseAttrs
+        ? Object.entries(r.baseAttrs).map(function(kv) { return kv[0] + (kv[1] >= 0 ? '+' : '') + kv[1]; }).join(', ')
+        : '—';
+      return '<tr>' +
+        '<td class="reg-code">' + esc(r.code) + '</td>' +
+        '<td><b>' + esc(r.name) + '</b></td>' +
+        '<td style="color:var(--muted)">' + esc(r.desc || '') + '</td>' +
+        '<td style="color:var(--muted)">' + esc(slotLabel) + '</td>' +
+        '<td style="color:var(--muted);font-size:11px">' + esc(attrsStr) + '</td>' +
+        '<td><button class="reg-del-btn" onclick="Registry.delEquip(\'' + esc(r.code) + '\')">删除</button></td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  function addEquip() {
+    var name      = document.getElementById('reg-equip-name').value.trim();
+    var desc      = document.getElementById('reg-equip-desc').value.trim() || '暂无描述';
+    var slot      = document.getElementById('reg-equip-slot').value;
+    var attrsVal  = document.getElementById('reg-equip-attrs').value.trim();
+    if (!name) { alert('请填写装备名称'); return; }
+    if (!slot) { alert('请选择槽位'); return; }
+    if (!attrsVal) { alert('请至少添加一条基础属性'); return; }
+    if (Object.values(equipReg).some(function(r) { return r.name === name; })) {
+      alert('「' + name + '」已存在于装备注册表'); return;
+    }
+    if (_equipPending.some(function(p) { return p.name === name; })) {
+      alert('「' + name + '」已在待同步列表中'); return;
+    }
+    _equipPending.push({ name: name, desc: desc, slot: slot, baseAttrs: attrsVal });
+    document.getElementById('reg-equip-name').value = '';
+    document.getElementById('reg-equip-desc').value = '';
+    _fx['equip'] = [];
+    renderEffectChips('equip');
+    saveEquipPending();
+    renderEquipPending();
+  }
+
+  function delEquip(code) {
+    if (!confirm('删除装备 [' + code + '] ' + (equipReg[code] ? equipReg[code].name : '') + '？')) return;
+    delete equipReg[code];
+    save(); renderEquip();
   }
 
   var esc = cfgEsc;
@@ -1624,7 +1792,9 @@ var Registry = (function() {
   load(); initTabs(); renderAll();
 
   return { addCurrency: addCurrency, addItem: addItem, addAttr: addAttr, del: del, delAttr: delAttr,
-           addEffect: addEffect, removeEffect: removeEffect, removePending: removePending };
+           addEffect: addEffect, removeEffect: removeEffect, removePending: removePending,
+           addEquip: addEquip, delEquip: delEquip, addEquipEffect: addEquipEffect,
+           removeEquipPending: removeEquipPending };
 })();
 
 

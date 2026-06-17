@@ -133,6 +133,24 @@ const PERSONALITIES = {
 };
 
 // ============================================================
+// 宫殿列表
+// ============================================================
+const PALACES = [
+    {name:"景仁宫",  area:"东六宫", desc:"庭院幽深，秋日银杏成排，安静中透着贵气。"},
+    {name:"承乾宫",  area:"东六宫", desc:"殿宇庄严，格局宽敞，历来是位份显赫者的居所。"},
+    {name:"延禧宫",  area:"东六宫", desc:"临近御花园水榭，夏日荷风阵阵，清凉宜人。"},
+    {name:"永和宫",  area:"东六宫", desc:"布置雅致，书卷气浓，适合性情沉静之人。"},
+    {name:"钟粹宫",  area:"东六宫", desc:"陈设精巧，采光极好，据说住此处的人气色都好。"},
+    {name:"景阳宫",  area:"东六宫", desc:"位置偏僻，少人走动，自有一番清幽滋味。"},
+    {name:"翊坤宫",  area:"西六宫", desc:"气度雍容，廊下海棠繁盛，历来是宠妃居所。"},
+    {name:"储秀宫",  area:"西六宫", desc:"装饰繁丽，金碧辉煌，在此居住本身就是一种体面。"},
+    {name:"咸福宫",  area:"西六宫", desc:"殿前种着丁香，花开时节香气弥漫整条回廊。"},
+    {name:"长春宫",  area:"西六宫", desc:"花木扶疏，春日桃花满院，住者莫不爱此风景。"},
+    {name:"永寿宫",  area:"西六宫", desc:"格局方正，冬日向阳，暖意比别处来得早些。"},
+    {name:"坤宁宫",  area:"中宫",   desc:"中宫正殿，天下之母所居，一砖一瓦皆是规矩。"},
+];
+
+// ============================================================
 // 秘密池
 // ============================================================
 const SECRET_POOL = [
@@ -188,7 +206,7 @@ function makeDefaultGS(){
     return{day_num:0,emperor_health:100,emperor_stage:"龙体康健",
            emperor_mood:"平和",emperor_pref:"",favored_qq:null,favored_name:null,
            game_phase:"active",attend_slots:5,attend_slots_max:5,
-           season:"春",last_settlement:null,updated_at:new Date().toISOString()};
+           season:"春",last_settlement:null,today_attend_bonus:0,updated_at:new Date().toISOString()};
 }
 function getAllPlayers(){
     const raw=seal.ext.storageGet(ext,KEY_LIST);
@@ -348,12 +366,14 @@ function createPlayer(qq,playerName,familyTier,familyTypeName,personalityName){
         stamina:100,stamina_max:100,status:"normal",pregnant_day:0,
         silver_rate:silverRate,love_rate:loveRate,love_daily_loss_bonus:loveDailyLoss,
         attend_bonus:attendBonus,health_recovery_bonus:healthRecovery,silver_passive_bonus:silverPassive,
+        attend_debuff:0,attend_debuff_until:0,
         last_attend_day:0,greet_day:0,greet_count:0,
         last_study_day:0,study_type:"",last_stroll_day:0,
         last_spy_day:0,last_apply_day:0,
         love_stage:"陌路",low_love_days:0,bedridden_days:0,prestige_warning:0,
         mastered_arts:[],items_held:[],servants:[],rank_queue:null,
         secret_type:secret.type,secret_penalty:secret.penalty,secret_revealed:false,
+        palace:"",
         attended_today:false,festival_score:0,
         created_at:now,updated_at:now
     };
@@ -370,11 +390,12 @@ function buildProfileCard(p){
     const status={normal:"正常",pregnant:`孕期第${p.pregnant_day}天`,
                   bedridden:`卧床第${p.bedridden_days}天`,
                   eliminated:"已出局",dead:"已薨逝"}[p.status]||p.status;
+    const palaceStr=p.palace?p.palace:"（尚未择宫）";
     return `【${p.name}·档案】
 ━━━━━━━━━━━━━━━
 位份：${p.rank}${p.title?"·"+p.title:""}　年岁：${p.age}岁
 出身：${p.family_type}　性格：${p.personality}
-状态：${status}
+居所：${palaceStr}　状态：${status}
 ━━━━━━━━━━━━━━━
 容貌 ${buildBar(p.appearance,100,8)} ${p.appearance.toFixed(1)}
 才华 ${buildBar(p.talent,100,8)} ${p.talent.toFixed(1)}
@@ -525,6 +546,7 @@ cmdHelp.solve=(ctx,msg,cmdArgs)=>{
 .我的档案　全部属性
 .我的子嗣　皇子/公主
 .宫廷状态　当日全局信息
+.迁宫　　　选择居住的宫殿
 ━━━━━━━━━━━━━━━━
 ⚡ 日常行动（消耗精力）
 .侍寝　　　　　　每日限一次，主要获宠途径
@@ -568,6 +590,47 @@ cmdProfile.solve=(ctx,msg,cmdArgs)=>{
 };
 ext.cmdMap["我的档案"]=cmdProfile;
 ext.cmdMap["档案"]=cmdProfile;
+
+// ============================================================
+// 指令：.迁宫
+// ============================================================
+const cmdPalace=seal.ext.newCmdItemInfo();
+cmdPalace.name="迁宫";
+cmdPalace.help="迁宫 [宫殿名] 或 .迁宫 查看宫殿列表";
+cmdPalace.solve=(ctx,msg,cmdArgs)=>{
+    const ret=seal.newCmdExecuteResult(true);
+    const qq=msg.sender.userId.replace(/\D/g,"");
+    const p=getPlayer(qq);
+    if(!p){seal.replyToSender(ctx,msg,"你还未注册，请先输入 .注册");return ret;}
+    if(p.status==="dead"||p.status==="eliminated"){seal.replyToSender(ctx,msg,"你已出局，无法迁宫。");return ret;}
+
+    const target=(cmdArgs.getArgN(1)||"").trim();
+
+    if(!target){
+        const lines=PALACES.map(pl=>`${pl.name}（${pl.area}）\n  ${pl.desc}`);
+        const cur=p.palace?`\n当前居所：${p.palace}`:"";
+        seal.replyToSender(ctx,msg,
+`【宫殿一览】${cur}
+━━━━━━━━━━━━━━━
+${lines.join("\n")}
+━━━━━━━━━━━━━━━
+输入 .迁宫 [宫殿名] 选择居所`);
+        return ret;
+    }
+
+    const dest=PALACES.find(pl=>pl.name===target||pl.name.replace("宫","")===target);
+    if(!dest){seal.replyToSender(ctx,msg,`找不到「${target}」，请输入 .迁宫 查看宫殿列表。`);return ret;}
+    if(p.palace===dest.name){seal.replyToSender(ctx,msg,`你本就居于${dest.name}，无需迁动。`);return ret;}
+
+    const from=p.palace||"宫中";
+    p.palace=dest.name;
+    savePlayer(qq,p);
+    seal.replyToSender(ctx,msg,
+`【迁宫】${p.name} 自${from}移居${dest.name}。
+${dest.desc}`);
+    return ret;
+};
+ext.cmdMap["迁宫"]=cmdPalace;
 
 // ============================================================
 // 指令：.宫廷状态
@@ -631,6 +694,13 @@ cmdAttend.solve=(ctx,msg,cmdArgs)=>{
     else if(pref==="好武"&&p.family_tier===4)bonus+=15;
     if(gs.emperor_health<30)bonus-=10;
     if(gs.favored_qq&&gs.favored_qq!==qq)bonus-=10;
+    // 今日随机事件加成
+    bonus+=(gs.today_attend_bonus||0);
+    // 吹枕边风 debuff
+    if(p.attend_debuff>0){
+        if(p.attend_debuff_until>=gs.day_num){bonus-=p.attend_debuff;}
+        else{p.attend_debuff=0;p.attend_debuff_until=0;}
+    }
     // 花草信物
     if(p.items_held.includes("稀罕花草")){bonus+=20;p.items_held.splice(p.items_held.indexOf("稀罕花草"),1);}
     const total=Math.min(100,Math.max(1,roll+bonus));
@@ -657,7 +727,7 @@ cmdAttend.solve=(ctx,msg,cmdArgs)=>{
     }
 
     if(loveGain>0)p.love=Math.min(100,p.love+loveGain*(p.love_rate||1));
-    p.sacred_favor+=favorGain;p.silver+=silverGain;
+    p.sacred_favor+=favorGain;p.silver+=Math.floor(silverGain*(p.silver_rate||1));
     p.love_stage=getLoveStage(p.love);
 
     // 专宠更新
@@ -666,7 +736,7 @@ cmdAttend.solve=(ctx,msg,cmdArgs)=>{
 
     if(pregnant&&p.status==="normal"){
         p.status="pregnant";p.pregnant_day=1;
-        text+="\n\n🌸 似乎有喜了……（已进入孕期）";
+        text+="\n\n🌸 似乎有喜了……（已进入孕期）\n孕期每日健康-3，宠爱衰减减半，约3天后分娩。请注意调养身体！";
     }
     savePlayer(qq,p);
     seal.replyToSender(ctx,msg,`【侍寝】${p.name}\n${text}\n\n宠爱：${p.love.toFixed(1)} 圣宠：${p.sacred_favor}`);
@@ -693,9 +763,10 @@ cmdGreet.solve=(ctx,msg,cmdArgs)=>{
     if(p.status!=="bedridden")p.stamina-=10;
     p.greet_count+=1;
     const fg=randInt(5,15),sg=randInt(10,20);
-    p.sacred_favor+=fg;p.silver+=sg;p.virtue=Math.min(100,p.virtue+1);
+    const sgActual=Math.floor(sg*(p.silver_rate||1));
+    p.sacred_favor+=fg;p.silver+=sgActual;p.virtue=Math.min(100,p.virtue+1);
     savePlayer(qq,p);
-    seal.replyToSender(ctx,msg,`【请安】${p.name}（今日第${p.greet_count}次）\n+圣宠${fg}　+银两${sg}　+德行1\n圣宠：${p.sacred_favor}`);
+    seal.replyToSender(ctx,msg,`【请安】${p.name}（今日第${p.greet_count}次）\n+圣宠${fg}　+银两${sgActual}　+德行1\n圣宠：${p.sacred_favor}`);
     return ret;
 };
 ext.cmdMap["请安"]=cmdGreet;
@@ -753,7 +824,7 @@ cmdStroll.solve=(ctx,msg,cmdArgs)=>{
     if(r<0.10){
         const pool=[
             {t:`🌟 偶遇皇上，赐步辇同游。\n+宠爱60 +圣宠80 +威严20`,
-             a:(p)=>{p.love=Math.min(100,p.love+60);p.sacred_favor+=80;p.prestige+=20;}},
+             a:(p)=>{p.love=Math.min(100,p.love+Math.floor(60*(p.love_rate||1)));p.sacred_favor+=80;p.prestige+=20;}},
             {t:`🔍 撞破某位娘娘的秘密，握在手中备用。\n（获得NPC弱点把柄）`,
              a:(p)=>{p.items_held.push("秘密把柄×1");}},
             {t:`👵 太后赐座赏识。\n+威严40 +圣宠60`,
@@ -779,8 +850,8 @@ cmdStroll.solve=(ctx,msg,cmdArgs)=>{
         const npc=npcs.length?npcs[randInt(0,npcs.length-1)]:null;
         const lg=randInt(20,40);
         const pool=[
-            {t:`💫 偶遇皇上，皇上与你说了几句话。\n+宠爱${lg} +圣宠30`,a:(p)=>{p.love=Math.min(100,p.love+lg);p.sacred_favor+=30;}},
-            {t:`🌹 路遇${npc?npc.name+npc.title:"某位娘娘"}，闲叙片刻。\n关系+10`,a:()=>{}},
+            {t:`💫 偶遇皇上，皇上与你说了几句话。\n+宠爱${lg} +圣宠30`,a:(p)=>{p.love=Math.min(100,p.love+Math.floor(lg*(p.love_rate||1)));p.sacred_favor+=30;}},
+            {t:`🌹 路遇${npc?npc.name+npc.title:"某位娘娘"}，闲叙片刻。\n+威严5`,a:(p)=>{p.prestige+=5;}},
             {t:`👸 遇见太后散步，恭敬行礼获赞许。\n+德行5 +威严10`,a:(p)=>{p.virtue=Math.min(100,p.virtue+5);p.prestige+=10;}}
         ];
         const e=pool[randInt(0,pool.length-1)];e.a(p);text=e.t;
@@ -816,7 +887,7 @@ cmdSpy.solve=(ctx,msg,cmdArgs)=>{
         const t=all[randInt(0,all.length-1)];
         const d=t.d;
         if(quality==="高"){
-            if(t.type==="player")intel=`探得「${t.name}」：位份${d.rank}，宠爱${d.love.toFixed(0)}，威严${d.prestige.toFixed(0)}，健康${d.health.toFixed(0)}，圣宠${d.sacred_favor}`;
+            if(t.type==="player")intel=`探得「${t.name}」：位份${d.rank}，居于${d.palace||"宫中"}，宠爱${d.love.toFixed(0)}，威严${d.prestige.toFixed(0)}，健康${d.health.toFixed(0)}，圣宠${d.sacred_favor}`;
             else intel=`探得「${t.name}${d.title}」：位份${d.rank}，宠爱${d.love.toFixed(0)}，威严${d.prestige.toFixed(0)}`;
         }else if(quality==="中"){
             intel=`探得「${t.name}」片段：宠爱约${Math.round(d.love/10)*10}，威严${d.prestige>100?"较高":"偏低"}`;
@@ -1021,9 +1092,9 @@ cmdApply.solve=(ctx,msg,cmdArgs)=>{
         p.prestige=PRESTIGE_BASE[nr]+(p.family_tier>=5?20:0);
         p.rank_queue=null;savePlayer(qq,p);
         seal.replyToSender(ctx,msg,`🎊 【晋升成功】\n${p.name} 晋升为 ${nr}！\n威严重置为 ${p.prestige.toFixed(0)}\n银两余额：${p.silver}两`);
-    }else if(roll<=10){
+    }else if(roll>90){
         p.virtue=Math.max(0,p.virtue-5);p.prestige=Math.max(0,p.prestige-10);savePlayer(qq,p);
-        seal.replyToSender(ctx,msg,`✗ 晋升失败且举止失仪。\n-德行5 -威严10\n银两余额：${p.silver}两`);
+        seal.replyToSender(ctx,msg,`✗ 晋升失败且举止失仪，令皇上不悦。\n-德行5 -威严10\n银两余额：${p.silver}两`);
     }else{
         savePlayer(qq,p);
         seal.replyToSender(ctx,msg,`△ 晋升失败。银两已扣，明日可再试。\n银两余额：${p.silver}两`);
@@ -1051,9 +1122,10 @@ cmdGift.solve=(ctx,msg,cmdArgs)=>{
     p.silver-=amount;p.festival_score+=amount;
     let lg=0,fg=0;
     if(amount>=500){lg=40;fg=60;}else if(amount>=200){lg=25;fg=30;}else if(amount>=1){lg=10;fg=10;}
-    p.love=Math.min(100,p.love+lg);p.sacred_favor+=fg;
+    const lgActual=lg>0?Math.floor(lg*(p.love_rate||1)):0;
+    p.love=Math.min(100,p.love+lgActual);p.sacred_favor+=fg;
     p.love_stage=getLoveStage(p.love);savePlayer(qq,p);
-    seal.replyToSender(ctx,msg,`【献礼】${p.name}　献${amount}两\n${lg>0?"+宠爱"+lg+" +圣宠"+fg:"礼轻情意……"}\n银两余额：${p.silver}两`);
+    seal.replyToSender(ctx,msg,`【献礼】${p.name}　献${amount}两\n${lgActual>0?"+宠爱"+lgActual+" +圣宠"+fg:"礼轻情意……"}\n银两余额：${p.silver}两`);
     return ret;
 };
 ext.cmdMap["献礼"]=cmdGift;
@@ -1064,6 +1136,7 @@ ext.cmdMap["献礼"]=cmdGift;
 function runDailySettlement(ctx,msg){
     const gs=getGameState();
     gs.day_num+=1;const day=gs.day_num;
+    gs.today_attend_bonus=0;
     const report=[];
     report.push(`📅 【永和三年·第${day}天】${gs.season}\n━━━━━━━━━━━━━━━━`);
 
@@ -1122,6 +1195,8 @@ function runDailySettlement(ctx,msg){
             p.pregnant_day+=1;p.health=Math.max(1,p.health-3);
             if(p.pregnant_day>=3){
                 const br=processBirth(p,qq);report.push(br.text);
+            }else if(p.health<40){
+                report.push(`⚠️ ${p.name}孕期健康堪忧（${p.health.toFixed(0)}），分娩风险极高，请速调养！`);
             }
         }
 
@@ -1160,7 +1235,7 @@ function runDailySettlement(ctx,msg){
             else{demotePlayer(p);demoted.push(p.name);}
         }else{p.prestige_warning=0;}
 
-        p.attended_today=false;p.festival_score=0;
+        p.attended_today=false;
         savePlayer(qq,p);
     }
 
@@ -1169,13 +1244,24 @@ function runDailySettlement(ctx,msg){
 
     // 随机事件
     const events=genDailyEvents(gs,day);
-    for(const e of events){report.push(e.text);if(e.apply)e.apply(allQQs);}
+    for(const e of events){report.push(e.text);if(e.apply)e.apply(allQQs,gs);}
 
-    // 节日预告/结算
+    // 节日预告/结算（festival_score 在结算后才清零）
     const todayFest=getCurrentFestival(day);
     const tmrFest=getCurrentFestival(day+1);
     if(tmrFest)report.push(`\n🎊 明日${tmrFest}！请提前准备。`);
     if(todayFest&&day>1){const fr=settleFestival(todayFest,allQQs);if(fr)report.push(fr);}
+    // 节日结算完成后重置积分
+    for(const qq2 of allQQs){const p2=getPlayer(qq2);if(p2){p2.festival_score=0;savePlayer(qq2,p2);}}
+
+    // rank_queue 空位通知
+    for(const qq2 of allQQs){
+        const p2=getPlayer(qq2);
+        if(!p2||!p2.rank_queue||p2.status==="dead"||p2.status==="eliminated")continue;
+        if(getRankSlotUsed(p2.rank_queue)<RANK_SLOTS[p2.rank_queue]){
+            report.push(`📯 ${p2.name}：${p2.rank_queue}位已有空缺，可输入 .申请晋升 ！`);
+        }
+    }
 
     // 威严播报
     if(warned.length)report.push(`\n⚠️ 威严预警：${warned.join("、")} 若明日不改善将降位！`);
@@ -1251,7 +1337,7 @@ function processBirth(p,qq){
         p.health=Math.max(1,p.health-60);
         if(Math.random()<0.2){p.status="dead";return{text:`💔 ${p.name}产后大出血，香消玉殒……`};}
     }else if(outcome==="难产"){p.health=Math.max(1,p.health-30);}
-    p.love+=gender==="皇子"?40:20;p.sacred_favor+=gender==="皇子"?200:80;p.prestige+=gender==="皇子"?80:30;
+    p.love+=Math.floor((gender==="皇子"?40:20)*(p.love_rate||1));p.sacred_favor+=gender==="皇子"?200:80;p.prestige+=gender==="皇子"?80:30;
     const hs=getHeirs(qq);hs.push(heir);saveHeirs(qq,hs);
     const icon=gender==="皇子"?"👑":"🌸";
     return{text:`${icon} ${p.name}${outcome==="顺产"?"顺利诞下":outcome+"诞下"}${gender}！`};
@@ -1275,6 +1361,9 @@ function runNPCBehaviors(gs,report){
             if(npc.behavior==="aggressive")tqq=getTopFavor(allQQs);
             else if(npc.behavior==="schemer")tqq=getClosestPrestige(allQQs,npc.prestige);
             else if(npc.behavior==="love_type"&&npc.love<30)tqq=getTopLove(allQQs);
+            else if(npc.behavior==="heir_type")tqq=getTopPrestige(allQQs);
+            else if(npc.behavior==="talent_type")tqq=getTopFavor(allQQs);
+            else if(npc.behavior==="defensive"&&npc.love<40)tqq=getTopFavor(allQQs);
             if(tqq){const tp=getPlayer(tqq);if(tp){applyIntrigue(tp,npc.scheme,"诬告");savePlayer(tqq,tp);report.push(`🗡 宫中有人遭遇算计……`);}}
         }
         // NPC威严检查
@@ -1288,12 +1377,17 @@ function runNPCBehaviors(gs,report){
 }
 
 function applyIntrigue(target,attackerScheme,method){
-    const disc=Math.max(0.05,0.35-(attackerScheme-target.scheme)*0.003);
+    let disc=Math.max(0.05,0.35-(attackerScheme-target.scheme)*0.003);
+    const expIdx=target.items_held?target.items_held.indexOf("行踪暴露"):-1;
+    if(expIdx>=0){disc=Math.max(0.05,disc-0.20);target.items_held.splice(expIdx,1);}
     if(Math.random()>=disc){
         if(method==="诬告"){target.virtue=Math.max(0,target.virtue-20);target.prestige=Math.max(0,target.prestige-30);}
         else if(method==="构陷失宠"){target.love=0;target.prestige=Math.max(0,target.prestige-40);}
         else if(method==="下毒"){target.health=Math.max(1,target.health-randInt(30,50));}
-        else if(method==="吹枕边风"){target.love=Math.max(0,target.love-30);}
+        else if(method==="吹枕边风"){
+            target.love=Math.max(0,target.love-30);
+            target.attend_debuff=30;target.attend_debuff_until=(getGameState().day_num||0)+1;
+        }
     }
 }
 
@@ -1303,11 +1397,12 @@ function demoteNPC(npc){
 }
 function getTopFavor(qs){let b=null,bf=-1;for(const q of qs){const p=getPlayer(q);if(p&&p.sacred_favor>bf&&p.status!=="dead"){b=q;bf=p.sacred_favor;}}return b;}
 function getTopLove(qs){let b=null,bf=-1;for(const q of qs){const p=getPlayer(q);if(p&&p.love>bf&&p.status!=="dead"){b=q;bf=p.love;}}return b;}
+function getTopPrestige(qs){let b=null,bf=-1;for(const q of qs){const p=getPlayer(q);if(p&&p.prestige>bf&&p.status!=="dead"){b=q;bf=p.prestige;}}return b;}
 function getClosestPrestige(qs,ref){let b=null,bd=Infinity;for(const q of qs){const p=getPlayer(q);if(p&&p.status!=="dead"){const d=Math.abs(p.prestige-ref);if(d<bd){b=q;bd=d;}}}return b;}
 
 function genDailyEvents(gs,day){
     const pool=[
-        {text:"边关捷报传来，皇上龙颜大悦！今日侍寝成功率+10",apply:null},
+        {text:"边关捷报传来，皇上龙颜大悦！今日侍寝成功率+10",apply:(qs,gs)=>{gs.today_attend_bonus=10;saveGameState(gs);}},
         {text:"宫中宣布斋戒一日，众妃嫔皆闭门静修。",apply:null},
         {text:"御花园盛开奇花，皇上心情颇佳。",apply:null},
         {text:"太医院提醒近日气候变换，注意保暖。",apply:null},
@@ -1429,7 +1524,9 @@ function applyWebIntrigue(item,dayNum){
         if(!target||target.status==="dead"||target.status==="eliminated"){
             return{id:item.id,result:"fail",detail:"目标已不存在"};
         }
-        const discoverP=Math.max(0.05,0.35-(attackerScheme-target.scheme)*0.003);
+        let discoverP=Math.max(0.05,0.35-(attackerScheme-target.scheme)*0.003);
+        const expIdx2=target.items_held?target.items_held.indexOf("行踪暴露"):-1;
+        if(expIdx2>=0){discoverP=Math.max(0.05,discoverP-0.20);target.items_held.splice(expIdx2,1);}
         const discovered=Math.random()<discoverP;
         if(discovered){
             // 攻击者受罚
@@ -1447,8 +1544,10 @@ function applyWebIntrigue(item,dayNum){
             return{id:item.id,result:"found",detail:resultText};
         }
         // 应用效果
-        if(method==="吹枕边风")target.love=Math.max(0,target.love-30);
-        else if(method==="诬告"){target.virtue=Math.max(0,target.virtue-20);target.prestige=Math.max(0,target.prestige-30);}
+        if(method==="吹枕边风"){
+            target.love=Math.max(0,target.love-30);
+            target.attend_debuff=30;target.attend_debuff_until=(getGameState().day_num||0)+1;
+        }else if(method==="诬告"){target.virtue=Math.max(0,target.virtue-20);target.prestige=Math.max(0,target.prestige-30);}
         else if(method==="下毒")target.health=Math.max(1,target.health-randInt(30,50));
         else if(method==="构陷失宠"){target.love=0;target.prestige=Math.max(0,target.prestige-40);}
         else if(method==="落胎"&&target.status==="pregnant"){

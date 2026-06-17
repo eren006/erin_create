@@ -921,7 +921,8 @@ def assemble_bot_config(flat):
     for blob_key in ("item_registry", "rpg_attr_defs", "sys_attr_presets",
                      "end_game_bonus_templates", "end_game_draw_config",
                      "custom_message_templates", "preset_gifts",
-                     "private_appointment_aliases"):
+                     "private_appointment_aliases",
+                     "equipment_registry", "equipment_slots", "equipment_slot_names"):
         val = flat.get(blob_key)
         if val:
             result[blob_key] = val
@@ -2562,7 +2563,9 @@ def admin_config_page():
         for blob_key in ("item_registry", "rpg_attr_defs", "sys_attr_presets",
                          "end_game_draw_config",
                          "item_registry_pending", "custom_message_templates",
-                         "private_appointment_aliases"):
+                         "private_appointment_aliases",
+                         "equipment_registry", "equipment_registry_pending",
+                         "equipment_slots", "equipment_slot_names"):
             raw = request.form.get(blob_key, "")
             if raw:
                 try:
@@ -2602,6 +2605,10 @@ def admin_config_page():
     pool_defs_json           = flat.get("pool_definitions", "{}")
     item_pending_json        = flat.get("item_registry_pending", "[]")
     aliases_json             = flat.get("private_appointment_aliases", "[]")
+    equip_registry_json      = flat.get("equipment_registry", "{}")
+    equip_pending_json       = flat.get("equipment_registry_pending", "[]")
+    equip_slots_json         = flat.get("equipment_slots", '["head","chest","hand","leg","foot"]')
+    equip_slot_names_json    = flat.get("equipment_slot_names", "{}")
     tpl_rows = db.execute(
         "SELECT id, name, config_data, created_at FROM config_templates "
         "WHERE tenant_id=? ORDER BY created_at DESC",
@@ -2621,6 +2628,10 @@ def admin_config_page():
                            pool_defs_json=pool_defs_json,
                            item_pending_json=item_pending_json,
                            aliases_json=aliases_json,
+                           equip_registry_json=equip_registry_json,
+                           equip_pending_json=equip_pending_json,
+                           equip_slots_json=equip_slots_json,
+                           equip_slot_names_json=equip_slot_names_json,
                            cfg_templates=cfg_templates,
                            tpl_msg=request.args.get("tpl_msg"),
                            tpl_max=_TEMPLATE_MAX)
@@ -3880,6 +3891,24 @@ def api_pending_items():
             pending = []
     return jsonify({"pending": pending})
 
+@app.route("/api/pending_equips", methods=["GET"])
+def api_pending_equips():
+    tid     = get_tenant_from_token()
+    show_id = get_current_show_id_for_tenant(tid)
+    if not show_id: abort(503)
+    db  = get_db()
+    row = db.execute(
+        "SELECT value FROM site_config WHERE show_id=? AND key='equipment_registry_pending'",
+        (show_id,)
+    ).fetchone()
+    pending = []
+    if row and row["value"]:
+        try:
+            pending = json.loads(row["value"])
+        except (json.JSONDecodeError, TypeError):
+            pending = []
+    return jsonify({"pending": pending})
+
 @app.route("/api/event", methods=["POST"])
 def api_event():
     tid  = get_tenant_from_token()
@@ -4726,6 +4755,58 @@ def _get_pool_data(db, show_id):
     if not item_registry:
         item_registry = json.loads(flat.get("reward_item_registry", "{}") or "{}")
     return pool_defs, pool_cfg, item_registry
+
+
+@app.route("/admin/rpg", methods=["GET"])
+@require_admin
+def admin_rpg():
+    sid = get_show_id()
+    db  = get_db()
+    flat = get_flat_config(db, sid)
+    def _j(key, default):
+        raw = flat.get(key) or ""
+        try:
+            return json.loads(raw) if raw else default
+        except (json.JSONDecodeError, TypeError):
+            return default
+    item_reg   = _j("item_registry", {})
+    if not item_reg:
+        item_reg = _j("reward_item_registry", {})
+    return render_template("admin_rpg.html",
+        item_registry    = item_reg,
+        attr_defs        = _j("rpg_attr_defs", {}),
+        item_pending     = _j("item_registry_pending", []),
+        equip_registry   = _j("equipment_registry", {}),
+        equip_pending    = _j("equipment_registry_pending", []),
+        equip_slots      = _j("equipment_slots", ["head","chest","hand","leg","foot"]),
+        equip_slot_names = _j("equipment_slot_names", {}),
+    )
+
+
+@app.route("/admin/rpg/save", methods=["POST"])
+@require_admin
+def admin_rpg_save():
+    sid = get_show_id()
+    tid = current_tenant_id()
+    db  = get_db()
+    data = request.get_json(silent=True) or {}
+    allowed = {
+        "item_registry", "rpg_attr_defs", "sys_attr_presets",
+        "item_registry_pending", "equipment_registry",
+        "equipment_registry_pending", "equipment_slots", "equipment_slot_names",
+    }
+    for key, val in data.items():
+        if key not in allowed:
+            continue
+        if isinstance(val, (dict, list)):
+            val = json.dumps(val, ensure_ascii=False)
+        db.execute(
+            "INSERT INTO site_config(show_id,tenant_id,key,value) VALUES(?,?,?,?) "
+            "ON CONFLICT(show_id,key) DO UPDATE SET value=excluded.value",
+            (sid, tid, key, val)
+        )
+    db.commit()
+    return jsonify({"ok": True})
 
 
 @app.route("/admin/pools", methods=["GET"])
