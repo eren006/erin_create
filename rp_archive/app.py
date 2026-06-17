@@ -4769,17 +4769,29 @@ def admin_rpg():
             return json.loads(raw) if raw else default
         except (json.JSONDecodeError, TypeError):
             return default
-    item_reg   = _j("item_registry", {})
+    item_reg = _j("item_registry", {})
     if not item_reg:
         item_reg = _j("reward_item_registry", {})
+    player_rows = db.execute(
+        "SELECT role_name FROM players WHERE show_id=? AND role_name!='' ORDER BY role_name",
+        (sid,)
+    ).fetchall()
+    player_list = [r[0] for r in player_rows]
     return render_template("admin_rpg.html",
-        item_registry    = item_reg,
-        attr_defs        = _j("rpg_attr_defs", {}),
-        item_pending     = _j("item_registry_pending", []),
-        equip_registry   = _j("equipment_registry", {}),
-        equip_pending    = _j("equipment_registry_pending", []),
-        equip_slots      = _j("equipment_slots", ["head","chest","hand","leg","foot"]),
-        equip_slot_names = _j("equipment_slot_names", {}),
+        item_registry       = item_reg,
+        attr_defs           = _j("rpg_attr_defs", {}),
+        item_pending        = _j("item_registry_pending", []),
+        equip_registry      = _j("equipment_registry", {}),
+        equip_pending       = _j("equipment_registry_pending", []),
+        equip_slots         = _j("equipment_slots", ["head","chest","hand","leg","foot"]),
+        equip_slot_names    = _j("equipment_slot_names", {}),
+        craft_recipes       = _j("craft_recipes", {}),
+        skill_defs          = _j("skill_defs", {}),
+        battle_attrs        = _j("battle_attrs", {}),
+        attack_defense_cfg  = _j("attack_defense_config", {}),
+        player_skills       = _j("player_skills", {}),
+        battle_log          = _j("battle_log", []),
+        player_list         = player_list,
     )
 
 
@@ -4794,6 +4806,8 @@ def admin_rpg_save():
         "item_registry", "rpg_attr_defs", "sys_attr_presets",
         "item_registry_pending", "equipment_registry",
         "equipment_registry_pending", "equipment_slots", "equipment_slot_names",
+        "craft_recipes", "skill_defs",
+        "battle_attrs", "attack_defense_config", "player_skills",
     }
     for key, val in data.items():
         if key not in allowed:

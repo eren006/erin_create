@@ -1124,4 +1124,130 @@ cmdSetMgmt.solve = (ctx, msg, cmdArgs) => {
 };
 ext.cmdMap['雨境管理群'] = cmdSetMgmt;
 
+// ——————————————————————————
+// 16. 设置雨量（管理员）
+// ——————————————————————————
+const RAIN_TYPES = { '小雨': 4, '中雨': 3, '大雨': 2, '暴雨': 1 };
+
+function getRainConfig() { return getData('rainConfig', null); }
+function setRainConfig(cfg) { setData('rainConfig', cfg); }
+
+const cmdSetRain = seal.ext.newCmdItemInfo();
+cmdSetRain.name = '设置雨量';
+cmdSetRain.help = '设置当日雨量：.设置雨量 [小雨/中雨/大雨/暴雨]';
+cmdSetRain.solve = (ctx, msg, cmdArgs) => {
+    if (!isAdmin(ctx, msg)) return (seal.replyToSender(ctx, msg, '【雨境】无权限。'), seal.ext.newCmdExecuteResult(true));
+
+    const type = cmdArgs.getArgN(1);
+    if (!type || !RAIN_TYPES[type]) {
+        seal.replyToSender(ctx, msg, '【雨境】请输入有效雨量类型：小雨 / 中雨 / 大雨 / 暴雨');
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const day = getGameDay();
+    const cost = RAIN_TYPES[type];
+    setRainConfig({ rainType: type, cost, dayStr: `D${day}`, paidUids: [] });
+
+    seal.replyToSender(ctx, msg, `【雨境】已设置 D${day} 雨量：${type}（需缴纳 ${cost} 颗雨点）`);
+    broadcastMain(ctx.endPoint, msg.platform,
+        `【雨境·雨量公告】今日降雨：${type}\n` +
+        `需缴纳 ${cost} 颗雨点，雨点不足部分按 20HP/颗 扣除。\n` +
+        `发送「.缴纳雨点」进行缴纳。`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap['设置雨量'] = cmdSetRain;
+
+
+// ——————————————————————————
+// 17. 缴纳雨点（玩家）
+// ——————————————————————————
+const cmdPayRain = seal.ext.newCmdItemInfo();
+cmdPayRain.name = '缴纳雨点';
+cmdPayRain.help = '缴纳当日雨量：.缴纳雨点  或  .缴纳雨点 N颗（N为自愿消耗的雨点数，不足部分以HP抵偿）';
+cmdPayRain.solve = (ctx, msg, cmdArgs) => {
+    const reply = t => (seal.replyToSender(ctx, msg, `【雨境】${t}`), seal.ext.newCmdExecuteResult(true));
+
+    const platform = msg.platform;
+    const uid = msg.sender.userId.replace(`${platform}:`, '');
+    const p = getPlayer(platform, uid);
+
+    if (!p.isAlive) return reply('你已消散，无需缴纳。');
+
+    const cfg = getRainConfig();
+    if (!cfg) return reply('当日雨量尚未公布，请等待管理组通知。');
+
+    const day = getGameDay();
+    if (cfg.dayStr !== `D${day}`) return reply('当日雨量尚未公布，请等待管理组通知。');
+
+    const fullId = `${platform}:${uid}`;
+    if (cfg.paidUids.includes(fullId)) return reply('你今日已缴纳过，请勿重复操作。');
+
+    const cost = cfg.cost;
+    let useRain;
+
+    const arg = cmdArgs.getArgN(1);
+    if (arg) {
+        const m = arg.match(/^(\d+)颗?$/);
+        if (!m) return reply('格式错误。示例：.缴纳雨点  或  .缴纳雨点 2颗');
+        useRain = parseInt(m[1]);
+        if (useRain > cost) return reply(`今日${cfg.rainType}只需缴纳 ${cost} 颗，无需超额。`);
+        if (useRain > p.raindrops) return reply(`雨点不足（持有：${p.raindrops} 颗）。`);
+    } else {
+        useRain = Math.min(p.raindrops, cost);
+    }
+
+    const hpDeduct = (cost - useRain) * 20;
+    p.raindrops -= useRain;
+    p.hp = Math.max(0, p.hp - hpDeduct);
+
+    cfg.paidUids.push(fullId);
+    setRainConfig(cfg);
+    savePlayer(platform, uid, p);
+
+    let result = `【雨境·缴纳完成】${cfg.rainType}（共 ${cost} 颗）\n消耗雨点：${useRain} 颗`;
+    if (hpDeduct > 0) result += `\nHP抵偿：${hpDeduct}（${cost - useRain} 颗×20HP）`;
+    result += `\n当前｜雨点：${p.raindrops} 颗｜HP：${p.hp}`;
+    seal.replyToSender(ctx, msg, result);
+
+    sendToMgmt(ctx.endPoint, platform,
+        `【雨量缴纳】${getRoleName(platform, uid)}：雨点-${useRain}，HP-${hpDeduct}，剩余HP:${p.hp}`);
+
+    if (p.hp <= 0 && p.isAlive) handleDeath(ctx.endPoint, platform, uid, `${cfg.rainType}侵蚀·HP耗尽`);
+
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap['缴纳雨点'] = cmdPayRain;
+
+
+// ——————————————————————————
+// 18. 雨量状态（管理员）
+// ——————————————————————————
+const cmdRainStatus = seal.ext.newCmdItemInfo();
+cmdRainStatus.name = '雨量状态';
+cmdRainStatus.help = '查看当日雨量缴纳情况：.雨量状态';
+cmdRainStatus.solve = (ctx, msg, cmdArgs) => {
+    if (!isAdmin(ctx, msg)) return (seal.replyToSender(ctx, msg, '【雨境】无权限。'), seal.ext.newCmdExecuteResult(true));
+
+    const cfg = getRainConfig();
+    if (!cfg) {
+        seal.replyToSender(ctx, msg, '【雨境】当日雨量尚未设置。');
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const platform = msg.platform;
+    const all = getAllPlayers()[platform] || {};
+    const aliveUids = Object.entries(all).filter(([_, p]) => p.isAlive).map(([uid]) => uid);
+    const paidSet = new Set(cfg.paidUids.map(k => k.split(':')[1]));
+    const unpaid = aliveUids.filter(uid => !paidSet.has(uid));
+
+    let text = `【雨境·雨量状态】${cfg.dayStr} ${cfg.rainType}（${cfg.cost}颗）\n`;
+    text += `已缴：${cfg.paidUids.length} 人｜未缴：${unpaid.length} 人`;
+    if (unpaid.length > 0)
+        text += `\n未缴名单：${unpaid.map(uid => getRoleName(platform, uid)).join('、')}`;
+
+    seal.replyToSender(ctx, msg, text);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap['雨量状态'] = cmdRainStatus;
+
 console.log('[雨境] v1.0.0 加载完成');

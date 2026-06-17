@@ -546,6 +546,321 @@
 
     </div>
   </div>
+
+  <!-- ══ 合成配方 ══ -->
+  <div style="margin-top:18px;">
+    <div class="rpg-layout" style="grid-template-columns:400px 1fr;">
+
+      <!-- 左：注册表单 -->
+      <div class="rpg-panel">
+        <div class="rpg-panel-title">🧪 注册合成配方</div>
+        <div class="info-bar">
+          选好产物和材料后点「注册配方」，<b>立即</b>写入存档，机器人无需额外同步即可使用。
+        </div>
+
+        <!-- 产物 -->
+        <div class="rpg-field">
+          <label class="rpg-label">产物</label>
+          <select class="rpg-select" id="cf-output"></select>
+          <div class="rpg-hint">合成后发放给玩家的物品</div>
+        </div>
+
+        <!-- 描述 + 成功率 -->
+        <div class="rpg-row">
+          <div class="rpg-field" style="flex:2;">
+            <label class="rpg-label">描述 <span style="font-weight:400;opacity:.6;font-size:10px;">（可选）</span></label>
+            <input class="rpg-input" id="cf-desc" placeholder="合成说明">
+          </div>
+          <div class="rpg-field" style="flex:0 0 90px;">
+            <label class="rpg-label">成功率 %</label>
+            <input class="rpg-input" id="cf-rate" type="number" min="0" max="100" value="100">
+            <div class="rpg-hint">失败时材料照扣</div>
+          </div>
+        </div>
+
+        <!-- 材料 -->
+        <div class="rpg-field">
+          <label class="rpg-label">
+            材料
+            <span class="badge" id="cf-mat-count" style="letter-spacing:0;text-transform:none;">0</span>
+          </label>
+          <div id="cf-mat-list" style="margin-bottom:8px;"></div>
+          <div class="attr-picker-row">
+            <select class="rpg-select" id="cf-mat-item"></select>
+            <input class="rpg-input" id="cf-mat-qty" type="number" min="1" value="1" style="width:64px;flex-shrink:0;">
+            <button class="attr-picker-add" onclick="CRAFT.addMat()">添加</button>
+          </div>
+          <div class="rpg-hint">材料可同时包含普通物品、互动物品、货币，每种选一次</div>
+        </div>
+
+        <!-- 限制条件（折叠） -->
+        <div class="rpg-field">
+          <label class="rpg-label" style="cursor:pointer;user-select:none;" onclick="CRAFT.toggleLimits()">
+            限制条件 <span style="font-weight:400;opacity:.6;font-size:10px;">（可选）</span>
+            <span id="cf-limits-arrow" style="font-size:10px;margin-left:4px;">▸</span>
+          </label>
+          <div id="cf-limits-section" style="display:none;padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;margin-top:4px;">
+            <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">玩家需同时满足以下条件才能使用此配方</div>
+
+            <div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.7px;text-transform:uppercase;margin-bottom:5px;">属性下限</div>
+            <div id="cf-lattr-list" style="margin-bottom:6px;"></div>
+            <div class="attr-picker-row" style="margin-bottom:12px;">
+              <select class="rpg-select" id="cf-lattr-name"></select>
+              <input class="rpg-input" id="cf-lattr-val" type="number" placeholder="最小值" style="width:80px;flex-shrink:0;">
+              <button class="attr-picker-add" onclick="CRAFT.addLimitAttr()">添加</button>
+            </div>
+
+            <div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.7px;text-transform:uppercase;margin-bottom:5px;">货币下限</div>
+            <div id="cf-lcurr-list" style="margin-bottom:6px;"></div>
+            <div class="attr-picker-row">
+              <select class="rpg-select" id="cf-lcurr-name"></select>
+              <input class="rpg-input" id="cf-lcurr-val" type="number" placeholder="最小量" style="width:80px;flex-shrink:0;">
+              <button class="attr-picker-add" onclick="CRAFT.addLimitCurr()">添加</button>
+            </div>
+          </div>
+        </div>
+
+        <button class="rpg-submit" onclick="CRAFT.registerRecipe()">注册配方</button>
+      </div>
+
+      <!-- 右：已有配方 -->
+      <div class="rpg-panel">
+        <div class="rpg-panel-title">
+          📋 已有配方
+          <span class="badge" id="craft-count">0</span>
+        </div>
+        <div id="craft-recipe-list"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══ 战斗技能 ══ -->
+  <div style="margin-top:18px;">
+    <div class="rpg-layout" style="grid-template-columns:360px 1fr;">
+
+      <!-- 左：注册表单 -->
+      <div class="rpg-panel">
+        <div class="rpg-panel-title">⚔️ 注册战斗技能</div>
+        <div class="info-bar">
+          技能在此注册后，管理员通过 Bot 指令「玩家技能 角色名 技能名 授予/撤销」为角色分配。
+        </div>
+
+        <div class="rpg-field">
+          <label class="rpg-label">技能名称</label>
+          <input class="rpg-input" id="sk-name" placeholder="如：剑气斩">
+        </div>
+
+        <div class="rpg-row">
+          <div class="rpg-field" style="flex:1;">
+            <label class="rpg-label">技能类型</label>
+            <select class="rpg-select" id="sk-type" onchange="SKILL.onTypeChange()">
+              <option value="damage">damage — 倍率物理伤害</option>
+              <option value="true_damage">true_damage — 固定真实伤害</option>
+              <option value="heal">heal — 回复HP</option>
+              <option value="drain">drain — 吸血（伤害+回复）</option>
+              <option value="shield">shield — 护盾</option>
+              <option value="aoe">aoe — 群体攻击</option>
+              <option value="debuff_atk">debuff_atk — 削减目标ATK</option>
+              <option value="debuff_def">debuff_def — 削减目标DEF</option>
+              <option value="mp_drain">mp_drain — 吸取目标MP</option>
+            </select>
+          </div>
+          <div class="rpg-field" style="flex:0 0 90px;">
+            <label class="rpg-label">MP消耗</label>
+            <input class="rpg-input" id="sk-mp" type="number" min="0" value="20">
+          </div>
+        </div>
+
+        <!-- 动态参数区 -->
+        <div id="sk-params">
+          <!-- multiplier（damage / drain / aoe） -->
+          <div class="rpg-field sk-param-multiplier">
+            <label class="rpg-label">倍率</label>
+            <input class="rpg-input" id="sk-multiplier" type="number" step="0.1" min="0.1" value="1.5">
+            <div class="rpg-hint">攻击力 × 倍率 = 基础伤害（受DEF减伤）</div>
+          </div>
+          <!-- amount（true_damage / heal / shield / debuff / mp_drain） -->
+          <div class="rpg-field sk-param-amount" style="display:none;">
+            <label class="rpg-label">数值</label>
+            <input class="rpg-input" id="sk-amount" type="number" min="1" value="50">
+            <div class="rpg-hint" id="sk-amount-hint">固定伤害/回复量/护盾量</div>
+          </div>
+          <!-- drainPct（drain only） -->
+          <div class="rpg-field sk-param-drainpct" style="display:none;">
+            <label class="rpg-label">吸血比例</label>
+            <input class="rpg-input" id="sk-drainpct" type="number" step="0.05" min="0.05" max="1" value="0.5">
+            <div class="rpg-hint">吸取伤害量的多少比例为己用（0.5 = 50%）</div>
+          </div>
+          <!-- turns（debuff only） -->
+          <div class="rpg-field sk-param-turns" style="display:none;">
+            <label class="rpg-label">持续回合</label>
+            <input class="rpg-input" id="sk-turns" type="number" min="1" value="2">
+          </div>
+        </div>
+
+        <div class="rpg-field">
+          <label class="rpg-label">描述 <span style="font-weight:400;opacity:.6;font-size:10px;">（可选）</span></label>
+          <input class="rpg-input" id="sk-desc" placeholder="技能说明文字">
+        </div>
+
+        <button class="rpg-submit" onclick="SKILL.add()">注册技能</button>
+      </div>
+
+      <!-- 右：已有技能 -->
+      <div class="rpg-panel">
+        <div class="rpg-panel-title">
+          📋 已注册技能
+          <span class="badge" id="skill-count">0</span>
+        </div>
+        <div id="skill-list"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       战斗系统配置
+  ══════════════════════════════════════════════════════ -->
+  <div class="rpg-section">
+    <div class="rpg-section-title">⚙️ 战斗系统配置</div>
+    <div class="rpg-grid" style="grid-template-columns:1fr;">
+      <div class="rpg-panel">
+        <div class="rpg-panel-title">战斗参数</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-bottom:14px;">
+          <div class="rpg-field">
+            <label class="rpg-label">系统启用</label>
+            <select class="rpg-select" id="bc-enabled">
+              <option value="true">✅ 启用</option>
+              <option value="false">❌ 禁用</option>
+            </select>
+          </div>
+          <div class="rpg-field">
+            <label class="rpg-label">默认回合数</label>
+            <input class="rpg-input" id="bc-turns" type="number" min="1" max="99" placeholder="10">
+          </div>
+          <div class="rpg-field">
+            <label class="rpg-label">逃脱成功率 (%)</label>
+            <input class="rpg-input" id="bc-escape" type="number" min="0" max="100" placeholder="30">
+          </div>
+          <div class="rpg-field">
+            <label class="rpg-label">最小参战人数</label>
+            <input class="rpg-input" id="bc-minplayers" type="number" min="2" max="10" placeholder="2">
+          </div>
+          <div class="rpg-field">
+            <label class="rpg-label">奖励货币名称</label>
+            <input class="rpg-input" id="bc-currency" placeholder="如：金币">
+          </div>
+          <div class="rpg-field">
+            <label class="rpg-label">胜者奖励数量</label>
+            <input class="rpg-input" id="bc-win" type="number" min="0" placeholder="0">
+          </div>
+          <div class="rpg-field">
+            <label class="rpg-label">败者奖励数量</label>
+            <input class="rpg-input" id="bc-lose" type="number" min="0" placeholder="0">
+          </div>
+          <div class="rpg-field">
+            <label class="rpg-label">每日最大发起次数</label>
+            <input class="rpg-input" id="bc-maxinit" type="number" min="1" placeholder="10">
+          </div>
+        </div>
+        <button class="rpg-submit" onclick="BATTLE_CONFIG.save()">保存配置</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       属性批量编辑
+  ══════════════════════════════════════════════════════ -->
+  <div class="rpg-section">
+    <div class="rpg-section-title">🧬 属性批量编辑</div>
+    <div class="rpg-grid" style="grid-template-columns:1fr;">
+      <div class="rpg-panel">
+        <div class="rpg-panel-title" style="display:flex;align-items:center;gap:10px;">
+          战斗基础属性
+          <span class="badge" id="ba-count">0</span>
+          <span style="flex:1"></span>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <input class="rpg-input" id="ba-new-name" placeholder="新增角色名" style="width:130px;margin:0;">
+            <button class="mgmt-add-btn" style="margin:0;" onclick="BATTLE_ATTRS.addRow()">+ 添加</button>
+          </div>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="reg-table" id="ba-table">
+            <thead>
+              <tr>
+                <th style="min-width:90px;">角色名</th>
+                <th>ATK</th><th>DEF</th><th>AGI</th>
+                <th>HP</th><th>MP</th><th>MP_REGEN</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="ba-tbody"></tbody>
+          </table>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;">
+          <button class="rpg-submit" onclick="BATTLE_ATTRS.saveAll()">保存全部</button>
+          <button class="rpg-submit" style="background:var(--muted);color:#fff;" onclick="BATTLE_ATTRS.resetDefaults()">批量重置为默认值</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       玩家技能分配矩阵
+  ══════════════════════════════════════════════════════ -->
+  <div class="rpg-section">
+    <div class="rpg-section-title">🌟 玩家技能分配</div>
+    <div class="rpg-grid" style="grid-template-columns:1fr;">
+      <div class="rpg-panel">
+        <div class="rpg-panel-title">
+          技能分配矩阵
+          <span style="font-size:10px;font-weight:400;color:var(--muted);margin-left:6px;">行=角色 · 列=技能 · 勾选即授予</span>
+        </div>
+        <div id="ps-empty" class="pending-empty" style="display:none;">暂无技能或角色，先在上方注册技能</div>
+        <div style="overflow-x:auto;">
+          <table class="reg-table" id="ps-table">
+            <thead><tr id="ps-head"></tr></thead>
+            <tbody id="ps-tbody"></tbody>
+          </table>
+        </div>
+        <div style="margin-top:12px;">
+          <button class="rpg-submit" onclick="PLAYER_SKILLS.saveAll()">保存技能分配</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       战斗记录总览
+  ══════════════════════════════════════════════════════ -->
+  <div class="rpg-section">
+    <div class="rpg-section-title">📋 战斗记录</div>
+    <div class="rpg-grid" style="grid-template-columns:1fr;">
+      <div class="rpg-panel">
+        <div class="rpg-panel-title">
+          最近战斗记录（最多100条，bot结束战斗后自动写入）
+          <span class="badge" id="bl-count">0</span>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="reg-table" id="bl-table">
+            <thead>
+              <tr>
+                <th>战斗ID</th>
+                <th>参战者</th>
+                <th>胜者</th>
+                <th>回合</th>
+                <th>行动数</th>
+                <th>结束时间</th>
+              </tr>
+            </thead>
+            <tbody id="bl-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <div id="rpg-toast"></div>
@@ -557,8 +872,15 @@ var itemPend  = {{ item_pending     | tojson }};
 var equipReg  = {{ equip_registry   | tojson }};
 var equipPend = {{ equip_pending    | tojson }};
 var slots     = {{ equip_slots      | tojson }};
-var slotNames = {{ equip_slot_names | tojson }};
-var attrDefs  = {{ attr_defs        | tojson }};
+var slotNames    = {{ equip_slot_names | tojson }};
+var attrDefs     = {{ attr_defs        | tojson }};
+var craftRecipes = {{ craft_recipes    | tojson }};
+var skillDefs    = {{ skill_defs       | tojson }};
+var battleAttrs  = {{ battle_attrs     | tojson }};
+var attackDefenseCfg = {{ attack_defense_cfg | tojson }};
+var playerSkillsMap  = {{ player_skills      | tojson }};
+var battleLog        = {{ battle_log         | tojson }};
+var playerList       = {{ player_list        | tojson }};
 </script>
 
 <script>
@@ -939,6 +1261,7 @@ var RPG = (function() {
         equipment_registry_pending: equipPend,
         equipment_slots:            slots,
         equipment_slot_names:       slotNames,
+        skill_defs:                 skillDefs,
       })
     })
     .then(function(r) { return r.json(); })
@@ -977,7 +1300,618 @@ var RPG = (function() {
     delAttr: delAttr,
     addSlot: addSlot,
     delSlot: delSlot,
+    toast: toast,
   };
+})();
+</script>
+
+<script>
+var CRAFT = (function() {
+  var mats       = {};   // { CODE: qty }
+  var limitAttrs = {};   // { attrName: minVal }
+  var limitCurrs = {};   // { currencyName: minVal }
+  var limitsOpen = false;
+
+  function e(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function t(msg, type) { RPG.toast(msg, type); }
+
+  // ── 下拉列表填充 ──────────────────────────────────────
+  function populate() {
+    var allReg = Object.values(itemReg);
+
+    // 产物：所有非货币物品
+    var outEl = document.getElementById('cf-output');
+    var nonCurr = allReg.filter(function(r) { return r.type !== 'currency'; });
+    outEl.innerHTML = '<option value="">— 选择产物 —</option>' +
+      nonCurr.map(function(r) {
+        return '<option value="' + e(r.code) + '">[' + e(r.code) + '] ' + e(r.name) + '</option>';
+      }).join('');
+
+    // 材料：全部物品（包括货币）
+    var matEl = document.getElementById('cf-mat-item');
+    matEl.innerHTML = '<option value="">— 选择材料 —</option>' +
+      allReg.map(function(r) {
+        return '<option value="' + e(r.code) + '">[' + e(r.code) + '] ' + e(r.name) + '</option>';
+      }).join('');
+
+    // 属性限制
+    var lattrEl = document.getElementById('cf-lattr-name');
+    lattrEl.innerHTML = '<option value="">— 选择属性 —</option>' +
+      Object.keys(attrDefs).map(function(n) {
+        return '<option value="' + e(n) + '">' + e(n) + '</option>';
+      }).join('');
+
+    // 货币限制
+    var lcurrEl = document.getElementById('cf-lcurr-name');
+    lcurrEl.innerHTML = '<option value="">— 选择货币 —</option>' +
+      allReg.filter(function(r) { return r.type === 'currency'; }).map(function(r) {
+        return '<option value="' + e(r.name) + '">' + e(r.name) + '</option>';
+      }).join('');
+  }
+
+  // ── 材料渲染 ─────────────────────────────────────────
+  function renderMats() {
+    var el    = document.getElementById('cf-mat-list');
+    var count = document.getElementById('cf-mat-count');
+    var entries = Object.entries(mats);
+    count.textContent = entries.length;
+    if (!entries.length) {
+      el.innerHTML = '<div style="font-size:11px;color:var(--muted);opacity:.5;padding:3px 0;">暂无材料</div>';
+      return;
+    }
+    el.innerHTML = entries.map(function(kv) {
+      var code = kv[0], qty = kv[1];
+      var info = itemReg[code];
+      var label = info ? ('[' + e(code) + '] ' + e(info.name)) : e(code);
+      return '<div class="mgmt-row" style="margin-bottom:4px;padding:5px 10px;">' +
+        '<div style="font-size:12px;">' + label + ' <span style="color:var(--muted);">×' + qty + '</span></div>' +
+        '<button class="reg-del" onclick="CRAFT.removeMat(\'' + e(code) + '\')">移除</button>' +
+        '</div>';
+    }).join('');
+  }
+
+  function addMat() {
+    var code = document.getElementById('cf-mat-item').value;
+    var qty  = parseInt(document.getElementById('cf-mat-qty').value) || 0;
+    if (!code) { t('请选择材料', 'err'); return; }
+    if (qty < 1) { t('数量至少为 1', 'err'); return; }
+    mats[code] = qty;
+    document.getElementById('cf-mat-item').value = '';
+    document.getElementById('cf-mat-qty').value  = '1';
+    renderMats();
+  }
+
+  function removeMat(code) {
+    delete mats[code];
+    renderMats();
+  }
+
+  // ── 限制条件渲染 ──────────────────────────────────────
+  function renderLimits() {
+    var attrEl = document.getElementById('cf-lattr-list');
+    var currEl = document.getElementById('cf-lcurr-list');
+
+    var attrEntries = Object.entries(limitAttrs);
+    attrEl.innerHTML = attrEntries.length
+      ? attrEntries.map(function(kv) {
+          return '<div class="mgmt-row" style="margin-bottom:4px;padding:5px 10px;">' +
+            '<div style="font-size:12px;">' + e(kv[0]) + ' ≥ ' + kv[1] + '</div>' +
+            '<button class="reg-del" onclick="CRAFT.removeLimitAttr(\'' + e(kv[0]) + '\')">移除</button>' +
+            '</div>';
+        }).join('')
+      : '<div style="font-size:11px;color:var(--muted);opacity:.5;padding:3px 0;">无限制</div>';
+
+    var currEntries = Object.entries(limitCurrs);
+    currEl.innerHTML = currEntries.length
+      ? currEntries.map(function(kv) {
+          return '<div class="mgmt-row" style="margin-bottom:4px;padding:5px 10px;">' +
+            '<div style="font-size:12px;">' + e(kv[0]) + ' ≥ ' + kv[1] + '</div>' +
+            '<button class="reg-del" onclick="CRAFT.removeLimitCurr(\'' + e(kv[0]) + '\')">移除</button>' +
+            '</div>';
+        }).join('')
+      : '<div style="font-size:11px;color:var(--muted);opacity:.5;padding:3px 0;">无限制</div>';
+  }
+
+  function addLimitAttr() {
+    var name = document.getElementById('cf-lattr-name').value;
+    var val  = parseInt(document.getElementById('cf-lattr-val').value);
+    if (!name) { t('请选择属性', 'err'); return; }
+    if (isNaN(val)) { t('请填写最小值', 'err'); return; }
+    limitAttrs[name] = val;
+    document.getElementById('cf-lattr-name').value = '';
+    document.getElementById('cf-lattr-val').value  = '';
+    renderLimits();
+  }
+  function removeLimitAttr(name) { delete limitAttrs[name]; renderLimits(); }
+
+  function addLimitCurr() {
+    var name = document.getElementById('cf-lcurr-name').value;
+    var val  = parseInt(document.getElementById('cf-lcurr-val').value);
+    if (!name) { t('请选择货币', 'err'); return; }
+    if (isNaN(val) || val < 0) { t('请填写最小量', 'err'); return; }
+    limitCurrs[name] = val;
+    document.getElementById('cf-lcurr-name').value = '';
+    document.getElementById('cf-lcurr-val').value  = '';
+    renderLimits();
+  }
+  function removeLimitCurr(name) { delete limitCurrs[name]; renderLimits(); }
+
+  function toggleLimits() {
+    limitsOpen = !limitsOpen;
+    document.getElementById('cf-limits-section').style.display = limitsOpen ? '' : 'none';
+    document.getElementById('cf-limits-arrow').textContent = limitsOpen ? '▾' : '▸';
+    if (limitsOpen) renderLimits();
+  }
+
+  // ── 注册配方 ─────────────────────────────────────────
+  function registerRecipe() {
+    var outputCode = document.getElementById('cf-output').value;
+    if (!outputCode) { t('请选择产物', 'err'); return; }
+    if (!Object.keys(mats).length) { t('请至少添加一种材料', 'err'); return; }
+    var rate = Math.max(0, Math.min(100, parseInt(document.getElementById('cf-rate').value) || 100));
+    var desc = document.getElementById('cf-desc').value.trim() || '暂无描述';
+    var outputInfo = itemReg[outputCode];
+    var outputName = outputInfo ? outputInfo.name : outputCode;
+
+    craftRecipes[outputCode] = {
+      output:      outputCode,
+      materials:   Object.assign({}, mats),
+      desc:        desc,
+      limits:      { attrs: Object.assign({}, limitAttrs), currencies: Object.assign({}, limitCurrs) },
+      successRate: rate,
+    };
+
+    save(function() {
+      t('配方「' + outputName + '」已注册 ✓');
+      // 重置表单
+      document.getElementById('cf-output').value = '';
+      document.getElementById('cf-desc').value   = '';
+      document.getElementById('cf-rate').value   = '100';
+      mats = {}; limitAttrs = {}; limitCurrs = {};
+      renderMats();
+      if (limitsOpen) renderLimits();
+      renderRecipes();
+    });
+  }
+
+  // ── 配方列表渲染 ──────────────────────────────────────
+  function renderRecipes() {
+    var el      = document.getElementById('craft-recipe-list');
+    var counter = document.getElementById('craft-count');
+    var entries = Object.entries(craftRecipes);
+    counter.textContent = entries.length;
+
+    if (!entries.length) {
+      el.innerHTML = '<div class="pending-empty">暂无配方，在左侧注册第一个吧</div>';
+      return;
+    }
+
+    el.innerHTML = entries.map(function(kv) {
+      var code   = kv[0];
+      var recipe = kv[1];
+      var outInfo = itemReg[code];
+      var outName = outInfo ? outInfo.name : code;
+
+      var matStr = Object.entries(recipe.materials || {}).map(function(m) {
+        var mInfo = itemReg[m[0]];
+        return (mInfo ? mInfo.name : m[0]) + ' ×' + m[1];
+      }).join('  +  ');
+
+      var rateStr = (recipe.successRate != null && recipe.successRate < 100)
+        ? ' <span style="color:var(--gold);font-size:10px;">🎲 ' + recipe.successRate + '%</span>' : '';
+
+      var limits = recipe.limits || {};
+      var limitParts = [];
+      Object.entries(limits.attrs || {}).forEach(function(kv2) { limitParts.push(e(kv2[0]) + '≥' + kv2[1]); });
+      Object.entries(limits.currencies || {}).forEach(function(kv2) { limitParts.push(e(kv2[0]) + '≥' + kv2[1]); });
+      var limitStr = limitParts.length ? '<br><span style="font-size:10px;color:var(--muted);">⚠️ 需：' + limitParts.join(' · ') + '</span>' : '';
+
+      return '<div class="pending-item" style="flex-wrap:wrap;gap:6px;">' +
+        '<div class="pending-info" style="min-width:0;flex:1;">' +
+          '<div class="pending-name" style="display:flex;align-items:center;gap:6px;">' +
+            '<span class="reg-code">[' + e(code) + ']</span> ' + e(outName) + rateStr +
+          '</div>' +
+          '<div class="pending-meta" style="margin-top:3px;">' +
+            '<span style="color:var(--muted);">← </span>' + e(matStr) +
+            (recipe.desc && recipe.desc !== '暂无描述' ? '<br>' + e(recipe.desc) : '') +
+            limitStr +
+          '</div>' +
+        '</div>' +
+        '<button class="pending-del" onclick="CRAFT.deleteRecipe(\'' + e(code) + '\')">删除</button>' +
+        '</div>';
+    }).join('');
+  }
+
+  function deleteRecipe(code) {
+    var name = itemReg[code] ? itemReg[code].name : code;
+    if (!confirm('删除配方「' + name + '」？')) return;
+    delete craftRecipes[code];
+    save(function() { t('已删除配方「' + name + '」'); renderRecipes(); });
+  }
+
+  // ── 保存 ─────────────────────────────────────────────
+  function save(cb) {
+    fetch('/admin/rpg/save', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ craft_recipes: craftRecipes }),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) { if (d.ok && cb) cb(); else t('保存失败', 'err'); })
+    .catch(function() { t('网络错误', 'err'); });
+  }
+
+  // ── 初始化 ────────────────────────────────────────────
+  populate();
+  renderMats();
+  renderRecipes();
+
+  return {
+    addMat:        addMat,
+    removeMat:     removeMat,
+    addLimitAttr:  addLimitAttr,
+    removeLimitAttr: removeLimitAttr,
+    addLimitCurr:  addLimitCurr,
+    removeLimitCurr: removeLimitCurr,
+    toggleLimits:  toggleLimits,
+    registerRecipe: registerRecipe,
+    deleteRecipe:  deleteRecipe,
+  };
+})();
+</script>
+
+<script>
+var SKILL = (function() {
+  var PARAM_MAP = {
+    damage:      { multiplier: true },
+    true_damage: { amount: true },
+    heal:        { amount: true },
+    drain:       { multiplier: true, drainpct: true },
+    shield:      { amount: true },
+    aoe:         { multiplier: true },
+    debuff_atk:  { amount: true, turns: true },
+    debuff_def:  { amount: true, turns: true },
+    mp_drain:    { amount: true },
+  };
+  var AMOUNT_HINTS = {
+    true_damage: '固定伤害值（无视DEF）',
+    heal:        '回复HP量',
+    shield:      '护盾值',
+    debuff_atk:  '降低目标ATK数值',
+    debuff_def:  '降低目标DEF数值',
+    mp_drain:    '抽取目标MP量',
+  };
+  var TYPE_LABELS = {
+    damage: '倍率伤害', true_damage: '真实伤害', heal: '回血',
+    drain: '吸血', shield: '护盾', aoe: '群体',
+    debuff_atk: '削ATK', debuff_def: '削DEF', mp_drain: '吸MP',
+  };
+
+  function e(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function t(msg, type) { RPG.toast(msg, type); }
+
+  function onTypeChange() {
+    var type = document.getElementById('sk-type').value;
+    var p = PARAM_MAP[type] || {};
+    document.querySelector('.sk-param-multiplier').style.display = p.multiplier ? '' : 'none';
+    document.querySelector('.sk-param-amount').style.display    = p.amount    ? '' : 'none';
+    document.querySelector('.sk-param-drainpct').style.display  = p.drainpct  ? '' : 'none';
+    document.querySelector('.sk-param-turns').style.display     = p.turns     ? '' : 'none';
+    var hint = document.getElementById('sk-amount-hint');
+    if (hint) hint.textContent = AMOUNT_HINTS[type] || '数值';
+  }
+
+  function add() {
+    var name = document.getElementById('sk-name').value.trim();
+    if (!name) { t('请填写技能名称', 'err'); return; }
+    if (skillDefs[name]) { t('「' + name + '」已存在', 'err'); return; }
+
+    var type   = document.getElementById('sk-type').value;
+    var mpCost = parseInt(document.getElementById('sk-mp').value) || 0;
+    var desc   = document.getElementById('sk-desc').value.trim();
+    var p      = PARAM_MAP[type] || {};
+    var params = {};
+
+    if (p.multiplier) params.multiplier = parseFloat(document.getElementById('sk-multiplier').value) || 1.0;
+    if (p.amount)     params.amount     = parseInt(document.getElementById('sk-amount').value)     || 30;
+    if (p.drainpct)   params.drainPct   = parseFloat(document.getElementById('sk-drainpct').value) || 0.5;
+    if (p.turns)      params.turns      = parseInt(document.getElementById('sk-turns').value)      || 2;
+
+    skillDefs[name] = { name: name, type: type, mpCost: mpCost, params: params, desc: desc || '' };
+
+    document.getElementById('sk-name').value = '';
+    document.getElementById('sk-desc').value = '';
+
+    save(function() { t('技能「' + name + '」已注册 ✓'); render(); });
+  }
+
+  function del(name) {
+    if (!confirm('删除技能「' + name + '」？\n已授予玩家的分配不受影响，但技能将无法在战斗中使用。')) return;
+    delete skillDefs[name];
+    save(function() { t('已删除「' + name + '」'); render(); });
+  }
+
+  function render() {
+    var el = document.getElementById('skill-list');
+    var entries = Object.values(skillDefs);
+    document.getElementById('skill-count').textContent = entries.length;
+    if (!entries.length) {
+      el.innerHTML = '<div class="pending-empty">暂无技能，在左侧注册第一个吧</div>';
+      return;
+    }
+    el.innerHTML = entries.map(function(sk) {
+      var label = TYPE_LABELS[sk.type] || sk.type;
+      var pArr = Object.entries(sk.params || {}).map(function(kv) {
+        return kv[0] + ':' + kv[1];
+      });
+      var paramStr = pArr.length ? pArr.join('  ') : '—';
+      return '<div class="pending-item">' +
+        '<div class="pending-info">' +
+          '<div class="pending-name" style="display:flex;align-items:center;gap:6px;">' +
+            '<span class="pending-type-badge badge-interact">' + e(label) + '</span>' +
+            e(sk.name) +
+            '<span style="color:var(--muted);font-size:10px;font-weight:400;">MP ' + (sk.mpCost || 0) + '</span>' +
+          '</div>' +
+          '<div class="pending-meta">' +
+            e(paramStr) +
+            (sk.desc ? '　' + e(sk.desc) : '') +
+          '</div>' +
+        '</div>' +
+        '<button class="reg-del" onclick="SKILL.del(\'' + e(sk.name) + '\')">删除</button>' +
+        '</div>';
+    }).join('');
+  }
+
+  function save(cb) {
+    fetch('/admin/rpg/save', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ skill_defs: skillDefs }),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) { if (d.ok && cb) cb(); else t('保存失败', 'err'); })
+    .catch(function() { t('网络错误', 'err'); });
+  }
+
+  onTypeChange();
+  render();
+
+  return { add: add, del: del, onTypeChange: onTypeChange };
+})();
+</script>
+
+<script>
+/* ──────────────────────────────────────────────
+   BATTLE_CONFIG  ⚙️ 战斗系统配置
+────────────────────────────────────────────── */
+var BATTLE_CONFIG = (function() {
+  function init() {
+    var cfg = attackDefenseCfg || {};
+    document.getElementById('bc-enabled').value        = cfg.enabled !== false ? '1' : '0';
+    document.getElementById('bc-defaultTurns').value   = cfg.defaultTurns    != null ? cfg.defaultTurns    : 30;
+    document.getElementById('bc-escapeRate').value     = cfg.escapeRate      != null ? cfg.escapeRate      : 0.5;
+    document.getElementById('bc-minPlayers').value     = cfg.minPlayers      != null ? cfg.minPlayers      : 2;
+    document.getElementById('bc-rewardCurrency').value = cfg.rewardCurrency  != null ? cfg.rewardCurrency  : '金币';
+    document.getElementById('bc-rewardWin').value      = cfg.rewardWin       != null ? cfg.rewardWin       : 100;
+    document.getElementById('bc-rewardLose').value     = cfg.rewardLose      != null ? cfg.rewardLose      : 10;
+    document.getElementById('bc-maxInitiations').value = cfg.maxInitiations  != null ? cfg.maxInitiations  : 5;
+  }
+
+  function save() {
+    var cfg = {
+      enabled:        document.getElementById('bc-enabled').value === '1',
+      defaultTurns:   parseInt(document.getElementById('bc-defaultTurns').value)   || 30,
+      escapeRate:     parseFloat(document.getElementById('bc-escapeRate').value)    || 0.5,
+      minPlayers:     parseInt(document.getElementById('bc-minPlayers').value)      || 2,
+      rewardCurrency: document.getElementById('bc-rewardCurrency').value.trim()     || '金币',
+      rewardWin:      parseInt(document.getElementById('bc-rewardWin').value)       || 100,
+      rewardLose:     parseInt(document.getElementById('bc-rewardLose').value)      || 10,
+      maxInitiations: parseInt(document.getElementById('bc-maxInitiations').value)  || 5,
+    };
+    fetch('/admin/rpg/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ attack_defense_config: cfg }),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      attackDefenseCfg = cfg;
+      t(d.ok ? '战斗配置已保存' : '保存失败', d.ok ? 'ok' : 'err');
+    })
+    .catch(function() { t('网络错误', 'err'); });
+  }
+
+  init();
+  return { save: save };
+})();
+
+/* ──────────────────────────────────────────────
+   BATTLE_ATTRS  🧬 属性批量编辑
+────────────────────────────────────────────── */
+var BATTLE_ATTRS = (function() {
+  var KEYS = ['atk','def','agi','hp','mp','mp_regen'];
+  var DEFAULTS = { atk:10, def:5, agi:5, hp:100, mp:50, mp_regen:5 };
+
+  function render() {
+    var tbody = document.getElementById('ba-tbody');
+    tbody.innerHTML = '';
+    var all = battleAttrs || {};
+    var names = Object.keys(all);
+    playerList.forEach(function(p) { if (names.indexOf(p) === -1) names.push(p); });
+    names.forEach(function(name) { _addRow(name, all[name] || {}); });
+  }
+
+  function _addRow(name, attrs) {
+    var tbody = document.getElementById('ba-tbody');
+    var tr = document.createElement('tr');
+    var td0 = document.createElement('td');
+    td0.textContent = name;
+    td0.setAttribute('data-name', name);
+    tr.appendChild(td0);
+    KEYS.forEach(function(k) {
+      var td = document.createElement('td');
+      var inp = document.createElement('input');
+      inp.type = 'number'; inp.className = 'ba-inp';
+      inp.setAttribute('data-key', k);
+      inp.value = attrs[k] != null ? attrs[k] : DEFAULTS[k];
+      inp.style.width = '60px';
+      td.appendChild(inp);
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  }
+
+  function addRow() {
+    var name = document.getElementById('ba-new-name').value.trim();
+    if (!name) { t('请输入角色名', 'err'); return; }
+    document.getElementById('ba-new-name').value = '';
+    _addRow(name, {});
+  }
+
+  function saveAll() {
+    var all = {};
+    document.querySelectorAll('#ba-tbody tr').forEach(function(tr) {
+      var name = tr.querySelector('td[data-name]').getAttribute('data-name');
+      var attrs = {};
+      tr.querySelectorAll('.ba-inp').forEach(function(inp) {
+        attrs[inp.getAttribute('data-key')] = parseFloat(inp.value) || 0;
+      });
+      all[name] = attrs;
+    });
+    fetch('/admin/rpg/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ battle_attrs: all }),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.ok) { battleAttrs = all; t('属性已保存', 'ok'); }
+      else t('保存失败', 'err');
+    })
+    .catch(function() { t('网络错误', 'err'); });
+  }
+
+  function resetDefaults() {
+    document.querySelectorAll('#ba-tbody tr').forEach(function(tr) {
+      tr.querySelectorAll('.ba-inp').forEach(function(inp) {
+        inp.value = DEFAULTS[inp.getAttribute('data-key')];
+      });
+    });
+    t('已重置为默认值（未保存）', 'ok');
+  }
+
+  render();
+  return { addRow: addRow, saveAll: saveAll, resetDefaults: resetDefaults };
+})();
+
+/* ──────────────────────────────────────────────
+   PLAYER_SKILLS  🌟 玩家技能分配矩阵
+────────────────────────────────────────────── */
+var PLAYER_SKILLS = (function() {
+  function render() {
+    var skills = Object.keys(skillDefs || {});
+    var players = playerList.slice();
+    Object.keys(playerSkillsMap || {}).forEach(function(p) {
+      if (players.indexOf(p) === -1) players.push(p);
+    });
+
+    var headRow = document.getElementById('ps-head');
+    headRow.innerHTML = '<th>角色名</th>';
+    skills.forEach(function(sk) {
+      var th = document.createElement('th');
+      th.textContent = sk;
+      headRow.appendChild(th);
+    });
+
+    var tbody = document.getElementById('ps-tbody');
+    tbody.innerHTML = '';
+    players.forEach(function(p) {
+      var tr = document.createElement('tr');
+      var td0 = document.createElement('td');
+      td0.textContent = p;
+      td0.setAttribute('data-player', p);
+      tr.appendChild(td0);
+      var owned = (playerSkillsMap || {})[p] || [];
+      skills.forEach(function(sk) {
+        var td = document.createElement('td');
+        var cb = document.createElement('input');
+        cb.type = 'checkbox'; cb.className = 'ps-cb';
+        cb.setAttribute('data-skill', sk);
+        cb.checked = owned.indexOf(sk) !== -1;
+        td.style.textAlign = 'center';
+        td.appendChild(cb);
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+  }
+
+  function saveAll() {
+    var result = {};
+    document.querySelectorAll('#ps-tbody tr').forEach(function(tr) {
+      var p = tr.querySelector('td[data-player]').getAttribute('data-player');
+      var owned = [];
+      tr.querySelectorAll('.ps-cb').forEach(function(cb) {
+        if (cb.checked) owned.push(cb.getAttribute('data-skill'));
+      });
+      result[p] = owned;
+    });
+    fetch('/admin/rpg/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ player_skills: result }),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.ok) { playerSkillsMap = result; t('技能分配已保存', 'ok'); }
+      else t('保存失败', 'err');
+    })
+    .catch(function() { t('网络错误', 'err'); });
+  }
+
+  render();
+  return { saveAll: saveAll, render: render };
+})();
+
+/* ──────────────────────────────────────────────
+   BATTLE_LOG  📋 战斗记录总览
+────────────────────────────────────────────── */
+var BATTLE_LOG = (function() {
+  function render() {
+    var tbody = document.getElementById('bl-tbody');
+    tbody.innerHTML = '';
+    var logs = battleLog || [];
+    if (!logs.length) {
+      var tr = document.createElement('tr');
+      var td = document.createElement('td');
+      td.colSpan = 6; td.textContent = '暂无战斗记录';
+      td.style.textAlign = 'center'; td.style.color = '#999';
+      tr.appendChild(td); tbody.appendChild(tr);
+      return;
+    }
+    logs.forEach(function(entry) {
+      var tr = document.createElement('tr');
+      function cell(v) {
+        var td = document.createElement('td');
+        td.textContent = v != null ? v : '—';
+        tr.appendChild(td);
+      }
+      cell(entry.id || '—');
+      cell((entry.players || []).join(', '));
+      cell(entry.winner || '平局/超时');
+      cell(entry.turns);
+      cell(entry.actions);
+      cell(entry.endedAt ? new Date(entry.endedAt).toLocaleString('zh-CN') : '—');
+      tbody.appendChild(tr);
+    });
+  }
+
+  render();
+  return { render: render };
 })();
 </script>
 {% endblock %}

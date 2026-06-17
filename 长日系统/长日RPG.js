@@ -3619,7 +3619,7 @@ cmd_push_pools.solve = (ctx, msg, cmdArgs) => {
 ext.cmdMap["上传池子"] = cmd_push_pools;
 
 // ========================
-// 攻防系统 - 存储和配置
+// 攻防系统 - 存储与配置
 // ========================
 
 function getAttackDefenseConfig() {
@@ -3637,10 +3637,10 @@ function saveAttackDefenseConfig(config) {
 
 function getAttackDefenseData() {
     const main = getMainExt();
-    if (!main) return { battles: {}, playerStats: {}, skills: {} };
+    if (!main) return { battles: {}, playerStats: {}, playerSkills: {} };
     try {
         return JSON.parse(mainStorGet("attack_defense_data") || "{}");
-    } catch(e) { return { battles: {}, playerStats: {}, skills: {} }; }
+    } catch(e) { return { battles: {}, playerStats: {}, playerSkills: {} }; }
 }
 
 function saveAttackDefenseData(data) {
@@ -3648,121 +3648,129 @@ function saveAttackDefenseData(data) {
     if (main) mainStorSet("attack_defense_data", JSON.stringify(data));
 }
 
-// 初始化玩家战斗属性
-function initPlayerBattleAttrs(name) {
-    return {
-        ATK: 50,      // 攻击力
-        DEF: 30,      // 防御力
-        AGI: 40,      // 敏捷
-        HP: 100,      // 生命值
-        TMP_SHIELD: 0, // 临时盾
-        MP: 50,       // 魔法值
-        MP_REGEN: 5   // 每回合魔法恢复
-    };
+// 技能定义由 rp_archive 管理端写入 skill_defs，机器人只读
+function getSkillDefs() {
+    try { return JSON.parse(mainStorGet("skill_defs") || "{}"); } catch(e) { return {}; }
 }
 
-// 获取玩家当前属性
+// 玩家基础战斗属性（纯底值，不含装备加成）
+function initPlayerBattleAttrs() {
+    return { ATK: 50, DEF: 30, AGI: 40, HP: 100, MP: 50, MP_REGEN: 5 };
+}
+
 function getPlayerBattleAttrs(name) {
-    const data = getAttackDefenseData();
-    if (!data.playerStats) data.playerStats = {};
-    if (!data.playerStats[name]) {
-        data.playerStats[name] = initPlayerBattleAttrs(name);
-        saveAttackDefenseData(data);
+    const all = JSON.parse(mainStorGet("battle_attrs") || "{}");
+    if (!all[name]) {
+        all[name] = initPlayerBattleAttrs();
+        mainStorSet("battle_attrs", JSON.stringify(all));
     }
-    return data.playerStats[name];
+    return all[name];
 }
 
 function savePlayerBattleAttrs(name, attrs) {
-    const data = getAttackDefenseData();
-    if (!data.playerStats) data.playerStats = {};
-    data.playerStats[name] = attrs;
-    saveAttackDefenseData(data);
+    const all = JSON.parse(mainStorGet("battle_attrs") || "{}");
+    all[name] = attrs;
+    mainStorSet("battle_attrs", JSON.stringify(all));
+}
+
+function getPlayerSkills() {
+    return JSON.parse(mainStorGet("player_skills") || "{}");
+}
+function savePlayerSkills(skills) {
+    mainStorSet("player_skills", JSON.stringify(skills));
 }
 
 // ========================
 // 攻防系统 - 战斗管理
 // ========================
 
+// 短战斗ID，如 B-A3K9，方便玩家手打
 function generateBattleId() {
-    return "BATTLE_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let id = "B-";
+    for (let i = 0; i < 4; i++) id += chars[Math.floor(Math.random() * chars.length)];
+    return id;
 }
 
-function createBattle(initiator, mode = "free-for-all") {
-    const battleId = generateBattleId();
-    const config = getAttackDefenseConfig();
+// 获取玩家有效属性 = 基础属性 + 装备加成
+function getEffectiveBattleAttrs(playerName, roleKey) {
+    const base = getPlayerBattleAttrs(playerName);
+    const result = {
+        ATK: base.ATK || 50, DEF: base.DEF || 30, AGI: base.AGI || 40,
+        HP:  base.HP  || 100, MP: base.MP  || 50, MP_REGEN: base.MP_REGEN || 5
+    };
+    try {
+        const equips = getPlayerEquips(roleKey);
+        const equipReg = getEquipRegistry();
+        if (equips && equipReg) {
+            const bonus = getTotalEquipBonus(equips, equipReg);
+            for (const attr of ["ATK","DEF","AGI","HP","MP","MP_REGEN"]) {
+                if (bonus[attr]) result[attr] = Math.max(0, result[attr] + bonus[attr]);
+            }
+        }
+    } catch(e) {}
+    return result;
+}
 
+// 初始化并返回玩家 playerState（含装备加成）
+function _makePlayerState(playerName, roleKey) {
+    const attrs = getEffectiveBattleAttrs(playerName, roleKey);
     return {
-        id: battleId,
-        initiator: initiator,
-        mode: mode,
-        status: "pending", // pending(待接受), preparing(准备中), ongoing(进行中), ended(已结束)
+        hp: attrs.HP, maxHp: attrs.HP,
+        mp: attrs.MP, maxMp: attrs.MP,
+        shield: 0, alive: true,
+        defending: false, buffs: [],
+        damage_taken: 0
+    };
+}
+
+function createBattle(initiator, roleKey) {
+    const config = getAttackDefenseConfig();
+    return {
+        id: generateBattleId(),
+        initiator,
+        status: "pending",
         players: [initiator],
+        roleKeys: { [initiator]: roleKey },
         turns: config.defaultTurns || 10,
         currentTurn: 0,
-        turnOrder: [initiator],
+        turnOrder: [],
         currentPlayerIndex: 0,
         createdAt: Date.now(),
         turnStartTime: Date.now(),
-        turnTimeout: config.turnTimeout || 3600000, // 默认1小时
-        actions: [], // 所有行动记录
-        playerStates: {
-            [initiator]: {
-                hp: getPlayerBattleAttrs(initiator).HP,
-                mp: getPlayerBattleAttrs(initiator).MP,
-                shield: 0,
-                alive: true,
-                damage_taken: 0,
-                skills_used: []
-            }
-        },
-        rewards: null,
+        actions: [],
+        playerStates: { [initiator]: _makePlayerState(initiator, roleKey) },
         winner: null
     };
 }
 
-function addPlayerToBattle(battleId, playerName) {
+function addPlayerToBattle(battleId, playerName, roleKey) {
     const data = getAttackDefenseData();
     if (!data.battles) data.battles = {};
     const battle = data.battles[battleId];
     if (!battle || battle.status !== "pending") return false;
-
     if (battle.players.includes(playerName)) return false;
 
     battle.players.push(playerName);
-    const attrs = getPlayerBattleAttrs(playerName);
-    battle.playerStates[playerName] = {
-        hp: attrs.HP,
-        mp: attrs.MP,
-        shield: 0,
-        alive: true,
-        damage_taken: 0,
-        skills_used: []
-    };
+    if (!battle.roleKeys) battle.roleKeys = {};
+    battle.roleKeys[playerName] = roleKey;
+    battle.playerStates[playerName] = _makePlayerState(playerName, roleKey);
 
     saveAttackDefenseData(data);
     return true;
 }
 
-function startBattle(battleId) {
-    const data = getAttackDefenseData();
-    if (!data.battles) data.battles = {};
-    const battle = data.battles[battleId];
-    if (!battle) return false;
-
-    battle.status = "preparing";
-    // 按敏捷排序
-    const agiScores = {};
+function startBattle(battle) {
+    const agiMap = {};
     battle.players.forEach(p => {
-        agiScores[p] = getPlayerBattleAttrs(p).AGI;
+        const rk = (battle.roleKeys || {})[p] || p;
+        agiMap[p] = getEffectiveBattleAttrs(p, rk).AGI;
     });
-    battle.turnOrder = battle.players.sort((a, b) => agiScores[b] - agiScores[a]);
+    battle.turnOrder = [...battle.players].sort((a, b) => agiMap[b] - agiMap[a]);
     battle.currentPlayerIndex = 0;
     battle.status = "ongoing";
     battle.currentTurn = 1;
     battle.turnStartTime = Date.now();
-
-    saveAttackDefenseData(data);
-    return true;
 }
 
 function getCurrentBattlePlayer(battle) {
@@ -3770,307 +3778,453 @@ function getCurrentBattlePlayer(battle) {
     return battle.turnOrder[battle.currentPlayerIndex];
 }
 
-function recordAction(battleId, action) {
-    const data = getAttackDefenseData();
-    if (!data.battles) data.battles = {};
-    const battle = data.battles[battleId];
-    if (!battle) return false;
+// 推进到下一个存活玩家，必要时增加回合数
+function advanceTurn(battle) {
+    const n = battle.turnOrder.length;
+    let steps = 0;
+    do {
+        battle.currentPlayerIndex = (battle.currentPlayerIndex + 1) % n;
+        if (battle.currentPlayerIndex === 0) battle.currentTurn++;
+        steps++;
+    } while (steps < n && !battle.playerStates[battle.turnOrder[battle.currentPlayerIndex]].alive);
+    battle.turnStartTime = Date.now();
+}
 
-    action.timestamp = Date.now();
-    action.turn = battle.currentTurn;
-    battle.actions.push(action);
-
-    saveAttackDefenseData(data);
-    return true;
+// 每个玩家回合开始时：回复 MP + 处理 buff 倒计时
+function processTurnStart(battle, playerName) {
+    const state = battle.playerStates[playerName];
+    if (!state) return;
+    const rk = (battle.roleKeys || {})[playerName] || playerName;
+    const mpRegen = getEffectiveBattleAttrs(playerName, rk).MP_REGEN || 0;
+    state.mp = Math.min(state.maxMp, state.mp + mpRegen);
+    if (state.buffs) {
+        state.buffs = state.buffs.filter(b => { b.turnsLeft--; return b.turnsLeft > 0; });
+    }
 }
 
 // ========================
-// 攻防系统 - 战斗计算
+// 攻防系统 - 伤害计算
 // ========================
 
-function calculateNormalAttack(attacker, defender) {
-    const atkAttrs = getPlayerBattleAttrs(attacker);
-    const defAttrs = getPlayerBattleAttrs(defender);
-    const config = getAttackDefenseConfig();
-
-    let baseDamage = atkAttrs.ATK;
-    let defReduction = Math.max(0, defAttrs.DEF * 0.1);
-
-    // 应用伤害随机性
-    let randomRange = config.damageRandomness;
-    if (!randomRange || randomRange === 0) {
-        baseDamage = baseDamage - defReduction;
-    } else if (typeof randomRange === 'string' && randomRange.includes('-')) {
-        const [min, max] = randomRange.split('-').map(Number);
-        const random = Math.floor(Math.random() * (max - min + 1)) + min;
-        baseDamage = baseDamage + (min - 1 + random) - defReduction;
-    }
-
-    return Math.max(1, Math.round(baseDamage));
+// 公式：damage × 100/(100+DEF)。DEF=50 → 67%；DEF=100 → 50%；DEF=200 → 33%
+function _defReduction(raw, def) {
+    return Math.max(1, Math.round(raw * 100 / (100 + Math.max(0, def))));
 }
 
-function applyDamage(battleId, targetName, damage) {
-    const data = getAttackDefenseData();
-    if (!data.battles) return 0;
-    const battle = data.battles[battleId];
-    if (!battle || !battle.playerStates[targetName]) return 0;
+function _effectiveDef(playerName, battle) {
+    const rk = (battle.roleKeys || {})[playerName] || playerName;
+    let def = getEffectiveBattleAttrs(playerName, rk).DEF;
+    const st = battle.playerStates[playerName];
+    if (st && st.buffs) st.buffs.forEach(b => { if (b.type === "debuff_def") def -= b.amount; });
+    return Math.max(0, def);
+}
 
-    const state = battle.playerStates[targetName];
-    let actualDamage = damage;
+function _effectiveAtk(playerName, battle) {
+    const rk = (battle.roleKeys || {})[playerName] || playerName;
+    let atk = getEffectiveBattleAttrs(playerName, rk).ATK;
+    const st = battle.playerStates[playerName];
+    if (st && st.buffs) st.buffs.forEach(b => { if (b.type === "debuff_atk") atk -= b.amount; });
+    return Math.max(0, atk);
+}
 
-    // 先扣盾，再扣HP
-    if (state.shield > 0) {
-        const shieldDamage = Math.min(state.shield, actualDamage);
-        state.shield -= shieldDamage;
-        actualDamage -= shieldDamage;
+// 对战斗内目标施加伤害（处理防守状态 + 护盾 + HP扣减）
+function _dealDamage(battle, targetName, rawDmg) {
+    const st = battle.playerStates[targetName];
+    if (!st || !st.alive) return 0;
+    let dmg = rawDmg;
+    if (st.defending) { dmg = Math.max(1, Math.floor(dmg * 0.5)); st.defending = false; }
+    if (st.shield > 0) {
+        const abs = Math.min(st.shield, dmg);
+        st.shield -= abs; dmg -= abs;
     }
-
-    if (actualDamage > 0) {
-        state.hp -= actualDamage;
-        state.damage_taken += actualDamage;
-        if (state.hp <= 0) {
-            state.alive = false;
-        }
+    if (dmg > 0) {
+        st.hp -= dmg; st.damage_taken += dmg;
+        if (st.hp <= 0) { st.hp = 0; st.alive = false; }
     }
+    return rawDmg - dmg >= 0 ? rawDmg - (rawDmg - dmg >= dmg ? dmg : 0) : dmg; // 实际造成伤害
+}
 
-    saveAttackDefenseData(data);
-    return actualDamage;
+// 实际伤害简化版（含随机 ±10%）
+function _calcAndDeal(battle, attackerName, targetName) {
+    const atk = _effectiveAtk(attackerName, battle);
+    const def = _effectiveDef(targetName, battle);
+    const rand = 0.9 + Math.random() * 0.2;
+    const raw = _defReduction(Math.round(atk * rand), def);
+    return _dealDamage(battle, targetName, raw);
 }
 
 function getAlivePlayersCount(battle) {
-    let count = 0;
-    for (const player of battle.players) {
-        if (battle.playerStates[player] && battle.playerStates[player].alive) {
-            count++;
-        }
-    }
-    return count;
+    return battle.players.filter(p => battle.playerStates[p] && battle.playerStates[p].alive).length;
 }
 
 // ========================
-// 攻防系统 - 命令: 发起战斗
+// 攻防系统 - 技能执行引擎
 // ========================
+
+function executeSkill(battle, skillName, casterName, targetName) {
+    const defs = getSkillDefs();
+    const skill = defs[skillName];
+    if (!skill) return { ok: false, msg: `❌ 技能「${skillName}」不存在，请检查技能库。` };
+
+    const cst = battle.playerStates[casterName];
+    const params = skill.params || {};
+    const mpCost = skill.mpCost || 0;
+
+    if (cst.mp < mpCost) return { ok: false, msg: `❌ MP不足（需要 ${mpCost}，当前 ${cst.mp}）。` };
+    cst.mp -= mpCost;
+
+    const lines = [`✨ ${casterName} 使用了【${skillName}】！`];
+    const type = skill.type;
+
+    const needTarget = ["damage","true_damage","drain","debuff_atk","debuff_def","mp_drain"];
+    if (needTarget.includes(type) && type !== "aoe") {
+        if (!targetName) return { ok: false, msg: "❌ 该技能需要指定目标。" };
+        const tst = battle.playerStates[targetName];
+        if (!tst || !tst.alive) return { ok: false, msg: "❌ 目标不存在或已被击败。" };
+        if (targetName === casterName && !["heal","shield"].includes(type)) {
+            return { ok: false, msg: "❌ 不能对自己使用此技能。" };
+        }
+    }
+
+    if (type === "damage") {
+        const atk = _effectiveAtk(casterName, battle);
+        const def = _effectiveDef(targetName, battle);
+        const mult = params.multiplier || 1.0;
+        const rawDmg = _defReduction(Math.round(atk * mult * (0.9 + Math.random() * 0.2)), def);
+        const actual = _dealDamage(battle, targetName, rawDmg);
+        const tst = battle.playerStates[targetName];
+        lines.push(`💥 对 ${targetName} 造成 ${actual} 伤害（${Math.round(mult*100)}% 攻击力）`);
+        lines.push(`❤️ ${targetName} HP：${Math.max(0,tst.hp)}/${tst.maxHp}`);
+        if (!tst.alive) lines.push(`☠️ ${targetName} 被击败！`);
+
+    } else if (type === "true_damage") {
+        const dmg = Math.round((params.amount || 30) * (0.9 + Math.random() * 0.2));
+        const actual = _dealDamage(battle, targetName, dmg);
+        const tst = battle.playerStates[targetName];
+        lines.push(`💥 对 ${targetName} 造成 ${actual} 真实伤害（无视防御）`);
+        lines.push(`❤️ ${targetName} HP：${Math.max(0,tst.hp)}/${tst.maxHp}`);
+        if (!tst.alive) lines.push(`☠️ ${targetName} 被击败！`);
+
+    } else if (type === "heal") {
+        const amt = params.amount || 50;
+        const before = cst.hp;
+        cst.hp = Math.min(cst.maxHp, cst.hp + amt);
+        lines.push(`💚 回复 ${cst.hp - before} HP（${cst.hp}/${cst.maxHp}）`);
+
+    } else if (type === "drain") {
+        const atk = _effectiveAtk(casterName, battle);
+        const def = _effectiveDef(targetName, battle);
+        const mult = params.multiplier || 1.0;
+        const rawDmg = _defReduction(Math.round(atk * mult * (0.9 + Math.random() * 0.2)), def);
+        const actual = _dealDamage(battle, targetName, rawDmg);
+        const healed = Math.round(actual * (params.drainPct || 0.5));
+        cst.hp = Math.min(cst.maxHp, cst.hp + healed);
+        const tst = battle.playerStates[targetName];
+        lines.push(`🩸 对 ${targetName} 造成 ${actual} 伤害，吸取 ${healed} HP！`);
+        lines.push(`❤️ ${targetName} ${Math.max(0,tst.hp)}/${tst.maxHp} ← ${casterName} ${cst.hp}/${cst.maxHp}`);
+        if (!tst.alive) lines.push(`☠️ ${targetName} 被击败！`);
+
+    } else if (type === "shield") {
+        const amt = params.amount || 50;
+        cst.shield += amt;
+        lines.push(`🛡️ 获得 ${amt} 护盾（当前护盾：${cst.shield}）`);
+
+    } else if (type === "aoe") {
+        const enemies = battle.players.filter(p => p !== casterName && battle.playerStates[p].alive);
+        if (!enemies.length) return { ok: false, msg: "❌ 场上没有可攻击的目标。" };
+        const mult = params.multiplier || 0.7;
+        const hits = [];
+        enemies.forEach(enemy => {
+            const atk = _effectiveAtk(casterName, battle);
+            const def = _effectiveDef(enemy, battle);
+            const rawDmg = _defReduction(Math.round(atk * mult * (0.85 + Math.random() * 0.3)), def);
+            const actual = _dealDamage(battle, enemy, rawDmg);
+            const tst = battle.playerStates[enemy];
+            hits.push(`${enemy} -${actual}HP（剩 ${Math.max(0,tst.hp)}）${tst.alive ? '' : ' ☠️'}`);
+        });
+        lines.push(`💥 群体攻击！\n` + hits.join("\n"));
+
+    } else if (type === "debuff_atk" || type === "debuff_def") {
+        const tst = battle.playerStates[targetName];
+        if (!tst.buffs) tst.buffs = [];
+        const turns = params.turns || 2;
+        const amount = params.amount || 20;
+        tst.buffs.push({ type, amount, turnsLeft: turns });
+        const label = type === "debuff_atk" ? "ATK" : "DEF";
+        lines.push(`📉 ${targetName} 的 ${label} 降低 ${amount}，持续 ${turns} 回合`);
+
+    } else if (type === "mp_drain") {
+        const tst = battle.playerStates[targetName];
+        const amt = Math.min(params.amount || 30, tst.mp);
+        tst.mp -= amt;
+        cst.mp = Math.min(cst.maxMp, cst.mp + Math.floor(amt * 0.5));
+        lines.push(`🔵 消耗 ${targetName} ${amt} MP，自身回复 ${Math.floor(amt*0.5)} MP`);
+
+    } else {
+        return { ok: false, msg: `❌ 未知技能类型「${type}」。` };
+    }
+
+    return { ok: true, msg: lines.join("\n") };
+}
+
+// ========================
+// 攻防系统 - 战斗结算与奖励
+// ========================
+
+function resolveBattleEnd(battle) {
+    battle.status = "ended";
+    const config = getAttackDefenseConfig();
+    const alive = battle.players.filter(p => battle.playerStates[p] && battle.playerStates[p].alive);
+
+    let winner = null;
+    if (alive.length === 1) {
+        winner = alive[0];
+    } else if (alive.length > 1) {
+        // 回合上限：按剩余HP%排名
+        winner = alive.sort((a, b) => {
+            const sa = battle.playerStates[a], sb = battle.playerStates[b];
+            return (sb.hp / sb.maxHp) - (sa.hp / sa.maxHp);
+        })[0];
+    }
+    battle.winner = winner;
+
+    // 写入战斗日志（供网页端查看）
+    const _log = JSON.parse(mainStorGet("battle_log") || "[]");
+    _log.unshift({
+        id: battle.id, players: battle.players, winner: winner || null,
+        turns: battle.currentTurn, actions: (battle.actions || []).length,
+        endedAt: Date.now()
+    });
+    if (_log.length > 100) _log.length = 100;
+    mainStorSet("battle_log", JSON.stringify(_log));
+
+    const lines = ["⚔️ ─ 战斗结束 ─"];
+    if (winner) lines.push(`🏆 ${winner} 胜利！`);
+    else lines.push(`⚔️ 平局！`);
+
+    // 发放奖励
+    const currName = config.rewardCurrency;
+    const winAmt   = parseInt(config.rewardWin)  || 0;
+    const loseAmt  = parseInt(config.rewardLose) || 0;
+    if (currName && (winAmt > 0 || loseAmt > 0)) {
+        const reg = getRegistry();
+        const curr = Object.values(reg).find(r => r.name === currName && r.type === "currency");
+        if (curr) {
+            battle.players.forEach(p => {
+                const rk = (battle.roleKeys || {})[p] || p;
+                const isWinner = p === winner;
+                const isDraw   = !winner;
+                const amt = isDraw ? Math.floor(winAmt * 0.5) : isWinner ? winAmt : loseAmt;
+                if (amt > 0) {
+                    addToInv(rk, curr.code, amt);
+                    lines.push(`💰 ${p} 获得 ${amt} ${currName}`);
+                }
+            });
+        }
+    }
+
+    return lines.join("\n");
+}
+
+// ========================
+// 攻防系统 - 辅助：找玩家所在进行中战斗
+// ========================
+
+function findActiveBattle(player) {
+    const data = getAttackDefenseData();
+    if (!data.battles) return null;
+    for (const bid in data.battles) {
+        const b = data.battles[bid];
+        if (b.status === "ongoing" && b.players.includes(player)) return { data, battle: b };
+    }
+    return null;
+}
+
+// 检查回合数是否超限，超限则结算
+function checkTurnLimit(battle, data) {
+    const config = getAttackDefenseConfig();
+    const maxTurns = config.defaultTurns || 10;
+    if (battle.currentTurn > maxTurns) {
+        const resultMsg = resolveBattleEnd(battle);
+        saveAttackDefenseData(data);
+        return resultMsg;
+    }
+    return null;
+}
+
+// ========================
+// 攻防系统 - 命令: PK
+// ========================
+
+// ─ 提取 roleKey 的辅助函数 ─
+function _getRoleKey(msg) {
+    const parts = msg.sender.userId.split(':');
+    const platform = parts[0];
+    const rawUid = parts[1];
+    const uid = getPrimaryUid(platform, rawUid);
+    return `${platform}:${uid}`;
+}
 
 let cmd_pk = seal.ext.newCmdItemInfo();
 cmd_pk.name = "PK";
-cmd_pk.help = "发起或接受战斗\n发起 [对手1] [对手2]...\n发起  （不指定对手时进入自由模式）\n接受 <战斗ID>\n拒绝 <战斗ID>";
+cmd_pk.help = "⚔️ 战斗系统\nPK 发起 [对手名]...  — 发起战斗（可指定对手，或留空开放挑战）\nPK 接受 <战斗ID>    — 接受/加入战斗\nPK 拒绝 <战斗ID>    — 拒绝战斗邀请";
 cmd_pk.solve = (ctx, msg, cmdArgs) => {
     const config = getAttackDefenseConfig();
     if (!config.enabled) return seal.replyToSender(ctx, msg, "❌ 攻防系统未启用。");
 
     const player = getRoleName(ctx, msg);
     if (!player) return seal.replyToSender(ctx, msg, "❌ 无法获取你的角色信息。");
+    const roleKey = _getRoleKey(msg);
 
     const subCmd = cmdArgs.getArgN(1);
     const data = getAttackDefenseData();
     if (!data.battles) data.battles = {};
     if (!data.playerStats) data.playerStats = {};
 
-    // 发起战斗
     if (subCmd === "发起") {
-        // 检查每日发起次数限制
+        // 每日发起次数限制
         const today = new Date().toDateString();
-        if (!data.playerStats[player]) data.playerStats[player] = initPlayerBattleAttrs(player);
-        if (!data.playerStats[player].initiations) data.playerStats[player].initiations = {};
-        if (!data.playerStats[player].initiations[today]) data.playerStats[player].initiations[today] = 0;
-
-        const maxInitiations = config.maxInitiations || 10;
-        if (data.playerStats[player].initiations[today] >= maxInitiations) {
-            return seal.replyToSender(ctx, msg, `❌ 今日发起战斗次数已达上限 (${maxInitiations}次)。`);
+        if (!data.playerStats[player]) data.playerStats[player] = initPlayerBattleAttrs();
+        const stats = data.playerStats[player];
+        if (!stats.initiations) stats.initiations = {};
+        if (!stats.initiations[today]) stats.initiations[today] = 0;
+        const maxInit = config.maxInitiations || 10;
+        if (stats.initiations[today] >= maxInit) {
+            return seal.replyToSender(ctx, msg, `❌ 今日发起次数已达上限（${maxInit} 次）。`);
         }
 
-        const battle = createBattle(player);
-
-        // 如果指定了对手，自动添加他们（混战模式）
+        const battle = createBattle(player, roleKey);
         const opponents = [];
         for (let i = 2; i <= cmdArgs.getArgCount(); i++) {
-            opponents.push(cmdArgs.getArgN(i));
+            const opp = cmdArgs.getArgN(i);
+            if (opp) opponents.push(opp);
         }
+        opponents.forEach(opp => addPlayerToBattle(battle.id, opp, opp)); // 对手 roleKey 等 PK 接受时再补全
 
         if (opponents.length > 0) {
-            opponents.forEach(opp => addPlayerToBattle(battle.id, opp));
-            battle.status = "preparing";
-        }
-
-        data.battles[battle.id] = battle;
-        data.playerStats[player].initiations[today]++;
-        saveAttackDefenseData(data);
-
-        let msg_text = `⚔️ ${player} 发起了一场战斗！\n\n战斗ID: ${battle.id}\n\n`;
-        if (opponents.length > 0) {
-            msg_text += `参战者: ${[player, ...opponents].join(", ")}\n\n`;
-            msg_text += `输入「PK 接受 ${battle.id}」开始战斗。`;
+            // 双方都在，直接开战
+            startBattle(battle);
+            data.battles[battle.id] = battle;
+            stats.initiations[today]++;
+            saveAttackDefenseData(data);
+            const first = getCurrentBattlePlayer(battle);
+            processTurnStart(battle, first);
+            saveAttackDefenseData(data);
+            return seal.replyToSender(ctx, msg,
+                `⚔️ 战斗开始！\n战斗ID：${battle.id}\n参战者：${battle.players.join("、")}\n` +
+                `\n先手：${first}\n` +
+                `\n可用行动：攻击 / 防守 / 使用技能 技能名 目标 / 战斗用品 物品名 / 投降`
+            );
         } else {
-            msg_text += `这是一个开放战斗，其他人可以:\n\n输入「PK 接受 ${battle.id}」加入战斗`;
+            battle.status = "pending";
+            data.battles[battle.id] = battle;
+            stats.initiations[today]++;
+            saveAttackDefenseData(data);
+            return seal.replyToSender(ctx, msg,
+                `⚔️ ${player} 发起了开放战斗！\n战斗ID：${battle.id}\n\n其他人输入「PK 接受 ${battle.id}」加入`
+            );
         }
-
-        return seal.replyToSender(ctx, msg, msg_text);
     }
 
-    // 接受战斗
     if (subCmd === "接受") {
         const battleId = cmdArgs.getArgN(2);
-        if (!battleId || !data.battles[battleId]) {
-            return seal.replyToSender(ctx, msg, "❌ 无效的战斗ID。");
-        }
-
+        if (!battleId || !data.battles[battleId]) return seal.replyToSender(ctx, msg, "❌ 无效的战斗ID。");
         const battle = data.battles[battleId];
-        if (battle.status !== "pending" && battle.status !== "preparing") {
-            return seal.replyToSender(ctx, msg, "❌ 该战斗已不可加入。");
+        if (battle.status !== "pending") return seal.replyToSender(ctx, msg, "❌ 该战斗已无法加入。");
+        if (battle.players.includes(player)) return seal.replyToSender(ctx, msg, "❌ 你已在此战斗中。");
+
+        // 补全 roleKey（发起时对手的 roleKey 可能是占位的）
+        if (!battle.roleKeys) battle.roleKeys = {};
+        battle.roleKeys[player] = roleKey;
+        if (!battle.playerStates[player]) {
+            battle.players.push(player);
+            battle.playerStates[player] = _makePlayerState(player, roleKey);
+        } else {
+            // 重新生成（之前 roleKey 是占位的）
+            battle.playerStates[player] = _makePlayerState(player, roleKey);
         }
 
-        if (battle.players.includes(player)) {
-            return seal.replyToSender(ctx, msg, "❌ 你已加入该战斗。");
+        const minPlayers = config.minPlayers || 2;
+        if (battle.players.length >= minPlayers) {
+            startBattle(battle);
+            const first = getCurrentBattlePlayer(battle);
+            processTurnStart(battle, first);
+            saveAttackDefenseData(data);
+            return seal.replyToSender(ctx, msg,
+                `✅ ${player} 加入！战斗开始！\n战斗ID：${battle.id}\n参战者：${battle.players.join("、")}\n` +
+                `\n先手：${first}\n可用行动：攻击 / 防守 / 使用技能 技能名 目标 / 战斗用品 物品名 / 投降`
+            );
         }
-
-        // 检查拒绝限制（如果启用强制参战则无需检查）
-        if (!config.forceParticipate) {
-            const today = new Date().toDateString();
-            if (!data.playerStats[player].refusals) data.playerStats[player].refusals = {};
-            if (!data.playerStats[player].refusals[today]) data.playerStats[player].refusals[today] = 0;
-
-            const maxRefusals = config.maxRefusals || 10;
-            if (data.playerStats[player].refusals[today] >= maxRefusals) {
-                return seal.replyToSender(ctx, msg, `❌ 由于你今日拒绝次数过多，无法接受新的战斗。`);
-            }
-        }
-
-        addPlayerToBattle(battleId, player);
-
-        // 如果有足够的人，自动开始战斗
-        if (battle.players.length >= (config.minPlayers || 2) && !config.manualStart) {
-            startBattle(battleId);
-            return seal.replyToSender(ctx, msg, `✅ ${player} 加入了战斗！\n\n⚔️ 战斗已开始！\n\n当前玩家: ${getCurrentBattlePlayer(battle)}\n\n输入「PK 攻击 <对手名字>」发动攻击。`);
-        }
-
         saveAttackDefenseData(data);
-        return seal.replyToSender(ctx, msg, `✅ ${player} 加入了战斗 ${battleId}!\n\n当前参战者: ${battle.players.join(", ")}`);
+        return seal.replyToSender(ctx, msg, `✅ ${player} 加入战斗 ${battleId}！\n参战者：${battle.players.join("、")}`);
     }
 
-    // 拒绝战斗
     if (subCmd === "拒绝") {
         const battleId = cmdArgs.getArgN(2);
-        if (!battleId || !data.battles[battleId]) {
-            return seal.replyToSender(ctx, msg, "❌ 无效的战斗ID。");
-        }
-
+        if (!battleId || !data.battles[battleId]) return seal.replyToSender(ctx, msg, "❌ 无效的战斗ID。");
         const battle = data.battles[battleId];
-        if (battle.status !== "pending" && battle.status !== "preparing") {
-            return seal.replyToSender(ctx, msg, "❌ 该战斗已不可拒绝。");
+        if (!battle.players.includes(battle.initiator) || battle.initiator === player) {
+            delete data.battles[battleId];
         }
-
-        const today = new Date().toDateString();
-        if (!data.playerStats[player].refusals) data.playerStats[player].refusals = {};
-        if (!data.playerStats[player].refusals[today]) data.playerStats[player].refusals[today] = 0;
-        data.playerStats[player].refusals[today]++;
-
         saveAttackDefenseData(data);
-        return seal.replyToSender(ctx, msg, `✅ 你拒绝了战斗 ${battleId}。\n\n今日已拒绝 ${data.playerStats[player].refusals[today]} 次。`);
+        return seal.replyToSender(ctx, msg, `✅ 已拒绝战斗 ${battleId}。`);
     }
 };
 
 ext.cmdMap["PK"] = cmd_pk;
 
 // ========================
-// 攻防系统 - 命令: 战斗操作
+// 攻防系统 - 命令: 攻击
 // ========================
+
+// 回合行动公共收尾：推进回合 + 检查上限 + 保存
+function _afterAction(data, battle) {
+    if (getAlivePlayersCount(battle) <= 1) {
+        const r = resolveBattleEnd(battle);
+        saveAttackDefenseData(data);
+        return r;
+    }
+    advanceTurn(battle);
+    const next = getCurrentBattlePlayer(battle);
+    const limitMsg = checkTurnLimit(battle, data);
+    if (limitMsg) { saveAttackDefenseData(data); return limitMsg; }
+    processTurnStart(battle, next);
+    saveAttackDefenseData(data);
+    const nst = battle.playerStates[next];
+    return `➡️ 轮到 ${next} 的回合（HP ${nst.hp}/${nst.maxHp}  MP ${nst.mp}/${nst.maxMp}）`;
+}
 
 let cmd_attack = seal.ext.newCmdItemInfo();
 cmd_attack.name = "攻击";
-cmd_attack.help = "在战斗中发动攻击\n攻击 <对手名字>";
+cmd_attack.help = "攻击 <目标名>  — 普通攻击（受DEF减伤，±10%随机）";
 cmd_attack.solve = (ctx, msg, cmdArgs) => {
     const config = getAttackDefenseConfig();
     if (!config.enabled) return seal.replyToSender(ctx, msg, "❌ 攻防系统未启用。");
-
     const player = getRoleName(ctx, msg);
-    if (!player) return seal.replyToSender(ctx, msg, "❌ 无法获取你的角色信息。");
-
+    if (!player) return seal.replyToSender(ctx, msg, "❌ 无法获取角色信息。");
     const targetName = cmdArgs.getArgN(1);
     if (!targetName) return seal.replyToSender(ctx, msg, "❌ 请指定攻击目标。");
+    if (targetName === player) return seal.replyToSender(ctx, msg, "❌ 不能攻击自己。");
 
-    const data = getAttackDefenseData();
-    if (!data.battles) return seal.replyToSender(ctx, msg, "❌ 没有进行中的战斗。");
+    const found = findActiveBattle(player);
+    if (!found) return seal.replyToSender(ctx, msg, "❌ 你未参加进行中的战斗。");
+    const { data, battle } = found;
 
-    // 找到玩家所在的战斗
-    let battle = null;
-    for (const bid in data.battles) {
-        if (data.battles[bid].players.includes(player) && data.battles[bid].status === "ongoing") {
-            battle = data.battles[bid];
-            break;
-        }
-    }
+    if (getCurrentBattlePlayer(battle) !== player)
+        return seal.replyToSender(ctx, msg, `❌ 还没到你的回合，当前：${getCurrentBattlePlayer(battle)}`);
+    const tst = battle.playerStates[targetName];
+    if (!tst) return seal.replyToSender(ctx, msg, "❌ 目标不在此战斗中。");
+    if (!tst.alive) return seal.replyToSender(ctx, msg, "❌ 目标已被击败。");
 
-    if (!battle) return seal.replyToSender(ctx, msg, "❌ 你未参加进行中的战斗。");
+    const dmg = _calcAndDeal(battle, player, targetName);
+    battle.actions.push({ turn: battle.currentTurn, actor: player, action: "attack", target: targetName, damage: dmg });
 
-    const currentPlayer = getCurrentBattlePlayer(battle);
-    if (currentPlayer !== player) {
-        return seal.replyToSender(ctx, msg, `❌ 现在不是你的回合。当前轮到: ${currentPlayer}`);
-    }
-
-    if (!battle.playerStates[targetName]) {
-        return seal.replyToSender(ctx, msg, "❌ 目标不存在或未参加此战斗。");
-    }
-
-    if (!battle.playerStates[targetName].alive) {
-        return seal.replyToSender(ctx, msg, "❌ 目标已被击败。");
-    }
-
-    if (targetName === player) {
-        return seal.replyToSender(ctx, msg, "❌ 无法攻击自己。");
-    }
-
-    // 计算伤害
-    const damage = calculateNormalAttack(player, targetName);
-    applyDamage(battle.id, targetName, damage);
-
-    // 记录行动
-    recordAction(battle.id, {
-        actor: player,
-        action: "attack",
-        target: targetName,
-        damage: damage,
-        targetHP: battle.playerStates[targetName].hp
-    });
-
-    let result = `⚔️ ${player} 攻击了 ${targetName}！\n\n伤害: ${damage}\n${targetName} 剩余HP: ${Math.max(0, battle.playerStates[targetName].hp)}`;
-
-    // 检查目标是否被击败
-    if (!battle.playerStates[targetName].alive) {
-        result += `\n\n☠️ ${targetName} 被击败了！`;
-    }
-
-    // 检查战斗是否结束
-    if (getAlivePlayersCount(battle) <= 1) {
-        battle.status = "ended";
-        const survivors = battle.players.filter(p => battle.playerStates[p] && battle.playerStates[p].alive);
-        if (survivors.length === 1) {
-            battle.winner = survivors[0];
-            result += `\n\n🏆 战斗结束！${survivors[0]} 胜利！`;
-        } else {
-            result += `\n\n⚔️ 战斗结束，平手！`;
-        }
-    } else {
-        // 进到下一个回合
-        battle.currentPlayerIndex = (battle.currentPlayerIndex + 1) % battle.turnOrder.length;
-        // 跳过已击败的玩家
-        let attempts = 0;
-        while (!battle.playerStates[battle.turnOrder[battle.currentPlayerIndex]].alive && attempts < battle.turnOrder.length) {
-            battle.currentPlayerIndex = (battle.currentPlayerIndex + 1) % battle.turnOrder.length;
-            attempts++;
-        }
-
-        if (battle.currentPlayerIndex === 0) {
-            battle.currentTurn++;
-        }
-        battle.turnStartTime = Date.now();
-
-        result += `\n\n➡️ 轮到 ${getCurrentBattlePlayer(battle)} 的回合。`;
-    }
-
-    saveAttackDefenseData(data);
-    return seal.replyToSender(ctx, msg, result);
+    let reply = `⚔️ ${player} 普通攻击 ${targetName}！\n💥 造成 ${dmg} 伤害`;
+    reply += `\n❤️ ${targetName} HP：${Math.max(0,tst.hp)}/${tst.maxHp}`;
+    if (!tst.alive) reply += `\n☠️ ${targetName} 被击败！`;
+    reply += "\n\n" + _afterAction(data, battle);
+    return seal.replyToSender(ctx, msg, reply);
 };
-
 ext.cmdMap["攻击"] = cmd_attack;
 
 // ========================
@@ -4079,57 +4233,120 @@ ext.cmdMap["攻击"] = cmd_attack;
 
 let cmd_defend = seal.ext.newCmdItemInfo();
 cmd_defend.name = "防守";
-cmd_defend.help = "在战斗中防守一回合（增加防御力）\n防守";
+cmd_defend.help = "防守  — 进入防守姿态，下次受到攻击伤害减半";
 cmd_defend.solve = (ctx, msg, cmdArgs) => {
     const config = getAttackDefenseConfig();
     if (!config.enabled) return seal.replyToSender(ctx, msg, "❌ 攻防系统未启用。");
-
     const player = getRoleName(ctx, msg);
-    if (!player) return seal.replyToSender(ctx, msg, "❌ 无法获取你的角色信息。");
+    if (!player) return seal.replyToSender(ctx, msg, "❌ 无法获取角色信息。");
 
-    const data = getAttackDefenseData();
-    if (!data.battles) return seal.replyToSender(ctx, msg, "❌ 没有进行中的战斗。");
+    const found = findActiveBattle(player);
+    if (!found) return seal.replyToSender(ctx, msg, "❌ 你未参加进行中的战斗。");
+    const { data, battle } = found;
 
-    let battle = null;
-    for (const bid in data.battles) {
-        if (data.battles[bid].players.includes(player) && data.battles[bid].status === "ongoing") {
-            battle = data.battles[bid];
-            break;
+    if (getCurrentBattlePlayer(battle) !== player)
+        return seal.replyToSender(ctx, msg, `❌ 还没到你的回合，当前：${getCurrentBattlePlayer(battle)}`);
+
+    battle.playerStates[player].defending = true;
+    battle.actions.push({ turn: battle.currentTurn, actor: player, action: "defend" });
+    const tail = _afterAction(data, battle);
+    return seal.replyToSender(ctx, msg, `🛡️ ${player} 进入防守姿态！（下次受击伤害减半）\n\n${tail}`);
+};
+ext.cmdMap["防守"] = cmd_defend;
+
+// ========================
+// 攻防系统 - 命令: 使用技能
+// ========================
+
+let cmd_use_skill = seal.ext.newCmdItemInfo();
+cmd_use_skill.name = "使用技能";
+cmd_use_skill.help = "使用技能 <技能名> [目标名]  — 消耗MP使用已解锁的技能";
+cmd_use_skill.solve = (ctx, msg, cmdArgs) => {
+    const config = getAttackDefenseConfig();
+    if (!config.enabled) return seal.replyToSender(ctx, msg, "❌ 攻防系统未启用。");
+    const player = getRoleName(ctx, msg);
+    if (!player) return seal.replyToSender(ctx, msg, "❌ 无法获取角色信息。");
+    const skillName = cmdArgs.getArgN(1);
+    if (!skillName) return seal.replyToSender(ctx, msg, "❌ 请指定技能名。");
+
+    const playerSkills = (getPlayerSkills())[player] || [];
+    if (!playerSkills.includes(skillName))
+        return seal.replyToSender(ctx, msg, `❌ 你未解锁技能「${skillName}」。\n输入「我的技能」查看已解锁技能。`);
+
+    const found = findActiveBattle(player);
+    if (!found) return seal.replyToSender(ctx, msg, "❌ 你未参加进行中的战斗。");
+    const { data, battle } = found;
+
+    if (getCurrentBattlePlayer(battle) !== player)
+        return seal.replyToSender(ctx, msg, `❌ 还没到你的回合，当前：${getCurrentBattlePlayer(battle)}`);
+
+    const targetName = cmdArgs.getArgN(2);
+    const result = executeSkill(battle, skillName, player, targetName);
+    if (!result.ok) return seal.replyToSender(ctx, msg, result.msg);
+
+    battle.actions.push({ turn: battle.currentTurn, actor: player, action: "skill", skill: skillName, target: targetName });
+    const tail = _afterAction(data, battle);
+    return seal.replyToSender(ctx, msg, result.msg + "\n\n" + tail);
+};
+ext.cmdMap["使用技能"] = cmd_use_skill;
+
+// ========================
+// 攻防系统 - 命令: 战斗用品
+// ========================
+
+let cmd_battle_item = seal.ext.newCmdItemInfo();
+cmd_battle_item.name = "战斗用品";
+cmd_battle_item.help = "战斗用品 <物品名/代码>  — 在战斗中消耗背包物品（仅生效HP/MP效果）";
+cmd_battle_item.solve = (ctx, msg, cmdArgs) => {
+    const config = getAttackDefenseConfig();
+    if (!config.enabled) return seal.replyToSender(ctx, msg, "❌ 攻防系统未启用。");
+    const player = getRoleName(ctx, msg);
+    if (!player) return seal.replyToSender(ctx, msg, "❌ 无法获取角色信息。");
+    const roleKey = _getRoleKey(msg);
+    const itemInput = cmdArgs.getArgN(1);
+    if (!itemInput) return seal.replyToSender(ctx, msg, "❌ 请指定物品名或代码。");
+
+    const found = findActiveBattle(player);
+    if (!found) return seal.replyToSender(ctx, msg, "❌ 你未参加进行中的战斗。");
+    const { data, battle } = found;
+
+    if (getCurrentBattlePlayer(battle) !== player)
+        return seal.replyToSender(ctx, msg, `❌ 还没到你的回合，当前：${getCurrentBattlePlayer(battle)}`);
+
+    const reg = getRegistry();
+    const item = findItem(reg, itemInput);
+    if (!item) return seal.replyToSender(ctx, msg, `❌ 未找到物品「${itemInput}」。`);
+    if (!item.attrs) return seal.replyToSender(ctx, msg, `❌「${item.name}」没有属性效果，无法在战斗中使用。`);
+    if (getInvCount(roleKey, item.code) < 1)
+        return seal.replyToSender(ctx, msg, `❌ 背包里没有「${item.name}」。`);
+
+    const effects = parseAttrEffects(item.attrs);
+    const st = battle.playerStates[player];
+    const lines = [`🎒 ${player} 使用了「${item.name}」！`];
+    let used = false;
+
+    for (const attr in effects) {
+        const delta = effects[attr];
+        if (attr === "HP") {
+            const before = st.hp;
+            st.hp = Math.max(0, Math.min(st.maxHp, st.hp + delta));
+            lines.push(`❤️ HP ${delta > 0 ? '+' : ''}${st.hp - before}（${st.hp}/${st.maxHp}）`);
+            used = true;
+        } else if (attr === "MP") {
+            const before = st.mp;
+            st.mp = Math.max(0, Math.min(st.maxMp, st.mp + delta));
+            lines.push(`🔵 MP ${delta > 0 ? '+' : ''}${st.mp - before}（${st.mp}/${st.maxMp}）`);
+            used = true;
         }
     }
+    if (!used) return seal.replyToSender(ctx, msg, `❌「${item.name}」的效果在战斗中无效（仅支持HP/MP类）。`);
 
-    if (!battle) return seal.replyToSender(ctx, msg, "❌ 你未参加进行中的战斗。");
-
-    const currentPlayer = getCurrentBattlePlayer(battle);
-    if (currentPlayer !== player) {
-        return seal.replyToSender(ctx, msg, `❌ 现在不是你的回合。当前轮到: ${currentPlayer}`);
-    }
-
-    // 记录防守行动
-    recordAction(battle.id, {
-        actor: player,
-        action: "defend",
-        defenseBonus: 50
-    });
-
-    // 进到下一个回合
-    battle.currentPlayerIndex = (battle.currentPlayerIndex + 1) % battle.turnOrder.length;
-    let attempts = 0;
-    while (!battle.playerStates[battle.turnOrder[battle.currentPlayerIndex]].alive && attempts < battle.turnOrder.length) {
-        battle.currentPlayerIndex = (battle.currentPlayerIndex + 1) % battle.turnOrder.length;
-        attempts++;
-    }
-
-    if (battle.currentPlayerIndex === 0) {
-        battle.currentTurn++;
-    }
-    battle.turnStartTime = Date.now();
-
-    saveAttackDefenseData(data);
-    return seal.replyToSender(ctx, msg, `🛡️ ${player} 进入防守姿态！\n\n➡️ 轮到 ${getCurrentBattlePlayer(battle)} 的回合。`);
+    removeFromInv(roleKey, item.code, 1);
+    battle.actions.push({ turn: battle.currentTurn, actor: player, action: "item", item: item.name });
+    const tail = _afterAction(data, battle);
+    return seal.replyToSender(ctx, msg, lines.join("\n") + "\n\n" + tail);
 };
-
-ext.cmdMap["防守"] = cmd_defend;
+ext.cmdMap["战斗用品"] = cmd_battle_item;
 
 // ========================
 // 攻防系统 - 命令: 投降/逃跑
@@ -4137,372 +4354,286 @@ ext.cmdMap["防守"] = cmd_defend;
 
 let cmd_surrender = seal.ext.newCmdItemInfo();
 cmd_surrender.name = "投降";
-cmd_surrender.help = "在战斗中投降或尝试逃跑\n投降";
+cmd_surrender.help = "投降  — 直接认输退出战斗\n逃跑  — 有成功率的逃脱（默认30%）";
 cmd_surrender.solve = (ctx, msg, cmdArgs) => {
     const config = getAttackDefenseConfig();
     if (!config.enabled) return seal.replyToSender(ctx, msg, "❌ 攻防系统未启用。");
-
     const player = getRoleName(ctx, msg);
-    if (!player) return seal.replyToSender(ctx, msg, "❌ 无法获取你的角色信息。");
+    if (!player) return seal.replyToSender(ctx, msg, "❌ 无法获取角色信息。");
 
-    const data = getAttackDefenseData();
-    if (!data.battles) return seal.replyToSender(ctx, msg, "❌ 没有进行中的战斗。");
+    const found = findActiveBattle(player);
+    if (!found) return seal.replyToSender(ctx, msg, "❌ 你未参加进行中的战斗。");
+    const { data, battle } = found;
 
-    let battle = null;
-    for (const bid in data.battles) {
-        if (data.battles[bid].players.includes(player) && data.battles[bid].status === "ongoing") {
-            battle = data.battles[bid];
-            break;
+    const isEscape = msg.message.includes("逃跑");
+    if (isEscape) {
+        const escapeRate = config.escapeRate !== undefined ? config.escapeRate : 30;
+        if (Math.random() * 100 >= escapeRate) {
+            battle.actions.push({ turn: battle.currentTurn, actor: player, action: "escape", success: false });
+            const tail = _afterAction(data, battle);
+            return seal.replyToSender(ctx, msg, `❌ ${player} 逃跑失败！（成功率 ${escapeRate}%）\n\n${tail}`);
         }
-    }
-
-    if (!battle) return seal.replyToSender(ctx, msg, "❌ 你未参加进行中的战斗。");
-
-    const escapeRate = config.escapeRate !== undefined ? config.escapeRate : 30;
-    const escapeRoll = Math.random() * 100;
-
-    recordAction(battle.id, {
-        actor: player,
-        action: "escape",
-        success: escapeRoll < escapeRate
-    });
-
-    if (escapeRoll < escapeRate) {
-        // 成功逃脱
-        battle.playerStates[player].alive = false;
-
-        let result = `💨 ${player} 成功逃离了战斗！`;
-
-        if (getAlivePlayersCount(battle) <= 1) {
-            battle.status = "ended";
-            const survivors = battle.players.filter(p => battle.playerStates[p] && battle.playerStates[p].alive);
-            if (survivors.length === 1) {
-                battle.winner = survivors[0];
-                result += `\n\n🏆 战斗结束！${survivors[0]} 胜利！`;
-            } else {
-                result += `\n\n⚔️ 战斗结束，平手！`;
-            }
-        } else {
-            // 进到下一个回合
-            battle.currentPlayerIndex = (battle.currentPlayerIndex + 1) % battle.turnOrder.length;
-            let attempts = 0;
-            while (!battle.playerStates[battle.turnOrder[battle.currentPlayerIndex]].alive && attempts < battle.turnOrder.length) {
-                battle.currentPlayerIndex = (battle.currentPlayerIndex + 1) % battle.turnOrder.length;
-                attempts++;
-            }
-
-            if (battle.currentPlayerIndex === 0) {
-                battle.currentTurn++;
-            }
-            battle.turnStartTime = Date.now();
-
-            result += `\n\n➡️ 轮到 ${getCurrentBattlePlayer(battle)} 的回合。`;
-        }
-
-        saveAttackDefenseData(data);
-        return seal.replyToSender(ctx, msg, result);
+        battle.actions.push({ turn: battle.currentTurn, actor: player, action: "escape", success: true });
     } else {
-        // 逃脱失败，消耗当前回合
-        battle.currentPlayerIndex = (battle.currentPlayerIndex + 1) % battle.turnOrder.length;
-        let attempts = 0;
-        while (!battle.playerStates[battle.turnOrder[battle.currentPlayerIndex]].alive && attempts < battle.turnOrder.length) {
-            battle.currentPlayerIndex = (battle.currentPlayerIndex + 1) % battle.turnOrder.length;
-            attempts++;
-        }
-        if (battle.currentPlayerIndex === 0) {
-            battle.currentTurn++;
-        }
-        battle.turnStartTime = Date.now();
-
-        saveAttackDefenseData(data);
-        return seal.replyToSender(ctx, msg, `❌ ${player} 逃脱失败！回合已消耗。\n\n➡️ 轮到 ${getCurrentBattlePlayer(battle)} 的回合。\n(成功率: ${escapeRate}%)`);
+        battle.actions.push({ turn: battle.currentTurn, actor: player, action: "surrender" });
     }
-};
 
+    battle.playerStates[player].alive = false;
+    const resultMsg = resolveBattleEnd(battle);
+    saveAttackDefenseData(data);
+    const prefix = isEscape ? `💨 ${player} 成功逃离！` : `🏳️ ${player} 投降！`;
+    return seal.replyToSender(ctx, msg, `${prefix}\n\n${resultMsg}`);
+};
 ext.cmdMap["投降"] = cmd_surrender;
 ext.cmdMap["逃跑"] = cmd_surrender;
 
 // ========================
-// 攻防系统 - 管理员命令: 开关/设置
+// 攻防系统 - 管理员指令
 // ========================
 
 let cmd_attack_defense_admin = seal.ext.newCmdItemInfo();
 cmd_attack_defense_admin.name = "攻防";
-cmd_attack_defense_admin.help = "【管理员】攻防系统管理\n攻防 开 / 关     - 启用/禁用系统\n攻防 查看        - 查看配置\n攻防 设置 参数 值 - 设置配置参数";
+cmd_attack_defense_admin.help = "【管理员】攻防系统\n攻防 开/关       — 启用/禁用\n攻防 查看        — 查看配置\n攻防 设置 参数 值 — 修改参数\n攻防 结束 战斗ID  — 强制结束战斗\n\n可设置参数：每日发起/默认回合/逃脱率/奖励货币/胜者奖励/败者奖励/最小人数";
 cmd_attack_defense_admin.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
-
     const subCmd = cmdArgs.getArgN(1);
     let config = getAttackDefenseConfig();
 
-    // 开启系统
-    if (subCmd === "开") {
-        config.enabled = true;
-        saveAttackDefenseConfig(config);
-        return seal.replyToSender(ctx, msg, "✅ 攻防系统已启用。");
-    }
+    if (subCmd === "开") { config.enabled = true;  saveAttackDefenseConfig(config); return seal.replyToSender(ctx, msg, "✅ 攻防系统已启用。"); }
+    if (subCmd === "关") { config.enabled = false; saveAttackDefenseConfig(config); return seal.replyToSender(ctx, msg, "✅ 攻防系统已禁用。"); }
 
-    // 关闭系统
-    if (subCmd === "关") {
-        config.enabled = false;
-        saveAttackDefenseConfig(config);
-        return seal.replyToSender(ctx, msg, "✅ 攻防系统已禁用。");
-    }
-
-    // 查看配置
     if (subCmd === "查看") {
-        let info = "🎮 攻防系统配置:\n\n";
-        info += `启用状态: ${config.enabled ? "✅ 已启用" : "❌ 已禁用"}\n`;
-        info += `\n⚙️ 参数:\n`;
-        info += `· 每日最大发起次数: ${config.maxInitiations || 10}\n`;
-        info += `· 每日最大拒绝次数: ${config.maxRefusals || 10}\n`;
-        info += `· 每回合超时(ms): ${config.turnTimeout || 3600000}\n`;
-        info += `· 默认回合数: ${config.defaultTurns || 10}\n`;
-        info += `· 逃脱成功率(%): ${config.escapeRate !== undefined ? config.escapeRate : 30}\n`;
-        info += `· 伤害随机性: ${config.damageRandomness || "无 (纯数值)"}\n`;
-        info += `· 强制参战模式: ${config.forceParticipate ? "是" : "否"}\n`;
-        info += `· 最小参战人数: ${config.minPlayers || 2}\n`;
-        info += `· 手动开始模式: ${config.manualStart ? "是" : "否"}\n`;
-
+        let info = `🎮 攻防系统配置\n状态：${config.enabled ? "✅ 已启用" : "❌ 已禁用"}\n\n`;
+        info += `每日最大发起：${config.maxInitiations || 10}\n`;
+        info += `默认回合数：${config.defaultTurns || 10}\n`;
+        info += `逃脱成功率：${config.escapeRate !== undefined ? config.escapeRate : 30}%\n`;
+        info += `最小参战人数：${config.minPlayers || 2}\n`;
+        info += `奖励货币：${config.rewardCurrency || "（未设置）"}\n`;
+        info += `胜者奖励：${config.rewardWin || 0}\n`;
+        info += `败者奖励：${config.rewardLose || 0}\n`;
         return seal.replyToSender(ctx, msg, info);
     }
 
-    // 设置参数
-    if (subCmd === "设置") {
-        const paramName = cmdArgs.getArgN(2);
-        const paramValue = cmdArgs.getArgN(3);
-
-        if (!paramName || !paramValue) {
-            return seal.replyToSender(ctx, msg, "❌ 请指定参数名和值。");
-        }
-
-        switch(paramName) {
-            case "每日发起":
-                config.maxInitiations = parseInt(paramValue);
-                break;
-            case "每日拒绝":
-                config.maxRefusals = parseInt(paramValue);
-                break;
-            case "回合超时":
-                config.turnTimeout = parseInt(paramValue);
-                break;
-            case "默认回合":
-                config.defaultTurns = parseInt(paramValue);
-                break;
-            case "逃脱率":
-                config.escapeRate = parseInt(paramValue);
-                break;
-            case "伤害随机":
-                config.damageRandomness = paramValue === "无" ? 0 : paramValue;
-                break;
-            case "强制参战":
-                config.forceParticipate = paramValue === "是";
-                break;
-            case "最小人数":
-                config.minPlayers = parseInt(paramValue);
-                break;
-            case "手动开始":
-                config.manualStart = paramValue === "是";
-                break;
-            default:
-                return seal.replyToSender(ctx, msg, `❌ 未知参数: ${paramName}`);
-        }
-
-        saveAttackDefenseConfig(config);
-        return seal.replyToSender(ctx, msg, `✅ 设置成功: ${paramName} = ${paramValue}`);
+    if (subCmd === "结束") {
+        const battleId = cmdArgs.getArgN(2);
+        if (!battleId) return seal.replyToSender(ctx, msg, "❌ 请指定战斗ID。");
+        const adData = getAttackDefenseData();
+        const battle = adData.battles && adData.battles[battleId];
+        if (!battle || battle.status !== "ongoing") return seal.replyToSender(ctx, msg, "❌ 战斗不存在或已结束。");
+        const resultMsg = resolveBattleEnd(battle);
+        saveAttackDefenseData(adData);
+        return seal.replyToSender(ctx, msg, `✅ 强制结束战斗 ${battleId}\n\n${resultMsg}`);
     }
 
-    return seal.replyToSender(ctx, msg, "❌ 无效命令。");
-};
+    if (subCmd === "设置") {
+        const param = cmdArgs.getArgN(2);
+        const val   = cmdArgs.getArgN(3);
+        if (!param || !val) return seal.replyToSender(ctx, msg, "❌ 请指定参数和值。");
+        const map = {
+            "每日发起": "maxInitiations", "默认回合": "defaultTurns",
+            "逃脱率": "escapeRate", "最小人数": "minPlayers",
+            "奖励货币": "rewardCurrency", "胜者奖励": "rewardWin", "败者奖励": "rewardLose"
+        };
+        const key = map[param];
+        if (!key) return seal.replyToSender(ctx, msg, `❌ 未知参数「${param}」`);
+        config[key] = (key === "rewardCurrency") ? val : parseInt(val);
+        saveAttackDefenseConfig(config);
+        return seal.replyToSender(ctx, msg, `✅ 已设置 ${param} = ${val}`);
+    }
 
+    return seal.replyToSender(ctx, msg, cmd_attack_defense_admin.help);
+};
 ext.cmdMap["攻防"] = cmd_attack_defense_admin;
 
 // ========================
-// 攻防系统 - 管理员命令: 添加人员
+// 攻防系统 - 玩家技能管理
 // ========================
 
-let cmd_add_player = seal.ext.newCmdItemInfo();
-cmd_add_player.name = "添加人员";
-cmd_add_player.help = "【管理员】手动将玩家加入战斗\n添加人员 <玩家名> [玩家2] [玩家3]...";
-cmd_add_player.solve = (ctx, msg, cmdArgs) => {
+let cmd_player_skill = seal.ext.newCmdItemInfo();
+cmd_player_skill.name = "玩家技能";
+cmd_player_skill.help = "【管理员】玩家技能管理\n玩家技能 <角色名> <技能名> 授予  — 为角色解锁技能\n玩家技能 <角色名> <技能名> 撤销  — 取消角色技能\n玩家技能 <角色名>          — 查看角色的技能列表";
+cmd_player_skill.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const targetPlayer = cmdArgs.getArgN(1);
+    if (!targetPlayer) return seal.replyToSender(ctx, msg, "❌ 请指定角色名。");
 
-    const config = getAttackDefenseConfig();
-    if (!config.enabled) return seal.replyToSender(ctx, msg, "❌ 攻防系统未启用。");
+    const allSkills = getPlayerSkills();
+    if (!allSkills[targetPlayer]) allSkills[targetPlayer] = [];
+    const skills = allSkills[targetPlayer];
 
-    const initiator = cmdArgs.getArgN(1);
-    if (!initiator) return seal.replyToSender(ctx, msg, "❌ 请指定玩家名。");
-
-    const data = getAttackDefenseData();
-    const battle = createBattle(initiator, "free-for-all");
-
-    // 添加其他玩家
-    for (let i = 2; i <= cmdArgs.getArgCount(); i++) {
-        const playerName = cmdArgs.getArgN(i);
-        if (playerName) addPlayerToBattle(battle.id, playerName);
-    }
-
-    data.battles[battle.id] = battle;
-    saveAttackDefenseData(data);
-
-    let msg_text = `✅ 已创建战斗!\n\n战斗ID: ${battle.id}\n`;
-    msg_text += `参战者: ${battle.players.join(", ")}\n\n`;
-    msg_text += `输入「PK 接受 ${battle.id}」开始战斗。`;
-
-    return seal.replyToSender(ctx, msg, msg_text);
-};
-
-ext.cmdMap["添加人员"] = cmd_add_player;
-
-// ========================
-// 攻防系统 - 管理员命令: 添加技能
-// ========================
-
-let cmd_add_skill = seal.ext.newCmdItemInfo();
-cmd_add_skill.name = "添加技能";
-cmd_add_skill.help = "【管理员】为玩家解锁技能\n添加技能 <玩家名> <技能名>";
-cmd_add_skill.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
-
-    const config = getAttackDefenseConfig();
-    if (!config.enabled) return seal.replyToSender(ctx, msg, "❌ 攻防系统未启用。");
-
-    const playerName = cmdArgs.getArgN(1);
     const skillName = cmdArgs.getArgN(2);
+    const action    = cmdArgs.getArgN(3);
 
-    if (!playerName || !skillName) {
-        return seal.replyToSender(ctx, msg, "❌ 请指定玩家名和技能名。");
+    if (!skillName) {
+        const defs = getSkillDefs();
+        const info = skills.length
+            ? skills.map(s => `· ${s}${defs[s] ? `（${defs[s].type} MP:${defs[s].mpCost||0}）` : ''}`).join("\n")
+            : "（暂无技能）";
+        return seal.replyToSender(ctx, msg, `🌟 ${targetPlayer} 的技能列表：\n${info}`);
     }
 
-    const data = getAttackDefenseData();
-    if (!data.skills) data.skills = {};
-    if (!data.skills[playerName]) data.skills[playerName] = [];
-
-    if (data.skills[playerName].includes(skillName)) {
-        return seal.replyToSender(ctx, msg, `❌ ${playerName} 已经拥有技能 ${skillName}。`);
+    if (action === "授予") {
+        const defs = getSkillDefs();
+        if (!defs[skillName]) return seal.replyToSender(ctx, msg, `❌ 技能「${skillName}」不在技能库中，请先在 rp_archive 管理端注册。`);
+        if (skills.includes(skillName)) return seal.replyToSender(ctx, msg, `❌ ${targetPlayer} 已拥有「${skillName}」。`);
+        skills.push(skillName);
+        savePlayerSkills(allSkills);
+        return seal.replyToSender(ctx, msg, `✅ 已为 ${targetPlayer} 授予技能「${skillName}」。`);
     }
 
-    data.skills[playerName].push(skillName);
-    saveAttackDefenseData(data);
+    if (action === "撤销") {
+        const idx = skills.indexOf(skillName);
+        if (idx === -1) return seal.replyToSender(ctx, msg, `❌ ${targetPlayer} 未持有「${skillName}」。`);
+        skills.splice(idx, 1);
+        savePlayerSkills(allSkills);
+        return seal.replyToSender(ctx, msg, `✅ 已撤销 ${targetPlayer} 的技能「${skillName}」。`);
+    }
 
-    return seal.replyToSender(ctx, msg, `✅ 已为 ${playerName} 解锁技能: ${skillName}`);
+    return seal.replyToSender(ctx, msg, cmd_player_skill.help);
 };
-
-ext.cmdMap["添加技能"] = cmd_add_skill;
+ext.cmdMap["玩家技能"] = cmd_player_skill;
 
 // ========================
-// 攻防系统 - 查看战斗状态
+// 攻防系统 - 技能库 / 我的技能
+// ========================
+
+let cmd_skill_lib = seal.ext.newCmdItemInfo();
+cmd_skill_lib.name = "技能库";
+cmd_skill_lib.help = "技能库  — 查看所有已注册的战斗技能";
+cmd_skill_lib.solve = (ctx, msg, cmdArgs) => {
+    const config = getAttackDefenseConfig();
+    if (!config.enabled) return seal.replyToSender(ctx, msg, "❌ 攻防系统未启用。");
+    const defs = getSkillDefs();
+    const entries = Object.values(defs);
+    if (!entries.length) return seal.replyToSender(ctx, msg, "📖 技能库暂无技能，请管理员在 rp_archive 注册。");
+    let info = `📖 技能库（${entries.length}个）\n\n`;
+    entries.forEach(sk => {
+        const p = sk.params || {};
+        const pStr = Object.entries(p).map(([k,v]) => `${k}:${v}`).join(" ");
+        info += `【${sk.name}】 类型:${sk.type}  MP:${sk.mpCost||0}\n`;
+        if (pStr) info += `  参数：${pStr}\n`;
+        if (sk.desc) info += `  ${sk.desc}\n`;
+    });
+    return seal.replyToSender(ctx, msg, info.trim());
+};
+ext.cmdMap["技能库"] = cmd_skill_lib;
+
+let cmd_my_skills = seal.ext.newCmdItemInfo();
+cmd_my_skills.name = "我的技能";
+cmd_my_skills.help = "我的技能  — 查看已解锁的技能";
+cmd_my_skills.solve = (ctx, msg, cmdArgs) => {
+    const config = getAttackDefenseConfig();
+    if (!config.enabled) return seal.replyToSender(ctx, msg, "❌ 攻防系统未启用。");
+    const player = getRoleName(ctx, msg);
+    if (!player) return seal.replyToSender(ctx, msg, "❌ 无法获取角色信息。");
+    const skills = (getPlayerSkills())[player] || [];
+    if (!skills.length) return seal.replyToSender(ctx, msg, "🌟 你还没有解锁任何技能。");
+    const defs = getSkillDefs();
+    let info = `🌟 ${player} 的技能（${skills.length}个）\n\n`;
+    skills.forEach(s => {
+        const sk = defs[s];
+        if (!sk) { info += `· ${s}（定义已删除）\n`; return; }
+        info += `【${s}】 ${sk.type}  MP:${sk.mpCost||0}\n`;
+        if (sk.desc) info += `  ${sk.desc}\n`;
+    });
+    return seal.replyToSender(ctx, msg, info.trim());
+};
+ext.cmdMap["我的技能"] = cmd_my_skills;
+
+// ========================
+// 攻防系统 - 战斗状态
 // ========================
 
 let cmd_battle_status = seal.ext.newCmdItemInfo();
 cmd_battle_status.name = "战斗状态";
-cmd_battle_status.help = "查看当前战斗状态\n战斗状态 [战斗ID]";
+cmd_battle_status.help = "战斗状态 [战斗ID]  — 查看战斗详情";
 cmd_battle_status.solve = (ctx, msg, cmdArgs) => {
     const config = getAttackDefenseConfig();
     if (!config.enabled) return seal.replyToSender(ctx, msg, "❌ 攻防系统未启用。");
-
     const player = getRoleName(ctx, msg);
-    if (!player) return seal.replyToSender(ctx, msg, "❌ 无法获取你的角色信息。");
+    if (!player) return seal.replyToSender(ctx, msg, "❌ 无法获取角色信息。");
 
     const battleId = cmdArgs.getArgN(1);
-    const data = getAttackDefenseData();
-    if (!data.battles) return seal.replyToSender(ctx, msg, "❌ 没有战斗信息。");
+    const adData = getAttackDefenseData();
+    if (!adData.battles) return seal.replyToSender(ctx, msg, "❌ 没有战斗记录。");
 
-    let battle = null;
-
-    if (battleId) {
-        battle = data.battles[battleId];
-        if (!battle) return seal.replyToSender(ctx, msg, "❌ 战斗不存在。");
-    } else {
-        // 查找玩家参加的战斗
-        for (const bid in data.battles) {
-            if (data.battles[bid].players.includes(player) && data.battles[bid].status === "ongoing") {
-                battle = data.battles[bid];
-                break;
+    let battle = battleId ? adData.battles[battleId] : null;
+    if (!battle) {
+        for (const bid in adData.battles) {
+            if (adData.battles[bid].players.includes(player) && adData.battles[bid].status === "ongoing") {
+                battle = adData.battles[bid]; break;
             }
         }
-        if (!battle) return seal.replyToSender(ctx, msg, "❌ 你未参加任何进行中的战斗。");
     }
+    if (!battle) return seal.replyToSender(ctx, msg, "❌ 未找到战斗。");
 
-    let info = `⚔️ 战斗状态\n\n`;
-    info += `战斗ID: ${battle.id}\n`;
-    info += `状态: ${battle.status}\n`;
-    info += `回合: ${battle.currentTurn}/${battle.turns}\n`;
-    info += `\n当前轮到: ${getCurrentBattlePlayer(battle)}\n\n`;
-
-    info += `参战者:\n`;
+    const maxTurns = config.defaultTurns || 10;
+    let info = `⚔️ 战斗 ${battle.id}  回合 ${battle.currentTurn}/${maxTurns}\n`;
+    info += `当前行动：${getCurrentBattlePlayer(battle) || "—"}\n\n`;
     battle.players.forEach(p => {
-        const state = battle.playerStates[p];
-        const status = state.alive ? "🟢 存活" : "💀 已败";
-        info += `· ${p}: ${state.hp}/${getPlayerBattleAttrs(p).HP} HP | ${state.shield} 盾 | ${status}\n`;
+        const st = battle.playerStates[p];
+        const icon = st.alive ? "🟢" : "💀";
+        const bufStr = (st.buffs || []).map(b => `${b.type.replace("debuff_","-")}${b.amount}(${b.turnsLeft})`).join(" ");
+        info += `${icon} ${p}\n`;
+        info += `   HP ${st.hp}/${st.maxHp}  MP ${st.mp}/${st.maxMp}  盾 ${st.shield}`;
+        if (st.defending) info += "  🛡️防守中";
+        if (bufStr) info += `\n   ${bufStr}`;
+        info += "\n";
     });
-
-    return seal.replyToSender(ctx, msg, info);
+    return seal.replyToSender(ctx, msg, info.trim());
 };
-
 ext.cmdMap["战斗状态"] = cmd_battle_status;
 
 // ========================
-// 攻防系统 - 查看属性
+// 攻防系统 - 查看/设置属性
 // ========================
 
 let cmd_battle_attrs = seal.ext.newCmdItemInfo();
 cmd_battle_attrs.name = "属性";
-cmd_battle_attrs.help = "查看或管理战斗属性\n属性              - 查看自己的属性\n属性 <玩家名>     - 查看其他玩家属性\n【管理员】\n属性 设置 <玩家> <属性> <值> - 修改属性";
+cmd_battle_attrs.help = "属性 [角色名]  — 查看战斗属性（含装备加成）\n【管理员】属性 设置 <角色> <属性> <值>  — 修改基础属性\n可修改：ATK DEF AGI HP MP MP_REGEN";
 cmd_battle_attrs.solve = (ctx, msg, cmdArgs) => {
     const config = getAttackDefenseConfig();
     if (!config.enabled) return seal.replyToSender(ctx, msg, "❌ 攻防系统未启用。");
-
+    const self = getRoleName(ctx, msg);
     const subCmd = cmdArgs.getArgN(1);
 
-    // 查看自己或指定玩家的属性
-    if (!subCmd || (subCmd && !["设置", "修改"].includes(subCmd))) {
-        const self = getRoleName(ctx, msg);
-        const targetName = subCmd || self;
-        if (!targetName) return seal.replyToSender(ctx, msg, "❌ 无法获取角色信息。");
-        if (targetName !== self && !isUserAdmin(ctx, msg)) {
-            return seal.replyToSender(ctx, msg, "❌ 权限不足，无法查看他人属性。");
-        }
-
-        const attrs = getPlayerBattleAttrs(targetName);
-        let info = `⚔️ ${targetName} 的战斗属性\n\n`;
-        info += `攻击力 (ATK):    ${attrs.ATK}\n`;
-        info += `防御力 (DEF):    ${attrs.DEF}\n`;
-        info += `敏捷 (AGI):      ${attrs.AGI}\n`;
-        info += `生命值 (HP):     ${attrs.HP}\n`;
-        info += `护盾 (TMP_SHIELD): ${attrs.TMP_SHIELD}\n`;
-        info += `魔法值 (MP):     ${attrs.MP}\n`;
-        info += `回复/回合 (MP_REGEN): ${attrs.MP_REGEN}\n`;
-
-        return seal.replyToSender(ctx, msg, info);
-    }
-
-    // 管理员修改属性
     if (subCmd === "设置" || subCmd === "修改") {
         if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
-
-        const playerName = cmdArgs.getArgN(2);
-        const attrName = cmdArgs.getArgN(3);
-        const value = parseInt(cmdArgs.getArgN(4));
-
-        if (!playerName || !attrName || isNaN(value)) {
-            return seal.replyToSender(ctx, msg, "❌ 用法: 属性 设置 <玩家> <属性> <值>");
-        }
-
-        const validAttrs = ["ATK", "DEF", "AGI", "HP", "TMP_SHIELD", "MP", "MP_REGEN"];
-        if (!validAttrs.includes(attrName)) {
-            return seal.replyToSender(ctx, msg, `❌ 无效属性。有效属性: ${validAttrs.join(", ")}`);
-        }
-
-        const attrs = getPlayerBattleAttrs(playerName);
-        const oldValue = attrs[attrName];
+        const targetName = cmdArgs.getArgN(2);
+        const attrName   = cmdArgs.getArgN(3);
+        const value      = parseInt(cmdArgs.getArgN(4));
+        if (!targetName || !attrName || isNaN(value))
+            return seal.replyToSender(ctx, msg, "❌ 用法：属性 设置 <角色> <属性> <值>");
+        const valid = ["ATK","DEF","AGI","HP","MP","MP_REGEN"];
+        if (!valid.includes(attrName))
+            return seal.replyToSender(ctx, msg, `❌ 可修改属性：${valid.join("  ")}`);
+        const attrs = getPlayerBattleAttrs(targetName);
+        const old = attrs[attrName];
         attrs[attrName] = value;
-        savePlayerBattleAttrs(playerName, attrs);
-
-        return seal.replyToSender(ctx, msg, `✅ 已修改 ${playerName} 的 ${attrName}: ${oldValue} → ${value}`);
+        savePlayerBattleAttrs(targetName, attrs);
+        return seal.replyToSender(ctx, msg, `✅ ${targetName} 的 ${attrName}：${old} → ${value}`);
     }
-};
 
+    const targetName = subCmd || self;
+    if (!targetName) return seal.replyToSender(ctx, msg, "❌ 无法获取角色信息。");
+    if (targetName !== self && !isUserAdmin(ctx, msg))
+        return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+
+    const parts = msg.sender.userId.split(':');
+    const rk = (targetName === self) ? msg.sender.userId : targetName;
+    const base  = getPlayerBattleAttrs(targetName);
+    const eff   = getEffectiveBattleAttrs(targetName, rk);
+    let info = `⚔️ ${targetName} 的战斗属性\n\n`;
+    ["ATK","DEF","AGI","HP","MP","MP_REGEN"].forEach(attr => {
+        const b = base[attr] || 0;
+        const e = eff[attr] || 0;
+        const diff = e - b;
+        info += `${attr.padEnd(8)}  ${e}`;
+        if (diff !== 0) info += `（基础 ${b} ${diff > 0 ? '+' : ''}${diff} 装备）`;
+        info += "\n";
+    });
+    return seal.replyToSender(ctx, msg, info.trim());
+};
 ext.cmdMap["属性"] = cmd_battle_attrs;
 
 // ========================
@@ -4511,84 +4642,38 @@ ext.cmdMap["属性"] = cmd_battle_attrs;
 
 let cmd_battle_history = seal.ext.newCmdItemInfo();
 cmd_battle_history.name = "战斗历史";
-cmd_battle_history.help = "查看战斗历史和统计\n战斗历史 <战斗ID> [页码]";
+cmd_battle_history.help = "战斗历史 <战斗ID> [页码]";
 cmd_battle_history.solve = (ctx, msg, cmdArgs) => {
     const config = getAttackDefenseConfig();
     if (!config.enabled) return seal.replyToSender(ctx, msg, "❌ 攻防系统未启用。");
-
     const battleId = cmdArgs.getArgN(1);
     if (!battleId) return seal.replyToSender(ctx, msg, "❌ 请指定战斗ID。");
+    const adData = getAttackDefenseData();
+    if (!adData.battles || !adData.battles[battleId]) return seal.replyToSender(ctx, msg, "❌ 战斗不存在。");
 
-    const data = getAttackDefenseData();
-    if (!data.battles || !data.battles[battleId]) {
-        return seal.replyToSender(ctx, msg, "❌ 战斗不存在。");
-    }
-
-    const battle = data.battles[battleId];
-    const pageNum = parseInt(cmdArgs.getArgN(2)) || 1;
+    const battle  = adData.battles[battleId];
+    const pageNum  = parseInt(cmdArgs.getArgN(2)) || 1;
     const pageSize = 10;
-    const totalActions = battle.actions.length;
-    const totalPages = Math.ceil(totalActions / pageSize);
+    const total    = battle.actions.length;
+    const pages    = Math.max(1, Math.ceil(total / pageSize));
+    if (pageNum < 1 || pageNum > pages) return seal.replyToSender(ctx, msg, `❌ 页码范围：1-${pages}`);
 
-    if (pageNum > totalPages || pageNum < 1) {
-        return seal.replyToSender(ctx, msg, `❌ 页码范围: 1-${totalPages}`);
-    }
-
-    let info = `📋 战斗历史 - ${battle.id}\n`;
-    info += `状态: ${battle.status} | 赢家: ${battle.winner || "进行中"}\n\n`;
-    info += `第 ${pageNum}/${totalPages} 页:\n\n`;
-
+    let info = `📋 战斗 ${battle.id}  状态:${battle.status}  胜者:${battle.winner || "—"}\n第 ${pageNum}/${pages} 页\n\n`;
     const start = (pageNum - 1) * pageSize;
-    const end = Math.min(start + pageSize, totalActions);
-
-    for (let i = start; i < end; i++) {
-        const action = battle.actions[i];
-        info += `[T${action.turn}] ${action.actor}:`;
-
-        if (action.action === "attack") {
-            info += ` 攻击 ${action.target} → ${action.damage} 伤害\n`;
-        } else if (action.action === "defend") {
-            info += ` 防守 (防御+${action.defenseBonus})\n`;
-        } else if (action.action === "escape") {
-            info += ` 尝试逃脱 → ${action.success ? "成功" : "失败"}\n`;
-        } else if (action.action === "skill") {
-            info += ` 使用技能 ${action.skill} → ${action.damage} 伤害\n`;
-        }
+    for (let i = start; i < Math.min(start + pageSize, total); i++) {
+        const a = battle.actions[i];
+        info += `[T${a.turn}] ${a.actor} `;
+        if (a.action === "attack")     info += `攻击 ${a.target} → ${a.damage} 伤害\n`;
+        else if (a.action === "defend")    info += `防守\n`;
+        else if (a.action === "skill")     info += `使用技能【${a.skill}】${a.target ? ' → ' + a.target : ''}\n`;
+        else if (a.action === "item")      info += `使用道具「${a.item}」\n`;
+        else if (a.action === "escape")    info += `逃跑 → ${a.success ? "成功" : "失败"}\n`;
+        else if (a.action === "surrender") info += `投降\n`;
+        else info += `${a.action}\n`;
     }
-
-    return seal.replyToSender(ctx, msg, info);
+    return seal.replyToSender(ctx, msg, info.trim());
 };
-
 ext.cmdMap["战斗历史"] = cmd_battle_history;
-
-// ========================
-// 攻防系统 - 设置中文显示名
-// ========================
-
-let cmd_set_display_name = seal.ext.newCmdItemInfo();
-cmd_set_display_name.name = "设置昵称";
-cmd_set_display_name.help = "设置战斗中显示的昵称\n设置昵称 <昵称>";
-cmd_set_display_name.solve = (ctx, msg, cmdArgs) => {
-    const config = getAttackDefenseConfig();
-    if (!config.enabled) return seal.replyToSender(ctx, msg, "❌ 攻防系统未启用。");
-
-    const player = getRoleName(ctx, msg);
-    if (!player) return seal.replyToSender(ctx, msg, "❌ 无法获取你的角色信息。");
-
-    const displayName = cmdArgs.getArgN(1);
-    if (!displayName) return seal.replyToSender(ctx, msg, "❌ 请指定昵称。");
-
-    const data = getAttackDefenseData();
-    if (!data.playerStats) data.playerStats = {};
-    if (!data.playerStats[player]) data.playerStats[player] = initPlayerBattleAttrs(player);
-
-    data.playerStats[player].displayName = displayName;
-    saveAttackDefenseData(data);
-
-    return seal.replyToSender(ctx, msg, `✅ 昵称已设置为: ${displayName}`);
-};
-
-ext.cmdMap["设置昵称"] = cmd_set_display_name;
 
 // ========================
 // 一键初始化 - 快速启用攻防系统

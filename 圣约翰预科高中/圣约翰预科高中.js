@@ -22,9 +22,9 @@ const CONFIG_KEY      = "stjohns_config_v1";
 const RELATION_KEY    = "stjohns_relations_v1";
 const TWITTER_KEY     = "stjohns_twitter_v1";
 
-const ENERGY_CAP               = 120;
-const ENERGY_PER_HOUR          = 10;  // 在校期间每小时恢复精力
-const ENERGY_PER_HOUR_HOLIDAY  = 20;  // 假期每小时恢复精力（翻倍）
+const ENERGY_CAP               = 180;
+const ENERGY_PER_HOUR          = 20;  // 在校期间每小时恢复精力
+const ENERGY_PER_HOUR_HOLIDAY  = 40;  // 假期每小时恢复精力（翻倍）
 const ENERGY_START             = 60;
 
 const STRESS_CAP      = 100;
