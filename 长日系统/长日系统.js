@@ -1171,8 +1171,9 @@ const changriApi = {
     // 互动计数与公告
     recordMeetingAndAnnounce,
     recordInteractionStat,
-    // 统计数据读取（统计卫星用）
+    // 统计数据读写（统计卫星用）
     getUserStats,
+    saveUserStats,
     getRoleStorage,
     getInteractionCounts,
     getTop3Text,
@@ -2708,12 +2709,22 @@ cmd_view_schedule.solve =(ctx, msg) => {
             // ended 用存档快照，进行中用实时计数
             const grpProg = ev.finalProgress || JSON.parse(cachedGet("group_write_progress") || "{}")[ev.group] || {};
             const privGrp = store.get("a_private_group")[platform] || {};
-            const parts = [myName, ...ev.partner.split(/[、,，]/).map(s => s.trim()).filter(Boolean)]
-                .filter((v, i, a) => a.indexOf(v) === i);
-            const counts = parts.map(n => {
-                const uid = Object.entries(privGrp).find(([_, v]) => v[0] === n)?.[0];
-                return uid ? (grpProg[uid] || 0) : 0;
-            });
+            let counts;
+            if (ev.partner === "多人小群" || ev.partner?.startsWith("多人小群、")) {
+                // 多人小群 partner 字段无法反查参与者，直接从进度 uid 键取数
+                const myCount = grpProg[roleId] || 0;
+                const otherCounts = Object.entries(grpProg)
+                    .filter(([u]) => u !== roleId)
+                    .map(([_, c]) => c);
+                counts = [myCount, ...otherCounts];
+            } else {
+                const parts = [myName, ...ev.partner.split(/[、,，]/).map(s => s.trim()).filter(Boolean)]
+                    .filter((v, i, a) => a.indexOf(v) === i);
+                counts = parts.map(n => {
+                    const uid = Object.entries(privGrp).find(([_, v]) => v[0] === n)?.[0];
+                    return uid ? (grpProg[uid] || 0) : 0;
+                });
+            }
             if (counts.some(c => c > 0)) progressText = `\n✍️ ${ev.status === "ended" ? "最终段数" : "当前进度"}：${counts.join('v')}`;
         }
         ev.displayText = `【${ev.day} ${ev.time}】\n${icon} ${getCustomTypeLabel(ev.subtype)} · ${tag}\n📍 地点：${ev.place || "未知"}\n👥 伙伴：${ev.partner}${progressText}`;
@@ -2972,17 +2983,24 @@ cmd_accept_join.solve =(ctx, msg, cmdArgs) => {
     }
     
     // 2. 为每个现有参与者更新 partner（追加新成员）
+    const totalAfterJoin = relatedEntries.length + 1;
+    const isMultiParty = totalAfterJoin > 2;
     const newPartnerSuffix = "、" + fullRequest.from;
     for (let entry of relatedEntries) {
-        if (!entry.ev.partner.includes(fullRequest.from)) {
+        if (isMultiParty) {
+            entry.ev.partner = "多人小群"; // 升级为多人标识（含原来是两人拼接或已是"多人小群"的情况）
+        } else if (!entry.ev.partner.includes(fullRequest.from)) {
             entry.ev.partner += newPartnerSuffix;
         }
     }
-    
+
     // 3. 为新成员创建日程记录
-    let basePartner = relatedEntries.length > 0 ? relatedEntries[0].ev.partner : targetSchedule.partner;
-    if (!basePartner.includes(fullRequest.from)) {
-        basePartner += newPartnerSuffix;
+    let basePartner;
+    if (isMultiParty) {
+        basePartner = "多人小群";
+    } else {
+        basePartner = relatedEntries.length > 0 ? relatedEntries[0].ev.partner : targetSchedule.partner;
+        if (!basePartner.includes(fullRequest.from)) basePartner += newPartnerSuffix;
     }
     const newSchedule = { ...targetSchedule };
     newSchedule.partner = basePartner;
@@ -4453,7 +4471,7 @@ async function finalizeGroupCreation(platform, ctx, msg, groupData, participants
             m.messageType = "group";
             m.groupId = `${platform}-Group:${bindGid}`;
             const tempCtx = seal.createTempCtx(ctx.endPoint, m);
-            seal.replyToSender(tempCtx, m, noticeText);
+            seal.replyToSender(tempCtx, m, `[CQ:at,qq=${uid}]\n${noticeText}`);
         }
     });
 
@@ -5646,7 +5664,7 @@ cmd_create_official_appointment.solve = async (ctx, msg, cmdArgs) => {
     newmsg.messageType = "group";
     newmsg.groupId = `${platform}-Group:${boundGroupId}`;
     const newctx = seal.createTempCtx(ctx.endPoint, newmsg);
-    seal.replyToSender(newctx, newmsg, `🎖️ 官约通知\n\n📅 ${day} ${time}\n📍 ${place}\n👥 参与者：${validParticipants.join("、")}\n\n💬 官约群号：${gid}`);
+    seal.replyToSender(newctx, newmsg, `[CQ:at,qq=${nameUid}]\n🎖️ 官约通知\n\n📅 ${day} ${time}\n📍 ${place}\n👥 参与者：${validParticipants.join("、")}\n\n💬 官约群号：${gid}`);
   }
 
   // --- 核心：启动计时器 ---
@@ -5962,7 +5980,7 @@ cmd_execute_official.solve = async (ctx, msg, cmdArgs) => {
       newmsg.messageType = "group";
       newmsg.groupId = `${platform}-Group:${boundGroupId}`;
       const newctx = seal.createTempCtx(ctx.endPoint, newmsg);
-      seal.replyToSender(newctx, newmsg, `🎖️ 官约通知\n\n📅 ${day} ${time}\n📍 ${place}\n👥 参与者：${participants.join("、")}\n\n💬 官约群号：${gid}`);
+      seal.replyToSender(newctx, newmsg, `[CQ:at,qq=${uid}]\n🎖️ 官约通知\n\n📅 ${day} ${time}\n📍 ${place}\n👥 参与者：${participants.join("、")}\n\n💬 官约群号：${gid}`);
     }
 
     // 启动计时器
@@ -6197,8 +6215,9 @@ function sendSightingReports(platform, newMeetingInfo, simultaneousMeetings, ctx
             newMsg.messageType = "group";
             newMsg.groupId = `${platform}-Group:${targetGroupId}`;
             const tempCtx = seal.createTempCtx(ctx.endPoint, newMsg);
+            const atStr = participantUid ? `[CQ:at,qq=${participantUid}]\n` : "";
             try {
-                seal.replyToSender(tempCtx, newMsg, reportMessage);
+                seal.replyToSender(tempCtx, newMsg, `${atStr}${reportMessage}`);
             } catch (err) {
                 console.error("[目击] 发送报告失败:", err);
             }
@@ -6246,16 +6265,16 @@ function sendCounterSightingReports(platform, originalMeeting, newMeetingInfo, c
         const reportMessage = originalMeeting.participants.length === 1
             ? `👀 哎呀，你在 ${originalMeeting.place} 的独自行动被 ${newParticipantsText} 看到了！（时间：${originalMeeting.time}）`
             : `👀 哎呀，你和${originalMeeting.participants.length > 1 ? '伙伴们' : '朋友'}在 ${originalMeeting.place} 的约会被 ${newParticipantsText} 看到了！（时间：${originalMeeting.time}）`;
-        
+
         // 使用传入的 ctx 创建临时上下文发送报告
         const targetGroupId = participantInfo[1];
         const newMsg = seal.newMessage();
         newMsg.messageType = "group";
         newMsg.groupId = `${platform}-Group:${targetGroupId}`;
         const tempCtx = seal.createTempCtx(ctx.endPoint, newMsg);
-        
+        const atStr = participantUid ? `[CQ:at,qq=${participantUid}]\n` : "";
         try {
-            seal.replyToSender(tempCtx, newMsg, reportMessage);
+            seal.replyToSender(tempCtx, newMsg, `${atStr}${reportMessage}`);
         } catch (err) {
             console.error("[ERROR] 发送反向目击报告失败:", err);
             continue;
@@ -6589,14 +6608,38 @@ function applyEndGameBonuses(ctx, msg, gid, platform) {
         return pool.items[pool.items.length - 1];
     }
 
-    // 发放单条奖励（playerUid 为 uid），返回显示文字
-    function applyRewardItem(playerUid, rewardItem) {
-        const { target, targetType, amount } = rewardItem;
+    // 发放单条奖励（playerUid 为 uid），返回显示文字，失败返回 null 并将原因写入 failLines
+    function applyRewardItem(playerUid, rewardItem, failLines) {
+        const target = (rewardItem.target || "").trim();
+        const { targetType, amount } = rewardItem;
+        if (!target) {
+            failLines.push(`⚠️ 模版中有一条奖励的目标名称为空，跳过（请用「结戏加成 查看」排查模版数据）`);
+            return null;
+        }
         if (targetType === "currency" || targetType === "item") {
-            const code = targetType === "currency"
-                ? (currencyByName[target] || target.toUpperCase())
-                : target.toUpperCase();
-            addToInv_system(`${platform}:${playerUid}`, code, amount);
+            // 优先按名称查代码，找不到再试 target.toUpperCase()（兼容直接填代码的情况）
+            let code = targetType === "currency"
+                ? (currencyByName[target] || null)
+                : null;
+            if (!code) {
+                const reg = JSON.parse(cachedGet("item_registry") || "{}");
+                const upper = target.toUpperCase();
+                if (reg[upper]) {
+                    code = upper;
+                } else {
+                    const found = Object.values(reg).find(r => r.name === target);
+                    if (found) code = found.code;
+                }
+            }
+            if (!code) {
+                failLines.push(`⚠️ 「${target}」未在注册表中找到，跳过`);
+                return null;
+            }
+            const ok = addToInv_system(`${platform}:${playerUid}`, code, amount);
+            if (!ok) {
+                failLines.push(`⚠️ 「${target}」发放失败（代码 ${code} 不在注册表），跳过`);
+                return null;
+            }
             return `${target}×${amount}`;
         } else {
             // attr：使用 uid-based profile key
@@ -6655,12 +6698,12 @@ function applyEndGameBonuses(ctx, msg, gid, platform) {
             const prob = (r.prob == null) ? 100 : r.prob;
             if (prob < 100 && Math.random() * 100 >= prob) return;
             if (!r.type || r.type === "fixed") {
-                const result = applyRewardItem(playerUid, r);
+                const result = applyRewardItem(playerUid, r, failLines);
                 if (result) fixedLines.push(result);
             } else if (r.type === "pool" && r.items.length) {
                 const drawn = drawFromPool(r);
                 if (drawn) {
-                    const result = applyRewardItem(playerUid, drawn);
+                    const result = applyRewardItem(playerUid, drawn, failLines);
                     if (result) {
                         const total = r.items.reduce((s, it) => s + it.weight, 0);
                         const pct = total > 0 ? Math.round(drawn.weight / total * 100) : 0;
@@ -7026,9 +7069,16 @@ function handleReply(platform, groupId, roleName, message) {
     roleStatus.repliedTime = Date.now();
     roleStatus.wordCount = wordCount;
 
-    // 4. 更新用户统计（新签名：传 uid）
+    // 4. 更新用户统计
+    // 耗时 = 群内其他任意参与者最后一条发言时间 → 本人发言时间
+    if (!timer.lastMsgAt) timer.lastMsgAt = {};
+    const _otherTimes = (timer.participants || [])
+        .filter(p => p !== roleName)
+        .map(p => timer.lastMsgAt[p])
+        .filter(t => t != null);
+    const _replyStartTime = _otherTimes.length > 0 ? Math.max(..._otherTimes) : null;
     const roleUid = getUidByRoleName(platform, roleName);
-    updateUserStats(platform, roleUid || roleName, wordCount, roleStatus.startTime, roleStatus.repliedTime);
+    updateUserStats(platform, roleUid || roleName, wordCount, _replyStartTime, roleStatus.repliedTime);
 
     // 5. 【新增逻辑】记录写帖进度 (替代原来的 .写了 指令)
     // 获取该角色的 UID（新结构：直接使用 getUidByRoleName 结果）
@@ -7112,6 +7162,9 @@ function handleReply(platform, groupId, roleName, message) {
         });
     }
 
+    // 8. 记录本次发言时间，供下一条其他人计算耗时用
+    timer.lastMsgAt[roleName] = roleStatus.repliedTime;
+
     saveGroupTimers(timers);
     return true; // 返回 true 表示处理成功，外部逻辑会执行 handleReply 转发
 }
@@ -7152,7 +7205,8 @@ function updateUserStats(platform, uid, wordCount, startTime, repliedTime) {
         stats[key] = {
             totalWords: 0,        // 总字数
             totalReplies: 0,      // 总有效回复次数
-            totalReplyTimeMs: 0,  // 总回复耗时（毫秒）
+            totalReplyTimeMs: 0,  // 总回复耗时（毫秒，仅含 startTime 有效的回复）
+            timedReplies: 0,      // 参与耗时平均计算的回复次数
             avgWords: 0,          // 平均字数
             avgReplyTimeMin: 0,   // 平均耗时（分钟）
             subtypeStats: {}      // 分类型统计
@@ -7160,16 +7214,23 @@ function updateUserStats(platform, uid, wordCount, startTime, repliedTime) {
     }
 
     const userStat = stats[key];
-    const replyTimeMs = repliedTime - startTime;
+    // startTime 为 null 时（轮流模式接收方尚未被计时就发言），跳过耗时统计避免污染平均值
+    const replyTimeMs = (startTime != null && startTime > 0) ? repliedTime - startTime : null;
 
     // 2. 更新基础累加数据
     userStat.totalReplies += 1;
     userStat.totalWords += wordCount;
-    userStat.totalReplyTimeMs += replyTimeMs;
+    if (replyTimeMs != null && replyTimeMs >= 0) {
+        userStat.totalReplyTimeMs += replyTimeMs;
+        userStat.timedReplies = (userStat.timedReplies || 0) + 1;
+    }
 
     // 3. 计算全局平均值
     userStat.avgWords = parseFloat((userStat.totalWords / userStat.totalReplies).toFixed(2));
-    userStat.avgReplyTimeMin = parseFloat((userStat.totalReplyTimeMs / userStat.totalReplies / 60000).toFixed(1));
+    const _timedReplies = userStat.timedReplies || 0;
+    userStat.avgReplyTimeMin = _timedReplies > 0
+        ? parseFloat((userStat.totalReplyTimeMs / _timedReplies / 60000).toFixed(1))
+        : 0;
 
     // 4. 更新细分类型统计（uid 为 key）
     if (!userStat.subtypeStats[platform]) userStat.subtypeStats[platform] = {};
@@ -7186,16 +7247,18 @@ function updateUserStats(platform, uid, wordCount, startTime, repliedTime) {
     const sub = userStat.subtypeStats[platform][uid];
     sub.replies += 1;
     sub.totalWords += wordCount;
-    sub.totalTime += replyTimeMs;
-
-    // 记录最快/最慢纪录（分钟）
-    const currentReplyMin = Math.round(replyTimeMs / 60000);
-    if (!sub.fastestReply || currentReplyMin < sub.fastestReply) sub.fastestReply = currentReplyMin;
-    if (!sub.slowestReply || currentReplyMin > sub.slowestReply) sub.slowestReply = currentReplyMin;
+    if (replyTimeMs != null && replyTimeMs >= 0) {
+        sub.totalTime += replyTimeMs;
+        // 记录最快/最慢纪录（分钟），仅在耗时有效时更新
+        const currentReplyMin = Math.round(replyTimeMs / 60000);
+        if (sub.fastestReply == null || currentReplyMin < sub.fastestReply) sub.fastestReply = currentReplyMin;
+        if (sub.slowestReply == null || currentReplyMin > sub.slowestReply) sub.slowestReply = currentReplyMin;
+    }
 
     saveUserStats(stats);
 
-    console.log(`[统计更新] uid=${uid}: 本次回复${wordCount}字, 耗时${currentReplyMin}分 | 累计平均: ${userStat.avgWords}字, ${userStat.avgReplyTimeMin}分`);
+    const currentReplyMin = replyTimeMs != null ? Math.round(replyTimeMs / 60000) : null;
+    console.log(`[统计更新] uid=${uid}: 本次回复${wordCount}字, 耗时${currentReplyMin ?? "N/A"}分 | 累计平均: ${userStat.avgWords}字, ${userStat.avgReplyTimeMin}分`);
 }
 
 /**
@@ -8333,7 +8396,7 @@ function addToInv_system(roleKey, code, count) {
 
     if (!itemInfo) {
         console.error(`[长日系统] 尝试添加不存在的物品代码: ${code}`);
-        return;
+        return false;
     }
 
     const initialUses = itemInfo.maxUses ?? -1;
@@ -8351,6 +8414,7 @@ function addToInv_system(roleKey, code, count) {
 
     invs[roleKey] = inv;
     saveInvAll_rpg(invs);
+    return true;
 }
 
 // 🔨 拍卖系统
@@ -9640,3 +9704,632 @@ cmd_end_report_toggle.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["季末报告"] = cmd_end_report_toggle;
+
+// ========================
+// 📊 场次状态查看 & 手动调整
+// ========================
+
+let cmd_session_status = seal.ext.newCmdItemInfo();
+cmd_session_status.name = "场次状态";
+cmd_session_status.help = "用法：。场次状态\n管理员查看所有活跃群组当前写帖进度与结戏奖励条件达成情况（合并转发）";
+cmd_session_status.solve = (ctx, msg) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 该指令仅限管理员使用"), seal.ext.newCmdExecuteResult(true);
+    if (!msg.groupId) return seal.replyToSender(ctx, msg, "⚠️ 请在群内使用此指令"), seal.ext.newCmdExecuteResult(true);
+
+    const platform = msg.platform;
+    const gei      = JSON.parse(cachedGet("group_expire_info") || "{}");
+    const ss       = getSessionStats();
+    const apg      = JSON.parse(cachedGet("a_private_group") || "{}")[platform] || {};
+    const templates = JSON.parse(cachedGet("end_game_bonus_templates") || "[]");
+    const tplTypeToStored = { "私约": "私密", "心意": "心愿" };
+    const now = Date.now();
+
+    const activeGroups = Object.entries(gei);
+    if (!activeGroups.length) return seal.replyToSender(ctx, msg, "📭 当前无活跃群组"), seal.ext.newCmdExecuteResult(true);
+
+    const botUid = ctx.endPoint.userId;
+    const nodes = [];
+    nodes.push({ type: "node", data: { name: "场次总览", uin: botUid,
+        content: `📊 活跃群组共 ${activeGroups.length} 个\n` +
+                 `💡 手动修正：。调整场次 群号 角色名 +字数 [+段数]` } });
+
+    function evalCond(op, val, thr) {
+        switch (op) {
+            case "=":     return val === thr;
+            case "!=":    return val !== thr;
+            case ">=":    return val >= thr;
+            case "<=":    return val <= thr;
+            case "range": return val >= thr[0] && val <= thr[1];
+        }
+        return false;
+    }
+
+    for (const [gid, info] of activeGroups) {
+        const groupStat  = ss[gid] || {};
+        const participants = info.participants || [];
+        const subtype    = info.subtype || "";
+        const elapsedMin = groupStat._startTime ? Math.floor((now - groupStat._startTime) / 60000) : 0;
+
+        // 找本场适用的奖励模板
+        const enabled = templates.filter(t => {
+            if (!t.enabled) return false;
+            const tType = t.subtype || "通用";
+            if (tType === "通用") return true;
+            return (tplTypeToStored[tType] || tType) === subtype;
+        });
+
+        const playerLines = participants.map(roleName => {
+            const uid     = Object.entries(apg).find(([, v]) => v[0] === roleName)?.[0];
+            const stat    = uid ? (groupStat[uid] || { replies: 0, words: 0 }) : { replies: 0, words: 0 };
+            const replies = stat.replies || 0;
+            const words   = stat.words   || 0;
+            const avg     = replies > 0 ? Math.floor(words / replies) : 0;
+
+            const getVal = (param) => {
+                switch (param) {
+                    case "本场个人段数":         return replies;
+                    case "本场个人总字数":       return words;
+                    case "本场个人平均每段字数": return avg;
+                    case "结戏最多耗费时间":     return elapsedMin;
+                }
+                return 0;
+            };
+
+            const rewardLines = [];
+            for (const tpl of enabled) {
+                for (const group of tpl.groups) {
+                    for (const block of group.blocks) {
+                        const conds   = block.conditions || [];
+                        const rewards = block.rewards    || [];
+                        if (!rewards.length) continue;
+                        const rewardDesc = rewards.map(r => `${r.target}×${r.amount}`).join("、");
+                        const allMet = conds.every(c => evalCond(c.op, getVal(c.param), c.value));
+                        const condDesc = conds.map(c => {
+                            const val    = getVal(c.param);
+                            const met    = evalCond(c.op, val, c.value);
+                            const opStr  = { "=": "=", "!=": "≠", ">=": "≥", "<=": "≤", "range": "~" }[c.op] || c.op;
+                            const thrStr = Array.isArray(c.value) ? `${c.value[0]}-${c.value[1]}` : c.value;
+                            return `${met ? "✅" : "❌"} ${c.param}${opStr}${thrStr}（现${val}）`;
+                        }).join("  ");
+                        rewardLines.push(`  ${allMet ? "🎁" : "⏳"} ${rewardDesc}\n    ${condDesc}`);
+                    }
+                }
+            }
+
+            const uidNote = uid ? "" : " ⚠️未绑定";
+            return `👤 ${roleName}${uidNote}：${replies}段 · ${words}字（均${avg}字/段）` +
+                   (rewardLines.length ? "\n" + rewardLines.join("\n") : "");
+        });
+
+        const overdue    = now > info.expireTime ? " ⚠️已超时" : "";
+        const timeStr    = info.day ? `${info.day} ${info.time || ""}` : "时间未知";
+        const header     = `📌 群号：${gid}\n类型：${getCustomTypeLabel(subtype) || '小群'}\n⏰ ${timeStr}${overdue}\n📍 ${info.place || "地点未知"}`;
+        const sep        = "\n─────────\n";
+        const content  = header + sep + playerLines.join(sep);
+        const nodeName = participants.slice(0, 3).join("、") + (participants.length > 3 ? "…" : "");
+        nodes.push({ type: "node", data: { name: nodeName || gid, uin: botUid, content } });
+    }
+
+    const gidInt   = parseInt(msg.groupId.replace(/[^\d]/g, ""), 10);
+    const CHUNK    = 20;
+    const total    = activeGroups.length;
+    const batches  = Math.ceil(total / CHUNK);
+    // nodes[0] 是总览摘要，nodes[1..] 是各群卡片
+    const groupNodes = nodes.slice(1);
+
+    for (let b = 0; b < batches; b++) {
+        const slice   = groupNodes.slice(b * CHUNK, (b + 1) * CHUNK);
+        const header  = { type: "node", data: { name: "场次总览", uin: botUid,
+            content: `📊 活跃群组 ${total} 个${batches > 1 ? `（第 ${b + 1}/${batches} 批）` : ""}\n` +
+                     `💡 手动修正：。调整场次 群号 角色名 +字数 [+段数]` } };
+        ws({ action: "send_group_forward_msg", params: { group_id: gidInt, messages: [header, ...slice] } }, ctx, msg, "");
+    }
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["场次状态"] = cmd_session_status;
+
+
+// ── 手动调整场次字数/段数 ──────────────────────────────────────────────────────
+let cmd_adjust_session = seal.ext.newCmdItemInfo();
+cmd_adjust_session.name = "调整场次";
+cmd_adjust_session.help = `用法：。调整场次 群号 角色名 字数偏移 [段数偏移]
+示例：
+  。调整场次 12345 张三 +500        ← 加500字
+  。调整场次 12345 张三 +500 +2     ← 加500字、加2段（同步更新几v几）
+  。调整场次 12345 张三 -100 -1     ← 减100字、减1段
+偏移量带+/-均可，结果不会低于0。`;
+cmd_adjust_session.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 该指令仅限管理员使用"), seal.ext.newCmdExecuteResult(true);
+
+    const platform    = msg.platform;
+    const gid         = (cmdArgs.getArgN(1) || "").trim();
+    const roleName    = (cmdArgs.getArgN(2) || "").trim();
+    const rawWords    = (cmdArgs.getArgN(3) || "").trim();
+    const rawReplies  = (cmdArgs.getArgN(4) || "").trim();
+
+    if (!gid || !roleName || !rawWords)
+        return seal.replyToSender(ctx, msg, "⚠️ 用法：。调整场次 群号 角色名 字数偏移 [段数偏移]"), seal.ext.newCmdExecuteResult(true);
+
+    const deltaWords   = parseInt(rawWords, 10);
+    const deltaReplies = rawReplies ? parseInt(rawReplies, 10) : 0;
+    if (isNaN(deltaWords))
+        return seal.replyToSender(ctx, msg, "⚠️ 字数偏移格式错误，示例：+500 或 -100"), seal.ext.newCmdExecuteResult(true);
+    if (rawReplies && isNaN(deltaReplies))
+        return seal.replyToSender(ctx, msg, "⚠️ 段数偏移格式错误，示例：+2 或 -1"), seal.ext.newCmdExecuteResult(true);
+
+    const apg = JSON.parse(cachedGet("a_private_group") || "{}")[platform] || {};
+    const uid = Object.entries(apg).find(([, v]) => v[0] === roleName)?.[0];
+    if (!uid)
+        return seal.replyToSender(ctx, msg, `⚠️ 找不到角色「${roleName}」`), seal.ext.newCmdExecuteResult(true);
+
+    const ss = getSessionStats();
+    if (!ss[gid])
+        return seal.replyToSender(ctx, msg, `⚠️ 找不到群 ${gid} 的场次记录\n提示：可用「场次状态」查看所有活跃群号`), seal.ext.newCmdExecuteResult(true);
+    if (!ss[gid][uid]) ss[gid][uid] = { replies: 0, words: 0 };
+
+    const before = { replies: ss[gid][uid].replies || 0, words: ss[gid][uid].words || 0 };
+    ss[gid][uid].words   = Math.max(0, before.words   + deltaWords);
+    ss[gid][uid].replies = Math.max(0, before.replies + deltaReplies);
+    saveSessionStats(ss);
+
+    // 段数同步更新 group_write_progress（几v几 来源）
+    let progressNote = "";
+    if (deltaReplies !== 0) {
+        const prog = JSON.parse(cachedGet("group_write_progress") || "{}");
+        if (!prog[gid]) prog[gid] = {};
+        prog[gid][uid] = Math.max(0, (prog[gid][uid] || 0) + deltaReplies);
+        cachedSet("group_write_progress", JSON.stringify(prog));
+        progressNote = `\n  ↳ 几v几 进度已同步：${prog[gid][uid]} 段`;
+    }
+
+    const sign = n => n >= 0 ? `+${n}` : `${n}`;
+    const after = ss[gid][uid];
+    seal.replyToSender(ctx, msg,
+        `✅ 已调整【${roleName}】在群 ${gid} 的场次数据：\n` +
+        `  字数：${before.words} → ${after.words}（${sign(deltaWords)}）\n` +
+        `  段数：${before.replies} → ${after.replies}（${sign(deltaReplies)}）` +
+        progressNote
+    );
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["调整场次"] = cmd_adjust_session;
+
+// ── 补发结戏奖励 ──────────────────────────────────────────────────────────────
+// 用于已结束的场次未正确发放奖励时手动补发
+// 用法（多行）：
+//   。补发奖励 模版名
+//   角色名 段数 字数 [耗时分钟]
+//   角色名 段数 字数 [耗时分钟]
+let cmd_reissue_bonus = seal.ext.newCmdItemInfo();
+cmd_reissue_bonus.name = "补发奖励";
+cmd_reissue_bonus.help = `【管理员】对已结束场次手动补发结戏奖励
+用法（多行消息）：
+。补发奖励 模版名
+角色名 段数 字数 [耗时分钟]
+角色名 段数 字数 [耗时分钟]
+...
+
+示例：
+。补发奖励 标准奖励
+张三 8 1200 45
+李四 5 900 45
+
+说明：
+• 段数/字数/耗时 用于匹配模版条件，需手动填入当时的实际数据
+• 耗时分钟可省略，省略时视为 0（对"结戏最多耗费时间 >=" 条件不利，请酌情填写）
+• 奖励直接写入背包/属性，并向玩家个人群发通知`;
+cmd_reissue_bonus.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) {
+        seal.replyToSender(ctx, msg, "❌ 该指令仅限管理员使用");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const platform = msg.platform;
+    const tplName = cmdArgs.getArgN(1);
+    if (!tplName) {
+        seal.replyToSender(ctx, msg, "❌ 请指定模版名，格式见「。补发奖励」帮助");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const templates = JSON.parse(cachedGet("end_game_bonus_templates") || "[]");
+    const tpl = templates.find(t => t.name === tplName);
+    if (!tpl) {
+        seal.replyToSender(ctx, msg, `❌ 模版「${tplName}」不存在，用「结戏加成 模版列表」查看`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    if (!tpl.enabled) {
+        seal.replyToSender(ctx, msg, `⚠️ 模版「${tplName}」当前已关闭，仍继续补发`);
+    }
+
+    // 解析多行玩家数据（跳过第一行指令行）
+    const allLines = (msg.message || "").split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const playerLines = allLines.slice(1);
+
+    if (!playerLines.length) {
+        seal.replyToSender(ctx, msg, "❌ 请在第二行起填写角色名和数据，每行一个");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const reg = JSON.parse(cachedGet("item_registry") || "{}");
+    const currencyByName = {};
+    Object.values(reg).forEach(r => { if (r.type === "currency") currencyByName[r.name] = r.code; });
+
+    const apg = JSON.parse(cachedGet("a_private_group") || "{}");
+
+    function evaluateCondition(op, statVal, value) {
+        switch (op) {
+            case "=":     return statVal === value;
+            case "!=":    return statVal !== value;
+            case ">=":    return statVal >= value;
+            case "<=":    return statVal <= value;
+            case "range": return statVal >= value[0] && statVal <= value[1];
+        }
+        return false;
+    }
+
+    function drawFromPool(pool) {
+        const totalWeight = pool.items.reduce((s, it) => s + it.weight, 0);
+        if (totalWeight <= 0) return null;
+        let rand = Math.random() * totalWeight;
+        for (const item of pool.items) {
+            rand -= item.weight;
+            if (rand <= 0) return item;
+        }
+        return pool.items[pool.items.length - 1];
+    }
+
+    function applyOneReward(playerUid, rewardItem, failLines) {
+        const { target, targetType, amount } = rewardItem;
+        if (targetType === "currency" || targetType === "item") {
+            let code = targetType === "currency" ? (currencyByName[target] || null) : null;
+            if (!code) {
+                const upper = target.toUpperCase();
+                if (reg[upper]) {
+                    code = upper;
+                } else {
+                    const found = Object.values(reg).find(r => r.name === target);
+                    if (found) code = found.code;
+                }
+            }
+            if (!code) {
+                failLines.push(`⚠️ 「${target}」未在注册表中找到，跳过`);
+                return null;
+            }
+            const ok = addToInv_system(`${platform}:${playerUid}`, code, amount);
+            if (!ok) {
+                failLines.push(`⚠️ 「${target}」发放失败（代码 ${code} 不在注册表），跳过`);
+                return null;
+            }
+            return `${target}×${amount}`;
+        } else {
+            const profileKey = `${platform}:${playerUid}`;
+            const profiles = JSON.parse(cachedGet("sys_char_profiles") || "{}");
+            if (!profiles[profileKey]) profiles[profileKey] = {};
+            const cur = parseInt(profiles[profileKey][target] || "0");
+            profiles[profileKey][target] = String(cur + amount);
+            cachedSet("sys_char_profiles", JSON.stringify(profiles));
+            return `${target}+${amount}`;
+        }
+    }
+
+    const report = [];
+    const errors = [];
+
+    for (const line of playerLines) {
+        const parts = line.split(/\s+/);
+        if (parts.length < 3) { errors.push(`格式错误（需要：角色名 段数 字数）：${line}`); continue; }
+        const roleName = parts[0];
+        const replies = parseInt(parts[1]);
+        const words = parseInt(parts[2]);
+        const elapsedMinutes = parts[3] ? parseInt(parts[3]) : 0;
+        if (isNaN(replies) || isNaN(words)) { errors.push(`段数/字数不是数字：${line}`); continue; }
+
+        const uid = getUidByRoleName(platform, roleName);
+        if (!uid) { errors.push(`⚠️ 找不到角色「${roleName}」对应的 UID，请确认角色已注册`); continue; }
+
+        const avgWords = replies > 0 ? Math.floor(words / replies) : 0;
+        const getStatVal = (param) => {
+            switch (param) {
+                case "本场个人段数":         return replies;
+                case "本场个人总字数":       return words;
+                case "本场个人平均每段字数": return avgWords;
+                case "结戏最多耗费时间":     return elapsedMinutes;
+            }
+            return 0;
+        };
+
+        const fixedLines = [];
+        const poolLines = [];
+        const failLines = [];
+
+        function processR(r) {
+            const prob = (r.prob == null) ? 100 : r.prob;
+            if (prob < 100 && Math.random() * 100 >= prob) return;
+            if (!r.type || r.type === "fixed") {
+                const res = applyOneReward(uid, r, failLines);
+                if (res) fixedLines.push(res);
+            } else if (r.type === "pool" && r.items.length) {
+                const drawn = drawFromPool(r);
+                if (drawn) {
+                    const res = applyOneReward(uid, drawn, failLines);
+                    if (res) {
+                        const total = r.items.reduce((s, it) => s + it.weight, 0);
+                        const pct = total > 0 ? Math.round(drawn.weight / total * 100) : 0;
+                        poolLines.push(`${res}（${pct}%）`);
+                    }
+                }
+            }
+            // location_draw 在补发场景下跳过（无法确认结戏群地点）
+        }
+
+        for (const group of tpl.groups) {
+            if (group.op === "and") {
+                for (const block of group.blocks) {
+                    const allMet = (block.conditions || []).every(c =>
+                        evaluateCondition(c.op, getStatVal(c.param), c.value)
+                    );
+                    if (!allMet) continue;
+                    for (const r of (block.rewards || [])) processR(r);
+                }
+            } else if (group.op === "or") {
+                for (const block of group.blocks) {
+                    const allMet = (block.conditions || []).every(c =>
+                        evaluateCondition(c.op, getStatVal(c.param), c.value)
+                    );
+                    if (!allMet) continue;
+                    for (const r of (block.rewards || [])) processR(r);
+                    break;
+                }
+            }
+        }
+
+        const allLines2 = [...fixedLines, ...poolLines];
+        const lineDesc = allLines2.length
+            ? allLines2.join("、")
+            : "（无条件命中，未发放）";
+        const failDesc = failLines.length ? `\n  ${failLines.join("\n  ")}` : "";
+        report.push(`【${roleName}】${lineDesc}${failDesc}`);
+
+        // 通知玩家个人群
+        const roleEntry = apg[platform]?.[uid];
+        if (roleEntry && allLines2.length) {
+            const personalGroupId = roleEntry[1];
+            const notifyMsg = seal.newMessage();
+            notifyMsg.messageType = "group";
+            notifyMsg.groupId = `${platform}-Group:${personalGroupId}`;
+            const notifyCtx = seal.createTempCtx(ctx.endPoint, notifyMsg);
+            const fixedText = fixedLines.join("、");
+            const poolText = poolLines.length ? `\n🎲 概率奖励抽中：${poolLines.join("、")}` : "";
+            seal.replyToSender(notifyCtx, notifyMsg,
+                `[CQ:at,qq=${uid}]\n🎁 结戏加成补发：${fixedText}${poolText}\n💡 可使用「背包」查看道具与货币，「角色卡」查看属性变更。`
+            );
+        }
+    }
+
+    if (errors.length) {
+        seal.replyToSender(ctx, msg, `⚠️ 以下行解析失败：\n${errors.join("\n")}`);
+    }
+    if (report.length) {
+        seal.replyToSender(ctx, msg, `🎁 补发结戏奖励（模版：${tplName}）：\n${report.join("\n")}`);
+    } else if (!errors.length) {
+        seal.replyToSender(ctx, msg, "📭 无奖励被发放（所有条件均未命中）");
+    }
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["补发奖励"] = cmd_reissue_bonus;
+
+// ── 查奖励情况（从 rp_archive 拉取最近已结束场次，预览奖励命中情况）────────────
+let cmd_check_rewards = seal.ext.newCmdItemInfo();
+cmd_check_rewards.name = "查奖励情况";
+cmd_check_rewards.help = `【管理员】从 rp_archive 拉取最近已结束场次，预览各玩家按当前模版应得的奖励。
+用法：。查奖励情况 [条数]
+  条数默认 5，最多 20。
+  不实际发放任何奖励，仅供核查后手动「。补发奖励」。`;
+cmd_check_rewards.solve = (ctx, msg, cmdArgs) => {
+    if (!isArchiveEnabled()) {
+        seal.replyToSender(ctx, msg, "❌ 未启用 RP 存档传输，无法拉取历史场次");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    if (!isUserAdmin(ctx, msg)) {
+        seal.replyToSender(ctx, msg, "❌ 该指令仅限管理员使用");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const limitArg = parseInt(cmdArgs.getArgN(1) || "5");
+    const limit = isNaN(limitArg) ? 5 : Math.min(Math.max(limitArg, 1), 20);
+
+    const base  = (seal.ext.getStringConfig(ext, "RP存档服务器地址") || "").replace(/\/$/, "");
+    const token = seal.ext.getStringConfig(ext, "RP存档Token") || "";
+
+    const templates = JSON.parse(cachedGet("end_game_bonus_templates") || "[]");
+    const enabledTpls = templates.filter(t => t.enabled);
+
+    const platform = msg.platform;
+
+    // 条件评估（与 applyEndGameBonuses 相同逻辑）
+    const tplTypeToStored = { "私约": "私密", "心意": "心愿" };
+    function isTplMatch(tpl, subtype) {
+        const tplType = tpl.subtype || "通用";
+        if (tplType === "通用") return true;
+        const resolved = tplTypeToStored[tplType] || tplType;
+        return resolved === subtype;
+    }
+    function evalCond(op, val, thr) {
+        switch (op) {
+            case "=":     return val === thr;
+            case "!=":    return val !== thr;
+            case ">=":    return val >= thr;
+            case "<=":    return val <= thr;
+            case "range": return val >= thr[0] && val <= thr[1];
+        }
+        return false;
+    }
+
+    // 对单个玩家预测奖励（只列出名称，不实际发放）
+    function predictRewards(roleName, stat, subtype, elapsedMin) {
+        const replies  = stat.replies || 0;
+        const words    = stat.words   || 0;
+        const avgWords = replies > 0 ? Math.floor(words / replies) : 0;
+
+        const getVal = (param) => {
+            switch (param) {
+                case "本场个人段数":         return replies;
+                case "本场个人总字数":       return words;
+                case "本场个人平均每段字数": return avgWords;
+                case "结戏最多耗费时间":     return elapsedMin;
+            }
+            return 0;
+        };
+
+        const matched = [];   // 命中的奖励描述
+        const missed  = [];   // 未命中的块（附原因）
+
+        for (const tpl of enabledTpls) {
+            if (!isTplMatch(tpl, subtype)) continue;
+            for (const group of tpl.groups) {
+                if (group.op === "and") {
+                    for (const block of group.blocks) {
+                        const rewards = block.rewards || [];
+                        if (!rewards.length) continue;
+                        const conds = block.conditions || [];
+                        const results = conds.map(c => {
+                            const val = getVal(c.param);
+                            const met = evalCond(c.op, val, c.value);
+                            const thr = Array.isArray(c.value) ? `${c.value[0]}-${c.value[1]}` : c.value;
+                            return { met, desc: `${c.param}${c.op}${thr}（现${val}）` };
+                        });
+                        const allMet = results.every(r => r.met);
+                        const rewardDesc = rewards.map(r => {
+                            if (!r.type || r.type === "fixed") return `${r.target}×${r.amount}`;
+                            if (r.type === "pool") {
+                                const total = r.items.reduce((s, it) => s + it.weight, 0);
+                                return "概率[" + r.items.map(it =>
+                                    `${it.target}×${it.amount}(${total>0?Math.round(it.weight/total*100):0}%)`
+                                ).join("/") + "]";
+                            }
+                            if (r.type === "location_draw") return `地点池抽取×${r.amount}`;
+                            return r.target;
+                        }).join("、");
+                        if (allMet) {
+                            matched.push(`✅ ${rewardDesc}【${tpl.name}】`);
+                        } else {
+                            const failDesc = results.filter(r => !r.met).map(r => r.desc).join(" ");
+                            missed.push(`❌ ${rewardDesc}（未满足：${failDesc}）【${tpl.name}】`);
+                        }
+                    }
+                } else if (group.op === "or") {
+                    let anyHit = false;
+                    for (const block of group.blocks) {
+                        const conds = block.conditions || [];
+                        const allMet = conds.every(c => evalCond(c.op, getVal(c.param), c.value));
+                        if (!allMet) continue;
+                        const rewards = block.rewards || [];
+                        const rewardDesc = rewards.map(r => {
+                            if (!r.type || r.type === "fixed") return `${r.target}×${r.amount}`;
+                            if (r.type === "pool") {
+                                const total = r.items.reduce((s, it) => s + it.weight, 0);
+                                return "概率[" + r.items.map(it =>
+                                    `${it.target}×${it.amount}(${total>0?Math.round(it.weight/total*100):0}%)`
+                                ).join("/") + "]";
+                            }
+                            if (r.type === "location_draw") return `地点池抽取×${r.amount}`;
+                            return r.target;
+                        }).join("、");
+                        matched.push(`✅ ${rewardDesc}【${tpl.name}】`);
+                        anyHit = true;
+                        break;
+                    }
+                    if (!anyHit) {
+                        missed.push(`❌ or组无命中【${tpl.name}】`);
+                    }
+                }
+            }
+        }
+        return { matched, missed, replies, words, avgWords };
+    }
+
+    (async () => {
+        try {
+            const resp = await fetch(`${base}/api/recent_sessions?limit=${limit}`, {
+                headers: { "X-Archive-Token": token }
+            });
+            if (!resp.ok) {
+                seal.replyToSender(ctx, msg, `❌ 拉取存档失败（HTTP ${resp.status}）`);
+                return;
+            }
+            const data = await resp.json();
+            if (!data.ok || !data.sessions) {
+                seal.replyToSender(ctx, msg, "❌ 存档返回格式异常");
+                return;
+            }
+            if (!data.sessions.length) {
+                seal.replyToSender(ctx, msg, "📭 存档中无已结束场次");
+                return;
+            }
+
+            if (!enabledTpls.length) {
+                seal.replyToSender(ctx, msg, "⚠️ 当前无已启用的结戏加成模版，将显示场次数据但无法预测奖励");
+            }
+
+            const botUid = ctx.endPoint.userId;
+            const gidInt = parseInt(msg.groupId.replace(/[^\d]/g, ""), 10);
+            const nodes  = [];
+
+            nodes.push({ type: "node", data: { name: "奖励情况总览", uin: botUid,
+                content: `📋 最近 ${data.sessions.length} 场已结束场次奖励预览\n` +
+                         `当前启用模版：${enabledTpls.length ? enabledTpls.map(t=>t.name).join("、") : "（无）"}\n` +
+                         `✅ = 条件命中应发放　❌ = 条件未满足\n` +
+                         `如需补发：。补发奖励 模版名\n角色名 段数 字数 [耗时分钟]` } });
+
+            for (const session of data.sessions) {
+                let stats = {};
+                let participants = [];
+                try {
+                    stats = JSON.parse(session.stats || "{}");
+                    participants = JSON.parse(session.participants || "[]");
+                } catch (e) { /* skip */ }
+
+                const elapsedMin = (session.start_ts && session.end_ts)
+                    ? Math.floor((session.end_ts - session.start_ts) / 60000)
+                    : 0;
+
+                const subtype = (session.subtype || "").replace(/\|补戏$/, "").trim();
+                const header  = [
+                    `📌 ${session.game_day || "日期未知"} ${session.game_time || ""}`,
+                    `📍 ${session.place || "地点未知"}　类型：${subtype || "通用"}`,
+                    `群号：${session.group_id}　耗时约 ${elapsedMin} 分钟`,
+                ].join("\n");
+
+                const playerLines = [];
+                for (const roleName of participants) {
+                    const stat = stats[roleName] || { replies: 0, words: 0 };
+                    const { matched, missed, replies, words, avgWords } = predictRewards(roleName, stat, subtype, elapsedMin);
+                    const statLine = `${replies}段·${words}字（均${avgWords}字/段）`;
+                    const uid = getUidByRoleName(platform, roleName);
+                    const uidNote = uid ? "" : " ⚠️未绑定";
+                    const lines = [`👤 ${roleName}${uidNote}　${statLine}`];
+                    if (!enabledTpls.length) {
+                        lines.push("  （无启用模版）");
+                    } else if (!matched.length && !missed.length) {
+                        lines.push("  无匹配模版");
+                    } else {
+                        matched.forEach(l => lines.push("  " + l));
+                        missed.forEach(l  => lines.push("  " + l));
+                    }
+                    playerLines.push(lines.join("\n"));
+                }
+
+                const content = header + "\n─────────\n" + (playerLines.length ? playerLines.join("\n─────────\n") : "（无参与者数据）");
+                const nodeName = participants.slice(0, 3).join("、") + (participants.length > 3 ? "…" : "");
+                nodes.push({ type: "node", data: { name: nodeName || session.group_id, uin: botUid, content } });
+            }
+
+            ws({ action: "send_group_forward_msg", params: { group_id: gidInt, messages: nodes } }, ctx, msg, "");
+        } catch (e) {
+            seal.replyToSender(ctx, msg, `❌ 请求异常：${e.message || String(e)}`);
+        }
+    })();
+
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["查奖励情况"] = cmd_check_rewards;

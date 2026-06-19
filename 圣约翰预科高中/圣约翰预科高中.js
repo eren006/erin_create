@@ -22,9 +22,9 @@ const CONFIG_KEY      = "stjohns_config_v1";
 const RELATION_KEY    = "stjohns_relations_v1";
 const TWITTER_KEY     = "stjohns_twitter_v1";
 
-const ENERGY_CAP               = 180;
-const ENERGY_PER_HOUR          = 20;  // 在校期间每小时恢复精力
-const ENERGY_PER_HOUR_HOLIDAY  = 40;  // 假期每小时恢复精力（翻倍）
+const ENERGY_CAP               = 250;
+const ENERGY_PER_HOUR          = 30;  // 在校期间每小时恢复精力
+const ENERGY_PER_HOUR_HOLIDAY  = 60;  // 假期每小时恢复精力（翻倍）
 const ENERGY_START             = 60;
 
 const STRESS_CAP      = 100;
@@ -42,24 +42,24 @@ const GAME_DURATION_DAYS = 12;      // 12天 = 12个月（9月→8月），第10
 
 // 冷却时间（毫秒）
 const CD = {
-    class:       8  * 3600 * 1000,
-    selfStudy:   6  * 3600 * 1000,
-    satStudy:    6  * 3600 * 1000,
-    satExam:     3  * 24 * 3600 * 1000,
-    artPractice: 8  * 3600 * 1000,
-    artPerform:  3  * 24 * 3600 * 1000,
-    social:      4  * 3600 * 1000,
-    post:        3  * 3600 * 1000,
-    party:       2  * 24 * 3600 * 1000,
-    clubActivity:8  * 3600 * 1000,
-    election:    7  * 24 * 3600 * 1000,
-    rest:        8  * 3600 * 1000,
-    relax:       12 * 3600 * 1000,
-    date:        2  * 24 * 3600 * 1000,
-    interact:    4  * 3600 * 1000,  // 对每个人单独计算（好朋友缩短至2h）
-    tutor:       8  * 3600 * 1000,  // 对同一人同一科目
-    scavenge:    6  * 3600 * 1000,  // 拾物
-    tweet:       2  * 3600 * 1000,  // 推特发帖
+    class:       4  * 3600 * 1000,
+    selfStudy:   3  * 3600 * 1000,
+    satStudy:    3  * 3600 * 1000,
+    satExam:     1.5 * 24 * 3600 * 1000,
+    artPractice: 4  * 3600 * 1000,
+    artPerform:  1.5 * 24 * 3600 * 1000,
+    social:      2  * 3600 * 1000,
+    post:        1.5 * 3600 * 1000,
+    party:       1  * 24 * 3600 * 1000,
+    clubActivity:4  * 3600 * 1000,
+    election:    3.5 * 24 * 3600 * 1000,
+    rest:        2  * 3600 * 1000,
+    relax:       4  * 3600 * 1000,
+    date:        1  * 24 * 3600 * 1000,
+    interact:    2  * 3600 * 1000,  // 对每个人单独计算（好朋友缩短至1h）
+    tutor:       4  * 3600 * 1000,  // 对同一人同一科目
+    scavenge:    3  * 3600 * 1000,  // 拾物
+    tweet:       1  * 3600 * 1000,  // 推特发帖
 };
 
 // 精力消耗
@@ -1640,7 +1640,7 @@ ext.cmdMap["圣约翰上课"] = cmd_class;
 
 const cmd_selfstudy = seal.ext.newCmdItemInfo();
 cmd_selfstudy.name = "圣约翰自习";
-cmd_selfstudy.help = "自习，随机提升某门科目少量进度。消耗10精力，冷却6小时。";
+cmd_selfstudy.help = "自习，随机提升某门科目少量进度。消耗10精力，冷却3小时。";
 cmd_selfstudy.solve = function(ctx, msg, argv) {
     const userId = ctx.player.userId;
     let player = getPlayer(userId);
@@ -1681,7 +1681,7 @@ ext.cmdMap["圣约翰自习"] = cmd_selfstudy;
 
 const cmd_sat_study = seal.ext.newCmdItemInfo();
 cmd_sat_study.name = "圣约翰备考SAT";
-cmd_sat_study.help = "备考SAT，提升SAT熟练度。消耗25精力，冷却6小时。";
+cmd_sat_study.help = "备考SAT，提升SAT熟练度。消耗25精力，冷却3小时。";
 cmd_sat_study.solve = function(ctx, msg, argv) {
     const userId = ctx.player.userId;
     let player = getPlayer(userId);
@@ -1723,7 +1723,7 @@ ext.cmdMap["圣约翰备考SAT"] = cmd_sat_study;
 
 const cmd_sat_exam = seal.ext.newCmdItemInfo();
 cmd_sat_exam.name = "圣约翰考SAT";
-cmd_sat_exam.help = "参加SAT考试。消耗40精力，冷却3天。分数=熟练度+随机波动，记录最新成绩。";
+cmd_sat_exam.help = "参加SAT考试。消耗40精力，冷却1.5天。分数=熟练度+随机波动，记录最新成绩。";
 cmd_sat_exam.solve = function(ctx, msg, argv) {
     const userId = ctx.player.userId;
     let player = getPlayer(userId);
@@ -1811,7 +1811,7 @@ ext.cmdMap["圣约翰选艺术"] = cmd_art_choose;
 
 const cmd_art_practice = seal.ext.newCmdItemInfo();
 cmd_art_practice.name = "圣约翰练习";
-cmd_art_practice.help = "练习艺术方向，提升天赋等级。消耗20精力，冷却8小时。需先 .圣约翰选艺术 选定方向。";
+cmd_art_practice.help = "练习艺术方向，提升天赋等级。消耗20精力，冷却4小时。需先 .圣约翰选艺术 选定方向。";
 cmd_art_practice.solve = function(ctx, msg, argv) {
     const userId = ctx.player.userId;
     let player = getPlayer(userId);
@@ -1861,7 +1861,7 @@ ext.cmdMap["圣约翰练习"] = cmd_art_practice;
 
 const cmd_art_perform = seal.ext.newCmdItemInfo();
 cmd_art_perform.name = "圣约翰演出";
-cmd_art_perform.help = "参加演出/展览，高风险高回报。消耗40精力，冷却3天。";
+cmd_art_perform.help = "参加演出/展览，高风险高回报。消耗40精力，冷却1.5天。";
 cmd_art_perform.solve = function(ctx, msg, argv) {
     const userId = ctx.player.userId;
     let player = getPlayer(userId);
@@ -1917,7 +1917,7 @@ ext.cmdMap["圣约翰演出"] = cmd_art_perform;
 
 const cmd_social = seal.ext.newCmdItemInfo();
 cmd_social.name = "圣约翰社交";
-cmd_social.help = "随机社交，提升人气。消耗15精力，冷却4小时。";
+cmd_social.help = "随机社交，提升人气。消耗15精力，冷却2小时。";
 cmd_social.solve = function(ctx, msg, argv) {
     const userId = ctx.player.userId;
     let player = getPlayer(userId);
@@ -1947,7 +1947,7 @@ ext.cmdMap["圣约翰社交"] = cmd_social;
 
 const cmd_post = seal.ext.newCmdItemInfo();
 cmd_post.name = "圣约翰发帖";
-cmd_post.help = "发帖刷存在感，人气随机浮动。消耗10精力，冷却3小时。";
+cmd_post.help = "发帖刷存在感，人气随机浮动。消耗10精力，冷却1.5小时。";
 cmd_post.solve = function(ctx, msg, argv) {
     const userId = ctx.player.userId;
     let player = getPlayer(userId);
@@ -1977,7 +1977,7 @@ ext.cmdMap["圣约翰发帖"] = cmd_post;
 
 const cmd_party = seal.ext.newCmdItemInfo();
 cmd_party.name = "圣约翰参加派对";
-cmd_party.help = "参加派对，大幅提升人气并降低压力。消耗30精力，冷却2天，需人气≥60。";
+cmd_party.help = "参加派对，大幅提升人气并降低压力。消耗30精力，冷却1天，需人气≥60。";
 cmd_party.solve = function(ctx, msg, argv) {
     const userId = ctx.player.userId;
     let player = getPlayer(userId);
@@ -2050,7 +2050,7 @@ ext.cmdMap["圣约翰加入"] = cmd_join_club;
 
 const cmd_club_activity = seal.ext.newCmdItemInfo();
 cmd_club_activity.name = "圣约翰社团活动";
-cmd_club_activity.help = "用法：.圣约翰社团活动 <社团名>\n参加社团活动，提升职位并获得课外等级。消耗25精力，冷却8小时。";
+cmd_club_activity.help = "用法：.圣约翰社团活动 <社团名>\n参加社团活动，提升职位并获得课外等级。消耗25精力，冷却4小时。";
 cmd_club_activity.solve = function(ctx, msg, argv) {
     const userId = ctx.player.userId;
     let player = getPlayer(userId);
@@ -2144,7 +2144,7 @@ ext.cmdMap["圣约翰我的社团"] = cmd_my_clubs;
 
 const cmd_election = seal.ext.newCmdItemInfo();
 cmd_election.name = "圣约翰竞选";
-cmd_election.help = "用法：.圣约翰竞选 <职位>\n职位：班级代表 干事 副主席 主席\n消耗50精力，冷却7天。需满足人气门槛。";
+cmd_election.help = "用法：.圣约翰竞选 <职位>\n职位：班级代表 干事 副主席 主席\n消耗50精力，冷却3.5天。需满足人气门槛。";
 cmd_election.solve = function(ctx, msg, argv) {
     const userId = ctx.player.userId;
     let player = getPlayer(userId);
@@ -2225,7 +2225,7 @@ ext.cmdMap["圣约翰社团列表"] = cmd_club_list;
 
 const cmd_rest = seal.ext.newCmdItemInfo();
 cmd_rest.name = "圣约翰休息";
-cmd_rest.help = "休息降低压力。不消耗精力，冷却8小时。";
+cmd_rest.help = "休息降低压力。不消耗精力，冷却2小时。";
 cmd_rest.solve = function(ctx, msg, argv) {
     const userId = ctx.player.userId;
     let player = getPlayer(userId);
@@ -2246,7 +2246,7 @@ ext.cmdMap["圣约翰休息"] = cmd_rest;
 
 const cmd_relax = seal.ext.newCmdItemInfo();
 cmd_relax.name = "圣约翰放松";
-cmd_relax.help = "花时间做喜欢的事，大幅降低压力。消耗20精力，冷却12小时。";
+cmd_relax.help = "花时间做喜欢的事，大幅降低压力。消耗20精力，冷却4小时。";
 cmd_relax.solve = function(ctx, msg, argv) {
     const userId = ctx.player.userId;
     let player = getPlayer(userId);
@@ -2283,7 +2283,7 @@ ext.cmdMap["圣约翰放松"] = cmd_relax;
 
 const cmd_interact = seal.ext.newCmdItemInfo();
 cmd_interact.name = "圣约翰互动";
-cmd_interact.help = "用法：.圣约翰互动 <英文名>\n与对方互动，提升双方好感度。消耗10精力，每对玩家冷却4小时。";
+cmd_interact.help = "用法：.圣约翰互动 <英文名>\n与对方互动，提升双方好感度。消耗10精力，每对玩家冷却2小时。";
 cmd_interact.solve = function(ctx, msg, argv) {
     const userId = ctx.player.userId;
     let player = getPlayer(userId);
@@ -2539,7 +2539,7 @@ ext.cmdMap["圣约翰拒绝"] = cmd_reject;
 
 const cmd_date = seal.ext.newCmdItemInfo();
 cmd_date.name = "圣约翰约会";
-cmd_date.help = "用法：.圣约翰约会 <英文名>\n需是恋人关系，维护感情并降低双方压力。消耗25精力，冷却2天。";
+cmd_date.help = "用法：.圣约翰约会 <英文名>\n需是恋人关系，维护感情并降低双方压力。消耗25精力，冷却1天。";
 cmd_date.solve = function(ctx, msg, argv) {
     const userId = ctx.player.userId;
     let player = getPlayer(userId);
@@ -3019,9 +3019,14 @@ cmd_admin_adjust.solve = function(ctx, msg, argv) {
         }
         const g = player.grades[resolvedSubj];
         const before = g.tier;
-        g.tier = Math.max(0, Math.min(7, isDelta ? (g.tier + numVal) : numVal));
-        g.progress = 0;
-        changed = `${resolvedSubj} tier ${before} → ${g.tier}`;
+        if (isDelta) {
+            applyGradeChange(g, numVal);
+            changed = `${resolvedSubj} ${numVal > 0 ? "+" : ""}${numVal} 进度 → ${GRADE_TIERS[g.tier]} (${g.progress}/100)`;
+        } else {
+            g.tier = Math.max(0, Math.min(7, numVal));
+            g.progress = 0;
+            changed = `${resolvedSubj} tier ${before} → ${g.tier} (${GRADE_TIERS[g.tier]})`;
+        }
     }
 
     savePlayer(targetId, player);
@@ -3068,7 +3073,7 @@ function checkRelationDecay(userId) {
 
 const cmd_tutor = seal.ext.newCmdItemInfo();
 cmd_tutor.name = "圣约翰补课";
-cmd_tutor.help = "用法：.圣约翰补课 <英文名> <科目>\n辅导对方某科，双方成绩均提升，好感 +8。消耗20精力，挚友效果+20%，冷却8小时/科目/对象。";
+cmd_tutor.help = "用法：.圣约翰补课 <英文名> <科目>\n辅导对方某科，双方成绩均提升，好感 +8。消耗20精力，挚友效果+20%，冷却4小时/科目/对象。";
 cmd_tutor.solve = function(ctx, msg, argv) {
     const userId = ctx.player.userId;
     let player = getPlayer(userId);
@@ -3373,7 +3378,7 @@ const RARITY_LABEL = { common: "普通", rare: "稀有✨", legendary: "传说�
 
 const cmd_scavenge = seal.ext.newCmdItemInfo();
 cmd_scavenge.name = "圣约翰寻宝";
-cmd_scavenge.help = "在校园角落寻找遗留物品。冷却6小时。部分物品拾取时即触发效果。";
+cmd_scavenge.help = "在校园角落寻找遗留物品。冷却3小时。部分物品拾取时即触发效果。";
 cmd_scavenge.solve = function(ctx, msg, argv) {
     const userId = ctx.player.userId;
     let player = getPlayer(userId);

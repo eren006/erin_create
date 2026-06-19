@@ -278,7 +278,7 @@ function sendMentionNotice(platform, mentionedName, postId, authorName) {
     if (!main) return;
     const pGid = JSON.parse(mainStorGet("a_private_group") || "{}")[platform]?.[uid]?.[1];
     if (!pGid || pGid === "0") return;
-    sendTextToGroup(platform, pGid, `📣 「${authorName}」在论坛帖子 [${postId}] 的回复中提到了你！`);
+    sendTextToGroup(platform, pGid, `[CQ:at,qq=${uid}]\n📣 「${authorName}」在论坛帖子 [${postId}] 的回复中提到了你！`);
 }
 
 let cmd_post_forum = seal.ext.newCmdItemInfo();
@@ -775,7 +775,8 @@ function sendNewDetailNotification(ctx, msg, toRoleName, content, fromRoleName, 
     const targetGidNum = parseInt(targetGid.replace(/[^\d]/g, ""), 10);
     if (isNaN(targetGidNum)) return;
 
-    const message = `📝 来自「${fromRoleName}」的新关系细节：\n${content}\n\n（使用「。查看关系线 ${fromRoleName}」查看完整记录）`;
+    const atStr = toUid ? `[CQ:at,qq=${toUid}]\n` : "";
+    const message = `${atStr}📝 来自「${fromRoleName}」的新关系细节：\n${content}\n\n（使用「。查看关系线 ${fromRoleName}」查看完整记录）`;
     ws({ action: "send_group_msg", params: { group_id: targetGidNum, message: message } }, ctx, msg, "");
 }
 
@@ -799,7 +800,8 @@ cmd_confirm_relationship.solve = (ctx, msg, cmdArgs) => {
 
     const addr = getTargetAddr(platform, toName);
     if (addr) {
-        ws({ "action": "send_group_msg", "params": { "group_id": parseInt(addr[1]), "message": `🤝 「${sendName}」已确认并完成了你们的关系线！` } }, ctx, msg, "");
+        const atStr = toUid ? `[CQ:at,qq=${toUid}]\n` : "";
+        ws({ "action": "send_group_msg", "params": { "group_id": parseInt(addr[1]), "message": `${atStr}🤝 「${sendName}」已确认并完成了你们的关系线！` } }, ctx, msg, "");
     }
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -920,9 +922,10 @@ cmd_withdraw_relation.solve = (ctx, msg, cmdArgs) => {
 
     const addr = getTargetAddr(platform, toName);
     if (addr) {
+        const atStr = toUid ? `[CQ:at,qq=${toUid}]\n` : "";
         ws({
             action: "send_group_msg",
-            params: { group_id: parseInt(addr[1], 10), message: `🗑️ 「${sendName}」撤回了一条发给你的关系细节：\n"${removed.text}"` }
+            params: { group_id: parseInt(addr[1], 10), message: `${atStr}🗑️ 「${sendName}」撤回了一条发给你的关系细节：\n"${removed.text}"` }
         }, ctx, msg, "");
     }
     return seal.ext.newCmdExecuteResult(true);
@@ -1157,7 +1160,8 @@ const checkNoQuitBlocker = (...a) => getApi().checkNoQuitBlocker(...a);
 const applyMsgTemplate = (...a) => getApi().applyMsgTemplate(...a);
 const isArchiveEnabled = (...a) => getApi().isArchiveEnabled(...a);
 const postToArchive = (...a) => getApi().postToArchive(...a);
-const getUserStats = (...a) => getApi().getUserStats(...a);
+const getUserStats  = (...a) => getApi().getUserStats(...a);
+const saveUserStats = (...a) => getApi().saveUserStats(...a);
 const getInteractionCounts = (...a) => getApi().getInteractionCounts(...a);
 const getTop3Text = (...a) => getApi().getTop3Text(...a);
 const getRoleStorage = (...a) => getApi().getRoleStorage(...a);
@@ -1385,9 +1389,10 @@ cmd_pick_wish.solve =async (ctx, msg, cmdArgs) => {
     const { uid: fromUid, gid: fromBindGid } = getRoleDetails(platform, fromName);
     if (fromUid && fromBindGid) {
         const m = seal.newMessage(); m.messageType = "group"; m.groupId = `${platform}-Group:${fromBindGid}`;
-        seal.replyToSender(seal.createTempCtx(ctx.endPoint, m), m, applyMsgTemplate("wish_picked_notify", {
+        const wishNotifyText = applyMsgTemplate("wish_picked_notify", {
             摘取者: name, 地点: wish.place, 日期: wish.day, 时间: wish.time, 群号: wishGid
-        }) || `💫 你的心愿被 ${name} 摘取了！\n📍 ${wish.place} | ⏰ ${wish.day} ${wish.time}\n💬 群号：${wishGid}`);
+        }) || `💫 你的心愿被 ${name} 摘取了！\n📍 ${wish.place} | ⏰ ${wish.day} ${wish.time}\n💬 群号：${wishGid}`;
+        seal.replyToSender(seal.createTempCtx(ctx.endPoint, m), m, `[CQ:at,qq=${fromUid}]\n${wishNotifyText}`);
     }
 
     const _悬赏奖励行 = wish.rewardCode ? `\n🎁 悬赏奖励：${wish.rewardName} ×${wish.rewardCount} 已加入你的背包！` : "";
@@ -2383,4 +2388,76 @@ cmd_my_stats.solve =(ctx, msg, cmdArgs) => {
     seal.replyToSender(ctx, msg, reply);
     return seal.ext.newCmdExecuteResult(true);
 };
+
+// 管理员：修复被 null-startTime 污染的耗时统计（avgReplyTimeMin 超过阈值才清零，正常数据保留）
+// 用法：。修复耗时统计（扫全部）/ 。修复耗时统计 角色名（只查该角色）
+// 默认阈值：平均耗时 > 1440 分钟（24小时）视为异常
+let cmd_fix_reply_time = seal.ext.newCmdItemInfo();
+cmd_fix_reply_time.name = "修复耗时统计";
+cmd_fix_reply_time.help = "。修复耗时统计 [角色名] —— 自动检测并清除异常耗时数据，正常数据保留，管理员专用";
+cmd_fix_reply_time.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) {
+        seal.replyToSender(ctx, msg, "⚠️ 此指令仅限管理员使用。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const THRESHOLD_MIN = 2880; // 单次平均超过 48 小时视为污染
+    const platform = msg.platform;
+    const targetRoleName = cmdArgs.getArgN(1) || null;
+    const stats = getUserStats();
+
+    const isCorrupted = (entry) => (entry.avgReplyTimeMin || 0) > THRESHOLD_MIN;
+
+    const resetTimeFields = (entry) => {
+        entry.totalReplyTimeMs = 0;
+        entry.timedReplies = 0;
+        entry.avgReplyTimeMin = 0;
+        if (entry.subtypeStats) {
+            for (const plat of Object.values(entry.subtypeStats)) {
+                for (const sub of Object.values(plat)) {
+                    sub.totalTime = 0;
+                    sub.fastestReply = null;
+                    sub.slowestReply = null;
+                }
+            }
+        }
+    };
+
+    if (targetRoleName) {
+        const uid = getUidByRoleName(platform, targetRoleName);
+        const key = uid ? `${platform}:${uid}` : null;
+        if (!key || !stats[key]) {
+            seal.replyToSender(ctx, msg, `❌ 找不到角色「${targetRoleName}」的统计数据。`);
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        const entry = stats[key];
+        if (isCorrupted(entry)) {
+            resetTimeFields(entry);
+            saveUserStats(stats);
+            seal.replyToSender(ctx, msg, `✅ 「${targetRoleName}」耗时数据异常（${entry.avgReplyTimeMin ?? "?"}分），已清零，字数/次数保留。`);
+        } else {
+            seal.replyToSender(ctx, msg, `✅ 「${targetRoleName}」耗时数据正常（${entry.avgReplyTimeMin ?? 0}分），无需修复。`);
+        }
+    } else {
+        const lines = [];
+        let fixedCount = 0;
+        for (const [key, entry] of Object.entries(stats)) {
+            if (isCorrupted(entry)) {
+                const oldAvg = entry.avgReplyTimeMin;
+                resetTimeFields(entry);
+                lines.push(`· ${key}：${oldAvg}分 → 已清零`);
+                fixedCount++;
+            }
+        }
+        saveUserStats(stats);
+        if (fixedCount === 0) {
+            seal.replyToSender(ctx, msg, `✅ 全部玩家耗时数据正常，无需修复。`);
+        } else {
+            seal.replyToSender(ctx, msg, `✅ 已修复 ${fixedCount} 位玩家的异常耗时数据（字数/次数保留）：\n${lines.join("\n")}`);
+        }
+    }
+
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["修复耗时统计"] = cmd_fix_reply_time;
 

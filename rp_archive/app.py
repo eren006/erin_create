@@ -508,6 +508,14 @@ COMMAND_BLOCKS = [
         "。查看到期群",
         "  查看所有已超过有效期的群组",
         "",
+        "。场次状态",
+        "  合并转发查看所有活跃群的当前写帖进度与结戏奖励条件达成情况",
+        "  （群过多时自动分批，每批最多 20 个）",
+        "",
+        "。调整场次 群号 角色名 字数偏移 [段数偏移]",
+        "  手动修正指定群某角色的字数/段数，同步更新几v几进度",
+        "  示例：。调整场次 12345 张三 +500 +2",
+        "",
         "发起官约（无前缀）",
         "  以系统身份发起官方约会",
     ]},
@@ -717,9 +725,7 @@ COMMAND_BLOCKS = [
 CONFIG_SCHEMA = [
     {"section": "基础", "fields": [
         {"key": "love_show_name",         "label": "恋综名",      "type": "text",   "default": ""},
-        {"key": "global_days",            "label": "当前游戏日",   "type": "text",   "default": "D1", "note": "如 D1 / D2 / D3"},
-        {"key": "auto_day_reset_enabled", "label": "自动天数推进", "type": "bool",   "default": "false"},
-        {"key": "item_pool_mode",         "label": "道具池模式",   "type": "select", "default": "自由池", "options": ["自由池", "抽取池"]},
+{"key": "item_pool_mode",         "label": "道具池模式",   "type": "select", "default": "自由池", "options": ["自由池", "抽取池"]},
     ]},
     {"section": "群组 ID", "fields": [
         {"key": "adminAnnounceGroupId",  "label": "公告群",     "type": "text",    "default": "", "note": "群号，留空不广播"},
@@ -769,7 +775,7 @@ CONFIG_SCHEMA = [
     ]},
     {"section": "踩点", "fields": [
         {"key": "stakeout_allow_solo", "label": "允许单人踩点", "type": "bool", "default": "false",
-         "note": "开启后玩家可发起无伴随的踩点（不填对方角色名）；目击时显示"独自""},
+         "note": "开启后玩家可发起无伴随的踩点（不填对方角色名）；目击时显示「独自」"},
     ]},
     {"section": "寄信", "fields": [
         {"key": "mailCooldown",             "label": "寄信冷却（分钟）", "type": "number", "default": "60"},
@@ -3867,8 +3873,11 @@ def api_sync_config():
     data = request.json or {}
     if not data:
         return jsonify({"ok": False, "error": "empty payload"}), 400
+    _SYNC_SKIP_KEYS = {"global_days", "auto_day_reset_enabled"}
     db = get_db()
     for key, value in data.items():
+        if key in _SYNC_SKIP_KEYS:
+            continue
         db.execute(
             "INSERT INTO site_config(show_id,tenant_id,key,value) VALUES(?,?,?,?) "
             "ON CONFLICT(show_id,key) DO UPDATE SET value=excluded.value",
@@ -4235,6 +4244,29 @@ def api_session_end():
     db.commit()
     return jsonify({"ok": True, "zone": zone})
 
+@app.route("/api/recent_sessions", methods=["GET"])
+def api_recent_sessions():
+    """Bot 用：拉取最近 N 场已结束场次的基本信息和个人统计，供奖励情况核查。"""
+    tid     = get_tenant_from_token()
+    show_id = get_current_show_id_for_tenant(tid)
+    if not show_id:
+        return jsonify({"ok": False, "error": "no current show"}), 404
+    limit = min(int(request.args.get("limit", 10)), 50)
+    db    = get_db()
+    rows  = db.execute(
+        """SELECT id, group_id, platform, game_day, game_time, place, subtype,
+                  participants, start_ts, end_ts, forced, stats
+           FROM sessions
+           WHERE show_id=? AND forced=0
+           ORDER BY end_ts DESC
+           LIMIT ?""",
+        (show_id, limit)
+    ).fetchall()
+    return jsonify({
+        "ok": True,
+        "sessions": [dict(r) for r in rows]
+    })
+
 @app.route("/api/update_players", methods=["POST"])
 def api_update_players():
     tid       = get_tenant_from_token()
@@ -4423,14 +4455,16 @@ def _convert_ui_block(blk):
         if prob is not None and int(prob) < 100:
             reward['prob'] = int(prob)
         if rtype == '货币':
-            reward['target'] = r.get('target', '')
+            reward['target'] = (r.get('target') or '').strip()
             reward['targetType'] = 'currency'
         elif rtype == '道具':
-            reward['target'] = r.get('code', '')
+            reward['target'] = (r.get('code') or '').strip()
             reward['targetType'] = 'item'
         else:
-            reward['target'] = r.get('name', '')
+            reward['target'] = (r.get('name') or '').strip()
             reward['targetType'] = 'attr'
+        if not reward['target']:
+            continue  # 目标为空则跳过，不写入 bot 存储
         rwds.append(reward)
     return {'conditions': conds, 'rewards': rwds}
 

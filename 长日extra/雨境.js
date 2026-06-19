@@ -699,11 +699,139 @@ ext.cmdMap['pvp分配'] = cmdAlloc;
 
 
 // ——————————————————————————
-// 5. pvp执行（管理员触发战斗结算）
+// 战斗结算核心（供 .出手 和 .pvp执行 共用）
+// ——————————————————————————
+function executeBattle(ctx, msg, session) {
+    const [iPf, iUid] = session.initiator.split(':');
+    const [dPf, dUid] = session.defender.split(':');
+    const iName = getRoleName(iPf, iUid);
+    const dName = getRoleName(dPf, dUid);
+    const iA    = session.initiatorAlloc;
+    const dA    = session.defenderAlloc;
+
+    let iHP = session.initiatorHP;
+    let dHP = session.defenderHP;
+
+    let log = `【执念之争·战报】\n`;
+    log += `${iName}  ⚔️  ${dName}\n`;
+    log += `${iName}：攻${iA.atk}·守${iA.def}（${session.initiatorRaindrops}颗）\n`;
+    log += `${dName}：攻${dA.atk}·守${dA.def}（${session.defenderRaindrops}颗）\n`;
+    log += `━━━━━━━━━━━━━━━━━━\n`;
+
+    const MAX_ROUNDS = 300;
+    let round = 1;
+    while (iHP > 0 && dHP > 0 && round <= MAX_ROUNDS) {
+        const iAtk = rd(iA.atk);
+        const dDef = rd(dA.def);
+        const dmg1 = Math.max(0, iAtk - dDef);
+        dHP -= dmg1;
+        log += `第${round}回合\n`;
+        log += `  ${iName} 攻 ${iAtk}（//${iA.atk}）vs ${dName} 守 ${dDef}（//${dA.def}） → 伤害 ${dmg1}，${dName} HP：${Math.max(0, dHP)}\n`;
+        if (dHP <= 0) break;
+
+        const dAtk = rd(dA.atk);
+        const iDef = rd(iA.def);
+        const dmg2 = Math.max(0, dAtk - iDef);
+        iHP -= dmg2;
+        log += `  ${dName} 攻 ${dAtk}（//${dA.atk}）vs ${iName} 守 ${iDef}（//${iA.def}） → 伤害 ${dmg2}，${iName} HP：${Math.max(0, iHP)}\n`;
+
+        round++;
+    }
+
+    log += `━━━━━━━━━━━━━━━━━━\n`;
+
+    const iP = getPlayer(iPf, iUid);
+    const dP = getPlayer(dPf, dUid);
+    const iLost = Math.max(0, session.initiatorHP - Math.max(0, iHP));
+    const dLost = Math.max(0, session.defenderHP  - Math.max(0, dHP));
+    iP.hp = Math.max(0, iP.hp - iLost);
+    dP.hp = Math.max(0, dP.hp - dLost);
+    savePlayer(iPf, iUid, iP);
+    savePlayer(dPf, dUid, dP);
+
+    const iDead = iHP <= 0;
+    const dDead = dHP <= 0;
+    let result;
+
+    if (iDead && dDead) {
+        result = 'draw';
+        log += `【结果】双方同归于尽 · 平局\n雨点各自保留`;
+    } else if (dDead) {
+        result = 'initiator_win';
+        log += `【结果】${iName} 胜\n获得 ${session.defenderRaindrops} 颗雨点`;
+    } else {
+        result = 'defender_win';
+        log += `【结果】${dName} 胜\n获得 ${session.initiatorRaindrops} 颗雨点`;
+    }
+
+    seal.replyToSender(ctx, msg, log);
+
+    if (iP.hp <= 0 && iP.isAlive) handleDeath(ctx.endPoint, iPf, iUid, '执念之争中HP耗尽');
+    if (dP.hp <= 0 && dP.isAlive) handleDeath(ctx.endPoint, dPf, dUid, '执念之争中HP耗尽');
+
+    settlePvp(ctx.endPoint, msg.platform, session, result);
+
+    const iPost = getPlayer(iPf, iUid);
+    const dPost = getPlayer(dPf, dUid);
+    const postLog = `战后状态：\n${iName}｜HP：${iP.hp}｜雨点：${iPost.raindrops}\n${dName}｜HP：${dP.hp}｜雨点：${dPost.raindrops}`;
+    seal.replyToSender(ctx, msg, postLog);
+
+    notifyPlayer(ctx.endPoint, iPf, iUid,
+        `【雨境·执念之争结果】\n对阵：${dName}\n结果：${result === 'initiator_win' ? '你胜出' : result === 'draw' ? '平局' : '你落败'}\n` +
+        `战后｜HP：${iP.hp}｜雨点：${getPlayer(iPf, iUid).raindrops}`);
+    notifyPlayer(ctx.endPoint, dPf, dUid,
+        `【雨境·执念之争结果】\n对阵：${iName}\n结果：${result === 'defender_win' ? '你胜出' : result === 'draw' ? '平局' : '你落败'}\n` +
+        `战后｜HP：${dP.hp}｜雨点：${getPlayer(dPf, dUid).raindrops}`);
+}
+
+// ——————————————————————————
+// 5. 出手（玩家确认出战，双方都出手后自动结算）
+// ——————————————————————————
+const cmdReady = seal.ext.newCmdItemInfo();
+cmdReady.name = '出手';
+cmdReady.help = '在执念之争分配完毕后确认出战：.出手\n双方都出手后自动结算';
+cmdReady.solve = (ctx, msg, cmdArgs) => {
+    const reply = t => (seal.replyToSender(ctx, msg, t), seal.ext.newCmdExecuteResult(true));
+    const platform = msg.platform;
+    const uid      = msg.sender.userId.replace(`${platform}:`, '');
+    const fullId   = `${platform}:${uid}`;
+
+    const sessions = getSessions();
+    const session  = Object.values(sessions).find(s =>
+        s.status === 'ready_to_battle' &&
+        (s.initiator === fullId || s.defender === fullId)
+    );
+
+    if (!session) return reply('【雨境】当前没有等待出手的执念之争。');
+
+    const isInitiator = session.initiator === fullId;
+    const readyKey    = isInitiator ? 'initiatorReady' : 'defenderReady';
+    const otherKey    = isInitiator ? 'defenderReady'  : 'initiatorReady';
+    const [iPf, iUid] = session.initiator.split(':');
+    const [dPf, dUid] = session.defender.split(':');
+    const myName      = isInitiator ? getRoleName(iPf, iUid) : getRoleName(dPf, dUid);
+    const otherName   = isInitiator ? getRoleName(dPf, dUid) : getRoleName(iPf, iUid);
+
+    if (session[readyKey]) return reply(`【雨境】你已出手，等待 ${otherName} 做好准备……`);
+
+    session[readyKey] = true;
+    saveSession(session.pvpId, session);
+
+    if (!session[otherKey]) {
+        return reply(`【雨境】${myName} 已出手，等待 ${otherName}……`);
+    }
+
+    executeBattle(ctx, msg, session);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap['出手'] = cmdReady;
+
+// ——————————————————————————
+// 5b. pvp执行（管理员兜底触发战斗结算）
 // ——————————————————————————
 const cmdExecute = seal.ext.newCmdItemInfo();
 cmdExecute.name = 'pvp执行';
-cmdExecute.help = '执行战斗结算：.pvp执行 pvpId';
+cmdExecute.help = '管理员兜底执行战斗结算：.pvp执行 pvpId';
 cmdExecute.solve = (ctx, msg, cmdArgs) => {
     if (!isAdmin(ctx, msg)) {
         seal.replyToSender(ctx, msg, '【雨境】无权限。');
@@ -723,96 +851,7 @@ cmdExecute.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    const [iPf, iUid] = session.initiator.split(':');
-    const [dPf, dUid] = session.defender.split(':');
-    const iName = getRoleName(iPf, iUid);
-    const dName = getRoleName(dPf, dUid);
-    const iA    = session.initiatorAlloc;
-    const dA    = session.defenderAlloc;
-
-    let iHP = session.initiatorHP;
-    let dHP = session.defenderHP;
-
-    // ——战斗日志——
-    let log = `【执念之争·战报】\n`;
-    log += `${iName}  ⚔️  ${dName}\n`;
-    log += `${iName}：攻${iA.atk}·守${iA.def}（${session.initiatorRaindrops}颗）\n`;
-    log += `${dName}：攻${dA.atk}·守${dA.def}（${session.defenderRaindrops}颗）\n`;
-    log += `━━━━━━━━━━━━━━━━━━\n`;
-
-    const MAX_ROUNDS = 300;
-    let round = 1;
-    while (iHP > 0 && dHP > 0 && round <= MAX_ROUNDS) {
-        // 发起方攻，防守方守
-        const iAtk = rd(iA.atk);
-        const dDef = rd(dA.def);
-        const dmg1 = Math.max(0, iAtk - dDef);
-        dHP -= dmg1;
-        log += `第${round}回合\n`;
-        log += `  ${iName} 攻 ${iAtk}（//${iA.atk}）vs ${dName} 守 ${dDef}（//${dA.def}） → 伤害 ${dmg1}，${dName} HP：${Math.max(0, dHP)}\n`;
-        if (dHP <= 0) break;
-
-        // 防守方攻，发起方守
-        const dAtk = rd(dA.atk);
-        const iDef = rd(iA.def);
-        const dmg2 = Math.max(0, dAtk - iDef);
-        iHP -= dmg2;
-        log += `  ${dName} 攻 ${dAtk}（//${dA.atk}）vs ${iName} 守 ${iDef}（//${iA.def}） → 伤害 ${dmg2}，${iName} HP：${Math.max(0, iHP)}\n`;
-
-        round++;
-    }
-
-    log += `━━━━━━━━━━━━━━━━━━\n`;
-
-    // ——更新实际HP——
-    const iP = getPlayer(iPf, iUid);
-    const dP = getPlayer(dPf, dUid);
-    const iLost = Math.max(0, session.initiatorHP - Math.max(0, iHP));
-    const dLost = Math.max(0, session.defenderHP  - Math.max(0, dHP));
-    iP.hp = Math.max(0, iP.hp - iLost);
-    dP.hp = Math.max(0, dP.hp - dLost);
-    savePlayer(iPf, iUid, iP);
-    savePlayer(dPf, dUid, dP);
-
-    // ——判断胜负——
-    const iDead = iHP <= 0;
-    const dDead = dHP <= 0;
-    let result;
-
-    if (iDead && dDead) {
-        result = 'draw';
-        log += `【结果】双方同归于尽 · 平局\n雨点各自保留`;
-    } else if (dDead) {
-        result = 'initiator_win';
-        log += `【结果】${iName} 胜\n获得 ${session.defenderRaindrops} 颗雨点`;
-    } else {
-        result = 'defender_win';
-        log += `【结果】${dName} 胜\n获得 ${session.initiatorRaindrops} 颗雨点`;
-    }
-
-    seal.replyToSender(ctx, msg, log);
-
-    // ——HP归零死亡（战斗消耗，早于雨点结算）——
-    if (iP.hp <= 0 && iP.isAlive) handleDeath(ctx.endPoint, iPf, iUid, '执念之争中HP耗尽');
-    if (dP.hp <= 0 && dP.isAlive) handleDeath(ctx.endPoint, dPf, dUid, '执念之争中HP耗尽');
-
-    // ——雨点转移与死亡检查——
-    settlePvp(ctx.endPoint, msg.platform, session, result);
-
-    // 追加战后双方状态（结算后重读保证雨点准确）
-    const iPost = getPlayer(iPf, iUid);
-    const dPost = getPlayer(dPf, dUid);
-    const postLog = `战后状态：\n${iName}｜HP：${iP.hp}｜雨点：${iPost.raindrops}\n${dName}｜HP：${dP.hp}｜雨点：${dPost.raindrops}`;
-    seal.replyToSender(ctx, msg, postLog);
-
-    // 战报推送到双方个人群
-    notifyPlayer(ctx.endPoint, iPf, iUid,
-        `【雨境·执念之争结果】\n对阵：${dName}\n结果：${result === 'initiator_win' ? '你胜出' : result === 'draw' ? '平局' : '你落败'}\n` +
-        `战后｜HP：${iP.hp}｜雨点：${getPlayer(iPf, iUid).raindrops}`);
-    notifyPlayer(ctx.endPoint, dPf, dUid,
-        `【雨境·执念之争结果】\n对阵：${iName}\n结果：${result === 'defender_win' ? '你胜出' : result === 'draw' ? '平局' : '你落败'}\n` +
-        `战后｜HP：${dP.hp}｜雨点：${getPlayer(dPf, dUid).raindrops}`);
-
+    executeBattle(ctx, msg, session);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap['pvp执行'] = cmdExecute;
