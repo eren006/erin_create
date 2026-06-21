@@ -29,6 +29,8 @@ if (!ext) {
     seal.ext.register(ext);
 }
 
+const MAX_REMINDERS_PER_USER = 20;
+
 // ========================
 // 礼物图鉴（100件）
 // ========================
@@ -258,7 +260,8 @@ function addAff(userKey, delta) {
 
 function todayStr() {
     const d = new Date();
-    return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 }
 
 // 今日设置提醒次数（每天最多获得3点好感，避免刷）
@@ -461,8 +464,8 @@ cmd_alarm_set.solve = (ctx, msg, cmdArgs) => {
     const userKey  = `${platform}:${uid}`;
 
     const list = getList();
-    if (list.filter(r => r.uid === uid && r.platform === platform).length >= 20) {
-        seal.replyToSender(ctx, msg, '加百列记不了这么多了……已有 20 条提醒，请先删除一些旧的。');
+    if (list.filter(r => r.uid === uid && r.platform === platform).length >= MAX_REMINDERS_PER_USER) {
+        seal.replyToSender(ctx, msg, `加百列记不了这么多了……已有 ${MAX_REMINDERS_PER_USER} 条提醒，请先删除一些旧的。`);
         return ret;
     }
 
@@ -740,14 +743,17 @@ function startAlarmTimer() {
         const due  = list.filter(r => r.triggerAt <= now);
         if (due.length === 0) return;
 
-        const remaining = list.filter(r => r.triggerAt > now);
-        const lastFired = getLastFired();
+        const remaining  = list.filter(r => r.triggerAt > now);
+        const lastFired  = getLastFired();
+        // 提前读取，避免每条提醒各读一次存储
+        const affections = getAffections();
+        const catalog    = getCatalog();
+        let   catalogDirty = false;
 
         due.forEach(r => {
             const userKey = `${r.platform}:${r.uid}`;
-            const aff     = getAff(userKey);
+            const aff     = Math.min(100, Math.max(0, affections[userKey] || 0));
 
-            // 重复提醒续期
             if (r.repeat !== 'none') {
                 const nextTs = nextTrigger(r.repeat, r.triggerAt);
                 if (nextTs) remaining.push({ ...r, triggerAt: nextTs });
@@ -755,19 +761,22 @@ function startAlarmTimer() {
 
             lastFired[userKey] = { content: r.content, groupId: r.groupId };
 
-            // 拼消息
             const atStr    = `[CQ:at,qq=${r.uid}] `;
             const mainLine = atStr + lineByAff('remind', aff, r.roleName, r.content);
             const rptLine  = r.repeat !== 'none' ? `\n${lineByAff('repeatHint', aff)}` : '';
 
-            // 是否赠礼
+            // 赠礼（直接操作已提升的 catalog，循环结束后统一写回）
             let giftLine = '';
-            const lvl    = getAffectionLevel(aff);
+            const lvl = getAffectionLevel(aff);
             if (lvl.giftChance > 0 && Math.random() < lvl.giftChance) {
-                const gift = tryGiveGift(userKey);
-                if (gift) {
-                    const catalog = getCatalog()[userKey] || [];
-                    giftLine = `\n\n🎁 ——对了，这个给你。\n${gift.id}「${gift.name}」\n${gift.content}\n（图鉴 ${catalog.length}/100）`;
+                const owned     = new Set(catalog[userKey] || []);
+                const available = GABRIEL_GIFTS.filter(g => !owned.has(g.id));
+                if (available.length > 0) {
+                    const gift = available[Math.floor(Math.random() * available.length)];
+                    if (!catalog[userKey]) catalog[userKey] = [];
+                    catalog[userKey].push(gift.id);
+                    catalogDirty = true;
+                    giftLine = `\n\n🎁 ——对了，这个给你。\n${gift.id}「${gift.name}」\n${gift.content}\n（图鉴 ${catalog[userKey].length}/100）`;
                 }
             }
 
@@ -789,8 +798,10 @@ function startAlarmTimer() {
             }
         });
 
+        // 统一写回，减少存储序列化次数
         saveList(remaining);
         saveLastFired(lastFired);
+        if (catalogDirty) saveCatalog(catalog);
     }, 60 * 1000);
 }
 

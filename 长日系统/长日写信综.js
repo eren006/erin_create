@@ -32,7 +32,7 @@ function sendLetterForward(groupIdRaw, nodes, ctx) {
         api.ws({ action: "send_group_forward_msg", params: { group_id: gid, messages: nodes }, echo: "letter_forward_" + Date.now() }, ctx, null, null);
         return;
     }
-    const main = getMainExt();
+    const main = _mainExt();
     if (!main) return;
     const wsUrl = seal.ext.getStringConfig(main, "ws地址");
     const token = seal.ext.getStringConfig(main, "ws Access token");
@@ -48,32 +48,18 @@ function sendLetterForward(groupIdRaw, nodes, ctx) {
     socket.onerror = (e) => { console.error("[写信综] 合并转发发送失败", e.message); };
 }
 
-function getMainExt() {
-    const main = seal.ext.find('changri');
-    if (!main) {
-        console.error("❌ 写信综错误：未找到主插件 changri，请检查主插件是否已加载");
-        return null;
-    }
-    return main;
-}
-
-// 主插件共享 API（globalThis.__changriApi，调用时懒获取）
-// 主插件已更新时全部委托给它；否则走兼容路径（直读主插件存储）
-function getApi() { return globalThis.__changriApi || null; }
-
-function mainStorGet(key) {
-    const api = getApi();
-    if (api) return api.kvGetRaw(key);
-    const m = getMainExt();
-    return m ? m.storageGet(key) : null;
-}
-
-function mainStorSet(key, val) {
-    const api = getApi();
-    if (api) { api.kvSetRaw(key, val); return; }
-    const m = getMainExt();
-    if (m) m.storageSet(key, val);
-}
+// ========================
+// 核心依赖：主插件共享 API
+// ========================
+function getApi()              { return globalThis.__changriApi || null; }
+// 仅供 sendLetterForward WS 回退路径读取插件 config，其余不应使用
+function _mainExt()            { return seal.ext.find('changri'); }
+function mainStorGet(key)      { return getApi()?.kvGetRaw(key) ?? null; }
+function mainStorSet(key, val) { getApi()?.kvSetRaw(key, val); }
+function isUserAdmin(ctx, msg) { return getApi()?.isUserAdmin(ctx, msg) ?? false; }
+function isArchiveEnabled()    { return getApi()?.isArchiveEnabled() ?? false; }
+function postToArchive(endpoint, data) { return getApi()?.postToArchive(endpoint, data); }
+function getMainStorageInt(key, def)   { return getApi()?.getStorageInt(key, def) ?? def; }
 
 // 本地扩展对象（用于注册命令）
 let ext = seal.ext.find("letter_system");
@@ -83,78 +69,21 @@ if (!ext) {
 }
 
 // ========================
-// RP存档（从主插件读配置，各插件上下文隔离，无法共用主插件的函数）
+// 存储辅助函数
 // ========================
-
-function isArchiveEnabled() {
-    const main = getMainExt();
-    if (!main) return false;
-    return seal.ext.getBoolConfig(main, "启用RP存档传输");
-}
 
 function isLetterSyncEnabled() {
     if (!isArchiveEnabled()) return false;
     return getMainStorage("direct_letter_sync_enabled", "false") === "true";
 }
 
-async function postToArchive(endpoint, data) {
-    const main = getMainExt();
-    if (!main) return;
-    const base = (seal.ext.getStringConfig(main, "RP存档服务器地址") || "").replace(/\/$/, "");
-    const token = seal.ext.getStringConfig(main, "RP存档Token") || "";
-    if (!base) return;
-    try {
-        const resp = await fetch(base + endpoint, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "X-Archive-Token": token },
-            body: JSON.stringify(data)
-        });
-        if (!resp.ok) console.error(`[写信综·RP存档] ${endpoint} 返回 ${resp.status}`);
-    } catch (e) {
-        console.error(`[写信综·RP存档] 发送失败 ${endpoint}:`, e.message || String(e));
-    }
-}
-
-// ========================
-// 存储辅助函数
-// ========================
-
 function getMainStorage(key, defaultValue) {
-    const main = getMainExt();
-    if (!main) return defaultValue;
     const val = mainStorGet(key);
     if (val === null || val === undefined || val.trim() === "") return defaultValue;
     return val;
 }
 
-// 读取整数型设置，兼容 JSON 编码的 '"5"' 与裸字符串 '5' 两种格式
-function getMainStorageInt(key, defaultVal) {
-    const api = getApi();
-    if (api) return api.getStorageInt(key, defaultVal);
-    const raw = getMainStorage(key);
-    if (raw === undefined || raw === null) return defaultVal;
-    try { const v = parseInt(JSON.parse(raw)); return isNaN(v) ? defaultVal : v; }
-    catch (e) { const v = parseInt(raw); return isNaN(v) ? defaultVal : v; }
-}
-
-function setMainStorage(key, value) {
-    const main = getMainExt();
-    if (!main) return;
-    mainStorSet(key, value);
-}
-
-// ========================
-// 权限判断
-// ========================
-
-function isUserAdmin(ctx, msg) {
-    const api = getApi();
-    if (api) return api.isUserAdmin(ctx, msg);
-    const platform = msg.platform;
-    const uid = msg.sender.userId.replace(`${platform}:`, "");
-    const a_adminList = JSON.parse(mainStorGet("a_adminList") || "{}");
-    return ctx.privilegeLevel === 100 || (a_adminList[platform] && a_adminList[platform].includes(uid));
-}
+function setMainStorage(key, value) { mainStorSet(key, value); }
 
 // ========================
 // 【1】开关和初始化
@@ -237,7 +166,7 @@ function getPrimaryUid(platform, uid) {
     try {
         const extras = JSON.parse(mainStorGet("extra_accounts") || "{}");
         return extras[`${platform}:${uid}`] || uid;
-    } catch (e) { return uid; }
+    } catch (e) { console.error("[写信综] getPrimaryUid 解析失败:", e); return uid; }
 }
 
 // 新结构：a_private_group[platform][uid] = [roleName, gid]

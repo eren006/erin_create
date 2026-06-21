@@ -10,15 +10,6 @@
 // @updateUrl    https://raw.githubusercontent.com/eren006/erin_create/main/%E9%95%BF%E6%97%A5%E7%B3%BB%E7%BB%9F/%E9%95%BF%E6%97%A5RPG.js
 // ==/UserScript==
 
-function getMainExt() {
-    const main = seal.ext.find('changri');
-    if (!main) {
-        console.error("❌ RPG系统错误：未找到主插件 changri，请检查主插件是否已加载");
-        return null;
-    }
-    return main;
-}
-
 let ext = seal.ext.find('changriRPG');
 if (!ext) {
     ext = seal.ext.new("changriRPG", "长日将尽", "2.0.0");
@@ -26,92 +17,19 @@ if (!ext) {
 }
 
 // ========================
-// 核心依赖：主插件共享 API（globalThis.__changriApi，调用时懒获取）
-// 主插件已更新时全部委托给它；否则走下方兼容实现（直读主插件存储）
+// 核心依赖：主插件共享 API
 // ========================
-
-function getApi() { return globalThis.__changriApi || null; }
-
-function mainStorGet(key) {
-    const api = getApi();
-    if (api) return api.kvGetRaw(key);
-    const m = getMainExt();
-    return m ? m.storageGet(key) : null;
-}
-
-function mainStorSet(key, val) {
-    const api = getApi();
-    if (api) { api.kvSetRaw(key, val); return; }
-    const m = getMainExt();
-    if (m) m.storageSet(key, val);
-}
-
-// 读取主插件整数型设置，兼容 JSON 编码的 '"70"' 与裸字符串 '70' 两种格式
-function getMainStorageInt(key, defaultVal) {
-    const api = getApi();
-    if (api) return api.getStorageInt(key, defaultVal);
-    const raw = mainStorGet(key);
-    if (!raw) return defaultVal;
-    try { const v = parseInt(JSON.parse(raw)); return !isNaN(v) ? v : defaultVal; }
-    catch (e) { const v = parseInt(raw); return !isNaN(v) ? v : defaultVal; }
-}
-
-function isUserFeatureEnabled(uid, key, defaultValue = true) {
-    const api = getApi();
-    if (api) return api.isUserFeatureEnabled(uid, key, defaultValue);
-    try {
-        const blockMap = JSON.parse(mainStorGet("feature_user_blocklist") || "{}");
-        const personConfig = blockMap[uid];
-        if (personConfig && personConfig[key] !== undefined) return personConfig[key];
-    } catch (e) { }
-    return defaultValue;
-}
-
-function getPrimaryUid(platform, uid) {
-    const api = getApi();
-    if (api) return api.getPrimaryUid(platform, uid);
-    try {
-        const extras = JSON.parse(mainStorGet("extra_accounts") || "{}");
-        return extras[`${platform}:${uid}`] || uid;
-    } catch (e) { return uid; }
-}
-
-// 新结构：a_private_group[platform][uid] = [roleName, gid]
-function getRoleName(ctx, msg) {
-    const api = getApi();
-    if (api) return api.getRoleName(ctx, msg);
-    try {
-        const apg = JSON.parse(mainStorGet("a_private_group") || "{}");
-        const platform = msg.platform;
-        const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
-        const uid = getPrimaryUid(platform, rawUid);
-        return apg[platform]?.[uid]?.[0] || null;
-    } catch (e) { console.log("[物品V2] getRoleName: " + e.message); }
-    return null;
-}
-
-// getRoleUid：roleName 反查 uid（主插件侧叫 getUidByRoleName）
-function getRoleUid(platform, roleName) {
-    const api = getApi();
-    if (api) return api.getUidByRoleName(platform, roleName);
-    try {
-        const apg = JSON.parse(mainStorGet("a_private_group") || "{}");
-        const roles = apg[platform] || {};
-        const entry = Object.entries(roles).find(([_, v]) => v[0] === roleName);
-        return entry ? entry[0] : null;
-    } catch (e) { return null; }
-}
-
-function isUserAdmin(ctx, msg) {
-    const api = getApi();
-    if (api) return api.isUserAdmin(ctx, msg);
-    const platform = msg.platform;
-    const uid = msg.sender.userId.replace(`${platform}:`, "");
-    try {
-        const a_adminList = JSON.parse(mainStorGet("a_adminList") || "{}");
-        return ctx.privilegeLevel === 100 || (a_adminList[platform] && a_adminList[platform].includes(uid));
-    } catch (e) { return false; }
-}
+function getApi()                          { return globalThis.__changriApi || null; }
+function mainStorGet(key)                  { return getApi()?.kvGetRaw(key) ?? null; }
+function mainStorSet(key, val)             { getApi()?.kvSetRaw(key, val); }
+function getMainStorageInt(key, def)       { return getApi()?.getStorageInt(key, def) ?? def; }
+function isUserFeatureEnabled(uid, key, def = true) { return getApi()?.isUserFeatureEnabled(uid, key, def) ?? def; }
+function getPrimaryUid(platform, uid)      { return getApi()?.getPrimaryUid(platform, uid) ?? uid; }
+function getRoleName(ctx, msg)             { return getApi()?.getRoleName(ctx, msg) ?? null; }
+function getRoleUid(platform, roleName)    { return getApi()?.getUidByRoleName(platform, roleName) ?? null; }
+function isUserAdmin(ctx, msg)             { return getApi()?.isUserAdmin(ctx, msg) ?? false; }
+// 向后兼容：存储辅助函数中 getMainExt() 仅作存在性守卫
+function getMainExt()                      { return getApi(); }
 
 // ========================
 // 存储辅助
@@ -259,8 +177,8 @@ function removeFromInv(roleKey, code, count) {
     
     // 过滤出所有符合代码的项，按次数从高到低排序，确保扣除逻辑的一致性
     let entries = inv.filter(e => e.code === code).sort((a, b) => {
-        const au = a.remainingUses === -1 ? -Infinity : (a.remainingUses || 0);
-        const bu = b.remainingUses === -1 ? -Infinity : (b.remainingUses || 0);
+        const au = a.remainingUses === -1 ? -Infinity : (a.remainingUses ?? 0);
+        const bu = b.remainingUses === -1 ? -Infinity : (b.remainingUses ?? 0);
         return bu - au;
     });
     
@@ -630,9 +548,9 @@ function logItemUsage(platform, roleName, code, itemName) {
 
 function formatItemEntry(entry, info) {
     const name = info.name || entry.code;
-    const shortName = name.length > 8 ? name.slice(0, 8) : name;
+    const shortName = name.length > 16 ? name.slice(0, 15) + "…" : name;
     const codeShort = entry.code.slice(-3);
-    const desc = (info.desc || "").slice(0, 15);
+    const desc = info.desc || "";
     const uses = (entry.remainingUses ?? info.maxUses ?? -1);
     const usesStr = uses === -1 ? "∞次" : `余${uses}次`;
     const durStr = (info.durability != null && entry.currentDurability !== undefined)
@@ -649,10 +567,7 @@ function formatItemEntry(entry, info) {
 
     let result = `${line1}\n${line2}\n${line3}`;
 
-    if (info.attrs) {
-        const attrsShort = info.attrs.slice(0, 22);
-        result += `\n${attrsShort}`;
-    }
+    if (info.attrs) result += `\n${info.attrs}`;
 
     return result;
 }
@@ -756,7 +671,7 @@ cmd_reg_attr.help = `【管理员】注册/查看 RPG 属性
 注册属性 名称 min max default
 注册属性 名称 min max default 描述`;
 cmd_reg_attr.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     const defs = getAttrDefs();
     if (cmdArgs.getArgN(1) === "列表") {
         const attrs = getValidAttrs();
@@ -797,7 +712,7 @@ cmd_reg_attr.solve = (ctx, msg, cmdArgs) => {
     seal.replyToSender(ctx, msg, `✅ 新增 ${added} 个属性。当前：${attrs.join("、")}`);
     return seal.ext.newCmdExecuteResult(true);
 };
-ext.cmdMap["注册属性"] = cmd_reg_attr;
+// ext.cmdMap["注册属性"] = cmd_reg_attr; (合入属性子命令)
 
 // ========================
 // 初始化预设物品
@@ -818,25 +733,67 @@ cmd_init_preset.solve = (ctx, msg, cmdArgs) => {
 
 ext.cmdMap["初始化预设物品"] = cmd_init_preset;
 
-let cmd_upload_item = seal.ext.newCmdItemInfo();
-cmd_upload_item.name = "上载物品";
-cmd_upload_item.help = "【管理员】注册新物品\n格式：名称*描述*次数*属性效果*允许二手\n次数：-1为无限，正数为次数\n效果：属性+10,属性-5（仅限已注册属性或货币，多个逗号隔开，可为空）\n允许二手：Y/N，默认N\n支持多行批量上载";
+// ========================
+// 上载：统一注册指令（物品 / 互动物品 / 货币）
+// ========================
 
-cmd_upload_item.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+function parseUploadTags(line, defs, currencyNames) {
+    const blocks = [];
+    const name = line.replace(/【([^】]*)】/g, (_, c) => { blocks.push(c.trim()); return ''; }).trim();
+    if (!name) return { error: '物品名不能为空' };
+    const effectPat = /^[\w一-鿿㐀-䶿]+[+-]\d+([,，][\w一-鿿㐀-䶿]+[+-]\d+)*$/;
+    let type = 'item', desc = null, maxUses = -1, attrsRaw = null, canResell = false;
+    for (const b of blocks) {
+        if (b === '互动') { type = 'interact'; continue; }
+        if (b === '货币') { type = 'currency'; continue; }
+        if (b === '二手') { canResell = true; continue; }
+        if (b === '无限') { maxUses = -1; continue; }
+        if (b === '一次') { maxUses = 1; continue; }
+        const tm = b.match(/^(\d+)次$/);
+        if (tm) { maxUses = parseInt(tm[1]); continue; }
+        if (effectPat.test(b)) {
+            const segs = b.split(/[,，]/);
+            for (const seg of segs) {
+                const m = seg.trim().match(/^(.+?)([+-]\d+)$/);
+                if (!m) return { error: `效果格式错误「${seg}」` };
+                const aName = m[1];
+                if (!defs[aName] && !currencyNames.has(aName))
+                    return { error: `未知属性「${aName}」，请先注册属性` };
+            }
+            attrsRaw = b; continue;
+        }
+        if (desc === null) desc = b;
+    }
+    return { name, type, desc, maxUses, attrsRaw, canResell };
+}
+
+let cmd_upload = seal.ext.newCmdItemInfo();
+cmd_upload.name = "上载";
+cmd_upload.help = `【管理员】注册物品/互动物品/货币，支持多行批量
+格式：物品名【标签】【标签】...
+  【描述文字】   物品描述
+  【N次】        使用次数；【无限】= 无限次
+  【属性+N】     效果，如【力量+5,体力-2】
+  【互动】       互动物品（对他人使用）
+  【货币】       注册为货币
+  【二手】       允许二手交易
+示例：
+  。上载 金苹果【恢复体力】【5次】【体力+10】
+  。上载
+  爱心糖【甜蜜道具】【互动】【甜蜜+3】【二手】
+  银币【货币】`;
+cmd_upload.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
 
     const rawMsg = (msg.message || "").trim();
     const msgParts = rawMsg.split(/\r?\n/);
-
-    // 第一行去掉指令前缀后的剩余内容
-    const firstLineRest = msgParts[0].replace(/^[。.]\s*上载物品\s*/, "").trim();
+    const firstRest = msgParts[0].replace(/^[。.]\s*上载\s*/, "").trim();
     const extraLines = msgParts.slice(1).map(l => l.trim()).filter(l => l);
-    const itemLines = [...(firstLineRest ? [firstLineRest] : []), ...extraLines];
+    const lines = [...(firstRest ? [firstRest] : []), ...extraLines];
 
-    if (!itemLines.length) {
-        const validAttrs = getValidAttrs();
-        const attrList = validAttrs.length ? validAttrs.join("、") : "（暂无，请先注册属性）";
-        return seal.replyToSender(ctx, msg, `📦 上载物品格式：\n名称*描述*次数*属性效果*允许二手\n\n· 次数：-1 为无限，正数为使用次数\n· 效果：属性+数字,属性-数字（可为空）\n· 允许二手：Y 或 N（默认 N）\n· 支持多行批量，每行一条\n\n当前可用属性：${attrList}`);
+    if (!lines.length) {
+        const attrList = getValidAttrs().join("、") || "（暂无，请先注册属性）";
+        return seal.replyToSender(ctx, msg, `📦 上载格式：物品名【标签】...\n标签：【N次】【无限】【属性+N,属性-N】【互动】【货币】【二手】【描述】\n当前可用属性：${attrList}`);
     }
 
     const reg = getRegistry();
@@ -844,89 +801,44 @@ cmd_upload_item.solve = (ctx, msg, cmdArgs) => {
     const currencyNames = new Set(Object.values(reg).filter(i => i.type === "currency").map(i => i.name));
     const results = [];
 
-    for (const line of itemLines) {
-        const parts = line.split(/[*＊]/);
-        if (parts.length < 3) {
-            results.push(`❌ 格式错误：「${line.substring(0, 15)}」需至少包含 名称*描述*次数`);
-            continue;
-        }
-
-        const name = (parts[0] || "").trim();
-        const desc = (parts[1] || "").trim() || "暂无描述";
-        const maxUses = parseInt((parts[2] || "").trim());
-        const attrsRaw = (parts[3] || "").trim();
-        const canResell = ((parts[4] || "").trim().toUpperCase() === "Y");
-
-        if (!name) { results.push(`❌ 名称不能为空`); continue; }
-        if (isNaN(maxUses)) { results.push(`❌ 「${name}」次数必须是数字`); continue; }
-
-        // 效果格式校验
-        let attrsStr = null;
-        if (attrsRaw) {
-            const segments = attrsRaw.split(/[,，]/);
-            let attrErr = null;
-            for (const seg of segments) {
-                const m = seg.trim().match(/^(.+?)([+-]\d+)$/);
-                if (!m) { attrErr = `效果格式错误「${seg.trim()}」，需为：属性+数字 或 属性-数字`; break; }
-                const attrName = m[1];
-                if (!defs[attrName] && !currencyNames.has(attrName)) {
-                    attrErr = `未知属性「${attrName}」，请先注册属性`; break;
-                }
-            }
-            if (attrErr) { results.push(`❌ 「${name}」${attrErr}`); continue; }
-            attrsStr = attrsRaw;
-        }
+    for (const line of lines) {
+        const parsed = parseUploadTags(line, defs, currencyNames);
+        if (parsed.error) { results.push(`❌ 「${line.substring(0, 20)}」${parsed.error}`); continue; }
+        const { name, type, desc, maxUses, attrsRaw, canResell } = parsed;
 
         const existing = Object.values(reg).find(r => r.name === name);
         if (existing) { results.push(`⚠️ 「${name}」已存在 [${existing.code}]，跳过`); continue; }
 
-        const code = genItemCode(reg);
+        if (type === 'currency') {
+            if (getValidAttrs().includes(name)) { results.push(`❌ 「${name}」已被注册为属性，货币名不能与属性重复`); continue; }
+            const code = genCurrencyCode(reg);
+            if (!code) { results.push("❌ 货币代码空间已满"); break; }
+            reg[code] = { code, name, desc: desc || "暂无描述", type: "currency", attrs: null };
+            results.push(`✅ 💰 [${code}] ${name}（货币）`); continue;
+        }
+
+        const genFn = type === 'interact' ? genInteractionCode : genItemCode;
+        const code = genFn(reg);
         if (!code) { results.push("❌ 代码空间已满，无法继续注册"); break; }
-
-        reg[code] = { code, name, desc, type: "item", maxUses, attrs: attrsStr, price: 0, canResell };
-
+        reg[code] = { code, name, desc: desc || "暂无描述", type, maxUses, attrs: attrsRaw, price: 0, canResell };
         const useText = maxUses === -1 ? "无限" : `${maxUses}次`;
-        const resellText = canResell ? "可二手" : "不可二手";
-        results.push(`✅ [${code}] ${name} | ${useText} | 效果:${attrsStr || "无"} | ${resellText}`);
+        const icon = type === 'interact' ? "🎭" : "📦";
+        const resellPart = canResell ? " | 可二手" : "";
+        results.push(`✅ ${icon} [${code}] ${name} | ${useText} | 效果:${attrsRaw || "无"}${resellPart}`);
     }
 
     saveRegistry(reg);
-    seal.replyToSender(ctx, msg, `📦 物品注册结果（共${results.length}条）：\n${results.join("\n")}`);
+    seal.replyToSender(ctx, msg, `上载结果（共${results.length}条）：\n${results.join("\n")}`);
     return seal.ext.newCmdExecuteResult(true);
 };
+ext.cmdMap["上载"] = cmd_upload;
 
-ext.cmdMap["上载物品"] = cmd_upload_item;
-
-let cmd_reg_currency = seal.ext.newCmdItemInfo();
-cmd_reg_currency.name = "注册货币";
-cmd_reg_currency.help = "【管理员】注册新货币\n注册货币 名称*描述\n示例：注册货币 金币*流通货币";
-cmd_reg_currency.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
-    const raw = cmdArgs.getArgN(1);
-    if (!raw) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
-    const parts = raw.split(/[*＊]/);
-    const name = (parts[0] || "").trim();
-    const desc = (parts[1] || "").trim() || "暂无描述";
-    if (!name) return seal.replyToSender(ctx, msg, "❌ 货币名不能为空。");
-    const reg = getRegistry();
-    const existing = Object.values(reg).find(r => r.name === name);
-    if (existing) return seal.replyToSender(ctx, msg, `⚠️ 「${name}」已存在 [${existing.code}]（${existing.type}），货币名不能重复`);
-    const validAttrs = getValidAttrs();
-    if (validAttrs.includes(name)) return seal.replyToSender(ctx, msg, `❌ 「${name}」已被注册为属性，货币名不能与属性重复`);
-    const code = genCurrencyCode(reg);
-    if (!code) return seal.replyToSender(ctx, msg, "❌ 货币代码空间已满。");
-    reg[code] = { code, name, desc, type: "currency", attrs: null };
-    saveRegistry(reg);
-    seal.replyToSender(ctx, msg, `✅ 货币「${name}」已注册，代码 [${code}]`);
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["注册货币"] = cmd_reg_currency;
 
 let cmd_item_list = seal.ext.newCmdItemInfo();
 cmd_item_list.name = "物品列表";
 cmd_item_list.help = "查看所有已注册物品/货币\n物品列表 [物品|互动|货币|预设|全部]";
 cmd_item_list.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
 
     const reg = getRegistry();
     const filter = cmdArgs.getArgN(1) || "全部";
@@ -952,7 +864,7 @@ let cmd_del_attr = seal.ext.newCmdItemInfo();
 cmd_del_attr.name = "删除属性";
 cmd_del_attr.help = "【管理员】删除已注册属性\n删除属性 名称";
 cmd_del_attr.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     const name = cmdArgs.getArgN(1);
     if (!name) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
     const defs = getAttrDefs();
@@ -965,13 +877,13 @@ cmd_del_attr.solve = (ctx, msg, cmdArgs) => {
     seal.replyToSender(ctx, msg, `✅ 属性「${name}」已删除（已有角色的数值不受影响）`);
     return seal.ext.newCmdExecuteResult(true);
 };
-ext.cmdMap["删除属性"] = cmd_del_attr;
+// ext.cmdMap["删除属性"] = cmd_del_attr; (合入属性子命令)
 
 let cmd_set_attr = seal.ext.newCmdItemInfo();
 cmd_set_attr.name = "设置属性";
 cmd_set_attr.help = "【管理员】直接设置角色属性值\n设置属性 角色名 属性名 值\n示例：设置属性 张三 体力 80";
 cmd_set_attr.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     const roleName = cmdArgs.getArgN(1), attrName = cmdArgs.getArgN(2), valStr = cmdArgs.getArgN(3);
     if (!roleName || !attrName || !valStr) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
     const val = parseInt(valStr);
@@ -993,13 +905,13 @@ cmd_set_attr.solve = (ctx, msg, cmdArgs) => {
     notifyPlayer(ctx, msg.platform, roleName, `📊【属性更新】你的「${attrName}」已设定为 ${clamped}${note}`);
     return seal.ext.newCmdExecuteResult(true);
 };
-ext.cmdMap["设置属性"] = cmd_set_attr;
+// ext.cmdMap["设置属性"] = cmd_set_attr; (合入属性子命令)
 
 let cmd_shop_add = seal.ext.newCmdItemInfo();
 cmd_shop_add.name = "上架商城";
 cmd_shop_add.help = "【管理员】上架物品\n上架商城 物品码*价格货币名\n示例：上架商城 ITEM_001*10金币";
 cmd_shop_add.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     const raw = cmdArgs.getArgN(1);
     if (!raw) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
     const parts = raw.split(/[*＊]/);
@@ -1045,13 +957,13 @@ cmd_shop_add.solve = (ctx, msg, cmdArgs) => {
     seal.replyToSender(ctx, msg, `✅ [${item.code}]${item.name} 已${existingIdx !== -1 ? "更新价格" : "上架"}，售价 ${amount}${currencyName}`);
     return seal.ext.newCmdExecuteResult(true);
 };
-ext.cmdMap["上架商城"] = cmd_shop_add;
+// ext.cmdMap["上架商城"] = cmd_shop_add; (合入商城子命令)
 
 let cmd_shop_remove = seal.ext.newCmdItemInfo();
 cmd_shop_remove.name = "商城下架";
 cmd_shop_remove.help = "【管理员】将物品从商城下架\n商城下架 物品码或名称";
 cmd_shop_remove.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     const input = cmdArgs.getArgN(1);
     if (!input) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
     const reg = getRegistry();
@@ -1065,280 +977,7 @@ cmd_shop_remove.solve = (ctx, msg, cmdArgs) => {
     seal.replyToSender(ctx, msg, `✅ [${item.code}]${item.name} 已从商城下架。`);
     return seal.ext.newCmdExecuteResult(true);
 };
-ext.cmdMap["商城下架"] = cmd_shop_remove;
-
-let cmd_reg_pool = seal.ext.newCmdItemInfo();
-cmd_reg_pool.name = "注册池子";
-cmd_reg_pool.help = "【管理员】创建抽取池\n注册池子 池子名 数量 —— 数量池（有限个数，抽完即止）\n注册池子 池子名 权重 —— 权重池（加权随机，不减少）\n注册池子 池子名 保底 —— 保底池（权重随机+累计保底，跨天持久）\n💡 也可直接「上架池子」，池子不存在时会自动创建为数量池";
-cmd_reg_pool.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
-    const poolName = cmdArgs.getArgN(1);
-    const poolTypeRaw = cmdArgs.getArgN(2);
-    const typeMap = { "数量": "free", "自由": "free", "free": "free", "权重": "fixed", "固定": "fixed", "fixed": "fixed", "保底": "pity", "pity": "pity" };
-    const poolType = typeMap[poolTypeRaw];
-    if (!poolName || !poolType) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
-    const defs = getPoolDefs();
-    const existTypeStr = defs[poolName] ? (defs[poolName].type === "fixed" ? "权重池" : defs[poolName].type === "pity" ? "保底池" : "数量池") : "";
-    if (defs[poolName]) return seal.replyToSender(ctx, msg, `⚠️ 池子「${poolName}」已存在（${existTypeStr}）。`);
-    const newPool = { name: poolName, type: poolType, items: [], enabled: true };
-    if (poolType === "pity") { newPool.pityItems = []; newPool.pityThreshold = 10; }
-    defs[poolName] = newPool;
-    savePoolDefs(defs);
-    const typeLabel = poolType === "fixed" ? "权重池" : poolType === "pity" ? "保底池（默认10次触发）" : "数量池";
-    seal.replyToSender(ctx, msg, `✅ 池子「${poolName}」已创建（${typeLabel}）`);
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["注册池子"] = cmd_reg_pool;
-
-let cmd_pool_add = seal.ext.newCmdItemInfo();
-cmd_pool_add.name = "上架池子";
-cmd_pool_add.help = `【管理员】向池子添加物品（池子不存在时自动创建为数量池）
-数量池：上架池子 池子名 物品码*数量
-权重池：上架池子 池子名 物品码*权重
-多行批量（推荐）：
-。上架池子 池子名
-物品码*数量
-物品码2*数量2`;
-cmd_pool_add.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
-    const poolName = cmdArgs.getArgN(1);
-    if (!poolName) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
-    const defs = getPoolDefs();
-    let pool = defs[poolName];
-    let autoCreated = false;
-    if (!pool) {
-        defs[poolName] = { name: poolName, type: "free", items: [], enabled: true };
-        pool = defs[poolName];
-        autoCreated = true;
-    }
-    const rawMsg = (msg.message || "").trim();
-    const msgParts = rawMsg.split(/\r?\n/);
-    let itemLines;
-    if (msgParts.length > 1) {
-        itemLines = msgParts.slice(1).filter(l => l.trim());
-    } else {
-        const rest = cmdArgs.getArgN(2);
-        itemLines = rest ? [rest] : [];
-    }
-    if (!itemLines.length) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
-    const reg = getRegistry();
-    const results = [];
-    for (const line of itemLines) {
-        const parts = line.trim().split(/[*＊]/);
-        const inputCode = (parts[0] || "").trim();
-        const num = parseInt((parts[1] || "1").trim());
-        const item = findItem(reg, inputCode);
-        if (!item) { results.push(`❌ 未知物品「${inputCode}」`); continue; }
-
-        // 检查特殊道具限制（SPEC_003望远镜、SPEC_004羽毛笔）
-        if ((item.code === "SPEC_003" || item.code === "SPEC_004")) {
-            const letterExt = seal.ext.find("changri");
-            if (letterExt) {
-                const config = JSON.parse(mainStorGet("global_feature_toggle") || "{}");
-                if (!config.enable_direct_letter) {
-                    results.push(`❌ 「${item.name}」只有在启用写信综模式后才能添加到池子。`);
-                    continue;
-                }
-            } else {
-                results.push(`❌ 写信系统未找到。`);
-                continue;
-            }
-        }
-
-        if (isNaN(num) || num <= 0) { results.push(`❌ 数值无效: ${parts[1]}`); continue; }
-        if (pool.type === "fixed" || pool.type === "pity") {
-            if (num > 999) { results.push(`❌ 权重最大999: [${item.code}]`); continue; }
-            const existing = pool.items.find(i => i.code === item.code);
-            if (existing) { existing.weight = num; results.push(`🔄 [${item.code}]${item.name} 权重更新为 ${num}`); }
-            else { pool.items.push({ code: item.code, weight: num }); results.push(`✅ [${item.code}]${item.name} 权重 ${num}`); }
-        } else {
-            const existing = pool.items.find(i => i.code === item.code);
-            if (existing) { existing.count += num; results.push(`🔄 [${item.code}]${item.name} 数量+${num}（共${existing.count}）`); }
-            else { pool.items.push({ code: item.code, count: num }); results.push(`✅ [${item.code}]${item.name} ×${num}`); }
-        }
-    }
-    savePoolDefs(defs);
-    const header = autoCreated ? `🆕 池子「${poolName}」不存在，已自动创建为数量池。\n` : "";
-    seal.replyToSender(ctx, msg, `${header}上架结果：\n${results.join("\n")}`);
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["上架池子"] = cmd_pool_add;
-
-let cmd_pool_remove = seal.ext.newCmdItemInfo();
-cmd_pool_remove.name = "从池移除";
-cmd_pool_remove.help = `【管理员】从池子中移除物品，支持多行批量
-从池移除 池子名 物品码   —— 移除单个
-多行批量：
-。从池移除 池子名
-物品码1
-物品码2`;
-cmd_pool_remove.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
-    const poolName = cmdArgs.getArgN(1);
-    if (!poolName) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
-    const defs = getPoolDefs();
-    const pool = defs[poolName];
-    if (!pool) return seal.replyToSender(ctx, msg, `❌ 未找到池子「${poolName}」。`);
-    const rawMsg = (msg.message || "").trim();
-    const msgParts = rawMsg.split(/\r?\n/);
-    let inputCodes;
-    if (msgParts.length > 1) {
-        inputCodes = msgParts.slice(1).map(l => l.trim()).filter(l => l);
-    } else {
-        const single = cmdArgs.getArgN(2);
-        if (!single) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
-        inputCodes = [single];
-    }
-    const reg = getRegistry();
-    const results = [];
-    for (const inputCode of inputCodes) {
-        const item = findItem(reg, inputCode);
-        const code = item ? item.code : inputCode.toUpperCase();
-        const idx = pool.items.findIndex(i => i.code === code);
-        if (idx === -1) { results.push(`❌ [${code}] 不在池子中`); continue; }
-        pool.items.splice(idx, 1);
-        results.push(`✅ 已移除 [${code}]${item?.name || ""}`);
-    }
-    savePoolDefs(defs);
-    seal.replyToSender(ctx, msg, `从「${poolName}」移除：\n${results.join("\n")}`);
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["从池移除"] = cmd_pool_remove;
-
-let cmd_pool_config = seal.ext.newCmdItemInfo();
-cmd_pool_config.name = "池子设定";
-cmd_pool_config.help = `【管理员】查看或设置每游戏日抽取次数
-池子设定              —— 查看全部设定与池子状态
-池子设定 总量 N       —— 全局每日总次数
-池子设定 总量 无限    —— 全局无限制
-池子设定 池子名 N     —— 给特定池设专属次数
-池子设定 池子名 无限  —— 移除该池专属次数限制`;
-cmd_pool_config.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
-    const arg1 = cmdArgs.getArgN(1);
-    const arg2 = cmdArgs.getArgN(2);
-    if (!arg1 || arg1 === "查看") {
-        const cfg = getDrawConfig();
-        const defs = getPoolDefs();
-        const totalStr = (cfg.total !== null && cfg.total !== undefined) ? `${cfg.total}次/天` : "无限";
-        let text = `📊 池子设定一览 | 全局总量：${totalStr}\n`;
-        const poolList = Object.values(defs);
-        if (!poolList.length) {
-            text += "\n（暂无池子）";
-        } else {
-            for (const pool of poolList) {
-                const icon = pool.enabled ? "✅" : "❌";
-                const typeStr = pool.type === "fixed" ? "权重" : pool.type === "pity" ? "保底" : "数量";
-                const poolLimit = cfg.pools?.[pool.name];
-                const limitStr = poolLimit !== undefined ? `${poolLimit}次/天` : "跟随全局";
-                const itemCount = pool.items.length;
-                const stockStr = pool.type === "free"
-                    ? `${pool.items.reduce((s, i) => s + (i.count || 0), 0)}个`
-                    : `${itemCount}种`;
-                const pityNote = pool.type === "pity" ? `｜保底${pool.pityThreshold || 10}次` : "";
-                text += `\n${icon} 【${pool.name}】${typeStr}池 | 库存${stockStr} | ${limitStr}${pityNote}`;
-            }
-        }
-        return seal.replyToSender(ctx, msg, text);
-    }
-    const cfg = getDrawConfig();
-    if (arg1 === "总量") {
-        if (!arg2) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
-        cfg.total = arg2 === "无限" ? null : parseInt(arg2);
-        if (arg2 !== "无限" && isNaN(cfg.total)) return seal.replyToSender(ctx, msg, "❌ 次数必须为正整数或「无限」。");
-        saveDrawConfig(cfg);
-        return seal.replyToSender(ctx, msg, `✅ 全局总量：${cfg.total !== null ? cfg.total + "次/天" : "无限"}`);
-    }
-    if (!arg2) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
-    if (arg2 === "无限") {
-        if (cfg.pools) delete cfg.pools[arg1];
-        saveDrawConfig(cfg);
-        return seal.replyToSender(ctx, msg, `✅ 已移除「${arg1}」的专属次数限制（跟随全局）`);
-    }
-    const n = parseInt(arg2);
-    if (isNaN(n) || n < 0) return seal.replyToSender(ctx, msg, "❌ 次数必须为非负整数或「无限」。");
-    if (!cfg.pools) cfg.pools = {};
-    cfg.pools[arg1] = n;
-    saveDrawConfig(cfg);
-    seal.replyToSender(ctx, msg, `✅ 池子「${arg1}」每日次数：${n}次`);
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["池子设定"] = cmd_pool_config;
-
-function makePoolToggleCmd(cmdName, enableValue) {
-    let cmd = seal.ext.newCmdItemInfo();
-    cmd.name = cmdName;
-    cmd.help = `【管理员】${cmdName} 池子名`;
-    cmd.solve = (ctx, msg, cmdArgs) => {
-        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
-        const poolName = cmdArgs.getArgN(1);
-        if (!poolName) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
-        const defs = getPoolDefs();
-        if (!defs[poolName]) return seal.replyToSender(ctx, msg, `❌ 未找到池子「${poolName}」。`);
-        defs[poolName].enabled = enableValue;
-        savePoolDefs(defs);
-        seal.replyToSender(ctx, msg, `✅ 池子「${poolName}」已${enableValue ? "开启" : "关闭"}。`);
-        return seal.ext.newCmdExecuteResult(true);
-    };
-    return cmd;
-}
-
-function registerPoolToggleCmds() {
-    ext.cmdMap["开启池子"] = makePoolToggleCmd("开启池子", true);
-    ext.cmdMap["关闭池子"] = makePoolToggleCmd("关闭池子", false);
-}
-
-let cmd_del_pool = seal.ext.newCmdItemInfo();
-cmd_del_pool.name = "删除池子";
-cmd_del_pool.help = "【管理员】彻底删除池子\n删除池子 池子名";
-cmd_del_pool.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
-    const poolName = cmdArgs.getArgN(1);
-    if (!poolName) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
-    const defs = getPoolDefs();
-    if (!defs[poolName]) return seal.replyToSender(ctx, msg, `❌ 未找到池子「${poolName}」。`);
-    delete defs[poolName];
-    savePoolDefs(defs);
-    seal.replyToSender(ctx, msg, `✅ 池子「${poolName}」已删除。`);
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["删除池子"] = cmd_del_pool;
-
-let cmd_batch_create_pools = seal.ext.newCmdItemInfo();
-cmd_batch_create_pools.name = "一键建池";
-cmd_batch_create_pools.help = "【管理员】根据地点列表批量创建同名自由池\n一键建池 —— 为所有已注册地点创建「地点名池」（free类型，已存在的跳过）";
-cmd_batch_create_pools.solve = (ctx, msg) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
-    const main = getMainExt();
-    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
-
-    const places = JSON.parse(mainStorGet("available_places") || "{}");
-    const placeNames = Object.keys(places);
-    if (!placeNames.length) return seal.replyToSender(ctx, msg, "❌ 暂无已注册地点，请先用「地点 添加 地点名」添加地点。");
-
-    const defs = getPoolDefs();
-    const created = [];
-    const skipped = [];
-
-    for (const placeName of placeNames) {
-        const poolName = `${placeName}池`;
-        if (defs[poolName]) {
-            skipped.push(poolName);
-        } else {
-            defs[poolName] = { name: poolName, type: "free", items: [], enabled: true };
-            created.push(poolName);
-        }
-    }
-
-    if (created.length) savePoolDefs(defs);
-
-    const lines = [];
-    if (created.length) lines.push(`✅ 已创建（${created.length}个）：${created.join("、")}`);
-    if (skipped.length) lines.push(`⏭️ 已跳过（${skipped.length}个，已存在）：${skipped.join("、")}`);
-    seal.replyToSender(ctx, msg, `🎲 一键建池完成：\n${lines.join("\n")}\n\n💡 请用「上架池子 池子名 物品码*数量」往池子里加物品。`);
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["一键建池"] = cmd_batch_create_pools;
+// ext.cmdMap["商城下架"] = cmd_shop_remove; (合入商城子命令)
 
 let cmd_view_pool = seal.ext.newCmdItemInfo();
 cmd_view_pool.name = "查看池子";
@@ -1346,7 +985,7 @@ cmd_view_pool.help = `【管理员】查看池子详情
 查看池子          —— 列出所有池子状态（等同于「池子设定」查看）
 查看池子 池子名   —— 显示该池子的全部物品`;
 cmd_view_pool.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     const poolName = cmdArgs.getArgN(1);
     const defs = getPoolDefs();
     const cfg = getDrawConfig();
@@ -1435,29 +1074,11 @@ cmd_view_pool.solve = (ctx, msg, cmdArgs) => {
 };
 ext.cmdMap["查看池子"] = cmd_view_pool;
 
-let cmd_clear_pool = seal.ext.newCmdItemInfo();
-cmd_clear_pool.name = "清空池子";
-cmd_clear_pool.help = "【管理员】清空池子内所有物品（保留池子结构和设定）\n清空池子 池子名";
-cmd_clear_pool.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
-    const poolName = cmdArgs.getArgN(1);
-    if (!poolName) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
-    const defs = getPoolDefs();
-    const pool = defs[poolName];
-    if (!pool) return seal.replyToSender(ctx, msg, `❌ 未找到池子「${poolName}」。`);
-    const count = pool.items.length;
-    pool.items = [];
-    savePoolDefs(defs);
-    seal.replyToSender(ctx, msg, `✅ 已清空「${poolName}」（移除 ${count} 种物品）。\n💡 池子结构和次数设定保留，可直接「上架池子」补货。`);
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["清空池子"] = cmd_clear_pool;
-
 let cmd_adjust = seal.ext.newCmdItemInfo();
 cmd_adjust.name = "调整";
 cmd_adjust.help = "【管理员】直接调整玩家背包数量\n调整 角色名 物品码 +N [物品码2 +N2 ...]\n示例：调整 张三 ITEM_001 +3\n多个：调整 张三 ITEM_001 +3 ITEM_002 -1 SPEC_005 +2";
 cmd_adjust.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     const roleName = cmdArgs.getArgN(1);
     if (!roleName || !cmdArgs.getArgN(2)) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
     const main = getMainExt();
@@ -1514,7 +1135,7 @@ let cmd_grant_draws = seal.ext.newCmdItemInfo();
 cmd_grant_draws.name = "发放抽取";
 cmd_grant_draws.help = "【管理员】给玩家额外抽取次数（永久，不随游戏日重置）\n发放抽取 角色名 N —— 总量额外N次\n发放抽取 角色名 池子名 N —— 特定池额外N次";
 cmd_grant_draws.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     const roleName = cmdArgs.getArgN(1);
     const arg2 = cmdArgs.getArgN(2);
     const arg3 = cmdArgs.getArgN(3);
@@ -1547,48 +1168,13 @@ cmd_grant_draws.solve = (ctx, msg, cmdArgs) => {
 };
 ext.cmdMap["发放抽取"] = cmd_grant_draws;
 
-let cmd_admin_bag = seal.ext.newCmdItemInfo();
-cmd_admin_bag.name = "查看背包";
-cmd_admin_bag.help = "【管理员】查看指定角色背包\n查看背包 角色名";
-cmd_admin_bag.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
-    const roleName = cmdArgs.getArgN(1);
-    if (!roleName) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
-    const adminPlatform = msg.platform;
-    const adminTargetUid = getRoleUid(adminPlatform, roleName);
-    if (!adminTargetUid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${roleName}」。`);
-    seal.replyToSender(ctx, msg, formatInventory(`${adminPlatform}:${getPrimaryUid(adminPlatform, adminTargetUid)}`, roleName, getRegistry()));
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["查看背包"] = cmd_admin_bag;
 
-let cmd_usage_log = seal.ext.newCmdItemInfo();
-cmd_usage_log.name = "物品使用记录";
-cmd_usage_log.help = "【管理员】查看今日物品使用记录\n物品使用记录 [N] —— 默认20条";
-cmd_usage_log.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
-    const main = getMainExt();
-    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
-    const n = parseInt(cmdArgs.getArgN(1)) || 20;
-    const log = JSON.parse(mainStorGet("item_usage_log") || "[]");
-    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-    const todayLog = log.filter(e => e.timestamp >= todayStart.getTime()).sort((a, b) => a.timestamp - b.timestamp);
-    if (!todayLog.length) return seal.replyToSender(ctx, msg, "📭 今天还没有物品使用记录。");
-    const slice = todayLog.slice(-n);
-    const lines = slice.map((e, i) => {
-        const t = new Date(e.timestamp).toLocaleTimeString("zh-CN", { hour: '2-digit', minute: '2-digit' });
-        return `${i + 1}. ${t} ${e.roleName} 使用了 [${e.code}]${e.name}`;
-    });
-    seal.replyToSender(ctx, msg, `📜 今日记录（${slice.length}/${todayLog.length}）：\n${lines.join("\n")}`);
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["物品使用记录"] = cmd_usage_log;
 
 let cmd_market_config = seal.ext.newCmdItemInfo();
 cmd_market_config.name = "二手设定";
 cmd_market_config.help = "【管理员】配置二手市场\n二手设定 手续费:N —— 设置手续费百分比（2-5）\n二手设定 开启 / 关闭\n二手设定 查看";
 cmd_market_config.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     const arg = cmdArgs.getArgN(1);
     const cfg = getMarketConfig();
     if (!arg || arg === "查看") {
@@ -1606,7 +1192,7 @@ cmd_market_config.solve = (ctx, msg, cmdArgs) => {
     }
     const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r;
 };
-ext.cmdMap["二手设定"] = cmd_market_config;
+// ext.cmdMap["二手设定"] = cmd_market_config; (合入二手子命令)
 
 // ========================
 // 玩家指令
@@ -1614,7 +1200,7 @@ ext.cmdMap["二手设定"] = cmd_market_config;
 
 let cmd_shop_view = seal.ext.newCmdItemInfo();
 cmd_shop_view.name = "商城";
-cmd_shop_view.help = "查看商城物品列表";
+cmd_shop_view.help = "商城\n商城              查看商城\n商城 购买 物品名   购买物品\n商城 上架 物品*价格 上架（管理员）\n商城 下架 物品名   下架（管理员）";
 cmd_shop_view.solve = (ctx, msg) => {
     const shop = getShop();
     const reg = getRegistry();
@@ -1655,7 +1241,7 @@ cmd_buy.solve = (ctx, msg, cmdArgs) => {
     seal.replyToSender(ctx, msg, `✅ 购买成功！获得 [${item.code}]${item.name} ×${count}，花费 ${totalCost}${listing.currencyName}`);
     return seal.ext.newCmdExecuteResult(true);
 };
-ext.cmdMap["购买"] = cmd_buy;
+// ext.cmdMap["购买"] = cmd_buy; (合入商城子命令)
 
 let cmd_give_item = seal.ext.newCmdItemInfo();
 cmd_give_item.name = "赠送道具";
@@ -1781,12 +1367,16 @@ function _consumeItem(inv, invIndex, item, roleKey) {
 let cmd_use = seal.ext.newCmdItemInfo();
 cmd_use.name = "使用";
 cmd_use.help = `使用背包中的物品
-· 使用 物品         — 对自己使用普通物品
-· 使用 物品 目标    — 对他人使用互动物品（INTER 类）
-· 使用 设置         — 查看互动物品施加设置
-特殊道具（SPEC 类）请使用「特殊使用」指令`;
+· 使用 物品          — 对自己使用普通物品
+· 使用 物品 目标     — 对他人使用互动物品
+· 使用 特殊 道具名   — 使用特殊道具（SPEC类）
+· 使用 设置          — 查看互动物品施加设置`;
 
 cmd_use.solve = (ctx, msg, cmdArgs) => {
+    if (cmdArgs.getArgN(1) === "特殊") {
+        return cmd_special_use.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
+    }
+
     const arg1 = cmdArgs.getArgN(1);
     const arg2 = cmdArgs.getArgN(2);
 
@@ -1880,7 +1470,7 @@ cmd_use.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["使用"] = cmd_use;
-ext.cmdMap["用"] = cmd_use;
+// ext.cmdMap["用"] alias removed
 
 let cmd_sell = seal.ext.newCmdItemInfo();
 cmd_sell.name = "售卖";
@@ -1965,7 +1555,7 @@ cmd_sell.solve = (ctx, msg, cmdArgs) => {
     
     return seal.ext.newCmdExecuteResult(true);
 };
-ext.cmdMap["售卖"] = cmd_sell;
+// ext.cmdMap["售卖"] = cmd_sell; (合入二手子命令)
 
 let cmd_cancel_sell = seal.ext.newCmdItemInfo();
 cmd_cancel_sell.name = "撤销卖单";
@@ -2000,13 +1590,21 @@ cmd_cancel_sell.solve = (ctx, msg, cmdArgs) => {
     seal.replyToSender(ctx, msg, `✅ 卖单 #${shCode} 已撤销，[${listing.code}]${reg[listing.code]?.name || listing.code} ×${listing.count} 已退回背包。`);
     return seal.ext.newCmdExecuteResult(true);
 };
-ext.cmdMap["撤销卖单"] = cmd_cancel_sell;
+// ext.cmdMap["撤销卖单"] = cmd_cancel_sell; (合入二手子命令)
 
 let cmd_market = seal.ext.newCmdItemInfo();
-cmd_market.name = "二手市场";
+cmd_market.name = "二手";
 cmd_market.help = "查看/购买二手市场物品\n二手市场 —— 查看所有在售\n二手市场 买 编号 —— 购买指定编号";
 
 cmd_market.solve = (ctx, msg, cmdArgs) => {
+    const sub = cmdArgs.getArgN(1);
+    if (sub === "卖" || sub === "售卖") return cmd_sell.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
+    if (sub === "撤" || sub === "撤销") return cmd_cancel_sell.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
+    if (sub === "设定") {
+        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+        return cmd_market_config.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
+    }
+
     const cfg = getMarketConfig();
     if (!cfg.enabled) return seal.replyToSender(ctx, msg, "❌ 二手市场暂未开放。");
     
@@ -2102,7 +1700,7 @@ cmd_market.solve = (ctx, msg, cmdArgs) => {
     seal.replyToSender(ctx, msg, `🏬 二手市场（${listings.length}件）：\n${lines.join("\n")}\n\n💡 发送「二手市场 买 编号」购买`);
     return seal.ext.newCmdExecuteResult(true);
 };
-ext.cmdMap["二手市场"] = cmd_market;
+ext.cmdMap["二手"] = cmd_market;
 
 // ========================
 // 💱 玩家直接议价交易
@@ -2243,6 +1841,11 @@ cmd_trade.help = [
     "示例：交易 提出 李四 给:ITEM_001×2 要:ITEM_002×1 换个好东西"
 ].join("\n");
 cmd_trade.solve = (ctx, msg, cmdArgs) => {
+    if (cmdArgs.getArgN(1) === "设定") {
+        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+        return cmd_trade_config.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
+    }
+
     const toggle = JSON.parse(mainStorGet("global_feature_toggle") || "{}");
     if (!toggle.dlc_trade) return seal.replyToSender(ctx, msg, "❌ 议价交易功能未开启，请联系管理员。");
 
@@ -2490,34 +2093,7 @@ cmd_trade.solve = (ctx, msg, cmdArgs) => {
 };
 ext.cmdMap["交易"] = cmd_trade;
 
-let cmd_trade_config = seal.ext.newCmdItemInfo();
-cmd_trade_config.name = "交易设定";
-cmd_trade_config.help = "【管理员】配置议价交易限制\n交易设定 查看\n交易设定 每日上限 N   — 每人每游戏日最多完成 N 笔（0=不限）\n交易设定 冷却 N       — 完成后冷却 N 分钟才能再次提出/接受（0=不限）";
-cmd_trade_config.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
-    const sub = cmdArgs.getArgN(1);
-    const cfg = getTradeConfig();
-    if (!sub || sub === "查看") {
-        return seal.replyToSender(ctx, msg,
-            `💱 交易系统设定：\n每日上限：${cfg.daily_limit > 0 ? cfg.daily_limit + " 次" : "不限"}\n冷却时间：${cfg.cooldown_minutes > 0 ? cfg.cooldown_minutes + " 分钟" : "不限"}`);
-    }
-    if (sub === "每日上限") {
-        const n = parseInt(cmdArgs.getArgN(2));
-        if (isNaN(n) || n < 0) return seal.replyToSender(ctx, msg, "❌ 请输入 0 或正整数（0=不限）。");
-        cfg.daily_limit = n;
-        saveTradeConfig(cfg);
-        return seal.replyToSender(ctx, msg, `✅ 每日交易上限已设为：${n > 0 ? n + " 次" : "不限"}`);
-    }
-    if (sub === "冷却") {
-        const n = parseInt(cmdArgs.getArgN(2));
-        if (isNaN(n) || n < 0) return seal.replyToSender(ctx, msg, "❌ 请输入 0 或正整数分钟（0=不限）。");
-        cfg.cooldown_minutes = n;
-        saveTradeConfig(cfg);
-        return seal.replyToSender(ctx, msg, `✅ 交易冷却已设为：${n > 0 ? n + " 分钟" : "不限"}`);
-    }
-    return seal.replyToSender(ctx, msg, cmd_trade_config.help);
-};
-ext.cmdMap["交易设定"] = cmd_trade_config;
+// cmd_trade_config 保留供 交易 设定 子命令调用
 
 let cmd_draw = seal.ext.newCmdItemInfo();
 cmd_draw.name = "抽取";
@@ -2646,118 +2222,6 @@ cmd_draw_count.solve = (ctx, msg) => {
 ext.cmdMap["我的抽取次数"] = cmd_draw_count;
 ext.cmdMap["抽取次数"] = cmd_draw_count;
 
-// ========================
-// 保底池专属指令
-// ========================
-
-let cmd_set_pity = seal.ext.newCmdItemInfo();
-cmd_set_pity.name = "设置保底";
-cmd_set_pity.help = "【管理员】设置保底池触发阈值\n设置保底 池子名 N  —— 抽取N次后必出保底物品\n设置保底 池子名    —— 查看当前阈值";
-cmd_set_pity.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
-    const poolName = cmdArgs.getArgN(1);
-    if (!poolName) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
-    const defs = getPoolDefs();
-    const pool = defs[poolName];
-    if (!pool) return seal.replyToSender(ctx, msg, `❌ 未找到池子「${poolName}」。`);
-    if (pool.type !== "pity") return seal.replyToSender(ctx, msg, `❌ 「${poolName}」不是保底池（当前类型：${pool.type === "fixed" ? "权重池" : "数量池"}）。`);
-    const nRaw = cmdArgs.getArgN(2);
-    if (!nRaw) {
-        return seal.replyToSender(ctx, msg, `📊 「${poolName}」保底阈值：${pool.pityThreshold || 10}次\n保底物品：${(pool.pityItems || []).length}种`);
-    }
-    const n = parseInt(nRaw);
-    if (isNaN(n) || n < 1) return seal.replyToSender(ctx, msg, "❌ 阈值必须为正整数。");
-    pool.pityThreshold = n;
-    savePoolDefs(defs);
-    seal.replyToSender(ctx, msg, `✅ 「${poolName}」保底阈值已设为 ${n} 次。`);
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["设置保底"] = cmd_set_pity;
-
-let cmd_add_pity_item = seal.ext.newCmdItemInfo();
-cmd_add_pity_item.name = "上架保底";
-cmd_add_pity_item.help = `【管理员】向保底池添加保底物品（权重抽取）
-上架保底 池子名 物品码*权重
-多行批量：
-。上架保底 池子名
-物品码*权重
-物品码2*权重2`;
-cmd_add_pity_item.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
-    const poolName = cmdArgs.getArgN(1);
-    if (!poolName) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
-    const defs = getPoolDefs();
-    const pool = defs[poolName];
-    if (!pool) return seal.replyToSender(ctx, msg, `❌ 未找到池子「${poolName}」。`);
-    if (pool.type !== "pity") return seal.replyToSender(ctx, msg, `❌ 「${poolName}」不是保底池。`);
-    if (!pool.pityItems) pool.pityItems = [];
-    const rawMsg = (msg.message || "").trim();
-    const msgParts = rawMsg.split(/\r?\n/);
-    const itemLines = msgParts.length > 1
-        ? msgParts.slice(1).filter(l => l.trim())
-        : (cmdArgs.getArgN(2) ? [cmdArgs.getArgN(2)] : []);
-    if (!itemLines.length) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
-    const reg = getRegistry();
-    const results = [];
-    for (const line of itemLines) {
-        const parts = line.trim().split(/[*＊]/);
-        const inputCode = (parts[0] || "").trim();
-        const num = parseInt((parts[1] || "1").trim());
-        const item = findItem(reg, inputCode);
-        if (!item) { results.push(`❌ 未知物品「${inputCode}」`); continue; }
-        if (isNaN(num) || num <= 0 || num > 999) { results.push(`❌ 权重无效（1~999）: ${parts[1]}`); continue; }
-        const existing = pool.pityItems.find(i => i.code === item.code);
-        if (existing) { existing.weight = num; results.push(`🔄 [${item.code}]${item.name} 保底权重更新为 ${num}`); }
-        else { pool.pityItems.push({ code: item.code, weight: num }); results.push(`✅ [${item.code}]${item.name} 保底权重 ${num}`); }
-    }
-    savePoolDefs(defs);
-    seal.replyToSender(ctx, msg, `「${poolName}」保底物品上架：\n${results.join("\n")}`);
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["上架保底"] = cmd_add_pity_item;
-
-let cmd_remove_pity_item = seal.ext.newCmdItemInfo();
-cmd_remove_pity_item.name = "从保底移除";
-cmd_remove_pity_item.help = `【管理员】从保底池的保底物品列表中移除物品
-从保底移除 池子名 物品码   —— 移除单个
-多行批量：
-。从保底移除 池子名
-物品码1
-物品码2`;
-cmd_remove_pity_item.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
-    const poolName = cmdArgs.getArgN(1);
-    if (!poolName) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
-    const defs = getPoolDefs();
-    const pool = defs[poolName];
-    if (!pool) return seal.replyToSender(ctx, msg, `❌ 未找到池子「${poolName}」。`);
-    if (pool.type !== "pity") return seal.replyToSender(ctx, msg, `❌ 「${poolName}」不是保底池。`);
-    const rawMsg = (msg.message || "").trim();
-    const msgParts = rawMsg.split(/\r?\n/);
-    let inputCodes;
-    if (msgParts.length > 1) {
-        inputCodes = msgParts.slice(1).map(l => l.trim()).filter(l => l);
-    } else {
-        const single = cmdArgs.getArgN(2);
-        if (!single) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
-        inputCodes = [single];
-    }
-    const reg = getRegistry();
-    const results = [];
-    for (const inputCode of inputCodes) {
-        const item = findItem(reg, inputCode);
-        const code = item ? item.code : inputCode.toUpperCase();
-        const idx = (pool.pityItems || []).findIndex(i => i.code === code);
-        if (idx === -1) { results.push(`❌ [${code}] 不在保底列表中`); continue; }
-        pool.pityItems.splice(idx, 1);
-        results.push(`✅ 已移除 [${code}]${item?.name || ""}`);
-    }
-    savePoolDefs(defs);
-    seal.replyToSender(ctx, msg, `从「${poolName}」保底列表移除：\n${results.join("\n")}`);
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["从保底移除"] = cmd_remove_pity_item;
-
 let cmd_my_pity = seal.ext.newCmdItemInfo();
 cmd_my_pity.name = "我的保底";
 cmd_my_pity.help = "查看自己在各保底池的当前累计次数";
@@ -2782,17 +2246,69 @@ ext.cmdMap["我的保底"] = cmd_my_pity;
 ext.cmdMap["保底进度"] = cmd_my_pity;
 
 let cmd_bag = seal.ext.newCmdItemInfo();
-cmd_bag.name = "我的背包";
-cmd_bag.help = `查看自己的背包
-。背包                     查看背包全览
-。背包 货币/道具/物品      按分类查看
-。背包 [分类] [页码]      翻页查看（如：。背包 道具 2）
-。背包 搜 [关键词]        搜索物品`;
+cmd_bag.name = "背包";
+cmd_bag.help = `查看背包
+。背包                查看全览
+。背包 货币/道具/物品  按分类查看（支持翻页：。背包 道具 2）
+。背包 搜 关键词       搜索物品
+。背包 详情 物品名     物品详情
+。背包 记录 [N]        今日使用记录（管理员，默认20条）
+。背包 他人 角色名     查看他人背包（管理员）`;
 cmd_bag.solve = (ctx, msg, cmdArgs) => {
     const roleName = getRoleName(ctx, msg);
     if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
 
-    const arg1 = cmdArgs.getArgN(1) || "全部";
+    const sub = cmdArgs.getArgN(1);
+
+    if (sub === "他人") {
+        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+        const targetRole = cmdArgs.getArgN(2);
+        if (!targetRole) return seal.replyToSender(ctx, msg, "❌ 请输入角色名：。背包 他人 角色名");
+        const tPlatform = msg.platform;
+        const tUid = getRoleUid(tPlatform, targetRole);
+        if (!tUid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${targetRole}」。`);
+        seal.replyToSender(ctx, msg, formatInventory(`${tPlatform}:${getPrimaryUid(tPlatform, tUid)}`, targetRole, getRegistry()));
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    if (sub === "详情") {
+        const input = cmdArgs.getArgN(2);
+        if (!input) return seal.replyToSender(ctx, msg, "❌ 请输入物品名：。背包 详情 物品名");
+        const reg = getRegistry();
+        const item = findItem(reg, input);
+        if (!item) return seal.replyToSender(ctx, msg, `❌ 未找到物品「${input}」`);
+        const typeLabel = { item: "普通物品", currency: "货币", preset: "特殊道具", interact: "互动物品" }[item.type] || item.type;
+        let text = `📦 [${item.code}] ${item.name}
+类型：${typeLabel}
+描述：${item.desc}`;
+        if (item.attrs) text += `
+属性效果：${item.attrs}`;
+        const listing = getShop().find(s => s.code === item.code);
+        if (listing) text += `
+🏪 商城售价：${listing.price}${listing.currencyName}`;
+        seal.replyToSender(ctx, msg, text);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    if (sub === "记录") {
+        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+        if (!getMainExt()) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
+        const n = parseInt(cmdArgs.getArgN(2)) || 20;
+        const log = JSON.parse(mainStorGet("item_usage_log") || "[]");
+        const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+        const todayLog = log.filter(e => e.timestamp >= todayStart.getTime()).sort((a, b) => a.timestamp - b.timestamp);
+        if (!todayLog.length) return seal.replyToSender(ctx, msg, "📭 今天还没有物品使用记录。");
+        const slice = todayLog.slice(-n);
+        const lines = slice.map((e, i) => {
+            const t = new Date(e.timestamp).toLocaleTimeString("zh-CN", { hour: '2-digit', minute: '2-digit' });
+            return `${i + 1}. ${t} ${e.roleName} 使用了 [${e.code}]${e.name}`;
+        });
+        seal.replyToSender(ctx, msg, `📜 今日记录（${slice.length}/${todayLog.length}）：
+${lines.join("\n")}`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const arg1 = sub || "全部";
     const arg2 = cmdArgs.getArgN(2) || "1";
     const platform = msg.platform;
     const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
@@ -2829,35 +2345,86 @@ cmd_bag.solve = (ctx, msg, cmdArgs) => {
     const category = validCategories.includes(arg1) ? arg1 : "全部";
     const page = Math.max(1, parseInt(arg2) || 1);
 
-    seal.replyToSender(ctx, msg, formatInventory(roleKey, roleName, reg, category, page));
+    const bagText = formatInventory(roleKey, roleName, reg, category, page);
+    const MAX_LEN = 300;
+    if (bagText.length <= MAX_LEN) {
+        seal.replyToSender(ctx, msg, bagText);
+    } else {
+        const parts = [];
+        let current = "";
+        for (const block of bagText.split("\n\n")) {
+            const chunk = current ? current + "\n\n" + block : block;
+            if (chunk.length > MAX_LEN && current) {
+                parts.push(current);
+                current = block;
+            } else {
+                current = chunk;
+            }
+        }
+        if (current) parts.push(current);
+        for (const part of parts) seal.replyToSender(ctx, msg, part);
+    }
     return seal.ext.newCmdExecuteResult(true);
 };
-ext.cmdMap["我的背包"] = cmd_bag;
 ext.cmdMap["背包"] = cmd_bag;
 
-let cmd_item_detail = seal.ext.newCmdItemInfo();
-cmd_item_detail.name = "物品详情";
-cmd_item_detail.help = "查看物品详情\n物品详情 物品码或名称";
-cmd_item_detail.solve = (ctx, msg, cmdArgs) => {
-    const input = cmdArgs.getArgN(1);
-    if (!input) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
-    const reg = getRegistry();
-    const item = findItem(reg, input);
-    if (!item) return seal.replyToSender(ctx, msg, `❌ 未找到物品「${input}」`);
-    const typeLabel = { item: "普通物品", currency: "货币", preset: "特殊道具" }[item.type] || item.type;
-    let text = `📦 [${item.code}] ${item.name}\n类型：${typeLabel}\n描述：${item.desc}`;
-    if (item.attrs) text += `\n属性效果：${item.attrs}`;
-    const listing = getShop().find(s => s.code === item.code);
-    if (listing) text += `\n🏪 商城售价：${listing.price}${listing.currencyName}`;
-    seal.replyToSender(ctx, msg, text);
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["物品详情"] = cmd_item_detail;
 
 let cmd_craft = seal.ext.newCmdItemInfo();
 cmd_craft.name = "合成";
 cmd_craft.help = "消耗材料合成物品\n合成 产物代码 [数量]\n示例：合成 ITEM_001\n合成 ITEM_001 3\n用「查看合成」查看所有配方";
 cmd_craft.solve = (ctx, msg, cmdArgs) => {
+    const sub = cmdArgs.getArgN(1);
+
+    if (sub === "查看") {
+        const recipes = getCraftRecipes();
+        const reg = getRegistry();
+        if (!Object.keys(recipes).length) return seal.replyToSender(ctx, msg, "📋 暂无合成配方。");
+        const filter = cmdArgs.getArgN(2) || "";
+        const filtered = Object.entries(recipes).filter(([code]) => !filter || code.includes(filter) || reg[code]?.name.includes(filter));
+        if (!filtered.length) return seal.replyToSender(ctx, msg, `📋 未找到包含「${filter}」的配方。`);
+        const lines = filtered.map(([code, recipe]) => {
+            const matStr = Object.entries(recipe.materials).map(([c, cnt]) => `${reg[c]?.name || c}×${cnt}`).join(" + ");
+            let line = `[${code}] ${reg[code]?.name || code}`;
+            if (recipe.desc && recipe.desc !== "暂无描述") line += ` - ${recipe.desc}`;
+            line += `
+   ← ${matStr}`;
+            const limits = recipe.limits || {};
+            if (Object.keys(limits.attrs || {}).length || Object.keys(limits.currencies || {}).length) {
+                line += "\n   ⚠️ 需求：";
+                for (const [attr, val] of Object.entries(limits.attrs || {})) line += ` ${attr}≥${val},`;
+                for (const [curr, val] of Object.entries(limits.currencies || {})) line += ` ${curr}≥${val},`;
+                line = line.slice(0, -1);
+            }
+            return line;
+        });
+        seal.replyToSender(ctx, msg, `📋 合成配方（${filtered.length}/${Object.keys(recipes).length}）：
+${lines.join("\n")}`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    if (sub === "删除") {
+        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+        const input = cmdArgs.getArgN(2);
+        if (!input) return seal.replyToSender(ctx, msg, "❌ 请输入产物名：。合成 删除 物品名");
+        const reg = getRegistry();
+        const target = findItem(reg, input);
+        const code = target ? target.code : input.toUpperCase();
+        const recipes = getCraftRecipes();
+        if (!recipes[code]) return seal.replyToSender(ctx, msg, `❌ 未找到「${input}」的合成配方。`);
+        const name = reg[code]?.name || code;
+        delete recipes[code];
+        saveCraftRecipes(recipes);
+        seal.replyToSender(ctx, msg, `✅ 已删除「${name}」的合成配方。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    if (sub === "注册") {
+        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+        // 委托给独立的注册合成逻辑（通过重新解析消息）
+        const fakeArgs = { getArgN: (n) => cmdArgs.getArgN(n + 1) };
+        return cmd_reg_craft.solve(ctx, msg, fakeArgs);
+    }
+
     const roleName = getRoleName(ctx, msg);
     if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
 
@@ -2938,87 +2505,12 @@ cmd_craft.solve = (ctx, msg, cmdArgs) => {
 };
 ext.cmdMap["合成"] = cmd_craft;
 
-let cmd_upload_interact = seal.ext.newCmdItemInfo();
-cmd_upload_interact.name = "上载互动物品";
-cmd_upload_interact.help = "【管理员】注册互动类物品（对他人使用）\n格式：名称*描述*次数*属性效果*允许二手\n次数：-1为无限，正数为次数\n效果：属性+10,属性-5（仅限已注册属性或货币，多个逗号隔开，可为空）\n允许二手：Y/N，默认N\n支持多行批量上载";
-cmd_upload_interact.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
-
-    const rawMsg = (msg.message || "").trim();
-    const msgParts = rawMsg.split(/\r?\n/);
-
-    const firstLineRest = msgParts[0].replace(/^[。.]\s*上载互动物品\s*/, "").trim();
-    const extraLines = msgParts.slice(1).map(l => l.trim()).filter(l => l);
-    const itemLines = [...(firstLineRest ? [firstLineRest] : []), ...extraLines];
-
-    if (!itemLines.length) {
-        const validAttrs = getValidAttrs();
-        const attrList = validAttrs.length ? validAttrs.join("、") : "（暂无，请先注册属性）";
-        return seal.replyToSender(ctx, msg, `🎭 上载互动物品格式：\n名称*描述*次数*属性效果*允许二手\n\n· 次数：-1 为无限，正数为使用次数\n· 效果：属性+数字,属性-数字（可为空）\n· 允许二手：Y 或 N（默认 N）\n· 支持多行批量，每行一条\n\n当前可用属性：${attrList}`);
-    }
-
-    const reg = getRegistry();
-    const defs = getAttrDefs();
-    const currencyNames = new Set(Object.values(reg).filter(i => i.type === "currency").map(i => i.name));
-    const results = [];
-
-    for (const line of itemLines) {
-        const parts = line.split(/[*＊]/);
-        if (parts.length < 3) {
-            results.push(`❌ 格式错误：「${line.substring(0, 15)}」需至少包含 名称*描述*次数`);
-            continue;
-        }
-
-        const name = (parts[0] || "").trim();
-        const desc = (parts[1] || "").trim() || "暂无描述";
-        const maxUses = parseInt((parts[2] || "").trim());
-        const attrsRaw = (parts[3] || "").trim();
-        const canResell = ((parts[4] || "").trim().toUpperCase() === "Y");
-
-        if (!name) { results.push(`❌ 名称不能为空`); continue; }
-        if (isNaN(maxUses)) { results.push(`❌ 「${name}」次数必须是数字`); continue; }
-
-        // 效果格式校验
-        let attrsStr = null;
-        if (attrsRaw) {
-            const segments = attrsRaw.split(/[,，]/);
-            let attrErr = null;
-            for (const seg of segments) {
-                const m = seg.trim().match(/^(.+?)([+-]\d+)$/);
-                if (!m) { attrErr = `效果格式错误「${seg.trim()}」，需为：属性+数字 或 属性-数字`; break; }
-                const attrName = m[1];
-                if (!defs[attrName] && !currencyNames.has(attrName)) {
-                    attrErr = `未知属性「${attrName}」，请先注册属性`; break;
-                }
-            }
-            if (attrErr) { results.push(`❌ 「${name}」${attrErr}`); continue; }
-            attrsStr = attrsRaw;
-        }
-
-        const existing = Object.values(reg).find(r => r.name === name);
-        if (existing) { results.push(`⚠️ 「${name}」已存在 [${existing.code}]，跳过`); continue; }
-
-        const code = genInteractionCode(reg);
-        if (!code) { results.push("❌ 代码空间已满，无法继续注册"); break; }
-
-        reg[code] = { code, name, desc, type: "interact", maxUses, attrs: attrsStr, price: 0, canResell };
-
-        const useText = maxUses === -1 ? "无限" : `${maxUses}次`;
-        const resellText = canResell ? "可二手" : "不可二手";
-        results.push(`✅ [${code}] ${name} | ${useText} | 效果:${attrsStr || "无"} | ${resellText}`);
-    }
-
-    saveRegistry(reg);
-    seal.replyToSender(ctx, msg, `🎭 互动物品注册结果（共${results.length}条）：\n${results.join("\n")}`);
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["上载互动物品"] = cmd_upload_interact;
 
 let cmd_delete_item = seal.ext.newCmdItemInfo();
 cmd_delete_item.name = "删除物品";
 cmd_delete_item.help = "【管理员】彻底删除物品定义，自动清出所有背包/商城/池子/配方/二手市场\n删除物品 物品码或名称";
 cmd_delete_item.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     const input = cmdArgs.getArgN(1);
     if (!input) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
 
@@ -3373,7 +2865,7 @@ cmd_special_use.solve = (ctx, msg, cmdArgs) => {
 
     return seal.replyToSender(ctx, msg, `❌ 未知的特殊道具 [${item.code}]，请联系管理员。`);
 };
-ext.cmdMap["特殊使用"] = cmd_special_use;
+// ext.cmdMap["特殊使用"] (合入使用子命令)
 
 // ========================
 // 合成系统
@@ -3383,7 +2875,7 @@ let cmd_reg_craft = seal.ext.newCmdItemInfo();
 cmd_reg_craft.name = "注册合成";
 cmd_reg_craft.help = "【管理员】注册合成配方\n注册合成 产物代码*描述*材料代码1:数量1,材料代码2:数量2[*限制条件[*成功率]]\n限制格式：attr:属性名:最小值,currency:货币名:最小值\n成功率：0-100，默认100（消耗材料后按此概率获得产物）\n示例：注册合成 高级丹*升级丹药*初级丹:3,金币:100*attr:体力:50*80";
 cmd_reg_craft.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     const raw = cmdArgs.getArgN(1);
     if (!raw) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
 
@@ -3454,60 +2946,9 @@ cmd_reg_craft.solve = (ctx, msg, cmdArgs) => {
     seal.replyToSender(ctx, msg, msg_text);
     return seal.ext.newCmdExecuteResult(true);
 };
-ext.cmdMap["注册合成"] = cmd_reg_craft;
+// cmd_reg_craft 保留供 合成 注册 子命令调用
 
-let cmd_view_craft = seal.ext.newCmdItemInfo();
-cmd_view_craft.name = "查看合成";
-cmd_view_craft.help = "查看所有合成配方\n查看合成 [搜索关键词]";
-cmd_view_craft.solve = (ctx, msg, cmdArgs) => {
-    const recipes = getCraftRecipes();
-    const reg = getRegistry();
-    if (!Object.keys(recipes).length) return seal.replyToSender(ctx, msg, "📋 暂无合成配方。");
 
-    const filter = cmdArgs.getArgN(1) || "";
-    const filtered = Object.entries(recipes).filter(([code]) => !filter || code.includes(filter) || reg[code]?.name.includes(filter));
-
-    if (!filtered.length) return seal.replyToSender(ctx, msg, `📋 未找到包含「${filter}」的配方。`);
-
-    const lines = filtered.map(([code, recipe]) => {
-        const matStr = Object.entries(recipe.materials).map(([c, cnt]) => `${reg[c]?.name || c}×${cnt}`).join(" + ");
-        let line = `[${code}] ${reg[code]?.name || code}`;
-        if (recipe.desc && recipe.desc !== "暂无描述") line += ` - ${recipe.desc}`;
-        line += `\n   ← ${matStr}`;
-
-        const limits = recipe.limits || {};
-        if (Object.keys(limits.attrs || {}).length || Object.keys(limits.currencies || {}).length) {
-            line += "\n   ⚠️ 需求：";
-            for (const [attr, val] of Object.entries(limits.attrs || {})) line += ` ${attr}≥${val},`;
-            for (const [curr, val] of Object.entries(limits.currencies || {})) line += ` ${curr}≥${val},`;
-            line = line.slice(0, -1);
-        }
-        return line;
-    });
-    seal.replyToSender(ctx, msg, `📋 合成配方（${filtered.length}/${Object.keys(recipes).length}）：\n${lines.join("\n")}`);
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["查看合成"] = cmd_view_craft;
-
-let cmd_del_craft = seal.ext.newCmdItemInfo();
-cmd_del_craft.name = "删除合成";
-cmd_del_craft.help = "【管理员】删除合成配方（不影响物品本身）\n删除合成 产物代码或名称";
-cmd_del_craft.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
-    const input = cmdArgs.getArgN(1);
-    if (!input) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
-    const reg = getRegistry();
-    const target = findItem(reg, input);
-    const code = target ? target.code : input.toUpperCase();
-    const recipes = getCraftRecipes();
-    if (!recipes[code]) return seal.replyToSender(ctx, msg, `❌ 未找到「${input}」的合成配方。`);
-    const name = reg[code]?.name || code;
-    delete recipes[code];
-    saveCraftRecipes(recipes);
-    seal.replyToSender(ctx, msg, `✅ 已删除「${name}」的合成配方。`);
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["删除合成"] = cmd_del_craft;
 
 // ========================
 // 无前缀指令触发
@@ -3786,196 +3227,6 @@ ext.onNotCommandReceived = (ctx, msg) => {
 };
 
 // ========================
-// 同步踩点池命令
-// ========================
-
-let cmd_sync_spot_pools = seal.ext.newCmdItemInfo();
-cmd_sync_spot_pools.name = "同步踩点池";
-cmd_sync_spot_pools.help = "【管理员】同步地点系统中的所有地点到抽取池\n同步踩点池\n  将自动为每个地点创建相应的池子（若已存在则跳过）\n  不删除任何已有的池子";
-cmd_sync_spot_pools.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
-
-    const main = getMainExt();
-    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
-
-    // 读取地点系统配置（检查是否启用）
-    let placeSystemEnabled = true;
-    try {
-        const placeConfig = JSON.parse(mainStorGet("place_system_config") || "{}");
-        placeSystemEnabled = placeConfig.enabled !== false;
-    } catch(e) {}
-
-    if (!placeSystemEnabled) {
-        return seal.replyToSender(ctx, msg, "⚠️ 地点系统未启用，无法同步踩点池。");
-    }
-
-    // 读取所有地点
-    let places = {};
-    try {
-        places = JSON.parse(mainStorGet("available_places") || "{}");
-    } catch(e) {
-        return seal.replyToSender(ctx, msg, "❌ 无法读取地点数据。");
-    }
-
-    if (Object.keys(places).length === 0) {
-        return seal.replyToSender(ctx, msg, "⚠️ 地点系统中没有地点数据。");
-    }
-
-    // 获取当前的池子定义
-    const poolDefs = getPoolDefs();
-
-    let created = [];
-    let skipped = [];
-
-    // 为每个地点创建对应的池子（如果不存在）
-    for (const placeName in places) {
-        const poolName = `${placeName}池`;
-
-        if (poolDefs[poolName]) {
-            skipped.push(placeName);
-        } else {
-            // 创建新的固定池
-            poolDefs[poolName] = {
-                name: poolName,
-                type: "fixed",
-                items: [],
-                enabled: true
-            };
-            created.push(placeName);
-        }
-    }
-
-    // 保存更新后的池子定义
-    savePoolDefs(poolDefs);
-
-    let resultMsg = "✅ 踩点池同步完成！\n";
-    if (created.length > 0) {
-        resultMsg += `\n📝 新建池子 (${created.length})：\n` + created.map(p => `  · ${p}池`).join("\n");
-    }
-    if (skipped.length > 0) {
-        resultMsg += `\n⏭️  已存在，跳过 (${skipped.length})：\n` + skipped.map(p => `  · ${p}池`).join("\n");
-    }
-    resultMsg += `\n\n💡 现在可使用「上架池子」命令向这些池子添加物品。`;
-
-    seal.replyToSender(ctx, msg, resultMsg);
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["同步踩点池"] = cmd_sync_spot_pools;
-
-// ── 从 RP 存档服务器同步池子 ─────────────────────────────────────────────────
-let cmd_sync_pools_from_archive = seal.ext.newCmdItemInfo();
-cmd_sync_pools_from_archive.name = "同步池子";
-cmd_sync_pools_from_archive.help = "【管理员】从RP存档服务器拉取池子配置（在存档网页编辑后使用）\n同步池子       —— 拉取并覆盖本地池子定义和抽取设定\n同步池子 预览  —— 只显示存档中的池子，不实际同步";
-cmd_sync_pools_from_archive.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
-    const main = getMainExt();
-    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
-
-    const archiveEnabled = seal.ext.getBoolConfig(main, "启用RP存档传输");
-    if (!archiveEnabled) return seal.replyToSender(ctx, msg, "❌ 未启用RP存档传输，请先在长日设置中开启。");
-
-    const base  = (seal.ext.getStringConfig(main, "RP存档服务器地址") || "").replace(/\/$/, "");
-    const token = seal.ext.getStringConfig(main, "RP存档Token") || "";
-    if (!base) return seal.replyToSender(ctx, msg, "❌ 未配置存档服务器地址。");
-
-    const previewOnly = (cmdArgs.getArgN(1) || "") === "预览";
-    const headers = {};
-    if (token) headers["X-Archive-Token"] = token;
-
-    (async () => {
-        try {
-            const resp = await fetch(`${base}/api/pool_config`, { headers });
-            if (!resp.ok) {
-                seal.replyToSender(ctx, msg, `❌ 拉取失败，服务器返回 ${resp.status}。`);
-                return;
-            }
-            const data = await resp.json();
-            if (!data.ok) {
-                seal.replyToSender(ctx, msg, `❌ 拉取失败：${data.error || "未知错误"}`);
-                return;
-            }
-            const defs = data.pool_definitions || {};
-            const cfg  = data.pool_draw_config  || { total: null, pools: {} };
-            const poolNames = Object.keys(defs);
-
-            if (previewOnly) {
-                if (!poolNames.length) {
-                    seal.replyToSender(ctx, msg, "📭 存档中暂无池子配置。");
-                    return;
-                }
-                const totalStr = cfg.total != null ? `${cfg.total}次/天` : "无限";
-                let preview = `👁️ 存档池子预览（${poolNames.length}个）| 全局：${totalStr}\n`;
-                for (const name of poolNames) {
-                    const p = defs[name];
-                    const typeStr = p.type === "fixed" ? "权重池" : p.type === "tiered" ? "分段池" : p.type === "pity" ? "保底池" : "数量池";
-                    const stock = p.type === "tiered"
-                        ? (p.tiers?.length || 0) + "段"
-                        : p.type === "free"
-                            ? p.items.reduce((s, i) => s + (i.count || 0), 0) + "个"
-                            : p.items.length + "种";
-                    const perDay = cfg.pools?.[name];
-                    const limitStr = perDay != null ? `${perDay}次/天` : "跟随全局";
-                    preview += `\n${p.enabled ? "✅" : "❌"} 【${name}】${typeStr} | 库存${stock} | ${limitStr}`;
-                }
-                preview += "\n\n💡 确认无误后发送「同步池子」正式同步。";
-                seal.replyToSender(ctx, msg, preview);
-                return;
-            }
-
-            mainStorSet("pool_definitions", JSON.stringify(defs));
-            mainStorSet("pool_draw_config", JSON.stringify(cfg));
-            const totalStr = cfg.total != null ? `${cfg.total}次/天` : "无限";
-            seal.replyToSender(ctx, msg, `✅ 池子已同步（${poolNames.length} 个池子，全局次数：${totalStr}）。`);
-        } catch (e) {
-            seal.replyToSender(ctx, msg, `❌ 同步失败：${e.message || String(e)}`);
-        }
-    })();
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["同步池子"] = cmd_sync_pools_from_archive;
-
-let cmd_push_pools = seal.ext.newCmdItemInfo();
-cmd_push_pools.name = "上传池子";
-cmd_push_pools.help = "【管理员】将本地池子配置推送到RP存档服务器（覆盖网页端的配置）\n上传池子";
-cmd_push_pools.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
-    const main = getMainExt();
-    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
-    const archiveEnabled = seal.ext.getBoolConfig(main, "启用RP存档传输");
-    if (!archiveEnabled) return seal.replyToSender(ctx, msg, "❌ 未启用RP存档传输，请先在长日设置中开启。");
-    const base  = (seal.ext.getStringConfig(main, "RP存档服务器地址") || "").replace(/\/$/, "");
-    const token = seal.ext.getStringConfig(main, "RP存档Token") || "";
-    if (!base) return seal.replyToSender(ctx, msg, "❌ 未配置存档服务器地址。");
-    const defs = getPoolDefs();
-    const cfg  = getDrawConfig();
-    const poolCount = Object.keys(defs).length;
-    const headers = { "Content-Type": "application/json" };
-    if (token) headers["X-Archive-Token"] = token;
-    (async () => {
-        try {
-            const resp = await fetch(`${base}/api/pool_config`, {
-                method: "POST",
-                headers,
-                body: JSON.stringify({ pool_definitions: defs, pool_draw_config: cfg })
-            });
-            if (!resp.ok) {
-                seal.replyToSender(ctx, msg, `❌ 上传失败，服务器返回 ${resp.status}。`);
-                return;
-            }
-            const data = await resp.json();
-            if (data.ok) {
-                seal.replyToSender(ctx, msg, `✅ 已将 ${poolCount} 个池子上传到存档服务器。`);
-            } else {
-                seal.replyToSender(ctx, msg, `❌ 上传失败：${data.error || "未知错误"}`);
-            }
-        } catch (e) {
-            seal.replyToSender(ctx, msg, `❌ 上传失败：${e.message || String(e)}`);
-        }
-    })();
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["上传池子"] = cmd_push_pools;
-
 // ========================
 // 攻防系统 - 存储与配置
 // ========================
@@ -4688,7 +3939,7 @@ cmd_use_skill.solve = (ctx, msg, cmdArgs) => {
     const tail = _afterAction(data, battle);
     return seal.replyToSender(ctx, msg, result.msg + "\n\n" + tail);
 };
-ext.cmdMap["使用技能"] = cmd_use_skill;
+// ext.cmdMap["使用技能"] = cmd_use_skill; (合入技能子命令)
 
 // ========================
 // 攻防系统 - 命令: 战斗用品
@@ -4746,7 +3997,7 @@ cmd_battle_item.solve = (ctx, msg, cmdArgs) => {
     const tail = _afterAction(data, battle);
     return seal.replyToSender(ctx, msg, lines.join("\n") + "\n\n" + tail);
 };
-ext.cmdMap["战斗用品"] = cmd_battle_item;
+// ext.cmdMap["战斗用品"] = cmd_battle_item; (合入战况)
 
 // ========================
 // 攻防系统 - 命令: 投降/逃跑
@@ -4795,7 +4046,7 @@ let cmd_attack_defense_admin = seal.ext.newCmdItemInfo();
 cmd_attack_defense_admin.name = "攻防";
 cmd_attack_defense_admin.help = "【管理员】攻防系统\n攻防 开/关       — 启用/禁用\n攻防 查看        — 查看配置\n攻防 设置 参数 值 — 修改参数\n攻防 结束 战斗ID  — 强制结束战斗\n\n可设置参数：每日发起/默认回合/逃脱率/奖励货币/胜者奖励/败者奖励/最小人数";
 cmd_attack_defense_admin.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     const subCmd = cmdArgs.getArgN(1);
     let config = getAttackDefenseConfig();
 
@@ -4853,7 +4104,7 @@ let cmd_player_skill = seal.ext.newCmdItemInfo();
 cmd_player_skill.name = "玩家技能";
 cmd_player_skill.help = "【管理员】玩家技能管理\n玩家技能 <角色名> <技能名> 授予  — 为角色解锁技能\n玩家技能 <角色名> <技能名> 撤销  — 取消角色技能\n玩家技能 <角色名>          — 查看角色的技能列表";
 cmd_player_skill.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     const targetPlayer = cmdArgs.getArgN(1);
     if (!targetPlayer) return seal.replyToSender(ctx, msg, "❌ 请指定角色名。");
 
@@ -4891,7 +4142,7 @@ cmd_player_skill.solve = (ctx, msg, cmdArgs) => {
 
     return seal.replyToSender(ctx, msg, cmd_player_skill.help);
 };
-ext.cmdMap["玩家技能"] = cmd_player_skill;
+// ext.cmdMap["玩家技能"] = cmd_player_skill; (合入技能子命令)
 
 // ========================
 // 攻防系统 - 技能库 / 我的技能
@@ -4916,12 +4167,20 @@ cmd_skill_lib.solve = (ctx, msg, cmdArgs) => {
     });
     return seal.replyToSender(ctx, msg, info.trim());
 };
-ext.cmdMap["技能库"] = cmd_skill_lib;
+// ext.cmdMap["技能库"] = cmd_skill_lib; (合入技能子命令)
 
 let cmd_my_skills = seal.ext.newCmdItemInfo();
-cmd_my_skills.name = "我的技能";
-cmd_my_skills.help = "我的技能  — 查看已解锁的技能";
+cmd_my_skills.name = "技能";
+cmd_my_skills.help = "技能\n技能              查看我的技能\n技能 使用 技能名 [目标]  使用技能\n技能 库            查看技能库\n技能 配置 操作 角色名 技能名  管理员配置";
 cmd_my_skills.solve = (ctx, msg, cmdArgs) => {
+    const sub = cmdArgs.getArgN(1);
+    if (sub === "使用") return cmd_use_skill.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
+    if (sub === "库") return cmd_skill_lib.solve(ctx, msg, { getArgN: (_) => "" });
+    if (sub === "配置") {
+        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+        return cmd_player_skill.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
+    }
+
     const config = getAttackDefenseConfig();
     if (!config.enabled) return seal.replyToSender(ctx, msg, "❌ 攻防系统未启用。");
     const player = getRoleName(ctx, msg);
@@ -4938,16 +4197,20 @@ cmd_my_skills.solve = (ctx, msg, cmdArgs) => {
     });
     return seal.replyToSender(ctx, msg, info.trim());
 };
-ext.cmdMap["我的技能"] = cmd_my_skills;
+ext.cmdMap["技能"] = cmd_my_skills;
 
 // ========================
 // 攻防系统 - 战斗状态
 // ========================
 
 let cmd_battle_status = seal.ext.newCmdItemInfo();
-cmd_battle_status.name = "战斗状态";
-cmd_battle_status.help = "战斗状态 [战斗ID]  — 查看战斗详情";
+cmd_battle_status.name = "战况";
+cmd_battle_status.help = "战况\n战况           当前战斗状态\n战况 历史      战斗历史记录\n战况 用品      战斗可用道具";
 cmd_battle_status.solve = (ctx, msg, cmdArgs) => {
+    const sub = cmdArgs.getArgN(1);
+    if (sub === "历史") return cmd_battle_history.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
+    if (sub === "用品") return cmd_battle_item.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
+
     const config = getAttackDefenseConfig();
     if (!config.enabled) return seal.replyToSender(ctx, msg, "❌ 攻防系统未启用。");
     const player = getRoleName(ctx, msg);
@@ -4982,7 +4245,7 @@ cmd_battle_status.solve = (ctx, msg, cmdArgs) => {
     });
     return seal.replyToSender(ctx, msg, info.trim());
 };
-ext.cmdMap["战斗状态"] = cmd_battle_status;
+ext.cmdMap["战况"] = cmd_battle_status;
 
 // ========================
 // 攻防系统 - 查看/设置属性
@@ -4997,8 +4260,34 @@ cmd_battle_attrs.solve = (ctx, msg, cmdArgs) => {
     const self = getRoleName(ctx, msg);
     const subCmd = cmdArgs.getArgN(1);
 
-    if (subCmd === "设置" || subCmd === "修改") {
-        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    if (subCmd === "注册") {
+        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+        return cmd_reg_attr.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
+    }
+    if (subCmd === "删除") {
+        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+        const name = cmdArgs.getArgN(2);
+        if (!name) return seal.replyToSender(ctx, msg, "❌ 请输入属性名：。属性 删除 名称");
+        const defs = getAttrDefs();
+        if (!defs[name]) return seal.replyToSender(ctx, msg, `❌ 未找到属性「${name}」`);
+        const poolDefs = getPoolDefs();
+        const boundPools = Object.values(poolDefs).filter(p => p.type === "tiered" && p.attr === name).map(p => p.name);
+        if (boundPools.length) return seal.replyToSender(ctx, msg, `❌ 属性「${name}」正被分段池「${boundPools.join("、")}」绑定，无法删除。`);
+        delete defs[name];
+        saveAttrDefs(defs);
+        return seal.replyToSender(ctx, msg, `✅ 属性「${name}」已删除`);
+    }
+    if (subCmd === "列表") {
+        const attrs = getValidAttrs();
+        return seal.replyToSender(ctx, msg, attrs.length ? `📋 已注册属性：${attrs.join("、")}` : "📋 暂无已注册属性。");
+    }
+    if (subCmd === "设置") {
+        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+        return cmd_set_attr.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
+    }
+
+    if (subCmd === "改" || subCmd === "修改") {
+        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
         const targetName = cmdArgs.getArgN(2);
         const attrName   = cmdArgs.getArgN(3);
         const value      = parseInt(cmdArgs.getArgN(4));
@@ -5017,7 +4306,7 @@ cmd_battle_attrs.solve = (ctx, msg, cmdArgs) => {
     const targetName = subCmd || self;
     if (!targetName) return seal.replyToSender(ctx, msg, "❌ 无法获取角色信息。");
     if (targetName !== self && !isUserAdmin(ctx, msg))
-        return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+        return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
 
     const parts = msg.sender.userId.split(':');
     const rk = (targetName === self) ? msg.sender.userId : targetName;
@@ -5073,7 +4362,7 @@ cmd_battle_history.solve = (ctx, msg, cmdArgs) => {
     }
     return seal.replyToSender(ctx, msg, info.trim());
 };
-ext.cmdMap["战斗历史"] = cmd_battle_history;
+// ext.cmdMap["战斗历史"] = cmd_battle_history; (合入战况)
 
 // ========================
 // 一键初始化 - 快速启用攻防系统
@@ -5083,7 +4372,7 @@ let cmd_quick_init = seal.ext.newCmdItemInfo();
 cmd_quick_init.name = "一键初始化";
 cmd_quick_init.help = "【管理员】一键初始化攻防系统 - 注册属性和回血药\n一键初始化\n  将自动创建：\n  · 5个RPG属性（HP、MP、ATK、DEF、AGI）\n  · 4种回血药（小、中、大、满）\n  · 启用攻防系统";
 cmd_quick_init.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
 
     const main = getMainExt();
     if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
@@ -5448,6 +4737,21 @@ cmd_equip.solve = (ctx, msg, cmdArgs) => {
     const uid = getPrimaryUid(platform, rawUid);
     const roleKey = `${platform}:${uid}`;
 
+    // 子命令路由：脱/注册/槽位/修复 合入
+    if (subCmd === "脱") return cmd_unequip.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
+    if (subCmd === "注册") {
+        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+        return cmd_register_equip.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
+    }
+    if (subCmd === "槽位") {
+        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+        return cmd_equip_slots.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
+    }
+    if (subCmd === "修复") {
+        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+        return cmd_repair.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
+    }
+
     // 查看装备
     if (!subCmd) {
         const equips = getPlayerEquips(roleKey);
@@ -5521,7 +4825,7 @@ cmd_equip.solve = (ctx, msg, cmdArgs) => {
 
     // 列表
     if (subCmd === "列表" || subCmd === "列表") {
-        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
 
         const equips = Object.values(registry).filter(e => e.type === "equipment");
         if (!equips.length) return seal.replyToSender(ctx, msg, "❌ 还没有注册任何装备。");
@@ -5617,7 +4921,7 @@ cmd_unequip.solve = (ctx, msg, cmdArgs) => {
     return seal.replyToSender(ctx, msg, msg_text);
 };
 
-ext.cmdMap["脱装备"] = cmd_unequip;
+// ext.cmdMap["脱装备"] = cmd_unequip; (合入装备子命令)
 
 // ========================
 // 装备系统 - 管理员命令：注册装备
@@ -5627,7 +4931,7 @@ let cmd_register_equip = seal.ext.newCmdItemInfo();
 cmd_register_equip.name = "注册装备";
 cmd_register_equip.help = "【管理员】注册新装备\n注册装备 <装备名>*<描述>*<槽位>*<基础属性>\n\n属性格式: ATK+15,DEF+10 (用逗号分隔多个属性)\n属性必须已注册，执行「我创建属性」可注册新属性\n槽位：执行「槽位 查看」查看所有可用槽位\n\n示例:\n注册装备 铁制短剑*普通短剑*hand*ATK+15\n注册装备 钢铁胸甲*防御胸甲*chest*DEF+20,HP+50\n注册装备 智者法杖*法术武器*hand*智力+20,MP+50";
 cmd_register_equip.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
 
     const input = cmdArgs.args.slice(1).join(' ').trim();
 
@@ -5706,7 +5010,7 @@ cmd_register_equip.solve = (ctx, msg, cmdArgs) => {
     return seal.replyToSender(ctx, msg, msg_text);
 };
 
-ext.cmdMap["注册装备"] = cmd_register_equip;
+// ext.cmdMap["注册装备"] = cmd_register_equip; (合入装备子命令)
 
 // ========================
 // 装备系统 - 管理员命令：槽位管理
@@ -5716,7 +5020,7 @@ let cmd_equip_slots = seal.ext.newCmdItemInfo();
 cmd_equip_slots.name = "槽位";
 cmd_equip_slots.help = "【管理员】管理装备槽位\n槽位 查看               - 查看所有槽位\n槽位 添加 <槽位码> <名称> - 添加新槽位\n槽位 删除 <槽位码>      - 删除槽位\n槽位 重置              - 重置为默认5个槽位\n\n示例:\n槽位 添加 ring1 戒指1\n槽位 添加 wing 翅膀\n槽位 删除 ring1";
 cmd_equip_slots.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
 
     const subCmd = cmdArgs.getArgN(1);
     let slots = getEquipSlots();
@@ -5812,13 +5116,13 @@ cmd_equip_slots.solve = (ctx, msg, cmdArgs) => {
     return seal.replyToSender(ctx, msg, cmd_equip_slots.help);
 };
 
-ext.cmdMap["槽位"] = cmd_equip_slots;
+// ext.cmdMap["槽位"] = cmd_equip_slots; (合入装备子命令)
 
 let cmd_repair = seal.ext.newCmdItemInfo();
 cmd_repair.name = "修复";
 cmd_repair.help = "【管理员】修复装备耐久度\n修复 <角色名> [槽位码]  - 恢复指定角色全部（或指定槽位）装备耐久到最大值";
 cmd_repair.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     const targetRole = cmdArgs.getArgN(1);
     if (!targetRole) return seal.replyToSender(ctx, msg, "❌ 请指定角色名。");
     const slotFilter = cmdArgs.getArgN(2) || null;
@@ -5844,7 +5148,7 @@ cmd_repair.solve = (ctx, msg, cmdArgs) => {
     mainStorSet("player_equipments", JSON.stringify(allEquips));
     return seal.replyToSender(ctx, msg, `🔧 已修复「${targetRole}」的装备：${repaired.join("、")}`);
 };
-ext.cmdMap["修复"] = cmd_repair;
+// ext.cmdMap["修复"] = cmd_repair; (合入装备子命令)
 
 // ========================
 // 升级系统 (PlayerLevel)
@@ -6311,10 +5615,10 @@ let cmd_upload_level = seal.ext.newCmdItemInfo();
 cmd_upload_level.name = "上传升级等级";
 cmd_upload_level.help = "【管理员】配置升级规则\n上传升级等级 <等级|范围> * <描述> * <消耗品> * <奖励品> [*成功率]\n· 等级与描述之间也用 * 分隔，共4段\n· 消耗品：物品名:数量 或 物品名:基础+增幅，无消耗填 -\n· 奖励品：属性名+数值 或 物品名:数量，无奖励填 -\n· 成功率：0-100，范围配置时从100%线性递减至该值\n示例：\n  上传升级等级 1-10 * {等级}级冒险者 * 金币:50+50 * HP+5+5\n  上传升级等级 20 * 传奇战士 * 金币:1000,晶体:3 * ATK+20,DEF+10 * 80\n  上传升级等级 5 * 铁甲武士 * - * ATK+10";
 cmd_upload_level.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     return cmd_upload_level_rule(msg, cmdArgs, ctx);
 };
-ext.cmdMap["上传升级等级"] = cmd_upload_level;
+// ext.cmdMap["上传升级等级"] = cmd_upload_level; (合入升级子命令)
 
 let cmd_view_level = seal.ext.newCmdItemInfo();
 cmd_view_level.name = "查看升级配置";
@@ -6322,7 +5626,7 @@ cmd_view_level.help = "查看升级配置\n查看升级配置 [等级号]";
 cmd_view_level.solve = (ctx, msg, cmdArgs) => {
     return cmd_view_level_rule(ctx, msg, cmdArgs);
 };
-ext.cmdMap["查看升级配置"] = cmd_view_level;
+// ext.cmdMap["查看升级配置"] = cmd_view_level; (合入升级子命令)
 
 let cmd_level_listing = seal.ext.newCmdItemInfo();
 cmd_level_listing.name = "升级列表";
@@ -6330,12 +5634,29 @@ cmd_level_listing.help = "查看所有已配置的升级等级";
 cmd_level_listing.solve = (ctx, msg, cmdArgs) => {
     return cmd_level_list(ctx, msg, cmdArgs);
 };
-ext.cmdMap["升级列表"] = cmd_level_listing;
+// ext.cmdMap["升级列表"] = cmd_level_listing; (合入升级子命令)
 
 let cmd_do_upgrade = seal.ext.newCmdItemInfo();
 cmd_do_upgrade.name = "升级";
 cmd_do_upgrade.help = "升级一次\n格式：升级";
 cmd_do_upgrade.solve = (ctx, msg, cmdArgs) => {
+    const sub = cmdArgs.getArgN(1);
+    if (sub === "列表") return cmd_level_listing.solve(ctx, msg, { getArgN: (_) => "" });
+    if (sub === "信息") return cmd_level_info.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
+    if (sub === "历史") return cmd_level_history.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
+    if (sub === "上传") {
+        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+        return cmd_upload_level.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
+    }
+    if (sub === "配置") {
+        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+        return cmd_view_level.solve(ctx, msg, { getArgN: (_) => "" });
+    }
+    if (sub === "设置") {
+        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+        return cmd_level_settings.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
+    }
+
     return cmd_do_levelup(msg, cmdArgs, ctx);
 };
 ext.cmdMap["升级"] = cmd_do_upgrade;
@@ -6346,7 +5667,7 @@ cmd_level_info.help = "查看升级进度和下一等级要求\n格式：查看�
 cmd_level_info.solve = (ctx, msg, cmdArgs) => {
     return cmd_levelup_info(msg, cmdArgs, ctx);
 };
-ext.cmdMap["查看升级信息"] = cmd_level_info;
+// ext.cmdMap["查看升级信息"] = cmd_level_info; (合入升级子命令)
 
 let cmd_level_history = seal.ext.newCmdItemInfo();
 cmd_level_history.name = "升级历史";
@@ -6367,13 +5688,13 @@ cmd_level_history.solve = (ctx, msg, cmdArgs) => {
     seal.replyToSender(ctx, msg, `📜 升级历史（最近${recent.length}条）：\n${lines.join("\n")}`);
     return seal.ext.newCmdExecuteResult(true);
 };
-ext.cmdMap["升级历史"] = cmd_level_history;
+// ext.cmdMap["升级历史"] = cmd_level_history; (合入升级子命令)
 
 let cmd_level_settings = seal.ext.newCmdItemInfo();
 cmd_level_settings.name = "升级系统设置";
 cmd_level_settings.help = "【管理员】升级系统全局设置\n升级系统设置 开启|关闭\n升级系统设置 最大等级 <数字>";
 cmd_level_settings.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     const arg1 = cmdArgs.getArgN(1);
     const arg2 = cmdArgs.getArgN(2);
     if (!arg1) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
@@ -6397,7 +5718,7 @@ cmd_level_settings.solve = (ctx, msg, cmdArgs) => {
     }
     const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r;
 };
-ext.cmdMap["升级系统设置"] = cmd_level_settings;
+// ext.cmdMap["升级系统设置"] = cmd_level_settings; (合入升级子命令)
 
 // ========================
 // 角色档案
@@ -6406,7 +5727,7 @@ let cmd_profile = seal.ext.newCmdItemInfo();
 cmd_profile.name = "角色档案";
 cmd_profile.help = "【管理员】查看角色综合档案\n角色档案 角色名";
 cmd_profile.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     const roleName = cmdArgs.getArgN(1);
     if (!roleName) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
     const main = getMainExt();
@@ -6465,7 +5786,7 @@ let cmd_batch_give = seal.ext.newCmdItemInfo();
 cmd_batch_give.name = "批量发放";
 cmd_batch_give.help = "【管理员】批量发放物品\n批量发放 物品码/名 +N 角色1 角色2 ...\n批量发放 物品码/名 +N 全员";
 cmd_batch_give.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     const inputCode = cmdArgs.getArgN(1);
     const deltaStr = cmdArgs.getArgN(2);
     const firstTarget = cmdArgs.getArgN(3);
@@ -6647,7 +5968,7 @@ let cmd_collection_create = seal.ext.newCmdItemInfo();
 cmd_collection_create.name = "创建定时收集";
 cmd_collection_create.help = "【管理员】创建定时收集\n创建定时收集 时间 项目名字\n时间格式：2000 或 20:00\n示例：创建定时收集 2000 心情调查";
 cmd_collection_create.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     const timeStr = cmdArgs.getArgN(1);
     const name = cmdArgs.getArgN(2);
     if (!timeStr || !name) {
@@ -6662,14 +5983,14 @@ cmd_collection_create.solve = (ctx, msg, cmdArgs) => {
     seal.replyToSender(ctx, msg, `✅ 定时收集「${name}」已创建，将于 ${formatHM(t.h, t.m)} 自动开启。`);
     return seal.ext.newCmdExecuteResult(true);
 };
-ext.cmdMap["创建定时收集"] = cmd_collection_create;
+// ext.cmdMap["创建定时收集"] = cmd_collection_create; (合入定时收集子命令)
 
 // 管理员：关闭定时收集
 let cmd_collection_close = seal.ext.newCmdItemInfo();
 cmd_collection_close.name = "关闭定时收集";
 cmd_collection_close.help = "【管理员】关闭并删除定时收集\n关闭定时收集 项目名字";
 cmd_collection_close.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     const name = cmdArgs.getArgN(1);
     if (!name) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
     const cols = getCollections();
@@ -6679,14 +6000,14 @@ cmd_collection_close.solve = (ctx, msg, cmdArgs) => {
     seal.replyToSender(ctx, msg, `✅ 定时收集「${name}」已关闭。`);
     return seal.ext.newCmdExecuteResult(true);
 };
-ext.cmdMap["关闭定时收集"] = cmd_collection_close;
+// ext.cmdMap["关闭定时收集"] = cmd_collection_close; (合入定时收集子命令)
 
 // 管理员：查看定时收集（无参数=列表，有参数=查看提交内容）
 let cmd_collection_list = seal.ext.newCmdItemInfo();
 cmd_collection_list.name = "查看定时收集";
 cmd_collection_list.help = "【管理员】查看定时收集\n查看定时收集          — 列出所有收集\n查看定时收集 项目名字  — 查看该项目的提交记录";
 cmd_collection_list.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     const cols = getCollections();
     const name = cmdArgs.getArgN(1);
 
@@ -6709,14 +6030,24 @@ cmd_collection_list.solve = (ctx, msg, cmdArgs) => {
     seal.replyToSender(ctx, msg, `📋「${name}」提交记录（共 ${subs.length} 条）：\n${lines.join("\n")}`);
     return seal.ext.newCmdExecuteResult(true);
 };
-ext.cmdMap["查看定时收集"] = cmd_collection_list;
+// ext.cmdMap["查看定时收集"] = cmd_collection_list; (合入定时收集子命令)
 
 // 玩家：提交定时收集内容
 let cmd_collection_submit = seal.ext.newCmdItemInfo();
 cmd_collection_submit.name = "定时收集";
 cmd_collection_submit.help = "提交定时收集内容\n定时收集 项目名字 内容\n示例：定时收集 心情调查 今天很开心！";
 cmd_collection_submit.solve = (ctx, msg, cmdArgs) => {
-    const name = cmdArgs.getArgN(1);
+    const sub = cmdArgs.getArgN(1);
+    if (sub === "查看") return cmd_collection_list.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
+    if (sub === "创建") {
+        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+        return cmd_collection_create.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
+    }
+    if (sub === "关闭") {
+        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+        return cmd_collection_close.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
+    }
+    const name = sub;
     if (!name) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
     const cols = getCollections();
     if (!cols[name]) return seal.replyToSender(ctx, msg, `❌ 找不到收集「${name}」。`);

@@ -25,61 +25,25 @@ if (!ext) {
 }
 
 // ========================
+// 配置常量
+// ========================
+const MONITOR_TIMEOUT_DEFAULT_MS = 10800000; // 3 小时
+const ADC_TURN_TIMEOUT_DEFAULT_MS = 3600000; // 1 小时
+const SETTING_POLL_INTERVAL_MS = 60000;      // 1 分钟
+
+// ========================
 // 核心依赖：读取主插件存储
 // ========================
 
-function getMainExt() {
-    const main = seal.ext.find('changri');
-    if (!main) {
-        console.error("❌ 设置系统错误：未找到主插件 changri，请检查主插件是否已加载");
-        return null;
-    }
-    return main;
-}
-
-// 主插件共享 API（globalThis.__changriApi，调用时懒获取）
-// 主插件已更新时全部委托给它；否则走兼容路径（直读主插件存储）
-function getApi() { return globalThis.__changriApi || null; }
-
-function mainStorGet(key) {
-    const api = getApi();
-    if (api) return api.kvGetRaw(key);
-    const m = getMainExt();
-    return m ? m.storageGet(key) : null;
-}
-
-function mainStorSet(key, val) {
-    const api = getApi();
-    if (api) { api.kvSetRaw(key, val); return; }
-    const m = getMainExt();
-    if (m) m.storageSet(key, val);
-}
-
-/**
- * 权限检查（依赖 changri 的管理员列表）
- */
-function isUserAdmin(ctx, msg) {
-    const api = getApi();
-    if (api) return api.isUserAdmin(ctx, msg);
-    if (ctx.privilegeLevel === 100) return true;
-
-    const main = getMainExt();
-    if (!main) return false;
-
-    try {
-        let rawAdmin = mainStorGet("a_adminList");
-        if (!rawAdmin) return false;
-
-        let a_adminList = JSON.parse(rawAdmin);
-        const parts = msg.sender.userId.split(':');
-        const platform = parts[0];
-        const pureUid = parts[1];
-
-        return a_adminList[platform] && a_adminList[platform].includes(pureUid);
-    } catch (e) {
-        return false;
-    }
-}
+// ========================
+// 核心依赖：主插件共享 API
+// ========================
+function getApi()              { return globalThis.__changriApi || null; }
+function mainStorGet(key)      { return getApi()?.kvGetRaw(key) ?? null; }
+function mainStorSet(key, val) { getApi()?.kvSetRaw(key, val); }
+function isUserAdmin(ctx, msg) { return getApi()?.isUserAdmin(ctx, msg) ?? false; }
+// 向后兼容：业务逻辑中 getMainExt() 仅作存在性守卫使用
+function getMainExt()          { return getApi(); }
 
 // 辅助：发送纯文本到指定群（不依赖 ws，使用 seal 内置方法）
 function sendTextToGroup(platform, gid, text) {
@@ -125,19 +89,12 @@ function handleApply(ctx, msg, rawMessage, paramHandler) {
 // ========================
 
 function getMainStorage(key, defaultValue) {
-    const main = getMainExt();
-    if (!main) return defaultValue;
     const val = mainStorGet(key);
-    // 增加 val.trim() 检查，防止解析空字符串导致的 EOF 错误
     if (val === null || val === undefined || val.trim() === "") return defaultValue;
     return val;
 }
 
-function setMainStorage(key, value) {
-    const main = getMainExt();
-    if (!main) return;
-    mainStorSet(key, value);
-}
+function setMainStorage(key, value) { mainStorSet(key, value); }
 
 // ========================
 // 设置配置辅助函数
@@ -171,23 +128,16 @@ function setPlaceSystemConfig(config) {
 function getAttackDefenseConfig() {
     const defaultConfig = { enabled: false };
     try {
-        const main = getMainExt();
-        if (!main) return defaultConfig;
+        if (!getApi()) return defaultConfig;
         const val = mainStorGet("attack_defense_config");
         return val ? { ...defaultConfig, ...JSON.parse(val) } : defaultConfig;
     } catch(e) { return defaultConfig; }
 }
 
-function setAttackDefenseConfig(config) {
-    const main = getMainExt();
-    if (!main) return;
-    mainStorSet("attack_defense_config", JSON.stringify(config));
-}
+function setAttackDefenseConfig(config) { mainStorSet("attack_defense_config", JSON.stringify(config)); }
 
 // DLC 检查
 function isDLC(key) {
-    const main = getMainExt();
-    if (!main) return false;
     try { return JSON.parse(mainStorGet('global_feature_toggle') || '{}')[key] === true; }
     catch(e) { return false; }
 }
@@ -358,11 +308,11 @@ settingsConfig['互动参数'] = {
           validate: (v) => { return ['精确', '累积'].includes(v) ? null : '请填写「精确」或「累积」'; },
           note: '精确=只能开当前时段；累积=可开当前及之前所有时段' },
         { label: '超时时间',
-          getter: () => { try { return String(Math.round((JSON.parse(getMainStorage('monitor_settings', '{}')).timeout || 10800000) / 60000)); } catch(e) { return '180'; } },
+          getter: () => { try { return String(Math.round((JSON.parse(getMainStorage('monitor_settings', '{}')).timeout || MONITOR_TIMEOUT_DEFAULT_MS) / 60000)); } catch(e) { return '180'; } },
           setter: (v) => { let c = {}; try { c = JSON.parse(getMainStorage('monitor_settings', '{}')); } catch(e) {} c.timeout = parseInt(v) * 60000; setMainStorage('monitor_settings', JSON.stringify(c)); },
           validate: (v) => { const n = parseInt(v); return (isNaN(n) || n < 1) ? "请填写分钟数（正整数）" : null; } },
         { label: '提醒间隔',
-          getter: () => { try { return String(Math.round((JSON.parse(getMainStorage('monitor_settings', '{}')).remind_interval || 10800000) / 60000)); } catch(e) { return '180'; } },
+          getter: () => { try { return String(Math.round((JSON.parse(getMainStorage('monitor_settings', '{}')).remind_interval || MONITOR_TIMEOUT_DEFAULT_MS) / 60000)); } catch(e) { return '180'; } },
           setter: (v) => { let c = {}; try { c = JSON.parse(getMainStorage('monitor_settings', '{}')); } catch(e) {} c.remind_interval = parseInt(v) * 60000; setMainStorage('monitor_settings', JSON.stringify(c)); },
           validate: (v) => { const n = parseInt(v); return (isNaN(n) || n < 1) ? "请填写分钟数（正整数）" : null; } },
     ]
@@ -584,7 +534,7 @@ settingsConfig['攻防设置'] = {
           validate: (v) => isNaN(parseInt(v)) ? "请填整数" : null },
         { label: '每日最大拒绝次数', ...adcParam('maxRefusals', 10, 'number'),
           validate: (v) => isNaN(parseInt(v)) ? "请填整数" : null },
-        { label: '单回合超时(毫秒)', ...adcParam('turnTimeout', 3600000, 'number') },
+        { label: '单回合超时(毫秒)', ...adcParam('turnTimeout', ADC_TURN_TIMEOUT_DEFAULT_MS, 'number') },
         { label: '默认回合数', ...adcParam('defaultTurns', 10, 'number') },
         { label: '逃脱成功率', ...adcParam('escapeRate', 30, 'number'),
           validate: (v) => { const n = parseInt(v); return (isNaN(n) || n < 0 || n > 100) ? "请填 0-100 整数" : null; } },
@@ -611,7 +561,7 @@ function ensureDefaults(main) {
         "sighting_system_config": JSON.stringify({ enabled: false, send_to_all: true, max_reports_per_day: 5, include_ended_meetings: false, time_overlap_threshold: 0.3 }),
         "place_system_config": JSON.stringify({ enabled: false, require_key_by_default: false }),
         "appointment_duration_config": JSON.stringify({ phone: 29, private: 59 }),
-        "monitor_settings": JSON.stringify({ enabled: true, timeout: 10800000, remind_interval: 10800000, auto_monitor_all_groups: true }),
+        "monitor_settings": JSON.stringify({ enabled: true, timeout: MONITOR_TIMEOUT_DEFAULT_MS, remind_interval: MONITOR_TIMEOUT_DEFAULT_MS, auto_monitor_all_groups: true }),
         // 固定开启项
         "wish_public_send": "true",
         "shop_gift_catalog_on_receive": "true",
@@ -667,7 +617,7 @@ function ensureDefaults(main) {
         "auction_broadcast": "true",
         "auction_show_top_bidder": "true",
         "auction_currency": "金币",
-        "attack_defense_config": JSON.stringify({ enabled: false, maxInitiations: 10, maxRefusals: 10, turnTimeout: 3600000, defaultTurns: 10, escapeRate: 30, forceParticipate: false, minPlayers: 2, manualStart: false }),
+        "attack_defense_config": JSON.stringify({ enabled: false, maxInitiations: 10, maxRefusals: 10, turnTimeout: ADC_TURN_TIMEOUT_DEFAULT_MS, defaultTurns: 10, escapeRate: 30, forceParticipate: false, minPlayers: 2, manualStart: false }),
         // 系统
         "global_days": "D99",
         "auto_day_reset_enabled": "false",
@@ -718,7 +668,7 @@ cmd_set_mailbox_limit.help = `配置不同游戏天数的心动信每日投稿�
 
 cmd_set_mailbox_limit.solve = function(ctx, msg, argv) {
     if (!isUserAdmin(ctx, msg)) {
-        seal.replyToSender(ctx, msg, "⚠️ 该指令仅限管理员使用");
+        seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
         return seal.ext.newCmdExecuteResult(true);
     }
 
@@ -948,7 +898,7 @@ let cmd_set_days = seal.ext.newCmdItemInfo();
 cmd_set_days.name = "设置天数";
 cmd_set_days.help = "。设置天数 D1 —— 设置全局天数，自动清空所有会面计数、信件计数、寄信限制、心愿池和心动信池\n示例：\n。设置天数 D2\n。设置天数 D3";
 cmd_set_days.solve = (ctx, msg, args) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "⚠️ 该指令仅限骰主或管理员使用"), seal.ext.newCmdExecuteResult(true);
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅骰主或管理员可用。"), seal.ext.newCmdExecuteResult(true);
     let day = args.getArgN(1);
     if (!day || !/^D\d+$/i.test(day)) return seal.replyToSender(ctx, msg, "⚠️ 请输入正确的天数格式，例如：。设置天数 D1"), seal.ext.newCmdExecuteResult(true);
     day = day.toUpperCase();
@@ -1049,7 +999,6 @@ function registerAutoDaySystem() {
         const main = getMainExt();
         if (!main) return;
         if (!isDLC('dlc_auto_day')) return;
-        if (!JSON.parse(mainStorGet("auto_day_reset_enabled") || "false")) return;
         const now = new Date();
         if (now.getHours() === 23 && now.getMinutes() === 59) {
             const todayKey = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
@@ -1060,19 +1009,30 @@ function registerAutoDaySystem() {
             performAutoDayReset(`D${parseInt(m[1])+1}`, now);
             mainStorSet("auto_day_last_reset", todayKey);
         }
-    }, 60000);
+    }, SETTING_POLL_INTERVAL_MS);
 }
 
 // ========================
 // 自动天数开关指令
 // ========================
 
+function setDLC(key, value) {
+    try {
+        const ft = JSON.parse(mainStorGet('global_feature_toggle') || '{}');
+        ft[key] = value;
+        mainStorSet('global_feature_toggle', JSON.stringify(ft));
+    } catch(e) {}
+}
+
 let cmd_enable_auto_day = seal.ext.newCmdItemInfo();
 cmd_enable_auto_day.name = "开启自动天数";
 cmd_enable_auto_day.solve = (ctx, msg) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "权限不足");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     const main = getMainExt();
-    if (main) mainStorSet("auto_day_reset_enabled", "true");
+    if (main) {
+        setDLC('dlc_auto_day', true);
+        mainStorSet("auto_day_reset_enabled", "true");
+    }
     seal.replyToSender(ctx, msg, "✅ 自动天数推进已开启，每天 23:59 自动将天数 +1 并清空计数");
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -1081,9 +1041,12 @@ ext.cmdMap["开启自动天数"] = cmd_enable_auto_day;
 let cmd_disable_auto_day = seal.ext.newCmdItemInfo();
 cmd_disable_auto_day.name = "关闭自动天数";
 cmd_disable_auto_day.solve = (ctx, msg) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "权限不足");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     const main = getMainExt();
-    if (main) mainStorSet("auto_day_reset_enabled", "false");
+    if (main) {
+        setDLC('dlc_auto_day', false);
+        mainStorSet("auto_day_reset_enabled", "false");
+    }
     seal.replyToSender(ctx, msg, "⏸️ 自动天数推进已关闭");
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -1124,7 +1087,7 @@ or
 
 cmd_end_bonus.solve = function(ctx, msg, argv) {
     if (!isUserAdmin(ctx, msg)) {
-        seal.replyToSender(ctx, msg, "❌ 权限不足");
+        seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
         return seal.ext.newCmdExecuteResult(true);
     }
 
@@ -1450,7 +1413,7 @@ cmd_settings.help = `【管理员】查看和管理各系统设置
 。设置 DLC          - 管理 DLC 模块开关`;
 
 cmd_settings.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
 
     const subCmd = cmdArgs.getArgN(1);
     const rawMsg = msg.message || "";
@@ -1544,7 +1507,7 @@ let cmd_init_settings = seal.ext.newCmdItemInfo();
 cmd_init_settings.name = "初始化设置";
 cmd_init_settings.help = "【管理员】一键补全缺失的系统默认配置（优先从存档 UI 拉取）\n使用方法：。初始化设置";
 cmd_init_settings.solve = async (ctx, msg, argv) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足");
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
 
     const main = getMainExt();
     if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件 changri");
@@ -1583,53 +1546,7 @@ cmd_init_settings.solve = async (ctx, msg, argv) => {
 
 ext.cmdMap["初始化设置"] = cmd_init_settings;
 
-// ========================
-// 同步设置指令（从 UI 强制拉取并覆盖所有配置）
-// ========================
-
-let cmd_sync_settings = seal.ext.newCmdItemInfo();
-cmd_sync_settings.name = "同步设置";
-cmd_sync_settings.help = "【管理员】从存档 UI 拉取并强制覆盖所有系统配置\n使用方法：。同步设置";
-cmd_sync_settings.solve = async (ctx, msg, argv) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足");
-
-    const main = getMainExt();
-    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件 changri");
-
-    const base = (seal.ext.getStringConfig(main, "RP存档服务器地址") || "").replace(/\/$/, "");
-    if (!base) return seal.replyToSender(ctx, msg, "❌ 未配置存档服务器地址（在海豹插件设置里填写）");
-
-    seal.replyToSender(ctx, msg, "⏳ 正在从 UI 拉取配置…");
-
-    try {
-        const config = await fetchServerConfig();
-        if (!config) {
-            seal.replyToSender(ctx, msg, "❌ 无法连接存档服务器，请检查地址和 Token");
-            return seal.ext.newCmdExecuteResult(true);
-        }
-
-        for (const [key, value] of Object.entries(config)) {
-            mainStorSet(key, String(value));
-        }
-
-        seal.replyToSender(ctx, msg,
-            `✅ 同步完成！已从 UI 更新 ${Object.keys(config).length} 项配置。\n` +
-            "所有设置已立即生效。"
-        );
-    } catch (e) {
-        seal.replyToSender(ctx, msg, `❌ 同步失败：${e.message}`);
-    }
-
-    return seal.ext.newCmdExecuteResult(true);
-};
-
-ext.cmdMap["同步设置"] = cmd_sync_settings;
-
-// ========================
-// 同步到服务端指令（机器人 → 存档 UI）
-// ========================
-
-// 与 CONFIG_SCHEMA 对应的直存键列表
+// 推送全部 使用的配置键列表
 const SYNC_DIRECT_KEYS = [
     "item_registry", "rpg_attr_defs", "sys_attr_presets",
     "love_show_name", "global_days", "auto_day_reset_enabled", "item_pool_mode",
@@ -1681,90 +1598,16 @@ const SYNC_JSON_PARENT_KEYS = {
     "custom_type_labels": ["私密", "电话", "官约", "微信", "心愿"],
 };
 
-let cmd_push_to_server = seal.ext.newCmdItemInfo();
-cmd_push_to_server.name = "同步到服务端";
-cmd_push_to_server.help = "【管理员】将机器人当前配置推送到存档 UI 服务器，UI 将显示最新数值\n使用方法：。同步到服务端";
-cmd_push_to_server.solve = async (ctx, msg, argv) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足");
-
-    const main = getMainExt();
-    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件 changri");
-
-    const base = (seal.ext.getStringConfig(main, "RP存档服务器地址") || "").replace(/\/$/, "");
-    const token = seal.ext.getStringConfig(main, "RP存档Token") || "";
-    if (!base) return seal.replyToSender(ctx, msg, "❌ 未配置存档服务器地址（在海豹插件设置里填写）");
-
-    seal.replyToSender(ctx, msg, "⏳ 正在推送配置到服务端…");
-
-    const payload = {};
-
-    // 直存键：直接读取
-    for (const key of SYNC_DIRECT_KEYS) {
-        const val = mainStorGet(key);
-        if (val !== null && val !== undefined && val !== "") {
-            payload[key] = val;
-        }
-    }
-
-    // json_parent 键：展开子字段，以 parent__subKey 格式写入
-    for (const [parent, subKeys] of Object.entries(SYNC_JSON_PARENT_KEYS)) {
-        const raw = mainStorGet(parent);
-        if (!raw) continue;
-        try {
-            const obj = JSON.parse(raw);
-            for (const subKey of subKeys) {
-                if (obj[subKey] !== undefined) {
-                    payload[`${parent}__${subKey}`] = String(obj[subKey]);
-                }
-            }
-        } catch (e) { console.warn(`[同步到服务端] 解析 ${parent} 失败: ${e.message}`); }
-    }
-
-    try {
-        const resp = await fetch(`${base}/api/sync_config`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "X-Archive-Token": token
-            },
-            body: JSON.stringify(payload)
-        });
-        if (resp.status === 401 || resp.status === 403) {
-            seal.replyToSender(ctx, msg, "❌ Token 无效或未配置，请检查插件设置里的「RP存档Token」");
-            return seal.ext.newCmdExecuteResult(true);
-        }
-        if (!resp.ok) {
-            seal.replyToSender(ctx, msg, `❌ 服务端返回错误：${resp.status}`);
-            return seal.ext.newCmdExecuteResult(true);
-        }
-        const result = await resp.json();
-        seal.replyToSender(ctx, msg,
-            `✅ 推送完成！已同步 ${result.synced || Object.keys(payload).length} 项配置到存档 UI。\n` +
-            "管理员打开后台配置页即可看到最新数值。"
-        );
-    } catch (e) {
-        seal.replyToSender(ctx, msg, `❌ 推送失败：${e.message}`);
-    }
-
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["同步到服务端"] = cmd_push_to_server;
 
 // ========================
-// 全量同步指令（配置 + 物品注册 + 结戏加成模版，一次推送全部）
+// 推送全部（bot → 网页端，一键全推）
+// 包含：配置设置、物品/装备注册表、结戏模版、池子、礼品库、待上载物品/装备
 // ========================
-const SYNC_BLOB_KEYS = [
-    "item_registry", "rpg_attr_defs", "sys_attr_presets",
-    "end_game_bonus_templates", "end_game_draw_config",
-    "equipment_registry", "equipment_slots", "equipment_slot_names",
-    "trade_whitelist"
-];
-
-let cmd_full_sync = seal.ext.newCmdItemInfo();
-cmd_full_sync.name = "全量上传";
-cmd_full_sync.help = "【管理员】将机器人所有配置（设置项 + 物品注册 + 结戏加成模版）全部推送到存档 UI\n使用方法：。全量上传";
-cmd_full_sync.solve = async (ctx, msg, argv) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足");
+let cmd_push_all = seal.ext.newCmdItemInfo();
+cmd_push_all.name = "推送全部";
+cmd_push_all.help = "【管理员】将机器人所有数据一次性推送到存档网页端\n使用方法：。推送全部";
+cmd_push_all.solve = async (ctx, msg, argv) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
 
     const main = getMainExt();
     if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件 changri");
@@ -1773,8 +1616,11 @@ cmd_full_sync.solve = async (ctx, msg, argv) => {
     const token = seal.ext.getStringConfig(main, "RP存档Token") || "";
     if (!base) return seal.replyToSender(ctx, msg, "❌ 未配置存档服务器地址");
 
-    seal.replyToSender(ctx, msg, "⏳ 正在全量推送到服务端（配置 + 注册表 + 结戏模版）…");
+    seal.replyToSender(ctx, msg, "⏳ 正在推送所有数据到网页端…");
 
+    const authHeaders = { "Content-Type": "application/json", "X-Archive-Token": token };
+
+    // ── 构建 sync_config payload ───────────────────────────────────────────────
     const payload = {};
 
     // 直存配置键
@@ -1792,35 +1638,38 @@ cmd_full_sync.solve = async (ctx, msg, argv) => {
             for (const subKey of subKeys) {
                 if (obj[subKey] !== undefined) payload[`${parent}__${subKey}`] = String(obj[subKey]);
             }
-        } catch (e) { console.warn(`[全量同步] 解析 ${parent} 失败: ${e.message}`); }
+        } catch (e) { console.warn(`[推送全部] 解析 ${parent} 失败: ${e.message}`); }
     }
 
-    // blob 键（物品注册、结戏模版等）
-    for (const key of SYNC_BLOB_KEYS) {
+    // blob 键（物品注册、结戏模版、礼品库等）
+    const PUSH_ALL_BLOB_KEYS = [
+        "item_registry", "rpg_attr_defs", "sys_attr_presets",
+        "end_game_bonus_templates", "end_game_draw_config",
+        "equipment_registry", "equipment_slots", "equipment_slot_names",
+        "trade_whitelist", "preset_gifts",
+        "private_appointment_aliases",
+        "available_places", "place_keys",
+    ];
+    for (const key of PUSH_ALL_BLOB_KEYS) {
         const val = mainStorGet(key);
         if (val !== null && val !== undefined && val !== "") payload[key] = val;
     }
 
-    // 处理网页端待同步物品：从服务端取 pending → 分配编号 → merge 进 item_registry
+    // 处理网页端待上载物品
     let pendingMerged = 0;
     try {
-        const pendingResp = await fetch(`${base}/api/pending_items`, {
-            headers: { "X-Archive-Token": token }
-        });
+        const pendingResp = await fetch(`${base}/api/pending_items`, { headers: { "X-Archive-Token": token } });
         if (pendingResp.ok) {
             const pendingData = await pendingResp.json();
             const pending = pendingData.pending || [];
             if (pending.length > 0) {
                 const reg = JSON.parse(mainStorGet("item_registry") || "{}");
                 for (const p of pending) {
-                    // 跳过名称已存在的
                     if (Object.values(reg).some(r => r.name === p.name)) continue;
-                    // 分配编号
                     const codePrefix = p.type === "interact" ? "INTER_" : "ITEM_";
-                    const padLen = 3;
                     let code = null;
                     for (let d = 1; d < 10000; d++) {
-                        const c = codePrefix + String(d).padStart(padLen, "0");
+                        const c = codePrefix + String(d).padStart(3, "0");
                         if (!reg[c]) { code = c; break; }
                     }
                     if (!code) continue;
@@ -1832,19 +1681,14 @@ cmd_full_sync.solve = async (ctx, msg, argv) => {
                 mainStorSet("item_registry", JSON.stringify(reg));
                 payload["item_registry"] = JSON.stringify(reg);
             }
-            // 无论是否有 pending，都清空服务端的待同步列表
             payload["item_registry_pending"] = "[]";
         }
-    } catch (e) {
-        console.warn(`[全量同步] 处理待上载物品失败: ${e.message}`);
-    }
+    } catch (e) { console.warn(`[推送全部] 处理待上载物品失败: ${e.message}`); }
 
-    // 处理网页端待同步装备：从服务端取 pending → 分配编号 → merge 进 equipment_registry
+    // 处理网页端待上载装备
     let equipPendingMerged = 0;
     try {
-        const equipPendingResp = await fetch(`${base}/api/pending_equips`, {
-            headers: { "X-Archive-Token": token }
-        });
+        const equipPendingResp = await fetch(`${base}/api/pending_equips`, { headers: { "X-Archive-Token": token } });
         if (equipPendingResp.ok) {
             const equipPendingData = await equipPendingResp.json();
             const equipPending = equipPendingData.pending || [];
@@ -1858,7 +1702,6 @@ cmd_full_sync.solve = async (ctx, msg, argv) => {
                         if (!equipReg[c]) { code = c; break; }
                     }
                     if (!code) continue;
-                    // 将 baseAttrs 字符串解析成对象
                     const baseAttrs = {};
                     if (p.baseAttrs) {
                         p.baseAttrs.split(",").forEach(seg => {
@@ -1876,37 +1719,196 @@ cmd_full_sync.solve = async (ctx, msg, argv) => {
             }
             payload["equipment_registry_pending"] = "[]";
         }
-    } catch (e) {
-        console.warn(`[全量同步] 处理待注册装备失败: ${e.message}`);
-    }
+    } catch (e) { console.warn(`[推送全部] 处理待注册装备失败: ${e.message}`); }
 
+    // ── 推送配置+注册表+模版+礼品库 ──────────────────────────────────────────
+    let configSynced = 0;
     try {
         const resp = await fetch(`${base}/api/sync_config`, {
             method: "POST",
-            headers: { "Content-Type": "application/json", "X-Archive-Token": token },
+            headers: authHeaders,
             body: JSON.stringify(payload)
         });
         if (resp.status === 401 || resp.status === 403) {
             seal.replyToSender(ctx, msg, "❌ Token 无效或未配置，请检查插件设置里的「RP存档Token」");
             return seal.ext.newCmdExecuteResult(true);
         }
-        if (!resp.ok) {
-            seal.replyToSender(ctx, msg, `❌ 服务端返回错误：${resp.status}`);
-            return seal.ext.newCmdExecuteResult(true);
-        }
+        if (!resp.ok) throw new Error(`sync_config 返回 ${resp.status}`);
         const result = await resp.json();
-        const pendingNote = pendingMerged > 0 ? `\n📦 已为 ${pendingMerged} 件待上载物品分配编号并合并。` : "";
-        seal.replyToSender(ctx, msg,
-            `✅ 全量推送完成！已同步 ${result.synced || Object.keys(payload).length} 项到存档 UI。\n` +
-            "配置设置、物品注册表、结戏加成模版均已更新。" + pendingNote
-        );
+        configSynced = result.synced || Object.keys(payload).length;
     } catch (e) {
-        seal.replyToSender(ctx, msg, `❌ 推送失败：${e.message}`);
+        seal.replyToSender(ctx, msg, `❌ 配置推送失败：${e.message}`);
+        return seal.ext.newCmdExecuteResult(true);
     }
+
+    // ── 推送池子 ─────────────────────────────────────────────────────────────
+    let poolCount = 0;
+    let poolErr = null;
+    try {
+        let poolDefs = {}, poolDrawCfg = { total: null, pools: {} };
+        try { poolDefs    = JSON.parse(mainStorGet("pool_definitions") || "{}"); } catch(e) {}
+        try { poolDrawCfg = JSON.parse(mainStorGet("pool_draw_config")  || "{}"); } catch(e) {}
+        poolCount = Object.keys(poolDefs).length;
+        const resp = await fetch(`${base}/api/pool_config`, {
+            method: "POST",
+            headers: authHeaders,
+            body: JSON.stringify({ pool_definitions: poolDefs, pool_draw_config: poolDrawCfg })
+        });
+        if (!resp.ok) throw new Error(`pool_config 返回 ${resp.status}`);
+        const data = await resp.json();
+        if (!data.ok) throw new Error(data.error || "未知错误");
+    } catch (e) {
+        poolErr = e.message;
+    }
+
+    // ── 推送拍卖快照 ─────────────────────────────────────────────────────────
+    let auctionErr = null;
+    let auctionCount = 0;
+    try {
+        const auctionData = JSON.parse(mainStorGet("auction_items") || "{}");
+        auctionCount = Object.keys(auctionData).length;
+        const resp = await fetch(`${base}/api/auction_snapshot`, {
+            method: "POST",
+            headers: authHeaders,
+            body: JSON.stringify({ snapshot: auctionData })
+        });
+        if (!resp.ok) throw new Error(`auction_snapshot 返回 ${resp.status}`);
+    } catch (e) {
+        auctionErr = e.message;
+    }
+
+    // ── 汇报结果 ─────────────────────────────────────────────────────────────
+    let msg_lines = [`✅ 推送全部完成！`];
+    msg_lines.push(`📋 配置+注册表+模版：${configSynced} 项`);
+    if (poolErr) {
+        msg_lines.push(`⚠️ 池子推送失败：${poolErr}`);
+    } else {
+        msg_lines.push(`🎲 池子：${poolCount} 个`);
+    }
+    if (auctionErr) {
+        msg_lines.push(`⚠️ 拍卖快照推送失败：${auctionErr}`);
+    } else {
+        msg_lines.push(`🔨 拍卖快照：${auctionCount} 件`);
+    }
+    if (pendingMerged > 0)      msg_lines.push(`📦 已合并 ${pendingMerged} 件待上载物品`);
+    if (equipPendingMerged > 0) msg_lines.push(`🛡️ 已合并 ${equipPendingMerged} 件待注册装备`);
+    seal.replyToSender(ctx, msg, msg_lines.join("\n"));
 
     return seal.ext.newCmdExecuteResult(true);
 };
-ext.cmdMap["全量上传"] = cmd_full_sync;
+ext.cmdMap["推送全部"] = cmd_push_all;
+
+// ========================
+// 拉取全部（网页端 → bot，一键全拉）
+// 包含：所有配置设置、物品/装备注册表、结戏模版、池子
+// ========================
+let cmd_pull_all = seal.ext.newCmdItemInfo();
+cmd_pull_all.name = "拉取全部";
+cmd_pull_all.help = "【管理员】将存档网页端所有数据一次性拉取到机器人\n使用方法：。拉取全部";
+cmd_pull_all.solve = async (ctx, msg, argv) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+
+    const main = getMainExt();
+    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件 changri");
+
+    const base  = (seal.ext.getStringConfig(main, "RP存档服务器地址") || "").replace(/\/$/, "");
+    const token = seal.ext.getStringConfig(main, "RP存档Token") || "";
+    if (!base) return seal.replyToSender(ctx, msg, "❌ 未配置存档服务器地址（在海豹插件设置里填写）");
+
+    seal.replyToSender(ctx, msg, "⏳ 正在从网页端拉取所有数据…");
+
+    const headers = { "X-Archive-Token": token };
+
+    // ── 拉取配置+注册表+模版 ─────────────────────────────────────────────────
+    let configCount = 0;
+    try {
+        const resp = await fetch(`${base}/api/config`, { headers });
+        if (!resp.ok) throw new Error(`/api/config 返回 ${resp.status}`);
+        const config = await resp.json();
+        for (const [key, value] of Object.entries(config)) {
+            mainStorSet(key, String(value));
+        }
+        configCount = Object.keys(config).length;
+    } catch (e) {
+        seal.replyToSender(ctx, msg, `❌ 配置拉取失败：${e.message}`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // ── 拉取池子 ─────────────────────────────────────────────────────────────
+    let poolCount = 0;
+    let poolErr = null;
+    try {
+        const resp = await fetch(`${base}/api/pool_config`, { headers });
+        if (!resp.ok) throw new Error(`/api/pool_config 返回 ${resp.status}`);
+        const data = await resp.json();
+        if (!data.ok) throw new Error(data.error || "未知错误");
+        const defs = data.pool_definitions || {};
+        const cfg  = data.pool_draw_config  || { total: null, pools: {} };
+        mainStorSet("pool_definitions", JSON.stringify(defs));
+        mainStorSet("pool_draw_config",  JSON.stringify(cfg));
+        poolCount = Object.keys(defs).length;
+    } catch (e) {
+        poolErr = e.message;
+    }
+
+    // ── 拉取拍卖队列 ─────────────────────────────────────────────────────────
+    let auctionActivated = 0;
+    let auctionFailed = 0;
+    let auctionErr = null;
+    try {
+        const resp = await fetch(`${base}/api/auction_queue`, { headers });
+        if (!resp.ok) throw new Error(`auction_queue 返回 ${resp.status}`);
+        const data = await resp.json();
+        if (!data.ok) throw new Error(data.error || "未知错误");
+        const queue = data.queue || [];
+        if (queue.length > 0) {
+            let auctionData = {};
+            try { auctionData = JSON.parse(mainStorGet("auction_items") || "{}"); } catch(e) {}
+            let reg = {};
+            try { reg = JSON.parse(mainStorGet("item_registry") || "{}"); } catch(e) {}
+            const now = Date.now();
+            let nextId = Object.keys(auctionData).length + 1;
+            for (const item of queue) {
+                const regItem = Object.values(reg).find(r => r.code === item.code);
+                if (!regItem) { auctionFailed++; continue; }
+                const id = `A${String(nextId).padStart(3, "0")}`;
+                nextId++;
+                auctionData[id] = {
+                    id, code: regItem.code, name: regItem.name, desc: regItem.desc || "",
+                    startPrice: item.startPrice, minIncrement: item.minIncrement,
+                    durationHours: item.durationHours, expireHours: item.expireHours || null,
+                    canResell: regItem.allowSecondhand === true,
+                    startTime: now, endTime: now + item.durationHours * 3600 * 1000,
+                    bids: [], status: "active", winner: null
+                };
+                auctionActivated++;
+            }
+            if (auctionActivated > 0) mainStorSet("auction_items", JSON.stringify(auctionData));
+            await fetch(`${base}/api/auction_queue`, { method: "DELETE", headers });
+        }
+    } catch (e) {
+        auctionErr = e.message;
+    }
+
+    // ── 汇报结果 ─────────────────────────────────────────────────────────────
+    let msg_lines = [`✅ 拉取全部完成！`];
+    msg_lines.push(`📋 配置+注册表+模版：${configCount} 项已覆盖`);
+    if (poolErr) {
+        msg_lines.push(`⚠️ 池子拉取失败：${poolErr}`);
+    } else {
+        msg_lines.push(`🎲 池子：${poolCount} 个已覆盖`);
+    }
+    if (auctionErr) {
+        msg_lines.push(`⚠️ 拍卖队列拉取失败：${auctionErr}`);
+    } else if (auctionActivated > 0) {
+        msg_lines.push(`🔨 拍卖队列：激活 ${auctionActivated} 件${auctionFailed > 0 ? `，${auctionFailed} 件找不到物品码` : ""}`);
+    }
+    msg_lines.push(`所有设置已立即生效。`);
+    seal.replyToSender(ctx, msg, msg_lines.join("\n"));
+
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["拉取全部"] = cmd_pull_all;
 
 // ── 同步指南 ──────────────────────────────────────────────────────────────────
 
@@ -2020,7 +2022,7 @@ cmd_pull_archive.name = "拉存档";
 cmd_pull_archive.help = "【管理员】将最新存档 ZIP 上传到公告群文件\n用法：。拉存档\n说明：需先在 RP 存档后台点击「下载 ZIP」生成存档，然后用此指令推送到公告群。";
 cmd_pull_archive.solve = async (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) {
-        seal.replyToSender(ctx, msg, "❌ 该指令仅限管理员使用");
+        seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
         return seal.ext.newCmdExecuteResult(true);
     }
 
@@ -2094,7 +2096,7 @@ cmd_random_group.name = "随机分组";
 cmd_random_group.help = "用法：.随机分组 [数字] [bg]\n说明：将所有非NPC玩家随机分配到指定数量的组中。加 bg 尽量保证每组男女搭配。";
 cmd_random_group.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) {
-        seal.replyToSender(ctx, msg, "⚠️ 仅限管理员使用分组功能。");
+        seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
         return seal.ext.newCmdExecuteResult(true);
     }
 

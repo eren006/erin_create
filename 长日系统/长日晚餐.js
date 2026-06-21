@@ -25,6 +25,8 @@ if (!ext) {
     seal.ext.register(ext);
 }
 
+const DINNER_DISH_COUNT_BASE = 5; // 每餐基础菜品数量
+
 // 菜谱数据库
 const DINNER_MENUS = {
     "现代中餐": ["东坡肉", "宫保鸡丁", "清蒸鲈鱼", "麻婆豆腐", "蒜蓉西兰花", "腌笃鲜", "扬州炒饭", "北京烤鸭", "佛跳墙", "松鼠鳜鱼", "辣子鸡丁", "回锅肉", "地三鲜", "西湖牛肉羹", "糖醋排骨", "荷叶粉蒸肉", "白灼虾", "蚝油生菜", "黑椒牛柳", "赛螃蟹", "开水白菜", "虫草花炖鸡汤", "蜜汁叉烧", "金汤肥牛", "蒜泥白肉", "响油鳝糊", "四喜丸子", "大煮干丝", "避风塘炒蟹", "文思豆腐", "酸菜鱼", "老鸭汤", "麻辣小龙虾", "西湖醋鱼", "金牌脆皮乳鸽", "剁椒鱼头", "上汤娃娃菜", "干炒牛河", "XO酱爆龙虾", "陈皮红豆沙", "杨枝甘露"],
@@ -36,85 +38,18 @@ const DINNER_MENUS = {
 };
 
 // ========================
-// 核心逻辑：主插件共享 API（globalThis.__changriApi，调用时懒获取）
-// 主插件已更新时全部委托给它；否则走兼容路径（直读主插件存储）
+// 核心依赖：主插件共享 API
 // ========================
-function getApi() { return globalThis.__changriApi || null; }
+function getApi()              { return globalThis.__changriApi || null; }
+function mainStorGet(key)      { return getApi()?.kvGetRaw(key) ?? null; }
+function mainStorSet(key, val) { getApi()?.kvSetRaw(key, val); }
+function isUserAdmin(ctx, msg) { return getApi()?.isUserAdmin(ctx, msg) ?? false; }
 
-function mainStorGet(key) {
-    const api = getApi();
-    if (api) return api.kvGetRaw(key);
-    const m = seal.ext.find('changri');
-    return m ? m.storageGet(key) : null;
-}
-
-function mainStorSet(key, val) {
-    const api = getApi();
-    if (api) { api.kvSetRaw(key, val); return; }
-    const m = seal.ext.find('changri');
-    if (m) m.storageSet(key, val);
-}
-
-function getChangriPrimaryUid(crExt, platform, uid) {
-    const api = getApi();
-    if (api) return api.getPrimaryUid(platform, uid);
-    try {
-        const extras = JSON.parse(mainStorGet("extra_accounts") || "{}");
-        return extras[`${platform}:${uid}`] || uid;
-    } catch (e) { return uid; }
-}
-
+// 保留旧语义：角色表为空时回退昵称
 function getChangriRoleName(ctx, msg) {
     const api = getApi();
-    if (api) {
-        // 保留旧语义：主存储里完全没有角色表时回退昵称
-        if (!api.kvGetRaw("a_private_group")) return msg.sender.nickname;
-        return api.getRoleName(ctx, msg);
-    }
-    let crExt = seal.ext.find('changri');
-    if (!crExt) {
-        return msg.sender.nickname;
-    }
-
-    try {
-        let rawData = mainStorGet("a_private_group");
-        if (!rawData) return msg.sender.nickname;
-
-        let charPlatform = JSON.parse(rawData);
-        // 去除平台前缀，得到纯 uid，并解析辅助账号为主账号
-        const platform = msg.platform || Object.keys(charPlatform)[0] || "QQ";
-        const rawUid = msg.sender.userId.replace(/^[a-z]+:/i, "");
-        const currentUid = getChangriPrimaryUid(crExt, platform, rawUid);
-
-        // 新结构：key=uid，value[0]=roleName
-        return charPlatform[platform]?.[currentUid]?.[0] || null;
-    } catch (e) {
-        console.log("晚餐系统读取主插件数据失败: " + e.message);
-    }
-    return msg.sender.nickname;
-}
-
-// 权限检查
-function isUserAdmin(ctx, msg) {
-    const api = getApi();
-    if (api) return api.isUserAdmin(ctx, msg);
-    if (ctx.privilegeLevel === 100) return true;
-
-    const platform = msg.platform;
-    const uid = msg.sender.userId.replace(`${platform}:`, "");
-
-    let crExt = seal.ext.find('changri');
-    if (!crExt) return false;
-
-    try {
-        let rawAdmin = mainStorGet("a_adminList");
-        if (!rawAdmin) return false;
-
-        let a_adminList = JSON.parse(rawAdmin);
-        return a_adminList[platform] && a_adminList[platform].includes(uid);
-    } catch (e) {
-        return false;
-    }
+    if (!api) return msg.sender.nickname;
+    return api.getRoleName(ctx, msg) ?? msg.sender.nickname;
 }
 
 // ========================
@@ -223,7 +158,7 @@ cmd_start.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    let dishes = (era === "无菜") ? [] : (DINNER_MENUS[era] || ["家常小菜"]).slice().sort(() => 0.5 - Math.random()).slice(0, 5 + Math.floor(num / 3));
+    let dishes = (era === "无菜") ? [] : (DINNER_MENUS[era] || ["家常小菜"]).slice().sort(() => 0.5 - Math.random()).slice(0, DINNER_DISH_COUNT_BASE + Math.floor(num / 3));
 
     let data = {
         status: "开始",
@@ -339,7 +274,7 @@ cmd_start_bubble.help = "。开始泡泡 总数量 珊瑚数量 —— 管理员
 
 cmd_start_bubble.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) {
-        seal.replyToSender(ctx, msg, "该指令仅限管理员使用");
+        seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
         return seal.ext.newCmdExecuteResult(true);
     }
 
@@ -518,7 +453,7 @@ cmd_start_roulette.help = "。开始轮盘 [总弹巢数=6] [子弹数=1] ——
 
 cmd_start_roulette.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) {
-        seal.replyToSender(ctx, msg, "该指令仅限管理员使用");
+        seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
         return seal.ext.newCmdExecuteResult(true);
     }
 
@@ -736,7 +671,7 @@ cmd_end_game.name = "结束游戏";
 cmd_end_game.help = "。结束游戏 - 管理员强制结束当前进行的游戏（保留晚餐）";
 cmd_end_game.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) {
-        seal.replyToSender(ctx, msg, "该指令仅限管理员使用");
+        seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
         return seal.ext.newCmdExecuteResult(true);
     }
 
@@ -761,7 +696,7 @@ cmd_skip.name = "跳过";
 cmd_skip.help = "。跳过 - 管理员跳过当前玩家的回合（仅支持带轮次的游戏）";
 cmd_skip.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) {
-        seal.replyToSender(ctx, msg, "该指令仅限管理员使用");
+        seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
         return seal.ext.newCmdExecuteResult(true);
     }
 
@@ -1055,7 +990,7 @@ cmd_guard_set_locations.name = "巡逻设置地点";
 cmd_guard_set_locations.help = "。巡逻设置地点 地点1 地点2 ... —— 设置捉迷藏地点（至少2个，空格分隔，仅管理员）";
 cmd_guard_set_locations.solve = (ctx, msg, args) => {
   if (!isUserAdmin(ctx, msg)) {
-    seal.replyToSender(ctx, msg, "⚠️ 仅管理员可设置地点。");
+    seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     return seal.ext.newCmdExecuteResult(true);
   }
   const raw = args.getRestArgsFrom(1)?.trim();
@@ -1080,7 +1015,7 @@ cmd_guard_init.name = "巡逻开局";
 cmd_guard_init.help = "。巡逻开局 [群号] —— 开局，播报群优先读长日戏群，可手动传群号覆盖（仅管理员）";
 cmd_guard_init.solve = (ctx, msg, args) => {
   if (!isUserAdmin(ctx, msg)) {
-    seal.replyToSender(ctx, msg, "⚠️ 仅管理员可开局。");
+    seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     return seal.ext.newCmdExecuteResult(true);
   }
   const platform = msg.platform;
@@ -1179,7 +1114,7 @@ cmd_guard_call.name = "巡逻";
 cmd_guard_call.help = "。巡逻 —— 结算当前回合：卫兵数量在每轮+1（仅管理员）";
 cmd_guard_call.solve = (ctx, msg) => {
   if (!isUserAdmin(ctx, msg)) {
-    seal.replyToSender(ctx, msg, "⚠️ 仅管理员可结算巡逻。");
+    seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     return seal.ext.newCmdExecuteResult(true);
   }
   const state = _gg_getState();
@@ -1290,7 +1225,7 @@ cmd_guard_end.name = "巡逻结束";
 cmd_guard_end.help = "。巡逻结束 —— 强制结束并清空赛局（仅管理员）";
 cmd_guard_end.solve = (ctx, msg) => {
   if (!isUserAdmin(ctx, msg)) {
-    seal.replyToSender(ctx, msg, "⚠️ 仅管理员可结束赛局。");
+    seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     return seal.ext.newCmdExecuteResult(true);
   }
   _gg_saveState({});
