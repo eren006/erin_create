@@ -22,14 +22,31 @@ if (!ext) {
 function getApi()                          { return globalThis.__changriApi || null; }
 function mainStorGet(key)                  { return getApi()?.kvGetRaw(key) ?? null; }
 function mainStorSet(key, val)             { getApi()?.kvSetRaw(key, val); }
+
+// JSON 对象读写：走主插件 kvGet/kvSet（带缓存与损坏容错），JSON key 一律用这两个函数
+function mainKvGet(key, def) { const api = getApi(); return api ? api.kvGet(key, def) : def; }
+function mainKvSet(key, val) { getApi()?.kvSet(key, val); }
 function getMainStorageInt(key, def)       { return getApi()?.getStorageInt(key, def) ?? def; }
 function isUserFeatureEnabled(uid, key, def = true) { return getApi()?.isUserFeatureEnabled(uid, key, def) ?? def; }
 function getPrimaryUid(platform, uid)      { return getApi()?.getPrimaryUid(platform, uid) ?? uid; }
 function getRoleName(ctx, msg)             { return getApi()?.getRoleName(ctx, msg) ?? null; }
 function getRoleUid(platform, roleName)    { return getApi()?.getUidByRoleName(platform, roleName) ?? null; }
 function isUserAdmin(ctx, msg)             { return getApi()?.isUserAdmin(ctx, msg) ?? false; }
+function ws(postData, ctx, msg, ok)        { return getApi()?.ws(postData, ctx, msg, ok); }
 // 向后兼容：存储辅助函数中 getMainExt() 仅作存在性守卫
 function getMainExt()                      { return getApi(); }
+
+// 群聊内以合并转发发送多段内容；私聊没有合并转发能力，退化为逐条普通消息
+function sendForwardOrPlain(ctx, msg, contents, nickname = "长日系统") {
+    if (!contents.length) return;
+    if (msg.groupId) {
+        const nodes = contents.map(content => ({ type: "node", data: { name: nickname, uin: "2852199344", content } }));
+        const targetGid = msg.groupId.replace(/[^\d]/g, "");
+        ws({ action: "send_group_forward_msg", params: { group_id: parseInt(targetGid, 10), messages: nodes } }, ctx, msg, "");
+    } else {
+        for (const content of contents) seal.replyToSender(ctx, msg, content);
+    }
+}
 
 // ========================
 // 存储辅助
@@ -37,11 +54,20 @@ function getMainExt()                      { return getApi(); }
 
 function getRegistry() {
     const main = getMainExt();
-    return main ? JSON.parse(mainStorGet("item_registry") || "{}") : {};
+    if (!main) return {};
+    const items = mainKvGet("item_registry", {});
+    const equips = mainKvGet("equipment_registry", {});
+    return Object.assign({}, items, equips);
 }
 function saveRegistry(reg) {
     const main = getMainExt();
-    if (main) mainStorSet("item_registry", JSON.stringify(reg));
+    if (!main) return;
+    // 只保存非装备条目到 item_registry，装备由 saveEquipRegistry 单独管理
+    const itemsOnly = {};
+    for (const [code, item] of Object.entries(reg)) {
+        if (item.type !== "equipment") itemsOnly[code] = item;
+    }
+    mainKvSet("item_registry", itemsOnly);
 }
 
 // RPG 属性定义：{ attrName: { min, max, default, desc } }
@@ -50,18 +76,18 @@ function getAttrDefs() {
     const main = getMainExt();
     if (!main) return {};
     let defs = {};
-    try { defs = JSON.parse(mainStorGet("rpg_attr_defs") || "{}"); } catch(e) {}
+    try { defs = mainKvGet("rpg_attr_defs", {}); } catch(e) {}
     if (!Object.keys(defs).length) {
         let migrated = false;
         for (const key of ["sys_attr_presets", "item_valid_attrs"]) {
             try {
-                const arr = JSON.parse(mainStorGet(key) || "[]");
+                const arr = mainKvGet(key, []);
                 if (Array.isArray(arr)) arr.forEach(n => { if (n && !defs[n]) { defs[n] = { min: null, max: null, default: 0, desc: "" }; migrated = true; } });
             } catch(e) {}
         }
         if (migrated) {
-            mainStorSet("rpg_attr_defs", JSON.stringify(defs));
-            mainStorSet("sys_attr_presets", JSON.stringify(Object.keys(defs)));
+            mainKvSet("rpg_attr_defs", defs);
+            mainKvSet("sys_attr_presets", Object.keys(defs));
         }
     }
     return defs;
@@ -69,19 +95,19 @@ function getAttrDefs() {
 function saveAttrDefs(defs) {
     const main = getMainExt();
     if (!main) return;
-    mainStorSet("rpg_attr_defs", JSON.stringify(defs));
+    mainKvSet("rpg_attr_defs", defs);
     // 保持 sys_attr_presets 同步，这样其他脚本调用时不会出错
-    mainStorSet("sys_attr_presets", JSON.stringify(Object.keys(defs)));
+    mainKvSet("sys_attr_presets", Object.keys(defs));
 }
 
 // 角色属性数值：{ roleName: { attrName: value } }
 function getCharAttrs() {
     const main = getMainExt();
-    return main ? JSON.parse(mainStorGet("sys_character_attrs") || "{}") : {};
+    return main ? mainKvGet("sys_character_attrs", {}) : {};
 }
 function saveCharAttrs(attrs) {
     const main = getMainExt();
-    if (main) mainStorSet("sys_character_attrs", JSON.stringify(attrs));
+    if (main) mainKvSet("sys_character_attrs", attrs);
 }
 
 function clampAttr(def, value) {
@@ -106,20 +132,20 @@ function saveValidAttrs(attrs) {
 // 合成系统
 function getCraftRecipes() {
     const main = getMainExt();
-    return main ? JSON.parse(mainStorGet("craft_recipes") || "{}") : {};
+    return main ? mainKvGet("craft_recipes", {}) : {};
 }
 function saveCraftRecipes(recipes) {
     const main = getMainExt();
-    if (main) mainStorSet("craft_recipes", JSON.stringify(recipes));
+    if (main) mainKvSet("craft_recipes", recipes);
 }
 
 function getInvAll() {
     const main = getMainExt();
-    return main ? JSON.parse(mainStorGet("global_inventories") || "{}") : {};
+    return main ? mainKvGet("global_inventories", {}) : {};
 }
 function saveInvAll(invs) {
     const main = getMainExt();
-    if (main) mainStorSet("global_inventories", JSON.stringify(invs));
+    if (main) mainKvSet("global_inventories", invs);
 }
 
 function pruneExpiredItems(roleKey) {
@@ -206,47 +232,47 @@ function getInvCount(roleKey, code) {
 
 function getPoolDefs() {
     const main = getMainExt();
-    return main ? JSON.parse(mainStorGet("pool_definitions") || "{}") : {};
+    return main ? mainKvGet("pool_definitions", {}) : {};
 }
 function savePoolDefs(defs) {
     const main = getMainExt();
-    if (main) mainStorSet("pool_definitions", JSON.stringify(defs));
+    if (main) mainKvSet("pool_definitions", defs);
 }
 
 function getDrawConfig() {
     const main = getMainExt();
-    return main ? JSON.parse(mainStorGet("pool_draw_config") || '{"total":2,"pools":{}}') : { total: 2, pools: {} };
+    return main ? mainKvGet("pool_draw_config", {"total":2,"pools":{}}) : { total: 2, pools: {} };
 }
 function saveDrawConfig(cfg) {
     const main = getMainExt();
-    if (main) mainStorSet("pool_draw_config", JSON.stringify(cfg));
+    if (main) mainKvSet("pool_draw_config", cfg);
 }
 
 function getShop() {
     const main = getMainExt();
-    return main ? JSON.parse(mainStorGet("shop_listings") || "[]") : [];
+    return main ? mainKvGet("shop_listings", []) : [];
 }
 function saveShop(shop) {
     const main = getMainExt();
-    if (main) mainStorSet("shop_listings", JSON.stringify(shop));
+    if (main) mainKvSet("shop_listings", shop);
 }
 
 function getMarket() {
     const main = getMainExt();
-    return main ? JSON.parse(mainStorGet("secondhand_market") || "{}") : {};
+    return main ? mainKvGet("secondhand_market", {}) : {};
 }
 function saveMarket(market) {
     const main = getMainExt();
-    if (main) mainStorSet("secondhand_market", JSON.stringify(market));
+    if (main) mainKvSet("secondhand_market", market);
 }
 
 function getMarketConfig() {
     const main = getMainExt();
-    return main ? JSON.parse(mainStorGet("market_config") || '{"fee":3,"enabled":true}') : { fee: 3, enabled: true };
+    return main ? mainKvGet("market_config", {"fee":3,"enabled":true}) : { fee: 3, enabled: true };
 }
 function saveMarketConfig(cfg) {
     const main = getMainExt();
-    if (main) mainStorSet("market_config", JSON.stringify(cfg));
+    if (main) mainKvSet("market_config", cfg);
 }
 
 // ========================
@@ -353,7 +379,7 @@ function modCharAttrs(platform, roleName, changesStr) {
 function getPlayerDrawRec(platform, uid) {
     const main = getMainExt();
     if (!main) return null;
-    const records = JSON.parse(mainStorGet("player_draw_records") || "{}");
+    const records = mainKvGet("player_draw_records", {});
     const key = `${platform}:${uid}`;
     let rec = records[key] || { day: "", used: {}, extra: {} };
     const currentDay = mainStorGet("global_days") || "";
@@ -365,7 +391,7 @@ function savePlayerDrawRec(records, key, rec) {
     const main = getMainExt();
     if (!main) return;
     records[key] = rec;
-    mainStorSet("player_draw_records", JSON.stringify(records));
+    mainKvSet("player_draw_records", records);
 }
 
 function canDraw(rec, config, poolName) {
@@ -422,11 +448,11 @@ function drawFromTierFree(tier) {
 
 function getPityCounters() {
     const main = getMainExt();
-    return main ? JSON.parse(mainStorGet("player_pity_counters") || "{}") : {};
+    return main ? mainKvGet("player_pity_counters", {}) : {};
 }
 function savePityCounters(counters) {
     const main = getMainExt();
-    if (main) mainStorSet("player_pity_counters", JSON.stringify(counters));
+    if (main) mainKvSet("player_pity_counters", counters);
 }
 function getPityCount(uid, poolName) {
     return (getPityCounters()[uid] || {})[poolName] || 0;
@@ -446,7 +472,7 @@ function setPityCount(uid, poolName, val) {
 function notifyPlayer(ctx, platform, roleName, text) {
     const main = getMainExt();
     if (!main) return;
-    const apg = JSON.parse(mainStorGet("a_private_group") || "{}");
+    const apg = mainKvGet("a_private_group", {});
     // 新结构：通过 roleName 反查 uid，再取 gid
     const uid = getRoleUid(platform, roleName);
     if (!uid) return;
@@ -536,10 +562,10 @@ function initPresetItems() {
 function logItemUsage(platform, roleName, code, itemName) {
     const main = getMainExt();
     if (!main) return;
-    const log = JSON.parse(mainStorGet("item_usage_log") || "[]");
+    const log = mainKvGet("item_usage_log", []);
     log.push({ timestamp: Date.now(), platform, roleName, code, name: itemName });
     if (log.length > 500) log.splice(0, log.length - 500);
-    mainStorSet("item_usage_log", JSON.stringify(log));
+    mainKvSet("item_usage_log", log);
 }
 
 // ========================
@@ -558,6 +584,7 @@ function formatItemEntry(entry, info) {
 
     let tags = "";
     if (info.type === "preset") tags += "🎯";
+    if (info.type === "equipment") tags += "⚔️";
     if (info.canResell === false) tags += "🔒";
     if (info.canResell === true) tags += "✨";
 
@@ -850,12 +877,24 @@ cmd_item_list.solve = (ctx, msg, cmdArgs) => {
         return true;
     });
     if (!entries.length) return seal.replyToSender(ctx, msg, `📋 暂无${filter === "全部" ? "" : filter}。`);
-    const lines = entries.map(e => {
+
+    const formatEntry = e => {
         const icon = e.type === "currency" ? "💰" : e.type === "preset" ? "⚙️" : "📦";
         const attrStr = e.attrs ? ` (${e.attrs})` : "";
         return `${icon} [${e.code}] ${e.name}${attrStr}\n   └ ${e.desc}`;
-    });
-    seal.replyToSender(ctx, msg, `📋 ${filter}列表（${entries.length}）：\n${lines.join("\n")}`);
+    };
+    const header = `📋 ${filter}列表（${entries.length}）：`;
+    const CHUNK_SIZE = 15;
+    if (entries.length <= CHUNK_SIZE) {
+        seal.replyToSender(ctx, msg, `${header}\n${entries.map(formatEntry).join("\n")}`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const nodeContents = [header];
+    for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
+        nodeContents.push(entries.slice(i, i + CHUNK_SIZE).map(formatEntry).join("\n"));
+    }
+    sendForwardOrPlain(ctx, msg, nodeContents, "物品管理员");
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["物品列表"] = cmd_item_list;
@@ -925,7 +964,7 @@ cmd_shop_add.solve = (ctx, msg, cmdArgs) => {
     if ((item.code === "SPEC_003" || item.code === "SPEC_004")) {
         const letterExt = seal.ext.find("changri");
         if (letterExt) {
-            const config = JSON.parse(mainStorGet("global_feature_toggle") || "{}");
+            const config = mainKvGet("global_feature_toggle", {});
             if (!config.enable_direct_letter) {
                 return seal.replyToSender(ctx, msg, `❌ 「${item.name}」只有在启用写信综模式后才能上架。`);
             }
@@ -1706,13 +1745,13 @@ ext.cmdMap["二手"] = cmd_market;
 // 💱 玩家直接议价交易
 // ========================
 function getTradeConfig() {
-    return getMainExt() ? JSON.parse(mainStorGet("trade_config") || '{"daily_limit":0,"cooldown_minutes":0}') : { daily_limit: 0, cooldown_minutes: 0 };
+    return getMainExt() ? mainKvGet("trade_config", {"daily_limit":0,"cooldown_minutes":0}) : { daily_limit: 0, cooldown_minutes: 0 };
 }
-function saveTradeConfig(cfg) { if (getMainExt()) mainStorSet("trade_config", JSON.stringify(cfg)); }
+function saveTradeConfig(cfg) { if (getMainExt()) mainKvSet("trade_config", cfg); }
 function getTradeUserStats() {
-    return getMainExt() ? JSON.parse(mainStorGet("trade_user_stats") || "{}") : {};
+    return getMainExt() ? mainKvGet("trade_user_stats", {}) : {};
 }
-function saveTradeUserStats(stats) { if (getMainExt()) mainStorSet("trade_user_stats", JSON.stringify(stats)); }
+function saveTradeUserStats(stats) { if (getMainExt()) mainKvSet("trade_user_stats", stats); }
 
 // 检查玩家是否可以参与交易；type="propose"只查冷却，"complete"还查每日上限
 function checkTradePlayerReady(platform, uid, type) {
@@ -1748,14 +1787,14 @@ function recordTradeCompletion(platform, uid) {
 }
 
 function getTradeWhitelist() {
-    return getMainExt() ? JSON.parse(mainStorGet("trade_whitelist") || "[]") : [];
+    return getMainExt() ? mainKvGet("trade_whitelist", []) : [];
 }
 
 function getTradeOffers() {
-    return getMainExt() ? JSON.parse(mainStorGet("trade_offers") || "{}") : {};
+    return getMainExt() ? mainKvGet("trade_offers", {}) : {};
 }
 function saveTradeOffers(o) {
-    if (getMainExt()) mainStorSet("trade_offers", JSON.stringify(o));
+    if (getMainExt()) mainKvSet("trade_offers", o);
 }
 function genTradeId(offers) {
     for (let i = 1; i <= 9999; i++) {
@@ -1846,7 +1885,7 @@ cmd_trade.solve = (ctx, msg, cmdArgs) => {
         return cmd_trade_config.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
     }
 
-    const toggle = JSON.parse(mainStorGet("global_feature_toggle") || "{}");
+    const toggle = mainKvGet("global_feature_toggle", {});
     if (!toggle.dlc_trade) return seal.replyToSender(ctx, msg, "❌ 议价交易功能未开启，请联系管理员。");
 
     const platform = msg.platform;
@@ -2294,7 +2333,7 @@ cmd_bag.solve = (ctx, msg, cmdArgs) => {
         if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
         if (!getMainExt()) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
         const n = parseInt(cmdArgs.getArgN(2)) || 20;
-        const log = JSON.parse(mainStorGet("item_usage_log") || "[]");
+        const log = mainKvGet("item_usage_log", []);
         const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
         const todayLog = log.filter(e => e.timestamp >= todayStart.getTime()).sort((a, b) => a.timestamp - b.timestamp);
         if (!todayLog.length) return seal.replyToSender(ctx, msg, "📭 今天还没有物品使用记录。");
@@ -2362,7 +2401,7 @@ ${lines.join("\n")}`);
             }
         }
         if (current) parts.push(current);
-        for (const part of parts) seal.replyToSender(ctx, msg, part);
+        sendForwardOrPlain(ctx, msg, parts, `${roleName}的背包`);
     }
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -2594,6 +2633,13 @@ cmd_delete_item.solve = (ctx, msg, cmdArgs) => {
     // 7. 删除物品定义
     delete reg[code];
     saveRegistry(reg);
+    // 装备类型同步从 equipment_registry 删除
+    const equipRegDel = getEquipRegistry();
+    if (equipRegDel[code]) {
+        delete equipRegDel[code];
+        saveEquipRegistry(equipRegDel);
+        log.push(`⚔️ 已同步删除装备注册`);
+    }
     log.push(`🗑️ 物品定义 [${code}]${name} 已删除`);
 
     seal.replyToSender(ctx, msg, `✅ 删除完成：\n${log.join("\n")}`);
@@ -2714,7 +2760,7 @@ cmd_special_use.solve = (ctx, msg, cmdArgs) => {
             timeRange = `${start}-${endH.toString().padStart(2,'0')}:${endM.toString().padStart(2,'0')}`;
         }
 
-        const b_confirmedSchedule = JSON.parse(mainStorGet("b_confirmedSchedule") || "{}");
+        const b_confirmedSchedule = mainKvGet("b_confirmedSchedule", {});
         const targetKey = `${platform}:${getPrimaryUid(platform, trackerTargetUid)}`;
         const matchingEvent = (b_confirmedSchedule[targetKey] || []).find(ev => ev.day === globalDay && timeOverlap(ev.time, timeRange));
         const successRate = getMainStorageInt("item_tracker_success_rate", 70);
@@ -2735,19 +2781,19 @@ cmd_special_use.solve = (ctx, msg, cmdArgs) => {
     if (item.code === "SPEC_002") {
         const placeName = cmdArgs.args.slice(1).join(' ').trim();
         if (!placeName) return seal.replyToSender(ctx, msg, "🔑 请指定要兑换钥匙的地点：特殊使用 万能钥匙 地点名");
-        const availablePlaces = JSON.parse(mainStorGet("available_places") || "{}");
+        const availablePlaces = mainKvGet("available_places", {});
         if (!availablePlaces[placeName]) {
             const placeList = Object.keys(availablePlaces).join("、") || "（暂无）";
             return seal.replyToSender(ctx, msg, `❌ 未找到地点「${placeName}」。\n📍 可用地点：${placeList}`);
         }
-        let placeKeys = JSON.parse(mainStorGet("place_keys") || "{}");
+        let placeKeys = mainKvGet("place_keys", {});
         if (!placeKeys[platform]) placeKeys[platform] = {};
         if (!placeKeys[platform][roleName]) placeKeys[platform][roleName] = [];
         if (placeKeys[platform][roleName].includes(placeName))
             return seal.replyToSender(ctx, msg, `🔑 你已经拥有「${placeName}」的钥匙了。`);
         if (!removeFromInv(roleKey, "SPEC_002", 1)) return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的万能钥匙。");
         placeKeys[platform][roleName].push(placeName);
-        mainStorSet("place_keys", JSON.stringify(placeKeys));
+        mainKvSet("place_keys", placeKeys);
         return seal.replyToSender(ctx, msg, `🔑 成功兑换「${placeName}」的钥匙！（万能钥匙已消耗）`);
     }
 
@@ -2755,16 +2801,16 @@ cmd_special_use.solve = (ctx, msg, cmdArgs) => {
     if (item.code === "SPEC_003" || item.code === "SPEC_004") {
         const targetName = cmdArgs.getArgN(2);
         if (!targetName) return seal.replyToSender(ctx, msg, `✉️ 请指定目标：特殊使用 ${item.name} 角色名`);
-        const featureToggle = JSON.parse(mainStorGet("global_feature_toggle") || "{}");
+        const featureToggle = mainKvGet("global_feature_toggle", {});
         if (!featureToggle.enable_direct_letter) return seal.replyToSender(ctx, msg, "✉️ 发送信件功能未启用。");
-        const apg = JSON.parse(mainStorGet("a_private_group") || "{}");
+        const apg = mainKvGet("a_private_group", {});
         if (!Object.values(apg[platform] || {}).some(v => v[0] === targetName)) return seal.replyToSender(ctx, msg, `❌ 未找到目标角色「${targetName}」。`);
         if (!removeFromInv(roleKey, item.code, 1)) return seal.replyToSender(ctx, msg, `❌ 背包中没有可用的「${item.name}」。`);
         const effectsKey = item.code === "SPEC_003" ? "letter_telescope_effects" : "letter_quill_pen_effects";
-        const effects = JSON.parse(mainStorGet(effectsKey) || "{}");
+        const effects = mainKvGet(effectsKey, {});
         if (!effects[targetName]) effects[targetName] = [];
         effects[targetName].push({ applier: roleName, applyTime: Date.now(), itemCode: item.code });
-        mainStorSet(effectsKey, JSON.stringify(effects));
+        mainKvSet(effectsKey, effects);
         return seal.replyToSender(ctx, msg, `✅ 你已向「${targetName}」施加了「${item.name}」！`);
     }
 
@@ -2791,13 +2837,13 @@ cmd_special_use.solve = (ctx, msg, cmdArgs) => {
 
         if (!removeFromInv(roleKey, "SPEC_005", 1)) return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的捕鼠器。");
 
-        let a_lockedSlots = JSON.parse(mainStorGet("a_lockedSlots") || "{}");
+        let a_lockedSlots = mainKvGet("a_lockedSlots", {});
         if (!a_lockedSlots[targetKey]) a_lockedSlots[targetKey] = {};
         if (!a_lockedSlots[targetKey][globalDay]) a_lockedSlots[targetKey][globalDay] = [];
         if (!a_lockedSlots[targetKey][globalDay].includes(timeRange)) {
             a_lockedSlots[targetKey][globalDay].push(timeRange);
         }
-        mainStorSet("a_lockedSlots", JSON.stringify(a_lockedSlots));
+        mainKvSet("a_lockedSlots", a_lockedSlots);
 
         notifyPlayer(ctx, platform, targetName, `🪤 你在 ${globalDay} ${timeRange} 踩中了捕鼠器，该时段内无法发起或接受私约、电话，也无法摘心愿。`);
         return seal.replyToSender(ctx, msg, `🪤 捕鼠器已激活！「${targetName}」在 ${globalDay} ${timeRange} 的行动被锁定。\n（捕鼠器已消耗）`);
@@ -2816,9 +2862,9 @@ cmd_special_use.solve = (ctx, msg, cmdArgs) => {
         if (!targetUid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${targetName}」。`);
         if (!removeFromInv(roleKey, "SPEC_006", 1)) return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的窃听器。");
 
-        const phoneTaps = JSON.parse(mainStorGet("phone_tap_effects") || "{}");
+        const phoneTaps = mainKvGet("phone_tap_effects", {});
         phoneTaps[targetName] = { ownerRoleName: roleName, platform, remainCount, blurProb };
-        mainStorSet("phone_tap_effects", JSON.stringify(phoneTaps));
+        mainKvSet("phone_tap_effects", phoneTaps);
 
         return seal.replyToSender(ctx, msg, `📡 窃听器已部署！\n目标：${targetName}\n最多截听：${remainCount} 条\n干扰率：${blurProb}%\n（窃听器已消耗）`);
     }
@@ -2836,9 +2882,9 @@ cmd_special_use.solve = (ctx, msg, cmdArgs) => {
         if (!targetUid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${targetName}」。`);
         if (!removeFromInv(roleKey, "SPEC_007", 1)) return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的截信器。");
 
-        const smsTaps = JSON.parse(mainStorGet("sms_tap_effects") || "{}");
+        const smsTaps = mainKvGet("sms_tap_effects", {});
         smsTaps[targetName] = { ownerRoleName: roleName, platform, remainCount, blurProb };
-        mainStorSet("sms_tap_effects", JSON.stringify(smsTaps));
+        mainKvSet("sms_tap_effects", smsTaps);
 
         return seal.replyToSender(ctx, msg, `📱 截信器已部署！\n目标：${targetName}\n最多截取：${remainCount} 条\n干扰率：${blurProb}%\n（截信器已消耗）`);
     }
@@ -2856,9 +2902,9 @@ cmd_special_use.solve = (ctx, msg, cmdArgs) => {
         if (!targetUid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${targetName}」。`);
         if (!removeFromInv(roleKey, "SPEC_008", 1)) return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的回音壁。");
 
-        const echoWalls = JSON.parse(mainStorGet("sms_echo_wall_effects") || "{}");
+        const echoWalls = mainKvGet("sms_echo_wall_effects", {});
         echoWalls[targetName] = { ownerRoleName: roleName, platform, remainCount, blurProb };
-        mainStorSet("sms_echo_wall_effects", JSON.stringify(echoWalls));
+        mainKvSet("sms_echo_wall_effects", echoWalls);
 
         return seal.replyToSender(ctx, msg, `🪞 回音壁已贴附！\n目标：${targetName}\n最多截取：${remainCount} 条\n干扰率：${blurProb}%\n（回音壁已消耗）`);
     }
@@ -3090,7 +3136,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
             const [, rolesPart, attrName, op, valsPart] = attrM;
             const main = getMainExt();
             if (!main) return;
-            const priv = JSON.parse(mainStorGet("a_private_group") || "{}")[platform] || {};
+            const priv = mainKvGet("a_private_group", {})[platform] || {};
             // 新结构：priv 以 uid 为 key，value[0] 是 roleName
             // roles 统一为 roleName 列表
             const roles = rolesPart === "全体"
@@ -3235,31 +3281,31 @@ function getAttackDefenseConfig() {
     const main = getMainExt();
     if (!main) return {};
     try {
-        return JSON.parse(mainStorGet("attack_defense_config") || "{}");
+        return mainKvGet("attack_defense_config", {});
     } catch(e) { return {}; }
 }
 
 function saveAttackDefenseConfig(config) {
     const main = getMainExt();
-    if (main) mainStorSet("attack_defense_config", JSON.stringify(config));
+    if (main) mainKvSet("attack_defense_config", config);
 }
 
 function getAttackDefenseData() {
     const main = getMainExt();
     if (!main) return { battles: {}, playerStats: {}, playerSkills: {} };
     try {
-        return JSON.parse(mainStorGet("attack_defense_data") || "{}");
+        return mainKvGet("attack_defense_data", {});
     } catch(e) { return { battles: {}, playerStats: {}, playerSkills: {} }; }
 }
 
 function saveAttackDefenseData(data) {
     const main = getMainExt();
-    if (main) mainStorSet("attack_defense_data", JSON.stringify(data));
+    if (main) mainKvSet("attack_defense_data", data);
 }
 
 // 技能定义由 rp_archive 管理端写入 skill_defs，机器人只读
 function getSkillDefs() {
-    try { return JSON.parse(mainStorGet("skill_defs") || "{}"); } catch(e) { return {}; }
+    try { return mainKvGet("skill_defs", {}); } catch(e) { return {}; }
 }
 
 // 玩家基础战斗属性（纯底值，不含装备加成）
@@ -3268,25 +3314,25 @@ function initPlayerBattleAttrs() {
 }
 
 function getPlayerBattleAttrs(name) {
-    const all = JSON.parse(mainStorGet("battle_attrs") || "{}");
+    const all = mainKvGet("battle_attrs", {});
     if (!all[name]) {
         all[name] = initPlayerBattleAttrs();
-        mainStorSet("battle_attrs", JSON.stringify(all));
+        mainKvSet("battle_attrs", all);
     }
     return all[name];
 }
 
 function savePlayerBattleAttrs(name, attrs) {
-    const all = JSON.parse(mainStorGet("battle_attrs") || "{}");
+    const all = mainKvGet("battle_attrs", {});
     all[name] = attrs;
-    mainStorSet("battle_attrs", JSON.stringify(all));
+    mainKvSet("battle_attrs", all);
 }
 
 function getPlayerSkills() {
-    return JSON.parse(mainStorGet("player_skills") || "{}");
+    return mainKvGet("player_skills", {});
 }
 function savePlayerSkills(skills) {
-    mainStorSet("player_skills", JSON.stringify(skills));
+    mainKvSet("player_skills", skills);
 }
 
 // ========================
@@ -3441,7 +3487,7 @@ function _degradeEquipDurabilityOnHit(battle, targetName) {
     const rk = (battle.roleKeys || {})[targetName] || targetName;
     const main = getMainExt();
     if (!main) return;
-    const allEquips = JSON.parse(mainStorGet("player_equipments") || "{}");
+    const allEquips = mainKvGet("player_equipments", {});
     const playerEquips = allEquips[rk];
     if (!playerEquips) return;
     const equipReg = getEquipRegistry();
@@ -3463,7 +3509,7 @@ function _degradeEquipDurabilityOnHit(battle, targetName) {
     }
     if (changed) {
         allEquips[rk] = playerEquips;
-        mainStorSet("player_equipments", JSON.stringify(allEquips));
+        mainKvSet("player_equipments", allEquips);
     }
     if (brokenNames.length) {
         if (!battle.battleLog) battle.battleLog = [];
@@ -3634,14 +3680,14 @@ function resolveBattleEnd(battle) {
     battle.winner = winner;
 
     // 写入战斗日志（供网页端查看）
-    const _log = JSON.parse(mainStorGet("battle_log") || "[]");
+    const _log = mainKvGet("battle_log", []);
     _log.unshift({
         id: battle.id, players: battle.players, winner: winner || null,
         turns: battle.currentTurn, actions: (battle.actions || []).length,
         endedAt: Date.now()
     });
     if (_log.length > 100) _log.length = 100;
-    mainStorSet("battle_log", JSON.stringify(_log));
+    mainKvSet("battle_log", _log);
 
     const lines = ["⚔️ ─ 战斗结束 ─"];
     if (winner) lines.push(`🏆 ${winner} 胜利！`);
@@ -4585,33 +4631,33 @@ function getEquipRegistry() {
     const main = getMainExt();
     if (!main) return {};
     try {
-        return JSON.parse(mainStorGet("equipment_registry") || "{}");
+        return mainKvGet("equipment_registry", {});
     } catch(e) { return {}; }
 }
 
 function saveEquipRegistry(reg) {
     const main = getMainExt();
-    if (main) mainStorSet("equipment_registry", JSON.stringify(reg));
+    if (main) mainKvSet("equipment_registry", reg);
 }
 
 function getEquipConfig() {
     const main = getMainExt();
     if (!main) return {};
     try {
-        return JSON.parse(mainStorGet("equipment_config") || "{}");
+        return mainKvGet("equipment_config", {});
     } catch(e) { return {}; }
 }
 
 function saveEquipConfig(config) {
     const main = getMainExt();
-    if (main) mainStorSet("equipment_config", JSON.stringify(config));
+    if (main) mainKvSet("equipment_config", config);
 }
 
 function getEquipSlots() {
     const main = getMainExt();
     if (!main) return ["head", "chest", "hand", "leg", "foot"];
     try {
-        const slots = JSON.parse(mainStorGet("equipment_slots") || "[]");
+        const slots = mainKvGet("equipment_slots", []);
         return slots.length > 0 ? slots : ["head", "chest", "hand", "leg", "foot"];
     } catch(e) {
         return ["head", "chest", "hand", "leg", "foot"];
@@ -4620,14 +4666,14 @@ function getEquipSlots() {
 
 function saveEquipSlots(slots) {
     const main = getMainExt();
-    if (main) mainStorSet("equipment_slots", JSON.stringify(slots));
+    if (main) mainKvSet("equipment_slots", slots);
 }
 
 function getSlotDisplayNames() {
     const main = getMainExt();
     if (!main) return {};
     try {
-        return JSON.parse(mainStorGet("equipment_slot_names") || "{}");
+        return mainKvGet("equipment_slot_names", {});
     } catch(e) {
         return {};
     }
@@ -4635,7 +4681,7 @@ function getSlotDisplayNames() {
 
 function saveSlotDisplayNames(names) {
     const main = getMainExt();
-    if (main) mainStorSet("equipment_slot_names", JSON.stringify(names));
+    if (main) mainKvSet("equipment_slot_names", names);
 }
 
 function getSlotDisplayName(slot) {
@@ -4647,14 +4693,14 @@ function getPlayerEquips(roleKey) {
     const main = getMainExt();
     if (!main) return null;
     try {
-        const data = JSON.parse(mainStorGet("player_equipments") || "{}");
+        const data = mainKvGet("player_equipments", {});
         if (!data[roleKey]) {
             const slots = getEquipSlots();
             data[roleKey] = {};
             slots.forEach(slot => {
                 data[roleKey][slot] = null;
             });
-            mainStorSet("player_equipments", JSON.stringify(data));
+            mainKvSet("player_equipments", data);
         }
         return data[roleKey];
     } catch(e) { return null; }
@@ -4664,9 +4710,9 @@ function savePlayerEquips(roleKey, equips) {
     const main = getMainExt();
     if (!main) return;
     try {
-        const data = JSON.parse(mainStorGet("player_equipments") || "{}");
+        const data = mainKvGet("player_equipments", {});
         data[roleKey] = equips;
-        mainStorSet("player_equipments", JSON.stringify(data));
+        mainKvSet("player_equipments", data);
     } catch(e) {}
 }
 
@@ -4720,7 +4766,7 @@ function getTotalEquipBonus(playerEquips, registry) {
 
 let cmd_equip = seal.ext.newCmdItemInfo();
 cmd_equip.name = "装备";
-cmd_equip.help = "装备或查看装备\n装备 <装备名或代码>    - 穿上装备\n脱装备 <槽位>          - 卸下装备\n查看装备                - 显示当前装备及属性加成\n装备列表                - 查看所有可用装备\n装备详情 <装备码>       - 查看装备详细信息\n\n💡 槽位由管理员定义，执行「槽位 查看」看可用槽位。";
+cmd_equip.help = "装备或查看装备\n装备 <装备名或代码>    - 穿上装备\n装备 脱 <槽位>         - 卸下装备\n查看装备                - 显示当前装备及属性加成\n装备列表                - 查看所有可用装备\n装备详情 <装备码>       - 查看装备详细信息\n\n💡 槽位由管理员定义，执行「槽位 查看」看可用槽位。";
 cmd_equip.solve = (ctx, msg, cmdArgs) => {
     const player = getRoleName(ctx, msg);
     if (!player) return seal.replyToSender(ctx, msg, "❌ 无法获取你的角色信息。");
@@ -4738,18 +4784,17 @@ cmd_equip.solve = (ctx, msg, cmdArgs) => {
     const roleKey = `${platform}:${uid}`;
 
     // 子命令路由：脱/注册/槽位/修复 合入
-    if (subCmd === "脱") return cmd_unequip.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
+    if (subCmd === "脱") return doUnequip(ctx, msg, cmdArgs.getArgN(2));
     if (subCmd === "注册") {
         if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
-        return cmd_register_equip.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
+        return doRegisterEquip(ctx, msg, cmdArgs.args.slice(1).join(' ').trim());
     }
     if (subCmd === "槽位") {
-        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
-        return cmd_equip_slots.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
+        return doEquipSlots(ctx, msg, cmdArgs.getArgN(2), cmdArgs.getArgN(3), cmdArgs.getArgN(4));
     }
     if (subCmd === "修复") {
         if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
-        return cmd_repair.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
+        return doRepair(ctx, msg, cmdArgs.getArgN(2), cmdArgs.getArgN(3));
     }
 
     // 查看装备
@@ -4807,6 +4852,28 @@ cmd_equip.solve = (ctx, msg, cmdArgs) => {
 
         const oldEquip = equips[slot];
 
+        // 检查背包持有
+        if (getInvCount(roleKey, equip.code) < 1) {
+            return seal.replyToSender(ctx, msg, `❌ 你的背包里没有 ${equip.name}，请先通过商城购买或获得后再装备。`);
+        }
+        removeFromInv(roleKey, equip.code, 1);
+
+        // 若原槽位有装备则归还背包
+        if (oldEquip && oldEquip.code) {
+            const oldDef = registry[oldEquip.code];
+            if (oldDef) {
+                const invs = getInvAll();
+                const inv = invs[roleKey] || [];
+                const returnEntry = { code: oldEquip.code, count: 1, remainingUses: -1 };
+                if (oldDef.durability != null && oldEquip.currentDurability !== undefined) {
+                    returnEntry.currentDurability = oldEquip.currentDurability;
+                }
+                inv.push(returnEntry);
+                invs[roleKey] = inv;
+                saveInvAll(invs);
+            }
+        }
+
         equips[slot] = { code: equip.code };
         if (equip.durability != null) equips[slot].currentDurability = equip.durability;
         savePlayerEquips(roleKey, equips);
@@ -4817,14 +4884,14 @@ cmd_equip.solve = (ctx, msg, cmdArgs) => {
         msg_text += `属性加成: ${bonusStr}`;
 
         if (oldEquip && oldEquip.code && registry[oldEquip.code]) {
-            msg_text += `\n\n(原装备 ${registry[oldEquip.code].name} 已卸下)`;
+            msg_text += `\n\n(原装备 ${registry[oldEquip.code].name} 已卸下并归还背包)`;
         }
 
         return seal.replyToSender(ctx, msg, msg_text);
     }
 
     // 列表
-    if (subCmd === "列表" || subCmd === "列表") {
+    if (subCmd === "列表") {
         if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
 
         const equips = Object.values(registry).filter(e => e.type === "equipment");
@@ -4882,14 +4949,10 @@ function getSlotEmoji(slot) {
 // 装备系统 - 玩家命令：脱装备
 // ========================
 
-let cmd_unequip = seal.ext.newCmdItemInfo();
-cmd_unequip.name = "脱装备";
-cmd_unequip.help = "卸下装备\n脱装备 <槽位>\n\n执行「槽位 查看」查看所有可用槽位。";
-cmd_unequip.solve = (ctx, msg, cmdArgs) => {
+function doUnequip(ctx, msg, slot) {
     const player = getRoleName(ctx, msg);
     if (!player) return seal.replyToSender(ctx, msg, "❌ 无法获取你的角色信息。");
 
-    const slot = cmdArgs.getArgN(1);
     if (!slot) return seal.replyToSender(ctx, msg, "❌ 请指定槽位。");
 
     const allSlots = getEquipSlots();
@@ -4911,29 +4974,37 @@ cmd_unequip.solve = (ctx, msg, cmdArgs) => {
     }
 
     const equipCode = equips[slot].code;
+    const equipSlotData = equips[slot];
     const registry = getEquipRegistry();
     const equip = registry[equipCode];
 
     equips[slot] = null;
     savePlayerEquips(roleKey, equips);
 
-    let msg_text = `✅ 你卸下了 ${equip.name}！`;
-    return seal.replyToSender(ctx, msg, msg_text);
-};
+    // 装备归还背包（保留当前耐久度）
+    const invs = getInvAll();
+    const inv = invs[roleKey] || [];
+    const returnEntry = { code: equipCode, count: 1, remainingUses: -1 };
+    if (equip && equip.durability != null && equipSlotData.currentDurability !== undefined) {
+        returnEntry.currentDurability = equipSlotData.currentDurability;
+    }
+    inv.push(returnEntry);
+    invs[roleKey] = inv;
+    saveInvAll(invs);
 
-// ext.cmdMap["脱装备"] = cmd_unequip; (合入装备子命令)
+    let msg_text = `✅ 你卸下了 ${equip ? equip.name : equipCode}，已归还背包。`;
+    return seal.replyToSender(ctx, msg, msg_text);
+}
 
 // ========================
 // 装备系统 - 管理员命令：注册装备
 // ========================
 
-let cmd_register_equip = seal.ext.newCmdItemInfo();
-cmd_register_equip.name = "注册装备";
-cmd_register_equip.help = "【管理员】注册新装备\n注册装备 <装备名>*<描述>*<槽位>*<基础属性>\n\n属性格式: ATK+15,DEF+10 (用逗号分隔多个属性)\n属性必须已注册，执行「我创建属性」可注册新属性\n槽位：执行「槽位 查看」查看所有可用槽位\n\n示例:\n注册装备 铁制短剑*普通短剑*hand*ATK+15\n注册装备 钢铁胸甲*防御胸甲*chest*DEF+20,HP+50\n注册装备 智者法杖*法术武器*hand*智力+20,MP+50";
-cmd_register_equip.solve = (ctx, msg, cmdArgs) => {
+const cmd_register_equip_help = "【管理员】注册新装备\n注册装备 <装备名>*<描述>*<槽位>*<基础属性>\n\n属性格式: ATK+15,DEF+10 (用逗号分隔多个属性)\n属性必须已注册，执行「我创建属性」可注册新属性\n槽位：执行「槽位 查看」查看所有可用槽位\n\n示例:\n注册装备 铁制短剑*普通短剑*hand*ATK+15\n注册装备 钢铁胸甲*防御胸甲*chest*DEF+20,HP+50\n注册装备 智者法杖*法术武器*hand*智力+20,MP+50";
+function doRegisterEquip(ctx, msg, inputStr) {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
 
-    const input = cmdArgs.args.slice(1).join(' ').trim();
+    const input = (inputStr || "").trim();
 
     const parts = input.split(/[*]/);
     if (parts.length < 4) {
@@ -5008,25 +5079,18 @@ cmd_register_equip.solve = (ctx, msg, cmdArgs) => {
     msg_text += `基础属性: ${Object.entries(baseAttrs).map(([k, v]) => `${k}${v > 0 ? '+' : ''}${v}`).join(', ')}\n`;
 
     return seal.replyToSender(ctx, msg, msg_text);
-};
-
-// ext.cmdMap["注册装备"] = cmd_register_equip; (合入装备子命令)
+}
 
 // ========================
 // 装备系统 - 管理员命令：槽位管理
 // ========================
 
-let cmd_equip_slots = seal.ext.newCmdItemInfo();
-cmd_equip_slots.name = "槽位";
-cmd_equip_slots.help = "【管理员】管理装备槽位\n槽位 查看               - 查看所有槽位\n槽位 添加 <槽位码> <名称> - 添加新槽位\n槽位 删除 <槽位码>      - 删除槽位\n槽位 重置              - 重置为默认5个槽位\n\n示例:\n槽位 添加 ring1 戒指1\n槽位 添加 wing 翅膀\n槽位 删除 ring1";
-cmd_equip_slots.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
-
-    const subCmd = cmdArgs.getArgN(1);
+const cmd_equip_slots_help = "【管理员】管理装备槽位\n槽位 查看               - 查看所有槽位\n槽位 添加 <槽位码> <名称> - 添加新槽位\n槽位 删除 <槽位码>      - 删除槽位\n槽位 重置              - 重置为默认5个槽位\n\n示例:\n槽位 添加 ring1 戒指1\n槽位 添加 wing 翅膀\n槽位 删除 ring1";
+function doEquipSlots(ctx, msg, subCmd, arg2, arg3) {
     let slots = getEquipSlots();
     let slotNames = getSlotDisplayNames();
 
-    if (subCmd === "查看") {
+    if (subCmd === "查看" || !subCmd) {
         let info = `📋 装备槽位列表 (${slots.length}个):\n\n`;
         slots.forEach((slot, idx) => {
             const displayName = slotNames[slot] || slot;
@@ -5035,9 +5099,11 @@ cmd_equip_slots.solve = (ctx, msg, cmdArgs) => {
         return seal.replyToSender(ctx, msg, info);
     }
 
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+
     if (subCmd === "添加") {
-        const slotCode = cmdArgs.getArgN(2);
-        const slotName = cmdArgs.getArgN(3);
+        const slotCode = arg2;
+        const slotName = arg3;
 
         if (!slotCode || !slotName) {
             return seal.replyToSender(ctx, msg, "❌ 请指定槽位码和显示名称。");
@@ -5062,7 +5128,7 @@ cmd_equip_slots.solve = (ctx, msg, cmdArgs) => {
     }
 
     if (subCmd === "删除") {
-        const slotCode = cmdArgs.getArgN(2);
+        const slotCode = arg2;
 
         if (!slotCode) {
             return seal.replyToSender(ctx, msg, "❌ 请指定要删除的槽位码。");
@@ -5086,11 +5152,11 @@ cmd_equip_slots.solve = (ctx, msg, cmdArgs) => {
         const main = getMainExt();
         if (main) {
             try {
-                const data = JSON.parse(mainStorGet("player_equipments") || "{}");
+                const data = mainKvGet("player_equipments", {});
                 for (const roleKey in data) {
                     delete data[roleKey][slotCode];
                 }
-                mainStorSet("player_equipments", JSON.stringify(data));
+                mainKvSet("player_equipments", data);
             } catch(e) {}
         }
 
@@ -5113,21 +5179,16 @@ cmd_equip_slots.solve = (ctx, msg, cmdArgs) => {
         return seal.replyToSender(ctx, msg, `✅ 已重置为默认5个槽位:\n\n${defaultSlots.map(s => `· [${s}] ${defaultNames[s]}`).join("\n")}`);
     }
 
-    return seal.replyToSender(ctx, msg, cmd_equip_slots.help);
-};
+    return seal.replyToSender(ctx, msg, cmd_equip_slots_help);
+}
 
-// ext.cmdMap["槽位"] = cmd_equip_slots; (合入装备子命令)
-
-let cmd_repair = seal.ext.newCmdItemInfo();
-cmd_repair.name = "修复";
-cmd_repair.help = "【管理员】修复装备耐久度\n修复 <角色名> [槽位码]  - 恢复指定角色全部（或指定槽位）装备耐久到最大值";
-cmd_repair.solve = (ctx, msg, cmdArgs) => {
+const cmd_repair_help = "【管理员】修复装备耐久度\n修复 <角色名> [槽位码]  - 恢复指定角色全部（或指定槽位）装备耐久到最大值";
+function doRepair(ctx, msg, targetRole, slotFilterArg) {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
-    const targetRole = cmdArgs.getArgN(1);
     if (!targetRole) return seal.replyToSender(ctx, msg, "❌ 请指定角色名。");
-    const slotFilter = cmdArgs.getArgN(2) || null;
+    const slotFilter = slotFilterArg || null;
 
-    const allEquips = JSON.parse(mainStorGet("player_equipments") || "{}");
+    const allEquips = mainKvGet("player_equipments", {});
     const equipReg = getEquipRegistry();
     const rk = targetRole;
     const playerEquips = allEquips[rk];
@@ -5145,10 +5206,9 @@ cmd_repair.solve = (ctx, msg, cmdArgs) => {
     }
     if (!repaired.length) return seal.replyToSender(ctx, msg, `⚙️ 没有找到需要修复的装备${slotFilter ? `（槽位：${slotFilter}）` : ""}。`);
     allEquips[rk] = playerEquips;
-    mainStorSet("player_equipments", JSON.stringify(allEquips));
+    mainKvSet("player_equipments", allEquips);
     return seal.replyToSender(ctx, msg, `🔧 已修复「${targetRole}」的装备：${repaired.join("、")}`);
-};
-// ext.cmdMap["修复"] = cmd_repair; (合入装备子命令)
+}
 
 // ========================
 // 升级系统 (PlayerLevel)
@@ -5157,45 +5217,45 @@ cmd_repair.solve = (ctx, msg, cmdArgs) => {
 // 获取升级规则
 function getLevelUpRules() {
     const main = getMainExt();
-    return main ? JSON.parse(mainStorGet("level_up_rules") || '{"max_level":100,"enabled":true,"level_up_rules":{}}') : {};
+    return main ? mainKvGet("level_up_rules", {"max_level":100,"enabled":true,"level_up_rules":{}}) : {};
 }
 
 function saveLevelUpRules(rules) {
     const main = getMainExt();
-    if (main) mainStorSet("level_up_rules", JSON.stringify(rules));
+    if (main) mainKvSet("level_up_rules", rules);
 }
 
 // 获取玩家当前等级（新结构：uid 为 key）
 function getPlayerLevel(uid) {
     const main = getMainExt();
     if (!main) return 1;
-    const data = JSON.parse(mainStorGet("player_level") || "{}");
+    const data = mainKvGet("player_level", {});
     return data[uid] || 1;
 }
 
 function setPlayerLevel(uid, level) {
     const main = getMainExt();
     if (!main) return;
-    const data = JSON.parse(mainStorGet("player_level") || "{}");
+    const data = mainKvGet("player_level", {});
     data[uid] = level;
-    mainStorSet("player_level", JSON.stringify(data));
+    mainKvSet("player_level", data);
 }
 
 // 获取玩家升级历史（新结构：uid 为 key）
 function getLevelHistory(uid) {
     const main = getMainExt();
     if (!main) return [];
-    const data = JSON.parse(mainStorGet("player_level_history") || "{}");
+    const data = mainKvGet("player_level_history", {});
     return data[uid] || [];
 }
 
 function addLevelHistory(uid, record) {
     const main = getMainExt();
     if (!main) return;
-    const data = JSON.parse(mainStorGet("player_level_history") || "{}");
+    const data = mainKvGet("player_level_history", {});
     if (!data[uid]) data[uid] = [];
     data[uid].push(record);
-    mainStorSet("player_level_history", JSON.stringify(data));
+    mainKvSet("player_level_history", data);
 }
 
 // 递增公式：基础 + (级数-1) × 增幅
@@ -5738,12 +5798,17 @@ cmd_profile.solve = (ctx, msg, cmdArgs) => {
     const primaryUid = getPrimaryUid(platform, uid);
     const roleKey = `${platform}:${primaryUid}`;
 
-    // 属性
+    // 属性（含装备加成）
     const defs = getAttrDefs();
     const allAttrs = getCharAttrs();
     const myAttrs = allAttrs[primaryUid] || {};
+    const equipBonus = getTotalEquipBonus(getPlayerEquips(roleKey) || {}, getEquipRegistry());
     const attrStr = Object.keys(defs).length
-        ? Object.keys(defs).map(k => `${k}: ${myAttrs[k] ?? defs[k].default ?? 0}`).join(" | ")
+        ? Object.keys(defs).map(k => {
+            const base = myAttrs[k] ?? defs[k].default ?? 0;
+            const bonus = equipBonus[k] || 0;
+            return `${k}: ${base + bonus}${bonus ? ` (${bonus > 0 ? '+' : ''}${bonus})` : ''}`;
+        }).join(" | ")
         : "暂无属性";
 
     // 背包
@@ -5756,7 +5821,7 @@ cmd_profile.solve = (ctx, msg, cmdArgs) => {
     // 关系线（读主插件存储）
     let relCount = 0, initiated = 0, received = 0, confirmed = 0;
     try {
-        const relData = JSON.parse(mainStorGet("relationship_lines") || "{}");
+        const relData = mainKvGet("relationship_lines", {});
         const myRels = relData[platform]?.[uid] || {};
         relCount = Object.keys(myRels).length;
         for (const rel of Object.values(myRels)) {
@@ -5802,7 +5867,7 @@ cmd_batch_give.solve = (ctx, msg, cmdArgs) => {
 
     let targets = [];
     if (firstTarget === "全员") {
-        const apg = JSON.parse(mainStorGet("a_private_group") || "{}");
+        const apg = mainKvGet("a_private_group", {});
         targets = Object.values(apg[platform] || {}).map(v => v[0]).filter(Boolean);
     } else {
         let i = 3;
@@ -5846,7 +5911,7 @@ function getSafeEndPointRPG(platform) {
 function sendToAdminGroupRPG(platform, text) {
     const main = getMainExt();
     if (!main) return;
-    const gid = JSON.parse(mainStorGet("adminAnnounceGroupId") || "null");
+    const gid = mainKvGet("adminAnnounceGroupId", null);
     if (!gid) return;
     try {
         const ep = getSafeEndPointRPG(platform);
@@ -5862,7 +5927,7 @@ function sendToAdminGroupRPG(platform, text) {
 function broadcastToAllPlayerGroups(platform, text, withAt) {
     const main = getMainExt();
     if (!main) return;
-    const apg = JSON.parse(mainStorGet("a_private_group") || "{}");
+    const apg = mainKvGet("a_private_group", {});
     const groups = apg[platform] || {};
     if (withAt) {
         // 按群分组，每个玩家各自收到艾特

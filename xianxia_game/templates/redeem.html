@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}兑换礼包 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page" style="max-width:520px">
+<div class="page-title">🎁 礼包码兑换</div>
+
+{% if result %}
+<div class="result-box success" style="text-align:center;margin-bottom:24px">
+  <div style="font-size:20px;font-weight:700;color:var(--jade);margin-bottom:10px">✦ 兑换成功</div>
+  {% if result.desc %}
+  <div style="font-size:13px;color:var(--muted);margin-bottom:10px">{{ result.desc }}</div>
+  {% endif %}
+  <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
+    {% for g in result.gains %}
+    <span style="background:rgba(166,124,26,.12);border:1px solid rgba(166,124,26,.3);
+          border-radius:8px;padding:5px 14px;font-size:13px;color:var(--gold);font-weight:600">
+      {{ g }}
+    </span>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-h">输入兑换码</div>
+  <form method="post">
+    <div style="display:flex;gap:10px">
+      <input name="code" placeholder="请输入兑换码（不区分大小写）" maxlength="20" autofocus
+        style="flex:1;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+               border-radius:8px;padding:10px 14px;font-size:15px;font-family:inherit;
+               letter-spacing:2px;text-transform:uppercase">
+      <button type="submit" class="btn btn-gold">兑换</button>
+    </div>
+  </form>
+  <div style="margin-top:14px;font-size:12px;color:var(--muted);line-height:2">
+    <div>· 每个兑换码仅可使用一次</div>
+    <div>· 兑换的物品将直接发入背包</div>
+    <div>· 礼包码由管理员不定期发放</div>
+  </div>
+</div>
+</div>
+<style>input:focus{outline:none;border-color:var(--jade)!important}</style>
+{% endblock %}

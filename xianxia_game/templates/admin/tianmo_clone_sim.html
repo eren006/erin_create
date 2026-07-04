@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}天魔分身难度模拟{% endblock %}
+{% block body %}
+<div style="max-width:700px;margin:0 auto;padding:24px 16px">
+<h2 style="color:#e080e0;margin-bottom:20px">👹 天魔分身难度模拟</h2>
+<p style="color:#8a6a8a;margin-bottom:16px;font-size:13px">
+  选择一名角色，模拟其单挑一只【天魔分身】平均需要几次攻击才能击败（每次假设已满血再战，鬼魔累计伤势会保留到下一次攻击）。
+</p>
+
+<div style="background:#1a0d1a;border:1px solid #5a2a5a;border-radius:12px;padding:20px;margin-bottom:20px">
+  <form method="post">
+    <div style="margin-bottom:12px">
+      <label style="color:#c0a0d0;font-size:13px;display:block;margin-bottom:6px">选择角色</label>
+      <select name="char_id" style="width:100%;padding:8px;background:#1a1a2a;color:#d0c0f0;border:1px solid #5a3a8a;border-radius:6px">
+        {% for c in chars %}
+        <option value="{{ c.id }}" {% if c.id == selected_id %}selected{% endif %}>
+          {{ c.name }}（{{ REALMS[c.realm_idx]['name'] }}）
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="margin-bottom:14px">
+      <label style="color:#c0a0d0;font-size:13px;display:block;margin-bottom:6px">模拟次数（越多越准，越慢）</label>
+      <input type="number" name="trials" value="300" min="20" max="500" style="width:120px;padding:8px;background:#1a1a2a;color:#d0c0f0;border:1px solid #5a3a8a;border-radius:6px">
+      <div style="color:#6a5a7a;font-size:11px;margin-top:4px">最多 500 次；模拟还设有 5 秒硬性时间上限，触达后会提前结束并按已跑完的部分统计</div>
+    </div>
+    <button style="padding:10px 24px;background:linear-gradient(135deg,#6030a0,#9050d0);color:#fff;border:none;border-radius:9px;cursor:pointer;font-size:14px;font-weight:700">
+      ▶ 运行模拟
+    </button>
+  </form>
+</div>
+
+{% if result %}
+<div style="background:#1a0d1a;border:1px solid #5a2a5a;border-radius:12px;padding:20px">
+  <h3 style="color:#c080d0;margin-bottom:14px">
+    【{{ result.char_name }}】模拟结果（请求 {{ result.trials }} 次{% if result.truncated %}，因触达5秒时间上限实际只跑了 {{ result.ran }} 次{% endif %}）
+  </h3>
+  {% if result.truncated %}
+  <p style="color:#ffaa66;font-size:12px;margin-bottom:10px">⏱ 已触达模拟时间上限，提前结束（说明该角色胜率很低、跑满次数太耗时），以下统计基于已跑完的 {{ result.ran }} 次。</p>
+  {% endif %}
+  {% if result.avg is none %}
+  <p style="color:#ff9999">已跑完的 {{ result.ran }} 次试验全部超过单次上限攻击次数仍未获胜——对该角色而言，这只天魔分身几乎无法击败。</p>
+  {% else %}
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:12px">
+    <div style="background:#0a1a2a;border-radius:8px;padding:12px;text-align:center">
+      <div style="font-size:11px;color:#8a9aab;margin-bottom:4px">平均次数</div>
+      <div style="font-size:20px;font-weight:700;color:#88ccff">{{ result.avg }}</div>
+    </div>
+    <div style="background:#0a1a2a;border-radius:8px;padding:12px;text-align:center">
+      <div style="font-size:11px;color:#8a9aab;margin-bottom:4px">中位数</div>
+      <div style="font-size:20px;font-weight:700;color:#88ccff">{{ result.median }}</div>
+    </div>
+    <div style="background:#0a1a2a;border-radius:8px;padding:12px;text-align:center">
+      <div style="font-size:11px;color:#8a9aab;margin-bottom:4px">最少</div>
+      <div style="font-size:20px;font-weight:700;color:#88dd99">{{ result.min }}</div>
+    </div>
+    <div style="background:#0a1a2a;border-radius:8px;padding:12px;text-align:center">
+      <div style="font-size:11px;color:#8a9aab;margin-bottom:4px">最多</div>
+      <div style="font-size:20px;font-weight:700;color:#ff9999">{{ result.max }}</div>
+    </div>
+  </div>
+  {% if result.timeout %}
+  <p style="color:#ffaa66;font-size:12px">⚠ 其中 {{ result.timeout }} / {{ result.ran }} 次试验超过单次上限攻击次数仍未获胜，已从上面的统计中剔除。</p>
+  {% endif %}
+  <p style="color:#8a6a8a;font-size:12px;margin-top:10px">
+    参考：攻击机会每小时恢复1次、上限8次，若平均需要 {{ result.avg }} 次攻击，理论上大约需要
+    {{ (result.avg / 8) | round(1) }} 天的满额攻击机会才能打完这只分身（不含气血自然恢复等待时间）。
+  </p>
+  {% endif %}
+</div>
+{% endif %}
+
+</div>
+{% endblock %}

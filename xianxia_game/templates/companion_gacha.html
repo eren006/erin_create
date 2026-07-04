@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}伙伴召唤 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">✨ 伙伴召唤 <small>常驻池 · 伙伴+材料</small></div>
+
+<!-- 限时池入口 -->
+{% if limited2_open %}
+<div class="card" style="margin-bottom:16px;background:rgba(255,110,247,.06);border-color:rgba(255,110,247,.4)">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+    <div>
+      <div style="font-size:14px;font-weight:700;color:#ff6ef7">⚡ 符道召唤正在进行中！</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:3px">
+        仓颉 · 徐福 · 老子（灵祖）限定伙伴，截止 <strong style="color:var(--text)">{{ limited2_ends_at | format_ts }}</strong>，关闭后永久绝版
+      </div>
+    </div>
+    <a href="{{ url_for('companion_limited2') }}" class="btn" style="white-space:nowrap;background:linear-gradient(135deg,#c97bff,#ff6ef7);color:#fff;border:none;padding:8px 16px;border-radius:8px;font-weight:700">前往符道召唤 →</a>
+  </div>
+</div>
+{% endif %}
+{% if limited_open %}
+<div class="card" style="margin-bottom:16px;background:rgba(201,168,76,.06);border-color:rgba(201,168,76,.4)">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+    <div>
+      <div style="font-size:14px;font-weight:700;color:var(--gold)">🌟 限时召唤正在进行中！</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:3px">
+        武则天 · 项羽 · 王阳明 限定SSR，截止 <strong style="color:var(--text)">{{ limited_ends_at | format_ts }}</strong>，关闭后永久绝版
+      </div>
+    </div>
+    <a href="{{ url_for('companion_limited') }}" class="btn btn-gold" style="white-space:nowrap">前往限时召唤 →</a>
+  </div>
+</div>
+{% endif %}
+
+<!-- 灵石 + 保底 -->
+<div class="card" style="margin-bottom:16px;padding:14px 18px;display:flex;gap:24px;flex-wrap:wrap;align-items:center">
+  <div style="text-align:center">
+    <div style="font-size:26px;font-weight:700;color:var(--gold)">{{ char.spirit_stones }}</div>
+    <div style="font-size:11px;color:var(--muted)">灵石</div>
+  </div>
+  <div style="flex:1;min-width:180px">
+    <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px">
+      <span>卓越保底</span>
+      <span>{{ pity }}/{{ COMPANION_PITY_MAX }}（再{{ COMPANION_PITY_MAX - pity }}抽必出卓越+）</span>
+    </div>
+    <div class="bar-wrap"><div class="bar-fill bar-gold" style="width:{{ (pity/COMPANION_PITY_MAX*100)|int }}%"></div></div>
+  </div>
+</div>
+
+<!-- 结果 -->
+{% if result %}
+<div class="card" style="margin-bottom:16px;border-color:var(--jade)">
+  <div class="card-h" style="color:var(--jade)">✨ 召唤结果</div>
+  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">
+    {% for r in result %}
+    {% set rc = COMPANION_RARITY_COLOR[r.rarity] %}
+    <div style="background:var(--sf2);border:2px solid {{ rc }};border-radius:10px;padding:8px 12px;min-width:100px;text-align:center{% if r.rarity in ('ssr','ur') %};box-shadow:0 0 10px {{ rc }}44{% endif %}">
+      <div style="font-size:10px;color:{{ rc }};font-weight:700">
+        {% if r.type=='material' %}📦 材料{% else %}{{ COMPANION_RARITY_LABEL[r.rarity] }}{% endif %}
+      </div>
+      <div style="font-size:14px;font-weight:700;color:{{ rc }};margin:3px 0">{{ r.name }}</div>
+      {% if r.title %}<div style="font-size:11px;color:var(--muted)">「{{ r.title }}」</div>{% endif %}
+      {% if r.type=='companion' and not r.is_new %}
+      <div style="font-size:10px;color:var(--muted);margin-top:3px">重复 → +{{ r.dupe_stones }}石</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- 召唤按钮 -->
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">常驻召唤</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+    每抽可获得伙伴或中档材料（培元丹、星陨铁等）。重复伙伴返还30灵石。{{ COMPANION_PITY_MAX }}抽保底卓越SSR+。
+  </div>
+  <form method="post" style="display:flex;gap:10px;flex-wrap:wrap">
+    <button type="submit" name="count" value="1" class="btn btn-jade"
+      style="font-size:14px;padding:10px 24px" {% if char.spirit_stones < COMPANION_REGULAR_COST %}disabled{% endif %}>
+      单召（{{ COMPANION_REGULAR_COST }} 灵石）
+    </button>
+    <button type="submit" name="count" value="10" class="btn btn-ghost"
+      style="font-size:13px;padding:10px 18px" {% if char.spirit_stones < COMPANION_REGULAR_TEN %}disabled{% endif %}>
+      十连（{{ COMPANION_REGULAR_TEN }} 灵石，9折）
+    </button>
+  </form>
+  <div style="margin-top:10px"><a href="{{ url_for('companion') }}" style="font-size:12px;color:var(--muted)">← 我的图鉴</a></div>
+</div>
+
+<!-- 奖池内容预览 -->
+<div class="card">
+  <div class="card-h">常驻池内容</div>
+  {% for rarity in ['ur','ssr','sr','r','n'] %}
+  {% set pool = COMPANION_POOL_REGULAR | selectattr('rarity','equalto',rarity) | list %}
+  {% if pool %}
+  {% set rc = COMPANION_RARITY_COLOR[rarity] %}
+  <div style="font-size:11px;font-weight:700;color:{{ rc }};margin:12px 0 5px">{{ COMPANION_RARITY_LABEL[rarity] }}</div>
+  <div style="display:flex;flex-wrap:wrap;gap:6px">
+    {% for e in pool %}
+    <div style="background:var(--sf2);border:1px solid {{ rc }}33;border-radius:7px;padding:4px 10px;font-size:12px">
+      {% if e.type=='companion' %}
+      <span style="color:{{ rc }};font-weight:600">{{ COMPANION_MAP[e.key][1] if e.key in COMPANION_MAP else e.key }}</span>
+      {% else %}
+      <span style="color:var(--muted)">📦 {% for n,q in e['items'] %}{{ n }}×{{ q }}{% if not loop.last %} + {% endif %}{% endfor %}</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endfor %}
+</div>
+
+</div>
+{% endblock %}

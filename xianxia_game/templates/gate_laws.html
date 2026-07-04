@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}天地法则 — 灵墟界{% endblock %}
+{% block head %}
+<style>
+body{background:#120a12!important;color:#e0d0e0}
+.laws-page{max-width:720px;margin:0 auto;padding:24px 16px 60px}
+.laws-hero{
+  text-align:center;padding:28px 20px 20px;
+  background:linear-gradient(160deg,#0d0d1a 0%,#1a0d1a 100%);
+  border-radius:14px;border:1px solid #4a2a6a;
+  color:#f0e0ff;margin-bottom:20px
+}
+.laws-hero-title{font-size:22px;font-weight:700;color:#c080ff;letter-spacing:3px;
+  text-shadow:0 0 20px rgba(160,80,255,.4)}
+.laws-hero-sub{font-size:12px;color:#7a5a9a;margin-top:6px;line-height:1.7}
+
+.insight-done{
+  background:rgba(40,20,70,.6);border:1px solid #7a4aaa;border-radius:12px;
+  padding:16px 20px;margin-bottom:20px;text-align:center
+}
+.insight-done-title{font-size:15px;font-weight:700;color:#c090ff;margin-bottom:6px}
+.insight-done-desc{font-size:13px;color:#9070c0;line-height:1.7}
+
+.law-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin-bottom:24px}
+.law-card{
+  background:rgba(25,10,40,.6);border:1px solid #4a2a6a;border-radius:14px;
+  padding:18px;transition:.2s;position:relative;overflow:hidden
+}
+.law-card::before{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(135deg,rgba(100,30,160,.08) 0%,transparent 60%);
+  pointer-events:none
+}
+.law-card.can-insight{border-color:#8050c0}
+.law-card.can-insight::before{background:linear-gradient(135deg,rgba(130,50,200,.15) 0%,transparent 60%)}
+
+.law-icon{font-size:32px;margin-bottom:10px}
+.law-name{font-size:16px;font-weight:700;color:#d0a0ff;margin-bottom:6px}
+.law-desc{font-size:12px;color:#9070b0;line-height:1.7;margin-bottom:14px}
+
+.shard-progress{margin-bottom:14px}
+.shard-label{font-size:12px;color:#9080b0;margin-bottom:4px}
+.shard-bar{height:8px;background:#2a1a3a;border-radius:4px;overflow:hidden}
+.shard-fill{height:100%;border-radius:4px;transition:.4s;
+  background:linear-gradient(90deg,#5020a0,#a050d0)}
+.shard-count{font-size:13px;font-weight:700;color:#c090e0;margin-top:4px}
+.shard-need{font-size:11px;color:#7a6090}
+
+.btn-insight{
+  width:100%;padding:10px;border:none;border-radius:9px;
+  background:linear-gradient(135deg,#6030b0,#a050e0);color:#fff;
+  font-size:14px;font-weight:700;cursor:pointer;letter-spacing:1px;transition:.2s
+}
+.btn-insight:hover:not(:disabled){background:linear-gradient(135deg,#7040c0,#b060f0);transform:translateY(-1px)}
+.btn-insight:disabled{background:#3a2a4a;color:#6a5a7a;cursor:not-allowed}
+
+.shard-not-enough{font-size:12px;color:#7a5a8a;text-align:center;padding:8px 0}
+
+.law-icon-time{color:#80c0ff}
+.law-icon-space{color:#80ffcc}
+.law-icon-fate{color:#ffd080}
+.law-icon-chaos{color:#c0c0ff}
+
+.info-box{
+  background:rgba(20,10,30,.5);border:1px dashed #4a2a5a;border-radius:10px;
+  padding:12px 16px;font-size:12px;color:#9080a0;line-height:1.8;margin-bottom:20px
+}
+.info-box b{color:#d0a0e0}
+
+.back-link{
+  display:inline-block;margin-top:4px;font-size:13px;
+  color:#9070b0;text-decoration:none;border-bottom:1px dashed #5a3a6a
+}
+.back-link:hover{color:#c090e0}
+</style>
+{% endblock %}
+{% block body %}
+<div class="laws-page">
+
+<div class="laws-hero">
+  <div class="laws-hero-title">✨ 天地法则</div>
+  <div class="laws-hero-sub">
+    击败异世鬼魔，收集法则碎片<br>
+    集齐 <b style="color:#c080ff">7片</b> 同类碎片，可参悟对应法则<br>
+    每人限参悟 <b style="color:#c080ff">一种</b>，获得<b style="color:#c080ff">灵力恢复速度永久翻倍</b>
+  </div>
+</div>
+
+{% if my_insight %}
+<div class="insight-done">
+  <div class="insight-done-title">✨ 已参悟：{{ my_insight.law_type }}法则</div>
+  <div class="insight-done-desc">
+    天道感悟已铭刻于道基，灵力恢复速度已永久 ×2。<br>
+    碎片可继续赠送给道友。
+  </div>
+</div>
+{% endif %}
+
+<div class="info-box">
+  <b>碎片规则</b>：每种鬼魔击败后随机掉落 1-2 片某种法则碎片。碎片可经<b>邮件系统</b>赠送给道友。<br>
+  参悟后灵力恢复倍率叠乘（如已有其他加成，效果更强）。
+</div>
+
+{% set law_icons = {'时间':'⏳','空间':'🌀','命运':'🎴','混沌':'☯'} %}
+{% set law_descs = {
+  '时间':'掌握时间流速之秘，修炼效率大幅提升，感悟速度远超常人。',
+  '空间':'洞悉虚空折叠之道，行动飘忽，难以被束缚，灵力运转更为流畅。',
+  '命运':'窥见命运长河一丝轨迹，突破机缘更易把握，道途更加顺遂。',
+  '混沌':'触及万物本源之混沌，灵力澎湃无序却威力惊人，难以捉摸。'
+} %}
+
+<div class="law-grid">
+{% for lt in GATE_LAW_TYPES %}
+{% set cnt = shard_counts[lt] %}
+{% set can = cnt >= GATE_LAW_SHARDS_NEEDED and not my_insight %}
+<div class="law-card {% if can %}can-insight{% endif %}">
+  <div class="law-icon">{{ law_icons.get(lt, '✨') }}</div>
+  <div class="law-name">{{ lt }}法则</div>
+  <div class="law-desc">{{ law_descs.get(lt, '') }}</div>
+
+  <div class="shard-progress">
+    <div class="shard-label">碎片进度</div>
+    <div class="shard-bar">
+      <div class="shard-fill" style="width:{{ [((cnt / GATE_LAW_SHARDS_NEEDED * 100)|int), 100]|min }}%"></div>
+    </div>
+    <div class="shard-count">{{ cnt }} / {{ GATE_LAW_SHARDS_NEEDED }} 片</div>
+    {% if cnt < GATE_LAW_SHARDS_NEEDED %}
+    <div class="shard-need">还需 {{ GATE_LAW_SHARDS_NEEDED - cnt }} 片</div>
+    {% endif %}
+  </div>
+
+  {% if not my_insight %}
+    {% if can %}
+    <form method="post" action="{{ url_for('gate') }}">
+      <input type="hidden" name="action" value="insight">
+      <input type="hidden" name="law_type" value="{{ lt }}">
+      <button class="btn-insight">⚡ 参悟{{ lt }}法则</button>
+    </form>
+    {% else %}
+    <div class="shard-not-enough">碎片不足，无法参悟</div>
+    {% endif %}
+  {% else %}
+    {% if my_insight.law_type == lt %}
+    <div class="shard-not-enough" style="color:#a070d0">✓ 已参悟此法则</div>
+    {% else %}
+    <div class="shard-not-enough">已参悟其他法则</div>
+    {% endif %}
+  {% endif %}
+</div>
+{% endfor %}
+</div>
+
+<a class="back-link" href="{{ url_for('gate') }}">← 返回异世之门</a>
+
+</div>
+{% endblock %}

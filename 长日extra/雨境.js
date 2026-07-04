@@ -1200,15 +1200,18 @@ ext.cmdMap['设置雨量'] = cmdSetRain;
 // ——————————————————————————
 // 17. 缴纳雨点（玩家）
 // ——————————————————————————
+const rainPayPending = {};
+
 const cmdPayRain = seal.ext.newCmdItemInfo();
 cmdPayRain.name = '缴纳雨点';
-cmdPayRain.help = '缴纳当日雨量：.缴纳雨点  或  .缴纳雨点 N颗（N为自愿消耗的雨点数，不足部分以HP抵偿）';
+cmdPayRain.help = '缴纳当日雨量：.缴纳雨点 预览后果，.缴纳雨点 确认 真正执行\n也可 .缴纳雨点 N颗 指定消耗雨点数';
 cmdPayRain.solve = (ctx, msg, cmdArgs) => {
     const reply = t => (seal.replyToSender(ctx, msg, `【雨境】${t}`), seal.ext.newCmdExecuteResult(true));
 
     const platform = msg.platform;
     const uid = msg.sender.userId.replace(`${platform}:`, '');
     const p = getPlayer(platform, uid);
+    const fullId = `${platform}:${uid}`;
 
     if (!p.isAlive) return reply('你已消散，无需缴纳。');
 
@@ -1218,40 +1221,72 @@ cmdPayRain.solve = (ctx, msg, cmdArgs) => {
     const day = getGameDay();
     if (cfg.dayStr !== `D${day}`) return reply('当日雨量尚未公布，请等待管理组通知。');
 
-    const fullId = `${platform}:${uid}`;
     if (cfg.paidUids.includes(fullId)) return reply('你今日已缴纳过，请勿重复操作。');
 
+    const arg = cmdArgs.getArgN(1);
+
+    // 确认执行
+    if (arg === '确认') {
+        const pending = rainPayPending[fullId];
+        if (!pending) return reply('没有待确认的缴纳，请先发送「.缴纳雨点」查看预览。');
+
+        const { useRain, hpDeduct, cost, rainType } = pending;
+        delete rainPayPending[fullId];
+
+        p.raindrops -= useRain;
+        p.hp = Math.max(0, p.hp - hpDeduct);
+        cfg.paidUids.push(fullId);
+        setRainConfig(cfg);
+        savePlayer(platform, uid, p);
+
+        let result = `【雨境·缴纳完成】${rainType}（共 ${cost} 颗）\n消耗雨点：${useRain} 颗`;
+        if (hpDeduct > 0) result += `\nHP抵偿：${hpDeduct}（${cost - useRain} 颗×20HP）`;
+        result += `\n当前｜雨点：${p.raindrops} 颗｜HP：${p.hp}`;
+        seal.replyToSender(ctx, msg, result);
+
+        sendToMgmt(ctx.endPoint, platform,
+            `【雨量缴纳】${getRoleName(platform, uid)}：雨点-${useRain}，HP-${hpDeduct}，剩余HP:${p.hp}`);
+
+        if (p.hp <= 0 && p.isAlive) handleDeath(ctx.endPoint, platform, uid, `${rainType}侵蚀·HP耗尽`);
+
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    // 预览阶段：背包必须至少有 1 颗雨点
+    if (p.raindrops <= 0) return reply('你的背包里没有雨点（至少需要 1 颗才可缴纳）。');
+
     const cost = cfg.cost;
+    // 续命状态可用尽所有雨点；否则背包须保留至少 1 颗
+    const maxUsable = p.isRevived ? p.raindrops : p.raindrops - 1;
     let useRain;
 
-    const arg = cmdArgs.getArgN(1);
     if (arg) {
         const m = arg.match(/^(\d+)颗?$/);
         if (!m) return reply('格式错误。示例：.缴纳雨点  或  .缴纳雨点 2颗');
         useRain = parseInt(m[1]);
         if (useRain > cost) return reply(`今日${cfg.rainType}只需缴纳 ${cost} 颗，无需超额。`);
-        if (useRain > p.raindrops) return reply(`雨点不足（持有：${p.raindrops} 颗）。`);
+        if (useRain > maxUsable) {
+            if (p.isRevived) return reply(`雨点不足（持有：${p.raindrops} 颗）。`);
+            return reply(`雨点不足（持有：${p.raindrops} 颗，背包须保留 1 颗，最多可用 ${maxUsable} 颗）。`);
+        }
     } else {
-        useRain = Math.min(p.raindrops, cost);
+        useRain = Math.min(maxUsable, cost);
     }
 
     const hpDeduct = (cost - useRain) * 20;
-    p.raindrops -= useRain;
-    p.hp = Math.max(0, p.hp - hpDeduct);
+    rainPayPending[fullId] = { useRain, hpDeduct, cost, rainType: cfg.rainType };
 
-    cfg.paidUids.push(fullId);
-    setRainConfig(cfg);
-    savePlayer(platform, uid, p);
-
-    let result = `【雨境·缴纳完成】${cfg.rainType}（共 ${cost} 颗）\n消耗雨点：${useRain} 颗`;
-    if (hpDeduct > 0) result += `\nHP抵偿：${hpDeduct}（${cost - useRain} 颗×20HP）`;
-    result += `\n当前｜雨点：${p.raindrops} 颗｜HP：${p.hp}`;
-    seal.replyToSender(ctx, msg, result);
-
-    sendToMgmt(ctx.endPoint, platform,
-        `【雨量缴纳】${getRoleName(platform, uid)}：雨点-${useRain}，HP-${hpDeduct}，剩余HP:${p.hp}`);
-
-    if (p.hp <= 0 && p.isAlive) handleDeath(ctx.endPoint, platform, uid, `${cfg.rainType}侵蚀·HP耗尽`);
+    let preview = `【雨境·缴纳预览】${cfg.rainType}（需 ${cost} 颗）\n`;
+    if (p.isRevived) {
+        preview += `持有雨点：${p.raindrops} 颗（续命状态，可全额消耗）\n`;
+    } else {
+        preview += `持有雨点：${p.raindrops} 颗（背包须保留 1 颗，最多可用 ${maxUsable} 颗）\n`;
+    }
+    preview += `本次消耗雨点：${useRain} 颗`;
+    if (hpDeduct > 0) preview += `\nHP抵偿：${hpDeduct}（差额 ${cost - useRain} 颗 × 20HP）`;
+    preview += `\n缴纳后｜雨点：${p.raindrops - useRain} 颗｜HP：${Math.max(0, p.hp - hpDeduct)}`;
+    preview += `\n\n发送「.缴纳雨点 确认」完成缴纳。`;
+    seal.replyToSender(ctx, msg, preview);
 
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -1288,5 +1323,44 @@ cmdRainStatus.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap['雨量状态'] = cmdRainStatus;
+
+
+// ——————————————————————————
+// 19. 重置缴纳记录（管理员）
+// ——————————————————————————
+const cmdResetPaid = seal.ext.newCmdItemInfo();
+cmdResetPaid.name = '雨境重置缴纳';
+cmdResetPaid.help = '重置今日缴纳记录：.雨境重置缴纳（清空全部）  或  .雨境重置缴纳 角色名（撤销单人）';
+cmdResetPaid.solve = (ctx, msg, cmdArgs) => {
+    if (!isAdmin(ctx, msg)) return (seal.replyToSender(ctx, msg, '【雨境】无权限。'), seal.ext.newCmdExecuteResult(true));
+
+    const cfg = getRainConfig();
+    if (!cfg) return (seal.replyToSender(ctx, msg, '【雨境】当日雨量尚未设置。'), seal.ext.newCmdExecuteResult(true));
+
+    const platform = msg.platform;
+    const roleName = cmdArgs.getArgN(1);
+
+    if (!roleName) {
+        const count = cfg.paidUids.length;
+        cfg.paidUids = [];
+        setRainConfig(cfg);
+        seal.replyToSender(ctx, msg, `【雨境】已清空今日全部缴纳记录（共 ${count} 人）。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const uid = getUidByRole(platform, roleName);
+    if (!uid) return (seal.replyToSender(ctx, msg, `【雨境】找不到角色：${roleName}`), seal.ext.newCmdExecuteResult(true));
+
+    const fullId = `${platform}:${uid}`;
+    if (!cfg.paidUids.includes(fullId))
+        return (seal.replyToSender(ctx, msg, `【雨境】${roleName} 今日尚未缴纳，无需重置。`), seal.ext.newCmdExecuteResult(true));
+
+    cfg.paidUids = cfg.paidUids.filter(id => id !== fullId);
+    setRainConfig(cfg);
+    seal.replyToSender(ctx, msg, `【雨境】已撤销 ${roleName} 今日的缴纳记录。`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap['雨境重置缴纳'] = cmdResetPaid;
+
 
 console.log('[雨境] v1.0.0 加载完成');

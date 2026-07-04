@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}邀请码 — 后台{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🎟 邀请码管理 <small>一码一角色，死亡需新码</small></div>
+
+<!-- 生成 -->
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">生成邀请码</div>
+  <form method="post" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+    <input type="hidden" name="action" value="generate">
+    <div>
+      <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:4px">数量（1-50）</label>
+      <input name="count" type="number" value="5" min="1" max="50"
+        style="width:90px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+               border-radius:8px;padding:7px 10px;font-size:13px;font-family:inherit">
+    </div>
+    <div style="flex:1;min-width:160px">
+      <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:4px">备注（可选）</label>
+      <input name="note" placeholder="如：第一批内测、给某某"
+        style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+               border-radius:8px;padding:7px 10px;font-size:13px;font-family:inherit">
+    </div>
+    <button class="btn btn-jade">生成</button>
+  </form>
+</div>
+
+<!-- 未使用 -->
+<div class="card" style="margin-bottom:16px">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+    <div class="card-h" style="margin:0">未使用（{{ unused|length }}）</div>
+    <div style="display:flex;gap:8px">
+      {% if unused %}
+      <button class="btn btn-ghost btn-sm" onclick="copyAll(this)">📋 复制全部</button>
+      <form method="post" onsubmit="return confirm('确定清除所有未使用的邀请码？')">
+        <input type="hidden" name="action" value="delete_unused">
+        <button class="btn btn-ghost btn-sm" style="color:var(--red)">清除全部未使用</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% if not unused %}
+  <div style="color:var(--muted);font-size:13px">暂无未使用的邀请码，点击上方生成。</div>
+  {% else %}
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px">
+    {% for c in unused %}
+    <div style="background:var(--sf2);border:1px solid var(--bd);border-radius:8px;padding:10px 12px;
+         display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <code class="invite-code" data-code="{{ c.code }}"
+          style="font-size:14px;font-weight:700;color:var(--gold);letter-spacing:1px">{{ c.code }}</code>
+        {% if c.note %}<div style="font-size:11px;color:var(--muted);margin-top:2px">{{ c.note }}</div>{% endif %}
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="copyCode(this,'{{ c.code }}')">复制</button>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<!-- 已使用 -->
+<div class="card">
+  <div class="card-h">已使用（{{ used|length }}）</div>
+  {% if not used %}
+  <div style="color:var(--muted);font-size:13px">暂无已使用的邀请码。</div>
+  {% else %}
+  <table class="tbl">
+    <thead><tr><th>邀请码</th><th>使用者</th><th>使用时间</th><th>备注</th></tr></thead>
+    <tbody>
+      {% for c in used %}
+      <tr>
+        <td><code style="color:var(--muted)">{{ c.code }}</code></td>
+        <td>{{ c.username or '—' }}</td>
+        <td style="color:var(--muted);font-size:12px">{{ c.used_at | format_ts }}</td>
+        <td style="color:var(--muted);font-size:12px">{{ c.note }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+</div>
+<script>
+function copyAll(btn) {
+  var codes = Array.from(document.querySelectorAll('.invite-code')).map(function(el){ return el.dataset.code; });
+  copyCode(btn, codes.join('\n'));
+}
+function copyCode(btn, text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(function() { btn.textContent = '已复制'; });
+  } else {
+    var t = document.createElement('textarea');
+    t.value = text; t.style.position = 'fixed'; t.style.opacity = '0';
+    document.body.appendChild(t); t.focus(); t.select();
+    document.execCommand('copy'); document.body.removeChild(t);
+    btn.textContent = '已复制';
+  }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}论道坛 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">📜 论道坛 <small>仙界交流，道友论法</small></div>
+
+<!-- 拼手气红包 -->
+<div class="card" style="margin-bottom:16px;border-color:rgba(192,57,43,.35);background:rgba(192,57,43,.04)">
+  <div class="card-h" style="color:var(--red)">🧧 拼手气红包
+    <span style="font-size:11px;font-weight:400;color:var(--muted)">
+      — {{ RED_PACKET_MIN_STONES }} ~ {{ RED_PACKET_MAX_STONES }} 灵石，最多 {{ alive_cnt }} 个，24小时内未领完自动退回
+    </span>
+  </div>
+  <form method="post" action="{{ url_for('red_packet_send') }}"
+    onsubmit="return confirm('确认发出这个红包？灵石发出后不可撤回。')"
+    style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+    <input name="total" type="number" placeholder="总灵石" min="{{ RED_PACKET_MIN_STONES }}" max="{{ RED_PACKET_MAX_STONES }}" required
+      style="width:120px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+             border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+    <input name="count" type="number" placeholder="个数" min="1" max="{{ alive_cnt }}" required
+      style="width:90px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+             border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+    <input name="message" type="text" placeholder="祝福语（选填，最多40字）" maxlength="40"
+      style="flex:1;min-width:160px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+             border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+    <button type="submit" class="btn btn-sm" style="background:var(--red);color:#fff">发红包</button>
+  </form>
+
+  {% if red_packets %}
+  <div style="display:flex;flex-direction:column;gap:8px">
+    {% for rp in red_packets %}
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:8px;
+         background:{% if rp.full %}var(--sf2){% else %}rgba(192,57,43,.06){% endif %};
+         border:1px solid {% if rp.full %}var(--bd){% else %}rgba(192,57,43,.3){% endif %}">
+      <div style="font-size:24px">🧧</div>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:600">
+          {{ rp.sender_name }} 发出的红包
+          {% if rp.message %}<span style="color:var(--muted);font-weight:400">「{{ rp.message }}」</span>{% endif %}
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">
+          共 {{ rp.total_stones }} 灵石 · {{ rp.claimed_count }}/{{ rp.share_count }} 个已被抢
+          {% if rp.my_amount is not none %}
+          <span style="color:var(--gold)">· 你已抢到 {{ rp.my_amount }} 灵石</span>
+          {% endif %}
+        </div>
+      </div>
+      {% if rp.my_amount is not none %}
+      <span style="font-size:12px;color:var(--muted)">已领取</span>
+      {% elif rp.full %}
+      <span style="font-size:12px;color:var(--muted)">已抢完</span>
+      {% else %}
+      <form method="post" action="{{ url_for('red_packet_claim', pid=rp.id) }}">
+        <button type="submit" class="btn btn-sm" style="background:var(--red);color:#fff">抢红包</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div style="font-size:12px;color:var(--muted);text-align:center;padding:8px 0">暂无红包，做第一个发红包的道友吧</div>
+  {% endif %}
+</div>
+
+<!-- 发帖表单 -->
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">发布新帖</div>
+  <form method="post" style="display:flex;flex-direction:column;gap:10px">
+    <input name="title" placeholder="标题（最多40字）" maxlength="40" required
+      style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+             border-radius:8px;padding:8px 12px;font-family:inherit;font-size:14px;box-sizing:border-box">
+    <textarea name="content" placeholder="内容（最多600字）…" maxlength="600" rows="4" required
+      style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+             border-radius:8px;padding:8px 12px;font-family:inherit;font-size:13px;
+             resize:vertical;box-sizing:border-box"></textarea>
+    <div style="display:flex;align-items:center;gap:12px">
+      <button class="btn btn-jade btn-sm">发布</button>
+      <span style="font-size:11px;color:var(--muted)">发帖冷却 5 分钟</span>
+    </div>
+  </form>
+</div>
+
+<!-- 帖子列表 -->
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <div class="card-h" style="margin:0">全部帖子 <span style="font-size:12px;color:var(--muted);font-weight:400">共 {{ total }} 篇</span></div>
+    {% if total_pages > 1 %}
+    <div style="display:flex;gap:6px;align-items:center;font-size:12px">
+      {% if page > 1 %}<a href="?page={{ page-1 }}" class="btn btn-sm" style="padding:3px 10px">‹ 上页</a>{% endif %}
+      <span style="color:var(--muted)">{{ page }}/{{ total_pages }}</span>
+      {% if page < total_pages %}<a href="?page={{ page+1 }}" class="btn btn-sm" style="padding:3px 10px">下页 ›</a>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  {% if not posts %}
+  <div style="text-align:center;color:var(--muted);padding:40px 0;font-size:14px">暂无帖子，成为第一个发帖的道友吧</div>
+  {% else %}
+  <div style="display:flex;flex-direction:column;gap:0">
+    {% for p in posts %}
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 4px;
+                border-bottom:1px solid var(--bd)">
+      <!-- 点赞按钮 -->
+      <form method="post" action="{{ url_for('forum_like') }}" style="flex-shrink:0">
+        <input type="hidden" name="target_type" value="post">
+        <input type="hidden" name="target_id" value="{{ p.id }}">
+        <input type="hidden" name="back" value="{{ request.url }}">
+        <button type="submit"
+          style="display:flex;flex-direction:column;align-items:center;gap:1px;
+                 background:none;border:1px solid {% if p.id in my_liked_posts %}var(--gold){% else %}var(--bd){% endif %};
+                 border-radius:8px;padding:5px 10px;cursor:pointer;
+                 color:{% if p.id in my_liked_posts %}var(--gold){% else %}var(--muted){% endif %};
+                 font-family:inherit;font-size:12px;min-width:44px;transition:all .15s">
+          <span style="font-size:15px">👍</span>
+          <span>{{ p.like_count }}</span>
+        </button>
+      </form>
+      <!-- 帖子内容 -->
+      <a href="{{ url_for('forum_post', pid=p.id) }}"
+         style="flex:1;min-width:0;text-decoration:none;color:var(--text)">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap">
+          {% if p.is_pinned %}
+          <span style="background:var(--gold);color:#000;font-size:10px;font-weight:700;
+                       padding:1px 6px;border-radius:4px">置顶</span>
+          {% endif %}
+          <span style="font-size:14px;font-weight:600;
+                       overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:380px">{{ p.title }}</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap">
+          <span>
+            <span class="root-{{ p.author_root }}">{{ p.author_root }}</span>
+            {{ REALMS[p.author_realm]['name'] if p.author_realm < REALMS|length else '' }}
+            <strong style="color:var(--text)">{{ p.author_name }}</strong>
+          </span>
+          <span>{{ p.created_at | format_ts }}</span>
+        </div>
+      </a>
+      <div style="text-align:right;flex-shrink:0;color:var(--muted);font-size:12px">
+        💬 {{ p.reply_count }}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+</div>
+{% endblock %}

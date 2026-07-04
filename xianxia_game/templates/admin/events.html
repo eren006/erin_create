@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}活动Boss管理 — 后台{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">⚔ 世界Boss管理 <small><a href="{{ url_for('admin') }}" style="font-size:13px">← 后台</a></small></div>
+
+<!-- 当前活动 -->
+{% if event %}
+<div class="card" style="margin-bottom:16px;border-color:var(--red)">
+  <div class="card-h" style="color:var(--red)">🔴 当前进行中</div>
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+    <span style="font-size:36px">{{ event.icon }}</span>
+    <div style="flex:1">
+      <div style="font-weight:700;font-size:16px">{{ event.name }}</div>
+      <div style="color:var(--muted);font-size:12px;margin-top:4px">
+        剩余气血：{{ event.boss_hp_remaining }}/{{ event.boss_hp_total }} |
+        通关奖励：{{ event.clear_bonus_stones }}灵石 + {{ event.clear_bonus_lingfu }}灵符 |
+        截止：{{ event.ends_at | format_ts }}
+      </div>
+    </div>
+    <form method="post" onsubmit="return confirm('确定提前结束活动？')">
+      <input type="hidden" name="action" value="end">
+      <input type="hidden" name="event_id" value="{{ event.id }}">
+      <button class="btn btn-red btn-sm">提前结束</button>
+    </form>
+  </div>
+  <!-- 修改Boss属性 -->
+  <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--bd)">
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px">修改属性</div>
+    <form method="post" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+      <input type="hidden" name="action" value="update_boss">
+      <input type="hidden" name="event_id" value="{{ event.id }}">
+      <div>
+        <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:2px">通关灵石</label>
+        <input name="clear_stones" type="number" value="{{ event.clear_bonus_stones }}" min="0" style="width:100px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px">
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:2px">通关灵符</label>
+        <input name="clear_lingfu" type="number" value="{{ event.clear_bonus_lingfu }}" min="0" style="width:100px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px">
+      </div>
+      <div>
+        <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:2px">剩余HP</label>
+        <input name="boss_hp_remaining" type="number" value="{{ event.boss_hp_remaining }}" min="0" style="width:120px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px">
+      </div>
+      <button class="btn btn-gold btn-sm">修改</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<!-- 赠予灵符 -->
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">赠予灵符</div>
+  <form method="post" style="display:flex;gap:8px;flex-wrap:wrap">
+    <input type="hidden" name="action" value="grant_lingfu">
+    <input name="char_name" placeholder="玩家道号"
+      style="flex:1;min-width:140px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+    <input name="amount" type="number" value="20" min="1"
+      style="width:80px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+    <button class="btn btn-jade">赠予灵符</button>
+  </form>
+</div>
+
+<!-- 发布Boss -->
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">发布世界Boss</div>
+  <form method="post" style="display:flex;flex-direction:column;gap:12px">
+    <input type="hidden" name="action" value="launch">
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <div style="flex:1">
+        <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">选择Boss模板</label>
+        <select name="template" style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:8px 10px;font-family:inherit;font-size:13px">
+          {% for t in BOSS_TEMPLATES %}
+          <option value="{{ loop.index0 }}">{{ t.icon }} {{ t.name }}（HP {{ t.hp | int }}）</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">持续天数</label>
+        <select name="days" style="background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:8px 10px;font-family:inherit;font-size:13px">
+          {% for d in [1,2,3,5,7] %}<option value="{{ d }}" {% if d==2 %}selected{% endif %}>{{ d }} 天</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <div>
+      <div class="card-h" style="font-size:12px;margin-bottom:8px">模板预览</div>
+      {% for t in BOSS_TEMPLATES %}
+      <div style="margin-bottom:6px;padding:8px;background:var(--sf2);border-radius:6px;font-size:12px">
+        <strong>{{ t.icon }} {{ t.name }}</strong>: {{ t.description[:50] }}… HP={{ t.hp }}, 通关={{ t.clear_stones }}灵石+{{ t.clear_lingfu }}灵符
+      </div>
+      {% endfor %}
+    </div>
+    <button class="btn btn-red" {% if event %}disabled title="当前已有活动进行中"{% endif %}>
+      {% if event %}当前有活动进行中{% else %}发布Boss{% endif %}
+    </button>
+  </form>
+</div>
+
+<!-- 历史 -->
+{% if history %}
+<div class="card">
+  <div class="card-h">历史活动</div>
+  <table class="tbl">
+    <thead><tr><th>Boss</th><th>结束时间</th><th>剩余HP</th><th>状态</th></tr></thead>
+    <tbody>
+      {% for h in history %}
+      <tr>
+        <td>{{ h.icon }} {{ h.name }}</td>
+        <td style="font-size:12px;color:var(--muted)">{{ h.ends_at | format_ts }}</td>
+        <td style="font-size:12px">{{ h.boss_hp_remaining }}/{{ h.boss_hp_total }}</td>
+        <td>
+          <span style="color:{% if h.is_active %}var(--red){% else %}var(--muted){% endif %}">{% if h.is_active %}进行中{% else %}已结束{% endif %}</span>
+          {% if not h.is_active %}
+          <a href="{{ url_for('admin_events_preview', event_id=h.id, action='resend_consolation', times=1) }}"
+            class="btn btn-sm" style="font-size:11px;padding:2px 10px;background:var(--jade);color:#fff;margin-left:6px">补发安慰奖▶</a>
+          <form method="post" style="display:inline" onsubmit="return confirm('撤回该Boss的通关奖励邮件（删除未领取邮件 + 扣回错误灵符）？')">
+            <input type="hidden" name="action" value="recall_boss_mail">
+            <input type="hidden" name="event_id" value="{{ h.id }}">
+            <button class="btn btn-sm" style="font-size:11px;padding:2px 10px;background:var(--red);color:#fff;margin-left:4px">撤回奖励邮件</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+</div>
+<style>select:focus,input:focus{outline:none;border-color:var(--jade)}</style>
+{% endblock %}

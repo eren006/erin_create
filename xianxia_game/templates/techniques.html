@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}功法阁 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">📜 功法阁 <small>已习得的修炼功法与战斗技艺</small></div>
+
+{% if not my %}
+<div class="empty">
+  <div style="font-size:32px;margin-bottom:12px">📜</div>
+  <div>尚未习得任何功法</div>
+  <div style="font-size:12px;margin-top:8px">可在丹市购买功法卷轴，或通过探索获得</div>
+  <a href="{{ url_for('market') }}" class="btn btn-jade btn-sm" style="margin-top:14px;display:inline-flex">前往丹市</a>
+</div>
+{% else %}
+
+{% set cult = my | selectattr('type','equalto','cultivation') | list %}
+{% set atk  = my | selectattr('type','equalto','attack')      | list %}
+{% set dfs  = my | selectattr('type','equalto','defense')     | list %}
+{% set spec = my | selectattr('type','equalto','special')     | list %}
+
+{% macro tech_section(title, items, color, desc) %}
+{% if items %}
+<div class="card" style="margin-bottom:14px">
+  <div class="card-h" style="color:{{ color }}">{{ title }}</div>
+  <div style="color:var(--muted);font-size:12px;margin-bottom:14px">{{ desc }}</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px">
+    {% for t in items %}
+    <div style="background:var(--sf2);border:1px solid var(--bd);border-radius:10px;padding:14px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+        <div style="font-weight:600;font-size:14px;color:var(--text)">{{ t.name }}</div>
+        <span class="tag tag-{{ t.rarity }}">{{ t.rarity | rarity_label }}</span>
+      </div>
+      <div style="color:var(--muted);font-size:12px;line-height:1.6;margin-bottom:10px">{{ t.description }}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        {% if t.exp_bonus > 0 %}
+        <span style="background:rgba(201,168,76,.12);border-radius:5px;padding:2px 8px;font-size:11px;color:var(--gold)">
+          修炼速度 +{{ (t.exp_bonus * 100)|int }}%
+        </span>
+        {% endif %}
+        {% if t.power > 0 %}
+        {% if t.type == 'attack' %}
+        <span style="background:rgba(224,92,75,.12);border-radius:5px;padding:2px 8px;font-size:11px;color:var(--red)">
+          攻击加成 +{{ t.power }}
+        </span>
+        {% else %}
+        <span style="background:rgba(82,183,136,.12);border-radius:5px;padding:2px 8px;font-size:11px;color:var(--green)">
+          防御加成 +{{ t.power }}
+        </span>
+        {% endif %}
+        {% endif %}
+        <span style="background:var(--sf);border-radius:5px;padding:2px 8px;font-size:11px;color:var(--muted)">
+          需 {{ REALMS[t.realm_required].name }}
+        </span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+{% endmacro %}
+
+{{ tech_section('修炼功法', cult, 'var(--gold)', '持续被动生效，全部加成叠加计算。') }}
+{{ tech_section('攻击技艺', atk,  'var(--red)',  '战斗中提升你的攻击力，全部加成叠加计算。') }}
+{{ tech_section('防御功法', dfs,  'var(--green)','战斗中提升你的防御力，全部加成叠加计算。') }}
+
+{% if spec %}
+<div class="card" style="margin-bottom:14px;border-color:rgba(155,127,224,.3)">
+  <div class="card-h" style="color:var(--purple)">奇功秘术</div>
+  <div style="color:var(--muted);font-size:12px;margin-bottom:14px">特殊战斗效果，暴击、闪避、吸血等。多个同类效果叠加生效。</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px">
+    {% for t in spec %}
+    <div style="background:var(--sf2);border:1px solid rgba(155,127,224,.2);border-radius:10px;padding:14px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+        <div style="font-weight:600;font-size:14px;color:var(--purple)">{{ t.name }}</div>
+        <span class="tag tag-{{ t.rarity }}">{{ t.rarity | rarity_label }}</span>
+      </div>
+      <div style="color:var(--muted);font-size:12px;line-height:1.6;margin-bottom:10px">{{ t.description }}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        {% for line in t.effect_json | special_effects %}
+        <span style="background:rgba(155,127,224,.14);border-radius:5px;padding:2px 8px;font-size:11px;color:var(--purple)">{{ line }}</span>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% endif %}
+
+<div class="card" style="background:rgba(201,168,76,.05);border-color:rgba(201,168,76,.15)">
+  <div class="card-h" style="color:var(--gold2)">如何获得更多功法？</div>
+  <div style="color:var(--muted);font-size:12px;line-height:2">
+    <div>· <a href="{{ url_for('market') }}" style="color:var(--jade)">丹市</a> 购买功法卷轴后，在背包中研习</div>
+    <div>· 探索秘境有概率获得功法残卷</div>
+    <div>· 功法均为永久被动加成，习得后立即生效</div>
+  </div>
+</div>
+</div>
+{% endblock %}

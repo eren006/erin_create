@@ -412,14 +412,11 @@ COMMAND_BLOCKS = [
         "。初始化设置",
         "  将所有设置恢复为默认值（慎用）",
         "",
-        "。同步设置",
-        "  从 rparchive 拉取并覆盖所有系统配置",
+        "。推送全部",
+        "  【推荐】将机器人所有数据一次性推送到网页端（配置+注册表+模版+池子+礼品库）",
         "",
-        "。同步到服务端",
-        "  将机器人当前配置推送到 rparchive",
-        "",
-        "。全量上传",
-        "  将所有配置（含物品注册/结戏模版）一次性推送到 rparchive",
+        "。拉取全部",
+        "  【推荐】将网页端所有数据一次性拉取到机器人（配置+注册表+模版+池子）",
         "",
         "。创建新季度 恋综名 复盘/不复盘 [MMDD-MMDD] [补戏MMDD]",
         "  新建一个游戏季度，可指定档期",
@@ -556,24 +553,13 @@ COMMAND_BLOCKS = [
         "。商城下架 物品码",
         "",
         "【抽取池】",
-        "。注册池子 池子名 fixed/free",
-        "  fixed=固定池（加权随机），free=自由池（有限存量）",
-        "。一键建池 池子名",
-        "  快速创建标准池（自动设置默认参数）",
-        "。上架池子 池子名 物品码*权重or数量  （支持多行）",
-        "。从池移除 池子名 物品码",
-        "。查看池子 池子名",
-        "  查看该池所有物品及库存",
-        "。清空池子 池子名",
-        "  清空池内所有物品",
-        "。池子设定 总量:N / 池子名:N / 总量:无限 / 查看",
-        "。开启池子/关闭池子/删除池子 池子名",
+        "💡 池子管理（新建/上架物品/开启关闭/保底设置）请前往 RP 管理面板 → 抽取池",
+        "。抽取 [池子名]   从抽取池随机获得物品",
+        "。抽取次数        查看当前可用抽取次数",
+        "。查看池子 池子名 查看该池所有物品及库存",
+        "。我的保底        查看保底累计进度",
         "。发放抽取 角色名 N              总额外次数",
         "。发放抽取 角色名 池子名 N       特定池额外次数",
-        "。同步踩点池",
-        "  从 rparchive 同步踩点奖励池配置",
-        "。同步池子",
-        "  从 rparchive 同步所有池子配置",
         "",
         "【背包操作】",
         "。调整 角色名 物品码 +N/-N",
@@ -677,11 +663,7 @@ COMMAND_BLOCKS = [
         "。结算拍卖 #编号",
         "  手动结算指定拍卖（无需到期）",
         "",
-        "。拉取拍卖队列",
-        "  从 rparchive 拉取待上架的拍卖队列",
-        "",
-        "。上传拍卖",
-        "  将当前拍卖状态推送到 rparchive",
+        "（拍卖队列拉取 / 快照推送已并入「。拉取全部」和「。推送全部」）",
     ]},
     {"key": "adm_collect", "label": "📋 定时收集管理", "category": "admin", "lines": [
         "。创建定时收集 时间 项目名",
@@ -723,11 +705,8 @@ COMMAND_BLOCKS = [
 
 # ── Config schema ────────────────────────────────────────────────────────────
 CONFIG_SCHEMA = [
-    {"section": "基础", "fields": [
-        {"key": "love_show_name",         "label": "恋综名",      "type": "text",   "default": ""},
-{"key": "item_pool_mode",         "label": "道具池模式",   "type": "select", "default": "自由池", "options": ["自由池", "抽取池"]},
-    ]},
     {"section": "群组 ID", "fields": [
+        {"key": "item_pool_mode",        "label": "道具池模式",  "type": "select",  "default": "自由池", "options": ["自由池", "抽取池"]},
         {"key": "adminAnnounceGroupId",  "label": "公告群",     "type": "text",    "default": "", "note": "群号，留空不广播"},
         {"key": "song_group_id",         "label": "戏群（兼作拍卖展示群）", "type": "text",    "default": ""},
         {"key": "background_group_id",   "label": "后台群",     "type": "text",    "default": ""},
@@ -741,11 +720,9 @@ CONFIG_SCHEMA = [
         {"key": "fupan_routing_groups",     "label": "分流群配置",   "type": "routing", "default": "",      "note": "格式：D1:群号 D2:群号"},
     ]},
     {"section": "功能开关", "json_parent": "global_feature_toggle", "fields": [
-        {"key": "enable_general_letter",      "label": "通用信件",          "type": "bool", "default": "true"},
         {"key": "enable_general_gift",        "label": "普通礼物",          "type": "bool", "default": "true"},
         {"key": "enable_general_appointment", "label": "普通邀约",          "type": "bool", "default": "true"},
         {"key": "enable_chaos_letter",        "label": "短信",              "type": "bool", "default": "true"},
-        {"key": "enable_secret_letter",       "label": "秘密信件",          "type": "bool", "default": "true"},
         {"key": "enable_wish_system",         "label": "心愿系统",          "type": "bool", "default": "true"},
         {"key": "enable_lovemail",            "label": "心动信",            "type": "bool", "default": "false"},
         {"key": "enable_wechat",              "label": "微信",              "type": "bool", "default": "false"},
@@ -844,7 +821,7 @@ CONFIG_SCHEMA = [
         {"key": "antonymReplace",    "label": "词语替换",      "type": "number", "default": "0",  "min": 0, "max": 100},
         {"key": "reverseOrder",      "label": "逆序",          "type": "number", "default": "0",  "min": 0, "max": 100},
         {"key": "mistakenSignature", "label": "署名错乱",      "type": "number", "default": "0",  "min": 0, "max": 100},
-        {"key": "poeticSignature",   "label": "诗意署名",      "type": "number", "default": "0",  "min": 0, "max": 100},
+        {"key": "tornPage",          "label": "残页",          "type": "number", "default": "0",  "min": 0, "max": 100},
         {"key": "dailyLimit",        "label": "每日上限",          "type": "number", "default": "5"},
         {"key": "publicChance",      "label": "播报概率（%）",     "type": "number", "default": "50", "min": 0, "max": 100},
         {"key": "publicShowEffect",  "label": "公开时显示扰乱效果","type": "bool",   "default": "false"},
@@ -937,7 +914,12 @@ def assemble_bot_config(flat):
                      "custom_message_templates", "preset_gifts",
                      "private_appointment_aliases",
                      "equipment_registry", "equipment_slots", "equipment_slot_names",
-                     "trade_whitelist"):
+                     "craft_recipes",
+                     "trade_whitelist",
+                     "available_places", "place_keys",
+                     "skill_defs", "battle_attrs", "player_skills",
+                     "attack_defense_config",
+                     "shop_listings", "market_config"):
         val = flat.get(blob_key)
         if val:
             result[blob_key] = val
@@ -2334,17 +2316,18 @@ def _build_show_zip(db, sid):
         key = (_fsafe(ev.get("game_day") or "未归档"), _fsafe(ev.get("from_role") or "未知"))
         sms_by_day_role.setdefault(key, []).append(ev)
 
-    # 心动信/礼物：收集没有 session_id 的（有 session_id 的已附在各场次文件内）
-    nonsession_by_day_type = {}
+    # 心动信/礼物/信件：收集没有 session_id 的（有 session_id 的已附在各场次文件内），按发件人分文件
+    nonsession_by_day_type_role = {}
     for ev in _parse_events(db.execute(
         "SELECT * FROM extra_events WHERE show_id=? AND (session_id IS NULL OR session_id='') AND type != 'sms' ORDER BY timestamp",
         (sid,)
     ).fetchall()):
-        day = _fsafe(ev.get("game_day") or "未归档")
+        day  = _fsafe(ev.get("game_day") or "未归档")
         etype = ev.get("type") or "其他"
-        nonsession_by_day_type.setdefault((day, etype), []).append(ev)
+        role = _fsafe(ev.get("from_role") or "未知")
+        nonsession_by_day_type_role.setdefault((day, etype, role), []).append(ev)
 
-    _etype_names = {"lovemail": "心动信", "gift": "礼物"}
+    _etype_names = {"lovemail": "心动信", "gift": "礼物", "direct_letter": "信件"}
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -2432,16 +2415,16 @@ def _build_show_zip(db, sid):
                 lines.append("")
             zf.writestr(f"{day}/短信_{role}.txt", "\n".join(lines))
 
-        for (day, etype), evs in sorted(nonsession_by_day_type.items()):
+        for (day, etype, role), evs in sorted(nonsession_by_day_type_role.items()):
             label = _etype_names.get(etype, etype)
-            lines = [f"【 {show_name} · {day} · {label} 】", ""]
+            lines = [f"【 {show_name} · {day} · {role} {label} 】", ""]
             for ev in evs:
                 t_str = ts_to_str(ev.get("timestamp", 0)) if ev.get("timestamp") else "—"
                 lines.append(f"{t_str}  {ev.get('from_role','')} → {ev.get('to_role','')}")
                 if ev.get("content"):
                     lines.append(ev["content"])
                 lines.append("")
-            zf.writestr(f"{day}/{label}.txt", "\n".join(lines))
+            zf.writestr(f"{day}/{label}-{role}.txt", "\n".join(lines))
 
     buf.seek(0)
     return buf, _fsafe(show_name)
@@ -3891,12 +3874,19 @@ def api_sync_config():
     db.commit()
     return jsonify({"ok": True, "synced": len(data)})
 
-@app.route("/api/pending_items", methods=["GET"])
+@app.route("/api/pending_items", methods=["GET", "DELETE"])
 def api_pending_items():
     tid     = get_tenant_from_token()
     show_id = get_current_show_id_for_tenant(tid)
     if not show_id: abort(503)
     db  = get_db()
+    if request.method == "DELETE":
+        db.execute(
+            "UPDATE site_config SET value='[]' WHERE show_id=? AND key='item_registry_pending'",
+            (show_id,)
+        )
+        db.commit()
+        return jsonify({"ok": True})
     row = db.execute(
         "SELECT value FROM site_config WHERE show_id=? AND key='item_registry_pending'",
         (show_id,)
@@ -3909,12 +3899,19 @@ def api_pending_items():
             pending = []
     return jsonify({"pending": pending})
 
-@app.route("/api/pending_equips", methods=["GET"])
+@app.route("/api/pending_equips", methods=["GET", "DELETE"])
 def api_pending_equips():
     tid     = get_tenant_from_token()
     show_id = get_current_show_id_for_tenant(tid)
     if not show_id: abort(503)
     db  = get_db()
+    if request.method == "DELETE":
+        db.execute(
+            "UPDATE site_config SET value='[]' WHERE show_id=? AND key='equipment_registry_pending'",
+            (show_id,)
+        )
+        db.commit()
+        return jsonify({"ok": True})
     row = db.execute(
         "SELECT value FROM site_config WHERE show_id=? AND key='equipment_registry_pending'",
         (show_id,)
@@ -4396,7 +4393,28 @@ def admin_groups():
     for r in member_rows:
         sn = r["set_name"] or "（未分组）"
         sets.setdefault(sn, []).append(dict(r))
-    return render_template("admin_groups.html", sets=sets, msg=msg)
+
+    # 当前占用群：end_ts=0 且 start_ts>0 的进行中场次
+    active_sessions = db.execute(
+        """SELECT group_id, game_day, game_time, place, subtype, participants, start_ts
+           FROM sessions
+           WHERE tenant_id=? AND end_ts=0 AND start_ts>0
+           ORDER BY start_ts ASC""",
+        (tid,)
+    ).fetchall()
+    import json as _json
+    occupied = []
+    for s in active_sessions:
+        sd = dict(s)
+        try:
+            parts = _json.loads(sd.get("participants") or "[]")
+        except Exception:
+            parts = []
+        sd["participants_list"] = parts
+        sd["start_str"] = ts_to_str(sd.get("start_ts", 0))
+        occupied.append(sd)
+
+    return render_template("admin_groups.html", sets=sets, msg=msg, occupied=occupied)
 
 
 # ── 结戏奖励 Dashboard ────────────────────────────────────────────────────────
@@ -4460,6 +4478,12 @@ def _convert_ui_block(blk):
         elif rtype == '道具':
             reward['target'] = (r.get('code') or '').strip()
             reward['targetType'] = 'item'
+        elif rtype == '抽取次数':
+            pool_name = (r.get('pool_name') or '').strip()
+            if not pool_name:
+                continue
+            rwds.append({'type': 'named_draw', 'pool_name': pool_name, 'amount': int(r.get('amount', 1))})
+            continue
         else:
             reward['target'] = (r.get('name') or '').strip()
             reward['targetType'] = 'attr'
@@ -4526,6 +4550,12 @@ def _bot_tpls_to_ui_format(tpls):
                     conds.append(cond)
                 rwds = []
                 for r in blk.get('rewards', []):
+                    if r.get('type') == 'named_draw':
+                        reward = {'rtype': '抽取次数', 'pool_name': r.get('pool_name', ''), 'amount': r.get('amount', 1)}
+                        if r.get('prob') and int(r['prob']) < 100:
+                            reward['prob'] = int(r['prob'])
+                        rwds.append(reward)
+                        continue
                     rtype = _RTYPE_MAP_REV.get(r.get('targetType', ''), '货币')
                     reward = {'rtype': rtype, 'amount': r.get('amount', 0)}
                     if r.get('prob') and int(r['prob']) < 100:
@@ -4557,9 +4587,204 @@ def _save_reward_config_key(db, show_id, tid, key, value_str):
     )
 
 
+@app.route("/admin/places", methods=["GET", "POST"])
+@require_admin
+def admin_places():
+    sid = get_show_id()
+    tid = current_tenant_id()
+    db  = get_db()
+
+    def _get_places():
+        row = db.execute("SELECT value FROM site_config WHERE show_id=? AND key='available_places'", (sid,)).fetchone()
+        try: return json.loads(row["value"]) if row and row["value"] else {}
+        except: return {}
+
+    def _save_places(places):
+        db.execute(
+            "INSERT INTO site_config(show_id,tenant_id,key,value) VALUES(?,?,?,?) "
+            "ON CONFLICT(show_id,key) DO UPDATE SET value=excluded.value",
+            (sid, tid, "available_places", json.dumps(places, ensure_ascii=False))
+        )
+        db.commit()
+
+    def _get_keys():
+        row = db.execute("SELECT value FROM site_config WHERE show_id=? AND key='place_keys'", (sid,)).fetchone()
+        try: return json.loads(row["value"]) if row and row["value"] else {}
+        except: return {}
+
+    def _save_keys(keys):
+        db.execute(
+            "INSERT INTO site_config(show_id,tenant_id,key,value) VALUES(?,?,?,?) "
+            "ON CONFLICT(show_id,key) DO UPDATE SET value=excluded.value",
+            (sid, tid, "place_keys", json.dumps(keys, ensure_ascii=False))
+        )
+        db.commit()
+
+    if request.method == "POST":
+        action = request.form.get("action","")
+        is_fetch = request.headers.get("X-Fetch") == "1"
+
+        if action == "add_place":
+            name = request.form.get("name","").strip()
+            desc = request.form.get("desc","").strip()
+            if name:
+                places = _get_places()
+                if name not in places:
+                    places[name] = {"desc": desc, "locked": False}
+                    _save_places(places)
+                    if is_fetch: return jsonify({"ok": True})
+                else:
+                    if is_fetch: return jsonify({"ok": False, "error": "exists"})
+
+        elif action == "add_places_bulk":
+            count = request.form.get("count", 0, type=int)
+            places = _get_places()
+            created, skipped = [], []
+            for i in range(count):
+                name = request.form.get(f"name_{i}", "").strip()
+                desc = request.form.get(f"desc_{i}", "").strip()
+                if not name:
+                    continue
+                if name in places:
+                    skipped.append(name)
+                else:
+                    places[name] = {"desc": desc, "locked": False}
+                    created.append(name)
+            if created:
+                _save_places(places)
+            if is_fetch: return jsonify({"ok": True, "created": created, "skipped": skipped})
+
+        elif action == "delete_place":
+            name = request.form.get("name","").strip()
+            if name:
+                places = _get_places()
+                places.pop(name, None)
+                _save_places(places)
+                # clean up keys for this place
+                keys = _get_keys()
+                changed = False
+                for plat in keys:
+                    for uid in list(keys[plat].keys()):
+                        if name in keys[plat][uid]:
+                            keys[plat][uid].remove(name)
+                            changed = True
+                if changed:
+                    _save_keys(keys)
+            if is_fetch: return jsonify({"ok": True})
+
+        elif action == "toggle_place":
+            name = request.form.get("name","").strip()
+            locked = None
+            if name:
+                places = _get_places()
+                if name in places:
+                    places[name]["locked"] = not places[name].get("locked", False)
+                    locked = places[name]["locked"]
+                    _save_places(places)
+            if is_fetch: return jsonify({"ok": True, "locked": locked})
+
+        elif action == "update_desc":
+            name = request.form.get("name","").strip()
+            desc = request.form.get("desc","").strip()
+            if name:
+                places = _get_places()
+                if name in places:
+                    places[name]["desc"] = desc
+                    _save_places(places)
+            if is_fetch: return jsonify({"ok": True})
+
+        elif action == "add_key":
+            place = request.form.get("place","").strip()
+            uid   = request.form.get("uid","").strip()
+            plat  = (request.form.get("platform","") or "QQ").strip()
+            if place and uid:
+                keys = _get_keys()
+                keys.setdefault(plat, {}).setdefault(uid, [])
+                if place not in keys[plat][uid]:
+                    keys[plat][uid].append(place)
+                    _save_keys(keys)
+            if is_fetch: return jsonify({"ok": True})
+
+        elif action == "remove_key":
+            place = request.form.get("place","").strip()
+            uid   = request.form.get("uid","").strip()
+            plat  = (request.form.get("platform","") or "QQ").strip()
+            if place and uid:
+                keys = _get_keys()
+                try: keys[plat][uid].remove(place)
+                except (KeyError, ValueError): pass
+                else: _save_keys(keys)
+            if is_fetch: return jsonify({"ok": True})
+
+        elif action == "clear_all":
+            if request.form.get("confirm") == "Y":
+                db.execute("DELETE FROM site_config WHERE show_id=? AND key IN ('available_places','place_keys')", (sid,))
+                db.commit()
+            if is_fetch: return jsonify({"ok": True})
+
+        elif action == "sync_spot_pools":
+            places = _get_places()
+            flat = get_flat_config(db, sid)
+            try: pool_defs = json.loads(flat.get("pool_definitions", "{}") or "{}")
+            except: pool_defs = {}
+            created, skipped = [], []
+            for name in places:
+                pool_name = f"{name}池"
+                if pool_name in pool_defs:
+                    skipped.append(pool_name)
+                else:
+                    pool_defs[pool_name] = {"name": pool_name, "type": "fixed", "items": [], "enabled": True}
+                    created.append(pool_name)
+            db.execute(
+                "INSERT INTO site_config(show_id,tenant_id,key,value) VALUES(?,?,?,?) "
+                "ON CONFLICT(show_id,key) DO UPDATE SET value=excluded.value",
+                (sid, tid, "pool_definitions", json.dumps(pool_defs, ensure_ascii=False))
+            )
+            db.commit()
+            if is_fetch: return jsonify({"ok": True, "created": created, "skipped": skipped})
+
+        return redirect(url_for("admin_places"))
+
+    # GET — build display data
+    places  = _get_places()
+    all_keys = _get_keys()
+
+    # cross-ref players for role names (QQ platform)
+    players = db.execute(
+        "SELECT qq, role_name FROM players WHERE show_id=? AND is_npc=0 ORDER BY role_name",
+        (sid,)
+    ).fetchall()
+    qq_to_name = {p["qq"]: (p["role_name"] or p["qq"]) for p in players}
+
+    # keys_by_place: {place_name: [{"platform":..,"uid":..,"role":..}, ...]}
+    keys_by_place = {name: [] for name in places}
+    orphan_keys = []  # keys referencing non-existent places
+    for plat, uid_map in all_keys.items():
+        for uid, place_list in uid_map.items():
+            role = qq_to_name.get(uid, uid)
+            for pname in place_list:
+                entry = {"platform": plat, "uid": uid, "role": role}
+                if pname in keys_by_place:
+                    keys_by_place[pname].append(entry)
+                else:
+                    orphan_keys.append({**entry, "place": pname})
+
+    return render_template("admin_places.html",
+                           places=places,
+                           keys_by_place=keys_by_place,
+                           players=[dict(p) for p in players],
+                           orphan_keys=orphan_keys)
+
+
 @app.route("/admin/rewards", methods=["GET"])
 @require_admin
 def admin_rewards():
+    try:
+        return _admin_rewards_inner()
+    except Exception:
+        return "<pre style='color:red;padding:20px'>" + traceback.format_exc() + "</pre>", 500
+
+def _admin_rewards_inner():
     sid = get_show_id()
     db  = get_db()
     _, draw_config, item_registry = _get_reward_config(db, sid)
@@ -4582,10 +4807,17 @@ def admin_rewards():
         (sid, per_page, (page-1)*per_page)
     ).fetchall()
     total_pages = max(1, (total + per_page - 1) // per_page)
+    try:
+        pool_names = sorted(json.loads(flat.get("pool_definitions", "{}") or "{}").keys())
+    except Exception:
+        pool_names = []
+    equip_registry = json.loads(flat.get("equipment_registry", "{}") or "{}")
     return render_template("admin_rewards.html",
                            bonus_templates=bonus_templates,
                            draw_config=draw_config,
                            item_registry=item_registry,
+                           equip_registry=equip_registry,
+                           pool_names=pool_names,
                            aliases=aliases,
                            records=[dict(r) for r in records],
                            total=total, page=page, total_pages=total_pages,
@@ -4600,9 +4832,9 @@ def admin_rewards_save_config():
     db  = get_db()
     section = request.form.get("section","")
     if section == "draw":
-        enabled = request.form.get("draw_enabled") == "1"
-        chance  = max(0, min(100, request.form.get("draw_chance", 0, type=int)))
-        count   = max(1, request.form.get("draw_count", 1, type=int))
+        enabled   = request.form.get("draw_enabled") == "1"
+        chance    = max(0, min(100, request.form.get("draw_chance", 0, type=int)))
+        count     = max(1, request.form.get("draw_count", 1, type=int))
         val = json.dumps({"enabled": enabled, "chance": chance, "count": count})
         _save_reward_config_key(db, sid, tid, "reward_draw_config", val)
         db.commit()
@@ -5009,6 +5241,53 @@ def admin_gifts_save():
     return jsonify({"ok": True})
 
 
+@app.route("/admin/shop", methods=["GET"])
+@require_admin
+def admin_shop():
+    sid = get_show_id()
+    db  = get_db()
+    flat = get_flat_config(db, sid)
+    def _j(key, default):
+        raw = flat.get(key) or ""
+        try:
+            return json.loads(raw) if raw else default
+        except (json.JSONDecodeError, TypeError):
+            return default
+    item_reg      = _j("item_registry", {})
+    if not item_reg:
+        item_reg  = _j("reward_item_registry", {})
+    return render_template("admin_shop.html",
+        shop_listings    = _j("shop_listings", []),
+        secondhand_market= _j("secondhand_market", {}),
+        market_config    = _j("market_config", {"fee": 3, "enabled": True}),
+        item_registry    = item_reg,
+    )
+
+
+@app.route("/admin/shop/save", methods=["POST"])
+@require_admin
+def admin_shop_save():
+    sid = get_show_id()
+    tid = current_tenant_id()
+    db  = get_db()
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"ok": False, "error": "no data"}), 400
+    allowed = {"shop_listings", "market_config"}
+    for key, val in data.items():
+        if key not in allowed:
+            continue
+        if isinstance(val, (dict, list)):
+            val = json.dumps(val, ensure_ascii=False)
+        db.execute(
+            "INSERT INTO site_config(show_id,tenant_id,key,value) VALUES(?,?,?,?) "
+            "ON CONFLICT(show_id,key) DO UPDATE SET value=excluded.value",
+            (sid, tid, key, val)
+        )
+    db.commit()
+    return jsonify({"ok": True})
+
+
 @app.route("/api/auction_queue", methods=["GET"])
 def api_auction_queue_get():
     """机器人拉取拍卖队列。"""
@@ -5038,6 +5317,26 @@ def api_auction_queue_clear():
     )
     db.commit()
     return jsonify({"ok": True})
+
+
+@app.route("/api/auction_snapshot", methods=["GET"])
+def api_auction_snapshot_get():
+    """机器人拉取拍卖快照（用于 bot 重启后恢复进行中的拍卖）。"""
+    tid     = get_tenant_from_token()
+    show_id = get_current_show_id_for_tenant(tid)
+    if not show_id:
+        abort(503)
+    db = get_db()
+    row = db.execute(
+        "SELECT value FROM site_config WHERE show_id=? AND key='auction_snapshot'", (show_id,)
+    ).fetchone()
+    snapshot = {}
+    if row and row["value"]:
+        try:
+            snapshot = json.loads(row["value"])
+        except Exception:
+            pass
+    return jsonify({"ok": True, "snapshot": snapshot})
 
 
 @app.route("/api/auction_snapshot", methods=["POST"])

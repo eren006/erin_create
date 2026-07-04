@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% block title %}后台 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">⚙ 管理后台</div>
+
+<!-- 统计 -->
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px">
+  <div class="card" style="text-align:center">
+    <div style="font-size:28px;font-weight:700;color:var(--jade)">{{ stats.chars }}</div>
+    <div style="color:var(--muted);font-size:12px;margin-top:4px">在世修士</div>
+    {% if stats.chars_dead %}<div style="color:var(--muted);font-size:11px;margin-top:2px">（陨落 {{ stats.chars_dead }} 人）</div>{% endif %}
+  </div>
+  <div class="card" style="text-align:center">
+    <div style="font-size:28px;font-weight:700;color:var(--gold)">{{ stats.item_count }}</div>
+    <div style="color:var(--muted);font-size:12px;margin-top:4px">在售物品</div>
+  </div>
+  <div class="card" style="text-align:center">
+    <div style="font-size:28px;font-weight:700;color:var(--red)">{{ stats.monsters }}</div>
+    <div style="color:var(--muted);font-size:12px;margin-top:4px">活跃妖兽</div>
+  </div>
+  <a href="{{ url_for('admin_invites') }}" class="card" style="text-align:center;text-decoration:none">
+    <div style="font-size:28px;font-weight:700;color:var(--purple)">{{ stats.invites_unused }}</div>
+    <div style="color:var(--muted);font-size:12px;margin-top:4px">未用邀请码 / 共 {{ stats.invites_total }}</div>
+  </a>
+</div>
+
+<!-- 管理入口 -->
+<div class="grid2" style="margin-bottom:20px">
+  <div>
+    <div class="card">
+      <div class="card-h">管理入口</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <a href="{{ url_for('admin_invites') }}" class="btn btn-ghost" style="justify-content:flex-start">🎟 邀请码管理</a>
+        <a href="{{ url_for('admin_players') }}" class="btn btn-ghost" style="justify-content:flex-start">👥 玩家管理</a>
+        <a href="{{ url_for('admin_items') }}"   class="btn btn-ghost" style="justify-content:flex-start">🧪 物品管理</a>
+        <a href="{{ url_for('admin_monsters') }}" class="btn btn-ghost" style="justify-content:flex-start">👹 妖兽管理</a>
+        <a href="{{ url_for('admin_tourney') }}" class="btn btn-ghost" style="justify-content:flex-start">🏮 靖世大典</a>
+        <a href="{{ url_for('admin_tianmo_clone_sim') }}" class="btn btn-ghost" style="justify-content:flex-start">👹 天魔分身模拟</a>
+        <a href="{{ url_for('admin_config') }}"  class="btn btn-ghost" style="justify-content:flex-start">⚙ 站点配置</a>
+        <a href="{{ url_for('admin_snapshots') }}" class="btn btn-ghost" style="justify-content:flex-start">📦 修为存档</a>
+        <a href="{{ url_for('admin_logs') }}"      class="btn btn-ghost" style="justify-content:flex-start">📋 玩家日志</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- 闭关结算 -->
+  <div class="card" style="border-color:var(--muted)">
+    <div class="card-h">🚪 结算全部闭关</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
+      结算所有在闭关玩家的修为，按剩余时间退款灵石，结果发至邮箱。闭关功能已永久关闭。
+    </div>
+    <form method="post" action="{{ url_for('admin_settle_seclusions') }}"
+          onsubmit="return confirm('确认结算所有闭关玩家并关闭闭关功能？')">
+      <button type="submit" class="btn btn-ghost btn-sm" style="width:100%">
+        一键结算闭关 · 发邮件退款
+      </button>
+    </form>
+  </div>
+
+  <!-- 全服批量赠予 -->
+  <div class="card" style="border-color:var(--jade)">
+    <div class="card-h" style="color:var(--jade)">🎁 全服批量赠予</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">对所有在世玩家批量发放，直接到账或通过邮件。</div>
+
+    <form method="post" action="{{ url_for('admin_bulk_gift') }}"
+          onsubmit="return confirm('确认向全服所有在世玩家赠予？')"
+          style="display:flex;flex-direction:column;gap:8px">
+
+      <select name="gift_type"
+        style="background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px"
+        onchange="this.form.querySelectorAll('.gift-section').forEach(el=>el.style.display='none');this.form.querySelector('#gs-'+this.value).style.display='block'">
+        <option value="stones">灵石（直接到账）</option>
+        <option value="exp">修为（直接到账）</option>
+        <option value="item">物品（直接入背包）</option>
+        <option value="mail">邮件（含灵石+可选物品）</option>
+      </select>
+
+      <div id="gs-stones" class="gift-section">
+        <input name="amount" type="number" value="1000" min="1" placeholder="灵石数量"
+          style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+      </div>
+      <div id="gs-exp" class="gift-section" style="display:none">
+        <input name="amount" type="number" value="10000" min="1" placeholder="修为数量"
+          style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+      </div>
+      <div id="gs-item" class="gift-section" style="display:none;display:flex;gap:6px">
+        <select name="item_id" style="flex:2;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+          {% for it in all_items %}
+          <option value="{{ it.id }}">{{ it.name }}</option>
+          {% endfor %}
+        </select>
+        <input name="qty" type="number" value="1" min="1" style="flex:1;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+      </div>
+      <div id="gs-mail" class="gift-section" style="display:none;display:flex;flex-direction:column;gap:6px">
+        <input name="mail_subject" type="text" value="管理员补偿" placeholder="邮件主题"
+          style="background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+        <textarea name="mail_body" rows="2" placeholder="邮件内容"
+          style="background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px;resize:vertical"></textarea>
+        <input name="amount" type="number" value="1000" min="0" placeholder="附赠灵石（0=不附）"
+          style="background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+        <div style="display:flex;gap:6px">
+          <select name="mail_item_id" style="flex:2;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+            <option value="0">— 不附物品 —</option>
+            {% for it in all_items %}
+            <option value="{{ it.id }}">{{ it.name }}</option>
+            {% endfor %}
+          </select>
+          <input name="mail_qty" type="number" value="1" min="1" style="flex:1;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-jade btn-sm">🎁 全服赠予</button>
+    </form>
+  </div>
+
+  <!-- 切磋积分榜结算 -->
+  <div class="card">
+    <div class="card-h">⚔ 切磋积分榜结算</div>
+    {% if pvp_top3 %}
+    <div style="margin-bottom:10px">
+      {% for p in pvp_top3 %}
+      {% set medals = ['🥇','🥈','🥉'] %}
+      <div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;
+           {% if not loop.last %}border-bottom:1px solid var(--bd){% endif %}">
+        <span>{{ medals[loop.index0] }} {{ p.name }}</span>
+        <span style="color:var(--gold)">{{ p.pvp_score }} 分 · {{ p.pvp_wins }} 胜</span>
+      </div>
+      {% endfor %}
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px">
+      1名5000石+5万修为 / 2名3000+3万 / 3名1500+1.5万 / 4-5名800+8千 / 6-10名300+3千 / 11-20名100+1千，结算后全服积分清零。
+    </div>
+    <form method="post" action="{{ url_for('admin_settle_pvp') }}"
+          onsubmit="return confirm('确认结算切磋积分榜？将向前三名发送奖励邮件并清零全服积分。')">
+      <button type="submit" class="btn btn-gold btn-sm" style="width:100%">
+        ⚔ 结算积分榜并清零
+      </button>
+    </form>
+    {% else %}
+    <div style="font-size:13px;color:var(--muted)">当前无有效积分记录。</div>
+    {% endif %}
+  </div>
+
+  <!-- 洞府家具商城刷新 -->
+  <div class="card">
+    <div class="card-h">🏮 洞府家具商城</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.7">
+      家具商城为全服共享，每 12 小时自动刷新一次上架的 3 件家具。点击可立即强制刷新，全服玩家的刷新冷却同步重置。
+    </div>
+    <form method="post" action="{{ url_for('admin_refresh_cave_shop') }}"
+          onsubmit="return confirm('确认立即刷新洞府家具商城？全服玩家当前上架的家具将被替换。')">
+      <button type="submit" class="btn btn-jade btn-sm" style="width:100%">
+        🔄 立即刷新家具商城
+      </button>
+    </form>
+  </div>
+
+  <!-- 寿元结算 -->
+  <div class="card" style="{% if overdue %}border-color:var(--red);background:rgba(200,50,50,.04){% endif %}">
+    <div class="card-h" style="{% if overdue %}color:var(--red){% endif %}">⏳ 寿元结算</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.7">
+      等同于让所有在世玩家上线一次，推进未结算的年龄并触发寿元判定。
+    </div>
+    <form method="post" action="{{ url_for('admin_advance_all_time') }}"
+          onsubmit="return confirm('确认为所有在世修士推进时光？将触发年龄增长与寿元判定。')"
+          style="margin-bottom:10px">
+      <button type="submit" class="btn btn-jade btn-sm" style="width:100%">
+        ⏩ 推进全服时光（年龄 + 寿元判定）
+      </button>
+    </form>
+    <form method="post" action="{{ url_for('admin_reset_age_baseline') }}"
+          onsubmit="return confirm('确认重置年龄基点？将清除所有玩家未结算的时间，之后从现在起按新速率计算。')"
+          style="margin-bottom:4px">
+      <button type="submit" class="btn btn-ghost btn-sm" style="width:100%">
+        🔁 锁定当前年龄基点（切速率用）
+      </button>
+    </form>
+    <div style="font-size:11px;color:var(--muted)">切换年龄增长速率前先点此，清除欠账避免用新速率补算旧时间。</div>
+    {% if overdue %}
+    <div style="font-size:13px;color:var(--red);font-weight:600;margin-bottom:8px">
+      ⚠ {{ overdue|length }} 位修士寿元已耗尽，尚未陨落：
+    </div>
+    <div style="margin-bottom:12px;display:flex;flex-direction:column;gap:4px">
+      {% for c in overdue %}
+      <div style="font-size:12px;display:flex;justify-content:space-between;
+           padding:4px 0;{% if not loop.last %}border-bottom:1px solid var(--bd){% endif %}">
+        <span style="color:var(--text);font-weight:600">
+          <a href="{{ url_for('admin_player', cid=c.id) }}" style="color:var(--text)">{{ c.name }}</a>
+        </span>
+        <span style="color:var(--red)">{{ c.age }} 岁 / 寿 {{ lifespan(c) }} 岁</span>
+      </div>
+      {% endfor %}
+    </div>
+    <form method="post" action="{{ url_for('admin_settle_lifespan') }}"
+          onsubmit="return confirm('确认结算所有 {{ overdue|length }} 位超寿修士？此操作不可撤销。')">
+      <button type="submit" class="btn btn-red btn-sm" style="width:100%">
+        一键结算超寿修士（{{ overdue|length }} 人）
+      </button>
+    </form>
+    {% else %}
+    <div style="font-size:13px;color:var(--muted)">当前无超寿修士，无需结算。</div>
+    {% endif %}
+  </div>
+
+  <!-- 最近登录 -->
+  <div class="card">
+    <div class="card-h">最近登录的修士</div>
+    {% for p in recent %}
+    <div style="display:flex;align-items:center;gap:10px;padding:7px 0;font-size:13px;
+         {% if not loop.last %}border-bottom:1px solid var(--bd){% endif %}">
+      <span style="color:var(--jade);font-weight:600;flex:1">{{ p.name }}</span>
+      <span style="color:var(--muted)">{{ REALMS[p.realm_idx].name }}</span>
+      <span style="color:var(--muted);font-size:11px">
+        {{ p.last_login | format_ts }}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+</div>
+{% endblock %}

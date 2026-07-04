@@ -1,0 +1,506 @@
+{% extends "base.html" %}
+{% block title %}地点管理 · 长日存档{% endblock %}
+
+{% block head %}
+<style>
+.sub-nav { display:flex; gap:6px; margin-bottom:24px; flex-wrap:wrap; }
+.sub-nav a { font-size:13px; padding:5px 14px; border-radius:8px; background:var(--surface); border:1px solid var(--border); color:var(--muted); }
+.sub-nav a:hover { color:var(--text); border-color:var(--accent); }
+.sub-nav a.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+
+.banner { border-radius:8px; padding:9px 16px; margin-bottom:18px; font-size:13px; }
+.banner-ok  { background:#1a3a1a; border:1px solid #2a5a2a; color:var(--green); }
+.banner-err { background:#3a1a1a; border:1px solid #5a2a2a; color:var(--red); }
+
+.section-card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:12px; margin-bottom:24px; overflow:hidden;
+}
+.section-header {
+  display:flex; align-items:center; gap:10px;
+  padding:12px 18px; background:var(--surface2);
+  border-bottom:1px solid var(--border);
+}
+.section-title { font-size:15px; font-weight:700; color:var(--text); flex:1; }
+.section-meta  { font-size:12px; color:var(--muted); }
+
+/* 添加地点表单 */
+.add-row {
+  display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap;
+  padding:14px 18px; border-bottom:1px solid var(--border);
+}
+.add-row label { font-size:12px; color:var(--muted); display:block; margin-bottom:4px; }
+.add-row input {
+  background:var(--surface2); border:1px solid var(--border);
+  color:var(--text); border-radius:8px; padding:7px 12px; font-size:13px;
+}
+.add-row input:focus { outline:none; border-color:var(--accent); }
+.inp-name { width:160px; }
+.inp-desc { width:260px; }
+
+/* 地点列表 */
+.place-table { width:100%; border-collapse:collapse; font-size:13px; }
+.place-table th {
+  text-align:left; color:var(--muted); font-weight:600;
+  padding:8px 18px; border-bottom:1px solid var(--border); font-size:12px;
+}
+.place-table td { padding:10px 18px; border-bottom:1px solid var(--border); color:var(--text); }
+.place-table tr:last-child td { border-bottom:none; }
+.place-table tr:hover td { background:var(--surface2); }
+.place-name { font-weight:600; color:var(--accent2); }
+.place-desc { color:var(--muted); font-size:12px; }
+
+.badge-locked   { background:#1a2a3a; color:#60a5fa; border:1px solid #2a4a6a; border-radius:20px; font-size:11px; padding:2px 10px; }
+.badge-unlocked { background:var(--surface2); color:var(--muted); border:1px solid var(--border); border-radius:20px; font-size:11px; padding:2px 10px; }
+
+.actions { display:flex; gap:6px; }
+.btn-toggle { background:var(--surface2); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:3px 10px; font-size:12px; cursor:pointer; }
+.btn-toggle:hover { border-color:var(--accent); color:var(--accent); }
+.btn-del    { background:#3a1a1a; color:var(--red); border:1px solid #5a2a2a; border-radius:6px; padding:3px 10px; font-size:12px; cursor:pointer; }
+.btn-del:hover { background:#4a1f1f; }
+.btn-add  { background:var(--accent); color:#fff; border:none; border-radius:8px; padding:7px 18px; font-size:13px; cursor:pointer; font-weight:600; white-space:nowrap; }
+.btn-add:hover { opacity:.85; }
+.btn-sm   { padding:3px 10px; font-size:12px; border-radius:6px; cursor:pointer; border:1px solid var(--border); background:var(--surface2); color:var(--text); }
+.btn-sm:hover { border-color:var(--accent); }
+
+/* 多行添加 */
+.add-multi-row { display:flex; gap:6px; align-items:center; margin-bottom:5px; }
+.add-multi-row .inp-name { width:160px; }
+.add-multi-row .inp-desc { flex:1; }
+.add-multi-row input {
+  background:var(--surface2); border:1px solid var(--border);
+  color:var(--text); border-radius:8px; padding:7px 10px; font-size:13px;
+}
+.add-multi-row input:focus { outline:none; border-color:var(--accent); }
+.btn-row-del {
+  background:none; border:none; color:var(--muted); font-size:14px;
+  cursor:pointer; padding:2px 6px; border-radius:5px; flex-shrink:0;
+}
+.btn-row-del:hover { color:var(--red); background:var(--surface2); }
+.btn-add-row {
+  background:var(--surface2); border:1px solid var(--border); color:var(--text);
+  border-radius:8px; padding:6px 14px; font-size:13px; cursor:pointer;
+}
+.btn-add-row:hover { border-color:var(--accent); color:var(--accent); }
+
+.place-row { transition: transform .2s ease, opacity .2s ease, max-height .25s ease .2s, padding .25s ease .2s; overflow:hidden; }
+.place-row.vanishing { transform:translateX(20px); opacity:0; }
+.place-row.vanished  { max-height:0 !important; padding-top:0 !important; padding-bottom:0 !important; border:none !important; }
+
+/* 编辑描述内联 */
+.desc-display { cursor:pointer; }
+.desc-display:hover { color:var(--text); }
+.desc-edit { display:none; gap:4px; align-items:center; }
+.desc-edit input {
+  background:var(--surface2); border:1px solid var(--border);
+  color:var(--text); border-radius:6px; padding:3px 8px; font-size:12px; width:220px;
+}
+.desc-edit input:focus { outline:none; border-color:var(--accent); }
+
+/* 钥匙区 */
+.keys-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:14px; padding:16px 18px; }
+.key-card  { background:var(--surface2); border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+.key-card-head {
+  display:flex; align-items:center; gap:8px;
+  padding:9px 14px; background:var(--surface); border-bottom:1px solid var(--border);
+}
+.key-place-name { font-size:14px; font-weight:700; color:var(--accent2); flex:1; }
+.key-count { font-size:11px; color:var(--muted); }
+.key-list  { padding:8px 14px; display:flex; flex-direction:column; gap:5px; min-height:36px; }
+.key-item  { display:flex; align-items:center; gap:6px; }
+.key-role  { font-size:13px; color:var(--text); flex:1; }
+.key-uid   { font-size:11px; color:var(--muted); font-family:monospace; }
+.btn-revoke { padding:2px 8px; font-size:11px; border-radius:5px; cursor:pointer;
+  background:#3a1a1a; color:var(--red); border:1px solid #5a2a2a; }
+.btn-revoke:hover { background:#4a1f1f; }
+.key-empty { font-size:12px; color:var(--muted); padding:4px 0; }
+.key-add-row {
+  display:flex; gap:6px; align-items:center; padding:8px 14px;
+  border-top:1px solid var(--border);
+}
+.key-add-row select {
+  flex:1; background:var(--surface); border:1px solid var(--border);
+  color:var(--text); border-radius:6px; padding:4px 8px; font-size:12px;
+}
+.key-add-row select:focus { outline:none; border-color:var(--accent); }
+
+/* 孤儿钥匙 */
+.orphan-section { padding:14px 18px; }
+.orphan-row { display:flex; align-items:center; gap:8px; padding:5px 0; border-bottom:1px solid var(--border); font-size:13px; }
+.orphan-row:last-child { border-bottom:none; }
+.orphan-place { color:var(--red); font-weight:600; }
+
+/* 清空区 */
+.danger-section { padding:14px 18px; }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="page">
+  <div class="page-title">后台管理</div>
+
+  <div class="sub-nav">
+    <a href="{{ url_for('admin') }}">总览</a>
+    <a href="{{ url_for('admin_config_page') }}">游戏配置</a>
+    <a href="{{ url_for('admin_groups') }}">群号组</a>
+    <a href="{{ url_for('admin_places') }}" class="active">地点管理</a>
+    <a href="{{ url_for('admin_rewards') }}">结戏奖励</a>
+    <a href="{{ url_for('admin_player_controls') }}">玩家控制</a>
+    <a href="{{ url_for('admin_shows') }}">季管理</a>
+    <a href="{{ url_for('admin_command_guides') }}">指令指南</a>
+    <a href="{{ url_for('admin_time_schedule') }}">时间调度</a>
+  </div>
+
+  <div id="banner" style="display:none" class="banner"></div>
+
+  <!-- ── 地点列表 ───────────────────────────────────────────────────────── -->
+  <div class="section-card">
+    <div class="section-header">
+      <span class="section-title">🏢 地点列表</span>
+      <span class="section-meta">{{ places|length }} 个地点</span>
+    </div>
+
+    <!-- 添加地点（多行） -->
+    <div style="padding:14px 18px; border-bottom:1px solid var(--border);">
+      <div style="display:flex; gap:6px; margin-bottom:6px; font-size:12px; color:var(--muted); padding-left:2px;">
+        <span style="width:160px;">地点名</span>
+        <span>描述（可选）</span>
+      </div>
+      <div id="addRows">
+        <div class="add-multi-row">
+          <input class="inp-name" placeholder="图书馆" maxlength="30">
+          <input class="inp-desc" placeholder="安静的阅读空间" maxlength="100">
+          <button class="btn-row-del" onclick="removeAddRow(this)" tabindex="-1">✕</button>
+        </div>
+      </div>
+      <div style="display:flex; gap:8px; margin-top:8px; align-items:center;">
+        <button class="btn-add-row" onclick="appendAddRow()">＋ 添加一行</button>
+        <button class="btn-add" onclick="addPlaces()">批量添加</button>
+      </div>
+    </div>
+
+    {% if places %}
+    <table class="place-table">
+      <thead>
+        <tr>
+          <th>地点名</th>
+          <th>描述</th>
+          <th>状态</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="placeTableBody">
+        {% for name, data in places.items() %}
+        <tr class="place-row" id="pr-{{ loop.index }}">
+          <td class="place-name">{{ name }}</td>
+          <td>
+            <span class="place-desc desc-display" onclick="editDesc(this, '{{ name }}')" title="点击编辑">
+              {{ data.desc or '—' }}
+            </span>
+            <span class="desc-edit" id="de-{{ loop.index }}">
+              <input type="text" value="{{ data.desc or '' }}" maxlength="100">
+              <button class="btn-sm" onclick="saveDesc('{{ name }}', {{ loop.index }})">保存</button>
+              <button class="btn-sm" onclick="cancelDesc({{ loop.index }})">取消</button>
+            </span>
+          </td>
+          <td>
+            <span id="badge-{{ loop.index }}" class="{{ 'badge-locked' if data.locked else 'badge-unlocked' }}">
+              {{ '🔒 上锁' if data.locked else '🔓 开放' }}
+            </span>
+          </td>
+          <td>
+            <div class="actions">
+              <button class="btn-toggle" onclick="togglePlace('{{ name }}', {{ loop.index }})">切换锁定</button>
+              <button class="btn-del" onclick="deletePlace('{{ name }}', {{ loop.index }})">删除</button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div style="padding:20px 18px; color:var(--muted); font-size:13px;">暂无地点，从上方添加第一个地点。</div>
+    {% endif %}
+  </div>
+
+  <!-- ── 钥匙管理 ───────────────────────────────────────────────────────── -->
+  <div class="section-card">
+    <div class="section-header">
+      <span class="section-title">🔑 钥匙管理</span>
+      <span class="section-meta">点击「授予」给玩家添加地点钥匙</span>
+    </div>
+
+    {% if places %}
+    <div class="keys-grid">
+      {% for name, data in places.items() %}
+      {% set holders = keys_by_place.get(name, []) %}
+      <div class="key-card" id="kc-{{ name|replace(' ','_') }}">
+        <div class="key-card-head">
+          <span class="key-place-name">{{ name }}</span>
+          <span class="key-count">{{ holders|length }} 人持有</span>
+        </div>
+        <div class="key-list" id="kl-{{ loop.index }}">
+          {% if holders %}
+            {% for h in holders %}
+            <div class="key-item" id="ki-{{ loop.index }}-{{ h.uid }}">
+              <span class="key-role">{{ h.role }}</span>
+              <span class="key-uid">{{ h.uid }}</span>
+              <button class="btn-revoke"
+                onclick="removeKey('{{ name }}', '{{ h.uid }}', '{{ h.platform }}', this)">撤销</button>
+            </div>
+            {% endfor %}
+          {% else %}
+          <span class="key-empty">暂无持有者</span>
+          {% endif %}
+        </div>
+        <div class="key-add-row">
+          <select id="sel-{{ loop.index }}">
+            <option value="">— 选择玩家 —</option>
+            {% for p in players %}
+            <option value="{{ p.qq }}">{{ p.role_name or p.qq }}</option>
+            {% endfor %}
+          </select>
+          <button class="btn-sm" onclick="addKey('{{ name }}', {{ loop.index }})">授予</button>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div style="padding:20px 18px; color:var(--muted); font-size:13px;">先添加地点，再管理钥匙。</div>
+    {% endif %}
+  </div>
+
+  <!-- ── 孤儿钥匙 ─────────────────────────────────────────────────────── -->
+  {% if orphan_keys %}
+  <div class="section-card">
+    <div class="section-header">
+      <span class="section-title">⚠️ 孤儿钥匙（地点已删除）</span>
+      <span class="section-meta">这些钥匙关联的地点已不存在</span>
+    </div>
+    <div class="orphan-section">
+      {% for o in orphan_keys %}
+      <div class="orphan-row">
+        <span class="orphan-place">{{ o.place }}</span>
+        <span style="color:var(--muted)">→</span>
+        <span>{{ o.role }}</span>
+        <span class="key-uid">{{ o.uid }}</span>
+        <button class="btn-revoke" onclick="removeKey('{{ o.place }}', '{{ o.uid }}', '{{ o.platform }}', this)">清除</button>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ── 踩点池同步 ────────────────────────────────────────────────── -->
+  <div class="section-card">
+    <div class="section-header">
+      <span class="section-title">🎲 踩点池同步</span>
+      <span class="section-meta">为每个地点生成同名抽取池（跳过已有）</span>
+    </div>
+    <div style="padding:14px 18px; display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+      <button class="btn-add" onclick="syncSpotPools()">同步踩点池</button>
+      <span style="font-size:12px; color:var(--muted);">
+        生成 <code style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-family:monospace;">地点名池</code> 格式的 fixed 类型空池，可在
+        <a href="{{ url_for('admin_pools') }}" style="color:var(--accent);">池子管理</a>
+        页调整类型和内容。
+      </span>
+    </div>
+    <div id="syncResult" style="display:none; padding:0 18px 14px; font-size:13px;"></div>
+  </div>
+
+  <!-- ── 危险区 ─────────────────────────────────────────────────────── -->
+  <div class="section-card">
+    <div class="section-header">
+      <span class="section-title">⚠️ 危险操作</span>
+    </div>
+    <div class="danger-section">
+      <button class="btn-del" onclick="clearAll()" style="font-size:13px; padding:6px 16px;">
+        清空所有地点和钥匙
+      </button>
+      <span style="font-size:12px; color:var(--muted); margin-left:10px;">不可撤销，请谨慎操作</span>
+    </div>
+  </div>
+
+  <div style="font-size:12px; color:var(--muted); margin-top:8px;">
+    💡 修改后需在机器人执行「。拉取全部」才能生效；或在机器人执行「。推送全部」将本地数据同步到此页面。
+  </div>
+</div>
+
+<script>
+const SAVE_URL = "{{ url_for('admin_places') }}";
+
+function showBanner(msg, ok=true) {
+  const b = document.getElementById("banner");
+  b.textContent = msg;
+  b.className = "banner " + (ok ? "banner-ok" : "banner-err");
+  b.style.display = "";
+  setTimeout(() => { b.style.display = "none"; }, 3000);
+}
+
+async function post(data) {
+  const fd = new FormData();
+  for (const [k,v] of Object.entries(data)) fd.append(k, v);
+  const r = await fetch(SAVE_URL, { method:"POST", headers:{"X-Fetch":"1"}, body:fd });
+  return r.json();
+}
+
+function appendAddRow() {
+  const row = document.createElement("div");
+  row.className = "add-multi-row";
+  row.innerHTML = `<input class="inp-name" placeholder="地点名" maxlength="30">` +
+    `<input class="inp-desc" placeholder="描述（可选）" maxlength="100">` +
+    `<button class="btn-row-del" onclick="removeAddRow(this)" tabindex="-1">✕</button>`;
+  document.getElementById("addRows").appendChild(row);
+  row.querySelector(".inp-name").focus();
+}
+
+function removeAddRow(btn) {
+  const rows = document.getElementById("addRows");
+  if (rows.children.length <= 1) {
+    btn.closest(".add-multi-row").querySelectorAll("input").forEach(i => i.value = "");
+    return;
+  }
+  btn.closest(".add-multi-row").remove();
+}
+
+async function addPlaces() {
+  const rows = document.querySelectorAll("#addRows .add-multi-row");
+  const entries = [];
+  rows.forEach(r => {
+    const name = r.querySelector(".inp-name").value.trim();
+    const desc = r.querySelector(".inp-desc").value.trim();
+    if (name) entries.push({ name, desc });
+  });
+  if (!entries.length) { showBanner("请至少填写一个地点名", false); return; }
+
+  const fd = new FormData();
+  fd.append("action", "add_places_bulk");
+  entries.forEach((e, i) => { fd.append(`name_${i}`, e.name); fd.append(`desc_${i}`, e.desc); });
+  fd.append("count", entries.length);
+  const r = await fetch(SAVE_URL, { method:"POST", headers:{"X-Fetch":"1"}, body:fd });
+  const res = await r.json();
+  if (res.ok) {
+    const msgs = [];
+    if (res.created?.length) msgs.push(`✅ 已添加：${res.created.join("、")}`);
+    if (res.skipped?.length) msgs.push(`⚠️ 已存在跳过：${res.skipped.join("、")}`);
+    showBanner(msgs.join("　") || "无变化");
+    if (res.created?.length) setTimeout(() => location.reload(), 900);
+  } else {
+    showBanner("添加失败", false);
+  }
+}
+
+async function deletePlace(name, idx) {
+  if (!confirm(`确认删除地点「${name}」？相关钥匙也会一并清除。`)) return;
+  const res = await post({ action:"delete_place", name });
+  if (res.ok) {
+    const row = document.getElementById(`pr-${idx}`);
+    row.classList.add("vanishing");
+    setTimeout(() => { row.classList.add("vanished"); }, 420);
+    showBanner(`🗑️ 已删除地点「${name}」`);
+  }
+}
+
+async function togglePlace(name, idx) {
+  const res = await post({ action:"toggle_place", name });
+  if (res.ok) {
+    const badge = document.getElementById(`badge-${idx}`);
+    if (res.locked) {
+      badge.textContent = "🔒 上锁";
+      badge.className = "badge-locked";
+    } else {
+      badge.textContent = "🔓 开放";
+      badge.className = "badge-unlocked";
+    }
+  }
+}
+
+function editDesc(el, name) {
+  const idx = el.closest("tr").querySelector("[id^='de-']").id.split("-")[1];
+  document.getElementById(`de-${idx}`).style.display = "flex";
+  el.style.display = "none";
+}
+function cancelDesc(idx) {
+  const de = document.getElementById(`de-${idx}`);
+  de.style.display = "none";
+  de.previousElementSibling.style.display = "";
+}
+async function saveDesc(name, idx) {
+  const de = document.getElementById(`de-${idx}`);
+  const desc = de.querySelector("input").value.trim();
+  const res = await post({ action:"update_desc", name, desc });
+  if (res.ok) {
+    const display = de.previousElementSibling;
+    display.textContent = desc || "—";
+    de.style.display = "none";
+    display.style.display = "";
+    showBanner("✅ 描述已更新");
+  }
+}
+
+async function addKey(place, idx) {
+  const sel = document.getElementById(`sel-${idx}`);
+  const uid = sel.value;
+  if (!uid) { showBanner("请选择玩家", false); return; }
+  const role = sel.options[sel.selectedIndex].text;
+  const res = await post({ action:"add_key", place, uid, platform:"QQ" });
+  if (res.ok) {
+    const list = document.getElementById(`kl-${idx}`);
+    // Remove "暂无持有者" if present
+    const empty = list.querySelector(".key-empty");
+    if (empty) empty.remove();
+    const div = document.createElement("div");
+    div.className = "key-item";
+    div.id = `ki-${idx}-${uid}`;
+    div.innerHTML = `<span class="key-role">${role}</span><span class="key-uid">${uid}</span>` +
+      `<button class="btn-revoke" onclick="removeKey('${place}','${uid}','QQ',this)">撤销</button>`;
+    list.appendChild(div);
+    sel.value = "";
+    showBanner(`✅ 已授予「${role}」地点「${place}」的钥匙`);
+  }
+}
+
+async function removeKey(place, uid, platform, btn) {
+  const res = await post({ action:"remove_key", place, uid, platform });
+  if (res.ok) {
+    const item = btn.closest(".key-item,.orphan-row");
+    if (item) {
+      item.style.opacity = "0";
+      item.style.transition = "opacity .2s";
+      setTimeout(() => item.remove(), 220);
+    }
+    showBanner(`✅ 已撤销钥匙`);
+  }
+}
+
+async function syncSpotPools() {
+  if (!{{ (places|length) }} ) { showBanner("暂无地点，请先添加地点再同步。", false); return; }
+  const res = await post({ action:"sync_spot_pools" });
+  const el = document.getElementById("syncResult");
+  if (res.ok) {
+    let html = "";
+    if (res.created.length) html += `<span style="color:var(--green)">✅ 新建 ${res.created.length} 个：${res.created.join("、")}</span><br>`;
+    if (res.skipped.length) html += `<span style="color:var(--muted)">⏭ 已存在跳过 ${res.skipped.length} 个：${res.skipped.join("、")}</span>`;
+    if (!html) html = `<span style="color:var(--muted)">无变化</span>`;
+    el.innerHTML = html;
+    el.style.display = "";
+  } else {
+    showBanner("同步失败", false);
+  }
+}
+
+async function clearAll() {
+  if (!confirm("确认清空所有地点和钥匙？此操作不可撤销！")) return;
+  if (!confirm("再次确认：将永久删除所有地点数据。")) return;
+  const res = await post({ action:"clear_all", confirm:"Y" });
+  if (res.ok) {
+    showBanner("🧹 已清空");
+    setTimeout(() => location.reload(), 800);
+  }
+}
+
+// Enter key support
+document.getElementById("newName").addEventListener("keydown", e => { if (e.key==="Enter") document.getElementById("newDesc").focus(); });
+document.getElementById("newDesc").addEventListener("keydown", e => { if (e.key==="Enter") addPlace(); });
+</script>
+{% endblock %}

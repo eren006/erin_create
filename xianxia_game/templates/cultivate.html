@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+{% block title %}修炼 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">⚡ 修炼 <small>吐纳天地灵气，淬炼修为</small></div>
+
+{% if char.exp < LOW_EXP_BUFF_THRESHOLD %}
+<div style="background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.3);border-radius:8px;
+     padding:8px 14px;margin-bottom:14px;font-size:12px;color:var(--gold2)">
+  🚀 修为未满 {{ fmt_exp(LOW_EXP_BUFF_THRESHOLD) }}，当前修炼所得 ×{{ LOW_EXP_BUFF_MULT|int }}（还差 {{ fmt_exp(LOW_EXP_BUFF_THRESHOLD - char.exp) }} 修为消失）
+</div>
+{% endif %}
+
+{% if char.realm_idx >= DACHENG_BUFF_REALM_MIN %}
+<div style="background:rgba(155,127,224,.1);border:1px solid rgba(155,127,224,.3);border-radius:8px;
+     padding:8px 14px;margin-bottom:14px;font-size:12px;color:var(--purple)">
+  ✦ 已证大乘之境，感【{{ DACHENG_BUFF_NAME }}】，修炼所得永久 ×{{ DACHENG_BUFF_MULT|int }}
+</div>
+{% endif %}
+
+{% if result %}
+  {% if result.type == 'cultivate' %}
+  <div class="result-box success">
+    <div class="rb-title" style="color:var(--jade)">✦ 修炼完毕</div>
+    <div style="color:var(--text);font-size:15px">修为增长 <strong style="color:var(--gold)">+{{ result.gained }}</strong></div>
+    {% if result.dq_add %}
+    <div style="margin-top:8px;font-size:12px;color:var(--red)">⚠ 心魔 +{{ result.dq_add }}（当前 {{ result.dq_now }}）</div>
+    {% endif %}
+    {% if result.treasure %}
+    <div style="margin-top:10px;background:rgba(166,124,26,.1);border:1px solid rgba(166,124,26,.3);
+         border-radius:8px;padding:8px 12px;display:flex;align-items:center;gap:8px">
+      <span style="font-size:16px">✨</span>
+      <div>
+        <span style="color:var(--gold);font-weight:600">意外发现【{{ result.treasure.name }}】</span>
+        <span style="font-size:11px;color:var(--muted);margin-left:6px">已放入背包</span>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% elif result.type == 'dispel' %}
+  <div class="result-box success">
+    <div class="rb-title" style="color:var(--jade)">✦ 驱散完毕</div>
+    <div style="font-size:14px;color:var(--text)">心魔减少 <strong style="color:var(--green)">{{ result.reduced }}</strong> 点，剩余 <strong style="color:{% if result.new_dq > 50 %}var(--red){% elif result.new_dq > 20 %}var(--gold){% else %}var(--green){% endif %}">{{ result.new_dq }}</strong> 点</div>
+  </div>
+  {% elif result.type == 'bt' and result.success %}
+  <div class="result-box success" style="text-align:center">
+    <div style="font-size:28px;margin-bottom:8px">{% if result.tribulation %}⚡{% else %}✦{% endif %}</div>
+    <div class="rb-title" style="color:var(--gold);font-size:18px">
+      {% if result.tribulation %}天劫加身，渡劫成功！{% else %}天地感应，突破成功！{% endif %}
+    </div>
+    <div style="color:var(--jade);font-size:16px;margin-top:8px">已晋入【{{ result.realm }}】</div>
+    {% if result.has_perk %}
+    <div style="margin-top:14px;padding:12px;background:rgba(166,124,26,.15);border:1px solid rgba(166,124,26,.3);border-radius:8px">
+      <div style="color:var(--gold);font-size:14px;margin-bottom:8px">✨ 天道馈赠，感悟现世</div>
+      <div style="color:var(--text);font-size:13px;margin-bottom:10px">大境界突破可获得一次感悟机会，三选一</div>
+      <a href="{{ url_for('perk_select') }}" class="btn btn-gold" style="display:inline-block;padding:8px 16px;text-decoration:none;border-radius:6px">
+        立即选择感悟 →
+      </a>
+    </div>
+    {% endif %}
+  </div>
+  {% elif result.type == 'bt' and not result.success %}
+  <div class="result-box failure" style="text-align:center">
+    <div style="font-size:28px;margin-bottom:8px">{% if result.tribulation %}🌩{% else %}✦{% endif %}</div>
+    <div class="rb-title" style="color:var(--red)">
+      {% if result.tribulation %}天劫无情，渡劫失败！{% else %}心劫难渡，突破失败{% endif %}
+    </div>
+    {% if result.demoted %}
+    <div style="color:var(--red);font-size:14px;margin-top:8px">
+      道基受损，境界跌落至【{{ result.new_realm }}】！
+    </div>
+    {% else %}
+    <div style="color:var(--muted);font-size:13px;margin-top:6px">
+      损失修为 <strong style="color:var(--red)">{{ result.penalty }}</strong>，道心稳固度 +5%，下次成功率增加。
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+{% endif %}
+
+<div class="grid2">
+  <!-- 左：状态 -->
+  <div>
+    <div class="card">
+      <div class="card-h">当前境界</div>
+      <div style="text-align:center;padding:10px 0">
+        <div style="font-size:28px;font-weight:700;color:var(--gold);letter-spacing:2px">{{ realm.name }}</div>
+        <div class="root-{{ char.spirit_root }}" style="font-size:13px;margin-top:4px">{{ char.spirit_root }}</div>
+        <div style="color:var(--muted);font-size:12px;margin-top:2px">
+          修炼速度倍率：<strong style="color:{{ sr.color }}">×{{ sr.mult }}</strong>
+        </div>
+      </div>
+
+      {% if next_r %}
+      <div style="margin-top:14px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:6px">
+          <span>修为进度</span>
+          <span>{{ fmt_exp(exp_prog) }} / {{ fmt_exp(exp_need) }}</span>
+        </div>
+        <div class="bar-wrap" style="height:12px">
+          <div class="bar-fill bar-gold" style="width:{{ exp_pct }}%"></div>
+        </div>
+        <div style="text-align:right;font-size:11px;color:var(--muted);margin-top:4px">
+          {{ exp_pct }}% → {{ next_r.name }}
+        </div>
+      </div>
+      {% else %}
+      <div style="text-align:center;color:var(--gold);font-size:13px;margin-top:10px">
+        已至修仙巅峰
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- 灵力 -->
+    <div class="card">
+      <div class="card-h">灵力储量</div>
+      <div class="stat-row">
+        <span class="label">灵力</span>
+        <div class="bar-wrap" style="flex:1">
+          <div class="bar-fill bar-jade" style="width:{{ (energy / MAX_ENERGY * 100)|int }}%"></div>
+        </div>
+        <span class="val">{{ energy }}/{{ MAX_ENERGY }}</span>
+      </div>
+      <div style="color:var(--muted);font-size:12px;margin-top:4px">
+        每小时自动恢复 10 点。每次修炼消耗 {{ CULTIVATE_COST }} 灵力。
+      </div>
+    </div>
+
+    <!-- 心魔（结丹以上） -->
+    {% set dq = char.demonic_qi or 0 %}
+    {% if char.realm_idx >= 13 %}
+    <div class="card" style="border-color:{% if dq >= 80 %}var(--red){% elif dq >= 40 %}rgba(201,80,40,.4){% else %}var(--bd){% endif %};
+         background:{% if dq >= 40 %}rgba(192,57,43,.04){% else %}transparent{% endif %}">
+      <div class="card-h" style="color:{% if dq >= 80 %}var(--red){% elif dq >= 40 %}var(--orange, #e67e22){% else %}var(--text){% endif %}">
+        ☯ 心魔
+      </div>
+      <div class="stat-row" style="margin-bottom:6px">
+        <span class="label" style="font-size:12px">心魔</span>
+        <div class="bar-wrap" style="flex:1">
+          <div style="height:100%;border-radius:4px;transition:width .3s;
+               background:{% if dq >= 80 %}var(--red){% elif dq >= 40 %}#e67e22{% else %}#e8a030{% endif %};
+               width:{{ dq }}%"></div>
+        </div>
+        <span class="val" style="color:{% if dq >= 80 %}var(--red){% elif dq >= 40 %}#e67e22{% else %}var(--muted){% endif %}">
+          {{ dq }}/100
+        </span>
+      </div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:{% if dq > 0 %}10px{% else %}0{% endif %}">
+        {% if dq == 0 %}心如明镜，道心清净。{% elif dq < 30 %}心魔初生，修炼受轻微干扰（-{{ dq }}% 修为）。{% elif dq < 60 %}心魔渐重，修炼大受阻碍（-{{ dq }}% 修为），建议驱散。{% elif dq < 90 %}心魔深重，修炼事倍功半（-{{ dq }}% 修为），须尽快驱散！{% else %}心魔侵体，修为几乎无法增进（-{{ dq }}% 修为），当务之急是驱散心魔！{% endif %}
+      </div>
+      {% if dq > 0 %}
+      <form method="post">
+        <input type="hidden" name="action" value="dispel">
+        <button type="submit" class="btn btn-sm" style="width:100%;
+             background:rgba(192,57,43,.1);color:var(--red);border:1px solid rgba(192,57,43,.3)"
+          {% if energy < dispel_cost %}disabled{% endif %}>
+          {% if energy < dispel_cost %}灵力不足（需 {{ dispel_cost }}）{% else %}☯ 打坐驱散心魔（消耗 {{ dispel_cost }} 灵力，减少 10 点）{% if dispel_cost > CULTIVATE_COST %} · 元婴以上×5{% endif %}{% endif %}
+        </button>
+      </form>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- 已习功法 -->
+    {% if my_techs %}
+    <div class="card">
+      <div class="card-h">修炼功法加成</div>
+      {% for t in my_techs %}
+      <div style="display:flex;justify-content:space-between;font-size:13px;padding:6px 0;
+           {% if not loop.last %}border-bottom:1px solid var(--bd){% endif %}">
+        <span>{{ t.name }}</span>
+        <span style="color:var(--gold)">+{{ (t.exp_bonus * 100)|int }}% 修炼速度</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- 修炼速度加成明细 -->
+    <div class="card">
+      <div class="card-h">修炼速度加成明细</div>
+      {% set total_pct = namespace(v=0) %}
+      {% for label, val, unit in cult_bonuses %}
+        {% if unit == "%" and val %}{% set total_pct.v = total_pct.v + val %}{% endif %}
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;
+             padding:5px 0;{% if not loop.last %}border-bottom:1px solid var(--bd){% endif %}">
+          <span style="color:var(--muted)">{{ label }}</span>
+          {% if unit == None %}
+            <span style="color:var(--gold);font-weight:700">{{ val }}</span>
+          {% elif val %}
+            <span style="color:var(--jade)">+{{ (val * 100)|int }}%</span>
+          {% else %}
+            <span style="color:var(--muted);opacity:.5">—</span>
+          {% endif %}
+        </div>
+      {% endfor %}
+      {% if total_pct.v %}
+      <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--bd);
+           display:flex;justify-content:space-between;font-size:13px;font-weight:700">
+        <span>百分比合计</span>
+        <span style="color:var(--gold)">+{{ (total_pct.v * 100)|int }}%</span>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- 右：操作 -->
+  <div>
+    <div class="card">
+      <div class="card-h">打坐修炼</div>
+      <div style="color:var(--muted);font-size:13px;margin-bottom:14px;line-height:1.8">
+        盘膝入定，引天地灵气入体，淬炼经脉筋骨。<br>
+        每次消耗 <strong style="color:var(--jade)">{{ CULTIVATE_COST }} 灵力</strong>，
+        获得 <strong style="color:var(--gold)">{{ (50 * sr.mult)|int }}–{{ (100 * sr.mult)|int }}</strong> 基础修为
+        {% if my_techs %}（功法加成后更多）{% endif %}。
+      </div>
+      <form method="post">
+        <input type="hidden" name="action" value="cultivate">
+        <button type="submit" class="btn btn-jade" style="width:100%;padding:12px"
+          {% if energy < CULTIVATE_COST %}disabled{% endif %}>
+          {% if energy < CULTIVATE_COST %}灵力不足（需 {{ CULTIVATE_COST }}）{% else %}⚡ 开始修炼{% endif %}
+        </button>
+      </form>
+    </div>
+
+    {% if can_bt or (next_r and char.exp >= next_r.exp) %}
+    <div class="card" style="border-color:var(--gold)">
+      <div class="card-h" style="color:var(--gold)">突破境界</div>
+      <div style="color:var(--muted);font-size:13px;margin-bottom:10px;line-height:1.8">
+        修为已圆满，可尝试突破至
+        <strong style="color:var(--jade)">{{ next_r.name }}</strong>。
+        {% if is_big %}
+        <br>此为大境界突破，涉及心劫考验，成功率：
+        <strong style="color:{% if bt_pct >= 80 %}var(--green){% elif bt_pct >= 50 %}var(--gold){% else %}var(--red){% endif %}">
+          {{ bt_pct }}%
+        </strong>
+        {% if char.breakthrough_bonus > 0 %}
+        （已积累道心稳固度 {{ char.breakthrough_bonus }}%）
+        {% endif %}
+        {% if char.spirit_root == '天灵根' %}
+        （天灵根加持 +8%）
+        {% endif %}
+        {% else %}
+        <br>境界内小突破，必然成功。
+        {% endif %}
+      </div>
+      <form method="post">
+        <input type="hidden" name="action" value="breakthrough">
+        <button type="submit" class="btn btn-gold" style="width:100%;padding:12px">
+          ✦ 尝试突破 → {{ next_r.name }}
+        </button>
+      </form>
+    </div>
+    {% endif %}
+
+    <div class="card" style="background:rgba(201,168,76,.05);border-color:rgba(201,168,76,.2)">
+      <div class="card-h" style="color:var(--gold2)">修炼心得</div>
+      <div style="color:var(--muted);font-size:12px;line-height:2">
+        <div>· 灵根越纯，修炼速度越快，天灵根修士是五灵根的五倍</div>
+        <div>· 习得修炼类功法可进一步提升修炼速度</div>
+        <div>· 大境界突破有失败风险，失败会小幅损失修为但道心稳固度提升</div>
+        <div>· 积累足够稳固度后，突破成功率显著提高</div>
+        {% if char.realm_idx >= 13 %}
+        <div style="color:var(--red);margin-top:4px">· 结丹以上：修炼与服丹均会积累<strong>心魔</strong>，心魔越重修为增益越低（最多-100%）</div>
+        <div style="color:var(--red)">· 打坐驱散每次减少 10 点心魔；灵力消耗随境界递增：结丹 10、元婴/化神 30、合体/大乘 40、渡劫+ 50</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+{% endblock %}

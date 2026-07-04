@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+{% block title %}道友 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">💞 道友 <small>培养好感，双修共进</small></div>
+
+<!-- 状态条 -->
+<div class="card" style="margin-bottom:16px;padding:12px 16px;display:flex;gap:24px;flex-wrap:wrap;align-items:center">
+  <span style="font-size:13px;color:var(--muted)">灵力 <strong style="color:var(--jade)">{{ energy }}/{{ MAX_ENERGY }}</strong></span>
+  <span style="font-size:13px;color:var(--muted)">你的五行：
+    {% for el in char.elements | fromjson %}<span style="color:var(--gold2);margin:0 2px">{{ el }}</span>{% endfor %}
+  </span>
+  <span style="font-size:12px;color:var(--muted)">五行相生双修加成最高，相克则有走火入魔风险</span>
+</div>
+
+<!-- 道侣横幅 -->
+{% if daolv and daolv_rv %}
+<div class="card" style="margin-bottom:16px;border-color:var(--gold);background:rgba(166,124,26,.06)">
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <span style="font-size:22px">💑</span>
+    <div style="flex:1">
+      <div style="font-size:15px;font-weight:700;color:var(--gold)">道侣 · {{ daolv.name }}</div>
+      <div style="font-size:12px;color:var(--muted)">
+        <span class="root-{{ daolv.spirit_root }}">{{ daolv.spirit_root }}</span> ·
+        {{ daolv_rv.other_realm }} · 五行{{ daolv_rv.wx_desc }} ·
+        双修 +30%、战斗同心 {{ (daolv_rv.wx_factor) }}
+      </div>
+    </div>
+    <form method="post" action="{{ url_for('social_divorce') }}"
+          onsubmit="return confirm('确定与道侣和离？')">
+      <button class="btn btn-ghost btn-sm" style="color:var(--red)">和离</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<!-- 待回应邀请 -->
+{% if pending %}
+<div class="card" style="margin-bottom:16px;border-color:var(--gold)">
+  <div class="card-h" style="color:var(--gold2)">📜 待回应的邀请</div>
+  {% for p in pending %}
+  <div style="display:flex;align-items:center;gap:12px;padding:8px 0;
+       {% if not loop.last %}border-bottom:1px solid var(--bd){% endif %}">
+    <div style="flex:1">
+      <span style="font-weight:600">{{ p.from_name }}</span>
+      <span class="root-{{ p.from_root }}" style="font-size:12px;margin-left:6px">{{ p.from_root }}</span>
+      <span style="color:var(--muted);font-size:12px;margin-left:6px">{{ REALMS[p.from_realm].name }}</span>
+      <span style="margin-left:8px;font-size:11px;color:{% if p.type=='marriage' %}var(--gold){% else %}var(--purple){% endif %}">
+        {% if p.type=='marriage' %}💍 求结道侣{% else %}🌸 邀双修{% endif %}
+      </span>
+    </div>
+    <form method="post" action="{{ url_for('social_respond') }}" style="display:inline">
+      <input type="hidden" name="interaction_id" value="{{ p.id }}">
+      <input type="hidden" name="decision" value="accept">
+      <button class="btn btn-gold btn-sm">{% if p.type=='marriage' %}应允结亲{% else %}接受双修{% endif %}</button>
+    </form>
+    <form method="post" action="{{ url_for('social_respond') }}" style="display:inline">
+      <input type="hidden" name="interaction_id" value="{{ p.id }}">
+      <input type="hidden" name="decision" value="decline">
+      <button class="btn btn-ghost btn-sm">婉拒</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- 搜索道友 -->
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">寻觅道友</div>
+  <form method="get" style="display:flex;gap:8px;margin-bottom:10px">
+    <input name="q" value="{{ kw }}" placeholder="输入道号搜索…"
+      style="flex:1;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+             border-radius:8px;padding:8px 12px;font-size:13px;font-family:inherit">
+    <button class="btn btn-jade btn-sm">搜索</button>
+  </form>
+  {% if kw and not search_results %}
+  <div style="color:var(--muted);font-size:13px">未找到道号含「{{ kw }}」的修士</div>
+  {% endif %}
+  {% for r in search_results %}
+  <div style="display:flex;align-items:center;gap:10px;padding:8px 0;
+       {% if not loop.last %}border-bottom:1px solid var(--bd){% endif %}">
+    <span style="font-weight:600;flex:1">{{ r.name }}{% if r.zi %}<span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:5px">字{{ r.zi }}</span>{% endif %}
+      <span class="root-{{ r.spirit_root }}" style="font-size:12px;margin-left:6px">{{ r.spirit_root }}</span>
+      <span style="color:var(--muted);font-size:12px;margin-left:6px">{{ REALMS[r.realm_idx].name }}</span>
+    </span>
+    <a href="{{ url_for('social', q=kw) }}#rel-{{ r.id }}" class="btn btn-ghost btn-sm"
+       onclick="setTimeout(()=>document.getElementById('interact-{{ r.id }}')?.scrollIntoView(),50)">互动</a>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- 关系列表 + 互动 -->
+<div class="card-h" style="margin-bottom:10px">我的道友关系</div>
+{% set all_targets = rel_views %}
+{% set shown_ids = rel_views | map(attribute='other') | map(attribute='id') | list %}
+
+{% if not rel_views and not search_results %}
+<div class="empty">还没有任何道友，搜索道号开始结交吧</div>
+{% endif %}
+
+<!-- 已有关系卡片 -->
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;margin-bottom:16px">
+  {% for rv in rel_views %}
+  {% set o = rv.other %}
+  <div class="card" style="margin:0" id="interact-{{ o.id }}">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px">
+      <div>
+        <div style="font-size:16px;font-weight:700">{{ o.name }}{% if o.zi %}<span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:5px">字{{ o.zi }}</span>{% endif %}
+          {% if rv.is_partner %}<span style="font-size:11px;color:var(--gold)">· 双修伴侣</span>{% endif %}
+        </div>
+        <div style="font-size:12px;margin-top:2px">
+          <span class="root-{{ o.spirit_root }}">{{ o.spirit_root }}</span>
+          <span style="color:var(--muted);margin-left:6px">{{ rv.other_realm }}</span>
+          <span style="margin-left:6px">{% for e in rv.other_elems %}<span style="color:var(--gold2)">{{ e }}</span>{% endfor %}</span>
+        </div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:13px;color:var(--gold)">{{ rv.level }}</div>
+        <div style="font-size:11px;color:var(--muted)">好感 {{ rv.affinity }}</div>
+      </div>
+    </div>
+
+    <!-- 五行关系 -->
+    <div style="font-size:12px;margin-bottom:10px;padding:6px 10px;border-radius:6px;
+         background:{% if rv.wx_ke %}rgba(224,92,75,.08){% elif rv.wx_factor > 1 %}rgba(82,183,136,.08){% else %}var(--sf2){% endif %}">
+      五行关系：<strong style="color:{% if rv.wx_ke %}var(--red){% elif rv.wx_factor > 1 %}var(--green){% else %}var(--muted){% endif %}">{{ rv.wx_desc }}</strong>
+      <span style="color:var(--muted)">（双修系数 ×{{ rv.wx_factor }}{% if rv.wx_ke %}，15% 走火入魔风险{% endif %}）</span>
+    </div>
+
+    <!-- 操作 -->
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <!-- 切磋 -->
+      <form method="post" action="{{ url_for('social_spar') }}">
+        <input type="hidden" name="target_id" value="{{ o.id }}">
+        <button class="btn btn-ghost btn-sm">切磋</button>
+      </form>
+      <!-- 双修 -->
+      {% if rv.cd_left > 0 %}
+      <button class="btn btn-ghost btn-sm" disabled>双修冷却 {{ rv.cd_left // 3600 }}时{{ (rv.cd_left % 3600)//60 }}分</button>
+      {% else %}
+      <form method="post" action="{{ url_for('social_invite') }}">
+        <input type="hidden" name="target_id" value="{{ o.id }}">
+        <button class="btn btn-gold btn-sm">{% if rv.is_npc %}双修{% else %}邀请双修{% endif %}</button>
+      </form>
+      {% endif %}
+      <!-- 结道侣 -->
+      {% if rv.is_daolv %}
+      <span style="font-size:12px;color:var(--gold);font-weight:600">💑 道侣</span>
+      {% elif rv.can_propose and daolv_count < daolv_max %}
+      <form method="post" action="{{ url_for('social_propose') }}"
+            onsubmit="return confirm('向【{{ o.name }}】提出结为道侣？')">
+        <input type="hidden" name="target_id" value="{{ o.id }}">
+        <button class="btn btn-jade btn-sm">💍 求结道侣</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- 搜索结果中的新对象（无现有关系）的快捷互动 -->
+{% for r in search_results %}
+{% if r.id not in shown_ids %}
+<div class="card" id="interact-{{ r.id }}" style="border-color:rgba(91,163,208,.3)">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+    <div style="font-weight:700">{{ r.name }}
+      <span class="root-{{ r.spirit_root }}" style="font-size:12px;margin-left:6px">{{ r.spirit_root }}</span>
+      <span style="color:var(--muted);font-size:12px;margin-left:6px">{{ REALMS[r.realm_idx].name }}</span>
+      <span style="color:var(--muted);font-size:11px;margin-left:8px">（尚无交集）</span>
+    </div>
+  </div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+    <form method="post" action="{{ url_for('social_spar') }}">
+      <input type="hidden" name="target_id" value="{{ r.id }}">
+      <button class="btn btn-ghost btn-sm">切磋</button>
+    </form>
+    <form method="post" action="{{ url_for('social_invite') }}">
+      <input type="hidden" name="target_id" value="{{ r.id }}">
+      <button class="btn btn-gold btn-sm">邀请双修</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endfor %}
+
+<!-- NPC 红尘客 -->
+{% if npc_views %}
+<div class="card-h" style="margin:6px 0 10px">红尘客 <span style="color:var(--muted);font-weight:400;font-size:12px">（可结缘的奇人，赠礼提升好感，好感满可求亲）</span></div>
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;margin-bottom:16px">
+  {% for rv in npc_views %}{% if rv %}
+  {% set o = rv.other %}
+  <div class="card" style="margin:0;border-color:rgba(166,124,26,.25)">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px">
+      <div>
+        <div style="font-size:16px;font-weight:700;color:var(--gold2)">{{ o.name }}
+          {% if rv.is_daolv %}<span style="font-size:11px;color:var(--gold)">💑 道侣</span>{% endif %}
+        </div>
+        <div style="font-size:12px;margin-top:2px">
+          <span class="root-{{ o.spirit_root }}">{{ o.spirit_root }}</span>
+          <span style="color:var(--muted);margin-left:6px">{{ rv.other_realm }}</span>
+          <span style="margin-left:6px">{% for e in rv.other_elems %}<span style="color:var(--gold2)">{{ e }}</span>{% endfor %}</span>
+        </div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:13px;color:var(--gold)">{{ rv.level }}</div>
+        <div style="font-size:11px;color:var(--muted)">好感 {{ rv.affinity }}/{{ DAOLV_AFFINITY }}</div>
+      </div>
+    </div>
+    <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:8px">{{ o.bio }}</div>
+    <div style="font-size:12px;margin-bottom:10px;padding:5px 10px;border-radius:6px;
+         background:{% if rv.wx_ke %}rgba(192,57,43,.08){% elif rv.wx_factor > 1 %}rgba(46,139,87,.08){% else %}var(--sf2){% endif %}">
+      五行<strong style="color:{% if rv.wx_ke %}var(--red){% elif rv.wx_factor > 1 %}var(--green){% else %}var(--muted){% endif %}">{{ rv.wx_desc }}</strong>
+      <span style="color:var(--muted)">（双修 ×{{ rv.wx_factor }}）</span>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      {% if rv.cd_left > 0 %}
+      <button class="btn btn-ghost btn-sm" disabled>双修冷却 {{ rv.cd_left//3600 }}时</button>
+      {% else %}
+      <form method="post" action="{{ url_for('social_invite') }}">
+        <input type="hidden" name="target_id" value="{{ o.id }}">
+        <button class="btn btn-gold btn-sm">双修</button>
+      </form>
+      {% endif %}
+      {% if rv.is_daolv %}
+      <span style="font-size:12px;color:var(--gold);font-weight:600">💑 道侣</span>
+      {% elif rv.can_propose and daolv_count < daolv_max %}
+      <form method="post" action="{{ url_for('social_propose') }}"
+            onsubmit="return confirm('向【{{ o.name }}】求亲？')">
+        <input type="hidden" name="target_id" value="{{ o.id }}">
+        <button class="btn btn-jade btn-sm">💍 求亲</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}{% endfor %}
+</div>
+{% endif %}
+
+<!-- 我发出的邀请 -->
+{% if sent %}
+<div class="card" style="background:rgba(91,163,208,.05);border-color:rgba(91,163,208,.15)">
+  <div class="card-h" style="color:var(--blue)">我发出的邀请</div>
+  {% for s in sent %}
+  <div style="font-size:13px;padding:5px 0;color:var(--muted)">
+    → 已向 <strong style="color:var(--text)">{{ s.to_name }}</strong> 发出{% if s.type=='marriage' %}结亲{% else %}双修{% endif %}邀请，等待回应（{{ s.created_at | format_ts }}）
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if recent_gifts %}
+<div class="card" style="background:rgba(201,168,76,.04);border-color:rgba(201,168,76,.15)">
+  <div class="card-h" style="color:var(--gold2)">收礼图鉴
+    <a href="{{ url_for('gift_log_page') }}" style="font-size:12px;font-weight:normal;margin-left:8px;color:var(--jade)">全部 {{ gift_log_count }} 件 →</a>
+  </div>
+  {% for g in recent_gifts %}
+  <div style="font-size:13px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.05);display:flex;justify-content:space-between;align-items:center">
+    <span>🎁 <strong>{{ g.item_name }}</strong> <span style="color:var(--muted)">— {{ g.from_name }} 所赠</span></span>
+    <span style="color:var(--jade);font-size:12px">好感 +{{ g.affinity }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card" style="background:rgba(201,168,76,.05);border-color:rgba(201,168,76,.15)">
+  <div class="card-h" style="color:var(--gold2)">道友说明</div>
+  <div style="color:var(--muted);font-size:12px;line-height:2">
+    <div>· <strong>赠礼</strong>：通过<a href="{{ url_for('mail') }}" style="color:var(--jade)">邮件</a>附赠物品或灵兽（每日 30 封，无冷却）</div>
+    <div>· <strong>切磋</strong>：友好比试，+2 好感（每位每日 3 次），不掉气血，耗 5 灵力</div>
+    <div>· <strong>双修</strong>：发邀请→对方接受，双方各耗 {{ SHUANGXIU_COST }} 灵力，各得额外修为，+{{ SHUANGXIU_AFFINITY }} 好感，每对冷却 4 小时</div>
+    <div>· <strong>五行</strong>：相生 ×1.5、同属 ×1.2、相克 ×0.6 且 15% 走火入魔损修为</div>
+    <div>· 境界低的一方双修有「带飞」额外加成</div>
+  </div>
+</div>
+</div>
+<style>input:focus,select:focus{outline:none;border-color:var(--jade)}</style>
+{% endblock %}

@@ -654,7 +654,7 @@
         </select>
         {% endif %}
         <span style="font-size:11px;color:var(--muted);" id="attrHint">
-          {% if attr_defs %}角色的该属性值决定走哪段{% else %}请先在机器人中注册属性并同步设置{% endif %}
+          {% if attr_defs %}角色的该属性值决定走哪段{% else %}请先在机器人中注册属性并推送全部{% endif %}
         </span>
       </div>
       <div class="nf-pity-row" id="nfPityRow">
@@ -1301,7 +1301,7 @@ document.getElementById("btnCreate").addEventListener("click", () => {
   if (pools[name]) { showToast(`池子「${name}」已存在`, false); return; }
   if (newPoolType === "tiered") {
     const attrEl = document.getElementById("newPoolAttr");
-    if (attrEl.disabled) { showToast("❌ 无可用属性，请先在机器人中注册属性并同步设置", false); return; }
+    if (attrEl.disabled) { showToast("❌ 无可用属性，请先在机器人中注册属性并推送全部", false); return; }
     const attr = attrEl.value;
     if (!attr) { showToast("请选择绑定属性", false); return; }
     pools[name] = { name, type: "tiered", attr, enabled: true, items: [], tiers: [] };

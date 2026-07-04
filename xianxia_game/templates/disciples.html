@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}师徒 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">📚 师徒 <small>传道授业，薪火相传</small></div>
+
+<!-- 我的师父 -->
+{% if shifu %}
+<div class="card" style="margin-bottom:16px;border-color:var(--gold)">
+  <div class="card-h" style="color:var(--gold2)">我的师父</div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <span style="font-size:28px">🧙</span>
+    <div style="flex:1">
+      <div style="font-weight:700;font-size:15px">{{ shifu.name }}</div>
+      <div style="font-size:12px;color:var(--muted)">
+        <span class="root-{{ shifu.spirit_root }}">{{ shifu.spirit_root }}</span>
+        · {{ REALMS[shifu.realm_idx].name }}
+      </div>
+      <div style="font-size:12px;color:var(--jade);margin-top:4px">
+        修炼速度 +15% · 与师父双修收益 ×2
+      </div>
+    </div>
+    {% if my_ds %}
+    <div style="font-size:11px;color:var(--muted);text-align:right">
+      拜师于 {{ my_ds.formed_at | format_ts }}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% elif pending_shifu %}
+<div class="card" style="margin-bottom:16px;border-color:var(--gold)">
+  <div class="card-h" style="color:var(--gold2)">📜 收徒邀请</div>
+  {% for p in pending_shifu %}
+  <div style="display:flex;align-items:center;gap:10px;padding:8px 0;{% if not loop.last %}border-bottom:1px solid var(--bd){% endif %}">
+    <div style="flex:1;font-size:13px">
+      <strong class="root-{{ p.from_root }}">{{ p.from_name }}</strong>（{{ REALMS[p.from_realm].name }}）邀请你拜师
+    </div>
+    <form method="post" style="display:inline">
+      <input type="hidden" name="action" value="accept_disciple"><input type="hidden" name="inter_id" value="{{ p.id }}">
+      <button class="btn btn-gold btn-sm">拜师</button>
+    </form>
+    <form method="post" style="display:inline">
+      <input type="hidden" name="action" value="decline_disciple"><input type="hidden" name="inter_id" value="{{ p.id }}">
+      <button class="btn btn-ghost btn-sm">婉拒</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- 我的徒弟 -->
+{% set active_disciples = my_disciples | selectattr('status','equalto','active') | list %}
+{% set past_disciples   = my_disciples | rejectattr('status','equalto','active') | list %}
+
+{% if char.realm_idx >= SHIFU_MIN_REALM %}
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">我的徒弟（{{ active_disciples|length }}/{{ SHIFU_MAX_DISCIPLES }}）</div>
+
+  {% for d in active_disciples %}
+  {% set cd_teach = (my_ds and my_ds.id==d.id and (now_ts()-(d.last_teach or 0)) < TEACH_COOLDOWN_DAYS*86400) %}
+  <div style="background:var(--sf2);border-radius:10px;padding:12px;margin-bottom:10px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <span style="font-size:22px">🎓</span>
+      <div style="flex:1">
+        <div style="font-weight:600">{{ d.tudi_name }}{% if d.tudi_zi %}<span style="font-size:11px;color:var(--muted);font-weight:400;margin-left:5px">字{{ d.tudi_zi }}</span>{% endif %}</div>
+        <div style="font-size:12px;color:var(--muted)">
+          <span class="root-{{ d.tudi_root }}">{{ d.tudi_root }}</span>
+          · {{ REALMS[d.tudi_realm].name }}
+        </div>
+      </div>
+      <form method="post" onsubmit="return confirm('确定驱逐？')">
+        <input type="hidden" name="action" value="dismiss"><input type="hidden" name="tudi_id" value="{{ d.tudi_char_id }}">
+        <button class="btn btn-ghost btn-sm" style="color:var(--red)">驱逐</button>
+      </form>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <!-- 传授绝招 -->
+      <form method="post" style="display:flex;gap:4px;align-items:center">
+        <input type="hidden" name="action" value="teach"><input type="hidden" name="tudi_id" value="{{ d.tudi_char_id }}">
+        <select name="tech_id" style="font-size:12px;background:var(--sf);border:1px solid var(--bd);color:var(--text);border-radius:6px;padding:4px 6px;font-family:inherit;max-width:130px">
+          {% for t in my_techs %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
+        </select>
+        <button class="btn btn-jade btn-sm" {% if (now_ts()-(d.last_teach or 0)) < TEACH_COOLDOWN_DAYS*86400 %}disabled title="冷却中"{% endif %}>
+          传授绝招{% if (now_ts()-(d.last_teach or 0)) < TEACH_COOLDOWN_DAYS*86400 %}（冷却中）{% endif %}
+        </button>
+      </form>
+      <!-- 赐字 -->
+      <form method="post" style="display:flex;gap:4px;align-items:center">
+        <input type="hidden" name="action" value="grant_zi"><input type="hidden" name="tudi_id" value="{{ d.tudi_char_id }}">
+        <input type="text" name="zi" placeholder="赐字" maxlength="12"
+          style="font-size:11px;width:70px;background:var(--sf2);border:1px solid var(--bd);border-radius:5px;padding:3px 6px;color:var(--text)">
+        <button class="btn btn-gold btn-sm">赐字</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+
+  {% if active_disciples|length < SHIFU_MAX_DISCIPLES %}
+  <form method="post" style="display:flex;gap:8px;margin-top:8px">
+    <input type="hidden" name="action" value="take_disciple">
+    <input name="target_name" placeholder="输入道号收徒" style="flex:1;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+    <button class="btn btn-jade">发出收徒邀请</button>
+  </form>
+  {% else %}
+  <div style="color:var(--muted);font-size:12px;margin-top:8px">已达徒弟上限 {{ SHIFU_MAX_DISCIPLES }} 人</div>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- 历史师徒 -->
+{% if past_disciples %}
+<div class="card">
+  <div class="card-h" style="color:var(--muted)">历史徒弟</div>
+  {% for d in past_disciples %}
+  <div style="display:flex;gap:10px;padding:7px 0;font-size:13px;color:var(--muted);{% if not loop.last %}border-bottom:1px solid var(--bd){% endif %}">
+    <span>{{ d.tudi_name }}</span>
+    <span>{{ REALMS[d.tudi_realm].name }}</span>
+    <span style="margin-left:auto">{{ {'graduated':'已出师','dismissed':'已驱逐'}.get(d.status,d.status) }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card" style="background:rgba(166,124,26,.05);border-color:rgba(166,124,26,.15)">
+  <div class="card-h" style="color:var(--gold2)">师徒说明</div>
+  <div style="color:var(--muted);font-size:12px;line-height:2">
+    <div>· 师父需达到【{{ REALMS[SHIFU_MIN_REALM].name }}】，且与徒弟在<strong>同一宗门</strong></div>
+    <div>· 徒弟获得修炼速度 <strong style="color:var(--jade)">+15%</strong> 持续加成</div>
+    <div>· 徒弟大境界突破时师父获得<strong style="color:var(--gold)">传承功德</strong>灵石奖励</div>
+    <div>· 传授绝招冷却 <strong>{{ TEACH_COOLDOWN_DAYS }} 天</strong></div>
+    <div>· 徒弟境界与师父相当时自动出师</div>
+  </div>
+</div>
+</div>
+<style>select:focus,input:focus{outline:none;border-color:var(--jade)}</style>
+{% endblock %}

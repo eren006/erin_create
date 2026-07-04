@@ -32,12 +32,37 @@ function cachedSet(key, val) {
     const str = typeof val === "string" ? val : String(val);
     ext.storageSet(key, str);
     _kvCache[key] = str;
+    delete _objCache[key];
 }
+
+// 解析对象缓存：仅限白名单热 key（每条消息都要读的账号映射/权限/开关）。
+// 命中时返回同一个缓存对象——这些 key 的读取方不得修改返回对象，除非改完立即 kvSet 写回
+// （2026-07 已审计全部调用点均满足）。新增白名单 key 前需做同样审计。
+const _objCache = Object.create(null);
+const PARSED_CACHE_KEYS = { extra_accounts: 1, a_adminList: 1, global_feature_toggle: 1 };
+
+// JSON 对象读写（在 cachedGet/cachedSet 之上）。所有存 JSON 的 key 一律走这两个函数：
+// 读到空值或损坏串时返回 def 并记日志，不让单个坏 key 炸掉整条指令。
+function kvGet(key, def) {
+    if (key in _objCache) return _objCache[key];
+    const raw = cachedGet(key);
+    if (raw === null || raw === undefined || raw === "") return def;
+    try {
+        const v = JSON.parse(raw);
+        if (v === null || v === undefined) return def;
+        if (PARSED_CACHE_KEYS[key]) _objCache[key] = v;
+        return v;
+    } catch (e) {
+        console.error(`[长日系统] 存储 JSON 损坏，已回退默认值: ${key}`);
+        return def;
+    }
+}
+function kvSet(key, val) { cachedSet(key, JSON.stringify(val)); }
 
 // 读取自定义类型别名，留空则返回原 subtype 值
 function getCustomTypeLabel(subtype) {
     try {
-        const labels = JSON.parse(cachedGet("custom_type_labels") || "{}");
+        const labels = kvGet("custom_type_labels", {});
         return (labels[subtype] && labels[subtype].trim()) ? labels[subtype].trim() : subtype;
     } catch { return subtype; }
 }
@@ -57,6 +82,8 @@ seal.ext.registerStringConfig(ext, "ws地址", "ws://localhost:3001");
     seal.ext.registerBoolConfig(ext, "启用RP存档传输", false, "开启后，监听到的RP正文、短信、礼物将在结戏时发送到存档服务器");
     seal.ext.registerStringConfig(ext, "RP存档服务器地址", "http://localhost:6666", "Flask存档服务器地址，末尾不带/");
     seal.ext.registerStringConfig(ext, "RP存档Token", "", "存档服务器API验证Token，与服务器端RP_API_TOKEN环境变量一致，留空则不验证");
+    seal.ext.registerStringConfig(ext, "海豹WebUI地址", "http://localhost:3211", "海豹WebUI地址，用于将收集图片保存到本地，末尾不带/");
+    seal.ext.registerStringConfig(ext, "海豹WebUI Token", "", "海豹WebUI鉴权Token（账号页面查看），配置后「我提交」中的图片将自动保存到海豹本地");
 
 
 // ========================
@@ -258,7 +285,8 @@ const WSM = {
 };
 
 // 兼容包装：签名与历史版本一致，全部调用点无需改动
-function ws(postData, ctx, msg, successreply, errorreply) {
+// timeoutMs 可选：默认沿用 WSM.request 的 3000ms，个别偏慢的动作（如 set_group_name）可单独放宽
+function ws(postData, ctx, msg, successreply, errorreply, timeoutMs) {
     if (postData.params) {
         if (postData.params.message_id) postData.params.message_id = parseInt(postData.params.message_id);
         if (postData.params.group_id) postData.params.group_id = parseInt(postData.params.group_id);
@@ -278,7 +306,8 @@ function ws(postData, ctx, msg, successreply, errorreply) {
                 if (errorreply) seal.replyToSender(ctx, msg, errorreply);
             }
         },
-        () => { if (errorreply) seal.replyToSender(ctx, msg, errorreply); }
+        () => { if (errorreply) seal.replyToSender(ctx, msg, errorreply); },
+        timeoutMs
     );
     return seal.ext.newCmdExecuteResult(true);
 }
@@ -366,6 +395,58 @@ function applyMsgTemplate(tplName, vars) {
     } catch (e) { return null; }
 }
 
+// 将 QQ 临时图片 URL 下载并上传到海豹本地资源，返回本地路径（如 data/images/xxx.jpg）
+// QQ 的 multimedia CDN URL 有时效性，保存到海豹本地可永久访问
+async function uploadImageToSeal(imageUrl) {
+    const sealAddr = (seal.ext.getStringConfig(ext, "海豹WebUI地址") || "http://localhost:3211").replace(/\/$/, "");
+    const sealToken = seal.ext.getStringConfig(ext, "海豹WebUI Token") || "";
+    if (!sealToken) throw new Error("未配置海豹WebUI Token");
+
+    const imgResp = await fetch(imageUrl);
+    if (!imgResp.ok) throw new Error(`图片下载失败: ${imgResp.status}`);
+    const buffer = await imgResp.arrayBuffer();
+    const contentType = imgResp.headers.get("content-type") || "image/jpeg";
+    const extName = contentType.includes("png") ? "png" : contentType.includes("gif") ? "gif" : "jpg";
+    const filename = `collect_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${extName}`;
+
+    const blob = new Blob([buffer], { type: contentType });
+    const form = new FormData();
+    // 海豹源码字段名为 "files"，路由 POST /api/resource，鉴权 header 为 "token"
+    form.append("files", blob, filename);
+
+    const uploadResp = await fetch(`${sealAddr}/api/resource`, {
+        method: "POST",
+        headers: { "token": sealToken },
+        body: form
+    });
+    if (!uploadResp.ok) throw new Error(`海豹上传失败: ${uploadResp.status}`);
+    // 海豹上传成功响应不含路径，路径固定为 data/images/<filename>
+    return `data/images/${filename}`;
+}
+
+// 将内容中所有 [CQ:image,...,url=xxx] 的 QQ URL 替换为海豹本地路径
+async function localizeImages(content) {
+    const sealToken = seal.ext.getStringConfig(ext, "海豹WebUI Token") || "";
+    if (!sealToken) return content; // 未配置则跳过，保留原始 CQ 码
+
+    const imageRegex = /\[CQ:image,[^\]]*?url=([^,\]]+)[^\]]*\]/g;
+    const matches = [...content.matchAll(imageRegex)];
+    if (matches.length === 0) return content;
+
+    let result = content;
+    for (const match of matches) {
+        const fullTag = match[0];
+        const url = match[1];
+        try {
+            const localPath = await uploadImageToSeal(url);
+            result = result.replace(fullTag, `[CQ:image,file=${localPath}]`);
+        } catch (e) {
+            console.error("[收集图片本地化] 失败，保留原始 URL:", e.message || String(e));
+        }
+    }
+    return result;
+}
+
 async function postToArchive(endpoint, data) {
     const base = (seal.ext.getStringConfig(ext, "RP存档服务器地址") || "").replace(/\/$/, "");
     const token = seal.ext.getStringConfig(ext, "RP存档Token") || "";
@@ -396,7 +477,7 @@ function getActiveSessionId(platform, senderName) {
     const uid = getUidByRoleName(platform, senderName);
     if (!uid) return "";
     const key = `${platform}:${uid}`;
-    const bSched = JSON.parse(cachedGet("b_confirmedSchedule") || "{}");
+    const bSched = kvGet("b_confirmedSchedule", {});
     const active = (bSched[key] || []).find(e => e.status === "active" && e.group);
     if (!active) return "";
     const startTs = (getSessionStats()[active.group] || {})._startTime;
@@ -423,14 +504,14 @@ function buildSessionArchive(gid, platform, forced) {
         }
     });
 
-    const expireInfo = JSON.parse(cachedGet("group_expire_info") || "{}")[gid] || {};
+    const expireInfo = kvGet("group_expire_info", {})[gid] || {};
     const gameDay    = expireInfo.day  || timer.day || cachedGet("global_days") || "";
 
     // 心动信/短信/礼物均已在事件发生时实时 POST /api/event，此处不再批量附带
     // （心动信 pool 投完即清空，批量读取必然为空；短信/礼物实时上传已含 session_id）
 
     // 顺带附上 QQ→角色映射，服务器自动更新玩家数据库，无需手动同步
-    const _npcListBuild = JSON.parse(cachedGet("a_npc_list") || "[]");
+    const _npcListBuild = kvGet("a_npc_list", []);
     const playersList = participants.map(roleName => {
         const uid = getUidByRoleName(platform, roleName);
         return uid ? { qq: uid, role_name: roleName, is_npc: _npcListBuild.includes(roleName) } : null;
@@ -520,8 +601,8 @@ function getGroupMembersSilent(gid, ctx, msg) {
  */
 function performAuditLogic(ctx, msg, ownerName, members) {
     const platform = msg.platform;
-    const a_private_group = JSON.parse(cachedGet("a_private_group") || "{}");
-    const npcList = JSON.parse(cachedGet("a_npc_list") || "[]");
+    const a_private_group = kvGet("a_private_group", {});
+    const npcList = kvGet("a_npc_list", []);
     
     const playerMap = {}; 
     const npcUIDs = {};   
@@ -597,7 +678,7 @@ function timeConflict(newDay, newTime, existingDay, existingTime) {
 function isUserAdmin(ctx, msg) {
     const platform = msg.platform;
     const uid = msg.sender.userId.replace(`${platform}:`, "");
-    const a_adminList = JSON.parse(cachedGet("a_adminList") || "{}");
+    const a_adminList = kvGet("a_adminList", {});
     return ctx.privilegeLevel === 100 || (a_adminList[platform] && a_adminList[platform].includes(uid));
   }
 
@@ -642,7 +723,7 @@ function recordMeetingAndAnnounce(subtype, platform, ctx, endPoint) {
     count++;
     cachedSet(storageKey, count.toString());
 
-    const groupId = JSON.parse(cachedGet("adminAnnounceGroupId") || "null");
+    const groupId = kvGet("adminAnnounceGroupId", null);
 
     if (groupId) {
         const msgDivineLog = seal.newMessage();
@@ -690,7 +771,7 @@ function checkAcceptanceConflicts(platform, userId, roleName, day, time, exclude
   const results = [];
   
   // 1. 检查锁定冲突
-  const a_lockedSlots = JSON.parse(cachedGet("a_lockedSlots") || "{}");
+  const a_lockedSlots = kvGet("a_lockedSlots", {});
   const locked = a_lockedSlots[`${platform}:${userId}`]?.[day] || [];
   for (let slot of locked) {
     if (timeOverlap(slot, time)) {
@@ -700,7 +781,7 @@ function checkAcceptanceConflicts(platform, userId, roleName, day, time, exclude
   }
 
   // 2. 检查已确认日程冲突
-  const b_confirmedSchedule = JSON.parse(cachedGet("b_confirmedSchedule") || "{}");
+  const b_confirmedSchedule = kvGet("b_confirmedSchedule", {});
   const confirmedList = b_confirmedSchedule[`${platform}:${userId}`] || [];
   for (let sch of confirmedList) {
     if (sch.day === day && timeOverlap(sch.time, time)) {
@@ -710,7 +791,7 @@ function checkAcceptanceConflicts(platform, userId, roleName, day, time, exclude
   }
 
   // 3. 检查已接受但未成团的多人邀请（排除当前邀约）
-  const b_MultiGroupRequest = JSON.parse(cachedGet("b_MultiGroupRequest") || "{}");
+  const b_MultiGroupRequest = kvGet("b_MultiGroupRequest", {});
   for (let [ref, group] of Object.entries(b_MultiGroupRequest)) {
     // 排除当前正在处理的多人邀约
     if (excludeMultiGroupRef && ref === excludeMultiGroupRef) continue;
@@ -739,7 +820,7 @@ function checkAcceptanceConflicts(platform, userId, roleName, day, time, exclude
   }
 
 function isUserFeatureEnabled(uid, key, defaultValue = true) {
-  const blockMap = JSON.parse(cachedGet("feature_user_blocklist") || "{}");
+  const blockMap = kvGet("feature_user_blocklist", {});
   const personConfig = blockMap[uid];
   if (personConfig && personConfig[key] !== undefined) {
     return personConfig[key];
@@ -748,7 +829,7 @@ function isUserFeatureEnabled(uid, key, defaultValue = true) {
 }
  // 辅助函数：统一获取并清洗数据格式
 function getRoleStorage() {
-    let data = JSON.parse(cachedGet("a_private_group") || "{}");
+    let data = kvGet("a_private_group", {});
     // 直接返回数据，不再进行 Array 检查和 needsUpdate 判断
     return data;
 }
@@ -809,7 +890,7 @@ cmd_bind_role.solve =(ctx, msg, cmdArgs) => {
     }
 
     storage[platform][uid] = [name, gid];
-    cachedSet("a_private_group", JSON.stringify(storage));
+    kvSet("a_private_group", storage);
     initCharProfile(platform, name);
 
     const profile = getCharProfile(platform, name);
@@ -844,13 +925,13 @@ function doRenameRole(ctx, msg, newName) {
     if (takenByOther) return seal.replyToSender(ctx, msg, `❌ 名字「${newName}」已被他人使用`);
 
     storage[platform][uid][0] = newName;
-    cachedSet("a_private_group", JSON.stringify(storage));
+    kvSet("a_private_group", storage);
 
-    const npcList = JSON.parse(cachedGet("a_npc_list") || "[]");
+    const npcList = kvGet("a_npc_list", []);
     const npcIdx = npcList.indexOf(oldName);
-    if (npcIdx !== -1) { npcList[npcIdx] = newName; cachedSet("a_npc_list", JSON.stringify(npcList)); }
+    if (npcIdx !== -1) { npcList[npcIdx] = newName; kvSet("a_npc_list", npcList); }
 
-    const relData = JSON.parse(cachedGet("relationship_lines") || "{}");
+    const relData = kvGet("relationship_lines", {});
     if (relData[platform]) {
         for (const rels of Object.values(relData[platform])) {
             for (const rel of Object.values(rels)) {
@@ -858,11 +939,11 @@ function doRenameRole(ctx, msg, newName) {
                 if (Array.isArray(rel.details)) rel.details.forEach(d => { if (d.from === oldName) d.from = newName; });
             }
         }
-        cachedSet("relationship_lines", JSON.stringify(relData));
+        kvSet("relationship_lines", relData);
     }
 
     // 同步 b_confirmedSchedule 中的 partner 字段
-    const bcs = JSON.parse(cachedGet("b_confirmedSchedule") || "{}");
+    const bcs = kvGet("b_confirmedSchedule", {});
     let bcsChanged = false;
     for (const schedList of Object.values(bcs)) {
         for (const ev of schedList) {
@@ -873,10 +954,10 @@ function doRenameRole(ctx, msg, newName) {
             }
         }
     }
-    if (bcsChanged) cachedSet("b_confirmedSchedule", JSON.stringify(bcs));
+    if (bcsChanged) kvSet("b_confirmedSchedule", bcs);
 
     // 同步 group_expire_info 中的 participants
-    const gei = JSON.parse(cachedGet("group_expire_info") || "{}");
+    const gei = kvGet("group_expire_info", {});
     let geiChanged = false;
     for (const info of Object.values(gei)) {
         if (Array.isArray(info.participants)) {
@@ -884,10 +965,10 @@ function doRenameRole(ctx, msg, newName) {
             if (i !== -1) { info.participants[i] = newName; geiChanged = true; }
         }
     }
-    if (geiChanged) cachedSet("group_expire_info", JSON.stringify(gei));
+    if (geiChanged) kvSet("group_expire_info", gei);
 
     // 同步 group_timers 中的 participants 和 timerStatus key
-    const timers = JSON.parse(cachedGet("group_timers") || "{}");
+    const timers = kvGet("group_timers", {});
     let timersChanged = false;
     for (const timer of Object.values(timers)) {
         if (Array.isArray(timer.participants)) {
@@ -900,10 +981,10 @@ function doRenameRole(ctx, msg, newName) {
             timersChanged = true;
         }
     }
-    if (timersChanged) cachedSet("group_timers", JSON.stringify(timers));
+    if (timersChanged) kvSet("group_timers", timers);
 
     // 同步 interaction_counts 中的 roleName key 和内层统计 key
-    const ic = JSON.parse(cachedGet("interaction_counts") || "{}");
+    const ic = kvGet("interaction_counts", {});
     let icChanged = false;
     const oldKey = `${platform}:${oldName}`;
     const newKey = `${platform}:${newName}`;
@@ -917,7 +998,7 @@ function doRenameRole(ctx, msg, newName) {
             }
         }
     }
-    if (icChanged) cachedSet("interaction_counts", JSON.stringify(ic));
+    if (icChanged) kvSet("interaction_counts", ic);
 
     seal.replyToSender(ctx, msg, `✅ 角色名已由「${oldName}」改为「${newName}」。`);
     return seal.ext.newCmdExecuteResult(true);
@@ -936,7 +1017,7 @@ cmd_role_list.solve =(ctx, msg) => {
     }
 
     // 获取 NPC 列表（全局存储）
-    let npcList = JSON.parse(cachedGet("a_npc_list") || "[]");
+    let npcList = kvGet("a_npc_list", []);
 
     let rep = `📊 当前已绑定角色列表：\n`;
     // 新结构：uid为key，roleName在value[0]
@@ -984,21 +1065,21 @@ cmd_del_role.solve = (ctx, msg, cmdArgs) => {
 
     // 1. 绑定记录
     delete storage[platform][uid];
-    cachedSet("a_private_group", JSON.stringify(storage));
+    kvSet("a_private_group", storage);
 
     // 2. 时间锁定
-    const lockedSlots = JSON.parse(cachedGet("a_lockedSlots") || "{}");
+    const lockedSlots = kvGet("a_lockedSlots", {});
     delete lockedSlots[uidKey];
-    cachedSet("a_lockedSlots", JSON.stringify(lockedSlots));
+    kvSet("a_lockedSlots", lockedSlots);
 
     // 3. 已确认日程 + 释放该玩家占用的群号
-    const confirmed = JSON.parse(cachedGet("b_confirmedSchedule") || "{}");
+    const confirmed = kvGet("b_confirmedSchedule", {});
     const playerSchedules = confirmed[uidKey] || [];
     const groupsToRelease = playerSchedules
         .filter(ev => ev.group && ev.status === "active")
         .map(ev => ev.group);
     if (groupsToRelease.length > 0) {
-        let groupList = JSON.parse(cachedGet("group") || "[]");
+        let groupList = kvGet("group", []);
         for (const gid of groupsToRelease) {
             const occupiedIdx = groupList.indexOf(gid + "_占用");
             if (occupiedIdx !== -1) {
@@ -1006,40 +1087,40 @@ cmd_del_role.solve = (ctx, msg, cmdArgs) => {
                 groupList.push(gid);
             }
         }
-        cachedSet("group", JSON.stringify(groupList));
+        kvSet("group", groupList);
     }
     delete confirmed[uidKey];
-    cachedSet("b_confirmedSchedule", JSON.stringify(confirmed));
+    kvSet("b_confirmedSchedule", confirmed);
 
     // 4. 地点钥匙
-    const placeKeys = JSON.parse(cachedGet("place_keys") || "{}");
+    const placeKeys = kvGet("place_keys", {});
     if (placeKeys[platform]) {
         delete placeKeys[platform][uid];
-        cachedSet("place_keys", JSON.stringify(placeKeys));
+        kvSet("place_keys", placeKeys);
     }
 
     // 5. 角色档案（性别/皮相/签名/年龄）
-    const profiles = JSON.parse(cachedGet("sys_char_profiles") || "{}");
+    const profiles = kvGet("sys_char_profiles", {});
     delete profiles[uidKey];
-    cachedSet("sys_char_profiles", JSON.stringify(profiles));
+    kvSet("sys_char_profiles", profiles);
 
     // 6. 关系线（删除该玩家的条目，及其他人对该玩家的条目）
-    const relData = JSON.parse(cachedGet("relationship_lines") || "{}");
+    const relData = kvGet("relationship_lines", {});
     if (relData[platform]) {
         delete relData[platform][uid];
         for (const otherUid of Object.keys(relData[platform])) {
             delete relData[platform][otherUid][uid];
         }
-        cachedSet("relationship_lines", JSON.stringify(relData));
+        kvSet("relationship_lines", relData);
     }
 
     // 7. 心动信发送次数记录
-    const lovemailCounts = JSON.parse(cachedGet("lovemail_day_counts") || "{}");
+    const lovemailCounts = kvGet("lovemail_day_counts", {});
     delete lovemailCounts[uid];
-    cachedSet("lovemail_day_counts", JSON.stringify(lovemailCounts));
+    kvSet("lovemail_day_counts", lovemailCounts);
 
     // 7.5 交互统计（interaction_counts key 为 platform:roleName）
-    const ic = JSON.parse(cachedGet("interaction_counts") || "{}");
+    const ic = kvGet("interaction_counts", {});
     const icKey = `${platform}:${delName}`;
     let icChanged = false;
     if (ic[icKey]) { delete ic[icKey]; icChanged = true; }
@@ -1052,32 +1133,32 @@ cmd_del_role.solve = (ctx, msg, cmdArgs) => {
             }
         }
     }
-    if (icChanged) cachedSet("interaction_counts", JSON.stringify(ic));
+    if (icChanged) kvSet("interaction_counts", ic);
 
     // 8. RPG数据（背包/属性/抽取记录/二手市场挂单）——全部存在主 ext
     {
         // 背包
-        const invs = JSON.parse(cachedGet("global_inventories") || "{}");
+        const invs = kvGet("global_inventories", {});
         delete invs[uidKey];
-        cachedSet("global_inventories", JSON.stringify(invs));
+        kvSet("global_inventories", invs);
 
         // RPG属性
-        const charAttrs = JSON.parse(cachedGet("sys_character_attrs") || "{}");
+        const charAttrs = kvGet("sys_character_attrs", {});
         delete charAttrs[uid];
-        cachedSet("sys_character_attrs", JSON.stringify(charAttrs));
+        kvSet("sys_character_attrs", charAttrs);
 
         // 抽取记录
-        const drawRecs = JSON.parse(cachedGet("player_draw_records") || "{}");
+        const drawRecs = kvGet("player_draw_records", {});
         delete drawRecs[uidKey];
-        cachedSet("player_draw_records", JSON.stringify(drawRecs));
+        kvSet("player_draw_records", drawRecs);
 
         // 二手市场：撤销该角色的所有挂单
-        const market = JSON.parse(cachedGet("secondhand_market") || "{}");
+        const market = kvGet("secondhand_market", {});
         let marketChanged = false;
         for (const code of Object.keys(market)) {
             if (market[code].sellerRole === delName) { delete market[code]; marketChanged = true; }
         }
-        if (marketChanged) cachedSet("secondhand_market", JSON.stringify(market));
+        if (marketChanged) kvSet("secondhand_market", market);
     }
 
     seal.replyToSender(ctx, msg, `✅ 已成功清除玩家「${delName}」的全部数据`);
@@ -1093,8 +1174,8 @@ ext.cmdMap["清除玩家"] = cmd_del_role;
 
 // --- 核心工具函数 ---
 const store = {
-    get: (key) => JSON.parse(cachedGet(key) || "{}"),
-    set: (key, val) => cachedSet(key, JSON.stringify(val))
+    get: (key) => kvGet(key, {}),
+    set: (key, val) => kvSet(key, val)
 };
 
 // 将辅助账号 uid 解析为主账号 uid（找不到则原样返回）
@@ -1146,15 +1227,11 @@ const resolveUidToNameAnyPlatform = (uid) => {
 // 不要在卫星文件里复制这些函数的实现。
 const changriApi = {
     ext,
-    // 存储（带缓存，卫星读写主存储必须走这两对函数）
+    // 存储（带缓存，卫星读写主存储必须走这两对函数；JSON key 用 kvGet/kvSet，裸串用 kvGetRaw/kvSetRaw）
     kvGetRaw: cachedGet,
     kvSetRaw: cachedSet,
-    kvGet(key, def) {
-        const raw = cachedGet(key);
-        if (raw === null || raw === undefined || raw === "") return def;
-        try { return JSON.parse(raw); } catch (e) { return def; }
-    },
-    kvSet(key, val) { cachedSet(key, JSON.stringify(val)); },
+    kvGet,
+    kvSet,
     getStorageInt,
     // 身份与权限
     getPrimaryUid,
@@ -1391,14 +1468,14 @@ function checkPlacePermission(platform, roleName, placeName) {
  */
 function checkPlaceCommon(platform, senderName, place, instructionName = "发起邀约") {
   // 获取配置，增加默认值兜底
-  const placeSystemConfig = JSON.parse(cachedGet("place_system_config") || '{"enabled": false}');
-  const availablePlaces = JSON.parse(cachedGet("available_places") || "{}");
+  const placeSystemConfig = kvGet("place_system_config", {"enabled": false});
+  const availablePlaces = kvGet("available_places", {});
   
   // --- 情况 A: 地点系统已【启用】 (严格检查模式) ---
   if (placeSystemConfig.enabled) {
 
     // 新增：检查私人房间是否被禁用
-    const allowPrivateRooms = JSON.parse(cachedGet("allow_private_rooms") || "true");
+    const allowPrivateRooms = kvGet("allow_private_rooms", true);
     const isPrivateRoom = place.match(/^(.+?)的房间$/);
     if (!allowPrivateRooms && isPrivateRoom) {
       return { 
@@ -1412,7 +1489,7 @@ function checkPlaceCommon(platform, senderName, place, instructionName = "发起
     if (!permission.allowed) {
       // 获取该用户的钥匙，按权限分类显示地点
       const senderUid = getUidByRoleName(platform, senderName);
-      const userKeys = senderUid ? (JSON.parse(cachedGet("place_keys") || "{}")[platform]?.[senderUid] || []) : [];
+      const userKeys = senderUid ? (kvGet("place_keys", {})[platform]?.[senderUid] || []) : [];
 
       let errorMsg = `⚠️ 地点「${place}」不可用：${permission.reason}\n`;
 
@@ -1465,8 +1542,8 @@ cmdPlace.solve = (ctx, msg, cmdArgs) => {
     const userKeys = roleUid ? (store.get("place_keys")[platform]?.[roleUid] || []) : [];
 
     if (sub === "查看") {
-        const placeConfig = JSON.parse(cachedGet("place_system_config") || '{"enabled": false}');
-        const allowPrivateRooms = JSON.parse(cachedGet("allow_private_rooms") || "true");
+        const placeConfig = kvGet("place_system_config", {"enabled": false});
+        const allowPrivateRooms = kvGet("allow_private_rooms", true);
         const placeList = Object.entries(places);
 
         let rep = "🏢 地点列表\n";
@@ -1533,8 +1610,8 @@ cmdPlaceAdm.solve = (ctx, msg, cmdArgs) => {
     }
     
     const op = cmdArgs.getArgN(1);
-    let places = JSON.parse(cachedGet("available_places") || "{}");
-    let keys = JSON.parse(cachedGet("place_keys") || "{}");
+    let places = kvGet("available_places", {});
+    let keys = kvGet("place_keys", {});
     const pf = msg.platform;
 
     switch(op) {
@@ -1628,13 +1705,13 @@ cmdPlaceAdm.solve = (ctx, msg, cmdArgs) => {
             cachedSet("allow_private_rooms", "false");
             seal.replyToSender(ctx, msg, "❌ 私人房间功能已关闭\n玩家不能再使用「[角色名]的房间」格式");
           } else {
-            const cur = JSON.parse(cachedGet("allow_private_rooms") || "true");
+            const cur = kvGet("allow_private_rooms", true);
             seal.replyToSender(ctx, msg, `🏠 私人房间当前状态：${cur ? "✅ 开启" : "❌ 关闭"}\n切换：.地点管理 私人房间 on/off`);
           }
           break;
         }
         default: {
-            const allowPrivate = JSON.parse(cachedGet("allow_private_rooms") || "true");
+            const allowPrivate = kvGet("allow_private_rooms", true);
             const helpMsg = [
                 "📚 地点管理帮助",
                 "",
@@ -1664,8 +1741,8 @@ cmdPlaceAdm.solve = (ctx, msg, cmdArgs) => {
             break;
         }
     }
-    cachedSet("available_places", JSON.stringify(places));
-    cachedSet("place_keys", JSON.stringify(keys));
+    kvSet("available_places", places);
+    kvSet("place_keys", keys);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["地点管理"] = cmdPlaceAdm;
@@ -1681,7 +1758,7 @@ cmdBatchPlace.solve = (ctx, msg, cmdArgs) => {
     const arg = cmdArgs.getArgN(1);
     if (!arg) return seal.replyToSender(ctx, msg, "格式：.批量设置地点 地点1:描述/地点2:描述\n示例：.批量设置地点 图书馆:安静的阅读空间/咖啡厅:温馨小店");
 
-    let places = JSON.parse(cachedGet("available_places") || "{}");
+    let places = kvGet("available_places", {});
     const items = arg.split("/");
     const added = [], skipped = [];
     items.forEach(item => {
@@ -1691,7 +1768,7 @@ cmdBatchPlace.solve = (ctx, msg, cmdArgs) => {
         places[name] = { desc: (desc || "").trim(), locked: false, creator: "管理员", created_at: new Date().toLocaleString() };
         added.push(name);
     });
-    cachedSet("available_places", JSON.stringify(places));
+    kvSet("available_places", places);
     let rep = `✅ 成功添加 ${added.length} 个地点：${added.join("、")}`;
     if (skipped.length) rep += `\n⚠️ 跳过 ${skipped.length} 个无效条目`;
     seal.replyToSender(ctx, msg, rep);
@@ -1709,7 +1786,7 @@ cmdBatchKey.solve = (ctx, msg, cmdArgs) => {
     }
     const roles = (cmdArgs.getArgN(1) || "").split("/");
     const pNames = (cmdArgs.getArgN(2) || "").split("/");
-    let keys = JSON.parse(cachedGet("place_keys") || "{}");
+    let keys = kvGet("place_keys", {});
     const pf = msg.platform;
     if (!keys[pf]) keys[pf] = {};
 
@@ -1727,7 +1804,7 @@ cmdBatchKey.solve = (ctx, msg, cmdArgs) => {
         });
         found.push(rName);
     });
-    cachedSet("place_keys", JSON.stringify(keys));
+    kvSet("place_keys", keys);
     let rep = `✅ 已授权 ${found.length} 个角色：${found.join("、") || "无"}`;
     if (notFound.length) rep += `\n⚠️ 未找到以下角色：${notFound.join("、")}\n（请检查角色名是否正确）`;
     seal.replyToSender(ctx, msg, rep);
@@ -1743,11 +1820,11 @@ cmdViewPlace.solve = (ctx, msg) => {
         seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
         return seal.ext.newCmdExecuteResult(true);
     }
-    const places = JSON.parse(cachedGet("available_places") || "{}");
-    const keys = JSON.parse(cachedGet("place_keys") || "{}")[msg.platform] || {};
+    const places = kvGet("available_places", {});
+    const keys = kvGet("place_keys", {})[msg.platform] || {};
     
-    const placeConfig = JSON.parse(cachedGet("place_system_config") || '{"enabled": false}');
-    const allowPrivate = JSON.parse(cachedGet("allow_private_rooms") || "true");
+    const placeConfig = kvGet("place_system_config", {"enabled": false});
+    const allowPrivate = kvGet("allow_private_rooms", true);
     const placeCount = Object.keys(places).length;
     let rep = "🏢 地点系统详细报告\n";
     rep += "━━━━━━━━━━━━\n";
@@ -1776,7 +1853,7 @@ ext.cmdMap["查看钥匙分配"] = cmdViewPlace; // 共用逻辑
 // 💕 约会与邀约系统
 // ========================
 function checkTsFeatureWindow(featureKey) {
-    const windows = JSON.parse(cachedGet("ts_feature_windows") || "[]");
+    const windows = kvGet("ts_feature_windows", []);
     const entry = windows.find(w => w.feature === featureKey);
     if (!entry) return { ok: true };
     const h = new Date().getHours();
@@ -1961,11 +2038,11 @@ function mergeIntoExistingAppointment(ctx, msg, existingAppointment, newNames, p
     const { platform, sendname, day, time, place, a_private_group, fromKey } = preData;
     const groupId = existingAppointment.group;
     
-    let groupExpireInfo = JSON.parse(cachedGet("group_expire_info") || "{}");
+    let groupExpireInfo = kvGet("group_expire_info", {});
     let existingParticipants = groupExpireInfo[groupId]?.participants || [];
     
     if (existingParticipants.length === 0) {
-        const b_confirmedSchedule = JSON.parse(cachedGet("b_confirmedSchedule") || "{}");
+        const b_confirmedSchedule = kvGet("b_confirmedSchedule", {});
         const participantsSet = new Set();
         for (const [key, schedules] of Object.entries(b_confirmedSchedule)) {
             for (const ev of schedules) {
@@ -1993,9 +2070,9 @@ function mergeIntoExistingAppointment(ctx, msg, existingAppointment, newNames, p
             place: place
         };
     }
-    cachedSet("group_expire_info", JSON.stringify(groupExpireInfo));
+    kvSet("group_expire_info", groupExpireInfo);
     
-    let b_confirmedSchedule = JSON.parse(cachedGet("b_confirmedSchedule") || "{}");
+    let b_confirmedSchedule = kvGet("b_confirmedSchedule", {});
     
     for (const [key, schedules] of Object.entries(b_confirmedSchedule)) {
         for (let ev of schedules) {
@@ -2035,9 +2112,9 @@ function mergeIntoExistingAppointment(ctx, msg, existingAppointment, newNames, p
             });
         }
     }
-    cachedSet("b_confirmedSchedule", JSON.stringify(b_confirmedSchedule));
+    kvSet("b_confirmedSchedule", b_confirmedSchedule);
     
-    let groupTimers = JSON.parse(cachedGet("group_timers") || "{}");
+    let groupTimers = kvGet("group_timers", {});
     let timer = groupTimers[groupId];
     
     if (timer) {
@@ -2072,7 +2149,7 @@ function mergeIntoExistingAppointment(ctx, msg, existingAppointment, newNames, p
         
         timer.participants = allParticipants;
         groupTimers[groupId] = timer;
-        cachedSet("group_timers", JSON.stringify(groupTimers));
+        kvSet("group_timers", groupTimers);
     }
     
     // 更新群名
@@ -2111,7 +2188,7 @@ function mergeIntoExistingAppointment(ctx, msg, existingAppointment, newNames, p
 }
 
 async function checkAppointmentPreflight(ctx, msg, cmdArgs, subtype, minDurationKey, minDurationOverride) {
-    let config = JSON.parse(cachedGet("global_feature_toggle") || "{}");
+    let config = kvGet("global_feature_toggle", {});
     let enable_general_appointment = config.enable_general_appointment ?? true;
     if (!enable_general_appointment) {
         return { valid: false, errorMsg: "📅 当前已禁用通用发起邀约功能，无法发起" + getCustomTypeLabel(subtype === "电话" ? "电话" : "私密") + "邀约。" };
@@ -2119,7 +2196,7 @@ async function checkAppointmentPreflight(ctx, msg, cmdArgs, subtype, minDuration
 
     const platform = msg.platform;
     const uid = msg.sender.userId.replace(`${platform}:`, "");
-    const a_private_group = JSON.parse(cachedGet("a_private_group") || "{}");
+    const a_private_group = kvGet("a_private_group", {});
     if (!a_private_group[platform]) a_private_group[platform] = {};
 
     const sendname = getRoleName(ctx, msg);
@@ -2150,8 +2227,8 @@ async function checkAppointmentPreflight(ctx, msg, cmdArgs, subtype, minDuration
         return { valid: false, errorMsg: helpMsg };
     }
 
-    const allowedRanges = JSON.parse(cachedGet("allowed_appointment_times") || "[]");
-    const durationConfig = JSON.parse(cachedGet("appointment_duration_config") || "{}");
+    const allowedRanges = kvGet("allowed_appointment_times", []);
+    const durationConfig = kvGet("appointment_duration_config", {});
     const minDuration = minDurationOverride !== undefined ? minDurationOverride
         : (durationConfig[minDurationKey] !== undefined ? durationConfig[minDurationKey] : (minDurationKey === "phone" ? 29 : 59));
     const timeRes = parseAndValidateTime(rawTime, allowedRanges, minDuration, subtype);
@@ -2162,7 +2239,7 @@ async function checkAppointmentPreflight(ctx, msg, cmdArgs, subtype, minDuration
 
     // 时间调度：禁约时段（按游戏日）
     {
-        const _blocked = JSON.parse(cachedGet("ts_blocked_by_day") || "{}")[day] || [];
+        const _blocked = kvGet("ts_blocked_by_day", {})[day] || [];
         if (_blocked.length > 0) {
             const _startHour = parseInt(time.split(":")[0]);
             if (_blocked.includes(_startHour)) {
@@ -2173,7 +2250,7 @@ async function checkAppointmentPreflight(ctx, msg, cmdArgs, subtype, minDuration
 
     // 时间调度：允许弧长（小时）
     {
-        const _allowedDurs = JSON.parse(cachedGet("ts_allowed_durations") || "[]");
+        const _allowedDurs = kvGet("ts_allowed_durations", []);
         if (_allowedDurs.length > 0) {
             const _m = time.match(/(\d{2}):(\d{2})-(\d{2}):(\d{2})/);
             if (_m) {
@@ -2191,7 +2268,7 @@ async function checkAppointmentPreflight(ctx, msg, cmdArgs, subtype, minDuration
     const isMulti = names.length > 1;
     const fromKey = `${platform}:${uid}`;
 
-    let a_lockedSlots = JSON.parse(cachedGet("a_lockedSlots") || "{}");
+    let a_lockedSlots = kvGet("a_lockedSlots", {});
     const { selfLocked, failed: lockFailed } = checkLockedSlots(platform, day, time, fromKey, sendname, names, a_private_group, a_lockedSlots);
     if (selfLocked) return { valid: false, errorMsg: `⚠️ 你在 ${day} ${time} 段与锁定时间重叠，无法发起预约` };
     if (lockFailed.length) return { valid: false, errorMsg: `⚠️ 无法发起${getCustomTypeLabel(subtype)}，以下对象不符合条件：\n- ${lockFailed.join("\n- ")}` };
@@ -2207,7 +2284,7 @@ async function checkAppointmentPreflight(ctx, msg, cmdArgs, subtype, minDuration
         return { valid: false, errorMsg: "🚫 您仍有未退出的违规临时群，无法发起邀约" };
     }
 
-    let b_confirmedSchedule = JSON.parse(cachedGet("b_confirmedSchedule") || "{}");
+    let b_confirmedSchedule = kvGet("b_confirmedSchedule", {});
 
     let conflict = false;
     if (b_confirmedSchedule[fromKey]) {
@@ -2224,7 +2301,7 @@ async function checkAppointmentPreflight(ctx, msg, cmdArgs, subtype, minDuration
     const conflictRes = checkParticipantConflicts(platform, day, time, sendname, names, a_private_group, b_confirmedSchedule);
     if (conflictRes.stop) return { valid: false, errorMsg: conflictRes.errorMsg };
 
-    const autoMerge = (subtype === "私密") && (JSON.parse(cachedGet("auto_merge_duplicate_private") || "false"));
+    const autoMerge = (subtype === "私密") && (kvGet("auto_merge_duplicate_private", false));
     let mergeTarget = null;
     let otherConflicts = [];
 
@@ -2271,7 +2348,7 @@ async function checkAppointmentPreflight(ctx, msg, cmdArgs, subtype, minDuration
 async function directCreateAndFinalizeAppointment({
     ctx, msg, platform, sendname, sendid, subtype, day, time, place, names, title = "", isMulti
 }) {
-    const a_private_group = JSON.parse(cachedGet("a_private_group") || "{}");
+    const a_private_group = kvGet("a_private_group", {});
 
     // 直接构造已确认的数据体并调用 finalizeGroupCreation 建群
     if (isMulti) {
@@ -2334,7 +2411,7 @@ async function directCreateAndFinalizeAppointment({
 function isLetterSystemEnabled() {
     const letterExt = seal.ext.find("changri");
     if (!letterExt) return false;
-    const config = JSON.parse(cachedGet("global_feature_toggle") || "{}");
+    const config = kvGet("global_feature_toggle", {});
     return config.enable_direct_letter === true;
 }
 
@@ -2350,7 +2427,7 @@ function checkAndCostLetterCoin(ctx, msg, costType) {
     const uid = msg.sender.userId.replace(`${platform}:`, "");
 
     // 获取玩家角色名（新结构：uid为key，roleName在value[0]）
-    const a_private_group = JSON.parse(cachedGet("a_private_group") || "{}");
+    const a_private_group = kvGet("a_private_group", {});
     const senderRoleName = a_private_group[platform]?.[uid]?.[0];
 
     if (!senderRoleName) {
@@ -2371,14 +2448,14 @@ function checkAndCostLetterCoin(ctx, msg, costType) {
 
     // 检查写信币余额（从背包 global_inventories 读取）
     const roleKey = `${platform}:${uid}`;
-    const itemReg = JSON.parse(cachedGet("item_registry") || "{}");
+    const itemReg = kvGet("item_registry", {});
     const coinEntry = Object.entries(itemReg).find(([, v]) => v.name === "写信币");
     if (!coinEntry) {
-        return { success: false, errorMsg: "❌ 写信币尚未注册，请先启用写信综。" };
+        return { success: false, errorMsg: "❌ 写信币尚未注册，请先执行「注册写信综基础道具」。" };
     }
     const [coinCode] = coinEntry;
 
-    const invs = JSON.parse(cachedGet("global_inventories") || "{}");
+    const invs = kvGet("global_inventories", {});
     const inv = invs[roleKey] || [];
     const currentCoins = inv.filter(e => e.code === coinCode).reduce((sum, e) => sum + (e.count || 0), 0);
 
@@ -2396,7 +2473,7 @@ function checkAndCostLetterCoin(ctx, msg, costType) {
         }
     }
     invs[roleKey] = inv.filter(e => e.count > 0 || e.code !== coinCode);
-    cachedSet("global_inventories", JSON.stringify(invs));
+    kvSet("global_inventories", invs);
 
     return { success: true, cost };
 }
@@ -2442,7 +2519,7 @@ cmd_phone.solve = async (ctx, msg, cmdArgs) => {
         const successMsg = applyMsgTemplate("phone_success", { 对方: _对方, 群号: result.gid }) || (isMulti
             ? `✅ 你已成功向 ${_对方} 发起多人电话，通讯频段已自动建立！\n💬 频段：${result.gid}`
             : `✅ 你已成功与 ${_对方} 连线，通讯频段已自动建立！\n💬 频段：${result.gid}`);
-        seal.replyToSender(ctx, msg, successMsg);
+        seal.replyToSender(ctx, msg, successMsg + buildAppointmentGuide(result.gid, day, { includeEnd: true }));
     }
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -2458,7 +2535,7 @@ function formatTime(date) {
 // ========================
 
 function getPrivateAliases() {
-    try { return JSON.parse(cachedGet("private_appointment_aliases") || "[]"); } catch { return []; }
+    try { return kvGet("private_appointment_aliases", []); } catch { return []; }
 }
 
 let cmd_appointment_private = {};
@@ -2498,7 +2575,7 @@ cmd_appointment_private.solve = async (ctx, msg, cmdArgs, aliasConfig) => {
         const success = mergeIntoExistingAppointment(ctx, msg, pre.data.mergeTarget, newNames, pre.data);
         if (success) {
             const successMsg = `✅ 你发起的${typeName}已自动合并到现有约会中！\n参与者：${pre.data.mergeTarget.partner}\n群号：${pre.data.mergeTarget.group}\n请自行申请入群~`;
-            seal.replyToSender(ctx, msg, successMsg);
+            seal.replyToSender(ctx, msg, successMsg + buildAppointmentGuide(pre.data.mergeTarget.group, pre.data.day, { includeEnd: true }));
             return seal.ext.newCmdExecuteResult(true);
         } else {
             seal.replyToSender(ctx, msg, "❌ 自动合并失败，请稍后重试或联系管理员。");
@@ -2521,7 +2598,7 @@ cmd_appointment_private.solve = async (ctx, msg, cmdArgs, aliasConfig) => {
         let successMsg = applyMsgTemplate("private_success", { 对方: _对方, 群号: result.gid, 费用: _费用.trim() }) || (isMulti
             ? `✅ 你已成功与 ${_对方} 开启多方${typeName}，私人空间已自动建立！\n💬 群号：${result.gid}${_费用}`
             : `✅ 你已成功与 ${_对方} 开启${typeName}，私人空间已自动建立！\n💬 群号：${result.gid}${_费用}`);
-        seal.replyToSender(ctx, msg, successMsg);
+        seal.replyToSender(ctx, msg, successMsg + buildAppointmentGuide(result.gid, day, { includeEnd: true }));
     }
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -2532,7 +2609,7 @@ cmd_appointment_private.solve = async (ctx, msg, cmdArgs, aliasConfig) => {
 
 // 🔧 检查两人之间是否已有活跃微信群
 function checkWechatBetweenUsers(platform, user1, user2) {
-    const wechatGroups = JSON.parse(cachedGet("wechat_groups") || "{}");
+    const wechatGroups = kvGet("wechat_groups", {});
     const platformGroups = wechatGroups[platform] || {};
 
     for (const groupId in platformGroups) {
@@ -2557,7 +2634,7 @@ function checkWechatBetweenUsers(platform, user1, user2) {
 
 let cmd_wechat = {};
 cmd_wechat.solve =async (ctx, msg, cmdArgs) => {
-    let config = JSON.parse(cachedGet("global_feature_toggle") || "{}");
+    let config = kvGet("global_feature_toggle", {});
     if (config.enable_wechat === false) {
         seal.replyToSender(ctx, msg, "💬 微信功能已关闭");
         return seal.ext.newCmdExecuteResult(true);
@@ -2565,7 +2642,7 @@ cmd_wechat.solve =async (ctx, msg, cmdArgs) => {
 
     const platform = msg.platform;
     const uid = msg.sender.userId.replace(`${platform}:`, "");
-    const a_private_group = JSON.parse(cachedGet("a_private_group") || "{}");
+    const a_private_group = kvGet("a_private_group", {});
     if (!a_private_group[platform]) a_private_group[platform] = {};
 
     const sendname = getRoleName(ctx, msg);
@@ -2613,7 +2690,7 @@ cmd_wechat.solve =async (ctx, msg, cmdArgs) => {
     }
 
     try {
-        const wechatGroups = JSON.parse(cachedGet("wechat_groups") || "{}");
+        const wechatGroups = kvGet("wechat_groups", {});
         if (!wechatGroups[platform]) wechatGroups[platform] = {};
         const now = new Date();
         wechatGroups[platform][gid] = {
@@ -2626,7 +2703,7 @@ cmd_wechat.solve =async (ctx, msg, cmdArgs) => {
             created_at: now.toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" }),
             created_timestamp: now.getTime()
         };
-        cachedSet("wechat_groups", JSON.stringify(wechatGroups));
+        kvSet("wechat_groups", wechatGroups);
 
         // 戏群公告
         const groupMsg = seal.newMessage();
@@ -2653,12 +2730,12 @@ cmd_wechat.solve =async (ctx, msg, cmdArgs) => {
         seal.replyToSender(ctx, msg, `✅ 微信群创建成功！\n📱 群号：${gid}\n👥 成员：${sendname}、${toname}`);
     } catch (e) {
         // 创建失败，释放已分配的群号
-        const groupList = JSON.parse(cachedGet("group") || "[]");
+        const groupList = kvGet("group", []);
         const idx = groupList.indexOf(gid + "_占用");
         if (idx !== -1) {
             groupList.splice(idx, 1);
             groupList.push(gid);
-            cachedSet("group", JSON.stringify(groupList));
+            kvSet("group", groupList);
         }
         seal.replyToSender(ctx, msg, `❌ 微信群创建失败（群号已释放），请重试。错误：${e.message}`);
     }
@@ -2670,7 +2747,7 @@ cmd_wechat.solve =async (ctx, msg, cmdArgs) => {
 let cmd_view_schedule = {};
 cmd_view_schedule.solve =(ctx, msg) => {
     const platform = msg.platform, uid = msg.sender.userId, roleId = uid.replace(`${platform}:`, "");
-    const storage = (k) => JSON.parse(cachedGet(k) || "{}");
+    const storage = (k) => kvGet(k, {});
     const schedule = storage("b_confirmedSchedule"), multiReq = storage("b_MultiGroupRequest");
     const privGroup = storage("a_private_group"), timers = storage("group_timers");
     
@@ -2717,7 +2794,7 @@ cmd_view_schedule.solve =(ctx, msg) => {
         let progressText = "";
         if (ev.group && !ev.isWechat) {
             // ended 用存档快照，进行中用实时计数
-            const grpProg = ev.finalProgress || JSON.parse(cachedGet("group_write_progress") || "{}")[ev.group] || {};
+            const grpProg = ev.finalProgress || kvGet("group_write_progress", {})[ev.group] || {};
             const privGrp = store.get("a_private_group")[platform] || {};
             let counts;
             if (ev.partner === "多人小群" || ev.partner?.startsWith("多人小群、")) {
@@ -2790,7 +2867,7 @@ cmd_apply_join.solve = async (ctx, msg, cmdArgs) => {
 
     const platform = msg.platform;
     const uid = msg.sender.userId.replace(`${platform}:`, "");
-    const a_private_group = JSON.parse(cachedGet("a_private_group") || "{}");
+    const a_private_group = kvGet("a_private_group", {});
     if (!a_private_group[platform]) a_private_group[platform] = {};
 
     const sendname = getRoleName(ctx, msg);
@@ -2813,7 +2890,7 @@ cmd_apply_join.solve = async (ctx, msg, cmdArgs) => {
         return seal.replyToSender(ctx, msg, "⚠️ 时间格式错误，请使用 HH:MM 或 HHMM（如 14:30 或 1430）");
     }
 
-    let b_confirmedSchedule = JSON.parse(cachedGet("b_confirmedSchedule") || "{}");
+    let b_confirmedSchedule = kvGet("b_confirmedSchedule", {});
     const targetKey = `${platform}:${targetUid}`;
     const targetSchedules = b_confirmedSchedule[targetKey] || [];
 
@@ -2834,7 +2911,7 @@ cmd_apply_join.solve = async (ctx, msg, cmdArgs) => {
         return seal.replyToSender(ctx, msg, `⚠️ 你已经在「${targetName}」的该时段预约中，无需重复加入。`);
     }
     if (matchingSchedule.partner === "多人小群" && matchingSchedule.group) {
-        const gei = JSON.parse(cachedGet("group_expire_info") || "{}");
+        const gei = kvGet("group_expire_info", {});
         const existingParticipants = gei[matchingSchedule.group]?.participants || [];
         if (existingParticipants.includes(sendname)) {
             return seal.replyToSender(ctx, msg, `⚠️ 你已经在该约会中，无需重复加入。`);
@@ -2848,13 +2925,13 @@ cmd_apply_join.solve = async (ctx, msg, cmdArgs) => {
         return seal.replyToSender(ctx, msg, `⚠️ 你在 ${globalDay} ${matchingSchedule.time} 已有其他安排，无法加入该预约。`);
     }
 
-    let a_lockedSlots = JSON.parse(cachedGet("a_lockedSlots") || "{}");
+    let a_lockedSlots = kvGet("a_lockedSlots", {});
     const fromLocked = a_lockedSlots[fromKey]?.[globalDay] || [];
     if (fromLocked.some(lockedTime => timeOverlap(matchingSchedule.time, lockedTime))) {
         return seal.replyToSender(ctx, msg, `⚠️ 你在 ${globalDay} ${matchingSchedule.time} 时段被锁定，无法加入。`);
     }
 
-    let joinRequests = JSON.parse(cachedGet("join_request_list") || "[]");
+    let joinRequests = kvGet("join_request_list", []);
     const existingPending = joinRequests.some(req =>
         req.from === sendname &&
         req.to === targetName &&
@@ -2883,7 +2960,7 @@ cmd_apply_join.solve = async (ctx, msg, cmdArgs) => {
         timestamp: Date.now()
     };
     joinRequests.push(joinRequest);
-    cachedSet("join_request_list", JSON.stringify(joinRequests));
+    kvSet("join_request_list", joinRequests);
 
     if (targetGroupId) {
         const notifyMsg = seal.newMessage();
@@ -2902,7 +2979,7 @@ let cmd_join_requests = {};
 cmd_join_requests.solve = (ctx, msg, cmdArgs) => {
     const platform = msg.platform;
     const pureUid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
-    const joinRequests = JSON.parse(cachedGet("join_request_list") || "[]");
+    const joinRequests = kvGet("join_request_list", []);
     const myRequests = joinRequests.filter(req => req.toUid === pureUid && req.status === "pending");
 
     if (myRequests.length === 0) {
@@ -2935,7 +3012,7 @@ cmd_accept_join.solve = (ctx, msg, cmdArgs) => {
     const platform = msg.platform;
     const pureUid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
 
-    let joinRequests = JSON.parse(cachedGet("join_request_list") || "[]");
+    let joinRequests = kvGet("join_request_list", []);
     const myPending = joinRequests.filter(req => req.toUid === pureUid && req.status === "pending");
     if (isNaN(idx) || idx < 0 || idx >= myPending.length) {
         return seal.replyToSender(ctx, msg, "❌ 无效的编号，请使用「加入请求」查看。");
@@ -2946,9 +3023,9 @@ cmd_accept_join.solve = (ctx, msg, cmdArgs) => {
 
     const acceptIdx = joinRequests.indexOf(fullRequest);
     if (acceptIdx !== -1) joinRequests.splice(acceptIdx, 1);
-    cachedSet("join_request_list", JSON.stringify(joinRequests));
+    kvSet("join_request_list", joinRequests);
 
-    const a_private_group = JSON.parse(cachedGet("a_private_group") || "{}");
+    const a_private_group = kvGet("a_private_group", {});
     const fromUid = getUidByRoleName(platform, fullRequest.from);
     if (!fromUid) {
         seal.replyToSender(ctx, msg, `⚠️ 无法找到发起人「${fullRequest.from}」的信息。`);
@@ -2956,7 +3033,7 @@ cmd_accept_join.solve = (ctx, msg, cmdArgs) => {
     }
     const targetGroupId = fullRequest.targetGroupId;
 
-    let b_confirmedSchedule = JSON.parse(cachedGet("b_confirmedSchedule") || "{}");
+    let b_confirmedSchedule = kvGet("b_confirmedSchedule", {});
     const fromKey = `${platform}:${fromUid}`;
     const targetSchedule = fullRequest.targetSchedule;
     const groupId = targetSchedule.group;
@@ -2990,7 +3067,7 @@ cmd_accept_join.solve = (ctx, msg, cmdArgs) => {
         basePartner = relatedEntries.length > 0 ? relatedEntries[0].ev.partner : targetSchedule.partner;
         if (!basePartner.includes(fullRequest.from)) basePartner += newPartnerSuffix;
     }
-    let groupExpireInfo = JSON.parse(cachedGet("group_expire_info") || "{}");
+    let groupExpireInfo = kvGet("group_expire_info", {});
     if (!groupExpireInfo[groupId]) {
         seal.replyToSender(ctx, msg, "❌ 该约会群已结束或不存在，无法加入。");
         return seal.ext.newCmdExecuteResult(true);
@@ -3001,15 +3078,15 @@ cmd_accept_join.solve = (ctx, msg, cmdArgs) => {
     if (!b_confirmedSchedule[fromKey]) b_confirmedSchedule[fromKey] = [];
     b_confirmedSchedule[fromKey].push(newSchedule);
 
-    cachedSet("b_confirmedSchedule", JSON.stringify(b_confirmedSchedule));
+    kvSet("b_confirmedSchedule", b_confirmedSchedule);
 
     const existingParts = groupExpireInfo[groupId].participants || [];
     if (!existingParts.includes(fullRequest.from)) {
         groupExpireInfo[groupId].participants = [...existingParts, fullRequest.from];
     }
-    cachedSet("group_expire_info", JSON.stringify(groupExpireInfo));
+    kvSet("group_expire_info", groupExpireInfo);
 
-    let groupTimers = JSON.parse(cachedGet("group_timers") || "{}");
+    let groupTimers = kvGet("group_timers", {});
     const timerEntry = groupTimers[groupId];
     if (timerEntry) {
         const now = Date.now();
@@ -3039,7 +3116,7 @@ cmd_accept_join.solve = (ctx, msg, cmdArgs) => {
             };
         }
         groupTimers[groupId] = timerEntry;
-        cachedSet("group_timers", JSON.stringify(groupTimers));
+        kvSet("group_timers", groupTimers);
     }
 
     const updatedParticipants = groupExpireInfo[groupId]?.participants || [];
@@ -3079,7 +3156,7 @@ cmd_reject_join.solve = (ctx, msg, cmdArgs) => {
     const platform = msg.platform;
     const pureUid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
 
-    let joinRequests = JSON.parse(cachedGet("join_request_list") || "[]");
+    let joinRequests = kvGet("join_request_list", []);
     const myPending = joinRequests.filter(req => req.toUid === pureUid && req.status === "pending");
     if (isNaN(idx) || idx < 0 || idx >= myPending.length) {
         return seal.replyToSender(ctx, msg, "❌ 无效的编号，请使用「加入请求」查看。");
@@ -3090,9 +3167,9 @@ cmd_reject_join.solve = (ctx, msg, cmdArgs) => {
 
     const rejectIdx = joinRequests.indexOf(fullRequest);
     if (rejectIdx !== -1) joinRequests.splice(rejectIdx, 1);
-    cachedSet("join_request_list", JSON.stringify(joinRequests));
+    kvSet("join_request_list", joinRequests);
 
-    const a_private_group = JSON.parse(cachedGet("a_private_group") || "{}");
+    const a_private_group = kvGet("a_private_group", {});
     const fromUid = getUidByRoleName(platform, fullRequest.from);
     const fromInfo = fromUid ? a_private_group[platform]?.[fromUid] : null;
     if (fromInfo) {
@@ -3132,9 +3209,9 @@ cmd_set_allowed_times.solve = (ctx, msg, cmdArgs) => {
   }
   
   if (timeRanges.length === 0) {
-    const currentRanges  = JSON.parse(cachedGet("allowed_appointment_times") || "[]");
-    const blockedByDay   = JSON.parse(cachedGet("ts_blocked_by_day")   || "{}");
-    const allowedDurs    = JSON.parse(cachedGet("ts_allowed_durations") || "[]");
+    const currentRanges  = kvGet("allowed_appointment_times", []);
+    const blockedByDay   = kvGet("ts_blocked_by_day", {});
+    const allowedDurs    = kvGet("ts_allowed_durations", []);
     const currentDay     = cachedGet("global_days") || "";
 
     const lines = ["📋 邀约时间限制"];
@@ -3174,7 +3251,7 @@ cmd_set_allowed_times.solve = (ctx, msg, cmdArgs) => {
   }
   
   // 保存设置
-  cachedSet("allowed_appointment_times", JSON.stringify(timeRanges));
+  kvSet("allowed_appointment_times", timeRanges);
   seal.replyToSender(ctx, msg, `✅ 已设置允许的邀约时间段：\n${timeRanges.map(range => `· ${range}`).join('\n')}`);
   return seal.ext.newCmdExecuteResult(true);
 };
@@ -3185,7 +3262,7 @@ let cmd_clear_allowed_times = seal.ext.newCmdItemInfo();
 cmd_clear_allowed_times.name = "清空邀约时间";
 cmd_clear_allowed_times.help = "。清空邀约时间 - 清空所有时间限制";
 cmd_clear_allowed_times.solve = (ctx, msg, cmdArgs) => {
-  cachedSet("allowed_appointment_times", JSON.stringify([]));
+  kvSet("allowed_appointment_times", []);
   seal.replyToSender(ctx, msg, "✅ 已清空邀约时间限制，现在任何时间都允许发起邀约");
   return seal.ext.newCmdExecuteResult(true);
 };
@@ -3208,13 +3285,13 @@ cmd_add_group.solve = (ctx, msg, cmdArgs) => {
     let grouplist = cmdArgs.getArgN(1);
     if (!grouplist) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
     grouplist = grouplist.replace(/，/g, ",").split(",");
-    let group = JSON.parse(cachedGet("group") || "[]");
+    let group = kvGet("group", []);
     for (let i = 0; i < grouplist.length; i++) {
         if (/^[0-9]+$/.test(grouplist[i]) && !group.includes(grouplist[i])) {
             group.push(grouplist[i]);
         }
     }
-    cachedSet("group", JSON.stringify(group));
+    kvSet("group", group);
     seal.replyToSender(ctx, msg, `✅ 已添加群号，当前可用共 ${group.length} 个。`);
     return seal.ext.newCmdExecuteResult(true);
 }
@@ -3232,12 +3309,12 @@ cmd_remove_group.solve = (ctx, msg, cmdArgs) => {
     let grouplist = cmdArgs.getArgN(1);
     if (!grouplist) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
     grouplist = grouplist.replace(/，/g, ",").split(",");
-    let group = JSON.parse(cachedGet("group") || "[]");
+    let group = kvGet("group", []);
     for (let i = 0; i < grouplist.length; i++) {
         let idx = group.indexOf(grouplist[i]);
         if (idx !== -1) group.splice(idx, 1);
     }
-    cachedSet("group", JSON.stringify(group));
+    kvSet("group", group);
     seal.replyToSender(ctx, msg, `✅ 指定群号已移除，当前可用共 ${group.length} 个。`);
     return seal.ext.newCmdExecuteResult(true);
 }
@@ -3252,7 +3329,7 @@ cmd_show_group.solve = (ctx, msg, cmdArgs) => {
         seal.replyToSender(ctx, msg, `此指令仅限骰主或管理员使用`);
         return seal.ext.newCmdExecuteResult(true);
     }
-    let group = JSON.parse(cachedGet("group") || "[]");
+    let group = kvGet("group", []);
     let rep = `📜 当前可用群号（共 ${group.length} 个）：\n`;
     for (let i = 0; i < group.length; i++) {
         const isOccupied = group[i].endsWith("_占用");
@@ -3293,7 +3370,7 @@ cmd_open_group_set.solve = async (ctx, msg, cmdArgs) => {
             seal.replyToSender(ctx, msg, `⚠️ 群号组「${setName}」在后台不存在或暂无群号。`);
             return seal.ext.newCmdExecuteResult(true);
         }
-        let group = JSON.parse(cachedGet("group") || "[]");
+        let group = kvGet("group", []);
         let added = 0;
         for (const gid of data.group_ids) {
             if (!group.includes(gid) && !group.includes(gid + "_占用")) {
@@ -3301,7 +3378,7 @@ cmd_open_group_set.solve = async (ctx, msg, cmdArgs) => {
                 added++;
             }
         }
-        cachedSet("group", JSON.stringify(group));
+        kvSet("group", group);
         seal.replyToSender(ctx, msg, `✅ 群号组「${setName}」已开启，新注入 ${added} 个群号（共 ${data.group_ids.length} 个），当前可用池共 ${group.length} 个。`);
     } catch (e) {
         seal.replyToSender(ctx, msg, `❌ 请求失败：${e.message || String(e)}`);
@@ -3340,7 +3417,7 @@ cmd_close_group_set.solve = async (ctx, msg, cmdArgs) => {
             seal.replyToSender(ctx, msg, `⚠️ 群号组「${setName}」在后台不存在或暂无群号。`);
             return seal.ext.newCmdExecuteResult(true);
         }
-        let group = JSON.parse(cachedGet("group") || "[]");
+        let group = kvGet("group", []);
         let removed = 0, skipped = [];
         for (const gid of data.group_ids) {
             if (group.includes(gid + "_占用")) {
@@ -3350,7 +3427,7 @@ cmd_close_group_set.solve = async (ctx, msg, cmdArgs) => {
                 if (idx !== -1) { group.splice(idx, 1); removed++; }
             }
         }
-        cachedSet("group", JSON.stringify(group));
+        kvSet("group", group);
         let rep = `✅ 群号组「${setName}」已关闭，移除 ${removed} 个群号，当前可用池剩 ${group.length} 个。`;
         if (skipped.length > 0) rep += `\n⚠️ 以下群正在占用中，无法移除：\n${skipped.map(g => `• ${g}`).join("\n")}`;
         seal.replyToSender(ctx, msg, rep);
@@ -3379,7 +3456,7 @@ cmd_kick_qq.solve = async (ctx, msg, cmdArgs) => {
     }
 
     const platform = msg.platform;
-    const extras = JSON.parse(cachedGet("extra_accounts") || "{}");
+    const extras = kvGet("extra_accounts", {});
     // 找到主账号（若 targetQQ 本身是额外账号则找到其主账号）
     const primaryUid = extras[`${platform}:${targetQQ}`] || targetQQ;
     // 收集主账号 + 所有额外账号
@@ -3388,7 +3465,7 @@ cmd_kick_qq.solve = async (ctx, msg, cmdArgs) => {
         .map(([k]) => k.replace(`${platform}:`, ""));
     const allTargetQQs = [...new Set([primaryUid, ...extraQQs])];
 
-    const groups = JSON.parse(cachedGet("group") || "[]")
+    const groups = kvGet("group", [])
         .map(g => g.replace(/_占用$/, ""));
 
     if (groups.length === 0) {
@@ -3442,7 +3519,7 @@ cmd_admin_view_active.solve =(ctx, msg, cmdArgs) => {
     dayArg = cachedGet("global_days") || "D0";
   }
 
-  const b_confirmedSchedule = JSON.parse(cachedGet("b_confirmedSchedule") || "{}");
+  const b_confirmedSchedule = kvGet("b_confirmedSchedule", {});
 
   // 以 group 为唯一键，防止重复
   const groupMap = {};
@@ -3492,7 +3569,7 @@ cmd_view_wechat_groups.solve = (ctx, msg, cmdArgs) => {
     }
 
     const platform = msg.platform;
-    const wechatGroups = JSON.parse(cachedGet("wechat_groups") || "{}");
+    const wechatGroups = kvGet("wechat_groups", {});
     const platformGroups = wechatGroups[platform] || {};
 
     const active = Object.values(platformGroups).filter(g => g.status === "active");
@@ -3503,7 +3580,7 @@ cmd_view_wechat_groups.solve = (ctx, msg, cmdArgs) => {
     }
 
     // 同时检查群池，标出群号是否正确处于占用状态
-    const groupList = JSON.parse(cachedGet("group") || "[]");
+    const groupList = kvGet("group", []);
 
     let reply = `💬 当前活跃微信群（共 ${active.length} 个）：\n\n`;
     active.sort((a, b) => (a.created_timestamp || 0) - (b.created_timestamp || 0));
@@ -3529,8 +3606,8 @@ let cmd_grouplist_release = {};
  * 结束微信群（仅清理状态，不发公告）
  */
 function endWechatGroup(ctx, msg, gid, platform, uid) {
-    const groupList = JSON.parse(cachedGet("group") || "[]");
-    const wechatGroups = JSON.parse(cachedGet("wechat_groups") || "{}");
+    const groupList = kvGet("group", []);
+    const wechatGroups = kvGet("wechat_groups", {});
     const groupInfo = wechatGroups[platform]?.[gid];
     if (!groupInfo) {
         seal.replyToSender(ctx, msg, "⚠️ 当前群不是微信群，无法结束");
@@ -3538,7 +3615,7 @@ function endWechatGroup(ctx, msg, gid, platform, uid) {
     }
 
     // 获取操作者角色名（仅用于记录）
-    const a_private_group = JSON.parse(cachedGet("a_private_group") || "{}");
+    const a_private_group = kvGet("a_private_group", {});
     const userRole = a_private_group[platform]?.[uid]?.[0] || "管理员";
 
     // 更新群状态
@@ -3546,21 +3623,21 @@ function endWechatGroup(ctx, msg, gid, platform, uid) {
     groupInfo.ended_at = new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
     groupInfo.ended_by = userRole;
     wechatGroups[platform][gid] = groupInfo;
-    cachedSet("wechat_groups", JSON.stringify(wechatGroups));
+    kvSet("wechat_groups", wechatGroups);
 
     // 释放群号
     const groupIndex = groupList.indexOf(gid + "_占用");
     if (groupIndex !== -1) {
         groupList.splice(groupIndex, 1);
         groupList.push(gid);
-        cachedSet("group", JSON.stringify(groupList));
+        kvSet("group", groupList);
     }
 
     // 【新增：微信群也重置计数】
-        let progress = JSON.parse(cachedGet("group_write_progress") || "{}");
+        let progress = kvGet("group_write_progress", {});
         if (progress[gid]) {
             delete progress[gid];
-            cachedSet("group_write_progress", JSON.stringify(progress));
+            kvSet("group_write_progress", progress);
         }
 
     // 修改群名为"备用"
@@ -3572,13 +3649,13 @@ function endWechatGroup(ctx, msg, gid, platform, uid) {
 }
 
 cmd_grouplist_release.solve = (ctx, msg, cmdArgs) => {
-    let group = JSON.parse(cachedGet("group") || "[]");
+    let group = kvGet("group", []);
     let platform = msg.platform;
     let gid = msg.groupId.replace(`${platform}-Group:`, "");
     const uid = msg.sender.userId.replace(`${platform}:`, "");
 
     // 判断是否为微信群（通过 wechat_groups 数据判断，而非后缀）
-    const wechatGroups = JSON.parse(cachedGet("wechat_groups") || "{}");
+    const wechatGroups = kvGet("wechat_groups", {});
     if (wechatGroups[platform]?.[gid]?.status === "active") {
         endWechatGroup(ctx, msg, gid, platform, uid);
         return seal.ext.newCmdExecuteResult(true);
@@ -3591,13 +3668,13 @@ cmd_grouplist_release.solve = (ctx, msg, cmdArgs) => {
         // 将占用状态移除，使该群可复用
         group.splice(group.indexOf(fullId), 1);
         group.push(gid);
-        cachedSet("group", JSON.stringify(group));
+        kvSet("group", group);
 
         // 更新 b_confirmedSchedule 中所有 status 为 ended，并快照 V 数
-        let progress = JSON.parse(cachedGet("group_write_progress") || "{}");
+        let progress = kvGet("group_write_progress", {});
         const finalProgress = progress[gid] ? { ...progress[gid] } : null;
 
-        let b_confirmedSchedule = JSON.parse(cachedGet("b_confirmedSchedule") || "{}");
+        let b_confirmedSchedule = kvGet("b_confirmedSchedule", {});
         let modified = false;
         let matchCount = 0;
         for (let uidKey in b_confirmedSchedule) {
@@ -3611,13 +3688,13 @@ cmd_grouplist_release.solve = (ctx, msg, cmdArgs) => {
             }
         }
         if (modified) {
-            cachedSet("b_confirmedSchedule", JSON.stringify(b_confirmedSchedule));
+            kvSet("b_confirmedSchedule", b_confirmedSchedule);
         }
 
         // 重置该群的写帖进度计数
         if (progress[gid]) {
             delete progress[gid];
-            cachedSet("group_write_progress", JSON.stringify(progress));
+            kvSet("group_write_progress", progress);
         }
 
         // 存档必须在清除 group_expire_info 之前，否则拿不到 day/time/place
@@ -3626,10 +3703,10 @@ cmd_grouplist_release.solve = (ctx, msg, cmdArgs) => {
         }
 
         // 清除到期记录
-        let groupExpireInfo = JSON.parse(cachedGet("group_expire_info") || "{}");
+        let groupExpireInfo = kvGet("group_expire_info", {});
         if (groupExpireInfo[gid]) {
             delete groupExpireInfo[gid];
-            cachedSet("group_expire_info", JSON.stringify(groupExpireInfo));
+            kvSet("group_expire_info", groupExpireInfo);
             console.log(`[DEBUG] 已清除群组 ${gid} 的到期记录`);
         }
 
@@ -3667,10 +3744,10 @@ cmd_force_end.solve = (ctx, msg, cmdArgs) => {
     targetMsg.groupId = `${platform}-Group:${gid}`;
     const targetCtx = seal.createTempCtx(ctx.endPoint, targetMsg);
 
-    let group = JSON.parse(cachedGet("group") || "[]");
+    let group = kvGet("group", []);
 
     // 微信群：复用原有清理函数
-    const wechatGroups = JSON.parse(cachedGet("wechat_groups") || "{}");
+    const wechatGroups = kvGet("wechat_groups", {});
     if (wechatGroups[platform]?.[gid]?.status === "active") {
         endWechatGroup(targetCtx, targetMsg, gid, platform, msg.sender.userId.replace(`${platform}:`, ""));
         if (isRemote) seal.replyToSender(ctx, msg, `✅ 已强结微信群 ${gid}。`);
@@ -3686,18 +3763,18 @@ cmd_force_end.solve = (ctx, msg, cmdArgs) => {
     // 释放群号
     group.splice(group.indexOf(fullId), 1);
     group.push(gid);
-    cachedSet("group", JSON.stringify(group));
+    kvSet("group", group);
 
     // 重置写帖进度
-    let progress = JSON.parse(cachedGet("group_write_progress") || "{}");
+    let progress = kvGet("group_write_progress", {});
     if (progress[gid]) {
         delete progress[gid];
-        cachedSet("group_write_progress", JSON.stringify(progress));
+        kvSet("group_write_progress", progress);
     }
 
     // 更新 b_confirmedSchedule，同时收集参与者 uid
-    const a_private_group = JSON.parse(cachedGet("a_private_group") || "{}");
-    let b_confirmedSchedule = JSON.parse(cachedGet("b_confirmedSchedule") || "{}");
+    const a_private_group = kvGet("a_private_group", {});
+    let b_confirmedSchedule = kvGet("b_confirmedSchedule", {});
     let modified = false;
     const participantUids = new Set();
     for (let uidKey in b_confirmedSchedule) {
@@ -3709,7 +3786,7 @@ cmd_force_end.solve = (ctx, msg, cmdArgs) => {
             }
         }
     }
-    if (modified) cachedSet("b_confirmedSchedule", JSON.stringify(b_confirmedSchedule));
+    if (modified) kvSet("b_confirmedSchedule", b_confirmedSchedule);
 
     // 若 b_confirmedSchedule 没有记录，也尝试从 a_private_group 收集（gid 匹配者）
     if (participantUids.size === 0) {
@@ -3724,10 +3801,10 @@ cmd_force_end.solve = (ctx, msg, cmdArgs) => {
     }
 
     // 清除到期记录
-    let groupExpireInfo = JSON.parse(cachedGet("group_expire_info") || "{}");
+    let groupExpireInfo = kvGet("group_expire_info", {});
     if (groupExpireInfo[gid]) {
         delete groupExpireInfo[gid];
-        cachedSet("group_expire_info", JSON.stringify(groupExpireInfo));
+        kvSet("group_expire_info", groupExpireInfo);
     }
 
     cleanupGroupTimer(gid);
@@ -3773,7 +3850,7 @@ cmd_edit_player_group.solve = (ctx, msg, cmdArgs) => {
     }
     const platform = ctx.platform || "QQ";
     const uid = uidArg.replace(`${platform}:`, "");
-    const apg = JSON.parse(cachedGet("a_private_group") || "{}");
+    const apg = kvGet("a_private_group", {});
     if (!apg[platform] || !apg[platform][uid]) {
         seal.replyToSender(ctx, msg, `❌ 未找到 ${uidArg} 的登记信息`);
         return seal.ext.newCmdExecuteResult(true);
@@ -3781,7 +3858,7 @@ cmd_edit_player_group.solve = (ctx, msg, cmdArgs) => {
     const roleName = apg[platform][uid][0];
     const oldGid = apg[platform][uid][1];
     apg[platform][uid][1] = newGid;
-    cachedSet("a_private_group", JSON.stringify(apg));
+    kvSet("a_private_group", apg);
     seal.replyToSender(ctx, msg, `✅ 已将「${roleName}」（${uidArg}）的群号从 ${oldGid || "空"} 改为 ${newGid}`);
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -3789,9 +3866,9 @@ ext.cmdMap["修改玩家群号"] = cmd_edit_player_group;
 
 function cleanupConflictsAndNotify(platform, toid, toname, day, time, ctx, msg) {
     const myId = `${platform}:${toid}`;
-    const allAppointments = JSON.parse(cachedGet("appointmentList") || "[]");
-    const a_MultiGroupRequest = JSON.parse(cachedGet("b_MultiGroupRequest") || "{}");
-    const a_private_group = JSON.parse(cachedGet("a_private_group") || "{}");
+    const allAppointments = kvGet("appointmentList", []);
+    const a_MultiGroupRequest = kvGet("b_MultiGroupRequest", {});
+    const a_private_group = kvGet("a_private_group", {});
   
     let updatedAppointments = [];
     let removedCount = 0;
@@ -3834,8 +3911,8 @@ function cleanupConflictsAndNotify(platform, toid, toname, day, time, ctx, msg) 
       removedCount++;
     }
   
-    cachedSet("appointmentList", JSON.stringify(updatedAppointments));
-    cachedSet("b_MultiGroupRequest", JSON.stringify(a_MultiGroupRequest));
+    kvSet("appointmentList", updatedAppointments);
+    kvSet("b_MultiGroupRequest", a_MultiGroupRequest);
   
     console.log(`[清理冲突] 正在处理 ${toname} 接受 ${day} ${time}，共移除 ${removedCount} 点对点，标记拒绝 ${notifyRefused.length} 多人请求`);
   
@@ -3893,11 +3970,11 @@ async function checkGroupHasNonNPC(platform, gid, ctx, msg) {
     
     const roleStorage = getRoleStorage();
     const platformRoles = roleStorage[platform] || {};
-    const npcList = JSON.parse(cachedGet("a_npc_list") || "[]");
+    const npcList = kvGet("a_npc_list", []);
     
     // --- 1. 读取 noquit 存储 ---
     // 结构预期: { "12345": ["10001", "10002"], "789012": ["10001"] }
-    const noquitRecord = JSON.parse(cachedGet("noquit") || "{}");
+    const noquitRecord = kvGet("noquit", {});
     let needSave = false;
 
     // 构建 QQ -> 角色信息的映射
@@ -3940,7 +4017,7 @@ async function checkGroupHasNonNPC(platform, gid, ctx, msg) {
     
     // --- 3. 如果有变动，写入存储 ---
     if (needSave) {
-        cachedSet("noquit", JSON.stringify(noquitRecord));
+        kvSet("noquit", noquitRecord);
     }
 
     console.log(`[checkGroupHasNonNPC] 有非NPC玩家: ${hasNonNPC}`);
@@ -3955,7 +4032,7 @@ async function checkGroupHasNonNPC(platform, gid, ctx, msg) {
  * @returns {Promise<string|null>} - 分配的群号，若无可用则返回 null
  */
 async function allocateGroup(platform, ctx, msg) {
-    let groupList = JSON.parse(cachedGet("group") || "[]");
+    let groupList = kvGet("group", []);
     let freeGroups = groupList.filter(g => !g.endsWith("_占用"));
     if (freeGroups.length === 0) return null;
 
@@ -3967,17 +4044,17 @@ async function allocateGroup(platform, ctx, msg) {
 
     for (let gid of freeGroups) {
         // 先抢占（重新读取防止并发后已被占用），再检查群内成员
-        const gl = JSON.parse(cachedGet("group") || "[]");
+        const gl = kvGet("group", []);
         if (!gl.includes(gid)) continue; // 已被其他并发调用占走
-        cachedSet("group", JSON.stringify(gl.map(g => g === gid ? gid + "_占用" : g)));
+        kvSet("group", gl.map(g => g === gid ? gid + "_占用" : g));
 
         const hasNonNPC = await checkGroupHasNonNPC(platform, gid, ctx, msg);
         if (!hasNonNPC) {
             return gid;
         }
         // 群内有非NPC玩家，释放占用后继续找下一个
-        const gl2 = JSON.parse(cachedGet("group") || "[]");
-        cachedSet("group", JSON.stringify(gl2.map(g => g === gid + "_占用" ? gid : g)));
+        const gl2 = kvGet("group", []);
+        kvSet("group", gl2.map(g => g === gid + "_占用" ? gid : g));
     }
     return null;
 }
@@ -3990,7 +4067,7 @@ async function allocateGroup(platform, ctx, msg) {
  * @returns {Promise<boolean>} - true: 干净/已退出/已转为NPC, false: 仍卡在群里
  */
 async function validateAndCleanNoQuit(qq, ctx, msg) {
-    const noquitRecord = JSON.parse(cachedGet("noquit") || "{}");
+    const noquitRecord = kvGet("noquit", {});
     
     // 1. 如果该玩家本来就没有记录，直接放行
     if (!noquitRecord[qq] || noquitRecord[qq].length === 0) {
@@ -4001,7 +4078,7 @@ async function validateAndCleanNoQuit(qq, ctx, msg) {
     const platform = msg.platform;
     const roleStorage = getRoleStorage();
     const platformRoles = roleStorage[platform] || {};
-    const npcList = JSON.parse(cachedGet("a_npc_list") || "[]");
+    const npcList = kvGet("a_npc_list", []);
 
     // 新结构：a_private_group[platform][uid] = [roleName, gid]，直接查
     const roleName = platformRoles[qq]?.[0] || null;
@@ -4010,7 +4087,7 @@ async function validateAndCleanNoQuit(qq, ctx, msg) {
     if (roleName && npcList.includes(roleName)) {
         console.log(`[NoQuit] 检测到玩家 ${roleName}(${qq}) 已转为 NPC，自动清空违规记录。`);
         delete noquitRecord[qq];
-        cachedSet("noquit", JSON.stringify(noquitRecord));
+        kvSet("noquit", noquitRecord);
         return true;
     }
     // ----------------------------
@@ -4033,11 +4110,11 @@ async function validateAndCleanNoQuit(qq, ctx, msg) {
     // 3. 更新存储
     if (stillInGroups.length === 0) {
         delete noquitRecord[qq];
-        cachedSet("noquit", JSON.stringify(noquitRecord));
+        kvSet("noquit", noquitRecord);
         return true; 
     } else if (stillInGroups.length < noquitRecord[qq].length) {
         noquitRecord[qq] = stillInGroups;
-        cachedSet("noquit", JSON.stringify(noquitRecord));
+        kvSet("noquit", noquitRecord);
         return false;
     }
     
@@ -4066,8 +4143,8 @@ cmd_fix_noquit.name = "更新未退群";
 cmd_fix_noquit.solve = async (ctx, msg, cmdArgs) => {
     const platform = msg.platform;
     const roles = (getRoleStorage()[platform] || {});
-    const npcs = JSON.parse(cachedGet("a_npc_list") || "[]");
-    const extras = JSON.parse(cachedGet("extra_accounts") || "{}");
+    const npcs = kvGet("a_npc_list", []);
+    const extras = kvGet("extra_accounts", {});
 
     const arg1 = cmdArgs.getArgN(1);
     // 检查是否包含"驱逐"参数
@@ -4083,12 +4160,12 @@ cmd_fix_noquit.solve = async (ctx, msg, cmdArgs) => {
     if (isInProgress) {
         seal.replyToSender(ctx, msg, "🔍 进行中模式：正在清空非NPC未退群记录并扫描空闲群...");
 
-        const rawGroups = JSON.parse(cachedGet("group") || "[]");
+        const rawGroups = kvGet("group", []);
         // 只扫描未占用的群（跳过含 _占用 后缀的）
         const freeGroups = rawGroups.filter(g => !g.endsWith("_占用"));
 
         // 清空所有非NPC玩家的 noquit 记录
-        const noquit = JSON.parse(cachedGet("noquit") || "{}");
+        const noquit = kvGet("noquit", {});
         for (const qq of Object.keys(noquit)) {
             const roleName = roles[qq]?.[0];
             if (roleName && !npcs.includes(roleName)) {
@@ -4112,15 +4189,15 @@ cmd_fix_noquit.solve = async (ctx, msg, cmdArgs) => {
             }
         }
 
-        cachedSet("noquit", JSON.stringify(noquit));
+        kvSet("noquit", noquit);
         seal.replyToSender(ctx, msg, `✅ 进行中扫描完成！\n已清空并重建非NPC未退群记录\n空闲群扫描新增: ${countUpdate} 条记录`);
         return seal.ext.newCmdExecuteResult(true);
     }
 
     seal.replyToSender(ctx, msg, "🔍 正在扫描全服...");
 
-    const groups = JSON.parse(cachedGet("group") || "[]").map(g => g.replace(/_占用$/, ""));
-    const noquit = JSON.parse(cachedGet("noquit") || "{}");
+    const groups = kvGet("group", []).map(g => g.replace(/_占用$/, ""));
+    const noquit = kvGet("noquit", {});
 
     let countUpdate = 0; // 新增记录数
     let countKick = 0;   // 尝试踢人计数
@@ -4167,7 +4244,7 @@ cmd_fix_noquit.solve = async (ctx, msg, cmdArgs) => {
 
     // 只有数据有变更才保存
     if (countUpdate > 0) {
-        cachedSet("noquit", JSON.stringify(noquit));
+        kvSet("noquit", noquit);
     }
 
     // 根据模式回复不同的消息
@@ -4198,8 +4275,8 @@ cmd_reset_season_data.solve = async (ctx, msg, cmdArgs) => {
     const force = (cmdArgs.getArgN(1) || "").trim() === "确认";
     const platform = msg.platform;
     const roles = getRoleStorage()[platform] || {};
-    const npcs = JSON.parse(cachedGet("a_npc_list") || "[]");
-    const groups = JSON.parse(cachedGet("group") || "[]").map(g => g.replace(/_占用$/, ""));
+    const npcs = kvGet("a_npc_list", []);
+    const groups = kvGet("group", []).map(g => g.replace(/_占用$/, ""));
 
     if (!force) {
         seal.replyToSender(ctx, msg, "🔍 正在扫描各群残留玩家，请稍候…");
@@ -4254,6 +4331,7 @@ cmd_reset_season_data.solve = async (ctx, msg, cmdArgs) => {
         "a_meetingCount_letter", "a_meetingCount_lovemail",
         "a_meetingCount_official","a_meetingCount_private",
         "a_meetingCount_secretletter","a_meetingCount_wish",
+        "a_meetingCount_relation",
         // ── 角色属性 / 档案 ──
         "sys_char_profiles",     "sys_character_attrs",   "sys_attr_presets",
         "rpg_attr_defs",
@@ -4285,7 +4363,7 @@ cmd_reset_season_data.solve = async (ctx, msg, cmdArgs) => {
         "lovemail_expose",       "lovemail_expose_chance","letter_public_send",
         "allow_custom_letter_sign","chaos_letter_config", "mailCooldown",
         "direct_letter_cooldown","direct_letter_daily_limit","direct_letter_min_chars",
-        "direct_letter_reward",  "direct_letter_sync_enabled",
+        "direct_letter_reward",
         // ── 礼物 ──
         "gift_public_send",      "allow_custom_gift_sign","drop_hide_receiver",
         "giftCooldown",          "giftDailyLimit",        "giftMode",
@@ -4345,12 +4423,21 @@ ext.cmdMap["清空季度数据"] = cmd_reset_season_data;
 // --- 辅助提取：统一的角色信息获取 ---
 const getRoleDetails = (platform, name) => {
     // name is a roleName; look up the uid first, then get gid
-    const privateGroups = JSON.parse(cachedGet("a_private_group") || "{}");
+    const privateGroups = kvGet("a_private_group", {});
     const uid = getUidByRoleName(platform, name);
     if (!uid) return { uid: null, gid: null };
     const info = privateGroups?.[platform]?.[uid] || [];
     return { uid, gid: info[1] };
 };
+
+// 戏文格式提示：与 extractRoleContent 支持的三种握手格式保持一致，接通类通知统一带上这条
+const RP_FORMAT_TIP = "✍️ 戏文格式：首行「角色名」+ 换行/空格/冒号（：或:）+ 正文，其余视为闲聊，不计入存档与字数";
+
+// 约会/电话/官约类建群后的通用操作指引（含戏文格式提示），电话/私约额外带"结束互动"提示
+function buildAppointmentGuide(gid, day, { includeEnd = false } = {}) {
+    const endLine = includeEnd ? `\n结束互动 ➜ 在约会群发「结束私约」` : "";
+    return `\n\n${RP_FORMAT_TIP}\n修改时间 ➜ 修改时间线 ${day} 新时间\n不想参加 ➜ 拒绝时间线 ${gid}${endLine}`;
+}
 
 async function finalizeGroupCreation(platform, ctx, msg, groupData, participants) {
     // 1. 获取可用群号
@@ -4365,8 +4452,8 @@ async function finalizeGroupCreation(platform, ctx, msg, groupData, participants
     const timeStr = new Date(expireTime).toLocaleString("zh-CN", { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 
     // 2. 准备数据落盘
-    const b_confirmedSchedule = JSON.parse(cachedGet("b_confirmedSchedule") || "{}");
-    const groupInfo = JSON.parse(cachedGet("group_expire_info") || "{}");
+    const b_confirmedSchedule = kvGet("b_confirmedSchedule", {});
+    const groupInfo = kvGet("group_expire_info", {});
 
     participants.forEach(name => {
         const details = getRoleDetails(platform, name);
@@ -4392,8 +4479,8 @@ async function finalizeGroupCreation(platform, ctx, msg, groupData, participants
     });
 
     groupInfo[gid] = { ...groupData, participants, expireTime };
-    cachedSet("b_confirmedSchedule", JSON.stringify(b_confirmedSchedule));
-    cachedSet("group_expire_info", JSON.stringify(groupInfo));
+    kvSet("b_confirmedSchedule", b_confirmedSchedule);
+    kvSet("group_expire_info", groupInfo);
 
     // 3. 构建群名：2人显示名字，多于2人显示"多人"
     const participantsText = participants.join("、");
@@ -4406,7 +4493,7 @@ async function finalizeGroupCreation(platform, ctx, msg, groupData, participants
         ? `\n同行：${otherNames.join("、")}`
         : (otherNames.length === 1 ? "" : "");
 
-    const guide = `\n\n修改时间 ➜ 修改时间线 ${groupData.day} 新时间\n不想参加 ➜ 拒绝时间线 ${gid}\n结束互动 ➜ 在约会群发「结束私约」`;
+    const guide = buildAppointmentGuide(gid, groupData.day, { includeEnd: true });
 
     // 发给各参与者私群的邀请通知（保留"邀你"措辞）
     let noticeText;
@@ -4436,7 +4523,7 @@ async function finalizeGroupCreation(platform, ctx, msg, groupData, participants
         groupAnnouncement = applyMsgTemplate("phone_announcement", {
             标题: groupData.title || "", 日期: groupData.day, 时间: groupData.time,
             参与者: participantsText, 群号: gid, 有效期: timeStr, 操作指引: guide.trim()
-        }) || `📞 ${typeLabel}已接通${titleLine}\n\n🕐 ${groupData.day} ${groupData.time}\n👥 参与者：${participantsText}\n\n✍️ 戏文格式：首行写自己的角色名，换行后写正文（不符合格式的消息视为闲聊，不计入存档与字数）\n\n频段：${gid}\n有效至 ${timeStr}${guide}`;
+        }) || `📞 ${typeLabel}已接通${titleLine}\n\n🕐 ${groupData.day} ${groupData.time}\n👥 参与者：${participantsText}\n\n频段：${gid}\n有效至 ${timeStr}${guide}`;
     } else {
         const typeLabel = getCustomTypeLabel(groupData.subtype);
         groupAnnouncement = applyMsgTemplate("private_announcement", {
@@ -4501,7 +4588,7 @@ cmd_view_expired_groups.solve = (ctx, msg, cmdArgs) => {
         const now = Date.now();
         
         // 读取并解析存储
-        const groupExpireInfo = JSON.parse(cachedGet("group_expire_info") || "{}");
+        const groupExpireInfo = kvGet("group_expire_info", {});
         
         // 核心修改：[indexKey, info] 对应 ["239689865", {对象内容}]
         const expiredGroups = [];
@@ -4610,7 +4697,8 @@ function setGroupName(ctx, msg, groupId, groupName) {
     };
     
     const successreply = `已修改群名为${groupName}。`;
-    return ws(postData, ctx, msg, successreply);
+    // 改群名会经腾讯服务器中转，偶发比其他 OneBot 动作慢，超时放宽到 8 秒避免误判断开
+    return ws(postData, ctx, msg, successreply, undefined, 8000);
 }
 
 // 命令版本（如果需要保留命令）
@@ -4772,7 +4860,7 @@ cmd_view_schedule_other.solve = (ctx, msg, cmdArgs) => {
   const role = cmdArgs.getArgN(1);
   const platform = msg.platform;
   const uid = msg.sender.userId;
-  const a_private_group = JSON.parse(cachedGet("a_private_group") || "{}");
+  const a_private_group = kvGet("a_private_group", {});
 
   if (!role) {
     seal.replyToSender(ctx, msg, "📌 请注明需查看的角色名，例如：\n.查看他人时间线 玛丽");
@@ -4791,7 +4879,7 @@ cmd_view_schedule_other.solve = (ctx, msg, cmdArgs) => {
   }
 
   const key = `${platform}:${targetUid}`;
-  const schedule = JSON.parse(cachedGet("b_confirmedSchedule") || "{}");
+  const schedule = kvGet("b_confirmedSchedule", {});
 
   if (!schedule[key] || schedule[key].length === 0) {
     seal.replyToSender(ctx, msg, `📭 ${role} 目前尚无任何已确认的会晤安排`);
@@ -4880,8 +4968,8 @@ cmd_time_lock.solve = function(ctx, msg, argv) {
     }
 
     const platform = msg.platform;
-    let a_private_group = JSON.parse(cachedGet("a_private_group") || "{}");
-    let a_lockedSlots = JSON.parse(cachedGet("a_lockedSlots") || "{}");
+    let a_private_group = kvGet("a_private_group", {});
+    let a_lockedSlots = kvGet("a_lockedSlots", {});
 
     // 获取目标角色列表（roleNames 用于显示，内部转换为 uid 操作）
     let targetRoles = [];
@@ -4949,7 +5037,7 @@ cmd_time_lock.solve = function(ctx, msg, argv) {
     }
 
     // 保存数据
-    cachedSet("a_lockedSlots", JSON.stringify(a_lockedSlots));
+    kvSet("a_lockedSlots", a_lockedSlots);
 
     // 构建回复消息
     let resultMsg = "";
@@ -5013,12 +5101,12 @@ cmd_grant_admin.solve = (ctx, msg, cmdArgs) => {
   }
 
   const uid = `${platform}:${targetQQ}`;
-  let a_adminList = JSON.parse(cachedGet("a_adminList") || "{}");
+  let a_adminList = kvGet("a_adminList", {});
   if (!a_adminList[platform]) a_adminList[platform] = [];
 
   if (!a_adminList[platform].includes(targetQQ)) {
     a_adminList[platform].push(targetQQ);
-    cachedSet("a_adminList", JSON.stringify(a_adminList));
+    kvSet("a_adminList", a_adminList);
     seal.replyToSender(ctx, msg, `✅ 成功将 ${targetQQ} 设为 ${platform} 平台的临时管理员`);
   } else {
     seal.replyToSender(ctx, msg, `⚠️ ${targetQQ} 已是管理员`);
@@ -5053,7 +5141,7 @@ cmd_set_admin_pass.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
   }
 
-  cachedSet("adminPassword", JSON.stringify(newPass));
+  kvSet("adminPassword", newPass);
   seal.replyToSender(ctx, msg, "✅ 管理员密码已成功更新");
   return seal.ext.newCmdExecuteResult(true);
 };
@@ -5082,7 +5170,7 @@ cmd_revoke_admin.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
   }
 
-  let a_adminList = JSON.parse(cachedGet("a_adminList") || "{}");
+  let a_adminList = kvGet("a_adminList", {});
   if (!a_adminList[platform]) {
     seal.replyToSender(ctx, msg, "⚠️ 当前平台无管理员记录");
     return seal.ext.newCmdExecuteResult(true);
@@ -5095,7 +5183,7 @@ cmd_revoke_admin.solve = (ctx, msg, cmdArgs) => {
   }
 
   a_adminList[platform] = newList;
-  cachedSet("a_adminList", JSON.stringify(a_adminList));
+  kvSet("a_adminList", a_adminList);
   seal.replyToSender(ctx, msg, `✅ 已撤销 ${targetUid} 的管理员身份`);
   return seal.ext.newCmdExecuteResult(true);
 };
@@ -5112,7 +5200,7 @@ cmd_list_admins.solve = (ctx, msg) => {
     return seal.ext.newCmdExecuteResult(true);
   }
 
-  const a_adminList = JSON.parse(cachedGet("a_adminList") || "{}");
+  const a_adminList = kvGet("a_adminList", {});
   let rep = "📋 当前所有平台的管理员清单：\n";
 
   const platforms = Object.keys(a_adminList);
@@ -5154,7 +5242,7 @@ cmd_clear_admin.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
   }
 
-  cachedSet("a_adminList", JSON.stringify({}));
+  kvSet("a_adminList", {});
   seal.replyToSender(ctx, msg, "✅ 所有平台的临时管理员已被清空");
   return seal.ext.newCmdExecuteResult(true);
 };
@@ -5185,7 +5273,7 @@ cmd_view_locks.solve = (ctx, msg, cmdArgs) => {
   }
 
   const key = `${platform}:${uid}`;
-  const a_lockedSlots = JSON.parse(cachedGet("a_lockedSlots") || "{}");
+  const a_lockedSlots = kvGet("a_lockedSlots", {});
 
   if (!a_lockedSlots[key] || Object.keys(a_lockedSlots[key]).length === 0) {
     seal.replyToSender(ctx, msg, `✅ 角色「${name}」当前没有任何被锁定的时间段`);
@@ -5245,12 +5333,12 @@ cmd_block_user_feature.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
   }
 
-  let blockMap = JSON.parse(cachedGet("feature_user_blocklist") || "{}");
+  let blockMap = kvGet("feature_user_blocklist", {});
   if (!blockMap[targetUid]) blockMap[targetUid] = {};
 
   if (featureName === "全部") {
     for (const key of Object.values(featureMap)) blockMap[targetUid][key] = value;
-    cachedSet("feature_user_blocklist", JSON.stringify(blockMap));
+    kvSet("feature_user_blocklist", blockMap);
     const status = value ? "✅ 已开启" : "🚫 已关闭";
     seal.replyToSender(ctx, msg, `${status} 全部功能：${roleName}`);
     return seal.ext.newCmdExecuteResult(true);
@@ -5263,7 +5351,7 @@ cmd_block_user_feature.solve = (ctx, msg, cmdArgs) => {
   }
 
   blockMap[targetUid][key] = value;
-  cachedSet("feature_user_blocklist", JSON.stringify(blockMap));
+  kvSet("feature_user_blocklist", blockMap);
 
   const status = value ? "✅ 已开启" : "🚫 已关闭";
   seal.replyToSender(ctx, msg, `${status} ${featureName} 功能：${roleName}`);
@@ -5277,7 +5365,7 @@ cmd_view_user_feature.name = "查看功能权限";
 cmd_view_user_feature.help = "。查看功能权限 —— 查看所有被设定过功能开关的角色与状态";
 
 cmd_view_user_feature.solve = (ctx, msg, cmdArgs) => {
-  let blockMap = JSON.parse(cachedGet("feature_user_blocklist") || "{}");
+  let blockMap = kvGet("feature_user_blocklist", {});
 
   if (Object.keys(blockMap).length === 0) {
     seal.replyToSender(ctx, msg, "📭 当前尚无任何角色设定功能权限。");
@@ -5328,32 +5416,36 @@ ext.cmdMap["查看功能权限"] = cmd_view_user_feature;
 // ========================
 // 🕊️ 寄信与关系线系统
 // ========================
-async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, contentOriginal) {
-    const config = JSON.parse(cachedGet("global_feature_toggle") || "{}");
+// ── 寄信 · 前置校验：功能开关/自寄/收件人存在/冷却/每日上限 ──
+// 全部通过返回投递所需状态对象；任一项拦截时已回复玩家并返回 null
+function chaosLetterPrecheck(ctx, msg, platform, sendname, toname) {
+    const config = kvGet("global_feature_toggle", {});
     if (config.enable_chaos_letter === false) {
-        return seal.replyToSender(ctx, msg, "🕊️ 寄信功能已关闭。");
+        seal.replyToSender(ctx, msg, "🕊️ 寄信功能已关闭。");
+        return null;
     }
 
     // 真实角色名（sendname 可能是自定义署名，realSendname 始终是绑定角色）
     const realSendname = getRoleName(ctx, msg) || sendname;
 
     if (toname === realSendname) {
-        return seal.replyToSender(ctx, msg, "📱 短信不可发给自己。");
+        seal.replyToSender(ctx, msg, "📱 短信不可发给自己。");
+        return null;
     }
 
-    const a_private_group = JSON.parse(cachedGet("a_private_group") || "{}");
+    const a_private_group = kvGet("a_private_group", {});
     const toUidForLetter = getUidByRoleName(platform, toname);
     if (!toUidForLetter) {
-        return seal.replyToSender(ctx, msg, `❌ 未找到收信人：${toname}`);
+        seal.replyToSender(ctx, msg, `❌ 未找到收信人：${toname}`);
+        return null;
     }
 
     // 🎲 读取混乱配置
-    let chaosConfig = JSON.parse(cachedGet("chaos_letter_config") || "{}");
     const defaultConfig = {
         misdelivery: 0, blackoutText: 0, loseContent: 0, antonymReplace: 0,
-        reverseOrder: 0, mistakenSignature: 0, poeticSignature: 0, dailyLimit: 5, publicChance: 50
+        reverseOrder: 0, mistakenSignature: 0, tornPage: 0, dailyLimit: 5, publicChance: 50
     };
-    chaosConfig = { ...defaultConfig, ...chaosConfig };
+    const chaosConfig = { ...defaultConfig, ...kvGet("chaos_letter_config", {}) };
 
     // ⏳ 冷却与次数检查 (使用发送者的主账号 UID)
     const uid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
@@ -5361,26 +5453,32 @@ async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, co
     const lastSent = parseInt(cachedGet(cooldownKey) || "0");
     const now = Date.now();
     const mailCooldownMin = getStorageInt("mailCooldown", 60);
-    
+
     if (now - lastSent < mailCooldownMin * 60 * 1000) {
         const rem = Math.ceil((mailCooldownMin * 60 * 1000 - (now - lastSent)) / 60000);
-        return seal.replyToSender(ctx, msg, `⏳ 鸽子正在休息，请 ${rem} 分钟后再试`);
+        seal.replyToSender(ctx, msg, `⏳ 鸽子正在休息，请 ${rem} 分钟后再试`);
+        return null;
     }
 
-    const gameDay = cachedGet("global_days") || "D0"; 
-    const globalChaosCounts = JSON.parse(cachedGet("global_chaos_letter_counts") || "{}");
+    const gameDay = cachedGet("global_days") || "D0";
+    const globalChaosCounts = kvGet("global_chaos_letter_counts", {});
     const userKey = `${platform}:${uid}`;
     let userRec = globalChaosCounts[userKey] || { day: gameDay, count: 0 };
     if (userRec.day !== gameDay) userRec = { day: gameDay, count: 0 };
 
     if (userRec.count >= chaosConfig.dailyLimit) {
-        return seal.replyToSender(ctx, msg, `🕊️ 今日寄信次数已达上限(${chaosConfig.dailyLimit})`);
+        seal.replyToSender(ctx, msg, `🕊️ 今日寄信次数已达上限(${chaosConfig.dailyLimit})`);
+        return null;
     }
 
-    // 📝 内容侵蚀处理 (保持原逻辑)
+    return { realSendname, a_private_group, toUidForLetter, chaosConfig, uid, cooldownKey, now, gameDay, globalChaosCounts, userKey, userRec };
+}
+
+// ── 寄信 · 内容侵蚀：错字替换/内容丢失/涂黑（按概率独立触发）──
+function applyChaosErosion(contentOriginal, chaosConfig) {
     let content = contentOriginal;
     const chaosCharPool = ["梦", "影", "幻", "虚", "无", "断", "零", "终", "念", "尘", "迹", "雾", "嘘", "寂"];
-    
+
     if (Math.random() < (chaosConfig.antonymReplace / 100)) {
         let textArray = content.split('');
         const replaceCount = Math.floor(textArray.length * (0.15 + Math.random() * 0.1));
@@ -5396,26 +5494,80 @@ async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, co
         const blackout = ["◼︎", "█", "■", "▮"];
         content = content.split('').map(c => Math.random() < 0.2 ? blackout[Math.floor(Math.random() * blackout.length)] : c).join('');
     }
+    if (Math.random() < (chaosConfig.reverseOrder / 100)) {
+        // 按句切分（保留标点），打乱重排；若洗牌后恰好原样则强制轮转一句
+        const parts = content.match(/[^。！？!?\n]+[。！？!?\n]*/g) || [];
+        if (parts.length > 1) {
+            const original = parts.join('');
+            for (let i = parts.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                const tmp = parts[i]; parts[i] = parts[j]; parts[j] = tmp;
+            }
+            let shuffled = parts.join('');
+            if (shuffled === original) shuffled = parts.slice(1).join('') + parts[0];
+            content = shuffled;
+        }
+    }
+    return content;
+}
 
-    // 🖋️ 落款逻辑（新结构：keys 是 uid，values[0] 是 roleName）
+// ── 寄信 · 落款混乱（新结构：keys 是 uid，values[0] 是 roleName）──
+function pickChaosSignature(chaosConfig, a_private_group, platform, sendname) {
     let finalSignature = `落款：${sendname}`;
-    const sigRoll = Math.random();
-    if (sigRoll < (chaosConfig.mistakenSignature / 100)) {
+    if (Math.random() < (chaosConfig.mistakenSignature / 100)) {
         const allRoleNames = Object.values(a_private_group[platform] || {}).map(v => v[0]).filter(n => n && n !== sendname);
         if (allRoleNames.length) finalSignature = `落款：${allRoleNames[Math.floor(Math.random() * allRoleNames.length)]}`;
     }
+    return finalSignature;
+}
 
-    // 📤 投递
+// ── 寄信 · 误投：按概率把收件人换成其他角色 ──
+function pickChaosRecipient(chaosConfig, a_private_group, platform, toname, toUidForLetter) {
     let trueRecipientName = toname;
     let trueRecipientUid = toUidForLetter;
     if (Math.random() < (chaosConfig.misdelivery / 100)) {
-        const otherEntries = Object.entries(a_private_group[platform] || {}).filter(([uid, v]) => v[0] !== toname);
+        const otherEntries = Object.entries(a_private_group[platform] || {}).filter(([, v]) => v[0] !== toname);
         if (otherEntries.length) {
             const pick = otherEntries[Math.floor(Math.random() * otherEntries.length)];
             trueRecipientUid = pick[0];
             trueRecipientName = pick[1][0];
         }
     }
+    return { trueRecipientName, trueRecipientUid };
+}
+
+// ── 寄信 · 残页：信被撕成两半，后半页（含落款）误投给随机第三人 ──
+function pickTornPage(chaosConfig, a_private_group, platform, senderUid, trueRecipientUid, content) {
+    if (Math.random() >= (chaosConfig.tornPage / 100)) return null;
+    if (content.length < 10) return null; // 太短，撕不出两半
+    const others = Object.entries(a_private_group[platform] || {})
+        .filter(([u, v]) => u !== String(senderUid) && u !== String(trueRecipientUid) && v && v[0]);
+    if (!others.length) return null;
+    const pick = others[Math.floor(Math.random() * others.length)];
+    const cut = Math.ceil(content.length / 2);
+    return {
+        firstHalf: content.slice(0, cut),
+        secondHalf: content.slice(cut),
+        holderUid: pick[0],
+        holderName: pick[1][0],
+        holderGid: pick[1][1],
+    };
+}
+
+// ── 寄信 · 主流程：校验 → 侵蚀 → 落款/误投/残页 → 投递/存档/计数/公开 ──
+async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, contentOriginal) {
+    const st = chaosLetterPrecheck(ctx, msg, platform, sendname, toname);
+    if (!st) return;
+    const { realSendname, a_private_group, toUidForLetter, chaosConfig, uid, cooldownKey, now, gameDay, globalChaosCounts, userKey, userRec } = st;
+
+    const erodedContent = applyChaosErosion(contentOriginal, chaosConfig);
+    const finalSignature = pickChaosSignature(chaosConfig, a_private_group, platform, sendname);
+    const { trueRecipientName, trueRecipientUid } = pickChaosRecipient(chaosConfig, a_private_group, platform, toname, toUidForLetter);
+
+    // 残页触发时：收件人只拿到前半页（无落款），后半页连同落款落到第三人手里
+    const torn = pickTornPage(chaosConfig, a_private_group, platform, uid, trueRecipientUid, erodedContent);
+    const content = torn ? torn.firstHalf + "\n（信纸的后半页不知去向……）" : erodedContent;
+    const recipientSignature = torn ? "（落款在缺失的后半页上）" : finalSignature;
 
     const targetEntry = a_private_group[platform]?.[trueRecipientUid];
     if (!targetEntry) {
@@ -5429,15 +5581,28 @@ async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, co
 
     const notice = applyMsgTemplate("sms_notice", {
         "收件人": trueRecipientName, "收件人QQ": trueRecipientUid,
-        "内容": content, "落款": finalSignature
-    }) || `[CQ:at,qq=${trueRecipientUid}]\n📱 ${trueRecipientName}，你收到一条短信：\n「${content}」\n\n${finalSignature}`;
+        "内容": content, "落款": recipientSignature
+    }) || `[CQ:at,qq=${trueRecipientUid}]\n📱 ${trueRecipientName}，你收到一条短信：\n「${content}」\n\n${recipientSignature}`;
     seal.replyToSender(newctx, newmsg, notice);
     recordInteractionStat(platform, sendname, trueRecipientName, "sms");
 
+    // 残页的后半页投递给第三人（带落款）
+    if (torn) {
+        const holderEntry = a_private_group[platform]?.[torn.holderUid];
+        if (holderEntry) {
+            const tMsg = seal.newMessage();
+            tMsg.messageType = "group";
+            tMsg.groupId = `${platform}-Group:${holderEntry[1]}`;
+            const tCtx = seal.createTempCtx(ctx.endPoint, tMsg);
+            seal.replyToSender(tCtx, tMsg,
+                `[CQ:at,qq=${torn.holderUid}]\n🍂 ${torn.holderName}，一页残破的信纸飘落到你手里：\n「……${torn.secondHalf}」\n\n${finalSignature}`);
+        }
+    }
+
     // 提前判断是否公开（需在存档前确定，以便写入 hide_receiver）
     const hideReceiverOnDrop = cachedGet("drop_hide_receiver") === "true";
-    const letterPublicEnabled = JSON.parse(cachedGet("letter_public_send") || "false");
-    const adminGidForSms = JSON.parse(cachedGet("adminAnnounceGroupId") || "null");
+    const letterPublicEnabled = kvGet("letter_public_send", false);
+    const adminGidForSms = kvGet("adminAnnounceGroupId", null);
     const isPublicSms = letterPublicEnabled && adminGidForSms &&
         (Math.floor(Math.random() * 100) + 1 <= chaosConfig.publicChance);
 
@@ -5461,7 +5626,10 @@ async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, co
                 is_misdelivered:    isMisdelivered,
                 is_content_chaos:   isContentChaos,
                 is_signature_chaos: isSignatureChaos,
-                is_chaos:           isMisdelivered || isContentChaos || isSignatureChaos,
+                is_torn:            !!torn,
+                torn_holder:        torn ? torn.holderName : undefined,
+                torn_second_half:   torn ? torn.secondHalf : undefined,
+                is_chaos:           isMisdelivered || isContentChaos || isSignatureChaos || !!torn,
                 isPublic:           isPublicSms,
                 hide_receiver:      isPublicSms && hideReceiverOnDrop
             },
@@ -5475,7 +5643,7 @@ async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, co
     cachedSet(cooldownKey, now.toString());
     userRec.count += 1;
     globalChaosCounts[userKey] = userRec;
-    cachedSet("global_chaos_letter_counts", JSON.stringify(globalChaosCounts));
+    kvSet("global_chaos_letter_counts", globalChaosCounts);
 
     seal.replyToSender(ctx, msg, `🕊️ 信件已由鸽子衔往 ${toname} 处。今日已发 ${userRec.count}/${chaosConfig.dailyLimit}。`);
 
@@ -5528,9 +5696,9 @@ cmd_create_official_appointment.solve = async (ctx, msg, cmdArgs) => {
 
   const participants = participantsRaw.replace(/，/g, "/").split("/").map(n => n.trim()).filter(Boolean);
   const platform = msg.platform;
-  const a_private_group = JSON.parse(cachedGet("a_private_group") || "{}");
-  const a_lockedSlots = JSON.parse(cachedGet("a_lockedSlots") || "{}");
-  const b_confirmedSchedule = JSON.parse(cachedGet("b_confirmedSchedule") || "{}");
+  const a_private_group = kvGet("a_private_group", {});
+  const a_lockedSlots = kvGet("a_lockedSlots", {});
+  const b_confirmedSchedule = kvGet("b_confirmedSchedule", {});
 
   if (!a_private_group[platform]) {
     seal.replyToSender(ctx, msg, `当前平台没有绑定任何角色`);
@@ -5604,10 +5772,10 @@ cmd_create_official_appointment.solve = async (ctx, msg, cmdArgs) => {
       status: "active"
     });
   }
-  cachedSet("b_confirmedSchedule", JSON.stringify(b_confirmedSchedule));
+  kvSet("b_confirmedSchedule", b_confirmedSchedule);
 
   // 记录群组过期信息
-  let groupInfo = JSON.parse(cachedGet("group_expire_info") || "{}");
+  let groupInfo = kvGet("group_expire_info", {});
   groupInfo[gid] = {
       acceptTime: acceptTime,
       expireTime: expireTime,
@@ -5617,7 +5785,7 @@ cmd_create_official_appointment.solve = async (ctx, msg, cmdArgs) => {
       time: time,
       place: place
   };
-  cachedSet("group_expire_info", JSON.stringify(groupInfo));
+  kvSet("group_expire_info", groupInfo);
 
   // 改群名
   const groupNameTag = validParticipants.length > 2 ? "多人" : validParticipants.join("、");
@@ -5629,7 +5797,7 @@ cmd_create_official_appointment.solve = async (ctx, msg, cmdArgs) => {
   setGroupName(targetCtx, targetMsg, gid, finalGroupName);
 
   // 向戏群发公告
-  const officialGuide = `\n\n修改时间 ➜ 修改时间线 ${day} 新时间\n不想参加 ➜ 拒绝时间线 ${gid}`;
+  const officialGuide = buildAppointmentGuide(gid, day);
   const officialAnnouncement = `🎖️ 官约已确认\n\n📅 ${day} ${time}\n📍 ${place}\n👥 参与者：${validParticipants.join("、")}\n\n群号：${gid}\n有效至 ${new Date(expireTime).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}${officialGuide}`;
   seal.replyToSender(targetCtx, targetMsg, officialAnnouncement);
 
@@ -5688,9 +5856,9 @@ cmd_create_official_call.solve = async (ctx, msg, cmdArgs) => {
 
   const participants = participantsRaw.replace(/，/g, "/").split("/").map(n => n.trim()).filter(Boolean);
   const platform = msg.platform;
-  const a_private_group = JSON.parse(cachedGet("a_private_group") || "{}");
-  const a_lockedSlots = JSON.parse(cachedGet("a_lockedSlots") || "{}");
-  const b_confirmedSchedule = JSON.parse(cachedGet("b_confirmedSchedule") || "{}");
+  const a_private_group = kvGet("a_private_group", {});
+  const a_lockedSlots = kvGet("a_lockedSlots", {});
+  const b_confirmedSchedule = kvGet("b_confirmedSchedule", {});
 
   if (!a_private_group[platform]) {
     seal.replyToSender(ctx, msg, `当前平台没有绑定任何角色`);
@@ -5759,9 +5927,9 @@ cmd_create_official_call.solve = async (ctx, msg, cmdArgs) => {
       status: "active"
     });
   }
-  cachedSet("b_confirmedSchedule", JSON.stringify(b_confirmedSchedule));
+  kvSet("b_confirmedSchedule", b_confirmedSchedule);
 
-  let groupInfo = JSON.parse(cachedGet("group_expire_info") || "{}");
+  let groupInfo = kvGet("group_expire_info", {});
   groupInfo[gid] = {
       acceptTime: acceptTime,
       expireTime: expireTime,
@@ -5771,7 +5939,7 @@ cmd_create_official_call.solve = async (ctx, msg, cmdArgs) => {
       time: time,
       place: "电话"
   };
-  cachedSet("group_expire_info", JSON.stringify(groupInfo));
+  kvSet("group_expire_info", groupInfo);
 
   const groupNameTag = validParticipants.length > 2 ? "多人" : validParticipants.join("、");
   const finalGroupName = `官电 ${day} ${time} ${groupNameTag}`;
@@ -5781,7 +5949,7 @@ cmd_create_official_call.solve = async (ctx, msg, cmdArgs) => {
   const targetCtx = seal.createTempCtx(ctx.endPoint, targetMsg);
   setGroupName(targetCtx, targetMsg, gid, finalGroupName);
 
-  const callGuide = `\n\n修改时间 ➜ 修改时间线 ${day} 新时间\n不想参加 ➜ 拒绝时间线 ${gid}`;
+  const callGuide = buildAppointmentGuide(gid, day);
   const callAnnouncement = `📞 官电已确认\n\n📅 ${day} ${time}\n👥 参与者：${validParticipants.join("、")}\n\n群号：${gid}\n有效至 ${new Date(expireTime).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}${callGuide}`;
   seal.replyToSender(targetCtx, targetMsg, callAnnouncement);
 
@@ -5896,7 +6064,7 @@ cmd_plan_official.solve = (ctx, msg, cmdArgs) => {
 
   // 获取所有非NPC玩家
   const apg = store.get("a_private_group")[platform] || {};
-  const npcList = JSON.parse(cachedGet("a_npc_list") || "[]");
+  const npcList = kvGet("a_npc_list", []);
   const allPlayers = Object.entries(apg)
     .map(([uid, val]) => ({ uid, name: val[0] }))
     .filter(p => p.name && !npcList.includes(p.name));
@@ -5911,8 +6079,8 @@ cmd_plan_official.solve = (ctx, msg, cmdArgs) => {
   }
 
   // 检查所有玩家的时间冲突
-  const a_lockedSlots      = JSON.parse(cachedGet("a_lockedSlots") || "{}");
-  const b_confirmedSchedule = JSON.parse(cachedGet("b_confirmedSchedule") || "{}");
+  const a_lockedSlots      = kvGet("a_lockedSlots", {});
+  const b_confirmedSchedule = kvGet("b_confirmedSchedule", {});
   let conflictPlayers = [];
   for (let p of allPlayers) {
     const key = `${platform}:${p.uid}`;
@@ -5976,7 +6144,7 @@ cmd_plan_official.solve = (ctx, msg, cmdArgs) => {
   // 保存方案
   const planGroups = groups.map((members, i) => ({ participants: members, place: places[i] }));
   const plan = { platform, day, time, groupCount, groups: planGroups };
-  cachedSet("a_quick_official_plan", JSON.stringify(plan));
+  kvSet("a_quick_official_plan", plan);
 
   // 展示方案
   let resp = `📋 官约方案已生成${wantTag ? `（${tagArg} 交替模式）` : ""}：\n`;
@@ -6019,8 +6187,8 @@ cmd_execute_official.solve = async (ctx, msg, cmdArgs) => {
   const apg = store.get("a_private_group");
 
   // 执行前再次校验时间冲突（防止方案过期）
-  const a_lockedSlots = JSON.parse(cachedGet("a_lockedSlots") || "{}");
-  const b_confirmedSchedule_check = JSON.parse(cachedGet("b_confirmedSchedule") || "{}");
+  const a_lockedSlots = kvGet("a_lockedSlots", {});
+  const b_confirmedSchedule_check = kvGet("b_confirmedSchedule", {});
   let conflictPlayers = [];
   for (let g of groups) {
     for (let name of g.participants) {
@@ -6070,19 +6238,19 @@ cmd_execute_official.solve = async (ctx, msg, cmdArgs) => {
     const expireTime = acceptTime + expireHours * 60 * 60 * 1000;
 
     // 更新日程（每次重新读写，避免多组之间覆盖）
-    const bcs = JSON.parse(cachedGet("b_confirmedSchedule") || "{}");
+    const bcs = kvGet("b_confirmedSchedule", {});
     for (let name of participants) {
       const uid = getUidByRoleName(platform, name);
       const key = `${platform}:${uid}`;
       if (!bcs[key]) bcs[key] = [];
       bcs[key].push({ day, time, partner: `官约（${participants.join("、")}）`, subtype: "官约", place, group: gid, status: "active" });
     }
-    cachedSet("b_confirmedSchedule", JSON.stringify(bcs));
+    kvSet("b_confirmedSchedule", bcs);
 
     // 记录群组过期信息
-    const groupInfo = JSON.parse(cachedGet("group_expire_info") || "{}");
+    const groupInfo = kvGet("group_expire_info", {});
     groupInfo[gid] = { acceptTime, expireTime, participants, subtype: "官约", day, time, place };
-    cachedSet("group_expire_info", JSON.stringify(groupInfo));
+    kvSet("group_expire_info", groupInfo);
 
     // 改群名
     const groupNameTag = participants.length > 2 ? "多人" : participants.join("、");
@@ -6094,7 +6262,7 @@ cmd_execute_official.solve = async (ctx, msg, cmdArgs) => {
     setGroupName(targetCtx, targetMsg, gid, finalGroupName);
 
     // 向戏群发公告
-    const execGuide = `\n\n修改时间 ➜ 修改时间线 ${day} 新时间\n不想参加 ➜ 拒绝时间线 ${gid}`;
+    const execGuide = buildAppointmentGuide(gid, day);
     const execExpireStr = new Date(expireTime).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
     seal.replyToSender(targetCtx, targetMsg, `🎖️ 官约已确认\n\n📅 ${day} ${time}\n📍 ${place}\n👥 参与者：${participants.join("、")}\n\n群号：${gid}\n有效至 ${execExpireStr}${execGuide}`);
 
@@ -6143,17 +6311,17 @@ function getSightingConfig() {
         include_ended_meetings: false,
         time_overlap_threshold: 0.3
     };
-    const config = JSON.parse(cachedGet("sighting_system_config") || "{}");
+    const config = kvGet("sighting_system_config", {});
     return { ...defaultConfig, ...config };
 }
 
 function setSightingConfig(config) {
-    cachedSet("sighting_system_config", JSON.stringify(config));
+    kvSet("sighting_system_config", config);
 }
 
 function getPlaceSystemConfig() {
     const defaultConfig = { enabled: false, require_key_by_default: false };
-    const config = JSON.parse(cachedGet("place_system_config") || "{}");
+    const config = kvGet("place_system_config", {});
     return { ...defaultConfig, ...config };
 }
 
@@ -6165,19 +6333,19 @@ function isSightingEnabled() {
 
 function getUserSightingCountToday(platform, uid) {
     const today = new Date().toISOString().slice(0, 10);
-    const sightingCount = JSON.parse(cachedGet("sighting_daily_count") || "{}");
+    const sightingCount = kvGet("sighting_daily_count", {});
     return (sightingCount[today] || {})[`${platform}:${uid}`] || 0;
 }
 
 function incrementUserSightingCountToday(platform, uid) {
     const today = new Date().toISOString().slice(0, 10);
-    const sightingCount = JSON.parse(cachedGet("sighting_daily_count") || "{}");
+    const sightingCount = kvGet("sighting_daily_count", {});
     for (const date of Object.keys(sightingCount)) {
         if (date !== today) delete sightingCount[date];
     }
     if (!sightingCount[today]) sightingCount[today] = {};
     sightingCount[today][`${platform}:${uid}`] = (sightingCount[today][`${platform}:${uid}`] || 0) + 1;
-    cachedSet("sighting_daily_count", JSON.stringify(sightingCount));
+    kvSet("sighting_daily_count", sightingCount);
 }
 
 function shouldSendSightingReport(platform, roleName) {
@@ -6201,9 +6369,9 @@ function calculateTimeOverlapRatio(time1, time2) {
 }
 
 function findSimultaneousMeetings(platform, day, time, place, excludeGroupId = null) {
-    const b_confirmedSchedule = JSON.parse(cachedGet("b_confirmedSchedule") || "{}");
-    const groupExpireInfo = JSON.parse(cachedGet("group_expire_info") || "{}");
-    const a_private_group = JSON.parse(cachedGet("a_private_group") || "{}");
+    const b_confirmedSchedule = kvGet("b_confirmedSchedule", {});
+    const groupExpireInfo = kvGet("group_expire_info", {});
+    const a_private_group = kvGet("a_private_group", {});
     const sightingConfig = getSightingConfig();
 
     const seenGroups = new Set();
@@ -6256,7 +6424,7 @@ function findSimultaneousMeetings(platform, day, time, place, excludeGroupId = n
 function sendSightingReports(platform, newMeetingInfo, simultaneousMeetings, ctx, msg) {
     if (!ctx || !ctx.endPoint) return;
     const sightingConfig = getSightingConfig();
-    const a_private_group = JSON.parse(cachedGet("a_private_group") || "{}");
+    const a_private_group = kvGet("a_private_group", {});
     if (!a_private_group[platform]) return;
 
     const processedReverseMeetings = new Set();
@@ -6303,7 +6471,7 @@ function sendCounterSightingReports(platform, originalMeeting, newMeetingInfo, c
         console.error("[ERROR] sendCounterSightingReports: ctx 或 ctx.endPoint 无效，无法发送反向报告");
         return;
     }
-    const a_private_group = JSON.parse(cachedGet("a_private_group") || "{}");
+    const a_private_group = kvGet("a_private_group", {});
     if (!a_private_group[platform]) return;
     const sightingConfig = getSightingConfig();
 
@@ -6350,8 +6518,8 @@ async function createSoloStakeout(ctx, msg, platform, sendname, day, time, place
     const expireTime = Date.now() + expireHours * 3600000;
     const timeStr = new Date(expireTime).toLocaleString("zh-CN", { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 
-    const b_confirmedSchedule = JSON.parse(cachedGet("b_confirmedSchedule") || "{}");
-    const groupInfo = JSON.parse(cachedGet("group_expire_info") || "{}");
+    const b_confirmedSchedule = kvGet("b_confirmedSchedule", {});
+    const groupInfo = kvGet("group_expire_info", {});
 
     const details = getRoleDetails(platform, sendname);
     if (details && details.uid) {
@@ -6368,8 +6536,8 @@ async function createSoloStakeout(ctx, msg, platform, sendname, day, time, place
 
     const groupData = { sendname, subtype: "踩点", day, time, place };
     groupInfo[gid] = { ...groupData, participants: [sendname], expireTime };
-    cachedSet("b_confirmedSchedule", JSON.stringify(b_confirmedSchedule));
-    cachedSet("group_expire_info", JSON.stringify(groupInfo));
+    kvSet("b_confirmedSchedule", b_confirmedSchedule);
+    kvSet("group_expire_info", groupInfo);
 
     const finalGroupName = `踩点 ${day} ${time} ${sendname}`;
     const guide = `\n\n结束互动 ➜ 在群内发「结束私约」`;
@@ -6397,14 +6565,14 @@ async function createSoloStakeout(ctx, msg, platform, sendname, day, time, place
 }
 
 async function handleStakeout(ctx, msg, cmdArgs) {
-    const toggle = JSON.parse(cachedGet("global_feature_toggle") || "{}");
+    const toggle = kvGet("global_feature_toggle", {});
     if (!toggle.dlc_stakeout) {
         return seal.replyToSender(ctx, msg, "❌ 踩点功能未开启，请联系管理员。");
     }
 
     const platform = msg.platform;
     const uid = msg.sender.userId.replace(`${platform}:`, "");
-    const a_private_group = JSON.parse(cachedGet("a_private_group") || "{}");
+    const a_private_group = kvGet("a_private_group", {});
     const sendname = a_private_group[platform]?.[uid]?.[0];
     if (!sendname) return seal.replyToSender(ctx, msg, "✨ 请先使用「创建新角色」来认领你的身份。");
 
@@ -6447,6 +6615,14 @@ function triggerSightingCheck(platform, day, time, place, participants, groupId,
 // ⏰ 监听系统核心函数（修改版）
 // ========================
 
+// 超时时长健全性上限：网页端(小时)↔机器人(毫秒)换算若被重复应用（如「推送全部」误把毫秒当小时
+// 再推一次）会指数级爆炸成天文数字，导致 elapsed 永远追不上 timeoutDuration、超时提醒失效。
+// 任何超过此上限的值一律视为损坏，回退默认值/基础超时，避免再需要手动改库才能恢复。
+const MAX_REASONABLE_TIMEOUT_MS = 7 * 24 * 3600 * 1000; // 7 天
+function sanitizeTimeoutMs(v, fallback) {
+    return (typeof v === "number" && isFinite(v) && v > 0 && v <= MAX_REASONABLE_TIMEOUT_MS) ? v : fallback;
+}
+
 /**
  * 获取监听设置
  */
@@ -6457,49 +6633,58 @@ function getMonitorSettings() {
         remind_interval: 10800000,  // 180分钟，统一提醒间隔
         auto_monitor_all_groups: true
     };
-    
-    const settings = JSON.parse(cachedGet("monitor_settings") || "{}");
-    return { ...defaultSettings, ...settings };
+
+    const settings = kvGet("monitor_settings", {});
+    const merged = { ...defaultSettings, ...settings };
+    merged.timeout = sanitizeTimeoutMs(merged.timeout, defaultSettings.timeout);
+    merged.remind_interval = sanitizeTimeoutMs(merged.remind_interval, defaultSettings.remind_interval);
+    for (const k of ["timeout_phone", "timeout_private", "timeout_wish", "timeout_official"]) {
+        if (k in merged) {
+            const safe = sanitizeTimeoutMs(merged[k], null);
+            if (safe === null) delete merged[k]; else merged[k] = safe;
+        }
+    }
+    return merged;
 }
 
 /**
  * 保存监听设置
  */
 function setMonitorSettings(settings) {
-    cachedSet("monitor_settings", JSON.stringify(settings));
+    kvSet("monitor_settings", settings);
 }
 
 /**
  * 获取群组计时器
  */
 function getGroupTimers() {
-    return JSON.parse(cachedGet("group_timers") || "{}");
+    return kvGet("group_timers", {});
 }
 
 /**
  * 保存群组计时器
  */
 function saveGroupTimers(timers) {
-    cachedSet("group_timers", JSON.stringify(timers));
+    kvSet("group_timers", timers);
 }
 
 /**
  * 获取用户统计
  */
 function getUserStats() {
-    return JSON.parse(cachedGet("user_stats") || "{}");
+    return kvGet("user_stats", {});
 }
 
 function saveUserStats(stats) {
-    cachedSet("user_stats", JSON.stringify(stats));
+    kvSet("user_stats", stats);
 }
 
 function getInteractionCounts() {
-    return JSON.parse(cachedGet("interaction_counts") || "{}");
+    return kvGet("interaction_counts", {});
 }
 
 function saveInteractionCounts(counts) {
-    cachedSet("interaction_counts", JSON.stringify(counts));
+    kvSet("interaction_counts", counts);
 }
 
 // type: "sms" | "gift" | "appt"；skipReceived=true 时只记发送方 sent，不记收件方 received
@@ -6534,11 +6719,11 @@ function getTop3Text(countMap) {
 }
 
 function getSessionStats() {
-    return JSON.parse(cachedGet("group_session_stats") || "{}");
+    return kvGet("group_session_stats", {});
 }
 
 function saveSessionStats(s) {
-    cachedSet("group_session_stats", JSON.stringify(s));
+    kvSet("group_session_stats", s);
 }
 
 // 结戏时把本群字数/段数归入本季累计，供「本场统计」跨场次汇总
@@ -6546,7 +6731,7 @@ function accumulateToSeasonStats(platform, gid) {
     const ss = getSessionStats();
     const groupStat = ss[gid];
     if (!groupStat) return;
-    const acc = JSON.parse(cachedGet("season_player_stats") || "{}");
+    const acc = kvGet("season_player_stats", {});
     if (!acc[platform]) acc[platform] = {};
     for (const [uid, stat] of Object.entries(groupStat)) {
         if (uid === "_startTime") continue;
@@ -6554,16 +6739,16 @@ function accumulateToSeasonStats(platform, gid) {
         acc[platform][uid].replies += stat.replies || 0;
         acc[platform][uid].words   += stat.words   || 0;
     }
-    cachedSet("season_player_stats", JSON.stringify(acc));
+    kvSet("season_player_stats", acc);
 }
 
 /**
  * 结戏时发放加成奖励（模版系统）
  */
 function applyEndGameBonuses(ctx, msg, gid, platform) {
-    const templates = JSON.parse(cachedGet("end_game_bonus_templates") || "[]");
+    const templates = kvGet("end_game_bonus_templates", []);
     // group_expire_info[gid] 在结束流程里已先被删，改从 b_confirmedSchedule 读 subtype
-    const _bSched = JSON.parse(cachedGet("b_confirmedSchedule") || "{}");
+    const _bSched = kvGet("b_confirmedSchedule", {});
     let groupSubtype = "";
     outer: for (const evList of Object.values(_bSched)) {
         for (const ev of evList) {
@@ -6592,14 +6777,14 @@ function applyEndGameBonuses(ctx, msg, gid, platform) {
         return;
     }
 
-    const reg = JSON.parse(cachedGet("item_registry") || "{}");
+    const reg = kvGet("item_registry", {});
     const currencyByName = {};
     Object.values(reg).forEach(r => { if (r.type === "currency") currencyByName[r.name] = r.code; });
 
-    const apg = JSON.parse(cachedGet("a_private_group") || "{}");
+    const apg = kvGet("a_private_group", {});
 
     // 查找结戏群对应的地点（供 location_draw 奖励使用）
-    const b_confirmedSchedule = JSON.parse(cachedGet("b_confirmedSchedule") || "{}");
+    const b_confirmedSchedule = kvGet("b_confirmedSchedule", {});
     let endGamePlace = null;
     for (const [, events] of Object.entries(b_confirmedSchedule)) {
         for (const event of events) {
@@ -6608,8 +6793,8 @@ function applyEndGameBonuses(ctx, msg, gid, platform) {
         if (endGamePlace) break;
     }
     const endGamePoolName = endGamePlace ? `${endGamePlace}池` : null;
-    const poolDefs = seal.ext.find("changriRPG") ? JSON.parse(cachedGet("pool_definitions") || "{}") : null;
-    let drawRecords = JSON.parse(cachedGet("player_draw_records") || "{}");
+    const poolDefs = seal.ext.find("changriRPG") ? kvGet("pool_definitions", {}) : null;
+    let drawRecords = kvGet("player_draw_records", {});
     let drawRecordsChanged = false;
     const currentDrawDay = cachedGet("global_days") || "";
 
@@ -6656,7 +6841,7 @@ function applyEndGameBonuses(ctx, msg, gid, platform) {
                 ? (currencyByName[target] || null)
                 : null;
             if (!code) {
-                const reg = JSON.parse(cachedGet("item_registry") || "{}");
+                const reg = getRegistry_rpg();
                 const upper = target.toUpperCase();
                 if (reg[upper]) {
                     code = upper;
@@ -6678,11 +6863,11 @@ function applyEndGameBonuses(ctx, msg, gid, platform) {
         } else {
             // attr：使用 uid-based profile key
             const profileKey = `${platform}:${playerUid}`;
-            const profiles = JSON.parse(cachedGet("sys_char_profiles") || "{}");
+            const profiles = kvGet("sys_char_profiles", {});
             if (!profiles[profileKey]) profiles[profileKey] = {};
             const cur = parseInt(profiles[profileKey][target] || "0");
             profiles[profileKey][target] = String(cur + amount);
-            cachedSet("sys_char_profiles", JSON.stringify(profiles));
+            kvSet("sys_char_profiles", profiles);
             return `${target}+${amount}`;
         }
     }
@@ -6801,13 +6986,14 @@ function applyEndGameBonuses(ctx, msg, gid, platform) {
             const notifyCtx = seal.createTempCtx(ctx.endPoint, notifyMsg);
             const fixedText = fixedLines.join("、");
             const poolText = poolLines.length ? `\n🎲 概率奖励抽中：${poolLines.join("、")}` : "";
-            const notice = `[CQ:at,qq=${playerUid}]\n🎁 结戏加成已发放：${fixedText}${poolText}\n💡 可使用「背包」查看道具与货币，「角色卡」查看属性变更。`;
+            const statsText = `\n✍️ 本场共写了 ${stat.words} 字 / ${stat.replies} 段`;
+            const notice = `[CQ:at,qq=${playerUid}]\n🎁 结戏加成已发放：${fixedText}${poolText}${statsText}\n💡 可使用「背包」查看道具与货币，「角色卡」查看属性变更。`;
             seal.replyToSender(notifyCtx, notifyMsg, notice);
         }
     }
 
     if (drawRecordsChanged) {
-        cachedSet("player_draw_records", JSON.stringify(drawRecords));
+        kvSet("player_draw_records", drawRecords);
     }
 
     // 清除本群本场记录（归档前先累加到季度累计）
@@ -6827,7 +7013,7 @@ function applyEndGameBonuses(ctx, msg, gid, platform) {
  * 结戏时自动发放对应地点的抽取机会（需要先同步踩点池）
  */
 function applyEndGameDraws(ctx, msg, gid, platform, playerKeys) {
-    const drawConfig = JSON.parse(cachedGet("end_game_draw_config") || "{}");
+    const drawConfig = kvGet("end_game_draw_config", {});
     if (!drawConfig.enabled) return;
 
     const chance = drawConfig.chance ?? 100; // 触发概率 0-100
@@ -6838,7 +7024,7 @@ function applyEndGameDraws(ctx, msg, gid, platform, playerKeys) {
         poolName = drawConfig.pool_name;
     } else {
         // 未指定池名，回退到地点池
-        const b_confirmedSchedule = JSON.parse(cachedGet("b_confirmedSchedule") || "{}");
+        const b_confirmedSchedule = kvGet("b_confirmedSchedule", {});
         let place = null;
         for (const [, events] of Object.entries(b_confirmedSchedule)) {
             for (const event of events) {
@@ -6858,10 +7044,10 @@ function applyEndGameDraws(ctx, msg, gid, platform, playerKeys) {
 
     if (!seal.ext.find("changriRPG")) return;
 
-    const records = JSON.parse(cachedGet("player_draw_records") || "{}");
+    const records = kvGet("player_draw_records", {});
     const awardedList = [];
 
-    const apgPlatform = JSON.parse(cachedGet("a_private_group") || "{}")[platform] || {};
+    const apgPlatform = kvGet("a_private_group", {})[platform] || {};
     for (const uid of participants) {
         if (uid === "_startTime") continue;
         // 概率检定
@@ -6879,7 +7065,7 @@ function applyEndGameDraws(ctx, msg, gid, platform, playerKeys) {
     }
 
     if (awardedList.length) {
-        cachedSet("player_draw_records", JSON.stringify(records));
+        kvSet("player_draw_records", records);
         const chanceText = chance < 100 ? `（${chance}%概率触发）` : "";
         seal.replyToSender(ctx, msg, `🎰 结戏抽取${chanceText}：已为 ${awardedList.join("、")} 发放「${poolName}」抽取机会 ×${count}`);
     }
@@ -6894,7 +7080,7 @@ function initGroupTimer(platform, groupId, subtype, participants, initiator) {
     if (!settings.enabled) return;
     
     // 获取多人邀约状态，过滤掉已拒绝的参与者
-    const b_MultiGroupRequest = JSON.parse(cachedGet("b_MultiGroupRequest") || "{}");
+    const b_MultiGroupRequest = kvGet("b_MultiGroupRequest", {});
     const multiGroup = Object.values(b_MultiGroupRequest).find(g => 
         g.sendname === initiator && 
         g.participants && 
@@ -6999,6 +7185,23 @@ function initGroupTimer(platform, groupId, subtype, participants, initiator) {
  * 处理回复（监听消息时调用）
  * 已集成：计时状态更新、字数校验、转发逻辑、以及写帖进度计数
  */
+// 从消息首行提取角色名对应的正文。支持三种握手写法：
+// 「角色名\n正文」「角色名 正文」（腾讯客户端有时把换行转成空格）「角色名：正文」（半角/全角冒号，剧本式书写，可与空格混用）
+// 均不匹配时返回 null，判定为闲聊，不入档/不计字数。
+function extractRoleContent(message, roleName) {
+    const lines = (message || "").split("\n");
+    const first = lines[0].trim();
+    const rest = lines.slice(1).join("\n").trim();
+    if (first === roleName) return rest || null;
+    if (!first.startsWith(roleName)) return null;
+    let tail = first.slice(roleName.length);
+    const beforeLen = tail.length;
+    tail = tail.replace(/^[\s:：]+/, "");
+    if (tail.length === beforeLen) return null; // 名字后没有分隔符，是别的角色名的前缀（如"张三丰"之于"张"），不算匹配
+    const combined = (tail.trim() + (rest ? "\n" + rest : "")).trim();
+    return combined || null;
+}
+
 function handleReply(platform, groupId, roleName, message) {
     const settings = getMonitorSettings();
     if (!settings.enabled) {
@@ -7021,9 +7224,9 @@ function handleReply(platform, groupId, roleName, message) {
     if (isArchiveEnabled() && getSeasonMode() !== "no_review") {
         const _archiveSS = getSessionStats()[groupId] || {};
         const _startTs = _archiveSS._startTime || Date.now();
-        const _expireInfo = JSON.parse(cachedGet("group_expire_info") || "{}")[groupId] || {};
+        const _expireInfo = kvGet("group_expire_info", {})[groupId] || {};
         const _gameDay = _expireInfo.day || timer.day || cachedGet("global_days") || "";
-        const _npcList = JSON.parse(cachedGet("a_npc_list") || "[]");
+        const _npcList = kvGet("a_npc_list", []);
         const _logTypes = ["私密", "电话", "官约", "心愿"];
         const _archivePayload = {
             session_id: `${groupId}_${_startTs}`,
@@ -7037,18 +7240,13 @@ function handleReply(platform, groupId, roleName, message) {
             timestamp:  Date.now()
         };
 
-        // 统一格式要求：所有场次（含电话、NPC）首行必须是角色名，闲聊不入档
         let _archivedContent = null;
-        const _arcLines = message.split("\n");
-        const _arcFirst = _arcLines[0].trim();
-        if (_arcFirst === roleName) {
-            const content = _arcLines.slice(1).join("\n").trim();
-            if (content) {
-                postToArchive("/api/rp", { ..._archivePayload, content });
-                _archivedContent = content;
-                if (_logTypes.includes(timer.subtype))
-                    console.log(`[存档] ${timer.subtype} | ${_gameDay} | ${roleName}${_npcList.includes(roleName) ? "(NPC)" : ""} | ${content.slice(0,30)}…`);
-            }
+        const _arcExtracted = extractRoleContent(message, roleName);
+        if (_arcExtracted) {
+            postToArchive("/api/rp", { ..._archivePayload, content: _arcExtracted });
+            _archivedContent = _arcExtracted;
+            if (_logTypes.includes(timer.subtype))
+                console.log(`[存档] ${timer.subtype} | ${_gameDay} | ${roleName}${_npcList.includes(roleName) ? "(NPC)" : ""} | ${_arcExtracted.slice(0,30)}…`);
         }
 
         // 字数统计：凡存档成功的回复（非NPC）都累计，不依赖 timing 状态
@@ -7064,7 +7262,7 @@ function handleReply(platform, groupId, roleName, message) {
 
                 // 撤回重发检测
                 const _cacheKey = `reply_cache__${groupId}__${_archiveUid}`;
-                const _cached = (() => { try { return JSON.parse(cachedGet(_cacheKey) || "null"); } catch(e) { return null; } })();
+                const _cached = (() => { try { return kvGet(_cacheKey, null); } catch(e) { return null; } })();
                 const _now = Date.now();
                 let _isRedo = false;
                 if (_cached && (_now - _cached.ts) <= 600000) {
@@ -7094,7 +7292,7 @@ function handleReply(platform, groupId, roleName, message) {
 
                 saveSessionStats(_ssArc);
                 // 更新缓存（无论替换还是新增，都以本次内容作为下次比对基准）
-                cachedSet(_cacheKey, JSON.stringify({ content: _archivedContent, words: _wc, ts: _now }));
+                kvSet(_cacheKey, { content: _archivedContent, words: _wc, ts: _now });
             }
         }
     }
@@ -7106,11 +7304,9 @@ function handleReply(platform, groupId, roleName, message) {
         if (roleStatus.status === "replied") return false;
     }
 
-    // 2. 字数（与存档段同口径：首行是角色名则去掉首行，电话也不例外）
-    // 首行不是角色名视为闲聊，不计入统计和进度
-    const _wLines = message.split("\n");
-    if (_wLines[0].trim() !== roleName) return false;
-    const _wContent = _wLines.slice(1).join("\n").trim();
+    // 2. 字数（与存档段同口径，见 extractRoleContent 支持的三种格式）
+    const _wContent = extractRoleContent(message, roleName);
+    if (!_wContent) return false;
     const wordCount = countWords(_wContent);
 
     // --- 开始更新数据 ---
@@ -7136,11 +7332,11 @@ function handleReply(platform, groupId, roleName, message) {
     const uid = roleUid;
 
     if (uid) {
-        const progress = JSON.parse(cachedGet("group_write_progress") || "{}");
+        const progress = kvGet("group_write_progress", {});
         // 这里的 groupId 是当前互动的群号（如 001_1）
         if (!progress[groupId]) progress[groupId] = {};
         progress[groupId][uid] = (progress[groupId][uid] || 0) + 1;
-        cachedSet("group_write_progress", JSON.stringify(progress));
+        kvSet("group_write_progress", progress);
         console.log(`[监听系统] 记录进度: ${roleName}(${uid}) 在群 ${groupId} 回复数 +1`);
     }
 
@@ -7155,7 +7351,7 @@ function handleReply(platform, groupId, roleName, message) {
 
     // 实时推送本场 stats 到存档服务器（自动更新统计页面 + 玩家数据库）
     // NPC 回复不触发 stats 推送，避免污染数据分析
-    const _npcListStats = JSON.parse(cachedGet("a_npc_list") || "[]");
+    const _npcListStats = kvGet("a_npc_list", []);
     if (isArchiveEnabled() && sessionUid && !_npcListStats.includes(roleName)) {
         const _ss2 = getSessionStats()[groupId] || {};
         const _startTs2 = _ss2._startTime || Date.now();
@@ -7170,7 +7366,7 @@ function handleReply(platform, groupId, roleName, message) {
             const ruid = getUidByRoleName(platform, rn);
             return ruid ? { qq: ruid, role_name: rn, is_npc: _npcListStats.includes(rn) } : null;
         }).filter(Boolean);
-        const _expireInfo2 = JSON.parse(cachedGet("group_expire_info") || "{}")[groupId] || {};
+        const _expireInfo2 = kvGet("group_expire_info", {})[groupId] || {};
         postToArchive("/api/session_stats", {
             session_id: `${groupId}_${_startTs2}`,
             group_id:   groupId,
@@ -7324,7 +7520,7 @@ function getRemindInterval() {
  */
 function sendReminder(platform, groupId, roleName, subtype, elapsedTime,ctx) {
     // 获取角色绑定的群（新结构：通过 roleName 反查 uid）
-    const a_private_group = JSON.parse(cachedGet("a_private_group") || "{}");
+    const a_private_group = kvGet("a_private_group", {});
     const roleUid = getUidByRoleName(platform, roleName);
     const roleGroupId = roleUid ? a_private_group[platform]?.[roleUid]?.[1] : null;
     
@@ -7416,36 +7612,409 @@ function checkCondition(ctx) {
 // ========================
 // 📡 全局事件监听
 // ========================
-ext.onNotCommandReceived = (ctx, msg) => {
+// ═══ 监听器子处理函数（从 onNotCommandReceived 拆出；触发词匹配仍在监听器内，勿在此加匹配逻辑）═══
+
+// 回复音乐卡片点歌：解析点歌人/留言，经 WS 读原消息后投递到戏群
+function handleSongCardRequest(ctx, msg, raw, wdId) {
+    const rawGid = cachedGet("song_group_id"), dM = raw.match(/点歌人[:：]\s*(.*?)(?=\s|,|，|留言|$)/), lM = raw.match(/留言[:：]\s*(.*)/);
+    if (!rawGid || !dM || !lM) return seal.replyToSender(ctx, msg, !rawGid ? "❌ 未配置戏群" : "⚠️ 格式错误\n正确用法：回复音乐卡片，消息内容写\n点歌人：名字 留言：内容");
+    const songGid = parseInt(rawGid.replace(/[^\d]/g, ""), 10);
+    const songDgr = dM[1].trim();
+    const songLy  = lM[1].trim();
+    const errMsg  = "❌ 点歌失败：LLOneBot 未能读取该消息（可能不在缓存中）。";
+    WSM.request(
+        { action: "get_msg", params: { message_id: wdId } },
+        (response) => {
+            if (response.status !== "ok" && response.retcode !== 0) { seal.replyToSender(ctx, msg, errMsg); return; }
+            handleSongDelivery(ctx, msg, response.data, songGid, songDgr, songLy);
+        },
+        () => seal.replyToSender(ctx, msg, errMsg)
+    );
+    return seal.ext.newCmdExecuteResult(true);
+}
+
+// 无前缀「短信」：识别署名（含自定义署名开关）后转交寄信流程
+function routeChaosLetterMessage(ctx, msg, platform, letM) {
+    const allowCustom = cachedGet("allow_custom_letter_sign") === "true";
+    const priv = kvGet("a_private_group", {})[platform] || {};
+    let snd = "";
+    if (allowCustom && letM[1]) {
+        // 允许自定义且写了 A 部分，直接取 A
+        snd = letM[1].trim();
+    } else {
+        // 不允许自定义或没写 A，按原逻辑自动识别或校验
+        snd = letM[1] ? letM[1].trim() : getRoleName(ctx, msg);
+    }
+    // 如果开启了自定义，不再强制要求 snd 必须存在于 priv 绑定中
+    if (snd && (allowCustom || Object.values(priv).some(v => v[0] === snd))) {
+        return handleNaturalChaosLetter(ctx, msg, platform, snd, letM[2].trim(), letM[3].trim());
+    }
+    return seal.replyToSender(ctx, msg, "❌ 角色识别失败");
+}
+
+// 「额外账号」绑定/删除/查看（本人操作）；绑定时清理辅助账号的商城/图鉴数据
+function handleExtraAccountMsg(ctx, msg, platform, uid, rest) {
+    const selfRoleName = getRoleName(ctx, msg);
+    if (!selfRoleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+    const extras = store.get("extra_accounts");
+    if (rest.startsWith("删除")) {
+        const extraQQ = rest.slice(2).trim();
+        if (!extraQQ) return seal.replyToSender(ctx, msg, "格式：额外账号 删除 QQ号");
+        const extraKey = `${platform}:${extraQQ}`;
+        if (extras[extraKey] !== uid) return seal.replyToSender(ctx, msg, `❌ 该账号不是你的额外账号`);
+        delete extras[extraKey];
+        store.set("extra_accounts", extras);
+        return seal.replyToSender(ctx, msg, `✅ 已移除额外账号 ${extraQQ}`);
+    }
+    if (rest) {
+        const extraQQ = rest.trim();
+        const extraKey = `${platform}:${extraQQ}`;
+        if (extras[extraKey]) return seal.replyToSender(ctx, msg, `❌ 该账号已被绑定为其他角色的额外账号`);
+        const rolesStorageCheck = store.get("a_private_group")[platform] || {};
+        if (rolesStorageCheck[extraQQ]) return seal.replyToSender(ctx, msg, `❌ 该账号已是主账号（角色：${rolesStorageCheck[extraQQ][0]}），无法绑定为额外账号`);
+        extras[extraKey] = uid;
+        store.set("extra_accounts", extras);
+
+        // 清理辅助账号的商城/图鉴数据，只保留主账号的
+        // 1. 删除辅助账号的 gift_sightings（uid-based key）
+        const sightings = kvGet("gift_sightings", {});
+        const extraSightingKey = `${platform}:${extraQQ}`;
+        if (sightings[extraSightingKey]) {
+            delete sightings[extraSightingKey];
+            kvSet("gift_sightings", sightings);
+        }
+        // 2. 删除辅助账号的 global_inventories（roleName-based key）
+        // 找出辅助账号在 a_private_group 中绑定的角色名
+        const rolesStorage = store.get("a_private_group")[platform] || {};
+        const extraRoleName = Object.entries(rolesStorage).find(([, v]) => v[0] === extraQQ)?.[0];
+        if (extraRoleName) {
+            const invs = kvGet("global_inventories", {});
+            const extraInvKey = `${platform}:${extraRoleName}`;
+            if (invs[extraInvKey]) {
+                delete invs[extraInvKey];
+                kvSet("global_inventories", invs);
+            }
+        }
+        // 3. 删除辅助账号的 shop_personal_display（uid-based key，抽卡进度）
+        const spd = kvGet("shop_personal_display", {});
+        if (spd[extraSightingKey]) {
+            delete spd[extraSightingKey];
+            kvSet("shop_personal_display", spd);
+        }
+
+        return seal.replyToSender(ctx, msg, `✅ 已将 ${extraQQ} 绑定为「${selfRoleName}」的额外账号（辅助账号的商城/图鉴数据已清除）`);
+    }
+    // 查看自己的额外账号
+    const myExtras = Object.entries(extras).filter(([, v]) => v === uid).map(([k]) => k.replace(`${platform}:`, ""));
+    return seal.replyToSender(ctx, msg, myExtras.length ? `📱 你的额外账号：\n${myExtras.join("\n")}` : "📭 暂无额外账号");
+}
+
+// 「角色卡」：汇总档案/装备/属性/货币生成角色卡文本
+function handleRoleCardMsg(ctx, msg, platform) {
+    const roleName = getRoleName(ctx, msg);
+    if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+    const uid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
+    const roleKey = `${platform}:${uid}`;
+    const prof = getCharProfile(platform, roleName);
+
+    // 基础信息
+    const genderText = prof.gender === "男" ? "👨 男" : "👩 女";
+    const ageText = prof.age !== undefined && prof.age !== null ? `${prof.age}岁` : "未设置";
+
+    // ── 装备 ──────────────────────────────────────────────
+    const equipLines = [];
+    const equipBonus = {};
+    try {
+        const allEquips = kvGet("player_equipments", {});
+        const reg = kvGet("equipment_registry", {});
+        const playerEquips = allEquips[roleKey] || {};
+        const slots = kvGet("equipment_slots", []);
+        const slotNames = kvGet("equipment_slot_names", {});
+        const defaultNames = { head:"头部", chest:"胸部", hand:"手部", leg:"腿部", foot:"脚部" };
+        const defaultEmoji = { head:"🎩", chest:"🛡️", hand:"⚔️", leg:"👖", foot:"👢" };
+        for (const slot of (slots.length ? slots : ["head","chest","hand","leg","foot"])) {
+            const e = playerEquips[slot];
+            if (e && e.code) {
+                const displayName = slotNames[slot] || defaultNames[slot] || slot;
+                const emoji = defaultEmoji[slot] || "📦";
+                const equipDef = reg[e.code];
+                equipLines.push(`${emoji}${displayName}：${equipDef?.name || e.code}`);
+                for (const [attr, val] of Object.entries(equipDef?.baseAttrs || {})) {
+                    equipBonus[attr] = (equipBonus[attr] || 0) + val;
+                }
+            }
+        }
+    } catch(e) {}
+
+    // ── 属性 ──────────────────────────────────────────────
+    const attrLines = [];
+    try {
+        const attrDefs = kvGet("rpg_attr_defs", {});
+        const charAttrs = kvGet("sys_character_attrs", {});
+        // 新结构：charAttrs 以 uid 为 key
+        const roleAttrs = charAttrs[uid] || {};
+        const BAR = 6;
+        for (const [name, def] of Object.entries(attrDefs)) {
+            const base = roleAttrs[name] ?? (def.default ?? 0);
+            const bonus = equipBonus[name] || 0;
+            const val = base + bonus;
+            const bonusText = bonus ? ` (${bonus > 0 ? '+' : ''}${bonus})` : '';
+            if (def.max !== null && def.max !== undefined && def.min !== null) {
+                const pct = def.max === def.min ? 1 : (val - def.min) / (def.max - def.min);
+                const filled = Math.round(Math.max(0, Math.min(1, pct)) * BAR);
+                attrLines.push(`【${name}】${"▓".repeat(filled)}${"░".repeat(BAR - filled)} ${val}/${def.max}${bonusText}`);
+            } else {
+                attrLines.push(`【${name}】${val}${bonusText}`);
+            }
+        }
+    } catch(e) {}
+
+    // ── 货币 ──────────────────────────────────────────────
+    const currLines = [];
+    try {
+        const invs = kvGet("global_inventories", {});
+        const reg = kvGet("item_registry", {});
+        for (const e of (invs[roleKey] || [])) {
+            if (e.count > 0 && reg[e.code]?.type === "currency") {
+                currLines.push(`${reg[e.code].name}：${e.count}`);
+            }
+        }
+    } catch(e) {}
+
+    // ── 拼接 ──────────────────────────────────────────────
+    const out = [];
+    out.push(`★━━━━━━━━━━★`);
+    out.push(`🃏 【${roleName}】`);
+    out.push(`★━━━━━━━━━━★`);
+    out.push(``);
+    out.push(`${genderText} · ${ageText}`);
+    out.push(`🌸 皮相：${prof.look || "未设置"}`);
+    if (prof.bio) out.push(`✏️ ${prof.bio}`);
+    if (attrLines.length) { out.push(``); out.push(`📊 战斗属性`); out.push(...attrLines); }
+    if (equipLines.length) { out.push(``); out.push(`⚔️ 装备`); out.push(...equipLines); }
+    if (currLines.length) { out.push(``); out.push(`💰 货币`); out.push(...currLines); }
+    out.push(``);
+    out.push(`★━━━━━━━━━━★`);
+
+    seal.replyToSender(ctx, msg, out.join("\n"));
+    return seal.ext.newCmdExecuteResult(true);
+}
+
+// 「基础指南」：优先从存档服务器拉取，失败回退静态合并转发
+function handleBasicGuideMsg(ctx, msg) {
+    if (!msg.groupId) {
+        return seal.replyToSender(ctx, msg, "请在群内使用此指令。");
+    }
+    (async () => {
+        const base = (seal.ext.getStringConfig(ext, "RP存档服务器地址") || "").replace(/\/$/, "");
+        const token = seal.ext.getStringConfig(ext, "RP存档Token") || "";
+        if (base) {
+            try {
+                const resp = await fetch(`${base}/api/command_guides`, {
+                    headers: { "X-Archive-Token": token }
+                });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    if (data.ok && data.guides && data.guides.length > 0) {
+                        if (data.guides.length === 1) {
+                            seal.replyToSender(ctx, msg, data.guides[0].text);
+                        } else {
+                            data.guides.forEach(g => seal.replyToSender(ctx, msg, g.text));
+                        }
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.log("[基础指南] archive 不可用，回退到静态文本:", e.message || String(e));
+            }
+        }
+        // fallback：静态合并转发
+        const sections = [
+            ["📖 基础指南", ""],
+            ["【私约】",
+             "私约 1120-1230 地点 对方角色名[/对方2/...]",
+             "例：私约 1400-1500 咖啡厅 张三",
+             "例：私约 1400-1500 咖啡厅 张三/李四"],
+            ["【修改时间线】（在约会群内使用）",
+             "修改时间线 D1 1400-1500",
+             "",
+             "【拒绝时间线】",
+             "拒绝时间线 群号"],
+            ["【电话】",
+             "电话 1100-1200 邀请人1[/邀请人2/...]",
+             "例：电话 1400-1500 张三"],
+            ["【短信】",
+             "[署名]短信 收信人 内容",
+             "例：短信 张三 你好！",
+             "例：李四短信 张三 你好！",
+             "",
+             "【送礼】",
+             "送礼 对方名 礼物内容",
+             "送礼 对方名 #编号（图鉴内礼物，可无限送）"],
+            ["【心动信】",
+             "发送心动信",
+             "【发送对象】角色名",
+             "【内容】想说的话",
+             "【署名】自定义昵称（选填，不超过20字）",
+             "",
+             "。撤回心动信 编号   撤回已投递的信",
+             "查看信箱            查看收到的心动信"],
+        ];
+        const gidRaw = parseInt(msg.groupId.replace(/\D/g, ""), 10);
+        const nodes = sections.map(lines => ({
+            type: "node",
+            data: { name: "基础指南", uin: "10001", content: lines.join("\n") }
+        }));
+        const m = seal.newMessage();
+        m.messageType = "group";
+        m.groupId = msg.groupId;
+        const c = seal.createTempCtx(ctx.endPoint, m);
+        ws({ action: "send_group_forward_msg", params: { group_id: gidRaw, messages: nodes } }, c, m, "");
+    })();
+    return seal.ext.newCmdExecuteResult(true);
+}
+
+// 「我提交 项目：内容」：项目存在则本地化图片后记录
+async function handleInfoSubmit(ctx, msg, subM) {
+    const t = subM[1].trim(); // 用户尝试提交的项目名
+    const content = subM[2].trim(); // 提交的内容
+
+    // 检查项目是否存在于 projects 列表中
+    if (kvGet("sys_info_projects", []).includes(t)) {
+        // 逻辑 A: 项目存在，正常记录数据（图片先本地化以防 QQ CDN 过期）
+        const savedContent = await localizeImages(content);
+        let d = kvGet("sys_info_collection", {});
+        (d[t] = d[t] || []).push({
+            sender: getRoleName(ctx, msg),
+            time: new Date().toLocaleString(),
+            text: savedContent
+        });
+        kvSet("sys_info_collection", d);
+        return seal.replyToSender(ctx, msg, `✅ 已记录至「${t}」。`);
+    } else {
+        // 逻辑 B: 项目不存在，提示联系管理员
+        return seal.replyToSender(ctx, msg, `❌ 错误：尚未创建收集集「${t}」，请联系管理员创建后再提交。`);
+    }
+}
+
+// 「删除上传 项目名 序号」：撤回自己的提交（管理员可删任意人）
+function handleInfoDeleteUpload(ctx, msg, raw, isAdmin) {
+    const delArg = raw.slice(4).trim();
+    const delM = delArg.match(/^(.+?)\s+(\d+)$/);
+    if (!delM) {
+        return seal.replyToSender(ctx, msg, `📤 删除上传格式：删除上传 项目名 序号\n示例：删除上传 人物档案 3\n（先用「查看收集 项目名」查看序号）`);
+    }
+    const delProject = delM[1].trim();
+    const delIdx = parseInt(delM[2]) - 1;
+    const myName = getRoleName(ctx, msg);
+    const projectsList2 = kvGet("sys_info_projects", []);
+    if (!projectsList2.includes(delProject)) {
+        return seal.replyToSender(ctx, msg, `❌ 未找到项目「${delProject}」`);
+    }
+    let delData = kvGet("sys_info_collection", {});
+    const recs = delData[delProject] || [];
+    if (delIdx < 0 || delIdx >= recs.length) {
+        return seal.replyToSender(ctx, msg, `❌ 序号超出范围（共 ${recs.length} 条）`);
+    }
+    const target = recs[delIdx];
+    if (!isAdmin && target.sender !== myName) {
+        return seal.replyToSender(ctx, msg, `❌ 只能删除自己的提交（该条由「${target.sender || "未知"}」提交）`);
+    }
+    recs.splice(delIdx, 1);
+    delData[delProject] = recs;
+    kvSet("sys_info_collection", delData);
+    return seal.replyToSender(ctx, msg, `✅ 已删除「${delProject}」第 ${delIdx + 1} 条提交。`);
+}
+
+// 「查看收集 [项目名]」：列出项目或以合并转发展示项目内容
+function handleInfoViewCollection(ctx, msg, raw) {
+    const t = raw.replace("查看收集", "").trim();
+    const projectsList = kvGet("sys_info_projects", []);
+
+    // 1. 如果只输入"查看收集"，列出所有可选项目
+    if (!t) {
+        return seal.replyToSender(ctx, msg, `📋 可查看的收集项目：\n${projectsList.length ? projectsList.join('\n') : "暂无项目"}`);
+    }
+
+    // 2. 如果项目存在，展示内容
+    if (projectsList.includes(t)) {
+        let allInfo = kvGet("sys_info_collection", {});
+        let records = allInfo[t] || [];
+        if (records.length > 0) {
+            const gid = parseInt(msg.groupId.replace(/[^\d]/g, ""), 10);
+            const nodes = [
+                { type: "node", data: { name: "长日将尽", uin: "10001", content: `📖 「${t}」共 ${records.length} 条记录` } },
+                ...records.map((item, idx) => ({
+                    type: "node",
+                    data: {
+                        name: item.sender || "未知",
+                        uin: "10001",
+                        content: `[${idx + 1}] ${item.time}\n${item.text}`
+                    }
+                }))
+            ];
+            ws({ action: "send_group_forward_msg", params: { group_id: gid, messages: nodes } }, ctx, msg, "");
+            return;
+        } else {
+            return seal.replyToSender(ctx, msg, `❓ 项目「${t}」目前还没有人提交内容哦。`);
+        }
+    } else {
+        return seal.replyToSender(ctx, msg, `❌ 未找到项目「${t}」，请检查名称是否正确。`);
+    }
+}
+
+// 私有群监听：RP 正文计入存档/字数，并对格式错误的首行给出提醒
+function handlePrivateGroupListen(ctx, msg, platform, groupId, uid) {
+    try {
+        const a_private_group = kvGet("a_private_group", {});
+        // 新结构：a_private_group[platform][uid] = [roleName, gid]，直接用 uid 查
+        const roleName = a_private_group[platform]?.[uid]?.[0];
+
+        if (roleName) {
+            handleReply(platform, groupId, roleName, msg.message || "");
+
+            // 格式提示：首行≠角色名时提醒，不计入存档和字数
+            // 只在有活跃计时器的群里提示，避免日常闲聊误触发
+            const _hintTimers = getGroupTimers();
+            const _hintTimer = _hintTimers[groupId];
+            if (_hintTimer) {
+                const _hintLines = (msg.message || "").split("\n");
+                const _hintFirst = _hintLines[0].trim();
+                if (extractRoleContent(msg.message || "", roleName) === null) {
+                    const _isPhone = _hintTimer.subtype === "电话";
+                    // 电话群：所有不符合格式的消息都提醒
+                    // 其他群：仅在首行像角色名（≤20字）且有第二行时提醒（避免日常闲聊刷屏）
+                    const _msgLen = (msg.message || "").length;
+                    const _shouldHint = _isPhone
+                        || _msgLen >= 50
+                        || (_hintFirst.length >= 1 && _hintFirst.length <= 20
+                            && _hintLines.length >= 2 && _hintLines[1].trim());
+                    if (_shouldHint) {
+                        seal.replyToSender(ctx, msg,
+                            `⚠️ 首行「${_hintFirst}」不是你的角色名，这条不会计入存档和字数。\n你的角色名是「${roleName}」`);
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        console.error('监听系统错误:', e);
+    }
+}
+
+ext.onNotCommandReceived = async (ctx, msg) => {
     const raw = (msg.rawMessage || msg.message || "").trim();
     const platform = msg.platform;
     const _rawUid = msg.sender.userId.replace(`${platform}:`, '');
     const uid = getPrimaryUid(platform, _rawUid); // 辅助账号自动解析为主账号 uid
     const groupId = msg.groupId.replace(`${platform}-Group:`, ''), isAdmin = isUserAdmin(ctx, msg);
-    const getS = (k) => JSON.parse(cachedGet(k) || (k.includes("list") || k.includes("presets") || k.includes("projects") ? "[]" : "{}"));
+    const getS = (k) => kvGet(k, (k.includes("list") || k.includes("presets") || k.includes("projects")) ? [] : {});
 
     // 1. 回复卡片逻辑 (撤回/点歌/复盘)
     const replyMatch = raw.match(/\[CQ:reply,id=(\-?\d+)\]/);
     if (replyMatch) {
         const wdId = Number(replyMatch[1]);
         if (raw.includes("撤回")) return withdrawMsg(ctx, msg, wdId);
-        if (raw.includes("点歌")) {
-            const rawGid = cachedGet("song_group_id"), dM = raw.match(/点歌人[:：]\s*(.*?)(?=\s|,|，|留言|$)/), lM = raw.match(/留言[:：]\s*(.*)/);
-            if (!rawGid || !dM || !lM) return seal.replyToSender(ctx, msg, !rawGid ? "❌ 未配置戏群" : "⚠️ 格式错误\n正确用法：回复音乐卡片，消息内容写\n点歌人：名字 留言：内容");
-            const songGid = parseInt(rawGid.replace(/[^\d]/g, ""), 10);
-            const songDgr = dM[1].trim();
-            const songLy  = lM[1].trim();
-            const errMsg  = "❌ 点歌失败：LLOneBot 未能读取该消息（可能不在缓存中）。";
-            WSM.request(
-                { action: "get_msg", params: { message_id: wdId } },
-                (response) => {
-                    if (response.status !== "ok" && response.retcode !== 0) { seal.replyToSender(ctx, msg, errMsg); return; }
-                    handleSongDelivery(ctx, msg, response.data, songGid, songDgr, songLy);
-                },
-                () => seal.replyToSender(ctx, msg, errMsg)
-            );
-            return seal.ext.newCmdExecuteResult(true);
-        }
+        if (raw.includes("点歌")) return handleSongCardRequest(ctx, msg, raw, wdId);
         if (raw.includes("转发复盘")) {
             return seal.replyToSender(ctx, msg, "📋 当前版本无需转发复盘，直接发送「结束私约」退群即可。");
         }
@@ -7459,26 +8028,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
 
     const letM = raw.match(/^(.+?)?短信\s*(.+?)\s+([\s\S]+)$/);
     if (letM) {
-        // 【修改点】单独读取开关状态
-        const allowCustom = cachedGet("allow_custom_letter_sign") === "true";
-        
-        const priv = getS("a_private_group")[platform] || {};
-        let snd = "";
-
-        if (allowCustom && letM[1]) {
-            // 允许自定义且写了 A 部分，直接取 A
-            snd = letM[1].trim();
-        } else {
-            // 不允许自定义或没写 A，按原逻辑自动识别或校验
-            snd = letM[1] ? letM[1].trim() : getRoleName(ctx, msg);
-        }
-
-        // 【修改点】如果开启了自定义，不再强制要求 snd 必须存在于 priv 绑定中
-        if (snd && (allowCustom || Object.values(priv).some(v => v[0] === snd))) {
-            return handleNaturalChaosLetter(ctx, msg, platform, snd, letM[2].trim(), letM[3].trim());
-        } else {
-            return seal.replyToSender(ctx, msg, "❌ 角色识别失败");
-        }
+        return routeChaosLetterMessage(ctx, msg, platform, letM);
     } else if (/^(.+?)?短信$/.test(raw)) {
         return seal.replyToSender(ctx, msg, "💌 短信格式：[署名]短信 收信人 内容\n例：短信 李四 你好！\n例：张三短信 李四 你好！");
     }
@@ -7500,7 +8050,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
     }
 
     if (raw.startsWith("约战")) {
-        const toggle = JSON.parse(cachedGet("global_feature_toggle") || "{}");
+        const toggle = kvGet("global_feature_toggle", {});
         if (!toggle.dlc_battle_appt) return seal.replyToSender(ctx, msg, "❌ 约战功能未开启，请联系管理员。");
         const rest = raw.slice(2).trim();
         return cmd_appointment_private.solve(ctx, msg, makeFakeCmdArgs(rest ? rest.split(/\s+/) : []), { trigger: "约战", icon: "⚔️" });
@@ -7563,60 +8113,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
 
     // 4.7 额外账号（无前缀，本人操作）
     if (raw.startsWith("额外账号")) {
-        const rest = raw.slice(4).trim();
-        const selfRoleName = getRoleName(ctx, msg);
-        if (!selfRoleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
-        const extras = store.get("extra_accounts");
-        if (rest.startsWith("删除")) {
-            const extraQQ = rest.slice(2).trim();
-            if (!extraQQ) return seal.replyToSender(ctx, msg, "格式：额外账号 删除 QQ号");
-            const extraKey = `${platform}:${extraQQ}`;
-            if (extras[extraKey] !== uid) return seal.replyToSender(ctx, msg, `❌ 该账号不是你的额外账号`);
-            delete extras[extraKey];
-            store.set("extra_accounts", extras);
-            return seal.replyToSender(ctx, msg, `✅ 已移除额外账号 ${extraQQ}`);
-        }
-        if (rest) {
-            const extraQQ = rest.trim();
-            const extraKey = `${platform}:${extraQQ}`;
-            if (extras[extraKey]) return seal.replyToSender(ctx, msg, `❌ 该账号已被绑定为其他角色的额外账号`);
-            const rolesStorageCheck = store.get("a_private_group")[platform] || {};
-            if (rolesStorageCheck[extraQQ]) return seal.replyToSender(ctx, msg, `❌ 该账号已是主账号（角色：${rolesStorageCheck[extraQQ][0]}），无法绑定为额外账号`);
-            extras[extraKey] = uid;
-            store.set("extra_accounts", extras);
-
-            // 清理辅助账号的商城/图鉴数据，只保留主账号的
-            // 1. 删除辅助账号的 gift_sightings（uid-based key）
-            const sightings = JSON.parse(cachedGet("gift_sightings") || "{}");
-            const extraSightingKey = `${platform}:${extraQQ}`;
-            if (sightings[extraSightingKey]) {
-                delete sightings[extraSightingKey];
-                cachedSet("gift_sightings", JSON.stringify(sightings));
-            }
-            // 2. 删除辅助账号的 global_inventories（roleName-based key）
-            // 找出辅助账号在 a_private_group 中绑定的角色名
-            const rolesStorage = store.get("a_private_group")[platform] || {};
-            const extraRoleName = Object.entries(rolesStorage).find(([, v]) => v[0] === extraQQ)?.[0];
-            if (extraRoleName) {
-                const invs = JSON.parse(cachedGet("global_inventories") || "{}");
-                const extraInvKey = `${platform}:${extraRoleName}`;
-                if (invs[extraInvKey]) {
-                    delete invs[extraInvKey];
-                    cachedSet("global_inventories", JSON.stringify(invs));
-                }
-            }
-            // 3. 删除辅助账号的 shop_personal_display（uid-based key，抽卡进度）
-            const spd = JSON.parse(cachedGet("shop_personal_display") || "{}");
-            if (spd[extraSightingKey]) {
-                delete spd[extraSightingKey];
-                cachedSet("shop_personal_display", JSON.stringify(spd));
-            }
-
-            return seal.replyToSender(ctx, msg, `✅ 已将 ${extraQQ} 绑定为「${selfRoleName}」的额外账号（辅助账号的商城/图鉴数据已清除）`);
-        }
-        // 查看自己的额外账号
-        const myExtras = Object.entries(extras).filter(([, v]) => v === uid).map(([k]) => k.replace(`${platform}:`, ""));
-        return seal.replyToSender(ctx, msg, myExtras.length ? `📱 你的额外账号：\n${myExtras.join("\n")}` : "📭 暂无额外账号");
+        return handleExtraAccountMsg(ctx, msg, platform, uid, raw.slice(4).trim());
     }
 
     // 4.8 角色档案修改（无前缀）
@@ -7676,87 +8173,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
         return seal.replyToSender(ctx, msg, `✅ 签名已更新为：${val}`);
     }
 
-    if (raw === "角色卡") {
-        const roleName = getRoleName(ctx, msg);
-        if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
-        const uid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
-        const roleKey = `${platform}:${uid}`;
-        const prof = getCharProfile(platform, roleName);
-
-        // 基础信息
-        const genderText = prof.gender === "男" ? "👨 男" : "👩 女";
-        const ageText = prof.age !== undefined && prof.age !== null ? `${prof.age}岁` : "未设置";
-
-        // ── 属性 ──────────────────────────────────────────────
-        const attrLines = [];
-        try {
-            const attrDefs = JSON.parse(cachedGet("rpg_attr_defs") || "{}");
-            const charAttrs = JSON.parse(cachedGet("sys_character_attrs") || "{}");
-            // 新结构：charAttrs 以 uid 为 key
-            const roleAttrs = charAttrs[uid] || {};
-            const BAR = 6;
-            for (const [name, def] of Object.entries(attrDefs)) {
-                const val = roleAttrs[name] ?? (def.default ?? 0);
-                if (def.max !== null && def.max !== undefined && def.min !== null) {
-                    const pct = def.max === def.min ? 1 : (val - def.min) / (def.max - def.min);
-                    const filled = Math.round(Math.max(0, Math.min(1, pct)) * BAR);
-                    attrLines.push(`【${name}】${"▓".repeat(filled)}${"░".repeat(BAR - filled)} ${val}/${def.max}`);
-                } else {
-                    attrLines.push(`【${name}】${val}`);
-                }
-            }
-        } catch(e) {}
-
-        // ── 装备 ──────────────────────────────────────────────
-        const equipLines = [];
-        try {
-            const allEquips = JSON.parse(cachedGet("player_equipments") || "{}");
-            const reg = JSON.parse(cachedGet("item_registry") || "{}");
-            const playerEquips = allEquips[roleKey] || {};
-            const slots = JSON.parse(cachedGet("equipment_slots") || "[]");
-            const slotNames = JSON.parse(cachedGet("equipment_slot_names") || "{}");
-            const defaultNames = { head:"头部", chest:"胸部", hand:"手部", leg:"腿部", foot:"脚部" };
-            const defaultEmoji = { head:"🎩", chest:"🛡️", hand:"⚔️", leg:"👖", foot:"👢" };
-            for (const slot of (slots.length ? slots : ["head","chest","hand","leg","foot"])) {
-                const e = playerEquips[slot];
-                if (e && e.code) {
-                    const displayName = slotNames[slot] || defaultNames[slot] || slot;
-                    const emoji = defaultEmoji[slot] || "📦";
-                    equipLines.push(`${emoji}${displayName}：${reg[e.code]?.name || e.code}`);
-                }
-            }
-        } catch(e) {}
-
-        // ── 货币 ──────────────────────────────────────────────
-        const currLines = [];
-        try {
-            const invs = JSON.parse(cachedGet("global_inventories") || "{}");
-            const reg = JSON.parse(cachedGet("item_registry") || "{}");
-            for (const e of (invs[roleKey] || [])) {
-                if (e.count > 0 && reg[e.code]?.type === "currency") {
-                    currLines.push(`${reg[e.code].name}：${e.count}`);
-                }
-            }
-        } catch(e) {}
-
-        // ── 拼接 ──────────────────────────────────────────────
-        const out = [];
-        out.push(`★━━━━━━━━━━★`);
-        out.push(`🃏 【${roleName}】`);
-        out.push(`★━━━━━━━━━━★`);
-        out.push(``);
-        out.push(`${genderText} · ${ageText}`);
-        out.push(`🌸 皮相：${prof.look || "未设置"}`);
-        if (prof.bio) out.push(`✏️ ${prof.bio}`);
-        if (attrLines.length) { out.push(``); out.push(`📊 战斗属性`); out.push(...attrLines); }
-        if (equipLines.length) { out.push(``); out.push(`⚔️ 装备`); out.push(...equipLines); }
-        if (currLines.length) { out.push(``); out.push(`💰 货币`); out.push(...currLines); }
-        out.push(``);
-        out.push(`★━━━━━━━━━━★`);
-
-        seal.replyToSender(ctx, msg, out.join("\n"));
-        return seal.ext.newCmdExecuteResult(true);
-    }
+    if (raw === "角色卡") return handleRoleCardMsg(ctx, msg, platform);
 
     // 4.11 时间线
     if (raw === "时间线") return cmd_view_schedule.solve(ctx, msg, makeFakeCmdArgs([]));
@@ -7777,78 +8194,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
     }
 
     // 4.14.1 基础指南
-    if (raw === "基础指南") {
-        if (!msg.groupId) {
-            return seal.replyToSender(ctx, msg, "请在群内使用此指令。");
-        }
-        (async () => {
-            const base = (seal.ext.getStringConfig(ext, "RP存档服务器地址") || "").replace(/\/$/, "");
-            const token = seal.ext.getStringConfig(ext, "RP存档Token") || "";
-            if (base) {
-                try {
-                    const resp = await fetch(`${base}/api/command_guides`, {
-                        headers: { "X-Archive-Token": token }
-                    });
-                    if (resp.ok) {
-                        const data = await resp.json();
-                        if (data.ok && data.guides && data.guides.length > 0) {
-                            if (data.guides.length === 1) {
-                                seal.replyToSender(ctx, msg, data.guides[0].text);
-                            } else {
-                                data.guides.forEach(g => seal.replyToSender(ctx, msg, g.text));
-                            }
-                            return;
-                        }
-                    }
-                } catch (e) {
-                    console.log("[基础指南] archive 不可用，回退到静态文本:", e.message || String(e));
-                }
-            }
-            // fallback：静态合并转发
-            const sections = [
-                ["📖 基础指南", ""],
-                ["【私约】",
-                 "私约 1120-1230 地点 对方角色名[/对方2/...]",
-                 "例：私约 1400-1500 咖啡厅 张三",
-                 "例：私约 1400-1500 咖啡厅 张三/李四"],
-                ["【修改时间线】（在约会群内使用）",
-                 "修改时间线 D1 1400-1500",
-                 "",
-                 "【拒绝时间线】",
-                 "拒绝时间线 群号"],
-                ["【电话】",
-                 "电话 1100-1200 邀请人1[/邀请人2/...]",
-                 "例：电话 1400-1500 张三"],
-                ["【短信】",
-                 "[署名]短信 收信人 内容",
-                 "例：短信 张三 你好！",
-                 "例：李四短信 张三 你好！",
-                 "",
-                 "【送礼】",
-                 "送礼 对方名 礼物内容",
-                 "送礼 对方名 #编号（图鉴内礼物，可无限送）"],
-                ["【心动信】",
-                 "发送心动信",
-                 "【发送对象】角色名",
-                 "【内容】想说的话",
-                 "【署名】自定义昵称（选填，不超过20字）",
-                 "",
-                 "。撤回心动信 编号   撤回已投递的信",
-                 "查看信箱            查看收到的心动信"],
-            ];
-            const gidRaw = parseInt(msg.groupId.replace(/\D/g, ""), 10);
-            const nodes = sections.map(lines => ({
-                type: "node",
-                data: { name: "基础指南", uin: "10001", content: lines.join("\n") }
-            }));
-            const m = seal.newMessage();
-            m.messageType = "group";
-            m.groupId = msg.groupId;
-            const c = seal.createTempCtx(ctx.endPoint, m);
-            ws({ action: "send_group_forward_msg", params: { group_id: gidRaw, messages: nodes } }, c, m, "");
-        })();
-        return seal.ext.newCmdExecuteResult(true);
-    }
+    if (raw === "基础指南") return handleBasicGuideMsg(ctx, msg);
 
     // 4.15 管理员无前缀指令
     if (isAdmin) {
@@ -7890,93 +8236,13 @@ ext.onNotCommandReceived = (ctx, msg) => {
     // 5. 信息收集系统 & 设定NPC
     const projects = getS("sys_info_projects"); // 获取已有的项目列表
     const subM = raw.match(/^我提交\s*(.+?)[:：\s]\s*([\s\S]+)$/);
-
-    if (subM) {
-        const t = subM[1].trim(); // 用户尝试提交的项目名
-        const content = subM[2].trim(); // 提交的内容
-
-        // 检查项目是否存在于 projects 列表中
-        if (projects.includes(t)) {
-            // 逻辑 A: 项目存在，正常记录数据
-            let d = getS("sys_info_collection");
-            (d[t] = d[t] || []).push({ 
-                sender: getRoleName(ctx, msg), 
-                time: new Date().toLocaleString(), 
-                text: content 
-            });
-            cachedSet("sys_info_collection", JSON.stringify(d));
-            return seal.replyToSender(ctx, msg, `✅ 已记录至「${t}」。`);
-        } else {
-            // 逻辑 B: 项目不存在，提示联系管理员
-            return seal.replyToSender(ctx, msg, `❌ 错误：尚未创建收集集「${t}」，请联系管理员创建后再提交。`);
-        }
-    }
+    if (subM) return handleInfoSubmit(ctx, msg, subM);
 
     // --- 删除上传：用户撤回自己的提交 ---
-    if (raw.startsWith("删除上传")) {
-        const delArg = raw.slice(4).trim();
-        const delM = delArg.match(/^(.+?)\s+(\d+)$/);
-        if (!delM) {
-            return seal.replyToSender(ctx, msg, `📤 删除上传格式：删除上传 项目名 序号\n示例：删除上传 人物档案 3\n（先用「查看收集 项目名」查看序号）`);
-        }
-        const delProject = delM[1].trim();
-        const delIdx = parseInt(delM[2]) - 1;
-        const myName = getRoleName(ctx, msg);
-        const projectsList2 = getS("sys_info_projects");
-        if (!projectsList2.includes(delProject)) {
-            return seal.replyToSender(ctx, msg, `❌ 未找到项目「${delProject}」`);
-        }
-        let delData = getS("sys_info_collection");
-        const recs = delData[delProject] || [];
-        if (delIdx < 0 || delIdx >= recs.length) {
-            return seal.replyToSender(ctx, msg, `❌ 序号超出范围（共 ${recs.length} 条）`);
-        }
-        const target = recs[delIdx];
-        if (!isAdmin && target.sender !== myName) {
-            return seal.replyToSender(ctx, msg, `❌ 只能删除自己的提交（该条由「${target.sender || "未知"}」提交）`);
-        }
-        recs.splice(delIdx, 1);
-        delData[delProject] = recs;
-        cachedSet("sys_info_collection", JSON.stringify(delData));
-        return seal.replyToSender(ctx, msg, `✅ 已删除「${delProject}」第 ${delIdx + 1} 条提交。`);
-    }
+    if (raw.startsWith("删除上传")) return handleInfoDeleteUpload(ctx, msg, raw, isAdmin);
 
     // --- 所有人可用的查看功能 ---
-    if (raw.startsWith("查看收集")) {
-        const t = raw.replace("查看收集", "").trim();
-        const projectsList = getS("sys_info_projects");
-        
-        // 1. 如果只输入"查看收集"，列出所有可选项目
-        if (!t) {
-            return seal.replyToSender(ctx, msg, `📋 可查看的收集项目：\n${projectsList.length ? projectsList.join('\n') : "暂无项目"}`);
-        }
-        
-        // 2. 如果项目存在，展示内容
-        if (projectsList.includes(t)) {
-            let allInfo = getS("sys_info_collection");
-            let records = allInfo[t] || [];
-            if (records.length > 0) {
-                const gid = parseInt(msg.groupId.replace(/[^\d]/g, ""), 10);
-                const nodes = [
-                    { type: "node", data: { name: "长日将尽", uin: "10001", content: `📖 「${t}」共 ${records.length} 条记录` } },
-                    ...records.map((item, idx) => ({
-                        type: "node",
-                        data: {
-                            name: item.sender || "未知",
-                            uin: "10001",
-                            content: `[${idx + 1}] ${item.time}\n${item.text}`
-                        }
-                    }))
-                ];
-                ws({ action: "send_group_forward_msg", params: { group_id: gid, messages: nodes } }, ctx, msg, "");
-                return;
-            } else {
-                return seal.replyToSender(ctx, msg, `❓ 项目「${t}」目前还没有人提交内容哦。`);
-            }
-        } else {
-            return seal.replyToSender(ctx, msg, `❌ 未找到项目「${t}」，请检查名称是否正确。`);
-        }
-    }
+    if (raw.startsWith("查看收集")) return handleInfoViewCollection(ctx, msg, raw);
 
     // --- 设定 NPC 指令 ---
     const npcM = raw.match(/^设定\s*(.+?)\s*为\s*npc$/i);
@@ -7985,64 +8251,31 @@ ext.onNotCommandReceived = (ctx, msg) => {
         if (!getUidByRoleName(platform, name)) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${name}」`);
         const idx = npcList.indexOf(name);
         if (idx === -1) npcList.push(name); else npcList.splice(idx, 1);
-        cachedSet("a_npc_list", JSON.stringify(npcList));
+        kvSet("a_npc_list", npcList);
         return seal.replyToSender(ctx, msg, `✅ ${name} 的 NPC 身份已${idx === -1 ? '设定' : '取消'}`);
     }
 
     if (isAdmin) {
         if (raw.startsWith("创建收集") && isAdmin) {
             const pN = raw.replace("创建收集", "").trim();
-            if (pN && !projects.includes(pN)) { projects.push(pN); cachedSet("sys_info_projects", JSON.stringify(projects)); return seal.replyToSender(ctx, msg, `✅ 已建立项目：${pN}`); }
+            if (pN && !projects.includes(pN)) { projects.push(pN); kvSet("sys_info_projects", projects); return seal.replyToSender(ctx, msg, `✅ 已建立项目：${pN}`); }
         }
         let allInfo = getS("sys_info_collection");
         if (raw.startsWith("我清空")) {
             const t = raw.replace("我清空", "").trim();
-            if (allInfo[t]) { allInfo[t] = []; cachedSet("sys_info_collection", JSON.stringify(allInfo)); return seal.replyToSender(ctx, msg, `🗑️ 已清空「${t}」`); }
+            if (allInfo[t]) { allInfo[t] = []; kvSet("sys_info_collection", allInfo); return seal.replyToSender(ctx, msg, `🗑️ 已清空「${t}」`); }
         }
     }
 
-    // 5. --- 你的核心私有群监听逻辑 (确保被包裹在 try 中) ---
-    try {
-        const a_private_group = getS("a_private_group");
-        // 新结构：a_private_group[platform][uid] = [roleName, gid]，直接用 uid 查
-        const roleName = a_private_group[platform]?.[uid]?.[0];
-
-        if (roleName) {
-            handleReply(platform, groupId, roleName, msg.message || "");
-
-            // 格式提示：首行≠角色名时提醒，不计入存档和字数
-            // 只在有活跃计时器的群里提示，避免日常闲聊误触发
-            const _hintTimers = getGroupTimers();
-            const _hintTimer = _hintTimers[groupId];
-            if (_hintTimer) {
-                const _hintLines = (msg.message || "").split("\n");
-                const _hintFirst = _hintLines[0].trim();
-                if (_hintFirst !== roleName) {
-                    const _isPhone = _hintTimer.subtype === "电话";
-                    // 电话群：所有不符合格式的消息都提醒
-                    // 其他群：仅在首行像角色名（≤20字）且有第二行时提醒（避免日常闲聊刷屏）
-                    const _msgLen = (msg.message || "").length;
-                    const _shouldHint = _isPhone
-                        || _msgLen >= 50
-                        || (_hintFirst.length >= 1 && _hintFirst.length <= 20
-                            && _hintLines.length >= 2 && _hintLines[1].trim());
-                    if (_shouldHint) {
-                        seal.replyToSender(ctx, msg,
-                            `⚠️ 首行「${_hintFirst}」不是你的角色名，这条不会计入存档和字数。\n你的角色名是「${roleName}」`);
-                    }
-                }
-            }
-        }
-    } catch (e) {
-        console.error('监听系统错误:', e);
-    }
+    // 5. 私有群监听（正文计入存档/字数 + 首行格式提醒）
+    handlePrivateGroupListen(ctx, msg, platform, groupId, uid);
 };
 
 let cmd_view_timers = {};
 cmd_view_timers.solve =(ctx, msg) => {
     if (!isUserAdmin(ctx, msg)) return;
 
-    const timers = JSON.parse(cachedGet("group_timers") || "{}"), now = Date.now();
+    const timers = kvGet("group_timers", {}), now = Date.now();
     const tKeys = Object.keys(timers);
     if (!tKeys.length) return seal.replyToSender(ctx, msg, "📭 当前没有活跃的计时器");
 
@@ -8050,6 +8283,7 @@ cmd_view_timers.solve =(ctx, msg) => {
     const timerNodes = [];
     tKeys.forEach(gid => {
         const t = timers[gid];
+        const safeTimeoutDuration = sanitizeTimeoutMs(t.timeoutDuration, getMonitorSettings().timeout);
         const detail = Object.entries(t.timerStatus).map(([name, s]) => {
             const replies = s.sessionReplies || 0;
             const words = s.sessionWords || 0;
@@ -8058,7 +8292,7 @@ cmd_view_timers.solve =(ctx, msg) => {
 
             if (s.status !== "timing") return `✅ ${name}: replied\n${statLine}`;
 
-            const diff = t.timeoutDuration - (now - s.startTime);
+            const diff = safeTimeoutDuration - (now - s.startTime);
             const isOver = diff < 0;
             if (isOver) totalOverdue++;
 
@@ -8092,19 +8326,22 @@ cmd_remind_timeouts.solve =(ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "🌸 只有管理员可以呼唤大家哦～");
 
     const target = cmdArgs.getArgN(1), now = Date.now();
-    const timers = JSON.parse(cachedGet("group_timers") || "{}");
-    const priv = JSON.parse(cachedGet("a_private_group") || "{}");
+    const timers = kvGet("group_timers", {});
+    const priv = kvGet("a_private_group", {});
     let sentCount = 0, detail = [];
 
     for (const [gid, timer] of Object.entries(timers)) {
         if (target && gid !== target) continue;
 
+        // 修复损坏的 timeoutDuration（见 sanitizeTimeoutMs 注释），已在跑的计时器也能自愈，
+        // 不必手动改库或重开约会
+        timer.timeoutDuration = sanitizeTimeoutMs(timer.timeoutDuration, getMonitorSettings().timeout);
+
         const platform = timer.platform;
         const groupReminders = Object.entries(timer.timerStatus).filter(([name, s]) => {
             if (s.status !== "timing") return false;
             const elapsed = now - s.startTime;
-            const interval = 3600000; // 默认1小时提醒间隔
-            return elapsed > timer.timeoutDuration && (now - (timer.lastRemindTime || 0) > interval);
+            return elapsed > timer.timeoutDuration;
         });
 
         groupReminders.forEach(([name, s]) => {
@@ -8123,7 +8360,7 @@ cmd_remind_timeouts.solve =(ctx, msg, cmdArgs) => {
             }
 
             // 2. 发送到公共群，@主账号和所有额外账号
-            const extras2 = JSON.parse(cachedGet("extra_accounts") || "{}");
+            const extras2 = kvGet("extra_accounts", {});
             const allAtUids = roleUid2 && !/^npc_/.test(roleUid2)
                 ? [roleUid2, ...Object.entries(extras2)
                     .filter(([k, v]) => k.startsWith(`${platform}:`) && v === roleUid2)
@@ -8144,7 +8381,7 @@ cmd_remind_timeouts.solve =(ctx, msg, cmdArgs) => {
     }
 
     if (sentCount > 0) {
-        cachedSet("group_timers", JSON.stringify(timers));
+        kvSet("group_timers", timers);
         seal.replyToSender(ctx, msg, `💖 提醒任务完成！\n共送出 ${sentCount} 份温柔提醒：\n${detail.join('\n')}\n大家一定会感受到的～ 🌟`);
     } else {
         seal.replyToSender(ctx, msg, "🌙 检查了一圈，现在大家都很守时，不需要打扰呢～");
@@ -8182,7 +8419,7 @@ function requireApi(ctx, msg) { return true; }
 let cmd_send_lovemail = {};
 cmd_send_lovemail.solve =(ctx, msg, cmdArgs) => {
     if (!requireApi(ctx, msg)) return seal.ext.newCmdExecuteResult(true);
-    const config = JSON.parse(cachedGet("global_feature_toggle") || "{}");
+    const config = kvGet("global_feature_toggle", {});
     if (config.enable_lovemail === false) {
         seal.replyToSender(ctx, msg, "💌 心动信箱已关闭，暂不可投稿");
         return seal.ext.newCmdExecuteResult(true);
@@ -8191,7 +8428,7 @@ cmd_send_lovemail.solve =(ctx, msg, cmdArgs) => {
 
     const platform = msg.platform;
     const uid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
-    const a_private_group = JSON.parse(cachedGet("a_private_group") || "{}");
+    const a_private_group = kvGet("a_private_group", {});
 
     const senderRoleName = getRoleName(ctx, msg);
     if (!senderRoleName) {
@@ -8236,7 +8473,7 @@ cmd_send_lovemail.solve =(ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    const dayLimits = JSON.parse(cachedGet("lovemail_day_limits") || "{}");
+    const dayLimits = kvGet("lovemail_day_limits", {});
     const defaultLimit = parseInt(cachedGet("lovemail_default_limit") || "3");
     let maxPerDay = dayLimits[globalDay] !== undefined ? dayLimits[globalDay] : defaultLimit;
     if (maxPerDay <= 0) {
@@ -8244,7 +8481,7 @@ cmd_send_lovemail.solve =(ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    let dayCounts = JSON.parse(cachedGet("lovemail_day_counts") || "{}");
+    let dayCounts = kvGet("lovemail_day_counts", {});
     if (!dayCounts[uid]) dayCounts[uid] = {};
     const currentCount = dayCounts[uid][globalDay] || 0;
 
@@ -8254,12 +8491,12 @@ cmd_send_lovemail.solve =(ctx, msg, cmdArgs) => {
     }
 
     const mailKey = "lovemail_pool";
-    let records = JSON.parse(cachedGet(mailKey) || "[]");
+    let records = kvGet(mailKey, []);
     records.push({ uid, receiver, content, signature, gameDay: globalDay, timestamp: Date.now() });
-    cachedSet(mailKey, JSON.stringify(records));
+    kvSet(mailKey, records);
 
     dayCounts[uid][globalDay] = currentCount + 1;
-    cachedSet("lovemail_day_counts", JSON.stringify(dayCounts));
+    kvSet("lovemail_day_counts", dayCounts);
 
     let reply = `💌 心动信已成功投递至「${receiver}」的信箱！\n`;
     reply += `📝 署名：${signature}\n`;
@@ -8301,7 +8538,7 @@ cmd_stat_lovemail.name = "信箱统计";
 cmd_stat_lovemail.solve = (ctx, msg, cmdArgs) => {
     if (!requireApi(ctx, msg)) return seal.ext.newCmdExecuteResult(true);
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "✨ 抱歉，这里只有邮局守护者才能进入哦。");
-    const records = JSON.parse(cachedGet("lovemail_pool") || "[]");
+    const records = kvGet("lovemail_pool", []);
     if (!records.length) return seal.replyToSender(ctx, msg, "🕊️ 此时的邮局静悄悄的，还没有待投递的心意。");
 
     const nodes = generateMailReport(records, "🌸 心动邮局·巡检手记");
@@ -8323,7 +8560,7 @@ cmd_view_mylovemails.solve =(ctx, msg, cmdArgs) => {
     if (!requireApi(ctx, msg)) return seal.ext.newCmdExecuteResult(true);
     const platform = msg.platform;
     const uid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
-    const records = JSON.parse(cachedGet("lovemail_pool") || "[]");
+    const records = kvGet("lovemail_pool", []);
     const my = records.filter(r => r.uid === uid);
     if (!my.length) return seal.replyToSender(ctx, msg, "📭 你目前没有待投递的信件。");
     let res = "📄 你待投递的信件如下：\n";
@@ -8344,7 +8581,7 @@ cmd_revoke_lovemail.solve = (ctx, msg, cmdArgs) => {
     const platform = msg.platform;
     const uid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
     const idx = parseInt(cmdArgs.getArgN(1)) - 1;
-    let records = JSON.parse(cachedGet("lovemail_pool") || "[]");
+    let records = kvGet("lovemail_pool", []);
     const my = records.filter(r => r.uid === uid);
     if (isNaN(idx) || idx < 0 || idx >= my.length) {
         return seal.replyToSender(ctx, msg, "⚠️ 请输入正确的序号，例如：。撤回心动信 1");
@@ -8355,28 +8592,28 @@ cmd_revoke_lovemail.solve = (ctx, msg, cmdArgs) => {
         ? records.slice(0, originalIdx).concat(records.slice(originalIdx + 1))
         : records.filter(r => r !== targetMail);
 
-    let dayCounts = JSON.parse(cachedGet("lovemail_day_counts") || "{}");
+    let dayCounts = kvGet("lovemail_day_counts", {});
     const gameDay = targetMail.gameDay;
     if (dayCounts[uid] && dayCounts[uid][gameDay] && dayCounts[uid][gameDay] > 0) {
         dayCounts[uid][gameDay]--;
         if (dayCounts[uid][gameDay] === 0) delete dayCounts[uid][gameDay];
         if (Object.keys(dayCounts[uid]).length === 0) delete dayCounts[uid];
-        cachedSet("lovemail_day_counts", JSON.stringify(dayCounts));
+        kvSet("lovemail_day_counts", dayCounts);
     }
-    cachedSet("lovemail_pool", JSON.stringify(finalRecords));
+    kvSet("lovemail_pool", finalRecords);
     seal.replyToSender(ctx, msg, `✅ 已成功撤回发送给「${targetMail.receiver}」的信件。\n📪 已恢复你在「${gameDay}」的 1 次发送机会。`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["撤回心动信"] = cmd_revoke_lovemail;
 
-const isLoveMailEnabled = () => JSON.parse(cachedGet("global_feature_toggle") || "{}").enable_lovemail !== false;
+const isLoveMailEnabled = () => kvGet("global_feature_toggle", {}).enable_lovemail !== false;
 
 function performLoveMailDelivery(ctx, msg, backgroundGroupId) {
     const platform = msg?.platform ?? "QQ";
     const mailKey = "lovemail_pool";
     let records = [];
     try {
-        records = JSON.parse(cachedGet(mailKey) || "[]");
+        records = kvGet(mailKey, []);
     } catch (e) {
         console.error(`[心动信箱] 无法读取信件池: ${e.message}`);
     }
@@ -8402,11 +8639,11 @@ function performLoveMailDelivery(ctx, msg, backgroundGroupId) {
         if (reportNodes.length) sendForward(backgroundGroupId, reportNodes);
     }
 
-    const a_private_group = JSON.parse(cachedGet("a_private_group") || "{}");
+    const a_private_group = kvGet("a_private_group", {});
     const isPublicEnabled = cachedGet("lovemail_expose") === "true";
     const publicChance = getStorageInt("lovemail_expose_chance", 10);
     const hideReceiverOnDrop = cachedGet("drop_hide_receiver") === "true";
-    let announceGroupId = JSON.parse(cachedGet("adminAnnounceGroupId") || "null");
+    let announceGroupId = kvGet("adminAnnounceGroupId", null);
     if (!announceGroupId || announceGroupId === "null") announceGroupId = null;
 
     const mailBox = records.reduce((map, r) => ((map[r.receiver] ??= []).push(r), map), {});
@@ -8467,7 +8704,7 @@ function performLoveMailDelivery(ctx, msg, backgroundGroupId) {
         sendForward(announceGroupId, [{ type: "node", data: { name: "心动天使", uin: "2852199344", content: `✨ 哎呀，有 ${publicNodes.length} 份心意在飞往信箱的途中，不小心飘落到了公告区...` } }, ...publicNodes]);
     }
 
-    cachedSet(mailKey, JSON.stringify(failedRecords));
+    kvSet(mailKey, failedRecords);
     if (success > 0) recordMeetingAndAnnounce("心动信", platform, ctx, ep);
     return { success, fail, publicCount, empty: false, status: "派送完成" };
 }
@@ -8488,7 +8725,7 @@ function loveMailTick() {
     const getOffsetTotal = (offset) => (targetTimeTotal + offset + 1440) % 1440;
 
     if (currentTimeTotal === targetTimeTotal) {
-        const backgroundGroupId = JSON.parse(cachedGet("background_group_id") || "null");
+        const backgroundGroupId = kvGet("background_group_id", null);
         try {
             performLoveMailDelivery(null, { platform: "QQ" }, backgroundGroupId);
         } catch (err) {
@@ -8496,11 +8733,11 @@ function loveMailTick() {
         }
         _loveMailLastTriggerMinute = currentMinute;
     } else if (currentTimeTotal === getOffsetTotal(-5)) {
-        const announceGid = JSON.parse(cachedGet("adminAnnounceGroupId") || "null");
+        const announceGid = kvGet("adminAnnounceGroupId", null);
         if (announceGid) sendTextToGroup("QQ", announceGid, `📬 邮差正在整理信箱，心动信件即将在 5 分钟后开始派送，请注意查收。`);
         _loveMailLastTriggerMinute = currentMinute;
     } else if (currentTimeTotal === getOffsetTotal(-10)) {
-        const groups = JSON.parse(cachedGet("a_private_group") || "{}")["QQ"] || {};
+        const groups = kvGet("a_private_group", {})["QQ"] || {};
         const targetGids = [...new Set(Object.values(groups).map(v => v[1]))];
         targetGids.forEach(gid => sendTextToGroup("QQ", gid, `⌛ 投递截止预告：\n心动信箱将于 10 分钟后截止收稿并开始派送，还没投递的小伙伴要抓紧咯～`));
         _loveMailLastTriggerMinute = currentMinute;
@@ -8562,7 +8799,7 @@ function checkAutoD0() {
     if (current) return;                             // 已有天数，不覆盖
     cachedSet("global_days", "D0");
     _lastAutoD0Date = today;
-    const announceGid = JSON.parse(cachedGet("adminAnnounceGroupId") || "null");
+    const announceGid = kvGet("adminAnnounceGroupId", null);
     if (announceGid) sendTextToGroup("QQ", announceGid, `🗓️ 档期正式开始！游戏天数已自动设置为 D0。`);
 }
 setInterval(() => {
@@ -8590,7 +8827,7 @@ cmd_set_npc.solve = (ctx, msg, cmdArgs) => {
 
     let platform = msg.platform;
     let storage = getRoleStorage();
-    let npcList = JSON.parse(cachedGet("a_npc_list") || "[]");
+    let npcList = kvGet("a_npc_list", []);
 
     if (!storage[platform] || !getUidByRoleName(platform, name)) {
         seal.replyToSender(ctx, msg, `❌ 未找到角色「${name}」，请先创建角色。`);
@@ -8600,11 +8837,11 @@ cmd_set_npc.solve = (ctx, msg, cmdArgs) => {
     let index = npcList.indexOf(name);
     if (index === -1) {
         npcList.push(name);
-        cachedSet("a_npc_list", JSON.stringify(npcList));
+        kvSet("a_npc_list", npcList);
         seal.replyToSender(ctx, msg, `✅ 已将「${name}」设为 NPC，分组时将自动跳过。`);
     } else {
         npcList.splice(index, 1);
-        cachedSet("a_npc_list", JSON.stringify(npcList));
+        kvSet("a_npc_list", npcList);
         seal.replyToSender(ctx, msg, `✅ 已取消「${name}」的 NPC 身份。`);
     }
 
@@ -8651,14 +8888,14 @@ cmd_create_npc.solve = (ctx, msg, cmdArgs) => {
     }
 
     storage[platform][uid] = [name, gid];
-    cachedSet("a_private_group", JSON.stringify(storage));
+    kvSet("a_private_group", storage);
     initCharProfile(platform, name);
 
     // 加入 NPC 列表
-    const npcList = JSON.parse(cachedGet("a_npc_list") || "[]");
+    const npcList = kvGet("a_npc_list", []);
     if (!npcList.includes(name)) {
         npcList.push(name);
-        cachedSet("a_npc_list", JSON.stringify(npcList));
+        kvSet("a_npc_list", npcList);
     }
 
     const profile = getCharProfile(platform, name);
@@ -8683,7 +8920,10 @@ ext.cmdMap["创建NPC"] = cmd_create_npc;
 // ========================
 function getRegistry_rpg() {
     const main = seal.ext.find("changri");
-    return main ? JSON.parse(cachedGet("item_registry") || "{}") : {};
+    if (!main) return {};
+    const items = kvGet("item_registry", {});
+    const equips = kvGet("equipment_registry", {});
+    return Object.assign({}, items, equips);
 }
 function findItem_rpg(reg, input) {
     if (!input) return null;
@@ -8714,11 +8954,11 @@ function removeFromInv_rpg(roleKey, code, count) {
 }
 function getInvAll_rpg() {
     const main = seal.ext.find("changri");
-    return main ? JSON.parse(cachedGet("global_inventories") || "{}") : {};
+    return main ? kvGet("global_inventories", {}) : {};
 }
 function saveInvAll_rpg(invs) {
     const main = seal.ext.find("changri");
-    if (main) cachedSet("global_inventories", JSON.stringify(invs));
+    if (main) kvSet("global_inventories", invs);
 }
 function addToInv_system(roleKey, code, count) {
     const invs = getInvAll_rpg();
@@ -8737,11 +8977,9 @@ function addToInv_system(roleKey, code, count) {
     if (entry) {
         entry.count += count;
     } else {
-        inv.push({
-            code,
-            count,
-            remainingUses: initialUses
-        });
+        const newEntry = { code, count, remainingUses: initialUses };
+        if (itemInfo.durability != null) newEntry.currentDurability = itemInfo.durability;
+        inv.push(newEntry);
     }
 
     invs[roleKey] = inv;

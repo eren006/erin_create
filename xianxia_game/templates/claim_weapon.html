@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}认主仪式 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page" style="max-width:480px;margin:0 auto">
+
+<div id="ceremony" style="text-align:center;padding:40px 20px">
+  <div style="font-size:13px;color:var(--muted);margin-bottom:24px;letter-spacing:2px">— 认主仪式 —</div>
+
+  {# 武器光效 #}
+  <div id="weapon-glow" style="position:relative;display:inline-block;margin-bottom:32px">
+    <div id="glow-ring" style="
+      width:120px;height:120px;border-radius:50%;margin:0 auto;
+      border:2px solid rgba(192,160,96,.3);
+      display:flex;align-items:center;justify-content:center;
+      position:relative;overflow:visible">
+      <div id="glow-pulse" style="
+        position:absolute;inset:-8px;border-radius:50%;
+        background:radial-gradient(circle,rgba(192,160,96,.15),transparent 70%);
+        animation:pulse 2s ease-in-out infinite"></div>
+      <span id="weapon-icon" style="font-size:56px;position:relative;z-index:1">⚔</span>
+    </div>
+  </div>
+
+  <div style="margin-bottom:8px">
+    <span style="font-size:22px;font-weight:700;color:var(--gold2)">无主之【{{ wtype }}】</span>
+  </div>
+  <div style="font-size:13px;color:var(--muted);margin-bottom:4px">{{ winfo.desc }}</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:24px">基础攻击 {{ base_atk }}</div>
+
+  {# 炼制封印 #}
+  <div style="background:var(--sf2);border:1px solid rgba(192,160,96,.2);
+              border-radius:10px;padding:12px 16px;margin-bottom:24px;text-align:left">
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px;letter-spacing:1px">— 炼制封印 —</div>
+    {% for label, val in forge_disp.items() %}
+    <div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0">
+      <span style="color:var(--muted)">{{ label }}</span>
+      <span style="color:var(--jade);font-weight:600">{{ val }}</span>
+    </div>
+    {% endfor %}
+    <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--bd);
+                font-size:11px;color:var(--muted)">
+      认主后将解锁第二层灵魂印记（另附2个随机属性）
+    </div>
+  </div>
+
+  {# 赐名表单 #}
+  <div id="name-form" style="opacity:0;transform:translateY(10px);transition:all .6s ease">
+    <div style="font-size:13px;color:var(--muted);margin-bottom:12px">
+      以心念为引，以名为锁——赐予此剑一个名字
+    </div>
+    <form method="post" id="claim-form">
+      <div style="display:flex;gap:8px;justify-content:center;margin-bottom:16px">
+        <input name="custom_name" type="text" maxlength="8" placeholder="武器之名（最多8字）"
+          autofocus
+          style="flex:1;background:var(--sf2);border:1px solid rgba(192,160,96,.5);
+                 color:var(--gold2);border-radius:8px;padding:10px 14px;
+                 font-family:inherit;font-size:15px;text-align:center;
+                 outline:none;max-width:240px">
+      </div>
+      <button type="submit" id="submit-btn" class="btn btn-gold"
+        style="padding:10px 32px;font-size:15px;letter-spacing:2px;width:100%">
+        ✦ 完成认主
+      </button>
+    </form>
+  </div>
+</div>
+
+<style>
+@keyframes pulse {
+  0%, 100% { opacity:.4; transform:scale(1); }
+  50%       { opacity:1;  transform:scale(1.08); }
+}
+@keyframes float {
+  0%, 100% { transform:translateY(0); }
+  50%       { transform:translateY(-6px); }
+}
+@keyframes glow-expand {
+  0%   { box-shadow:0 0 0 0 rgba(192,160,96,0); }
+  50%  { box-shadow:0 0 30px 10px rgba(192,160,96,.25); }
+  100% { box-shadow:0 0 0 0 rgba(192,160,96,0); }
+}
+#weapon-icon { animation: float 3s ease-in-out infinite; }
+#glow-ring.active { animation: glow-expand 1.5s ease-out; }
+</style>
+
+<script>
+(function(){
+  var icons = {'剑':'⚔','刀':'🗡','长矛':'⚡','伞':'☂','扇':'🪭','鞭':'〰','弓':'🏹','琴':'🎵','幡':'🚩','钟':'🔔'};
+  var wtype = {{ wtype | tojson }};
+  var el = document.getElementById('weapon-icon');
+  if(icons[wtype]) el.textContent = icons[wtype];
+
+  // 入场后延迟展示表单
+  setTimeout(function(){
+    var form = document.getElementById('name-form');
+    form.style.opacity = '1';
+    form.style.transform = 'translateY(0)';
+    document.getElementById('glow-ring').classList.add('active');
+  }, 800);
+
+  // 提交时光效
+  document.getElementById('claim-form').addEventListener('submit', function(){
+    var btn = document.getElementById('submit-btn');
+    btn.textContent = '✦ 认主中...';
+    btn.disabled = true;
+    document.getElementById('glow-ring').style.animation = 'glow-expand .8s ease-out';
+  });
+})();
+</script>
+
+</div>
+{% endblock %}

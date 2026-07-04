@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+{% block title %}站点配置 — 后台{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">⚙ 站点配置 <small><a href="{{ url_for('admin') }}" style="font-size:13px">← 后台</a></small></div>
+
+<div class="card" style="max-width:560px;border-color:{% if cfg.get('maintenance_mode')=='1' %}var(--red){% else %}var(--bd){% endif %}">
+  <div class="card-h" style="color:{% if cfg.get('maintenance_mode')=='1' %}var(--red){% else %}var(--text){% endif %}">
+    停服开关 {% if cfg.get('maintenance_mode')=='1' %}<span style="font-size:12px">● 维护中</span>{% endif %}
+  </div>
+  <form method="post" style="display:flex;flex-direction:column;gap:10px">
+    <input type="hidden" name="action" value="maintenance">
+    <textarea name="maintenance_msg" rows="2"
+      style="background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:8px 12px;font-size:13px;font-family:inherit;resize:none"
+      placeholder="维护提示语（可留空使用默认）">{{ cfg.get('maintenance_msg','') }}</textarea>
+    <div style="display:flex;gap:8px">
+      <button type="submit" name="mode" value="1" class="btn"
+        style="background:var(--red);color:#fff;flex:1"
+        onclick="return confirm('确认开启停服维护？所有玩家将被踢出。')">开启维护</button>
+      <button type="submit" name="mode" value="0" class="btn btn-jade" style="flex:1">关闭维护·恢复开放</button>
+    </div>
+  </form>
+</div>
+
+<div class="card" style="max-width:560px;border-color:{% if cfg.get('gate_ghost_reinforce')=='1' %}var(--gold){% else %}var(--bd){% endif %}">
+  <div class="card-h">
+    异世之门 · 尽歼补发 {% if cfg.get('gate_ghost_reinforce')=='1' %}<span style="font-size:12px;color:var(--gold)">● 已开启</span>{% endif %}
+  </div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.6">
+    开启后，玩家当日打完全部鬼魔时，会在21:30前的半小时检查窗口内（0点~21:30，每半点一次）补发3~4只【凶煞】鬼魔（血量为普通鬼魔3倍基准，再按该鬼魔暴击率追加血量，防御额外 +500），21:30后不再补发，每人每天最多触发一次；补发时会在玩家日志留一条"天魔盯上你"的提示。
+  </div>
+  <form method="post" style="display:flex;gap:8px">
+    <input type="hidden" name="action" value="gate_reinforce">
+    <button type="submit" name="mode" value="1" class="btn btn-gold" style="flex:1">开启</button>
+    <button type="submit" name="mode" value="0" class="btn btn-ghost" style="flex:1">关闭</button>
+  </form>
+</div>
+
+<div class="card" style="max-width:560px">
+  <div class="card-h">基本配置</div>
+  <form method="post" style="display:flex;flex-direction:column;gap:14px">
+    <div>
+      <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:5px">世界名称</label>
+      <input name="site_name" value="{{ cfg.get('site_name','灵墟界') }}"
+        style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+               border-radius:8px;padding:9px 12px;font-size:14px;font-family:inherit">
+    </div>
+    <div>
+      <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:5px">世界描述（首页副标题）</label>
+      <input name="site_desc" value="{{ cfg.get('site_desc','踏上修仙之路，问鼎天道之巅。') }}"
+        style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+               border-radius:8px;padding:9px 12px;font-size:14px;font-family:inherit">
+    </div>
+    <div>
+      <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:5px">欢迎消息</label>
+      <input name="welcome_msg" value="{{ cfg.get('welcome_msg','') }}"
+        style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+               border-radius:8px;padding:9px 12px;font-size:14px;font-family:inherit">
+    </div>
+    <button type="submit" class="btn btn-jade" style="align-self:flex-start;padding:9px 24px">保存配置</button>
+  </form>
+</div>
+
+<div class="card" style="max-width:560px;margin-top:16px">
+  <div class="card-h">支线修炼路 名额</div>
+  <div style="font-size:13px;color:var(--muted);margin-bottom:10px">
+    当前名额上限（总玩家数 × 10%，最低 3）：<strong style="color:var(--text)">{{ craft_cap }}</strong>
+    <span style="font-size:11px;margin-left:6px">六路支线互斥，各路满额后新玩家无法入门。</span>
+  </div>
+  {% macro path_row(label, count, players) %}
+  <div style="margin-bottom:8px">
+    <div style="display:flex;align-items:center;gap:6px;font-size:13px">
+      <span style="color:var(--muted)">{{ label }}</span>
+      <strong style="color:{% if count >= craft_cap %}var(--red){% else %}var(--jade){% endif %}">{{ count }}</strong>
+      <span style="color:var(--muted)">/ {{ craft_cap }}</span>
+    </div>
+    {% if players %}
+    <div style="font-size:11px;color:var(--muted);margin-top:3px;padding-left:6px;display:flex;flex-wrap:wrap;gap:4px">
+      {% for p in players %}
+      <span style="background:var(--sf2);border:1px solid var(--bd);border-radius:4px;padding:1px 7px">
+        {{ p.name }} <span style="opacity:.6">{{ REALMS[p.realm_idx].name }}</span>
+      </span>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endmacro %}
+  {{ path_row('丹修',   alch_count,   craft_players.alch) }}
+  {{ path_row('器修',   forge_count,  craft_players.forge) }}
+  {{ path_row('符修',   fulu_count,   craft_players.fulu) }}
+  {{ path_row('御灵修', beast_count,  craft_players.beast) }}
+  {{ path_row('合欢修', heqing_count, craft_players.heqing) }}
+  {{ path_row('剑修',   sword_count,  craft_players.sword) }}
+</div>
+
+<div class="card" style="max-width:560px;margin-top:16px;border-color:{% if refund_done %}var(--bd){% else %}var(--gold){% endif %}">
+  <div class="card-h" style="color:{% if refund_done %}var(--muted){% else %}var(--gold2){% endif %}">炉具一次性退款</div>
+  {% if refund_done %}
+  <div style="font-size:13px;color:var(--muted)">✓ 已执行，不可重复。</div>
+  {% else %}
+  <div style="font-size:13px;color:var(--muted);margin-bottom:12px;line-height:1.8">
+    将对所有持有丹炉/炼器炉的玩家按原价退还灵石，并卸下炉具。<br>
+    <strong style="color:var(--red)">此操作不可撤销，只能执行一次。</strong>
+  </div>
+  <form method="post" onsubmit="return confirm('确认执行炉具退款？此操作不可撤销。')">
+    <input type="hidden" name="action" value="furnace_refund">
+    <button type="submit" class="btn" style="background:var(--gold);color:#fff">执行退款</button>
+  </form>
+  {% endif %}
+</div>
+
+<div class="card" style="max-width:560px;margin-top:16px">
+  <div class="card-h">每日灵力馈赠</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.8">
+    在指定时间开启 1.5 小时领取窗口，玩家登录后可在灵台领取一次。不填则关闭功能。
+  </div>
+  <form method="post" style="display:flex;flex-direction:column;gap:10px">
+    <input type="hidden" name="action" value="save_gift">
+    <div style="display:flex;gap:10px">
+      <div style="flex:1">
+        <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:4px">每日开放时间（24h，如 20:00）</label>
+        <input name="daily_energy_time" value="{{ cfg.get('daily_energy_time','') }}"
+          placeholder="20:00"
+          style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                 border-radius:8px;padding:8px 12px;font-size:14px;font-family:inherit">
+      </div>
+      <div style="flex:1">
+        <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:4px">每次馈赠灵力</label>
+        <input name="daily_energy_amount" value="{{ cfg.get('daily_energy_amount','100') }}"
+          placeholder="100"
+          style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                 border-radius:8px;padding:8px 12px;font-size:14px;font-family:inherit">
+      </div>
+    </div>
+    <button type="submit" class="btn btn-jade" style="align-self:flex-start;padding:8px 20px">保存设置</button>
+  </form>
+</div>
+
+<div class="card" style="max-width:560px;margin-top:16px">
+  <div class="card-h">🌳 摇钱树限时活动</div>
+  {% set yqs_ends = cfg.get('yqs_ends_at','0')|int %}
+  {% if yqs_ends > 0 %}
+  <div style="font-size:13px;margin-bottom:12px">
+    活动状态：<strong style="color:var(--jade)">进行中</strong>
+    — 结束时间：<strong>{{ yqs_ends | format_ts }}</strong>
+  </div>
+  {% else %}
+  <div style="font-size:13px;color:var(--muted);margin-bottom:12px">活动状态：未开放</div>
+  {% endif %}
+  <form method="post" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+    <input type="hidden" name="action" value="yqs">
+    <div>
+      <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:4px">开启天数</label>
+      <input name="yqs_days" placeholder="如 7" type="number" min="1"
+        style="width:100px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+               border-radius:8px;padding:8px 12px;font-size:14px;font-family:inherit">
+    </div>
+    <button type="submit" class="btn btn-jade" style="padding:8px 18px">开启活动</button>
+    <button type="submit" name="yqs_close" value="1" class="btn btn-ghost" style="padding:8px 18px">关闭活动</button>
+  </form>
+</div>
+
+<div class="card" style="max-width:560px;margin-top:16px">
+  <div class="card-h">📜 符道召唤池（限定二池）</div>
+  {% set limited2_ends = cfg.get('limited2_companion_ends_at','0')|int %}
+  {% if limited2_ends > now_ts() %}
+  <div style="font-size:13px;margin-bottom:12px">
+    活动状态：<strong style="color:var(--jade)">进行中</strong>
+    — 结束时间：<strong>{{ limited2_ends | format_ts }}</strong>
+  </div>
+  {% else %}
+  <div style="font-size:13px;color:var(--muted);margin-bottom:12px">活动状态：未开放</div>
+  {% endif %}
+  <form method="post" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+    <input type="hidden" name="action" value="limited2">
+    <div>
+      <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:4px">开启天数</label>
+      <input name="limited2_days" placeholder="如 3" type="number" min="1"
+        style="width:100px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+               border-radius:8px;padding:8px 12px;font-size:14px;font-family:inherit">
+    </div>
+    <button type="submit" class="btn btn-jade" style="padding:8px 18px">开启活动</button>
+    <button type="submit" name="limited2_close" value="1" class="btn btn-ghost" style="padding:8px 18px">关闭活动</button>
+  </form>
+</div>
+
+<div class="card" style="max-width:560px;margin-top:16px;background:rgba(201,168,76,.05);border-color:rgba(201,168,76,.2)">
+  <div class="card-h" style="color:var(--gold2)">游戏数值参考</div>
+  <div style="font-size:12px;color:var(--muted);line-height:2">
+    <div>· 灵力上限：{{ MAX_ENERGY }}，按境界每小时恢复 20–300</div>
+    <div>· 修炼消耗：{{ CULTIVATE_COST }} 灵力，每次获得 50–100 × 灵根倍率 修为</div>
+    <div>· 探索消耗：{{ EXPLORE_COST }} 灵力</div>
+    <div>· 战斗消耗：{{ COMBAT_COST }} 灵力</div>
+    <div>· 境界共 {{ REALMS|length }} 重，从炼气一层到真仙</div>
+    <div>· 大境界突破有失败概率，失败后稳固度 +5%，累积可提升成功率</div>
+  </div>
+</div>
+</div>
+<style>input:focus{outline:none;border-color:var(--jade) !important}</style>
+{% endblock %}

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}身陨 — 灵墟界{% endblock %}
+{% block body %}
+<div style="min-height:calc(100vh - 52px);display:flex;align-items:center;justify-content:center;padding:20px">
+  <div style="width:100%;max-width:460px;text-align:center">
+    <div style="font-size:46px;margin-bottom:12px;filter:grayscale(1);opacity:.7">🕯</div>
+    <h2 style="color:var(--muted);font-size:24px;letter-spacing:3px;margin-bottom:6px">道陨</h2>
+    <p style="color:var(--muted);font-size:14px;margin-bottom:24px">寿元耗尽，一缕道魂归于天地</p>
+
+    <div class="card" style="text-align:left;margin-bottom:20px">
+      <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px solid var(--bd)">
+        <span style="color:var(--muted)">道号</span><span style="color:var(--text)">{{ char.name }}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px solid var(--bd)">
+        <span style="color:var(--muted)">终年</span><span style="color:var(--gold)">{{ char.age }} 岁</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px solid var(--bd)">
+        <span style="color:var(--muted)">毕生境界</span><span style="color:var(--jade)">{{ final_realm }}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px solid var(--bd)">
+        <span style="color:var(--muted)">灵根</span><span class="root-{{ char.spirit_root }}">{{ char.spirit_root }}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px">
+        <span style="color:var(--muted)">毕生修为</span><span style="color:var(--text)">{{ fmt_exp(char.exp) }}</span>
+      </div>
+    </div>
+
+    <p style="color:var(--muted);font-size:13px;line-height:1.9;margin-bottom:18px">
+      生死有命，仙途无常。<br>
+      你可选择<strong style="color:var(--gold)">转世重修</strong>——洗去前尘记忆，以崭新道躯重踏仙途。<br>
+      <span style="color:var(--red);font-size:12px">转世需要一枚新的邀请码（向管理员索取）。</span>
+      {% if char.reincarnations %}<br><span style="font-size:12px">（已历 {{ char.reincarnations }} 世轮回）</span>{% endif %}
+    </p>
+
+    <form method="post" action="{{ url_for('reincarnate') }}"
+          onsubmit="return confirm('转世将清空前世所有修为、物品与关系，确定吗？')"
+          style="display:flex;flex-direction:column;gap:10px">
+      <input name="invite" required placeholder="LX-XXXXXXXX"
+        style="background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+               border-radius:8px;padding:10px 12px;font-size:14px;font-family:inherit;
+               text-align:center;text-transform:uppercase">
+      <button class="btn btn-gold" style="padding:12px 36px;font-size:15px;letter-spacing:2px">↻ 转世重修</button>
+    </form>
+    <div style="margin-top:14px">
+      <a href="{{ url_for('logout') }}" style="color:var(--muted);font-size:12px">暂且离去</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

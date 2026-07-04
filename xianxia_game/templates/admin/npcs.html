@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}NPC管理 — 后台{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🧙 NPC管理 <small><a href="{{ url_for('admin') }}" style="font-size:13px">← 后台</a></small></div>
+
+<div class="grid2" style="margin-bottom:16px">
+  <!-- 添加新NPC -->
+  <div class="card">
+    <div class="card-h">添加新 NPC</div>
+    <form method="post" style="display:flex;flex-direction:column;gap:10px">
+      <input type="hidden" name="action" value="add">
+      <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">道号（唯一）</label>
+        <input name="name" required maxlength="12" placeholder="如：云梦仙子"
+          style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px"></div>
+      <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">灵根</label>
+        <select name="spirit_root" style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+          {% for root in SPIRIT_ROOTS %}<option>{{ root }}</option>{% endfor %}
+        </select></div>
+      <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">初始境界</label>
+        <select name="realm_idx" style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+          {% for r in REALMS %}<option value="{{ loop.index0 }}" {% if loop.index0==9 %}selected{% endif %}>{{ r.name }}</option>{% endfor %}
+        </select></div>
+      <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">性格简介</label>
+        <input name="bio" maxlength="100" placeholder="简短描述"
+          style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px"></div>
+      <button class="btn btn-jade">添加 NPC</button>
+    </form>
+  </div>
+
+  <!-- 说明 -->
+  <div class="card" style="background:rgba(31,122,95,.05);border-color:rgba(31,122,95,.2)">
+    <div class="card-h" style="color:var(--jade)">NPC 说明</div>
+    <div style="color:var(--muted);font-size:12px;line-height:2">
+      <div>· NPC 以 1/5 速度自动成长修为</div>
+      <div>· 达到寿元上限后自动陨落，有全服公告</div>
+      <div>· 玩家可与 NPC 结为道侣（在道友页面）</div>
+      <div>· NPC 陨落会自动解除道侣关系并通知玩家</div>
+      <div>· 管理员可随时复活或删除 NPC</div>
+    </div>
+  </div>
+</div>
+
+<!-- NPC列表 -->
+<div class="card">
+  <div class="card-h">当前 NPC（{{ npcs|length }}）</div>
+  <table class="tbl">
+    <thead><tr><th>道号</th><th>灵根</th><th>境界</th><th>年龄</th><th>状态</th><th>操作</th></tr></thead>
+    <tbody>
+      {% for n in npcs %}
+      <tr style="{% if n.status=='deceased' %}opacity:.5{% endif %}">
+        <td style="font-weight:600">{{ n.name }}</td>
+        <td><span class="root-{{ n.spirit_root }}" style="font-size:12px">{{ n.spirit_root }}</span></td>
+        <td style="color:var(--jade)">{{ REALMS[n.realm_idx].name }}</td>
+        <td style="color:var(--muted);font-size:12px">{{ n.age }} 岁</td>
+        <td>
+          <span style="color:{% if n.status=='alive' %}var(--green){% else %}var(--red){% endif %};font-size:12px">
+            {{ '存活' if n.status=='alive' else '已陨' }}
+          </span>
+        </td>
+        <td style="display:flex;gap:6px">
+          {% if n.status=='deceased' %}
+          <form method="post">
+            <input type="hidden" name="action" value="revive">
+            <input type="hidden" name="npc_id" value="{{ n.id }}">
+            <button class="btn btn-jade btn-sm">复活</button>
+          </form>
+          {% endif %}
+          <form method="post" onsubmit="return confirm('确定删除 NPC {{ n.name }}？')">
+            <input type="hidden" name="action" value="delete">
+            <input type="hidden" name="npc_id" value="{{ n.id }}">
+            <button class="btn btn-ghost btn-sm" style="color:var(--red)">删除</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+</div>
+<style>select:focus,input:focus{outline:none;border-color:var(--jade)}</style>
+{% endblock %}

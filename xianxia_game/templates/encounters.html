@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}际遇 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🎲 际遇 <small>岁月流转，机缘天定</small></div>
+
+<!-- 年龄/寿元 -->
+<div class="card" style="margin-bottom:16px;padding:12px 16px;display:flex;gap:24px;flex-wrap:wrap;align-items:center">
+  <span style="font-size:13px;color:var(--muted)">年龄 <strong style="color:var(--gold)">{{ age }}</strong> 岁</span>
+  <div style="flex:1;min-width:200px">
+    <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px">
+      <span>寿元</span>
+      <span style="color:{% if age > life*0.8 %}var(--red){% elif age > life*0.6 %}var(--gold){% else %}var(--muted){% endif %}">{{ age }} / {{ life }} 岁</span>
+    </div>
+    <div class="bar-wrap">
+      <div class="bar-fill {% if age > life*0.8 %}bar-red{% else %}bar-gold{% endif %}" style="width:{{ [100,(age/life*100)|int]|min }}%"></div>
+    </div>
+  </div>
+  <span style="font-size:11px;color:var(--muted)">每 1 小时过一年，突破境界可大幅延寿</span>
+</div>
+
+{% if age > life*0.8 %}
+<div class="flash flash-error">⚠ 寿元将尽（{{ age }}/{{ life }} 岁）！请尽快突破境界延寿，否则将身陨坐化。</div>
+{% endif %}
+
+<!-- 待处理的选择型奇遇 -->
+{% if pending %}
+<div class="card-h" style="margin-bottom:10px;color:var(--gold2)">待抉择的际遇（{{ pending|length }}）</div>
+{% for p in pending %}
+{% set e = p.row %}
+<div class="card" style="margin-bottom:14px;border-color:var(--gold)">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+    <span style="font-size:16px;font-weight:700;color:var(--gold)">{{ e.title }}</span>
+    <span style="font-size:11px;color:var(--muted)">{{ e.age }} 岁 · {{ e.created_at | format_ts }}</span>
+  </div>
+  <div style="color:var(--text);font-size:14px;line-height:1.8;margin-bottom:14px">{{ e.narrative }}</div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap">
+    {% for opt in p.options %}
+    <form method="post" action="{{ url_for('encounters_resolve') }}">
+      <input type="hidden" name="encounter_id" value="{{ e.id }}">
+      <input type="hidden" name="option" value="{{ loop.index0 }}">
+      <button class="btn btn-gold btn-sm">{{ opt.label }}</button>
+    </form>
+    {% endfor %}
+  </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="card" style="margin-bottom:16px">
+  <div style="color:var(--muted);text-align:center;padding:20px 0">
+    暂无待抉择的际遇。随着岁月流转，自会有新的机缘降临。
+  </div>
+</div>
+{% endif %}
+
+<!-- 历史 -->
+{% if history %}
+<div class="card-h" style="margin-bottom:10px">际遇录</div>
+<div class="card">
+  {% for h in history %}
+  <div style="display:flex;gap:12px;padding:10px 0;
+       {% if not loop.last %}border-bottom:1px solid var(--bd){% endif %}">
+    <div style="width:48px;flex-shrink:0;text-align:center">
+      <div style="font-size:13px;color:var(--gold)">{{ h.age }}岁</div>
+    </div>
+    <div style="flex:1">
+      <div style="font-size:13px;font-weight:600;color:var(--text)">
+        {{ h.title }}
+        {% if h.kind == 'instant' %}
+        <span style="font-size:10px;color:var(--blue);margin-left:4px">即时</span>
+        {% else %}
+        <span style="font-size:10px;color:var(--purple);margin-left:4px">抉择</span>
+        {% endif %}
+      </div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-top:2px">{{ h.narrative }}</div>
+      {% if h.result_text %}
+      <div style="font-size:12px;color:var(--jade);margin-top:4px">→ {{ h.result_text }}</div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card" style="background:rgba(201,168,76,.05);border-color:rgba(201,168,76,.15)">
+  <div class="card-h" style="color:var(--gold2)">际遇说明</div>
+  <div style="color:var(--muted);font-size:12px;line-height:2">
+    <div>· 每过一年（1 小时）有概率触发奇遇，操作时自动结算流逝的岁月</div>
+    <div>· <span style="color:var(--blue)">即时奇遇</span>直接生效并记入际遇录</div>
+    <div>· <span style="color:var(--purple)">抉择奇遇</span>会留在此处等你处理，不同选择结果迥异，部分带风险</div>
+    <div>· 寿元随境界提升而延长，<span style="color:var(--red)">超寿未突破将身陨</span></div>
+  </div>
+</div>
+</div>
+{% endblock %}

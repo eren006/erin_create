@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}玩家管理 — 后台{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">👥 玩家管理 <small><a href="{{ url_for('admin') }}" style="font-size:13px">← 后台</a></small></div>
+
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+  {% if show_dead %}
+  <a href="{{ url_for('admin_players') }}" class="btn btn-secondary btn-sm">仅显示在世修士</a>
+  <span style="font-size:12px;color:var(--muted)">当前：显示全部（含陨落 {{ dead_count }} 人）</span>
+  {% else %}
+  <a href="{{ url_for('admin_players', show_dead=1) }}" class="btn btn-ghost btn-sm">显示陨落修士</a>
+  {% if dead_count %}<span style="font-size:12px;color:var(--muted)">{{ dead_count }} 位修士已陨落，未在列表中显示</span>{% endif %}
+  {% endif %}
+</div>
+
+<div class="card">
+  <table class="tbl">
+    <thead>
+      <tr>
+        <th>道号</th>
+        <th>用户名</th>
+        <th>灵根</th>
+        <th>境界</th>
+        <th>修为</th>
+        <th>灵石</th>
+        <th>攻击(加成后)</th>
+        <th>暴击率</th>
+        <th>闪避率</th>
+        <th>吸血</th>
+        <th>寿元</th>
+        <th>最后登录</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in players %}
+      <tr {% if p.status != 'alive' %}style="opacity:.45"{% endif %}>
+        <td style="font-weight:600;color:var(--text)">
+          {{ p.name }}
+          {% if p.status != 'alive' %}<span style="font-size:10px;color:var(--red);margin-left:4px">已陨落</span>{% endif %}
+        </td>
+        <td style="color:var(--muted);font-size:12px">
+          {{ p.username }}
+          {% if p.role == 'admin' %}<span class="tag tag-epic" style="margin-left:4px">管理</span>{% endif %}
+        </td>
+        <td><span class="root-{{ p.spirit_root }}" style="font-size:12px">{{ p.spirit_root }}</span></td>
+        <td style="color:{% if p.status != 'alive' %}var(--muted){% else %}var(--jade){% endif %}">{{ REALMS[p.realm_idx].name }}</td>
+        <td style="color:var(--muted);font-size:12px">{{ fmt_exp(p.exp) }}</td>
+        <td style="color:var(--gold);font-size:12px">{{ p.spirit_stones }}</td>
+        <td style="color:var(--blue);font-size:12px">{{ p.eff_atk }}</td>
+        <td style="color:var(--red);font-size:12px">{{ p.crit_rate_pct }}%</td>
+        <td style="color:var(--jade);font-size:12px">{{ p.dodge_rate_pct }}%</td>
+        <td style="color:var(--green);font-size:12px">{{ p.lifesteal_pct }}%</td>
+        {% if p.status == 'alive' %}
+        {% set life = lifespan(p) %}
+        {% set life_left = life - p.age %}
+        <td style="font-size:12px;color:{% if life_left <= 10 %}var(--red){% elif life_left <= 30 %}var(--gold){% else %}var(--muted){% endif %}">
+          {{ p.age }}/{{ life }}
+          {% if life_left <= 10 %}<span style="font-size:10px"> ⚠寿尽</span>{% endif %}
+        </td>
+        {% else %}
+        <td style="color:var(--muted);font-size:12px">—</td>
+        {% endif %}
+        <td style="color:var(--muted);font-size:11px">{{ p.last_login | format_ts }}</td>
+        <td>
+          <a href="{{ url_for('admin_player', cid=p.id) }}" class="btn btn-ghost btn-sm">详情</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+</div>
+{% endblock %}

@@ -1,0 +1,419 @@
+{% extends "base.html" %}
+{% block title %}背包 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🎒 背包 <small>随身携带的宝物</small></div>
+
+<!-- 当前气血提示 -->
+{% if hp_now < max_hp * MIN_FIGHT_HP_PCT %}
+<div class="flash flash-error" style="display:flex;align-items:center;gap:10px">
+  ⚠ 气血 {{ hp_now }}/{{ max_hp }}，低于 {{ (MIN_FIGHT_HP_PCT*100)|int }}%，无法出战。请服用回元丹恢复。
+</div>
+{% endif %}
+
+{% set pills      = inv_items | selectattr('type','equalto','pill')             | list %}
+{% set talismans  = inv_items | selectattr('type','equalto','talisman')         | list %}
+{% set scrolls    = inv_items | selectattr('type','equalto','technique_scroll') | list %}
+{% set weapons    = inv_items | selectattr('type','equalto','weapon')           | list %}
+{% set artifacts  = inv_items | selectattr('type','equalto','artifact')         | list %}
+{% set destinies  = inv_items | selectattr('type','equalto','destiny')          | list %}
+{% set cauldrons      = inv_items | selectattr('type','equalto','cauldron')      | list %}
+{% set forges         = inv_items | selectattr('type','equalto','forge')         | list %}
+{% set brushes        = inv_items | selectattr('type','equalto','brush')         | list %}
+{% set beast_tokens   = inv_items | selectattr('type','equalto','beast_token')   | list %}
+{% set heqing_tokens  = inv_items | selectattr('type','equalto','heqing_token')  | list %}
+{% set spirit_passes  = inv_items | selectattr('type','equalto','spirit_pass')   | list %}
+{% set sword_tokens   = inv_items | selectattr('type','equalto','sword_token')   | list %}
+{% set herbs     = inv_items | selectattr('type','equalto','herb')             | list %}
+{% set ores      = inv_items | selectattr('type','equalto','ore')              | list %}
+{% set junk      = inv_items | selectattr('type','equalto','junk')             | list %}
+{% set others    = inv_items | rejectattr('type','in',['pill','talisman','technique_scroll','weapon','artifact','destiny','cauldron','forge','brush','beast_token','heqing_token','spirit_pass','sword_token','herb','ore','junk']) | list %}
+
+{% if not inv_items %}
+<div class="empty">背包空空如也，去探索或丹市寻觅宝物吧</div>
+{% else %}
+
+{% macro item_card(item) %}
+<div style="background:var(--sf2);border:1px solid var(--bd);border-radius:10px;padding:14px;
+     transition:border-color .2s"
+     onmouseover="this.style.borderColor='var(--jade)'"
+     onmouseout="this.style.borderColor='var(--bd)'">
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px">
+    <div style="font-weight:600;font-size:14px;color:var(--text)">
+      {{ item.name }}
+      {% if item.gift_from %}
+      <span style="font-size:10px;color:var(--gold2);margin-left:6px">{{ item.gift_from }}送的</span>
+      {% endif %}
+      {% if item.type == 'weapon'   and item.id == char.equipped_weapon   %}
+      <span style="font-size:10px;color:var(--jade);margin-left:6px">▶ 已装备</span>
+      {% endif %}
+      {% if item.type == 'artifact' and item.id == char.equipped_artifact %}
+      <span style="font-size:10px;color:var(--green);margin-left:6px">▶ 已装备</span>
+      {% endif %}
+    </div>
+    <span class="tag tag-{{ item.rarity }}" style="margin-left:8px;flex-shrink:0">{{ item.rarity | rarity_label }}</span>
+  </div>
+  <div style="color:var(--muted);font-size:12px;line-height:1.6;margin-bottom:10px">{{ item.description }}</div>
+
+  {% set eff = item.effect_json | fromjson %}
+  {% if eff %}
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+    {% if eff.hp_pct %}
+    <span style="background:rgba(192,57,43,.1);border-radius:5px;padding:2px 8px;font-size:11px;color:var(--red)">
+      气血 +{{ eff.hp_pct }}%（当前约 +{{ (max_hp * eff.hp_pct / 100)|int }}）
+    </span>
+    {% endif %}
+    {% if eff.exp %}
+    <span style="background:rgba(166,124,26,.14);border-radius:5px;padding:2px 8px;font-size:11px;color:var(--gold)">
+      修为 +{{ fmt_exp(eff.exp) }}
+    </span>
+    {% endif %}
+    {% if eff.energy %}
+    <span style="background:rgba(31,122,95,.1);border-radius:5px;padding:2px 8px;font-size:11px;color:var(--jade)">
+      灵力 +{{ eff.energy }}
+    </span>
+    {% endif %}
+    {% if eff.attack %}
+    <span style="background:rgba(44,110,158,.12);border-radius:5px;padding:2px 8px;font-size:11px;color:var(--blue)">
+      攻击 +{{ eff.attack }}
+    </span>
+    {% endif %}
+    {% if eff.defense %}
+    <span style="background:rgba(46,139,87,.12);border-radius:5px;padding:2px 8px;font-size:11px;color:var(--green)">
+      防御 +{{ eff.defense }}
+    </span>
+    {% endif %}
+    {% if eff.crit_rate %}
+    <span style="background:rgba(166,124,26,.14);border-radius:5px;padding:2px 8px;font-size:11px;color:var(--gold)">
+      暴击 +{{ (eff.crit_rate*100)|round(1) }}%
+    </span>
+    {% endif %}
+    {% if eff.element %}
+    <span style="background:rgba(123,94,168,.14);border-radius:5px;padding:2px 8px;font-size:11px;color:var(--purple)">
+      需{{ eff.element }}灵根
+    </span>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">
+    <span style="color:var(--muted);font-size:12px">数量：<strong style="color:var(--text)">{{ item.quantity }}</strong>
+      {% if item.market_price > 0 %}
+      <span style="margin-left:8px;color:var(--muted)">售价 <span style="color:var(--gold)">{{ item.market_price // 2 }}</span> 灵石/个</span>
+      {% endif %}
+    </span>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      {% if item.type == 'talisman' %}
+        <form method="post">
+          <input type="hidden" name="item_id" value="{{ item.id }}">
+          <input type="hidden" name="action" value="use">
+          <button type="submit" class="btn btn-jade btn-sm">激活</button>
+        </form>
+      {% elif item.type == 'pill' %}
+        <form method="post">
+          <input type="hidden" name="item_id" value="{{ item.id }}">
+          <input type="hidden" name="action" value="use">
+          <button type="submit" class="btn btn-jade btn-sm">服用</button>
+        </form>
+        <form method="post" style="display:flex;align-items:center;gap:4px">
+          <input type="hidden" name="item_id" value="{{ item.id }}">
+          <input type="hidden" name="action" value="sell">
+          <input name="sell_qty" type="number" value="1" min="1" max="{{ item.quantity }}"
+            style="width:44px;background:var(--sf);border:1px solid var(--bd);color:var(--text);
+                   border-radius:6px;padding:3px 6px;font-size:12px;text-align:center;font-family:inherit">
+          <button type="submit" class="btn btn-ghost btn-sm">卖出</button>
+        </form>
+      {% elif item.type == 'technique_scroll' %}
+        <form method="post">
+          <input type="hidden" name="item_id" value="{{ item.id }}">
+          <input type="hidden" name="action" value="use">
+          <button type="submit" class="btn btn-jade btn-sm">研习</button>
+        </form>
+      {% elif item.type == 'weapon' %}
+        {% if item.id == char.equipped_weapon %}
+          <form method="post">
+            <input type="hidden" name="item_id" value="{{ item.id }}">
+            <input type="hidden" name="action" value="unequip">
+            <button type="submit" class="btn btn-ghost btn-sm">卸下</button>
+          </form>
+        {% else %}
+          <form method="post">
+            <input type="hidden" name="item_id" value="{{ item.id }}">
+            <input type="hidden" name="action" value="equip">
+            <button type="submit" class="btn btn-jade btn-sm">装备</button>
+          </form>
+          <form method="post" style="display:flex;align-items:center;gap:4px">
+            <input type="hidden" name="item_id" value="{{ item.id }}">
+            <input type="hidden" name="action" value="sell">
+            <input name="sell_qty" type="number" value="1" min="1" max="{{ item.quantity }}"
+              style="width:44px;background:var(--sf);border:1px solid var(--bd);color:var(--text);
+                     border-radius:6px;padding:3px 6px;font-size:12px;text-align:center;font-family:inherit">
+            <button type="submit" class="btn btn-ghost btn-sm">卖出</button>
+          </form>
+        {% endif %}
+      {% elif item.type == 'artifact' %}
+        {% if item.id == char.equipped_artifact %}
+          <form method="post">
+            <input type="hidden" name="item_id" value="{{ item.id }}">
+            <input type="hidden" name="action" value="unequip">
+            <button type="submit" class="btn btn-ghost btn-sm">卸下</button>
+          </form>
+        {% else %}
+          <form method="post">
+            <input type="hidden" name="item_id" value="{{ item.id }}">
+            <input type="hidden" name="action" value="equip">
+            <button type="submit" class="btn btn-green btn-sm">装备</button>
+          </form>
+          <form method="post" style="display:flex;align-items:center;gap:4px">
+            <input type="hidden" name="item_id" value="{{ item.id }}">
+            <input type="hidden" name="action" value="sell">
+            <input name="sell_qty" type="number" value="1" min="1" max="{{ item.quantity }}"
+              style="width:44px;background:var(--sf);border:1px solid var(--bd);color:var(--text);
+                     border-radius:6px;padding:3px 6px;font-size:12px;text-align:center;font-family:inherit">
+            <button type="submit" class="btn btn-ghost btn-sm">卖出</button>
+          </form>
+        {% endif %}
+      {% elif item.type == 'cauldron' %}
+        {% if item.id == char.cauldron_id %}
+          <span style="font-size:11px;color:var(--gold)">▶ 使用中</span>
+          <form method="post">
+            <input type="hidden" name="item_id" value="{{ item.id }}">
+            <input type="hidden" name="action" value="unequip">
+            <button type="submit" class="btn btn-ghost btn-sm">收起</button>
+          </form>
+        {% else %}
+          <form method="post">
+            <input type="hidden" name="item_id" value="{{ item.id }}">
+            <input type="hidden" name="action" value="equip">
+            <button type="submit" class="btn btn-gold btn-sm">使用</button>
+          </form>
+        {% endif %}
+        {% if item.market_price > 0 %}
+        <form method="post" onsubmit="return confirm('⚠ 出售丹炉将放弃丹修路线，并损失 30% 炼丹经验！确定出售？')">
+          <input type="hidden" name="item_id" value="{{ item.id }}">
+          <input type="hidden" name="action" value="sell">
+          <input type="hidden" name="sell_qty" value="1">
+          <button type="submit" class="btn btn-ghost btn-sm" style="color:var(--red)">卖出</button>
+        </form>
+        {% endif %}
+      {% elif item.type == 'destiny' %}
+        {% if item.id == char.destiny_id %}
+          <span style="font-size:11px;color:var(--purple)">▶ 契合中</span>
+          <form method="post">
+            <input type="hidden" name="item_id" value="{{ item.id }}">
+            <input type="hidden" name="action" value="unequip">
+            <button type="submit" class="btn btn-ghost btn-sm">解除</button>
+          </form>
+        {% else %}
+          <form method="post">
+            <input type="hidden" name="item_id" value="{{ item.id }}">
+            <input type="hidden" name="action" value="equip">
+            <button type="submit" class="btn btn-gold btn-sm">契合</button>
+          </form>
+        {% endif %}
+      {% elif item.type == 'forge' %}
+        {% if item.id == char.forge_id %}
+          <span style="font-size:11px;color:var(--gold)">▶ 点燃中</span>
+          <form method="post">
+            <input type="hidden" name="item_id" value="{{ item.id }}">
+            <input type="hidden" name="action" value="unequip">
+            <button type="submit" class="btn btn-ghost btn-sm">熄灭</button>
+          </form>
+        {% else %}
+          <form method="post">
+            <input type="hidden" name="item_id" value="{{ item.id }}">
+            <input type="hidden" name="action" value="equip">
+            <button type="submit" class="btn btn-gold btn-sm">点燃</button>
+          </form>
+        {% endif %}
+        {% if item.market_price > 0 %}
+        <form method="post" onsubmit="return confirm('⚠ 出售炼器炉将放弃器修路线，并损失 30% 炼器经验！确定出售？')">
+          <input type="hidden" name="item_id" value="{{ item.id }}">
+          <input type="hidden" name="action" value="sell">
+          <input type="hidden" name="sell_qty" value="1">
+          <button type="submit" class="btn btn-ghost btn-sm" style="color:var(--red)">卖出</button>
+        </form>
+        {% endif %}
+      {% elif item.type == 'brush' %}
+        {% if item.id == char.fulu_id %}
+          <span style="font-size:11px;color:var(--gold)">▶ 执笔中</span>
+          <form method="post">
+            <input type="hidden" name="item_id" value="{{ item.id }}">
+            <input type="hidden" name="action" value="unequip">
+            <button type="submit" class="btn btn-ghost btn-sm">收起</button>
+          </form>
+        {% else %}
+          <form method="post">
+            <input type="hidden" name="item_id" value="{{ item.id }}">
+            <input type="hidden" name="action" value="equip">
+            <button type="submit" class="btn btn-gold btn-sm">执笔</button>
+          </form>
+        {% endif %}
+        <form method="post" onsubmit="return confirm('⚠ 出售毛笔将放弃符修路线，并损失 30% 符修经验！确定出售？')">
+          <input type="hidden" name="item_id" value="{{ item.id }}">
+          <input type="hidden" name="action" value="sell">
+          <input type="hidden" name="sell_qty" value="1">
+          <button type="submit" class="btn btn-ghost btn-sm" style="color:var(--red)">卖出</button>
+        </form>
+      {% elif item.type == 'beast_token' %}
+        {% if char.beast_token_id %}
+          <span style="font-size:11px;color:var(--green)">▶ 御灵修 已入路</span>
+          <form method="post">
+            <input type="hidden" name="item_id" value="{{ item.id }}">
+            <input type="hidden" name="action" value="unequip">
+            <button type="submit" class="btn btn-ghost btn-sm">放弃</button>
+          </form>
+        {% else %}
+          <form method="post">
+            <input type="hidden" name="item_id" value="{{ item.id }}">
+            <input type="hidden" name="action" value="equip">
+            <button type="submit" class="btn btn-gold btn-sm">持令入路</button>
+          </form>
+        {% endif %}
+        <form method="post" onsubmit="return confirm('⚠ 出售御灵令将放弃御灵修路线，并损失 30% 御灵经验！确定出售？')">
+          <input type="hidden" name="item_id" value="{{ item.id }}">
+          <input type="hidden" name="action" value="sell">
+          <input type="hidden" name="sell_qty" value="1">
+          <button type="submit" class="btn btn-ghost btn-sm" style="color:var(--red)">卖出</button>
+        </form>
+      {% elif item.type == 'heqing_token' %}
+        {% if char.heqing_token_id %}
+          <span style="font-size:11px;color:var(--purple)">▶ 合欢修 已入路</span>
+          <form method="post">
+            <input type="hidden" name="item_id" value="{{ item.id }}">
+            <input type="hidden" name="action" value="unequip">
+            <button type="submit" class="btn btn-ghost btn-sm">放弃</button>
+          </form>
+        {% else %}
+          <form method="post">
+            <input type="hidden" name="item_id" value="{{ item.id }}">
+            <input type="hidden" name="action" value="equip">
+            <button type="submit" class="btn btn-gold btn-sm">持令入路</button>
+          </form>
+        {% endif %}
+        <form method="post" onsubmit="return confirm('⚠ 出售合欢令将放弃合欢修路线，并损失 30% 合欢经验！确定出售？')">
+          <input type="hidden" name="item_id" value="{{ item.id }}">
+          <input type="hidden" name="action" value="sell">
+          <input type="hidden" name="sell_qty" value="1">
+          <button type="submit" class="btn btn-ghost btn-sm" style="color:var(--red)">卖出</button>
+        </form>
+      {% elif item.type == 'sword_token' %}
+        {% if char.sword_token_id %}
+          <span style="font-size:11px;color:var(--blue)">▶ 剑修 已入路</span>
+          <form method="post">
+            <input type="hidden" name="item_id" value="{{ item.id }}">
+            <input type="hidden" name="action" value="unequip">
+            <button type="submit" class="btn btn-ghost btn-sm">放弃</button>
+          </form>
+        {% else %}
+          <form method="post">
+            <input type="hidden" name="item_id" value="{{ item.id }}">
+            <input type="hidden" name="action" value="equip">
+            <button type="submit" class="btn btn-gold btn-sm">持令入路</button>
+          </form>
+        {% endif %}
+        <form method="post" onsubmit="return confirm('⚠ 出售飞剑令将放弃剑修路线，并损失 30% 剑修经验！确定出售？')">
+          <input type="hidden" name="item_id" value="{{ item.id }}">
+          <input type="hidden" name="action" value="sell">
+          <input type="hidden" name="sell_qty" value="1">
+          <button type="submit" class="btn btn-ghost btn-sm" style="color:var(--red)">卖出</button>
+        </form>
+      {% elif item.type == 'spirit_pass' %}
+        {% if char.spirit_pass_id %}
+          <span style="font-size:11px;color:var(--jade)">▶ 已激活双槽</span>
+        {% else %}
+          <form method="post">
+            <input type="hidden" name="item_id" value="{{ item.id }}">
+            <input type="hidden" name="action" value="equip">
+            <button type="submit" class="btn btn-jade btn-sm">激活</button>
+          </form>
+          <form method="post" style="display:flex;align-items:center;gap:4px">
+            <input type="hidden" name="item_id" value="{{ item.id }}">
+            <input type="hidden" name="action" value="sell">
+            <input name="sell_qty" type="number" value="1" min="1" max="{{ item.quantity }}"
+              style="width:44px;background:var(--sf);border:1px solid var(--bd);color:var(--text);
+                     border-radius:6px;padding:3px 6px;font-size:12px;text-align:center;font-family:inherit">
+            <button type="submit" class="btn btn-ghost btn-sm">卖出</button>
+          </form>
+        {% endif %}
+      {% elif item.type == 'herb' %}
+        <span style="font-size:11px;color:var(--green)">炼丹材料，在<a href="{{ url_for('alchemy') }}" style="color:var(--jade)">炼丹房</a>使用</span>
+      {% elif item.type == 'ore' %}
+        <span style="font-size:11px;color:var(--gold2)">炼器材料，在<a href="{{ url_for('forge') }}" style="color:var(--jade)">炼器房</a>使用</span>
+      {% elif item.type == 'rename_card' %}
+        <form method="post" style="display:flex;gap:6px;align-items:center">
+          <input type="hidden" name="item_id" value="{{ item.id }}">
+          <input type="hidden" name="action" value="use">
+          <input name="new_name" type="text" maxlength="12" placeholder="新道号（最多12字）" required
+            style="width:130px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                   border-radius:8px;padding:5px 8px;font-size:12px;font-family:inherit">
+          <button type="submit" class="btn btn-jade btn-sm">使用</button>
+        </form>
+      {% elif item.type == 'destiny_weapon' %}
+        <a href="{{ url_for('claim_weapon', item_id=item.id) }}"
+           class="btn btn-gold btn-sm" style="text-decoration:none">✦ 认主仪式</a>
+      {% elif item.type == 'junk' %}
+        <form method="post" style="display:flex;align-items:center;gap:4px">
+          <input type="hidden" name="item_id" value="{{ item.id }}">
+          <input type="hidden" name="action" value="sell">
+          <input name="sell_qty" type="number" value="1" min="1" max="{{ item.quantity }}"
+            style="width:44px;background:var(--sf);border:1px solid var(--bd);color:var(--text);
+                   border-radius:6px;padding:3px 6px;font-size:12px;text-align:center;font-family:inherit">
+          <button type="submit" class="btn btn-gold btn-sm">卖出</button>
+        </form>
+      {% elif item.name == '琥珀' %}
+        <form method="post" onsubmit="return confirm('消耗 {{ AMBER_ENERGY_CAP_COST }} 枚琥珀，永久提升灵力上限 {{ AMBER_ENERGY_CAP_GAIN }} 点？')">
+          <input type="hidden" name="item_id" value="{{ item.id }}">
+          <input type="hidden" name="action" value="amber_boost">
+          <button type="submit" class="btn btn-jade btn-sm" {% if item.quantity < AMBER_ENERGY_CAP_COST %}disabled title="需 {{ AMBER_ENERGY_CAP_COST }} 枚"{% endif %}>
+            凝炼灵力上限（{{ AMBER_ENERGY_CAP_COST }}枚→+{{ AMBER_ENERGY_CAP_GAIN }}）
+          </button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+{% macro section(title, items, icon) %}
+{% if items %}
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">{{ icon }} {{ title }}</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px">
+    {% for item in items %}{{ item_card(item) }}{% endfor %}
+  </div>
+</div>
+{% endif %}
+{% endmacro %}
+
+{{ section('丹药', pills, '🧪') }}
+{{ section('符箓', talismans, '📜') }}
+{{ section('本命法宝', destinies, '🔮') }}
+{{ section('武器（飞剑）', weapons, '⚔') }}
+{{ section('法宝（护甲）', artifacts, '🛡') }}
+{{ section('丹炉', cauldrons, '🔥') }}
+{{ section('炼器炉', forges, '⚒') }}
+{{ section('毛笔', brushes, '🖌') }}
+{{ section('飞剑令', sword_tokens, '⚔') }}
+{{ section('御灵令', beast_tokens, '🐲') }}
+{{ section('合欢令', heqing_tokens, '🌸') }}
+{{ section('御灵神牌', spirit_passes, '🔮') }}
+{{ section('草药', herbs, '🌿') }}
+{{ section('矿石', ores, '⛏') }}
+{{ section('功法卷轴', scrolls, '📜') }}
+{{ section('杂物（可卖钱）', junk, '🎭') }}
+{{ section('其他物品', others, '✦') }}
+
+
+{% endif %}
+
+<div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
+  <a href="{{ url_for('market') }}" class="btn btn-ghost btn-sm">前往丹市购买</a>
+  <a href="{{ url_for('dashboard') }}" class="btn btn-ghost btn-sm">返回灵台</a>
+</div>
+</div>
+<style>
+.btn-green{background:rgba(46,139,87,.12);border:1px solid var(--green);color:var(--green)}
+.btn-green:hover{background:var(--green);color:#fff}
+</style>
+{% endblock %}

@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}注册 — 灵墟界{% endblock %}
+{% block body %}
+<div style="min-height:calc(100vh - 52px);display:flex;align-items:center;justify-content:center;padding:20px">
+  <div style="width:100%;max-width:420px">
+    <div style="text-align:center;margin-bottom:28px">
+      <div style="font-size:36px;margin-bottom:8px">✦</div>
+      <h2 style="color:var(--gold);font-size:22px;letter-spacing:2px">踏入仙途</h2>
+      <p style="color:var(--muted);font-size:13px;margin-top:6px">创建你的修炼者，开启漫漫仙途</p>
+    </div>
+    {% if err %}<div class="flash flash-error">{{ err }}</div>{% endif %}
+    <div class="card">
+      <form method="post" style="display:flex;flex-direction:column;gap:14px">
+        <div>
+          <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:5px">用户名 <span style="color:var(--muted)">(登录用，2-20字符)</span></label>
+          <input name="username" required maxlength="20"
+            style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                   border-radius:8px;padding:9px 12px;font-size:14px;font-family:inherit"
+            placeholder="设置用户名">
+        </div>
+        <div>
+          <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:5px">密码 <span style="color:var(--muted)">(至少6位)</span></label>
+          <input name="password" type="password" required minlength="6"
+            style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                   border-radius:8px;padding:9px 12px;font-size:14px;font-family:inherit"
+            placeholder="设置密码">
+        </div>
+        <div>
+          <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:5px">道号 <span style="color:var(--muted)">(角色名，1-12字符，修仙界唯一)</span></label>
+          <input name="char_name" required maxlength="12"
+            style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                   border-radius:8px;padding:9px 12px;font-size:14px;font-family:inherit"
+            placeholder="赐予你的修士一个道号">
+        </div>
+        <div>
+          <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:5px">邀请码 <span style="color:var(--red)">(必填，需向管理员索取)</span></label>
+          <input name="invite" required value="{{ request.args.get('invite','') }}"
+            style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                   border-radius:8px;padding:9px 12px;font-size:14px;font-family:inherit;text-transform:uppercase"
+            placeholder="LX-XXXXXXXX">
+        </div>
+        <div class="card" style="background:var(--sf2);border-color:rgba(201,168,76,.2);padding:14px;margin-top:4px">
+          <div style="color:var(--gold2);font-size:13px;font-weight:500;margin-bottom:8px">✦ 灵根天赋</div>
+          <div style="color:var(--muted);font-size:12px;line-height:1.9">
+            注册时系统将为你<strong style="color:var(--text)">随机赋予</strong>修炼天赋——<br>
+            <span class="root-天灵根">天灵根</span> · <span class="root-变异灵根">变异灵根</span> · <span class="root-双灵根">双灵根</span> · <span class="root-三灵根">三灵根</span> · <span class="root-四灵根">四灵根</span> · <span class="root-五灵根">五灵根</span><br>
+            灵根越纯，修炼越快。天道自有安排，且看造化。
+          </div>
+        </div>
+        <button type="submit" class="btn btn-gold" style="width:100%;padding:10px;font-size:14px;margin-top:4px;letter-spacing:1px">
+          入道登记，踏上修仙之路
+        </button>
+      </form>
+    </div>
+    <p style="text-align:center;color:var(--muted);font-size:13px;margin-top:16px">
+      已有道号？<a href="{{ url_for('login') }}" style="color:var(--jade)">返回登录</a>
+    </p>
+  </div>
+</div>
+<style>input:focus{outline:none;border-color:var(--jade) !important}</style>
+{% endblock %}

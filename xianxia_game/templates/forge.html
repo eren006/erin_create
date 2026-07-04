@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% block title %}炼器房 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">⚒ 炼器房 <small>采矿炼器，自铸法宝</small></div>
+
+{% if result %}
+  {% if result.success %}
+  <div class="result-box success" style="margin-bottom:20px">
+    <div style="font-size:18px;font-weight:700;color:var(--jade);margin-bottom:8px">⚒ 炼器成功</div>
+    <div style="font-size:15px;color:var(--text)">
+      铸成【<span style="color:var(--gold)">{{ result.item.name }}</span>】
+      <span class="tag tag-{{ result.item.rarity }}" style="margin-left:6px">{{ result.item.rarity | rarity_label }}</span>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+      {% if result.eff.attack %}<span style="background:rgba(91,163,208,.14);border-radius:5px;padding:2px 8px;font-size:11px;color:var(--blue)">攻击 +{{ result.eff.attack }}</span>{% endif %}
+      {% if result.eff.defense %}<span style="background:rgba(82,183,136,.14);border-radius:5px;padding:2px 8px;font-size:11px;color:var(--green)">防御 +{{ result.eff.defense }}</span>{% endif %}
+      {% if result.eff.crit_rate %}<span style="background:rgba(201,168,76,.14);border-radius:5px;padding:2px 8px;font-size:11px;color:var(--gold)">暴击 +{{ (result.eff.crit_rate*100)|round(1) }}%</span>{% endif %}
+      {% if result.eff.element %}<span style="background:rgba(155,127,224,.14);border-radius:5px;padding:2px 8px;font-size:11px;color:var(--purple)">{{ result.eff.element }}属性本命法宝</span>{% endif %}
+    </div>
+    {% if result.forge_exp_gain %}
+    <div style="font-size:12px;color:var(--muted);margin-top:6px">
+      炼器经验 +{{ result.forge_exp_gain }}
+      {% if result.forge_leveled_up %}<span style="color:var(--gold);margin-left:6px">✦ 炼器等级提升至【{{ result.new_forge_lv_name }}】！</span>{% endif %}
+    </div>
+    {% endif %}
+    <div style="font-size:12px;color:var(--muted);margin-top:4px">成功率 {{ result.rate }}% · 前往<a href="{{ url_for('inventory') }}" style="color:var(--jade)">背包</a>装备</div>
+  </div>
+  {% else %}
+  <div class="result-box failure" style="margin-bottom:20px">
+    <div style="font-size:18px;font-weight:700;color:var(--red);margin-bottom:6px">⚒ 炼器失败</div>
+    <div style="font-size:13px;color:var(--muted)">炉鼎崩裂，材料尽毁。本次成功率 {{ result.rate }}%。</div>
+    {% if result.forge_exp_gain %}
+    <div style="font-size:12px;color:var(--muted);margin-top:4px">炼器经验 +{{ result.forge_exp_gain }}{% if result.forge_leveled_up %} · <span style="color:var(--gold)">炼器等级提升至【{{ result.new_forge_lv_name }}】！</span>{% endif %}</div>
+    {% endif %}
+  </div>
+  {% endif %}
+{% endif %}
+
+<!-- 炼器等级进度条 -->
+<div class="card" style="margin-bottom:20px;border-color:rgba(201,168,76,.3)">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+    <div>
+      <span style="font-weight:700;font-size:15px;color:var(--gold2)">⚒ {{ forge_lv_name }}</span>
+      <span style="color:var(--muted);font-size:12px;margin-left:8px">炼器等级 Lv.{{ forge_lv }}</span>
+    </div>
+    <div style="text-align:right;font-size:12px;color:var(--muted)">
+      {% if forge_next_exp %}{{ forge_exp_val }} / {{ forge_next_exp }} 经验{% else %}已达最高炼器等级{% endif %}
+    </div>
+  </div>
+  <div class="bar-wrap" style="height:8px;margin-bottom:6px">
+    <div class="bar-fill bar-gold" style="width:{{ forge_pct }}%"></div>
+  </div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap">
+    {% for lvl in FORGE_LEVELS %}
+    <span style="font-size:10px;padding:2px 7px;border-radius:10px;
+      background:{% if forge_lv >= loop.index0 %}rgba(201,168,76,.2){% else %}var(--sf2){% endif %};
+      color:{% if forge_lv >= loop.index0 %}var(--gold){% else %}var(--muted){% endif %}">
+      {{ lvl.name }}
+    </span>
+    {% endfor %}
+  </div>
+</div>
+
+<div style="display:flex;gap:20px;flex-wrap:wrap">
+  <!-- 左：炼器炉 + 矿石 -->
+  <div style="width:240px;flex-shrink:0">
+    <div class="card" style="border-color:{% if forge_furnace %}var(--gold){% else %}var(--bd){% endif %}">
+      <div class="card-h" style="color:var(--gold2)">⚒ 当前炼器炉</div>
+      {% if forge_furnace %}
+        <div style="font-weight:600;font-size:15px;color:var(--gold)">{{ forge_furnace.name }}</div>
+        <div style="color:var(--muted);font-size:12px;margin-top:4px">{{ forge_furnace.description }}</div>
+        <div style="margin-top:10px;color:var(--gold);font-size:13px">
+          炼器成功率 {% if forge_bonus > 0 %}+{{ (forge_bonus*100)|int }}%{% else %}无加成{% endif %}
+        </div>
+      {% else %}
+        <div style="color:var(--muted);font-size:13px;line-height:1.8">
+          未点燃炼器炉。<br>在<a href="{{ url_for('market') }}" style="color:var(--jade)">丹市</a>购买后，于
+          <a href="{{ url_for('inventory') }}" style="color:var(--jade)">背包</a>点燃。
+        </div>
+        <div style="margin-top:10px;font-size:12px;color:var(--red)">⚠ 无炼器炉无法炼制</div>
+      {% endif %}
+    </div>
+
+    <!-- 本命武器 -->
+    <div class="card" style="border-color:rgba(155,127,224,.3);background:rgba(155,127,224,.04)">
+      <div class="card-h" style="color:var(--purple)">⚔ 本命武器</div>
+      {% if char.destiny_weapon_id %}
+        {% for dw in my_destiny_weapons %}
+          {% if dw.id == char.destiny_weapon_id %}
+          <div style="font-size:14px;font-weight:600;color:var(--purple)">{{ dw.custom_name or dw.weapon_type }}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">{{ dw.weapon_type }} · 基础攻击 {{ dw.base_attack }}</div>
+          {% endif %}
+        {% endfor %}
+      {% else %}
+        <div style="font-size:12px;color:var(--muted)">未契合本命武器</div>
+      {% endif %}
+      <div style="margin-top:8px">
+        <a href="{{ url_for('forge_destiny_weapons') }}" class="btn btn-ghost btn-sm" style="display:block;text-align:center">管理本命武器 →</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h">⛏ 矿石库存</div>
+      {% if ores %}
+        {% for o in ores %}
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:13px;
+             {% if not loop.last %}border-bottom:1px solid var(--bd){% endif %}">
+          <span class="tag tag-{{ o.rarity }}" style="font-size:10px">{{ o.name }}</span>
+          <span style="color:var(--text);font-weight:600">×{{ o.quantity }}</span>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div style="color:var(--muted);font-size:12px;line-height:1.8">
+          尚无矿石。<br>去<a href="{{ url_for('explore') }}" style="color:var(--jade)">探索</a>采集矿石。
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="card" style="background:rgba(201,168,76,.05);border-color:rgba(201,168,76,.15)">
+      <div class="card-h" style="color:var(--gold2)">炼器须知</div>
+      <div style="font-size:11px;color:var(--muted);line-height:2">
+        <div>· 矿石靠<a href="{{ url_for('explore') }}" style="color:var(--jade)">探索</a>采集，珍稀矿在高阶秘境</div>
+        <div>· 自炼法器可<span style="color:var(--gold)">自定义名字</span></div>
+        <div>· 成品属性有 ±15% 浮动，运气好能出极品</div>
+        <div>· <span style="color:var(--purple)">本命武器</span>炼成后赐名并自动契合</div>
+        <div>· 炼器经验可提升炼器等级，解锁更高阶图谱</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右：图谱 -->
+  <div style="flex:1;min-width:300px">
+    {% if not recipe_details %}
+    <div class="empty">暂无炼器图谱</div>
+    {% else %}
+    {% for rd in recipe_details %}
+    {% set r = rd.r %}
+    {% set realm_locked = char.realm_idx < r.realm_required %}
+    {% set lv_locked = rd.forge_lv_locked %}
+    {% set locked = realm_locked or lv_locked %}
+    {% set type_label = {'weapon':'飞剑','artifact':'法宝','destiny':'本命法宝','destiny_weapon':'本命武器'}.get(r.result_type,'法器') %}
+    <div class="card" style="margin-bottom:12px;{% if locked %}opacity:.55{% endif %};
+         {% if r.result_type=='destiny_weapon' %}border-color:rgba(155,127,224,.4);background:rgba(155,127,224,.04)
+         {% elif r.result_type=='destiny' %}border-color:rgba(155,127,224,.3){% endif %}">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px">
+        <div>
+          <div style="font-weight:700;font-size:15px;color:{% if r.result_type in ('destiny_weapon','destiny') %}var(--purple){% else %}var(--gold2){% endif %}">
+            {% if r.result_type=='destiny_weapon' %}⚔ {% endif %}{{ r.name }}
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">
+            产出 <span class="tag tag-{{ r.rarity }}">{{ type_label }}</span>
+            {% if r.result_type == 'destiny_weapon' %}
+              <span style="margin-left:6px;color:var(--purple)">随机天赋属性 · 炼成后赐名契合</span>
+            {% else %}
+              <span style="margin-left:6px">
+                {% if rd.base_eff.attack %}攻+{{ rd.base_eff.attack }} {% endif %}
+                {% if rd.base_eff.defense %}防+{{ rd.base_eff.defense }} {% endif %}
+                {% if rd.base_eff.crit_rate %}暴+{{ (rd.base_eff.crit_rate*100)|round(1) }}% {% endif %}
+                {% if rd.base_eff.element %}<span style="color:var(--purple)">需{{ rd.base_eff.element }}灵根</span>{% endif %}
+              </span>
+            {% endif %}
+            {% if r.forge_level_required and r.forge_level_required > 0 %}
+              <span style="color:var(--gold2);font-size:10px;margin-left:4px">🔒需炼器Lv.{{ r.forge_level_required }}</span>
+            {% endif %}
+          </div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;margin-left:10px">
+          {% set final_rate = [((r.success_rate + forge_bonus) * 100)|int, 98]|min %}
+          <div style="font-size:17px;font-weight:700;
+            color:{% if final_rate>=70 %}var(--green){% elif final_rate>=50 %}var(--gold){% else %}var(--red){% endif %}">{{ final_rate }}%</div>
+          <div style="font-size:10px;color:var(--muted)">成功率</div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        {% for ing in rd.ings %}
+        <div style="background:var(--sf2);border:1px solid {% if ing.enough %}rgba(82,183,136,.4){% else %}rgba(224,92,75,.4){% endif %};
+             border-radius:8px;padding:5px 10px;font-size:12px;text-align:center">
+          <div style="color:{% if ing.enough %}var(--green){% else %}var(--red){% endif %}">{{ ing.name }}</div>
+          <div style="color:var(--muted);font-size:11px">{{ ing.have }}/{{ ing.qty }}</div>
+        </div>
+        {% endfor %}
+        <div style="background:var(--sf2);border:1px solid {% if char.spirit_stones >= r.stone_cost %}rgba(201,168,76,.3){% else %}rgba(224,92,75,.4){% endif %};
+             border-radius:8px;padding:5px 10px;font-size:12px;text-align:center">
+          <div style="color:var(--gold)">灵石</div>
+          <div style="color:var(--muted);font-size:11px">{{ r.stone_cost }}</div>
+        </div>
+      </div>
+
+      {% if realm_locked %}
+      <button class="btn btn-ghost btn-sm" disabled>需 {{ REALMS[r.realm_required].name }}</button>
+      {% elif lv_locked %}
+      <button class="btn btn-ghost btn-sm" disabled>🔒 需炼器等级【{{ FORGE_LEVELS[r.forge_level_required].name }}】</button>
+      {% elif not forge_furnace %}
+      <button class="btn btn-ghost btn-sm" disabled>需点燃炼器炉</button>
+      {% else %}
+      <form method="post" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input type="hidden" name="recipe_id" value="{{ r.id }}">
+        {% if r.result_type != 'destiny_weapon' %}
+        <input name="custom_name" placeholder="自定义名字（选填）" maxlength="12"
+          style="flex:1;min-width:140px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                 border-radius:8px;padding:7px 10px;font-size:13px;font-family:inherit">
+        {% endif %}
+        <button type="submit" class="btn btn-sm {% if rd.can %}btn-gold{% else %}btn-ghost{% endif %}"
+          {% if not rd.can %}disabled{% endif %}>
+          {% if rd.can %}⚒ {% if r.result_type=='destiny_weapon' %}锻造本命武器{% else %}开始炼制{% endif %}{% else %}材料/灵石不足{% endif %}
+        </button>
+      </form>
+      {% endif %}
+
+      {% if r.result_type == 'destiny_weapon' and rd.base_eff.weapon_type %}
+      {% set wtype = rd.base_eff.weapon_type %}
+      {% if DESTINY_WEAPON_TYPES[wtype] is defined %}
+      <div style="margin-top:8px;font-size:11px;color:var(--purple);line-height:1.8;background:rgba(155,127,224,.06);border-radius:6px;padding:6px 10px">
+        {{ DESTINY_WEAPON_TYPES[wtype].desc }}<br>
+        <span style="color:var(--muted)">天赋池：{{ DESTINY_WEAPON_TYPES[wtype].pool | join(' / ') }} · 基础攻击约 {{ DESTINY_WEAPON_TYPES[wtype].base_atk }}</span>
+      </div>
+      {% endif %}
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% endif %}
+  </div>
+</div>
+</div>
+<style>input:focus{outline:none;border-color:var(--jade)}</style>
+{% endblock %}

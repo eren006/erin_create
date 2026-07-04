@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}剑修 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">⚔ 剑修 <small>以剑入道，剑气纵横</small></div>
+
+{# ── 等级卡片 ── #}
+<div class="card" style="margin-bottom:16px;border-color:rgba(139,94,16,.4);background:rgba(139,94,16,.04)">
+  <div class="card-h" style="color:#a0720e">⚔ {{ slv_name }}（Lv{{ slv + 1 }}）</div>
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+    <div class="bar-wrap" style="flex:1"><div class="bar-fill" style="width:{{ slv_pct }}%;background:#c9a000"></div></div>
+    <span style="font-size:12px;color:var(--muted)">{{ slv_exp }}{% if slv_next_exp %} / {{ slv_next_exp }}{% else %} 满级{% endif %} 剑修经验</span>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;font-size:12px;color:var(--muted)">
+    <div>· 破甲：忽略敌方 <span style="color:#c9a000;font-weight:600">{{ "%.0f"|format(sword_bonus.pen_pct) }}%</span> 防御</div>
+    <div>· 剑气触发率：<span style="color:#c9a000;font-weight:600">{{ "%.0f"|format(sword_bonus.qi_rate * 100) }}%</span></div>
+    {% if slv >= 4 %}<div>· 剑气可触发 <span style="color:#c9a000;font-weight:600">暴击</span></div>{% endif %}
+    <div>· 斩杀妖物 +{{ SWORD_COMBAT_EXP }} 剑修经验</div>
+    <div>· PvP胜利 +{{ SWORD_PVP_EXP }} 剑修经验</div>
+  </div>
+
+  {# 剑法加成额外展示 #}
+  {% set has_art = my_art or learned_art %}
+  {% if has_art %}
+  {% set art_data = my_art if my_art else learned_art %}
+  {% set stances = art_data.stances_json | tojson | safe %}
+  <div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(192,160,96,.25);font-size:12px;color:var(--muted)">
+    剑法加成：
+    {% for st in art_data.stances_json | fromjson %}
+    <span style="display:inline-block;margin:2px 4px;background:rgba(192,160,96,.15);border-radius:4px;padding:1px 7px;color:#a0720e">
+      {{ st.name }} {{ st.label }}+{{ st.value }}{{ st.unit }}
+    </span>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+{# ── 等级列表 ── #}
+<div class="card-h" style="margin-bottom:8px">修炼进阶</div>
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:20px">
+  {% for lv in SWORD_LEVELS %}
+  <div style="border-radius:8px;padding:10px 8px;text-align:center;
+              border:{{ '2px solid #c0a060' if loop.index0==slv else '1px solid rgba(0,0,0,.1)' }};
+              background:{{ 'rgba(192,160,96,.12)' if loop.index0==slv else 'var(--bg-alt,#f9f9f9)' }}">
+    <div style="font-size:10px;color:var(--muted)">Lv{{ loop.index }}</div>
+    <div style="font-weight:700;font-size:12px;margin:3px 0">{{ lv.name }}</div>
+    <div style="font-size:10px;color:var(--muted)">{{ lv.exp }} 经验</div>
+    <div style="font-size:10px;margin-top:4px;color:#888">
+      破甲 {{ loop.index * 8 }}%<br>
+      剑气 {{ (8 + (loop.index-1)*4) }}%
+      {% if loop.index == 5 %}<br><span style="color:#c9a000">剑气可暴击</span>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{# ── 自创剑法 ── #}
+<div class="card-h" style="margin-bottom:8px">⚔ 自创剑法</div>
+
+{% if slv < 4 %}
+<div class="card" style="margin-bottom:16px;color:var(--muted);font-size:13px">
+  达到【剑道传人】（Lv5）后，方可自创剑法，命名并添加最多 {{ SWORD_MAX_STANCES }} 式，传授给 {{ SWORD_MAX_DISCIPLES }} 位弟子。
+  <br>当前进度：{{ slv_name }}（Lv{{ slv+1 }}），还需 {{ (slv_next_exp - slv_exp) if slv_next_exp else '—' }} 经验晋阶。
+</div>
+
+{% elif my_art %}
+{# 已有自创剑法 #}
+<div class="card" style="margin-bottom:16px;border-color:rgba(192,160,96,.35)">
+  <div style="font-size:16px;font-weight:700;color:#a0720e;margin-bottom:10px">📜 {{ my_art.name }}</div>
+
+  {# 剑式列表 #}
+  {% set stances_list = my_art.stances_json | fromjson %}
+  {% if stances_list %}
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-bottom:14px">
+    {% for st in stances_list %}
+    <div style="border:1px solid rgba(192,160,96,.4);border-radius:6px;padding:8px 10px;background:rgba(192,160,96,.07);text-align:center">
+      <div style="font-weight:700;font-size:13px;color:#8b5e10">第{{ loop.index }}式·{{ st.name }}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">{{ st.label }} +{{ st.value }}{{ st.unit }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div style="font-size:12px;color:var(--muted);margin-bottom:12px">尚未添加任何剑式。</div>
+  {% endif %}
+
+  {# 添加新式 #}
+  {% if stances_list | length < SWORD_MAX_STANCES %}
+  <form method="post" style="margin-bottom:12px">
+    <input type="hidden" name="action" value="add_stance">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <select name="stance_type" class="form-control" style="width:auto">
+        {% for sname, sdef in SWORD_STANCE_TYPES.items() %}
+        <option value="{{ sname }}">{{ sname }}（{{ sdef.label }}）</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-primary" type="submit">领悟此式</button>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:4px">
+      每式效果随机，已添加 {{ stances_list | length }}/{{ SWORD_MAX_STANCES }} 式。
+    </div>
+  </form>
+  {% else %}
+  <div style="font-size:12px;color:var(--muted);margin-bottom:12px">剑法已圆满，共 {{ SWORD_MAX_STANCES }} 式，无法再添加。</div>
+  {% endif %}
+
+  {# 传授弟子 #}
+  <div style="border-top:1px solid rgba(0,0,0,.08);padding-top:12px">
+    <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text)">传授弟子（已传授 {{ disciples | length }}/{{ SWORD_MAX_DISCIPLES }}）</div>
+    {% if disciples %}
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px">
+      {% for d in disciples %}
+      <span style="display:inline-block;background:rgba(192,160,96,.12);border-radius:4px;padding:1px 8px;margin:2px;color:#8b5e10">{{ d.name }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if disciples | length < SWORD_MAX_DISCIPLES %}
+    <form method="post">
+      <input type="hidden" name="action" value="teach">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input type="text" name="target_name" placeholder="输入修士名称" class="form-control" style="width:180px">
+        <button class="btn btn-secondary" type="submit">传授</button>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">传授对象无需持有飞剑令，但每人只可习得一门剑法。</div>
+    </form>
+    {% else %}
+    <div style="font-size:12px;color:var(--muted)">传承名额已满（{{ SWORD_MAX_DISCIPLES }} 人），无法再传授。</div>
+    {% endif %}
+  </div>
+</div>
+
+{% else %}
+{# 已是传人但尚未立法 #}
+<div class="card" style="margin-bottom:16px">
+  <div style="font-size:13px;color:var(--muted);margin-bottom:12px">你已达剑道传人，可自创剑法，为其命名，并传授给至多 {{ SWORD_MAX_DISCIPLES }} 位弟子。</div>
+  <form method="post">
+    <input type="hidden" name="action" value="create_art">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input type="text" name="art_name" placeholder="剑法名称（最多20字）" class="form-control" style="width:220px" maxlength="20">
+      <button class="btn btn-primary" type="submit">创立此法</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+{# ── 已习得别人的剑法 ── #}
+{% if learned_art %}
+<div class="card-h" style="margin-bottom:8px">习得剑法</div>
+<div class="card" style="margin-bottom:16px;border-color:rgba(74,128,196,.35)">
+  <div style="font-size:16px;font-weight:700;color:#1a4080;margin-bottom:6px">📜 {{ learned_art.name }}</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:10px">传自：{{ learned_art.creator_name }}</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px">
+    {% for st in learned_art.stances_json | fromjson %}
+    <div style="border:1px solid rgba(74,128,196,.3);border-radius:6px;padding:8px 10px;background:rgba(74,128,196,.06);text-align:center">
+      <div style="font-weight:700;font-size:13px;color:#1a4080">第{{ loop.index }}式·{{ st.name }}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">{{ st.label }} +{{ st.value }}{{ st.unit }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+</div>
+{% endblock %}

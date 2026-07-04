@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}宗门商店 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🏪 宗门商店 <small>以贡献换取宗门秘品</small></div>
+
+<div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;padding:14px 18px;
+     background:rgba(166,124,26,.07);border:1px solid rgba(166,124,26,.25);border-radius:12px">
+  <div>
+    <div style="font-size:11px;color:var(--muted)">我的宗门贡献</div>
+    <div style="font-size:26px;font-weight:700;color:var(--gold)">{{ my_contrib }}</div>
+  </div>
+  <div style="width:1px;height:36px;background:var(--bd);margin:0 6px"></div>
+  <div style="font-size:12px;color:var(--muted);line-height:1.8">
+    <div>完成宗门任务可获得贡献积分</div>
+    <div>贡献越高，宗门地位越高</div>
+  </div>
+  <div style="margin-left:auto">
+    <a href="{{ url_for('sect') }}" class="btn btn-ghost btn-sm">← 返回宗门</a>
+  </div>
+</div>
+
+<div class="card-h" style="margin-bottom:12px">🎁 专属物品 <span style="color:var(--muted);font-weight:400;font-size:12px">（市面绝无仅有）</span></div>
+
+{% if not shop_goods %}
+<div class="empty" style="padding:40px 0">商店物品初始化中，请稍候…</div>
+{% else %}
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px">
+  {% for g in shop_goods %}
+  {% set it = g.item %}
+  <div class="card" style="padding:16px;
+       border-color:{% if g.can_buy %}var(--jade){% else %}var(--bd){% endif %};
+       background:{% if g.can_buy %}rgba(31,122,95,.04){% else %}transparent{% endif %}">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px">
+      <div>
+        <div style="font-weight:700;font-size:15px;color:var(--text)">{{ g.name }}</div>
+        <span class="tag tag-{{ it.rarity }}" style="margin-top:4px;display:inline-block">{{ it.rarity | rarity_label }}</span>
+      </div>
+      <div style="text-align:right;flex-shrink:0;margin-left:10px">
+        <div style="font-size:20px;font-weight:700;color:var(--gold)">{{ g.cost }}</div>
+        <div style="font-size:10px;color:var(--muted)">贡献</div>
+      </div>
+    </div>
+    <div style="font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:8px">{{ it.description }}</div>
+    <div style="font-size:11px;color:{% if g.week_bought >= g.week_limit %}var(--red){% else %}var(--muted){% endif %};margin-bottom:8px">
+      本周已兑换 {{ g.week_bought }}/{{ g.week_limit }}
+    </div>
+    <form method="post">
+      <input type="hidden" name="item_name" value="{{ g.name }}">
+      <button class="btn btn-sm {% if g.can_buy %}btn-jade{% else %}btn-ghost{% endif %}" style="width:100%"
+        {% if not g.can_buy %}disabled{% endif %}>
+        {% if g.week_bought >= g.week_limit %}本周已达上限{% elif g.can_buy %}兑换{% else %}贡献不足（差 {{ g.cost - my_contrib }}）{% endif %}
+      </button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card" style="margin-top:20px;background:rgba(44,110,158,.04);border-color:rgba(44,110,158,.2)">
+  <div class="card-h" style="color:var(--blue)">商店说明</div>
+  <div style="color:var(--muted);font-size:12px;line-height:2">
+    <div>· 此处物品为宗门专属秘制，外间市场绝对买不到</div>
+    <div>· <span style="color:var(--jade)">道心清净散</span>：立即消除心魔 30 点，结丹以上修士必备</div>
+    <div>· <span style="color:var(--gold)">宗门破境符</span>：突破稳固度 +20%，大境界突破前服用最佳</div>
+    <div>· <span style="color:var(--purple)">宗典神丹</span>：修为 +20000 并回复气血，高性价比</div>
+    <div>· 贡献通过完成宗门每周任务获得，不同任务给予不同贡献量</div>
+  </div>
+</div>
+</div>
+{% endblock %}

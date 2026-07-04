@@ -1,0 +1,686 @@
+{% extends "base.html" %}
+{% block title %}{{ char.name }} — 玩家详情{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">👤 {{ char.name }}
+  <small><a href="{{ url_for('admin_players') }}" style="font-size:13px">← 玩家列表</a></small>
+  <form method="post" action="{{ url_for('admin_impersonate', cid=char.id) }}"
+    style="display:inline;margin-left:12px"
+    onsubmit="return confirm('以【{{ char.name }}】身份进入游戏？操作将真实影响该账号。')">
+    <button class="btn btn-sm" style="background:#7b2d00;color:#ffd0b0;font-size:12px">👤 代为操作</button>
+  </form>
+</div>
+
+<div class="grid2">
+  <!-- 角色信息 -->
+  <div>
+    <div class="card">
+      <div class="card-h">角色信息</div>
+      <div style="display:flex;flex-direction:column;gap:8px;font-size:13px">
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--muted)">用户名</span><span>{{ char.username }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--muted)">灵根</span>
+          <span class="root-{{ char.spirit_root }}">{{ char.spirit_root }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--muted)">境界</span>
+          <span style="color:var(--jade)">{{ REALMS[char.realm_idx].name }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--muted)">总修为</span><span>{{ fmt_exp(char.exp) }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--muted)">灵石</span>
+          <span style="color:var(--gold)">{{ char.spirit_stones }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--muted)">突破稳固度</span><span>{{ char.breakthrough_bonus }}%</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--muted)">寿元典当合计</span>
+          <span style="color:var(--red)">{{ total_years_pawned }} 年</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 战斗面板 -->
+    <div class="card">
+      <div class="card-h">⚔ 战斗面板</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center;margin-bottom:10px">
+        <div style="background:var(--sf2);border-radius:8px;padding:8px">
+          <div style="color:var(--red);font-weight:700;font-size:15px">{{ combat_stats.cur_hp }} / {{ combat_stats.max_hp }}</div>
+          <div style="color:var(--muted);font-size:10px">气血</div>
+        </div>
+        <div style="background:var(--sf2);border-radius:8px;padding:8px">
+          <div style="color:var(--blue);font-weight:700;font-size:15px">{{ combat_stats.eff_atk }}</div>
+          <div style="color:var(--muted);font-size:10px">有效攻击</div>
+        </div>
+        <div style="background:var(--sf2);border-radius:8px;padding:8px">
+          <div style="color:var(--green);font-weight:700;font-size:15px">{{ combat_stats.eff_def }}</div>
+          <div style="color:var(--muted);font-size:10px">有效防御</div>
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:4px">
+        <div style="display:flex;justify-content:space-between">
+          <span>基础攻击</span><span style="color:var(--text)">{{ combat_stats.base_atk }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span>装备攻击</span><span style="color:var(--text)">+{{ combat_stats.equip_atk }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span>功法攻击</span><span style="color:var(--text)">+{{ combat_stats.tech_atk }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span>攻击加成%</span><span style="color:var(--jade)">×{{ (1 + combat_stats.atk_pct / 100) | round(2) }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;border-top:1px solid var(--bd);padding-top:4px">
+          <span>基础防御</span><span style="color:var(--text)">{{ combat_stats.base_def }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span>装备防御</span><span style="color:var(--text)">+{{ combat_stats.equip_def }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span>防御加成%</span><span style="color:var(--jade)">×{{ (1 + combat_stats.def_pct / 100) | round(2) }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;border-top:1px solid var(--bd);padding-top:4px">
+          <span>暴击率</span><span style="color:var(--red)">{{ combat_stats.crit_rate }}%</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span>暴击伤害</span><span style="color:var(--red)">×{{ combat_stats.crit_dmg }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span>闪避率</span><span style="color:var(--jade)">{{ combat_stats.dodge_rate }}%</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span>吸血</span><span style="color:var(--green)">{{ combat_stats.lifesteal }}%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 背包 -->
+    {% if inv %}
+    <div class="card">
+      <div class="card-h">背包</div>
+      {% for it in inv %}
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:5px 0;
+           {% if not loop.last %}border-bottom:1px solid var(--bd){% endif %}">
+        <span>{{ it.name }}</span>
+        <span style="color:var(--muted)">×{{ it.quantity }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- 管理操作 -->
+  <div>
+    <div class="card">
+      <div class="card-h" style="color:var(--red)">寿元典当记录</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">累计典当：{{ total_years_pawned }} 年</div>
+      <form method="post" style="display:flex;gap:6px">
+        <input type="hidden" name="action" value="add_life_sold">
+        <input name="years" type="number" value="0" placeholder="增减年数（负数可减）"
+          style="flex:1;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+        <button type="submit" class="btn btn-red">修正</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-h" style="color:var(--gold2)">灵石</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">当前：{{ char.spirit_stones }}</div>
+      <form method="post" style="display:flex;gap:6px;margin-bottom:6px">
+        <input type="hidden" name="action" value="stones">
+        <input name="amount" type="number" value="100"
+          style="flex:1;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+        <button type="submit" class="btn btn-gold">增减</button>
+      </form>
+      <form method="post" style="display:flex;gap:6px" onsubmit="return confirm('直接将灵石设为该值？')">
+        <input type="hidden" name="action" value="set_stones">
+        <input name="value" type="number" value="{{ char.spirit_stones }}"
+          style="flex:1;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+        <button type="submit" class="btn" style="background:var(--gold);color:#fff">直接设定</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-h" style="color:var(--muted)">灵符</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">当前：{{ char.lingfu }}</div>
+      <form method="post" style="display:flex;gap:6px" onsubmit="return confirm('直接将灵符设为该值？')">
+        <input type="hidden" name="action" value="set_lingfu">
+        <input name="value" type="number" value="{{ char.lingfu or 0 }}"
+          style="flex:1;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+        <button type="submit" class="btn">直接设定</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-h" style="color:var(--jade)">修为</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">当前：{{ char.exp }}</div>
+      <form method="post" style="display:flex;gap:6px;margin-bottom:6px">
+        <input type="hidden" name="action" value="exp">
+        <input name="amount" type="number" value="1000"
+          style="flex:1;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+        <button type="submit" class="btn btn-jade">增减</button>
+      </form>
+      <form method="post" style="display:flex;gap:6px" onsubmit="return confirm('直接将修为设为该值？')">
+        <input type="hidden" name="action" value="set_exp">
+        <input name="value" type="number" value="{{ char.exp }}"
+          style="flex:1;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+        <button type="submit" class="btn" style="background:var(--jade);color:#fff">直接设定</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-h">赠予物品</div>
+      <form method="post" style="display:flex;flex-direction:column;gap:8px">
+        <input type="hidden" name="action" value="item">
+        <select name="item_id"
+          style="background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                 border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+          {% set type_labels = {
+            'weapon':'⚔ 飞剑','artifact':'🛡 法宝','destiny':'🔮 本命法宝',
+            'pill':'💊 丹药','material':'🌿 材料','cauldron':'⚗ 丹炉',
+            'forge':'🔨 炼器炉','brush':'✍ 毛笔','beast_token':'🐲 御灵令',
+            'heqing_token':'🌸 合欢令','sword_token':'⚔ 飞剑令',
+            'talisman':'📜 符箓','gift':'🎁 礼物','other':'📦 其他'} %}
+          {% set ns = namespace(cur_type=None) %}
+          {# 大比奖池单独一组 #}
+          {% if tournament_prizes %}
+          <optgroup label="🏆 宗门大比奖池">
+            {% for it in tournament_prizes %}
+            <option value="{{ it.id }}">{{ it.name }}</option>
+            {% endfor %}
+          </optgroup>
+          {% endif %}
+          {% for it in all_items %}
+            {% if it.type != ns.cur_type %}
+              {% if ns.cur_type is not none %}</optgroup>{% endif %}
+              <optgroup label="{{ type_labels.get(it.type, it.type) }}">
+              {% set ns.cur_type = it.type %}
+            {% endif %}
+            <option value="{{ it.id }}">{{ it.name }}</option>
+          {% endfor %}
+          {% if ns.cur_type is not none %}</optgroup>{% endif %}
+        </select>
+        <div style="display:flex;gap:8px">
+          <input name="qty" type="number" value="1" min="1"
+            style="width:70px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                   border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+          <button type="submit" class="btn btn-ghost" style="flex:1">赠予</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-h">赠予洞府家具</div>
+      <form method="post" style="display:flex;flex-direction:column;gap:8px">
+        <input type="hidden" name="action" value="grant_furniture">
+        <select name="furniture_key"
+          style="background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                 border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+          {% for f in FURNITURE_POOL %}
+          <option value="{{ f.key }}" {% if f.key in owned_furniture_keys %}disabled{% endif %}>
+            {{ f.name }}（{{ f.bonus_desc }}）{% if f.key in owned_furniture_keys %} · 已拥有{% endif %}
+          </option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-ghost">赠予</button>
+      </form>
+    </div>
+
+    <div class="card" style="border-color:var(--red)">
+      <div class="card-h" style="color:var(--red)">扣除物品</div>
+      {% if inv %}
+      <form method="post" style="display:flex;flex-direction:column;gap:8px">
+        <input type="hidden" name="action" value="remove_item">
+        <select name="item_id"
+          style="background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                 border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+          {% for it in inv %}
+          <option value="{{ it.item_id }}">{{ it.name }} （持有×{{ it.quantity }}）</option>
+          {% endfor %}
+        </select>
+        <div style="display:flex;gap:8px">
+          <input name="qty" type="number" value="1" min="1"
+            style="width:70px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                   border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+          <button type="submit" class="btn btn-red" style="flex:1">扣除</button>
+        </div>
+        <div style="font-size:11px;color:var(--muted)">数量超过持有量时会清空该物品。</div>
+      </form>
+      {% else %}
+      <div style="font-size:13px;color:var(--muted)">背包为空</div>
+      {% endif %}
+    </div>
+
+    <div class="card" style="border-color:var(--red)">
+      <div class="card-h" style="color:var(--red)">移除灵宠</div>
+      {% if char_pets %}
+      <div style="display:flex;flex-direction:column;gap:6px">
+        {% for pet in char_pets %}
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;
+             {% if not loop.last %}padding-bottom:6px;border-bottom:1px solid var(--bd){% endif %}">
+          <div>
+            <span style="color:var(--{% if pet.rarity == 'legendary' %}gold{% elif pet.rarity == 'epic' %}purple{% elif pet.rarity == 'rare' %}jade{% else %}muted{% endif %})">
+              {{ pet.type_name }}</span>{% if pet.nickname %} <span style="color:var(--muted)">「{{ pet.nickname }}」</span>{% endif %}
+            <span style="color:var(--muted);font-size:11px"> Lv.{{ pet.level }}</span>
+            {% if pet.is_slot1 %}<span style="color:var(--jade);font-size:11px"> [上阵1]</span>{% endif %}
+            {% if pet.is_slot2 %}<span style="color:var(--purple);font-size:11px"> [上阵2]</span>{% endif %}
+          </div>
+          <form method="post" onsubmit="return confirm('确认移除灵宠【{{ pet.type_name }}】？')">
+            <input type="hidden" name="action" value="remove_pet">
+            <input type="hidden" name="pet_id" value="{{ pet.id }}">
+            <button type="submit" class="btn btn-red btn-sm">移除</button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div style="font-size:13px;color:var(--muted)">该玩家没有灵宠</div>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <div class="card-h">本命武器修改器</div>
+      {% if char_dws %}
+      <div style="display:flex;flex-direction:column;gap:10px">
+        {% for dw in char_dws %}
+        <details style="border:1px solid var(--bd);border-radius:8px;padding:8px 10px">
+          <summary style="cursor:pointer;font-size:13px">
+            {{ dw.custom_name or dw.weapon_type }}（{{ dw.weapon_type }}）
+            {% if dw.is_claimed %}<span style="color:var(--gold);font-size:11px"> 已认主 · 强化+{{ dw.enhance_level }}</span>
+            {% else %}<span style="color:var(--muted);font-size:11px"> 未认主（背包中）</span>{% endif %}
+          </summary>
+          <form method="post" style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+            <input type="hidden" name="action" value="set_destiny_weapon">
+            <input type="hidden" name="dw_id" value="{{ dw.id }}">
+            <div style="display:flex;gap:8px;align-items:center;font-size:12px">
+              <label style="color:var(--muted)">基础攻击</label>
+              <input name="base_attack" type="number" value="{{ dw.base_attack }}"
+                style="width:80px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:6px;padding:4px 6px">
+              <label style="color:var(--muted)">强化等级</label>
+              <input name="enhance_level" type="number" value="{{ dw.enhance_level }}"
+                style="width:70px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:6px;padding:4px 6px">
+            </div>
+            <div style="font-size:12px;color:var(--muted)">认主词条（claim_buffs_json，键：atk_pct/crit_rate/crit_dmg/dodge_rate/lifesteal，值为百分比数字）</div>
+            <textarea name="claim_buffs_json" rows="2"
+              style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:6px;padding:6px;font-family:monospace;font-size:12px">{{ dw.claim_buffs_json or '{}' }}</textarea>
+            <div style="font-size:12px;color:var(--muted)">强化词条（enhance_json，键：atk_pct/def_pct/lifesteal，值为百分比数字，现行规则每级固定+10%）</div>
+            <textarea name="enhance_json" rows="2"
+              style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:6px;padding:6px;font-family:monospace;font-size:12px">{{ dw.enhance_json or '{}' }}</textarea>
+            <button type="submit" class="btn btn-gold btn-sm" style="align-self:flex-start"
+              onclick="return confirm('确认覆盖该本命武器的属性数据？')">保存</button>
+          </form>
+        </details>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div style="font-size:13px;color:var(--muted)">该玩家没有本命武器</div>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <div class="card-h">改名</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">当前：{{ char.name }}</div>
+      <form method="post" style="display:flex;gap:6px">
+        <input type="hidden" name="action" value="rename">
+        <input name="new_name" type="text" maxlength="12" placeholder="新道号（最多12字）"
+          style="flex:1;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                 border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+        <button type="submit" class="btn btn-sm btn-jade">改名</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-h" style="color:var(--jade)">专修经验</div>
+      <form method="post" style="display:flex;flex-direction:column;gap:8px">
+        <input type="hidden" name="action" value="craft_exp">
+        <select name="path"
+          style="background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                 border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+          <option value="alchemy">丹修经验（alchemy_exp）</option>
+          <option value="forge">器修经验（forge_exp）</option>
+          <option value="fulu">符修经验（fulu_exp）</option>
+          <option value="heqing">合欢修经验（heqing_exp）</option>
+          <option value="sword">剑修经验（sword_exp）</option>
+          <option value="beast">御灵修经验（beast_exp）</option>
+        </select>
+        <div style="display:flex;gap:6px">
+          <input name="amount" type="number" value="500" placeholder="正数加/负数减"
+            style="flex:1;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                   border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+          <button type="submit" class="btn btn-jade btn-sm">设定</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-h" style="color:var(--purple)">调整境界</div>
+      <form method="post" style="display:flex;flex-direction:column;gap:8px">
+        <input type="hidden" name="action" value="realm">
+        <select name="realm_idx"
+          style="background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                 border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+          {% for r in REALMS %}
+          <option value="{{ loop.index0 }}" {% if loop.index0 == char.realm_idx %}selected{% endif %}>{{ r.name }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-red btn-sm">设置境界（会重置修为至境界起点）</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-h" style="color:var(--jade)">调整灵根</div>
+      <form method="post" style="display:flex;flex-direction:column;gap:8px" id="spirit-root-form">
+        <input type="hidden" name="action" value="set_spirit_root">
+        {% set cur_elems = char.elements | fromjson %}
+        {% set cur_spec  = (char.special_elements or '[]') | fromjson %}
+        <div>
+          <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">灵根类型</label>
+          <select name="spirit_root" id="spirit-root-select"
+            style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                   border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+            {% for root in SPIRIT_ROOTS %}
+            <option value="{{ root }}" {% if root == char.spirit_root %}selected{% endif %}>{{ root }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:6px">
+            <label style="font-size:11px;color:var(--muted)">五行（不勾选则随机）</label>
+            <span id="elem-hint" style="font-size:11px;color:var(--gold)"></span>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:6px;line-height:1.6">
+            相生：木→火→土→金→水→木 &nbsp;|&nbsp; 相克：木克土·土克水·水克火·火克金·金克木
+          </div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap" id="elem-checks">
+            {% for elem in ['金','木','水','火','土'] %}
+            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer">
+              <input type="checkbox" name="elements" value="{{ elem }}" class="elem-cb"
+                {% if elem in cur_elems %}checked{% endif %}>
+              {{ elem }}
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:6px">特殊变体（不勾选则清除）</label>
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            {% for spec_e, base_e in [('冰','水'),('雷','金'),('炎','火'),('风','木'),('岩','土')] %}
+            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer">
+              <input type="checkbox" name="special_elements" value="{{ spec_e }}"
+                {% if spec_e in cur_spec %}checked{% endif %}>
+              {{ spec_e }}（{{ base_e }}）
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+        <button type="submit" class="btn btn-jade btn-sm">设置灵根</button>
+      </form>
+      <script>
+      (function(){
+        var ROOT_COUNT = {"天灵根":1,"变异灵根":1,"双灵根":2,"三灵根":3,"四灵根":4,"五灵根":5};
+        var sel = document.getElementById('spirit-root-select');
+        var hint = document.getElementById('elem-hint');
+        var cbs = Array.from(document.querySelectorAll('.elem-cb'));
+
+        function updateHint(){
+          var n = ROOT_COUNT[sel.value] || 1;
+          hint.textContent = '（' + sel.value + '应选 ' + n + ' 个，多选自动截断）';
+        }
+        function enforceLimit(){
+          var n = ROOT_COUNT[sel.value] || 1;
+          var checked = cbs.filter(function(c){return c.checked;});
+          if(checked.length > n){
+            // 取消最后勾上的多余项
+            checked.slice(n).forEach(function(c){c.checked=false;});
+          }
+        }
+        sel.addEventListener('change', function(){ updateHint(); enforceLimit(); });
+        cbs.forEach(function(cb){
+          cb.addEventListener('change', function(){
+            if(cb.checked) enforceLimit();
+          });
+        });
+        updateHint();
+      })();
+      </script>
+    </div>
+
+    <div class="card" style="border-color:{% if char.hide_ranking %}var(--red){% else %}var(--bd){% endif %}">
+      <div class="card-h">排行榜可见性</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:10px">
+        当前：{% if char.hide_ranking %}
+          <span style="color:var(--red);font-weight:600">已隐藏（不出现在排行榜）</span>
+        {% else %}
+          <span style="color:var(--green);font-weight:600">正常显示</span>
+        {% endif %}
+        <br><span style="font-size:11px">隐藏后玩家仍可在社交、切磋等功能中被发现。</span>
+      </div>
+      <form method="post">
+        <input type="hidden" name="action" value="toggle_hide_ranking">
+        <button type="submit" class="btn btn-sm {% if char.hide_ranking %}btn-jade{% else %}btn-ghost{% endif %}">
+          {% if char.hide_ranking %}恢复显示{% else %}从排行榜隐藏{% endif %}
+        </button>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-h" style="color:var(--red)">补满气血</div>
+      <form method="post">
+        <input type="hidden" name="action" value="heal">
+        <button type="submit" class="btn btn-red btn-sm">补满气血</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-h" style="color:var(--gold2)">洞府手动补结算</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">
+        当前模式：{% if char.cave_mode == 'cultivate' %}⚡ 自动修炼
+          {% elif char.cave_mode == 'temper' %}💪 自动炼体
+          {% else %}⏸ 未开启{% endif %}
+        <br>立即按现有逻辑结算一次该角色洞府积累的灵力（与每小时后台自动结算调用同一函数）。
+      </div>
+      <form method="post">
+        <input type="hidden" name="action" value="cave_force_settle">
+        <button type="submit" class="btn btn-sm" style="background:var(--gold2);color:#000"
+          {% if not char.cave_mode or char.cave_mode == 'off' %}disabled title="该角色未开启自动修炼/炼体"{% endif %}>
+          🔄 立即补一次
+        </button>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-h" style="color:var(--jade)">设定灵力</div>
+      <form method="post" style="display:flex;gap:6px">
+        <input type="hidden" name="action" value="set_energy">
+        <input name="value" type="number" value="0" min="0" max="{{ MAX_ENERGY }}"
+          style="flex:1;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+        <button type="submit" class="btn btn-jade btn-sm">设定</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-h">⚔ 装备设定</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">直接设定角色装备槽（需背包中有对应物品）</div>
+      {% for slot, label, key in [('equipped_weapon','飞剑','weapon'),('equipped_artifact','法宝','artifact'),('destiny_id','本命法宝','destiny')] %}
+      <form method="post" style="margin-bottom:8px;display:flex;gap:6px;align-items:center">
+        <input type="hidden" name="action" value="set_equip">
+        <input type="hidden" name="slot" value="{{ slot }}">
+        <span style="font-size:12px;color:var(--muted);width:56px;flex-shrink:0">{{ label }}</span>
+        <select name="item_id" style="flex:1;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:5px 8px;font-size:12px;font-family:inherit">
+          <option value="">— 卸下 —</option>
+          {% for it in equip_items[key] %}
+          <option value="{{ it.id }}" {% if char[slot] == it.id %}selected{% endif %}>{{ it.name }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-sm" style="flex-shrink:0">设定</button>
+      </form>
+      {% endfor %}
+    </div>
+
+    {% if char_sect %}
+    <div class="card">
+      <div class="card-h">🏯 宗门职位</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">
+        当前：{{ char_sect.name }} ·
+        <span style="color:var(--jade)">
+          {% if char_sect.rank == 'leader' %}宗主
+          {% elif char_sect.rank == 'elder' %}长老
+          {% else %}弟子{% endif %}
+        </span>
+      </div>
+      <form method="post" style="display:flex;flex-direction:column;gap:6px">
+        <input type="hidden" name="action" value="set_sect_rank">
+        <div style="display:flex;gap:6px">
+          <select name="rank" style="flex:1;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:5px 8px;font-size:12px;font-family:inherit">
+            <option value="member" {% if char_sect.rank == 'member' %}selected{% endif %}>弟子</option>
+            <option value="elder"  {% if char_sect.rank == 'elder'  %}selected{% endif %}>长老</option>
+            <option value="leader" {% if char_sect.rank == 'leader' %}selected{% endif %}>宗主</option>
+          </select>
+          <select name="cult_rank" style="flex:1;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:5px 8px;font-size:12px;font-family:inherit">
+            <option value="0">外门弟子</option>
+            <option value="1">内门弟子</option>
+            <option value="2">核心弟子</option>
+            <option value="3">长老（内职）</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn-sm btn-jade">设定职位</button>
+      </form>
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <div class="card-h">💊 丹药服用次数</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.7">
+        阈值：100次心魔×3 / 300次×6 / 500次×10（结丹以下药效×0.7）<br>
+        设定次数后系统自动按新值计算，可补录服用历史。
+      </div>
+      {% if pill_usage_rows %}
+      <div style="margin-bottom:10px">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px">当前记录</div>
+        {% for r in pill_usage_rows %}
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;
+             {% if not loop.last %}border-bottom:1px solid var(--bd){% endif %}">
+          <span>{{ r.name }}</span>
+          <span style="color:{% if r.count >= 500 %}var(--red){% elif r.count >= 300 %}var(--gold){% elif r.count >= 100 %}var(--muted){% else %}var(--text){% endif %};font-weight:600">
+            {{ r.count }} 次{% if r.count >= 500 %} ⚠×10{% elif r.count >= 300 %} ⚠×6{% elif r.count >= 100 %} ⚠×3{% endif %}
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      <form method="post" style="display:flex;flex-direction:column;gap:8px">
+        <input type="hidden" name="action" value="pill_usage">
+        <select name="pill_item_id"
+          style="background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                 border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+          {% for p in all_pills %}
+          <option value="{{ p.id }}">{{ p.name }}</option>
+          {% endfor %}
+        </select>
+        <div style="display:flex;gap:6px">
+          <input name="pill_count" type="number" min="0" value="100" placeholder="设定次数"
+            style="flex:1;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                   border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+          <button type="submit" class="btn btn-sm">设定</button>
+        </div>
+      </form>
+    </div>
+
+    {% set has_sword = inv | selectattr('name', 'equalto', '飞剑令') | list %}
+    {% if has_sword %}
+    <div class="card" style="border-color:var(--gold);background:rgba(192,160,96,.04)">
+      <div class="card-h" style="color:var(--gold)">⚔ 移除剑修路线</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.7">
+        该角色背包持有飞剑令，当前为剑修。<br>
+        点击后将移除背包中的飞剑令、清除剑修状态，并按原价退还灵石。
+      </div>
+      <form method="post" onsubmit="return confirm('确认移除【{{ char.name }}】的剑修路线并退款？')">
+        <input type="hidden" name="action" value="remove_sword_path">
+        <button type="submit" class="btn btn-gold btn-sm" style="width:100%">移除剑修 · 退还飞剑令灵石</button>
+      </form>
+    </div>
+    {% endif %}
+
+    <div class="card" style="border-color:var(--red);background:rgba(200,50,50,.04)">
+      <div class="card-h" style="color:var(--red)">⚠ 令其陨落</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.7">
+        将角色状态设为已陨落，玩家下次登录将进入纪念页面，可选择转世。<br>
+        当前状态：<span style="font-weight:600;color:{% if char.status == 'deceased' %}var(--red){% else %}var(--jade){% endif %}">
+          {% if char.status == 'deceased' %}已陨落{% else %}在世{% endif %}
+        </span>
+      </div>
+      {% if char.status != 'deceased' %}
+      <form method="post" onsubmit="return confirm('确认令【{{ char.name }}】陨落？此操作将随机生成一个陨落原因，玩家将被引导至转世页面。')">
+        <input type="hidden" name="action" value="fallen">
+        <button type="submit" class="btn btn-red btn-sm" style="width:100%">令其陨落</button>
+      </form>
+      {% else %}
+      <div style="font-size:12px;color:var(--red)">该角色已处于陨落状态。</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- 异世之门 -->
+<div class="card">
+  <div class="card-h">⚡ 异世之门</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:8px">
+    当前攻击次数：<span style="font-weight:600;color:{% if gate_atk_charges > 0 %}var(--jade){% else %}var(--red){% endif %}">{{ gate_atk_charges }}</span>
+    {% if gate_atk_charges <= 0 and gate_atk_cd_left > 0 %}
+    （距下次积攒还需 {{ (gate_atk_cd_left // 60) }} 分钟）
+    {% endif %}
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <form method="post" onsubmit="return confirm('确认立即刷新【{{ char.name }}】的战斗冷却，使其可以马上进行攻击？')">
+      <input type="hidden" name="action" value="refresh_gate_cd">
+      <button type="submit" class="btn btn-sm" style="background:#0a2a1a;color:#88ffcc;border:1px solid #206040">立即刷新战斗冷却</button>
+    </form>
+    <form method="post" onsubmit="return confirm('确认重置【{{ char.name }}】的今日鬼魔池？将清空今日战绩，重新生成新鬼魔。')">
+      <input type="hidden" name="action" value="reset_gate_pool">
+      <button type="submit" class="btn btn-sm" style="background:#1a0a3a;color:#cc99ff;border:1px solid #6a3a9a">重置今日鬼魔池</button>
+    </form>
+    <form method="post" onsubmit="return confirm('确认重置【{{ char.name }}】的攻击次数？')">
+      <input type="hidden" name="action" value="reset_gate_charges">
+      <button type="submit" class="btn btn-sm" style="background:#0a1a2a;color:#88ccff;border:1px solid #204060">重置攻击次数（清零）</button>
+    </form>
+  </div>
+</div>
+
+<!-- 战斗场 -->
+<div class="card">
+  <div class="card-h">⚔ 战斗场</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:8px">
+    妖物池冷却：
+    {% if combat_pool_cd_left > 0 %}
+    <span style="font-weight:600;color:var(--red)">还需 {{ (combat_pool_cd_left // 3600) }} 时 {{ ((combat_pool_cd_left % 3600) // 60) }} 分</span>
+    {% else %}
+    <span style="font-weight:600;color:var(--jade)">已刷新，可立即进入</span>
+    {% endif %}
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <form method="post" onsubmit="return confirm('确认立即刷新【{{ char.name }}】的战斗场冷却，使其可以马上重新挑战妖物？')">
+      <input type="hidden" name="action" value="refresh_combat_pool">
+      <button type="submit" class="btn btn-sm" style="background:#0a2a1a;color:#88ffcc;border:1px solid #206040">立即刷新战斗冷却</button>
+    </form>
+  </div>
+</div>
+
+<!-- 近期日志 -->
+{% if plogs %}
+<div class="card">
+  <div class="card-h">近期日志（最近20条）</div>
+  {% for l in plogs %}
+  <div style="padding:7px 0;font-size:12px;color:var(--muted);
+       {% if not loop.last %}border-bottom:1px solid var(--bd){% endif %}">
+    <span style="color:var(--muted);font-size:11px">{{ l.created_at | format_ts }}</span>
+    · {{ l.content }}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+</div>
+{% endblock %}

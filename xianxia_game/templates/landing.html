@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}{{ cfg.get('site_name','灵墟界') }} — 修仙问道{% endblock %}
+{% block body %}
+<div style="min-height:calc(100vh - 52px);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center">
+
+  <div style="margin-bottom:16px;font-size:48px;filter:drop-shadow(0 0 30px rgba(201,168,76,.4))">☯</div>
+  <h1 style="font-size:36px;font-weight:700;color:var(--gold);letter-spacing:4px;margin-bottom:10px">
+    {{ cfg.get('site_name','灵墟界') }}
+  </h1>
+  <p style="color:var(--muted);font-size:15px;margin-bottom:40px;letter-spacing:1px">
+    {{ cfg.get('site_desc','踏上修仙之路，问鼎天道之巅。') }}
+  </p>
+
+  <div style="display:flex;gap:14px;margin-bottom:60px;flex-wrap:wrap;justify-content:center">
+    <a href="{{ url_for('register') }}" class="btn btn-gold" style="font-size:15px;padding:12px 32px;letter-spacing:2px">
+      踏入修炼之门
+    </a>
+    <a href="{{ url_for('login') }}" class="btn btn-ghost" style="font-size:15px;padding:12px 32px">
+      已有道号，登录
+    </a>
+  </div>
+
+  <!-- 世界简介 -->
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;max-width:700px;width:100%;margin-bottom:50px">
+    <div class="card" style="text-align:center">
+      <div style="font-size:28px;margin-bottom:8px">⚡</div>
+      <div style="color:var(--gold2);font-weight:600;margin-bottom:6px">修炼境界</div>
+      <div style="color:var(--muted);font-size:12px">从炼气到真仙，三十八重境界等你突破</div>
+    </div>
+    <div class="card" style="text-align:center">
+      <div style="font-size:28px;margin-bottom:8px">🗺</div>
+      <div style="color:var(--gold2);font-weight:600;margin-bottom:6px">秘境探索</div>
+      <div style="color:var(--muted);font-size:12px">踏入秘境，寻觅天材地宝与奇遇</div>
+    </div>
+    <div class="card" style="text-align:center">
+      <div style="font-size:28px;margin-bottom:8px">⚔</div>
+      <div style="color:var(--gold2);font-weight:600;margin-bottom:6px">斩妖除魔</div>
+      <div style="color:var(--muted);font-size:12px">挑战妖兽，磨砺道心，夺取灵石丹药</div>
+    </div>
+  </div>
+
+  {% if top %}
+  <div style="max-width:500px;width:100%">
+    <div class="divider">当世强者</div>
+    <div class="card">
+      {% for p in top %}
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;
+           {% if not loop.last %}border-bottom:1px solid var(--bd){% endif %}">
+        <span style="color:var(--gold);font-size:13px;width:24px">{{ loop.index }}</span>
+        <span style="flex:1;font-weight:500">{{ p.name }}</span>
+        <span class="root-{{ p.spirit_root }}" style="font-size:12px">{{ p.spirit_root }}</span>
+        <span style="color:var(--jade);font-size:12px;margin-left:12px">{{ REALMS[p.realm_idx].name }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

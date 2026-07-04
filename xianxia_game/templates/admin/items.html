@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}物品管理 — 后台{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🧪 物品管理 <small><a href="{{ url_for('admin') }}" style="font-size:13px">← 后台</a></small></div>
+
+<!-- 添加物品 -->
+<div class="card" style="margin-bottom:20px">
+  <div class="card-h">添加新物品</div>
+  <form method="post" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <input type="hidden" name="action" value="add">
+    <div>
+      <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:4px">名称 *</label>
+      <input name="name" required placeholder="物品名称"
+        style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+               border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+    </div>
+    <div>
+      <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:4px">类型</label>
+      <select name="type"
+        style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+               border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+        <option value="pill">丹药 pill</option>
+        <option value="technique_scroll">功法卷轴 technique_scroll</option>
+        <option value="weapon">武器 weapon</option>
+        <option value="misc">其他 misc</option>
+      </select>
+    </div>
+    <div style="grid-column:1/-1">
+      <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:4px">描述</label>
+      <input name="description" placeholder="物品描述"
+        style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+               border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+    </div>
+    <div>
+      <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:4px">
+        效果 JSON
+        <span style="color:var(--muted);font-weight:400">（如 {"exp":300,"hp":100,"energy":50}）</span>
+      </label>
+      <input name="effect_json" value="{}" placeholder='{"exp":300}'
+        style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+               border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px;font-family:monospace">
+    </div>
+    <div>
+      <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:4px">稀有度</label>
+      <select name="rarity"
+        style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+               border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+        <option value="common">普通</option>
+        <option value="uncommon">精良</option>
+        <option value="rare">稀有</option>
+        <option value="epic">史诗</option>
+        <option value="legendary">传说</option>
+      </select>
+    </div>
+    <div>
+      <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:4px">丹市价格（0=不上架）</label>
+      <input name="market_price" type="number" value="0" min="0"
+        style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+               border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+    </div>
+    <div style="grid-column:1/-1">
+      <button type="submit" class="btn btn-jade">添加物品</button>
+    </div>
+  </form>
+</div>
+
+<!-- 物品列表 -->
+<div class="card">
+  <div class="card-h">全部物品（{{ items|length }}）</div>
+  <table class="tbl">
+    <thead>
+      <tr>
+        <th>ID</th><th>名称</th><th>类型</th><th>稀有度</th><th>效果</th><th>丹市价格</th><th>状态</th><th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for it in items %}
+      <tr style="{% if not it.is_active %}opacity:.5{% endif %}">
+        <td style="color:var(--muted);font-size:11px">{{ it.id }}</td>
+        <td style="font-weight:500">{{ it.name }}</td>
+        <td style="color:var(--muted);font-size:12px">{{ it.type }}</td>
+        <td><span class="tag tag-{{ it.rarity }}">{{ it.rarity | rarity_label }}</span></td>
+        <td style="font-size:11px;color:var(--muted);font-family:monospace">{{ it.effect_json }}</td>
+        <td>
+          <form method="post" style="display:flex;gap:6px;align-items:center">
+            <input type="hidden" name="action" value="price">
+            <input type="hidden" name="item_id" value="{{ it.id }}">
+            <input name="price" type="number" value="{{ it.market_price }}" min="0"
+              style="width:70px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                     border-radius:6px;padding:3px 6px;font-size:12px;font-family:inherit">
+            <button type="submit" class="btn btn-ghost btn-sm">改</button>
+          </form>
+        </td>
+        <td>
+          {% if it.is_active %}
+          <span style="color:var(--green);font-size:12px">启用</span>
+          {% else %}
+          <span style="color:var(--muted);font-size:12px">禁用</span>
+          {% endif %}
+        </td>
+        <td>
+          <form method="post">
+            <input type="hidden" name="action" value="toggle">
+            <input type="hidden" name="item_id" value="{{ it.id }}">
+            <button type="submit" class="btn btn-ghost btn-sm">
+              {{ '禁用' if it.is_active else '启用' }}
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+</div>
+<style>input:focus,select:focus{outline:none;border-color:var(--jade) !important}</style>
+{% endblock %}

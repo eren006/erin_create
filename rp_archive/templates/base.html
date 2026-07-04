@@ -37,9 +37,32 @@ a:hover { color: var(--accent2); }
 }
 .topbar::-webkit-scrollbar { display: none; }
 .topbar .logo { font-size: 15px; font-weight: 600; color: var(--accent2); white-space: nowrap; flex-shrink: 0; }
-.topbar .nav { display: flex; gap: 4px; flex-shrink: 0; }
+.topbar .nav { display: flex; gap: 2px; flex-shrink: 0; }
 .topbar .nav a { color: var(--muted); font-size: 13px; padding: 4px 8px; border-radius: 6px; white-space: nowrap; }
 .topbar .nav a:hover { color: var(--text); background: var(--surface2); }
+
+/* 下拉菜单 */
+.nav-drop { position: relative; }
+.nav-drop-btn {
+  color: var(--muted); font-size: 13px; padding: 4px 8px; border-radius: 6px;
+  white-space: nowrap; cursor: pointer; user-select: none;
+  display: flex; align-items: center; gap: 3px;
+}
+.nav-drop-btn:hover, .nav-drop-btn.active { color: var(--text); background: var(--surface2); }
+.nav-drop-btn::after { content: "▾"; font-size: 10px; opacity: .6; }
+.nav-drop-menu {
+  position: fixed;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 5px; min-width: 110px;
+  box-shadow: 0 4px 20px rgba(0,0,0,.5); z-index: 9999;
+  display: none; flex-direction: column;
+}
+.nav-drop-menu.open { display: flex; }
+.nav-drop-menu a {
+  color: var(--muted); font-size: 13px; padding: 6px 12px;
+  border-radius: 7px; white-space: nowrap;
+}
+.nav-drop-menu a:hover { color: var(--text); background: var(--surface2); }
 .search-form { display: flex; gap: 6px; flex-shrink: 0; }
 .search-form input {
   background: var(--surface2); border: 1px solid var(--border);
@@ -174,13 +197,25 @@ a:hover { color: var(--accent2); }
   <nav class="nav">
     <a href="{{ url_for('home') }}">场次</a>
     <a href="{{ url_for('interactions_index') }}">互动</a>
-    <a href="{{ url_for('admin_stats') }}">数据</a>
-    <a href="{{ url_for('admin_blacklist') }}">黑名单</a>
+    <div class="nav-drop">
+      <span class="nav-drop-btn">数据</span>
+      <div class="nav-drop-menu">
+        <a href="{{ url_for('admin_stats') }}">数据统计</a>
+        <a href="{{ url_for('admin_blacklist') }}">黑名单</a>
+      </div>
+    </div>
     <a href="{{ url_for('letters_view') }}">信件</a>
-    <a href="{{ url_for('admin_rpg') }}">RPG</a>
-    <a href="{{ url_for('admin_pools') }}">池子</a>
-    <a href="{{ url_for('admin_auctions') }}">拍卖</a>
-    <a href="{{ url_for('admin_gifts') }}">礼品</a>
+    <div class="nav-drop">
+      <span class="nav-drop-btn">道具</span>
+      <div class="nav-drop-menu">
+        <a href="{{ url_for('admin_rpg') }}">RPG</a>
+        <a href="{{ url_for('admin_pools') }}">池子</a>
+        <a href="{{ url_for('admin_shop') }}">商城</a>
+        <a href="{{ url_for('admin_auctions') }}">拍卖</a>
+        <a href="{{ url_for('admin_gifts') }}">礼品</a>
+        <a href="{{ url_for('admin_rewards') }}">结戏奖励</a>
+      </div>
+    </div>
     <a href="{{ url_for('admin') }}">后台</a>
   </nav>
   <form class="search-form" action="{{ url_for('search') }}" method="get">
@@ -220,6 +255,33 @@ function setTheme(t){
   document.querySelectorAll('.tp-item').forEach((el,i)=>el.classList.toggle('tp-active',_THEMES[i]===t));
 })();
 document.addEventListener('click',function(e){if(!document.getElementById('tp').contains(e.target))document.getElementById('tp-panel').classList.remove('open')});
+
+// 顶部下拉菜单
+(function(){
+  let activeMenu = null;
+  document.querySelectorAll('.nav-drop-btn').forEach(btn => {
+    const menu = btn.nextElementSibling;
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      const isOpen = menu.classList.contains('open');
+      closeAll();
+      if (!isOpen) {
+        const r = btn.getBoundingClientRect();
+        menu.style.top  = (r.bottom + 6) + 'px';
+        menu.style.left = r.left + 'px';
+        menu.classList.add('open');
+        btn.classList.add('active');
+        activeMenu = menu;
+      }
+    });
+  });
+  function closeAll() {
+    document.querySelectorAll('.nav-drop-menu.open').forEach(m => m.classList.remove('open'));
+    document.querySelectorAll('.nav-drop-btn.active').forEach(b => b.classList.remove('active'));
+    activeMenu = null;
+  }
+  document.addEventListener('click', closeAll);
+})();
 function copyText(text, btn, label) {
   const orig = btn ? btn.textContent : '';
   function done() {

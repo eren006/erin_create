@@ -1,0 +1,392 @@
+{% extends "base.html" %}
+{% block title %}异世之门 — 灵墟界{% endblock %}
+{% block head %}
+<style>
+.gate-page{max-width:720px;margin:0 auto;padding:24px 16px 60px;
+  background:#120a12;min-height:100vh;border-radius:0}
+
+.gate-hero{
+  text-align:center;padding:32px 20px 24px;
+  background:linear-gradient(160deg,#1a0d1a 0%,#1a0d12 60%,#0d0d1a 100%);
+  border-radius:16px;border:1px solid #5a2a5a;
+  color:#f0d0f0;margin-bottom:24px;position:relative;overflow:hidden
+}
+.gate-hero::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse at 50% 0%,rgba(140,40,140,.20) 0%,transparent 70%);
+  pointer-events:none
+}
+.gate-hero-title{font-size:26px;font-weight:700;letter-spacing:4px;
+  color:#e080e0;text-shadow:0 0 24px rgba(200,80,200,.5);margin-bottom:6px}
+.gate-hero-sub{font-size:13px;color:#8a5a8a;letter-spacing:1px}
+.gate-timer{
+  text-align:center;padding:12px;
+  background:rgba(90,20,90,.3);border:1px solid #5a2a5a;border-radius:10px;
+  color:#c090c0;font-size:14px;margin-bottom:20px
+}
+.gate-timer span{font-weight:700;color:#e080e0;font-size:16px}
+
+.poll-bar{height:8px;background:#2a1a2a;border-radius:4px;overflow:hidden;margin:6px 0}
+.poll-fill{height:100%;background:linear-gradient(90deg,#8040a0,#c060c0);border-radius:4px;transition:.4s}
+
+/* 污染条 */
+.pollution-wrap{
+  background:rgba(80,10,10,.4);border:1px solid #6a1a1a;border-radius:12px;
+  padding:14px 18px;margin-bottom:16px
+}
+.pollution-title{font-size:13px;color:#c07070;font-weight:600;margin-bottom:8px}
+.poll-bar-red .poll-fill{background:linear-gradient(90deg,#803030,#d04040)}
+.pollution-label{font-size:12px;color:#a06060;margin-top:4px}
+.demonic-badge{
+  display:inline-block;background:#5a0a0a;border:1px solid #a03030;
+  color:#ff8080;font-size:12px;padding:3px 10px;border-radius:20px;
+  font-weight:700;letter-spacing:1px;margin-left:8px
+}
+
+/* 玩家战力面板 */
+.fighter-panel{
+  background:rgba(20,10,35,.6);border:1px solid #3a2a5a;border-radius:12px;
+  padding:14px 18px;margin-bottom:16px
+}
+.fighter-title{font-size:12px;color:#8060a0;font-weight:600;margin-bottom:10px;letter-spacing:1px}
+.fighter-stats{display:flex;gap:8px;flex-wrap:wrap}
+.fstat{
+  background:rgba(40,20,60,.5);border:1px solid #3a2050;border-radius:8px;
+  padding:6px 12px;text-align:center;min-width:60px
+}
+.fstat-val{font-size:14px;font-weight:700;color:#d0a0f0}
+.fstat-lab{font-size:10px;color:#7a5a9a;margin-top:2px}
+
+/* 鬼魔卡片 */
+.ghost-list{display:flex;flex-direction:column;gap:12px;margin-bottom:24px}
+.ghost-card{
+  background:rgba(30,10,40,.6);border:1px solid #4a1a5a;border-radius:12px;
+  padding:16px;position:relative;overflow:hidden
+}
+.ghost-card.defeated{opacity:.5;border-color:#3a2a3a}
+.ghost-card::before{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(135deg,rgba(100,0,120,.1) 0%,transparent 60%);
+  pointer-events:none
+}
+.ghost-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.ghost-icon{font-size:28px;line-height:1}
+.ghost-name{font-size:16px;font-weight:700;color:#e090e0}
+.ghost-desc{font-size:12px;color:#9070a0;margin-top:2px}
+.ghost-defeated-tag{
+  position:absolute;top:12px;right:12px;
+  background:#1a3a1a;border:1px solid #3a8a3a;color:#60c060;
+  font-size:12px;padding:2px 8px;border-radius:10px;font-weight:600
+}
+
+.ghost-stats{display:flex;gap:16px;margin-bottom:10px;flex-wrap:wrap}
+.ghost-stat{font-size:12px;color:#9080b0}
+.ghost-stat span{color:#c0a0e0;font-weight:600}
+
+.hp-bar{height:6px;background:#2a1a3a;border-radius:3px;overflow:hidden;margin-bottom:12px}
+.hp-fill{height:100%;background:linear-gradient(90deg,#801030,#c04060);border-radius:3px}
+
+.ghost-drop{font-size:12px;color:#9a8060;margin-bottom:12px}
+.ghost-drop span{color:#d0a060;font-weight:600}
+
+.ghost-actions{display:flex;gap:8px;flex-wrap:wrap}
+.btn-attack{
+  padding:8px 18px;border:none;border-radius:8px;
+  background:linear-gradient(135deg,#6030a0,#9050d0);color:#fff;
+  font-size:13px;font-weight:600;cursor:pointer;transition:.2s;letter-spacing:.5px
+}
+.btn-attack:hover:not(:disabled){background:linear-gradient(135deg,#7040b0,#a060e0);transform:translateY(-1px)}
+.btn-attack:disabled{background:#3a2a4a;color:#6a5a7a;cursor:not-allowed}
+.btn-help{
+  padding:8px 16px;border:1px solid #5a4060;border-radius:8px;
+  background:rgba(50,20,60,.4);color:#b090d0;
+  font-size:13px;cursor:pointer;transition:.2s
+}
+.btn-help:hover:not(:disabled){background:rgba(80,30,90,.5);border-color:#8060a0}
+.btn-help:disabled{opacity:.4;cursor:not-allowed}
+
+.cd-hint{font-size:12px;color:#7a6a8a;margin-top:4px}
+
+/* 底部区域 */
+.gate-bottom{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px}
+.gate-link-card{
+  flex:1;min-width:140px;
+  background:rgba(30,10,40,.5);border:1px solid #4a2a5a;border-radius:12px;
+  padding:14px;text-decoration:none;color:#c090d0;
+  font-size:14px;font-weight:600;text-align:center;transition:.2s
+}
+.gate-link-card:hover{background:rgba(60,20,80,.6);border-color:#7a4a9a;color:#e0b0f0}
+.gate-link-card .glc-icon{font-size:24px;display:block;margin-bottom:6px}
+.gate-link-card .glc-sub{font-size:11px;color:#9070a0;font-weight:400;margin-top:3px;display:block}
+
+.atk-charge-panel{
+  background:rgba(30,10,50,.6);border:1px solid #6a3a8a;border-radius:12px;
+  padding:16px 20px;margin-bottom:16px
+}
+.acp-title{font-size:12px;color:#8060a0;font-weight:600;letter-spacing:1px;margin-bottom:10px}
+.acp-body{display:flex;flex-direction:column;gap:8px}
+.acp-charges{line-height:1}
+.acp-num{font-size:36px;font-weight:700;color:#d0a0f0}
+.acp-num.acp-zero{color:#6a4a7a}
+.acp-max{font-size:16px;color:#7a5a9a}
+.acp-dots{display:flex;flex-wrap:wrap;gap:4px;margin:2px 0}
+.acp-dot{display:inline-block;width:10px;height:10px;border-radius:2px;background:#2a1a3a}
+.acp-dot-on{background:linear-gradient(135deg,#7040b0,#b060f0)}
+.acp-hint{font-size:12px;color:#9070b0;line-height:1.6}
+.acp-hint b{color:#c090e0}
+
+.info-box{
+  background:rgba(20,10,30,.5);border:1px dashed #4a2a5a;border-radius:10px;
+  padding:12px 16px;font-size:12px;color:#9080a0;line-height:1.8;margin-bottom:16px
+}
+.info-box b{color:#d0a0e0}
+</style>
+{% endblock %}
+{% block body %}
+<div class="gate-page">
+
+<!-- Hero -->
+<div class="gate-hero">
+  <div class="gate-hero-title">⚡ 异世之门</div>
+  <div class="gate-hero-sub">灵脉异动 · 鬼魔入侵 · 抵御与参悟</div>
+</div>
+
+<!-- 倒计时 -->
+{% if ev %}
+<div class="gate-timer">
+  活动剩余：<span id="gate-countdown">计算中…</span>
+  <script>
+    (function(){
+      var end = {{ ev.ends_at }};
+      function tick(){
+        var s=Math.max(0,end-Math.floor(Date.now()/1000));
+        var h=Math.floor(s/3600),m=Math.floor(s%3600/60),sec=s%60;
+        document.getElementById('gate-countdown').textContent=
+          h+'小时'+m+'分'+sec+'秒';
+        if(s>0)setTimeout(tick,1000);else document.getElementById('gate-countdown').textContent='活动已结束';
+      }tick();
+    })();
+  </script>
+</div>
+{% endif %}
+
+<!-- 污染值 & 魔修状态 -->
+<div class="pollution-wrap">
+  <div class="pollution-title">
+    ☠ 污染值
+    {% if char.is_demonic %}<span class="demonic-badge">已堕魔道</span>{% endif %}
+  </div>
+  <div class="poll-bar poll-bar-red">
+    <div class="poll-fill" style="width:{{ ((char.pollution or 0) / GATE_POLLUTION_CAP * 100)|int }}%"></div>
+  </div>
+  <div class="pollution-label">
+    {{ char.pollution or 0 }} / {{ GATE_POLLUTION_CAP }}
+    {% if char.is_demonic %}
+    — 已堕魔道：灵力回复速度×3，年龄增长速度×5
+    {% else %}
+    — 达到 {{ GATE_POLLUTION_CAP }} 将魂飞魄散，堕入魔道
+    {% endif %}
+  </div>
+</div>
+
+<!-- 玩家战力面板 -->
+<div class="fighter-panel">
+  <div class="fighter-title">⚔ 你的实际战斗属性（含所有加成）</div>
+  <div class="fighter-stats">
+    <div class="fstat"><div class="fstat-val">{{ fighter.atk }}</div><div class="fstat-lab">攻击</div></div>
+    <div class="fstat"><div class="fstat-val">{{ fighter.def }}</div><div class="fstat-lab">防御</div></div>
+    <div class="fstat"><div class="fstat-val">{{ fighter.hp }}</div><div class="fstat-lab">气血上限</div></div>
+    <div class="fstat"><div class="fstat-val">{{ (fighter.crit_rate * 100)|round(1) }}%</div><div class="fstat-lab">暴击率</div></div>
+    <div class="fstat"><div class="fstat-val">{{ (fighter.dodge_rate * 100)|round(1) }}%</div><div class="fstat-lab">闪避率</div></div>
+    {% if fighter.lifesteal > 0 %}
+    <div class="fstat"><div class="fstat-val">{{ fighter.lifesteal|round(1) }}%</div><div class="fstat-lab">吸血</div></div>
+    {% endif %}
+    {% if fighter.sword_pen > 0 %}
+    <div class="fstat"><div class="fstat-val">{{ fighter.sword_pen|round(1) }}%</div><div class="fstat-lab">破甲</div></div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- 攻击次数面板 -->
+<div class="atk-charge-panel">
+  <div class="acp-title">⚔ 攻击机会</div>
+  <div class="acp-body">
+    <div class="acp-charges">
+      <span class="acp-num {% if atk_charges == 0 %}acp-zero{% endif %}">{{ atk_charges }}</span>
+      <span class="acp-max"> / {{ GATE_ATK_MAX_CHARGES }}</span>
+    </div>
+    <div class="acp-dots">
+      {% for i in range(GATE_ATK_MAX_CHARGES) %}
+      <span class="acp-dot {% if i < atk_charges %}acp-dot-on{% endif %}"></span>
+      {% endfor %}
+    </div>
+    <div class="acp-hint">
+      {% if atk_charges >= GATE_ATK_MAX_CHARGES %}
+      已满额，快去攻击吧！
+      {% elif atk_charges == 0 %}
+      暂无攻击机会，<b>{{ atk_cd_min }} 分钟</b>后积攒下一次
+      {% else %}
+      <b>{{ atk_cd_min }} 分钟</b>后积攒下一次（每小时+1，最多{{ GATE_ATK_MAX_CHARGES }}次）
+      {% endif %}
+      <br>每日 23:59 将清空当日剩余攻击机会，请尽量用完
+    </div>
+  </div>
+</div>
+
+<!-- 说明 -->
+<div class="info-box">
+  <b>规则</b>：每天{{ ghosts|length }}只鬼魔袭扰（数量随攻击力提升，化神以上境界高阶鬼魔概率更高），若在 <b>23:59</b> 前未击退，将对你执行攻击（年龄+70岁，污染+4）。<br>
+  击败鬼魔可获得<b>大量灵石</b>及<b>天地法则碎片</b>，集齐7片可参悟法则。<br>
+  每4小时随机有一只鬼魔会突袭一次——尽快击退！
+</div>
+
+<!-- 鬼魔列表 -->
+<div class="ghost-list">
+{% for g in ghosts %}
+{% set is_def = g.idx in defeated_set %}
+<div class="ghost-card{% if is_def %} defeated{% endif %}">
+  {% if is_def %}<div class="ghost-defeated-tag">✓ 已击退</div>{% endif %}
+  <div class="ghost-head">
+    <div class="ghost-icon">{{ g.icon }}</div>
+    <div>
+      <div class="ghost-name">
+        {{ g.name }}
+        {% if g.atk_times >= 4 %}
+        <span style="font-size:11px;background:#5a0a0a;color:#ff6060;border:1px solid #a03030;padding:1px 6px;border-radius:10px;margin-left:4px">未斩·结算攻击×4</span>
+        {% elif g.atk_times >= 3 %}
+        <span style="font-size:11px;background:#5a0a0a;color:#ff6060;border:1px solid #a03030;padding:1px 6px;border-radius:10px;margin-left:4px">未斩·结算攻击×3</span>
+        {% elif g.atk_times >= 2 %}
+        <span style="font-size:11px;background:#3a1a00;color:#ffaa60;border:1px solid #804020;padding:1px 6px;border-radius:10px;margin-left:4px">未斩·结算攻击×2</span>
+        {% endif %}
+      </div>
+      <div class="ghost-desc">{{ g.desc }}</div>
+    </div>
+  </div>
+  <div class="ghost-stats">
+    <div class="ghost-stat">气血 <span>{{ g.hp }} / {{ g.max_hp }}</span></div>
+    <div class="ghost-stat">攻击 <span>{{ g.atk }}</span></div>
+    <div class="ghost-stat">防御 <span>{{ g.def }}</span></div>
+    {% if g.crit_rate > 0 %}
+    <div class="ghost-stat">暴击 <span style="color:#ff8080">{{ (g.crit_rate * 100)|int }}%</span></div>
+    {% endif %}
+  </div>
+  <div class="hp-bar">
+    <div class="hp-fill" style="width:{{ [((g.hp / g.max_hp * 100)|int), 0]|max }}%"></div>
+  </div>
+  <div class="ghost-drop">
+    击退奖励：<span>灵石 {{ g.stones }} 枚</span> &nbsp;+&nbsp;
+    <span>{{ g.law }}法则碎片 {{ ((g.shard_chance if g.shard_chance is defined else 0.3) * 100)|int }}% 掉落</span>
+  </div>
+  {% if not is_def %}
+  <div class="ghost-actions">
+    <form method="post" style="display:inline">
+      <input type="hidden" name="action" value="attack">
+      <input type="hidden" name="ghost_idx" value="{{ g.idx }}">
+      <button class="btn-attack" {% if not can_atk %}disabled{% endif %}>⚔ 攻击</button>
+    </form>
+    <form method="post" style="display:inline">
+      <input type="hidden" name="action" value="help_request">
+      <input type="hidden" name="ghost_idx" value="{{ g.idx }}">
+      <button class="btn-help" {% if not can_help %}disabled{% endif %}>📢 求援</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+</div>
+
+<!-- 天魔 -->
+{% if tianmo_unlocked %}
+<div class="card" style="margin-bottom:16px;background:rgba(220,40,80,.06);border-color:rgba(220,40,80,.4)">
+  <div class="card-h" style="color:#ff6090">👹 天魔</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.6">
+    今日{{ core_ghost_count }}只鬼魔已全部击退，可挑战天魔本体！天魔战力强横（参照高阶妖兽难度），消耗1次攻击机会，胜利必定获得大量灵石+修为+1~2片法则碎片；失败也会消耗当日挑战次数。<br>
+    今日剩余挑战次数：<b style="color:#ff90b0">{{ tianmo_attempts_left }} / {{ GATE_TIANMO_DAILY_LIMIT }}</b>
+  </div>
+  <form method="post">
+    <input type="hidden" name="action" value="attack_tianmo">
+    <button class="btn-attack" style="background:#7a1030;border-color:#a02050" {% if not can_atk or tianmo_attempts_left <= 0 %}disabled{% endif %}>
+      ⚔ 挑战天魔{% if tianmo_attempts_left <= 0 %}（今日已用完）{% endif %}
+    </button>
+  </form>
+</div>
+{% endif %}
+
+<!-- 与天相争 -->
+<div class="card" style="margin-bottom:16px;background:rgba(120,80,220,.06);border-color:rgba(120,80,220,.4)">
+  <div class="card-h" style="color:#a78bfa">⚔️ 与天相争</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.6">
+    每小时天投掷一个0~100的数字。你也可投掷一次，若本小时≥{{ HEAVEN_CONTEND_WIN_THRESHOLD }}人胜天，全服修士各获+1攻击机会。
+  </div>
+
+  <!-- 本小时状态 -->
+  <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+    <div style="text-align:center;min-width:70px">
+      <div style="font-size:11px;color:var(--muted)">天之数</div>
+      <div style="font-size:32px;font-weight:700;color:#a78bfa">
+        {% if heaven_num is not none %}{{ heaven_num }}{% else %}?{% endif %}
+      </div>
+    </div>
+    <div style="text-align:center;min-width:70px">
+      <div style="font-size:11px;color:var(--muted)">你的数</div>
+      <div style="font-size:32px;font-weight:700;color:{% if contend_rolled %}{% if contend_my_num > heaven_num %}var(--jade){% else %}var(--muted){% endif %}{% else %}var(--muted){% endif %}">
+        {% if contend_rolled %}{{ contend_my_num }}{% else %}–{% endif %}
+      </div>
+    </div>
+    <div style="text-align:center;min-width:90px">
+      <div style="font-size:11px;color:var(--muted)">本时胜天人数</div>
+      <div style="font-size:24px;font-weight:700;color:{% if contend_winners >= HEAVEN_CONTEND_WIN_THRESHOLD %}var(--gold){% else %}var(--text){% endif %}">
+        {{ contend_winners }} / {{ HEAVEN_CONTEND_WIN_THRESHOLD }}
+      </div>
+    </div>
+    <div>
+      {% if heaven_num is none %}
+      <div style="font-size:12px;color:var(--muted);padding:10px 18px;border:1px solid var(--border);border-radius:8px">等待天出数中…</div>
+      {% elif contend_rolled %}
+        {% if contend_my_num > heaven_num %}
+        <div style="font-size:13px;color:var(--jade);font-weight:700">✓ 已胜天（{{ contend_my_num }} > {{ heaven_num }}）</div>
+        {% else %}
+        <div style="font-size:13px;color:var(--muted)">✗ 已落败（{{ contend_my_num }} ≤ {{ heaven_num }}）</div>
+        {% endif %}
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">下小时整点可再投</div>
+      {% else %}
+      <form method="post">
+        <input type="hidden" name="action" value="contend">
+        <button type="submit" class="btn" style="background:linear-gradient(135deg,#7c3aed,#a78bfa);color:#fff;border:none;padding:10px 22px;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer">
+          投掷天命
+        </button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- 近期记录 -->
+  {% if contend_history %}
+  <div style="font-size:11px;color:var(--muted);margin-top:4px">近期记录</div>
+  <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:5px">
+    {% for row in contend_history %}
+    {% set won = (row['winners'] or 0) >= HEAVEN_CONTEND_WIN_THRESHOLD %}
+    <div style="background:var(--sf2);border:1px solid {% if won %}var(--gold){% else %}var(--border){% endif %};border-radius:6px;padding:4px 10px;font-size:11px">
+      <span style="color:var(--muted)">{{ row['hour_slot'][-5:] }}时</span>
+      <span style="color:#a78bfa;margin:0 4px">天{{ row['heaven_num'] }}</span>
+      <span style="color:{% if won %}var(--gold){% else %}var(--muted){% endif %}">{{ row['winners'] or 0 }}人胜{% if won %} 🏆{% endif %}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<!-- 底部导航 -->
+<div class="gate-bottom">
+  <a class="gate-link-card" href="{{ url_for('gate_board') }}">
+    <span class="glc-icon">📢</span>全服求援板
+    <span class="glc-sub">帮助道友·消耗攻击机会</span>
+  </a>
+  <a class="gate-link-card" href="{{ url_for('gate_laws') }}">
+    <span class="glc-icon">✨</span>天地法则
+    <span class="glc-sub">碎片参悟·灵力速率×2</span>
+  </a>
+</div>
+
+</div>
+{% endblock %}

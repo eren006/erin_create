@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}全服求援板 — 灵墟界{% endblock %}
+{% block head %}
+<style>
+body{background:#120a12!important;color:#e0d0e0}
+.board-page{max-width:720px;margin:0 auto;padding:24px 16px 60px}
+.board-hero{
+  text-align:center;padding:24px 20px 18px;
+  background:linear-gradient(160deg,#1a0d1a 0%,#0d0d1a 100%);
+  border-radius:14px;border:1px solid #5a2a5a;
+  color:#f0d0f0;margin-bottom:20px
+}
+.board-hero-title{font-size:22px;font-weight:700;color:#e080e0;letter-spacing:3px}
+.board-hero-sub{font-size:12px;color:#8a5a8a;margin-top:4px}
+.atk-status{
+  background:rgba(40,20,60,.5);border:1px solid #5a3a7a;border-radius:10px;
+  padding:10px 16px;font-size:13px;color:#c090d0;margin-bottom:16px;text-align:center
+}
+.atk-status.ready{border-color:#5a3a8a;color:#d0a0f0}
+.atk-status.cd{color:#8a6a9a}
+.req-list{display:flex;flex-direction:column;gap:10px}
+.req-card{
+  background:rgba(30,10,40,.55);border:1px solid #4a2a5a;border-radius:12px;
+  padding:14px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap
+}
+.req-avatar{font-size:26px}
+.req-info{flex:1;min-width:160px}
+.req-name{font-size:14px;font-weight:700;color:#e0b0f0}
+.req-realm{font-size:11px;color:#8a6a9a;margin-top:2px}
+.req-ghost{font-size:13px;color:#c080c0;margin-top:4px}
+.req-time{font-size:11px;color:#6a5a7a;margin-top:2px}
+.btn-aid{
+  padding:8px 18px;border:none;border-radius:8px;
+  background:linear-gradient(135deg,#5030a0,#8050c0);color:#fff;
+  font-size:13px;font-weight:600;cursor:pointer;transition:.2s;white-space:nowrap
+}
+.btn-aid:hover:not(:disabled){background:linear-gradient(135deg,#6040b0,#9060d0)}
+.btn-aid:disabled{background:#3a2a4a;color:#6a5a7a;cursor:not-allowed}
+.empty-board{
+  text-align:center;padding:40px;color:#6a5a7a;font-size:14px
+}
+.back-link{
+  display:inline-block;margin-top:20px;font-size:13px;
+  color:#9070b0;text-decoration:none;border-bottom:1px dashed #5a3a6a
+}
+.back-link:hover{color:#c090e0}
+</style>
+{% endblock %}
+{% block body %}
+<div class="board-page">
+
+<div class="board-hero">
+  <div class="board-hero-title">📢 全服求援板</div>
+  <div class="board-hero-sub">点击援助消耗你的一次攻击机会，奖励归被救道友</div>
+</div>
+
+<div class="atk-status {% if can_atk %}ready{% else %}cd{% endif %}">
+  {% if can_atk %}
+  ⚔ 攻击机会可用，可援助道友
+  {% else %}
+  ⏳ 攻击冷却中，约 <b>{{ atk_cd_min }} 分钟</b>后可再次援助
+  {% endif %}
+</div>
+
+{% if requests %}
+<div class="req-list">
+{% for r in requests %}
+<div class="req-card">
+  <div class="req-avatar">🆘</div>
+  <div class="req-info">
+    <div class="req-name">{{ r.req_name }}</div>
+    <div class="req-realm">{{ REALMS[r.req_realm].name if r.req_realm < REALMS|length else '未知境界' }}</div>
+    <div class="req-ghost">正受 <b>鬼魔 #{{ r.ghost_idx + 1 }}</b> 侵扰，急需援手！</div>
+    <div class="req-time">发出于 {{ r['posted_at'] | format_ts }}</div>
+  </div>
+  {% if r.requester_id != char.id %}
+  <form method="post">
+    <input type="hidden" name="req_id" value="{{ r.id }}">
+    <button class="btn-aid" {% if not can_atk %}disabled{% endif %}>⚔ 援助</button>
+  </form>
+  {% else %}
+  <div style="font-size:12px;color:#6a5a7a">（你的求援）</div>
+  {% endif %}
+</div>
+{% endfor %}
+</div>
+{% else %}
+<div class="empty-board">
+  🌙 当前全服无求援信号<br><span style="font-size:12px;margin-top:8px;display:block">所有道友都在勇猛迎战……</span>
+</div>
+{% endif %}
+
+<a class="back-link" href="{{ url_for('gate') }}">← 返回异世之门</a>
+</div>
+{% endblock %}

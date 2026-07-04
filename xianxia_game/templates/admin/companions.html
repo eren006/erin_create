@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}伙伴清单 — 后台{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">👥 伙伴清单 <small><a href="{{ url_for('admin') }}" style="font-size:13px">← 后台</a></small></div>
+<p style="color:var(--muted);font-size:12px;margin-bottom:16px">
+  这里只负责"造一个伙伴"，新造的伙伴不会自动能被抽到——去
+  <a href="{{ url_for('admin_companion_pools') }}" style="color:var(--gold)">池子管理</a>
+  把它加进某个限定池才行（如果设了默认池，新增时会自动加进默认池）。
+</p>
+
+<!-- 新增伙伴 -->
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">新增伙伴</div>
+  <form method="post" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">key（纯小写字母/数字/下划线，唯一）</label>
+      <input name="key" required placeholder="如 sima_qian" pattern="[a-z0-9_]+"
+        style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px"></div>
+    <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">名称</label>
+      <input name="name" required placeholder="如 司马迁"
+        style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px"></div>
+    <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">称号</label>
+      <input name="title" placeholder="如 太史公"
+        style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px"></div>
+    <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">稀有度</label>
+      <select name="rarity" style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+        <option value="n">N 普通</option>
+        <option value="r">R 精良</option>
+        <option value="sr">SR 优秀</option>
+        <option value="ssr" selected>SSR 卓越</option>
+        <option value="ur">UR 传世</option>
+        <option value="lzr">LZR 灵祖</option>
+      </select></div>
+    <div style="grid-column:1/-1"><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">描述</label>
+      <input name="description" placeholder="伙伴介绍文案"
+        style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px"></div>
+
+    <div style="grid-column:1/-1;border-top:1px solid var(--bd);padding-top:10px;margin-top:4px">
+      <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:8px">属性加成（留空=不生效，百分比类填小数如 0.15 表示+15%）</label>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+        {% for ek in COMPANION_EFFECT_KEYS %}
+        <div>
+          <label style="font-size:11px;color:var(--muted)">{{ ek }}</label>
+          <input name="eff_{{ ek }}" placeholder="0" style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:6px;padding:5px 8px;font-family:inherit;font-size:12px">
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div style="grid-column:1/-1;margin-top:8px"><button class="btn btn-jade">新增伙伴</button></div>
+  </form>
+</div>
+
+<!-- 已添加的伙伴清单 -->
+<div class="card">
+  <div class="card-h">已添加的伙伴（{{ custom_list|length }}）</div>
+  {% if not custom_list %}
+  <p style="color:var(--muted);font-size:13px">还没有通过后台新增的伙伴。</p>
+  {% else %}
+  <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <tr style="color:var(--muted);border-bottom:1px solid var(--bd)">
+      <th style="padding:6px 10px;text-align:left">key</th>
+      <th style="padding:6px 10px;text-align:left">名称</th>
+      <th style="padding:6px 10px;text-align:left">稀有度</th>
+      <th style="padding:6px 10px;text-align:left">添加时间</th>
+    </tr>
+    {% for c in custom_list %}
+    <tr style="border-bottom:1px solid var(--bd)">
+      <td style="padding:6px 10px;color:var(--muted)">{{ c.key }}</td>
+      <td style="padding:6px 10px">{{ c.name }}{% if c.title %} · {{ c.title }}{% endif %}</td>
+      <td style="padding:6px 10px">{{ COMPANION_RARITY_LABEL.get(c.rarity, c.rarity) }}</td>
+      <td style="padding:6px 10px;color:var(--muted)">{{ c.created_at | format_ts }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+</div>
+
+</div>
+{% endblock %}

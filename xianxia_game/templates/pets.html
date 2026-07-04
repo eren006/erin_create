@@ -1,0 +1,347 @@
+{% extends "base.html" %}
+{% block title %}灵兽阁 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🐾 灵兽阁 <small>收服灵兽，并肩作战</small></div>
+
+{% if is_beast %}
+<div class="card" style="margin-bottom:16px;border-color:rgba(46,139,87,.4);background:rgba(46,139,87,.04)">
+  <div class="card-h" style="color:var(--green)">🐲 御灵修 · {{ beast_lv_name }}（Lv{{ beast_lv }}）</div>
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+    <div class="bar-wrap" style="flex:1"><div class="bar-fill bar-jade" style="width:{{ beast_lv_pct }}%"></div></div>
+    <span style="font-size:12px;color:var(--muted)">{{ beast_lv_exp }}{% if beast_lv_next %} / {{ beast_lv_next }}{% else %} 满级{% endif %} 御灵经验</span>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;font-size:12px;color:var(--muted)">
+    <div>· 喂养费用 <span style="color:var(--green)">减半</span></div>
+    <div>· 灵兽加成 × <span style="color:var(--green)">{{ "%.2f"|format(1 + beast_lv * 0.15) }}</span>（每级 +15%）</div>
+    <div>· <span style="color:var(--gold)">双槽出战</span>：可同时出战两只灵兽</div>
+    <div>· 每次喂养获得 <span style="color:var(--jade)">+{{ BEAST_FEED_EXP }}</span> 御灵经验</div>
+  </div>
+</div>
+{% endif %}
+
+<!-- 我的灵兽 -->
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">我的灵兽 <span style="color:var(--muted);font-weight:400;font-size:12px">（{% if is_beast %}御灵修可双槽出战{% else %}出战一只，提供战斗加成{% endif %}）</span></div>
+  {% if not my_pets %}
+  <div class="empty" style="padding:28px 0">
+    <div style="font-size:28px;margin-bottom:8px">🐾</div>
+    <div>尚未拥有灵兽</div>
+    <div style="font-size:12px;margin-top:6px">在下方丹市购买，或探索高阶秘境收服稀有灵兽</div>
+  </div>
+  {% else %}
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">
+    {% for p in my_pets %}
+    {% set active1 = (p.id == char.active_pet_id) %}
+    {% set active2 = (p.id == char.active_pet2_id) %}
+    {% set is_listed = p.id in listed_pet_ids %}
+    {% set eff = p.effect_json | fromjson %}
+    {% set scale = (1 + (p.level - 1) * 0.10) * (1 + beast_lv * 0.15 if is_beast else 1) %}
+    {% set feed_cost = p.level * 150 if is_beast else p.level * 300 %}
+    <div class="card" style="margin:0;background:var(--sf2);
+         border-color:{% if is_listed %}var(--muted){% elif active1 %}var(--gold){% elif active2 %}var(--green){% else %}var(--bd){% endif %}">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px">
+        <div>
+          <div style="font-weight:700;font-size:15px;color:var(--text)">
+            {{ p.nickname or p.type_name }}
+            {% if is_listed %}<span style="font-size:11px;color:var(--muted);margin-left:4px">🏪 坊市挂售中</span>
+            {% elif active1 %}<span style="font-size:11px;color:var(--gold);margin-left:4px">⚔ 槽1出战</span>{% endif %}
+            {% if active2 and not is_listed %}<span style="font-size:11px;color:var(--green);margin-left:4px">⚔ 槽2出战</span>{% endif %}
+          </div>
+          <div style="font-size:11px;color:var(--muted)">{{ p.type_name }} · Lv.{{ p.level }}</div>
+        </div>
+        <span class="tag tag-{{ p.rarity }}">{{ p.rarity | rarity_label }}</span>
+      </div>
+      <div style="color:var(--muted);font-size:12px;line-height:1.6;margin-bottom:8px">{{ p.description }}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+        {% if eff.atk_pct %}<span style="background:rgba(91,163,208,.14);border-radius:5px;padding:2px 8px;font-size:11px;color:var(--blue)">攻击 +{{ (eff.atk_pct*scale)|round(1) }}%</span>{% endif %}
+        {% if eff.def_pct %}<span style="background:rgba(82,183,136,.14);border-radius:5px;padding:2px 8px;font-size:11px;color:var(--green)">防御 +{{ (eff.def_pct*scale)|round(1) }}%</span>{% endif %}
+        {% if eff.crit_rate %}<span style="background:rgba(201,168,76,.14);border-radius:5px;padding:2px 8px;font-size:11px;color:var(--gold)">暴击 +{{ (eff.crit_rate*scale*100)|round(1) }}%</span>{% endif %}
+        {% if eff.dodge %}<span style="background:rgba(123,94,168,.14);border-radius:5px;padding:2px 8px;font-size:11px;color:var(--purple)">闪避 +{{ (eff.dodge*scale*100)|round(1) }}%</span>{% endif %}
+        {% if eff.lifesteal %}<span style="background:rgba(192,57,43,.12);border-radius:5px;padding:2px 8px;font-size:11px;color:var(--red)">吸血 +{{ (eff.lifesteal*scale*100)|round(1) }}%</span>{% endif %}
+        {% if p.is_branded and p.brand_buff_key %}
+        {% set brand_labels = {'atk_pct':'攻击','def_pct':'防御','crit_rate':'暴击','lifesteal':'吸血'} %}
+        <span style="background:rgba(220,40,80,.14);border-radius:5px;padding:2px 8px;font-size:11px;color:#ff6090">✦烙印{{ brand_labels[p.brand_buff_key] }} +{{ (0.20*scale*100)|round(1) }}%</span>
+        {% endif %}
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        {% if is_listed %}
+          <span style="font-size:12px;color:var(--muted);align-self:center">挂售中，撤回后可操作</span>
+          {% for pl in my_pet_listings %}{% if pl.pet_id == p.id %}
+          <form method="post">
+            <input type="hidden" name="action" value="cancel_pet_listing">
+            <input type="hidden" name="pet_id" value="{{ p.id }}">
+            <input type="hidden" name="listing_id" value="{{ pl.id }}">
+            <button class="btn btn-ghost btn-sm">撤回挂单</button>
+          </form>
+          {% endif %}{% endfor %}
+        {% else %}
+        {% if active1 %}
+        <form method="post"><input type="hidden" name="action" value="deactivate"><input type="hidden" name="pet_id" value="{{ p.id }}">
+          <button class="btn btn-ghost btn-sm">收回槽1</button></form>
+        {% else %}
+        <form method="post"><input type="hidden" name="action" value="activate"><input type="hidden" name="pet_id" value="{{ p.id }}">
+          <button class="btn btn-gold btn-sm">槽1出战</button></form>
+        {% endif %}
+        {% if has_slot2 %}
+          {% if active2 %}
+          <form method="post"><input type="hidden" name="action" value="deactivate2"><input type="hidden" name="pet_id" value="{{ p.id }}">
+            <button class="btn btn-ghost btn-sm">收回槽2</button></form>
+          {% elif not active1 %}
+          <form method="post"><input type="hidden" name="action" value="activate2"><input type="hidden" name="pet_id" value="{{ p.id }}">
+            <button class="btn btn-sm" style="background:rgba(46,139,87,.15);color:var(--green);border:1px solid rgba(46,139,87,.3)">槽2出战</button></form>
+          {% endif %}
+        {% endif %}
+        {% if p.level < 20 %}
+        <form method="post" onsubmit="return confirm('消耗 {{ feed_cost }} 灵石升至 Lv.{{ p.level + 1 }}？')">
+          <input type="hidden" name="action" value="feed"><input type="hidden" name="pet_id" value="{{ p.id }}">
+          <button class="btn btn-jade btn-sm" {% if char.spirit_stones < feed_cost %}disabled title="需 {{ feed_cost }} 灵石"{% endif %}>
+            喂养 ({{ feed_cost }}石{% if is_beast %} <span style="color:rgba(255,255,255,.7);font-size:10px">半价</span>{% endif %})
+          </button>
+        </form>
+        {% if beast_lv >= BEAST_BRAND_MIN_LEVEL %}
+        <form method="post" onsubmit="return confirm('一键将【{{ p.nickname or p.type_name }}】升至 Lv.20？')">
+          <input type="hidden" name="action" value="maxlevel"><input type="hidden" name="pet_id" value="{{ p.id }}">
+          <button class="btn btn-sm" style="background:rgba(201,168,76,.18);color:var(--gold);border:1px solid rgba(201,168,76,.4)">⚡ 一键满级</button>
+        </form>
+        {% endif %}
+        {% else %}
+        <span style="font-size:11px;color:var(--gold);padding:2px 6px;border:1px solid rgba(166,124,26,.3);border-radius:5px">满级</span>
+        {% if p.is_branded %}
+        <span style="font-size:11px;color:#ff6090;padding:2px 6px;border:1px solid rgba(220,40,80,.4);border-radius:5px">✦ 已烙印</span>
+        {% elif p.type_name in BEAST_BRAND and beast_lv >= BEAST_BRAND_MIN_LEVEL %}
+        <form method="post" onsubmit="return confirm('对【{{ p.nickname or p.type_name }}】施加神兽烙印？消耗 {{ BEAST_BRAND_ENERGY_COST }} 灵力 + {{ BEAST_BRAND_MAT_NAME }}×{{ BEAST_BRAND_MAT_QTY }}，烙印后将永久蜕变为【{{ BEAST_BRAND[p.type_name][0] }}】，并随机获得一项 +20% 属性加成，不可撤销。')">
+          <input type="hidden" name="action" value="brand"><input type="hidden" name="pet_id" value="{{ p.id }}">
+          <button class="btn btn-sm" style="background:rgba(220,40,80,.15);color:#ff6090;border:1px solid rgba(220,40,80,.4)">✦ 神兽烙印（{{ BEAST_BRAND_ENERGY_COST }}灵力+{{ BEAST_BRAND_MAT_NAME }}×{{ BEAST_BRAND_MAT_QTY }}）</button>
+        </form>
+        {% endif %}
+        {% endif %}
+        <form method="post" style="display:flex;gap:4px">
+          <input type="hidden" name="action" value="rename"><input type="hidden" name="pet_id" value="{{ p.id }}">
+          <input name="nickname" placeholder="改名" maxlength="12"
+            style="width:70px;background:var(--sf);border:1px solid var(--bd);color:var(--text);border-radius:6px;padding:3px 6px;font-size:12px;font-family:inherit">
+          <button class="btn btn-ghost btn-sm">改</button>
+        </form>
+        <!-- 挂售到坊市 -->
+        {% if not active1 and not active2 %}
+        <form method="post" style="display:flex;gap:4px;align-items:center"
+              onsubmit="return confirm('将【{{ p.nickname or p.type_name }}】挂售至坊市？')">
+          <input type="hidden" name="action" value="list_pet">
+          <input type="hidden" name="pet_id" value="{{ p.id }}">
+          <input name="pet_price" type="number" value="1000" min="1"
+            style="width:68px;background:var(--sf);border:1px solid var(--bd);color:var(--text);border-radius:6px;padding:3px 6px;font-size:12px;text-align:center;font-family:inherit"
+            title="挂售价格（灵石）">
+          <button type="submit" class="btn btn-ghost btn-sm" style="color:var(--jade)">🏪坊市</button>
+        </form>
+        {% endif %}
+        <form method="post" onsubmit="return confirm('确定放生此灵兽？不可恢复')">
+          <input type="hidden" name="action" value="release"><input type="hidden" name="pet_id" value="{{ p.id }}">
+          <button class="btn btn-ghost btn-sm" style="color:var(--red)">放生</button></form>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+{% if is_beast %}
+<!-- 御灵修专属：灵兽繁育 + 御灵神牌 -->
+<div class="card" style="margin-bottom:16px;border-color:rgba(46,139,87,.3);background:rgba(46,139,87,.04)">
+  <div class="card-h" style="color:var(--green)">🥚 灵兽繁育 <span style="color:var(--muted);font-weight:400;font-size:12px">（御灵修专属，8小时孵化，可放坊市出售）</span></div>
+
+  {% if breeding %}
+    {% set remain = breeding.finish_at - now_ts %}
+    {% if remain > 0 %}
+    <div style="padding:12px;background:var(--sf2);border-radius:8px;display:flex;align-items:center;gap:12px">
+      <span style="font-size:24px">🥚</span>
+      <div>
+        <div style="font-size:13px;font-weight:600">孵化中……</div>
+        <div style="font-size:12px;color:var(--muted)">还需 {{ remain//3600 }}h{{ (remain%3600)//60 }}m 才能出生</div>
+      </div>
+    </div>
+    {% else %}
+    <div style="padding:12px;background:rgba(46,139,87,.1);border:1px solid rgba(46,139,87,.3);border-radius:8px;display:flex;align-items:center;gap:12px;margin-bottom:10px">
+      <span style="font-size:24px">🐣</span>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:600;color:var(--green)">幼兽已孵化，快来收取！</div>
+      </div>
+      <form method="post">
+        <input type="hidden" name="action" value="breed_collect">
+        <button class="btn btn-jade btn-sm">收取幼兽</button>
+      </form>
+    </div>
+    {% endif %}
+  {% elif my_pets|length >= 2 %}
+  <form method="post" style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+    <input type="hidden" name="action" value="breed_start">
+    <div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">灵兽一</div>
+      <select name="pet1_id" style="background:var(--sf);border:1px solid var(--bd);color:var(--text);border-radius:6px;padding:5px 8px;font-size:12px;font-family:inherit">
+        {% for p in my_pets %}<option value="{{ p.id }}">{{ p.nickname or p.type_name }} Lv.{{ p.level }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">灵兽二</div>
+      <select name="pet2_id" style="background:var(--sf);border:1px solid var(--bd);color:var(--text);border-radius:6px;padding:5px 8px;font-size:12px;font-family:inherit">
+        {% for p in my_pets %}<option value="{{ p.id }}" {% if loop.index == 2 %}selected{% endif %}>{{ p.nickname or p.type_name }} Lv.{{ p.level }}</option>{% endfor %}
+      </select>
+    </div>
+    <button class="btn btn-jade btn-sm">开始繁育</button>
+  </form>
+  {% else %}
+  <div style="color:var(--muted);font-size:12px">需拥有至少两只灵兽方可繁育。</div>
+  {% endif %}
+
+  <div class="divider" style="margin:14px 0 10px"></div>
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+    <div>
+      <div style="font-size:13px;font-weight:600;color:var(--jade)">炼制御灵神牌</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">需御灵等级【{{ BEAST_LEVELS[2].name }}】+ 龙晶×1 + 夜明珠×1 + 5000灵石</div>
+      <div style="font-size:11px;color:var(--muted)">他人激活后可同时出战两只灵兽，可在坊市出售</div>
+    </div>
+    {% if beast_lv >= 2 %}
+    <form method="post" onsubmit="return confirm('消耗龙晶×1、夜明珠×1、5000灵石炼制御灵神牌？')">
+      <input type="hidden" name="action" value="craft_spirit_pass">
+      <button class="btn btn-jade btn-sm">炼制御灵神牌</button>
+    </form>
+    {% else %}
+    <button class="btn btn-ghost btn-sm" disabled title="御灵等级不足">炼制御灵神牌</button>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% macro evo_card(p, evo, action_val, border_color, btn_color, badge) %}
+<div style="background:var(--sf2);border:1px solid {{ border_color }};border-radius:10px;padding:14px">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+    <div style="flex:1">
+      <div style="font-weight:700;font-size:14px">{{ p.nickname or p.type_name }}</div>
+      <div style="font-size:11px;color:var(--muted)">{{ p.type_name }}</div>
+    </div>
+    <span style="font-size:16px;color:var(--muted)">→</span>
+    <div style="flex:1;text-align:right">
+      <div style="font-weight:700;font-size:14px;color:{{ btn_color }}">{{ evo.to }}</div>
+      <div style="font-size:10px;background:{{ btn_color }};color:#fff;border-radius:4px;padding:1px 5px;display:inline-block;margin-top:2px">{{ badge }}</div>
+    </div>
+  </div>
+  {% if evo.desc is defined %}
+  <div style="font-size:11px;color:var(--muted);margin-bottom:8px">{{ evo.desc }}</div>
+  {% endif %}
+  <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px">
+    {% for mat_name, qty in evo.mats %}
+    <span style="background:rgba(0,0,0,.06);border-radius:5px;padding:2px 8px;font-size:11px;color:var(--text)">
+      {{ mat_name }} ×{{ qty }}
+    </span>
+    {% endfor %}
+  </div>
+  <form method="post">
+    <input type="hidden" name="action" value="{{ action_val }}">
+    <input type="hidden" name="pet_id" value="{{ p.id }}">
+    <button class="btn btn-sm" style="width:100%;border:1px solid {{ border_color }};color:{{ btn_color }};background:transparent"
+      onclick="return confirm('确定消耗材料进化【{{ p.nickname or p.type_name }}】？')">
+      ✦ {{ badge }}
+    </button>
+  </form>
+</div>
+{% endmacro %}
+
+<!-- 灵兽进化（普通） -->
+{% set evolvable = [] %}
+{% for p in my_pets %}{% if p.type_name in PET_EVOLUTION %}{% set _ = evolvable.append(p) %}{% endif %}{% endfor %}
+{% if evolvable %}
+<div class="card" style="margin-bottom:16px;border-color:rgba(123,94,168,.3);background:rgba(123,94,168,.04)">
+  <div class="card-h" style="color:var(--purple)">✦ 灵兽进化 <span style="color:var(--muted);font-weight:400;font-size:12px">（消耗珍贵材料，提升品阶）</span></div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px">
+    {% for p in evolvable %}
+    {{ evo_card(p, PET_EVOLUTION[p.type_name], 'evolve', 'rgba(123,94,168,.25)', 'var(--purple)', '进化') }}
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- 特殊进化（专属形态，材料更稀有） -->
+{% set sp_evolvable = [] %}
+{% for p in my_pets %}{% if p.type_name in PET_SPECIAL_EVOLUTION %}{% set _ = sp_evolvable.append(p) %}{% endif %}{% endfor %}
+{% if sp_evolvable %}
+<div class="card" style="margin-bottom:16px;border-color:rgba(166,124,26,.4);background:rgba(166,124,26,.04)">
+  <div class="card-h" style="color:var(--gold)">✦✦ 特殊进化
+    <span style="color:var(--muted);font-weight:400;font-size:12px">（更稀有材料，觉醒专属形态，效果远超普通进化）</span>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px">
+    {% for p in sp_evolvable %}
+    {{ evo_card(p, PET_SPECIAL_EVOLUTION[p.type_name], 'evolve_special', 'rgba(166,124,26,.35)', 'var(--gold)', '特殊进化') }}
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- 御灵超进化（三段，仅御灵修 Lv.20 满级） -->
+{% if char.beast_token_id %}
+{% set super_evolvable = [] %}
+{% for p in my_pets %}{% if p.type_name in PET_SUPER_EVOLUTION and p.level >= 20 %}{% set _ = super_evolvable.append(p) %}{% endif %}{% endfor %}
+{% if super_evolvable %}
+<div class="card" style="margin-bottom:16px;border-color:rgba(123,94,168,.5);background:rgba(123,94,168,.04)">
+  <div class="card-h" style="color:var(--purple)">✦✦✦ 御灵超进化
+    <span style="color:var(--muted);font-weight:400;font-size:12px">（御灵修专属 · 需 Lv.20 · 进化至 Legendary 级别）</span>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px">
+    {% for p in super_evolvable %}
+    {{ evo_card(p, PET_SUPER_EVOLUTION[p.type_name], 'evolve_super', 'rgba(123,94,168,.35)', 'var(--purple)', '御灵超进化') }}
+    {% endfor %}
+  </div>
+</div>
+{% else %}
+<div class="card" style="margin-bottom:16px;border-color:rgba(123,94,168,.3);background:rgba(123,94,168,.03)">
+  <div class="card-h" style="color:var(--purple)">✦✦✦ 御灵超进化</div>
+  <div style="font-size:12px;color:var(--muted)">需拥有二段进化形态的灵兽并喂养至 Lv.20 满级，方可解锁超进化。</div>
+</div>
+{% endif %}
+{% endif %}
+
+<!-- 灵兽市集 -->
+{% if shop_pets %}
+<div class="card">
+  <div class="card-h" style="color:var(--gold2)">灵兽市集 <span style="color:var(--muted);font-weight:400;font-size:12px">（灵石购买）</span></div>
+  <div style="margin-bottom:12px;font-size:12px;color:var(--muted)">持有灵石 <strong style="color:var(--gold)">{{ char.spirit_stones }}</strong></div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px">
+    {% for pt in shop_pets %}
+    {% set eff = pt.effect_json | fromjson %}
+    <div style="background:var(--sf2);border:1px solid var(--bd);border-radius:10px;padding:14px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+        <div style="font-weight:600;font-size:14px">{{ pt.name }}</div>
+        <span class="tag tag-{{ pt.rarity }}">{{ pt.rarity | rarity_label }}</span>
+      </div>
+      <div style="color:var(--muted);font-size:12px;line-height:1.6;margin-bottom:8px">{{ pt.description }}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+        {% if eff.atk_pct %}<span style="background:rgba(91,163,208,.14);border-radius:5px;padding:2px 8px;font-size:11px;color:var(--blue)">攻击 +{{ eff.atk_pct }}%</span>{% endif %}
+        {% if eff.def_pct %}<span style="background:rgba(82,183,136,.14);border-radius:5px;padding:2px 8px;font-size:11px;color:var(--green)">防御 +{{ eff.def_pct }}%</span>{% endif %}
+        {% if eff.crit_rate %}<span style="background:rgba(201,168,76,.14);border-radius:5px;padding:2px 8px;font-size:11px;color:var(--gold)">暴击 +{{ (eff.crit_rate*100)|int }}%</span>{% endif %}
+      </div>
+      <form method="post" action="{{ url_for('buy_pet') }}">
+        <input type="hidden" name="pet_type_id" value="{{ pt.id }}">
+        <button class="btn btn-gold btn-sm" style="width:100%" {% if char.spirit_stones < pt.market_price %}disabled{% endif %}>
+          💰 {{ pt.market_price }} 灵石
+        </button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<div class="card" style="background:rgba(155,127,224,.05);border-color:rgba(155,127,224,.15)">
+  <div class="card-h" style="color:var(--purple)">灵兽说明</div>
+  <div style="color:var(--muted);font-size:12px;line-height:2">
+    <div>· 普通修士只能出战一只灵兽；<span style="color:var(--green)">御灵修</span>可同时出战两只</div>
+    <div>· 低阶灵兽可在市集购买，<span style="color:var(--gold)">稀有及以上</span>需探索高阶秘境收服</div>
+    <div>· 灵兽等级越高加成越强（每级 +10% 效果），最高 Lv.20</div>
+    <div>· <span style="color:var(--jade)">喂养</span>消耗灵石提升等级（普通：等级×300石；御灵修：等级×150石）</div>
+    <div>· 特定灵兽可消耗珍贵材料<span style="color:var(--purple)">进化</span>，大幅提升品阶与加成</div>
+    <div>· <span style="color:var(--green)">御灵修</span>：丹市购买【御灵令】后于背包持令即可踏上御灵修行之路</div>
+    <div>· 御灵修每级额外提升灵兽效果 +15%，喂养同时积累御灵经验</div>
+  </div>
+</div>
+</div>
+<style>input:focus{outline:none;border-color:var(--jade)}</style>
+{% endblock %}

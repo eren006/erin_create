@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}豪华度排行 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">✨ 洞府豪华榜 <small>装饰值排行</small></div>
+
+{% if ranking %}
+<div class="card">
+  <div style="display:flex;flex-direction:column;gap:0">
+    {% for r in ranking %}
+    {% set is_me = r.name == char.name %}
+    <div style="display:flex;align-items:center;gap:12px;padding:12px 8px;
+         {% if not loop.last %}border-bottom:1px solid var(--bd){% endif %}
+         {% if is_me %}background:rgba(192,160,96,.06);border-radius:8px{% endif %}">
+      <div style="width:28px;text-align:center;font-size:{% if loop.index <= 3 %}18{% else %}13{% endif %}px;
+           font-weight:700;color:{% if loop.index == 1 %}#c9a000{% elif loop.index == 2 %}#9e9e9e{% elif loop.index == 3 %}#a0522d{% else %}var(--muted){% endif %}">
+        {% if loop.index == 1 %}🥇{% elif loop.index == 2 %}🥈{% elif loop.index == 3 %}🥉{% else %}{{ loop.index }}{% endif %}
+      </div>
+      <div style="flex:1">
+        <div style="font-weight:600;font-size:14px">
+          {{ r.name }}
+          {% if r.cave_name %}<span style="font-size:11px;color:var(--muted);font-weight:400">「{{ r.cave_name }}」</span>{% endif %}
+          {% if is_me %}<span style="font-size:10px;color:var(--gold);margin-left:4px">我</span>{% endif %}
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">
+          {{ REALMS[r.realm_idx].name }}
+          {% if r.cave_peak and CAVE_PEAK_MAP.get(r.cave_peak) %}
+          · {{ CAVE_PEAK_MAP[r.cave_peak].name }}
+          {% endif %}
+        </div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:15px;font-weight:700;color:var(--gold)">{{ r.cave_decor }}</div>
+        <div style="font-size:10px;color:var(--muted)">装饰值</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% else %}
+<div class="card" style="text-align:center;padding:48px">
+  <div style="font-size:32px;margin-bottom:12px">🏔</div>
+  <div style="color:var(--muted)">暂无修士购置洞府装饰</div>
+</div>
+{% endif %}
+
+</div>
+{% endblock %}

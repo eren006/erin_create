@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}灵峰总览 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🏔 灵峰总览 <small>九峰各有其主</small></div>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">
+{% for peak in CAVE_PEAKS %}
+{% set residents = peak_map.get(peak.id, []) %}
+<div class="card" style="{% if char.cave_peak == peak.id %}border-color:var(--gold);background:rgba(192,160,96,.05){% endif %}">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+    <span style="font-size:28px">🏔</span>
+    <div>
+      <div style="font-weight:700;font-size:15px;color:var(--gold2)">
+        {{ peak.name }}
+        {% if peak.id in CAVE_PEAK_ADVANCED_IDS %}
+        <span style="font-size:10px;background:var(--purple);color:#fff;padding:1px 6px;border-radius:8px;margin-left:4px">高级</span>
+        {% endif %}
+        {% if char.cave_peak == peak.id %}
+        <span style="font-size:10px;background:var(--gold);color:#fff;padding:1px 6px;border-radius:8px;margin-left:4px">我的</span>
+        {% endif %}
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:1px">{{ peak.desc }}</div>
+    </div>
+  </div>
+
+  {% if residents %}
+  <div style="display:flex;flex-direction:column;gap:6px">
+    {% for r in residents %}
+    <div style="display:flex;align-items:center;justify-content:space-between;
+         padding:6px 8px;background:var(--sf2);border-radius:6px;font-size:12px">
+      <div style="display:flex;align-items:center;gap:6px">
+        <span class="root-{{ r.spirit_root }}" style="font-size:11px">{{ r.spirit_root }}</span>
+        <span style="font-weight:600">{{ r.name }}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;color:var(--muted)">
+        <span>{{ REALMS[r.realm_idx].name }}</span>
+        {% if r.cave_mode == 'cultivate' %}<span style="color:var(--jade);font-size:10px">⚡修炼中</span>
+        {% elif r.cave_mode == 'temper' %}<span style="color:var(--blue);font-size:10px">💪炼体中</span>
+        {% else %}<span style="font-size:10px">⏸</span>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div style="color:var(--muted);font-size:12px;text-align:center;padding:12px 0">
+    此峰尚无修士定居
+  </div>
+  {% endif %}
+
+  <div style="margin-top:8px;font-size:11px;color:var(--muted);text-align:right">
+    {{ residents|length }} 位修士
+  </div>
+</div>
+{% endfor %}
+</div>
+
+</div>
+{% endblock %}

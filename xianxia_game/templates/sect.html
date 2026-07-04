@@ -1,0 +1,638 @@
+{% extends "base.html" %}
+{% block title %}宗门 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🏯 宗门 <small>同门共修，聚力成仙</small></div>
+
+<!-- 待处理入宗邀请 -->
+{% if pending_invites %}
+<div class="card" style="margin-bottom:16px;border-color:var(--gold)">
+  <div class="card-h" style="color:var(--gold2)">📜 宗门邀请</div>
+  {% for inv in pending_invites %}
+  <div style="display:flex;align-items:center;gap:10px;padding:8px 0;{% if not loop.last %}border-bottom:1px solid var(--bd){% endif %}">
+    <div style="flex:1;font-size:13px">
+      <strong>{{ inv.from_name }}</strong> 邀请你加入宗门「{{ inv.sect_name }}」
+    </div>
+    <form method="post" style="display:inline">
+      <input type="hidden" name="action" value="accept_invite"><input type="hidden" name="inv_id" value="{{ inv.id }}">
+      <button class="btn btn-gold btn-sm">加入</button>
+    </form>
+    <form method="post" style="display:inline">
+      <input type="hidden" name="action" value="decline_invite"><input type="hidden" name="inv_id" value="{{ inv.id }}">
+      <button class="btn btn-ghost btn-sm">婉拒</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if my_sect %}
+<!-- 我的宗门 -->
+<div class="card" style="margin-bottom:16px;border-color:var(--gold)">
+  <!-- 宗门标题 + 等级 -->
+  <div style="display:flex;align-items:center;gap:14px;margin-bottom:10px">
+    <span style="font-size:36px">{{ my_sect.emblem }}</span>
+    <div style="flex:1">
+      <div style="font-size:20px;font-weight:700;color:var(--gold)">{{ my_sect.name }}</div>
+      <div style="color:var(--muted);font-size:12px">{{ my_sect.description }}</div>
+    </div>
+    <div style="text-align:right;flex-shrink:0">
+      <div style="font-size:13px;color:var(--gold);font-weight:700">Lv.{{ sect_lv }} {{ sect_lv_info.name }}</div>
+      <div style="font-size:12px;color:var(--jade)">修炼加成 +{{ (sect_buff*100)|round(1) }}%</div>
+      <div style="font-size:11px;color:var(--muted)">{{ members|length }}/{{ sect_cap }} 人{% if sect_cap > SECT_MAX_MEMBERS %} <span style="color:var(--gold2)">(已开 {{ (sect_cap - SECT_MAX_MEMBERS) // 5 }} 峰)</span>{% endif %}</div>
+    </div>
+  </div>
+  <!-- 宗门升级进度 -->
+  {% if sect_lv < SECT_LEVELS|length %}
+  {% set next_lv = SECT_LEVELS[sect_lv] %}
+  {% set total_c = my_sect.total_contribution or 0 %}
+  {% set lv_pct = [100, (total_c * 100 // next_lv.contrib_req)]|min if next_lv.contrib_req > 0 else 100 %}
+  <div style="margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px">
+      <span>宗门总贡献 {{ total_c }}</span>
+      <span>升至 Lv.{{ sect_lv+1 }} 需 {{ next_lv.contrib_req }}</span>
+    </div>
+    <div style="height:5px;background:var(--bd);border-radius:3px;overflow:hidden">
+      <div style="height:100%;background:var(--gold);width:{{ lv_pct }}%"></div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- 我的身份 + 品阶 + 俸禄 -->
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;background:var(--sf2);border-radius:8px;margin-bottom:10px">
+    <span style="font-size:12px;color:var(--muted)">身份</span>
+    <strong style="color:var(--gold);font-size:13px">{{ {'leader':'宗主','elder':'副宗主','member':'门人'}.get(my_sect.rank, my_sect.rank) }}</strong>
+    <span style="color:var(--bd)">·</span>
+    <span style="font-size:12px;color:var(--muted)">品阶</span>
+    <strong style="color:{% if my_cult_rank>=3 %}var(--purple){% elif my_cult_rank>=2 %}var(--jade){% elif my_cult_rank>=1 %}var(--blue){% else %}var(--muted){% endif %};font-size:13px">
+      {{ CULT_RANKS[my_cult_rank].name }}
+    </strong>
+    <span style="color:var(--bd)">·</span>
+    <span style="font-size:12px;color:var(--muted)">贡献</span>
+    <strong style="color:var(--gold);font-size:13px">{{ my_contrib_balance }}</strong>
+    <span style="font-size:11px;color:var(--muted)" title="历史累计贡献（用于考核晋阶）">（历史 {{ my_contribution }}）</span>
+    {% if shifu_peak_name %}
+    <span style="color:var(--bd)">·</span>
+    <span style="font-size:12px;color:var(--gold2)">⛰ {{ shifu_peak_name }}</span>
+    {% elif my_peak_name %}
+    <span style="color:var(--bd)">·</span>
+    <span style="font-size:12px;color:var(--gold2)">⛰ {{ my_peak_name }}</span>
+    {% endif %}
+    <div style="margin-left:auto;display:flex;gap:6px">
+      {% if salary_available %}
+      <form method="post" style="display:inline">
+        <input type="hidden" name="action" value="claim_salary">
+        <button class="btn btn-gold btn-sm">领取俸禄 {{ my_salary }} 石</button>
+      </form>
+      {% elif my_salary > 0 %}
+      <span style="font-size:11px;color:var(--muted);padding:3px 8px;border:1px solid var(--bd);border-radius:5px">今日俸禄已领</span>
+      {% endif %}
+      <a href="{{ url_for('sect_shop') }}" class="btn btn-ghost btn-sm">宗门商店</a>
+    </div>
+  </div>
+
+  <!-- 外门弟子遣返倒计时（仅自己可见） -->
+  {% if my_cult_rank == 0 and my_sect.rank == 'member' and my_joined_at %}
+  {% set my_days_in = ((cur_ts - my_joined_at) / 86400) | int %}
+  {% set my_days_left = 5 - my_days_in %}
+  {% if my_days_left <= 5 %}
+  <div style="padding:8px 12px;border-radius:8px;margin-bottom:10px;display:flex;align-items:center;gap:8px;
+    {% if my_days_left <= 0 %}background:rgba(220,60,60,.10);border:1px solid rgba(220,60,60,.35)
+    {% elif my_days_left <= 2 %}background:rgba(220,140,30,.09);border:1px solid rgba(220,140,30,.35)
+    {% else %}background:rgba(100,100,100,.06);border:1px solid var(--bd){% endif %}">
+    <span style="font-size:16px">{% if my_days_left <= 0 %}⚠️{% elif my_days_left <= 2 %}⏳{% else %}📋{% endif %}</span>
+    <div style="font-size:12px;flex:1">
+      {% if my_days_left <= 0 %}
+      <span style="color:var(--red);font-weight:600">你已在宗门满 5 天仍为外门弟子，将在下次刷新时被遣返。请立即参加内门考核！</span>
+      {% elif my_days_left == 1 %}
+      <span style="color:var(--orange,#e08030);font-weight:600">距遣返仅剩 1 天——明日若未晋升内门弟子，将被遣返出宗。</span>
+      {% else %}
+      <span style="color:var(--text)">外门考核倒计时：还有 <strong>{{ my_days_left }} 天</strong>，5天内须晋升内门弟子，否则将被遣返。</span>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+  {% endif %}
+
+  <!-- 考核升阶 -->
+  {% if my_cult_rank < CULT_RANKS|length - 1 %}
+  {% set next_cr = CULT_RANKS[my_cult_rank + 1] %}
+  <div style="padding:10px 12px;background:rgba(123,94,168,.05);border:1px solid rgba(123,94,168,.2);border-radius:8px;margin-bottom:10px">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <div style="flex:1">
+        <div style="font-size:12px;font-weight:600;color:var(--purple)">考核晋升 → {{ next_cr.name }}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">
+          需境界：{{ REALMS[next_cr.realm_req].name }} · 宗门 Lv.{{ next_cr.sect_lv_req }}
+          · 历史贡献 ≥ {{ next_cr.contrib_req }}
+          <span style="color:{% if my_contribution >= next_cr.contrib_req %}var(--jade){% else %}var(--red){% endif %}">（当前 {{ my_contribution }}）</span>
+          · 成功率 {{ (next_cr.exam_rate*100)|int }}% · 俸禄 {{ next_cr.salary }} 石{% if next_cr.salary_lingfu %} + {{ next_cr.salary_lingfu }} 灵符{% endif %}/日 · 每类最多 {{ next_cr.quest_max }} 次/周
+        </div>
+      </div>
+      {% set can_exam = (char.realm_idx >= next_cr.realm_req and sect_lv >= next_cr.sect_lv_req and my_contribution >= next_cr.contrib_req) %}
+      <form method="post" style="flex-shrink:0">
+        <input type="hidden" name="action" value="sect_exam">
+        <button class="btn btn-sm" style="background:rgba(123,94,168,.15);color:var(--purple);border:1px solid rgba(123,94,168,.3)"
+          {% if not can_exam %}disabled{% endif %}>
+          {% if not can_exam %}条件不足{% else %}参加考核{% endif %}
+        </button>
+      </form>
+    </div>
+  </div>
+  {% else %}
+  <div style="font-size:12px;color:var(--purple);padding:6px 10px;background:rgba(123,94,168,.06);border-radius:6px;margin-bottom:10px">
+    已达宗门最高品阶，享有最高俸禄与任务上限
+  </div>
+  {% endif %}
+
+  <!-- 长老开峰 -->
+  {% if my_cult_rank >= 3 %}
+  <div style="padding:10px 12px;background:rgba(180,130,60,.05);border:1px solid rgba(180,130,60,.2);border-radius:8px;margin-bottom:10px">
+    <div style="font-size:12px;font-weight:600;color:var(--gold2);margin-bottom:6px">⛰ 峰头
+      {% if my_peak_name %}<span style="color:var(--text)">·【{{ my_peak_name }}】</span>{% endif %}
+    </div>
+    <form method="post" style="display:flex;gap:6px;align-items:center">
+      <input type="hidden" name="action" value="set_peak">
+      <input type="text" name="peak_name" value="{{ my_peak_name }}" placeholder="为你的峰命名（最多10字）"
+        maxlength="10" style="flex:1;font-size:12px;background:var(--sf2);border:1px solid var(--bd);border-radius:6px;padding:4px 8px;color:var(--text)">
+      <button class="btn btn-gold btn-sm">{{ '改名' if my_peak_name else '开峰' }}</button>
+    </form>
+    {% if my_peak_name %}
+    <div style="font-size:11px;color:var(--muted);margin-top:4px">你收入门下的弟子将显示于此峰名下</div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- 宗门大比 -->
+  <div style="padding:12px 14px;background:rgba(180,60,60,.05);border:1px solid rgba(180,60,60,.2);border-radius:10px;margin-bottom:14px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <span style="font-size:16px">⚔️</span>
+      <span style="font-size:13px;font-weight:700;color:var(--red,#c04040)">宗门大比</span>
+      <span style="font-size:11px;color:var(--muted);margin-left:4px">开启费 {{ TOURNAMENT_COST }} 灵石 · 报名期 24h · 前三名获专属奖品 · 4~5名获灵石奖励</span>
+    </div>
+
+    {% if active_tournament %}
+    {# 报名进行中 #}
+    {% set secs_left = (active_tournament.signup_ends - cur_ts) %}
+    {% set h_left = (secs_left // 3600) %}
+    {% set m_left = ((secs_left % 3600) // 60) %}
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div style="flex:1;font-size:12px">
+        <span style="color:var(--gold);font-weight:600">报名进行中</span>
+        <span style="color:var(--muted);margin-left:6px">截止：还剩 {{ h_left }}h {{ m_left }}m</span>
+        <span style="margin-left:8px;color:var(--jade)">已报名 {{ tournament_entries }} 人（至少需 {{ TOURNAMENT_MIN_PLAYERS }} 人）</span>
+      </div>
+      {% if my_in_tournament %}
+      <span style="font-size:12px;color:var(--jade);padding:3px 10px;border:1px solid rgba(0,180,100,.3);border-radius:5px">✓ 已报名</span>
+      {% else %}
+      <form method="post" style="flex-shrink:0">
+        <input type="hidden" name="action" value="join_tournament">
+        <button class="btn btn-sm" style="background:rgba(180,60,60,.12);color:var(--red,#c04040);border:1px solid rgba(180,60,60,.3)">报名参赛</button>
+      </form>
+      {% endif %}
+      {% if my_sect and my_sect.rank == 'leader' %}
+      <form method="post" style="flex-shrink:0" onsubmit="return confirm('确定提前开始大比？报名将立即截止，淘汰赛对阵随即公布。')">
+        <input type="hidden" name="action" value="force_start_tournament">
+        <button class="btn btn-sm" style="background:rgba(120,80,180,.12);color:#a070e0;border:1px solid rgba(120,80,180,.3)">提前开始</button>
+      </form>
+      {% endif %}
+    </div>
+
+    {% elif knockout_tournament %}
+    {# 淘汰赛进行中 #}
+    {% set kt = knockout_tournament %}
+    <div style="font-size:12px;font-weight:600;color:var(--red,#c04040);margin-bottom:8px">
+      ⚔ 淘汰赛进行中 · 第 {{ kt.current_round }} 轮
+    </div>
+
+    {# 我的对局 #}
+    {% if my_kt_match %}
+      {% set m = my_kt_match %}
+      {% if m.status == 'pending' %}
+      <div style="font-size:12px;padding:8px 10px;background:rgba(180,60,60,.08);border:1px solid rgba(180,60,60,.25);border-radius:8px;margin-bottom:8px">
+        <span style="color:var(--gold);font-weight:600">我的对局：</span>
+        <span>{{ m.name_a }}</span>
+        <span style="color:var(--muted);margin:0 6px">VS</span>
+        <span>{{ m.name_b }}</span>
+        {% set expire_h = ((m.expires_at - cur_ts) // 3600) %}
+        {% set expire_m = (((m.expires_at - cur_ts) % 3600) // 60) %}
+        <span style="color:var(--muted);margin-left:8px;font-size:11px">（{{ expire_h }}h {{ expire_m }}m 后超时）</span>
+        <form method="post" style="display:inline;margin-left:10px" onsubmit="return confirm('出战！将进行两场模拟对决，确定？')">
+          <input type="hidden" name="action" value="fight_match">
+          <input type="hidden" name="match_id" value="{{ m.id }}">
+          <button class="btn btn-sm" style="background:rgba(180,60,60,.15);color:var(--red,#c04040);border:1px solid rgba(180,60,60,.4)">⚔ 出战</button>
+        </form>
+        <form method="post" style="display:inline;margin-left:6px" onsubmit="return confirm('确定认输？对手将直接晋级。')">
+          <input type="hidden" name="action" value="concede_match">
+          <input type="hidden" name="match_id" value="{{ m.id }}">
+          <button class="btn btn-sm" style="background:rgba(100,100,100,.1);color:var(--muted);border:1px solid rgba(100,100,100,.25)">🏳 认输</button>
+        </form>
+      </div>
+      {% else %}
+      <div style="font-size:12px;padding:6px 10px;background:rgba(0,180,100,.06);border:1px solid rgba(0,180,100,.2);border-radius:8px;margin-bottom:8px">
+        {% set winner_is_me = (m.overall_winner == char.id) %}
+        {% if m.char_b == 0 %}
+        <span style="color:var(--jade)">✓ 本轮轮空，直接晋级</span>
+        {% elif winner_is_me %}
+        <span style="color:var(--jade)">✓ 胜出晋级</span>
+        {% else %}
+        <span style="color:var(--muted)">本轮已被淘汰</span>
+        {% endif %}
+      </div>
+      {% endif %}
+    {% endif %}
+
+    {# 本轮所有对局 #}
+    <div style="font-size:11px;color:var(--muted);margin-bottom:4px">本轮对阵</div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      {% for m in kt_round_matches %}
+      <div style="font-size:12px;display:flex;align-items:center;gap:6px;padding:4px 8px;background:var(--sf2);border-radius:6px">
+        {% if m.char_b == 0 %}
+        <span style="color:var(--jade)">{{ m.name_a }}</span>
+        <span style="color:var(--muted);font-size:11px">（轮空晋级）</span>
+        {% else %}
+        <span style="{% if m.overall_winner == m.char_a %}color:var(--jade);font-weight:600{% endif %}">{{ m.name_a }}</span>
+        <span style="color:var(--muted)">vs</span>
+        <span style="{% if m.overall_winner == m.char_b %}color:var(--jade);font-weight:600{% endif %}">{{ m.name_b }}</span>
+        {% if m.status == 'done' %}
+        <span style="color:var(--muted);font-size:10px;margin-left:4px">→ {{ m.name_winner }}</span>
+        {% else %}
+        <span style="color:var(--muted);font-size:10px;margin-left:4px">待出战</span>
+        {% endif %}
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+
+    {% elif last_tournament %}
+    {# 展示最近一届结果 #}
+    {% set result = last_tournament.result_json | fromjson %}
+    {% set prizes = last_tournament.prizes_json | fromjson %}
+    <div style="font-size:12px;color:var(--muted);margin-bottom:6px">
+      上届奖品：{% for p in prizes %}<span style="color:var(--gold)">【{{ p }}】</span>{% if not loop.last %} · {% endif %}{% endfor %}
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+      {% set medals = ['🥇','🥈','🥉'] %}
+      {% for r in result[:3] %}
+      <div style="font-size:12px;padding:3px 10px;background:rgba(180,140,40,.08);border:1px solid rgba(180,140,40,.2);border-radius:6px">
+        {{ medals[loop.index0] }} <strong>{{ r.name }}</strong>
+      </div>
+      {% endfor %}
+    </div>
+    {% if my_sect.rank == 'leader' %}
+    <div style="display:flex;align-items:center;gap:10px">
+      {% if tournament_cooldown > 0 %}
+      <span style="font-size:11px;color:var(--muted)">冷却中：还需 {{ tournament_cooldown }} 天</span>
+      {% else %}
+      <form method="post">
+        <input type="hidden" name="action" value="start_tournament">
+        <button class="btn btn-sm" style="background:rgba(180,60,60,.12);color:var(--red,#c04040);border:1px solid rgba(180,60,60,.3)">开启新一届大比</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% else %}
+    {# 从未举办过 #}
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px">尚未举办过宗门大比。</div>
+    {% if my_sect.rank == 'leader' %}
+    <form method="post">
+      <input type="hidden" name="action" value="start_tournament">
+      <button class="btn btn-sm" style="background:rgba(180,60,60,.12);color:var(--red,#c04040);border:1px solid rgba(180,60,60,.3)">开启首届大比</button>
+    </form>
+    {% endif %}
+    {% endif %}
+  </div>
+
+  {% if members %}
+  {% set member_ids = members | map(attribute='char_id') | list %}
+  {% set now_ts_val = cur_ts %}
+  <table class="tbl" style="margin-bottom:10px">
+    <thead><tr><th>道号</th><th>境界</th><th>品阶</th><th>贡献</th>{% if my_sect.rank in ('leader','elder') %}<th>遣返预警</th>{% endif %}{% if my_sect.rank=='leader' %}<th>操作</th>{% endif %}</tr></thead>
+    <tbody>
+      {% for m in members %}
+      {% set m_disciples = sect_disciples.get(m.char_id, []) %}
+      {# 计算该外门弟子距遣返的剩余天数 #}
+      {% set days_in = ((now_ts_val - (m.joined_at or 0)) / 86400) | int if m.joined_at else 0 %}
+      {% set days_left = 5 - days_in %}
+      {% set at_risk = (m.cult_rank or 0) == 0 and m.rank == 'member' and m.joined_at and days_in > 0 %}
+      <tr style="{% if at_risk and days_left <= 0 %}background:rgba(220,80,60,.07){% elif at_risk and days_left <= 2 %}background:rgba(220,150,30,.06){% endif %}">
+        <td style="font-weight:{% if m.rank=='leader' %}600{% else %}400{% endif %}">
+          {{ m.name }}{% if m.zi %}<span style="font-size:10px;color:var(--muted);margin-left:4px">字{{ m.zi }}</span>{% endif %}{% if m.rank=='leader' %} ★{% elif m.rank=='elder' %} ☆{% endif %}
+          {% set m_peak = peak_map.get(m.char_id, '') %}
+          {% if m_peak %}<span style="font-size:10px;color:var(--gold2);margin-left:4px">⛰{{ m_peak }}</span>{% endif %}
+          {% if m_disciples %}
+          <div style="font-size:10px;color:var(--muted);margin-top:1px">
+            弟子：{% for tid in m_disciples %}{% set tm = members | selectattr('char_id','equalto',tid) | first | default(none) %}{% if tm %}{{ tm.name }}{% if not loop.last %}、{% endif %}{% endif %}{% endfor %}
+          </div>
+          {% endif %}
+        </td>
+        <td style="color:var(--jade);font-size:12px">{{ REALMS[m.realm_idx].name }}</td>
+        <td style="font-size:11px;color:{% if (m.cult_rank or 0)>=3 %}var(--purple){% elif (m.cult_rank or 0)>=2 %}var(--jade){% elif (m.cult_rank or 0)>=1 %}var(--blue){% else %}var(--muted){% endif %}">
+          {{ CULT_RANKS[m.cult_rank or 0].name }}
+        </td>
+        <td style="font-size:12px;color:var(--gold)">
+          {{ m.contribution or 0 }}
+          {% if (m.total_contribution or 0) > (m.contribution or 0) %}
+          <div style="font-size:10px;color:var(--muted)">累计 {{ m.total_contribution or 0 }}</div>
+          {% endif %}
+        </td>
+        {% if my_sect.rank in ('leader','elder') %}
+        <td style="font-size:11px">
+          {% if at_risk %}
+            {% if days_left <= 0 %}
+            <span style="color:var(--red);font-weight:600" title="已达5天仍未晋升内门，将在下次刷新时被遣返">⚠ 即将遣返</span>
+            {% elif days_left == 1 %}
+            <span style="color:var(--orange,#e08030);font-weight:600" title="明天将被遣返">余 1 天</span>
+            {% elif days_left <= 2 %}
+            <span style="color:var(--orange,#e08030)" title="后天将被遣返">余 {{ days_left }} 天</span>
+            {% else %}
+            <span style="color:var(--muted)">余 {{ days_left }} 天</span>
+            {% endif %}
+          {% else %}
+          <span style="color:var(--muted)">—</span>
+          {% endif %}
+        </td>
+        {% endif %}
+        {% if my_sect.rank=='leader' and m.char_id != char.id %}
+        <td style="white-space:nowrap">
+          <form method="post" style="display:inline">
+            <input type="hidden" name="action" value="promote"><input type="hidden" name="target_id" value="{{ m.char_id }}">
+            <select name="new_rank" style="font-size:11px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:5px;padding:2px 4px">
+              <option value="elder">副宗主</option><option value="member">门人</option>
+            </select>
+            <button class="btn btn-ghost btn-sm" style="padding:2px 6px">改</button>
+          </form>
+          <form method="post" style="display:inline" onsubmit="return confirm('确定驱逐【{{ m.name }}】？')">
+            <input type="hidden" name="action" value="kick"><input type="hidden" name="target_id" value="{{ m.char_id }}">
+            <button class="btn btn-sm" style="padding:2px 6px;background:rgba(180,40,40,.15);color:#e05555;border:1px solid rgba(180,40,40,.3)">逐</button>
+          </form>
+        </td>
+        {% elif my_sect.rank=='leader' %}<td></td>{% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <!-- 待审核的入宗申请（宗主/长老可见）-->
+  {% if pending_applications %}
+  <div style="background:rgba(44,110,158,.07);border:1px solid rgba(44,110,158,.3);border-radius:10px;padding:12px;margin-bottom:10px">
+    <div style="font-size:13px;font-weight:600;color:var(--blue);margin-bottom:8px">📋 入宗申请（{{ pending_applications|length }}）</div>
+    {% for ap in pending_applications %}
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 0;{% if not loop.last %}border-bottom:1px solid rgba(0,0,0,.06){% endif %}">
+      <div style="flex:1;font-size:13px">
+        <strong>{{ ap.applicant_name }}</strong>
+        <span style="color:var(--jade);font-size:11px;margin-left:4px">{{ REALMS[ap.applicant_realm].name }}</span>
+        <span class="root-{{ ap.applicant_root }}" style="font-size:11px;margin-left:4px">{{ ap.applicant_root }}</span>
+      </div>
+      <form method="post" style="display:inline">
+        <input type="hidden" name="action" value="approve_apply"><input type="hidden" name="inv_id" value="{{ ap.id }}">
+        <button class="btn btn-jade btn-sm">批准</button>
+      </form>
+      <form method="post" style="display:inline">
+        <input type="hidden" name="action" value="reject_apply"><input type="hidden" name="inv_id" value="{{ ap.id }}">
+        <button class="btn btn-ghost btn-sm">拒绝</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- 邀请成员 -->
+  {% if my_sect.rank in ('leader','elder') %}
+  <form method="post" style="display:flex;gap:8px;margin-bottom:10px">
+    <input type="hidden" name="action" value="invite">
+    <input name="target_name" placeholder="邀请道友（道号）" style="flex:1;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:6px 10px;font-family:inherit;font-size:13px">
+    <button class="btn btn-jade btn-sm">发送邀请</button>
+  </form>
+  {% endif %}
+
+  <!-- 宗门任务 & 积分 -->
+  <div style="margin-top:14px;border-top:1px solid var(--bd);padding-top:14px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+      <div class="card-h" style="margin:0">宗门周任务</div>
+      <span style="font-size:11px;color:var(--muted)">周一零点刷新 · 品阶越高每类可做次数越多</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      {% for sq in sect_quests %}
+      {% set is_submit = sq.type == 'submit' %}
+      {% set is_donate = sq.type == 'donate' %}
+      <div style="padding:10px 12px;border-radius:8px;
+           background:{% if sq.exhausted %}var(--sf2){% elif sq.done %}rgba(31,122,95,.06){% else %}var(--sf){% endif %};
+           border:1px solid {% if sq.can_claim %}var(--jade){% else %}var(--bd){% endif %};
+           {% if sq.exhausted %}opacity:.55{% endif %}">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:30px;height:30px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+               background:{% if sq.exhausted %}var(--sf2){% elif sq.done %}var(--jade){% else %}var(--sf2){% endif %};
+               font-size:11px;font-weight:700;
+               color:{% if sq.exhausted %}var(--muted){% elif sq.done %}#fff{% else %}var(--muted){% endif %}">
+            {% if sq.exhausted %}✓{% elif sq.done %}!{% else %}{{ sq.progress }}{% endif %}
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:{% if sq.can_claim %}700{% else %}500{% endif %};
+                 color:{% if sq.exhausted %}var(--muted){% elif sq.can_claim %}var(--jade){% else %}var(--text){% endif %}">
+              {{ sq.name }}
+              {% if sq.exhausted %}<span style="font-size:10px;color:var(--muted);margin-left:4px">本周上限</span>
+              {% elif sq.claim_cnt > 0 %}<span style="font-size:10px;color:var(--blue);margin-left:4px">已完成 {{ sq.claim_cnt }} 次</span>{% endif %}
+            </div>
+            <div style="font-size:11px;color:var(--muted)">{{ sq.desc }}</div>
+            {% if not sq.exhausted %}
+            <div style="margin-top:4px;height:4px;background:var(--bd);border-radius:2px;overflow:hidden">
+              <div style="height:100%;background:var(--jade);width:{{ sq.pct }}%"></div>
+            </div>
+            {% endif %}
+          </div>
+          <div style="text-align:right;flex-shrink:0;font-size:11px;color:var(--muted);min-width:60px">
+            <div style="color:var(--gold)">+{{ sq.reward_contrib }} 贡献</div>
+            {% if sq.reward_stones %}<div>+{{ sq.reward_stones }} 灵石</div>{% endif %}
+          </div>
+          <!-- 操作按钮 -->
+          {% if not sq.exhausted %}
+            {% if sq.can_claim %}
+            <form method="post" style="flex-shrink:0">
+              <input type="hidden" name="action" value="claim_sq">
+              <input type="hidden" name="quest_key" value="{{ sq.key }}">
+              <button class="btn btn-jade btn-sm">领取</button>
+            </form>
+            {% elif is_submit and not sq.done %}
+            <form method="post" style="flex-shrink:0">
+              <input type="hidden" name="action" value="submit_sq">
+              <input type="hidden" name="quest_key" value="{{ sq.key }}">
+              <button class="btn btn-ghost btn-sm">上交{{ sq.item }}</button>
+            </form>
+            {% elif is_donate and not sq.done %}
+            <form method="post" style="flex-shrink:0">
+              <input type="hidden" name="action" value="donate_sq">
+              <input type="hidden" name="quest_key" value="{{ sq.key }}">
+              <button class="btn btn-ghost btn-sm" {% if char.spirit_stones <= 0 %}disabled{% endif %}>捐献灵石</button>
+            </form>
+            {% endif %}
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if my_sect.rank == 'leader' %}
+  <!-- 宗主：转让或解散 -->
+  <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bd);display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <span style="font-size:12px;color:var(--muted)">宗主操作：</span>
+    {% if members|length > 1 %}
+    <form method="post" style="display:flex;gap:6px;align-items:center">
+      <input type="hidden" name="action" value="transfer_leader">
+      <select name="target_id" style="font-size:12px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:6px;padding:4px 6px;font-family:inherit">
+        {% for m in members if m.char_id != char.id %}
+        <option value="{{ m.char_id }}">{{ m.name }}</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-ghost btn-sm" style="color:var(--gold)"
+        onclick="return confirm('确定将宗主之位传予此人？你将成为普通门人。')">
+        传位退宗
+      </button>
+    </form>
+    {% endif %}
+    <form method="post" onsubmit="return confirm('确定解散宗门？此操作不可恢复！所有成员将被踢出。')">
+      <input type="hidden" name="action" value="dissolve">
+      <button class="btn btn-ghost btn-sm" style="color:var(--red)">解散宗门</button>
+    </form>
+  </div>
+  {% else %}
+  <form method="post" style="margin-top:10px" onsubmit="return confirm('确定退出宗门？')">
+    <input type="hidden" name="action" value="leave">
+    <button class="btn btn-ghost btn-sm" style="color:var(--red)">退出宗门</button>
+  </form>
+  {% endif %}
+</div>
+
+<!-- 宗门留言板 -->
+<div class="card">
+  <div class="card-h">宗门留言板</div>
+  <form method="post" style="display:flex;gap:8px;margin-bottom:12px">
+    <input type="hidden" name="action" value="post">
+    <input name="content" placeholder="留言给同门…" maxlength="200"
+      style="flex:1;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+    <button class="btn btn-jade btn-sm">发送</button>
+  </form>
+  {% for p in posts %}
+  <div style="padding:8px 0;{% if not loop.last %}border-bottom:1px solid var(--bd){% endif %}">
+    <div style="display:flex;gap:8px;align-items:baseline">
+      <span style="font-weight:600;color:var(--jade)">{{ p.char_name }}</span>
+      <span style="font-size:11px;color:var(--muted)">{{ p.created_at | format_ts }}</span>
+    </div>
+    <div style="font-size:13px;color:var(--text);margin-top:3px">{{ p.content }}</div>
+  </div>
+  {% else %}
+  <div style="color:var(--muted);font-size:13px">还没有留言，来第一个发言吧</div>
+  {% endfor %}
+</div>
+
+{% else %}
+<!-- 未加入宗门 -->
+<div class="grid2" style="margin-bottom:20px">
+  <div class="card">
+    <div class="card-h">创建宗门</div>
+    <div style="color:var(--muted);font-size:12px;margin-bottom:12px">
+      创建宗门需 <strong style="color:var(--gold)">{{ SECT_CREATE_COST }} 灵石</strong>，
+      当前持有 <strong style="color:var(--gold)">{{ char.spirit_stones }}</strong> 灵石。
+    </div>
+    <form method="post" style="display:flex;flex-direction:column;gap:10px">
+      <input type="hidden" name="action" value="create">
+      <input name="name" required maxlength="20" placeholder="宗门名称"
+        style="background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:8px 10px;font-family:inherit;font-size:13px">
+      <input name="description" placeholder="宗门简介（选填）" maxlength="100"
+        style="background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:8px 10px;font-family:inherit;font-size:13px">
+      <input name="emblem" placeholder="宗门图腾（一个emoji）" maxlength="2" value="🏯"
+        style="width:80px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:8px 10px;font-family:inherit;font-size:13px;text-align:center">
+      <button class="btn btn-gold" {% if char.spirit_stones < SECT_CREATE_COST %}disabled{% endif %}>
+        {% if char.spirit_stones < SECT_CREATE_COST %}灵石不足{% else %}创建宗门{% endif %}
+      </button>
+    </form>
+  </div>
+  <div class="card" style="background:rgba(166,124,26,.05);border-color:rgba(166,124,26,.15)">
+    <div class="card-h" style="color:var(--gold2)">宗门说明</div>
+    <div style="color:var(--muted);font-size:12px;line-height:2">
+      <div>· 宗门基础上限 {{ SECT_MAX_MEMBERS }} 人，每开一峰（长老品阶）额外 +{{ 5 }} 人</div>
+      <div>· 成员越多、境界越高，宗门修炼加成越大（上限 +15%）</div>
+      <div>· 师徒关系要求双方在同一宗门</div>
+      <div>· 可主动申请加入已有宗门，等待宗主/长老审核</div>
+    </div>
+  </div>
+</div>
+
+<!-- 现有宗门列表（申请加入）-->
+{% if all_sects %}
+<div class="card-h" style="margin-bottom:10px">现有宗门 <small style="color:var(--muted);font-weight:400;font-size:12px">申请后等待宗主/长老审核</small></div>
+<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:24px">
+  {% for s in all_sects %}
+  <div class="card" style="margin-bottom:0;padding:12px 16px">
+    <div style="display:flex;align-items:center;gap:12px">
+      <span style="font-size:26px;flex-shrink:0">{{ s.emblem }}</span>
+      <div style="flex:1">
+        <div style="font-weight:700;font-size:14px;color:var(--gold2)">{{ s.name }}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">
+          宗主：{{ s.leader_name }} · {{ s.member_count }}/{{ s.cap }} 人
+          {% if s.description %}· {{ s.description }}{% endif %}
+        </div>
+      </div>
+      {% if s.member_count < s.cap %}
+      <form method="post" style="flex-shrink:0">
+        <input type="hidden" name="action" value="apply">
+        <input type="hidden" name="sect_id" value="{{ s.id }}">
+        <button class="btn btn-jade btn-sm">申请加入</button>
+      </form>
+      {% else %}
+      <span style="font-size:12px;color:var(--muted);flex-shrink:0">已满员</span>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endif %}
+
+<!-- 宗门排行榜（所有人可见）-->
+{% if all_sects %}
+<div class="divider">宗门排行</div>
+<div class="card">
+  <table class="tbl">
+    <thead>
+      <tr>
+        <th style="width:48px">名次</th>
+        <th>宗门</th>
+        <th>宗主</th>
+        <th>人数</th>
+        <th>总境界</th>
+        <th>修炼加成</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in all_sects %}
+      {% set is_mine = my_sect and my_sect.id == s.id %}
+      <tr {% if is_mine %}style="background:rgba(31,122,95,.06)"{% endif %}>
+        <td style="text-align:center">
+          {% if loop.index == 1 %}<span style="color:var(--gold);font-size:15px">🥇</span>
+          {% elif loop.index == 2 %}<span style="color:#c0c0c0;font-size:15px">🥈</span>
+          {% elif loop.index == 3 %}<span style="color:#cd7f32;font-size:15px">🥉</span>
+          {% else %}<span style="color:var(--muted)">{{ loop.index }}</span>{% endif %}
+        </td>
+        <td>
+          <span style="font-size:16px">{{ s.emblem }}</span>
+          <strong style="margin-left:4px;color:{% if is_mine %}var(--jade){% else %}var(--text){% endif %}">{{ s.name }}</strong>
+          {% if is_mine %}<span style="font-size:11px;color:var(--jade);margin-left:4px">（我的宗门）</span>{% endif %}
+        </td>
+        <td style="font-size:12px;color:var(--muted)">{{ s.leader_name }}</td>
+        <td style="font-size:12px;color:var(--muted)">{{ s.member_count }}/{{ s.cap }}</td>
+        <td style="font-size:12px;color:var(--jade)">{{ s.total_realm or 0 }}</td>
+        <td style="font-size:12px;color:var(--gold)">
+          +{{ [((s.total_realm or 0) * 0.0005 * 100)|round(1), 15]|min }}%
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+</div>
+<style>input:focus,select:focus{outline:none;border-color:var(--jade)}</style>
+{% endblock %}

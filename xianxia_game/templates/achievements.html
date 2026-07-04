@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}成就 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🏆 成就 <small>{{ completed }}/{{ total }} 已达成</small></div>
+
+<!-- 总进度条 -->
+<div class="card" style="margin-bottom:16px;padding:12px 16px">
+  <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:6px">
+    <span>总完成度</span>
+    <span style="color:var(--gold)">{{ completed }}/{{ total }}</span>
+  </div>
+  <div class="bar-wrap" style="height:10px">
+    <div class="bar-fill bar-gold" style="width:{{ (completed/total*100)|int if total else 0 }}%"></div>
+  </div>
+</div>
+
+{% set cat_icons = {'修炼':'⚡','寿元':'⏳','战斗':'⚔','探索':'🗺','炼制':'⚒','社交':'💞','感悟':'✨','轮回':'🔄'} %}
+{% for cat, ach_list in cats.items() %}
+{% set cat_done = ach_list | selectattr('key', 'in', my.keys()) | list | length %}
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">{{ cat_icons.get(cat,'🏆') }} {{ cat }}
+    <span style="font-weight:400;font-size:12px;color:var(--muted);margin-left:8px">
+      {% set cat_done = namespace(n=0) %}
+      {% for a in ach_list %}{% set r=my.get(a.key) %}{% if r and r.completed %}{% set cat_done.n = cat_done.n+1 %}{% endif %}{% endfor %}
+      {{ cat_done.n }}/{{ ach_list|length }}
+    </span>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px">
+    {% for a in ach_list %}
+    {% set prog = my.get(a.key) %}
+    {% set done = prog and prog.completed %}
+    <div style="background:{% if done %}rgba(166,124,26,.08){% else %}var(--sf2){% endif %};
+         border:1px solid {% if done %}var(--gold){% else %}var(--bd){% endif %};
+         border-radius:10px;padding:12px;
+         {% if not done %}opacity:.7{% endif %}">
+      <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px">
+        <span style="font-size:22px;line-height:1">{{ a.icon }}</span>
+        <div style="flex:1">
+          <div style="font-weight:600;font-size:13px;color:{% if done %}var(--gold){% else %}var(--text){% endif %}">
+            {{ a.name }}
+            {% if done %}<span style="font-size:10px;color:var(--jade);margin-left:4px">✓</span>{% endif %}
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">{{ a.description }}</div>
+        </div>
+      </div>
+
+      <!-- 进度条（有进度时显示） -->
+      {% if prog and not done and prog.progress > 0 %}
+      {% set cond = a.condition_json | fromjson %}
+      {% set thresh = cond.get('threshold', 1) %}
+      {% if thresh > 1 %}
+      <div style="margin-bottom:6px">
+        <div class="bar-wrap" style="height:5px">
+          <div class="bar-fill bar-gold" style="width:{{ [100,(prog.progress/thresh*100)|int]|min }}%"></div>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px">{{ prog.progress }}/{{ thresh }}</div>
+      </div>
+      {% endif %}
+      {% endif %}
+
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:11px;color:var(--muted)">
+          {% if a.reward_stones %}💰 +{{ a.reward_stones }} 灵石{% endif %}
+          {% if a.reward_exp %}⚡ +{{ fmt_exp(a.reward_exp) }} 修为{% endif %}
+        </div>
+        {% if done and prog.completed_at %}
+        <div style="font-size:10px;color:var(--muted)">{{ prog.completed_at | format_ts }}</div>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,353 @@
+{% extends "base.html" %}
+{% block title %}开凿灵脉 — 灵墟界{% endblock %}
+{% block head %}
+<style>
+.vein-page{max-width:720px;margin:0 auto;padding:24px 16px 60px}
+
+/* ── 顶部标题 ── */
+.vein-hero{
+  text-align:center;padding:32px 20px 24px;
+  background:linear-gradient(160deg,#0d1a10 0%,#101a0d 60%,#0a1a14 100%);
+  border-radius:16px;border:1px solid #2a5a2a;
+  color:#d0f0d0;margin-bottom:24px;position:relative;overflow:hidden
+}
+.vein-hero::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse at 50% 0%,rgba(40,140,60,.20) 0%,transparent 70%);
+  pointer-events:none
+}
+.vein-hero-title{font-size:26px;font-weight:700;letter-spacing:4px;
+  color:#80e090;text-shadow:0 0 24px rgba(80,200,100,.5);margin-bottom:6px}
+.vein-hero-sub{font-size:13px;color:#5a8a5a;letter-spacing:1px}
+.vein-hero-lore{
+  font-size:13px;color:#7ab87a;margin-top:16px;font-style:italic;
+  border-left:2px solid #2a6a2a;padding-left:12px;text-align:left;
+  max-width:440px;margin-inline:auto
+}
+
+/* ── 倒计时 ── */
+.vein-timer{
+  text-align:center;padding:12px;
+  background:rgba(20,40,20,.5);border:1px solid #2a5a2a;
+  border-radius:10px;margin-bottom:20px;font-size:13px;color:#6aaa6a
+}
+.vein-timer-val{font-size:20px;font-weight:700;color:#90d090;
+  font-variant-numeric:tabular-nums;letter-spacing:2px}
+.vein-expired{
+  text-align:center;padding:24px;
+  background:rgba(20,20,20,.5);border:1px dashed #2a3a2a;
+  border-radius:14px;color:#4a6a4a;margin-bottom:20px;font-size:14px
+}
+
+/* ── 全服进度条 ── */
+.vein-progress-card{
+  background:linear-gradient(135deg,#0d140d,#131a10);
+  border:1px solid #2a5a2a;border-radius:14px;padding:20px;margin-bottom:20px
+}
+.vein-progress-title{font-size:15px;font-weight:700;color:#80d080;
+  margin-bottom:12px;letter-spacing:1px}
+.vein-bar-wrap{
+  background:rgba(10,20,10,.6);border-radius:20px;height:28px;
+  border:1px solid #1a3a1a;overflow:hidden;margin-bottom:8px;position:relative
+}
+.vein-bar-fill{
+  height:100%;border-radius:20px;transition:width .6s ease;
+  background:linear-gradient(90deg,#2a7a2a,#50c050,#80e080);
+  min-width:4px;position:relative
+}
+.vein-bar-fill::after{
+  content:'';position:absolute;top:0;left:0;right:0;bottom:0;
+  background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,.15) 50%,transparent 100%);
+  animation:vein-shimmer 2s linear infinite
+}
+@keyframes vein-shimmer{
+  0%{transform:translateX(-100%)}
+  100%{transform:translateX(100%)}
+}
+.vein-bar-text{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  font-size:12px;font-weight:700;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.6);
+  white-space:nowrap;z-index:1
+}
+.vein-progress-nums{
+  display:flex;justify-content:space-between;font-size:12px;color:#5a8a5a
+}
+.vein-threshold-line{
+  position:absolute;top:0;bottom:0;width:2px;
+  background:rgba(255,220,50,.6);z-index:2
+}
+
+/* ── 个人状态卡 ── */
+.vein-my-card{
+  background:linear-gradient(135deg,#0d1a0d,#111a0e);
+  border:1px solid #2a5a2a;border-radius:14px;padding:20px;margin-bottom:20px
+}
+.vein-my-title{font-size:14px;font-weight:700;color:#70c070;margin-bottom:14px}
+.vein-stat-row{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.vein-stat{
+  flex:1;min-width:100px;text-align:center;padding:12px 8px;
+  background:rgba(10,30,10,.4);border:1px solid #1a3a1a;border-radius:10px
+}
+.vein-stat-val{font-size:22px;font-weight:700;color:#90d090}
+.vein-stat-lbl{font-size:11px;color:#4a7a4a;margin-top:2px}
+.vein-my-pct{
+  font-size:13px;color:#6aaa6a;margin-bottom:14px;text-align:center
+}
+.vein-my-pct .hi{color:#90d090;font-weight:700;font-size:15px}
+.vein-reward-hint{
+  font-size:12px;color:#4a7a4a;padding:10px 14px;
+  background:rgba(30,60,20,.3);border:1px solid #1a3a1a;border-radius:8px;
+  text-align:center;margin-bottom:14px
+}
+.vein-reward-hint.met{
+  color:#a0e090;border-color:#3a7a2a;background:rgba(40,90,20,.35)
+}
+
+/* ── 开凿按钮 ── */
+.vein-charges{
+  display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-bottom:12px
+}
+.vein-charge-dot{
+  width:32px;height:32px;border-radius:50%;
+  border:2px solid #1a4a1a;background:#0a180a;
+  display:flex;align-items:center;justify-content:center;font-size:12px;color:#3a6a3a
+}
+.vein-charge-dot.full{
+  background:#1a4a1a;border-color:#4a9a4a;color:#90d090;
+  box-shadow:0 0 8px rgba(80,180,80,.3)
+}
+.vein-dig-btn{
+  width:100%;padding:14px;font-size:16px;font-weight:700;letter-spacing:2px;
+  background:linear-gradient(135deg,#1a5a1a,#2a8a2a);
+  border:1px solid #5aaa5a;border-radius:12px;color:#d0f0d0;cursor:pointer;
+  transition:all .2s;box-shadow:0 4px 20px rgba(40,140,40,.25)
+}
+.vein-dig-btn:hover:not(:disabled){
+  transform:translateY(-2px);box-shadow:0 6px 28px rgba(60,180,60,.4)
+}
+.vein-dig-btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.vein-cooldown-note{text-align:center;font-size:12px;color:#3a6a3a;margin-top:8px}
+
+/* ── 开凿结果 ── */
+.vein-result{
+  text-align:center;padding:20px;border-radius:12px;margin-bottom:16px;
+  background:linear-gradient(135deg,#0d1a0d,#162010);
+  border:1px solid #4a9a4a;animation:vein-pop .4s ease
+}
+@keyframes vein-pop{
+  0%{transform:scale(.95);opacity:.7}
+  100%{transform:scale(1);opacity:1}
+}
+.vein-result-icon{font-size:42px;margin-bottom:8px}
+.vein-result-dug{font-size:28px;font-weight:700;color:#90e090}
+.vein-result-stones{font-size:14px;color:#c0d890;margin-top:4px}
+.vein-result-total{font-size:12px;color:#5a8a5a;margin-top:8px}
+
+/* ── 未开放 ── */
+.vein-closed{
+  text-align:center;padding:40px 24px;
+  background:linear-gradient(135deg,#0d0d0d,#111411);
+  border:1px solid #1a2a1a;border-radius:16px;margin-bottom:20px;color:#4a6a4a
+}
+.vein-closed-icon{font-size:48px;margin-bottom:14px;opacity:.5}
+.vein-closed-title{font-size:18px;font-weight:700;color:#5a7a5a;letter-spacing:2px;margin-bottom:8px}
+.vein-closed-desc{font-size:13px;line-height:1.9;max-width:380px;margin:0 auto}
+
+/* ── 贡献榜 ── */
+.vein-board-card{
+  background:linear-gradient(135deg,#0d140d,#131a10);
+  border:1px solid #2a4a2a;border-radius:14px;padding:20px;margin-bottom:20px
+}
+.vein-board-title{font-size:14px;font-weight:700;color:#70c070;margin-bottom:12px}
+.vein-board-row{
+  display:flex;align-items:center;gap:10px;padding:7px 0;
+  border-bottom:1px solid #1a3a1a;font-size:13px
+}
+.vein-board-row:last-child{border:none}
+.vein-board-rank{
+  width:24px;text-align:center;font-weight:700;font-size:12px;
+  color:#4a7a4a;flex-shrink:0
+}
+.vein-board-rank.top{color:#c0d840}
+.vein-board-name{flex:1;color:#c0e0c0;font-weight:600}
+.vein-board-realm{font-size:11px;color:#3a6a3a}
+.vein-board-val{font-weight:700;color:#80d080;text-align:right}
+.vein-board-pct{font-size:11px;color:#4a7a4a;text-align:right}
+.vein-board-met{color:#a0e060}
+</style>
+{% endblock %}
+{% block body %}
+<div class="vein-page">
+
+{# ── 顶部 ── #}
+<div class="vein-hero">
+  <div class="vein-hero-title">🪨 上古灵脉 · 开凿</div>
+  <div class="vein-hero-sub">限时协作 · 齐心开凿 · 灵脉感悟</div>
+  <div class="vein-hero-lore">「上古时代，一条沉睡万年的灵脉在大地深处现世。灵气磅礴，非一人之力所能开凿。若修士们齐心合力，将灵脉中的灵气引出，每一位贡献超过五分之一的修士，皆可得到灵脉中沉淀的上古感悟。」</div>
+</div>
+
+{% if ev %}
+
+{# ── 倒计时 ── #}
+<div class="vein-timer">
+  活动剩余时间：<span class="vein-timer-val" id="vein-countdown" data-ends="{{ ev['ends_at'] }}">计算中…</span>
+</div>
+
+{# ── 开凿结果回显 ── #}
+{% if msg %}
+<div class="vein-result">
+  <div class="vein-result-icon">⛏️</div>
+  <div class="vein-result-dug">+{{ msg.dug }} 点灵脉</div>
+  <div class="vein-result-stones">获得灵石 {{ msg.stones }}</div>
+  <div class="vein-result-total">累计贡献：{{ msg.total }} / {{ VEIN_THRESHOLD }}（5%门槛）</div>
+</div>
+{% endif %}
+
+{# ── 全服进度 ── #}
+{% set global_pct = [(ev['total_progress'] / VEIN_TARGET * 100), 100]|min %}
+{% set threshold_pct = (VEIN_THRESHOLD / VEIN_TARGET * 100) %}
+<div class="vein-progress-card">
+  <div class="vein-progress-title">⛰️ 灵脉开凿进度（全服）</div>
+  <div class="vein-bar-wrap">
+    <div class="vein-bar-fill" style="width:{{ global_pct|round(2) }}%">
+      <div class="vein-threshold-line" style="left:{{ threshold_pct|round(2) }}%"></div>
+    </div>
+    <div class="vein-bar-text">{{ "%.1f"|format(global_pct) }}%</div>
+  </div>
+  <div class="vein-progress-nums">
+    <span>{{ ev['total_progress'] }} / {{ VEIN_TARGET }}</span>
+    <span style="color:#7a9a5a">▏5%门槛</span>
+  </div>
+</div>
+
+{# ── 个人状态 ── #}
+<div class="vein-my-card">
+  <div class="vein-my-title">⚒ 我的开凿状态</div>
+  {% set my_contrib = contrib['contribution'] if contrib else 0 %}
+  {% set my_excs    = contrib['excavations']  if contrib else 0 %}
+  {% set my_pct     = (my_contrib / VEIN_TARGET * 100) %}
+  <div class="vein-stat-row">
+    <div class="vein-stat">
+      <div class="vein-stat-val">{{ my_contrib }}</div>
+      <div class="vein-stat-lbl">累计贡献</div>
+    </div>
+    <div class="vein-stat">
+      <div class="vein-stat-val">{{ my_excs }}</div>
+      <div class="vein-stat-lbl">开凿次数</div>
+    </div>
+    <div class="vein-stat">
+      <div class="vein-stat-val">{{ charges }}</div>
+      <div class="vein-stat-lbl">可用次数</div>
+    </div>
+  </div>
+
+  <div class="vein-my-pct">
+    个人占比：<span class="hi">{{ "%.2f"|format(my_pct) }}%</span>
+    <span style="color:#3a6a3a">（目标 5% = {{ VEIN_THRESHOLD }}点）</span>
+  </div>
+
+  {% if my_contrib >= VEIN_THRESHOLD %}
+  <div class="vein-reward-hint met">✅ 已达成 5% 门槛！活动结束后将自动获得修炼速度 +200% 永久感悟</div>
+  {% else %}
+  {% set still_need = VEIN_THRESHOLD - my_contrib %}
+  {% set excs_need  = (still_need / 50)|int + 1 %}
+  <div class="vein-reward-hint">距5%门槛还需 <b style="color:#a0d090">{{ still_need }}</b> 点（约 {{ excs_need }} 次开凿）</div>
+  {% endif %}
+
+  {# 次数指示点 #}
+  <div class="vein-charges">
+    {% for i in range(VEIN_MAX_CHARGES) %}
+    <div class="vein-charge-dot {% if i < charges %}full{% endif %}">
+      {% if i < charges %}⛏{% else %}○{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if charges > 0 %}
+  <form method="post">
+    <input type="hidden" name="action" value="dig">
+    <button type="submit" class="vein-dig-btn">⛏ 开凿灵脉（剩余 {{ charges }} 次）</button>
+  </form>
+  <div class="vein-cooldown-note">每小时积累一次，最多积累 {{ VEIN_MAX_CHARGES }} 次 · 每次开凿 20~80 点，获得 50~200 灵石</div>
+  {% else %}
+  <button class="vein-dig-btn" disabled>暂无可用次数（每小时积累一次）</button>
+  <div class="vein-cooldown-note">每小时积累一次，最多积累 {{ VEIN_MAX_CHARGES }} 次</div>
+  {% endif %}
+</div>
+
+{% else %}
+{# ── 活动未开放 ── #}
+<div class="vein-closed">
+  <div class="vein-closed-icon">🪨</div>
+  <div class="vein-closed-title">上古灵脉尚未现世</div>
+  <div class="vein-closed-desc">
+    等待管理员开启此活动。<br>
+    一旦活动开启，请务必及时参与——<br>
+    活动仅持续 2 天，过期无法开凿。
+  </div>
+</div>
+{% endif %}
+
+{# ── 贡献榜 ── #}
+{% if leaderboard %}
+<div class="vein-board-card">
+  <div class="vein-board-title">📋 贡献排行（前20）</div>
+  {% for r in leaderboard %}
+  {% set rpct = (r['contribution'] / VEIN_TARGET * 100) %}
+  <div class="vein-board-row">
+    <div class="vein-board-rank {% if loop.index <= 3 %}top{% endif %}">
+      {% if loop.index == 1 %}🥇{% elif loop.index == 2 %}🥈{% elif loop.index == 3 %}🥉{% else %}{{ loop.index }}{% endif %}
+    </div>
+    <div>
+      <div class="vein-board-name">{{ r['name'] }}</div>
+      <div class="vein-board-realm">{{ REALMS[r['realm_idx']]['name'] if 0 <= r['realm_idx'] < REALMS|length else '未知' }}</div>
+    </div>
+    <div style="text-align:right">
+      <div class="vein-board-val {% if r['contribution'] >= VEIN_THRESHOLD %}vein-board-met{% endif %}">
+        {{ r['contribution'] }}
+        {% if r['contribution'] >= VEIN_THRESHOLD %}<span style="font-size:11px">✅</span>{% endif %}
+      </div>
+      <div class="vein-board-pct">{{ "%.2f"|format(rpct) }}% · {{ r['excavations'] }}次</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{# ── 活动说明 ── #}
+<div style="background:rgba(10,20,10,.3);border:1px solid #1a3a1a;border-radius:12px;padding:16px;font-size:12px;color:#4a7a4a;line-height:2">
+  <div style="color:#6aaa6a;font-weight:700;margin-bottom:6px">活动规则</div>
+  • 活动持续 <b style="color:#90d090">2 天</b>，过期无法开凿，奖励自动结算<br>
+  • 每小时积累 1 次开凿机会，最多积累 {{ VEIN_MAX_CHARGES }} 次，可一次性使用<br>
+  • 单次开凿贡献 <b>20~80</b> 点，同时获得 <b>50~200</b> 灵石<br>
+  • 个人累计贡献 ≥ <b style="color:#a0d090">{{ VEIN_THRESHOLD }} 点（全服 5%）</b> 即可在活动结束后获得奖励<br>
+  • 奖励：修炼速度 <b style="color:#c0f080">永久 +200%</b>（铭刻于感悟，不过期）<br>
+  • 预计需约 20 名修士各开凿 25 次，方能完全开凿灵脉
+</div>
+
+</div>
+
+<script>
+(function(){
+  function fmt(secs){
+    secs = Math.max(0, Math.floor(secs));
+    const d = Math.floor(secs/86400);
+    const h = Math.floor((secs%86400)/3600);
+    const m = Math.floor((secs%3600)/60);
+    const s = secs % 60;
+    if(d > 0) return d+'天 '+h+'h '+m+'m';
+    return (h>0?h+'h ':'') + m+'m ' + s+'s';
+  }
+  const el = document.getElementById('vein-countdown');
+  if(!el) return;
+  const ends = parseInt(el.dataset.ends);
+  function tick(){
+    const left = ends - Date.now()/1000;
+    if(left <= 0){ el.textContent = '已结束'; return; }
+    el.textContent = fmt(left);
+  }
+  tick();
+  setInterval(tick, 1000);
+})();
+</script>
+{% endblock %}

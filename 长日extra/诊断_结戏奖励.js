@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         诊断_结戏奖励
 // @author       长日将尽
-// @version      1.0.0
+// @version      1.1.0
 // @description  【测试脚本，用完可删】模拟结戏奖励判定全流程，不写入任何数据
 // ==/UserScript==
 
@@ -18,9 +18,10 @@ const tplTypeToStored = { "私约": "私密", "心意": "心愿" };
 let cmd = seal.ext.newCmdItemInfo();
 cmd.name = "诊断结戏奖励";
 cmd.help = `【测试脚本】模拟结戏奖励判定，不写入任何数据
-用法1：。诊断结戏奖励                          → 检查所有模版配置 + 注册表健康
-用法2：。诊断结戏奖励 群号                      → 用该群真实 session 数据模拟
-用法3：。诊断结戏奖励 子类型 段数 字数 [耗时]    → 纯数值模拟，如：私约 3 1200 45`;
+用法1：。诊断结戏奖励                                  → 检查所有模版配置 + 注册表健康
+用法2：。诊断结戏奖励 群号                              → 用该群真实 session 数据模拟
+用法3：。诊断结戏奖励 子类型 段数 字数 [耗时]            → 纯数值模拟，如：私约 3 1200 45
+用法4：。诊断结戏奖励 抽样 子类型 段数 字数 [耗时] [N]   → 跑 N 次随机抽取，对比期望 vs 实际分布`;
 
 cmd.solve = (ctx, msg, cmdArgs) => {
     const main = getMain();
@@ -159,6 +160,7 @@ cmd.solve = (ctx, msg, cmdArgs) => {
                                 return `🎲${(r.items || []).map(i => `${i.target}×${i.amount}(${total > 0 ? Math.round(i.weight/total*100) : 0}%)`).join("/")}`;
                             }
                             if (r.type === "location_draw") return `🎰地点池×${r.amount || 1}`;
+                            if (r.type === "named_draw") return `🎰「${r.pool_name}」抽取×${r.amount || 1}`;
                             const prob = (r.prob != null && r.prob < 100) ? `(${r.prob}%)` : "";
                             return `${r.target}×${r.amount}${prob}`;
                         });
@@ -178,14 +180,251 @@ cmd.solve = (ctx, msg, cmdArgs) => {
         return out;
     }
 
+    // ── 抽样模拟（模式4）────────────────────────────────────
+    // 复刻 长日系统.js 里的 drawFromPool + processReward 逻辑，纯 JS 不写任何存储
+    function drawFromPool(pool) {
+        const totalWeight = pool.items.reduce((s, it) => s + it.weight, 0);
+        if (totalWeight <= 0) return null;
+        let rand = Math.random() * totalWeight;
+        for (const item of pool.items) {
+            rand -= item.weight;
+            if (rand <= 0) return item;
+        }
+        return pool.items[pool.items.length - 1];
+    }
+
+    // 对一次模拟结戏采集所有"实际触发的奖励条目"
+    // 返回 Array<{ label: string, isPool: boolean }>
+    function collectOneRun(stat, elapsedMin, subtype, enabledTpls) {
+        const avgWords = stat.replies > 0 ? Math.floor(stat.words / stat.replies) : 0;
+        const getVal = param => {
+            switch (param) {
+                case "本场个人段数":           return stat.replies;
+                case "本场个人总字数":         return stat.words;
+                case "本场个人平均每段字数":   return avgWords;
+                case "结戏最多耗费时间":       return elapsedMin;
+            }
+            return 0;
+        };
+
+        const results = [];
+
+        function processReward(r) {
+            const prob = (r.prob == null) ? 100 : r.prob;
+            if (prob < 100 && Math.random() * 100 >= prob) return;
+
+            if (!r.type || r.type === "fixed") {
+                results.push({ label: `${r.target}×${r.amount}`, isPool: false });
+            } else if (r.type === "pool" && (r.items || []).length) {
+                const drawn = drawFromPool(r);
+                if (drawn) results.push({ label: `${drawn.target}×${drawn.amount}`, isPool: true });
+            } else if (r.type === "location_draw") {
+                results.push({ label: `地点池×${r.amount || 1}`, isPool: false });
+            } else if (r.type === "named_draw") {
+                results.push({ label: `「${r.pool_name}」抽取×${r.amount || 1}`, isPool: false });
+            }
+        }
+
+        for (const tpl of enabledTpls) {
+            for (const group of (tpl.groups || [])) {
+                if (group.op === "and") {
+                    for (const block of (group.blocks || [])) {
+                        const allMet = (block.conditions || []).every(c => evalCond(c.op, getVal(c.param), c.value));
+                        if (!allMet) continue;
+                        for (const r of (block.rewards || [])) processReward(r);
+                    }
+                } else if (group.op === "or") {
+                    for (const block of (group.blocks || [])) {
+                        const allMet = (block.conditions || []).every(c => evalCond(c.op, getVal(c.param), c.value));
+                        if (!allMet) continue;
+                        for (const r of (block.rewards || [])) processReward(r);
+                        break;
+                    }
+                }
+            }
+        }
+        return results;
+    }
+
+    // 生成抽样报告文字
+    function runSamplingReport(subtypeRaw, replies, words, elapsed, N, out) {
+        const subtype = tplTypeToStored[subtypeRaw] || subtypeRaw;
+        const stat = { replies, words };
+
+        const enabledTpls = templates.filter(t => {
+            if (!t.enabled) return false;
+            const tplType = t.subtype || "通用";
+            if (tplType === "通用") return true;
+            return (tplTypeToStored[tplType] || tplType) === subtype;
+        });
+
+        if (!enabledTpls.length) {
+            out.push(`⚠️ 无匹配的启用模版（子类型：${subtypeRaw}），抽样中止`);
+            return;
+        }
+
+        // 先找出所有"概率类"奖励（pool 或 prob<100 的 fixed），以及必然发放的奖励
+        // 用于给出期望分布，供与实际对比
+        const avgWords = replies > 0 ? Math.floor(words / replies) : 0;
+        const getVal = param => {
+            switch (param) {
+                case "本场个人段数":           return replies;
+                case "本场个人总字数":         return words;
+                case "本场个人平均每段字数":   return avgWords;
+                case "结戏最多耗费时间":       return elapsed;
+            }
+            return 0;
+        };
+
+        const expectedDesc = [];
+        for (const tpl of enabledTpls) {
+            for (const group of (tpl.groups || [])) {
+                const processGroup = (group) => {
+                    if (group.op === "and") {
+                        for (const block of (group.blocks || [])) {
+                            const allMet = (block.conditions || []).every(c => evalCond(c.op, getVal(c.param), c.value));
+                            if (!allMet) continue;
+                            describeRewards(block.rewards || [], expectedDesc);
+                        }
+                    } else {
+                        for (const block of (group.blocks || [])) {
+                            const allMet = (block.conditions || []).every(c => evalCond(c.op, getVal(c.param), c.value));
+                            if (!allMet) continue;
+                            describeRewards(block.rewards || [], expectedDesc);
+                            break;
+                        }
+                    }
+                };
+                processGroup(group);
+            }
+        }
+
+        function describeRewards(rewards, arr) {
+            for (const r of rewards) {
+                if (r.type === "pool" && (r.items || []).length) {
+                    const total = r.items.reduce((s, i) => s + i.weight, 0);
+                    const parts = r.items.map(i => `${i.target}×${i.amount}(期望${total > 0 ? Math.round(i.weight / total * 100) : 0}%)`);
+                    arr.push(`🎲 概率池：${parts.join(" / ")}`);
+                } else if (!r.type || r.type === "fixed") {
+                    const prob = (r.prob != null && r.prob < 100) ? `(触发率${r.prob}%)` : "(必然)";
+                    arr.push(`🎁 固定：${r.target}×${r.amount} ${prob}`);
+                } else if (r.type === "location_draw") {
+                    arr.push(`🎰 地点池×${r.amount || 1}(必然)`);
+                } else if (r.type === "named_draw") {
+                    arr.push(`🎰 「${r.pool_name}」抽取×${r.amount || 1}(必然)`);
+                }
+            }
+        }
+
+        out.push(`\n🧪 抽样模拟：「${subtypeRaw}」· ${replies}段 · ${words}字 · 耗时${elapsed}分 · ${N}次`);
+        if (expectedDesc.length) {
+            out.push(`📌 命中的奖励（条件满足部分）：`);
+            expectedDesc.forEach(d => out.push(`   ${d}`));
+        } else {
+            out.push(`⚠️ 当前参数下没有任何条件满足，抽样结果将全为空`);
+        }
+
+        // 跑 N 次
+        const tally = {}; // label → count
+        let emptyRuns = 0;
+        for (let i = 0; i < N; i++) {
+            const results = collectOneRun(stat, elapsed, subtype, enabledTpls);
+            if (!results.length) { emptyRuns++; continue; }
+            for (const r of results) {
+                tally[r.label] = (tally[r.label] || 0) + 1;
+            }
+        }
+
+        out.push(`\n📊 实际落点分布（${N} 次）：`);
+        const entries = Object.entries(tally).sort((a, b) => b[1] - a[1]);
+        if (!entries.length) {
+            out.push(`   全部 ${N} 次均无奖励（条件均未满足，或全被概率排除）`);
+        } else {
+            for (const [label, count] of entries) {
+                const pct = (count / N * 100).toFixed(1);
+                const bar = "█".repeat(Math.round(count / N * 20));
+                out.push(`   ${label.padEnd(16)} ${bar.padEnd(20)} ${pct}%（${count}/${N}）`);
+            }
+        }
+        if (emptyRuns > 0) {
+            out.push(`   （无奖励次数：${emptyRuns}/${N}，占 ${(emptyRuns/N*100).toFixed(1)}%）`);
+        }
+
+        // 校验：找出所有期望概率 vs 实际，检查是否偏差过大（>3σ）
+        out.push(`\n🔍 概率偏差校验（|实际-期望| > 5% 时报警）：`);
+        let anyWarning = false;
+        for (const tpl of enabledTpls) {
+            for (const group of (tpl.groups || [])) {
+                const checkGroup = (group) => {
+                    if (group.op === "and") {
+                        for (const block of (group.blocks || [])) {
+                            const allMet = (block.conditions || []).every(c => evalCond(c.op, getVal(c.param), c.value));
+                            if (!allMet) continue;
+                            checkRewards(block.rewards || []);
+                        }
+                    } else {
+                        for (const block of (group.blocks || [])) {
+                            const allMet = (block.conditions || []).every(c => evalCond(c.op, getVal(c.param), c.value));
+                            if (!allMet) continue;
+                            checkRewards(block.rewards || []);
+                            break;
+                        }
+                    }
+                };
+                checkGroup(group);
+            }
+        }
+
+        function checkRewards(rewards) {
+            for (const r of rewards) {
+                if (r.type === "pool" && (r.items || []).length) {
+                    const total = r.items.reduce((s, i) => s + i.weight, 0);
+                    for (const item of r.items) {
+                        const expectedPct = total > 0 ? item.weight / total * 100 : 0;
+                        const label = `${item.target}×${item.amount}`;
+                        const actualCount = tally[label] || 0;
+                        const actualPct = actualCount / N * 100;
+                        const diff = Math.abs(actualPct - expectedPct);
+                        const flag = diff > 5 ? "⚠️ 偏差过大！" : "✅";
+                        out.push(`   ${flag} ${label}：期望 ${expectedPct.toFixed(1)}%，实际 ${actualPct.toFixed(1)}%，差 ${diff.toFixed(1)}%`);
+                        if (diff > 5) anyWarning = true;
+                    }
+                } else if (!r.type || r.type === "fixed") {
+                    const prob = (r.prob != null && r.prob < 100) ? r.prob : 100;
+                    const label = `${r.target}×${r.amount}`;
+                    const actualCount = tally[label] || 0;
+                    const actualPct = actualCount / N * 100;
+                    const diff = Math.abs(actualPct - prob);
+                    const flag = diff > 5 ? "⚠️ 偏差过大！" : "✅";
+                    out.push(`   ${flag} ${label}：期望 ${prob.toFixed ? prob.toFixed(1) : prob}%，实际 ${actualPct.toFixed(1)}%，差 ${diff.toFixed(1)}%`);
+                    if (diff > 5) anyWarning = true;
+                } else if (r.type === "location_draw" || r.type === "named_draw") {
+                    const label = r.type === "named_draw"
+                        ? `「${r.pool_name}」抽取×${r.amount || 1}`
+                        : `地点池×${r.amount || 1}`;
+                    const actualCount = tally[label] || 0;
+                    const actualPct = actualCount / N * 100;
+                    const diff = Math.abs(actualPct - 100);
+                    const flag = diff > 5 ? "⚠️ 偏差过大！" : "✅";
+                    out.push(`   ${flag} ${label}：期望 100.0%，实际 ${actualPct.toFixed(1)}%，差 ${diff.toFixed(1)}%`);
+                    if (diff > 5) anyWarning = true;
+                }
+            }
+        }
+
+        if (!anyWarning) out.push(`   全部在正常波动范围内 ✅`);
+        out.push(`\n💡 N=${N}，统计波动正常范围约 ±${(1/Math.sqrt(N)*100*2).toFixed(1)}%（2σ）`);
+    }
+
     // ── 解析参数，分流 ────────────────────────────────────────
     const arg1 = cmdArgs.getArgN(1);
     const arg2 = cmdArgs.getArgN(2);
     const arg3 = cmdArgs.getArgN(3);
     const arg4 = cmdArgs.getArgN(4);
 
-    const isGroupMode = arg1 && /^\d{5,}$/.test(arg1);
-    const isMockMode  = arg1 && !isGroupMode && arg2 && arg3;
+    const isGroupMode    = arg1 && /^\d{5,}$/.test(arg1);
+    const isSamplingMode = arg1 === "抽样";
+    const isMockMode     = arg1 && !isGroupMode && !isSamplingMode && arg2 && arg3;
 
     if (!arg1) {
         // 模式1：仅健康检查
@@ -247,6 +486,22 @@ cmd.solve = (ctx, msg, cmdArgs) => {
                 continue;
             }
             lines.push(...simulatePlayer(roleName, groupStat[uid], elapsedMin, subtype));
+        }
+
+    } else if (isSamplingMode) {
+        // 模式4：抽样分布验证
+        // 用法：抽样 子类型 段数 字数 耗时 [N]
+        const subtypeRaw = cmdArgs.getArgN(2);
+        const replies    = parseInt(cmdArgs.getArgN(3)) || 0;
+        const words      = parseInt(cmdArgs.getArgN(4)) || 0;
+        const elapsed    = parseInt(cmdArgs.getArgN(5)) || 0;
+        const N          = Math.min(Math.max(parseInt(cmdArgs.getArgN(6)) || 1000, 100), 10000);
+
+        if (!subtypeRaw || !replies || !words) {
+            lines.push("❌ 格式：。诊断结戏奖励 抽样 子类型 段数 字数 耗时 [N]");
+            lines.push("   例：。诊断结戏奖励 抽样 私约 5 1500 45 2000");
+        } else {
+            runSamplingReport(subtypeRaw, replies, words, elapsed, N, lines);
         }
 
     } else if (isMockMode) {

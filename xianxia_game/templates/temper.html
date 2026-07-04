@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}炼体 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">💪 炼体 <small>锤炼肉身，提升攻防</small></div>
+
+{% if result %}
+<div class="result-box {% if result.leveled_up %}success{% else %}success{% endif %}" style="margin-bottom:20px">
+  <div class="rb-title" style="color:var(--jade)">✦ 炼体完毕</div>
+  <div style="font-size:14px;color:var(--text)">
+    炼体经验 <strong style="color:var(--gold)">+{{ result.gained }}</strong>
+  </div>
+  {% if result.leveled_up %}
+  <div style="margin-top:8px;font-size:15px;font-weight:700;color:var(--purple)">
+    ⬆ 突破至【{{ result.new_lv_name }}】！攻击 +{{ BODY_LEVELS[result.new_lv].atk_pct }}%，防御 +{{ BODY_LEVELS[result.new_lv].def_pct }}%
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<div style="display:flex;gap:20px;flex-wrap:wrap">
+
+  <!-- 左：当前状态 -->
+  <div style="width:240px;flex-shrink:0">
+    <div class="card" style="border-color:var(--jade);background:rgba(31,122,95,.05)">
+      <div class="card-h">当前体魄</div>
+      <div style="text-align:center;padding:12px 0">
+        <div style="font-size:28px;font-weight:700;color:var(--jade)">{{ cur.name }}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">第 {{ lv }} 层</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+        <div style="background:var(--sf2);border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:18px;font-weight:700;color:var(--blue)">+{{ body_atk_pct }}%</div>
+          <div style="font-size:10px;color:var(--muted)">攻击加成</div>
+        </div>
+        <div style="background:var(--sf2);border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:18px;font-weight:700;color:var(--green)">+{{ body_def_pct }}%</div>
+          <div style="font-size:10px;color:var(--muted)">防御加成</div>
+        </div>
+      </div>
+    </div>
+
+    {% if nxt %}
+    <div class="card">
+      <div class="card-h">下一层：{{ nxt.name }}</div>
+      <div class="bar-wrap" style="margin-bottom:6px">
+        <div class="bar-fill bar-jade" style="width:{{ pct }}%"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:10px">
+        <span>经验：{{ b_exp }}</span>
+        <span>需要：{{ nxt.exp }}</span>
+      </div>
+      <div style="font-size:12px;color:var(--muted)">
+        突破后：攻击 +{{ nxt.atk }}，防御 +{{ nxt.def }}
+        {% if char.realm_idx < nxt.realm %}
+        <div style="color:var(--red);margin-top:4px">
+          需达到【{{ REALMS[nxt.realm].name }}】方可继续
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% else %}
+    <div class="card" style="text-align:center;border-color:var(--gold);background:rgba(166,124,26,.06)">
+      <div style="font-size:20px;margin-bottom:6px">✦</div>
+      <div style="color:var(--gold);font-weight:700">已达炼体巅峰</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">神体成就，肉身如圣</div>
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <div class="card-h">当前灵力</div>
+      <div style="font-size:20px;font-weight:700;color:{% if nxt and energy >= cur.cost %}var(--jade){% else %}var(--red){% endif %}">
+        {{ energy }} / {{ MAX_ENERGY }}
+      </div>
+      {% if nxt %}
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">每次消耗 {{ cur.cost }} 灵力</div>
+      {% endif %}
+    </div>
+
+    {% if nxt %}
+    <form method="post">
+      <button type="submit" class="btn btn-jade" style="width:100%;padding:12px"
+        {% if energy < cur.cost or char.realm_idx < nxt.realm %}disabled{% endif %}>
+        💪 开始炼体
+      </button>
+    </form>
+    {% endif %}
+  </div>
+
+  <!-- 右：境界总览 -->
+  <div style="flex:1;min-width:260px">
+    <div class="card-h" style="margin-bottom:10px">炼体境界总览</div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      {% for bl in BODY_LEVELS %}
+      {% set i = loop.index0 %}
+      {% set is_cur = (i == lv) %}
+      {% set is_done = (i < lv) %}
+      {% set locked = (i > 0 and char.realm_idx < bl.realm) %}
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;
+           background:{% if is_cur %}rgba(31,122,95,.1){% elif is_done %}rgba(46,139,87,.05){% else %}var(--sf){% endif %};
+           border:1px solid {% if is_cur %}var(--jade){% elif is_done %}rgba(46,139,87,.2){% else %}var(--bd){% endif %};
+           {% if locked and not is_done %}opacity:.5{% endif %}">
+        <div style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+             background:{% if is_cur %}var(--jade){% elif is_done %}rgba(46,139,87,.3){% else %}var(--sf2){% endif %};
+             font-size:12px;font-weight:700;color:{% if is_cur %}#fff{% elif is_done %}var(--green){% else %}var(--muted){% endif %};
+             flex-shrink:0">
+          {% if is_done %}✓{% else %}{{ i }}{% endif %}
+        </div>
+        <div style="flex:1">
+          <div style="font-weight:{% if is_cur %}700{% else %}500{% endif %};
+               color:{% if is_cur %}var(--jade){% elif is_done %}var(--green){% else %}var(--muted){% endif %}">
+            {{ bl.name }}
+            {% if is_cur %}<span style="font-size:11px;font-weight:400;margin-left:4px">← 当前</span>{% endif %}
+          </div>
+          {% if i > 0 %}
+          <div style="font-size:11px;color:var(--muted)">
+            攻击 +{{ bl.atk_pct }}% · 防御 +{{ bl.def_pct }}%
+            {% if bl.realm > 0 %} · 需{{ REALMS[bl.realm].name }}{% endif %}
+          </div>
+          {% endif %}
+        </div>
+        {% if is_cur and nxt %}
+        <div style="flex-shrink:0;font-size:11px;color:var(--jade)">{{ pct }}%</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+</div>
+</div>
+{% endblock %}

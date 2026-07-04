@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}修为存档 — 后台{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">📦 修为存档 <small><a href="{{ url_for('admin') }}" style="font-size:13px">← 后台</a></small></div>
+<div style="font-size:12px;color:var(--muted);margin-bottom:16px">每30分钟自动存档一次，保留5天。</div>
+
+<!-- 查询指定玩家 -->
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">查询玩家存档历史</div>
+  <form method="get" style="display:flex;gap:8px;align-items:center">
+    <input name="name" value="{{ char_name }}" placeholder="输入道号"
+      style="flex:1;max-width:240px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+    <button class="btn btn-gold btn-sm">查询</button>
+  </form>
+  {% if char_name and char_snaps %}
+  <div style="margin-top:12px;overflow-x:auto">
+    <table class="tbl">
+      <thead><tr><th>时间</th><th>境界</th><th>修为</th><th>灵石</th><th>灵符</th></tr></thead>
+      <tbody>
+        {% for s in char_snaps %}
+        <tr>
+          <td style="font-size:11px;color:var(--muted)">{{ s.ts | format_ts }}</td>
+          <td style="font-size:12px">{{ REALMS[s.realm_idx].name }}</td>
+          <td style="font-size:12px;color:var(--jade)">{{ s.exp | fmt_exp }}</td>
+          <td style="font-size:12px;color:var(--gold)">{{ s.spirit_stones }}</td>
+          <td style="font-size:12px">{{ s.lingfu }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% elif char_name %}
+  <div style="color:var(--muted);font-size:13px;margin-top:10px">未找到【{{ char_name }}】的存档。</div>
+  {% endif %}
+</div>
+
+<!-- 最新存档全量 -->
+{% if latest_snap %}
+<div class="card">
+  <div class="card-h">最新存档（{{ latest_ts | format_ts }}）· 全部 {{ latest_snap|length }} 人</div>
+  <div style="overflow-x:auto">
+    <table class="tbl">
+      <thead><tr><th>道号</th><th>境界</th><th>修为</th><th>灵石</th><th>灵符</th></tr></thead>
+      <tbody>
+        {% for s in latest_snap %}
+        <tr>
+          <td style="font-weight:600">
+            <a href="?name={{ s.char_name }}" style="color:var(--text)">{{ s.char_name }}</a>
+          </td>
+          <td style="font-size:12px;color:var(--jade)">{{ REALMS[s.realm_idx].name }}</td>
+          <td style="font-size:12px">{{ s.exp | fmt_exp }}</td>
+          <td style="font-size:12px;color:var(--gold)">{{ s.spirit_stones }}</td>
+          <td style="font-size:12px">{{ s.lingfu }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+</div>
+{% endblock %}

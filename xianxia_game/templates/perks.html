@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}感悟总览 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">✨ 感悟总览 <small>每次大境界突破留下的永久加成</small></div>
+
+{% if not my %}
+<div class="empty">
+  <div style="font-size:32px;margin-bottom:10px">✨</div>
+  <div>尚无感悟</div>
+  <div style="font-size:12px;margin-top:6px">每次大境界突破（如炼气→筑基）成功后可选择一次感悟</div>
+</div>
+{% else %}
+
+<!-- 感悟汇总 -->
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">当前总加成</div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap">
+    {% for key, val in total.items() %}
+    {% set label = {'cultivate_pct':'修炼速度','crit_rate':'暴击率','def_pct':'防御','atk_pct':'攻击',
+                    'dodge':'闪避率','lifesteal':'吸血','explore_stone':'探索灵石','alchemy_bonus':'炼丹',
+                    'forge_bonus':'炼器','shuangxiu_pct':'双修','encounter_pct':'奇遇触发','affinity_pct':'好感'}.get(key, key) %}
+    <div style="background:var(--sf2);border:1px solid var(--bd);border-radius:8px;padding:8px 14px;text-align:center">
+      <div style="color:var(--gold);font-weight:700;font-size:15px">+{{ (val*100)|round(0)|int }}%</div>
+      <div style="color:var(--muted);font-size:11px">{{ label }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- 感悟列表 -->
+<div class="card">
+  <div class="card-h">感悟明细（{{ my|length }}条）</div>
+  {% for p in my %}
+  <div style="display:flex;align-items:center;gap:12px;padding:9px 0;
+       {% if not loop.last %}border-bottom:1px solid var(--bd){% endif %}">
+    <div style="width:36px;height:36px;border-radius:50%;background:rgba(166,124,26,.12);
+         display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">✦</div>
+    <div style="flex:1">
+      {% set ns = namespace(matched=false) %}
+      {% for pk in PERK_POOL %}{% if pk.key==p.perk_key and pk.val==p.value %}
+      <div style="font-weight:600;font-size:14px">{{ pk.name }}</div>
+      <div style="color:var(--muted);font-size:12px">{{ pk.desc }}</div>
+      {% set ns.matched = true %}
+      {% endif %}{% endfor %}
+      {% if not ns.matched %}
+      {% set fallback_label = {'cultivate_pct':'修炼速度','crit_rate':'暴击率','def_pct':'防御','atk_pct':'攻击',
+                      'dodge':'闪避率','lifesteal':'吸血','explore_stone':'探索灵石','alchemy_bonus':'炼丹',
+                      'forge_bonus':'炼器','shuangxiu_pct':'双修','encounter_pct':'奇遇触发','affinity_pct':'好感',
+                      'hp_pct':'气血上限'}.get(p.perk_key, p.perk_key) %}
+      <div style="font-weight:600;font-size:14px">{{ p.realm_earned }}</div>
+      <div style="color:var(--muted);font-size:12px">{{ fallback_label }} +{{ (p.value*100)|round(1) }}%</div>
+      {% endif %}
+    </div>
+    <div style="text-align:right">
+      <div style="font-size:11px;color:var(--jade)">{{ p.realm_earned }}</div>
+      <div style="font-size:11px;color:var(--muted)">{{ p.earned_at | format_ts }}</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card" style="background:rgba(166,124,26,.05);border-color:rgba(166,124,26,.2)">
+  <div class="card-h" style="color:var(--gold2)">感悟说明</div>
+  <div style="color:var(--muted);font-size:12px;line-height:2">
+    <div>· 每次<strong>大境界突破</strong>（炼气→筑基、筑基→结丹…）成功后从3个随机感悟中选1个</div>
+    <div>· 感悟<strong>永久生效</strong>，可以叠加（多次选同类加成会累积）</div>
+    <div>· 突破境界越高，越值得认真选择感悟</div>
+  </div>
+</div>
+</div>
+{% endblock %}

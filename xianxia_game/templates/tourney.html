@@ -1,0 +1,376 @@
+{% extends "base.html" %}
+{% block title %}靖世大典 — 灵墟界{% endblock %}
+{% block head %}
+<style>
+.ty-page{max-width:920px;margin:0 auto;padding:24px 16px 60px}
+
+/* ── 顶部 ── */
+.ty-hero{
+  text-align:center;padding:32px 20px 24px;
+  background:linear-gradient(160deg,#1a120d 0%,#1a150d 60%,#1a0f14 100%);
+  border-radius:16px;border:1px solid #5a4a2a;
+  color:#f0e0d0;margin-bottom:24px;position:relative;overflow:hidden
+}
+.ty-hero::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse at 50% 0%,rgba(200,140,40,.18) 0%,transparent 70%);
+  pointer-events:none
+}
+.ty-hero-title{font-size:26px;font-weight:700;letter-spacing:4px;
+  color:#e0b050;text-shadow:0 0 24px rgba(220,160,60,.5);margin-bottom:6px}
+.ty-hero-sub{font-size:13px;color:#8a7a5a;letter-spacing:1px}
+.ty-hero-lore{
+  font-size:13px;color:#c0a878;margin-top:16px;font-style:italic;
+  border-left:2px solid #6a5a2a;padding-left:12px;text-align:left;
+  max-width:560px;margin-inline:auto;line-height:1.9
+}
+
+/* ── 倒计时 ── */
+.ty-timer{
+  text-align:center;padding:12px;
+  background:rgba(40,30,20,.5);border:1px solid #5a4a2a;
+  border-radius:10px;margin-bottom:20px;font-size:13px;color:#aa9a6a
+}
+.ty-timer-val{font-size:20px;font-weight:700;color:#e0c080;
+  font-variant-numeric:tabular-nums;letter-spacing:2px}
+
+/* ── 结果回显 ── */
+.ty-result{
+  text-align:center;padding:20px;border-radius:12px;margin-bottom:16px;
+  background:linear-gradient(135deg,#1a140d,#201810);
+  border:1px solid #9a7a3a;animation:ty-pop .4s ease
+}
+.ty-result.lose{border-color:#5a4a3a;background:linear-gradient(135deg,#151210,#1a1512)}
+@keyframes ty-pop{0%{transform:scale(.95);opacity:.7}100%{transform:scale(1);opacity:1}}
+.ty-result-icon{font-size:42px;margin-bottom:8px}
+.ty-result-main{font-size:22px;font-weight:700;color:#e8c878}
+.ty-result.lose .ty-result-main{color:#a89878}
+.ty-result-sub{font-size:13px;color:#b0a080;margin-top:6px;line-height:1.7}
+
+/* ── 卡片 ── */
+.ty-card{
+  background:linear-gradient(135deg,#14100d,#1a1610);
+  border:1px solid #4a3a2a;border-radius:14px;padding:20px;margin-bottom:20px
+}
+.ty-card-title{font-size:15px;font-weight:700;color:#d0a860;
+  margin-bottom:12px;letter-spacing:1px}
+.ty-note{font-size:12px;color:#8a7a5a;margin-bottom:12px;line-height:1.8}
+
+/* ── 掷骰按钮 ── */
+.ty-act-btn{
+  width:100%;padding:14px;font-size:16px;font-weight:700;letter-spacing:2px;
+  background:linear-gradient(135deg,#6a4a1a,#9a6a2a);
+  border:1px solid #caa05a;border-radius:12px;color:#f8ecd8;cursor:pointer;
+  transition:all .2s;box-shadow:0 4px 20px rgba(160,110,40,.25)
+}
+.ty-act-btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 6px 28px rgba(200,140,60,.4)}
+.ty-act-btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+
+/* ── 我的进度条 ── */
+.ty-my-box{
+  margin-bottom:14px;padding:12px;background:rgba(150,105,40,.12);
+  border:1px solid #4a3a22;border-radius:10px;font-size:13px;color:#d8c8a0
+}
+.ty-progress-track{height:8px;border-radius:5px;background:#241c12;margin-top:8px;overflow:hidden}
+.ty-progress-fill{height:100%;background:linear-gradient(90deg,#9a6a2a,#e0b050);border-radius:5px;transition:width .4s}
+
+/* ── 棋盘 ── */
+.ty-board-wrap{overflow-x:auto;padding-bottom:6px;margin-bottom:8px}
+.ty-board{display:flex;gap:4px;min-width:max-content;padding:4px 2px}
+.ty-sq{
+  width:64px;flex-shrink:0;border-radius:9px;padding:6px 4px;
+  background:rgba(30,24,14,.6);border:1px solid #3a2f1c;text-align:center;position:relative
+}
+.ty-sq.zone-alchemy{border-color:#7a4a3a;background:rgba(150,70,50,.10)}
+.ty-sq.zone-forge{border-color:#4a5a6a;background:rgba(60,90,120,.10)}
+.ty-sq.zone-fulu{border-color:#5a4a7a;background:rgba(100,70,150,.10)}
+.ty-sq.zone-realm{border-color:#4a6a4a;background:rgba(60,120,80,.10)}
+.ty-sq.finish{border-color:#e0b050;background:rgba(220,170,50,.18)}
+.ty-sq.me-here{box-shadow:0 0 0 2px #e0c060 inset}
+.ty-sq-pos{font-size:10px;color:#6a5a3a}
+.ty-sq-icon{font-size:18px;line-height:1.3}
+.ty-sq-avatars{display:flex;flex-wrap:wrap;gap:2px;justify-content:center;margin-top:2px;min-height:16px}
+.ty-avatar{
+  font-size:9px;padding:1px 4px;border-radius:6px;background:rgba(220,170,50,.2);
+  border:1px solid #7a6a3a;color:#e8c878;white-space:nowrap
+}
+.ty-avatar.me{background:#c8973a;color:#241a0a;border-color:#e0c060;font-weight:700}
+.ty-avatar.finished{background:rgba(120,200,120,.2);border-color:#5a9a5a;color:#a0e0a0}
+.ty-legend{display:flex;flex-wrap:wrap;gap:10px;font-size:11px;color:#8a7a5a;margin-top:6px}
+.ty-legend span{display:inline-flex;align-items:center;gap:3px}
+
+/* ── 榜单 ── */
+.ty-board-row{
+  display:flex;align-items:center;gap:10px;padding:8px 0;
+  border-bottom:1px solid #2a2418;font-size:13px
+}
+.ty-board-row:last-child{border:none}
+.ty-board-row.me{background:rgba(200,150,50,.08);border-radius:8px;padding-inline:8px}
+.ty-rank{width:26px;text-align:center;font-weight:700;font-size:12px;color:#7a6a4a;flex-shrink:0}
+.ty-rank.top{color:#e0c050}
+.ty-bname{flex:1;color:#e0d0b0;font-weight:600}
+.ty-bsub{font-size:11px;color:#6a5a3a}
+.ty-bval{font-weight:700;color:#d8b060;text-align:right}
+.ty-fin-tag{
+  display:inline-block;font-size:10px;padding:1px 6px;border-radius:6px;
+  background:rgba(120,200,120,.2);border:1px solid #5a9a5a;color:#a0e0a0;margin-left:6px
+}
+
+/* ── 神兵 ── */
+.ty-weapon-row{display:flex;gap:10px;align-items:baseline;padding:7px 0;
+  border-bottom:1px dashed #2a2418;font-size:13px;flex-wrap:wrap}
+.ty-weapon-row:last-child{border:none}
+.ty-weapon-name{color:#ffb03a;font-weight:700;flex-shrink:0}
+.ty-weapon-stat{color:#c0a878;font-size:12px;flex-shrink:0}
+
+/* ── 未开放 ── */
+.ty-closed{
+  text-align:center;padding:40px 24px;
+  background:linear-gradient(135deg,#100d0d,#141110);
+  border:1px solid #2a221a;border-radius:16px;margin-bottom:20px;color:#6a5a4a
+}
+.ty-closed-icon{font-size:48px;margin-bottom:14px;opacity:.5}
+.ty-closed-title{font-size:18px;font-weight:700;color:#7a6a5a;letter-spacing:2px;margin-bottom:8px}
+</style>
+{% endblock %}
+{% block body %}
+<div class="ty-page">
+
+{# ── 顶部 ── #}
+<div class="ty-hero">
+  <div class="ty-hero-title">🏮 向晚仙君 · 靖世大典</div>
+  <div class="ty-hero-sub">天魔既逐 · 四海清晏 · 问道棋盘</div>
+  <div class="ty-hero-lore">「异世之门既闭，天魔遁走虚空。向晚仙君临凡开坛，铺就一盘『问道棋盘』：丹霞、炼器、符箓、心境四段厅堂，机缘与险境并存，人人皆可掷骰前行——不比名次，只问诚心，凡登临问道台者，皆授仙铸神兵。」</div>
+</div>
+
+{% if ev %}
+
+{# ── 倒计时 ── #}
+<div class="ty-timer">
+  大典剩余时间：<span class="ty-timer-val" id="ty-countdown" data-ends="{{ ev['ends_at'] }}">计算中…</span>
+</div>
+
+{# ── 掷骰结果 ── #}
+{% if roll_result and not roll_result.error %}
+{% if roll_result.post_finish %}
+<div class="ty-result {% if not roll_result.contest.won %}lose{% endif %}">
+  <div class="ty-result-icon">{% if roll_result.contest.won %}⚔{% else %}🛡{% endif %}</div>
+  <div class="ty-result-main">论道虚影（已登台，棋盘不再前进）</div>
+  <div class="ty-result-sub">
+    {% if roll_result.contest.won %}力克【{{ roll_result.contest.opp_name }}】幻影，积分 +{{ roll_result.contest.points }}，另得灵石 {{ roll_result.stones }}
+    {% else %}不敌【{{ roll_result.contest.opp_name }}】幻影，参与积分 +{{ roll_result.contest.points }}{% endif %}
+  </div>
+</div>
+{% else %}
+<div class="ty-result {% if roll_result.kind == 'danger' or (roll_result.kind == 'trial' and not roll_result.passed) %}lose{% endif %}">
+  <div class="ty-result-icon">
+    {% if roll_result.finished %}🏆
+    {% elif roll_result.kind == 'contest' %}{% if roll_result.contest.won %}⚔{% else %}🛡{% endif %}
+    {% elif roll_result.kind == 'danger' %}⚠
+    {% elif roll_result.kind == 'fortune' %}✨
+    {% elif roll_result.kind == 'trial' %}{% if roll_result.passed %}✅{% else %}❌{% endif %}
+    {% elif roll_result.kind == 'reward' %}🎁
+    {% else %}👣{% endif %}
+  </div>
+  <div class="ty-result-main">
+    掷出 {{ roll_result.dice }} 点，行至第 {{ roll_result.land_pos }} 格
+    {% if roll_result.zone %}【{{ roll_result.zone.icon }} {{ roll_result.zone.name }}】{% endif %}
+  </div>
+  <div class="ty-result-sub">
+    {% if roll_result.finished %}
+      终至【问道台】！仙君亲授「{{ TOURNEY_FINISH_TITLE }}」与神兵【{{ TOURNEY_FINISH_WEAPON.name }}】，已发至邮箱！
+      {% if roll_result.first_finisher %}<br>你是本届<b style="color:#ffd060">首位</b>登台者，另有彩蛋厚赏！{% endif %}
+    {% elif roll_result.kind == 'contest' %}
+      论道虚影：{% if roll_result.contest.won %}力克【{{ roll_result.contest.opp_name }}】幻影，积分 +{{ roll_result.contest.points }}，另得灵石 {{ roll_result.stones }}
+      {% else %}不敌【{{ roll_result.contest.opp_name }}】幻影，参与积分 +{{ roll_result.contest.points }}{% endif %}
+    {% elif roll_result.kind == 'danger' %}
+      遭遇险境，气血损失 {{ roll_result.hp_loss }}
+      {% if roll_result.retreat %}，被逼退 {{ roll_result.retreat }} 格{% endif %}
+    {% elif roll_result.kind == 'trial' %}
+      试炼{% if roll_result.passed %}过关{% if roll_result.stones %}，获灵石 {{ roll_result.stones }}、灵符 {{ roll_result.lingfu }}{% endif %}
+      {% else %}未能突破，稍事休整，未有损失{% endif %}
+    {% elif roll_result.kind == 'fortune' %}
+      灵光乍现！获灵石 {{ roll_result.stones }}、灵符 {{ roll_result.lingfu }}，额外前行 {{ roll_result.extra_steps }} 格
+    {% elif roll_result.kind == 'reward' %}
+      拾得机缘，获灵石 {{ roll_result.stones }}{% if roll_result.lingfu %}、灵符 {{ roll_result.lingfu }}{% endif %}
+    {% else %}
+      平路一段，暂无际遇，继续前行
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+{% endif %}
+
+{# ══ 问道棋盘 ══ #}
+<div class="ty-card">
+  <div class="ty-card-title">🎲 问道棋盘 · 全服共行</div>
+  <div class="ty-note">
+    无需灵力，每日可掷骰 {{ TOURNEY_ROLLS_PER_DAY }} 次，1~6 步随机前行。
+    丹霞坛／炼器阁／符箓廊按对应经验加成过关，心境岭按境界加成。
+    每格奖励首次抵达即得，机遇格额外多走几步，险境格气血受损、偶被逼退，论道虚影格与自身道基幻影一战、积分可换造化灵液。
+    <b style="color:#e8c878">登临终点问道台者，人人同授「{{ TOURNEY_FINISH_TITLE }}」与神兵【{{ TOURNEY_FINISH_WEAPON.name }}】</b>。
+  </div>
+
+  {% if my_prog %}
+  <div class="ty-my-box">
+    我行至第 <b style="color:#ffb03a">{{ my_prog.position }}</b> / {{ TOURNEY_BOARD_LENGTH }} 格
+    {% if my_prog.finished_at %}<span class="ty-fin-tag">已登台</span>{% endif %}
+    ｜ 论道虚影积分 <b style="color:#ffb03a">{{ my_prog.points }}</b>（{{ my_prog.wins }}胜{{ my_prog.losses }}负）
+    ｜ 今日掷骰剩余 <b style="color:#e8c878">{{ day_left }}</b> 次
+    <div class="ty-progress-track"><div class="ty-progress-fill" style="width:{{ (my_prog.position / TOURNEY_BOARD_LENGTH * 100) | round(1) }}%"></div></div>
+  </div>
+  {% else %}
+  <div class="ty-my-box">尚未踏上棋盘，掷一次骰子便可起行！</div>
+  {% endif %}
+
+  <form method="post">
+    <input type="hidden" name="action" value="roll">
+    <button type="submit" class="ty-act-btn" {% if day_left <= 0 %}disabled{% endif %}>
+      {% if my_prog and my_prog.finished_at %}⚔ 论道虚影（已登台，今日剩 {{ day_left }} 次）
+      {% else %}🎲 掷骰前行（今日剩 {{ day_left }} 次）{% endif %}
+    </button>
+  </form>
+  {% if my_prog and my_prog.finished_at %}
+  <div class="ty-note" style="margin-top:8px;margin-bottom:0">
+    你已登临问道台，棋盘不再前进，但仍可点击上方按钮与自身道基幻影论道，刷积分冲击结算前 {{ TOURNEY_CONTEST_TOP_N }} 名的造化灵液奖励。
+  </div>
+  {% endif %}
+
+  {# 棋盘可视化：全服玩家位置一览 #}
+  <div class="ty-board-wrap" style="margin-top:16px">
+    <div class="ty-board">
+      <div class="ty-sq" style="border-color:#5a4a3a">
+        <div class="ty-sq-pos">起点</div>
+        <div class="ty-sq-icon">🚩</div>
+      </div>
+      {% for sq in squares %}
+      <div class="ty-sq {% if sq.zone %}zone-{{ sq.zone.key }}{% endif %} {% if sq.pos == TOURNEY_BOARD_LENGTH %}finish{% endif %} {% if my_prog and my_prog.position == sq.pos %}me-here{% endif %}">
+        <div class="ty-sq-pos">{{ sq.pos }}</div>
+        <div class="ty-sq-icon">
+          {% if sq.pos == TOURNEY_BOARD_LENGTH %}🏯
+          {% elif sq.kind == 'reward' %}🎁{% elif sq.kind == 'fortune' %}✨{% elif sq.kind == 'trial' %}⚡
+          {% elif sq.kind == 'danger' %}⚠{% elif sq.kind == 'contest' %}⚔{% else %}·{% endif %}
+        </div>
+        <div class="ty-sq-avatars">
+          {% for p in positions_map.get(sq.pos, [])[:4] %}
+          <span class="ty-avatar {% if p.char_id == char.id %}me{% elif p.finished_at %}finished{% endif %}">{{ p.name[:3] }}</span>
+          {% endfor %}
+          {% if positions_map.get(sq.pos, [])|length > 4 %}
+          <span class="ty-avatar">+{{ positions_map.get(sq.pos, [])|length - 4 }}</span>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="ty-legend">
+    <span>🎁 机缘</span><span>⚡ 试炼</span><span>✨ 机遇</span><span>⚠ 险境</span><span>⚔ 论道虚影</span><span>🏯 问道台</span>
+  </div>
+</div>
+
+{# ══ 四段厅堂道韵 ══ #}
+<div class="ty-card">
+  <div class="ty-card-title">⛩ 四段厅堂 · 各展道韵</div>
+  {% for z in TOURNEY_ZONES %}
+  <div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px dashed #2a2418;font-size:13px">
+    <div style="flex-shrink:0;color:#e8c878;font-weight:700;width:110px">{{ z.icon }} {{ z.name }}（{{ z.lo }}~{{ z.hi }}格）</div>
+    <div style="color:#a89878">
+      {% if z.exp_field %}按角色对应修炼经验加成过关率{% else %}按角色境界加成过关率{% endif %}
+      ｜ {{ z.flavor }}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{# ══ 全服进度榜 ══ #}
+<div class="ty-card">
+  <div class="ty-card-title">📜 全服进度榜</div>
+  {% for p in board_players[:20] %}
+  <div class="ty-board-row {% if p.char_id == char.id %}me{% endif %}">
+    <div class="ty-rank {% if loop.index <= 3 %}top{% endif %}">
+      {% if loop.index == 1 %}🥇{% elif loop.index == 2 %}🥈{% elif loop.index == 3 %}🥉{% else %}{{ loop.index }}{% endif %}
+    </div>
+    <div style="flex:1">
+      <div class="ty-bname">{{ p.name }}{% if p.finished_at %}<span class="ty-fin-tag">已登台</span>{% endif %}</div>
+      <div class="ty-bsub">{{ REALMS[p.realm_idx]['name'] if 0 <= p.realm_idx < REALMS|length else '?' }}</div>
+    </div>
+    <div style="text-align:right">
+      <div class="ty-bval">第 {{ p.position }} 格</div>
+      <div class="ty-bsub">论道 {{ p.points }} 分</div>
+    </div>
+  </div>
+  {% else %}
+  <div style="text-align:center;padding:16px;font-size:12px;color:#5a4a3a">尚无人起行，虚位以待</div>
+  {% endfor %}
+</div>
+
+{# ══ 论道虚影积分榜 ══ #}
+<div class="ty-card">
+  <div class="ty-card-title">⚔ 论道虚影积分榜（结算前 {{ TOURNEY_CONTEST_TOP_N }} 名另赠造化灵液）</div>
+  <div class="ty-note">棋盘途中偶遇论道虚影格，与自身道基幻影一战，胜负皆计入此榜。</div>
+  {% for p in contest_board %}
+  <div class="ty-board-row {% if p.char_id == char.id %}me{% endif %}">
+    <div class="ty-rank {% if loop.index <= TOURNEY_CONTEST_TOP_N %}top{% endif %}">{{ loop.index }}</div>
+    <div style="flex:1">
+      <div class="ty-bname">{{ p.name }}</div>
+      <div class="ty-bsub">{{ p.wins }}胜{{ p.losses }}负</div>
+    </div>
+    <div class="ty-bval">{{ p.points }} 分</div>
+  </div>
+  {% else %}
+  <div style="text-align:center;padding:16px;font-size:12px;color:#5a4a3a">尚无对局</div>
+  {% endfor %}
+</div>
+
+{# ══ 终点神兵 ══ #}
+<div class="ty-card">
+  <div class="ty-card-title">🗡 问道台 · 人人同授</div>
+  <div class="ty-weapon-row">
+    <span class="ty-weapon-name">【{{ TOURNEY_FINISH_WEAPON.name }}】</span>
+    <span class="ty-weapon-stat">{{ TOURNEY_FINISH_WEAPON.stats_desc }}</span>
+  </div>
+  <div style="font-size:11px;color:#6a5a3a">{{ TOURNEY_FINISH_WEAPON.desc }}</div>
+  <div class="ty-note" style="margin-top:10px;margin-bottom:0">
+    ※ 凡登临第 {{ TOURNEY_BOARD_LENGTH }} 格「问道台」者，无论先后皆授此兵与「{{ TOURNEY_FINISH_TITLE }}」称号；首位登台者另有彩蛋厚赏。
+    大典落幕时，未能登台的修士也会按棋盘进度获赠灵石慰劳，绝不空手而归。
+  </div>
+</div>
+
+{% else %}
+{# ── 未开放 ── #}
+<div class="ty-closed">
+  <div class="ty-closed-icon">🏮</div>
+  <div class="ty-closed-title">靖世大典尚未开坛</div>
+  <div style="font-size:13px;line-height:1.9;max-width:400px;margin:0 auto">
+    传闻天魔遁走之后，向晚仙君有意开坛设宴、铺一盘问道棋盘。<br>
+    静候仙君法旨。
+  </div>
+</div>
+{% endif %}
+
+</div>
+
+<script>
+(function(){
+  function fmt(secs){
+    secs = Math.max(0, Math.floor(secs));
+    const d = Math.floor(secs/86400);
+    const h = Math.floor((secs%86400)/3600);
+    const m = Math.floor((secs%3600)/60);
+    const s = secs % 60;
+    if(d > 0) return d+'天 '+h+'h '+m+'m';
+    return (h>0?h+'h ':'') + m+'m ' + s+'s';
+  }
+  const el = document.getElementById('ty-countdown');
+  if(!el) return;
+  const ends = parseInt(el.dataset.ends);
+  function tick(){
+    const left = ends - Date.now()/1000;
+    if(left <= 0){ el.textContent = '已结束'; return; }
+    el.textContent = fmt(left);
+  }
+  tick();
+  setInterval(tick, 1000);
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}合欢修炼 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🌸 合欢修炼 <small>合欢修专属</small></div>
+
+{# ── 等级 & 灵力 ── #}
+<div class="grid2" style="margin-bottom:16px">
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <span style="font-weight:700;color:var(--pink,#e8a0b0)">{{ hq_lv_name }}</span>
+      <span style="font-size:12px;color:var(--muted)">Lv {{ hq_lv }} / {{ HEQING_LEVELS|length - 1 }}</span>
+    </div>
+    <div class="bar-wrap" style="height:8px;margin-bottom:4px">
+      <div class="bar-fill" style="width:{{ hq_pct }}%;background:linear-gradient(90deg,#e8a0b0,#c06080)"></div>
+    </div>
+    <div style="font-size:11px;color:var(--muted)">
+      经验 {{ hq_exp }}{% if next_exp %} / {{ next_exp }}{% else %} （已大成）{% endif %}
+    </div>
+  </div>
+  <div class="card">
+    <div style="font-size:13px;color:var(--muted);margin-bottom:6px">灵力</div>
+    <div class="bar-wrap" style="height:8px;margin-bottom:4px">
+      <div class="bar-fill bar-jade" style="width:{{ (energy / MAX_ENERGY * 100)|int }}%"></div>
+    </div>
+    <div style="font-size:13px;font-weight:600">{{ energy }} / {{ MAX_ENERGY }}</div>
+  </div>
+</div>
+
+{# ── 冥思结果 ── #}
+{% if result %}
+<div class="result-box success" style="margin-bottom:16px">
+  <div style="font-weight:700;font-size:15px;color:#e8a0b0">情缘冥思有所得</div>
+  <div style="font-size:13px;color:var(--muted);margin-top:4px">
+    合欢经验 +{{ result.exp }}
+    {% if result.leveled_up %}
+    · <span style="color:#e8a0b0;font-weight:600">境界精进：【{{ result.new_lv_name }}】</span>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{# ── 情缘冥思 ── #}
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h" style="color:#e8a0b0">情缘冥思</div>
+  <div style="font-size:13px;color:var(--muted);margin-bottom:10px">
+    静心感悟情缘之道，消耗 {{ HEQING_MEDITATION_COST }} 灵力，获得合欢经验 +{{ 15 }}。
+  </div>
+  <form method="post">
+    <input type="hidden" name="action" value="meditate">
+    <button class="btn" style="background:#c06080;color:#fff"
+      {% if energy < HEQING_MEDITATION_COST %}disabled{% endif %}>
+      🌸 情缘冥思（{{ HEQING_MEDITATION_COST }} 灵力）
+    </button>
+  </form>
+</div>
+
+{# ── 七彩璎珞合成 ── #}
+{% if hq_lv >= 4 %}
+<div class="card" style="margin-bottom:16px;background:rgba(224,64,251,.05);border-color:rgba(224,64,251,.3)">
+  <div class="card-h" style="color:#e040fb">🌈 七彩璎珞合成（天人双修专属）</div>
+  <div style="font-size:13px;color:var(--muted);margin-bottom:12px">
+    以珍稀宝材凝炼造化之力，炼成七彩璎珞。可赠予道友，任何人可用于子嗣灵根强化，无需好感，天灵根可突破至混元灵根。
+  </div>
+  <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;font-size:12px">
+    {% for mat_name, qty in YINGLUO_MATS %}
+    {% set have = treasure_inv.get(mat_name, 0) %}
+    <div style="display:flex;justify-content:space-between;align-items:center;
+         padding:5px 10px;border-radius:6px;background:var(--sf2)">
+      <span style="color:{% if have >= qty %}var(--jade){% else %}var(--red){% endif %}">
+        {{ mat_name }} ×{{ qty }}
+      </span>
+      <span style="color:var(--muted)">持有 {{ have }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  <form method="post"
+    onsubmit="return confirm('消耗血玉×1、东珠×1、玄银×1、红宝石×1、蓝宝石×1，炼制七彩璎珞×1？')">
+    <input type="hidden" name="action" value="craft_yingluo">
+    {% set ns = namespace(can_craft=true) %}
+    {% for mat_name, qty in YINGLUO_MATS %}{% if treasure_inv.get(mat_name, 0) < qty %}{% set ns.can_craft = false %}{% endif %}{% endfor %}
+    <button class="btn" style="background:rgba(224,64,251,.7);color:#fff;width:100%"
+      {% if not ns.can_craft %}disabled{% endif %}>
+      🌈 炼制七彩璎珞
+    </button>
+  </form>
+</div>
+{% endif %}
+
+{# ── 等级路线 ── #}
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">修炼路线</div>
+  <div style="display:flex;flex-direction:column;gap:8px">
+    {% for lvl in HEQING_LEVELS %}
+    {% set reached = hq_lv >= loop.index0 %}
+    <div style="display:flex;gap:12px;align-items:flex-start;padding:8px;border-radius:8px;
+         background:{% if reached %}rgba(192,96,128,.08){% else %}var(--sf2){% endif %};
+         border:1px solid {% if reached %}rgba(192,96,128,.35){% else %}var(--bd){% endif %}">
+      <div style="width:20px;height:20px;border-radius:50%;flex-shrink:0;margin-top:1px;
+           background:{% if reached %}#c06080{% else %}var(--bd){% endif %};
+           display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff">
+        {{ loop.index0 }}
+      </div>
+      <div style="flex:1">
+        <div style="font-weight:600;font-size:13px;color:{% if reached %}#e8a0b0{% else %}var(--muted){% endif %}">
+          {{ lvl.name }}
+          {% if loop.index0 == hq_lv %}<span style="font-size:10px;color:#c06080;margin-left:6px">▶ 当前</span>{% endif %}
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">{{ lvl.bonus }}</div>
+        {% if loop.index0 > 0 %}
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">需经验：{{ lvl.exp }}</div>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+{# ── 道侣 ── #}
+{% if all_daolv %}
+<div class="card">
+  <div class="card-h">道侣（{{ all_daolv|length }}/3）</div>
+  <div style="display:flex;flex-direction:column;gap:8px">
+    {% for d in all_daolv %}
+    <div style="display:flex;justify-content:space-between;align-items:center;
+         padding:8px 0;{% if not loop.last %}border-bottom:1px solid var(--bd){% endif %}">
+      <div>
+        <span style="font-weight:600;color:var(--text)">{{ d.name }}</span>
+        <span style="font-size:12px;color:var(--muted);margin-left:8px">{{ REALMS[d.realm_idx].name }}</span>
+      </div>
+      <span class="root-{{ d.spirit_root }}" style="font-size:12px">{{ d.spirit_root }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% else %}
+<div class="card" style="text-align:center;padding:30px;color:var(--muted)">
+  <div style="font-size:32px;margin-bottom:8px">💞</div>
+  <div>尚无道侣，前往<a href="{{ url_for('social') }}" style="color:#e8a0b0">社交</a>结缘</div>
+</div>
+{% endif %}
+
+</div>
+{% endblock %}

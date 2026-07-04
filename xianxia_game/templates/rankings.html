@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}排行榜 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+
+{% if immortals %}
+<!-- ── 封仙榜 ── -->
+<div class="page-title" style="color:var(--gold)">☯ 封仙榜 <small style="color:var(--muted)">已飞升真仙，超脱轮回</small></div>
+<div class="card" style="margin-bottom:28px;border-color:rgba(166,124,26,.4);background:rgba(166,124,26,.04)">
+  <table class="tbl">
+    <thead>
+      <tr>
+        <th style="width:48px">序</th>
+        <th>道号</th>
+        <th>灵根</th>
+        <th>五行</th>
+        <th>境界</th>
+        <th>修为</th>
+        <th>寿元</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in immortals %}
+      <tr {% if p.username == session.uname %}style="background:rgba(201,168,76,.08)"{% endif %}>
+        <td style="text-align:center">
+          <span style="color:var(--gold);font-size:15px">{% if loop.index == 1 %}✦{% elif loop.index == 2 %}✧{% elif loop.index == 3 %}◆{% else %}{{ loop.index }}{% endif %}</span>
+        </td>
+        <td>
+          <span style="font-weight:700;color:var(--gold)">{{ p.name }}</span>
+          {% if p.daolv_id %}<span title="已有道侣">💑</span>{% endif %}
+          {% if p.ancient_awakened and ANCIENT_BLESSING_MAP.get(p.ancient_blessing_id) %}
+          <span style="font-size:11px;color:var(--purple);border:1px solid var(--purple);border-radius:6px;padding:0 5px;margin-left:4px"
+                title="{{ ANCIENT_BLESSING_MAP[p.ancient_blessing_id]['desc'] }}">{{ ANCIENT_BLESSING_MAP[p.ancient_blessing_id]['figure'] }}后人</span>
+          {% endif %}
+          {% if p.username == session.uname %}<span style="color:var(--jade);font-size:11px;margin-left:4px">（你）</span>{% endif %}
+        </td>
+        <td><span class="root-{{ p.spirit_root }}" style="font-size:12px">{{ p.spirit_root }}</span></td>
+        <td>
+          <div style="display:flex;gap:3px;flex-wrap:wrap">
+            {% for el in p.elements | fromjson %}
+            <span style="color:var(--gold2);font-size:11px">{{ el }}</span>
+            {% endfor %}
+          </div>
+        </td>
+        <td><span style="color:var(--gold);font-weight:600">{{ REALMS[p.realm_idx].name }}</span></td>
+        <td style="color:var(--muted);font-size:12px">{{ fmt_exp(p.exp) }}</td>
+        <td style="color:var(--muted);font-size:12px">{{ p.age }} 岁</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<!-- ── 修仙排行 ── -->
+<div class="page-title">🏆 修仙排行榜 <small>当世强者，一览无余</small></div>
+
+{% if not top %}
+<div class="empty">尚无修士登上排行榜</div>
+{% else %}
+<div class="card">
+  <table class="tbl">
+    <thead>
+      <tr>
+        <th style="width:48px">名次</th>
+        <th>道号</th>
+        <th>灵根</th>
+        <th>五行</th>
+        <th>当前境界</th>
+        <th>修为</th>
+        <th>灵石</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in top %}
+      <tr {% if p.username == session.uname %}style="background:rgba(77,184,154,.07)"{% endif %}>
+        <td style="text-align:center">
+          {% if loop.index == 1 %}
+          <span style="color:var(--gold);font-size:16px">🥇</span>
+          {% elif loop.index == 2 %}
+          <span style="color:#c0c0c0;font-size:16px">🥈</span>
+          {% elif loop.index == 3 %}
+          <span style="color:#cd7f32;font-size:16px">🥉</span>
+          {% else %}
+          <span style="color:var(--muted)">{{ loop.index }}</span>
+          {% endif %}
+        </td>
+        <td>
+          <span style="font-weight:600;color:var(--text)">{{ p.name }}</span>
+          {% if p.daolv_id %}<span title="已有道侣">💑</span>{% endif %}
+          {% if p.ancient_awakened and ANCIENT_BLESSING_MAP.get(p.ancient_blessing_id) %}
+          <span style="font-size:11px;color:var(--purple);border:1px solid var(--purple);border-radius:6px;padding:0 5px;margin-left:4px"
+                title="{{ ANCIENT_BLESSING_MAP[p.ancient_blessing_id]['desc'] }}">{{ ANCIENT_BLESSING_MAP[p.ancient_blessing_id]['figure'] }}后人</span>
+          {% endif %}
+          {% if p.username == session.uname %}
+          <span style="color:var(--jade);font-size:11px;margin-left:6px">（你）</span>
+          {% endif %}
+        </td>
+        <td><span class="root-{{ p.spirit_root }}" style="font-size:12px">{{ p.spirit_root }}</span></td>
+        <td>
+          <div style="display:flex;gap:3px;flex-wrap:wrap">
+            {% for el in p.elements | fromjson %}
+            <span style="color:var(--gold2);font-size:11px">{{ el }}</span>
+            {% endfor %}
+          </div>
+        </td>
+        <td>
+          <span style="color:var(--jade);font-weight:500">{{ REALMS[p.realm_idx].name }}</span>
+        </td>
+        <td style="color:var(--muted);font-size:12px">{{ fmt_exp(p.exp) }}</td>
+        <td style="color:var(--gold);font-size:12px">{{ p.spirit_stones }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+  {% if session.uid %}
+  <a href="{{ url_for('dashboard') }}" class="btn btn-ghost btn-sm">返回灵台</a>
+  {% else %}
+  <a href="{{ url_for('register') }}" class="btn btn-jade btn-sm">加入修仙界</a>
+  <a href="{{ url_for('login') }}" class="btn btn-ghost btn-sm">登录</a>
+  {% endif %}
+</div>
+</div>
+{% endblock %}

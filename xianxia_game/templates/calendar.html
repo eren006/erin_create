@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}灵界日历 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">📅 灵界日历 <small>全服共享，天道轮回</small></div>
+
+<!-- 当前节气 -->
+<div class="card" style="margin-bottom:16px;border-color:var(--gold);background:rgba(166,124,26,.06)">
+  <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+    <div style="font-size:48px">{{ st.icon }}</div>
+    <div style="flex:1">
+      <div style="font-size:22px;font-weight:700;color:var(--gold)">灵界第 {{ st.year }} 年 · {{ st.season }}季</div>
+      <div style="font-size:14px;color:var(--text);margin-top:4px">
+        <strong>节气加成</strong>：{{ st.buff.desc }}
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">
+        距下一节气还有 {{ st.til_next_h }} 时 {{ st.til_next_m }} 分
+      </div>
+    </div>
+    <!-- 四季一览 -->
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      {% set seasons_info = [('春','🌸','修炼+20%'),('夏','☀','攻击+15%'),('秋','🍂','炼丹炼器+10%'),('冬','❄','双修+30%')] %}
+      {% for name,icon,desc in seasons_info %}
+      <div style="background:{% if name==st.season %}rgba(166,124,26,.15){% else %}var(--sf2){% endif %};
+           border:1px solid {% if name==st.season %}var(--gold){% else %}var(--bd){% endif %};
+           border-radius:10px;padding:8px 12px;text-align:center;min-width:80px">
+        <div style="font-size:20px">{{ icon }}</div>
+        <div style="font-size:12px;font-weight:600;color:{% if name==st.season %}var(--gold){% else %}var(--muted){% endif %}">{{ name }}季</div>
+        <div style="font-size:10px;color:var(--muted)">{{ desc }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- 全服大事记 -->
+<div class="card">
+  <div class="card-h">全服大事记</div>
+  {% if not recent %}
+  <div style="color:var(--muted);font-size:13px;text-align:center;padding:20px">
+    尚无记录，世界正在书写历史…
+  </div>
+  {% else %}
+  {% set type_style = {
+    'breakthrough': ('color:var(--jade);', '⚡'),
+    'marriage':     ('color:var(--gold);', '💑'),
+    'divorce':      ('color:var(--muted);', '💔'),
+    'death':        ('color:var(--red);',  '🕯'),
+    'offspring':    ('color:var(--purple);','👶'),
+    'perk':         ('color:var(--blue);', '✨'),
+    'info':         ('color:var(--muted);', '·'),
+  } %}
+  {% for ev in recent %}
+  {% set sty, icon = type_style.get(ev.type, ('color:var(--muted);', '·')) %}
+  <div style="display:flex;gap:10px;padding:8px 0;font-size:13px;
+       {% if not loop.last %}border-bottom:1px solid var(--bd){% endif %}">
+    <span style="{{ sty }}">{{ icon }}</span>
+    <span style="color:var(--text);flex:1">{{ ev.content }}</span>
+    <span style="color:var(--muted);font-size:11px;white-space:nowrap">{{ ev.created_at | format_ts }}</span>
+  </div>
+  {% endfor %}
+  {% endif %}
+</div>
+</div>
+{% endblock %}

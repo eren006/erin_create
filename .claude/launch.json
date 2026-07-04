@@ -19,5 +19,12 @@
       "runtimeArgs": ["-m", "http.server", "8765", "--directory", "yuca_app"],
       "port": 8765
     }
+  ,{
+      "name": "xianxia",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["xianxia_game/app.py"],
+      "port": 5055,
+      "env": { "PORT": "5055" }
+    }
   ]
 }

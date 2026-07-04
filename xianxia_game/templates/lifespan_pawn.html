@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}寿元典当 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">⏳ 寿元典当 <small>以寿换石，量力而行</small></div>
+
+{% if result %}
+<div class="result-box success" style="margin-bottom:20px;text-align:center">
+  <div style="font-size:24px;margin-bottom:6px">✦</div>
+  <div style="font-size:16px;font-weight:700;color:var(--gold)">典当完成</div>
+  <div style="margin-top:8px;font-size:14px;color:var(--muted)">
+    消耗 <span style="color:var(--red);font-weight:700">{{ result.years }} 年</span> 寿元，
+    获得 <span style="color:var(--gold);font-weight:700">{{ result.stones }} 灵石</span>
+  </div>
+</div>
+{% endif %}
+
+<div class="grid2" style="align-items:start">
+
+  {# ── 左：寿元状态 ── #}
+  <div class="card">
+    <div class="card-h">寿元状态</div>
+    <div style="padding:4px 0">
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--bd)">
+        <span style="color:var(--muted)">当前境界</span>
+        <span style="color:var(--gold)">{{ REALMS[char.realm_idx].name }}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--bd)">
+        <span style="color:var(--muted)">当前年龄</span>
+        <span>{{ char.age }} 岁</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--bd)">
+        <span style="color:var(--muted)">寿元上限</span>
+        <span>{{ max_life }} 岁</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--bd)">
+        <span style="color:var(--muted)">剩余寿命</span>
+        <span style="color:{% if life_left < 30 %}var(--red){% elif life_left < 100 %}var(--gold){% else %}var(--green){% endif %};font-weight:700">
+          {{ life_left }} 年
+        </span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--bd)">
+        <span style="color:var(--muted)">今日汇率</span>
+        <span><span style="color:var(--jade)">{{ rate }} 灵石</span> / 年</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--bd)">
+        <span style="color:var(--muted)">今日配额</span>
+        <span>{{ daily_cap }} 年（寿元上限 × 10%）</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0">
+        <span style="color:var(--muted)">今日剩余</span>
+        <span style="color:{% if remain_quota <= 0 %}var(--red){% else %}var(--jade){% endif %};font-weight:700">
+          {{ remain_quota }} 年
+        </span>
+      </div>
+    </div>
+
+    {# 进度条：今日已用配额 #}
+    <div style="margin-top:12px">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">今日配额使用</div>
+      <div style="background:var(--sf2);border-radius:4px;height:8px;overflow:hidden">
+        {% set pct = ((sold_today / daily_cap) * 100)|int if daily_cap > 0 else 0 %}
+        <div style="width:{{ [pct,100]|min }}%;height:100%;background:{% if pct >= 100 %}var(--red){% elif pct >= 70 %}var(--gold){% else %}var(--jade){% endif %};transition:width .3s"></div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:3px;text-align:right">{{ sold_today }} / {{ daily_cap }} 年</div>
+    </div>
+  </div>
+
+  {# ── 右：典当操作 ── #}
+  <div class="card" style="border-color:var(--gold)">
+    <div class="card-h" style="color:var(--gold)">寿元典当</div>
+
+    {% if remain_quota <= 0 %}
+      <div style="text-align:center;padding:24px 0;color:var(--muted)">
+        <div style="font-size:28px;margin-bottom:10px">🌙</div>
+        <div>今日配额已用尽</div>
+        <div style="font-size:12px;margin-top:6px">明日子时重置</div>
+      </div>
+    {% else %}
+      <div style="background:var(--sf2);border-radius:8px;padding:12px;margin-bottom:14px;font-size:13px;line-height:1.9">
+        <div>输入年数，立换灵石。寿命减少不可恢复。</div>
+        <div style="color:var(--muted);margin-top:4px">
+          可典当上限：<span style="color:var(--jade)">{{ [remain_quota, life_left - min_left]|min }} 年</span>
+        </div>
+      </div>
+      <form method="post">
+        <div style="margin-bottom:12px">
+          <label style="font-size:13px;color:var(--muted);display:block;margin-bottom:6px">消耗寿命（年）</label>
+          <input type="number" name="years" min="1"
+            max="{{ [remain_quota, life_left - min_left]|min }}"
+            placeholder="输入年数…"
+            style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid var(--bd);background:var(--sf);color:var(--fg);font-size:15px">
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px;background:var(--sf2);padding:8px 10px;border-radius:6px">
+          预计获得灵石 = 年数 × {{ rate }}
+          <br>当前持有：{{ char.spirit_stones }} 灵石
+        </div>
+        <button class="btn btn-gold" style="width:100%;padding:12px">
+          ⏳ 确认典当
+        </button>
+      </form>
+    {% endif %}
+  </div>
+
+</div>
+
+{# ── 各境界汇率表 ── #}
+<div class="card" style="margin-top:16px">
+  <div class="card-h">境界汇率一览</div>
+  <div style="display:flex;flex-wrap:wrap;gap:8px;padding:4px 0">
+    {% for major_name, r in LIFESPAN_PAWN_RATE.items() %}
+    <div style="flex:1;min-width:80px;background:var(--sf2);border-radius:8px;padding:8px 10px;text-align:center;
+      {% if major_name == major %}border:1px solid var(--gold){% else %}border:1px solid var(--bd){% endif %}">
+      <div style="font-size:12px;color:{% if major_name == major %}var(--gold){% else %}var(--muted){% endif %};font-weight:{% if major_name == major %}700{% else %}400{% endif %}">{{ major_name }}</div>
+      <div style="font-size:14px;margin-top:2px;color:var(--jade)">{{ r }} 石/年</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card" style="margin-top:16px;background:rgba(201,168,76,.05);border-color:rgba(201,168,76,.15)">
+  <div class="card-h" style="color:var(--gold2)">须知</div>
+  <div style="color:var(--muted);font-size:12px;line-height:2">
+    <div>· 典当后寿命永久减少，无法追回</div>
+    <div>· 每日最多消耗寿元上限的 10%，次日子时重置</div>
+    <div>· 境界越高每年可换灵石越少，量力而行</div>
+    <div>· 剩余寿命低于寿元上限 10% 时无法再进行典当</div>
+  </div>
+</div>
+
+</div>
+{% endblock %}

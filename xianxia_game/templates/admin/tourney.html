@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}靖世大典管理 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🏮 靖世大典管理 <small><a href="{{ url_for('admin') }}" style="font-size:13px">← 后台</a></small></div>
+
+<div class="grid2">
+
+{# ── 活动状态 ── #}
+<div class="card">
+  <div class="card-h">活动状态</div>
+  {% if ev %}
+  <div style="color:var(--green);font-weight:700;font-size:16px;margin-bottom:8px">✓ 大典进行中</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:4px">开坛：{{ ev['started_at'] | format_ts }}</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:12px">落幕：{{ ev['ends_at'] | format_ts }}（到期自动结算发奖）</div>
+
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <form method="post" onsubmit="return confirm('确定提前结束大典并立即结算（棋盘慰劳 + 论道虚影奖励）？')">
+      <input type="hidden" name="action" value="settle">
+      <button class="btn btn-gold btn-sm">提前落幕 & 结算发奖</button>
+    </form>
+    <form method="post" onsubmit="return confirm('确定取消大典？将不发放任何奖励，且不可恢复！')">
+      <input type="hidden" name="action" value="cancel">
+      <button class="btn btn-red btn-sm">取消大典（不发奖）</button>
+    </form>
+  </div>
+
+  {% else %}
+  <div style="color:var(--muted);margin-bottom:12px">当前无进行中的大典（活动已就绪，点击按钮即可上线）</div>
+  <form method="post" onsubmit="return confirm('确定上线靖世大典？活动立即对玩家开放，为期 3 天，铺开问道棋盘。')">
+    <input type="hidden" name="action" value="start">
+    <button class="btn btn-jade">🏮 上线靖世大典（3 天）</button>
+  </form>
+  {% endif %}
+</div>
+
+{# ── 活动说明 ── #}
+<div class="card">
+  <div class="card-h">活动规则（问道棋盘）</div>
+  <div style="font-size:13px;color:var(--muted);line-height:2">
+    • 剧情：驱逐天魔后，向晚仙君开坛庆典，为期 <b>{{ TOURNEY_DURATION // 86400 }} 天</b><br>
+    • 全服共用一张 <b>{{ TOURNEY_BOARD_LENGTH }} 格棋盘</b>，无需灵力，每人每日可掷骰 <b>{{ TOURNEY_ROLLS_PER_DAY }}</b> 次（1~6 步）<br>
+    • 棋盘分四段厅堂，各按对应经验/境界加成过关率：
+      {% for z in TOURNEY_ZONES %}{{ z.icon }}{{ z.name }}({{ z.lo }}~{{ z.hi }}){% if not loop.last %}、{% endif %}{% endfor %}<br>
+    • 格子类型：机缘（灵石灵符，首次抵达即得）／试炼（吃道韵加成）／机遇（额外奖励+多走几步）／险境（气血受损，偶被逼退）／论道虚影（PVE 对战，计入积分榜）<br>
+    • 落幕时未登台者按<b>棋盘进度</b>发放灵石慰劳，<b>绝不空手而归</b><br>
+    • 论道虚影积分前 <b>{{ TOURNEY_CONTEST_TOP_N }}</b> 名额外获赠「造化灵液」<br>
+    • <b>登临第 {{ TOURNEY_BOARD_LENGTH }} 格问道台者，人人同授</b>「{{ TOURNEY_FINISH_TITLE }}」称号 + 神兵【{{ TOURNEY_FINISH_WEAPON.name }}】，不限名额；首位登台者另有彩蛋厚赏
+  </div>
+</div>
+</div>
+
+{# ── 终点神兵 ── #}
+<div class="card" style="margin-top:16px">
+  <div class="card-h">问道台神兵（人人同款）</div>
+  <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <tbody>
+    <tr style="border-bottom:1px solid var(--bd)">
+      <td style="padding:6px 8px;color:var(--gold);white-space:nowrap">{{ TOURNEY_FINISH_TITLE }}</td>
+      <td style="padding:6px 8px;font-weight:600;white-space:nowrap">{{ TOURNEY_FINISH_WEAPON.name }}</td>
+      <td style="padding:6px 8px">{{ TOURNEY_FINISH_WEAPON.stats_desc }}</td>
+    </tr>
+    </tbody>
+  </table>
+</div>
+
+{% if ev %}
+{# ── 全服棋盘实况 ── #}
+<div class="card" style="margin-top:16px">
+  <div class="card-h">全服棋盘实况（共 {{ board_players|length }} 人已起行）</div>
+  <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead>
+      <tr style="color:var(--muted);border-bottom:1px solid var(--bd)">
+        <th style="padding:6px 8px;text-align:left">#</th>
+        <th style="padding:6px 8px;text-align:left">修士</th>
+        <th style="padding:6px 8px;text-align:right">格数</th>
+        <th style="padding:6px 8px;text-align:right">论道积分</th>
+        <th style="padding:6px 8px;text-align:right">状态</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for p in board_players %}
+    <tr style="border-bottom:1px solid var(--bd)">
+      <td style="padding:6px 8px;color:var(--muted)">{{ loop.index }}</td>
+      <td style="padding:6px 8px;font-weight:600">{{ p['name'] }}</td>
+      <td style="padding:6px 8px;text-align:right;font-weight:700;color:var(--gold)">{{ p['position'] }} / {{ TOURNEY_BOARD_LENGTH }}</td>
+      <td style="padding:6px 8px;text-align:right;color:var(--muted)">{{ p['points'] }}</td>
+      <td style="padding:6px 8px;text-align:right">
+        {% if p['finished_at'] %}<span style="color:var(--green)">已登台</span>{% else %}<span style="color:var(--muted)">行进中</span>{% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" style="padding:20px;text-align:center;color:var(--muted)">暂无人起行</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{# ── 历届大典 ── #}
+{% if past %}
+<div class="card" style="margin-top:16px">
+  <div class="card-h">历届大典</div>
+  {% for p in past %}
+  {% set w = p['winners_json'] | fromjson %}
+  <div style="padding:10px 0;border-bottom:1px solid var(--bd);font-size:13px">
+    <div style="color:var(--muted);margin-bottom:4px">
+      #{{ p['id'] }} ｜ {{ p['started_at'] | format_ts }} → {{ p['ends_at'] | format_ts }}
+      {% if not p['settled'] %}<span style="color:var(--red)">（未结算）</span>{% endif %}
+    </div>
+    {% if w.get('finishers') %}
+    <div>🏆 登临问道台（{{ w['finishers']|length }} 人）：
+      {% for f in w['finishers'][:12] %}<b style="color:var(--gold)">{{ f['name'] }}</b>{% if not loop.last %}、{% endif %}{% endfor %}
+      {% if w['finishers']|length > 12 %} 等{% endif %}
+    </div>
+    {% endif %}
+    {% if w.get('contest_top') %}
+    <div style="color:var(--muted);font-size:12px;margin-top:2px">
+      ⚔ 论道虚影前三：
+      {% for t in w['contest_top'] %}{{ t['name'] }}({{ t['points'] }}分){% if not loop.last %}、{% endif %}{% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+</div>
+{% endblock %}

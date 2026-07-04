@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+{% block title %}切磋 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">⚔ 切磋 <small>点到为止，以武会友</small></div>
+
+{% if result %}
+<div class="result-box {% if result.won %}success{% endif %}" style="margin-bottom:20px">
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:12px">
+    <div>
+      <div style="font-size:20px;font-weight:700;margin-bottom:2px">
+        {% if result.won %}⚔ 胜！{% else %}⚔ 败{% endif %}
+        <span style="font-size:14px;font-weight:400;color:var(--muted);margin-left:6px">
+          vs 【{{ result.other.name }}】（{{ REALMS[result.other.realm_idx].name }}）
+        </span>
+        {% if result.realm_bonus and result.won %}
+        <span style="font-size:11px;color:var(--gold);margin-left:6px">以弱胜强 ✦</span>
+        {% endif %}
+        {% if result.luck_flip %}
+        <span style="font-size:11px;color:var(--purple);margin-left:6px">天命翻转 ✦</span>
+        {% endif %}
+      </div>
+      <div style="font-size:12px;color:var(--muted)">气血不受影响 · 好感 +2</div>
+    </div>
+    <div style="margin-left:auto;display:flex;gap:12px;flex-wrap:wrap">
+      <div style="text-align:center">
+        <div style="font-size:16px;font-weight:700;color:{% if result.score_delta > 0 %}var(--jade){% else %}var(--red){% endif %}">
+          {{ '+' if result.score_delta > 0 else '' }}{{ result.score_delta }}
+        </div>
+        <div style="font-size:11px;color:var(--muted)">积分</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:16px;font-weight:700;color:var(--gold)">+{{ result.stones }}</div>
+        <div style="font-size:11px;color:var(--muted)">灵石</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:16px;font-weight:700;color:var(--jade)">+{{ result.exp_gain }}</div>
+        <div style="font-size:11px;color:var(--muted)">修为</div>
+      </div>
+      {% if result.drop_item %}
+      <div style="text-align:center">
+        <div style="font-size:13px;font-weight:700;color:var(--purple)">【{{ result.drop_item }}】</div>
+        <div style="font-size:11px;color:var(--muted)">掉落</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:6px">
+    本周 {{ result.pvp.pvp_wins }}胜 {{ result.pvp.pvp_losses }}负 ·
+    积分 <strong style="color:var(--jade)">{{ result.pvp.pvp_score }}</strong>
+    {% if result.pvp.pvp_streak >= 2 %} · <span style="color:var(--gold)">连胜 {{ result.pvp.pvp_streak }}</span>{% endif %}
+  </div>
+  {% if result.p_wx_desc or result.m_wx_desc %}
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+    {% if result.p_wx_desc %}
+    <span style="font-size:11px;padding:2px 8px;border-radius:10px;
+      background:{% if '克敌' in result.p_wx_desc %}rgba(46,139,87,.15){% else %}rgba(192,57,43,.1){% endif %};
+      border:1px solid {% if '克敌' in result.p_wx_desc %}var(--green){% else %}var(--red){% endif %};
+      color:{% if '克敌' in result.p_wx_desc %}var(--green){% else %}var(--red){% endif %}">
+      你：五行{{ result.p_wx_desc }}
+    </span>
+    {% endif %}
+    {% if result.m_wx_desc %}
+    <span style="font-size:11px;padding:2px 8px;border-radius:10px;
+      background:rgba(192,57,43,.08);border:1px solid var(--red);color:var(--red)">
+      对方：五行{{ result.m_wx_desc }}
+    </span>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% if result.spell_label or result.move_label %}
+  <div style="font-size:11px;color:var(--purple);margin-bottom:8px;padding:4px 8px;
+       background:rgba(140,80,200,.07);border-radius:6px;border-left:2px solid var(--purple)">
+    {% if result.spell_label and result.move_label %}
+    以【{{ result.spell_label }}】{{ result.move_label }}，与【{{ result.other.name }}】切磋——
+    {% elif result.spell_label %}
+    以【{{ result.spell_label }}】为引，与【{{ result.other.name }}】切磋——
+    {% else %}
+    展开{{ result.move_label }}，与【{{ result.other.name }}】切磋——
+    {% endif %}
+  </div>
+  {% else %}
+  <div style="font-size:11px;color:var(--muted);margin-bottom:8px;font-style:italic">
+    凝神蓄势，与【{{ result.other.name }}】以武论道——
+  </div>
+  {% endif %}
+  <div class="combat-log" style="max-height:260px">
+    {% for rd in result.rounds %}
+    <div class="round-row {{ 'round-p' if rd.actor=='p' else 'round-m' }}">
+      {% if rd.actor == 'p' %}
+        {% if rd.get('qi') %}💨{% elif rd.crit %}⚡{% else %}⚔{% endif %}
+        {{ rd.desc }}
+        <span style="font-size:10px;color:var(--muted);margin-left:4px">
+          [对方 {{ rd.m_hp }}/{{ result.other_max_hp }}]
+        </span>
+      {% elif rd.dodge %}
+        🌀 {{ rd.desc }}
+      {% else %}
+        💢 {{ rd.desc }}
+        <span style="font-size:10px;color:var(--muted);margin-left:4px">
+          [我方 {{ rd.c_hp }}/{{ result.char_max_hp }}]
+        </span>
+      {% endif %}
+    </div>
+    {% endfor %}
+    <div style="text-align:center;color:var(--muted);font-size:11px;padding:6px 0;
+         border-top:1px solid var(--bd);margin-top:6px">— 切磋结束，共 {{ result.rounds|length }} 回合 —</div>
+  </div>
+</div>
+{% endif %}
+
+<div style="display:flex;gap:20px;flex-wrap:wrap">
+  <!-- 左：挑战表单 -->
+  <div style="width:260px;flex-shrink:0">
+    <div class="card" style="border-color:{% if energy >= PVP_ENERGY_COST %}var(--jade){% else %}var(--bd){% endif %}">
+      <div class="card-h">发起切磋</div>
+      <form method="post">
+        <div style="margin-bottom:10px">
+          <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:4px">对手道号</label>
+          <input name="target_name" placeholder="输入道号" autofocus
+            value="{{ other.name if other else '' }}"
+            style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                   border-radius:8px;padding:8px 10px;font-size:13px;font-family:inherit">
+        </div>
+        <button type="submit" class="btn btn-gold" style="width:100%"
+          {% if energy < PVP_ENERGY_COST %}disabled{% endif %}>
+          ⚔ 切磋（消耗 {{ PVP_ENERGY_COST }} 灵力）
+        </button>
+      </form>
+      <div style="margin-top:10px;font-size:11px;color:var(--muted);line-height:2">
+        <div>· 仅限相差 {{ PVP_MAX_MAJOR_DIFF }} 个大境界内</div>
+        <div>· 与同一人每天最多 {{ PVP_DAILY_LIMIT }} 次 · 全天总上限 {{ PVP_DAILY_TOTAL }} 次（今日 {{ pvp_today }}/{{ PVP_DAILY_TOTAL }}）</div>
+        <div>· 切磋不影响双方气血</div>
+        <div>· 胜者获灵石较多，败者也有少量，以弱胜强额外加倍</div>
+        <div>· 双方均获少量修为，好感 +2</div>
+        <div>· 有概率掉落珍宝材料</div>
+        <div>· 胜 +10分（以弱胜强 +20），败 -2分</div>
+        <div>· 存在 30% 天命翻转，弱者也能胜</div>
+        <div>· 积分每周一凌晨重置</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h">当前灵力</div>
+      <div style="font-size:22px;font-weight:700;color:{% if energy >= PVP_ENERGY_COST %}var(--jade){% else %}var(--red){% endif %}">
+        {{ energy }} / {{ MAX_ENERGY }}
+      </div>
+      {% if energy < PVP_ENERGY_COST %}
+      <div style="font-size:12px;color:var(--red);margin-top:4px">灵力不足，无法切磋</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- 右：附近修士 -->
+  <div style="flex:1;min-width:260px">
+    <div class="card-h" style="margin-bottom:10px">附近修士 <small style="color:var(--muted);font-weight:400;font-size:12px">（境界相近，按差距排序）</small></div>
+    {% if not candidates %}
+    <div class="empty" style="padding:24px">暂无其他修士</div>
+    {% else %}
+    <div style="display:flex;flex-direction:column;gap:8px">
+      {% for c in candidates %}
+      {% set diff = (char.realm_idx - c.realm_idx)|abs %}
+      {% set major_diff = (major_idx(char.realm_idx) - major_idx(c.realm_idx))|abs %}
+      {% set ok = major_diff <= PVP_MAX_MAJOR_DIFF %}
+      <div class="card" style="padding:12px 14px;margin-bottom:0;
+           {% if not ok %}opacity:.45{% endif %}">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="flex:1">
+            <span style="font-weight:600">{{ c.name }}</span>
+            <span class="root-{{ c.spirit_root }}" style="font-size:11px;margin-left:6px">{{ c.spirit_root }}</span>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">
+              {{ REALMS[c.realm_idx].name }}
+              {% if not ok %}<span style="color:var(--red)">（境界差距过大）</span>{% endif %}
+            </div>
+          </div>
+          {% if ok %}
+          <form method="post" style="flex-shrink:0">
+            <input type="hidden" name="target_name" value="{{ c.name }}">
+            <button type="submit" class="btn btn-ghost btn-sm"
+              {% if energy < PVP_ENERGY_COST %}disabled{% endif %}>切磋</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+</div>
+
+<!-- 本周积分榜 -->
+<div class="card" style="margin-top:20px">
+  <div class="card-h">本周切磋积分榜</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
+    本周记录：{{ my_pvp.pvp_wins }}胜 {{ my_pvp.pvp_losses }}负 · 积分
+    <strong style="color:var(--jade)">{{ my_pvp.pvp_score }}</strong>
+    {% if my_pvp.pvp_streak >= 2 %} · <span style="color:var(--gold)">连胜 {{ my_pvp.pvp_streak }}</span>{% endif %}
+  </div>
+  {% if pvp_rank %}
+  <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead>
+      <tr style="color:var(--muted);border-bottom:1px solid var(--bd)">
+        <th style="padding:5px 6px;text-align:left">名次</th>
+        <th style="padding:5px 6px;text-align:left">道号</th>
+        <th style="padding:5px 6px;text-align:left">境界</th>
+        <th style="padding:5px 6px;text-align:center">积分</th>
+        <th style="padding:5px 6px;text-align:center">胜/负</th>
+        <th style="padding:5px 6px;text-align:center">连胜</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for r in pvp_rank %}
+    <tr style="border-bottom:1px solid var(--bd);{% if r.name == char.name %}background:rgba(31,122,95,.06){% endif %}">
+      <td style="padding:6px;color:{% if loop.index==1 %}var(--gold){% elif loop.index==2 %}var(--muted){% else %}var(--muted){% endif %}">
+        {% if loop.index==1 %}🥇{% elif loop.index==2 %}🥈{% elif loop.index==3 %}🥉{% else %}{{ loop.index }}{% endif %}
+      </td>
+      <td style="padding:6px;font-weight:{% if r.name==char.name %}700{% else %}400{% endif %}">{{ r.name }}</td>
+      <td style="padding:6px;color:var(--muted);font-size:12px">{{ REALMS[r.realm_idx].name }}</td>
+      <td style="padding:6px;text-align:center;font-weight:700;color:var(--jade)">{{ r.pvp_score }}</td>
+      <td style="padding:6px;text-align:center;font-size:12px">
+        <span style="color:var(--green)">{{ r.pvp_wins }}</span> /
+        <span style="color:var(--red)">{{ r.pvp_losses }}</span>
+      </td>
+      <td style="padding:6px;text-align:center;color:{% if r.pvp_streak>=3 %}var(--gold){% else %}var(--muted){% endif %}">
+        {% if r.pvp_streak >= 2 %}{{ r.pvp_streak }}连{% else %}—{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div style="text-align:center;padding:20px;color:var(--muted)">本周尚无切磋记录</div>
+  {% endif %}
+</div>
+
+</div>
+<style>
+input:focus{outline:none;border-color:var(--jade)!important}
+</style>
+{% endblock %}

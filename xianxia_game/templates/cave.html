@@ -1,0 +1,514 @@
+{% extends "base.html" %}
+{% block title %}洞府 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🏔 洞府 <small>自动修炼之所</small></div>
+
+{% if not purchased %}
+<div class="card" style="text-align:center;padding:40px 20px">
+  <div style="font-size:48px;margin-bottom:16px">🏔</div>
+  <div style="font-size:18px;font-weight:700;color:var(--gold2);margin-bottom:8px">专属洞府</div>
+  <div style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:2">
+    购置洞府后，即使不在线，灵力也会自动转化为修为或炼体经验。<br>
+    效率为正常修炼的 <span style="color:var(--gold);font-weight:600">{{ cave_eff }}%</span>，不积累心魔。<br>
+    可随时切换修炼 / 炼体 / 关闭模式。
+  </div>
+  <div style="font-size:24px;font-weight:700;color:var(--gold);margin-bottom:16px">
+    💎 {{ price }} 灵石
+  </div>
+  {% if char.spirit_stones >= price %}
+  <form method="post" onsubmit="return confirm('确认花费 {{ price }} 灵石购置洞府？')">
+    <input type="hidden" name="action" value="buy">
+    <button type="submit" class="btn btn-gold" style="padding:10px 32px;font-size:15px">
+      购置洞府
+    </button>
+  </form>
+  {% else %}
+  <div style="color:var(--red);font-size:13px">灵石不足（当前 {{ char.spirit_stones }}）</div>
+  {% endif %}
+</div>
+
+{% else %}
+{# 已购置 #}
+{% set mode = char.cave_mode or 'off' %}
+
+{# 山峰展示 #}
+{# 洞府命名 #}
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">✏️ 洞府命名</div>
+  <form method="post" style="display:flex;gap:8px">
+    <input type="hidden" name="action" value="rename_cave">
+    <input name="cave_name" type="text" maxlength="12"
+      value="{{ char.cave_name or '' }}" placeholder="为你的洞府起个名字…"
+      style="flex:1;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+             border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+    <button type="submit" class="btn btn-jade btn-sm">保存</button>
+  </form>
+</div>
+
+{% if peak %}
+<div class="card" style="margin-bottom:16px;
+  background:linear-gradient(135deg,rgba(31,122,95,.08),rgba(44,110,158,.05));
+  border-color:rgba(31,122,95,.3)">
+  <div style="display:flex;align-items:flex-start;gap:16px">
+    <div style="font-size:48px;line-height:1">🏔</div>
+    <div style="flex:1">
+      <div style="font-size:18px;font-weight:700;color:var(--gold2)">{{ peak.name }}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px;margin-bottom:10px">{{ peak.desc }}</div>
+
+      {# 5个槽位 #}
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px">
+        {% for i in range(CAVE_SLOTS) %}
+        {% set item = slot_list[i] %}
+        <div style="aspect-ratio:1;border-radius:8px;
+          border:1px solid {% if item %}rgba(192,160,96,.5){% else %}var(--bd){% endif %};
+          background:{% if item %}rgba(192,160,96,.08){% else %}var(--sf2){% endif %};
+          display:flex;flex-direction:column;align-items:center;justify-content:center;
+          padding:4px;text-align:center">
+          {% if item %}
+          <div style="font-size:11px;font-weight:600;color:var(--gold2);line-height:1.3">{{ item.name }}</div>
+          <div style="font-size:9px;color:var(--jade);margin-top:2px">{{ item.bonus_desc }}</div>
+          {% else %}
+          <div style="font-size:16px;color:var(--bd)">＋</div>
+          <div style="font-size:9px;color:var(--muted)">空位</div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:10px;display:flex;justify-content:space-between;font-size:12px;color:var(--muted)">
+    <span>当前模式：
+      {% if mode == 'cultivate' %}<span style="color:var(--jade);font-weight:600">⚡ 自动修炼</span>
+      {% elif mode == 'temper' %}<span style="color:var(--blue);font-weight:600">💪 自动炼体</span>
+      {% else %}<span>⏸ 已关闭</span>{% endif %}
+    </span>
+    <span>效率 {{ cave_eff }}% · 不积累心魔</span>
+  </div>
+</div>
+{% endif %}
+
+{# 高级洞府 / 高级山峰 #}
+<div class="card" style="margin-bottom:16px;border-color:rgba(155,127,224,.4);background:rgba(155,127,224,.04)">
+  <div class="card-h" style="color:var(--purple)">🔮 高级洞府
+    <span style="font-size:11px;font-weight:400;color:var(--muted)">
+      — 灵力恢复×{{ CAVE_ADV_ENERGY_MULT|int }}、开启元神系统、装备槽{{ CAVE_SLOTS_ADVANCED }}个、专属豪华装饰
+      · 全服限 {{ CAVE_ADVANCED_SLOTS_TOTAL }} 个名额
+    </span>
+  </div>
+  {% if char.cave_advanced %}
+    <div style="font-size:13px;color:var(--jade);font-weight:600;margin-bottom:10px">✓ 已是高级洞府</div>
+    {% if is_advanced_peak %}
+    <div style="font-size:13px;color:var(--muted);margin-bottom:10px">
+      已定居【{{ peak.name }}】，灵力恢复速度×{{ CAVE_ADV_ENERGY_MULT|int }}，
+      <a href="{{ url_for('yuanshen') }}" style="color:var(--purple)">前往元神 →</a>
+    </div>
+    {% endif %}
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">{% if is_advanced_peak %}迁往其他高级山峰：{% else %}选择一座高级山峰迁居：{% endif %}</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      {% for p in CAVE_PEAKS_ADVANCED %}
+      {% if p.id != char.cave_peak %}
+      <form method="post" style="display:flex;align-items:center;gap:10px;padding:8px 10px;
+            background:var(--sf2);border:1px solid var(--bd);border-radius:8px">
+        <input type="hidden" name="action" value="move_peak">
+        <input type="hidden" name="peak_id" value="{{ p.id }}">
+        <div style="flex:1">
+          <div style="font-weight:600;font-size:13px">{{ p.name }}</div>
+          <div style="font-size:11px;color:var(--muted)">{{ p.desc }}</div>
+        </div>
+        <button type="submit" class="btn btn-jade btn-sm">迁居</button>
+      </form>
+      {% endif %}
+      {% endfor %}
+    </div>
+  {% elif cave_lv >= CAVE_ADVANCED_UNLOCK_LV %}
+    {% if adv_slots_left <= 0 %}
+    <div style="font-size:13px;color:var(--red)">
+      全服高级洞府名额（{{ CAVE_ADVANCED_SLOTS_TOTAL }}个）已满，暂无法晋升。
+    </div>
+    {% else %}
+    <div style="font-size:13px;color:var(--muted);margin-bottom:10px">
+      洞府已达 Lv{{ cave_lv }}，可花费 <span style="color:var(--purple);font-weight:600">{{ CAVE_ADVANCED_PRICE }}</span> 上等灵石晋升为高级洞府
+      （持有 <span style="color:var(--purple)">{{ char.superior_stones or 0 }}</span>，可在
+      <a href="{{ url_for('market') }}" style="color:var(--jade)">丹市</a> 兑换）。
+      剩余名额 <span style="color:var(--purple);font-weight:600">{{ adv_slots_left }}/{{ CAVE_ADVANCED_SLOTS_TOTAL }}</span>。
+    </div>
+    <form method="post" onsubmit="return confirm('确认花费 {{ CAVE_ADVANCED_PRICE }} 上等灵石晋升高级洞府？')">
+      <input type="hidden" name="action" value="buy_advanced">
+      <button type="submit" class="btn btn-gold" {% if (char.superior_stones or 0) < CAVE_ADVANCED_PRICE %}disabled{% endif %}>
+        {% if (char.superior_stones or 0) < CAVE_ADVANCED_PRICE %}上等灵石不足{% else %}晋升高级洞府{% endif %}
+      </button>
+    </form>
+    {% endif %}
+  {% else %}
+    <div style="font-size:12px;color:var(--muted)">
+      洞府达到 Lv{{ CAVE_ADVANCED_UNLOCK_LV }}（当前 Lv{{ cave_lv }}）后可花费 {{ CAVE_ADVANCED_PRICE }} 上等灵石晋升高级洞府（剩余名额 {{ adv_slots_left }}/{{ CAVE_ADVANCED_SLOTS_TOTAL }}）。
+    </div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="card-h">切换模式</div>
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <form method="post">
+      <input type="hidden" name="action" value="set_mode">
+      <input type="hidden" name="mode" value="cultivate">
+      <button type="submit" class="btn {% if mode == 'cultivate' %}btn-jade{% else %}btn-ghost{% endif %}" style="width:100%;justify-content:flex-start;gap:10px">
+        <span style="font-size:18px">⚡</span>
+        <div style="text-align:left">
+          <div style="font-weight:600">自动修炼</div>
+          <div style="font-size:11px;opacity:.7">灵力自动转化为修为，效率 {{ cave_eff }}%</div>
+        </div>
+        {% if mode == 'cultivate' %}<span style="margin-left:auto;font-size:11px">▶ 运行中</span>{% endif %}
+      </button>
+    </form>
+    <form method="post">
+      <input type="hidden" name="action" value="set_mode">
+      <input type="hidden" name="mode" value="temper">
+      <button type="submit" class="btn {% if mode == 'temper' %}btn-sm{% else %}btn-ghost{% endif %}"
+        style="width:100%;justify-content:flex-start;gap:10px;{% if mode == 'temper' %}background:var(--blue);color:#fff{% endif %}"
+        {% if char.realm_idx < BODY_UNLOCK_REALM %}disabled title="需结丹才能炼体"{% endif %}>
+        <span style="font-size:18px">💪</span>
+        <div style="text-align:left">
+          <div style="font-weight:600">自动炼体</div>
+          <div style="font-size:11px;opacity:.7">灵力自动转化为炼体经验，效率 {{ cave_eff }}%
+            {% if char.realm_idx < BODY_UNLOCK_REALM %}（需达结丹）{% endif %}</div>
+        </div>
+        {% if mode == 'temper' %}<span style="margin-left:auto;font-size:11px">▶ 运行中</span>{% endif %}
+      </button>
+    </form>
+    <form method="post">
+      <input type="hidden" name="action" value="set_mode">
+      <input type="hidden" name="mode" value="off">
+      <button type="submit" class="btn btn-ghost" style="width:100%;justify-content:flex-start;gap:10px">
+        <span style="font-size:18px">⏸</span>
+        <div style="text-align:left">
+          <div style="font-weight:600">关闭</div>
+          <div style="font-size:11px;opacity:.7">暂停洞府自动运行</div>
+        </div>
+        {% if mode == 'off' %}<span style="margin-left:auto;font-size:11px;color:var(--muted)">当前状态</span>{% endif %}
+      </button>
+    </form>
+  </div>
+</div>
+
+{# 洞府等级 #}
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">🏅 洞府等级</div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <span style="font-size:16px;font-weight:700;color:var(--gold2)">Lv {{ cave_lv }}</span>
+    <span style="font-size:12px;color:var(--muted)">装饰值 {{ char.cave_decor or 0 }} / {{ (cave_lv + 1) * CAVE_DECOR_PER_LV }}</span>
+  </div>
+  <div class="bar-wrap" style="height:8px;margin-bottom:10px">
+    <div class="bar-fill bar-gold" style="width:{{ ((char.cave_decor or 0) % CAVE_DECOR_PER_LV) }}%"></div>
+  </div>
+  {% if my_cave_perks %}
+  <div style="font-size:12px;color:var(--muted);margin-bottom:6px">洞府感悟（{{ my_cave_perks|length }} 条）</div>
+  <div style="display:flex;flex-wrap:wrap;gap:6px">
+    {% for p in my_cave_perks %}
+    {% set pct = (p.value * 100)|int %}
+    {% set label = {'cave_cultivate_pct':'修炼+','cave_temper_pct':'炼体+','cave_regen_pct':'灵力回复+'}.get(p.perk_key,'') %}
+    <span style="background:rgba(192,160,96,.12);border:1px solid rgba(192,160,96,.3);
+      border-radius:20px;padding:3px 10px;font-size:11px;color:var(--gold2)">
+      {{ p.perk_name }} · {{ label }}{{ pct }}%
+    </span>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div style="font-size:12px;color:var(--muted)">购置家具升级后可获得洞府感悟</div>
+  {% endif %}
+</div>
+
+{# 店铺 #}
+{% if cave_lv >= 1 %}
+<div class="card" style="margin-bottom:16px;border-color:rgba(166,124,26,.3);background:rgba(166,124,26,.03)">
+  <div class="card-h" style="color:var(--gold2)">🏪 洞府店铺
+    <span style="font-size:11px;font-weight:400;color:var(--muted)">— 每级一家店，每小时自动结算</span>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+    {% for shop in cave_shops %}
+    <div style="background:rgba(166,124,26,.08);border:1px solid rgba(166,124,26,.2);
+      border-radius:8px;padding:6px 12px;font-size:12px;color:var(--gold2)">
+      🏪 {{ shop }}
+      <span style="color:var(--muted);margin-left:4px">+{{ CAVE_SHOP_INCOME }} 灵石/时</span>
+    </div>
+    {% endfor %}
+  </div>
+  <div style="font-size:12px;color:var(--muted)">
+    共 <b style="color:var(--gold2)">{{ cave_lv }}</b> 家店铺 · 合计每小时
+    <b style="color:var(--gold2)">{{ cave_lv * CAVE_SHOP_INCOME }}</b> 灵石 ·
+    升至 Lv{{ cave_lv + 1 }} 后将新增一家【{{ cave_shops[cave_lv] if cave_lv < cave_shops|length else '随机新店' }}】
+  </div>
+</div>
+{% elif purchased %}
+<div class="card" style="margin-bottom:16px;background:rgba(0,0,0,.02)">
+  <div class="card-h">🏪 洞府店铺</div>
+  <div style="font-size:13px;color:var(--muted)">
+    洞府升至 <b>Lv 1</b>（装饰值 {{ CAVE_DECOR_PER_LV }}）后解锁首家店铺，每小时被动获得 {{ CAVE_SHOP_INCOME }} 灵石。
+  </div>
+</div>
+{% endif %}
+
+{# 珍宝池 #}
+{% if pool_unlocked %}
+<div class="card" style="margin-bottom:16px;border-color:rgba(155,127,224,.4);background:rgba(155,127,224,.04)">
+  <div class="card-h" style="color:var(--purple)">💎 珍宝池
+    <span style="font-size:11px;font-weight:400;color:var(--muted)">— 豪华度越高生成越快</span>
+  </div>
+  {% if cave_pool_items %}
+  <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
+    {% for p in cave_pool_items %}
+    <span style="background:rgba(155,127,224,.12);border:1px solid rgba(155,127,224,.3);
+      border-radius:20px;padding:3px 10px;font-size:12px;color:var(--purple)">
+      {{ p.name }} ×{{ p.quantity }}
+    </span>
+    {% endfor %}
+  </div>
+  <form method="post">
+    <input type="hidden" name="action" value="collect_pool">
+    <button type="submit" class="btn btn-sm" style="background:var(--purple);color:#fff;width:100%">
+      一键领取全部（{{ cave_pool_items|length }} 种）
+    </button>
+  </form>
+  {% else %}
+  <div style="color:var(--muted);font-size:13px;text-align:center;padding:12px 0">
+    珍宝池暂无积累，耐心等待…
+    <div style="font-size:11px;margin-top:4px">
+      每 {{ (pool_interval / 3600) | round(1) }} 小时生成 {{ pool_drop_min }}-{{ pool_drop_max }} 件（上限 {{ cave_pool_cap }}）
+      {% if char.cave_advanced %}<span style="color:var(--purple)">· 高级洞府 +3</span>{% endif %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% elif purchased %}
+<div class="card" style="margin-bottom:16px;opacity:.6">
+  <div class="card-h">💎 珍宝池</div>
+  <div style="font-size:12px;color:var(--muted)">
+    豪华度达到 {{ CAVE_POOL_UNLOCK }} 点解锁（当前 {{ char.cave_decor or 0 }}）
+  </div>
+</div>
+{% endif %}
+
+{# 已拥有家具 #}
+{% if owned_items %}
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">📦 我的家具（{{ owned_items|length }} 件）
+    <span style="font-size:11px;font-weight:400;color:var(--muted)">— 最多装备 {{ CAVE_SLOTS }} 件</span>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:6px">
+    {% for item in owned_items %}
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;
+         background:{% if item.is_equipped %}rgba(31,122,95,.08){% else %}var(--sf2){% endif %};
+         border:1px solid {% if item.is_equipped %}var(--jade){% else %}var(--bd){% endif %}">
+      <div style="flex:1">
+        <div style="font-weight:600;font-size:13px">{{ item.name }}
+          {% if item.is_equipped %}<span style="font-size:10px;color:var(--jade);margin-left:4px">▶ 装备中</span>{% endif %}
+        </div>
+        <div style="font-size:11px;color:var(--jade);margin-top:1px">{{ item.bonus_desc }}</div>
+      </div>
+      <form method="post">
+        <input type="hidden" name="action" value="toggle_equip">
+        <input type="hidden" name="item_key" value="{{ item.key }}">
+        <button type="submit" class="btn btn-sm {% if item.is_equipped %}btn-ghost{% else %}btn-jade{% endif %}">
+          {% if item.is_equipped %}卸下{% else %}装备{% endif %}
+        </button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{# 豪华装饰 #}
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">🌿 豪华装饰
+    <span style="font-size:11px;font-weight:400;color:var(--muted)">— 无加成，提升装饰值与豪华度</span>
+    <a href="{{ url_for('luxury_rank') }}" style="margin-left:auto;font-size:11px;color:var(--jade)">豪华榜 →</a>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:6px">
+    {% for item in luxury_items %}
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;
+         background:{% if item.bought %}var(--sf2){% else %}rgba(192,160,96,.04){% endif %};
+         border:1px solid {% if item.bought %}var(--bd){% else %}rgba(192,160,96,.25){% endif %};
+         {% if item.bought %}opacity:.6{% endif %}">
+      <div style="flex:1">
+        <div style="font-weight:600;font-size:13px">{{ item.name }}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:1px">{{ item.desc }}</div>
+        <div style="font-size:11px;color:var(--gold);margin-top:2px">装饰值 +{{ item.decor }}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="color:var(--gold);font-size:13px;font-weight:600">{{ item.price }} 石</div>
+        {% if item.bought %}
+        <div style="font-size:11px;color:var(--muted)">已购</div>
+        {% else %}
+        <form method="post" style="margin-top:4px">
+          <input type="hidden" name="action" value="buy_luxury">
+          <input type="hidden" name="item_key" value="{{ item.key }}">
+          <button type="submit" class="btn btn-gold btn-sm"
+            {% if char.spirit_stones < item.price %}disabled{% endif %}>购置</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+{# 高级洞府专属豪华装饰 #}
+{% if char.cave_advanced %}
+<div class="card" style="margin-bottom:16px;border-color:rgba(155,127,224,.4);background:rgba(155,127,224,.04)">
+  <div class="card-h" style="color:var(--purple)">💜 高级豪华装饰
+    <span style="font-size:11px;font-weight:400;color:var(--muted)">— 仅高级洞府可购，装饰值远超普通装饰</span>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:6px">
+    {% for item in adv_luxury_items %}
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;
+         background:{% if item.bought %}var(--sf2){% else %}rgba(155,127,224,.06){% endif %};
+         border:1px solid {% if item.bought %}var(--bd){% else %}rgba(155,127,224,.3){% endif %};
+         {% if item.bought %}opacity:.6{% endif %}">
+      <div style="flex:1">
+        <div style="font-weight:600;font-size:13px">{{ item.name }}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:1px">{{ item.desc }}</div>
+        <div style="font-size:11px;color:var(--gold);margin-top:2px">装饰值 +{{ item.decor }}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="color:var(--gold);font-size:13px;font-weight:600">{{ item.price }} 石</div>
+        {% if item.bought %}
+        <div style="font-size:11px;color:var(--muted)">已购</div>
+        {% else %}
+        <form method="post" style="margin-top:4px">
+          <input type="hidden" name="action" value="buy_luxury">
+          <input type="hidden" name="item_key" value="{{ item.key }}">
+          <button type="submit" class="btn btn-gold btn-sm"
+            {% if char.spirit_stones < item.price %}disabled{% endif %}>购置</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{# 家具商城 #}
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">🛋 家具商城</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+    每件 +10 装饰值 · 每人每件限购一次 · 12小时刷新
+    {% if shop_items %}
+    · 剩余 <span id="shop-countdown" data-ts="{{ shop_items[0].expires_at }}">—</span>
+    {% endif %}
+  </div>
+  {% if shop_items %}
+  <div style="display:flex;flex-direction:column;gap:8px">
+    {% for item in shop_items %}
+    <div style="display:flex;align-items:center;gap:12px;padding:10px;
+         background:{% if item.bought %}var(--sf2){% else %}rgba(201,168,76,.05){% endif %};
+         border:1px solid {% if item.bought %}var(--bd){% else %}rgba(201,168,76,.3){% endif %};
+         border-radius:8px;{% if item.bought %}opacity:.6{% endif %}">
+      <div style="flex:1">
+        <div style="font-weight:600;font-size:14px">{{ item.name }}</div>
+        <div style="font-size:11px;color:var(--jade);margin-top:2px">{{ item.bonus_desc }} · 装饰值 +10</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="color:var(--gold);font-weight:600">{{ item.price }} 石</div>
+        {% if item.bought %}
+        <div style="font-size:11px;color:var(--muted)">已购</div>
+        {% else %}
+        <form method="post" style="margin-top:4px">
+          <input type="hidden" name="action" value="buy_furniture">
+          <input type="hidden" name="item_key" value="{{ item.key }}">
+          <button type="submit" class="btn btn-gold btn-sm"
+            {% if char.spirit_stones < item.price %}disabled{% endif %}>
+            购置
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div style="color:var(--muted);font-size:13px;text-align:center;padding:16px">正在筹备中…</div>
+  {% endif %}
+</div>
+
+<div class="card" style="background:rgba(201,168,76,.04);border-color:rgba(201,168,76,.2)">
+  <div class="card-h">说明</div>
+  <div style="font-size:12px;color:var(--muted);line-height:2">
+    <div>· 每次登录时自动消耗当前所有灵力进行修炼/炼体</div>
+    <div>· 效率为正常修炼的 {{ cave_eff }}%，不积累心魔</div>
+    <div>· 每 10 灵力修炼一次，有多少用多少</div>
+    <div>· 购置家具提升装饰值，每 {{ CAVE_DECOR_PER_LV }} 点洞府升一级，解锁随机洞府感悟</div>
+    <div>· 炼体模式需要达到结丹才可使用</div>
+    <div>· 价格随境界提升，每个小等级涨 1 万灵石</div>
+  </div>
+</div>
+
+<script>
+var el = document.getElementById('shop-countdown');
+if (el) {
+  var ts = parseInt(el.dataset.ts) * 1000;
+  function upd() {
+    var diff = Math.max(0, ts - Date.now());
+    var h = Math.floor(diff/3600000), m = Math.floor((diff%3600000)/60000);
+    el.textContent = h + 'h' + m + 'm 后刷新';
+    if (diff > 0) setTimeout(upd, 30000);
+  }
+  upd();
+}
+</script>
+{% endif %}
+
+{# 串门 #}
+{% if purchased %}
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">
+    <div>🚶 串门拜访
+      <span style="font-size:11px;font-weight:400;color:var(--muted)">— 每人每天一次，获得好感 +{{ CAVE_VISIT_COOLDOWN // 3600 }}h冷却 + 随机种子</span>
+    </div>
+    {% set any_visitable = cave_others | selectattr('id', 'in', (visit_cooldowns.keys() | list)) | list %}
+    {% set can_visit_any = cave_others | list | length > 0 %}
+    <form method="post" action="{{ url_for('cave_visit_all') }}" style="margin:0">
+      <button class="btn btn-jade btn-sm">⚡ 一键串门</button>
+    </form>
+  </div>
+  {% if cave_others %}
+  <div style="display:flex;flex-direction:column;gap:8px">
+    {% for r in cave_others %}
+    {% set last_visit = visit_cooldowns.get(r['id'], 0) %}
+    {% set can_visit = (now_ts - last_visit) >= CAVE_VISIT_COOLDOWN %}
+    <div style="display:flex;align-items:center;gap:10px;font-size:13px;
+      padding:8px 10px;border-radius:8px;background:var(--sf2)">
+      <div style="flex:1">
+        <span style="font-weight:600">{{ r['name'] }}</span>
+        <span style="font-size:11px;color:var(--muted);margin-left:6px">
+          {{ REALMS[r['realm_idx']]['name'] }} · 洞府 Lv{{ (r['cave_decor'] or 0) // CAVE_DECOR_PER_LV }}
+        </span>
+        {% if r['cave_name'] %}
+        <span style="font-size:11px;color:var(--jade);margin-left:4px">「{{ r['cave_name'] }}」</span>
+        {% endif %}
+        {% set af = cave_affinity.get(r['id']) %}
+        <span style="font-size:11px;color:#e080c0;margin-left:6px">
+          💞 好感 {{ af.val if af else 0 }}（{{ af.label if af else '陌路' }}）
+        </span>
+      </div>
+      {% if can_visit %}
+      <form method="post" action="{{ url_for('cave_visit', owner_cid=r['id']) }}" style="margin:0">
+        <button class="btn btn-jade btn-sm">串门</button>
+      </form>
+      {% else %}
+      {% set remain = CAVE_VISIT_COOLDOWN - (now_ts - last_visit) %}
+      <span style="font-size:11px;color:var(--muted)">{{ remain // 3600 }}h后可再访</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div style="font-size:13px;color:var(--muted)">暂无其他修士拥有洞府。</div>
+  {% endif %}
+</div>
+{% endif %}
+
+</div>
+{% endblock %}

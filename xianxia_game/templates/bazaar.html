@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+{% block title %}玩家坊市 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🏪 玩家坊市 <small>修士互通有无，买卖自定价</small></div>
+
+{# ── 规则说明 ── #}
+<div style="font-size:12px;color:var(--muted);background:var(--sf);border:1px solid var(--bd);
+  border-radius:8px;padding:10px 14px;margin-bottom:18px;line-height:1.9">
+  · 每人最多同时挂 <strong>{{ BAZAAR_MAX_LIST }}</strong> 件 &nbsp;·&nbsp;
+  成交手续费 <strong>{{ (BAZAAR_FEE_PCT*100)|int }}%</strong>（从卖家扣） &nbsp;·&nbsp;
+  挂单 <strong>{{ BAZAAR_EXPIRE_DAY }} 天</strong>未成交自动退回背包
+</div>
+
+<div class="grid2" style="gap:20px;align-items:start">
+
+{# ── 左栏：我的挂单 + 上架 ── #}
+<div>
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-h">我的挂单（{{ my_listings|length }}/{{ BAZAAR_MAX_LIST }}）</div>
+    {% if my_listings %}
+    {% for lst in my_listings %}
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;
+      border-bottom:1px solid var(--bd);font-size:13px">
+      <div style="flex:1">
+        <span style="font-weight:600">{{ lst.item_name }}</span>
+        <span style="color:var(--muted);font-size:11px;margin-left:6px">×{{ lst.quantity }}</span>
+      </div>
+      <span style="color:var(--gold);font-weight:600">{{ lst.price_each }} 灵石/件</span>
+      <form method="post" style="margin:0">
+        <input type="hidden" name="action" value="cancel">
+        <input type="hidden" name="listing_id" value="{{ lst.id }}">
+        <button class="btn" style="padding:4px 10px;font-size:12px">撤回</button>
+      </form>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div style="font-size:13px;color:var(--muted);padding:8px 0">暂无挂单</div>
+    {% endif %}
+  </div>
+
+  {% if my_listings|length < BAZAAR_MAX_LIST %}
+  <div class="card">
+    <div class="card-h">上架物品</div>
+    {% if inv_items %}
+    <form method="post" style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
+      <input type="hidden" name="action" value="list">
+      <select name="item_id" style="padding:8px;border:1px solid var(--bd);border-radius:8px;
+        background:var(--sf2);color:var(--text);font-size:13px">
+        {% for it in inv_items %}
+        <option value="{{ it.item_id }}">
+          {{ it.name }}（持有 {{ it.quantity }}）{% if it.market_price %} 参考价 {{ it.market_price }}{% endif %}
+        </option>
+        {% endfor %}
+      </select>
+      <div style="display:flex;gap:8px">
+        <div style="flex:1">
+          <label style="font-size:12px;color:var(--muted)">数量</label>
+          <input type="number" name="quantity" value="1" min="1"
+            style="width:100%;margin-top:4px;padding:8px;border:1px solid var(--bd);
+            border-radius:8px;background:var(--sf2);color:var(--text);font-size:13px">
+        </div>
+        <div style="flex:1">
+          <label style="font-size:12px;color:var(--muted)">单价（灵石）</label>
+          <input type="number" name="price_each" value="100" min="1"
+            style="width:100%;margin-top:4px;padding:8px;border:1px solid var(--bd);
+            border-radius:8px;background:var(--sf2);color:var(--text);font-size:13px">
+        </div>
+      </div>
+      <button type="submit" class="btn btn-jade">📦 挂出</button>
+    </form>
+    {% else %}
+    <div style="font-size:13px;color:var(--muted);padding:8px 0">背包空空，无物可卖。</div>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+{# ── 右栏：所有在售 ── #}
+<div class="card">
+  <div class="card-h">在售物品</div>
+  {% if all_listings %}
+  {% set last_type = namespace(v='') %}
+  {% for lst in all_listings %}
+    {% if lst.item_type != last_type.v %}
+    {% set last_type.v = lst.item_type %}
+    <div style="font-size:11px;color:var(--muted);margin:12px 0 4px;
+      text-transform:uppercase;letter-spacing:1px">
+      {{ {'pill':'丹药','weapon':'武器','artifact':'法器','ore':'矿石','material':'材料',
+          'talisman':'符箓','seed':'种子','treasure':'珍宝'}.get(lst.item_type, lst.item_type) }}
+    </div>
+    {% endif %}
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;
+      border-bottom:1px solid var(--bd);font-size:13px">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600">{{ lst.item_name }}
+          <span style="font-size:11px;color:var(--muted);margin-left:4px">×{{ lst.quantity }}</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted)">{{ lst.seller_name }} 出售</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="color:var(--gold);font-weight:700">{{ lst.price_each }}<span style="font-size:11px;color:var(--muted)">/件</span></div>
+        <div style="font-size:11px;color:var(--muted)">共 {{ lst.price_each * lst.quantity }}</div>
+      </div>
+      <form method="post" style="margin:0;flex-shrink:0">
+        <input type="hidden" name="action" value="buy">
+        <input type="hidden" name="listing_id" value="{{ lst.id }}">
+        <input type="number" name="buy_qty" value="1" min="1" max="{{ lst.quantity }}"
+          style="width:50px;padding:4px 6px;border:1px solid var(--bd);border-radius:6px;
+          background:var(--sf2);color:var(--text);font-size:12px;text-align:center">
+        <button type="submit" class="btn btn-jade" style="padding:5px 10px;font-size:12px">买入</button>
+      </form>
+    </div>
+  {% endfor %}
+  {% else %}
+  <div style="text-align:center;padding:32px 0;color:var(--muted)">
+    <div style="font-size:32px;margin-bottom:8px">🏪</div>
+    暂无其他道友出售物品
+  </div>
+  {% endif %}
+</div>
+
+</div>
+
+<!-- 灵兽坊市 -->
+<div class="card" style="margin-top:20px">
+  <div class="card-h">🐾 灵兽交易 <span style="color:var(--muted);font-weight:400;font-size:12px">（在灵兽阁挂出，此处购买 · 手续费 {{ (BAZAAR_FEE_PCT*100)|int }}%）</span></div>
+  {% if all_pet_listings %}
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">
+    {% for pl in all_pet_listings %}
+    {% set eff = pl.effect_json | fromjson %}
+    {% set scale = 1 + (pl.level - 1) * 0.10 %}
+    <div style="background:var(--sf2);border:1px solid var(--bd);border-radius:10px;padding:14px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+        <div>
+          <div style="font-weight:700;font-size:14px">{{ pl.nickname or pl.type_name }}</div>
+          <div style="font-size:11px;color:var(--muted)">{{ pl.type_name }} · Lv.{{ pl.level }}</div>
+        </div>
+        <span class="tag tag-{{ pl.rarity }}">{{ pl.rarity | rarity_label }}</span>
+      </div>
+      <div style="color:var(--muted);font-size:11px;line-height:1.5;margin-bottom:8px">{{ pl.description[:40] }}…</div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px">
+        {% if eff.atk_pct %}<span style="background:rgba(91,163,208,.14);border-radius:4px;padding:1px 7px;font-size:11px;color:var(--blue)">攻击+{{ (eff.atk_pct*scale)|round(1) }}%</span>{% endif %}
+        {% if eff.def_pct %}<span style="background:rgba(82,183,136,.14);border-radius:4px;padding:1px 7px;font-size:11px;color:var(--green)">防御+{{ (eff.def_pct*scale)|round(1) }}%</span>{% endif %}
+        {% if eff.crit_rate %}<span style="background:rgba(201,168,76,.14);border-radius:4px;padding:1px 7px;font-size:11px;color:var(--gold)">暴击+{{ (eff.crit_rate*scale*100)|round(1) }}%</span>{% endif %}
+        {% if eff.dodge %}<span style="background:rgba(123,94,168,.14);border-radius:4px;padding:1px 7px;font-size:11px;color:var(--purple)">闪避+{{ (eff.dodge*scale*100)|round(1) }}%</span>{% endif %}
+        {% if eff.lifesteal %}<span style="background:rgba(192,57,43,.12);border-radius:4px;padding:1px 7px;font-size:11px;color:var(--red)">吸血+{{ (eff.lifesteal*scale*100)|round(1) }}%</span>{% endif %}
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <span style="color:var(--gold);font-weight:700;font-size:15px">{{ pl.price }}</span>
+          <span style="color:var(--muted);font-size:11px"> 灵石</span>
+          <div style="font-size:11px;color:var(--muted)">{{ pl.seller_name }} 出售</div>
+        </div>
+        <form method="post" onsubmit="return confirm('以 {{ pl.price }} 灵石购入【{{ pl.nickname or pl.type_name }}】？')">
+          <input type="hidden" name="action" value="buy_pet">
+          <input type="hidden" name="pet_listing_id" value="{{ pl.id }}">
+          <button type="submit" class="btn btn-jade btn-sm"
+            {% if char.spirit_stones < pl.price %}disabled title="灵石不足"{% endif %}>
+            买入
+          </button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div style="text-align:center;padding:28px 0;color:var(--muted)">
+    <div style="font-size:28px;margin-bottom:8px">🐾</div>
+    暂无道友出售灵兽，去灵兽阁挂售你的灵兽吧
+  </div>
+  {% endif %}
+</div>
+
+<!-- 求购板 -->
+<div class="card" style="margin-top:20px">
+  <div class="card-h">📋 求购板 <span style="color:var(--muted);font-weight:400;font-size:12px">（发布后预锁灵石，卖家成交后扣手续费 {{ (BAZAAR_FEE_PCT*100)|int }}%）</span></div>
+
+  {# 发布求购 #}
+  <details style="margin-bottom:16px">
+    <summary style="cursor:pointer;font-size:13px;color:var(--jade);padding:6px 0">+ 发布求购</summary>
+    <form method="post" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;align-items:flex-end">
+      <input type="hidden" name="action" value="post_wanted">
+      <div style="flex:2;min-width:120px">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:3px">物品名称</div>
+        <input name="item_name" type="text" placeholder="填写物品名" maxlength="20" required
+          style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                 border-radius:8px;padding:7px 10px;font-size:13px;font-family:inherit">
+      </div>
+      <div style="min-width:70px">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:3px">数量</div>
+        <input name="quantity" type="number" value="1" min="1"
+          style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                 border-radius:8px;padding:7px 10px;font-size:13px;font-family:inherit">
+      </div>
+      <div style="min-width:90px">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:3px">出价（石/个）</div>
+        <input name="price_each" type="number" value="100" min="1"
+          style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                 border-radius:8px;padding:7px 10px;font-size:13px;font-family:inherit">
+      </div>
+      <button type="submit" class="btn btn-jade btn-sm">发布</button>
+    </form>
+  </details>
+
+  {# 我的求购 #}
+  {% if my_wanted %}
+  <div style="margin-bottom:14px">
+    <div style="font-size:12px;color:var(--muted);margin-bottom:6px">我的求购</div>
+    {% for w in my_wanted %}
+    <div style="display:flex;align-items:center;gap:10px;padding:6px 0;font-size:13px;
+         {% if not loop.last %}border-bottom:1px solid var(--bd){% endif %}">
+      <span style="flex:1;font-weight:600">【{{ w.item_name }}】×{{ w.quantity }}</span>
+      <span style="color:var(--gold)">{{ w.price_each }} 石/个</span>
+      <span style="font-size:11px;color:var(--muted)">预锁 {{ w.price_each * w.quantity }}</span>
+      <form method="post" style="margin:0">
+        <input type="hidden" name="action" value="cancel_wanted">
+        <input type="hidden" name="wanted_id" value="{{ w.id }}">
+        <button type="submit" class="btn btn-ghost btn-sm">撤回</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {# 全部求购 #}
+  {% if all_wanted %}
+  <div style="display:flex;flex-direction:column;gap:6px">
+    {% for w in all_wanted %}
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;
+         background:var(--sf2);border-radius:8px;font-size:13px">
+      <div style="flex:1">
+        <span style="font-weight:600">【{{ w.item_name }}】</span>
+        <span style="color:var(--muted);font-size:12px;margin-left:6px">×{{ w.quantity }} · 求购者：{{ w.buyer_name }}</span>
+      </div>
+      <span style="color:var(--gold);font-weight:600">{{ w.price_each }} 石/个</span>
+      <span style="font-size:11px;color:var(--muted)">共 {{ w.price_each * w.quantity }} 石</span>
+      <form method="post" style="margin:0">
+        <input type="hidden" name="action" value="fulfill_wanted">
+        <input type="hidden" name="wanted_id" value="{{ w.id }}">
+        <button type="submit" class="btn btn-jade btn-sm">成交</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div style="color:var(--muted);font-size:13px;text-align:center;padding:20px 0">暂无求购信息</div>
+  {% endif %}
+</div>
+
+</div>
+{% endblock %}

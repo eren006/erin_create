@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% block title %}战斗场 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">⚔ 战斗场 <small>斩妖除魔，历练道心</small></div>
+
+<!-- 状态栏 -->
+<div class="card" style="margin-bottom:16px;padding:12px 16px">
+  <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center">
+    <div style="flex:1;min-width:180px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px">
+        <span>气血</span>
+        <span style="color:{% if hp_pct < 0.2 %}var(--red){% elif hp_pct < 0.5 %}var(--gold){% else %}var(--muted){% endif %}">
+          {{ hp_now }}/{{ max_hp }}
+        </span>
+      </div>
+      <div class="bar-wrap">
+        <div class="bar-fill bar-red" style="width:{{ (hp_pct * 100)|int }}%"></div>
+      </div>
+    </div>
+    <div style="flex:1;min-width:180px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px">
+        <span>灵力</span><span>{{ energy }}/{{ MAX_ENERGY }}</span>
+      </div>
+      <div class="bar-wrap">
+        <div class="bar-fill bar-jade" style="width:{{ (energy / MAX_ENERGY * 100)|int }}%"></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:16px;font-size:13px;flex-shrink:0">
+      <span style="color:var(--muted)">境界 <strong style="color:var(--jade)">{{ REALMS[char.realm_idx].name }}</strong></span>
+      <span style="color:var(--muted)">灵石 <strong style="color:var(--gold)">{{ char.spirit_stones }}</strong></span>
+    </div>
+  </div>
+
+  <!-- 装备状态 -->
+  <div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap;border-top:1px solid var(--bd);padding-top:10px">
+    <span style="font-size:12px;color:var(--muted)">当前装备：</span>
+    {% if equipped_weapon %}
+    <span style="font-size:12px;color:var(--jade)">
+      ⚔ {{ equipped_weapon.name }}（攻击 +{{ equip_atk }}）
+    </span>
+    {% else %}
+    <span style="font-size:12px;color:var(--muted)">⚔ 未装备飞剑</span>
+    {% endif %}
+    {% if equipped_artifact %}
+    <span style="font-size:12px;color:var(--green)">
+      🛡 {{ equipped_artifact.name }}（防御 +{{ equip_def }}）
+    </span>
+    {% else %}
+    <span style="font-size:12px;color:var(--muted)">🛡 未装备法宝</span>
+    {% endif %}
+    {% if pet_bonus.pet %}
+    <span style="font-size:12px;color:var(--purple)">
+      🐾 {{ pet_bonus.pet.nickname or pet_bonus.pet.type_name }}
+      （{% if pet_bonus.atk_pct %}攻+{{ pet_bonus.atk_pct }}% {% endif %}{% if pet_bonus.def_pct %}防+{{ pet_bonus.def_pct }}% {% endif %}{% if pet_bonus.crit_rate %}暴+{{ (pet_bonus.crit_rate*100)|round(1) }}%{% endif %}）
+    </span>
+    {% else %}
+    <span style="font-size:12px;color:var(--muted)">🐾 无出战灵兽</span>
+    {% endif %}
+    {% if not equipped_weapon or not equipped_artifact %}
+    <a href="{{ url_for('inventory') }}" style="font-size:12px;color:var(--gold)">→ 背包装备</a>
+    {% endif %}
+    {% if not pet_bonus.pet %}
+    <a href="{{ url_for('pets') }}" style="font-size:12px;color:var(--purple)">→ 灵兽出战</a>
+    {% endif %}
+  </div>
+</div>
+
+<!-- 气血不足警告 -->
+{% if hp_pct < MIN_FIGHT_HP_PCT %}
+<div class="result-box failure" style="margin-bottom:16px;display:flex;align-items:center;gap:12px">
+  <div style="font-size:24px">⚠</div>
+  <div>
+    <div style="color:var(--red);font-weight:600;margin-bottom:4px">气血不足，无法出战</div>
+    <div style="color:var(--muted);font-size:13px">
+      当前气血 {{ hp_now }}/{{ max_hp }}，需至少 {{ (MIN_FIGHT_HP_PCT*100)|int }}%。
+      请前往<a href="{{ url_for('inventory') }}" style="color:var(--gold)">背包</a>服用回元丹，
+      或在<a href="{{ url_for('market') }}" style="color:var(--jade)">丹市</a>购买。
+      气血也会每小时自然恢复 {{ HP_REGEN_HOUR }}%。
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- 本轮妖物 -->
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+  <div style="font-size:14px;color:var(--muted)">
+    本轮随机妖物 <strong style="color:var(--fg)">{{ pool_monsters|length }}</strong> 只，每只限战一次
+  </div>
+  <div style="font-size:12px;color:var(--muted);background:var(--sf2);padding:4px 10px;border-radius:6px">
+    {% set all_done = pool_monsters|selectattr('defeated')|list|length == pool_monsters|length %}
+    {% if all_done %}
+    <span style="color:var(--gold)">⏳ 全部战毕，</span>
+    {% endif %}
+    刷新倒计时：
+    {% if refresh_h > 0 %}<strong>{{ refresh_h }}</strong> 时 {% endif %}
+    <strong id="combat-countdown">{{ refresh_m }}</strong> 分
+  </div>
+</div>
+
+{% if not pool_monsters %}
+<div class="empty">暂无合适的对手，继续修炼以解锁更多妖兽</div>
+{% else %}
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">
+  {% for entry in pool_monsters %}
+  {% set m = entry.monster %}
+  {% set done = entry.defeated %}
+  {% set player_atk = fighter.atk %}
+  {% set player_def = fighter.def %}
+  {% set est_dmg_per_round = [m.attack - player_def, 1]|max %}
+  <div class="card" style="{% if done %}opacity:.5;pointer-events:none{% endif %}">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px">
+      <div>
+        <div style="font-size:16px;font-weight:700">{{ m.name }}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">{{ m.description }}</div>
+      </div>
+      {% if done %}
+      <span class="tag tag-common" style="white-space:nowrap;margin-left:8px;flex-shrink:0">已战毕</span>
+      {% else %}
+      <span class="tag tag-uncommon" style="white-space:nowrap;margin-left:8px;flex-shrink:0">可挑战</span>
+      {% endif %}
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px;text-align:center">
+      <div style="background:var(--sf2);border-radius:6px;padding:6px">
+        <div style="color:var(--red);font-weight:600">{{ m.hp }}</div>
+        <div style="color:var(--muted);font-size:10px">气血</div>
+      </div>
+      <div style="background:var(--sf2);border-radius:6px;padding:6px">
+        <div style="color:var(--blue);font-weight:600">{{ m.attack }}</div>
+        <div style="color:var(--muted);font-size:10px">攻击</div>
+      </div>
+      <div style="background:var(--sf2);border-radius:6px;padding:6px">
+        <div style="color:var(--green);font-weight:600">{{ m.defense }}</div>
+        <div style="color:var(--muted);font-size:10px">防御</div>
+      </div>
+    </div>
+
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.8">
+      <span>我每轮约造成 <strong style="color:var(--blue)">{{ [player_atk - m.defense, 1]|max }}+</strong> 伤害</span>
+      <span style="margin-left:10px">对方每轮约造成 <strong style="color:var(--red)">{{ est_dmg_per_round }}+</strong> 伤害</span>
+    </div>
+
+    <div style="display:flex;gap:8px;font-size:12px;color:var(--muted);margin-bottom:10px">
+      <span>💰 <strong style="color:var(--gold)">{{ m.stone_reward }}</strong> 灵石</span>
+      <span>⚡ <strong style="color:var(--jade)">{{ fmt_exp(m.exp_reward) }}</strong> 修为</span>
+    </div>
+
+    <form method="post" action="{{ url_for('fight', mid=m.id) }}">
+      <button type="submit" class="btn btn-red btn-sm" style="width:100%"
+        {% if done or energy < COMBAT_COST or hp_pct < MIN_FIGHT_HP_PCT %}disabled{% endif %}>
+        {% if done %}已战毕
+        {% elif energy < COMBAT_COST %}灵力不足
+        {% elif hp_pct < MIN_FIGHT_HP_PCT %}气血不足
+        {% else %}⚔ 发起挑战{% endif %}
+      </button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card" style="margin-top:20px;background:rgba(224,92,75,.05);border-color:rgba(224,92,75,.15)">
+  <div class="card-h" style="color:var(--red)">战斗须知</div>
+  <div style="color:var(--muted);font-size:12px;line-height:2">
+    <div>· 每轮随机抽取 3 只妖兽供挑战，每只<strong style="color:var(--red)">只能交手一次</strong>（无论胜负）</div>
+    <div>· 妖兽池每 <strong style="color:var(--gold)">5 小时</strong>刷新一次，重新抽取新的对手</div>
+    <div>· 战斗会消耗<strong style="color:var(--red)">真实气血</strong>，战后需用丹药回复或等待自然恢复</div>
+    <div>· 气血低于 {{ (MIN_FIGHT_HP_PCT*100)|int }}% 时无法出战，回元丹可恢复 30% 上限气血</div>
+    <div>· 装备飞剑提升攻击，装备法宝减少每回合受伤，高性价比选择</div>
+    <div>· 气血自然恢复速度：每小时 {{ HP_REGEN_HOUR }}% 上限</div>
+  </div>
+</div>
+</div>
+
+<script>
+(function(){
+  var secs = {{ secs_left }};
+  var el   = document.getElementById('combat-countdown');
+  if (!el || secs <= 0) return;
+  function tick(){
+    secs--;
+    if (secs <= 0){ location.reload(); return; }
+    var h = Math.floor(secs/3600), m = Math.floor((secs%3600)/60);
+    el.textContent = (h > 0 ? h + ' 时 ' : '') + m;
+    setTimeout(tick, 60000);
+  }
+  setTimeout(tick, 60000);
+})();
+</script>
+{% endblock %}

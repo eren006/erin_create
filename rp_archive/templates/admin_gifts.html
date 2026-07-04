@@ -157,7 +157,7 @@
 
   <div class="sync-tip">
     💡 <b>使用说明：</b>
-    在此添加预设礼品后，在机器人发送&nbsp;<code>全量同步</code>&nbsp;即可将礼品表推送到机器人；
+    在此添加预设礼品后，在机器人发送&nbsp;<code>拉取全部</code>&nbsp;即可将礼品表推送到机器人；
     玩家可在群内发送&nbsp;<code>礼品店</code>&nbsp;查看，用&nbsp;<code>送礼 对方名 #编号</code>&nbsp;赠送图鉴内礼品。
   </div>
 
@@ -302,7 +302,7 @@ async function saveGifts() {
     });
     const data = await res.json();
     if (data.ok) {
-      showToast('✅ 保存成功！在机器人发送「全量同步」即可推送到机器人。');
+      showToast('✅ 保存成功！在机器人发送「拉取全部」即可推送到机器人。');
       document.getElementById('save-status').textContent = '';
     } else {
       showToast('❌ 保存失败：' + (data.error || '未知错误'));

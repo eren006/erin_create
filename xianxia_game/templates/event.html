@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}世界Boss — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">⚔ 世界Boss <small>全服合力，共击强敌</small></div>
+
+{% if not event %}
+<div class="empty" style="padding:60px 0">
+  <div style="font-size:48px;margin-bottom:12px">🌙</div>
+  <div>当前没有活跃的世界Boss</div>
+  <div style="font-size:12px;margin-top:8px;color:var(--muted)">管理员会不定期发布，敬请期待</div>
+</div>
+{% else %}
+{% set hp_pct = (event.boss_hp_remaining / event.boss_hp_total * 100)|int %}
+<div class="card" style="margin-bottom:16px;border-color:var(--red)">
+  <div style="display:flex;align-items:center;gap:16px;margin-bottom:12px;flex-wrap:wrap">
+    <div style="font-size:48px">{{ event.icon }}</div>
+    <div style="flex:1">
+      <div style="font-size:20px;font-weight:700;color:var(--red)">{{ event.name }}</div>
+      <div style="color:var(--muted);font-size:13px;margin-top:4px">{{ event.description }}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">
+        截止：{{ event.ends_at | format_ts }}
+      </div>
+    </div>
+    <div style="text-align:center;min-width:100px">
+      <div style="font-size:22px;font-weight:700;color:{% if hp_pct > 50 %}var(--green){% elif hp_pct > 25 %}var(--gold){% else %}var(--red){% endif %}">{{ hp_pct }}%</div>
+      <div style="font-size:11px;color:var(--muted)">剩余气血</div>
+    </div>
+  </div>
+  <div class="bar-wrap" style="height:14px">
+    <div class="bar-fill bar-red" style="width:{{ hp_pct }}%"></div>
+  </div>
+  <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:4px">
+    <span>{{ event.boss_hp_remaining | int }} / {{ event.boss_hp_total | int }}</span>
+    <span>通关奖励：{{ event.clear_bonus_stones }} 灵石 + {{ event.clear_bonus_lingfu }} 灵符</span>
+  </div>
+</div>
+
+{% if result %}
+<div class="result-box {{ 'success' if result.hp <= 0 else '' }}" style="margin-bottom:16px">
+  <div style="font-size:15px;font-weight:600;color:var(--red)">造成伤害 {{ result.dmg }}</div>
+  {% if result.drops %}
+  <div style="font-size:13px;color:var(--text);margin-top:6px">掉落：{{ result.drops | join('，') }}</div>
+  {% endif %}
+  {% if result.hp <= 0 %}
+  <div style="color:var(--gold);font-weight:700;margin-top:8px">🏆 Boss 已被击杀！通关奖励已发放！</div>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="grid2">
+  <!-- 攻击按钮 -->
+  <div>
+    <div class="card">
+      <div class="card-h">参战</div>
+      <div style="color:var(--muted);font-size:13px;margin-bottom:12px">
+        每次攻击消耗 <strong style="color:var(--jade)">{{ BOSS_HIT_ENERGY }} 灵力</strong>，
+        每次攻击均有掉落。<br>
+        当前灵力：<strong style="color:{% if energy >= BOSS_HIT_ENERGY %}var(--jade){% else %}var(--red){% endif %}">{{ energy }}</strong>
+      </div>
+      {% if my_hit %}
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
+        你已造成总伤害 <strong style="color:var(--gold)">{{ my_hit.damage }}</strong>（共攻击 {{ my_hit.hits }} 次）<br>
+        剩余次数：<strong style="color:{% if remaining_hits > 0 %}var(--jade){% else %}var(--red){% endif %}">{{ remaining_hits }}</strong> / 20
+      </div>
+      {% else %}
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
+        剩余次数：<strong style="color:var(--jade)">20</strong> / 20
+      </div>
+      {% endif %}
+      {% if event.boss_hp_remaining > 0 %}
+      <form method="post">
+        <button class="btn btn-red" style="width:100%;padding:12px"
+          {% if energy < BOSS_HIT_ENERGY %}disabled{% endif %}>
+          ⚔ {% if energy < BOSS_HIT_ENERGY %}灵力不足{% else %}攻击Boss{% endif %}
+        </button>
+      </form>
+      {% else %}
+      <div style="text-align:center;color:var(--gold);font-weight:600;padding:12px">
+        🏆 Boss 已被全服击杀
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- 伤害排行 -->
+  <div class="card">
+    <div class="card-h">伤害排行</div>
+    {% for row in leaderboard %}
+    <div style="display:flex;align-items:center;gap:10px;padding:6px 0;font-size:13px;
+         {% if not loop.last %}border-bottom:1px solid var(--bd){% endif %}">
+      <span style="color:{% if loop.index==1 %}var(--gold){% elif loop.index==2 %}var(--muted){% else %}var(--muted){% endif %};width:20px;text-align:center">
+        {% if loop.index==1 %}🥇{% elif loop.index==2 %}🥈{% elif loop.index==3 %}🥉{% else %}{{ loop.index }}{% endif %}
+      </span>
+      <span style="flex:1;font-weight:{% if loop.index<=3 %}600{% else %}400{% endif %}">{{ row.name }}</span>
+      <span style="color:var(--muted);font-size:11px">{{ REALMS[row.realm_idx].name }}</span>
+      <span style="color:var(--red);font-weight:600">{{ row.damage }}</span>
+    </div>
+    {% else %}
+    <div style="color:var(--muted);font-size:12px">尚无参战记录</div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+</div>
+{% endblock %}

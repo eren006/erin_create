@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}池子管理 — 后台{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🌟 池子管理 <small><a href="{{ url_for('admin') }}" style="font-size:13px">← 后台</a></small></div>
+<p style="color:var(--muted);font-size:12px;margin-bottom:16px">
+  这里管理"限定召唤池"本身（跟内置的限定一池/限定二池是独立的新系统）。先去
+  <a href="{{ url_for('admin_companions') }}" style="color:var(--gold)">伙伴清单</a>
+  造好伙伴，再来这里把他们加进某个池子。设为默认池后，以后在清单里新增的伙伴会自动加进来。
+</p>
+
+<!-- 新建池子 -->
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">新建池子</div>
+  <form method="post" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <input type="hidden" name="action" value="create_pool">
+    <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">池子名称</label>
+      <input name="name" required placeholder="如 上古宗师池"
+        style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px"></div>
+    <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">图标</label>
+      <input name="icon" value="🌟" maxlength="2"
+        style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px"></div>
+    <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">单抽灵石</label>
+      <input name="cost" type="number" value="280" min="1"
+        style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px"></div>
+    <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">保底抽数</label>
+      <input name="pity_max" type="number" value="40" min="1"
+        style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px"></div>
+    <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">持续天数（留空=不限时）</label>
+      <input name="duration_days" type="number" step="0.5" min="0" placeholder="如 2"
+        style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px"></div>
+    <div style="grid-column:1/-1"><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">描述</label>
+      <input name="description" placeholder="池子说明"
+        style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px"></div>
+    <div style="grid-column:1/-1;display:flex;align-items:center;gap:6px">
+      <input type="checkbox" name="is_default" id="is_default" value="1">
+      <label for="is_default" style="font-size:12px;color:var(--muted)">设为默认池（清单里新增伙伴会自动加进来）</label>
+    </div>
+    <div style="grid-column:1/-1;display:flex;align-items:center;gap:6px">
+      <input type="checkbox" name="include_regular" id="include_regular" value="1" checked>
+      <label for="include_regular" style="font-size:12px;color:var(--muted)">混入常驻伙伴+中档材料（跟原有限定池一样的混合池结构，推荐勾选）</label>
+    </div>
+    <div style="grid-column:1/-1"><button class="btn btn-jade">创建池子</button></div>
+  </form>
+</div>
+
+<!-- 池子列表 -->
+{% for pool in pools %}
+<div class="card" style="margin-bottom:16px;{% if not pool.is_active %}opacity:.6{% endif %}">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+    <div>
+      <span style="font-size:20px">{{ pool.icon }}</span>
+      <strong style="margin-left:8px">{{ pool.name }}</strong>
+      {% if pool.is_default %}<span style="font-size:11px;color:var(--gold);border:1px solid var(--gold);border-radius:4px;padding:1px 6px;margin-left:6px">默认池</span>{% endif %}
+      <span style="font-size:12px;color:var(--muted);margin-left:8px">{{ pool.cost }}灵石/抽 · 保底{{ pool.pity_max }}抽</span>
+      {% if pool.ends_at %}<span style="font-size:11px;color:var(--gold);margin-left:8px">⏳ {{ pool.ends_at | format_ts }} 自动关闭</span>{% endif %}
+      {% if pool.description %}<div style="font-size:12px;color:var(--muted);margin-top:4px">{{ pool.description }}</div>{% endif %}
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      {% if not pool.is_default %}
+      <form method="post" style="display:inline">
+        <input type="hidden" name="action" value="set_default">
+        <input type="hidden" name="pool_id" value="{{ pool.id }}">
+        <button class="btn btn-sm btn-ghost">设为默认</button>
+      </form>
+      {% endif %}
+      <form method="post" style="display:inline-flex;gap:4px;align-items:center">
+        <input type="hidden" name="action" value="set_duration">
+        <input type="hidden" name="pool_id" value="{{ pool.id }}">
+        <input name="duration_days" type="number" step="0.5" min="0" placeholder="天数"
+          style="width:60px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:6px;padding:4px 6px;font-size:11px">
+        <button class="btn btn-sm btn-ghost">设置/取消倒计时</button>
+      </form>
+      <form method="post" style="display:inline">
+        <input type="hidden" name="action" value="toggle_pool">
+        <input type="hidden" name="pool_id" value="{{ pool.id }}">
+        <button class="btn btn-sm {% if pool.is_active %}btn-ghost{% else %}btn-jade{% endif %}">
+          {% if pool.is_active %}下架{% else %}上架{% endif %}
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- 池子成员 -->
+  {% if pool.include_regular %}
+  <p style="font-size:11px;color:var(--muted);margin-bottom:8px">
+    ✓ 已自动混入常驻伙伴 {{ regular_count }} 个 + 中档材料 {{ material_count }} 种（跟随系统常驻池，无需手动加，下面只列你专属加进来的限定伙伴）
+  </p>
+  {% endif %}
+  {% set members = pool_members.get(pool.id, []) %}
+  {% if members %}
+  <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
+    {% for m in members %}
+    {% set comp = COMPANION_MAP.get(m.companion_key) %}
+    <div style="background:var(--sf2);border:1px solid rgba(201,168,76,.3);border-radius:6px;padding:4px 10px;font-size:11px">
+      <span class="tag" style="font-size:10px;color:var(--gold)">{{ COMPANION_RARITY_LABEL.get(comp[3], comp[3]) if comp else '?' }}</span>
+      <span style="margin-left:4px">{{ comp[1] if comp else m.companion_key }}</span>
+      <span style="color:var(--muted)"> W{{ m.weight }}</span>
+      <form method="post" style="display:inline">
+        <input type="hidden" name="action" value="remove_member">
+        <input type="hidden" name="member_id" value="{{ m.id }}">
+        <button style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:10px;padding:0 2px">×</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p style="color:var(--muted);font-size:12px;margin-bottom:12px">
+    还没有专属加入的伙伴。{% if not pool.include_regular %}玩家暂时抽不出任何东西。{% endif %}
+  </p>
+  {% endif %}
+
+  <!-- 添加成员 -->
+  <form method="post" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;border-top:1px solid var(--bd);padding-top:10px">
+    <input type="hidden" name="action" value="add_member">
+    <input type="hidden" name="pool_id" value="{{ pool.id }}">
+    <select name="companion_key" required style="background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:6px 10px;font-family:inherit;font-size:12px">
+      <option value="">— 选择伙伴 —</option>
+      {% for c in roster %}
+      <option value="{{ c[0] }}">{{ c[1] }}（{{ COMPANION_RARITY_LABEL.get(c[3], c[3]) }}）</option>
+      {% endfor %}
+    </select>
+    <input name="weight" type="number" value="4" min="1" placeholder="权重"
+      style="width:80px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:6px 10px;font-family:inherit;font-size:12px">
+    <button class="btn btn-sm btn-jade">加入池子</button>
+  </form>
+</div>
+{% endfor %}
+
+{% if not pools %}
+<p style="color:var(--muted);font-size:13px">还没有任何自建池子，先在上面创建一个。</p>
+{% endif %}
+
+</div>
+{% endblock %}

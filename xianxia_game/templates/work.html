@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}打工 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">⚒ 打工 <small>以修为换取灵石，低阶散修的生计之道</small></div>
+
+<!-- 灵力状态 -->
+<div class="card" style="margin-bottom:20px;border-color:var(--jade);background:rgba(31,122,95,.04)">
+  <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+    <div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:2px">当前灵力</div>
+      <div style="font-size:22px;font-weight:700;color:var(--jade)">{{ energy }} <span style="font-size:13px;color:var(--muted)">/ {{ MAX_ENERGY }}</span></div>
+    </div>
+    <div style="flex:1;font-size:12px;color:var(--muted);line-height:1.8">
+      接受差事会消耗灵力，每个差事有独立冷却时间。<br>
+      修为过高者将因<span style="color:var(--red)">有损形象</span>而无法承接低阶差事；炼丹/炼器差事无此限制，技艺精深不丢人。
+    </div>
+  </div>
+</div>
+
+{% macro job_card(job) %}
+{% set avail    = job.status == 'available' %}
+{% set prestige = job.status == 'prestige' %}
+{% set locked   = job.status == 'locked' %}
+{% set on_cd    = job.status == 'cooldown' %}
+{% set no_en    = job.status == 'no_energy' %}
+<div class="card" style="
+  border-color:{% if avail %}var(--jade){% elif prestige %}var(--red){% else %}var(--bd){% endif %};
+  background:{% if prestige %}rgba(200,50,50,.03){% elif avail %}rgba(31,122,95,.04){% else %}var(--sf){% endif %};
+  opacity:{% if locked or prestige %}0.72{% else %}1{% endif %};
+  margin-bottom:12px">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+    <div style="flex:1;min-width:180px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+        <span style="font-size:15px;font-weight:700;color:{% if prestige %}var(--red){% elif avail %}var(--jade){% else %}var(--text){% endif %}">
+          {{ job.name }}
+        </span>
+        {% if prestige %}
+          <span style="font-size:10px;background:var(--red);color:#fff;border-radius:4px;padding:1px 6px">有损形象</span>
+        {% elif locked %}
+          <span style="font-size:10px;background:var(--bd);color:var(--muted);border-radius:4px;padding:1px 6px">未解锁</span>
+        {% endif %}
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;line-height:1.6">{{ job.desc }}</div>
+      <div style="font-size:11px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap">
+        {% if job.req_label %}
+          <span style="color:var(--text)">🔒 {{ job.req_label }}</span>
+        {% endif %}
+        <span>灵力消耗：<span style="color:var(--jade)">{{ job.energy }}</span></span>
+        <span>灵石：<span style="color:var(--gold)">{{ job.stones_min }}～{{ job.stones_max }}</span></span>
+        <span>修为：<span style="color:var(--purple)">+{{ job.exp }}</span></span>
+        <span>冷却：{{ job.cd_h }}h</span>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;min-width:90px">
+      {% if avail %}
+        <form method="post">
+          <input type="hidden" name="job_key" value="{{ job.key }}">
+          <button type="submit" class="btn btn-jade btn-sm">接受差事</button>
+        </form>
+      {% elif on_cd %}
+        <div style="font-size:11px;color:var(--muted);text-align:right">⏳ {{ job.reason }}</div>
+        <button class="btn btn-ghost btn-sm" disabled>冷却中</button>
+      {% elif no_en %}
+        <div style="font-size:11px;color:var(--red);text-align:right">{{ job.reason }}</div>
+        <button class="btn btn-ghost btn-sm" disabled>灵力不足</button>
+      {% elif locked %}
+        <div style="font-size:11px;color:var(--muted);text-align:right">{{ job.reason }}</div>
+        <button class="btn btn-ghost btn-sm" disabled>等级不足</button>
+      {% elif prestige %}
+        <div style="font-size:11px;color:var(--red);text-align:right">有损形象</div>
+        <button class="btn btn-ghost btn-sm" disabled>不可接受</button>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+<!-- 普通打工 -->
+<div class="card-h" style="margin-bottom:12px">⚒ 普通差事</div>
+{% for job in general_jobs %}{{ job_card(job) }}{% endfor %}
+
+<!-- 种地 -->
+<div class="card-h" style="margin-top:24px;margin-bottom:12px">🌾 种地差事</div>
+<div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.6">
+  种地差事给予修为，修为过高同样<span style="color:var(--red)">有损形象</span>。
+</div>
+{% for job in farm_jobs %}{{ job_card(job) }}{% endfor %}
+
+<!-- 炼丹打工 -->
+<div class="card-h" style="margin-top:24px;margin-bottom:8px">⚗️ 炼丹代炼</div>
+<div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.6">
+  以炼丹技艺接受委托，报酬远高于体力活，且不受修为上限限制。
+  当前炼丹等级：<span style="color:var(--jade);font-weight:600">{{ ALCHEMY_LEVELS[alch_lv].name }}</span>（Lv{{ alch_lv }}）
+</div>
+{% for job in alchemy_jobs %}{{ job_card(job) }}{% endfor %}
+
+<!-- 炼器打工 -->
+<div class="card-h" style="margin-top:24px;margin-bottom:8px">🔨 炼器代铸</div>
+<div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.6">
+  以炼器手艺接受委托，同样报酬丰厚无上限限制。
+  当前炼器等级：<span style="color:var(--jade);font-weight:600">{{ FORGE_LEVELS[forge_lv].name }}</span>（Lv{{ forge_lv }}）
+</div>
+{% for job in forge_jobs %}{{ job_card(job) }}{% endfor %}
+
+<!-- 符修打工 -->
+<div class="card-h" style="margin-top:24px;margin-bottom:8px">📜 符箓代写</div>
+<div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.6">
+  以符修技艺接受委托，代写各类符箓，报酬丰厚。
+  当前符修等级：<span style="color:var(--jade);font-weight:600">{{ FULU_LEVELS[fulu_lv].name }}</span>（Lv{{ fulu_lv }}）
+</div>
+{% for job in fulu_jobs %}{{ job_card(job) }}{% endfor %}
+
+<!-- 御灵修打工 -->
+<div class="card-h" style="margin-top:24px;margin-bottom:8px">🐲 御灵差事</div>
+<div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.6">
+  以御灵心法接受委托，驯兽、护卫、引路，报酬随御灵等级递增。
+  {% if beast_lv is defined and beast_lv > 0 %}
+  当前御灵等级：<span style="color:var(--green);font-weight:600">{{ BEAST_LEVELS[beast_lv].name }}</span>（Lv{{ beast_lv }}）
+  {% else %}
+  需在丹市购买【御灵令】并于背包持令，方可解锁御灵差事。
+  {% endif %}
+</div>
+{% for job in beast_jobs %}{{ job_card(job) }}{% endfor %}
+
+<!-- 合欢修打工 -->
+<div class="card-h" style="margin-top:24px;margin-bottom:8px">🌸 合欢差事</div>
+<div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.6">
+  以合欢心法接受委托，撮合良缘、传授双修之道，报酬随合欢等级递增。
+  {% if heqing_lv is defined and heqing_lv > 0 %}
+  当前合欢等级：<span style="color:var(--purple);font-weight:600">{{ HEQING_LEVELS[heqing_lv].name }}</span>（Lv{{ heqing_lv }}）
+  {% else %}
+  需在丹市购买【合欢令】并于背包持令，方可解锁合欢差事。
+  {% endif %}
+</div>
+{% for job in heqing_jobs %}{{ job_card(job) }}{% endfor %}
+
+<!-- 剑修打工 -->
+<div class="card-h" style="margin-top:24px;margin-bottom:8px">⚔ 剑修差事</div>
+<div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.6">
+  以剑意接受委托，护镖护场、传道授业，报酬随剑修等级递增。
+  {% if sword_lv is defined and sword_lv > 0 %}
+  当前剑修等级：<span style="color:#c9a000;font-weight:600">{{ SWORD_LEVELS[sword_lv].name }}</span>（Lv{{ sword_lv + 1 }}）
+  {% else %}
+  需在丹市购买【飞剑令】并于背包持令，方可解锁剑修差事。
+  {% endif %}
+</div>
+{% for job in sword_jobs %}{{ job_card(job) }}{% endfor %}
+
+</div>
+{% endblock %}

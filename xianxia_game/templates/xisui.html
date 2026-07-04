@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}洗髓伐经 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🩸 洗髓伐经 <small>逆天改命，重塑灵根</small></div>
+
+{% if result %}
+  {% if result.success %}
+  <div class="result-box success" style="margin-bottom:20px;text-align:center">
+    <div style="font-size:28px;margin-bottom:8px">✦</div>
+    <div style="font-size:18px;font-weight:700;color:var(--gold)">脱胎换骨，洗髓成功！</div>
+    <div style="margin-top:10px;font-size:15px">
+      <span class="root-{{ result.old }}">{{ result.old }}</span>
+      <span style="color:var(--muted);margin:0 10px">→</span>
+      <span class="root-{{ result.new }}" style="font-weight:700">{{ result.new }}</span>
+    </div>
+    <div style="margin-top:8px;color:var(--muted);font-size:13px">
+      新五行：{% for el in result.elems %}<span style="color:var(--gold2);margin:0 4px">{{ el }}</span>{% endfor %}
+    </div>
+  </div>
+  {% else %}
+  <div class="result-box failure" style="margin-bottom:20px">
+    <div style="font-size:18px;font-weight:700;color:var(--red);margin-bottom:6px">✦ 洗髓失败</div>
+    <div style="font-size:13px;color:var(--muted)">经脉剧痛，材料与灵石尽失，灵根未能蜕变。可再次尝试。</div>
+  </div>
+  {% endif %}
+{% endif %}
+
+<div class="grid2" style="align-items:start">
+  <!-- 当前灵根 -->
+  <div class="card">
+    <div class="card-h">当前灵根</div>
+    <div style="text-align:center;padding:14px 0">
+      <div class="root-{{ cur_root }}" style="font-size:26px;font-weight:700">{{ cur_root }}</div>
+      <div style="color:var(--muted);font-size:13px;margin-top:6px">
+        修炼速度倍率 <strong style="color:var(--gold)">×{{ cur_mult }}</strong>
+      </div>
+      <div style="margin-top:8px">
+        {% for el in char.elements | fromjson %}
+        <span style="background:var(--sf2);border:1px solid var(--bd);border-radius:6px;padding:2px 8px;font-size:12px;color:var(--gold2);margin:0 3px">{{ el }}</span>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- 灵根进阶链 -->
+    <div style="margin-top:10px;border-top:1px solid var(--bd);padding-top:12px">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">灵根进阶之路</div>
+      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;font-size:12px">
+        {% set chain = ['五灵根','四灵根','三灵根','双灵根','变异灵根','天灵根'] %}
+        {% for r in chain %}
+        <span class="root-{{ r }}" style="{% if r == cur_root %}font-weight:700;text-decoration:underline{% elif loop.index0 < chain.index(cur_root) %}opacity:.4{% endif %}">{{ r }}</span>
+        {% if not loop.last %}<span style="color:var(--muted)">→</span>{% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- 洗髓操作 -->
+  <div class="card" style="{% if can_upgrade %}border-color:var(--gold){% endif %}">
+    <div class="card-h" style="color:var(--gold)">洗髓伐经</div>
+    {% if not can_upgrade %}
+      <div style="text-align:center;padding:24px 0">
+        <div style="font-size:28px;margin-bottom:10px">👑</div>
+        <div style="color:var(--gold);font-weight:600">已臻【天灵根】至高之境</div>
+        <div style="color:var(--muted);font-size:13px;margin-top:6px">灵根已达巅峰，无需再洗。</div>
+      </div>
+    {% else %}
+      <div style="text-align:center;margin-bottom:14px">
+        <span class="root-{{ cur_root }}">{{ cur_root }}</span>
+        <span style="color:var(--muted);margin:0 8px">蜕变为</span>
+        <span class="root-{{ next_root }}" style="font-weight:700">{{ next_root }}</span>
+      </div>
+      <div style="background:var(--sf2);border-radius:8px;padding:12px;margin-bottom:12px;font-size:13px">
+        <div style="display:flex;justify-content:space-between;padding:4px 0">
+          <span style="color:var(--muted)">修炼倍率提升</span>
+          <span><span style="color:var(--muted)">×{{ cur_mult }}</span> → <span style="color:var(--gold)">×{{ next_mult }}</span></span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:4px 0">
+          <span style="color:var(--muted)">所需材料</span>
+          <span style="color:{% if mat_have >= step.mat_qty %}var(--green){% else %}var(--red){% endif %}">
+            {% if step.material_alt %}
+            {{ step.material }} 或 {{ step.material_alt }} ×{{ step.mat_qty }}（将使用 {{ mat_name }}，持有 {{ mat_have }}）
+            {% else %}
+            {{ step.material }} ×{{ step.mat_qty }}（持有 {{ mat_have }}）
+            {% endif %}
+          </span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:4px 0">
+          <span style="color:var(--muted)">所需灵石</span>
+          <span style="color:{% if char.spirit_stones >= step.stones %}var(--green){% else %}var(--red){% endif %}">
+            {{ step.stones }}（持有 {{ char.spirit_stones }}）
+          </span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:4px 0">
+          <span style="color:var(--muted)">成功率</span>
+          <span style="color:{% if (step.rate*100)|int >= 50 %}var(--gold){% else %}var(--red){% endif %};font-weight:700">
+            {{ (step.rate*100)|int }}%
+          </span>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--red);margin-bottom:12px">
+        ⚠ 失败将损失全部材料与灵石，灵根不变。
+      </div>
+      <form method="post">
+        <button class="btn btn-gold" style="width:100%;padding:12px"
+          {% if mat_have < step.mat_qty or char.spirit_stones < step.stones %}disabled{% endif %}>
+          {% if mat_have < step.mat_qty %}材料不足
+          {% elif char.spirit_stones < step.stones %}灵石不足
+          {% else %}🩸 开始洗髓伐经{% endif %}
+        </button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card" style="background:rgba(201,168,76,.05);border-color:rgba(201,168,76,.15)">
+  <div class="card-h" style="color:var(--gold2)">洗髓须知</div>
+  <div style="color:var(--muted);font-size:12px;line-height:2">
+    <div>· 灵根越纯，修炼速度越快，洗髓可逐级提升灵根资质</div>
+    <div>· 洗髓材料（洗髓丹/伐经丹/造化神液）需探索<span style="color:var(--purple)">高阶秘境</span>获得</div>
+    <div>· 越高阶的灵根蜕变，成功率越低、消耗越大</div>
+    <div>· 洗髓成功后五行属性会重新生成</div>
+  </div>
+</div>
+</div>
+{% endblock %}

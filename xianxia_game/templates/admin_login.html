@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>管理员登录 — 灵墟界</title>
+<style>
+body{background:#1a1410;color:#e0d8c8;font-family:"PingFang SC","Microsoft YaHei",sans-serif;
+  display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
+.box{padding:40px 32px;background:#252018;border:1px solid #4a3a20;
+  border-radius:16px;max-width:360px;width:90%;box-shadow:0 4px 24px rgba(0,0,0,.4)}
+.title{font-size:20px;font-weight:700;color:#c8a050;margin-bottom:24px;text-align:center;letter-spacing:2px}
+input{display:block;width:100%;box-sizing:border-box;padding:10px 14px;margin-bottom:12px;
+  border:1px solid #4a3a20;border-radius:8px;background:#1a1410;color:#e0d8c8;font-size:14px}
+input:focus{outline:none;border-color:#c8a050}
+button{width:100%;padding:11px;background:#8a6418;color:#fff;border:none;
+  border-radius:8px;font-size:14px;font-weight:700;cursor:pointer}
+button:hover{background:#a07820}
+.err{color:#e06060;font-size:13px;margin-bottom:12px;text-align:center}
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="title">⚙ 管理员登录</div>
+  {% if err %}<div class="err">{{ err }}</div>{% endif %}
+  <form method="post">
+    <input type="text" name="username" placeholder="管理员账号" autofocus autocomplete="username">
+    <input type="password" name="password" placeholder="密码" autocomplete="current-password">
+    <button type="submit">登录后台</button>
+  </form>
+</div>
+</body>
+</html>

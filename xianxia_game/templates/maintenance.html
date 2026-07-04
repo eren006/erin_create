@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>维护中 — 灵墟界</title>
+<style>
+body{background:#f3efe3;color:#33302a;font-family:"PingFang SC","Microsoft YaHei",sans-serif;
+  display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
+.box{text-align:center;padding:40px 32px;background:#fbf8f0;border:1px solid #d8cfb8;
+  border-radius:16px;max-width:400px;width:90%;box-shadow:0 4px 24px rgba(0,0,0,.08)}
+.icon{font-size:52px;margin-bottom:16px}
+.title{font-size:22px;font-weight:700;color:#a67c1a;margin-bottom:10px;letter-spacing:2px}
+.msg{font-size:14px;color:#8a8472;line-height:1.8;margin-bottom:24px}
+.sep{border:none;border-top:1px solid #e0d8c8;margin:20px 0}
+.login-form input{
+  display:block;width:100%;box-sizing:border-box;
+  padding:9px 12px;margin-bottom:10px;
+  border:1px solid #d0c8b0;border-radius:8px;
+  background:#fff;font-size:14px;color:#33302a}
+.login-form input:focus{outline:none;border-color:#a67c1a}
+.login-form button{
+  width:100%;padding:10px;background:#a67c1a;color:#fff;
+  border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer}
+.login-form button:hover{background:#8a6414}
+.login-hint{font-size:11px;color:#b0a890;margin-top:8px}
+.err{color:#c03030;font-size:13px;margin-bottom:10px}
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="icon">⚙</div>
+  <div class="title">灵墟界维护中</div>
+  <div class="msg">{{ msg }}</div>
+  <hr class="sep">
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}<div class="err">{{ messages[0] }}</div>{% endif %}
+  {% endwith %}
+  <form class="login-form" method="post" action="/admin/login">
+    <input type="text" name="username" placeholder="管理员账号" autocomplete="username">
+    <input type="password" name="password" placeholder="密码" autocomplete="current-password">
+    <button type="submit">管理员登录</button>
+  </form>
+  <div class="login-hint">仅管理员可在维护期间访问后台</div>
+</div>
+</body>
+</html>

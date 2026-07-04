@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}制作礼物 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🎁 制作礼物 <small>精选珍材，亲手制作，赠予道友</small></div>
+
+{% if result %}
+<div class="result-box success" style="margin-bottom:20px;text-align:center">
+  <div style="font-size:18px;font-weight:700;color:var(--jade);margin-bottom:6px">✦ 制作成功</div>
+  <div style="font-size:14px">
+    【<span style="color:var(--gold)">{{ result.gift_name }}</span>】已放入背包
+  </div>
+  <div style="font-size:12px;color:var(--muted);margin-top:4px">
+    赠予道友可获好感 +{{ result.affinity }} —
+    前往<a href="{{ url_for('social') }}" style="color:var(--jade)">好感·双修</a>页赠送
+  </div>
+</div>
+{% endif %}
+
+<div style="display:flex;gap:20px;flex-wrap:wrap">
+
+  <!-- 左：珍贵材料库存 -->
+  <div style="width:220px;flex-shrink:0">
+    <div class="card">
+      <div class="card-h">✨ 珍贵材料</div>
+      {% if treasure_inv %}
+        {% for tier, names in TREASURE_POOLS.items() %}
+        {% set tier_items = [] %}
+        {% for name in names %}{% if treasure_inv.get(name) %}{% set _ = tier_items.append((name, treasure_inv[name])) %}{% endif %}{% endfor %}
+        {% if tier_items %}
+        <div style="font-size:10px;color:var(--muted);margin:8px 0 4px;text-transform:uppercase;letter-spacing:1px">
+          {{ {'common':'普通','uncommon':'精良','rare':'稀有'}.get(tier,tier) }}
+        </div>
+        {% for name, qty in tier_items %}
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;
+             {% if not loop.last %}border-bottom:1px solid rgba(0,0,0,.04){% endif %}">
+          <span class="tag tag-{{ tier }}" style="font-size:10px">{{ name }}</span>
+          <span style="font-weight:600">×{{ qty }}</span>
+        </div>
+        {% endfor %}
+        {% endif %}
+        {% endfor %}
+      {% else %}
+      <div style="color:var(--muted);font-size:12px;line-height:2">
+        背包中暂无珍贵材料。<br>
+        打坐<a href="{{ url_for('cultivate') }}" style="color:var(--jade)">修炼</a>时有概率获得。
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="card" style="background:rgba(166,124,26,.04);border-color:rgba(166,124,26,.2)">
+      <div class="card-h" style="color:var(--gold2)">如何获得材料</div>
+      <div style="font-size:11px;color:var(--muted);line-height:2.1">
+        <div>· 打坐修炼时有 <strong style="color:var(--jade)">6%</strong> 概率找到</div>
+        <div>· 境界越高，掉落越珍贵</div>
+        <div>· 共 <strong>30</strong> 种材料，3 个品级</div>
+        <div>· 制好的礼物在<a href="{{ url_for('social') }}" style="color:var(--jade)">好感页</a>赠送</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右：礼物配方 -->
+  <div style="flex:1;min-width:280px">
+    {% set tiers = [('common','一阶礼物','普通材料，好感+8~14'),('uncommon','二阶礼物','精良材料，好感+20~28'),('rare','三阶礼物','稀有材料，好感+35~60')] %}
+    {% for tier_key, tier_label, tier_desc in tiers %}
+    <div style="margin-bottom:6px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span class="tag tag-{{ tier_key }}">{{ tier_label }}</span>
+        <span style="font-size:11px;color:var(--muted)">{{ tier_desc }}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px;margin-bottom:16px">
+        {% for rd in recipe_details if rd.rarity == tier_key %}
+        <div class="card" style="margin-bottom:0;padding:12px 14px;
+             border-color:{% if rd.can %}var(--jade){% else %}var(--bd){% endif %}">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <div>
+              <div style="font-weight:600;font-size:13px;color:var(--gold2)">{{ rd.gift_name }}</div>
+              <div style="font-size:11px;color:var(--jade);margin-top:1px">好感 +{{ rd.affinity }}</div>
+            </div>
+            <span class="tag tag-{{ rd.rarity }}" style="font-size:10px">{{ rd.rarity | rarity_label }}</span>
+          </div>
+          <!-- 材料清单 -->
+          <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px">
+            {% for ing in rd.ings %}
+            <div style="background:var(--sf2);border:1px solid {% if ing.enough %}rgba(82,183,136,.4){% else %}rgba(224,92,75,.4){% endif %};
+                 border-radius:6px;padding:3px 8px;font-size:11px;text-align:center">
+              <div style="color:{% if ing.enough %}var(--green){% else %}var(--red){% endif %};font-weight:500">{{ ing.name }}</div>
+              <div style="color:var(--muted);font-size:10px">{{ ing.have }}/{{ ing.qty }}</div>
+            </div>
+            {% endfor %}
+          </div>
+          <form method="post">
+            <input type="hidden" name="recipe_name" value="{{ rd.name }}">
+            <button type="submit" class="btn btn-sm {% if rd.can %}btn-gold{% else %}btn-ghost{% endif %}"
+              style="width:100%" {% if not rd.can %}disabled{% endif %}>
+              {% if rd.can %}🎁 制作{% else %}材料不足{% endif %}
+            </button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+</div>
+</div>
+{% endblock %}

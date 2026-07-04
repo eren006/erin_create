@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}探索 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🗺 探索秘境 <small>不同秘境，难度与奖励各异</small></div>
+
+{% if result %}
+{% set evt = result.evt %}
+<div class="result-box {{ 'success' if evt.type != 'nothing' else '' }}" style="margin-bottom:20px">
+  <div style="font-size:13px;color:var(--muted);margin-bottom:8px">
+    — 自【{{ result.dungeon.name }}】归来（奖励 ×{{ '%.1f'|format(result.mult) }}）—
+  </div>
+  <div style="font-size:15px;color:var(--text);line-height:1.9;margin-bottom:10px">{{ evt.title }}</div>
+  {% if result.exp_g or result.stone_g or result.item_f or result.pet_f or result.hp_loss %}
+  <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px">
+    {% if result.hp_loss %}
+    <div style="background:rgba(200,50,50,.1);border:1px solid rgba(200,50,50,.35);border-radius:8px;padding:8px 14px;text-align:center">
+      <div style="color:var(--red);font-weight:700;font-size:17px">-{{ result.hp_loss }}</div>
+      <div style="color:var(--muted);font-size:11px">气血</div>
+    </div>
+    {% endif %}
+    {% if result.exp_g %}
+    <div style="background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.3);border-radius:8px;padding:8px 14px;text-align:center">
+      <div style="color:var(--gold);font-weight:700;font-size:17px">+{{ fmt_exp(result.exp_g) }}</div>
+      <div style="color:var(--muted);font-size:11px">修为</div>
+    </div>
+    {% endif %}
+    {% if result.stone_g %}
+    <div style="background:rgba(77,184,154,.1);border:1px solid rgba(77,184,154,.3);border-radius:8px;padding:8px 14px;text-align:center">
+      <div style="color:var(--jade);font-weight:700;font-size:17px">+{{ result.stone_g }}</div>
+      <div style="color:var(--muted);font-size:11px">灵石</div>
+    </div>
+    {% endif %}
+    {% if result.item_f %}
+    <div style="background:rgba(155,127,224,.1);border:1px solid rgba(155,127,224,.3);border-radius:8px;padding:8px 14px;text-align:center">
+      <div style="color:var(--purple);font-weight:700;font-size:15px">{{ result.item_f.name }}</div>
+      <div style="color:var(--muted);font-size:11px">{{ result.item_f.rarity | rarity_label }}</div>
+    </div>
+    {% endif %}
+    {% if result.pet_f %}
+    <div style="background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.4);border-radius:8px;padding:8px 14px;text-align:center">
+      <div style="color:var(--gold);font-weight:700;font-size:15px">🐾 {{ result.pet_f.name }}</div>
+      <div style="color:var(--muted);font-size:11px">收服灵兽 · {{ result.pet_f.rarity | rarity_label }}</div>
+    </div>
+    {% endif %}
+    {% if result.bonus_seed %}
+    <div style="background:rgba(46,139,87,.08);border:1px solid rgba(46,139,87,.3);border-radius:8px;padding:8px 14px;text-align:center">
+      <div style="color:var(--green);font-weight:700;font-size:15px">🌰 {{ result.bonus_seed.name }}</div>
+      <div style="color:var(--muted);font-size:11px">额外发现 · 可种入<a href="{{ url_for('herb_garden') }}" style="color:var(--jade)">药田</a></div>
+    </div>
+    {% endif %}
+    {% if result.dq_explore %}
+    <div style="background:rgba(120,40,180,.08);border:1px solid rgba(120,40,180,.3);border-radius:8px;padding:8px 14px;text-align:center">
+      <div style="color:var(--purple);font-weight:700;font-size:17px">+{{ result.dq_explore }}</div>
+      <div style="color:var(--muted);font-size:11px">心魔</div>
+    </div>
+    {% endif %}
+  </div>
+  {% else %}
+  <div style="color:var(--muted);font-size:13px;font-style:italic">此次一无所获。</div>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- 状态条 -->
+{% set hp_pct_val = (hp_now / max_hp * 100)|int if max_hp else 0 %}
+{% set hp_low = hp_pct_val < 30 %}
+<div class="card" style="margin-bottom:16px;padding:12px 16px;display:flex;gap:24px;flex-wrap:wrap;align-items:center;
+  {% if hp_low %}border-color:var(--red);background:rgba(200,50,50,.04);{% endif %}">
+  <span style="font-size:13px;color:var(--muted)">境界 <strong style="color:var(--jade)">{{ REALMS[char.realm_idx].name }}</strong></span>
+  <div style="flex:1;min-width:160px">
+    <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px">
+      <span>灵力</span><span>{{ energy }}/{{ MAX_ENERGY }}</span>
+    </div>
+    <div class="bar-wrap"><div class="bar-fill bar-jade" style="width:{{ (energy / MAX_ENERGY * 100)|int }}%"></div></div>
+  </div>
+  <div style="min-width:140px">
+    <div style="display:flex;justify-content:space-between;font-size:12px;color:{% if hp_low %}var(--red){% else %}var(--muted){% endif %};margin-bottom:4px">
+      <span>气血{% if hp_low %} ⚠ 过低，无法探索{% endif %}</span><span>{{ hp_now }}/{{ max_hp }}</span>
+    </div>
+    <div class="bar-wrap"><div class="bar-fill" style="width:{{ hp_pct_val }}%;background:{% if hp_low %}var(--red){% else %}var(--green){% endif %}"></div></div>
+  </div>
+  <span style="font-size:13px;color:var(--muted)">灵石 <strong style="color:var(--gold)">{{ char.spirit_stones }}</strong></span>
+</div>
+
+<!-- 秘境列表 -->
+{% set tier_colors = ['var(--jade)','var(--blue)','var(--purple)','var(--red)'] %}
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">
+  {% for d in all_dungeons %}
+  {% set locked = char.realm_idx < d.realm_required %}
+  {% set no_energy = energy < d.energy_cost %}
+  {% set tc = tier_colors[d.tier] %}
+  <div class="card" style="{% if locked %}opacity:.55{% endif %};border-color:{% if not locked %}{{ tc }}{% else %}var(--bd){% endif %}">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px">
+      <div style="font-size:16px;font-weight:700;color:{{ tc }}">{{ d.name }}</div>
+      <span style="background:var(--sf2);border-radius:20px;padding:2px 10px;font-size:11px;color:{{ tc }};white-space:nowrap">
+        奖励 ×{{ '%.0f'|format(d.reward_mult) }}
+      </span>
+    </div>
+    <div style="color:var(--muted);font-size:12px;line-height:1.7;margin-bottom:12px;min-height:40px">{{ d.description }}</div>
+
+    <div style="display:flex;gap:12px;font-size:12px;color:var(--muted);margin-bottom:12px">
+      <span>🔓 {{ REALMS[d.realm_required].name }}</span>
+      <span>⚡ 消耗 {{ d.energy_cost }} 灵力</span>
+    </div>
+
+    {% if d.tier >= 1 %}
+    <div style="font-size:11px;color:{{ tc }};margin-bottom:12px;background:var(--sf2);border-radius:6px;padding:6px 10px">
+      ✦ 可能掉落奇功残卷与稀有传承
+    </div>
+    {% endif %}
+
+    <form method="post">
+      <input type="hidden" name="dungeon_id" value="{{ d.id }}">
+      <button type="submit" class="btn btn-sm" style="width:100%;
+        {% if not locked and not no_energy %}background:{{ tc }};color:#fff;border:none{% else %}background:transparent;border:1px solid var(--bd);color:var(--muted){% endif %}"
+        {% if locked or no_energy %}disabled{% endif %}>
+        {% if locked %}境界不足（需{{ REALMS[d.realm_required].name }}）
+        {% elif no_energy %}灵力不足（需{{ d.energy_cost }}）
+        {% else %}🗺 踏入探索{% endif %}
+      </button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card" style="margin-top:16px;background:rgba(91,163,208,.05);border-color:rgba(91,163,208,.2)">
+  <div class="card-h" style="color:var(--blue)">探索提示</div>
+  <div style="color:var(--muted);font-size:12px;line-height:2">
+    <div>· 秘境档次越高，灵力消耗越大，但奖励倍率成倍提升</div>
+    <div>· 高阶秘境（幽暗险峰及以上）才会掉落<span style="color:var(--purple)">奇功残卷</span></div>
+    <div>· 习得「山河图感应」奇功可额外提升探索奖励</div>
+    <div>· 无所获也是常态，道心不可急躁</div>
+  </div>
+</div>
+</div>
+{% endblock %}

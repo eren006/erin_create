@@ -529,7 +529,7 @@ p { margin-bottom: 12px; color: #1E2C3A; }
       <tr><td><code>【寄信混乱反义】</code></td><td>0</td><td>关键词替换为反义词的概率（%）</td></tr>
       <tr><td><code>【寄信混乱乱序】</code></td><td>0</td><td>句子顺序打乱的概率（%）</td></tr>
       <tr><td><code>【寄信混乱混淆】</code></td><td>0</td><td>署名与他人混淆的概率（%）</td></tr>
-      <tr><td><code>【寄信混乱诗意】</code></td><td>0</td><td>内容改写为诗意表达的概率（%）</td></tr>
+      <tr><td><code>【寄信混乱残页】</code></td><td>0</td><td>信被撕成两半，收件人只收到前半页，落款连同后半页误投给随机第三人的概率（%）</td></tr>
       <tr><td><code>【送礼混乱丢失】</code></td><td>0</td><td>礼物丢失不送达的概率（%），双方均显示正常（发件人见成功提示，收件人无消息）；仅记发件人 sent 计数，不记收件人 received</td></tr>
       <tr><td><code>【送礼混乱送错】</code></td><td>0</td><td>礼物被送至随机其他角色的概率（%），发件人提示仍显示原收件人</td></tr>
       <tr><td><code>【送礼允许自定义名字】</code></td><td>关闭</td><td>开启后玩家可用「X送礼 对方 礼物」格式指定自定义发件人显示名；存档中以「真实角色（自定义名）」呈现，互动统计仍归属真实角色</td></tr>
@@ -1536,7 +1536,7 @@ and
 <span class="param">【寄信混乱反义】</span><span class="value">5</span>           <span class="comment"># 词义反转</span>
 <span class="param">【寄信混乱乱序】</span><span class="value">5</span>           <span class="comment"># 内容顺序混乱</span>
 <span class="param">【寄信混乱混淆】</span><span class="value">10</span>          <span class="comment"># 签名混淆</span>
-<span class="param">【寄信混乱诗意】</span><span class="value">10</span>          <span class="comment"># 签名被诗意化</span></pre>
+<span class="param">【寄信混乱残页】</span><span class="value">10</span>          <span class="comment"># 后半页与落款误投给第三人</span></pre>
   </div>
   <div class="code-block" style="margin-top:16px">
     <div class="code-block-header"><span class="code-block-label">标准模式 · 推荐</span><button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button></div>
@@ -1549,7 +1549,7 @@ and
 <span class="param">【寄信混乱反义】</span><span class="value">10</span>
 <span class="param">【寄信混乱乱序】</span><span class="value">10</span>
 <span class="param">【寄信混乱混淆】</span><span class="value">15</span>
-<span class="param">【寄信混乱诗意】</span><span class="value">15</span></pre>
+<span class="param">【寄信混乱残页】</span><span class="value">15</span></pre>
   </div>
   <div class="code-block" style="margin-top:16px">
     <div class="code-block-header"><span class="code-block-label">刺激模式 · 主题向</span><button class="code-copy-btn" onclick="copyBlock(this)">复制全部</button></div>
@@ -1562,7 +1562,7 @@ and
 <span class="param">【寄信混乱反义】</span><span class="value">15</span>
 <span class="param">【寄信混乱乱序】</span><span class="value">15</span>
 <span class="param">【寄信混乱混淆】</span><span class="value">20</span>
-<span class="param">【寄信混乱诗意】</span><span class="value">20</span></pre>
+<span class="param">【寄信混乱残页】</span><span class="value">20</span></pre>
   </div>
 </div>
 

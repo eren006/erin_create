@@ -25,6 +25,10 @@ const STATS_CHUNK_SIZE = 20; // 统计转发消息每批最大节点数
 function getApi()                      { return globalThis.__changriApi || null; }
 function mainStorGet(key)              { return getApi()?.kvGetRaw(key) ?? null; }
 function mainStorSet(key, val)         { getApi()?.kvSetRaw(key, val); }
+
+// JSON 对象读写：走主插件 kvGet/kvSet（带缓存与损坏容错），JSON key 一律用这两个函数
+function mainKvGet(key, def) { const api = getApi(); return api ? api.kvGet(key, def) : def; }
+function mainKvSet(key, val) { getApi()?.kvSet(key, val); }
 function isUserAdmin(ctx, msg)         { return getApi()?.isUserAdmin(ctx, msg) ?? false; }
 function isArchiveEnabled()            { return getApi()?.isArchiveEnabled() ?? false; }
 function ws(postData, ctx, msg, ok, err) { return getApi()?.ws(postData, ctx, msg, ok, err); }
@@ -54,13 +58,13 @@ function getArchiveToken() { const m = _mainExt(); return m ? (seal.ext.getStrin
 // ========================
 
 function getRegistry_rpg() {
-    return JSON.parse(mainStorGet("item_registry") || "{}");
+    return mainKvGet("item_registry", {});
 }
 function getInvAll_rpg() {
-    return JSON.parse(mainStorGet("global_inventories") || "{}");
+    return mainKvGet("global_inventories", {});
 }
 function saveInvAll_rpg(invs) {
-    mainStorSet("global_inventories", JSON.stringify(invs));
+    mainKvSet("global_inventories", invs);
 }
 function addToInv_local(roleKey, code, count) {
     const invs = getInvAll_rpg();
@@ -119,7 +123,7 @@ cmd_admin_help.solve = (ctx, msg) => {
             "3. 。清空季度数据  ← 扫描残留玩家并清空上季数据",
             "4. 。创建新季度 恋综名 复盘/不复盘 MMDD-MMDD [补戏MMDD]",
             "5. 。开启群号组 组名  ← 从后台拉取群号到戏群池",
-            "6. 。初始化设置  ← 从后台拉取系统配置（或 。同步设置 强制覆盖）",
+            "6. 。初始化设置  ← 从后台拉取系统配置（或 。拉取全部 强制覆盖）",
             "7. 。创建NPC 角色名  ← 注册所有NPC（复盘模式必须）",
             "8. 玩家自行：创建新角色 角色名",
             "9. 。设置天数 D0  ← 确认天数状态",
@@ -163,9 +167,9 @@ cmd_delete_timeline_precise.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    let confirmed = JSON.parse(mainStorGet("b_confirmedSchedule") || "{}");
+    let confirmed = mainKvGet("b_confirmedSchedule", {});
     const platform = msg.platform;
-    const privateGroups = JSON.parse(mainStorGet("a_private_group") || "{}");
+    const privateGroups = mainKvGet("a_private_group", {});
 
     const targetUid = privateGroups?.[platform]?.[name]?.[0];
     if (!targetUid) {
@@ -190,7 +194,7 @@ cmd_delete_timeline_precise.solve = (ctx, msg, cmdArgs) => {
             confirmed[uid] = confirmed[uid].filter(ev => ev.group !== gid);
             if (confirmed[uid].length < before) deletedCount++;
         }
-        mainStorSet("b_confirmedSchedule", JSON.stringify(confirmed));
+        mainKvSet("b_confirmedSchedule", confirmed);
         seal.replyToSender(ctx, msg, `✅ 已根据多人小群 ID(${gid}) 抹除所有参与者的排期（共 ${deletedCount} 人）。`);
     } else {
         const partnerName = appointment.partner;
@@ -201,7 +205,7 @@ cmd_delete_timeline_precise.solve = (ctx, msg, cmdArgs) => {
         if (partnerKey && confirmed[partnerKey]) {
             confirmed[partnerKey] = confirmed[partnerKey].filter(ev => !(ev.day === day && ev.time === time));
         }
-        mainStorSet("b_confirmedSchedule", JSON.stringify(confirmed));
+        mainKvSet("b_confirmedSchedule", confirmed);
         seal.replyToSender(ctx, msg, `✅ 已精准抹除 ${name} 与 ${partnerName} 在 ${day} ${time} 的约会记录。`);
     }
 
@@ -227,7 +231,7 @@ cmd_sync_now.solve = (ctx, msg, cmdArgs) => {
     const storageKey = groupTypeMap[typeArg];
     if (!storageKey) return seal.replyToSender(ctx, msg, "⚠️ 请指定群类型：同步名片 公告 / 戏群 / 水群");
 
-    const targetGid = JSON.parse(mainStorGet(storageKey) || "null");
+    const targetGid = mainKvGet(storageKey, null);
     if (!targetGid || targetGid === "未设置") return seal.replyToSender(ctx, msg, `⚠️ ${typeArg}群号未配置`);
     const cleanTargetGid = parseInt(targetGid.toString().replace(/[^\d]/g, ""));
     if (isNaN(cleanTargetGid)) return seal.replyToSender(ctx, msg, `⚠️ ${typeArg}群号无效`);
@@ -271,18 +275,18 @@ cmd_update_schedule.solve = (ctx, msg, cmdArgs) => {
 
     if (!newDay || !newRawTime) return seal.replyToSender(ctx, msg, "⚠️ 格式错误，请使用：.修改时间线 D1 1400-1500");
 
-    let groupExpireInfo = JSON.parse(mainStorGet("group_expire_info") || "{}");
+    let groupExpireInfo = mainKvGet("group_expire_info", {});
     const info = groupExpireInfo[gid];
     if (!info) return seal.replyToSender(ctx, msg, "⚠️ 只有在活跃的私约/电话群内才能修改时间。");
 
-    const allowedRanges = JSON.parse(mainStorGet("allowed_appointment_times") || "[]");
+    const allowedRanges = mainKvGet("allowed_appointment_times", []);
     const subtype = info.subtype || "私密";
     const minDuration = subtype === "电话" ? 29 : 59;
     const timeRes = parseAndValidateTime(newRawTime, allowedRanges, minDuration, subtype);
     if (!timeRes.valid) return seal.replyToSender(ctx, msg, timeRes.errorMsg);
     const newTime = timeRes.time;
 
-    let b_confirmedSchedule = JSON.parse(mainStorGet("b_confirmedSchedule") || "{}");
+    let b_confirmedSchedule = mainKvGet("b_confirmedSchedule", {});
     const participants = info.participants || [];
     let conflictNames = [];
 
@@ -303,7 +307,7 @@ cmd_update_schedule.solve = (ctx, msg, cmdArgs) => {
     info.day = newDay;
     info.time = newTime;
     groupExpireInfo[gid] = info;
-    mainStorSet("group_expire_info", JSON.stringify(groupExpireInfo));
+    mainKvSet("group_expire_info", groupExpireInfo);
 
     for (let name of participants) {
         const details = getRoleDetails(platform, name);
@@ -314,13 +318,13 @@ cmd_update_schedule.solve = (ctx, msg, cmdArgs) => {
             });
         }
     }
-    mainStorSet("b_confirmedSchedule", JSON.stringify(b_confirmedSchedule));
+    mainKvSet("b_confirmedSchedule", b_confirmedSchedule);
 
-    const groupTimersForUpdate = JSON.parse(mainStorGet("group_timers") || "{}");
+    const groupTimersForUpdate = mainKvGet("group_timers", {});
     if (groupTimersForUpdate[gid]) {
         groupTimersForUpdate[gid].day  = newDay;
         groupTimersForUpdate[gid].time = newTime;
-        mainStorSet("group_timers", JSON.stringify(groupTimersForUpdate));
+        mainKvSet("group_timers", groupTimersForUpdate);
     }
 
     const nameTag = participants.length > 2 ? "多人" : participants.join("/");
@@ -338,10 +342,10 @@ cmd_abolish_schedule.solve = (ctx, msg, cmdArgs) => {
 
     if (!targetGid) return seal.replyToSender(ctx, msg, "⚠️ 格式错误，请使用：.拒绝时间线 群号");
 
-    let groupPool = JSON.parse(mainStorGet("group") || "[]");
-    let groupExpireInfo = JSON.parse(mainStorGet("group_expire_info") || "{}");
-    let b_confirmedSchedule = JSON.parse(mainStorGet("b_confirmedSchedule") || "{}");
-    const a_private_group = JSON.parse(mainStorGet("a_private_group") || "{}");
+    let groupPool = mainKvGet("group", []);
+    let groupExpireInfo = mainKvGet("group_expire_info", {});
+    let b_confirmedSchedule = mainKvGet("b_confirmedSchedule", {});
+    const a_private_group = mainKvGet("a_private_group", {});
 
     const fullId = `${targetGid}_占用`;
     const isOccupied = groupPool.includes(fullId);
@@ -396,18 +400,18 @@ cmd_abolish_schedule.solve = (ctx, msg, cmdArgs) => {
         for (let uidKey in b_confirmedSchedule) {
             b_confirmedSchedule[uidKey] = b_confirmedSchedule[uidKey].filter(ev => ev.group !== targetGid);
         }
-        mainStorSet("b_confirmedSchedule", JSON.stringify(b_confirmedSchedule));
+        mainKvSet("b_confirmedSchedule", b_confirmedSchedule);
 
         if (groupExpireInfo[targetGid]) {
             delete groupExpireInfo[targetGid];
-            mainStorSet("group_expire_info", JSON.stringify(groupExpireInfo));
+            mainKvSet("group_expire_info", groupExpireInfo);
         }
 
         const idx = groupPool.indexOf(fullId);
         if (idx !== -1) {
             groupPool.splice(idx, 1);
             groupPool.push(targetGid);
-            mainStorSet("group", JSON.stringify(groupPool));
+            mainKvSet("group", groupPool);
         }
 
         setGroupName(ctx, msg, targetGid, getIdleGroupName());
@@ -452,12 +456,12 @@ cmd_abolish_schedule.solve = (ctx, msg, cmdArgs) => {
                 }
             }
         }
-        mainStorSet("b_confirmedSchedule", JSON.stringify(b_confirmedSchedule));
+        mainKvSet("b_confirmedSchedule", b_confirmedSchedule);
 
         groupExpireInfo[targetGid].participants = remaining;
-        mainStorSet("group_expire_info", JSON.stringify(groupExpireInfo));
+        mainKvSet("group_expire_info", groupExpireInfo);
 
-        const timersForReject = JSON.parse(mainStorGet("group_timers") || "{}");
+        const timersForReject = mainKvGet("group_timers", {});
         const timerEntry = timersForReject[targetGid];
         if (timerEntry) {
             if (Array.isArray(timerEntry.participants)) {
@@ -466,7 +470,7 @@ cmd_abolish_schedule.solve = (ctx, msg, cmdArgs) => {
             if (timerEntry.timerStatus) {
                 delete timerEntry.timerStatus[rejecterName];
             }
-            mainStorSet("group_timers", JSON.stringify(timersForReject));
+            mainKvSet("group_timers", timersForReject);
         }
 
         seal.replyToSender(ctx, msg, `✅ 你已退出群 ${targetGid} 的约会，剩余参与者：${remaining.join("、")}。`);
@@ -563,7 +567,7 @@ cmd_new_season.solve = (ctx, msg, cmdArgs) => {
             mainStorSet("season_schedule_end",   scheduleEnd);
             mainStorSet("season_supplement_end", supplementEnd);
 
-            const reg = JSON.parse(mainStorGet("item_registry") || "{}");
+            const reg = mainKvGet("item_registry", {});
             const specItems = [
                 { code: "SPEC_001", name: "追踪器",   desc: "一枚散发着微光的微型追踪器，轻轻按动便能感知目标此刻的行踪。" },
                 { code: "SPEC_002", name: "万能钥匙", desc: "一把泛着银光的万能钥匙，据说能开启世间任何一扇被锁住的门。" },
@@ -582,7 +586,7 @@ cmd_new_season.solve = (ctx, msg, cmdArgs) => {
             if (!currencyNames.has("金币"))   { reg["CUR_001"]    = { code: "CUR_001",    name: "金币",   desc: "流通于玩家间的基础货币。",              type: "currency", attrs: null }; regChanged = true; }
             if (!currencyNames.has("银币"))   { reg["CUR_002"]    = { code: "CUR_002",    name: "银币",   desc: "比金币更零碎的辅助货币。",              type: "currency", attrs: null }; regChanged = true; }
             if (!reg["CUR_LETTER"])           { reg["CUR_LETTER"] = { code: "CUR_LETTER", name: "写信币", desc: "通过发送信件获得的货币，可用于各种消费。", type: "currency", attrs: null }; regChanged = true; }
-            if (regChanged) mainStorSet("item_registry", JSON.stringify(reg));
+            if (regChanged) mainKvSet("item_registry", reg);
 
             let scheduleHint = "";
             if (scheduleStart && scheduleEnd) {
@@ -738,7 +742,7 @@ cmd_end_season.solve = (ctx, msg, cmdArgs) => {
                     const report = await reportResp.json();
                     if (report.ok) {
                         const platform = ctx.platform || "QQ";
-                        const privGroups = JSON.parse(mainStorGet("a_private_group") || "{}");
+                        const privGroups = mainKvGet("a_private_group", {});
                         const playerMap  = privGroups[platform] || {};
 
                         const fmtPartners = (list) =>
@@ -807,15 +811,15 @@ cmd_end_season.solve = (ctx, msg, cmdArgs) => {
                 }
             }
 
-            const _ftoggle = JSON.parse(mainStorGet("global_feature_toggle") || "{}");
+            const _ftoggle = mainKvGet("global_feature_toggle", {});
             if (_ftoggle.dlc_auto_day) {
                 _ftoggle.dlc_auto_day = false;
-                mainStorSet("global_feature_toggle", JSON.stringify(_ftoggle));
+                mainKvSet("global_feature_toggle", _ftoggle);
                 seal.replyToSender(ctx, msg, "⏹️ 自动天数已自动关闭。");
             }
             if (_ftoggle.enable_lovemail) {
                 _ftoggle.enable_lovemail = false;
-                mainStorSet("global_feature_toggle", JSON.stringify(_ftoggle));
+                mainKvSet("global_feature_toggle", _ftoggle);
                 seal.replyToSender(ctx, msg, "💌 心动信已自动关闭。");
             }
 
@@ -871,10 +875,10 @@ cmd_session_status.solve = (ctx, msg) => {
     if (!msg.groupId) return seal.replyToSender(ctx, msg, "⚠️ 请在群内使用此指令"), seal.ext.newCmdExecuteResult(true);
 
     const platform = msg.platform;
-    const gei      = JSON.parse(mainStorGet("group_expire_info") || "{}");
+    const gei      = mainKvGet("group_expire_info", {});
     const ss       = getSessionStats();
-    const apg      = JSON.parse(mainStorGet("a_private_group") || "{}")[platform] || {};
-    const templates = JSON.parse(mainStorGet("end_game_bonus_templates") || "[]");
+    const apg      = mainKvGet("a_private_group", {})[platform] || {};
+    const templates = mainKvGet("end_game_bonus_templates", []);
     const tplTypeToStored = { "私约": "私密", "心意": "心愿" };
     const now = Date.now();
 
@@ -1006,7 +1010,7 @@ cmd_adjust_session.solve = (ctx, msg, cmdArgs) => {
     if (rawReplies && isNaN(deltaReplies))
         return seal.replyToSender(ctx, msg, "⚠️ 段数偏移格式错误，示例：+2 或 -1"), seal.ext.newCmdExecuteResult(true);
 
-    const apg = JSON.parse(mainStorGet("a_private_group") || "{}")[platform] || {};
+    const apg = mainKvGet("a_private_group", {})[platform] || {};
     const uid = Object.entries(apg).find(([, v]) => v[0] === roleName)?.[0];
     if (!uid)
         return seal.replyToSender(ctx, msg, `⚠️ 找不到角色「${roleName}」`), seal.ext.newCmdExecuteResult(true);
@@ -1023,10 +1027,10 @@ cmd_adjust_session.solve = (ctx, msg, cmdArgs) => {
 
     let progressNote = "";
     if (deltaReplies !== 0) {
-        const prog = JSON.parse(mainStorGet("group_write_progress") || "{}");
+        const prog = mainKvGet("group_write_progress", {});
         if (!prog[gid]) prog[gid] = {};
         prog[gid][uid] = Math.max(0, (prog[gid][uid] || 0) + deltaReplies);
-        mainStorSet("group_write_progress", JSON.stringify(prog));
+        mainKvSet("group_write_progress", prog);
         progressNote = `\n  ↳ 几v几 进度已同步：${prog[gid][uid]} 段`;
     }
 
@@ -1076,7 +1080,7 @@ cmd_reissue_bonus.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    const templates = JSON.parse(mainStorGet("end_game_bonus_templates") || "[]");
+    const templates = mainKvGet("end_game_bonus_templates", []);
     const tpl = templates.find(t => t.name === tplName);
     if (!tpl) {
         seal.replyToSender(ctx, msg, `❌ 模版「${tplName}」不存在，用「结戏加成 模版列表」查看`);
@@ -1094,11 +1098,11 @@ cmd_reissue_bonus.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    const reg = JSON.parse(mainStorGet("item_registry") || "{}");
+    const reg = mainKvGet("item_registry", {});
     const currencyByName = {};
     Object.values(reg).forEach(r => { if (r.type === "currency") currencyByName[r.name] = r.code; });
 
-    const apg = JSON.parse(mainStorGet("a_private_group") || "{}");
+    const apg = mainKvGet("a_private_group", {});
 
     function evaluateCondition(op, statVal, value) {
         switch (op) {
@@ -1147,11 +1151,11 @@ cmd_reissue_bonus.solve = (ctx, msg, cmdArgs) => {
             return `${target}×${amount}`;
         } else {
             const profileKey = `${platform}:${playerUid}`;
-            const profiles = JSON.parse(mainStorGet("sys_char_profiles") || "{}");
+            const profiles = mainKvGet("sys_char_profiles", {});
             if (!profiles[profileKey]) profiles[profileKey] = {};
             const cur = parseInt(profiles[profileKey][target] || "0");
             profiles[profileKey][target] = String(cur + amount);
-            mainStorSet("sys_char_profiles", JSON.stringify(profiles));
+            mainKvSet("sys_char_profiles", profiles);
             return `${target}+${amount}`;
         }
     }
@@ -1284,7 +1288,7 @@ cmd_check_rewards.solve = (ctx, msg, cmdArgs) => {
     const base  = getArchiveBase();
     const token = getArchiveToken();
 
-    const templates = JSON.parse(mainStorGet("end_game_bonus_templates") || "[]");
+    const templates = mainKvGet("end_game_bonus_templates", []);
     const enabledTpls = templates.filter(t => t.enabled);
 
     const platform = msg.platform;

@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}灵脉活动管理 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🪨 开凿灵脉管理 <small><a href="{{ url_for('admin') }}" style="font-size:13px">← 后台</a></small></div>
+
+<div class="grid2">
+
+{# ── 活动状态 ── #}
+<div class="card">
+  <div class="card-h">活动状态</div>
+  {% if ev %}
+  <div style="color:var(--green);font-weight:700;font-size:16px;margin-bottom:8px">✓ 活动进行中</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:4px">开始：{{ ev['started_at'] | format_ts }}</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:4px">截止：{{ ev['ends_at'] | format_ts }}</div>
+  {% set pct = [(ev['total_progress'] / VEIN_TARGET * 100), 100]|min %}
+  <div style="margin:12px 0 4px;font-size:12px;color:var(--muted)">全服进度：{{ ev['total_progress'] }} / {{ VEIN_TARGET }}（{{ "%.1f"|format(pct) }}%）</div>
+  <div style="background:var(--sf2);border-radius:8px;height:12px;overflow:hidden;margin-bottom:12px">
+    <div style="background:var(--green);height:100%;width:{{ pct|round(2) }}%;transition:width .4s"></div>
+  </div>
+
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <form method="post" onsubmit="return confirm('确定提前结束活动并发放奖励？')">
+      <input type="hidden" name="action" value="end">
+      <button class="btn btn-red btn-sm">提前结束 & 结算</button>
+    </form>
+  </div>
+
+  <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--bd)">
+    <div style="font-size:12px;color:var(--muted);margin-bottom:6px">手动调整全服进度</div>
+    <form method="post" style="display:flex;gap:8px">
+      <input type="hidden" name="action" value="adjust_progress">
+      <input name="progress" type="number" value="{{ ev['total_progress'] }}" min="0" max="{{ VEIN_TARGET }}"
+        style="width:100px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:6px;padding:6px 8px;font-family:inherit;font-size:12px">
+      <button class="btn btn-gold btn-sm">修改</button>
+    </form>
+  </div>
+
+  {% else %}
+  <div style="color:var(--muted);margin-bottom:12px">当前无进行中的灵脉活动</div>
+  <form method="post" onsubmit="return confirm('确定开启上古灵脉活动（持续2天）？')">
+    <input type="hidden" name="action" value="start">
+    <button class="btn btn-jade">🪨 开启灵脉活动（2天）</button>
+  </form>
+  {% endif %}
+</div>
+
+{# ── 活动说明 ── #}
+<div class="card">
+  <div class="card-h">活动规则</div>
+  <div style="font-size:13px;color:var(--muted);line-height:2">
+    • 持续 <b>2 天</b>，过期自动结算发奖<br>
+    • 每小时积累 1 次开凿机会，最多积累 10 次<br>
+    • 单次开凿：20~80 点贡献 + 50~200 灵石<br>
+    • 达标门槛：个人贡献 ≥ <b>{{ VEIN_THRESHOLD }}</b> 点（全服 5%）<br>
+    • 全服总目标：<b>{{ VEIN_TARGET }}</b> 点<br>
+    • 奖励：修炼速度 <b>永久 +200%</b>（char_perks）<br>
+    • 约需 20 人各开凿 25 次（avg 50/次）完成
+  </div>
+</div>
+</div>
+
+{# ── 历史活动 ── #}
+{% if past %}
+<div class="card" style="margin-top:16px">
+  <div class="card-h">历史活动</div>
+  <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead>
+      <tr style="color:var(--muted);border-bottom:1px solid var(--bd)">
+        <th style="padding:6px 8px;text-align:left">ID</th>
+        <th style="padding:6px 8px;text-align:left">开始</th>
+        <th style="padding:6px 8px;text-align:left">结束</th>
+        <th style="padding:6px 8px;text-align:right">总进度</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for p in past %}
+    <tr style="border-bottom:1px solid var(--bd)">
+      <td style="padding:6px 8px;color:var(--muted)">#{{ p['id'] }}</td>
+      <td style="padding:6px 8px">{{ p['started_at'] | format_ts }}</td>
+      <td style="padding:6px 8px;color:var(--muted)">{{ p['ends_at'] | format_ts }}</td>
+      <td style="padding:6px 8px;text-align:right;font-weight:600;color:var(--green)">
+        {{ p['total_progress'] }} / {{ VEIN_TARGET }}
+        （{{ "%.1f"|format([(p['total_progress'] / VEIN_TARGET * 100), 100]|min) }}%）
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{# ── 参与者列表 ── #}
+{% if ev %}
+<div class="card" style="margin-top:16px">
+  <div class="card-h">参与者列表（共 {{ contribs|length }} 人）</div>
+  <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead>
+      <tr style="color:var(--muted);border-bottom:1px solid var(--bd)">
+        <th style="padding:6px 8px;text-align:left">玩家</th>
+        <th style="padding:6px 8px;text-align:left">境界</th>
+        <th style="padding:6px 8px;text-align:right">开凿次数</th>
+        <th style="padding:6px 8px;text-align:right">贡献</th>
+        <th style="padding:6px 8px;text-align:right">占比</th>
+        <th style="padding:6px 8px;text-align:center">达标</th>
+        <th style="padding:6px 8px;text-align:center">奖励</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for c in contribs %}
+    {% set cpct = (c['contribution'] / VEIN_TARGET * 100) %}
+    <tr style="border-bottom:1px solid var(--bd)">
+      <td style="padding:6px 8px;font-weight:600">{{ c['name'] }}</td>
+      <td style="padding:6px 8px;color:var(--muted)">{{ REALMS[c['realm_idx']]['name'] if 0 <= c['realm_idx'] < REALMS|length else '?' }}</td>
+      <td style="padding:6px 8px;text-align:right">{{ c['excavations'] }}</td>
+      <td style="padding:6px 8px;text-align:right;font-weight:600;color:var(--green)">{{ c['contribution'] }}</td>
+      <td style="padding:6px 8px;text-align:right;color:var(--muted)">{{ "%.2f"|format(cpct) }}%</td>
+      <td style="padding:6px 8px;text-align:center">
+        {% if c['contribution'] >= VEIN_THRESHOLD %}
+          <span style="color:var(--green)">✅</span>
+        {% else %}
+          <span style="color:var(--muted)">—</span>
+        {% endif %}
+      </td>
+      <td style="padding:6px 8px;text-align:center">
+        {% if c['reward_claimed'] %}
+          <span style="color:var(--muted);font-size:11px">已发</span>
+        {% else %}
+          <span style="color:var(--muted);font-size:11px">待结算</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7" style="padding:20px;text-align:center;color:var(--muted)">暂无参与者</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+</div>
+{% endblock %}

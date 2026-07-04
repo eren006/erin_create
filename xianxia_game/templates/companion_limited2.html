@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}符道召唤 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">✨ 符道召唤 <small>灵祖·限定伙伴 · 绝版倒计时</small></div>
+
+<!-- 倒计时 -->
+<div class="card" style="margin-bottom:16px;background:rgba(255,110,247,.06);border-color:rgba(255,110,247,.4)">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+    <div>
+      <div style="font-size:12px;color:#ff6ef7;font-weight:700">符道召唤截止</div>
+      <div style="font-size:22px;font-weight:700;color:var(--text);margin-top:2px" id="ltd2-cd">计算中…</div>
+    </div>
+    <div style="font-size:12px;color:var(--muted);text-align:right;line-height:1.7">
+      池关闭后，三位限定伙伴永久绝版<br>不出现于任何召唤池
+    </div>
+  </div>
+</div>
+
+<!-- 限定三人 -->
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h" style="color:#ff6ef7">✨ 限定伙伴（仅符道池出现）</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-top:8px">
+    {% for e in COMPANION_POOL_LIMITED2 if e.type=='companion' and e.key in COMPANION_LIMITED2_KEYS %}
+    {% set c = COMPANION_MAP[e.key] %}
+    {% set rc = COMPANION_RARITY_COLOR[e.rarity] %}
+    <div style="background:var(--sf2);border:2px solid {{ rc }};border-radius:12px;padding:12px 16px;box-shadow:0 0 12px {{ rc }}33">
+      <div style="font-size:10px;color:{{ rc }};font-weight:700;letter-spacing:1px">
+        {% if e.rarity=='lzr' %}⚡ 灵祖 · 极稀有{% else %}限定 UR · 传世{% endif %}
+      </div>
+      <div style="font-size:18px;font-weight:700;margin:4px 0;color:{{ rc }}">{{ c[1] }}</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">「{{ c[2] }}」</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;line-height:1.5">{{ c[4] }}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px">
+        {% set lbs = {'exp_pct':'修炼','atk_pct':'攻击','def_pct':'防御','hp_pct':'气血','energy_max':'灵力上限','alchemy_bonus':'炼丹','forge_bonus':'炼器','explore_bonus':'探索','stones_pct':'灵石','affinity_pct':'好感','crit_rate':'暴击','dodge_rate':'闪避','breakthrough_bonus':'突破','fulu_bonus':'炼符','spirit_regen_pct':'灵气恢复'} %}
+        {% for k,v in c[5].items() %}
+        <span style="background:{{ rc }}18;border:1px solid {{ rc }}55;border-radius:4px;padding:2px 7px;font-size:11px;color:{{ rc }}">
+          {{ lbs.get(k,k) }}+{% if k in ('energy_max','breakthrough_bonus') %}{{ v|int }}{% else %}{{ (v*100)|int }}%{% endif %}
+        </span>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- 灵石 + 保底 -->
+<div class="card" style="margin-bottom:16px;padding:14px 18px;display:flex;gap:24px;flex-wrap:wrap;align-items:center">
+  <div style="text-align:center">
+    <div style="font-size:26px;font-weight:700;color:var(--gold)">{{ char.spirit_stones }}</div>
+    <div style="font-size:11px;color:var(--muted)">灵石</div>
+  </div>
+  <div style="flex:1;min-width:180px">
+    <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px">
+      <span>符道池保底</span>
+      <span>{{ pity }}/{{ COMPANION_LIMITED2_PITY }}（再{{ COMPANION_LIMITED2_PITY - pity }}抽必出卓越+）</span>
+    </div>
+    <div class="bar-wrap"><div class="bar-fill" style="width:{{ (pity/COMPANION_LIMITED2_PITY*100)|int }}%;background:#ff6ef7"></div></div>
+  </div>
+</div>
+
+<!-- 结果 -->
+{% if result %}
+<div class="card" style="margin-bottom:16px;border-color:#ff6ef7">
+  <div class="card-h" style="color:#ff6ef7">✨ 召唤结果</div>
+  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">
+    {% for r in result %}
+    {% set rc = COMPANION_RARITY_COLOR[r.rarity] %}
+    <div style="background:var(--sf2);border:2px solid {{ rc }};border-radius:10px;padding:8px 12px;min-width:100px;text-align:center{% if r.rarity in ('ssr','ur','lzr') or r.limited %};box-shadow:0 0 12px {{ rc }}44{% endif %}">
+      <div style="font-size:9px;color:{{ rc }};font-weight:700">
+        {% if r.type=='material' %}📦 材料
+        {% elif r.rarity=='lzr' %}⚡ 灵祖
+        {% elif r.limited %}✨ 限定
+        {% else %}{{ COMPANION_RARITY_LABEL[r.rarity] }}{% endif %}
+      </div>
+      <div style="font-size:14px;font-weight:700;color:{{ rc }};margin:3px 0">{{ r.name }}</div>
+      {% if r.title %}<div style="font-size:11px;color:var(--muted)">「{{ r.title }}」</div>{% endif %}
+      {% if r.type=='companion' and not r.is_new %}
+      <div style="font-size:10px;color:var(--muted);margin-top:3px">重复 → +{{ r.dupe_stones }}石</div>
+      {% elif r.type=='companion' %}<div style="font-size:10px;color:var(--jade);margin-top:3px">★ 新</div>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- 召唤按钮 -->
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">符道召唤</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+    含全部常驻伙伴 + 三位限定伙伴（含极稀有灵祖老子）+ 中档材料。保底{{ COMPANION_LIMITED2_PITY }}抽必出卓越+。灵祖等级为最高稀有度。
+  </div>
+  <form method="post" style="display:flex;gap:10px;flex-wrap:wrap">
+    <button type="submit" name="count" value="1"
+      style="font-size:14px;padding:10px 24px;background:linear-gradient(135deg,#c97bff,#ff6ef7);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700"
+      {% if char.spirit_stones < COMPANION_LIMITED2_COST %}disabled{% endif %}>
+      单召（{{ COMPANION_LIMITED2_COST }} 灵石）
+    </button>
+    <button type="submit" name="count" value="10" class="btn btn-ghost"
+      style="font-size:13px;padding:10px 18px" {% if char.spirit_stones < COMPANION_LIMITED2_TEN %}disabled{% endif %}>
+      十连（{{ COMPANION_LIMITED2_TEN }} 灵石，9折）
+    </button>
+  </form>
+  <div style="margin-top:10px;display:flex;gap:16px">
+    <a href="{{ url_for('companion_limited') }}" style="font-size:12px;color:var(--muted)">限时一池</a>
+    <a href="{{ url_for('companion_gacha') }}" style="font-size:12px;color:var(--muted)">常驻池</a>
+    <a href="{{ url_for('companion') }}" style="font-size:12px;color:var(--muted)">← 我的图鉴</a>
+  </div>
+</div>
+
+<!-- 全部内容预览 -->
+<div class="card">
+  <div class="card-h">符道池内容预览</div>
+  {% for rarity in ['lzr','ur','ssr','sr','r','n'] %}
+  {% set pool = COMPANION_POOL_LIMITED2 | selectattr('rarity','equalto',rarity) | list %}
+  {% if pool %}
+  {% set rc = COMPANION_RARITY_COLOR[rarity] %}
+  <div style="font-size:11px;font-weight:700;color:{{ rc }};margin:12px 0 5px">{{ COMPANION_RARITY_LABEL[rarity] }}</div>
+  <div style="display:flex;flex-wrap:wrap;gap:6px">
+    {% for e in pool %}
+    {% set is_ltd2 = e.type=='companion' and e.key in COMPANION_LIMITED2_KEYS %}
+    <div style="background:var(--sf2);border:1px solid {{ rc if is_ltd2 else rc+'33' }};border-radius:7px;padding:4px 10px;font-size:12px">
+      {% if e.type=='companion' %}
+      {% set c = COMPANION_MAP.get(e.key) %}
+      <span style="color:{{ rc }};font-weight:{{ '700' if is_ltd2 else '400' }}">
+        {% if e.rarity=='lzr' %}⚡ {% elif is_ltd2 %}✨ {% endif %}{{ c[1] if c else e.key }}
+      </span>
+      {% else %}
+      <span style="color:var(--muted)">📦 {% for n,q in e['items'] %}{{ n }}×{{ q }}{% if not loop.last %} + {% endif %}{% endfor %}</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endfor %}
+</div>
+
+</div>
+<script>
+(function(){
+  var end = {{ limited2_ends_at }};
+  var el  = document.getElementById('ltd2-cd');
+  function update(){
+    var s = Math.max(0, end - Math.floor(Date.now()/1000));
+    var d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60),ss=s%60;
+    el.textContent=(d>0?d+'天 ':'')+h+'小时 '+m+'分 '+ss+'秒 后关闭';
+    if(s<=0){el.textContent='已关闭';clearInterval(iv);}
+  }
+  update();
+  var iv=setInterval(update,1000);
+})();
+</script>
+{% endblock %}

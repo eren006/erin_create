@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}丹市 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🧪 丹药坊 <small>以灵石换取丹药法器</small></div>
+
+<div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;flex-wrap:wrap">
+  <div style="background:var(--sf);border:1px solid var(--bd);border-radius:8px;padding:8px 16px;
+       display:flex;align-items:center;gap:8px">
+    <span style="color:var(--muted);font-size:12px">持有灵石</span>
+    <strong style="color:var(--gold);font-size:18px">{{ char.spirit_stones }}</strong>
+  </div>
+  <div style="background:var(--sf);border:1px solid rgba(155,127,224,.4);border-radius:8px;padding:8px 16px;
+       display:flex;align-items:center;gap:8px">
+    <span style="color:var(--muted);font-size:12px">持有上等灵石</span>
+    <strong style="color:var(--purple);font-size:18px">{{ char.superior_stones or 0 }}</strong>
+  </div>
+  <div style="color:var(--muted);font-size:12px">通过探索、战斗可获取更多灵石</div>
+</div>
+
+<div class="card" style="margin-bottom:20px;border-color:rgba(155,127,224,.4);background:rgba(155,127,224,.04)">
+  <div class="card-h" style="color:var(--purple)">💠 兑换上等灵石
+    <span style="font-size:11px;font-weight:400;color:var(--muted)">— {{ SUPERIOR_STONE_RATE }} 灵石 = 1 上等灵石</span>
+  </div>
+  <form method="post" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    <input type="hidden" name="action" value="exchange_superior">
+    <input name="ex_qty" type="number" value="1" min="1"
+      style="width:80px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+             border-radius:6px;padding:6px 10px;font-size:13px;font-family:inherit;text-align:center">
+    <span style="color:var(--muted);font-size:12px">个上等灵石</span>
+    <button type="submit" class="btn btn-jade btn-sm">兑换</button>
+  </form>
+</div>
+
+{% set pills = goods | selectattr('type','equalto','pill') | list %}
+{% set scrolls = goods | selectattr('type','equalto','technique_scroll') | list %}
+{% set weapons = goods | selectattr('type','equalto','weapon') | list %}
+{% set others = goods | rejectattr('type','in',['pill','technique_scroll','weapon']) | list %}
+
+{% macro goods_section(title, items, icon) %}
+{% if items %}
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">{{ icon }} {{ title }}</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px">
+    {% for item in items %}
+    <div style="background:var(--sf2);border:1px solid var(--bd);border-radius:10px;padding:14px;
+         position:relative;transition:border-color .2s"
+         onmouseover="this.style.borderColor='var(--jade)'"
+         onmouseout="this.style.borderColor='var(--bd)'">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+        <div style="font-weight:600;font-size:14px">{{ item.name }}</div>
+        <span class="tag tag-{{ item.rarity }}">{{ item.rarity | rarity_label }}</span>
+      </div>
+      <div style="color:var(--muted);font-size:12px;line-height:1.6;margin-bottom:8px">{{ item.description }}</div>
+      {% set eff = item.effect_json | fromjson %}
+      {% if eff %}
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+        {% if eff.hp %}<span style="background:rgba(192,57,43,.1);border-radius:5px;padding:2px 7px;font-size:11px;color:var(--red)">气血 +{{ eff.hp }}</span>{% endif %}
+        {% if eff.exp %}<span style="background:rgba(166,124,26,.14);border-radius:5px;padding:2px 7px;font-size:11px;color:var(--gold)">修为 +{{ fmt_exp(eff.exp) }}</span>{% endif %}
+        {% if eff.energy %}<span style="background:rgba(31,122,95,.1);border-radius:5px;padding:2px 7px;font-size:11px;color:var(--jade)">灵力 +{{ eff.energy }}</span>{% endif %}
+      </div>
+      {% endif %}
+      <form method="post" style="display:flex;align-items:center;gap:8px;margin-top:8px">
+        <input type="hidden" name="item_id" value="{{ item.id }}">
+        <input name="qty" type="number" value="1" min="1" max="99"
+          style="width:54px;background:var(--sf);border:1px solid var(--bd);color:var(--text);
+                 border-radius:6px;padding:4px 8px;font-size:13px;font-family:inherit;text-align:center">
+        <button type="submit" class="btn btn-gold btn-sm" style="flex:1"
+          {% if char.spirit_stones < item.market_price %}disabled{% endif %}>
+          💰 {{ item.market_price }} / 个
+        </button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+{% endmacro %}
+
+{% if not goods %}
+<div class="empty">丹药坊暂无商品，请等待管理员补货</div>
+{% else %}
+{{ goods_section('丹药', pills, '🧪') }}
+{{ goods_section('功法卷轴', scrolls, '📜') }}
+{{ goods_section('法器武器', weapons, '⚔') }}
+{{ goods_section('其他', others, '✦') }}
+{% endif %}
+</div>
+<style>input[type=number]:focus{outline:none;border-color:var(--jade)}</style>
+{% endblock %}

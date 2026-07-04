@@ -1,0 +1,475 @@
+{% extends "base.html" %}
+{% block title %}灵台 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+
+{# ── 灵脉感应 ── #}
+<div style="padding:10px 16px;margin-bottom:12px;
+  background:linear-gradient(90deg,rgba(192,160,96,.09),rgba(192,160,96,.03));
+  border:1px solid rgba(192,160,96,.28);border-radius:10px;
+  display:flex;align-items:center;gap:12px">
+  <span style="font-size:16px">💎</span>
+  <div style="flex:1;font-size:12px;color:var(--muted)">
+    灵脉感应 · 每日领取 <span style="color:var(--gold);font-weight:600">{{ vein_amount }}</span> 灵石
+    <span style="font-size:11px;margin-left:6px;opacity:.7">（随境界微增，上限 {{ 280 }}）</span>
+  </div>
+  {% if vein_claimed %}
+  <span style="font-size:12px;color:var(--muted)">今日已领</span>
+  {% else %}
+  <form method="post" action="{{ url_for('vein_collect') }}" style="margin:0">
+    <button type="submit" class="btn btn-gold" style="padding:3px 12px;font-size:12px">领取</button>
+  </form>
+  {% endif %}
+</div>
+
+{# ── 版本公告（默认展示与最新一条同日期的全部公告，其余仅在展开历史后可见）── #}
+{% if patch_notes %}
+{% set latest_date = patch_notes[0].date %}
+{% for pn in patch_notes if pn.date == latest_date %}
+<details style="margin-bottom:14px" {% if true %}open{% endif %}>
+  <summary style="cursor:pointer;padding:10px 14px;
+    background:linear-gradient(90deg,rgba(74,128,196,.10),rgba(74,128,196,.04));
+    border:1px solid rgba(74,128,196,.28);border-radius:10px;
+    list-style:none;display:flex;align-items:center;gap:8px;user-select:none">
+    <span style="font-size:13px;font-weight:700;color:#3a6a9a;flex:1">
+      📢 {{ pn.title }}
+      <span style="font-size:11px;font-weight:400;color:var(--muted);margin-left:6px">{{ pn.date }}</span>
+    </span>
+    <span style="font-size:11px;color:var(--muted)">点击收起 ▲</span>
+  </summary>
+  <div style="padding:10px 14px 12px;border:1px solid rgba(74,128,196,.18);
+              border-top:none;border-radius:0 0 10px 10px;background:rgba(74,128,196,.03)">
+    {% for icon, text in pn.changes %}
+    <div style="display:flex;gap:8px;padding:5px 0;
+      {% if not loop.last %}border-bottom:1px solid rgba(0,0,0,.05){% endif %}">
+      <span style="font-size:15px;flex-shrink:0;line-height:1.5">{{ icon }}</span>
+      <span style="font-size:13px;color:var(--text);line-height:1.6">{{ text }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</details>
+{% endfor %}
+{% set older_notes = patch_notes | rejectattr('date', 'equalto', latest_date) | list %}
+{% if older_notes %}
+<details style="margin-bottom:14px">
+  <summary style="cursor:pointer;padding:8px 14px;color:var(--muted);font-size:12px;list-style:none;user-select:none">
+    📜 查看历史公告（{{ older_notes | length }} 条）
+  </summary>
+  <div style="padding:6px 14px 10px">
+    {% for pn in older_notes %}
+    <div style="margin-bottom:10px;padding:8px 12px;background:var(--sf2);border:1px solid var(--bd);border-radius:8px">
+      <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:4px">
+        {{ pn.title }} <span style="font-weight:400">{{ pn.date }}</span>
+      </div>
+      {% for icon, text in pn.changes %}
+      <div style="display:flex;gap:6px;padding:3px 0;font-size:12px;color:var(--muted)">
+        <span style="flex-shrink:0">{{ icon }}</span><span>{{ text }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+</details>
+{% endif %}
+{% endif %}
+
+{% set open_slots = gift_slots | selectattr('open') | list %}
+{% if open_slots %}
+<div style="padding:12px 16px;margin-bottom:16px;
+  background:linear-gradient(90deg,rgba(201,168,76,.10),rgba(201,168,76,.05));
+  border:1px solid rgba(201,168,76,.3);border-radius:10px">
+  <div style="font-size:12px;color:var(--gold2);font-weight:600;margin-bottom:8px">
+    ✨ 每日灵力馈赠 · 每次 +{{ ENERGY_GIFT_AMOUNT }} 灵力
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    {% for s in gift_slots %}
+    <div style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:8px;
+      background:{% if s.open and not s.claimed %}rgba(201,168,76,.15){% else %}var(--sf2){% endif %};
+      border:1px solid {% if s.open and not s.claimed %}rgba(201,168,76,.4){% else %}var(--bd){% endif %}">
+      <span style="font-size:12px;color:{% if s.open and not s.claimed %}var(--gold){% else %}var(--muted){% endif %}">
+        {{ s.label }}（{{ s.start }}）
+      </span>
+      {% if s.claimed %}
+      <span style="font-size:11px;color:var(--muted)">已领</span>
+      {% elif s.open %}
+      <form method="post" action="{{ url_for('energy_gift') }}" style="margin:0">
+        <input type="hidden" name="slot_id" value="{{ s.id }}">
+        <button type="submit" class="btn btn-gold" style="padding:3px 10px;font-size:12px">领取</button>
+      </form>
+      {% else %}
+      <span style="font-size:11px;color:var(--muted)">{{ s.start }}开放</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if cave_result %}
+<div style="padding:12px 16px;margin-bottom:16px;
+  background:linear-gradient(90deg,rgba(166,124,26,.09),rgba(166,124,26,.03));
+  border:1px solid rgba(166,124,26,.3);border-radius:10px;
+  display:flex;align-items:center;gap:10px">
+  <span style="font-size:18px">🏔</span>
+  <div style="font-size:13px">
+    <span style="color:var(--gold2);font-weight:600">洞府结算</span>
+    {% if cave_result.mode == 'cultivate' %}
+    <span style="color:var(--muted);margin-left:6px">自动修炼 {{ cave_result.times }} 次，消耗灵力 {{ cave_result.energy }}，修为 +{{ cave_result.exp }}</span>
+    {% else %}
+    <span style="color:var(--muted);margin-left:6px">自动炼体 {{ cave_result.times }} 次，消耗灵力 {{ cave_result.energy }}，炼体经验 +{{ cave_result.bexp }}</span>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% if new_char %}
+<div class="result-box success" style="text-align:center;margin-bottom:20px">
+  <div style="font-size:22px;margin-bottom:8px">✦ 欢迎踏入修仙界，{{ char.name }} ✦</div>
+  <div style="font-size:20px;font-weight:700;color:{{ SPIRIT_ROOTS[new_char.root].color }};margin:10px 0">
+    {{ new_char.root }}
+  </div>
+  <div style="color:var(--muted);font-size:13px">{{ SPIRIT_ROOTS[new_char.root].desc }}</div>
+  <div style="margin-top:10px">
+    {% for el in new_char.elems %}<span style="margin:0 6px;color:var(--gold2)">{{ el }}</span>{% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if nav_enlighten %}
+<a href="{{ url_for('enlighten') }}" style="text-decoration:none;display:block;margin-bottom:16px">
+  <div style="padding:12px 16px;
+    background:linear-gradient(90deg,rgba(123,94,168,.12),rgba(123,94,168,.05));
+    border:1px solid rgba(123,94,168,.4);border-radius:10px;
+    display:flex;align-items:center;gap:10px">
+    <span style="font-size:18px">✨</span>
+    <div>
+      <span style="color:var(--purple);font-weight:600;font-size:13px">仙人试炼进行中</span>
+      <span style="color:var(--muted);font-size:12px;margin-left:8px">限时活动 · 有阶段待完成，点击参与 →</span>
+    </div>
+  </div>
+</a>
+{% endif %}
+
+{% if vein_ev %}
+{% set vein_pct = [[vein_ev.total_progress * 100 // VEIN_TARGET, 100] | min, 0] | max %}
+<a href="{{ url_for('vein') }}" style="text-decoration:none;display:block;margin-bottom:16px">
+  <div style="padding:12px 16px;
+    background:linear-gradient(90deg,rgba(96,160,128,.12),rgba(96,160,128,.05));
+    border:1px solid rgba(96,160,128,.4);border-radius:10px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <span style="font-size:18px">⛏</span>
+      <div style="flex:1">
+        <span style="color:var(--jade);font-weight:600;font-size:13px">上古灵脉开凿中</span>
+        <span style="color:var(--muted);font-size:12px;margin-left:8px">限时协力 · {% if nav_vein %}有可用次数，点击参与 →{% else %}次数恢复中，稍后再来{% endif %}</span>
+      </div>
+      <span style="font-size:12px;color:var(--jade);font-weight:600">{{ vein_pct }}%</span>
+    </div>
+    <div style="height:4px;background:rgba(96,160,128,.2);border-radius:2px;overflow:hidden">
+      <div style="height:100%;width:{{ vein_pct }}%;background:var(--jade);border-radius:2px;transition:width .3s"></div>
+    </div>
+  </div>
+</a>
+{% endif %}
+
+{% if gate_ev %}
+<a href="{{ url_for('gate') }}" style="text-decoration:none;display:block;margin-bottom:16px">
+  <div style="padding:12px 16px;
+    background:linear-gradient(90deg,rgba(160,60,180,.14),rgba(120,30,160,.06));
+    border:1px solid rgba(160,60,200,.45);border-radius:10px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="font-size:18px">⚡</span>
+      <div style="flex:1">
+        <span style="color:#d070e0;font-weight:600;font-size:13px">异世之门开启中</span>
+        <span style="color:var(--muted);font-size:12px;margin-left:8px">限时活动 · 鬼魔入侵，速往迎战 →</span>
+      </div>
+      {% if char.pollution %}
+      <span style="font-size:12px;color:#e06060;font-weight:600">污染 {{ char.pollution }}/100</span>
+      {% endif %}
+    </div>
+  </div>
+</a>
+{% endif %}
+
+<div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:20px">
+
+  <!-- 左：角色面板 -->
+  <div class="card" style="flex:1;min-width:280px">
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
+      <div style="width:52px;height:52px;border-radius:50%;
+           background:linear-gradient(135deg,var(--jade-dim),var(--jade));
+           display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">☯</div>
+      <div>
+        <div style="font-size:18px;font-weight:700;color:var(--gold2)">{{ char.name }}{% if char.zi %}<span style="font-size:12px;color:var(--muted);font-weight:400;margin-left:6px">字{{ char.zi }}</span>{% endif %}
+          {% set btag = ancient_blessing_tag(char) %}
+          {% if btag %}<span style="font-size:11px;color:var(--purple);border:1px solid var(--purple);border-radius:6px;padding:0 5px;margin-left:6px"
+                title="{{ ANCIENT_BLESSING_MAP[char.ancient_blessing_id]['desc'] }}">{{ btag }}</span>{% endif %}
+        </div>
+        <span class="root-{{ char.spirit_root }}" style="font-size:13px">{{ char.spirit_root }}</span>
+      </div>
+      <div style="margin-left:auto;text-align:right">
+        <div style="font-size:14px;font-weight:600;color:var(--jade)">{{ realm.name }}</div>
+        <div style="color:{% if age > life*0.8 %}var(--red){% else %}var(--muted){% endif %};font-size:12px">
+          {{ age }} / {{ life }} 岁
+        </div>
+      </div>
+    </div>
+
+    {% if pending_enc %}
+    <a href="{{ url_for('encounters') }}" style="text-decoration:none">
+      <div style="margin-bottom:12px;background:rgba(166,124,26,.12);
+           border:1px solid var(--gold);border-radius:10px;padding:8px 12px;
+           display:flex;align-items:center;gap:8px">
+        <span style="font-size:16px">🎲</span>
+        <span style="color:var(--gold);font-size:13px">有 {{ pending_enc }} 桩际遇待你抉择 →</span>
+      </div>
+    </a>
+    {% endif %}
+
+    <div style="display:flex;gap:6px;margin-bottom:14px">
+      {% for el in elements %}
+      <span style="background:var(--sf2);border:1px solid var(--bd);border-radius:6px;
+            padding:2px 8px;font-size:12px;color:var(--gold2)">{{ el }}</span>
+      {% endfor %}
+    </div>
+
+    <!-- 修为 -->
+    <div class="stat-row">
+      <span class="label">修为</span>
+      <div class="bar-wrap" style="flex:1">
+        <div class="bar-fill bar-gold" style="width:{{ exp_pct }}%"></div>
+      </div>
+      <span class="val">{{ exp_pct }}%</span>
+    </div>
+    <!-- 气血 -->
+    <div class="stat-row">
+      <span class="label">气血</span>
+      <div class="bar-wrap" style="flex:1">
+        <div class="bar-fill bar-red" style="width:{{ hp_pct }}%"></div>
+      </div>
+      <span class="val" style="color:{% if hp_pct < 20 %}var(--red){% elif hp_pct < 50 %}var(--gold){% else %}var(--muted){% endif %}">
+        {{ hp_now }}/{{ max_hp }}
+      </span>
+    </div>
+    <!-- 灵力 -->
+    <div class="stat-row">
+      <span class="label">灵力</span>
+      <div class="bar-wrap" style="flex:1">
+        <div class="bar-fill bar-jade" style="width:{{ (energy / MAX_ENERGY * 100)|int }}%"></div>
+      </div>
+      <span class="val">{{ energy }}/{{ MAX_ENERGY }}</span>
+    </div>
+
+    <!-- 属性值 -->
+    {% set total_atk_pct = body_atk_pct + panel_atk_pct %}
+    {% set total_def_pct = body_def_pct + panel_def_pct %}
+    {% set eff_atk = real_atk %}
+    {% set eff_def = real_def %}
+    <div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;text-align:center">
+      <div style="background:var(--sf2);border-radius:8px;padding:8px">
+        <div style="color:var(--blue);font-weight:700;font-size:16px">{{ eff_atk }}</div>
+        <div style="color:var(--muted);font-size:10px">
+          攻击{% if equip_atk or tech_atk %}<span style="color:var(--gold);font-size:10px"> +{{ equip_atk + tech_atk }}</span>{% endif %}{% if total_atk_pct %}<span style="color:var(--jade);font-size:10px"> ×{{ (1 + total_atk_pct/100)|round(2) }}</span>{% endif %}
+        </div>
+      </div>
+      <div style="background:var(--sf2);border-radius:8px;padding:8px">
+        <div style="color:var(--green);font-weight:700;font-size:16px">{{ eff_def }}</div>
+        <div style="color:var(--muted);font-size:10px">
+          防御{% if equip_def %}<span style="color:var(--gold);font-size:10px"> +{{ equip_def }}</span>{% endif %}{% if total_def_pct %}<span style="color:var(--jade);font-size:10px"> ×{{ (1 + total_def_pct/100)|round(2) }}</span>{% endif %}
+        </div>
+      </div>
+      <div style="background:var(--sf2);border-radius:8px;padding:8px">
+        <div style="color:var(--gold);font-weight:700;font-size:16px">{{ char.spirit_stones }}</div>
+        <div style="color:var(--muted);font-size:10px">灵石</div>
+      </div>
+    </div>
+
+    <!-- 装备栏 -->
+    <div style="margin-top:14px;display:flex;gap:8px">
+      <div style="flex:1;background:var(--sf2);border:1px solid {% if equipped_weapon %}var(--jade){% else %}var(--bd){% endif %};
+           border-radius:8px;padding:8px;text-align:center">
+        <div style="font-size:10px;color:var(--muted);margin-bottom:4px">飞剑</div>
+        {% if equipped_weapon %}
+        {% set _we = equipped_weapon.effect_json | fromjson %}
+        <div style="font-size:12px;color:var(--jade)">{{ equipped_weapon.name }}</div>
+        <div style="font-size:10px;color:var(--blue)">
+          +{{ _we.attack | default(0) }} 攻击
+        </div>
+        {% else %}
+        <div style="font-size:12px;color:var(--muted)">未装备</div>
+        {% endif %}
+      </div>
+      <div style="flex:1;background:var(--sf2);border:1px solid {% if equipped_artifact %}var(--green){% else %}var(--bd){% endif %};
+           border-radius:8px;padding:8px;text-align:center">
+        <div style="font-size:10px;color:var(--muted);margin-bottom:4px">法宝</div>
+        {% if equipped_artifact %}
+        <div style="font-size:12px;color:var(--green)">{{ equipped_artifact.name }}</div>
+        {% set _ae = equipped_artifact.effect_json | fromjson %}
+        <div style="font-size:10px;color:var(--green)">
+          +{{ _ae.defense | default(0) }} 防御
+        </div>
+        {% else %}
+        <div style="font-size:12px;color:var(--muted)">未装备</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- 本命法宝 + 灵兽 -->
+    <div style="margin-top:8px;display:flex;gap:8px">
+      <div style="flex:1;background:var(--sf2);border:1px solid {% if equipped_destiny %}var(--purple){% else %}var(--bd){% endif %};
+           border-radius:8px;padding:8px;text-align:center">
+        <div style="font-size:10px;color:var(--muted);margin-bottom:4px">🔮 本命法宝</div>
+        {% if equipped_destiny %}
+        <div style="font-size:12px;color:var(--purple)">{{ equipped_destiny.name }}</div>
+        {% else %}
+        <div style="font-size:12px;color:var(--muted)">未契合</div>
+        {% endif %}
+      </div>
+      <div style="flex:1;background:var(--sf2);border:1px solid {% if pet_bonus.pet %}var(--gold){% else %}var(--bd){% endif %};
+           border-radius:8px;padding:8px;text-align:center">
+        <div style="font-size:10px;color:var(--muted);margin-bottom:4px">🐾 出战灵兽</div>
+        {% if pet_bonus.pet %}
+        <div style="font-size:12px;color:var(--gold)">{{ pet_bonus.pet.nickname or pet_bonus.pet.type_name }}</div>
+        {% else %}
+        <div style="font-size:12px;color:var(--muted)">未出战</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- 本命武器 -->
+    <div style="margin-top:8px">
+      <div style="background:var(--sf2);border:1px solid {% if equipped_dw %}var(--purple){% else %}var(--bd){% endif %};
+           border-radius:8px;padding:8px;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:2px">⚔ 本命武器</div>
+          {% if equipped_dw %}
+          <div style="font-size:12px;color:var(--purple)">{{ equipped_dw.custom_name or equipped_dw.weapon_type }}</div>
+          <div style="font-size:10px;color:var(--blue)">基础攻击 +{{ equipped_dw.base_attack }}</div>
+          {% else %}
+          <div style="font-size:12px;color:var(--muted)">未契合</div>
+          {% endif %}
+        </div>
+        {% if equipped_dw and dw_bonus %}
+        <div style="text-align:right;font-size:10px;color:var(--purple)">
+          {% if dw_bonus.atk_pct %}攻击+{{ dw_bonus.atk_pct }}%<br>{% endif %}
+          {% if dw_bonus.crit_rate %}暴击+{{ dw_bonus.crit_rate }}%{% endif %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- 专修路线 -->
+    <div style="margin-top:14px;background:var(--sf2);border-radius:8px;padding:8px 12px;
+         display:flex;align-items:center;justify-content:space-between">
+      <span style="font-size:11px;color:var(--muted)">专修路线</span>
+      {% if nav_craft_path %}
+        {% set _icons = {'cauldron':'⚗️','forge':'🔨','brush':'📜','beast_token':'🐲','heqing_token':'🌸'} %}
+        {% set _urls  = {'cauldron': url_for('alchemy'), 'forge': url_for('forge'),
+                         'brush': url_for('fulu'), 'beast_token': url_for('pets'),
+                         'heqing_token': url_for('social')} %}
+        <a href="{{ _urls[nav_craft_path] }}" style="font-size:12px;font-weight:600;color:var(--jade);text-decoration:none">
+          {{ _icons[nav_craft_path] }} {{ PATH_NAMES[nav_craft_path] }} →
+        </a>
+      {% else %}
+        <a href="{{ url_for('market') }}" style="font-size:12px;color:var(--muted);text-decoration:none">
+          未入路 · 丹市购买专属道具 →
+        </a>
+      {% endif %}
+    </div>
+
+    {% if hp_pct < 20 %}
+    <div style="margin-top:12px;background:rgba(192,57,43,.1);border:1px solid var(--red);border-radius:8px;
+         padding:8px 12px;font-size:12px;color:var(--red);display:flex;align-items:center;gap:8px">
+      ⚠ 气血不足 20%，无法出战！请服用<a href="{{ url_for('inventory') }}" style="color:var(--gold)">回元丹</a>恢复。
+    </div>
+    {% endif %}
+
+    {% if can_bt %}
+    <a href="{{ url_for('cultivate') }}" style="text-decoration:none">
+      <div style="margin-top:12px;background:rgba(166,124,26,.12);
+           border:1px solid var(--gold);border-radius:10px;padding:10px 14px;
+           display:flex;align-items:center;gap:10px">
+        <div style="font-size:18px">✦</div>
+        <div>
+          <div style="color:var(--gold);font-weight:600;font-size:12px">修为已至圆满！</div>
+          <div style="color:var(--muted);font-size:11px">点击前往突破 → {{ next_r.name }}</div>
+        </div>
+      </div>
+    </a>
+    {% endif %}
+  </div>
+
+  <!-- 右：行动 -->
+  <div style="flex:1;min-width:260px">
+    <div style="font-size:13px;color:var(--muted);font-weight:500;margin-bottom:10px">行动指南</div>
+    <div class="grid2" style="gap:10px">
+      <a href="{{ url_for('cultivate') }}" class="card" style="text-align:center;text-decoration:none">
+        <div style="font-size:26px;margin-bottom:6px">⚡</div>
+        <div style="color:var(--gold);font-weight:600">修炼</div>
+        <div style="color:var(--muted);font-size:11px;margin-top:2px">灵力 -{{ CULTIVATE_COST }}</div>
+      </a>
+      <a href="{{ url_for('explore') }}" class="card" style="text-align:center;text-decoration:none">
+        <div style="font-size:26px;margin-bottom:6px">🗺</div>
+        <div style="color:var(--blue);font-weight:600">探索</div>
+        <div style="color:var(--muted);font-size:11px;margin-top:2px">灵力 -{{ EXPLORE_COST }}</div>
+      </a>
+      <a href="{{ url_for('combat') }}" class="card" style="text-align:center;text-decoration:none"
+         style="{% if hp_pct < 20 %}opacity:.5{% endif %}">
+        <div style="font-size:26px;margin-bottom:6px">⚔</div>
+        <div style="color:var(--red);font-weight:600">战斗</div>
+        <div style="color:var(--muted);font-size:11px;margin-top:2px">
+          灵力 -{{ COMBAT_COST }}，消耗气血
+        </div>
+      </a>
+      <a href="{{ url_for('inventory') }}" class="card" style="text-align:center;text-decoration:none">
+        <div style="font-size:26px;margin-bottom:6px">🎒</div>
+        <div style="color:var(--purple);font-weight:600">背包</div>
+        <div style="color:var(--muted);font-size:11px;margin-top:2px">服丹 / 装备</div>
+      </a>
+      <a href="{{ url_for('market') }}" class="card" style="text-align:center;text-decoration:none">
+        <div style="font-size:26px;margin-bottom:6px">🧪</div>
+        <div style="color:var(--jade);font-weight:600">丹市</div>
+        <div style="color:var(--muted);font-size:11px;margin-top:2px">灵石换丹药/装备</div>
+      </a>
+      <a href="{{ url_for('techniques') }}" class="card" style="text-align:center;text-decoration:none">
+        <div style="font-size:26px;margin-bottom:6px">📜</div>
+        <div style="color:var(--green);font-weight:600">功法</div>
+        <div style="color:var(--muted);font-size:11px;margin-top:2px">被动加成</div>
+      </a>
+    </div>
+
+    <!-- 经济循环提示 -->
+    <div class="card" style="margin-top:10px;background:rgba(201,168,76,.05);border-color:rgba(201,168,76,.15)">
+      <div style="font-size:11px;color:var(--muted);line-height:2">
+        <div>⚡ 灵力用光 → 等待恢复（每小时 +10）</div>
+        <div>⚔ 战斗会消耗气血 → 需要<span style="color:var(--green)">回元丹</span>恢复</div>
+        <div>💰 探索/战斗获得灵石 → 丹市购买补给</div>
+        <div>⚔ 装备武器/法宝 → 战斗更强 → 少掉血</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if recent %}
+<div class="card">
+  <div class="card-h">近期动态</div>
+  {% for l in recent %}
+  <div style="padding:7px 0;font-size:13px;
+       {% if not loop.last %}border-bottom:1px solid var(--bd){% endif %}">
+    <span style="color:
+      {% if l.type=='cultivate' %}var(--gold)
+      {% elif l.type=='combat' %}var(--red)
+      {% elif l.type=='explore' %}var(--blue)
+      {% elif l.type=='market' %}var(--jade)
+      {% else %}var(--muted){% endif %}">●</span>
+    <span style="color:var(--muted)"> {{ l.created_at | format_ts }} </span>
+    {{ l.content }}
+  </div>
+  {% endfor %}
+  <div style="margin-top:8px">
+    <a href="{{ url_for('activity_log') }}" style="font-size:12px;color:var(--muted)">查看全部日志 →</a>
+  </div>
+</div>
+{% endif %}
+
+</div>
+{% endblock %}

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}登录 — 灵墟界{% endblock %}
+{% block body %}
+<div style="min-height:calc(100vh - 52px);display:flex;align-items:center;justify-content:center;padding:20px">
+  <div style="width:100%;max-width:380px">
+    <div style="text-align:center;margin-bottom:28px">
+      <div style="font-size:36px;margin-bottom:8px">☯</div>
+      <h2 style="color:var(--gold);font-size:22px;letter-spacing:2px">重返灵墟</h2>
+      <p style="color:var(--muted);font-size:13px;margin-top:6px">以道号唤醒沉眠的修炼记忆</p>
+    </div>
+    {% if err %}<div class="flash flash-error">{{ err }}</div>{% endif %}
+    <div class="card">
+      <form method="post" style="display:flex;flex-direction:column;gap:14px">
+        <div>
+          <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:5px">用户名</label>
+          <input name="username" required autocomplete="username"
+            style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                   border-radius:8px;padding:9px 12px;font-size:14px;font-family:inherit"
+            placeholder="输入你的用户名">
+        </div>
+        <div>
+          <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:5px">密码</label>
+          <input name="password" type="password" required autocomplete="current-password"
+            style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                   border-radius:8px;padding:9px 12px;font-size:14px;font-family:inherit"
+            placeholder="输入密码">
+        </div>
+        <button type="submit" class="btn btn-jade" style="width:100%;padding:10px;font-size:14px;margin-top:4px">
+          踏入仙途
+        </button>
+      </form>
+    </div>
+    <p style="text-align:center;color:var(--muted);font-size:13px;margin-top:16px">
+      初入此界？<a href="{{ url_for('register') }}" style="color:var(--jade)">创建角色</a>
+    </p>
+  </div>
+</div>
+<style>
+input:focus{outline:none;border-color:var(--jade) !important}
+</style>
+{% endblock %}

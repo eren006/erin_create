@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}妖兽管理 — 后台{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">👹 妖兽管理 <small><a href="{{ url_for('admin') }}" style="font-size:13px">← 后台</a></small></div>
+
+<!-- 添加妖兽 -->
+<div class="card" style="margin-bottom:20px">
+  <div class="card-h">添加新妖兽</div>
+  <form method="post" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+    <input type="hidden" name="action" value="add">
+    <div style="grid-column:1/-1">
+      <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:4px">名称 *</label>
+      <input name="name" required placeholder="妖兽名称"
+        style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+               border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+    </div>
+    <div style="grid-column:1/-1">
+      <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:4px">描述</label>
+      <input name="description" placeholder="妖兽描述"
+        style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+               border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+    </div>
+    {% for field, label, default in [
+      ('realm_min','最低境界（索引）','0'),
+      ('realm_max','最高境界（索引）','5'),
+      ('hp','气血','100'),
+      ('attack','攻击','15'),
+      ('defense','防御','5'),
+      ('exp_reward','修为奖励','50'),
+      ('stone_reward','灵石奖励','20')
+    ] %}
+    <div>
+      <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:4px">{{ label }}</label>
+      <input name="{{ field }}" type="number" value="{{ default }}" min="0"
+        style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+               border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+    </div>
+    {% endfor %}
+    <div style="grid-column:1/-1">
+      <button type="submit" class="btn btn-red">添加妖兽</button>
+      <span style="color:var(--muted);font-size:12px;margin-left:10px">境界索引：0=炼气一层, 9=筑基初期, 13=结丹初期…</span>
+    </div>
+  </form>
+</div>
+
+<!-- 妖兽列表 -->
+<div class="card">
+  <div class="card-h">全部妖兽（{{ monsters|length }}）</div>
+  <table class="tbl">
+    <thead>
+      <tr>
+        <th>名称</th><th>描述</th><th>境界范围</th><th>气血</th><th>攻击</th><th>防御</th><th>修为</th><th>灵石</th><th>状态</th><th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in monsters %}
+      <tr style="{% if not m.is_active %}opacity:.5{% endif %}">
+        <td style="font-weight:500;color:var(--text)">{{ m.name }}</td>
+        <td style="color:var(--muted);font-size:12px;max-width:160px">{{ m.description[:30] }}{% if m.description|length > 30 %}…{% endif %}</td>
+        <td style="font-size:12px;color:var(--jade)">
+          {{ REALMS[m.realm_min].name[:2] }}
+          ~
+          {{ REALMS[[m.realm_max, REALMS|length-1]|min].name[:2] }}
+        </td>
+        <td style="color:var(--red)">{{ m.hp }}</td>
+        <td style="color:var(--blue)">{{ m.attack }}</td>
+        <td style="color:var(--green)">{{ m.defense }}</td>
+        <td style="color:var(--gold);font-size:12px">{{ fmt_exp(m.exp_reward) }}</td>
+        <td style="font-size:12px">{{ m.stone_reward }}</td>
+        <td>
+          {% if m.is_active %}
+          <span style="color:var(--green);font-size:12px">启用</span>
+          {% else %}
+          <span style="color:var(--muted);font-size:12px">禁用</span>
+          {% endif %}
+        </td>
+        <td>
+          <form method="post">
+            <input type="hidden" name="action" value="toggle">
+            <input type="hidden" name="monster_id" value="{{ m.id }}">
+            <button type="submit" class="btn btn-ghost btn-sm">
+              {{ '禁用' if m.is_active else '启用' }}
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+</div>
+<style>input:focus,select:focus{outline:none;border-color:var(--jade) !important}</style>
+{% endblock %}

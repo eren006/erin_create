@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}历史伙伴 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">👥 历史伙伴 <small>最多同时上阵 {{ COMPANION_MAX_ACTIVE }} 位</small></div>
+
+<!-- 上阵槽 -->
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h" style="display:flex;justify-content:space-between;align-items:center">
+    <span>当前上阵 {{ active_comps|length }}/{{ COMPANION_MAX_ACTIVE }}</span>
+    {% if active_comps %}
+    <form method="post" style="margin:0">
+      <input type="hidden" name="action" value="unequip_all">
+      <button class="btn btn-ghost btn-sm">全部撤回</button>
+    </form>
+    {% endif %}
+  </div>
+  {% if active_comps %}
+  <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px">
+    {% for c in active_comps %}
+    {% set rc = COMPANION_RARITY_COLOR[c[3]] %}
+    <div style="background:var(--sf2);border:2px solid {{ rc }};border-radius:10px;padding:10px 14px;min-width:160px;position:relative">
+      {% if c[0] in COMPANION_LIMITED_KEYS %}<div style="position:absolute;top:6px;right:8px;font-size:10px;color:var(--gold)">限定</div>{% endif %}
+      <div style="font-size:10px;color:{{ rc }};font-weight:700">{{ COMPANION_RARITY_LABEL[c[3]] }}</div>
+      <div style="font-size:16px;font-weight:700">{{ c[1] }}</div>
+      <div style="font-size:11px;color:var(--muted)">「{{ c[2] }}」</div>
+      <div style="display:flex;flex-wrap:wrap;gap:3px;margin:6px 0">
+        {% set lbs = {'exp_pct':'修炼','atk_pct':'攻击','def_pct':'防御','hp_pct':'气血','energy_max':'灵力','alchemy_bonus':'炼丹','forge_bonus':'炼器','explore_bonus':'探索','stones_pct':'灵石','affinity_pct':'好感','crit_rate':'暴击','dodge_rate':'闪避','breakthrough_bonus':'突破','fulu_bonus':'炼符','spirit_regen_pct':'灵气恢复'} %}
+        {% for k,v in c[5].items() %}
+        <span style="font-size:10px;color:{{ rc }}">{{ lbs.get(k,k) }}+{% if k in ('energy_max','breakthrough_bonus') %}{{ v|int }}{% else %}{{ (v*100)|int }}%{% endif %}</span>
+        {% endfor %}
+      </div>
+      <form method="post">
+        <input type="hidden" name="action" value="unequip">
+        <input type="hidden" name="companion_key" value="{{ c[0] }}">
+        <button class="btn btn-ghost btn-sm" style="width:100%;font-size:11px">撤回</button>
+      </form>
+    </div>
+    {% endfor %}
+    {% for _ in range(COMPANION_MAX_ACTIVE - active_comps|length) %}
+    <div style="border:2px dashed var(--bd);border-radius:10px;padding:10px 14px;min-width:100px;
+                display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px">空</div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div style="color:var(--muted);font-size:13px;margin-top:8px">暂无上阵伙伴，从图鉴中选择最多 {{ COMPANION_MAX_ACTIVE }} 位上阵。</div>
+  {% endif %}
+</div>
+
+<!-- 合计加成预览 -->
+{% if active_comps %}
+<div class="card" style="margin-bottom:16px;background:rgba(201,168,76,.04);border-color:rgba(201,168,76,.2)">
+  <div class="card-h" style="color:var(--gold2)">合计加成</div>
+  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">
+    {% set lbs = {'exp_pct':'修炼速度','atk_pct':'攻击力','def_pct':'防御力','hp_pct':'气血上限','energy_max':'灵力上限','alchemy_bonus':'炼丹成功率','forge_bonus':'炼器成功率','explore_bonus':'探索收益','stones_pct':'灵石收益','affinity_pct':'好感收益','crit_rate':'暴击率','dodge_rate':'闪避率','breakthrough_bonus':'突破成功率','fulu_bonus':'炼符成功率','spirit_regen_pct':'灵气恢复速度'} %}
+    {% set totals = {} %}
+    {% for c in active_comps %}{% for k,v in c[5].items() %}{% if k in totals %}{% set _ = totals.update({k: totals[k]+v}) %}{% else %}{% set _ = totals.update({k: v}) %}{% endif %}{% endfor %}{% endfor %}
+    {% for k,v in totals.items() %}
+    <span style="background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.3);border-radius:6px;padding:4px 10px;font-size:13px;color:var(--gold)">
+      {{ lbs.get(k,k) }} +{% if k in ('energy_max','breakthrough_bonus') %}{{ v|int }}{% else %}{{ (v*100)|int }}%{% endif %}
+    </span>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- 我的图鉴 -->
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">我的图鉴
+    <span style="font-size:12px;font-weight:normal;color:var(--muted);margin-left:8px">{{ owned_comps|length }} / {{ (owned_comps|length) + (unowned_comps|length) }}</span>
+    <div style="float:right;display:flex;gap:8px">
+      {% if limited_open %}<a href="{{ url_for('companion_limited') }}" class="btn btn-sm" style="background:rgba(201,168,76,.15);color:var(--gold);border:1px solid rgba(201,168,76,.4)">🌟限时召唤</a>{% endif %}
+      {% for p in custom_pools_open %}
+      <a href="{{ url_for('companion_custom_pool', pool_id=p.id) }}" class="btn btn-sm" style="background:rgba(201,168,76,.15);color:var(--gold);border:1px solid rgba(201,168,76,.4)">{{ p.icon }}{{ p.name }}</a>
+      {% endfor %}
+      <a href="{{ url_for('companion_gacha') }}" class="btn btn-ghost btn-sm">常驻召唤 →</a>
+    </div>
+  </div>
+  {% if owned_comps %}
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin-top:8px">
+    {% for c in owned_comps %}
+    {% set rc = COMPANION_RARITY_COLOR[c[3]] %}
+    {% set is_active = c[0] in active_keys %}
+    <div style="background:var(--sf2);border:2px solid {{ rc }}{% if is_active %};box-shadow:0 0 8px {{ rc }}33{% endif %};border-radius:10px;padding:10px 12px;position:relative">
+      {% if c[0] in COMPANION_LIMITED_KEYS %}<div style="position:absolute;top:6px;right:8px;font-size:10px;color:var(--gold)">限定</div>{% endif %}
+      <div style="font-size:10px;color:{{ rc }};font-weight:700">{{ COMPANION_RARITY_LABEL[c[3]] }}</div>
+      <div style="font-size:15px;font-weight:700">{{ c[1] }}</div>
+      <div style="font-size:11px;color:var(--muted)">「{{ c[2] }}」</div>
+      <div style="display:flex;flex-wrap:wrap;gap:3px;margin:5px 0">
+        {% set lbs = {'exp_pct':'修炼','atk_pct':'攻击','def_pct':'防御','hp_pct':'气血','energy_max':'灵力','alchemy_bonus':'炼丹','forge_bonus':'炼器','explore_bonus':'探索','stones_pct':'灵石','affinity_pct':'好感','crit_rate':'暴击','dodge_rate':'闪避','breakthrough_bonus':'突破','fulu_bonus':'炼符','spirit_regen_pct':'灵气恢复'} %}
+        {% for k,v in c[5].items() %}
+        <span style="font-size:10px;color:{{ rc }}">{{ lbs.get(k,k) }}+{% if k in ('energy_max','breakthrough_bonus') %}{{ v|int }}{% else %}{{ (v*100)|int }}%{% endif %}</span>
+        {% endfor %}
+      </div>
+      {% if is_active %}
+      <form method="post">
+        <input type="hidden" name="action" value="unequip">
+        <input type="hidden" name="companion_key" value="{{ c[0] }}">
+        <button class="btn btn-ghost btn-sm" style="width:100%;font-size:11px">撤回上阵</button>
+      </form>
+      {% elif active_keys|length < COMPANION_MAX_ACTIVE %}
+      <form method="post">
+        <input type="hidden" name="action" value="equip">
+        <input type="hidden" name="companion_key" value="{{ c[0] }}">
+        <button class="btn btn-jade btn-sm" style="width:100%;font-size:11px">上阵</button>
+      </form>
+      {% else %}
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;text-align:center">上阵已满</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div style="color:var(--muted);font-size:13px;text-align:center;padding:24px 0">
+    还没有任何伙伴。<a href="{{ url_for('companion_gacha') }}" style="color:var(--jade)">去召唤 →</a>
+  </div>
+  {% endif %}
+</div>
+
+<!-- 未获得 -->
+{% if unowned_comps %}
+<div class="card">
+  <div class="card-h" style="color:var(--muted)">未获得（{{ unowned|length }}）</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px;margin-top:8px">
+    {% for c in unowned_comps %}
+    {% set rc = COMPANION_RARITY_COLOR[c[3]] %}
+    <div style="background:var(--sf2);border:1px solid var(--bd);border-radius:8px;padding:7px 10px;opacity:.5">
+      <div style="font-size:10px;color:{{ rc }}">{{ COMPANION_RARITY_LABEL[c[3]] }}{% if c[0] in COMPANION_LIMITED_KEYS %} 限定{% endif %}</div>
+      <div style="font-size:13px;font-weight:600;color:var(--muted)">{{ c[1] }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+</div>
+{% endblock %}

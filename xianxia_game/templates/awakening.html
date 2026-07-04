@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}远古觉醒 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🌌 远古意识觉醒 <small>以本领入道，感应远古神话</small></div>
+
+{% if result %}
+  {% if result.success %}
+  <div class="result-box success" style="margin-bottom:20px;text-align:center">
+    <div style="font-size:28px;margin-bottom:8px">✦</div>
+    <div style="font-size:18px;font-weight:700;color:var(--gold)">远古意识觉醒成功！</div>
+    <div style="margin-top:10px;font-size:16px;font-weight:700;color:var(--purple)">{{ result.blessing.name }}</div>
+    <div style="margin-top:6px;color:var(--muted);font-size:13px">{{ result.blessing.desc }}</div>
+    <div style="margin-top:6px;color:var(--jade);font-size:12px">另附赠修炼速度 +{{ (ANCIENT_AWAKEN_CULTIVATE_BONUS*100)|int }}%（打坐、洞府挂机均生效）</div>
+  </div>
+  {% else %}
+  <div class="result-box failure" style="margin-bottom:20px">
+    <div style="font-size:18px;font-weight:700;color:var(--red);margin-bottom:6px">✦ 觉醒失败</div>
+    <div style="font-size:13px;color:var(--muted)">本领灵光一闪即逝，材料尽毁，未能感应远古意识。可再次尝试。</div>
+  </div>
+  {% endif %}
+{% endif %}
+
+{% if awakened %}
+<div class="card" style="border-color:var(--purple);background:rgba(155,127,224,.06)">
+  <div class="card-h" style="color:var(--purple)">✓ 已觉醒远古意识</div>
+  <div style="text-align:center;padding:14px 0">
+    <div style="font-size:22px;font-weight:700;color:var(--gold)">{{ blessing.name }}</div>
+    <div style="color:var(--muted);font-size:13px;margin-top:8px">{{ blessing.desc }}</div>
+    <div style="color:var(--jade);font-size:12px;margin-top:6px">修炼速度 +{{ (ANCIENT_AWAKEN_CULTIVATE_BONUS*100)|int }}%（打坐、洞府挂机均生效）</div>
+    <div style="color:var(--muted);font-size:11px;margin-top:10px">此祝福已永久融入本命，全场景自动生效，无需再次觉醒。</div>
+  </div>
+</div>
+
+{% elif not eligible %}
+<div class="card" style="text-align:center;padding:40px 20px">
+  <div style="font-size:48px;margin-bottom:16px">🌌</div>
+  <div style="font-size:18px;font-weight:700;color:var(--gold2);margin-bottom:8px">远古意识尚未感应</div>
+  <div style="font-size:13px;color:var(--muted);line-height:2">
+    需在<b>丹修 / 器修 / 符修 / 御灵修 / 合欢修 / 剑修</b>中任一路线经验达到 <b>{{ ANCIENT_AWAKEN_EXP_REQ }}</b>，<br>
+    方可解锁远古意识觉醒的资格。
+  </div>
+</div>
+
+{% else %}
+<div class="card" style="border-color:var(--gold)">
+  <div class="card-h" style="color:var(--gold)">远古意识觉醒</div>
+  <div style="background:var(--sf2);border-radius:8px;padding:12px;margin-bottom:12px;font-size:13px">
+    <div style="display:flex;justify-content:space-between;padding:4px 0">
+      <span style="color:var(--muted)">所需材料</span>
+      <span style="color:{% if mat_have >= 1 %}var(--green){% else %}var(--red){% endif %}">
+        {{ ANCIENT_AWAKEN_MATERIALS|join(' 或 ') }} ×1{% if mat_name %}（将使用 {{ mat_name }}，持有 {{ mat_have }}）{% else %}（持有 0）{% endif %}
+      </span>
+    </div>
+    <div style="display:flex;justify-content:space-between;padding:4px 0">
+      <span style="color:var(--muted)">成功率</span>
+      <span style="color:var(--red);font-weight:700">{{ (ANCIENT_AWAKEN_RATE*100)|int }}%</span>
+    </div>
+  </div>
+  <div style="font-size:11px;color:var(--red);margin-bottom:12px">
+    ⚠ 失败将损失全部材料，可再次尝试；一旦成功，随机获得的祝福将终身生效，
+    并额外附赠修炼速度 +{{ (ANCIENT_AWAKEN_CULTIVATE_BONUS*100)|int }}%（打坐、洞府挂机均生效）。
+  </div>
+  <form method="post">
+    <input type="hidden" name="action" value="attempt">
+    <button class="btn btn-gold" style="width:100%;padding:12px" {% if mat_have < 1 %}disabled{% endif %}>
+      {% if mat_have < 1 %}材料不足{% else %}🌌 尝试觉醒{% endif %}
+    </button>
+  </form>
+</div>
+{% endif %}
+
+<div class="card" style="margin-top:16px">
+  <div class="card-h">远古神话祝福图鉴 <span style="font-size:11px;font-weight:400;color:var(--muted)">共 {{ ANCIENT_BLESSING_POOL|length }} 种，随机获得其中一种</span></div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-top:8px">
+    {% for b in ANCIENT_BLESSING_POOL %}
+    <div style="background:var(--sf2);border:1px solid var(--bd);border-radius:8px;padding:10px;
+                {% if awakened and blessing and blessing.id==b.id %}border-color:var(--gold);background:rgba(201,168,76,.08){% endif %}">
+      <div style="font-weight:600;font-size:13px;color:var(--gold2)">{{ b.name }}{% if awakened and blessing and blessing.id==b.id %} ✓{% endif %}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">{{ b.desc }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card" style="margin-top:16px;background:rgba(201,168,76,.05);border-color:rgba(201,168,76,.15)">
+  <div class="card-h" style="color:var(--gold2)">觉醒须知</div>
+  <div style="color:var(--muted);font-size:12px;line-height:2">
+    <div>· 每位道友终身只可觉醒一次，一旦成功即永久获得所抽中的祝福，无法更换</div>
+    <div>· 祝福效果会自动叠加进战斗、修炼、探索、炼丹炼器、双修等全部相关加成计算</div>
+    <div>· 觉醒成功无论抽到哪种祝福，都额外附赠修炼速度 +{{ (ANCIENT_AWAKEN_CULTIVATE_BONUS*100)|int }}%，打坐修炼与洞府挂机均生效</div>
+    <div>· 造化神液/造化灵液可通过洗髓天材奖励、上等灵石拍卖行等途径获得</div>
+  </div>
+</div>
+
+</div>
+{% endblock %}

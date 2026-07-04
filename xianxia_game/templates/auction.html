@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}天宝拍卖行 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🏛 天宝拍卖行 <small>本命法宝，价高者得</small></div>
+
+<div class="card" style="margin-bottom:16px;padding:12px 16px;display:flex;gap:24px;flex-wrap:wrap;align-items:center">
+  <span style="font-size:13px;color:var(--muted)">持有灵石 <strong style="color:var(--gold)">{{ char.spirit_stones }}</strong></span>
+  <span style="font-size:13px;color:var(--muted)">你的灵根属性：
+    {% for el in my_elems %}<span style="color:var(--gold2);margin:0 3px">{{ el }}</span>{% endfor %}
+  </span>
+</div>
+
+{% if not lots %}
+<div class="empty">拍卖行暂无拍品</div>
+{% else %}
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">
+  {% for lot in lots %}
+  {% set eff = lot.effect_json | fromjson %}
+  {% set req_elem = eff.element %}
+  {% set can_equip = (not req_elem) or (req_elem in my_elems) %}
+  {% set can_afford = char.spirit_stones >= lot.price %}
+  <div class="card" style="border-color:{% if lot.rarity=='legendary' %}var(--gold){% else %}rgba(155,127,224,.3){% endif %}">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px">
+      <div>
+        <div style="font-size:17px;font-weight:700;color:{% if lot.rarity=='legendary' %}var(--gold){% else %}var(--purple){% endif %}">
+          {{ lot.name }}
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">本命法宝</div>
+      </div>
+      <span class="tag tag-{{ lot.rarity }}">{{ lot.rarity | rarity_label }}</span>
+    </div>
+
+    <div style="color:var(--muted);font-size:12px;line-height:1.7;margin-bottom:10px;min-height:34px">{{ lot.description }}</div>
+
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+      {% if eff.attack %}<span style="background:rgba(91,163,208,.14);border-radius:5px;padding:2px 8px;font-size:11px;color:var(--blue)">攻击 +{{ eff.attack }}</span>{% endif %}
+      {% if eff.defense %}<span style="background:rgba(82,183,136,.14);border-radius:5px;padding:2px 8px;font-size:11px;color:var(--green)">防御 +{{ eff.defense }}</span>{% endif %}
+      {% if eff.crit_rate %}<span style="background:rgba(201,168,76,.14);border-radius:5px;padding:2px 8px;font-size:11px;color:var(--gold)">暴击 +{{ (eff.crit_rate*100)|round(1) }}%</span>{% endif %}
+    </div>
+
+    <div style="margin-bottom:10px;font-size:12px">
+      {% if req_elem %}
+        契合要求：<span style="color:{% if can_equip %}var(--green){% else %}var(--red){% endif %}">
+          {{ req_elem }}属性灵根 {% if can_equip %}✓ 符合{% else %}✗ 不符{% endif %}
+        </span>
+      {% else %}
+        <span style="color:var(--gold)">✦ 无视五行，任意灵根可契合</span>
+      {% endif %}
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <div style="font-size:18px;font-weight:700;color:var(--gold)">{{ lot.price }} <span style="font-size:12px;color:var(--muted)">灵石</span></div>
+      <form method="post">
+        <input type="hidden" name="auction_id" value="{{ lot.auction_id }}">
+        <button type="submit" class="btn btn-gold btn-sm"
+          {% if not can_equip or not can_afford %}disabled{% endif %}>
+          {% if not can_equip %}灵根不符
+          {% elif not can_afford %}灵石不足
+          {% else %}💰 拍下{% endif %}
+        </button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card" style="margin-top:16px;background:rgba(155,127,224,.05);border-color:rgba(155,127,224,.15)">
+  <div class="card-h" style="color:var(--purple)">拍卖须知</div>
+  <div style="color:var(--muted);font-size:12px;line-height:2">
+    <div>· 本命法宝是最强装备，占独立装备槽，与飞剑/法宝叠加生效</div>
+    <div>· 多数本命法宝需<span style="color:var(--gold)">对应属性灵根</span>方可契合装备</div>
+    <div>· 灵根不符可通过<a href="{{ url_for('xisui') }}" style="color:var(--jade)">洗髓伐经</a>改变属性</div>
+    <div>· 也可在<a href="{{ url_for('forge') }}" style="color:var(--jade)">炼器房</a>自炼本命法宝（可自定义名字）</div>
+  </div>
+</div>
+</div>
+{% endblock %}

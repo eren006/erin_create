@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}寻宝台 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">✨ 寻宝台 <small>灵符换缘，机缘天定</small></div>
+
+<!-- 灵符余量 + 保底 -->
+<div class="card" style="margin-bottom:16px;padding:12px 16px;display:flex;gap:24px;flex-wrap:wrap;align-items:center">
+  <div>
+    <div style="font-size:22px;font-weight:700;color:var(--gold)">{{ char.lingfu or 0 }}</div>
+    <div style="font-size:11px;color:var(--muted)">灵符</div>
+  </div>
+  <div style="flex:1;min-width:200px">
+    <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px">
+      <span>保底进度</span>
+      <span>{{ pity }}/{{ GACHA_PITY_MAX }}（{{ GACHA_PITY_MAX - pity }}抽后必得传说）</span>
+    </div>
+    <div class="bar-wrap">
+      <div class="bar-fill bar-gold" style="width:{{ (pity/GACHA_PITY_MAX*100)|int }}%"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 抽卡结果 -->
+{% if result %}
+<div class="card" style="margin-bottom:16px;border-color:var(--gold)">
+  <div class="card-h" style="color:var(--gold2)">✨ 本次结果</div>
+  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">
+    {% for r in result %}
+    <div style="background:var(--sf2);border:2px solid
+         {% if r.rarity=='legendary' %}var(--gold){% elif r.rarity=='epic' %}var(--purple){% elif r.rarity=='rare' %}var(--blue){% else %}var(--bd){% endif %};
+         border-radius:10px;padding:10px 14px;text-align:center;min-width:100px">
+      <div style="font-weight:700;font-size:13px;color:
+           {% if r.rarity=='legendary' %}var(--gold){% elif r.rarity=='epic' %}var(--purple){% elif r.rarity=='rare' %}var(--blue){% else %}var(--muted){% endif %}">
+        {{ r.name or '???' }}
+      </div>
+      <div class="tag tag-{{ r.rarity }}" style="margin-top:4px">{{ r.rarity | rarity_label }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- 卡池列表 -->
+{% if not pools %}
+<div class="empty">暂无开放的卡池</div>
+{% else %}
+{% for pool in pools %}
+<div class="card" style="margin-bottom:14px">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+    <span style="font-size:32px">{{ pool.icon }}</span>
+    <div style="flex:1">
+      <div style="font-size:16px;font-weight:700">{{ pool.name }}</div>
+      <div style="font-size:12px;color:var(--muted)">{{ pool.description }}</div>
+    </div>
+    <div style="text-align:right">
+      <div style="font-size:14px;color:var(--gold);font-weight:600">{{ pool.cost }} 灵符/抽</div>
+      <div style="font-size:11px;color:var(--muted)">{{ pool.pity_max }} 抽保底传说</div>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <form method="post">
+      <input type="hidden" name="pool_id" value="{{ pool.id }}">
+      <input type="hidden" name="count" value="1">
+      <button class="btn btn-gold btn-sm" {% if (char.lingfu or 0) < pool.cost %}disabled{% endif %}>
+        单抽（{{ pool.cost }} 灵符）
+      </button>
+    </form>
+    <form method="post">
+      <input type="hidden" name="pool_id" value="{{ pool.id }}">
+      <input type="hidden" name="count" value="10">
+      <button class="btn btn-gold" {% if (char.lingfu or 0) < pool.cost*10 %}disabled{% endif %}>
+        十连（{{ pool.cost*10 }} 灵符）
+      </button>
+    </form>
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+
+<!-- 最近抽取记录 -->
+{% if history %}
+<div class="card">
+  <div class="card-h">近期记录</div>
+  <div style="display:flex;flex-wrap:wrap;gap:6px">
+    {% for h in history %}
+    <span style="font-size:12px;padding:3px 10px;border-radius:20px;
+         background:{% if h.rarity=='legendary' %}rgba(166,124,26,.18){% elif h.rarity=='epic' %}rgba(123,94,168,.14){% elif h.rarity=='rare' %}rgba(44,110,158,.12){% else %}var(--sf2){% endif %};
+         color:{% if h.rarity=='legendary' %}var(--gold){% elif h.rarity=='epic' %}var(--purple){% elif h.rarity=='rare' %}var(--blue){% else %}var(--muted){% endif %}">
+      {{ h.item_name }}
+    </span>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<div class="card" style="background:rgba(166,124,26,.05);border-color:rgba(166,124,26,.15)">
+  <div class="card-h" style="color:var(--gold2)">寻宝说明</div>
+  <div style="color:var(--muted);font-size:12px;line-height:2">
+    <div>· 灵符可通过探索、世界Boss参战、管理员赠予获得</div>
+    <div>· 新玩家注册赠送 {{ LINGFU_PER_DRAW*2 }} 灵符（2次抽卡）</div>
+    <div>· 每个卡池独立保底计数，{{ GACHA_PITY_MAX }} 抽必得传说级</div>
+    <div>· 传说级掉落全服公告</div>
+  </div>
+</div>
+</div>
+{% endblock %}

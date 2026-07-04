@@ -87,6 +87,40 @@
 
 .api-hint { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:14px 18px; margin-top:24px; font-size:12px; }
 .api-hint code { background:var(--surface2); border:1px solid var(--border); border-radius:5px; padding:1px 8px; font-family:monospace; color:var(--accent2); }
+
+/* 占用群面板 */
+.occupied-panel {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:12px; margin-bottom:24px; overflow:hidden;
+}
+.occupied-header {
+  display:flex; align-items:center; gap:10px;
+  padding:10px 18px; background:var(--surface2);
+  border-bottom:1px solid var(--border);
+}
+.occupied-title { font-size:14px; font-weight:700; color:var(--text); flex:1; }
+.occupied-badge {
+  background:#3d1f00; color:#f97316; border:1px solid #7a3a00;
+  border-radius:20px; font-size:11px; font-weight:700;
+  padding:2px 10px; white-space:nowrap;
+}
+.occupied-badge.zero {
+  background:var(--surface); color:var(--muted); border-color:var(--border);
+}
+.occ-table { width:100%; border-collapse:collapse; font-size:13px; }
+.occ-table th {
+  text-align:left; color:var(--muted); font-weight:600;
+  padding:8px 16px; border-bottom:1px solid var(--border); font-size:12px;
+}
+.occ-table td { padding:10px 16px; border-bottom:1px solid var(--border); color:var(--text); }
+.occ-table tr:last-child td { border-bottom:none; }
+.occ-table tr:hover td { background:var(--surface2); }
+.occ-gid { font-family:monospace; color:var(--accent2); font-weight:600; }
+.occ-dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:#f97316; margin-right:6px; box-shadow:0 0 5px #f97316; animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+.occ-empty { padding:18px 20px; color:var(--muted); font-size:13px; }
+.participant-chips { display:flex; flex-wrap:wrap; gap:4px; }
+.pchip { background:var(--surface2); border:1px solid var(--border); border-radius:5px; padding:1px 8px; font-size:12px; color:var(--text); }
 </style>
 {% endblock %}
 
@@ -98,11 +132,62 @@
     <a href="{{ url_for('admin') }}">总览</a>
     <a href="{{ url_for('admin_config_page') }}">游戏配置</a>
     <a href="{{ url_for('admin_groups') }}" class="active">群号组</a>
+    <a href="{{ url_for('admin_places') }}">地点管理</a>
     <a href="{{ url_for('admin_rewards') }}">结戏奖励</a>
     <a href="{{ url_for('admin_player_controls') }}">玩家控制</a>
     <a href="{{ url_for('admin_shows') }}">季管理</a>
     <a href="{{ url_for('admin_command_guides') }}">指令指南</a>
     <a href="{{ url_for('admin_time_schedule') }}">时间调度</a>
+  </div>
+
+  <!-- 当前占用群 -->
+  <div class="occupied-panel">
+    <div class="occupied-header">
+      <span class="occupied-title">🔴 当前占用群</span>
+      {% if occupied %}
+      <span class="occupied-badge">{{ occupied|length }} 个占用中</span>
+      {% else %}
+      <span class="occupied-badge zero">无占用</span>
+      {% endif %}
+    </div>
+    {% if occupied %}
+    <div style="overflow-x:auto">
+    <table class="occ-table">
+      <thead>
+        <tr>
+          <th>群号</th>
+          <th>游戏日 / 时间</th>
+          <th>地点</th>
+          <th>类型</th>
+          <th>参与角色</th>
+          <th>开始时间</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in occupied %}
+        <tr>
+          <td class="occ-gid"><span class="occ-dot"></span>{{ s.group_id }}</td>
+          <td>{{ s.game_day or '—' }}{% if s.game_time %} · {{ s.game_time }}{% endif %}</td>
+          <td>{{ s.place or '—' }}</td>
+          <td style="color:var(--muted)">{{ s.subtype or '—' }}</td>
+          <td>
+            <div class="participant-chips">
+              {% for p in s.participants_list %}
+              <span class="pchip">{{ p }}</span>
+              {% else %}
+              <span style="color:var(--muted)">—</span>
+              {% endfor %}
+            </div>
+          </td>
+          <td style="color:var(--muted);font-size:12px">{{ s.start_str }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <div class="occ-empty">目前没有进行中的场次，所有群处于空闲状态。</div>
+    {% endif %}
   </div>
 
   {% if msg and msg.startswith('bulk_added_') %}

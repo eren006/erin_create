@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}摇钱树 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🌳 摇钱树 <small>限时活动 · 积累就可抽</small></div>
+
+<!-- 票数 + 倒计时 -->
+<div class="card" style="margin-bottom:16px;padding:14px 18px;display:flex;gap:28px;flex-wrap:wrap;align-items:center">
+  <div style="text-align:center">
+    <div style="font-size:30px;font-weight:700;color:var(--gold)">{{ tickets }}</div>
+    <div style="font-size:11px;color:var(--muted)">可用次数 / {{ YQS_MAX_TICKETS }}</div>
+  </div>
+  <div style="flex:1;min-width:180px">
+    <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px">
+      <span>积累进度（每30分钟+1次）</span>
+      {% if tickets >= YQS_MAX_TICKETS %}
+      <span style="color:var(--jade)">已满，快来摇！</span>
+      {% else %}
+      <span id="cd-text">距下次 {{ '%02d:%02d'|format(secs_to_next//60, secs_to_next%60) }}</span>
+      {% endif %}
+    </div>
+    <div class="bar-wrap">
+      <div class="bar-fill bar-gold" style="width:{{ [tickets * 100 // YQS_MAX_TICKETS, 100]|min }}%"></div>
+    </div>
+  </div>
+  <div style="font-size:12px;color:var(--muted)">
+    活动截止：<strong style="color:var(--text)">{{ ends_at | format_ts }}</strong>
+  </div>
+</div>
+
+<!-- 抽卡结果 -->
+{% if result %}
+<div class="card" style="margin-bottom:16px;border-color:var(--gold)">
+  <div class="card-h" style="color:var(--gold2)">🌳 本次收获</div>
+  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">
+    {% for r in result %}
+    {% set rc = {'common':'var(--muted)','uncommon':'var(--jade)','rare':'#6ab0f5','epic':'#c97bff','legendary':'var(--gold)'}[r.rarity] %}
+    <div style="background:var(--sf2);border:2px solid {{ rc }};border-radius:10px;padding:8px 14px;font-size:14px;font-weight:600;color:{{ rc }}">
+      {{ r.detail }}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- 抽卡按钮 -->
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">摇一摇</div>
+  <div style="font-size:13px;color:var(--muted);margin-bottom:14px">
+    每30分钟自动积累1次，最多存{{ YQS_MAX_TICKETS }}次。不消耗灵符，白嫖就完了。
+  </div>
+  <form method="post" style="display:flex;gap:10px;flex-wrap:wrap">
+    <button type="submit" name="count" value="1"  class="btn btn-gold" {% if tickets < 1 %}disabled{% endif %} style="font-size:15px;padding:10px 24px">🌳 摇一次</button>
+    <button type="submit" name="count" value="10" class="btn btn-ghost" {% if tickets < 10 %}disabled{% endif %}>十连（需10次）</button>
+  </form>
+  {% if tickets < 1 %}
+  <div style="margin-top:10px;font-size:12px;color:var(--muted)">⌛ 次数不足，等等再来。</div>
+  {% endif %}
+</div>
+
+<!-- 奖池一览 -->
+<div class="card">
+  <div class="card-h">奖池一览</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-top:8px">
+    {% for itype, ival, iname, rarity, weight in YQS_POOL %}
+    {% set rc = {'common':'var(--muted)','uncommon':'var(--jade)','rare':'#6ab0f5','epic':'#c97bff','legendary':'var(--gold)'}[rarity] %}
+    <div style="background:var(--sf2);border:1px solid {{ rc }}33;border-radius:8px;padding:8px 10px;font-size:13px">
+      <div style="color:{{ rc }};font-weight:600">{{ iname }}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">{{ {'common':'普通','uncommon':'罕见','rare':'稀有','epic':'史诗','legendary':'传说'}[rarity] }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+</div>
+<script>
+// 倒计时
+(function(){
+  var el = document.getElementById('cd-text');
+  if(!el) return;
+  var secs = {{ secs_to_next }};
+  function fmt(s){ var m=Math.floor(s/60),ss=s%60; return (m<10?'0':'')+m+':'+(ss<10?'0':'')+ss }
+  var iv = setInterval(function(){
+    if(secs<=0){ clearInterval(iv); el.textContent='下次已到，刷新页面'; return; }
+    secs--;
+    el.textContent = '距下次 '+fmt(secs);
+  },1000);
+})();
+</script>
+{% endblock %}

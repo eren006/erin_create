@@ -1,0 +1,405 @@
+{% extends "base.html" %}
+{% block title %}商城管理 · 长日存档{% endblock %}
+
+{% block head %}
+<style>
+.shop-layout { max-width: 880px; margin: 0 auto; padding: 28px 20px; }
+@media(max-width:600px) { .shop-layout { padding: 16px 14px; } }
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.panel-title { font-size: 14px; font-weight: 700; margin: 0; }
+.panel-body { padding: 14px 16px; }
+
+.shop-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.shop-table th {
+  text-align: left; color: var(--muted); font-weight: 600;
+  padding: 7px 10px; border-bottom: 1px solid var(--border); font-size: 12px;
+}
+.shop-table td { padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.shop-table tr:last-child td { border-bottom: none; }
+.shop-table tr:hover td { background: var(--surface2); }
+.item-code { font-family: monospace; font-size: 12px; color: var(--accent2); }
+.price-cell { font-weight: 600; color: var(--gold); }
+.currency-cell { color: var(--muted); font-size: 12px; }
+
+.btn-del {
+  background: none; border: 1px solid var(--border); color: var(--red);
+  border-radius: 6px; padding: 3px 10px; font-size: 12px; cursor: pointer;
+}
+.btn-del:hover { background: var(--surface2); }
+
+.add-form {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px 16px; margin-top: 12px;
+}
+.add-form h4 {
+  font-size: 11px; font-weight: 700; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .6px; margin: 0 0 12px;
+}
+.add-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 120px 80px auto;
+  gap: 8px; align-items: end;
+}
+@media(max-width:640px) { .add-row { grid-template-columns: 1fr 1fr; } }
+.add-row label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+.add-row input, .add-row select {
+  width: 100%; background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); border-radius: 7px; padding: 6px 10px; font-size: 13px;
+  box-sizing: border-box; font-family: inherit;
+}
+.add-row input:focus, .add-row select:focus { outline: none; border-color: var(--accent); }
+
+.btn-add {
+  background: var(--accent); color: #fff; border: none;
+  border-radius: 8px; padding: 7px 16px; font-size: 13px;
+  font-weight: 600; cursor: pointer; white-space: nowrap; align-self: end;
+}
+.btn-add:hover { opacity: .85; }
+
+.btn-save {
+  background: var(--accent); color: #fff; border: none;
+  border-radius: 8px; padding: 8px 24px; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.btn-save:hover { opacity: .85; }
+.btn-save:disabled { opacity: .5; cursor: not-allowed; }
+
+.cfg-row {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+}
+.cfg-row:last-child { border-bottom: none; }
+.cfg-label { font-size: 13px; font-weight: 600; min-width: 140px; }
+.cfg-desc { font-size: 12px; color: var(--muted); flex: 1; }
+.cfg-control { display: flex; align-items: center; gap: 8px; }
+.cfg-control input[type=number] {
+  width: 80px; background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text); border-radius: 7px; padding: 5px 10px; font-size: 13px;
+  font-family: inherit;
+}
+.cfg-control input[type=number]:focus { outline: none; border-color: var(--accent); }
+
+/* toggle switch */
+.toggle { position: relative; display: inline-block; width: 40px; height: 22px; }
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute; cursor: pointer; inset: 0;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 22px; transition: .2s;
+}
+.toggle-slider:before {
+  content: ""; position: absolute; width: 16px; height: 16px;
+  left: 2px; bottom: 2px; background: var(--muted); border-radius: 50%; transition: .2s;
+}
+.toggle input:checked + .toggle-slider { background: var(--accent); border-color: var(--accent); }
+.toggle input:checked + .toggle-slider:before { transform: translateX(18px); background: #fff; }
+
+.market-row { display: grid; grid-template-columns: 70px 1fr 1fr 80px 80px 80px 80px; gap: 0; }
+.empty-hint { color: var(--muted); text-align: center; padding: 24px; font-size: 13px; }
+
+#toast {
+  position: fixed; bottom: 24px; right: 24px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px 18px;
+  font-size: 13px; display: none; z-index: 999;
+}
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="shop-layout">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:8px;">
+    <h1 style="font-size:18px;font-weight:700;margin:0;">🏪 商城管理</h1>
+    <a href="{{ url_for('admin') }}" style="font-size:12px;color:var(--muted);">← 后台</a>
+  </div>
+
+  <!-- ── 市场设置 ── -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">⚙️ 市场设置</span>
+    </div>
+    <div class="panel-body">
+      <div class="cfg-row">
+        <span class="cfg-label">二手市场</span>
+        <span class="cfg-desc">开启后玩家可通过「售卖」指令上架，「二手」指令浏览购买</span>
+        <div class="cfg-control">
+          <label class="toggle">
+            <input type="checkbox" id="cfg-enabled">
+            <span class="toggle-slider"></span>
+          </label>
+          <span id="cfg-enabled-label" style="font-size:12px;color:var(--muted);"></span>
+        </div>
+      </div>
+      <div class="cfg-row">
+        <span class="cfg-label">手续费（%）</span>
+        <span class="cfg-desc">二手市场成交时收取的手续费比例（2–5）</span>
+        <div class="cfg-control">
+          <input type="number" id="cfg-fee" min="0" max="100" step="1">
+          <span style="font-size:12px;color:var(--muted);">%</span>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:14px;gap:10px;align-items:center;">
+        <span id="cfg-save-status" style="font-size:12px;color:var(--muted);"></span>
+        <button class="btn-save" id="btn-cfg-save" onclick="saveConfig()">保存设置</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 商城上架 ── -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">🛒 商城上架</span>
+      <span style="font-size:12px;color:var(--muted);">共 <b id="shop-count">0</b> 件</span>
+    </div>
+    <div class="panel-body" style="padding:0;">
+      <table class="shop-table" id="shop-table">
+        <thead>
+          <tr>
+            <th>物品码</th>
+            <th>名称</th>
+            <th>描述</th>
+            <th style="text-align:right;">价格</th>
+            <th>货币</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="shop-tbody"></tbody>
+      </table>
+      <div id="shop-empty" class="empty-hint" style="display:none;">暂无上架物品</div>
+    </div>
+    <div style="padding:14px 16px;border-top:1px solid var(--border);">
+      <div class="add-form">
+        <h4>上架物品</h4>
+        <div class="add-row">
+          <div>
+            <label>物品</label>
+            <select id="new-item-code">
+              <option value="">— 选择物品 —</option>
+              {% for code, item in item_registry.items() %}
+              <option value="{{ code }}">{{ '[' + code + '] ' + item.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label>或手动输入物品码</label>
+            <input id="new-item-manual" type="text" placeholder="如 ITEM_001">
+          </div>
+          <div>
+            <label>价格</label>
+            <input id="new-price" type="number" min="1" placeholder="100">
+          </div>
+          <div>
+            <label>货币名</label>
+            <input id="new-currency" type="text" placeholder="金币">
+          </div>
+          <div>
+            <button class="btn-add" onclick="addShopItem()">上架</button>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:14px;gap:10px;align-items:center;">
+        <span id="shop-save-status" style="font-size:12px;color:var(--muted);"></span>
+        <button class="btn-save" id="btn-shop-save" onclick="saveShop()">保存商城</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 二手市场状态 ── -->
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">🔄 二手市场（只读）</span>
+      <span style="font-size:12px;color:var(--muted);">共 <b id="market-count">0</b> 条在售</span>
+    </div>
+    <div class="panel-body" style="padding:0;">
+      <table class="shop-table" id="market-table">
+        <thead>
+          <tr>
+            <th>编号</th>
+            <th>卖家</th>
+            <th>物品码</th>
+            <th>名称</th>
+            <th>数量</th>
+            <th style="text-align:right;">总价</th>
+            <th>货币</th>
+            <th>上架时间</th>
+          </tr>
+        </thead>
+        <tbody id="market-tbody"></tbody>
+      </table>
+      <div id="market-empty" class="empty-hint" style="display:none;">二手市场暂无在售商品</div>
+    </div>
+  </div>
+
+</div>
+<div id="toast"></div>
+
+<script>
+const itemRegistry = {{ item_registry | tojson }};
+let shopListings  = {{ shop_listings | tojson }};
+let marketConfig  = {{ market_config | tojson }};
+const secondhand  = {{ secondhand_market | tojson }};
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── 初始化控件 ──────────────────────────────────────────
+document.getElementById('cfg-enabled').checked = !!marketConfig.enabled;
+document.getElementById('cfg-fee').value = marketConfig.fee ?? 3;
+updateEnabledLabel();
+
+document.getElementById('cfg-enabled').addEventListener('change', function() {
+  updateEnabledLabel();
+  document.getElementById('cfg-save-status').textContent = '（有未保存的更改）';
+});
+document.getElementById('cfg-fee').addEventListener('input', function() {
+  document.getElementById('cfg-save-status').textContent = '（有未保存的更改）';
+});
+
+function updateEnabledLabel() {
+  const on = document.getElementById('cfg-enabled').checked;
+  document.getElementById('cfg-enabled-label').textContent = on ? '已开启' : '已关闭';
+}
+
+// ── 商城渲染 ────────────────────────────────────────────
+function renderShop() {
+  const tbody = document.getElementById('shop-tbody');
+  document.getElementById('shop-count').textContent = shopListings.length;
+  document.getElementById('shop-empty').style.display = shopListings.length ? 'none' : 'block';
+  tbody.innerHTML = '';
+  shopListings.forEach((s, idx) => {
+    const item = itemRegistry[s.code] || {};
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><span class="item-code">${esc(s.code)}</span></td>
+      <td>${esc(item.name || s.code)}</td>
+      <td style="color:var(--muted);font-size:12px;">${esc(item.desc || '')}</td>
+      <td class="price-cell" style="text-align:right;">${esc(s.price)}</td>
+      <td class="currency-cell">${esc(s.currencyName)}</td>
+      <td><button class="btn-del" onclick="removeShopItem(${idx})">下架</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function addShopItem() {
+  const select = document.getElementById('new-item-code');
+  const manual = document.getElementById('new-item-manual').value.trim();
+  const code   = manual || select.value;
+  const price  = parseInt(document.getElementById('new-price').value) || 0;
+  const currency = document.getElementById('new-currency').value.trim();
+  if (!code) { showToast('❌ 请选择或输入物品码'); return; }
+  if (price <= 0) { showToast('❌ 价格必须大于 0'); return; }
+  if (!currency) { showToast('❌ 请输入货币名'); return; }
+  if (shopListings.find(s => s.code === code)) { showToast('❌ 该物品已上架，请先下架再重新设定价格'); return; }
+  shopListings.push({ code, price, currencyName: currency, currencyCode: '' });
+  select.value = '';
+  document.getElementById('new-item-manual').value = '';
+  document.getElementById('new-price').value = '';
+  document.getElementById('new-currency').value = '';
+  renderShop();
+  document.getElementById('shop-save-status').textContent = '（有未保存的更改）';
+}
+
+function removeShopItem(idx) {
+  shopListings.splice(idx, 1);
+  renderShop();
+  document.getElementById('shop-save-status').textContent = '（有未保存的更改）';
+}
+
+// ── 二手市场渲染（只读）────────────────────────────────
+function renderMarket() {
+  const entries = Object.entries(secondhand);
+  document.getElementById('market-count').textContent = entries.length;
+  document.getElementById('market-empty').style.display = entries.length ? 'none' : 'block';
+  const tbody = document.getElementById('market-tbody');
+  tbody.innerHTML = '';
+  entries.sort((a, b) => (b[1].listedAt || 0) - (a[1].listedAt || 0)).forEach(([shCode, m]) => {
+    const item = itemRegistry[m.code] || {};
+    const ts   = m.listedAt ? new Date(m.listedAt).toLocaleString('zh-CN', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><span class="item-code">#${esc(shCode)}</span></td>
+      <td>${esc(m.sellerRole || '—')}</td>
+      <td><span class="item-code">${esc(m.code)}</span></td>
+      <td>${esc(item.name || m.code)}</td>
+      <td>${esc(m.count || 1)}</td>
+      <td class="price-cell" style="text-align:right;">${esc((m.price||0)*(m.count||1))}</td>
+      <td class="currency-cell">${esc(m.currencyName || '—')}</td>
+      <td style="color:var(--muted);font-size:12px;">${esc(ts)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// ── 保存 ────────────────────────────────────────────────
+async function saveConfig() {
+  const btn = document.getElementById('btn-cfg-save');
+  btn.disabled = true; btn.textContent = '保存中…';
+  marketConfig = {
+    enabled: document.getElementById('cfg-enabled').checked,
+    fee: parseInt(document.getElementById('cfg-fee').value) || 3,
+  };
+  try {
+    const res = await fetch("{{ url_for('admin_shop_save') }}", {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ market_config: marketConfig })
+    });
+    const d = await res.json();
+    if (d.ok) {
+      showToast('✅ 设置已保存');
+      document.getElementById('cfg-save-status').textContent = '';
+    } else {
+      showToast('❌ 保存失败：' + (d.error || '未知错误'));
+    }
+  } catch(e) { showToast('❌ 网络错误：' + e.message); }
+  finally { btn.disabled = false; btn.textContent = '保存设置'; }
+}
+
+async function saveShop() {
+  const btn = document.getElementById('btn-shop-save');
+  btn.disabled = true; btn.textContent = '保存中…';
+  try {
+    const res = await fetch("{{ url_for('admin_shop_save') }}", {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ shop_listings: shopListings })
+    });
+    const d = await res.json();
+    if (d.ok) {
+      showToast('✅ 商城已保存。在机器人发送「拉取全部」可推送到机器人。');
+      document.getElementById('shop-save-status').textContent = '';
+    } else {
+      showToast('❌ 保存失败：' + (d.error || '未知错误'));
+    }
+  } catch(e) { showToast('❌ 网络错误：' + e.message); }
+  finally { btn.disabled = false; btn.textContent = '保存商城'; }
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.display = 'block';
+  setTimeout(() => { t.style.display = 'none'; }, 4000);
+}
+
+renderShop();
+renderMarket();
+</script>
+{% endblock %}

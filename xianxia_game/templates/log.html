@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}修炼日志 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">📋 修炼日志 <small>{{ char.name }} 的修仙记录</small></div>
+
+{% set type_color = {
+  'cultivate': 'var(--gold)',
+  'combat':    'var(--red)',
+  'explore':   'var(--blue)',
+  'market':    'var(--green)',
+  'system':    'var(--purple)'
+} %}
+{% set type_icon = {
+  'cultivate': '⚡',
+  'combat':    '⚔',
+  'explore':   '🗺',
+  'market':    '💰',
+  'system':    '✦'
+} %}
+
+{% if not logs %}
+<div class="empty">暂无修炼记录</div>
+{% else %}
+<div class="card">
+  {% for l in logs %}
+  <div style="display:flex;gap:12px;padding:10px 0;
+       {% if not loop.last %}border-bottom:1px solid var(--bd){% endif %}">
+    <div style="width:24px;height:24px;border-radius:50%;
+         background:rgba(0,0,0,.05);display:flex;align-items:center;
+         justify-content:center;font-size:12px;flex-shrink:0;margin-top:2px">
+      {{ type_icon.get(l.type, '·') }}
+    </div>
+    <div style="flex:1">
+      <div style="font-size:13px;color:var(--text);line-height:1.7">{{ l.content }}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">
+        <span style="color:{{ type_color.get(l.type, 'var(--muted)') }}">
+          {{ {'cultivate':'修炼','combat':'战斗','explore':'探索','market':'交易','system':'系统'}.get(l.type, l.type) }}
+        </span>
+        · {{ l.created_at | int | format_ts if l.created_at else '' }}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% if pages > 1 %}
+<div style="display:flex;gap:8px;justify-content:center;margin-top:16px;flex-wrap:wrap">
+  {% for p in range(1, pages+1) %}
+  <a href="{{ url_for('activity_log', page=p) }}"
+     class="btn btn-sm {{ 'btn-jade' if p == page else 'btn-ghost' }}">{{ p }}</a>
+  {% endfor %}
+</div>
+{% endif %}
+{% endif %}
+</div>
+{% endblock %}

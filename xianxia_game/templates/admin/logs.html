@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}玩家日志 — 后台{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">📋 玩家行为日志 <small><a href="{{ url_for('admin') }}" style="font-size:13px">← 后台</a></small></div>
+
+<!-- 筛选 -->
+<div class="card" style="margin-bottom:14px">
+  <form method="get" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+    <div>
+      <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">道号</label>
+      <input name="name" value="{{ name_filter }}" placeholder="模糊搜索"
+        style="background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px;width:160px">
+    </div>
+    <div>
+      <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">类型</label>
+      <select name="type" style="background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+        <option value="">全部</option>
+        {% for t in types %}
+        <option value="{{ t }}" {% if t == type_filter %}selected{% endif %}>{{ t }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn btn-jade btn-sm">筛选</button>
+    {% if type_filter or name_filter %}
+    <a href="{{ url_for('admin_logs') }}" class="btn btn-ghost btn-sm">清除</a>
+    {% endif %}
+  </form>
+</div>
+
+<!-- 日志表 -->
+<div class="card">
+  <div class="card-h">最近 100 条{% if type_filter or name_filter %}（已筛选）{% endif %}</div>
+  {% if logs %}
+  <table class="tbl" style="font-size:12px">
+    <thead>
+      <tr>
+        <th style="width:130px">时间</th>
+        <th style="width:100px">道号</th>
+        <th style="width:80px">类型</th>
+        <th>内容</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in logs %}
+      <tr>
+        <td style="color:var(--muted);white-space:nowrap">{{ l.created_at | format_ts }}</td>
+        <td>
+          <a href="{{ url_for('admin_player', cid=l.char_id) }}"
+             style="color:var(--jade);font-weight:600;text-decoration:none">{{ l.char_name }}</a>
+        </td>
+        <td>
+          <span style="
+            font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;
+            {% if l.type == 'system' %}background:#1a1a2e;color:#8080e0;border:1px solid #2e2e5e{% endif %}
+            {% if l.type == 'combat' %}background:#3a1a1a;color:var(--red);border:1px solid #5a2a2a{% endif %}
+            {% if l.type == 'social' %}background:#1a2a3a;color:#60b8ff;border:1px solid #2a4a6a{% endif %}
+            {% if l.type == 'market' %}background:#2a2a1a;color:var(--gold);border:1px solid #4a4a2a{% endif %}
+            {% if l.type == 'cultivate' %}background:#1a3a2a;color:var(--jade);border:1px solid #2a5a3a{% endif %}
+            {% if l.type == 'forge' %}background:#3a2a1a;color:#f0a040;border:1px solid #5a4a2a{% endif %}
+            {% if l.type == 'alchemy' %}background:#2a1a3a;color:var(--purple);border:1px solid #4a2a5a{% endif %}
+            {% if l.type == 'fulu' %}background:#1a3a3a;color:#40e0d0;border:1px solid #2a5a5a{% endif %}
+            {% if l.type == 'mine' %}background:#2a2a2a;color:#a0a0a0;border:1px solid #3a3a3a{% endif %}
+            {% if l.type == 'explore' %}background:#2a1a1a;color:#e08060;border:1px solid #4a2a2a{% endif %}
+            {% if l.type == 'encounter' %}background:#3a2a0a;color:#e0c040;border:1px solid #5a4a1a{% endif %}
+          ">{{ l.type }}</span>
+        </td>
+        <td style="word-break:break-all;max-width:0">{{ l.content }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div style="color:var(--muted);font-size:13px;padding:20px 0;text-align:center">暂无日志记录</div>
+  {% endif %}
+</div>
+</div>
+<style>
+.tbl td { vertical-align:top; }
+.tbl { table-layout:fixed; width:100%; }
+.tbl td:last-child { overflow-wrap:break-word; }
+</style>
+{% endblock %}

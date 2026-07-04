@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}闭关 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🏔 闭关 <small>一心修炼，无需守候</small></div>
+
+{% if in_sec %}
+<!-- 闭关中 -->
+<div class="card" style="border-color:var(--jade);background:rgba(31,122,95,.06);text-align:center;padding:28px">
+  <div style="font-size:36px;margin-bottom:12px">🧘</div>
+  <div style="font-size:20px;font-weight:700;color:var(--jade)">闭关修炼中</div>
+  <div style="color:var(--muted);font-size:14px;margin-top:8px">
+    还有 <strong style="color:var(--text)">{{ secs_left // 3600 }}时 {{ (secs_left % 3600) // 60 }}分</strong> 结束
+  </div>
+  <div style="color:var(--muted);font-size:12px;margin-top:6px">
+    登录后将自动结算修为收益
+  </div>
+  <form method="post" style="margin-top:16px">
+    <input type="hidden" name="action" value="cancel">
+    <button class="btn btn-ghost" style="color:var(--red)">提前结束（按已修时长结算）</button>
+  </form>
+</div>
+
+{% else %}
+<!-- 选择闭关时长 -->
+<div class="grid2">
+  <div>
+    <div class="card">
+      <div class="card-h">开始闭关</div>
+      <div style="color:var(--muted);font-size:13px;line-height:1.8;margin-bottom:14px">
+        花费灵石进入闭关状态，系统自动帮你修炼。<br>
+        效率为主动修炼的 <strong style="color:var(--jade)">{{ (SECLUSION_EFFICIENCY * 100)|int }}%</strong>，
+        但无需反复上线操作。<br>
+        节气加成、感悟加成、子嗣加成均在闭关中生效。
+      </div>
+      <div style="color:var(--muted);font-size:12px;margin-bottom:6px">
+        当前灵石：<strong style="color:var(--gold)">{{ char.spirit_stones }}</strong>
+      </div>
+      <form method="post" style="display:flex;flex-direction:column;gap:10px">
+        <input type="hidden" name="action" value="start">
+        <div>
+          <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:5px">闭关时长</label>
+          <select name="hours" style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                  border-radius:8px;padding:8px 10px;font-size:13px;font-family:inherit">
+            {% for h in [2,4,8,12,24] %}
+            <option value="{{ h }}">{{ h }} 小时 · 消耗 {{ h * SECLUSION_COST_PER_HOUR }} 灵石 · 约 +{{ fmt_exp(previews[h].exp) }} 修为</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% if seclusion_cost_mult > 1 %}
+        <div style="font-size:11px;color:var(--muted);margin-top:6px">
+          ⚠ 元婴及以上境界打坐需要更多灵石（×{{ seclusion_cost_mult }}），每小时 {{ SECLUSION_COST_PER_HOUR }} 灵石
+        </div>
+        {% endif %}
+        <button class="btn btn-jade" style="padding:10px">🏔 进入闭关</button>
+      </form>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <div class="card-h">预估收益</div>
+      <table class="tbl">
+        <thead><tr><th>时长</th><th>灵石消耗</th><th>预估修为</th></tr></thead>
+        <tbody>
+          {% for h, p in previews.items() %}
+          <tr>
+            <td>{{ h }}小时</td>
+            <td style="color:var(--gold)">{{ p.cost }}</td>
+            <td style="color:var(--jade)">+{{ fmt_exp(p.exp) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px">
+        按你的灵根（{{ char.spirit_root }}）和当前加成计算。
+      </div>
+    </div>
+
+    <div class="card" style="background:rgba(31,122,95,.05);border-color:rgba(31,122,95,.2)">
+      <div class="card-h" style="color:var(--jade)">闭关说明</div>
+      <div style="color:var(--muted);font-size:12px;line-height:2">
+        <div>· 闭关期间其他功能正常使用（丹市、道友等）</div>
+        <div>· 战斗/探索/修炼 页面会提示闭关中</div>
+        <div>· 下次登录时自动结算修为，无需手动操作</div>
+        <div>· 可随时提前结束，按已过时长结算</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+</div>
+<style>select:focus{outline:none;border-color:var(--jade)}</style>
+{% endblock %}

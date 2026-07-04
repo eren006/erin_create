@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}礼包码管理 — 后台{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🎁 礼包码管理 <small>创建兑换码并配置奖励</small></div>
+
+<!-- 创建 -->
+<div class="card" style="margin-bottom:20px">
+  <div class="card-h">创建礼包码</div>
+  <form method="post">
+    <input type="hidden" name="action" value="create">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div>
+        <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:4px">
+          兑换码（留空自动生成）
+        </label>
+        <input name="code" placeholder="留空则随机生成12位码" maxlength="20"
+          style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                 border-radius:8px;padding:7px 10px;font-size:13px;font-family:inherit;
+                 text-transform:uppercase;letter-spacing:1px">
+      </div>
+      <div>
+        <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:4px">描述备注</label>
+        <input name="desc" placeholder="如：开服庆典礼包" maxlength="40"
+          style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                 border-radius:8px;padding:7px 10px;font-size:13px;font-family:inherit">
+      </div>
+      <div>
+        <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:4px">最大兑换次数</label>
+        <input name="max_uses" type="number" value="1" min="1"
+          style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                 border-radius:8px;padding:7px 10px;font-size:13px;font-family:inherit">
+      </div>
+      <div>
+        <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:4px">有效期（天，留空永不过期）</label>
+        <input name="expires_days" type="number" min="1" placeholder="如：7"
+          style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+                 border-radius:8px;padding:7px 10px;font-size:13px;font-family:inherit">
+      </div>
+    </div>
+
+    <!-- 奖励配置 -->
+    <div style="background:var(--sf2);border-radius:10px;padding:14px;margin-bottom:12px">
+      <div style="font-size:13px;font-weight:600;color:var(--gold2);margin-bottom:10px">奖励内容</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <div>
+          <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:4px">灵石</label>
+          <input name="stones" type="number" value="0" min="0"
+            style="width:100%;background:var(--sf);border:1px solid var(--bd);color:var(--text);
+                   border-radius:8px;padding:7px 10px;font-size:13px;font-family:inherit">
+        </div>
+        <div>
+          <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:4px">修为</label>
+          <input name="exp" type="number" value="0" min="0"
+            style="width:100%;background:var(--sf);border:1px solid var(--bd);color:var(--text);
+                   border-radius:8px;padding:7px 10px;font-size:13px;font-family:inherit">
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">物品奖励（最多5种，名称需与数据库一致）</div>
+      {% for i in range(1, 6) %}
+      <div style="display:flex;gap:8px;margin-bottom:6px">
+        <input name="item_name_{{ i }}" placeholder="物品名称，如：聚灵丹"
+          style="flex:3;background:var(--sf);border:1px solid var(--bd);color:var(--text);
+                 border-radius:8px;padding:6px 10px;font-size:12px;font-family:inherit">
+        <input name="item_qty_{{ i }}" type="number" value="1" min="1" placeholder="数量"
+          style="flex:1;background:var(--sf);border:1px solid var(--bd);color:var(--text);
+                 border-radius:8px;padding:6px 10px;font-size:12px;font-family:inherit">
+      </div>
+      {% endfor %}
+    </div>
+
+    <button type="submit" class="btn btn-gold">创建礼包码</button>
+  </form>
+</div>
+
+<!-- 码列表 -->
+<div class="card">
+  <div class="card-h">全部礼包码（{{ codes|length }}）</div>
+  {% if not codes %}
+  <div class="empty" style="padding:24px 0">暂无礼包码</div>
+  {% else %}
+  <table class="tbl">
+    <thead>
+      <tr>
+        <th>兑换码</th>
+        <th>描述</th>
+        <th>奖励</th>
+        <th>兑换</th>
+        <th>状态</th>
+        <th>有效期</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in codes %}
+      {% set rwd = c.rewards_json | fromjson %}
+      <tr style="{% if not c.is_active %}opacity:.5{% endif %}">
+        <td>
+          <code style="font-size:13px;font-weight:700;color:var(--gold);letter-spacing:1px">{{ c.code }}</code>
+          <button class="btn btn-ghost btn-sm" style="margin-left:6px;padding:2px 8px;font-size:11px"
+            onclick="navigator.clipboard.writeText('{{ c.code }}');this.textContent='✓'">复制</button>
+        </td>
+        <td style="color:var(--muted);font-size:12px">{{ c.description or '—' }}</td>
+        <td style="font-size:12px">
+          {% if rwd.spirit_stones %}<span style="color:var(--gold)">灵石×{{ rwd.spirit_stones }}</span> {% endif %}
+          {% if rwd.exp %}<span style="color:var(--blue)">修为×{{ rwd.exp }}</span> {% endif %}
+          {% for it in rwd.get('items', []) %}
+          <span style="color:var(--green)">{{ it.name }}×{{ it.qty }}</span>
+          {% endfor %}
+        </td>
+        <td style="font-size:12px;color:{% if c.use_cnt >= c.max_uses %}var(--red){% else %}var(--muted){% endif %}">
+          {{ c.use_cnt }} / {{ c.max_uses }}
+        </td>
+        <td>
+          {% if c.is_active and c.use_cnt < c.max_uses %}
+          <span style="color:var(--green);font-size:12px">有效</span>
+          {% elif c.use_cnt >= c.max_uses %}
+          <span style="color:var(--muted);font-size:12px">已用完</span>
+          {% else %}
+          <span style="color:var(--red);font-size:12px">已停用</span>
+          {% endif %}
+        </td>
+        <td style="font-size:12px;color:var(--muted)">
+          {% if c.expires_at %}{{ c.expires_at | format_ts }}{% else %}永久{% endif %}
+        </td>
+        <td>
+          <div style="display:flex;gap:6px">
+            <form method="post" style="display:inline">
+              <input type="hidden" name="action" value="toggle">
+              <input type="hidden" name="gift_id" value="{{ c.id }}">
+              <button class="btn btn-ghost btn-sm">{{ '停用' if c.is_active else '启用' }}</button>
+            </form>
+            <form method="post" style="display:inline"
+              onsubmit="return confirm('确定删除此礼包码？')">
+              <input type="hidden" name="action" value="delete">
+              <input type="hidden" name="gift_id" value="{{ c.id }}">
+              <button class="btn btn-ghost btn-sm" style="color:var(--red)">删除</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+</div>
+<style>input:focus{outline:none;border-color:var(--jade)!important}</style>
+{% endblock %}

@@ -23,6 +23,10 @@ ext.autoActive = true;
 function getApi()                      { return globalThis.__changriApi || null; }
 function mainStorGet(key)              { return getApi()?.kvGetRaw(key) ?? null; }
 function mainStorSet(key, val)         { getApi()?.kvSetRaw(key, val); }
+
+// JSON 对象读写：走主插件 kvGet/kvSet（带缓存与损坏容错），JSON key 一律用这两个函数
+function mainKvGet(key, def) { const api = getApi(); return api ? api.kvGet(key, def) : def; }
+function mainKvSet(key, val) { getApi()?.kvSet(key, val); }
 function isUserAdmin(ctx, msg)         { return getApi()?.isUserAdmin(ctx, msg) ?? false; }
 function isArchiveEnabled()            { return getApi()?.isArchiveEnabled() ?? false; }
 function postToArchive(path, body)     { return getApi()?.postToArchive(path, body); }
@@ -41,7 +45,7 @@ const MAX_CONCURRENT_AUCTIONS = 10; // 同时进行中的拍卖上限
 // ========================
 
 function getRegistry_rpg() {
-    return JSON.parse(mainStorGet("item_registry") || "{}");
+    return mainKvGet("item_registry", {});
 }
 function findItem_rpg(reg, input) {
     if (!input) return null;
@@ -54,10 +58,10 @@ function findCurrencyByName_rpg(name) {
     return Object.values(reg).find(i => i.type === "currency" && i.name === name) || null;
 }
 function getInvAll_rpg() {
-    return JSON.parse(mainStorGet("global_inventories") || "{}");
+    return mainKvGet("global_inventories", {});
 }
 function saveInvAll_rpg(invs) {
-    mainStorSet("global_inventories", JSON.stringify(invs));
+    mainKvSet("global_inventories", invs);
 }
 function getInvCount_rpg(roleKey, code) {
     const inv = getInvAll_rpg()[roleKey] || [];
@@ -119,14 +123,14 @@ function pruneExpiredAuctionItems() {
 }
 
 function getAuctions() {
-    return JSON.parse(mainStorGet("auction_items") || "{}");
+    return mainKvGet("auction_items", {});
 }
 function saveAuctions(data) {
-    mainStorSet("auction_items", JSON.stringify(data));
+    mainKvSet("auction_items", data);
 }
 function getAuctionSettings() {
     return {
-        displayGroup: JSON.parse(mainStorGet("song_group_id") || "null") || "",
+        displayGroup: mainKvGet("song_group_id", null) || "",
         allowAnon: mainStorGet("auction_allow_anon") !== "false",
         broadcast: mainStorGet("auction_broadcast") !== "false",
         showTopBidder: mainStorGet("auction_show_top_bidder") !== "false",
@@ -151,7 +155,7 @@ function _settleSingleAuction(ctx, msg, settings, auctions, id, item) {
             if (getInvCount_rpg(roleKey, currencyItem.code) >= bid.amount) { winner = bid; break; }
         }
     } else {
-        const attrs = JSON.parse(mainStorGet("sys_character_attrs") || "{}");
+        const attrs = mainKvGet("sys_character_attrs", {});
         for (const bid of bids) {
             if ((attrs[bid.uid]?.[settings.currency] || 0) >= bid.amount) { winner = bid; break; }
         }
@@ -166,10 +170,10 @@ function _settleSingleAuction(ctx, msg, settings, auctions, id, item) {
     if (currencyItem) {
         removeFromInv_rpg(`${platform}:${winner.uid}`, currencyItem.code, winner.amount);
     } else {
-        const attrs = JSON.parse(mainStorGet("sys_character_attrs") || "{}");
+        const attrs = mainKvGet("sys_character_attrs", {});
         if (!attrs[winner.uid]) attrs[winner.uid] = {};
         attrs[winner.uid][settings.currency] = (attrs[winner.uid][settings.currency] || 0) - winner.amount;
-        mainStorSet("sys_character_attrs", JSON.stringify(attrs));
+        mainKvSet("sys_character_attrs", attrs);
     }
 
     const roleKey = `${platform}:${winner.uid}`;
@@ -383,7 +387,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
         if (currencyItem) {
             balance = getInvCount_rpg(`${platform}:${uid}`, currencyItem.code);
         } else {
-            const attrs = JSON.parse(mainStorGet("sys_character_attrs") || "{}");
+            const attrs = mainKvGet("sys_character_attrs", {});
             balance = attrs[uid]?.[settings.currency] || 0;
         }
         if (balance < amount) return seal.replyToSender(ctx, msg, `❌ ${settings.currency}不足！需要 ${amount}，当前 ${balance}`);

@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+{% block title %}异世之门管理{% endblock %}
+{% block body %}
+<div style="max-width:900px;margin:0 auto;padding:24px 16px">
+<h2 style="color:#e080e0;margin-bottom:20px">⚡ 异世之门活动管理</h2>
+
+<!-- 活动控制 -->
+<div style="background:#1a0d1a;border:1px solid #5a2a5a;border-radius:12px;padding:20px;margin-bottom:20px">
+  <h3 style="color:#c080d0;margin-bottom:14px">活动状态</h3>
+  {% if ev %}
+  <p style="color:#c0a0d0;margin-bottom:12px">
+    ✅ 活动进行中 &nbsp;|&nbsp;
+    开始：{{ ev['started_at'] | format_ts }} &nbsp;|&nbsp;
+    结束：{{ ev['ends_at'] | format_ts }}
+  </p>
+  <form method="post" style="display:inline">
+    <input type="hidden" name="action" value="end">
+    <button style="padding:8px 18px;background:#6a1a1a;color:#ffaaaa;border:1px solid #a03030;border-radius:8px;cursor:pointer"
+      onclick="return confirm('确认提前结束活动？污染值将清零。')">提前结束活动</button>
+  </form>
+  <form method="post" style="display:inline;margin-left:10px">
+    <input type="hidden" name="action" value="clear_demonic">
+    <button style="padding:8px 18px;background:#3a1a0a;color:#ffbb88;border:1px solid #804020;border-radius:8px;cursor:pointer"
+      onclick="return confirm('确认清除所有玩家的魔修状态？')">清除魔修状态</button>
+  </form>
+  <form method="post" style="display:inline;margin-left:10px">
+    <input type="hidden" name="action" value="refresh_pool">
+    <button style="padding:8px 18px;background:#0a1a3a;color:#88ccff;border:1px solid #204080;border-radius:8px;cursor:pointer"
+      onclick="return confirm('确认刷新今日鬼魔池？所有玩家今日记录将被清空，下次进入重新生成新一批怪物。')">⚡ 刷新今日鬼魔</button>
+  </form>
+  <form method="post" style="display:inline;margin-left:10px">
+    <input type="hidden" name="action" value="preview_4h_attack">
+    <input type="number" name="attack_hour" placeholder="几点" min="0" max="23" style="width:55px;padding:6px;background:#1a1a2a;color:#88ccff;border:1px solid #2a4a6a;border-radius:6px;text-align:center">
+    <button style="padding:8px 18px;background:#0a1a2a;color:#88ccff;border:1px solid #2a4a6a;border-radius:8px;cursor:pointer">👁 预览补发效果</button>
+  </form>
+  <form method="post" style="display:inline;margin-left:10px">
+    <input type="hidden" name="action" value="trigger_4h_attack">
+    <input type="number" name="attack_hour" placeholder="几点" min="0" max="23" style="width:55px;padding:6px;background:#1a1a2a;color:#ff99bb;border:1px solid #804060;border-radius:6px;text-align:center">
+    <button style="padding:8px 18px;background:#3a0a1a;color:#ff99bb;border:1px solid #804060;border-radius:8px;cursor:pointer"
+      onclick="return confirm('手动补发一轮鬼魔攻击？会让每个还有未击败鬼魔的玩家随机挨一下打（年龄/污染按正常规则增加），日志显示为你填的那个点数，看起来跟正常定时攻击一样。留空则用当前时间。')">🗡 补发X点攻击</button>
+  </form>
+  <form method="post" style="display:inline;margin-left:10px">
+    <input type="hidden" name="action" value="give_charges">
+    <input type="number" name="amount" value="5" min="1" max="24" style="width:50px;padding:6px;background:#1a1a2a;color:#d0c0f0;border:1px solid #5a3a8a;border-radius:6px;text-align:center">
+    <button style="padding:8px 14px;background:#1a0a3a;color:#cc99ff;border:1px solid #6a3a9a;border-radius:8px;cursor:pointer"
+      onclick="return confirm('确认为全体玩家发放攻击次数？')">⚔ 全体发放攻击次数</button>
+  </form>
+  <form method="post" style="display:inline;margin-left:10px">
+    <input type="hidden" name="action" value="revoke_all_charges">
+    <input type="number" name="revoke_all_amount" value="1" min="1" max="24" style="width:45px;padding:6px;background:#1a1a2a;color:#ffaaaa;border:1px solid #8a3a3a;border-radius:6px;text-align:center">
+    <button style="padding:8px 14px;background:#2a0a0a;color:#ff9999;border:1px solid #8a3a3a;border-radius:8px;cursor:pointer"
+      onclick="return confirm('确认撤回全体玩家的攻击机会？')">✂ 全体撤回攻击次数</button>
+  </form>
+  {% else %}
+  <p style="color:#8a6a8a;margin-bottom:12px">⭕ 活动未开启</p>
+  <form method="post">
+    <input type="hidden" name="action" value="start">
+    <button style="padding:10px 24px;background:linear-gradient(135deg,#6030a0,#9050d0);color:#fff;border:none;border-radius:9px;cursor:pointer;font-size:14px;font-weight:700">
+      ⚡ 开启活动（72小时）
+    </button>
+  </form>
+  {% endif %}
+</div>
+
+<!-- 补发攻击预览 -->
+{% if preview_rows %}
+<div style="background:#0a1420;border:1px solid #2a4a6a;border-radius:12px;padding:20px;margin-bottom:20px">
+  <h3 style="color:#88ccff;margin-bottom:14px">👁 模拟预览（{{ preview_rows|length }} 人，没有真的扣任何东西）</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:12px;color:#a0c0e0">
+    <tr style="color:#5a7090;border-bottom:1px solid #1a2a3a">
+      <th style="padding:5px 10px;text-align:left">玩家</th>
+      <th style="padding:5px 10px;text-align:left">如果正式补发，会看到的内容</th>
+    </tr>
+    {% for r in preview_rows %}
+    <tr style="border-bottom:1px solid #0d1520">
+      <td style="padding:4px 10px;white-space:nowrap;font-weight:600">{{ r.name }}</td>
+      <td style="padding:4px 10px">{{ r.text }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+<!-- 管理员操作日志 -->
+{% if admin_action_log %}
+<div style="background:#0d0d0d;border:1px solid #2a2a3a;border-radius:12px;padding:20px;margin-bottom:20px">
+  <h3 style="color:#8090b0;margin-bottom:14px">📋 管理员操作记录（最近30条）</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:12px;color:#8090a0">
+    <tr style="color:#4a5a6a;border-bottom:1px solid #1a1a2a">
+      <th style="padding:4px 10px;text-align:left">时间</th>
+      <th style="padding:4px 10px;text-align:left">操作人</th>
+      <th style="padding:4px 10px;text-align:left">详情</th>
+    </tr>
+    {% for a in admin_action_log %}
+    <tr style="border-bottom:1px solid #0d0d15">
+      <td style="padding:4px 10px;white-space:nowrap">{{ a.created_at | format_ts }}</td>
+      <td style="padding:4px 10px;white-space:nowrap">{{ a.admin_name }}</td>
+      <td style="padding:4px 10px">{{ a.detail }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+<!-- 魔修列表 -->
+{% if demonic_chars %}
+<div style="background:#1a0808;border:1px solid #6a1a1a;border-radius:12px;padding:20px;margin-bottom:20px">
+  <h3 style="color:#ff8080;margin-bottom:14px">☠ 魂飞魄散玩家（{{ demonic_chars|length }} 人）</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <tr style="color:#9a6060;border-bottom:1px solid #4a1a1a">
+      <th style="padding:6px 10px;text-align:left">名字</th>
+      <th style="padding:6px 10px;text-align:left">境界</th>
+      <th style="padding:6px 10px;text-align:left">污染值</th>
+      <th style="padding:6px 10px;text-align:left">年龄</th>
+    </tr>
+    {% for c in demonic_chars %}
+    <tr style="border-bottom:1px solid #2a0a0a;color:#e09090">
+      <td style="padding:6px 10px">{{ c.name }}</td>
+      <td style="padding:6px 10px">{{ REALMS[c.realm_idx].name if c.realm_idx < REALMS|length else '?' }}</td>
+      <td style="padding:6px 10px">{{ c.pollution }}</td>
+      <td style="padding:6px 10px">{{ c.age }} 岁</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+<!-- 今日鬼魔池 -->
+{% if ev and pools_today %}
+<div style="background:#0d0d1a;border:1px solid #3a2a5a;border-radius:12px;padding:20px;margin-bottom:20px">
+  <h3 style="color:#a080d0;margin-bottom:14px">今日鬼魔池（{{ pools_today|length }} 人已生成）</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <tr style="color:#7a6090;border-bottom:1px solid #2a1a3a">
+      <th style="padding:6px 10px;text-align:left">玩家</th>
+      <th style="padding:6px 10px;text-align:left">境界</th>
+      <th style="padding:6px 10px;text-align:left">已击败</th>
+      <th style="padding:6px 10px;text-align:left">攻击次数</th>
+      <th style="padding:6px 10px;text-align:left">第几天</th>
+      <th style="padding:6px 10px;text-align:left">操作</th>
+    </tr>
+    {% for p in pools_today %}
+    {% set defeated = p.defeated_ids | fromjson | length %}
+    {% set ghost_total = p.ghosts_json | fromjson | length %}
+    <tr style="border-bottom:1px solid #1a0a2a;color:#c0a0e0">
+      <td style="padding:6px 10px">{{ p.name }}</td>
+      <td style="padding:6px 10px">{{ REALMS[p.realm_idx].name if p.realm_idx < REALMS|length else '?' }}</td>
+      <td style="padding:6px 10px">{{ defeated }} / {{ ghost_total }}</td>
+      <td style="padding:6px 10px;font-weight:700;color:{% if p.ghost_atk_charges > 0 %}#a0d0ff{% else %}#5a4a6a{% endif %}">{{ p.ghost_atk_charges or 0 }}</td>
+      <td style="padding:6px 10px">第 {{ p.day_number }} 天</td>
+      <td style="padding:6px 10px">
+        <form method="post" action="/admin/gate" style="display:inline">
+          <input type="hidden" name="action" value="give_charges_single">
+          <input type="hidden" name="give_name" value="{{ p.name }}">
+          <input type="hidden" name="give_amount" value="1">
+          <button style="padding:2px 10px;background:#0a1a2a;color:#99d9ff;border:1px solid #2a4a6a;border-radius:6px;cursor:pointer;font-size:11px"
+            onclick="return confirm('为【{{ p.name }}】发放1次攻击机会？')">⚡ 发放1次</button>
+        </form>
+        <form method="post" action="/admin/gate" style="display:inline">
+          <input type="hidden" name="action" value="revoke_charges">
+          <input type="hidden" name="revoke_name" value="{{ p.name }}">
+          <input type="hidden" name="revoke_amount" value="1">
+          <button style="padding:2px 10px;background:#2a0a0a;color:#ff9999;border:1px solid #6a2a2a;border-radius:6px;cursor:pointer;font-size:11px"
+            onclick="return confirm('撤回【{{ p.name }}】1次攻击机会？')">✂ 撤回1次</button>
+        </form>
+        {% if defeated < ghost_total %}
+        <form method="post" action="/admin/gate" style="display:inline">
+          <input type="hidden" name="action" value="clear_ghosts_single">
+          <input type="hidden" name="clear_name" value="{{ p.name }}">
+          <button style="padding:2px 10px;background:#0a2a1a;color:#88ffbb;border:1px solid #2a6a4a;border-radius:6px;cursor:pointer;font-size:11px"
+            onclick="return confirm('为【{{ p.name }}】一键击退今日剩余全部鬼魔并发放对应奖励？')">⚔ 一键打完</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+<!-- 今日攻击日志 -->
+{% if gate_logs %}
+<div style="background:#0a0d1a;border:1px solid #2a3a5a;border-radius:12px;padding:20px;margin-bottom:20px">
+  <h3 style="color:#80b0e0;margin-bottom:14px">⚔️ 今日战斗记录（{{ gate_logs|length }} 条）</h3>
+  <div style="max-height:320px;overflow-y:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <tr style="color:#5a7090;border-bottom:1px solid #1a2a3a;position:sticky;top:0;background:#0a0d1a">
+        <th style="padding:5px 10px;text-align:left;white-space:nowrap">时间</th>
+        <th style="padding:5px 10px;text-align:left;white-space:nowrap">玩家</th>
+        <th style="padding:5px 10px;text-align:left">内容</th>
+      </tr>
+      {% for l in gate_logs %}
+      <tr style="border-bottom:1px solid #0d1520;color:{% if '击败' in l.content %}#80d080{% elif '交手' in l.content %}#d0a060{% else %}#9090b0{% endif %}">
+        <td style="padding:4px 10px;white-space:nowrap;color:#4a6080">{{ l.created_at | format_ts }}</td>
+        <td style="padding:4px 10px;white-space:nowrap;font-weight:600;color:#a0c0e0">{{ l.name }}</td>
+        <td style="padding:4px 10px">{{ l.content }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- 历史记录 -->
+{% if past %}
+<div style="background:#0d0d0d;border:1px solid #3a2a3a;border-radius:12px;padding:20px">
+  <h3 style="color:#8a6a8a;margin-bottom:14px">历史活动</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:12px;color:#7a6a8a">
+    <tr style="border-bottom:1px solid #2a1a2a">
+      <th style="padding:5px 10px;text-align:left">ID</th>
+      <th style="padding:5px 10px;text-align:left">开始时间</th>
+      <th style="padding:5px 10px;text-align:left">实际结束时间</th>
+      <th style="padding:5px 10px;text-align:left">操作</th>
+    </tr>
+    {% for p in past %}
+    <tr style="border-bottom:1px solid #1a0a1a">
+      <td style="padding:5px 10px">#{{ p.id }}</td>
+      <td style="padding:5px 10px">{{ p['started_at'] | format_ts }}</td>
+      <td style="padding:5px 10px">{{ p['actual_ended_at'] | format_ts if p['actual_ended_at'] else (p['ends_at'] | format_ts) + '（预计，未实际结束）' }}</td>
+      <td style="padding:5px 10px">
+        <form method="post" style="display:inline">
+          <input type="hidden" name="action" value="rollback">
+          <input type="hidden" name="rollback_ev_id" value="{{ p.id }}">
+          <button style="padding:3px 10px;background:#2a0a0a;color:#ff9999;border:1px solid #6a1a1a;border-radius:6px;cursor:pointer;font-size:11px"
+            onclick="return confirm('确认撤回活动 #{{ p.id }} 的所有收益？将扣除灵石（可欠债），清除法则感悟、碎片、魔修状态。')">
+            ↩ 撤回收益
+          </button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p style="font-size:11px;color:#5a4a5a;margin-top:10px">⚠ 撤回收益：扣除该活动灵石、清除法则感悟与碎片、复位魔修/污染状态。灵石不足者记为债务，收益恢复后自动扣除。</p>
+</div>
+{% endif %}
+
+<!-- 撤回记录 -->
+{% if rollback_history %}
+<div style="background:#0d0d0d;border:1px solid #3a2a1a;border-radius:12px;padding:20px;margin-top:20px">
+  <h3 style="color:#c08a4a;margin-bottom:14px">↩ 撤回记录（共撤回 {{ rollback_history|length }} 次，累计 {{ rollback_total_stones }} 灵石）</h3>
+  {% for g in rollback_history %}
+  <div style="border:1px solid #2a1a0a;border-radius:8px;padding:10px 14px;margin-bottom:10px">
+    <div style="font-size:12px;color:#d0a060;margin-bottom:6px">
+      活动 #{{ g.event_id }} · {{ g.created_at | format_ts }} · 共 {{ g.players|length }} 人 · 合计 {{ g.total_stones }} 灵石
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;color:#9a8a7a">
+      <tr style="color:#5a4a3a;border-bottom:1px solid #1a1410">
+        <th style="padding:3px 10px;text-align:left">玩家</th>
+        <th style="padding:3px 10px;text-align:left">撤回灵石</th>
+      </tr>
+      {% for p in g.players %}
+      <tr style="border-bottom:1px solid #140f0a">
+        <td style="padding:3px 10px">{{ p.name }}</td>
+        <td style="padding:3px 10px">{{ p.stones }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- 进行中活动也可撤回 -->
+{% if ev %}
+<div style="background:#1a0a0a;border:1px solid #6a1a1a;border-radius:12px;padding:16px;margin-top:16px">
+  <h3 style="color:#ff8080;margin-bottom:10px">⚠ 测试用：撤回当前活动</h3>
+  <p style="font-size:12px;color:#9a6060;margin-bottom:12px">强制结束并撤回当前活动的所有收益（含灵石债务）。</p>
+  <form method="post">
+    <input type="hidden" name="action" value="rollback">
+    <input type="hidden" name="rollback_ev_id" value="{{ ev.id }}">
+    <button style="padding:8px 18px;background:#4a0a0a;color:#ffaaaa;border:1px solid #a03030;border-radius:8px;cursor:pointer"
+      onclick="return confirm('确认撤回当前进行中的活动 #{{ ev.id }}？将强制结束并撤回所有收益。')">
+      ↩ 撤回当前活动
+    </button>
+  </form>
+</div>
+{% endif %}
+
+</div>
+{% endblock %}

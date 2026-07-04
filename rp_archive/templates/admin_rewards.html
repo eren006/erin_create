@@ -191,6 +191,7 @@
     <a href="{{ url_for('admin') }}">总览</a>
     <a href="{{ url_for('admin_config_page') }}">游戏配置</a>
     <a href="{{ url_for('admin_groups') }}">群号组</a>
+    <a href="{{ url_for('admin_places') }}">地点管理</a>
     <a href="{{ url_for('admin_rewards') }}" class="active">结戏奖励</a>
     <a href="{{ url_for('admin_player_controls') }}">玩家控制</a>
     <a href="{{ url_for('admin_shows') }}">季管理</a>
@@ -235,7 +236,7 @@
     <h3><span>道具注册表</span></h3>
     <div style="background:#3a2000;border:1px solid #b45309;border-radius:8px;padding:9px 14px;margin-bottom:14px;font-size:12px;color:#fbbf24;display:flex;align-items:center;gap:8px;">
       <span style="font-size:16px;">⚠️</span>
-      <span>每次增删物品后，必须在机器人执行 <code style="background:#4a2800;border:1px solid #b45309;border-radius:4px;padding:1px 6px;font-size:12px;color:#fde68a;">。全量同步</code> 才会同步到机器人，否则结戏奖励发放时找不到物品。</span>
+      <span>每次增删物品后，必须在机器人执行 <code style="background:#4a2800;border:1px solid #b45309;border-radius:4px;padding:1px 6px;font-size:12px;color:#fde68a;">。拉取全部</code> 才会同步到机器人，否则结戏奖励发放时找不到物品。</span>
     </div>
 
     <div class="ir-tabs" id="ir-tabs">
@@ -332,7 +333,7 @@
       <div class="sync-dir-label dir-ui2bot">UI → 机器人（在此页改完后，让机器人拉取最新配置）</div>
       <div class="sync-table">
         <div class="sync-row">
-          <div class="sync-name"><code class="cmd-code">。同步设置</code></div>
+          <div class="sync-name"><code class="cmd-code">。拉取全部</code></div>
           <div class="sync-note">从存档 UI 拉取并强制覆盖机器人的所有配置（道具表、奖励模版等全部更新）</div>
         </div>
       </div>
@@ -342,11 +343,11 @@
       <div class="sync-dir-label dir-bot2ui">机器人 → UI（机器人里改了东西，推到存档界面）</div>
       <div class="sync-table">
         <div class="sync-row">
-          <div class="sync-name"><code class="cmd-code">。全量同步</code></div>
+          <div class="sync-name"><code class="cmd-code">。拉取全部</code></div>
           <div class="sync-note">将机器人当前所有配置（设置项 + 道具注册表 + 结戏加成模版）全部推送到存档 UI，同时自动拉取并分配 pending 道具编号</div>
         </div>
         <div class="sync-row">
-          <div class="sync-name"><code class="cmd-code">。同步到服务端</code></div>
+          <div class="sync-name"><code class="cmd-code">。推送全部</code></div>
           <div class="sync-note">只推送设置项（不含道具注册表和结戏模版），适合只改了设置参数的情况</div>
         </div>
       </div>
@@ -361,7 +362,7 @@
         </div>
         <div class="sync-row">
           <div class="sync-name"><code class="cmd-code">。结戏加成 批量 模版名 [类型]</code></div>
-          <div class="sync-note">多行写入模版（类型：心意/官约/私约/电话/通用）；在此页的可视化构建器编辑后，机器人执行「。同步设置」即可同步</div>
+          <div class="sync-note">多行写入模版（类型：心意/官约/私约/电话/通用）；在此页的可视化构建器编辑后，机器人执行「。拉取全部」即可同步</div>
         </div>
         <div class="sync-row">
           <div class="sync-name"><code class="cmd-code">。结戏加成 开启/关闭 模版名</code></div>
@@ -446,6 +447,7 @@
 var SAVE_URL = "{{ url_for('admin_rewards_save_config') }}";
 var tplData   = {{ bonus_templates | tojson }};
 var itemReg   = {{ item_registry  | tojson }};
+var equipReg  = {{ equip_registry | tojson }};
 var aliasTypes = {{ aliases | tojson }}.map(function(a){ return a.trigger; }).filter(Boolean);
 
 // 从 item_registry 提取货币列表
@@ -456,7 +458,8 @@ var currencies = Object.entries(itemReg)
 // ── 参数/运算符选项 ─────────────────────────────────────────────────────────
 var PARAMS = ['段数','字数','总字数','平均字数','耗费时间'];
 var OPS    = ['>=','<=','=','!=','range'];
-var RTYPES = ['货币','道具','属性'];
+var RTYPES = ['货币','道具','属性','抽取次数'];
+var POOL_NAMES = {{ pool_names | tojson }};
 
 var editingIdx = null; // null=hidden, -1=new, 0+=existing
 // 编辑中的模版（深拷贝）
@@ -467,7 +470,7 @@ function deepClone(o) { return JSON.parse(JSON.stringify(o)); }
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 function newBlock() {
-  return { conditions:[{param:'字数',op:'>=',value:0}], rewards:[{rtype:'货币',target:'',amount:0}] };
+  return { conditions:[{param:'字数',op:'>=',value:0}], rewards:[{rtype:'货币', target: currencies.length ? currencies[0].code : '', amount:0, prob:100}] };
 }
 function newTpl() {
   return { name:'', enabled:true, subtype:'通用', blocks:[newBlock()] };
@@ -489,8 +492,9 @@ function renderList() {
       var rwds = (blk.rewards||[]).map(function(r) {
         var curName = r.target ? ((itemReg[r.target] && itemReg[r.target].name) || r.target) : '(空)';
         var itmName = r.code  ? ((itemReg[r.code]  && itemReg[r.code].name)  || r.code)  : '(空)';
-        var label = r.rtype==='货币' ? esc(curName)+' ×'+esc(r.amount)
-                  : r.rtype==='道具' ? esc(itmName)+' ×'+esc(r.amount)
+        var label = r.rtype==='货币'   ? esc(curName)+' ×'+esc(r.amount)
+                  : r.rtype==='道具'   ? esc(itmName)+' ×'+esc(r.amount)
+                  : r.rtype==='抽取次数' ? esc(r.pool_name||'(空)')+' 抽取×'+esc(r.amount)
                   : esc(r.name)+' '+esc(r.amount);
         return '<span class="rwd-chip">'+label+'</span>';
       }).join(' ');
@@ -617,9 +621,16 @@ function renderCondRow(c, bi, ci) {
 
 function getItemsByKind(kind) {
   // kind: 'currency' | 'noncurrency'
-  return Object.entries(itemReg).filter(function(kv) {
+  var items = Object.entries(itemReg).filter(function(kv) {
     return kind === 'currency' ? kv[1].type === 'currency' : kv[1].type !== 'currency';
   }).map(function(kv) { return {code: kv[0], name: kv[1].name || kv[0], type: kv[1].type}; });
+  if (kind === 'noncurrency') {
+    // 装备注册表里的装备也可以作为结戏奖励
+    Object.entries(equipReg).forEach(function(kv) {
+      items.push({code: kv[0], name: (kv[1].name || kv[0]) + ' [装备]', type: 'equipment'});
+    });
+  }
+  return items;
 }
 
 function makeItemSelect(items, selectedVal, bi, ri, field) {
@@ -638,15 +649,35 @@ function renderRewardRow(r, bi, ri) {
   var detailHtml = '';
   if (r.rtype === '货币') {
     var currs = getItemsByKind('currency');
+    // 若数据中 target 为空但有可选货币，自动补上第一个，避免保存校验报空
+    if (!r.target && currs.length) {
+      r.target = currs[0].code;
+      editTpl.blocks[bi].rewards[ri].target = currs[0].code;
+    }
     detailHtml = makeItemSelect(currs, r.target||'', bi, ri, 'target');
     detailHtml += '<input class="e-input" type="number" placeholder="数量" value="'+esc(r.amount||0)+'" onchange="updateReward('+bi+','+ri+',\'amount\',+this.value)">';
   } else if (r.rtype === '道具') {
     var itms = getItemsByKind('noncurrency');
+    // 若数据中 code 为空但有可选道具，自动补上第一个
+    if (!r.code && itms.length) {
+      r.code = itms[0].code;
+      editTpl.blocks[bi].rewards[ri].code = itms[0].code;
+    }
     detailHtml = makeItemSelect(itms, r.code||'', bi, ri, 'code');
     detailHtml += '<input class="e-input" type="number" placeholder="数量" value="'+esc(r.amount||0)+'" onchange="updateReward('+bi+','+ri+',\'amount\',+this.value)">';
   } else if (r.rtype === '属性') {
     detailHtml = '<input class="e-input wide" type="text" placeholder="属性名（如好感度）" value="'+esc(r.name||'')+'" onchange="updateReward('+bi+','+ri+',\'name\',this.value)">';
     detailHtml += '<input class="e-input" type="number" placeholder="数量" value="'+esc(r.amount||0)+'" onchange="updateReward('+bi+','+ri+',\'amount\',+this.value)">';
+  } else if (r.rtype === '抽取次数') {
+    if (!POOL_NAMES.length) {
+      detailHtml = '<span style="color:var(--muted);font-size:12px;">暂无池子（请先在机器人注册池子并推送全部）</span>';
+    } else {
+      var poolOpts = POOL_NAMES.map(function(p) {
+        return '<option value="'+esc(p)+'"'+(r.pool_name===p?' selected':'')+'>'+esc(p)+'</option>';
+      }).join('');
+      detailHtml = '<select style="min-width:120px" onchange="updateReward('+bi+','+ri+',\'pool_name\',this.value)">'+poolOpts+'</select>';
+    }
+    detailHtml += '<input class="e-input" type="number" min="1" placeholder="次数" value="'+esc(r.amount||1)+'" onchange="updateReward('+bi+','+ri+',\'amount\',+this.value)">';
   }
 
   var prob = (r.prob == null) ? 100 : r.prob;
@@ -745,6 +776,9 @@ function updateRewardType(bi, ri, rtype) {
     r.code = itms.length ? itms[0].code : '';
   } else if (rtype === '属性') {
     r.name = '';
+  } else if (rtype === '抽取次数') {
+    r.pool_name = POOL_NAMES.length ? POOL_NAMES[0] : '';
+    r.amount = 1;
   }
   editTpl.blocks[bi].rewards[ri] = r;
   renderEditor();
@@ -762,9 +796,10 @@ async function saveTpl() {
     var _blk = editTpl.blocks[_bi];
     for (var _ri = 0; _ri < (_blk.rewards||[]).length; _ri++) {
       var _r = _blk.rewards[_ri];
-      var _empty = (_r.rtype==='货币' && !(_r.target||'').trim())
-                || (_r.rtype==='道具' && !(_r.code||'').trim())
-                || (_r.rtype==='属性' && !(_r.name||'').trim());
+      var _empty = (_r.rtype==='货币'    && !(_r.target||'').trim())
+                || (_r.rtype==='道具'    && !(_r.code||'').trim())
+                || (_r.rtype==='属性'    && !(_r.name||'').trim())
+                || (_r.rtype==='抽取次数' && !(_r.pool_name||'').trim());
       if (_empty) {
         setStatus('条件块 ' + (_bi+1) + ' 第 ' + (_ri+1) + ' 条奖励的目标名称为空，请补全后再保存', true);
         return;
@@ -937,7 +972,7 @@ function irShowSyncBanner() {
   var el = document.createElement('div');
   el.id = 'ir-sync-toast';
   el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#92400e;color:#fde68a;padding:14px 20px;font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 4px 16px rgba(0,0,0,.5);';
-  el.innerHTML = '<span>⚠️ 道具注册表已保存。请立即在机器人执行 <code style="background:#78350f;border-radius:4px;padding:2px 8px;font-size:13px;color:#fef3c7;font-weight:700;">。全量同步</code>，否则机器人结戏时找不到物品，奖励将全部跳过！</span>'
+  el.innerHTML = '<span>⚠️ 道具注册表已保存。请立即在机器人执行 <code style="background:#78350f;border-radius:4px;padding:2px 8px;font-size:13px;color:#fef3c7;font-weight:700;">。拉取全部</code>，否则机器人结戏时找不到物品，奖励将全部跳过！</span>'
     + '<button onclick="document.getElementById(\'ir-sync-toast\').remove()" style="background:none;border:1px solid #fde68a;color:#fde68a;border-radius:6px;padding:4px 12px;cursor:pointer;font-size:12px;white-space:nowrap;">知道了</button>';
   document.body.prepend(el);
 }

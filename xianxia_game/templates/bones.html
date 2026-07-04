@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}寻仙骨 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🦴 寻仙骨 <small>集齐 206 块仙骨，重塑仙体，永久提升气血上限</small></div>
+
+{% if result %}
+<div class="result-box {{ 'success' if result.found else '' }}" style="margin-bottom:20px">
+  {% if result.found %}
+  <div style="font-size:15px;color:var(--gold);font-weight:700;margin-bottom:6px">✨ 寻得仙骨——{{ result.name }}！</div>
+  <div style="color:var(--muted);font-size:12px">仙骨已换上，气血上限永久 +{{ BONE_HP_BONUS }}</div>
+  {% if result.milestone %}
+  <div style="margin-top:10px;padding:8px 12px;background:rgba(155,127,224,.12);border:1px solid rgba(155,127,224,.35);
+       border-radius:8px;color:var(--purple);font-size:13px;font-weight:600">
+    ✦ 仙骨已凑满 {{ result.milestone }} 块，忽有所悟！修炼速度永久 +{{ (BONE_MILESTONE_CULTIVATE_PCT*100)|int }}%
+  </div>
+  {% endif %}
+  {% else %}
+  <div style="color:var(--muted);font-size:13px;font-style:italic">这一次搜寻一无所获，仙骨难寻，且行且珍惜。</div>
+  {% endif %}
+</div>
+{% endif %}
+
+<!-- 状态条 -->
+<div class="card" style="margin-bottom:16px;padding:12px 16px;display:flex;gap:24px;flex-wrap:wrap;align-items:center">
+  <div style="flex:1;min-width:160px">
+    <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px">
+      <span>灵力</span><span>{{ energy }}/{{ MAX_ENERGY }}</span>
+    </div>
+    <div class="bar-wrap"><div class="bar-fill bar-jade" style="width:{{ (energy / MAX_ENERGY * 100)|int }}%"></div></div>
+  </div>
+  <div style="min-width:200px">
+    <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px">
+      <span>仙骨</span><span>{{ owned_count }}/{{ BONE_TOTAL }}</span>
+    </div>
+    <div class="bar-wrap"><div class="bar-fill" style="width:{{ (owned_count / BONE_TOTAL * 100)|round(1) }}%;background:var(--gold)"></div></div>
+  </div>
+  <span style="font-size:13px;color:var(--muted)">气血上限加成 <strong style="color:var(--jade)">+{{ owned_count * BONE_HP_BONUS }}</strong></span>
+</div>
+
+<!-- 寻骨 -->
+<div class="card" style="margin-bottom:16px">
+  {% if owned_count >= BONE_TOTAL %}
+  <div style="text-align:center;padding:20px 0">
+    <div style="font-size:32px;margin-bottom:10px">🦴</div>
+    <div style="color:var(--gold);font-weight:700;font-size:16px">206 块仙骨已集齐，仙体已成！</div>
+  </div>
+  {% else %}
+  <form method="post">
+    <button type="submit" class="btn" style="width:100%;{% if energy < BONE_SEARCH_COST %}opacity:.5{% endif %}"
+      {% if energy < BONE_SEARCH_COST %}disabled{% endif %}>
+      {% if energy < BONE_SEARCH_COST %}灵力不足（需 {{ BONE_SEARCH_COST }}）
+      {% else %}🔍 寻找仙骨（消耗 {{ BONE_SEARCH_COST }} 灵力）{% endif %}
+    </button>
+  </form>
+  {% endif %}
+</div>
+
+<!-- 已获仙骨 -->
+{% if owned_names %}
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">已获仙骨（{{ owned_count }}）</div>
+  <div style="display:flex;flex-wrap:wrap;gap:8px">
+    {% for name in owned_names %}
+    <span style="background:var(--sf2);border:1px solid var(--bd);border-radius:20px;padding:4px 12px;font-size:12px;color:var(--gold)">{{ name }}</span>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<div class="card" style="background:rgba(166,124,26,.05);border-color:rgba(166,124,26,.2)">
+  <div class="card-h" style="color:var(--gold2)">寻仙骨说明</div>
+  <div style="color:var(--muted);font-size:12px;line-height:2">
+    <div>· 每花费 {{ BONE_SEARCH_COST }} 灵力可寻找一次，一共 206 块仙骨（对应人体骨骼之数）</div>
+    <div>· 寻得的仙骨不会重复，换上后即永久生效，不会消失</div>
+    <div>· 每获得一块仙骨，气血上限永久 +{{ BONE_HP_BONUS }}，集齐全部 206 块可永久 +{{ BONE_TOTAL * BONE_HP_BONUS }}</div>
+    <div>· 仙骨难寻，全靠机缘，多寻无妨，道心不可急躁</div>
+  </div>
+</div>
+</div>
+{% endblock %}

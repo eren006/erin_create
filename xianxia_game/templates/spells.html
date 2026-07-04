@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+{% block title %}法术领悟 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">✦ 法术领悟 <small>以灵根为引，感悟天地法则</small></div>
+
+{# ── 灵力条 ── #}
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:18px;
+  background:var(--sf);border:1px solid var(--bd);border-radius:8px;padding:10px 14px">
+  <span style="font-size:12px;color:var(--muted)">灵力</span>
+  <div class="bar-wrap" style="flex:1;height:7px">
+    <div class="bar-fill bar-jade" style="width:{{ (energy/MAX_ENERGY*100)|int }}%"></div>
+  </div>
+  <span style="font-size:13px;font-weight:600">{{ energy }} / {{ MAX_ENERGY }}</span>
+  <span style="font-size:11px;color:var(--muted);margin-left:8px">
+    法术槽：{{ my_spells|length }} / {{ max_sp }}
+  </span>
+</div>
+
+{# ── 已有法术 ── #}
+{% for sp in my_spells %}
+<div class="card" style="margin-bottom:14px;border-left:3px solid {{ sp.elem_color }}">
+  <div style="display:flex;align-items:flex-start;gap:12px">
+
+    {# 元素标签 #}
+    <div style="width:44px;height:44px;border-radius:50%;flex-shrink:0;
+      background:{{ sp.elem_color }}22;border:2px solid {{ sp.elem_color }};
+      display:flex;align-items:center;justify-content:center;
+      font-size:15px;font-weight:700;color:{{ sp.elem_color }}">
+      {{ sp.element }}
+    </div>
+
+    <div style="flex:1">
+      {# 法术名 + 改名 #}
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+        <span style="font-size:16px;font-weight:700">{{ sp.display_name }}</span>
+        {% if sp.is_special %}<span style="font-size:10px;color:var(--purple);border:1px solid var(--purple);border-radius:10px;padding:1px 7px">秘术</span>{% endif %}
+        {% if sp.learned %}
+        <span style="font-size:11px;color:var(--muted)">{{ sp.elem_name }}</span>
+        {% endif %}
+      </div>
+
+      {% if sp.learned %}
+      {# 熟练度 #}
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <div class="bar-wrap" style="flex:1;height:6px">
+          <div style="height:100%;border-radius:3px;width:{{ sp.mastery }}%;background:{{ sp.elem_color }}"></div>
+        </div>
+        <span style="font-size:11px;color:var(--muted)">{{ sp.mastery }}/100</span>
+      </div>
+
+      {# 当前效果 #}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        {% for k, v in sp.effects_now.items() %}
+        <span style="font-size:11px;padding:2px 8px;border-radius:10px;
+          background:{{ sp.elem_color }}15;border:1px solid {{ sp.elem_color }}55;
+          color:{{ sp.elem_color }}">
+          {{ {'atk_pct':'攻击','def_pct':'防御','crit_rate':'暴击','dodge':'闪避','lifesteal':'吸血'}.get(k,k) }}
+          +{{ v }}%
+          <span style="opacity:.5">/ 满级 {{ sp.effects_max[k] }}%</span>
+        </span>
+        {% endfor %}
+      </div>
+
+      {# 操作按钮 #}
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        {% if sp.mastery < 100 %}
+        <form method="post">
+          <input type="hidden" name="action" value="practice">
+          <input type="hidden" name="spell_id" value="{{ sp.id }}">
+          <button class="btn btn-jade btn-sm"
+            {% if energy < SPELL_ENERGY_COST %}disabled{% endif %}>
+            修炼（{{ SPELL_ENERGY_COST }}灵力）
+          </button>
+        </form>
+        {% else %}
+        <span style="font-size:12px;color:var(--gold);padding:4px 10px;background:rgba(201,168,76,.1);border-radius:6px">已满级</span>
+        {% endif %}
+        <form method="post" style="display:flex;gap:4px">
+          <input type="hidden" name="action" value="rename">
+          <input type="hidden" name="spell_id" value="{{ sp.id }}">
+          <input type="text" name="name" placeholder="改名" maxlength="16" value="{{ sp.custom_name }}"
+            style="font-size:12px;width:90px;background:var(--sf2);border:1px solid var(--bd);
+            border-radius:6px;padding:4px 8px;color:var(--text);font-family:inherit">
+          <button class="btn btn-sm" style="background:var(--sf2)">改名</button>
+        </form>
+      </div>
+
+      {# 满级法术招式 #}
+      {% if sp.mastery >= 100 %}
+      <div style="margin-top:10px;padding-top:10px;border-top:1px dashed rgba(140,80,200,.25)">
+        {% for mv in sp.moves %}
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;{% if not loop.last %}margin-bottom:6px{% endif %}">
+          <span style="font-size:11px;color:var(--purple);padding:3px 10px;
+            background:rgba(140,80,200,.12);border:1px solid rgba(140,80,200,.4);
+            border-radius:10px;font-weight:600">✦ {{ mv.display_name }}</span>
+          <span style="font-size:11px;padding:2px 8px;border-radius:10px;
+            background:rgba(140,80,200,.08);border:1px solid rgba(140,80,200,.3);color:var(--purple)">
+            {{ mv.buff1_label }} +{{ mv.buff1_pct }}%
+          </span>
+          <span style="font-size:11px;padding:2px 8px;border-radius:10px;
+            background:rgba(140,80,200,.08);border:1px solid rgba(140,80,200,.3);color:var(--purple)">
+            {{ mv.buff2_label }} +{{ mv.buff2_pct }}%
+          </span>
+          <form method="post" style="display:flex;gap:4px;margin-left:auto">
+            <input type="hidden" name="action" value="rename_move">
+            <input type="hidden" name="move_id" value="{{ mv.id }}">
+            <input type="text" name="name" placeholder="招式改名" maxlength="16" value="{{ mv.custom_name }}"
+              style="font-size:12px;width:80px;background:var(--sf2);border:1px solid var(--bd);
+              border-radius:6px;padding:4px 8px;color:var(--text);font-family:inherit">
+            <button class="btn btn-sm" style="background:var(--sf2)">改名</button>
+          </form>
+        </div>
+        {% endfor %}
+        {% if char.realm_idx >= MOVE_MIN_REALM and total_moves < MOVE_MAX %}
+        <form method="post" style="display:flex;align-items:center;gap:10px;{% if sp.moves %}margin-top:8px{% endif %}">
+          <input type="hidden" name="action" value="forge_move">
+          <input type="hidden" name="spell_id" value="{{ sp.id }}">
+          <span style="font-size:11px;color:var(--muted)">研制第{{ total_moves + 1 }}式（{{ next_move_cost }}灵石 + {{ MOVE_ENERGY_COST }}灵力 · 成功率{{ next_move_rate }}%）</span>
+          <button class="btn btn-sm" style="background:rgba(140,80,200,.15);border-color:var(--purple);color:var(--purple)"
+            {% if char.spirit_stones < next_move_cost or energy < MOVE_ENERGY_COST %}disabled{% endif %}>
+            研制招式
+          </button>
+        </form>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {% else %}
+      {# 领悟进度条 #}
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">
+        正在领悟【{{ sp.elem_name }}】…
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <div class="bar-wrap" style="flex:1;height:8px">
+          <div style="height:100%;border-radius:4px;width:{{ sp.comprehend_progress }}%;
+            background:linear-gradient(90deg,{{ sp.elem_color }},{{ sp.elem_color }}88)"></div>
+        </div>
+        <span style="font-size:12px;font-weight:600">{{ sp.comprehend_progress }}/100</span>
+      </div>
+      <div style="display:flex;gap:8px">
+        <form method="post">
+          <input type="hidden" name="action" value="practice">
+          <input type="hidden" name="spell_id" value="{{ sp.id }}">
+          <button class="btn btn-jade"
+            {% if energy < SPELL_ENERGY_COST %}disabled{% endif %}>
+            修炼感应（{{ SPELL_ENERGY_COST }}灵力）
+          </button>
+        </form>
+        <form method="post" onsubmit="return confirm('放弃领悟将退还一半灵石，确认？')">
+          <input type="hidden" name="action" value="abandon">
+          <input type="hidden" name="spell_id" value="{{ sp.id }}">
+          <button class="btn" style="opacity:.7">放弃</button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+{# ── 开始领悟（有空槽时显示）── #}
+{% if my_spells|length < max_sp %}
+{% set in_prog = my_spells|selectattr('learned','equalto',0)|list %}
+{% if not in_prog %}
+<div class="card" style="border:2px dashed var(--bd);background:var(--sf)">
+  <div style="text-align:center;padding:20px 16px">
+    <div style="font-size:32px;margin-bottom:10px;opacity:.5">✦</div>
+    <div style="font-size:14px;color:var(--muted);margin-bottom:6px">
+      空余法术槽（{{ my_spells|length }}/{{ max_sp }}）
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.9">
+      系统将从你的灵根中随机感应一种属性。<br>
+      你的可用属性：
+      {% for e in all_elems %}
+      <span style="color:{{ SPELL_ELEMENT_COLORS.get(e,'#888') }};font-weight:600">{{ e }}{% if e in special_elems %}✦{% endif %}</span>{% if not loop.last %}、{% endif %}
+      {% endfor %}
+    </div>
+    <form method="post">
+      <input type="hidden" name="action" value="start">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
+        消耗 <strong>{{ SPELL_START_COST }} 灵石</strong> + <strong>20 灵力</strong>
+      </div>
+      <button class="btn btn-jade"
+        {% if char.spirit_stones < SPELL_START_COST or energy < 20 %}disabled{% endif %}>
+        开始感应法术
+      </button>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endif %}
+
+{# ── 旧版孤立招式（历史数据兼容） ── #}
+{% if orphan_moves %}
+<div style="margin-top:20px">
+  <div style="font-size:12px;color:var(--muted);margin-bottom:8px">旧版招式（已解绑法术）</div>
+  {% for mv in orphan_moves %}
+  <div class="card" style="margin-bottom:8px;border-left:3px solid var(--purple);opacity:.8">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:700;margin-bottom:4px">{{ mv.display_name }}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <span style="font-size:11px;padding:2px 8px;border-radius:10px;
+            background:rgba(140,80,200,.08);border:1px solid rgba(140,80,200,.3);color:var(--purple)">
+            {{ mv.buff1_label }} +{{ mv.buff1_pct }}%
+          </span>
+          <span style="font-size:11px;padding:2px 8px;border-radius:10px;
+            background:rgba(140,80,200,.08);border:1px solid rgba(140,80,200,.3);color:var(--purple)">
+            {{ mv.buff2_label }} +{{ mv.buff2_pct }}%
+          </span>
+        </div>
+      </div>
+      <form method="post" style="display:flex;gap:4px;flex-shrink:0">
+        <input type="hidden" name="action" value="rename_move">
+        <input type="hidden" name="move_id" value="{{ mv.id }}">
+        <input type="text" name="name" placeholder="改名" maxlength="16" value="{{ mv.custom_name }}"
+          style="font-size:12px;width:80px;background:var(--sf2);border:1px solid var(--bd);
+          border-radius:6px;padding:4px 8px;color:var(--text);font-family:inherit">
+        <button class="btn btn-sm" style="background:var(--sf2)">改名</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{# ── 说明 ── #}
+<div class="card" style="margin-top:16px;background:rgba(201,168,76,.04);border-color:rgba(201,168,76,.2)">
+  <div class="card-h" style="color:var(--gold2)">法术说明</div>
+  <div style="font-size:12px;color:var(--muted);line-height:2">
+    <div>· 法术属性由灵根随机感应，多灵根属性更多样，单一灵根领悟更快</div>
+    <div>· 天灵根 4次领会，变异6次，双灵根7次，三灵根9次，四灵根11次，五灵根14次</div>
+    <div>· 熟练度 0→100 线性增强法术效果，可反复修炼提升</div>
+    <div>· 领悟完成后可自由命名</div>
+    <div>· 洗髓改变灵根时，失去对应属性的法术将自动失效，按熟练度返还修为</div>
+    {% if special_elems %}
+    <div style="color:var(--purple)">· 你已解锁特殊灵根变体：{{ special_elems|join('、') }}（标注 ✦）</div>
+    {% endif %}
+    <div>· 法术上限：炼气~金丹 1个，元婴~化神 2个，合体~大乘 3个，渡劫+ 4个</div>
+  </div>
+</div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}放生池{% endblock %}
+{% block body %}
+<div style="max-width:900px;margin:0 auto;padding:24px 16px">
+<h2 style="color:#e080e0;margin-bottom:20px">🐇 弃养放生池</h2>
+
+<div style="background:#0d0d1a;border:1px solid #3a2a5a;border-radius:12px;padding:20px">
+  <h3 style="color:#a080d0;margin-bottom:14px">已放生灵兽（共 {{ released|length }} 条，最近200条）</h3>
+  {% if released %}
+  <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <tr style="color:#7a6090;border-bottom:1px solid #2a1a3a">
+      <th style="padding:6px 10px;text-align:left">灵兽</th>
+      <th style="padding:6px 10px;text-align:left">品阶</th>
+      <th style="padding:6px 10px;text-align:left">昵称</th>
+      <th style="padding:6px 10px;text-align:left">等级</th>
+      <th style="padding:6px 10px;text-align:left">原主人</th>
+      <th style="padding:6px 10px;text-align:left">放生时间</th>
+      <th style="padding:6px 10px;text-align:left">操作</th>
+    </tr>
+    {% for r in released %}
+    <tr style="border-bottom:1px solid #1a0a2a;color:#c0a0e0">
+      <td style="padding:6px 10px">{{ r.pet_name }}</td>
+      <td style="padding:6px 10px">{{ r.rarity }}</td>
+      <td style="padding:6px 10px">{{ r.nickname or '—' }}</td>
+      <td style="padding:6px 10px">{{ r.level }}</td>
+      <td style="padding:6px 10px">{{ r.owner_name }}</td>
+      <td style="padding:6px 10px">{{ r.released_at | format_ts }}</td>
+      <td style="padding:6px 10px">
+        <form method="post" style="display:inline">
+          <input type="hidden" name="action" value="delete">
+          <input type="hidden" name="id" value="{{ r.id }}">
+          <button style="padding:2px 10px;background:#2a0a0a;color:#ff9999;border:1px solid #6a2a2a;border-radius:6px;cursor:pointer;font-size:11px"
+            onclick="return confirm('从放生池移除这条记录？')">✂ 移除</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p style="color:#8a6a8a">暂无放生记录</p>
+  {% endif %}
+</div>
+
+</div>
+{% endblock %}

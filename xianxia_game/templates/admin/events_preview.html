@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}奖励预览 — 后台{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">
+  {{ '📤' if is_give else '📥' }} {{ label }}
+  <small>{{ event.name }} · {{ times }} 次</small>
+  <a href="{{ url_for('admin_events') }}" style="font-size:13px;margin-left:12px">← 返回</a>
+</div>
+
+<div style="font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.8;
+  background:var(--sf);border:1px solid var(--bd);border-radius:8px;padding:10px 14px">
+  以下为初始计算方案，<strong>可直接修改每人金额</strong>，确认后执行。<br>
+  {{ '绿色' if is_give else '红色' }}为
+  {{ '发放给各玩家' if is_give else '从各玩家扣除' }}的灵石/灵符数量。
+</div>
+
+<form method="post" action="{{ url_for('admin_events') }}"
+  onsubmit="return confirm('确认执行{{ label }}？所有数字以表单中填写的为准，不可撤销。')">
+  <input type="hidden" name="action" value="execute_custom">
+  <input type="hidden" name="event_id" value="{{ event.id }}">
+  <input type="hidden" name="is_give" value="{{ '1' if is_give else '0' }}">
+  <input type="hidden" name="label" value="{{ label }}">
+
+  <div class="card" style="border-color:{% if is_give %}var(--jade){% else %}var(--red){% endif %};margin-bottom:20px">
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead>
+        <tr style="color:var(--muted);border-bottom:2px solid var(--bd)">
+          <th style="padding:8px;text-align:left">玩家</th>
+          <th style="padding:8px;text-align:right">当前灵石</th>
+          <th style="padding:8px;text-align:right">当前灵符</th>
+          <th style="padding:8px;text-align:center;color:{% if is_give %}var(--jade){% else %}var(--red){% endif %}">
+            {{ '发放' if is_give else '扣除' }}灵石
+          </th>
+          <th style="padding:8px;text-align:center;color:{% if is_give %}var(--jade){% else %}var(--red){% endif %}">
+            {{ '发放' if is_give else '扣除' }}灵符
+          </th>
+          <th style="padding:8px;text-align:right;color:var(--muted)">执行后约</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in rows %}
+      <tr style="border-bottom:1px solid var(--bd)" id="row_{{ r.char_id }}">
+        <td style="padding:8px;font-weight:600">{{ r.name }}</td>
+        <td style="padding:8px;text-align:right;color:var(--muted)">{{ r.cur_stones | format_number }}</td>
+        <td style="padding:8px;text-align:right;color:var(--muted)">{{ r.cur_lingfu }}</td>
+        <td style="padding:8px;text-align:center">
+          <input type="number" name="stones_{{ r.char_id }}" value="{{ r.stones | int }}" min="0"
+            onchange="updateAfter('{{ r.char_id }}', {{ r.cur_stones }}, {{ r.cur_lingfu }}, {{ '1' if is_give else '-1' }})"
+            style="width:90px;padding:5px 7px;border:1px solid {% if is_give %}var(--jade){% else %}var(--red){% endif %};
+            border-radius:6px;background:var(--sf2);color:var(--text);font-size:13px;text-align:right;font-family:inherit">
+        </td>
+        <td style="padding:8px;text-align:center">
+          <input type="number" name="lingfu_{{ r.char_id }}" value="{{ r.lingfu | int }}" min="0"
+            onchange="updateAfter('{{ r.char_id }}', {{ r.cur_stones }}, {{ r.cur_lingfu }}, {{ '1' if is_give else '-1' }})"
+            style="width:70px;padding:5px 7px;border:1px solid {% if is_give %}var(--jade){% else %}var(--red){% endif %};
+            border-radius:6px;background:var(--sf2);color:var(--text);font-size:13px;text-align:right;font-family:inherit">
+        </td>
+        <td style="padding:8px;text-align:right;font-size:12px;color:var(--muted)"
+          id="after_{{ r.char_id }}"
+          data-cur="{{ r.cur_stones }}"
+          data-give="{{ r.stones | int }}">—</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr style="border-top:2px solid var(--bd);font-weight:700;background:var(--sf2)">
+          <td style="padding:8px">合计 {{ rows|length }} 人</td>
+          <td colspan="2"></td>
+          <td style="padding:8px;text-align:center;color:{% if is_give %}var(--jade){% else %}var(--red){% endif %}">
+            {{ total_stones | format_number }}
+          </td>
+          <td style="padding:8px;text-align:center;color:var(--muted)">{{ total_lingfu }}</td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <button type="submit" style="width:100%;padding:14px;font-size:16px;font-weight:700;
+    background:{% if is_give %}var(--jade){% else %}var(--red){% endif %};color:#fff;
+    border:none;border-radius:10px;cursor:pointer;letter-spacing:1px">
+    确认执行：{{ label }}（{{ rows|length }} 人）
+  </button>
+</form>
+
+<script>
+const IS_GIVE = {{ '1' if is_give else '0' }};
+function calcAfter(el) {
+  const row = el.closest('tr');
+  const afterEl = row.querySelector('[id^="after_"]');
+  const cur = parseInt(afterEl.dataset.cur) || 0;
+  const st  = parseInt(row.querySelector('[name^="stones_"]').value) || 0;
+  const res = IS_GIVE ? cur + st : Math.max(0, cur - st);
+  afterEl.textContent = res.toLocaleString('zh-CN');
+  afterEl.style.color = (!IS_GIVE && cur < st) ? 'var(--red)' : 'var(--muted)';
+}
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('[name^="stones_"]').forEach(function(inp) {
+    calcAfter(inp);
+    inp.addEventListener('input', function() { calcAfter(this); });
+  });
+});
+</script>
+{% endblock %}

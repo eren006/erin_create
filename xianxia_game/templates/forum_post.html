@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}{{ post.title }} — 论道坛{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">
+  📜 <a href="{{ url_for('forum') }}" style="color:var(--muted);font-size:14px;font-weight:400">论道坛</a>
+  <span style="color:var(--muted);margin:0 6px;font-size:14px">/</span>
+  <span style="font-size:16px">{{ post.title }}</span>
+</div>
+
+<!-- 原帖 -->
+<div class="card" style="margin-bottom:16px;{% if post.is_pinned %}border-color:var(--gold){% endif %}">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      {% if post.is_pinned %}<span style="background:var(--gold);color:#000;font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px">置顶</span>{% endif %}
+      <span style="font-size:11px;color:var(--muted)">
+        <span class="root-{{ post.author_root }}">{{ post.author_root }}</span>
+        {{ REALMS[post.author_realm]['name'] if post.author_realm < REALMS|length else '' }}
+        <strong style="color:var(--text)">{{ post.author_name }}</strong>
+      </span>
+      <span style="font-size:11px;color:var(--muted)">{{ post.created_at | format_ts }}</span>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      {% if is_admin %}
+      <form method="post" style="display:inline">
+        <input type="hidden" name="action" value="pin">
+        <button class="btn btn-sm" style="font-size:11px;padding:3px 10px">
+          {% if post.is_pinned %}取消置顶{% else %}置顶{% endif %}
+        </button>
+      </form>
+      {% endif %}
+      {% if is_admin or char.id == post.char_id %}
+      <form method="post" style="display:inline" onsubmit="return confirm('确定删除此帖？')">
+        <input type="hidden" name="action" value="delete_post">
+        <button class="btn btn-sm" style="font-size:11px;padding:3px 10px;color:var(--red)">删帖</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <div style="font-size:14px;line-height:1.75;white-space:pre-wrap;word-break:break-word;margin-bottom:16px">{{ post.content }}</div>
+
+  <!-- 原帖点赞 -->
+  <div style="border-top:1px solid var(--bd);padding-top:12px">
+    <form method="post" action="{{ url_for('forum_like') }}" style="display:inline">
+      <input type="hidden" name="target_type" value="post">
+      <input type="hidden" name="target_id" value="{{ post.id }}">
+      <input type="hidden" name="back" value="{{ request.url }}">
+      <button type="submit"
+        style="display:inline-flex;align-items:center;gap:6px;
+               background:none;border:1px solid {% if i_liked_post %}var(--gold){% else %}var(--bd){% endif %};
+               border-radius:20px;padding:5px 14px;cursor:pointer;font-family:inherit;font-size:13px;
+               color:{% if i_liked_post %}var(--gold){% else %}var(--muted){% endif %};transition:all .15s">
+        👍 觉得不错
+        {% if post_likes > 0 %}
+        <span style="font-weight:600;color:{% if i_liked_post %}var(--gold){% else %}var(--text){% endif %}">{{ post_likes }}</span>
+        {% endif %}
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- 回复列表 -->
+{% if replies %}
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">回复 <span style="font-size:12px;color:var(--muted);font-weight:400">{{ replies|length }} 条</span></div>
+  <div style="display:flex;flex-direction:column;gap:0">
+    {% for r in replies %}
+    <div style="padding:14px 4px;border-bottom:1px solid var(--bd);{% if loop.last %}border-bottom:none{% endif %}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:4px">
+        <div style="font-size:11px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <span style="color:var(--bd)">#{{ loop.index }}</span>
+          <span>
+            <span class="root-{{ r.author_root }}">{{ r.author_root }}</span>
+            {{ REALMS[r.author_realm]['name'] if r.author_realm < REALMS|length else '' }}
+            <strong style="color:var(--text)">{{ r.author_name }}</strong>
+          </span>
+          <span>{{ r.created_at | format_ts }}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <!-- 回复点赞 -->
+          <form method="post" action="{{ url_for('forum_like') }}" style="display:inline">
+            <input type="hidden" name="target_type" value="reply">
+            <input type="hidden" name="target_id" value="{{ r.id }}">
+            <input type="hidden" name="back" value="{{ request.url }}">
+            <button type="submit"
+              style="display:inline-flex;align-items:center;gap:4px;
+                     background:none;border:1px solid {% if r.id in my_liked_replies %}var(--gold){% else %}var(--bd){% endif %};
+                     border-radius:14px;padding:2px 10px;cursor:pointer;font-family:inherit;font-size:12px;
+                     color:{% if r.id in my_liked_replies %}var(--gold){% else %}var(--muted){% endif %};transition:all .15s">
+              👍{% if r.like_count > 0 %} {{ r.like_count }}{% endif %}
+            </button>
+          </form>
+          {% if is_admin %}
+          <form method="post" style="display:inline">
+            <input type="hidden" name="action" value="delete_reply">
+            <input type="hidden" name="reply_id" value="{{ r.id }}">
+            <button class="btn btn-sm" style="font-size:10px;padding:2px 8px;color:var(--red)">删除</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+      <div style="font-size:13px;line-height:1.7;white-space:pre-wrap;word-break:break-word">{{ r.content }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% else %}
+<div style="text-align:center;color:var(--muted);padding:20px 0;font-size:13px;margin-bottom:16px">暂无回复，来抢沙发吧</div>
+{% endif %}
+
+<!-- 回复表单 -->
+<div class="card">
+  <div class="card-h">发表回复</div>
+  <form method="post" style="display:flex;flex-direction:column;gap:10px">
+    <input type="hidden" name="action" value="reply">
+    <textarea name="content" placeholder="回复内容（最多300字）…" maxlength="300" rows="4" required
+      style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+             border-radius:8px;padding:8px 12px;font-family:inherit;font-size:13px;
+             resize:vertical;box-sizing:border-box"></textarea>
+    <div>
+      <button class="btn btn-jade btn-sm">回复</button>
+    </div>
+  </form>
+</div>
+
+</div>
+{% endblock %}

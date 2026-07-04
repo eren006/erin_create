@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}卡池管理 — 后台{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🎴 卡池管理 <small><a href="{{ url_for('admin') }}" style="font-size:13px">← 后台</a></small></div>
+
+<!-- 创建新卡池 -->
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">创建新卡池</div>
+  <form method="post" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <input type="hidden" name="action" value="create_pool">
+    <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">卡池名称</label>
+      <input name="name" required placeholder="如：灵兽感应池" style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px"></div>
+    <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">图标</label>
+      <input name="icon" value="🎴" maxlength="2" style="width:60px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px"></div>
+    <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">每抽灵符</label>
+      <input name="cost" type="number" value="10" min="1" style="width:80px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px"></div>
+    <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">保底抽数</label>
+      <input name="pity_max" type="number" value="90" min="10" style="width:80px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px"></div>
+    <div style="grid-column:1/-1"><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">描述</label>
+      <input name="description" placeholder="卡池说明" style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px"></div>
+    <div style="grid-column:1/-1"><button class="btn btn-jade">创建卡池</button></div>
+  </form>
+</div>
+
+<!-- 卡池列表 -->
+{% for pool in pools %}
+<div class="card" style="margin-bottom:16px;{% if not pool.is_active %}opacity:.6{% endif %}">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <div><span style="font-size:20px">{{ pool.icon }}</span>
+      <strong style="margin-left:8px">{{ pool.name }}</strong>
+      <span style="font-size:12px;color:var(--muted);margin-left:8px">{{ pool.cost }}灵符/抽 · 保底{{ pool.pity_max }}抽</span>
+    </div>
+    <form method="post" style="display:inline">
+      <input type="hidden" name="action" value="toggle_pool">
+      <input type="hidden" name="pool_id" value="{{ pool.id }}">
+      <button class="btn btn-sm {% if pool.is_active %}btn-ghost{% else %}btn-jade{% endif %}">
+        {% if pool.is_active %}下架{% else %}上架{% endif %}
+      </button>
+    </form>
+  </div>
+
+  <!-- 当前奖品 -->
+  {% set items = pool_items.get(pool.id, []) %}
+  {% if items %}
+  <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
+    {% for it in items %}
+    <div style="background:var(--sf2);border:1px solid {% if not it.is_active %}var(--bd){% else %}rgba(44,110,158,.3){% endif %};border-radius:6px;padding:4px 10px;font-size:11px;
+         {% if not it.is_active %}opacity:.5{% endif %}">
+      <span class="tag tag-{{ it.rarity }}" style="font-size:10px">{{ it.rarity | rarity_label }}</span>
+      <span style="margin-left:4px">{{ it.item_name }}</span>
+      <span style="color:var(--muted)"> W{{ it.weight }}</span>
+      <form method="post" style="display:inline">
+        <input type="hidden" name="action" value="toggle_item">
+        <input type="hidden" name="item_id" value="{{ it.id }}">
+        <button style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:10px;padding:0 2px">×</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- 添加奖品 -->
+  <form method="post" style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end">
+    <input type="hidden" name="action" value="add_item">
+    <input type="hidden" name="pool_id" value="{{ pool.id }}">
+    <select name="item_type" style="background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:6px;padding:5px 8px;font-family:inherit;font-size:12px">
+      <option value="item">物品</option>
+      <option value="pet">灵兽</option>
+      <option value="exp">修为</option>
+      <option value="stones">灵石</option>
+      <option value="lingfu">灵符</option>
+    </select>
+    <select name="item_id" style="background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:6px;padding:5px 8px;font-family:inherit;font-size:12px;max-width:150px">
+      <optgroup label="物品">{% for it in all_items %}<option value="{{ it.id }}">{{ it.name }}</option>{% endfor %}</optgroup>
+      <optgroup label="灵兽">{% for pt in all_pets %}<option value="{{ pt.id }}">{{ pt.name }}</option>{% endfor %}</optgroup>
+      <option value="500">500修为</option>
+      <option value="100">100灵石</option>
+      <option value="5">5灵符</option>
+    </select>
+    <input name="item_name" placeholder="显示名" style="width:90px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:6px;padding:5px 8px;font-family:inherit;font-size:12px">
+    <select name="rarity" style="background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:6px;padding:5px 8px;font-family:inherit;font-size:12px">
+      <option value="common">普通</option><option value="uncommon">精良</option>
+      <option value="rare">稀有</option><option value="epic">史诗</option>
+      <option value="legendary">传说</option>
+    </select>
+    <input name="weight" type="number" value="100" min="1" placeholder="权重"
+      style="width:60px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:6px;padding:5px 8px;font-family:inherit;font-size:12px">
+    <button class="btn btn-jade btn-sm">+添加</button>
+  </form>
+</div>
+{% endfor %}
+</div>
+<style>select:focus,input:focus{outline:none;border-color:var(--jade)}</style>
+{% endblock %}

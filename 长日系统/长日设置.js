@@ -41,6 +41,10 @@ const SETTING_POLL_INTERVAL_MS = 60000;      // 1 分钟
 function getApi()              { return globalThis.__changriApi || null; }
 function mainStorGet(key)      { return getApi()?.kvGetRaw(key) ?? null; }
 function mainStorSet(key, val) { getApi()?.kvSetRaw(key, val); }
+
+// JSON 对象读写：走主插件 kvGet/kvSet（带缓存与损坏容错），JSON key 一律用这两个函数
+function mainKvGet(key, def) { const api = getApi(); return api ? api.kvGet(key, def) : def; }
+function mainKvSet(key, val) { getApi()?.kvSet(key, val); }
 function isUserAdmin(ctx, msg) { return getApi()?.isUserAdmin(ctx, msg) ?? false; }
 // 向后兼容：业务逻辑中 getMainExt() 仅作存在性守卫使用
 function getMainExt()          { return getApi(); }
@@ -104,24 +108,24 @@ function setMainStorage(key, value) { mainStorSet(key, value); }
 function getSightingConfig() {
     const defaultConfig = { enabled: false, send_to_all: true, max_reports_per_day: 5, include_ended_meetings: false, time_overlap_threshold: 0.3, trigger_chance: 50 };
     try {
-        return { ...defaultConfig, ...JSON.parse(getMainStorage("sighting_system_config", "{}")) };
+        return { ...defaultConfig, ...mainKvGet("sighting_system_config", {}) };
     } catch (e) { return defaultConfig; }
 }
 
 function setSightingConfig(config) {
-    setMainStorage("sighting_system_config", JSON.stringify(config));
+    mainKvSet("sighting_system_config", config);
 }
 
 // 地点系统配置
 function getPlaceSystemConfig() {
     const defaultConfig = { enabled: false, require_key_by_default: false };
     try {
-        return { ...defaultConfig, ...JSON.parse(getMainStorage("place_system_config", "{}")) };
+        return { ...defaultConfig, ...mainKvGet("place_system_config", {}) };
     } catch (e) { return defaultConfig; }
 }
 
 function setPlaceSystemConfig(config) {
-    setMainStorage("place_system_config", JSON.stringify(config));
+    mainKvSet("place_system_config", config);
 }
 
 // 攻防系统配置
@@ -134,11 +138,11 @@ function getAttackDefenseConfig() {
     } catch(e) { return defaultConfig; }
 }
 
-function setAttackDefenseConfig(config) { mainStorSet("attack_defense_config", JSON.stringify(config)); }
+function setAttackDefenseConfig(config) { mainKvSet("attack_defense_config", config); }
 
 // DLC 检查
 function isDLC(key) {
-    try { return JSON.parse(mainStorGet('global_feature_toggle') || '{}')[key] === true; }
+    try { return mainKvGet('global_feature_toggle', {})[key] === true; }
     catch(e) { return false; }
 }
 
@@ -158,7 +162,7 @@ function getUnifiedParamValue(param) {
     }
     if (param.type === 'routing') {
         try {
-            const map = JSON.parse(getMainStorage(param.key, "{}"));
+            const map = mainKvGet(param.key, {});
             if (!map || !Object.keys(map).length) return '未设置';
             return Object.entries(map).map(([d, g]) => `${d}:${g}`).join('，');
         } catch(e) { return '未设置'; }
@@ -193,20 +197,20 @@ function setUnifiedParamValue(param, val) {
             const m = pair.trim().match(/^(D\d+)[：:]\s*(\d+)$/i);
             if (m) map[m[1].toUpperCase()] = m[2];
         }
-        setMainStorage(param.key, JSON.stringify(map));
+        mainKvSet(param.key, map);
         return;
     }
     if (param.nested) {
         let cfg = {};
-        try { cfg = JSON.parse(getMainStorage(param.key, "{}")); } catch(e) {}
+        try { cfg = mainKvGet(param.key, {}); } catch(e) {}
         if (param.type === 'bool') cfg[param.nested] = (val === '开启');
         else if (param.type === 'number') cfg[param.nested] = parseInt(val);
         else cfg[param.nested] = val;
-        setMainStorage(param.key, JSON.stringify(cfg));
+        mainKvSet(param.key, cfg);
     } else if (param.type === 'bool') {
-        setMainStorage(param.key, JSON.stringify(val === '开启'));
+        mainKvSet(param.key, val === '开启');
     } else if (param.raw) {
-        setMainStorage(param.key, JSON.stringify(val === '未设置' ? null : val));
+        mainKvSet(param.key, val === '未设置' ? null : val);
     } else {
         setMainStorage(param.key, val);
     }
@@ -308,12 +312,12 @@ settingsConfig['互动参数'] = {
           validate: (v) => { return ['精确', '累积'].includes(v) ? null : '请填写「精确」或「累积」'; },
           note: '精确=只能开当前时段；累积=可开当前及之前所有时段' },
         { label: '超时时间',
-          getter: () => { try { return String(Math.round((JSON.parse(getMainStorage('monitor_settings', '{}')).timeout || MONITOR_TIMEOUT_DEFAULT_MS) / 60000)); } catch(e) { return '180'; } },
-          setter: (v) => { let c = {}; try { c = JSON.parse(getMainStorage('monitor_settings', '{}')); } catch(e) {} c.timeout = parseInt(v) * 60000; setMainStorage('monitor_settings', JSON.stringify(c)); },
+          getter: () => { try { return String(Math.round((mainKvGet('monitor_settings', {}).timeout || MONITOR_TIMEOUT_DEFAULT_MS) / 60000)); } catch(e) { return '180'; } },
+          setter: (v) => { let c = {}; try { c = mainKvGet('monitor_settings', {}); } catch(e) {} c.timeout = parseInt(v) * 60000; mainKvSet('monitor_settings', c); },
           validate: (v) => { const n = parseInt(v); return (isNaN(n) || n < 1) ? "请填写分钟数（正整数）" : null; } },
         { label: '提醒间隔',
-          getter: () => { try { return String(Math.round((JSON.parse(getMainStorage('monitor_settings', '{}')).remind_interval || MONITOR_TIMEOUT_DEFAULT_MS) / 60000)); } catch(e) { return '180'; } },
-          setter: (v) => { let c = {}; try { c = JSON.parse(getMainStorage('monitor_settings', '{}')); } catch(e) {} c.remind_interval = parseInt(v) * 60000; setMainStorage('monitor_settings', JSON.stringify(c)); },
+          getter: () => { try { return String(Math.round((mainKvGet('monitor_settings', {}).remind_interval || MONITOR_TIMEOUT_DEFAULT_MS) / 60000)); } catch(e) { return '180'; } },
+          setter: (v) => { let c = {}; try { c = mainKvGet('monitor_settings', {}); } catch(e) {} c.remind_interval = parseInt(v) * 60000; mainKvSet('monitor_settings', c); },
           validate: (v) => { const n = parseInt(v); return (isNaN(n) || n < 1) ? "请填写分钟数（正整数）" : null; } },
     ]
 };
@@ -333,7 +337,7 @@ settingsConfig['信件与礼品'] = {
         { label: '寄信混乱反义', key: 'chaos_letter_config', nested: 'antonymReplace', type: 'number', default: 0 },
         { label: '寄信混乱乱序', key: 'chaos_letter_config', nested: 'reverseOrder', type: 'number', default: 0 },
         { label: '寄信混乱混淆', key: 'chaos_letter_config', nested: 'mistakenSignature', type: 'number', default: 0 },
-        { label: '寄信混乱诗意', key: 'chaos_letter_config', nested: 'poeticSignature', type: 'number', default: 0 },
+        { label: '寄信混乱残页', key: 'chaos_letter_config', nested: 'tornPage', type: 'number', default: 0 },
         // 送礼
         { label: '每日礼物上限', key: 'giftDailyLimit', type: 'string', default: '100' },
         { label: '送礼自定义署名', key: 'allow_custom_gift_sign', type: 'bool_string', default: false },
@@ -381,7 +385,7 @@ settingsConfig['信件与礼品'] = {
 };
 
 const PANEL4_SECTIONS = [
-    { header: '─── 寄信 ───', labels: ['寄信每日上限','寄信自定义署名','寄信混乱送错','寄信混乱涂改','寄信混乱丢失','寄信混乱反义','寄信混乱乱序','寄信混乱混淆','寄信混乱诗意'] },
+    { header: '─── 寄信 ───', labels: ['寄信每日上限','寄信自定义署名','寄信混乱送错','寄信混乱涂改','寄信混乱丢失','寄信混乱反义','寄信混乱乱序','寄信混乱混淆','寄信混乱残页'] },
     { header: '─── 送礼 ───', labels: ['每日礼物上限','送礼自定义署名','掉落曝光隐藏收件人','送礼混乱丢失','送礼混乱送错','收到礼物入图鉴'] },
     { header: '─── 发送信件 ───', labels: ['发送信件每日上限','发送信件冷却','发送信件最低字数','发送信件赏金'] },
     { header: '─── 心动信 ───', labels: ['心动信送达时间','心动信曝光','心动信曝光概率'] },
@@ -483,7 +487,7 @@ settingsConfig['拍卖设置'] = {
             const currency = getMainStorage('auction_currency', '金币');
             const main = getMainExt();
             if (!main) return currency;
-            const reg = JSON.parse(mainStorGet("item_registry") || "{}");
+            const reg = mainKvGet("item_registry", {});
             const currencies = Object.values(reg).filter(r => r.type === "currency").map(r => r.name);
             return currencies.length ? `${currency}（可选：${currencies.join("、")}）` : currency;
           },
@@ -496,8 +500,8 @@ settingsConfig['拍卖设置'] = {
             if (!attr) return "不能为空";
             const main = getMainExt();
             if (!main) return null;
-            const presets = JSON.parse(mainStorGet("sys_attr_presets") || "[]");
-            const reg = JSON.parse(mainStorGet("item_registry") || "{}");
+            const presets = mainKvGet("sys_attr_presets", []);
+            const reg = mainKvGet("item_registry", {});
             const isCurrency = Object.values(reg).some(i => i.type === "currency" && i.name === attr);
             if (!presets.includes(attr) && !isCurrency) return `「${attr}」不是已注册的属性或货币。请先注册属性（注册属性 ${attr}）或货币（注册货币 ${attr}*描述）`;
             return null;
@@ -557,7 +561,7 @@ function ensureDefaults(main) {
             dlc_sighting: false, dlc_fupan: false, dlc_auction: false,
             dlc_attack: false, dlc_forum: false, dlc_auto_day: false
         }),
-        "chaos_letter_config": JSON.stringify({ misdelivery: 0, blackoutText: 0, loseContent: 0, antonymReplace: 0, reverseOrder: 0, mistakenSignature: 0, poeticSignature: 0, dailyLimit: 5, publicChance: 50, giftLost: 0, giftMisdelivery: 0 }),
+        "chaos_letter_config": JSON.stringify({ misdelivery: 0, blackoutText: 0, loseContent: 0, antonymReplace: 0, reverseOrder: 0, mistakenSignature: 0, tornPage: 0, dailyLimit: 5, publicChance: 50, giftLost: 0, giftMisdelivery: 0 }),
         "sighting_system_config": JSON.stringify({ enabled: false, send_to_all: true, max_reports_per_day: 5, include_ended_meetings: false, time_overlap_threshold: 0.3 }),
         "place_system_config": JSON.stringify({ enabled: false, require_key_by_default: false }),
         "appointment_duration_config": JSON.stringify({ phone: 29, private: 59 }),
@@ -641,7 +645,7 @@ function ensureDefaults(main) {
             for (const [k, v] of Object.entries(newFields)) {
                 if (ft[k] === undefined) { ft[k] = v; changed = true; }
             }
-            if (changed) mainStorSet("global_feature_toggle", JSON.stringify(ft));
+            if (changed) mainKvSet("global_feature_toggle", ft);
         }
     } catch(e) {}
 }
@@ -674,7 +678,7 @@ cmd_set_mailbox_limit.solve = function(ctx, msg, argv) {
 
     const arg1 = argv.getArgN(1);
 
-    let dayLimits = JSON.parse(getMainStorage("lovemail_day_limits", "{}"));
+    let dayLimits = mainKvGet("lovemail_day_limits", {});
     let defaultLimit = parseInt(getMainStorage("lovemail_default_limit", "3"));
 
     if (!arg1) {
@@ -735,9 +739,9 @@ cmd_set_mailbox_limit.solve = function(ctx, msg, argv) {
         return seal.replyToSender(ctx, msg, "❌ 格式错误，请使用：。设置信箱上限 D0:3 D1:5 D2:2");
     }
 
-    const currentLimits = JSON.parse(getMainStorage("lovemail_day_limits", "{}"));
+    const currentLimits = mainKvGet("lovemail_day_limits", {});
     Object.assign(currentLimits, newLimits);
-    setMainStorage("lovemail_day_limits", JSON.stringify(currentLimits));
+    mainKvSet("lovemail_day_limits", currentLimits);
 
     let reply = `✅ 已更新以下天数的上限：\n`;
     for (const [day, limit] of Object.entries(newLimits)) {
@@ -774,34 +778,34 @@ function generateStatisticsReport(ctx, msg, newDay, previousDay, isCleared = fal
         "官约": parseInt(mainStorGet("a_meetingCount_official") || "0")
     };
 
-    const groupList = JSON.parse(mainStorGet("group") || "[]");
+    const groupList = mainKvGet("group", []);
     const totalGroups = groupList.length;
     const occupiedGroups = groupList.filter(g => g.endsWith("_占用")).length;
     const availableGroups = totalGroups - occupiedGroups;
 
-    const a_private_group = JSON.parse(mainStorGet("a_private_group") || "{}");
+    const a_private_group = mainKvGet("a_private_group", {});
     const playerCount = a_private_group[platform] ? Object.keys(a_private_group[platform]).length : 0;
     const loveshow_name = mainStorGet("love_show_name") || "未设置";
 
-    const appointmentList = JSON.parse(mainStorGet("appointmentList") || "[]");
+    const appointmentList = mainKvGet("appointmentList", []);
     const pendingRequests = appointmentList.length;
 
-    const b_MultiGroupRequest = JSON.parse(mainStorGet("b_MultiGroupRequest") || "{}");
+    const b_MultiGroupRequest = mainKvGet("b_MultiGroupRequest", {});
     const multiRequests = Object.keys(b_MultiGroupRequest).length;
 
-    const b_confirmedSchedule = JSON.parse(mainStorGet("b_confirmedSchedule") || "{}");
+    const b_confirmedSchedule = mainKvGet("b_confirmedSchedule", {});
     let activeMeetings = 0;
     for (const key in b_confirmedSchedule) {
         activeMeetings += b_confirmedSchedule[key].filter(item => item.status === "active").length;
     }
 
-    const wishPool = JSON.parse(mainStorGet("a_wishPool") || "[]");
+    const wishPool = mainKvGet("a_wishPool", []);
     const wishCount = wishPool.length;
 
-    const lovemailPool = JSON.parse(mainStorGet("lovemail_pool") || "[]");
+    const lovemailPool = mainKvGet("lovemail_pool", []);
     const lovemailCount = lovemailPool.length;
 
-    const groupExpireInfo = JSON.parse(mainStorGet("group_expire_info") || "{}");
+    const groupExpireInfo = mainKvGet("group_expire_info", {});
     const expiredGroups = Object.entries(groupExpireInfo)
         .filter(([_, info]) => Date.now() > info.expireTime)
         .length;
@@ -853,11 +857,11 @@ function sendStatisticsToBackgroundGroup(ctx, msg, newDay, statisticsReport, isC
     const main = getMainExt();
     if (!main) return;
 
-    let backgroundGroupId = JSON.parse(mainStorGet("background_group_id") || "null");
+    let backgroundGroupId = mainKvGet("background_group_id", null);
     const fupanRouting = mainStorGet("fupan_routing_enabled") === "true";
     if (fupanRouting) {
         try {
-            const routingMap = JSON.parse(mainStorGet("fupan_routing_groups") || "{}");
+            const routingMap = mainKvGet("fupan_routing_groups", {});
             const firstId = Object.values(routingMap)[0];
             if (firstId) backgroundGroupId = firstId;
         } catch (e) {}
@@ -913,8 +917,8 @@ cmd_set_days.solve = (ctx, msg, args) => {
     const report = generateStatisticsReport(ctx, msg, day, prev);
 
     // ★ 第二步：清空所有计数
-    ["a_meetingCount_call","a_meetingCount_private","a_meetingCount_letter","a_meetingCount_gift","a_meetingCount_wish","a_meetingCount_chaosletter","a_meetingCount_secretletter","a_meetingCount_official","a_meetingCount_lovemail","a_meetingCount_directletter"].forEach(k => mainStorSet(k, "0"));
-    const groups = JSON.parse(mainStorGet("a_private_group") || "{}")[platform];
+    ["a_meetingCount_call","a_meetingCount_private","a_meetingCount_letter","a_meetingCount_gift","a_meetingCount_wish","a_meetingCount_chaosletter","a_meetingCount_secretletter","a_meetingCount_official","a_meetingCount_lovemail","a_meetingCount_directletter","a_meetingCount_relation"].forEach(k => mainStorSet(k, "0"));
+    const groups = mainKvGet("a_private_group", {})[platform];
     if (groups) {
         // 新结构：key 是 uid，groups[uid][0] 是 roleName
         for (let uid in groups) {
@@ -932,16 +936,16 @@ cmd_set_days.solve = (ctx, msg, args) => {
     resp += "\n✅ 已自动清空所有会面计数、每日信件计数、寄信限制、心愿池和心动信池";
 
     // ★ 第四步：发送报告
-    const announceGid = JSON.parse(mainStorGet("adminAnnounceGroupId") || "null");
+    const announceGid = mainKvGet("adminAnnounceGroupId", null);
     if (announceGid) {
         sendTextToGroup(platform, announceGid, `📜 全局天数已从 ${prev} 切换到 ${day}（所有计数已自动重置）`);
     }
-    const bgGid = JSON.parse(mainStorGet("background_group_id") || "null");
+    const bgGid = mainKvGet("background_group_id", null);
     const fupanRoutingForReport = mainStorGet("fupan_routing_enabled") === "true";
     let reportTarget = bgGid;
     if (fupanRoutingForReport) {
         try {
-            const rm = JSON.parse(mainStorGet("fupan_routing_groups") || "{}");
+            const rm = mainKvGet("fupan_routing_groups", {});
             const firstId = Object.values(rm)[0];
             if (firstId) reportTarget = firstId;
         } catch (e) {}
@@ -970,8 +974,8 @@ function performAutoDayReset(newDay, now) {
     const report = generateStatisticsReport(null, mockMsg, newDay, prev);
 
     // ★ 第二步：清空所有计数
-    ["a_meetingCount_call","a_meetingCount_private","a_meetingCount_letter","a_meetingCount_gift","a_meetingCount_wish","a_meetingCount_chaosletter","a_meetingCount_secretletter","a_meetingCount_official","a_meetingCount_lovemail","a_meetingCount_directletter"].forEach(k => mainStorSet(k, "0"));
-    const groups = JSON.parse(mainStorGet("a_private_group") || "{}")["QQ"];
+    ["a_meetingCount_call","a_meetingCount_private","a_meetingCount_letter","a_meetingCount_gift","a_meetingCount_wish","a_meetingCount_chaosletter","a_meetingCount_secretletter","a_meetingCount_official","a_meetingCount_lovemail","a_meetingCount_directletter","a_meetingCount_relation"].forEach(k => mainStorSet(k, "0"));
+    const groups = mainKvGet("a_private_group", {})["QQ"];
     if (groups) {
         // 新结构：key 是 uid，groups[uid][0] 是 roleName
         for (let uid in groups) {
@@ -985,9 +989,9 @@ function performAutoDayReset(newDay, now) {
     mainStorSet("global_days", newDay);
 
     // ★ 第四步：发送报告
-    const announceGid = JSON.parse(mainStorGet("adminAnnounceGroupId") || "null");
+    const announceGid = mainKvGet("adminAnnounceGroupId", null);
     if (announceGid) sendTextToGroup("QQ", announceGid, `📜 自动天数推进：${prev} → ${newDay}（所有计数已清空）`);
-    const bgGid = JSON.parse(mainStorGet("background_group_id") || "null");
+    const bgGid = mainKvGet("background_group_id", null);
     if (bgGid) sendStatisticsToBackgroundGroup(null, mockMsg, newDay, report, true);
 
     console.log(`[自动天数] 已从 ${prev} 推进至 ${newDay}，并清空所有计数`);
@@ -1018,9 +1022,9 @@ function registerAutoDaySystem() {
 
 function setDLC(key, value) {
     try {
-        const ft = JSON.parse(mainStorGet('global_feature_toggle') || '{}');
+        const ft = mainKvGet('global_feature_toggle', {});
         ft[key] = value;
-        mainStorSet('global_feature_toggle', JSON.stringify(ft));
+        mainKvSet('global_feature_toggle', ft);
     } catch(e) {}
 }
 
@@ -1094,13 +1098,13 @@ cmd_end_bonus.solve = function(ctx, msg, argv) {
     const main = getMainExt();
     if (!main) return seal.ext.newCmdExecuteResult(true);
 
-    const getTemplates = () => JSON.parse(mainStorGet("end_game_bonus_templates") || "[]");
-    const saveTemplates = (t) => mainStorSet("end_game_bonus_templates", JSON.stringify(t));
+    const getTemplates = () => mainKvGet("end_game_bonus_templates", []);
+    const saveTemplates = (t) => mainKvSet("end_game_bonus_templates", t);
     const findTemplate = (templates, name) => templates.find(t => t.name === name);
 
 
     const detectTargetType = (target) => {
-        const reg = JSON.parse(mainStorGet("item_registry") || "{}");
+        const reg = mainKvGet("item_registry", {});
         const upperTarget = target.toUpperCase();
         for (const r of Object.values(reg)) {
             if (r.type === "currency" && r.name === target) return "currency";
@@ -1485,8 +1489,8 @@ ext.cmdMap["设置"] = cmd_settings;
 async function fetchServerConfig() {
     const main = getMainExt();
     if (!main) return null;
-    const base = (seal.ext.getStringConfig(main, "RP存档服务器地址") || "").replace(/\/$/, "");
-    const token = seal.ext.getStringConfig(main, "RP存档Token") || "";
+    const base = (seal.ext.getStringConfig(main.ext, "RP存档服务器地址") || "").replace(/\/$/, "");
+    const token = seal.ext.getStringConfig(main.ext, "RP存档Token") || "";
     if (!base) return null;
     try {
         const resp = await fetch(base + "/api/config", {
@@ -1527,7 +1531,7 @@ cmd_init_settings.solve = async (ctx, msg, argv) => {
             seal.replyToSender(ctx, msg,
                 `✅ 初始化完成（已从 UI 配置拉取 ${Object.keys(serverConfig).length} 项）\n` +
                 "• 仅补全空白项，已有设置不受影响\n" +
-                "• 如需强制覆盖所有设置，请使用「。同步设置」"
+                "• 如需强制覆盖所有设置，请使用「。拉取全部」"
             );
         } else {
             ensureDefaults(main);
@@ -1549,7 +1553,7 @@ ext.cmdMap["初始化设置"] = cmd_init_settings;
 // 推送全部 使用的配置键列表
 const SYNC_DIRECT_KEYS = [
     "item_registry", "rpg_attr_defs", "sys_attr_presets",
-    "love_show_name", "global_days", "auto_day_reset_enabled", "item_pool_mode",
+    "global_days", "auto_day_reset_enabled", "item_pool_mode",
     "adminAnnounceGroupId", "song_group_id", "background_group_id", "water_group_id",
     "fupan_routing_enabled", "fupan_routing_groups",
     "enable_join_existing_appointment", "require_fupan_before_end", "group_expire_hours", "appointment_coin_cost", "idle_group_name",
@@ -1558,7 +1562,7 @@ const SYNC_DIRECT_KEYS = [
     "allow_custom_gift_sign", "drop_hide_receiver",
     "shop_refresh_hours", "allow_private_rooms", "announceFrequency",
     "lovemail_default_limit", "lovemail_day_limits", "lovemail_delivery_time", "lovemail_expose", "lovemail_expose_chance",
-    "direct_letter_daily_limit", "direct_letter_min_chars", "direct_letter_reward",
+    "direct_letter_daily_limit", "direct_letter_min_chars", "direct_letter_reward", "direct_letter_cooldown",
     "wish_public_send", "wish_bounty_enabled", "wish_max_concurrent",
     "wish_daily_post_limit", "wish_daily_pick_limit", "wish_coin_cost",
     "relationship_system_enabled", "max_relationships_per_user", "max_detail_chars", "max_detail_count", "max_rel_total_chars",
@@ -1567,13 +1571,14 @@ const SYNC_DIRECT_KEYS = [
     "shop_gift_catalog_on_receive",
     "auction_allow_anon", "auction_broadcast", "auction_show_top_bidder", "auction_currency",
     "stakeout_allow_solo",
+    "ts_slot_mode",
 ];
 
 // json_parent 键 → 子字段列表（与 CONFIG_SCHEMA json_parent 对应）
 const SYNC_JSON_PARENT_KEYS = {
     "global_feature_toggle": [
-        "enable_general_letter", "enable_general_gift", "enable_general_appointment",
-        "enable_chaos_letter", "enable_secret_letter", "enable_wish_system", "enable_lovemail",
+        "enable_general_gift", "enable_general_appointment",
+        "enable_chaos_letter", "enable_wish_system", "enable_lovemail",
         "enable_wechat", "enable_direct_letter",
         "dlc_sighting", "dlc_fupan", "dlc_auction", "dlc_attack",
         "dlc_forum", "dlc_auto_day", "dlc_moments",
@@ -1581,7 +1586,7 @@ const SYNC_JSON_PARENT_KEYS = {
     ],
     "chaos_letter_config": [
         "misdelivery", "blackoutText", "loseContent", "antonymReplace",
-        "reverseOrder", "mistakenSignature", "poeticSignature",
+        "reverseOrder", "mistakenSignature", "tornPage",
         "dailyLimit", "publicChance", "publicShowEffect", "giftLost", "giftMisdelivery"
     ],
     "appointment_duration_config": ["phone", "private", "stakeout"],
@@ -1612,114 +1617,57 @@ cmd_push_all.solve = async (ctx, msg, argv) => {
     const main = getMainExt();
     if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件 changri");
 
-    const base  = (seal.ext.getStringConfig(main, "RP存档服务器地址") || "").replace(/\/$/, "");
-    const token = seal.ext.getStringConfig(main, "RP存档Token") || "";
+    const base  = (seal.ext.getStringConfig(main.ext, "RP存档服务器地址") || "").replace(/\/$/, "");
+    const token = seal.ext.getStringConfig(main.ext, "RP存档Token") || "";
     if (!base) return seal.replyToSender(ctx, msg, "❌ 未配置存档服务器地址");
 
     seal.replyToSender(ctx, msg, "⏳ 正在推送所有数据到网页端…");
 
     const authHeaders = { "Content-Type": "application/json", "X-Archive-Token": token };
-
-    // ── 构建 sync_config payload ───────────────────────────────────────────────
     const payload = {};
 
-    // 直存配置键
+    // 1. 直存配置键
     for (const key of SYNC_DIRECT_KEYS) {
         const val = mainStorGet(key);
         if (val !== null && val !== undefined && val !== "") payload[key] = val;
     }
 
-    // json_parent 展开键
+    // 2. json_parent 展开键
+    // 注意：monitor_settings 里的 timeout_phone/private/wish/official 在机器人侧是「毫秒」，
+    // 但网页端 site_config 里对应字段是「小时」（assemble_bot_config 拉取时会 ×3600000 换算成毫秒）。
+    // 推送时必须换算回小时，否则下次「拉取全部/初始化设置」会再乘一次 3600000，多次推拉后超时时长会指数级爆炸。
+    const MS_TO_HOUR_KEYS = { monitor_settings: ["timeout_phone", "timeout_private", "timeout_wish", "timeout_official"] };
     for (const [parent, subKeys] of Object.entries(SYNC_JSON_PARENT_KEYS)) {
         const raw = mainStorGet(parent);
         if (!raw) continue;
         try {
             const obj = JSON.parse(raw);
+            const hourKeys = MS_TO_HOUR_KEYS[parent] || [];
             for (const subKey of subKeys) {
-                if (obj[subKey] !== undefined) payload[`${parent}__${subKey}`] = String(obj[subKey]);
+                if (obj[subKey] === undefined) continue;
+                const val = hourKeys.includes(subKey) ? (Number(obj[subKey]) || 0) / 3600000 : obj[subKey];
+                payload[`${parent}__${subKey}`] = String(val);
             }
         } catch (e) { console.warn(`[推送全部] 解析 ${parent} 失败: ${e.message}`); }
     }
 
-    // blob 键（物品注册、结戏模版、礼品库等）
+    // 3. blob 键
     const PUSH_ALL_BLOB_KEYS = [
-        "item_registry", "rpg_attr_defs", "sys_attr_presets",
         "end_game_bonus_templates", "end_game_draw_config",
         "equipment_registry", "equipment_slots", "equipment_slot_names",
         "trade_whitelist", "preset_gifts",
         "private_appointment_aliases",
         "available_places", "place_keys",
+        "custom_message_templates",
+        "craft_recipes",
+        "skill_defs", "battle_attrs", "player_skills",
+        "attack_defense_config",
+        "shop_listings", "market_config",
     ];
     for (const key of PUSH_ALL_BLOB_KEYS) {
         const val = mainStorGet(key);
         if (val !== null && val !== undefined && val !== "") payload[key] = val;
     }
-
-    // 处理网页端待上载物品
-    let pendingMerged = 0;
-    try {
-        const pendingResp = await fetch(`${base}/api/pending_items`, { headers: { "X-Archive-Token": token } });
-        if (pendingResp.ok) {
-            const pendingData = await pendingResp.json();
-            const pending = pendingData.pending || [];
-            if (pending.length > 0) {
-                const reg = JSON.parse(mainStorGet("item_registry") || "{}");
-                for (const p of pending) {
-                    if (Object.values(reg).some(r => r.name === p.name)) continue;
-                    const codePrefix = p.type === "interact" ? "INTER_" : "ITEM_";
-                    let code = null;
-                    for (let d = 1; d < 10000; d++) {
-                        const c = codePrefix + String(d).padStart(3, "0");
-                        if (!reg[c]) { code = c; break; }
-                    }
-                    if (!code) continue;
-                    reg[code] = { code, name: p.name, desc: p.desc, type: p.type,
-                                  maxUses: p.maxUses, attrs: p.attrs, price: 0, canResell: p.canResell,
-                                  ...(p.durability != null ? { durability: p.durability } : {}) };
-                    pendingMerged++;
-                }
-                mainStorSet("item_registry", JSON.stringify(reg));
-                payload["item_registry"] = JSON.stringify(reg);
-            }
-            payload["item_registry_pending"] = "[]";
-        }
-    } catch (e) { console.warn(`[推送全部] 处理待上载物品失败: ${e.message}`); }
-
-    // 处理网页端待上载装备
-    let equipPendingMerged = 0;
-    try {
-        const equipPendingResp = await fetch(`${base}/api/pending_equips`, { headers: { "X-Archive-Token": token } });
-        if (equipPendingResp.ok) {
-            const equipPendingData = await equipPendingResp.json();
-            const equipPending = equipPendingData.pending || [];
-            if (equipPending.length > 0) {
-                const equipReg = JSON.parse(mainStorGet("equipment_registry") || "{}");
-                for (const p of equipPending) {
-                    if (Object.values(equipReg).some(r => r.name === p.name)) continue;
-                    let code = null;
-                    for (let d = 1; d < 10000; d++) {
-                        const c = "EQUIP_" + String(d).padStart(3, "0");
-                        if (!equipReg[c]) { code = c; break; }
-                    }
-                    if (!code) continue;
-                    const baseAttrs = {};
-                    if (p.baseAttrs) {
-                        p.baseAttrs.split(",").forEach(seg => {
-                            const m = seg.trim().match(/^(.+?)([+-]\d+)$/);
-                            if (m) baseAttrs[m[1]] = parseInt(m[2]);
-                        });
-                    }
-                    equipReg[code] = { code, name: p.name, desc: p.desc, type: "equipment",
-                                       slot: p.slot, baseAttrs,
-                                       ...(p.durability != null ? { durability: p.durability } : {}) };
-                    equipPendingMerged++;
-                }
-                mainStorSet("equipment_registry", JSON.stringify(equipReg));
-                payload["equipment_registry"] = JSON.stringify(equipReg);
-            }
-            payload["equipment_registry_pending"] = "[]";
-        }
-    } catch (e) { console.warn(`[推送全部] 处理待注册装备失败: ${e.message}`); }
 
     // ── 推送配置+注册表+模版+礼品库 ──────────────────────────────────────────
     let configSynced = 0;
@@ -1730,15 +1678,13 @@ cmd_push_all.solve = async (ctx, msg, argv) => {
             body: JSON.stringify(payload)
         });
         if (resp.status === 401 || resp.status === 403) {
-            seal.replyToSender(ctx, msg, "❌ Token 无效或未配置，请检查插件设置里的「RP存档Token」");
-            return seal.ext.newCmdExecuteResult(true);
+            return seal.replyToSender(ctx, msg, "❌ Token 无效或未配置，请检查插件设置里的「RP存档Token」");
         }
         if (!resp.ok) throw new Error(`sync_config 返回 ${resp.status}`);
         const result = await resp.json();
         configSynced = result.synced || Object.keys(payload).length;
     } catch (e) {
-        seal.replyToSender(ctx, msg, `❌ 配置推送失败：${e.message}`);
-        return seal.ext.newCmdExecuteResult(true);
+        return seal.replyToSender(ctx, msg, `❌ 配置推送失败：${e.message}`);
     }
 
     // ── 推送池子 ─────────────────────────────────────────────────────────────
@@ -1746,8 +1692,8 @@ cmd_push_all.solve = async (ctx, msg, argv) => {
     let poolErr = null;
     try {
         let poolDefs = {}, poolDrawCfg = { total: null, pools: {} };
-        try { poolDefs    = JSON.parse(mainStorGet("pool_definitions") || "{}"); } catch(e) {}
-        try { poolDrawCfg = JSON.parse(mainStorGet("pool_draw_config")  || "{}"); } catch(e) {}
+        try { poolDefs    = mainKvGet("pool_definitions", {}); } catch(e) {}
+        try { poolDrawCfg = mainKvGet("pool_draw_config", {}); } catch(e) {}
         poolCount = Object.keys(poolDefs).length;
         const resp = await fetch(`${base}/api/pool_config`, {
             method: "POST",
@@ -1755,17 +1701,13 @@ cmd_push_all.solve = async (ctx, msg, argv) => {
             body: JSON.stringify({ pool_definitions: poolDefs, pool_draw_config: poolDrawCfg })
         });
         if (!resp.ok) throw new Error(`pool_config 返回 ${resp.status}`);
-        const data = await resp.json();
-        if (!data.ok) throw new Error(data.error || "未知错误");
-    } catch (e) {
-        poolErr = e.message;
-    }
+    } catch (e) { poolErr = e.message; }
 
     // ── 推送拍卖快照 ─────────────────────────────────────────────────────────
     let auctionErr = null;
     let auctionCount = 0;
     try {
-        const auctionData = JSON.parse(mainStorGet("auction_items") || "{}");
+        const auctionData = mainKvGet("auction_items", {});
         auctionCount = Object.keys(auctionData).length;
         const resp = await fetch(`${base}/api/auction_snapshot`, {
             method: "POST",
@@ -1773,34 +1715,22 @@ cmd_push_all.solve = async (ctx, msg, argv) => {
             body: JSON.stringify({ snapshot: auctionData })
         });
         if (!resp.ok) throw new Error(`auction_snapshot 返回 ${resp.status}`);
-    } catch (e) {
-        auctionErr = e.message;
-    }
+    } catch (e) { auctionErr = e.message; }
 
     // ── 汇报结果 ─────────────────────────────────────────────────────────────
     let msg_lines = [`✅ 推送全部完成！`];
     msg_lines.push(`📋 配置+注册表+模版：${configSynced} 项`);
-    if (poolErr) {
-        msg_lines.push(`⚠️ 池子推送失败：${poolErr}`);
-    } else {
-        msg_lines.push(`🎲 池子：${poolCount} 个`);
-    }
-    if (auctionErr) {
-        msg_lines.push(`⚠️ 拍卖快照推送失败：${auctionErr}`);
-    } else {
-        msg_lines.push(`🔨 拍卖快照：${auctionCount} 件`);
-    }
-    if (pendingMerged > 0)      msg_lines.push(`📦 已合并 ${pendingMerged} 件待上载物品`);
-    if (equipPendingMerged > 0) msg_lines.push(`🛡️ 已合并 ${equipPendingMerged} 件待注册装备`);
+    msg_lines.push(poolErr ? `⚠️ 池子推送失败：${poolErr}` : `🎲 池子：${poolCount} 个`);
+    msg_lines.push(auctionErr ? `⚠️ 拍卖快照推送失败：${auctionErr}` : `🔨 拍卖快照：${auctionCount} 件`);
     seal.replyToSender(ctx, msg, msg_lines.join("\n"));
 
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["推送全部"] = cmd_push_all;
 
+
 // ========================
-// 拉取全部（网页端 → bot，一键全拉）
-// 包含：所有配置设置、物品/装备注册表、结戏模版、池子
+// 拉取全部（网页端 → bot，数据合流与落地）
 // ========================
 let cmd_pull_all = seal.ext.newCmdItemInfo();
 cmd_pull_all.name = "拉取全部";
@@ -1811,30 +1741,125 @@ cmd_pull_all.solve = async (ctx, msg, argv) => {
     const main = getMainExt();
     if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件 changri");
 
-    const base  = (seal.ext.getStringConfig(main, "RP存档服务器地址") || "").replace(/\/$/, "");
-    const token = seal.ext.getStringConfig(main, "RP存档Token") || "";
+    const base  = (seal.ext.getStringConfig(main.ext, "RP存档服务器地址") || "").replace(/\/$/, "");
+    const token = seal.ext.getStringConfig(main.ext, "RP存档Token") || "";
     if (!base) return seal.replyToSender(ctx, msg, "❌ 未配置存档服务器地址（在海豹插件设置里填写）");
 
     seal.replyToSender(ctx, msg, "⏳ 正在从网页端拉取所有数据…");
 
     const headers = { "X-Archive-Token": token };
 
-    // ── 拉取配置+注册表+模版 ─────────────────────────────────────────────────
+    // ── 1. 拉取并重组基础配置 ─────────────────────────────────────────────────
     let configCount = 0;
     try {
         const resp = await fetch(`${base}/api/config`, { headers });
         if (!resp.ok) throw new Error(`/api/config 返回 ${resp.status}`);
         const config = await resp.json();
+
+        // 用于存放逆向组装的 JSON Parent 对象
+        const reconstructedParents = {};
+
         for (const [key, value] of Object.entries(config)) {
-            mainStorSet(key, String(value));
+            if (key.includes("__")) {
+                // 处理形如 parentKey__subKey 的扁平化键，重新封装为 JSON
+                const [parent, subKey] = key.split("__");
+                if (!reconstructedParents[parent]) {
+                    try {
+                        reconstructedParents[parent] = mainKvGet(parent, {});
+                    } catch(e) { reconstructedParents[parent] = {}; }
+                }
+                reconstructedParents[parent][subKey] = value;
+            } else {
+                // 普通直存键直接写入
+                mainStorSet(key, String(value));
+                configCount++;
+            }
         }
-        configCount = Object.keys(config).length;
+
+        // 把重新组装好的 JSON 父母键写入存储
+        for (const [parent, obj] of Object.entries(reconstructedParents)) {
+            mainKvSet(parent, obj);
+            configCount++;
+        }
     } catch (e) {
-        seal.replyToSender(ctx, msg, `❌ 配置拉取失败：${e.message}`);
-        return seal.ext.newCmdExecuteResult(true);
+        return seal.replyToSender(ctx, msg, `❌ 基础配置拉取失败：${e.message}`);
     }
 
-    // ── 拉取池子 ─────────────────────────────────────────────────────────────
+    // ── 2. 处理「待上载物品」（从网页端拉取并合并入本地注册表） ───────────────────────
+    let pendingMerged = 0;
+    try {
+        const pendingResp = await fetch(`${base}/api/pending_items`, { headers });
+        if (pendingResp.ok) {
+            const pendingData = await pendingResp.json();
+            const pending = pendingData.pending || [];
+            if (pending.length > 0) {
+                const reg = mainKvGet("item_registry", {});
+                for (const p of pending) {
+                    if (Object.values(reg).some(r => r.name === p.name)) continue; // 名字去重
+                    
+                    const codePrefix = p.type === "interact" ? "INTER_" : "ITEM_";
+                    let code = null;
+                    for (let d = 1; d < 10000; d++) {
+                        const c = codePrefix + String(d).padStart(3, "0");
+                        if (!reg[c]) { code = c; break; }
+                    }
+                    if (!code) continue;
+
+                    reg[code] = { 
+                        code, name: p.name, desc: p.desc, type: p.type,
+                        maxUses: p.maxUses, attrs: p.attrs, price: 0, canResell: p.canResell,
+                        ...(p.durability != null ? { durability: p.durability } : {}) 
+                    };
+                    pendingMerged++;
+                }
+                mainKvSet("item_registry", reg);
+                // 告诉网页端：这些待上载数据我已经成功合流并落地了，可以清空了
+                await fetch(`${base}/api/pending_items`, { method: "DELETE", headers });
+            }
+        }
+    } catch (e) { console.warn(`[拉取全部] 处理网页待上载物品失败: ${e.message}`); }
+
+    // ── 3. 处理「待上载装备」（从网页端拉取并合并入本地注册表） ───────────────────────
+    let equipPendingMerged = 0;
+    try {
+        const equipPendingResp = await fetch(`${base}/api/pending_equips`, { headers });
+        if (equipPendingResp.ok) {
+            const equipPendingData = await equipPendingResp.json();
+            const equipPending = equipPendingData.pending || [];
+            if (equipPending.length > 0) {
+                const equipReg = mainKvGet("equipment_registry", {});
+                for (const p of equipPending) {
+                    if (Object.values(equipReg).some(r => r.name === p.name)) continue;
+                    
+                    let code = null;
+                    for (let d = 1; d < 10000; d++) {
+                        const c = "EQUIP_" + String(d).padStart(3, "0");
+                        if (!equipReg[c]) { code = c; break; }
+                    }
+                    if (!code) continue;
+
+                    const baseAttrs = {};
+                    if (p.baseAttrs) {
+                        p.baseAttrs.split(",").forEach(seg => {
+                            const m = seg.trim().match(/^(.+?)([+-]\d+)$/);
+                            if (m) baseAttrs[m[1]] = parseInt(m[2]);
+                        });
+                    }
+                    equipReg[code] = { 
+                        code, name: p.name, desc: p.desc, type: "equipment",
+                        slot: p.slot, baseAttrs,
+                        ...(p.durability != null ? { durability: p.durability } : {}) 
+                    };
+                    equipPendingMerged++;
+                }
+                mainKvSet("equipment_registry", equipReg);
+                // 告诉网页端：清除已拉取的待上载装备
+                await fetch(`${base}/api/pending_equips`, { method: "DELETE", headers });
+            }
+        }
+    } catch (e) { console.warn(`[拉取全部] 处理网页待注册装备失败: ${e.message}`); }
+
+    // ── 4. 拉取池子配置 ─────────────────────────────────────────────────────────
     let poolCount = 0;
     let poolErr = null;
     try {
@@ -1844,14 +1869,12 @@ cmd_pull_all.solve = async (ctx, msg, argv) => {
         if (!data.ok) throw new Error(data.error || "未知错误");
         const defs = data.pool_definitions || {};
         const cfg  = data.pool_draw_config  || { total: null, pools: {} };
-        mainStorSet("pool_definitions", JSON.stringify(defs));
-        mainStorSet("pool_draw_config",  JSON.stringify(cfg));
+        mainKvSet("pool_definitions", defs);
+        mainKvSet("pool_draw_config", cfg);
         poolCount = Object.keys(defs).length;
-    } catch (e) {
-        poolErr = e.message;
-    }
+    } catch (e) { poolErr = e.message; }
 
-    // ── 拉取拍卖队列 ─────────────────────────────────────────────────────────
+    // ── 5. 拉取拍卖队列 ─────────────────────────────────────────────────────────
     let auctionActivated = 0;
     let auctionFailed = 0;
     let auctionErr = null;
@@ -1863,16 +1886,27 @@ cmd_pull_all.solve = async (ctx, msg, argv) => {
         const queue = data.queue || [];
         if (queue.length > 0) {
             let auctionData = {};
-            try { auctionData = JSON.parse(mainStorGet("auction_items") || "{}"); } catch(e) {}
+            try { auctionData = mainKvGet("auction_items", {}); } catch(e) {}
             let reg = {};
-            try { reg = JSON.parse(mainStorGet("item_registry") || "{}"); } catch(e) {}
+            try { reg = mainKvGet("item_registry", {}); } catch(e) {}
+            
             const now = Date.now();
-            let nextId = Object.keys(auctionData).length + 1;
+            
+            // 【安全修复】寻找当前本地已有的最大数字ID，防止覆盖已有拍卖
+            let maxIdNum = 0;
+            Object.keys(auctionData).forEach(k => {
+                const num = parseInt(k.replace("A", ""));
+                if (!isNaN(num) && num > maxIdNum) maxIdNum = num;
+            });
+            let nextIdNum = maxIdNum + 1;
+
             for (const item of queue) {
                 const regItem = Object.values(reg).find(r => r.code === item.code);
                 if (!regItem) { auctionFailed++; continue; }
-                const id = `A${String(nextId).padStart(3, "0")}`;
-                nextId++;
+                
+                const id = `A${String(nextIdNum).padStart(3, "0")}`;
+                nextIdNum++;
+                
                 auctionData[id] = {
                     id, code: regItem.code, name: regItem.name, desc: regItem.desc || "",
                     startPrice: item.startPrice, minIncrement: item.minIncrement,
@@ -1883,26 +1917,48 @@ cmd_pull_all.solve = async (ctx, msg, argv) => {
                 };
                 auctionActivated++;
             }
-            if (auctionActivated > 0) mainStorSet("auction_items", JSON.stringify(auctionData));
+            if (auctionActivated > 0) mainKvSet("auction_items", auctionData);
             await fetch(`${base}/api/auction_queue`, { method: "DELETE", headers });
         }
-    } catch (e) {
-        auctionErr = e.message;
-    }
+    } catch (e) { auctionErr = e.message; }
+
+    // ── 6. 还原拍卖快照（仅当本地 auction_items 为空时） ──────────────────────
+    let auctionSnapshotRestored = 0;
+    let auctionSnapshotErr = null;
+    try {
+        const localAuction = mainStorGet("auction_items");
+        const localEmpty = !localAuction || Object.keys(JSON.parse(localAuction || "{}")).length === 0;
+        if (localEmpty) {
+            const snapResp = await fetch(`${base}/api/auction_snapshot`, { headers });
+            if (snapResp.ok) {
+                const snapData = await snapResp.json();
+                const snapshot = snapData.snapshot || {};
+                if (Object.keys(snapshot).length > 0) {
+                    mainKvSet("auction_items", snapshot);
+                    auctionSnapshotRestored = Object.keys(snapshot).length;
+                }
+            }
+        }
+    } catch (e) { auctionSnapshotErr = e.message; }
 
     // ── 汇报结果 ─────────────────────────────────────────────────────────────
     let msg_lines = [`✅ 拉取全部完成！`];
-    msg_lines.push(`📋 配置+注册表+模版：${configCount} 项已覆盖`);
-    if (poolErr) {
-        msg_lines.push(`⚠️ 池子拉取失败：${poolErr}`);
-    } else {
-        msg_lines.push(`🎲 池子：${poolCount} 个已覆盖`);
-    }
+    msg_lines.push(`📋 配置+注册表+模版：${configCount} 项已同步`);
+    if (pendingMerged > 0)      msg_lines.push(`📦 网页端同步：成功落地 ${pendingMerged} 件新物品`);
+    if (equipPendingMerged > 0) msg_lines.push(`🛡️ 网页端同步：成功落地 ${equipPendingMerged} 件新装备`);
+    msg_lines.push(poolErr ? `⚠️ 池子拉取失败：${poolErr}` : `🎲 池子：${poolCount} 个已覆盖`);
+
     if (auctionErr) {
         msg_lines.push(`⚠️ 拍卖队列拉取失败：${auctionErr}`);
     } else if (auctionActivated > 0) {
-        msg_lines.push(`🔨 拍卖队列：激活 ${auctionActivated} 件${auctionFailed > 0 ? `，${auctionFailed} 件找不到物品码` : ""}`);
+        msg_lines.push(`🔨 拍卖队列：成功激活 ${auctionActivated} 件${auctionFailed > 0 ? `（⚠️ ${auctionFailed} 件物品代码本地不存在）` : ""}`);
     }
+    if (auctionSnapshotErr) {
+        msg_lines.push(`⚠️ 拍卖快照还原失败：${auctionSnapshotErr}`);
+    } else if (auctionSnapshotRestored > 0) {
+        msg_lines.push(`🔨 拍卖快照：已还原 ${auctionSnapshotRestored} 件进行中拍卖`);
+    }
+    
     msg_lines.push(`所有设置已立即生效。`);
     seal.replyToSender(ctx, msg, msg_lines.join("\n"));
 
@@ -1915,8 +1971,8 @@ ext.cmdMap["拉取全部"] = cmd_pull_all;
 function sendSyncGuideForward(groupId) {
     const main = getMainExt();
     if (!main) return;
-    const wsUrl = seal.ext.getStringConfig(main, "ws地址");
-    const token = seal.ext.getStringConfig(main, "ws Access token");
+    const wsUrl = seal.ext.getStringConfig(main.ext, "ws地址");
+    const token = seal.ext.getStringConfig(main.ext, "ws Access token");
     if (!wsUrl) return;
     let url = wsUrl;
     if (token) url += (url.includes("?") ? "&" : "?") + "access_token=" + encodeURIComponent(token);
@@ -1931,48 +1987,26 @@ function sendSyncGuideForward(groupId) {
          "",
          "发送「同步指南」随时查阅"],
 
-        ["🌐 全量操作",
+        ["🌐 全量操作（长日设置插件，管理员）",
          "─────────────────────────────",
-         "⬇ 全量同步（长日系统插件）",
+         "⬇ 拉取全部",
          "从存档服务器拉取全部数据，覆盖本地",
-         "涵盖：物品/货币注册表、属性定义、结戏奖励模板、抽取池",
-         "用法：全量同步",
-         "预览（不写入）：全量同步 预览",
+         "涵盖：配置+注册表+模版、待上载物品/装备合并、池子、拍卖队列/快照",
+         "用法：拉取全部",
          "",
-         "⬆ 全量上传（长日设置插件）",
-         "将机器人当前配置全量推送到存档 UI",
-         "涵盖：设置项 + 物品注册表 + 结戏加成模版",
-         "用法：全量上传"],
-
-        ["⚙️ 设置配置（长日设置插件）",
-         "─────────────────────────────",
-         "⬇ 同步设置",
-         "从存档 UI 拉取并强制覆盖所有系统配置",
-         "用法：同步设置",
-         "",
-         "⬆ 同步到服务端",
-         "将机器人当前配置推送到存档 UI（UI 显示最新数值）",
-         "用法：同步到服务端"],
-
-        ["🎲 抽取池（长日RPG插件）",
-         "─────────────────────────────",
-         "⬇ 同步池子",
-         "从存档服务器拉取池子配置，覆盖本地池子定义和次数设定",
-         "用法：同步池子",
-         "预览（不写入）：同步池子 预览",
-         "",
-         "⬆ 上传池子",
-         "将本地池子配置推送到存档服务器（覆盖网页端的配置）",
-         "用法：上传池子"],
+         "⬆ 推送全部",
+         "将机器人当前数据全量推送到存档网页端",
+         "涵盖：设置项、物品/装备注册表、结戏加成模版、礼品库、池子、拍卖快照",
+         "用法：推送全部"],
 
         ["💡 常用场景速查",
          "─────────────────────────────",
-         "网页端编辑完池子 → 同步池子",
-         "网页端改完系统设置 → 同步设置",
-         "新部署机器人 / 初始化 → 全量同步（长日系统）",
-         "机器人调整了配置，要同步给网页 → 同步到服务端",
-         "机器人物品/模板有改动，全量推给网页 → 全量上传",
-         "机器人本地池子有改动，要同步给网页 → 上传池子"],
+         "网页端编辑完池子/设置/物品 → 拉取全部",
+         "新部署机器人 / 初始化 → 拉取全部",
+         "机器人这边配置/物品/池子有改动，要同步给网页 → 推送全部",
+         "",
+         "⚠️ 现已合并为「推送全部」「拉取全部」两条一键全量指令",
+         "不再有单独的同步设置/同步池子/上传池子/全量同步/全量上传等指令，也没有预览模式"],
     ];
 
     const nodes = sections.map(lines => ({
@@ -2032,14 +2066,14 @@ cmd_pull_archive.solve = async (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    const base  = (seal.ext.getStringConfig(main, "RP存档服务器地址") || "").replace(/\/$/, "");
-    const token = seal.ext.getStringConfig(main, "RP存档Token") || "";
+    const base  = (seal.ext.getStringConfig(main.ext, "RP存档服务器地址") || "").replace(/\/$/, "");
+    const token = seal.ext.getStringConfig(main.ext, "RP存档Token") || "";
     if (!base || !token) {
         seal.replyToSender(ctx, msg, "❌ 未配置「RP存档服务器地址」或「RP存档Token」，请先在插件设置中填写");
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    const announceGid = JSON.parse(mainStorGet("adminAnnounceGroupId") || "null");
+    const announceGid = mainKvGet("adminAnnounceGroupId", null);
     if (!announceGid) {
         seal.replyToSender(ctx, msg, "❌ 未配置公告群（adminAnnounceGroupId），请先在长日设置中填写群号");
         return seal.ext.newCmdExecuteResult(true);
@@ -2115,7 +2149,7 @@ cmd_random_group.solve = (ctx, msg, cmdArgs) => {
 
     const platform = msg.platform;
     const storage = api.getRoleStorage();
-    const npcList = JSON.parse(mainStorGet("a_npc_list") || "[]");
+    const npcList = mainKvGet("a_npc_list", []);
     const players = Object.keys(storage[platform] || {}).filter(n => !npcList.includes(n));
 
     if (players.length === 0) {

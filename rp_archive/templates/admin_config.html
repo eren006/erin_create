@@ -485,6 +485,7 @@ select.cfg-input { cursor: pointer; }
     <a href="{{ url_for('admin') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">总览</a>
     <a href="{{ url_for('admin_config_page') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--accent);border:1px solid var(--accent);color:#fff;">游戏配置</a>
     <a href="{{ url_for('admin_groups') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">已知群</a>
+    <a href="{{ url_for('admin_places') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">地点管理</a>
     <a href="{{ url_for('admin_rewards') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">结戏奖励</a>
     <a href="{{ url_for('admin_player_controls') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">玩家控制</a>
     <a href="{{ url_for('admin_shows') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">季管理</a>
@@ -494,8 +495,8 @@ select.cfg-input { cursor: pointer; }
   </div>
   <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;
               padding:11px 16px;margin-bottom:20px;font-size:13px;color:var(--muted);">
-    修改后点击保存，然后在 QQ 发 <b style="color:var(--accent)">。同步设置</b> 即可同步到海豹。
-    如需将机器人当前配置推送到此 UI，发送 <b style="color:var(--accent)">。同步到服务端</b>。
+    修改后点击保存，然后在 QQ 发 <b style="color:var(--accent)">。拉取全部</b> 即可同步到海豹。
+    如需将机器人当前配置推送到此 UI，发送 <b style="color:var(--accent)">。推送全部</b>。
   </div>
 
   {% if current_show and not current_show.is_current %}
@@ -505,7 +506,7 @@ select.cfg-input { cursor: pointer; }
     <span style="font-size:16px;">⚠️</span>
     <span>
       当前查看的是非活跃季「<b>{{ current_show.name }}</b>」，此处保存的配置
-      <b>不会</b>被「。同步设置」读取（机器人只拉取活跃季的配置）。
+      <b>不会</b>被「。拉取全部」读取（机器人只拉取活跃季的配置）。
       如需修改机器人配置，请先在「<a href="{{ url_for('admin_shows') }}"
       style="color:#e8a020;text-decoration:underline;">季管理</a>」切换到活跃季。
     </span>
@@ -513,7 +514,7 @@ select.cfg-input { cursor: pointer; }
   {% endif %}
 
   {% if saved %}
-  <div class="saved-tip" style="margin-bottom:18px;">✅ 配置已保存，发送「。同步设置」生效。</div>
+  <div class="saved-tip" style="margin-bottom:18px;">✅ 配置已保存，发送「。拉取全部」生效。</div>
   {% endif %}
 
   {# ── 配置预设面板 ── #}
@@ -664,16 +665,7 @@ select.cfg-input { cursor: pointer; }
   <form method="post" id="cfg-form">
 
     {# ═══════════════════════════════════════════ #}
-    {# 1. 基础                                    #}
-    {# ═══════════════════════════════════════════ #}
-
-    <div class="cfg-card">
-      <div class="cfg-card-title">基础设置</div>
-      {{ grid(s['基础'], 'cfg-grid-wide') }}
-    </div>
-
-    {# ═══════════════════════════════════════════ #}
-    {# 2. 群组 ID                                 #}
+    {# 1. 群组 ID                                 #}
     {# ═══════════════════════════════════════════ #}
 
     <div class="cfg-card">
@@ -840,7 +832,7 @@ select.cfg-input { cursor: pointer; }
         {{ grid(s['道具']) }}
         <div class="cfg-sub">拍卖</div>
         {{ grid(s['拍卖']) }}
-        <div class="cfg-sub">监听参数 <span class="cfg-badge" style="text-transform:none;letter-spacing:0;font-weight:400;">超时单位：小时 · 保存后「。同步设置」生效</span></div>
+        <div class="cfg-sub">监听参数 <span class="cfg-badge" style="text-transform:none;letter-spacing:0;font-weight:400;">超时单位：小时 · 保存后「。拉取全部」生效</span></div>
         {{ grid(s['监听参数']) }}
       </div>
     </details>
@@ -1129,7 +1121,7 @@ select.cfg-input { cursor: pointer; }
       <summary>自定义约会类型 <span class="cfg-badge">私约别名 · 触发词 · 图标 · 最短时长</span></summary>
       <div class="cfg-collapsible-inner">
         <div class="cfg-note" style="margin-bottom:12px;">
-          每种类型独立触发、独立结戏奖励模板。保存后在 QQ 发「。同步设置」生效。<br>
+          每种类型独立触发、独立结戏奖励模板。保存后在 QQ 发「。拉取全部」生效。<br>
           格式：用户发 <code style="font-size:11px;">触发词 时间 地点 角色名</code>，群名自动带上该类型名称，时间线和结戏奖励按类型名匹配。
         </div>
         <div id="aliases-list"></div>
@@ -1143,7 +1135,7 @@ select.cfg-input { cursor: pointer; }
         <span class="btn-save-text">保存配置</span>
         <span class="btn-save-spinner"></span>
       </button>
-      <span class="save-hint">保存后在 QQ 发「。同步设置」立即生效</span>
+      <span class="save-hint">保存后在 QQ 发「。拉取全部」立即生效</span>
     </div>
 
   </form>
@@ -1156,7 +1148,7 @@ select.cfg-input { cursor: pointer; }
         修改完成后，请按以下步骤让配置生效：
         <ul class="dirty-modal-steps">
           <li data-n="1">点击页面底部的 <b>「保存配置」</b> 按钮</li>
-          <li data-n="2">在 QQ 群发送指令 <code>。同步设置</code>，机器人将读取最新配置</li>
+          <li data-n="2">在 QQ 群发送指令 <code>。拉取全部</code>，机器人将读取最新配置</li>
         </ul>
       </div>
       <button class="btn-dirty-ok" id="dirty-modal-ok">我知道了</button>
@@ -1233,8 +1225,7 @@ var cfgEsc = function(s) {
   /* ── 字段校验 ─────────────────────────── */
   function validateConfig() {
     var errors = [];
-    var groupKeys = ['adminAnnounceGroupId','song_group_id','background_group_id',
-                     'water_group_id','auction_display_group'];
+    var groupKeys = ['adminAnnounceGroupId','song_group_id','background_group_id','water_group_id'];
     groupKeys.forEach(function(name) {
       var el = document.querySelector('[name="' + name + '"]');
       if (el && el.value.trim() && !/^\d+$/.test(el.value.trim())) {
@@ -1307,7 +1298,7 @@ var cfgEsc = function(s) {
           '> Writing config to persistent store... OK',
           '> System config updated.',
           '> Day phase synchronized with SealDice.',
-          '> Send「。同步设置」to apply in-game.'
+          '> Send「。拉取全部」to apply in-game.'
         ]);
       }
     } catch(err) {
@@ -1471,7 +1462,7 @@ var Registry = (function() {
     el.innerHTML =
       '<div class="reg-pending-section">' +
       '<div class="reg-pending-label">待同步 <span class="reg-pending-count">' + items.length + '</span>' +
-      '<span style="font-weight:400;font-size:10px;color:var(--muted);text-transform:none;letter-spacing:0"> — 全量上传后由机器人分配编号</span></div>' +
+      '<span style="font-weight:400;font-size:10px;color:var(--muted);text-transform:none;letter-spacing:0"> — 推送全部后由机器人分配编号</span></div>' +
       items.map(function(x) {
         var p = x.p;
         var meta = (p.maxUses === -1 ? '无限次' : p.maxUses + '次') +
@@ -1515,7 +1506,7 @@ var Registry = (function() {
     el.innerHTML =
       '<div class="reg-pending-section">' +
       '<div class="reg-pending-label">待同步 <span class="reg-pending-count">' + _equipPending.length + '</span>' +
-      '<span style="font-weight:400;font-size:10px;color:var(--muted);text-transform:none;letter-spacing:0"> — 全量上传后由机器人分配编号</span></div>' +
+      '<span style="font-weight:400;font-size:10px;color:var(--muted);text-transform:none;letter-spacing:0"> — 推送全部后由机器人分配编号</span></div>' +
       _equipPending.map(function(p, i) {
         var slotLabel = equipSlotNames[p.slot] || defaultNames[p.slot] || p.slot || '';
         var meta = slotLabel + (p.baseAttrs ? ' · ' + cfgEsc(p.baseAttrs) : '');

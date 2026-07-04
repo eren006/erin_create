@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}元神 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🔮 元神 <small>温养元神，锻厚根基</small></div>
+
+{% if not unlocked %}
+<div class="card" style="text-align:center;padding:40px 20px">
+  <div style="font-size:48px;margin-bottom:16px">🔮</div>
+  <div style="font-size:18px;font-weight:700;color:var(--gold2);margin-bottom:8px">元神系统未开启</div>
+  <div style="font-size:13px;color:var(--muted);line-height:2">
+    需先将洞府升级为<b>高级洞府</b>，并迁居至<b>高级山峰</b>，方可开启元神系统。<br>
+    请前往 <a href="{{ url_for('cave') }}" style="color:var(--jade)">洞府</a> 页面查看详情。
+  </div>
+</div>
+{% elif char.realm_idx < YUANSHEN_REALM_MIN %}
+<div class="card" style="text-align:center;padding:40px 20px">
+  <div style="font-size:48px;margin-bottom:16px">🔮</div>
+  <div style="font-size:18px;font-weight:700;color:var(--gold2);margin-bottom:8px">修为不足</div>
+  <div style="font-size:13px;color:var(--muted)">
+    需达到【{{ REALMS[YUANSHEN_REALM_MIN]['name'] }}】方可温养元神（当前 {{ REALMS[char.realm_idx]['name'] }}）。
+  </div>
+</div>
+{% else %}
+
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">当前元神</div>
+  <div style="text-align:center;padding:14px 0">
+    <div style="font-size:26px;font-weight:700;color:var(--gold2)">第 {{ level }} 层</div>
+    <div style="color:var(--muted);font-size:13px;margin-top:6px">
+      基础攻击 <strong style="color:var(--blue)">+{{ bonus['atk'] }}</strong> ·
+      基础防御 <strong style="color:var(--green)">+{{ bonus['def'] }}</strong>
+      <span style="color:var(--muted)">（乘算加成前直接生效）</span>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="border-color:var(--gold)">
+  <div class="card-h" style="color:var(--gold)">温养元神 → 第 {{ level + 1 }} 层</div>
+  <div style="background:var(--sf2);border-radius:8px;padding:12px;margin-bottom:12px;font-size:13px">
+    <div style="display:flex;justify-content:space-between;padding:4px 0">
+      <span style="color:var(--muted)">攻防提升</span>
+      <span><span style="color:var(--muted)">+{{ bonus['atk'] }}</span> → <span style="color:var(--gold)">+{{ next_bonus['atk'] }}</span></span>
+    </div>
+    <div style="display:flex;justify-content:space-between;padding:4px 0">
+      <span style="color:var(--muted)">所需灵力</span>
+      <span style="color:{% if energy >= energy_cost %}var(--green){% else %}var(--red){% endif %}">
+        {{ energy_cost }}（持有 {{ energy }}）
+      </span>
+    </div>
+    <div style="display:flex;justify-content:space-between;padding:4px 0">
+      <span style="color:var(--muted)">所需灵石</span>
+      <span style="color:{% if char.spirit_stones >= stones_cost %}var(--green){% else %}var(--red){% endif %}">
+        {{ stones_cost }}（持有 {{ char.spirit_stones }}）
+      </span>
+    </div>
+    {% for m in mats_display %}
+    <div style="display:flex;justify-content:space-between;padding:4px 0">
+      <span style="color:var(--muted)">{% if loop.first %}所需材料{% endif %}</span>
+      <span style="color:{% if m.have >= m.need %}var(--green){% else %}var(--red){% endif %}">
+        {{ m.name }} ×{{ m.need }}（持有 {{ m.have }}）
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+  <form method="post">
+    <input type="hidden" name="action" value="nourish">
+    <button class="btn btn-gold" style="width:100%;padding:12px" {% if not can_nourish %}disabled{% endif %}>
+      🔮 开始温养
+    </button>
+  </form>
+</div>
+
+<div class="card" style="margin-top:16px;background:rgba(201,168,76,.05);border-color:rgba(201,168,76,.15)">
+  <div class="card-h" style="color:var(--gold2)">元神须知</div>
+  <div style="color:var(--muted);font-size:12px;line-height:2">
+    <div>· 温养直接成功，不消耗材料失败，但每层消耗都比上一层更多</div>
+    <div>· 元神加成为直接相加的基础攻防，在百分比加成结算之前生效</div>
+    <div>· 温养材料均为中高阶材料，可通过修炼寻宝、探索秘境获得</div>
+    <div>· 迁离高级山峰不会清空已温养的元神层数，但会关闭继续温养的入口</div>
+  </div>
+</div>
+{% endif %}
+
+</div>
+{% endblock %}

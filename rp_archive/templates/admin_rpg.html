@@ -345,7 +345,7 @@
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
     <div>
       <div style="font-size:18px;font-weight:700;margin-bottom:3px;">RPG 管理</div>
-      <div style="font-size:12px;color:var(--muted);">注册物品 · 装备 · 属性 · 槽位，改完后机器人执行「全量上传」同步</div>
+      <div style="font-size:12px;color:var(--muted);">注册物品 · 装备 · 属性 · 槽位，改完后机器人执行「拉取全部」同步</div>
     </div>
   </div>
 
@@ -358,8 +358,8 @@
         <div class="rpg-panel-title">📦 注册新条目</div>
 
         <div class="info-bar">
-          在这里填写后点「加入待同步」，条目会进入下方队列。<br>
-          机器人执行 <b>。全量上传</b> 后自动分配编号并正式生效。
+          填写后点「立即注册」，编号自动分配并写入注册表。<br>
+          之后在机器人执行 <b>。拉取全部</b> 即可生效。
         </div>
 
         <!-- 类型选择 -->
@@ -462,17 +462,14 @@
           </div>
         </div>
 
-        <button class="rpg-submit" onclick="RPG.addPending()">加入待同步队列</button>
+        <button class="rpg-submit" onclick="RPG.addToRegistry()">立即注册</button>
       </div>
 
-      <!-- 待同步队列 -->
-      <div class="rpg-panel">
+      <!-- 旧版待同步队列（仅在有遗留数据时显示） -->
+      <div class="rpg-panel" id="legacy-pending-panel" style="display:none;">
         <div class="rpg-panel-title">
-          ⏳ 待同步队列
+          ⏳ 旧版待同步（发「。拉取全部」清空）
           <span class="badge" id="pending-count">0</span>
-        </div>
-        <div class="info-bar" style="margin-bottom:10px;">
-          以下条目已保存到服务端，机器人执行 <b>。全量上传</b> 后正式分配编号。
         </div>
         <div id="pending-list"></div>
       </div>
@@ -1035,40 +1032,56 @@ var RPG = (function() {
     renderEffectChips(key);
   }
 
-  // ── 加入待同步 ─────────────────────────────────────
-  function addPending() {
+  // ── 生成下一个可用编号 ─────────────────────────────
+  function genCode(prefix, reg) {
+    for (var d = 1; d < 10000; d++) {
+      var c = prefix + String(d).padStart(3, '0');
+      if (!reg[c]) return c;
+    }
+    return prefix + Date.now();
+  }
+
+  // ── 立即注册（直接写入注册表，无需待同步队列）──────────
+  function addToRegistry() {
     var name = document.getElementById('f-name').value.trim();
     var desc = document.getElementById('f-desc').value.trim() || '暂无描述';
     if (!name) { toast('请填写名称', 'err'); return; }
 
     // 检查重名
     var allNames = Object.values(itemReg).map(function(r) { return r.name; })
-      .concat(Object.values(equipReg).map(function(r) { return r.name; }))
-      .concat(itemPend.map(function(p) { return p.name; }))
-      .concat(equipPend.map(function(p) { return p.name; }));
+      .concat(Object.values(equipReg).map(function(r) { return r.name; }));
     if (allNames.indexOf(name) !== -1) { toast('「' + name + '」名称已存在', 'err'); return; }
 
     var durVal = parseInt(document.getElementById('f-durability').value);
     var durability = (!isNaN(durVal) && durVal > 0) ? durVal : null;
 
     if (currentType === 'currency') {
-      itemPend.push({ name: name, desc: desc, type: 'currency' });
+      var code = genCode('CURR_', itemReg);
+      itemReg[code] = { code: code, name: name, desc: desc, type: 'currency', attrs: null };
     } else if (currentType === 'equip') {
       var slot = document.getElementById('f-slot').value;
-      var baseAttrs = document.getElementById('hid-base-attrs').value.trim();
+      var baseAttrsStr = document.getElementById('hid-base-attrs').value.trim();
       if (!slot) { toast('请选择槽位', 'err'); return; }
-      if (!baseAttrs) { toast('装备必须至少有一条基础属性', 'err'); return; }
-      var ep = { name: name, desc: desc, slot: slot, baseAttrs: baseAttrs };
+      if (!baseAttrsStr) { toast('装备必须至少有一条基础属性', 'err'); return; }
+      var baseAttrs = {};
+      baseAttrsStr.split(',').forEach(function(seg) {
+        var m = seg.trim().match(/^(.+?)([+-]\d+)$/);
+        if (m) baseAttrs[m[1]] = parseInt(m[2]);
+      });
+      var code = genCode('EQUIP_', equipReg);
+      var ep = { code: code, name: name, desc: desc, type: 'equipment', slot: slot, baseAttrs: baseAttrs };
       if (durability) ep.durability = durability;
-      equipPend.push(ep);
+      equipReg[code] = ep;
     } else {
       var uses   = parseInt(document.getElementById('f-uses').value);
       var attrs  = document.getElementById('hid-attrs').value.trim();
       var resell = document.getElementById('f-resell').checked;
       if (isNaN(uses)) { toast('次数必须是数字', 'err'); return; }
-      var ip = { name: name, desc: desc, type: currentType, maxUses: uses, attrs: attrs || null, canResell: resell };
+      var prefix = currentType === 'interact' ? 'INTER_' : 'ITEM_';
+      var code = genCode(prefix, itemReg);
+      var ip = { code: code, name: name, desc: desc, type: currentType, maxUses: uses, attrs: attrs || null, canResell: resell };
       if (durability) ip.durability = durability;
-      itemPend.push(ip);
+      itemReg[code] = ip;
     }
 
     // 清空表单
@@ -1081,21 +1094,26 @@ var RPG = (function() {
     fx['base-attrs'] = []; renderEffectChips('base-attrs');
 
     save(function() {
-      toast('已加入待同步队列 ✓');
-      renderPending();
+      toast('「' + name + '」已注册 [' + code + '] ✓，发「。拉取全部」生效');
+      renderRegistry();
     });
   }
 
-  // ── 渲染待同步 ─────────────────────────────────────
+  // ── 加入待同步（兼容旧入口，保留供外部调用）──────────
+  function addPending() { addToRegistry(); }
+
+  // ── 渲染旧版待同步（仅有遗留数据时显示）──────────────
   function renderPending() {
-    var el = document.getElementById('pending-list');
     var total = itemPend.length + equipPend.length;
+    var panel = document.getElementById('legacy-pending-panel');
+    var el    = document.getElementById('pending-list');
     document.getElementById('pending-count').textContent = total;
 
     if (!total) {
-      el.innerHTML = '<div class="pending-empty">暂无待同步条目</div>';
+      if (panel) panel.style.display = 'none';
       return;
     }
+    if (panel) panel.style.display = '';
 
     var rows = [];
     itemPend.forEach(function(p, i) {
@@ -1457,6 +1475,7 @@ var RPG = (function() {
 
   return {
     setType: setType,
+    addToRegistry: addToRegistry,
     addPending: addPending,
     removePending: removePending,
     addEffect: addEffect,
@@ -1490,9 +1509,10 @@ var CRAFT = (function() {
 
   // ── 下拉列表填充 ──────────────────────────────────────
   function populate() {
-    var allReg = Object.values(itemReg);
+    // 合并物品表 + 装备表
+    var allReg = Object.values(itemReg).concat(Object.values(equipReg));
 
-    // 产物：所有非货币物品
+    // 产物：所有非货币物品（含装备）
     var outEl = document.getElementById('cf-output');
     var nonCurr = allReg.filter(function(r) { return r.type !== 'currency'; });
     outEl.innerHTML = '<option value="">— 选择产物 —</option>' +
@@ -1500,7 +1520,7 @@ var CRAFT = (function() {
         return '<option value="' + e(r.code) + '">[' + e(r.code) + '] ' + e(r.name) + '</option>';
       }).join('');
 
-    // 材料：全部物品（包括货币）
+    // 材料：全部物品（含装备和货币）
     var matEl = document.getElementById('cf-mat-item');
     matEl.innerHTML = '<option value="">— 选择材料 —</option>' +
       allReg.map(function(r) {
@@ -1534,7 +1554,7 @@ var CRAFT = (function() {
     }
     el.innerHTML = entries.map(function(kv) {
       var code = kv[0], qty = kv[1];
-      var info = itemReg[code];
+      var info = itemReg[code] || equipReg[code];
       var label = info ? ('[' + e(code) + '] ' + e(info.name)) : e(code);
       return '<div class="mgmt-row" style="margin-bottom:4px;padding:5px 10px;">' +
         '<div style="font-size:12px;">' + label + ' <span style="color:var(--muted);">×' + qty + '</span></div>' +

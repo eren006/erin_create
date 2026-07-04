@@ -23,6 +23,10 @@ ext.autoActive = true;
 function getApi()                          { return globalThis.__changriApi || null; }
 function mainStorGet(key)                  { return getApi()?.kvGetRaw(key) ?? null; }
 function mainStorSet(key, val)             { getApi()?.kvSetRaw(key, val); }
+
+// JSON 对象读写：走主插件 kvGet/kvSet（带缓存与损坏容错），JSON key 一律用这两个函数
+function mainKvGet(key, def) { const api = getApi(); return api ? api.kvGet(key, def) : def; }
+function mainKvSet(key, val) { getApi()?.kvSet(key, val); }
 function getPrimaryUid(platform, uid)      { return getApi()?.getPrimaryUid(platform, uid) ?? uid; }
 function getRoleName(ctx, msg)             { return getApi()?.getRoleName(ctx, msg) ?? null; }
 function getUidByRoleName(platform, name)  { return getApi()?.getUidByRoleName(platform, name) ?? null; }
@@ -66,8 +70,8 @@ const sendTextToGroup = (platform, gid, text) => {
 
 seal.ext.registerIntConfig(ext, "forumMaxLength", 500, "论坛内容最大长度", "发帖和回复的最大字符数");
 
-const getForumPosts = () => JSON.parse(mainStorGet("forum_posts") || "[]");
-const saveForumPosts = (posts) => mainStorSet("forum_posts", JSON.stringify(posts));
+const getForumPosts = () => mainKvGet("forum_posts", []);
+const saveForumPosts = (posts) => mainKvSet("forum_posts", posts);
 
 function sendToAnnounceGroup(ctx, platform, text) {
     const announceGid = mainStorGet("song_group_id");
@@ -94,7 +98,7 @@ function findPostById(postId) {
 
 function extractMentions(content, platform) {
     if (!getApi()) return [];
-    const priv = JSON.parse(mainStorGet("a_private_group") || "{}")[platform] || {};
+    const priv = mainKvGet("a_private_group", {})[platform] || {};
     const validNames = new Set(Object.values(priv).map(v => v[0]));
     const matches = [...(content.matchAll(/@(\S+)/g) || [])].map(m => m[1]);
     return [...new Set(matches.filter(n => validNames.has(n)))];
@@ -104,7 +108,7 @@ function sendMentionNotice(platform, mentionedName, postId, authorName) {
     const uid = getUidByRoleName(platform, mentionedName);
     if (!uid || /^npc_/.test(uid)) return;
     if (!getApi()) return;
-    const pGid = JSON.parse(mainStorGet("a_private_group") || "{}")[platform]?.[uid]?.[1];
+    const pGid = mainKvGet("a_private_group", {})[platform]?.[uid]?.[1];
     if (!pGid || pGid === "0") return;
     sendTextToGroup(platform, pGid, `[CQ:at,qq=${uid}]\n📣 「${authorName}」在论坛帖子 [${postId}] 的回复中提到了你！`);
 }
@@ -434,7 +438,7 @@ ext.cmdMap["删除帖子"] = cmd_delete_post;
  */
 function sendCombinedDetails(ctx, msg, toRoleName, fromRoleName, details, self) {
     const platform = msg.platform;
-    const groups = JSON.parse(mainStorGet("a_private_group") || "{}");
+    const groups = mainKvGet("a_private_group", {});
 
     // 1. 获取对方的绑定信息（uid为key的新结构）
     const toUid = getUidByRoleName(platform, toRoleName);
@@ -492,7 +496,7 @@ function sendCombinedDetails(ctx, msg, toRoleName, fromRoleName, details, self) 
 }
 
 function getTargetAddr(platform, roleName) {
-    const groups = JSON.parse(mainStorGet("a_private_group") || "{}");
+    const groups = mainKvGet("a_private_group", {});
     const uid = getUidByRoleName(platform, roleName);
     if (!uid) return null;
     const entry = groups[platform]?.[uid];
@@ -503,12 +507,12 @@ const RelationshipUtils = {
     getRoleName: (ctx, msg, platform) => {
         const rawUid = msg.sender.userId.replace(`${platform}:`, "");
         const uid = getPrimaryUid(platform, rawUid);
-        const groups = JSON.parse(mainStorGet("a_private_group") || "{}");
+        const groups = mainKvGet("a_private_group", {});
         return groups[platform]?.[uid]?.[0] || null;
     },
-    getData: (key) => JSON.parse(mainStorGet(key) || "{}"),
-    setData: (key, data) => mainStorSet(key, JSON.stringify(data)),
-    isEnabled: () => JSON.parse(mainStorGet("relationship_system_enabled") || "false")
+    getData: (key) => mainKvGet(key, {}),
+    setData: (key, data) => mainKvSet(key, data),
+    isEnabled: () => mainKvGet("relationship_system_enabled", false)
 };
 
 let cmd_add_rel_detail = seal.ext.newCmdItemInfo();
@@ -595,7 +599,7 @@ ext.cmdMap["拉线"] = cmd_add_rel_detail;
 
 function sendNewDetailNotification(ctx, msg, toRoleName, content, fromRoleName, targetGid) {
     const platform = msg.platform;
-    const groups = JSON.parse(mainStorGet("a_private_group") || "{}");
+    const groups = mainKvGet("a_private_group", {});
     const toUid = getUidByRoleName(platform, toRoleName);
     const toAddr = toUid ? groups[platform]?.[toUid] : null;
     if (!toAddr) return;
@@ -828,7 +832,7 @@ cmd_rel_stats.solve = (ctx, msg) => {
     }
 
     const platform = msg.platform;
-    const relData = JSON.parse(mainStorGet("relationship_lines") || "{}");
+    const relData = mainKvGet("relationship_lines", {});
     const platformData = relData[platform] || {};
 
     const stats = [];
@@ -990,38 +994,38 @@ const getRoleStorage = (...a) => getApi().getRoleStorage(...a);
 
 // 心愿悬赏奖励用：直接操作 changri 存储里的背包数据
 function wishCheckInv(roleKey, code, count) {
-    const invs = JSON.parse(cachedGet("global_inventories") || "{}");
+    const invs = mainKvGet("global_inventories", {});
     const total = (invs[roleKey] || []).filter(e => e.code === code).reduce((s, e) => s + (e.count || 0), 0);
     return total >= count;
 }
 function wishAddToInv(roleKey, code, count) {
-    const reg = JSON.parse(cachedGet("item_registry") || "{}");
+    const reg = mainKvGet("item_registry", {});
     const item = reg[code];
     if (!item) return;
-    const invs = JSON.parse(cachedGet("global_inventories") || "{}");
+    const invs = mainKvGet("global_inventories", {});
     const inv = invs[roleKey] || [];
     const initialUses = item.maxUses !== undefined ? item.maxUses : -1;
     const entry = inv.find(e => e.code === code && (e.remainingUses !== undefined ? e.remainingUses : -1) === initialUses);
     if (entry) { entry.count += count; } else { inv.push({ code, count, remainingUses: initialUses }); }
     invs[roleKey] = inv;
-    cachedSet("global_inventories", JSON.stringify(invs));
+    mainKvSet("global_inventories", invs);
 }
 function wishGetDailyCount(uid, day, type) {
     const key = type === 'post' ? "wish_daily_post_counts" : "wish_daily_pick_counts";
-    const counts = JSON.parse(cachedGet(key) || "{}");
+    const counts = mainKvGet(key, {});
     const rec = counts[uid] || { day: "", count: 0 };
     return rec.day === day ? rec.count : 0;
 }
 function wishIncrDailyCount(uid, day, type) {
     const key = type === 'post' ? "wish_daily_post_counts" : "wish_daily_pick_counts";
-    const counts = JSON.parse(cachedGet(key) || "{}");
+    const counts = mainKvGet(key, {});
     const rec = counts[uid] || { day: "", count: 0 };
     counts[uid] = { day, count: rec.day === day ? rec.count + 1 : 1 };
-    cachedSet(key, JSON.stringify(counts));
+    mainKvSet(key, counts);
 }
 
 function wishRemoveFromInv(roleKey, code, count) {
-    const invs = JSON.parse(cachedGet("global_inventories") || "{}");
+    const invs = mainKvGet("global_inventories", {});
     const inv = invs[roleKey] || [];
     let rem = count;
     for (const e of inv.filter(e => e.code === code)) {
@@ -1031,7 +1035,7 @@ function wishRemoveFromInv(roleKey, code, count) {
         rem -= take;
     }
     invs[roleKey] = inv.filter(e => e.count > 0);
-    cachedSet("global_inventories", JSON.stringify(invs));
+    mainKvSet("global_inventories", invs);
 }
 
 // 兼容 fromId 带/不带 platform 前缀两种历史格式
@@ -1042,13 +1046,13 @@ function wishIsOwner(platform, uid, rawUid, fromId) {
 const WishUtils = {
     getPool: () => {
         const now = Date.now(), exp = 86400000;
-        const raw = JSON.parse(cachedGet("a_wishPool") || "[]");
+        const raw = mainKvGet("a_wishPool", []);
         const p = raw.filter(w => now - w.timestamp < exp);
         // Bug4修复：有过期条目时清理存储
-        if (p.length < raw.length) cachedSet("a_wishPool", JSON.stringify(p));
+        if (p.length < raw.length) mainKvSet("a_wishPool", p);
         return p;
     },
-    savePool: (p) => cachedSet("a_wishPool", JSON.stringify(p)),
+    savePool: (p) => mainKvSet("a_wishPool", p),
     formatList: (pool, title) => {
         if (!pool.length) return title + "当前没有漂浮的心愿。";
         const now = Date.now(), exp = 86400000;
@@ -1068,7 +1072,7 @@ const WishUtils = {
 let cmd_post_wish = {};
 cmd_post_wish.solve =(ctx, msg, cmdArgs) => {
     if (!requireApi(ctx, msg)) return seal.ext.newCmdExecuteResult(true);
-    const cfg = JSON.parse(cachedGet("global_feature_toggle") || "{}");
+    const cfg = mainKvGet("global_feature_toggle", {});
     if (cfg.enable_wish_system === false) return seal.replyToSender(ctx, msg, "🌠 心愿功能已关闭。");
     { const _fw = checkTsFeatureWindow("enable_wish_system"); if (!_fw.ok) return seal.replyToSender(ctx, msg, _fw.msg); }
 
@@ -1135,8 +1139,8 @@ cmd_post_wish.solve =(ctx, msg, cmdArgs) => {
     seal.replyToSender(ctx, msg, wishSuccessMsg);
 
     // 公共频道推送
-    if (JSON.parse(cachedGet("wish_public_send") || "true")) {
-        const gid = JSON.parse(cachedGet("adminAnnounceGroupId") || "null");
+    if (mainKvGet("wish_public_send", true)) {
+        const gid = mainKvGet("adminAnnounceGroupId", null);
         if (gid) {
             const genderEmoji = wishProfile.gender === "男" ? "👨" : "👩";
             const displayLabel = customNick ? `${genderEmoji} ${customNick}` : genderEmoji;
@@ -1155,7 +1159,7 @@ cmd_post_wish.solve =(ctx, msg, cmdArgs) => {
 const cmd_view_wish = {
     solve: (ctx, msg) => {
         if (!requireApi(ctx, msg)) return seal.ext.newCmdExecuteResult(true);
-        const cfg = JSON.parse(cachedGet("global_feature_toggle") || "{}");
+        const cfg = mainKvGet("global_feature_toggle", {});
         if (cfg.enable_wish_system === false) return seal.replyToSender(ctx, msg, "🌠 心愿功能已关闭。");
         seal.replyToSender(ctx, msg, WishUtils.formatList(WishUtils.getPool(), "当前心愿"));
         return seal.ext.newCmdExecuteResult(true);
@@ -1165,7 +1169,7 @@ const cmd_view_wish = {
 let cmd_pick_wish = {};
 cmd_pick_wish.solve =async (ctx, msg, cmdArgs) => {
     if (!requireApi(ctx, msg)) return seal.ext.newCmdExecuteResult(true);
-    const cfg = JSON.parse(cachedGet("global_feature_toggle") || "{}");
+    const cfg = mainKvGet("global_feature_toggle", {});
     if (cfg.enable_wish_system === false) return seal.replyToSender(ctx, msg, "🌠 心愿功能已关闭。");
     const wid = cmdArgs.getArgN(1)?.toUpperCase();
     const platform = msg.platform;
@@ -1230,7 +1234,7 @@ cmd_pick_wish.solve =async (ctx, msg, cmdArgs) => {
 let cmd_withdraw_wish = {};
 cmd_withdraw_wish.solve =(ctx, msg, cmdArgs) => {
     if (!requireApi(ctx, msg)) return seal.ext.newCmdExecuteResult(true);
-    const cfg = JSON.parse(cachedGet("global_feature_toggle") || "{}");
+    const cfg = mainKvGet("global_feature_toggle", {});
     if (cfg.enable_wish_system === false) return seal.replyToSender(ctx, msg, "🌠 心愿功能已关闭。");
     const wid = cmdArgs.getArgN(1)?.toUpperCase();
     const platform = msg.platform;
@@ -1264,7 +1268,7 @@ cmd_bounty_wish.name = "悬赏心愿";
 cmd_bounty_wish.help = "挂出带物品奖励的心愿\n格式：悬赏心愿 时间 地点 内容 | 物品名/码 数量\n示例：悬赏心愿 1400-1500 图书馆 陪我看书 | 滋补汤 1";
 cmd_bounty_wish.solve = (ctx, msg, cmdArgs) => {
     if (!requireApi(ctx, msg)) return seal.ext.newCmdExecuteResult(true);
-    const cfg = JSON.parse(cachedGet("global_feature_toggle") || "{}");
+    const cfg = mainKvGet("global_feature_toggle", {});
     if (cfg.enable_wish_system === false) return seal.replyToSender(ctx, msg, "🌠 心愿功能已关闭。");
     if (cachedGet("wish_bounty_enabled") === "false") return seal.replyToSender(ctx, msg, "🎁 悬赏心愿功能已关闭。");
 
@@ -1306,7 +1310,7 @@ cmd_bounty_wish.solve = (ctx, msg, cmdArgs) => {
     if (isNaN(rewardCount) || rewardCount <= 0) return seal.replyToSender(ctx, msg, "❌ 悬赏数量必须为正整数");
     const rewardInput = rewardArgs.slice(0, -1).join(" ");
 
-    const reg = JSON.parse(cachedGet("item_registry") || "{}");
+    const reg = mainKvGet("item_registry", {});
     const rewardItem = Object.values(reg).find(r => r.code === rewardInput.toUpperCase() || r.name === rewardInput);
     if (!rewardItem) return seal.replyToSender(ctx, msg, `❌ 找不到物品「${rewardInput}」`);
 
@@ -1352,8 +1356,8 @@ cmd_bounty_wish.solve = (ctx, msg, cmdArgs) => {
         编号: id, 悬赏物: rewardItem.name, 悬赏数量: rewardCount, 昵称行: _b昵称行.trim(), 费用行: _b费用行.trim()
     }) || `✅ 悬赏心愿已发出！编号：${id}\n🎁 悬赏：${rewardItem.name} ×${rewardCount}（已从背包扣除）\n有效期：24小时${_b昵称行}${_b费用行}`);
 
-    if (JSON.parse(cachedGet("wish_public_send") || "true")) {
-        const gid = JSON.parse(cachedGet("adminAnnounceGroupId") || "null");
+    if (mainKvGet("wish_public_send", true)) {
+        const gid = mainKvGet("adminAnnounceGroupId", null);
         if (gid) {
             const genderEmoji = bountyProfile.gender === "男" ? "👨" : "👩";
             const displayLabel = customNick ? `${genderEmoji} ${customNick}` : genderEmoji;
@@ -1372,14 +1376,14 @@ ext.cmdMap["悬赏心愿"] = cmd_bounty_wish;
 // ========================
 async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSenderName = null) {
     // 1. 功能开关检查
-    const config = JSON.parse(cachedGet("global_feature_toggle") || "{}");
+    const config = mainKvGet("global_feature_toggle", {});
     if (!(config.enable_general_gift ?? true)) {
         return seal.replyToSender(ctx, msg, "🎁 礼物功能已被禁用。");
     }
     { const _fw = checkTsFeatureWindow("enable_general_gift"); if (!_fw.ok) return seal.replyToSender(ctx, msg, _fw.msg); }
 
     const uid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
-    const a_private_group = JSON.parse(cachedGet("a_private_group") || "{}");
+    const a_private_group = mainKvGet("a_private_group", {});
 
     // 2. 身份识别
     const autoSendname = getRoleName(ctx, msg);
@@ -1411,8 +1415,8 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
     const cooldownMin = getStorageInt("giftCooldown", 30);
     const isPreset = giftInput.startsWith('#');
 
-    let globalStats = JSON.parse(cachedGet("global_gift_stats") || "{}");
-    let globalCooldowns = JSON.parse(cachedGet("global_gift_cooldowns") || "{}");
+    let globalStats = mainKvGet("global_gift_stats", {});
+    let globalCooldowns = mainKvGet("global_gift_cooldowns", {});
     const userKey = `${platform}:${uid}`;
     const now = Date.now();
 
@@ -1439,12 +1443,12 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
     let giftContent = giftInput;
 
     if (giftInput.startsWith('#')) {
-        let presetGifts = JSON.parse(cachedGet("preset_gifts") || "{}");
+        let presetGifts = mainKvGet("preset_gifts", {});
         const giftData = presetGifts[giftInput];
         if (!giftData) return seal.replyToSender(ctx, msg, `❌ 预设礼物 ${giftInput} 不存在`);
 
         // 抽卡模式：检查图鉴，可无限赠送
-        const sightings = JSON.parse(cachedGet("gift_sightings") || "{}");
+        const sightings = mainKvGet("gift_sightings", {});
         const owned = sightings[userKey]?.unlocked_gifts || [];
         if (!owned.includes(giftInput)) {
             return seal.replyToSender(ctx, msg, `🔒 「${giftData.name}」不在图鉴中，请先发送「礼品店」收集。`);
@@ -1453,14 +1457,14 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
         giftDisplayName = `「${giftData.name}」`;
         giftContent = giftData.content;
         presetGifts[giftInput].usage_count = (presetGifts[giftInput].usage_count || 0) + 1;
-        cachedSet("preset_gifts", JSON.stringify(presetGifts));
+        mainKvSet("preset_gifts", presetGifts);
     } else {
         giftDisplayName = "一份特别的礼物";
         giftContent = giftInput;
     }
 
     // 6. 混乱投递（丢失 / 送错）
-    const chaosGiftCfg = JSON.parse(cachedGet("chaos_letter_config") || "{}");
+    const chaosGiftCfg = mainKvGet("chaos_letter_config", {});
     const giftLostChance = chaosGiftCfg.giftLost || 0;
     const giftMisdeliveryChance = chaosGiftCfg.giftMisdelivery || 0;
 
@@ -1489,12 +1493,12 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
         if (giftInput.startsWith('#') && cachedGet("shop_gift_catalog_on_receive") === "true") {
             const recipientPrimaryUid = getPrimaryUid(platform, actualToUid);
             const recipientKey = `${platform}:${recipientPrimaryUid}`;
-            const sightings = JSON.parse(cachedGet("gift_sightings") || "{}");
+            const sightings = mainKvGet("gift_sightings", {});
             if (!sightings[recipientKey]) sightings[recipientKey] = { unlocked_gifts: [] };
             if (!sightings[recipientKey].unlocked_gifts.includes(giftInput) && Math.random() < 0.5) {
                 sightings[recipientKey].unlocked_gifts.push(giftInput);
-                cachedSet("gift_sightings", JSON.stringify(sightings));
-                const total = Object.keys(JSON.parse(cachedGet("preset_gifts") || "{}")).length;
+                mainKvSet("gift_sightings", sightings);
+                const total = Object.keys(mainKvGet("preset_gifts", {})).length;
                 const newCount = sightings[recipientKey].unlocked_gifts.length;
                 catalogHint = `\n✨ 这份礼物悄悄收进了你的图鉴～ 📚 ${newCount}/${total}`;
             }
@@ -1523,15 +1527,15 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
     userStat.count += 1;
     globalStats[userKey] = userStat;
     globalCooldowns[userKey] = now;
-    cachedSet("global_gift_stats", JSON.stringify(globalStats));
-    cachedSet("global_gift_cooldowns", JSON.stringify(globalCooldowns));
+    mainKvSet("global_gift_stats", globalStats);
+    mainKvSet("global_gift_cooldowns", globalCooldowns);
 
     // 8. 公开广播逻辑（丢失时跳过，存档前先决定是否公开）
     let isPublicDrop = false;
     let publicGroupId = null, pubCtxForGift = null, pubMsgForGift = null;
     if (!isLost) {
-        publicGroupId = JSON.parse(cachedGet("adminAnnounceGroupId") || "null");
-        const giftPublicEnabled = JSON.parse(cachedGet("gift_public_send") || "false");
+        publicGroupId = mainKvGet("adminAnnounceGroupId", null);
+        const giftPublicEnabled = mainKvGet("gift_public_send", false);
         if (giftPublicEnabled && publicGroupId) {
             const publicChance = getStorageInt("giftPublicChance", 50);
             if ((Math.floor(Math.random() * 100) + 1) <= publicChance) {
@@ -1591,7 +1595,7 @@ cmd_view_preset_gifts.solve =(ctx, msg) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    const presetGifts = JSON.parse(cachedGet("preset_gifts") || "{}");
+    const presetGifts = mainKvGet("preset_gifts", {});
     const allIds = Object.keys(presetGifts);
 
     if (allIds.length === 0) return seal.replyToSender(ctx, msg, "你推开门，走了进去。\n货架上什么都没有，空气里只有淡淡的木头气味。\n也许过些时候再来。");
@@ -1603,11 +1607,11 @@ cmd_view_preset_gifts.solve =(ctx, msg) => {
     const uid = getPrimaryUid(platform, msg.sender.userId.replace(/^[a-z]+:/i, ""));
     const userKey = `${platform}:${uid}`;
 
-    const sightings = JSON.parse(cachedGet("gift_sightings") || "{}");
+    const sightings = mainKvGet("gift_sightings", {});
     const owned = new Set(sightings[userKey]?.unlocked_gifts || []);
 
     let personalDisplay = {};
-    try { personalDisplay = JSON.parse(cachedGet("shop_personal_display") || "{}"); } catch (e) {}
+    try { personalDisplay = mainKvGet("shop_personal_display", {}); } catch (e) {}
 
     const myDisplay = personalDisplay[userKey];
     const needsRefresh = !myDisplay || (now - myDisplay.refreshedAt) > refreshHours * 3600 * 1000;
@@ -1617,7 +1621,7 @@ cmd_view_preset_gifts.solve =(ctx, msg) => {
         if (unowned.length > 0) {
             const picked = unowned[Math.floor(Math.random() * unowned.length)];
             personalDisplay[userKey] = { giftId: picked, refreshedAt: now };
-            cachedSet("shop_personal_display", JSON.stringify(personalDisplay));
+            mainKvSet("shop_personal_display", personalDisplay);
         }
         // 若全部拥有，不刷新 giftId（保留旧展示）
     }
@@ -1659,7 +1663,7 @@ cmd_view_preset_gifts.solve =(ctx, msg) => {
         }
     }
 
-    cachedSet("gift_sightings", JSON.stringify(sightings));
+    mainKvSet("gift_sightings", sightings);
 
     const newCount = ownedCount + 1 + (bonusGiftId ? 1 : 0);
 
@@ -1692,7 +1696,7 @@ cmd_view_my_gift_collection.solve =(ctx, msg, cmdArgs) => {
     const userKey = `${platform}:${primaryUid}`;
     const queryId = cmdArgs?.getArgN ? cmdArgs.getArgN(1) : "";
 
-    const presetGifts = JSON.parse(cachedGet("preset_gifts") || "{}");
+    const presetGifts = mainKvGet("preset_gifts", {});
     const total = Object.keys(presetGifts).length;
 
     if (total === 0) return seal.replyToSender(ctx, msg, "📚 图鉴暂无礼物，管理员尚未上传任何礼物~");
@@ -1707,7 +1711,7 @@ cmd_view_my_gift_collection.solve =(ctx, msg, cmdArgs) => {
         heatRanks[sortedByHeat[i].id] = rank;
     }
 
-    const sightings = JSON.parse(cachedGet("gift_sightings") || "{}");
+    const sightings = mainKvGet("gift_sightings", {});
     const owned = sightings[userKey]?.unlocked_gifts || [];
 
     if (queryId && queryId.startsWith('#')) {

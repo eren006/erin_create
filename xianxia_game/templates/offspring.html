@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% block title %}子嗣 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">👶 子嗣 <small>血脉传承，灵根延续</small></div>
+
+<!-- 道侣状态 -->
+{% if daolv %}
+<div class="card" style="margin-bottom:16px;padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+  <span style="font-size:18px">💑</span>
+  <div style="display:flex;flex-wrap:wrap;gap:6px 16px">
+    {% for d in all_daolvs %}
+    <div>
+      <span style="font-weight:600">{{ d.name }}</span>
+      <span class="root-{{ d.spirit_root }}" style="font-size:12px;margin-left:6px">{{ d.spirit_root }}</span>
+      <span style="color:var(--muted);font-size:12px;margin-left:6px">· 道侣</span>
+    </div>
+    {% endfor %}
+  </div>
+  <div style="margin-left:auto;font-size:12px;color:var(--muted)">
+    子嗣上限 {{ total }}/{{ MAX_OFFSPRING }}
+  </div>
+</div>
+{% else %}
+<div class="flash flash-info" style="margin-bottom:16px">需先结为道侣，方可孕育子嗣。前往<a href="{{ url_for('social') }}" style="color:var(--jade)">道友</a>页面结亲。</div>
+{% endif %}
+
+<!-- 孕育中的子嗣 -->
+{% if growing_kids %}
+<div class="card" style="margin-bottom:16px;border-color:rgba(155,127,224,.3)">
+  <div class="card-h" style="color:var(--purple)">成长中</div>
+  {% for kid in growing_kids %}
+  {% set cur = now_ts() %}
+  {% set elapsed = cur - kid.conceived_at %}
+  {% set total_secs = kid.matures_at - kid.conceived_at %}
+  {% set progress = [[0, elapsed / total_secs * 100]|max, 100]|min %}
+  {% set secs_left = [0, kid.matures_at - cur]|max %}
+  <div style="display:flex;align-items:center;gap:14px;padding:10px 0;
+       {% if not loop.last %}border-bottom:1px solid var(--bd){% endif %}">
+    <div style="font-size:28px">🌱</div>
+    <div style="flex:1">
+      <div style="font-weight:600;font-size:15px">{{ kid.name }}</div>
+      <div style="font-size:12px;margin-top:2px">
+        <span class="root-{{ kid.spirit_root }}" style="font-size:12px">{{ kid.spirit_root }}</span>
+        <span style="color:var(--muted);margin-left:8px">
+          成人后修炼加成 +{{ (OFFSPRING_ROOT_BONUS.get(kid.spirit_root,0.03)*100)|int }}%
+        </span>
+      </div>
+      <div style="margin-top:6px">
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px">
+          <span>成长进度 {{ progress|int }}%</span>
+          <span>还需 {{ secs_left // 86400 }}天 {{ (secs_left % 86400) // 3600 }}时</span>
+        </div>
+        <div class="bar-wrap" style="height:8px">
+          <div class="bar-fill bar-jade" style="width:{{ progress|int }}%"></div>
+        </div>
+      </div>
+    </div>
+    <form method="post" style="display:flex;gap:4px;align-items:center">
+      <input type="hidden" name="action" value="rename">
+      <input type="hidden" name="kid_id" value="{{ kid.id }}">
+      <input name="name" placeholder="起名" maxlength="8" value="{{ kid.name if kid.name != '无名' else '' }}"
+        style="width:70px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+               border-radius:6px;padding:4px 6px;font-size:12px;font-family:inherit">
+      <button class="btn btn-ghost btn-sm">改名</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- 已成年子嗣 -->
+{% if mature_kids %}
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h" style="color:var(--jade)">已成人的子嗣</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px">
+    {% for kid in mature_kids %}
+    {% set can_boost = boost_remain > 0 and kid.spirit_root in OFFSPRING_BOOST_RATE %}
+    <div style="background:var(--sf2);border:1px solid var(--bd);border-radius:10px;padding:14px;text-align:center">
+      <div style="font-size:28px;margin-bottom:6px">🧧</div>
+      <div style="font-weight:700;font-size:15px;color:var(--text)">{{ kid.name }}</div>
+      <div class="root-{{ kid.spirit_root }}" style="font-size:13px;margin:4px 0">{{ kid.spirit_root }}</div>
+      <div style="background:rgba(31,122,95,.1);border-radius:6px;padding:5px 8px;font-size:12px;color:var(--jade);margin-top:6px">
+        修炼加成 +{{ (OFFSPRING_ROOT_BONUS.get(kid.spirit_root,0.03)*100)|int }}%（已激活）
+      </div>
+      <form method="post" style="margin-top:8px;display:flex;gap:4px;justify-content:center">
+        <input type="hidden" name="action" value="rename">
+        <input type="hidden" name="kid_id" value="{{ kid.id }}">
+        <input name="name" placeholder="改名" maxlength="8"
+          style="width:60px;background:var(--sf);border:1px solid var(--bd);color:var(--text);
+                 border-radius:6px;padding:3px 6px;font-size:11px;font-family:inherit">
+        <button class="btn btn-ghost btn-sm">改</button>
+      </form>
+      {% set nxt_idx = SPIRIT_ROOT_CHAIN.index(kid.spirit_root) + 1 if kid.spirit_root in SPIRIT_ROOT_CHAIN else -1 %}
+      {% set nxt_root = SPIRIT_ROOT_CHAIN[nxt_idx] if nxt_idx >= 0 and nxt_idx < SPIRIT_ROOT_CHAIN|length else '' %}
+      {% set can_normal_boost = boost_limit > 0 and can_boost and kid.spirit_root in OFFSPRING_BOOST_RATE and kid.spirit_root != '天灵根' and kid.spirit_root != '混元灵根' %}
+      {% set can_yl_boost = yl_count > 0 and kid.spirit_root in OFFSPRING_BOOST_RATE and kid.spirit_root != '混元灵根' %}
+      {% if kid.spirit_root == '混元灵根' %}
+      <div style="margin-top:8px;font-size:11px;color:#e040fb">🌈 混元灵根，超越天地至理</div>
+      {% else %}
+      {% if can_normal_boost %}
+      <form method="post" style="margin-top:8px"
+            onsubmit="return confirm('消耗 {{ OFFSPRING_BOOST_ENERGY }} 灵力，尝试将【{{ kid.name }}】灵根强化为 {{ nxt_root }}？成功率 {{ (OFFSPRING_BOOST_RATE.get(kid.spirit_root,0)*100)|int }}%')">
+        <input type="hidden" name="action" value="boost_offspring">
+        <input type="hidden" name="boost_kid_id" value="{{ kid.id }}">
+        <button class="btn btn-sm" style="background:rgba(155,127,224,.2);color:var(--purple);border:1px solid rgba(155,127,224,.4);width:100%">
+          ✨ 强化灵根 → {{ nxt_root }}<br>
+          <span style="font-size:10px;opacity:.8">成功率 {{ (OFFSPRING_BOOST_RATE.get(kid.spirit_root,0)*100)|int }}% · 消耗 {{ OFFSPRING_BOOST_ENERGY }} 灵力</span>
+        </button>
+      </form>
+      {% elif boost_limit > 0 and not can_boost and kid.spirit_root != '天灵根' %}
+      <div style="margin-top:8px;font-size:11px;color:var(--muted)">当前无可用强化次数</div>
+      {% endif %}
+      {% if can_yl_boost %}
+      <form method="post" style="margin-top:6px"
+            onsubmit="return confirm('消耗七彩璎珞×1 + {{ OFFSPRING_BOOST_ENERGY }} 灵力，尝试将【{{ kid.name }}】灵根强化为 {{ nxt_root }}？成功率 {{ (OFFSPRING_BOOST_RATE.get(kid.spirit_root,0)*100)|int }}%，无需好感。')">
+        <input type="hidden" name="action" value="use_yingluo">
+        <input type="hidden" name="boost_kid_id" value="{{ kid.id }}">
+        <button class="btn btn-sm" style="background:rgba(224,64,251,.15);color:#e040fb;border:1px solid rgba(224,64,251,.4);width:100%">
+          🌈 七彩璎珞强化 → {{ nxt_root }}<br>
+          <span style="font-size:10px;opacity:.8">成功率 {{ (OFFSPRING_BOOST_RATE.get(kid.spirit_root,0)*100)|int }}% · 璎珞×1 · 无需好感</span>
+        </button>
+      </form>
+      {% endif %}
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- 孕育操作 -->
+{% if daolv and total < MAX_OFFSPRING %}
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">孕育新子嗣</div>
+  <div style="color:var(--muted);font-size:13px;line-height:1.9;margin-bottom:14px">
+    双方灵根加权随机决定子嗣天赋，有概率超越父母。<br>
+    <strong>你</strong>：<span class="root-{{ char.spirit_root }}">{{ char.spirit_root }}</span>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;font-size:12px">
+    <div style="background:var(--sf2);border-radius:6px;padding:6px 10px;">
+      <span style="color:var(--muted)">5% 概率</span> 灵根 <strong style="color:var(--jade)">超越双亲</strong>（变异/天灵根）
+    </div>
+    <div style="background:var(--sf2);border-radius:6px;padding:6px 10px;">
+      <span style="color:var(--muted)">1 天</span>后成人并提供修炼加成
+    </div>
+    <div style="background:var(--sf2);border-radius:6px;padding:6px 10px;">
+      上限 {{ MAX_OFFSPRING }} 名，当前 {{ total }} 名
+    </div>
+  </div>
+  <form method="post" onsubmit="return confirm('确定孕育子嗣？将随机继承双方灵根。')">
+    <input type="hidden" name="action" value="conceive">
+    {% if all_daolvs|length > 1 %}
+    <div style="margin-bottom:12px">
+      <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px">选择道侣</label>
+      <select name="target_daolv_id" style="background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:6px 10px;font-size:13px;font-family:inherit">
+        {% for d in all_daolvs %}
+        <option value="{{ d.id }}">{{ d.name }}（{{ d.spirit_root }}）{% if d.realm_idx < 9 %} ⚠境界不足{% endif %}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% else %}
+    <input type="hidden" name="target_daolv_id" value="{{ daolv.id }}">
+    <div style="font-size:13px;color:var(--muted);margin-bottom:10px">
+      道侣：<strong>{{ daolv.name }}</strong>
+      <span class="root-{{ daolv.spirit_root }}">{{ daolv.spirit_root }}</span>
+      {% if daolv.realm_idx < 9 %}<span style="color:var(--red);font-size:12px"> ⚠ 境界不足</span>{% endif %}
+    </div>
+    {% endif %}
+    <button class="btn btn-jade" style="padding:10px 24px">👶 孕育子嗣</button>
+  </form>
+</div>
+{% endif %}
+
+{% if boost_limit > 0 %}
+<div class="card" style="margin-bottom:16px;background:rgba(155,127,224,.05);border-color:rgba(155,127,224,.3)">
+  <div class="card-h" style="color:var(--purple)">💞 子嗣强化（合欢修专属）</div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+    <div style="background:rgba(155,127,224,.12);border-radius:8px;padding:8px 14px;font-size:13px">
+      今日剩余额度 <strong style="color:var(--purple)">{{ boost_remain }}/{{ boost_limit }}</strong>
+    </div>
+    <div style="background:var(--sf2);border-radius:8px;padding:8px 14px;font-size:12px;color:var(--muted)">
+      每次消耗 {{ OFFSPRING_BOOST_ENERGY }} 灵力 · 每天重置
+    </div>
+  </div>
+  <div style="color:var(--muted);font-size:12px;line-height:2">
+    <div>· 对已成人子嗣使用，将其灵根往上强化一级（五灵根→四灵根→…→天灵根）</div>
+    <div>· 需与子嗣的父母一方好感度 ≥ {{ OFFSPRING_BOOST_AFFINITY }}（自己是父母之一则自动满足）</div>
+    <div>· 成功率：五灵根 90%、四灵根 75%、三灵根 60%、双灵根 45%、变异灵根 30%</div>
+    <div>· 无论成败均获合欢经验 +{{ OFFSPRING_BOOST_EXP }}</div>
+    {% if hq_lv >= 5 %}<div>· <strong style="color:var(--purple)">合欢大成加持</strong>：每天可强化 {{ boost_limit }} 次</div>{% endif %}
+  </div>
+</div>{% endif %}
+
+{% if yl_count > 0 or true %}
+<div class="card" style="margin-bottom:16px;background:rgba(224,64,251,.05);border-color:rgba(224,64,251,.3)">
+  <div class="card-h" style="color:#e040fb">🌈 七彩璎珞强化</div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+    <div style="background:rgba(224,64,251,.12);border-radius:8px;padding:8px 14px;font-size:13px">
+      背包存量 <strong style="color:#e040fb">{{ yl_count }}</strong> 枚
+    </div>
+    <div style="background:var(--sf2);border-radius:8px;padding:8px 14px;font-size:12px;color:var(--muted)">
+      每次消耗璎珞×1 + {{ OFFSPRING_BOOST_ENERGY }} 灵力 · 无冷却限制
+    </div>
+  </div>
+  <div style="color:var(--muted);font-size:12px;line-height:2">
+    <div>· <strong style="color:#e040fb">任何人</strong>均可使用，无需与父母好感度</div>
+    <div>· 可突破天灵根上限，晋升至<strong style="color:#e040fb">混元灵根</strong>（修炼倍率 ×8.0，修炼加成 +40%）</div>
+    <div>· 成功率：五灵根 90%、四灵根 75%、三灵根 60%、双灵根 45%、变异灵根 30%、天灵根 15%</div>
+    <div>· 失败仍消耗璎珞，请慎重使用</div>
+    <div>· 七彩璎珞由<strong>合欢修4级</strong>在合欢修行页面合成，可赠予道友</div>
+  </div>
+</div>
+{% endif %}
+
+<div class="card" style="background:rgba(155,127,224,.05);border-color:rgba(155,127,224,.15)">
+  <div class="card-h" style="color:var(--purple)">子嗣说明</div>
+  <div style="color:var(--muted);font-size:12px;line-height:2">
+    <div>· 需有<a href="{{ url_for('social') }}" style="color:var(--jade)">道侣</a>，且双方均达筑基，方可孕育</div>
+    <div>· 子嗣灵根继承父母，有 <strong>5% 概率变异超越</strong>（如父母双灵根，子嗣可能变异灵根）</div>
+    <div>· 1 天后成人，成人后双方父母均获得<strong style="color:var(--jade)">永久修炼加成</strong></div>
+    <div>· 天灵根子嗣：+25%；双灵根：+12%；三灵根：+8%；以此类推</div>
+    <div>· 最多孕育 {{ MAX_OFFSPRING }} 名，加成可叠加</div>
+  </div>
+</div>
+</div>
+<style>input:focus{outline:none;border-color:var(--jade)}</style>
+{% endblock %}

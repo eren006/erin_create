@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}突破感悟 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div style="text-align:center;padding:20px 0 16px">
+  <div style="font-size:36px;margin-bottom:8px">✨</div>
+  <div style="font-size:22px;font-weight:700;color:var(--gold);letter-spacing:2px">突破感悟</div>
+  <div style="color:var(--muted);font-size:13px;margin-top:6px">
+    突破至【{{ realm.name }}】，天道馈赠，选择一种永久加成
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;max-width:900px;margin:0 auto">
+  {% for perk in perks %}
+  <form method="post">
+    <input type="hidden" name="idx" value="{{ loop.index0 }}">
+    <button type="submit" style="width:100%;background:none;border:none;cursor:pointer;text-align:left;padding:0">
+      <div class="card" style="transition:all .2s;border-color:rgba(166,124,26,.3)"
+           onmouseover="this.style.borderColor='var(--gold)';this.style.background='rgba(166,124,26,.06)'"
+           onmouseout="this.style.borderColor='rgba(166,124,26,.3)';this.style.background=''">
+        <div style="font-size:20px;margin-bottom:10px">
+          {% set icons = {'修炼':'⚡','寿元':'⏳','战斗':'⚔','探索':'🗺','炼丹':'🧪','炼器':'⚒','社交':'💞','奇遇':'🎲'} %}
+          {{ icons.get(perk.cat, '✦') }}
+        </div>
+        <div style="font-size:17px;font-weight:700;color:var(--gold);margin-bottom:6px">{{ perk.name }}</div>
+        <div style="font-size:14px;color:var(--text);margin-bottom:8px">{{ perk.desc }}</div>
+        <div style="font-size:11px;color:var(--muted);padding:4px 8px;background:var(--sf2);border-radius:6px;display:inline-block">
+          {{ perk.cat }} · 永久生效 · 可叠加
+        </div>
+      </div>
+    </button>
+  </form>
+  {% endfor %}
+</div>
+
+<div style="text-align:center;margin-top:20px;color:var(--muted);font-size:12px">
+  每次大境界突破可获得一次感悟机会，三选一，永久叠加
+</div>
+</div>
+{% endblock %}

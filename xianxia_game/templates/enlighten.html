@@ -1,0 +1,693 @@
+{% extends "base.html" %}
+{% block title %}仙人试炼 — 灵墟界{% endblock %}
+{% block head %}
+<style>
+/* ── 整体氛围 ── */
+.el-page{max-width:720px;margin:0 auto;padding:24px 16px 60px}
+.el-hero{
+  text-align:center;padding:32px 20px 24px;
+  background:linear-gradient(160deg,#1a1228 0%,#0d1a2e 60%,#1a1228 100%);
+  border-radius:16px;border:1px solid #3d2b6e;
+  color:#e8d8ff;margin-bottom:24px;position:relative;overflow:hidden
+}
+.el-hero::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse at 50% 0%,rgba(120,80,200,.25) 0%,transparent 70%);
+  pointer-events:none
+}
+.el-hero-title{font-size:26px;font-weight:700;letter-spacing:4px;
+  color:#d4a8ff;text-shadow:0 0 24px rgba(180,120,255,.6);margin-bottom:6px}
+.el-hero-sub{font-size:13px;color:#8878aa;letter-spacing:1px}
+.el-quote{
+  font-size:13px;color:#b89de8;margin-top:16px;font-style:italic;
+  border-left:2px solid #5a3f8a;padding-left:12px;text-align:left;
+  max-width:360px;margin-inline:auto
+}
+
+/* ── 进度时间轴 ── */
+.el-timeline{display:flex;gap:0;margin-bottom:28px;position:relative}
+.el-timeline::before{
+  content:'';position:absolute;top:20px;left:10%;right:10%;height:2px;
+  background:linear-gradient(90deg,#3d2b6e,#5a3f8a,#3d2b6e);z-index:0
+}
+.el-stage{
+  flex:1;display:flex;flex-direction:column;align-items:center;
+  gap:6px;position:relative;z-index:1;cursor:default
+}
+.el-stage-dot{
+  width:40px;height:40px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:16px;border:2px solid #3d2b6e;
+  background:#0d1a2e;transition:all .3s
+}
+.el-stage.done   .el-stage-dot{background:#2a1a4e;border-color:#9b6dff;color:#d4a8ff}
+.el-stage.active .el-stage-dot{
+  background:linear-gradient(135deg,#4a2080,#7a40c0);
+  border-color:#b88aff;box-shadow:0 0 16px rgba(160,100,255,.5);
+  animation:el-pulse 2s ease-in-out infinite
+}
+.el-stage.locked .el-stage-dot{background:#12111a;border-color:#2a2040;color:#3d3660;filter:grayscale(.8)}
+@keyframes el-pulse{
+  0%,100%{box-shadow:0 0 12px rgba(160,100,255,.4)}
+  50%     {box-shadow:0 0 24px rgba(160,100,255,.8)}
+}
+.el-stage-label{font-size:11px;color:#7a6a9a;text-align:center;line-height:1.3}
+.el-stage.done   .el-stage-label{color:#9b80cc}
+.el-stage.active .el-stage-label{color:#c8a8ff;font-weight:600}
+
+/* ── 关卡卡片 ── */
+.el-card{
+  background:linear-gradient(135deg,#12111a 0%,#1a1228 100%);
+  border:1px solid #3d2b6e;border-radius:14px;padding:24px;margin-bottom:20px;
+  color:#e0d0ff
+}
+.el-card-title{
+  font-size:17px;font-weight:700;color:#c8a0ff;
+  margin-bottom:4px;letter-spacing:2px
+}
+.el-card-sub{font-size:12px;color:#6a5a8a;margin-bottom:18px}
+.el-card-scenario{
+  font-size:14px;line-height:1.9;color:#c0b0e0;
+  background:rgba(80,40,140,.15);border-radius:10px;
+  padding:14px 16px;margin-bottom:18px;
+  border-left:3px solid #5a3f8a
+}
+
+/* ── 五行选择按钮 ── */
+.el-elements{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:4px}
+.el-elem-btn{
+  width:80px;height:80px;border-radius:50%;border:2px solid;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:3px;cursor:pointer;font-weight:700;transition:all .25s;
+  background:rgba(0,0,0,.3);font-size:11px
+}
+.el-elem-btn:hover{transform:scale(1.1);box-shadow:0 4px 20px rgba(255,255,255,.15)}
+.el-elem-btn.jin{border-color:#c8a020;color:#c8a020}
+.el-elem-btn.jin:hover{background:rgba(200,160,32,.15)}
+.el-elem-btn.mu {border-color:#4a9a4a;color:#4a9a4a}
+.el-elem-btn.mu:hover {background:rgba(74,154,74,.15)}
+.el-elem-btn.shui{border-color:#3a7abb;color:#3a7abb}
+.el-elem-btn.shui:hover{background:rgba(58,122,187,.15)}
+.el-elem-btn.huo{border-color:#c04020;color:#c04020}
+.el-elem-btn.huo:hover{background:rgba(192,64,32,.15)}
+.el-elem-btn.tu {border-color:#8a6a3a;color:#8a6a3a}
+.el-elem-btn.tu:hover {background:rgba(138,106,58,.15)}
+.el-elem-icon{font-size:26px}
+
+/* ── 道心抉择按钮 ── */
+.el-choices{display:flex;flex-direction:column;gap:10px}
+.el-choice-btn{
+  width:100%;text-align:left;padding:13px 16px;
+  background:rgba(60,30,100,.2);border:1px solid #3d2b6e;
+  border-radius:10px;color:#c0b0e0;cursor:pointer;font-size:14px;
+  transition:all .2s;line-height:1.6
+}
+.el-choice-btn:hover{background:rgba(80,40,140,.4);border-color:#7a50c0;color:#e0d0ff;
+  transform:translateX(4px)}
+
+/* ── 时机把握 ── */
+.el-timing-wrap{margin:8px 0 20px}
+.el-timing-info{font-size:13px;color:#8878aa;margin-bottom:14px;text-align:center}
+.el-qi-track{
+  position:relative;height:64px;background:rgba(20,10,40,.8);
+  border-radius:40px;border:1px solid #3d2b6e;overflow:hidden;margin-bottom:16px
+}
+.el-qi-zone{
+  position:absolute;top:0;bottom:0;
+  left:35%;width:30%;
+  background:linear-gradient(90deg,transparent,rgba(160,100,255,.25),rgba(180,120,255,.4),rgba(160,100,255,.25),transparent);
+  border-left:1px solid rgba(160,100,255,.4);border-right:1px solid rgba(160,100,255,.4);
+  display:flex;align-items:center;justify-content:center;
+  font-size:10px;color:#9b6dff;letter-spacing:1px
+}
+.el-qi-orb{
+  position:absolute;top:50%;transform:translateY(-50%);
+  width:44px;height:44px;border-radius:50%;
+  background:radial-gradient(circle at 35% 35%,#e0c0ff,#8040c0 50%,#3010a0);
+  box-shadow:0 0 20px rgba(160,100,255,.8),0 0 40px rgba(100,60,200,.4);
+  left:0
+}
+.el-attempts{display:flex;gap:8px;justify-content:center;margin-bottom:14px}
+.el-attempt-dot{
+  width:28px;height:28px;border-radius:50%;
+  border:2px solid #3d2b6e;background:#12111a;
+  display:flex;align-items:center;justify-content:center;font-size:11px;color:#6a5a8a;
+  transition:all .3s
+}
+.el-attempt-dot.hit-great{background:#4a2080;border-color:#b88aff;color:#d4a8ff}
+.el-attempt-dot.hit-ok   {background:#1a3a2a;border-color:#4a9a6a;color:#8acea0}
+.el-attempt-dot.hit-miss {background:#1a0a0a;border-color:#6a2a2a;color:#aa6a6a}
+.el-catch-btn{
+  width:100%;padding:14px;font-size:16px;font-weight:700;letter-spacing:2px;
+  background:linear-gradient(135deg,#4a2080,#7a40c0);
+  border:1px solid #b88aff;border-radius:12px;color:#e8d0ff;cursor:pointer;
+  transition:all .2s;box-shadow:0 4px 20px rgba(100,60,200,.3)
+}
+.el-catch-btn:hover:not(:disabled){
+  transform:translateY(-2px);box-shadow:0 6px 28px rgba(140,80,240,.5)
+}
+.el-catch-btn:disabled{opacity:.5;cursor:not-allowed}
+.el-timing-result{
+  text-align:center;padding:12px;border-radius:10px;margin-top:12px;
+  background:rgba(60,30,100,.25);border:1px solid #3d2b6e;
+  font-size:14px;color:#c0b0e0;display:none
+}
+
+/* ── 道理辨析 ── */
+.el-wisdom-choices{display:flex;flex-direction:column;gap:10px}
+.el-wisdom-btn{
+  width:100%;text-align:left;padding:14px 16px;
+  background:rgba(10,20,40,.4);border:1px solid #2a3860;
+  border-radius:10px;color:#a0b8d8;cursor:pointer;font-size:14px;
+  transition:all .2s;line-height:1.7;font-style:italic
+}
+.el-wisdom-btn:hover{background:rgba(20,40,80,.5);border-color:#4a6aaa;
+  color:#c0d8f0;transform:translateX(4px)}
+
+/* ── 感悟传承 ── */
+.el-reflection textarea{
+  width:100%;min-height:120px;padding:14px;
+  background:rgba(10,8,20,.6);border:1px solid #3d2b6e;
+  border-radius:10px;color:#c0b0e0;font-size:14px;line-height:1.8;
+  resize:vertical;font-family:inherit
+}
+.el-reflection textarea:focus{outline:none;border-color:#7a50c0;
+  box-shadow:0 0 12px rgba(120,80,200,.3)}
+.el-reflection textarea::placeholder{color:#4a3860}
+.el-reflection-hint{font-size:12px;color:#5a4a7a;margin-top:6px}
+
+/* ── 提交按钮 ── */
+.el-submit-btn{
+  width:100%;padding:13px;margin-top:16px;
+  background:linear-gradient(135deg,#3a1870,#6a30b0);
+  border:1px solid #9a60e0;border-radius:12px;
+  color:#e0c8ff;font-size:15px;font-weight:700;letter-spacing:2px;
+  cursor:pointer;transition:all .2s
+}
+.el-submit-btn:hover{transform:translateY(-2px);box-shadow:0 4px 20px rgba(120,70,200,.4)}
+
+/* ── 得分展示 ── */
+.el-score-row{display:flex;justify-content:space-between;align-items:center;
+  padding:8px 0;border-bottom:1px solid #2a1a4e;font-size:13px}
+.el-score-row:last-child{border:none}
+.el-score-val{font-weight:700;font-size:15px;color:#c8a0ff}
+.el-total{text-align:center;padding:16px 0 8px;font-size:22px;
+  font-weight:700;color:#d4a8ff;text-shadow:0 0 20px rgba(180,120,255,.5)}
+
+/* ── 结果 ── */
+.el-result{text-align:center;padding:32px 20px;border-radius:16px;
+  border:2px solid;margin-bottom:24px}
+.el-result.grand{background:linear-gradient(135deg,#1a0a30,#2a1048);
+  border-color:#c8a0ff;box-shadow:0 0 40px rgba(160,100,255,.3)}
+.el-result.minor{background:linear-gradient(135deg,#0a1a20,#102030);
+  border-color:#60a0d8;box-shadow:0 0 30px rgba(80,140,200,.2)}
+.el-result.spark{background:linear-gradient(135deg,#101820,#182030);
+  border-color:#4a8a6a;box-shadow:0 0 20px rgba(60,120,80,.2)}
+.el-result.none {background:linear-gradient(135deg,#121012,#1a1820);
+  border-color:#3a3040;color:#6a5a7a}
+.el-result-icon{font-size:56px;margin-bottom:12px}
+.el-result-title{font-size:24px;font-weight:700;letter-spacing:3px;margin-bottom:8px}
+.el-result.grand .el-result-title{color:#d4a8ff;text-shadow:0 0 20px rgba(180,120,255,.6)}
+.el-result.minor .el-result-title{color:#80c8f0}
+.el-result.spark .el-result-title{color:#70c890}
+.el-result.none  .el-result-title{color:#7a6a8a}
+.el-result-desc{font-size:14px;color:#a090c0;line-height:1.8;max-width:400px;margin:0 auto}
+.el-result-bonus{
+  display:inline-block;margin-top:14px;padding:8px 20px;
+  border-radius:20px;font-size:13px;font-weight:700;
+  background:rgba(100,60,180,.3);border:1px solid #7a50c0;color:#c8a0ff
+}
+
+/* ── 等待中关卡 ── */
+.el-locked-stage{
+  text-align:center;padding:28px;
+  background:rgba(10,8,20,.4);border:1px dashed #2a1a4e;
+  border-radius:14px;color:#5a4870;margin-bottom:20px
+}
+.el-locked-stage .lock-icon{font-size:36px;margin-bottom:8px;opacity:.5}
+.el-countdown{
+  font-size:18px;font-weight:700;color:#7a60a0;font-variant-numeric:tabular-nums;
+  letter-spacing:2px;margin-top:6px
+}
+
+/* ── 结果回放板 ── */
+.el-narrative-box{
+  background:rgba(30,15,60,.3);border:1px solid #3a2860;
+  border-radius:10px;padding:14px 16px;margin-top:14px;
+  font-size:13px;color:#c0a8e8;line-height:1.8;font-style:italic
+}
+
+/* ── 开启入口 ── */
+.el-start-card{
+  text-align:center;padding:40px 24px;
+  background:linear-gradient(135deg,#0d0a1a,#1a1228);
+  border:1px solid #3d2b6e;border-radius:16px;margin-bottom:20px;color:#c0b0e0
+}
+.el-start-icon{font-size:56px;margin-bottom:16px}
+.el-start-title{font-size:20px;font-weight:700;color:#c8a0ff;
+  letter-spacing:3px;margin-bottom:10px}
+.el-start-desc{font-size:13px;color:#7a6898;line-height:1.9;max-width:400px;margin:0 auto 20px}
+.el-cost-row{display:flex;gap:16px;justify-content:center;
+  font-size:13px;color:#8878aa;margin-bottom:20px}
+.el-cost-item{background:rgba(60,30,100,.2);border:1px solid #3d2b6e;
+  border-radius:8px;padding:6px 14px}
+.el-start-btn{
+  padding:13px 40px;background:linear-gradient(135deg,#5a2090,#9a40e0);
+  border:1px solid #c080ff;border-radius:12px;
+  color:#f0e0ff;font-size:16px;font-weight:700;letter-spacing:3px;
+  cursor:pointer;transition:all .2s;
+  box-shadow:0 4px 24px rgba(140,60,220,.4)
+}
+.el-start-btn:hover{transform:translateY(-2px);box-shadow:0 6px 32px rgba(160,80,240,.6)}
+.el-start-btn:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
+
+/* 响应式 */
+@media(max-width:480px){
+  .el-elements{gap:6px}
+  .el-elem-btn{width:60px;height:60px}
+  .el-elem-icon{font-size:20px}
+}
+</style>
+{% endblock %}
+{% block body %}
+<div class="el-page">
+
+{# ── 页头 ── #}
+<div class="el-hero">
+  <div class="el-hero-title">✦ 仙人试炼 ✦</div>
+  <div class="el-hero-sub">限定顿悟 · 仙缘赐福 · 修炼永益</div>
+  {% if esess %}
+  <div class="el-quote">「{{ immortal_line }}」</div>
+  {% endif %}
+</div>
+
+{# ── 阶段时间轴 ── #}
+{% if esess %}
+<div class="el-timeline">
+  {% for s in stage_data %}
+  <div class="el-stage {% if s.done %}done{% elif s.unlocked %}active{% else %}locked{% endif %}">
+    <div class="el-stage-dot">
+      {% if s.done %}✓
+      {% elif s.unlocked %}{{ loop.index }}
+      {% else %}🔒{% endif %}
+    </div>
+    <div class="el-stage-label">{{ s.name }}<br>
+      {% if s.done %}
+        <span style="color:#6a50a0;font-size:10px">{{ s.score }}分</span>
+      {% elif s.unlocked %}
+        <span style="color:#c8a0ff;font-size:10px">待完成</span>
+      {% else %}
+        <span style="font-size:10px" id="countdown-{{ loop.index0 }}" data-ts="{{ s.unlock_ts }}">—</span>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{# ── 已完成结算展示 ── #}
+{% if esess and esess.resolved %}
+{% set r = esess.result %}
+<div class="el-result {{ r }}">
+  {% if r == 'grand' %}
+    <div class="el-result-icon">✨</div>
+    <div class="el-result-title">大成 · 仙缘赐福</div>
+    <div class="el-result-desc">
+      仙人驻足良久，最终将一缕金色灵光送入你的识海。<br>
+      「你的道心，已有几分仙人之姿。」<br>
+      修炼速度永久提升 15%，铭刻于你的根骨之中。
+    </div>
+    <div class="el-result-bonus">修炼速度 永久 +15%</div>
+  {% elif r == 'minor' %}
+    <div class="el-result-icon">🌟</div>
+    <div class="el-result-title">小成 · 仙人指点</div>
+    <div class="el-result-desc">
+      仙人点头，将一道灵光轻轻拂过你的天灵盖。<br>
+      「此行不虚，你已有所得。」<br>
+      修炼速度永久提升 8%，道基更加稳固。
+    </div>
+    <div class="el-result-bonus">修炼速度 永久 +8%</div>
+  {% elif r == 'spark' %}
+    <div class="el-result-icon">💡</div>
+    <div class="el-result-title">微悟 · 道心初开</div>
+    <div class="el-result-desc">
+      仙人未留灵光，只留下淡淡一语：<br>
+      「缘分未至，然你心中已有了一颗种子。」<br>
+      道心微开，修炼速度永久提升 3%。
+    </div>
+    <div class="el-result-bonus">修炼速度 永久 +3%</div>
+  {% else %}
+    <div class="el-result-icon">🌙</div>
+    <div class="el-result-title">缘悭一面</div>
+    <div class="el-result-desc">
+      仙人注视你片刻，化为流光散去。<br>
+      「此时机缘尚浅，待他日再来。」<br>
+      留下灵石 500 枚作为补偿。
+    </div>
+    <div class="el-result-bonus">获得 500 灵石</div>
+  {% endif %}
+</div>
+
+{# 得分明细 #}
+{% set scores_list = (esess.scores_json | fromjson) if esess else [] %}
+<div class="el-card">
+  <div class="el-card-title">试炼明细</div>
+  <div style="margin-top:12px">
+    {% for s in stage_data %}
+    <div class="el-score-row">
+      <span style="color:#9080b8">{{ loop.index }}. {{ s.name }}</span>
+      <span class="el-score-val">
+        {% if s.score is not none %}{{ s.score }}<span style="font-size:11px;color:#6a5a8a"> / 100</span>
+        {% else %}<span style="color:#4a3860">未完成</span>{% endif %}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="el-total">总计 {{ total_score }} / 500</div>
+</div>
+
+{# ── 进行中：活跃关卡 ── #}
+{% elif esess and not esess.resolved %}
+
+{# 结果通知（上一关完成后的反馈） #}
+{% if result_flash %}
+<div class="el-card" style="border-color:#5a3f8a">
+  <div style="text-align:center;font-size:13px;color:#9080b8;margin-bottom:6px">
+    ✦ 【{{ result_flash.stage_name }}】已完成
+  </div>
+  <div style="font-size:28px;font-weight:700;color:#c8a0ff;text-align:center;margin:8px 0">
+    +{{ result_flash.score }} 分
+  </div>
+  <div class="el-narrative-box">{{ result_flash.narrative }}</div>
+  <div style="text-align:center;margin-top:12px">
+    <a href="{{ url_for('enlighten') }}" style="color:#9b6dff;font-size:13px">↩ 返回试炼大厅</a>
+  </div>
+</div>
+{% endif %}
+
+{# ── 当前可操作关卡 ── #}
+{% if active_idx is not none %}
+
+{# 第1关：五行感应 #}
+{% if active_idx == 0 %}
+<div class="el-card">
+  <div class="el-card-title">第一关 · 感应仙缘</div>
+  <div class="el-card-sub">五行之力 · 择其一而感悟</div>
+  <div class="el-card-scenario">{{ active_content.clue }}</div>
+  <form method="post">
+    <input type="hidden" name="action" value="submit_stage">
+    <input type="hidden" name="stage_idx" value="0">
+    <div class="el-elements">
+      {% for elem, icon, cls in [('金','⚔','jin'),('木','🌿','mu'),('水','💧','shui'),('火','🔥','huo'),('土','🪨','tu')] %}
+      <button type="submit" name="choice" value="{{ elem }}" class="el-elem-btn {{ cls }}">
+        <span class="el-elem-icon">{{ icon }}</span>
+        <span>{{ elem }}</span>
+      </button>
+      {% endfor %}
+    </div>
+    <div style="text-align:center;font-size:12px;color:#4a3860;margin-top:12px">
+      提示：仔细体会意境描写，感受其中蕴含的五行气息。
+    </div>
+  </form>
+</div>
+{% endif %}
+
+{# 第2关：道心抉择 #}
+{% if active_idx == 1 %}
+<div class="el-card">
+  <div class="el-card-title">第二关 · 道心抉择</div>
+  <div class="el-card-sub">无绝对对错，你的选择即是你的道。</div>
+  <div class="el-card-scenario">{{ active_content.scenario }}</div>
+  <form method="post">
+    <input type="hidden" name="action" value="submit_stage">
+    <input type="hidden" name="stage_idx" value="1">
+    <div class="el-choices">
+      {% for c in active_content.choices %}
+      <button type="submit" name="choice_idx" value="{{ loop.index0 }}" class="el-choice-btn">
+        <span style="color:#6a5a8a;margin-right:8px">{{ loop.index }}.</span>
+        {{ c.text }}
+      </button>
+      {% endfor %}
+    </div>
+  </form>
+</div>
+{% endif %}
+
+{# 第3关：时机把握 #}
+{% if active_idx == 2 %}
+<div class="el-card">
+  <div class="el-card-title">第三关 · 时机把握</div>
+  <div class="el-card-sub">共三次机会，点击在灵气汇聚时引导入窍。</div>
+  <div class="el-card-scenario">
+    天地灵气在虚空中流转，凝成一道紫色光球，忽左忽右，飘忽不定。<br>
+    仙人道：「把握时机，将其引入聚灵穴中。」<br>
+    <span style="color:#7a60a0;font-size:12px">当光球经过中央金色区域时，点击引导。</span>
+  </div>
+
+  <div class="el-timing-wrap">
+    <div class="el-qi-track" id="qi-track">
+      <div class="el-qi-zone">聚灵穴</div>
+      <div class="el-qi-orb" id="qi-orb"></div>
+    </div>
+    <div class="el-attempts" id="attempt-dots">
+      <div class="el-attempt-dot" id="dot-0">1</div>
+      <div class="el-attempt-dot" id="dot-1">2</div>
+      <div class="el-attempt-dot" id="dot-2">3</div>
+    </div>
+    <button class="el-catch-btn" id="catch-btn" onclick="catchQi()">引导入窍</button>
+    <div class="el-timing-result" id="timing-result"></div>
+  </div>
+
+  <form method="post" id="timing-form">
+    <input type="hidden" name="action" value="submit_stage">
+    <input type="hidden" name="stage_idx" value="2">
+    <input type="hidden" name="timing_score" id="timing-score" value="0">
+  </form>
+</div>
+
+<script>
+(function(){
+  const track = document.getElementById('qi-track');
+  const orb   = document.getElementById('qi-orb');
+  const resultBox = document.getElementById('timing-result');
+  const PERIOD = 2200;
+  let start = null, animId = null, attempt = 0, scores = [];
+
+  function step(ts){
+    if(!start) start = ts;
+    const elapsed = (ts - start) % (PERIOD * 2);
+    const frac    = elapsed < PERIOD ? elapsed/PERIOD : 2 - elapsed/PERIOD;
+    const maxX    = track.offsetWidth - orb.offsetWidth;
+    orb.style.left = (frac * maxX) + 'px';
+    animId = requestAnimationFrame(step);
+  }
+  animId = requestAnimationFrame(step);
+
+  const feedbacks = [
+    ['大成！灵气完美归位。', 'hit-great'],
+    ['勉强入窍，尚可。', 'hit-ok'],
+    ['灵气散逸，偏差过大。', 'hit-miss'],
+  ];
+
+  window.catchQi = function(){
+    if(attempt >= 3) return;
+    const tr = track.getBoundingClientRect();
+    const or = orb.getBoundingClientRect();
+    const orbCX   = (or.left + or.right) / 2;
+    const zoneCX  = tr.left + tr.width * 0.50;
+    const zoneW   = tr.width * 0.30;
+    const dist    = Math.abs(orbCX - zoneCX);
+    const raw     = Math.max(0, Math.round((1 - dist / (tr.width * 0.48)) * 100));
+    const score   = Math.max(0, Math.min(100, raw));
+    scores.push(score);
+
+    const dot = document.getElementById('dot-' + attempt);
+    let cls = score >= 75 ? 'hit-great' : score >= 40 ? 'hit-ok' : 'hit-miss';
+    dot.className = 'el-attempt-dot ' + cls;
+    dot.textContent = score;
+
+    attempt++;
+    if(attempt >= 3){
+      cancelAnimationFrame(animId);
+      const best = Math.max(...scores);
+      document.getElementById('timing-score').value = best;
+      document.getElementById('catch-btn').disabled = true;
+      document.getElementById('catch-btn').textContent = '引导完成，结算中…';
+      resultBox.style.display = 'block';
+      if(best >= 75)       resultBox.textContent = '✦ 三次中精准入窍，仙人点头称赞。';
+      else if(best >= 40)  resultBox.textContent = '✦ 勉强引入聚灵穴，仙人微微颔首。';
+      else                 resultBox.textContent = '✦ 灵气多有散逸，仙人若有所思。';
+      setTimeout(function(){ document.getElementById('timing-form').submit(); }, 1200);
+    }
+  };
+})();
+</script>
+{% endif %}
+
+{# 第4关：道理辨析 #}
+{% if active_idx == 3 %}
+<div class="el-card">
+  <div class="el-card-title">第四关 · 道理辨析</div>
+  <div class="el-card-sub">仙人留下三道箴言，哪句才是大道真意？</div>
+  <div class="el-card-scenario">{{ active_content.prelude }}</div>
+  <form method="post">
+    <input type="hidden" name="action" value="submit_stage">
+    <input type="hidden" name="stage_idx" value="3">
+    <div class="el-wisdom-choices">
+      {% for c in active_content.choices %}
+      <button type="submit" name="choice_idx" value="{{ loop.index0 }}" class="el-wisdom-btn">
+        {{ c.text }}
+      </button>
+      {% endfor %}
+    </div>
+  </form>
+  <div style="font-size:12px;color:#3a2e5a;margin-top:12px;text-align:center">
+    回顾前三关的际遇，或许有助于你找到答案。
+  </div>
+</div>
+{% endif %}
+
+{# 第5关：感悟传承 #}
+{% if active_idx == 4 %}
+<div class="el-card">
+  <div class="el-card-title">第五关 · 感悟传承</div>
+  <div class="el-card-sub">留下你此行最深的体悟。字越真诚，感悟越深。</div>
+  <div class="el-card-scenario">
+    仙人最后一次显化，沉默地凝视着你，久久无言。<br>
+    虚空之中，似乎有什么等待着你写下。<br>
+    <span style="color:#7a60a0;font-size:12px">将你经历这次试炼后对修道的感悟写下来。</span>
+  </div>
+  <form method="post" class="el-reflection">
+    <input type="hidden" name="action" value="submit_stage">
+    <input type="hidden" name="stage_idx" value="4">
+    <textarea name="reflection" maxlength="500"
+      placeholder="此心此道，我所感悟……（至少写 20 个字，字数越多，感悟越深）"></textarea>
+    <div class="el-reflection-hint" id="ref-count">0 / 500 字</div>
+    <button type="submit" class="el-submit-btn">✦ 传承感悟 ✦</button>
+  </form>
+</div>
+<script>
+(function(){
+  const ta = document.querySelector('.el-reflection textarea');
+  const ct = document.getElementById('ref-count');
+  ta.addEventListener('input', function(){
+    ct.textContent = ta.value.length + ' / 500 字';
+    ct.style.color = ta.value.length >= 20 ? '#9b6dff' : '#5a4a7a';
+  });
+})();
+</script>
+{% endif %}
+
+{% else %}
+{# 所有当前解锁关卡都已完成，等待下一关或结算 #}
+{% set next_idx = namespace(val=none) %}
+{% for s in stage_data %}
+  {% if not s.done and not s.unlocked and next_idx.val is none %}
+    {% set next_idx.val = loop.index0 %}
+  {% endif %}
+{% endfor %}
+
+{% if secs_left > 0 %}
+<div class="el-locked-stage">
+  {% if next_idx.val is not none %}
+  <div class="lock-icon">🔮</div>
+  <div style="font-size:14px;color:#7a5a9a;margin-bottom:8px">
+    第 {{ next_idx.val + 1 }} 关「{{ ENLIGHTEN_STAGE_NAMES[next_idx.val] }}」尚未解锁
+  </div>
+  <div class="el-countdown" id="main-countdown" data-ts="{{ stage_data[next_idx.val].unlock_ts }}">
+    计算中…
+  </div>
+  <div style="font-size:12px;color:#4a3860;margin-top:10px">请届时再来，仙人在等候。</div>
+  {% else %}
+  <div class="lock-icon">⏳</div>
+  <div style="font-size:14px;color:#7a5a9a;margin-bottom:8px">五关已全部完成，等待仙人最终裁决</div>
+  <div class="el-countdown" id="main-countdown" data-ts="{{ esess.started_at + 36 * 3600 }}">
+    计算中…
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+{% endif %}
+
+{# 得分进度条 #}
+<div class="el-card" style="border-color:#2a1a4e">
+  <div class="el-card-title" style="font-size:14px">当前积累</div>
+  {% for s in stage_data %}
+  <div class="el-score-row">
+    <span style="color:{% if s.done %}#9080b8{% else %}#3a2a5a{% endif %}">
+      {% if s.done %}✓{% elif s.unlocked %}◈{% else %}○{% endif %}
+      {{ loop.index }}. {{ s.name }}
+    </span>
+    <span class="el-score-val" style="color:{% if s.done %}#c8a0ff{% else %}#3a2a5a{% endif %}">
+      {% if s.done %}{{ s.score }}{% else %}—{% endif %}
+    </span>
+  </div>
+  {% endfor %}
+  <div class="el-total">{{ total_score }} / 500</div>
+  <div style="text-align:center;font-size:12px;color:#5a4870">
+    ≥380 大成 · ≥260 小成 · ≥140 微悟
+  </div>
+</div>
+
+{# 36小时总倒计时 #}
+{% if secs_left > 0 %}
+<div style="text-align:center;font-size:12px;color:#4a3860;margin-bottom:16px">
+  试炼总剩余：<span id="total-countdown" style="color:#7a5a9a;font-weight:700"
+    data-ts="{{ esess.started_at + 36 * 3600 }}">—</span>
+</div>
+{% endif %}
+
+{# ── 无进行中试炼：显示入口 ── #}
+{% else %}
+<div class="el-start-card">
+  <div class="el-start-icon">🔮</div>
+  <div class="el-start-title">叩响仙门</div>
+  <div class="el-start-desc">
+    共五关试炼，历时 36 小时，横跨一天半。<br>
+    每关考验不同——五行感应、道心抉择、时机把握、道理辨析、感悟传承。<br>
+    综合表现决定仙人是否赐予永久修炼加成。
+  </div>
+  <div class="el-cost-row">
+    <span class="el-cost-item">灵石 {{ ENLIGHTEN_COST_STONES }}</span>
+    <span class="el-cost-item">灵力 {{ ENLIGHTEN_COST_ENERGY }}</span>
+    <span class="el-cost-item">耗时 36 小时</span>
+  </div>
+  {% if not event_on %}
+  <div style="color:#6a4a6a;font-size:14px;margin-bottom:16px">当前无开放的仙人试炼活动，请等待管理员开启。</div>
+  <button class="el-start-btn" disabled>活动未开放</button>
+  {% else %}
+  <form method="post">
+    <input type="hidden" name="action" value="start">
+    <button type="submit" class="el-start-btn">✦ 踏入试炼 ✦</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+
+</div>
+
+{# ── 倒计时脚本 ── #}
+<script>
+(function(){
+  function fmt(secs){
+    secs = Math.max(0, Math.floor(secs));
+    const h = Math.floor(secs/3600);
+    const m = Math.floor((secs%3600)/60);
+    const s = secs % 60;
+    return (h>0 ? h+'h ' : '') + (m>0||h>0 ? m+'m ' : '') + s+'s';
+  }
+  function tick(){
+    const now = Date.now()/1000;
+    document.querySelectorAll('[data-ts]').forEach(function(el){
+      const ts = parseInt(el.dataset.ts);
+      if(!ts) return;
+      const left = ts - now;
+      if(left <= 0){ el.textContent = '已解锁'; return; }
+      el.textContent = fmt(left);
+    });
+  }
+  tick();
+  setInterval(tick, 1000);
+})();
+</script>
+{% endblock %}

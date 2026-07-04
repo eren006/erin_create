@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}药田 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🌱 药田 <small>种植灵草，静待成熟</small></div>
+
+<!-- 药田概览 -->
+<div class="card" style="margin-bottom:20px;border-color:var(--green);background:rgba(46,139,87,.04)">
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+    <div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:2px">地块使用</div>
+      <div style="font-size:22px;font-weight:700;color:var(--green)">{{ active_count }} / {{ max_plots }}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">已购 {{ purchased }}/5 块</div>
+    </div>
+    <div style="flex:1;font-size:12px;color:var(--muted);line-height:2">
+      种子可通过<a href="{{ url_for('explore') }}" style="color:var(--jade)">探索秘境</a>额外获得，或在
+      <a href="{{ url_for('market') }}" style="color:var(--jade)">丹市</a>购买（普通种子）。<br>
+      消耗灵石可购买更多地块，提升境界可继续解锁。
+    </div>
+  </div>
+</div>
+
+<!-- 解锁地块 -->
+{% if next_unlock_cost %}
+{% set realm_unlock_reqs = [0,3,9,13,17] %}
+<div class="card" style="margin-bottom:20px;border-color:{% if can_unlock %}var(--gold){% else %}var(--bd){% endif %};background:rgba(201,168,76,.04)">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+    <div>
+      <div style="font-size:14px;font-weight:600;color:var(--gold2)">🌾 解锁第 {{ purchased + 1 }} 块药田</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px;line-height:1.8">
+        费用：<span style="color:var(--gold)">{{ next_unlock_cost }} 灵石</span>（当前 {{ char.spirit_stones }}）<br>
+        境界要求：<span style="color:{% if char.realm_idx >= realm_unlock_reqs[purchased] %}var(--green){% else %}var(--red){% endif %}">
+          {{ REALMS[realm_unlock_reqs[purchased]].name }}
+          {% if char.realm_idx >= realm_unlock_reqs[purchased] %}✓{% endif %}
+        </span>
+      </div>
+    </div>
+    <form method="post">
+      <input type="hidden" name="action" value="unlock_plot">
+      <button type="submit" class="btn {% if can_unlock %}btn-gold{% else %}btn-ghost{% endif %} btn-sm"
+        {% if not can_unlock %}disabled{% endif %}>
+        {% if can_unlock %}解锁药田{% elif char.spirit_stones < next_unlock_cost %}灵石不足{% else %}境界不够{% endif %}
+      </button>
+    </form>
+  </div>
+</div>
+{% else %}
+<div class="card" style="margin-bottom:20px;border-color:var(--jade);background:rgba(31,122,95,.04);text-align:center;padding:14px">
+  <span style="color:var(--jade);font-size:13px">✦ 药田已全部解锁（5/5）</span>
+</div>
+{% endif %}
+
+<!-- 当前地块 -->
+{% if plots %}
+<div class="card-h" style="margin-bottom:12px">🌾 种植中</div>
+<div class="grid3" style="margin-bottom:24px">
+{% for p in plots %}
+<div class="card" style="text-align:center;border-color:{% if p.mature %}var(--jade){% else %}var(--bd){% endif %};
+     background:{% if p.mature %}rgba(31,122,95,.07){% else %}var(--sf){% endif %}">
+  <div style="font-size:22px;margin-bottom:6px">{% if p.mature %}🌸{% else %}🌱{% endif %}</div>
+  <div style="font-size:14px;font-weight:600;color:var(--green);margin-bottom:4px">{{ p.herb_name }}</div>
+  <div style="font-size:11px;color:var(--muted);margin-bottom:8px">
+    来自：{{ p.seed_name }}<br>
+    收获：{{ p.yield_min }}
+    {%- if p.yield_max > p.yield_min %} ~ {{ p.yield_max }}{% endif %} 株
+  </div>
+  {% if p.mature %}
+    <div style="font-size:12px;color:var(--jade);font-weight:600;margin-bottom:8px">✦ 已成熟，可收获</div>
+    <form method="post">
+      <input type="hidden" name="action" value="harvest">
+      <input type="hidden" name="plot_id" value="{{ p.id }}">
+      <button type="submit" class="btn btn-jade btn-sm" style="width:100%">收获</button>
+    </form>
+  {% else %}
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px">
+      剩余：{% if p.remain_h > 0 %}{{ p.remain_h }}小时{% endif %}{{ p.remain_m }}分钟
+    </div>
+    <div class="bar-wrap" style="height:6px">
+      {% set total_secs = (p.matures_at - p.planted_at) %}
+      {% set elapsed = total_secs - (p.remain_h * 3600 + p.remain_m * 60) %}
+      {% set pct = [((elapsed / total_secs) * 100)|int, 100]|min if total_secs > 0 else 0 %}
+      <div class="bar-fill bar-jade" style="width:{{ pct }}%"></div>
+    </div>
+  {% endif %}
+</div>
+{% endfor %}
+
+<!-- 空地块占位 -->
+{% for i in range(max_plots - active_count) %}
+<div class="card" style="text-align:center;border-style:dashed;color:var(--muted)">
+  <div style="font-size:22px;margin-bottom:6px">🟫</div>
+  <div style="font-size:13px;margin-bottom:4px">空地块</div>
+  <div style="font-size:11px">从下方选择种子种植</div>
+</div>
+{% endfor %}
+</div>
+{% else %}
+<!-- 无地块时显示空状态 -->
+<div class="card" style="margin-bottom:24px;text-align:center;padding:32px">
+  <div style="font-size:36px;margin-bottom:10px">🟫</div>
+  <div style="color:var(--muted);font-size:14px">药田空空如也，从下方选择种子开始种植</div>
+</div>
+{% endif %}
+
+<!-- 种子库存 -->
+<div class="card-h" style="margin-bottom:12px">🌰 背包中的种子</div>
+{% if seeds_inv %}
+<div class="grid2">
+{% for s in seeds_inv %}
+{% set eff = s.effect_json | fromjson %}
+<div class="card">
+  <div style="display:flex;align-items:flex-start;gap:12px">
+    <div style="font-size:28px;flex-shrink:0">🌰</div>
+    <div style="flex:1">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <span style="font-weight:600;font-size:14px;color:var(--green)">{{ s.name }}</span>
+        <span class="tag tag-{{ s.rarity }}">{{ s.rarity }}</span>
+        <span style="margin-left:auto;color:var(--muted);font-size:12px">×{{ s.quantity }}</span>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px">
+        产出：{{ eff.herb_name }}
+        × {{ eff.yield_min }}{% if eff.yield_max > eff.yield_min %} ~ {{ eff.yield_max }}{% endif %}
+        　成熟：约
+        {% set h = (eff.grow_secs // 3600)|int %}
+        {% set m = ((eff.grow_secs % 3600) // 60)|int %}
+        {% if h > 0 %}{{ h }}小时{% endif %}{% if m > 0 %}{{ m }}分钟{% endif %}
+      </div>
+      {% if active_count >= max_plots %}
+      <button class="btn btn-ghost btn-sm" disabled style="width:100%">药田已满</button>
+      {% else %}
+      <form method="post">
+        <input type="hidden" name="action" value="plant">
+        <input type="hidden" name="seed_id" value="{{ s.id }}">
+        <button type="submit" class="btn btn-jade btn-sm" style="width:100%">种入药田</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endfor %}
+</div>
+{% else %}
+<div class="card" style="text-align:center;padding:32px">
+  <div style="font-size:32px;margin-bottom:8px">🌿</div>
+  <div style="color:var(--muted);font-size:13px;line-height:1.8">
+    背包中暂无种子。<br>
+    去<a href="{{ url_for('explore') }}" style="color:var(--jade)">探索</a>时有机会额外获得，
+    或去<a href="{{ url_for('market') }}" style="color:var(--jade)">丹市</a>购买普通种子。
+  </div>
+</div>
+{% endif %}
+
+<!-- 种植指南 -->
+<div class="card" style="margin-top:20px;background:rgba(166,124,26,.04);border-color:rgba(166,124,26,.2)">
+  <div class="card-h" style="color:var(--gold2)">种植指南</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;font-size:12px;color:var(--muted)">
+    <div>· 每次探索有概率额外掉落种子（不消耗主奖励）</div>
+    <div>· 九叶草、七彩灵芝种子只能从高阶秘境获得</div>
+    <div>· 种子一旦种入，无法取回</div>
+    <div>· 成熟后需手动收获，不会自动过期</div>
+    <div>· 境界越高，可同时种植的地块越多</div>
+    <div>· 高阶草药数量有限，药田是稳定来源</div>
+  </div>
+</div>
+
+</div>
+{% endblock %}

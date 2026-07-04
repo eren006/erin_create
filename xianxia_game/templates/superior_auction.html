@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}拍卖行 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🏺 拍卖行 <small>造化灵液，每日竞拍</small></div>
+
+<div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;flex-wrap:wrap">
+  <div style="background:var(--sf);border:1px solid rgba(155,127,224,.4);border-radius:8px;padding:8px 16px;
+       display:flex;align-items:center;gap:8px">
+    <span style="color:var(--muted);font-size:12px">持有上等灵石</span>
+    <strong style="color:var(--purple);font-size:18px">{{ char.superior_stones or 0 }}</strong>
+  </div>
+  <div style="color:var(--muted);font-size:12px">
+    今晚 <span id="settle-countdown" data-ts="{{ settle_ts }}" style="color:var(--gold2)">—</span> 后结算，出价最高者得
+  </div>
+</div>
+
+{% if not lots %}
+<div class="empty">拍卖行正在筹备中，请稍后再来</div>
+{% else %}
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">
+  {% for lot in lots %}
+  {% set a = lot.auction %}
+  <div class="card" style="{% if lot.my_bid > 0 %}border-color:var(--purple){% endif %}">
+    <div class="card-h" style="color:var(--purple)">🏺 {{ a.item_name }}
+      <span style="font-size:11px;font-weight:400;color:var(--muted)">— 第 {{ a.slot }} 号拍品</span>
+    </div>
+
+    <div style="font-size:12px;color:var(--muted);margin-bottom:8px">底价 {{ a.start_price }} 上等灵石</div>
+
+    {% if lot.top3 %}
+    <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px">
+      {% for b in lot.top3 %}
+      <div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 8px;
+           background:var(--sf2);border-radius:6px">
+        <span>{{ loop.index }}. {{ b.char_name }}{% if b.char_id == char.id %} <span style="color:var(--purple)">（我）</span>{% endif %}</span>
+        <span style="color:var(--gold);font-weight:600">{{ b.amount }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">暂无人出价</div>
+    {% endif %}
+
+    {% if lot.my_bid > 0 %}
+    <div style="font-size:12px;color:var(--purple);margin-bottom:8px">我的当前出价：{{ lot.my_bid }}</div>
+    {% endif %}
+
+    <form method="post" style="display:flex;align-items:center;gap:8px">
+      <input type="hidden" name="action" value="bid">
+      <input type="hidden" name="auction_id" value="{{ a.id }}">
+      <input name="amount" type="number" value="{{ lot.min_bid }}" min="{{ lot.min_bid }}"
+        style="width:90px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+               border-radius:6px;padding:6px 10px;font-size:13px;font-family:inherit;text-align:center">
+      <button type="submit" class="btn btn-gold btn-sm" style="flex:1"
+        {% if (char.superior_stones or 0) + lot.my_bid < lot.min_bid %}disabled{% endif %}>
+        出价（至少 {{ lot.min_bid }}）
+      </button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card" style="margin-top:16px;background:rgba(201,168,76,.05);border-color:rgba(201,168,76,.15)">
+  <div class="card-h" style="color:var(--gold2)">拍卖须知</div>
+  <div style="color:var(--muted);font-size:12px;line-height:2">
+    <div>· 每天 2 个拍卖位，均为造化灵液，底价 20 上等灵石</div>
+    <div>· 每次出价至少比当前最高价高 1 上等灵石</div>
+    <div>· 出价即锁定上等灵石，被超越后不会自动退还，需在结算后由系统退还落选者</div>
+    <div>· 每晚 22 点结算，当前最高出价者获得拍品（通过邮件发放，请到邮箱领取），其余出价者的上等灵石将退还</div>
+  </div>
+</div>
+
+<script>
+var el = document.getElementById('settle-countdown');
+if (el) {
+  var ts = parseInt(el.dataset.ts) * 1000;
+  function upd() {
+    var diff = Math.max(0, ts - Date.now());
+    var h = Math.floor(diff/3600000), m = Math.floor((diff%3600000)/60000);
+    el.textContent = h + 'h' + m + 'm';
+    if (diff > 0) setTimeout(upd, 30000);
+  }
+  upd();
+}
+</script>
+</div>
+{% endblock %}

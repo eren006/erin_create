@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% block title %}邮件 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">📬 邮件 <small>传书问道，附物相赠</small></div>
+
+<div style="display:flex;gap:20px;flex-wrap:wrap">
+
+  <!-- 左：发信 -->
+  <div style="width:260px;flex-shrink:0">
+    <div class="card">
+      <div class="card-h">撰写信件</div>
+      <form method="post" style="display:flex;flex-direction:column;gap:8px">
+        <input type="hidden" name="action" value="send">
+        <div>
+          <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">收件人道号</label>
+          <input name="to_name" placeholder="输入道号" required
+            style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-size:13px;font-family:inherit">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">主题（选填）</label>
+          <input name="subject" placeholder="信件主题" maxlength="30"
+            style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-size:13px;font-family:inherit">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">正文</label>
+          <textarea name="body" maxlength="200" rows="4" placeholder="写下你想说的话…"
+            style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-size:13px;font-family:inherit;resize:vertical"></textarea>
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">附赠物品（选填）</label>
+          <select name="item_id"
+            style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12px;font-family:inherit;margin-bottom:4px">
+            <option value="0">— 不附物品 —</option>
+            {% for it in inv_items %}
+            <option value="{{ it.id }}">{{ it.name }} ×{{ it.quantity }}</option>
+            {% endfor %}
+          </select>
+          <input name="item_qty" type="number" value="1" min="1" placeholder="数量"
+            style="width:80px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:6px 8px;font-size:12px;font-family:inherit">
+        </div>
+        {% if my_pets %}
+        <div>
+          <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">附赠灵兽（选填）</label>
+          <select name="pet_id"
+            style="width:100%;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12px;font-family:inherit">
+            <option value="0">— 不附灵兽 —</option>
+            {% for p in my_pets %}
+            <option value="{{ p.id }}">{{ p.nickname or p.type_name }} ({{ p.type_name }} Lv.{{ p.level }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endif %}
+        <div style="display:flex;align-items:center;gap:8px">
+          <label style="font-size:11px;color:var(--muted);white-space:nowrap">附赠灵石</label>
+          <input name="stones" type="number" value="0" min="0" max="500000"
+            style="flex:1;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:6px 8px;font-size:12px;font-family:inherit">
+          <span style="font-size:11px;color:var(--muted)">≤500000</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted)">当前灵石：{{ char.spirit_stones }}</div>
+        <button type="submit" class="btn btn-gold" style="margin-top:4px">📨 发送</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- 右：收件箱 + 发件箱 -->
+  <div style="flex:1;min-width:280px">
+    <!-- tab 切换 -->
+    <div style="display:flex;gap:0;margin-bottom:12px;border-bottom:1px solid var(--bd)">
+      <button onclick="showTab('inbox')" id="tab-inbox"
+        style="padding:6px 18px;background:none;border:none;border-bottom:2px solid var(--jade);color:var(--jade);font-size:13px;cursor:pointer;font-family:inherit">
+        收件箱（{{ inbox|length }}）
+      </button>
+      <button onclick="showTab('outbox')" id="tab-outbox"
+        style="padding:6px 18px;background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);font-size:13px;cursor:pointer;font-family:inherit">
+        已发送（{{ outbox|length }}）
+      </button>
+    </div>
+    <div id="pane-inbox">
+    {% if not inbox %}
+    <div class="empty" style="padding:32px 0">暂无信件</div>
+    {% else %}
+    {% for m in inbox %}
+    <div class="card" style="margin-bottom:8px;padding:12px 14px;
+         {% if not m.is_read %}border-color:var(--jade);background:rgba(31,122,95,.04){% endif %}">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+            <span style="font-weight:{% if not m.is_read %}700{% else %}500{% endif %};color:{% if not m.is_read %}var(--jade){% else %}var(--text){% endif %}">
+              {% if not m.is_read %}● {% endif %}
+              {{ m.from_name or '系统' }}
+            </span>
+            <span style="font-size:11px;color:var(--muted);margin-left:auto;flex-shrink:0">{{ m.created_at | format_ts }}</span>
+          </div>
+          {% if m.subject %}
+          <div style="font-weight:600;font-size:13px;margin-bottom:3px">{{ m.subject }}</div>
+          {% endif %}
+          {% if m.body %}
+          <div style="font-size:12px;color:var(--muted);margin-bottom:6px;word-break:break-all">{{ m.body }}</div>
+          {% endif %}
+          {% if m.item_name or m.stones or m.lingfu or m.pet_type_name %}
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+            {% if m.item_name %}
+            <span style="background:rgba(123,94,168,.1);border:1px solid rgba(123,94,168,.2);border-radius:6px;padding:2px 8px;font-size:11px;color:var(--purple)">
+              📦 {{ m.item_name }} ×{{ m.item_qty }}
+              {% if m.claimed %}<span style="color:var(--muted)">（已领）</span>{% endif %}
+            </span>
+            {% endif %}
+            {% if m.stones %}
+            <span style="background:rgba(166,124,26,.1);border:1px solid rgba(166,124,26,.2);border-radius:6px;padding:2px 8px;font-size:11px;color:var(--gold)">
+              💰 灵石 ×{{ m.stones }}
+              {% if m.claimed %}<span style="color:var(--muted)">（已领）</span>{% endif %}
+            </span>
+            {% endif %}
+            {% if m.lingfu %}
+            <span style="background:rgba(96,184,255,.1);border:1px solid rgba(96,184,255,.2);border-radius:6px;padding:2px 8px;font-size:11px;color:var(--jade)">
+              🔹 灵符 ×{{ m.lingfu }}
+              {% if m.claimed %}<span style="color:var(--muted)">（已领）</span>{% endif %}
+            </span>
+            {% endif %}
+            {% if m.pet_type_name %}
+            <span style="background:rgba(82,183,136,.1);border:1px solid rgba(82,183,136,.2);border-radius:6px;padding:2px 8px;font-size:11px;color:var(--green)">
+              🐾 {{ m.pet_nickname or m.pet_type_name }}（{{ m.pet_type_name }} Lv.{{ m.pet_level }}）
+              {% if m.claimed %}<span style="color:var(--muted)">（已领）</span>{% endif %}
+            </span>
+            {% endif %}
+          </div>
+          {% endif %}
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            {% if (m.item_name or m.stones or m.lingfu or m.pet_type_name) and not m.claimed %}
+            <form method="post" style="display:inline">
+              <input type="hidden" name="action" value="claim">
+              <input type="hidden" name="mail_id" value="{{ m.id }}">
+              <button class="btn btn-jade btn-sm">领取附件</button>
+            </form>
+            {% endif %}
+            {% if not m.is_read %}
+            <form method="post" style="display:inline">
+              <input type="hidden" name="action" value="read">
+              <input type="hidden" name="mail_id" value="{{ m.id }}">
+              <button class="btn btn-ghost btn-sm">标为已读</button>
+            </form>
+            {% endif %}
+            <form method="post" style="display:inline">
+              <input type="hidden" name="action" value="delete">
+              <input type="hidden" name="mail_id" value="{{ m.id }}">
+              <button class="btn btn-ghost btn-sm" style="color:var(--red)"
+                onclick="return confirm('确定删除？')">删除</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+    {% endif %}
+    </div><!-- /pane-inbox -->
+
+    <!-- 发件箱 -->
+    <div id="pane-outbox" style="display:none">
+    {% if not outbox %}
+    <div class="empty" style="padding:32px 0">暂无已发信件</div>
+    {% else %}
+    {% for m in outbox %}
+    <div class="card" style="margin-bottom:8px;padding:12px 14px">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+            <span style="font-weight:500">→ {{ m.to_name or '?' }}</span>
+            <span style="font-size:11px;color:var(--muted);margin-left:auto;flex-shrink:0">{{ m.created_at | format_ts }}</span>
+          </div>
+          {% if m.subject %}
+          <div style="font-weight:600;font-size:13px;margin-bottom:3px">{{ m.subject }}</div>
+          {% endif %}
+          {% if m.body %}
+          <div style="font-size:12px;color:var(--muted);margin-bottom:6px;word-break:break-all">{{ m.body }}</div>
+          {% endif %}
+          {% if m.item_name or m.stones or m.lingfu or m.pet_type_name %}
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            {% if m.item_name %}
+            <span style="background:rgba(123,94,168,.1);border:1px solid rgba(123,94,168,.2);border-radius:6px;padding:2px 8px;font-size:11px;color:var(--purple)">
+              📦 {{ m.item_name }} ×{{ m.item_qty }}
+              <span style="color:var(--muted)">（{{ '已领' if m.claimed else '未领' }}）</span>
+            </span>
+            {% endif %}
+            {% if m.stones %}
+            <span style="background:rgba(166,124,26,.1);border:1px solid rgba(166,124,26,.2);border-radius:6px;padding:2px 8px;font-size:11px;color:var(--gold)">
+              💰 灵石 ×{{ m.stones }}
+              <span style="color:var(--muted)">（{{ '已领' if m.claimed else '未领' }}）</span>
+            </span>
+            {% endif %}
+            {% if m.lingfu %}
+            <span style="background:rgba(96,184,255,.1);border:1px solid rgba(96,184,255,.2);border-radius:6px;padding:2px 8px;font-size:11px;color:var(--jade)">
+              🔹 灵符 ×{{ m.lingfu }}
+              <span style="color:var(--muted)">（{{ '已领' if m.claimed else '未领' }}）</span>
+            </span>
+            {% endif %}
+            {% if m.pet_type_name %}
+            <span style="background:rgba(82,183,136,.1);border:1px solid rgba(82,183,136,.2);border-radius:6px;padding:2px 8px;font-size:11px;color:var(--green)">
+              🐾 {{ m.pet_nickname or m.pet_type_name }}
+              <span style="color:var(--muted)">（{{ '已领' if m.claimed else '未领' }}）</span>
+            </span>
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+    {% endif %}
+    </div><!-- /pane-outbox -->
+
+  </div>
+
+</div>
+</div>
+<style>input:focus,textarea:focus,select:focus{outline:none;border-color:var(--jade)!important}</style>
+<script>
+function showTab(tab) {
+  document.getElementById('pane-inbox').style.display  = tab==='inbox'  ? '' : 'none';
+  document.getElementById('pane-outbox').style.display = tab==='outbox' ? '' : 'none';
+  document.getElementById('tab-inbox').style.borderBottomColor  = tab==='inbox'  ? 'var(--jade)' : 'transparent';
+  document.getElementById('tab-outbox').style.borderBottomColor = tab==='outbox' ? 'var(--jade)' : 'transparent';
+  document.getElementById('tab-inbox').style.color  = tab==='inbox'  ? 'var(--jade)' : 'var(--muted)';
+  document.getElementById('tab-outbox').style.color = tab==='outbox' ? 'var(--jade)' : 'var(--muted)';
+}
+</script>
+{% endblock %}

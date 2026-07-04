@@ -56,6 +56,10 @@ function getApi()              { return globalThis.__changriApi || null; }
 function _mainExt()            { return seal.ext.find('changri'); }
 function mainStorGet(key)      { return getApi()?.kvGetRaw(key) ?? null; }
 function mainStorSet(key, val) { getApi()?.kvSetRaw(key, val); }
+
+// JSON 对象读写：走主插件 kvGet/kvSet（带缓存与损坏容错），JSON key 一律用这两个函数
+function mainKvGet(key, def) { const api = getApi(); return api ? api.kvGet(key, def) : def; }
+function mainKvSet(key, val) { getApi()?.kvSet(key, val); }
 function isUserAdmin(ctx, msg) { return getApi()?.isUserAdmin(ctx, msg) ?? false; }
 function isArchiveEnabled()    { return getApi()?.isArchiveEnabled() ?? false; }
 function postToArchive(endpoint, data) { return getApi()?.postToArchive(endpoint, data); }
@@ -73,8 +77,7 @@ if (!ext) {
 // ========================
 
 function isLetterSyncEnabled() {
-    if (!isArchiveEnabled()) return false;
-    return getMainStorage("direct_letter_sync_enabled", "false") === "true";
+    return isArchiveEnabled() && isLetterSystemEnabled();
 }
 
 function getMainStorage(key, defaultValue) {
@@ -93,7 +96,7 @@ function setMainStorage(key, value) { mainStorSet(key, value); }
  * 检查写信综是否启用
  */
 function isLetterSystemEnabled() {
-    const config = JSON.parse(getMainStorage("global_feature_toggle", "{}"));
+    const config = mainKvGet("global_feature_toggle", {});
     return config.enable_direct_letter === true;
 }
 
@@ -101,7 +104,7 @@ function isLetterSystemEnabled() {
  * 注册写信币货币
  */
 function ensureLetterCoinCurrency() {
-    const itemReg = JSON.parse(getMainStorage("item_registry") || "{}");
+    const itemReg = mainKvGet("item_registry", {});
 
     // 检查是否已注册
     const hasLetterCoin = Object.values(itemReg).some(item =>
@@ -121,7 +124,7 @@ function ensureLetterCoinCurrency() {
             type: "currency"
         };
 
-        setMainStorage("item_registry", JSON.stringify(itemReg));
+        mainKvSet("item_registry", itemReg);
     }
 }
 
@@ -129,7 +132,7 @@ function ensureLetterCoinCurrency() {
  * 注册特殊写信道具
  */
 function ensureLetterSpecialItems() {
-    const itemReg = JSON.parse(getMainStorage("item_registry") || "{}");
+    const itemReg = mainKvGet("item_registry", {});
 
     // 望远镜
     if (!itemReg["SPEC_003"]) {
@@ -153,7 +156,7 @@ function ensureLetterSpecialItems() {
         };
     }
 
-    setMainStorage("item_registry", JSON.stringify(itemReg));
+    mainKvSet("item_registry", itemReg);
 }
 
 // ========================
@@ -164,7 +167,7 @@ function getPrimaryUid(platform, uid) {
     const api = getApi();
     if (api) return api.getPrimaryUid(platform, uid);
     try {
-        const extras = JSON.parse(mainStorGet("extra_accounts") || "{}");
+        const extras = mainKvGet("extra_accounts", {});
         return extras[`${platform}:${uid}`] || uid;
     } catch (e) { console.error("[写信综] getPrimaryUid 解析失败:", e); return uid; }
 }
@@ -176,7 +179,7 @@ function getRoleName(ctx, msg) {
     const platform = msg.platform;
     const rawUid = msg.sender.userId.replace(`${platform}:`, "");
     const uid = getPrimaryUid(platform, rawUid);
-    const groups = JSON.parse(getMainStorage("a_private_group") || "{}");
+    const groups = mainKvGet("a_private_group", {});
     return groups[platform]?.[uid]?.[0] || null;
 }
 
@@ -198,56 +201,83 @@ function recordActivity(actType, platform, ctx, endpoint) {
 }
 
 // ========================
-// 【3】启用写信综（管理员命令）
+// 【3】注册写信综基础道具（管理员命令）
 // ========================
+// 写信综开关本身走共享的 global_feature_toggle.enable_direct_letter
+// （。设置 功能开关 里的「发送信件」，与 rp 端后台是同一个键位）。
+// 本指令只负责补齐货币/道具注册，与开关状态无关，可重复执行。
 
-let cmd_enable_letter_system = seal.ext.newCmdItemInfo();
-cmd_enable_letter_system.name = "启用写信综";
-cmd_enable_letter_system.help = `✉️ 【管理员】启用写信综系统
-格式：。启用写信综 <开启/关闭>
+let cmd_register_letter_items = seal.ext.newCmdItemInfo();
+cmd_register_letter_items.name = "注册写信综基础道具";
+cmd_register_letter_items.help = `✉️ 【管理员】一键注册写信综所需的货币与道具
+格式：。注册写信综基础道具
 
 效果：
-- 开启：启用发送信件功能，自动注册写信币货币
-- 关闭：禁用发送信件功能
+- 注册「写信币」货币（已注册则跳过）
+- 注册「望远镜」「羽毛笔」两个特殊道具（已注册则跳过）
 
-示例：
-。启用写信综 开启
-。启用写信综 关闭`;
+提示：
+写信综功能本身的开关请去「。设置 功能开关」（发送信件）或 rp 端后台切换，
+本指令只补齐货币/道具注册，可重复执行。`;
 
-cmd_enable_letter_system.solve = (ctx, msg, cmdArgs) => {
+cmd_register_letter_items.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) {
         return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     }
 
-    const action = cmdArgs.getArgN(1);
+    ensureLetterCoinCurrency();
+    ensureLetterSpecialItems();
 
-    if (!action || (action !== "开启" && action !== "关闭")) {
-        return seal.replyToSender(ctx, msg, cmd_enable_letter_system.help);
-    }
-
-    const config = JSON.parse(getMainStorage("global_feature_toggle") || "{}");
-
-    if (action === "开启") {
-        config.enable_direct_letter = true;
-        setMainStorage("global_feature_toggle", JSON.stringify(config));
-
-        // 自动注册写信币
-        ensureLetterCoinCurrency();
-
-        // 自动注册特殊道具
-        ensureLetterSpecialItems();
-
-        seal.replyToSender(ctx, msg, `✅ 写信综已启用！\n\n✨ 已自动注册货币：写信币\n🔭 已自动注册道具：望远镜、羽毛笔\n📮 玩家可以开始使用「发送信件」命令。`);
-    } else {
-        config.enable_direct_letter = false;
-        setMainStorage("global_feature_toggle", JSON.stringify(config));
-        seal.replyToSender(ctx, msg, `❌ 写信综已禁用。\n\n玩家无法使用「发送信件」命令。`);
-    }
+    seal.replyToSender(ctx, msg, `✅ 写信综基础道具已注册（已存在的自动跳过）！\n\n✨ 货币：写信币\n🔭 道具：望远镜、羽毛笔\n\n如果「发送信件」功能还没开启，记得去「。设置 功能开关」里打开。`);
 
     return seal.ext.newCmdExecuteResult(true);
 };
 
-ext.cmdMap["启用写信综"] = cmd_enable_letter_system;
+ext.cmdMap["注册写信综基础道具"] = cmd_register_letter_items;
+
+// ========================
+// 【3.5】写信综指南（管理员设置引导，。前缀命令）
+// ========================
+// 注意：与下方【8】的玩家版「写信综指南」（不带。号，走 onNotCommandReceived）
+// 互不冲突——前者需要命令前缀触发，后者是纯文本关键词触发。
+
+let cmd_letter_admin_guide = seal.ext.newCmdItemInfo();
+cmd_letter_admin_guide.name = "写信综指南";
+cmd_letter_admin_guide.help = `📖 【管理员】写信综设置引导
+格式：。写信综指南`;
+
+cmd_letter_admin_guide.solve = (ctx, msg, cmdArgs) => {
+    const lines = [
+        "📖 写信综设置引导",
+        "",
+        "① 开启功能",
+        "。设置 功能开关 发送信件 开启",
+        "（或在 rp 端后台把「发送信件（写信综）」打开，两边共用同一个开关）",
+        "",
+        "② 注册基础货币/道具",
+        "。注册写信综基础道具",
+        "（注册写信币、望远镜、羽毛笔；可重复执行，已注册的会跳过——不执行的话赏金和道具都用不了）",
+        "",
+        "③ 按需配置参数（。信件设置 参数 值）",
+        "日限：每日可发信件数（默认5）",
+        "赏金：每封信奖励写信币数（默认0=不发）",
+        "最小字数：获得赏金所需的最低字数",
+        "发送cd：两封信之间的冷却分钟数",
+        "心愿成本：发心愿消耗的写信币数",
+        "私约成本：发私约消耗的写信币数",
+        "",
+        "④ RP存档同步",
+        "「启用RP存档传输」和写信综都开启后，信件会自动同步进复盘存档，无需额外设置。",
+        "",
+        "⑤ 玩家使用",
+        "玩家可发送纯文字「写信综指南」（不带。号）查看使用说明，",
+        "或直接用「。发送信件」「。信件状态」「。羽毛笔修改」。",
+    ];
+    seal.replyToSender(ctx, msg, lines.join("\n"));
+    return seal.ext.newCmdExecuteResult(true);
+};
+
+ext.cmdMap["写信综指南"] = cmd_letter_admin_guide;
 
 // ========================
 // 【4】发送信件命令（正式信件）
@@ -274,13 +304,13 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
 
     // 1. 检查写信综是否启用
     if (!isLetterSystemEnabled()) {
-        seal.replyToSender(ctx, msg, "✉️ 发送信件功能未启用。\n\n管理员需要先执行「启用写信综 开启」。");
+        seal.replyToSender(ctx, msg, "✉️ 发送信件功能未启用。\n\n管理员需要先在「。设置 功能开关」开启「发送信件」，并执行「注册写信综基础道具」。");
         return seal.ext.newCmdExecuteResult(true);
     }
 
     const platform = msg.platform;
     const uid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
-    const a_private_group = JSON.parse(getMainStorage("a_private_group") || "{}");
+    const a_private_group = mainKvGet("a_private_group", {});
 
     // 2. 身份核验
     const senderRoleName = getRoleName(ctx, msg);
@@ -323,7 +353,7 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
     const gameDay = getMainStorage("global_days") || "D0";
     const dailyLimit = getMainStorageInt("direct_letter_daily_limit", 5);
     const userKey = `${platform}:${uid}`;
-    let dlCounts = JSON.parse(getMainStorage("letter_day_counts") || "{}");
+    let dlCounts = mainKvGet("letter_day_counts", {});
 
     if (!dlCounts[userKey] || dlCounts[userKey].day !== gameDay) {
         dlCounts[userKey] = { day: gameDay, count: 0 };
@@ -351,8 +381,8 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
     let quillPenApplier = null; // 施加羽毛笔的人
     let effectToHandle = null; // 需要处理的效果
 
-    const telescopeEffects = JSON.parse(getMainStorage("letter_telescope_effects") || "{}");
-    const quillPenEffects = JSON.parse(getMainStorage("letter_quill_pen_effects") || "{}");
+    const telescopeEffects = mainKvGet("letter_telescope_effects", {});
+    const quillPenEffects = mainKvGet("letter_quill_pen_effects", {});
 
     if (telescopeEffects[senderRoleName]) {
         telescopeAppliers = telescopeEffects[senderRoleName]
@@ -394,25 +424,25 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
         let totalCoins = 0;
         if (rewardPerLetter > 0 && meetsMinChars) {
             const roleKey = `${platform}:${uid}`;
-            const itemReg = JSON.parse(getMainStorage("item_registry") || "{}");
+            const itemReg = mainKvGet("item_registry", {});
             const coinEntry = Object.entries(itemReg).find(([, v]) => v.name === "写信币");
             if (coinEntry) {
                 const [coinCode, coinDef] = coinEntry;
-                const invs = JSON.parse(getMainStorage("global_inventories") || "{}");
+                const invs = mainKvGet("global_inventories", {});
                 const inv = invs[roleKey] || [];
                 const initialUses = coinDef.maxUses ?? -1;
                 const existing = inv.find(e => e.code === coinCode && (e.remainingUses ?? -1) === initialUses);
                 if (existing) { existing.count += rewardPerLetter; }
                 else { inv.push({ code: coinCode, count: rewardPerLetter, remainingUses: initialUses }); }
                 invs[roleKey] = inv;
-                setMainStorage("global_inventories", JSON.stringify(invs));
+                mainKvSet("global_inventories", invs);
                 totalCoins = inv.filter(e => e.code === coinCode).reduce((sum, e) => sum + e.count, 0);
             }
             rewardGiven = rewardPerLetter;
         }
         dlCounts[userKey].count = currentCount + 1;
         dlCounts[userKey].lastSendTime = Date.now();
-        setMainStorage("letter_day_counts", JSON.stringify(dlCounts));
+        mainKvSet("letter_day_counts", dlCounts);
         let reply = `✉️ 信件已送达「${receiver}」！\n`;
         reply += `🖋️ 落款：${signature}\n`;
         reply += `📅 ${gameDay}（今日剩余：${dailyLimit - (currentCount + 1)}/${dailyLimit}）`;
@@ -427,9 +457,9 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
     // 收信人是施加人本人时，羽毛笔不拦截，但仍需消耗效果
     if (effectToHandle?.type === "quill" && receiver === quillPenApplier.applier) {
         quillPenEffects[senderRoleName] = quillPenEffects[senderRoleName].filter(e => e !== quillPenApplier);
-        setMainStorage("letter_quill_pen_effects", JSON.stringify(quillPenEffects));
+        mainKvSet("letter_quill_pen_effects", quillPenEffects);
     } else if (effectToHandle?.type === "quill") {
-        let pendingLetters = JSON.parse(getMainStorage("letter_pending_quill_pens") || "{}");
+        let pendingLetters = mainKvGet("letter_pending_quill_pens", {});
         if (!pendingLetters[quillPenApplier.applier]) {
             pendingLetters[quillPenApplier.applier] = [];
         }
@@ -447,7 +477,7 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
             userId: uid
         });
 
-        setMainStorage("letter_pending_quill_pens", JSON.stringify(pendingLetters));
+        mainKvSet("letter_pending_quill_pens", pendingLetters);
 
         // CC 原始信件给施加人
         const applierEntry = getEntryByRoleName(a_private_group, platform, quillPenApplier.applier);
@@ -466,7 +496,7 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
 
         // 清除已使用的羽毛笔效果
         quillPenEffects[senderRoleName] = quillPenEffects[senderRoleName].filter(e => e !== quillPenApplier);
-        setMainStorage("letter_quill_pen_effects", JSON.stringify(quillPenEffects));
+        mainKvSet("letter_quill_pen_effects", quillPenEffects);
 
         // 照常给发信人回执、计数、写信币
         giveRewardAndReply();
@@ -499,7 +529,7 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
             seal.replyToSender(copyCtx, copyMsg, `🔭【望远镜抄录】\n${finalLetter}`);
         }
         telescopeEffects[senderRoleName] = telescopeEffects[senderRoleName].filter(e => e !== telescopeApplier);
-        setMainStorage("letter_telescope_effects", JSON.stringify(telescopeEffects));
+        mainKvSet("letter_telescope_effects", telescopeEffects);
     }
 
     // 9. 存档：实时上报信件到 rp_archive
@@ -546,7 +576,6 @@ cmd_letter_config.help = `⚙️ 【管理员】配置发送信件系统
 - 发送cd：两封信之间的冷却时间（分钟，默认0即无冷却）
 - 心愿成本：发送心愿需要消费的写信币数（默认0，即禁用消费）
 - 私约成本：发送私约需要消费的写信币数（默认0，即禁用消费）
-- 同步：是否将信件（含羽毛笔修改后）同步至RP存档（开/关）
 
 示例：
 。信件设置 日限 10
@@ -554,8 +583,7 @@ cmd_letter_config.help = `⚙️ 【管理员】配置发送信件系统
 。信件设置 最小字数 10
 。信件设置 发送cd 30
 。信件设置 心愿成本 3
-。信件设置 私约成本 5
-。信件设置 同步 开`;
+。信件设置 私约成本 5`;
 
 cmd_letter_config.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) {
@@ -589,14 +617,6 @@ cmd_letter_config.solve = (ctx, msg, cmdArgs) => {
     } else if (param === "私约成本") {
         setMainStorage("appointment_coin_cost", value);
         modified = true;
-    } else if (param === "同步") {
-        if (value !== "开" && value !== "关") {
-            seal.replyToSender(ctx, msg, "⚠️ 同步参数只能填「开」或「关」。");
-            return seal.ext.newCmdExecuteResult(true);
-        }
-        setMainStorage("direct_letter_sync_enabled", value === "开" ? "true" : "false");
-        seal.replyToSender(ctx, msg, `✅ 信件同步已${value === "开" ? "开启（发送信件与羽毛笔修改均会同步至RP存档）" : "关闭"}`);
-        return seal.ext.newCmdExecuteResult(true);
     }
 
     if (modified) {
@@ -635,10 +655,10 @@ cmd_letter_status.solve = (ctx, msg, cmdArgs) => {
     const cdMinutes = getMainStorageInt("direct_letter_cooldown", 0);
 
     const userKey = `${platform}:${uid}`;
-    let dlCounts = JSON.parse(getMainStorage("letter_day_counts") || "{}");
+    let dlCounts = mainKvGet("letter_day_counts", {});
     const used = (dlCounts[userKey]?.day === gameDay ? dlCounts[userKey]?.count : 0) || 0;
 
-    const syncEnabled = getMainStorage("direct_letter_sync_enabled", "false") === "true";
+    const syncEnabled = isLetterSyncEnabled();
     const hasMinChars = minChars > 0;
     const hasCd = cdMinutes > 0;
 
@@ -679,7 +699,7 @@ cmd_quill_pen_modify.help = `✏️ 查看或修改截获的信件
 
 cmd_quill_pen_modify.solve = (ctx, msg, cmdArgs) => {
     const platform = msg.platform;
-    const a_private_group = JSON.parse(getMainStorage("a_private_group") || "{}");
+    const a_private_group = mainKvGet("a_private_group", {});
 
     const modifierRoleName = getRoleName(ctx, msg);
     if (!modifierRoleName) {
@@ -687,7 +707,7 @@ cmd_quill_pen_modify.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    let pendingLetters = JSON.parse(getMainStorage("letter_pending_quill_pens") || "{}");
+    let pendingLetters = mainKvGet("letter_pending_quill_pens", {});
     const myPending = pendingLetters[modifierRoleName] || [];
 
     const idxStr = cmdArgs.getArgN(1);
@@ -769,7 +789,7 @@ cmd_quill_pen_modify.solve = (ctx, msg, cmdArgs) => {
     } else {
         pendingLetters[modifierRoleName] = myPending;
     }
-    setMainStorage("letter_pending_quill_pens", JSON.stringify(pendingLetters));
+    mainKvSet("letter_pending_quill_pens", pendingLetters);
 
     seal.replyToSender(ctx, msg, `✅ 信件已修改并发出！已以「${letterData.senderName}」的名义发给「${letterData.receiverName}」。`);
     return seal.ext.newCmdExecuteResult(true);

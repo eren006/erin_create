@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block title %}战斗结果 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+
+<!-- 结果横幅 -->
+<div style="text-align:center;padding:24px 0 16px">
+  {% if won %}
+  <div style="font-size:40px;margin-bottom:8px;filter:drop-shadow(0 0 20px rgba(77,184,154,.5))">⚔</div>
+  <div style="font-size:24px;font-weight:700;color:var(--jade);letter-spacing:2px">斩妖成功</div>
+  <div style="color:var(--muted);font-size:13px;margin-top:6px">【{{ monster.name }}】已被斩杀</div>
+  {% else %}
+  <div style="font-size:40px;margin-bottom:8px">💨</div>
+  <div style="font-size:24px;font-weight:700;color:var(--red);letter-spacing:2px">败退而归</div>
+  <div style="color:var(--muted);font-size:13px;margin-top:6px">未能斩杀【{{ monster.name }}】</div>
+  {% endif %}
+  {% if p_wx_desc or m_wx_desc %}
+  <div style="margin-top:8px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+    {% if p_wx_desc %}
+    <span style="font-size:11px;padding:3px 10px;border-radius:12px;
+      background:{% if '克敌' in p_wx_desc %}rgba(46,139,87,.15){% else %}rgba(192,57,43,.12){% endif %};
+      border:1px solid {% if '克敌' in p_wx_desc %}var(--green){% else %}var(--red){% endif %};
+      color:{% if '克敌' in p_wx_desc %}var(--green){% else %}var(--red){% endif %}">
+      你：五行{{ p_wx_desc }}
+    </span>
+    {% endif %}
+    {% if m_wx_desc %}
+    <span style="font-size:11px;padding:3px 10px;border-radius:12px;
+      background:{% if '克敌' in m_wx_desc %}rgba(192,57,43,.12){% else %}rgba(46,139,87,.10){% endif %};
+      border:1px solid {% if '克敌' in m_wx_desc %}var(--red){% else %}var(--green){% endif %};
+      color:{% if '克敌' in m_wx_desc %}var(--red){% else %}var(--green){% endif %}">
+      敌：五行{{ m_wx_desc }}
+    </span>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+<!-- 战利品 -->
+{% if won and (exp_g or stone_g or drops) %}
+<div style="display:flex;justify-content:center;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+  {% if exp_g %}
+  <div style="background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.3);
+       border-radius:10px;padding:10px 18px;text-align:center">
+    <div style="color:var(--gold);font-weight:700;font-size:18px">+{{ fmt_exp(exp_g) }}</div>
+    <div style="color:var(--muted);font-size:11px">修为</div>
+  </div>
+  {% endif %}
+  {% if stone_g %}
+  <div style="background:rgba(77,184,154,.1);border:1px solid rgba(77,184,154,.3);
+       border-radius:10px;padding:10px 18px;text-align:center">
+    <div style="color:var(--jade);font-weight:700;font-size:18px">+{{ stone_g }}</div>
+    <div style="color:var(--muted);font-size:11px">灵石</div>
+  </div>
+  {% endif %}
+  {% for item in drops %}
+  <div style="background:rgba(155,127,224,.1);border:1px solid rgba(155,127,224,.3);
+       border-radius:10px;padding:10px 18px;text-align:center">
+    <div style="color:var(--purple);font-weight:700;font-size:14px">{{ item.name }}</div>
+    <div style="color:var(--muted);font-size:11px">{{ item.rarity | rarity_label }} 掉落</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- 气血剩余 -->
+<div class="card" style="margin-bottom:16px;padding:12px 16px">
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+    <div style="flex:1;min-width:200px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:5px">
+        <span>战后气血</span>
+        <span style="color:{% if final_hp < max_hp * MIN_FIGHT_HP_PCT %}var(--red){% elif final_hp < max_hp * 0.5 %}var(--gold){% else %}var(--muted){% endif %}">
+          {{ final_hp }}/{{ max_hp }}（{{ (final_hp / max_hp * 100)|int }}%）
+        </span>
+      </div>
+      <div class="bar-wrap">
+        <div class="bar-fill bar-red" style="width:{{ (final_hp / max_hp * 100)|int }}%"></div>
+      </div>
+    </div>
+    <div style="font-size:12px;color:var(--muted);flex-shrink:0">
+      剩余灵力 <strong style="color:var(--jade)">{{ energy }}</strong>
+    </div>
+  </div>
+  {% if final_hp < max_hp * MIN_FIGHT_HP_PCT %}
+  <div style="margin-top:10px;font-size:12px;color:var(--red)">
+    ⚠ 气血低于 {{ (MIN_FIGHT_HP_PCT*100)|int }}%，无法继续出战。
+    请在<a href="{{ url_for('inventory') }}" style="color:var(--gold)">背包</a>服用回元丹，
+    或等待自然恢复（每小时 {{ HP_REGEN_HOUR }}%）。
+  </div>
+  {% endif %}
+</div>
+
+<div class="grid2" style="align-items:start">
+  <!-- 战斗日志 -->
+  <div class="card">
+    <div class="card-h">战斗过程</div>
+    <div class="combat-log">
+      <div style="color:var(--muted);font-size:11px;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid var(--bd)">
+        {{ char.name }} {{ max_hp }} 气血 vs {{ monster.name }} {{ monster.hp }} 气血
+      </div>
+      {% if spell_label or move_label %}
+      <div style="font-size:11px;color:var(--purple);margin-bottom:8px;padding:4px 8px;
+           background:rgba(140,80,200,.07);border-radius:6px;border-left:2px solid var(--purple)">
+        {% if spell_label and move_label %}
+        施展【{{ spell_label }}】{{ move_label }}，踏入战局——
+        {% elif spell_label %}
+        以【{{ spell_label }}】为引，踏入战局——
+        {% else %}
+        展开{{ move_label }}，踏入战局——
+        {% endif %}
+      </div>
+      {% else %}
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px;font-style:italic">
+        凝神蓄势，施展基础剑术，踏入战局——
+      </div>
+      {% endif %}
+      {% for r in rounds %}
+      <div class="round-row {{ 'round-p' if r.actor=='p' else 'round-m' }}">
+        {% if r.actor == 'p' %}
+          {% if r.get('qi') %}💨{% elif r.crit %}⚡{% else %}⚔{% endif %}
+          {{ r.desc }}
+          <span style="font-size:10px;color:var(--muted);margin-left:4px">
+            [对方 {{ r.m_hp }}/{{ monster.hp }}]
+          </span>
+        {% elif r.dodge %}
+        🌀 {{ r.desc }}
+        {% else %}
+        💢 {{ r.desc }}
+          <span style="font-size:10px;color:var(--muted);margin-left:4px">
+            [我方 {{ r.c_hp }}/{{ max_hp }}]
+          </span>
+        {% endif %}
+      </div>
+      {% endfor %}
+      <div style="text-align:center;color:var(--muted);font-size:11px;padding:8px 0;
+           border-top:1px solid var(--bd);margin-top:6px">— 战斗结束，共 {{ rounds|length }} 回合 —</div>
+    </div>
+  </div>
+
+  <!-- 操作 -->
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <div class="card">
+      <div class="card-h">战斗总结</div>
+      <div style="display:flex;flex-direction:column;gap:8px;font-size:13px">
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--muted)">对手</span><span>{{ monster.name }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--muted)">回合数</span><span>{{ rounds|length }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--muted)">结果</span>
+          <span style="color:{{ 'var(--jade)' if won else 'var(--red)' }}">{{ '胜利' if won else '败退' }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--muted)">剩余气血</span>
+          <span style="color:{% if final_hp < max_hp * 0.3 %}var(--red){% else %}var(--jade){% endif %}">
+            {{ final_hp }}/{{ max_hp }}
+          </span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--muted)">当前灵石</span>
+          <span style="color:var(--gold)">{{ char.spirit_stones }}</span>
+        </div>
+      </div>
+    </div>
+
+    {% if drops %}
+    <div class="card">
+      <div class="card-h" style="color:var(--purple)">掉落物品</div>
+      {% for item in drops %}
+      <div style="font-size:13px;padding:5px 0;
+           {% if not loop.last %}border-bottom:1px solid var(--bd){% endif %}">
+        <span class="tag tag-{{ item.rarity }}">{{ item.rarity | rarity_label }}</span>
+        <span style="margin-left:8px">{{ item.name }}</span>
+        {% if item.type in ('weapon','artifact') %}
+        <div style="font-size:11px;color:var(--muted);margin-top:3px">
+          → 前往<a href="{{ url_for('inventory') }}" style="color:var(--jade)">背包</a>装备
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <a href="{{ url_for('combat') }}" class="btn btn-jade">继续战斗</a>
+    {% if final_hp < max_hp * MIN_FIGHT_HP_PCT %}
+    <a href="{{ url_for('inventory') }}" class="btn btn-gold">去背包恢复气血</a>
+    {% endif %}
+    <a href="{{ url_for('dashboard') }}" class="btn btn-ghost">返回灵台</a>
+  </div>
+</div>
+
+</div>
+{% endblock %}

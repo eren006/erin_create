@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}任务 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">📋 每日/周任务 <small>完成目标，领取奖励</small></div>
+
+{% macro quest_card(q, period) %}
+<div class="card" style="padding:14px 16px;
+     {% if q.claimed %}opacity:.6{% elif q.done %}border-color:var(--jade);background:rgba(31,122,95,.04){% endif %}">
+  <div style="display:flex;align-items:flex-start;gap:12px">
+    <div style="width:34px;height:34px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+         background:{% if q.claimed %}var(--sf2){% elif q.done %}var(--jade){% else %}var(--sf2){% endif %};
+         font-size:{% if q.done and not q.claimed %}16px{% else %}12px{% endif %};
+         font-weight:700;color:{% if q.claimed %}var(--muted){% elif q.done %}#fff{% else %}var(--muted){% endif %}">
+      {% if q.claimed %}✓{% elif q.done %}!{% else %}{{ q.progress }}/{{ q.target }}{% endif %}
+    </div>
+    <div style="flex:1;min-width:0">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
+        <span style="font-weight:{% if q.done and not q.claimed %}700{% else %}600{% endif %};
+             color:{% if q.claimed %}var(--muted){% elif q.done %}var(--jade){% else %}var(--text){% endif %}">
+          {{ q.name }}
+        </span>
+        {% if q.claimed %}
+        <span style="font-size:10px;background:var(--sf2);color:var(--muted);border-radius:4px;padding:1px 6px">已领</span>
+        {% elif q.done %}
+        <span style="font-size:10px;background:rgba(31,122,95,.12);color:var(--jade);border-radius:4px;padding:1px 6px">可领取</span>
+        {% endif %}
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">{{ q.desc }}</div>
+      <!-- 进度条 -->
+      {% if not q.claimed %}
+      <div class="bar-wrap" style="height:6px;margin-bottom:4px">
+        <div class="bar-fill bar-jade" style="width:{{ q.pct }}%"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-bottom:8px">
+        <span>{{ q.progress }} / {{ q.target }}</span>
+        <span>{{ q.pct }}%</span>
+      </div>
+      {% endif %}
+      <!-- 奖励 -->
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <span style="font-size:11px;color:var(--muted)">奖励：</span>
+        <span style="background:rgba(166,124,26,.1);border:1px solid rgba(166,124,26,.2);border-radius:5px;padding:1px 7px;font-size:11px;color:var(--gold)">
+          💰 灵石 ×{{ q.reward_stones }}
+        </span>
+        {% for iname, iqty in q.reward_items %}
+        <span style="background:rgba(123,94,168,.08);border:1px solid rgba(123,94,168,.15);border-radius:5px;padding:1px 7px;font-size:11px;color:var(--purple)">
+          {{ iname }} ×{{ iqty }}
+        </span>
+        {% endfor %}
+      </div>
+    </div>
+    {% if q.done and not q.claimed %}
+    <form method="post" style="flex-shrink:0">
+      <input type="hidden" name="quest_key" value="{{ q.key }}">
+      <button class="btn btn-jade btn-sm" style="white-space:nowrap">领取</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+<div style="display:flex;gap:20px;flex-wrap:wrap">
+
+  <!-- 每日任务 -->
+  <div style="flex:1;min-width:280px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <div class="card-h" style="margin:0">☀ 每日任务</div>
+      <span style="font-size:11px;color:var(--muted)">次日零点刷新</span>
+      {% set d_done = daily | selectattr('claimed') | list | length %}
+      <span style="margin-left:auto;font-size:12px;
+           color:{% if d_done == daily|length %}var(--gold){% else %}var(--muted){% endif %}">
+        {{ d_done }}/{{ daily|length }} 已领
+      </span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      {% for q in daily %}
+      {{ quest_card(q, 'daily') }}
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- 每周任务 -->
+  <div style="flex:1;min-width:280px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+      <div class="card-h" style="margin:0">🌙 每周任务</div>
+      <span style="font-size:11px;color:var(--muted)">周一零点刷新</span>
+      {% set w_done = weekly | selectattr('claimed') | list | length %}
+      <span style="margin-left:auto;font-size:12px;
+           color:{% if w_done == weekly|length %}var(--gold){% else %}var(--muted){% endif %}">
+        {{ w_done }}/{{ weekly|length }} 已领
+      </span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      {% for q in weekly %}
+      {{ quest_card(q, 'weekly') }}
+      {% endfor %}
+    </div>
+  </div>
+
+</div>
+</div>
+{% endblock %}

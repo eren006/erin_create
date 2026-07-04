@@ -81,6 +81,7 @@
     <a href="{{ url_for('admin') }}">总览</a>
     <a href="{{ url_for('admin_config_page') }}">游戏配置</a>
     <a href="{{ url_for('admin_groups') }}">已知群</a>
+    <a href="{{ url_for('admin_places') }}">地点管理</a>
     <a href="{{ url_for('admin_rewards') }}">结戏奖励</a>
     <a href="{{ url_for('admin_player_controls') }}" class="active">玩家控制</a>
     <a href="{{ url_for('admin_shows') }}">季管理</a>
@@ -91,11 +92,11 @@
   {% if last_sync_ts %}
   <div style="font-size:12px;color:var(--muted);margin-bottom:20px;">
     📡 上次 bot 同步：{{ ts_to_str(last_sync_ts) }}
-    <span style="margin-left:12px;">修改后在 bot 执行「全量同步」即可生效。</span>
+    <span style="margin-left:12px;">修改后在 bot 执行「拉取全部」即可生效。</span>
   </div>
   {% else %}
   <div style="font-size:12px;color:var(--muted);margin-bottom:20px;">
-    ⚠️ 尚未同步过 bot 数据。请先在 bot 执行「全量上传」，此页面的数据才会显示。
+    ⚠️ 尚未同步过 bot 数据。请先在 bot 执行「推送全部」，此页面的数据才会显示。
   </div>
   {% endif %}
 

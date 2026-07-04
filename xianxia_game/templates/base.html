@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>{% block title %}灵墟界{% endblock %}</title>
+<style>
+:root{
+  --bg:#f3efe3;--sf:#fbf8f0;--sf2:#ece6d6;--bd:#d8cfb8;
+  --jade:#1f7a5f;--gold:#a67c1a;--gold2:#8a6310;
+  --text:#33302a;--muted:#8a8472;
+  --red:#c0392b;--green:#2e8b57;--blue:#2c6e9e;--purple:#7b5ea8;
+  --jade-dim:#a8d4c4;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);
+  font-family:"PingFang SC","Microsoft YaHei",sans-serif;
+  font-size:14px;line-height:1.7;min-height:100vh}
+a{color:var(--jade);text-decoration:none}
+a:hover{color:var(--gold)}
+
+/* ── 滚动公告 ── */
+.ticker-wrap{
+  background:var(--sf2);border-bottom:1px solid var(--bd);
+  height:26px;overflow:hidden;white-space:nowrap;
+  position:sticky;top:52px;z-index:1;
+  display:flex;align-items:center
+}
+.ticker-inner{
+  display:inline-block;
+  padding-left:100%;
+  animation:ticker-scroll 80s linear infinite
+}
+.ticker-inner:hover{animation-play-state:paused}
+@keyframes ticker-scroll{
+  0%  {transform:translateX(0)}
+  100%{transform:translateX(-100%)}
+}
+.ticker-item{
+  font-size:11px;color:var(--muted);
+  padding:0 8px;display:inline
+}
+.ticker-item b{color:var(--gold)}
+
+/* ── 下拉菜单 ── */
+.nav-drop{position:relative}
+.nav-drop-btn{
+  color:var(--muted);font-size:13px;padding:5px 10px;border-radius:7px;
+  white-space:nowrap;cursor:pointer;user-select:none;
+  display:flex;align-items:center;gap:3px
+}
+.nav-drop-btn:hover,.nav-drop-btn.active{color:var(--text);background:var(--sf2)}
+.nav-drop-btn::after{content:"▾";font-size:9px;opacity:.5}
+.nav-drop-menu{
+  position:fixed;background:var(--sf);border:1px solid var(--bd);
+  border-radius:10px;padding:5px;min-width:120px;max-width:200px;
+  box-shadow:0 4px 20px rgba(0,0,0,.12);z-index:999999;
+  display:none;flex-direction:column;max-height:60vh;overflow-y:auto;
+  pointer-events:auto
+}
+.nav-drop-menu.open{display:flex}
+.nav-drop-menu a{
+  color:var(--muted);font-size:13px;padding:7px 12px;
+  border-radius:7px;white-space:nowrap
+}
+.nav-drop-menu a:hover{color:var(--text);background:var(--sf2)}
+.nav-drop-menu a.active{color:var(--jade)}
+
+/* ── 顶栏 ── */
+.topbar{
+  background:var(--sf);border-bottom:1px solid var(--bd);
+  height:52px;display:flex;align-items:center;gap:10px;
+  padding:0 20px;position:sticky;top:0;z-index:100;
+  overflow-x:auto;overflow-y:visible
+}
+.topbar::-webkit-scrollbar{display:none}
+.logo{font-size:16px;font-weight:700;color:var(--gold);white-space:nowrap;
+  letter-spacing:2px;flex-shrink:0;text-shadow:0 0 20px rgba(201,168,76,.3)}
+.nav{display:flex;gap:2px;flex-shrink:0}
+.nav a{color:var(--muted);font-size:13px;padding:5px 10px;border-radius:7px;white-space:nowrap}
+.nav a:hover,.nav a.active{color:var(--text);background:var(--sf2)}
+.nav a.active{color:var(--jade)}
+.nav-badge{display:inline-block;background:var(--red);color:#fff;font-size:10px;font-weight:700;
+  border-radius:10px;padding:0 5px;margin-left:3px;vertical-align:top;line-height:15px;min-width:15px;text-align:center}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:12px;flex-shrink:0}
+.topbar-right .user-tag{color:var(--muted);font-size:12px;white-space:nowrap}
+.topbar-right a{color:var(--muted);font-size:12px;white-space:nowrap}
+.topbar-right a:hover{color:var(--red)}
+
+/* ── 内容 ── */
+.page{max-width:1000px;margin:0 auto;padding:28px 20px}
+@media(max-width:640px){.page{padding:16px 12px}}
+.page-title{font-size:20px;font-weight:600;color:var(--gold);
+  margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid var(--bd);
+  letter-spacing:1px}
+.page-title small{font-size:13px;font-weight:400;color:var(--muted);margin-left:10px}
+
+/* ── 卡片 ── */
+.card{background:var(--sf);border:1px solid var(--bd);border-radius:12px;
+  padding:18px 20px;margin-bottom:14px}
+.card-h{font-size:15px;font-weight:600;color:var(--gold2);margin-bottom:12px;
+  display:flex;align-items:center;gap:8px}
+.card-h::before{content:'';display:inline-block;width:3px;height:16px;
+  background:var(--jade);border-radius:2px}
+
+/* ── 按钮 ── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  padding:8px 18px;border-radius:8px;border:none;cursor:pointer;
+  font-family:inherit;font-size:13px;font-weight:500;transition:all .15s}
+.btn-jade{background:var(--jade);color:#fff}
+.btn-jade:hover{background:#176349;color:#fff}
+.btn-gold{background:linear-gradient(135deg,#b8922c,#a67c1a);color:#fff}
+.btn-gold:hover{background:linear-gradient(135deg,#a67c1a,#8a6310);color:#fff}
+.btn-ghost{background:transparent;border:1px solid var(--bd);color:var(--muted)}
+.btn-ghost:hover{border-color:var(--jade);color:var(--jade)}
+.btn-red{background:#fbeae7;border:1px solid var(--red);color:var(--red)}
+.btn-red:hover{background:#f5d7d2}
+.btn-sm{padding:5px 12px;font-size:12px}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+
+/* ── 进度条 ── */
+.bar-wrap{background:var(--sf2);border-radius:10px;height:10px;overflow:hidden}
+.bar-fill{height:100%;border-radius:10px;transition:width .4s}
+.bar-jade{background:linear-gradient(90deg,#3aa17d,var(--jade))}
+.bar-gold{background:linear-gradient(90deg,#caa040,var(--gold))}
+.bar-red{background:linear-gradient(90deg,#d96a5c,var(--red))}
+.bar-blue{background:linear-gradient(90deg,#5a96bf,var(--blue))}
+
+/* ── 标签 ── */
+.tag{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600}
+.tag-common{background:#e8e4d6;color:#6e7a68}
+.tag-uncommon{background:rgba(46,139,87,.14);color:var(--green)}
+.tag-rare{background:rgba(44,110,158,.14);color:var(--blue)}
+.tag-epic{background:rgba(123,94,168,.16);color:var(--purple)}
+.tag-legendary{background:rgba(166,124,26,.18);color:var(--gold)}
+
+/* ── 提示 ── */
+.flash{padding:10px 16px;border-radius:8px;margin-bottom:16px;font-size:13px}
+.flash-success{background:rgba(46,139,87,.12);border:1px solid rgba(46,139,87,.4);color:#1f6b41}
+.flash-error{background:rgba(192,57,43,.1);border:1px solid rgba(192,57,43,.4);color:var(--red)}
+.flash-info{background:rgba(44,110,158,.1);border:1px solid rgba(44,110,158,.4);color:var(--blue)}
+
+/* ── 表格 ── */
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{color:var(--muted);font-weight:500;padding:8px 12px;
+  border-bottom:1px solid var(--bd);text-align:left}
+.tbl td{padding:9px 12px;border-bottom:1px solid rgba(0,0,0,.06)}
+.tbl tr:hover td{background:rgba(0,0,0,.03)}
+
+/* ── 灵根色彩 ── */
+.root-天灵根{color:#c9a000}
+.root-变异灵根{color:#9b51e0}
+.root-双灵根{color:#1d8fa8}
+.root-三灵根{color:#2e8b57}
+.root-四灵根{color:#7a8290}
+.root-五灵根{color:#6c757d}
+
+/* ── 空状态 ── */
+.empty{color:var(--muted);text-align:center;padding:48px 0;font-size:14px}
+
+/* ── 网格 ── */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media(max-width:640px){.grid2,.grid3{grid-template-columns:1fr}}
+
+/* ── 能量/属性展示条目 ── */
+.stat-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.stat-row .label{color:var(--muted);font-size:12px;width:46px;flex-shrink:0}
+.stat-row .val{font-size:12px;color:var(--muted);margin-left:4px;white-space:nowrap}
+
+/* ── 修仙装饰线 ── */
+.divider{display:flex;align-items:center;gap:10px;margin:20px 0;color:var(--muted);font-size:11px}
+.divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--bd)}
+
+/* ── 结果气泡 ── */
+.result-box{border:1px solid var(--bd);border-radius:10px;padding:16px 20px;
+  margin:16px 0;background:var(--sf2)}
+.result-box.success{border-color:var(--jade);background:rgba(31,122,95,.08)}
+.result-box.failure{border-color:var(--red);background:rgba(192,57,43,.07)}
+.result-box .rb-title{font-size:16px;font-weight:600;margin-bottom:8px}
+
+/* ── 战斗日志 ── */
+.combat-log{max-height:400px;overflow-y:auto;font-size:13px}
+.combat-log::-webkit-scrollbar{width:4px}
+.combat-log::-webkit-scrollbar-track{background:var(--sf2)}
+.combat-log::-webkit-scrollbar-thumb{background:var(--bd);border-radius:2px}
+.round-row{padding:5px 10px;border-radius:6px;margin-bottom:3px}
+.round-p{background:rgba(31,122,95,.1);color:var(--jade)}
+.round-m{background:rgba(192,57,43,.09);color:var(--red)}
+</style>
+{% block head %}{% endblock %}
+</head>
+<body>
+{% if session.admin_uid %}
+<div style="background:#7b2d00;color:#ffd0b0;text-align:center;padding:6px 16px;font-size:13px;
+  display:flex;align-items:center;justify-content:center;gap:16px;position:sticky;top:0;z-index:200">
+  <span>⚠ 正在以【{{ session.uname }}】身份操作</span>
+  <form method="post" action="{{ url_for('admin_unimpersonate') }}" style="margin:0">
+    <button style="background:#fff2e8;color:#7b2d00;border:none;border-radius:6px;
+      padding:3px 12px;font-size:12px;cursor:pointer;font-weight:700">退出代操作</button>
+  </form>
+</div>
+{% endif %}
+<div class="topbar">
+  <span class="logo">☯ 灵墟界</span>
+  {% if session.uid and session.role == 'admin' %}
+  <nav class="nav">
+    <a href="{{ url_for('admin') }}"         {% if request.endpoint=='admin' %}class="active"{% endif %}>概览</a>
+    <a href="{{ url_for('admin_invites') }}" {% if request.endpoint=='admin_invites' %}class="active"{% endif %}>邀请码</a>
+    <a href="{{ url_for('admin_events') }}"  {% if request.endpoint=='admin_events'  %}class="active"{% endif %}>活动Boss</a>
+    <a href="{{ url_for('admin_gacha') }}"   {% if request.endpoint=='admin_gacha'   %}class="active"{% endif %}>卡池</a>
+    <a href="{{ url_for('admin_companions') }}" {% if request.endpoint=='admin_companions' %}class="active"{% endif %}>伙伴清单</a>
+    <a href="{{ url_for('admin_companion_pools') }}" {% if request.endpoint=='admin_companion_pools' %}class="active"{% endif %}>池子管理</a>
+    <a href="{{ url_for('admin_npcs') }}"    {% if request.endpoint=='admin_npcs'    %}class="active"{% endif %}>NPC</a>
+    <a href="{{ url_for('admin_players') }}" {% if request.endpoint in ('admin_players','admin_player') %}class="active"{% endif %}>玩家</a>
+    <a href="{{ url_for('admin_items') }}"   {% if request.endpoint=='admin_items' %}class="active"{% endif %}>物品</a>
+    <a href="{{ url_for('admin_monsters') }}"{% if request.endpoint=='admin_monsters' %}class="active"{% endif %}>妖兽</a>
+    <a href="{{ url_for('admin_pet_pool') }}"{% if request.endpoint=='admin_pet_pool' %}class="active"{% endif %}>放生池</a>
+    <a href="{{ url_for('admin_enlighten') }}"  {% if request.endpoint=='admin_enlighten'  %}class="active"{% endif %}>试炼</a>
+    <a href="{{ url_for('admin_vein') }}"       {% if request.endpoint=='admin_vein'       %}class="active"{% endif %}>灵脉</a>
+    <a href="{{ url_for('admin_gate') }}"       {% if request.endpoint=='admin_gate'       %}class="active"{% endif %}>异世门</a>
+    <a href="{{ url_for('admin_tianmo_clone_sim') }}" {% if request.endpoint=='admin_tianmo_clone_sim' %}class="active"{% endif %}>分身模拟</a>
+    <a href="{{ url_for('admin_tourney') }}"    {% if request.endpoint=='admin_tourney'    %}class="active"{% endif %}>大典</a>
+    <a href="{{ url_for('admin_config') }}"     {% if request.endpoint=='admin_config'     %}class="active"{% endif %}>配置</a>
+    <a href="{{ url_for('admin_gift_codes') }}" {% if request.endpoint=='admin_gift_codes' %}class="active"{% endif %}>礼包码</a>
+  </nav>
+  <div class="topbar-right">
+    <span class="user-tag">⚙ 管理员</span>
+    <a href="{{ url_for('logout') }}">退出</a>
+  </div>
+  {% elif session.uid %}
+  {% set ep = request.endpoint or '' %}
+  <nav class="nav">
+
+    {# ── 常用 5 项 ── #}
+    <a href="{{ url_for('dashboard') }}" {% if ep=='dashboard' %}class="active"{% endif %} style="{% if nav_energy_gift %}color:var(--gold){% endif %}">灵台{% if nav_energy_gift %}<span class="nav-badge">!</span>{% endif %}</a>
+    <a href="{{ url_for('cultivate') }}" {% if ep=='cultivate' %}class="active"{% endif %}>修炼</a>
+    <a href="{{ url_for('explore') }}"   {% if ep=='explore'   %}class="active"{% endif %}>探索</a>
+    <a href="{{ url_for('work') }}"      {% if ep=='work'      %}class="active"{% endif %}>打工</a>
+    <a href="{{ url_for('combat') }}"    {% if ep in ('combat','fight') %}class="active"{% endif %}>战斗</a>
+
+    {# ── 活动 ── #}
+    <div class="nav-drop">
+      <span class="nav-drop-btn {% if ep in ('encounters','event_page','gacha','enlighten','vein','yqs','companion','companion_gacha','tourney') or ep.startswith('encounters') %}active{% endif %}">活动{% if nav_pending_enc or nav_enlighten or nav_vein %}<span class="nav-badge">!</span>{% endif %}</span>
+      <div class="nav-drop-menu">
+        <a href="{{ url_for('encounters') }}" {% if ep.startswith('encounters') %}class="active"{% endif %}>际遇{% if nav_pending_enc %}<span class="nav-badge">{{ nav_pending_enc }}</span>{% endif %}</a>
+        <a href="{{ url_for('event_page') }}" {% if ep=='event_page' %}class="active"{% endif %}>世界Boss</a>
+        <a href="{{ url_for('gacha') }}"           {% if ep=='gacha'           %}class="active"{% endif %}>寻宝</a>
+        <a href="{{ url_for('enlighten') }}"       {% if ep=='enlighten'       %}class="active"{% endif %}>仙人试炼{% if nav_enlighten %}<span class="nav-badge">!</span>{% endif %}</a>
+        <a href="{{ url_for('vein') }}"            {% if ep=='vein'            %}class="active"{% endif %}>开凿灵脉{% if nav_vein %}<span class="nav-badge">!</span>{% endif %}</a>
+        {% if gate_ev %}<a href="{{ url_for('gate') }}" {% if ep in ('gate','gate_board','gate_laws') %}class="active"{% endif %} style="color:#d070e0">⚡异世之门</a>{% endif %}
+        {% if tourney_ev %}<a href="{{ url_for('tourney') }}" {% if ep=='tourney' %}class="active"{% endif %} style="color:#e0b050">🏮靖世大典</a>{% endif %}
+        <a href="{{ url_for('companion') }}"       {% if ep in ('companion','companion_gacha') %}class="active"{% endif %}>历史伙伴</a>
+        {% if nav_yqs %}<a href="{{ url_for('yqs') }}" {% if ep=='yqs' %}class="active"{% endif %} style="color:var(--gold)">🌳摇钱树</a>{% endif %}
+      </div>
+    </div>
+
+    {# ── 物品 ── #}
+    <div class="nav-drop">
+      <span class="nav-drop-btn {% if ep in ('inventory','market','auction','superior_auction','bazaar','herb_garden','gift_craft') %}active{% endif %}">物品</span>
+      <div class="nav-drop-menu">
+        <a href="{{ url_for('inventory') }}"  {% if ep=='inventory'  %}class="active"{% endif %}>背包</a>
+        <a href="{{ url_for('market') }}"     {% if ep=='market'     %}class="active"{% endif %}>丹市</a>
+        <a href="{{ url_for('auction') }}"    {% if ep=='auction'    %}class="active"{% endif %}>拍卖行</a>
+        <a href="{{ url_for('superior_auction') }}" {% if ep=='superior_auction' %}class="active"{% endif %}>上等灵石拍卖</a>
+        <a href="{{ url_for('bazaar') }}"     {% if ep=='bazaar'     %}class="active"{% endif %}>坊市</a>
+        <a href="{{ url_for('herb_garden') }}"{% if ep=='herb_garden'%}class="active"{% endif %}>药田</a>
+        <a href="{{ url_for('gift_craft') }}" {% if ep=='gift_craft' %}class="active"{% endif %}>制作礼物</a>
+      </div>
+    </div>
+
+    {# ── 职业 ── #}
+    <div class="nav-drop">
+      <span class="nav-drop-btn {% if ep in ('alchemy','forge','mine','fulu','forge_name_weapon','forge_destiny_weapons','sword','heqing') %}active{% endif %}" style="{% if nav_craft_path %}color:var(--jade){% endif %}">职业{% if nav_craft_path %}<span style="font-size:10px;margin-left:2px;opacity:.8">·{{ PATH_NAMES.get(nav_craft_path,'') }}</span>{% endif %}</span>
+      <div class="nav-drop-menu">
+        <a href="{{ url_for('alchemy') }}"    {% if ep=='alchemy'    %}class="active"{% endif %} style="{% if nav_craft_path and nav_craft_path != 'cauldron' %}opacity:.45{% endif %}">炼丹{% if nav_craft_path=='cauldron' %} ▶{% endif %}</a>
+        <a href="{{ url_for('forge') }}"      {% if ep in ('forge','forge_name_weapon','forge_destiny_weapons') %}class="active"{% endif %} style="{% if nav_craft_path and nav_craft_path != 'forge' %}opacity:.45{% endif %}">炼器{% if nav_craft_path=='forge' %} ▶{% endif %}</a>
+        <a href="{{ url_for('mine') }}"       {% if ep=='mine'       %}class="active"{% endif %} style="{% if nav_craft_path and nav_craft_path != 'forge' %}opacity:.45{% endif %}">灵矿</a>
+        <a href="{{ url_for('fulu') }}"       {% if ep=='fulu'       %}class="active"{% endif %} style="{% if nav_craft_path and nav_craft_path != 'brush' %}opacity:.45{% endif %}">符箓{% if nav_craft_path=='brush' %} ▶{% endif %}</a>
+        <a href="{{ url_for('sword') }}"      {% if ep=='sword'      %}class="active"{% endif %} style="{% if nav_craft_path and nav_craft_path != 'sword_token' %}opacity:.45{% endif %}">剑修{% if nav_craft_path=='sword_token' %} ▶{% endif %}</a>
+        <a href="{{ url_for('heqing') }}"     {% if ep=='heqing'     %}class="active"{% endif %} style="{% if nav_craft_path and nav_craft_path != 'heqing_token' %}opacity:.45{% endif %}">合欢修{% if nav_craft_path=='heqing_token' %} ▶{% endif %}</a>
+        <a href="{{ url_for('forge_destiny_weapons') }}" {% if ep=='forge_destiny_weapons' %}class="active"{% endif %}>本命武器</a>
+      </div>
+    </div>
+
+    {# ── 进阶 ── #}
+    <div class="nav-drop">
+      <span class="nav-drop-btn {% if ep in ('techniques','pets','buy_pet','xisui','seclusion','perks','perk_select','achievements','calendar','temper','spells_page','lifespan_pawn','cave','yuanshen','awakening','bones') %}active{% endif %}">进阶</span>
+      <div class="nav-drop-menu">
+        <a href="{{ url_for('spells_page') }}" {% if ep=='spells_page' %}class="active"{% endif %}>法术</a>
+        <a href="{{ url_for('techniques') }}" {% if ep=='techniques' %}class="active"{% endif %}>功法</a>
+        <a href="{{ url_for('pets') }}"       {% if ep in ('pets','buy_pet') %}class="active"{% endif %}>灵兽</a>
+        <a href="{{ url_for('temper') }}"     {% if ep=='temper'     %}class="active"{% endif %}>炼体</a>
+        <a href="{{ url_for('xisui') }}"      {% if ep=='xisui'      %}class="active"{% endif %}>洗髓</a>
+        <a href="{{ url_for('bones') }}"      {% if ep=='bones'      %}class="active"{% endif %}>寻仙骨</a>
+        <a href="{{ url_for('seclusion') }}"  {% if ep=='seclusion'  %}class="active"{% endif %}>闭关</a>
+        <a href="{{ url_for('lifespan_pawn') }}" {% if ep=='lifespan_pawn' %}class="active"{% endif %}>寿元典当</a>
+        <a href="{{ url_for('cave') }}" {% if ep=='cave' %}class="active"{% endif %}>洞府</a>
+        <a href="{{ url_for('peaks') }}" {% if ep=='peaks' %}class="active"{% endif %}>灵峰总览</a>
+        <a href="{{ url_for('yuanshen') }}" {% if ep=='yuanshen' %}class="active"{% endif %}>元神</a>
+        <a href="{{ url_for('awakening') }}" {% if ep=='awakening' %}class="active"{% endif %}>远古觉醒</a>
+        <a href="{{ url_for('perks') }}"      {% if ep in ('perks','perk_select') %}class="active"{% endif %}>感悟</a>
+        <a href="{{ url_for('achievements') }}"{% if ep=='achievements'%}class="active"{% endif %}>成就</a>
+        <a href="{{ url_for('calendar') }}"   {% if ep=='calendar'   %}class="active"{% endif %}>日历</a>
+      </div>
+    </div>
+
+    {# ── 社交 ── #}
+    <div class="nav-drop">
+      <span class="nav-drop-btn {% if ep in ('social','social_gift','social_spar','social_invite','social_respond','social_propose','social_divorce','offspring','sect','sect_shop','disciples','pvp','mail','forum','forum_post') %}active{% endif %}">社交{% if nav_unread_mail or nav_red_packet %}<span class="nav-badge">{% if nav_unread_mail %}{{ nav_unread_mail }}{% else %}!{% endif %}</span>{% endif %}</span>
+      <div class="nav-drop-menu">
+        <a href="{{ url_for('social') }}"    {% if ep.startswith('social') %}class="active"{% endif %}>好感·双修</a>
+        <a href="{{ url_for('pvp') }}"       {% if ep=='pvp'       %}class="active"{% endif %}>切磋</a>
+        <a href="{{ url_for('mail') }}"      {% if ep=='mail'      %}class="active"{% endif %}>邮件{% if nav_unread_mail %}<span class="nav-badge">{{ nav_unread_mail }}</span>{% endif %}</a>
+        <a href="{{ url_for('forum') }}"     {% if ep in ('forum','forum_post') %}class="active"{% endif %}>论道坛{% if nav_red_packet %}<span class="nav-badge">🧧</span>{% endif %}</a>
+        <a href="{{ url_for('offspring') }}" {% if ep=='offspring' %}class="active"{% endif %}>子嗣</a>
+        <a href="{{ url_for('sect') }}"      {% if ep=='sect'      %}class="active"{% endif %}>宗门</a>
+        <a href="{{ url_for('sect_shop') }}" {% if ep=='sect_shop' %}class="active"{% endif %}>宗门商店</a>
+        <a href="{{ url_for('disciples') }}" {% if ep=='disciples' %}class="active"{% endif %}>师徒</a>
+      </div>
+    </div>
+
+    {# ── 更多 ── #}
+    <div class="nav-drop">
+      <span class="nav-drop-btn {% if ep in ('quests','rankings','redeem') %}active{% endif %}">更多{% if nav_unclaimed_quests %}<span class="nav-badge">{{ nav_unclaimed_quests }}</span>{% endif %}</span>
+      <div class="nav-drop-menu">
+        <a href="{{ url_for('quests') }}"   {% if ep=='quests'   %}class="active"{% endif %}>任务{% if nav_unclaimed_quests %}<span class="nav-badge">{{ nav_unclaimed_quests }}</span>{% endif %}</a>
+        <a href="{{ url_for('rankings') }}" {% if ep=='rankings' %}class="active"{% endif %}>排行</a>
+        <a href="{{ url_for('redeem') }}"   {% if ep=='redeem'   %}class="active"{% endif %}>兑换</a>
+      </div>
+    </div>
+  </nav>
+  <div class="topbar-right">
+    <span class="user-tag">⚡ {{ session.uname }}</span>
+    <a href="{{ url_for('logout') }}">退出</a>
+  </div>
+  {% else %}
+  <nav class="nav">
+    <a href="{{ url_for('rankings') }}">排行榜</a>
+  </nav>
+  <div class="topbar-right">
+    <a href="{{ url_for('login') }}">登录</a>
+    <a href="{{ url_for('register') }}" style="color:var(--jade)">注册</a>
+  </div>
+  {% endif %}
+</div>
+
+{% if ticker %}
+<div class="ticker-wrap">
+  <div class="ticker-inner">
+    {{ ticker }}
+  </div>
+</div>
+{% endif %}
+
+{% with msgs = get_flashed_messages(with_categories=true) %}
+{% if msgs %}
+<div class="page" style="padding-bottom:0">
+  {% for cat,msg in msgs %}
+  <div class="flash flash-{{ cat if cat in ('success','error','info') else 'info' }}">{{ msg }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endwith %}
+
+{% block body %}{% endblock %}
+
+{# ── 公告弹窗（仅登录玩家，版本号变化时弹一次）── #}
+{% if session.get('char_id') and patch_notes %}
+{% set latest = patch_notes[0] %}
+{% set popup_ver = latest.date ~ '_' ~ loop.index0|default(0) %}
+<div id="announce-modal" style="display:none;position:fixed;inset:0;z-index:9999;
+     background:rgba(0,0,0,.6);align-items:center;justify-content:center">
+  <div style="background:var(--sf);border:1px solid rgba(192,160,96,.4);border-radius:14px;
+       padding:24px 22px;max-width:420px;width:92%;max-height:80vh;overflow-y:auto;
+       box-shadow:0 8px 40px rgba(0,0,0,.5)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div>
+        <div style="font-size:16px;font-weight:700;color:var(--gold2)">📢 {{ latest.title }}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">{{ latest.date }}</div>
+      </div>
+      <button onclick="closeAnnounce()" style="background:none;border:none;color:var(--muted);
+        font-size:20px;cursor:pointer;padding:0 4px;line-height:1">×</button>
+    </div>
+    {% for icon, text in latest.changes %}
+    <div style="display:flex;gap:10px;padding:8px 0;
+      {% if not loop.last %}border-bottom:1px solid rgba(255,255,255,.06){% endif %}">
+      <span style="font-size:16px;flex-shrink:0;line-height:1.6">{{ icon }}</span>
+      <span style="font-size:13px;color:var(--text);line-height:1.7">{{ text }}</span>
+    </div>
+    {% endfor %}
+    <button onclick="closeAnnounce()" class="btn btn-gold"
+      style="width:100%;margin-top:16px">知道了</button>
+  </div>
+</div>
+<script>
+(function(){
+  var ver = {{ (latest.date ~ latest.title) | tojson }};
+  var key = 'announce_seen_' + ver;
+  if(!localStorage.getItem(key)){
+    var el = document.getElementById('announce-modal');
+    el.style.display = 'flex';
+  }
+  window.closeAnnounce = function(){
+    document.getElementById('announce-modal').style.display = 'none';
+    localStorage.setItem(key, '1');
+  };
+  document.getElementById('announce-modal').addEventListener('click', function(e){
+    if(e.target === this) closeAnnounce();
+  });
+})();
+</script>
+{% endif %}
+
+<script>
+(function(){
+  // 把所有 dropdown 菜单移到 body，避免被 topbar 的 stacking context 限制
+  document.querySelectorAll('.nav-drop-menu').forEach(function(menu){
+    menu._btn = menu.previousElementSibling;
+    document.body.appendChild(menu);
+  });
+
+  function closeAll(){
+    document.querySelectorAll('.nav-drop-menu.open').forEach(m=>m.classList.remove('open'));
+  }
+
+  document.querySelectorAll('.nav-drop-btn').forEach(function(btn){
+    btn.addEventListener('click',function(e){
+      e.stopPropagation();
+      var menu = Array.from(document.querySelectorAll('.nav-drop-menu')).find(m=>m._btn===btn);
+      if(!menu) return;
+      var wasOpen = menu.classList.contains('open');
+      closeAll();
+      if(!wasOpen){
+        var r = btn.getBoundingClientRect();
+        menu.style.top  = (r.bottom+4)+'px';
+        menu.style.left = r.left+'px';
+        menu.style.right = 'auto';
+        menu.classList.add('open');
+        setTimeout(function(){
+          var mr = menu.getBoundingClientRect();
+          if(mr.right > window.innerWidth-10){
+            menu.style.left = 'auto';
+            menu.style.right = '10px';
+          }
+        },0);
+      }
+    });
+  });
+
+  document.addEventListener('click', closeAll);
+})();
+</script>
+</body>
+</html>
