@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}品牌管理{% endblock %}
+{% block content %}
+<div class="card">
+  <table>
+    <tr><th>品牌</th><th>档位</th><th>状态</th><th>签约人</th><th>资金奖励</th><th></th></tr>
+    {% for b in brands %}
+    <tr>
+      <td>{{ b.brand_name }}</td>
+      <td>{{ b.tier }}</td>
+      <td>{{ b.status }}</td>
+      <td>{{ b.signed_name or '-' }}</td>
+      <td>{{ b.reward_cash }}</td>
+      <td>
+        {% if b.status != 'completed' %}
+        <form method="post" action="{{ url_for('admin_force_resolve_brand', brand_id=b.id) }}">
+          <button class="btn">强制结算</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="muted">还没有品牌需求。</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

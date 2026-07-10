@@ -231,6 +231,11 @@ cmd_drink.solve = function (ctx, msg, argv) {
         return seal.ext.newCmdExecuteResult(true);
     }
 
+    if (s.group.length === 0) {
+        seal.replyToSender(ctx, msg, "❌ 还没有上酒！请先使用 .上酒");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
     var position = Number(argv.getArgN(1)) - 1;
 
     if (typeof position !== 'number' || !Number.isInteger(position) || position < 0 || position >= 24) {
@@ -352,7 +357,7 @@ cmd_viewStatus.solve = function (ctx, msg, argv) {
     if (Object.keys(s.players).length > 0) {
         for (let uid in s.players) {
             let player = s.players[uid];
-            let progress = Math.min(100, Math.floor((player.drunkValue / s.drunkThreshold) * 100));
+            let progress = Math.max(0, Math.min(100, Math.floor((player.drunkValue / s.drunkThreshold) * 100)));
             let progressBar = '█'.repeat(Math.floor(progress/10)) + '░'.repeat(10 - Math.floor(progress/10));
             reply += `  ${player.nickname}: ${player.drunkValue}/${s.drunkThreshold} [${progressBar}] ${progress}%\n`;
         }
@@ -479,9 +484,9 @@ cmd_viewDrunkList.solve = function (ctx, msg, argv) {
 
     sorted.forEach((player, index) => {
         let emoji = '';
-        if (player.drunkValue >= 800) emoji = '🤮 ';
-        else if (player.drunkValue >= 600) emoji = '😵 ';
-        else if (player.drunkValue >= 500) emoji = '🤢 ';
+        if (player.drunkValue >= s.drunkThreshold * 1.6) emoji = '🤮 ';
+        else if (player.drunkValue >= s.drunkThreshold * 1.2) emoji = '😵 ';
+        else emoji = '🤢 ';
 
         reply += `${emoji}${index + 1}. ${player.nickname}: ${player.drunkValue}点\n`;
     });

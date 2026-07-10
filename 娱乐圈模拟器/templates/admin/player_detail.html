@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}{{ player.stage_name }} - 艺人详情{% endblock %}
+{% block content %}
+<div class="card">
+  <h3>{{ player.stage_name }}</h3>
+  <div class="muted">用户名 {{ player.username }} · QQ {{ player.qq }}</div>
+</div>
+
+<div class="card">
+  <h4 style="margin-bottom:10px">基础数值</h4>
+  <table>
+    {% for field in ['popularity','scandal_value','fans_count','core_fan_loyalty','cash','persona_integrity'] %}
+    <tr>
+      <td style="width:110px">{{ field }}</td>
+      <td>
+        <form method="post" style="display:flex;gap:6px">
+          <input type="hidden" name="action" value="set_field">
+          <input type="hidden" name="field" value="{{ field }}">
+          <input name="value" value="{{ player[field] }}" style="width:100px">
+          <button class="btn">保存</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    <tr>
+      <td>persona_tag</td>
+      <td>
+        <form method="post" style="display:flex;gap:6px">
+          <input type="hidden" name="action" value="set_field">
+          <input type="hidden" name="field" value="persona_tag">
+          <input name="value" value="{{ player.persona_tag }}" style="width:160px">
+          <button class="btn">保存</button>
+        </form>
+      </td>
+    </tr>
+    <tr>
+      <td>stage_name</td>
+      <td>
+        <form method="post" style="display:flex;gap:6px">
+          <input type="hidden" name="action" value="set_field">
+          <input type="hidden" name="field" value="stage_name">
+          <input name="value" value="{{ player.stage_name }}" style="width:160px">
+          <button class="btn">保存</button>
+        </form>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<div class="card">
+  <h4 style="margin-bottom:10px">天赋</h4>
+  <table>
+    {% for k in talent_keys %}
+    <tr>
+      <td style="width:110px">{{ k }}</td>
+      <td>
+        <form method="post" style="display:flex;gap:6px">
+          <input type="hidden" name="action" value="set_talent">
+          <input type="hidden" name="talent_key" value="{{ k }}">
+          <input name="value" value="{{ talents.get(k, 0) }}" style="width:100px">
+          <button class="btn">保存</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% if traits %}
+  <div style="margin-top:10px">
+    {% for t in traits %}<span class="badge badge-gold">{{ t }}</span> {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

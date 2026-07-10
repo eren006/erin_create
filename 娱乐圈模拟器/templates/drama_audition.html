@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}试镜PK - 娱乐圈模拟器{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:4px">{{ application.title }} · {{ application.role_name }}</h3>
+  <p class="muted">对手是 <b>{{ application.rival_name }}</b>,几轮对戏下来,"稳扎稳打"小加分,"放手一搏"演对了大加分、演砸了会拖后腿——最终会和 {{ application.rival_name }} 一起进入定角的匹配分排序。</p>
+</div>
+
+{% for c in challenges %}
+<div class="card">
+  <p style="margin-bottom:8px">第 {{ c.round_no }} 轮:{{ c.prompt }}</p>
+  {% if c.chosen %}
+  <p class="muted">已经对完这段戏了({{ '稳扎稳打' if c.chosen == 'safe' else '放手一搏' }})。</p>
+  {% else %}
+  <div style="display:flex;gap:8px">
+    <form method="post" action="{{ url_for('drama_audition_answer', challenge_id=c.id) }}" style="flex:1">
+      <input type="hidden" name="choice" value="safe">
+      <button class="btn" style="width:100%">稳扎稳打</button>
+    </form>
+    <form method="post" action="{{ url_for('drama_audition_answer', challenge_id=c.id) }}" style="flex:1">
+      <input type="hidden" name="choice" value="risky">
+      <button class="btn btn-primary" style="width:100%">放手一搏</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+{% else %}
+<div class="card muted">这次试镜没有可以对戏的环节。</div>
+{% endfor %}
+
+<p class="muted"><a href="{{ url_for('drama_list') }}">回到剧组列表</a></p>
+{% endblock %}

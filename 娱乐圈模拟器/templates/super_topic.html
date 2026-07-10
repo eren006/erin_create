@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}#{{ host.stage_name }}的超话# - 娱乐圈模拟器{% endblock %}
+{% block content %}
+
+<div class="card">
+  <h3 style="margin-bottom:4px">#{{ host.stage_name }}#</h3>
+  {% if host.fan_club_name %}
+  <p class="muted" style="margin-bottom:4px;display:flex;align-items:center;gap:6px">
+    粉丝团:<b>{{ host.fan_club_name }}</b>
+    {% if host.fan_club_color %}
+    <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:{{ host.fan_club_color }};border:1px solid var(--bd)"></span>
+    {% endif %}
+  </p>
+  {% endif %}
+  <p class="muted">粉丝在这里应援打卡,积累的是死忠粉忠诚度——去<a href="{{ url_for('leaderboard') }}">排行榜</a>能看到超话势力排名。</p>
+</div>
+
+{% if is_own %}
+<div class="card">
+  <form method="post" action="{{ url_for('super_topic_checkin') }}">
+    <textarea name="content" rows="2" maxlength="140" placeholder="超话打卡,写点什么..."></textarea>
+    <button class="btn btn-primary" style="width:100%;margin-top:8px">去超话冒个泡<br><span style="font-size:11px;opacity:.85">体力 -5</span></button>
+  </form>
+</div>
+{% else %}
+<p class="muted"><a href="{{ url_for('super_topic_page') }}">回到我自己的超话</a></p>
+{% endif %}
+
+{% for p in posts %}
+<div class="card">
+  <p>{{ p.content }}</p>
+  <div class="muted" style="margin-top:6px">应援打卡</div>
+</div>
+{% else %}
+<div class="card muted">这个超话还没有人打卡。</div>
+{% endfor %}
+
+{% endblock %}

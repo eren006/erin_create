@@ -85,7 +85,7 @@
 <!-- 本轮妖物 -->
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
   <div style="font-size:14px;color:var(--muted)">
-    本轮随机妖物 <strong style="color:var(--fg)">{{ pool_monsters|length }}</strong> 只，每只限战一次
+    当前妖物池 <strong style="color:var(--fg)">{{ pool_monsters|length }}</strong>/{{ COMBAT_POOL_MAX }} 只，每只限战一次
   </div>
   <div style="font-size:12px;color:var(--muted);background:var(--sf2);padding:4px 10px;border-radius:6px">
     {% set all_done = pool_monsters|selectattr('defeated')|list|length == pool_monsters|length %}
@@ -163,8 +163,8 @@
 <div class="card" style="margin-top:20px;background:rgba(224,92,75,.05);border-color:rgba(224,92,75,.15)">
   <div class="card-h" style="color:var(--red)">战斗须知</div>
   <div style="color:var(--muted);font-size:12px;line-height:2">
-    <div>· 每轮随机抽取 3 只妖兽供挑战，每只<strong style="color:var(--red)">只能交手一次</strong>（无论胜负）</div>
-    <div>· 妖兽池每 <strong style="color:var(--gold)">5 小时</strong>刷新一次，重新抽取新的对手</div>
+    <div>· 每只妖兽<strong style="color:var(--red)">只能交手一次</strong>（无论胜负），战毕即从池中移除</div>
+    <div>· 妖物池每 <strong style="color:var(--gold)">{{ COMBAT_POOL_REFRESH // 3600 }} 小时</strong>刷新一次，新增 {{ COMBAT_POOL_SIZE }} 只妖物；未挑战的妖物会持续累积，最多同时保留 <strong style="color:var(--gold)">{{ COMBAT_POOL_MAX }}</strong> 只</div>
     <div>· 战斗会消耗<strong style="color:var(--red)">真实气血</strong>，战后需用丹药回复或等待自然恢复</div>
     <div>· 气血低于 {{ (MIN_FIGHT_HP_PCT*100)|int }}% 时无法出战，回元丹可恢复 30% 上限气血</div>
     <div>· 装备飞剑提升攻击，装备法宝减少每回合受伤，高性价比选择</div>

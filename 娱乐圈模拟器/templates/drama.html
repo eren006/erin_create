@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}抢角色 - 娱乐圈模拟器{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:4px">正在招募/拍摄的剧组</h3>
+  <p class="muted" style="margin-bottom:6px">
+    我的咖位:<b>{{ my_tier }}</b> —— 角色按性别 + 咖位设门槛,报名消耗体力 15,窗口关闭后按属性匹配度定角。
+  </p>
+  {% for dv in drama_views %}
+  <div style="border-top:1px solid var(--bd);padding:10px 0">
+    <div style="display:flex;justify-content:space-between">
+      <b>{{ dv.drama.title }}</b>
+      <span>
+        <span class="badge {% if dv.drama.format == 'film' %}badge-red{% else %}badge-gold{% endif %}">
+          {{ '电影' if dv.drama.format == 'film' else '电视剧' }}
+        </span>
+        <span class="badge {% if dv.drama.budget_tier == 'S' %}badge-red{% elif dv.drama.budget_tier == 'A' %}badge-gold{% else %}badge-green{% endif %}">
+          {{ dv.drama.budget_tier }} 级制作
+        </span>
+      </span>
+    </div>
+    {% for rv in dv.roles %}
+    <div style="margin-top:8px;padding:8px;background:var(--sf2);border-radius:8px">
+      <div style="display:flex;justify-content:space-between">
+        <span>{{ rv.role.role_name }}</span>
+        <span class="muted">限{{ gender_labels.get(rv.role.gender_requirement, '不限') }} · {{ rv.role.tier_requirement }} 级以上</span>
+      </div>
+      <div class="muted" style="margin-top:2px">
+        看重:{{ rv.role.requirement_talent }} · 奖励约 {{ rv.role.reward_cash }} 资金 / {{ rv.role.reward_popularity }} 人气
+      </div>
+      {% if rv.role.status == 'shooting' %}
+      <p class="muted" style="margin-top:6px">拍摄中 —— {{ rv.winner_name or '一位艺人' }} 正在片场,杀青后见分晓</p>
+      {% if rv.role.winner_player_id == me_id %}
+      <p style="margin-top:4px"><a href="{{ url_for('drama_act', role_id=rv.role.id) }}">去处理今天的戏份 →</a></p>
+      {% endif %}
+      {% elif rv.applied %}
+      <p class="muted" style="margin-top:6px">已报名,等待定角 —— <a href="{{ url_for('drama_audition', application_id=rv.application_id) }}">去对戏 →</a></p>
+      {% elif not rv.eligible %}
+      <p class="muted" style="margin-top:6px">{{ rv.reason }},暂时抢不了这个角色</p>
+      {% else %}
+      <form method="post" action="{{ url_for('drama_apply') }}" style="margin-top:6px">
+        <input type="hidden" name="role_id" value="{{ rv.role.id }}">
+        <button class="btn btn-primary">投递试镜</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted">现在没有开放的剧组,等下一轮开放。</p>
+  {% endfor %}
+</div>
+
+{% if recent_results %}
+<div class="card">
+  <h4 style="margin-bottom:8px">我的最近结果</h4>
+  <table>
+    <tr><th>剧名</th><th>角色</th><th>匹配分</th><th>收视率</th><th>结果</th></tr>
+    {% for r in recent_results %}
+    <tr>
+      <td>{{ r.title }}</td>
+      <td>{{ r.role_name }}</td>
+      <td>{{ r.match_score }}</td>
+      <td>{% if r.winner_player_id == me_id %}{{ r.rating_score }}{% else %}-{% endif %}</td>
+      <td>{% if r.winner_player_id == me_id %}<span class="badge badge-green">中选</span>{% else %}<span class="badge badge-red">落选</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+{% endblock %}

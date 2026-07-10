@@ -123,6 +123,8 @@ SECTIONS = [
 ("📅 时间线与邀约", [
     ("时间线",                     False, "玩家",    "查看自己当前的所有日程安排",
      ""),
+    ("我的待回",                   False, "玩家",    "查看自己还没回复的群（超时置顶）、已开场但还没进的群、已结束但还没退的群，以及今日心动信投递情况",
+     ""),
     ("私约 [时间] [地点] [对方]",  False, "玩家",    "向一名或多名角色发起私密约会邀请",
      "私约 1400-1500 咖啡厅 张三\n私约 1400-1500 餐厅 李四/王五"),
     ("电话 [时间] [对方]",         False, "玩家",    "向对方发起电话邀请（无需地点）",
@@ -594,11 +596,9 @@ SECTIONS = [
 ("⚙️ 设置与同步", [
     ("设置 [模块] [参数]",         True,  "管理员",  "查看和管理各系统配置项",
      "。设置  → 列出所有可配置项\n。设置 邀约超时 60  → 设置私约超时为60分钟"),
-    ("初始化设置",                 True,  "管理员",  "一键补全缺失的系统默认配置",
-     ""),
     ("推送全部",                   True,  "管理员",  "将机器人所有数据一次性推送到存档网页端（配置+注册表+模版+池子+礼品库+拍卖快照）",
      ""),
-    ("拉取全部",                   True,  "管理员",  "将存档网页端所有数据一次性拉取到机器人（配置+注册表+模版+池子+拍卖队列）",
+    ("拉取全部",                   True,  "管理员",  "将存档网页端所有数据一次性拉取到机器人（配置+注册表+模版+池子+拍卖队列）；网页端新增的待同步物品/装备分配编号后会自动同步回网页，无需再手动推送",
      ""),
     ("同步名片 [公告/戏群/水群]",  True,  "管理员",  "同步名片信息到指定群",
      ""),
@@ -1041,10 +1041,10 @@ WEB_FEATURES = [
       "机器人：。拉取全部 → 激活队列中的物品"]),
 
     ("/admin/gifts",     "礼品店管理",         True,
-     "可视化编辑预设礼品列表（编号、名称、描述），改完推送到机器人。",
+     "可视化编辑预设礼品列表（编号、名称、描述），改完拉取到机器人。",
      ["添加 / 编辑 / 删除礼品条目",
       "设置礼品编号（玩家用「送礼 张三 #001」引用，可无限赠送）",
-      "改完后：。推送全部 → 推送到机器人"]),
+      "改完后：。拉取全部 → 拉取到机器人生效"]),
 
     ("/admin/config",    "系统参数配置",       True,
      "所有系统参数的集中配置页，支持历史记录查看/回滚和配置模板保存。包含消息模板和类型别名两项高级自定义功能。",
@@ -1203,6 +1203,8 @@ def build_web_panel():
     sync_data = [
         ("群号管理  → 添加/编辑群号",        "。开启群号组 组名",     "按组名批量导入群号到机器人群号池"),
         ("网页端改了任何配置/注册表/池子",    "。拉取全部",            "一键从网页端拉取所有数据，覆盖机器人本地"),
+        ("网页端新增待同步物品/装备",         "。拉取全部",            "机器人分配编号后自动把注册表同步回网页，无需再推送"),
+        ("机器人「上架商城」新增/修改商城",   "（无需操作）",          "商城改动会自动同步到网页，不用等推送全部"),
         ("机器人数据推送到网页端",            "。推送全部",            "一键把机器人所有数据推送到网页端（配置+注册表+池子+拍卖快照）"),
     ]
     sync_ts = TableStyle([
@@ -1494,6 +1496,44 @@ def build_web_panel():
         "★必填变量（网页端标红星）如果删掉，同步时机器人会拒绝该模板并保留默认文案。"
     ))
 
+    # ══════════════════════════════════════════════════════════
+    #  教程五：如何批量管理与上传群号
+    # ══════════════════════════════════════════════════════════
+    items.append(PageBreak())
+    items.append(Spacer(1, 3*mm))
+    items.append(tut_heading("📞  如何批量管理与上传群号"))
+    items.append(HRFlowable(width="100%", thickness=1.2, color=C_BORDER))
+    items.append(Spacer(1, 2*mm))
+    items.append(tut_body(
+        "玩家发起私约/电话邀约时，机器人需要从「群号池」里取一个空群来建临时约会房间。\n"
+        "群号只有「网页录入 → 机器人拉取」这一个方向，机器人这边没有把本地群号反过来推送回网页的指令——"
+        "网页端「群号管理」（/admin/groups）纯粹是给你批量整理、分组管理群号用的工具，"
+        "真正让群号进入机器人可用池子的动作永远是机器人这边主动发指令去拉取。"
+    ))
+
+    items.append(tut_sub("方式一：机器人本地直接加（简单，不经过网页）"))
+    items.append(tut_body(
+        "发送「。添加群号 群号1,群号2,...」，直接把这些群号加进本地可用池。\n"
+        "适合群号不多、临时补充的情况；缺点是没有分组，群号一多不好管理。"
+    ))
+
+    items.append(tut_sub("方式二：网页端批量管理 + 机器人拉取（推荐）"))
+    items.append(tut_step_table([
+        ("①", "登录存档网页端 → 「群号管理」页面（/admin/groups）"),
+        ("②", "创建一个分组，起个名字（比如「D1」「D2」「备用」），方便按天数/用途归类"),
+        ("③", "把这一组要用的群号整段粘贴进去，支持空格、逗号、顿号、分号等分隔符混用，"
+               "会自动拆分识别"),
+        ("④", "机器人发「。开启群号组 组名」（例：。开启群号组 D1），"
+               "把这个分组下所有群号一次性拉取到本地可用池"),
+        ("⑤", "不想用某组群号了，发「。关闭群号组 组名」批量移除——"
+               "正在被占用（有场次进行中）的群不会被移除，会在回执里列出来提醒你"),
+    ]))
+    items.append(tut_note(
+        "网页端后续在同一个分组里增删群号后，机器人不会自动感知——"
+        "需要重新发一次「。开启群号组 组名」才能把新增的群号拉过来（已经在池子里的不会重复添加）。\n"
+        "这是「拉取」而不是「同步」：拉取只会把网页当前的名单往本地合并，本地已占用的群不受影响。"
+    ))
+
     items.append(Spacer(1, 3*mm))
     return items
 
@@ -1501,25 +1541,36 @@ def build_web_panel():
 # 每项: (步骤标签, 指令, 是否必须, 说明)
 SETUP_STEPS = [
     ("STEP 1", "海豹插件设置", True,
-     "在海豹骰核心的插件配置页面，填写「RP存档服务器地址」和「RP存档Token」。\n这是所有网络同步功能的前提，不填则无法创建季度。"),
-    ("STEP 2", "。初始化设置", True,
-     "补全所有系统默认参数（优先从存档服务器拉取，拉不到则用内置默认值）。\n只补空白项，不覆盖已有设置。季度开始前必做。"),
+     "在海豹骰核心的插件配置页面，填写「RP存档服务器地址」和「RP存档Token」。\n"
+     "这是所有网络同步功能的前提，不填则无法创建季度。（长日将尽会协助你做好这一步，可以跳过）"),
+    ("STEP 2", "。授予管理员 [QQ号] [密码]  /  。更改密令 [旧密码] [新密码]", True,
+     "海豹核心 UI 里配置的「骰主 QQ」自动拥有管理员权限，不用额外操作。\n"
+     "需要让骰主以外的人也能管理时，让骰主发「。授予管理员 QQ号 密码」（密码需正确才能授权）。\n"
+     "默认密令是「detroit」，强烈建议先用「。更改密令 旧密码 新密码」改掉。\n"
+     "  · 后面所有「。」开头的管理员指令都需要管理员权限，没权限会被拒绝\n"
+     "  · 密令不改成自定义值，任何人知道默认密令都能给自己开权限"),
     ("STEP 3", "。更新未退群  →  。驱逐 [QQ号]", True,
-     "开季前先清理旧群：\n"
+     "开季前先清理旧群（如果是全新服务器、从没开过季，跳过这步）：\n"
      "  ① 「。更新未退群」→ 机器人检测并列出仍在旧约会群里的玩家\n"
      "  ② 对名单上的 QQ 逐一执行「。驱逐 QQ号」，将其从所有群号池群内踢出\n"
      "  · 不清理旧群会导致新季度的群号计算混乱，建议在「清空季度数据」前完成"),
     ("STEP 4", "。清空季度数据", True,
      "清空上一季度的角色数据，使角色存储归零。\n这是「创建新季度」的前置条件，不执行则无法开季。"),
     ("STEP 5", "。创建新季度 恋综名 复盘/不复盘 MMDD-MMDD [补戏MMDD]", True,
-     "正式开启一个新季度，注册季度名称、复盘模式和档期范围。\n例：创建新季度 长日将尽 复盘 0610-0614\n档期开始日自动设为 D0；补戏MMDD 可选。"),
+     "正式开启一个新季度，注册季度名称、复盘模式和档期范围。\n"
+     "例：创建新季度 长日将尽 复盘 0610-0614\n"
+     "例（带补戏日）：创建新季度 长日将尽 复盘 0610-0614 0617\n"
+     "档期开始日自动设为 D0，开始日之前互动不记录；补戏MMDD 可选，"
+     "补戏截止日之前的场次照常记录，但不计入弧长统计。"),
     ("STEP 6", "。添加群号  或  网页端 → 群号管理 → 开启群号组", True,
      "方式一（直接添加）：。添加群号 群号1,群号2,...\n"
      "方式二（推荐，从网页端批量管理）：\n"
      "  ① 登录存档网页端 → 「群号管理」页面\n"
      "  ② 创建分组（如「D1」「D2」），把所有群号按分组填入\n"
      "  ③ 机器人发「。开启群号组 D1」即可一键导入该组所有群号\n"
-     "  ④ 网页端可随时增减群号，改完后再开一次即可生效"),
+     "  ④ 网页端可随时增减群号，改完后再开一次即可生效\n"
+     "  · 群号只能「网页录入 → 机器人拉取」，机器人不能把群号推送回网页\n"
+     "  · 完整操作流程见后文「如何批量管理与上传群号」一节"),
     ("STEP 7", "创建新角色 [角色名]  /  。创建NPC [角色名]", True,
      "玩家操作（无句号，由玩家本人发送）：\n  创建新角色 张三\n\n"
      "NPC 操作（管理员用有句号指令创建）：\n  。创建NPC 路人甲\n"
@@ -1529,16 +1580,21 @@ SETUP_STEPS = [
      "如果存档 UI 已提前配好了参数，用「。拉取全部」一键拉取覆盖；\n反之，用「。推送全部」把机器人本地所有数据推送到 UI。"),
     ("STEP 9", "。地点管理 添加 地点:描述", False,
      "注册游戏内可选的约会地点（玩家私约时需选地点）。\n也可用「批量设置地点」一次导入多个。"),
-    ("STEP 10", "。推送全部", False,
-     "将机器人所有数据（含礼品库）推送到存档服务器。\n不做此步则「礼品店」和图鉴编号送礼无法使用。"),
+    ("STEP 10", "网页端「礼品店管理」→ 。拉取全部", False,
+     "在存档网页端「礼品店管理」页面配置好礼品（编号、名称、描述）后，\n"
+     "机器人发「。拉取全部」拉取到本地生效。\n不做此步则「礼品店」和图鉴编号送礼无法使用。"),
     ("STEP 11", "网页端 → 物品库 / 抽取池管理  （推荐）", False,
      "推荐在网页端配置，操作更直观：\n"
      "  · 「物品库」页面：批量编辑道具、上架商城、设置价格\n"
      "  · 「抽取池管理」页面：新建池子、配置物品与权重、设置保底\n"
-     "  配置完成后在机器人发「。拉取全部」一键拉取到本地生效。\n"
-     "也可用指令操作：。上载物品 + 。上架商城（池子管理请前往 RP 面板）"),
-    ("STEP 12", "。设置 功能开关", False,
-     "按需开启/关闭各功能（礼物、心愿、心动信、论坛、抽取、写信综等）。\n默认状态可用「初始化设置」后在「设置 功能开关」里查看。"),
+     "  配置完成后在机器人发「。拉取全部」一键拉取到本地生效，\n"
+     "  新增物品/装备分配编号后会自动同步回网页，无需再推送。\n"
+     "也可用指令操作：。上载物品 + 。上架商城（上架商城会自动同步到网页；池子管理请前往 RP 面板）"),
+    ("STEP 12", "。设置 功能开关  /  。设置 DLC", False,
+     "按需开启/关闭基础功能（礼物、心愿、心动信、论坛、抽取、写信综等）。\n"
+     "另外还有一批默认关闭的「DLC」玩法模块（目击报告、复盘群分流、拍卖、攻防、踩点、约战、议价交易等），"
+     "发「。设置 DLC」能直接开关的几项，其余在网页端「系统参数配置」里开——"
+     "每个 DLC 具体做什么、怎么开，见前文「DLC 玩法开关总览」表。"),
     ("STEP 13", "网页端 → 结戏奖励配置  （推荐）", False,
      "推荐在网页端「结戏奖励配置」页面配置，支持可视化编辑奖励模板，比指令更直观。\n"
      "配置完后在机器人发「。拉取全部」拉取生效。\n"
@@ -1548,7 +1604,9 @@ SETUP_STEPS = [
     ("STEP 15", "。注册属性 + 。一键初始化（RPG 战斗）", False,
      "如需 RPG 战斗系统，先注册角色属性，再执行「一键初始化」。\n不玩战斗的恋综可完全跳过此步骤。"),
     ("STEP 16", "。设置 功能开关 发送信件 开启 + 。注册写信综基础道具", False,
-     "启用写信综系统（角色间寄送正式信件的功能）并注册所需货币/道具。\n不需要此功能可跳过；具体设置引导见「。写信综指南」。"),
+     "启用写信综系统（角色间寄送正式信件的功能）并注册所需货币/道具。\n"
+     "非写信综向的恋综建议保持关闭；「清空季度数据」/开新季时功能开关会整体清空，"
+     "写信综等非默认开启项每季都要重新手动打开。\n具体设置引导见「。写信综指南」。"),
 ]
 
 # ── 页眉页脚 ─────────────────────────────────────────────────
@@ -1693,12 +1751,12 @@ def build_setup_guide():
     )))
     items.append(HRFlowable(width="100%", thickness=0.6, color=C_BORDER))
     quick = [
-        "① 在海豹插件页填入存档服务器地址和 Token",
-        "② 。初始化设置",
-        "③ 。清空季度数据",
-        "④ 。创建新季度 长日将尽 复盘 MMDD-MMDD",
-        "⑤ 。添加群号 123456789,987654321",
-        "⑥ 通知玩家：创建新角色 [角色名]",
+        "① 在海豹插件页填入存档服务器地址和 Token（长日将尽会协助你做好这一步，可以跳过）",
+        "② 骰主QQ自动是管理员；如需其他人管理，。授予管理员 QQ号 密码，并用。更改密令 改掉默认密令「detroit」",
+        "③ 如果已经开过季：先。更新未退群 → 逐个。驱逐 QQ号，确认清干净后再。清空季度数据",
+        "④ 。创建新季度 长日将尽 复盘 MMDD-MMDD [补戏MMDD]",
+        "⑤ 。添加群号 123456789,987654321（或网页端「群号管理」录入后。开启群号组 组名 拉取，见后文）",
+        "⑥ 通知玩家：创建新角色 [角色名]（有 NPC 则管理员发。创建NPC [角色名]）",
     ]
     for line in quick:
         items.append(Paragraph(line, ParagraphStyle(
@@ -1719,7 +1777,8 @@ def build_setup_guide():
         ("心愿",     "玩家挂心愿/摘心愿功能",                      "默认开启"),
         ("心动信",   "投递/查看心动信",                            "默认开启"),
         ("论坛",     "发帖/回帖/点赞功能",                          "默认开启"),
-        ("发送信件", "写信综系统（需另执行「注册写信综基础道具」）",  "需单独启用"),
+        ("发送信件", "写信综系统（需另执行「注册写信综基础道具」）；"
+                    "非写信综向恋综建议保持关闭",  "需单独启用，每季自动重置关闭"),
         ("抽取",     "玩家抽取道具功能（需配置池子）",              "默认开启"),
     ]
     fw_rows = [[
@@ -1760,6 +1819,304 @@ def build_setup_guide():
                    style=fw_ts, repeatRows=1, hAlign="LEFT")
     items.append(fw_tbl)
     items.append(Spacer(1, 4*mm))
+
+    # DLC 玩法开关总览
+    items.append(Paragraph("🧩  DLC 玩法开关总览", ParagraphStyle(
+        "dlc_title", fontName=CN_BOLD, fontSize=11, leading=16,
+        textColor=C_SECTION, spaceBefore=4, spaceAfter=3
+    )))
+    items.append(HRFlowable(width="100%", thickness=0.6, color=C_BORDER))
+    items.append(Paragraph(
+        "DLC 是一批默认关闭的可选玩法模块，跟基础功能开关是两回事——用不到可以完全不管，全部保持关闭。",
+        ParagraphStyle("dlc_sub", fontName=CN, fontSize=8.5, leading=13,
+                       textColor=C_SUB, spaceAfter=4)
+    ))
+    dlc_data = [
+        ("目击报告", "dlc_sighting",     "玩家约会/踩点时有概率被人「目击」，机器人自动生成八卦式报告发到指定群",   "。设置 DLC", None),
+        ("复盘群分流", "dlc_fupan",      "开启后可在「复盘设置」里配置复盘报告按规则分流到不同群，不开则用默认逻辑", "。设置 DLC", "不建议开启：这是网页端出问题时的备用方案，平时不用开"),
+        ("拍卖", "dlc_auction",         "开启玩家竞价拍卖功能，配合网页端「拍卖队列管理」使用",                   "。设置 DLC", None),
+        ("攻防", "dlc_attack",          "角色间的攻击/防御数值对抗玩法",                                          "。设置 DLC", None),
+        ("论坛", "dlc_forum",           "开启发帖/回帖/点赞的论坛功能",                                           "。设置 DLC", "推荐开启"),
+        ("自动天数", "dlc_auto_day",    "游戏日按设定的时间间隔自动往前推进，不用管理员手动「设置天数」",          "。设置 DLC", "推荐开启"),
+        ("踩点", "dlc_stakeout",        "玩家可以蹲守某个时间/地点等对方出现的特殊邀约类型；是可以单人发起建群的邀约"
+                                        "（对方可省略，管理员另需开启「允许单人踩点」），适合没约到人也想蹲点的场景", "网页端「系统参数配置」", None),
+        ("约战", "dlc_battle_appt",     "新增「约战」邀约类型，走标准私约流程但用于安排战斗/对战场景",            "网页端「系统参数配置」", None),
+        ("议价交易", "dlc_trade",       "玩家间可以以物换物、讨价还价，需配合「交易设定」使用",                    "网页端「系统参数配置」", None),
+        ("朋友圈", "dlc_moments",       "预留玩法位，当前版本尚未对应任何实装功能，开启也不会有效果",              "——", None),
+    ]
+    dlc_rows = [[
+        Paragraph("DLC 名", S["head"]),
+        Paragraph("说明", S["head"]),
+        Paragraph("怎么开", S["head"]),
+        Paragraph("建议", S["head"]),
+    ]]
+    dlc_ts = TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), C_HEAD_BG),
+        ("TEXTCOLOR",  (0, 0), (-1, 0), C_HEAD_FG),
+        ("FONTNAME",   (0, 0), (-1, 0), CN_BOLD),
+        ("FONTSIZE",   (0, 0), (-1, 0), 9),
+        ("VALIGN",     (0, 0), (-1, -1), "MIDDLE"),
+        ("GRID",       (0, 0), (-1, -1), 0.4, C_BORDER),
+        ("LINEABOVE",  (0, 0), (-1, 0), 1.2, C_TITLE),
+        ("TOPPADDING",    (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 5),
+    ])
+    C_REC_GOOD = colors.HexColor("#2E7D32")   # 推荐开启（绿）
+    C_REC_BAD  = colors.HexColor("#C0392B")   # 不建议开启（红）
+    for j, (dname, dkey, ddesc, dhow, drec) in enumerate(dlc_data, start=1):
+        if drec is None:
+            rec_para = Paragraph("——", ParagraphStyle("dr", fontName=CN, fontSize=8.5, leading=12,
+                                                       textColor=C_SUB))
+        else:
+            rec_color = C_REC_BAD if drec.startswith("不建议") else C_REC_GOOD
+            rec_para = Paragraph(drec, ParagraphStyle("dr", fontName=CN_BOLD, fontSize=8.5, leading=12,
+                                                       textColor=rec_color))
+        dlc_rows.append([
+            Paragraph(f"{dname}<br/><font size=7 color='#999999'>{dkey}</font>", ParagraphStyle(
+                "dn", fontName=CN_BOLD, fontSize=9, leading=13, textColor=C_SECTION)),
+            Paragraph(ddesc, ParagraphStyle("dd", fontName=CN, fontSize=8.5, leading=12,
+                                            textColor=colors.HexColor("#333333"))),
+            Paragraph(dhow, ParagraphStyle("dh", fontName=CN, fontSize=8.5, leading=12,
+                                          textColor=C_SUB)),
+            rec_para,
+        ])
+        dlc_ts.add("BACKGROUND", (0, j), (-1, j),
+                  colors.HexColor("#F0FAF4") if j % 2 == 0 else colors.white)
+    dlc_tbl = Table(dlc_rows, colWidths=[2.3*cm, 7.4*cm, 3.4*cm, 4.1*cm],
+                    style=dlc_ts, repeatRows=1, hAlign="LEFT")
+    items.append(dlc_tbl)
+    items.append(Paragraph(
+        "「怎么开」写「。设置 DLC」的几项，发这条指令能看到列表直接改；写「网页端」的几项目前没有对应的机器人指令，"
+        "要去存档网页端「系统参数配置」页面开关，改完发一次「。拉取全部」生效。",
+        ParagraphStyle("dlc_note", fontName=CN, fontSize=8.5, leading=13,
+                       textColor=C_SUB, spaceBefore=3, spaceAfter=4)
+    ))
+    return items
+
+# ── 新手向导：开始我的恋综季度 ────────────────────────────────
+C_DUMMY_NUM_BG = colors.HexColor("#C0392B")   # 步骤序号圆底色
+C_DUMMY_BG     = colors.HexColor("#FFFDF9")   # 步骤卡片底色
+C_DUMMY_CMD_BG = colors.HexColor("#FFF3E0")   # 指令高亮底色
+
+def build_dummy_guide():
+    """返回「开始我的恋综季度」新手向导的 flowable 列表（面向从没用过本系统的人）"""
+    items = []
+
+    items.append(PageBreak())
+    items.append(Spacer(1, 3*mm))
+    items.append(Paragraph("🌸  开始我的恋综季度", ParagraphStyle(
+        "dg_title", fontName=CN_BOLD, fontSize=18, leading=26,
+        textColor=C_TITLE, spaceAfter=3
+    )))
+    items.append(Paragraph("新手向导 · 跟着做就行，不用先读懂整本手册", ParagraphStyle(
+        "dg_subtitle", fontName=CN, fontSize=10, leading=15,
+        textColor=C_SUB, spaceAfter=4
+    )))
+    items.append(HRFlowable(width="100%", thickness=1.2, color=C_BORDER))
+    items.append(Spacer(1, 2*mm))
+    items.append(Paragraph(
+        "第一次接手这个系统不用怕，从头到尾跟着下面的步骤走一遍，大概 15～20 分钟就能把一季恋综搭起来。\n"
+        "标 ⭐ 的步骤不能跳过，跳过后面大概率会出问题；没标星的可以先放着，以后想到了再回来配置。\n"
+        "每一步都写了「为什么要做这一步」——不想知道原理的话，跳过「为什么」直接照着指令做也完全没问题。",
+        ParagraphStyle("dg_intro", fontName=CN, fontSize=9, leading=15,
+                       textColor=colors.HexColor("#333333"), spaceAfter=6)
+    ))
+
+    def dummy_step(num, title, required, body, cmd=None, why=None, extra_note=None):
+        """构建一张「步骤卡片」：左边大号序号，右边标题+说明+指令高亮+为什么"""
+        star = "⭐ " if required else ""
+        right = [
+            Paragraph(f"{star}{title}", ParagraphStyle(
+                f"dgt{num}", fontName=CN_BOLD, fontSize=11.5, leading=17,
+                textColor=colors.HexColor("#222222"), spaceAfter=3
+            )),
+            Paragraph(body.replace("\n", "<br/>"), ParagraphStyle(
+                f"dgb{num}", fontName=CN, fontSize=9, leading=14,
+                textColor=colors.HexColor("#333333"), spaceAfter=(4 if (cmd or why) else 0)
+            )),
+        ]
+        if cmd:
+            cmd_tbl = Table(
+                [[Paragraph(cmd.replace("\n", "<br/>"), ParagraphStyle(
+                    f"dgc{num}", fontName=CN_BOLD, fontSize=9, leading=14,
+                    textColor=colors.HexColor("#7B3F00")
+                ))]],
+                colWidths=[14.5*cm],
+                style=TableStyle([
+                    ("BACKGROUND",    (0, 0), (-1, -1), C_DUMMY_CMD_BG),
+                    ("LEFTPADDING",   (0, 0), (-1, -1), 7),
+                    ("RIGHTPADDING",  (0, 0), (-1, -1), 7),
+                    ("TOPPADDING",    (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ])
+            )
+            right.append(cmd_tbl)
+            right.append(Spacer(1, 3 if why else 0))
+        if why:
+            right.append(Paragraph(f"💡 为什么：{why}", ParagraphStyle(
+                f"dgw{num}", fontName=CN, fontSize=8.5, leading=13,
+                textColor=colors.HexColor("#555555"), spaceAfter=(2 if extra_note else 0)
+            )))
+        if extra_note:
+            right.append(Paragraph(extra_note, ParagraphStyle(
+                f"dge{num}", fontName=CN, fontSize=8.5, leading=13,
+                textColor=C_SUB
+            )))
+
+        num_cell = Paragraph(str(num), ParagraphStyle(
+            f"dgn{num}", fontName=CN_BOLD, fontSize=16, leading=20,
+            textColor=colors.white, alignment=1
+        ))
+        num_tbl = Table([[num_cell]], colWidths=[1.0*cm], rowHeights=[1.0*cm], style=TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), C_DUMMY_NUM_BG),
+            ("VALIGN",     (0, 0), (-1, -1), "MIDDLE"),
+            ("ALIGN",      (0, 0), (-1, -1), "CENTER"),
+        ]))
+
+        outer_ts = TableStyle([
+            ("BACKGROUND",    (0, 0), (-1, -1), C_DUMMY_BG),
+            ("BOX",           (0, 0), (-1, -1), 0.6, C_BORDER),
+            ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+            ("TOPPADDING",    (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 10),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 10),
+        ])
+        return KeepTogether([
+            Table([[num_tbl, right]], colWidths=[1.6*cm, 15.4*cm], style=outer_ts),
+            Spacer(1, 3*mm),
+        ])
+
+    items.append(dummy_step(
+        1, "把机器人和网页存档连起来", True,
+        "在海豹核心的插件配置页面找到「changri」插件，填写「RP存档服务器地址」和「RP存档Token」。\n"
+        "（长日将尽会协助你做好这一步，交给ta配置即可，这步可以跳过）",
+        why="这是机器人和网页存档系统对话用的钥匙。不填的话，网页端配置的所有东西都传不过来，"
+            "季度也创建不了——后面所有步骤的前提都是这一步先做好。"
+    ))
+    items.append(dummy_step(
+        2, "确认管理员权限", True,
+        "在海豹核心 UI 里填的「骰主 QQ」自动就是管理员，不用额外操作。\n"
+        "需要让骰主以外的人也能管理时，让骰主发：。授予管理员 QQ号 密码\n"
+        "默认密令是「detroit」，强烈建议先改掉：。更改密令 旧密码 新密码",
+        cmd="。授予管理员 123456789 detroit\n。更改密令 detroit 你的新密令",
+        why="后面所有「。」开头的管理员指令都要求有管理员权限，没权限会被直接拒绝。\n"
+            "密令改掉默认值，可以防止不认识的人靠「授予管理员」自己给自己开权限。"
+    ))
+    items.append(dummy_step(
+        3, "清理上一季的痕迹（已经开过季才要做）", False,
+        "① 发「。更新未退群」，机器人会列出还留在旧约会群里的玩家\n"
+        "② 对名单上每个 QQ 发一次「。驱逐 QQ号」，踢出旧群\n"
+        "③ 确认清干净后，发「。清空季度数据」，把角色数据归零",
+        why="不清理的话，新季度分配群号会乱套，旧数据也会跟新季度混在一起。\n"
+            "如果这是全新服务器、从来没开过季，这一步可以直接跳过，从下一步开始。"
+    ))
+    items.append(dummy_step(
+        4, "正式开季，给这一季起名字", True,
+        "格式：。创建新季度 恋综名 复盘/不复盘 MMDD-MMDD [补戏MMDD]",
+        cmd="。创建新季度 长日将尽 复盘 0610-0614\n。创建新季度 长日将尽 复盘 0610-0614 0617（带补戏日）",
+        why="这是整个系统的「总开关」。没有这一步，后面的邀约、群号分配、抽取等等全都无法运作。\n"
+            "档期第一天会自动记为 D0；档期开始前互动不记录。复盘模式决定场次结束后是否需要补写复盘；\n"
+            "补戏MMDD 可选，补戏截止日之前场次照常记录，但不计入弧长统计。"
+    ))
+    items.append(dummy_step(
+        5, "准备约会群号", True,
+        "方式一（简单，机器人本地直接加）：直接发「。添加群号 群号1,群号2,...」\n"
+        "方式二（推荐，从网页端批量管理）：去网页端「群号管理」页面按分组批量录入群号，\n"
+        "机器人发「。开启群号组 组名」把整组一键拉取到本地群号池。",
+        why="玩家发起私约/电话邀约时，机器人需要从这个「群号池」里取一个空群来建临时约会房间。\n"
+            "池子里没有群号，玩家邀约时机器人就没地方建群。\n"
+            "群号只有「网页录入 → 机器人拉取」这一个方向，机器人这边不能把群号反过来推送回网页——"
+            "网页只是用来批量整理群号的工具。详细操作见后面「如何批量管理与上传群号」一节。"
+    ))
+    items.append(dummy_step(
+        6, "通知玩家创建角色（有 NPC 也要建）", True,
+        "玩家自己在群里发：创建新角色 张三（不带句号，玩家自己发送）\n"
+        "场上如果有 NPC，管理员用有句号的指令创建：。创建NPC 路人甲",
+        why="角色卡是参与后面所有互动（邀约、道具、关系线……）的前提，没建角色的人什么都做不了。\n"
+            "NPC 不计入弧长统计、不参与随机分组，但所有需要出现在时间线上的 NPC 都必须提前创建，"
+            "否则复盘时无法自动归档。"
+    ))
+    items.append(dummy_step(
+        7, "去网页端把内容配好", False,
+        "登录存档网页端后台，把用得到的内容配一遍：\n"
+        "· 「物品库 / 抽取池管理」—— 玩家能抽到什么、商城卖什么\n"
+        "· 「结戏奖励配置」—— 私约结束后自动发放什么奖励\n"
+        "· 「系统参数配置」—— 各种冷却时间、功能开关、消息模板",
+        cmd="配置完成后，记得回到机器人发一次：。拉取全部",
+        why="网页端配置默认不会自己跑到机器人这边——不发「拉取全部」，网页上配的东西都不会生效。\n"
+            "这些内容也可以随时之后再补，不影响开季本身。"
+    ))
+    items.append(dummy_step(
+        8, "按需打开/关闭功能和 DLC", False,
+        "发送「。设置 功能开关」调整基础功能：礼物、发起邀约、心愿、心动信、论坛、抽取默认是开着的；\n"
+        "写信综（发送信件）需要额外发「。注册写信综基础道具」才能用，非写信综向的恋综建议保持关闭。\n"
+        "另外还有一批默认关闭的「DLC」玩法模块（目击报告、复盘群分流、拍卖、攻防、踩点、约战、议价交易等），"
+        "发「。设置 DLC」查看能直接用指令开关的几项，其余在网页端「系统参数配置」里开。",
+        why="不是每个恋综都需要全部功能和玩法模块，用不到的关掉可以减少玩家操作的困惑。\n"
+            "「清空季度数据」/开新季时功能开关会被整体清空重置，写信综等非默认开启项每季都要重新手动打开，"
+            "不用担心上一季忘关的设置带到新一季。\n"
+            "每个 DLC 具体是做什么的、怎么开，见后面「DLC 玩法开关总览」一节。"
+    ))
+    items.append(dummy_step(
+        9, "开始你的恋综", True,
+        "到这里，一个能正常运作的恋综季度就搭好了——可以让玩家发起第一场私约/电话/论坛发帖了。\n"
+        "后续遇到具体功能怎么用，翻后面按分类整理的指令表，或者回看下一页更详细的「管理员开季指南」。"
+    ))
+
+    # 常见卡关速查
+    items.append(Spacer(1, 2*mm))
+    items.append(Paragraph("🧯  常见卡关，先看这里", ParagraphStyle(
+        "dg_faq_h", fontName=CN_BOLD, fontSize=11, leading=16,
+        textColor=C_SECTION, spaceBefore=2, spaceAfter=3
+    )))
+    items.append(HRFlowable(width="100%", thickness=0.6, color=C_BORDER))
+    faq_rows = [[
+        Paragraph("现象", S["head"]),
+        Paragraph("先检查这个", S["head"]),
+    ]]
+    faq_data = [
+        ("机器人在群里没反应 / 没有记录 RP", "去这个群发「.ext all on」（注意是英文句点）——新建的群默认所有插件是关闭的，"
+                                          "不开插件机器人不会回复也不会记录任何内容"),
+        ("玩家发起邀约，机器人没建群",     "群号池是不是空的？发「。添加群号」或「。开启群号组」补充"),
+        ("抽奖没反应 / 提示没有开放的池子", "池子是不是还没在网页端配置，或者配置完忘了发「。拉取全部」"),
+        ("网页端配置了东西，机器人没反应", "是不是漏了最后一步「。拉取全部」——网页端不会自动推送给机器人"),
+        ("礼品店 / 送礼图鉴编号用不了",    "去网页端「礼品店管理」配置好礼品后，有没有发「。拉取全部」"),
+        ("创建新季度失败",                 "海豹插件里的存档服务器地址/Token 是不是没填或填错了"),
+    ]
+    faq_ts = TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), C_HEAD_BG),
+        ("TEXTCOLOR",  (0, 0), (-1, 0), C_HEAD_FG),
+        ("FONTNAME",   (0, 0), (-1, 0), CN_BOLD),
+        ("VALIGN",     (0, 0), (-1, -1), "MIDDLE"),
+        ("GRID",       (0, 0), (-1, -1), 0.4, C_BORDER),
+        ("LINEABOVE",  (0, 0), (-1, 0), 1.2, C_TITLE),
+        ("TOPPADDING",    (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 6),
+    ])
+    for i, (symptom, fix) in enumerate(faq_data, start=1):
+        faq_rows.append([
+            Paragraph(symptom, ParagraphStyle(f"fq{i}", fontName=CN_BOLD, fontSize=8.5, leading=13,
+                                               textColor=colors.HexColor("#222222"))),
+            Paragraph(fix, ParagraphStyle(f"ff{i}", fontName=CN, fontSize=8.5, leading=13,
+                                          textColor=colors.HexColor("#333333"))),
+        ])
+        faq_ts.add("BACKGROUND", (0, i), (-1, i),
+                   colors.HexColor("#FFF8F0") if i % 2 == 1 else colors.white)
+    faq_tbl = Table(faq_rows, colWidths=[6.5*cm, 10.5*cm], style=faq_ts, repeatRows=1, hAlign="LEFT")
+    items.append(faq_tbl)
+    items.append(Spacer(1, 3*mm))
+    items.append(Paragraph(
+        "接下来这几页是更详细的技术参考版「管理员开季指南」，把每一步展开成完整的指令表，"
+        "适合已经跑完一遍上面的流程、想深入了解某一步细节的时候查阅。",
+        ParagraphStyle("dg_footer", fontName=CN, fontSize=8.5, leading=13,
+                       textColor=C_SUB, spaceAfter=4)
+    ))
+
     return items
 
 # ── 主体构建 ─────────────────────────────────────────────────
@@ -1851,7 +2208,11 @@ def build():
     notice_tbl = Table([[preface_content]], colWidths=[17.2*cm], style=notice_ts)
     story.append(notice_tbl)
 
-    # ── 开季指南（独立页）────────────────────────────────────
+    # ── 新手向导：开始我的恋综季度（独立页，放在最前面）──────
+    for item in build_dummy_guide():
+        story.append(item)
+
+    # ── 开季指南（独立页，详细技术参考版）────────────────────
     for item in build_setup_guide():
         story.append(item)
 

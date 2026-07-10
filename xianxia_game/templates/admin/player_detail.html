@@ -173,6 +173,30 @@
     </div>
 
     <div class="card">
+      <div class="card-h" style="color:var(--purple)">炼体经验</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">
+        当前：{{ char.body_exp or 0 }}（{{ BODY_LEVELS[char.body_level or 0].name }}）
+      </div>
+      <form method="post" style="display:flex;gap:6px">
+        <input type="hidden" name="action" value="body_exp">
+        <input name="amount" type="number" value="500" placeholder="正数加/负数减"
+          style="flex:1;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+        <button type="submit" class="btn" style="background:var(--purple);color:#fff">增减</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-h" style="color:var(--gold2)">🦴 仙骨</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">当前：{{ bone_owned }}/{{ BONE_TOTAL }}</div>
+      <form method="post" style="display:flex;gap:6px">
+        <input type="hidden" name="action" value="add_bones">
+        <input name="amount" type="number" value="10" min="1"
+          style="flex:1;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+        <button type="submit" class="btn" style="background:var(--gold2);color:#fff">补全</button>
+      </form>
+    </div>
+
+    <div class="card">
       <div class="card-h">赠予物品</div>
       <form method="post" style="display:flex;flex-direction:column;gap:8px">
         <input type="hidden" name="action" value="item">
@@ -353,6 +377,20 @@
                    border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
           <button type="submit" class="btn btn-jade btn-sm">设定</button>
         </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-h" style="color:var(--purple)">造化灵液累计获赠</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">
+        当前：{{ liquid_gift_total }} / {{ ALCHEMY_LIQUID_GIFT_MAX_TOTAL }}
+        （达到上限后丹修不再自动获赠，此计数含历史手动修正）
+      </div>
+      <form method="post" style="display:flex;gap:6px" onsubmit="return confirm('直接将累计获赠份数设为该值？')">
+        <input type="hidden" name="action" value="set_liquid_gift_total">
+        <input name="value" type="number" value="{{ liquid_gift_total }}"
+          style="flex:1;background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px">
+        <button type="submit" class="btn" style="background:var(--purple);color:#fff">直接设定</button>
       </form>
     </div>
 

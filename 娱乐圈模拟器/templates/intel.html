@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}情报市场 - 娱乐圈模拟器{% endblock %}
+{% block content %}
+
+<div class="card">
+  <h3 style="margin-bottom:4px">黑料情报市场</h3>
+  <p class="muted">我的咖位:<b>{{ my_tier }}</b>。基础档 {{ tiers.basic.cost }} 资金揭示弱点,深度档 {{ tiers.deep.cost }} 资金揭示完整天赋和隐藏词条(需咖位 {{ tiers.deep.min_tier }} 以上)。只提供信息,不改变<a href="{{ url_for('weibo_attack') }}">买黑料</a>本身的判定。</p>
+</div>
+
+<div class="card">
+  <table>
+    <tr><th>艺名</th><th>人气</th><th></th></tr>
+    {% for t in targets %}
+    <tr>
+      <td>{{ t.stage_name }}{% if t.is_npc %} <span class="badge badge-gold">NPC</span>{% endif %}</td>
+      <td>{{ t.popularity }}</td>
+      <td style="display:flex;gap:6px">
+        <form method="post" action="{{ url_for('intel_buy') }}">
+          <input type="hidden" name="target_id" value="{{ t.id }}">
+          <input type="hidden" name="tier" value="basic">
+          <button class="btn">基础档({{ tiers.basic.cost }})</button>
+        </form>
+        <form method="post" action="{{ url_for('intel_buy') }}">
+          <input type="hidden" name="target_id" value="{{ t.id }}">
+          <input type="hidden" name="tier" value="deep">
+          <button class="btn">深度档({{ tiers.deep.cost }})</button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="3" class="muted">暂时没有可以调查的目标。</td></tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card">
+  <h4 style="margin-bottom:8px">我买过的情报</h4>
+  <table>
+    <tr><th>目标</th><th>档位</th><th>内容</th></tr>
+    {% for r in my_reports %}
+    <tr>
+      <td>{{ r.target_name }}</td>
+      <td>{{ tiers[r.tier].label if r.tier in tiers else r.tier }}</td>
+      <td class="muted">
+        {% if 'weak_talents' in r.revealed %}弱点:{{ r.revealed.weak_talents|join('、') }}{% endif %}
+        {% if 'talents' in r.revealed %}
+          {% for k, v in r.revealed.talents.items() %}{{ k }} {{ v }}{% if not loop.last %}, {% endif %}{% endfor %}
+          {% if r.revealed.hidden_traits %} · 词条:{{ r.revealed.hidden_traits|join('、') }}{% else %} · 没有隐藏词条{% endif %}
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="3" class="muted">还没买过情报。</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

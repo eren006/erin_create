@@ -1859,6 +1859,22 @@ cmd_pull_all.solve = async (ctx, msg, argv) => {
         }
     } catch (e) { console.warn(`[拉取全部] 处理网页待注册装备失败: ${e.message}`); }
 
+    // ── 3.5 若合流了新物品/装备，把带编号的完整注册表回写网页端 ─────────────────
+    // 编号由机器人分配，之前需要再手动发一次「推送全部」网页才能显示新编号；
+    // 这里在同一条「拉取全部」里自动回写，避免两步操作。
+    if (pendingMerged > 0 || equipPendingMerged > 0) {
+        try {
+            const writeback = {};
+            if (pendingMerged > 0)      writeback.item_registry      = mainStorGet("item_registry");
+            if (equipPendingMerged > 0) writeback.equipment_registry = mainStorGet("equipment_registry");
+            await fetch(`${base}/api/sync_config`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "X-Archive-Token": token },
+                body: JSON.stringify(writeback)
+            });
+        } catch (e) { console.warn(`[拉取全部] 回写注册表到网页端失败: ${e.message}`); }
+    }
+
     // ── 4. 拉取池子配置 ─────────────────────────────────────────────────────────
     let poolCount = 0;
     let poolErr = null;
@@ -2127,7 +2143,7 @@ cmd_pull_archive.solve = async (ctx, msg, cmdArgs) => {
 // ============================================================
 let cmd_random_group = seal.ext.newCmdItemInfo();
 cmd_random_group.name = "随机分组";
-cmd_random_group.help = "用法：.随机分组 [数字] [bg]\n说明：将所有非NPC玩家随机分配到指定数量的组中。加 bg 尽量保证每组男女搭配。";
+cmd_random_group.help = "用法：.随机分组 [数字] [bg|tag名字]\n说明：将所有非NPC玩家随机分配到指定数量的组中。加 bg 尽量保证每组男女搭配；加 tag 名字则按「。修改tag」创建的分类交替分组。";
 cmd_random_group.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) {
         seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
@@ -2139,7 +2155,9 @@ cmd_random_group.solve = (ctx, msg, cmdArgs) => {
         seal.replyToSender(ctx, msg, "❌ 请输入正确的小组数量，例如：.随机分组 2");
         return seal.ext.newCmdExecuteResult(true);
     }
-    const bgMode = cmdArgs.getArgN(2) === "bg";
+    const modeArg = cmdArgs.getArgN(2);
+    const bgMode = modeArg === "bg";
+    const tagArg = (!bgMode && modeArg) ? modeArg : null;
 
     const api = getApi();
     if (!api) {
@@ -2150,7 +2168,7 @@ cmd_random_group.solve = (ctx, msg, cmdArgs) => {
     const platform = msg.platform;
     const storage = api.getRoleStorage();
     const npcList = mainKvGet("a_npc_list", []);
-    const players = Object.keys(storage[platform] || {}).filter(n => !npcList.includes(n));
+    const players = Object.values(storage[platform] || {}).map(v => v[0]).filter(n => n && !npcList.includes(n));
 
     if (players.length === 0) {
         seal.replyToSender(ctx, msg, "❌ 当前平台没有可分配的非NPC玩家。");
@@ -2159,6 +2177,15 @@ cmd_random_group.solve = (ctx, msg, cmdArgs) => {
     if (groupCount > players.length) {
         seal.replyToSender(ctx, msg, `❌ 组数(${groupCount})不能大于玩家总数(${players.length})。`);
         return seal.ext.newCmdExecuteResult(true);
+    }
+
+    let tagData = null;
+    if (tagArg) {
+        tagData = api.kvGet("sys_binary_tags", {})[tagArg];
+        if (!tagData || Object.keys(tagData).length === 0) {
+            seal.replyToSender(ctx, msg, `❌ 未找到 tag「${tagArg}」，请先使用「。修改tag」创建`);
+            return seal.ext.newCmdExecuteResult(true);
+        }
     }
 
     const shuffle = arr => {
@@ -2174,12 +2201,14 @@ cmd_random_group.solve = (ctx, msg, cmdArgs) => {
     if (bgMode) {
         const privGrp = api.kvGet("a_private_group", {})[platform] || {};
         const profiles = api.kvGet("sys_char_profiles", {});
+        const nameToUid = {};
+        Object.entries(privGrp).forEach(([uid, v]) => { nameToUid[v[0]] = uid; });
         const males = shuffle(players.filter(n => {
-            const uid = privGrp[n]?.[0];
+            const uid = nameToUid[n];
             return uid && (profiles[`${platform}:${uid}`]?.gender || "女") === "男";
         }));
         const females = shuffle(players.filter(n => {
-            const uid = privGrp[n]?.[0];
+            const uid = nameToUid[n];
             return !uid || (profiles[`${platform}:${uid}`]?.gender || "女") !== "男";
         }));
         const maxRounds = Math.max(males.length, females.length);
@@ -2188,13 +2217,30 @@ cmd_random_group.solve = (ctx, msg, cmdArgs) => {
             if (mi < males.length)   { groups[r % groupCount].push(males[mi++]); }
             if (fi < females.length) { groups[r % groupCount].push(females[fi++]); }
         }
+    } else if (tagArg) {
+        const playerSet = new Set(players);
+        const buckets = Object.values(tagData).map(names => shuffle(names.filter(n => playerSet.has(n))));
+        const assignedNames = new Set(Object.values(tagData).flat());
+        const unassigned = shuffle(players.filter(n => !assignedNames.has(n)));
+
+        const maxLen = Math.max(...buckets.map(b => b.length), 0);
+        const indices = buckets.map(() => 0);
+        for (let r = 0; r < maxLen; r++) {
+            for (let b = 0; b < buckets.length; b++) {
+                if (indices[b] < buckets[b].length) {
+                    groups[r % groupCount].push(buckets[b][indices[b]++]);
+                }
+            }
+        }
+        unassigned.forEach((p, idx) => { groups[idx % groupCount].push(p); });
     } else {
         shuffle(players).forEach((player, index) => {
             groups[index % groupCount].push(player);
         });
     }
 
-    let response = `🎲 【随机分组结果】${bgMode ? "（男女搭配模式）" : ""}\n总人数：${players.length} | 组数：${groupCount}\n`;
+    const modeLabel = bgMode ? "（男女搭配模式）" : (tagArg ? `（${tagArg} 交替模式）` : "");
+    let response = `🎲 【随机分组结果】${modeLabel}\n总人数：${players.length} | 组数：${groupCount}\n`;
     response += "━━━━━━━━━━━━━━\n";
     groups.forEach((members, i) => {
         response += `第 ${i + 1} 组：${members.join("、")}\n`;

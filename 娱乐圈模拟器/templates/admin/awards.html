@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}颁奖管理{% endblock %}
+{% block content %}
+{% for sv in season_views %}
+<div class="card">
+  <div style="display:flex;justify-content:space-between">
+    <b>{{ sv.season.season_name }}</b>
+    <span class="badge {% if sv.season.status == 'campaigning' %}badge-gold{% else %}badge-green{% endif %}">
+      {{ sv.season.status }}
+    </span>
+  </div>
+  {% for cv in sv.categories %}
+  <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--bd)">
+    <b>{{ cv.category.category_name }}</b>
+    <table style="margin-top:4px">
+      <tr><th>艺人</th><th>评委分</th><th>投票分</th><th>获奖</th></tr>
+      {% for n in cv.nominees %}
+      <tr>
+        <td>{{ n.stage_name }}</td>
+        <td>{{ n.critic_score }}{% if n.bribe_exposed %} <span class="badge badge-red">黑幕</span>{% endif %}</td>
+        <td>{{ n.vote_score }}</td>
+        <td>{% if n.won %}✓{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% endfor %}
+  {% if sv.season.status == 'campaigning' %}
+  <form method="post" action="{{ url_for('admin_force_resolve_awards', season_id=sv.season.id) }}" style="margin-top:8px">
+    <button class="btn">强制开奖</button>
+  </form>
+  {% endif %}
+</div>
+{% else %}
+<div class="card muted">还没有颁奖季。</div>
+{% endfor %}
+{% endblock %}

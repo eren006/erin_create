@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}管理后台{% endblock %}
+{% block content %}
+<div class="card" style="display:flex;gap:10px">
+  <div style="flex:1;text-align:center">
+    <div class="muted">待审核</div>
+    <div style="font-size:20px;font-weight:700">{{ stats.pending }}</div>
+  </div>
+  <div style="flex:1;text-align:center">
+    <div class="muted">已通过艺人</div>
+    <div style="font-size:20px;font-weight:700">{{ stats.approved }}</div>
+  </div>
+  <div style="flex:1;text-align:center">
+    <div class="muted">已拒绝</div>
+    <div style="font-size:20px;font-weight:700">{{ stats.rejected }}</div>
+  </div>
+  <div style="flex:1;text-align:center">
+    <div class="muted">总微博数</div>
+    <div style="font-size:20px;font-weight:700">{{ stats.posts }}</div>
+  </div>
+</div>
+<div class="card">
+  <a class="btn" href="{{ url_for('admin_pending_users') }}">审核队列</a>
+  <a class="btn" href="{{ url_for('admin_players') }}">艺人管理</a>
+</div>
+{% endblock %}

@@ -4,7 +4,7 @@ import time
 import threading
 import sqlite3
 from waitress import serve
-from app import app, init_db, _snapshot_loop, process_cave, generate_cave_pool, DB_PATH, _ghost_loop, _superior_auction_loop, _red_packet_loop
+from app import app, init_db, _snapshot_loop, process_cave, generate_cave_pool, DB_PATH, _ghost_loop, _superior_auction_loop, _red_packet_loop, _advance_time_loop
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
@@ -76,5 +76,8 @@ t5.start()
 
 t6 = threading.Thread(target=_red_packet_loop, daemon=True)
 t6.start()
+
+t7 = threading.Thread(target=_advance_time_loop, daemon=True)
+t7.start()
 
 serve(app, host='0.0.0.0', port=5006)

@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}秘矿开采 — 灵墟界{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🕸 秘矿开采 <small>符修专属 · 大乘及以上开启</small></div>
+
+{% if result %}
+<div class="result-box success" style="margin-bottom:16px">
+  <div style="font-size:15px;font-weight:600">于【{{ result.spot }}】开采成功</div>
+  <div style="margin-top:6px;color:var(--gold)">获得【{{ result.item }}】× {{ result.qty }}</div>
+</div>
+{% endif %}
+
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;
+  background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:12px 16px">
+  <span style="font-size:13px;color:var(--muted)">灵力</span>
+  <div class="bar-wrap" style="flex:1;height:8px">
+    <div class="bar-fill bar-jade" style="width:{{ (energy / MAX_ENERGY * 100)|int }}%"></div>
+  </div>
+  <span style="font-size:13px;font-weight:600">{{ energy }} / {{ MAX_ENERGY }}</span>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:14px">
+{% for spot in spots %}
+<div class="card" style="{% if spot.locked %}opacity:.5{% endif %}">
+  <div style="display:flex;align-items:flex-start;gap:14px">
+    <div style="font-size:36px;flex-shrink:0">{{ spot.icon }}</div>
+    <div style="flex:1">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <span style="font-weight:700;font-size:16px">{{ spot.name }}</span>
+        {% if spot.locked %}
+        <span style="font-size:11px;color:var(--muted);background:var(--sf2);
+          border-radius:4px;padding:2px 7px">
+          需【{{ REALMS[spot.min_realm_idx].name }}】解锁
+        </span>
+        {% endif %}
+      </div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:10px">{{ spot.desc }}</div>
+      <div style="display:flex;gap:16px;font-size:12px;color:var(--muted);margin-bottom:12px;flex-wrap:wrap">
+        <span>⚡ 消耗 <strong style="color:var(--jade)">{{ spot.energy }}</strong> 灵力</span>
+        <span>⏱ 冷却 <strong>{{ spot.cooldown // 3600 }}h</strong></span>
+        <span>📦 掉落：
+          {% for d in spot.drops %}
+          <span style="color:{% if d.weight <= 8 %}var(--gold){% elif d.weight <= 17 %}var(--purple){% else %}var(--text){% endif %}">
+            {{ d.item }}({{ d.weight }}%)
+          </span>{% if not loop.last %} · {% endif %}
+          {% endfor %}
+        </span>
+      </div>
+      {% if not spot.locked %}
+        {% if spot.on_cd %}
+        <div style="font-size:13px;color:var(--muted);padding:8px 12px;
+          background:var(--sf2);border-radius:8px;display:inline-block">
+          ⏳ 矿脉恢复中：{{ spot.cd_h }}h {{ spot.cd_m }}m
+        </div>
+        {% elif spot.no_energy %}
+        <button class="btn" disabled style="opacity:.4">灵力不足</button>
+        {% else %}
+        <form method="post">
+          <input type="hidden" name="mine_key" value="{{ spot.key }}">
+          <button type="submit" class="btn btn-jade">⛏ 开采</button>
+        </form>
+        {% endif %}
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endfor %}
+</div>
+</div>
+{% endblock %}

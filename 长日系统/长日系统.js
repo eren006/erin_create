@@ -3713,6 +3713,8 @@ cmd_grouplist_release.solve = (ctx, msg, cmdArgs) => {
         console.log(`[DEBUG] ${gid} 标记为 ended，更新 ${matchCount} 条记录`);
         seal.replyToSender(ctx, msg, `✅ 本群（${gid}）本轮小群已结束，可再次发起新小群，所有相关记录已标记"已结束"`);
         setGroupName(ctx, msg, ctx.group.groupId, getIdleGroupName());
+        const _endedTimer = getGroupTimers()[gid];
+        if (_endedTimer) recordPendingLeaveCheck(gid, _endedTimer.subtype, _endedTimer.participants);
         cleanupGroupTimer(gid);
         applyEndGameBonuses(ctx, msg, gid, platform);
     } else {
@@ -3806,6 +3808,11 @@ cmd_force_end.solve = (ctx, msg, cmdArgs) => {
         delete groupExpireInfo[gid];
         kvSet("group_expire_info", groupExpireInfo);
     }
+
+    const _forceEndTimer = getGroupTimers()[gid];
+    const _forceEndNames = _forceEndTimer?.participants
+        || [...participantUids].map(u => a_private_group[platform]?.[u]?.[0]).filter(Boolean);
+    recordPendingLeaveCheck(gid, _forceEndTimer?.subtype, _forceEndNames);
 
     cleanupGroupTimer(gid);
     accumulateToSeasonStats(platform, gid);
@@ -4317,7 +4324,7 @@ cmd_reset_season_data.solve = async (ctx, msg, cmdArgs) => {
         "appointment_coin_cost", "appointment_duration_config",
         "auto_merge_duplicate_private","enable_join_existing_appointment",
         "group",                 "group_expire_info",     "group_timers",
-        "group_session_stats",   "group_write_progress",
+        "group_session_stats",   "group_write_progress",  "pending_leave_check",
         "fupan_routing_enabled", "fupan_routing_groups",
         // ── 统计 / 计数 ──
         "interaction_counts",    "user_stats",            "global_days",
@@ -4650,6 +4657,95 @@ cmd_view_expired_groups.solve = (ctx, msg, cmdArgs) => {
 };
 
 ext.cmdMap["查看到期群"] = cmd_view_expired_groups;
+
+// ========================
+// 🩺 约会数据体检：核对 group（群号池）/ group_expire_info / group_timers /
+// b_confirmedSchedule 四份并行存储是否一致。只诊断+清理"能安全判定为垃圾"的记录，
+// 不改动任何现有创建/结束流程，也绝不碰仍在占用中的群号本身。
+// ========================
+let cmd_appointment_healthcheck = seal.ext.newCmdItemInfo();
+cmd_appointment_healthcheck.name = "约会数据体检";
+cmd_appointment_healthcheck.help = "【管理员】核对约会相关的四份存储是否一致，排查孤儿占用/残留记录\n用法：\n。约会数据体检        仅报告问题\n。约会数据体检 修复   报告并清理可安全判定为垃圾的残留记录（不影响占用中的群）";
+cmd_appointment_healthcheck.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) {
+        seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    const shouldFix = cmdArgs.getArgN(1) === "修复";
+
+    const rawPool = kvGet("group", []);
+    const occupiedSet = new Set(rawPool.filter(g => g.endsWith("_占用")).map(g => g.replace(/_占用$/, "")));
+    const freeSet = new Set(rawPool.filter(g => !g.endsWith("_占用")));
+
+    const expireInfo = kvGet("group_expire_info", {});
+    const timers = kvGet("group_timers", {});
+    const schedule = kvGet("b_confirmedSchedule", {});
+
+    // 1. 孤儿占用：群号占用中，但 expire_info 和 timers 都没有 —— 无法自动判断是否仍在真实使用，只报告
+    const orphanOccupied = [...occupiedSet].filter(gid => !expireInfo[gid] && !timers[gid]);
+
+    // 2. 占用中但只有一半记录（可能是创建流程中途出错）—— 无法确定哪份是对的，只报告
+    const partialOccupied = [...occupiedSet].filter(gid =>
+        (expireInfo[gid] && !timers[gid]) || (!expireInfo[gid] && timers[gid])
+    );
+
+    // 3. 已释放（空闲池）但仍挂着 expire_info/timers —— 池状态是权威来源，这部分是确定的垃圾，可安全清理
+    const staleExpireInfo = [...freeSet].filter(gid => expireInfo[gid]);
+    const staleTimers = [...freeSet].filter(gid => timers[gid]);
+
+    // 4. b_confirmedSchedule 里状态非 ended，但指向的群早已不在占用中 —— 可安全标记为 ended
+    const staleScheduleEntries = [];
+    for (const [uidKey, events] of Object.entries(schedule)) {
+        (events || []).forEach((ev, idx) => {
+            if (ev.group && ev.status !== "ended" && !occupiedSet.has(ev.group)) {
+                staleScheduleEntries.push({ uidKey, idx, gid: ev.group });
+            }
+        });
+    }
+
+    const lines = ["🩺 约会数据体检报告", "━".repeat(14)];
+    lines.push(`占用中群号：${occupiedSet.size} 个 ｜ 空闲群号：${freeSet.size} 个`);
+    lines.push("");
+    lines.push(`🔴 孤儿占用（占用中但两边记录都没有，无法自动判断是否仍在使用，需人工核实）：${orphanOccupied.length}`);
+    if (orphanOccupied.length) lines.push(orphanOccupied.map(g => `  · 群号 ${g}`).join("\n"));
+    lines.push("");
+    lines.push(`🟡 记录不全（占用中但只有一半记录，可能创建流程中途出错）：${partialOccupied.length}`);
+    if (partialOccupied.length) lines.push(partialOccupied.map(g =>
+        `  · 群号 ${g}（${expireInfo[g] ? "有 expire_info / 缺 timer" : "有 timer / 缺 expire_info"}）`
+    ).join("\n"));
+    lines.push("");
+    lines.push(`🟢 空闲群号仍有残留记录（可安全清理）：expire_info ${staleExpireInfo.length} 条，timers ${staleTimers.length} 条`);
+    if (staleExpireInfo.length) lines.push(`  expire_info 残留：${staleExpireInfo.join("、")}`);
+    if (staleTimers.length) lines.push(`  timers 残留：${staleTimers.join("、")}`);
+    lines.push("");
+    lines.push(`🟢 日程仍标"进行中"但对应群已不在占用中（可安全标记为已结束）：${staleScheduleEntries.length} 条`);
+
+    if (shouldFix) {
+        let fixedCount = 0;
+        if (staleExpireInfo.length) {
+            staleExpireInfo.forEach(g => delete expireInfo[g]);
+            kvSet("group_expire_info", expireInfo);
+            fixedCount += staleExpireInfo.length;
+        }
+        if (staleTimers.length) {
+            staleTimers.forEach(g => delete timers[g]);
+            kvSet("group_timers", timers);
+            fixedCount += staleTimers.length;
+        }
+        if (staleScheduleEntries.length) {
+            staleScheduleEntries.forEach(({ uidKey, idx }) => { schedule[uidKey][idx].status = "ended"; });
+            kvSet("b_confirmedSchedule", schedule);
+            fixedCount += staleScheduleEntries.length;
+        }
+        lines.push("", `✅ 已清理 ${fixedCount} 条可安全判定的残留记录。孤儿占用/记录不全未自动处理，请人工核实后视情况用「强结私约 群号」处理。`);
+    } else if (staleExpireInfo.length || staleTimers.length || staleScheduleEntries.length) {
+        lines.push("", `💡 以上标🟢的问题可用「。约会数据体检 修复」自动清理`);
+    }
+
+    seal.replyToSender(ctx, msg, lines.join("\n"));
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["约会数据体检"] = cmd_appointment_healthcheck;
 
 function getIdleGroupName() {
     return (cachedGet("idle_group_name") || "").trim() || "备用";
@@ -7297,16 +7393,18 @@ function handleReply(platform, groupId, roleName, message) {
         }
     }
 
-    // 1. 检查计时状态
+    // 1. 字数（与存档段同口径，见 extractRoleContent 支持的三种格式）
+    // 先做格式校验，再判断计时状态：避免不成格式的日常闲聊也触发"已回复"提示
+    const _wContent = extractRoleContent(message, roleName);
+    if (!_wContent) return false;
+
+    // 2. 检查计时状态
     // 独立模式：任何人随时可发，不拦截
     // 轮流模式：waiting（对方回合）和 timing（自己回合）都允许；replied 才拦截（已回等对方）
     if (timer.timerMode === "turn_taking") {
-        if (roleStatus.status === "replied") return false;
+        if (roleStatus.status === "replied") return "already_replied";
     }
 
-    // 2. 字数（与存档段同口径，见 extractRoleContent 支持的三种格式）
-    const _wContent = extractRoleContent(message, roleName);
-    if (!_wContent) return false;
     const wordCount = countWords(_wContent);
 
     // --- 开始更新数据 ---
@@ -7559,6 +7657,20 @@ function cleanupGroupTimer(groupId) {
         saveGroupTimers(timers);
         console.log(`[监听系统] 清理群组 ${groupId} 的计时器`);
     }
+}
+
+// 结束/强结私约时记录：该群参与者若还没退群，供「我的待回」提醒
+function recordPendingLeaveCheck(gid, subtype, participants) {
+    if (!participants || !participants.length) return;
+    const store = kvGet("pending_leave_check", {});
+    for (const name of participants) {
+        if (!name) continue;
+        if (!store[name]) store[name] = [];
+        if (!store[name].some(e => e.gid === gid)) {
+            store[name].push({ gid, subtype: subtype || "", endedAt: Date.now() });
+        }
+    }
+    kvSet("pending_leave_check", store);
 }
 
 // ========================
@@ -7858,7 +7970,9 @@ function handleBasicGuideMsg(ctx, msg) {
              "【署名】自定义昵称（选填，不超过20字）",
              "",
              "。撤回心动信 编号   撤回已投递的信",
-             "查看信箱            查看收到的心动信"],
+             "查看信箱            查看收到的心动信",
+             "",
+             "我的待回            查看还没回的群（超时置顶）、还没进的群、已结束还没退的群+今日心动信投递情况"],
         ];
         const gidRaw = parseInt(msg.groupId.replace(/\D/g, ""), 10);
         const nodes = sections.map(lines => ({
@@ -7971,7 +8085,10 @@ function handlePrivateGroupListen(ctx, msg, platform, groupId, uid) {
         const roleName = a_private_group[platform]?.[uid]?.[0];
 
         if (roleName) {
-            handleReply(platform, groupId, roleName, msg.message || "");
+            const _replyResult = handleReply(platform, groupId, roleName, msg.message || "");
+            if (_replyResult === "already_replied") {
+                seal.replyToSender(ctx, msg, "💬 你已经在这场回复过啦，正在等待对方回应，这条不会重复计入哦～");
+            }
 
             // 格式提示：首行≠角色名时提醒，不计入存档和字数
             // 只在有活跃计时器的群里提示，避免日常闲聊误触发
@@ -8177,6 +8294,7 @@ ext.onNotCommandReceived = async (ctx, msg) => {
 
     // 4.11 时间线
     if (raw === "时间线") return cmd_view_schedule.solve(ctx, msg, makeFakeCmdArgs([]));
+    if (raw === "我的待回") return cmd_my_pending.solve(ctx, msg);
     if (raw.startsWith("结束私约")) {
         const rest = raw.slice(4).trim();
         return cmd_grouplist_release.solve(ctx, msg, makeFakeCmdArgs(rest ? rest.split(/\s+/) : []));
@@ -8387,6 +8505,110 @@ cmd_remind_timeouts.solve =(ctx, msg, cmdArgs) => {
         seal.replyToSender(ctx, msg, "🌙 检查了一圈，现在大家都很守时，不需要打扰呢～");
     }
     return seal.ext.newCmdExecuteResult(true);
+};
+
+// ========================
+// 📋 我的待回：列出玩家自己还没回的群（超时的置顶）+ 今日心动信投递情况
+// ========================
+let cmd_my_pending = {};
+cmd_my_pending.solve = async (ctx, msg) => {
+    const platform = msg.platform;
+    const roleName = getRoleName(ctx, msg);
+    if (!roleName) return seal.replyToSender(ctx, msg, "✨ 请先使用「创建新角色」认领你的身份吧。");
+
+    const uid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
+    const extras = kvGet("extra_accounts", {});
+    const myUids = new Set([uid, ...Object.entries(extras)
+        .filter(([k, v]) => k.startsWith(`${platform}:`) && v === uid)
+        .map(([k]) => k.replace(`${platform}:`, ""))]);
+    const isMemberOf = async (gid) => {
+        const members = await getGroupMembersSilent(gid, ctx, msg);
+        return members.some(m => myUids.has((m.user_id ?? m.qq)?.toString()));
+    };
+
+    const now = Date.now();
+    const timers = kvGet("group_timers", {});
+    const baseTimeout = getMonitorSettings().timeout;
+
+    const pending = [];    // 需要你回复的场次（status: timing）
+    const notJoined = [];  // 场次已开但你实际还没进这个群
+    for (const [gid, timer] of Object.entries(timers)) {
+        if (timer.platform !== platform) continue;
+        const s = timer.timerStatus[roleName];
+        if (!s || s.status === "replied") continue;
+
+        const inGroup = await isMemberOf(gid);
+        if (s.status === "timing") {
+            const safeTimeout = sanitizeTimeoutMs(timer.timeoutDuration, baseTimeout);
+            const elapsed = now - s.startTime;
+            pending.push({ gid, subtype: timer.subtype, elapsed, isOver: elapsed > safeTimeout, inGroup });
+        } else if (!inGroup) {
+            notJoined.push({ gid, subtype: timer.subtype });
+        }
+    }
+    // 超时的排最前，同为超时/未超时时等得越久的越靠前
+    pending.sort((a, b) => (b.isOver - a.isOver) || (b.elapsed - a.elapsed));
+
+    const fmtElapsed = (ms) => {
+        const h = Math.floor(ms / 3600000), m = Math.floor((ms % 3600000) / 60000);
+        return h > 0 ? `${h}h${m}m` : `${m}m`;
+    };
+
+    const lines = [`📋 ${roleName} 的待回清单`];
+    if (!pending.length) {
+        lines.push("🌙 当前没有等待你回复的场次，很守时哦～");
+    } else {
+        lines.push(...pending.map(p =>
+            `${p.isOver ? "🔴" : "⏳"} 群号 ${p.gid} ｜「${getCustomTypeLabel(p.subtype)}」已等待 ${fmtElapsed(p.elapsed)}${p.isOver ? "（已超时）" : ""}${p.inGroup ? "" : "（⚠️你好像还没进这个群）"}`
+        ));
+    }
+
+    if (notJoined.length) {
+        lines.push("", "🚪 已开场但你还没进群：");
+        lines.push(...notJoined.map(n => `⚠️ 群号 ${n.gid} ｜「${getCustomTypeLabel(n.subtype)}」`));
+    }
+
+    // 已结束但还没退群（结束私约/强结私约 时记录，实时核对是否仍在群里）
+    const leaveStore = kvGet("pending_leave_check", {});
+    const myLeaveChecks = leaveStore[roleName] || [];
+    if (myLeaveChecks.length) {
+        const groupPool = kvGet("group", []);
+        const stillLingering = [];
+        const remaining = [];
+        for (const entry of myLeaveChecks) {
+            // 群号已被重新分配（不在空闲池里）：旧记录失效，直接丢弃，不再核对
+            if (!groupPool.includes(entry.gid)) continue;
+            if (await isMemberOf(entry.gid)) {
+                stillLingering.push(entry);
+                remaining.push(entry);
+            }
+            // 已经查不到人了：视为已退群，不再保留
+        }
+        if (remaining.length !== myLeaveChecks.length) {
+            if (remaining.length) leaveStore[roleName] = remaining; else delete leaveStore[roleName];
+            kvSet("pending_leave_check", leaveStore);
+        }
+        if (stillLingering.length) {
+            lines.push("", "🚶 已结束但你好像还没退群：");
+            lines.push(...stillLingering.map(e => `⚠️ 群号 ${e.gid} ｜「${getCustomTypeLabel(e.subtype)}」`));
+        }
+    }
+
+    // 今日心动信
+    const globalDay = cachedGet("global_days") || "";
+    lines.push("", "💌 今日心动信");
+    if (!globalDay) {
+        lines.push("（当前未设置游戏天数）");
+    } else {
+        const dayLimits = kvGet("lovemail_day_limits", {});
+        const defaultLimit = parseInt(cachedGet("lovemail_default_limit") || "3");
+        const maxPerDay = dayLimits[globalDay] !== undefined ? dayLimits[globalDay] : defaultLimit;
+        const sentToday = kvGet("lovemail_pool", []).filter(r => r.uid === uid && r.gameDay === globalDay);
+        lines.push(`已投递 ${sentToday.length}/${maxPerDay} 封`);
+        if (sentToday.length) lines.push(`已写给：${sentToday.map(r => r.receiver).join("、")}`);
+    }
+
+    return seal.replyToSender(ctx, msg, lines.join("\n"));
 };
 
 // ========================
@@ -8802,8 +9024,34 @@ function checkAutoD0() {
     const announceGid = kvGet("adminAnnounceGroupId", null);
     if (announceGid) sendTextToGroup("QQ", announceGid, `🗓️ 档期正式开始！游戏天数已自动设置为 D0。`);
 }
+
+// 到期约会群自动巡检：group_expire_info 到期后不会自动清理，
+// 之前完全依赖管理员手动跑「查看到期群」才能发现，这里改为主动推送到后台群提醒。
+// 每个 gid 只提醒一次（expireNotified 标记），避免同一个到期群反复刷屏；
+// 群结束（结束私约/强结私约）时 group_expire_info[gid] 会被整条删除，标记随之自然清除。
+function checkExpiredGroups() {
+    const backgroundGroupId = kvGet("background_group_id", null);
+    if (!backgroundGroupId) return;
+
+    const groupInfo = kvGet("group_expire_info", {});
+    const now = Date.now();
+    let changed = false;
+
+    for (const [gid, info] of Object.entries(groupInfo)) {
+        if (now <= info.expireTime || info.expireNotified) continue;
+        const label = getCustomTypeLabel(info.subtype || "") || "小群";
+        const participants = (info.participants || []).join("、") || "未知";
+        sendTextToGroup("QQ", backgroundGroupId,
+            `⏰ 群号 ${gid}（${label}）已到期未处理\n参与者：${participants}\n时间：${info.day || ""} ${info.time || ""}\n如互动已结束，请及时「强结私约 ${gid}」释放群号。`);
+        info.expireNotified = true;
+        changed = true;
+    }
+
+    if (changed) kvSet("group_expire_info", groupInfo);
+}
 setInterval(() => {
     checkAutoD0();
+    checkExpiredGroups();
     loveMailTick();
 }, 30000);
 

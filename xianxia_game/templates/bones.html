@@ -4,7 +4,14 @@
 <div class="page">
 <div class="page-title">🦴 寻仙骨 <small>集齐 206 块仙骨，重塑仙体，永久提升气血上限</small></div>
 
-{% if result %}
+{% if result and result.transformed %}
+<div class="result-box success" style="margin-bottom:20px;text-align:center;background:linear-gradient(160deg,#1a1228 0%,#241a3e 100%);border-color:#5a3f8a">
+  <div style="font-size:28px;margin-bottom:8px">✦</div>
+  <div style="font-size:18px;font-weight:700;color:#f0d090">真仙蜕变已成！</div>
+  <div style="margin-top:8px;color:#c8a8ff;font-size:13px">206 块仙骨尽数归位，周身脱胎换骨，仙体大成</div>
+  <div style="margin-top:10px;color:#9bd4c0;font-size:14px;font-weight:600">修炼速度永久 +{{ (BONE_FULL_CULTIVATE_PCT*100)|int }}%</div>
+</div>
+{% elif result %}
 <div class="result-box {{ 'success' if result.found else '' }}" style="margin-bottom:20px">
   {% if result.found %}
   <div style="font-size:15px;color:var(--gold);font-weight:700;margin-bottom:6px">✨ 寻得仙骨——{{ result.name }}！</div>
@@ -41,12 +48,29 @@
 <!-- 寻骨 -->
 <div class="card" style="margin-bottom:16px">
   {% if owned_count >= BONE_TOTAL %}
-  <div style="text-align:center;padding:20px 0">
-    <div style="font-size:32px;margin-bottom:10px">🦴</div>
-    <div style="color:var(--gold);font-weight:700;font-size:16px">206 块仙骨已集齐，仙体已成！</div>
-  </div>
+    {% if char.bone_transformed %}
+    <div style="text-align:center;padding:20px 0">
+      <div style="font-size:32px;margin-bottom:10px">✦</div>
+      <div style="color:var(--gold);font-weight:700;font-size:16px">真仙蜕变已成，仙体大成！</div>
+      <div style="color:var(--jade);font-size:12px;margin-top:6px">修炼速度永久 +{{ (BONE_FULL_CULTIVATE_PCT*100)|int }}%</div>
+    </div>
+    {% else %}
+    <div style="text-align:center;padding:16px 0 6px">
+      <div style="font-size:32px;margin-bottom:10px">🦴</div>
+      <div style="color:var(--gold);font-weight:700;font-size:16px">206 块仙骨已集齐，仙体已成！</div>
+      <div style="color:var(--muted);font-size:12px;margin-top:8px;line-height:1.8">
+        周身仙骨尽数归位，脱胎换骨之机就在眼前——<br>
+        踏出这一步，真仙蜕变，修炼速度将永久 +{{ (BONE_FULL_CULTIVATE_PCT*100)|int }}%
+      </div>
+    </div>
+    <form method="post" onsubmit="return confirm('确认触发真仙蜕变？效果将永久生效。')">
+      <input type="hidden" name="action" value="transform">
+      <button type="submit" class="btn btn-gold" style="width:100%;margin-top:6px">✦ 真仙蜕变</button>
+    </form>
+    {% endif %}
   {% else %}
   <form method="post">
+    <input type="hidden" name="action" value="search">
     <button type="submit" class="btn" style="width:100%;{% if energy < BONE_SEARCH_COST %}opacity:.5{% endif %}"
       {% if energy < BONE_SEARCH_COST %}disabled{% endif %}>
       {% if energy < BONE_SEARCH_COST %}灵力不足（需 {{ BONE_SEARCH_COST }}）
@@ -55,6 +79,21 @@
   </form>
   {% endif %}
 </div>
+
+<!-- 仙骨构成 -->
+{% if owned_count > 0 %}
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">仙骨构成</div>
+  <div style="display:flex;flex-wrap:wrap;gap:10px">
+    {% for b in beast_composition %}
+    <div style="background:var(--sf2);border:1px solid var(--bd);border-radius:8px;padding:8px 14px;min-width:90px">
+      <div style="font-size:13px;font-weight:600;color:var(--gold)">{{ b.name }}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">{{ b.count }} 块 · {{ b.pct }}%</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
 
 <!-- 已获仙骨 -->
 {% if owned_names %}
@@ -74,6 +113,7 @@
     <div>· 每花费 {{ BONE_SEARCH_COST }} 灵力可寻找一次，一共 206 块仙骨（对应人体骨骼之数）</div>
     <div>· 寻得的仙骨不会重复，换上后即永久生效，不会消失</div>
     <div>· 每获得一块仙骨，气血上限永久 +{{ BONE_HP_BONUS }}，集齐全部 206 块可永久 +{{ BONE_TOTAL * BONE_HP_BONUS }}</div>
+    <div>· 集齐 206 块后可触发一次「真仙蜕变」，修炼速度永久 +{{ (BONE_FULL_CULTIVATE_PCT*100)|int }}%，终身仅可触发一次</div>
     <div>· 仙骨难寻，全靠机缘，多寻无妨，道心不可急躁</div>
   </div>
 </div>

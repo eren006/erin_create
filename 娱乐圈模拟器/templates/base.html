@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>{% block title %}娱乐圈模拟器{% endblock %}</title>
+<style>
+:root{
+  --bg:#f5f5f5;--sf:#ffffff;--sf2:#f0f0f0;--bd:#e3e3e3;
+  --red:#e6162d;--red-dim:#fbe4e6;
+  --text:#333333;--muted:#8b8b8b;
+  --green:#2e8b57;--gold:#a67c1a;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);
+  font-family:"PingFang SC","Microsoft YaHei",sans-serif;
+  font-size:14px;line-height:1.6;min-height:100vh}
+a{color:var(--red);text-decoration:none}
+.topbar{
+  background:var(--sf);border-bottom:1px solid var(--bd);
+  height:50px;display:flex;align-items:center;gap:16px;
+  padding:0 20px;position:sticky;top:0;z-index:100
+}
+.logo{font-size:16px;font-weight:700;color:var(--red);white-space:nowrap;flex-shrink:0}
+.nav{display:flex;gap:4px;flex:1;overflow-x:auto;white-space:nowrap;scrollbar-width:none}
+.nav::-webkit-scrollbar{display:none}
+.nav a{color:var(--muted);font-size:13px;padding:8px 12px;border-radius:6px;flex-shrink:0;white-space:nowrap}
+.nav a:hover,.nav a.active{color:var(--red);background:var(--red-dim)}
+.nav-right{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted);flex-shrink:0}
+.wrap{max-width:640px;margin:0 auto;padding:16px}
+.card{background:var(--sf);border:1px solid var(--bd);border-radius:12px;padding:16px;margin-bottom:12px}
+.btn{display:inline-block;background:var(--sf);border:1px solid var(--bd);border-radius:6px;
+  padding:8px 16px;font-size:13px;cursor:pointer;color:var(--text)}
+.btn:hover{background:var(--sf2)}
+.btn-primary{background:var(--red);border-color:var(--red);color:#fff}
+.btn-primary:hover{opacity:.9;background:var(--red)}
+input,select,textarea{
+  width:100%;padding:8px 10px;border:1px solid var(--bd);border-radius:6px;
+  font-size:13px;font-family:inherit;background:var(--sf);color:var(--text)
+}
+label{font-size:12px;color:var(--muted);display:block;margin:10px 0 4px}
+.flash{padding:8px 12px;border-radius:6px;margin-bottom:10px;font-size:13px}
+.flash-error{background:#fbe4e6;color:var(--red)}
+.flash-ok{background:#e4f5ea;color:var(--green)}
+.muted{color:var(--muted);font-size:12px}
+.badge{font-size:11px;padding:1px 6px;border-radius:4px}
+.badge-red{background:#fbe4e6;color:var(--red)}
+.badge-green{background:#e4f5ea;color:var(--green)}
+.badge-gold{background:#faeeda;color:var(--gold)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:6px 8px;text-align:left;border-bottom:1px solid var(--bd)}
+th{color:var(--muted);font-weight:500}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="logo">娱乐圈模拟器</div>
+  <div class="nav">
+    {% if session.get('role') == 'player' %}
+    <a href="{{ url_for('weibo') }}">微博</a>
+    <a href="{{ url_for('notifications_page') }}">通知{% if notification_count %}<span class="badge badge-red" style="margin-left:3px">{{ notification_count }}</span>{% endif %}</a>
+    <a href="{{ url_for('profile') }}">我的</a>
+    <a href="{{ url_for('trending') }}">热搜</a>
+    <a href="{{ url_for('leaderboard') }}">排行榜</a>
+    <a href="{{ url_for('cp_page') }}">CP</a>
+    <a href="{{ url_for('super_topic_page') }}">超话</a>
+    <a href="{{ url_for('drama_list') }}">抢角色</a>
+    <a href="{{ url_for('brand_list') }}">代言</a>
+    <a href="{{ url_for('ambassador_page') }}">代言人</a>
+    <a href="{{ url_for('awards_page') }}">颁奖典礼</a>
+    <a href="{{ url_for('luxury_page') }}">奢侈品</a>
+    <a href="{{ url_for('backpack_page') }}">背包</a>
+    <a href="{{ url_for('lifestyle_page') }}">生活</a>
+    <a href="{{ url_for('paparazzi_page') }}">狗仔</a>
+    <a href="{{ url_for('collab_page') }}">联合营业</a>
+    <a href="{{ url_for('messages_page') }}">好友</a>
+    <a href="{{ url_for('dating_page') }}">恋爱</a>
+    {% elif session.get('role') == 'admin' %}
+    <a href="{{ url_for('admin_home') }}">后台首页</a>
+    <a href="{{ url_for('admin_pending_users') }}">审核队列</a>
+    <a href="{{ url_for('admin_players') }}">艺人管理</a>
+    <a href="{{ url_for('admin_npcs') }}">NPC</a>
+    <a href="{{ url_for('admin_dramas') }}">剧组</a>
+    <a href="{{ url_for('admin_brands') }}">品牌</a>
+    <a href="{{ url_for('admin_awards') }}">颁奖</a>
+    {% endif %}
+  </div>
+  <div class="nav-right">
+    {% if session.get('uid') %}
+    <span>{{ session.get('uname') }}</span>
+    <a href="{{ url_for('logout') }}">退出</a>
+    {% else %}
+    <a href="{{ url_for('login') }}">登录</a>
+    <a href="{{ url_for('register') }}">注册</a>
+    {% endif %}
+  </div>
+</div>
+<div class="wrap">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, msg in messages %}
+      <div class="flash flash-{{ 'error' if category == 'error' else 'ok' }}">{{ msg }}</div>
+    {% endfor %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</div>
+</body>
+</html>

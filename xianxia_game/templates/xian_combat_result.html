@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}斗法结果 — 灵墟界{% endblock %}
+{% block head %}
+<style>
+.xr-wrap{
+  padding:24px 20px;border-radius:12px;text-align:center;position:relative;overflow:hidden;
+  background:linear-gradient(160deg,#1a1228 0%,#20182f 100%);border:1px solid #4a3a70;margin-bottom:16px
+}
+.xr-wrap::before{
+  content:'';position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(ellipse at 50% 0%,rgba(201,168,76,.22) 0%,transparent 70%)
+}
+.xr-title{position:relative;font-size:20px;font-weight:700;color:#f0d090;margin-bottom:8px}
+.xr-sub{position:relative;font-size:13px;color:#c8a8ff;line-height:1.8}
+.xr-round{
+  display:flex;justify-content:space-between;font-size:12px;color:var(--muted);
+  padding:6px 10px;border-bottom:1px solid var(--bd)
+}
+.xr-round:last-child{border-bottom:none}
+</style>
+{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">⚔ 斗法结果</div>
+
+<div class="xr-wrap">
+  <div class="xr-title">✦ 一举斩杀【{{ monster.name }}】！</div>
+  <div class="xr-sub">
+    以攻击 {{ '{:,}'.format(XIAN_COMBAT_ATK) }}、防御 {{ '{:,}'.format(XIAN_COMBAT_DEF) }} 之力，历经 {{ round_no }} 回合<br>
+    累计造成伤害 <strong style="color:#f0d090">{{ '{:,}'.format(total_dealt) }}</strong>，
+    承受伤害 <strong style="color:#9bd4c0">{{ '{:,}'.format(total_taken) }}</strong>（毫发无损）
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">回合精选</div>
+  {% for r in rounds %}
+  <div class="xr-round">
+    <span>第 {{ r.no }} 回合{% if r.crit %} <span style="color:var(--gold)">· 暴击</span>{% endif %}</span>
+    <span>你造成 {{ '{:,}'.format(r.dmg) }}，对方回击 {{ '{:,}'.format(r.taken) }}，剩余气血 {{ '{:,}'.format(r.hp_left) }}</span>
+  </div>
+  {% endfor %}
+</div>
+
+<a href="{{ url_for('xian_combat') }}" class="btn btn-gold" style="display:inline-block;padding:10px 24px;text-decoration:none;border-radius:8px">
+  ↻ 再战一场
+</a>
+</div>
+{% endblock %}

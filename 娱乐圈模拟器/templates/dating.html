@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}恋爱 - 娱乐圈模拟器{% endblock %}
+{% block content %}
+
+{% if my_rel %}
+<div class="card">
+  <h3 style="margin-bottom:4px">正在进行的感情</h3>
+  <p class="muted">和 {{ partner.stage_name if partner else '一位神秘人士' }} 的关系
+    {% if my_rel.married %}<span class="badge badge-gold">已官宣结婚</span>{% endif %}
+  </p>
+  {% if my_rel.status == 'secret' %}
+  <p style="margin-top:6px">隐蔽度:<b>{{ my_rel.secrecy }}</b> —— 越低越容易被狗仔拍到,曝光是随时间自动判定的,不需要手动做什么。</p>
+  {% elif my_rel.status == 'exposed_pending' %}
+  <div class="flash flash-error" style="margin-top:6px">恋情被曝光了!需要尽快回应,不然系统会按"沉默"处理。</div>
+  <form method="post" action="{{ url_for('dating_respond') }}" style="margin-top:8px">
+    <input type="hidden" name="relationship_id" value="{{ my_rel.id }}">
+    <textarea name="content" rows="2" maxlength="140" placeholder="写一条回应恋情曝光的博文(留空则用系统默认文案)..."></textarea>
+    <div style="display:flex;gap:8px;margin-top:6px">
+      <button class="btn" name="choice" value="confess" style="flex:1">发文承认(伤害可控)</button>
+      <button class="btn" name="choice" value="deny" style="flex:1">死不承认(赌一把)</button>
+    </div>
+  </form>
+  {% elif my_rel.status == 'together' %}
+  <p class="muted" style="margin-top:6px">恋情已经公开,现在是稳定交往中。</p>
+  {% if not my_rel.marriage_announced %}
+  <form method="post" action="{{ url_for('dating_announce_marriage') }}" style="margin-top:8px">
+    <input type="hidden" name="relationship_id" value="{{ my_rel.id }}">
+    <button class="btn btn-primary">官宣结婚</button>
+  </form>
+  <p class="muted" style="font-size:11px;margin-top:4px">不官宣的话,怀孕/孩子都得藏着,有被狗仔起底的风险。</p>
+  {% endif %}
+
+  {% if my_rel.pregnancy_status == 'deciding' %}
+  <div class="flash flash-error" style="margin-top:10px">意外怀孕了!需要做个决定。</div>
+  <form method="post" action="{{ url_for('dating_pregnancy') }}" style="margin-top:6px">
+    <input type="hidden" name="relationship_id" value="{{ my_rel.id }}">
+    <div style="display:flex;gap:8px">
+      <button class="btn" name="choice" value="abort" style="flex:1">打掉(损害健康值)</button>
+      <button class="btn btn-primary" name="choice" value="conceal" style="flex:1">藏着生下来</button>
+    </div>
+  </form>
+  {% elif my_rel.pregnancy_status == 'concealing' %}
+  <p class="muted" style="margin-top:10px">正在藏着怀孕(足月约 {{ pregnancy_months }} 个月),
+    {% if my_rel.marriage_announced %}已经官宣结婚,不用担心被狗仔发现。{% else %}还没官宣,小心被狗仔盯上。{% endif %}
+  </p>
+  {% endif %}
+
+  {% if children %}
+  <div style="margin-top:10px">
+    <label style="margin:0 0 6px">孩子</label>
+    {% for c in children %}
+    <div style="padding:6px 0;border-bottom:1px solid var(--bd);display:flex;justify-content:space-between;align-items:center">
+      <span>{{ c.name if c.name else '(还没起名字)' }} · {{ '男孩' if c.gender == 'male' else '女孩' }}
+        {% if c.revealed %}<span class="badge badge-green">已公开</span>{% endif %}
+      </span>
+      <div style="display:flex;gap:6px">
+        {% if not c.name %}
+        <form method="post" action="{{ url_for('dating_name_child') }}" style="display:flex;gap:4px">
+          <input type="hidden" name="child_id" value="{{ c.id }}">
+          <input name="name" maxlength="10" placeholder="起个名字" style="width:90px">
+          <button class="btn">确定</button>
+        </form>
+        {% endif %}
+        {% if not c.revealed %}
+        <form method="post" action="{{ url_for('dating_reveal_child') }}">
+          <input type="hidden" name="child_id" value="{{ c.id }}">
+          <button class="btn">公开孩子</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endif %}
+</div>
+{% else %}
+
+{% if pending_invites %}
+<div class="card">
+  <h4 style="margin-bottom:8px">悄悄找上你的人</h4>
+  {% for inv in pending_invites %}
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--bd)">
+    <span>{{ inv.from_name }}</span>
+    <div style="display:flex;gap:6px">
+      <form method="post" action="{{ url_for('invite_respond') }}">
+        <input type="hidden" name="invite_id" value="{{ inv.id }}">
+        <input type="hidden" name="accept" value="1">
+        <button class="btn btn-primary">接受</button>
+      </form>
+      <form method="post" action="{{ url_for('invite_respond') }}">
+        <input type="hidden" name="invite_id" value="{{ inv.id }}">
+        <input type="hidden" name="accept" value="0">
+        <button class="btn">拒绝</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h3 style="margin-bottom:4px">悄悄开始一段感情</h3>
+  <p class="muted" style="margin-bottom:10px">
+    消耗体力 10,只能对好感度 ≥{{ dating_threshold }} 的好友发起(先去联合营业合作攒好感度,或者去好友页发私信)。
+    对象是 NPC 会直接开始;对象是真人玩家需要等对方接受。人设立得越"高冷/纯欲/学霸"类,曝光后掉得越狠;立得越"耿直/元气"类,曝光伤害越小。
+  </p>
+  <table>
+    <tr><th>艺名</th><th>好感度</th><th></th></tr>
+    {% for c in candidates %}
+    <tr>
+      <td>{{ c.stage_name }}{% if c.is_npc %} <span class="badge badge-gold">NPC</span>{% endif %}</td>
+      <td>{{ c.affinity }}</td>
+      <td>
+        {% if c.affinity >= dating_threshold %}
+        <form method="post" action="{{ url_for('dating_start') }}">
+          <input type="hidden" name="target_id" value="{{ c.id }}">
+          <button class="btn">悄悄开始</button>
+        </form>
+        {% else %}
+        <span class="muted">好感度不够</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="3" class="muted">还没有好友,先去联合营业里合作一次。</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+{% endblock %}

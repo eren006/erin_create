@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}选择神位 — 灵墟界{% endblock %}
+{% block head %}
+<style>
+.is-hero{
+  max-width:900px;margin:0 auto 24px;padding:26px 18px 22px;border-radius:14px;position:relative;overflow:hidden;
+  background:linear-gradient(160deg,#1a1228 0%,#241a3e 55%,#1a1228 100%);
+  border:1px solid #5a3f8a;text-align:center
+}
+.is-hero::before{
+  content:'';position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(ellipse at 50% 20%,rgba(201,168,76,.28) 0%,transparent 70%)
+}
+.is-hero-omen{position:relative;font-size:13px;letter-spacing:2px;color:#c8a8ff}
+.is-hero-title{position:relative;font-size:19px;font-weight:700;color:#e8d8ff;margin-top:10px;letter-spacing:1px}
+.is-hero-sub{position:relative;font-size:12px;color:#9bd4c0;margin-top:8px}
+
+.is-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;max-width:900px;margin:0 auto}
+.is-card{
+  width:100%;text-align:left;padding:18px;border-radius:12px;cursor:pointer;
+  background:linear-gradient(160deg,#1a1228 0%,#20182f 100%);
+  border:1px solid #4a3a70;transition:all .2s;font-family:inherit;outline:none
+}
+.is-card:hover{border-color:#c9a84c;background:linear-gradient(160deg,#241a3e 0%,#2a2040 100%)}
+.is-card-name{font-size:19px;font-weight:700;color:#f0d090;text-shadow:0 0 12px rgba(240,208,144,.4);margin-bottom:8px}
+.is-card-desc{font-size:13px;color:#c8a8ff;margin-bottom:10px}
+.is-card-intro{font-size:12px;color:#9a8cc0;line-height:1.7}
+</style>
+{% endblock %}
+{% block body %}
+<div class="page">
+
+<div class="is-hero">
+  <div class="is-hero-omen">✦ 霞光万道贯穿虚空，天地为之震颤 ✦</div>
+  <div class="is-hero-title">飞升真仙，位列仙班</div>
+  <div class="is-hero-sub">天道已备下五席神位，静候你亲择一席，此选终身唯一，请慎重</div>
+</div>
+
+<div class="is-grid">
+  {% for c in choices %}
+  <form method="post" onsubmit="return confirm('确认敕封为【{{ c.name }}】神位？此选终身唯一，无法更换。')">
+    <input type="hidden" name="idx" value="{{ loop.index0 }}">
+    <button type="submit" class="is-card">
+      <div class="is-card-name">{{ c.name }}</div>
+      <div class="is-card-desc">{{ c.desc }}</div>
+      <div class="is-card-intro">{{ c.intro }}</div>
+    </button>
+  </form>
+  {% endfor %}
+</div>
+
+<div style="text-align:center;margin-top:20px;color:var(--muted);font-size:12px">
+  神位择定后终身生效，无法更换；未被选中的神位仍可能被其他道友占据
+</div>
+</div>
+{% endblock %}

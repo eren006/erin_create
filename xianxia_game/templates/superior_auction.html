@@ -15,6 +15,24 @@
   </div>
 </div>
 
+<div class="card" style="margin-bottom:16px;border-color:var(--gold)">
+  <div class="card-h" style="color:var(--gold)">🏺 直接购买</div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
+    不想等竞拍？可直接以 <strong style="color:var(--gold2)">{{ SUPERIOR_LIQUID_DIRECT_PRICE }}</strong> 上等灵石／份的价格购买【{{ SUPERIOR_AUCTION_ITEM }}】，不限数量，立即到账。
+  </div>
+  <form method="post" style="display:flex;align-items:center;gap:8px">
+    <input type="hidden" name="action" value="buy_direct">
+    <input name="qty" type="number" value="1" min="1"
+      style="width:90px;background:var(--sf2);border:1px solid var(--bd);color:var(--text);
+             border-radius:6px;padding:6px 10px;font-size:13px;font-family:inherit;text-align:center">
+    <button type="submit" class="btn btn-gold btn-sm" style="flex:1"
+      {% if (char.superior_stones or 0) < SUPERIOR_LIQUID_DIRECT_PRICE %}disabled{% endif %}>
+      {% if (char.superior_stones or 0) < SUPERIOR_LIQUID_DIRECT_PRICE %}上等灵石不足
+      {% else %}立即购买（{{ SUPERIOR_LIQUID_DIRECT_PRICE }}／份）{% endif %}
+    </button>
+  </form>
+</div>
+
 {% if not lots %}
 <div class="empty">拍卖行正在筹备中，请稍后再来</div>
 {% else %}
@@ -65,7 +83,8 @@
 <div class="card" style="margin-top:16px;background:rgba(201,168,76,.05);border-color:rgba(201,168,76,.15)">
   <div class="card-h" style="color:var(--gold2)">拍卖须知</div>
   <div style="color:var(--muted);font-size:12px;line-height:2">
-    <div>· 每天 2 个拍卖位，均为造化灵液，底价 20 上等灵石</div>
+    <div>· 每天 {{ SUPERIOR_AUCTION_SLOTS_CUR }} 个拍卖位，均为造化灵液，底价 20 上等灵石</div>
+    <div>· 不想竞拍也可直接购买，{{ SUPERIOR_LIQUID_DIRECT_PRICE }} 上等灵石／份，不限数量，立即到账</div>
     <div>· 每次出价至少比当前最高价高 1 上等灵石</div>
     <div>· 出价即锁定上等灵石，被超越后不会自动退还，需在结算后由系统退还落选者</div>
     <div>· 每晚 22 点结算，当前最高出价者获得拍品（通过邮件发放，请到邮箱领取），其余出价者的上等灵石将退还</div>

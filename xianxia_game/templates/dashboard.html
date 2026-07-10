@@ -3,6 +3,18 @@
 {% block body %}
 <div class="page">
 
+{% if char.exp_cap_reached_at and not xian_ascended %}
+{% set grace_left = [ASCEND_GRACE_SECS - (now_ts() - char.exp_cap_reached_at), 0] | max %}
+<div style="padding:12px 16px;margin-bottom:12px;background:rgba(192,57,43,.12);border:1px solid var(--red);border-radius:10px;
+     display:flex;align-items:center;gap:12px">
+  <span style="font-size:18px">⚠</span>
+  <div style="flex:1;font-size:13px;color:var(--red)">
+    修为已臻真仙门槛！剩余 <strong>{{ (grace_left // 3600)|int }}</strong> 时 <strong>{{ ((grace_left % 3600) // 60)|int }}</strong> 分内若不能突破飞升，恐将<strong>灰飞烟灭</strong>！
+    <a href="{{ url_for('cultivate') }}" style="color:var(--gold);font-weight:600;margin-left:6px">立即前往突破 →</a>
+  </div>
+</div>
+{% endif %}
+
 {# ── 灵脉感应 ── #}
 <div style="padding:10px 16px;margin-bottom:12px;
   background:linear-gradient(90deg,rgba(192,160,96,.09),rgba(192,160,96,.03));
@@ -203,6 +215,8 @@
           {% set btag = ancient_blessing_tag(char) %}
           {% if btag %}<span style="font-size:11px;color:var(--purple);border:1px solid var(--purple);border-radius:6px;padding:0 5px;margin-left:6px"
                 title="{{ ANCIENT_BLESSING_MAP[char.ancient_blessing_id]['desc'] }}">{{ btag }}</span>{% endif %}
+          {% set stag = immortal_seat_tag(char) %}
+          {% if stag %}<a href="{{ url_for('immortal_seat_view') }}" style="font-size:11px;color:var(--gold2);border:1px solid var(--gold2);border-radius:6px;padding:0 5px;margin-left:6px;text-decoration:none" title="点击回顾封神时刻">位列仙班·{{ stag }}</a>{% endif %}
         </div>
         <span class="root-{{ char.spirit_root }}" style="font-size:13px">{{ char.spirit_root }}</span>
       </div>
@@ -214,7 +228,7 @@
       </div>
     </div>
 
-    {% if pending_enc %}
+    {% if not xian_ascended and pending_enc %}
     <a href="{{ url_for('encounters') }}" style="text-decoration:none">
       <div style="margin-bottom:12px;background:rgba(166,124,26,.12);
            border:1px solid var(--gold);border-radius:10px;padding:8px 12px;
@@ -232,6 +246,23 @@
       {% endfor %}
     </div>
 
+    {% if xian_ascended %}
+    <div style="padding:16px;border-radius:10px;position:relative;overflow:hidden;
+         background:linear-gradient(160deg,#1a1228 0%,#20182f 100%);border:1px solid #4a3a70">
+      <div style="position:absolute;inset:0;pointer-events:none;
+           background:radial-gradient(ellipse at 50% 0%,rgba(155,127,224,.18) 0%,transparent 70%)"></div>
+      <div style="position:relative;color:#d8c8f0;font-size:12px;line-height:2.1">
+        <div style="color:#f0d090;font-weight:600;font-size:13px;margin-bottom:2px">✦ 道行圆满</div>
+        <div>修为、气血、灵力皆已不再是牵绊，此身已然超脱尘世</div>
+        {% if char.bone_transformed %}
+        <div style="color:#9bd4c0">🦴 仙体大成 · 206 块仙骨尽数归位，修炼速度永久 +200%</div>
+        {% endif %}
+        <div style="color:#c8a8ff">☁ 闲云野鹤，静观人间沉浮，逍遥万古</div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if not xian_ascended %}
     <!-- 修为 -->
     <div class="stat-row">
       <span class="label">修为</span>
@@ -249,6 +280,7 @@
       <span class="val" style="color:{% if hp_pct < 20 %}var(--red){% elif hp_pct < 50 %}var(--gold){% else %}var(--muted){% endif %}">
         {{ hp_now }}/{{ max_hp }}
       </span>
+      <span style="color:var(--muted);font-size:11px;margin-left:6px">每小时 +{{ hp_regen_hour }}</span>
     </div>
     <!-- 灵力 -->
     <div class="stat-row">
@@ -257,8 +289,11 @@
         <div class="bar-fill bar-jade" style="width:{{ (energy / MAX_ENERGY * 100)|int }}%"></div>
       </div>
       <span class="val">{{ energy }}/{{ MAX_ENERGY }}</span>
+      <span style="color:var(--muted);font-size:11px;margin-left:6px">每小时 +{{ energy_regen_hour }}</span>
     </div>
+    {% endif %}
 
+    {% if not xian_ascended %}
     <!-- 属性值 -->
     {% set total_atk_pct = body_atk_pct + panel_atk_pct %}
     {% set total_def_pct = body_def_pct + panel_def_pct %}
@@ -382,8 +417,9 @@
       ⚠ 气血不足 20%，无法出战！请服用<a href="{{ url_for('inventory') }}" style="color:var(--gold)">回元丹</a>恢复。
     </div>
     {% endif %}
+    {% endif %}
 
-    {% if can_bt %}
+    {% if not xian_ascended and can_bt %}
     <a href="{{ url_for('cultivate') }}" style="text-decoration:none">
       <div style="margin-top:12px;background:rgba(166,124,26,.12);
            border:1px solid var(--gold);border-radius:10px;padding:10px 14px;
@@ -401,6 +437,44 @@
   <!-- 右：行动 -->
   <div style="flex:1;min-width:260px">
     <div style="font-size:13px;color:var(--muted);font-weight:500;margin-bottom:10px">行动指南</div>
+    {% if xian_ascended %}
+    <div class="grid2" style="gap:10px">
+      <a href="{{ url_for('mortal_watch') }}" class="card" style="text-align:center;text-decoration:none">
+        <div style="font-size:26px;margin-bottom:6px">☁</div>
+        <div style="color:var(--purple);font-weight:600">俯瞰人间</div>
+        <div style="color:var(--muted);font-size:11px;margin-top:2px">灵力 -{{ MORTAL_WATCH_COST }}</div>
+      </a>
+      <a href="{{ url_for('xian_combat') }}" class="card" style="text-align:center;text-decoration:none">
+        <div style="font-size:26px;margin-bottom:6px">⚔</div>
+        <div style="color:var(--gold);font-weight:600">斗法</div>
+        <div style="color:var(--muted);font-size:11px;margin-top:2px">攻防各500万，尽情一战</div>
+      </a>
+      <a href="{{ url_for('temple') }}" class="card" style="text-align:center;text-decoration:none">
+        <div style="font-size:26px;margin-bottom:6px">⛩</div>
+        <div style="color:var(--purple);font-weight:600">神庙{% if nav_temple_pending %}<span style="color:var(--red)"> ({{ nav_temple_pending }})</span>{% endif %}</div>
+        <div style="color:var(--muted);font-size:11px;margin-top:2px">香火 {{ char.temple_incense or 0 }}</div>
+      </a>
+      <a href="{{ url_for('xian_forge') }}" class="card" style="text-align:center;text-decoration:none">
+        <div style="font-size:26px;margin-bottom:6px">🎼</div>
+        <div style="color:var(--blue);font-weight:600">法器阁</div>
+        <div style="color:var(--muted);font-size:11px;margin-top:2px">灵力 -{{ XIAN_ARTIFACT_COST }}</div>
+      </a>
+      <a href="{{ url_for('mail') }}" class="card" style="text-align:center;text-decoration:none">
+        <div style="font-size:26px;margin-bottom:6px">📮</div>
+        <div style="color:var(--jade);font-weight:600">邮件</div>
+        <div style="color:var(--muted);font-size:11px;margin-top:2px">与道友传信</div>
+      </a>
+    </div>
+    <div class="card" style="margin-top:10px;background:rgba(155,127,224,.05);border-color:rgba(155,127,224,.15)">
+      <div style="font-size:11px;color:var(--muted);line-height:2">
+        <div>✦ 道行圆满，修为、气血皆已不再是牵绊，灵力仅用于俯瞰人间、炼制法器等闲趣</div>
+        <div>☁ 闲时俯瞰人间，静观红尘沉浮，亦是一种修行</div>
+        <div>⚔ 斗法数值锁定，不耗灵力不掉血，尽情图一乐</div>
+        <div>⛩ 神庙每小时迎来一位朝拜者，偶有求助，静候你亲自抉择</div>
+        <div>🎼 法器阁可炼制乐器/兵刃/法宝，自定名号与描述，攻防超高，纯供收藏炫耀</div>
+      </div>
+    </div>
+    {% else %}
     <div class="grid2" style="gap:10px">
       <a href="{{ url_for('cultivate') }}" class="card" style="text-align:center;text-decoration:none">
         <div style="font-size:26px;margin-bottom:6px">⚡</div>
@@ -440,12 +514,13 @@
     <!-- 经济循环提示 -->
     <div class="card" style="margin-top:10px;background:rgba(201,168,76,.05);border-color:rgba(201,168,76,.15)">
       <div style="font-size:11px;color:var(--muted);line-height:2">
-        <div>⚡ 灵力用光 → 等待恢复（每小时 +10）</div>
+        <div>⚡ 灵力用光 → 等待恢复（每小时 +{{ energy_regen_hour }}）</div>
         <div>⚔ 战斗会消耗气血 → 需要<span style="color:var(--green)">回元丹</span>恢复</div>
         <div>💰 探索/战斗获得灵石 → 丹市购买补给</div>
         <div>⚔ 装备武器/法宝 → 战斗更强 → 少掉血</div>
       </div>
     </div>
+    {% endif %}
   </div>
 </div>
 

@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block title %}微博 - 娱乐圈模拟器{% endblock %}
+{% block content %}
+
+{% if player %}
+<div class="card" style="display:flex;gap:10px">
+  <div style="flex:1;text-align:center">
+    <div class="muted">粉丝</div>
+    <div style="font-size:18px;font-weight:700">{{ player.fans_count }}</div>
+  </div>
+  <div style="flex:1;text-align:center">
+    <div class="muted">人气(咖位 {{ player.tier }})</div>
+    <div style="font-size:18px;font-weight:700">{{ player.popularity }}</div>
+  </div>
+  <div style="flex:1;text-align:center">
+    <div class="muted">黑值</div>
+    <div style="font-size:18px;font-weight:700;color:var(--red)">{{ player.scandal_value }}</div>
+  </div>
+  <div style="flex:1;text-align:center">
+    <div class="muted">反黑值</div>
+    <div style="font-size:18px;font-weight:700">{{ player.anti_scandal_reserve }}</div>
+  </div>
+  <div style="flex:1;text-align:center">
+    <div class="muted">人设完整度</div>
+    <div style="font-size:18px;font-weight:700">{{ player.persona_integrity }}</div>
+  </div>
+  <div style="flex:1;text-align:center">
+    <div class="muted">体力</div>
+    <div style="font-size:18px;font-weight:700">{{ player.energy }}/100</div>
+  </div>
+</div>
+
+{% if player.career_state == 'blackout' %}
+<div class="card flash-error" style="background:var(--red-dim)">
+  <b>塌房雪藏中</b> —— 通告/综艺/接戏/攻击这些都停了,只能做公益慢慢清黑值,或者发一条声明,等雪藏期结束。
+  <form method="post" action="{{ url_for('weibo_charity') }}" style="margin-top:8px">
+    <button class="btn btn-primary" style="width:100%">低调做慈善<br><span class="muted" style="font-size:11px">体力 -5</span></button>
+  </form>
+  <form method="post" action="{{ url_for('weibo_post') }}" style="margin-top:10px;border-top:1px solid var(--bd);padding-top:10px">
+    <input type="hidden" name="post_type" value="crisis_statement">
+    <label>危机公关声明(体力 15)</label>
+    <select name="stance">
+      {% for k, v in crisis_stance_labels.items() %}
+      <option value="{{ k }}">{{ v }}</option>
+      {% endfor %}
+    </select>
+    <textarea name="content" rows="3" maxlength="140" required placeholder="写一条声明回应这次风波..." style="margin-top:6px"></textarea>
+    <button class="btn" style="width:100%;margin-top:6px">发布声明</button>
+  </form>
+</div>
+{% else %}
+<div class="card">
+  <form method="post" action="{{ url_for('weibo_post') }}">
+    <label>发博类型</label>
+    <select name="post_type">
+      {% for k, v in composable_post_types.items() %}
+      <option value="{{ k }}">{{ v }}</option>
+      {% endfor %}
+    </select>
+    <label>内容</label>
+    <textarea name="content" rows="3" maxlength="140" required placeholder="今天想发点什么..."></textarea>
+    <button class="btn btn-primary" style="margin-top:10px">发布</button>
+  </form>
+</div>
+
+<div class="card">
+  <h4 style="margin-bottom:8px">经纪人的今日安排</h4>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--bd)">
+    <div>
+      <div>📺 接通告</div>
+      <div class="muted" style="font-size:12px">经纪人:去接个通告,刷刷脸熟。体力 -10</div>
+    </div>
+    <form method="post" action="{{ url_for('weibo_gig') }}"><button class="btn">去</button></form>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--bd)">
+    <div>
+      <div>🎤 综艺通告</div>
+      <div class="muted" style="font-size:12px">经纪人:录一期综艺,体力 -15 · 需要人气 10+</div>
+    </div>
+    <a href="{{ url_for('weibo_variety_prepare') }}" class="btn">去</a>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--bd)">
+    <div>
+      <div>📷 商业拍摄</div>
+      <div class="muted" style="font-size:12px">经纪人:有组硬照要拍,资金 -{{ commercial_shoot_cost }} · 体力 -12</div>
+    </div>
+    <form method="post" action="{{ url_for('weibo_commercial_shoot') }}"><button class="btn">去</button></form>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--bd)">
+    <div>
+      <div>📖 杂志专访</div>
+      <div class="muted" style="font-size:12px">经纪人:有个专访机会,资金 -{{ magazine_cost }} · 体力 -12</div>
+    </div>
+    <form method="post" action="{{ url_for('weibo_magazine') }}"><button class="btn">去</button></form>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--bd)">
+    <div>
+      <div>🔥 买热搜位</div>
+      <div class="muted" style="font-size:12px">经纪人:砸点钱买个热搜,资金 -100 · 体力 -10</div>
+    </div>
+    <form method="post" action="{{ url_for('weibo_boost_trend') }}"><button class="btn">去</button></form>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--bd)">
+    <div>
+      <div>🧼 公关洗白</div>
+      <div class="muted" style="font-size:12px">经纪人:让团队处理一下黑值</div>
+    </div>
+    <form method="post" action="{{ url_for('weibo_use_reserve') }}"><button class="btn">去</button></form>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--bd)">
+    <div>
+      <div>🎵 筹备新歌</div>
+      <div class="muted" style="font-size:12px">经纪人:该发首新歌了,资金 -200 · 体力 -15</div>
+    </div>
+    <form method="post" action="{{ url_for('weibo_release_song') }}"><button class="btn">去</button></form>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0">
+    <div>
+      <div>🎪 筹备演唱会</div>
+      <div class="muted" style="font-size:12px">经纪人:场地都订好了,资金 -500 · 需要人气 80+</div>
+    </div>
+    <a href="{{ url_for('weibo_concert_prepare') }}" class="btn">去</a>
+  </div>
+
+  {% if ambassador_link_ready %}
+  <p class="muted" style="margin-top:10px;font-size:12px">经纪人:该去谈谈更大的代言了 → <a href="{{ url_for('ambassador_page') }}">品牌代言人</a></p>
+  {% endif %}
+</div>
+{% endif %}
+{% endif %}
+
+{% for p in posts %}
+<div class="card">
+  <div style="display:flex;justify-content:space-between">
+    <b>{{ p.stage_name }}</b>
+    <span class="badge {% if p.outcome == 'fail' %}badge-red{% elif p.outcome == 'success' %}badge-green{% else %}badge-gold{% endif %}">
+      {{ post_type_labels.get(p.post_type, p.post_type) }}
+    </span>
+  </div>
+  <p style="margin:8px 0">{{ p.content }}</p>
+  <div class="muted">热度 {{ p.heat }}{% if p.sales %} · {{ p.sales.product_name }}实时销量 {{ p.sales.sales_count }}{% endif %}</div>
+  {% if p.can_edit %}
+  <form method="post" action="{{ url_for('weibo_post_edit', post_id=p.id) }}" style="margin-top:8px;border-top:1px solid var(--bd);padding-top:8px">
+    <label>这条是系统自动发的,窗口关闭前你可以自己写感言</label>
+    <textarea name="content" rows="2" maxlength="140" placeholder="写点自己的感言替换默认文案...">{{ p.content }}</textarea>
+    <button class="btn" style="margin-top:6px">保存感言</button>
+  </form>
+  {% endif %}
+  {% if p.comments %}
+  <div style="margin-top:8px;border-top:1px solid var(--bd);padding-top:8px">
+    {% for c in p.comments %}
+    <div style="font-size:12px;margin-bottom:4px">
+      <span class="muted">
+        {% if c.stance == 'celebrity' %}{{ c.commenter_name }}
+        {% elif c.stance == 'fan' %}路人甲{% elif c.stance == 'hater' %}路人乙{% else %}围观群众{% endif %}:
+      </span>
+      {{ c.content }}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% if player %}
+  <form method="post" action="{{ url_for('weibo_comment') }}" style="display:flex;gap:6px;margin-top:8px">
+    <input type="hidden" name="post_id" value="{{ p.id }}">
+    <input name="content" placeholder="以艺人身份评论..." style="flex:1">
+    <button class="btn" style="white-space:nowrap">评论</button>
+  </form>
+  {% endif %}
+</div>
+{% else %}
+<div class="card muted">还没有人发过微博。</div>
+{% endfor %}
+
+{% endblock %}

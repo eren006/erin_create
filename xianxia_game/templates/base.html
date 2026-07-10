@@ -234,11 +234,19 @@ a:hover{color:var(--gold)}
 
     {# ── 常用 5 项 ── #}
     <a href="{{ url_for('dashboard') }}" {% if ep=='dashboard' %}class="active"{% endif %} style="{% if nav_energy_gift %}color:var(--gold){% endif %}">灵台{% if nav_energy_gift %}<span class="nav-badge">!</span>{% endif %}</a>
+    {% if xian_ascended %}
+    <a href="{{ url_for('mortal_watch') }}" {% if ep=='mortal_watch' %}class="active"{% endif %}>俯瞰人间</a>
+    <a href="{{ url_for('xian_combat') }}" {% if ep in ('xian_combat','xian_fight') %}class="active"{% endif %}>斗法</a>
+    <a href="{{ url_for('temple') }}" {% if ep=='temple' %}class="active"{% endif %}>神庙{% if nav_temple_pending %}<span class="nav-badge">{{ nav_temple_pending }}</span>{% endif %}</a>
+    <a href="{{ url_for('xian_forge') }}" {% if ep=='xian_forge' %}class="active"{% endif %}>法器阁</a>
+    {% else %}
     <a href="{{ url_for('cultivate') }}" {% if ep=='cultivate' %}class="active"{% endif %}>修炼</a>
     <a href="{{ url_for('explore') }}"   {% if ep=='explore'   %}class="active"{% endif %}>探索</a>
     <a href="{{ url_for('work') }}"      {% if ep=='work'      %}class="active"{% endif %}>打工</a>
     <a href="{{ url_for('combat') }}"    {% if ep in ('combat','fight') %}class="active"{% endif %}>战斗</a>
+    {% endif %}
 
+    {% if not xian_ascended %}
     {# ── 活动 ── #}
     <div class="nav-drop">
       <span class="nav-drop-btn {% if ep in ('encounters','event_page','gacha','enlighten','vein','yqs','companion','companion_gacha','tourney') or ep.startswith('encounters') %}active{% endif %}">活动{% if nav_pending_enc or nav_enlighten or nav_vein %}<span class="nav-badge">!</span>{% endif %}</span>
@@ -277,16 +285,19 @@ a:hover{color:var(--gold)}
         <a href="{{ url_for('forge') }}"      {% if ep in ('forge','forge_name_weapon','forge_destiny_weapons') %}class="active"{% endif %} style="{% if nav_craft_path and nav_craft_path != 'forge' %}opacity:.45{% endif %}">炼器{% if nav_craft_path=='forge' %} ▶{% endif %}</a>
         <a href="{{ url_for('mine') }}"       {% if ep=='mine'       %}class="active"{% endif %} style="{% if nav_craft_path and nav_craft_path != 'forge' %}opacity:.45{% endif %}">灵矿</a>
         <a href="{{ url_for('fulu') }}"       {% if ep=='fulu'       %}class="active"{% endif %} style="{% if nav_craft_path and nav_craft_path != 'brush' %}opacity:.45{% endif %}">符箓{% if nav_craft_path=='brush' %} ▶{% endif %}</a>
+        <a href="{{ url_for('fulu_mine') }}"  {% if ep=='fulu_mine'  %}class="active"{% endif %} style="{% if nav_craft_path and nav_craft_path != 'brush' %}opacity:.45{% endif %}">秘矿</a>
         <a href="{{ url_for('sword') }}"      {% if ep=='sword'      %}class="active"{% endif %} style="{% if nav_craft_path and nav_craft_path != 'sword_token' %}opacity:.45{% endif %}">剑修{% if nav_craft_path=='sword_token' %} ▶{% endif %}</a>
         <a href="{{ url_for('heqing') }}"     {% if ep=='heqing'     %}class="active"{% endif %} style="{% if nav_craft_path and nav_craft_path != 'heqing_token' %}opacity:.45{% endif %}">合欢修{% if nav_craft_path=='heqing_token' %} ▶{% endif %}</a>
         <a href="{{ url_for('forge_destiny_weapons') }}" {% if ep=='forge_destiny_weapons' %}class="active"{% endif %}>本命武器</a>
       </div>
     </div>
+    {% endif %}
 
     {# ── 进阶 ── #}
     <div class="nav-drop">
       <span class="nav-drop-btn {% if ep in ('techniques','pets','buy_pet','xisui','seclusion','perks','perk_select','achievements','calendar','temper','spells_page','lifespan_pawn','cave','yuanshen','awakening','bones') %}active{% endif %}">进阶</span>
       <div class="nav-drop-menu">
+        {% if not xian_ascended %}
         <a href="{{ url_for('spells_page') }}" {% if ep=='spells_page' %}class="active"{% endif %}>法术</a>
         <a href="{{ url_for('techniques') }}" {% if ep=='techniques' %}class="active"{% endif %}>功法</a>
         <a href="{{ url_for('pets') }}"       {% if ep in ('pets','buy_pet') %}class="active"{% endif %}>灵兽</a>
@@ -299,8 +310,13 @@ a:hover{color:var(--gold)}
         <a href="{{ url_for('peaks') }}" {% if ep=='peaks' %}class="active"{% endif %}>灵峰总览</a>
         <a href="{{ url_for('yuanshen') }}" {% if ep=='yuanshen' %}class="active"{% endif %}>元神</a>
         <a href="{{ url_for('awakening') }}" {% if ep=='awakening' %}class="active"{% endif %}>远古觉醒</a>
+        {% endif %}
+        {% if nav_immortal_seat_pending %}<a href="{{ url_for('immortal_seat_select') }}" {% if ep=='immortal_seat_select' %}class="active"{% endif %}>选择神位</a>
+        {% elif nav_immortal_seat %}<a href="{{ url_for('immortal_seat_view') }}" {% if ep=='immortal_seat_view' %}class="active"{% endif %}>位列仙班</a>{% endif %}
+        {% if not xian_ascended %}
         <a href="{{ url_for('perks') }}"      {% if ep in ('perks','perk_select') %}class="active"{% endif %}>感悟</a>
         <a href="{{ url_for('achievements') }}"{% if ep=='achievements'%}class="active"{% endif %}>成就</a>
+        {% endif %}
         <a href="{{ url_for('calendar') }}"   {% if ep=='calendar'   %}class="active"{% endif %}>日历</a>
       </div>
     </div>
@@ -309,14 +325,18 @@ a:hover{color:var(--gold)}
     <div class="nav-drop">
       <span class="nav-drop-btn {% if ep in ('social','social_gift','social_spar','social_invite','social_respond','social_propose','social_divorce','offspring','sect','sect_shop','disciples','pvp','mail','forum','forum_post') %}active{% endif %}">社交{% if nav_unread_mail or nav_red_packet %}<span class="nav-badge">{% if nav_unread_mail %}{{ nav_unread_mail }}{% else %}!{% endif %}</span>{% endif %}</span>
       <div class="nav-drop-menu">
+        {% if not xian_ascended %}
         <a href="{{ url_for('social') }}"    {% if ep.startswith('social') %}class="active"{% endif %}>好感·双修</a>
         <a href="{{ url_for('pvp') }}"       {% if ep=='pvp'       %}class="active"{% endif %}>切磋</a>
+        {% endif %}
         <a href="{{ url_for('mail') }}"      {% if ep=='mail'      %}class="active"{% endif %}>邮件{% if nav_unread_mail %}<span class="nav-badge">{{ nav_unread_mail }}</span>{% endif %}</a>
+        {% if not xian_ascended %}
         <a href="{{ url_for('forum') }}"     {% if ep in ('forum','forum_post') %}class="active"{% endif %}>论道坛{% if nav_red_packet %}<span class="nav-badge">🧧</span>{% endif %}</a>
         <a href="{{ url_for('offspring') }}" {% if ep=='offspring' %}class="active"{% endif %}>子嗣</a>
         <a href="{{ url_for('sect') }}"      {% if ep=='sect'      %}class="active"{% endif %}>宗门</a>
         <a href="{{ url_for('sect_shop') }}" {% if ep=='sect_shop' %}class="active"{% endif %}>宗门商店</a>
         <a href="{{ url_for('disciples') }}" {% if ep=='disciples' %}class="active"{% endif %}>师徒</a>
+        {% endif %}
       </div>
     </div>
 
@@ -324,9 +344,13 @@ a:hover{color:var(--gold)}
     <div class="nav-drop">
       <span class="nav-drop-btn {% if ep in ('quests','rankings','redeem') %}active{% endif %}">更多{% if nav_unclaimed_quests %}<span class="nav-badge">{{ nav_unclaimed_quests }}</span>{% endif %}</span>
       <div class="nav-drop-menu">
+        {% if not xian_ascended %}
         <a href="{{ url_for('quests') }}"   {% if ep=='quests'   %}class="active"{% endif %}>任务{% if nav_unclaimed_quests %}<span class="nav-badge">{{ nav_unclaimed_quests }}</span>{% endif %}</a>
+        {% endif %}
         <a href="{{ url_for('rankings') }}" {% if ep=='rankings' %}class="active"{% endif %}>排行</a>
+        {% if not xian_ascended %}
         <a href="{{ url_for('redeem') }}"   {% if ep=='redeem'   %}class="active"{% endif %}>兑换</a>
+        {% endif %}
       </div>
     </div>
   </nav>

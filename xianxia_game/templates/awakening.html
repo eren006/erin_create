@@ -28,9 +28,43 @@
     <div style="font-size:22px;font-weight:700;color:var(--gold)">{{ blessing.name }}</div>
     <div style="color:var(--muted);font-size:13px;margin-top:8px">{{ blessing.desc }}</div>
     <div style="color:var(--jade);font-size:12px;margin-top:6px">修炼速度 +{{ (ANCIENT_AWAKEN_CULTIVATE_BONUS*100)|int }}%（打坐、洞府挂机均生效）</div>
+    {% if reinforce_layers > 0 %}
+    <div style="color:var(--gold2);font-size:12px;margin-top:6px">祝福强化 {{ reinforce_layers }}/{{ ANCIENT_REINFORCE_MAX_LAYERS }} 层，额外攻击、防御各 +{{ (reinforce_layers*ANCIENT_REINFORCE_PCT_PER_LAYER*100)|int }}%</div>
+    {% endif %}
     <div style="color:var(--muted);font-size:11px;margin-top:10px">此祝福已永久融入本命，全场景自动生效，无需再次觉醒。</div>
   </div>
 </div>
+
+{% if char.realm_idx >= ANCIENT_REINFORCE_REALM_MIN %}
+<div class="card" style="margin-top:16px;border-color:var(--gold)">
+  <div class="card-h" style="color:var(--gold)">祝福强化 <span style="font-size:11px;font-weight:400;color:var(--muted)">{{ reinforce_layers }}/{{ ANCIENT_REINFORCE_MAX_LAYERS }} 层</span></div>
+  {% if reinforce_layers >= ANCIENT_REINFORCE_MAX_LAYERS %}
+  <div style="text-align:center;padding:20px 0;color:var(--gold);font-size:14px;font-weight:600">✦ 已强化至最高 {{ ANCIENT_REINFORCE_MAX_LAYERS }} 层，圆满</div>
+  {% else %}
+  {% if reinforce_layers >= ANCIENT_REINFORCE_TIER2_LAYER %}
+  <div style="font-size:11px;color:var(--gold);margin-bottom:8px">✦ 第 {{ ANCIENT_REINFORCE_TIER2_LAYER + 1 }}~{{ ANCIENT_REINFORCE_MAX_LAYERS }} 层为高阶强化，材料消耗更高</div>
+  {% endif %}
+  <div style="background:var(--sf2);border-radius:8px;padding:12px;margin-bottom:12px;font-size:13px">
+    <div style="display:flex;justify-content:space-between;padding:4px 0">
+      <span style="color:var(--muted)">所需材料</span>
+      <span style="color:{% if reinforce_mat_have >= reinforce_mat_need %}var(--green){% else %}var(--red){% endif %}">
+        {{ ANCIENT_AWAKEN_MATERIALS|join(' 或 ') }} ×{{ reinforce_mat_need }}{% if reinforce_mat_name %}（将使用 {{ reinforce_mat_name }}，持有 {{ reinforce_mat_have }}）{% else %}（持有 0）{% endif %}
+      </span>
+    </div>
+    <div style="display:flex;justify-content:space-between;padding:4px 0">
+      <span style="color:var(--muted)">本次强化</span>
+      <span style="color:var(--gold2);font-weight:700">攻击、防御各 +{{ (ANCIENT_REINFORCE_PCT_PER_LAYER*100)|int }}%</span>
+    </div>
+  </div>
+  <form method="post">
+    <input type="hidden" name="action" value="reinforce">
+    <button class="btn btn-gold" style="width:100%;padding:12px" {% if reinforce_mat_have < reinforce_mat_need %}disabled{% endif %}>
+      {% if reinforce_mat_have < reinforce_mat_need %}材料不足{% else %}✦ 强化祝福（第 {{ reinforce_layers + 1 }} 层）{% endif %}
+    </button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
 
 {% elif not eligible %}
 <div class="card" style="text-align:center;padding:40px 20px">
@@ -89,6 +123,8 @@
     <div>· 每位道友终身只可觉醒一次，一旦成功即永久获得所抽中的祝福，无法更换</div>
     <div>· 祝福效果会自动叠加进战斗、修炼、探索、炼丹炼器、双修等全部相关加成计算</div>
     <div>· 觉醒成功无论抽到哪种祝福，都额外附赠修炼速度 +{{ (ANCIENT_AWAKEN_CULTIVATE_BONUS*100)|int }}%，打坐修炼与洞府挂机均生效</div>
+    <div>· 觉醒后达到【{{ REALMS[ANCIENT_REINFORCE_REALM_MIN].name }}】及以上，可继续消耗材料强化祝福，每层攻击、防御各再 +{{ (ANCIENT_REINFORCE_PCT_PER_LAYER*100)|int }}%，必定成功，最多叠加 {{ ANCIENT_REINFORCE_MAX_LAYERS }} 层</div>
+    <div>· 强化第 1~{{ ANCIENT_REINFORCE_TIER2_LAYER }} 层，每层消耗造化神液/造化灵液任一 ×1；第 {{ ANCIENT_REINFORCE_TIER2_LAYER + 1 }}~{{ ANCIENT_REINFORCE_MAX_LAYERS }} 层为高阶强化，每层消耗造化神液/造化灵液任一 ×{{ ANCIENT_REINFORCE_TIER2_QTY }}</div>
     <div>· 造化神液/造化灵液可通过洗髓天材奖励、上等灵石拍卖行等途径获得</div>
   </div>
 </div>

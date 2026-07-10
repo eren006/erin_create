@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}通知 - 娱乐圈模拟器{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:4px">动态通知</h3>
+  <p class="muted">好友私信、粉丝来信、狗仔线索、新解锁的里程碑,都汇总在这里。</p>
+</div>
+
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--bd)">
+    <span>好友私信</span>
+    <span>
+      {% if counts.messages %}<span class="badge badge-red">{{ counts.messages }} 条未读</span>{% else %}<span class="muted">没有未读</span>{% endif %}
+      <a href="{{ url_for('messages_page') }}">去看看 →</a>
+    </span>
+  </div>
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--bd)">
+    <span>粉丝来信</span>
+    <span>
+      {% if counts.letters %}<span class="badge badge-red">{{ counts.letters }} 封待回复</span>{% else %}<span class="muted">没有待处理</span>{% endif %}
+      <a href="{{ url_for('messages_page') }}">去看看 →</a>
+    </span>
+  </div>
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--bd)">
+    <span>狗仔线索</span>
+    <span>
+      {% if counts.tips %}<span class="badge badge-red">{{ counts.tips }} 条待处理</span>{% else %}<span class="muted">没有新线索</span>{% endif %}
+      <a href="{{ url_for('paparazzi_page') }}">去看看 →</a>
+    </span>
+  </div>
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0">
+    <span>新里程碑</span>
+    <span>
+      {% if counts.milestones %}<span class="badge badge-gold">{{ counts.milestones }} 个新解锁</span>{% else %}<span class="muted">暂时没有新的</span>{% endif %}
+      <a href="{{ url_for('profile') }}">去看看 →</a>
+    </span>
+  </div>
+</div>
+{% endblock %}

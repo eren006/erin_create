@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}热搜 - 娱乐圈模拟器{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:10px">热搜榜</h3>
+  {% if not topics %}
+  <p class="muted">还没有产生过热搜,等下一次结算或先去发几条微博吧。</p>
+  {% endif %}
+  {% for t in topics %}
+  <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--bd)">
+    <span class="muted" style="width:16px">{{ t.rank }}</span>
+    <span class="badge {% if t.rank == 1 %}badge-red{% elif t.rank <= 3 %}badge-green{% else %}badge-gold{% endif %}">
+      {% if t.rank == 1 %}爆{% elif t.rank <= 3 %}热{% else %}新{% endif %}
+    </span>
+    <span style="flex:1">{{ t.topic_text }}</span>
+    <span class="muted">{{ t.heat }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

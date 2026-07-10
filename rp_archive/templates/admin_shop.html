@@ -307,8 +307,10 @@ function addShopItem() {
   if (!code) { showToast('❌ 请选择或输入物品码'); return; }
   if (price <= 0) { showToast('❌ 价格必须大于 0'); return; }
   if (!currency) { showToast('❌ 请输入货币名'); return; }
+  const currencyEntry = Object.entries(itemRegistry).find(([, info]) => info.type === 'currency' && info.name === currency);
+  if (!currencyEntry) { showToast(`❌ 未找到货币「${currency}」，请检查名称是否与已注册货币一致`); return; }
   if (shopListings.find(s => s.code === code)) { showToast('❌ 该物品已上架，请先下架再重新设定价格'); return; }
-  shopListings.push({ code, price, currencyName: currency, currencyCode: '' });
+  shopListings.push({ code, price, currencyName: currency, currencyCode: currencyEntry[0] });
   select.value = '';
   document.getElementById('new-item-manual').value = '';
   document.getElementById('new-price').value = '';

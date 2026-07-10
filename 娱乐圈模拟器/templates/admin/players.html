@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}艺人管理{% endblock %}
+{% block content %}
+<div class="card">
+  <table>
+    <tr><th>艺名</th><th>用户名</th><th>QQ</th><th>人气</th><th>黑值</th><th>粉丝</th><th></th></tr>
+    {% for p in players %}
+    <tr>
+      <td>{{ p.stage_name }}</td>
+      <td>{{ p.username }}</td>
+      <td>{{ p.qq }}</td>
+      <td>{{ p.popularity }}</td>
+      <td>{{ p.scandal_value }}</td>
+      <td>{{ p.fans_count }}</td>
+      <td><a class="btn" href="{{ url_for('admin_player_detail', pid=p.id) }}">详情</a></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7" class="muted">还没有已通过的艺人。</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

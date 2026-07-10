@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}筹备演唱会 - 娱乐圈模拟器{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:4px">彩排安排</h3>
+  <p class="muted">三个环节,每个环节自己选"稳扎稳打"还是"放手一搏"——放手一搏演对了会大加分,演砸了会拖后腿。选完直接开唱。</p>
+</div>
+
+<form method="post" action="{{ url_for('weibo_concert_prepare') }}">
+  {% for i, label in [(1, '开场曲目'), (2, '中段高潮'), (3, '安可环节')] %}
+  <div class="card">
+    <p style="margin-bottom:8px">第 {{ i }} 环节:{{ label }}</p>
+    <div style="display:flex;gap:8px">
+      <label class="btn" style="flex:1;text-align:center">
+        <input type="radio" name="choice_{{ i }}" value="safe" checked style="width:auto;display:inline">
+        稳扎稳打
+      </label>
+      <label class="btn" style="flex:1;text-align:center">
+        <input type="radio" name="choice_{{ i }}" value="risky" style="width:auto;display:inline">
+        放手一搏
+      </label>
+    </div>
+  </div>
+  {% endfor %}
+  <button class="btn btn-primary" style="width:100%">开唱</button>
+</form>
+{% endblock %}

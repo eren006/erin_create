@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}位列仙班 — 灵墟界{% endblock %}
+{% block head %}
+<style>
+/* ── 位列仙班：飞升敕封动画（与修炼页突破成功时同款，供随时回顾重温） ── */
+.xs-wrap{
+  margin-top:16px;padding:30px 20px 26px;border-radius:14px;position:relative;overflow:hidden;
+  background:linear-gradient(160deg,#1a1228 0%,#241a3e 55%,#1a1228 100%);
+  border:1px solid #5a3f8a;text-align:center;
+  opacity:0;animation:xs-wrap-in .8s ease-out forwards
+}
+.xs-wrap::before{
+  content:'';position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(ellipse at 50% 20%,rgba(201,168,76,.28) 0%,transparent 70%)
+}
+@keyframes xs-wrap-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.xs-omen{
+  position:relative;font-size:13px;letter-spacing:2px;color:#c8a8ff;
+  opacity:0;animation:xs-fade .7s ease-out .2s forwards
+}
+.xs-title{
+  position:relative;font-size:15px;color:#e8d8ff;margin-top:10px;letter-spacing:1px;
+  opacity:0;animation:xs-fade .7s ease-out .9s forwards
+}
+.xs-seat{
+  position:relative;font-size:30px;font-weight:700;margin-top:16px;letter-spacing:4px;
+  color:#f0d090;text-shadow:0 0 20px rgba(240,208,144,.7),0 0 40px rgba(201,168,76,.4);
+  opacity:0;transform:scale(.7);
+  animation:xs-seat-in .9s cubic-bezier(.2,1.4,.4,1) 1.6s forwards
+}
+@keyframes xs-seat-in{
+  0%  {opacity:0;transform:scale(.7)}
+  60% {opacity:1;transform:scale(1.08)}
+  100%{opacity:1;transform:scale(1)}
+}
+.xs-desc{
+  position:relative;font-size:12px;color:#b89de8;margin-top:8px;
+  opacity:0;animation:xs-fade .7s ease-out 2.5s forwards
+}
+.xs-life{
+  position:relative;margin-top:16px;padding-top:14px;border-top:1px solid #3d2b6e;
+  font-size:13px;color:#9bd4c0;
+  opacity:0;animation:xs-fade .7s ease-out 3.1s forwards
+}
+@keyframes xs-fade{from{opacity:0}to{opacity:1}}
+.is-page{max-width:640px;margin:0 auto}
+</style>
+{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">✦ 位列仙班 <small>飞升敕封纪念</small></div>
+
+<div class="is-page">
+  <div class="xs-wrap" id="xsWrap">
+    <div class="xs-omen">✦ 霞光万道贯穿虚空，天地为之震颤 ✦</div>
+    <div class="xs-title">飞升真仙，位列仙班</div>
+    <div class="xs-seat">{{ seat_full_name }}</div>
+    <div class="xs-desc">{{ flavor }}</div>
+    <div class="xs-life">
+      {% if seat_date %}敕封于 {{ seat_date }}　·　{% endif %}寿元 <strong style="color:#f0d090">十万年</strong>
+    </div>
+  </div>
+
+  <div style="text-align:center;margin-top:18px">
+    <button type="button" onclick="replayImmortalSeat()" class="btn btn-gold" style="padding:8px 22px">↻ 重温封神时刻</button>
+  </div>
+</div>
+
+<script>
+function replayImmortalSeat(){
+  var wrap  = document.getElementById('xsWrap');
+  var clone = wrap.cloneNode(true);
+  wrap.parentNode.replaceChild(clone, wrap);
+  clone.id = 'xsWrap';
+}
+</script>
+{% endblock %}

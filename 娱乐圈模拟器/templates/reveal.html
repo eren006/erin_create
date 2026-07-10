@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}天赋与出身揭晓{% endblock %}
+{% block content %}
+<div class="card" style="max-width:440px;margin:20px auto">
+  <h3 style="margin-bottom:4px">老天爷是否公平?</h3>
+  <p class="muted" style="margin-bottom:16px">审核已通过,「{{ player.stage_name }}」的天赋和出身已经抽出。还可以重抽 {{ max_rolls - player.roll_count }} 次({{ player.roll_count }}/{{ max_rolls }})。</p>
+
+  <div style="margin-bottom:14px;font-size:13px">
+    <div><b>出身家庭:</b>{{ player.family_background }}</div>
+    <div class="muted" style="margin:2px 0 6px">{{ family_info[player.family_background].desc }}</div>
+    <div><b>出生地:</b>{{ player.birthplace }}</div>
+  </div>
+
+  <table>
+    {% for k, v in player.talents.items() %}
+    <tr><td>{{ k }}</td><td style="text-align:right">
+      <b style="color:{% if v >= 85 %}var(--red){% elif v <= 40 %}var(--muted){% else %}var(--text){% endif %}">{{ v }}</b>
+    </td></tr>
+    {% endfor %}
+  </table>
+
+  {% if player.traits %}
+  <div style="margin-top:14px">
+    <label style="margin:0 0 6px">隐藏词条</label>
+    {% for t in player.traits %}
+    <div class="badge badge-gold" style="margin-right:6px;display:inline-block;margin-bottom:6px">{{ t }} —— {{ trait_info[t].desc }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div style="margin-top:14px;font-size:13px;color:var(--muted)">
+    <div>经纪公司:{{ agency['agency_name'] }}({{ agency['tier'] }})</div>
+    <div>职业线:{{ career_line_label }}</div>
+    <div>人设:{{ player.persona_tag }}</div>
+  </div>
+
+  <div style="display:flex;gap:8px;margin-top:16px">
+    {% if player.roll_count < max_rolls %}
+    <form method="post" style="flex:1">
+      <input type="hidden" name="action" value="reroll">
+      <button class="btn" style="width:100%">不满意,重抽({{ max_rolls - player.roll_count }}次机会)</button>
+    </form>
+    {% endif %}
+    <form method="post" style="flex:1">
+      <input type="hidden" name="action" value="confirm">
+      <button class="btn btn-primary" style="width:100%">确认,进入主页面</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

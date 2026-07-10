@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}综艺录制 - 娱乐圈模拟器{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:4px">现场提问</h3>
+  <p class="muted">主持人抛来的问题,自己选"按人设剧本走"还是"随性发挥,展示真实自己"——没人知道你的真实性格讨不讨喜,是场赌注。选完直接录制。</p>
+</div>
+
+<form method="post" action="{{ url_for('weibo_variety_prepare') }}">
+  {% for i, label in [(1, '第一个问题'), (2, '第二个问题')] %}
+  <div class="card">
+    <p style="margin-bottom:8px">{{ label }}</p>
+    <div style="display:flex;gap:8px">
+      <label class="btn" style="flex:1;text-align:center">
+        <input type="radio" name="choice_{{ i }}" value="script" checked style="width:auto;display:inline">
+        按人设剧本走
+      </label>
+      <label class="btn" style="flex:1;text-align:center">
+        <input type="radio" name="choice_{{ i }}" value="natural" style="width:auto;display:inline">
+        随性发挥
+      </label>
+    </div>
+  </div>
+  {% endfor %}
+  <button class="btn btn-primary" style="width:100%">开始录制</button>
+</form>
+{% endblock %}

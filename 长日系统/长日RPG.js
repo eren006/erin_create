@@ -35,6 +35,26 @@ function isUserAdmin(ctx, msg)             { return getApi()?.isUserAdmin(ctx, m
 function ws(postData, ctx, msg, ok)        { return getApi()?.ws(postData, ctx, msg, ok); }
 // 向后兼容：存储辅助函数中 getMainExt() 仅作存在性守卫
 function getMainExt()                      { return getApi(); }
+const isArchiveEnabled = (...a) => getApi()?.isArchiveEnabled(...a) ?? false;
+const postToArchive    = (...a) => getApi()?.postToArchive(...a);
+
+// 将长文本按空行切块，攒到 CHUNK_LEN 就切一段，供合并转发按段拆成多个节点
+function chunkBagText(text) {
+    const CHUNK_LEN = 300;
+    const parts = [];
+    let current = "";
+    for (const block of text.split("\n\n")) {
+        const chunk = current ? current + "\n\n" + block : block;
+        if (chunk.length > CHUNK_LEN && current) {
+            parts.push(current);
+            current = block;
+        } else {
+            current = chunk;
+        }
+    }
+    if (current) parts.push(current);
+    return parts;
+}
 
 // 群聊内以合并转发发送多段内容；私聊没有合并转发能力，退化为逐条普通消息
 function sendForwardOrPlain(ctx, msg, contents, nickname = "长日系统") {
@@ -255,6 +275,9 @@ function getShop() {
 function saveShop(shop) {
     const main = getMainExt();
     if (main) mainKvSet("shop_listings", shop);
+    // 商城不含实时库存状态（纯配置），可以安全地立即同步回网页，
+    // 不用等管理员手动「推送全部」。
+    if (isArchiveEnabled()) postToArchive("/api/sync_config", { shop_listings: JSON.stringify(shop) });
 }
 
 function getMarket() {
@@ -628,20 +651,17 @@ function formatInventory(roleKey, roleName, reg, category = "全部", page = 1) 
 
     if (category === "全部") {
         for (const cat of catList) {
-            const displayItems = cat.items.slice(0, 3);
             lines.push(`${cat.emoji}${cat.name}(${cat.items.length})`);
-            for (const { entry, info } of displayItems) {
+            for (const { entry, info } of cat.items) {
                 if (info.type === "currency") {
                     lines.push(`${info.name}：${entry.count}`);
                 } else {
                     lines.push(formatItemEntry(entry, info));
+                    lines.push("");
                 }
             }
-            if (cat.items.length > 3) {
-                lines.push(`>查看全部${cat.items.length - 3}项`);
-            }
+            lines.push("");
         }
-        lines.push("");
         lines.push("指令:");
         lines.push(".背包 货币/道具/物品");
         lines.push(".背包 搜 关键词");
@@ -885,11 +905,6 @@ cmd_item_list.solve = (ctx, msg, cmdArgs) => {
     };
     const header = `📋 ${filter}列表（${entries.length}）：`;
     const CHUNK_SIZE = 15;
-    if (entries.length <= CHUNK_SIZE) {
-        seal.replyToSender(ctx, msg, `${header}\n${entries.map(formatEntry).join("\n")}`);
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
     const nodeContents = [header];
     for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
         nodeContents.push(entries.slice(i, i + CHUNK_SIZE).map(formatEntry).join("\n"));
@@ -2306,7 +2321,8 @@ cmd_bag.solve = (ctx, msg, cmdArgs) => {
         const tPlatform = msg.platform;
         const tUid = getRoleUid(tPlatform, targetRole);
         if (!tUid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${targetRole}」。`);
-        seal.replyToSender(ctx, msg, formatInventory(`${tPlatform}:${getPrimaryUid(tPlatform, tUid)}`, targetRole, getRegistry()));
+        const otherBagText = formatInventory(`${tPlatform}:${getPrimaryUid(tPlatform, tUid)}`, targetRole, getRegistry());
+        sendForwardOrPlain(ctx, msg, chunkBagText(otherBagText), `${targetRole}的背包`);
         return seal.ext.newCmdExecuteResult(true);
     }
 
@@ -2385,24 +2401,7 @@ ${lines.join("\n")}`);
     const page = Math.max(1, parseInt(arg2) || 1);
 
     const bagText = formatInventory(roleKey, roleName, reg, category, page);
-    const MAX_LEN = 300;
-    if (bagText.length <= MAX_LEN) {
-        seal.replyToSender(ctx, msg, bagText);
-    } else {
-        const parts = [];
-        let current = "";
-        for (const block of bagText.split("\n\n")) {
-            const chunk = current ? current + "\n\n" + block : block;
-            if (chunk.length > MAX_LEN && current) {
-                parts.push(current);
-                current = block;
-            } else {
-                current = chunk;
-            }
-        }
-        if (current) parts.push(current);
-        sendForwardOrPlain(ctx, msg, parts, `${roleName}的背包`);
-    }
+    sendForwardOrPlain(ctx, msg, chunkBagText(bagText), `${roleName}的背包`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["背包"] = cmd_bag;
@@ -2574,10 +2573,10 @@ cmd_delete_item.solve = (ctx, msg, cmdArgs) => {
     saveInvAll(invAll);
     if (bagCount > 0) log.push(`🎒 背包：清出 ×${bagCount}`);
 
-    // 2. 商城下架
+    // 2. 商城下架（含以该货币计价的上架，货币没了没法付款）
     const shop = getShop();
     const shopBefore = shop.length;
-    const shopAfter = shop.filter(l => l.code !== code);
+    const shopAfter = shop.filter(l => l.code !== code && l.currencyCode !== code);
     if (shopAfter.length < shopBefore) {
         saveShop(shopAfter);
         log.push(`🏪 商城：移除 ${shopBefore - shopAfter.length} 条上架`);
@@ -2616,11 +2615,11 @@ cmd_delete_item.solve = (ctx, msg, cmdArgs) => {
     saveCraftRecipes(craftRecipes);
     if (recipeLog.length > 0) log.push(`📋 配方：移除 ${recipeLog.join("、")}`);
 
-    // 6. 二手市场撤单
+    // 6. 二手市场撤单（含以该货币计价的挂单，货币没了没法付款）
     const market = getMarket();
     let marketCount = 0;
     for (const shCode of Object.keys(market)) {
-        if (market[shCode].code === code) {
+        if (market[shCode].code === code || market[shCode].currencyCode === code) {
             delete market[shCode];
             marketCount++;
         }
@@ -2646,6 +2645,46 @@ cmd_delete_item.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["删除物品"] = cmd_delete_item;
+
+// 货币被删除后同名重新注册会换 code，导致老的商城/二手市场挂单里存的 currencyCode 失配
+// （背包按当前 code 显示有余额，购买却按挂单里的旧 code 查到 0）。
+// 该指令按 currencyName 重新匹配当前注册表，批量修正所有挂单的 currencyCode，无需逐条重新上架。
+let cmd_fix_shop_currency = seal.ext.newCmdItemInfo();
+cmd_fix_shop_currency.name = "修复商城货币";
+cmd_fix_shop_currency.help = "【管理员】按货币名重新匹配商城/二手市场挂单里的货币 code\n用于货币被删除重建后，老挂单出现「背包有余额但购买提示不足」的情况";
+cmd_fix_shop_currency.solve = (ctx, msg) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+
+    const reg = getRegistry();
+    const currencyByName = {};
+    for (const item of Object.values(reg)) {
+        if (item.type === "currency") currencyByName[item.name] = item.code;
+    }
+
+    const shop = getShop();
+    let shopFixed = 0, shopOrphan = 0;
+    for (const listing of shop) {
+        const correctCode = currencyByName[listing.currencyName];
+        if (!correctCode) { shopOrphan++; continue; }
+        if (listing.currencyCode !== correctCode) { listing.currencyCode = correctCode; shopFixed++; }
+    }
+    if (shopFixed > 0) saveShop(shop);
+
+    const market = getMarket();
+    let marketFixed = 0, marketOrphan = 0;
+    for (const shCode of Object.keys(market)) {
+        const listing = market[shCode];
+        const correctCode = currencyByName[listing.currencyName];
+        if (!correctCode) { marketOrphan++; continue; }
+        if (listing.currencyCode !== correctCode) { listing.currencyCode = correctCode; marketFixed++; }
+    }
+    if (marketFixed > 0) saveMarket(market);
+
+    seal.replyToSender(ctx, msg,
+        `✅ 修复完成：\n🏪 商城：修正 ${shopFixed} 条${shopOrphan ? `，${shopOrphan} 条货币名已不存在（跳过）` : ""}\n🔄 二手市场：修正 ${marketFixed} 条${marketOrphan ? `，${marketOrphan} 条货币名已不存在（跳过）` : ""}`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["修复商城货币"] = cmd_fix_shop_currency;
 
 function isApplyTimeValid(main) {
     const hoursStr = mainStorGet("apply_item_hours");

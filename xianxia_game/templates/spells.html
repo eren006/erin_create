@@ -112,13 +112,13 @@
           </form>
         </div>
         {% endfor %}
-        {% if char.realm_idx >= MOVE_MIN_REALM and total_moves < MOVE_MAX %}
+        {% if char.realm_idx >= MOVE_MIN_REALM and sp.move_count < MOVE_MAX %}
         <form method="post" style="display:flex;align-items:center;gap:10px;{% if sp.moves %}margin-top:8px{% endif %}">
           <input type="hidden" name="action" value="forge_move">
           <input type="hidden" name="spell_id" value="{{ sp.id }}">
-          <span style="font-size:11px;color:var(--muted)">研制第{{ total_moves + 1 }}式（{{ next_move_cost }}灵石 + {{ MOVE_ENERGY_COST }}灵力 · 成功率{{ next_move_rate }}%）</span>
+          <span style="font-size:11px;color:var(--muted)">研制第{{ sp.next_move_num }}式（{{ sp.next_move_cost }}灵石 + {{ MOVE_ENERGY_COST }}灵力 · 成功率{{ sp.next_move_rate }}%）</span>
           <button class="btn btn-sm" style="background:rgba(140,80,200,.15);border-color:var(--purple);color:var(--purple)"
-            {% if char.spirit_stones < next_move_cost or energy < MOVE_ENERGY_COST %}disabled{% endif %}>
+            {% if char.spirit_stones < sp.next_move_cost or energy < MOVE_ENERGY_COST %}disabled{% endif %}>
             研制招式
           </button>
         </form>

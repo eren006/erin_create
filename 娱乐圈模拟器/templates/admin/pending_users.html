@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}审核队列{% endblock %}
+{% block content %}
+<div class="card" style="display:flex;gap:10px">
+  <div style="flex:1;text-align:center">
+    <div class="muted">待审核</div>
+    <div style="font-size:18px;font-weight:700">{{ counts.pending }}</div>
+  </div>
+  <div style="flex:1;text-align:center">
+    <div class="muted">已通过</div>
+    <div style="font-size:18px;font-weight:700">{{ counts.approved }}</div>
+  </div>
+  <div style="flex:1;text-align:center">
+    <div class="muted">已拒绝</div>
+    <div style="font-size:18px;font-weight:700">{{ counts.rejected }}</div>
+  </div>
+</div>
+
+<div class="card" style="display:flex;gap:8px">
+  <a class="btn {{ 'btn-primary' if status_filter=='pending' else '' }}" href="?status=pending">待审核</a>
+  <a class="btn {{ 'btn-primary' if status_filter=='approved' else '' }}" href="?status=approved">已通过</a>
+  <a class="btn {{ 'btn-primary' if status_filter=='rejected' else '' }}" href="?status=rejected">已拒绝</a>
+  <a class="btn {{ 'btn-primary' if status_filter=='all' else '' }}" href="?status=all">全部</a>
+</div>
+
+{% for e in entries %}
+<div class="card">
+  <div style="display:flex;justify-content:space-between">
+    <b>{{ e.user.username }}</b>
+    <span class="badge {% if e.user.status=='pending' %}badge-gold{% elif e.user.status=='approved' %}badge-green{% else %}badge-red{% endif %}">
+      {{ e.user.status }}
+    </span>
+  </div>
+  <div class="muted" style="margin-top:6px">QQ: {{ e.user.qq }}</div>
+  {% if e.player %}
+  <div class="muted">艺名: {{ e.player.stage_name }} · 职业线: {{ career_line_labels.get(e.player.career_lines_list[0], '') if e.player.career_lines_list else '' }} · 经纪公司ID: {{ e.player.agency_id }}</div>
+  {% endif %}
+  {% if e.user.status == 'pending' %}
+  <div style="margin-top:10px;display:flex;gap:8px">
+    <form method="post" action="{{ url_for('admin_user_approve', uid=e.user.id) }}">
+      <button class="btn btn-primary">通过</button>
+    </form>
+    <form method="post" action="{{ url_for('admin_user_reject', uid=e.user.id) }}">
+      <button class="btn">拒绝</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+{% else %}
+<div class="card muted">这个分类下没有账号。</div>
+{% endfor %}
+{% endblock %}

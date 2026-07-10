@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}注册 - 娱乐圈模拟器{% endblock %}
+{% block content %}
+<div class="card" style="max-width:440px;margin:20px auto">
+  <h3 style="margin-bottom:4px">注册</h3>
+  <p class="muted" style="margin-bottom:16px">不需要邀请码,但需要填写 QQ,提交后由管理员审核通过才能登录。天赋、隐藏词条、出身背景要等审核通过后首次登录才会揭晓。</p>
+  <form method="post">
+    <label>用户名</label>
+    <input name="username" required minlength="2" maxlength="20">
+    <label>密码(至少 6 位)</label>
+    <input type="password" name="password" required minlength="6">
+    <label>QQ 号</label>
+    <input name="qq" required>
+    <label>艺名</label>
+    <input name="stage_name" required maxlength="12">
+    <label>性别</label>
+    <select name="gender" required>
+      <option value="">请选择</option>
+      <option value="male">男</option>
+      <option value="female">女</option>
+    </select>
+    <p class="muted" style="margin:2px 0 0">有的角色只招男艺人或只招女艺人,性别会影响后续能不能抢某些角色。</p>
+    <label>经纪公司</label>
+    <select name="agency_id" required>
+      <option value="">请选择</option>
+      {% for a in agencies %}
+      <option value="{{ a['id'] }}">{{ a['agency_name'] }}({{ a['tier'] }},抽成{{ (a['cut_rate']*100)|round|int }}%)</option>
+      {% endfor %}
+    </select>
+    <label>主职业线</label>
+    <select name="career_line" required>
+      <option value="">请选择</option>
+      {% for k, v in career_lines.items() %}
+      <option value="{{ k }}">{{ v }}</option>
+      {% endfor %}
+    </select>
+    <label>人设标签</label>
+    <select name="persona_tag" required>
+      <option value="">请选择</option>
+      {% for t in persona_tags %}
+      <option value="{{ t }}">{{ t }}</option>
+      {% endfor %}
+    </select>
+    <button class="btn btn-primary" style="margin-top:16px;width:100%">提交注册</button>
+  </form>
+  <p class="muted" style="margin-top:12px">已有账号? <a href="{{ url_for('login') }}">去登录</a></p>
+</div>
+{% endblock %}

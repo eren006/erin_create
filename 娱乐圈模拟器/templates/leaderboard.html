@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}排行榜 - 娱乐圈模拟器{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:10px">人气排行榜</h3>
+  <p class="muted" style="margin-bottom:10px">这个世界是固定的一批人在竞争,NPC 艺人也在同台较量。</p>
+  <table>
+    <tr><th>#</th><th>艺名</th><th>人气</th><th>粉丝</th><th>黑值</th><th></th></tr>
+    {% for r in rows %}
+    <tr {% if r.id == me_id %}style="background:var(--red-dim)"{% endif %}>
+      <td>{{ loop.index }}</td>
+      <td>{{ r.stage_name }}{% if r.id == me_id %} <span class="badge badge-red">我</span>{% endif %}</td>
+      <td>{{ r.popularity }}</td>
+      <td>{{ r.fans_count }}</td>
+      <td>{{ r.scandal_value }}</td>
+      <td>{% if r.is_npc %}<span class="badge badge-gold">NPC</span>{% endif %}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="muted">还没有排行数据。</td></tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:10px">超话势力榜</h3>
+  <p class="muted" style="margin-bottom:10px">按死忠粉忠诚度排序——这条数值靠跨界发歌、超话打卡这类"用心程度"攒,不看真实水平。</p>
+  <table>
+    <tr><th>#</th><th>艺名</th><th>超话势力</th><th></th></tr>
+    {% for r in loyalty_rows %}
+    <tr {% if r.id == me_id %}style="background:var(--red-dim)"{% endif %}>
+      <td>{{ loop.index }}</td>
+      <td><a href="{{ url_for('super_topic_page', player_id=r.id) }}">{{ r.stage_name }}</a>{% if r.id == me_id %} <span class="badge badge-red">我</span>{% endif %}</td>
+      <td>{{ r.core_fan_loyalty }}</td>
+      <td>{% if r.is_npc %}<span class="badge badge-gold">NPC</span>{% endif %}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" class="muted">还没有排行数据。</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

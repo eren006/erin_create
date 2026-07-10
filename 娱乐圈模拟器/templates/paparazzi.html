@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}狗仔 - 娱乐圈模拟器{% endblock %}
+{% block content %}
+
+<div class="card">
+  <h3 style="margin-bottom:4px">神秘线人</h3>
+  <p class="muted">总有人在私信里给你递料,要不要跟进,自己拿主意。当前资金 {{ cash }}。</p>
+</div>
+
+{% for t in tips %}
+<div class="card">
+  <div style="font-size:12px" class="muted">线人</div>
+  <p style="margin:6px 0">{{ t.tip_text }}</p>
+  <form method="post" action="{{ url_for('paparazzi_act') }}" style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
+    <input type="hidden" name="tip_id" value="{{ t.id }}">
+    <button class="btn" name="action" value="basic" style="width:100%">
+      先摸个底<br><span class="muted" style="font-size:11px">资金 -{{ tiers.basic.cost }}</span>
+    </button>
+    <button class="btn" name="action" value="deep" style="width:100%">
+      深挖到底<br><span class="muted" style="font-size:11px">资金 -{{ tiers.deep.cost }} · 需要咖位 {{ tiers.deep.min_tier }} 以上</span>
+    </button>
+    <button class="btn btn-primary" name="action" value="attack" style="width:100%">
+      直接捅出去<br><span style="font-size:11px;opacity:.85">资金 -{{ attack_cost }} · 有反噬风险</span>
+    </button>
+    <button class="btn" name="action" value="hate_campaign" style="width:100%">
+      雇人长期黑他<br><span class="muted" style="font-size:11px">资金 -{{ hate_campaign_cost }} · 体力 -20 · 持续 {{ hate_campaign_ticks }} 轮</span>
+    </button>
+  </form>
+</div>
+{% else %}
+<div class="card muted">线人今天没消息,过会儿再来看看。</div>
+{% endfor %}
+
+<p class="muted" style="margin-top:4px">想自己指定目标?<a href="{{ url_for('weibo_attack') }}">去看完整名单 →</a></p>
+
+{% endblock %}

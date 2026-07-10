@@ -26,5 +26,13 @@
       "port": 5055,
       "env": { "PORT": "5055" }
     }
+  ,{
+      "name": "yulequan",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["娱乐圈模拟器/run.py"],
+      "port": 5007,
+      "autoPort": true,
+      "env": { "TICK_INTERVAL_SECONDS": "60" }
+    }
   ]
 }

@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}神庙 — 灵墟界{% endblock %}
+{% block head %}
+<style>
+.tp-hero{
+  padding:20px;border-radius:12px;position:relative;overflow:hidden;text-align:center;margin-bottom:16px;
+  background:linear-gradient(160deg,#1a1228 0%,#20182f 100%);border:1px solid #4a3a70
+}
+.tp-hero::before{
+  content:'';position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(ellipse at 50% 0%,rgba(201,168,76,.2) 0%,transparent 70%)
+}
+.tp-name{position:relative;font-size:20px;font-weight:700;color:#f0d090}
+.tp-style{position:relative;font-size:12px;color:#c8a8ff;margin-top:6px}
+.tp-incense{position:relative;font-size:12px;color:#9bd4c0;margin-top:8px}
+
+.tp-style-pick{
+  padding:10px;border-radius:8px;cursor:pointer;border:1px solid var(--bd);background:var(--sf2);
+  font-size:12px;text-align:center;transition:all .15s
+}
+.tp-style-pick.sel{border-color:var(--gold);background:rgba(166,124,26,.12)}
+
+.tp-question{
+  padding:14px;border-radius:10px;background:rgba(155,127,224,.06);border:1px solid rgba(155,127,224,.3);
+  margin-bottom:12px
+}
+.tp-visitor{font-size:12px;color:var(--purple);font-weight:600;margin-bottom:4px}
+.tp-q-text{font-size:13px;color:var(--text);margin-bottom:10px;line-height:1.7}
+
+.tp-hist{
+  padding:8px 12px;border-radius:8px;background:var(--sf2);border:1px solid var(--bd);
+  font-size:12px;color:var(--muted);margin-bottom:6px;line-height:1.6
+}
+</style>
+{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">⛩ 神庙 <small>道行圆满，享人间香火</small></div>
+
+<div class="tp-hero">
+  <div class="tp-name">{{ char.temple_name or (char.name ~ '之庙') }}</div>
+  {% if style %}<div class="tp-style">{{ style.name }} · {{ style.desc }}</div>{% endif %}
+  <div class="tp-incense">香火 <strong style="color:#f0d090">{{ char.temple_incense or 0 }}</strong></div>
+</div>
+
+{% if pending %}
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h" style="color:var(--purple)">待回应的求助 <span style="font-size:11px;font-weight:400;color:var(--muted)">（{{ pending|length }}）</span></div>
+  {% for p in pending %}
+  <div class="tp-question">
+    <div class="tp-visitor">{{ p.visitor }} 前来求助</div>
+    <div class="tp-q-text">「{{ p.question }}」</div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      {% for c in p.choices %}
+      <form method="post">
+        <input type="hidden" name="action" value="answer">
+        <input type="hidden" name="visit_id" value="{{ p.id }}">
+        <input type="hidden" name="idx" value="{{ loop.index0 }}">
+        <button type="submit" class="btn" style="width:100%;text-align:left;font-size:12px">{{ c.text }}</button>
+      </form>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">重新布置神庙</div>
+  <form method="post" style="display:flex;flex-direction:column;gap:10px">
+    <input type="hidden" name="action" value="set_temple">
+    <input name="temple_name" maxlength="12" value="{{ char.temple_name }}" placeholder="为你的神庙取个名字（限12字）"
+      style="background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:8px 12px;font-family:inherit;font-size:13px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px">
+      {% for s in TEMPLE_STYLES %}
+      <label class="tp-style-pick {% if char.temple_style == s.id %}sel{% endif %}">
+        <input type="radio" name="temple_style" value="{{ s.id }}" {% if char.temple_style == s.id %}checked{% endif %} style="display:none">
+        <div style="font-weight:600;color:var(--gold2)">{{ s.name }}</div>
+        <div style="color:var(--muted);font-size:11px;margin-top:4px">{{ s.desc }}</div>
+      </label>
+      {% endfor %}
+    </div>
+    <button type="submit" class="btn btn-gold">保存布置</button>
+  </form>
+</div>
+
+{% if history %}
+<div class="card">
+  <div class="card-h">朝拜记录</div>
+  {% for h in history %}
+  <div class="tp-hist">
+    <strong style="color:var(--gold2)">{{ h.visitor }}</strong>
+    {% if h.question %}
+      前来求助：「{{ h.question }}」<br>你的应对：{{ h.response_text }}
+    {% else %}
+      {{ h.content }}
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+</div>
+<script>
+document.querySelectorAll('.tp-style-pick').forEach(function(el){
+  el.addEventListener('click', function(){
+    document.querySelectorAll('.tp-style-pick').forEach(function(e){ e.classList.remove('sel'); });
+    el.classList.add('sel');
+    el.querySelector('input').checked = true;
+  });
+});
+</script>
+{% endblock %}

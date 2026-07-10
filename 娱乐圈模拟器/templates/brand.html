@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}代言 - 娱乐圈模拟器{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:4px">代言/品牌合作</h3>
+  <p class="muted" style="margin-bottom:6px">
+    我的代言信誉:<b>{{ reputation }}</b> —— 大牌需要信誉攒够,小众代言先接着攒。合约期内塌房会被解约扣违约金。
+  </p>
+  {% for bv in brand_views %}
+  <div style="border-top:1px solid var(--bd);padding:10px 0">
+    <div style="display:flex;justify-content:space-between">
+      <b>{{ bv.brand.brand_name }}</b>
+      <span class="badge {% if bv.brand.tier == 'top' %}badge-red{% elif bv.brand.tier == 'mid' %}badge-gold{% else %}badge-green{% endif %}">
+        {% if bv.brand.tier == 'top' %}大牌{% elif bv.brand.tier == 'mid' %}二线{% else %}小众{% endif %}
+      </span>
+    </div>
+    <div class="muted" style="margin-top:4px">
+      门槛:咖位 {{ bv.brand.min_tier }} 以上 · 黑值 ≤{{ bv.brand.max_scandal }} · 信誉 ≥{{ bv.brand.min_reputation }}
+    </div>
+    <div class="muted">
+      合同奖励:{{ bv.brand.reward_cash }} 资金 / {{ bv.brand.reward_reputation }} 信誉,合约时长 {{ (bv.brand.duration_seconds / 3600) | round | int }} 小时
+    </div>
+    {% if bv.applied %}
+    <p class="muted" style="margin-top:6px">已提交合作意向,等待品牌方筛选</p>
+    {% elif not bv.eligible %}
+    <p class="muted" style="margin-top:6px">{{ bv.reason }}</p>
+    {% else %}
+    <form method="post" action="{{ url_for('brand_apply') }}" style="margin-top:6px">
+      <input type="hidden" name="brand_id" value="{{ bv.brand.id }}">
+      <button class="btn btn-primary">递交合作提案</button>
+    </form>
+    {% endif %}
+  </div>
+  {% else %}
+  <p class="muted">现在没有开放的品牌需求,等下一轮开放。</p>
+  {% endfor %}
+</div>
+
+{% if signed %}
+<div class="card">
+  <h4 style="margin-bottom:8px">正在履约的合同</h4>
+  {% for s in signed %}
+  <div style="padding:6px 0;border-bottom:1px solid var(--bd)">{{ s.brand_name }} —— 履约中,塌房会被解约</div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}品牌代言人 - 娱乐圈模拟器{% endblock %}
+{% block content %}
+
+<div class="card">
+  <h3 style="margin-bottom:4px">品牌代言人</h3>
+  <p class="muted">全球顶级品牌只认一张脸,坑位有限,可以直接挑战顶替现任。我的综合分:<b>{{ my_score }}</b>(信誉×2 + 人气 + 拍摄/专访次数×3 + 获奖数×3),申请/挑战消耗 {{ cost }} 资金 + 体力 15。</p>
+</div>
+
+{% for v in views %}
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <b>{{ v.ambassador.brand_name }}</b>
+    {% if v.holder %}
+    <span class="badge badge-gold">{{ v.holder.stage_name }}{% if v.is_me %}(我){% endif %} · 分数 {{ v.holder_score }}</span>
+    {% else %}
+    <span class="badge badge-green">虚位以待</span>
+    {% endif %}
+  </div>
+  <p class="muted" style="margin-top:6px;font-size:12px">
+    门槛:咖位 {{ v.ambassador.min_tier }} 以上 · 黑值 ≤{{ v.ambassador.max_scandal }} · 信誉 ≥{{ v.ambassador.min_reputation }}
+  </p>
+  {% if v.is_me %}
+  <p class="muted" style="margin-top:6px">这个牌子现在是你的了。</p>
+  {% elif not v.eligible %}
+  <p class="muted" style="margin-top:6px">{{ v.reason }}</p>
+  {% else %}
+  <form method="post" action="{{ url_for('ambassador_apply') }}" style="margin-top:8px">
+    <input type="hidden" name="ambassador_id" value="{{ v.ambassador.id }}">
+    <button class="btn btn-primary" style="width:100%">{% if v.holder %}发起挑战{% else %}申请代言{% endif %}</button>
+  </form>
+  {% endif %}
+</div>
+{% endfor %}
+
+{% endblock %}

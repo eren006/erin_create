@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}审核中{% endblock %}
+{% block content %}
+<div class="card" style="max-width:440px;margin:40px auto;text-align:center">
+  <h3 style="margin-bottom:10px">提交成功</h3>
+  <p class="muted">账号正在审核中,请等待管理员通过后再登录。审核通过后首次登录,会揭晓你的天赋、隐藏词条和出身背景。</p>
+  <p class="muted" style="margin-top:16px"><a href="{{ url_for('login') }}">返回登录页</a></p>
+</div>
+{% endblock %}

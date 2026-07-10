@@ -32,6 +32,10 @@
           <span style="font-size:11px;color:var(--purple);border:1px solid var(--purple);border-radius:6px;padding:0 5px;margin-left:4px"
                 title="{{ ANCIENT_BLESSING_MAP[p.ancient_blessing_id]['desc'] }}">{{ ANCIENT_BLESSING_MAP[p.ancient_blessing_id]['figure'] }}后人</span>
           {% endif %}
+          {% set stag = immortal_seat_tag(p) %}
+          {% if stag %}
+          <span style="font-size:11px;color:var(--gold2);border:1px solid var(--gold2);border-radius:6px;padding:0 5px;margin-left:4px">位列仙班·{{ stag }}</span>
+          {% endif %}
           {% if p.username == session.uname %}<span style="color:var(--jade);font-size:11px;margin-left:4px">（你）</span>{% endif %}
         </td>
         <td><span class="root-{{ p.spirit_root }}" style="font-size:12px">{{ p.spirit_root }}</span></td>

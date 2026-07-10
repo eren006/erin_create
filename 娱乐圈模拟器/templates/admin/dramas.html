@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}剧组管理{% endblock %}
+{% block content %}
+{% for dv in drama_views %}
+<div class="card">
+  <div style="display:flex;justify-content:space-between">
+    <b>{{ dv.drama.title }}</b>
+    <span class="badge badge-gold">{{ dv.drama.budget_tier }} 级</span>
+  </div>
+  <table style="margin-top:6px">
+    <tr><th>角色</th><th>性别</th><th>咖位</th><th>状态</th><th>中选者</th></tr>
+    {% for r in dv.roles %}
+    <tr>
+      <td>{{ r.role_name }}</td>
+      <td>{{ r.gender_requirement }}</td>
+      <td>{{ r.tier_requirement }}</td>
+      <td>{{ r.status }}</td>
+      <td>{{ r.winner_name or '-' }}{% if r.winner_is_npc_fill %} <span class="badge badge-gold">NPC补位</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <form method="post" action="{{ url_for('admin_force_resolve_drama', drama_id=dv.drama.id) }}" style="margin-top:8px">
+    <button class="btn">强制结算</button>
+  </form>
+</div>
+{% else %}
+<div class="card muted">还没有剧组。</div>
+{% endfor %}
+{% endblock %}

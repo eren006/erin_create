@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}斗法 — 灵墟界{% endblock %}
+{% block head %}
+<style>
+.xc-card{
+  padding:16px;border-radius:12px;background:linear-gradient(160deg,#1a1228 0%,#20182f 100%);
+  border:1px solid #4a3a70;transition:all .2s
+}
+.xc-card:hover{border-color:#c9a84c;background:linear-gradient(160deg,#241a3e 0%,#2a2040 100%)}
+.xc-name{font-size:17px;font-weight:700;color:#f0d090;margin-bottom:6px}
+.xc-desc{font-size:12px;color:#9a8cc0;line-height:1.7;margin-bottom:10px}
+.xc-stats{display:flex;gap:14px;font-size:11px;color:#c8a8ff;margin-bottom:12px}
+.xc-hist{
+  padding:8px 12px;border-radius:8px;background:var(--sf2);border:1px solid var(--bd);
+  font-size:12px;color:var(--muted);margin-bottom:6px
+}
+.xc-row{
+  display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;
+  background:var(--sf2);border:1px solid var(--bd);margin-bottom:6px
+}
+.xc-row-name{flex:1;font-size:13px;font-weight:600;color:var(--gold2)}
+.xc-row-stats{font-size:11px;color:var(--muted);white-space:nowrap}
+</style>
+{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">⚔ 斗法 <small>道行圆满，数值锁定，尽情一战</small></div>
+
+<div class="card" style="margin-bottom:16px;padding:12px 16px;display:flex;gap:24px">
+  <span style="font-size:13px;color:var(--muted)">攻击 <strong style="color:var(--blue)">{{ '{:,}'.format(XIAN_COMBAT_ATK) }}</strong></span>
+  <span style="font-size:13px;color:var(--muted)">防御 <strong style="color:var(--green)">{{ '{:,}'.format(XIAN_COMBAT_DEF) }}</strong></span>
+  <span style="font-size:12px;color:var(--muted);margin-left:auto">不耗灵力 · 不掉血 · 无死亡风险</span>
+</div>
+
+<div class="card-h" style="margin-bottom:10px">真仙限定强敌</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;margin-bottom:20px">
+  {% for m in monsters %}
+  <div class="xc-card">
+    <div class="xc-name">{{ m.name }}</div>
+    <div class="xc-desc">{{ m.desc }}</div>
+    <div class="xc-stats">
+      <span>气血 {{ '{:,}'.format(m.hp) }}</span>
+      <span>攻击 {{ '{:,}'.format(m.atk) }}</span>
+      <span>防御 {{ '{:,}'.format(m.def) }}</span>
+    </div>
+    <form method="post" action="{{ url_for('xian_fight', mid=m.id) }}">
+      <button type="submit" class="btn btn-gold" style="width:100%">✦ 出手斗法</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+
+{% if mortal_monsters %}
+<div class="card-h" style="margin-bottom:10px">凡间妖兽 <span style="font-size:11px;font-weight:400;color:var(--muted)">（昔日战斗场旧识，如今不过弹指之间）</span></div>
+<div class="card" style="margin-bottom:20px;max-height:360px;overflow-y:auto">
+  {% for m in mortal_monsters %}
+  <div class="xc-row">
+    <span class="xc-row-name">{{ m.name }}</span>
+    <span class="xc-row-stats">气血 {{ '{:,}'.format(m.hp) }} · 攻击 {{ '{:,}'.format(m.attack) }} · 防御 {{ '{:,}'.format(m.defense) }}</span>
+    <form method="post" action="{{ url_for('xian_fight', mid=m.id) }}">
+      <button type="submit" class="btn btn-sm">出手</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if history %}
+<div class="card">
+  <div class="card-h">斗法记录</div>
+  {% for h in history %}
+  <div class="xc-hist">{{ h.content }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+</div>
+{% endblock %}

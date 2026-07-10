@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}CP - 娱乐圈模拟器{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:4px">CP热度榜</h3>
+  <p class="muted">只有合作过的人才会组成CP,任何人都能给别人的CP买通稿加热度,或者买黑稿拆一波。</p>
+</div>
+
+<div class="card">
+  <table>
+    <tr><th>#</th><th>CP</th><th>热度</th><th></th></tr>
+    {% for r in rows %}
+    <tr>
+      <td>{{ loop.index }}</td>
+      <td>{{ r.a_name }} × {{ r.b_name }}</td>
+      <td>{{ r.heat }}</td>
+      <td style="display:flex;gap:6px">
+        <form method="post" action="{{ url_for('cp_boost') }}">
+          <input type="hidden" name="cp_id" value="{{ r.id }}">
+          <button class="btn">买通稿({{ boost_cost }})</button>
+        </form>
+        <form method="post" action="{{ url_for('cp_smear') }}">
+          <input type="hidden" name="cp_id" value="{{ r.id }}">
+          <button class="btn">买黑稿({{ smear_cost }})</button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" class="muted">还没有人合作过,快去联合营业里凑一对。</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

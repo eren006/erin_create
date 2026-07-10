@@ -54,7 +54,11 @@
 {% if alch_lv >= ALCHEMY_LIQUID_GIFT_LEVEL %}
 <div style="background:rgba(155,127,224,.1);border:1px solid rgba(155,127,224,.3);border-radius:8px;
      padding:8px 14px;margin-bottom:20px;font-size:12px;color:var(--purple)">
-  🧪 丹修已达【{{ ALCHEMY_LEVELS[ALCHEMY_LIQUID_GIFT_LEVEL].name }}】，每日有 {{ (ALCHEMY_LIQUID_GIFT_CHANCE*100)|int }}% 概率自动获赠【造化灵液】×{{ ALCHEMY_LIQUID_GIFT_QTY }}，随邮件送达
+  {% if liquid_gift_total >= ALCHEMY_LIQUID_GIFT_MAX_TOTAL %}
+  🧪 你已累计获赠【造化灵液】{{ ALCHEMY_LIQUID_GIFT_MAX_TOTAL }} 份，丹道感应已然圆满，往后不再自动获赠
+  {% else %}
+  🧪 丹修已达【{{ ALCHEMY_LEVELS[ALCHEMY_LIQUID_GIFT_LEVEL].name }}】，每日有 {{ (ALCHEMY_LIQUID_GIFT_CHANCE*100)|int }}% 概率自动获赠【造化灵液】×{{ ALCHEMY_LIQUID_GIFT_QTY }}，随邮件送达（累计最多获赠 {{ ALCHEMY_LIQUID_GIFT_MAX_TOTAL }} 份，已获 {{ liquid_gift_total }} 份）
+  {% endif %}
 </div>
 {% else %}
 <div style="background:rgba(155,127,224,.06);border:1px solid rgba(155,127,224,.2);border-radius:8px;

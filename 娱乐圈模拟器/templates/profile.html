@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}我的主页 - 娱乐圈模拟器{% endblock %}
+{% block content %}
+
+<div class="card">
+  <h3 style="margin-bottom:4px">{{ player.stage_name }}</h3>
+  <p class="muted">咖位 {{ player.tier }} · {{ career_line_labels_all|join(' · ') }} · 人设「{{ player.persona_tag }}」</p>
+  <div style="margin-top:10px;font-size:13px">
+    <div><b>出身家庭:</b>{{ player.family_background }}</div>
+    <div class="muted" style="margin:2px 0 6px">{{ family_info[player.family_background].desc }}</div>
+    <div><b>出生地:</b>{{ player.birthplace }}</div>
+  </div>
+  <div style="margin-top:10px;font-size:13px;color:var(--muted)">
+    <div>经纪公司:{{ agency['agency_name'] }}({{ agency['tier'] }})</div>
+    <div>资金:{{ player.cash }} · 获奖次数:{{ player.awards_won }}</div>
+  </div>
+  <div style="margin-top:10px;font-size:13px">
+    <div>健康值:<b style="color:{% if player.health <= 20 %}var(--red){% elif player.health < 50 %}var(--gold){% else %}var(--green){% endif %}">{{ player.health }}</b>/100
+      {% if player.career_state == 'sick' %}<span class="badge badge-red">生病中,没法工作</span>{% endif %}
+    </div>
+    <div style="display:flex;gap:8px;margin-top:6px">
+      <form method="post" action="{{ url_for('rest_route') }}" style="flex:1">
+        <button class="btn" style="width:100%">休息</button>
+      </form>
+      <form method="post" action="{{ url_for('travel_route') }}" style="flex:1">
+        <button class="btn" style="width:100%">去旅游(花钱回血更多)</button>
+      </form>
+    </div>
+  </div>
+  <div style="margin-top:10px;font-size:13px">
+    {% if player.fan_club_name %}
+    <div style="display:flex;align-items:center;gap:6px">
+      粉丝团:<b>{{ player.fan_club_name }}</b>
+      {% if player.fan_club_color %}
+      <span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:{{ player.fan_club_color }};border:1px solid var(--bd)"></span>
+      {% endif %}
+    </div>
+    {% else %}
+    <form method="post" action="{{ url_for('set_fan_club_name') }}" style="margin-top:4px">
+      <label>给自己的粉丝团起个名字 + 选一个应援色(只能定一次,之后不能改)</label>
+      <div style="display:flex;gap:6px">
+        <input name="fan_club_prefix" maxlength="10" placeholder="比如:星芒" style="flex:1">
+        <input type="color" name="fan_club_color" value="#e6162d" style="width:44px;padding:2px;flex:0 0 auto">
+        <button class="btn" style="white-space:nowrap">定名</button>
+      </div>
+      <p class="muted" style="margin-top:4px;font-size:11px">选的颜色会自动算出"红/橙/黄/绿/青/蓝/紫/粉/黑/白/灰"里最接近的一个,拼在名字后面。</p>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <h4 style="margin-bottom:8px">七维天赋</h4>
+  <table>
+    {% for k, v in player.talents.items() %}
+    <tr><td>{{ k }}</td><td style="text-align:right">
+      <b style="color:{% if v >= 85 %}var(--red){% elif v <= 40 %}var(--muted){% else %}var(--text){% endif %}">{{ v }}</b>
+    </td></tr>
+    {% endfor %}
+  </table>
+  {% if player.traits %}
+  <div style="margin-top:12px">
+    <label style="margin:0 0 6px">隐藏词条</label>
+    {% for t in player.traits %}
+    <div class="badge badge-gold" style="margin-right:6px;display:inline-block;margin-bottom:6px">{{ t }} —— {{ trait_info[t].desc }}</div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted" style="margin-top:8px">没有抽到隐藏词条。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h4 style="margin-bottom:4px">职业线转型</h4>
+  <p class="muted" style="margin-bottom:8px">练着练着想兼一条线?转型消耗 {{ transition_cost }} 资金,原来的线不会丢。</p>
+  {% for line, label in career_line_labels.items() %}
+  {% set info = transition_status[line] %}
+  {% if not info.has %}
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--bd)">
+    <div>
+      <div>兼职{{ label }}</div>
+      <div class="muted" style="font-size:11px">{{ info.reason }}</div>
+    </div>
+    {% if info.eligible %}
+    <form method="post" action="{{ url_for('career_transition') }}">
+      <input type="hidden" name="target_line" value="{{ line }}">
+      <button class="btn btn-primary">转型</button>
+    </form>
+    {% else %}
+    <span class="muted" style="font-size:12px">还差点</span>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h4 style="margin-bottom:8px">荣誉墙</h4>
+  {% if milestones %}
+  {% for m in milestones %}
+  <span class="badge badge-gold" style="margin-right:6px;display:inline-block;margin-bottom:6px">🏆 {{ milestone_labels.get(m.milestone_key, m.milestone_key) }}</span>
+  {% endfor %}
+  {% else %}
+  <p class="muted">还没有解锁任何里程碑,继续努力吧。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h4 style="margin-bottom:8px">在跑合同</h4>
+  {% if active_dramas or active_brands %}
+  <table>
+    {% for d in active_dramas %}
+    <tr><td>{{ d.title }} · {{ d.role_name }}</td><td class="muted" style="text-align:right">拍摄中</td></tr>
+    {% endfor %}
+    {% for b in active_brands %}
+    <tr><td>{{ b.brand_name }}({{ b.tier }})</td><td class="muted" style="text-align:right">履约中</td></tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">目前没有在跑的剧组或代言合同。</p>
+  {% endif %}
+</div>
+
+{% endblock %}

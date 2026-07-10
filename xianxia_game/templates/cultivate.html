@@ -1,5 +1,50 @@
 {% extends "base.html" %}
 {% block title %}修炼 — 灵墟界{% endblock %}
+{% block head %}
+<style>
+/* ── 位列仙班：飞升敕封动画 ── */
+.xs-wrap{
+  margin-top:16px;padding:26px 18px 22px;border-radius:14px;position:relative;overflow:hidden;
+  background:linear-gradient(160deg,#1a1228 0%,#241a3e 55%,#1a1228 100%);
+  border:1px solid #5a3f8a;
+  opacity:0;animation:xs-wrap-in .8s ease-out forwards
+}
+.xs-wrap::before{
+  content:'';position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(ellipse at 50% 20%,rgba(201,168,76,.28) 0%,transparent 70%)
+}
+@keyframes xs-wrap-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.xs-omen{
+  position:relative;font-size:13px;letter-spacing:2px;color:#c8a8ff;
+  opacity:0;animation:xs-fade .7s ease-out .2s forwards
+}
+.xs-title{
+  position:relative;font-size:15px;color:#e8d8ff;margin-top:10px;letter-spacing:1px;
+  opacity:0;animation:xs-fade .7s ease-out .9s forwards
+}
+.xs-seat{
+  position:relative;font-size:30px;font-weight:700;margin-top:16px;letter-spacing:4px;
+  color:#f0d090;text-shadow:0 0 20px rgba(240,208,144,.7),0 0 40px rgba(201,168,76,.4);
+  opacity:0;transform:scale(.7);
+  animation:xs-seat-in .9s cubic-bezier(.2,1.4,.4,1) 1.6s forwards
+}
+@keyframes xs-seat-in{
+  0%  {opacity:0;transform:scale(.7)}
+  60% {opacity:1;transform:scale(1.08)}
+  100%{opacity:1;transform:scale(1)}
+}
+.xs-desc{
+  position:relative;font-size:12px;color:#b89de8;margin-top:8px;
+  opacity:0;animation:xs-fade .7s ease-out 2.5s forwards
+}
+.xs-life{
+  position:relative;margin-top:16px;padding-top:14px;border-top:1px solid #3d2b6e;
+  font-size:13px;color:#9bd4c0;
+  opacity:0;animation:xs-fade .7s ease-out 3.1s forwards
+}
+@keyframes xs-fade{from{opacity:0}to{opacity:1}}
+</style>
+{% endblock %}
 {% block body %}
 <div class="page">
 <div class="page-title">⚡ 修炼 <small>吐纳天地灵气，淬炼修为</small></div>
@@ -15,6 +60,14 @@
 <div style="background:rgba(155,127,224,.1);border:1px solid rgba(155,127,224,.3);border-radius:8px;
      padding:8px 14px;margin-bottom:14px;font-size:12px;color:var(--purple)">
   ✦ 已证大乘之境，感【{{ DACHENG_BUFF_NAME }}】，修炼所得永久 ×{{ DACHENG_BUFF_MULT|int }}
+</div>
+{% endif %}
+
+{% if char.exp_cap_reached_at %}
+{% set grace_left = [ASCEND_GRACE_SECS - (now_ts() - char.exp_cap_reached_at), 0] | max %}
+<div style="background:rgba(192,57,43,.12);border:1px solid var(--red);border-radius:8px;
+     padding:10px 14px;margin-bottom:14px;font-size:13px;color:var(--red)">
+  ⚠ 修为已臻真仙门槛！剩余 <strong>{{ (grace_left // 3600)|int }}</strong> 时 <strong>{{ ((grace_left % 3600) // 60)|int }}</strong> 分内若不能突破飞升，恐将<strong>灰飞烟灭</strong>！
 </div>
 {% endif %}
 
@@ -49,6 +102,18 @@
       {% if result.tribulation %}天劫加身，渡劫成功！{% else %}天地感应，突破成功！{% endif %}
     </div>
     <div style="color:var(--jade);font-size:16px;margin-top:8px">已晋入【{{ result.realm }}】</div>
+
+    {% if result.xian_seat_pending %}
+    <div class="xs-wrap" style="text-align:center">
+      <div class="xs-omen">✦ 霞光万道贯穿虚空，天地为之震颤 ✦</div>
+      <div class="xs-title" style="margin-bottom:14px">飞升真仙！天道已备下五席神位，静候你亲择</div>
+      <a href="{{ url_for('immortal_seat_select') }}" class="btn btn-gold" style="display:inline-block;padding:8px 22px;text-decoration:none;border-radius:6px;position:relative">
+        ✦ 立即选择神位 →
+      </a>
+      <div class="xs-life">寿元重铸，自此可享寿数 <strong style="color:#f0d090">十万年</strong></div>
+    </div>
+    {% endif %}
+
     {% if result.has_perk %}
     <div style="margin-top:14px;padding:12px;background:rgba(166,124,26,.15);border:1px solid rgba(166,124,26,.3);border-radius:8px">
       <div style="color:var(--gold);font-size:14px;margin-bottom:8px">✨ 天道馈赠，感悟现世</div>
@@ -242,11 +307,20 @@
         {% else %}
         <br>境界内小突破，必然成功。
         {% endif %}
+        {% if bone_need %}
+        <br>
+        <span style="color:{% if bone_ok %}var(--green){% else %}var(--red){% endif %}">
+          需集齐仙骨 {{ bone_have }}/{{ bone_need }} 块{% if not bone_ok %}，尚未集齐，无法突破{% endif %}
+        </span>
+        {% if not bone_ok %}
+        <a href="{{ url_for('bones') }}" style="color:var(--gold);margin-left:4px">→ 前往寻仙骨</a>
+        {% endif %}
+        {% endif %}
       </div>
       <form method="post">
         <input type="hidden" name="action" value="breakthrough">
-        <button type="submit" class="btn btn-gold" style="width:100%;padding:12px">
-          ✦ 尝试突破 → {{ next_r.name }}
+        <button type="submit" class="btn btn-gold" style="width:100%;padding:12px" {% if not bone_ok %}disabled{% endif %}>
+          {% if not bone_ok %}仙骨不足，无法突破{% else %}✦ 尝试突破 → {{ next_r.name }}{% endif %}
         </button>
       </form>
     </div>
@@ -262,6 +336,9 @@
         {% if char.realm_idx >= 13 %}
         <div style="color:var(--red);margin-top:4px">· 结丹以上：修炼与服丹均会积累<strong>心魔</strong>，心魔越重修为增益越低（最多-100%）</div>
         <div style="color:var(--red)">· 打坐驱散每次减少 10 点心魔；灵力消耗随境界递增：结丹 10、元婴/化神 30、合体/大乘 40、渡劫+ 50</div>
+        {% endif %}
+        {% if char.realm_idx >= 25 %}
+        <div style="color:var(--purple);margin-top:4px">· 大乘及以上：每一境界（含小境界）突破均需集齐对应数量的<strong>仙骨</strong>，境界越高所需越多，真仙需集齐 200 块，详见「进阶→寻仙骨」</div>
         {% endif %}
       </div>
     </div>

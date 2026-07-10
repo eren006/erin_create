@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}生活方式 - 娱乐圈模拟器{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:4px">明星生活方式</h3>
+  <p class="muted">房产/座驾是明确选购,不是抽卡。当前资金 {{ cash }}。买下会自动发一条晒图微博,人气按价位有对应加成。</p>
+</div>
+
+<div class="card">
+  <table>
+    <tr><th>分类</th><th>名称</th><th>价格</th><th></th></tr>
+    {% for key, item in catalog.items() %}
+    <tr>
+      <td>{{ item.category }}</td>
+      <td>{{ item.name }}</td>
+      <td>{{ item.price }}</td>
+      <td>
+        <form method="post">
+          <input type="hidden" name="item_key" value="{{ key }}">
+          <button class="btn btn-primary">购入</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card">
+  <h4 style="margin-bottom:8px">我的资产</h4>
+  <table>
+    <tr><th>分类</th><th>名称</th><th>价格</th></tr>
+    {% for a in assets %}
+    <tr>
+      <td>{{ a.category }}</td>
+      <td>{{ a.item_name }}</td>
+      <td>{{ a.price }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="3" class="muted">还没置办任何资产。</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

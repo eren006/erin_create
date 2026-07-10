@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}法器阁 — 灵墟界{% endblock %}
+{% block head %}
+<style>
+.xf-type{
+  padding:10px;border-radius:8px;cursor:pointer;border:1px solid var(--bd);background:var(--sf2);
+  font-size:12px;text-align:center;transition:all .15s
+}
+.xf-type.sel{border-color:var(--gold);background:rgba(166,124,26,.12)}
+.xf-cat{font-size:11px;color:var(--muted);margin:10px 0 6px}
+.xf-item{
+  padding:14px;border-radius:12px;background:linear-gradient(160deg,#1a1228 0%,#20182f 100%);
+  border:1px solid #4a3a70
+}
+.xf-item-name{font-size:16px;font-weight:700;color:#f0d090;margin-bottom:4px}
+.xf-item-desc{font-size:12px;color:#c8a8ff;line-height:1.7;margin-bottom:8px}
+.xf-item-stats{font-size:11px;color:#9bd4c0}
+</style>
+{% endblock %}
+{% block body %}
+<div class="page">
+<div class="page-title">🎼 法器阁 <small>耗费灵力炼制专属法器，自定名号与描述</small></div>
+
+<div class="card" style="margin-bottom:16px">
+  <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:8px">
+    <span>灵力</span><span>{{ energy }}/{{ MAX_ENERGY }}</span>
+  </div>
+  <div class="bar-wrap" style="margin-bottom:14px"><div class="bar-fill bar-jade" style="width:{{ (energy / MAX_ENERGY * 100)|int }}%"></div></div>
+
+  <form method="post" style="display:flex;flex-direction:column;gap:10px">
+    {% set cats = ['乐器','兵刃','法宝'] %}
+    {% for cat in cats %}
+    <div class="xf-cat">{{ cat }}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px">
+      {% for t in XIAN_ARTIFACT_TYPES if t.cat == cat %}
+      <label class="xf-type" title="{{ t.hint }}">
+        <input type="radio" name="type_id" value="{{ t.id }}" style="display:none">
+        <div style="font-weight:600;color:var(--gold2)">{{ t.name }}</div>
+      </label>
+      {% endfor %}
+    </div>
+    {% endfor %}
+
+    <input name="prefix" maxlength="8" placeholder="法器前缀名号（如"忘忧"，限8字，将与类型拼接，如"忘忧琵琶"）"
+      style="background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:8px 12px;font-family:inherit;font-size:13px">
+    <textarea name="description" maxlength="120" rows="3" placeholder="为这件法器写一段描述（限120字）"
+      style="background:var(--sf2);border:1px solid var(--bd);color:var(--text);border-radius:8px;padding:8px 12px;font-family:inherit;font-size:13px;resize:vertical"></textarea>
+
+    <button type="submit" class="btn btn-gold" style="width:100%;padding:10px" {% if energy < XIAN_ARTIFACT_COST %}disabled{% endif %}>
+      {% if energy < XIAN_ARTIFACT_COST %}灵力不足（需 {{ XIAN_ARTIFACT_COST }}）{% else %}✦ 炼制法器（消耗 {{ XIAN_ARTIFACT_COST }} 灵力）{% endif %}
+    </button>
+  </form>
+</div>
+
+{% if artifacts %}
+<div class="card-h" style="margin-bottom:10px">已炼法器（{{ artifacts|length }}）</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px">
+  {% for a in artifacts %}
+  <div class="xf-item">
+    <div class="xf-item-name">{{ a.custom_name }}</div>
+    {% if a.description %}<div class="xf-item-desc">{{ a.description }}</div>{% endif %}
+    <div class="xf-item-stats">攻击 {{ '{:,}'.format(a.atk) }} · 防御 {{ '{:,}'.format(a.def) }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+</div>
+<script>
+document.querySelectorAll('.xf-type').forEach(function(el){
+  el.addEventListener('click', function(){
+    document.querySelectorAll('.xf-type').forEach(function(e){ e.classList.remove('sel'); });
+    el.classList.add('sel');
+    el.querySelector('input').checked = true;
+  });
+});
+</script>
+{% endblock %}

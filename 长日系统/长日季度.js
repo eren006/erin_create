@@ -132,6 +132,7 @@ cmd_admin_help.solve = (ctx, msg) => {
             "• 查看进行中         ← 查看所有进行中约会",
             "• 查看计时器         ← 查看活跃群倒计时",
             "• 提醒超时           ← 向超时群发送提醒",
+            "• 。约会数据体检     ← 核对群号池/计时器/日程是否一致（加\"修复\"清理垃圾记录）",
             "• 。设置天数 Dx      ← 手动推进天数（或 。开启自动天数）",
             "• 。功能权限 角色名 功能 开启/关闭  ← 管控玩家权限",
             "• 。调整 角色名 物品码 +N/-N       ← 调整背包物品",
@@ -148,6 +149,53 @@ cmd_admin_help.solve = (ctx, msg) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["管理帮助"] = cmd_admin_help;
+
+// ========================
+// 📆 季度指南（专注季度全生命周期：开季 → 进行中 → 结季，与「管理帮助」的日常运营清单分开）
+// ========================
+let cmd_season_guide = seal.ext.newCmdItemInfo();
+cmd_season_guide.name = "季度指南";
+cmd_season_guide.help = "查看季度全生命周期涉及的指令（开季→进行中→结季），管理员专用";
+cmd_season_guide.solve = (ctx, msg) => {
+    if (!isUserAdmin(ctx, msg)) {
+        seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    const text = [
+        "📆 季度指南",
+        "━".repeat(14),
+        "",
+        "【🆕 开季】",
+        "1. 。清空季度数据  ← 扫描残留玩家并清空上季数据",
+        "2. 。创建新季度 恋综名 复盘/不复盘 MMDD-MMDD [补戏MMDD]",
+        "3. 。开启群号组 组名  ← 从后台拉取群号到戏群池",
+        "4. 。初始化设置  ← 从后台拉取系统配置（或 。拉取全部 强制覆盖）",
+        "5. 。创建NPC 角色名  ← 注册所有NPC（复盘模式必须）",
+        "6. 玩家自行：创建新角色 角色名",
+        "7. 。设置天数 D0  ← 确认天数状态",
+        "",
+        "【📅 进行中】",
+        "• 。设置天数 Dx / 。开启自动天数  ← 推进游戏天数",
+        "• 。修改档期 MMDD-MMDD [补戏MMDD]  ← 中途调整档期范围",
+        "• 查看进行中 / 查看计时器  ← 查看活跃约会",
+        "• 提醒超时  ← 向超时未回复的群发送提醒",
+        "• 。约会数据体检 [修复]  ← 核对群号池/计时器/日程是否一致",
+        "• 。场次状态  ← 查看所有活跃群的写帖进度与结戏奖励达成情况",
+        "• 。查奖励情况  ← 预览按当前模板该发多少结戏奖励",
+        "• 。调整场次 群号 角色名 字数偏移 [段数偏移]  ← 手动纠正字数",
+        "• 。补发奖励  ← 对已结束场次手动补发结戏奖励",
+        "",
+        "【🏁 结季】",
+        "1. 。季末报告 开启/关闭/状态  ← 确认结束季度时是否发互动报告",
+        "2. 。结束季度  ← 封存并获取公开存档链接",
+        "3. 确认存档链接内容无误",
+        "4. 更新未退群 驱逐  ← 踢出所有仍在群内的玩家",
+        "5. 。清空季度数据  ← 确认无人残留后清空",
+    ].join("\n");
+    seal.replyToSender(ctx, msg, text);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["季度指南"] = cmd_season_guide;
 
 // ========================
 // 删除时间线
@@ -169,9 +217,8 @@ cmd_delete_timeline_precise.solve = (ctx, msg, cmdArgs) => {
 
     let confirmed = mainKvGet("b_confirmedSchedule", {});
     const platform = msg.platform;
-    const privateGroups = mainKvGet("a_private_group", {});
 
-    const targetUid = privateGroups?.[platform]?.[name]?.[0];
+    const targetUid = getUidByRoleName(platform, name);
     if (!targetUid) {
         seal.replyToSender(ctx, msg, `❌ 未找到角色 ${name} 的注册信息。`);
         return seal.ext.newCmdExecuteResult(true);
@@ -198,7 +245,7 @@ cmd_delete_timeline_precise.solve = (ctx, msg, cmdArgs) => {
         seal.replyToSender(ctx, msg, `✅ 已根据多人小群 ID(${gid}) 抹除所有参与者的排期（共 ${deletedCount} 人）。`);
     } else {
         const partnerName = appointment.partner;
-        const partnerUid = privateGroups?.[platform]?.[partnerName]?.[0];
+        const partnerUid = getUidByRoleName(platform, partnerName);
         const partnerKey = partnerUid ? `${platform}:${partnerUid}` : null;
 
         confirmed[targetKey] = confirmed[targetKey].filter(ev => !(ev.day === day && ev.time === time));

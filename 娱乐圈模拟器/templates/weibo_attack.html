@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}买黑料 - 娱乐圈模拟器{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:4px">买通狗仔,放出爆料</h3>
+  <p class="muted" style="margin-bottom:10px">每次 {{ cost }} 资金,当前持有 {{ cash }}。爆料有一定概率被拆穿,反噬到自己身上。想先摸底再决定打不打,去<a href="{{ url_for('intel_page') }}">情报市场</a>。</p>
+  <table>
+    <tr><th>艺名</th><th>人气</th><th>黑值</th><th></th></tr>
+    {% for t in targets %}
+    <tr>
+      <td>{{ t.stage_name }}{% if t.is_npc %} <span class="badge badge-gold">NPC</span>{% endif %}
+        {% if t.id in my_intel %}
+        <div class="muted" style="font-size:11px;margin-top:2px">
+          {% if 'weak_talents' in my_intel[t.id] %}已知弱点:{{ my_intel[t.id].weak_talents|join('、') }}{% endif %}
+          {% if 'hidden_traits' in my_intel[t.id] %}
+            {% if my_intel[t.id].hidden_traits %}已知词条:{{ my_intel[t.id].hidden_traits|join('、') }}{% else %}已知:没有隐藏词条{% endif %}
+          {% endif %}
+        </div>
+        {% endif %}
+      </td>
+      <td>{{ t.popularity }}</td>
+      <td>{{ t.scandal_value }}</td>
+      <td>
+        <form method="post">
+          <input type="hidden" name="target_id" value="{{ t.id }}">
+          <button class="btn">买黑料</button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" class="muted">暂时没有可以针对的目标。</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

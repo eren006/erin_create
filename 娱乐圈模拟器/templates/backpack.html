@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}背包 - 娱乐圈模拟器{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:4px">背包</h3>
+  <p class="muted">粉丝偶尔会给你送点心意,攒在这里慢慢翻看。</p>
+</div>
+
+<div class="card">
+  <table>
+    <tr><th>物品</th><th>稀有度</th><th>来自</th></tr>
+    {% for g in gifts %}
+    <tr>
+      <td>{{ g.item_name }}</td>
+      <td>
+        <span class="badge {% if g.rarity == 'rare' %}badge-red{% elif g.rarity == 'premium' %}badge-gold{% else %}badge-green{% endif %}">
+          {{ rarity_labels.get(g.rarity, g.rarity) }}
+        </span>
+      </td>
+      <td class="muted">{{ g.from_label }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="3" class="muted">背包还是空的,等粉丝送点东西给你吧。</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

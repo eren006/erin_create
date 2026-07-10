@@ -28,6 +28,7 @@
         <th>暴击率</th>
         <th>闪避率</th>
         <th>吸血</th>
+        <th>造化灵液</th>
         <th>寿元</th>
         <th>最后登录</th>
         <th>操作</th>
@@ -52,6 +53,15 @@
         <td style="color:var(--red);font-size:12px">{{ p.crit_rate_pct }}%</td>
         <td style="color:var(--jade);font-size:12px">{{ p.dodge_rate_pct }}%</td>
         <td style="color:var(--green);font-size:12px">{{ p.lifesteal_pct }}%</td>
+        <td style="font-size:12px">
+          {% if p.is_alchemist %}
+          <span style="color:{% if p.liquid_gift_total >= ALCHEMY_LIQUID_GIFT_MAX_TOTAL %}var(--gold){% else %}var(--purple){% endif %}">
+            {{ p.liquid_gift_total }}/{{ ALCHEMY_LIQUID_GIFT_MAX_TOTAL }}
+          </span>
+          {% else %}
+          <span style="color:var(--muted)">—</span>
+          {% endif %}
+        </td>
         {% if p.status == 'alive' %}
         {% set life = lifespan(p) %}
         {% set life_left = life - p.age %}

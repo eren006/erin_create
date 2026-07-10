@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}奢侈品 - 娱乐圈模拟器{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:4px">奢侈品抽卡</h3>
+  <p class="muted" style="margin-bottom:10px">
+    我的咖位:<b>{{ my_tier }}</b>,门槛 {{ tier_requirement }} 级以上。每次 {{ cost }} 资金 + 体力 10。
+    抽到"奢侈品"或"限量"会自动发一条晒图微博;限量款晒过头有概率被吐槽凡尔赛,反而涨黑值。
+  </p>
+  <form method="post">
+    <button class="btn btn-primary" style="width:100%">去专柜看看新品</button>
+  </form>
+</div>
+
+<div class="card">
+  <h4 style="margin-bottom:8px">我的收藏</h4>
+  <table>
+    <tr><th>物品</th><th>稀有度</th></tr>
+    {% for item in collection %}
+    <tr>
+      <td>{{ item.item_name }}</td>
+      <td>
+        <span class="badge {% if item.rarity == 'limited' %}badge-red{% elif item.rarity == 'luxury' %}badge-gold{% else %}badge-green{% endif %}">
+          {{ rarity_labels.get(item.rarity, item.rarity) }}
+        </span>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="2" class="muted">还没抽过东西。</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

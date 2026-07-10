@@ -156,6 +156,12 @@ ANCIENT_AWAKEN_RATE      = 0.10                    # 每次尝试成功率
 ANCIENT_AWAKEN_EXP_REQ   = 10000                   # 任一本领（丹修/器修/符修/御灵修/合欢修/剑修）经验达到此值即解锁资格
 ANCIENT_AWAKEN_MATERIALS = ["造化神液", "造化灵液"]  # 优先消耗造化神液，不足则用造化灵液
 ANCIENT_AWAKEN_CULTIVATE_BONUS = 0.5  # 觉醒成功后额外获得的修炼速度加成（无论抽到哪种祝福都有），普通修炼与洞府挂机均生效
+# 祝福强化：觉醒后达到渡劫及以上，可继续消耗造化神液/造化灵液强化祝福，每层攻击、防御各再 +200%，最多叠加10层
+ANCIENT_REINFORCE_REALM_MIN     = 33   # 渡劫初期的 realm_idx，达到后方可强化
+ANCIENT_REINFORCE_PCT_PER_LAYER = 10.0  # 每层攻击、防御各再 +1000%
+ANCIENT_REINFORCE_MAX_LAYERS    = 20   # 最多叠加20层（10层以上为高阶强化）
+ANCIENT_REINFORCE_TIER2_LAYER     = 10   # 已强化层数达到此值后，下一层起进入高阶强化
+ANCIENT_REINFORCE_TIER2_QTY       = 5    # 高阶强化每次消耗数量（造化神液/造化灵液任一均可）
 # 远古神话祝福池：终身仅可觉醒一次，随机获得其中一种；效果统一为攻击+防御各 +100%，永久生效
 # figure：对应上古神话人物简称，用于在排行榜等处显示"XX后人"称号
 ANCIENT_BLESSING_POOL = [
@@ -192,6 +198,324 @@ def ancient_blessing_tag(char):
         return None
     b = ANCIENT_BLESSING_MAP.get(char['ancient_blessing_id']) if 'ancient_blessing_id' in keys else None
     return f"{b['figure']}后人" if b else None
+
+# ── 位列仙班（飞升真仙后敕封神位）───────────────────────────────────────────────
+# 神位池：全部为天宫神只（与 ANCIENT_BLESSING_POOL 的20位上古神话人物完全互斥，不重叠）
+# 列表顺序即神位威能强弱排序，越早飞升真仙的道友，能占到的神位越靠前、越强大；名额瓜分殆尽后，后来者随机重复敕封。
+IMMORTAL_SEAT_POOL = [
+    {"id":"yuhuang",     "name":"玉皇大帝",    "desc":"执掌天庭，总领三界诸神",
+     "intro":"云台九重，仙乐齐鸣，你端坐于凌霄宝殿之上，三界诸神的朝拜声自四面八方涌来。"},
+    {"id":"yuanshi",     "name":"元始天尊",    "desc":"阐教之主，开天辟地、教化众生",
+     "intro":"混沌初判的清气自九天洒落，阐教教化众生的宏愿在你心中生根，你成为开劫度人的一部分。"},
+    {"id":"taishang",    "name":"太上老君",    "desc":"道德天尊，执掌八卦炉炼丹之秘",
+     "intro":"八卦炉中青烟袅袅，道德真意自炉火深处传来，你仿佛立于紫气东来的函谷关前，聆听那部五千言。"},
+    {"id":"tongtian",    "name":"通天教主",    "desc":"截教之主，统御万仙，广布道法",
+     "intro":"万仙来朝，截教旌旗猎猎作响，千万弟子的道法气息尽数汇入你的周身。"},
+    {"id":"wangmu",      "name":"王母娘娘",    "desc":"执掌瑶池，统御众仙，蟠桃盛会之主",
+     "intro":"瑶池波光潋滟，蟠桃仙香扑鼻而来，众仙贺寿的欢声笑语在你耳边久久不散。"},
+    {"id":"erlang",      "name":"二郎神",      "desc":"显圣真君，力破天条，勇冠三界",
+     "intro":"额间骤然睁开第三目，洞察天地的神光涌入识海，哮天犬的低吼在你身侧响起。"},
+    {"id":"nezha",       "name":"中坛元帅",        "desc":"莲花化身，三头六臂，威震天庭",
+     "intro":"莲花的清香自你周身弥漫，风火轮踏空而起，三头六臂的神威在你体内悄然苏醒。"},
+    {"id":"tuota",       "name":"托塔天王",    "desc":"统领天兵天将，镇压妖邪",
+     "intro":"手中宝塔骤然发出万丈金光，天兵天将列阵而立，静候你的号令镇压妖邪。"},
+    {"id":"xuannv",      "name":"九天玄女",    "desc":"授兵法秘术于人间，玄妙莫测",
+     "intro":"兵法秘术的虚影在你眼前流转而过，九天之上的玄妙道法尽数倾泻而下，融入你的心识。"},
+    {"id":"taiyi",       "name":"太乙真人",    "desc":"乾元山金光洞主，法力精深",
+     "intro":"金光洞中丹炉轰鸣，乾元山的仙气缭绕周身，你只觉一身法力愈发精深玄妙。"},
+    {"id":"nanji",       "name":"南极仙翁",    "desc":"执掌寿元，福泽苍生，长春不老",
+     "intro":"寿星高悬，仙鹤盘旋而至，福泽绵长的暖意自你眉心缓缓渗入周身经脉。"},
+    {"id":"houtu",       "name":"后土娘娘",    "desc":"执掌大地厚德，承载万物",
+     "intro":"大地厚德自脚底缓缓升起，万物生长的根基仿佛都系于你的一念之间。"},
+    {"id":"aoguang",     "name":"东海龙王",    "desc":"执掌东海风雨，行云布雨",
+     "intro":"东海怒涛翻涌而起，行云布雨之力自你指尖流转，浪花间似有蛟龙潜行。"},
+    {"id":"aoqin",       "name":"南海龙王",    "desc":"执掌南海云涛，威震四海",
+     "intro":"南海云涛滚滚而来，你与那片浩瀚碧波心意相通，威震四海之势油然而生。"},
+    {"id":"aorun",       "name":"西海龙王",    "desc":"执掌西海惊涛，法力无边",
+     "intro":"西海惊涛拍岸，法力自海心涌向你的四肢百骸，磅礴之势不可阻挡。"},
+    {"id":"aoshun",      "name":"北海龙王",    "desc":"执掌北海玄冰，寒威慑人",
+     "intro":"北海玄冰森然而立，寒威自你周身弥漫开来，令周遭生灵为之慑服。"},
+    {"id":"taibai",      "name":"太白金星",    "desc":"传令天使，通达三界，明察秋毫",
+     "intro":"一道白袍身影自云端飘然而至，手持拂尘，通传天听的威仪自你周身弥漫开来。"},
+    {"id":"wenqu",       "name":"文曲星君",    "desc":"执掌文运，庇佑天下才俊",
+     "intro":"文光贯宿，墨香满袖，天下才俊的文运气息尽数汇入你的周身。"},
+    {"id":"wuqu",        "name":"武曲星君",    "desc":"执掌武运，庇佑天下勇者",
+     "intro":"剑气纵横，星芒凛冽，天下勇者的武运气息尽数汇入你的周身。"},
+    {"id":"chijiao",     "name":"赤脚大仙",    "desc":"逍遥自在，云游三界，不拘礼法",
+     "intro":"一双赤足踏云而行，逍遥自在之意油然而生，三界礼法皆不能拘束于你。"},
+    {"id":"leigong",     "name":"雷公",        "desc":"执掌雷部，击恶扬善",
+     "intro":"雷部神将列阵而立，一声炸响自云端传来，雷霆之威顺着你的脉络涌动不休。"},
+    {"id":"dianmu",      "name":"电母",        "desc":"掌电光，为雷公引路",
+     "intro":"电光如练，划破云海，为雷部照亮征途，你眉间隐隐有电芒流转。"},
+    {"id":"fengbo",      "name":"风伯",        "desc":"掌风，鼓荡八方",
+     "intro":"长风自八方汇聚，鼓荡而起，你只需一引，便可唤起漫天罡风。"},
+    {"id":"yushi",       "name":"雨师",        "desc":"掌雨，甘霖普降",
+     "intro":"甘霖自天而降，滋润四野，你抬手间便有云行雨施之能。"},
+    {"id":"julingshen",  "name":"巨灵神",      "desc":"开山巨灵，力大无穷",
+     "intro":"巨掌一劈，山岳为之震动，开山辟路的伟力自你臂膀间流转不息。"},
+]
+IMMORTAL_SEAT_MAP = {s['id']: s for s in IMMORTAL_SEAT_POOL}
+IMMORTAL_SEAT_BY_NAME = {s['name']: s for s in IMMORTAL_SEAT_POOL}
+IMMORTAL_SEAT_RANK = {s['name']: i for i, s in enumerate(IMMORTAL_SEAT_POOL)}  # 数字越小神位越强
+
+def immortal_seat_tag(char):
+    """已位列仙班则返回「神位称谓+道号」全称，否则返回 None。"""
+    keys = char.keys()
+    if 'immortal_seat' not in keys or not char['immortal_seat']:
+        return None
+    return f"{char['immortal_seat']}{char['name']}"
+
+def immortal_seat_full_name(seat_name, char):
+    """神位称谓 + 道号，如「托塔天王」+「莫云舟」= 「托塔天王莫云舟」，供各处展示用。
+    数据库 immortal_seat 只存称谓本身（用于占用判定），拼接后的全名不落库，随取随拼。"""
+    return f"{seat_name}{char['name']}"
+
+def immortal_seat_flavor(seat_name, char):
+    """根据神位名称与角色的远古祝福信息生成敕封纪实文字。
+    不存储原文，日后回顾「位列仙班」纪念页时可凭 immortal_seat + ancient_blessing_id 重新生成，结果一致。"""
+    entry = IMMORTAL_SEAT_BY_NAME.get(seat_name)
+    intro = entry['intro'] if entry else ''
+    full_name = immortal_seat_full_name(seat_name, char)
+    flavor = f"天道垂青，敕封为【{full_name}】神位——{intro}"
+    if char['ancient_awakened'] and char['ancient_blessing_id']:
+        b = ANCIENT_BLESSING_MAP.get(char['ancient_blessing_id'])
+        figure = b['figure'] if b else None
+        if figure and figure != seat_name:
+            flavor += f" 虽身负【{figure}】祝福血脉，然天道自有权衡，认为你更契合此位。"
+    return flavor
+
+def immortal_seat_candidates(char, n=5):
+    """真仙飞升神位候选：按 IMMORTAL_SEAT_POOL 的威能强弱顺序，取当前仍未被占用的最强 n 个供玩家五选一；
+    越早飞升真仙，能选到的候选越强。名额不足 n 个时，用完整神位池随机补足候选（允许重复候选）。
+    返回神位名称列表。"""
+    taken = {r['immortal_seat'] for r in q(
+        "SELECT immortal_seat FROM characters WHERE immortal_seat IS NOT NULL AND immortal_seat!='' AND id!=?",
+        (char['id'],))}
+    candidates = [s['name'] for s in IMMORTAL_SEAT_POOL if s['name'] not in taken][:n]
+    pool_names = [s['name'] for s in IMMORTAL_SEAT_POOL]
+    while len(candidates) < n:
+        candidates.append(random.choice(pool_names))
+    return candidates
+
+def is_ascended(char):
+    """是否已飞升真仙——道行圆满，修炼/战斗/职业/大部分社交等日常玩法自动关闭，只留邮件与俯瞰人间。"""
+    return REALMS[char['realm_idx']]['major'] == '真仙'
+
+GLOBAL_EXP_CAP = 860_000_000  # 全体修为硬上限：无论是否已飞升真仙，修为均不得超过此值
+                               # （真仙门槛 850_000_000，留 1000 万缓冲供冲刺阶段一次性突破用）
+XIAN_EXP_THRESHOLD = REALMS[-1]['exp']  # 真仙突破所需修为（850_000_000）
+ASCEND_GRACE_SECS  = 12 * 3600          # 修为达真仙门槛后，需在此时限内突破飞升，否则灰飞烟灭
+
+# 真仙飞升后关闭的功能入口：导航栏隐藏 + 路由拦截。社交仅保留邮件（mail），
+# 位列仙班相关（immortal_seat_view/select）、日历、排行榜、俯瞰人间（mortal_watch）不在此列。
+XIAN_LOCKED_ENDPOINTS = {
+    'cultivate', 'explore', 'work', 'combat', 'fight',
+    'encounters', 'event_page', 'gacha', 'enlighten', 'vein', 'gate', 'gate_board', 'gate_laws',
+    'tourney', 'companion', 'companion_gacha', 'yqs',
+    'inventory', 'market', 'auction', 'superior_auction', 'bazaar', 'herb_garden', 'gift_craft',
+    'alchemy', 'forge', 'forge_name_weapon', 'forge_destiny_weapons', 'mine', 'fulu', 'fulu_mine',
+    'sword', 'heqing',
+    'spells_page', 'techniques', 'pets', 'buy_pet', 'temper', 'xisui', 'bones', 'seclusion',
+    'lifespan_pawn', 'cave', 'peaks', 'yuanshen', 'awakening', 'perks', 'perk_select', 'achievements',
+    'social', 'social_gift', 'social_spar', 'social_invite', 'social_respond', 'social_propose',
+    'social_divorce', 'pvp', 'forum', 'forum_post', 'offspring', 'sect', 'sect_shop', 'disciples',
+    'quests', 'redeem',
+}
+
+# ── 真仙专属：俯瞰人间 ──────────────────────────────────────────────────────────
+MORTAL_WATCH_COST = 20   # 每次消耗灵力，无实质奖励，纯粹的人间观照
+MORTAL_WATCH_VIGNETTE_CHANCE = 0.35  # 命中固定风土人情小景的概率，否则截取近期真实世界事件
+MORTAL_WATCH_VIGNETTES = [
+    "集市之上，货郎摇着拨浪鼓穿巷而过，孩童追逐嬉闹，炊烟自瓦檐袅袅升起。",
+    "山道边，一位老农正弯腰锄地，汗水浸透粗布短衫，全然不知头顶有仙踪路过。",
+    "破庙之中，一名衣衫褴褛的书生就着残烛夜读，为来年的科考奋笔不辍。",
+    "江畔渡口，艄公摇橹送客往来，水波荡漾间，几只白鹭掠水而起。",
+    "小镇酒肆里，几位游侠正把酒言欢，高谈阔论着传闻中的仙人轶事。",
+    "深巷之中，货郎叫卖声与孩童嬉笑声交织，寻常烟火气息扑面而来。",
+    "田埂之上，牧童横坐牛背，一曲短笛悠悠传向远方的暮色。",
+    "城隍庙前，善男信女焚香祈福，祈求来年风调雨顺、阖家平安。",
+    "边塞驿站，一名信使风尘仆仆地翻身下马，怀中密信关乎一方安危。",
+    "深夜医馆，郎中仍在灯下研读古方，只为救治更多疾苦之人。",
+    "渔村码头，渔家女正整理渔网，等候出海的丈夫归航。",
+    "私塾门前，先生摇头晃脑地领着孩童诵读诗书，声音朗朗传出老远。",
+]
+
+def mortal_watch_snippet():
+    """生成一条俯瞰人间的观察文字：多数截取自最近的全服真实事件，偶尔穿插固定的人间风土小景。"""
+    if random.random() < MORTAL_WATCH_VIGNETTE_CHANCE:
+        return random.choice(MORTAL_WATCH_VIGNETTES)
+    recent = q("SELECT content FROM world_log ORDER BY created_at DESC LIMIT 50")
+    if not recent:
+        return random.choice(MORTAL_WATCH_VIGNETTES)
+    content = random.choice(recent)['content']
+    if '] ' in content:
+        content = content.split('] ', 1)[1]
+    return content
+
+# ── 真仙专属：斗法 ──────────────────────────────────────────────────────────────
+# 数值直接锁定，不受境界/装备/感悟等任何加成影响；全程不耗灵力、不掉血、无死亡风险，纯粹图一乐
+# 同一数值也用于覆盖 _build_fighter_stats 中真仙的有效攻击/防御（含后台显示）
+XIAN_COMBAT_ATK = 5_000_000
+XIAN_COMBAT_DEF = 5_000_000
+
+XIAN_COMBAT_MONSTERS = [
+    {"id":"chaos_titan",   "name":"混沌魔神", "desc":"混沌初开时残留的凶顽伟力，肉身便是一座移动的山岳。",
+     "hp":8_000_000,   "atk":600_000,   "def":400_000},
+    {"id":"voidbeast",     "name":"域外天魔", "desc":"自虚空裂隙渗入三界的域外凶兽，浑身缠绕着诡异黑雾。",
+     "hp":15_000_000,  "atk":900_000,   "def":700_000},
+    {"id":"worldender",    "name":"灭世妖皇", "desc":"曾一念间令一方天地化为齑粉的绝世妖皇，威压如渊似海。",
+     "hp":25_000_000,  "atk":1_300_000, "def":1_000_000},
+    {"id":"primordial",    "name":"洪荒巨兽", "desc":"生于洪荒未判之时的太古凶兽，鳞甲坚逾玄铁，怒吼可裂九霄。",
+     "hp":40_000_000,  "atk":1_800_000, "def":1_400_000},
+    {"id":"heaven_reaper", "name":"弑天绝阎", "desc":"传说中唯一敢与天道一较高下的绝世凶灵，出手便是毁灭之势。",
+     "hp":60_000_000,  "atk":2_500_000, "def":1_800_000},
+]
+XIAN_COMBAT_MAP = {m['id']: m for m in XIAN_COMBAT_MONSTERS}
+
+def xian_combat_fight(monster):
+    """真仙斗法：数值锁定的表演性战斗，不落地任何真实数值，只生成回合日志与结果。
+    返回 (rounds, total_dmg_dealt, total_dmg_taken)。rounds 为最多展示的回合样本。"""
+    player_atk = max(1, XIAN_COMBAT_ATK - monster['def'] // 2)
+    monster_atk_eff = max(1, monster['atk'] - XIAN_COMBAT_DEF // 2)
+    hp_left = monster['hp']
+    total_dealt = total_taken = 0
+    rounds = []
+    round_no = 0
+    while hp_left > 0 and round_no < 999:
+        round_no += 1
+        crit = random.random() < 0.2
+        dmg = int(player_atk * random.uniform(0.85, 1.15) * (1.8 if crit else 1.0))
+        hp_left -= dmg
+        taken = int(monster_atk_eff * random.uniform(0.7, 1.1))
+        total_dealt += dmg
+        total_taken += taken
+        if round_no <= 4 or hp_left <= 0:
+            rounds.append({'no': round_no, 'dmg': dmg, 'crit': crit, 'taken': taken, 'hp_left': max(0, hp_left)})
+    return rounds, total_dealt, total_taken, round_no
+
+# ── 真仙专属：神庙 ──────────────────────────────────────────────────────────────
+TEMPLE_WORSHIP_INTERVAL = 3600  # 每小时一次朝拜，代替际遇
+
+TEMPLE_STYLES = [
+    {"id":1, "name":"云中金殿", "desc":"悬于云端的金顶大殿，终年霞光缭绕，可俯瞰万里山河。"},
+    {"id":2, "name":"幽谷古庙", "desc":"深山幽谷中的古朴石庙，藤蔓爬满石阶，钟声悠远绵长。"},
+    {"id":3, "name":"海上仙阁", "desc":"建于波涛之上的琉璃仙阁，潮声不绝，常有海鸟盘旋而栖。"},
+    {"id":4, "name":"星辰祭坛", "desc":"露天而立的星辰祭坛，夜夜可观星轨流转，香火映着星光。"},
+    {"id":5, "name":"松林道观", "desc":"隐于苍松翠柏间的道观，鹤鸣阵阵，清幽绝尘。"},
+]
+TEMPLE_STYLE_MAP = {s['id']: s for s in TEMPLE_STYLES}
+
+# 纯敬拜（无需回应）：约七成的朝拜属于此类
+TEMPLE_VISIT_FLAVORS = [
+    {"visitor":"白发老农",   "text":"在神庙前叩首不已，虔诚祈求今岁风调雨顺、五谷丰登。"},
+    {"visitor":"襁褓少妇",   "text":"抱着熟睡的婴孩跪拜良久，只求孩子无病无灾、平安长大。"},
+    {"visitor":"赶考书生",   "text":"焚香三炷，默默许愿此番科考能够高中，光耀门楣。"},
+    {"visitor":"渔家汉子",   "text":"供上今日渔获中最肥美的一条，感恩连日出海风平浪静。"},
+    {"visitor":"边塞老兵",   "text":"卸甲跪地，为战死沙场的袍泽祈求来世安宁。"},
+    {"visitor":"垂髫孩童",   "text":"仰头望着神像，天真地献上一朵采来的野花，随后蹦跳着跑开。"},
+    {"visitor":"行脚商贾",   "text":"路过借宿一宿，临行前捐了些许香油钱，祈求此行买卖顺遂。"},
+    {"visitor":"新婚夫妇",   "text":"携手而来，双双叩拜，祈求百年好合、早生贵子。"},
+    {"visitor":"孤苦寡妇",   "text":"跪在蒲团上无声垂泪良久，只求亡夫在天之灵得以安息。"},
+    {"visitor":"云游道人",   "text":"驻足礼敬，赞叹此间香火鼎盛、灵气充沛，随即飘然而去。"},
+]
+
+# 提问求助：约三成的朝拜会带来一个需要亲自抉择的问题
+TEMPLE_QUESTIONS = [
+    {"visitor":"白发老农",
+     "question":"老朽独子染了怪病，遍寻郎中无果，敢问神明，可还有救？",
+     "choices":[
+         {"text":"赐一缕清气，助他驱散病邪", "outcome":"老农浑身一震，眼中泛起泪光，叩首不止：「神明显灵，吾儿有救了！」"},
+         {"text":"指点他寻访山中药王谷",     "outcome":"老农记下方位，千恩万谢地离去，数月后果然寻得良药，携子归来还愿。"},
+         {"text":"只道生死有命，不予干涉",   "outcome":"老农怅然若失，喃喃退去，此后再未归来。"},
+     ]},
+    {"visitor":"赶考书生",
+     "question":"寒窗十年，盘缠已尽，此番若落榜便再无颜面归乡，敢问神明可有指点？",
+     "choices":[
+         {"text":"赐他心境澄明，考场发挥超常", "outcome":"书生仿佛福至心灵，笔走龙蛇，后果然高中，衣锦还乡时特来还愿。"},
+         {"text":"劝他放宽心境，尽人事听天命", "outcome":"书生豁然开朗，从容赴考，纵未高中却也心境释然，另谋出路。"},
+         {"text":"沉默不语，任他自行离去",   "outcome":"书生长叹一声，失落离去，此后杳无音讯。"},
+     ]},
+    {"visitor":"渔家汉子",
+     "question":"近来海上风浪诡谲，渔船屡有倾覆，敢问神明，此去是否平安？",
+     "choices":[
+         {"text":"示警于他，今日不宜出海",   "outcome":"渔民依言改日出海，果然那日海上狂风大作，同村数船遇险，唯他安然无恙。"},
+         {"text":"赐一道护身符，护佑周全",   "outcome":"渔民贴身收好符箓，此后连年出海皆平安顺遂，成了村中传颂的美谈。"},
+         {"text":"不置可否，由他自行定夺",   "outcome":"渔民犹豫再三，还是照常出海，所幸有惊无险，平安归来。"},
+     ]},
+    {"visitor":"新婚夫妇",
+     "question":"成婚三年尚无子嗣，公婆日渐不悦，敢问神明可否赐子？",
+     "choices":[
+         {"text":"赐福于二人，早日得偿所愿", "outcome":"夫妻二人对视一笑，眼含热泪，翌年果然喜得贵子，特来还愿谢恩。"},
+         {"text":"劝其宽心，缘分自有时候",   "outcome":"二人释然而笑，不再强求，感情反倒更加深厚。"},
+         {"text":"未予回应，静观其变",       "outcome":"夫妻二人黯然离去，眉宇间仍带几分惆怅。"},
+     ]},
+    {"visitor":"孤苦寡妇",
+     "question":"亡夫留下的田产被恶邻强占，官府又不予理会，敢问神明，此冤何时得雪？",
+     "choices":[
+         {"text":"托梦于清官，令其明察此案", "outcome":"数日后果然有清官巡访至此，重审此案，恶邻终被治罪，田产归还。"},
+         {"text":"暗中降下警示，惩戒恶邻",   "outcome":"那恶邻接连遭遇怪事，惶恐不安，主动登门认错赔罪。"},
+         {"text":"叹世事无常，未加干预",     "outcome":"寡妇黯然神伤，独自离去，此后再未归来。"},
+     ]},
+    {"visitor":"边塞老兵",
+     "question":"戍边半生，如今伤病缠身、孤苦无依，敢问神明，此生还有指望否？",
+     "choices":[
+         {"text":"赐他余生康健，安度晚年",   "outcome":"老兵老泪纵横，叩首再三，此后常来神庙义务洒扫，直至寿终正寝。"},
+         {"text":"指引他回乡寻旧日战友",     "outcome":"老兵依言返乡，果然寻得几位老友互相照应，晚年不再孤苦。"},
+         {"text":"静默以对，不置一词",       "outcome":"老兵苦笑摇头，拄杖蹒跚离去，背影渐渐消失在山道尽头。"},
+     ]},
+]
+
+def temple_generate_visit(char_id):
+    """生成一次朝拜：约七成为纯敬拜（直接落地），三成为求助问题（需玩家亲自抉择）。"""
+    if random.random() < 0.3:
+        q_def = random.choice(TEMPLE_QUESTIONS)
+        run("""INSERT INTO temple_visits (char_id,visitor,content,question,choices_json,resolved,created_at)
+               VALUES (?,?,?,?,?,0,?)""",
+            (char_id, q_def['visitor'], '', q_def['question'],
+             json.dumps(q_def['choices'], ensure_ascii=False), now_ts()))
+    else:
+        v = random.choice(TEMPLE_VISIT_FLAVORS)
+        incense = random.randint(1, 5)
+        run("""INSERT INTO temple_visits (char_id,visitor,content,resolved,created_at)
+               VALUES (?,?,?,1,?)""", (char_id, v['visitor'], v['text'], now_ts()))
+        run("UPDATE characters SET temple_incense=temple_incense+? WHERE id=?", (incense, char_id))
+
+def dissolve_all_discipleships(char_id, char_name):
+    """飞升真仙后自动解除所有师徒关系（无论是师父还是徒弟）。"""
+    active_ds = q("SELECT * FROM discipleships WHERE (shifu_id=? OR tudi_id=?) AND status='active'",
+                  (char_id, char_id))
+    for ds in active_ds:
+        other_id = ds['tudi_id'] if ds['shifu_id'] == char_id else ds['shifu_id']
+        run("UPDATE discipleships SET status='dismissed', graduated_at=? WHERE id=?", (now_ts(), ds['id']))
+        log(other_id, 'social', f'【{char_name}】已飞升真仙，超脱尘世，师徒缘分就此圆满。')
+    if active_ds:
+        log(char_id, 'social', '飞升之际，尘缘尽了，师徒名分自然消解。')
+
+# ── 真仙专属：法器阁 ────────────────────────────────────────────────────────────
+XIAN_ARTIFACT_COST = 100  # 每次炼制消耗灵力
+
+XIAN_ARTIFACT_TYPES = [
+    # 乐器：类型名固定，玩家只能自定前缀（如"忘忧"+「琵琶」="忘忧琵琶"）
+    {"id":"pipa",      "cat":"乐器", "name":"琵琶", "hint":"弦音一动，可裂石穿云"},
+    {"id":"guqin",     "cat":"乐器", "name":"古琴", "hint":"七弦轻拢，天地为之应和"},
+    {"id":"xiao",      "cat":"乐器", "name":"玉箫", "hint":"箫声呜咽，可摄魂夺魄"},
+    {"id":"bianzhong", "cat":"乐器", "name":"编钟", "hint":"钟鸣九霄，声震八荒"},
+    # 兵刃
+    {"id":"jian",      "cat":"兵刃", "name":"剑", "hint":"剑气纵横，斩尽不平"},
+    {"id":"dao",       "cat":"兵刃", "name":"刀", "hint":"刀锋所至，无坚不摧"},
+    {"id":"qiang",     "cat":"兵刃", "name":"枪", "hint":"枪势如龙，锐不可当"},
+    {"id":"ji",        "cat":"兵刃", "name":"戟", "hint":"戟指乾坤，横扫千军"},
+    # 法宝
+    {"id":"jingping",  "cat":"法宝", "name":"净瓶", "hint":"瓶中甘露，可涤荡万物污秽"},
+    {"id":"fuchen",    "cat":"法宝", "name":"拂尘", "hint":"拂尘轻扬，尘埃俱静"},
+    {"id":"hulu",      "cat":"法宝", "name":"葫芦", "hint":"葫芦一开，天地万物可纳其中"},
+    {"id":"shan",      "cat":"法宝", "name":"扇",   "hint":"扇动之间，风云变色"},
+]
+XIAN_ARTIFACT_TYPE_MAP = {t['id']: t for t in XIAN_ARTIFACT_TYPES}
+
+def xian_artifact_roll():
+    """炼制法器的攻防数值：超高且带随机性，纯粹图个收藏与炫耀，不接入实际战斗计算。"""
+    return random.randint(1_000_000, 9_999_999), random.randint(1_000_000, 9_999_999)
 
 # ── 子嗣 ───────────────────────────────────────────────────────────────────────
 OFFSPRING_MATURE_SECS = 1 * 24 * 3600   # 1 真实天成熟
@@ -339,15 +663,15 @@ ACHIEVEMENTS = [
 
 # ── 年龄 / 寿元 / 奇遇 ──────────────────────────────────────────────────────────
 SECONDS_PER_YEAR  = 60 * 60     # 1 游戏年 = 1 真实小时，每季 15 分钟（服务器纪年/季节显示用，勿动）
-PLAYER_AGE_RATE_MULT = 10.0    # 玩家年龄增长倍率（普通角色 6 分钟长 1 岁），只影响个人年龄推进速度，不影响上面的纪年/季节显示
+PLAYER_AGE_RATE_MULT = 220.0    # 玩家年龄增长倍率（普通角色 15 秒长 1 岁），只影响个人年龄推进速度，不影响上面的纪年/季节显示
 START_AGE         = 16
-ENCOUNTER_CHANCE  = 0.5        # 每过一年触发奇遇的概率
-MAX_YEARS_ROLL    = 30         # 一次最多结算的奇遇数（防挂机积压过多）
+ENCOUNTER_CHANCE  = 0.02       # 每过一年触发奇遇的概率
+MAX_YEARS_ROLL    = 20         # 一次最多结算的奇遇数（防挂机积压过多）
 
 # 各大境界的寿元上限（岁）
 LIFESPAN_BY_MAJOR = {
     "炼气": 120, "筑基": 400, "结丹": 800, "元婴": 1500, "化神": 3000,
-    "合体": 6000, "大乘": 12000, "渡劫": 24000, "真仙": 999999,
+    "合体": 6000, "大乘": 12000, "渡劫": 24000, "真仙": 100000,
 }
 
 # ── 炼丹等级 ────────────────────────────────────────────────────────────────────
@@ -365,6 +689,8 @@ ALCHEMY_LIQUID_GIFT_LEVEL  = 5     # 炼丹等级达到「化神丹宗」（下�
 ALCHEMY_LIQUID_GIFT_CHANCE = 0.6   # 每日 60% 概率
 ALCHEMY_LIQUID_GIFT_QTY    = 1     # 每次赠送数量
 ALCHEMY_LIQUID_GIFT_KEY    = 'alch_liquid_gift'  # daily_counters 计数键
+ALCHEMY_LIQUID_GIFT_MAX_TOTAL = 5  # 累计获赠达到此次数后不再获赠
+ALCHEMY_LIQUID_GIFT_TOTAL_KEY = 'alch_liquid_gift_total'  # daily_counters 表复用（day='total'）记录累计获赠次数
 
 # ── 炼器等级 ────────────────────────────────────────────────────────────────────
 FORGE_LEVELS = [
@@ -443,7 +769,7 @@ SWORD_LEVELS = [
     {"name": "剑心通灵", "exp": 6000},
     {"name": "剑道传人", "exp": 18000},
 ]
-SWORD_COMBAT_EXP = 15   # 每次斩杀妖物获得剑修经验
+SWORD_COMBAT_EXP = 60   # 每次斩杀妖物获得剑修经验（原15，×3）
 SWORD_PVP_EXP    = 30   # 每次PvP胜利获得剑修经验
 SWORD_MAX_STANCES   = 7  # 剑法最多多少式
 SWORD_MAX_DISCIPLES = 2  # 最多传授多少人
@@ -2108,31 +2434,70 @@ ENERGY_REGEN_PER_REALM = [
     # 真仙 (37)
     210,
 ]
-ENERGY_REGEN_GLOBAL_MULT = 1.15   # 灵力恢复速度全局加成
+ENERGY_REGEN_GLOBAL_MULT = 4.4   # 灵力恢复速度全局加成
 HP_REGEN_HOUR     = 10    # % of max HP / 小时
 MIN_FIGHT_HP_PCT    = 0.20  # 低于 20% 不能战斗
 CULTIVATE_COST      = 10
 LOW_EXP_BUFF_THRESHOLD = 4_000_000  # 修为400万以下修炼所得双倍，达到后自动消失
 LOW_EXP_BUFF_MULT      = 2.0
 DACHENG_BUFF_REALM_MIN = 29          # 大乘初期的 realm_idx，达到后自动获得下方祝福
-DACHENG_BUFF_MULT      = 2.0
-DACHENG_BUFF_NAME      = '大乘证道之祝福'  # 大乘及以上修炼所得永久 ×2，无需领悟或消耗
+DACHENG_BUFF_MULT      = 10.0
+DACHENG_BUFF_NAME      = '大乘证道之祝福'  # 大乘及以上修炼所得永久 ×10，无需领悟或消耗（洞府挂机与手动修炼共用同一常量，效果一致）
+
+# ── 符修专属：秘矿（大乘及以上开启）──────────────────────────────────────────────
+FULU_MINE_SPOTS = [
+    {"key": "fmine_cansi",   "name": "天蚕幽谷", "icon": "🕸",
+     "desc": "唯大乘修士方能踏入的幽谷，古树上天蚕吐丝不绝，丝缕蕴含浓郁灵力。",
+     "min_realm_idx": DACHENG_BUFF_REALM_MIN, "energy": 70, "cooldown": 10*3600,
+     "drops": [
+         {"item": "天蚕丝", "qty_min": 1, "qty_max": 2, "weight": 60},
+         {"item": "天蚕丝", "qty_min": 2, "qty_max": 3, "weight": 30},
+         {"item": "龙血砂", "qty_min": 1, "qty_max": 1, "weight": 10},
+     ]},
+    {"key": "fmine_longxue", "name": "龙血矿脉", "icon": "🩸",
+     "desc": "深藏地脉的赤色矿层，传闻是上古真龙埋骨之地，砂砾中犹带龙威。",
+     "min_realm_idx": DACHENG_BUFF_REALM_MIN, "energy": 70, "cooldown": 10*3600,
+     "drops": [
+         {"item": "龙血砂", "qty_min": 1, "qty_max": 2, "weight": 60},
+         {"item": "龙血砂", "qty_min": 2, "qty_max": 3, "weight": 30},
+         {"item": "天蚕丝", "qty_min": 1, "qty_max": 1, "weight": 10},
+     ]},
+]
+FULU_MINE_SPOTS_MAP = {m["key"]: m for m in FULU_MINE_SPOTS}
+
 EXPLORE_COST        = 20
 COMBAT_COST         = 20
-COMBAT_POOL_SIZE    = 3      # 每人每轮随机妖物数量
-COMBAT_POOL_REFRESH = 4 * 3600  # 4 小时刷新一次
+COMBAT_POOL_SIZE    = 3      # 每次刷新新增的随机妖物数量
+COMBAT_POOL_REFRESH = 2 * 3600  # 2 小时刷新一次
+COMBAT_POOL_MAX     = 30     # 战斗池累计上限：未挑战的妖物不会被替换，只会持续累积到此上限
 # 血量已满时，本应回复但被浪费掉的吸血，按「吸血率 × 原始满气血」转为一次性护盾（仅挡下一击）
 
 # ── 寻仙骨系统 ─────────────────────────────────────────────────────────────────
 # 长期收集玩法：一共 206 块（对应人体骨骼总数），每花 BONE_SEARCH_COST 灵力寻找一次，
 # 找到即永久替换为仙骨，不会重复。每获得一块，气血上限永久 +BONE_HP_BONUS。
 BONE_SEARCH_COST = 30
-BONE_FIND_CHANCE = 0.25
-BONE_MIN_GAP     = 6      # 找到一块后，后台强制至少再找这么多次才可能找到下一块（不告知玩家）
+BONE_FIND_CHANCE = 0.30
+BONE_MIN_GAP     = 5      # 找到一块后，后台强制至少再找这么多次才可能找到下一块（不告知玩家）
+BONE_PITY_TRIES  = 12     # 保底：连续 13 次未找到，第 13 次必定成功（不告知玩家）
 BONE_HP_BONUS    = 100
 BONE_MILESTONES              = [10, 50, 100, 150, 200]  # 凑齐这几个数量时各触发一次隐藏感悟，不预先告知玩家
 BONE_MILESTONE_CULTIVATE_PCT = 0.5   # 每次感悟：修炼速度永久 +50%（可与自身叠加，最多叠 5 次）
 BONE_MILESTONE_PERK_LABEL    = '寻仙骨·隐藏感悟'
+BONE_FULL_CULTIVATE_PCT      = 2.0   # 206 块仙骨集齐后，「真仙蜕变」一次性触发：修炼速度永久 +200%
+BONE_FULL_PERK_LABEL         = '寻仙骨·真仙蜕变'
+
+# 大乘及以上每一境界（含小境界）突破均需集齐对应数量的仙骨，key 为突破目标 realm_idx
+BONE_REALM_REQUIREMENT = {
+    29: 10,    # 大乘初期
+    30: 25,    # 大乘中期
+    31: 40,    # 大乘后期
+    32: 60,    # 大乘巅峰
+    33: 80,    # 渡劫初期
+    34: 100,   # 渡劫中期
+    35: 130,   # 渡劫后期
+    36: 160,   # 渡劫巅峰
+    37: 200,   # 真仙
+}
 
 BONE_BEASTS = ['玄武', '青龙', '朱雀', '应龙', '白虎', '麒麟', '饕餮']
 
@@ -2371,6 +2736,47 @@ def _migrate():
         db.execute("ALTER TABLE characters ADD COLUMN ancient_awakened INTEGER DEFAULT 0")
     if 'ancient_blessing_id' not in cols:
         db.execute("ALTER TABLE characters ADD COLUMN ancient_blessing_id TEXT DEFAULT ''")
+    if 'ancient_reinforce_layers' not in cols:
+        db.execute("ALTER TABLE characters ADD COLUMN ancient_reinforce_layers INTEGER DEFAULT 0")
+    if 'immortal_seat' not in cols:
+        db.execute("ALTER TABLE characters ADD COLUMN immortal_seat TEXT DEFAULT ''")
+    if 'immortal_seat_at' not in cols:
+        db.execute("ALTER TABLE characters ADD COLUMN immortal_seat_at INTEGER DEFAULT 0")
+    if 'bone_transformed' not in cols:
+        db.execute("ALTER TABLE characters ADD COLUMN bone_transformed INTEGER DEFAULT 0")
+    if 'immortal_seat_pending' not in cols:
+        db.execute("ALTER TABLE characters ADD COLUMN immortal_seat_pending TEXT DEFAULT ''")
+    if 'exp_cap_reached_at' not in cols:
+        db.execute("ALTER TABLE characters ADD COLUMN exp_cap_reached_at INTEGER DEFAULT 0")
+    if 'temple_name' not in cols:
+        db.execute("ALTER TABLE characters ADD COLUMN temple_name TEXT DEFAULT ''")
+    if 'temple_style' not in cols:
+        db.execute("ALTER TABLE characters ADD COLUMN temple_style INTEGER DEFAULT 0")
+    if 'temple_incense' not in cols:
+        db.execute("ALTER TABLE characters ADD COLUMN temple_incense INTEGER DEFAULT 0")
+    if 'temple_last_worship' not in cols:
+        db.execute("ALTER TABLE characters ADD COLUMN temple_last_worship INTEGER DEFAULT 0")
+    db.execute("""CREATE TABLE IF NOT EXISTS temple_visits (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        char_id       INTEGER NOT NULL,
+        visitor       TEXT NOT NULL,
+        content       TEXT NOT NULL,
+        question      TEXT DEFAULT '',
+        choices_json  TEXT DEFAULT '',
+        chosen_idx    INTEGER DEFAULT -1,
+        response_text TEXT DEFAULT '',
+        resolved      INTEGER DEFAULT 1,
+        created_at    INTEGER NOT NULL)""")
+    db.execute("""CREATE TABLE IF NOT EXISTS xian_artifacts (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        char_id     INTEGER NOT NULL,
+        type_id     TEXT NOT NULL,
+        type_name   TEXT NOT NULL,
+        custom_name TEXT NOT NULL,
+        description TEXT DEFAULT '',
+        atk         INTEGER NOT NULL,
+        def         INTEGER NOT NULL,
+        created_at  INTEGER NOT NULL)""")
     db.execute("""CREATE TABLE IF NOT EXISTS superior_auctions (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
         day         TEXT NOT NULL,
@@ -3254,6 +3660,15 @@ def _migrate():
         ("渡劫雷神兽", "常年游走于雷劫云海中的神兽，浑身承载天劫伟力，寻常修士见之即遁。", 33, 36, 450000,28000,12000,1100000, 260000, '["雷"]'),
         ("混沌噬灭兽", "混沌初开时的凶兽后裔，吞噬万物本源，渡劫修士也需谨慎应对。", 34, 37, 550000,32000,14000,1400000, 320000, '["土"]'),
         ("噬仙古兽",   "上古凶兽之王，曾令无数渡劫真仙折戟，传说唯有齐心方能将其驱逐。", 36, 37, 900000,55000,22000,2500000, 600000, '["木"]'),
+        # ── 极难妖兽（顶级噩梦级，远超同境界水准，专为挑战顶尖修士而设）──
+        ("焚天螭吻",   "上古螭龙一脉的孽种，浑身赤焰缠绕，一啸可焚尽方圆千里灵植，大乘修士见之亦要退避三舍。", 29, 32, 620000, 34000, 15000, 950000, 240000, '["火"]'),
+        # ── 合体～大乘专属特强妖兽（在此区间内属顶级噩梦难度，远超同段位其他妖兽）──
+        ("噬魂厉皇",   "合体期尸修界公认的噩梦级厉皇，浑身厉气凝而不散，寻常合体修士遇之只能远遁避让。", 25, 28, 850000, 42000, 18000, 1300000, 320000, '["土"]'),
+        ("血海尸尊",   "自血海深处走出的太古尸尊，一步一血泊，气息浓郁到令人窒息，合体巅峰亦难与之力敌。", 27, 30, 1050000, 52000, 23000, 1650000, 400000, '["火"]'),
+        ("九天雷帝",   "大乘巅峰的雷霆至尊，浑身雷光交织如帝袍加身，一怒可劈碎三千世界，大乘修士视其为死劫。", 29, 32, 1150000, 60000, 26000, 1950000, 480000, '["雷"]'),
+        ("九幽尸祖",   "统御九幽万千尸兵的太古尸祖，通体漆黑如渊，怨气凝而不散，渡劫修士单人难撼分毫。", 33, 36, 1200000, 65000, 28000, 1900000, 460000, '["土"]'),
+        ("太虚灭世魔尊", "自太虚深处降世的灭世凶魔，一念可碎星辰、一怒可裂苍穹，历代真仙皆视其为大敌。", 36, 37, 2600000, 125000, 52000, 6200000, 1600000, '["雷"]'),
+        ("轮回吞天蟒", "盘踞轮回长河尽头的太古凶蟒，吞噬无数天地造化，纵是真仙倾力围攻也未必能伤其根本。", 37, 37, 4200000, 190000, 78000, 10500000, 2600000, '["水"]'),
     ]
     for nm, desc, rmin, rmax, hp, atk, dfs, exp_r, st_r, elems in _new_monsters:
         if not db.execute("SELECT 1 FROM monsters WHERE name=?", (nm,)).fetchone():
@@ -3509,7 +3924,7 @@ def bone_search(char_id):
 
     found_name = None
     milestone  = None
-    if remaining and tries >= BONE_MIN_GAP and random.random() < BONE_FIND_CHANCE:
+    if remaining and (tries >= BONE_PITY_TRIES or (tries >= BONE_MIN_GAP and random.random() < BONE_FIND_CHANCE)):
         bone_id = random.choice(remaining)
         run("INSERT INTO char_bones (char_id,bone_id,found_at) VALUES (?,?,?)",
             (char_id, bone_id, now_ts()))
@@ -3555,16 +3970,20 @@ def energy_cap(char):
         eff_max = int(eff_max * GATE_DEMONIC_ENERGY_MAX_MULT)
     return eff_max
 
-def cur_energy(char):
-    elapsed   = (now_ts() - (char['energy_updated'] or 0)) / 3600
-    regen     = ENERGY_REGEN_PER_REALM[min(char['realm_idx'], len(ENERGY_REGEN_PER_REALM) - 1)] * ENERGY_REGEN_GLOBAL_MULT
+def energy_regen_rate(char):
+    """当前每小时灵力恢复量（不含洞府专属家具/感悟加成，那部分仅在洞府挂机结算时额外生效）。"""
+    base      = ENERGY_REGEN_PER_REALM[min(char['realm_idx'], len(ENERGY_REGEN_PER_REALM) - 1)] * ENERGY_REGEN_GLOBAL_MULT
     perm_b    = perk_total(char['id'], 'energy_regen_pct')
     temp_b    = get_char_buffs(char['id']).get('energy_regen_pct', 0)
     comp_b    = companion_bonus(char, 'spirit_regen_pct')
-    eff_max   = energy_cap(char)
     regen_mul = float(char['regen_mult'] or 1.0)
     peak_mul  = CAVE_ADV_ENERGY_MULT if (char['cave_peak'] or 0) in CAVE_PEAK_ADVANCED_IDS else 1.0
-    return min(eff_max, char['energy'] + int(elapsed * regen * (1 + perm_b + temp_b + comp_b) * regen_mul * peak_mul))
+    return base * (1 + perm_b + temp_b + comp_b) * regen_mul * peak_mul
+
+def cur_energy(char):
+    elapsed = (now_ts() - (char['energy_updated'] or 0)) / 3600
+    eff_max = energy_cap(char)
+    return min(eff_max, char['energy'] + int(elapsed * energy_regen_rate(char)))
 
 def set_energy(char_id, val):
     run("UPDATE characters SET energy=?, energy_updated=? WHERE id=?", (val, now_ts(), char_id))
@@ -5168,6 +5587,25 @@ def ancient_awaken_resolve_material(char_id):
             fallback = (name, item, have)
     return fallback
 
+def ancient_reinforce_resolve_material(char_id, layers):
+    """强化祝福第 layers+1 层所需材料。前10层沿用觉醒的材料候选（神液优先/灵液替代，各需1份）；
+    11~20层（高阶强化）神液/灵液任一均可，但各需 ANCIENT_REINFORCE_TIER2_QTY 份。
+    返回 (材料名, 物品行, 持有数量, 需要数量)。"""
+    need = ANCIENT_REINFORCE_TIER2_QTY if layers >= ANCIENT_REINFORCE_TIER2_LAYER else 1
+    fallback = None
+    for name in ANCIENT_AWAKEN_MATERIALS:
+        item = q("SELECT * FROM items WHERE name=?", (name,), one=True)
+        have = 0
+        if item:
+            inv = q("SELECT quantity FROM inventory WHERE char_id=? AND item_id=?",
+                    (char_id, item['id']), one=True)
+            have = inv['quantity'] if inv else 0
+        if have >= need:
+            return name, item, have, need
+        if fallback is None:
+            fallback = (name, item, have, need)
+    return fallback
+
 def try_discover_talisman(char_id, fulu_lv):
     """尝试顿悟一种新符，返回符名或 None。"""
     chance = FULU_DISCOVERY_CHANCE[min(fulu_lv, len(FULU_DISCOVERY_CHANCE)-1)]
@@ -5802,18 +6240,53 @@ def _tick_and_gate():
             S['_ach_ts'] = now_ts()
             for a in newly:
                 flash(f'🏆 成就达成：【{a["name"]}】{a["description"]} +{a["reward_stones"]} 灵石', 'success')
-        # 丹修达「化神丹宗」及以上：每日 60% 概率获赠造化灵液一份（邮件发放）
+        # 丹修达「化神丹宗」及以上：每日 60% 概率获赠造化灵液一份（邮件发放），累计获赠满5份后不再获赠
         if (char['alchemy_level'] or 0) >= ALCHEMY_LIQUID_GIFT_LEVEL and daily_count(char['id'], ALCHEMY_LIQUID_GIFT_KEY) == 0:
             daily_inc(char['id'], ALCHEMY_LIQUID_GIFT_KEY)
-            if random.random() < ALCHEMY_LIQUID_GIFT_CHANCE:
+            _gift_total_row = q("SELECT count FROM daily_counters WHERE char_id=? AND key=? AND day='total'",
+                (char['id'], ALCHEMY_LIQUID_GIFT_TOTAL_KEY), one=True)
+            _gift_total = _gift_total_row['count'] if _gift_total_row else 0
+            if _gift_total < ALCHEMY_LIQUID_GIFT_MAX_TOTAL and random.random() < ALCHEMY_LIQUID_GIFT_CHANCE:
                 liquid = q("SELECT id FROM items WHERE name='造化灵液'", one=True)
                 if liquid:
+                    run("""INSERT INTO daily_counters (char_id,key,day,count) VALUES (?,?,'total',1)
+                        ON CONFLICT(char_id,key,day) DO UPDATE SET count=count+1""",
+                        (char['id'], ALCHEMY_LIQUID_GIFT_TOTAL_KEY))
                     send_system_mail(char['id'], '🧪 丹道感应',
                         '你的丹道修为已臻化神丹宗之境，今日打坐炼丹之际偶有所感，'
                         '天地造化灵液自行凝聚一份，随信奉上。',
                         item_id=liquid['id'], item_qty=ALCHEMY_LIQUID_GIFT_QTY)
+        # 修为硬上限：不论是否已飞升，任何途径多出的修为一律清回上限
+        if (char['exp'] or 0) > GLOBAL_EXP_CAP:
+            run("UPDATE characters SET exp=? WHERE id=?", (GLOBAL_EXP_CAP, char['id']))
+            char = me()
+        # 修为圆满倒计时：达真仙门槛后 12 个时辰内须突破飞升，否则灰飞烟灭
+        if not is_ascended(char):
+            if (char['exp'] or 0) >= XIAN_EXP_THRESHOLD:
+                if not char['exp_cap_reached_at']:
+                    run("UPDATE characters SET exp_cap_reached_at=? WHERE id=?", (now_ts(), char['id']))
+                    log(char['id'], 'system',
+                        f'✦ 修为已臻真仙门槛！十二个时辰内若不能突破飞升，恐将道基崩碎，灰飞烟灭！')
+                elif now_ts() - char['exp_cap_reached_at'] > ASCEND_GRACE_SECS:
+                    run("UPDATE characters SET status='deceased' WHERE id=?", (char['id'],))
+                    log(char['id'], 'system', '修为盈满真仙门槛却未能及时突破飞升，道基崩碎，灰飞烟灭……')
+                    world_log_add('system', f'【{char["name"]}】修为盈满真仙门槛却未能及时突破，灰飞烟灭，道消身陨。')
+                    break_daolv_on_death(char['id'], char['name'])
+                    char = me()
+            elif char['exp_cap_reached_at']:
+                run("UPDATE characters SET exp_cap_reached_at=0 WHERE id=?", (char['id'],))
+        else:
+            # 真仙神庙：每小时一次朝拜，代替际遇
+            if now_ts() - (char['temple_last_worship'] or 0) >= TEMPLE_WORSHIP_INTERVAL:
+                run("UPDATE characters SET temple_last_worship=? WHERE id=?", (now_ts(), char['id']))
+                temple_generate_visit(char['id'])
     if char['status'] == 'deceased':
         return redirect(url_for('memorial'))
+    if char['status'] == 'alive' and is_ascended(char) and ep in XIAN_LOCKED_ENDPOINTS:
+        if ep == 'explore':
+            return redirect(url_for('mortal_watch'))
+        flash('道行已然圆满，此道对你已无需再行', 'info')
+        return redirect(url_for('dashboard'))
 
 # ── 日志 ───────────────────────────────────────────────────────────────────────
 
@@ -6028,9 +6501,11 @@ SUPERIOR_STONE_RATE = 1000   # 1000 灵石 兑换 1 上等灵石
 
 # ── 高级洞府 / 高级山峰 ─────────────────────────────────────────────────────────
 CAVE_ADVANCED_UNLOCK_LV = 10       # 洞府等级达到10级后可升级为高级洞府
-CAVE_ADVANCED_PRICE     = 500      # 500 上等灵石
+CAVE_ADVANCED_PRICE     = 500      # 500 上等灵石（前 CAVE_ADVANCED_SLOTS_BASE 个名额价格）
+CAVE_ADVANCED_PRICE_EXTRA = 1000   # 加价名额价格（上等灵石），售完前面基础名额后启用
 CAVE_ADV_ENERGY_MULT    = 2.0      # 高级山峰灵力恢复速度倍率
-CAVE_ADVANCED_SLOTS_TOTAL = 18     # 全服高级洞府名额上限，先到先得，售罄不再开放
+CAVE_ADVANCED_SLOTS_BASE  = 18     # 原有名额数量，按 CAVE_ADVANCED_PRICE 计价
+CAVE_ADVANCED_SLOTS_TOTAL = 20     # 全服高级洞府名额上限（含2个加价名额），先到先得，售罄不再开放
 CAVE_SLOTS_ADVANCED     = 7        # 高级洞府家具装备槽位（普通洞府仍为 CAVE_SLOTS=5）
 
 CAVE_PEAKS_ADVANCED = [
@@ -6054,11 +6529,26 @@ ADV_LUXURY_MAP = {l['key']: l for l in ADV_LUXURY_POOL}
 
 # ── 上等灵石拍卖行（造化灵液）────────────────────────────────────────────────────
 SUPERIOR_AUCTION_ITEM     = '造化灵液'
-SUPERIOR_AUCTION_SLOTS    = 2      # 每天2个拍卖位
+SUPERIOR_AUCTION_SLOTS    = 5      # 每天拍卖位数量（默认值，可在后台「配置」页调整）
 SUPERIOR_AUCTION_START    = 20     # 底价（上等灵石）
 SUPERIOR_AUCTION_MIN_STEP = 1      # 每次至少加价
 SUPERIOR_AUCTION_SETTLE_HOUR   = 22  # 每晚22点结算
 SUPERIOR_AUCTION_SETTLE_MINUTE = 0
+SUPERIOR_LIQUID_DIRECT_PRICE   = 800  # 造化灵液直接购买单价（上等灵石），不限量，无需等竞拍
+
+def superior_auction_slots(db=None):
+    """当前每日拍卖位数量：优先读取后台配置 site_config['superior_auction_slots']，否则用默认常量。
+    db 传入现有连接时供后台线程使用（无 Flask 请求上下文，不能走 q()）。"""
+    try:
+        if db is not None:
+            row = db.execute("SELECT value FROM site_config WHERE key='superior_auction_slots'").fetchone()
+        else:
+            row = q("SELECT value FROM site_config WHERE key='superior_auction_slots'", one=True)
+        if row and row['value']:
+            return max(1, int(row['value']))
+    except Exception:
+        pass
+    return SUPERIOR_AUCTION_SLOTS
 
 def superior_auction_bids(auction_id):
     """按出价从高到低返回该拍卖的所有出价（含全部竞拍者，用于结算与前三名展示）。"""
@@ -6136,7 +6626,7 @@ CAVE_POOL_DROPS = [
     ("符纸", 5), ("灵墨", 5), ("赤金砂", 5), ("寒玉", 5),
     ("七彩灵芝", 5), ("星陨铁", 1), ("天蚕丝", 3),
     ("血玉", 2), ("东珠", 2), ("玄银", 2), ("红宝石", 2), ("蓝宝石", 2),("龙晶", 1),
-    ("琥珀", 1),
+    ("琥珀", 5),
     # ── 与"修炼"珍贵材料池（TREASURE_POOLS）打通，额外拾获的材料珍宝池也能出 ──
     ("碧玉片", 5), ("黄水晶", 5), ("紫水晶", 5), ("铜粒", 5), ("白银块", 5),
     ("黄金片", 5), ("珊瑚枝", 5), ("灵砂", 5), ("猫眼石", 5), ("碧玺", 5),
@@ -6238,6 +6728,12 @@ def cave_advanced_slots_left():
     used = q("SELECT COUNT(*) n FROM characters WHERE cave_advanced=1 AND is_npc=0", one=True)['n']
     return max(0, CAVE_ADVANCED_SLOTS_TOTAL - used)
 
+def cave_advanced_price():
+    """当前晋升高级洞府所需上等灵石：前 CAVE_ADVANCED_SLOTS_BASE 个名额为基础价，
+    售完后剩余的加价名额（第 {BASE+1}~{TOTAL} 个）价格更高。"""
+    used = q("SELECT COUNT(*) n FROM characters WHERE cave_advanced=1 AND is_npc=0", one=True)['n']
+    return CAVE_ADVANCED_PRICE if used < CAVE_ADVANCED_SLOTS_BASE else CAVE_ADVANCED_PRICE_EXTRA
+
 def get_cave_shop():
     """获取当前家具商城，过期则自动刷新3件。"""
     shop = q("SELECT * FROM cave_shop WHERE expires_at > ? ORDER BY id", (now_ts(),))
@@ -6267,6 +6763,8 @@ def process_cave(char_id):
     if not char:
         db2.close(); return
     char = dict(char)
+    if is_ascended(char):  # 真仙道行圆满，洞府挂机自动停止，修为不再增长
+        db2.close(); return
     mode = char.get('cave_mode')
     if not mode or mode == 'off':
         db2.close(); return
@@ -6377,8 +6875,8 @@ def process_cave(char_id):
             for _ in range(min(times, 500))
         )
         remaining = current_energy - times * cost
-        db2.execute("UPDATE characters SET exp=exp+?, energy=?, energy_updated=?, cave_processed=? WHERE id=?",
-                    (total_exp, max(0, remaining), now_ts(), now_ts(), char_id))
+        db2.execute("UPDATE characters SET exp=MIN(exp+?,?), energy=?, energy_updated=?, cave_processed=? WHERE id=?",
+                    (total_exp, GLOBAL_EXP_CAP, max(0, remaining), now_ts(), now_ts(), char_id))
         db2.execute("INSERT INTO char_logs (char_id,type,content,created_at) VALUES (?,?,?,?)",
                     (char_id, 'cultivate',
                      f'洞府结算：自动修炼 {times} 次，修为 +{total_exp}。', now_ts()))
@@ -6433,8 +6931,11 @@ def cave_shops_for(char_id, cave_level):
     return pool[:min(cave_level, len(pool))]
 
 def advance_time(char):
-    """惰性推进年龄：按真实时间结算流逝的年份与奇遇。返回是否发生了变化。"""
+    """惰性推进年龄：按真实时间结算流逝的年份与奇遇。返回是否发生了变化。
+    真仙道行圆满，寿元冻结于飞升时的年岁，此后不再继续增长。"""
     if char['status'] != 'alive' or char['is_npc']:
+        return False
+    if REALMS[char['realm_idx']]['major'] == '真仙':
         return False
     last = char['age_updated'] or now_ts()
     age_mult = GATE_DEMONIC_AGE_MULT if char['is_demonic'] else 1.0
@@ -6509,7 +7010,8 @@ def simulate(char, monster, equip_atk=0, equip_def=0, start_hp=None,
     for art in spec_arts:
         eff = json.loads(art['effect_json'] or '{}')
         crit_rate  = crit_rate  + eff.get('crit_rate',  0)
-        crit_dmg   = max(crit_dmg,          eff.get('crit_dmg',   2.0))
+        if 'crit_dmg' in eff:
+            crit_dmg += eff['crit_dmg'] - 2.0   # 多门奇功的暴击伤害倍率叠加，而非取最高
         dodge_rate += eff.get('dodge_rate', 0)
         lifesteal  = lifesteal  + eff.get('lifesteal_pct', 0)
         atk_pct   +=                        eff.get('atk_pct', 0)
@@ -6545,6 +7047,9 @@ def simulate(char, monster, equip_atk=0, equip_def=0, start_hp=None,
     lifesteal  = lifesteal  + perk_total(char['id'], 'lifesteal') * 100
     atk_pct   += perk_total(char['id'], 'atk_pct') * 100
     def_pct   += perk_total(char['id'], 'def_pct') * 100
+    # 远古神话祝福强化（按当前层数 × 当前每层加成实时计算，方便后续随时调整倍率）
+    atk_pct   += (char['ancient_reinforce_layers'] or 0) * ANCIENT_REINFORCE_PCT_PER_LAYER * 100
+    def_pct   += (char['ancient_reinforce_layers'] or 0) * ANCIENT_REINFORCE_PCT_PER_LAYER * 100
     # 伙伴战斗加成
     atk_pct   += companion_bonus(char, 'atk_pct') * 100
     def_pct   += companion_bonus(char, 'def_pct') * 100
@@ -6715,7 +7220,8 @@ def _build_fighter_stats(char):
     for art in spec_arts:
         eff = json.loads(art['effect_json'] or '{}')
         crit_rate  = crit_rate  + eff.get('crit_rate',    0)
-        crit_dmg   = max(crit_dmg,          eff.get('crit_dmg',   2.0))
+        if 'crit_dmg' in eff:
+            crit_dmg += eff['crit_dmg'] - 2.0   # 多门奇功的暴击伤害倍率叠加，而非取最高
         dodge_rate += eff.get('dodge_rate',   0)
         lifesteal  = lifesteal  + eff.get('lifesteal_pct',0)
         atk_pct   +=                        eff.get('atk_pct',      0)
@@ -6747,6 +7253,9 @@ def _build_fighter_stats(char):
     lifesteal  = lifesteal  + perk_total(char['id'], 'lifesteal') * 100
     atk_pct   += perk_total(char['id'], 'atk_pct') * 100
     def_pct   += perk_total(char['id'], 'def_pct') * 100
+    # 远古神话祝福强化（按当前层数 × 当前每层加成实时计算，方便后续随时调整倍率）
+    atk_pct   += (char['ancient_reinforce_layers'] or 0) * ANCIENT_REINFORCE_PCT_PER_LAYER * 100
+    def_pct   += (char['ancient_reinforce_layers'] or 0) * ANCIENT_REINFORCE_PCT_PER_LAYER * 100
 
     atk_pct   += companion_bonus(char, 'atk_pct') * 100
     def_pct   += companion_bonus(char, 'def_pct') * 100
@@ -6799,6 +7308,9 @@ def _build_fighter_stats(char):
                * (1 + (atk_pct + body_atk_pct) / 100))
     def_ = int((base_def + tech_def + eq_def  + tongxin_def + ys['def'])
                * (1 + (def_pct + body_def_pct) / 100))
+
+    if is_ascended(char):  # 真仙攻防数值直接锁定（含后台显示），不受任何加成影响
+        atk, def_ = XIAN_COMBAT_ATK, XIAN_COMBAT_DEF
 
     return {
         'hp': max_hp, 'max_hp': max_hp,
@@ -6959,16 +7471,19 @@ app.jinja_env.globals.update(
     MAX_ENERGY=MAX_ENERGY, HP_REGEN_HOUR=HP_REGEN_HOUR,
     MIN_FIGHT_HP_PCT=MIN_FIGHT_HP_PCT,
     CULTIVATE_COST=CULTIVATE_COST, EXPLORE_COST=EXPLORE_COST, COMBAT_COST=COMBAT_COST,
+    MORTAL_WATCH_COST=MORTAL_WATCH_COST, ASCEND_GRACE_SECS=ASCEND_GRACE_SECS,
     LOW_EXP_BUFF_THRESHOLD=LOW_EXP_BUFF_THRESHOLD, LOW_EXP_BUFF_MULT=LOW_EXP_BUFF_MULT,
     DACHENG_BUFF_REALM_MIN=DACHENG_BUFF_REALM_MIN, DACHENG_BUFF_MULT=DACHENG_BUFF_MULT,
     DACHENG_BUFF_NAME=DACHENG_BUFF_NAME,
     ALCHEMY_LIQUID_GIFT_LEVEL=ALCHEMY_LIQUID_GIFT_LEVEL, ALCHEMY_LIQUID_GIFT_CHANCE=ALCHEMY_LIQUID_GIFT_CHANCE,
     ALCHEMY_LIQUID_GIFT_QTY=ALCHEMY_LIQUID_GIFT_QTY,
+    ALCHEMY_LIQUID_GIFT_MAX_TOTAL=ALCHEMY_LIQUID_GIFT_MAX_TOTAL,
     now_str=now_str, now_ts=now_ts,
     SECLUSION_EFFICIENCY=SECLUSION_EFFICIENCY,
     BOSS_TEMPLATES=BOSS_TEMPLATES, LINGFU_PER_DRAW=LINGFU_PER_DRAW,
     GACHA_PITY_MAX=GACHA_PITY_MAX, BOSS_HIT_ENERGY=BOSS_HIT_ENERGY,
     ANCIENT_BLESSING_MAP=ANCIENT_BLESSING_MAP, ancient_blessing_tag=ancient_blessing_tag,
+    IMMORTAL_SEAT_POOL=IMMORTAL_SEAT_POOL, immortal_seat_tag=immortal_seat_tag,
 )
 
 @app.context_processor
@@ -7036,6 +7551,11 @@ def _inject_globals():
             'nav_red_packet': has_unclaimed_red_packet(char['id']),
             'gate_ev': get_gate_event(),
             'tourney_ev': get_tourney_event(),
+            'nav_immortal_seat': bool(char['immortal_seat']),
+            'nav_immortal_seat_pending': bool(char['immortal_seat_pending']),
+            'xian_ascended': is_ascended(char),
+            'nav_temple_pending': q("SELECT COUNT(*) n FROM temple_visits WHERE char_id=? AND resolved=0",
+                                    (char['id'],), one=True)['n'] if is_ascended(char) else 0,
             'MAX_ENERGY': energy_cap(char)}
 
 @app.template_filter('fromjson')
@@ -7202,6 +7722,8 @@ def dashboard():
     max_hp += bone_hp_bonus(char['id'])
     hp_pct     = int(hp_now / max_hp * 100) if max_hp else 100
     can_bt     = next_r and char['exp'] >= next_r['exp']
+    energy_regen_hour = round(energy_regen_rate(char))
+    hp_regen_hour      = round(max_hp * HP_REGEN_HOUR / 100)
 
     equip_atk, equip_def = get_equip_bonuses(char)
     atk_techs = q("""SELECT t.power FROM techniques t
@@ -7237,6 +7759,7 @@ def dashboard():
 
     return render_template('dashboard.html',
         char=char, energy=energy, hp_now=hp_now, hp_pct=hp_pct,
+        energy_regen_hour=energy_regen_hour, hp_regen_hour=hp_regen_hour,
         realm=realm, next_r=next_r,
         exp_prog=exp_prog, exp_need=exp_need, exp_pct=exp_pct, can_bt=can_bt,
         max_hp=max_hp, base_atk=base_atk, base_def=base_def,
@@ -7377,10 +7900,14 @@ def cultivate():
             cur_i  = char['realm_idx']
             next_i = cur_i + 1
             next_r = REALMS[next_i] if next_i < len(REALMS) else None
+            bone_need = BONE_REALM_REQUIREMENT.get(next_i)
+            bone_have = bone_owned_count(char['id']) if bone_need else 0
             if not next_r:
                 flash('已至修仙巅峰', 'error')
             elif char['exp'] < next_r['exp']:
                 flash('修为尚未圆满', 'error')
+            elif bone_need and bone_have < bone_need:
+                flash(f'突破至【{next_r["name"]}】需集齐 {bone_need} 块仙骨（当前 {bone_have}/{bone_need}），请前往「进阶→寻仙骨」', 'error')
             else:
                 m_from = major_idx(cur_i)
                 m_to   = major_idx(next_i)
@@ -7420,8 +7947,16 @@ def cultivate():
                             reward = 50 + next_i * 10
                             run("UPDATE characters SET spirit_stones=spirit_stones+? WHERE id=?", (reward, shifu_ch['id']))
                             log(shifu_ch['id'], 'social', f'徒弟【{char["name"]}】突破至{REALMS[next_i]["name"]}，获得传承功德 {reward} 灵石。')
+                    xian_seat_pending = False
+                    if next_i == len(REALMS) - 1:  # 飞升真仙：天道备下三席神位，供玩家亲择
+                        candidates = immortal_seat_candidates(char, 5)
+                        run("UPDATE characters SET immortal_seat_pending=?,exp_cap_reached_at=0 WHERE id=?",
+                            (json.dumps(candidates, ensure_ascii=False), char['id']))
+                        xian_seat_pending = True
+                        dissolve_all_discipleships(char['id'], char['name'])
                     result = {'type': 'bt', 'success': True, 'realm': REALMS[next_i]['name'],
-                              'tribulation': is_tribulation, 'has_perk': is_big}
+                              'tribulation': is_tribulation, 'has_perk': is_big,
+                              'xian_seat_pending': xian_seat_pending}
                 else:
                     # 失败惩罚随大境界递增，化神以上更重（渡劫失败不再跌小境界，只按比例扣修为）
                     penalty_rate = {0:0.10,1:0.10,2:0.10,3:0.10,4:0.10,5:0.10,6:0.10,7:0.10}.get(m_from, 0.10)
@@ -7455,6 +7990,10 @@ def cultivate():
     demonic_penalty_disp = GATE_DEMONIC_BREAKTHROUGH_PENALTY_PCT if char['is_demonic'] else 0
     bt_pct = min(100, max(0, int((BREAKTHROUGH_CHANCE.get(m_from, 1.0) + (char['breakthrough_bonus'] + root_bt_disp - demonic_penalty_disp)/100) * 100))) if is_big else 100
 
+    bone_need = BONE_REALM_REQUIREMENT.get(char['realm_idx'] + 1) if next_r else None
+    bone_have = bone_owned_count(char['id']) if bone_need else 0
+    bone_ok   = (not bone_need) or bone_have >= bone_need
+
     my_techs = q("""SELECT t.name, t.exp_bonus FROM techniques t
         JOIN char_techniques ct ON ct.tech_id=t.id
         WHERE ct.char_id=? AND t.type='cultivation'""", (char['id'],))
@@ -7480,6 +8019,7 @@ def cultivate():
         char=char, energy=energy, realm=realm, next_r=next_r,
         exp_prog=exp_prog, exp_need=exp_need, exp_pct=exp_pct,
         can_bt=can_bt, is_big=is_big, bt_pct=bt_pct,
+        bone_need=bone_need, bone_have=bone_have, bone_ok=bone_ok,
         my_techs=my_techs, result=result,
         dispel_cost=dispel_cost,
         sr=SPIRIT_ROOTS[char['spirit_root']],
@@ -7748,8 +8288,8 @@ def explore():
 
 # 本命武器可无限强化后玩家整体攻击力水涨船高，合体及以上大境界的妖兽同步变强，
 # 但修为/灵石奖励与掉落保持不变，只提升战斗强度。
-MONSTER_HEJI_BUFF_BASE = 0.15   # 合体初期起的基础加成
-MONSTER_HEJI_BUFF_STEP = 0.10   # 每高一个大境界（大乘/渡劫/真仙）再 +10%
+MONSTER_HEJI_BUFF_BASE = 0.45   # 合体初期起的基础加成
+MONSTER_HEJI_BUFF_STEP = 0.25   # 每高一个大境界（大乘/渡劫/真仙）再 +25%
 
 def monster_realm_buff_mult(monster):
     """按妖兽自身所属大境界（realm_min）计算战斗强度倍率，合体以下恒为1。"""
@@ -7783,13 +8323,23 @@ def get_or_refresh_combat_pool(char):
 
     expired = (not pool) or (now - pool['generated_at'] >= COMBAT_POOL_REFRESH)
     if expired:
-        # 抽取与本角色境界匹配的妖物
+        # 保留上一轮未挑战的妖物（已战毕的丢弃），刷新只新增，不替换
+        kept_mids = []
+        if pool:
+            old_mids     = json.loads(pool['monster_ids'] or '[]')
+            old_defeated = set(json.loads(pool['defeated'] or '[]'))
+            kept_mids    = [m for m in old_mids if m not in old_defeated]
+
+        # 抽取与本角色境界匹配的妖物，排除已在池中的，避免重复
         candidates = q("""SELECT * FROM monsters
             WHERE realm_min <= ? AND realm_max >= ? AND is_active=1""",
             (char['realm_idx'] + 3, char['realm_idx'] - 2))
-        cands = list(candidates)
-        chosen = random.sample(cands, min(COMBAT_POOL_SIZE, len(cands)))
-        mids   = [m['id'] for m in chosen]
+        cands = [m for m in candidates if m['id'] not in kept_mids]
+        room  = max(0, COMBAT_POOL_MAX - len(kept_mids))
+        add_n = min(COMBAT_POOL_SIZE, room, len(cands))
+        chosen = random.sample(cands, add_n) if add_n > 0 else []
+        mids   = kept_mids + [m['id'] for m in chosen]
+
         if pool:
             run("UPDATE char_combat_pool SET monster_ids=?, defeated='[]', generated_at=? WHERE char_id=?",
                 (json.dumps(mids), now, cid))
@@ -7843,7 +8393,8 @@ def combat():
         equipped_weapon=equipped_weapon, equipped_artifact=equipped_artifact,
         pet_bonus=pet_bonus, fighter=fighter,
         refresh_h=refresh_h, refresh_m=refresh_m, secs_left=secs_left,
-        COMBAT_POOL_REFRESH=COMBAT_POOL_REFRESH)
+        COMBAT_POOL_REFRESH=COMBAT_POOL_REFRESH, COMBAT_POOL_SIZE=COMBAT_POOL_SIZE,
+        COMBAT_POOL_MAX=COMBAT_POOL_MAX)
 
 @app.route('/game/combat/<int:mid>', methods=['POST'])
 @login_required
@@ -7947,7 +8498,22 @@ def bones():
     result = None
 
     if request.method == 'POST':
-        if is_in_seclusion(char):
+        action = request.form.get('action', 'search')
+        if action == 'transform':
+            if bone_owned_count(char['id']) < BONE_TOTAL:
+                flash(f'仙骨尚未集齐（需 {BONE_TOTAL} 块）', 'error')
+            elif char['bone_transformed']:
+                flash('真仙蜕变已然成就，无需再次触发', 'info')
+            else:
+                grant_perk(char['id'], {'key': 'cultivate_pct', 'val': BONE_FULL_CULTIVATE_PCT},
+                           BONE_FULL_PERK_LABEL)
+                run("UPDATE characters SET bone_transformed=1 WHERE id=?", (char['id'],))
+                log(char['id'], 'system',
+                    f'✦ 206 块仙骨尽数归位，周身脱胎换骨，真仙蜕变已成！修炼速度永久 +{int(BONE_FULL_CULTIVATE_PCT*100)}%！')
+                world_log_add('bones', f'【{char["name"]}】集齐 206 块仙骨，达成真仙蜕变！')
+                result = {'transformed': True}
+                flash('真仙蜕变已成就！修炼速度永久 +200%', 'success')
+        elif is_in_seclusion(char):
             flash('闭关中无法进行此操作', 'error')
         elif energy < BONE_SEARCH_COST:
             flash(f'灵力不足，需 {BONE_SEARCH_COST}', 'error')
@@ -7966,10 +8532,24 @@ def bones():
     fresh  = me()
     owned  = q("SELECT bone_id FROM char_bones WHERE char_id=? ORDER BY found_at", (fresh['id'],))
     owned_names = [XIAN_BONE_NAMES[r['bone_id']] for r in owned]
+    # 按异兽归属统计已获仙骨构成占比（以「兽名之部位」的兽名前缀分类）
+    beast_counts = {b: 0 for b in BONE_BEASTS}
+    for name in owned_names:
+        beast = name.split('之', 1)[0]
+        if beast in beast_counts:
+            beast_counts[beast] += 1
+    owned_n = len(owned_names)
+    beast_composition = [
+        {'name': b, 'count': beast_counts[b],
+         'pct': round(beast_counts[b] / owned_n * 100, 1) if owned_n else 0}
+        for b in BONE_BEASTS
+    ]
     return render_template('bones.html', char=fresh, energy=cur_energy(fresh), result=result,
         BONE_SEARCH_COST=BONE_SEARCH_COST, BONE_TOTAL=BONE_TOTAL, BONE_HP_BONUS=BONE_HP_BONUS,
         BONE_MILESTONE_CULTIVATE_PCT=BONE_MILESTONE_CULTIVATE_PCT,
-        owned_names=owned_names, owned_count=len(owned_names))
+        BONE_FULL_CULTIVATE_PCT=BONE_FULL_CULTIVATE_PCT,
+        owned_names=owned_names, owned_count=len(owned_names),
+        beast_composition=beast_composition)
 
 # ── 背包 ───────────────────────────────────────────────────────────────────────
 
@@ -9129,10 +9709,9 @@ def alchemy():
         FROM alchemy_recipes r JOIN items i ON i.id=r.result_item_id
         WHERE r.is_active=1 ORDER BY r.alchemy_level_required, r.realm_required, r.success_rate DESC""")
 
-    herb_stock = {r['item_id']: r['quantity']
-        for r in q("""SELECT inv.item_id, inv.quantity FROM inventory inv
-            JOIN items i ON i.id=inv.item_id
-            WHERE inv.char_id=? AND i.type='herb'""", (char['id'],))}
+    # 注意：配方食材不限于草药（如造化灵液方需要矿石/珍宝类材料），故不按 type 过滤
+    ing_stock = {r['item_id']: r['quantity']
+        for r in q("SELECT item_id, quantity FROM inventory WHERE char_id=?", (char['id'],))}
 
     # 当前丹炉
     cauldron = q("SELECT * FROM items WHERE id=?", (char['cauldron_id'],), one=True) \
@@ -9151,7 +9730,7 @@ def alchemy():
         ings = []
         for ing in ings_raw:
             item = q("SELECT name FROM items WHERE id=?", (ing['item_id'],), one=True)
-            have = herb_stock.get(ing['item_id'], 0)
+            have = ing_stock.get(ing['item_id'], 0)
             ings.append({'name': item['name'] if item else '?',
                          'item_id': ing['item_id'],
                          'qty': ing['qty'], 'have': have,
@@ -9159,11 +9738,16 @@ def alchemy():
         can_brew = all(i['enough'] for i in ings)
         recipe_details.append({'r': r, 'ings': ings, 'can_brew': can_brew})
 
+    _liquid_gift_row = q("SELECT count FROM daily_counters WHERE char_id=? AND key=? AND day='total'",
+        (char['id'], ALCHEMY_LIQUID_GIFT_TOTAL_KEY), one=True)
+    liquid_gift_total = _liquid_gift_row['count'] if _liquid_gift_row else 0
+
     return render_template('alchemy.html',
         char=char, cauldron=cauldron, cauldron_bonus=cauldron_bonus,
         recipe_details=recipe_details, herbs=herbs, result=result,
         alch_lv=alch_lv, alch_lv_name=alch_lv_name,
         alch_next_exp=alch_next_exp, alch_exp=alch_exp, alch_pct=alch_pct,
+        liquid_gift_total=liquid_gift_total,
         ALCHEMY_LEVELS=ALCHEMY_LEVELS)
 
 # ── 灵兽阁（宠物） ─────────────────────────────────────────────────────────────
@@ -9947,18 +10531,19 @@ def cave():
             char = me()
 
         elif action == 'buy_advanced' and purchased:
+            adv_price = cave_advanced_price()
             if char.get('cave_advanced'):
                 flash('已是高级洞府', 'error')
             elif cave_level(char) < CAVE_ADVANCED_UNLOCK_LV:
                 flash(f'洞府需达到 Lv{CAVE_ADVANCED_UNLOCK_LV} 才能升级为高级洞府', 'error')
             elif cave_advanced_slots_left() <= 0:
                 flash(f'全服高级洞府名额（{CAVE_ADVANCED_SLOTS_TOTAL}个）已满', 'error')
-            elif (char['superior_stones'] or 0) < CAVE_ADVANCED_PRICE:
-                flash(f'上等灵石不足，需 {CAVE_ADVANCED_PRICE}（当前 {char["superior_stones"] or 0}）', 'error')
+            elif (char['superior_stones'] or 0) < adv_price:
+                flash(f'上等灵石不足，需 {adv_price}（当前 {char["superior_stones"] or 0}）', 'error')
             else:
                 run("UPDATE characters SET superior_stones=superior_stones-?, cave_advanced=1 WHERE id=?",
-                    (CAVE_ADVANCED_PRICE, char['id']))
-                log(char['id'], 'system', f'花费 {CAVE_ADVANCED_PRICE} 上等灵石，洞府晋升为高级洞府。')
+                    (adv_price, char['id']))
+                log(char['id'], 'system', f'花费 {adv_price} 上等灵石，洞府晋升为高级洞府。')
                 flash('洞府已晋升为高级洞府！可迁往高级山峰。', 'success')
                 char = me()
 
@@ -10022,7 +10607,7 @@ def cave():
         cave_eff=int(CAVE_EFF*100),
         shop_items=shop_items, cave_lv=clv, peak=peak,
         CAVE_ADVANCED_UNLOCK_LV=CAVE_ADVANCED_UNLOCK_LV,
-        CAVE_ADVANCED_PRICE=CAVE_ADVANCED_PRICE,
+        CAVE_ADVANCED_PRICE=cave_advanced_price(),
         CAVE_PEAKS_ADVANCED=CAVE_PEAKS_ADVANCED,
         CAVE_ADV_ENERGY_MULT=CAVE_ADV_ENERGY_MULT,
         CAVE_ADVANCED_SLOTS_TOTAL=CAVE_ADVANCED_SLOTS_TOTAL,
@@ -10248,11 +10833,48 @@ def awakening():
     eligible = ancient_awakening_eligible(char)
     awakened = bool(char.get('ancient_awakened'))
     blessing = ANCIENT_BLESSING_MAP.get(char.get('ancient_blessing_id')) if awakened else None
+    reinforce_layers   = char.get('ancient_reinforce_layers') or 0
+    reinforce_eligible = awakened and char['realm_idx'] >= ANCIENT_REINFORCE_REALM_MIN \
+                         and reinforce_layers < ANCIENT_REINFORCE_MAX_LAYERS
     mat_name, mat_item, mat_have = (None, None, 0)
     if eligible and not awakened:
         mat_name, mat_item, mat_have = ancient_awaken_resolve_material(char['id'])
+    reinforce_mat_name, reinforce_mat_item, reinforce_mat_have, reinforce_mat_need = (None, None, 0, 1)
+    if reinforce_eligible:
+        reinforce_mat_name, reinforce_mat_item, reinforce_mat_have, reinforce_mat_need = \
+            ancient_reinforce_resolve_material(char['id'], reinforce_layers)
 
     result = None
+    if request.method == 'POST' and request.form.get('action') == 'reinforce':
+        if not awakened:
+            flash('尚未觉醒远古意识，无法强化祝福', 'error')
+        elif char['realm_idx'] < ANCIENT_REINFORCE_REALM_MIN:
+            flash(f'需达到【{REALMS[ANCIENT_REINFORCE_REALM_MIN]["name"]}】方可强化祝福', 'error')
+        elif reinforce_layers >= ANCIENT_REINFORCE_MAX_LAYERS:
+            flash(f'祝福强化已达最高 {ANCIENT_REINFORCE_MAX_LAYERS} 层', 'error')
+        elif reinforce_mat_have < reinforce_mat_need:
+            flash(f'材料不足：需【{reinforce_mat_name}】×{reinforce_mat_need}', 'error')
+        else:
+            if reinforce_mat_have <= reinforce_mat_need:
+                run("DELETE FROM inventory WHERE char_id=? AND item_id=?", (char['id'], reinforce_mat_item['id']))
+            else:
+                run("UPDATE inventory SET quantity=quantity-? WHERE char_id=? AND item_id=?",
+                    (reinforce_mat_need, char['id'], reinforce_mat_item['id']))
+            new_layers = reinforce_layers + 1
+            run("UPDATE characters SET ancient_reinforce_layers=? WHERE id=?", (new_layers, char['id']))
+            log(char['id'], 'system',
+                f'以【{reinforce_mat_name}】×{reinforce_mat_need} 强化远古神话祝福，攻击、防御各再 +{int(ANCIENT_REINFORCE_PCT_PER_LAYER*100)}%'
+                f'（第 {new_layers}/{ANCIENT_REINFORCE_MAX_LAYERS} 层）。')
+            flash(f'强化成功！第 {new_layers}/{ANCIENT_REINFORCE_MAX_LAYERS} 层，攻击、防御各再 +{int(ANCIENT_REINFORCE_PCT_PER_LAYER*100)}%！', 'success')
+            char = me()
+            reinforce_layers   = char.get('ancient_reinforce_layers') or 0
+            reinforce_eligible = awakened and char['realm_idx'] >= ANCIENT_REINFORCE_REALM_MIN \
+                                 and reinforce_layers < ANCIENT_REINFORCE_MAX_LAYERS
+            reinforce_mat_name, reinforce_mat_item, reinforce_mat_have, reinforce_mat_need = (None, None, 0, 1)
+            if reinforce_eligible:
+                reinforce_mat_name, reinforce_mat_item, reinforce_mat_have, reinforce_mat_need = \
+                    ancient_reinforce_resolve_material(char['id'], reinforce_layers)
+
     if request.method == 'POST' and request.form.get('action') == 'attempt':
         if not eligible:
             flash('尚未在任一本领达到觉醒门槛', 'error')
@@ -10268,7 +10890,11 @@ def awakening():
                     (char['id'], mat_item['id']))
             success = random.random() < ANCIENT_AWAKEN_RATE
             if success:
-                picked = random.choice(ANCIENT_BLESSING_POOL)
+                taken_ids = {r['ancient_blessing_id'] for r in q(
+                    "SELECT DISTINCT ancient_blessing_id FROM characters WHERE ancient_blessing_id!='' AND ancient_blessing_id IS NOT NULL")}
+                available = [b for b in ANCIENT_BLESSING_POOL if b['id'] not in taken_ids]
+                # 祝福池共20种，已被他人选走的不再重复；若20种已被瓜分殆尽，则允许重复
+                picked = random.choice(available) if available else random.choice(ANCIENT_BLESSING_POOL)
                 # 无论抽到哪位神话人物，效果统一为攻击、防御各 +100%
                 grant_perk(char['id'], {'key': 'atk_pct', 'val': ANCIENT_BLESSING_ATK_PCT}, '远古意识觉醒')
                 grant_perk(char['id'], {'key': 'def_pct', 'val': ANCIENT_BLESSING_DEF_PCT}, '远古意识觉醒')
@@ -10289,16 +10915,31 @@ def awakening():
             char     = me()
             awakened = bool(char.get('ancient_awakened'))
             blessing = ANCIENT_BLESSING_MAP.get(char.get('ancient_blessing_id')) if awakened else None
+            reinforce_layers   = char.get('ancient_reinforce_layers') or 0
+            reinforce_eligible = awakened and char['realm_idx'] >= ANCIENT_REINFORCE_REALM_MIN \
+                                 and reinforce_layers < ANCIENT_REINFORCE_MAX_LAYERS
             mat_name, mat_item, mat_have = (None, None, 0)
             if eligible and not awakened:
                 mat_name, mat_item, mat_have = ancient_awaken_resolve_material(char['id'])
+            reinforce_mat_name, reinforce_mat_item, reinforce_mat_have, reinforce_mat_need = (None, None, 0, 1)
+            if reinforce_eligible:
+                reinforce_mat_name, reinforce_mat_item, reinforce_mat_have, reinforce_mat_need = \
+                    ancient_reinforce_resolve_material(char['id'], reinforce_layers)
 
     return render_template('awakening.html', char=char, eligible=eligible, awakened=awakened,
         blessing=blessing, mat_name=mat_name, mat_have=mat_have, result=result,
         ANCIENT_AWAKEN_RATE=ANCIENT_AWAKEN_RATE, ANCIENT_AWAKEN_EXP_REQ=ANCIENT_AWAKEN_EXP_REQ,
         ANCIENT_AWAKEN_MATERIALS=ANCIENT_AWAKEN_MATERIALS,
         ANCIENT_AWAKEN_CULTIVATE_BONUS=ANCIENT_AWAKEN_CULTIVATE_BONUS,
-        ANCIENT_BLESSING_POOL=ANCIENT_BLESSING_POOL)
+        ANCIENT_BLESSING_POOL=ANCIENT_BLESSING_POOL,
+        reinforce_layers=reinforce_layers, reinforce_eligible=reinforce_eligible,
+        reinforce_mat_name=reinforce_mat_name, reinforce_mat_have=reinforce_mat_have,
+        reinforce_mat_need=reinforce_mat_need,
+        ANCIENT_REINFORCE_REALM_MIN=ANCIENT_REINFORCE_REALM_MIN,
+        ANCIENT_REINFORCE_PCT_PER_LAYER=ANCIENT_REINFORCE_PCT_PER_LAYER,
+        ANCIENT_REINFORCE_MAX_LAYERS=ANCIENT_REINFORCE_MAX_LAYERS,
+        ANCIENT_REINFORCE_TIER2_LAYER=ANCIENT_REINFORCE_TIER2_LAYER,
+        ANCIENT_REINFORCE_TIER2_QTY=ANCIENT_REINFORCE_TIER2_QTY)
 
 @app.route('/game/lifespan_pawn', methods=['GET', 'POST'])
 @login_required
@@ -10746,6 +11387,77 @@ def mine():
                            MAX_ENERGY=energy_cap(char), spots=spots_view,
                            forge_lv=forge_lv, FORGE_LEVELS=FORGE_LEVELS,
                            result=result)
+
+# ── 秘矿（符修专属，大乘及以上开启）────────────────────────────────────────────
+
+@app.route('/game/fulu_mine', methods=['GET','POST'])
+@login_required
+def fulu_mine():
+    char   = me()
+    energy = cur_energy(char)
+
+    if not char_has_furnace(char['id'], 'brush'):
+        flash('此处仅供符修进入，需先在丹市购买毛笔。', 'error')
+        return redirect(url_for('market'))
+
+    result = None
+
+    if request.method == 'POST':
+        key  = request.form.get('mine_key', '')
+        spot = FULU_MINE_SPOTS_MAP.get(key)
+        if not spot:
+            flash('矿脉不存在', 'error')
+        elif char['realm_idx'] < spot['min_realm_idx']:
+            flash(f'需达到【{REALMS[spot["min_realm_idx"]]["name"]}】方可开采此矿。', 'error')
+        elif energy < spot['energy']:
+            flash(f'灵力不足，需 {spot["energy"]}（当前 {energy}）', 'error')
+        else:
+            now_t   = now_ts()
+            cd_row  = q("SELECT last_ts FROM work_cooldowns WHERE char_id=? AND job_key=?",
+                        (char['id'], key), one=True)
+            on_cd   = cd_row and (now_t - cd_row['last_ts']) < spot['cooldown']
+            if on_cd:
+                remain = spot['cooldown'] - (now_t - cd_row['last_ts'])
+                flash(f'矿脉尚未恢复，剩余 {remain//3600}h{(remain%3600)//60}m', 'error')
+            else:
+                weights = [d['weight'] for d in spot['drops']]
+                drop    = random.choices(spot['drops'], weights=weights, k=1)[0]
+                qty     = random.randint(drop['qty_min'], drop['qty_max'])
+                item    = q("SELECT * FROM items WHERE name=?", (drop['item'],), one=True)
+                if item:
+                    ex = q("SELECT 1 FROM inventory WHERE char_id=? AND item_id=?",
+                           (char['id'], item['id']), one=True)
+                    if ex: run("UPDATE inventory SET quantity=quantity+? WHERE char_id=? AND item_id=?",
+                               (qty, char['id'], item['id']))
+                    else:  run("INSERT INTO inventory (char_id,item_id,quantity) VALUES (?,?,?)",
+                               (char['id'], item['id'], qty))
+                set_energy(char['id'], energy - spot['energy'])
+                run("""INSERT INTO work_cooldowns (char_id,job_key,last_ts) VALUES (?,?,?)
+                       ON CONFLICT(char_id,job_key) DO UPDATE SET last_ts=excluded.last_ts""",
+                    (char['id'], key, now_t))
+                inc_quest(char['id'], 'mine')
+                log(char['id'], 'mine', f'于【{spot["name"]}】开采，获得【{drop["item"]}】×{qty}。')
+                result = {'spot': spot['name'], 'item': drop['item'], 'qty': qty}
+                energy -= spot['energy']
+                char = me()
+
+    now_t   = now_ts()
+    cd_rows = {r['job_key']: r['last_ts']
+               for r in q("SELECT job_key,last_ts FROM work_cooldowns WHERE char_id=?", (char['id'],))}
+    spots_view = []
+    for spot in FULU_MINE_SPOTS:
+        last   = cd_rows.get(spot['key'], 0)
+        remain = max(0, last + spot['cooldown'] - now_t)
+        spots_view.append({**spot,
+            'locked':    char['realm_idx'] < spot['min_realm_idx'],
+            'on_cd':     remain > 0,
+            'cd_h':      remain // 3600,
+            'cd_m':      (remain % 3600) // 60,
+            'no_energy': energy < spot['energy'],
+        })
+    return render_template('fulu_mine.html', char=char, energy=energy,
+                           MAX_ENERGY=energy_cap(char), spots=spots_view,
+                           REALMS=REALMS, result=result)
 
 # ── 每日灵力馈赠（12点 / 18点 / 00点，各1.5小时窗口）──────────────────────────────
 
@@ -11772,11 +12484,34 @@ def superior_auction():
 
     # 兜底：若后台线程尚未补齐今日拍卖位（如刚重启、线程未及时触发），此处直接补上
     existing_slots = {r['slot'] for r in q("SELECT slot FROM superior_auctions WHERE day=?", (today,))}
-    for slot in range(1, SUPERIOR_AUCTION_SLOTS + 1):
+    for slot in range(1, superior_auction_slots() + 1):
         if slot not in existing_slots:
             run("""INSERT OR IGNORE INTO superior_auctions
                 (day,slot,item_name,start_price,settled,created_at) VALUES (?,?,?,?,0,?)""",
                 (today, slot, SUPERIOR_AUCTION_ITEM, SUPERIOR_AUCTION_START, now_ts()))
+
+    if request.method == 'POST' and request.form.get('action') == 'buy_direct':
+        try:
+            buy_qty = max(1, int(request.form.get('qty', 1)))
+        except ValueError:
+            buy_qty = 1
+        cost = buy_qty * SUPERIOR_LIQUID_DIRECT_PRICE
+        if (char['superior_stones'] or 0) < cost:
+            flash(f'上等灵石不足，购买 {buy_qty} 份造化灵液需 {cost}（当前持有 {char["superior_stones"] or 0}）', 'error')
+        else:
+            liquid = q("SELECT id FROM items WHERE name=?", (SUPERIOR_AUCTION_ITEM,), one=True)
+            if not liquid:
+                flash('造化灵液尚未初始化，请联系管理员', 'error')
+            else:
+                run("UPDATE characters SET superior_stones=superior_stones-? WHERE id=?", (cost, char['id']))
+                ex = q("SELECT 1 FROM inventory WHERE char_id=? AND item_id=?", (char['id'], liquid['id']), one=True)
+                if ex: run("UPDATE inventory SET quantity=quantity+? WHERE char_id=? AND item_id=?",
+                           (buy_qty, char['id'], liquid['id']))
+                else:  run("INSERT INTO inventory (char_id,item_id,quantity) VALUES (?,?,?)",
+                           (char['id'], liquid['id'], buy_qty))
+                log(char['id'], 'market', f'直接购买【{SUPERIOR_AUCTION_ITEM}】×{buy_qty}，花费 {cost} 上等灵石。')
+                flash(f'购买成功！获得【{SUPERIOR_AUCTION_ITEM}】×{buy_qty}，花费 {cost} 上等灵石。', 'success')
+                char = me()
 
     if request.method == 'POST' and request.form.get('action') == 'bid':
         try:
@@ -11827,7 +12562,10 @@ def superior_auction():
 
     return render_template('superior_auction.html', char=char, lots=lots,
         SUPERIOR_AUCTION_SETTLE_HOUR=SUPERIOR_AUCTION_SETTLE_HOUR,
-        settle_ts=int(settle_ts), now_ts=now_ts())
+        settle_ts=int(settle_ts), now_ts=now_ts(),
+        SUPERIOR_AUCTION_SLOTS_CUR=len(auctions),
+        SUPERIOR_LIQUID_DIRECT_PRICE=SUPERIOR_LIQUID_DIRECT_PRICE,
+        SUPERIOR_AUCTION_ITEM=SUPERIOR_AUCTION_ITEM)
 
 # ── 道友（玩家交互） ───────────────────────────────────────────────────────────
 
@@ -12407,8 +13145,8 @@ def gift_log_page():
 
 PVP_MAX_MAJOR_DIFF  = 2   # 最大大境界差距（超过此值不可切磋）
 PVP_ENERGY_COST     = 10
-PVP_DAILY_LIMIT     = 2   # 每人每天最多切磋次数
-PVP_DAILY_TOTAL     = 15  # 每天总切磋上限
+PVP_DAILY_LIMIT     = 4   # 每人每天最多切磋次数
+PVP_DAILY_TOTAL     = 45  # 每天总切磋上限
 
 # ── 珍贵材料 & 礼物 ──────────────────────────────────────────────────────────────
 # ── 炼体 ─────────────────────────────────────────────────────────────────────────
@@ -13027,6 +13765,207 @@ def memorial():
     final_realm = REALMS[char['realm_idx']]['name']
     return render_template('memorial.html', char=char, final_realm=final_realm)
 
+@app.route('/game/immortal_seat_select', methods=['GET','POST'])
+@login_required
+def immortal_seat_select():
+    """飞升真仙后的三席神位选择：取当前最强的三个空缺神位供玩家亲择一席。"""
+    char = me()
+    pending = json.loads(char['immortal_seat_pending'] or '[]')
+    if not pending:
+        return redirect(url_for('cultivate'))
+    if request.method == 'POST':
+        idx = int(request.form.get('idx', -1))
+        if 0 <= idx < len(pending):
+            seat_name = pending[idx]
+            clash = q("SELECT 1 FROM characters WHERE immortal_seat=? AND id!=?", (seat_name, char['id']), one=True)
+            if clash:
+                flash(f'【{seat_name}】神位刚被他人占据，请另选一席', 'error')
+                return redirect(url_for('immortal_seat_select'))
+            seat_flavor    = immortal_seat_flavor(seat_name, char)
+            seat_full_name = immortal_seat_full_name(seat_name, char)
+            run("UPDATE characters SET immortal_seat=?,immortal_seat_at=?,immortal_seat_pending='' WHERE id=?",
+                (seat_name, now_ts(), char['id']))
+            log(char['id'], 'cultivate', f'天地异象乍现，霞光万道贯穿虚空——{seat_flavor}')
+            world_log_add('immortal', f'【{char["name"]}】飞升真仙，位列仙班，敕封为【{seat_full_name}】！')
+            flash(f'已位列仙班，敕封为【{seat_full_name}】！', 'success')
+            return redirect(url_for('immortal_seat_view'))
+        return redirect(url_for('immortal_seat_select'))
+    choices = []
+    for name in pending:
+        entry = IMMORTAL_SEAT_BY_NAME.get(name, {})
+        choices.append({'name': name, 'desc': entry.get('desc', ''), 'intro': entry.get('intro', '')})
+    return render_template('immortal_seat_select.html', char=char, choices=choices)
+
+@app.route('/game/immortal_seat')
+@login_required
+def immortal_seat_view():
+    """位列仙班纪念页：飞升真仙时的封神一幕，随时可回顾重温。"""
+    char = me()
+    if not char:
+        return redirect(url_for('logout'))
+    if not char['immortal_seat']:
+        if char['immortal_seat_pending']:
+            return redirect(url_for('immortal_seat_select'))
+        flash('尚未位列仙班', 'error')
+        return redirect(url_for('dashboard'))
+    seat      = IMMORTAL_SEAT_BY_NAME.get(char['immortal_seat'])
+    flavor    = immortal_seat_flavor(char['immortal_seat'], char)
+    seat_full_name = immortal_seat_full_name(char['immortal_seat'], char)
+    seat_date = datetime.fromtimestamp(char['immortal_seat_at'], TZ).strftime('%Y-%m-%d %H:%M') if char['immortal_seat_at'] else ''
+    return render_template('immortal_seat.html', char=char, seat=seat, flavor=flavor,
+        seat_full_name=seat_full_name, seat_date=seat_date)
+
+@app.route('/game/mortal_watch', methods=['GET','POST'])
+@login_required
+def mortal_watch():
+    """真仙专属：俯瞰人间，观人世沉浮。纯粹感悟，消耗灵力，不获实质奖励。"""
+    char   = me()
+    energy = cur_energy(char)
+    result = None
+    if request.method == 'POST':
+        if energy < MORTAL_WATCH_COST:
+            flash(f'灵力不足，需 {MORTAL_WATCH_COST}', 'error')
+        else:
+            set_energy(char['id'], energy - MORTAL_WATCH_COST)
+            snippet = mortal_watch_snippet()
+            log(char['id'], 'mortal_watch', snippet)
+            result = {'text': snippet}
+    fresh   = me()
+    history = q("""SELECT content, created_at FROM char_logs
+        WHERE char_id=? AND type='mortal_watch' ORDER BY created_at DESC LIMIT 30""", (char['id'],))
+    return render_template('mortal_watch.html', char=fresh, energy=cur_energy(fresh),
+        MORTAL_WATCH_COST=MORTAL_WATCH_COST, result=result, history=history)
+
+@app.route('/game/xian_combat')
+@login_required
+def xian_combat():
+    """真仙专属：斗法。数值锁定攻击/防御各500万，不耗灵力、不掉血、无死亡风险，纯粹图一乐。
+    除5位真仙限定强敌外，昔日战斗场的凡间妖兽也可一并挑战。"""
+    char = me()
+    if not is_ascended(char):
+        flash('道行尚浅，此等斗法非真仙不可为', 'error')
+        return redirect(url_for('combat'))
+    history = q("""SELECT content, created_at FROM char_logs
+        WHERE char_id=? AND type='xian_combat' ORDER BY created_at DESC LIMIT 20""", (char['id'],))
+    mortal_monsters = q("SELECT id, name, description, hp, attack, defense FROM monsters WHERE is_active=1 ORDER BY hp")
+    return render_template('xian_combat.html', char=char, monsters=XIAN_COMBAT_MONSTERS,
+        mortal_monsters=mortal_monsters,
+        XIAN_COMBAT_ATK=XIAN_COMBAT_ATK, XIAN_COMBAT_DEF=XIAN_COMBAT_DEF, history=history)
+
+@app.route('/game/xian_combat/<mid>', methods=['POST'])
+@login_required
+def xian_fight(mid):
+    """真仙斗法结算：单场表演性战斗，不落地任何真实数值。mid 可以是真仙限定妖物的字符串key，
+    也可以是凡间妖兽在 monsters 表中的数字 id。"""
+    char = me()
+    if not is_ascended(char):
+        flash('道行尚浅，此等斗法非真仙不可为', 'error')
+        return redirect(url_for('combat'))
+    monster = XIAN_COMBAT_MAP.get(mid)
+    if not monster:
+        db_row = q("SELECT * FROM monsters WHERE id=? AND is_active=1", (mid,), one=True)
+        if db_row:
+            monster = {'name': db_row['name'], 'hp': max(1, db_row['hp']),
+                       'atk': db_row['attack'], 'def': db_row['defense']}
+    if not monster:
+        flash('目标不存在', 'error')
+        return redirect(url_for('xian_combat'))
+    rounds, total_dealt, total_taken, round_no = xian_combat_fight(monster)
+    msg = f'以攻击{XIAN_COMBAT_ATK:,}、防御{XIAN_COMBAT_DEF:,}之力，历经 {round_no} 回合，一举斩杀【{monster["name"]}】！'
+    log(char['id'], 'xian_combat', msg)
+    return render_template('xian_combat_result.html', char=char, monster=monster,
+        rounds=rounds, total_dealt=total_dealt, total_taken=total_taken, round_no=round_no,
+        XIAN_COMBAT_ATK=XIAN_COMBAT_ATK, XIAN_COMBAT_DEF=XIAN_COMBAT_DEF)
+
+@app.route('/game/temple', methods=['GET','POST'])
+@login_required
+def temple():
+    """真仙专属：神庙。设计神庙名称与风格，每小时会有一位人间访客前来朝拜，
+    偶尔带着求助的问题，需真仙亲自抉择如何回应。"""
+    char = me()
+    if not is_ascended(char):
+        flash('道行尚浅，此等神通非真仙不可为', 'error')
+        return redirect(url_for('dashboard'))
+
+    if request.method == 'POST':
+        action = request.form.get('action')
+        if action == 'set_temple':
+            new_name = request.form.get('temple_name', '').strip()[:12]
+            try:
+                style_id = int(request.form.get('temple_style', 0))
+            except ValueError:
+                style_id = 0
+            if style_id not in TEMPLE_STYLE_MAP:
+                style_id = char['temple_style'] or TEMPLE_STYLES[0]['id']
+            run("UPDATE characters SET temple_name=?,temple_style=? WHERE id=?",
+                (new_name, style_id, char['id']))
+            flash('神庙已重新布置', 'success')
+        elif action == 'answer':
+            vid = int(request.form.get('visit_id', 0))
+            idx = int(request.form.get('idx', -1))
+            visit = q("SELECT * FROM temple_visits WHERE id=? AND char_id=? AND resolved=0",
+                      (vid, char['id']), one=True)
+            if not visit:
+                flash('此事已然了结，无需再理', 'error')
+            else:
+                choices = json.loads(visit['choices_json'] or '[]')
+                if 0 <= idx < len(choices):
+                    outcome = choices[idx]['outcome']
+                    incense = random.randint(3, 8)
+                    run("""UPDATE temple_visits SET resolved=1,chosen_idx=?,response_text=? WHERE id=?""",
+                        (idx, outcome, vid))
+                    run("UPDATE characters SET temple_incense=temple_incense+? WHERE id=?",
+                        (incense, char['id']))
+                    flash('已应允此事', 'success')
+
+    fresh    = me()
+    pending  = q("""SELECT * FROM temple_visits WHERE char_id=? AND resolved=0
+        ORDER BY created_at ASC""", (fresh['id'],))
+    pending  = [dict(p, choices=json.loads(p['choices_json'] or '[]')) for p in pending]
+    history  = q("""SELECT * FROM temple_visits WHERE char_id=? AND resolved=1
+        ORDER BY created_at DESC LIMIT 30""", (fresh['id'],))
+    style    = TEMPLE_STYLE_MAP.get(fresh['temple_style']) if fresh['temple_style'] else None
+    return render_template('temple.html', char=fresh, pending=pending, history=history,
+        style=style, TEMPLE_STYLES=TEMPLE_STYLES)
+
+@app.route('/game/xian_forge', methods=['GET','POST'])
+@login_required
+def xian_forge():
+    """真仙专属：法器阁。耗费灵力炼制法器（乐器/兵刃/法宝），类型固定、名称与描述自定，
+    攻防数值超高且随机，纯粹图个收藏与炫耀，不接入实际战斗计算。"""
+    char = me()
+    if not is_ascended(char):
+        flash('道行尚浅，此等神通非真仙不可为', 'error')
+        return redirect(url_for('dashboard'))
+    energy = cur_energy(char)
+
+    if request.method == 'POST':
+        type_id = request.form.get('type_id', '')
+        t = XIAN_ARTIFACT_TYPE_MAP.get(type_id)
+        prefix = request.form.get('prefix', '').strip()[:8]
+        desc   = request.form.get('description', '').strip()[:120]
+        if not t:
+            flash('请选择要炼制的法器类型', 'error')
+        elif not prefix:
+            flash('请为法器取一个前缀名号', 'error')
+        elif energy < XIAN_ARTIFACT_COST:
+            flash(f'灵力不足，需 {XIAN_ARTIFACT_COST}', 'error')
+        else:
+            set_energy(char['id'], energy - XIAN_ARTIFACT_COST)
+            full_name = f'{prefix}{t["name"]}'
+            atk, dfn = xian_artifact_roll()
+            run("""INSERT INTO xian_artifacts (char_id,type_id,type_name,custom_name,description,atk,def,created_at)
+                   VALUES (?,?,?,?,?,?,?,?)""",
+                (char['id'], type_id, t['name'], full_name, desc, atk, dfn, now_ts()))
+            log(char['id'], 'system', f'耗费{XIAN_ARTIFACT_COST}灵力，炼成【{full_name}】！攻击{atk:,}，防御{dfn:,}。')
+            flash(f'炼成【{full_name}】！攻击 {atk:,}，防御 {dfn:,}', 'success')
+
+    fresh     = me()
+    artifacts = q("SELECT * FROM xian_artifacts WHERE char_id=? ORDER BY created_at DESC", (fresh['id'],))
+    return render_template('xian_forge.html', char=fresh, energy=cur_energy(fresh),
+        XIAN_ARTIFACT_COST=XIAN_ARTIFACT_COST, XIAN_ARTIFACT_TYPES=XIAN_ARTIFACT_TYPES,
+        artifacts=artifacts)
+
 @app.route('/game/reincarnate', methods=['POST'])
 @login_required
 def reincarnate():
@@ -13276,7 +14215,7 @@ def spells_page():
             spell_id  = int(request.form.get('spell_id', 0))
             sp_target = q("SELECT * FROM char_spells WHERE id=? AND char_id=? AND learned=1",
                           (spell_id, char['id']), one=True)
-            my_moves  = q("SELECT id FROM char_spell_moves WHERE char_id=?", (char['id'],))
+            my_moves  = q("SELECT id FROM char_spell_moves WHERE char_id=? AND spell_id=?", (char['id'], spell_id))
             if char['realm_idx'] < MOVE_MIN_REALM:
                 flash('需达化神境界方可研制法术招式', 'error')
             elif not sp_target:
@@ -13284,7 +14223,7 @@ def spells_page():
             elif (sp_target['mastery'] or 0) < 100:
                 flash('法术熟练度需达满级（100）方可研制招式', 'error')
             elif len(my_moves) >= MOVE_MAX:
-                flash(f'招式已达上限（{MOVE_MAX}式）', 'error')
+                flash(f'该法术招式已达上限（{MOVE_MAX}式）', 'error')
             else:
                 move_num   = len(my_moves) + 1
                 stone_cost = move_num * 2000
@@ -13363,16 +14302,13 @@ def spells_page():
             moves_by_spell.setdefault(mv['spell_id'], []).append(mv_view)
         else:
             orphan_moves.append(mv_view)
-    total_moves    = len(my_moves_raw)
-    next_move_num  = total_moves + 1
-    next_move_cost = next_move_num * 2000
-    next_move_rate = max(5, int(round(max(0.05, MOVE_SUCCESS_RATE - total_moves * 0.06) * 100)))
-
-    # 构建展示数据，将招式附加到对应法术
+    # 构建展示数据，将招式附加到对应法术；研制进度（第几式/花费/成功率）按各法术单独计算
     spells_view = []
     for sp in my_spells:
         eff = SPELL_ELEMENT_EFFECTS.get(sp['element'], {})
         m   = (sp['mastery'] or 0) / 100
+        sp_moves      = moves_by_spell.get(sp['id'], [])
+        sp_move_count = len(sp_moves)
         spells_view.append({
             **dict(sp),
             'display_name': sp['custom_name'] or SPELL_ELEMENT_NAMES.get(sp['element'], '法术'),
@@ -13381,7 +14317,11 @@ def spells_page():
             'is_special':   sp['element'] in SPECIAL_ELEMENT_SOURCES,
             'effects_now':  {k: round(v * m * 100, 1) for k, v in eff.items()},
             'effects_max':  {k: round(v * 100, 1) for k, v in eff.items()},
-            'moves':        moves_by_spell.get(sp['id'], []),
+            'moves':        sp_moves,
+            'move_count':   sp_move_count,
+            'next_move_num':  sp_move_count + 1,
+            'next_move_cost': (sp_move_count + 1) * 2000,
+            'next_move_rate': max(5, int(round(max(0.05, MOVE_SUCCESS_RATE - sp_move_count * 0.06) * 100))),
         })
 
     return render_template('spells.html',
@@ -13393,9 +14333,6 @@ def spells_page():
         SPELL_ELEMENT_NAMES=SPELL_ELEMENT_NAMES,
         SPELL_ELEMENT_COLORS=SPELL_ELEMENT_COLORS,
         MAX_ENERGY=energy_cap(char),
-        total_moves=total_moves,
-        next_move_cost=next_move_cost,
-        next_move_rate=next_move_rate,
         orphan_moves=orphan_moves,
         MOVE_MIN_REALM=MOVE_MIN_REALM, MOVE_MAX=MOVE_MAX,
         MOVE_ENERGY_COST=MOVE_ENERGY_COST)
@@ -15807,7 +16744,7 @@ XIAN_REALM_IDX = next(i for i, r in enumerate(REALMS) if r['major'] == '真仙')
 def rankings():
     # 封仙榜：已成仙者（隐藏的也显示，只隐藏修仙榜）
     immortals = q("""SELECT c.name, c.spirit_root, c.realm_idx, c.exp, c.spirit_stones,
-        c.elements, c.daolv_id, c.age, c.ancient_awakened, c.ancient_blessing_id, u.username
+        c.elements, c.daolv_id, c.age, c.ancient_awakened, c.ancient_blessing_id, c.immortal_seat, u.username
         FROM characters c JOIN users u ON u.id=c.user_id
         WHERE c.is_npc=0 AND c.status='alive' AND c.realm_idx >= ?
         ORDER BY c.exp DESC""", (XIAN_REALM_IDX,))
@@ -16085,6 +17022,12 @@ def admin_players():
             FROM characters c JOIN users u ON u.id=c.user_id
             WHERE c.is_npc=0 AND c.status='alive'
             ORDER BY c.realm_idx DESC, c.exp DESC""")
+    cauldron_ids = {r['char_id'] for r in q(
+        """SELECT DISTINCT i.char_id FROM inventory i JOIN items it ON it.id=i.item_id
+           WHERE it.type='cauldron' AND i.quantity>0""")}
+    liquid_gift_map = {r['char_id']: r['count'] for r in q(
+        "SELECT char_id, count FROM daily_counters WHERE key=? AND day='total'",
+        (ALCHEMY_LIQUID_GIFT_TOTAL_KEY,))}
     players = []
     for row in rows:
         p = dict(row)
@@ -16093,10 +17036,13 @@ def admin_players():
         p['crit_rate_pct'] = round(fs['crit_rate'] * 100, 1)
         p['dodge_rate_pct']= round(fs['dodge_rate'] * 100, 1)
         p['lifesteal_pct'] = round(fs['lifesteal'], 1)
+        p['is_alchemist']  = p['id'] in cauldron_ids
+        p['liquid_gift_total'] = liquid_gift_map.get(p['id'], 0)
         players.append(p)
     dead_count = q("SELECT COUNT(*) n FROM characters WHERE is_npc=0 AND status!='alive'", one=True)['n']
     return render_template('admin/players.html', players=players,
-                           show_dead=show_dead, dead_count=dead_count)
+                           show_dead=show_dead, dead_count=dead_count,
+                           ALCHEMY_LIQUID_GIFT_MAX_TOTAL=ALCHEMY_LIQUID_GIFT_MAX_TOTAL)
 
 @app.route('/admin/player/<int:cid>', methods=['GET','POST'])
 @login_required
@@ -16131,6 +17077,13 @@ def admin_player(cid):
             run("UPDATE characters SET lingfu=? WHERE id=?", (val, cid))
             log(cid, 'system', f'管理员直接设定灵符为 {val}。')
             flash(f'已将灵符设为 {val}', 'success')
+        elif act == 'set_liquid_gift_total':
+            val = max(0, int(request.form.get('value', 0)))
+            run("""INSERT INTO daily_counters (char_id,key,day,count) VALUES (?,?,'total',?)
+                ON CONFLICT(char_id,key,day) DO UPDATE SET count=excluded.count""",
+                (cid, ALCHEMY_LIQUID_GIFT_TOTAL_KEY, val))
+            log(cid, 'system', f'[管理员] 直接设定造化灵液累计获赠份数为 {val}。')
+            flash(f'已将造化灵液累计获赠份数设为 {val}', 'success')
         elif act == 'set_exp':
             val = max(0, int(request.form.get('value', 0)))
             run("UPDATE characters SET exp=? WHERE id=?", (val, cid))
@@ -16141,6 +17094,17 @@ def admin_player(cid):
             run("UPDATE characters SET exp=exp+? WHERE id=?", (amt, cid))
             log(cid, 'system', f'管理员赠予修为 {amt}。')
             flash(f'已赠予 {amt} 修为', 'success')
+        elif act == 'body_exp':
+            amt    = int(request.form.get('amount', 0))
+            lv     = char['body_level'] or 0
+            b_exp  = max(0, (char['body_exp'] or 0) + amt)
+            new_lv = lv
+            while new_lv + 1 < len(BODY_LEVELS) and b_exp >= BODY_LEVELS[new_lv + 1]['exp'] \
+                    and char['realm_idx'] >= BODY_LEVELS[new_lv + 1]['realm']:
+                new_lv += 1
+            run("UPDATE characters SET body_exp=?, body_level=? WHERE id=?", (b_exp, new_lv, cid))
+            log(cid, 'system', f'管理员赠予炼体经验 {amt}。')
+            flash(f'已赠予 {amt} 炼体经验（当前 {b_exp}，{BODY_LEVELS[new_lv]["name"]}）', 'success')
         elif act == 'set_energy':
             val = max(0, min(energy_cap(char), int(request.form.get('value', 0))))
             set_energy(cid, val)
@@ -16428,6 +17392,23 @@ def admin_player(cid):
                 run("UPDATE characters SET sword_token_id=NULL, spirit_stones=spirit_stones+? WHERE id=?", (refund, cid))
                 log(cid, 'system', f'[管理员] 强制移除剑修资格（飞剑令），退还灵石 {refund}。')
                 flash(f'已移除剑修路线，退还灵石 {refund}', 'success')
+        elif act == 'add_bones':
+            amt = max(0, int(request.form.get('amount', 0)))
+            owned_ids = {r['bone_id'] for r in q("SELECT bone_id FROM char_bones WHERE char_id=?", (cid,))}
+            old_count = len(owned_ids)
+            remaining = [i for i in range(BONE_TOTAL) if i not in owned_ids]
+            grant_ids = random.sample(remaining, min(amt, len(remaining)))
+            for bid in grant_ids:
+                run("INSERT INTO char_bones (char_id,bone_id,found_at) VALUES (?,?,?)", (cid, bid, now_ts()))
+            new_count = old_count + len(grant_ids)
+            crossed = [m for m in BONE_MILESTONES if old_count < m <= new_count]
+            for _ in crossed:
+                grant_perk(cid, {'key': 'cultivate_pct', 'val': BONE_MILESTONE_CULTIVATE_PCT}, BONE_MILESTONE_PERK_LABEL)
+            log(cid, 'system', f'[管理员] 补全仙骨 {len(grant_ids)} 块（当前 {new_count}/{BONE_TOTAL}）。')
+            msg = f'已补全 {len(grant_ids)} 块仙骨（当前 {new_count}/{BONE_TOTAL}）'
+            if crossed:
+                msg += f'，顺带触发 {len(crossed)} 次隐藏感悟（修炼速度 +{int(len(crossed)*BONE_MILESTONE_CULTIVATE_PCT*100)}%）'
+            flash(msg, 'success')
         char = dict(q("SELECT c.*, u.username FROM characters c JOIN users u ON u.id=c.user_id WHERE c.id=?", (cid,), one=True))
 
     all_items  = q("SELECT * FROM items WHERE is_active=1 ORDER BY type,name")
@@ -16489,6 +17470,9 @@ def admin_player(cid):
     gate_atk_charges, gate_atk_cd_left, _ = gate_calc_atk_charges(char)
     combat_pool_row = q("SELECT generated_at FROM char_combat_pool WHERE char_id=?", (cid,), one=True)
     combat_pool_cd_left = max(0, COMBAT_POOL_REFRESH - (now_ts() - combat_pool_row['generated_at'])) if combat_pool_row else 0
+    _liquid_gift_row = q("SELECT count FROM daily_counters WHERE char_id=? AND key=? AND day='total'",
+        (cid, ALCHEMY_LIQUID_GIFT_TOTAL_KEY), one=True)
+    liquid_gift_total = _liquid_gift_row['count'] if _liquid_gift_row else 0
     return render_template('admin/player_detail.html', char=char, all_items=all_items,
         all_pills=all_pills, pill_usage_rows=pill_usage_rows,
         inv=inv, char_pets=char_pets, plogs=plogs, max_hp=max_hp,
@@ -16497,7 +17481,9 @@ def admin_player(cid):
         FURNITURE_POOL=FURNITURE_POOL, owned_furniture_keys=owned_furniture_keys,
         total_years_pawned=char['life_sold_total'] or 0, char_dws=char_dws,
         gate_atk_charges=gate_atk_charges, gate_atk_cd_left=gate_atk_cd_left,
-        combat_pool_cd_left=combat_pool_cd_left)
+        combat_pool_cd_left=combat_pool_cd_left, BODY_LEVELS=BODY_LEVELS,
+        liquid_gift_total=liquid_gift_total, ALCHEMY_LIQUID_GIFT_MAX_TOTAL=ALCHEMY_LIQUID_GIFT_MAX_TOTAL,
+        bone_owned=bone_owned_count(cid), BONE_TOTAL=BONE_TOTAL)
 
 @app.route('/admin/items', methods=['GET','POST'])
 @login_required
@@ -16704,6 +17690,13 @@ def admin_config():
             mode = request.form.get('mode', '0')
             run("INSERT OR REPLACE INTO site_config (key,value) VALUES ('gate_ghost_reinforce',?)", (mode,))
             flash(f'鬼魔尽歼补发{"已开启" if mode=="1" else "已关闭"}', 'success')
+        elif action == 'superior_auction_slots':
+            val = request.form.get('value', '').strip()
+            if val.isdigit() and int(val) > 0:
+                run("INSERT OR REPLACE INTO site_config (key,value) VALUES ('superior_auction_slots',?)", (val,))
+                flash(f'上等灵石拍卖行每日拍卖位已设为 {val} 个', 'success')
+            else:
+                flash('请输入正整数', 'error')
         elif action == 'limited2':
             days = request.form.get('limited2_days', '').strip()
             if request.form.get('limited2_close'):
@@ -16741,7 +17734,8 @@ def admin_config():
                            craft_cap=cap, alch_count=alch_count, forge_count=forge_count,
                            fulu_count=fulu_count, beast_count=beast_count, heqing_count=heqing_count,
                            sword_count=sword_count, craft_players=craft_players,
-                           refund_done=refund_done)
+                           refund_done=refund_done,
+                           superior_auction_slots_cur=superior_auction_slots())
 
 @app.route('/admin/enlighten', methods=['GET','POST'])
 @login_required
@@ -19425,7 +20419,8 @@ def _cave_loop():
                 db = sqlite3.connect(DB_PATH)
                 db.row_factory = sqlite3.Row
                 chars = db.execute(
-                    "SELECT id FROM characters WHERE cave_mode IS NOT NULL AND cave_mode != 'off' AND status='alive' AND is_npc=0"
+                    "SELECT id FROM characters WHERE cave_mode IS NOT NULL AND cave_mode != 'off' "
+                    "AND status='alive' AND is_npc=0 AND realm_idx < ?", (XIAN_REALM_IDX,)
                 ).fetchall()
                 db.close()
                 for c in chars:
@@ -19630,7 +20625,7 @@ def _ghost_loop():
 
 
 def _superior_auction_loop():
-    """上等灵石拍卖行：每天补齐2个造化灵液拍卖位，每晚22点结算未结算拍卖。"""
+    """上等灵石拍卖行：每天补齐造化灵液拍卖位（数量可在后台调整），每晚22点结算未结算拍卖。"""
     last_settle_date = ''
     while True:
         time.sleep(20)
@@ -19644,7 +20639,7 @@ def _superior_auction_loop():
             # 补齐今日拍卖位（先到先得，UNIQUE(day,slot) 保证幂等）
             existing_slots = {r['slot'] for r in db.execute(
                 "SELECT slot FROM superior_auctions WHERE day=?", (today_str,)).fetchall()}
-            for slot in range(1, SUPERIOR_AUCTION_SLOTS + 1):
+            for slot in range(1, superior_auction_slots(db) + 1):
                 if slot not in existing_slots:
                     db.execute("""INSERT OR IGNORE INTO superior_auctions
                         (day,slot,item_name,start_price,settled,created_at) VALUES (?,?,?,?,0,?)""",
@@ -19721,6 +20716,23 @@ def _red_packet_loop():
                 pass
 
 
+def _advance_time_loop():
+    """全服时光推进：定时为所有在世玩家惰性结算年龄流逝（原「管理员手动推进全服时光」按钮的自动版，
+    该按钮仍保留，可用于需要立即催更的场合）。advance_time 内部走 q()/run()，需要 Flask 应用上下文。"""
+    while True:
+        time.sleep(300)
+        try:
+            with app.app_context():
+                alive_chars = q("SELECT * FROM characters WHERE is_npc=0 AND status='alive'")
+                for char in alive_chars:
+                    try:
+                        advance_time(char)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+
 if __name__ == '__main__':
     init_db()
     t = threading.Thread(target=_snapshot_loop, daemon=True)
@@ -19733,4 +20745,6 @@ if __name__ == '__main__':
     ta.start()
     tr = threading.Thread(target=_red_packet_loop, daemon=True)
     tr.start()
+    tat = threading.Thread(target=_advance_time_loop, daemon=True)
+    tat.start()
     app.run(debug=True, port=int(os.environ.get("PORT", 5001)))

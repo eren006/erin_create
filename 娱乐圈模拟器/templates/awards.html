@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}颁奖典礼 - 娱乐圈模拟器{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:4px">颁奖日历</h3>
+  <p class="muted">
+    小奖攒资历,一路冲到国内权威奖、电影节,最后冲奥斯卡。冲奖 {{ campaign_cost }} 资金/次(人气类奖项效果明显,专业类效果有限,刷太猛可能被扣"刷奖"帽子);
+    买通评委 {{ bribe_cost }} 资金(只对专业类奖项有效,次数越多越容易被曝光)。
+  </p>
+</div>
+
+{% if not season_views %}
+<div class="card muted">现在没有正在进行的颁奖典礼,等下一场开启。</div>
+{% endif %}
+
+{% for sv in season_views %}
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <b>{{ sv.season.season_name }}</b>
+    <span class="badge {% if sv.season.tier == 'top' %}badge-red{% elif sv.season.tier in ('major','festival') %}badge-gold{% else %}badge-green{% endif %}">
+      {{ sv.tier_label }}
+    </span>
+  </div>
+  {% if not sv.eligible %}
+  <p class="muted" style="margin-top:6px">{{ sv.reason }},这场你还进不去提名池。</p>
+  {% endif %}
+  {% for cv in sv.category_views %}
+  <div style="margin-top:10px;padding:8px;background:var(--sf2);border-radius:8px">
+    <div style="display:flex;justify-content:space-between">
+      <b>{{ cv.category.category_name }}</b>
+      <span class="badge {% if cv.category.judge_type == 'critic' %}badge-gold{% else %}badge-green{% endif %}">
+        {% if cv.category.judge_type == 'critic' %}评委为主{% else %}大众投票为主{% endif %}
+      </span>
+    </div>
+    <table style="margin-top:6px">
+      <tr><th>艺人</th><th>评委分</th><th>投票分</th></tr>
+      {% for n in cv.nominees %}
+      <tr {% if n.player_id == me_id %}style="background:var(--red-dim)"{% endif %}>
+        <td>{{ n.stage_name }}</td>
+        <td>{{ n.critic_score }}{% if n.bribe_exposed %} <span class="badge badge-red">黑幕曝光</span>{% endif %}</td>
+        <td>{{ n.vote_score }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% if cv.is_nominated %}
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <form method="post" action="{{ url_for('awards_campaign') }}" style="flex:1">
+        <input type="hidden" name="category_id" value="{{ cv.category.id }}">
+        <button class="btn btn-primary" style="width:100%">拉票冲刺</button>
+      </form>
+      {% if cv.category.judge_type == 'critic' %}
+      <form method="post" action="{{ url_for('awards_bribe') }}" style="flex:1">
+        <input type="hidden" name="category_id" value="{{ cv.category.id }}">
+        <button class="btn" style="width:100%">私下打点评委</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endfor %}
+
+{% if recent_wins %}
+<div class="card">
+  <h4 style="margin-bottom:8px">我的获奖记录</h4>
+  {% for w in recent_wins %}
+  <div style="padding:6px 0;border-bottom:1px solid var(--bd)">{{ w.season_name }} · {{ w.category_name }}</div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}
