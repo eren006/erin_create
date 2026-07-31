@@ -29,6 +29,15 @@ if (!ext) {
     seal.ext.register(ext);
 }
 
+// ========================
+// 核心依赖：主插件共享 API
+// ========================
+// 本文件自身数据（提醒/好感度/图鉴）仍存于 changri_alarm 本地 ext，只在
+// 需要跨插件一致性的地方（角色名解析、辅助账号→主账号）委托主插件。
+function getApi()                          { return globalThis.__changriApi || null; }
+function getPrimaryUid(platform, uid)      { return getApi()?.getPrimaryUid(platform, uid) ?? uid; }
+function getRoleNameByApi(ctx, msg)        { return getApi()?.getRoleName(ctx, msg) ?? null; }
+
 const MAX_REMINDERS_PER_USER = 20;
 
 // ========================
@@ -282,7 +291,7 @@ function recordRemindGain(userKey) {
         if (!obj[userKey] || obj[userKey].date !== today) obj[userKey] = { date: today, count: 0 };
         obj[userKey].count++;
         ext.storageSet('alarm_remind_date', JSON.stringify(obj));
-    } catch {}
+    } catch (e) { console.error("[闹钟] recordRemindGain 保存失败:", e.message); }
 }
 
 // 谢谢每天最多触发1次好感
@@ -299,7 +308,7 @@ function recordThanksGain(userKey) {
         const obj = JSON.parse(raw);
         obj[userKey] = todayStr();
         ext.storageSet('alarm_thank_date', JSON.stringify(obj));
-    } catch {}
+    } catch (e) { console.error("[闹钟] recordThanksGain 保存失败:", e.message); }
 }
 
 // 尝试给收件人随机一件未拥有的礼物，返回礼物对象或null
@@ -316,14 +325,17 @@ function tryGiveGift(userKey) {
 }
 
 function getRoleName(ctx, msg) {
+    const api = getRoleNameByApi(ctx, msg);
+    if (api !== null) return api;
+    // 兼容独立运行：主插件未加载时走本地实现（不做辅助账号解析）
     const main = seal.ext.find('changri');
     if (!main) return null;
     const platform = msg.platform;
     const uid = msg.sender.userId.replace(/^[a-z]+:/i, '');
     try {
-        const storage = JSON.parse(main.storageGet('roleStorage') || '{}');
-        return storage[platform]?.[uid]?.name || null;
-    } catch { return null; }
+        const storage = JSON.parse(main.storageGet('a_private_group') || '{}');
+        return storage[platform]?.[uid]?.[0] || null;
+    } catch (e) { console.error('[闹钟] getRoleName 本地回退失败:', e.message); return null; }
 }
 
 function genId() {
@@ -458,7 +470,8 @@ cmd_alarm_set.solve = (ctx, msg, cmdArgs) => {
     }
 
     const platform = msg.platform;
-    const uid      = msg.sender.userId.replace(/^[a-z]+:/i, '');
+    const rawUid   = msg.sender.userId.replace(/^[a-z]+:/i, '');
+    const uid      = getPrimaryUid(platform, rawUid);
     const groupId  = msg.groupId.replace(/^[a-z]+-Group:/i, '');
     const roleName = getRoleName(ctx, msg) || msg.sender.nickname || uid;
     const userKey  = `${platform}:${uid}`;
@@ -506,7 +519,8 @@ cmd_alarm_list.help = '查看所有提醒';
 cmd_alarm_list.solve = (ctx, msg) => {
     const ret  = seal.ext.newCmdExecuteResult(true);
     const platform = msg.platform;
-    const uid  = msg.sender.userId.replace(/^[a-z]+:/i, '');
+    const rawUid   = msg.sender.userId.replace(/^[a-z]+:/i, '');
+    const uid  = getPrimaryUid(platform, rawUid);
     const list = getList().filter(r => r.platform === platform && r.uid === uid);
 
     if (list.length === 0) {
@@ -540,7 +554,8 @@ cmd_alarm_del.solve = (ctx, msg, cmdArgs) => {
     }
 
     const platform = msg.platform;
-    const uid      = msg.sender.userId.replace(/^[a-z]+:/i, '');
+    const rawUid   = msg.sender.userId.replace(/^[a-z]+:/i, '');
+    const uid      = getPrimaryUid(platform, rawUid);
     const list     = getList();
     const idx      = list.findIndex(r => r.id === id && r.platform === platform && r.uid === uid);
 
@@ -567,7 +582,8 @@ cmd_alarm_snooze.help = '再提醒我 [X分钟]\n延迟再提醒一次，默认 
 cmd_alarm_snooze.solve = (ctx, msg, cmdArgs) => {
     const ret      = seal.ext.newCmdExecuteResult(true);
     const platform = msg.platform;
-    const uid      = msg.sender.userId.replace(/^[a-z]+:/i, '');
+    const rawUid   = msg.sender.userId.replace(/^[a-z]+:/i, '');
+    const uid      = getPrimaryUid(platform, rawUid);
     const userKey  = `${platform}:${uid}`;
 
     const lastFired = getLastFired();
@@ -604,7 +620,8 @@ cmd_alarm_thanks.help = '向加百列表示感谢，提升好感度（每天一�
 cmd_alarm_thanks.solve = (ctx, msg) => {
     const ret      = seal.ext.newCmdExecuteResult(true);
     const platform = msg.platform;
-    const uid      = msg.sender.userId.replace(/^[a-z]+:/i, '');
+    const rawUid   = msg.sender.userId.replace(/^[a-z]+:/i, '');
+    const uid      = getPrimaryUid(platform, rawUid);
     const userKey  = `${platform}:${uid}`;
 
     const aff     = getAff(userKey);
@@ -635,7 +652,8 @@ cmd_alarm_aff.help = '查看与加百列的好感度';
 cmd_alarm_aff.solve = (ctx, msg) => {
     const ret      = seal.ext.newCmdExecuteResult(true);
     const platform = msg.platform;
-    const uid      = msg.sender.userId.replace(/^[a-z]+:/i, '');
+    const rawUid   = msg.sender.userId.replace(/^[a-z]+:/i, '');
+    const uid      = getPrimaryUid(platform, rawUid);
     const userKey  = `${platform}:${uid}`;
     const aff      = getAff(userKey);
     const lvl      = getAffectionLevel(aff);
@@ -659,7 +677,8 @@ cmd_alarm_catalog.help = '查看从加百列处获得的礼物';
 cmd_alarm_catalog.solve = (ctx, msg, cmdArgs) => {
     const ret      = seal.ext.newCmdExecuteResult(true);
     const platform = msg.platform;
-    const uid      = msg.sender.userId.replace(/^[a-z]+:/i, '');
+    const rawUid   = msg.sender.userId.replace(/^[a-z]+:/i, '');
+    const uid      = getPrimaryUid(platform, rawUid);
     const userKey  = `${platform}:${uid}`;
     const catalog  = getCatalog()[userKey] || [];
     const queryId  = msg.message.replace(/^[。.]\S+\s*/, '').trim().toUpperCase();

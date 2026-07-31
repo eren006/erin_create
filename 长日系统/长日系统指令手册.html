@@ -1,0 +1,3077 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>长日将尽 · 指令手册</title>
+<style>
+:root {
+  --bg:#fbf6ef; --surface:#ffffff; --border:#eadfce;
+  --accent:#c0392b; --accent2:#8B4513; --text:#2c2c2c; --muted:#8a7f6e;
+  --admin-bg:#fff3e0; --admin-fg:#b45309; --player-bg:#f0faf4; --player-fg:#15803d;
+  --tab-inactive:#f1e9db;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#17140f; --surface:#231f18; --border:#3a3428; --accent:#f0a58c; --accent2:#f4c98f;
+           --text:#ede6d8; --muted:#a89a82; --admin-bg:#3a2a10; --admin-fg:#f4c98f;
+           --player-bg:#12261a; --player-fg:#86efac; --tab-inactive:#211d16; }
+}
+:root[data-theme="dark"] { --bg:#17140f; --surface:#231f18; --border:#3a3428; --accent:#f0a58c; --accent2:#f4c98f;
+           --text:#ede6d8; --muted:#a89a82; --admin-bg:#3a2a10; --admin-fg:#f4c98f;
+           --player-bg:#12261a; --player-fg:#86efac; --tab-inactive:#211d16; }
+:root[data-theme="light"] { --bg:#fbf6ef; --surface:#ffffff; --border:#eadfce;
+           --accent:#c0392b; --accent2:#8B4513; --text:#2c2c2c; --muted:#8a7f6e;
+           --admin-bg:#fff3e0; --admin-fg:#b45309; --player-bg:#f0faf4; --player-fg:#15803d;
+           --tab-inactive:#f1e9db; }
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg);color:var(--text);font-family:"PingFang SC","Microsoft YaHei",sans-serif;font-size:14px;line-height:1.7;}
+.topbar{position:sticky;top:0;z-index:100;background:var(--surface);border-bottom:1px solid var(--border);
+  padding:14px 20px 0;display:flex;flex-direction:column;gap:10px;}
+.topbar h1{margin:0;font-size:18px;color:var(--accent2);}
+.tabs{display:flex;gap:4px;}
+.tab-btn{flex:1;text-align:center;padding:10px 8px;border:none;background:var(--tab-inactive);
+  color:var(--muted);font-size:14px;font-weight:600;border-radius:10px 10px 0 0;cursor:pointer;}
+.tab-btn.active{background:var(--bg);color:var(--accent);}
+#search{width:100%;padding:9px 14px;border-radius:10px;border:1px solid var(--border);
+  background:var(--bg);color:var(--text);font-size:14px;}
+#search:focus{outline:none;border-color:var(--accent);}
+#matchCount{font-size:12px;color:var(--muted);}
+.tab-panel{display:none;}
+.tab-panel.active{display:block;}
+
+.toc{display:flex;flex-wrap:wrap;gap:6px;padding:10px 20px;background:var(--surface);border-bottom:1px solid var(--border);}
+.toc a{font-size:12px;color:var(--muted);text-decoration:none;padding:4px 10px;border-radius:20px;background:var(--bg);border:1px solid var(--border);white-space:nowrap;}
+.toc a:hover{color:var(--accent);border-color:var(--accent);}
+
+.page{max-width:880px;margin:0 auto;padding:16px 20px 40px;}
+
+/* 指南 tab */
+.guide{background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:12px;overflow:hidden;}
+.guide-head{width:100%;text-align:left;background:none;border:none;padding:14px 16px;font-size:15px;font-weight:700;
+  color:var(--accent2);cursor:pointer;display:flex;justify-content:space-between;align-items:center;}
+.guide-body{display:none;padding:0 18px 16px;}
+.guide-body.open{display:block;}
+.chevron{transition:transform .15s;color:var(--muted);}
+.chevron.rot{transform:rotate(180deg);}
+.g-p{font-size:13.5px;margin:6px 0;}
+.g-hr{border:none;border-top:1px solid var(--border);margin:10px 0;}
+.g-pagebreak{border-top:2px dashed var(--border);margin:18px 0;}
+.g-row{display:flex;gap:14px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin:10px 0;}
+.g-col{flex:1;min-width:0;}
+.g-col:first-child{flex:0 0 auto;max-width:120px;}
+.g-box{background:var(--admin-bg);border-radius:8px;padding:8px 12px;margin:6px 0;font-weight:600;}
+table.g-table{width:100%;border-collapse:collapse;margin:10px 0;font-size:13px;}
+table.g-table th{background:var(--admin-bg);color:var(--admin-fg);text-align:left;padding:6px 10px;font-size:12.5px;}
+table.g-table td{border-top:1px solid var(--border);padding:7px 10px;vertical-align:top;}
+table.g-table tr:nth-child(even) td{background:var(--bg);}
+
+/* 指令 tab */
+.cmd-section{margin-top:14px;}
+.cmd-section-head{width:100%;display:flex;justify-content:space-between;align-items:center;
+  background:none;border:none;border-bottom:2px solid var(--border);padding:6px 0;cursor:pointer;}
+.cmd-section-head h2{font-size:16px;color:var(--accent);margin:0;}
+.cmd-list{display:none;}
+.cmd-list.open{display:block;}
+.cmd-row{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin:10px 0;}
+.cmd-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px;}
+.cmd-name{font-size:14px;font-weight:700;color:var(--text);background:none;}
+.dot-note{font-weight:400;font-size:11px;color:var(--muted);}
+.role-badge{font-size:11px;padding:2px 9px;border-radius:20px;font-weight:600;white-space:nowrap;}
+.role-admin{background:var(--admin-bg);color:var(--admin-fg);}
+.role-player{background:var(--player-bg);color:var(--player-fg);}
+.cmd-desc{font-size:13px;color:var(--text);}
+.usage{margin-top:8px;background:var(--bg);border:1px solid var(--border);border-radius:8px;
+  padding:8px 12px;font-size:12.5px;color:var(--muted);white-space:pre-wrap;font-family:"SF Mono",Consolas,monospace;overflow-x:auto;}
+.cmd-row.hidden, .cmd-section.hidden{display:none;}
+.empty-hint{text-align:center;color:var(--muted);padding:40px 0;display:none;}
+footer{text-align:center;color:var(--muted);font-size:11px;padding:20px 0;}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>📖 长日将尽 · 指令手册</h1>
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('guides')" id="tabbtn-guides">📘 新手指南</button>
+    <button class="tab-btn" onclick="switchTab('cmds')" id="tabbtn-cmds">📋 指令查找</button>
+  </div>
+</div>
+
+<div class="tab-panel active" id="panel-guides">
+  <div class="page">
+
+    <section class="guide" id="guide-dummy">
+      <button class="guide-head" onclick="toggleGuide('dummy')">
+        <span>🌸 新手向导 · 开始我的恋综季度</span><span class="chevron" id="chev-dummy">▾</span>
+      </button>
+      <div class="guide-body" id="body-dummy"><p class="g-p">🌸  开始我的恋综季度</p><p class="g-p">新手向导 · 跟着做就行，不用先读懂整本手册</p><hr class="g-hr"><p class="g-p">第一次接手这个系统不用怕，从头到尾跟着下面的步骤走一遍，大概 15～20 分钟就能把一季恋综搭起来。
+标 ⭐ 的步骤不能跳过，跳过后面大概率会出问题；没标星的可以先放着，以后想到了再回来配置。
+每一步都写了「为什么要做这一步」——不想知道原理的话，跳过「为什么」直接照着指令做也完全没问题。</p><div class="g-row"><div class="g-col"><div class="g-box"><p class="g-p">1</p></div></div><div class="g-col"><p class="g-p">⭐ 把机器人和网页存档连起来</p><p class="g-p">在海豹核心的插件配置页面找到「changri」插件，填写「RP存档服务器地址」和「RP存档Token」。<br>（长日将尽会协助你做好这一步，交给ta配置即可，这步可以跳过）</p><p class="g-p">💡 为什么：这是机器人和网页存档系统对话用的钥匙。不填的话，网页端配置的所有东西都传不过来，季度也创建不了——后面所有步骤的前提都是这一步先做好。</p></div></div><div class="g-row"><div class="g-col"><div class="g-box"><p class="g-p">2</p></div></div><div class="g-col"><p class="g-p">⭐ 确认管理员权限</p><p class="g-p">在海豹核心 UI 里填的「骰主 QQ」自动就是管理员，不用额外操作。<br>需要让骰主以外的人也能管理时，让骰主发：。授予管理员 QQ号 密码<br>默认密令是「detroit」，强烈建议先改掉：。更改密令 旧密码 新密码</p><div class="g-box"><p class="g-p">。授予管理员 123456789 detroit<br>。更改密令 detroit 你的新密令</p></div><p class="g-p">💡 为什么：后面所有「。」开头的管理员指令都要求有管理员权限，没权限会被直接拒绝。
+密令改掉默认值，可以防止不认识的人靠「授予管理员」自己给自己开权限。</p></div></div><div class="g-row"><div class="g-col"><div class="g-box"><p class="g-p">3</p></div></div><div class="g-col"><p class="g-p">清理上一季的痕迹（已经开过季才要做）</p><p class="g-p">① 发「。更新未退群」，机器人会列出还留在旧约会群里的玩家<br>② 对名单上每个 QQ 发一次「。驱逐 QQ号」，踢出旧群<br>③ 确认清干净后，发「。清空季度数据」，把角色数据归零</p><p class="g-p">💡 为什么：不清理的话，新季度分配群号会乱套，旧数据也会跟新季度混在一起。
+如果这是全新服务器、从来没开过季，这一步可以直接跳过，从下一步开始。</p></div></div><div class="g-row"><div class="g-col"><div class="g-box"><p class="g-p">4</p></div></div><div class="g-col"><p class="g-p">⭐ 正式开季，给这一季起名字</p><p class="g-p">格式：。创建新季度 恋综名 复盘/不复盘 MMDD-MMDD [补戏MMDD]</p><div class="g-box"><p class="g-p">。创建新季度 长日将尽 复盘 0610-0614<br>。创建新季度 长日将尽 复盘 0610-0614 0617（带补戏日）</p></div><p class="g-p">💡 为什么：这是整个系统的「总开关」。没有这一步，后面的邀约、群号分配、抽取等等全都无法运作。
+档期第一天会自动记为 D0；档期开始前互动不记录。复盘模式决定场次结束后是否需要补写复盘；
+补戏MMDD 可选，补戏截止日之前场次照常记录，但不计入弧长统计。</p></div></div><div class="g-row"><div class="g-col"><div class="g-box"><p class="g-p">5</p></div></div><div class="g-col"><p class="g-p">⭐ 准备约会群号</p><p class="g-p">方式一（简单，机器人本地直接加）：直接发「。添加群号 群号1,群号2,...」<br>方式二（推荐，从网页端批量管理）：去网页端「群号管理」页面按分组批量录入群号，<br>机器人发「。开启群号组 组名」把整组一键拉取到本地群号池。</p><p class="g-p">💡 为什么：玩家发起私约/电话邀约时，机器人需要从这个「群号池」里取一个空群来建临时约会房间。
+池子里没有群号，玩家邀约时机器人就没地方建群。
+群号只有「网页录入 → 机器人拉取」这一个方向，机器人这边不能把群号反过来推送回网页——网页只是用来批量整理群号的工具。详细操作见后面「如何批量管理与上传群号」一节。</p></div></div><div class="g-row"><div class="g-col"><div class="g-box"><p class="g-p">6</p></div></div><div class="g-col"><p class="g-p">⭐ 通知玩家创建角色（有 NPC 也要建）</p><p class="g-p">玩家自己在群里发：创建新角色 张三（不带句号，玩家自己发送）<br>场上如果有 NPC，管理员用有句号的指令创建：。创建NPC 路人甲</p><p class="g-p">💡 为什么：角色卡是参与后面所有互动（邀约、道具、关系线……）的前提，没建角色的人什么都做不了。
+NPC 不计入弧长统计、不参与随机分组，但所有需要出现在时间线上的 NPC 都必须提前创建，否则复盘时无法自动归档。</p></div></div><div class="g-row"><div class="g-col"><div class="g-box"><p class="g-p">7</p></div></div><div class="g-col"><p class="g-p">去网页端把内容配好</p><p class="g-p">登录存档网页端后台，把用得到的内容配一遍：<br>· 「物品库 / 抽取池管理」—— 玩家能抽到什么、商城卖什么<br>· 「结戏奖励配置」—— 私约结束后自动发放什么奖励<br>· 「系统参数配置」—— 各种冷却时间、功能开关、消息模板</p><div class="g-box"><p class="g-p">配置完成后，记得回到机器人发一次：。拉取全部</p></div><p class="g-p">💡 为什么：网页端配置默认不会自己跑到机器人这边——不发「拉取全部」，网页上配的东西都不会生效。
+这些内容也可以随时之后再补，不影响开季本身。</p></div></div><div class="g-row"><div class="g-col"><div class="g-box"><p class="g-p">8</p></div></div><div class="g-col"><p class="g-p">按需打开/关闭功能和 DLC</p><p class="g-p">发送「。设置 功能开关」调整基础功能：礼物、发起邀约、心愿、心动信、论坛、抽取默认是开着的；<br>写信综（发送信件）需要额外发「。注册写信综基础道具」才能用，非写信综向的恋综建议保持关闭。<br>另外还有一批默认关闭的「DLC」玩法模块（目击报告、复盘群分流、拍卖、攻防、踩点、约战、议价交易等），发「。设置 DLC」查看能直接用指令开关的几项，其余在网页端「系统参数配置」里开。</p><p class="g-p">💡 为什么：不是每个恋综都需要全部功能和玩法模块，用不到的关掉可以减少玩家操作的困惑。
+「清空季度数据」/开新季时功能开关会被整体清空重置，写信综等非默认开启项每季都要重新手动打开，不用担心上一季忘关的设置带到新一季。
+每个 DLC 具体是做什么的、怎么开，见后面「DLC 玩法开关总览」一节。</p></div></div><div class="g-row"><div class="g-col"><div class="g-box"><p class="g-p">9</p></div></div><div class="g-col"><p class="g-p">⭐ 开始你的恋综</p><p class="g-p">到这里，一个能正常运作的恋综季度就搭好了——可以让玩家发起第一场私约/电话/论坛发帖了。<br>后续遇到具体功能怎么用，翻后面按分类整理的指令表，或者回看下一页更详细的「管理员开季指南」。</p></div></div><p class="g-p">🧯  常见卡关，先看这里</p><hr class="g-hr"><table class="g-table"><thead><tr><th><p class="g-p">现象</p></th><th><p class="g-p">先检查这个</p></th></tr></thead><tbody><tr><td><p class="g-p">机器人在群里没反应 / 没有记录 RP</p></td><td><p class="g-p">去这个群发「.ext all on」（注意是英文句点）——新建的群默认所有插件是关闭的，不开插件机器人不会回复也不会记录任何内容</p></td></tr><tr><td><p class="g-p">玩家发起邀约，机器人没建群</p></td><td><p class="g-p">群号池是不是空的？发「。添加群号」或「。开启群号组」补充</p></td></tr><tr><td><p class="g-p">抽奖没反应 / 提示没有开放的池子</p></td><td><p class="g-p">池子是不是还没在网页端配置，或者配置完忘了发「。拉取全部」</p></td></tr><tr><td><p class="g-p">网页端配置了东西，机器人没反应</p></td><td><p class="g-p">是不是漏了最后一步「。拉取全部」——网页端不会自动推送给机器人</p></td></tr><tr><td><p class="g-p">礼品店 / 送礼图鉴编号用不了</p></td><td><p class="g-p">去网页端「礼品店管理」配置好礼品后，有没有发「。拉取全部」</p></td></tr><tr><td><p class="g-p">创建新季度失败</p></td><td><p class="g-p">海豹插件里的存档服务器地址/Token 是不是没填或填错了</p></td></tr></tbody></table><p class="g-p">接下来这几页是更详细的技术参考版「管理员开季指南」，把每一步展开成完整的指令表，适合已经跑完一遍上面的流程、想深入了解某一步细节的时候查阅。</p></div>
+    </section>
+
+    <section class="guide" id="guide-setup">
+      <button class="guide-head" onclick="toggleGuide('setup')">
+        <span>🚀 管理员开季指南</span><span class="chevron" id="chev-setup">▾</span>
+      </button>
+      <div class="guide-body" id="body-setup"><p class="g-p">🚀  管理员开季指南</p><hr class="g-hr"><p class="g-p">按以下顺序操作，标注「必须」的步骤不可跳过；「可选」步骤按需配置。</p><table class="g-table"><thead><tr><th><p class="g-p">步骤</p></th><th><p class="g-p">指令 / 操作</p></th><th><p class="g-p">是否必须</p></th><th><p class="g-p">说明</p></th></tr></thead><tbody><tr><td><p class="g-p">STEP 1</p></td><td><p class="g-p">海豹插件设置</p></td><td><p class="g-p">必须</p></td><td><p class="g-p">在海豹骰核心的插件配置页面，填写「RP存档服务器地址」和「RP存档Token」。<br>这是所有网络同步功能的前提，不填则无法创建季度。（长日将尽会协助你做好这一步，可以跳过）</p></td></tr><tr><td><p class="g-p">STEP 2</p></td><td><p class="g-p">。授予管理员 [QQ号] [密码]  /  。更改密令 [旧密码] [新密码]</p></td><td><p class="g-p">必须</p></td><td><p class="g-p">海豹核心 UI 里配置的「骰主 QQ」自动拥有管理员权限，不用额外操作。<br>需要让骰主以外的人也能管理时，让骰主发「。授予管理员 QQ号 密码」（密码需正确才能授权）。<br>默认密令是「detroit」，强烈建议先用「。更改密令 旧密码 新密码」改掉。<br>  · 后面所有「。」开头的管理员指令都需要管理员权限，没权限会被拒绝<br>  · 密令不改成自定义值，任何人知道默认密令都能给自己开权限</p></td></tr><tr><td><p class="g-p">STEP 3</p></td><td><p class="g-p">。更新未退群  →  。驱逐 [QQ号]</p></td><td><p class="g-p">必须</p></td><td><p class="g-p">开季前先清理旧群（如果是全新服务器、从没开过季，跳过这步）：<br>  ① 「。更新未退群」→ 机器人检测并列出仍在旧约会群里的玩家<br>  ② 对名单上的 QQ 逐一执行「。驱逐 QQ号」，将其从所有群号池群内踢出<br>  · 不清理旧群会导致新季度的群号计算混乱，建议在「清空季度数据」前完成</p></td></tr><tr><td><p class="g-p">STEP 4</p></td><td><p class="g-p">。清空季度数据</p></td><td><p class="g-p">必须</p></td><td><p class="g-p">清空上一季度的角色数据，使角色存储归零。<br>这是「创建新季度」的前置条件，不执行则无法开季。</p></td></tr><tr><td><p class="g-p">STEP 5</p></td><td><p class="g-p">。创建新季度 恋综名 复盘/不复盘 MMDD-MMDD [补戏MMDD]</p></td><td><p class="g-p">必须</p></td><td><p class="g-p">正式开启一个新季度，注册季度名称、复盘模式和档期范围。<br>例：创建新季度 长日将尽 复盘 0610-0614<br>例（带补戏日）：创建新季度 长日将尽 复盘 0610-0614 0617<br>档期开始日自动设为 D0，开始日之前互动不记录；补戏MMDD 可选，补戏截止日之前的场次照常记录，但不计入弧长统计。</p></td></tr><tr><td><p class="g-p">STEP 6</p></td><td><p class="g-p">。添加群号  或  网页端 → 群号管理 → 开启群号组</p></td><td><p class="g-p">必须</p></td><td><p class="g-p">方式一（直接添加）：。添加群号 群号1,群号2,...<br>方式二（推荐，从网页端批量管理）：<br>  ① 登录存档网页端 → 「群号管理」页面<br>  ② 创建分组（如「D1」「D2」），把所有群号按分组填入<br>  ③ 机器人发「。开启群号组 D1」即可一键导入该组所有群号<br>  ④ 网页端可随时增减群号，改完后再开一次即可生效<br>  · 群号只能「网页录入 → 机器人拉取」，机器人不能把群号推送回网页<br>  · 完整操作流程见后文「如何批量管理与上传群号」一节</p></td></tr><tr><td><p class="g-p">STEP 7</p></td><td><p class="g-p">创建新角色 [角色名]  /  。创建NPC [角色名]</p></td><td><p class="g-p">必须</p></td><td><p class="g-p">玩家操作（无句号，由玩家本人发送）：<br>  创建新角色 张三<br><br>NPC 操作（管理员用有句号指令创建）：<br>  。创建NPC 路人甲<br>  · NPC 不计入弧长统计、不参与随机分组<br>  · 所有需要出现在时间线上的 NPC 都必须提前创建，否则复盘时无法自动归档</p></td></tr><tr><td><p class="g-p">STEP 8</p></td><td><p class="g-p">。拉取全部  /  。推送全部</p></td><td><p class="g-p">可选</p></td><td><p class="g-p">如果存档 UI 已提前配好了参数，用「。拉取全部」一键拉取覆盖；<br>反之，用「。推送全部」把机器人本地所有数据推送到 UI。</p></td></tr><tr><td><p class="g-p">STEP 9</p></td><td><p class="g-p">。地点管理 添加 地点:描述</p></td><td><p class="g-p">可选</p></td><td><p class="g-p">注册游戏内可选的约会地点（玩家私约时需选地点）。<br>也可用「批量设置地点」一次导入多个。</p></td></tr><tr><td><p class="g-p">STEP 10</p></td><td><p class="g-p">网页端「礼品店管理」→ 。拉取全部</p></td><td><p class="g-p">可选</p></td><td><p class="g-p">在存档网页端「礼品店管理」页面配置好礼品（编号、名称、描述）后，<br>机器人发「。拉取全部」拉取到本地生效。<br>不做此步则「礼品店」和图鉴编号送礼无法使用。</p></td></tr><tr><td><p class="g-p">STEP 11</p></td><td><p class="g-p">网页端 → 物品库 / 抽取池管理  （推荐）</p></td><td><p class="g-p">可选</p></td><td><p class="g-p">推荐在网页端配置，操作更直观：<br>  · 「物品库」页面：批量编辑道具、上架商城、设置价格<br>  · 「抽取池管理」页面：新建池子、配置物品与权重、设置保底<br>  配置完成后在机器人发「。拉取全部」一键拉取到本地生效，<br>  新增物品/装备分配编号后会自动同步回网页，无需再推送。<br>也可用指令操作：。上载物品 + 。上架商城（上架商城会自动同步到网页；池子管理请前往 RP 面板）</p></td></tr><tr><td><p class="g-p">STEP 12</p></td><td><p class="g-p">。设置 功能开关  /  。设置 DLC</p></td><td><p class="g-p">可选</p></td><td><p class="g-p">按需开启/关闭基础功能（礼物、心愿、心动信、论坛、抽取、写信综等）。<br>另外还有一批默认关闭的「DLC」玩法模块（目击报告、复盘群分流、拍卖、攻防、踩点、约战、议价交易等），发「。设置 DLC」能直接开关的几项，其余在网页端「系统参数配置」里开——每个 DLC 具体做什么、怎么开，见前文「DLC 玩法开关总览」表。</p></td></tr><tr><td><p class="g-p">STEP 13</p></td><td><p class="g-p">网页端 → 结戏奖励配置  （推荐）</p></td><td><p class="g-p">可选</p></td><td><p class="g-p">推荐在网页端「结戏奖励配置」页面配置，支持可视化编辑奖励模板，比指令更直观。<br>配置完后在机器人发「。拉取全部」拉取生效。<br>也可直接用指令：。结戏加成（查看当前规则 / 逐条修改）</p></td></tr><tr><td><p class="g-p">STEP 14</p></td><td><p class="g-p">。设置信箱上限 D几 上限数</p></td><td><p class="g-p">可选</p></td><td><p class="g-p">设置各游戏日心动信每日可投递次数上限。<br>不设则使用默认值（通常为3封/天）。</p></td></tr><tr><td><p class="g-p">STEP 15</p></td><td><p class="g-p">。注册属性 + 。一键初始化（RPG 战斗）</p></td><td><p class="g-p">可选</p></td><td><p class="g-p">如需 RPG 战斗系统，先注册角色属性，再执行「一键初始化」。<br>不玩战斗的恋综可完全跳过此步骤。</p></td></tr><tr><td><p class="g-p">STEP 16</p></td><td><p class="g-p">。设置 功能开关 发送信件 开启 + 。注册写信综基础道具</p></td><td><p class="g-p">可选</p></td><td><p class="g-p">启用写信综系统（角色间寄送正式信件的功能）并注册所需货币/道具。<br>非写信综向的恋综建议保持关闭；「清空季度数据」/开新季时功能开关会整体清空，写信综等非默认开启项每季都要重新手动打开。<br>具体设置引导见「。写信综指南」。</p></td></tr></tbody></table><p class="g-p">📋  最简开季四步（全新服务器）</p><hr class="g-hr"><p class="g-p">① 在海豹插件页填入存档服务器地址和 Token（长日将尽会协助你做好这一步，可以跳过）</p><p class="g-p">② 骰主QQ自动是管理员；如需其他人管理，。授予管理员 QQ号 密码，并用。更改密令 改掉默认密令「detroit」</p><p class="g-p">③ 如果已经开过季：先。更新未退群 → 逐个。驱逐 QQ号，确认清干净后再。清空季度数据</p><p class="g-p">④ 。创建新季度 长日将尽 复盘 MMDD-MMDD [补戏MMDD]</p><p class="g-p">⑤ 。添加群号 123456789,987654321（或网页端「群号管理」录入后。开启群号组 组名 拉取，见后文）</p><p class="g-p">⑥ 通知玩家：创建新角色 [角色名]（有 NPC 则管理员发。创建NPC [角色名]）</p><p class="g-p">⚙️  功能开关速查（。设置 功能开关）</p><hr class="g-hr"><table class="g-table"><thead><tr><th><p class="g-p">功能名</p></th><th><p class="g-p">说明</p></th><th><p class="g-p">默认状态</p></th><th><p class="g-p">开关指令示例</p></th></tr></thead><tbody><tr><td><p class="g-p">礼物</p></td><td><p class="g-p">玩家互相送礼功能</p></td><td><p class="g-p">默认开启</p></td><td><p class="g-p">。功能权限 张三 礼物 关闭</p></td></tr><tr><td><p class="g-p">发起邀约</p></td><td><p class="g-p">私约/电话邀约功能</p></td><td><p class="g-p">默认开启</p></td><td><p class="g-p">。功能权限 张三 发起邀约 关闭</p></td></tr><tr><td><p class="g-p">心愿</p></td><td><p class="g-p">玩家挂心愿/摘心愿功能</p></td><td><p class="g-p">默认开启</p></td><td><p class="g-p">。功能权限 张三 心愿 关闭</p></td></tr><tr><td><p class="g-p">心动信</p></td><td><p class="g-p">投递/查看心动信</p></td><td><p class="g-p">默认开启</p></td><td><p class="g-p">。功能权限 张三 心动信 关闭</p></td></tr><tr><td><p class="g-p">论坛</p></td><td><p class="g-p">发帖/回帖/点赞功能</p></td><td><p class="g-p">默认开启</p></td><td><p class="g-p">。功能权限 张三 论坛 关闭</p></td></tr><tr><td><p class="g-p">发送信件</p></td><td><p class="g-p">写信综系统（需另执行「注册写信综基础道具」）；非写信综向恋综建议保持关闭</p></td><td><p class="g-p">需单独启用，每季自动重置关闭</p></td><td><p class="g-p">。功能权限 张三 发送信件 关闭</p></td></tr><tr><td><p class="g-p">抽取</p></td><td><p class="g-p">玩家抽取道具功能（需配置池子）</p></td><td><p class="g-p">默认开启</p></td><td><p class="g-p">。功能权限 张三 抽取 关闭</p></td></tr></tbody></table><p class="g-p">🧩  DLC 玩法开关总览</p><hr class="g-hr"><p class="g-p">DLC 是一批默认关闭的可选玩法模块，跟基础功能开关是两回事——用不到可以完全不管，全部保持关闭。</p><table class="g-table"><thead><tr><th><p class="g-p">DLC 名</p></th><th><p class="g-p">说明</p></th><th><p class="g-p">怎么开</p></th><th><p class="g-p">建议</p></th></tr></thead><tbody><tr><td><p class="g-p">目击报告<br><span style="color:#999999">dlc_sighting</span></p></td><td><p class="g-p">玩家约会/踩点时有概率被人「目击」，机器人自动生成八卦式报告发到指定群</p></td><td><p class="g-p">。设置 DLC</p></td><td><p class="g-p">——</p></td></tr><tr><td><p class="g-p">复盘群分流<br><span style="color:#999999">dlc_fupan</span></p></td><td><p class="g-p">开启后可在「复盘设置」里配置复盘报告按规则分流到不同群，不开则用默认逻辑</p></td><td><p class="g-p">。设置 DLC</p></td><td><p class="g-p">不建议开启：这是网页端出问题时的备用方案，平时不用开</p></td></tr><tr><td><p class="g-p">拍卖<br><span style="color:#999999">dlc_auction</span></p></td><td><p class="g-p">开启玩家竞价拍卖功能，配合网页端「拍卖队列管理」使用</p></td><td><p class="g-p">。设置 DLC</p></td><td><p class="g-p">——</p></td></tr><tr><td><p class="g-p">攻防<br><span style="color:#999999">dlc_attack</span></p></td><td><p class="g-p">角色间的攻击/防御数值对抗玩法</p></td><td><p class="g-p">。设置 DLC</p></td><td><p class="g-p">——</p></td></tr><tr><td><p class="g-p">论坛<br><span style="color:#999999">dlc_forum</span></p></td><td><p class="g-p">开启发帖/回帖/点赞的论坛功能</p></td><td><p class="g-p">。设置 DLC</p></td><td><p class="g-p">推荐开启</p></td></tr><tr><td><p class="g-p">自动天数<br><span style="color:#999999">dlc_auto_day</span></p></td><td><p class="g-p">游戏日按设定的时间间隔自动往前推进，不用管理员手动「设置天数」</p></td><td><p class="g-p">。设置 DLC</p></td><td><p class="g-p">推荐开启</p></td></tr><tr><td><p class="g-p">踩点<br><span style="color:#999999">dlc_stakeout</span></p></td><td><p class="g-p">玩家可以蹲守某个时间/地点等对方出现的特殊邀约类型；是可以单人发起建群的邀约（对方可省略，管理员另需开启「允许单人踩点」），适合没约到人也想蹲点的场景</p></td><td><p class="g-p">网页端「系统参数配置」</p></td><td><p class="g-p">——</p></td></tr><tr><td><p class="g-p">约战<br><span style="color:#999999">dlc_battle_appt</span></p></td><td><p class="g-p">新增「约战」邀约类型，走标准私约流程但用于安排战斗/对战场景</p></td><td><p class="g-p">网页端「系统参数配置」</p></td><td><p class="g-p">——</p></td></tr><tr><td><p class="g-p">议价交易<br><span style="color:#999999">dlc_trade</span></p></td><td><p class="g-p">玩家间可以以物换物、讨价还价，需配合「交易 设定」使用</p></td><td><p class="g-p">网页端「系统参数配置」</p></td><td><p class="g-p">——</p></td></tr><tr><td><p class="g-p">朋友圈<br><span style="color:#999999">dlc_moments</span></p></td><td><p class="g-p">预留玩法位，当前版本尚未对应任何实装功能，开启也不会有效果</p></td><td><p class="g-p">——</p></td><td><p class="g-p">——</p></td></tr></tbody></table><p class="g-p">「怎么开」写「。设置 DLC」的几项，发这条指令能看到列表直接改；写「网页端」的几项目前没有对应的机器人指令，要去存档网页端「系统参数配置」页面开关，改完发一次「。拉取全部」生效。</p></div>
+    </section>
+
+    <section class="guide" id="guide-web">
+      <button class="guide-head" onclick="toggleGuide('web')">
+        <span>🌐 存档网页端 · 功能速查</span><span class="chevron" id="chev-web">▾</span>
+      </button>
+      <div class="guide-body" id="body-web"><p class="g-p">🌐  存档网页端 · 功能速查</p><hr class="g-hr"><p class="g-p">网页端（rp_archive 存档服务器）提供可视化管理界面，很多操作在网页上配置比发指令更方便。
+🔒 = 需要管理员登录（/admin/login）  🌍 = 公开可访问（无需登录）</p><div class="g-row"><div class="g-col"><p class="g-p"><b>后台主页</b></p><p class="g-p">/admin</p><p class="g-p">🔒 管理员</p></div><div class="g-col"><p class="g-p">总览仪表盘，一眼看到本季场次数、RP 条目数、玩家总数。下方是玩家列表，按场次多少排序。</p><p class="g-p">  ✦ 查看本季场次数 / RP 条目数 / 注册玩家数<br>  ✦ 按场次数排序浏览所有玩家<br>  ✦ 点击玩家名跳转该玩家详情页</p></div></div><div class="g-row"><div class="g-col"><p class="g-p"><b>玩家详情页</b></p><p class="g-p">/admin/player/&lt;QQ&gt;</p><p class="g-p">🔒 管理员</p></div><div class="g-col"><p class="g-p">单个玩家的全部数据，包括场次列表、字数统计、活跃时段热力图、平均回复耗时。</p><p class="g-p">  ✦ 查看该玩家参与的所有场次及 RP 字数<br>  ✦ 总段数 / 总字数 / 场均字数一览<br>  ✦ 24 小时活跃热力图（哪段时间最活跃）<br>  ✦ 每场平均回复耗时分析</p></div></div><div class="g-row"><div class="g-col"><p class="g-p"><b>玩家控制中心</b></p><p class="g-p">/admin/player_controls</p><p class="g-p">🔒 管理员</p></div><div class="g-col"><p class="g-p">批量管理所有玩家的功能权限和时间锁定，比逐个发指令方便得多。</p><p class="g-p">  ✦ 一张表看全所有玩家的权限状态<br>  ✦ 批量开关「礼物 / 邀约 / 短信 / 心愿 / 心动信 / 论坛 / 抽取」权限<br>  ✦ 查看并一键解除玩家时间锁定<br>  ✦ 修改实时生效，无需重启机器人</p></div></div><div class="g-row"><div class="g-col"><p class="g-p"><b>全员统计</b></p><p class="g-p">/admin/stats</p><p class="g-p">🔒 管理员</p></div><div class="g-col"><p class="g-p">全体玩家的段数、字数、场次汇总，按角色展示，附 24 小时活跃热力图。</p><p class="g-p">  ✦ 查看全员字数 / 段数 / 场次排行<br>  ✦ 筛选特定游戏日的数据<br>  ✦ 查看每个角色的活跃时段分布</p></div></div><div class="g-row"><div class="g-col"><p class="g-p"><b>群号管理</b></p><p class="g-p">/admin/groups</p><p class="g-p">🔒 管理员</p></div><div class="g-col"><p class="g-p">在网页端维护约会群号池，分组管理后机器人一键导入，无需逐条粘贴群号。</p><p class="g-p">  ✦ 创建群号分组（如「D1」「D2」「备用」）<br>  ✦ 批量粘贴群号到对应分组<br>  ✦ 随时增减群号，改完重新「开启群号组」即生效<br>  ✦ 机器人：。开启群号组 D1 → 导入；。关闭群号组 D1 → 移除</p></div></div><div class="g-row"><div class="g-col"><p class="g-p"><b>时间调度配置</b></p><p class="g-p">/admin/time-schedule</p><p class="g-p">🔒 管理员</p></div><div class="g-col"><p class="g-p">可视化配置邀约时间规则，改完后「。拉取全部」拉取到机器人。</p><p class="g-p">  ✦ 设置各游戏日「禁约时段」（哪些小时不允许发起邀约）<br>  ✦ 配置允许的约会时长档位（如 1h / 2h / 4h）<br>  ✦ 设置心愿 / 心动信等功能的开放时间窗口<br>  ✦ 改完后：。拉取全部 → 拉取到机器人</p></div></div><div class="g-row"><div class="g-col"><p class="g-p"><b>结戏奖励配置</b></p><p class="g-p">/admin/rewards</p><p class="g-p">🔒 管理员</p></div><div class="g-col"><p class="g-p">可视化配置私约结束时自动发放的物品/货币规则，比逐条发指令直观得多。</p><p class="g-p">  ✦ 配置结戏加成模板（场次类型 → 发什么奖励）<br>  ✦ 设置私约自定义别名（如「密会」替代「私约」显示）<br>  ✦ 查看历史发放记录，确认奖励是否正常触发<br>  ✦ 改完后：。拉取全部 → 拉取到机器人</p></div></div><div class="g-row"><div class="g-col"><p class="g-p"><b>抽取池管理</b></p><p class="g-p">/admin/pools</p><p class="g-p">🔒 管理员</p></div><div class="g-col"><p class="g-p">可视化管理全部抽取池，直接在网页调整物品和权重，改完同步到机器人。</p><p class="g-p">  ✦ 新建数量池 / 权重池 / 保底池 / 分段池<br>  ✦ 可视化添加物品、设置数量或权重比例<br>  ✦ 配置保底阈值（每 N 抽必出保底物品）<br>  ✦ 设置每游戏日抽取次数上限<br>  ✦ 改完后：。拉取全部 → 拉取到机器人</p></div></div><div class="g-row"><div class="g-col"><p class="g-p"><b>拍卖队列管理</b></p><p class="g-p">/admin/auctions</p><p class="g-p">🔒 管理员</p></div><div class="g-col"><p class="g-p">查看和编辑拍卖队列，配合「。拉取全部」将待拍物品推送到机器人激活。</p><p class="g-p">  ✦ 查看当前待拍卖物品队列<br>  ✦ 添加 / 移除待拍物品及起拍价、加价幅度、时长<br>  ✦ 机器人：。拉取全部 → 激活队列中的物品</p></div></div><div class="g-row"><div class="g-col"><p class="g-p"><b>礼品店管理</b></p><p class="g-p">/admin/gifts</p><p class="g-p">🔒 管理员</p></div><div class="g-col"><p class="g-p">可视化编辑预设礼品列表（编号、名称、描述），改完拉取到机器人。</p><p class="g-p">  ✦ 添加 / 编辑 / 删除礼品条目<br>  ✦ 设置礼品编号（玩家用「送礼 张三 #001」引用，可无限赠送）<br>  ✦ 改完后：。拉取全部 → 拉取到机器人生效</p></div></div><div class="g-row"><div class="g-col"><p class="g-p"><b>系统参数配置</b></p><p class="g-p">/admin/config</p><p class="g-p">🔒 管理员</p></div><div class="g-col"><p class="g-p">所有系统参数的集中配置页，支持历史记录查看/回滚和配置模板保存。包含消息模板和类型别名两项高级自定义功能。</p><p class="g-p">  ✦ 修改任意系统参数（超时时长、冷却时间、功能开关等）<br>  ✦ 查看参数修改历史，支持一键回滚到任意历史版本<br>  ✦ 保存为配置模板，下季直接套用<br>  ✦ 【消息模板】自定义私约/电话/微信/心愿/短信/礼物的通知文案，留空使用系统默认；用 {变量名} 插入动态内容（如 {发起者} {群号} {时间}）<br>  ✦ 【类型显示别名】将「私密」「电话」「官约」「微信」「心愿」替换为自定义名称，在通知、提醒、广播、日程展示中全面生效<br>  ✦ 改完后：。拉取全部 → 覆盖机器人本地配置</p></div></div><div class="g-row"><div class="g-col"><p class="g-p"><b>黑名单管理</b></p><p class="g-p">/admin/blacklist</p><p class="g-p">🔒 管理员</p></div><div class="g-col"><p class="g-p">记录需要特别标记的玩家或 QQ 号，附备注信息，供历史查阅。</p><p class="g-p">  ✦ 添加黑名单条目（QQ 号 / 角色名 + 事由 + 标签）<br>  ✦ 搜索 / 删除黑名单记录<br>  ✦ 历史存档用途，不影响机器人行为</p></div></div><div class="g-row"><div class="g-col"><p class="g-p"><b>玩家指令手册</b></p><p class="g-p">/admin/command-guides</p><p class="g-p">🔒 管理员</p></div><div class="g-col"><p class="g-p">编写并发布面向玩家的「基础指南」，玩家在群内发「基础指南」即可拉取最新版。</p><p class="g-p">  ✦ 创建 / 编辑多份指南，每份支持多段内容块<br>  ✦ 发布后玩家发「基础指南」，机器人自动回复最新版本<br>  ✦ 适合放开季须知、规则说明、指令速查</p></div></div><div class="g-row"><div class="g-col"><p class="g-p"><b>历史季度管理</b></p><p class="g-p">/admin/shows</p><p class="g-p">🔒 管理员</p></div><div class="g-col"><p class="g-p">查看和管理所有历史季度，切换当前活跃季度，控制存档的公开可见性。</p><p class="g-p">  ✦ 查看所有历史季度列表及基础统计<br>  ✦ 切换当前活跃季度（查看旧季数据）<br>  ✦ 开启 / 关闭季度的公开存档（公开后玩家可用分享链接查看）<br>  ✦ 获取季度专属分享 token</p></div></div><div class="g-row"><div class="g-col"><p class="g-p"><b>导出全量数据</b></p><p class="g-p">/admin/export.json</p><p class="g-p">🔒 管理员</p></div><div class="g-col"><p class="g-p">将本季所有 RP 存档、事件记录以 JSON 格式打包下载，用于备份或外部分析。</p><p class="g-p">  ✦ 一键导出本季完整存档 JSON<br>  ✦ 包含所有场次记录、RP 条目、互动事件</p></div></div><div class="g-row"><div class="g-col"><p class="g-p"><b>公开存档主页</b></p><p class="g-p">/</p><p class="g-p">🌍 公开</p></div><div class="g-col"><p class="g-p">玩家可访问的存档页，按游戏日浏览场次（需管理员在「历史季度管理」里开启公开）。</p><p class="g-p">  ✦ 按游戏日查看当日所有场次<br>  ✦ 点击场次查看完整 RP 内容及参与角色<br>  ✦ 支持直接在页面补录/删除 RP 条目（管理员登录后）</p></div></div><div class="g-row"><div class="g-col"><p class="g-p"><b>角色档案页</b></p><p class="g-p">/character/&lt;角色名&gt;</p><p class="g-p">🌍 公开</p></div><div class="g-col"><p class="g-p">某个角色参与的所有场次汇总，按时间倒序展示，公开可访问。</p><p class="g-p">  ✦ 查看该角色参与的全部场次<br>  ✦ 直接从角色页跳转到对应场次详情</p></div></div><div class="g-row"><div class="g-col"><p class="g-p"><b>互动记录</b></p><p class="g-p">/interactions</p><p class="g-p">🌍 公开</p></div><div class="g-col"><p class="g-p">全体角色的互动统计汇总：心动信、短信、礼物的收发次数。</p><p class="g-p">  ✦ 查看所有角色收发心动信 / 短信 / 礼物的次数<br>  ✦ 点击角色名查看该角色与他人的互动明细</p></div></div><div class="g-row"><div class="g-col"><p class="g-p"><b>信件存档</b></p><p class="g-p">/letters</p><p class="g-p">🌍 公开</p></div><div class="g-col"><p class="g-p">写信综系统发出的所有信件存档，支持按发件人 / 收件人 / 游戏日筛选。</p><p class="g-p">  ✦ 按发件人 / 收件人 / 游戏日筛选信件<br>  ✦ 查看信件完整内容<br>  ✦ 管理员登录后可删除信件记录</p></div></div><div class="g-row"><div class="g-col"><p class="g-p"><b>全文搜索</b></p><p class="g-p">/search</p><p class="g-p">🌍 公开</p></div><div class="g-col"><p class="g-p">在全部 RP 条目中搜索关键词，同时匹配角色名、场次内容，快速定位某段 RP。</p><p class="g-p">  ✦ 输入关键词搜索所有 RP 内容<br>  ✦ 结果按相关度排列，点击跳转对应场次<br>  ✦ 支持搜索角色名直接找到该角色的所有场次</p></div></div><div class="g-row"><div class="g-col"><p class="g-p"><b>分享链接存档</b></p><p class="g-p">/view/&lt;token&gt;</p><p class="g-p">🌍 公开</p></div><div class="g-col"><p class="g-p">通过专属 token 分享的只读存档页，适合发给观众或截图留档，无需登录。</p><p class="g-p">  ✦ 同公开存档，通过 token 访问，不依赖账号登录<br>  ✦ 结束季度后可在「历史季度管理」获取专属分享链接</p></div></div><p class="g-p">🔄  网页端配置 → 机器人同步 对应关系</p><hr class="g-hr"><table class="g-table"><thead><tr><th><p class="g-p">在网页端做了什么</p></th><th><p class="g-p">同步到机器人的指令</p></th><th><p class="g-p">说明</p></th></tr></thead><tbody><tr><td><p class="g-p">群号管理  → 添加/编辑群号</p></td><td><p class="g-p">。开启群号组 组名</p></td><td><p class="g-p">按组名批量导入群号到机器人群号池</p></td></tr><tr><td><p class="g-p">网页端改了任何配置/注册表/池子</p></td><td><p class="g-p">。拉取全部</p></td><td><p class="g-p">一键从网页端拉取所有数据，覆盖机器人本地</p></td></tr><tr><td><p class="g-p">网页端新增待同步物品/装备</p></td><td><p class="g-p">。拉取全部</p></td><td><p class="g-p">机器人分配编号后自动把注册表同步回网页，无需再推送</p></td></tr><tr><td><p class="g-p">机器人「上架商城」新增/修改商城</p></td><td><p class="g-p">（无需操作）</p></td><td><p class="g-p">商城改动会自动同步到网页，不用等推送全部</p></td></tr><tr><td><p class="g-p">机器人数据推送到网页端</p></td><td><p class="g-p">。推送全部</p></td><td><p class="g-p">一键把机器人所有数据推送到网页端（配置+注册表+池子+拍卖快照）</p></td></tr></tbody></table><div class="g-pagebreak"></div><p class="g-p">🏆  如何在网页端配置结戏奖励</p><hr class="g-hr"><p class="g-p">私约结束时，机器人可以根据本场字数、段数等数据自动给玩家发放奖励。<br>在网页端「结戏奖励配置」（/admin/rewards）页面配置好后，执行「。拉取全部」即可生效。</p><p class="g-p">第一步：设置私约别名（可选）</p><p class="g-p">如果你的恋综用的不是「私约」这个词（比如叫「密会」「单约」），<br>可以在页面顶部「私约别名」处添加自定义触发词。<br>添加后，这些词也会出现在下方奖励模板的「场次类型」下拉框中。</p><p class="g-p">第二步：创建奖励模板</p><table class="g-table"><tbody><tr><td><p class="g-p">①</p></td><td><p class="g-p">点击「＋ 新建模板」，填写模板名称（仅供自己识别）。</p></td></tr><tr><td><p class="g-p">②</p></td><td><p class="g-p">选择「场次类型」：<br>  · 通用 → 所有类型场次都触发<br>  · 私约 / 电话 / 官约 / 心意 → 只对该类型场次触发<br>  · 自定义别名 → 第一步设置的词也会出现在这里</p></td></tr><tr><td><p class="g-p">③</p></td><td><p class="g-p">点击「＋ 添加条件块」，设置触发条件（可选）：<br>  可选参数：段数 / 字数 / 总字数 / 平均字数 / 耗费时间<br>  运算符：&gt;= / &lt;= / = / != / range（范围区间）<br>  例：字数 &gt;= 500，代表本场字数满 500 才发这份奖励</p></td></tr><tr><td><p class="g-p">④</p></td><td><p class="g-p">在条件块右侧设置「奖励」：<br>  · 货币：选择货币名称 + 数量（如「金币 10」）<br>  · 道具：选择已注册的物品码 + 数量<br>  · 属性：选择 RPG 属性名 + 数值<br>  可设置概率（如 50% 概率才发放）</p></td></tr><tr><td><p class="g-p">⑤</p></td><td><p class="g-p">一个模板可以有多个条件块（按 AND 或 OR 关系组合），<br>例：字数 &gt;= 300 AND 段数 &gt;= 10 → 同时满足才发奖励</p></td></tr><tr><td><p class="g-p">⑥</p></td><td><p class="g-p">保存后在机器人发：。拉取全部  → 奖励规则立即生效</p></td></tr></tbody></table><p class="g-p">💡 模板支持「启用/禁用」开关，临时关掉某个模板不用删除。
+同一场次可以触发多个模板（只要各自的条件都满足）。</p><p class="g-p">🎲  如何在网页端配置抽取池</p><hr class="g-hr"><p class="g-p">在网页端「抽取池管理」（/admin/pools）页面直接用可视化界面配置所有池子，<br>改完后在机器人发「。拉取全部」即可拉取生效。</p><p class="g-p">新建池子</p><table class="g-table"><tbody><tr><td><p class="g-p">①</p></td><td><p class="g-p">点击「＋ 新建池子」，填写池名（中文或英文均可，玩家发「抽取 池名」时使用）。</p></td></tr><tr><td><p class="g-p">②</p></td><td><p class="g-p">选择池子类型：<br>  · 数量池 → 物品有限份数，抽完即止，适合限定活动<br>  · 权重池 → 物品永不耗尽，按权重随机，适合常驻<br>  · 保底池 → 权重随机 + 累计 N 抽必出保底物品，跨天不清零<br>  · 分段池 → 绑定一个 RPG 属性，按属性值范围匹配不同子池</p></td></tr><tr><td><p class="g-p">③</p></td><td><p class="g-p">设置每游戏日抽取次数上限（留空则不限次）。</p></td></tr><tr><td><p class="g-p">④</p></td><td><p class="g-p">勾选「启用」后池子才对玩家开放，可随时关闭。</p></td></tr></tbody></table><p class="g-p">添加物品</p><table class="g-table"><tbody><tr><td><p class="g-p">数量池</p></td><td><p class="g-p">每行填写：物品码 + 库存数量。物品被抽走后库存自动扣减，到 0 时该条目消失。</p></td></tr><tr><td><p class="g-p">权重池</p></td><td><p class="g-p">每行填写：物品码 + 权重数值。权重越大被抽中概率越高（概率 = 该权重 ÷ 所有权重之和）。</p></td></tr><tr><td><p class="g-p">保底池</p></td><td><p class="g-p">分两区：<br>  「普通区」：填写物品码 + 权重，正常随机抽取<br>  「保底区」：填写保底阈值（如 10，代表每 10 抽必出一次）和保底物品<br>  达到阈值后必出保底物品，之后计数清零重新累计</p></td></tr><tr><td><p class="g-p">分段池</p></td><td><p class="g-p">先选绑定的 RPG 属性（如「体力」），再按属性值范围分段：<br>  例：体力 0-30 → 抽普通道具；体力 31-70 → 抽稀有道具；体力 71-100 → 抽史诗道具<br>  玩家抽取时系统读取其当前属性值，自动匹配对应子池</p></td></tr></tbody></table><p class="g-p">💡 物品码需要先在机器人用「。上载物品」注册，或在网页端物品库里预先配置好，
+才能在抽取池管理页面的下拉框中选到。</p><p class="g-p">✏️  如何自定义私约触发词</p><hr class="g-hr"><p class="g-p">默认情况下，玩家用「私约」发起约会。如果恋综想用别的词（如「密会」「单约」「约稿」），<br>可以在网页端「结戏奖励配置」（/admin/rewards）页面顶部的「私约别名」区块进行配置。</p><table class="g-table"><tbody><tr><td><p class="g-p">①</p></td><td><p class="g-p">进入 /admin/rewards 页面，找到顶部「私约别名」卡片。</p></td></tr><tr><td><p class="g-p">②</p></td><td><p class="g-p">点击「＋ 添加别名」，输入想要的触发词（如「密会」）。<br>  · 可以添加多个别名，每个别名都能独立触发私约流程<br>  · 别名和原来的「私约」指令同时生效，不冲突</p></td></tr><tr><td><p class="g-p">③</p></td><td><p class="g-p">保存后在机器人发：。拉取全部  → 别名立即生效</p></td></tr><tr><td><p class="g-p">④</p></td><td><p class="g-p">别名添加后会出现在「结戏奖励模板」的场次类型下拉框中，<br>  可以给「密会」单独设置一套不同于普通私约的奖励规则。</p></td></tr></tbody></table><p class="g-p">💡 别名只影响触发词，所有私约功能（时间线、结算、奖励）均正常运作。
+如果是单次测试可以直接用「私约」，别名主要用于长期有特定文化的恋综。</p><p class="g-p">💬  如何自定义通知文案（消息模板 &amp; 类型别名）</p><hr class="g-hr"><p class="g-p">在网页端「系统参数配置」（/admin/config）页面，有两个独立的自定义文案区块：<br>  · 消息模板：完整替换特定场景的通知内容<br>  · 类型显示别名：把「私密」「电话」「官约」「微信」「心愿」替换为自定义词<br>两者配置完成后均通过「。拉取全部」下发到机器人。</p><p class="g-p">一、类型显示别名</p><p class="g-p">在配置页找到「类型显示别名」区块，可以为五种类型各设置一个别名：<br>  私密别名、电话别名、官约别名、微信别名、心愿别名<br>留空则保持系统默认词。设置后生效范围：<br>  ✦ 约会通知 header（如「私约」→「密会」）<br>  ✦ 群公告（「约会已确认」）<br>  ✦ 互动计数广播（「第N次私密约会记录」）<br>  ✦ 日程展示（档期查询）<br>  ✦ 时间冲突 / 超时提醒等所有用到类型名的提示文案</p><p class="g-p">二、消息模板</p><p class="g-p">在配置页找到「消息模板」区块，展开后可以为每种场景独立填写模板文案。<br>留空则使用系统默认文案，填了则完全替换。用 {变量名} 插入动态内容。</p><table class="g-table"><thead><tr><th><p class="g-p">模板名</p></th><th><p class="g-p">触发场景</p></th><th><p class="g-p">可用变量</p></th></tr></thead><tbody><tr><td><p class="g-p">private_notice</p></td><td><p class="g-p">私约通知→被邀者</p></td><td><p class="g-p">{发起者} {日期} {时间} {地点} {同行} {群号} {有效期} {操作指引}</p></td></tr><tr><td><p class="g-p">private_announcement</p></td><td><p class="g-p">私约群公告</p></td><td><p class="g-p">{日期} {时间} {地点} {参与者} {群号} {有效期} {操作指引}</p></td></tr><tr><td><p class="g-p">private_success</p></td><td><p class="g-p">私约发起者回执</p></td><td><p class="g-p">{对方} {群号} {费用}</p></td></tr><tr><td><p class="g-p">phone_notice</p></td><td><p class="g-p">电话通知→被邀者</p></td><td><p class="g-p">{发起者} {日期} {时间} {标题} {同话} {群号} {有效期} {操作指引}</p></td></tr><tr><td><p class="g-p">phone_announcement</p></td><td><p class="g-p">电话群公告</p></td><td><p class="g-p">{标题} {日期} {时间} {参与者} {群号} {有效期} {操作指引}</p></td></tr><tr><td><p class="g-p">phone_success</p></td><td><p class="g-p">电话发起者回执</p></td><td><p class="g-p">{对方} {群号}</p></td></tr><tr><td><p class="g-p">wechat_announcement</p></td><td><p class="g-p">微信群内公告</p></td><td><p class="g-p">{发起者} {对方} {群号}</p></td></tr><tr><td><p class="g-p">wechat_notice</p></td><td><p class="g-p">微信邀请→对方</p></td><td><p class="g-p">{发起者} {对方} {群号}</p></td></tr><tr><td><p class="g-p">wish_broadcast</p></td><td><p class="g-p">心愿公告频道广播</p></td><td><p class="g-p">{编号} {发布者} {日期} {时间} {地点} {内容}</p></td></tr><tr><td><p class="g-p">wish_bounty_broadcast</p></td><td><p class="g-p">悬赏心愿广播</p></td><td><p class="g-p">{编号} {发布者} {日期} {时间} {地点} {内容} {悬赏物} {悬赏数量}</p></td></tr><tr><td><p class="g-p">wish_post_success</p></td><td><p class="g-p">挂心愿发布者回执</p></td><td><p class="g-p">{编号} {昵称行} {费用行}</p></td></tr><tr><td><p class="g-p">wish_bounty_post_success</p></td><td><p class="g-p">悬赏心愿发布者回执</p></td><td><p class="g-p">{编号} {悬赏物} {悬赏数量} {昵称行} {费用行}</p></td></tr><tr><td><p class="g-p">wish_pick_success</p></td><td><p class="g-p">摘心愿摘取者回执</p></td><td><p class="g-p">{群号} {悬赏奖励行}</p></td></tr><tr><td><p class="g-p">wish_picked_notify</p></td><td><p class="g-p">心愿被摘→通知发布者</p></td><td><p class="g-p">{摘取者} {地点} {日期} {时间} {群号}</p></td></tr><tr><td><p class="g-p">wish_withdraw_success</p></td><td><p class="g-p">撤心愿回执</p></td><td><p class="g-p">{编号} {悬赏退回行}</p></td></tr><tr><td><p class="g-p">sms_notice</p></td><td><p class="g-p">短信通知→收件人</p></td><td><p class="g-p">{收件人} {收件人QQ} {内容} {落款}</p></td></tr><tr><td><p class="g-p">sms_broadcast</p></td><td><p class="g-p">短信公开播报</p></td><td><p class="g-p">{发送者} {收件人} {内容}</p></td></tr><tr><td><p class="g-p">gift_notice</p></td><td><p class="g-p">礼物通知→收件人</p></td><td><p class="g-p">{收件人} {收件人QQ} {发送者} {礼物名} {寄语}</p></td></tr><tr><td><p class="g-p">gift_broadcast</p></td><td><p class="g-p">礼物公开播报</p></td><td><p class="g-p">{发送者} {收件人} {礼物名} {寄语}</p></td></tr></tbody></table><p class="g-p">💡 变量中含「行」字的（如 {费用行} {悬赏退回行}）：有内容时已带换行前缀，留空时为空字符串，
+直接追加在模板末尾即可，无需额外换行。
+★必填变量（网页端标红星）如果删掉，同步时机器人会拒绝该模板并保留默认文案。</p><div class="g-pagebreak"></div><p class="g-p">📞  如何批量管理与上传群号</p><hr class="g-hr"><p class="g-p">玩家发起私约/电话邀约时，机器人需要从「群号池」里取一个空群来建临时约会房间。<br>群号只有「网页录入 → 机器人拉取」这一个方向，机器人这边没有把本地群号反过来推送回网页的指令——网页端「群号管理」（/admin/groups）纯粹是给你批量整理、分组管理群号用的工具，真正让群号进入机器人可用池子的动作永远是机器人这边主动发指令去拉取。</p><p class="g-p">方式一：机器人本地直接加（简单，不经过网页）</p><p class="g-p">发送「。添加群号 群号1,群号2,...」，直接把这些群号加进本地可用池。<br>适合群号不多、临时补充的情况；缺点是没有分组，群号一多不好管理。</p><p class="g-p">方式二：网页端批量管理 + 机器人拉取（推荐）</p><table class="g-table"><tbody><tr><td><p class="g-p">①</p></td><td><p class="g-p">登录存档网页端 → 「群号管理」页面（/admin/groups）</p></td></tr><tr><td><p class="g-p">②</p></td><td><p class="g-p">创建一个分组，起个名字（比如「D1」「D2」「备用」），方便按天数/用途归类</p></td></tr><tr><td><p class="g-p">③</p></td><td><p class="g-p">把这一组要用的群号整段粘贴进去，支持空格、逗号、顿号、分号等分隔符混用，会自动拆分识别</p></td></tr><tr><td><p class="g-p">④</p></td><td><p class="g-p">机器人发「。开启群号组 组名」（例：。开启群号组 D1），把这个分组下所有群号一次性拉取到本地可用池</p></td></tr><tr><td><p class="g-p">⑤</p></td><td><p class="g-p">不想用某组群号了，发「。关闭群号组 组名」批量移除——正在被占用（有场次进行中）的群不会被移除，会在回执里列出来提醒你</p></td></tr></tbody></table><p class="g-p">💡 网页端后续在同一个分组里增删群号后，机器人不会自动感知——需要重新发一次「。开启群号组 组名」才能把新增的群号拉过来（已经在池子里的不会重复添加）。
+这是「拉取」而不是「同步」：拉取只会把网页当前的名单往本地合并，本地已占用的群不受影响。</p></div>
+    </section>
+
+    <section class="guide" id="guide-pool">
+      <button class="guide-head" onclick="toggleGuide('pool')">
+        <span>🧩 补充说明</span><span class="chevron" id="chev-pool">▾</span>
+      </button>
+      <div class="guide-body" id="body-pool"><p class="g-p">🎲  抽取池 · 幼儿园版说明书</p><hr class="g-hr"><p class="g-p">池子 = 一个装道具的盒子，玩家发「抽取」就能从里面摸一样东西出来。
+不同类型的池子决定了「摸完会不会没了」和「每样东西被摸到的概率是否相同」。</p><p class="g-p"><span style="color:#2e7d32">■</span>  数量池</p><p class="g-p">📦  就像一个装了糖果的盒子</p><div class="g-row"><div class="g-col"><p class="g-p">・盒子里有多少颗糖，玩家总共只能摸那么多次。<br>・每次摸走一颗，摸完了就没了，池子自动关闭。<br>・适合「限定活动」：全场只有 10 份奖励，先到先得。</p></div><div class="g-col"><p class="g-p"><b>示例指令：</b><br>→ 在 RP 管理面板「抽取池」页面创建，上架物品并设置数量<br>→ 总库存抽完即止，池子自动关闭<br><br><b>创建指令：</b><br>RP 管理面板 → 抽取池</p></div></div><p class="g-p"><span style="color:#1565c0">■</span>  权重池</p><p class="g-p">🎰  就像一台不会被掏空的扭蛋机</p><div class="g-row"><div class="g-col"><p class="g-p">・物品不会减少，可以无限抽。<br>・每样东西有「权重」，权重越大越容易抽到。<br>・权重 90 的东西被抽中概率 = 90 ÷ 所有物品权重之和。<br>・适合「常驻奖励」：每天都能抽，结果随机但有概率倾向。</p></div><div class="g-col"><p class="g-p"><b>示例指令：</b><br>→ 在 RP 管理面板「抽取池」页面创建，设置物品权重<br>→ 普通 70%、稀有 25%、超稀有 5%（示例）<br><br><b>创建指令：</b><br>RP 管理面板 → 抽取池</p></div></div><p class="g-p"><span style="color:#e65100">■</span>  保底池</p><p class="g-p">🌟  就像扭蛋机 + 集点卡</p><div class="g-row"><div class="g-col"><p class="g-p">・平时和权重池一样，随机抽。<br>・但系统会记住你已经抽了多少次（跨天不清零）。<br>・达到设定次数（默认 10 次）还没抽到好东西？<br>・下一抽必出「保底物品」，然后计数清零重来。<br>・适合「重要奖励」：不想让玩家无限脸黑，保证最终能拿到。</p></div><div class="g-col"><p class="g-p"><b>示例指令：</b><br>→ 在 RP 管理面板「抽取池」中创建「保底池」类型<br>→ 设置保底阈值，分别添加普通物品和保底物品<br><br><b>创建指令：</b><br>RP 管理面板 → 抽取池</p></div></div><p class="g-p"><span style="color:#6a1b9a">■</span>  分段池</p><p class="g-p">📊  就像「体力高的人抽好东西，体力低的人抽基础品」</p><div class="g-row"><div class="g-col"><p class="g-p">・这是唯一一种会看角色属性值来决定抽奖结果的池子。<br>・管理员预先设定「属性区间」，比如体力 0-30 / 31-60 / 61-100。<br>・每个区间放不同的物品（可以是数量池或权重池）。<br>・玩家抽取时，系统先读取该角色的属性值，<br>・再根据值落在哪个区间，从那个区间的物品里随机抽。<br>・⚠️  分段池只能在网页端（抽取池管理页）创建和配置，<br>・      机器人没有直接创建分段池的指令。</p></div><div class="g-col"><p class="g-p"><b>示例指令：</b><br>→ 在网页端「抽取池管理」创建分段池<br>→ 绑定属性：体力<br>→ 区间 1：0≤体力&lt;30  物品A×5<br>→ 区间 2：30≤体力&lt;60 物品B×5<br>→ 区间 3：60≤体力    物品C×5<br>→ 。拉取全部  ← 拉取到机器人<br><br><b>创建指令：</b><br>仅限网页端配置，机器人用「。拉取全部」拉取</p></div></div><p class="g-p">📊  三种池子一眼对比</p><hr class="g-hr"><table class="g-table"><thead><tr><th><p class="g-p">池子类型</p></th><th><p class="g-p">会抽完吗？</p></th><th><p class="g-p">概率平等？</p></th><th><p class="g-p">有保底？</p></th><th><p class="g-p">最适合用于</p></th></tr></thead><tbody><tr><td><p class="g-p">数量池</p></td><td><p class="g-p">✅ 会</p></td><td><p class="g-p">✅ 随机</p></td><td><p class="g-p">❌ 没有</p></td><td><p class="g-p">限定活动 · 先到先得</p></td></tr><tr><td><p class="g-p">权重池</p></td><td><p class="g-p">❌ 不会</p></td><td><p class="g-p">❌ 有权重</p></td><td><p class="g-p">❌ 没有</p></td><td><p class="g-p">常驻抽奖 · 日常随机奖励</p></td></tr><tr><td><p class="g-p">保底池</p></td><td><p class="g-p">❌ 不会</p></td><td><p class="g-p">❌ 有权重</p></td><td><p class="g-p">✅ 有！</p></td><td><p class="g-p">重要奖励 · 不能让玩家脸黑</p></td></tr><tr><td><p class="g-p">分段池</p></td><td><p class="g-p">看设定</p></td><td><p class="g-p">看区间</p></td><td><p class="g-p">❌ 没有</p></td><td><p class="g-p">按角色属性分层给奖励（仅网页端配置）</p></td></tr></tbody></table><p class="g-p">💡  记忆口诀</p><p class="g-p">  ·  数量池  =  盲盒整箱买，买完就没了</p><p class="g-p">  ·  权重池  =  扭蛋机永远转，只是概率有高低</p><p class="g-p">  ·  保底池  =  扭蛋机 + 集章卡，集满N张必有大奖</p><p class="g-p">  ·  分段池  =  体检结果决定你能拿什么礼物（仅网页端配置）</p></div>
+    </section>
+  </div>
+</div>
+
+<div class="tab-panel" id="panel-cmds">
+  <div class="topbar" style="position:static;border:none;padding:10px 20px;">
+    <input id="search" type="text" placeholder="搜索指令、关键词或用法…" autocomplete="off">
+    <div id="matchCount"></div>
+  </div>
+  <nav class="toc"><a href="#sec-0">👤 角色与账号</a><a href="#sec-1">📅 时间线与邀约</a><a href="#sec-2">🗺️ 地点系统</a><a href="#sec-3">💌 社交互动</a><a href="#sec-4">📰 关系线与论坛</a><a href="#sec-5">📦 背包与物品交易</a><a href="#sec-6">🎰 抽取与收集</a><a href="#sec-7">⚔️ 装备与升级</a><a href="#sec-8">🛠️ 物品与商城管理</a><a href="#sec-9">🎲 抽取池管理</a><a href="#sec-10">⚔️ RPG 战斗系统</a><a href="#sec-11">🍽️ 晚餐与小游戏</a><a href="#sec-12">✉️ 写信综系统</a><a href="#sec-13">🔔 加百列闹钟</a><a href="#sec-14">📡 群组与平台管理</a><a href="#sec-15">⚙️ 设置与同步</a><a href="#sec-16">📊 季度与存档</a><a href="#sec-17">🔑 管理员权限</a><a href="#sec-18">🏷️ NPC 与 Tag</a><a href="#sec-19">📋 信息收集</a><a href="#sec-20">🎭 出场系统</a><a href="#sec-21">📖 帮助与基础</a><a href="#sec-22">💱 议价交易系统（DLC）</a></nav>
+  <div class="page" id="content">
+<div id="sec-0"><section class="cmd-section" data-title="👤 角色与账号">
+<button class="cmd-section-head" onclick="toggleSection(this)"><h2>👤 角色与账号</h2><span class="chevron">▾</span></button>
+<div class="cmd-list">
+
+        <div class="cmd-row" data-search="创建新角色 [角色名] 注册并绑定你的 rp 角色名 例：创建新角色 张三">
+          <div class="cmd-head">
+            <code class="cmd-name">创建新角色 [角色名]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">注册并绑定你的 RP 角色名</div>
+          <pre class="usage">例：创建新角色 张三</pre>
+        </div>
+
+        <div class="cmd-row" data-search="玩家名单 查看当前所有已注册玩家 ">
+          <div class="cmd-head">
+            <code class="cmd-name">玩家名单</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看当前所有已注册玩家</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="修改名字 [新名字] 修改自己的角色名 例：修改名字 李四">
+          <div class="cmd-head">
+            <code class="cmd-name">修改名字 [新名字]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">修改自己的角色名</div>
+          <pre class="usage">例：修改名字 李四</pre>
+        </div>
+
+        <div class="cmd-row" data-search="修改性别 男/女 修改角色性别 ">
+          <div class="cmd-head">
+            <code class="cmd-name">修改性别 男/女</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">修改角色性别</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="修改年龄 [数字] 修改角色年龄（0-200） ">
+          <div class="cmd-head">
+            <code class="cmd-name">修改年龄 [数字]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">修改角色年龄（0-200）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="修改皮相 [明星名] 修改角色外貌对应的明星（2小时冷却） 例：修改皮相 刘亦菲">
+          <div class="cmd-head">
+            <code class="cmd-name">修改皮相 [明星名]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">修改角色外貌对应的明星（2小时冷却）</div>
+          <pre class="usage">例：修改皮相 刘亦菲</pre>
+        </div>
+
+        <div class="cmd-row" data-search="修改签名 [内容] 修改角色个性签名（12小时冷却） ">
+          <div class="cmd-head">
+            <code class="cmd-name">修改签名 [内容]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">修改角色个性签名（12小时冷却）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="角色卡 查看自己的完整角色信息卡（基础信息/战斗属性含装备加成/当前装备） ">
+          <div class="cmd-head">
+            <code class="cmd-name">角色卡</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看自己的完整角色信息卡（基础信息/战斗属性含装备加成/当前装备）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="额外账号 [qq号] 将另一个 qq 绑定为本角色的辅助账号 额外账号 删除 qq号  → 移除辅助账号
+额外账号  → 查看已绑定的辅助账号">
+          <div class="cmd-head">
+            <code class="cmd-name">额外账号 [QQ号]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">将另一个 QQ 绑定为本角色的辅助账号</div>
+          <pre class="usage">额外账号 删除 QQ号  → 移除辅助账号
+额外账号  → 查看已绑定的辅助账号</pre>
+        </div>
+
+        <div class="cmd-row" data-search="清除玩家 [角色名] 删除指定角色的注册信息 。清除玩家 张三">
+          <div class="cmd-head">
+            <code class="cmd-name">。清除玩家 [角色名]</code>
+            <span class="role-badge role-admin">管理员/骰主</span>
+          </div>
+          <div class="cmd-desc">删除指定角色的注册信息</div>
+          <pre class="usage">。清除玩家 张三</pre>
+        </div>
+</div></section></div>
+<div id="sec-1"><section class="cmd-section" data-title="📅 时间线与邀约">
+<button class="cmd-section-head" onclick="toggleSection(this)"><h2>📅 时间线与邀约</h2><span class="chevron">▾</span></button>
+<div class="cmd-list">
+
+        <div class="cmd-row" data-search="时间线 查看自己当前的所有日程安排 ">
+          <div class="cmd-head">
+            <code class="cmd-name">时间线</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看自己当前的所有日程安排</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="我的待回 查看自己还没回复的群（超时置顶）、已开场但还没进的群、已结束但还没退的群，以及今日心动信投递情况 ">
+          <div class="cmd-head">
+            <code class="cmd-name">我的待回</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看自己还没回复的群（超时置顶）、已开场但还没进的群、已结束但还没退的群，以及今日心动信投递情况</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="私约 [时间] [地点] [对方] 向一名或多名角色发起私密约会邀请 私约 1400-1500 咖啡厅 张三
+私约 1400-1500 餐厅 李四/王五">
+          <div class="cmd-head">
+            <code class="cmd-name">私约 [时间] [地点] [对方]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">向一名或多名角色发起私密约会邀请</div>
+          <pre class="usage">私约 1400-1500 咖啡厅 张三
+私约 1400-1500 餐厅 李四/王五</pre>
+        </div>
+
+        <div class="cmd-row" data-search="电话 [时间] [对方] 向对方发起电话邀请（无需地点） 电话 1400-1500 张三
+电话 1400-1500 张三/李四">
+          <div class="cmd-head">
+            <code class="cmd-name">电话 [时间] [对方]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">向对方发起电话邀请（无需地点）</div>
+          <pre class="usage">电话 1400-1500 张三
+电话 1400-1500 张三/李四</pre>
+        </div>
+
+        <div class="cmd-row" data-search="踩点 [时间] [地点] [对方] 【dlc: dlc_stakeout】发起踩点私约；对方可省略（管理员开启「允许单人踩点」后可独行，目击时显示「一个人去」） 踩点 20:00-21:00 大图书馆 李四
+踩点 20:00-21:00 大图书馆   ← 单人踩点（需开启solo开关）">
+          <div class="cmd-head">
+            <code class="cmd-name">踩点 [时间] [地点] [对方]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">【DLC: dlc_stakeout】发起踩点私约；对方可省略（管理员开启「允许单人踩点」后可独行，目击时显示「一个人去」）</div>
+          <pre class="usage">踩点 20:00-21:00 大图书馆 李四
+踩点 20:00-21:00 大图书馆   ← 单人踩点（需开启solo开关）</pre>
+        </div>
+
+        <div class="cmd-row" data-search="约战 [时间] [地点] [对方] 【dlc: dlc_battle_appt】发起战斗类私约，走标准私约流程 约战 20:00-21:00 训练场 李四">
+          <div class="cmd-head">
+            <code class="cmd-name">约战 [时间] [地点] [对方]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">【DLC: dlc_battle_appt】发起战斗类私约，走标准私约流程</div>
+          <pre class="usage">约战 20:00-21:00 训练场 李四</pre>
+        </div>
+
+        <div class="cmd-row" data-search="微信 [对方] 向对方发起微信群组（不占时间线） 微信 张三 / 微信 张三/李四">
+          <div class="cmd-head">
+            <code class="cmd-name">微信 [对方]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">向对方发起微信群组（不占时间线）</div>
+          <pre class="usage">微信 张三 / 微信 张三/李四</pre>
+        </div>
+
+        <div class="cmd-row" data-search="申请加入 [对方名] [时间] 申请加入对方正在进行的约会 申请加入 张三 14:00">
+          <div class="cmd-head">
+            <code class="cmd-name">申请加入 [对方名] [时间]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">申请加入对方正在进行的约会</div>
+          <pre class="usage">申请加入 张三 14:00</pre>
+        </div>
+
+        <div class="cmd-row" data-search="加入请求 查看收到的加入申请列表 ">
+          <div class="cmd-head">
+            <code class="cmd-name">加入请求</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看收到的加入申请列表</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="同意加入 [编号] 同意对应编号的加入申请 ">
+          <div class="cmd-head">
+            <code class="cmd-name">同意加入 [编号]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">同意对应编号的加入申请</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="拒绝加入 [编号] 拒绝对应编号的加入申请 ">
+          <div class="cmd-head">
+            <code class="cmd-name">拒绝加入 [编号]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">拒绝对应编号的加入申请</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="修改时间线 [d几] [时间] 在约会群内修改本场的时间记录 修改时间线 d1 1400-1500">
+          <div class="cmd-head">
+            <code class="cmd-name">修改时间线 [D几] [时间]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">在约会群内修改本场的时间记录</div>
+          <pre class="usage">修改时间线 D1 1400-1500</pre>
+        </div>
+
+        <div class="cmd-row" data-search="拒绝时间线 [群号] 拒绝指定群的时间线修改申请 ">
+          <div class="cmd-head">
+            <code class="cmd-name">拒绝时间线 [群号]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">拒绝指定群的时间线修改申请</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="结束私约 在约会群内主动结束当前的私约 ">
+          <div class="cmd-head">
+            <code class="cmd-name">结束私约</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">在约会群内主动结束当前的私约</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="查看他人时间线 [角色名] 查看指定角色的所有日程（管理员专用） 。查看他人时间线 张三">
+          <div class="cmd-head">
+            <code class="cmd-name">。查看他人时间线 [角色名]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">查看指定角色的所有日程（管理员专用）</div>
+          <pre class="usage">。查看他人时间线 张三</pre>
+        </div>
+
+        <div class="cmd-row" data-search="时间锁定 锁定/解锁玩家时间，防止修改时间线 。时间锁定 张三 锁定 / 。时间锁定 张三 解锁">
+          <div class="cmd-head">
+            <code class="cmd-name">。时间锁定</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">锁定/解锁玩家时间，防止修改时间线</div>
+          <pre class="usage">。时间锁定 张三 锁定 / 。时间锁定 张三 解锁</pre>
+        </div>
+
+        <div class="cmd-row" data-search="查看锁定 [角色名] 查看角色的时间锁定状态 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。查看锁定 [角色名]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">查看角色的时间锁定状态</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="设置邀约时间 [时间段...] 设置玩家可发起邀约的时间范围 。设置邀约时间 09:00-12:00 14:00-18:00">
+          <div class="cmd-head">
+            <code class="cmd-name">。设置邀约时间 [时间段...]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">设置玩家可发起邀约的时间范围</div>
+          <pre class="usage">。设置邀约时间 09:00-12:00 14:00-18:00</pre>
+        </div>
+
+        <div class="cmd-row" data-search="清空邀约时间 清除所有邀约时间限制 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。清空邀约时间</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">清除所有邀约时间限制</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="强结私约 [群号] 强制结束指定群的私约，不填群号则对当前群操作；是否发放结戏奖励见「设置 互动参数」的「强结发放奖励」开关（默认不发放） 。强结私约 123456789">
+          <div class="cmd-head">
+            <code class="cmd-name">。强结私约 [群号]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">强制结束指定群的私约，不填群号则对当前群操作；是否发放结戏奖励见「设置 互动参数」的「强结发放奖励」开关（默认不发放）</div>
+          <pre class="usage">。强结私约 123456789</pre>
+        </div>
+
+        <div class="cmd-row" data-search="一键通知 [小时数] 弧长/开群 批量提醒：弧长=通知所有存在单人已超过n小时未回复的群（私聊提醒未回者+群内@提示大家耐心等，两边话术不同）；开群=向所有已开启超过n小时的群发到期提醒 。一键通知 12 弧长
+。一键通知 12 开群">
+          <div class="cmd-head">
+            <code class="cmd-name">。一键通知 [小时数] 弧长/开群</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">批量提醒：弧长=通知所有存在单人已超过N小时未回复的群（私聊提醒未回者+群内@提示大家耐心等，两边话术不同）；开群=向所有已开启超过N小时的群发到期提醒</div>
+          <pre class="usage">。一键通知 12 弧长
+。一键通知 12 开群</pre>
+        </div>
+
+        <div class="cmd-row" data-search="一键强结 [小时数] 弧长/开群 批量强结：弧长/开群口径同「一键通知」，直接对所有符合条件的群执行强结私约；奖励规则同「强结私约」 。一键强结 12 弧长
+。一键强结 12 开群">
+          <div class="cmd-head">
+            <code class="cmd-name">。一键强结 [小时数] 弧长/开群</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">批量强结：弧长/开群口径同「一键通知」，直接对所有符合条件的群执行强结私约；奖励规则同「强结私约」</div>
+          <pre class="usage">。一键强结 12 弧长
+。一键强结 12 开群</pre>
+        </div>
+
+        <div class="cmd-row" data-search="删除时间线 [天] [时间] [角色] 精确删除某人某天某时段的时间线记录 。删除时间线 d1 14:00 张三">
+          <div class="cmd-head">
+            <code class="cmd-name">。删除时间线 [天] [时间] [角色]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">精确删除某人某天某时段的时间线记录</div>
+          <pre class="usage">。删除时间线 D1 14:00 张三</pre>
+        </div>
+
+        <div class="cmd-row" data-search="发起官约 [时间] [地点] [参与者] 发起官方约会（自动建群） 发起官约 d1 14:00-15:00 地点 张三/李四">
+          <div class="cmd-head">
+            <code class="cmd-name">发起官约 [时间] [地点] [参与者] <span class="dot-note">（前面加不加句号都行）</span></code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">发起官方约会（自动建群）</div>
+          <pre class="usage">发起官约 D1 14:00-15:00 地点 张三/李四</pre>
+        </div>
+
+        <div class="cmd-row" data-search="发起官电 [时间] [参与者] 发起官方电话（自动建群，无需地点） 。发起官电 d1 14:00-15:00 张三/李四">
+          <div class="cmd-head">
+            <code class="cmd-name">。发起官电 [时间] [参与者]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">发起官方电话（自动建群，无需地点）</div>
+          <pre class="usage">。发起官电 D1 14:00-15:00 张三/李四</pre>
+        </div>
+
+        <div class="cmd-row" data-search="计划官约 [tag/无] [组数] [d几] [时间] [地点...] 生成官约分组方案 。计划官约 无 3 d1 14:00-15:00 咖啡厅,餐厅,花园">
+          <div class="cmd-head">
+            <code class="cmd-name">。计划官约 [tag/无] [组数] [D几] [时间] [地点...]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">生成官约分组方案</div>
+          <pre class="usage">。计划官约 无 3 D1 14:00-15:00 咖啡厅,餐厅,花园</pre>
+        </div>
+
+        <div class="cmd-row" data-search="执行官约 一键执行已保存的官约方案 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。执行官约</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">一键执行已保存的官约方案</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="查看进行中 [d几] 查看当前进行中的所有约会 ">
+          <div class="cmd-head">
+            <code class="cmd-name">查看进行中 [D几]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">查看当前进行中的所有约会</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="查看计时器 查看所有活跃约会的计时状态与字数统计 ">
+          <div class="cmd-head">
+            <code class="cmd-name">查看计时器</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">查看所有活跃约会的计时状态与字数统计</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="提醒超时 [角色名] 提醒超时未回复的玩家 ">
+          <div class="cmd-head">
+            <code class="cmd-name">提醒超时 [角色名]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">提醒超时未回复的玩家</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="我的弧长 查看自己的历史平均回复耗时（含已结/未结场次），以及当前所有未结双人小群里，自己和对方各自的回复次数对比、本场平均耗时、当前轮到谁回复及已等待时长 。我的弧长">
+          <div class="cmd-head">
+            <code class="cmd-name">。我的弧长</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看自己的历史平均回复耗时（含已结/未结场次），以及当前所有未结双人小群里，自己和对方各自的回复次数对比、本场平均耗时、当前轮到谁回复及已等待时长</div>
+          <pre class="usage">。我的弧长</pre>
+        </div>
+
+        <div class="cmd-row" data-search="查看弧长 [角色名] 查看指定角色的弧长情况，内容格式同「我的弧长」 。查看弧长 张三">
+          <div class="cmd-head">
+            <code class="cmd-name">。查看弧长 [角色名]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">查看指定角色的弧长情况，内容格式同「我的弧长」</div>
+          <pre class="usage">。查看弧长 张三</pre>
+        </div>
+
+        <div class="cmd-row" data-search="修复耗时统计 [角色名] 自动检测并清除异常的回复耗时数据，正常数据保留 。修复耗时统计
+。修复耗时统计 张三">
+          <div class="cmd-head">
+            <code class="cmd-name">。修复耗时统计 [角色名]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">自动检测并清除异常的回复耗时数据，正常数据保留</div>
+          <pre class="usage">。修复耗时统计
+。修复耗时统计 张三</pre>
+        </div>
+
+        <div class="cmd-row" data-search="约会数据体检 [修复] 核对约会相关的四份存储是否一致，排查孤儿占用/残留记录；不加参数仅报告问题，加「修复」会清理可安全判定为垃圾的残留记录（不影响占用中的群） 。约会数据体检
+。约会数据体检 修复">
+          <div class="cmd-head">
+            <code class="cmd-name">。约会数据体检 [修复]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">核对约会相关的四份存储是否一致，排查孤儿占用/残留记录；不加参数仅报告问题，加「修复」会清理可安全判定为垃圾的残留记录（不影响占用中的群）</div>
+          <pre class="usage">。约会数据体检
+。约会数据体检 修复</pre>
+        </div>
+</div></section></div>
+<div id="sec-2"><section class="cmd-section" data-title="🗺️ 地点系统">
+<button class="cmd-section-head" onclick="toggleSection(this)"><h2>🗺️ 地点系统</h2><span class="chevron">▾</span></button>
+<div class="cmd-list">
+
+        <div class="cmd-row" data-search="地点 查看 查看当前开放的所有地点列表 。地点 查看">
+          <div class="cmd-head">
+            <code class="cmd-name">。地点 查看</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看当前开放的所有地点列表</div>
+          <pre class="usage">。地点 查看</pre>
+        </div>
+
+        <div class="cmd-row" data-search="地点 钥匙 查看自己持有的地点钥匙 。地点 钥匙">
+          <div class="cmd-head">
+            <code class="cmd-name">。地点 钥匙</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看自己持有的地点钥匙</div>
+          <pre class="usage">。地点 钥匙</pre>
+        </div>
+
+        <div class="cmd-row" data-search="地点查看 / 查看地点 同上，无句号的快捷方式 ">
+          <div class="cmd-head">
+            <code class="cmd-name">地点查看 / 查看地点</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">同上，无句号的快捷方式</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="地点管理 添加 [地点:描述] 添加新地点 。地点管理 添加 图书馆:安静的读书角落">
+          <div class="cmd-head">
+            <code class="cmd-name">。地点管理 添加 [地点:描述]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">添加新地点</div>
+          <pre class="usage">。地点管理 添加 图书馆:安静的读书角落</pre>
+        </div>
+
+        <div class="cmd-row" data-search="地点管理 删除 [地点] 删除指定地点 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。地点管理 删除 [地点]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">删除指定地点</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="地点管理 开关 [地点] 切换地点的开放/关闭状态 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。地点管理 开关 [地点]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">切换地点的开放/关闭状态</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="地点管理 钥匙 [角色名] [地点] 给角色发放/回收地点钥匙 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。地点管理 钥匙 [角色名] [地点]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">给角色发放/回收地点钥匙</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="地点管理 清空 y 清空全部地点（需确认） ">
+          <div class="cmd-head">
+            <code class="cmd-name">。地点管理 清空 Y</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">清空全部地点（需确认）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="批量设置地点 [地点:描述...] 批量导入多个地点（换行分隔） ">
+          <div class="cmd-head">
+            <code class="cmd-name">。批量设置地点 [地点:描述...]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">批量导入多个地点（换行分隔）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="批量发放钥匙 [角色/角色2] [地点/地点2] 批量给多个角色发放多个钥匙 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。批量发放钥匙 [角色/角色2] [地点/地点2]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">批量给多个角色发放多个钥匙</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="查看地点详情 / 查看钥匙分配 查看所有地点及钥匙分配情况 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。查看地点详情 / 查看钥匙分配</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">查看所有地点及钥匙分配情况</div>
+          
+        </div>
+</div></section></div>
+<div id="sec-3"><section class="cmd-section" data-title="💌 社交互动">
+<button class="cmd-section-head" onclick="toggleSection(this)"><h2>💌 社交互动</h2><span class="chevron">▾</span></button>
+<div class="cmd-list">
+
+        <div class="cmd-row" data-search="[署名]短信 [收信人] [内容] 发送短信给角色（署名可省略，将使用本角色名） 短信 张三 你好！
+李四短信 张三 晚上有空吗？">
+          <div class="cmd-head">
+            <code class="cmd-name">[署名]短信 [收信人] [内容]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">发送短信给角色（署名可省略，将使用本角色名）</div>
+          <pre class="usage">短信 张三 你好！
+李四短信 张三 晚上有空吗？</pre>
+        </div>
+
+        <div class="cmd-row" data-search="送礼 [对方名] [礼物内容] 赠送礼物给角色（记入存档） 送礼 张三 一束玫瑰
+送礼 张三 #001（图鉴编号，可无限送）">
+          <div class="cmd-head">
+            <code class="cmd-name">送礼 [对方名] [礼物内容]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">赠送礼物给角色（记入存档）</div>
+          <pre class="usage">送礼 张三 一束玫瑰
+送礼 张三 #001（图鉴编号，可无限送）</pre>
+        </div>
+
+        <div class="cmd-row" data-search="礼品店 查看预设礼品店目录 ">
+          <div class="cmd-head">
+            <code class="cmd-name">礼品店</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看预设礼品店目录</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="图鉴 / 我的图鉴 查看自己已收到/送出的礼物图鉴 图鉴  /  图鉴 [对方角色名]">
+          <div class="cmd-head">
+            <code class="cmd-name">图鉴 / 我的图鉴</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看自己已收到/送出的礼物图鉴</div>
+          <pre class="usage">图鉴  /  图鉴 [对方角色名]</pre>
+        </div>
+
+        <div class="cmd-row" data-search="发送心动信 向其他角色匿名投递心动信 发送心动信
+【发送对象】角色名
+【内容】想说的话
+【署名】自定义昵称（可省略）">
+          <div class="cmd-head">
+            <code class="cmd-name">发送心动信</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">向其他角色匿名投递心动信</div>
+          <pre class="usage">发送心动信
+【发送对象】角色名
+【内容】想说的话
+【署名】自定义昵称（可省略）</pre>
+        </div>
+
+        <div class="cmd-row" data-search="查看信箱 查看自己收到的心动信 ">
+          <div class="cmd-head">
+            <code class="cmd-name">查看信箱</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看自己收到的心动信</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="撤回心动信 [编号] 撤回已投递但未派送的心动信 。撤回心动信 3">
+          <div class="cmd-head">
+            <code class="cmd-name">。撤回心动信 [编号]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">撤回已投递但未派送的心动信</div>
+          <pre class="usage">。撤回心动信 3</pre>
+        </div>
+
+        <div class="cmd-row" data-search="挂心愿 [时间] [地点] [内容] 发布一条心愿约会，等待他人摘取 挂心愿 1400-1500 花园 一起散步">
+          <div class="cmd-head">
+            <code class="cmd-name">挂心愿 [时间] [地点] [内容]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">发布一条心愿约会，等待他人摘取</div>
+          <pre class="usage">挂心愿 1400-1500 花园 一起散步</pre>
+        </div>
+
+        <div class="cmd-row" data-search="悬赏心愿 [时间] [地点] [内容] | [物品] [数量] 挂出附带物品奖励的心愿 悬赏心愿 1400-1500 图书馆 陪我看书 | 滋补汤 1">
+          <div class="cmd-head">
+            <code class="cmd-name">悬赏心愿 [时间] [地点] [内容] | [物品] [数量]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">挂出附带物品奖励的心愿</div>
+          <pre class="usage">悬赏心愿 1400-1500 图书馆 陪我看书 | 滋补汤 1</pre>
+        </div>
+
+        <div class="cmd-row" data-search="看心愿 查看当前所有开放的心愿 ">
+          <div class="cmd-head">
+            <code class="cmd-name">看心愿</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看当前所有开放的心愿</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="摘心愿 [编号] 认领并接受对应编号的心愿 摘心愿 1">
+          <div class="cmd-head">
+            <code class="cmd-name">摘心愿 [编号]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">认领并接受对应编号的心愿</div>
+          <pre class="usage">摘心愿 1</pre>
+        </div>
+
+        <div class="cmd-row" data-search="撤心愿 [编号] 撤回自己发布的心愿 ">
+          <div class="cmd-head">
+            <code class="cmd-name">撤心愿 [编号]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">撤回自己发布的心愿</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="本场统计 查看本场 rp 的个人互动数据统计 ">
+          <div class="cmd-head">
+            <code class="cmd-name">本场统计</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看本场 RP 的个人互动数据统计</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="查看全员统计 / 本季字数 输出网页端全员统计页链接（数据在网页端查看） ">
+          <div class="cmd-head">
+            <code class="cmd-name">查看全员统计 / 本季字数</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">输出网页端全员统计页链接（数据在网页端查看）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="信箱统计 查看全场心动信投递统计 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。信箱统计</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">查看全场心动信投递统计</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="统一送心动信 一键派送所有已投递的心动信 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。统一送心动信</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">一键派送所有已投递的心动信</div>
+          
+        </div>
+</div></section></div>
+<div id="sec-4"><section class="cmd-section" data-title="📰 关系线与论坛">
+<button class="cmd-section-head" onclick="toggleSection(this)"><h2>📰 关系线与论坛</h2><span class="chevron">▾</span></button>
+<div class="cmd-list">
+
+        <div class="cmd-row" data-search="拉线 [对方名] [关系描述] 添加与对方角色之间的关系细节 拉线 张三 在高中时期是同班同学">
+          <div class="cmd-head">
+            <code class="cmd-name">拉线 [对方名] [关系描述]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">添加与对方角色之间的关系细节</div>
+          <pre class="usage">拉线 张三 在高中时期是同班同学</pre>
+        </div>
+
+        <div class="cmd-row" data-search="确认关系线 [对方名] 确认接受对方提出的关系线 ">
+          <div class="cmd-head">
+            <code class="cmd-name">确认关系线 [对方名]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">确认接受对方提出的关系线</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="撤回关系 [对方名] [内容] 精确撤回自己发送的某条关系细节 撤回关系 张三 在高中时期是同班同学">
+          <div class="cmd-head">
+            <code class="cmd-name">撤回关系 [对方名] [内容] <span class="dot-note">（前面加不加句号都行）</span></code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">精确撤回自己发送的某条关系细节</div>
+          <pre class="usage">撤回关系 张三 在高中时期是同班同学</pre>
+        </div>
+
+        <div class="cmd-row" data-search="查看关系线 [对方名] 查看与对方的关系详情（不加名字则看列表） 查看关系线
+查看关系线 张三">
+          <div class="cmd-head">
+            <code class="cmd-name">查看关系线 [对方名] <span class="dot-note">（前面加不加句号都行）</span></code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看与对方的关系详情（不加名字则看列表）</div>
+          <pre class="usage">查看关系线
+查看关系线 张三</pre>
+        </div>
+
+        <div class="cmd-row" data-search="设置强制关系线 [角色] [内容] 为角色强制设定预设关系（玩家无需确认） ">
+          <div class="cmd-head">
+            <code class="cmd-name">。设置强制关系线 [角色] [内容]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">为角色强制设定预设关系（玩家无需确认）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="删除关系线 [角色1] [角色2] [内容] 删除指定关系线条目 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。删除关系线 [角色1] [角色2] [内容]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">删除指定关系线条目</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="清空关系线 [mmdd] 清空当前平台全部关系线（输入当日日期确认） 。清空关系线 0614">
+          <div class="cmd-head">
+            <code class="cmd-name">。清空关系线 [MMDD]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">清空当前平台全部关系线（输入当日日期确认）</div>
+          <pre class="usage">。清空关系线 0614</pre>
+        </div>
+
+        <div class="cmd-row" data-search="关系线统计 查看所有角色的关系线数量 ">
+          <div class="cmd-head">
+            <code class="cmd-name">关系线统计 <span class="dot-note">（前面加不加句号都行）</span></code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">查看所有角色的关系线数量</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="设定关系线 [字数上限/关系上限] [n] 设置关系线字数或条数上限 设定关系线 字数上限 500">
+          <div class="cmd-head">
+            <code class="cmd-name">设定关系线 [字数上限/关系上限] [N]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">设置关系线字数或条数上限</div>
+          <pre class="usage">设定关系线 字数上限 500</pre>
+        </div>
+
+        <div class="cmd-row" data-search="发帖 [署名] [内容] 在论坛发一篇帖子 发帖 张三 今天天气真好！">
+          <div class="cmd-head">
+            <code class="cmd-name">发帖 [署名] [内容]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">在论坛发一篇帖子</div>
+          <pre class="usage">发帖 张三 今天天气真好！</pre>
+        </div>
+
+        <div class="cmd-row" data-search="回复帖子 [贴号] [引用n|署名] [内容] 回复指定帖子 回复帖子 001 你说得对！">
+          <div class="cmd-head">
+            <code class="cmd-name">回复帖子 [贴号] [引用N|署名] [内容]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">回复指定帖子</div>
+          <pre class="usage">回复帖子 001 你说得对！</pre>
+        </div>
+
+        <div class="cmd-row" data-search="点赞 [贴号] 点赞帖子 。点赞 001">
+          <div class="cmd-head">
+            <code class="cmd-name">。点赞 [贴号]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">点赞帖子</div>
+          <pre class="usage">。点赞 001</pre>
+        </div>
+
+        <div class="cmd-row" data-search="点踩 [贴号] 点踩帖子 。点踩 001">
+          <div class="cmd-head">
+            <code class="cmd-name">。点踩 [贴号]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">点踩帖子</div>
+          <pre class="usage">。点踩 001</pre>
+        </div>
+
+        <div class="cmd-row" data-search="点赞楼层 [贴号] [楼层] 点赞帖子内的指定楼层 。点赞楼层 001 3">
+          <div class="cmd-head">
+            <code class="cmd-name">。点赞楼层 [贴号] [楼层]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">点赞帖子内的指定楼层</div>
+          <pre class="usage">。点赞楼层 001 3</pre>
+        </div>
+
+        <div class="cmd-row" data-search="点踩楼层 [贴号] [楼层] 点踩帖子内的指定楼层 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。点踩楼层 [贴号] [楼层]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">点踩帖子内的指定楼层</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="查看帖子 查看论坛所有帖子列表 ">
+          <div class="cmd-head">
+            <code class="cmd-name">查看帖子 <span class="dot-note">（前面加不加句号都行）</span></code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看论坛所有帖子列表</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="删除帖子 [贴号] 删除指定帖子 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。删除帖子 [贴号]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">删除指定帖子</div>
+          
+        </div>
+</div></section></div>
+<div id="sec-5"><section class="cmd-section" data-title="📦 背包与物品交易">
+<button class="cmd-section-head" onclick="toggleSection(this)"><h2>📦 背包与物品交易</h2><span class="chevron">▾</span></button>
+<div class="cmd-list">
+
+        <div class="cmd-row" data-search="我的背包 / 背包 查看自己的背包道具 ">
+          <div class="cmd-head">
+            <code class="cmd-name">我的背包 / 背包 <span class="dot-note">（前面加不加句号都行）</span></code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看自己的背包道具</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="商城 查看商城；子命令「购买」直接下单 商城
+商城 购买 item_001 2">
+          <div class="cmd-head">
+            <code class="cmd-name">商城 <span class="dot-note">（前面加不加句号都行）</span></code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看商城；子命令「购买」直接下单</div>
+          <pre class="usage">商城
+商城 购买 ITEM_001 2</pre>
+        </div>
+
+        <div class="cmd-row" data-search="使用 [物品] [目标] 使用背包物品：省略目标=自用；填目标=互动物品；「使用 特殊 道具名」=spec类 使用 item_001          ← 自用
+使用 治疗术 张三    ← 对他人
+使用 特殊 spec_001  ← 特殊道具
+施加 张三 治疗术    ← 旧格式仍兼容">
+          <div class="cmd-head">
+            <code class="cmd-name">使用 [物品] [目标] <span class="dot-note">（前面加不加句号都行）</span></code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">使用背包物品：省略目标=自用；填目标=互动物品；「使用 特殊 道具名」=SPEC类</div>
+          <pre class="usage">使用 ITEM_001          ← 自用
+使用 治疗术 张三    ← 对他人
+使用 特殊 SPEC_001  ← 特殊道具
+施加 张三 治疗术    ← 旧格式仍兼容</pre>
+        </div>
+
+        <div class="cmd-row" data-search="赠送道具 [角色名] [物品码] [数量] 将背包中的道具赠给其他角色 赠送道具 张三 item_001 1">
+          <div class="cmd-head">
+            <code class="cmd-name">赠送道具 [角色名] [物品码] [数量] <span class="dot-note">（前面加不加句号都行）</span></code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">将背包中的道具赠给其他角色</div>
+          <pre class="usage">赠送道具 张三 ITEM_001 1</pre>
+        </div>
+
+        <div class="cmd-row" data-search="背包 搜/详情 [关键词/物品名] 搜索物品或查看详情 背包 搜 金苹果
+背包 详情 item_001">
+          <div class="cmd-head">
+            <code class="cmd-name">背包 搜/详情 [关键词/物品名] <span class="dot-note">（前面加不加句号都行）</span></code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">搜索物品或查看详情</div>
+          <pre class="usage">背包 搜 金苹果
+背包 详情 ITEM_001</pre>
+        </div>
+
+        <div class="cmd-row" data-search="物品列表 [类型] 查看所有注册物品（物品/互动/货币/预设/全部） 。物品列表 全部">
+          <div class="cmd-head">
+            <code class="cmd-name">。物品列表 [类型]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看所有注册物品（物品/互动/货币/预设/全部）</div>
+          <pre class="usage">。物品列表 全部</pre>
+        </div>
+
+        <div class="cmd-row" data-search="二手 查看二手市场；子命令「卖」上架、「撤」撤单、「买」购买、「设定」管理员配置 二手
+二手 卖 item_001 8 金币 2
+二手 撤 0001
+二手 买 0001">
+          <div class="cmd-head">
+            <code class="cmd-name">二手 <span class="dot-note">（前面加不加句号都行）</span></code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看二手市场；子命令「卖」上架、「撤」撤单、「买」购买、「设定」管理员配置</div>
+          <pre class="usage">二手
+二手 卖 ITEM_001 8 金币 2
+二手 撤 0001
+二手 买 0001</pre>
+        </div>
+
+        <div class="cmd-row" data-search="交易 提出 [对方] [给:物品×n,...] [要:物品×n,...] [备注] 【dlc: dlc_trade】向对方发起以物换物提案；物品可用名称或编码，多件逗号分隔不加空格；双方持有才能成交 。交易 提出 李四 给:铁剑×1,回血药×2 要:金币×50 换个好东西">
+          <div class="cmd-head">
+            <code class="cmd-name">。交易 提出 [对方] [给:物品×N,...] [要:物品×N,...] [备注]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">【DLC: dlc_trade】向对方发起以物换物提案；物品可用名称或编码，多件逗号分隔不加空格；双方持有才能成交</div>
+          <pre class="usage">。交易 提出 李四 给:铁剑×1,回血药×2 要:金币×50 换个好东西</pre>
+        </div>
+
+        <div class="cmd-row" data-search="交易 接受/拒绝/撤回 [单号] 接受（双方同时校验持有）/ 拒绝 / 撤回自己发出的提案 。交易 接受 tr0001
+。交易 拒绝 tr0001">
+          <div class="cmd-head">
+            <code class="cmd-name">。交易 接受/拒绝/撤回 [单号]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">接受（双方同时校验持有）/ 拒绝 / 撤回自己发出的提案</div>
+          <pre class="usage">。交易 接受 TR0001
+。交易 拒绝 TR0001</pre>
+        </div>
+
+        <div class="cmd-row" data-search="交易 还价 [单号] [给:...] [要:...] [备注] 对方提出新条件；原提案自动关闭，生成新单号供对方回应 。交易 还价 tr0001 给:回血药×1 要:铁剑×1">
+          <div class="cmd-head">
+            <code class="cmd-name">。交易 还价 [单号] [给:...] [要:...] [备注]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">对方提出新条件；原提案自动关闭，生成新单号供对方回应</div>
+          <pre class="usage">。交易 还价 TR0001 给:回血药×1 要:铁剑×1</pre>
+        </div>
+
+        <div class="cmd-row" data-search="交易 列表 查看我的所有进行中及近期（最多5条）交易记录 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。交易 列表</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看我的所有进行中及近期（最多5条）交易记录</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="交易 详情 [单号] 查看指定交易单的完整物品与状态信息 。交易 详情 tr0001">
+          <div class="cmd-head">
+            <code class="cmd-name">。交易 详情 [单号]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看指定交易单的完整物品与状态信息</div>
+          <pre class="usage">。交易 详情 TR0001</pre>
+        </div>
+
+        <div class="cmd-row" data-search="合成 [物品码] 用背包材料合成指定物品；「合成 查看」查看所有配方 合成 craft_001
+合成 查看">
+          <div class="cmd-head">
+            <code class="cmd-name">合成 [物品码] <span class="dot-note">（前面加不加句号都行）</span></code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">用背包材料合成指定物品；「合成 查看」查看所有配方</div>
+          <pre class="usage">合成 CRAFT_001
+合成 查看</pre>
+        </div>
+</div></section></div>
+<div id="sec-6"><section class="cmd-section" data-title="🎰 抽取与收集">
+<button class="cmd-section-head" onclick="toggleSection(this)"><h2>🎰 抽取与收集</h2><span class="chevron">▾</span></button>
+<div class="cmd-list">
+
+        <div class="cmd-row" data-search="抽取 [池子名] 从抽取池随机获得物品，不填池名则抽默认池 抽取 / 抽取 限定池">
+          <div class="cmd-head">
+            <code class="cmd-name">抽取 [池子名] <span class="dot-note">（前面加不加句号都行）</span></code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">从抽取池随机获得物品，不填池名则抽默认池</div>
+          <pre class="usage">抽取 / 抽取 限定池</pre>
+        </div>
+
+        <div class="cmd-row" data-search="我的抽取次数 / 抽取次数 查看今日各池子的抽取次数剩余 ">
+          <div class="cmd-head">
+            <code class="cmd-name">我的抽取次数 / 抽取次数 <span class="dot-note">（前面加不加句号都行）</span></code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看今日各池子的抽取次数剩余</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="我的保底 / 保底进度 查看自己在各保底池的累计抽取次数 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。我的保底 / 保底进度</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看自己在各保底池的累计抽取次数</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="定时收集 [项目名] [内容] 提交定时收集内容；也作子命令入口（创建/关闭/查看） 定时收集 心情调查 今天很开心">
+          <div class="cmd-head">
+            <code class="cmd-name">。定时收集 [项目名] [内容]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">提交定时收集内容；也作子命令入口（创建/关闭/查看）</div>
+          <pre class="usage">定时收集 心情调查 今天很开心</pre>
+        </div>
+
+        <div class="cmd-row" data-search="发放抽取 [角色名] [池子名] [n] 给玩家额外发放 n 次抽取机会 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。发放抽取 [角色名] [池子名] [N]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">给玩家额外发放 N 次抽取机会</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="定时收集 创建 [时间] [项目名] 创建定时收集任务（到时间自动开启，玩家用「定时收集 项目名 内容」提交） 。定时收集 创建 2000 心情调查">
+          <div class="cmd-head">
+            <code class="cmd-name">。定时收集 创建 [时间] [项目名]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">创建定时收集任务（到时间自动开启，玩家用「定时收集 项目名 内容」提交）</div>
+          <pre class="usage">。定时收集 创建 2000 心情调查</pre>
+        </div>
+
+        <div class="cmd-row" data-search="定时收集 关闭 [项目名] 关闭并删除指定定时收集任务 。定时收集 关闭 心情调查">
+          <div class="cmd-head">
+            <code class="cmd-name">。定时收集 关闭 [项目名]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">关闭并删除指定定时收集任务</div>
+          <pre class="usage">。定时收集 关闭 心情调查</pre>
+        </div>
+
+        <div class="cmd-row" data-search="定时收集 查看 [项目名] 查看所有收集列表，或指定项目的提交记录 。定时收集 查看
+。定时收集 查看 心情调查">
+          <div class="cmd-head">
+            <code class="cmd-name">。定时收集 查看 [项目名]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">查看所有收集列表，或指定项目的提交记录</div>
+          <pre class="usage">。定时收集 查看
+。定时收集 查看 心情调查</pre>
+        </div>
+</div></section></div>
+<div id="sec-7"><section class="cmd-section" data-title="⚔️ 装备与升级">
+<button class="cmd-section-head" onclick="toggleSection(this)"><h2>⚔️ 装备与升级</h2><span class="chevron">▾</span></button>
+<div class="cmd-list">
+
+        <div class="cmd-row" data-search="角色档案 [角色名] 查看角色的 rpg 档案（属性含装备加成/背包/关系线） 。角色档案 张三">
+          <div class="cmd-head">
+            <code class="cmd-name">。角色档案 [角色名]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">查看角色的 RPG 档案（属性含装备加成/背包/关系线）</div>
+          <pre class="usage">。角色档案 张三</pre>
+        </div>
+
+        <div class="cmd-row" data-search="装备 [装备名/物品码] 穿上装备；穿在哪个槽位由装备注册时绑定的槽位决定，不能自己指定槽位 。装备 铁剑
+。装备      ← 查看当前装备">
+          <div class="cmd-head">
+            <code class="cmd-name">。装备 [装备名/物品码]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">穿上装备；穿在哪个槽位由装备注册时绑定的槽位决定，不能自己指定槽位</div>
+          <pre class="usage">。装备 铁剑
+。装备      ← 查看当前装备</pre>
+        </div>
+
+        <div class="cmd-row" data-search="装备 脱 [槽位] 卸下指定槽位的装备 。装备 脱 hand">
+          <div class="cmd-head">
+            <code class="cmd-name">。装备 脱 [槽位]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">卸下指定槽位的装备</div>
+          <pre class="usage">。装备 脱 hand</pre>
+        </div>
+
+        <div class="cmd-row" data-search="装备 列表 查看所有已注册装备（代码/名称/槽位/属性） 。装备 列表">
+          <div class="cmd-head">
+            <code class="cmd-name">。装备 列表</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">查看所有已注册装备（代码/名称/槽位/属性）</div>
+          <pre class="usage">。装备 列表</pre>
+        </div>
+
+        <div class="cmd-row" data-search="装备 详情 [装备码] 查看某件装备的槽位、描述与基础属性加成 。装备 详情 equip_001">
+          <div class="cmd-head">
+            <code class="cmd-name">。装备 详情 [装备码]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看某件装备的槽位、描述与基础属性加成</div>
+          <pre class="usage">。装备 详情 EQUIP_001</pre>
+        </div>
+
+        <div class="cmd-row" data-search="升级 消耗资源进行角色升级 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。升级</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">消耗资源进行角色升级</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="升级 列表 查看当前可升级的项目 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。升级 列表</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看当前可升级的项目</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="升级 信息 查看自己的升级进度与当前等级详情 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。升级 信息</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看自己的升级进度与当前等级详情</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="升级 历史 [n] 查看自己最近 n 条升级记录（默认10条） ">
+          <div class="cmd-head">
+            <code class="cmd-name">。升级 历史 [N]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看自己最近 N 条升级记录（默认10条）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="装备 注册 [名称]*[描述]*[槽位]*[属性]*[耐久] 注册新装备；属性格式 atk+15,def+10；耐久可选，受击逐格损耗，归零自动卸下 。装备 注册 铁剑*普通短剑*hand*atk+15
+。装备 注册 铁盾*普通盾牌*hand*def+20*10">
+          <div class="cmd-head">
+            <code class="cmd-name">。装备 注册 [名称]*[描述]*[槽位]*[属性]*[耐久]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">注册新装备；属性格式 ATK+15,DEF+10；耐久可选，受击逐格损耗，归零自动卸下</div>
+          <pre class="usage">。装备 注册 铁剑*普通短剑*hand*ATK+15
+。装备 注册 铁盾*普通盾牌*hand*DEF+20*10</pre>
+        </div>
+
+        <div class="cmd-row" data-search="装备 槽位 查看 查看当前所有装备槽位（槽位码+显示名称） 。装备 槽位 查看">
+          <div class="cmd-head">
+            <code class="cmd-name">。装备 槽位 查看</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看当前所有装备槽位（槽位码+显示名称）</div>
+          <pre class="usage">。装备 槽位 查看</pre>
+        </div>
+
+        <div class="cmd-row" data-search="装备 槽位 添加 [槽位码] [名称] 新增一个装备槽位 。装备 槽位 添加 ring1 戒指1">
+          <div class="cmd-head">
+            <code class="cmd-name">。装备 槽位 添加 [槽位码] [名称]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">新增一个装备槽位</div>
+          <pre class="usage">。装备 槽位 添加 ring1 戒指1</pre>
+        </div>
+
+        <div class="cmd-row" data-search="装备 槽位 删除 [槽位码] 删除一个装备槽位（该槽位上的装备会被自动卸下） 。装备 槽位 删除 ring1">
+          <div class="cmd-head">
+            <code class="cmd-name">。装备 槽位 删除 [槽位码]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">删除一个装备槽位（该槽位上的装备会被自动卸下）</div>
+          <pre class="usage">。装备 槽位 删除 ring1</pre>
+        </div>
+
+        <div class="cmd-row" data-search="装备 槽位 重置 重置为默认5个槽位（头/胸/手/腿/脚） ">
+          <div class="cmd-head">
+            <code class="cmd-name">。装备 槽位 重置</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">重置为默认5个槽位（头/胸/手/腿/脚）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="升级 上传 [等级] * [描述] * [消耗] * [奖励] 配置升级规则（支持范围，如 1-10） 。升级 上传 1-10 * {等级}级冒险者 * 金币:50+50 * hp+5+5">
+          <div class="cmd-head">
+            <code class="cmd-name">。升级 上传 [等级] * [描述] * [消耗] * [奖励]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">配置升级规则（支持范围，如 1-10）</div>
+          <pre class="usage">。升级 上传 1-10 * {等级}级冒险者 * 金币:50+50 * HP+5+5</pre>
+        </div>
+
+        <div class="cmd-row" data-search="升级 配置 [等级号] 查看已配置的升级规则 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。升级 配置 [等级号]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">查看已配置的升级规则</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="升级 设置 [开启/关闭/最大等级 n] 全局开关升级系统或设置最大等级 。升级 设置 开启
+。升级 设置 最大等级 30">
+          <div class="cmd-head">
+            <code class="cmd-name">。升级 设置 [开启/关闭/最大等级 N]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">全局开关升级系统或设置最大等级</div>
+          <pre class="usage">。升级 设置 开启
+。升级 设置 最大等级 30</pre>
+        </div>
+
+        <div class="cmd-row" data-search="装备 修复 [角色名] [槽位码] 将指定角色全部（或指定槽位）装备耐久恢复到最大值 。装备 修复 张三
+。装备 修复 张三 hand">
+          <div class="cmd-head">
+            <code class="cmd-name">。装备 修复 [角色名] [槽位码]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">将指定角色全部（或指定槽位）装备耐久恢复到最大值</div>
+          <pre class="usage">。装备 修复 张三
+。装备 修复 张三 hand</pre>
+        </div>
+</div></section></div>
+<div id="sec-8"><section class="cmd-section" data-title="🛠️ 物品与商城管理">
+<button class="cmd-section-head" onclick="toggleSection(this)"><h2>🛠️ 物品与商城管理</h2><span class="chevron">▾</span></button>
+<div class="cmd-list">
+
+        <div class="cmd-row" data-search="上载 [名称【标签】...] 批量注册物品/互动物品/货币；【互动】=互动物品，【货币】=注册货币，【n次】【无限】【属性+n】【二手】均可叠加 。上载 金苹果【恢复体力】【5次】【体力+10】
+。上载 金币【货币】
+。上载 爱心糖【互动】【甜蜜+3】">
+          <div class="cmd-head">
+            <code class="cmd-name">。上载 [名称【标签】...]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">批量注册物品/互动物品/货币；【互动】=互动物品，【货币】=注册货币，【N次】【无限】【属性+N】【二手】均可叠加</div>
+          <pre class="usage">。上载 金苹果【恢复体力】【5次】【体力+10】
+。上载 金币【货币】
+。上载 爱心糖【互动】【甜蜜+3】</pre>
+        </div>
+
+        <div class="cmd-row" data-search="删除物品 [物品码] 删除已注册的物品（自动清出背包/商城/池子/配方/二手） ">
+          <div class="cmd-head">
+            <code class="cmd-name">。删除物品 [物品码]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">删除已注册的物品（自动清出背包/商城/池子/配方/二手）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="初始化预设物品 初始化系统预设物品（追踪器/万能钥匙/金币/银币） ">
+          <div class="cmd-head">
+            <code class="cmd-name">。初始化预设物品</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">初始化系统预设物品（追踪器/万能钥匙/金币/银币）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="商城 上架 [物品码*价格货币名] 将物品上架到商城 。商城 上架 item_001*10金币">
+          <div class="cmd-head">
+            <code class="cmd-name">。商城 上架 [物品码*价格货币名]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">将物品上架到商城</div>
+          <pre class="usage">。商城 上架 ITEM_001*10金币</pre>
+        </div>
+
+        <div class="cmd-row" data-search="商城 下架 [物品码/名称] 将物品从商城下架 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。商城 下架 [物品码/名称]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">将物品从商城下架</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="二手 设定 [手续费:n/开启/关闭/查看] 配置二手市场手续费及开关状态 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。二手 设定 [手续费:N/开启/关闭/查看]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">配置二手市场手续费及开关状态</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="（rparchive）dlc_trade 开关 开启/关闭议价交易系统（dlc，默认关闭） ">
+          <div class="cmd-head">
+            <code class="cmd-name">。（rparchive）dlc_trade 开关</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">开启/关闭议价交易系统（DLC，默认关闭）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="交易 设定 [每日上限/冷却/查看] 设置每人每日最多完成笔数（0=不限）及完成后冷却时间（分钟，0=不限），为「交易」命令的子命令 。交易 设定 每日上限 3
+。交易 设定 冷却 30">
+          <div class="cmd-head">
+            <code class="cmd-name">。交易 设定 [每日上限/冷却/查看]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">设置每人每日最多完成笔数（0=不限）及完成后冷却时间（分钟，0=不限），为「交易」命令的子命令</div>
+          <pre class="usage">。交易 设定 每日上限 3
+。交易 设定 冷却 30</pre>
+        </div>
+
+        <div class="cmd-row" data-search="合成 注册 [产物码*描述*材料:数量,...] 注册合成配方 。合成 注册 高级丹*升级丹药*初级丹:3,金币:100">
+          <div class="cmd-head">
+            <code class="cmd-name">。合成 注册 [产物码*描述*材料:数量,...]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">注册合成配方</div>
+          <pre class="usage">。合成 注册 高级丹*升级丹药*初级丹:3,金币:100</pre>
+        </div>
+
+        <div class="cmd-row" data-search="合成 查看 [物品码] 查看已注册的合成配方 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。合成 查看 [物品码]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">查看已注册的合成配方</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="合成 删除 [物品名/码] 删除指定配方 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。合成 删除 [物品名/码]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">删除指定配方</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="属性 注册 [属性名] [最小] [最大] [默认] 注册 rpg 属性（也可用无句号的「我创建属性」批量创建） ">
+          <div class="cmd-head">
+            <code class="cmd-name">。属性 注册 [属性名] [最小] [最大] [默认]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">注册 RPG 属性（也可用无句号的「我创建属性」批量创建）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="属性 删除 [属性名] 删除已注册属性（也可用无句号的「我移除属性」批量移除） ">
+          <div class="cmd-head">
+            <code class="cmd-name">。属性 删除 [属性名]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">删除已注册属性（也可用无句号的「我移除属性」批量移除）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="属性 列表 查看所有已注册的 rpg 属性 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。属性 列表</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">查看所有已注册的 RPG 属性</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="属性 设置 [角色名] [属性名] [值] 直接设置角色属性值 。属性 设置 张三 体力 80">
+          <div class="cmd-head">
+            <code class="cmd-name">。属性 设置 [角色名] [属性名] [值]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">直接设置角色属性值</div>
+          <pre class="usage">。属性 设置 张三 体力 80</pre>
+        </div>
+
+        <div class="cmd-row" data-search="背包 他人 [角色名] 查看指定角色的背包 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。背包 他人 [角色名]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">查看指定角色的背包</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="调整 [角色名] [物品码] [+/-n] 直接增减玩家背包中某物品的数量 。调整 张三 item_001 +3">
+          <div class="cmd-head">
+            <code class="cmd-name">。调整 [角色名] [物品码] [+/-N]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">直接增减玩家背包中某物品的数量</div>
+          <pre class="usage">。调整 张三 ITEM_001 +3</pre>
+        </div>
+
+        <div class="cmd-row" data-search="批量发放 [角色...] | [物品码] [数量] 批量给多名玩家发放物品 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。批量发放 [角色...] | [物品码] [数量]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">批量给多名玩家发放物品</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="背包 记录 [n] 查看今日物品使用记录（默认20条） ">
+          <div class="cmd-head">
+            <code class="cmd-name">。背包 记录 [N]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">查看今日物品使用记录（默认20条）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="修复商城货币 按货币名重新匹配商城/二手市场挂单里的货币 code；用于货币被删除重建后，老挂单出现「背包有余额但购买提示不足」的情况 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。修复商城货币</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">按货币名重新匹配商城/二手市场挂单里的货币 code；用于货币被删除重建后，老挂单出现「背包有余额但购买提示不足」的情况</div>
+          
+        </div>
+</div></section></div>
+<div id="sec-9"><section class="cmd-section" data-title="🎲 抽取池管理">
+<button class="cmd-section-head" onclick="toggleSection(this)"><h2>🎲 抽取池管理</h2><span class="chevron">▾</span></button>
+<div class="cmd-list">
+
+        <div class="cmd-row" data-search="查看池子 [池子名] 查看池子详情及当前库存 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。查看池子 [池子名]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看池子详情及当前库存</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="抽取 [池子名] 从抽取池随机获得物品 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。抽取 [池子名]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">从抽取池随机获得物品</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="抽取次数 查看当前可用抽取次数 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。抽取次数</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看当前可用抽取次数</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="我的保底 查看保底累计进度 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。我的保底</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看保底累计进度</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="发放抽取 [角色名] [n] 向指定角色发放总抽取次数 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。发放抽取 [角色名] [N]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">向指定角色发放总抽取次数</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="发放抽取 [角色名] [池子名] [n] 向指定角色发放特定池子的额外次数 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。发放抽取 [角色名] [池子名] [N]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">向指定角色发放特定池子的额外次数</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="💡 池子创建/配置/物品管理 请前往 rp 管理面板 → 抽取池 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。💡 池子创建/配置/物品管理</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">请前往 RP 管理面板 → 抽取池</div>
+          
+        </div>
+</div></section></div>
+<div id="sec-10"><section class="cmd-section" data-title="⚔️ RPG 战斗系统">
+<button class="cmd-section-head" onclick="toggleSection(this)"><h2>⚔️ RPG 战斗系统</h2><span class="chevron">▾</span></button>
+<div class="cmd-list">
+
+        <div class="cmd-row" data-search="我的状态 查看自己所有 rpg 属性（带进度条的可视化版本） ">
+          <div class="cmd-head">
+            <code class="cmd-name">我的状态</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看自己所有 RPG 属性（带进度条的可视化版本）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="属性 [角色名] 查看自己（或他人）的战斗属性，含装备加成对比 。属性
+。属性 张三（管理员查他人）">
+          <div class="cmd-head">
+            <code class="cmd-name">。属性 [角色名]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看自己（或他人）的战斗属性，含装备加成对比</div>
+          <pre class="usage">。属性
+。属性 张三（管理员查他人）</pre>
+        </div>
+
+        <div class="cmd-row" data-search="技能 查看自己已解锁的技能列表 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。技能</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看自己已解锁的技能列表</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="技能 库 查看所有已在 rp_archive 管理端注册的技能 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。技能 库</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看所有已在 rp_archive 管理端注册的技能</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="技能 使用 [技能名] [目标] 消耗 mp 使用已解锁的技能，aoe 技能无需指定目标 。技能 使用 火球术 张三
+。技能 使用 大爆炸">
+          <div class="cmd-head">
+            <code class="cmd-name">。技能 使用 [技能名] [目标]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">消耗 MP 使用已解锁的技能，AOE 技能无需指定目标</div>
+          <pre class="usage">。技能 使用 火球术 张三
+。技能 使用 大爆炸</pre>
+        </div>
+
+        <div class="cmd-row" data-search="pk 发起 [对手名]... 发起战斗（可指定对手；留空则为开放挑战，等待他人「pk 接受」加入） 。pk 发起 张三
+。pk 发起      ← 开放挑战">
+          <div class="cmd-head">
+            <code class="cmd-name">。PK 发起 [对手名]...</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">发起战斗（可指定对手；留空则为开放挑战，等待他人「PK 接受」加入）</div>
+          <pre class="usage">。PK 发起 张三
+。PK 发起      ← 开放挑战</pre>
+        </div>
+
+        <div class="cmd-row" data-search="pk 接受 [战斗id] 接受/加入战斗 。pk 接受 b-xxxx">
+          <div class="cmd-head">
+            <code class="cmd-name">。PK 接受 [战斗ID]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">接受/加入战斗</div>
+          <pre class="usage">。PK 接受 B-XXXX</pre>
+        </div>
+
+        <div class="cmd-row" data-search="pk 拒绝 [战斗id] 拒绝战斗邀请 。pk 拒绝 b-xxxx">
+          <div class="cmd-head">
+            <code class="cmd-name">。PK 拒绝 [战斗ID]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">拒绝战斗邀请</div>
+          <pre class="usage">。PK 拒绝 B-XXXX</pre>
+        </div>
+
+        <div class="cmd-row" data-search="攻击 [目标名] 普通攻击目标（受 def 减伤，±10% 随机浮动） 。攻击 张三">
+          <div class="cmd-head">
+            <code class="cmd-name">。攻击 [目标名]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">普通攻击目标（受 DEF 减伤，±10% 随机浮动）</div>
+          <pre class="usage">。攻击 张三</pre>
+        </div>
+
+        <div class="cmd-row" data-search="防守 进入防守姿态，下次受到的攻击伤害减半 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。防守</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">进入防守姿态，下次受到的攻击伤害减半</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="投降 / 逃跑 投降：直接认负；逃跑：有成功率（默认30%） ">
+          <div class="cmd-head">
+            <code class="cmd-name">。投降 / 逃跑</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">投降：直接认负；逃跑：有成功率（默认30%）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="战况 查看当前战斗局面（hp / mp / 盾 / buff / 防守状态） ">
+          <div class="cmd-head">
+            <code class="cmd-name">。战况</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看当前战斗局面（HP / MP / 盾 / Buff / 防守状态）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="战况 历史 [战斗id] [页码] 查看指定战斗的完整行动记录 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。战况 历史 [战斗ID] [页码]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看指定战斗的完整行动记录</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="战况 用品 [物品名/代码] 在战斗中消耗背包物品（仅生效 hp / mp 恢复效果） 。战况 用品 滋补汤">
+          <div class="cmd-head">
+            <code class="cmd-name">。战况 用品 [物品名/代码]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">在战斗中消耗背包物品（仅生效 HP / MP 恢复效果）</div>
+          <pre class="usage">。战况 用品 滋补汤</pre>
+        </div>
+
+        <div class="cmd-row" data-search="施加 目标 物品 【旧指令，已合并入「使用」】对他人使用互动物品，自动转发到新指令处理 施加 张三 治疗术  ← 等价于：使用 治疗术 张三">
+          <div class="cmd-head">
+            <code class="cmd-name">施加 目标 物品 <span class="dot-note">（前面加不加句号都行）</span></code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">【旧指令，已合并入「使用」】对他人使用互动物品，自动转发到新指令处理</div>
+          <pre class="usage">施加 张三 治疗术  ← 等价于：使用 治疗术 张三</pre>
+        </div>
+
+        <div class="cmd-row" data-search="攻防 开/关 启用或禁用战斗系统 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。攻防 开/关</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">启用或禁用战斗系统</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="攻防 查看 查看战斗系统当前配置（回合数、逃脱率、奖励等） ">
+          <div class="cmd-head">
+            <code class="cmd-name">。攻防 查看</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">查看战斗系统当前配置（回合数、逃脱率、奖励等）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="攻防 设置 [参数] [值] 修改配置项（每日发起/默认回合/逃脱率/奖励货币/胜者奖励/败者奖励/最小人数） 。攻防 设置 默认回合 15
+。攻防 设置 奖励货币 金币">
+          <div class="cmd-head">
+            <code class="cmd-name">。攻防 设置 [参数] [值]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">修改配置项（每日发起/默认回合/逃脱率/奖励货币/胜者奖励/败者奖励/最小人数）</div>
+          <pre class="usage">。攻防 设置 默认回合 15
+。攻防 设置 奖励货币 金币</pre>
+        </div>
+
+        <div class="cmd-row" data-search="攻防 结束 [战斗id] 强制结束指定战斗并按存活率/hp 判定胜负发奖 。攻防 结束 b-xxxx">
+          <div class="cmd-head">
+            <code class="cmd-name">。攻防 结束 [战斗ID]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">强制结束指定战斗并按存活率/HP 判定胜负发奖</div>
+          <pre class="usage">。攻防 结束 B-XXXX</pre>
+        </div>
+
+        <div class="cmd-row" data-search="技能 配置 [角色名] [技能名] 授予/撤销 授予或撤销角色的技能；不填技能名则查看该角色已解锁列表 。技能 配置 张三 火球术 授予
+。技能 配置 张三 火球术 撤销
+。技能 配置 张三">
+          <div class="cmd-head">
+            <code class="cmd-name">。技能 配置 [角色名] [技能名] 授予/撤销</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">授予或撤销角色的技能；不填技能名则查看该角色已解锁列表</div>
+          <pre class="usage">。技能 配置 张三 火球术 授予
+。技能 配置 张三 火球术 撤销
+。技能 配置 张三</pre>
+        </div>
+
+        <div class="cmd-row" data-search="一键初始化 一键完成 rpg 系统初始化 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。一键初始化</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">一键完成 RPG 系统初始化</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="我创建属性 [属性名] [最小] [最大] [默认] 无句号版「注册属性」，支持多行批量创建 我创建属性 体力 0 100 60
+体力 0 100 60
+智力 0 50 20">
+          <div class="cmd-head">
+            <code class="cmd-name">我创建属性 [属性名] [最小] [最大] [默认]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">无句号版「注册属性」，支持多行批量创建</div>
+          <pre class="usage">我创建属性 体力 0 100 60
+体力 0 100 60
+智力 0 50 20</pre>
+        </div>
+
+        <div class="cmd-row" data-search="我移除属性 [属性名] 无句号版「删除属性」，支持多行批量移除 我移除属性 体力">
+          <div class="cmd-head">
+            <code class="cmd-name">我移除属性 [属性名]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">无句号版「删除属性」，支持多行批量移除</div>
+          <pre class="usage">我移除属性 体力</pre>
+        </div>
+</div></section></div>
+<div id="sec-11"><section class="cmd-section" data-title="🍽️ 晚餐与小游戏">
+<button class="cmd-section-head" onclick="toggleSection(this)"><h2>🍽️ 晚餐与小游戏</h2><span class="chevron">▾</span></button>
+<div class="cmd-list">
+
+        <div class="cmd-row" data-search="开始晚餐 开启晚餐系统，等待玩家入座 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。开始晚餐</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">开启晚餐系统，等待玩家入座</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="入座 参加当前晚餐并随机入座 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。入座</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">参加当前晚餐并随机入座</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="结束晚餐 结束晚餐并显示最终座位 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。结束晚餐</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">结束晚餐并显示最终座位</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="重置晚餐 重置晚餐系统状态（清空座位和游戏） ">
+          <div class="cmd-head">
+            <code class="cmd-name">。重置晚餐</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">重置晚餐系统状态（清空座位和游戏）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="戳你一下 [对方角色名] 对相邻座位玩家戳一下（冷却5分钟） 。戳你一下 张三">
+          <div class="cmd-head">
+            <code class="cmd-name">。戳你一下 [对方角色名]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">对相邻座位玩家戳一下（冷却5分钟）</div>
+          <pre class="usage">。戳你一下 张三</pre>
+        </div>
+
+        <div class="cmd-row" data-search="开始泡泡 [总数] [珊瑚数] 开启戳泡泡游戏 。开始泡泡 20 5">
+          <div class="cmd-head">
+            <code class="cmd-name">。开始泡泡 [总数] [珊瑚数]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">开启戳泡泡游戏</div>
+          <pre class="usage">。开始泡泡 20 5</pre>
+        </div>
+
+        <div class="cmd-row" data-search="戳泡泡 [编号] 戳破指定编号的泡泡 。戳泡泡 7">
+          <div class="cmd-head">
+            <code class="cmd-name">。戳泡泡 [编号]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">戳破指定编号的泡泡</div>
+          <pre class="usage">。戳泡泡 7</pre>
+        </div>
+
+        <div class="cmd-row" data-search="开始轮盘 [弹巢数=6] [子弹=1] 开启俄罗斯轮盘游戏 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。开始轮盘 [弹巢数=6] [子弹=1]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">开启俄罗斯轮盘游戏</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="开枪 轮盘游戏中扣动扳机 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。开枪</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">轮盘游戏中扣动扳机</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="结束游戏 强制结束当前游戏（保留晚餐） ">
+          <div class="cmd-head">
+            <code class="cmd-name">。结束游戏</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">强制结束当前游戏（保留晚餐）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="跳过 跳过轮盘当前玩家的回合 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。跳过</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">跳过轮盘当前玩家的回合</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="巡逻设置地点 [地点1] [地点2]... 设置捉迷藏游戏的地点列表 。巡逻设置地点 图书馆 花园 咖啡厅">
+          <div class="cmd-head">
+            <code class="cmd-name">。巡逻设置地点 [地点1] [地点2]...</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">设置捉迷藏游戏的地点列表</div>
+          <pre class="usage">。巡逻设置地点 图书馆 花园 咖啡厅</pre>
+        </div>
+
+        <div class="cmd-row" data-search="巡逻开局 [群号] 开始捉迷藏游戏并播报 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。巡逻开局 [群号]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">开始捉迷藏游戏并播报</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="巡逻报名 加入本轮巡逻赛 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。巡逻报名</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">加入本轮巡逻赛</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="巡逻躲藏 [地点名] 选择本回合的藏身地点 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。巡逻躲藏 [地点名]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">选择本回合的藏身地点</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="巡逻 结算当前回合 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。巡逻</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">结算当前回合</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="巡逻状态 查看当前回合的巡逻状况 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。巡逻状态</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">查看当前回合的巡逻状况</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="巡逻结束 强制结束并清空赛局 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。巡逻结束</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">强制结束并清空赛局</div>
+          
+        </div>
+</div></section></div>
+<div id="sec-12"><section class="cmd-section" data-title="✉️ 写信综系统">
+<button class="cmd-section-head" onclick="toggleSection(this)"><h2>✉️ 写信综系统</h2><span class="chevron">▾</span></button>
+<div class="cmd-list">
+
+        <div class="cmd-row" data-search="发送信件 发送正式信件给另一角色（多行标签格式，不加。号也能直接触发） 发送信件
+【收件人】张三
+【内容】亲爱的张三，一别已是经年...
+【日期】选填
+【附件】选填
+【署名】选填，默认为本角色名">
+          <div class="cmd-head">
+            <code class="cmd-name">发送信件 <span class="dot-note">（前面加不加句号都行）</span></code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">发送正式信件给另一角色（多行标签格式，不加。号也能直接触发）</div>
+          <pre class="usage">发送信件
+【收件人】张三
+【内容】亲爱的张三，一别已是经年...
+【日期】选填
+【附件】选填
+【署名】选填，默认为本角色名</pre>
+        </div>
+
+        <div class="cmd-row" data-search="信件状态 查看信件系统状态和个人可用额度 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。信件状态</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看信件系统状态和个人可用额度</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="注册写信综基础道具 一键注册写信综所需的写信币货币与望远镜/羽毛笔道具 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。注册写信综基础道具</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">一键注册写信综所需的写信币货币与望远镜/羽毛笔道具</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="信件设置 [参数] 配置发信系统各项参数 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。信件设置 [参数]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">配置发信系统各项参数</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="写信综指南 查看写信综设置引导（开关/注册/参数一次讲清） ">
+          <div class="cmd-head">
+            <code class="cmd-name">。写信综指南</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">查看写信综设置引导（开关/注册/参数一次讲清）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="写信综指南 无句号版，查看写信综玩家使用说明（私约/信件/短信/送礼/道具等）；与上一条管理员版是两条不同指令，靠有无。号区分 ">
+          <div class="cmd-head">
+            <code class="cmd-name">写信综指南</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">无句号版，查看写信综玩家使用说明（私约/信件/短信/送礼/道具等）；与上一条管理员版是两条不同指令，靠有无。号区分</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="羽毛笔修改 [序号] [新内容] 查看被羽毛笔截获的待改信件清单，或指定序号修改后发出 羽毛笔修改  ← 查看清单
+。羽毛笔修改 1 新的信件内容">
+          <div class="cmd-head">
+            <code class="cmd-name">。羽毛笔修改 [序号] [新内容]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看被羽毛笔截获的待改信件清单，或指定序号修改后发出</div>
+          <pre class="usage">羽毛笔修改  ← 查看清单
+。羽毛笔修改 1 新的信件内容</pre>
+        </div>
+</div></section></div>
+<div id="sec-13"><section class="cmd-section" data-title="🔔 加百列闹钟">
+<button class="cmd-section-head" onclick="toggleSection(this)"><h2>🔔 加百列闹钟</h2><span class="chevron">▾</span></button>
+<div class="cmd-list">
+
+        <div class="cmd-row" data-search="提醒 [时间] [内容] 设置闹钟提醒 。提醒 30分钟后 记得喝水
+。提醒 14:30 开会
+。提醒 每天08:00 早安">
+          <div class="cmd-head">
+            <code class="cmd-name">。提醒 [时间] [内容]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">设置闹钟提醒</div>
+          <pre class="usage">。提醒 30分钟后 记得喝水
+。提醒 14:30 开会
+。提醒 每天08:00 早安</pre>
+        </div>
+
+        <div class="cmd-row" data-search="我的提醒 查看所有已设置的提醒 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。我的提醒</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看所有已设置的提醒</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="删除提醒 [编号] 删除指定编号的提醒 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。删除提醒 [编号]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">删除指定编号的提醒</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="再提醒我 [x分钟] 延迟再触发一次提醒（默认10分钟） ">
+          <div class="cmd-head">
+            <code class="cmd-name">。再提醒我 [X分钟]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">延迟再触发一次提醒（默认10分钟）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="谢谢加百列 向加百列道谢，提升好感度（每天一次） ">
+          <div class="cmd-head">
+            <code class="cmd-name">。谢谢加百列</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">向加百列道谢，提升好感度（每天一次）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="加百列好感度 查看与加百列的当前好感度 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。加百列好感度</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看与加百列的当前好感度</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="加百列图鉴 查看从加百列处收到的礼物图鉴 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。加百列图鉴</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看从加百列处收到的礼物图鉴</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="加百列闹钟帮助 查看加百列闹钟的所有可用指令 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。加百列闹钟帮助</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看加百列闹钟的所有可用指令</div>
+          
+        </div>
+</div></section></div>
+<div id="sec-14"><section class="cmd-section" data-title="📡 群组与平台管理">
+<button class="cmd-section-head" onclick="toggleSection(this)"><h2>📡 群组与平台管理</h2><span class="chevron">▾</span></button>
+<div class="cmd-list">
+
+        <div class="cmd-row" data-search="添加群号 [群号] 将群号加入可用群号池 。添加群号 123456789,987654321">
+          <div class="cmd-head">
+            <code class="cmd-name">。添加群号 [群号]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">将群号加入可用群号池</div>
+          <pre class="usage">。添加群号 123456789,987654321</pre>
+        </div>
+
+        <div class="cmd-row" data-search="移除群号 [群号] 从可用群号池移除群号 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。移除群号 [群号]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">从可用群号池移除群号</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="查看群号 查看当前所有群号池 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。查看群号</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">查看当前所有群号池</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="开启群号组 [组名] 从 rp_archive 读取该组所有群号并加入可用池 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。开启群号组 [组名]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">从 rp_archive 读取该组所有群号并加入可用池</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="关闭群号组 [组名] 将该组所有群号从可用池移除 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。关闭群号组 [组名]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">将该组所有群号从可用池移除</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="驱逐 [qq号] 从群号池所有群中踢出指定 qq ">
+          <div class="cmd-head">
+            <code class="cmd-name">。驱逐 [QQ号]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">从群号池所有群中踢出指定 QQ</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="查看微信群 列出当前所有活跃的微信群 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。查看微信群</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">列出当前所有活跃的微信群</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="修改玩家群号 [qq号] [新群号] 直接修改该玩家登记的私约群号 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。修改玩家群号 [QQ号] [新群号]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">直接修改该玩家登记的私约群号</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="更新未退群 更新未退出旧群的玩家记录 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。更新未退群</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">更新未退出旧群的玩家记录</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="查看到期群 查看所有已到期的约会群组 。查看到期群
+。查看到期群 提醒  → 向到期群发送提醒">
+          <div class="cmd-head">
+            <code class="cmd-name">。查看到期群</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">查看所有已到期的约会群组</div>
+          <pre class="usage">。查看到期群
+。查看到期群 提醒  → 向到期群发送提醒</pre>
+        </div>
+
+        <div class="cmd-row" data-search="群头衔 [内容] 更改自己（或@他人）的群头衔 。群头衔 读书人
+。群头衔 权限切换  → 切换可使用此指令的权限">
+          <div class="cmd-head">
+            <code class="cmd-name">。群头衔 [内容]</code>
+            <span class="role-badge role-admin">玩家/管理员</span>
+          </div>
+          <div class="cmd-desc">更改自己（或@他人）的群头衔</div>
+          <pre class="usage">。群头衔 读书人
+。群头衔 权限切换  → 切换可使用此指令的权限</pre>
+        </div>
+
+        <div class="cmd-row" data-search="设置加百列群名 [群名] 设置加百列所在群的群名 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。设置加百列群名 [群名]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">设置加百列所在群的群名</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="群公告发布 [内容] 在指定群发布群公告 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。群公告发布 [内容]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">在指定群发布群公告</div>
+          
+        </div>
+</div></section></div>
+<div id="sec-15"><section class="cmd-section" data-title="⚙️ 设置与同步">
+<button class="cmd-section-head" onclick="toggleSection(this)"><h2>⚙️ 设置与同步</h2><span class="chevron">▾</span></button>
+<div class="cmd-list">
+
+        <div class="cmd-row" data-search="设置 [模块] [参数] 查看和管理各系统配置项 。设置  → 列出所有可配置项
+。设置 邀约超时 60  → 设置私约超时为60分钟">
+          <div class="cmd-head">
+            <code class="cmd-name">。设置 [模块] [参数]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">查看和管理各系统配置项</div>
+          <pre class="usage">。设置  → 列出所有可配置项
+。设置 邀约超时 60  → 设置私约超时为60分钟</pre>
+        </div>
+
+        <div class="cmd-row" data-search="初始化设置 一键补全缺失的系统默认配置（优先从存档 ui 拉取） 。初始化设置">
+          <div class="cmd-head">
+            <code class="cmd-name">。初始化设置</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">一键补全缺失的系统默认配置（优先从存档 UI 拉取）</div>
+          <pre class="usage">。初始化设置</pre>
+        </div>
+
+        <div class="cmd-row" data-search="推送全部 将机器人所有数据一次性推送到存档网页端（配置+注册表+模版+池子+礼品库+拍卖快照） ">
+          <div class="cmd-head">
+            <code class="cmd-name">。推送全部</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">将机器人所有数据一次性推送到存档网页端（配置+注册表+模版+池子+礼品库+拍卖快照）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="拉取全部 将存档网页端所有数据一次性拉取到机器人（配置+注册表+模版+池子+拍卖队列）；网页端新增的待同步物品/装备分配编号后会自动同步回网页，无需再手动推送 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。拉取全部</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">将存档网页端所有数据一次性拉取到机器人（配置+注册表+模版+池子+拍卖队列）；网页端新增的待同步物品/装备分配编号后会自动同步回网页，无需再手动推送</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="同步名片 [公告/戏群/水群] 同步名片信息到指定群 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。同步名片 [公告/戏群/水群]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">同步名片信息到指定群</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="设置信箱上限 [d几] [上限数] 配置不同游戏日的心动信每日投递上限 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。设置信箱上限 [D几] [上限数]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">配置不同游戏日的心动信每日投递上限</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="设置天数 [d几] 设置全局游戏天数（自动重置各类计数） 。设置天数 d2">
+          <div class="cmd-head">
+            <code class="cmd-name">。设置天数 [D几]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">设置全局游戏天数（自动重置各类计数）</div>
+          <pre class="usage">。设置天数 D2</pre>
+        </div>
+
+        <div class="cmd-row" data-search="开启自动天数 启用自动推进游戏天数 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。开启自动天数</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">启用自动推进游戏天数</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="关闭自动天数 关闭自动推进游戏天数 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。关闭自动天数</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">关闭自动推进游戏天数</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="结戏加成 [参数] 管理结戏自动发放奖励规则 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。结戏加成 [参数]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">管理结戏自动发放奖励规则</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="随机分组 [数字] [bg] 将非 npc 玩家随机分配到指定数量的组（bg=男女搭配） 。随机分组 4
+。随机分组 4 bg">
+          <div class="cmd-head">
+            <code class="cmd-name">。随机分组 [数字] [bg]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">将非 NPC 玩家随机分配到指定数量的组（bg=男女搭配）</div>
+          <pre class="usage">。随机分组 4
+。随机分组 4 bg</pre>
+        </div>
+</div></section></div>
+<div id="sec-16"><section class="cmd-section" data-title="📊 季度与存档">
+<button class="cmd-section-head" onclick="toggleSection(this)"><h2>📊 季度与存档</h2><span class="chevron">▾</span></button>
+<div class="cmd-list">
+
+        <div class="cmd-row" data-search="季度指南 ★ 查看季度全生命周期涉及的指令清单（开季→进行中→结季），开新一季或收尾前建议先看这条 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。季度指南</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">★ 查看季度全生命周期涉及的指令清单（开季→进行中→结季），开新一季或收尾前建议先看这条</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="创建新季度 [恋综名] [复盘/不复盘] [日期范围] 初始化新一季度数据 。创建新季度 长日将尽 复盘 0601-0630">
+          <div class="cmd-head">
+            <code class="cmd-name">。创建新季度 [恋综名] [复盘/不复盘] [日期范围]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">初始化新一季度数据</div>
+          <pre class="usage">。创建新季度 长日将尽 复盘 0601-0630</pre>
+        </div>
+
+        <div class="cmd-row" data-search="修改档期 [日期范围] [补戏日期] 修改本季度的开录日期范围 。修改档期 0601-0630 0702">
+          <div class="cmd-head">
+            <code class="cmd-name">。修改档期 [日期范围] [补戏日期]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">修改本季度的开录日期范围</div>
+          <pre class="usage">。修改档期 0601-0630 0702</pre>
+        </div>
+
+        <div class="cmd-row" data-search="结束季度 封存当前季度并获取公开存档链接 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。结束季度</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">封存当前季度并获取公开存档链接</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="季末报告 [开启/关闭/状态] 控制季末报告功能的开启状态 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。季末报告 [开启/关闭/状态]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">控制季末报告功能的开启状态</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="场次状态 查看所有活跃群组当前写帖进度与结戏奖励条件达成情况（合并转发） ">
+          <div class="cmd-head">
+            <code class="cmd-name">。场次状态</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">查看所有活跃群组当前写帖进度与结戏奖励条件达成情况（合并转发）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="查奖励情况 [条数] 从 rp_archive 拉取最近已结束场次，预览各玩家按当前模版应得的奖励（不实际发放） 。查奖励情况 10">
+          <div class="cmd-head">
+            <code class="cmd-name">。查奖励情况 [条数]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">从 rp_archive 拉取最近已结束场次，预览各玩家按当前模版应得的奖励（不实际发放）</div>
+          <pre class="usage">。查奖励情况 10</pre>
+        </div>
+
+        <div class="cmd-row" data-search="补发奖励 [模版名] 对已结束场次手动补发结戏奖励（多行消息：每行「角色名 段数 字数 [耗时分钟]」） 。补发奖励 默认模版
+张三 8 2000
+李四 6 1500 30">
+          <div class="cmd-head">
+            <code class="cmd-name">。补发奖励 [模版名]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">对已结束场次手动补发结戏奖励（多行消息：每行「角色名 段数 字数 [耗时分钟]」）</div>
+          <pre class="usage">。补发奖励 默认模版
+张三 8 2000
+李四 6 1500 30</pre>
+        </div>
+
+        <div class="cmd-row" data-search="全部复盘 仅复盘模式季度可用，查看自己本季度所有已结场次（类型/时间/地点/伙伴），合并消息返回并编号（编号仅本次结果有效） ">
+          <div class="cmd-head">
+            <code class="cmd-name">全部复盘</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">仅复盘模式季度可用，查看自己本季度所有已结场次（类型/时间/地点/伙伴），合并消息返回并编号（编号仅本次结果有效）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="查看复盘 [编号] 查看「全部复盘」结果里指定编号场次的完整 rp 正文，合并消息还原整场戏 。查看复盘 1">
+          <div class="cmd-head">
+            <code class="cmd-name">查看复盘 [编号]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看「全部复盘」结果里指定编号场次的完整 RP 正文，合并消息还原整场戏</div>
+          <pre class="usage">。查看复盘 1</pre>
+        </div>
+
+        <div class="cmd-row" data-search="调整场次 [群号] [角色名] [字数偏移] [段数偏移] 手动调整某群某角色的字数/段数统计 。调整场次 12345 张三 +500
+。调整场次 12345 张三 +500 +2">
+          <div class="cmd-head">
+            <code class="cmd-name">。调整场次 [群号] [角色名] [字数偏移] [段数偏移]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">手动调整某群某角色的字数/段数统计</div>
+          <pre class="usage">。调整场次 12345 张三 +500
+。调整场次 12345 张三 +500 +2</pre>
+        </div>
+
+        <div class="cmd-row" data-search="清空季度数据 清空本季度全部数据（危险操作） ">
+          <div class="cmd-head">
+            <code class="cmd-name">。清空季度数据</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">清空本季度全部数据（危险操作）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="添加拍卖物品 [物品码%起拍%加价%时长h] 添加拍卖物品 。添加拍卖物品 item_001%100%10%24">
+          <div class="cmd-head">
+            <code class="cmd-name">。添加拍卖物品 [物品码%起拍%加价%时长h]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">添加拍卖物品</div>
+          <pre class="usage">。添加拍卖物品 ITEM_001%100%10%24</pre>
+        </div>
+
+        <div class="cmd-row" data-search="删除拍卖物品 [#编号] 删除指定拍卖物品 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。删除拍卖物品 [#编号]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">删除指定拍卖物品</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="结算拍卖 [#编号] 手动结算指定拍卖（无需到期） ">
+          <div class="cmd-head">
+            <code class="cmd-name">。结算拍卖 [#编号]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">手动结算指定拍卖（无需到期）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="查看拍卖 查看当前所有进行中的拍卖 ">
+          <div class="cmd-head">
+            <code class="cmd-name">查看拍卖</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看当前所有进行中的拍卖</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="实名出价 [价格] [#编号] 以实名参与拍卖出价 实名出价 150 #1">
+          <div class="cmd-head">
+            <code class="cmd-name">实名出价 [价格] [#编号]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">以实名参与拍卖出价</div>
+          <pre class="usage">实名出价 150 #1</pre>
+        </div>
+
+        <div class="cmd-row" data-search="匿名出价 [价格] [#编号] 以匿名参与拍卖出价 ">
+          <div class="cmd-head">
+            <code class="cmd-name">匿名出价 [价格] [#编号]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">以匿名参与拍卖出价</div>
+          
+        </div>
+</div></section></div>
+<div id="sec-17"><section class="cmd-section" data-title="🔑 管理员权限">
+<button class="cmd-section-head" onclick="toggleSection(this)"><h2>🔑 管理员权限</h2><span class="chevron">▾</span></button>
+<div class="cmd-list">
+
+        <div class="cmd-row" data-search="授予管理员 [qq号] [密码] 验证密码后将该 qq 设为临时管理员 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。授予管理员 [QQ号] [密码]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">验证密码后将该 QQ 设为临时管理员</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="更改密令 [新密码] 更改管理员密令（需当前管理员权限） ">
+          <div class="cmd-head">
+            <code class="cmd-name">。更改密令 [新密码]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">更改管理员密令（需当前管理员权限）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="收回管理员 [qq号] [密码] 撤销指定 qq 的临时管理员身份 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。收回管理员 [QQ号] [密码]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">撤销指定 QQ 的临时管理员身份</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="管理员列表 查看所有当前临时管理员 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。管理员列表</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">查看所有当前临时管理员</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="清空管理员 [密码] 清空所有临时管理员 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。清空管理员 [密码]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">清空所有临时管理员</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="功能权限 [角色名] [功能] [开启/关闭] 针对指定角色开关特定功能 。功能权限 张三 礼物 关闭
+功能：礼物/发起邀约/寄信/心愿/心动信/论坛/抽取/全部">
+          <div class="cmd-head">
+            <code class="cmd-name">。功能权限 [角色名] [功能] [开启/关闭]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">针对指定角色开关特定功能</div>
+          <pre class="usage">。功能权限 张三 礼物 关闭
+功能：礼物/发起邀约/寄信/心愿/心动信/论坛/抽取/全部</pre>
+        </div>
+
+        <div class="cmd-row" data-search="查看功能权限 查看所有被设定过功能开关的角色 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。查看功能权限</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">查看所有被设定过功能开关的角色</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="管理帮助 查看管理员专属指令汇总 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。管理帮助</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">查看管理员专属指令汇总</div>
+          
+        </div>
+</div></section></div>
+<div id="sec-18"><section class="cmd-section" data-title="🏷️ NPC 与 Tag">
+<button class="cmd-section-head" onclick="toggleSection(this)"><h2>🏷️ NPC 与 Tag</h2><span class="chevron">▾</span></button>
+<div class="cmd-list">
+
+        <div class="cmd-row" data-search="设为npc [角色名] 将角色标记为npc（不计入自动分组）；再次输入可取消 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。设为npc [角色名]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">将角色标记为NPC（不计入自动分组）；再次输入可取消</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="创建npc [角色名] 创建角色并自动标记为npc身份 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。创建NPC [角色名]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">创建角色并自动标记为NPC身份</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="设定 [角色名] 为 npc 无句号快捷方式，同上 ">
+          <div class="cmd-head">
+            <code class="cmd-name">设定 [角色名] 为 npc</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">无句号快捷方式，同上</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="修改tag [tag名] [种类1:姓名1,姓名2] 创建/更新 binary tag 并分配玩家 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。修改tag [tag名] [种类1:姓名1,姓名2]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">创建/更新 binary tag 并分配玩家</div>
+          
+        </div>
+</div></section></div>
+<div id="sec-19"><section class="cmd-section" data-title="📋 信息收集">
+<button class="cmd-section-head" onclick="toggleSection(this)"><h2>📋 信息收集</h2><span class="chevron">▾</span></button>
+<div class="cmd-list">
+
+        <div class="cmd-row" data-search="我提交 [项目名]: [内容] 向指定项目提交信息（可以不带图片；带图片会转存到rp存档服务器换成永久链接，每人每季度限额30mb、单图3mb，结束季度时自动清空） 我提交 人物档案: 张三，22岁，擅长弹琴">
+          <div class="cmd-head">
+            <code class="cmd-name">我提交 [项目名]: [内容]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">向指定项目提交信息（可以不带图片；带图片会转存到RP存档服务器换成永久链接，每人每季度限额30MB、单图3MB，结束季度时自动清空）</div>
+          <pre class="usage">我提交 人物档案: 张三，22岁，擅长弹琴</pre>
+        </div>
+
+        <div class="cmd-row" data-search="查看收集 [项目名] 查看指定项目的所有提交（不填则列出项目；私密项目对非管理员隐藏且拒绝查看；查看时会顺便检查图片是否已被超级管理员在rp存档后台删除，删了的整条记录会自动消失） ">
+          <div class="cmd-head">
+            <code class="cmd-name">查看收集 [项目名]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看指定项目的所有提交（不填则列出项目；私密项目对非管理员隐藏且拒绝查看；查看时会顺便检查图片是否已被超级管理员在RP存档后台删除，删了的整条记录会自动消失）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="删除上传 [项目名] [序号] 删除自己的提交记录（带图片的话，rp存档服务器上的图片文件也会一起删掉，不会占着配额） ">
+          <div class="cmd-head">
+            <code class="cmd-name">删除上传 [项目名] [序号]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">删除自己的提交记录（带图片的话，RP存档服务器上的图片文件也会一起删掉，不会占着配额）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="创建收集 [项目名] 新建信息收集项目，所有玩家均可查看提交内容 ">
+          <div class="cmd-head">
+            <code class="cmd-name">创建收集 [项目名]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">新建信息收集项目，所有玩家均可查看提交内容</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="创建私密收集 [项目名] 新建私密收集项目，提交格式与普通收集完全一致，但只有管理员能用「查看收集」看到内容 创建私密收集 匿名吐槽">
+          <div class="cmd-head">
+            <code class="cmd-name">创建私密收集 [项目名]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">新建私密收集项目，提交格式与普通收集完全一致，但只有管理员能用「查看收集」看到内容</div>
+          <pre class="usage">创建私密收集 匿名吐槽</pre>
+        </div>
+
+        <div class="cmd-row" data-search="我清空 [项目名] 清空指定项目的所有提交（带图片的提交，rp存档服务器上的图片文件也会一起删掉） ">
+          <div class="cmd-head">
+            <code class="cmd-name">我清空 [项目名]</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">清空指定项目的所有提交（带图片的提交，RP存档服务器上的图片文件也会一起删掉）</div>
+          
+        </div>
+</div></section></div>
+<div id="sec-20"><section class="cmd-section" data-title="🎭 出场系统">
+<button class="cmd-section-head" onclick="toggleSection(this)"><h2>🎭 出场系统</h2><span class="chevron">▾</span></button>
+<div class="cmd-list">
+
+        <div class="cmd-row" data-search="抽取出场顺序 随机排出所有已绑定非npc角色的出场顺序，发布到公告群；重新执行会重新打乱，已提交但还没被念出来的出场内容/图片不受影响 。抽取出场顺序">
+          <div class="cmd-head">
+            <code class="cmd-name">。抽取出场顺序</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">随机排出所有已绑定非NPC角色的出场顺序，发布到公告群；重新执行会重新打乱，已提交但还没被念出来的出场内容/图片不受影响</div>
+          <pre class="usage">。抽取出场顺序</pre>
+        </div>
+
+        <div class="cmd-row" data-search="提交出场 [名字]（换行）[内容] 提交自己的出场内容，名字须与自己绑定的角色一致，反复提交会覆盖 提交出场 张三
+缓缓从庭院走出，环视四周">
+          <div class="cmd-head">
+            <code class="cmd-name">提交出场 [名字]（换行）[内容]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">提交自己的出场内容，名字须与自己绑定的角色一致，反复提交会覆盖</div>
+          <pre class="usage">提交出场 张三
+缓缓从庭院走出，环视四周</pre>
+        </div>
+
+        <div class="cmd-row" data-search="提交出场图片 先发一张图片，再回复那条消息提交出场配图，可附评论；每人限存一张，反复提交覆盖；转存失败会提示重新发图，不会保存迟早失效的qq链接 ① 发一张图片
+② 回复该图片发送：提交出场图片 今日份的美貌">
+          <div class="cmd-head">
+            <code class="cmd-name">提交出场图片</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">先发一张图片，再回复那条消息提交出场配图，可附评论；每人限存一张，反复提交覆盖；转存失败会提示重新发图，不会保存迟早失效的QQ链接</div>
+          <pre class="usage">① 发一张图片
+② 回复该图片发送：提交出场图片 今日份的美貌</pre>
+        </div>
+
+        <div class="cmd-row" data-search="开始出场 按抽取好的顺序在戏群（与点歌共用的戏群配置）依次@出场；已提交文字/图片的自动连续发出并跳到下一个，没提交的会停下等待（也可以直接在戏群发「角色名+换行+内容」，不用敲指令） 。开始出场">
+          <div class="cmd-head">
+            <code class="cmd-name">。开始出场</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">按抽取好的顺序在戏群（与点歌共用的戏群配置）依次@出场；已提交文字/图片的自动连续发出并跳到下一个，没提交的会停下等待（也可以直接在戏群发「角色名+换行+内容」，不用敲指令）</div>
+          <pre class="usage">。开始出场</pre>
+        </div>
+
+        <div class="cmd-row" data-search="跳过出场 当前等待的人不提交时手动跳到下一个（不影响其已保存的出场内容） 。跳过出场">
+          <div class="cmd-head">
+            <code class="cmd-name">。跳过出场</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">当前等待的人不提交时手动跳到下一个（不影响其已保存的出场内容）</div>
+          <pre class="usage">。跳过出场</pre>
+        </div>
+
+        <div class="cmd-row" data-search="查看出场状态 不用等实时流程就能查看整体进度：出场顺序、已出场人数、当前轮到谁及已等待时长、后面每个人是否已提前提交文字/图片 。查看出场状态">
+          <div class="cmd-head">
+            <code class="cmd-name">。查看出场状态</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">不用等实时流程就能查看整体进度：出场顺序、已出场人数、当前轮到谁及已等待时长、后面每个人是否已提前提交文字/图片</div>
+          <pre class="usage">。查看出场状态</pre>
+        </div>
+</div></section></div>
+<div id="sec-21"><section class="cmd-section" data-title="📖 帮助与基础">
+<button class="cmd-section-head" onclick="toggleSection(this)"><h2>📖 帮助与基础</h2><span class="chevron">▾</span></button>
+<div class="cmd-list">
+
+        <div class="cmd-row" data-search="点歌 提示点歌用法（需回复音乐卡片触发实际发送） ① 回复一张音乐卡片
+② 消息内容写：点歌人：张三 留言：这首歌送给你
+③ 机器人自动转发到戏群">
+          <div class="cmd-head">
+            <code class="cmd-name">点歌</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">提示点歌用法（需回复音乐卡片触发实际发送）</div>
+          <pre class="usage">① 回复一张音乐卡片
+② 消息内容写：点歌人：张三 留言：这首歌送给你
+③ 机器人自动转发到戏群</pre>
+        </div>
+
+        <div class="cmd-row" data-search="基础指南 获取玩家基础操作指南（从存档服务器拉取） ">
+          <div class="cmd-head">
+            <code class="cmd-name">基础指南</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">获取玩家基础操作指南（从存档服务器拉取）</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="格式 查看所有支持的指令格式类型清单 ">
+          <div class="cmd-head">
+            <code class="cmd-name">格式</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看所有支持的指令格式类型清单</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="格式 [类型] 直接获取指定类型的可复制粘贴指令模板，不带任何说明文字，复制后改内容就能发。支持类型：心动信/短信/信件/私约/电话/送礼/心愿/悬赏心愿/拉线/发帖 格式心动信
+格式短信
+格式信件
+格式悬赏心愿">
+          <div class="cmd-head">
+            <code class="cmd-name">格式 [类型]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">直接获取指定类型的可复制粘贴指令模板，不带任何说明文字，复制后改内容就能发。支持类型：心动信/短信/信件/私约/电话/送礼/心愿/悬赏心愿/拉线/发帖</div>
+          <pre class="usage">格式心动信
+格式短信
+格式信件
+格式悬赏心愿</pre>
+        </div>
+
+        <div class="cmd-row" data-search="管理帮助 查看管理员指令汇总 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。管理帮助</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">查看管理员指令汇总</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="加百列闹钟帮助 查看加百列闹钟所有指令 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。加百列闹钟帮助</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看加百列闹钟所有指令</div>
+          
+        </div>
+</div></section></div>
+<div id="sec-22"><section class="cmd-section" data-title="💱 议价交易系统（DLC）">
+<button class="cmd-section-head" onclick="toggleSection(this)"><h2>💱 议价交易系统（DLC）</h2><span class="chevron">▾</span></button>
+<div class="cmd-list">
+
+        <div class="cmd-row" data-search="交易 提出 [对方] [给:物品×n,...] [要:物品×n,...] [备注] 发起以物换物提案；物品可用名称或编码，多件逗号分隔不加空格；系统立即校验你持有「给」的物品 。交易 提出 李四 给:铁剑×1,回血药×2 要:金币×50 换个好东西">
+          <div class="cmd-head">
+            <code class="cmd-name">。交易 提出 [对方] [给:物品×N,...] [要:物品×N,...] [备注]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">发起以物换物提案；物品可用名称或编码，多件逗号分隔不加空格；系统立即校验你持有「给」的物品</div>
+          <pre class="usage">。交易 提出 李四 给:铁剑×1,回血药×2 要:金币×50 换个好东西</pre>
+        </div>
+
+        <div class="cmd-row" data-search="交易 接受 [单号] 接受提案；系统同时校验双方背包是否足够，若对方物品已消失则提示拒绝重谈 。交易 接受 tr0001">
+          <div class="cmd-head">
+            <code class="cmd-name">。交易 接受 [单号]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">接受提案；系统同时校验双方背包是否足够，若对方物品已消失则提示拒绝重谈</div>
+          <pre class="usage">。交易 接受 TR0001</pre>
+        </div>
+
+        <div class="cmd-row" data-search="交易 拒绝 [单号] 拒绝收到的提案，对方收到通知 。交易 拒绝 tr0001">
+          <div class="cmd-head">
+            <code class="cmd-name">。交易 拒绝 [单号]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">拒绝收到的提案，对方收到通知</div>
+          <pre class="usage">。交易 拒绝 TR0001</pre>
+        </div>
+
+        <div class="cmd-row" data-search="交易 还价 [单号] [给:物品×n,...] [要:物品×n,...] [备注] 对收到的提案提出新条件；原提案自动标记为「已还价」，生成新单号，对方可再次接受/拒绝/还价 。交易 还价 tr0001 给:回血药×1 要:铁剑×1 少一件行吗">
+          <div class="cmd-head">
+            <code class="cmd-name">。交易 还价 [单号] [给:物品×N,...] [要:物品×N,...] [备注]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">对收到的提案提出新条件；原提案自动标记为「已还价」，生成新单号，对方可再次接受/拒绝/还价</div>
+          <pre class="usage">。交易 还价 TR0001 给:回血药×1 要:铁剑×1 少一件行吗</pre>
+        </div>
+
+        <div class="cmd-row" data-search="交易 撤回 [单号] 撤回自己发出但对方还未回应的提案 。交易 撤回 tr0001">
+          <div class="cmd-head">
+            <code class="cmd-name">。交易 撤回 [单号]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">撤回自己发出但对方还未回应的提案</div>
+          <pre class="usage">。交易 撤回 TR0001</pre>
+        </div>
+
+        <div class="cmd-row" data-search="交易 列表 查看我的全部进行中提案（含收到/发出）及最近5条已结案记录 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。交易 列表</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看我的全部进行中提案（含收到/发出）及最近5条已结案记录</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="交易 详情 [单号] 查看指定单号的完整物品、备注、关联单号及状态 。交易 详情 tr0001">
+          <div class="cmd-head">
+            <code class="cmd-name">。交易 详情 [单号]</code>
+            <span class="role-badge role-player">玩家</span>
+          </div>
+          <div class="cmd-desc">查看指定单号的完整物品、备注、关联单号及状态</div>
+          <pre class="usage">。交易 详情 TR0001</pre>
+        </div>
+
+        <div class="cmd-row" data-search="（rparchive）dlc_trade 开关 在 rparchive → 全局开关 中开启「议价交易dlc」，玩家才能使用交易指令 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。（rparchive）dlc_trade 开关</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">在 rparchive → 全局开关 中开启「议价交易DLC」，玩家才能使用交易指令</div>
+          
+        </div>
+
+        <div class="cmd-row" data-search="交易 设定 每日上限 n 设置每人每游戏日最多完成的交易笔数，接受时双方各消耗一次；0 = 不限 。交易 设定 每日上限 3">
+          <div class="cmd-head">
+            <code class="cmd-name">。交易 设定 每日上限 N</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">设置每人每游戏日最多完成的交易笔数，接受时双方各消耗一次；0 = 不限</div>
+          <pre class="usage">。交易 设定 每日上限 3</pre>
+        </div>
+
+        <div class="cmd-row" data-search="交易 设定 冷却 n 设置完成一笔交易后的冷却分钟数，冷却内无法提出或接受新交易；0 = 不限 。交易 设定 冷却 30">
+          <div class="cmd-head">
+            <code class="cmd-name">。交易 设定 冷却 N</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">设置完成一笔交易后的冷却分钟数，冷却内无法提出或接受新交易；0 = 不限</div>
+          <pre class="usage">。交易 设定 冷却 30</pre>
+        </div>
+
+        <div class="cmd-row" data-search="交易 设定 查看 查看当前每日上限与冷却时间设定 ">
+          <div class="cmd-head">
+            <code class="cmd-name">。交易 设定 查看</code>
+            <span class="role-badge role-admin">管理员</span>
+          </div>
+          <div class="cmd-desc">查看当前每日上限与冷却时间设定</div>
+          
+        </div>
+</div></section></div>
+    <div class="empty-hint" id="emptyHint">没有找到匹配的指令，换个关键词试试。</div>
+  </div>
+</div>
+
+<footer>长日将尽系统 · 指令手册</footer>
+<script>
+function switchTab(name) {
+  document.getElementById('panel-guides').classList.toggle('active', name === 'guides');
+  document.getElementById('panel-cmds').classList.toggle('active', name === 'cmds');
+  document.getElementById('tabbtn-guides').classList.toggle('active', name === 'guides');
+  document.getElementById('tabbtn-cmds').classList.toggle('active', name === 'cmds');
+}
+function toggleGuide(gid) {
+  document.getElementById('body-' + gid).classList.toggle('open');
+  document.getElementById('chev-' + gid).classList.toggle('rot');
+}
+function toggleSection(headEl) {
+  const list = headEl.nextElementSibling;
+  list.classList.toggle('open');
+  headEl.querySelector('.chevron').classList.toggle('rot');
+}
+
+// 默认展开第一篇指南
+document.addEventListener('DOMContentLoaded', () => {
+  const firstBody = document.querySelector('.guide-body');
+  const firstChev = document.querySelector('.chevron');
+  if (firstBody) firstBody.classList.add('open');
+  if (firstChev) firstChev.classList.add('rot');
+});
+
+const search = document.getElementById('search');
+const rows = Array.from(document.querySelectorAll('.cmd-row'));
+const sections = Array.from(document.querySelectorAll('.cmd-section'));
+const matchCount = document.getElementById('matchCount');
+const emptyHint = document.getElementById('emptyHint');
+
+function applyFilter() {
+  const q = search.value.trim().toLowerCase();
+  let visible = 0;
+  rows.forEach(r => {
+    const hit = !q || r.dataset.search.includes(q);
+    r.classList.toggle('hidden', !hit);
+    if (hit) visible++;
+  });
+  sections.forEach(sec => {
+    const anyVisible = sec.querySelectorAll('.cmd-row:not(.hidden)').length > 0;
+    sec.classList.toggle('hidden', !anyVisible);
+    const list = sec.querySelector('.cmd-list');
+    const head = sec.querySelector('.cmd-section-head');
+    if (q && anyVisible) {
+      list.classList.add('open');
+      head.querySelector('.chevron').classList.add('rot');
+    } else if (!q) {
+      list.classList.remove('open');
+      head.querySelector('.chevron').classList.remove('rot');
+    }
+  });
+  matchCount.textContent = q ? `共 ${visible} 条匹配` : '';
+  emptyHint.style.display = (q && visible === 0) ? 'block' : 'none';
+}
+search.addEventListener('input', applyFilter);
+</script>
+</body>
+</html>

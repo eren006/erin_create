@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         长日将尽系统
 // @author       长日将尽
-// @version      1.4.0
+// @version      1.5.0
 // @description  无
 // @timestamp    1778742000
 // @license      MIT
@@ -82,8 +82,6 @@ seal.ext.registerStringConfig(ext, "ws地址", "ws://localhost:3001");
     seal.ext.registerBoolConfig(ext, "启用RP存档传输", false, "开启后，监听到的RP正文、短信、礼物将在结戏时发送到存档服务器");
     seal.ext.registerStringConfig(ext, "RP存档服务器地址", "http://localhost:6666", "Flask存档服务器地址，末尾不带/");
     seal.ext.registerStringConfig(ext, "RP存档Token", "", "存档服务器API验证Token，与服务器端RP_API_TOKEN环境变量一致，留空则不验证");
-    seal.ext.registerStringConfig(ext, "海豹WebUI地址", "http://localhost:3211", "海豹WebUI地址，用于将收集图片保存到本地，末尾不带/");
-    seal.ext.registerStringConfig(ext, "海豹WebUI Token", "", "海豹WebUI鉴权Token（账号页面查看），配置后「我提交」中的图片将自动保存到海豹本地");
 
 
 // ========================
@@ -234,7 +232,7 @@ const WSM = {
             done = true;
             clearTimeout(timer);
             if (conn.readyState === WebSocket.OPEN || conn.readyState === WebSocket.CONNECTING) {
-                try { conn.close(1000, reason); } catch (e) {}
+                try { conn.close(1000, reason); } catch (e) { console.error("[WS] 关闭连接失败:", e.message); }
             }
         };
         const timer = setTimeout(() => {
@@ -296,6 +294,8 @@ function ws(postData, ctx, msg, successreply, errorreply, timeoutMs) {
             if (response.status === 'ok' || response.retcode === 0) {
                 if (postData.action === "get_group_member_list") {
                     handleMemberListResponse(ctx, msg, response.data, postData.echo);
+                } else if (postData.action === "get_group_info") {
+                    handleGroupInfoResponse(response.data, postData.echo);
                 } else if (postData.action === "get_msg") {
                     handleForwardAction(ctx, msg, response.data);
                 } else {
@@ -385,6 +385,11 @@ function isArchiveEnabled() {
     return seal.ext.getBoolConfig(ext, "启用RP存档传输");
 }
 
+// 强结私约是否发放结戏奖励，「设置 互动参数」中的「强结发放奖励」开关（默认关闭）
+function isForceEndRewardEnabled() {
+    return cachedGet("force_end_grant_reward") === "true";
+}
+
 function applyMsgTemplate(tplName, vars) {
     const raw = cachedGet("custom_message_templates");
     if (!raw) return null;
@@ -393,58 +398,6 @@ function applyMsgTemplate(tplName, vars) {
         if (!tpl || !tpl.trim()) return null;
         return tpl.replace(/\{([^}]+)\}/g, (_, k) => (vars[k] !== undefined ? vars[k] : `{${k}}`));
     } catch (e) { return null; }
-}
-
-// 将 QQ 临时图片 URL 下载并上传到海豹本地资源，返回本地路径（如 data/images/xxx.jpg）
-// QQ 的 multimedia CDN URL 有时效性，保存到海豹本地可永久访问
-async function uploadImageToSeal(imageUrl) {
-    const sealAddr = (seal.ext.getStringConfig(ext, "海豹WebUI地址") || "http://localhost:3211").replace(/\/$/, "");
-    const sealToken = seal.ext.getStringConfig(ext, "海豹WebUI Token") || "";
-    if (!sealToken) throw new Error("未配置海豹WebUI Token");
-
-    const imgResp = await fetch(imageUrl);
-    if (!imgResp.ok) throw new Error(`图片下载失败: ${imgResp.status}`);
-    const buffer = await imgResp.arrayBuffer();
-    const contentType = imgResp.headers.get("content-type") || "image/jpeg";
-    const extName = contentType.includes("png") ? "png" : contentType.includes("gif") ? "gif" : "jpg";
-    const filename = `collect_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${extName}`;
-
-    const blob = new Blob([buffer], { type: contentType });
-    const form = new FormData();
-    // 海豹源码字段名为 "files"，路由 POST /api/resource，鉴权 header 为 "token"
-    form.append("files", blob, filename);
-
-    const uploadResp = await fetch(`${sealAddr}/api/resource`, {
-        method: "POST",
-        headers: { "token": sealToken },
-        body: form
-    });
-    if (!uploadResp.ok) throw new Error(`海豹上传失败: ${uploadResp.status}`);
-    // 海豹上传成功响应不含路径，路径固定为 data/images/<filename>
-    return `data/images/${filename}`;
-}
-
-// 将内容中所有 [CQ:image,...,url=xxx] 的 QQ URL 替换为海豹本地路径
-async function localizeImages(content) {
-    const sealToken = seal.ext.getStringConfig(ext, "海豹WebUI Token") || "";
-    if (!sealToken) return content; // 未配置则跳过，保留原始 CQ 码
-
-    const imageRegex = /\[CQ:image,[^\]]*?url=([^,\]]+)[^\]]*\]/g;
-    const matches = [...content.matchAll(imageRegex)];
-    if (matches.length === 0) return content;
-
-    let result = content;
-    for (const match of matches) {
-        const fullTag = match[0];
-        const url = match[1];
-        try {
-            const localPath = await uploadImageToSeal(url);
-            result = result.replace(fullTag, `[CQ:image,file=${localPath}]`);
-        } catch (e) {
-            console.error("[收集图片本地化] 失败，保留原始 URL:", e.message || String(e));
-        }
-    }
-    return result;
 }
 
 async function postToArchive(endpoint, data) {
@@ -470,6 +423,91 @@ async function postToArchive(endpoint, data) {
             console.error(`[RP存档] 发送失败 ${endpoint}（第${attempt}次）:`, e.message || String(e));
         }
         if (attempt < 3) await new Promise(r => setTimeout(r, attempt * 3000));
+    }
+}
+
+// 「我提交」里的图片：插件在 goja 沙箱里没有 Blob/FormData/arrayBuffer，下载不了图片，
+// 所以把 QQ 临时链接转发给 rp_archive（真实 Python 环境）去下载落地，换回一个永久 URL。
+// rp_archive 那边按 (tenant, show, uid) 记额度、按季度清理，失败/未配置时原样保留 QQ 链接。
+async function collectImageToArchive(imageUrl, uid) {
+    const base = (seal.ext.getStringConfig(ext, "RP存档服务器地址") || "").replace(/\/$/, "");
+    const token = seal.ext.getStringConfig(ext, "RP存档Token") || "";
+    if (!base) return null;
+    try {
+        const resp = await fetch(base + "/api/collect_image", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Archive-Token": token },
+            body: JSON.stringify({ image_url: imageUrl, uid })
+        });
+        const data = await resp.json();
+        return (data && data.ok) ? data.url : null;
+    } catch (e) {
+        console.error("[收集图片] 转存失败:", e.message || String(e));
+        return null;
+    }
+}
+
+// 从一个 [CQ:image,...] 标签里提取可下载的原图链接：优先 url= 字段；
+// 有的 OneBot 实现（实测 LLOneBot 某些版本）不带 url=，而是把下载链接直接放在 file= 里，这种也认
+function extractImageSrc(cqTag) {
+    const urlMatch = cqTag.match(/url=([^,\]]+)/);
+    if (urlMatch) return urlMatch[1];
+    const fileMatch = cqTag.match(/file=([^,\]]+)/);
+    if (fileMatch && /^https?:\/\//i.test(fileMatch[1])) return fileMatch[1];
+    return null;
+}
+
+// 将内容里所有 [CQ:image,...] 的 QQ 临时链接替换为 rp_archive 永久 URL；
+// QQ 临时链接会过期，转存失败（含提取不到可下载链接）就不能留在存档里（否则事后彻底打不开），改成失败提示文字
+async function localizeCollectImages(content, uid) {
+    const imageRegex = /\[CQ:image,[^\]]*\]/g;
+    const matches = [...content.matchAll(imageRegex)];
+    if (matches.length === 0) return content;
+
+    let result = content;
+    for (const match of matches) {
+        const srcUrl = extractImageSrc(match[0]);
+        const permanentUrl = srcUrl ? await collectImageToArchive(srcUrl, uid) : null;
+        result = result.replace(match[0], permanentUrl ? `[CQ:image,url=${permanentUrl}]` : "[图片转存失败，已丢失]");
+    }
+    return result;
+}
+
+// 「删除上传」/「我清空」/「查看收集」失效检查共用：把已转存到 rp_archive 的图片文件删掉（连同配额记录），
+// 尽力而为，请求失败不阻塞主流程（本地记录该删还是删，只是服务器那边的文件可能没删干净）
+async function deleteCollectedImage(imageUrl) {
+    const base = (seal.ext.getStringConfig(ext, "RP存档服务器地址") || "").replace(/\/$/, "");
+    const token = seal.ext.getStringConfig(ext, "RP存档Token") || "";
+    if (!base) return false;
+    try {
+        const resp = await fetch(base + "/api/collect_image/delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Archive-Token": token },
+            body: JSON.stringify({ url: imageUrl })
+        });
+        const data = await resp.json();
+        return !!(data && data.ok);
+    } catch (e) {
+        console.error("[删除收集图片] 失败:", e.message || String(e));
+        return false;
+    }
+}
+
+// 从一段存档文本里提取所有已转存图片的永久链接（localizeCollectImages 成功后只会存 [CQ:image,url=xxx] 这种格式）
+function extractStoredImageUrls(text) {
+    if (!text) return [];
+    return [...text.matchAll(/\[CQ:image,url=([^,\]]+)\]/g)].map(m => m[1]);
+}
+
+// 查看收集时的失效检查：图片如果被超级管理员在 rp_archive 那边直接删掉了，HEAD 请求会 404
+async function isStoredImageAlive(imageUrl) {
+    const base = (seal.ext.getStringConfig(ext, "RP存档服务器地址") || "").replace(/\/$/, "");
+    if (!base || !imageUrl.startsWith(base)) return true; // 不是本服务器的链接就不检查，当正常处理
+    try {
+        const resp = await fetch(imageUrl, { method: "HEAD" });
+        return resp.ok;
+    } catch (e) {
+        return true; // 网络抖动时不要误删，保守当作还在
     }
 }
 
@@ -591,6 +629,44 @@ function getGroupMembersSilent(gid, ctx, msg) {
                 console.warn(`[getGroupMembersSilent] 超时未响应，echo: ${echo}, gid: ${gid}`);
                 silentMemberCallbackMap.delete(echo);
                 resolve([]);
+            }
+        }, 3500);
+    });
+}
+
+// 全局静默标记和回调（群信息）
+const silentGroupInfoCallbackMap = new Map();
+
+function handleGroupInfoResponse(data, echo) {
+    if (echo && silentGroupInfoCallbackMap.has(echo)) {
+        const callback = silentGroupInfoCallbackMap.get(echo);
+        silentGroupInfoCallbackMap.delete(echo);
+        if (typeof callback === 'function') callback(data || null);
+    }
+}
+
+/**
+ * 静默获取群信息（不输出到聊天窗口），主要用于取群名
+ * @param {string} gid 群号
+ * @param {Object} ctx 上下文
+ * @param {Object} msg 消息对象
+ * @returns {Promise<Object|null>} 群信息（含 group_name），失败/超时为 null
+ */
+function getGroupInfoSilent(gid, ctx, msg) {
+    return new Promise((resolve) => {
+        const echo = `get_group_info_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+        silentGroupInfoCallbackMap.set(echo, resolve);
+
+        ws({
+            action: "get_group_info",
+            params: { group_id: parseInt(gid, 10) },
+            echo: echo
+        }, ctx, msg, null);
+
+        setTimeout(() => {
+            if (silentGroupInfoCallbackMap.has(echo)) {
+                silentGroupInfoCallbackMap.delete(echo);
+                resolve(null);
             }
         }, 3500);
     });
@@ -904,8 +980,11 @@ cmd_bind_role.solve =(ctx, msg, cmdArgs) => {
         `  修改年龄 数字\n` +
         `  修改皮相 明星名\n` +
         `  修改签名 你的签名（12小时冷却）\n` +
+        `\n📬 发送「我的待回」随时看自己还没回的群、还没进的群、还没退的群。\n` +
+        `⏱️ 发送「我的弧长」看自己的回复速度统计，以及当前每个未结场次轮到谁回复。\n` +
         `\n发送「玩家名单」查看所有角色。`
     );
+    seal.replyToSender(ctx, msg, `📋 记不住指令格式？发送「格式」查看目录，发送「格式+类型」（如「格式心动信」）直接拿可复制的模板。`);
     return seal.ext.newCmdExecuteResult(true);
 };
 
@@ -1270,6 +1349,11 @@ const changriApi = {
     getRoleDetails: (platform, name) => getRoleDetails(platform, name),
     getSafeEndPoint,
     sendTextToGroup: (platform, gid, text) => sendTextToGroup(platform, gid, text),
+    // 图片转存/删除与原始 WS 请求（出场等卫星用）
+    collectImageToArchive,
+    deleteCollectedImage,
+    extractImageSrc,
+    wsRequest: (postData, onResponse, onTimeout, timeoutMs) => WSM.request(postData, onResponse, onTimeout, timeoutMs),
     // OneBot WS（常驻连接）
     ws,
     wsBatchSync,
@@ -3193,6 +3277,10 @@ let cmd_set_allowed_times = seal.ext.newCmdItemInfo();
 cmd_set_allowed_times.name = "设置邀约时间";
 cmd_set_allowed_times.help = "。设置邀约时间 [时间段1] [时间段2] ...\n示例：。设置邀约时间 09:00-12:00 14:00-18:00";
 cmd_set_allowed_times.solve = (ctx, msg, cmdArgs) => {
+  if (!isUserAdmin(ctx, msg)) {
+    seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+    return seal.ext.newCmdExecuteResult(true);
+  }
   let timeRanges = [];
   
   // 收集所有时间段参数
@@ -3262,6 +3350,10 @@ let cmd_clear_allowed_times = seal.ext.newCmdItemInfo();
 cmd_clear_allowed_times.name = "清空邀约时间";
 cmd_clear_allowed_times.help = "。清空邀约时间 - 清空所有时间限制";
 cmd_clear_allowed_times.solve = (ctx, msg, cmdArgs) => {
+  if (!isUserAdmin(ctx, msg)) {
+    seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+    return seal.ext.newCmdExecuteResult(true);
+  }
   kvSet("allowed_appointment_times", []);
   seal.replyToSender(ctx, msg, "✅ 已清空邀约时间限制，现在任何时间都允许发起邀约");
   return seal.ext.newCmdExecuteResult(true);
@@ -3724,23 +3816,10 @@ cmd_grouplist_release.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 
-// 管理员强结指令：执行所有清理但不发放任何结戏奖励
-// 用法：强结私约 [群号]  —— 不填群号则对当前群操作
-const cmd_force_end = seal.ext.newCmdItemInfo();
-cmd_force_end.name = "强结私约";
-cmd_force_end.help = "。强结私约 [群号]（管理员专用）：强制结束指定群（不填则当前群），跳过复盘检查，不发放结戏奖励，并在目标群 @ 成员提示退群。";
-cmd_force_end.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) {
-        seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    const platform = msg.platform;
-    const argGid = (cmdArgs.getArgN(1) || "").trim();
-    const gid = argGid || msg.groupId.replace(`${platform}-Group:`, "");
-    const isRemote = !!argGid; // 是否在外部群操作
-
-    // 构造目标群的 msg/ctx，用于在目标群发消息和改群名
+// 强结单群的核心逻辑：跳过复盘检查，是否发放结戏奖励取决于「设置 互动参数」中的「强结发放奖励」开关。
+// 供「强结私约」「一键强结」共用，不依赖调用方 ctx/msg 是否身处目标群内（仅用 ctx.endPoint 构造目标群临时上下文）。
+// 返回 { ok, reason?, isWechat?, rewardGranted? }
+function forceEndGroupCore(ctx, msg, gid, platform, operatorUid) {
     const targetMsg = seal.newMessage();
     targetMsg.messageType = "group";
     targetMsg.groupId = `${platform}-Group:${gid}`;
@@ -3751,15 +3830,13 @@ cmd_force_end.solve = (ctx, msg, cmdArgs) => {
     // 微信群：复用原有清理函数
     const wechatGroups = kvGet("wechat_groups", {});
     if (wechatGroups[platform]?.[gid]?.status === "active") {
-        endWechatGroup(targetCtx, targetMsg, gid, platform, msg.sender.userId.replace(`${platform}:`, ""));
-        if (isRemote) seal.replyToSender(ctx, msg, `✅ 已强结微信群 ${gid}。`);
-        return seal.ext.newCmdExecuteResult(true);
+        endWechatGroup(targetCtx, targetMsg, gid, platform, operatorUid);
+        return { ok: true, isWechat: true };
     }
 
     const fullId = `${gid}_占用`;
     if (!group.includes(fullId)) {
-        seal.replyToSender(ctx, msg, `⚠️ 群号 ${gid} 未处于占用状态，无法结束`);
-        return seal.ext.newCmdExecuteResult(true);
+        return { ok: false, reason: "未处于占用状态" };
     }
 
     // 释放群号
@@ -3797,7 +3874,7 @@ cmd_force_end.solve = (ctx, msg, cmdArgs) => {
         });
     }
 
-    // 存档必须在清除 group_expire_info 之前，否则拿不到 day/time/place
+    // 存档必须在清除 group_expire_info 之前，否则拿不到 day/time/place。复盘与正常结束一致，只是中途打断
     if (isArchiveEnabled() && getSeasonMode() !== "no_review") {
         postToArchive("/api/session_end", buildSessionArchive(gid, platform, true));
     }
@@ -3815,29 +3892,250 @@ cmd_force_end.solve = (ctx, msg, cmdArgs) => {
     recordPendingLeaveCheck(gid, _forceEndTimer?.subtype, _forceEndNames);
 
     cleanupGroupTimer(gid);
-    accumulateToSeasonStats(platform, gid);
-    const sessionStats = getSessionStats();
-    if (sessionStats[gid]) {
-        delete sessionStats[gid];
-        saveSessionStats(sessionStats);
+
+    // 是否发放结戏奖励由「强结发放奖励」开关决定；开启时复用正常结束的奖励发放路径
+    const rewardGranted = isForceEndRewardEnabled();
+    if (rewardGranted) {
+        applyEndGameBonuses(targetCtx, targetMsg, gid, platform);
+    } else {
+        accumulateToSeasonStats(platform, gid);
+        const sessionStats = getSessionStats();
+        if (sessionStats[gid]) {
+            delete sessionStats[gid];
+            saveSessionStats(sessionStats);
+        }
     }
 
     // 在目标群发送提示，@ 所有参与者请其退群
+    const rewardNote = rewardGranted ? "已发放结戏奖励" : "不发放结戏奖励";
     const atParts = [...participantUids].map(uid => `[CQ:at,qq=${uid}]`).join(" ");
     const targetNotice = atParts
-        ? `${atParts}\n⚠️ 本群已被管理员强制结束，不发放结戏奖励，请各位退群。`
-        : `⚠️ 本群已被管理员强制结束，不发放结戏奖励，请各位退群。`;
+        ? `${atParts}\n⚠️ 本群已被管理员强制结束，${rewardNote}，请各位退群。`
+        : `⚠️ 本群已被管理员强制结束，${rewardNote}，请各位退群。`;
     seal.replyToSender(targetCtx, targetMsg, targetNotice);
     setGroupName(targetCtx, targetMsg, gid, getIdleGroupName());
 
+    return { ok: true, isWechat: false, rewardGranted };
+}
+
+// 管理员强结指令：跳过复盘检查（复盘存档流程与正常结束一致，只是中途打断），
+// 是否发放结戏奖励见「设置 互动参数」中的「强结发放奖励」开关
+// 用法：强结私约 [群号]  —— 不填群号则对当前群操作
+const cmd_force_end = seal.ext.newCmdItemInfo();
+cmd_force_end.name = "强结私约";
+cmd_force_end.help = "。强结私约 [群号]（管理员专用）：强制结束指定群（不填则当前群），是否发放结戏奖励见「设置 互动参数」的「强结发放奖励」开关，并在目标群 @ 成员提示退群。";
+cmd_force_end.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) {
+        seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const platform = msg.platform;
+    const argGid = (cmdArgs.getArgN(1) || "").trim();
+    const gid = argGid || msg.groupId.replace(`${platform}-Group:`, "");
+    const isRemote = !!argGid; // 是否在外部群操作
+    const operatorUid = msg.sender.userId.replace(`${platform}:`, "");
+
+    const result = forceEndGroupCore(ctx, msg, gid, platform, operatorUid);
+    if (!result.ok) {
+        seal.replyToSender(ctx, msg, `⚠️ 群号 ${gid} ${result.reason}，无法结束`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
     // 向发令者确认（在外部群操作时才需要额外回复，在目标群操作时目标群已有消息）
     if (isRemote) {
-        seal.replyToSender(ctx, msg, `✅ 群 ${gid} 已强制结束，已在目标群通知成员退群。`);
+        const suffix = result.isWechat
+            ? `已强结微信群 ${gid}。`
+            : `群 ${gid} 已强制结束，已在目标群通知成员退群（${result.rewardGranted ? "已发放" : "未发放"}结戏奖励）。`;
+        seal.replyToSender(ctx, msg, `✅ ${suffix}`);
     }
 
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["强结私约"] = cmd_force_end;
+
+// ========================
+// 🚨 一键通知 / 一键强结：按「弧长」（单人未回复时长）或「开群」（群开启时长）批量筛选
+// ========================
+
+// 弧长口径：group_timers 中处于 timing 状态（即对方在等这个人回复）且已超阈值的参与者
+function collectOverdueByArcLength(timers, thresholdMs) {
+    const now = Date.now();
+    const result = [];
+    for (const [gid, timer] of Object.entries(timers)) {
+        for (const [name, s] of Object.entries(timer.timerStatus || {})) {
+            if (s.status !== "timing") continue;
+            const elapsed = now - s.startTime;
+            if (elapsed >= thresholdMs) result.push({ gid, timer, name, s, elapsed });
+        }
+    }
+    return result;
+}
+
+function collectOverdueGidsByArcLength(thresholdMs) {
+    const timers = kvGet("group_timers", {});
+    const gids = new Set(collectOverdueByArcLength(timers, thresholdMs).map(e => e.gid));
+    return [...gids];
+}
+
+// 开群口径：group_expire_info 中距“开群时刻”已超阈值的群。
+// 所有建群路径均已记录 acceptTime；此处兜底仅用于本次改动前创建、库里还没有 acceptTime 字段的老群，
+// 用 expireTime 反推（expireTime = 开群时刻 + 当时的小群过期时间设置），期间若调整过“小群过期时间”会有偏差
+function getGroupOpenedAt(info) {
+    if (info.acceptTime) return info.acceptTime;
+    return info.expireTime - getStorageInt("group_expire_hours", 48) * 3600000;
+}
+
+function collectOverdueByOpenDuration(thresholdMs) {
+    const infoMap = kvGet("group_expire_info", {});
+    const now = Date.now();
+    const result = [];
+    for (const [gid, info] of Object.entries(infoMap)) {
+        const elapsed = now - getGroupOpenedAt(info);
+        if (elapsed >= thresholdMs) result.push({ gid, info, elapsed });
+    }
+    return result;
+}
+
+// 拼出「日期 时间 地点」标签，取不到详情（如群已到期被清理）时兜底回退成纯类型标签
+function getOverdueScheduleTimeLabel(timer, gid) {
+    const info = kvGet("group_expire_info", {})[gid];
+    if (!info || !info.day || !info.time) return getCustomTypeLabel(timer.subtype);
+    return [info.day, info.time, info.place].filter(Boolean).join(" ");
+}
+
+// 弧长通知的单条发送逻辑（私聊提醒未回复的人 + 公共群里 @ 提示大家耐心等待），从「提醒超时」抽出以便复用
+function sendOverdueParticipantNotice(ctx, timer, gid, name, s, elapsed) {
+    const platform = timer.platform;
+    const h = Math.floor(elapsed / 3600000), m = Math.floor((elapsed % 3600000) / 60000);
+    const timeStr = h > 0 ? `${h}h${m}m` : `${m}m`;
+
+    const priv = kvGet("a_private_group", {});
+    const roleUid2 = getUidByRoleName(platform, name);
+
+    // 1. 发送给个人小群
+    const pGid = roleUid2 ? priv[platform]?.[roleUid2]?.[1] : null;
+    if (pGid) {
+        const others2 = (timer.participants || []).filter(p => p !== name);
+        const partnerLabel2 = others2.length ? others2.join("、") : "大家";
+        const text = `✨ 亲爱的 ${name}，${partnerLabel2}在「${getOverdueScheduleTimeLabel(timer, gid)}」的约会等你 ${timeStr} 啦。如果不忙的话，记得回一下小伙伴们哦～ ❤️`;
+        const m1 = seal.newMessage(); m1.messageType = "group"; m1.groupId = `${platform}-Group:${pGid}`;
+        seal.replyToSender(seal.createTempCtx(ctx.endPoint, m1), m1, text);
+    }
+
+    // 2. 发送到公共群，@主账号和所有额外账号
+    const extras2 = kvGet("extra_accounts", {});
+    const allAtUids = roleUid2 && !/^npc_/.test(roleUid2)
+        ? [roleUid2, ...Object.entries(extras2)
+            .filter(([k, v]) => k.startsWith(`${platform}:`) && v === roleUid2)
+            .map(([k]) => k.replace(`${platform}:`, ""))]
+        : [];
+    const atStr2 = allAtUids.map(u => `[CQ:at,qq=${u}]`).join("") + (allAtUids.length ? "\n" : "");
+    const m2 = seal.newMessage(); m2.messageType = "group"; m2.groupId = `${platform}-Group:${gid}`;
+    seal.replyToSender(seal.createTempCtx(ctx.endPoint, m2), m2, `${atStr2}🌷 温馨提示：${name} 已经忙碌 ${timeStr} 啦，我们再耐心等一下ta吧～`);
+
+    s.remindedTimes = (s.remindedTimes || 0) + 1;
+}
+
+function parseBatchThresholdArgs(cmdArgs) {
+    const hours = parseFloat(cmdArgs.getArgN(1));
+    const typeArg = (cmdArgs.getArgN(2) || "").trim();
+    if (isNaN(hours) || hours <= 0 || !["弧长", "开群"].includes(typeArg)) return null;
+    return { hours, typeArg, thresholdMs: hours * 3600000 };
+}
+
+let cmd_batch_notify = seal.ext.newCmdItemInfo();
+cmd_batch_notify.name = "一键通知";
+cmd_batch_notify.help = "。一键通知 <小时数> 弧长|开群（管理员专用）\n弧长：通知所有存在单人已超过N小时未回复的群（私聊提醒未回复者，群内@提示大家耐心等待，两边话术不同）\n开群：向所有已开启超过N小时的群发送到期提醒\n例：一键通知 12 弧长";
+cmd_batch_notify.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) {
+        seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const parsed = parseBatchThresholdArgs(cmdArgs);
+    if (!parsed) {
+        seal.replyToSender(ctx, msg, "❌ 用法：一键通知 <小时数> 弧长|开群\n例：一键通知 12 弧长");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    const { hours, typeArg, thresholdMs } = parsed;
+
+    if (typeArg === "弧长") {
+        const timers = kvGet("group_timers", {});
+        const overdue = collectOverdueByArcLength(timers, thresholdMs);
+        if (!overdue.length) {
+            seal.replyToSender(ctx, msg, `🌙 没有单人超时 ${hours} 小时以上未回的群。`);
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        const detail = overdue.map(({ gid, timer, name, s, elapsed }) => {
+            sendOverdueParticipantNotice(ctx, timer, gid, name, s, elapsed);
+            return `群${gid}：${name}`;
+        });
+        kvSet("group_timers", timers);
+        seal.replyToSender(ctx, msg, `💖 已通知 ${overdue.length} 处超时（弧长 ≥${hours}h）：\n${detail.join("\n")}`);
+    } else {
+        const overdue = collectOverdueByOpenDuration(thresholdMs);
+        if (!overdue.length) {
+            seal.replyToSender(ctx, msg, `🌙 没有开群超过 ${hours} 小时的群。`);
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        let successCount = 0, failCount = 0;
+        overdue.forEach(({ gid, info }) => {
+            try {
+                const groupMsg = seal.newMessage();
+                groupMsg.messageType = "group";
+                groupMsg.groupId = `${msg.platform}-Group:${gid}`;
+                const groupCtx = seal.createTempCtx(ctx.endPoint, groupMsg);
+                const reminderMsg = `⏰ 温馨提示：\n本群已开启超过 ${hours} 小时啦～\n\n📋 群号：${gid}\n• 时间：${info.day || ""} ${info.time || ""}\n• 地点：${info.place || ""}\n\n如果互动已结束，请使用「结束私约」`;
+                seal.replyToSender(groupCtx, groupMsg, reminderMsg);
+                successCount++;
+            } catch (e) {
+                failCount++;
+            }
+        });
+        seal.replyToSender(ctx, msg, `📢 开群超时提醒完成（≥${hours}h）！\n✅ 成功：${successCount}\n❌ 失败：${failCount}`);
+    }
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["一键通知"] = cmd_batch_notify;
+
+let cmd_batch_force_end = seal.ext.newCmdItemInfo();
+cmd_batch_force_end.name = "一键强结";
+cmd_batch_force_end.help = "。一键强结 <小时数> 弧长|开群（管理员专用）\n弧长：强制结束所有存在单人已超过N小时未回复的群\n开群：强制结束所有已开启超过N小时的群\n是否发放结戏奖励见「设置 互动参数」的「强结发放奖励」开关\n例：一键强结 12 开群";
+cmd_batch_force_end.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) {
+        seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const parsed = parseBatchThresholdArgs(cmdArgs);
+    if (!parsed) {
+        seal.replyToSender(ctx, msg, "❌ 用法：一键强结 <小时数> 弧长|开群\n例：一键强结 12 开群");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    const { hours, typeArg, thresholdMs } = parsed;
+
+    const platform = msg.platform;
+    const operatorUid = msg.sender.userId.replace(`${platform}:`, "");
+    const gids = typeArg === "弧长" ? collectOverdueGidsByArcLength(thresholdMs) : collectOverdueByOpenDuration(thresholdMs).map(e => e.gid);
+
+    if (!gids.length) {
+        seal.replyToSender(ctx, msg, `🌙 没有符合「${typeArg} ≥${hours}h」条件的群。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const succeeded = [], failed = [];
+    gids.forEach(gid => {
+        const result = forceEndGroupCore(ctx, msg, gid, platform, operatorUid);
+        if (result.ok) succeeded.push(gid); else failed.push(`${gid}(${result.reason})`);
+    });
+
+    let report = `✅ 一键强结完成（${typeArg} ≥${hours}h）\n成功 ${succeeded.length} 个${succeeded.length ? "：" + succeeded.join("、") : ""}`;
+    if (failed.length) report += `\n失败 ${failed.length} 个：${failed.join("、")}`;
+    seal.replyToSender(ctx, msg, report);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["一键强结"] = cmd_batch_force_end;
 
 // 修改玩家群号（按 uid 直接替换 a_private_group 中的 gid）
 let cmd_edit_player_group = seal.ext.newCmdItemInfo();
@@ -4485,7 +4783,7 @@ async function finalizeGroupCreation(platform, ctx, msg, groupData, participants
         });
     });
 
-    groupInfo[gid] = { ...groupData, participants, expireTime };
+    groupInfo[gid] = { ...groupData, participants, expireTime, acceptTime: Date.now() };
     kvSet("b_confirmedSchedule", b_confirmedSchedule);
     kvSet("group_expire_info", groupInfo);
 
@@ -5395,6 +5693,10 @@ cmd_block_user_feature.name = "功能权限";
 cmd_block_user_feature.help = "。功能权限 角色名 功能 开启/关闭\n功能：礼物/发起邀约/寄信/心愿/心动信/论坛/抽取/全部";
 
 cmd_block_user_feature.solve = (ctx, msg, cmdArgs) => {
+  if (!isUserAdmin(ctx, msg)) {
+    seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+    return seal.ext.newCmdExecuteResult(true);
+  }
   const roleName = cmdArgs.getArgN(1);
   const featureName = cmdArgs.getArgN(2);
   const action = cmdArgs.getArgN(3);
@@ -5461,6 +5763,10 @@ cmd_view_user_feature.name = "查看功能权限";
 cmd_view_user_feature.help = "。查看功能权限 —— 查看所有被设定过功能开关的角色与状态";
 
 cmd_view_user_feature.solve = (ctx, msg, cmdArgs) => {
+  if (!isUserAdmin(ctx, msg)) {
+    seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+    return seal.ext.newCmdExecuteResult(true);
+  }
   let blockMap = kvGet("feature_user_blocklist", {});
 
   if (Object.keys(blockMap).length === 0) {
@@ -6631,7 +6937,7 @@ async function createSoloStakeout(ctx, msg, platform, sendname, day, time, place
     }
 
     const groupData = { sendname, subtype: "踩点", day, time, place };
-    groupInfo[gid] = { ...groupData, participants: [sendname], expireTime };
+    groupInfo[gid] = { ...groupData, participants: [sendname], expireTime, acceptTime: Date.now() };
     kvSet("b_confirmedSchedule", b_confirmedSchedule);
     kvSet("group_expire_info", groupInfo);
 
@@ -7423,7 +7729,9 @@ function handleReply(platform, groupId, roleName, message) {
         .filter(t => t != null);
     const _replyStartTime = _otherTimes.length > 0 ? Math.max(..._otherTimes) : null;
     const roleUid = getUidByRoleName(platform, roleName);
-    updateUserStats(platform, roleUid || roleName, wordCount, _replyStartTime, roleStatus.repliedTime);
+    const _sessSS = getSessionStats()[groupId] || {};
+    const _sessionId = `${groupId}_${_sessSS._startTime || timer.startTime || Date.now()}`;
+    updateUserStats(platform, roleUid || roleName, wordCount, _replyStartTime, roleStatus.repliedTime, _sessionId);
 
     // 5. 【新增逻辑】记录写帖进度 (替代原来的 .写了 指令)
     // 获取该角色的 UID（新结构：直接使用 getUidByRoleName 结果）
@@ -7444,8 +7752,15 @@ function handleReply(platform, groupId, roleName, message) {
     // 同步写入计时器，方便查看计时器时直接读取
     if (!roleStatus.sessionReplies) roleStatus.sessionReplies = 0;
     if (!roleStatus.sessionWords) roleStatus.sessionWords = 0;
+    if (!roleStatus.sessionReplyTimeMs) roleStatus.sessionReplyTimeMs = 0;
+    if (!roleStatus.sessionTimedReplies) roleStatus.sessionTimedReplies = 0;
     roleStatus.sessionReplies += 1;
     roleStatus.sessionWords += wordCount;
+    // sessionReplies 含开场白等无法测耗时的回复，sessionTimedReplies 只计有有效耗时的那些（同 updateUserStats 的口径）
+    if (_replyStartTime != null) {
+        roleStatus.sessionReplyTimeMs += (roleStatus.repliedTime - _replyStartTime);
+        roleStatus.sessionTimedReplies += 1;
+    }
 
     // 实时推送本场 stats 到存档服务器（自动更新统计页面 + 玩家数据库）
     // NPC 回复不触发 stats 推送，避免污染数据分析
@@ -7541,7 +7856,8 @@ function countWords(text) {
  * 更新用户统计（增强版：包含平均字数与平均时长）
  */
 // uid 参数为玩家 uid（非 roleName），key 改为 ${platform}:${uid}
-function updateUserStats(platform, uid, wordCount, startTime, repliedTime) {
+// sessionId 可选：传入时用于去重统计"参与过多少场"（「我的弧长」等汇总指令用）
+function updateUserStats(platform, uid, wordCount, startTime, repliedTime, sessionId) {
     const stats = getUserStats();
     const key = `${platform}:${uid}`;
 
@@ -7554,11 +7870,15 @@ function updateUserStats(platform, uid, wordCount, startTime, repliedTime) {
             timedReplies: 0,      // 参与耗时平均计算的回复次数
             avgWords: 0,          // 平均字数
             avgReplyTimeMin: 0,   // 平均耗时（分钟）
+            sessionIds: [],       // 参与过的场次id（去重），用于统计"总共X场"
             subtypeStats: {}      // 分类型统计
         };
     }
 
     const userStat = stats[key];
+    if (!userStat.sessionIds) userStat.sessionIds = []; // 兼容老数据（该字段新增前已存在的用户统计）
+    if (sessionId && !userStat.sessionIds.includes(sessionId)) userStat.sessionIds.push(sessionId);
+
     // startTime 为 null 时（轮流模式接收方尚未被计时就发言），跳过耗时统计避免污染平均值
     const replyTimeMs = (startTime != null && startTime > 0) ? repliedTime - startTime : null;
 
@@ -7856,7 +8176,7 @@ function handleRoleCardMsg(ctx, msg, platform) {
                 }
             }
         }
-    } catch(e) {}
+    } catch(e) { console.error(`[名片] 读取 ${roleKey} 装备失败:`, e.message); }
 
     // ── 属性 ──────────────────────────────────────────────
     const attrLines = [];
@@ -7879,7 +8199,7 @@ function handleRoleCardMsg(ctx, msg, platform) {
                 attrLines.push(`【${name}】${val}${bonusText}`);
             }
         }
-    } catch(e) {}
+    } catch(e) { console.error(`[名片] 读取 ${uid} 属性失败:`, e.message); }
 
     // ── 货币 ──────────────────────────────────────────────
     const currLines = [];
@@ -7891,7 +8211,7 @@ function handleRoleCardMsg(ctx, msg, platform) {
                 currLines.push(`${reg[e.code].name}：${e.count}`);
             }
         }
-    } catch(e) {}
+    } catch(e) { console.error(`[名片] 读取 ${roleKey} 货币失败:`, e.message); }
 
     // ── 拼接 ──────────────────────────────────────────────
     const out = [];
@@ -7972,7 +8292,7 @@ function handleBasicGuideMsg(ctx, msg) {
              "。撤回心动信 编号   撤回已投递的信",
              "查看信箱            查看收到的心动信",
              "",
-             "我的待回            查看还没回的群（超时置顶）、还没进的群、已结束还没退的群+今日心动信投递情况"],
+             "我的待回            先出一份数量摘要，再以合并转发列出每个群的群名和已经弧了多久（含还没进的群、已结束还没退的群、今日心动信投递情况）"],
         ];
         const gidRaw = parseInt(msg.groupId.replace(/\D/g, ""), 10);
         const nodes = sections.map(lines => ({
@@ -7988,15 +8308,19 @@ function handleBasicGuideMsg(ctx, msg) {
     return seal.ext.newCmdExecuteResult(true);
 }
 
-// 「我提交 项目：内容」：项目存在则本地化图片后记录
+// 🎭 出场系统已拆分到卫星文件 长日出场.js（2026-07-31），本文件不再包含其实现。
+
+// 「我提交 项目：内容」：项目存在则记录（内容可以不带图片；带图片则尝试转存到 rp_archive，失败则替换为失败提示文字，不留会过期的 QQ 链接）
 async function handleInfoSubmit(ctx, msg, subM) {
     const t = subM[1].trim(); // 用户尝试提交的项目名
     const content = subM[2].trim(); // 提交的内容
 
     // 检查项目是否存在于 projects 列表中
     if (kvGet("sys_info_projects", []).includes(t)) {
-        // 逻辑 A: 项目存在，正常记录数据（图片先本地化以防 QQ CDN 过期）
-        const savedContent = await localizeImages(content);
+        // 逻辑 A: 项目存在，正常记录数据
+        const platform = msg.platform;
+        const uid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
+        const savedContent = await localizeCollectImages(content, uid);
         let d = kvGet("sys_info_collection", {});
         (d[t] = d[t] || []).push({
             sender: getRoleName(ctx, msg),
@@ -8012,7 +8336,7 @@ async function handleInfoSubmit(ctx, msg, subM) {
 }
 
 // 「删除上传 项目名 序号」：撤回自己的提交（管理员可删任意人）
-function handleInfoDeleteUpload(ctx, msg, raw, isAdmin) {
+async function handleInfoDeleteUpload(ctx, msg, raw, isAdmin) {
     const delArg = raw.slice(4).trim();
     const delM = delArg.match(/^(.+?)\s+(\d+)$/);
     if (!delM) {
@@ -8034,6 +8358,9 @@ function handleInfoDeleteUpload(ctx, msg, raw, isAdmin) {
     if (!isAdmin && target.sender !== myName) {
         return seal.replyToSender(ctx, msg, `❌ 只能删除自己的提交（该条由「${target.sender || "未知"}」提交）`);
     }
+    for (const url of extractStoredImageUrls(target.text)) {
+        await deleteCollectedImage(url);
+    }
     recs.splice(delIdx, 1);
     delData[delProject] = recs;
     kvSet("sys_info_collection", delData);
@@ -8041,20 +8368,42 @@ function handleInfoDeleteUpload(ctx, msg, raw, isAdmin) {
 }
 
 // 「查看收集 [项目名]」：列出项目或以合并转发展示项目内容
-function handleInfoViewCollection(ctx, msg, raw) {
+async function handleInfoViewCollection(ctx, msg, raw, isAdmin) {
     const t = raw.replace("查看收集", "").trim();
     const projectsList = kvGet("sys_info_projects", []);
+    const privateProjects = kvGet("sys_info_private_projects", []);
 
-    // 1. 如果只输入"查看收集"，列出所有可选项目
+    // 1. 如果只输入"查看收集"，列出所有可选项目（私密项目对非管理员隐藏）
     if (!t) {
-        return seal.replyToSender(ctx, msg, `📋 可查看的收集项目：\n${projectsList.length ? projectsList.join('\n') : "暂无项目"}`);
+        const visibleList = isAdmin ? projectsList : projectsList.filter(p => !privateProjects.includes(p));
+        return seal.replyToSender(ctx, msg, `📋 可查看的收集项目：\n${visibleList.length ? visibleList.join('\n') : "暂无项目"}`);
     }
 
-    // 2. 如果项目存在，展示内容
+    // 2. 私密项目仅管理员可查看内容
+    if (privateProjects.includes(t) && !isAdmin) {
+        return seal.replyToSender(ctx, msg, `❌ 「${t}」是私密收集，仅管理员可查看提交内容。`);
+    }
+
+    // 3. 如果项目存在，展示内容
     if (projectsList.includes(t)) {
         let allInfo = kvGet("sys_info_collection", {});
         let records = allInfo[t] || [];
         if (records.length > 0) {
+            // 失效检查：图片如果被超级管理员在 rp_archive 那边直接删了，这条记录整体去掉（两边没有推送通道，只能靠这个被动同步）
+            const aliveFlags = await Promise.all(records.map(async (item) => {
+                const urls = extractStoredImageUrls(item.text);
+                if (urls.length === 0) return true;
+                const checks = await Promise.all(urls.map(isStoredImageAlive));
+                return checks.every(Boolean);
+            }));
+            if (aliveFlags.some(alive => !alive)) {
+                records = records.filter((_, i) => aliveFlags[i]);
+                allInfo[t] = records;
+                kvSet("sys_info_collection", allInfo);
+            }
+            if (records.length === 0) {
+                return seal.replyToSender(ctx, msg, `❓ 项目「${t}」目前还没有人提交内容哦。`);
+            }
             const gid = parseInt(msg.groupId.replace(/[^\d]/g, ""), 10);
             const nodes = [
                 { type: "node", data: { name: "长日将尽", uin: "10001", content: `📖 「${t}」共 ${records.length} 条记录` } },
@@ -8142,6 +8491,26 @@ ext.onNotCommandReceived = async (ctx, msg) => {
         return seal.replyToSender(ctx, msg, "🎵 点歌用法：回复一张音乐卡片，消息内容写\n点歌人：名字 留言：内容\n例：点歌人：张三 留言：送给你的歌");
     }
 
+    // 2.6 格式导览：新手记不住各种指令格式时，发「格式」查目录，发「格式+类型」直接拿可复制的模板
+    const FORMAT_TEMPLATES = {
+        "心动信": "发送心动信\n【发送对象】角色名\n【内容】想说的话\n【署名】自定义昵称（选填）",
+        "短信":   "短信 收信人 内容\n例：短信 张三 你好！",
+        "信件":   "发送信件\n【收件人】小明\n【内容】亲爱的小明，今天天气真好...\n【日期】2026年4月28日（选填）\n【附件】随信附上一份礼物（选填）\n【署名】小红（选填）",
+        "私约":   "私约 1400-1500 咖啡厅 张三",
+        "电话":   "电话 1400-1500 张三",
+        "送礼":   "送礼 张三 一束玫瑰",
+        "心愿":   "挂心愿 1400-1500 花园 一起散步",
+        "悬赏心愿": "悬赏心愿 1400-1500 图书馆 陪我看书 | 滋补汤 1",
+        "拉线":   "拉线 张三 在高中时期是同班同学",
+        "发帖":   "发帖 张三 今天天气真好！",
+    };
+    if (raw === "格式") {
+        const nav = Object.keys(FORMAT_TEMPLATES).map(k => `如果需要${k}格式，发送「格式${k}」`).join("\n");
+        return seal.replyToSender(ctx, msg, `📋 输入「格式+类型」直接拿可复制的指令模板：\n\n${nav}`);
+    }
+    if (raw.startsWith("格式") && FORMAT_TEMPLATES[raw.slice(2).trim()]) {
+        return seal.replyToSender(ctx, msg, FORMAT_TEMPLATES[raw.slice(2).trim()]);
+    }
 
     const letM = raw.match(/^(.+?)?短信\s*(.+?)\s+([\s\S]+)$/);
     if (letM) {
@@ -8360,7 +8729,7 @@ ext.onNotCommandReceived = async (ctx, msg) => {
     if (raw.startsWith("删除上传")) return handleInfoDeleteUpload(ctx, msg, raw, isAdmin);
 
     // --- 所有人可用的查看功能 ---
-    if (raw.startsWith("查看收集")) return handleInfoViewCollection(ctx, msg, raw);
+    if (raw.startsWith("查看收集")) return handleInfoViewCollection(ctx, msg, raw, isAdmin);
 
     // --- 设定 NPC 指令 ---
     const npcM = raw.match(/^设定\s*(.+?)\s*为\s*npc$/i);
@@ -8374,14 +8743,31 @@ ext.onNotCommandReceived = async (ctx, msg) => {
     }
 
     if (isAdmin) {
-        if (raw.startsWith("创建收集") && isAdmin) {
+        if (raw.startsWith("创建私密收集") && isAdmin) {
+            const pN = raw.replace("创建私密收集", "").trim();
+            if (pN && !projects.includes(pN)) {
+                projects.push(pN);
+                kvSet("sys_info_projects", projects);
+                let privateProjects = getS("sys_info_private_projects");
+                privateProjects.push(pN);
+                kvSet("sys_info_private_projects", privateProjects);
+                return seal.replyToSender(ctx, msg, `✅ 已建立私密项目：${pN}（提交格式与普通收集一致，但只有管理员能查看提交内容）`);
+            }
+        } else if (raw.startsWith("创建收集") && isAdmin) {
             const pN = raw.replace("创建收集", "").trim();
             if (pN && !projects.includes(pN)) { projects.push(pN); kvSet("sys_info_projects", projects); return seal.replyToSender(ctx, msg, `✅ 已建立项目：${pN}`); }
         }
         let allInfo = getS("sys_info_collection");
         if (raw.startsWith("我清空")) {
             const t = raw.replace("我清空", "").trim();
-            if (allInfo[t]) { allInfo[t] = []; kvSet("sys_info_collection", allInfo); return seal.replyToSender(ctx, msg, `🗑️ 已清空「${t}」`); }
+            if (allInfo[t]) {
+                for (const rec of allInfo[t]) {
+                    for (const url of extractStoredImageUrls(rec.text)) {
+                        await deleteCollectedImage(url);
+                    }
+                }
+                allInfo[t] = []; kvSet("sys_info_collection", allInfo); return seal.replyToSender(ctx, msg, `🗑️ 已清空「${t}」`);
+            }
         }
     }
 
@@ -8439,13 +8825,105 @@ cmd_view_timers.solve =(ctx, msg) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 
+// 时长格式化：X小时Y分钟 / Y分钟
+function formatDurationMin(ms) {
+    const totalMin = Math.max(0, Math.round(ms / 60000));
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin % 60;
+    return h > 0 ? `${h}小时${m}分钟` : `${m}分钟`;
+}
+
+// 「我的弧长」：本人历史平均回复耗时（含已结/未结场次）+ 当前所有未结双人场次里，自己和对方的回复次数对比、
+// 本人在这场内的平均耗时、以及当前轮到谁回复、对方（或自己）已经等了多久
+// 弧长报告核心：「我的弧长」（查自己）和「查看弧长」（管理员查他人）共用
+function buildArcLengthReport(platform, roleName, uid) {
+    const allStats = getUserStats();
+    const myStat = allStats[`${platform}:${uid}`];
+    const totalTimed = myStat ? (myStat.timedReplies || 0) : 0;
+    const totalSessions = myStat && myStat.sessionIds ? myStat.sessionIds.length : 0;
+    const avgMin = myStat ? (myStat.avgReplyTimeMin || 0) : 0;
+
+    let rep = `【${roleName} 的弧长】\n本人总平均：${avgMin}分钟（${totalTimed}次，${totalSessions}场，含已结/未结）\n`;
+
+    const timers = getGroupTimers();
+    const now = Date.now();
+    const myGroups = Object.entries(timers).filter(([, t]) =>
+        t.timerMode === "turn_taking" && t.timerStatus && t.timerStatus[roleName]
+    );
+
+    if (myGroups.length === 0) {
+        rep += `\n当前没有进行中的双嘉宾小群。`;
+    } else {
+        const lines = myGroups.map(([gid, t]) => {
+            const otherName = (t.participants || []).find(p => p !== roleName);
+            const myS = t.timerStatus[roleName];
+            const otherS = otherName ? t.timerStatus[otherName] : null;
+
+            const myReplies = myS.sessionReplies || 0;
+            const otherReplies = otherS ? (otherS.sessionReplies || 0) : 0;
+            const myTimedReplies = myS.sessionTimedReplies || 0;
+            const myAvg = myTimedReplies > 0 ? Math.round(myS.sessionReplyTimeMs / myTimedReplies / 60000) : 0;
+
+            const waitingOnMe = myS.status === "timing";
+            const waitingStatus = waitingOnMe ? myS : otherS;
+            const waitDuration = waitingStatus ? formatDurationMin(now - waitingStatus.startTime) : "—";
+            const waitingOnLabel = waitingOnMe ? "你" : (otherName || "?");
+            const waitLine = waitingOnMe ? `你还没回：${waitDuration}` : `${otherName || "?"}未回：${waitDuration}`;
+
+            return `${getCustomTypeLabel(t.subtype)}${gid}：${roleName}x${otherName || "?"} ${myReplies}v${otherReplies}（待${waitingOnLabel}），本人平均${myAvg}分钟（${myTimedReplies}次），${waitLine}`;
+        });
+        rep += `\n当前未结双嘉宾小群：\n${lines.join("\n")}`;
+    }
+    return rep;
+}
+
+let cmdMyArcLength = seal.ext.newCmdItemInfo();
+cmdMyArcLength.name = "我的弧长";
+cmdMyArcLength.help = "。我的弧长 —— 查看自己的历史平均回复耗时，以及当前所有未结双人场次里，自己和对方各自的回复次数、本场平均耗时、当前等待时长";
+cmdMyArcLength.solve = (ctx, msg) => {
+    const platform = msg.platform;
+    const roleName = getRoleName(ctx, msg);
+    if (!roleName) {
+        seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    const rawUid = msg.sender.userId.replace(`${platform}:`, "");
+    const uid = getPrimaryUid(platform, rawUid);
+    seal.replyToSender(ctx, msg, buildArcLengthReport(platform, roleName, uid));
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["我的弧长"] = cmdMyArcLength;
+
+let cmdViewArcLength = seal.ext.newCmdItemInfo();
+cmdViewArcLength.name = "查看弧长";
+cmdViewArcLength.help = "。查看弧长 [角色名] —— 管理员专属，查看指定角色的弧长情况，格式同「我的弧长」";
+cmdViewArcLength.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) {
+        seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    const name = cmdArgs.getArgN(1);
+    if (!name) {
+        seal.replyToSender(ctx, msg, "格式：。查看弧长 角色名");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    const platform = msg.platform;
+    const uid = getUidByRoleName(platform, name);
+    if (!uid) {
+        seal.replyToSender(ctx, msg, `❌ 未找到角色「${name}」`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    seal.replyToSender(ctx, msg, buildArcLengthReport(platform, name, uid));
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["查看弧长"] = cmdViewArcLength;
+
 let cmd_remind_timeouts = {};
 cmd_remind_timeouts.solve =(ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "🌸 只有管理员可以呼唤大家哦～");
 
     const target = cmdArgs.getArgN(1), now = Date.now();
     const timers = kvGet("group_timers", {});
-    const priv = kvGet("a_private_group", {});
     let sentCount = 0, detail = [];
 
     for (const [gid, timer] of Object.entries(timers)) {
@@ -8455,7 +8933,6 @@ cmd_remind_timeouts.solve =(ctx, msg, cmdArgs) => {
         // 不必手动改库或重开约会
         timer.timeoutDuration = sanitizeTimeoutMs(timer.timeoutDuration, getMonitorSettings().timeout);
 
-        const platform = timer.platform;
         const groupReminders = Object.entries(timer.timerStatus).filter(([name, s]) => {
             if (s.status !== "timing") return false;
             const elapsed = now - s.startTime;
@@ -8463,32 +8940,7 @@ cmd_remind_timeouts.solve =(ctx, msg, cmdArgs) => {
         });
 
         groupReminders.forEach(([name, s]) => {
-            const elapsed = now - s.startTime;
-            const h = Math.floor(elapsed / 3600000), m = Math.floor((elapsed % 3600000) / 60000);
-            const timeStr = h > 0 ? `${h}h${m}m` : `${m}m`;
-
-            const roleUid2 = getUidByRoleName(platform, name);
-
-            // 1. 发送给个人小群
-            const pGid = roleUid2 ? priv[platform]?.[roleUid2]?.[1] : null;
-            if (pGid) {
-                const text = `✨ 亲爱的 ${name}，在「${getCustomTypeLabel(timer.subtype)}」里大家等你 ${timeStr} 啦。如果不忙的话，记得回一下小伙伴们哦～ ❤️`;
-                const m1 = seal.newMessage(); m1.messageType = "group"; m1.groupId = `${platform}-Group:${pGid}`;
-                seal.replyToSender(seal.createTempCtx(ctx.endPoint, m1), m1, text);
-            }
-
-            // 2. 发送到公共群，@主账号和所有额外账号
-            const extras2 = kvGet("extra_accounts", {});
-            const allAtUids = roleUid2 && !/^npc_/.test(roleUid2)
-                ? [roleUid2, ...Object.entries(extras2)
-                    .filter(([k, v]) => k.startsWith(`${platform}:`) && v === roleUid2)
-                    .map(([k]) => k.replace(`${platform}:`, ""))]
-                : [];
-            const atStr2 = allAtUids.map(u => `[CQ:at,qq=${u}]`).join("") + (allAtUids.length ? "\n" : "");
-            const m2 = seal.newMessage(); m2.messageType = "group"; m2.groupId = `${platform}-Group:${gid}`;
-            seal.replyToSender(seal.createTempCtx(ctx.endPoint, m2), m2, `${atStr2}🌷 温馨提示：${name} 已经忙碌 ${timeStr} 啦，我们再耐心等一下ta吧～`);
-
-            s.remindedTimes = (s.remindedTimes || 0) + 1;
+            sendOverdueParticipantNotice(ctx, timer, gid, name, s, now - s.startTime);
             sentCount++;
         });
 
@@ -8554,26 +9006,12 @@ cmd_my_pending.solve = async (ctx, msg) => {
         return h > 0 ? `${h}h${m}m` : `${m}m`;
     };
 
-    const lines = [`📋 ${roleName} 的待回清单`];
-    if (!pending.length) {
-        lines.push("🌙 当前没有等待你回复的场次，很守时哦～");
-    } else {
-        lines.push(...pending.map(p =>
-            `${p.isOver ? "🔴" : "⏳"} 群号 ${p.gid} ｜「${getCustomTypeLabel(p.subtype)}」已等待 ${fmtElapsed(p.elapsed)}${p.isOver ? "（已超时）" : ""}${p.inGroup ? "" : "（⚠️你好像还没进这个群）"}`
-        ));
-    }
-
-    if (notJoined.length) {
-        lines.push("", "🚪 已开场但你还没进群：");
-        lines.push(...notJoined.map(n => `⚠️ 群号 ${n.gid} ｜「${getCustomTypeLabel(n.subtype)}」`));
-    }
-
     // 已结束但还没退群（结束私约/强结私约 时记录，实时核对是否仍在群里）
     const leaveStore = kvGet("pending_leave_check", {});
     const myLeaveChecks = leaveStore[roleName] || [];
+    const stillLingering = [];
     if (myLeaveChecks.length) {
         const groupPool = kvGet("group", []);
-        const stillLingering = [];
         const remaining = [];
         for (const entry of myLeaveChecks) {
             // 群号已被重新分配（不在空闲池里）：旧记录失效，直接丢弃，不再核对
@@ -8588,27 +9026,86 @@ cmd_my_pending.solve = async (ctx, msg) => {
             if (remaining.length) leaveStore[roleName] = remaining; else delete leaveStore[roleName];
             kvSet("pending_leave_check", leaveStore);
         }
-        if (stillLingering.length) {
-            lines.push("", "🚶 已结束但你好像还没退群：");
-            lines.push(...stillLingering.map(e => `⚠️ 群号 ${e.gid} ｜「${getCustomTypeLabel(e.subtype)}」`));
-        }
     }
 
     // 今日心动信
     const globalDay = cachedGet("global_days") || "";
-    lines.push("", "💌 今日心动信");
-    if (!globalDay) {
-        lines.push("（当前未设置游戏天数）");
-    } else {
+    let lovemailLine = "（当前未设置游戏天数）";
+    let sentToday = [];
+    if (globalDay) {
         const dayLimits = kvGet("lovemail_day_limits", {});
         const defaultLimit = parseInt(cachedGet("lovemail_default_limit") || "3");
         const maxPerDay = dayLimits[globalDay] !== undefined ? dayLimits[globalDay] : defaultLimit;
-        const sentToday = kvGet("lovemail_pool", []).filter(r => r.uid === uid && r.gameDay === globalDay);
-        lines.push(`已投递 ${sentToday.length}/${maxPerDay} 封`);
-        if (sentToday.length) lines.push(`已写给：${sentToday.map(r => r.receiver).join("、")}`);
+        sentToday = kvGet("lovemail_pool", []).filter(r => r.uid === uid && r.gameDay === globalDay);
+        const remain = Math.max(0, maxPerDay - sentToday.length);
+        lovemailLine = `已投递 ${sentToday.length}/${maxPerDay} 封，还能写 ${remain} 封`;
     }
 
-    return seal.replyToSender(ctx, msg, lines.join("\n"));
+    // ---- 1. 先发一份摘要回执 ----
+    const overCount = pending.filter(p => p.isOver).length;
+    const hasDetail = pending.length || notJoined.length || stillLingering.length;
+    const summaryLines = [`📋 ${roleName} 的待回速览`];
+    if (!hasDetail) {
+        summaryLines.push("🌙 当前没有等待你处理的事项，很守时哦～");
+    } else {
+        summaryLines.push(`🔴 待回复：${pending.length} 个群${overCount ? `（其中 ${overCount} 个已超时）` : ""}`);
+        if (notJoined.length) summaryLines.push(`🚪 待进群：${notJoined.length} 个`);
+        if (stillLingering.length) summaryLines.push(`🚶 待退群：${stillLingering.length} 个`);
+    }
+    summaryLines.push(`💌 心动信：${lovemailLine}`);
+    seal.replyToSender(ctx, msg, summaryLines.join("\n"));
+
+    if (!hasDetail) return;
+
+    // ---- 2. 再发一份合并转发，展开每个群的名字和已经弧了多久 ----
+    const allGids = [...new Set([
+        ...pending.map(p => p.gid),
+        ...notJoined.map(n => n.gid),
+        ...stillLingering.map(e => e.gid)
+    ])];
+    const nameEntries = await Promise.all(allGids.map(async gid =>
+        [gid, (await getGroupInfoSilent(gid, ctx, msg))?.group_name || null]
+    ));
+    const nameMap = Object.fromEntries(nameEntries);
+    const gidLabel = (gid) => nameMap[gid] ? `${nameMap[gid]}（${gid}）` : `群 ${gid}`;
+
+    const botUid = ctx.endPoint.userId;
+    const nodes = [{ type: "node", data: { name: "待回管家", uin: botUid, content: `📋 ${roleName} 的待回详情` } }];
+
+    if (pending.length) {
+        nodes.push({ type: "node", data: { name: "待回管家", uin: botUid, content: "🔴 还没回复的场次" } });
+        pending.forEach(p => {
+            const content =
+                `${p.isOver ? "🔴 已超时" : "⏳ 等待中"}\n` +
+                `群：${gidLabel(p.gid)}\n` +
+                `类型：${getCustomTypeLabel(p.subtype)}\n` +
+                `已经弧了：${fmtElapsed(p.elapsed)}` +
+                `${p.inGroup ? "" : "\n⚠️ 你好像还没进这个群"}`;
+            nodes.push({ type: "node", data: { name: gidLabel(p.gid), uin: botUid, content } });
+        });
+    }
+    if (notJoined.length) {
+        nodes.push({ type: "node", data: { name: "待回管家", uin: botUid, content: "🚪 已开场但你还没进群" } });
+        notJoined.forEach(n => {
+            nodes.push({ type: "node", data: { name: gidLabel(n.gid), uin: botUid, content: `群：${gidLabel(n.gid)}\n类型：${getCustomTypeLabel(n.subtype)}` } });
+        });
+    }
+    if (stillLingering.length) {
+        nodes.push({ type: "node", data: { name: "待回管家", uin: botUid, content: "🚶 已结束但你好像还没退群" } });
+        stillLingering.forEach(e => {
+            nodes.push({ type: "node", data: { name: gidLabel(e.gid), uin: botUid, content: `群：${gidLabel(e.gid)}\n类型：${getCustomTypeLabel(e.subtype)}` } });
+        });
+    }
+    if (sentToday.length) {
+        nodes.push({ type: "node", data: { name: "待回管家", uin: botUid, content: `💌 今日已写给：${sentToday.map(r => r.receiver).join("、")}` } });
+    }
+
+    if (msg.groupId) {
+        ws({ action: "send_group_forward_msg", params: { group_id: parseInt(msg.groupId.replace(/[^\d]/g, ""), 10), messages: nodes } }, ctx, msg, "");
+    } else {
+        // 私聊没有合并转发能力，退化为逐条普通消息
+        for (const node of nodes) seal.replyToSender(ctx, msg, node.data.content);
+    }
 };
 
 // ========================
@@ -8677,9 +9174,14 @@ cmd_send_lovemail.solve =(ctx, msg, cmdArgs) => {
         seal.replyToSender(ctx, msg, `⚠️ 署名不得超过 20 个字（当前 ${signature.length} 个字），请修改后重新投递。`);
         return seal.ext.newCmdExecuteResult(true);
     }
+    if (/\[CQ:image[^\]]*\]/.test(content)) {
+        seal.replyToSender(ctx, msg, `⚠️ 心动信内容不能包含图片，请修改后重新投递。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
 
     if (!receiver) {
-        seal.replyToSender(ctx, msg, `⚠️ 格式错误！请指定发送对象。\n\n标准格式：\n发送心动信\n【发送对象】角色名\n【内容】想说的话\n【署名】自定义昵称（选填）`);
+        seal.replyToSender(ctx, msg, `⚠️ 格式错误！请指定发送对象。`);
+        seal.replyToSender(ctx, msg, `发送心动信\n【发送对象】角色名\n【内容】想说的话\n【署名】自定义昵称（选填）`);
         return seal.ext.newCmdExecuteResult(true);
     }
 

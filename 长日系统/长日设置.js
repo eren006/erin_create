@@ -202,7 +202,7 @@ function setUnifiedParamValue(param, val) {
     }
     if (param.nested) {
         let cfg = {};
-        try { cfg = mainKvGet(param.key, {}); } catch(e) {}
+        try { cfg = mainKvGet(param.key, {}); } catch(e) { console.error(`[设置] 读取 ${param.key} 失败:`, e.message); }
         if (param.type === 'bool') cfg[param.nested] = (val === '开启');
         else if (param.type === 'number') cfg[param.nested] = parseInt(val);
         else cfg[param.nested] = val;
@@ -313,12 +313,14 @@ settingsConfig['互动参数'] = {
           note: '精确=只能开当前时段；累积=可开当前及之前所有时段' },
         { label: '超时时间',
           getter: () => { try { return String(Math.round((mainKvGet('monitor_settings', {}).timeout || MONITOR_TIMEOUT_DEFAULT_MS) / 60000)); } catch(e) { return '180'; } },
-          setter: (v) => { let c = {}; try { c = mainKvGet('monitor_settings', {}); } catch(e) {} c.timeout = parseInt(v) * 60000; mainKvSet('monitor_settings', c); },
+          setter: (v) => { let c = {}; try { c = mainKvGet('monitor_settings', {}); } catch(e) { console.error("[设置] 读取 monitor_settings 失败:", e.message); } c.timeout = parseInt(v) * 60000; mainKvSet('monitor_settings', c); },
           validate: (v) => { const n = parseInt(v); return (isNaN(n) || n < 1) ? "请填写分钟数（正整数）" : null; } },
         { label: '提醒间隔',
           getter: () => { try { return String(Math.round((mainKvGet('monitor_settings', {}).remind_interval || MONITOR_TIMEOUT_DEFAULT_MS) / 60000)); } catch(e) { return '180'; } },
-          setter: (v) => { let c = {}; try { c = mainKvGet('monitor_settings', {}); } catch(e) {} c.remind_interval = parseInt(v) * 60000; mainKvSet('monitor_settings', c); },
+          setter: (v) => { let c = {}; try { c = mainKvGet('monitor_settings', {}); } catch(e) { console.error("[设置] 读取 monitor_settings 失败:", e.message); } c.remind_interval = parseInt(v) * 60000; mainKvSet('monitor_settings', c); },
           validate: (v) => { const n = parseInt(v); return (isNaN(n) || n < 1) ? "请填写分钟数（正整数）" : null; } },
+        { label: '强结发放奖励', key: 'force_end_grant_reward', type: 'bool_string', default: false,
+          hint: '开启后「强结私约」「一键强结」也会按正常结戏规则发放奖励，默认关闭（不发放）' },
     ]
 };
 
@@ -647,7 +649,7 @@ function ensureDefaults(main) {
             }
             if (changed) mainKvSet("global_feature_toggle", ft);
         }
-    } catch(e) {}
+    } catch(e) { console.error("[设置] 迁移 global_feature_toggle 新增字段失败:", e.message); }
 }
 
 // 已移除重复的cmd_settings声明，使用下面的新版本
@@ -864,7 +866,7 @@ function sendStatisticsToBackgroundGroup(ctx, msg, newDay, statisticsReport, isC
             const routingMap = mainKvGet("fupan_routing_groups", {});
             const firstId = Object.values(routingMap)[0];
             if (firstId) backgroundGroupId = firstId;
-        } catch (e) {}
+        } catch (e) { console.error("[设置] 读取 fupan_routing_groups 失败:", e.message); }
     }
     if (!backgroundGroupId) return;
 
@@ -948,7 +950,7 @@ cmd_set_days.solve = (ctx, msg, args) => {
             const rm = mainKvGet("fupan_routing_groups", {});
             const firstId = Object.values(rm)[0];
             if (firstId) reportTarget = firstId;
-        } catch (e) {}
+        } catch (e) { console.error("[设置] 读取 fupan_routing_groups 失败:", e.message); }
     }
     if (reportTarget) sendStatisticsToBackgroundGroup(ctx, msg, day, report, true);
 
@@ -1025,7 +1027,7 @@ function setDLC(key, value) {
         const ft = mainKvGet('global_feature_toggle', {});
         ft[key] = value;
         mainKvSet('global_feature_toggle', ft);
-    } catch(e) {}
+    } catch(e) { console.error(`[设置] setDLC(${key}) 保存失败:`, e.message); }
 }
 
 let cmd_enable_auto_day = seal.ext.newCmdItemInfo();
@@ -1557,6 +1559,7 @@ const SYNC_DIRECT_KEYS = [
     "adminAnnounceGroupId", "song_group_id", "background_group_id", "water_group_id",
     "fupan_routing_enabled", "fupan_routing_groups",
     "enable_join_existing_appointment", "require_fupan_before_end", "group_expire_hours", "appointment_coin_cost", "idle_group_name",
+    "force_end_grant_reward",
     "mailCooldown", "allow_custom_letter_sign", "letter_public_send",
     "giftCooldown", "gift_public_send", "giftPublicChance", "giftDailyLimit",
     "allow_custom_gift_sign", "drop_hide_receiver",
@@ -1692,8 +1695,8 @@ cmd_push_all.solve = async (ctx, msg, argv) => {
     let poolErr = null;
     try {
         let poolDefs = {}, poolDrawCfg = { total: null, pools: {} };
-        try { poolDefs    = mainKvGet("pool_definitions", {}); } catch(e) {}
-        try { poolDrawCfg = mainKvGet("pool_draw_config", {}); } catch(e) {}
+        try { poolDefs    = mainKvGet("pool_definitions", {}); } catch(e) { console.error("[设置] 推送配置读取 pool_definitions 失败:", e.message); }
+        try { poolDrawCfg = mainKvGet("pool_draw_config", {}); } catch(e) { console.error("[设置] 推送配置读取 pool_draw_config 失败:", e.message); }
         poolCount = Object.keys(poolDefs).length;
         const resp = await fetch(`${base}/api/pool_config`, {
             method: "POST",
@@ -1902,9 +1905,9 @@ cmd_pull_all.solve = async (ctx, msg, argv) => {
         const queue = data.queue || [];
         if (queue.length > 0) {
             let auctionData = {};
-            try { auctionData = mainKvGet("auction_items", {}); } catch(e) {}
+            try { auctionData = mainKvGet("auction_items", {}); } catch(e) { console.error("[设置] 拍卖队列同步读取 auction_items 失败:", e.message); }
             let reg = {};
-            try { reg = mainKvGet("item_registry", {}); } catch(e) {}
+            try { reg = mainKvGet("item_registry", {}); } catch(e) { console.error("[设置] 拍卖队列同步读取 item_registry 失败:", e.message); }
             
             const now = Date.now();
             

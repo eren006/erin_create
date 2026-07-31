@@ -35,6 +35,7 @@ function ws(postData, ctx, msg, ok, err) { return getApi()?.ws(postData, ctx, ms
 function wsBatchSync(queue, ctx, msg)  { return getApi()?.wsBatchSync(queue, ctx, msg); }
 function getRoleDetails(platform, name){ return getApi()?.getRoleDetails(platform, name) ?? {}; }
 function getUidByRoleName(p, name)     { return getApi()?.getUidByRoleName(p, name) ?? null; }
+function getRoleName(ctx, msg)         { return getApi()?.getRoleName(ctx, msg) ?? null; }
 function getRoleStorage()              { return getApi()?.getRoleStorage() ?? {}; }
 function sendTextToGroup(p, gid, text) { return getApi()?.sendTextToGroup(p, gid, text); }
 function parseAndValidateTime(t, r, d, s) { return getApi()?.parseAndValidateTime(t, r, d, s) ?? { valid: false, errorMsg: "API未加载" }; }
@@ -109,7 +110,7 @@ cmd_admin_help.solve = (ctx, msg) => {
                             data.guides.map(g => `  ${g.name}：${g.url}`).join("\n");
                     }
                 }
-            } catch (_) {}
+            } catch (e) { console.error("[季度] 拉取 command_guides 失败:", e.message); }
         }
         const text = [
             "📋 长日运营清单",
@@ -123,10 +124,12 @@ cmd_admin_help.solve = (ctx, msg) => {
             "3. 。清空季度数据  ← 扫描残留玩家并清空上季数据",
             "4. 。创建新季度 恋综名 复盘/不复盘 MMDD-MMDD [补戏MMDD]",
             "5. 。开启群号组 组名  ← 从后台拉取群号到戏群池",
-            "6. 。初始化设置  ← 从后台拉取系统配置（或 。拉取全部 强制覆盖）",
-            "7. 。创建NPC 角色名  ← 注册所有NPC（复盘模式必须）",
-            "8. 玩家自行：创建新角色 角色名",
-            "9. 。设置天数 D0  ← 确认天数状态",
+            "6. 确认/更新戏群、后台群、公告群、水群群号（本季可能变化，清空季度数据会清空这四项）：",
+            "   网页端系统参数配置 或 。设置 基础设置",
+            "7. 。初始化设置  ← 从后台拉取系统配置（或 。拉取全部 强制覆盖）",
+            "8. 。创建NPC 角色名  ← 注册所有NPC（复盘模式必须）",
+            "9. 玩家自行：创建新角色 角色名",
+            "10. 。设置天数 D0  ← 确认天数状态",
             "",
             "【📅 日常运营】",
             "• 查看进行中         ← 查看所有进行中约会",
@@ -169,10 +172,12 @@ cmd_season_guide.solve = (ctx, msg) => {
         "1. 。清空季度数据  ← 扫描残留玩家并清空上季数据",
         "2. 。创建新季度 恋综名 复盘/不复盘 MMDD-MMDD [补戏MMDD]",
         "3. 。开启群号组 组名  ← 从后台拉取群号到戏群池",
-        "4. 。初始化设置  ← 从后台拉取系统配置（或 。拉取全部 强制覆盖）",
-        "5. 。创建NPC 角色名  ← 注册所有NPC（复盘模式必须）",
-        "6. 玩家自行：创建新角色 角色名",
-        "7. 。设置天数 D0  ← 确认天数状态",
+        "4. 确认/更新戏群、后台群、公告群、水群群号（本季可能变化，清空季度数据会清空这四项）：",
+        "   网页端系统参数配置 或 。设置 基础设置",
+        "5. 。初始化设置  ← 从后台拉取系统配置（或 。拉取全部 强制覆盖）",
+        "6. 。创建NPC 角色名  ← 注册所有NPC（复盘模式必须）",
+        "7. 玩家自行：创建新角色 角色名",
+        "8. 。设置天数 D0  ← 确认天数状态",
         "",
         "【📅 进行中】",
         "• 。设置天数 Dx / 。开启自动天数  ← 推进游戏天数",
@@ -233,28 +238,19 @@ cmd_delete_timeline_precise.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    if (appointment.partner === "多人小群") {
-        const gid = appointment.group;
-        let deletedCount = 0;
-        for (let uid in confirmed) {
-            let before = confirmed[uid].length;
-            confirmed[uid] = confirmed[uid].filter(ev => ev.group !== gid);
-            if (confirmed[uid].length < before) deletedCount++;
-        }
-        mainKvSet("b_confirmedSchedule", confirmed);
-        seal.replyToSender(ctx, msg, `✅ 已根据多人小群 ID(${gid}) 抹除所有参与者的排期（共 ${deletedCount} 人）。`);
-    } else {
-        const partnerName = appointment.partner;
-        const partnerUid = getUidByRoleName(platform, partnerName);
-        const partnerKey = partnerUid ? `${platform}:${partnerUid}` : null;
-
-        confirmed[targetKey] = confirmed[targetKey].filter(ev => !(ev.day === day && ev.time === time));
-        if (partnerKey && confirmed[partnerKey]) {
-            confirmed[partnerKey] = confirmed[partnerKey].filter(ev => !(ev.day === day && ev.time === time));
-        }
-        mainKvSet("b_confirmedSchedule", confirmed);
-        seal.replyToSender(ctx, msg, `✅ 已精准抹除 ${name} 与 ${partnerName} 在 ${day} ${time} 的约会记录。`);
+    // 统一按 group（本场次群号）+ day + time 精确匹配删除，覆盖 2人私约/多人小群/官约/官电 等所有类型。
+    // 原来靠 appointment.partner 区分"多人小群"和单个角色名，但官约/官电的 partner 存的是
+    // "官约（张三、李四）"这种格式化字符串，既不等于"多人小群"也不是真实角色名，会导致同场其他参与者漏删、
+    // 残留记录后续把他们误判为时间冲突
+    const gid = appointment.group;
+    let deletedCount = 0;
+    for (let uid in confirmed) {
+        const before = confirmed[uid].length;
+        confirmed[uid] = confirmed[uid].filter(ev => !(ev.group === gid && ev.day === day && ev.time === time));
+        if (confirmed[uid].length < before) deletedCount++;
     }
+    mainKvSet("b_confirmedSchedule", confirmed);
+    seal.replyToSender(ctx, msg, `✅ 已根据群号(${gid})精准抹除 ${day} ${time} 场次的排期，共影响 ${deletedCount} 人。`);
 
     return seal.ext.newCmdExecuteResult(true);
 };
@@ -1525,6 +1521,175 @@ cmd_check_rewards.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["查奖励情况"] = cmd_check_rewards;
+
+// ========================
+// ── 全部复盘 / 查看复盘
+// ========================
+let cmd_review_list = seal.ext.newCmdItemInfo();
+cmd_review_list.name = "全部复盘";
+cmd_review_list.help = `用法：。全部复盘
+仅复盘模式的季度可用。查看自己在本季度所有已结场次（类型/时间/地点/伙伴），以合并消息返回并编号。
+编号仅对本次结果有效，用「查看复盘 编号」查看对应场次完整内容。`;
+cmd_review_list.solve = (ctx, msg, cmdArgs) => {
+    if (!isArchiveEnabled()) {
+        seal.replyToSender(ctx, msg, "❌ 未启用 RP 存档传输，无法查看复盘");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    if ((mainStorGet("season_mode") || "review") !== "review") {
+        seal.replyToSender(ctx, msg, "❌ 当前季度未启用复盘模式，无法查看复盘");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const platform = msg.platform;
+    const roleName = getRoleName(ctx, msg);
+    if (!roleName) {
+        seal.replyToSender(ctx, msg, "❌ 未找到你的角色，请先创建角色。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const uid   = msg.sender.userId.replace(`${platform}:`, "");
+    const base  = getArchiveBase();
+    const token = getArchiveToken();
+    if (!base) {
+        seal.replyToSender(ctx, msg, "❌ 未配置 RP 存档服务器地址。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    (async () => {
+        try {
+            const resp = await fetch(`${base}/api/my_sessions?role_name=${encodeURIComponent(roleName)}&limit=30`, {
+                headers: { "X-Archive-Token": token }
+            });
+            if (!resp.ok) {
+                seal.replyToSender(ctx, msg, `❌ 拉取存档失败（HTTP ${resp.status}）`);
+                return;
+            }
+            const data = await resp.json();
+            if (!data.ok || !data.sessions) {
+                seal.replyToSender(ctx, msg, "❌ 存档返回格式异常");
+                return;
+            }
+            if (!data.sessions.length) {
+                seal.replyToSender(ctx, msg, "📭 你在本季度暂无已结场次记录");
+                return;
+            }
+
+            const botUid = ctx.endPoint.userId;
+            const gidInt = parseInt(msg.groupId.replace(/[^\d]/g, ""), 10);
+            const nodes  = [];
+
+            nodes.push({ type: "node", data: { name: "全部复盘", uin: botUid,
+                content: `📋 ${roleName} 本季度已结场次共 ${data.sessions.length} 场\n` +
+                         `引用「查看复盘 编号」查看对应场次完整内容（编号仅本次有效）` } });
+
+            const indexMap = [];
+            data.sessions.forEach((session, i) => {
+                const no = i + 1;
+                indexMap.push(session.id);
+                const subtype   = (session.subtype || "").replace(/\|补戏$/, "").trim();
+                const typeLabel = getCustomTypeLabel(subtype) || subtype || "通用";
+                const partners  = (session.participants || []).filter(n => n !== roleName);
+                const content = [
+                    `#${no}`,
+                    `📌 ${session.game_day || "日期未知"} ${session.game_time || ""}`,
+                    `📍 ${session.place || "地点未知"}　类型：${typeLabel}`,
+                    `👥 伙伴：${partners.length ? partners.join("、") : "（无）"}`,
+                ].join("\n");
+                nodes.push({ type: "node", data: { name: `#${no}`, uin: botUid, content } });
+            });
+
+            const cache = mainKvGet("review_index_cache", {});
+            cache[`${platform}:${uid}`] = indexMap;
+            mainKvSet("review_index_cache", cache);
+
+            ws({ action: "send_group_forward_msg", params: { group_id: gidInt, messages: nodes } }, ctx, msg, "");
+        } catch (e) {
+            seal.replyToSender(ctx, msg, `❌ 请求异常：${e.message || String(e)}`);
+        }
+    })();
+
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["全部复盘"] = cmd_review_list;
+
+let cmd_review_view = seal.ext.newCmdItemInfo();
+cmd_review_view.name = "查看复盘";
+cmd_review_view.help = `用法：。查看复盘 编号
+查看「全部复盘」结果中指定编号场次的完整内容，以合并消息返回。编号需先用「全部复盘」获取。`;
+cmd_review_view.solve = (ctx, msg, cmdArgs) => {
+    if (!isArchiveEnabled()) {
+        seal.replyToSender(ctx, msg, "❌ 未启用 RP 存档传输，无法查看复盘");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const platform = msg.platform;
+    const uid   = msg.sender.userId.replace(`${platform}:`, "");
+    const noArg = parseInt(cmdArgs.getArgN(1), 10);
+    if (!noArg || noArg < 1) {
+        seal.replyToSender(ctx, msg, "❌ 用法：。查看复盘 编号（先用「全部复盘」查看编号）");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const cache     = mainKvGet("review_index_cache", {});
+    const indexMap  = cache[`${platform}:${uid}`] || [];
+    const sessionId = indexMap[noArg - 1];
+    if (!sessionId) {
+        seal.replyToSender(ctx, msg, "❌ 编号无效，请先用「全部复盘」重新查看编号");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const base  = getArchiveBase();
+    const token = getArchiveToken();
+    if (!base) {
+        seal.replyToSender(ctx, msg, "❌ 未配置 RP 存档服务器地址。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    (async () => {
+        try {
+            const resp = await fetch(`${base}/api/session_full/${encodeURIComponent(sessionId)}`, {
+                headers: { "X-Archive-Token": token }
+            });
+            if (!resp.ok) {
+                seal.replyToSender(ctx, msg, `❌ 拉取存档失败（HTTP ${resp.status}）`);
+                return;
+            }
+            const data = await resp.json();
+            if (!data.ok || !data.session) {
+                seal.replyToSender(ctx, msg, "❌ 存档返回格式异常，或该场次已不存在");
+                return;
+            }
+
+            const session   = data.session;
+            const entries   = data.entries || [];
+            const subtype   = (session.subtype || "").replace(/\|补戏$/, "").trim();
+            const typeLabel = getCustomTypeLabel(subtype) || subtype || "通用";
+            const botUid = ctx.endPoint.userId;
+            const gidInt = parseInt(msg.groupId.replace(/[^\d]/g, ""), 10);
+            const nodes  = [];
+
+            nodes.push({ type: "node", data: { name: `复盘 #${noArg}`, uin: botUid,
+                content: `📌 ${session.game_day || "日期未知"} ${session.game_time || ""}\n` +
+                         `📍 ${session.place || "地点未知"}　类型：${typeLabel}\n` +
+                         `👥 参与者：${(session.participants || []).join("、") || "（无）"}` } });
+
+            if (!entries.length) {
+                nodes.push({ type: "node", data: { name: "提示", uin: botUid, content: "（本场无 RP 正文记录）" } });
+            } else {
+                entries.forEach(e => {
+                    nodes.push({ type: "node", data: { name: e.role_name || "未知", uin: botUid, content: e.content || "" } });
+                });
+            }
+
+            ws({ action: "send_group_forward_msg", params: { group_id: gidInt, messages: nodes } }, ctx, msg, "");
+        } catch (e) {
+            seal.replyToSender(ctx, msg, `❌ 请求异常：${e.message || String(e)}`);
+        }
+    })();
+
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["查看复盘"] = cmd_review_view;
 
 // ========================
 // 修改/拒绝时间线（无前缀，通过 onNotCommandReceived 处理）

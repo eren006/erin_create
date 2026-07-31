@@ -33,6 +33,14 @@ function getRoleName(ctx, msg)             { return getApi()?.getRoleName(ctx, m
 function getRoleUid(platform, roleName)    { return getApi()?.getUidByRoleName(platform, roleName) ?? null; }
 function isUserAdmin(ctx, msg)             { return getApi()?.isUserAdmin(ctx, msg) ?? false; }
 function ws(postData, ctx, msg, ok)        { return getApi()?.ws(postData, ctx, msg, ok); }
+function getSafeEndPoint(platform = "QQ") {
+    const api = getApi();
+    if (api) return api.getSafeEndPoint(platform);
+    // 兼容独立运行：主插件未加载时走本地实现
+    const eps = seal.getEndPoints();
+    if (!eps || !eps.length) return null;
+    return eps.find(e => e.platform === platform && e.state === 1) || eps.find(e => e.state === 1) || eps[0];
+}
 // 向后兼容：存储辅助函数中 getMainExt() 仅作存在性守卫
 function getMainExt()                      { return getApi(); }
 const isArchiveEnabled = (...a) => getApi()?.isArchiveEnabled(...a) ?? false;
@@ -96,14 +104,14 @@ function getAttrDefs() {
     const main = getMainExt();
     if (!main) return {};
     let defs = {};
-    try { defs = mainKvGet("rpg_attr_defs", {}); } catch(e) {}
+    try { defs = mainKvGet("rpg_attr_defs", {}); } catch(e) { console.error("[RPG] getAttrDefs 读取 rpg_attr_defs 失败:", e.message); }
     if (!Object.keys(defs).length) {
         let migrated = false;
         for (const key of ["sys_attr_presets", "item_valid_attrs"]) {
             try {
                 const arr = mainKvGet(key, []);
                 if (Array.isArray(arr)) arr.forEach(n => { if (n && !defs[n]) { defs[n] = { min: null, max: null, default: 0, desc: "" }; migrated = true; } });
-            } catch(e) {}
+            } catch(e) { console.error(`[RPG] getAttrDefs 迁移旧字段 ${key} 失败:`, e.message); }
         }
         if (migrated) {
             mainKvSet("rpg_attr_defs", defs);
@@ -340,6 +348,15 @@ function findItem(reg, input) {
     const code = input.toUpperCase();
     if (reg[code]) return reg[code];
     return Object.values(reg).find(r => r.name === input) || null;
+}
+
+// 挂单里存的 currencyCode 可能因货币重新注册而失配（背包按新 code 有余额，
+// 挂单却按创建时的旧 code 查询）。买卖时按 currencyName 现查一次注册表校正，
+// 避免每次都要手动跑「修复商城货币」。
+function resolveListingCurrencyCode(reg, listing) {
+    if (reg[listing.currencyCode]?.type === "currency") return listing.currencyCode;
+    const found = Object.entries(reg).find(([, info]) => info.type === "currency" && info.name === listing.currencyName);
+    return found ? found[0] : listing.currencyCode;
 }
 
 // ========================
@@ -1287,10 +1304,12 @@ cmd_buy.solve = (ctx, msg, cmdArgs) => {
     const shop = getShop();
     const listing = shop.find(s => s.code === item.code);
     if (!listing) return seal.replyToSender(ctx, msg, `❌ 商城中没有 [${item.code}]${item.name}，发送「商城」查看。`);
+    const currencyCode = resolveListingCurrencyCode(reg, listing);
+    if (currencyCode !== listing.currencyCode) { listing.currencyCode = currencyCode; saveShop(shop); }
     const totalCost = listing.price * count;
-    const hasCurrency = getInvCount(roleKey, listing.currencyCode);
+    const hasCurrency = getInvCount(roleKey, currencyCode);
     if (hasCurrency < totalCost) return seal.replyToSender(ctx, msg, `❌ ${listing.currencyName}不足。需要 ${totalCost}，持有 ${hasCurrency}。`);
-    removeFromInv(roleKey, listing.currencyCode, totalCost);
+    removeFromInv(roleKey, currencyCode, totalCost);
     addToInv(roleKey, item.code, count);
     seal.replyToSender(ctx, msg, `✅ 购买成功！获得 [${item.code}]${item.name} ×${count}，花费 ${totalCost}${listing.currencyName}`);
     return seal.ext.newCmdExecuteResult(true);
@@ -1331,12 +1350,15 @@ cmd_give_item.solve = (ctx, msg, cmdArgs) => {
     if (!itemInfo) return seal.replyToSender(ctx, msg, `❌ 未知物品「${inputCode}」`);
 
     // --- 核心修改：手动处理背包转移以保留 remainingUses ---
+    // 同一物品码可能因剩余次数不同拆成多条堆叠，赠送只能从单一堆叠转出（否则 remainingUses 无法确定）
+    // 因此优先找“单独就够数量”的那一叠，而不是盲目取第一条匹配（可能只是恰好排在前面的小堆叠）
     let fromInv = getInv(fromRoleKey);
-    let itemIdx = fromInv.findIndex(i => i.code === itemInfo.code);
+    let itemIdx = fromInv.findIndex(i => i.code === itemInfo.code && i.count >= count);
 
-    if (itemIdx === -1 || fromInv[itemIdx].count < count) {
-        const has = itemIdx === -1 ? 0 : fromInv[itemIdx].count;
-        return seal.replyToSender(ctx, msg, `❌ [${itemInfo.code}]${itemInfo.name} 不足（持有 ${has}，需要 ${count}）。`);
+    if (itemIdx === -1) {
+        const has = getInvCount(fromRoleKey, itemInfo.code);
+        const splitHint = has >= count ? "（持有量分散在多个剩余次数不同的堆叠中，单次赠送需来自同一堆叠，请拆分数量分次赠送）" : "";
+        return seal.replyToSender(ctx, msg, `❌ [${itemInfo.code}]${itemInfo.name} 不足（持有 ${has}，需要 ${count}）。${splitHint}`);
     }
 
     // 记录赠送者当前的剩余次数
@@ -1566,12 +1588,15 @@ cmd_sell.solve = (ctx, msg, cmdArgs) => {
     if (!currency) return seal.replyToSender(ctx, msg, `❌ 未找到货币「${currencyName}」。`);
 
     // --- 核心逻辑修改：手动处理背包扣除，以获取 remainingUses ---
+    // 同一物品码可能因剩余次数不同拆成多条堆叠，一次上架只能来自单一堆叠（否则 remainingUses 无法确定）
+    // 因此优先找“单独就够数量”的那一叠，而不是盲目取第一条匹配（可能只是恰好排在前面的小堆叠）
     let inv = getInv(roleKey);
-    let invIndex = inv.findIndex(i => i.code === item.code);
+    let invIndex = inv.findIndex(i => i.code === item.code && i.count >= count);
 
-    if (invIndex === -1 || inv[invIndex].count < count) {
-        const has = invIndex === -1 ? 0 : inv[invIndex].count;
-        return seal.replyToSender(ctx, msg, `❌ [${item.code}]${item.name} 不足（持有 ${has}，需要 ${count}）。`);
+    if (invIndex === -1) {
+        const has = getInvCount(roleKey, item.code);
+        const splitHint = has >= count ? "（持有量分散在多个剩余次数不同的堆叠中，单次上架需来自同一堆叠，请拆分数量分次上架）" : "";
+        return seal.replyToSender(ctx, msg, `❌ [${item.code}]${item.name} 不足（持有 ${has}，需要 ${count}）。${splitHint}`);
     }
 
     let userItem = inv[invIndex];
@@ -1689,17 +1714,21 @@ cmd_market.solve = (ctx, msg, cmdArgs) => {
         const fee = Math.ceil(totalPrice * cfg.fee / 100);
         const totalCost = totalPrice + fee;
 
+        // 校正挂单里可能失配的 currencyCode（见 resolveListingCurrencyCode 注释）
+        const currencyCode = resolveListingCurrencyCode(reg, listing);
+        if (currencyCode !== listing.currencyCode) { listing.currencyCode = currencyCode; saveMarket(market); }
+
         // 检查买家余额
-        const hasCurrency = getInvCount(buyerRoleKey, listing.currencyCode);
+        const hasCurrency = getInvCount(buyerRoleKey, currencyCode);
         if (hasCurrency < totalCost) {
             return seal.replyToSender(ctx, msg, `❌ ${listing.currencyName}不足。需要 ${totalCost}（含费），持有 ${hasCurrency}。`);
         }
 
         // --- 执行交易 ---
         // 1. 扣除买家钱款
-        removeFromInv(buyerRoleKey, listing.currencyCode, totalCost);
+        removeFromInv(buyerRoleKey, currencyCode, totalCost);
         // 2. 将原价（不含手续费）给卖家
-        addToInv(sellerRoleKey, listing.currencyCode, totalPrice);
+        addToInv(sellerRoleKey, currencyCode, totalPrice);
 
         // 3. 【核心修改】买家获得物品，且必须继承剩余次数
         let buyerInv = getInv(buyerRoleKey);
@@ -1866,8 +1895,12 @@ function tradeItemsText(items) {
 }
 function checkHasItems(roleKey, items) {
     const reg = getRegistry(); const eq = getEquipRegistry();
+    // 先按物品码合并数量，避免同一物品码在给/要列表中重复出现时，逐条独立校验各自都"够"、
+    // 但汇总需求量其实超过实际持有量（会被用来无中生有复制物品）
+    const totals = new Map();
+    for (const { code, count } of items) totals.set(code, (totals.get(code) || 0) + count);
     const missing = [];
-    for (const { code, count } of items) {
+    for (const [code, count] of totals) {
         const have = getInvCount(roleKey, code);
         if (have < count) {
             const info = reg[code] || eq[code];
@@ -1892,6 +1925,7 @@ cmd_trade.help = [
     "交易 撤回 [单号]   — 撤回自己发出的提案",
     "交易 列表         — 查看我的所有进行中及近期交易",
     "交易 详情 [单号]  — 查看完整的交易内容",
+    "交易 设定（管理员）— 配置每日上限/冷却时间，详见「交易 设定」",
     "示例：交易 提出 李四 给:ITEM_001×2 要:ITEM_002×1 换个好东西"
 ].join("\n");
 cmd_trade.solve = (ctx, msg, cmdArgs) => {
@@ -2147,7 +2181,34 @@ cmd_trade.solve = (ctx, msg, cmdArgs) => {
 };
 ext.cmdMap["交易"] = cmd_trade;
 
-// cmd_trade_config 保留供 交易 设定 子命令调用
+// 交易 设定 子命令的实现（不再作为独立命令注册，仅供 cmd_trade.solve 调用）
+let cmd_trade_config = seal.ext.newCmdItemInfo();
+cmd_trade_config.name = "交易设定";
+cmd_trade_config.help = "【管理员】配置议价交易限制\n交易 设定 查看\n交易 设定 每日上限 N   — 每人每游戏日最多完成 N 笔（0=不限）\n交易 设定 冷却 N       — 完成后冷却 N 分钟才能再次提出/接受（0=不限）";
+cmd_trade_config.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足。");
+    const sub = cmdArgs.getArgN(1);
+    const cfg = getTradeConfig();
+    if (!sub || sub === "查看") {
+        return seal.replyToSender(ctx, msg,
+            `💱 交易系统设定：\n每日上限：${cfg.daily_limit > 0 ? cfg.daily_limit + " 次" : "不限"}\n冷却时间：${cfg.cooldown_minutes > 0 ? cfg.cooldown_minutes + " 分钟" : "不限"}`);
+    }
+    if (sub === "每日上限") {
+        const n = parseInt(cmdArgs.getArgN(2));
+        if (isNaN(n) || n < 0) return seal.replyToSender(ctx, msg, "❌ 请输入 0 或正整数（0=不限）。");
+        cfg.daily_limit = n;
+        saveTradeConfig(cfg);
+        return seal.replyToSender(ctx, msg, `✅ 每日交易上限已设为：${n > 0 ? n + " 次" : "不限"}`);
+    }
+    if (sub === "冷却") {
+        const n = parseInt(cmdArgs.getArgN(2));
+        if (isNaN(n) || n < 0) return seal.replyToSender(ctx, msg, "❌ 请输入 0 或正整数分钟（0=不限）。");
+        cfg.cooldown_minutes = n;
+        saveTradeConfig(cfg);
+        return seal.replyToSender(ctx, msg, `✅ 交易冷却已设为：${n > 0 ? n + " 分钟" : "不限"}`);
+    }
+    return seal.replyToSender(ctx, msg, cmd_trade_config.help);
+};
 
 let cmd_draw = seal.ext.newCmdItemInfo();
 cmd_draw.name = "抽取";
@@ -3402,7 +3463,7 @@ function getEffectiveBattleAttrs(playerName, roleKey) {
                 if (bonus[attr]) result[attr] = Math.max(0, result[attr] + bonus[attr]);
             }
         }
-    } catch(e) {}
+    } catch(e) { console.error(`[RPG] getEffectiveBattleAttrs(${playerName}) 计算装备加成失败:`, e.message); }
     return result;
 }
 
@@ -4101,6 +4162,9 @@ cmd_surrender.solve = (ctx, msg, cmdArgs) => {
     if (!found) return seal.replyToSender(ctx, msg, "❌ 你未参加进行中的战斗。");
     const { data, battle } = found;
 
+    if (getCurrentBattlePlayer(battle) !== player)
+        return seal.replyToSender(ctx, msg, `❌ 还没到你的回合，当前：${getCurrentBattlePlayer(battle)}`);
+
     const isEscape = msg.message.includes("逃跑");
     if (isEscape) {
         const escapeRate = config.escapeRate !== undefined ? config.escapeRate : 30;
@@ -4114,11 +4178,12 @@ cmd_surrender.solve = (ctx, msg, cmdArgs) => {
         battle.actions.push({ turn: battle.currentTurn, actor: player, action: "surrender" });
     }
 
+    // 只标记自己退出，是否结束整场战斗交给 _afterAction 统一判定（存活人数<=1 才真正结算），
+    // 三人及以上混战中不应因为一人投降/逃跑就打断其他人的对战
     battle.playerStates[player].alive = false;
-    const resultMsg = resolveBattleEnd(battle);
-    saveAttackDefenseData(data);
+    const tail = _afterAction(data, battle);
     const prefix = isEscape ? `💨 ${player} 成功逃离！` : `🏳️ ${player} 投降！`;
-    return seal.replyToSender(ctx, msg, `${prefix}\n\n${resultMsg}`);
+    return seal.replyToSender(ctx, msg, `${prefix}\n\n${tail}`);
 };
 ext.cmdMap["投降"] = cmd_surrender;
 ext.cmdMap["逃跑"] = cmd_surrender;
@@ -4752,7 +4817,7 @@ function savePlayerEquips(roleKey, equips) {
         const data = mainKvGet("player_equipments", {});
         data[roleKey] = equips;
         mainKvSet("player_equipments", data);
-    } catch(e) {}
+    } catch(e) { console.error(`[RPG] savePlayerEquips(${roleKey}) 保存失败:`, e.message); }
 }
 
 function generateEquipCode(registry) {
@@ -4805,7 +4870,7 @@ function getTotalEquipBonus(playerEquips, registry) {
 
 let cmd_equip = seal.ext.newCmdItemInfo();
 cmd_equip.name = "装备";
-cmd_equip.help = "装备或查看装备\n装备 <装备名或代码>    - 穿上装备\n装备 脱 <槽位>         - 卸下装备\n查看装备                - 显示当前装备及属性加成\n装备列表                - 查看所有可用装备\n装备详情 <装备码>       - 查看装备详细信息\n\n💡 槽位由管理员定义，执行「槽位 查看」看可用槽位。";
+cmd_equip.help = "装备或查看装备\n装备 <装备名或代码>    - 穿上装备\n装备 脱 <槽位>         - 卸下装备\n装备                    - 显示当前装备及属性加成\n装备 列表（管理员）     - 查看所有可用装备\n装备 详情 <装备码>      - 查看装备详细信息\n\n💡 槽位由管理员定义，执行「槽位 查看」看可用槽位。";
 cmd_equip.solve = (ctx, msg, cmdArgs) => {
     const player = getRoleName(ctx, msg);
     if (!player) return seal.replyToSender(ctx, msg, "❌ 无法获取你的角色信息。");
@@ -5196,7 +5261,7 @@ function doEquipSlots(ctx, msg, subCmd, arg2, arg3) {
                     delete data[roleKey][slotCode];
                 }
                 mainKvSet("player_equipments", data);
-            } catch(e) {}
+            } catch(e) { console.error(`[RPG] 删除槽位 ${slotCode} 时清理玩家装备数据失败:`, e.message); }
         }
 
         return seal.replyToSender(ctx, msg, `✅ 已删除槽位「${slotCode}」。\n\n现在共有 ${slots.length} 个槽位。\n\n⚠️ 该槽位上的装备已卸除。`);
@@ -5229,7 +5294,10 @@ function doRepair(ctx, msg, targetRole, slotFilterArg) {
 
     const allEquips = mainKvGet("player_equipments", {});
     const equipReg = getEquipRegistry();
-    const rk = targetRole;
+    const platform = msg.platform;
+    const targetUid = getRoleUid(platform, targetRole);
+    if (!targetUid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${targetRole}」。`);
+    const rk = `${platform}:${targetUid}`;
     const playerEquips = allEquips[rk];
     if (!playerEquips) return seal.replyToSender(ctx, msg, `❌ 角色「${targetRole}」暂无装备记录。`);
 
@@ -5867,7 +5935,7 @@ cmd_profile.solve = (ctx, msg, cmdArgs) => {
             if (rel.confirmed) confirmed++;
             if (rel.initiator === roleName) initiated++; else received++;
         }
-    } catch(e) {}
+    } catch(e) { console.error(`[RPG] 读取 ${roleName} 关系线数据失败:`, e.message); }
 
     const lines = [
         `📋 角色档案：${roleName}`,
@@ -5935,16 +6003,17 @@ ext.cmdMap["批量发放"] = cmd_batch_give;
 // ========================
 
 function getCollections() {
-    return JSON.parse(ext.storageGet("scheduled_collections") || "{}");
+    const primary = mainKvGet("scheduled_collections", null);
+    if (primary !== null) return primary;
+    // 兼容旧版本：数据曾存在 changriRPG 本地 ext，此处一次性迁移到主插件共享存储
+    let legacy = {};
+    try { legacy = JSON.parse(ext.storageGet("scheduled_collections") || "{}"); }
+    catch (e) { console.error("[定时收集] 旧数据解析失败:", e.message); }
+    if (Object.keys(legacy).length) mainKvSet("scheduled_collections", legacy);
+    return legacy;
 }
 function saveCollections(cols) {
-    ext.storageSet("scheduled_collections", JSON.stringify(cols));
-}
-
-function getSafeEndPointRPG(platform) {
-    const eps = seal.getEndPoints();
-    if (!eps || !eps.length) return null;
-    return eps.find(e => e.platform === platform && e.state === 1) || eps.find(e => e.state === 1) || eps[0];
+    mainKvSet("scheduled_collections", cols);
 }
 
 function sendToAdminGroupRPG(platform, text) {
@@ -5953,7 +6022,7 @@ function sendToAdminGroupRPG(platform, text) {
     const gid = mainKvGet("adminAnnounceGroupId", null);
     if (!gid) return;
     try {
-        const ep = getSafeEndPointRPG(platform);
+        const ep = getSafeEndPoint(platform);
         if (!ep) return;
         const m = seal.newMessage();
         m.messageType = "group";
@@ -5974,7 +6043,7 @@ function broadcastToAllPlayerGroups(platform, text, withAt) {
             const gid = info[1];
             if (!gid) return;
             try {
-                const ep = getSafeEndPointRPG(platform);
+                const ep = getSafeEndPoint(platform);
                 if (!ep) return;
                 const m = seal.newMessage();
                 m.messageType = "group";
@@ -5986,7 +6055,7 @@ function broadcastToAllPlayerGroups(platform, text, withAt) {
         const gids = [...new Set(Object.values(groups).map(v => v[1]).filter(Boolean))];
         gids.forEach(gid => {
             try {
-                const ep = getSafeEndPointRPG(platform);
+                const ep = getSafeEndPoint(platform);
                 if (!ep) return;
                 const m = seal.newMessage();
                 m.messageType = "group";

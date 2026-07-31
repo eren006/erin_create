@@ -52,12 +52,26 @@ function getChangriRoleName(ctx, msg) {
     return api.getRoleName(ctx, msg) ?? msg.sender.nickname;
 }
 
+// ── 本地存储缓存层（写穿）──────────────────────────────────────────────
+// 本插件自身数据（晚餐进度/巡逻游戏/冷却时间戳）都是 dinner_system 私有 ext 存储，
+// 与主插件 changri 无关；仿主插件写穿缓存，减少高频读的存储击穿。
+const _kvCache = Object.create(null);
+function cachedGet(key) {
+    if (!(key in _kvCache)) _kvCache[key] = ext.storageGet(key);
+    return _kvCache[key];
+}
+function cachedSet(key, val) {
+    const str = typeof val === "string" ? val : String(val);
+    ext.storageSet(key, str);
+    _kvCache[key] = str;
+}
+
 // ========================
 // 晚餐数据存取（支持兼容旧版）
 // ========================
 
 function getDinnerData() {
-    const raw = ext.storageGet("dinner_system_data");
+    const raw = cachedGet("dinner_system_data");
     if (!raw) return null;
     let data;
     try {
@@ -74,13 +88,13 @@ function getDinnerData() {
         };
         delete data.bubbleGame;
         // 立即保存迁移后的数据
-        ext.storageSet("dinner_system_data", JSON.stringify(data));
+        cachedSet("dinner_system_data", JSON.stringify(data));
     }
     return data;
 }
 
 function saveDinnerData(data) {
-    ext.storageSet("dinner_system_data", JSON.stringify(data));
+    cachedSet("dinner_system_data", JSON.stringify(data));
 }
 
 // ========================
@@ -784,13 +798,13 @@ cmd_poke.solve = (ctx, msg, cmdArgs) => {
     const rawUid = msg.sender.userId.replace(`${platform}:`, "");
 
     // 读取主插件的角色绑定数据
-    let crExt = seal.ext.find('changri');
-    if (!crExt) {
+    const api = getApi();
+    if (!api) {
         seal.replyToSender(ctx, msg, "❌ 未找到主插件 changri，无法使用此功能");
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    const uid = getChangriPrimaryUid(crExt, platform, rawUid);
+    const uid = api.getPrimaryUid(platform, rawUid);
 
     // 获取 a_private_group
     let rawData = mainStorGet("a_private_group");
@@ -825,7 +839,7 @@ cmd_poke.solve = (ctx, msg, cmdArgs) => {
 
     // ⏳ 冷却检查（5分钟）
     const cooldownKey = `poke_cooldown_${platform}:${uid}`;
-    const lastPoke = parseInt(ext.storageGet(cooldownKey) || "0");
+    const lastPoke = parseInt(cachedGet(cooldownKey) || "0");
     const now = Date.now();
     const cooldownDuration = 5 * 60 * 1000; // 5分钟
 
@@ -882,7 +896,7 @@ cmd_poke.solve = (ctx, msg, cmdArgs) => {
     }
 
     // 更新冷却
-    ext.storageSet(cooldownKey, now.toString());
+    cachedSet(cooldownKey, now.toString());
 
     // 获取目标私密群信息
     const [targetUid, targetVal] = targetUidEntry;
@@ -913,10 +927,10 @@ ext.cmdMap["戳你一下"] = cmd_poke;
 // =========================
 
 function _gg_getState() {
-  return JSON.parse(ext.storageGet("guard_game_state") || "{}");
+  return JSON.parse(cachedGet("guard_game_state") || "{}");
 }
 function _gg_saveState(s) {
-  ext.storageSet("guard_game_state", JSON.stringify(s || {}));
+  cachedSet("guard_game_state", JSON.stringify(s || {}));
 }
 function _gg_aliasOf(fullUid) {
   try {
@@ -975,12 +989,12 @@ function _gg_getAnnounceGroup(platform) {
 }
 
 function _gg_getLocations() {
-  const saved = ext.storageGet("guard_game_locations");
+  const saved = cachedGet("guard_game_locations");
   if (saved) {
     try {
       const locs = JSON.parse(saved);
       if (Array.isArray(locs) && locs.length >= 2) return locs;
-    } catch (e) {}
+    } catch (e) { console.error("[晚餐] 解析 guard_game_locations 失败:", e.message); }
   }
   return ["伦敦", "巴黎", "罗马", "君士坦丁堡", "北京", "京都", "莫斯科", "维也纳", "开罗", "德里"];
 }
@@ -1004,7 +1018,7 @@ cmd_guard_set_locations.solve = (ctx, msg, args) => {
     seal.replyToSender(ctx, msg, "❌ 至少需要2个地点。");
     return seal.ext.newCmdExecuteResult(true);
   }
-  ext.storageSet("guard_game_locations", JSON.stringify(locs));
+  cachedSet("guard_game_locations", JSON.stringify(locs));
   seal.replyToSender(ctx, msg, `✅ 地点已更新（${locs.length}个）：${locs.join("、")}\n下次开局将自动使用这批地点。`);
   return seal.ext.newCmdExecuteResult(true);
 };

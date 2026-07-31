@@ -42,6 +42,9 @@ function ws(postData, ctx, msg, ok)        { return getApi()?.ws(postData, ctx, 
 // ========================
 
 function getSafeEndPoint(platform = "QQ") {
+    const api = getApi();
+    if (api) return api.getSafeEndPoint(platform);
+    // 兼容独立运行：主插件未加载时走本地实现
     const eps = seal.getEndPoints();
     if (!eps || eps.length === 0) return null;
     let target = eps.find(e => e.platform === platform && e.state === 1);
@@ -937,6 +940,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
         }
     }
 
+    if (raw.startsWith("上传礼品")) return cmd_upload_gift.solve(ctx, msg);
     if (raw === "礼品店") return cmd_view_preset_gifts.solve(ctx, msg);
     if (raw === "图鉴" || raw === "我的图鉴" || raw.startsWith("图鉴 ") || raw.startsWith("我的图鉴 ")) {
         const rest = raw.replace(/^(我的)?图鉴/, "").trim();
@@ -1047,9 +1051,22 @@ const WishUtils = {
     getPool: () => {
         const now = Date.now(), exp = 86400000;
         const raw = mainKvGet("a_wishPool", []);
+        const expired = raw.filter(w => now - w.timestamp >= exp);
         const p = raw.filter(w => now - w.timestamp < exp);
         // Bug4修复：有过期条目时清理存储
         if (p.length < raw.length) mainKvSet("a_wishPool", p);
+        // 自然过期（无人摘取、未手动撤回）时，悬赏押注的物品退回发布者背包，避免无提示地凭空消失
+        for (const w of expired) {
+            if (!w.rewardCode) continue;
+            wishAddToInv(w.fromId, w.rewardCode, w.rewardCount);
+            const platform = (w.fromId || "").split(":")[0];
+            const fromName = platform ? getUserRoleName(platform, w.fromId) : null;
+            const details = fromName ? getRoleDetails(platform, fromName) : null;
+            if (details && details.gid) {
+                sendTextToGroup(platform, details.gid,
+                    `⏳ 你悬赏发布的心愿（编号 ${w.id}）已过期无人摘取，悬赏物品「${w.rewardName}」×${w.rewardCount} 已退回背包。`);
+            }
+        }
         return p;
     },
     savePool: (p) => mainKvSet("a_wishPool", p),
@@ -1586,6 +1603,57 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
 // 🛒 礼品店
 // ========================
 
+let cmd_upload_gift = {};
+cmd_upload_gift.name = "上传礼品";
+cmd_upload_gift.help = `【管理员】批量上传预设礼品到礼品店
+格式：[#编号 ]名称*内容
+  不填编号则自动顺延（#001、#002…）
+支持多行一次性批量录入，示例：
+  上传礼品 玫瑰花束*一束盛开的玫瑰
+  上传礼品
+  #010 巧克力*一盒黑巧克力
+  怀表*古旧的银色怀表`;
+cmd_upload_gift.solve = (ctx, msg) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+
+    const raw = (msg.rawMessage || msg.message || "").trim();
+    const msgLines = raw.split(/\r?\n/);
+    const firstRest = msgLines[0].replace(/^上传礼品\s*/, "").trim();
+    const extraLines = msgLines.slice(1).map(l => l.trim()).filter(l => l);
+    const lines = [...(firstRest ? [firstRest] : []), ...extraLines];
+
+    if (!lines.length) return seal.replyToSender(ctx, msg, cmd_upload_gift.help);
+
+    const presetGifts = mainKvGet("preset_gifts", {});
+    const nextGiftCode = () => {
+        const nums = Object.keys(presetGifts).map(k => k.match(/^#(\d+)$/)).filter(Boolean).map(m => parseInt(m[1], 10));
+        return "#" + String((nums.length ? Math.max(...nums) : 0) + 1).padStart(3, "0");
+    };
+
+    const results = [];
+    for (const line of lines) {
+        let code = null;
+        let rest = line;
+        const codeM = rest.match(/^(#\d+)\s+(.+)$/);
+        if (codeM) { code = codeM[1]; rest = codeM[2]; }
+
+        const sepIdx = rest.indexOf("*");
+        if (sepIdx === -1) { results.push(`❌ 「${line.substring(0, 20)}」缺少「*」分隔名称和内容`); continue; }
+        const name = rest.slice(0, sepIdx).trim();
+        const content = rest.slice(sepIdx + 1).trim();
+        if (!name || !content) { results.push(`❌ 「${line.substring(0, 20)}」名称或内容为空`); continue; }
+
+        if (!code) code = nextGiftCode();
+        if (presetGifts[code]) { results.push(`⚠️ ${code} 已存在，跳过`); continue; }
+        presetGifts[code] = { name, content, usage_count: 0 };
+        results.push(`✅ ${code} 「${name}」`);
+    }
+
+    mainKvSet("preset_gifts", presetGifts);
+    seal.replyToSender(ctx, msg, `🎁 上传礼品结果（共${results.length}条）：\n${results.join("\n")}`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+
 let cmd_view_preset_gifts = {};
 cmd_view_preset_gifts.solve =(ctx, msg) => {
     if (!requireApi(ctx, msg)) return seal.ext.newCmdExecuteResult(true);
@@ -1611,7 +1679,7 @@ cmd_view_preset_gifts.solve =(ctx, msg) => {
     const owned = new Set(sightings[userKey]?.unlocked_gifts || []);
 
     let personalDisplay = {};
-    try { personalDisplay = mainKvGet("shop_personal_display", {}); } catch (e) {}
+    try { personalDisplay = mainKvGet("shop_personal_display", {}); } catch (e) { console.error("[社交] 读取 shop_personal_display 失败:", e.message); }
 
     const myDisplay = personalDisplay[userKey];
     const needsRefresh = !myDisplay || (now - myDisplay.refreshedAt) > refreshHours * 3600 * 1000;
