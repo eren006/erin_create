@@ -1579,6 +1579,34 @@ async def handle_buy_materials(event: MessageEvent, args=CommandArg()):
     )
 
 
+festival_cmd = on_command("节日食物")
+
+
+@festival_cmd.handle()
+async def handle_festival(event: MessageEvent):
+    current_festival = kitchen.get_current_festival()
+
+    if not current_festival:
+        await festival_cmd.finish("现在没有节日限定食物。\n等等，这不对…\n\n节日列表：\n"
+                                 "1月：新年\n2月：情人节\n4月：复活节\n10月：万圣节\n12月：圣诞节")
+        return
+
+    festival_foods = kitchen.get_available_festival_foods(current_festival)
+
+    lines = [f"🎉 {current_festival}限定食物"]
+    lines.append(f"（仅{current_festival}期间可制作）\n")
+
+    for key, recipe in festival_foods.items():
+        lines.append(f"📍 {recipe['name']}")
+        lines.append(f"   {recipe['grade']}年级 | 经验{recipe['exp']}")
+        lines.append(f"   效果：{recipe['effect']}")
+        lines.append("")
+
+    lines.append(f"制作用法：/烹饪 食物名\n（比如 /烹饪 圣诞布丁）")
+
+    await festival_cmd.finish("\n".join(lines))
+
+
 # ======================== 竞选新人王 ========================
 
 

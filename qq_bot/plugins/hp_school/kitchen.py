@@ -760,6 +760,216 @@ TITLE_REQUIREMENTS = {
     "kitchen_expert": "累计成功烹饪100次",
 }
 
+# 节日限定食物（在特定月份可用）
+FESTIVAL_RECIPES = {
+    # 圣诞节（12月）- 温暖治愈主题
+    "christmas_pudding": {
+        "name": "圣诞布丁", "category": "dessert", "grade": 4, "exp": 32,
+        "ingredients": {"mat_flour": 2, "mat_dried_fruit": 2, "mat_cream": 1, "mat_honey": 1},
+        "effect": "恢复12点厨房活力；心情+3；下次课堂表现+2；节日限定",
+        "steps": (
+            ("果干浸泡。", ("全浸", "半浸", "不浸"), 0),
+            ("混合。", ("充分混", "轻混", "分层"), 1),
+            ("蒸制时间。", ("30分钟", "45分钟", "20分钟"), 0),
+        ),
+    },
+    "gingerbread_cookie": {
+        "name": "姜饼", "category": "snack", "grade": 3, "exp": 18,
+        "ingredients": {"mat_flour": 2, "mat_ginger": 1, "mat_honey": 1, "mat_sugar": 1},
+        "effect": "恢复7点厨房活力；心情+2；烹饪经验+10%；节日限定",
+        "steps": (
+            ("生姜。", ("新鲜", "干燥", "粉末"), 1),
+            ("面糊。", ("光滑", "颗粒", "粗糙"), 0),
+            ("烤时间。", ("12分钟", "15分钟", "10分钟"), 1),
+        ),
+    },
+    "mulled_wine_holiday": {
+        "name": "圣诞热红酒", "category": "beverage", "grade": 3, "exp": 20,
+        "ingredients": {"mat_wine": 2, "mat_cinnamon": 1, "mat_star_anise": 1, "mat_honey": 1},
+        "effect": "恢复9点厨房活力；心情+3；暖身驱寒；节日限定",
+        "steps": (
+            ("香料。", ("整个", "碎末", "磨粉"), 0),
+            ("加热。", ("轻轻热", "充分热", "烧开"), 1),
+            ("蜂蜜。", ("多", "少", "适量"), 0),
+        ),
+    },
+    "candy_cane": {
+        "name": "拐杖糖", "category": "snack", "grade": 2, "exp": 14,
+        "ingredients": {"mat_sugar": 2, "mat_peppermint": 1},
+        "effect": "恢复5点厨房活力；心情+2；节日限定",
+        "steps": (
+            ("温度。", ("140°C", "160°C", "120°C"), 0),
+            ("拉扯。", ("充分拉", "轻轻拉", "不拉"), 1),
+            ("塑型。", ("拐杖形", "棒形", "饼形"), 0),
+        ),
+    },
+
+    # 复活节（4月）- 春日希望主题
+    "chocolate_egg": {
+        "name": "复活节彩蛋", "category": "dessert", "grade": 3, "exp": 22,
+        "ingredients": {"mat_chocolate": 3, "mat_food_color": 1, "mat_sugar": 1},
+        "effect": "恢复8点厨房活力；心情+3；下次禁林采集+2材料；节日限定",
+        "steps": (
+            ("巧克力融化。", ("水浴", "直接", "隔热"), 0),
+            ("着色。", ("多色", "单色", "不着"), 1),
+            ("塑型。", ("蛋形", "球形", "方形"), 0),
+        ),
+    },
+    "bunny_cake": {
+        "name": "兔子蛋糕", "category": "dessert", "grade": 4, "exp": 28,
+        "ingredients": {"mat_flour": 2, "mat_egg": 3, "mat_cream": 1, "mat_carrot": 1},
+        "effect": "恢复9点厨房活力；心情+3；禁林采集+1材料；节日限定",
+        "steps": (
+            ("面糊。", ("充分打发", "轻混", "分层"), 0),
+            ("胡萝卜。", ("碎末", "丝状", "块状"), 1),
+            ("烤温。", ("180度", "160度", "200度"), 0),
+        ),
+    },
+    "spring_salad": {
+        "name": "春日沙拉", "category": "main", "grade": 2, "exp": 16,
+        "ingredients": {"mat_vegetable": 3, "mat_herb": 1, "mat_oil": 1},
+        "effect": "恢复6点厨房活力；下次课堂表现+1；节日限定",
+        "steps": (
+            ("菜洗净。", ("细洗", "粗洗", "轻洗"), 0),
+            ("切割。", ("细切", "块状", "整叶"), 1),
+            ("调配。", ("油醋", "沙拉酱", "酸奶"), 0),
+        ),
+    },
+
+    # 万圣节（10月）- 神秘恐怖主题
+    "pumpkin_pie_holiday": {
+        "name": "万圣节南瓜派", "category": "dessert", "grade": 4, "exp": 30,
+        "ingredients": {"mat_pumpkin": 2, "mat_flour": 2, "mat_cream": 1, "mat_spices": 1},
+        "effect": "恢复10点厨房活力；心情+2；下次禁林冒险+25HP；节日限定",
+        "steps": (
+            ("南瓜。", ("蒸烤", "生用", "烤干"), 0),
+            ("派皮。", ("起酥", "普通", "全麦"), 1),
+            ("烤温。", ("190度", "170度", "210度"), 0),
+        ),
+    },
+    "witch_hat_cake": {
+        "name": "女巫帽蛋糕", "category": "dessert", "grade": 4, "exp": 26,
+        "ingredients": {"mat_chocolate": 2, "mat_flour": 1, "mat_cream": 1},
+        "effect": "恢复8点厨房活力；心情+2；烹饪经验+12%；节日限定",
+        "steps": (
+            ("巧克力。", ("融化好", "块状", "粉末"), 1),
+            ("组装。", ("帽尖朝上", "倒放", "平放"), 0),
+            ("装饰。", ("星星糖", "彩珠", "巧克力"), 0),
+        ),
+    },
+    "ghost_cookie": {
+        "name": "幽灵饼干", "category": "snack", "grade": 2, "exp": 12,
+        "ingredients": {"mat_flour": 1, "mat_sugar": 1, "mat_egg": 1},
+        "effect": "恢复5点厨房活力；心情+1；节日限定",
+        "steps": (
+            ("造型。", ("幽灵形", "骷髅", "棺材"), 0),
+            ("表情。", ("恐怖", "搞笑", "可爱"), 1),
+            ("装饰。", ("很多", "简约", "不装"), 0),
+        ),
+    },
+
+    # 情人节（2月）- 浪漫甜蜜主题
+    "rose_cake": {
+        "name": "玫瑰蛋糕", "category": "dessert", "grade": 4, "exp": 32,
+        "ingredients": {"mat_flour": 2, "mat_cream": 2, "mat_rose_petals": 1, "mat_honey": 1},
+        "effect": "恢复10点厨房活力；心情+4；下次课堂表现+1；节日限定",
+        "steps": (
+            ("花瓣。", ("新鲜", "干燥", "糖衣"), 0),
+            ("配方。", ("玫瑰香", "淡香", "无香"), 1),
+            ("装饰。", ("花瓣铺满", "花瓣点缀", "简约"), 0),
+        ),
+    },
+    "chocolate_heart": {
+        "name": "巧克力心形", "category": "snack", "grade": 3, "exp": 20,
+        "ingredients": {"mat_chocolate": 2, "mat_cream": 1, "mat_food_color": 1},
+        "effect": "恢复7点厨房活力；心情+3；下次课堂表现+1；节日限定",
+        "steps": (
+            ("巧克力融化。", ("水浴", "直接", "隔热"), 0),
+            ("着色。", ("深红", "粉红", "玫瑰"), 1),
+            ("塑型。", ("心形", "球形", "方形"), 0),
+        ),
+    },
+    "strawberry_treat": {
+        "name": "草莓甜品", "category": "dessert", "grade": 3, "exp": 24,
+        "ingredients": {"mat_strawberry": 2, "mat_cream": 1, "mat_sugar": 1},
+        "effect": "恢复8点厨房活力；心情+3；魔药经验+5%；节日限定",
+        "steps": (
+            ("草莓。", ("新鲜", "冷冻", "果酱"), 0),
+            ("奶油。", ("厚实", "清淡", "适中"), 1),
+            ("组合。", ("铺满", "点缀", "混合"), 0),
+        ),
+    },
+
+    # 新年（1月）- 吉祥富足主题
+    "longevity_noodle": {
+        "name": "长寿面", "category": "main", "grade": 3, "exp": 18,
+        "ingredients": {"mat_noodle": 1, "mat_vegetable": 2, "mat_broth": 1},
+        "effect": "恢复10点厨房活力；下次课堂表现+1；禁林采集+1；节日限定",
+        "steps": (
+            ("面条。", ("整根长", "稍微断", "小段"), 0),
+            ("高汤。", ("精心熬", "速冻", "清汤"), 1),
+            ("配菜。", ("丰富", "简约", "清汤"), 0),
+        ),
+    },
+    "gold_coin_candy": {
+        "name": "金币糖", "category": "snack", "grade": 2, "exp": 14,
+        "ingredients": {"mat_honey": 1, "mat_sugar": 2, "mat_gold_leaf": 1},
+        "effect": "恢复6点厨房活力；下次禁林采集材料+1；烹饪经验+8%；节日限定",
+        "steps": (
+            ("熬糖浆。", ("140°C", "160°C", "120°C"), 0),
+            ("着金。", ("覆盖金", "薄金", "不覆"), 1),
+            ("塑型。", ("圆形", "方形", "自由"), 0),
+        ),
+    },
+    "reunion_dumpling": {
+        "name": "团圆水饺", "category": "main", "grade": 3, "exp": 20,
+        "ingredients": {"mat_flour": 2, "mat_filling": 1, "mat_vegetable": 1},
+        "effect": "恢复9点厨房活力；心情+2；下次课堂表现+1；节日限定",
+        "steps": (
+            ("包法。", ("精致褶皱", "简单折", "粗糙"), 0),
+            ("煮法。", ("沸水煮", "蒸", "炸"), 1),
+            ("沾酱。", ("醋多", "油多", "混合"), 0),
+        ),
+    },
+}
+
+def get_current_festival() -> str | None:
+    """获取当前月份对应的节日。"""
+    import time
+    month = time.localtime().tm_mon
+    festivals = {
+        1: "新年",
+        2: "情人节",
+        4: "复活节",
+        10: "万圣节",
+        12: "圣诞节",
+    }
+    return festivals.get(month)
+
+
+def get_available_festival_foods(current_festival: str | None = None) -> dict[str, dict]:
+    """获取当前可用的节日限定食物。"""
+    if current_festival is None:
+        current_festival = get_current_festival()
+
+    if not current_festival:
+        return {}
+
+    festival_map = {
+        "圣诞节": ["christmas_pudding", "gingerbread_cookie", "mulled_wine_holiday", "candy_cane"],
+        "复活节": ["chocolate_egg", "bunny_cake", "spring_salad"],
+        "万圣节": ["pumpkin_pie_holiday", "witch_hat_cake", "ghost_cookie"],
+        "情人节": ["rose_cake", "chocolate_heart", "strawberry_treat"],
+        "新年": ["longevity_noodle", "gold_coin_candy", "reunion_dumpling"],
+    }
+
+    available = {}
+    for key in festival_map.get(current_festival, []):
+        if key in FESTIVAL_RECIPES:
+            available[key] = FESTIVAL_RECIPES[key]
+
+    return available
+
 
 class KitchenError(Exception):
     pass
@@ -800,7 +1010,20 @@ def start(uid: str, recipe_input: str) -> dict:
     if existing:
         return _render_session(existing, True)
 
-    found = find_recipe(recipe_input.strip())
+    recipe_input = recipe_input.strip()
+
+    # 先从常规配方中查找
+    found = find_recipe(recipe_input)
+
+    # 如果没找到，检查节日限定食物
+    if not found:
+        current_festival = get_current_festival()
+        festival_foods = get_available_festival_foods(current_festival)
+        for key, recipe_data in festival_foods.items():
+            if recipe_input == key or recipe_input == recipe_data["name"]:
+                found = (key, recipe_data)
+                break
+
     if not found:
         raise KitchenError("没有这个配方。发送「/烹饪配方」查看已知配方。")
 
