@@ -141,6 +141,23 @@ CREATE TABLE IF NOT EXISTS potion_trades (
     quantity INTEGER NOT NULL,
     created_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS freshman_duels (
+    uid TEXT PRIMARY KEY,
+    score INTEGER NOT NULL DEFAULT 0,
+    progress INTEGER NOT NULL DEFAULT 0,
+    last_duel_at INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS group_announcements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    message TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at INTEGER NOT NULL,
+    sent_at INTEGER
+);
 """
 
 
@@ -645,6 +662,111 @@ def purge_old_gift_stock(before_bucket: int) -> None:
     conn = get_conn()
     try:
         conn.execute("DELETE FROM gift_stock WHERE bucket < ?", (before_bucket,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# ======================== 竞选新人王 ========================
+
+
+def get_freshman_duel(uid: str) -> sqlite3.Row | None:
+    conn = get_conn()
+    try:
+        return conn.execute("SELECT * FROM freshman_duels WHERE uid = ?", (uid,)).fetchone()
+    finally:
+        conn.close()
+
+
+def init_or_get_freshman_duel(uid: str) -> dict:
+    """获取或初始化玩家的竞选状态。"""
+    conn = get_conn()
+    try:
+        ts = now()
+        conn.execute(
+            "INSERT OR IGNORE INTO freshman_duels (uid, score, progress, last_duel_at, created_at, updated_at) "
+            "VALUES (?, 0, 0, 0, ?, ?)",
+            (uid, ts, ts),
+        )
+        row = conn.execute("SELECT * FROM freshman_duels WHERE uid = ?", (uid,)).fetchone()
+        conn.commit()
+        return dict(row) if row else {}
+    finally:
+        conn.close()
+
+
+def update_freshman_duel(uid: str, score: int, progress: int) -> None:
+    """更新竞选进度和得分。"""
+    conn = get_conn()
+    try:
+        conn.execute(
+            "UPDATE freshman_duels SET score = ?, progress = ?, last_duel_at = ?, updated_at = ? WHERE uid = ?",
+            (score, progress, now(), now(), uid),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_freshman_duel_rankings() -> list:
+    """获取一年级新人王排名（分数降序）。"""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT uid, score, progress FROM freshman_duels ORDER BY score DESC LIMIT 10"
+        ).fetchall()
+        return [dict(row) for row in rows] if rows else []
+    finally:
+        conn.close()
+
+
+def reset_freshman_duels() -> None:
+    """学期末重置所有竞选数据（准备新学期）。"""
+    conn = get_conn()
+    try:
+        conn.execute("DELETE FROM freshman_duels")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# ======================== 群通知 ========================
+
+
+def add_group_announcement(message: str) -> int:
+    """添加群通知，返回通知ID。"""
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            "INSERT INTO group_announcements (message, status, created_at) VALUES (?, 'pending', ?)",
+            (message, now()),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def get_pending_announcements() -> list:
+    """获取待发送的群通知。"""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT id, message FROM group_announcements WHERE status = 'pending' ORDER BY created_at"
+        ).fetchall()
+        return [dict(row) for row in rows] if rows else []
+    finally:
+        conn.close()
+
+
+def mark_announcement_sent(announcement_id: int) -> None:
+    """标记群通知已发送。"""
+    conn = get_conn()
+    try:
+        conn.execute(
+            "UPDATE group_announcements SET status = 'sent', sent_at = ? WHERE id = ?",
+            (now(), announcement_id),
+        )
         conn.commit()
     finally:
         conn.close()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 
 from plugins.hp_core import storage as core_storage
 from plugins.hp_core.storage import get_conn
@@ -63,6 +64,46 @@ RECIPES = {
             ("涂蜂蜜。", ("趁热涂", "冷却后涂", "不涂"), 2),
         ),
     },
+    "omelette": {
+        "name": "煎蛋卷", "category": "breakfast", "grade": 2, "exp": 12,
+        "ingredients": {"mat_egg": 3, "mat_butter": 1, "mat_cheese": 1},
+        "effect": "恢复6点厨房活力；下次课堂表现+2",
+        "steps": (
+            ("黄油融化。", ("小火", "中火", "大火"), 1),
+            ("倒入蛋液。", ("一次倒入", "分次倒入", "慢慢倒"), 0),
+            ("加芝士。", ("趁热加", "半凝时加", "完全凝固后加"), 0),
+        ),
+    },
+    "french_toast": {
+        "name": "法式吐司", "category": "breakfast", "grade": 2, "exp": 11,
+        "ingredients": {"mat_bread": 2, "mat_egg": 2, "mat_milk": 1, "mat_cinnamon": 1},
+        "effect": "恢复7点厨房活力；心情+1",
+        "steps": (
+            ("鸡蛋液。", ("加肉桂粉", "不加", "加很多"), 0),
+            ("浸面包。", ("快速浸", "充分浸", "轻轻浸"), 1),
+            ("煎至。", ("金黄", "焦黄", "微黄"), 0),
+        ),
+    },
+    "waffle": {
+        "name": "华夫饼", "category": "breakfast", "grade": 2, "exp": 13,
+        "ingredients": {"mat_flour": 2, "mat_egg": 2, "mat_butter": 1, "mat_honey": 1},
+        "effect": "恢复6点厨房活力；禁林采集+1材料",
+        "steps": (
+            ("面糊浓度。", ("稀", "适中", "浓"), 1),
+            ("烤盘温度。", ("高温", "中温", "低温"), 0),
+            ("涂蜂蜜。", ("很多", "适量", "不涂"), 0),
+        ),
+    },
+    "granola": {
+        "name": "格兰诺拉麦片", "category": "breakfast", "grade": 3, "exp": 18,
+        "ingredients": {"mat_oats": 2, "mat_honey": 1, "mat_nuts": 1, "mat_oil": 1},
+        "effect": "恢复8点厨房活力；烹饪经验+10%",
+        "steps": (
+            ("烘焙温度。", ("150度", "180度", "120度"), 1),
+            ("搅拌均匀。", ("充分搅", "轻轻搅", "不搅"), 0),
+            ("冷却。", ("热时装瓶", "半温装瓶", "完全冷却"), 0),
+        ),
+    },
 
     # === 主食（main）===
     "roasted_chicken": {
@@ -105,6 +146,66 @@ RECIPES = {
             ("切成两半。", ("对角切", "竖着切", "不切"), 2),
         ),
     },
+    "grilled_fish": {
+        "name": "烤鱼", "category": "main", "grade": 3, "exp": 20,
+        "ingredients": {"mat_fish": 2, "mat_lemon": 1, "mat_herbs": 1},
+        "effect": "恢复8点厨房活力；下次禁林冒险+10HP",
+        "steps": (
+            ("腌制。", ("加盐", "加柠檬", "加香草"), 0),
+            ("烤温度。", ("200度", "180度", "220度"), 1),
+            ("烤时间。", ("15分钟", "20分钟", "10分钟"), 1),
+        ),
+    },
+    "beef_stew": {
+        "name": "炖牛肉", "category": "main", "grade": 3, "exp": 24,
+        "ingredients": {"mat_beef": 2, "mat_potato": 2, "mat_carrot": 1, "mat_water": 3},
+        "effect": "恢复10点厨房活力；下次课堂表现+1",
+        "steps": (
+            ("先煎肉。", ("大火煎", "小火", "不煎"), 0),
+            ("加菜。", ("马上加", "半小时后", "一小时后"), 1),
+            ("火候。", ("文火", "中火", "大火"), 0),
+        ),
+    },
+    "chicken_curry": {
+        "name": "咖喱鸡", "category": "main", "grade": 3, "exp": 22,
+        "ingredients": {"mat_chicken": 1, "mat_curry": 1, "mat_cream": 1, "mat_rice": 2},
+        "effect": "恢复8点厨房活力；学院杯加成+2",
+        "steps": (
+            ("爆香。", ("先炒香料", "先煎鸡", "同时加"), 0),
+            ("加咖喱。", ("早加", "中途加", "最后加"), 1),
+            ("加奶油。", ("很多", "少量", "不加"), 0),
+        ),
+    },
+    "spaghetti_carbonara": {
+        "name": "意大利奶油面", "category": "main", "grade": 3, "exp": 25,
+        "ingredients": {"mat_pasta": 1, "mat_egg": 2, "mat_bacon": 1, "mat_cheese": 1},
+        "effect": "恢复9点厨房活力；下次课堂表现+2",
+        "steps": (
+            ("熟度。", ("Al dente", "软", "很软"), 0),
+            ("蛋液温度。", ("蛋黄", "全蛋", "蛋白"), 1),
+            ("混合。", ("快速拌", "慢速拌", "不拌"), 0),
+        ),
+    },
+    "roasted_vegetables": {
+        "name": "烤蔬菜", "category": "main", "grade": 2, "exp": 10,
+        "ingredients": {"mat_vegetable": 2, "mat_oil": 1, "mat_salt": 1},
+        "effect": "恢复6点厨房活力；体力恢复+1",
+        "steps": (
+            ("切大小。", ("大块", "小块", "中块"), 1),
+            ("油量。", ("很多油", "少油", "适量"), 1),
+            ("烤温。", ("200度", "180度", "220度"), 0),
+        ),
+    },
+    "lamb_chops": {
+        "name": "羊排", "category": "main", "grade": 3, "exp": 23,
+        "ingredients": {"mat_lamb": 2, "mat_rosemary": 1, "mat_garlic": 1},
+        "effect": "恢复9点厨房活力；禁林采集+2材料",
+        "steps": (
+            ("腌料。", ("迷迭香先", "大蒜先", "同时"), 0),
+            ("烤温度。", ("高温快烤", "中温", "低温慢烤"), 2),
+            ("熟度。", ("三分熟", "五分熟", "全熟"), 1),
+        ),
+    },
 
     # === 汤类（soup）===
     "vegetable_soup": {
@@ -135,6 +236,46 @@ RECIPES = {
             ("骨头焯水。", ("热水焯", "冷水焯", "直接煮"), 1),
             ("小火炖。", ("2小时", "1小时", "3小时"), 0),
             ("过筛。", ("细筛", "粗筛", "不筛"), 1),
+        ),
+    },
+    "mushroom_soup": {
+        "name": "蘑菇汤", "category": "soup", "grade": 2, "exp": 14,
+        "ingredients": {"mat_mushroom": 2, "mat_cream": 1, "mat_water": 2},
+        "effect": "恢复7点厨房活力；魔药经验+5%",
+        "steps": (
+            ("蘑菇处理。", ("切片", "整个", "碎末"), 0),
+            ("炒香。", ("充分炒", "轻轻炒", "不炒"), 1),
+            ("加奶油。", ("早加", "晚加", "不加"), 0),
+        ),
+    },
+    "minestrone": {
+        "name": "意大利蔬菜汤", "category": "soup", "grade": 2, "exp": 16,
+        "ingredients": {"mat_vegetable": 3, "mat_tomato": 1, "mat_beans": 1, "mat_water": 3},
+        "effect": "恢复8点厨房活力；下次课堂表现+1",
+        "steps": (
+            ("切菜。", ("细切", "块状", "碎末"), 1),
+            ("顺序。", ("一起放", "分次放", "反序放"), 0),
+            ("煮时间。", ("30分钟", "20分钟", "40分钟"), 1),
+        ),
+    },
+    "clam_chowder": {
+        "name": "蛤蜊浓汤", "category": "soup", "grade": 3, "exp": 21,
+        "ingredients": {"mat_clam": 2, "mat_potato": 1, "mat_cream": 1, "mat_water": 2},
+        "effect": "恢复9点厨房活力；下次禁林冒险+15HP",
+        "steps": (
+            ("贝类。", ("新鲜", "冷冻", "罐装"), 0),
+            ("奶油。", ("多", "少", "适量"), 1),
+            ("咸度。", ("咸", "淡", "适中"), 2),
+        ),
+    },
+    "lentil_soup": {
+        "name": "扁豆汤", "category": "soup", "grade": 2, "exp": 13,
+        "ingredients": {"mat_lentil": 2, "mat_vegetable": 1, "mat_water": 3},
+        "effect": "恢复7点厨房活力；烹饪经验+8%",
+        "steps": (
+            ("浸泡。", ("浸过夜", "快速浸", "不浸"), 0),
+            ("火候。", ("文火", "中火", "大火"), 0),
+            ("时间。", ("30分钟", "45分钟", "20分钟"), 1),
         ),
     },
 
@@ -177,6 +318,66 @@ RECIPES = {
             ("烤挞皮。", ("先烤", "最后烤", "不烤"), 0),
             ("馅料。", ("混至顺滑", "保留块状", "过度搅"), 1),
             ("烤箱。", ("170度25分钟", "180度20分钟", "160度30分钟"), 0),
+        ),
+    },
+    "apple_pie": {
+        "name": "苹果派", "category": "dessert", "grade": 3, "exp": 26,
+        "ingredients": {"mat_apple": 2, "mat_flour": 2, "mat_sugar": 1, "mat_butter": 1},
+        "effect": "恢复7点厨房活力；心情+3",
+        "steps": (
+            ("派皮。", ("黄油粉", "混合面粉", "揉光滑"), 0),
+            ("馅料。", ("糖多", "糖少", "不加糖"), 1),
+            ("烤温。", ("200度", "180度", "220度"), 1),
+        ),
+    },
+    "tiramisu": {
+        "name": "提拉米苏", "category": "dessert", "grade": 3, "exp": 27,
+        "ingredients": {"mat_mascarpone": 1, "mat_egg": 2, "mat_coffee": 1, "mat_cocoa": 1},
+        "effect": "恢复8点厨房活力；心情+3；烹饪经验+12%",
+        "steps": (
+            ("蛋液。", ("蛋黄", "全蛋", "蛋白"), 0),
+            ("咖啡。", ("浸透", "轻浸", "不浸"), 1),
+            ("冷冻。", ("一夜", "几小时", "半小时"), 1),
+        ),
+    },
+    "cheesecake": {
+        "name": "芝士蛋糕", "category": "dessert", "grade": 3, "exp": 29,
+        "ingredients": {"mat_cream_cheese": 2, "mat_egg": 3, "mat_sugar": 1},
+        "effect": "恢复8点厨房活力；心情+3；下次课堂表现+1",
+        "steps": (
+            ("奶油芝士。", ("充分软化", "半软", "冷硬"), 0),
+            ("混合。", ("充分混", "轻混", "分层"), 1),
+            ("烤温。", ("160度", "180度", "150度"), 0),
+        ),
+    },
+    "brownies": {
+        "name": "布朗尼蛋糕", "category": "dessert", "grade": 2, "exp": 18,
+        "ingredients": {"mat_chocolate": 2, "mat_egg": 2, "mat_flour": 1, "mat_butter": 1},
+        "effect": "恢复6点厨房活力；心情+2；魔药经验+5%",
+        "steps": (
+            ("巧克力。", ("融化好", "颗粒状", "完全融合"), 1),
+            ("混合。", ("过度混", "适度混", "轻混"), 1),
+            ("烤时间。", ("25分钟", "35分钟", "15分钟"), 0),
+        ),
+    },
+    "macaron": {
+        "name": "马卡龙", "category": "dessert", "grade": 4, "exp": 35,
+        "ingredients": {"mat_almond_flour": 1, "mat_powdered_sugar": 1, "mat_egg": 2, "mat_food_color": 1},
+        "effect": "恢复7点厨房活力；心情+3；烹饪经验+15%",
+        "steps": (
+            ("蛋白。", ("充分打发", "软峰", "硬峰"), 2),
+            ("混合。", ("过度搅", "充分搅", "轻轻搅"), 1),
+            ("烤温。", ("140度", "160度", "120度"), 0),
+        ),
+    },
+    "fudge": {
+        "name": "软糖", "category": "dessert", "grade": 2, "exp": 13,
+        "ingredients": {"mat_chocolate": 1, "mat_cream": 1, "mat_sugar": 1},
+        "effect": "恢复5点厨房活力；心情+2；烹饪经验+5%",
+        "steps": (
+            ("糖浆浓度。", ("稀", "浓", "极浓"), 1),
+            ("巧克力融入。", ("细致混合", "粗糙混合", "分层"), 0),
+            ("冷却。", ("快速冷却", "缓慢冷却", "常温"), 1),
         ),
     },
 
@@ -231,6 +432,56 @@ RECIPES = {
             ("火候。", ("文火", "大火", "中火"), 0),
         ),
     },
+    "phoenix_nest": {
+        "name": "凤凰巢", "category": "magic", "grade": 4, "exp": 40,
+        "ingredients": {"mat_phoenix_feather": 2, "mat_golden_egg": 1, "mat_honey": 2},
+        "effect": "下次禁林冒险+30HP；恢复10点厨房活力；心情+2",
+        "steps": (
+            ("凤凰羽毛。", ("烧焦", "轻轻烘", "冷用"), 1),
+            ("黄金蛋。", ("整个", "打碎", "磨粉"), 0),
+            ("蜂蜜。", ("很多", "少量", "适量"), 2),
+        ),
+    },
+    "dragon_breath_soup": {
+        "name": "龙息汤", "category": "magic", "grade": 5, "exp": 50,
+        "ingredients": {"mat_dragon_scale": 1, "mat_dragon_blood": 1, "mat_fire_pepper": 2},
+        "effect": "饮用后20分钟内魔法抗性+50%；恢复10点厨房活力",
+        "steps": (
+            ("龙鳞。", ("完整投入", "研磨", "烧焦"), 0),
+            ("龙血。", ("新鲜", "冷冻", "干粉"), 1),
+            ("辣椒。", ("很多", "少量", "适量"), 2),
+        ),
+    },
+    "mermaid_delight": {
+        "name": "美人鱼的喜悦", "category": "magic", "grade": 4, "exp": 38,
+        "ingredients": {"mat_pearl": 1, "mat_seaweed": 2, "mat_spring_water": 2},
+        "effect": "水下呼吸1小时；恢复9点厨房活力；心情+2",
+        "steps": (
+            ("珍珠。", ("完整", "碎末", "粉末"), 0),
+            ("海草。", ("新鲜", "干燥", "粉末"), 1),
+            ("泉水。", ("冷泉", "温泉", "热泉"), 1),
+        ),
+    },
+    "unicorn_tears_jelly": {
+        "name": "独角兽泪果冻", "category": "magic", "grade": 5, "exp": 55,
+        "ingredients": {"mat_unicorn_tears": 2, "mat_starlight": 1, "mat_honey": 1},
+        "effect": "一次性满血回复；恢复10点厨房活力；心情+3",
+        "steps": (
+            ("泪水。", ("新鲜", "冷冻", "干粉"), 0),
+            ("星光。", ("直接加", "融化加", "粉末"), 1),
+            ("凝固。", ("室温", "冰冷", "加热"), 1),
+        ),
+    },
+    "phoenix_flame_cake": {
+        "name": "凤凰之火蛋糕", "category": "magic", "grade": 4, "exp": 42,
+        "ingredients": {"mat_phoenix_feather": 1, "mat_hot_pepper": 2, "mat_egg": 3, "mat_flour": 2},
+        "effect": "吃后4小时内火焰魔法伤害+40%；恢复8点厨房活力",
+        "steps": (
+            ("凤凰羽毛。", ("烧焦", "轻烘", "生用"), 1),
+            ("辣椒。", ("鲜辣", "干辣", "粉末"), 0),
+            ("火候。", ("炉火", "魔火", "缓火"), 1),
+        ),
+    },
 
     # === 饮品（beverage）===
     "hot_chocolate": {
@@ -273,6 +524,56 @@ RECIPES = {
             ("过滤。", ("细筛", "粗筛", "不筛"), 0),
         ),
     },
+    "ginger_tea": {
+        "name": "生姜茶", "category": "beverage", "grade": 1, "exp": 9,
+        "ingredients": {"mat_ginger": 1, "mat_honey": 1, "mat_water": 1},
+        "effect": "恢复5点厨房活力；清除寒冷",
+        "steps": (
+            ("生姜。", ("新鲜", "干燥", "粉末"), 0),
+            ("水温。", ("沸水", "温水", "冷水"), 1),
+            ("蜂蜜。", ("多", "少", "适量"), 1),
+        ),
+    },
+    "chamomile_tea": {
+        "name": "洋甘菊茶", "category": "beverage", "grade": 2, "exp": 11,
+        "ingredients": {"mat_chamomile": 1, "mat_honey": 1, "mat_water": 1},
+        "effect": "恢复6点厨房活力；心情+2；睡眠质量提升",
+        "steps": (
+            ("花朵。", ("新鲜", "干燥", "碎末"), 1),
+            ("浸泡。", ("5分钟", "10分钟", "3分钟"), 1),
+            ("温度。", ("热", "温", "冷"), 0),
+        ),
+    },
+    "fruit_punch": {
+        "name": "果汁混合", "category": "beverage", "grade": 2, "exp": 12,
+        "ingredients": {"mat_fruit": 3, "mat_sugar": 1, "mat_water": 1},
+        "effect": "恢复6点厨房活力；心情+1；体力恢复+2",
+        "steps": (
+            ("水果选择。", ("甜的", "酸的", "混合"), 1),
+            ("糖量。", ("多", "少", "适量"), 1),
+            ("饮用。", ("热饮", "温饮", "冷饮"), 2),
+        ),
+    },
+    "mulled_wine": {
+        "name": "热红酒", "category": "beverage", "grade": 2, "exp": 13,
+        "ingredients": {"mat_wine": 2, "mat_spices": 1, "mat_honey": 1},
+        "effect": "恢复7点厨房活力；心情+2；暖身驱寒",
+        "steps": (
+            ("香料。", ("磨粉", "整个", "碎末"), 0),
+            ("加热。", ("轻轻热", "充分热", "烧开"), 1),
+            ("蜂蜜。", ("多", "少", "适量"), 0),
+        ),
+    },
+    "smoothie": {
+        "name": "果昔", "category": "beverage", "grade": 2, "exp": 10,
+        "ingredients": {"mat_fruit": 2, "mat_yogurt": 1, "mat_honey": 1},
+        "effect": "恢复6点厨房活力；下次课堂表现+1",
+        "steps": (
+            ("水果处理。", ("新鲜", "冷冻", "混合"), 1),
+            ("酸奶。", ("普通", "希腊", "果味"), 0),
+            ("搅打。", ("充分搅", "轻搅", "不搅"), 0),
+        ),
+    },
 
     # === 点心小食（snack）===
     "nuts": {
@@ -305,14 +606,54 @@ RECIPES = {
             ("调味。", ("趁热撒", "冷却后撒", "不撒"), 0),
         ),
     },
-    "fudge": {
-        "name": "软糖", "category": "snack", "grade": 2, "exp": 13,
-        "ingredients": {"mat_chocolate": 1, "mat_cream": 1, "mat_sugar": 1},
-        "effect": "恢复5点厨房活力；心情+2；烹饪经验+5%",
+    "croissant": {
+        "name": "羊角面包", "category": "snack", "grade": 3, "exp": 20,
+        "ingredients": {"mat_flour": 2, "mat_butter": 2, "mat_salt": 1},
+        "effect": "恢复6点厨房活力；心情+1；魔药经验+5%",
         "steps": (
-            ("糖浆浓度。", ("稀", "浓", "极浓"), 1),
-            ("巧克力融入。", ("细致混合", "粗糙混合", "分层"), 0),
-            ("冷却。", ("快速冷却", "缓慢冷却", "常温"), 1),
+            ("层数。", ("少层", "多层", "标准"), 1),
+            ("黄油。", ("冷黄油", "软黄油", "常温"), 0),
+            ("烤温。", ("200度", "180度", "220度"), 0),
+        ),
+    },
+    "donut": {
+        "name": "甜甜圈", "category": "snack", "grade": 2, "exp": 14,
+        "ingredients": {"mat_flour": 1, "mat_egg": 1, "mat_sugar": 1, "mat_oil": 1},
+        "effect": "恢复5点厨房活力；心情+2",
+        "steps": (
+            ("面团。", ("软", "硬", "适中"), 2),
+            ("油温。", ("高温", "中温", "低温"), 0),
+            ("糖衣。", ("多", "少", "不加"), 1),
+        ),
+    },
+    "biscuit": {
+        "name": "饼干（黄油）", "category": "snack", "grade": 2, "exp": 12,
+        "ingredients": {"mat_flour": 1, "mat_butter": 1, "mat_sugar": 1},
+        "effect": "恢复5点厨房活力；心情+1；禁林采集+1%经验",
+        "steps": (
+            ("黄油。", ("软化好", "半软", "冷硬"), 0),
+            ("面糊。", ("光滑", "颗粒", "粗糙"), 0),
+            ("烤时。", ("10分钟", "15分钟", "5分钟"), 1),
+        ),
+    },
+    "pretzel": {
+        "name": "椒盐脆饼", "category": "snack", "grade": 2, "exp": 11,
+        "ingredients": {"mat_flour": 1, "mat_salt": 1, "mat_egg": 1},
+        "effect": "恢复5点厨房活力；下次课堂表现+1",
+        "steps": (
+            ("形状。", ("传统扭", "棒状", "脆饼"), 0),
+            ("苏打水。", ("浸过", "不浸", "轻浸"), 1),
+            ("盐量。", ("多", "少", "适量"), 1),
+        ),
+    },
+    "mochi": {
+        "name": "麻糬", "category": "snack", "grade": 2, "exp": 13,
+        "ingredients": {"mat_rice_flour": 1, "mat_sugar": 1, "mat_filling": 1},
+        "effect": "恢复5点厨房活力；心情+2；烹饪经验+6%",
+        "steps": (
+            ("粉类。", ("糯米粉", "普通粉", "混合"), 0),
+            ("馅料。", ("豆沙", "果味", "坚果"), 1),
+            ("烤/煮。", ("蒸", "烤", "煮"), 1),
         ),
     },
 }
@@ -391,6 +732,7 @@ def start(uid: str, recipe_input: str) -> dict:
 
     core_storage.sync_kitchen_stamina(uid)
     exp = core_storage.get_cooking_exp(uid)
+
     if player["grade"] < recipe["grade"] or exp < recipe["exp"]:
         raise KitchenError(
             f"这个配方需要{recipe['grade']}年级、烹饪{recipe['exp']}经验。"
@@ -550,3 +892,155 @@ def choose(uid: str, position: int) -> dict:
         raise
     finally:
         conn.close()
+
+
+def consume(uid: str, food_input: str) -> dict:
+    """食用食物，应用buff效果。"""
+    food_input = food_input.strip()
+
+    # 查找配方
+    found = find_recipe(food_input)
+    if not found:
+        raise KitchenError(f"不认识这个食物「{food_input}」。发送「/食柜」查看你有什么。")
+
+    key, recipe = found
+    food_key = f"food_{key}"
+
+    player = core_storage.sync_stamina(uid)
+    if not player or not player["house"]:
+        raise KitchenError("你还没有分院。")
+
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT quantity FROM kitchen_inventory WHERE uid=? AND food_key=?",
+            (uid, food_key),
+        ).fetchone()
+
+        if not row or row["quantity"] <= 0:
+            raise KitchenError(f"你没有「{recipe['name']}」。")
+
+        # 扣除食物
+        conn.execute(
+            "UPDATE kitchen_inventory SET quantity=quantity-1 WHERE uid=? AND food_key=?",
+            (uid, food_key),
+        )
+
+        # 记录使用
+        ts = core_storage.now()
+        conn.execute(
+            "INSERT INTO kitchen_history(uid,recipe_key,quality,quantity,disaster,created_at) "
+            "VALUES(?,?,'consumed',1,'',?)",
+            (uid, key, ts),
+        )
+
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+    return {
+        "recipe": recipe["name"],
+        "effect": recipe["effect"],
+        "remaining": (row["quantity"] - 1) if row else 0,
+    }
+
+
+def apply_food_effects(uid: str, recipe_key: str) -> dict:
+    """应用食物的buff效果。返回生成的效果列表。"""
+    if recipe_key not in RECIPES:
+        return {}
+
+    recipe = RECIPES[recipe_key]
+    effects = {}
+    ts = core_storage.now()
+
+    effect_text = recipe.get("effect", "")
+
+    # 恢复厨房活力
+    match = re.search(r"恢复(\d+)点厨房活力", effect_text)
+    if match:
+        amount = int(match.group(1))
+        conn = get_conn()
+        try:
+            conn.execute(
+                "UPDATE kitchen_exp SET kitchen_stamina=MIN(40, kitchen_stamina+?) WHERE uid=?",
+                (amount, uid),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        effects["kitchen_stamina"] = amount
+
+    # 心情加成
+    match = re.search(r"心情\+(\d+)", effect_text)
+    if match:
+        amount = int(match.group(1))
+        conn = core_storage.get_conn()
+        try:
+            expires = ts + 2 * 3600  # 2小时
+            conn.execute(
+                "INSERT INTO active_effects(uid,effect_key,label,expires_at) VALUES(?,?,?,?) "
+                "ON CONFLICT(uid,effect_key) DO UPDATE SET expires_at=MAX(expires_at,excluded.expires_at)",
+                (uid, "mood_boost", f"心情愉悦(+{amount})", expires),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        effects["mood"] = amount
+
+    # 下次课堂表现
+    match = re.search(r"下次课堂表现\+(\d+)", effect_text)
+    if match:
+        amount = int(match.group(1))
+        conn = core_storage.get_conn()
+        try:
+            expires = ts + 12 * 3600  # 12小时内的下一次课程
+            conn.execute(
+                "INSERT INTO active_effects(uid,effect_key,label,expires_at) VALUES(?,?,?,?) "
+                "ON CONFLICT(uid,effect_key) DO UPDATE SET label=excluded.label,expires_at=excluded.expires_at",
+                (uid, "lesson_performance_boost", f"课堂表现加成(+{amount})", expires),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        effects["lesson_bonus"] = amount
+
+    # 禁林采集加成
+    match = re.search(r"禁林采集\+(\d+)", effect_text)
+    if match:
+        amount = int(match.group(1))
+        conn = core_storage.get_conn()
+        try:
+            expires = ts + 6 * 3600
+            label = f"采集运气(+{amount})" if "材料" in effect_text else f"采集加成(+{amount}%)"
+            conn.execute(
+                "INSERT INTO active_effects(uid,effect_key,label,expires_at) VALUES(?,?,?,?) "
+                "ON CONFLICT(uid,effect_key) DO UPDATE SET label=excluded.label,expires_at=excluded.expires_at",
+                (uid, "forest_gathering_boost", label, expires),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        effects["gathering"] = amount
+
+    # 下次禁林冒险护盾
+    match = re.search(r"下次禁林冒险\+(\d+)HP", effect_text)
+    if match:
+        amount = int(match.group(1))
+        conn = core_storage.get_conn()
+        try:
+            expires = ts + 24 * 3600
+            conn.execute(
+                "INSERT INTO active_effects(uid,effect_key,label,expires_at) VALUES(?,?,?,?) "
+                "ON CONFLICT(uid,effect_key) DO UPDATE SET label=excluded.label,expires_at=excluded.expires_at",
+                (uid, "forest_shield", f"冒险护盾(+{amount}HP)", expires),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        effects["shield"] = amount
+
+    return effects

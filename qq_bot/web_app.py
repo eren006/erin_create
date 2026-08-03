@@ -252,9 +252,19 @@ def admin():
             elif action == "reset":
                 web_auth.reset_password(target)
                 flash(f"{target} 的密码已重置为 88888888。", "ok")
+            elif action == "announce":
+                message = request.form.get("message", "").strip()
+                if not message:
+                    flash("通知内容不能为空。", "error")
+                else:
+                    from plugins.hp_school import storage as school_storage
+                    announcement_id = school_storage.add_group_announcement(message)
+                    flash(f"已添加群通知（ID: {announcement_id}），将在下一个时间窗口发送。", "ok")
 
         except web_auth.AuthError as e:
             flash(str(e), "error")
+        except Exception as e:
+            flash(f"出错：{str(e)}", "error")
         return redirect(url_for("admin"))
 
     accounts = web_auth.list_accounts()
@@ -1278,6 +1288,48 @@ def admin_submissions():
     for row in pending + recent:
         row["author"] = core_storage.get_full_name(row["uid"])
     return render_template("web/admin_submissions.html", pending=pending, recent=recent)
+
+
+# ======================== 竞选新人王 ========================
+
+
+@app.get("/freshman-duel")
+def freshman_duel_page():
+    guard = _require_player()
+    if guard:
+        return guard
+    if g.player["grade"] != 1:
+        return render_template("web/freshman_duel.html", not_available=True)
+
+    from plugins.hp_school import freshman_duel
+    my_duel = freshman_duel.storage.get_freshman_duel(g.uid)
+    rankings = freshman_duel.get_leaderboard()
+    can_duel, cooldown_msg = freshman_duel.can_duel(my_duel or {})
+
+    return render_template(
+        "web/freshman_duel.html",
+        my_duel=my_duel,
+        rankings_text=rankings,
+        can_duel=can_duel,
+        cooldown_msg=cooldown_msg,
+        positions=freshman_duel.BOARD_POSITIONS,
+    )
+
+
+@app.post("/freshman-duel/duel")
+def freshman_duel_action():
+    guard = _require_player()
+    if guard:
+        return guard
+    if g.player["grade"] != 1:
+        return {"error": "竞选新人王只对一年级开放"}, 403
+
+    from plugins.hp_school import freshman_duel
+    result = freshman_duel.perform_duel(g.uid)
+    if result["ok"]:
+        return {"success": True, "message": result["message"], "duel": result}
+    else:
+        return {"error": result["message"]}, 400
 
 
 # ======================== 排行榜 ========================

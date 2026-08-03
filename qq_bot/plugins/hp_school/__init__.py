@@ -1,4 +1,5 @@
-from nonebot import on_command, on_notice
+import nonebot
+from nonebot import logger, on_command, on_notice, require
 from nonebot.adapters.qq import Bot, GroupMessageCreateEvent, InteractionCreateEvent, MessageEvent, MessageSegment
 from nonebot.adapters.qq.models import (
     Action,
@@ -16,10 +17,14 @@ from plugins.hp_core import spells as spell_catalog
 from plugins.hp_core import storage as core_storage
 from plugins.hp_core import web_binding
 
-from . import careers, casting, daily_plan, homework, kitchen, lesson_events, lessons, mainline, potions, shop, shop_catalog, sorting, storage, subjects, wands, work
+from . import careers, casting, daily_plan, freshman_duel, homework, kitchen, lesson_events, lessons, mainline, potions, shop, shop_catalog, sorting, storage, story_mainline, subjects, wands, work
+
+require("nonebot_plugin_apscheduler")
+from nonebot_plugin_apscheduler import scheduler  # noqa: E402
 
 BUTTON_PREFIX = "hpsort"
 LESSON_BUTTON_PREFIX = "hplesson"
+STORY_BUTTON_PREFIX = "hpstory"
 
 
 def _numbered(options: list[str]) -> str:
@@ -59,6 +64,23 @@ def _build_lesson_keyboard(uid: str, token: str, options: list[str]) -> MessageS
             ),
         )
         for i, label in enumerate(options)
+    ]
+    keyboard = MessageKeyboard(content=InlineKeyboard(rows=[InlineKeyboardRow(buttons=buttons)]))
+    return MessageSegment.keyboard(keyboard)
+
+
+def _build_story_keyboard(uid: str, phase: int, options: tuple[story_mainline.Option, ...]) -> MessageSegment:
+    buttons = [
+        Button(
+            id=f"{STORY_BUTTON_PREFIX}_{option.key}",
+            render_data=RenderData(label=f"{option.key}. {option.text}", style=1),
+            action=Action(
+                type=1,
+                data=f"{STORY_BUTTON_PREFIX}:{uid}:{phase}:{option.key}",
+                permission=Permission(type=0, specify_user_ids=[uid]),
+            ),
+        )
+        for option in options
     ]
     keyboard = MessageKeyboard(content=InlineKeyboard(rows=[InlineKeyboardRow(buttons=buttons)]))
     return MessageSegment.keyboard(keyboard)
@@ -423,6 +445,158 @@ async def handle_mainline(event: MessageEvent):
     else:
         lines.append("\n➤ 是你当前最接近的主线目标；达成后再次打开成长册即可领奖。")
     await mainline_cmd.finish("\n".join(lines))
+
+
+# ======================== 全服分支主线 ========================
+
+story_task_cmd = on_command("阶段任务")
+story_choice_cmd = on_command("选择")
+story_progress_cmd = on_command("故事进度")
+
+
+def _story_task_message(uid: str, task: dict) -> MessageSegment | str:
+    if task["ended"]:
+        ending = task.get("ending")
+        if ending:
+            return f"📜 {ending['ending_text']}"
+        return "《第十三声钟响》已经结束，你没有留下个人参与记录。"
+    phase = task["phase"]
+    stats = task["stats"]
+    if task["choice"]:
+        selected = next(option.text for option in phase.options if option.key == task["choice"])
+        return (
+            f"🔔 《{story_mainline.STORY_TITLE}》{phase.number}/20·{phase.title}\n"
+            f"你已选择 {task['choice']}：{selected}\n"
+            f"当前参与 {sum(stats.values())}/{task['threshold']} 人，请等待阶段结算。"
+        )
+    if not task["eligible"]:
+        return (
+            f"🔔 《{story_mainline.STORY_TITLE}》{phase.number}/20·{phase.title}\n"
+            "你今天还没有听见异常钟声。阶段任务每日有概率触发，请之后再来查看。"
+        )
+    options = "\n".join(f"{option.key}. {option.text}" for option in phase.options)
+    body = (
+        f"🔔 **《{story_mainline.STORY_TITLE}》{phase.number}/20·{phase.title}**\n\n"
+        f"{phase.prompt}\n\n{options}\n\n"
+        f"选择后获得{story_mainline.CHOICE_REWARD}加隆，且无法反悔。"
+    )
+    return MessageSegment.markdown(body) + _build_story_keyboard(uid, phase.number, phase.options)
+
+
+@story_task_cmd.handle()
+async def handle_story_task(event: MessageEvent):
+    uid = event.get_user_id()
+    try:
+        message = _story_task_message(uid, story_mainline.task_for(uid))
+    except story_mainline.StoryError as e:
+        await story_task_cmd.finish(str(e))
+        return
+    await story_task_cmd.finish(message)
+
+
+def _story_choice_text(result: dict) -> str:
+    total = sum(result["stats"].values())
+    text = (
+        f"你选择了 {result['choice']}：{result['text']}\n"
+        f"获得{result['reward']}加隆。当前已有{total}人参与。"
+    )
+    if result["advanced"]:
+        text += "\n本阶段已经达到推进条件，新的阶段已开启。"
+    else:
+        text += "\n等待其他学生作出选择……"
+    return text
+
+
+@story_choice_cmd.handle()
+async def handle_story_choice(event: MessageEvent, args=CommandArg()):
+    raw = args.extract_plain_text().strip().upper().split()
+    choice = raw[-1] if raw else ""
+    try:
+        result = story_mainline.choose(event.get_user_id(), choice)
+    except story_mainline.StoryError as e:
+        await story_choice_cmd.finish(f"{e}\n用法：/选择 A")
+        return
+    await story_choice_cmd.finish(_story_choice_text(result))
+
+
+story_choice_button = on_notice()
+
+
+@story_choice_button.handle()
+async def handle_story_choice_button(bot: Bot, event: InteractionCreateEvent):
+    button_data = event.data.resolved.button_data or ""
+    parts = button_data.split(":")
+    if len(parts) != 4 or parts[0] != STORY_BUTTON_PREFIX:
+        return
+    _, owner_uid, phase_text, choice = parts
+    if event.get_user_id() != owner_uid:
+        return
+    try:
+        current = story_mainline.progress()
+        if not current["active"] or current["phase"] != int(phase_text):
+            raise story_mainline.StoryError("这个按钮属于已经结束的阶段，请发送「/阶段任务」查看最新任务。")
+        result = story_mainline.choose(owner_uid, choice)
+    except (ValueError, story_mainline.StoryError) as e:
+        await bot.send(event, str(e))
+        return
+    await bot.send(event, _story_choice_text(result))
+
+
+@story_progress_cmd.handle()
+async def handle_story_progress(event: MessageEvent):
+    data = story_mainline.progress(event.get_user_id())
+    if data["active"]:
+        stats = "　".join(f"{key}:{count}" for key, count in data["stats"].items())
+        await story_progress_cmd.finish(
+            f"🔔 《{data['title']}》{data['phase']}/20·{data['phase_title']}\n"
+            f"本阶段票数：{stats}\n参与：{sum(data['stats'].values())}/{data['threshold']}"
+        )
+        return
+    ending = data.get("personal_ending")
+    text = f"🔔 《{data['title']}》已经完结。\n全校结局：{story_mainline.ENDING_NAMES[data['ending_key']]}"
+    if ending:
+        text += f"\n你的身份：{story_mainline.TAG_NAMES[ending['personal_tag']]}\n{ending['ending_text']}"
+    await story_progress_cmd.finish(text)
+
+
+@scheduler.scheduled_job("interval", minutes=10, id="hp_story_mainline_tick")
+async def _story_mainline_tick() -> None:
+    day = core_storage.get_current_day()
+    if day is None:
+        return
+    story_mainline.daily_offer(day)
+    story_mainline.check_and_advance()
+    announcements = story_mainline.pending_announcements()
+    if not announcements:
+        return
+    group_openid = core_storage.get_game_group_openid()
+    if not group_openid:
+        return
+    try:
+        bot = nonebot.get_bot()
+        for item in announcements:
+            await bot.send_to_group(group_openid=group_openid, message=item["message"])
+            story_mainline.mark_announcement_sent(item["id"])
+    except Exception as e:
+        logger.warning(f"[hp_school] 主线公告发送失败：{e}")
+
+
+@scheduler.scheduled_job("interval", minutes=5, id="hp_group_announcements")
+async def _send_group_announcements() -> None:
+    """定时发送管理员添加的群通知。"""
+    announcements = storage.get_pending_announcements()
+    if not announcements:
+        return
+    group_openid = core_storage.get_game_group_openid()
+    if not group_openid:
+        return
+    try:
+        bot = nonebot.get_bot()
+        for item in announcements:
+            await bot.send_to_group(group_openid=group_openid, message=item["message"])
+            storage.mark_announcement_sent(item["id"])
+    except Exception as e:
+        logger.warning(f"[hp_school] 群通知发送失败：{e}")
 
 
 # ======================== 作业 ========================
@@ -1227,3 +1401,79 @@ async def handle_recipe_list(event: MessageEvent):
         await recipe_list_cmd.finish("\n".join(lines))
     finally:
         conn.close()
+
+
+consume_food_cmd = on_command("食用")
+
+
+@consume_food_cmd.handle()
+async def handle_consume_food(event: MessageEvent, args=CommandArg()):
+    uid = event.get_user_id()
+    food_input = args.extract_plain_text().strip()
+    if not food_input:
+        await consume_food_cmd.finish("用法：/食用 食物名（比如 /食用 炒鸡蛋）\n发送「/食柜」查看你有什么。")
+        return
+
+    try:
+        result = kitchen.consume(uid, food_input)
+    except kitchen.KitchenError as e:
+        await consume_food_cmd.finish(str(e))
+        return
+
+    # 应用buff效果
+    found = kitchen.find_recipe(food_input)
+    if found:
+        recipe_key = found[0]
+        effects = kitchen.apply_food_effects(uid, recipe_key)
+
+    lines = [
+        f"😋 你享受了一份「{result['recipe']}」",
+        "",
+        f"效果：{result['effect']}",
+    ]
+
+    if result["remaining"] > 0:
+        lines.append(f"\n（食柜还剩 {result['remaining']} 份）")
+    else:
+        lines.append("\n（食柜里这个没了）")
+
+    await consume_food_cmd.finish("\n".join(lines))
+
+
+# ======================== 竞选新人王 ========================
+
+
+freshman_duel_cmd = on_command("竞选")
+
+
+@freshman_duel_cmd.handle()
+async def handle_freshman_duel(event: MessageEvent):
+    uid = event.get_user_id()
+    player = core_storage.get_player(uid)
+
+    if not player or not player["house"]:
+        await freshman_duel_cmd.finish("你还没有分院。先完成 /入学")
+        return
+
+    if player["grade"] != 1:
+        await freshman_duel_cmd.finish("竞选新人王只对一年级学生开放。")
+        return
+
+    result = freshman_duel.perform_duel(uid)
+    await freshman_duel_cmd.finish(result["message"])
+
+
+freshman_rank_cmd = on_command("新人王排名")
+
+
+@freshman_rank_cmd.handle()
+async def handle_freshman_rank(event: MessageEvent):
+    uid = event.get_user_id()
+    player = core_storage.get_player(uid)
+
+    if not player or not player["house"]:
+        await freshman_rank_cmd.finish("你还没有分院。先完成 /入学")
+        return
+
+    message = freshman_duel.get_leaderboard()
+    await freshman_rank_cmd.finish(message)

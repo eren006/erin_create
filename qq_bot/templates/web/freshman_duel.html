@@ -1,0 +1,71 @@
+{% extends "web/base.html" %}
+{% block title %}竞选新人王{% endblock %}
+{% block body %}
+{% if not_available %}
+<div class="card">
+  <h2>竞选新人王</h2>
+  <p class="muted">竞选新人王只对一年级学生开放。二年级及以上不参与此活动。</p>
+</div>
+{% else %}
+<div class="card">
+  <h2>🏆 一年级新人王竞选</h2>
+  <p>每3小时可参加一次竞选。掷骰子前进，首先到达终点的人成为新人王！</p>
+
+  {% if my_duel %}
+  <div style="margin: 15px 0; padding: 10px; background: #f5f5f5; border-radius: 5px;">
+    <p><b>你的竞选进度</b></p>
+    <p>总积分：<b>{{ my_duel.score }}</b>分</p>
+    {% if positions %}
+    <p>位置：{{ positions[min(my_duel.progress, positions|length-1)] }}</p>
+    {% endif %}
+    <div style="width: 100%; background: #ddd; height: 20px; border-radius: 3px; margin: 10px 0; overflow: hidden;">
+      <div style="width: {{ (my_duel.progress / (positions|length-1) * 100)|int }}%; height: 100%; background: #4CAF50;"></div>
+    </div>
+  </div>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('freshman_duel_action') }}" style="margin: 15px 0;">
+    {% if can_duel %}
+    <button type="submit" class="primary">参加一次竞选</button>
+    {% else %}
+    <button type="submit" disabled title="{{ cooldown_msg }}">{{ cooldown_msg }}</button>
+    {% endif %}
+  </form>
+</div>
+
+<div class="card">
+  <h2>📊 竞选排名</h2>
+  <div class="scroll"><table>
+    <tr><th>排名</th><th>积分</th><th>位置</th></tr>
+    {% set rank_lines = rankings_text.split('\n') %}
+    {% for line in rank_lines %}
+      {% if line and not line.startswith('📊') %}
+      <tr>
+        {% set parts = line.split(': ') %}
+        {% if parts|length >= 2 %}
+          {% set name_rank = parts[0] %}
+          {% set rest = ': '.join(parts[1:]) %}
+          {% set score_pos = rest.split(' - ') %}
+          {% if score_pos|length >= 2 %}
+          <td>{{ name_rank.split('. ')[0] }}</td>
+          <td>{{ score_pos[0].split(': ')[1] if ': ' in score_pos[0] else score_pos[0] }}</td>
+          <td>{{ ' - '.join(score_pos[1:]) }}</td>
+          {% endif %}
+        {% endif %}
+      </tr>
+      {% endif %}
+    {% endfor %}
+  </table></div>
+</div>
+
+<div class="card" style="margin-top: 20px;">
+  <h3>📍 竞选棋盘位置</h3>
+  <ol style="line-height: 2;">
+    {% for pos in positions %}
+    <li>{{ pos }}</li>
+    {% endfor %}
+  </ol>
+</div>
+
+{% endif %}
+{% endblock %}
