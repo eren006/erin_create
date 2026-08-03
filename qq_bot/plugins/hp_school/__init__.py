@@ -21,13 +21,19 @@ BUTTON_PREFIX = "hpsort"
 LESSON_BUTTON_PREFIX = "hplesson"
 
 
+def _numbered(options: list[str]) -> str:
+    """正文里把选项完整列一遍——按钮上的长文字会被QQ截断，看不全。"""
+    return "\n".join(f"{i}. {label}" for i, label in enumerate(options, 1))
+
+
 def _build_keyboard(uid: str, step: str, options: list[str]) -> MessageSegment:
     """给 options 里每一项生成一个按钮，data 里编码 uid/step/序号，
-    并把操作权限锁定到发起这次分院测试的人，避免群里其他人代点。"""
+    并把操作权限锁定到发起这次分院测试的人，避免群里其他人代点。
+    按钮文字带序号，和正文里的编号对得上，长文本被截断也能认出来点哪个。"""
     buttons = [
         Button(
             id=f"{BUTTON_PREFIX}_{step}_{i}",
-            render_data=RenderData(label=label, style=1),
+            render_data=RenderData(label=f"{i + 1}. {label}", style=1),
             action=Action(
                 type=1,
                 data=f"{BUTTON_PREFIX}:{uid}:{step}:{i}",
@@ -44,7 +50,7 @@ def _build_lesson_keyboard(uid: str, token: str, options: list[str]) -> MessageS
     buttons = [
         Button(
             id=f"{LESSON_BUTTON_PREFIX}_{i}",
-            render_data=RenderData(label=label, style=1),
+            render_data=RenderData(label=f"{i + 1}. {label}", style=1),
             action=Action(
                 type=1,
                 data=f"{LESSON_BUTTON_PREFIX}:{uid}:{token}:{i}",
@@ -116,12 +122,13 @@ async def handle_enroll(event: MessageEvent, args=CommandArg()):
         await enroll_cmd.finish(_wand_shop_message(uid, result, resume=True))
         return
     intro = (
-        f"接着上次没答完的问题，{result['name']}——\n"
+        f"接着上次没答完的问题，{result['name']}——"
         if result["is_resume"]
-        else f"欢迎来到霍格沃茨，{result['name']}。在分院之前，先问几个问题。\n你是——\n"
+        else f"欢迎来到霍格沃茨，{result['name']}。在分院之前，先问几个问题。"
     )
+    body = f"{intro}\n\n**{result['label']}**\n\n{_numbered(result['options'])}"
     await enroll_cmd.finish(
-        MessageSegment.markdown(intro) + _build_keyboard(uid, result["step"], result["options"])
+        MessageSegment.markdown(body) + _build_keyboard(uid, result["step"], result["options"])
     )
 
 
@@ -183,8 +190,8 @@ async def handle_sorting_button(bot: Bot, event: InteractionCreateEvent):
 
     text = f"选好了：{result['picked']}"
     if result.get("surname"):
-        text += f"\n——原来你是{result['surname']}家的孩子。"
-    text += f"\n接下来——{result['label']}呢？"
+        text += f"\n\n——原来你是{result['surname']}家的孩子。"
+    text += f"\n\n**{result['label']}**\n\n{_numbered(result['options'])}"
     await bot.send(
         event,
         MessageSegment.markdown(text) + _build_keyboard(uid, result["step"], result["options"]),
@@ -253,7 +260,8 @@ async def handle_lesson(event: MessageEvent, args=CommandArg()):
     intro = "接着刚才没完成的课堂——" if event_result["is_resume"] else "课堂情境——"
     await lesson_cmd.finish(
         MessageSegment.markdown(
-            f"**📚 {event_result['subject']}**\n\n{intro}\n\n{event_result['prompt']}\n\n你准备怎么做？"
+            f"**📚 {event_result['subject']}**\n\n{intro}\n\n{event_result['prompt']}\n\n"
+            f"你准备怎么做？\n\n{_numbered(event_result['options'])}"
         )
         + _build_lesson_keyboard(uid, event_result["token"], event_result["options"])
     )

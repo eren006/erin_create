@@ -234,7 +234,8 @@ def _wand_step_result(session, reaction: str = "") -> dict:
         "wand_prompt": meta["prompt"],
         "reaction": reaction,
         "house": session["pending_house"],
-        "options": [f"{i + 1}. {option}" for i, option in enumerate(labels)],
+        # 序号统一由 _build_keyboard 加，这里只给纯标签，避免出现「1. 1. 冬青木」
+        "options": list(labels),
         "wand_option_details": details,
         "selected_wood": state.get("wood", ""),
         "selected_core": state.get("core", ""),
