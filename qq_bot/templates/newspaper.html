@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>霍格沃茨校报 · {{ issue.school_year }}年级特刊</title>
+  <style>
+    :root {
+      --ink: #241b14;
+      --muted: #665648;
+      --paper: #ead8ad;
+      --paper-light: #f7edcf;
+      --rule: #796044;
+      --wine: #6f1d25;
+      --gold: #a77c2f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: Georgia, "Noto Serif SC", "Songti SC", serif;
+      background:
+        radial-gradient(circle at 20% 10%, rgba(255,255,255,.08), transparent 24rem),
+        #211911;
+      min-height: 100vh;
+    }
+    .archive {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      display: flex;
+      justify-content: center;
+      gap: .55rem;
+      flex-wrap: wrap;
+      padding: .75rem 1rem;
+      background: rgba(24, 17, 12, .94);
+      border-bottom: 1px solid #80633c;
+      backdrop-filter: blur(8px);
+    }
+    .archive a {
+      color: #dbc795;
+      text-decoration: none;
+      font-size: .86rem;
+      padding: .3rem .65rem;
+      border: 1px solid #6f5839;
+      border-radius: 999px;
+    }
+    .archive a.active { color: #221910; background: #d2b879; }
+    .paper {
+      width: min(1060px, calc(100% - 24px));
+      margin: 28px auto 60px;
+      padding: clamp(22px, 5vw, 58px);
+      background:
+        linear-gradient(rgba(247,237,207,.88), rgba(234,216,173,.94)),
+        repeating-linear-gradient(0deg, transparent 0 4px, rgba(70,45,24,.025) 5px);
+      box-shadow: 0 24px 80px rgba(0,0,0,.48), inset 0 0 70px rgba(105,71,31,.16);
+      border: 1px solid #b99b62;
+    }
+    .masthead {
+      text-align: center;
+      border-top: 5px double var(--ink);
+      border-bottom: 5px double var(--ink);
+      padding: 16px 0 13px;
+    }
+    .masthead h1 {
+      margin: 0;
+      font-size: clamp(2.1rem, 7vw, 5rem);
+      line-height: .96;
+      letter-spacing: -.055em;
+      font-weight: 900;
+    }
+    .edition {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: .85rem;
+      letter-spacing: .08em;
+    }
+    .lead {
+      text-align: center;
+      margin: 28px auto;
+      max-width: 760px;
+    }
+    .lead h2 { margin: 0; color: var(--wine); font-size: clamp(1.55rem, 4vw, 2.6rem); }
+    .lead p { color: var(--muted); font-style: italic; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0 30px;
+      border-top: 1px solid var(--rule);
+    }
+    article {
+      padding: 24px 0;
+      border-bottom: 1px solid rgba(83,61,38,.45);
+      break-inside: avoid;
+    }
+    article:nth-child(odd) { padding-right: 30px; border-right: 1px solid rgba(83,61,38,.45); }
+    article h3 {
+      margin: 0 0 11px;
+      color: var(--wine);
+      font-size: 1.35rem;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    article p, article li { line-height: 1.7; }
+    ul { margin: 0; padding-left: 1.25rem; }
+    .wand { color: var(--muted); font-size: .9rem; }
+    .rankings { grid-column: 1 / -1; padding-right: 0 !important; border-right: 0 !important; }
+    .rank-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
+    .rank {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: .45rem 0;
+      border-bottom: 1px dotted #8b7354;
+    }
+    .empty {
+      grid-column: 1 / -1;
+      padding: 50px 0;
+      text-align: center;
+      color: var(--muted);
+      font-style: italic;
+    }
+    footer { text-align: center; margin-top: 28px; color: var(--muted); font-size: .84rem; }
+    @media (max-width: 720px) {
+      .grid, .rank-grid { grid-template-columns: 1fr; }
+      article:nth-child(odd) { padding-right: 0; border-right: 0; }
+      .edition { flex-direction: column; gap: .25rem; }
+      .paper { margin-top: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="archive" aria-label="学年报纸归档">
+    {% for day in issue.archive_days %}
+      {% set year = 1 if day <= 4 else 2 if day <= 8 else 3 if day <= 12 else 4 if day <= 16 else 5 if day <= 21 else 6 if day <= 25 else 7 %}
+      <a href="{{ url_for('issue', end_day=day) }}" class="{{ 'active' if day == issue.end_day else '' }}">{{ year }}年级特刊</a>
+    {% endfor %}
+  </nav>
+
+  <main class="paper">
+    <header class="masthead">
+      <h1>霍格沃茨校报</h1>
+      <div class="edition">
+        <span>创刊人：一群不肯透露姓名的猫头鹰</span>
+        <strong>{{ issue.school_year }}年级特刊 · 第{{ issue.start_day }}—{{ issue.end_day }}天</strong>
+        <span>售价：一枚诚实的纳特</span>
+      </div>
+    </header>
+
+    <section class="lead">
+      <h2>{{ "学年落幕，成绩、荣耀与传闻同时抵达" if issue.is_published else "本学年仍在进行，猫头鹰送来实时校讯" }}</h2>
+      <p>城堡会记住每一场决斗、每一根选择主人的魔杖，以及每一份拖到最后才交的作业。</p>
+    </section>
+
+    <section class="grid">
+      {% if issue.newcomers %}
+      <article>
+        <h3>🎩 新生与分院</h3>
+        <ul>
+          {% for row in issue.newcomers %}
+          <li><strong>{{ row.name }}{% if row.surname %}·{{ row.surname }}{% endif %}</strong>进入{{ row.house }}。<br>
+            <span class="wand">魔杖：{{ row.wood }}，{{ row.core }}</span></li>
+          {% endfor %}
+        </ul>
+      </article>
+      {% endif %}
+
+      {% if issue.spells %}
+      <article>
+        <h3>🪄 魔法进展</h3>
+        <ul>{% for row in issue.spells %}<li>{{ row.name }}学会了{{ row.amount }}个新魔咒。</li>{% endfor %}</ul>
+      </article>
+      {% endif %}
+
+      {% if issue.duels %}
+      <article>
+        <h3>⚔️ 决斗俱乐部</h3>
+        <ul>{% for row in issue.duels %}<li>{{ row.name }}取得{{ row.wins }}场胜利。</li>{% endfor %}</ul>
+      </article>
+      {% endif %}
+
+      {% if issue.couples %}
+      <article>
+        <h3>💌 校园传闻</h3>
+        <ul>{% for row in issue.couples %}<li>{{ row.a }}与{{ row.b }}确认交往。消息来源拒绝署名。</li>{% endfor %}</ul>
+      </article>
+      {% endif %}
+
+      {% if issue.forest_runs or issue.forest_slain %}
+      <article>
+        <h3>🌲 禁林通报</h3>
+        {% if issue.forest_runs %}
+        <ul>{% for row in issue.forest_runs %}<li>{{ row.name }}深入至第{{ row.depth }}层，带回{{ row.galleons }}加隆。</li>{% endfor %}</ul>
+        {% endif %}
+        {% if issue.forest_slain %}
+        <p>本学年全校累计<strong>{{ issue.forest_slain }}</strong>次首度击退禁林生物。</p>
+        {% endif %}
+        <p class="wand">校方重申：禁林依旧禁止学生进入。</p>
+      </article>
+      {% endif %}
+
+      {% if issue.careers %}
+      <article>
+        <h3>🎓 毕业去向</h3>
+        <ul>{% for row in issue.careers %}<li>{{ row.name }}正式成为{{ row.career }}。</li>{% endfor %}</ul>
+      </article>
+      {% endif %}
+
+      {% if issue.shifts or issue.homework_awards %}
+      <article>
+        <h3>🧹 勤工俭学</h3>
+        <p>本学年学生共完成<strong>{{ issue.shifts }}</strong>份城堡零工，
+          <strong>{{ issue.homework_awards }}</strong>人次按时完成当天全部作业。</p>
+      </article>
+      {% endif %}
+
+      {% if not issue.newcomers and not issue.spells and not issue.duels and not issue.couples and not issue.careers and not issue.shifts and not issue.forest_runs %}
+      <div class="empty">本期城堡异常安静。编辑部怀疑所有新闻都被皮皮鬼藏起来了。</div>
+      {% endif %}
+
+      <article class="rankings">
+        <h3>🏆 学年榜单</h3>
+        <div class="rank-grid">
+          <div>
+            <h4>个人成绩</h4>
+            {% for row in issue.students %}
+            <div class="rank"><span>{{ loop.index }}. {{ row.name }}</span><strong>{{ row.total_exp }}分</strong></div>
+            {% else %}<p>暂无学生记录。</p>{% endfor %}
+          </div>
+          <div>
+            <h4>学院杯</h4>
+            {% for row in issue.houses %}
+            <div class="rank"><span>{{ loop.index }}. {{ row.house }}</span><strong>人均{{ "%.1f"|format(row.avg_points) }}</strong></div>
+            {% else %}<p>暂无学院记录。</p>{% endfor %}
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <footer>本报内容可能被皮皮鬼擅自添油加醋 · 猫头鹰棚印刷</footer>
+  </main>
+</body>
+</html>
