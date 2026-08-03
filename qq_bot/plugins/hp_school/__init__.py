@@ -1491,6 +1491,94 @@ async def handle_get_materials(event: MessageEvent):
     await get_materials_cmd.finish("\n".join(lines))
 
 
+gift_food_cmd = on_command("赠送食物")
+
+
+@gift_food_cmd.handle()
+async def handle_gift_food(event: MessageEvent, args=CommandArg()):
+    uid = event.get_user_id()
+    text = args.extract_plain_text().strip()
+
+    if not text:
+        await gift_food_cmd.finish("用法：/赠送食物 食物名 收礼人\n（比如 /赠送食物 炒鸡蛋 赫敏）")
+        return
+
+    parts = text.split()
+    if len(parts) < 2:
+        await gift_food_cmd.finish("用法：/赠送食物 食物名 收礼人\n（比如 /赠送食物 炒鸡蛋 赫敏）")
+        return
+
+    food_input = parts[0]
+    recipient_name = parts[1]
+
+    try:
+        result = kitchen.gift_food(uid, food_input, recipient_name)
+    except kitchen.KitchenError as e:
+        await gift_food_cmd.finish(str(e))
+        return
+
+    sender_name = core_storage.get_full_name(uid)
+    await gift_food_cmd.finish(
+        f"🎁 {sender_name} 送了一份「{result['food_name']}」给 {result['recipient_name']}。\n"
+        f"对方会很开心的！"
+    )
+
+
+kitchen_materials_cmd = on_command("厨房材料")
+
+
+@kitchen_materials_cmd.handle()
+async def handle_kitchen_materials(event: MessageEvent):
+    uid = event.get_user_id()
+    player = core_storage.get_player(uid)
+    if not player or not player["house"]:
+        await kitchen_materials_cmd.finish("你还没有分院。先完成 /入学")
+        return
+
+    offerings = shop.current_offerings("烹饪材料")
+
+    if not offerings:
+        await kitchen_materials_cmd.finish("目前没有烹饪材料出售。")
+        return
+
+    lines = ["🛒 对角巷烹饪材料区"]
+    lines.append(f"💰 你目前有 {player['galleons']} 加隆\n")
+
+    for item_key, name, category, price, description, effect in offerings:
+        lines.append(f"「{name}」- {price}加隆")
+        lines.append(f"　{description}")
+        lines.append("")
+
+    lines.append("购买用法：/购买材料 材料名\n（比如 /购买材料 鸡蛋（一打））")
+
+    await kitchen_materials_cmd.finish("\n".join(lines))
+
+
+buy_materials_cmd = on_command("购买材料")
+
+
+@buy_materials_cmd.handle()
+async def handle_buy_materials(event: MessageEvent, args=CommandArg()):
+    uid = event.get_user_id()
+    material_input = args.extract_plain_text().strip()
+
+    if not material_input:
+        await buy_materials_cmd.finish("用法：/购买材料 材料名\n（比如 /购买材料 鸡蛋（一打））")
+        return
+
+    try:
+        result = shop.buy(uid, material_input)
+    except shop.ShopError as e:
+        await buy_materials_cmd.finish(str(e))
+        return
+
+    player = core_storage.get_player(uid)
+    await buy_materials_cmd.finish(
+        f"✓ 买下了「{result['name']}」，花了 {result['price']} 加隆。\n"
+        f"现在还有 {player['galleons']} 加隆。"
+    )
+
+
 # ======================== 竞选新人王 ========================
 
 

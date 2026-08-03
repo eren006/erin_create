@@ -81,6 +81,7 @@ th{color:#756856;font-weight:700;font-size:.78rem;letter-spacing:.06em;text-tran
       {% if display_name %}{{ display_name }}{% if player %} · {{ player.house }} · {{ player.grade }}年级{% endif %}
       {% else %}{{ account.uid }}{% endif %}
       · <a href="{{ url_for('password') }}">改密码</a>
+      {% if session.get('admin_ok') %}· <a href="{{ url_for('admin') }}">👤 管理</a>{% endif %}
       · <a href="{{ url_for('logout') }}">退出</a>
     </span>
   </div>

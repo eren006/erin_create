@@ -116,11 +116,22 @@ ITEMS: list[tuple[str, str, str, int, str, dict]] = [
         "对方接下来说话会带着蛙叫声，自己听着都想笑。",
         {"status_label": "说话带着呱呱蛙音", "duration_hours": 2},
     ),
+    # ── 烹饪材料：用来做菜的，价格低廉，库存充足 ──
+    ("mat_egg_batch", "鸡蛋（一打）", "烹饪材料", 8, "新鲜鸡蛋一打，烹饪的基础材料。", {}),
+    ("mat_butter_jar", "黄油罐", "烹饪材料", 10, "精制黄油一罐，用处广泛。", {}),
+    ("mat_flour_sack", "面粉麻袋", "烹饪材料", 6, "面粉一小袋，可以做不少面食。", {}),
+    ("mat_sugar_jar", "糖罐", "烹饪材料", 7, "白砂糖一罐，烘焙必备。", {}),
+    ("mat_milk_bottle", "牛奶瓶", "烹饪材料", 9, "新鲜牛奶一瓶，营养又好喝。", {}),
+    ("mat_honey_pot", "蜂蜜罐", "烹饪材料", 12, "优质蜂蜜一罐，不仅好吃还有药用。", {}),
+    ("mat_salt_shaker", "盐罐", "烹饪材料", 3, "食盐一罐，再便宜不过。", {}),
+    ("mat_chocolate_bar", "巧克力砖", "烹饪材料", 15, "上等可可巧克力，用来烘焙很不错。", {}),
+    ("mat_cream_bottle", "奶油瓶", "烹饪材料", 11, "淡奶油一瓶，甜点的灵魂。", {}),
+    ("mat_herbs_bundle", "香草束", "烹饪材料", 5, "新鲜香草一束，做菜时提味。", {}),
 ]
 
 ITEMS_BY_KEY = {item[0]: item for item in ITEMS}
 ITEMS_BY_NAME = {item[1]: item for item in ITEMS}
-CATEGORIES = ("扫帚", "零食", "宠物", "装备", "礼物", "恶作剧")
+CATEGORIES = ("扫帚", "零食", "宠物", "装备", "礼物", "恶作剧", "烹饪材料")
 ROTATING_CATEGORIES = ("零食", "宠物")  # 这两类每3小时随机开放一部分，其余常驻
 
 

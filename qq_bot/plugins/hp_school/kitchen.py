@@ -1253,3 +1253,62 @@ def check_achievements(uid: str) -> list[str]:
         return unlocked
     finally:
         conn.close()
+
+
+def gift_food(sender_uid: str, food_input: str, recipient_name: str) -> dict:
+    """赠送食物给指定玩家。"""
+    # 查找食物
+    found = find_recipe(food_input)
+    if not found:
+        raise KitchenError(f"不认识这个食物「{food_input}」。")
+
+    key, recipe = found
+    food_key = f"food_{key}"
+
+    # 查找收礼人
+    recipient_uid = core_storage.get_uid_by_name(recipient_name)
+    if not recipient_uid:
+        raise KitchenError(f"找不到叫「{recipient_name}」的人。")
+
+    if recipient_uid == sender_uid:
+        raise KitchenError("不能给自己赠送食物。")
+
+    conn = get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+
+        # 检查赠送者有没有这个食物
+        sender_row = conn.execute(
+            "SELECT quantity FROM kitchen_inventory WHERE uid=? AND food_key=?",
+            (sender_uid, food_key),
+        ).fetchone()
+
+        if not sender_row or sender_row["quantity"] <= 0:
+            conn.rollback()
+            raise KitchenError(f"你没有「{recipe['name']}」，无法赠送。")
+
+        # 转移食物
+        conn.execute(
+            "UPDATE kitchen_inventory SET quantity=quantity-1 WHERE uid=? AND food_key=?",
+            (sender_uid, food_key),
+        )
+
+        conn.execute(
+            "INSERT INTO kitchen_inventory(uid,food_key,quantity,created_at) "
+            "VALUES(?,?,1,?) "
+            "ON CONFLICT(uid,food_key) DO UPDATE SET quantity=quantity+1",
+            (recipient_uid, food_key, core_storage.now()),
+        )
+
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+    return {
+        "food_name": recipe["name"],
+        "recipient_name": recipient_name,
+        "sender_uid": sender_uid,
+    }
