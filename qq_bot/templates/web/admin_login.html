@@ -1,0 +1,13 @@
+{% extends "web/base.html" %}
+{% block title %}管理登录{% endblock %}
+{% block body %}
+<div class="card" style="max-width:380px;margin:60px auto">
+  <h2>管理后台</h2>
+  <form method="post">
+    <label>管理密码</label>
+    <input name="password" type="password" required autofocus style="width:100%">
+    <p><button type="submit" style="width:100%">进入</button></p>
+  </form>
+  <p class="muted"><a href="{{ url_for('login') }}">返回玩家登录</a></p>
+</div>
+{% endblock %}

@@ -3,7 +3,7 @@
 from plugins.hp_core import storage as core_storage
 from plugins.hp_core.storage import get_conn
 
-from . import homework, lessons, mainline, storage, subjects, work
+from . import homework, lessons, mainline, potions, storage, subjects, work
 
 GRADE_END_DAY = {1: 4, 2: 8, 3: 12, 4: 16, 5: 21, 6: 25, 7: 30}
 
@@ -40,6 +40,7 @@ def build(uid: str) -> dict:
 
     session = storage.get_lesson_session(uid)
     unfinished = subjects.SUBJECTS_BY_KEY[session["subject_key"]][0] if session else ""
+    potion_session = potions.get_session(uid)
     activities = []
     conn = get_conn()
     try:
@@ -86,6 +87,7 @@ def build(uid: str) -> dict:
         "scored_lesson_cap": lessons.DAILY_GLOBAL_LIMIT,
         "lesson_rows": lesson_rows,
         "unfinished_lesson": unfinished,
+        "unfinished_potion": potions.RECIPES[potion_session["recipe_key"]]["name"] if potion_session else "",
         "activities": activities,
         "claimable": claimable,
         "work_count": work_count,

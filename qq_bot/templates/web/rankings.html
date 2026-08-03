@@ -1,0 +1,26 @@
+{% extends "web/base.html" %}
+{% block title %}榜单{% endblock %}
+{% block body %}
+<div class="card">
+  <h2>学院杯（按人均分）</h2>
+  <div class="scroll"><table>
+    <tr><th>#</th><th>学院</th><th>人均</th><th>总分</th><th>人数</th></tr>
+    {% for h in houses %}
+    <tr><td>{{ loop.index }}</td><td>{{ h.house }}</td>
+      <td><b>{{ '%.1f'|format(h.avg_points) }}</b></td>
+      <td>{{ h.total_points }}</td><td>{{ h.member_count }}</td></tr>
+    {% endfor %}
+  </table></div>
+</div>
+<div class="card">
+  <h2>全校个人排名（按学科经验总量）</h2>
+  <div class="scroll"><table>
+    <tr><th>#</th><th>学生</th><th>学院</th><th>总经验</th></tr>
+    {% for s in students %}
+    <tr><td>{{ loop.index }}</td>
+      <td>{{ s.name }}{% if s.surname %}·{{ s.surname }}{% endif %}</td>
+      <td>{{ s.house }}</td><td>{{ s.total_exp }}</td></tr>
+    {% endfor %}
+  </table></div>
+</div>
+{% endblock %}

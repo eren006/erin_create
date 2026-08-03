@@ -1,0 +1,61 @@
+{% extends "web/base.html" %}
+{% block title %}社交{% endblock %}
+{% block body %}
+<div class="card">
+  <h2>感情状况</h2>
+  <p>当前对象：<b>{% if state.partner %}{{ full_name(state.partner) }}{% else %}单身{% endif %}</b></p>
+  {% if state.partner %}
+    <form method="post" class="row">
+      <select name="activity">{% for a in activities %}<option>{{ a }}</option>{% endfor %}</select>
+      <button name="action" value="date">约会</button>
+      <button name="action" value="breakup" class="ghost">分手</button>
+    </form>
+  {% endif %}
+  <h3>我喜欢的人</h3>
+  <p class="muted">{% if state.liked_by_me %}{% for u, v in state.liked_by_me %}{{ name_of(u) }}({{ v }}){% if not loop.last %}、{% endif %}{% endfor %}{% else %}还没有{% endif %}</p>
+  <h3>喜欢我的人</h3>
+  <p class="muted">{% if state.likes_me %}{% for u, v in state.likes_me %}{{ name_of(u) }}({{ v }}){% if not loop.last %}、{% endif %}{% endfor %}{% else %}还没有{% endif %}</p>
+</div>
+
+<div class="card">
+  <h2>互动</h2>
+  <h3>调情<span class="muted">　对同一个人每天一次</span></h3>
+  <form method="post" class="row">
+    <input name="target" placeholder="对方名字" required>
+    <button name="action" value="flirt">调情</button>
+  </form>
+
+  <h3>送礼物</h3>
+  {% if gifts %}
+  <form method="post" class="row">
+    <select name="item">{% for gi in gifts %}<option>{{ gi.name }}（好感+{{ gi.affection }}）</option>{% endfor %}</select>
+    <input name="target" placeholder="对方名字" required>
+    <button name="action" value="gift">送出</button>
+  </form>
+  <p class="muted">下拉里只列你背包里有的礼物。去<a href="{{ url_for('shop_page', cat='礼物') }}">对角巷</a>买。</p>
+  {% else %}
+  <p class="muted">背包里还没有礼物，去<a href="{{ url_for('shop_page', cat='礼物') }}">对角巷</a>买一份。</p>
+  {% endif %}
+
+  {% if not state.partner %}
+  <h3>表白<span class="muted">　双方好感都要满 {{ confess_threshold }}</span></h3>
+  <form method="post" class="row">
+    <input name="target" placeholder="对方名字" required>
+    <button name="action" value="confess">确立关系</button>
+  </form>
+
+  <h3>插足<span class="muted">　撬别人的墙角，失败会掉好感</span></h3>
+  <form method="post" class="row">
+    <input name="target" placeholder="对方名字" required>
+    <button name="action" value="interfere" class="ghost">插足</button>
+  </form>
+  {% endif %}
+</div>
+
+{% if couples %}
+<div class="card">
+  <h2>全校情侣</h2>
+  <ul>{% for c in couples %}<li>{{ full_name(c.uid_a) }} 💗 {{ full_name(c.uid_b) }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+{% endblock %}

@@ -15,7 +15,7 @@ import plugins.hp_core as hp_core
 from plugins.hp_core import spells as spell_catalog
 from plugins.hp_core import storage as core_storage
 
-from . import careers, casting, daily_plan, homework, lesson_events, lessons, mainline, shop, shop_catalog, sorting, storage, subjects, wands, work
+from . import careers, casting, daily_plan, homework, lesson_events, lessons, mainline, potions, shop, shop_catalog, sorting, storage, subjects, wands, work
 
 BUTTON_PREFIX = "hpsort"
 LESSON_BUTTON_PREFIX = "hplesson"
@@ -281,7 +281,12 @@ async def handle_lesson_button(bot: Bot, event: InteractionCreateEvent):
     lines = []
     lines.append(result["event_result"])
     if result["gives_exp"]:
-        bonus_text = f"，其中课堂表现+{result['event_bonus']}" if result["event_bonus"] else ""
+        bonuses = []
+        if result["event_bonus"]:
+            bonuses.append(f"课堂表现+{result['event_bonus']}")
+        if result.get("potion_bonus"):
+            bonuses.append("振奋药剂+1")
+        bonus_text = f"，其中{'、'.join(bonuses)}" if bonuses else ""
         lines.append(
             f"{result['subject']}课上完了，+{result['exp_gained']}经验{bonus_text}（累计{result['total_exp']}）。"
         )
@@ -297,6 +302,8 @@ async def handle_lesson_button(bot: Bot, event: InteractionCreateEvent):
     lines.append(f"你揉了揉发酸的肩膀。今日课堂疲劳：{result['fatigue']}/{result['fatigue_max']}。")
     if result["fatigue"] >= result["fatigue_max"]:
         lines.append("今天已经听完八节课，城堡的走廊都快走不动了。该回休息室歇一歇了。")
+    if result.get("herbology_material"):
+        lines.append("🌿 斯普劳特教授允许你带走一份处理合格的结节草，已经放进背包。每天最多带走一份。")
 
     if result["is_spell_subject"]:
         if result["learned_spell"]:
@@ -471,6 +478,8 @@ async def handle_today_plan(event: MessageEvent):
     ]
     if result["unfinished_lesson"]:
         lines.append(f"未完成课堂：{result['unfinished_lesson']}（发送「/上课」继续）")
+    if result["unfinished_potion"]:
+        lines.append(f"坩埚仍在熬制：{result['unfinished_potion']}（发送「/继续熬制」）")
     lines.extend(["", "🎯 活动"])
     lines.extend(result["activities"] or ["当前年级暂无额外活动，先完成课程和作业。"])
     lines.append(f"城堡打工：{result['work_count']}/{work.DAILY_LIMIT}（发送「/打工」）")
@@ -487,6 +496,190 @@ async def handle_today_plan(event: MessageEvent):
     if hw["overdue_settled"]:
         lines.append(f"\n刚结算逾期作业：共扣{hw['overdue_penalty']}经验。")
     await today_plan_cmd.finish("\n".join(lines))
+
+
+# ======================== 魔药熬制 ========================
+
+potion_recipes_cmd = on_command("魔药配方")
+brew_potion_cmd = on_command("熬制魔药")
+continue_brew_cmd = on_command("继续熬制")
+brew_choice_cmd = on_command("熬制选择")
+abandon_brew_cmd = on_command("放弃熬制")
+use_potion_cmd = on_command("使用魔药")
+gift_potion_cmd = on_command("赠送魔药")
+potion_record_cmd = on_command("魔药记录")
+potion_titles_cmd = on_command("魔药称号")
+wear_potion_title_cmd = on_command("佩戴魔药称号")
+
+
+def _brew_prompt(result: dict) -> str:
+    lines = [
+        f"⚗️ {result['recipe']} · 第{result['step']}/{result['total_steps']}步",
+        ("你回到先前那口坩埚旁，药液还保持着离开时的状态。" if result.get("resumed") else "材料已经投入坩埚，熬制开始。"),
+        result["prompt"],
+    ]
+    lines.extend(f"{i}. {option}" for i, option in enumerate(result["options"], 1))
+    lines.append("发送「/熬制选择 1/2/3」继续；中断后可发送「/继续熬制」。")
+    return "\n".join(lines)
+
+
+@potion_recipes_cmd.handle()
+async def handle_potion_recipes(event: MessageEvent):
+    try:
+        result = potions.list_recipes(event.get_user_id())
+    except potions.PotionError as e:
+        await potion_recipes_cmd.finish(str(e))
+        return
+    from plugins.hp_events import forest_catalog
+    lines = [f"⚗️ 魔药配方 · 魔药学{result['exp']}经验"]
+    for row in result["rows"]:
+        status = "✓" if row["unlocked"] else f"🔒 {row['grade']}年级/{row['exp']}经验"
+        materials = "、".join(
+            f"{forest_catalog.MATERIALS_BY_KEY[key][1]}×{amount}"
+            for key, amount in row["ingredients"].items()
+        )
+        mastery = row["mastery"]
+        record = f"；成功{mastery['successes']}/{mastery['attempts']}" if mastery else ""
+        if row["key"] == "felix" and row["yearly_used"]:
+            record += "；本学年已开锅"
+        lines.append(f"\n{status} {row['name']}（{materials}）{record}\n{row['effect']}")
+    lines.append("\n发送「/熬制魔药 药名」开火。每天最多2次，每次消耗4点体力。")
+    await potion_recipes_cmd.finish("\n".join(lines))
+
+
+@brew_potion_cmd.handle()
+async def handle_brew_potion(event: MessageEvent, args=CommandArg()):
+    name = args.extract_plain_text().strip()
+    if not name and not potions.get_session(event.get_user_id()):
+        await brew_potion_cmd.finish("用法：/熬制魔药 药名（发送「/魔药配方」查看）")
+        return
+    try:
+        result = potions.start(event.get_user_id(), name)
+    except potions.PotionError as e:
+        await brew_potion_cmd.finish(str(e))
+        return
+    await brew_potion_cmd.finish(_brew_prompt(result))
+
+
+@continue_brew_cmd.handle()
+async def handle_continue_brew(event: MessageEvent):
+    row = potions.get_session(event.get_user_id())
+    if not row:
+        await continue_brew_cmd.finish("你面前没有正在熬制的坩埚。发送「/魔药配方」挑一张配方。")
+        return
+    await continue_brew_cmd.finish(_brew_prompt(potions._render_session(row, True)))
+
+
+@brew_choice_cmd.handle()
+async def handle_brew_choice(event: MessageEvent, args=CommandArg()):
+    try:
+        position = int(args.extract_plain_text().strip())
+        result = potions.choose(event.get_user_id(), position)
+    except (ValueError, potions.PotionError) as e:
+        await brew_choice_cmd.finish(str(e) if str(e) else "用法：/熬制选择 1/2/3")
+        return
+    if not result["finished"]:
+        await brew_choice_cmd.finish(_brew_prompt(result))
+        return
+    if result["quantity"]:
+        text = (
+            f"⚗️ 熬制完成：{result['quality']}！你得到「{result['recipe']}」×{result['quantity']}。\n"
+            "发送「/使用魔药 药名」使用，或在「/我的背包」查看。"
+        )
+    else:
+        text = f"💥 熬制失败。坩埚喷出一股古怪的烟，你现在{result['accident']}。材料没能保住。"
+    if result.get("earned_titles"):
+        text += "\n🏅 解锁魔药称号：" + "、".join(result["earned_titles"])
+    await brew_choice_cmd.finish(text)
+
+
+@abandon_brew_cmd.handle()
+async def handle_abandon_brew(event: MessageEvent):
+    if potions.abandon(event.get_user_id()):
+        await abandon_brew_cmd.finish("你熄灭了坩埚。已经投入的材料无法取回，今日熬制次数也不会返还。")
+    else:
+        await abandon_brew_cmd.finish("你现在没有正在熬制的魔药。")
+
+
+@use_potion_cmd.handle()
+async def handle_use_potion(event: MessageEvent, args=CommandArg()):
+    parts = args.extract_plain_text().strip().split()
+    if not parts:
+        await use_potion_cmd.finish("用法：/使用魔药 药名")
+        return
+    name = parts[0]
+    try:
+        target_uid = hp_core.resolve(parts[1]) if len(parts) > 1 else None
+        result = potions.use(event.get_user_id(), name, target_uid)
+    except (potions.PotionError, hp_core.UnknownPlayerError) as e:
+        await use_potion_cmd.finish(str(e))
+        return
+    extra = ""
+    if "stamina" in result:
+        extra = f"（体力+{result['restored']}，现在{result['stamina']}/{core_storage.STAMINA_MAX}）"
+    elif "hp" in result:
+        extra = f"（恢复{result['healed']}HP，现在{result['hp']}HP）"
+    await use_potion_cmd.finish(f"你使用了「{result['name']}」。{result['effect']}{extra}")
+
+
+@gift_potion_cmd.handle()
+async def handle_gift_potion(event: MessageEvent, args=CommandArg()):
+    parts = args.extract_plain_text().strip().split()
+    if len(parts) not in (2, 3):
+        await gift_potion_cmd.finish("用法：/赠送魔药 药名 对方名字 [数量]")
+        return
+    try:
+        quantity = int(parts[2]) if len(parts) == 3 else 1
+        target_uid = hp_core.resolve(parts[1])
+        result = potions.gift(event.get_user_id(), target_uid, parts[0], quantity)
+    except (ValueError, potions.PotionError, hp_core.UnknownPlayerError) as e:
+        await gift_potion_cmd.finish(str(e) if str(e) else "数量必须是整数。")
+        return
+    await gift_potion_cmd.finish(
+        f"🦉 你把「{result['name']}」×{result['quantity']}交给猫头鹰，送到了{result['target_name']}手里。"
+        f"（今日赠送{result['today_count']}/{result['daily_limit']}次）"
+    )
+
+
+@potion_record_cmd.handle()
+async def handle_potion_record(event: MessageEvent):
+    try:
+        result = potions.list_recipes(event.get_user_id())
+    except potions.PotionError as e:
+        await potion_record_cmd.finish(str(e))
+        return
+    lines = ["📖 我的魔药记录"]
+    for row in result["rows"]:
+        m = row["mastery"]
+        if m:
+            lines.append(
+                f"{row['name']}【{row['mastery_level']}】：尝试{m['attempts']}次，"
+                f"成功{m['successes']}次，完美{m['perfects']}次"
+            )
+    if len(lines) == 1:
+        lines.append("还没有熬制记录。")
+    await potion_record_cmd.finish("\n".join(lines))
+
+
+@potion_titles_cmd.handle()
+async def handle_potion_titles(event: MessageEvent):
+    rows = potions.title_state(event.get_user_id())
+    lines = ["🏅 魔药称号"]
+    for row in rows:
+        mark = "佩戴中" if row["active"] else "已解锁" if row["unlocked"] else "未解锁"
+        lines.append(f"{'✓' if row['unlocked'] else '🔒'} {row['name']}（{mark}）——{row['requirement']}")
+    lines.append("发送「/佩戴魔药称号 称号名」佩戴。")
+    await potion_titles_cmd.finish("\n".join(lines))
+
+
+@wear_potion_title_cmd.handle()
+async def handle_wear_potion_title(event: MessageEvent, args=CommandArg()):
+    try:
+        name = potions.wear_title(event.get_user_id(), args.extract_plain_text().strip())
+    except potions.PotionError as e:
+        await wear_potion_title_cmd.finish(str(e))
+        return
+    await wear_potion_title_cmd.finish(f"已经佩戴称号「{name}」。")
 
 
 # ======================== 打工 ========================

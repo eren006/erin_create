@@ -1,0 +1,65 @@
+{% extends "web/base.html" %}
+{% block title %}我的面板{% endblock %}
+{% block body %}
+<div class="card">
+  <h2>{{ display_name }}{{ status_suffix }}</h2>
+  {% if plan %}
+  <div class="stat"><span>体力</span><b>{{ plan.stamina }} / {{ plan.stamina_max }}</b></div>
+  <div class="bar"><i style="width:{{ (plan.stamina / plan.stamina_max * 100)|round }}%"></i></div>
+  <div class="stat"><span>疲劳值（计分课堂）</span><b>{{ plan.scored_lessons }} / {{ plan.scored_lesson_cap }}</b></div>
+  <div class="bar"><i style="width:{{ (plan.scored_lessons / plan.scored_lesson_cap * 100)|round }}%"></i></div>
+  <div class="stat"><span>加隆</span><b>{{ player.galleons }}</b></div>
+  <div class="stat"><span>已学魔咒</span><b>{{ learned_count }} / {{ spell_total }}</b></div>
+  <div class="stat"><span>距本学年期末</span><b>{{ plan.days_to_exam }} 天</b></div>
+  {% if career %}<div class="stat"><span>毕业职业</span><b>{{ career.name }}</b></div>{% endif %}
+  {% endif %}
+</div>
+
+{% if plan %}
+<div class="card">
+  <h2>今日安排</h2>
+  <h3>作业</h3>
+  <p>待交：{% if plan.homework.pending %}{{ plan.homework.pending|join('、') }}
+     　<a href="{{ url_for('homework_page') }}">去交</a>{% else %}<span class="muted">全交完了</span>{% endif %}</p>
+  {% if plan.unfinished_lesson %}
+  <h3>未完成的课堂</h3>
+  <p>{{ plan.unfinished_lesson }} 还没上完，<a href="{{ url_for('lessons_page') }}">回到课堂</a></p>
+  {% endif %}
+  {% if plan.lesson_rows %}<h3>今天上过的课</h3><p class="muted">{{ plan.lesson_rows|join('、') }}</p>{% endif %}
+  {% if plan.activities %}
+  <h3>活动</h3>
+  <ul>{% for a in plan.activities %}<li>{{ a }}</li>{% endfor %}</ul>
+  {% endif %}
+  <h3>打工</h3>
+  <p class="muted">今天打了 {{ plan.work_count }} 份工　<a href="{{ url_for('work_page') }}">去打工</a></p>
+  {% if plan.claimable and plan.claimable.items %}
+  <h3>可领取</h3>
+  <p><a href="{{ url_for('mainline_page') }}">成长册里有奖励可领</a></p>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>学科经验</h2>
+  <div class="scroll"><table>
+    <tr><th>学科</th><th>类别</th><th>经验</th></tr>
+    {% for key, name, unlock_grade, category in subjects %}
+      {% if player.grade >= unlock_grade %}
+      <tr><td>{{ name }}</td><td class="muted">{{ category }}</td><td>{{ exp_map.get(key, 0) }}</td></tr>
+      {% endif %}
+    {% endfor %}
+  </table></div>
+</div>
+
+{% if exams %}
+<div class="card">
+  <h2>考试成绩</h2>
+  <div class="scroll"><table>
+    <tr><th>学年</th><th>科目</th><th>评级</th></tr>
+    {% for e in exams %}
+    <tr><td>{{ e.grade }}年级</td><td>{{ subject_names.get(e.subject, e.subject) }}</td><td><b>{{ e.band }}</b></td></tr>
+    {% endfor %}
+  </table></div>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,62 @@
+{% extends "web/base.html" %}
+{% block title %}魁地奇{% endblock %}
+{% block body %}
+<div class="card">
+  <h2>我的魁地奇</h2>
+  {% if me %}
+    <p>位置：<b>{{ me.position or '无' }}</b>　赛季得分：{{ me.season_score }}</p>
+    <p>{% for k in stat_keys %}{{ stat_labels[k] }} {{ me[k] }}{% if me['broom_'+k+'_bonus'] %}
+       <span class="muted">(+{{ me['broom_'+k+'_bonus'] }})</span>{% endif %}　{% endfor %}</p>
+    {% if me.broom_key %}<p class="muted">扫帚耐久 {{ me.broom_durability }}
+      {% if me.broom_durability <= 0 %}——已损坏，去<a href="{{ url_for('spells_page') }}">施放修复如初</a>{% endif %}</p>{% endif %}
+    {% if daily %}<p class="muted">今日训练 {{ daily.trainings }}/3　比赛 {{ daily.matches }}/2</p>{% endif %}
+    <form method="post" style="margin-top:10px">
+      <button name="action" value="train">训练（随机提升一项属性）</button>
+    </form>
+    {% if me.position %}
+    <h3>约一场比赛</h3>
+    <form method="post" class="row">
+      <select name="house">
+        {% for h in houses %}{% if h != player.house %}<option>{{ h }}</option>{% endif %}{% endfor %}
+      </select>
+      <button name="action" value="match">开打</button>
+    </form>
+    {% endif %}
+  {% else %}
+    <p class="muted">你还不是魁地奇选手。飞行课经验 {{ flying_exp }}/{{ flying_threshold }}，
+       达标且满2年级就能加入球队。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>{{ player.house }}球队</h2>
+  <div class="scroll"><table>
+    <tr><th>位置</th><th>队员</th><th></th></tr>
+    {% for pos in positions %}
+    {% set row = rosters[player.house][pos] %}
+    <tr>
+      <td>{{ pos }}</td>
+      <td>{% if row %}{{ row.uid }}{% else %}<span class="muted">空缺</span>{% endif %}</td>
+      <td>
+        <form method="post" style="display:inline">
+          <input type="hidden" name="position" value="{{ pos }}">
+          {% if not row %}<button name="action" value="join">占位</button>
+          {% elif not me or row.uid != account.uid %}<button name="action" value="challenge" class="ghost">挑战</button>
+          {% else %}<span class="muted">你</span>{% endif %}
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</div>
+
+<div class="card">
+  <h2>各院MVP</h2>
+  <table>
+    {% for h, mvp in mvps.items() %}
+    <tr><td>{{ h }}</td><td>{% if mvp %}{{ mvp.uid }}（{{ mvp.position }}，{{ mvp.season_score }}分）
+      {% else %}<span class="muted">暂无</span>{% endif %}</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

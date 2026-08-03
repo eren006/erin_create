@@ -1,0 +1,28 @@
+{% extends "web/base.html" %}
+{% block title %}职业{% endblock %}
+{% block body %}
+<div class="card">
+  <h2>毕业去向</h2>
+  {% if chosen %}
+    <p>你已经成为 <b>{{ chosen.name }}</b>。</p>
+    <p class="muted">{{ chosen.desc }}</p>
+  {% else %}
+    <p class="muted">N.E.W.T.考完、七年级毕业之后才能选职业。达标的选项才点得动。</p>
+    <div class="scroll"><table>
+      <tr><th>职业</th><th>要求</th><th></th></tr>
+      {% for o in options %}
+      <tr>
+        <td><b>{{ o.name }}</b><br><span class="muted">{{ o.desc }}</span></td>
+        <td class="muted">{{ o.requirement }}</td>
+        <td>
+          <form method="post">
+            <input type="hidden" name="career" value="{{ o.name }}">
+            <button {% if not o.qualified %}disabled{% endif %}>选它</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </table></div>
+  {% endif %}
+</div>
+{% endblock %}

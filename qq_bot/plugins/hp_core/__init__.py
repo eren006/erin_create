@@ -1,6 +1,7 @@
-from . import storage
+from . import notify, storage
 
 storage.init_db()
+notify.init_db()
 
 PLATFORM = "qq"
 

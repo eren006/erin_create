@@ -119,8 +119,11 @@ def enter(uid: str) -> dict:
     core_storage.spend_stamina(uid, STAMINA_COST)
     storage.increment_forest_daily(uid, day)
     run_id = storage.create_run(uid, my_hp=PLAYER_HP, depth=1)
-    run = storage.get_run(run_id)
     monster = _spawn_monster(run_id, 1)
+    from plugins.hp_school import potions
+    protection_potion = potions.consume_effect(uid, "forest_protection")
+    if protection_potion:
+        storage.update_run(run_id, my_shield=20, protection_potion=1)
     run = storage.get_run(run_id)
     ambush_damage = _ambush(uid, run)
 
@@ -134,6 +137,7 @@ def enter(uid: str) -> dict:
         "has_lumos": core_storage.has_spell(uid, LUMOS_KEY),
         "runs_today": runs_today + 1,
         "daily_limit": DAILY_LIMIT,
+        "protection_potion": protection_potion,
     }
 
 
@@ -213,6 +217,8 @@ def _monster_turn(uid: str, run, monster) -> dict:
         damage = int(MONSTER_BASE_DAMAGE[category] * multiplier)
         depth_bonus = (run["depth"] - 1) * 2  # 越深打得越疼
         damage += depth_bonus
+        if run["monster_key"] == "werewolf" and run["wolfsbane_potion"]:
+            damage = (damage + 1) // 2
         my_shield = run["my_shield"]
         if my_shield:
             blocked = min(my_shield, damage)
@@ -250,14 +256,38 @@ def _grant_layer_loot(uid: str, run) -> dict:
         mat = random.choice(pool)
         materials.append(mat[0])
         dropped.append(mat[1])
-    storage.update_run(
-        run["id"],
-        pending_galleons=run["pending_galleons"] + galleons,
-        pending_exp=run["pending_exp"] + exp,
-        pending_materials=json.dumps(materials),
-        phase="cleared",
-    )
-    return {"galleons": galleons, "exp": exp, "materials": dropped}
+    lucky_material = ""
+    conn = core_storage.get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        if pool:
+            lucky_cur = conn.execute(
+                "UPDATE potion_effects SET charges=charges-1 "
+                "WHERE uid=? AND effect_key='felix_felicis' AND charges>0", (uid,),
+            )
+            if lucky_cur.rowcount:
+                conn.execute(
+                    "DELETE FROM potion_effects WHERE uid=? AND effect_key='felix_felicis' AND charges<=0",
+                    (uid,),
+                )
+                lucky = pool[-1]  # 目录按最低深度递增，取当前深度能见到的最稀有材料。
+                materials.append(lucky[0])
+                dropped.append(lucky[1])
+                lucky_material = lucky[1]
+        conn.execute(
+            "UPDATE forest_runs SET pending_galleons=?,pending_exp=?,pending_materials=?,"
+            "phase='cleared',updated_at=? WHERE id=?",
+            (run["pending_galleons"] + galleons, run["pending_exp"] + exp,
+             json.dumps(materials), core_storage.now(), run["id"]),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    return {"galleons": galleons, "exp": exp, "materials": dropped,
+            "lucky_material": lucky_material}
 
 
 def cast(uid: str, spell_input: str) -> dict:
@@ -434,6 +464,12 @@ def go_deeper(uid: str) -> dict:
         )
 
     monster = _spawn_monster(run["id"], next_depth)
+    wolfsbane_potion = False
+    if next_monster[0] == "werewolf" and not run["wolfsbane_potion"]:
+        from plugins.hp_school import potions
+        wolfsbane_potion = potions.consume_effect(uid, "wolfsbane")
+        if wolfsbane_potion:
+            storage.update_run(run["id"], wolfsbane_potion=1)
     run = storage.get_run(run["id"])
     ambush_damage = _ambush(uid, run)
     run = storage.get_run(run["id"])
@@ -445,7 +481,47 @@ def go_deeper(uid: str) -> dict:
         "monster_hp": monster["hp"],
         "my_hp": run["my_hp"],
         "ambush_damage": ambush_damage,
+        "wolfsbane_potion": wolfsbane_potion,
     }
+
+
+def use_healing_potion(uid: str, item_key: str, potion_name: str) -> dict:
+    """在禁林战斗中原子扣除药剂并恢复HP，每趟只能使用一次。"""
+    conn = core_storage.get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        run = conn.execute(
+            "SELECT * FROM forest_runs WHERE uid=? AND status='active'", (uid,)
+        ).fetchone()
+        if not run or run["phase"] != "combat":
+            conn.rollback()
+            raise ForestError("愈合药剂只能在禁林战斗途中使用。")
+        if run["healing_potion"]:
+            conn.rollback()
+            raise ForestError("这一趟已经喝过一瓶愈合药剂了。")
+        if run["my_hp"] >= PLAYER_HP:
+            conn.rollback()
+            raise ForestError("你现在没有受伤，先别浪费愈合药剂。")
+        removed = conn.execute(
+            "UPDATE inventory SET quantity=quantity-1 WHERE uid=? AND item_key=? AND quantity>0",
+            (uid, item_key),
+        )
+        if removed.rowcount == 0:
+            conn.rollback()
+            raise ForestError(f"背包里没有「{potion_name}」。")
+        healed = min(25, PLAYER_HP - run["my_hp"])
+        conn.execute(
+            "UPDATE forest_runs SET my_hp=my_hp+?,healing_potion=1,updated_at=? WHERE id=?",
+            (healed, core_storage.now(), run["id"]),
+        )
+        conn.commit()
+        return {"name": potion_name, "effect": f"恢复{healed}HP", "healed": healed,
+                "hp": run["my_hp"] + healed}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def retreat(uid: str) -> dict:

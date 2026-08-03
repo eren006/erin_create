@@ -1,0 +1,13 @@
+{% extends "web/base.html" %}
+{% block title %}勤工俭学{% endblock %}
+{% block body %}
+<div class="card">
+  <h2>勤工俭学</h2>
+  <p class="muted">稳定的加隆来源。你现在有 <b>{{ player.galleons }}</b> 加隆。</p>
+  {% if jobs %}
+  <form method="post">
+    {% for job in jobs %}<button class="opt" name="job" value="{{ job }}">{{ job }}</button>{% endfor %}
+  </form>
+  {% else %}<p class="muted">现在没有适合你年级的活儿。</p>{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,47 @@
+{% extends "web/base.html" %}
+{% block title %}上课{% endblock %}
+{% block body %}
+{% if session_view %}
+<div class="card">
+  <h2>{{ session_view.subject }}课</h2>
+  <p>{{ session_view.scenario }}</p>
+  <form method="post">
+    <input type="hidden" name="action" value="resolve">
+    <input type="hidden" name="token" value="{{ session_view.token }}">
+    {% for opt in session_view.options %}
+      <button class="opt" name="position" value="{{ loop.index0 }}">{{ opt }}</button>
+    {% endfor %}
+  </form>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>课程表</h2>
+  <p class="muted">疲劳值 {{ fatigue }}/{{ fatigue_max }}（全科共享计分名额）；
+     同一门课每天前{{ per_subject }}节算成绩。
+     🪄标记的实操课疲劳满了还能继续加练咒语，只是不再涨成绩。</p>
+  <div class="scroll"><table>
+    <tr><th>学科</th><th>今日</th><th>经验</th><th>正在学的咒语</th><th></th></tr>
+    {% for s in subjects %}
+    <tr>
+      <td>{% if s.is_spell %}🪄 {% endif %}{{ s.name }}<br><span class="muted">{{ s.category }}</span></td>
+      <td>{{ s.today }}节<br><span class="muted">计分{{ s.scored }}/{{ per_subject }}</span></td>
+      <td>{{ s.exp }}</td>
+      <td>
+        {% if s.next_spell %}{{ s.next_spell[1] }}
+          <span class="muted">{{ s.progress }}/{{ lessons_per_spell }}</span>
+        {% elif s.is_spell %}<span class="muted">暂无可学</span>
+        {% else %}<span class="muted">—</span>{% endif %}
+      </td>
+      <td>
+        <form method="post" style="display:inline">
+          <input type="hidden" name="action" value="start">
+          <input type="hidden" name="subject" value="{{ s.name }}">
+          <button {% if session_view %}disabled{% endif %}>上课</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</div>
+{% endblock %}

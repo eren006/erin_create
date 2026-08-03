@@ -1,0 +1,44 @@
+{% extends "web/base.html" %}
+{% block title %}稿件审核{% endblock %}
+{% block body %}
+<div class="card">
+  <h2>稿件审核</h2>
+  <p class="muted">
+    <a href="{{ url_for('admin') }}">账号管理</a>　
+    <a href="{{ url_for('admin_password') }}">修改管理密码</a>　
+    <a href="{{ url_for('admin_logout') }}">退出管理</a>
+  </p>
+</div>
+
+<div class="card">
+  <h2>待审核（{{ pending|length }}）</h2>
+  {% if not pending %}<p class="muted">没有待审的稿件。</p>{% endif %}
+  {% for s in pending %}
+  <div style="padding:10px 0;border-bottom:1px solid var(--line)">
+    <b>《{{ s.title }}》</b>　<span class="muted">—— {{ s.author }}　第{{ s.day }}天 · {{ s.school_year }}年级</span>
+    <p style="white-space:pre-wrap">{{ s.body }}</p>
+    <form method="post" class="row">
+      <input type="hidden" name="id" value="{{ s.id }}">
+      <input name="note" placeholder="给作者的话（选填）" style="flex:1;min-width:160px">
+      <button name="action" value="approve">通过并刊登</button>
+      <button name="action" value="reject" class="ghost">退稿</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+
+{% if recent %}
+<div class="card">
+  <h2>最近审过的</h2>
+  <div class="scroll"><table>
+    <tr><th>标题</th><th>作者</th><th>学年</th><th>结果</th></tr>
+    {% for s in recent %}
+    <tr>
+      <td>《{{ s.title }}》</td><td>{{ s.author }}</td><td>{{ s.school_year }}年级</td>
+      <td>{{ '已刊登' if s.status == 'approved' else '已退稿' }}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</div>
+{% endif %}
+{% endblock %}

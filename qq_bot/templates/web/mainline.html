@@ -1,0 +1,20 @@
+{% extends "web/base.html" %}
+{% block title %}成长册{% endblock %}
+{% block body %}
+<div class="card">
+  <h2>成长册</h2>
+  {% if not book %}<p class="muted">暂时读不到成长册。</p>{% else %}
+    {% if book.newly_claimed %}
+      <p class="flash ok">刚领到奖励：{{ book.newly_claimed|join('、') }}</p>
+    {% endif %}
+    {% for m in book.milestones %}
+    <div style="padding:8px 0;border-bottom:1px solid var(--line)">
+      <b>{% if m.done %}✓{% else %}○{% endif %} {{ m.title }}</b>
+      {% if m.reward %}<span class="tag">{{ m.reward }}加隆</span>{% endif %}
+      <div class="muted">{{ m.desc }}</div>
+      {% if m.progress_text %}<div class="muted">{{ m.progress_text }}</div>{% endif %}
+    </div>
+    {% endfor %}
+  {% endif %}
+</div>
+{% endblock %}

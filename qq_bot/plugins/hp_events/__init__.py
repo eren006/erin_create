@@ -4,6 +4,7 @@ from nonebot.adapters.qq import MessageEvent, MessageSegment
 from nonebot.params import CommandArg
 
 import plugins.hp_core as hp_core
+from plugins.hp_core import notify as core_notify
 from plugins.hp_core import spells as spell_catalog
 from plugins.hp_core import storage as core_storage
 
@@ -15,6 +16,7 @@ from nonebot_plugin_apscheduler import scheduler  # noqa: E402
 
 PLATFORM = "qq"
 CALENDAR_POLL_MINUTES = 10
+NOTIFY_DIGEST_MINUTES = 10  # 网页操作汇总播报的间隔
 
 
 def _fmt_stats(row) -> str:
@@ -106,6 +108,55 @@ async def _calendar_tick() -> None:
                 logger.info(f"[hp_events] Day{d} 日历事件（未播报，没有群或机器人未连接）：\n{text}")
 
     core_storage.set_last_processed_day(day)
+
+
+# ======================== 网页操作播报 ========================
+
+
+@scheduler.scheduled_job("interval", minutes=NOTIFY_DIGEST_MINUTES, id="hp_notify_digest")
+async def _notify_digest() -> None:
+    """每10分钟把这段时间的动态汇总成一条播报到通知群。
+
+    什么都记，但同类合并——一个人连上5节课只占一行，不会刷屏。"""
+    pending = core_notify.take_pending()
+    if not pending:
+        return
+    group_openid = core_storage.get_game_group_openid()
+    if not group_openid:
+        return  # 还没指定通知群，先攒着，指定之后会一起发出去
+    try:
+        bot = nonebot.get_bot()
+    except ValueError:
+        return  # 机器人还没连上，下一轮再试
+
+    text = core_notify.build_digest(pending, core_storage.get_full_name)
+    if not text:
+        core_notify.mark_sent([item["id"] for item in pending])
+        return
+    try:
+        await bot.send_to_group(group_openid=group_openid, message=text)
+    except Exception as e:
+        logger.warning(f"[hp_events] 动态汇总播报失败，留到下一轮：{e}")
+        return
+    core_notify.mark_sent([item["id"] for item in pending])
+    core_notify.purge_sent()
+
+
+set_notify_group_cmd = on_command("设为通知群")
+
+
+@set_notify_group_cmd.handle()
+async def handle_set_notify_group(event: MessageEvent):
+    from nonebot.adapters.qq import GroupMessageCreateEvent
+
+    if not isinstance(event, GroupMessageCreateEvent):
+        await set_notify_group_cmd.finish("这条指令要在群里发。")
+        return
+    core_storage.set_game_group(event.group_openid)
+    await set_notify_group_cmd.finish(
+        "✅ 本群已设为霍格沃茨通知群。\n"
+        "网页上的操作（上课、决斗、禁林、恋爱等）都会播报到这里，学年校报也发这里。"
+    )
 
 
 newsletter_cmd = on_command("校园校报", aliases={"校园周报", "校报"})
@@ -629,6 +680,8 @@ async def handle_enter_forest(event: MessageEvent):
     ]
     if result["ambush_damage"]:
         lines.append(f"\n⚠️ 你没看清脚下，被偷袭了，掉了{result['ambush_damage']}点HP（现在{result['my_hp']}）。")
+    if result.get("protection_potion"):
+        lines.append("\n🛡️ 防护药剂在踏入林地时生效，你获得了20点初始护盾。")
     lines.append("\n用「/禁林状态」看可用咒语，「/禁林出咒 咒语名」动手。")
     await enter_forest_cmd.finish("\n".join(line for line in lines if line != ""))
 
@@ -684,6 +737,8 @@ async def handle_forest_cast(event: MessageEvent, args=CommandArg()):
         if loot["materials"]:
             got.append("、".join(loot["materials"]))
         lines.append(f"这一层的收获：{'　'.join(got)}（撤退才真正到手）")
+        if loot.get("lucky_material"):
+            lines.append(f"🍀 福灵剂在这一刻发热，你额外发现了「{loot['lucky_material']}」。幸运效果已经耗尽。")
         if result["can_go_deeper"]:
             lines.append("\n「/继续深入」再赌一层，或者「/撤退」落袋为安。")
         elif result["next_blocked_by_grade"]:
@@ -759,6 +814,8 @@ async def handle_go_deeper(event: MessageEvent):
         lines.append(f"\n⚠️ 半路被偷袭，掉了{result['ambush_damage']}点HP（现在{result['my_hp']}）。")
     else:
         lines.append(f"\n你现在{result['my_hp']}HP。")
+    if result.get("wolfsbane_potion"):
+        lines.append("🌕 狼毒药剂压住了月光带来的寒意：这一趟狼人造成的伤害减半。")
     await go_deeper_cmd.finish("\n".join(lines))
 
 

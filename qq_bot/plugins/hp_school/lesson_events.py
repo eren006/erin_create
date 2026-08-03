@@ -5,7 +5,7 @@ import secrets
 
 from plugins.hp_core import storage as core_storage
 
-from . import lessons, storage, subjects
+from . import lessons, potions, storage, subjects
 
 
 class LessonEventError(Exception):
@@ -197,6 +197,16 @@ def resolve(uid: str, token: str, position: int) -> dict:
     if bonus:
         result["exp_gained"] += bonus
         result["total_exp"] = core_storage.add_subject_exp(uid, row["subject_key"], bonus)
+    potion_bonus = potions.consume_focus_bonus(uid, row["subject_key"]) if result["gives_exp"] else 0
+    if potion_bonus:
+        result["exp_gained"] += potion_bonus
+        result["total_exp"] += potion_bonus
     result["event_result"] = CHOICES[position][1]
     result["event_bonus"] = bonus
+    result["potion_bonus"] = potion_bonus
+    result["herbology_material"] = (
+        storage.claim_herbology_material(uid, core_storage.get_current_day() or 1)
+        if result["gives_exp"] and row["subject_key"] == "herbology"
+        else False
+    )
     return result

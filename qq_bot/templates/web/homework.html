@@ -1,0 +1,21 @@
+{% extends "web/base.html" %}
+{% block title %}作业{% endblock %}
+{% block body %}
+<div class="card">
+  <h2>今日作业</h2>
+  {% if state.overdue_settled %}
+    <p class="flash warn">刚结算了 {{ state.overdue_settled }} 门逾期作业，各扣了经验。</p>
+  {% endif %}
+  {% if state.pending %}
+  <h3>还没交</h3>
+  <form method="post">
+    {% for name in state.pending %}
+      <button class="opt" name="subject" value="{{ name }}">交「{{ name }}」的作业</button>
+    {% endfor %}
+  </form>
+  {% else %}
+  <p>今天的作业都交完了。</p>
+  {% endif %}
+  {% if state.done %}<h3>已交</h3><p class="muted">{{ state.done|join('、') }}</p>{% endif %}
+</div>
+{% endblock %}

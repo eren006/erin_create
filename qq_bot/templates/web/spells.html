@@ -1,0 +1,51 @@
+{% extends "web/base.html" %}
+{% block title %}我的魔咒{% endblock %}
+{% block body %}
+<div class="card">
+  <h2>我的魔咒　<span class="muted">{{ learned_count }}/{{ total }}</span></h2>
+  <p class="muted">咒语靠上实操课自动学，每 {{ lessons_per_spell }} 节课学会一个，学会了就不会忘。
+     战斗咒语在决斗和禁林里用；清理一新/修复如初可以直接在这里施放。</p>
+</div>
+
+{% for grp in groups %}
+<div class="card">
+  <h2>{{ grp.subject }}</h2>
+  {% if grp.target %}<p class="muted">正在学：{{ grp.target }}（{{ grp.progress }}/{{ lessons_per_spell }}）</p>{% endif %}
+  <div class="scroll"><table>
+    <tr><th></th><th>咒语</th><th>系别</th><th>说明</th><th></th></tr>
+    {% for r in grp.rows %}
+    <tr>
+      <td>{% if r.learned %}✓{% elif r.locked %}🔒{% else %}○{% endif %}</td>
+      <td>{{ r.name }}<br><span class="muted">{{ r.latin }}</span></td>
+      <td>{{ r.category }}</td>
+      <td class="muted">{% if r.locked %}{{ r.min_grade }}年级才教{% else %}{{ r.desc }}{% endif %}</td>
+      <td>
+        {% if r.learned and r.key in castable %}
+        <form method="post" style="display:inline">
+          <input type="hidden" name="spell" value="{{ r.name }}">
+          <button>施放</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</div>
+{% endfor %}
+
+<div class="card">
+  <h2>禁林专属</h2>
+  <p class="muted">课上学不到，只能在禁林里第一次打赢对应的怪时学会。</p>
+  <div class="scroll"><table>
+    <tr><th></th><th>咒语</th><th>系别</th><th>说明</th></tr>
+    {% for r in forest_rows %}
+    <tr>
+      <td>{% if r.learned %}✓{% else %}○{% endif %}</td>
+      <td>{{ r.name }}<br><span class="muted">{{ r.latin }}</span></td>
+      <td>{{ r.category }}</td>
+      <td class="muted">{{ r.desc }}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</div>
+{% endblock %}

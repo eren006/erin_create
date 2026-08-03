@@ -1,0 +1,33 @@
+{% extends "web/base.html" %}
+{% block title %}背包{% endblock %}
+{% block body %}
+<div class="card">
+  <h2>我的背包</h2>
+  {% if not items %}<p class="muted">背包空的，去<a href="{{ url_for('shop_page') }}">对角巷</a>逛逛。</p>{% endif %}
+  <div class="grid">
+    {% for it in items %}
+    <div class="card" style="margin:0">
+      <b>{{ it.name }}</b> ×{{ it.quantity }}　<span class="tag">{{ it.category }}</span>
+      <form method="post" style="margin-top:8px">
+        <input type="hidden" name="item" value="{{ it.name }}">
+        {% if it.category == '零食' %}
+          <button name="action" value="eat">吃掉（回体力）</button>
+        {% elif it.category == '魔药材料' %}
+          <input name="quantity" type="number" value="1" min="1" max="{{ it.quantity }}" style="width:60px">
+          <button name="action" value="sell">卖出</button>
+        {% elif it.category == '扫帚' %}
+          <button name="action" value="equip">装备</button>
+        {% elif it.category == '恶作剧' %}
+          <input name="target" placeholder="对方名字" style="width:110px">
+          <button name="action" value="prank">用出去</button>
+        {% elif it.category == '礼物' %}
+          <span class="muted">去<a href="{{ url_for('social_page') }}">社交</a>页面送人</span>
+        {% else %}
+          <span class="muted">收藏品</span>
+        {% endif %}
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

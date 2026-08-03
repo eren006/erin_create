@@ -156,6 +156,11 @@ def get_bag(uid: str) -> list[dict]:
         material = _find_material(row["item_key"])
         if material:
             result.append({"name": material[1], "category": "魔药材料", "quantity": row["quantity"]})
+            continue
+        from . import potions
+        potion_name = potions.item_name(row["item_key"])
+        if potion_name:
+            result.append({"name": potion_name, "category": "魔药", "quantity": row["quantity"]})
     return result
 
 

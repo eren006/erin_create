@@ -73,6 +73,74 @@ CREATE TABLE IF NOT EXISTS careers (
     signing_bonus INTEGER NOT NULL DEFAULT 0,
     chosen_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS potion_sessions (
+    uid TEXT PRIMARY KEY,
+    recipe_key TEXT NOT NULL,
+    step INTEGER NOT NULL DEFAULT 0,
+    score INTEGER NOT NULL DEFAULT 0,
+    ingredients_json TEXT NOT NULL,
+    choices_json TEXT NOT NULL DEFAULT '[]',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS potion_mastery (
+    uid TEXT NOT NULL,
+    recipe_key TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    successes INTEGER NOT NULL DEFAULT 0,
+    perfects INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (uid, recipe_key)
+);
+
+CREATE TABLE IF NOT EXISTS potion_daily (
+    uid TEXT NOT NULL,
+    day INTEGER NOT NULL,
+    count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (uid, day)
+);
+
+CREATE TABLE IF NOT EXISTS potion_effects (
+    uid TEXT NOT NULL,
+    effect_key TEXT NOT NULL,
+    charges INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY (uid, effect_key)
+);
+
+CREATE TABLE IF NOT EXISTS potion_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uid TEXT NOT NULL,
+    recipe_key TEXT NOT NULL,
+    quality TEXT NOT NULL,
+    quantity INTEGER NOT NULL DEFAULT 0,
+    accident TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS potion_yearly (
+    uid TEXT NOT NULL,
+    school_year INTEGER NOT NULL,
+    recipe_key TEXT NOT NULL,
+    count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (uid, school_year, recipe_key)
+);
+
+CREATE TABLE IF NOT EXISTS potion_trade_daily (
+    uid TEXT NOT NULL,
+    day INTEGER NOT NULL,
+    count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (uid, day)
+);
+
+CREATE TABLE IF NOT EXISTS potion_trades (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sender_uid TEXT NOT NULL,
+    receiver_uid TEXT NOT NULL,
+    potion_key TEXT NOT NULL,
+    quantity INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+);
 """
 
 
@@ -309,6 +377,32 @@ def claim_homework_completion_reward(uid: str, day: int, amount: int) -> bool:
         conn.execute(
             "UPDATE players SET galleons=galleons+?, updated_at=? WHERE uid=?",
             (amount, now(), uid),
+        )
+        conn.commit()
+        return True
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def claim_herbology_material(uid: str, day: int, item_key: str = "mat_knotgrass") -> bool:
+    """每天首次完成计分草药课时原子发放一份基础材料。"""
+    conn = get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO daily_rewards(uid,day,reward_key,claimed_at) "
+            "VALUES(?,?,?,?)", (uid, day, "herbology_material", now()),
+        )
+        if cur.rowcount == 0:
+            conn.rollback()
+            return False
+        conn.execute(
+            "INSERT INTO inventory(uid,item_key,quantity) VALUES(?,?,1) "
+            "ON CONFLICT(uid,item_key) DO UPDATE SET quantity=quantity+1",
+            (uid, item_key),
         )
         conn.commit()
         return True

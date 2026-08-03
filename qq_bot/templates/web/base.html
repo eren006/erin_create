@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}霍格沃茨{% endblock %}</title>
+<style>
+:root{--ink:#2b2118;--muted:#7a6a58;--line:#d8cbb6;--paper:#f6f0e4;--card:#fffdf7;
+      --accent:#7b1f2b;--ok:#2f6b41;--warn:#8a6212;--err:#9c2c20;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);
+     font-family:"Iowan Old Style","Songti SC","Noto Serif SC",Georgia,serif;line-height:1.6}
+a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
+.wrap{max-width:900px;margin:0 auto;padding:16px}
+header.top{border-bottom:2px solid var(--ink);margin-bottom:14px}
+.brand{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding-bottom:8px}
+.brand h1{font-size:1.5rem;margin:0;letter-spacing:.08em}
+.who{color:var(--muted);font-size:.9rem;margin-left:auto}
+nav{display:flex;flex-wrap:wrap;gap:2px;padding-bottom:8px}
+nav a{padding:5px 10px;border:1px solid var(--line);background:var(--card);
+      border-radius:3px;font-size:.9rem;color:var(--ink)}
+nav a.active{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+nav a:hover{text-decoration:none;border-color:var(--ink)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:4px;
+      padding:14px 16px;margin-bottom:14px}
+.card h2{margin:0 0 10px;font-size:1.1rem;border-bottom:1px solid var(--line);padding-bottom:6px}
+.card h3{margin:14px 0 6px;font-size:1rem}
+.flash{padding:9px 12px;border-radius:3px;margin-bottom:10px;border-left:4px solid}
+.flash.ok{background:#eef6ef;border-color:var(--ok)}
+.flash.warn{background:#fbf4e3;border-color:var(--warn)}
+.flash.error{background:#fbeeec;border-color:var(--err)}
+button,.btn{font:inherit;padding:6px 13px;border:1px solid var(--ink);background:var(--ink);
+       color:var(--paper);border-radius:3px;cursor:pointer}
+button:hover{background:var(--accent);border-color:var(--accent)}
+button.ghost{background:transparent;color:var(--ink)}
+button.ghost:hover{background:var(--ink);color:var(--paper)}
+button:disabled{opacity:.4;cursor:not-allowed}
+input,select{font:inherit;padding:6px 9px;border:1px solid var(--line);
+             border-radius:3px;background:#fff;color:var(--ink)}
+label{display:block;margin:8px 0 3px;font-size:.9rem;color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:.93rem}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+th{color:var(--muted);font-weight:normal;font-size:.85rem}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.stat{display:flex;justify-content:space-between;gap:10px;padding:3px 0}
+.muted{color:var(--muted);font-size:.9rem}
+.tag{display:inline-block;padding:1px 7px;border:1px solid var(--line);
+     border-radius:10px;font-size:.8rem;color:var(--muted)}
+.bar{height:7px;background:var(--line);border-radius:4px;overflow:hidden;margin:4px 0}
+.bar>i{display:block;height:100%;background:var(--accent)}
+.opt{display:block;width:100%;text-align:left;margin-bottom:6px;background:var(--card);
+     color:var(--ink);border:1px solid var(--line);padding:9px 12px}
+.opt:hover{background:var(--ink);color:var(--paper)}
+.scroll{overflow-x:auto}
+@media (max-width:600px){.wrap{padding:10px}nav a{font-size:.85rem;padding:4px 8px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+{% if account %}
+<header class="top">
+  <div class="brand">
+    <h1>霍格沃茨</h1>
+    {% if current_day %}<span class="tag">第 {{ current_day }} 天</span>{% endif %}
+    <span class="who">
+      {% if display_name %}{{ display_name }}{% if player %} · {{ player.house }} · {{ player.grade }}年级{% endif %}
+      {% else %}{{ account.uid }}{% endif %}
+      · <a href="{{ url_for('password') }}">改密码</a>
+      · <a href="{{ url_for('logout') }}">退出</a>
+    </span>
+  </div>
+  <nav>
+    {% set ep = request.endpoint %}
+    <a href="{{ url_for('index') }}" class="{{ 'active' if ep=='index' }}">面板</a>
+    <a href="{{ url_for('lessons_page') }}" class="{{ 'active' if ep=='lessons_page' }}">上课</a>
+    <a href="{{ url_for('homework_page') }}" class="{{ 'active' if ep=='homework_page' }}">作业</a>
+    <a href="{{ url_for('spells_page') }}" class="{{ 'active' if ep=='spells_page' }}">魔咒</a>
+    <a href="{{ url_for('potions_page') }}" class="{{ 'active' if ep=='potions_page' }}">魔药</a>
+    <a href="{{ url_for('shop_page') }}" class="{{ 'active' if ep=='shop_page' }}">对角巷</a>
+    <a href="{{ url_for('bag_page') }}" class="{{ 'active' if ep=='bag_page' }}">背包</a>
+    <a href="{{ url_for('work_page') }}" class="{{ 'active' if ep=='work_page' }}">打工</a>
+    <a href="{{ url_for('quidditch_page') }}" class="{{ 'active' if ep=='quidditch_page' }}">魁地奇</a>
+    <a href="{{ url_for('duel_page') }}" class="{{ 'active' if ep=='duel_page' }}">决斗</a>
+    <a href="{{ url_for('forest_page') }}" class="{{ 'active' if ep=='forest_page' }}">禁林</a>
+    <a href="{{ url_for('social_page') }}" class="{{ 'active' if ep=='social_page' }}">社交</a>
+    <a href="{{ url_for('mainline_page') }}" class="{{ 'active' if ep=='mainline_page' }}">成长册</a>
+    <a href="{{ url_for('careers_page') }}" class="{{ 'active' if ep=='careers_page' }}">职业</a>
+    <a href="{{ url_for('submit_page') }}" class="{{ 'active' if ep=='submit_page' }}">投稿</a>
+    <a href="{{ url_for('rankings') }}" class="{{ 'active' if ep=='rankings' }}">榜单</a>
+
+  </nav>
+</header>
+{% endif %}
+
+{% with msgs = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in msgs %}<div class="flash {{ cat }}">{{ msg }}</div>{% endfor %}
+{% endwith %}
+
+{% block body %}{% endblock %}
+</div>
+{% block foot %}{% endblock %}
+</body>
+</html>

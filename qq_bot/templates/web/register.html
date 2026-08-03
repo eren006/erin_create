@@ -1,0 +1,22 @@
+{% extends "web/base.html" %}
+{% block title %}申请网页账号{% endblock %}
+{% block body %}
+<div class="card" style="max-width:440px;margin:40px auto">
+  <h2>申请网页账号</h2>
+  <p class="muted">网页账号只发给已经入学的学生。申请之前，先在QQ群里把这两步做完：</p>
+  <ol class="muted">
+    <li>发送 <code>/入学 你的名字</code>，答完问卷让分院帽给你分院</li>
+    <li>接着在奥利凡德魔杖店挑完你的魔杖</li>
+  </ol>
+  <p class="muted">办完之后，用同一个QQ号在这里申请：</p>
+  <form method="post">
+    <label>你的QQ号</label>
+    <input name="uid" inputmode="numeric" required style="width:100%">
+    <label>想说的话（选填，给管理员看）</label>
+    <input name="note" maxlength="100" style="width:100%">
+    <p><button type="submit" style="width:100%">提交申请</button></p>
+  </form>
+  <p class="muted">管理员批准后，用QQ号 + 初始密码 <b>88888888</b> 登录，登录后必须改密码。</p>
+  <p class="muted"><a href="{{ url_for('login') }}">已经有账号了</a></p>
+</div>
+{% endblock %}

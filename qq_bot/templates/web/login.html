@@ -1,0 +1,15 @@
+{% extends "web/base.html" %}
+{% block title %}登录 · 霍格沃茨{% endblock %}
+{% block body %}
+<div class="card" style="max-width:400px;margin:40px auto">
+  <h2>霍格沃茨 · 登录</h2>
+  <form method="post">
+    <label>QQ号</label>
+    <input name="uid" inputmode="numeric" autocomplete="username" required style="width:100%">
+    <label>密码</label>
+    <input name="password" type="password" autocomplete="current-password" required style="width:100%">
+    <p><button type="submit" style="width:100%">登录</button></p>
+  </form>
+  <p class="muted">还没有账号？<a href="{{ url_for('register') }}">申请一个</a>（需要管理员批准，初始密码 88888888）</p>
+</div>
+{% endblock %}

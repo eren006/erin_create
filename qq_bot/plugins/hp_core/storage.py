@@ -691,7 +691,7 @@ def get_current_day() -> int | None:
 
 
 def ensure_game_group(group_openid: str) -> None:
-    """记下游戏在哪个群玩——只认第一个记录到的群，日历公告只会发到这里。"""
+    """还没指定播报群时，用第一个来触发的群兜底。管理员可以用 /设为通知群 随时改。"""
     if not group_openid:
         return
     conn = get_conn()
@@ -700,6 +700,16 @@ def ensure_game_group(group_openid: str) -> None:
             "UPDATE game_clock SET group_openid = ? WHERE id = 1 AND group_openid = ''",
             (group_openid,),
         )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def set_game_group(group_openid: str) -> None:
+    """指定播报群。所有群共享同一个游戏世界，但通知只发到这一个群。"""
+    conn = get_conn()
+    try:
+        conn.execute("UPDATE game_clock SET group_openid = ? WHERE id = 1", (group_openid,))
         conn.commit()
     finally:
         conn.close()

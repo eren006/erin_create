@@ -1,0 +1,32 @@
+{% extends "web/base.html" %}
+{% block title %}对角巷{% endblock %}
+{% block body %}
+<div class="card">
+  <h2>对角巷</h2>
+  <p class="muted">你有 <b>{{ player.galleons }}</b> 加隆</p>
+  <nav style="padding:6px 0">
+    {% for c in categories %}
+      <a href="{{ url_for('shop_page', cat=c) }}" class="{{ 'active' if c==cat }}">{{ c }}</a>
+    {% endfor %}
+  </nav>
+  {% if rotating %}<p class="muted">这一类每3小时换一批，下次刷新约 {{ next_rotation }} 分钟后。</p>{% endif %}
+  {% if cat == '礼物' %}<p class="muted">礼物是全服共享库存，每2小时补货，下次约 {{ next_restock }} 分钟后。</p>{% endif %}
+  <div class="grid">
+    {% for it in items %}
+    <div class="card" style="margin:0">
+      <b>{{ it.name }}</b>　<span class="tag">{{ it.price }}加隆</span>
+      {% if it.stock is defined %}
+        {% if it.stock %}<span class="tag">剩{{ it.stock }}/{{ it.stock_max }}</span>
+        {% else %}<span class="tag">售罄</span>{% endif %}
+      {% endif %}
+      <p class="muted">{{ it.desc }}</p>
+      <form method="post">
+        <input type="hidden" name="cat" value="{{ cat }}">
+        <input type="hidden" name="item" value="{{ it.name }}">
+        <button {% if it.stock is defined and not it.stock %}disabled{% endif %}>买</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

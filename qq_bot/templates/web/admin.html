@@ -1,0 +1,58 @@
+{% extends "web/base.html" %}
+{% block title %}管理后台{% endblock %}
+{% block body %}
+<div class="card">
+  <h2>管理后台</h2>
+  <p class="muted">
+    <a href="{{ url_for('admin_submissions') }}">稿件审核</a>　
+    <a href="{{ url_for('admin_password') }}">修改管理密码</a>　
+    <a href="{{ url_for('admin_logout') }}">退出管理</a>　
+    <a href="{{ url_for('index') }}">回到游戏</a>
+  </p>
+</div>
+<div class="card">
+  <h2>待批准的申请（{{ pending|length }}）</h2>
+  {% if pending %}
+  <div class="scroll"><table>
+    <tr><th>QQ号</th><th>留言</th><th>操作</th></tr>
+    {% for a in pending %}
+    <tr>
+      <td>{{ a.uid }}</td><td class="muted">{{ a.note or '—' }}</td>
+      <td>
+        <form method="post" style="display:inline">
+          <input type="hidden" name="uid" value="{{ a.uid }}">
+          <button name="action" value="approve">批准</button>
+          <button name="action" value="reject" class="ghost">拒绝</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}<p class="muted">没有待处理的申请。</p>{% endif %}
+</div>
+
+<div class="card">
+  <h2>所有账号</h2>
+  <div class="scroll"><table>
+    <tr><th>QQ号</th><th>角色</th><th>状态</th><th>操作</th></tr>
+    {% for a in others %}
+    <tr>
+      <td>{{ a.uid }}</td>
+      <td>{{ a.player_name or '—' }}{% if a.house %} <span class="muted">{{ a.house }}</span>{% endif %}</td>
+      <td>{{ {'approved':'已开通','rejected':'已停用'}.get(a.status, a.status) }}</td>
+      <td>
+        <form method="post" style="display:inline">
+          <input type="hidden" name="uid" value="{{ a.uid }}">
+          {% if a.status == 'approved' %}
+            <button name="action" value="reset" class="ghost">重置密码</button>
+            <button name="action" value="revoke" class="ghost">停用</button>
+          {% else %}
+            <button name="action" value="approve">重新开通</button>
+          {% endif %}
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</div>
+{% endblock %}

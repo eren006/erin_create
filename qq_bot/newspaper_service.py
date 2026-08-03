@@ -22,6 +22,11 @@ CAREER_NAMES = {
     "ministry": "魔法部职员",
     "reporter": "《预言家日报》记者",
 }
+POTION_NAMES = {
+    "energizing": "提神剂", "focus": "振奋药剂", "healing": "愈合药剂",
+    "protection": "防护药剂", "wolfsbane": "狼毒药剂",
+    "polyjuice": "复方汤剂", "felix": "福灵剂",
+}
 
 YEAR_RANGES = {
     1: (1, 4),
@@ -175,6 +180,52 @@ def _build_live_issue(end_day: int | None = None) -> dict:
                 (start_ts, end_ts),
             ).fetchone()[0]
 
+        letters = []
+        if _table_exists(conn, "newspaper_submissions"):
+            letters = [
+                {
+                    "title": row["title"],
+                    "body": row["body"],
+                    "author": _full_name(conn, row["uid"]),
+                }
+                for row in conn.execute(
+                    "SELECT uid, title, body FROM newspaper_submissions "
+                    "WHERE school_year = ? AND status = 'approved' ORDER BY reviewed_at LIMIT 20",
+                    (year,),
+                ).fetchall()
+            ]
+
+        potion_perfects = []
+        potion_accidents = []
+        potion_trades = 0
+        if _table_exists(conn, "potion_history"):
+            potion_perfects = [
+                {
+                    "name": _full_name(conn, row["uid"]),
+                    "potion": POTION_NAMES.get(row["recipe_key"], row["recipe_key"]),
+                    "count": row["amount"],
+                }
+                for row in conn.execute(
+                    "SELECT uid,recipe_key,COUNT(*) AS amount FROM potion_history "
+                    "WHERE quality='perfect' AND created_at>=? AND created_at<? "
+                    "GROUP BY uid,recipe_key ORDER BY amount DESC LIMIT 8",
+                    (start_ts, end_ts),
+                ).fetchall()
+            ]
+            potion_accidents = [
+                {"name": _full_name(conn, row["uid"]), "accident": row["accident"]}
+                for row in conn.execute(
+                    "SELECT uid,accident FROM potion_history WHERE quality='failed' "
+                    "AND accident!='' AND created_at>=? AND created_at<? "
+                    "ORDER BY created_at DESC LIMIT 8", (start_ts, end_ts),
+                ).fetchall()
+            ]
+        if _table_exists(conn, "potion_trades"):
+            potion_trades = conn.execute(
+                "SELECT COALESCE(SUM(quantity),0) FROM potion_trades "
+                "WHERE created_at>=? AND created_at<?", (start_ts, end_ts),
+            ).fetchone()[0]
+
         shifts = homework_awards = 0
         if _table_exists(conn, "work_daily"):
             shifts = conn.execute(
@@ -217,8 +268,12 @@ def _build_live_issue(end_day: int | None = None) -> dict:
             "duels": duels,
             "couples": couples,
             "careers": career_rows,
+            "letters": letters,
             "forest_runs": forest_runs,
             "forest_slain": forest_slain,
+            "potion_perfects": potion_perfects,
+            "potion_accidents": potion_accidents,
+            "potion_trades": potion_trades,
             "shifts": shifts,
             "homework_awards": homework_awards,
             "students": students,
@@ -344,6 +399,23 @@ def build_text(end_day: int | None = None) -> str:
                 "、".join(f"{row['name']}成为{row['career']}" for row in issue["careers"]) + "。",
             ]
         )
+    if issue.get("potion_perfects") or issue.get("potion_accidents") or issue.get("potion_trades"):
+        lines.extend(["", "⚗️ 地窖坩埚纪事"])
+        if issue.get("potion_perfects"):
+            lines.append(
+                "优秀作品：" + "；".join(
+                    f"{row['name']}完美熬成{row['potion']}{row['count']}次"
+                    for row in issue["potion_perfects"]
+                ) + "。"
+            )
+        if issue.get("potion_accidents"):
+            lines.append(
+                "事故通报：" + "；".join(
+                    f"{row['name']}{row['accident']}" for row in issue["potion_accidents"]
+                ) + "。斯内普教授拒绝对此发表评论。"
+            )
+        if issue.get("potion_trades"):
+            lines.append(f"猫头鹰棚本学年共代送{issue['potion_trades']}瓶学生自制药剂。")
     if issue["shifts"] or issue["homework_awards"]:
         lines.extend(
             [
@@ -353,6 +425,11 @@ def build_text(end_day: int | None = None) -> str:
                 f"{issue['homework_awards']}人次按时完成了当天全部作业。",
             ]
         )
+    if issue.get("letters"):
+        lines.extend(["", "✒️ 学生来稿"])
+        for letter in issue["letters"]:
+            lines.append(f"《{letter['title']}》　—— {letter['author']}")
+            lines.append(letter["body"])
     lines.extend(["", "🏆 本期榜单"])
     if issue["students"]:
         lines.append(

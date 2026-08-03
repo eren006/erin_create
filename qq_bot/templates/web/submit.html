@@ -1,0 +1,35 @@
+{% extends "web/base.html" %}
+{% block title %}校报投稿{% endblock %}
+{% block body %}
+<div class="card">
+  <h2>✒️ 向《霍格沃茨校报》投稿</h2>
+  <p class="muted">今天投了 {{ used }}/{{ limit }} 篇。编辑部审核通过后，
+     稿件会登上<b>{{ school_year }}年级特刊</b>，并在通知群里公告。</p>
+  {% if used < limit %}
+  <form method="post">
+    <label>标题（最多{{ title_max }}字）</label>
+    <input name="title" maxlength="{{ title_max }}" required style="width:100%">
+    <label>正文（最多{{ body_max }}字）</label>
+    <textarea name="body" maxlength="{{ body_max }}" rows="8" required
+              style="width:100%;font:inherit;padding:8px;border:1px solid var(--line);border-radius:3px"></textarea>
+    <p><button type="submit">投给编辑部</button></p>
+  </form>
+  {% else %}
+  <p class="flash warn">今天的投稿名额用完了，明天再来。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>我的投稿</h2>
+  {% if not mine %}<p class="muted">还没投过稿。</p>{% endif %}
+  {% for s in mine %}
+  <div style="padding:8px 0;border-bottom:1px solid var(--line)">
+    <b>《{{ s.title }}》</b>
+    <span class="tag">{{ {'pending':'审核中','approved':'已刊登','rejected':'已退稿'}.get(s.status, s.status) }}</span>
+    <span class="muted">{{ s.school_year }}年级</span>
+    <div class="muted" style="white-space:pre-wrap">{{ s.body[:120] }}{% if s.body|length > 120 %}…{% endif %}</div>
+    {% if s.review_note %}<div class="muted">编辑部：{{ s.review_note }}</div>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

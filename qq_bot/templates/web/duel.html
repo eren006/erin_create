@@ -1,0 +1,87 @@
+{% extends "web/base.html" %}
+{% block title %}决斗{% endblock %}
+{% block body %}
+{% if state %}
+<div class="card">
+  <h2>决斗中 · 第{{ state.round }}/{{ state.total_rounds }}回合</h2>
+  <div class="stat"><span>你</span><b>{{ state.my_hp }} HP{% if state.my_shield %}（护盾{{ state.my_shield }}）{% endif %}</b></div>
+  <div class="stat"><span>{{ full_name(state.opponent) }}</span><b>{{ state.opp_hp }} HP</b></div>
+  {% if state.opp_last_spell %}<p class="muted">对方上一发是 {{ state.opp_last_spell }} 系</p>{% endif %}
+  {% if state.locked %}<p class="flash warn">你被封锁了：{{ '所有咒语' if state.locked == 'any' else state.locked + '系' }}</p>{% endif %}
+
+  {% if state.my_turn %}
+    <h3>轮到你了</h3>
+    <form method="post">
+      <input type="hidden" name="action" value="cast">
+      {% for s in state.available %}
+        <button class="opt" name="spell" value="{{ s.name }}">
+          {{ s.name }}　<span class="muted">{{ s.category }}系{% if s.damage %} 伤害{{ s.damage }}{% endif %}</span>
+        </button>
+      {% endfor %}
+    </form>
+    {% if state.unavailable %}
+      <p class="muted">用不了：{% for s in state.unavailable %}{{ s.name }}({{ s.reason }}){% if not loop.last %}、{% endif %}{% endfor %}</p>
+    {% endif %}
+    <form method="post" class="row" style="margin-top:10px">
+      <button name="action" value="skip" class="ghost">什么都不做</button>
+      <button name="action" value="flee" class="ghost">逃跑（判负）</button>
+    </form>
+  {% else %}
+    <p>等 {{ full_name(state.opponent) }} 出手。<span class="muted" id="tick"></span></p>
+  {% endif %}
+</div>
+{% else %}
+
+<div class="card">
+  <h2>决斗俱乐部</h2>
+  {% if player.grade < min_grade %}
+    <p class="muted">要{{ min_grade }}年级才能参加，你现在是{{ player.grade }}年级。</p>
+  {% else %}
+    {% if my_challenge %}
+      <p>你向 <b>{{ full_name(my_challenge.target_uid) }}</b> 下了战书，等对方回应。
+         <span class="muted" id="tick"></span></p>
+      <form method="post"><button name="action" value="withdraw" class="ghost">撤回战书</button></form>
+    {% else %}
+      <h3>下战书</h3>
+      <form method="post" class="row">
+        <input name="target" placeholder="对方名字" required>
+        <button name="action" value="challenge">发起决斗</button>
+      </form>
+    {% endif %}
+  {% endif %}
+</div>
+
+{% if incoming %}
+<div class="card">
+  <h2>收到的战书</h2>
+  {% for c in incoming %}
+  <form method="post" class="row" style="margin-bottom:8px">
+    <input type="hidden" name="challenger" value="{{ c.challenger_uid }}">
+    <span style="flex:1">{{ full_name(c.challenger_uid) }} 向你发起了决斗</span>
+    <button name="action" value="accept">应战</button>
+    <button name="action" value="decline" class="ghost">拒绝</button>
+  </form>
+  {% endfor %}
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}
+
+{% block foot %}
+{% set waiting = (state and not state.my_turn) or (not state and my_challenge) %}
+{% if waiting %}
+<script>
+(function () {
+  var left = 8, el = document.getElementById("tick");
+  var timer = setInterval(function () {
+    left -= 1;
+    if (el) el.textContent = "（" + left + "秒后自动刷新）";
+    if (left <= 0) { clearInterval(timer); location.reload(); }
+  }, 1000);
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible") location.reload();
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,105 @@
+{% extends "web/base.html" %}
+{% block title %}魔药{% endblock %}
+{% block body %}
+{% if brewing %}
+<div class="card">
+  <h2>🧪 正在熬制：{{ brewing.recipe }}</h2>
+  {% if brewing.resumed %}<p class="muted">坩埚还在火上，接着上次那一步。</p>{% endif %}
+  <p class="muted">第 {{ brewing.step }}/{{ brewing.total_steps }} 步</p>
+  <p>{{ brewing.prompt }}</p>
+  <form method="post">
+    <input type="hidden" name="action" value="choose">
+    {% for opt in brewing.options %}
+      <button class="opt" name="position" value="{{ loop.index }}">{{ opt }}</button>
+    {% endfor %}
+  </form>
+  <form method="post" style="margin-top:10px">
+    <button name="action" value="abandon" class="ghost">倒掉重来（材料和体力不退）</button>
+  </form>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>配方</h2>
+  <p class="muted">今天熬了 {{ brewed_today }}/{{ daily_limit }} 次，每次消耗 {{ stamina_cost }} 点体力。
+     魔药学经验 {{ catalog.exp }}。3步全对是「完美」出2瓶，对2步「合格」出1瓶，对不到2步会翻车。</p>
+  <div class="grid">
+    {% for r in catalog.rows %}
+    <div class="card" style="margin:0">
+      <b>{{ r.name }}</b>
+      <span class="tag">{{ r.mastery_level }}</span>
+      {% if not r.unlocked %}<span class="tag">{{ r.grade }}年级 · 经验{{ r.exp }}</span>{% endif %}
+      <p class="muted">{{ r.effect }}</p>
+      {% if r.mastery %}
+      <p class="muted">熬过{{ r.mastery.attempts }}次 · 成功{{ r.mastery.successes }} · 完美{{ r.mastery.perfects }}</p>
+      {% endif %}
+      {% if r.key == 'felix' %}
+      <p class="muted">本学年已熬 {{ r.yearly_used }}/1 次（每学年只能成功一次）</p>
+      {% endif %}
+      {% if r.unlocked %}
+      <form method="post">
+        <input type="hidden" name="recipe" value="{{ r.name }}">
+        <button name="action" value="start" {% if brewing %}disabled{% endif %}>开始熬制</button>
+      </form>
+      {% else %}
+      <p class="muted">还学不会——需要{{ r.grade }}年级且魔药学经验{{ r.exp }}。</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <h2>我的药剂</h2>
+  <p class="muted">今天送出 {{ gifted_today }}/{{ trade_limit }} 次。</p>
+  {% set has_any = namespace(v=false) %}
+  <div class="grid">
+    {% for name, qty in owned.items() %}
+      {% if name in potion_names %}
+      {% set has_any.v = true %}
+      <div class="card" style="margin:0">
+        <b>{{ name }}</b> ×{{ qty }}
+        <form method="post" style="margin-top:8px">
+          <input type="hidden" name="potion" value="{{ name }}">
+          {% if name == polyjuice_name %}
+            <input name="target" placeholder="变成谁的模样" style="width:130px" required>
+            <button name="action" value="use">喝掉</button>
+          {% else %}
+            <button name="action" value="use">喝掉</button>
+          {% endif %}
+        </form>
+        <form method="post" class="row" style="margin-top:6px">
+          <input type="hidden" name="potion" value="{{ name }}">
+          <input name="target" placeholder="送给谁" style="width:110px" required>
+          <input name="quantity" type="number" value="1" min="1" max="{{ [qty, 5]|min }}" style="width:56px">
+          <button name="action" value="gift" class="ghost">赠送</button>
+        </form>
+      </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+  {% if not has_any.v %}<p class="muted">还没有成品药剂。熬一瓶试试。</p>{% endif %}
+</div>
+
+<div class="card">
+  <h2>魔药称号</h2>
+  <div class="scroll"><table>
+    <tr><th></th><th>称号</th><th>解锁条件</th><th></th></tr>
+    {% for t in titles %}
+    <tr>
+      <td>{% if t.unlocked %}✓{% else %}○{% endif %}</td>
+      <td>{{ t.name }}{% if t.active %} <span class="tag">佩戴中</span>{% endif %}</td>
+      <td class="muted">{{ t.requirement }}</td>
+      <td>
+        {% if t.unlocked and not t.active %}
+        <form method="post">
+          <input type="hidden" name="title" value="{{ t.name }}">
+          <button name="action" value="wear_title" class="ghost">佩戴</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</div>
+{% endblock %}

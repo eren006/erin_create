@@ -87,6 +87,9 @@ CREATE TABLE IF NOT EXISTS forest_runs (
     pending_galleons INTEGER NOT NULL DEFAULT 0,
     pending_exp INTEGER NOT NULL DEFAULT 0,
     pending_materials TEXT NOT NULL DEFAULT '[]',
+    protection_potion INTEGER NOT NULL DEFAULT 0,
+    wolfsbane_potion INTEGER NOT NULL DEFAULT 0,
+    healing_potion INTEGER NOT NULL DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'active',
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
@@ -128,6 +131,15 @@ def init_db() -> None:
     conn = get_conn()
     try:
         conn.executescript(SCHEMA)
+        for stmt in (
+            "ALTER TABLE forest_runs ADD COLUMN protection_potion INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE forest_runs ADD COLUMN wolfsbane_potion INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE forest_runs ADD COLUMN healing_potion INTEGER NOT NULL DEFAULT 0",
+        ):
+            try:
+                conn.execute(stmt)
+            except sqlite3.OperationalError:
+                pass
         for stmt in (
             "ALTER TABLE quidditch_players ADD COLUMN broom_key TEXT NOT NULL DEFAULT ''",
             "ALTER TABLE quidditch_players ADD COLUMN broom_durability INTEGER NOT NULL DEFAULT 0",

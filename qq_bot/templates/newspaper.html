@@ -189,6 +189,18 @@
       </article>
       {% endif %}
 
+      {% if issue.letters %}
+      <article>
+        <h3>✒️ 学生来稿</h3>
+        {% for letter in issue.letters %}
+        <div style="margin-bottom:14px">
+          <b>《{{ letter.title }}》</b>　<span class="wand">—— {{ letter.author }}</span>
+          <p style="white-space:pre-wrap">{{ letter.body }}</p>
+        </div>
+        {% endfor %}
+      </article>
+      {% endif %}
+
       {% if issue.forest_runs or issue.forest_slain %}
       <article>
         <h3>🌲 禁林通报</h3>
@@ -199,6 +211,24 @@
         <p>本学年全校累计<strong>{{ issue.forest_slain }}</strong>次首度击退禁林生物。</p>
         {% endif %}
         <p class="wand">校方重申：禁林依旧禁止学生进入。</p>
+      </article>
+      {% endif %}
+
+      {% if issue.potion_perfects or issue.potion_accidents or issue.potion_trades %}
+      <article>
+        <h3>⚗️ 地窖坩埚纪事</h3>
+        {% if issue.potion_perfects %}
+        <h4>本学年优秀作品</h4>
+        <ul>{% for row in issue.potion_perfects %}<li>{{ row.name }}完美熬成{{ row.potion }}{% if row.count > 1 %}{{ row.count }}次{% endif %}。</li>{% endfor %}</ul>
+        {% endif %}
+        {% if issue.potion_accidents %}
+        <h4>事故通报</h4>
+        <ul>{% for row in issue.potion_accidents %}<li>{{ row.name }}一度{{ row.accident }}。</li>{% endfor %}</ul>
+        <p class="wand">斯内普教授拒绝对此发表评论。</p>
+        {% endif %}
+        {% if issue.potion_trades %}
+        <p>猫头鹰棚本学年共代送<strong>{{ issue.potion_trades }}</strong>瓶学生自制药剂。</p>
+        {% endif %}
       </article>
       {% endif %}
 
@@ -217,7 +247,7 @@
       </article>
       {% endif %}
 
-      {% if not issue.newcomers and not issue.spells and not issue.duels and not issue.couples and not issue.careers and not issue.shifts and not issue.forest_runs %}
+      {% if not issue.newcomers and not issue.spells and not issue.duels and not issue.couples and not issue.careers and not issue.shifts and not issue.forest_runs and not issue.letters and not issue.potion_perfects and not issue.potion_accidents and not issue.potion_trades %}
       <div class="empty">本期城堡异常安静。编辑部怀疑所有新闻都被皮皮鬼藏起来了。</div>
       {% endif %}
 

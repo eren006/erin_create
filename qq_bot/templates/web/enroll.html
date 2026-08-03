@@ -1,0 +1,26 @@
+{% extends "web/base.html" %}
+{% block title %}还没入学{% endblock %}
+{% block body %}
+<div class="card" style="max-width:560px;margin:30px auto">
+  <h2>先去QQ群里办入学手续</h2>
+  {% if stage == 'none' %}
+    <p>你的网页账号已经开通了，但还没有霍格沃茨的学籍。</p>
+    <p>入学和选魔杖这两步要在<b>QQ群里</b>完成——分院帽得当面戴，魔杖也得亲自去奥利凡德那儿挑。</p>
+    <h3>怎么做</h3>
+    <p>在群里发送：</p>
+    <p style="font-size:1.15rem"><code>/入学 你的名字</code></p>
+    <p class="muted">比如 <code>/入学 赫敏</code>。名字只要名，姓氏会由你选的出身决定；
+       之后别人找你、送礼、下战书都用这个名字。</p>
+  {% elif stage == 'sorting' %}
+    <p>你的分院问卷答到一半——回QQ群里接着答完就行。</p>
+    <p>在群里发送 <code>/入学</code> 会回到你上次卡住的那一题，之前选过的不会丢。</p>
+    {% if progress %}<p class="muted">当前这一题：{{ progress.label }}</p>{% endif %}
+  {% else %}
+    <p>分院帽已经喊出了你的学院，但魔杖还在奥利凡德先生的柜台上。</p>
+    <p>在群里发送 <code>/入学</code> 继续挑选魔杖。</p>
+    {% if progress %}<p class="muted">当前这一步：{{ progress.wand_title }}</p>{% endif %}
+  {% endif %}
+  <p class="muted" style="margin-top:18px">办完之后刷新这个页面，所有功能就都能在网页上用了。</p>
+  <p><a class="btn" href="{{ url_for('enroll') }}">刷新看看</a></p>
+</div>
+{% endblock %}
