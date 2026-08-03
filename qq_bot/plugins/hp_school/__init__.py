@@ -1280,9 +1280,10 @@ cook_choice_cmd = on_command("烹饪选择")
 
 @cook_choice_cmd.handle()
 async def handle_cook_choice(event: MessageEvent, args=CommandArg()):
+    uid = event.get_user_id()
     try:
         position = int(args.extract_plain_text().strip())
-        result = kitchen.choose(event.get_user_id(), position)
+        result = kitchen.choose(uid, position)
     except (ValueError, kitchen.KitchenError) as e:
         await cook_choice_cmd.finish(str(e) if str(e) else "用法：/烹饪选择 1/2/3")
         return
@@ -1298,6 +1299,11 @@ async def handle_cook_choice(event: MessageEvent, args=CommandArg()):
             f"你得到「{result['recipe']}」×{result['quantity']}。\n"
             "发送「/食柜」查看你的存货。"
         )
+
+        # 检查成就
+        unlocked = kitchen.check_achievements(uid)
+        if unlocked:
+            text += "\n\n🏅 " + "、".join(unlocked)
     else:
         text = (
             f"🔥 烹饪失败。{result['recipe']}在你手中毁了。\n"
@@ -1321,7 +1327,7 @@ async def handle_pantry(event: MessageEvent):
             return
 
         foods = conn.execute(
-            "SELECT food_key, quantity FROM kitchen_inventory WHERE uid=? ORDER BY food_key",
+            "SELECT food_key, quantity FROM kitchen_inventory WHERE uid=? AND quantity>0 ORDER BY food_key",
             (uid,),
         ).fetchall()
 
@@ -1331,11 +1337,33 @@ async def handle_pantry(event: MessageEvent):
 
         lines = ["🍽️ 你的食柜"]
         total = 0
+        by_category = {}
+
         for row in foods:
             name = kitchen.item_name(row["food_key"])
             if name:
-                lines.append(f"　{name} × {row['quantity']}")
+                recipe_key = row["food_key"].replace("food_", "")
+                recipe = kitchen.RECIPES.get(recipe_key)
+                cat = recipe.get("category", "other") if recipe else "other"
+
+                if cat not in by_category:
+                    by_category[cat] = []
+                by_category[cat].append((name, row["quantity"]))
                 total += row["quantity"]
+
+        cat_emojis = {
+            "breakfast": "🌅", "main": "🍽️", "soup": "🍲", "dessert": "🍰",
+            "magic": "✨", "beverage": "☕", "snack": "🍪"
+        }
+
+        for cat in ["breakfast", "main", "soup", "dessert", "magic", "beverage", "snack"]:
+            if cat not in by_category:
+                continue
+            emoji = cat_emojis.get(cat, "📝")
+            lines.append(f"\n{emoji} {cat}")
+            for name, qty in by_category[cat]:
+                lines.append(f"　{name} × {qty}")
+
         lines.append(f"\n共 {total} 份食物")
 
         await pantry_cmd.finish("\n".join(lines))
@@ -1438,6 +1466,29 @@ async def handle_consume_food(event: MessageEvent, args=CommandArg()):
         lines.append("\n（食柜里这个没了）")
 
     await consume_food_cmd.finish("\n".join(lines))
+
+
+get_materials_cmd = on_command("领取材料")
+
+
+@get_materials_cmd.handle()
+async def handle_get_materials(event: MessageEvent):
+    uid = event.get_user_id()
+    player = core_storage.get_player(uid)
+    if not player or not player["house"]:
+        await get_materials_cmd.finish("你还没有分院。先完成 /入学")
+        return
+
+    granted = kitchen.grant_weekly_materials(uid)
+
+    lines = ["📦 领取每周材料补充"]
+    for mat_key, amount in granted.items():
+        mat_name = kitchen.get_material_name(mat_key)
+        lines.append(f"　{mat_name} × {amount}")
+
+    lines.append("\n这些材料可以用来烹饪。发送「/烹饪 配方名」开始做菜！")
+
+    await get_materials_cmd.finish("\n".join(lines))
 
 
 # ======================== 竞选新人王 ========================

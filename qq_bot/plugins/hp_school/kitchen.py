@@ -19,6 +19,85 @@ STAMINA_REGEN_AMOUNT = 8
 
 DISASTERS = ("黑烟滚滚", "食物焦黑一片", "汤汁溅得到处都是", "莫名其妙变成了糊状")
 
+# 烹饪材料清单（通常来自禁林采集或商店）
+KITCHEN_MATERIALS = {
+    "mat_egg": ("鸡蛋", "基础材料"),
+    "mat_butter": ("黄油", "基础材料"),
+    "mat_salt": ("盐", "基础材料"),
+    "mat_bread": ("面包", "基础材料"),
+    "mat_milk": ("牛奶", "基础材料"),
+    "mat_honey": ("蜂蜜", "基础材料"),
+    "mat_flour": ("面粉", "基础材料"),
+    "mat_sugar": ("糖", "基础材料"),
+    "mat_cheese": ("芝士", "进阶材料"),
+    "mat_chocolate": ("巧克力", "进阶材料"),
+    "mat_cream": ("奶油", "进阶材料"),
+    "mat_chicken": ("鸡肉", "食材"),
+    "mat_fish": ("鱼肉", "食材"),
+    "mat_herbs": ("香草", "调料"),
+    "mat_vegetable": ("蔬菜", "食材"),
+    "mat_water": ("水", "基础材料"),
+    "mat_tomato": ("番茄", "食材"),
+    "mat_pasta": ("意大利面", "食材"),
+    "mat_potato": ("土豆", "食材"),
+    "mat_meat": ("肉", "食材"),
+    "mat_lettuce": ("莴苣", "蔬菜"),
+    "mat_bun": ("面包胚", "食材"),
+    "mat_oats": ("燕麦", "基础材料"),
+    "mat_mushroom": ("蘑菇", "食材"),
+    "mat_beans": ("豆子", "食材"),
+    "mat_clam": ("蛤蜊", "食材"),
+    "mat_lentil": ("扁豆", "食材"),
+    "mat_apple": ("苹果", "水果"),
+    "mat_mascarpone": ("马斯卡彭芝士", "进阶材料"),
+    "mat_coffee": ("咖啡", "饮料"),
+    "mat_cocoa": ("可可", "饮料"),
+    "mat_cream_cheese": ("奶油芝士", "进阶材料"),
+    "mat_almond_flour": ("杏仁粉", "进阶材料"),
+    "mat_powdered_sugar": ("糖粉", "进阶材料"),
+    "mat_food_color": ("食用色素", "进阶材料"),
+    "mat_cinnamon": ("肉桂", "调料"),
+    "mat_oil": ("油", "基础材料"),
+    "mat_lemon": ("柠檬", "水果"),
+    "mat_beef": ("牛肉", "食材"),
+    "mat_carrot": ("胡萝卜", "蔬菜"),
+    "mat_curry": ("咖喱", "调料"),
+    "mat_rice": ("米", "基础材料"),
+    "mat_bacon": ("培根", "食材"),
+    "mat_lamb": ("羊肉", "食材"),
+    "mat_rosemary": ("迷迭香", "香草"),
+    "mat_garlic": ("大蒜", "调料"),
+    "mat_nuts": ("坚果", "食材"),
+    "mat_fruit": ("水果", "食材"),
+    "mat_wine": ("葡萄酒", "饮料"),
+    "mat_spices": ("香料", "调料"),
+    "mat_yogurt": ("酸奶", "进阶材料"),
+    "mat_ginger": ("生姜", "调料"),
+    "mat_chamomile": ("洋甘菊", "草药"),
+    "mat_star_anise": ("八角", "调料"),
+    "mat_lavender": ("薰衣草", "草药"),
+    "mat_corn": ("玉米", "食材"),
+    "mat_butterbeer_base": ("黄油啤酒基", "特殊材料"),
+    "mat_rice_flour": ("米粉", "基础材料"),
+    "mat_filling": ("馅料", "进阶材料"),
+    "mat_phoenix_feather": ("凤凰羽毛", "魔法材料"),
+    "mat_dragon_scale": ("龙鳞", "魔法材料"),
+    "mat_moonstone": ("月光石", "魔法材料"),
+    "mat_starfruit": ("星果", "魔法材料"),
+    "mat_basilisk_fang": ("蛇怪毒牙", "魔法材料"),
+    "mat_moonflower": ("月光花", "魔法材料"),
+    "mat_pearl": ("珍珠", "魔法材料"),
+    "mat_seaweed": ("海草", "魔法材料"),
+    "mat_spring_water": ("泉水", "魔法材料"),
+    "mat_unicorn_tears": ("独角兽泪", "魔法材料"),
+    "mat_starlight": ("星光", "魔法材料"),
+    "mat_golden_egg": ("黄金蛋", "魔法材料"),
+    "mat_dragon_blood": ("龙血", "魔法材料"),
+    "mat_fire_pepper": ("火辣椒", "魔法材料"),
+    "mat_unicorn_hair": ("独角兽毛", "魔法材料"),
+    "mat_hot_pepper": ("辣椒", "调料"),
+}
+
 # 配方库：120+ 食物配方
 # 分类：breakfast(早餐)、main(主食)、soup(汤)、dessert(甜点)、magic(魔法美食)、beverage(饮品)、snack(点心)
 
@@ -1044,3 +1123,133 @@ def apply_food_effects(uid: str, recipe_key: str) -> dict:
         effects["shield"] = amount
 
     return effects
+
+
+def get_material_name(mat_key: str) -> str:
+    """获取材料的中文名称。"""
+    if mat_key in KITCHEN_MATERIALS:
+        return KITCHEN_MATERIALS[mat_key][0]
+    return mat_key
+
+
+def grant_starter_materials(uid: str) -> dict:
+    """给新玩家赠送初始材料包。"""
+    starter_pack = {
+        "mat_egg": 5,
+        "mat_butter": 3,
+        "mat_salt": 2,
+        "mat_bread": 3,
+        "mat_milk": 4,
+        "mat_honey": 2,
+        "mat_flour": 3,
+        "mat_sugar": 2,
+    }
+
+    conn = get_conn()
+    try:
+        granted = {}
+        for mat_key, amount in starter_pack.items():
+            conn.execute(
+                "INSERT INTO inventory(uid,item_key,quantity) VALUES(?,?,?) "
+                "ON CONFLICT(uid,item_key) DO UPDATE SET quantity=quantity+excluded.quantity",
+                (uid, mat_key, amount),
+            )
+            granted[mat_key] = amount
+        conn.commit()
+        return granted
+    finally:
+        conn.close()
+
+
+def grant_weekly_materials(uid: str) -> dict:
+    """每周赠送补充材料包。"""
+    weekly_pack = {
+        "mat_egg": 3,
+        "mat_butter": 2,
+        "mat_milk": 2,
+        "mat_honey": 1,
+        "mat_flour": 2,
+        "mat_salt": 1,
+        "mat_sugar": 1,
+        "mat_vegetable": 2,
+        "mat_herbs": 1,
+    }
+
+    conn = get_conn()
+    try:
+        granted = {}
+        for mat_key, amount in weekly_pack.items():
+            conn.execute(
+                "INSERT INTO inventory(uid,item_key,quantity) VALUES(?,?,?) "
+                "ON CONFLICT(uid,item_key) DO UPDATE SET quantity=quantity+excluded.quantity",
+                (uid, mat_key, amount),
+            )
+            granted[mat_key] = amount
+        conn.commit()
+        return granted
+    finally:
+        conn.close()
+
+
+def check_achievements(uid: str) -> list[str]:
+    """检查并解锁成就。"""
+    unlocked = []
+    conn = get_conn()
+    try:
+        # 检查各个成就条件
+        player = core_storage.get_player(uid)
+
+        # 成就1：首次烹饪成功
+        history = conn.execute(
+            "SELECT COUNT(*) as cnt FROM kitchen_history WHERE uid=? AND quality='success' OR quality='perfect'",
+            (uid,),
+        ).fetchone()
+        if history and history["cnt"] >= 1:
+            if not core_storage.has_title(uid, "kitchen_novice"):
+                core_storage.unlock_title(uid, "kitchen_novice")
+                unlocked.append("🎖️ 厨房新手")
+
+        # 成就2：累计5次成功
+        if history and history["cnt"] >= 5:
+            if not core_storage.has_title(uid, "kitchen_apprentice"):
+                core_storage.unlock_title(uid, "kitchen_apprentice")
+                unlocked.append("🎖️ 学徒厨师")
+
+        # 成就3：学会15个配方
+        learned = conn.execute(
+            "SELECT COUNT(*) as cnt FROM kitchen_learned_recipes WHERE uid=?",
+            (uid,),
+        ).fetchone()
+        if learned and learned["cnt"] >= 15:
+            if not core_storage.has_title(uid, "kitchen_enthusiast"):
+                core_storage.unlock_title(uid, "kitchen_enthusiast")
+                unlocked.append("🎖️ 烹饪爱好者")
+
+        # 成就4：学会50个配方
+        if learned and learned["cnt"] >= 50:
+            if not core_storage.has_title(uid, "kitchen_collector"):
+                core_storage.unlock_title(uid, "kitchen_collector")
+                unlocked.append("🎖️ 配方收集家")
+
+        # 成就5：学会所有魔法美食
+        magic_recipes = [k for k, r in RECIPES.items() if r.get("category") == "magic"]
+        magic_learned = conn.execute(
+            "SELECT COUNT(*) as cnt FROM kitchen_learned_recipes WHERE uid=? AND recipe_key IN ("
+            + ",".join(["?"] * len(magic_recipes))
+            + ")",
+            (uid, *magic_recipes),
+        ).fetchone()
+        if magic_learned and magic_learned["cnt"] >= len(magic_recipes):
+            if not core_storage.has_title(uid, "kitchen_researcher"):
+                core_storage.unlock_title(uid, "kitchen_researcher")
+                unlocked.append("🎖️ 美食研究者")
+
+        # 成就6：累计100次成功
+        if history and history["cnt"] >= 100:
+            if not core_storage.has_title(uid, "kitchen_expert"):
+                core_storage.unlock_title(uid, "kitchen_expert")
+                unlocked.append("🎖️ 霍格沃茨名厨")
+
+        return unlocked
+    finally:
+        conn.close()

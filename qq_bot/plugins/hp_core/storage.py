@@ -923,18 +923,39 @@ def unlock_title(uid: str, title_key: str) -> None:
 # ======================== 厨房系统 ========================
 
 def get_or_create_kitchen_exp(uid: str) -> sqlite3.Row:
-    """获取或创建厨房经验记录。"""
+    """获取或创建厨房经验记录。新玩家自动赠送初始材料。"""
     conn = get_conn()
     try:
         row = conn.execute("SELECT * FROM kitchen_exp WHERE uid = ?", (uid,)).fetchone()
         if row:
             return row
+
+        # 新玩家初始化
         ts = now()
         conn.execute(
             "INSERT INTO kitchen_exp (uid, exp, kitchen_stamina, stamina_updated_at, updated_at) "
             "VALUES (?, 0, 40, ?, ?)",
             (uid, ts, ts),
         )
+
+        # 自动赠送初始材料包
+        starter_pack = {
+            "mat_egg": 5,
+            "mat_butter": 3,
+            "mat_salt": 2,
+            "mat_bread": 3,
+            "mat_milk": 4,
+            "mat_honey": 2,
+            "mat_flour": 3,
+            "mat_sugar": 2,
+        }
+        for mat_key, amount in starter_pack.items():
+            conn.execute(
+                "INSERT INTO inventory(uid,item_key,quantity) VALUES(?,?,?) "
+                "ON CONFLICT(uid,item_key) DO UPDATE SET quantity=quantity+excluded.quantity",
+                (uid, mat_key, amount),
+            )
+
         conn.commit()
         return conn.execute("SELECT * FROM kitchen_exp WHERE uid = ?", (uid,)).fetchone()
     finally:

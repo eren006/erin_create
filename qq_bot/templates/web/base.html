@@ -59,6 +59,7 @@ th{color:#756856;font-weight:700;font-size:.78rem;letter-spacing:.06em;text-tran
 .bar{height:8px;background:#d9cdb9;border-radius:99px;overflow:hidden;margin:5px 0 11px;box-shadow:inset 0 1px 2px #6d563533}.bar>i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--accent),var(--accent-2));box-shadow:0 0 9px color-mix(in srgb,var(--accent) 38%,transparent)}
 .opt{display:block;width:100%;text-align:left;margin-bottom:8px;background:rgba(255,253,247,.72);color:var(--ink);border:1px solid #ccbda3;padding:11px 13px;box-shadow:none}.opt:hover{background:var(--accent);border-color:var(--accent);color:#fff}
 .scroll{overflow-x:auto;border-radius:7px}.page-footer{text-align:center;color:#8b806f;font-size:.75rem;margin-top:28px;letter-spacing:.08em}.page-footer:before{content:"✦";display:block;color:var(--accent-2);font-size:1.1rem;margin-bottom:5px}
+.nav-more-btn{position:relative!important;cursor:pointer}.nav-more-menu{display:none;position:absolute;top:100%;left:-8px;background:rgba(10,13,21,.95);border:1px solid rgba(224,197,123,.28);border-radius:8px;margin-top:4px;min-width:140px;box-shadow:0 12px 32px #08080fbb;z-index:100;backdrop-filter:blur(12px)}.nav-more-menu.open{display:flex;flex-direction:column}.nav-more-menu a{flex:none;padding:10px 14px;border:0;border-radius:0;color:#d8d0c1;white-space:nowrap;display:block;font-size:.88rem;transition:.15s ease;border-bottom:1px solid rgba(224,197,123,.15)}.nav-more-menu a:last-child{border-bottom:0}.nav-more-menu a:hover{background:rgba(255,255,255,.07);color:#fff;transform:none}
 .hero-card{color:#fff8e8;background:linear-gradient(105deg,color-mix(in srgb,var(--accent) 92%,#111827),rgba(18,24,39,.76)),url("{{ url_for('static', filename='web/images/castle-night.jpg') }}") center 48%/cover;border-color:#d7b968;min-height:190px;display:grid;grid-template-columns:minmax(0,1.5fr) minmax(220px,.7fr);gap:28px;align-items:center;box-shadow:0 20px 42px #22180e2e}
 .hero-card:before{width:100%;inset:0;background:radial-gradient(circle at 80% 18%,#fff4 0 1px,transparent 2px),radial-gradient(circle at 70% 37%,#fff3 0 1px,transparent 2px);background-size:72px 72px,110px 110px;opacity:1}
 .hero-card>*{position:relative}.hero-card h2{color:#fff;border-color:#ffffff35;font-size:1.7rem;margin-bottom:5px}.hero-card .muted{color:#e6ddce}.hero-kicker{color:#e7cb80;letter-spacing:.18em;font-size:.76rem;font-weight:700}.hero-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}.hero-stat{background:#0f14294d;border:1px solid #ffffff24;border-radius:10px;padding:10px;text-align:center}.hero-stat b{display:block;font-size:1.2rem;color:#f3d780}.hero-stat span{font-size:.72rem;color:#dfd7ca}
@@ -88,21 +89,34 @@ th{color:#756856;font-weight:700;font-size:.78rem;letter-spacing:.06em;text-tran
     <a href="{{ url_for('index') }}" class="{{ 'active' if ep=='index' }}"><i class="nav-icon">⌂</i>面板</a>
     <a href="{{ url_for('lessons_page') }}" class="{{ 'active' if ep=='lessons_page' }}"><i class="nav-icon">✒</i>上课</a>
     <a href="{{ url_for('homework_page') }}" class="{{ 'active' if ep=='homework_page' }}"><i class="nav-icon">▤</i>作业</a>
-    <a href="{{ url_for('spells_page') }}" class="{{ 'active' if ep=='spells_page' }}"><i class="nav-icon">✦</i>魔咒</a>
-    <a href="{{ url_for('potions_page') }}" class="{{ 'active' if ep=='potions_page' }}"><i class="nav-icon">⚗</i>魔药</a>
+    <div class="nav-more-btn" onclick="toggleMenu('study')">📚 学习 <span style="font-size:.7rem">▼</span>
+      <div class="nav-more-menu" id="study-menu">
+        <a href="{{ url_for('spells_page') }}" class="{{ 'active' if ep=='spells_page' }}"><i class="nav-icon">✦</i>魔咒</a>
+        <a href="{{ url_for('potions_page') }}" class="{{ 'active' if ep=='potions_page' }}"><i class="nav-icon">⚗</i>魔药</a>
+      </div>
+    </div>
     <a href="{{ url_for('shop_page') }}" class="{{ 'active' if ep=='shop_page' }}"><i class="nav-icon">◈</i>对角巷</a>
     <a href="{{ url_for('bag_page') }}" class="{{ 'active' if ep=='bag_page' }}"><i class="nav-icon">▣</i>背包</a>
-    <a href="{{ url_for('work_page') }}" class="{{ 'active' if ep=='work_page' }}">打工</a>
-    <a href="{{ url_for('quidditch_page') }}" class="{{ 'active' if ep=='quidditch_page' }}">魁地奇</a>
-    <a href="{{ url_for('duel_page') }}" class="{{ 'active' if ep=='duel_page' }}">⚔ 决斗</a>
-    <a href="{{ url_for('forest_page') }}" class="{{ 'active' if ep=='forest_page' }}">♘ 禁林</a>
-    <a href="{{ url_for('social_page') }}" class="{{ 'active' if ep=='social_page' }}">社交</a>
-    <a href="{{ url_for('mainline_page') }}" class="{{ 'active' if ep=='mainline_page' }}">成长册</a>
-    <a href="{{ url_for('careers_page') }}" class="{{ 'active' if ep=='careers_page' }}">职业</a>
-    <a href="{{ url_for('prefect_page') }}" class="{{ 'active' if ep=='prefect_page' }}">级长</a>
-    <a href="{{ url_for('christmas_page') }}" class="{{ 'active' if ep=='christmas_page' }}">🎄 圣诞</a>
-    <a href="{{ url_for('submit_page') }}" class="{{ 'active' if ep=='submit_page' }}">投稿</a>
-    <a href="{{ url_for('rankings') }}" class="{{ 'active' if ep=='rankings' }}">榜单</a>
+    <div class="nav-more-btn" onclick="toggleMenu('activity')">⚽ 活动 <span style="font-size:.7rem">▼</span>
+      <div class="nav-more-menu" id="activity-menu">
+        <a href="{{ url_for('work_page') }}" class="{{ 'active' if ep=='work_page' }}">打工</a>
+        <a href="{{ url_for('quidditch_page') }}" class="{{ 'active' if ep=='quidditch_page' }}">魁地奇</a>
+        <a href="{{ url_for('duel_page') }}" class="{{ 'active' if ep=='duel_page' }}">⚔ 决斗</a>
+        <a href="{{ url_for('forest_page') }}" class="{{ 'active' if ep=='forest_page' }}">♘ 禁林</a>
+        <a href="{{ url_for('social_page') }}" class="{{ 'active' if ep=='social_page' }}">社交</a>
+      </div>
+    </div>
+    <div class="nav-more-btn" onclick="toggleMenu('more')">⋯ 更多 <span style="font-size:.7rem">▼</span>
+      <div class="nav-more-menu" id="more-menu">
+        <a href="{{ url_for('mainline_page') }}" class="{{ 'active' if ep=='mainline_page' }}">成长册</a>
+        <a href="{{ url_for('careers_page') }}" class="{{ 'active' if ep=='careers_page' }}">职业</a>
+        <a href="{{ url_for('prefect_page') }}" class="{{ 'active' if ep=='prefect_page' }}">级长</a>
+        <a href="{{ url_for('freshman_duel_page') }}" class="{{ 'active' if ep=='freshman_duel_page' }}">🏆 竞选</a>
+        <a href="{{ url_for('christmas_page') }}" class="{{ 'active' if ep=='christmas_page' }}">🎄 圣诞</a>
+        <a href="{{ url_for('submit_page') }}" class="{{ 'active' if ep=='submit_page' }}">投稿</a>
+        <a href="{{ url_for('rankings') }}" class="{{ 'active' if ep=='rankings' }}">榜单</a>
+      </div>
+    </div>
   </nav></div>
 </header>
 {% endif %}
@@ -115,5 +129,20 @@ th{color:#756856;font-weight:700;font-size:.78rem;letter-spacing:.06em;text-tran
 <footer class="page-footer">霍格沃茨魔法学校 · 学生事务与校园生活平台</footer>
 </div>
 {% block foot %}{% endblock %}
+<script>
+function toggleMenu(menuId) {
+  const menu = document.getElementById(menuId + '-menu');
+  const allMenus = document.querySelectorAll('.nav-more-menu');
+  allMenus.forEach(m => {
+    if (m !== menu) m.classList.remove('open');
+  });
+  menu?.classList.toggle('open');
+}
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.nav-more-btn')) {
+    document.querySelectorAll('.nav-more-menu').forEach(m => m.classList.remove('open'));
+  }
+});
+</script>
 </body>
 </html>
