@@ -63,8 +63,10 @@ enroll_cmd = on_command("入学")
 ENROLL_USAGE = "用法：/入学 你的名字（比如 /入学 赫敏）"
 
 
-def _wand_shop_message(uid: str, result: dict, resume: bool = False) -> MessageSegment:
+def _wand_shop_message(uid: str, result: dict, resume: bool = False, intro: str = "") -> MessageSegment:
     lines = []
+    if intro:
+        lines.append(intro.strip())
     if result["wand_stage"] == "wood":
         lines.extend(
             [
@@ -93,7 +95,8 @@ def _wand_shop_message(uid: str, result: dict, resume: bool = False) -> MessageS
     lines.extend([f"🪄 {result['wand_title']}", result["wand_prompt"]])
     for i, detail in enumerate(result.get("wand_option_details", []), 1):
         lines.append(f"{i}. {detail}")
-    return MessageSegment.text("\n".join(lines) + "\n") + _build_keyboard(
+    # 带按钮的消息必须用 markdown 发——QQ 不接受纯文本 + keyboard 的组合
+    return MessageSegment.markdown("\n\n".join(lines)) + _build_keyboard(
         uid, result["step"], result["options"]
     )
 
@@ -118,7 +121,7 @@ async def handle_enroll(event: MessageEvent, args=CommandArg()):
         else f"欢迎来到霍格沃茨，{result['name']}。在分院之前，先问几个问题。\n你是——\n"
     )
     await enroll_cmd.finish(
-        MessageSegment.text(intro) + _build_keyboard(uid, result["step"], result["options"])
+        MessageSegment.markdown(intro) + _build_keyboard(uid, result["step"], result["options"])
     )
 
 
@@ -175,10 +178,7 @@ async def handle_sorting_button(bot: Bot, event: InteractionCreateEvent):
             )
         else:
             hat_text = ""
-        await bot.send(
-            event,
-            MessageSegment.text(hat_text) + _wand_shop_message(uid, result),
-        )
+        await bot.send(event, _wand_shop_message(uid, result, intro=hat_text))
         return
 
     text = f"选好了：{result['picked']}"
@@ -187,7 +187,7 @@ async def handle_sorting_button(bot: Bot, event: InteractionCreateEvent):
     text += f"\n接下来——{result['label']}呢？"
     await bot.send(
         event,
-        MessageSegment.text(text + "\n") + _build_keyboard(uid, result["step"], result["options"]),
+        MessageSegment.markdown(text) + _build_keyboard(uid, result["step"], result["options"]),
     )
 
 
@@ -252,8 +252,8 @@ async def handle_lesson(event: MessageEvent, args=CommandArg()):
 
     intro = "接着刚才没完成的课堂——" if event_result["is_resume"] else "课堂情境——"
     await lesson_cmd.finish(
-        MessageSegment.text(
-            f"📚 {event_result['subject']}\n{intro}\n{event_result['prompt']}\n你准备怎么做？\n"
+        MessageSegment.markdown(
+            f"**📚 {event_result['subject']}**\n\n{intro}\n\n{event_result['prompt']}\n\n你准备怎么做？"
         )
         + _build_lesson_keyboard(uid, event_result["token"], event_result["options"])
     )
