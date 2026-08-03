@@ -131,6 +131,9 @@ def init_db() -> None:
     conn = get_conn()
     try:
         conn.executescript(SCHEMA)
+        # 节日和级长的表也一并建，免得依赖模块导入顺序
+        conn.executescript(CHRISTMAS_SCHEMA)
+        conn.executescript(PREFECT_SCHEMA)
         for stmt in (
             "ALTER TABLE forest_runs ADD COLUMN protection_potion INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE forest_runs ADD COLUMN wolfsbane_potion INTEGER NOT NULL DEFAULT 0",
@@ -640,5 +643,500 @@ def list_defeated(uid: str) -> set[str]:
     try:
         rows = conn.execute("SELECT monster_key FROM forest_defeated WHERE uid = ?", (uid,)).fetchall()
         return {r["monster_key"] for r in rows}
+    finally:
+        conn.close()
+
+
+# ======================== 圣诞：舞会 ========================
+
+CHRISTMAS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS ball_robes (
+    uid TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    color TEXT NOT NULL,
+    style TEXT NOT NULL,
+    accessory TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (uid, year)
+);
+
+CREATE TABLE IF NOT EXISTS ball_invites (
+    inviter_uid TEXT NOT NULL,
+    target_uid TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (inviter_uid, year)
+);
+
+CREATE TABLE IF NOT EXISTS ball_partners (
+    uid TEXT NOT NULL,
+    partner_uid TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (uid, year)
+);
+
+CREATE TABLE IF NOT EXISTS ball_attendance (
+    uid TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    has_robe INTEGER NOT NULL DEFAULT 0,
+    attended_at INTEGER NOT NULL,
+    PRIMARY KEY (uid, year)
+);
+
+CREATE TABLE IF NOT EXISTS tree_hangs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uid TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    ornament TEXT NOT NULL,
+    points INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_tree_hangs_year ON tree_hangs (year, uid);
+
+CREATE TABLE IF NOT EXISTS tree_goals (
+    year INTEGER PRIMARY KEY,
+    goal INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tree_rewards (
+    uid TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    claimed_at INTEGER NOT NULL,
+    PRIMARY KEY (uid, year)
+);
+"""
+
+
+def init_christmas() -> None:
+    conn = get_conn()
+    try:
+        conn.executescript(CHRISTMAS_SCHEMA)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def save_robe(uid: str, year: int, color: str, style: str, accessory: str) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO ball_robes (uid, year, color, style, accessory, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(uid, year) DO UPDATE SET "
+            "color=excluded.color, style=excluded.style, accessory=excluded.accessory, "
+            "updated_at=excluded.updated_at",
+            (uid, year, color, style, accessory, now()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_robe(uid: str, year: int) -> sqlite3.Row | None:
+    conn = get_conn()
+    try:
+        return conn.execute(
+            "SELECT * FROM ball_robes WHERE uid = ? AND year = ?", (uid, year)
+        ).fetchone()
+    finally:
+        conn.close()
+
+
+def create_ball_invite(inviter_uid: str, target_uid: str, year: int) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO ball_invites (inviter_uid, target_uid, year, created_at) VALUES (?, ?, ?, ?)",
+            (inviter_uid, target_uid, year, now()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_ball_invite_from(inviter_uid: str, year: int) -> sqlite3.Row | None:
+    conn = get_conn()
+    try:
+        return conn.execute(
+            "SELECT * FROM ball_invites WHERE inviter_uid = ? AND year = ?", (inviter_uid, year)
+        ).fetchone()
+    finally:
+        conn.close()
+
+
+def get_ball_invite(inviter_uid: str, target_uid: str, year: int) -> sqlite3.Row | None:
+    conn = get_conn()
+    try:
+        return conn.execute(
+            "SELECT * FROM ball_invites WHERE inviter_uid = ? AND target_uid = ? AND year = ?",
+            (inviter_uid, target_uid, year),
+        ).fetchone()
+    finally:
+        conn.close()
+
+
+def list_ball_invites_to(target_uid: str, year: int) -> list[sqlite3.Row]:
+    conn = get_conn()
+    try:
+        return conn.execute(
+            "SELECT * FROM ball_invites WHERE target_uid = ? AND year = ? ORDER BY created_at",
+            (target_uid, year),
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+def delete_ball_invite(inviter_uid: str, year: int) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "DELETE FROM ball_invites WHERE inviter_uid = ? AND year = ?", (inviter_uid, year)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def set_ball_partner(uid_a: str, uid_b: str, year: int) -> None:
+    conn = get_conn()
+    try:
+        ts = now()
+        conn.execute(
+            "INSERT OR REPLACE INTO ball_partners (uid, partner_uid, year, created_at) VALUES (?, ?, ?, ?)",
+            (uid_a, uid_b, year, ts),
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO ball_partners (uid, partner_uid, year, created_at) VALUES (?, ?, ?, ?)",
+            (uid_b, uid_a, year, ts),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_ball_partner(uid: str, year: int) -> str | None:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT partner_uid FROM ball_partners WHERE uid = ? AND year = ?", (uid, year)
+        ).fetchone()
+        return row["partner_uid"] if row else None
+    finally:
+        conn.close()
+
+
+def mark_ball_attended(uid: str, year: int, has_robe: bool) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO ball_attendance (uid, year, has_robe, attended_at) VALUES (?, ?, ?, ?)",
+            (uid, year, 1 if has_robe else 0, now()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def has_attended_ball(uid: str, year: int) -> bool:
+    conn = get_conn()
+    try:
+        return conn.execute(
+            "SELECT 1 FROM ball_attendance WHERE uid = ? AND year = ?", (uid, year)
+        ).fetchone() is not None
+    finally:
+        conn.close()
+
+
+def list_ball_attendees(year: int) -> list[sqlite3.Row]:
+    conn = get_conn()
+    try:
+        return conn.execute(
+            "SELECT * FROM ball_attendance WHERE year = ? ORDER BY attended_at", (year,)
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+# ======================== 圣诞：圣诞树 ========================
+
+
+def add_tree_hang(uid: str, year: int, ornament: str, points: int) -> int:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO tree_hangs (uid, year, ornament, points, created_at) VALUES (?, ?, ?, ?, ?)",
+            (uid, year, ornament, points, now()),
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT COALESCE(SUM(points), 0) AS total FROM tree_hangs WHERE year = ?", (year,)
+        ).fetchone()
+        return row["total"]
+    finally:
+        conn.close()
+
+
+def get_tree_progress(year: int) -> int:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT COALESCE(SUM(points), 0) AS total FROM tree_hangs WHERE year = ?", (year,)
+        ).fetchone()
+        return row["total"]
+    finally:
+        conn.close()
+
+
+def last_tree_hang_at(uid: str, year: int) -> int | None:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT MAX(created_at) AS ts FROM tree_hangs WHERE uid = ? AND year = ?", (uid, year)
+        ).fetchone()
+        return row["ts"]
+    finally:
+        conn.close()
+
+
+def has_hung_on_tree(uid: str, year: int) -> bool:
+    conn = get_conn()
+    try:
+        return conn.execute(
+            "SELECT 1 FROM tree_hangs WHERE uid = ? AND year = ? LIMIT 1", (uid, year)
+        ).fetchone() is not None
+    finally:
+        conn.close()
+
+
+def count_tree_contributors(year: int) -> int:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT COUNT(DISTINCT uid) AS n FROM tree_hangs WHERE year = ?", (year,)
+        ).fetchone()
+        return row["n"]
+    finally:
+        conn.close()
+
+
+def recent_tree_hangs(year: int, limit: int = 8) -> list[sqlite3.Row]:
+    conn = get_conn()
+    try:
+        return conn.execute(
+            "SELECT uid, ornament, created_at FROM tree_hangs WHERE year = ? "
+            "ORDER BY id DESC LIMIT ?",
+            (year, limit),
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+def mark_tree_reward_claimed(uid: str, year: int) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO tree_rewards (uid, year, claimed_at) VALUES (?, ?, ?)",
+            (uid, year, now()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def has_claimed_tree_reward(uid: str, year: int) -> bool:
+    conn = get_conn()
+    try:
+        return conn.execute(
+            "SELECT 1 FROM tree_rewards WHERE uid = ? AND year = ?", (uid, year)
+        ).fetchone() is not None
+    finally:
+        conn.close()
+
+
+def freeze_tree_goal(year: int, goal: int) -> int:
+    """第一次有人挂装饰时把目标定死，之后新玩家入学也不会让已完成的树退回未完成。"""
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO tree_goals (year, goal, created_at) VALUES (?, ?, ?)",
+            (year, goal, now()),
+        )
+        conn.commit()
+        row = conn.execute("SELECT goal FROM tree_goals WHERE year = ?", (year,)).fetchone()
+        return row["goal"]
+    finally:
+        conn.close()
+
+
+def get_frozen_tree_goal(year: int) -> int | None:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT goal FROM tree_goals WHERE year = ?", (year,)).fetchone()
+        return row["goal"] if row else None
+    finally:
+        conn.close()
+
+
+# ======================== 级长选举 ========================
+
+PREFECT_SCHEMA = """
+CREATE TABLE IF NOT EXISTS prefect_candidates (
+    uid TEXT PRIMARY KEY,
+    house TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS prefect_votes (
+    voter_uid TEXT PRIMARY KEY,
+    target_uid TEXT NOT NULL,
+    house TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS prefects (
+    uid TEXT PRIMARY KEY,
+    house TEXT NOT NULL,
+    votes INTEGER NOT NULL DEFAULT 0,
+    elected_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS prefect_duty (
+    uid TEXT NOT NULL,
+    day INTEGER NOT NULL,
+    done_at INTEGER NOT NULL,
+    PRIMARY KEY (uid, day)
+);
+"""
+
+
+def init_prefect() -> None:
+    conn = get_conn()
+    try:
+        conn.executescript(PREFECT_SCHEMA)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def add_prefect_candidate(uid: str, house: str) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO prefect_candidates (uid, house, created_at) VALUES (?, ?, ?)",
+            (uid, house, now()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def list_prefect_candidates(house: str | None = None) -> list[sqlite3.Row]:
+    conn = get_conn()
+    try:
+        if house:
+            return conn.execute(
+                "SELECT * FROM prefect_candidates WHERE house = ? ORDER BY created_at", (house,)
+            ).fetchall()
+        return conn.execute("SELECT * FROM prefect_candidates ORDER BY house, created_at").fetchall()
+    finally:
+        conn.close()
+
+
+def is_prefect_candidate(uid: str) -> bool:
+    conn = get_conn()
+    try:
+        return conn.execute(
+            "SELECT 1 FROM prefect_candidates WHERE uid = ?", (uid,)
+        ).fetchone() is not None
+    finally:
+        conn.close()
+
+
+def cast_prefect_vote(voter_uid: str, target_uid: str, house: str) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO prefect_votes (voter_uid, target_uid, house, created_at) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(voter_uid) DO UPDATE SET target_uid=excluded.target_uid, created_at=excluded.created_at",
+            (voter_uid, target_uid, house, now()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_prefect_vote(voter_uid: str) -> str | None:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT target_uid FROM prefect_votes WHERE voter_uid = ?", (voter_uid,)
+        ).fetchone()
+        return row["target_uid"] if row else None
+    finally:
+        conn.close()
+
+
+def vote_tally() -> dict[str, int]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT target_uid, COUNT(*) AS n FROM prefect_votes GROUP BY target_uid"
+        ).fetchall()
+        return {r["target_uid"]: r["n"] for r in rows}
+    finally:
+        conn.close()
+
+
+def add_prefect(uid: str, house: str, votes: int) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO prefects (uid, house, votes, elected_at) VALUES (?, ?, ?, ?)",
+            (uid, house, votes, now()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def list_prefects(house: str | None = None) -> list[sqlite3.Row]:
+    conn = get_conn()
+    try:
+        if house:
+            return conn.execute(
+                "SELECT * FROM prefects WHERE house = ? ORDER BY votes DESC", (house,)
+            ).fetchall()
+        return conn.execute("SELECT * FROM prefects ORDER BY house, votes DESC").fetchall()
+    finally:
+        conn.close()
+
+
+def is_prefect(uid: str) -> bool:
+    conn = get_conn()
+    try:
+        return conn.execute("SELECT 1 FROM prefects WHERE uid = ?", (uid,)).fetchone() is not None
+    finally:
+        conn.close()
+
+
+def mark_duty_done(uid: str, day: int) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO prefect_duty (uid, day, done_at) VALUES (?, ?, ?)",
+            (uid, day, now()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def has_done_duty(uid: str, day: int) -> bool:
+    conn = get_conn()
+    try:
+        return conn.execute(
+            "SELECT 1 FROM prefect_duty WHERE uid = ? AND day = ?", (uid, day)
+        ).fetchone() is not None
     finally:
         conn.close()

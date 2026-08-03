@@ -1,0 +1,62 @@
+{% extends "web/base.html" %}
+{% block title %}级长选举{% endblock %}
+{% block body %}
+{% if duty.is_prefect %}
+<div class="card">
+  <h2>🎖 你是级长</h2>
+  {% if duty.done_today %}
+    <p class="muted">今天已经巡查过了，明天再来。</p>
+  {% else %}
+    <form method="post"><button name="action" value="duty">带队巡查走廊</button></form>
+    <p class="muted">每天一次，给本院加分，自己也有跑腿费。</p>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>🎖 级长选举</h2>
+  {% if state == 'before' %}
+    <p class="muted">选举还没开始。第 {{ nominate_day }} 天四年级结业时，
+      系统会按学业表现自动提名各院前几名，然后开放投票。</p>
+    <p class="muted">想当级长？现在多上课、多交作业就是在拉票。</p>
+
+  {% elif state == 'voting' %}
+    <p class="muted">投票进行中，第 {{ close_day }} 天截止。
+      只能投本院，一人一票，可以改投。各院得票前 {{ winners_per_house }} 名当选。</p>
+    {% if not candidates %}
+      <p class="muted">你们院暂时没有候选人。</p>
+    {% else %}
+    <div class="scroll"><table>
+      <tr><th>候选人</th><th>得票</th><th></th></tr>
+      {% for c in candidates %}
+      <tr>
+        <td>{{ c.name }}{% if my_vote == c.uid %} <span class="tag">你投了这位</span>{% endif %}</td>
+        <td>{{ c.votes }}</td>
+        <td>
+          {% if my_vote != c.uid %}
+          <form method="post">
+            <input type="hidden" name="target" value="{{ c.name.split('·')[0] }}">
+            <button name="action" value="vote">{{ '改投' if my_vote else '投票' }}</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table></div>
+    {% endif %}
+
+  {% else %}
+    <p class="muted">选举已结束。</p>
+    <div class="scroll"><table>
+      <tr><th>学院</th><th>级长</th></tr>
+      {% for house, ws in prefects.items() %}
+      <tr>
+        <td>{{ house }}</td>
+        <td>{% if ws %}{% for w in ws %}{{ w.name }}（{{ w.votes }}票）{% if not loop.last %}、{% endif %}{% endfor %}
+            {% else %}<span class="muted">无人当选</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </table></div>
+  {% endif %}
+</div>
+{% endblock %}

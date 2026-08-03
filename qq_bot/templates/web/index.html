@@ -1,23 +1,36 @@
 {% extends "web/base.html" %}
 {% block title %}我的面板{% endblock %}
 {% block body %}
-<div class="card">
-  <h2>{{ display_name }}{{ status_suffix }}</h2>
+<div class="card hero-card">
+  <div>
+    <div class="hero-kicker">{{ player.house }} · {{ player.grade }} 年级学生档案</div>
+    <h2>{{ display_name }}{{ status_suffix }}</h2>
+    <p class="muted">欢迎回到城堡。第 {{ current_day or 1 }} 天的课程与冒险已经开始。</p>
+  </div>
   {% if plan %}
-  <div class="stat"><span>体力</span><b>{{ plan.stamina }} / {{ plan.stamina_max }}</b></div>
-  <div class="bar"><i style="width:{{ (plan.stamina / plan.stamina_max * 100)|round }}%"></i></div>
-  <div class="stat"><span>疲劳值（计分课堂）</span><b>{{ plan.scored_lessons }} / {{ plan.scored_lesson_cap }}</b></div>
-  <div class="bar"><i style="width:{{ (plan.scored_lessons / plan.scored_lesson_cap * 100)|round }}%"></i></div>
-  <div class="stat"><span>加隆</span><b>{{ player.galleons }}</b></div>
-  <div class="stat"><span>已学魔咒</span><b>{{ learned_count }} / {{ spell_total }}</b></div>
-  <div class="stat"><span>距本学年期末</span><b>{{ plan.days_to_exam }} 天</b></div>
-  {% if career %}<div class="stat"><span>毕业职业</span><b>{{ career.name }}</b></div>{% endif %}
+  <div class="hero-stats">
+    <div class="hero-stat"><b>{{ plan.stamina }}/{{ plan.stamina_max }}</b><span>当前体力</span></div>
+    <div class="hero-stat"><b>{{ player.galleons }}</b><span>金加隆</span></div>
+    <div class="hero-stat"><b>{{ learned_count }}/{{ spell_total }}</b><span>已学魔咒</span></div>
+    <div class="hero-stat"><b>{{ plan.days_to_exam }}</b><span>距期末天数</span></div>
+  </div>
   {% endif %}
+</div>
+
+<div class="quick-grid">
+  <a class="quick-link" href="{{ url_for('lessons_page') }}"><i>✒️</i><span>前往课堂<small>继续积累学科经验</small></span></a>
+  <a class="quick-link" href="{{ url_for('homework_page') }}"><i>📜</i><span>今日作业<small>{% if plan %}待交 {{ plan.homework.pending|length }} 门{% else %}查看任务{% endif %}</small></span></a>
+  <a class="quick-link" href="{{ url_for('forest_page') }}"><i>🌲</i><span>探索禁林<small>材料与神秘遭遇</small></span></a>
+  <a class="quick-link" href="{{ url_for('mainline_page') }}"><i>📖</i><span>成长册<small>查看旅程与奖励</small></span></a>
 </div>
 
 {% if plan %}
 <div class="card">
   <h2>今日安排</h2>
+  <div class="stat"><span>体力</span><b>{{ plan.stamina }} / {{ plan.stamina_max }}</b></div>
+  <div class="bar"><i style="width:{{ (plan.stamina / plan.stamina_max * 100)|round }}%"></i></div>
+  <div class="stat"><span>课堂疲劳</span><b>{{ plan.scored_lessons }} / {{ plan.scored_lesson_cap }}</b></div>
+  <div class="bar"><i style="width:{{ (plan.scored_lessons / plan.scored_lesson_cap * 100)|round }}%"></i></div>
   <h3>作业</h3>
   <p>待交：{% if plan.homework.pending %}{{ plan.homework.pending|join('、') }}
      　<a href="{{ url_for('homework_page') }}">去交</a>{% else %}<span class="muted">全交完了</span>{% endif %}</p>

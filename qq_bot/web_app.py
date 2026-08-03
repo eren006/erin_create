@@ -33,7 +33,7 @@ import web_auth  # noqa: E402
 from plugins.hp_core import notify as core_notify  # noqa: E402
 from plugins.hp_core import spells as spell_catalog  # noqa: E402
 from plugins.hp_core import storage as core_storage  # noqa: E402
-from plugins.hp_events import duel, forest, quidditch  # noqa: E402
+from plugins.hp_events import christmas, duel, forest, prefect, quidditch  # noqa: E402
 from plugins.hp_school import (  # noqa: E402
     careers,
     casting,
@@ -66,6 +66,8 @@ app = Flask(__name__)
 app.secret_key = os.getenv("HOGWARTS_SECRET_KEY") or "hogwarts-dev-secret-change-me"
 
 ENGINE_ERRORS = (
+    christmas.ChristmasError,
+    prefect.PrefectError,
     potions.PotionError,
     submissions.SubmissionError,
     sorting.SortingError,
@@ -1064,6 +1066,141 @@ def _flash_potion_use(result: dict) -> None:
         return
     flash(f"喝下{result['name']}。{result['effect']}", "ok")
     _notify(f"喝了{{n}}瓶{result['name']}", "study", merge_key=f"drink:{result['name']}")
+
+
+# ======================== 圣诞节 ========================
+
+
+@app.route("/christmas", methods=["GET", "POST"])
+def christmas_page():
+    guard = _require_player()
+    if guard:
+        return guard
+    if request.method == "POST":
+        action = request.form.get("action")
+        try:
+            if action == "robe":
+                result = christmas.design_robe(
+                    g.uid,
+                    request.form.get("color", ""),
+                    request.form.get("style", ""),
+                    request.form.get("accessory", ""),
+                )
+                flash(f"礼服定好了：{result['描述']}", "ok")
+            elif action == "invite":
+                target = _resolve_name(request.form.get("target", ""))
+                christmas.invite_partner(g.uid, target)
+                _notify(f"邀请了 {core_storage.get_full_name(target)} 做圣诞舞会的舞伴", "social")
+                flash("邀请发出去了，等对方回应。", "ok")
+            elif action == "withdraw_invite":
+                christmas.withdraw_invite(g.uid)
+                flash("已撤回邀请。", "ok")
+            elif action in ("accept_invite", "decline_invite"):
+                inviter = request.form.get("inviter", "")
+                result = christmas.respond_invite(g.uid, inviter, action == "accept_invite")
+                if result["accepted"]:
+                    _notify(
+                        f"答应了 {core_storage.get_full_name(inviter)} 的舞会邀请", "social"
+                    )
+                    flash("答应了，舞会见。", "ok")
+                else:
+                    flash("已婉拒。", "ok")
+            elif action == "attend":
+                result = christmas.attend(g.uid)
+                _flash_ball_attend(result)
+            elif action == "hang":
+                result = christmas.hang(g.uid, request.form.get("ornament", ""))
+                _notify(f"往圣诞树上挂了{{n}}件装饰", "social", merge_key="tree_hang")
+                msg = f"你挂上了{result['ornament']}（+{result['points']}），进度 {result['progress']}/{result['goal']}。"
+                if result["just_completed"]:
+                    msg += " ✨整棵树亮了起来！"
+                    _notify("挂上了最后一件装饰，圣诞树亮了", "social")
+                flash(msg, "ok")
+            elif action == "claim_tree":
+                result = christmas.claim_tree_reward(g.uid)
+                flash(f"🎁 领到 {result['galleons']}加隆 和一份「{result['gift']}」。", "ok")
+        except (ENGINE_ERRORS + (LookupError,)) as e:
+            flash(str(e), "error")
+        return redirect(url_for("christmas_page"))
+
+    day = core_storage.get_current_day() or 1
+    year = christmas._year_of(day)
+    from plugins.hp_events import storage as events_storage
+
+    return render_template(
+        "web/christmas.html",
+        ball=christmas.ball_window_state(),
+        robe=christmas.get_robe(g.uid),
+        partner=christmas.get_partner(g.uid),
+        my_invite=events_storage.get_ball_invite_from(g.uid, year),
+        incoming=events_storage.list_ball_invites_to(g.uid, year),
+        attended=events_storage.has_attended_ball(g.uid, year),
+        colors=christmas.ROBE_COLORS,
+        styles=christmas.ROBE_STYLES,
+        accessories=christmas.ROBE_ACCESSORIES,
+        tree=christmas.tree_state(),
+        tree_reward=christmas.tree_reward_state(g.uid),
+        ornaments=christmas.TREE_ORNAMENTS,
+        full_name=core_storage.get_full_name,
+        name_of=core_storage.get_name,
+    )
+
+
+def _flash_ball_attend(result: dict) -> None:
+    parts = ["你走进了礼堂。"]
+    if result["robe"]:
+        parts.append(result["robe"]["描述"])
+    if result["partner_attended"]:
+        parts.append(f"和舞伴跳了一整晚，好感度各+{result['affection']}。")
+    flash("　".join(parts), "ok")
+    _notify("出席了圣诞舞会", "social")
+
+
+# ======================== 级长选举 ========================
+
+
+@app.route("/prefect", methods=["GET", "POST"])
+def prefect_page():
+    guard = _require_player()
+    if guard:
+        return guard
+    if request.method == "POST":
+        action = request.form.get("action")
+        try:
+            if action == "vote":
+                target = _resolve_name(request.form.get("target", ""))
+                result = prefect.vote(g.uid, target)
+                if result["changed"]:
+                    flash(f"改投给了 {core_storage.get_full_name(target)}。", "ok")
+                else:
+                    flash(f"你投给了 {core_storage.get_full_name(target)}。", "ok")
+            elif action == "duty":
+                result = prefect.run_duty(g.uid)
+                _notify(
+                    f"带队巡查了走廊，{result['house']}学院分+{result['house_points']}", "study"
+                )
+                flash(
+                    f"巡查完毕，{result['house']}学院分+{result['house_points']}，"
+                    f"你拿到{result['galleons']}加隆。",
+                    "ok",
+                )
+        except (ENGINE_ERRORS + (LookupError,)) as e:
+            flash(str(e), "error")
+        return redirect(url_for("prefect_page"))
+
+    day = core_storage.get_current_day() or 1
+    state = prefect.phase(day)
+    return render_template(
+        "web/prefect.html",
+        state=state,
+        nominate_day=prefect.NOMINATE_DAY,
+        close_day=prefect.CLOSE_DAY,
+        winners_per_house=prefect.WINNERS_PER_HOUSE,
+        candidates=prefect.candidates(g.player["house"]) if state == "voting" else [],
+        my_vote=prefect.my_vote(g.uid),
+        prefects=prefect.prefects() if state == "closed" else {},
+        duty=prefect.duty_state(g.uid),
+    )
 
 
 # ======================== 校报投稿 ========================

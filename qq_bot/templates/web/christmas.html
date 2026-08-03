@@ -1,0 +1,108 @@
+{% extends "web/base.html" %}
+{% block title %}圣诞节{% endblock %}
+{% block body %}
+{% if not ball.is_christmas %}
+<div class="card">
+  <h2>🎄 圣诞节</h2>
+  <p class="muted">今天不是圣诞节。
+    {% if ball.next_christmas %}下一场在第 {{ ball.next_christmas }} 天——那天礼堂会立起圣诞树，晚上有舞会。
+    {% else %}今年的圣诞节都过完了。{% endif %}</p>
+  <p class="muted">每个学年的最后一天就是圣诞节。</p>
+</div>
+{% else %}
+
+<div class="card">
+  <h2>🎄 圣诞舞会</h2>
+  <p class="muted">今晚 {{ ball.start_hour }}:00–{{ ball.end_hour }}:00 开放入场（现在 {{ ball.hour }}:00）。</p>
+  {% if attended %}
+    <p class="flash ok">你已经在舞会上了。</p>
+  {% elif ball.is_open %}
+    <form method="post"><button name="action" value="attend">走进礼堂</button></form>
+  {% else %}
+    <p class="muted">大门还没开，先把礼服和舞伴准备好。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>礼服</h2>
+  <p>{{ robe['描述'] if robe else '还没准备。' }}</p>
+  <form method="post" class="row">
+    <input type="hidden" name="action" value="robe">
+    <div><label>颜色</label><select name="color">
+      {% for c in colors %}<option {% if robe and robe.color==c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+    </select></div>
+    <div><label>款式</label><select name="style">
+      {% for c in styles %}<option {% if robe and robe.style==c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+    </select></div>
+    <div><label>配饰</label><select name="accessory">
+      {% for c in accessories %}<option {% if robe and robe.accessory==c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+    </select></div>
+    <button>{{ '改一改' if robe else '就这么定' }}</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>舞伴</h2>
+  {% if partner %}
+    <p>你的舞伴是 <b>{{ full_name(partner) }}</b>。</p>
+  {% elif my_invite %}
+    <p>你邀请了 <b>{{ full_name(my_invite.target_uid) }}</b>，等对方回应。</p>
+    <form method="post"><button name="action" value="withdraw_invite" class="ghost">撤回邀请</button></form>
+  {% else %}
+    <form method="post" class="row">
+      <input type="hidden" name="action" value="invite">
+      <input name="target" placeholder="想邀请谁" required>
+      <button>发出邀请</button>
+    </form>
+    <p class="muted">一个人去也没关系，只是和舞伴一起出席能大涨好感度。</p>
+  {% endif %}
+
+  {% if incoming %}
+  <h3>收到的邀请</h3>
+  {% for inv in incoming %}
+  <form method="post" class="row" style="margin-bottom:6px">
+    <input type="hidden" name="inviter" value="{{ inv.inviter_uid }}">
+    <span style="flex:1">{{ full_name(inv.inviter_uid) }} 邀请你</span>
+    <button name="action" value="accept_invite">答应</button>
+    <button name="action" value="decline_invite" class="ghost">婉拒</button>
+  </form>
+  {% endfor %}
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>礼堂中央的圣诞树</h2>
+  {% set pct = (tree.progress / tree.goal * 100) | round | int %}
+  <div class="stat"><span>全校共同进度</span><b>{{ tree.progress }} / {{ tree.goal }}</b></div>
+  <div class="bar"><i style="width:{{ [pct, 100]|min }}%"></i></div>
+  <p class="muted">{{ tree.contributors }} 人参与装点。挂装饰不花体力，但每30分钟只能挂一个。</p>
+
+  {% if tree.done %}
+    {% if tree_reward.claimed %}
+      <p class="flash ok">树亮起来了，你的礼物也领过了。</p>
+    {% elif tree_reward.participated %}
+      <p class="flash ok">✨ 树亮起来了！树下有属于你的一份。</p>
+      <form method="post"><button name="action" value="claim_tree">领圣诞礼物</button></form>
+    {% else %}
+      <p class="muted">树已经装点完了，可惜你一个装饰都没挂过。</p>
+    {% endif %}
+  {% else %}
+    <form method="post">
+      <input type="hidden" name="action" value="hang">
+      {% for name, desc, points in ornaments %}
+        <button class="opt" name="ornament" value="{{ name }}">
+          {{ name }}　<span class="muted">{{ desc }}（+{{ points }}）</span>
+        </button>
+      {% endfor %}
+    </form>
+  {% endif %}
+
+  {% if tree.recent %}
+  <h3>最近挂上去的</h3>
+  <ul class="muted">
+    {% for row in tree.recent %}<li>{{ name_of(row.uid) }} 挂了{{ row.ornament }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

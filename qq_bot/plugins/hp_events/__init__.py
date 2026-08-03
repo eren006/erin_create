@@ -9,7 +9,7 @@ from plugins.hp_core import spells as spell_catalog
 from plugins.hp_core import storage as core_storage
 
 from . import calendar as hp_calendar
-from . import duel, forest, newsletter, quidditch, storage
+from . import christmas, duel, forest, newsletter, prefect, quidditch, storage
 
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler  # noqa: E402
@@ -100,6 +100,10 @@ async def _calendar_tick() -> None:
                 text = _fmt_year_end(event["data"])
             elif event["type"] == "graduation":
                 text = _fmt_graduation(event["data"])
+            elif event["type"] == "prefect_nomination":
+                text = _fmt_prefect_nomination(event["data"])
+            elif event["type"] == "prefect_result":
+                text = _fmt_prefect_result(event["data"])
             else:
                 text = event["data"]["text"]
             if bot and group_openid:
@@ -156,6 +160,325 @@ async def handle_set_notify_group(event: MessageEvent):
     await set_notify_group_cmd.finish(
         "✅ 本群已设为霍格沃茨通知群。\n"
         "网页上的操作（上课、决斗、禁林、恋爱等）都会播报到这里，学年校报也发这里。"
+    )
+
+
+
+# ======================== 圣诞节 ========================
+
+ball_cmd = on_command("舞会")
+
+
+@ball_cmd.handle()
+async def handle_ball(event: MessageEvent):
+    uid = event.get_user_id()
+    state = christmas.ball_window_state()
+    lines = ["🎄 圣诞舞会"]
+    if not state["is_christmas"]:
+        nxt = state["next_christmas"]
+        lines.append(f"今天不是圣诞节。{'下一场在第' + str(nxt) + '天。' if nxt else '今年的舞会都办完了。'}")
+        await ball_cmd.finish("\n".join(lines))
+        return
+    lines.append(
+        f"今晚 {state['start_hour']}:00–{state['end_hour']}:00 开放入场（现在 {state['hour']}:00）。"
+        + ("大门已开！" if state["is_open"] else "还没开场，先准备准备。")
+    )
+    robe = christmas.get_robe(uid)
+    lines.append("你的礼服：" + (robe["描述"] if robe else "还没准备（「/设计礼服」）"))
+    partner = christmas.get_partner(uid)
+    lines.append("你的舞伴：" + (core_storage.get_full_name(partner) if partner else "还没有（「/邀请舞伴 名字」）"))
+    lines.append("")
+    lines.append("「/参加舞会」入场　「/设计礼服 颜色 款式 配饰」　「/邀请舞伴 名字」")
+    await ball_cmd.finish("\n".join(lines))
+
+
+design_robe_cmd = on_command("设计礼服")
+
+
+@design_robe_cmd.handle()
+async def handle_design_robe(event: MessageEvent, args=CommandArg()):
+    parts = args.extract_plain_text().strip().split()
+    if len(parts) != 3:
+        await design_robe_cmd.finish(
+            "用法：/设计礼服 颜色 款式 配饰\n"
+            f"颜色：{'、'.join(christmas.ROBE_COLORS)}\n"
+            f"款式：{'、'.join(christmas.ROBE_STYLES)}\n"
+            f"配饰：{'、'.join(christmas.ROBE_ACCESSORIES)}"
+        )
+        return
+    try:
+        result = christmas.design_robe(event.get_user_id(), *parts)
+    except christmas.ChristmasError as e:
+        await design_robe_cmd.finish(str(e))
+        return
+    await design_robe_cmd.finish(f"礼服定好了：{result['描述']}")
+
+
+invite_ball_cmd = on_command("邀请舞伴")
+
+
+@invite_ball_cmd.handle()
+async def handle_invite_ball(event: MessageEvent, args=CommandArg()):
+    name = args.extract_plain_text().strip()
+    if not name:
+        await invite_ball_cmd.finish("用法：/邀请舞伴 对方名字")
+        return
+    uid = event.get_user_id()
+    try:
+        target = hp_core.resolve(name)
+        christmas.invite_partner(uid, target)
+    except (christmas.ChristmasError, hp_core.UnknownPlayerError) as e:
+        await invite_ball_cmd.finish(str(e))
+        return
+    await invite_ball_cmd.finish(
+        MessageSegment.mention_user(target)
+        + MessageSegment.text(
+            f" {core_storage.get_full_name(uid)} 邀请你做圣诞舞会的舞伴。\n"
+            f"「/答应舞伴 {core_storage.get_name(uid)}」或「/婉拒舞伴 {core_storage.get_name(uid)}」"
+        )
+    )
+
+
+accept_ball_cmd = on_command("答应舞伴")
+decline_ball_cmd = on_command("婉拒舞伴")
+
+
+@accept_ball_cmd.handle()
+async def handle_accept_ball(event: MessageEvent, args=CommandArg()):
+    await _respond_ball(accept_ball_cmd, event, args, True)
+
+
+@decline_ball_cmd.handle()
+async def handle_decline_ball(event: MessageEvent, args=CommandArg()):
+    await _respond_ball(decline_ball_cmd, event, args, False)
+
+
+async def _respond_ball(matcher, event, args, accept: bool):
+    name = args.extract_plain_text().strip()
+    if not name:
+        await matcher.finish(f"用法：/{'答应' if accept else '婉拒'}舞伴 对方名字")
+        return
+    try:
+        inviter = hp_core.resolve(name)
+        result = christmas.respond_invite(event.get_user_id(), inviter, accept)
+    except (christmas.ChristmasError, hp_core.UnknownPlayerError) as e:
+        await matcher.finish(str(e))
+        return
+    if result["accepted"]:
+        await matcher.finish(f"你答应了 {core_storage.get_full_name(inviter)} 的邀请，舞会见。")
+    else:
+        await matcher.finish(f"你婉拒了 {core_storage.get_full_name(inviter)} 的邀请。")
+
+
+attend_ball_cmd = on_command("参加舞会")
+
+
+@attend_ball_cmd.handle()
+async def handle_attend_ball(event: MessageEvent):
+    uid = event.get_user_id()
+    try:
+        result = christmas.attend(uid)
+    except christmas.ChristmasError as e:
+        await attend_ball_cmd.finish(str(e))
+        return
+    lines = ["🎄 你走进了礼堂。"]
+    if result["robe"]:
+        lines.append(result["robe"]["描述"])
+    else:
+        lines.append("你穿着平时的校袍——没人说什么，但你自己有点在意。")
+    if result["partner"]:
+        pname = core_storage.get_full_name(result["partner"])
+        if result["partner_attended"]:
+            lines.append(f"{pname} 已经在等你了。你们跳了一整晚，好感度各+{result['affection']}。")
+        else:
+            lines.append(f"{pname} 还没到，你先在门口等一会儿。")
+    lines.append(f"{core_storage.get_player(uid)['house']}学院分+{result['house_points']}。")
+    await attend_ball_cmd.finish("\n".join(lines))
+
+
+tree_cmd = on_command("圣诞树")
+
+
+@tree_cmd.handle()
+async def handle_tree(event: MessageEvent):
+    uid = event.get_user_id()
+    state = christmas.tree_state()
+    if not state["is_christmas"]:
+        nxt = christmas.next_christmas(state.get("year", 1) and (core_storage.get_current_day() or 1))
+        await tree_cmd.finish(f"礼堂里还没立起圣诞树。{'下一次在第' + str(nxt) + '天。' if nxt else ''}")
+        return
+    pct = min(100, int(state["progress"] / state["goal"] * 100))
+    bar = "█" * (pct // 10) + "░" * (10 - pct // 10)
+    lines = [
+        "🎄 礼堂中央的圣诞树",
+        f"{bar} {state['progress']}/{state['goal']}（{pct}%）",
+        f"已有 {state['contributors']} 人参与装点。",
+    ]
+    if state["recent"]:
+        lines.append("")
+        lines.append("最近挂上去的：")
+        for row in state["recent"][:5]:
+            lines.append(f"· {core_storage.get_name(row['uid'])} 挂了{row['ornament']}")
+    lines.append("")
+    if state["done"]:
+        reward = christmas.tree_reward_state(uid)
+        if reward["claimed"]:
+            lines.append("树已经装点完了，你的礼物也领过了。")
+        elif reward["participated"]:
+            lines.append("✨ 树亮起来了！用「/领圣诞礼物」拿走树下属于你的那份。")
+        else:
+            lines.append("树已经装点完了，可惜你一个装饰都没挂过。")
+    else:
+        lines.append("可挂：" + "、".join(n for n, _, _ in christmas.TREE_ORNAMENTS))
+        lines.append("「/挂装饰 名字」——不花体力，但每30分钟只能挂一个。")
+    await tree_cmd.finish("\n".join(lines))
+
+
+hang_cmd = on_command("挂装饰")
+
+
+@hang_cmd.handle()
+async def handle_hang(event: MessageEvent, args=CommandArg()):
+    name = args.extract_plain_text().strip()
+    if not name:
+        await hang_cmd.finish(
+            "用法：/挂装饰 名字\n可挂：" + "、".join(n for n, _, _ in christmas.TREE_ORNAMENTS)
+        )
+        return
+    try:
+        result = christmas.hang(event.get_user_id(), name)
+    except christmas.ChristmasError as e:
+        await hang_cmd.finish(str(e))
+        return
+    lines = [f"你把{result['ornament']}挂了上去——{result['desc']}（+{result['points']}）"]
+    lines.append(f"圣诞树进度：{result['progress']}/{result['goal']}")
+    if result["just_completed"]:
+        lines.append("")
+        lines.append("✨ 最后一件装饰归位，整棵树一下子亮了起来。")
+        lines.append("所有参与装点的人都可以「/领圣诞礼物」了。")
+    await hang_cmd.finish("\n".join(lines))
+
+
+claim_tree_cmd = on_command("领圣诞礼物")
+
+
+@claim_tree_cmd.handle()
+async def handle_claim_tree(event: MessageEvent):
+    try:
+        result = christmas.claim_tree_reward(event.get_user_id())
+    except christmas.ChristmasError as e:
+        await claim_tree_cmd.finish(str(e))
+        return
+    await claim_tree_cmd.finish(
+        f"🎁 你从树下拿走了自己那份：{result['galleons']}加隆，还有一份「{result['gift']}」。"
+    )
+
+
+
+def _fmt_prefect_nomination(data: dict) -> str:
+    lines = [
+        "🎖 级长选举开始",
+        f"四年级结业，按学业表现自动提名了各院前{prefect.CANDIDATES_PER_HOUSE}名。",
+        "只能投本院，一人一票（可以改投），"
+        f"第{prefect.CLOSE_DAY}天唱票，各院得票前{prefect.WINNERS_PER_HOUSE}名当选。",
+        "",
+    ]
+    for house, uids in data["candidates"].items():
+        names = "、".join(core_storage.get_full_name(u) for u in uids)
+        lines.append(f"{house}：{names}")
+    lines.append("")
+    lines.append("用「/投级长 名字」投票，「/级长候选」看名单。")
+    return "\n".join(lines)
+
+
+def _fmt_prefect_result(data: dict) -> str:
+    lines = ["🎖 级长选举结果"]
+    for house, winners in data["winners"].items():
+        if winners:
+            names = "、".join(f"{w['name']}（{w['votes']}票）" for w in winners)
+            lines.append(f"{house}：{names}")
+        else:
+            lines.append(f"{house}：无人当选")
+    lines.append("")
+    lines.append("级长每天可以「/级长巡查」一次，给本院加分。")
+    return "\n".join(lines)
+
+
+# ======================== 级长 ========================
+
+prefect_cmd = on_command("级长候选", aliases={"级长"})
+
+
+@prefect_cmd.handle()
+async def handle_prefect(event: MessageEvent):
+    uid = event.get_user_id()
+    day = core_storage.get_current_day() or 1
+    state = prefect.phase(day)
+    if state == "before":
+        await prefect_cmd.finish(f"级长选举还没开始，第{prefect.NOMINATE_DAY}天开放。")
+        return
+    if state == "closed":
+        winners = prefect.prefects()
+        lines = ["🎖 本届级长"]
+        for house, ws in winners.items():
+            lines.append(
+                f"{house}：" + ("、".join(f"{w['name']}（{w['votes']}票）" for w in ws) or "无")
+            )
+        await prefect_cmd.finish("\n".join(lines))
+        return
+
+    player = core_storage.get_player(uid)
+    if not player or not player["house"]:
+        await prefect_cmd.finish("你还没有完成入学手续。")
+        return
+    rows = prefect.candidates(player["house"])
+    mine = prefect.my_vote(uid)
+    lines = [f"🎖 {player['house']}级长候选人"]
+    for row in rows:
+        mark = "（你投了这位）" if mine == row["uid"] else ""
+        lines.append(f"· {row['name']}　{row['votes']}票{mark}")
+    lines.append("")
+    lines.append(f"「/投级长 名字」投票，可以改投。第{prefect.CLOSE_DAY}天截止。")
+    await prefect_cmd.finish("\n".join(lines))
+
+
+vote_prefect_cmd = on_command("投级长")
+
+
+@vote_prefect_cmd.handle()
+async def handle_vote_prefect(event: MessageEvent, args=CommandArg()):
+    name = args.extract_plain_text().strip()
+    if not name:
+        await vote_prefect_cmd.finish("用法：/投级长 候选人名字（「/级长候选」看名单）")
+        return
+    try:
+        target = hp_core.resolve(name)
+        result = prefect.vote(event.get_user_id(), target)
+    except (prefect.PrefectError, hp_core.UnknownPlayerError) as e:
+        await vote_prefect_cmd.finish(str(e))
+        return
+    if result["changed"]:
+        await vote_prefect_cmd.finish(
+            f"改投给了 {core_storage.get_full_name(target)}"
+            f"（原本投的是 {core_storage.get_full_name(result['previous'])}）。"
+        )
+    else:
+        await vote_prefect_cmd.finish(f"你投给了 {core_storage.get_full_name(target)}。")
+
+
+duty_cmd = on_command("级长巡查")
+
+
+@duty_cmd.handle()
+async def handle_duty(event: MessageEvent):
+    try:
+        result = prefect.run_duty(event.get_user_id())
+    except prefect.PrefectError as e:
+        await duty_cmd.finish(str(e))
+        return
+    await duty_cmd.finish(
+        f"你带队巡查了一圈走廊，扣下几个游荡的低年级。\n"
+        f"{result['house']}学院分+{result['house_points']}，你拿到{result['galleons']}加隆跑腿费。"
     )
 
 

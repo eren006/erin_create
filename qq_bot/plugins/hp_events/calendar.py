@@ -6,7 +6,7 @@
 
 from plugins.hp_core import storage as core_storage
 
-from . import grading, newsletter, quidditch
+from . import grading, newsletter, prefect, quidditch
 
 GRADE_END_DAY = grading.GRADE_END_DAY
 DECAY_RATE = 0.9
@@ -76,6 +76,11 @@ def _run_graduation(day: int) -> dict:
 def process_day(day: int) -> list[dict]:
     """day这一天要处理的事件（可能是空列表——大部分日子什么都不触发）。"""
     events = []
+    if day == prefect.NOMINATE_DAY:
+        nominated = prefect.nominate()
+        events.append({"type": "prefect_nomination", "data": {"candidates": nominated}})
+    if day == prefect.CLOSE_DAY:
+        events.append({"type": "prefect_result", "data": {"winners": prefect.close_election()}})
     for grade, end_day in GRADE_END_DAY.items():
         if day != end_day:
             continue

@@ -12,6 +12,7 @@
 import json
 import random
 
+from plugins.hp_core import moon
 from plugins.hp_core import spells as spell_catalog
 from plugins.hp_core import storage as core_storage
 
@@ -60,7 +61,8 @@ def _monster_max_depth_for_grade(grade: int) -> int:
 
 
 def _spawn_monster(run_id: int, depth: int) -> dict:
-    monster = forest_catalog.monster_for_depth(depth)
+    day = core_storage.get_current_day() or 1
+    monster = forest_catalog.monster_for_depth(depth, moon.is_full_moon(day))
     key, name, min_d, max_d, hp, weights, req_grade, teaches, desc = monster
     # 同一档怪在更深的层会更硬
     scaled_hp = hp + (depth - min_d) * 15
@@ -456,7 +458,8 @@ def go_deeper(uid: str) -> dict:
 
     player = core_storage.get_player(uid)
     next_depth = run["depth"] + 1
-    next_monster = forest_catalog.monster_for_depth(next_depth)
+    day = core_storage.get_current_day() or 1
+    next_monster = forest_catalog.monster_for_depth(next_depth, moon.is_full_moon(day))
     if player["grade"] < next_monster[6]:
         raise ForestError(
             f"再往里走就是{next_monster[1]}的地盘了，{next_monster[6]}年级以下进去就是送死。"
@@ -557,10 +560,22 @@ def retreat(uid: str) -> dict:
     }
 
 
+def moon_state() -> dict:
+    day = core_storage.get_current_day() or 1
+    return {
+        "day": day,
+        "phase": moon.phase_name(day),
+        "is_full_moon": moon.is_full_moon(day),
+        "days_to_full": moon.days_to_full_moon(day),
+    }
+
+
 def bestiary(uid: str) -> list[dict]:
     defeated = storage.list_defeated(uid)
     player = core_storage.get_player(uid)
     grade = player["grade"] if player else 1
+    day = core_storage.get_current_day() or 1
+    tonight_full = moon.is_full_moon(day)
     result = []
     for key, name, min_d, max_d, hp, weights, req_grade, teaches, desc in forest_catalog.MONSTERS:
         pref = "、".join(
@@ -568,6 +583,15 @@ def bestiary(uid: str) -> list[dict]:
             for cat, w in sorted(weights.items(), key=lambda x: -x[1])
             if w >= 0.2
         )
+        if key == forest_catalog.WEREWOLF_KEY:
+            timing = "只在满月夜出现"
+            tonight = tonight_full
+        elif key == forest_catalog.WEREWOLF_STANDIN_KEY:
+            timing = "满月夜之外出现"
+            tonight = not tonight_full
+        else:
+            timing = ""
+            tonight = True
         result.append(
             {
                 "name": name,
@@ -577,6 +601,8 @@ def bestiary(uid: str) -> list[dict]:
                 "req_grade": req_grade,
                 "preference": pref if key in defeated else "？（打赢一次才会记下来）",
                 "teaches": spell_catalog.SPELLS_BY_KEY[teaches][1] if teaches else "",
+                "timing": timing,
+                "tonight": tonight,
             }
         )
     return result

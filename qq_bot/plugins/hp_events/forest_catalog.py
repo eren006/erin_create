@@ -72,6 +72,17 @@ MONSTERS = [
         "月光下它抬起头。速度快得离谱，招招都是硬碰硬。",
     ),
     (
+        "wild_hippogriff",
+        "受惊的鹰头马身有翼兽",
+        7,
+        8,
+        95,
+        {"attack": 0.5, "blast": 0.3, "defence": 0.2},
+        5,
+        "",
+        "它本来在打盹，被你踩断的树枝惊醒了。你忘了鞠躬。",
+    ),
+    (
         "dementor",
         "摄魂怪",
         9,
@@ -92,11 +103,24 @@ DEMENTOR_RESIST = 0.25
 PATRONUS_KEYS = ("expecto_patronum", "corporeal_patronus")
 
 
-def monster_for_depth(depth: int):
-    for m in MONSTERS:
-        if m[2] <= depth <= m[3]:
+WEREWOLF_KEY = "werewolf"
+WEREWOLF_STANDIN_KEY = "wild_hippogriff"
+
+
+def monster_for_depth(depth: int, full_moon: bool = True):
+    """7-8层的狼人只在满月夜出现，其余时候换成鹰头马身有翼兽。
+
+    full_moon 默认 True 是为了让不关心月相的旧调用（以及图鉴展示）拿到狼人。"""
+    candidates = [m for m in MONSTERS if m[2] <= depth <= m[3]]
+    if not candidates:
+        return MONSTERS[-1]
+    if len(candidates) == 1:
+        return candidates[0]
+    wanted = WEREWOLF_KEY if full_moon else WEREWOLF_STANDIN_KEY
+    for m in candidates:
+        if m[0] == wanted:
             return m
-    return MONSTERS[-1]
+    return candidates[0]
 
 
 def materials_for_depth(depth: int) -> list:
