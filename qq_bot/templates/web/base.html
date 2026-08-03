@@ -16,13 +16,16 @@
 *{box-sizing:border-box}
 html{min-height:100%;background:var(--night)}
 body{margin:0;min-height:100vh;color:var(--ink);font-family:"Iowan Old Style","Songti SC","Noto Serif SC",Georgia,serif;line-height:1.65;
+  background-color:var(--paper);background-image:url("{{ url_for('static', filename='web/images/parchment-texture.jpg') }}");background-size:450px}
+body:after{content:"";position:absolute;z-index:0;pointer-events:none;left:0;right:0;top:0;height:430px;
   background:
-    radial-gradient(circle at 12% 2%,rgba(223,190,104,.17),transparent 25rem),
-    radial-gradient(circle at 90% 8%,rgba(92,111,157,.15),transparent 28rem),
-    linear-gradient(180deg,var(--night) 0,var(--night-2) 360px,var(--paper) 361px,var(--paper) 100%)}
-body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.18;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='70' height='70' viewBox='0 0 70 70'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.72' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.16'/%3E%3C/svg%3E")}
+    linear-gradient(180deg,rgba(9,13,23,.32),rgba(16,20,32,.77) 68%,var(--paper) 100%),
+    url("{{ url_for('static', filename='web/images/castle-night.jpg') }}") center 45%/cover no-repeat}
+body:before{content:"";position:fixed;z-index:2;inset:0;pointer-events:none;opacity:.12;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='70' height='70' viewBox='0 0 70 70'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.72' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.16'/%3E%3C/svg%3E")}
+body.guest{background:#0d1421}body.guest:after{position:fixed;height:100vh;background:linear-gradient(90deg,rgba(7,11,20,.06),rgba(7,11,20,.18) 55%,rgba(7,11,20,.78)),url("{{ url_for('static', filename='web/images/castle-night.jpg') }}") center/cover no-repeat}
 a{color:var(--accent);text-decoration:none}a:hover{text-decoration:none;color:#a67830}
-.wrap{position:relative;max-width:1120px;margin:0 auto;padding:24px 24px 48px}
+.wrap{position:relative;z-index:1;max-width:1120px;margin:0 auto;padding:24px 24px 48px}
+body.guest .wrap{min-height:100vh;display:grid;align-content:center}body.guest .card{justify-self:end;width:min(100%,440px);margin:0!important;background:linear-gradient(145deg,rgba(255,252,244,.97),rgba(244,234,214,.96));box-shadow:0 24px 70px #0009}
 header.top{color:#f7edd9;margin-bottom:24px}
 .brand{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:8px 3px 18px}
 .crest{width:48px;height:55px;display:grid;place-items:center;font-size:1.55rem;color:#251c12;background:linear-gradient(145deg,#e4c978,#9f7332);clip-path:polygon(50% 0,92% 15%,86% 72%,50% 100%,14% 72%,8% 15%);filter:drop-shadow(0 5px 7px #0008)}
@@ -34,7 +37,7 @@ nav a{flex:0 0 auto;padding:8px 11px;border:1px solid transparent;border-radius:
 nav a:hover{color:#fff;background:rgba(255,255,255,.07);transform:translateY(-1px)}
 nav a.active{color:#251b0e;background:linear-gradient(135deg,#efd990,#b88c43);border-color:#f2df9f;box-shadow:0 4px 14px #0006;font-weight:700}
 .nav-icon{font-style:normal;margin-right:4px;opacity:.9}
-.card{position:relative;background:linear-gradient(145deg,rgba(255,252,244,.98),rgba(248,239,221,.98));border:1px solid rgba(164,137,91,.38);border-radius:13px;padding:20px 22px;margin-bottom:18px;box-shadow:var(--shadow);overflow:hidden}
+.card{position:relative;background:linear-gradient(145deg,rgba(255,252,244,.91),rgba(248,239,221,.92)),url("{{ url_for('static', filename='web/images/parchment-texture.jpg') }}") center/450px;border:1px solid rgba(164,137,91,.38);border-radius:13px;padding:20px 22px;margin-bottom:18px;box-shadow:var(--shadow);overflow:hidden}
 .card:before{content:"";position:absolute;left:0;top:18px;bottom:18px;width:3px;background:linear-gradient(transparent,var(--accent-2),transparent);opacity:.7}
 .card .card{box-shadow:none;background:rgba(255,252,245,.58);border-color:rgba(164,137,91,.28)}
 .card h2{margin:0 0 14px;font-size:1.18rem;letter-spacing:.04em;border-bottom:1px solid rgba(164,137,91,.35);padding-bottom:9px;color:#272019}
@@ -56,15 +59,15 @@ th{color:#756856;font-weight:700;font-size:.78rem;letter-spacing:.06em;text-tran
 .bar{height:8px;background:#d9cdb9;border-radius:99px;overflow:hidden;margin:5px 0 11px;box-shadow:inset 0 1px 2px #6d563533}.bar>i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--accent),var(--accent-2));box-shadow:0 0 9px color-mix(in srgb,var(--accent) 38%,transparent)}
 .opt{display:block;width:100%;text-align:left;margin-bottom:8px;background:rgba(255,253,247,.72);color:var(--ink);border:1px solid #ccbda3;padding:11px 13px;box-shadow:none}.opt:hover{background:var(--accent);border-color:var(--accent);color:#fff}
 .scroll{overflow-x:auto;border-radius:7px}.page-footer{text-align:center;color:#8b806f;font-size:.75rem;margin-top:28px;letter-spacing:.08em}.page-footer:before{content:"✦";display:block;color:var(--accent-2);font-size:1.1rem;margin-bottom:5px}
-.hero-card{color:#fff8e8;background:linear-gradient(120deg,var(--accent),#20283b 75%);border-color:#d7b968;min-height:190px;display:grid;grid-template-columns:minmax(0,1.5fr) minmax(220px,.7fr);gap:28px;align-items:center;box-shadow:0 20px 42px #22180e2e}
+.hero-card{color:#fff8e8;background:linear-gradient(105deg,color-mix(in srgb,var(--accent) 92%,#111827),rgba(18,24,39,.76)),url("{{ url_for('static', filename='web/images/castle-night.jpg') }}") center 48%/cover;border-color:#d7b968;min-height:190px;display:grid;grid-template-columns:minmax(0,1.5fr) minmax(220px,.7fr);gap:28px;align-items:center;box-shadow:0 20px 42px #22180e2e}
 .hero-card:before{width:100%;inset:0;background:radial-gradient(circle at 80% 18%,#fff4 0 1px,transparent 2px),radial-gradient(circle at 70% 37%,#fff3 0 1px,transparent 2px);background-size:72px 72px,110px 110px;opacity:1}
 .hero-card>*{position:relative}.hero-card h2{color:#fff;border-color:#ffffff35;font-size:1.7rem;margin-bottom:5px}.hero-card .muted{color:#e6ddce}.hero-kicker{color:#e7cb80;letter-spacing:.18em;font-size:.76rem;font-weight:700}.hero-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}.hero-stat{background:#0f14294d;border:1px solid #ffffff24;border-radius:10px;padding:10px;text-align:center}.hero-stat b{display:block;font-size:1.2rem;color:#f3d780}.hero-stat span{font-size:.72rem;color:#dfd7ca}
 .quick-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}.quick-link{display:flex;align-items:center;gap:11px;padding:13px 14px;background:#fffaf0;border:1px solid #d6c5a8;border-radius:11px;color:var(--ink);box-shadow:0 8px 20px #33251412;transition:.18s ease}.quick-link:hover{color:var(--accent);border-color:var(--accent-2);transform:translateY(-2px);box-shadow:0 12px 22px #3325141f}.quick-link i{font-style:normal;font-size:1.25rem}.quick-link span{font-weight:700}.quick-link small{display:block;color:var(--muted);font-weight:400;font-size:.72rem}
-@media(max-width:760px){.wrap{padding:14px 12px 36px}.brand{padding-bottom:13px}.crest{width:40px;height:47px}.brand h1{font-size:1.35rem}.brand small{display:none}.who{width:100%;margin-left:0;text-align:left;font-size:.8rem}.nav-shell{margin-left:-4px;margin-right:-4px}.hero-card{grid-template-columns:1fr;gap:14px;min-height:0}.hero-card h2{font-size:1.42rem}.quick-grid{grid-template-columns:1fr 1fr}.card{padding:16px}.grid{grid-template-columns:1fr}nav a{padding:8px 10px}}
+@media(max-width:760px){.wrap{padding:14px 12px 36px}.brand{padding-bottom:13px}.crest{width:40px;height:47px}.brand h1{font-size:1.35rem}.brand small{display:none}.who{width:100%;margin-left:0;text-align:left;font-size:.8rem}.nav-shell{margin-left:-4px;margin-right:-4px}.hero-card{grid-template-columns:1fr;gap:14px;min-height:0}.hero-card h2{font-size:1.42rem}.quick-grid{grid-template-columns:1fr 1fr}.card{padding:16px}.grid{grid-template-columns:1fr}nav a{padding:8px 10px}body.guest .wrap{align-content:end;padding-bottom:28px}body.guest .card{justify-self:center;width:100%}}
 @media(max-width:420px){.quick-grid{grid-template-columns:1fr}.hero-stats{grid-template-columns:1fr 1fr}.row>*{max-width:100%}}
 </style>
 </head>
-<body>
+<body class="{{ 'authenticated' if account else 'guest' }}">
 <div class="wrap">
 {% if account %}
 <header class="top">

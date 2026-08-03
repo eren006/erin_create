@@ -6,7 +6,7 @@ set -e
 SERVER="yulequan-server"
 REMOTE_DIR="C:/Users/Administrator/qq_bot"
 REMOTE_WIN="C:\\Users\\Administrator\\qq_bot"
-LOCAL_DIR="$(dirname "$0")"
+LOCAL_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo ">>> 推送 qq_bot 到 $SERVER:$REMOTE_DIR"
 
@@ -14,15 +14,29 @@ for f in bot.py \
          newspaper_web.py newspaper_service.py \
          web_app.py web_auth.py submissions.py \
          requirements.txt .env .env.dev; do
-  scp "$LOCAL_DIR/$f" "$SERVER:$REMOTE_DIR/$f"
+  scp -q "$LOCAL_DIR/$f" "$SERVER:$REMOTE_DIR/$f"
 done
 
+# 先在本地摊一份干净副本，把 __pycache__ 滤掉——
+# 服务器没有 rsync，而 .pyc 走 scp 单文件传输会拖慢好几分钟，
+# 何况残留的旧 .pyc 和新代码不匹配时还可能引出诡异问题。
+STAGE="$(mktemp -d)"
+trap 'rm -rf "$STAGE"' EXIT
+rsync -a --exclude='__pycache__' --exclude='*.pyc' \
+      "$LOCAL_DIR/plugins/" "$STAGE/plugins/"
+rsync -a --exclude='__pycache__' --exclude='*.pyc' \
+      "$LOCAL_DIR/templates/" "$STAGE/templates/"
+rsync -a --exclude='__pycache__' --exclude='*.pyc' \
+      "$LOCAL_DIR/static/" "$STAGE/static/"
+
 # 先删远端目录再整目录推送，否则 scp -r 会把新目录嵌套进旧目录里
-echo ">>> 重推 plugins/ 和 templates/"
+echo ">>> 重推 plugins/ templates/ static/（已排除 __pycache__）"
 ssh "$SERVER" "if exist $REMOTE_WIN\\plugins rmdir /S /Q $REMOTE_WIN\\plugins"
 ssh "$SERVER" "if exist $REMOTE_WIN\\templates rmdir /S /Q $REMOTE_WIN\\templates"
-scp -q -r "$LOCAL_DIR/plugins/"   "$SERVER:$REMOTE_DIR/plugins/"
-scp -q -r "$LOCAL_DIR/templates/" "$SERVER:$REMOTE_DIR/templates/"
+ssh "$SERVER" "if exist $REMOTE_WIN\\static rmdir /S /Q $REMOTE_WIN\\static"
+scp -q -r "$STAGE/plugins/"   "$SERVER:$REMOTE_DIR/plugins/"
+scp -q -r "$STAGE/templates/" "$SERVER:$REMOTE_DIR/templates/"
+scp -q -r "$STAGE/static/"    "$SERVER:$REMOTE_DIR/static/"
 
 echo ">>> 安装依赖"
 ssh "$SERVER" "cd $REMOTE_WIN && python -m pip install -q -r requirements.txt"
