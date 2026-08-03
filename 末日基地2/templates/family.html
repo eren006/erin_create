@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="family-hero">
+  <div class="section-kicker">FAMILY LINE / 家族火种</div>
+  <h1>👨‍👩‍👧 废土家族</h1>
+  <p>关系要由双方回应，孩子会成长、探索并留下自己的经历。父母倒下后，存活的孩子可以接过未完成的主线。</p>
+</div>
+
+{% if spouse %}
+<div class="card family-spouse">
+  <div>
+    <strong>💍 伴侣：{{ display_name(spouse) }}</strong>
+    <p class="muted">你们可以共同决定是否迎接孩子。任何性别组合都适用，每个家庭最多{{ max_children }}个孩子。</p>
+    <form method="post" action="{{ url_for('family_child_request') }}">
+      <input name="child_name" maxlength="16" placeholder="给孩子取名" required>
+      <button class="primary">发起共同养育确认</button>
+    </form>
+  </div>
+  <form method="post" action="{{ url_for('family_separate') }}" onsubmit="return confirm('确定结束伴侣关系吗？亲子关系仍会保留。')">
+    <button>结束关系</button>
+  </form>
+</div>
+{% else %}
+<div class="card">
+  <strong>📻 还没有伴侣</strong>
+  <p class="muted">每天可与每名玩家主动相处一次。羁绊达到{{ affinity_required }}、准备好戒指后，可以向对方求婚。</p>
+</div>
+{% endif %}
+
+{% if companion %}
+<div class="card family-spouse">
+  <div>
+    <strong>🧭 结伴对象：{{ display_name(companion) }}</strong>
+    <p class="muted">对方当前在({{ companion.tile_x }},{{ companion.tile_y }})，距离你{{ companion_distance }}格。
+      结伴不占庇护所名额、不需要羁绊值，遇袭时逃跑几率+{{ (companion_flee_bonus*100)|int }}%。</p>
+  </div>
+  <form method="post" action="{{ url_for('companion_end') }}"><button>结束结伴</button></form>
+</div>
+{% else %}
+<div class="card">
+  <strong>🧭 还没有结伴对象</strong>
+  <p class="muted">结伴同行不需要羁绊值也不需要庇护所，随时可以发起、随时可以结束，用来撑过组队建庇护所之前的空窗期。</p>
+</div>
+{% endif %}
+
+{% for r in companion_pending %}
+{% if r.status == 'pending' and r.requested_by != ch.id %}
+{% set other_id = r.char_b if r.char_a == ch.id else r.char_a %}
+<div class="card">
+  <p>{{ r.a_name if r.char_a != ch.id else r.b_name }}希望和你结伴同行。</p>
+  <form method="post" action="{{ url_for('companion_respond', from_id=other_id, decision='accept') }}"><button class="primary">接受</button></form>
+  <form method="post" action="{{ url_for('companion_respond', from_id=other_id, decision='reject') }}"><button>拒绝</button></form>
+</div>
+{% endif %}
+{% endfor %}
+
+{% if pending %}
+<h2>📨 等待回应</h2>
+{% for p in pending %}
+<div class="card">
+  {% if p.to_char == ch.id %}
+    <p><strong>{{ p.from_name }}</strong>
+      {% if p.proposal_type == 'marriage' %}带着{{ item_names[p.ring_key] }}向你求婚。{% else %}希望与你共同养育孩子「{{ p.child_name }}」。{% endif %}
+    </p>
+    <form method="post" action="{{ url_for('family_proposal_decide', proposal_id=p.id, decision='accept') }}"><button class="primary">接受</button></form>
+    <form method="post" action="{{ url_for('family_proposal_decide', proposal_id=p.id, decision='reject') }}"><button>拒绝</button></form>
+  {% else %}
+    <p>你向<strong>{{ p.to_name }}</strong>发出的{% if p.proposal_type == 'marriage' %}求婚{% else %}共同养育计划{% endif %}正在等待回应。</p>
+  {% endif %}
+</div>
+{% endfor %}
+{% endif %}
+
+<h2>🧒 孩子与成长</h2>
+{% if not children %}
+<div class="card"><p class="muted">这里还没有下一代。孩子不是奖励道具，而是会自己长大、受伤、收集物资并留下故事的角色。</p></div>
+{% endif %}
+{% for card in children %}
+{% set c = card.row %}
+<div class="card child-card {% if c.status == 'dead' %}child-lost{% endif %}">
+  <div class="row">
+    <strong>{{ "🕯️" if c.status == "dead" else ("🧭" if c.status == "heir" else "🌱") }} {{ c.name }}</strong>
+    <span>{% if not card.is_parent %}义亲监护 · {% endif %}{{ card.age }}岁 · {{ card.stage }} · HP {{ c.hp }}/100</span>
+  </div>
+  <p class="muted">力量{{ c.stat_str }}　速度{{ c.stat_spd }}　智慧{{ c.stat_int }}　幸运{{ c.stat_luck }}　照顾记忆{{ c.care_points }}</p>
+  {% for milestone,event in growth_events.items() %}
+    {% if card.age >= milestone %}
+      {% if card.growth.get(milestone) %}
+        <p class="memory-line"><span>{{ milestone }}岁选择</span>{{ card.growth[milestone].choice_label }} · {{ card.growth[milestone].story_text }}</p>
+      {% elif c.status == 'alive' and card.is_parent %}
+        <div class="care-warning"><strong>{{ event.title }}</strong><br>
+        {% for key,choice in event.choices.items() %}
+          <form method="post" action="{{ url_for('family_child_growth', child_id=c.id) }}">
+            <input type="hidden" name="milestone" value="{{ milestone }}"><input type="hidden" name="choice_key" value="{{ key }}">
+            <button>{{ choice[0] }}</button>
+          </form>
+        {% endfor %}</div>
+      {% endif %}
+    {% endif %}
+  {% endfor %}
+  {% if c.status == 'dead' %}
+    <p>最后记录：{{ c.death_reason }}</p>
+  {% elif c.status == 'heir' %}
+    <p class="muted">这个孩子已经接过家族身份，成为新的玩家角色。</p>
+  {% else %}
+    {% if card.age < 6 %}
+      <p class="care-warning">6岁前无法自行照顾，父母每天至少需要完成一次照顾。</p>
+    {% else %}
+      <p class="muted">已经会优先使用自己的食物和水自理；物资不足或重伤时会向父母请求帮助。</p>
+    {% endif %}
+    {% for req in card.requests %}<div class="help-signal">🆘 {{ req.message }}</div>{% endfor %}
+    <div class="child-actions">
+      <form method="post" action="{{ url_for('family_child_care', child_id=c.id) }}"><input type="hidden" name="kind" value="feed"><button>准备饭和净水</button></form>
+      <form method="post" action="{{ url_for('family_child_care', child_id=c.id) }}"><input type="hidden" name="kind" value="story"><button>讲睡前故事</button></form>
+      <form method="post" action="{{ url_for('family_child_care', child_id=c.id) }}"><input type="hidden" name="kind" value="train"><button>教生存技能</button></form>
+      <form method="post" action="{{ url_for('family_child_care', child_id=c.id) }}"><input type="hidden" name="kind" value="medicine"><button>处理伤口</button></form>
+    </div>
+    {% if card.is_parent %}{% for p in players %}{% if p.id in sworn_ids %}
+      <form method="post" action="{{ url_for('family_guardian_request', child_id=c.id, guardian_id=p.id) }}"><button>邀请义亲{{ display_name(p) }}成为监护人</button></form>
+    {% endif %}{% endfor %}{% endif %}
+  {% endif %}
+  {% if card.inventory %}
+    <p><strong>孩子自己的背包：</strong>{% for i in card.inventory %}{{ item_names.get(i.resource_key, i.resource_key) }}x{{ i.amount }}{% if not loop.last %}、{% endif %}{% endfor %}</p>
+  {% endif %}
+  {% if card.logs %}
+  <details><summary>最近的成长与探索记录</summary>
+    {% for log in card.logs %}<p class="memory-line"><span>{{ log.age_day }}岁</span>{{ log.detail }}</p>{% endfor %}
+  </details>
+  {% endif %}
+</div>
+{% endfor %}
+
+<h2>💍 戒指工作台</h2>
+<p class="muted">求婚时戒指会暂存在请求中；拒绝会退回，接受则成为家族记录的一部分。</p>
+<div class="grid two">
+{% for key, recipe in ring_recipes.items() %}
+<div class="card">
+  <strong>{{ recipe.name }}</strong>
+  <p class="muted">{{ "基础" if recipe.workbench == "basic" else "高级" }}工作台 ·
+    {% for k,v in recipe.cost.items() %}{{ item_names[k] }}x{{ v }}{% if not loop.last %}、{% endif %}{% endfor %}
+  </p>
+  <form method="post" action="{{ url_for('family_craft_ring') }}"><input type="hidden" name="ring_key" value="{{ key }}"><button>制作</button></form>
+  <span class="muted">持有 {{ inv_map.get(key, 0) }}</span>
+</div>
+{% endfor %}
+</div>
+
+<h2>🤝 幸存者羁绊</h2>
+{% for p in players %}
+{% set bond = bonds[p.id] %}
+<div class="card">
+  <div class="row"><strong>{{ display_name(p) }}</strong><span>羁绊 {{ bond.affinity if bond else 0 }}</span></div>
+  <div class="child-actions">
+    <form method="post" action="{{ url_for('family_bond_action', target_id=p.id) }}"><input type="hidden" name="kind" value="talk"><button>无线电谈心 +5</button></form>
+    <form method="post" action="{{ url_for('family_bond_action', target_id=p.id) }}"><input type="hidden" name="kind" value="meal"><button>分享熟食 +10</button></form>
+    <form method="post" action="{{ url_for('family_bond_action', target_id=p.id) }}"><input type="hidden" name="kind" value="supplies"><button>赠应急食品 +8</button></form>
+  </div>
+  {% if not companion %}
+  <form method="post" action="{{ url_for('companion_request', target_id=p.id) }}"><button>申请结伴（不需要羁绊值）</button></form>
+  {% endif %}
+  {% if bond and bond.affinity >= affinity_required %}
+  <form method="post" action="{{ url_for('family_relation_request', target_id=p.id, role='best_friend') }}"><button>申请成为挚友</button></form>
+  <form method="post" action="{{ url_for('family_relation_request', target_id=p.id, role='sworn_family') }}"><button>申请结为义亲</button></form>
+  {% if not spouse %}
+  <form method="post" action="{{ url_for('family_propose', target_id=p.id) }}">
+    <select name="ring_key">{% for key, recipe in ring_recipes.items() %}{% if inv_map.get(key,0) %}<option value="{{ key }}">{{ recipe.name }}</option>{% endif %}{% endfor %}</select>
+    <button class="primary">求婚</button>
+  </form>
+  {% endif %}
+  {% endif %}
+</div>
+{% endfor %}
+
+{% for r in close_relations %}
+{% if r.status == 'pending' and r.requested_by != ch.id %}
+{% set other_id = r.char_b if r.char_a == ch.id else r.char_a %}
+<div class="card">
+  <p>{{ r.a_name if r.char_a != ch.id else r.b_name }}希望与你成为{{ "挚友" if r.role=="best_friend" else "义亲" }}。</p>
+  <form method="post" action="{{ url_for('family_relation_decide', target_id=other_id, role=r.role, decision='accept') }}"><button class="primary">接受</button></form>
+  <form method="post" action="{{ url_for('family_relation_decide', target_id=other_id, role=r.role, decision='reject') }}"><button>拒绝</button></form>
+</div>
+{% endif %}
+{% endfor %}
+{% endblock %}

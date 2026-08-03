@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}广播记录 - 末日基地{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>基地广播</h2>
+  <p class="muted">重大事件与幸存者行动记录</p>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">事件</h3>
+  {% for e in events %}
+  <p style="margin-bottom:6px"><span class="muted">第{{ e.day_count }}天</span> {{ e.detail }}</p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">行动</h3>
+  {% for a in actions %}
+  <p class="muted" style="margin-bottom:4px">{{ a.survivor_name }} {{ a.action }}:{{ a.detail }}</p>
+  {% endfor %}
+</div>
+{% endblock %}

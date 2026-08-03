@@ -1,4 +1,6 @@
-import io, os, json, functools, secrets, time, hmac, logging, traceback, zipfile
+import io, os, re, json, functools, secrets, time, hmac, logging, traceback, zipfile
+import shutil, socket, ipaddress, urllib.request
+from urllib.parse import urlparse
 from collections import defaultdict
 from datetime import datetime, date as _date, timezone, timedelta
 
@@ -65,6 +67,11 @@ DB_PATH         = os.path.join(os.path.dirname(__file__), "rp_data.db")
 SUPERADMIN_PASS = os.environ.get("SUPERADMIN_PASS",
                   os.environ.get("RP_ADMIN_PASSWORD", "pDynLBeLGEjd"))
 PLAYERS_PER_PAGE = 50
+
+# 信息收集图片：单张大小上限 / 每用户每季度累计配额上限（结束季度时清空重置）
+COLLECT_IMAGE_MAX_BYTES = 3 * 1024 * 1024
+COLLECT_IMAGE_USER_QUOTA_BYTES = 30 * 1024 * 1024
+COLLECT_IMAGE_DIR = os.path.join(os.path.dirname(__file__), "static", "collected_images")
 
 # ── Command guide blocks ──────────────────────────────────────────────────────
 COMMAND_BLOCKS = [
@@ -746,6 +753,7 @@ CONFIG_SCHEMA = [
         {"key": "rest_hours",                       "label": "休息时段（不计弧长）",    "type": "text",   "default": "", "note": "格式 HHMM-HHMM，如 0200-0800，留空不限制"},
         {"key": "appointment_coin_cost",            "label": "私约写信币费用",          "type": "number", "default": "0", "note": "发起私约/电话消耗的写信币数（0=免费）"},
         {"key": "idle_group_name",                  "label": "备用群名",                "type": "text",   "default": "备用", "note": "群结束后修改成的群名，默认为「备用」"},
+        {"key": "force_end_grant_reward",           "label": "强结发放奖励",            "type": "bool",   "default": "false", "note": "开启后「强结私约」「一键强结」也会按正常结戏规则发放奖励，默认关闭（不发放）"},
     ]},
     {"section": "邀约时长（分钟）", "json_parent": "appointment_duration_config", "fields": [
         {"key": "phone",    "label": "电话门槛", "type": "number", "default": "29"},
@@ -1318,6 +1326,21 @@ def _migrate(conn):
     if "supplement_end" not in _col_names(conn, "shows"):
         conn.execute("ALTER TABLE shows ADD COLUMN supplement_end TEXT NOT NULL DEFAULT ''")
 
+    # ── 15. collected_images 表（信息收集里提交的图片，按 show 隔离，结束季度时整体清理）──
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS collected_images (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            tenant_id  INTEGER NOT NULL,
+            show_id    INTEGER NOT NULL,
+            uid        TEXT    NOT NULL,
+            filename   TEXT    NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            created_at INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_collected_images_show ON collected_images(tenant_id, show_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_collected_images_user ON collected_images(tenant_id, show_id, uid)")
+
     conn.commit()
 
 def init_db():
@@ -1483,6 +1506,26 @@ def get_tenant_from_token():
     if not row:
         abort(403)
     return row["id"]
+
+def _cleanup_show_collected_images(db, tid, show_id):
+    """季度结束/被顶替时清空该季收集的图片文件与配额记录，防止磁盘无限增长"""
+    img_dir = os.path.join(COLLECT_IMAGE_DIR, str(tid), str(show_id))
+    shutil.rmtree(img_dir, ignore_errors=True)
+    db.execute("DELETE FROM collected_images WHERE tenant_id=? AND show_id=?", (tid, show_id))
+
+def _is_url_host_public(hostname):
+    """拒绝解析到内网/本机/链路本地地址的域名，防止 SSRF"""
+    try:
+        infos = socket.getaddrinfo(hostname, None)
+    except socket.gaierror:
+        return False
+    if not infos:
+        return False
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast or ip.is_unspecified:
+            return False
+    return True
 
 
 # ── 登录路由 ─────────────────────────────────────────────────────────────────
@@ -1842,8 +1885,12 @@ def api_new_season():
     supp_end    = (data.get("supplement_end") or "").strip()
 
     db = get_db()
-    # 把已有 is_current=1 的 show 全部关掉（处理 JSCLEAR 未先结束季度的情况）
+    # 把已有 is_current=1 的 show 全部关掉（处理 JSCLEAR 未先结束季度的情况），
+    # 同时清理这些季度收集的图片，避免因跳过「结束季度」导致图片一直不清
+    stale_shows = db.execute("SELECT id FROM shows WHERE tenant_id=? AND is_current=1", (tid,)).fetchall()
     db.execute("UPDATE shows SET is_current=0 WHERE tenant_id=? AND is_current=1", (tid,))
+    for stale in stale_shows:
+        _cleanup_show_collected_images(db, tid, stale["id"])
     # 建新 show
     token = secrets.token_urlsafe(24)
     db.execute(
@@ -1913,6 +1960,7 @@ def api_end_season():
     if not show:
         return jsonify({"ok": False, "error": "no active season"}), 404
     db.execute("UPDATE shows SET is_current=0 WHERE id=?", (show["id"],))
+    _cleanup_show_collected_images(db, tid, show["id"])
     db.commit()
     base_url = request.host_url.rstrip("/")
     public_url = f"{base_url}/public/{show['public_token']}" if show["public_token"] else base_url
@@ -2147,6 +2195,54 @@ def superadmin_set_password(tid):
     db.commit()
     return redirect(url_for("superadmin") + "?created=1")
 
+@app.route("/superadmin/tenant/<int:tid>/collected_images")
+@require_superadmin
+def superadmin_collected_images(tid):
+    """超级管理员浏览/删除某租户「我提交」收集来的图片；删除后玩家那边的对应记录
+    会在下次「查看收集」时被插件的失效检查顺手清掉（两边没有推送通道，只能靠这个被动同步）。"""
+    db     = get_db()
+    tenant = db.execute("SELECT * FROM tenants WHERE id=?", (tid,)).fetchone()
+    if not tenant:
+        abort(404)
+    shows = [dict(s) for s in db.execute(
+        "SELECT * FROM shows WHERE tenant_id=? ORDER BY created_at DESC", (tid,)
+    ).fetchall()]
+    show_id = request.args.get("show_id", type=int) or (shows[0]["id"] if shows else None)
+
+    images = []
+    if show_id:
+        rows = db.execute("""
+            SELECT ci.*, p.role_name
+            FROM collected_images ci
+            LEFT JOIN players p ON p.show_id = ci.show_id AND p.qq = ci.uid
+            WHERE ci.tenant_id=? AND ci.show_id=?
+            ORDER BY ci.created_at DESC
+        """, (tid, show_id)).fetchall()
+        base_url = request.host_url.rstrip("/")
+        for r in rows:
+            d = dict(r)
+            d["url"] = f"{base_url}/static/collected_images/{tid}/{d['show_id']}/{d['uid']}/{d['filename']}"
+            d["created_at_str"] = ts_to_str(d["created_at"])
+            images.append(d)
+
+    return render_template("superadmin_collected_images.html",
+                            tenant=dict(tenant), shows=shows, show_id=show_id, images=images)
+
+@app.route("/superadmin/collected_image/<int:img_id>/delete", methods=["POST"])
+@require_superadmin
+def superadmin_delete_collected_image(img_id):
+    db  = get_db()
+    row = db.execute("SELECT * FROM collected_images WHERE id=?", (img_id,)).fetchone()
+    if row:
+        try:
+            os.remove(os.path.join(COLLECT_IMAGE_DIR, str(row["tenant_id"]), str(row["show_id"]), row["uid"], row["filename"]))
+        except OSError:
+            pass
+        db.execute("DELETE FROM collected_images WHERE id=?", (img_id,))
+        db.commit()
+    return redirect(url_for("superadmin_collected_images",
+                             tid=request.form.get("tid"), show_id=request.form.get("show_id")))
+
 
 # ── 季管理路由 ───────────────────────────────────────────────────────────────
 
@@ -2191,13 +2287,18 @@ def admin_show_new():
 @app.route("/admin/shows/<int:sid>/activate", methods=["POST"])
 @require_admin
 def admin_show_activate(sid):
-    """将指定季设为「当前季」（机器人数据写入此季）。"""
+    """将指定季设为「当前季」（机器人数据写入此季）；原本是当前季的视为已结束，清理其收集图片。"""
     tid = current_tenant_id()
     db  = get_db()
     if not db.execute("SELECT id FROM shows WHERE id=? AND tenant_id=?", (sid, tid)).fetchone():
         abort(404)
+    stale_shows = db.execute(
+        "SELECT id FROM shows WHERE tenant_id=? AND is_current=1 AND id!=?", (tid, sid)
+    ).fetchall()
     db.execute("UPDATE shows SET is_current=0 WHERE tenant_id=?", (tid,))
     db.execute("UPDATE shows SET is_current=1 WHERE id=?", (sid,))
+    for stale in stale_shows:
+        _cleanup_show_collected_images(db, tid, stale["id"])
     db.commit()
     session.pop("view_show_id", None)
     if request.headers.get("X-Fetch") == "1":
@@ -3926,6 +4027,100 @@ def api_pending_equips():
             pending = []
     return jsonify({"pending": pending})
 
+@app.route("/api/collect_image", methods=["POST"])
+def api_collect_image():
+    """插件「我提交」里带的 QQ 临时图片链接，由 rp_archive 下载后落地为永久 URL。
+    按 (tenant, show, uid) 记额度，结束季度时随图片文件一起清空，服务器盘不会无限增长。"""
+    tid  = get_tenant_from_token()
+    show = get_current_show_for_tenant(tid)
+    if not show:
+        return jsonify({"ok": False, "error": "no active season"}), 404
+    show_id = show["id"]
+
+    data      = request.json or {}
+    image_url = (data.get("image_url") or "").strip()
+    uid       = str(data.get("uid") or "").strip()
+    if not image_url or not uid:
+        return jsonify({"ok": False, "error": "missing image_url or uid"}), 400
+
+    parsed = urlparse(image_url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return jsonify({"ok": False, "error": "invalid url"}), 400
+    if not _is_url_host_public(parsed.hostname):
+        return jsonify({"ok": False, "error": "url not allowed"}), 400
+
+    db   = get_db()
+    used = db.execute(
+        "SELECT COALESCE(SUM(size_bytes),0) AS total FROM collected_images WHERE tenant_id=? AND show_id=? AND uid=?",
+        (tid, show_id, uid)
+    ).fetchone()["total"]
+    if used >= COLLECT_IMAGE_USER_QUOTA_BYTES:
+        return jsonify({"ok": False, "error": "quota exceeded"}), 413
+
+    cap = min(COLLECT_IMAGE_MAX_BYTES, COLLECT_IMAGE_USER_QUOTA_BYTES - used)
+    try:
+        req = urllib.request.Request(image_url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            content_type = resp.headers.get("Content-Type", "")
+            if not content_type.startswith("image/"):
+                return jsonify({"ok": False, "error": "not an image"}), 400
+            buf = resp.read(cap + 1)
+    except Exception as e:
+        _logger.error("collect_image 下载失败: %s", e)
+        return jsonify({"ok": False, "error": "download failed"}), 502
+
+    if len(buf) > cap:
+        return jsonify({"ok": False, "error": "image too large or quota exceeded"}), 413
+
+    ext_name = "png" if "png" in content_type else "gif" if "gif" in content_type else "jpg"
+    filename = f"{secrets.token_hex(8)}.{ext_name}"
+    save_dir = os.path.join(COLLECT_IMAGE_DIR, str(tid), str(show_id), uid)
+    os.makedirs(save_dir, exist_ok=True)
+    with open(os.path.join(save_dir, filename), "wb") as f:
+        f.write(buf)
+
+    db.execute(
+        "INSERT INTO collected_images (tenant_id, show_id, uid, filename, size_bytes, created_at) VALUES (?,?,?,?,?,?)",
+        (tid, show_id, uid, filename, len(buf), int(time.time() * 1000))
+    )
+    db.commit()
+
+    base_url = request.host_url.rstrip("/")
+    return jsonify({"ok": True, "url": f"{base_url}/static/collected_images/{tid}/{show_id}/{uid}/{filename}"})
+
+@app.route("/api/collect_image/delete", methods=["POST"])
+def api_delete_collect_image():
+    """插件「删除上传」/「我清空」时调用，把 collect_image 转存出来的文件和配额记录一起删掉，
+    否则本地记录删了、服务器上的图片和配额占用还留着（配额要等季度结束才会被批量清）。"""
+    tid  = get_tenant_from_token()
+    data = request.json or {}
+    image_url = (data.get("url") or "").strip()
+    if not image_url:
+        return jsonify({"ok": False, "error": "missing url"}), 400
+
+    m = re.search(r"/static/collected_images/(\d+)/(\d+)/([^/]+)/([^/]+)$", image_url)
+    if not m:
+        return jsonify({"ok": False, "error": "invalid url"}), 400
+    url_tid, show_id, uid, filename = m.group(1), m.group(2), m.group(3), m.group(4)
+    if str(url_tid) != str(tid):
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+
+    db  = get_db()
+    row = db.execute(
+        "SELECT id FROM collected_images WHERE tenant_id=? AND show_id=? AND uid=? AND filename=?",
+        (tid, show_id, uid, filename)
+    ).fetchone()
+    if not row:
+        return jsonify({"ok": True, "already_gone": True})
+
+    try:
+        os.remove(os.path.join(COLLECT_IMAGE_DIR, str(tid), str(show_id), uid, filename))
+    except OSError:
+        pass
+    db.execute("DELETE FROM collected_images WHERE id=?", (row["id"],))
+    db.commit()
+    return jsonify({"ok": True})
+
 @app.route("/api/event", methods=["POST"])
 def api_event():
     tid  = get_tenant_from_token()
@@ -4264,6 +4459,70 @@ def api_recent_sessions():
     return jsonify({
         "ok": True,
         "sessions": [dict(r) for r in rows]
+    })
+
+@app.route("/api/my_sessions", methods=["GET"])
+def api_my_sessions():
+    """Bot 用：拉取当前季度里某玩家参与过的已结束场次列表，供「全部复盘」编号展示。"""
+    tid     = get_tenant_from_token()
+    show_id = get_current_show_id_for_tenant(tid)
+    if not show_id:
+        return jsonify({"ok": False, "error": "no current show"}), 404
+    role_name = request.args.get("role_name", "").strip()
+    if not role_name:
+        return jsonify({"ok": False, "error": "role_name required"}), 400
+    limit = min(int(request.args.get("limit", 30)), 50)
+    db   = get_db()
+    rows = db.execute(
+        """SELECT id, group_id, game_day, game_time, place, subtype,
+                  participants, start_ts, end_ts
+           FROM sessions
+           WHERE show_id=? AND forced=0 AND end_ts>0
+           ORDER BY end_ts DESC""",
+        (show_id,)
+    ).fetchall()
+    sessions = []
+    for r in rows:
+        r = dict(r)
+        try:
+            participants = json.loads(r.get("participants") or "[]")
+        except Exception:
+            participants = []
+        if role_name not in participants:
+            continue
+        r["participants"] = participants
+        sessions.append(r)
+        if len(sessions) >= limit:
+            break
+    return jsonify({"ok": True, "sessions": sessions})
+
+@app.route("/api/session_full/<path:session_id>", methods=["GET"])
+def api_session_full(session_id):
+    """Bot 用：拉取指定场次的完整 RP 正文，供「查看复盘 编号」还原场次内容。"""
+    tid     = get_tenant_from_token()
+    show_id = get_current_show_id_for_tenant(tid)
+    if not show_id:
+        return jsonify({"ok": False, "error": "no current show"}), 404
+    db   = get_db()
+    sess = db.execute(
+        "SELECT id, game_day, game_time, place, subtype, participants FROM sessions WHERE id=? AND show_id=?",
+        (session_id, show_id)
+    ).fetchone()
+    if not sess:
+        return jsonify({"ok": False, "error": "session not found"}), 404
+    sess = dict(sess)
+    try:
+        sess["participants"] = json.loads(sess.get("participants") or "[]")
+    except Exception:
+        sess["participants"] = []
+    entries = db.execute(
+        "SELECT role_name, content, timestamp FROM rp_entries WHERE session_id=? AND show_id=? ORDER BY seq, timestamp",
+        (session_id, show_id)
+    ).fetchall()
+    return jsonify({
+        "ok": True,
+        "session": sess,
+        "entries": [dict(e) for e in entries]
     })
 
 @app.route("/api/update_players", methods=["POST"])

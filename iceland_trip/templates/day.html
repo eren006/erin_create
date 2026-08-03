@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}D{{ day.num }} {{ day.date }} {{ day.title }}{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+{% endblock %}
+{% block content %}
+<section class="day-header">
+  <div class="day-header-top">
+    <span class="day-num-big">D{{ day.num }}</span>
+    <div>
+      <div class="day-date-big">{{ day.date }}　{{ day.weekday }}</div>
+      <h1>{{ day.title }}</h1>
+    </div>
+  </div>
+  <div class="day-meta">
+    <div><span class="meta-label">出发</span>{{ day.depart }}</div>
+    <div><span class="meta-label">住宿</span>{{ day.stay }}</div>
+    <div><span class="meta-label">纯驾驶</span>{{ day.drive }}</div>
+  </div>
+  {% if day.critical %}<div class="critical-banner">⏰ 当日硬节点：{{ day.critical }}</div>{% endif %}
+  <div class="route-line">🛣️ {{ day.route }}</div>
+  {% if day.nav_steps %}
+  <details class="nav-steps" open>
+    <summary>导航建议逐段输入</summary>
+    <ol>
+      {% for step in day.nav_steps %}
+      <li>
+        <span>{{ step.label }}</span>
+        {% if step.query %}
+        <a class="nav-btn" href="https://www.google.com/maps/dir/?api=1&destination={{ step.query | urlencode }}&travelmode=driving" target="_blank" rel="noopener">🧭 导航</a>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ol>
+  </details>
+  {% endif %}
+  {% if day.bookings %}
+  <div class="booking-pills">
+    {% for time, name in day.bookings %}<span class="pill">✅ {{ time }} {{ name }}</span>{% endfor %}
+  </div>
+  {% endif %}
+</section>
+
+{% if map_points %}
+<section class="block map-block">
+  <h2>当天地图</h2>
+  <div id="dayMap" class="day-map"></div>
+  <p class="map-note">{{ map_disclaimer }}</p>
+</section>
+<script>
+(function () {
+  var points = {{ map_points | tojson }};
+  var map = L.map('dayMap', { scrollWheelZoom: false });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 18
+  }).addTo(map);
+  var latlngs = [];
+  points.forEach(function (p, i) {
+    var marker = L.marker([p.lat, p.lon]).addTo(map);
+    marker.bindPopup((i + 1) + '. ' + p.name);
+    latlngs.push([p.lat, p.lon]);
+  });
+  if (latlngs.length > 1) {
+    L.polyline(latlngs, { color: '#1e6f8c', weight: 3, dashArray: '6 6' }).addTo(map);
+  }
+  if (latlngs.length) {
+    map.fitBounds(latlngs, { padding: [24, 24] });
+  }
+})();
+</script>
+{% endif %}
+
+<section class="content">
+  {{ content | safe }}
+</section>
+
+<nav class="day-pager">
+  {% if prev_day %}<a class="pager-link prev" href="{{ url_for('day', num=prev_day.num) }}">← D{{ prev_day.num }} {{ prev_day.date }}</a>{% else %}<span></span>{% endif %}
+  {% if next_day %}<a class="pager-link next" href="{{ url_for('day', num=next_day.num) }}">D{{ next_day.num }} {{ next_day.date }} →</a>{% endif %}
+</nav>
+{% endblock %}

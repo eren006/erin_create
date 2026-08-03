@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}诊所 - 末日基地{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>诊所</h2>
+  <p class="muted">体力:{{ survivor.energy }}/{{ max_energy }} · 治疗消耗药品 {{ medicine_cost }},需要基地至少有一座诊所,医生专精有加成。</p>
+  {% if not clinics %}
+  <p class="muted" style="margin-top:8px;color:var(--red)">基地还没有诊所,去<a href="{{ url_for('build_page') }}">建筑</a>页面建一座。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3>制药</h3>
+  <p class="muted">消耗药草 {{ craft_medicine_herb }}(农田种得出来) + 绷带 {{ craft_medicine_bandage }}(只能靠采集/远征捡),制出约 {{ craft_medicine_output }} 份药品,谁都能做,医生专精和教育属性有加成。</p>
+  <form method="post" action="{{ url_for('clinic_craft_medicine') }}" style="margin-top:8px">
+    <button class="btn btn-primary" type="submit">制药</button>
+  </form>
+</div>
+
+{% if infected_list %}
+<div class="card">
+  <h3 style="margin-bottom:8px;color:var(--red)">感染幸存者</h3>
+  <p class="muted">组队探索被咬伤后可能感染,拖过 {{ infection_days_limit }} 天不治疗会直接变成丧尸,永久失去这个人,不给重生机会。治疗消耗药品 {{ infection_cure_cost.medicine }} + 绷带 {{ infection_cure_cost.bandage }}。</p>
+  <table style="margin-top:8px">
+    <tr><th>姓名</th><th>剩余天数</th><th></th></tr>
+    {% for s in infected_list %}
+    <tr>
+      <td>{{ s.name }}{% if s.id == survivor.id %}(我){% endif %}</td>
+      <td style="color:var(--red)">{{ [0, infection_days_limit - (day_now - s.infected_since_day)]|max }}</td>
+      <td>
+        <form method="post" action="{{ url_for('clinic_cure_infection', target_id=s.id) }}">
+          <button class="btn btn-primary" type="submit">治疗感染</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+{% if sick %}
+<div class="card">
+  <h3 style="margin-bottom:8px">患病幸存者</h3>
+  <p class="muted">小病不算重伤,不影响正常行动,但每天会持续掉血、拖累士气,得靠诊所治好。</p>
+  <table style="margin-top:8px">
+    <tr><th>姓名</th><th>病症</th><th></th></tr>
+    {% for s in sick %}
+    <tr>
+      <td>{{ s.name }}{% if s.id == survivor.id %}(我){% endif %}</td>
+      <td>{{ illnesses[s.illness].name }}</td>
+      <td>
+        <form method="post" action="{{ url_for('clinic_cure_illness', target_id=s.id) }}">
+          <button class="btn btn-primary" type="submit">治病</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+<div class="card">
+  <h3 style="margin-bottom:8px">其他幸存者</h3>
+  <table>
+    <tr><th>姓名</th><th>健康</th><th>状态</th><th></th></tr>
+    {% for s in others %}
+    <tr>
+      <td>{{ s.name }}</td>
+      <td>{{ s.health }}/100</td>
+      <td>{{ {'normal':'正常','injured':'受伤','critical':'重伤','dead':'已死亡','permadead':'永久死亡'}[s.status] }}</td>
+      <td>
+        {% if s.health < 100 %}
+        <form method="post" action="{{ url_for('clinic_heal', target_id=s.id) }}">
+          <button class="btn btn-primary" type="submit">治疗</button>
+        </form>
+        {% else %}
+        <span class="muted">健康</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

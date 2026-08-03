@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}注册 - 末日基地{% endblock %}
+{% block content %}
+<div class="card">
+  <h2 style="margin-bottom:12px">创建幸存者</h2>
+  <form method="post">
+    <label>账号</label>
+    <input name="username" required>
+    <label>密码</label>
+    <input name="password" type="password" required>
+    <label>幸存者姓名</label>
+    <input name="name" placeholder="留空则使用账号名">
+    <label>出生邀请码(可选——如果是某对情侣的孩子,填这里,会跳过下面的专精/属性选择,从0岁开始长大)</label>
+    <input name="invite_code" placeholder="没有就留空">
+    <label>专精(没有邀请码才需要选;每种专精在对应行动上有加成,谁都能做所有事,专精只是做得更好)</label>
+    <select name="specialization">
+      <option value="">请选择</option>
+      {% for key, spec in specializations.items() %}
+      <option value="{{ key }}">{{ spec.name }} · {{ spec.desc }}</option>
+      {% endfor %}
+    </select>
+
+    <label style="margin-top:16px">属性(每项保底 {{ stat_base }} 点,再自由分配 {{ stat_free_points }} 点 · 剩余 <span id="stat-remaining">{{ stat_free_points }}</span> 点)</label>
+    {% for key, stat in stats.items() %}
+    <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+      <span style="flex:0 0 90px;font-size:13px">{{ stat.name }}</span>
+      <input type="number" class="stat-input" name="{{ key }}" value="0" min="0" max="{{ stat_free_points }}" style="width:80px" data-name="{{ stat.name }}">
+      <span class="muted" style="font-size:12px">{{ stat.desc }}</span>
+    </div>
+    {% endfor %}
+
+    <button class="btn btn-primary" style="margin-top:16px;width:100%" type="submit">进入避难所</button>
+  </form>
+  <p class="muted" style="margin-top:12px">已有账号?<a href="{{ url_for('login') }}">登录</a></p>
+</div>
+<script>
+(function(){
+  var inputs = document.querySelectorAll('.stat-input');
+  var total = {{ stat_free_points }};
+  var remainingEl = document.getElementById('stat-remaining');
+  function update() {
+    var sum = 0;
+    inputs.forEach(function(i){ sum += parseInt(i.value || '0', 10); });
+    remainingEl.textContent = total - sum;
+  }
+  inputs.forEach(function(i){ i.addEventListener('input', update); });
+  update();
+})();
+</script>
+{% endblock %}

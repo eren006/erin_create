@@ -7242,8 +7242,8 @@ function applyEndGameBonuses(ctx, msg, gid, platform) {
             let code = targetType === "currency"
                 ? (currencyByName[target] || null)
                 : null;
+            const reg = getRegistry_rpg();
             if (!code) {
-                const reg = getRegistry_rpg();
                 const upper = target.toUpperCase();
                 if (reg[upper]) {
                     code = upper;
@@ -7261,7 +7261,8 @@ function applyEndGameBonuses(ctx, msg, gid, platform) {
                 failLines.push(`⚠️ 「${target}」发放失败（代码 ${code} 不在注册表），跳过`);
                 return null;
             }
-            return `${target}×${amount}`;
+            const displayName = reg[code]?.name || target;
+            return `${displayName}×${amount}`;
         } else {
             // attr：使用 uid-based profile key
             const profileKey = `${platform}:${playerUid}`;

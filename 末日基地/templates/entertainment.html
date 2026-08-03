@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}娱乐 - 末日基地{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>娱乐</h2>
+  <p class="muted">快乐值 {{ survivor.happiness }}/100 · 体力 {{ survivor.energy }}/{{ max_energy }}。快乐值太低会陷入抑郁,拖慢体力回复;收礼物、吃高档食物、喝酒庆祝、来这里玩都能回复快乐值。</p>
+  {% if not rec_rooms %}
+  <p style="margin-top:8px;color:var(--red)">基地还没有娱乐室,需要先解锁「娱乐设施技术」再去<a href="{{ url_for('build_page') }}">建筑</a>页面建一座。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3>放松一下</h3>
+  <p class="muted">每人每天限一次,快乐值 +{{ happiness_bonus }}。</p>
+  <form method="post" action="{{ url_for('entertainment_play') }}" style="margin-top:8px">
+    <button class="btn btn-primary" type="submit" {{ 'disabled' if not rec_rooms or played_today }}>
+      {{ '今天已经玩过了' if played_today else '去玩一会' }}
+    </button>
+  </form>
+</div>
+{% endblock %}

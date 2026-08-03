@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="creation">
+  <h1 class="game-title">ASHFALL</h1>
+  <p class="game-subtitle">A short cultivation RPG</p>
+  <p class="creation-flavor">
+    The village at the foot of Ashfall Peak has waited a generation for someone to climb it again.
+    Choose your name and the root of your Qi, and begin the ascent.
+  </p>
+
+  <form method="post" action="{{ url_for('create') }}" class="creation-form">
+    <label class="field-label" for="name">Your name</label>
+    <input class="name-input" type="text" id="name" name="name" maxlength="24" placeholder="Nameless Wanderer" autocomplete="off">
+
+    <p class="field-label">Your root</p>
+    <div class="root-grid">
+      {% for key, root in roots.items() %}
+      <label class="root-card">
+        <input type="radio" name="root" value="{{ key }}" {% if loop.first %}checked{% endif %}>
+        <span class="root-card-inner">
+          <span class="root-name">{{ root.label }}</span>
+          <span class="root-tagline">{{ root.tagline }}</span>
+          <span class="root-skill">{{ root.skill_name }} — {{ root.skill_desc }}</span>
+        </span>
+      </label>
+      {% endfor %}
+    </div>
+
+    <button type="submit" class="btn btn-primary btn-begin">Begin the Climb</button>
+  </form>
+
+  <p class="meta-note">~10 minute playthrough · no account needed · your run is saved to this browser</p>
+</div>
+{% endblock %}

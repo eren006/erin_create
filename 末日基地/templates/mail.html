@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}信箱 - 末日基地{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>信箱</h2>
+  <p class="muted">每天最多寄 {{ mail_daily_limit }} 封信(今天已寄 {{ sent_today }} 封),一封信可以同时打包钱包/武器/护甲/家具/礼物。资源是共享池不能寄,钱包/装备/家具/礼物才是个人的。对方领取时,钱包/装备/家具这类"顺手帮一把"的东西会给双方好感度+{{ mail_generosity_affinity }}(同一个人每天只算一次,来回反复寄不会重复涨分);手工礼物是消耗品,领取即用掉,给的好感度更多,由礼物本身决定,不受这个每日限制。</p>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">寄信</h3>
+  <form method="post" id="mail-form" style="display:flex;flex-direction:column;gap:8px">
+    <select name="to_id" id="mail-to" required>
+      <option value="">选一个收件人</option>
+      {% for s in others %}
+      <option value="{{ s.id }}">{{ s.name }}</option>
+      {% endfor %}
+    </select>
+    <textarea name="note" maxlength="200" placeholder="留言(可选)" rows="2"></textarea>
+    <label style="margin:0">钱包:<input type="number" name="wallet_amount" min="0" max="{{ survivor.wallet }}" value="0" style="max-width:140px;display:inline-block"> / 你有 {{ survivor.wallet }}</label>
+    <label style="margin:0"><input type="checkbox" name="gift_weapon" style="width:auto" {{ 'disabled' if survivor.weapon_level <= 0 }}> 打包我的武器(Lv.{{ survivor.weapon_level }})</label>
+    <label style="margin:0"><input type="checkbox" name="gift_gear" style="width:auto" {{ 'disabled' if survivor.gear_level <= 0 }}> 打包我的护甲(Lv.{{ survivor.gear_level }})</label>
+    {% if my_items %}
+    <label style="margin:0">打包家具/礼物(可多选):</label>
+    <select name="item_ids" multiple style="height:100px">
+      {% for it in my_items %}
+      <option value="{{ it.id }}">{{ item_display_name(it.item_type, it.item_key) }}</option>
+      {% endfor %}
+    </select>
+    {% endif %}
+    <button class="btn btn-primary" type="submit" {{ 'disabled' if sent_today >= mail_daily_limit }}>寄出</button>
+  </form>
+  <script>document.getElementById('mail-form').action = '';
+  document.getElementById('mail-to').addEventListener('change', function(){
+    document.getElementById('mail-form').action = '/mail/send/' + this.value;
+  });</script>
+</div>
+
+<div class="card">
+  <div style="display:flex;gap:8px;margin-bottom:8px">
+    <button class="btn btn-primary" type="button" onclick="showTab('inbox')" id="tab-inbox">收件箱({{ inbox|length }})</button>
+    <button class="btn" type="button" onclick="showTab('outbox')" id="tab-outbox">发件箱({{ outbox|length }})</button>
+  </div>
+
+  <div id="pane-inbox">
+    {% if not inbox %}<p class="muted">收件箱是空的。</p>{% endif %}
+    {% for m in inbox %}
+    <div class="card" style="margin-bottom:8px">
+      <p class="muted">来自 {{ names.get(m.from_id, '系统') }} · {{ '未读' if not m.is_read else '已读' }}{% if m.claimed %} · 已领取{% endif %}</p>
+      {% if m.note %}<p style="margin-top:4px">{{ m.note }}</p>{% endif %}
+      <p style="margin-top:6px">
+        {% if m.wallet_amount %}<span class="badge badge-gold">钱 {{ m.wallet_amount }}</span>{% endif %}
+        {% if m.weapon_level %}<span class="badge badge-gold">武器 Lv.{{ m.weapon_level }}</span>{% endif %}
+        {% if m.gear_level %}<span class="badge badge-gold">护甲 Lv.{{ m.gear_level }}</span>{% endif %}
+        {% for it in inbox_items[m.id] %}
+        <span class="badge badge-gold">{{ item_display_name(it.item_type, it.item_key) }}</span>
+        {% endfor %}
+      </p>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        {% if not m.claimed %}
+        <form method="post" action="{{ url_for('mail_claim', mail_id=m.id) }}">
+          <button class="btn btn-primary" type="submit">领取附件</button>
+        </form>
+        {% endif %}
+        {% if not m.is_read %}
+        <form method="post" action="{{ url_for('mail_read', mail_id=m.id) }}">
+          <button class="btn" type="submit">标为已读</button>
+        </form>
+        {% endif %}
+        <form method="post" action="{{ url_for('mail_delete', mail_id=m.id) }}" onsubmit="return confirm('确定删除?未领取的附件会一起没收。');">
+          <button class="btn" type="submit" style="color:var(--red)">删除</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div id="pane-outbox" style="display:none">
+    {% if not outbox %}<p class="muted">发件箱是空的。</p>{% endif %}
+    {% for m in outbox %}
+    <div class="card" style="margin-bottom:8px">
+      <p class="muted">寄给 {{ names.get(m.to_id, '?') }} · {{ '对方已领取' if m.claimed else '对方还没领取' }}</p>
+      {% if m.note %}<p style="margin-top:4px">{{ m.note }}</p>{% endif %}
+      <p style="margin-top:6px">
+        {% if m.wallet_amount %}<span class="badge badge-gold">钱 {{ m.wallet_amount }}</span>{% endif %}
+        {% if m.weapon_level %}<span class="badge badge-gold">武器 Lv.{{ m.weapon_level }}</span>{% endif %}
+        {% if m.gear_level %}<span class="badge badge-gold">护甲 Lv.{{ m.gear_level }}</span>{% endif %}
+        {% for it in outbox_items[m.id] %}
+        <span class="badge badge-gold">{{ item_display_name(it.item_type, it.item_key) }}</span>
+        {% endfor %}
+      </p>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+<script>
+function showTab(which){
+  document.getElementById('pane-inbox').style.display = which === 'inbox' ? 'block' : 'none';
+  document.getElementById('pane-outbox').style.display = which === 'outbox' ? 'block' : 'none';
+  document.getElementById('tab-inbox').className = which === 'inbox' ? 'btn btn-primary' : 'btn';
+  document.getElementById('tab-outbox').className = which === 'outbox' ? 'btn btn-primary' : 'btn';
+}
+</script>
+{% endblock %}

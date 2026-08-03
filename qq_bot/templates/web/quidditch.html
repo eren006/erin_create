@@ -41,7 +41,7 @@
         <form method="post" style="display:inline">
           <input type="hidden" name="position" value="{{ pos }}">
           {% if not row %}<button name="action" value="join">占位</button>
-          {% elif not me or row.uid != account.uid %}<button name="action" value="challenge" class="ghost">挑战</button>
+          {% elif not me or row.uid != account.player_uid %}<button name="action" value="challenge" class="ghost">挑战</button>
           {% else %}<span class="muted">你</span>{% endif %}
         </form>
       </td>

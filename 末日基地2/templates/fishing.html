@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>🎣 钓鱼中…</h1>
+<p class="muted">难度 {{ fish.difficulty }}/10 · 按住(鼠标/触摸/空格)让判定条上升去框住小鱼,松开会下沉。框住鱼的时候进度条会涨,没框住会掉,涨满就抓到,归零鱼就跑了。</p>
+
+<div id="fishing-stage" style="display:flex; gap:16px; margin:16px 0; user-select:none; touch-action:none;">
+  <div id="water-col" style="position:relative; width:120px; height:360px; border-radius:12px; border:1px solid var(--card-border); background:linear-gradient(180deg, color-mix(in srgb, var(--thirst) 25%, var(--card)), color-mix(in srgb, var(--thirst) 45%, var(--card))); overflow:hidden;">
+    <div id="fish-icon" style="position:absolute; left:50%; transform:translateX(-50%); font-size:28px; top:150px;">🐟</div>
+    <div id="catch-bar" style="position:absolute; left:6px; right:6px; top:150px; height:140px; background:color-mix(in srgb, var(--accent) 35%, transparent); border:2px solid var(--accent); border-radius:8px;"></div>
+  </div>
+  <div style="position:relative; width:28px; height:360px; border-radius:8px; border:1px solid var(--card-border); background:color-mix(in srgb, var(--fg) 8%, transparent); overflow:hidden;">
+    <div id="progress-fill" style="position:absolute; bottom:0; left:0; right:0; height:50%; background:linear-gradient(0deg, var(--hp), color-mix(in srgb, var(--hp) 60%, white)); transition:height .05s linear;"></div>
+  </div>
+</div>
+
+<div id="fishing-result" class="card" style="display:none;">
+  <p id="result-text" style="font-size:1.1rem; font-weight:bold;"></p>
+  <a href="{{ url_for('dashboard') }}"><button>返回</button></a>
+</div>
+
+<form id="result-form" method="post" action="{{ url_for('action_fishing_result') }}" style="display:none">
+  <input type="hidden" name="result" id="result-input">
+</form>
+
+<script>
+(function () {
+  const difficulty = {{ fish.difficulty }};
+  const stageEl = document.getElementById('fishing-stage');
+  const colEl = document.getElementById('water-col');
+  const fishEl = document.getElementById('fish-icon');
+  const barEl = document.getElementById('catch-bar');
+  const progressEl = document.getElementById('progress-fill');
+  const resultBox = document.getElementById('fishing-result');
+  const resultText = document.getElementById('result-text');
+
+  const H = 360;
+  const barH = Math.max(60, 170 - difficulty * 10);
+  const fishSpeed = 0.5 + difficulty * 0.16;
+  const retargetChance = 0.01 + difficulty * 0.006;
+  const fillRate = 0.9;
+  const drainRate = 0.55;
+  const maxBarV = 5.5 + difficulty * 0.15;
+
+  let fishY = H / 2;
+  let fishTarget = H / 2;
+  let barTop = (H - barH) / 2;
+  let barV = 0;
+  let progress = 50;
+  let holding = false;
+  let ended = false;
+  const startTime = performance.now();
+  const TIMEOUT_MS = 45000;
+
+  function pickTarget() {
+    fishTarget = Math.random() * (H - 20) + 10;
+  }
+  pickTarget();
+
+  function onDown(e) { holding = true; if (e.cancelable) e.preventDefault(); }
+  function onUp(e) { holding = false; }
+
+  stageEl.addEventListener('mousedown', onDown);
+  stageEl.addEventListener('touchstart', onDown, {passive: false});
+  window.addEventListener('mouseup', onUp);
+  window.addEventListener('touchend', onUp);
+  window.addEventListener('keydown', function (e) {
+    if (e.code === 'Space' || e.code === 'ArrowUp') { holding = true; e.preventDefault(); }
+  });
+  window.addEventListener('keyup', function (e) {
+    if (e.code === 'Space' || e.code === 'ArrowUp') holding = false;
+  });
+
+  function submitResult(success) {
+    if (ended) return;
+    ended = true;
+    document.getElementById('result-input').value = success ? 'success' : 'fail';
+    resultBox.style.display = 'block';
+    resultText.textContent = success ? '🎉 抓到了!' : '💨 鱼跑了…';
+    fetch("{{ url_for('action_fishing_result') }}", {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: 'result=' + (success ? 'success' : 'fail')
+    }).then(function () {
+      setTimeout(function () { window.location.href = "{{ url_for('dashboard') }}"; }, 900);
+    });
+  }
+
+  function tick() {
+    if (ended) return;
+
+    if (Math.random() < retargetChance) pickTarget();
+    fishY += (fishTarget - fishY) * 0.04 + (Math.random() - 0.5) * fishSpeed;
+    fishY = Math.max(10, Math.min(H - 10, fishY));
+
+    if (holding) barV -= 0.7; else barV += 0.5;
+    barV = Math.max(-maxBarV, Math.min(maxBarV, barV));
+    barTop += barV;
+    barTop = Math.max(0, Math.min(H - barH, barTop));
+
+    const overlapping = fishY >= barTop && fishY <= barTop + barH;
+    progress += overlapping ? fillRate : -drainRate;
+    progress = Math.max(0, Math.min(100, progress));
+
+    fishEl.style.top = fishY + 'px';
+    barEl.style.top = barTop + 'px';
+    barEl.style.height = barH + 'px';
+    progressEl.style.height = progress + '%';
+
+    if (progress >= 100) { submitResult(true); return; }
+    if (progress <= 0) { submitResult(false); return; }
+    if (performance.now() - startTime > TIMEOUT_MS) { submitResult(false); return; }
+
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+})();
+</script>
+{% endblock %}

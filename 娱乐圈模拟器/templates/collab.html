@@ -7,7 +7,7 @@
   <h4 style="margin-bottom:8px">邀请我合作的人</h4>
   {% for inv in pending_invites %}
   <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--bd)">
-    <span>{{ inv.from_name }}</span>
+    <span>{{ inv.from_name }}{% if inv.topic %} <span class="muted" style="font-size:12px">想约你拍《{{ inv.topic }}》</span>{% endif %}</span>
     <div style="display:flex;gap:6px">
       <form method="post" action="{{ url_for('invite_respond') }}">
         <input type="hidden" name="invite_id" value="{{ inv.id }}">
@@ -29,17 +29,23 @@
   <h3 style="margin-bottom:4px">发起联合营业</h3>
   <p class="muted" style="margin-bottom:10px">消耗体力 15。对方是 NPC 会自动同意并立刻见效果;对方是真人玩家需要等待接受邀请。同公司协同效率更高,跨公司能互相导一点粉丝。</p>
   <table>
-    <tr><th>艺名</th><th></th><th></th></tr>
+    <tr><th>艺名</th><th>题材</th><th></th></tr>
     {% for c in candidates %}
     <tr>
       <td>{{ c.stage_name }}{% if c.is_npc %} <span class="badge badge-gold">NPC</span>{% endif %}</td>
-      <td></td>
       <td>
-        <form method="post">
+        <form method="post" style="display:flex;gap:6px;align-items:center">
           <input type="hidden" name="target_id" value="{{ c.id }}">
+          <select name="topic">
+            <option value="">随便录点什么</option>
+            {% for t in vlog_topics %}
+            <option value="{{ t }}">合拍vlog·{{ t }}</option>
+            {% endfor %}
+          </select>
           <button class="btn">发出合作邀约</button>
         </form>
       </td>
+      <td></td>
     </tr>
     {% endfor %}
   </table>

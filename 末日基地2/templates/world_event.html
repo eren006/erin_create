@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>{{ event.title }}</h1>
+<div class="card">
+  <p>{{ event.text }}</p>
+  <p class="muted">不同选择会参考你的力量、智慧或幸运。安全离开永远没有惩罚。</p>
+  {% for key, label in event.choices %}
+  <form method="post" action="{{ url_for('world_event_choose') }}">
+    <input type="hidden" name="choice" value="{{ key }}">
+    <button>{{ label }}</button>
+  </form>
+  {% endfor %}
+</div>
+{% endblock %}

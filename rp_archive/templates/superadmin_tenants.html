@@ -200,6 +200,7 @@ a:hover{color:var(--accent2);}
         <form method="post" action="{{ url_for('superadmin_enter_tenant', tid=t.id) }}">
           <button type="submit" class="btn-sm" style="background:#1a2d1a;color:#86efac;">👁 进入此租户</button>
         </form>
+        <a href="{{ url_for('superadmin_collected_images', tid=t.id) }}" class="btn-sm" style="background:#1a2d3a;color:#60c8ff;display:inline-block;text-decoration:none;">📷 图片管理</a>
         <button class="btn-sm" style="background:#2d1f4e;color:#c084fc;"
                 onclick="togglePwForm('pw-{{ t.id }}')">🔑 重置密码</button>
         <form method="post" action="{{ url_for('superadmin_tenant_reset_token', tid=t.id) }}"

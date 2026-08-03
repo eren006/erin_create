@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Pandas 练习{% endblock %}
+{% block content %}
+<div class="practice-layout">
+  <aside class="sidebar">
+    <div class="engine-line">引擎状态: <span id="engine-status">加载中(首次加载 Pyodide 较慢)…</span></div>
+    <ul id="question-list"></ul>
+  </aside>
+  <main class="main-panel">
+    <h2 id="q-title"></h2>
+    <p id="q-prompt"></p>
+    <p id="q-hint"></p>
+    <textarea id="code-input" spellcheck="false"></textarea>
+    <div class="btn-row">
+      <button id="run-btn">运行</button>
+      <button id="check-btn">检查答案</button>
+      <button id="solution-btn" class="secondary">显示参考答案</button>
+    </div>
+    <div id="feedback"></div>
+    <div id="result-area"></div>
+  </main>
+</div>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<script src="{{ url_for('static', filename='js/pandas_data.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pandas_questions.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pandas_practice.js') }}"></script>
+{% endblock %}

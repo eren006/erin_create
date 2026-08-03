@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="section-kicker">SURVIVOR JOURNAL / 幸存者日志</div>
+<h1>📖 第{{ survivor_day }}日生存记录</h1>
+<p class="muted">北辰主线、今日方向、个人线索和世界频道集中在这里。没有连续签到，未完成内容不会过期。</p>
+
+<h2>今日计划</h2>
+{% if daily_plan %}
+<div class="card journal-plan active-plan">
+  <div class="row"><strong>{{ daily_plans[daily_plan.plan_key].name }}</strong><span>今日已决定</span></div>
+  <p>{{ daily_plans[daily_plan.plan_key].desc }}</p>
+</div>
+{% else %}
+<p class="muted">选择的是奖励方向，不是强制任务；今天不选择也不会受到惩罚。</p>
+<div class="grid two">
+{% for key,plan in daily_plans.items() %}
+<form method="post" action="{{ url_for('daily_plan_choose') }}" class="card journal-plan">
+  <input type="hidden" name="plan_key" value="{{ key }}">
+  <strong>{{ plan.name }}</strong><p class="muted">{{ plan.desc }}</p><button>把今天定为这个方向</button>
+</form>
+{% endfor %}
+</div>
+{% endif %}
+
+<h2>今日建议</h2>
+<p class="muted">系统只从所有单人都能主动完成的行为中抽取三项；完成时奖励自动进入角色，不需要再次领取。</p>
+{% for goal in daily_goals %}
+<div class="card quest-card">
+  <div class="row"><strong>{{ goal.name }}</strong><span>{{ goal.progress }}/{{ goal.target }}{{ goal.unit }}{% if goal.claimed %} · 已结算 ✓{% endif %}</span></div>
+  <div class="bar signal"><div style="width:{{ (goal.progress * 100 / goal.target)|int }}%"></div></div>
+</div>
+{% endfor %}
+
+<div class="section-kicker">NORTHSTAR SIGNAL / 北辰档案</div>
+<h2>个人主线</h2>
+<p class="muted">八章按顺序解锁，最快第8天取得终局设计图；只有亲手组装出北辰归航信标才算通关，完成时间可以更久。</p>
+
+<div class="chapter-track">
+  {% for number, item in story_chapters.items() %}
+  <div class="chapter-dot {% if state.completed or number < state.chapter %}done{% elif number == state.chapter %}active{% endif %}">
+    <span>{{ number }}</span><small>{{ item.title.split('·')[-1] }}</small>
+  </div>
+  {% endfor %}
+</div>
+
+{% if state.completed %}
+<div class="hero-card complete">
+  <div class="section-kicker">SIGNAL RESTORED</div>
+  <h2>北辰归航信标已经启动</h2>
+  <p>八章经历与最终道具都已完成。你让废土上的回应重新连成了一张网，称号「北辰联络员」已永久记录在这个角色身上。</p>
+</div>
+{% else %}
+<div class="hero-card">
+  <div class="section-kicker">CHAPTER {{ state.chapter }} / 8 · 最早第{{ chapter.min_day }}天</div>
+  <h2>{{ chapter.title }}</h2>
+  <p>{{ chapter.story }}</p>
+  {% if not day_ready %}
+  <div class="card">
+    <strong>🔒 广播尚未抵达</strong>
+    <p class="muted">本章会在幸存第{{ chapter.min_day }}天开放。前一章已完成，但时间仍是主线的一部分。</p>
+  </div>
+  {% else %}
+  <div class="card">
+    <div class="row"><strong>本章选择</strong><span>会写入最终广播</span></div>
+    {% if chapter_choice %}
+      <p><strong>{{ chapter_choice.choice_label }}</strong></p>
+      <p class="muted">{{ chapter_choice.trace_text }}</p>
+    {% else %}
+      {% for key, label, trace in choice_options %}
+      <form method="post" action="{{ url_for('story_choice') }}">
+        <input type="hidden" name="choice" value="{{ key }}">
+        <button title="{{ trace }}">{{ label }}</button>
+      </form>
+      {% endfor %}
+      <p class="muted">选择只改变角色经历、称号语气和最终广播，不会让你无法通关。</p>
+    {% endif %}
+  </div>
+  <div class="card">
+    <div class="row"><strong>今日北辰个人行动</strong><span>每天1次</span></div>
+    {% if today_action %}
+      <p>{{ today_action.outcome_text }}</p>
+      <p class="muted">第{{ survivor_day }}天的线路校准已完成 ✓ 明天可以继续。</p>
+    {% else %}
+      <p class="muted">三种行动都会推进主线，只影响今天随机获得的小奖励。失败不会扣血或丢物资。</p>
+      {% for key, action in northstar_actions.items() %}
+      <form method="post" action="{{ url_for('story_daily_action') }}">
+        <input type="hidden" name="choice" value="{{ key }}">
+        <button>{{ action.name }}</button>
+      </form>
+      {% endfor %}
+    {% endif %}
+  </div>
+  {% endif %}
+  {% for req in requirements %}
+  <div class="quest-row">
+    <div class="row"><span>{{ req.label }}</span><span>{{ req.value }}/{{ req.target }}</span></div>
+    <div class="bar signal"><div style="width:{{ (req.value * 100 / req.target)|int }}%"></div></div>
+    {% if req.key == 'combat' and req.value < req.target and state.chapter >= 7 %}
+    <form method="post" action="{{ url_for('story_confront') }}">
+      <button>🧟 追踪北辰守门尸群</button>
+    </form>
+    <span class="muted">这是明确的主线战斗入口；可以撤退、整备后再来。</span>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% if state.chapter == 8 and final_blueprint_unlocked %}
+  <div class="card final-assembly">
+    <div class="section-kicker">FINAL OBJECTIVE / 最终道具</div>
+    <h2>{{ final_item_name }}</h2>
+    <p>八章只为你留下了设计图。收集材料并在个人房屋的基础工作台完成组装，信号真正发出时才算单人通关。</p>
+    {% for key, amount in final_cost.items() %}
+    {% set have = final_inventory.get(key, 0) %}
+    <div class="quest-row">
+      <div class="row"><span>{{ item_names[key] }}</span><span>{{ [have, amount]|min }}/{{ amount }}</span></div>
+      <div class="bar signal"><div style="width:{{ ([have, amount]|min * 100 / amount)|int }}%"></div></div>
+    </div>
+    {% endfor %}
+    <p class="muted">工作台：{{ "已就绪 ✓" if final_workbench_ready else "需要回到自己的房屋并建造基础工作台" }}</p>
+    <form method="post" action="{{ url_for('story_assemble_final') }}">
+      <button class="primary" {% if not final_workbench_ready %}disabled{% endif %}>组装并启动归航信标</button>
+    </form>
+  </div>
+  {% else %}
+  <form method="post" action="{{ url_for('story_advance') }}">
+    <button class="primary" {% if not ready %}disabled{% endif %}>{{ "完成终章，取得信标设计图" if state.chapter == 8 else "接收下一段广播" }}</button>
+  </form>
+  <span class="muted">每章奖励：钱包25＋经验20；终章奖励不是通关，最终信标才是。</span>
+  {% endif %}
+</div>
+{% endif %}
+
+<h2>个人线索</h2>
+<p class="muted">固定线索和经历自然生成的后续都集中在这里。没有期限，卡住的固定线索每天可换掉一条。</p>
+{% for quest in side_quests %}
+<div class="card quest-card">
+  <div class="row"><strong>{{ quest.info.name }}</strong><span>{{ quest.row.progress }}/{{ quest.row.target }}</span></div>
+  <p class="muted">{{ quest.info.desc }}</p>
+  <div class="bar hunger"><div style="width:{{ (quest.row.progress * 100 / quest.row.target)|int }}%"></div></div>
+  {% if quest.row.progress >= quest.row.target %}
+  <form method="post" action="{{ url_for('side_quest_claim', quest_id=quest.row.id) }}"><button>领取奖励</button></form>
+  {% else %}
+  <form method="post" action="{{ url_for('side_quest_reroll', quest_id=quest.row.id) }}"><button>换掉这条</button></form>
+  {% endif %}
+</div>
+{% endfor %}
+
+{% for q in dynamic_quests %}
+<div class="card quest-card dynamic-clue">
+  <div class="row"><strong>经历线索 · {{ q.title }}</strong><span>{{ q.progress }}/{{ q.target }}</span></div>
+  <p class="muted">{{ q.description }}</p>
+  <p class="muted">🎯 目标:{{ objective_label_for(q.objective_key, q.target) }}</p>
+  <div class="bar recreation"><div style="width:{{ (q.progress * 100 / q.target)|int }}%"></div></div>
+  {% if q.progress >= q.target %}
+  <form method="post" action="{{ url_for('dynamic_quest_claim', quest_id=q.id) }}"><button>完成这段经历</button></form>
+  {% endif %}
+</div>
+{% endfor %}
+
+<h2>世界频道</h2>
+<div class="card world-channel">
+  <div class="row"><strong>{{ world_goal_def.name }}</strong><span>{{ world_goal.progress }}/{{ world_goal.target }}</span></div>
+  <p>{{ world_goal_def.description }}</p>
+  <div class="bar signal"><div style="width:{{ (world_goal.progress * 100 / world_goal.target)|int }}%"></div></div>
+  <p class="muted">这是全服长期事件，不是个人北辰通关条件。<a href="{{ url_for('community') }}">打开完整世界频道 →</a></p>
+</div>
+
+{% if choice_history %}
+<h2>你留下的选择</h2>
+{% for choice in choice_history %}
+<div class="card"><strong>第{{ choice.chapter }}章 · {{ choice.choice_label }}</strong><p class="muted">{{ choice.trace_text }}</p></div>
+{% endfor %}
+{% endif %}
+
+<p><a href="{{ url_for('dashboard') }}">← 返回基地</a></p>
+{% endblock %}

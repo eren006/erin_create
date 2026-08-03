@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="combat-hero victory">
+  <div class="section-kicker">AFTERMATH · 现场处置</div>
+  <h1>你击败了{{ zinfo.name }}</h1>
+  <p>街区暂时安静下来，但尸体、声响和散落物资仍会改变这里之后发生的事。</p>
+</div>
+
+<div class="combat-action-grid aftermath-grid">
+  <form method="post">
+    <input type="hidden" name="choice" value="withdraw">
+    <button class="combat-action safe">
+      <strong>🚶 立即撤离</strong>
+      <span>没有额外收益，也没有额外风险。适合状态不佳时。</span>
+    </button>
+  </form>
+  <form method="post">
+    <input type="hidden" name="choice" value="search">
+    <button class="combat-action danger">
+      <strong>🎒 深度搜刮</strong>
+      <span>获得2–3批物资并增加噪声，有22%概率引来第二场遭遇。</span>
+    </button>
+  </form>
+  <form method="post">
+    <input type="hidden" name="choice" value="clean">
+    <button class="combat-action tactical">
+      <strong>🧹 清理痕迹</strong>
+      <span>降低区域噪声与威胁，并回收1枚弹壳。</span>
+    </button>
+  </form>
+</div>
+{% endblock %}

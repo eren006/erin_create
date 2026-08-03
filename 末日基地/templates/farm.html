@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}农田 - 末日基地{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>农田</h2>
+  <p class="muted">体力:{{ survivor.energy }}/{{ max_energy }} · 种植消耗体力,温室不受毒雾/辐射影响。想新建农田/温室请去<a href="{{ url_for('build_page') }}">建筑</a>页面。</p>
+</div>
+
+{% if not plots %}
+<div class="card muted">还没有任何农田,去建筑页面建一块吧。</div>
+{% endif %}
+
+{% for p in plots %}
+<div class="card">
+  <h3>#{{ p.slot_index }} {{ building_types[p.type].name }} Lv.{{ p.level }}
+    {% if building_types[p.type].get('protected') %}<span class="badge badge-green">防灾</span>{% endif %}
+  </h3>
+  <p class="muted">耐久 {{ p.hp }}/{{ p.max_hp }}</p>
+  {% if p.crop_type %}
+    {% if p.ready_ts <= now %}
+      <p style="margin:8px 0">{{ crops[p.crop_type].name }} 已经成熟了!</p>
+      <form method="post" action="{{ url_for('farm_harvest', slot_id=p.slot_index) }}">
+        <button class="btn btn-primary" type="submit">收获</button>
+      </form>
+    {% else %}
+      <p class="muted" style="margin:8px 0">{{ crops[p.crop_type].name }} 生长中,还需约 {{ ((p.ready_ts - now) / 60) | round(0, 'ceil') | int }} 分钟</p>
+    {% endif %}
+  {% else %}
+    <form method="post" action="{{ url_for('farm_plant', slot_id=p.slot_index) }}" style="margin-top:8px">
+      <select name="crop">
+        {% for key, c in available_crops.items() %}
+        <option value="{{ key }}">{{ c.name }}({{ resource_names[c.seed_key] }}{{ c.seed_cost }} · {{ c.grow_days }}天成熟 · 产{{ resource_names[c.output_key] }}{{ c.yield_food }})</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-primary" style="margin-top:8px" type="submit">播种</button>
+    </form>
+  {% endif %}
+</div>
+{% endfor %}
+
+<div class="card">
+  <h2>畜栏</h2>
+  <p class="muted">鸡/鸭周期短产量低,猪/牛/羊周期长产量高,喂养消耗干草(种干草专门喂动物,不占人吃的口粮),谁都能养,农夫专精有加成。想新建畜栏请去<a href="{{ url_for('build_page') }}">建筑</a>页面。</p>
+</div>
+
+{% if not barns %}
+<div class="card muted">还没有任何畜栏,去建筑页面建一座吧。</div>
+{% endif %}
+
+{% for b in barns %}
+<div class="card">
+  <h3>#{{ b.slot_index }} 畜栏 Lv.{{ b.level }}</h3>
+  <p class="muted">耐久 {{ b.hp }}/{{ b.max_hp }}</p>
+  {% if b.crop_type %}
+    {% if b.ready_ts <= now %}
+      <p style="margin:8px 0">{{ animals[b.crop_type].name }} 已经可以收获了!</p>
+      <form method="post" action="{{ url_for('farm_collect', slot_id=b.slot_index) }}">
+        <button class="btn btn-primary" type="submit">收获</button>
+      </form>
+    {% else %}
+      <p class="muted" style="margin:8px 0">{{ animals[b.crop_type].name }} 养殖中,还需约 {{ ((b.ready_ts - now) / 60) | round(0, 'ceil') | int }} 分钟</p>
+    {% endif %}
+  {% else %}
+    <form method="post" action="{{ url_for('farm_raise', slot_id=b.slot_index) }}" style="margin-top:8px">
+      <select name="animal">
+        {% for key, a in animals.items() %}
+        <option value="{{ key }}">{{ a.name }}(干草{{ a.feed_cost }} · {{ a.grow_days }}天 · 产{{ resource_names[a.output_key] }}{{ a.yield_food }})</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-primary" style="margin-top:8px" type="submit">开始养殖</button>
+    </form>
+  {% endif %}
+</div>
+{% endfor %}
+{% endblock %}

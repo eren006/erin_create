@@ -34,5 +34,51 @@
       "autoPort": true,
       "env": { "TICK_INTERVAL_SECONDS": "60" }
     }
+  ,{
+      "name": "modaya",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["末日基地/app.py"],
+      "port": 5008,
+      "env": { "PORT": "5008" }
+    }
+  ,{
+      "name": "iceland",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["iceland_trip/app.py"],
+      "port": 5050
+    }
+  ,{
+      "name": "modaya2",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["末日基地2/run.py"],
+      "port": 5011,
+      "env": { "PORT": "5011" }
+    }
+  ,{
+      "name": "interview_prep",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["interview_prep/app.py"],
+      "port": 5012
+    }
+  ,{
+      "name": "ashfall",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["ashfall_rpg/app.py"],
+      "port": 5061,
+      "env": { "PORT": "5061" }
+    }
+  ,{
+      "name": "portfolio",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "5062", "--directory", "portfolio"],
+      "port": 5062
+    }
+  ,{
+      "name": "aperture",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["aperture_dashboard/app.py"],
+      "port": 5063,
+      "env": { "PORT": "5063" }
+    }
   ]
 }

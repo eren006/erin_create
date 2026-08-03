@@ -1,6 +1,6 @@
 import os, time, math, threading, sqlite3, shutil
 from waitress import serve
-from app import app, init_db, DB_PATH, npc_auto_tick, run_sasaeng_checks, run_fan_letter_checks, run_fan_gift_checks
+from app import app, init_db, DB_PATH, npc_auto_tick, npc_settlement_tick, run_sasaeng_checks, run_fan_letter_checks, run_fan_gift_checks
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
@@ -78,6 +78,17 @@ def _tick_loop():
             pass
         time.sleep(TICK_INTERVAL)
 
+SETTLEMENT_INTERVAL = 20  # 剧组定角/杀青、代言签约/到期这类到点结算,不用等一整小时的大 tick
+
+def _settlement_loop():
+    while True:
+        time.sleep(SETTLEMENT_INTERVAL)
+        try:
+            with app.app_context():
+                npc_settlement_tick()
+        except Exception:
+            pass
+
 def _db_backup_loop():
     interval = 3600
     keep = 24
@@ -100,6 +111,9 @@ t.start()
 
 t2 = threading.Thread(target=_db_backup_loop, daemon=True)
 t2.start()
+
+t3 = threading.Thread(target=_settlement_loop, daemon=True)
+t3.start()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5007))

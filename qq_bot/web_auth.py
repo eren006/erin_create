@@ -24,6 +24,7 @@ PBKDF2_ROUNDS = 200_000
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS web_accounts (
     uid TEXT PRIMARY KEY,
+    player_uid TEXT NOT NULL DEFAULT '',
     password_hash TEXT NOT NULL DEFAULT '',
     salt TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'pending',
@@ -64,6 +65,19 @@ def init_db() -> None:
     conn = _connect()
     try:
         conn.executescript(SCHEMA)
+        try:
+            conn.execute("ALTER TABLE web_accounts ADD COLUMN player_uid TEXT NOT NULL DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
+        # 兼容旧版：过去登录QQ号同时也被当作角色UID使用。
+        conn.execute(
+            "UPDATE web_accounts SET player_uid = uid WHERE player_uid = '' "
+            "AND EXISTS (SELECT 1 FROM players WHERE players.uid = web_accounts.uid)"
+        )
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_web_accounts_player_uid "
+            "ON web_accounts(player_uid) WHERE player_uid != ''"
+        )
         conn.commit()
     finally:
         conn.close()
@@ -185,19 +199,37 @@ def enrolment_state(uid: str) -> dict:
         conn.close()
 
 
-def request_account(uid: str, note: str = "") -> dict:
-    uid = _normalise_uid(uid)
+def _normalise_binding_code(code: str) -> str:
+    code = (code or "").strip()
+    if len(code) != 6 or not code.isdigit():
+        raise AuthError("请输入群里「/网页绑定」生成的六位绑定码。")
+    return code
 
-    state = enrolment_state(uid)
-    if not state["has_player"]:
-        raise AuthError(
-            "这个QQ号还没有霍格沃茨学籍。先在群里发「/入学 你的名字」完成分院，再回来申请。"
-        )
-    if not state["has_wand"]:
-        raise AuthError("你的魔杖还在奥利凡德先生的柜台上。先在群里发「/入学」挑完魔杖，再回来申请。")
+
+def request_account(uid: str, binding_code: str, note: str = "") -> dict:
+    uid = _normalise_uid(uid)
+    binding_code = _normalise_binding_code(binding_code)
 
     conn = _connect()
     try:
+        conn.execute("BEGIN IMMEDIATE")
+        ts = now()
+        conn.execute("DELETE FROM web_binding_codes WHERE expires_at <= ?", (ts,))
+        binding = conn.execute(
+            "SELECT player_uid, login_uid FROM web_binding_codes WHERE code = ? AND expires_at > ?",
+            (binding_code, ts),
+        ).fetchone()
+        if not binding:
+            raise AuthError("绑定码无效或已经过期，请回群里重新发送「/网页绑定」。")
+        if binding["login_uid"] and binding["login_uid"] != uid:
+            raise AuthError("这个绑定码不是为当前QQ号生成的，请检查QQ号或重新生成绑定码。")
+        player_uid = binding["player_uid"]
+        state = enrolment_state(player_uid)
+        if not state["has_player"]:
+            raise AuthError("绑定的角色还没有完成分院。")
+        if not state["has_wand"]:
+            raise AuthError("绑定的角色还没有选完魔杖。")
+
         row = conn.execute("SELECT status FROM web_accounts WHERE uid = ?", (uid,)).fetchone()
         if row:
             if row["status"] == "approved":
@@ -206,14 +238,23 @@ def request_account(uid: str, note: str = "") -> dict:
                 raise AuthError("已经提交过申请了，等管理员批准。")
             if row["status"] == "rejected":
                 raise AuthError("这个QQ号的申请被拒绝过，请联系管理员。")
+        bound = conn.execute(
+            "SELECT uid FROM web_accounts WHERE player_uid = ?", (player_uid,)
+        ).fetchone()
+        if bound:
+            raise AuthError("这个霍格沃茨角色已经绑定过网页账号了，直接用原QQ号登录。")
         password_hash, salt = _make_password(DEFAULT_PASSWORD)
         conn.execute(
-            "INSERT INTO web_accounts (uid, password_hash, salt, status, note, created_at) "
-            "VALUES (?, ?, ?, 'pending', ?, ?)",
-            (uid, password_hash, salt, note.strip()[:100], now()),
+            "INSERT INTO web_accounts (uid, player_uid, password_hash, salt, status, note, created_at) "
+            "VALUES (?, ?, ?, ?, 'pending', ?, ?)",
+            (uid, player_uid, password_hash, salt, note.strip()[:100], ts),
         )
+        conn.execute("DELETE FROM web_binding_codes WHERE code = ?", (binding_code,))
         conn.commit()
         return {"uid": uid, "name": state["name"], "house": state["house"]}
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -378,7 +419,8 @@ def session_user(token: str) -> dict | None:
     conn = _connect()
     try:
         row = conn.execute(
-            "SELECT s.uid, a.is_admin, a.status, a.must_change_password FROM web_sessions s "
+            "SELECT s.uid, CASE WHEN a.player_uid != '' THEN a.player_uid ELSE a.uid END AS player_uid, "
+            "a.is_admin, a.status, a.must_change_password FROM web_sessions s "
             "JOIN web_accounts a ON a.uid = s.uid WHERE s.token = ? AND s.expires_at > ?",
             (token, now()),
         ).fetchone()

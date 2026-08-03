@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="hud">
+  <div class="hud-identity">
+    <span class="hud-name">{{ s.name }}</span>
+    <span class="hud-realm">{{ realm.name }} · {{ root.label }}</span>
+  </div>
+  <div class="hud-bars">
+    <div class="bar-row">
+      <span class="bar-label">HP</span>
+      <div class="bar bar-hp"><div class="bar-fill" style="width:{{ (s.hp / s.max_hp * 100) | round(1) }}%"></div></div>
+      <span class="bar-value">{{ s.hp }}/{{ s.max_hp }}</span>
+    </div>
+    <div class="bar-row">
+      <span class="bar-label">Qi</span>
+      <div class="bar bar-qi"><div class="bar-fill" style="width:{{ (s.qi / s.max_qi * 100) | round(1) }}%"></div></div>
+      <span class="bar-value">{{ s.qi }}/{{ s.max_qi }}</span>
+    </div>
+    <div class="bar-row">
+      <span class="bar-label">Insight</span>
+      <div class="bar bar-insight">
+        {% if realm.next_needed %}
+        <div class="bar-fill" style="width:{{ (s.insight / realm.next_needed * 100) | round(1) }}%"></div>
+        {% else %}
+        <div class="bar-fill" style="width:100%"></div>
+        {% endif %}
+      </div>
+      <span class="bar-value">{{ s.insight }}{% if realm.next_needed %}/{{ realm.next_needed }}{% else %}· MAX{% endif %}</span>
+    </div>
+  </div>
+</div>
+
+{% if s.victory %}
+<div class="scene ending">
+  <h1 class="scene-title">Ashfall Peak</h1>
+  <p class="scene-text">
+    The Ashbound Sentinel crumbles to cinder and wind. For the first time in a generation, the summit
+    of Ashfall Peak is quiet — not with the silence of something waiting, but the silence of something
+    finished. {{ s.name }} of the {{ root.label }} stands where no cultivator has stood in living memory.
+  </p>
+  <p class="scene-text scene-epilogue">— The End —</p>
+  <form method="post" action="{{ url_for('reset') }}">
+    <button type="submit" class="btn btn-primary">Play Again</button>
+  </form>
+</div>
+
+{% else %}
+<div class="scene">
+  <h1 class="scene-title">{{ location.title }}</h1>
+
+  {% if s.location_state == "intro" %}
+    <p class="scene-text">{{ location.intro }}</p>
+  {% elif s.location_state == "combat" %}
+    <p class="scene-text">You face the {{ enemy.name }}.</p>
+    <div class="enemy-panel">
+      <span class="enemy-name">{{ enemy.name }}</span>
+      <div class="bar bar-enemy"><div class="bar-fill" style="width:{{ (s.enemy_hp / s.enemy_max_hp * 100) | round(1) }}%"></div></div>
+      <span class="bar-value">{{ s.enemy_hp if s.enemy_hp > 0 else 0 }}/{{ s.enemy_max_hp }}</span>
+    </div>
+  {% elif s.location_state == "cleared" %}
+    <p class="scene-text">{{ location.clear_text }}</p>
+  {% endif %}
+
+  <div class="log">
+    {% for line in s.log %}
+    <p class="log-line">{{ line }}</p>
+    {% endfor %}
+  </div>
+
+  <div class="actions">
+    {% if s.location_state == "intro" %}
+      <form method="post" action="{{ url_for('action') }}">
+        <input type="hidden" name="act" value="engage">
+        <button type="submit" class="btn btn-primary">
+          {% if enemy %}Face the {{ enemy.name }}{% else %}Venture Forth{% endif %}
+        </button>
+      </form>
+      <form method="post" action="{{ url_for('action') }}">
+        <input type="hidden" name="act" value="meditate">
+        <button type="submit" class="btn">Meditate</button>
+      </form>
+      {% if can_breakthrough %}
+      <form method="post" action="{{ url_for('action') }}">
+        <input type="hidden" name="act" value="breakthrough">
+        <button type="submit" class="btn btn-breakthrough">Attempt Breakthrough</button>
+      </form>
+      {% endif %}
+
+    {% elif s.location_state == "combat" %}
+      <form method="post" action="{{ url_for('action') }}">
+        <input type="hidden" name="act" value="attack">
+        <button type="submit" class="btn btn-primary">Attack</button>
+      </form>
+      <form method="post" action="{{ url_for('action') }}">
+        <input type="hidden" name="act" value="skill">
+        <button type="submit" class="btn btn-skill">{{ root.skill_name }} ({{ root.skill_cost }} Qi)</button>
+      </form>
+      <form method="post" action="{{ url_for('action') }}">
+        <input type="hidden" name="act" value="defend">
+        <button type="submit" class="btn">Defend</button>
+      </form>
+
+    {% elif s.location_state == "cleared" %}
+      <form method="post" action="{{ url_for('action') }}">
+        <input type="hidden" name="act" value="advance">
+        <button type="submit" class="btn btn-primary">
+          {% if is_last_location %}Stand at the Summit{% else %}Journey Onward{% endif %}
+        </button>
+      </form>
+      <form method="post" action="{{ url_for('action') }}">
+        <input type="hidden" name="act" value="meditate">
+        <button type="submit" class="btn">Meditate</button>
+      </form>
+      {% if can_breakthrough %}
+      <form method="post" action="{{ url_for('action') }}">
+        <input type="hidden" name="act" value="breakthrough">
+        <button type="submit" class="btn btn-breakthrough">Attempt Breakthrough</button>
+      </form>
+      {% endif %}
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<form method="post" action="{{ url_for('reset') }}" class="abandon-form">
+  <button type="submit" class="btn-link">Abandon this run and start over</button>
+</form>
+
+{% endblock %}

@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>🌍 世界协作中心</h1>
+<p><a href="{{ url_for('dashboard') }}">← 返回</a></p>
+
+<h2>🤝 庇护所贡献</h2>
+{% if ch.shelter_id %}
+<p class="muted">当前贡献 {{ contribution_points }}。向共享仓库存物资、参加共同晚餐、救援和全服行动都会获得贡献。</p>
+{% for key, reward in shelter_rewards.items() %}
+<div class="card row">
+  <span>{{ reward.name }} <span class="muted">{{ reward.cost }}贡献{% if not reward.repeatable %} · 永久纪念{% endif %}</span></span>
+  {% if key in reward_unlocks and not reward.repeatable %}
+    <span class="muted">已拥有 ✓</span>
+  {% else %}
+    <form method="post" action="{{ url_for('shelter_reward_redeem', reward_key=key) }}"><button {% if contribution_points < reward.cost %}disabled{% endif %}>兑换</button></form>
+  {% endif %}
+</div>
+{% endfor %}
+{% else %}
+<p class="muted">加入庇护所后才能积累和使用贡献。</p>
+{% endif %}
+
+<h2>📻 三日无线电寻宝</h2>
+{% if radio_event %}
+<div class="card">
+  <div class="row"><span>个人路线</span><span>{{ radio_progress.position }}/{{ radio_board_length }}</span></div>
+  <div class="bar thirst"><div style="width:{{ (radio_progress.position*100/radio_board_length)|int }}%"></div></div>
+  <p class="muted">今日行动 {{ radio_progress.rolls_used }}/{{ radio_rolls_per_day }} · 剩余约{{ ((radio_event.ends_ts-now_ts)//60)+1 }}分钟。途中特殊格有小奖励，所有抵达终点者都有纪念奖杯。</p>
+  <form method="post" action="{{ url_for('radio_event_roll') }}"><button {% if radio_progress.finished or radio_progress.rolls_used >= radio_rolls_per_day %}disabled{% endif %}>接收信号并前进</button></form>
+</div>
+{% else %}
+<p class="muted">本轮寻宝已经结束，无线电台正在休整。</p>
+{% endif %}
+
+<h2>⚠️ 全服持续性灾害</h2>
+<div class="card">
+  <p><strong>{{ disaster.name }}</strong></p>
+  <div class="row"><span>剩余威胁</span><span>{{ disaster.hp }}/{{ disaster.max_hp }}</span></div>
+  <div class="bar hp"><div style="width:{{ (disaster.hp*100/disaster.max_hp)|int }}%"></div></div>
+  {% set used = disaster_progress.actions_used if disaster_progress else 0 %}
+  <p class="muted">今日参与 {{ used }}/{{ disaster_actions_per_day }}。所有路线都推进同一个目标，灾害失败也不会摧毁个人资产。</p>
+  {% if disaster.status == 'active' %}
+    <form method="post" action="{{ url_for('disaster_action') }}"><input type="hidden" name="kind" value="fight"><button {% if used>=disaster_actions_per_day %}disabled{% endif %}>⚔️ 正面战斗</button></form>
+    <form method="post" action="{{ url_for('disaster_action') }}"><input type="hidden" name="kind" value="supply"><button {% if used>=disaster_actions_per_day %}disabled{% endif %}>📦 运送弹药(2)</button></form>
+    <form method="post" action="{{ url_for('disaster_action') }}"><input type="hidden" name="kind" value="medical"><button {% if used>=disaster_actions_per_day %}disabled{% endif %}>🩹 救治伤员(药草2)</button></form>
+    <form method="post" action="{{ url_for('disaster_action') }}"><input type="hidden" name="kind" value="scout"><button {% if used>=disaster_actions_per_day %}disabled{% endif %}>🔭 侦查弱点</button></form>
+  {% else %}
+    <p>{{ '已经解决 ✓' if disaster.status=='defeated' else '本期已经结束' }}</p>
+  {% endif %}
+</div>
+
+<h2>🏆 本周共同目标</h2>
+<div class="card">
+  <p><strong>{{ goal_info.name }}</strong></p>
+  <p class="muted">{{ goal_info.description }}</p>
+  <div class="row"><span>全服进度</span><span>{{ goal.progress }}/{{ goal.target }}</span></div>
+  <div class="bar infection"><div style="width:{{ (goal.progress*100/goal.target)|int }}%"></div></div>
+  {% if goal.completed %}
+    <p>已完成 ✓ 所有当前幸存者获得15钱包货币。</p>
+  {% elif goal.resource_key %}
+    <form method="post" action="{{ url_for('world_goal_contribute') }}">
+      <input name="amount" type="number" min="1" max="50" value="1" style="width:70px">
+      <button>提交{{ item_names[goal.resource_key] }}</button>
+    </form>
+  {% else %}
+    <p class="muted">通过对应的钓鱼、战斗或地标探索自动推进。</p>
+  {% endif %}
+</div>
+
+<h2>📦 玩家委托板</h2>
+<div class="card">
+  <p><strong>发布求购物资</strong></p>
+  <form method="post" action="{{ url_for('commission_create') }}">
+    <select name="resource_key">
+      {% for key in commission_resources %}<option value="{{ key }}">{{ item_names[key] }}</option>{% endfor %}
+    </select>
+    <input name="amount" type="number" min="1" max="100" value="5" style="width:65px">
+    <input name="reward" type="number" min="1" max="1000" value="10" style="width:75px" title="钱包报酬">
+    <button>托管报酬并发布</button>
+  </form>
+  <p class="muted">报酬发布时由系统扣下，完成自动支付；取消会全额退回。</p>
+</div>
+{% for c in commissions %}
+<div class="card row">
+  <span><strong>{{ c.creator_name }}</strong> 求购 {{ item_names[c.resource_key] }} x{{ c.amount }}<br><span class="muted">报酬{{ c.reward }}钱包</span></span>
+  {% if c.creator_character_id == ch.id %}
+    <form method="post" action="{{ url_for('commission_cancel', commission_id=c.id) }}"><button>取消</button></form>
+  {% else %}
+    <form method="post" action="{{ url_for('commission_complete', commission_id=c.id) }}"><button>交付</button></form>
+  {% endif %}
+</div>
+{% else %}
+<p class="muted">目前没有未完成的委托。</p>
+{% endfor %}
+
+<h2>📰 世界新闻</h2>
+{% for n in news %}
+<div class="card"><strong>第{{ n.day_count }}天 · {{ n.title }}</strong><p>{{ n.content }}</p></div>
+{% else %}
+<p class="muted">世界还很安静，新的故事会从今天开始记录。</p>
+{% endfor %}
+{% endblock %}

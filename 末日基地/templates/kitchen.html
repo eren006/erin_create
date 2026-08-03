@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}厨房 - 末日基地{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>厨房</h2>
+  <p class="muted">体力:{{ survivor.energy }}/{{ max_energy }} · 熟食和佳肴比生鲜作物更能填饱肚子,吃到的人还能加士气、加健康。</p>
+  {% if not has_kitchen %}
+  <p style="margin-top:8px;color:var(--red)">基地还没有厨房,去<a href="{{ url_for('build_page') }}">建筑</a>页面建一座。</p>
+  {% endif %}
+</div>
+
+{% for key, r in recipes.items() %}
+<div class="card">
+  <h3>{{ r.name }}</h3>
+  <p class="muted">
+    消耗
+    {% if r.any_raw_cost %}任意生鲜作物共 {{ r.any_raw_cost }} 份{% else %}{% for k,v in r.specific_cost.items() %}{{ resource_names[k] }}{{ v }}{{ ' + ' if not loop.last }}{% endfor %}{% endif %},
+    做出约 {{ r.output_qty }} 份{{ resource_names[r.output_key] }},谁都能做{% if r.recommended %}({{ specializations[r.recommended].name }}专精有加成){% endif %}。
+  </p>
+  <form method="post" action="{{ url_for('kitchen_cook', recipe_key=key) }}" style="margin-top:8px">
+    <button class="btn btn-primary" type="submit">烹饪{{ r.name }}</button>
+  </form>
+</div>
+{% endfor %}
+
+<div class="card">
+  <h3>净化水</h3>
+  <p class="muted">消耗木材 {{ purify_input }}(烧火煮沸),净化出约 {{ purify_output }} 份净水,谁都能做,加工者专精有加成。</p>
+  <form method="post" action="{{ url_for('kitchen_purify') }}" style="margin-top:8px">
+    <button class="btn btn-primary" type="submit">净化水</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>开怀畅饮</h3>
+  <p class="muted">消耗酒 {{ celebrate_wine_cost }},立刻给基地士气 +{{ celebrate_morale_bonus }},自己也会开心一点(快乐值 +{{ celebrate_happiness_bonus }}),谁都能张罗。</p>
+  <form method="post" action="{{ url_for('kitchen_celebrate') }}" style="margin-top:8px">
+    <button class="btn btn-primary" type="submit">庆祝一下</button>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>遇到了一只{{ animal.name }}</h1>
+<p class="muted">它没有恶意,可以试着喂食驯服(每次消耗1份生鲜);驯养期间有小概率被吓跑,也可能被丧尸打断。</p>
+
+<div class="card">
+  <p>好感度 {{ ch.pending_tame_affinity }}/{{ threshold }}</p>
+  <div class="bar hp"><div style="width:{{ (ch.pending_tame_affinity / threshold * 100) | round(0,'floor') | int }}%"></div></div>
+</div>
+
+<form method="post" action="{{ url_for('action_tame_feed') }}"><button>喂1份生鲜(+{{ feed_gain }}好感度)</button></form>
+<form method="post" action="{{ url_for('action_tame_flee') }}"><button>放弃,直接走</button></form>
+{% endblock %}

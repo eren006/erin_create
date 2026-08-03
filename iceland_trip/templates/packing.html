@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}打包清单{% endblock %}
+{% block content %}
+<section class="day-header">
+  <h1>打包清单</h1>
+  <p class="sub">勾选会保存在本机浏览器里，随时可以重置</p>
+</section>
+
+{% for sec in sections %}
+<section class="block">
+  <h2>{{ sec.title }}</h2>
+  <ul class="checklist">
+    {% for item in sec.entries %}
+    <li>
+      <label>
+        <input type="checkbox" data-key="pack-{{ loop.index0 }}-{{ sec.title }}-{{ item }}">
+        <span>{{ item }}</span>
+      </label>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endfor %}
+
+<button id="resetPacking" class="reset-btn">重置全部勾选</button>
+
+<script>
+(function () {
+  var boxes = document.querySelectorAll('.checklist input[type=checkbox]');
+  boxes.forEach(function (box) {
+    var key = box.dataset.key;
+    box.checked = localStorage.getItem(key) === '1';
+    box.addEventListener('change', function () {
+      localStorage.setItem(key, box.checked ? '1' : '0');
+      box.closest('li').classList.toggle('checked', box.checked);
+    });
+    box.closest('li').classList.toggle('checked', box.checked);
+  });
+  document.getElementById('resetPacking').addEventListener('click', function () {
+    boxes.forEach(function (box) {
+      box.checked = false;
+      localStorage.setItem(box.dataset.key, '0');
+      box.closest('li').classList.remove('checked');
+    });
+  });
+})();
+</script>
+{% endblock %}

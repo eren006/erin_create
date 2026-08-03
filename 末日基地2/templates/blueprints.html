@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>图纸(二节:个人等级解锁)</h1>
+<p><a href="{{ url_for('dashboard') }}">← 返回</a></p>
+<p class="muted">当前等级 {{ ch.level }} · 可花费图纸点 {{ ch.blueprint_points }}</p>
+
+{% for key, bp in blueprints.items() %}
+<div class="card">
+  <p><strong>{{ bp.name }}</strong> <span class="muted">Lv{{ bp.level }}+ · {{ '个人房子基础工作台' if bp.workbench=='basic' else '庇护所高级工作台' }}</span></p>
+  <p class="muted">材料:{% for k,v in bp.cost.items() %}{{ item_names.get(k,k) }}{{ v }} {% endfor %}</p>
+  {% if key in unlocked %}
+    <p class="muted">已解锁,去主面板制作</p>
+  {% elif ch.level < bp.level %}
+    <p class="muted">等级不够</p>
+  {% else %}
+    <form method="post" action="{{ url_for('blueprint_unlock', key=key) }}"><button>花1点解锁</button></form>
+  {% endif %}
+</div>
+{% endfor %}
+{% endblock %}

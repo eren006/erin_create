@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Built with Claude Code — a portfolio</title>
+<meta name="description" content="A collection of full-stack web apps — games, planners, and tools — designed and shipped end-to-end using Claude Code.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔶</text></svg>">
+</head>
+<body>
+
+<header class="hero">
+  <p class="eyebrow">A portfolio of shipped projects</p>
+  <h1>Built with <span class="accent">Claude&nbsp;Code</span></h1>
+  <p class="hero-sub">
+    Full products, not demos: real databases, real users, real deployments.
+    Everything below was designed, coded, and shipped end-to-end in collaboration
+    with Claude Code — from first line to a live server.
+  </p>
+</header>
+
+<main>
+
+  <section class="flagship">
+    <div class="flagship-media" aria-hidden="true">
+      <div class="mockup mockup-ashfall">
+        <div class="mockup-bar"></div>
+        <div class="mockup-title">ASHFALL</div>
+        <div class="mockup-hp"><span></span></div>
+        <div class="mockup-hp mockup-qi"><span></span></div>
+        <div class="mockup-lines">
+          <div></div><div></div><div></div>
+        </div>
+        <div class="mockup-buttons">
+          <div class="mockup-btn primary">Attack</div>
+          <div class="mockup-btn">Cinder Strike</div>
+          <div class="mockup-btn">Defend</div>
+        </div>
+      </div>
+    </div>
+    <div class="flagship-body">
+      <p class="eyebrow">Flagship — a game</p>
+      <h2>Ashfall — a cultivation RPG</h2>
+      <p>
+        An original text-based RPG built from scratch: character creation with four elemental
+        paths, turn-based combat with per-path signature skills, a full cultivation/breakthrough
+        leveling system, and a complete story arc from village to summit — playable start to
+        finish in about ten minutes.
+      </p>
+      <ul class="tags">
+        <li>Flask</li><li>SQLite</li><li>Jinja2</li><li>Session-based persistence</li><li>Hand-written CSS</li>
+      </ul>
+      <a class="cta" href="http://120.26.120.128:5015/" target="_blank" rel="noopener">Play Ashfall →</a>
+    </div>
+  </section>
+
+  <section class="flagship flagship-reverse">
+    <div class="flagship-body">
+      <p class="eyebrow">Flagship — a data product</p>
+      <h2>Aperture — retail analytics dashboard</h2>
+      <p>
+        A live-queried BI dashboard, not a static chart dump: a synthetic year of retail order
+        data in SQLite, real SQL aggregation on every request, and hand-built SVG charts — line,
+        bar, stacked bar — with crosshair tooltips and date-range filters, no charting library.
+      </p>
+      <ul class="tags">
+        <li>Flask</li><li>SQLite</li><li>Real-time SQL aggregation</li><li>Hand-rolled SVG charts</li><li>No JS framework</li>
+      </ul>
+      <a class="cta" href="http://120.26.120.128:5016/" target="_blank" rel="noopener">Open Aperture →</a>
+    </div>
+    <div class="flagship-media" aria-hidden="true">
+      <div class="mockup mockup-aperture">
+        <div class="mockup-aperture-kpis">
+          <div class="mockup-kpi"><span class="k-label"></span><span class="k-value"></span></div>
+          <div class="mockup-kpi"><span class="k-label"></span><span class="k-value"></span></div>
+        </div>
+        <div class="mockup-aperture-chart">
+          <svg viewBox="0 0 200 60" preserveAspectRatio="none">
+            <polyline points="0,45 20,38 40,42 60,30 80,34 100,20 120,26 140,14 160,18 180,8 200,12" />
+          </svg>
+        </div>
+        <div class="mockup-aperture-bars">
+          <div style="height:70%"></div>
+          <div style="height:45%"></div>
+          <div style="height:85%"></div>
+          <div style="height:30%"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="secondary">
+    <div class="secondary-body">
+      <p class="eyebrow">Also live</p>
+      <h2>Iceland Trip Planner</h2>
+      <p>
+        A mobile-friendly day-by-day itinerary for a real six-day Iceland road trip: interactive
+        maps with turn-by-turn navigation links, a packing list that remembers what's checked,
+        booking countdowns, and a searchable attraction guide. No database — content-driven
+        entirely from Markdown.
+      </p>
+      <ul class="tags">
+        <li>Flask</li><li>Markdown</li><li>Leaflet / OpenStreetMap</li><li>localStorage</li>
+      </ul>
+      <a class="cta cta-outline" href="http://120.26.120.128:5010/" target="_blank" rel="noopener">View live →</a>
+      <p class="note">Content is in Chinese — it was built for a real trip, not translated for this page.</p>
+    </div>
+  </section>
+
+  <section class="grid-section">
+    <p class="eyebrow">More systems, kept offline</p>
+    <p class="grid-intro">
+      These run in production for real people, which means real accounts, real player data,
+      and in one case an admin panel — not something to leave open to public link-clicking.
+      Described here instead of linked.
+    </p>
+    <div class="project-grid">
+
+      <article class="card">
+        <h3>Showbiz Simulator</h3>
+        <p>A persistent multiplayer life-sim set in the entertainment industry: fame mechanics,
+        scripted storylines, an in-game economy, and an admin dashboard for running live
+        playtests with real testers.</p>
+        <ul class="tags small">
+          <li>Flask</li><li>SQLite</li><li>Background tick loop</li><li>Admin console</li>
+        </ul>
+        <span class="status">Private beta</span>
+      </article>
+
+      <article class="card">
+        <h3>Long Day System</h3>
+        <p>A personal daily-operations suite — reminders, gift tracking, relationship notes,
+        stats — built around a shared API and cache layer so a family of small satellite
+        tools all read and write consistent state.</p>
+        <ul class="tags small">
+          <li>Flask</li><li>Shared API layer</li><li>JSON-backed cache</li><li>Plugin architecture</li>
+        </ul>
+        <span class="status">Personal use</span>
+      </article>
+
+      <article class="card">
+        <h3>Doomsday Base</h3>
+        <p>A cooperative base-building survival game: a shared global resource pool, a running
+        day/night clock, and a multi-chapter story campaign that unlocks as the group
+        progresses together.</p>
+        <ul class="tags small">
+          <li>Flask</li><li>SQLite</li><li>Threaded simulation loops</li>
+        </ul>
+        <span class="status">Private beta</span>
+      </article>
+
+      <article class="card">
+        <h3>The original cultivation RPG</h3>
+        <p>Ashfall's English demo distills ideas from a much larger sister project: a
+        Chinese-language cultivation RPG with over 20,000 lines of game logic — sects,
+        auctions, a living NPC economy — running for real players since 2026.</p>
+        <ul class="tags small">
+          <li>Flask</li><li>SQLite</li><li>Waitress</li><li>Live player data</li>
+        </ul>
+        <span class="status">Chinese · real players</span>
+      </article>
+
+    </div>
+  </section>
+
+  <section class="footnote-section">
+    <p class="eyebrow">Also built</p>
+    <p>
+      A pair of QQ chat bots — a shared calendar and a tabletop dice roller — that reply
+      in character with daily fortunes and schedule lookups, running alongside the systems
+      above on the same server.
+    </p>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  Every project on this page was designed, built, debugged, and deployed through iterative
+  work with Claude Code — including this page.
+</footer>
+
+</body>
+</html>

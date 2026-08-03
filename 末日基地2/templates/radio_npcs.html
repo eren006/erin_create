@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="section-kicker">PRIVATE FREQUENCIES / 私人频率</div>
+<h1>📻 固定无线电联系人</h1>
+<p class="muted">幸存第{{ survivor_day }}天。每天只能选择一人联络；不联络不会掉信任，也不会错过剧情。</p>
+{% if contacted %}
+<div class="card"><strong>今日已联络 {{ npcs|selectattr('key','equalto',contacted.npc_key)|map(attribute='name')|first }}</strong><p>{{ contacted.line }}</p></div>
+{% endif %}
+{% for npc in npcs %}
+<div class="card">
+  <div class="row"><strong>{{ npc.call }} / {{ npc.name }}</strong><span>{{ npc.stage }} · 信任{{ npc.trust }}</span></div>
+  <p class="muted">{{ npc.aura }}{% if not npc.unlocked %} · 第{{ npc.unlock }}天出现{% endif %}</p>
+  {% if npc.relation and npc.relation.last_line %}<p>“{{ npc.relation.last_line }}”</p>{% endif %}
+  {% if npc.unlocked and not contacted %}
+  <form method="post" action="{{ url_for('radio_npc_contact', npc_key=npc.key) }}"><button>呼叫这个频率</button></form>
+  {% endif %}
+</div>
+{% endfor %}
+<p><a href="{{ url_for('dashboard') }}">← 返回基地</a></p>
+{% endblock %}

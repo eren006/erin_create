@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>庇护所公开报名(九.5)</h1>
+<p><a href="{{ url_for('dashboard') }}">← 返回</a></p>
+{% for s in shelters %}
+<div class="card">
+  <p><strong>{{ s.name }}</strong> Lv{{ s.tier }} · {{ s.member_count }}/{{ tiers[s.tier][0] }}人</p>
+  <p class="muted">位置 ({{ s.tile_x }}, {{ s.tile_y }})</p>
+  <a href="{{ url_for('shelter_showcase', sid=s.id) }}"><button>参观展示页</button></a>
+  {% if not ch.shelter_id %}
+  <form method="post" action="{{ url_for('shelter_join', sid=s.id) }}"><button>申请加入</button></form>
+  {% endif %}
+</div>
+{% else %}
+<p class="muted">目前还没有庇护所,先攒到{{ 5 }}级去建一个吧。</p>
+{% endfor %}
+{% endblock %}

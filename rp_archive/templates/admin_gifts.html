@@ -211,6 +211,22 @@
     </div>
   </div>
 
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">批量添加</span>
+    </div>
+    <div class="panel-body">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;line-height:1.7;">
+        每行一条，格式：<code style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-family:monospace;">[#编号 ]名称*内容</code>，不填编号则自动顺延。<br>
+        与机器人「上传礼品」指令格式一致，可直接互相复制粘贴。
+      </div>
+      <textarea id="batch-input" rows="6" placeholder="玫瑰花束*一束盛开的玫瑰&#10;#010 巧克力*一盒黑巧克力&#10;怀表*古旧的银色怀表" style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:8px 10px;font-size:13px;box-sizing:border-box;font-family:monospace;resize:vertical;"></textarea>
+      <div style="margin-top:10px;">
+        <button class="btn-add" onclick="batchAddGifts()">批量添加</button>
+      </div>
+    </div>
+  </div>
+
   <div style="display:flex;gap:10px;align-items:center;justify-content:flex-end;">
     <span id="save-status" style="font-size:12px;color:var(--muted);"></span>
     <button class="btn-save" id="btn-save" onclick="saveGifts()">保存到存档</button>
@@ -280,6 +296,43 @@ function addGift() {
   renderTable();
   refreshNextHint();
   document.getElementById('save-status').textContent = '（有未保存的更改）';
+}
+
+function batchAddGifts() {
+  const ta = document.getElementById('batch-input');
+  const lines = ta.value.split(/\r?\n/).map(l => l.trim()).filter(l => l);
+  if (!lines.length) { showToast('❌ 请先粘贴要批量添加的内容'); return; }
+
+  let ok = 0, skip = 0, err = 0;
+  const errLines = [];
+  for (const line of lines) {
+    let code = null;
+    let rest = line;
+    const codeM = rest.match(/^(#\d+)\s+(.+)$/);
+    if (codeM) { code = codeM[1]; rest = codeM[2]; }
+
+    const sepIdx = rest.indexOf('*');
+    if (sepIdx === -1) { err++; errLines.push(line); continue; }
+    const name = rest.slice(0, sepIdx).trim();
+    const content = rest.slice(sepIdx + 1).trim();
+    if (!name || !content) { err++; errLines.push(line); continue; }
+
+    if (!code) code = nextCode();
+    if (gifts[code]) { skip++; continue; }
+    gifts[code] = { name, content, usage_count: 0 };
+    ok++;
+  }
+
+  renderTable();
+  refreshNextHint();
+  if (ok > 0) {
+    ta.value = '';
+    document.getElementById('save-status').textContent = '（有未保存的更改）';
+  }
+  let msg = `✅ 成功 ${ok} 条`;
+  if (skip) msg += `，跳过重复 ${skip} 条`;
+  if (err) msg += `，格式错误 ${err} 条：${errLines.slice(0, 3).join('；')}${errLines.length > 3 ? '…' : ''}`;
+  showToast(msg);
 }
 
 function deleteGift(code) {

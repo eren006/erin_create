@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>数值统计(只读)</h1>
+<p><a href="{{ url_for('admin_home') }}">← 后台首页</a></p>
+<p class="muted">存活角色数 {{ n }}</p>
+
+<h2>等级/属性</h2>
+<div class="card">
+  <p>平均等级 {{ avg_level }}</p>
+  <p class="muted">平均属性 力量{{ stat_avgs.str }} 速度{{ stat_avgs.spd }} 智慧{{ stat_avgs.int }} 幸运{{ stat_avgs.luck }}</p>
+</div>
+
+<h2>感染度分布</h2>
+<table>
+  {% for bucket, c in infection_buckets.items() %}<tr><td>{{ bucket }}</td><td>{{ c }}</td></tr>{% endfor %}
+</table>
+
+<h2>钱包</h2>
+<p class="muted">平均钱包货币 {{ avg_wallet }}</p>
+
+<h2>重开/永久死亡</h2>
+<table>
+  {% for row in respawn_dist %}<tr><td>重开{{ row.respawn_count }}次</td><td>{{ row.c }}人</td></tr>{% endfor %}
+</table>
+<p class="muted">已永久死亡(用完{{ max_respawns }}次重开) {{ permadead_count }} 个账号</p>
+
+<h2>死因分布</h2>
+<table>
+  {% for row in death_causes %}<tr><td>{{ row.detail }}</td><td>{{ row.c }}</td></tr>{% else %}<tr><td class="muted">暂无死亡记录</td></tr>{% endfor %}
+</table>
+
+<h2>装备分布</h2>
+<table>
+  {% for row in equipped_weapons %}
+  <tr><td>{{ blueprints[row.equipped_weapon].name if row.equipped_weapon in blueprints else '徒手' }}</td><td>{{ row.c }}</td></tr>
+  {% endfor %}
+</table>
+
+<h2>行动次数统计</h2>
+<table>
+  {% for row in action_counts %}<tr><td>{{ row.action }}</td><td>{{ row.c }}</td></tr>{% endfor %}
+</table>
+{% endblock %}

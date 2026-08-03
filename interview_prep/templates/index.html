@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}面试复习站{% endblock %}
+{% block content %}
+<div class="home-wrap">
+  <h1>数据分析 / BI 面试复习</h1>
+  <p>真实可执行的 SQL 和 pandas 编程题,在浏览器里直接跑,自动判分。</p>
+  <div class="home-cards">
+    <a class="home-card" href="{{ url_for('learn_page') }}">
+      <h2>知识点</h2>
+      <p>16 篇专题讲义:JOIN、窗口函数、groupby 进阶、merge/reshape……带对比表和代码示例。</p>
+    </a>
+    <a class="home-card" href="{{ url_for('basics_page') }}">
+      <h2>基础知识自测</h2>
+      <p>28 道概念选择题,配合上面的讲义查漏补缺,做完给解析。</p>
+    </a>
+    <a class="home-card" href="{{ url_for('sql_page') }}">
+      <h2>SQL 练习</h2>
+      <p>14 道题:JOIN、GROUP BY、窗口函数、子查询、日期统计……</p>
+    </a>
+    <a class="home-card" href="{{ url_for('pandas_page') }}">
+      <h2>Pandas 练习</h2>
+      <p>12 道题:groupby、pivot_table、merge、apply、缺失值处理……</p>
+    </a>
+  </div>
+</div>
+{% endblock %}

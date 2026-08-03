@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}学堂 - 末日基地{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>学堂</h2>
+  <p class="muted">体力:{{ survivor.energy }}/{{ max_energy }} · 属性不是只能注册/重生时分配一次,自身某项属性够高就能编写对应教材(消耗{% for k,v in textbook_cost.items() %}{{ resource_names[k] }}{{ v }} {% endfor %}),谁都能学习教材换属性+1(封顶{{ stat_max }})。学者专精编写更省料。战斗/远征也有小概率直接涨力量或敏捷。</p>
+</div>
+
+{% for key, tb in textbooks.items() %}
+{% set stat = stats[key] %}
+<div class="card">
+  <h3>{{ tb.name }} · 你的{{ stat.name }} {{ survivor[key] }}/{{ stat_max }}</h3>
+  <p class="muted">编写门槛:{{ stat.name }} ≥ {{ tb.threshold }} · 库存 {{ resources.get(tb.resource_key, 0) }} 本 · {{ stat.desc }}</p>
+  <div style="display:flex;gap:8px;margin-top:8px">
+    <form method="post" action="{{ url_for('scholar_craft', stat_key=key) }}">
+      <button class="btn" type="submit" {{ 'disabled' if survivor[key] < tb.threshold }}>编写{{ tb.name }}</button>
+    </form>
+    <form method="post" action="{{ url_for('scholar_study', stat_key=key) }}">
+      <button class="btn btn-primary" type="submit" {{ 'disabled' if resources.get(tb.resource_key, 0) < 1 or survivor[key] >= stat_max }}>学习(消耗1本,{{ stat.name }}+1)</button>
+    </form>
+  </div>
+</div>
+{% endfor %}
+{% endblock %}

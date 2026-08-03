@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="family-hero heir-hero">
+  <div class="section-kicker">THE FIRE CONTINUES</div>
+  <h1>🕯️ 选择家族继承人</h1>
+  <p>上一代倒下了，但故事没有结束。选择一名仍然存活的孩子，接过房屋、自己的背包与北辰线路。</p>
+</div>
+{% for card in heirs %}
+{% set c = card.row %}
+<div class="card heir-card">
+  <div class="row"><strong>{{ c.name }}</strong><span>{{ card.age }}岁 · {{ card.stage }} · HP {{ c.hp }}/100</span></div>
+  <p>父辈：{{ c.parent_name }} · 力量{{ c.stat_str }} / 速度{{ c.stat_spd }} / 智慧{{ c.stat_int }} / 幸运{{ c.stat_luck }}</p>
+  <p class="muted">将继承：孩子自己的物资、25%父辈钱包、家族房屋、所属庇护所，以及已经完成的北辰章节与选择留痕。</p>
+  {% if card.inventory %}<p>{% for i in card.inventory %}{{ item_names.get(i.resource_key, i.resource_key) }}x{{ i.amount }}{% if not loop.last %}、{% endif %}{% endfor %}</p>{% endif %}
+  <form method="post" action="{{ url_for('heir_claim', child_id=c.id) }}" onsubmit="return confirm('确定由这个孩子接过故事吗？')"><button class="primary">由 {{ c.name }} 继续游戏</button></form>
+</div>
+{% endfor %}
+{% endblock %}

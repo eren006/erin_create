@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}关系 - 末日基地{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>关系</h2>
+  <p class="muted">好感度靠"互动"攒(每人每天只能和同一个人互动一次,有概率+好感度、有概率什么都没发生、有概率-好感度)。好感度到 {{ propose_threshold }} 能表白,对方接受后成为情侣;情侣可以花 {{ move_in_cost }} 点钱搬进双人间同居,给基地加一点被动士气。达到房间等级"套房"(Lv.{{ room_tier_max }})后可以花 {{ birth_rights_cost }} 点钱购买生育权,情侣双方都有生育权后可以花 {{ have_child_cost }} 点钱生一个孩子,拿到邀请码给新玩家去注册。</p>
+</div>
+
+{% if not others %}
+<div class="card"><p class="muted">基地里暂时没有其他在世的幸存者。</p></div>
+{% endif %}
+
+{% for s in others %}
+{% set rel = rels[s.id] %}
+{% set affinity = rel.affinity if rel else 0 %}
+<div class="card">
+  <h3 style="margin-bottom:8px">{{ s.name }}
+    <span class="badge badge-gold">{{ relationship_tier_name(affinity) }} · 好感度{{ affinity }}</span>
+    {% if rel and rel.is_couple %}<span class="badge badge-green">情侣{% if rel.shared_room %}·已同居{% endif %}</span>{% endif %}
+  </h3>
+
+  <form method="post" action="{{ url_for('relationship_interact', target_id=s.id) }}" style="display:inline">
+    <button class="btn btn-primary" type="submit">互动</button>
+  </form>
+
+  {% if rel and rel.proposed_by == s.id %}
+  <form method="post" action="{{ url_for('relationship_accept', target_id=s.id) }}" style="display:inline">
+    <button class="btn btn-primary" type="submit">接受表白</button>
+  </form>
+  <form method="post" action="{{ url_for('relationship_decline', target_id=s.id) }}" style="display:inline">
+    <button class="btn" type="submit">拒绝</button>
+  </form>
+  {% elif rel and rel.proposed_by == survivor.id %}
+  <span class="muted">已向对方表白,等待回应</span>
+  {% elif not (rel and rel.is_couple) %}
+  <form method="post" action="{{ url_for('relationship_propose', target_id=s.id) }}" style="display:inline">
+    <button class="btn" type="submit" {{ 'disabled' if affinity < propose_threshold }}>表白</button>
+  </form>
+  {% endif %}
+
+  {% if rel and rel.is_couple and not rel.shared_room %}
+  <form method="post" action="{{ url_for('relationship_move_in', partner_id=s.id) }}" style="display:inline">
+    <button class="btn" type="submit" {{ 'disabled' if survivor.wallet < move_in_cost }}>搬进双人间({{ move_in_cost }}钱)</button>
+  </form>
+  {% endif %}
+
+  {% if rel and rel.is_couple %}
+  <form method="post" action="{{ url_for('relationship_have_child', partner_id=s.id) }}" style="margin-top:8px">
+    <button class="btn" type="submit" {{ 'disabled' if not survivor.birth_rights or not s.birth_rights }}>生一个孩子({{ have_child_cost }}钱)</button>
+    {% if not survivor.birth_rights or not s.birth_rights %}<p class="muted" style="margin-top:4px">双方都要先买生育权(去房间页面,需要套房)</p>{% endif %}
+  </form>
+  <form method="post" action="{{ url_for('relationship_breakup', partner_id=s.id) }}" style="margin-top:8px" onsubmit="return confirm('确定要分手吗?好感度会掉{{ breakup_penalty }}点,双人间也会失去。');">
+    <button class="btn" type="submit" style="color:var(--red)">分手</button>
+  </form>
+  {% endif %}
+</div>
+{% endfor %}
+{% endblock %}

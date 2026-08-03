@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}科技树 - 末日基地{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>科技树</h2>
+  <p class="muted">当前研究点数:{{ research }} · 研究所每天产出研究点数,谁都能解锁,工程师专精和教育属性能打折,解锁后全基地永久生效。</p>
+</div>
+
+{% for key, tech in techs.items() %}
+<div class="card">
+  <h3>{{ tech.name }}
+    {% if unlocked[key] %}<span class="badge badge-green">已解锁</span>
+    {% elif not prereqs_met[key] %}<span class="badge badge-red">需要前置科技</span>{% endif %}
+  </h3>
+  <p class="muted">{{ tech.desc }}</p>
+  {% if tech.requires %}
+  <p class="muted" style="margin-top:4px">前置科技:{% for r in tech.requires %}{{ techs[r].name }}{{ '✓' if unlocked[r] else '✗' }}{{ ', ' if not loop.last }}{% endfor %}</p>
+  {% endif %}
+  {% if not unlocked[key] %}
+  <p class="muted" style="margin-top:6px">消耗:{% for k,v in tech.cost.items() %}{{ resource_names[k] }}{{ v }} {% endfor %}</p>
+  <form method="post" action="{{ url_for('tech_unlock', key=key) }}" style="margin-top:8px">
+    <button class="btn btn-primary" type="submit" {{ 'disabled' if not prereqs_met[key] }}>解锁</button>
+  </form>
+  {% endif %}
+</div>
+{% endfor %}
+{% endblock %}

@@ -233,14 +233,12 @@ IMMORTAL_SEAT_POOL = [
      "intro":"南海云涛滚滚而来，你与那片浩瀚碧波心意相通，威震四海之势油然而生。"},
     {"id":"aorun",       "name":"西海龙王",    "desc":"执掌西海惊涛，法力无边",
      "intro":"西海惊涛拍岸，法力自海心涌向你的四肢百骸，磅礴之势不可阻挡。"},
-    {"id":"aoshun",      "name":"北海龙王",    "desc":"执掌北海玄冰，寒威慑人",
-     "intro":"北海玄冰森然而立，寒威自你周身弥漫开来，令周遭生灵为之慑服。"},
-    {"id":"taibai",      "name":"太白金星",    "desc":"传令天使，通达三界，明察秋毫",
-     "intro":"一道白袍身影自云端飘然而至，手持拂尘，通传天听的威仪自你周身弥漫开来。"},
     {"id":"wenqu",       "name":"文曲星君",    "desc":"执掌文运，庇佑天下才俊",
      "intro":"文光贯宿，墨香满袖，天下才俊的文运气息尽数汇入你的周身。"},
     {"id":"wuqu",        "name":"武曲星君",    "desc":"执掌武运，庇佑天下勇者",
      "intro":"剑气纵横，星芒凛冽，天下勇者的武运气息尽数汇入你的周身。"},
+    {"id":"taibai",      "name":"太白金星",    "desc":"传令天使，通达三界，明察秋毫",
+     "intro":"一道白袍身影自云端飘然而至，手持拂尘，通传天听的威仪自你周身弥漫开来。"},
     {"id":"chijiao",     "name":"赤脚大仙",    "desc":"逍遥自在，云游三界，不拘礼法",
      "intro":"一双赤足踏云而行，逍遥自在之意油然而生，三界礼法皆不能拘束于你。"},
     {"id":"leigong",     "name":"雷公",        "desc":"执掌雷部，击恶扬善",
@@ -253,6 +251,8 @@ IMMORTAL_SEAT_POOL = [
      "intro":"甘霖自天而降，滋润四野，你抬手间便有云行雨施之能。"},
     {"id":"julingshen",  "name":"巨灵神",      "desc":"开山巨灵，力大无穷",
      "intro":"巨掌一劈，山岳为之震动，开山辟路的伟力自你臂膀间流转不息。"},
+     {"id":"aoshun",      "name":"北海龙王",    "desc":"执掌北海玄冰，寒威慑人",
+     "intro":"北海玄冰森然而立，寒威自你周身弥漫开来，令周遭生灵为之慑服。"},
 ]
 IMMORTAL_SEAT_MAP = {s['id']: s for s in IMMORTAL_SEAT_POOL}
 IMMORTAL_SEAT_BY_NAME = {s['name']: s for s in IMMORTAL_SEAT_POOL}
@@ -2434,7 +2434,7 @@ ENERGY_REGEN_PER_REALM = [
     # 真仙 (37)
     210,
 ]
-ENERGY_REGEN_GLOBAL_MULT = 4.4   # 灵力恢复速度全局加成
+ENERGY_REGEN_GLOBAL_MULT = 8.8   # 灵力恢复速度全局加成
 HP_REGEN_HOUR     = 10    # % of max HP / 小时
 MIN_FIGHT_HP_PCT    = 0.20  # 低于 20% 不能战斗
 CULTIVATE_COST      = 10

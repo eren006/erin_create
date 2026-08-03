@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="family-hero">
+  <div class="section-kicker">LINEAGE ARCHIVE</div>
+  <h1>📸 末日相册与家族树</h1>
+  <p>这里保存的不是排行榜，而是谁出生、谁远行、谁把一件旧物交给了下一代。</p>
+</div>
+
+<h2>🌳 家族树</h2>
+<div class="lineage">
+{% for g in generations %}
+  <div class="lineage-person {% if g.status == 'dead' %}lost{% endif %}">
+    <strong>{{ g.name }}</strong><small>第{{ loop.index }}代玩家 · {{ "存活" if g.status == "alive" else "已故" }}</small>
+  </div>
+  {% if not loop.last %}<div class="lineage-line">↓ 火种延续</div>{% endif %}
+{% endfor %}
+</div>
+{% for c in children %}
+<div class="card row"><span>🌱 {{ c.name }} <span class="muted">{{ c.parent_a_name }} × {{ c.parent_b_name }}</span></span><span>{{ "继承人" if c.status=="heir" else ("已故" if c.status=="dead" else "成长中") }}</span></div>
+{% endfor %}
+
+<h2>🏺 家族遗物</h2>
+<div class="grid two">
+{% for h in heirlooms %}
+<div class="card relic">
+  <strong>{{ h.custom_name }}</strong>
+  <p>{{ item_names.get(h.item_key,h.item_key) }} · 第{{ h.generation }}代 · 现持有人 {{ h.owner_name }}</p>
+  <p class="muted">共同经历：{{ h.battle_count }}场战斗 / {{ h.rescue_count }}次救援</p>
+  <p>{{ h.story_text }}</p>
+</div>
+{% else %}<div class="card"><p class="muted">还没有家族遗物。可以把戒指、雷达、宝石或珍贵医疗物资保存下来。</p></div>{% endfor %}
+</div>
+<form method="post" action="{{ url_for('heirloom_create') }}" class="card">
+  <strong>建立一件家族遗物</strong>
+  <input name="custom_name" maxlength="28" placeholder="例如：妈妈留下的白塔急救箱" required>
+  <select name="item_key">
+    {% if ch.equipped_weapon and ch.equipped_weapon != 'fist' %}<option value="{{ ch.equipped_weapon }}">当前武器：{{ item_names.get(ch.equipped_weapon,ch.equipped_weapon) }}</option>{% endif %}
+    {% if ch.equipped_armor %}<option value="{{ ch.equipped_armor }}">当前护甲：{{ item_names.get(ch.equipped_armor,ch.equipped_armor) }}</option>{% endif %}
+    {% for i in inventory %}<option value="{{ i.resource_key }}">{{ item_names.get(i.resource_key,i.resource_key) }} x{{ i.amount }}</option>{% endfor %}
+  </select>
+  <button>变成故事物品</button>
+</form>
+
+<h2>🤝 正式关系</h2>
+{% for r in relations %}
+<div class="card row"><span>{{ "🫂 挚友" if r.role=="best_friend" else "🕯️ 义亲" }} · {{ r.a_name }}与{{ r.b_name }}</span><span>{{ "已确认" if r.status=="accepted" else ("等待回应" if r.status=="pending" else "未成立") }}</span></div>
+{% else %}<p class="muted">羁绊达到30后，可以在家族页面发出挚友或义亲请求。</p>{% endfor %}
+
+{% for g in guardian_requests %}
+{% if g.status == 'pending' %}
+<div class="card"><p>{{ g.requester_name }}邀请你成为<strong>{{ g.child_name }}</strong>的监护人。</p>
+  <form method="post" action="{{ url_for('family_guardian_decide', child_id=g.child_id, decision='accept') }}"><button class="primary">接受</button></form>
+  <form method="post" action="{{ url_for('family_guardian_decide', child_id=g.child_id, decision='reject') }}"><button>拒绝</button></form>
+</div>
+{% endif %}
+{% endfor %}
+
+<h2>🖼️ 家族相册</h2>
+<div class="album-timeline">
+{% for e in album %}
+<article><time>{{ e.created_ts|int }}</time><div><strong>{{ e.title }}</strong><p>{{ e.story_text }}</p></div></article>
+{% else %}<p class="muted">相册还是空的。重要关系、成长选择、远征与继承会自动被记录。</p>{% endfor %}
+</div>
+{% endblock %}

@@ -93,7 +93,7 @@ ENGINE_ERRORS = (
 @app.before_request
 def _load_user():
     g.account = web_auth.session_user(session.get("token", ""))
-    g.uid = g.account["uid"] if g.account else None
+    g.uid = g.account["player_uid"] if g.account else None
     g.player = core_storage.get_player(g.uid) if g.uid else None
 
 
@@ -147,7 +147,9 @@ def register():
     if request.method == "POST":
         try:
             result = web_auth.request_account(
-                request.form.get("uid", ""), request.form.get("note", "")
+                request.form.get("uid", ""),
+                request.form.get("binding_code", ""),
+                request.form.get("note", ""),
             )
             flash(
                 f"申请已提交（{result['name']}，{result['house']}）。"
@@ -185,7 +187,7 @@ def password():
     if request.method == "POST":
         try:
             web_auth.change_password(
-                g.uid, request.form.get("old", ""), request.form.get("new", "")
+                g.account["uid"], request.form.get("old", ""), request.form.get("new", "")
             )
             flash("密码改好了。", "ok")
             return redirect(url_for("index"))
@@ -257,8 +259,9 @@ def admin():
 
     accounts = web_auth.list_accounts()
     for acc in accounts:
-        player = core_storage.get_player(acc["uid"])
-        acc["player_name"] = core_storage.get_full_name(acc["uid"]) if player and player["house"] else ""
+        player_uid = acc.get("player_uid") or acc["uid"]
+        player = core_storage.get_player(player_uid)
+        acc["player_name"] = core_storage.get_full_name(player_uid) if player and player["house"] else ""
         acc["house"] = player["house"] if player else ""
     return render_template(
         "web/admin.html",

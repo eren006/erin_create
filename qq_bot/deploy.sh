@@ -1,49 +1,132 @@
 #!/bin/bash
-# 推送 qq_bot 代码到服务器（不覆盖数据库、不覆盖 venv）
-# 用法: ./deploy.sh
-set -e
+# 增量推送 qq_bot 到 Windows 服务器，不覆盖 data/、venv/ 和服务器密钥。
+# 用法：./deploy.sh          只部署上次成功后发生变化的文件
+#       ./deploy.sh --full   强制全量部署
+#       ./deploy.sh --dry-run 仅显示将要部署的文件
+set -euo pipefail
 
 SERVER="yulequan-server"
 REMOTE_DIR="C:/Users/Administrator/qq_bot"
 REMOTE_WIN="C:\\Users\\Administrator\\qq_bot"
 LOCAL_DIR="$(cd "$(dirname "$0")" && pwd)"
+MANIFEST="$LOCAL_DIR/.deploy-manifest"
+MODE="${1:-}"
 
-echo ">>> 推送 qq_bot 到 $SERVER:$REMOTE_DIR"
+case "$MODE" in
+  ""|--full|--dry-run|--record-current) ;;
+  *) echo "用法：$0 [--full|--dry-run]" >&2; exit 2 ;;
+esac
 
-for f in bot.py \
-         newspaper_web.py newspaper_service.py \
-         web_app.py web_auth.py submissions.py \
-         requirements.txt .env .env.dev; do
-  scp -q "$LOCAL_DIR/$f" "$SERVER:$REMOTE_DIR/$f"
-done
-
-# 先在本地摊一份干净副本，把 __pycache__ 滤掉——
-# 服务器没有 rsync，而 .pyc 走 scp 单文件传输会拖慢好几分钟，
-# 何况残留的旧 .pyc 和新代码不匹配时还可能引出诡异问题。
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
-rsync -a --exclude='__pycache__' --exclude='*.pyc' \
-      "$LOCAL_DIR/plugins/" "$STAGE/plugins/"
-rsync -a --exclude='__pycache__' --exclude='*.pyc' \
-      "$LOCAL_DIR/templates/" "$STAGE/templates/"
-rsync -a --exclude='__pycache__' --exclude='*.pyc' \
-      "$LOCAL_DIR/static/" "$STAGE/static/"
+CURRENT="$STAGE/current.tsv"
+CHANGED="$STAGE/changed.txt"
+DELETED="$STAGE/deleted.txt"
 
-# 先删远端目录再整目录推送，否则 scp -r 会把新目录嵌套进旧目录里
-echo ">>> 重推 plugins/ templates/ static/（已排除 __pycache__）"
-ssh "$SERVER" "if exist $REMOTE_WIN\\plugins rmdir /S /Q $REMOTE_WIN\\plugins"
-ssh "$SERVER" "if exist $REMOTE_WIN\\templates rmdir /S /Q $REMOTE_WIN\\templates"
-ssh "$SERVER" "if exist $REMOTE_WIN\\static rmdir /S /Q $REMOTE_WIN\\static"
-scp -q -r "$STAGE/plugins/"   "$SERVER:$REMOTE_DIR/plugins/"
-scp -q -r "$STAGE/templates/" "$SERVER:$REMOTE_DIR/templates/"
-scp -q -r "$STAGE/static/"    "$SERVER:$REMOTE_DIR/static/"
+cd "$LOCAL_DIR"
 
-echo ">>> 安装依赖"
-ssh "$SERVER" "cd $REMOTE_WIN && python -m pip install -q -r requirements.txt"
+collect_files() {
+  for file in \
+    bot.py newspaper_web.py newspaper_service.py \
+    web_app.py web_auth.py submissions.py requirements.txt .env .env.dev; do
+    [ ! -f "$file" ] || printf '%s\n' "$file"
+  done
+  find plugins templates static -type f \
+    ! -path '*/__pycache__/*' ! -name '*.pyc' ! -name '.DS_Store' -print
+}
 
-echo ">>> 重启服务..."
-ssh "$SERVER" "nssm restart changriqqbot"
-ssh "$SERVER" "nssm restart hogwartsnews" || echo "（校报服务未安装，跳过）"
-ssh "$SERVER" "nssm restart hogwartsgame" || echo "（游戏网页服务未安装，跳过）"
+build_manifest() {
+  collect_files | LC_ALL=C sort | while IFS= read -r file; do
+    printf '%s\t%s\n' "$(shasum -a 256 "$file" | awk '{print $1}')" "$file"
+  done
+}
 
-echo ">>> 完成！"
+build_manifest > "$CURRENT"
+
+if [ "$MODE" = "--record-current" ]; then
+  cp "$CURRENT" "$MANIFEST"
+  echo ">>> 已把当前文件状态记为部署基线。"
+  exit 0
+fi
+
+if [ "$MODE" = "--full" ] || [ ! -f "$MANIFEST" ]; then
+  cut -f2- "$CURRENT" > "$CHANGED"
+  : > "$DELETED"
+  FULL_DEPLOY=1
+else
+  awk -F '\t' 'NR==FNR { old[$2]=$1; next }
+    !($2 in old) || old[$2] != $1 { print $2 }' "$MANIFEST" "$CURRENT" > "$CHANGED"
+  awk -F '\t' 'NR==FNR { current[$2]=1; next }
+    !($2 in current) { print $2 }' "$CURRENT" "$MANIFEST" > "$DELETED"
+  FULL_DEPLOY=0
+fi
+
+CHANGE_COUNT="$(awk 'END {print NR+0}' "$CHANGED")"
+DELETE_COUNT="$(awk 'END {print NR+0}' "$DELETED")"
+
+if [ "$CHANGE_COUNT" -eq 0 ] && [ "$DELETE_COUNT" -eq 0 ]; then
+  echo ">>> 没有文件变化，无需部署。"
+  exit 0
+fi
+
+echo ">>> 增量部署：上传 $CHANGE_COUNT 个文件，删除 $DELETE_COUNT 个远端旧文件"
+[ "$CHANGE_COUNT" -eq 0 ] || sed 's/^/  + /' "$CHANGED"
+[ "$DELETE_COUNT" -eq 0 ] || sed 's/^/  - /' "$DELETED"
+
+if [ "$MODE" = "--dry-run" ]; then
+  exit 0
+fi
+
+# 变化文件先摊进临时目录，再压成一个 ZIP；只建立一次 SCP 连接。
+PAYLOAD="$STAGE/payload"
+mkdir -p "$PAYLOAD"
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  mkdir -p "$PAYLOAD/$(dirname "$file")"
+  cp -p "$file" "$PAYLOAD/$file"
+done < "$CHANGED"
+cp "$DELETED" "$PAYLOAD/__deploy_delete__.txt"
+cp "$LOCAL_DIR/deploy_remote_apply.py" "$PAYLOAD/__deploy_remote_apply.py"
+
+BUNDLE="$STAGE/qq_bot_incremental.zip"
+(cd "$PAYLOAD" && zip -q -r "$BUNDLE" .)
+
+echo ">>> 上传压缩包（$(du -h "$BUNDLE" | awk '{print $1}')）"
+scp -q "$BUNDLE" "$SERVER:$REMOTE_DIR/__deploy_bundle.zip"
+
+echo ">>> 在服务器应用文件变化"
+ssh "$SERVER" "powershell -NoProfile -Command \"Expand-Archive -LiteralPath '$REMOTE_WIN\\__deploy_bundle.zip' -DestinationPath '$REMOTE_WIN' -Force\""
+ssh "$SERVER" "cd $REMOTE_WIN && python __deploy_remote_apply.py"
+ssh "$SERVER" "del /Q $REMOTE_WIN\\__deploy_bundle.zip $REMOTE_WIN\\__deploy_remote_apply.py"
+
+ALL_CHANGES="$STAGE/all_changes.txt"
+cat "$CHANGED" "$DELETED" > "$ALL_CHANGES"
+
+if [ "$FULL_DEPLOY" -eq 1 ] || grep -qx 'requirements.txt' "$ALL_CHANGES"; then
+  echo ">>> requirements.txt 有变化，安装依赖"
+  ssh "$SERVER" "cd $REMOTE_WIN && python -m pip install -q -r requirements.txt"
+fi
+
+BOT_CHANGED=0
+NEWS_CHANGED=0
+WEB_CHANGED=0
+grep -Eq '^(bot\.py|plugins/|\.env($|\.))' "$ALL_CHANGES" && BOT_CHANGED=1 || true
+grep -Eq '^(newspaper_(web|service)\.py|templates/newspaper|plugins/hp_|\.env($|\.))' "$ALL_CHANGES" && NEWS_CHANGED=1 || true
+grep -Eq '^(web_app\.py|web_auth\.py|submissions\.py|templates/web/|static/|plugins/hp_|\.env($|\.))' "$ALL_CHANGES" && WEB_CHANGED=1 || true
+
+restart_service() {
+  service="$1"
+  if ! ssh "$SERVER" "nssm restart $service"; then
+    echo ">>> $service 正在停止，等待后重新启动"
+    ssh "$SERVER" "powershell -NoProfile -Command \"Start-Sleep -Seconds 4\" & nssm start $service"
+  fi
+}
+
+echo ">>> 按需重启服务"
+[ "$BOT_CHANGED" -eq 0 ] || restart_service changriqqbot
+[ "$NEWS_CHANGED" -eq 0 ] || restart_service hogwartsnews
+[ "$WEB_CHANGED" -eq 0 ] || restart_service hogwartsgame
+
+# 只有全部上传、应用和重启成功后才更新基线；失败时下次仍会重试这些文件。
+cp "$CURRENT" "$MANIFEST"
+echo ">>> 部署完成。"

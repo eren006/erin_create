@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}建筑 - 末日基地{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>基地建筑</h2>
+  <p class="muted">体力:{{ survivor.energy }}/{{ max_energy }} · 围墙/瞭望塔/陷阱提供防御,农田/温室产食物,净水站产水,工坊产弹药,诊所可治疗,仓库提高物资上限,研究所产研究点数。没看到某个建筑?去<a href="{{ url_for('tech_page') }}">科技树</a>看看解锁条件。</p>
+  <p class="muted" style="margin-top:6px">图纸:{{ blueprint_count }} 张 · 谁都能画图纸、都能用图纸把建筑升到原本等级上限之上(+{{ blueprint_extra }} 级,工程师专精和智力有加成)</p>
+  <form method="post" action="{{ url_for('build_draft_blueprint') }}" style="margin-top:8px">
+    <button class="btn" type="submit">绘制图纸</button>
+  </form>
+  <p class="muted" style="margin-top:10px">棉花:{{ cotton_count }} 份 · 谁都能织布(消耗棉花 {{ weave_input }},织出约 {{ weave_output }} 份布,布是打造护甲的材料,工程师专精有加成)</p>
+  <form method="post" action="{{ url_for('build_weave_cloth') }}" style="margin-top:8px">
+    <button class="btn" type="submit">织布</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>做家具</h3>
+  <p class="muted">谁都能做,工程师专精有加成+材料折扣。做完先进自己背包,得去<a href="{{ url_for('market_page') }}">集市</a>上架,别人买了才归买家所有——不能自己做完直接装。废料只能靠采集/远征捡。</p>
+  <form method="post" action="" id="furniture-form" style="margin-top:8px;display:flex;gap:8px;align-items:center">
+    <select name="key" id="furniture-key" onchange="document.getElementById('furniture-form').action='/build/craft-furniture/'+this.value">
+      {% for key, f in furniture_types.items() %}
+      <option value="{{ key }}">{{ f.name }}({% for k,v in f.cost.items() %}{{ resource_names[k] }}{{ v }} {% endfor %}){% if f.effect != 'deco' %} · {{ '体力回复' if f.effect=='energy' else '士气' }}+{{ f.amount }}{% endif %}</option>
+      {% endfor %}
+    </select>
+    <button class="btn btn-primary" type="submit">打造</button>
+  </form>
+  <script>document.getElementById('furniture-form').action = '/build/craft-furniture/' + document.getElementById('furniture-key').value;</script>
+</div>
+
+{% for s in slots %}
+<div class="card">
+  {% if s.type == 'empty' %}
+    <h3>空地 #{{ s.slot_index }}</h3>
+    <form method="post" action="{{ url_for('build_new', slot_id=s.slot_index) }}" style="margin-top:8px">
+      <select name="type">
+        {% for key, bt in available_building_types.items() %}
+        <option value="{{ key }}">{{ bt.name }}(消耗 {% for k,v in bt.cost.items() %}{{ resource_names[k] }}{{ v }} {% endfor %})</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-primary" style="margin-top:8px" type="submit">建造</button>
+    </form>
+  {% else %}
+    {% set bt = building_types[s.type] %}
+    <h3>#{{ s.slot_index }} {{ bt.name }} Lv.{{ s.level }}/{{ bt.max_level }}{% if s.level >= bt.max_level %}(图纸可加到{{ bt.max_level + blueprint_extra }}){% endif %}</h3>
+    <p class="muted">耐久 {{ s.hp }}/{{ s.max_hp }}</p>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      {% if s.level < bt.max_level + blueprint_extra %}
+      <form method="post" action="{{ url_for('build_upgrade', slot_id=s.slot_index) }}">
+        <button class="btn btn-primary" type="submit">{{ '升级' if s.level < bt.max_level else '升级(需要图纸)' }}</button>
+      </form>
+      {% endif %}
+      {% if s.hp < s.max_hp %}
+      <form method="post" action="{{ url_for('build_repair', slot_id=s.slot_index) }}">
+        <button class="btn" type="submit">维修</button>
+      </form>
+      {% endif %}
+      <form method="post" action="{{ url_for('build_demolish', slot_id=s.slot_index) }}" onsubmit="return confirm('确定要拆除这座{{ bt.name }}吗?只会返还部分资源。');">
+        <button class="btn" style="color:var(--red)" type="submit">拆除</button>
+      </form>
+    </div>
+  {% endif %}
+</div>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}后台 - 末日基地{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>第 {{ base.day_count }} 天 · {{ base.season }} · 士气 {{ base.morale }}</h2>
+  <form method="post" action="{{ url_for('admin_tick') }}" style="margin-top:8px;display:inline">
+    <button class="btn btn-primary" type="submit">手动推进一天</button>
+  </form>
+  <a href="{{ url_for('admin_stats') }}" class="btn" style="margin-top:8px">内测统计 →</a>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">物资(上限 {{ cap }})</h3>
+  <table>
+    <tr><th>资源</th><th>数量</th><th></th></tr>
+    {% for key, name in resource_names.items() %}
+    <tr>
+      <td>{{ name }}</td>
+      <td>{{ resources.get(key, 0) }}</td>
+      <td>
+        <form method="post" action="{{ url_for('admin_set_resource') }}" style="display:flex;gap:6px">
+          <input type="hidden" name="key" value="{{ key }}">
+          <input type="number" name="amount" value="{{ resources.get(key, 0) }}" style="width:100px">
+          <button class="btn" type="submit">设置</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">幸存者({{ survivors|length }})</h3>
+  <table>
+    <tr><th>姓名</th><th>专精</th><th>健康</th><th>体力</th><th>状态</th><th>贡献值</th><th>钱包</th><th>武器</th></tr>
+    {% for s in survivors %}
+    <tr>
+      <td>{{ s.name }}</td>
+      <td>{{ s.specialization }}</td>
+      <td>{{ s.health }}</td>
+      <td>{{ s.energy }}</td>
+      <td>{{ s.status }}</td>
+      <td>{{ s.contribution }}</td>
+      <td>{{ s.wallet }}</td>
+      <td>{% if s.weapon_level > 0 %}{{ s.weapon_type }} Lv{{ s.weapon_level }}({{ s.weapon_durability }}/{{ s.weapon_max_durability }}){% else %}-{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">建筑</h3>
+  <table>
+    <tr><th>位置</th><th>类型</th><th>等级</th><th>耐久</th></tr>
+    {% for b in buildings %}
+    <tr>
+      <td>#{{ b.slot_index }}</td>
+      <td>{{ building_types[b.type].name }}</td>
+      <td>{{ b.level }}</td>
+      <td>{{ b.hp }}/{{ b.max_hp }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">最近事件</h3>
+  {% for e in events %}
+  <p style="margin-bottom:6px"><span class="muted">第{{ e.day_count }}天</span> {{ e.detail }}</p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">集市挂牌({{ market_listings|length }})</h3>
+  {% if not market_listings %}<p class="muted">目前没有在售的东西。</p>{% endif %}
+  {% for l in market_listings %}
+  <p style="margin-bottom:4px">{{ item_display_name(l.item_type, l.item_key) }} · {{ l.price }}钱 · 卖家:{{ names.get(l.seller_id, '?') }}</p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">好感度关系({{ relationships|length }})</h3>
+  {% if not relationships %}<p class="muted">还没有人互动出好感度。</p>{% endif %}
+  <table>
+    <tr><th>甲</th><th>乙</th><th>好感度</th><th>档位</th><th>情侣</th><th>同居</th></tr>
+    {% for r in relationships %}
+    <tr>
+      <td>{{ names.get(r.a_id, '?') }}</td>
+      <td>{{ names.get(r.b_id, '?') }}</td>
+      <td>{{ r.affinity }}</td>
+      <td>{{ relationship_tier_name(r.affinity) }}</td>
+      <td>{{ '是' if r.is_couple else '-' }}</td>
+      <td>{{ '是' if r.shared_room else '-' }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">信箱流量(共 {{ mail_stats.total }} 封,已领取 {{ mail_stats.claimed }} 封)</h3>
+  {% if not recent_mail %}<p class="muted">还没有人寄过信。</p>{% endif %}
+  {% for m in recent_mail %}
+  <p style="margin-bottom:4px">{{ names.get(m.from_id, '?') }} → {{ names.get(m.to_id, '?') }}
+    {% if m.wallet_amount %}· 钱{{ m.wallet_amount }}{% endif %}
+    {% if m.weapon_level %}· 武器{% endif %}{% if m.gear_level %}· 护甲{% endif %}
+    · {{ '已领取' if m.claimed else '未领取' }}</p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px;color:var(--red)">重置游戏(危险操作)</h3>
+  <p class="muted">会清空所有账号/幸存者/建筑/物资/记录,回到第1天。输入"重置"两个字确认。</p>
+  <form method="post" action="{{ url_for('admin_reset') }}" style="margin-top:8px;display:flex;gap:8px">
+    <input name="confirm" placeholder="输入 重置 确认">
+    <button class="btn" style="border-color:var(--red);color:var(--red)" type="submit">确认重置</button>
+  </form>
+</div>
+{% endblock %}

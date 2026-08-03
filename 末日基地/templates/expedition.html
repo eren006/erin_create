@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}探索 - 末日基地{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>{{ map_info.name if map_info else '???' }}</h2>
+  {% if exp.status == 'exploring' %}
+  {% if next_map_name %}
+  <p class="muted">探索进度 {{ map_state.progress if map_state else 0 }}/{{ next_map_required }}(通向{{ next_map_name }}) · 队伍正在寻找下一个目标</p>
+  {% else %}
+  <p class="muted">已经是目前最靠里的地图了 · 队伍正在寻找下一个目标</p>
+  {% endif %}
+  {% elif exp.status == 'active' %}
+  <p class="muted">遭遇了{{ monster.name }} · 第 {{ exp.round_number }} 回合</p>
+  <div>怪物血量 {{ exp.monster_hp }}/{{ exp.monster_max_hp }}
+    <div class="bar"><div class="bar-fill" style="width:{{ (exp.monster_hp / exp.monster_max_hp * 100) if exp.monster_max_hp else 0 }}%;background:var(--red)"></div></div>
+  </div>
+  {% elif exp.status == 'lost' %}
+  <p style="color:var(--red)">失败了,两人被迫撤退。</p>
+  {% elif exp.status == 'fled' %}
+  <p class="muted">已经撤退,放弃了这次探索。</p>
+  {% elif exp.status == 'returned' %}
+  <p style="color:var(--green)">已经收队回到基地,这趟探索的收获都进了基地仓库。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">队伍</h3>
+  <div style="display:flex;gap:16px">
+    <div style="flex:1">
+      <p>{{ member_a.name }}{% if is_a %}(我){% endif %}(队长)</p>
+      <p class="muted">健康 {{ member_a.health }}/100 · {{ {'normal':'正常','injured':'受伤','critical':'重伤','dead':'已死亡'}.get(member_a.status, member_a.status) }}{% if member_a.infected %} · 感染中{% endif %}</p>
+      {% if exp.status == 'active' %}<p class="muted">{{ '已行动' if exp.action_a else '还没行动' }}</p>{% endif %}
+    </div>
+    <div style="flex:1">
+      <p>{{ member_b.name }}{% if not is_a %}(我){% endif %}</p>
+      <p class="muted">健康 {{ member_b.health }}/100 · {{ {'normal':'正常','injured':'受伤','critical':'重伤','dead':'已死亡'}.get(member_b.status, member_b.status) }}{% if member_b.infected %} · 感染中{% endif %}</p>
+      {% if exp.status == 'active' %}<p class="muted">{{ '已行动' if exp.action_b else '还没行动' }}</p>{% endif %}
+    </div>
+  </div>
+</div>
+
+{% if exp.status == 'exploring' %}
+<div class="card">
+  <h3 style="margin-bottom:8px">下一步</h3>
+  {% if is_a %}
+  <div style="display:flex;gap:8px">
+    <form method="post" action="{{ url_for('expedition_explore', expedition_id=exp.id) }}">
+      <button class="btn btn-primary" type="submit">继续探索</button>
+    </form>
+    <form method="post" action="{{ url_for('expedition_return', expedition_id=exp.id) }}" onsubmit="return confirm('确定要收队回基地吗?这趟探索会直接结束。');">
+      <button class="btn" type="submit">返回基地</button>
+    </form>
+  </div>
+  {% else %}
+  <p class="muted">等待队长决定要继续探索还是收队。</p>
+  <form method="post" action="{{ url_for('expedition_return', expedition_id=exp.id) }}" onsubmit="return confirm('确定要收队回基地吗?这趟探索会直接结束。');">
+    <button class="btn" type="submit">返回基地</button>
+  </form>
+  {% endif %}
+</div>
+{% elif exp.status == 'active' %}
+<div class="card">
+  <h3 style="margin-bottom:8px">你的行动</h3>
+  {% if my_action %}
+  <p class="muted">你已经交了这回合的动作({{ {'attack':'攻击','defend':'防御','flee':'撤退'}.get(my_action, my_action) }}),等队友交了就会结算。可以刷新页面看看有没有更新。</p>
+  {% else %}
+  <div style="display:flex;gap:8px">
+    <form method="post" action="{{ url_for('expedition_action', expedition_id=exp.id) }}">
+      <input type="hidden" name="action" value="attack">
+      <button class="btn btn-primary" type="submit">攻击</button>
+    </form>
+    <form method="post" action="{{ url_for('expedition_action', expedition_id=exp.id) }}">
+      <input type="hidden" name="action" value="defend">
+      <button class="btn" type="submit">防御</button>
+    </form>
+    <form method="post" action="{{ url_for('expedition_action', expedition_id=exp.id) }}" onsubmit="return confirm('确定要撤退吗?这次探索会直接结束。');">
+      <input type="hidden" name="action" value="flee">
+      <button class="btn" style="color:var(--red)" type="submit">撤退</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+{% else %}
+<div class="card">
+  <a href="{{ url_for('field_page') }}" class="btn btn-primary">返回外勤</a>
+</div>
+{% endif %}
+
+<div class="card">
+  <h3 style="margin-bottom:8px">战斗记录</h3>
+  {% for l in logs|reverse %}
+  <p class="muted" style="margin-bottom:4px">第{{ l.round_number }}回合 · {{ l.text }}</p>
+  {% endfor %}
+</div>
+{% endblock %}

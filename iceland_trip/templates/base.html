@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#124a5f">
+<title>{% block title %}冰岛行程单{% endblock %} · 2026 冰岛环岛</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+{% block extra_head %}{% endblock %}
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="{{ url_for('index') }}">🧊 冰岛行程单</a>
+  <button class="nav-toggle" id="navToggle" aria-label="菜单">☰</button>
+  <nav class="topnav" id="topnav">
+    <a href="{{ url_for('index') }}">总览</a>
+    {% for d in [1,2,3,4,5,6] %}<a href="{{ url_for('day', num=d) }}">D{{ d }}</a>{% endfor %}
+    <a href="{{ url_for('attractions') }}">景点</a>
+    <a href="{{ url_for('fuel') }}">加油</a>
+    <a href="{{ url_for('packing') }}">打包</a>
+    <a href="{{ url_for('guide') }}">须知</a>
+    <a href="{{ url_for('resources') }}">晨检/链接</a>
+  </nav>
+</header>
+<main class="page">
+{% block content %}{% endblock %}
+</main>
+<footer class="footer">7月17日—22日 · 冰岛环岛自驾 · 保持行程弹性，安全第一</footer>
+<script>
+document.getElementById('navToggle').addEventListener('click', function () {
+  document.getElementById('topnav').classList.toggle('open');
+});
+document.querySelectorAll('#topnav a').forEach(function (a) {
+  a.addEventListener('click', function () {
+    document.getElementById('topnav').classList.remove('open');
+  });
+});
+
+// 给内容区的 h3 小标题按关键词分类打标签，方便快速扫读
+(function () {
+  var rules = [
+    [/景点介绍/, 'sight', '📍'],
+    [/推荐游览顺序|推荐走法|建议体验顺序|推荐短停/, 'order', '🧭'],
+    [/到现场|关注点|关注什么|路上关注|沿途关注|驾驶关注|船上重点/, 'focus', '👀'],
+    [/拍照/, 'photo', '📷'],
+    [/安全|严禁/, 'safety', '⚠️'],
+    [/不安排|不去|取消/, 'skip', '🚫'],
+    [/加油/, 'fuel', '⛽'],
+    [/穿着|全天|温泉包|车内备用|驾车|DILL 晚餐/, 'wear', '👕'],
+    [/Tips|须知|原则|判断/, 'tips', '💡'],
+  ];
+  document.querySelectorAll('.content h3').forEach(function (h) {
+    var text = h.textContent;
+    for (var i = 0; i < rules.length; i++) {
+      if (rules[i][0].test(text)) {
+        h.classList.add('tag-' + rules[i][1]);
+        h.dataset.emoji = rules[i][2];
+        break;
+      }
+    }
+  });
+})();
+</script>
+</body>
+</html>

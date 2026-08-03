@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>📬 邮箱</h1>
+<p><a href="{{ url_for('dashboard') }}">← 返回</a></p>
+<p class="muted">邮箱只能传文字消息,不能夹带任何物资或货币——想交换东西,还是要面对面交易或走补给藏点。</p>
+
+<h2>✏️ 写信</h2>
+<form method="post" action="{{ url_for('mail_send') }}">
+  <select name="to_character_id" required>
+    <option value="">选择收件人</option>
+    {% for p in players %}
+    <option value="{{ p.id }}">{{ display_name(p) }}</option>
+    {% endfor %}
+  </select><br>
+  <input name="subject" placeholder="主题(选填)" maxlength="{{ subject_max }}" style="width:60%"><br>
+  <textarea name="body" placeholder="信件内容" maxlength="{{ body_max }}" rows="3" style="width:80%"></textarea><br>
+  <button class="primary">寄出</button>
+</form>
+
+<h2>📥 收件箱</h2>
+{% if not inbox %}
+<div class="card"><p class="muted">还没有收到过信。</p></div>
+{% endif %}
+{% for m in inbox %}
+<div class="card">
+  <div class="row"><strong>{{ m.subject if m.subject else "(无主题)" }}</strong><span class="muted">{{ m.from_name }}</span></div>
+  <p>{{ m.body }}</p>
+  {% if m.action_type == 'claim_dynamic_quest' and m.action_ref %}
+  <form method="post" action="{{ url_for('dynamic_quest_claim', quest_id=m.action_ref) }}"><button>领取奖励</button></form>
+  {% endif %}
+</div>
+{% endfor %}
+
+<h2>📤 已发送</h2>
+{% if not sent %}
+<div class="card"><p class="muted">还没有发过信。</p></div>
+{% endif %}
+{% for m in sent %}
+<div class="card">
+  <div class="row"><strong>{{ m.subject if m.subject else "(无主题)" }}</strong><span class="muted">寄给{{ m.to_name }}</span></div>
+  <p>{{ m.body }}</p>
+</div>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}重生 - 末日基地{% endblock %}
+{% block content %}
+{% if out_of_lives %}
+<div class="card">
+  <h2 style="margin-bottom:12px;color:var(--red)">{{ survivor.name }} 已经彻底倒下了</h2>
+  <p class="muted">重生机会({{ max_respawns }} 次)已经用完,这个账号没法再操作幸存者了。感谢陪基地走过这么久。</p>
+</div>
+{% else %}
+<div class="card">
+  <h2 style="margin-bottom:8px;color:var(--red)">{{ survivor.name }} 倒下了</h2>
+  <p class="muted">还剩 {{ max_respawns - survivor.respawn_count }} 次重生机会(用掉这次还剩 {{ max_respawns - survivor.respawn_count - 1 }} 次)。重生会清空贡献值/钱包/装备/等级,重新选专精和分配属性,姓名和账号不变。</p>
+</div>
+<div class="card">
+  <form method="post">
+    <label>专精(每种专精在对应行动上有加成,谁都能做所有事)</label>
+    <select name="specialization" required>
+      <option value="">请选择</option>
+      {% for key, spec in specializations.items() %}
+      <option value="{{ key }}">{{ spec.name }} · {{ spec.desc }}</option>
+      {% endfor %}
+    </select>
+
+    <label style="margin-top:16px">属性(每项保底 {{ stat_base }} 点,再自由分配 {{ stat_free_points }} 点 · 剩余 <span id="stat-remaining">{{ stat_free_points }}</span> 点)</label>
+    {% for key, stat in stats.items() %}
+    <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+      <span style="flex:0 0 90px;font-size:13px">{{ stat.name }}</span>
+      <input type="number" class="stat-input" name="{{ key }}" value="0" min="0" max="{{ stat_free_points }}" style="width:80px">
+      <span class="muted" style="font-size:12px">{{ stat.desc }}</span>
+    </div>
+    {% endfor %}
+
+    <button class="btn btn-primary" style="margin-top:16px;width:100%" type="submit">重新振作</button>
+  </form>
+</div>
+<script>
+(function(){
+  var inputs = document.querySelectorAll('.stat-input');
+  var total = {{ stat_free_points }};
+  var remainingEl = document.getElementById('stat-remaining');
+  function update() {
+    var sum = 0;
+    inputs.forEach(function(i){ sum += parseInt(i.value || '0', 10); });
+    remainingEl.textContent = total - sum;
+  }
+  inputs.forEach(function(i){ i.addEventListener('input', update); });
+  update();
+})();
+</script>
+{% endif %}
+{% endblock %}

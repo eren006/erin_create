@@ -122,6 +122,10 @@ def init_db():
     if 'pregnancy_started_ts' not in rel_cols:
         db.execute("ALTER TABLE relationships ADD COLUMN pregnancy_started_ts INTEGER DEFAULT 0")
         db.commit()
+    invite_cols = {row[1] for row in db.execute("PRAGMA table_info(social_invites)")}
+    if 'topic' not in invite_cols:
+        db.execute("ALTER TABLE social_invites ADD COLUMN topic TEXT")
+        db.commit()
     db.execute("""CREATE TABLE IF NOT EXISTS children (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
         relationship_id INTEGER NOT NULL,
@@ -439,7 +443,7 @@ def admin_required(f):
 # ── 体力(日常活动消耗,随时间自动恢复) ────────────────────────────────────────────
 
 MAX_ENERGY = 100
-ENERGY_REGEN_SECONDS = 900  # 每 15 分钟回 1 点,回满约 25 小时
+ENERGY_REGEN_SECONDS = 30  # 内测期间调快:每 30 秒回 1 点,回满约 50 分钟(正式上线前考虑调回更慢的节奏)
 ENERGY_COSTS = {'daily': 10, 'persona': 15, 'clapback': 20, 'comment': 5, 'attack': 25,
                 'gig': 10, 'drama_apply': 15, 'variety': 15, 'dating': 10, 'collab': 15,
                 'boost_trend': 10, 'charity': 5, 'brand_apply': 12, 'release_song': 15, 'concert': 20,
@@ -1566,6 +1570,63 @@ DRAMA_TEMPLATES = [
         {"name": "男主角(时光)", "gender": "male", "tier": "D", "talent": "创作力", "cash": (30, 80), "pop": (1, 3)},
         {"name": "男二号(褚嬴)", "gender": "male", "tier": "D", "talent": "演技",   "cash": (30, 80), "pop": (1, 3)},
     ]},
+    # 以下是质量一般的虚构小IP(网大/竖屏短剧),纯凑数刷经验用,回报比上面的真实大IP更低
+    {"title": "竖屏短剧《霸道总裁的第一百次追妻》", "budget": "D", "roles": [
+        {"name": "女主角(顾晚晚)",   "gender": "female", "tier": "D", "talent": "颜值", "cash": (15, 40), "pop": (1, 2)},
+        {"name": "男二号(总裁替身)", "gender": "male",   "tier": "D", "talent": "演技", "cash": (10, 25), "pop": (1, 1)},
+    ]},
+    {"title": "网络电影《我在废墟捡到亿万富翁》", "budget": "D", "roles": [  # 没有女主
+        {"name": "男主角(阿贵)", "gender": "male", "tier": "D", "talent": "演技", "cash": (15, 40), "pop": (1, 2)},
+    ]},
+    {"title": "竖屏短剧《离婚后我成了京圈太子妃》", "budget": "D", "roles": [
+        {"name": "女主角(苏晚)",     "gender": "female", "tier": "D", "talent": "演技", "cash": (15, 40), "pop": (1, 2)},
+        {"name": "男二号(落魄少爷)", "gender": "male",   "tier": "D", "talent": "颜值", "cash": (10, 25), "pop": (1, 1)},
+    ]},
+    {"title": "网络大电影《赘婿的逆袭》", "budget": "D", "roles": [  # 没有女主
+        {"name": "男主角(陈平安)", "gender": "male", "tier": "D", "talent": "抗压力", "cash": (15, 40), "pop": (1, 2)},
+    ]},
+    {"title": "竖屏短剧《穿越成猎户家的傻丫头》", "budget": "D", "roles": [  # 没有男主
+        {"name": "女主角(小丫)", "gender": "female", "tier": "D", "talent": "演技", "cash": (15, 40), "pop": (1, 2)},
+    ]},
+    {"title": "网络电影《保安队长的逆袭人生》", "budget": "D", "roles": [  # 没有女主
+        {"name": "男主角(老李)", "gender": "male", "tier": "D", "talent": "抗压力", "cash": (15, 40), "pop": (1, 2)},
+    ]},
+    {"title": "竖屏短剧《退婚后前未婚夫跪地求原谅》", "budget": "D", "roles": [
+        {"name": "女主角(林小姐)",   "gender": "female", "tier": "D", "talent": "颜值", "cash": (15, 40), "pop": (1, 2)},
+        {"name": "男二号(悔婚少爷)", "gender": "male",   "tier": "D", "talent": "演技", "cash": (10, 25), "pop": (1, 1)},
+    ]},
+    {"title": "网络大电影《山寨古装:皇后娘娘要下岗》", "budget": "D", "roles": [
+        {"name": "女主角(假皇后)",     "gender": "female", "tier": "D", "talent": "创作力", "cash": (15, 40), "pop": (1, 2)},
+        {"name": "男二号(伪太监总管)", "gender": "male",   "tier": "D", "talent": "镜头感", "cash": (10, 25), "pop": (1, 1)},
+    ]},
+    {"title": "短剧《我在民国当赘婿》", "budget": "D", "roles": [
+        {"name": "男主角(沈知行)", "gender": "male",   "tier": "D", "talent": "演技", "cash": (15, 40), "pop": (1, 2)},
+        {"name": "女二号(白月光)", "gender": "female", "tier": "D", "talent": "颜值", "cash": (10, 25), "pop": (1, 1)},
+    ]},
+    {"title": "网络剧《重生之我在小区当保安》", "budget": "D", "roles": [  # 没有女主
+        {"name": "男主角(周大力)", "gender": "male", "tier": "D", "talent": "抗压力", "cash": (15, 40), "pop": (1, 2)},
+    ]},
+    {"title": "短剧《千金归来虐渣打脸》", "budget": "D", "roles": [
+        {"name": "女主角(顾念念)",   "gender": "female", "tier": "D", "talent": "演技", "cash": (15, 40), "pop": (1, 2)},
+        {"name": "男二号(渣男前任)", "gender": "male",   "tier": "D", "talent": "颜值", "cash": (10, 25), "pop": (1, 1)},
+    ]},
+    {"title": "网络剧《古装糊涂县令断案记》", "budget": "D", "roles": [  # 没有女主
+        {"name": "男主角(县令)", "gender": "male", "tier": "D", "talent": "创作力", "cash": (15, 40), "pop": (1, 2)},
+    ]},
+    {"title": "短剧《赛博朋克风:机械师的复仇》", "budget": "D", "roles": [
+        {"name": "男主角(阿泽)",   "gender": "male",   "tier": "D", "talent": "镜头感", "cash": (15, 40), "pop": (1, 2)},
+        {"name": "女二号(女黑客)", "gender": "female", "tier": "D", "talent": "创作力", "cash": (10, 25), "pop": (1, 1)},
+    ]},
+    {"title": "网络剧《小镇姑娘的直播人生》", "budget": "D", "roles": [  # 没有男主
+        {"name": "女主角(小美)", "gender": "female", "tier": "D", "talent": "唱功", "cash": (15, 40), "pop": (1, 2)},
+    ]},
+    {"title": "短剧《我的老公是个咸鱼富豪》", "budget": "D", "roles": [
+        {"name": "女主角(江小满)",   "gender": "female", "tier": "D", "talent": "颜值", "cash": (15, 40), "pop": (1, 2)},
+        {"name": "男二号(隐藏富豪)", "gender": "male",   "tier": "D", "talent": "演技", "cash": (10, 25), "pop": (1, 1)},
+    ]},
+    {"title": "网络剧《废土求生:末日直播间》", "budget": "D", "roles": [  # 没有女主
+        {"name": "男主角(阿凯)", "gender": "male", "tier": "D", "talent": "抗压力", "cash": (15, 40), "pop": (1, 2)},
+    ]},
 ]
 
 MONTH_SECONDS = 7200  # 游戏内"1个月" = 现实2小时
@@ -1577,8 +1638,8 @@ DRAMA_APPLY_WINDOW_SECONDS = MONTH_SECONDS          # 面试期 1 个月
 DRAMA_RELEASE_INTERVAL_SECONDS = MONTH_SECONDS * 2  # 每 4 小时(游戏内2个月)放一批新剧本
 
 # 进组后占用的档期长短按剧组体量决定(单位:月),电影天然比电视剧耗时更长
-TV_SHOOT_MONTHS   = {'S': 4, 'A': 3, 'B': 2, 'C': 1}
-FILM_SHOOT_MONTHS = {'S': 6, 'A': 5}  # 电影模板目前只有 S/A 两档
+TV_SHOOT_MONTHS   = {'S': 4, 'A': 3, 'B': 2, 'C': 1, 'D': 1}
+FILM_SHOOT_MONTHS = {'S': 6, 'A': 5, 'B': 4}
 
 def shoot_duration_seconds(fmt, budget_tier):
     table = FILM_SHOOT_MONTHS if fmt == 'film' else TV_SHOOT_MONTHS
@@ -1590,7 +1651,7 @@ def is_actor_busy(player_id):
              (player_id,), one=True) is not None
 
 # 收视率:人气30% + 剧本水平20% + 演员表现(safe/risky小游戏产出)20% + 运气30%
-SCRIPT_QUALITY_BASE = {'S': 75, 'A': 65, 'B': 55, 'C': 45}
+SCRIPT_QUALITY_BASE = {'S': 75, 'A': 65, 'B': 55, 'C': 45, 'D': 35}
 
 def compute_rating_score(popularity, budget_tier, match_val):
     pop_component = clamp(popularity, 0, 200) / 2
@@ -1674,6 +1735,20 @@ FILM_TEMPLATES = [
     {"title": "《封神第一部》", "budget": "S", "roles": [
         {"name": "男主角(姬发)", "gender": "male",   "tier": "S", "talent": "颜值", "cash": (5000, 8000), "pop": (100, 150)},
         {"name": "女主角(妲己)", "gender": "female", "tier": "S", "talent": "颜值", "cash": (5000, 8000), "pop": (100, 150)},
+    ]},
+    # 以下是虚构小成本电影(网络电影/网大),门槛比上面几部真实大片低,给刚拿到第一个奖、还够不上S级真片的人一个过渡
+    {"title": "网络电影《逆袭之路》", "budget": "B", "roles": [  # 没有女主
+        {"name": "男主角(林浩)", "gender": "male", "tier": "B", "talent": "抗压力", "cash": (1500, 2500), "pop": (30, 50)},
+    ]},
+    {"title": "网络电影《平凡人的英雄时刻》", "budget": "B", "roles": [  # 没有男主
+        {"name": "女主角(苏晴)", "gender": "female", "tier": "B", "talent": "演技", "cash": (1500, 2500), "pop": (30, 50)},
+    ]},
+    {"title": "网大《都市侠客》", "budget": "B", "roles": [
+        {"name": "男主角(阿龙)", "gender": "male",   "tier": "B", "talent": "演技", "cash": (1500, 2500), "pop": (30, 50)},
+        {"name": "女二号(搭档)", "gender": "female", "tier": "B", "talent": "颜值", "cash": (800, 1300),  "pop": (15, 25)},
+    ]},
+    {"title": "网络电影《小城故事多》", "budget": "B", "roles": [  # 没有男主
+        {"name": "女主角(阿雅)", "gender": "female", "tier": "B", "talent": "唱功", "cash": (1500, 2500), "pop": (30, 50)},
     ]},
 ]
 
@@ -1924,19 +1999,118 @@ def resolve_shooting():
 # ── 代言/品牌合作(分层门槛,大牌需要代言信誉,塌房会被解约) ─────────────────────────
 
 BRAND_TEMPLATES = [
-    {"name": "本地奶茶店",     "tier": "niche", "min_tier": "D",  "max_scandal": 999, "min_reputation": 0,
-     "cash": (50, 150),   "reputation": (3, 6),   "duration": 3 * 3600},
-    {"name": "校园文具品牌",   "tier": "niche", "min_tier": "D",  "max_scandal": 999, "min_reputation": 0,
-     "cash": (50, 150),   "reputation": (3, 6),   "duration": 3 * 3600},
-    {"name": "国产美妆品牌",   "tier": "mid",   "min_tier": "B-", "max_scandal": 50,  "min_reputation": 10,
-     "cash": (300, 600),  "reputation": (8, 15),  "duration": 6 * 3600},
-    {"name": "运动服饰品牌",   "tier": "mid",   "min_tier": "B-", "max_scandal": 50,  "min_reputation": 10,
-     "cash": (300, 600),  "reputation": (8, 15),  "duration": 6 * 3600},
-    {"name": "手机品牌代言",   "tier": "mid",   "min_tier": "B",  "max_scandal": 40,  "min_reputation": 15,
-     "cash": (500, 900),  "reputation": (10, 18), "duration": 8 * 3600},
-    {"name": "国际奢侈品大牌", "tier": "top",   "min_tier": "A",  "max_scandal": 20,  "min_reputation": 40,
+    # 小众(奶茶/文具,D档门槛,人气0就能接)
+    {"name": "蜜雪冰城",   "tier": "niche", "min_tier": "D", "max_scandal": 999, "min_reputation": 0,
+     "cash": (50, 150), "reputation": (3, 6), "duration": 3 * 3600},
+    {"name": "喜茶",       "tier": "niche", "min_tier": "D", "max_scandal": 999, "min_reputation": 0,
+     "cash": (50, 150), "reputation": (3, 6), "duration": 3 * 3600},
+    {"name": "奈雪的茶",   "tier": "niche", "min_tier": "D", "max_scandal": 999, "min_reputation": 0,
+     "cash": (50, 150), "reputation": (3, 6), "duration": 3 * 3600},
+    {"name": "CoCo都可",   "tier": "niche", "min_tier": "D", "max_scandal": 999, "min_reputation": 0,
+     "cash": (50, 150), "reputation": (3, 6), "duration": 3 * 3600},
+    {"name": "一点点",     "tier": "niche", "min_tier": "D", "max_scandal": 999, "min_reputation": 0,
+     "cash": (50, 150), "reputation": (3, 6), "duration": 3 * 3600},
+    {"name": "茶百道",     "tier": "niche", "min_tier": "D", "max_scandal": 999, "min_reputation": 0,
+     "cash": (50, 150), "reputation": (3, 6), "duration": 3 * 3600},
+    {"name": "古茗",       "tier": "niche", "min_tier": "D", "max_scandal": 999, "min_reputation": 0,
+     "cash": (50, 150), "reputation": (3, 6), "duration": 3 * 3600},
+    {"name": "沪上阿姨",   "tier": "niche", "min_tier": "D", "max_scandal": 999, "min_reputation": 0,
+     "cash": (50, 150), "reputation": (3, 6), "duration": 3 * 3600},
+    {"name": "晨光文具",   "tier": "niche", "min_tier": "D", "max_scandal": 999, "min_reputation": 0,
+     "cash": (50, 150), "reputation": (3, 6), "duration": 3 * 3600},
+    {"name": "真彩文具",   "tier": "niche", "min_tier": "D", "max_scandal": 999, "min_reputation": 0,
+     "cash": (50, 150), "reputation": (3, 6), "duration": 3 * 3600},
+    {"name": "农夫山泉",   "tier": "niche", "min_tier": "D", "max_scandal": 999, "min_reputation": 0,
+     "cash": (50, 150), "reputation": (3, 6), "duration": 3 * 3600},
+    {"name": "康师傅",     "tier": "niche", "min_tier": "D", "max_scandal": 999, "min_reputation": 0,
+     "cash": (50, 150), "reputation": (3, 6), "duration": 3 * 3600},
+    {"name": "统一",       "tier": "niche", "min_tier": "D", "max_scandal": 999, "min_reputation": 0,
+     "cash": (50, 150), "reputation": (3, 6), "duration": 3 * 3600},
+    {"name": "旺旺",       "tier": "niche", "min_tier": "D", "max_scandal": 999, "min_reputation": 0,
+     "cash": (50, 150), "reputation": (3, 6), "duration": 3 * 3600},
+    {"name": "良品铺子",   "tier": "niche", "min_tier": "D", "max_scandal": 999, "min_reputation": 0,
+     "cash": (50, 150), "reputation": (3, 6), "duration": 3 * 3600},
+    {"name": "三只松鼠",   "tier": "niche", "min_tier": "D", "max_scandal": 999, "min_reputation": 0,
+     "cash": (50, 150), "reputation": (3, 6), "duration": 3 * 3600},
+    {"name": "蒙牛",       "tier": "niche", "min_tier": "D", "max_scandal": 999, "min_reputation": 0,
+     "cash": (50, 150), "reputation": (3, 6), "duration": 3 * 3600},
+    {"name": "伊利",       "tier": "niche", "min_tier": "D", "max_scandal": 999, "min_reputation": 0,
+     "cash": (50, 150), "reputation": (3, 6), "duration": 3 * 3600},
+    {"name": "优衣库",     "tier": "niche", "min_tier": "D", "max_scandal": 999, "min_reputation": 0,
+     "cash": (50, 150), "reputation": (3, 6), "duration": 3 * 3600},
+    {"name": "ZARA",       "tier": "niche", "min_tier": "D", "max_scandal": 999, "min_reputation": 0,
+     "cash": (50, 150), "reputation": (3, 6), "duration": 3 * 3600},
+    {"name": "无印良品",   "tier": "niche", "min_tier": "D", "max_scandal": 999, "min_reputation": 0,
+     "cash": (50, 150), "reputation": (3, 6), "duration": 3 * 3600},
+    {"name": "GAP",        "tier": "niche", "min_tier": "D", "max_scandal": 999, "min_reputation": 0,
+     "cash": (50, 150), "reputation": (3, 6), "duration": 3 * 3600},
+    {"name": "H&M",        "tier": "niche", "min_tier": "D", "max_scandal": 999, "min_reputation": 0,
+     "cash": (50, 150), "reputation": (3, 6), "duration": 3 * 3600},
+    # 二线/中奢(美妆/运动/数码/中端手表,B-/B档门槛)
+    {"name": "花西子",     "tier": "mid", "min_tier": "B-", "max_scandal": 50, "min_reputation": 10,
+     "cash": (300, 600), "reputation": (8, 15), "duration": 6 * 3600},
+    {"name": "完美日记",   "tier": "mid", "min_tier": "B-", "max_scandal": 50, "min_reputation": 10,
+     "cash": (300, 600), "reputation": (8, 15), "duration": 6 * 3600},
+    {"name": "兰蔻",       "tier": "mid", "min_tier": "B-", "max_scandal": 50, "min_reputation": 10,
+     "cash": (300, 600), "reputation": (8, 15), "duration": 6 * 3600},
+    {"name": "雅诗兰黛",   "tier": "mid", "min_tier": "B-", "max_scandal": 50, "min_reputation": 10,
+     "cash": (300, 600), "reputation": (8, 15), "duration": 6 * 3600},
+    {"name": "耐克",       "tier": "mid", "min_tier": "B-", "max_scandal": 50, "min_reputation": 10,
+     "cash": (300, 600), "reputation": (8, 15), "duration": 6 * 3600},
+    {"name": "阿迪达斯",   "tier": "mid", "min_tier": "B-", "max_scandal": 50, "min_reputation": 10,
+     "cash": (300, 600), "reputation": (8, 15), "duration": 6 * 3600},
+    {"name": "安踏",       "tier": "mid", "min_tier": "B-", "max_scandal": 50, "min_reputation": 10,
+     "cash": (300, 600), "reputation": (8, 15), "duration": 6 * 3600},
+    {"name": "李宁",       "tier": "mid", "min_tier": "B-", "max_scandal": 50, "min_reputation": 10,
+     "cash": (300, 600), "reputation": (8, 15), "duration": 6 * 3600},
+    {"name": "华为",       "tier": "mid", "min_tier": "B",  "max_scandal": 40, "min_reputation": 15,
+     "cash": (500, 900), "reputation": (10, 18), "duration": 8 * 3600},
+    {"name": "小米",       "tier": "mid", "min_tier": "B",  "max_scandal": 40, "min_reputation": 15,
+     "cash": (500, 900), "reputation": (10, 18), "duration": 8 * 3600},
+    {"name": "玉兰油",     "tier": "mid", "min_tier": "B-", "max_scandal": 50, "min_reputation": 10,
+     "cash": (300, 600), "reputation": (8, 15), "duration": 6 * 3600},
+    {"name": "欧莱雅",     "tier": "mid", "min_tier": "B-", "max_scandal": 50, "min_reputation": 10,
+     "cash": (300, 600), "reputation": (8, 15), "duration": 6 * 3600},
+    {"name": "资生堂",     "tier": "mid", "min_tier": "B-", "max_scandal": 50, "min_reputation": 10,
+     "cash": (300, 600), "reputation": (8, 15), "duration": 6 * 3600},
+    {"name": "珀莱雅",     "tier": "mid", "min_tier": "B-", "max_scandal": 50, "min_reputation": 10,
+     "cash": (300, 600), "reputation": (8, 15), "duration": 6 * 3600},
+    {"name": "天梭",       "tier": "mid", "min_tier": "B",  "max_scandal": 40, "min_reputation": 15,
+     "cash": (500, 900), "reputation": (10, 18), "duration": 8 * 3600},
+    {"name": "卡西欧",     "tier": "mid", "min_tier": "B",  "max_scandal": 40, "min_reputation": 15,
+     "cash": (500, 900), "reputation": (10, 18), "duration": 8 * 3600},
+    {"name": "斯沃琪",     "tier": "mid", "min_tier": "B",  "max_scandal": 40, "min_reputation": 15,
+     "cash": (500, 900), "reputation": (10, 18), "duration": 8 * 3600},
+    {"name": "精工",       "tier": "mid", "min_tier": "B",  "max_scandal": 40, "min_reputation": 15,
+     "cash": (500, 900), "reputation": (10, 18), "duration": 8 * 3600},
+    # 大牌/高奢(箱包时装/腕表珠宝,A档门槛)
+    {"name": "路易威登",   "tier": "top", "min_tier": "A", "max_scandal": 20, "min_reputation": 40,
      "cash": (2000, 4000), "reputation": (20, 35), "duration": 12 * 3600},
-    {"name": "顶级腕表品牌",   "tier": "top",   "min_tier": "A",  "max_scandal": 20,  "min_reputation": 40,
+    {"name": "香奈儿",     "tier": "top", "min_tier": "A", "max_scandal": 20, "min_reputation": 40,
+     "cash": (2000, 4000), "reputation": (20, 35), "duration": 12 * 3600},
+    {"name": "迪奥",       "tier": "top", "min_tier": "A", "max_scandal": 20, "min_reputation": 40,
+     "cash": (2000, 4000), "reputation": (20, 35), "duration": 12 * 3600},
+    {"name": "爱马仕",     "tier": "top", "min_tier": "A", "max_scandal": 20, "min_reputation": 40,
+     "cash": (2000, 4000), "reputation": (20, 35), "duration": 12 * 3600},
+    {"name": "古驰",       "tier": "top", "min_tier": "A", "max_scandal": 20, "min_reputation": 40,
+     "cash": (2000, 4000), "reputation": (20, 35), "duration": 12 * 3600},
+    {"name": "普拉达",     "tier": "top", "min_tier": "A", "max_scandal": 20, "min_reputation": 40,
+     "cash": (2000, 4000), "reputation": (20, 35), "duration": 12 * 3600},
+    {"name": "卡地亚",     "tier": "top", "min_tier": "A", "max_scandal": 20, "min_reputation": 40,
+     "cash": (2000, 4000), "reputation": (20, 35), "duration": 12 * 3600},
+    {"name": "宝格丽",     "tier": "top", "min_tier": "A", "max_scandal": 20, "min_reputation": 40,
+     "cash": (2000, 4000), "reputation": (20, 35), "duration": 12 * 3600},
+    {"name": "欧米茄",     "tier": "top", "min_tier": "A", "max_scandal": 20, "min_reputation": 40,
+     "cash": (2000, 4000), "reputation": (20, 35), "duration": 12 * 3600},
+    {"name": "劳力士",     "tier": "top", "min_tier": "A", "max_scandal": 20, "min_reputation": 40,
+     "cash": (2000, 4000), "reputation": (20, 35), "duration": 12 * 3600},
+    {"name": "百达翡丽",   "tier": "top", "min_tier": "A", "max_scandal": 20, "min_reputation": 40,
+     "cash": (2000, 4000), "reputation": (20, 35), "duration": 12 * 3600},
+    {"name": "爱彼",       "tier": "top", "min_tier": "A", "max_scandal": 20, "min_reputation": 40,
+     "cash": (2000, 4000), "reputation": (20, 35), "duration": 12 * 3600},
+    {"name": "江诗丹顿",   "tier": "top", "min_tier": "A", "max_scandal": 20, "min_reputation": 40,
+     "cash": (2000, 4000), "reputation": (20, 35), "duration": 12 * 3600},
+    {"name": "积家",       "tier": "top", "min_tier": "A", "max_scandal": 20, "min_reputation": 40,
      "cash": (2000, 4000), "reputation": (20, 35), "duration": 12 * 3600},
 ]
 
@@ -2809,14 +2983,15 @@ def decay_cp_heat():
 # ── 联合营业(合唱/同台综艺,双方同意才触发,同公司协同更好) ──────────────────────────
 
 COLLAB_TYPES = ['合唱', '同台综艺', '联合直播']
+VLOG_TOPICS = ['探店vlog', '旅行vlog', '日常vlog', '游戏直播', '剧组花絮', '宠物日常']
 
-def resolve_collab(player_a_id, player_b_id):
+def resolve_collab(player_a_id, player_b_id, topic=None):
     a = q("SELECT * FROM players WHERE id=?", (player_a_id,), one=True)
     b = q("SELECT * FROM players WHERE id=?", (player_b_id,), one=True)
     if not a or not b:
         return
     same_agency = 1 if (a['agency_id'] and a['agency_id'] == b['agency_id']) else 0
-    collab_type = random.choice(COLLAB_TYPES)
+    collab_type = f"合拍vlog·{topic}" if topic else random.choice(COLLAB_TYPES)
     base_heat = (a['popularity'] + b['popularity']) // 4 + 10
     flop = a['scandal_value'] > 60 or b['scandal_value'] > 60  # 风险共担:一方黑值高拖累整体评价
     multiplier = 1.3 if same_agency else 1.0
@@ -2851,7 +3026,7 @@ def resolve_collab(player_a_id, player_b_id):
 
 # ── 邀请机制(联合营业/恋爱共用:NPC 自动同意,真人需要对方接受) ───────────────────────
 
-def send_invite(from_id, to_id, invite_type):
+def send_invite(from_id, to_id, invite_type, topic=None):
     target = q("SELECT is_npc FROM players WHERE id=?", (to_id,), one=True)
     if not target:
         return False, '对象不存在'
@@ -2868,7 +3043,7 @@ def send_invite(from_id, to_id, invite_type):
         if not try_spend_energy(from_id, invite_type):
             return False, '体力不够了'
         if invite_type == 'collab':
-            resolve_collab(from_id, to_id)
+            resolve_collab(from_id, to_id, topic)
             return True, '合作已经完成'
         else:
             start_relationship(from_id, to_id)
@@ -2876,25 +3051,25 @@ def send_invite(from_id, to_id, invite_type):
     if q("""SELECT id FROM social_invites WHERE invite_type=? AND from_player_id=? AND to_player_id=?
            AND status='pending'""", (invite_type, from_id, to_id), one=True):
         return False, '已经发过邀请了,等对方回应'
-    run("INSERT INTO social_invites (invite_type,from_player_id,to_player_id,status,created_ts) "
-        "VALUES (?,?,?,'pending',?)", (invite_type, from_id, to_id, now_ts()))
+    run("INSERT INTO social_invites (invite_type,from_player_id,to_player_id,status,topic,created_ts) "
+        "VALUES (?,?,?,'pending',?,?)", (invite_type, from_id, to_id, topic, now_ts()))
     return True, '邀请已发送,等待对方回应'
 
 def respond_invite(player_id, invite_id, accept):
     invite = q("SELECT * FROM social_invites WHERE id=? AND to_player_id=?", (invite_id, player_id), one=True)
     if not invite or invite['status'] != 'pending':
-        return False
+        return False, '这个邀请已经不在了'
     if not accept:
         run("UPDATE social_invites SET status='declined' WHERE id=?", (invite['id'],))
-        return True
+        return True, '已经拒绝这个邀请'
     if not try_spend_energy(player_id, invite['invite_type']):
-        return False
+        return False, '体力不够了,先歇一会儿再来接受这个邀请'
     run("UPDATE social_invites SET status='accepted' WHERE id=?", (invite['id'],))
     if invite['invite_type'] == 'collab':
-        resolve_collab(invite['from_player_id'], invite['to_player_id'])
+        resolve_collab(invite['from_player_id'], invite['to_player_id'], invite['topic'])
     else:
         start_relationship(invite['from_player_id'], invite['to_player_id'])
-    return True
+    return True, '已经接受,合作完成了'
 
 # ── 恋爱曝光系统(隐蔽度随时间衰减,曝光后果依人设反差浮动) ───────────────────────────
 
@@ -3342,26 +3517,31 @@ NPC_AWARDS_CAMPAIGN_CHANCE = 0.2
 NPC_LUXURY_CHANCE = 0.1
 NPC_SUPER_TOPIC_CHANCE = 0.2
 
+def npc_settlement_tick():
+    """高频结算循环(每20~30秒跑一次,由 run.py 里独立线程驱动):
+    只处理"到点结算"类逻辑(判断条件是 xxx_ts <= now),让剧组定角/杀青、代言签约/到期这类结果尽快出来,
+    不含衰减/概率类逻辑(那些是按"每小时一次"校准的数值平衡,放这里跑会被放大很多倍)。"""
+    resolve_casting()
+    resolve_shooting()
+    resolve_brand_casting()
+    check_brand_contracts()
+    check_ambassador_status()
+    resolve_award_season()
+    auto_resolve_expired_exposures()
+    lift_blackout_if_due()
+
 def npc_auto_tick():
     maybe_open_drama()
     maybe_open_film()
     npc_auto_audition()
-    resolve_casting()
-    resolve_shooting()
     maybe_open_brand()
-    resolve_brand_casting()
-    check_brand_contracts()
-    check_ambassador_status()
     check_all_milestones()
     grow_product_sales()
     run_hate_campaigns()
     decay_cp_heat()
     maybe_open_award_shows()
-    resolve_award_season()
     decay_and_check_exposure()
-    auto_resolve_expired_exposures()
     decay_scandal_and_check_collapse()
-    lift_blackout_if_due()
     accrue_anti_scandal_reserve()
     run_health_checks()
     run_pregnancy_checks()
@@ -3421,6 +3601,63 @@ def npc_auto_tick():
                 if candidates:
                     target = random.choice(list(candidates))
                     execute_attack(npc['id'], target['id'])
+
+# ── 今日待办(打开主页就知道现在能做什么,不用自己满世界翻) ──────────────────────────
+
+def get_todo_items(player):
+    pid = player['id']
+    items = []
+
+    if player['career_state'] not in ('blackout', 'sick') and not is_actor_busy(pid):
+        applied_role_ids = {r['role_id'] for r in q(
+            "SELECT role_id FROM role_applications WHERE player_id=?", (pid,))}
+        open_roles = q("""SELECT r.id, r.role_name, r.tier_requirement, r.gender_requirement,
+                                  d.title, d.format
+                           FROM drama_roles r JOIN dramas d ON d.id = r.drama_id
+                           WHERE r.status='casting'""")
+        eligible = []
+        for r in open_roles:
+            if r['id'] in applied_role_ids:
+                continue
+            if r['gender_requirement'] != 'any' and r['gender_requirement'] != player['gender']:
+                continue
+            if not meets_tier(player['popularity'], r['tier_requirement']):
+                continue
+            if r['format'] == 'film' and player['awards_won'] < FILM_MIN_AWARDS:
+                continue
+            eligible.append(r)
+        if eligible:
+            first = eligible[0]
+            example = f"《{first['title']}》{first['role_name']}"
+            text = f"有 {len(eligible)} 个能报的剧组角色在招募" + (f",比如{example}" if len(eligible) > 1 else f":{example}")
+            items.append({'text': text, 'url': url_for('drama_list')})
+
+    open_brands = q("SELECT * FROM brands WHERE status='open'")
+    applied_brand_ids = {b['brand_id'] for b in q(
+        "SELECT brand_id FROM brand_applications WHERE player_id=?", (pid,))}
+    eligible_brands = [b for b in open_brands if b['id'] not in applied_brand_ids
+                        and eligible_for_brand(player, b)[0]]
+    if eligible_brands:
+        first = eligible_brands[0]
+        text = f"有 {len(eligible_brands)} 个能接的代言在招募" + \
+               (f",比如{first['brand_name']}" if len(eligible_brands) > 1 else f":{first['brand_name']}")
+        items.append({'text': text, 'url': url_for('brand_list')})
+
+    pending_invites = q("""SELECT invite_type FROM social_invites
+                           WHERE to_player_id=? AND status='pending'""", (pid,))
+    collab_n = sum(1 for i in pending_invites if i['invite_type'] == 'collab')
+    dating_n = sum(1 for i in pending_invites if i['invite_type'] == 'dating')
+    if collab_n:
+        items.append({'text': f"有 {collab_n} 个联合营业邀请等你回应", 'url': url_for('collab_page')})
+    if dating_n:
+        items.append({'text': f"有 {dating_n} 个约会邀请等你回应", 'url': url_for('dating_page')})
+
+    if not items:
+        energy = get_effective_energy(pid)
+        if energy >= 50:
+            items.append({'text': f"体力还剩 {energy} 点没用,去接个通告或发条博客吧", 'url': url_for('weibo')})
+
+    return items
 
 @app.route('/profile')
 @login_required
@@ -3572,11 +3809,12 @@ def weibo():
                               and p['editable_until_ts'] and p['editable_until_ts'] > now_ts())
         sales = q("SELECT product_name, sales_count FROM product_sales WHERE post_id=?", (p['id'],), one=True)
         p['sales'] = dict(sales) if sales else None
+    todo_items = get_todo_items(player) if player else []
     return render_template('weibo.html', player=player, posts=posts,
                             post_type_labels=POST_TYPE_LABELS, composable_post_types=COMPOSABLE_POST_TYPES,
                             crisis_stance_labels=CRISIS_STANCE_LABELS,
                             commercial_shoot_cost=COMMERCIAL_SHOOT_COST, magazine_cost=MAGAZINE_COST,
-                            ambassador_link_ready=True)
+                            ambassador_link_ready=True, todo_items=todo_items)
 
 @app.route('/weibo/post/<int:post_id>/edit', methods=['POST'])
 @login_required
@@ -3818,6 +4056,19 @@ def weibo_use_reserve():
         flash('没有可用的反黑值,或者现在没有黑值需要清', 'error')
     else:
         flash(f'公关团队帮你压下去了 {used} 点黑值', 'ok')
+    return redirect(url_for('weibo'))
+
+@app.route('/weibo/refresh_energy', methods=['POST'])
+@login_required
+def weibo_refresh_energy():
+    player = me()
+    if not player:
+        return redirect(url_for('login'))
+    if ENERGY_REGEN_SECONDS >= 60:
+        regen_desc = f'{ENERGY_REGEN_SECONDS // 60} 分钟'
+    else:
+        regen_desc = f'{ENERGY_REGEN_SECONDS} 秒'
+    flash(f'当前体力 {player["energy"]}/100(体力是自动恢复的,每 {regen_desc} +1 点,不用一直点这个按钮)', 'ok')
     return redirect(url_for('weibo'))
 
 @app.route('/weibo/charity', methods=['POST'])
@@ -4269,7 +4520,8 @@ def collab_page():
         return redirect(url_for('login'))
     if request.method == 'POST':
         target_id = request.form.get('target_id', '')
-        ok, msg = send_invite(me_player['id'], int(target_id), 'collab')
+        topic = request.form.get('topic', '') or None
+        ok, msg = send_invite(me_player['id'], int(target_id), 'collab', topic=topic)
         flash(msg, 'ok' if ok else 'error')
         return redirect(url_for('collab_page'))
     candidates = q("""SELECT id, stage_name, is_npc, agency_id FROM players
@@ -4282,7 +4534,8 @@ def collab_page():
                  JOIN players pa ON pa.id = c.player_a_id JOIN players pb ON pb.id = c.player_b_id
                  WHERE c.player_a_id=? OR c.player_b_id=? ORDER BY c.created_ts DESC LIMIT 10""",
               (me_player['id'], me_player['id']))
-    return render_template('collab.html', candidates=candidates, pending_invites=pending_invites, recent=recent)
+    return render_template('collab.html', candidates=candidates, pending_invites=pending_invites, recent=recent,
+                            vlog_topics=VLOG_TOPICS)
 
 # ── 好友/私信(必须合作过才能加好友,好感度够了才能约会) ──────────────────────────────
 
@@ -4474,8 +4727,8 @@ def invite_respond():
         return redirect(url_for('login'))
     invite_id = request.form.get('invite_id', '')
     accept = request.form.get('accept', '') == '1'
-    respond_invite(me_player['id'], int(invite_id), accept)
-    flash('已处理', 'ok')
+    ok, msg = respond_invite(me_player['id'], int(invite_id), accept)
+    flash(msg, 'ok' if ok else 'error')
     return redirect(request.referrer or url_for('weibo'))
 
 # ── 粉丝超话 ────────────────────────────────────────────────────────────────────

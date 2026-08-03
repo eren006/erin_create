@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}总览{% endblock %}
+{% block content %}
+<section class="hero">
+  <h1>2026 年 7 月 17 日—22 日 冰岛详细行程单</h1>
+  <p class="sub">景点指南＋穿衣＋加油版 · 路线、酒店、预约均已确定</p>
+  <p class="reminder">出发前每天早上都应查看 <strong>Road.is 道路状态</strong> 与 <strong>SafeTravel 警报</strong>，导航软件不一定即时显示封路或延误。<a href="{{ url_for('resources') }}">去晨检页面 →</a></p>
+</section>
+
+<section class="route-map">
+  <svg viewBox="0 0 400 220" class="route-svg" role="img" aria-label="六天路线示意图">
+    <path d="M60,150 C40,110 55,60 100,40 C140,22 190,25 230,35 C280,48 320,70 340,105 C355,132 340,165 300,178 C250,195 190,192 150,182 C100,170 75,185 60,150 Z"
+          fill="var(--ice)" opacity="0.35" stroke="var(--accent)" stroke-width="2"/>
+    <path d="M95,130 L150,70 L230,60 L300,95 L320,140 L230,165 L150,150 Z"
+          fill="none" stroke="var(--accent-dark)" stroke-width="2.5" stroke-dasharray="6 6"/>
+    <g font-size="11" font-weight="700" fill="var(--accent-dark)">
+      <circle cx="95" cy="130" r="9" fill="#fff" stroke="var(--accent-dark)" stroke-width="2"/>
+      <text x="95" y="134" text-anchor="middle">D1</text>
+      <circle cx="150" cy="70" r="9" fill="#fff" stroke="var(--accent-dark)" stroke-width="2"/>
+      <text x="150" y="74" text-anchor="middle">D2</text>
+      <circle cx="230" cy="60" r="9" fill="#fff" stroke="var(--accent-dark)" stroke-width="2"/>
+      <text x="230" y="64" text-anchor="middle">D3</text>
+      <circle cx="300" cy="95" r="9" fill="#fff" stroke="var(--accent-dark)" stroke-width="2"/>
+      <text x="300" y="99" text-anchor="middle">D4</text>
+      <circle cx="320" cy="140" r="9" fill="#fff" stroke="var(--accent-dark)" stroke-width="2"/>
+      <text x="320" y="144" text-anchor="middle">D5</text>
+      <circle cx="230" cy="165" r="9" fill="#fff" stroke="var(--accent-dark)" stroke-width="2"/>
+      <text x="230" y="169" text-anchor="middle">D6</text>
+    </g>
+  </svg>
+  <p class="route-svg-caption">示意路线图（非精确地理比例）· 各日详细地图见对应日期页面</p>
+</section>
+
+<section class="block">
+  <h2>硬性截止时间</h2>
+  <ul class="deadline-list">
+    {% for dl in deadlines %}<li>⏰ {{ dl }}</li>{% endfor %}
+  </ul>
+</section>
+
+<section class="block">
+  <h2>已确定的预约</h2>
+  <table class="booking-table">
+    <thead><tr><th>日期</th><th>时间</th><th>项目</th></tr></thead>
+    <tbody>
+      {% for d in days %}
+        {% for time, name in d.bookings %}
+        <tr><td>{{ d.date }}</td><td>{{ time }}</td><td>{{ name }}</td></tr>
+        {% endfor %}
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="block">
+  <h2>每日概览</h2>
+  <div class="day-grid">
+    {% for d in days %}
+    <a class="day-card" href="{{ url_for('day', num=d.num) }}">
+      <div class="day-card-head">
+        <span class="day-num">D{{ d.num }}</span>
+        <span class="day-date">{{ d.date }}　{{ d.weekday }}</span>
+      </div>
+      <h3>{{ d.title }}</h3>
+      <p class="day-route">{{ d.depart }} → {{ d.stay }}</p>
+      <p class="day-drive">🚗 纯驾驶 {{ d.drive }}</p>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="block quicklinks">
+  <h2>快速入口</h2>
+  <div class="quicklink-grid">
+    <a class="quicklink" href="{{ url_for('attractions') }}">🗺️ 景点大全</a>
+    <a class="quicklink" href="{{ url_for('fuel') }}">⛽ 全程加油计划</a>
+    <a class="quicklink" href="{{ url_for('packing') }}">🎒 打包清单</a>
+    <a class="quicklink" href="{{ url_for('guide') }}">📖 旅行须知</a>
+    <a class="quicklink" href="{{ url_for('resources') }}">🧭 晨检 ／ 实用链接</a>
+  </div>
+</section>
+{% endblock %}

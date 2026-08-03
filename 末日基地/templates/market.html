@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}集市 - 末日基地{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>集市</h2>
+  <p class="muted">家具、手工礼物做完不能直接用,得先在这里上架,别人花钱包买走之后才能用(家具装进房间/礼物寄信送人)。钱包:{{ survivor.wallet }}</p>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">我的背包(未上架)</h3>
+  {% if not my_items %}
+  <p class="muted">还没有能上架的东西——去<a href="{{ url_for('build_page') }}">建筑</a>页面打造家具,或去<a href="{{ url_for('process_page') }}">加工</a>页面做手工礼物。</p>
+  {% endif %}
+  {% for it in my_items %}
+  <form method="post" action="{{ url_for('market_list_item', item_id=it.id) }}" style="display:flex;gap:8px;align-items:center;margin-top:8px">
+    <span style="flex:1">{{ item_display_name(it.item_type, it.item_key) }}</span>
+    <input type="number" name="price" min="1" placeholder="定价" style="max-width:120px">
+    <button class="btn btn-primary" type="submit">上架</button>
+  </form>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">集市在售</h3>
+  {% if not listings %}
+  <p class="muted">集市空空如也。</p>
+  {% endif %}
+  {% for l in listings %}
+  <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
+    <span style="flex:1">{{ item_display_name(l.item_type, l.item_key) }} · {{ l.price }}钱 · 卖家:{{ seller_names.get(l.seller_id, '?') }}</span>
+    {% if l.seller_id == survivor.id %}
+    <form method="post" action="{{ url_for('market_unlist', listing_id=l.listing_id) }}">
+      <button class="btn" type="submit">下架</button>
+    </form>
+    {% else %}
+    <form method="post" action="{{ url_for('market_buy', listing_id=l.listing_id) }}">
+      <button class="btn btn-primary" type="submit" {{ 'disabled' if survivor.wallet < l.price }}>购买</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

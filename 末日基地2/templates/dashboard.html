@@ -1,0 +1,902 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="hero" style="background-image:url('{{ url_for('static', filename='wasteland-base-hero-v1.jpg') }}')">
+  <div class="hero-content">
+    <div class="section-kicker">DAY {{ day_count }} / {{ "NIGHT WATCH" if night else "DAYLIGHT" }}</div>
+    <h1>{{ display_name(ch) }}</h1>
+    <p>Lv.{{ ch.level }} · 坐标 ({{ ch.tile_x }}, {{ ch.tile_y }}){% if protected %} · 新手保护中{% endif %}</p>
+    <div class="hero-actions">
+      <a href="{{ url_for('story_view') }}">📖 幸存者日志</a>
+      <a href="{{ url_for('map_view') }}">🗺️ 幸存者地图</a>
+      <a href="{{ url_for('community') }}">🌍 世界协作</a>
+      <a href="{{ url_for('radio_npcs') }}">📻 私人频率</a>
+      <a href="{{ url_for('family_view') }}">👨‍👩‍👧 家族火种</a>
+      <a href="{{ url_for('legacy_view') }}">📸 末日相册</a>
+      <a href="{{ url_for('expeditions_view') }}">🧭 离线远征</a>
+      <a href="{{ url_for('homestead_view') }}">🍳 个人生活工坊</a>
+      <a href="{{ url_for('survival_tech_view') }}">☣️ 个人生存技术</a>
+      <a href="{{ url_for('profile_view') }}">📇 角色档案</a>
+    </div>
+  </div>
+</div>
+
+{% if raid_warning or (night and raid_night) %}
+<div class="card raid-warning" role="alert">
+  <div class="section-kicker">NORTHSTAR EMERGENCY BAND</div>
+  {% if raid_warning %}
+    <div class="row"><strong>📻 北辰：尸群正在接近</strong><span class="raid-countdown" id="raid-countdown" data-seconds="{{ raid_eta }}">--:--</span></div>
+    <p>预计来袭强度 <strong>{{ raid_forecast.strength }}</strong>，当前防线后的暴露压力约 <strong>{{ raid_forecast.exposed }}</strong>，风险<strong>{{ raid_forecast.risk }}</strong>。</p>
+    <p class="muted">倒计时结束后的后台结算会按实时区域威胁执行。现在仍可维修、装填房屋弹药、转移贵重常规物资或离开高威胁区。</p>
+  {% else %}
+    <div class="row"><strong>🚨 夜袭时段已经开始</strong><span class="raid-countdown">BREACH WATCH</span></div>
+    <p>本夜尸潮按区域威胁结算；房屋归零后，设施可能被毁，常规仓储物资可能被抢走，角色会直接承受剩余攻击。</p>
+  {% endif %}
+  {% if protected %}<p class="muted">你仍在新手保护期：可以看到预警与预测，但本轮不会受到夜袭伤害。</p>{% endif %}
+</div>
+{% elif night %}
+<div class="card">
+  <div class="row"><strong>🌙 平静的夜晚</strong></div>
+  <p class="muted">每{{ raid_night_every }}个昼夜循环才会真正结算一次夜袭，且每天凌晨0点到早上10点是安全时段不结算夜袭；今晚不是夜袭日，可以放心休整，不用守着。</p>
+</div>
+{% endif %}
+
+<div class="card threat-card">
+  <div class="row">
+    <strong>📡 当前区域 R{{ current_region.region_x }},{{ current_region.region_y }} · {{ current_region_label }}</strong>
+    <a href="{{ url_for('map_view') }}">查看威胁地图 →</a>
+  </div>
+  <div class="threat-meter">
+    <div class="{% if current_region.noise < 40 %}threat-low{% elif current_region.noise < 70 %}threat-mid{% else %}threat-high{% endif %}">
+      <span class="muted">短期噪声</span><strong>{{ current_region.noise }}/100</strong>
+    </div>
+    <div class="{% if current_region.threat < 40 %}threat-low{% elif current_region.threat < 70 %}threat-mid{% elif current_region.threat < 85 %}threat-high{% else %}threat-extreme{% endif %}">
+      <span class="muted">长期威胁</span><strong>{{ current_region.threat }}/100</strong>
+    </div>
+  </div>
+  <p class="muted">移动、采集、枪声、制造和建造都会留下噪声；噪声提高遭遇率并沉淀为威胁，威胁会增强夜袭。安静度日会让两者逐日缓慢回落。</p>
+  {% for event in current_region_events[:3] %}<p class="muted">• {{ event.detail }}（噪声+{{ event.noise_added }}）</p>{% endfor %}
+</div>
+
+<div class="card profile-summary">
+  <img class="profile-avatar" src="{{ url_for('static', filename=profile.avatar_key + '.jpg') }}" alt="角色头像">
+  <div>
+    <strong>{{ display_name(ch) }}</strong>
+    {% if profile.face_claim %}<div class="muted">皮相：{{ profile.face_claim }}</div>{% endif %}
+    <div class="muted">Lv.{{ ch.level }}{% if xp_needed %} · {{ ch.xp }}/{{ xp_needed }} xp{% endif %}</div>
+    <a href="{{ url_for('profile_view') }}">查看完整档案 →</a>
+  </div>
+</div>
+<p class="muted"><a href="{{ url_for('blueprints_list') }}">图纸({{ ch.blueprint_points }}点)</a> · <a href="{{ url_for('fish_log') }}">🎣 图鉴</a> · <a href="{{ url_for('merchant') }}">🧳 商人</a> · <a href="{{ url_for('shelters_list') }}">🏠 庇护所</a></p>
+
+<div class="card">
+  <div class="row"><strong>今日心境 {{ mood[0] }}</strong><span class="muted">幸存第{{ survivor_day }}天</span></div>
+  <p>{{ mood[1] }}</p>
+  {% if room %}<p class="muted">房间角落：{{ room_corners[room.corner_key][0] }}{% if room.custom_note %} · {{ room.custom_note }}{% endif %}</p>{% endif %}
+</div>
+
+<div class="card wellbeing-card {% if wellbeing.recreation < 15 %}critical{% endif %}">
+  <div class="row"><strong>🎭 精神余裕 {{ recreation_state[0] }}</strong><span>{{ wellbeing.recreation }}/100</span></div>
+  <div class="bar recreation"><div style="width:{{ wellbeing.recreation }}%"></div></div>
+  <p class="muted">{{ recreation_state[1] }} 每个幸存日自然下降6；不要求签到，吃一顿好饭、喝饮品、联系NPC、听睡前广播也能恢复。连续使用同一种休息方式会逐渐厌倦。</p>
+  {% if wellbeing.last_breakdown_text %}<p class="care-warning">最近一次精神崩溃：{{ wellbeing.last_breakdown_text }}</p>{% endif %}
+  {% if recreation_today %}
+    <p>今天已经留过一段时间给自己：{{ recreation_today.detail }} ✓</p>
+  {% else %}
+    <div class="recreation-actions">
+    {% for option in recreation_options %}
+      <form method="post" action="{{ url_for('recreation_action') }}">
+        <input type="hidden" name="activity_key" value="{{ option.key }}">
+        <button title="{{ option.detail }}" {% if not option.available %}disabled{% endif %}>{{ option.label }} +{{ option.gain }}</button>
+      </form>
+    {% endfor %}
+    </div>
+    <p class="muted">每天最多选择一次专门休息；灰色选项会在拥有房间布置、家人或动物伙伴后开放。</p>
+  {% endif %}
+</div>
+
+{% if injuries %}
+<div class="card injury-card">
+  <div class="section-kicker">FIELD MEDICAL · 持续伤势</div>
+  <p class="muted">战斗伤势会持续影响后续战斗，治疗后才会解除；其他玩家完成救援时也能替你处理。</p>
+  {% for injury in injuries %}
+  <div class="injury-row">
+    <div>
+      <strong>🩸 {{ injury_defs[injury.injury_key].name }}</strong>
+      <div class="muted">{{ injury_defs[injury.injury_key].effect }} · 来自{{ injury.source_text }}</div>
+    </div>
+    <form method="post" action="{{ url_for('injury_treat', injury_id=injury.id) }}">
+      <button>使用{{ item_names[injury_defs[injury.injury_key].item] }}</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card">
+  <p><strong>🌙 临睡前广播</strong></p>
+  {% if bedtime %}
+    <p>{{ bedtime.broadcast_text }}</p>
+  {% else %}
+    <p class="muted">每天一段只属于这个角色的夜间广播，不提供数值奖励，也不会错过。</p>
+    <form method="post" action="{{ url_for('bedtime_broadcast') }}"><button>收听第{{ survivor_day }}夜广播</button></form>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="row"><span><strong>今日天气 {{ weather_today.name }}</strong></span><span class="muted">明日 {{ weather_tomorrow.name }}</span></div>
+  <p class="muted">{{ weather_today.text }} 天气会实际影响移动耗时和遭遇概率。</p>
+</div>
+
+<div class="card">
+  <p><strong>🍀 今日废土手气</strong></p>
+  {% if fortune_today %}
+    <p>{{ fortune_today.result_text }}</p>
+    <p class="muted">今天已经搜寻过了，明天会有新的机会。</p>
+  {% else %}
+    <p class="muted">每天免费一次，只会获得惊喜，不会扣血或丢东西。幸运越高，冒险搜寻出现稀有发现的概率越高。</p>
+    <form method="post" action="{{ url_for('fortune_draw') }}"><input type="hidden" name="style" value="steady"><button>稳妥搜寻</button></form>
+    <form method="post" action="{{ url_for('fortune_draw') }}"><input type="hidden" name="style" value="bold"><button>冒险碰碰运气</button></form>
+  {% endif %}
+</div>
+
+{% if combat_log %}
+<div class="card">
+  <strong>战报</strong>
+  {% for line in combat_log %}<p class="muted">{{ line }}</p>{% endfor %}
+</div>
+{% endif %}
+
+<div class="row"><span>❤️ HP</span><span>{{ ch.hp }}/100</span></div>
+<div class="bar hp"><div style="width:{{ ch.hp }}%"></div></div>
+<p class="muted">有小概率自然恢复，期望约每{{ hp_regen_minutes }}分钟1点，很慢——别指望靠躺平打赢消耗战，医疗用品仍是唯一能快速回血的办法。</p>
+<div class="row"><span>⚡ 体力 · {{ stamina_state[0] }}</span><span>{{ ch.stamina }}/100</span></div>
+<div class="bar stamina"><div style="width:{{ ch.stamina }}%"></div></div>
+<p class="muted">{{ stamina_state[1] }} 每{{ stamina_recovery_seconds }}秒自动恢复1点；归零不会禁止行动。移动-{{ stamina_costs.move }}、采集-{{ stamina_costs.gather }}、钓鱼-{{ stamina_costs.fish }}、废墟拆解-{{ stamina_costs.ruin }}。</p>
+<div class="row"><span>🍗 饥饿</span><span>{{ ch.hunger }}/100</span></div>
+<div class="bar hunger"><div style="width:{{ ch.hunger }}%"></div></div>
+<div class="row"><span>💧 口渴</span><span>{{ ch.thirst }}/100</span></div>
+<div class="bar thirst"><div style="width:{{ ch.thirst }}%"></div></div>
+<div class="row"><span>☣️ 感染度</span><span>{{ ch.infection }}/100</span></div>
+<div class="bar infection"><div style="width:{{ ch.infection }}%"></div></div>
+<p class="muted">饥饿和口渴都在{{ infection_recovery_threshold }}以上时，每持续达标{{ infection_recovery_minutes }}分钟必定-{{ infection_recovery_amount }}(不是概率，中途掉出达标线会重新计时)，只降到{{ infection_recovery_floor }}为止；降到{{ infection_recovery_floor }}以下、彻底清零仍然只能靠庇护所解药。</p>
+
+<h2>📊 属性</h2>
+<div class="grid">
+  <div class="card">💪 力量 {{ ch.stat_str }}</div>
+  <div class="card">🏃 速度 {{ ch.stat_spd }}</div>
+  <div class="card">🧠 智慧 {{ ch.stat_int }}</div>
+  <div class="card">🍀 幸运 {{ ch.stat_luck }}</div>
+  <div class="card">📜 图纸点 {{ ch.blueprint_points }}</div>
+  <div class="card">💰 钱包 {{ ch.wallet }}</div>
+</div>
+
+<div class="card row journal-link">
+  <span><strong>📖 今日计划与线索</strong><span class="muted"> 已统一进入幸存者日志，奖励完成时自动结算</span></span>
+  <a href="{{ url_for('story_view') }}">打开日志 →</a>
+</div>
+
+<h2>⚔️ 装备</h2>
+<div class="card">
+  <p>武器:{% if ch.equipped_weapon and ch.equipped_weapon != 'fist' %}{{ blueprints[ch.equipped_weapon].name }}(耐久{{ ch.weapon_durability }}/100){% else %}👊 徒手{% endif %}
+  {% if ch.equipped_weapon and ch.equipped_weapon != 'fist' and ch.weapon_durability < 100 %}
+    <form method="post" action="{{ url_for('action_repair') }}"><input type="hidden" name="slot" value="weapon"><button>修理</button></form>
+  {% endif %}</p>
+  <p>护甲:{% if ch.equipped_armor %}{{ blueprints[ch.equipped_armor].name }}(耐久{{ ch.armor_durability }}/100,减伤{{ (ch.armor_tier*10)|int }}%左右){% else %}没穿{% endif %}
+  {% if ch.equipped_armor and ch.armor_durability < 100 %}
+    <form method="post" action="{{ url_for('action_repair') }}"><input type="hidden" name="slot" value="armor"><button>修理</button></form>
+  {% endif %}</p>
+  {% if equipped_outfit_info and equipped_outfit_info.combat_defense %}
+  <p class="muted">服装:{{ equipped_outfit_info.name }}(战斗减伤+{{ (equipped_outfit_info.combat_defense*100)|int }}%,叠加在护甲上)</p>
+  {% endif %}
+  {% if medical_items %}
+  <p class="muted">医疗用品:
+  {% for item in medical_items %}
+    <form method="post" action="{{ url_for('action_use_medical') }}" style="display:inline">
+      <input type="hidden" name="item_key" value="{{ item.resource_key }}">
+      <button>用{{ item_names[item.resource_key] }}(x{{ item.amount }})</button>
+    </form>
+  {% endfor %}
+  </p>
+  {% endif %}
+</div>
+
+{% if equippable_items %}
+<div class="card">
+  <p><strong>🎒 背包里可以装备的东西</strong></p>
+  {% for item in equippable_items %}
+  <form method="post" action="{{ url_for('action_equip') }}" class="row">
+    <span>{{ blueprints[item.resource_key].name }} x{{ item.amount }}</span>
+    <input type="hidden" name="item_key" value="{{ item.resource_key }}">
+    <button>装备</button>
+  </form>
+  {% endfor %}
+</div>
+{% endif %}
+
+<h2>📍 当前位置 ({{ ch.tile_x }}, {{ ch.tile_y }})</h2>
+{% if tile.is_water %}
+  <p class="muted">🌊 这是一块水域,能钓鱼,也能直接打生水。</p>
+  <div class="card row">
+    <span>{% if inv_map.get('fishing_rod', 0) %}准备好鱼竿了{% else %}需要先造一把鱼竿(在背包里){% endif %}</span>
+    {% if inv_map.get('fishing_rod', 0) %}
+      <a href="{{ url_for('fishing') }}"><button>🎣 开始钓鱼 · 体力-{{ stamina_costs.fish }}</button></a>
+    {% endif %}
+  </div>
+  <form method="post" action="{{ url_for('action_draw_water') }}" class="card row">
+    <span>不需要鱼竿,随时能打</span>
+    <button>💧 打生水 · 体力-{{ stamina_costs.draw_water }}</button>
+  </form>
+{% elif nodes %}
+  <p class="muted">这是一块资源地块:</p>
+  {% for n in nodes %}
+    <div class="card row">
+      <span>{{ resources[n.resource_key][0] }}({{ n.rarity }}) {{ n.current_amount }}/{{ n.max_amount }}</span>
+      <form method="post" action="{{ url_for('action_gather') }}">
+        <input type="hidden" name="node_id" value="{{ n.id }}">
+        <button {% if n.current_amount<=0 %}disabled{% endif %}>采集 · 体力-{{ stamina_costs.gather }}</button>
+      </form>
+    </div>
+  {% endfor %}
+{% else %}
+  <p class="muted">这是一块空地{% if buildable %},可以建造{% else %}(已有建筑){% endif %}。</p>
+{% endif %}
+
+{% if not tile.is_water %}
+<div class="card row">
+  <span>🌳 种树(不产生噪声)</span>
+  {% if ch.pending_tree_started_ts %}
+    {% set tree_remaining = ch.pending_tree_started_ts + tree_grow_seconds - now_ts %}
+    {% if tree_remaining <= 0 %}
+      <form method="post" action="{{ url_for('action_harvest_tree') }}"><button>收获木材</button></form>
+    {% else %}
+      <span class="muted">还要{{ (tree_remaining // 60) + 1 }}分钟长好</span>
+    {% endif %}
+  {% else %}
+    <form method="post" action="{{ url_for('action_plant_tree') }}"><button>种下一棵树 · 体力-{{ stamina_costs.plant_tree }}</button></form>
+  {% endif %}
+</div>
+<div class="card row">
+  <span>⛏️ 挖石头(不产生噪声)</span>
+  {% if ch.pending_quarry_started_ts %}
+    {% set quarry_remaining = ch.pending_quarry_started_ts + quarry_grow_seconds - now_ts %}
+    {% if quarry_remaining <= 0 %}
+      <form method="post" action="{{ url_for('action_harvest_quarry') }}"><button>收获石头</button></form>
+    {% else %}
+      <span class="muted">还要{{ (quarry_remaining // 60) + 1 }}分钟出料</span>
+    {% endif %}
+  {% else %}
+    <form method="post" action="{{ url_for('action_dig_quarry') }}"><button>挖开一处矿坑 · 体力-{{ stamina_costs.dig_quarry }}</button></form>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if house %}<p class="muted">这里有你的Lv{{ house.level }}「{{ house_level_info.name }}」{% if house.has_workbench %} · 已有基础工作台{% endif %}</p>{% endif %}
+{% if shelter %}
+<p class="muted">这里有庇护所「{{ shelter.name }}」(Lv{{ shelter.tier }})
+{%- if not ch.shelter_id and not shelter.completed_ending %}
+  <form method="post" action="{{ url_for('shelter_join', sid=shelter.id) }}" style="display:inline"><button>申请加入</button></form>
+{%- elif ch.shelter_id == shelter.id %} · 你是这里的成员
+{%- endif %}</p>
+{% endif %}
+
+<h2>🧭 移动{% if equipped_vehicle_info %} · {{ equipped_vehicle_info.name }}骑乘中{% endif %}</h2>
+{% if equipped_vehicle_info %}
+<p class="muted">每次移动想跳几格自己选(1~{{ equipped_vehicle_info.max_tiles }}格),体力和冷却不会因为选得少而减少。</p>
+{% endif %}
+<div class="grid">
+  <span></span>
+  <form method="post" action="{{ url_for('action_move') }}"><input type="hidden" name="dir" value="n">{% if equipped_vehicle_info %}<input type="number" name="steps" min="1" max="{{ equipped_vehicle_info.max_tiles }}" value="{{ equipped_vehicle_info.max_tiles }}" style="width:45px">{% endif %}<button style="width:100%">北 ↑ · -{{ move_stamina_cost }}</button></form>
+  <span></span>
+  <form method="post" action="{{ url_for('action_move') }}"><input type="hidden" name="dir" value="w">{% if equipped_vehicle_info %}<input type="number" name="steps" min="1" max="{{ equipped_vehicle_info.max_tiles }}" value="{{ equipped_vehicle_info.max_tiles }}" style="width:45px">{% endif %}<button style="width:100%">西 ← · -{{ move_stamina_cost }}</button></form>
+  <span class="muted" style="text-align:center;align-self:center">{% if equipped_vehicle_info %}最多{{ equipped_vehicle_info.max_tiles }}格{% else %}走一步{% endif %}</span>
+  <form method="post" action="{{ url_for('action_move') }}"><input type="hidden" name="dir" value="e">{% if equipped_vehicle_info %}<input type="number" name="steps" min="1" max="{{ equipped_vehicle_info.max_tiles }}" value="{{ equipped_vehicle_info.max_tiles }}" style="width:45px">{% endif %}<button style="width:100%">东 → · -{{ move_stamina_cost }}</button></form>
+  <span></span>
+  <form method="post" action="{{ url_for('action_move') }}"><input type="hidden" name="dir" value="s">{% if equipped_vehicle_info %}<input type="number" name="steps" min="1" max="{{ equipped_vehicle_info.max_tiles }}" value="{{ equipped_vehicle_info.max_tiles }}" style="width:45px">{% endif %}<button style="width:100%">南 ↓ · -{{ move_stamina_cost }}</button></form>
+  <span></span>
+</div>
+
+<h3>🚗 交通工具</h3>
+{% if equipped_vehicle_info %}
+<p class="muted">当前:{{ equipped_vehicle_info.name }}——移动一次跳{{ equipped_vehicle_info.max_tiles }}格,体力-{{ equipped_vehicle_info.stamina_cost }},冷却{{ equipped_vehicle_info.cooldown_seconds }}秒,不受负重/天气减速影响。</p>
+{% else %}
+<p class="muted">没有交通工具时移动按普通规则(体力-{{ stamina_costs.move }},冷却受负重/天气影响)。</p>
+{% endif %}
+<div class="grid two">
+{% for key, v in vehicles.items() %}
+<div class="card">
+  <strong>{{ v.name }}</strong>
+  <p class="muted">Lv{{ v.level }}+ · {{ "基础" if v.workbench == "basic" else "高级" }}工作台 · 一次最多{{ v.max_tiles }}格 · 体力-{{ v.stamina_cost }} · 冷却{{ v.cooldown_seconds }}秒</p>
+  <p class="muted">材料:{% for k,vv in v.cost.items() %}{{ item_names.get(k,k) }}{{ vv }}{% if not loop.last %}、{% endif %}{% endfor %}(随身+当前仓库合计够就行)</p>
+  <form method="post" action="{{ url_for('action_build_vehicle') }}">
+    <input type="hidden" name="vehicle_key" value="{{ key }}">
+    <button {% if ch.level < v.level or ch.equipped_vehicle == key %}disabled{% endif %}>
+      {{ "骑乘中" if ch.equipped_vehicle == key else "造一辆" }}
+    </button>
+  </form>
+</div>
+{% endfor %}
+</div>
+
+<h2>🍽️ 进食 / 饮水</h2>
+<p class="muted">要随身带着对应的材料才能吃喝,数量从随身携带里扣。</p>
+<form method="post" action="{{ url_for('action_toggle_auto_eat') }}" class="card row">
+  <span>🤖 自动吃喝{% if ch.auto_eat_enabled %}(已开启：饥饿/口渴低于{{ auto_eat_hunger_threshold }}时自动吃喝，不碰生水和生鲜){% else %}(已关闭){% endif %}</span>
+  <button>{{ "关闭" if ch.auto_eat_enabled else "开启" }}</button>
+</form>
+<form method="post" action="{{ url_for('action_consume') }}">
+  <input type="hidden" name="kind" value="food">
+  <button {% if inv_map.get('raw_food', 0) <= 0 %}disabled{% endif %}>吃1份生鲜(+25饥饿,{{ (raw_food_poison_chance*100)|int }}%中毒,库存{{ inv_map.get('raw_food', 0) }})</button>
+</form>
+<form method="post" action="{{ url_for('action_consume') }}">
+  <input type="hidden" name="kind" value="cooked_food">
+  <button {% if inv_map.get('cooked_food', 0) <= 0 %}disabled{% endif %}>吃1份熟食(+35饥饿,库存{{ inv_map.get('cooked_food', 0) }})</button>
+</form>
+<form method="post" action="{{ url_for('action_consume') }}">
+  <input type="hidden" name="kind" value="emergency_food">
+  <button {% if inv_map.get('emergency_food', 0) <= 0 %}disabled{% endif %}>吃1份应急食品(+50饥饿,口渴-{{ emergency_food_thirst_cost }},库存{{ inv_map.get('emergency_food', 0) }})</button>
+</form>
+<form method="post" action="{{ url_for('action_consume') }}">
+  <input type="hidden" name="kind" value="raw_water">
+  <button {% if inv_map.get('raw_water', 0) <= 0 %}disabled{% endif %}>喝1份生水(+25口渴,{{ (raw_water_poison_chance*100)|int }}%中毒,库存{{ inv_map.get('raw_water', 0) }})</button>
+</form>
+<form method="post" action="{{ url_for('action_consume') }}">
+  <input type="hidden" name="kind" value="clean_water">
+  <button {% if inv_map.get('clean_water', 0) <= 0 %}disabled{% endif %}>喝1份净水(+25口渴,绝对安全,库存{{ inv_map.get('clean_water', 0) }})</button>
+</form>
+<form method="post" action="{{ url_for('action_boil_water') }}">
+  <button {% if inv_map.get('raw_water',0) < 1 or inv_map.get('wood',0) < 1 %}disabled{% endif %}>🔥 简易煮水（生水1＋木材1）</button>
+</form>
+<p class="muted">简易煮水解决前期饮水；污染检测台能识别并记录更复杂的水源。</p>
+
+<h2>🏗️ 建造{% if buildable %}{% else %} <span class="muted">({{ buildable_reason }})</span>{% endif %}</h2>
+{% if buildable %}
+<form method="post" action="{{ url_for('action_build_house') }}">
+  <button>建房子(需{% for k,v in house_cost.items() %}{{ resources[k][0] }}{{ v }} {% endfor %})</button>
+</form>
+{% if not my_shelter %}
+<form method="post" action="{{ url_for('action_build_shelter') }}">
+  <input name="name" placeholder="庇护所名字" style="width:55%">
+  <button>建庇护所(Lv{{ shelter_level_required }}+,需{% for k,v in shelter_cost.items() %}{{ resources[k][0] }}{{ v }} {% endfor %})</button>
+</form>
+{% endif %}
+{% endif %}
+
+{% if house and not my_shelter %}
+<form method="post" action="{{ url_for('action_upgrade_house_to_shelter') }}"
+      onsubmit="return confirm('房子会被拆掉换成庇护所，仓库里的物资会原样搬过去，但这一步不能撤销，确定吗？')">
+  <input name="name" placeholder="庇护所名字" style="width:55%">
+  <button>把这栋房子改建成庇护所(Lv{{ shelter_level_required }}+,需{% for k,v in shelter_cost.items() %}{{ resources[k][0] }}{{ v }} {% endfor %},随身+房子仓库合计够就行)</button>
+</form>
+<p class="muted">原地改建不需要空地,直接用现在这栋房子的位置;房子会被拆除,仓库物资会搬进新庇护所。</p>
+{% endif %}
+
+{% if house and not house.has_workbench %}
+<form method="post" action="{{ url_for('action_build_workbench') }}">
+  <input type="hidden" name="kind" value="basic">
+  <button>建基础工作台(需{% for k,v in basic_workbench_cost.items() %}{{ resources[k][0] }}{{ v }} {% endfor %})</button>
+</form>
+{% elif not house and my_shelter and my_shelter.tile_x==ch.tile_x and my_shelter.tile_y==ch.tile_y and not my_shelter.has_workbench %}
+<form method="post" action="{{ url_for('action_build_workbench') }}">
+  <input type="hidden" name="kind" value="basic">
+  <button>建基础工作台(需{% for k,v in basic_workbench_cost.items() %}{{ resources[k][0] }}{{ v }} {% endfor %},随身+庇护所仓库合计够就行)</button>
+</form>
+{% endif %}
+{% if my_shelter and my_shelter.tile_x==ch.tile_x and my_shelter.tile_y==ch.tile_y and not my_shelter.has_advanced_workbench %}
+<form method="post" action="{{ url_for('action_build_workbench') }}">
+  <input type="hidden" name="kind" value="advanced">
+  <button>建高级工作台(需{% for k,v in advanced_workbench_cost.items() %}{% if k=='research_points' %}科研点{{ v }}{% else %}{{ resources[k][0] }}{{ v }}{% endif %} {% endfor %})</button>
+</form>
+{% endif %}
+
+{% if house %}
+<h2>🏚️ 房屋防线</h2>
+<div class="card house-defense {% if house.hp <= 0 %}danger-card{% endif %}">
+  <div class="row">
+    <strong>Lv{{ house.level }} · {{ house_level_info.name }}</strong>
+    <span>耐久 {{ house.hp }}/{{ house.max_hp }}</span>
+  </div>
+  <div class="bar {% if house.hp <= house.max_hp * 0.25 %}hunger{% else %}signal{% endif %}">
+    <div style="width:{{ (house.hp * 100 / house.max_hp)|int }}%"></div>
+  </div>
+  <p class="muted">
+    结构减伤{{ house_level_info.armor }}点 ·
+    {% if house.auto_defense_damaged %}
+      <strong>自动反击系统故障</strong>，必须修复后才会消耗弹药并削弱尸群。
+    {% elif house_level_info.counter > 0 and house.auto_defense %}
+      自动反击削弱约{{ (house_level_info.counter * 100)|int }}%，房屋弹药{{ house_ammo }}发；每次触发消耗1发弹药和3点电力，无法彻底清场。
+    {% else %}
+      当前没有自动反击。独居房屋最高只能升到Lv{{ house_solo_level_cap }}。
+    {% endif %}
+  </p>
+  <form class="raid-stance-form" method="post" action="{{ url_for('action_house_raid_stance') }}">
+    <label><strong>夜袭防守方针</strong></label>
+    <select name="stance">
+      {% for key,stance in raid_stances.items() %}
+      <option value="{{ key }}" {% if house.raid_stance==key %}selected{% endif %}>{{ stance[0] }}</option>
+      {% endfor %}
+    </select>
+    <button>保存方针</button>
+    <p class="muted">{{ raid_stances[house.raid_stance][1] }} 设置后离线照常执行，可在预警出现后临时调整。</p>
+  </form>
+  {% if house.hp <= 0 %}
+  <p><strong>🚨 防线已破：下一次夜袭会直接攻击角色，可能导致死亡。</strong></p>
+  {% elif house.hp < house.max_hp * 0.3 %}
+  <p><strong>⚠️ 房屋结构濒临崩溃，应尽快维修。</strong></p>
+  {% endif %}
+
+  {% if house.hp < house.max_hp %}
+  <form method="post" action="{{ url_for('action_repair_house') }}">
+    <button>维修约{{ house_repair_amount }}耐久（需{% for k,v in house_repair_materials.items() %}{{ resources[k][0] }}{{ v }} {% endfor %}）</button>
+  </form>
+  {% endif %}
+
+  {% if house.auto_defense_damaged %}
+  <form method="post" action="{{ url_for('action_repair_house_auto_defense') }}">
+    <button>维修自动反击（需{% for k,v in house_auto_repair_cost.items() %}{{ resources[k][0] }}{{ v }} {% endfor %}）</button>
+  </form>
+  {% endif %}
+
+  {% if house_next_info %}
+    {% if house.hp < house.max_hp %}
+      <p class="muted">修满耐久后才能升级。</p>
+    {% elif not house_upgrade_ready %}
+      <button disabled>升级Lv{{ house.level + 1 }} · {{ house_next_info.name }}</button>
+      <p class="muted">🔒 {{ house_upgrade_reason }}</p>
+    {% else %}
+      <form method="post" action="{{ url_for('action_upgrade_house') }}">
+        <button>升级Lv{{ house.level + 1 }} · {{ house_next_info.name }}（需{% for k,v in house_next_info.cost.items() %}{{ resources[k][0] }}{{ v }} {% endfor %}）</button>
+      </form>
+      {% if house_next_info.counter > 0 %}
+      <p class="muted">升级后接入庇护所预警网络，并开启自动反击。</p>
+      {% endif %}
+    {% endif %}
+  {% else %}
+    <p class="muted">这栋房屋已经达到最高等级。</p>
+  {% endif %}
+</div>
+
+{% set house_generator = generator_levels[house_power.generator_level] %}
+<div class="card power-grid {% if house_power.damaged %}danger-card{% endif %}">
+  <div class="row"><strong>⚡ 房屋电网 · {{ house_generator.name }}</strong><span>{{ house_power.charge }}/{{ house_generator.capacity }}电力</span></div>
+  <div class="bar signal"><div style="width:{{ (house_power.charge * 100 / house_generator.capacity)|int if house_generator.capacity else 0 }}%"></div></div>
+  <p class="muted">{{ power_modes[house_power.mode][0] }}：{{ power_modes[house_power.mode][1] }}。厨房/工作台优先取电；断电时可以用木柴或手动工具继续，不会被系统卡死。</p>
+  {% if house_power.damaged %}
+    <p><strong>🚨 破门事故损坏了线路，储能已经归零。</strong></p>
+    <form method="post" action="{{ url_for('power_repair') }}"><input type="hidden" name="target" value="house"><button>维修电网（金属8、机械零件3）</button></form>
+  {% else %}
+    {% if house_power.generator_level < 3 %}
+    {% set next_generator = generator_levels[house_power.generator_level + 1] %}
+    <form method="post" action="{{ url_for('power_upgrade') }}"><input type="hidden" name="target" value="house"><button>接入{{ next_generator.name }}（{% for k,v in next_generator.cost.items() %}{{ item_names.get(k,k) }}{{ v }} {% endfor %}）</button></form>
+    {% endif %}
+    {% if house_power.generator_level %}
+    <form method="post" action="{{ url_for('power_generate') }}"><input type="hidden" name="target" value="house"><button {% if house_power.last_generation_day >= day_count or house_power.charge >= house_generator.capacity %}disabled{% endif %}>今日发电：约+{{ house_generator.output }}电 / 噪声{{ house_generator.noise }}{% if house_generator.fuel %} / 仓库燃油{{ house_generator.fuel }}{% endif %}</button></form>
+    <form method="post" action="{{ url_for('power_mode') }}"><input type="hidden" name="target" value="house"><select name="mode">{% for key,mode in power_modes.items() %}<option value="{{ key }}" {% if house_power.mode==key %}selected{% endif %}>{{ mode[0] }}</option>{% endfor %}</select><button>调整供电</button></form>
+    {% endif %}
+  {% endif %}
+  {% for log in house_power_logs[:3] %}<p class="muted">• {{ log.detail }}</p>{% endfor %}
+</div>
+
+{% if house_raid_logs %}
+<div class="card">
+  <strong>最近夜袭战报</strong>
+  {% for raid in house_raid_logs %}
+  <p class="muted">第{{ raid.day_count }}日 · {{ raid.summary }}</p>
+  {% endfor %}
+</div>
+{% endif %}
+{% endif %}
+
+{% if unlocked_blueprints %}
+<h2>🛠️ 制作(已解锁的图纸)</h2>
+{% for key in unlocked_blueprints %}
+  {% set bp = blueprints[key] %}
+  {% set can_make = (bp.workbench=='basic' and basic_workbench_here) or (bp.workbench=='advanced' and advanced_workbench_here) %}
+  <div class="card row">
+    <span>{{ bp.name }} <span class="muted">({% for k,v in bp.cost.items() %}{{ item_names.get(k,k) }}{{ v }} {% endfor %})</span></span>
+    <form method="post" action="{{ url_for('action_craft') }}">
+      <input type="hidden" name="blueprint_key" value="{{ key }}">
+      <button {% if not can_make %}disabled{% endif %}>{% if can_make %}制作{% else %}需要{{ '基础' if bp.workbench=='basic' else '高级' }}工作台{% endif %}</button>
+    </form>
+  </div>
+{% endfor %}
+{% endif %}
+
+{% set at_shelter = my_shelter and my_shelter.tile_x==ch.tile_x and my_shelter.tile_y==ch.tile_y %}
+{% set can_store = house or at_shelter %}
+<h2>🎒 随身携带</h2>
+{% if can_store %}
+<form method="post" action="{{ url_for('inventory_transfer_bulk') }}">
+  <input type="hidden" name="direction" value="deposit">
+  {% if house and at_shelter %}
+  <p class="row"><span>存到:</span>
+    <select name="target">
+      <option value="house">房子仓库</option>
+      <option value="shelter">庇护所仓库</option>
+    </select>
+  </p>
+  {% elif house %}
+  <input type="hidden" name="target" value="house">
+  {% else %}
+  <input type="hidden" name="target" value="shelter">
+  {% endif %}
+  <table>
+  {% for item in inventory %}
+    <tr>
+      <td>{{ item_names[item.resource_key] }}</td>
+      <td>{{ item.amount }}</td>
+      <td style="white-space:nowrap; width:1%;">
+        {% if item.resource_key in storage_transferable_keys %}
+        <label style="display:inline-flex; align-items:center; gap:6px;">
+          <input type="checkbox" name="items" value="{{ item.resource_key }}">
+          <input name="amount_{{ item.resource_key }}" type="number" min="1" max="{{ item.amount }}" value="{{ item.amount }}" style="width:62px; padding:6px 6px;">
+        </label>
+        {% endif %}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td class="muted">空的</td></tr>
+  {% endfor %}
+  </table>
+  {% if inventory %}<button type="submit">存入勾选的</button>{% endif %}
+</form>
+{% else %}
+<table>
+{% for item in inventory %}
+  <tr><td>{{ item_names[item.resource_key] }}</td><td>{{ item.amount }}</td></tr>
+{% else %}
+  <tr><td class="muted">空的</td></tr>
+{% endfor %}
+</table>
+{% endif %}
+<p class="muted">容量 {{ inventory_capacity }}{% if ch.backpack_count %} (含{{ ch.backpack_count }}个背包加成){% endif %}</p>
+
+{% if house or my_shelter %}
+<h2>🏦 存取仓库</h2>
+{% if house %}
+<form method="post" action="{{ url_for('inventory_transfer_bulk') }}">
+  <input type="hidden" name="direction" value="withdraw">
+  <input type="hidden" name="target" value="house">
+  <p><strong>房子仓库({{ house_inventory_total }}/{{ house_inventory_cap }})</strong></p>
+  <table>
+  {% for i in house_inventory_list %}
+    <tr>
+      <td>{{ item_names.get(i.resource_key, i.resource_key) }}</td>
+      <td>{{ i.amount }}</td>
+      <td style="white-space:nowrap; width:1%;">
+        {% if i.resource_key in storage_transferable_keys %}
+        <label style="display:inline-flex; align-items:center; gap:6px;">
+          <input type="checkbox" name="items" value="{{ i.resource_key }}">
+          <input name="amount_{{ i.resource_key }}" type="number" min="1" max="{{ i.amount }}" value="{{ i.amount }}" style="width:62px; padding:6px 6px;">
+        </label>
+        {% endif %}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td class="muted">空的</td></tr>
+  {% endfor %}
+  </table>
+  {% if house_inventory_list %}<button type="submit">取出勾选的</button>{% endif %}
+</form>
+<form method="post" action="{{ url_for('action_build_storage_crate') }}" class="card row">
+  <span>📦 储物箱(不需要工作台,随时能造) {{ house.storage_crates }}/{{ storage_crate_cap }}个,每个+{{ storage_crate_bonus }}容量</span>
+  <button {% if house.storage_crates >= storage_crate_cap %}disabled{% endif %}>
+    造一个({% for k,v in storage_crate_cost.items() %}{{ resources[k][0] }}{{ v }}{% if not loop.last %}、{% endif %}{% endfor %})
+  </button>
+</form>
+{% endif %}
+{% if at_shelter %}
+<form method="post" action="{{ url_for('inventory_transfer_bulk') }}">
+  <input type="hidden" name="direction" value="withdraw">
+  <input type="hidden" name="target" value="shelter">
+  <p><strong>庇护所仓库({{ shelter_inventory_total }}/{{ shelter_inventory_cap }})</strong></p>
+  <table>
+  {% for i in shelter_inventory_list %}
+    <tr>
+      <td>{{ item_names.get(i.resource_key, i.resource_key) }}</td>
+      <td>{{ i.amount }}</td>
+      <td style="white-space:nowrap; width:1%;">
+        {% if i.resource_key in storage_transferable_keys %}
+        <label style="display:inline-flex; align-items:center; gap:6px;">
+          <input type="checkbox" name="items" value="{{ i.resource_key }}">
+          <input name="amount_{{ i.resource_key }}" type="number" min="1" max="{{ i.amount }}" value="{{ i.amount }}" style="width:62px; padding:6px 6px;">
+        </label>
+        {% endif %}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td class="muted">空的</td></tr>
+  {% endfor %}
+  </table>
+  {% if shelter_inventory_list %}<button type="submit">取出勾选的</button>{% endif %}
+</form>
+<form method="post" action="{{ url_for('action_build_shelter_storage_crate') }}" class="card row">
+  <span>📦 庇护所储物箱(不需要工作台,随时能造) {{ my_shelter.storage_crates }}/{{ shelter_storage_crate_cap }}个,每个+{{ storage_crate_bonus }}容量</span>
+  <button {% if my_shelter.storage_crates >= shelter_storage_crate_cap %}disabled{% endif %}>
+    造一个({% for k,v in storage_crate_cost.items() %}{{ resources[k][0] }}{{ v }}{% if not loop.last %}、{% endif %}{% endfor %})
+  </button>
+</form>
+{% if not my_shelter.has_mega_warehouse %}
+<form method="post" action="{{ url_for('action_build_mega_warehouse') }}" class="card row">
+  <span>🏬 超大仓库(一次性+{{ mega_warehouse_bonus }}容量,不能叠加建第二个,需庇护所Lv{{ mega_warehouse_level_required }}+)</span>
+  <button {% if my_shelter.tier < mega_warehouse_level_required %}disabled{% endif %}>
+    建一个({% for k,v in mega_warehouse_cost.items() %}{{ resources[k][0] }}{{ v }}{% if not loop.last %}、{% endif %}{% endfor %})
+  </button>
+</form>
+{% else %}
+<p class="muted">🏬 超大仓库已经建好了,仓库容量永久+{{ mega_warehouse_bonus }}。</p>
+{% endif %}
+{% for kind, ext in shelter_extractors.items() %}
+<form method="post" action="{{ url_for('action_build_extractor' if not ext.built else 'action_upgrade_extractor') }}" class="card row">
+  <input type="hidden" name="kind" value="{{ kind }}">
+  {% set ext_unit = "点科研点(直接进庇护所,没有容量上限)" if ext.info.resource_key == "research_points" else "份" + resources[ext.info.resource_key][0] + "到庇护所仓库" %}
+  <span>{{ ext.info.name }}
+    {% if ext.built %}Lv{{ ext.level }},每小时自动产{{ ext.cur_yield }}{{ ext_unit }}{% if ext.maxed %}(已满级){% else %}
+    →Lv{{ ext.level+1 }}需{% for k,v in ext.next_cost.items() %}{{ resources[k][0] }}{{ v }} {% endfor %}(产出提升到{{ ext.next_yield }})
+    {% endif %}
+    {% else %}
+    (Lv{{ ext.info.level_required }}+{% if ext.info.shelter_tier_required %},庇护所需Lv{{ ext.info.shelter_tier_required }}+{% endif %},不用人守着,每小时自动产{{ ext.next_yield }}{{ ext_unit }})
+    {% endif %}
+  </span>
+  {% if not ext.built %}
+  <button {% if ch.level < ext.info.level_required or my_shelter.tier < ext.info.get('shelter_tier_required', 0) %}disabled{% endif %}>
+    造一个({% for k,v in ext.next_cost.items() %}{{ resources[k][0] }}{{ v }}{% if not loop.last %}、{% endif %}{% endfor %})
+  </button>
+  {% elif not ext.maxed %}
+  <button>升级</button>
+  {% endif %}
+</form>
+{% endfor %}
+<form method="post" action="{{ url_for('action_build_repeller' if not my_shelter.repeller_level else 'action_upgrade_repeller') }}" class="card row">
+  <span>🛰️ 驱赶器
+    {% if my_shelter.repeller_level %}Lv{{ my_shelter.repeller_level }},压低所在及周边{{ repeller_levels[my_shelter.repeller_level].radius }}圈区域的噪声/长期威胁上限到{{ repeller_levels[my_shelter.repeller_level].noise_cap }}/{{ repeller_levels[my_shelter.repeller_level].threat_cap }}
+      {% if my_shelter.repeller_level < repeller_level_cap %}
+      →Lv{{ my_shelter.repeller_level+1 }}需{% for k,v in repeller_levels[my_shelter.repeller_level+1].cost.items() %}{{ resources[k][0] }}{{ v }} {% endfor %}(覆盖{{ repeller_levels[my_shelter.repeller_level+1].radius }}圈,上限降到{{ repeller_levels[my_shelter.repeller_level+1].noise_cap }}/{{ repeller_levels[my_shelter.repeller_level+1].threat_cap }})
+      {% else %}(已满级){% endif %}
+    {% else %}(庇护所Lv{{ repeller_level_required }}+,压低这片区域的噪声/长期威胁上限,更安全)
+    {% endif %}
+  </span>
+  {% if not my_shelter.repeller_level %}
+  <button {% if my_shelter.tier < repeller_level_required %}disabled{% endif %}>
+    造一个({% for k,v in repeller_levels[1].cost.items() %}{{ resources[k][0] }}{{ v }}{% if not loop.last %}、{% endif %}{% endfor %})
+  </button>
+  {% elif my_shelter.repeller_level < repeller_level_cap %}
+  <button>升级</button>
+  {% endif %}
+</form>
+{% endif %}
+{% endif %}
+
+{% if my_shelter %}
+<h2>🏠 我的庇护所</h2>
+<div class="card">
+  <p>「{{ my_shelter.name }}」 Lv{{ my_shelter.tier }} · {{ my_shelter_member_count }}/{{ shelter_tiers[my_shelter.tier][0] }}人 · 科研点{{ my_shelter.research_points }} · 田地{{ my_shelter.farmland_plots }}块</p>
+  <p class="muted">防御值:围墙x{{ my_shelter.defense_walls }} 陷阱x{{ my_shelter.defense_traps }} 瞭望塔x{{ my_shelter.defense_tower }}</p>
+  {% if my_shelter.tile_x==ch.tile_x and my_shelter.tile_y==ch.tile_y %}
+    {% if my_shelter.tier < shelter_tier_cap %}
+      {% set nxt = shelter_upgrade_cost[my_shelter.tier + 1] %}
+      <form method="post" action="{{ url_for('action_upgrade_shelter') }}">
+        <button>升级到Lv{{ my_shelter.tier + 1 }}(需{% for k,v in nxt.materials.items() %}{{ resources[k][0] }}{{ v }} {% endfor %}·科研点{{ nxt.research_points }})</button>
+      </form>
+    {% else %}
+      <p class="muted">已经是顶级庇护所了</p>
+    {% endif %}
+  {% endif %}
+  <form method="post" action="{{ url_for('shelter_leave') }}"><button>退出庇护所</button></form>
+</div>
+
+{% set shelter_generator = generator_levels[shelter_power.generator_level] %}
+<div class="card power-grid {% if shelter_power.damaged %}danger-card{% endif %}">
+  <div class="row"><strong>⚡ 庇护所电网 · {{ shelter_generator.name }}</strong><span>{{ shelter_power.charge }}/{{ shelter_generator.capacity }}电力</span></div>
+  <div class="bar signal"><div style="width:{{ (shelter_power.charge * 100 / shelter_generator.capacity)|int if shelter_generator.capacity else 0 }}%"></div></div>
+  <p class="muted">人口越多，每日生活噪声越高。净水炉每批用电2；温室补光用电2；夜袭时每座瞭望塔用电1。战备模式会为防御保留{{ power_defense_reserve }}点。</p>
+  {% if my_shelter.tile_x==ch.tile_x and my_shelter.tile_y==ch.tile_y %}
+    {% if shelter_power.damaged %}
+      <form method="post" action="{{ url_for('power_repair') }}"><input type="hidden" name="target" value="shelter"><button>维修电网（金属8、机械零件3）</button></form>
+    {% else %}
+      {% if shelter_power.generator_level < 3 %}
+      {% set next_shelter_generator = generator_levels[shelter_power.generator_level + 1] %}
+      <form method="post" action="{{ url_for('power_upgrade') }}"><input type="hidden" name="target" value="shelter"><button>接入{{ next_shelter_generator.name }}（{% for k,v in next_shelter_generator.cost.items() %}{{ item_names.get(k,k) }}{{ v }} {% endfor %}）</button></form>
+      {% endif %}
+      {% if shelter_power.generator_level %}
+      <form method="post" action="{{ url_for('power_generate') }}"><input type="hidden" name="target" value="shelter"><button {% if shelter_power.last_generation_day >= day_count or shelter_power.charge >= shelter_generator.capacity %}disabled{% endif %}>今日发电：约+{{ shelter_generator.output }}电 / 噪声{{ shelter_generator.noise }}{% if shelter_generator.fuel %} / 仓库燃油{{ shelter_generator.fuel }}{% endif %}</button></form>
+      <form method="post" action="{{ url_for('power_mode') }}"><input type="hidden" name="target" value="shelter"><select name="mode">{% for key,mode in power_modes.items() %}<option value="{{ key }}" {% if shelter_power.mode==key %}selected{% endif %}>{{ mode[0] }}</option>{% endfor %}</select><button>调整供电</button></form>
+      {% endif %}
+    {% endif %}
+  {% else %}<p class="muted">回到庇护所才能调整或发电。</p>{% endif %}
+  {% for log in shelter_power_logs[:3] %}<p class="muted">• {{ log.detail }}</p>{% endfor %}
+</div>
+
+<div class="card">
+  <p><strong>🍲 今日共同晚餐</strong></p>
+  {% if shelter_feast.completed %}
+    <p class="muted">今天已经开席，全体成员都恢复了25点饥饿值 ✓</p>
+  {% else %}
+    <div class="row"><span>成员共同捐生鲜</span><span>{{ shelter_feast.contributed }}/{{ shelter_feast.target }}</span></div>
+    <div class="bar hunger"><div style="width:{{ (shelter_feast.contributed * 100 / shelter_feast.target)|int }}%"></div></div>
+    {% if my_shelter.tile_x==ch.tile_x and my_shelter.tile_y==ch.tile_y %}
+    <form method="post" action="{{ url_for('shelter_feast_contribute') }}">
+      <input name="amount" type="number" min="1" max="20" value="1" style="width:65px">
+      <button>贡献生鲜</button>
+    </form>
+    {% else %}
+      <p class="muted">回到庇护所后可以贡献。</p>
+    {% endif %}
+  {% endif %}
+</div>
+
+<div class="card">
+  <p><strong>📌 庇护所留言板与编年史</strong></p>
+  <form method="post" action="{{ url_for('shelter_message') }}" style="display:flex;gap:6px">
+    <input name="content" maxlength="100" placeholder="给成员留一句话…" style="flex:1;min-width:0">
+    <button>发布</button>
+  </form>
+  {% for entry in shelter_feed %}
+    <p class="{% if entry.entry_type=='chronicle' %}muted{% endif %}">
+      <strong>{{ entry.author_name }}</strong>：{{ entry.content }}
+    </p>
+  {% else %}
+    <p class="muted">这里还没有记录，第一句话留给你。</p>
+  {% endfor %}
+</div>
+
+{% if shelter_notifications %}
+<div class="card">
+  <p><strong>死亡通知(五节)</strong></p>
+  {% for n in shelter_notifications %}<p class="muted">{{ n.message }}</p>{% endfor %}
+</div>
+{% endif %}
+
+{% if my_shelter.tile_x==ch.tile_x and my_shelter.tile_y==ch.tile_y %}
+<div class="card">
+  <p><strong>炉子(六节:生水→净水)</strong></p>
+  {% if not my_shelter.has_furnace %}
+    <form method="post" action="{{ url_for('action_build_furnace') }}">
+      <button>建炉子(需{% for k,v in furnace_cost.items() %}{{ resources[k][0] }}{{ v }} {% endfor %})</button>
+    </form>
+  {% elif not my_shelter.furnace_ready_ts %}
+    <p class="muted">空闲中,投入{% for k,v in furnace_batch_input.items() %}{{ resources[k][0] }}{{ v }} {% endfor %}煮出{{ furnace_batch_output }}份净水(从庇护所仓库扣材料)</p>
+    <form method="post" action="{{ url_for('action_furnace_start') }}"><button>开始煮水</button></form>
+  {% elif now_ts >= my_shelter.furnace_ready_ts %}
+    <p class="muted">煮好了</p>
+    <form method="post" action="{{ url_for('action_furnace_collect') }}"><button>收净水</button></form>
+  {% else %}
+    <p class="muted">正在煮,还要等{{ ((my_shelter.furnace_ready_ts - now_ts) // 60) + 1 }}分钟</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  {% set int_bonus_pct = (ch.stat_int if ch.stat_int < 20 else 20) * (farm_int_bonus_per_point * 100) %}
+  <p><strong>🌾 田地({{ my_shelter.farmland_plots }}块地,每次收获约{{ (farm_yield_per_plot * my_shelter.farmland_plots * (1 + int_bonus_pct/100)) | int }}份生鲜,智慧加成+{{ int_bonus_pct | round(0, 'floor') | int }}%)</strong></p>
+  {% if now_ts >= my_shelter.farm_ready_ts %}
+    <p class="muted">熟了{% if shelter_fertilizer_count > 0 %} · 有肥料,这次收获会自动+20%{% endif %}</p>
+    <form method="post" action="{{ url_for('action_farm_harvest') }}"><button>收获</button></form>
+  {% else %}
+    <p class="muted">还要等{{ ((my_shelter.farm_ready_ts - now_ts) // 60) + 1 }}分钟才能再收一次</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <p><strong>🧪 堆肥</strong>(动物粪便{{ shelter_dung_count }}份,肥料{{ shelter_fertilizer_count }}份)</p>
+  <form method="post" action="{{ url_for('action_compost') }}">
+    <button {% if shelter_dung_count < compost_input.animal_dung %}disabled{% endif %}>
+      堆1份肥料(耗{{ compost_input.animal_dung }}份动物粪便)
+    </button>
+  </form>
+</div>
+
+<div class="card">
+  <p><strong>🏡 温室</strong></p>
+  {% if my_shelter.has_greenhouse %}
+    <p class="muted">已建成,解锁稀有种子种植位 · 庇护所仓库里有{{ shelter_rare_seed_count }}颗稀有种子</p>
+    <form method="post" action="{{ url_for('action_plant_seed') }}">
+      <button {% if shelter_rare_seed_count < 1 %}disabled{% endif %}>种下1颗稀有种子(产{{ 2 }}份🌟珍稀药草)</button>
+    </form>
+  {% else %}
+    <p class="muted">还没建,建好后能种稀有种子(采集时低概率获得)</p>
+    <form method="post" action="{{ url_for('action_build_greenhouse') }}">
+      <button>建温室(需{% for k,v in greenhouse_cost.items() %}{% if k=='research_points' %}科研点{{ v }}{% else %}{{ resources[k][0] }}{{ v }}{% endif %} {% endfor %})</button>
+    </form>
+  {% endif %}
+</div>
+
+<div class="card">
+  <p><strong>🛡️ 防御建筑(围墙x{{ my_shelter.defense_walls }} 陷阱x{{ my_shelter.defense_traps }} 瞭望塔x{{ my_shelter.defense_tower }},可以叠加)</strong></p>
+  {% for kind, info in defense_buildings.items() %}
+  <form method="post" action="{{ url_for('action_build_defense') }}">
+    <input type="hidden" name="kind" value="{{ kind }}">
+    <button>建{{ info.name }}(+{{ info.value }}防御,需{% for k,v in info.cost.items() %}{{ resources[k][0] }}{{ v }} {% endfor %})</button>
+  </form>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <p><strong>💉 解药研发</strong>(11.3:每个庇护所各自独立)</p>
+  {% if my_shelter.has_vaccine %}
+    <p class="muted">已研发出来,可以清除感染度(消耗{% for k,v in vaccine_dose_cost.items() %}{{ item_names[k] }}{{ v }} {% endfor %})</p>
+    <form method="post" action="{{ url_for('action_use_vaccine') }}">
+      <button {% if ch.infection <= 0 %}disabled{% endif %}>打解药(当前感染度{{ ch.infection }})</button>
+    </form>
+  {% else %}
+    <p class="muted">还没研发出来,需要科研点{{ vaccine_unlock_research }} + {% for k,v in vaccine_unlock_materials.items() %}{{ resources[k][0] }}{{ v }} {% endfor %}</p>
+    <form method="post" action="{{ url_for('action_unlock_vaccine') }}"><button>投入研发</button></form>
+  {% endif %}
+</div>
+
+<div class="card">
+  <p><strong>🎯 狩猎陷阱</strong></p>
+  {% if not my_shelter.has_hunting_trap %}
+    <form method="post" action="{{ url_for('action_build_hunting_trap') }}">
+      <button>放陷阱(需{% for k,v in hunting_trap_cost.items() %}{{ resources[k][0] }}{{ v }} {% endfor %})</button>
+    </form>
+  {% elif now_ts >= my_shelter.hunting_trap_ready_ts %}
+    <p class="muted">有猎物了</p>
+    <form method="post" action="{{ url_for('action_collect_hunting_trap') }}"><button>收陷阱</button></form>
+  {% else %}
+    <p class="muted">还要等{{ ((my_shelter.hunting_trap_ready_ts - now_ts) // 60) + 1 }}分钟</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <p><strong>🐾 兽栏</strong></p>
+  {% if my_shelter.has_animal_pen %}
+    <p class="muted">已建成{% if ch.tamed_animal_key %} · 你带回来的{{ animal_profile.custom_name if animal_profile else animals[ch.tamed_animal_key].name }}正在这里发挥作用{% else %} · 你还没有驯服的动物,探索时偶尔会遇到{% endif %}</p>
+    {% if animal_profile %}
+      <p>陪伴第{{ ((now_ts-animal_profile.tamed_ts)//86400)+1 }}天 · 共同胜利{{ animal_profile.battles_won }}场 · 带回资源{{ animal_profile.resources_produced }}份</p>
+      <form method="post" action="{{ url_for('animal_rename') }}">
+        <input name="name" maxlength="20" placeholder="给它取个名字">
+        <button>改名</button>
+      </form>
+    {% endif %}
+  {% else %}
+    <form method="post" action="{{ url_for('action_build_animal_pen') }}">
+      <button>建兽栏(需{% for k,v in animal_pen_cost.items() %}{{ resources[k][0] }}{{ v }} {% endfor %})</button>
+    </form>
+  {% endif %}
+</div>
+
+{% if my_shelter.tier >= endgame_unlock_tier %}
+<div class="card">
+  <p><strong>🎆 归途装置(十二节)</strong></p>
+  {% if my_shelter.completed_ending %}
+    <p class="muted">已经激活,主线完成了</p>
+  {% elif my_shelter.has_endgame_device %}
+    <p class="muted">{{ item_names[endgame_material_key] }} {{ shelter_resonance_count }}/{{ endgame_material_needed }}</p>
+    <form method="post" action="{{ url_for('action_activate_endgame_device') }}">
+      <button {% if shelter_resonance_count < endgame_material_needed %}disabled{% endif %}>激活</button>
+    </form>
+  {% else %}
+    <p class="muted">需要科研点{{ endgame_unlock_research }} + {% for k,v in endgame_build_cost.items() %}{{ resources[k][0] }}{{ v }} {% endfor %}</p>
+    <form method="post" action="{{ url_for('action_build_endgame_device') }}"><button>建造</button></form>
+  {% endif %}
+</div>
+{% endif %}
+{% endif %}
+{% endif %}
+
+<h2>🏪 系统收购点</h2>
+<form method="post" action="{{ url_for('action_sell') }}">
+  <select name="resource_key">
+    {% for k in sellable_resources %}<option value="{{ k }}">{{ item_names.get(k,k) }}(按{{ sell_rate }}:1)</option>{% endfor %}
+    {% for k, f in fish_species.items() %}<option value="{{ k }}">{{ f.name }}(卖{{ f.value }}/条)</option>{% endfor %}
+  </select>
+  <input name="amount" type="number" min="1" value="1" style="width:60px">
+  <button type="submit">卖给系统</button>
+</form>
+{% if raid_warning %}
+<script>
+(() => {
+  const node = document.getElementById("raid-countdown");
+  if (!node) return;
+  let remaining = Number(node.dataset.seconds || 0);
+  const draw = () => {
+    const minutes = Math.floor(Math.max(0, remaining) / 60);
+    const seconds = Math.max(0, remaining) % 60;
+    node.textContent = `${String(minutes).padStart(2,"0")}:${String(seconds).padStart(2,"0")}`;
+    if (remaining > 0) remaining -= 1;
+  };
+  draw();
+  window.setInterval(draw, 1000);
+})();
+</script>
+{% endif %}
+{% endblock %}

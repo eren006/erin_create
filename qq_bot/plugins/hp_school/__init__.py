@@ -14,8 +14,9 @@ from nonebot.params import CommandArg
 import plugins.hp_core as hp_core
 from plugins.hp_core import spells as spell_catalog
 from plugins.hp_core import storage as core_storage
+from plugins.hp_core import web_binding
 
-from . import careers, casting, daily_plan, homework, lesson_events, lessons, mainline, potions, shop, shop_catalog, sorting, storage, subjects, wands, work
+from . import careers, casting, daily_plan, homework, kitchen, lesson_events, lessons, mainline, potions, shop, shop_catalog, sorting, storage, subjects, wands, work
 
 BUTTON_PREFIX = "hpsort"
 LESSON_BUTTON_PREFIX = "hplesson"
@@ -67,6 +68,24 @@ enroll_cmd = on_command("入学")
 
 
 ENROLL_USAGE = "用法：/入学 你的名字（比如 /入学 赫敏）"
+
+
+web_bind_cmd = on_command("网页绑定")
+
+
+@web_bind_cmd.handle()
+async def handle_web_bind(event: MessageEvent, args=CommandArg()):
+    try:
+        result = web_binding.issue(event.get_user_id(), args.extract_plain_text().strip())
+    except web_binding.BindingError as e:
+        await web_bind_cmd.finish(str(e))
+        return
+    await web_bind_cmd.finish(
+        f"🔐 {result['name']}的网页绑定码：{result['code']}\n"
+        f"已锁定登录QQ：{result['login_uid']}。请在网页申请账号时填写这个QQ号和绑定码。"
+        "绑定码十分钟内有效、使用一次后失效，"
+        "不要转发给别人。"
+    )
 
 
 def _wand_shop_message(uid: str, result: dict, resume: bool = False, intro: str = "") -> MessageSegment:
@@ -1049,3 +1068,162 @@ async def handle_sell(event: MessageEvent, args=CommandArg()):
         f"卖掉了{result['quantity']}份「{result['name']}」，"
         f"每份{result['unit_price']}加隆，共{result['total']}加隆（现在{player['galleons']}）。"
     )
+
+
+# ======================== 厨房养成 ========================
+
+def _cook_prompt(result: dict) -> str:
+    """烹饪步骤提示。"""
+    lines = [f"🔪 {result['recipe']}（第 {result['step']}/{result['total_steps']} 步）"]
+    if result.get("resumed"):
+        lines.append("继续上次进行到的地方——")
+    lines.extend(["", f"**{result['prompt']}**", "", _numbered(result["options"])])
+    return "\n".join(lines)
+
+
+cook_cmd = on_command("烹饪")
+
+
+@cook_cmd.handle()
+async def handle_cook(event: MessageEvent, args=CommandArg()):
+    uid = event.get_user_id()
+    recipe_input = args.extract_plain_text().strip()
+    if not recipe_input:
+        await cook_cmd.finish("用法：/烹饪 配方名（比如 /烹饪 炒鸡蛋）\n发送「/烹饪配方」查看已知配方。")
+        return
+
+    try:
+        result = kitchen.start(uid, recipe_input)
+    except kitchen.KitchenError as e:
+        await cook_cmd.finish(str(e))
+        return
+
+    await cook_cmd.finish(_cook_prompt(result))
+
+
+cook_choice_cmd = on_command("烹饪选择")
+
+
+@cook_choice_cmd.handle()
+async def handle_cook_choice(event: MessageEvent, args=CommandArg()):
+    try:
+        position = int(args.extract_plain_text().strip())
+        result = kitchen.choose(event.get_user_id(), position)
+    except (ValueError, kitchen.KitchenError) as e:
+        await cook_choice_cmd.finish(str(e) if str(e) else "用法：/烹饪选择 1/2/3")
+        return
+
+    if not result.get("finished"):
+        await cook_choice_cmd.finish(_cook_prompt(result))
+        return
+
+    if result["success"]:
+        text = (
+            f"🍳 烹饪完成：{result['recipe']}！"
+            f"{'✅ 完美！' if result['perfect'] else '✓ 成功！'}（{result['score']}/{result['max_score']}）\n"
+            f"你得到「{result['recipe']}」×{result['quantity']}。\n"
+            "发送「/食柜」查看你的存货。"
+        )
+    else:
+        text = (
+            f"🔥 烹饪失败。{result['recipe']}在你手中毁了。\n"
+            f"😨 不好！{result['accident']}\n"
+            "材料没能保住，要先采集新的。"
+        )
+    await cook_choice_cmd.finish(text)
+
+
+pantry_cmd = on_command("食柜")
+
+
+@pantry_cmd.handle()
+async def handle_pantry(event: MessageEvent):
+    uid = event.get_user_id()
+    conn = core_storage.get_conn()
+    try:
+        player = core_storage.get_player(uid)
+        if not player or not player["house"]:
+            await pantry_cmd.finish("你还没有分院。先完成 /入学")
+            return
+
+        foods = conn.execute(
+            "SELECT food_key, quantity FROM kitchen_inventory WHERE uid=? ORDER BY food_key",
+            (uid,),
+        ).fetchall()
+
+        if not foods:
+            await pantry_cmd.finish("你的食柜空空如也。发送 /烹饪 开始制作食物吧。")
+            return
+
+        lines = ["🍽️ 你的食柜"]
+        total = 0
+        for row in foods:
+            name = kitchen.item_name(row["food_key"])
+            if name:
+                lines.append(f"　{name} × {row['quantity']}")
+                total += row["quantity"]
+        lines.append(f"\n共 {total} 份食物")
+
+        await pantry_cmd.finish("\n".join(lines))
+    finally:
+        conn.close()
+
+
+recipe_list_cmd = on_command("烹饪配方")
+
+
+@recipe_list_cmd.handle()
+async def handle_recipe_list(event: MessageEvent):
+    uid = event.get_user_id()
+    conn = core_storage.get_conn()
+    try:
+        player = core_storage.get_player(uid)
+        if not player or not player["house"]:
+            await recipe_list_cmd.finish("你还没有分院。先完成 /入学")
+            return
+
+        exp = core_storage.get_cooking_exp(uid)
+
+        learned = {
+            r["recipe_key"]: True
+            for r in conn.execute("SELECT recipe_key FROM kitchen_learned_recipes WHERE uid=?", (uid,)).fetchall()
+        }
+
+        lines = [f"📖 你的配方书（烹饪经验 {exp}）"]
+        by_category = {}
+        for key, recipe in kitchen.RECIPES.items():
+            cat = recipe.get("category", "other")
+            if cat not in by_category:
+                by_category[cat] = []
+            by_category[cat].append((key, recipe))
+
+        cat_names = {
+            "breakfast": "🌅 早餐",
+            "main": "🍽️ 主食",
+            "soup": "🍲 汤类",
+            "dessert": "🍰 甜点",
+            "magic": "✨ 魔法美食",
+            "beverage": "☕ 饮品",
+            "snack": "🍪 点心小食",
+        }
+
+        for cat_key in ["breakfast", "main", "soup", "dessert", "magic", "beverage", "snack"]:
+            if cat_key not in by_category:
+                continue
+            lines.append(f"\n{cat_names.get(cat_key, cat_key)}")
+            for key, recipe in sorted(by_category[cat_key], key=lambda x: x[0]):
+                unlocked = player["grade"] >= recipe["grade"] and exp >= recipe["exp"]
+                if key in learned:
+                    marker = "✓"
+                elif unlocked:
+                    marker = "○"
+                else:
+                    marker = "×"
+                lines.append(
+                    f"　{marker} {recipe['name']}"
+                    f"（{recipe['grade']}年级,{recipe['exp']}经验）"
+                )
+
+        await recipe_list_cmd.finish("\n".join(lines))
+    finally:
+        conn.close()

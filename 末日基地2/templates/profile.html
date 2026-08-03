@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="section-kicker">SURVIVOR DOSSIER / 幸存者档案</div>
+<h1>{{ display_name(ch) }}</h1>
+<p class="muted">这是语言 cosplay 身份页。皮相可以写明星名字；头像全部为虚构的末日风格帅哥美女。</p>
+
+<form method="post">
+  <div class="card">
+    <h2>选择头像</h2>
+    <div class="avatar-grid">
+      {% for key, label in avatars.items() %}
+      <label class="avatar-choice">
+        <input type="radio" name="avatar_key" value="{{ key }}" {% if (profile and profile.avatar_key==key) or (not profile and loop.first) %}checked{% endif %}>
+        <img src="{{ url_for('static', filename=key + '.jpg') }}" alt="{{ label }}" loading="lazy">
+        <span>{{ label }}</span>
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card profile-form">
+    <label>外号 <span class="muted">显示为“{{ ch.name }}（外号）”</span>
+      <input name="nickname" maxlength="12" value="{{ profile.nickname if profile else '' }}" placeholder="例如：大哥">
+    </label>
+    <label>皮相 <span class="muted">填写明星名字，仅作语言 cosplay 参考</span>
+      <input name="face_claim" maxlength="30" value="{{ profile.face_claim if profile else '' }}" placeholder="例如：某位演员">
+    </label>
+
+    {% if profile %}
+      <div class="locked-lore">
+        <div class="section-kicker">ORIGIN RECORD · 身世记录</div>
+        <p><strong>📜 {{ backgrounds[profile.background_key].name }}（已锁定）</strong></p>
+        <p class="background-story">{{ backgrounds[profile.background_key].desc }}</p>
+        <p><strong>特质（已锁定）</strong><br>{{ traits[profile.trait_a].name }} · {{ traits[profile.trait_b].name }}</p>
+        <p class="muted">{{ traits[profile.trait_a].desc }}；{{ traits[profile.trait_b].desc }}</p>
+      </div>
+    {% else %}
+      <label>人物背景 <span class="muted">100段具体身世，建立后不可修改</span>
+        <select name="background_key" id="background-select" required>
+          {% for key, bg in backgrounds.items() %}<option value="{{ key }}" data-story="{{ bg.desc|e }}">{{ bg.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <div class="background-preview" id="background-preview" aria-live="polite">
+        <div class="section-kicker">SELECTED MEMORY · 选中的故事</div>
+        <strong id="background-title"></strong>
+        <p id="background-story"></p>
+      </div>
+      <div class="grid two">
+        <label>特质一
+          <select name="trait_a" required>
+            {% for key, trait in traits.items() %}<option value="{{ key }}">{{ trait.name }}｜{{ trait.desc }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>特质二
+          <select name="trait_b" required>
+            {% for key, trait in traits.items() %}<option value="{{ key }}" {% if loop.index==2 %}selected{% endif %}>{{ trait.name }}｜{{ trait.desc }}</option>{% endfor %}
+          </select>
+        </label>
+      </div>
+    {% endif %}
+
+    <label>自述 / 背景补充
+      <textarea name="bio" maxlength="500" rows="6" placeholder="你是谁？失去了什么？为什么仍在寻找北辰信号？">{{ profile.bio if profile else '' }}</textarea>
+    </label>
+    <button class="primary" type="submit">{{ "保存档案" if profile else "确认身份并进入废土" }}</button>
+    {% if profile %}<a href="{{ url_for('dashboard') }}" class="button-link">返回基地</a>{% endif %}
+  </div>
+</form>
+
+{% if profile %}
+<h2>伤痕与经历</h2>
+<div class="card">
+  {% for tag in tags %}
+    <p><strong>{{ tag_defs[tag.tag_key][0] }}</strong> <span class="muted">{{ tag_defs[tag.tag_key][1] }}{% if tag.detail %} · {{ tag.detail }}{% endif %}</span></p>
+  {% else %}
+    <p class="muted">经历会随着探索、战斗、建造与救援自动留在这里。</p>
+  {% endfor %}
+</div>
+
+<h2>个人房间角落</h2>
+<div class="card">
+  {% if room %}<p><strong>{{ room_corners[room.corner_key][0] }}</strong> — {{ room_corners[room.corner_key][1] }}</p>{% endif %}
+  <form method="post" action="{{ url_for('room_corner_set') }}">
+    <select name="corner_key">
+      {% for key, info in room_corners.items() %}<option value="{{ key }}" {% if room and room.corner_key==key %}selected{% endif %}>{{ info[0] }}</option>{% endfor %}
+    </select>
+    <input name="custom_note" maxlength="80" value="{{ room.custom_note if room else '' }}" placeholder="给这个角落补一句描述…">
+    <button>保存布置</button>
+  </form>
+</div>
+
+<h2>主线选择留痕</h2>
+{% for choice in story_choices %}
+<div class="card"><strong>第{{ choice.chapter }}章 · {{ choice.choice_label }}</strong><p class="muted">{{ choice.trace_text }}</p></div>
+{% else %}<p class="muted">完成主线章节选择后，它们会永久记录在这里。</p>{% endfor %}
+{% endif %}
+{% if not profile %}
+<script>
+(() => {
+  const select = document.getElementById("background-select");
+  const title = document.getElementById("background-title");
+  const story = document.getElementById("background-story");
+  const render = () => {
+    const option = select.options[select.selectedIndex];
+    title.textContent = option.textContent;
+    story.textContent = option.dataset.story || "";
+  };
+  select.addEventListener("change", render);
+  render();
+})();
+</script>
+{% endif %}
+{% endblock %}

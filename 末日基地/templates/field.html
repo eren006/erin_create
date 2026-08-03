@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}巡逻/采集 - 末日基地{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>外勤</h2>
+  <p class="muted">体力:{{ survivor.energy }}/{{ max_energy }} · 今晚防御值储备:{{ patrol_points }} · 今晚丧尸潮已被削弱:{{ horde_reduction }}</p>
+  <p class="muted" style="margin-top:4px">
+    {% if survivor.weapon_level > 0 %}
+    {{ '枪' if survivor.weapon_type == 'gun' else '刀' }} Lv.{{ survivor.weapon_level }}(耐久 {{ survivor.weapon_durability }}/{{ survivor.weapon_max_durability }}{% if survivor.weapon_durability <= 0 %} · 已损坏,去<a href="{{ url_for('gear_page') }}">装备页</a>修{% endif %})
+    {% else %}
+    还没有武器,去<a href="{{ url_for('gear_page') }}">装备页</a>打造
+    {% endif %}
+    · 护甲 Lv.{{ survivor.gear_level }}
+  </p>
+</div>
+
+<div class="card">
+  <h3>巡逻围墙</h3>
+  <p class="muted">消耗体力 {{ patrol_cost }} + 弹药 {{ ammo_patrol }},为今晚的丧尸潮防御加分,武器等级有加成(会消耗武器耐久)。</p>
+  <form method="post" action="{{ url_for('field_patrol') }}" style="margin-top:8px">
+    <button class="btn btn-primary" type="submit">去巡逻</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>外出采集</h3>
+  <p class="muted">消耗体力 {{ scavenge_cost }},可能带回木材/金属/药品/弹药/种子,也可能遭遇丧尸受伤。拾荒者专精和护甲/武器等级能降低受伤概率和伤害。</p>
+  <form method="post" action="{{ url_for('field_scavenge') }}" style="margin-top:8px">
+    <button class="btn btn-primary" type="submit">外出采集</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>组队探索</h3>
+  {% if not expedition_unlocked %}
+  <p class="muted">还没解锁远征路线,去<a href="{{ url_for('tech_page') }}">科技树</a>解锁。</p>
+  {% else %}
+
+  <div style="margin-bottom:10px">
+    {% for m in map_states %}
+    <p class="muted" style="margin-top:4px">
+      {% if m.unlocked %}✓ {{ m.name }}(已解锁)
+      {% else %}✗ {{ m.name }}——探索进度 {{ m.progress }}/{{ m.progress_required }}
+      {% endif %}
+    </p>
+    {% endfor %}
+  </div>
+
+  {% if current_expedition %}
+    {% if current_expedition.status == 'inviting' %}
+    <p class="muted">邀请还没被回应。</p>
+    <form method="post" action="{{ url_for('expedition_cancel', expedition_id=current_expedition.id) }}">
+      <button class="btn" type="submit">取消邀请</button>
+    </form>
+    {% elif current_expedition.status == 'exploring' %}
+    <p class="muted">正在{{ exp_map_name }}探索中,等待队长决定下一步。</p>
+    <a href="{{ url_for('expedition_battle', expedition_id=current_expedition.id) }}" class="btn btn-primary">进入探索 →</a>
+    {% else %}
+    <p class="muted">正在{{ exp_map_name }}交手,回合数 {{ current_expedition.round_number }}。</p>
+    <a href="{{ url_for('expedition_battle', expedition_id=current_expedition.id) }}" class="btn btn-primary">进入探索 →</a>
+    {% endif %}
+  {% else %}
+  <p class="muted">必须两人一起才能出发,回合制战斗,出发消耗体力 {{ expedition_energy_cost }},队长每次带队继续探索还要消耗弹药 {{ ammo_hunt }}(两人各付一份)。会遇到哪种怪、能不能打赢看运气和配合,一趟能连续打好几场,直到收队回基地。</p>
+
+  {% if incoming_invites %}
+  <div style="margin-top:8px">
+    <p class="muted">收到的邀请:</p>
+    {% for inv in incoming_invites %}
+    <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+      <span style="flex:1">{{ names.get(inv.member_a_id, '?') }} 邀请你一起去{{ maps[inv.map_key].name if inv.map_key in maps else '?' }}探索</span>
+      <form method="post" action="{{ url_for('expedition_accept', expedition_id=inv.id) }}">
+        <button class="btn btn-primary" type="submit">接受</button>
+      </form>
+      <form method="post" action="{{ url_for('expedition_decline', expedition_id=inv.id) }}">
+        <button class="btn" type="submit">拒绝</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <form method="post" id="expedition-invite-form" style="margin-top:10px;display:flex;gap:8px;align-items:center">
+    <select name="target" id="expedition-target" onchange="document.getElementById('expedition-invite-form').action='/expedition/invite/'+this.value">
+      <option value="">选一个人一起出发</option>
+      {% for s in others %}
+      <option value="{{ s.id }}">{{ s.name }}</option>
+      {% endfor %}
+    </select>
+    <select name="map_key">
+      {% for m in map_states if m.unlocked %}
+      <option value="{{ m.key }}">{{ m.name }}</option>
+      {% endfor %}
+    </select>
+    <button class="btn btn-primary" type="submit">邀请</button>
+  </form>
+  <script>document.getElementById('expedition-invite-form').action = '/expedition/invite/' + document.getElementById('expedition-target').value;</script>
+  {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>🏘️ {{ shelter.name }}</h1>
+<p><a href="{{ url_for('shelters_list') }}">← 返回庇护所列表</a></p>
+<div class="card">
+  <p>Lv{{ shelter.tier }} · {{ members|length }}/{{ tiers[shelter.tier][0] }}人 · 坐标({{ shelter.tile_x }},{{ shelter.tile_y }})</p>
+  <p class="muted">田地{{ shelter.farmland_plots }}块 · 科研{{ shelter.research_points }} · 社区当前贡献总量{{ contribution_total }}</p>
+  <p class="muted">防御：围墙{{ shelter.defense_walls }} / 陷阱{{ shelter.defense_traps }} / 瞭望塔{{ shelter.defense_tower }}</p>
+</div>
+
+<h2>🕯️ 今日庇护所生活</h2>
+<div class="card">
+  <strong>{{ life_event.title }}</strong>
+  <p>{{ life_event.description }}</p>
+  {% if life_event.status == 'open' %}
+    {% for key,label in life_event_def.options.items() %}
+    <form method="post" action="{{ url_for('shelter_life_vote', sid=shelter.id) }}">
+      <input type="hidden" name="option_key" value="{{ key }}"><button {% if my_life_vote %}disabled{% endif %}>{{ label }} · {{ life_votes.get(key,0) }}票</button>
+    </form>
+    {% endfor %}
+    {% if ch.shelter_id != shelter.id %}<p class="muted">只有本庇护所成员可以回应。</p>{% endif %}
+  {% else %}<p>最终选择：{{ life_event_def.options.get(life_event.winning_option,life_event.winning_option) }}</p>{% endif %}
+  <p class="muted">参与会产生一条不设期限的个人后续支线；不参与没有惩罚。</p>
+</div>
+
+<h2>👥 成员与伙伴</h2>
+{% for m in members %}
+<div class="card row">
+  <span class="profile-summary">{% if m.avatar_key %}<img class="profile-avatar" style="width:42px;height:42px" src="{{ url_for('static', filename=m.avatar_key + '.jpg') }}" alt="">{% endif %}<strong>{{ m.name }}{% if m.nickname %}（{{ m.nickname }}）{% endif %}</strong> Lv{{ m.level }}</span>
+  <span class="muted">{% if m.custom_name %}伙伴「{{ m.custom_name }}」· {{ m.battles_won }}胜{% else %}独自行动{% endif %}</span>
+</div>
+{% endfor %}
+
+<h2>📖 庇护所近况</h2>
+{% for e in feed %}<div class="card"><strong>{{ e.author_name }}</strong>：{{ e.content }}</div>{% else %}<p class="muted">暂无记录。</p>{% endfor %}
+
+<h2>🚪 串门与访客簿</h2>
+<form method="post" action="{{ url_for('shelter_visit', sid=shelter.id) }}">
+  <input name="message" maxlength="60" placeholder="留一句祝福或物资情报…" value="来过，愿你们平安。">
+  <button>今日串门签名</button>
+</form>
+{% for v in visits %}<p><strong>{{ v.visitor_name }}</strong>：{{ v.message }}</p>{% else %}<p class="muted">还没有访客。</p>{% endfor %}
+{% endblock %}

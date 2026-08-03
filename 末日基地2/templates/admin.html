@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>管理后台</h1>
+<p><a href="{{ url_for('admin_stats') }}">数值统计页 →</a></p>
+
+<h2>待批准注册({{ pending_users|length }})</h2>
+{% for u in pending_users %}
+<div class="card row">
+  <span>{{ u.username }}</span>
+  <span>
+    <form method="post" action="{{ url_for('admin_approve_user') }}" style="display:inline">
+      <input type="hidden" name="user_id" value="{{ u.id }}"><button>批准</button>
+    </form>
+    <form method="post" action="{{ url_for('admin_reject_user') }}" style="display:inline">
+      <input type="hidden" name="user_id" value="{{ u.id }}"><button>拒绝(删除)</button>
+    </form>
+  </span>
+</div>
+{% else %}
+<p class="muted">没有等待批准的账号</p>
+{% endfor %}
+
+<h2>世界状态</h2>
+<div class="card">
+  <p>第 {{ ws.day_count }} 天 · {% if night %}<span class="night">黑夜</span>{% else %}<span class="day">白天</span>{% endif %}</p>
+  <form method="post" action="{{ url_for('admin_tick') }}"><button>手动推进一次tick</button></form>
+</div>
+
+<div class="card">
+  <p><strong>重置整个世界</strong></p>
+  <p class="muted">保留：用户名、密码、注册时间、批准状态。清空：角色与档案、重开/死亡次数、物资、建筑、地图、关系与孩子、主支线、战绩和全部世界事件。所有账号下次进入时重新创建角色。</p>
+  <p class="muted">执行前服务器会自动保存一份完整数据库备份；清理过程是完整事务，不会只重置一半。</p>
+  <form method="post" action="{{ url_for('admin_reset_world') }}" onsubmit="return confirm('确定要让所有账号重新创建角色，并清空整个游戏世界吗？注册账号不会删除。');">
+    <input name="confirm" placeholder="输入「重置」两个字确认">
+    <button>保留账号并重置世界</button>
+  </form>
+</div>
+
+<h2>账号/角色</h2>
+<div class="card">
+  <p>用户总数 {{ user_counts.total }} · 永久死亡锁定 {{ user_counts.permadead }}</p>
+  {% for row in char_counts %}<p class="muted">{{ row.status }}: {{ row.c }}</p>{% endfor %}
+  <p>房子总数 {{ houses.total }} · 已废弃 {{ houses.abandoned }}</p>
+</div>
+
+<div class="card">
+  <p><strong>解除账号永久死亡锁定</strong>(慎用)</p>
+  <form method="post" action="{{ url_for('admin_unlock_permadead') }}">
+    <input name="username" placeholder="用户名">
+    <button>解锁</button>
+  </form>
+</div>
+
+<div class="card">
+  <p><strong>给角色补HP</strong>(封顶100，只对存活角色生效)</p>
+  <form method="post" action="{{ url_for('admin_grant_hp') }}">
+    <input name="username" placeholder="用户名">
+    <input name="amount" type="number" min="1" value="20" style="width:80px">
+    <button>补HP</button>
+  </form>
+</div>
+
+<div class="card">
+  <p><strong>给角色补体力</strong>(封顶100，只对存活角色生效)</p>
+  <form method="post" action="{{ url_for('admin_grant_stamina') }}">
+    <input name="username" placeholder="用户名">
+    <input name="amount" type="number" min="1" value="30" style="width:80px">
+    <button>补体力</button>
+  </form>
+</div>
+
+<div class="card">
+  <p><strong>给角色降感染度</strong>(最低到0，只对存活角色生效)</p>
+  <form method="post" action="{{ url_for('admin_reduce_infection') }}">
+    <input name="username" placeholder="用户名">
+    <input name="amount" type="number" min="1" value="20" style="width:80px">
+    <button>降感染度</button>
+  </form>
+</div>
+
+<div class="card">
+  <p><strong>给角色发材料/物品</strong>(直接加进随身携带，只对存活角色生效)</p>
+  <form method="post" action="{{ url_for('admin_grant_resource') }}">
+    <input name="username" placeholder="用户名">
+    <select name="resource_key">
+      {% for k in grantable_resources %}<option value="{{ k }}">{{ item_names.get(k, k) }}</option>{% endfor %}
+    </select>
+    <input name="amount" type="number" min="1" value="10" style="width:80px">
+    <button>发放</button>
+  </form>
+</div>
+
+<h2>资源点(存量)</h2>
+<table>
+  <tr><th>稀有度</th><th>地块数</th><th>剩余总量</th></tr>
+  {% for row in node_counts %}
+  <tr><td>{{ row.rarity }}</td><td>{{ row.c }}</td><td>{{ row.total_amt }}</td></tr>
+  {% endfor %}
+</table>
+
+<h2>庇护所(最近20个)</h2>
+<table>
+  <tr><th>名字</th><th>Lv</th><th>科研点</th><th>炉子</th><th>高级工作台</th><th>防御(墙/陷阱/塔)</th><th>状态</th></tr>
+  {% for s in shelters %}
+  <tr>
+    <td>{{ s.name }}</td><td>{{ s.tier }}</td><td>{{ s.research_points }}</td>
+    <td>{{ '有' if s.has_furnace else '无' }}</td><td>{{ '有' if s.has_advanced_workbench else '无' }}</td>
+    <td>{{ s.defense_walls }}/{{ s.defense_traps }}/{{ s.defense_tower }}</td>
+    <td>{{ '已废弃' if s.abandoned else '正常' }}</td>
+  </tr>
+  {% endfor %}
+</table>
+
+<h2>最近死亡</h2>
+<table>
+  {% for d in recent_deaths %}
+  <tr><td>{{ d.char_name }}</td><td class="muted">{{ d.detail }}</td></tr>
+  {% else %}<tr><td class="muted">暂无</td></tr>{% endfor %}
+</table>
+
+<h2>最近操作日志</h2>
+<table>
+  {% for a in recent_actions %}
+  <tr><td>{{ a.char_name }}</td><td>{{ a.action }}</td><td class="muted">{{ a.detail }}</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

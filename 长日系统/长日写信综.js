@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         长日写信综
 // @author       长日将尽
-// @version      1.5.0
+// @version      1.6.1
 // @description  独立的正式信件系统，支持发送信件、写信币赏金、配置管理
 // @timestamp    1778742000
 // @license      MIT
@@ -271,7 +271,7 @@ cmd_letter_admin_guide.solve = (ctx, msg, cmdArgs) => {
         "",
         "⑤ 玩家使用",
         "玩家可发送纯文字「写信综指南」（不带。号）查看使用说明，",
-        "或直接用「。发送信件」「。信件状态」「。羽毛笔修改」。",
+        "或直接用「发送信件」（不带。号也行）「。信件状态」「。羽毛笔修改」。",
     ];
     seal.replyToSender(ctx, msg, lines.join("\n"));
     return seal.ext.newCmdExecuteResult(true);
@@ -286,7 +286,7 @@ ext.cmdMap["写信综指南"] = cmd_letter_admin_guide;
 let cmd_send_letter = seal.ext.newCmdItemInfo();
 cmd_send_letter.name = "发送信件";
 cmd_send_letter.help = `📮 发送正式信件
-格式：。发送信件
+格式：发送信件（不用加。号，直接发也可以）
 【收件人】角色名
 【内容】信件内容
 【日期】日期（选填，显示在信件顶部）
@@ -294,18 +294,19 @@ cmd_send_letter.help = `📮 发送正式信件
 【署名】落款（选填，默认为你的角色名）
 
 示例：
-。发送信件
+发送信件
 【收件人】小明
 【内容】亲爱的小明，今天天气真好...
 【日期】2026年4月28日
 【署名】小红`;
 
-cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
+// 发送信件的核心逻辑：被「。发送信件」命令与纯文本「发送信件」触发共用
+function handleSendLetter(ctx, msg) {
 
     // 1. 检查写信综是否启用
     if (!isLetterSystemEnabled()) {
         seal.replyToSender(ctx, msg, "✉️ 发送信件功能未启用。\n\n管理员需要先在「。设置 功能开关」开启「发送信件」，并执行「注册写信综基础道具」。");
-        return seal.ext.newCmdExecuteResult(true);
+        return;
     }
 
     const platform = msg.platform;
@@ -316,7 +317,7 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
     const senderRoleName = getRoleName(ctx, msg);
     if (!senderRoleName) {
         seal.replyToSender(ctx, msg, "✨ 请先使用「创建新角色」来认领你的身份。");
-        return seal.ext.newCmdExecuteResult(true);
+        return;
     }
 
     // 3. 解析标签
@@ -335,18 +336,19 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
 
     // 4. 验证必填项
     if (!receiver) {
-        seal.replyToSender(ctx, msg, `⚠️ 请指定【收件人】。\n\n示例：\n。发送信件\n【收件人】小明\n【内容】亲爱的小明，今天天气真好...\n【日期】2026年4月28日\n【附件】随信附上一份礼物\n【署名】小红`);
-        return seal.ext.newCmdExecuteResult(true);
+        seal.replyToSender(ctx, msg, `⚠️ 请指定【收件人】。`);
+        seal.replyToSender(ctx, msg, `发送信件\n【收件人】小明\n【内容】亲爱的小明，今天天气真好...\n【日期】2026年4月28日\n【附件】随信附上一份礼物\n【署名】小红`);
+        return;
     }
 
     if (!getEntryByRoleName(a_private_group, platform, receiver)) {
         seal.replyToSender(ctx, msg, `⚠️ 找不到角色「${receiver}」。`);
-        return seal.ext.newCmdExecuteResult(true);
+        return;
     }
 
     if (!content) {
         seal.replyToSender(ctx, msg, `⚠️ 信件内容不能为空。`);
-        return seal.ext.newCmdExecuteResult(true);
+        return;
     }
 
     // 5. 每日限额检查
@@ -362,7 +364,7 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
     const currentCount = dlCounts[userKey].count;
     if (currentCount >= dailyLimit) {
         seal.replyToSender(ctx, msg, `📪 今日已发 ${currentCount}/${dailyLimit} 封信件。`);
-        return seal.ext.newCmdExecuteResult(true);
+        return;
     }
 
     // 5.5 冷却检查
@@ -372,7 +374,7 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
         const cdRemain = cdMinutes - Math.floor((Date.now() - lastSendTime) / 60000);
         if (cdRemain > 0) {
             seal.replyToSender(ctx, msg, `⏳ 发信冷却中，还需等待 ${cdRemain} 分钟。`);
-            return seal.ext.newCmdExecuteResult(true);
+            return;
         }
     }
 
@@ -500,7 +502,7 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
 
         // 照常给发信人回执、计数、写信币
         giveRewardAndReply();
-        return seal.ext.newCmdExecuteResult(true);
+        return;
     }
 
     // 7. 组装信件内容
@@ -554,7 +556,10 @@ cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
 
     // 10. 发放赏金 + 计数 + 回执
     giveRewardAndReply();
+}
 
+cmd_send_letter.solve = (ctx, msg, cmdArgs) => {
+    handleSendLetter(ctx, msg);
     return seal.ext.newCmdExecuteResult(true);
 };
 
@@ -803,6 +808,13 @@ ext.cmdMap["羽毛笔修改"] = cmd_quill_pen_modify;
 
 ext.onNotCommandReceived = (ctx, msg) => {
     const raw = (msg.rawMessage || msg.message || "").trim();
+
+    // 纯文本直接发信，无需「。」前缀
+    if (raw.startsWith("发送信件") && raw.includes("【")) {
+        handleSendLetter(ctx, msg);
+        return;
+    }
+
     if (raw !== "写信综指南") return;
 
     if (!msg.groupId) {
@@ -821,7 +833,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
          "【拒绝时间线】",
          "拒绝时间线 群号"],
         ["【发送信件】",
-         "。发送信件",
+         "发送信件（不用加。号）",
          "【收件人】角色名",
          "【内容】信件内容",
          "【日期】日期（选填）",

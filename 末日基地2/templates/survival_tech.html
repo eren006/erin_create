@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="family-hero survival-tech-hero">
+  <div class="section-kicker">FIELD SURVIVAL TECHNOLOGY</div>
+  <h1>☣️ 个人生存技术</h1>
+  <p>水看起来干净不代表安全；弹壳可以再用；真正可靠的补给，要提前埋在自己走过的路上。</p>
+</div>
+
+<h2>🔧 生存设备</h2>
+<div class="grid two">
+{% for key,s in stations.items() %}
+{% set built = workshop['has_'+key] %}
+<div class="card station-card {% if built %}built{% endif %}">
+  <div class="row"><strong>{{ s.name }}</strong><span>{{ "已安装 ✓" if built else "未安装" }}</span></div>
+  <p class="muted">{% for k,v in s.cost.items() %}{{ item_names.get(k,k) }}x{{ v }} {% endfor %}</p>
+  {% if not built %}<form method="post" action="{{ url_for('survival_tech_build') }}"><input type="hidden" name="station_key" value="{{ key }}"><button {% if not house_here %}disabled{% endif %}>安装</button></form>{% endif %}
+</div>
+{% endfor %}
+</div>
+{% if not house_here %}<p class="muted">安装设备时需要回到自己的房屋地块。</p>{% endif %}
+
+<h2>💧 净水与污染检测 <span class="skill-badge">检测经验 {{ workshop.water_skill }}</span></h2>
+<div class="card contamination-panel">
+  <div class="row"><strong>未检测生水 {{ inv_map.get('raw_water',0) }}份</strong><span>净水 {{ inv_map.get('clean_water',0) }}份</span></div>
+  <p class="muted">距离出生点越远，化学污染与辐射颗粒的概率越高。检测会消耗1份生水。</p>
+  <form method="post" action="{{ url_for('survival_water_test') }}"><button class="primary" {% if not workshop.has_water_tester or not inv_map.get('raw_water',0) %}disabled{% endif %}>检测一份生水</button></form>
+</div>
+{% for s in samples %}
+{% set info=contamination[s.contamination_key] %}
+<div class="card water-sample">
+  <div class="row"><strong>{{ info.name }}</strong><span>来源坐标 ({{ s.source_x }},{{ s.source_y }})</span></div>
+  <p>处理方式：{{ info.treatment }}{% if info.cost %} · {% for k,v in info.cost.items() %}{{ item_names[k] }}x{{ v }} {% endfor %}{% endif %}</p>
+  <form method="post" action="{{ url_for('survival_water_treat', sample_id=s.id) }}"><button>按检测结果处理</button></form>
+  <form method="post" action="{{ url_for('survival_water_discard', sample_id=s.id) }}"><button>安全丢弃</button></form>
+</div>
+{% endfor %}
+
+<h2>🔫 弹药复装与武器保养</h2>
+<div class="grid two">
+<div class="card">
+  <strong>🗜️ 复装弹药</strong>
+  <p>每批需要{{ item_names.spent_casing }}x2、{{ item_names.gunpowder }}x1、{{ item_names.metal }}x1。</p>
+  <p class="muted">熟练度 {{ workshop.reload_skill }} · 当前弹药 {{ inv_map.get('ammo',0) }} · 弹壳 {{ inv_map.get('spent_casing',0) }} · 火药 {{ inv_map.get('gunpowder',0) }}</p>
+  <form method="post" action="{{ url_for('survival_ammo_reload') }}"><button {% if not workshop.has_ammo_press %}disabled{% endif %}>复装一批</button></form>
+</div>
+<div class="card">
+  <strong>🛢️ 清洁与上油</strong>
+  <p>当前武器：{{ ch.equipped_weapon }} · 耐久 {{ ch.weapon_durability }}/100</p>
+  <p class="muted">消耗布料x1、枪械保养油x1；恢复20耐久，接下来3场战斗降低磨损。</p>
+  <form method="post" action="{{ url_for('survival_weapon_clean') }}"><button>保养武器</button></form>
+  {% if maintenance %}<p class="muted">累计保养{{ maintenance.clean_count }}次 · 剩余低磨损战斗{{ maintenance.maintained_battles }}场</p>{% endif %}
+</div>
+</div>
+
+<h2>📦 私人补给藏点</h2>
+<form method="post" action="{{ url_for('survival_cache_create') }}" class="card">
+  <strong>在当前坐标({{ ch.tile_x }},{{ ch.tile_y }})制作防潮藏箱</strong>
+  <p class="muted">消耗木材x5、金属x2。藏点容量50，必须走到对应坐标才能存取。</p>
+  <input name="custom_name" maxlength="24" placeholder="例如：北路三号药箱">
+  <select name="access_mode"><option value="private">仅自己</option><option value="family">伴侣、挚友和义亲可用</option></select>
+  <button>建立藏点</button>
+</form>
+{% for card in caches %}
+{% set c=card.row %}
+<div class="card cache-card {% if card.here %}cache-here{% endif %}">
+  <div class="row"><strong>📦 {{ c.custom_name }}</strong><span>({{ c.tile_x }},{{ c.tile_y }}) · {{ "家族共享" if c.access_mode=="family" else "私人" }}</span></div>
+  <p>{% for i in card.inventory %}{{ item_names.get(i.resource_key,i.resource_key) }}x{{ i.amount }}{% if not loop.last %}、{% endif %}{% else %}<span class="muted">藏箱还是空的</span>{% endfor %}</p>
+  {% if card.here %}
+  <form method="post" action="{{ url_for('survival_cache_transfer', cache_id=c.id) }}">
+    <input type="hidden" name="direction" value="deposit"><select name="resource_key">{% for i in inventory %}<option value="{{ i.resource_key }}">{{ item_names.get(i.resource_key,i.resource_key) }}x{{ i.amount }}</option>{% endfor %}</select><input name="amount" type="number" min="1" value="1" style="width:70px"><button>存入</button>
+  </form>
+  {% for i in card.inventory %}
+  <form method="post" action="{{ url_for('survival_cache_transfer', cache_id=c.id) }}"><input type="hidden" name="direction" value="withdraw"><input type="hidden" name="resource_key" value="{{ i.resource_key }}"><input name="amount" type="number" min="1" max="{{ i.amount }}" value="1" style="width:70px"><button>取出{{ item_names.get(i.resource_key,i.resource_key) }}</button></form>
+  {% endfor %}
+  {% else %}<p class="muted">需要亲自走到这个坐标才能打开。</p>{% endif %}
+</div>
+{% endfor %}
+
+<h2>🏚️ 废墟拆解</h2>
+{% if ruin %}
+<div class="card ruin-card">
+  <div class="row"><strong>{{ ruin.site_type }}</strong><span>结构完整度 {{ ruin.integrity }}/100 · 累计噪声 {{ ruin.total_noise }} · 体力{{ ch.stamina }}/100</span></div>
+  <p class="muted">不同部位的产出和风险不同。拆过的部位会永久变为空，不会刷新。</p>
+  {% for p in ruin_parts %}{% set info=ruin_defs[p.part_key] %}
+  <form method="post" action="{{ url_for('survival_ruin_dismantle') }}"><input type="hidden" name="part_key" value="{{ p.part_key }}"><button {% if p.dismantled %}disabled{% endif %}>{{ "已经拆空" if p.dismantled else info.name }} · 体力-{{ stamina_costs.ruin }} · 噪声{{ info.noise }} · 危险{{ (info.danger*100)|int }}%</button></form>
+  {% endfor %}
+</div>
+{% for log in ruin_logs %}<p class="memory-line"><span>噪声{{ log.noise }}</span>{{ log.result_text }}</p>{% endfor %}
+{% else %}
+<div class="card"><p class="muted">当前位置是出生点或水域，没有可以拆解的废墟。走到外面的陆地再来查看。</p></div>
+{% endif %}
+{% endblock %}

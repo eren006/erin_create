@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>🗺️ 地图总览</h1>
+<p><a href="{{ url_for('dashboard') }}">← 返回</a></p>
+<p class="muted">当前视野半径{{ radius }}格{% if has_radar %}（📡便携雷达已启用）{% else %}；制作便携雷达后扩大到10格{% endif %}。视野内能看到其他玩家与救援信号。</p>
+{% if companion %}
+<p class="muted">🧭 结伴对象{{ display_name(companion) }}当前在({{ companion.tile_x }},{{ companion.tile_y }})，距离你{{ companion_distance }}格——不受视野半径限制，随时能看到。</p>
+{% endif %}
+{% if nearest_shelter %}
+<p class="muted">🏘️ 离你最近的庇护所是「{{ nearest_shelter.name }}」，在你{{ nearest_shelter_direction }}方向{{ nearest_shelter_distance }}格——不受视野半径限制，全图庇护所都会参与这个计算。</p>
+{% else %}
+<p class="muted">🏘️ 现在全图还没有任何庇护所。</p>
+{% endif %}
+
+{% if my_houses %}
+<h2>🏠 我的家</h2>
+{% for house in my_houses %}
+<div class="card row">
+  <span>{{ house.label }}{% if house.is_here %}(就在这里){% else %}，在你{{ house.direction }}方向{{ house.distance }}格{% endif %}</span>
+  <form method="post" action="{{ url_for('action_rename_house') }}" style="display:flex; gap:6px;">
+    <input type="hidden" name="house_id" value="{{ house.id }}">
+    <input name="name" maxlength="12" placeholder="改名(留空清除)" style="width:110px">
+    <button type="submit">改名</button>
+  </form>
+</div>
+{% endfor %}
+{% endif %}
+
+<div class="card threat-card">
+  <div class="row"><strong>📡 所在区域 R{{ current_region.region_x }},{{ current_region.region_y }}</strong><strong>{{ current_region_label }}</strong></div>
+  <div class="threat-meter">
+    <div><span class="muted">噪声</span><strong>{{ current_region.noise }}/100</strong></div>
+    <div><span class="muted">威胁</span><strong>{{ current_region.threat }}/100</strong></div>
+  </div>
+  <p class="muted">每个区域覆盖{{ region_size }}×{{ region_size }}格。地图色框显示整片区域的威胁：玩家的枪声、采集、生产与建设会共同改变它。</p>
+  {% for event in region_events %}<p class="muted">• {{ event.detail }}（噪声+{{ event.noise_added }} / 威胁+{{ event.threat_added }}）</p>{% endfor %}
+</div>
+
+<div style="display:grid; grid-template-columns: repeat({{ radius*2+1 }}, 1fr); gap:2px; max-width:100%; overflow-x:auto;">
+{% for row in grid %}
+  {% for cell in row %}
+    <div title="({{ cell.x }},{{ cell.y }}) · {{ cell.region_label }} · 噪声{{ cell.region.noise }} / 威胁{{ cell.region.threat }}{% if cell.players %} · {{ cell.players|map(attribute='display_name')|join('、') }}{% endif %}{% if cell.resources %} · {% for res in cell.resources %}{{ res.name }}{{ res.amount }}{% if not loop.last %}、{% endif %}{% endfor %}{% endif %}" style="aspect-ratio:1; display:flex; align-items:center; justify-content:center;
+        font-size:.8rem; border-radius:4px; border:1px solid {{ '#ce4545' if cell.region.threat >= 80 else ('#a8663f' if cell.region.threat >= 60 else ('#8f7b40' if cell.region.threat >= 40 else '#486a4b')) }};
+        box-shadow:inset 0 0 9px {{ 'rgba(206,69,69,.32)' if cell.region.threat >= 80 else ('rgba(168,102,63,.22)' if cell.region.threat >= 60 else 'transparent') }};
+        background:{{ 'color-mix(in srgb, var(--accent) 25%, var(--card))' if cell.is_me else ('color-mix(in srgb, var(--thirst) 25%, var(--card))' if cell.is_water else 'var(--card)') }};">
+      {% if cell.is_me %}🧍
+      {% elif cell.players %}👥
+      {% elif cell.shelter %}{{ '🎆' if cell.shelter.completed_ending else '🏘️' }}
+      {% elif cell.has_house %}🏠
+      {% elif cell.is_water %}🌊
+      {% elif cell.is_origin %}🏘️
+      {% elif cell.resources %}{% for res in cell.resources[:2] %}{{ res.name[0] }}{% endfor %}
+      {% elif cell.discovered %}·
+      {% else %}<span class="muted">?</span>
+      {% endif %}
+    </div>
+  {% endfor %}
+{% endfor %}
+</div>
+
+<p class="muted" style="margin-top:12px;">🧍你 · 👥其他玩家 · 🏠个人房子 · 🏘️庇护所 · 🎆已完结庇护所 · 🌊水域 · 资源图标=该地块的资源种类(悬停看详细数量) · · 已探索无资源 · ? 未知</p>
+<div class="map-region-key"><span>🟢 0–19 平静</span><span>🟡 20–39 被注视</span><span>🟠 40–59 活跃</span><span>🔴 60–79 危险</span><span>☣️ 80+ 尸群聚集</span></div>
+
+<h2>📝 当前地块留言 ({{ ch.tile_x }},{{ ch.tile_y }})</h2>
+{% if location_memory %}
+<div class="card">
+  <strong>🧠 你的地点记忆</strong>
+  <p>这是你第{{ location_memory.visit_count }}次来到这里。</p>
+  {% if location_memory.last_memory %}<p class="muted">{{ location_memory.last_memory }}</p>{% endif %}
+</div>
+{% endif %}
+<form method="post" action="{{ url_for('map_note_post') }}" style="display:flex;gap:6px">
+  <input name="content" maxlength="80" placeholder="这里危险 / 已搜空 / 发现水源…" style="flex:1;min-width:0">
+  <button>留下情报</button>
+</form>
+{% for n in notes %}
+<div class="card"><strong>{{ n.author_name }}</strong>：{{ n.content }}</div>
+{% else %}
+<p class="muted">这块地还没有人留下情报。</p>
+{% endfor %}
+
+<h2>🆘 视野内救援信号</h2>
+{% if ch.hp <= 40 or ch.infection >= 60 %}
+<form method="post" action="{{ url_for('rescue_request') }}">
+  <input name="message" maxlength="80" placeholder="需要绷带或护送…" value="需要药品救援">
+  <button>发出信号</button>
+</form>
+{% endif %}
+{% for s in rescue_signals %}
+<div class="card">
+  <p><strong>{{ s.requester_name }}</strong> · 坐标({{ s.tile_x }},{{ s.tile_y }})</p>
+  <p>{{ s.message }}</p>
+  {% if s.requester_character_id == ch.id %}
+  <form method="post" action="{{ url_for('rescue_cancel', signal_id=s.id) }}"><button>取消信号</button></form>
+  {% else %}
+  <form method="post" action="{{ url_for('rescue_complete', signal_id=s.id) }}">
+    <select name="item_key"><option value="bandage">绷带(+20HP)</option><option value="first_aid">急救包(+50HP)</option></select>
+    <select name="delivery">
+      <option value="use_now">当场使用(立即回血)</option>
+      <option value="give_item">放进对方背包(自己选时间用)</option>
+    </select>
+    <button {% if s.tile_x != ch.tile_x or s.tile_y != ch.tile_y %}disabled{% endif %}>送药完成救援</button>
+  </form>
+  {% if s.tile_x != ch.tile_x or s.tile_y != ch.tile_y %}<span class="muted">先移动到该坐标</span>{% endif %}
+  {% endif %}
+</div>
+{% else %}
+<p class="muted">当前范围没有人求救。</p>
+{% endfor %}
+{% endblock %}

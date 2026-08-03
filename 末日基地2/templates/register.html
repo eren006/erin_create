@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>注册账号</h1>
+<form method="post">
+  <p><input name="username" placeholder="用户名" required style="width:100%"></p>
+  <p><input name="password" type="password" placeholder="密码" required style="width:100%"></p>
+  <button type="submit">注册</button>
+</form>
+<p class="muted">已有账号? <a href="{{ url_for('login') }}">登录</a></p>
+{% endblock %}

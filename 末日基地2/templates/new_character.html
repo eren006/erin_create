@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>创建新身份</h1>
+{% if respawn_count > 0 %}
+<p class="muted">这是你第 {{ respawn_count + 1 }} 个身份(最多可重开{{ max_respawns }}次),和之前的角色完全没有继承关系。</p>
+{% endif %}
+<form method="post">
+  <p><input name="name" placeholder="给这个身份起个名字" required style="width:100%"></p>
+  <button type="submit">从「小区」出发</button>
+</form>
+<p class="muted">四维属性(力量/速度/智慧/幸运)全部从0开始,打丧尸涨力量、跑图涨速度、采集建造涨智慧,靠行动积累,不能手动加点。</p>
+{% endblock %}

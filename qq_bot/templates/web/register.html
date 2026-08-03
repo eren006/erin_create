@@ -3,15 +3,19 @@
 {% block body %}
 <div class="card" style="max-width:440px;margin:40px auto">
   <h2>申请网页账号</h2>
-  <p class="muted">网页账号只发给已经入学的学生。申请之前，先在QQ群里把这两步做完：</p>
+  <p class="muted">网页账号只发给已经入学的学生。申请之前，先在QQ群里完成这些步骤：</p>
   <ol class="muted">
     <li>发送 <code>/入学 你的名字</code>，答完问卷让分院帽给你分院</li>
     <li>接着在奥利凡德魔杖店挑完你的魔杖</li>
+    <li>发送 <code>/网页绑定 你的QQ号</code>，取得十分钟有效的六位绑定码</li>
   </ol>
   <p class="muted">办完之后，用同一个QQ号在这里申请：</p>
   <form method="post">
     <label>你的QQ号</label>
     <input name="uid" inputmode="numeric" required style="width:100%">
+    <label>六位绑定码</label>
+    <input name="binding_code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6"
+           autocomplete="one-time-code" required style="width:100%" placeholder="在群里发送 /网页绑定 QQ号 获取">
     <label>想说的话（选填，给管理员看）</label>
     <input name="note" maxlength="100" style="width:100%">
     <p><button type="submit" style="width:100%">提交申请</button></p>

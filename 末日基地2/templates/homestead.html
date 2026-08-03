@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="family-hero homestead-hero">
+  <div class="section-kicker">PERSONAL HOMESTEAD</div>
+  <h1>🍳 个人生活工坊</h1>
+  <p>把钓到的鱼、田里挑出的蔬菜和亲手养大的动物，变成一顿饭、一杯饮品和能穿很久的衣服。</p>
+</div>
+
+{% if house_here %}
+{% set generator = generator_levels[home_power.generator_level] %}
+<div class="card power-grid">
+  <div class="row"><strong>⚡ 厨房当前供电</strong><span>{{ home_power.charge }}/{{ generator.capacity }}电力 · {{ generator.name }}</span></div>
+  <p class="muted">每次电灶做饭消耗1电、只产生1点噪声；无法供电时可改烧木材1，但会产生5点烟火噪声。战备模式可能为自动反击保留电量。</p>
+</div>
+{% else %}
+<div class="card danger-card"><strong>你不在家</strong><p class="muted">制作食物必须回到自己的房屋或所属庇护所；这避免厨房和电力变成可以隔空使用的菜单。</p></div>
+{% endif %}
+
+<h2>🏠 生活设施</h2>
+<div class="grid two">
+{% for key,s in stations.items() %}
+{% set built = home['has_'+key] %}
+<div class="card station-card {% if built %}built{% endif %}">
+  <div class="row"><strong>{{ s.name }}</strong><span>{{ "已建成 ✓" if built else "待建设" }}</span></div>
+  <p class="muted">{% for k,v in s.cost.items() %}{{ item_names.get(k,k) }}x{{ v }} {% endfor %}</p>
+  {% if not built %}<form method="post" action="{{ url_for('homestead_build_station') }}"><input type="hidden" name="station" value="{{ key }}"><button {% if not house_here %}disabled{% endif %}>建设</button></form>{% endif %}
+</div>
+{% endfor %}
+</div>
+{% if not house_here %}<p class="muted">建设新设施时需要回到自己的房屋或所属庇护所地块；已经建好的设施可以随时管理。</p>{% endif %}
+
+<h2>🐟 处理渔获</h2>
+<div class="card">
+  <p class="muted">鱼先处理成鱼肉，再进入菜谱。稀有鱼能得到更多鱼肉，但也可以保留作图鉴和纪念。</p>
+  {% for key,f in fish_species.items() %}{% if inv_map.get(key,0) %}
+  <form method="post" action="{{ url_for('homestead_process_fish') }}"><input type="hidden" name="fish_key" value="{{ key }}"><button>处理{{ f.name }}（{{ inv_map.get(key,0) }}条）</button></form>
+  {% endif %}{% endfor %}
+  <span class="muted">没有显示按钮时，说明背包里暂时没有鱼。</span>
+</div>
+
+<h2>🍲 做饭与菜谱 <span class="skill-badge">熟练度 {{ home.cooking_skill }}</span></h2>
+<div class="grid two">
+{% for key,r in food_recipes.items() %}
+<div class="card recipe-card {% if home.cooking_skill < r.skill %}locked-recipe{% endif %}">
+  <strong>{{ r.name }}</strong><p class="muted">需要熟练度{{ r.skill }} · 饥饿+{{ r.hunger }}</p>
+  <p>{% for k,v in r.cost.items() %}{{ item_names[k] }}x{{ v }}{% if not loop.last %}、{% endif %}{% endfor %}</p>
+  <form method="post" action="{{ url_for('homestead_cook') }}"><input type="hidden" name="recipe_key" value="{{ key }}"><button {% if not house_here or not home.has_kitchen or home.cooking_skill < r.skill %}disabled{% endif %}>烹饪</button></form>
+  {% if inv_map.get(key,0) %}<form method="post" action="{{ url_for('homestead_consume') }}"><input type="hidden" name="item_key" value="{{ key }}"><button class="primary">享用（{{ inv_map.get(key,0) }}份）</button></form>{% endif %}
+</div>
+{% endfor %}
+</div>
+
+<h2>🫙 酿造与饮品 <span class="skill-badge">熟练度 {{ home.brewing_skill }}</span></h2>
+{% if batch %}
+<div class="card active-batch"><strong>{{ drink_recipes[batch.recipe_key].name }}</strong>
+  {% if batch.ready_ts <= now_ts %}<p>已经完成，可以收取两杯。</p><form method="post" action="{{ url_for('homestead_brew_collect') }}"><button class="primary">收取饮品</button></form>
+  {% else %}<p class="muted">还需要约{{ ((batch.ready_ts-now_ts)//60)+1 }}分钟。可以离线等待。</p>{% endif %}
+</div>
+{% endif %}
+<div class="grid two">
+{% for key,r in drink_recipes.items() %}
+<div class="card recipe-card {% if home.brewing_skill < r.skill %}locked-recipe{% endif %}">
+  <strong>{{ r.name }}</strong><p class="muted">熟练度{{ r.skill }} · 口渴+{{ r.thirst }}{% if r.heal %} · HP+{{ r.heal }}{% endif %}</p>
+  <p>{% for k,v in r.cost.items() %}{{ item_names[k] }}x{{ v }}{% if not loop.last %}、{% endif %}{% endfor %}</p>
+  <form method="post" action="{{ url_for('homestead_brew_start') }}"><input type="hidden" name="recipe_key" value="{{ key }}"><button {% if batch or not home.has_brewery or home.brewing_skill < r.skill %}disabled{% endif %}>开始制作</button></form>
+  {% if inv_map.get(key,0) %}<form method="post" action="{{ url_for('homestead_consume') }}"><input type="hidden" name="item_key" value="{{ key }}"><button class="primary">饮用（{{ inv_map.get(key,0) }}杯）</button></form>{% endif %}
+</div>
+{% endfor %}
+</div>
+
+<h2>🧵 缝纫与服装 <span class="skill-badge">熟练度 {{ home.sewing_skill }}</span></h2>
+<div class="grid two">
+{% for key,r in clothing_recipes.items() %}
+<div class="card recipe-card">
+  <strong>{{ r.name }}</strong><p class="muted">{{ r.effect }}{% if r.combat_defense %} · 穿戴时战斗减伤+{{ (r.combat_defense*100)|int }}%(叠加在护甲上){% endif %} · 熟练度{{ r.skill }}</p>
+  <p>{% for k,v in r.cost.items() %}{{ item_names[k] }}x{{ v }}{% if not loop.last %}、{% endif %}{% endfor %}</p>
+  <form method="post" action="{{ url_for('homestead_sew') }}"><input type="hidden" name="recipe_key" value="{{ key }}"><button {% if not home.has_sewing or home.sewing_skill < r.skill %}disabled{% endif %}>裁剪缝制</button></form>
+</div>
+{% endfor %}
+</div>
+{% for o in outfits %}
+<div class="card row"><span>{{ clothing_recipes[o.outfit_key].name }} x{{ o.amount }} <span class="muted">{{ clothing_recipes[o.outfit_key].effect }}{% if clothing_recipes[o.outfit_key].combat_defense %} · 战斗减伤+{{ (clothing_recipes[o.outfit_key].combat_defense*100)|int }}%{% endif %}</span></span>
+  {% if o.outfit_key != 'child_outfit' %}<form method="post" action="{{ url_for('homestead_outfit_equip', outfit_key=o.outfit_key) }}"><button {% if o.equipped %}disabled{% endif %}>{{ "正在穿戴" if o.equipped else "穿上" }}</button></form>{% endif %}
+</div>
+{% endfor %}
+{% for c in children %}
+<div class="card row"><span>🧒 {{ c.name }}{% if child_outfits.get(c.id) %} · 已有防护服{% endif %}</span>
+  {% if not child_outfits.get(c.id) %}<form method="post" action="{{ url_for('homestead_outfit_child', child_id=c.id) }}"><button>赠送儿童防护服</button></form>{% endif %}
+</div>
+{% endfor %}
+
+<h2>🐓 养鸡、养兔与畜牧</h2>
+<p class="muted">一天只需投喂一次。漏喂会出现求助并降低少量健康，不会突然死亡。成年且吃饱后会自动产出。</p>
+<div class="grid two">
+{% for key,a in livestock_types.items() %}
+<form method="post" action="{{ url_for('homestead_livestock_adopt') }}" class="card">
+  <strong>{{ a.name }}</strong><p class="muted">{{ a.adult_age }}岁成年 · 产出{{ a.produce_name }} · 需要{{ a.price }}钱包</p>
+  <input type="hidden" name="species_key" value="{{ key }}"><input name="custom_name" maxlength="16" placeholder="给它取名">
+  <button {% if not home.has_livestock %}disabled{% endif %}>领养幼崽</button>
+</form>
+{% endfor %}
+</div>
+{% for card in animals %}
+{% set a=card.row %}{% set info=livestock_types[a.species_key] %}
+<div class="card animal-card">
+  <div class="row"><strong>{{ info.name }}「{{ a.custom_name }}」</strong><span>{{ card.age }}岁 · 健康{{ a.health }}/100 · {{ "成年" if card.adult else "幼崽" }}</span></div>
+  <p class="muted">{{ "今天已经吃饱" if a.fed_age_day >= card.age else "🆘 今天还没有饲料" }} · {{ card.age-a.last_produce_age if a.last_produce_age>=0 else "尚未" }}个年龄日以来的产出间隔</p>
+  <form method="post" action="{{ url_for('homestead_livestock_feed', animal_id=a.id) }}"><button {% if a.fed_age_day >= card.age %}disabled{% endif %}>投喂1份生鲜</button></form>
+  <form method="post" action="{{ url_for('homestead_livestock_rename', animal_id=a.id) }}"><input name="custom_name" maxlength="16" placeholder="新名字"><button>改名</button></form>
+  {% for log in card.logs %}<p class="memory-line"><span>记录</span>{{ log.detail }}</p>{% endfor %}
+</div>
+{% endfor %}
+{% for key,a in livestock_types.items() %}
+<form method="post" action="{{ url_for('homestead_livestock_breed') }}"><input type="hidden" name="species_key" value="{{ key }}"><button>安排{{ a.name }}繁育</button></form>
+{% endfor %}
+
+<h2>📖 手作日志</h2>
+{% for log in craft_logs %}<p class="memory-line"><span>{{ "厨房" if log.craft_type=="cooking" else ("饮品" if log.craft_type=="brewing" else "缝纫") }}</span>{{ log.detail }}</p>
+{% else %}<p class="muted">第一顿饭、第一杯饮品和第一件衣服都会记在这里。</p>{% endfor %}
+{% endblock %}

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aperture — Retail Analytics</title>
+<meta name="description" content="A live-queried retail analytics dashboard: real SQL aggregation over a synthetic order dataset, hand-built SVG charts, no charting library.">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📊</text></svg>">
+</head>
+<body>
+<div class="viz-root" data-theme="dark">
+
+  <header class="dash-header">
+    <div class="brand">Aperture <span>Retail Analytics</span></div>
+    <div class="period-label" id="periodLabel">—</div>
+  </header>
+
+  <div class="filter-row" role="tablist" aria-label="Date range">
+    <button class="filter-btn" data-range="7d" role="tab">Last 7 days</button>
+    <button class="filter-btn" data-range="30d" role="tab">Last 30 days</button>
+    <button class="filter-btn active" data-range="90d" role="tab" aria-selected="true">Last 90 days</button>
+    <button class="filter-btn" data-range="12m" role="tab">Last 12 months</button>
+  </div>
+
+  <section class="kpi-row" id="kpiRow" aria-live="polite"></section>
+
+  <section class="charts-grid">
+    <div class="card card-trend">
+      <div class="card-head">
+        <h2>Revenue trend</h2>
+        <span class="card-sub">Daily revenue, selected period</span>
+      </div>
+      <div class="chart-wrap" id="trendChart"></div>
+    </div>
+
+    <div class="card card-mix">
+      <div class="card-head">
+        <h2>Customer mix</h2>
+        <span class="card-sub">Share of orders</span>
+      </div>
+      <div class="chart-wrap" id="mixChart"></div>
+    </div>
+
+    <div class="card card-category">
+      <div class="card-head">
+        <h2>Revenue by category</h2>
+        <span class="card-sub">Selected period</span>
+      </div>
+      <div class="chart-wrap" id="categoryChart"></div>
+    </div>
+
+    <div class="card card-region">
+      <div class="card-head">
+        <h2>Orders by region</h2>
+        <span class="card-sub">Selected period</span>
+      </div>
+      <div class="chart-wrap" id="regionChart"></div>
+    </div>
+  </section>
+
+  <section class="card card-table">
+    <div class="card-head">
+      <h2>Top products</h2>
+      <span class="card-sub">Ranked by revenue, selected period</span>
+    </div>
+    <div id="productsTable"></div>
+  </section>
+
+  <footer class="dash-footer">
+    Synthetic dataset, real SQL aggregation — every chart on this page is computed
+    server-side per request, not pre-baked. Built with Claude Code.
+  </footer>
+
+</div>
+<script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+</body>
+</html>

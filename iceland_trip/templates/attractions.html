@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}景点大全{% endblock %}
+{% block content %}
+<section class="day-header">
+  <h1>景点大全</h1>
+  <p class="sub">六天行程里出现的全部景点，按类型浏览</p>
+</section>
+
+<div class="filter-row" id="filterRow">
+  {% for cat in categories %}
+  <button class="filter-chip{% if loop.first %} active{% endif %}" data-cat="{{ cat }}">{{ cat }}</button>
+  {% endfor %}
+</div>
+
+<div class="attraction-grid" id="attractionGrid">
+  {% for a in attractions %}
+  <a class="attraction-card" data-cat="{{ a.category }}" href="{{ url_for('day', num=a.day) }}">
+    <div class="attraction-top">
+      <span class="attraction-emoji">{{ a.emoji }}</span>
+      <span class="day-num">D{{ a.day }}</span>
+    </div>
+    <h3>{{ a.name }}</h3>
+    <span class="attraction-cat">{{ a.category }}</span>
+    <p>{{ a.blurb }}</p>
+  </a>
+  {% endfor %}
+</div>
+
+<script>
+(function () {
+  var chips = document.querySelectorAll('.filter-chip');
+  var cards = document.querySelectorAll('.attraction-card');
+  chips.forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      chips.forEach(function (c) { c.classList.remove('active'); });
+      chip.classList.add('active');
+      var cat = chip.dataset.cat;
+      cards.forEach(function (card) {
+        var show = cat === '全部' || card.dataset.cat === cat;
+        card.style.display = show ? '' : 'none';
+      });
+    });
+  });
+})();
+</script>
+{% endblock %}

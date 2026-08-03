@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}基础知识{% endblock %}
+{% block content %}
+<div class="practice-layout">
+  <aside class="sidebar">
+    <div class="engine-line">共 28 道概念题,点左侧题目切换</div>
+    <ul id="question-list"></ul>
+  </aside>
+  <main class="main-panel">
+    <h2 id="q-title"></h2>
+    <p id="q-prompt"></p>
+    <div id="options-area" class="options-area"></div>
+    <div class="btn-row">
+      <button id="check-btn">检查答案</button>
+      <button id="solution-btn" class="secondary">直接看解析</button>
+    </div>
+    <div id="feedback"></div>
+  </main>
+</div>
+<script src="{{ url_for('static', filename='js/basics_questions.js') }}"></script>
+<script src="{{ url_for('static', filename='js/basics_practice.js') }}"></script>
+{% endblock %}

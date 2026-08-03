@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block title %}总览 - 末日基地{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>第 {{ base.day_count }} 天 · {{ base.season }}</h2>
+  <p class="muted">士气 {{ base.morale }}/100 · 今晚防御值储备 {{ patrol_points }}</p>
+</div>
+
+{% if alerts %}
+<div class="card" style="border-color:var(--red)">
+  <h3 style="margin-bottom:8px;color:var(--red)">求助板</h3>
+  {% for a in alerts %}
+  <p style="margin-bottom:6px">⚠ {{ a.text }} <a href="{{ url_for(a.link) }}">→ 去处理</a>
+    {% if a.claimable %}
+      {% if a.claimed_by %}
+        <span class="badge {{ 'badge-green' if a.claimed_by == survivor.name else 'badge-gold' }}">{{ '你已认领' if a.claimed_by == survivor.name else (a.claimed_by ~ ' 认领中') }}</span>
+        {% if a.claimed_by == survivor.name %}
+        <form method="post" action="{{ url_for('alert_claim') }}" style="display:inline">
+          <input type="hidden" name="alert_key" value="{{ a.key }}">
+          <button class="btn" type="submit" style="padding:2px 8px;font-size:12px">取消认领</button>
+        </form>
+        {% endif %}
+      {% else %}
+        <form method="post" action="{{ url_for('alert_claim') }}" style="display:inline">
+          <input type="hidden" name="alert_key" value="{{ a.key }}">
+          <button class="btn btn-primary" type="submit" style="padding:2px 8px;font-size:12px">认领</button>
+        </form>
+      {% endif %}
+    {% endif %}
+  </p>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if survivor.age_years >= age_adult and not survivor.specialization %}
+<div class="card" style="border-color:var(--amber)">
+  <h3 style="margin-bottom:8px;color:var(--amber)">你成年了</h3>
+  <p style="margin-bottom:8px">该选一个专精、分配属性点了,在这之前你还不能做其他事情。</p>
+  <a href="{{ url_for('coming_of_age') }}" class="btn btn-primary">去选择</a>
+</div>
+{% endif %}
+
+{% if story_events %}
+{% for day, event in story_events %}
+<div class="card" style="border-color:var(--amber)">
+  <h3 style="margin-bottom:8px;color:var(--amber)">剧情事件 · {{ event.title }}</h3>
+  <p style="margin-bottom:8px">{{ event.desc }}</p>
+  <p class="muted" style="margin-bottom:8px">谁先选,选择就对全基地生效,机会只有一次。</p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    {% for choice in event.choices %}
+    <form method="post" action="{{ url_for('story_choose', day=day, choice_idx=loop.index0) }}">
+      <button class="btn btn-primary" type="submit">{{ choice.label }}</button>
+    </form>
+    {% endfor %}
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+
+<div class="card" style="border-color:var(--amber)">
+  <h3 style="margin-bottom:8px;color:var(--amber)">归途装置</h3>
+  {% if gate_activated %}
+  <p style="margin-bottom:8px;color:var(--green)">装置已经激活——大家总算能回家了。基地会继续正常经营下去,信号猛攻也已经解除。</p>
+  {% else %}
+  <p class="muted" style="margin-bottom:8px">
+    传送到这里那天,每个人脑子里都留下了一份模糊的装置蓝图。没有截止日期,但装置没造好之前,每隔 {{ gate_surge_interval }} 天信号扰动就会引来一波比一波猛的丧尸猛攻
+    {% if next_surge_day %}(下一波:第 {{ next_surge_day }} 天){% endif %}。
+  </p>
+  <p style="margin-bottom:8px">装置进度 {{ gate_progress }}/{{ gate_target }} · 共振核心库存 {{ resources.get('resonance_core', 0) }}(打怪/组队探索/采集稀有档能捡到)</p>
+  <div class="bar" style="margin-bottom:8px"><div class="bar-fill" style="width:{{ (gate_progress / gate_target * 100)|round(1) }}%;background:var(--amber)"></div></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <form method="post" action="{{ url_for('gate_invest') }}">
+      <button class="btn btn-primary" type="submit">投入共振核心(消耗{{ gate_invest_cost }})</button>
+    </form>
+    {% if gate_progress >= gate_target %}
+    <form method="post" action="{{ url_for('gate_activate') }}">
+      <button class="btn btn-primary" type="submit" style="background:var(--green);border-color:var(--green)">激活装置(结局)</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">我的状态 · {{ survivor.name }}
+    {% if survivor.specialization %}<span class="badge badge-gold">{{ specializations[survivor.specialization].name }}</span>{% endif %}
+    <span class="badge badge-green">Lv.{{ level }}</span>
+    {% if survivor.status == 'injured' %}<span class="badge badge-red">受伤</span>{% endif %}
+    {% if survivor.status == 'critical' %}<span class="badge badge-red">重伤</span>{% endif %}
+    {% if survivor.illness %}<span class="badge badge-red">{{ illnesses[survivor.illness].name }}</span>{% endif %}
+    {% if survivor.is_depressed %}<span class="badge badge-red">抑郁</span>{% endif %}
+    <span class="badge badge-gold">{{ survivor.age_years }}岁{% if survivor.age_years < 18 %}·未成年{% elif survivor.age_years > 65 %}·老年{% elif survivor.age_years > 50 %}·中年{% endif %}</span>
+  </h3>
+  <div>健康 {{ survivor.health }}/100
+    <div class="bar"><div class="bar-fill" style="width:{{ survivor.health }}%;background:{{ 'var(--red)' if survivor.health<50 else 'var(--green)' }}"></div></div>
+  </div>
+  <div style="margin-top:8px">体力 {{ survivor.energy }}/{{ max_energy }}
+    <div class="bar"><div class="bar-fill" style="width:{{ (survivor.energy / max_energy * 100) | round(1) }}%;background:var(--amber)"></div></div>
+  </div>
+  <div style="margin-top:8px">快乐值 {{ survivor.happiness }}/100{% if survivor.is_depressed %}(抑郁中,体力回复变慢了,去<a href="{{ url_for('entertainment_page') }}">娱乐室</a>放松一下){% endif %}
+    <div class="bar"><div class="bar-fill" style="width:{{ survivor.happiness }}%;background:{{ 'var(--red)' if survivor.happiness<30 else 'var(--green)' }}"></div></div>
+  </div>
+  {% if level < max_level %}
+  <div style="margin-top:8px">贡献值 {{ survivor.contribution }}(距 Lv.{{ level+1 }} 还差 {{ level*level_step - survivor.contribution }})
+    <div class="bar"><div class="bar-fill" style="width:{{ ((survivor.contribution % level_step) / level_step * 100) | round(1) }}%;background:var(--green)"></div></div>
+  </div>
+  {% else %}
+  <p class="muted" style="margin-top:8px">贡献值 {{ survivor.contribution }}(已满级)</p>
+  {% endif %}
+  <p class="muted" style="margin-top:8px">钱包 {{ survivor.wallet }}(每天领餐要花 {{ food_claim_price }},花完了就没饭吃)</p>
+  <p class="muted" style="margin-top:4px">武器 Lv.{{ survivor.weapon_level }} · 护甲 Lv.{{ survivor.gear_level }} · <a href="{{ url_for('gear_page') }}">去打造 →</a> · <a href="{{ url_for('mail_page') }}">信箱 →</a></p>
+  <p class="muted" style="margin-top:4px">住房:{{ room_tiers[survivor.room_tier].name }} · <a href="{{ url_for('room_page') }}">去升级 →</a></p>
+  <div class="grid" style="margin-top:10px">
+    {% for key, stat in stats.items() %}
+    <div class="card" style="margin-bottom:0;padding:8px 10px">
+      <div class="muted" style="font-size:11px">{{ stat.name }}</div>
+      <div style="font-size:16px;font-weight:600">{{ survivor[key] }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">基地物资(上限 {{ cap }})</h3>
+  <div class="grid">
+    {% for key, name in resource_names.items() %}
+    <div class="card" style="margin-bottom:0;padding:10px">
+      <div class="muted">{{ name }}</div>
+      <div style="font-size:18px;font-weight:600">{{ resources.get(key, 0) }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">幸存者贡献榜</h3>
+  <table>
+    <tr><th>姓名</th><th>专精</th><th>等级</th><th>状态</th><th>贡献值</th><th>住房</th></tr>
+    {% for s in survivors %}
+    <tr>
+      <td>{{ s.name }}</td>
+      <td>{{ specializations[s.specialization].name if s.specialization else '-' }}</td>
+      <td>Lv.{{ get_survivor_level(s.contribution) }}</td>
+      <td>{{ {'normal':'正常','injured':'受伤','critical':'重伤','dead':'已死亡','permadead':'永久死亡'}[s.status] }}{% if s.illness %} · {{ illnesses[s.illness].name }}{% endif %}</td>
+      <td>{{ s.contribution }}</td>
+      <td>{{ room_tiers[s.room_tier].name }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">最新广播</h3>
+  {% for e in events %}
+  <p style="margin-bottom:6px"><span class="muted">第{{ e.day_count }}天</span> {{ e.detail }}</p>
+  {% endfor %}
+  {% for a in actions %}
+  <p class="muted" style="margin-bottom:4px">{{ a.survivor_name }} {{ a.action }}:{{ a.detail }}</p>
+  {% endfor %}
+  <p class="muted" style="margin-top:8px"><a href="{{ url_for('broadcast_log') }}">查看完整记录 →</a></p>
+</div>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}知识点{% endblock %}
+{% block content %}
+<div class="practice-layout">
+  <aside class="sidebar">
+    <div class="engine-line">16 个专题笔记,读完会自动打勾</div>
+    <ul id="topic-list"></ul>
+  </aside>
+  <main class="main-panel">
+    <h2 id="topic-title"></h2>
+    <p id="topic-summary" class="muted"></p>
+    <div id="topic-body" class="content-block"></div>
+  </main>
+</div>
+<script src="{{ url_for('static', filename='js/learn_content.js') }}"></script>
+<script src="{{ url_for('static', filename='js/learn_practice.js') }}"></script>
+{% endblock %}

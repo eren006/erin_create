@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}装备 - 末日基地{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>个人装备</h2>
+  <p class="muted">体力:{{ survivor.energy }}/{{ max_energy }} · 枪耗弹药、效果全额;刀不耗弹药、效果打7折。武器巡逻/出击都会耗耐久,归零要修。护甲降低受伤伤害和环境灾害的健康损失。</p>
+  {% if not unlocked %}
+  <p style="margin-top:8px;color:var(--red)">还没有解锁「制式装备图纸」,去<a href="{{ url_for('tech_page') }}">科技树</a>解锁。</p>
+  {% elif not has_workshop %}
+  <p style="margin-top:8px;color:var(--red)">基地还没有工坊,去<a href="{{ url_for('build_page') }}">建筑</a>页面建一座。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3>武器 {% if survivor.weapon_level > 0 %}{{ '枪' if survivor.weapon_type == 'gun' else '刀' }} Lv.{{ survivor.weapon_level }}/{{ weapon_max_level }}{% else %}Lv.0/{{ weapon_max_level }}{% endif %}</h3>
+  {% if survivor.weapon_level > 0 %}
+  <p class="muted">耐久 {{ survivor.weapon_durability }}/{{ survivor.weapon_max_durability }}</p>
+  {% if survivor.weapon_durability < survivor.weapon_max_durability %}
+  <form method="post" action="{{ url_for('gear_repair_weapon') }}" style="margin-top:8px">
+    <button class="btn" type="submit">维修武器(军械师更便宜)</button>
+  </form>
+  {% endif %}
+  <form method="post" action="{{ url_for('gear_retrofit_weapon') }}" style="margin-top:8px;display:flex;gap:8px;align-items:center">
+    <select name="weapon_type">
+      <option value="gun" {{ 'selected' if survivor.weapon_type == 'knife' }}>枪(耗弹药,效果全额)</option>
+      <option value="knife" {{ 'selected' if survivor.weapon_type == 'gun' }}>刀(不耗弹药,效果打7折)</option>
+    </select>
+    <button class="btn" type="submit" {{ 'disabled' if not unlocked or not has_workshop }}>改型(消耗当前等级一半材料,耐久回满)</button>
+  </form>
+  {% endif %}
+  {% if weapon_cost %}
+  <p class="muted" style="margin-top:8px">升到 Lv.{{ survivor.weapon_level + 1 }} 消耗:{% for k,v in weapon_cost.items() %}{{ resource_names[k] }}{{ v }} {% endfor %}</p>
+  <form method="post" action="{{ url_for('gear_craft_weapon') }}" style="margin-top:8px">
+    {% if survivor.weapon_level == 0 %}
+    <select name="weapon_type">
+      <option value="gun">枪(耗弹药,效果全额)</option>
+      <option value="knife">刀(不耗弹药,效果打7折)</option>
+    </select>
+    {% endif %}
+    <button class="btn btn-primary" style="margin-top:8px" type="submit" {{ 'disabled' if not unlocked or not has_workshop }}>打造/升级武器</button>
+  </form>
+  {% else %}
+  <p class="muted" style="margin-top:8px">已经是当前能打造的最高级了{% if weapon_max_level < 6 %},军械师研发更多枪械科技可以继续提升上限{% endif %}</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3>护甲 Lv.{{ survivor.gear_level }}/{{ max_level }}</h3>
+  {% if gear_cost %}
+  <p class="muted">升到 Lv.{{ survivor.gear_level + 1 }} 消耗:{% for k,v in gear_cost.items() %}{{ resource_names[k] }}{{ v }} {% endfor %}</p>
+  <form method="post" action="{{ url_for('gear_craft_gear') }}" style="margin-top:8px">
+    <button class="btn btn-primary" type="submit" {{ 'disabled' if not unlocked or not has_workshop }}>打造/升级护甲</button>
+  </form>
+  {% else %}
+  <p class="muted">已经是最高级了</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3>军械研发</h3>
+  <p class="muted">进度 {{ weapon_rd_progress }}。谁都能研发,消耗晶核+金属,军械师专精有加成。部分里程碑要先解锁对应科技才能继续突破:</p>
+  <ul style="margin:8px 0 0 18px;font-size:13px">
+    {% for node in weapon_rd_tree %}
+    <li class="muted">{{ node.progress }} · {{ node.name }}({{ node.desc }}){% if node.requires_tech %} —— 需要「{{ techs[node.requires_tech].name }}」{{ '✓已解锁' if weapon_rd_progress >= node.progress else ('' if rd_gate is none or rd_gate.progress != node.progress else '✗未解锁,卡在这里') }}{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% if rd_gate %}
+  <p style="margin-top:8px;color:var(--red)">研发卡住了:需要先去<a href="{{ url_for('tech_page') }}">科技树</a>解锁「{{ techs[rd_gate.requires_tech].name }}」才能继续突破「{{ rd_gate.name }}」。</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('gear_weapon_rd') }}" style="margin-top:8px">
+    <button class="btn btn-primary" type="submit" {{ 'disabled' if rd_gate }}>研发枪械</button>
+  </form>
+</div>
+{% endblock %}

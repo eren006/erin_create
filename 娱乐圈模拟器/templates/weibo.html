@@ -27,8 +27,23 @@
   <div style="flex:1;text-align:center">
     <div class="muted">体力</div>
     <div style="font-size:18px;font-weight:700">{{ player.energy }}/100</div>
+    <form method="post" action="{{ url_for('weibo_refresh_energy') }}">
+      <button class="btn" style="font-size:11px;padding:2px 8px;margin-top:2px">回复体力</button>
+    </form>
   </div>
 </div>
+
+{% if todo_items %}
+<div class="card">
+  <h4 style="margin-bottom:8px">⏰ 有时效的机会</h4>
+  {% for item in todo_items %}
+  <a href="{{ item.url }}" style="display:block;padding:8px 0;{% if not loop.last %}border-bottom:1px solid var(--bd);{% endif %}text-decoration:none;color:inherit">
+    <span>{{ item.text }}</span>
+    <span class="muted" style="float:right">去看看 →</span>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
 
 {% if player.career_state == 'blackout' %}
 <div class="card flash-error" style="background:var(--red-dim)">

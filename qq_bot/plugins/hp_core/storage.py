@@ -1,8 +1,14 @@
 import sqlite3
 import time
+import os
 from pathlib import Path
 
-DB_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "hogwarts.db"
+DB_PATH = Path(
+    os.getenv(
+        "HOGWARTS_DB_PATH",
+        Path(__file__).resolve().parent.parent.parent / "data" / "hogwarts.db",
+    )
+)
 
 HOUSES = ("格兰芬多", "斯莱特林", "拉文克劳", "赫奇帕奇")
 
@@ -117,6 +123,65 @@ CREATE TABLE IF NOT EXISTS newspaper_issues (
     end_day INTEGER NOT NULL UNIQUE,
     data_json TEXT NOT NULL,
     published_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS kitchen_exp (
+    uid TEXT PRIMARY KEY,
+    exp INTEGER NOT NULL DEFAULT 0,
+    kitchen_stamina INTEGER NOT NULL DEFAULT 40,
+    stamina_updated_at INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS kitchen_sessions (
+    uid TEXT PRIMARY KEY,
+    recipe_key TEXT NOT NULL,
+    step INTEGER NOT NULL DEFAULT 0,
+    score INTEGER NOT NULL DEFAULT 0,
+    ingredients_json TEXT NOT NULL,
+    choices_json TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS kitchen_daily (
+    uid TEXT NOT NULL,
+    day INTEGER NOT NULL,
+    count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (uid, day)
+);
+
+CREATE TABLE IF NOT EXISTS kitchen_learned_recipes (
+    uid TEXT NOT NULL,
+    recipe_key TEXT NOT NULL,
+    learned_at INTEGER NOT NULL,
+    PRIMARY KEY (uid, recipe_key)
+);
+
+CREATE TABLE IF NOT EXISTS kitchen_inventory (
+    uid TEXT NOT NULL,
+    food_key TEXT NOT NULL,
+    quantity INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (uid, food_key)
+);
+
+CREATE TABLE IF NOT EXISTS kitchen_mastery (
+    uid TEXT NOT NULL,
+    recipe_key TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    successes INTEGER NOT NULL DEFAULT 0,
+    perfects INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (uid, recipe_key)
+);
+
+CREATE TABLE IF NOT EXISTS kitchen_history (
+    uid TEXT NOT NULL,
+    recipe_key TEXT NOT NULL,
+    quality TEXT NOT NULL,
+    quantity INTEGER NOT NULL,
+    disaster TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL
 );
 """
 
@@ -851,5 +916,79 @@ def unlock_title(uid: str, title_key: str) -> None:
             (uid, title_key, now()),
         )
         conn.commit()
+    finally:
+        conn.close()
+
+
+# ======================== 厨房系统 ========================
+
+def get_or_create_kitchen_exp(uid: str) -> sqlite3.Row:
+    """获取或创建厨房经验记录。"""
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT * FROM kitchen_exp WHERE uid = ?", (uid,)).fetchone()
+        if row:
+            return row
+        ts = now()
+        conn.execute(
+            "INSERT INTO kitchen_exp (uid, exp, kitchen_stamina, stamina_updated_at, updated_at) "
+            "VALUES (?, 0, 40, ?, ?)",
+            (uid, ts, ts),
+        )
+        conn.commit()
+        return conn.execute("SELECT * FROM kitchen_exp WHERE uid = ?", (uid,)).fetchone()
+    finally:
+        conn.close()
+
+
+def sync_kitchen_stamina(uid: str) -> sqlite3.Row:
+    """按经过的时间自然回复厨房活力。"""
+    KITCHEN_STAMINA_MAX = 40
+    KITCHEN_STAMINA_REGEN_INTERVAL = 25 * 60  # 25分钟
+    KITCHEN_STAMINA_REGEN_AMOUNT = 8
+
+    row = get_or_create_kitchen_exp(uid)
+    if row["kitchen_stamina"] >= KITCHEN_STAMINA_MAX:
+        return row
+
+    elapsed = now() - row["stamina_updated_at"]
+    ticks = elapsed // KITCHEN_STAMINA_REGEN_INTERVAL
+    if ticks <= 0:
+        return row
+
+    gained = ticks * KITCHEN_STAMINA_REGEN_AMOUNT
+    new_stamina = min(KITCHEN_STAMINA_MAX, row["kitchen_stamina"] + gained)
+    consumed_seconds = ticks * KITCHEN_STAMINA_REGEN_INTERVAL
+
+    conn = get_conn()
+    try:
+        conn.execute(
+            "UPDATE kitchen_exp SET kitchen_stamina = ?, stamina_updated_at = ?, updated_at = ? WHERE uid = ?",
+            (new_stamina, row["stamina_updated_at"] + consumed_seconds, now(), uid),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return get_or_create_kitchen_exp(uid)
+
+
+def get_cooking_exp(uid: str) -> int:
+    """获取烹饪经验。"""
+    row = get_or_create_kitchen_exp(uid)
+    return row["exp"]
+
+
+def add_cooking_exp(uid: str, amount: int) -> int:
+    """增加烹饪经验。"""
+    conn = get_conn()
+    try:
+        conn.execute(
+            "UPDATE kitchen_exp SET exp = MAX(0, exp + ?), updated_at = ? WHERE uid = ?",
+            (amount, now(), uid),
+        )
+        conn.commit()
+        row = conn.execute("SELECT exp FROM kitchen_exp WHERE uid = ?", (uid,)).fetchone()
+        return row["exp"]
     finally:
         conn.close()

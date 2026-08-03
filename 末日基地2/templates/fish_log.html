@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>📖 钓鱼图鉴</h1>
+<p><a href="{{ url_for('dashboard') }}">← 返回</a></p>
+<p class="muted">已发现 {{ caught|length }}/{{ fish_species|length }} 种</p>
+
+<div class="grid" style="grid-template-columns: repeat(2,1fr);">
+{% for key, fish in fish_species.items() %}
+  {% set c = caught.get(key) %}
+  <div class="card">
+    {% if c %}
+      <p style="font-size:1.6rem; margin:0 0 4px;">{{ fish.name.split(' ')[0] }}</p>
+      <p style="margin:0;">{{ fish.name }}</p>
+      <p class="muted">{{ rarity_names[fish.rarity] }} · 抓到过 {{ c.catch_count }} 次 · 卖{{ fish.value }}/条</p>
+    {% else %}
+      <p style="font-size:1.6rem; margin:0 0 4px; opacity:.35;">❔</p>
+      <p style="opacity:.5;">???</p>
+      <p class="muted">{{ rarity_names[fish.rarity] }} · 还没抓到过</p>
+    {% endif %}
+  </div>
+{% endfor %}
+</div>
+{% endblock %}

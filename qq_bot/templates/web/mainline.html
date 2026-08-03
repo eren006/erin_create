@@ -2,19 +2,29 @@
 {% block title %}成长册{% endblock %}
 {% block body %}
 <div class="card">
-  <h2>成长册</h2>
-  {% if not book %}<p class="muted">暂时读不到成长册。</p>{% else %}
+  <h2>📖 霍格沃茨成长册</h2>
+  {% if not book %}
+    <p class="muted">暂时读不到成长册。</p>
+  {% else %}
     {% if book.newly_claimed %}
-      <p class="flash ok">刚领到奖励：{{ book.newly_claimed|join('、') }}</p>
+      <p class="flash ok">完成了「{{ book.newly_claimed|join('」「') }}」，获得 {{ book.reward }} 加隆。</p>
     {% endif %}
-    {% for m in book.milestones %}
-    <div style="padding:8px 0;border-bottom:1px solid var(--line)">
-      <b>{% if m.done %}✓{% else %}○{% endif %} {{ m.title }}</b>
-      {% if m.reward %}<span class="tag">{{ m.reward }}加隆</span>{% endif %}
-      <div class="muted">{{ m.desc }}</div>
-      {% if m.progress_text %}<div class="muted">{{ m.progress_text }}</div>{% endif %}
+    <p class="muted">记录你从入学到毕业的七年旅程。完成目标后再次打开成长册，奖励会自动存入古灵阁账户。</p>
+    <div class="timeline">
+      {% for m in book.entries %}
+      <div class="milestone {{ 'done' if m.completed else '' }}">
+        <span class="milestone-mark">{{ '✓' if m.completed else m.grade }}</span>
+        <div class="milestone-head">
+          <span class="year-label">{{ m.grade }} 年级</span>
+          <b class="milestone-title">{{ m.title }}</b>
+          <span class="tag">{{ m.reward }} 加隆</span>
+          {% if m.claimed %}<span class="tag">已领取</span>{% endif %}
+        </div>
+        <div class="milestone-meta">{{ m.requirement }}</div>
+        {% if m.progress %}<span class="milestone-progress">进度 {{ m.progress }}</span>{% endif %}
+      </div>
+      {% endfor %}
     </div>
-    {% endfor %}
   {% endif %}
 </div>
 {% endblock %}

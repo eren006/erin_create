@@ -4,6 +4,7 @@ __pycache__/
 .env.dev
 .env.prod
 .admin_password
+.deploy-manifest
 
 # 运行时数据库（含玩家数据，不进版本库）
 data/*.db

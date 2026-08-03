@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}内测统计 - 末日基地{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>内测统计</h2>
+  <p class="muted">只读汇总,不改任何数据。刷新页面就是重新算一遍当前状态 + 历史行动日志,用来看数值(房间/家具/生育权/属性成长速度等)跑得偏不偏。共 {{ n }} 个幸存者。</p>
+  <a href="{{ url_for('admin_home') }}" class="btn" style="margin-top:8px">← 返回后台首页</a>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">人口与生存</h3>
+  <p class="muted">状态分布:{% for k, v in status_counts.items() %}{{ {'normal':'正常','injured':'受伤','critical':'重伤','dead':'已死亡','permadead':'永久死亡'}.get(k, k) }} {{ v }}人{% if not loop.last %} · {% endif %}{% endfor %}</p>
+  <p class="muted" style="margin-top:4px">年龄分布(平均 {{ avg_age }} 岁):{% for k, v in age_buckets.items() %}{{ k }} {{ v }}人{% if not loop.last %} · {% endif %}{% endfor %}</p>
+  <p class="muted" style="margin-top:4px">待成年礼(已18岁但还没选专精):{{ pending_coming_of_age }} 人</p>
+  <p class="muted" style="margin-top:4px">重生次数分布(上限{{ max_respawns }}次):{% for k, v in respawn_dist.items()|sort %}{{ k }}次 {{ v }}人{% if not loop.last %} · {% endif %}{% endfor %}</p>
+  <p class="muted" style="margin-top:4px">死亡原因:{% for k, v in death_cause.items() %}{{ k }} {{ v }}次{% if not loop.last %} · {% endif %}{% endfor %}</p>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">经济健康度</h3>
+  <p class="muted">钱包:平均 {{ avg_wallet }},中位数 {{ median_wallet }} · 钱包不够下顿饭钱(&lt;{{ food_claim_price }})的有 {{ hungry_risk }} 人</p>
+  <p class="muted" style="margin-top:4px">房间等级分布:{% for tier in range(room_tier_max+1) %}{{ room_tiers[tier].name }} {{ room_dist.get(tier, 0) }}人{% if not loop.last %} · {% endif %}{% endfor %}</p>
+  <p class="muted" style="margin-top:4px">生育权已购买 {{ birth_rights_count }} 人 · 情侣 {{ couple_count }} 对(其中同居 {{ shared_room_count }} 对)</p>
+  <p class="muted" style="margin-top:4px">集市历史:累计上架 {{ market_total_listed }} 次,累计成交 {{ market_total_sold }} 次</p>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">属性成长(判断"活得越久属性越膨胀"是否成立)</h3>
+  <p class="muted">当前平均属性总和 {{ stat_total_avg }}(注册基准是 {{ stat_base_total }} + 最多分配10点,即31起步)</p>
+  <table style="margin-top:8px">
+    <tr><th>属性</th><th>平均值</th></tr>
+    {% for key, stat in stats.items() %}
+    <tr><td>{{ stat.name }}</td><td>{{ stat_avgs[key] }}</td></tr>
+    {% endfor %}
+  </table>
+  <p class="muted" style="margin-top:8px">按重生次数分组的平均属性总和(数字应该随次数递增才对,如果不递增说明重生清空生效正常;如果同一重生次数内的数字比31高很多,说明战斗历练/教材学习让属性涨得偏快):</p>
+  <p class="muted">{% for rc, avg in stat_by_respawn_avg.items() %}重生{{ rc }}次: {{ avg }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">行动频率(哪些系统没人用一眼就看出来)</h3>
+  <table>
+    <tr><th>行动</th><th>次数</th></tr>
+    {% for a in action_counts %}
+    <tr><td>{{ a.action }}</td><td>{{ a.c }}</td></tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">剧情节点进度</h3>
+  {% for s in story_status %}
+  <p style="margin-bottom:4px">第{{ s.day }}天 · {{ s.title }} · {{ '已解决' if s.resolved else '未触发/待解决' }}</p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">军械研发 / 科技树</h3>
+  <p class="muted">军械研发进度:{{ weapon_rd_progress }}</p>
+  <p class="muted" style="margin-top:4px">已解锁科技:{{ unlocked_techs|join('、') if unlocked_techs else '无' }}</p>
+</div>
+{% endblock %}

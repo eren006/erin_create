@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="combat-hero">
+  <div class="section-kicker">CONTACT · ROUND {{ ch.combat_round_no }}</div>
+  <h1>{{ zinfo.name }}</h1>
+  <p>{{ zinfo.hint }}</p>
+  <div class="enemy-health">
+    <span>目标生命</span><strong>{{ ch.pending_zombie_hp|int }}/{{ ch.combat_max_hp|int }}</strong>
+    <div class="bar hp"><div style="width:{{ (ch.pending_zombie_hp * 100 / ch.combat_max_hp)|int if ch.combat_max_hp else 0 }}%"></div></div>
+  </div>
+</div>
+
+{% if combat_log %}
+<div class="card combat-log">
+  <strong>上一回合</strong>
+  {% for line in combat_log %}<p>› {{ line }}</p>{% endfor %}
+</div>
+{% endif %}
+
+<div class="card enemy-intent {% if preview.intent.key in ('pounce','charge','spit','scream') %}danger-card{% endif %}">
+  <div class="section-kicker">ENEMY INTENT · 敌人意图</div>
+  <div class="row"><strong>{{ preview.intent.name }}</strong><span>预计HP伤害 {{ preview.expected_damage }}</span></div>
+  <p>{{ preview.intent.desc }}</p>
+  <p class="muted">稳守后预计约{{ preview.guarded_damage }}伤害。实际结果仍受命中、护甲和特殊行为影响。</p>
+</div>
+
+<div class="combat-readout">
+  <div><small>你的状态</small><strong>HP {{ ch.hp }} · 感染 {{ ch.infection }}</strong></div>
+  <div><small>当前体力</small><strong>⚡ {{ ch.stamina }}/100{% if ch.stamina < 30 %} · 疲劳惩罚中{% endif %}</strong></div>
+  <div><small>行动顺序</small><strong>{{ "你通常先手" if preview.player_first else "敌人通常先手" }}</strong></div>
+  <div><small>脱离概率</small><strong>{{ preview.flee_rate }}%</strong></div>
+  <div><small>当前武器</small><strong>{{ preview.weapon_name }}</strong></div>
+</div>
+
+<div class="card terrain-card">
+  <div class="row"><strong>{{ preview.terrain.name }}</strong><span>战斗地形</span></div>
+  <p>{{ preview.terrain.desc }}</p>
+  <p class="muted">本次攻击噪声约{{ preview.noise }}；{% if preview.weapon in ('gun','rifle') %}弹药{{ preview.ammo }}发{% else %}不会消耗枪械弹药{% endif %}。{% if ch.combat_status == 'grabbed' %}<strong>你正被抓住，脱离率下降。</strong>{% elif ch.combat_status == 'exposed' %}<strong>敌人暴露弱点，下一次攻击增伤。</strong>{% endif %}</p>
+</div>
+
+<div class="card combat-synergy">
+  <div class="section-kicker">SURVIVAL LOADOUT · 生存联动</div>
+  <div class="combat-tags">
+    {% if preview.plan %}<span>📋 今日计划：{{ preview.plan.name }}</span>{% endif %}
+    {% if preview.preparation.food %}<span>🍲 {{ preview.preparation.food.name }}：增伤+{{ (preview.preparation.damage_bonus * 100)|int }}%</span>{% endif %}
+    {% if preview.preparation.drink %}<span>🥤 {{ preview.preparation.drink.name }}：暴击+{{ (preview.preparation.crit_bonus * 100)|int }}%</span>{% endif %}
+    {% if preview.focused %}<span>🎭 精神充实：暴击+5%</span>{% endif %}
+    {% if preview.animal_profile %}<span>🐾 {{ preview.animal_profile.custom_name }}已就位</span>{% endif %}
+    {% if not preview.plan and not preview.preparation.food and not preview.preparation.drink and not preview.focused and not preview.animal_profile %}
+      <span class="muted">做饭、酿饮、安排今日计划、保持娱乐和培养动物伙伴，都能改变下一场战斗。</span>
+    {% endif %}
+  </div>
+  {% for injury in preview.injuries %}
+    <p class="care-warning">🩸 {{ injury_defs[injury.injury_key].name }}：{{ injury_defs[injury.injury_key].effect }}；需要{{ item_names[injury_defs[injury.injury_key].item] }}。</p>
+  {% endfor %}
+</div>
+
+<div class="combat-action-grid">
+  <form method="post" action="{{ url_for('action_combat', action='quick') }}">
+    <button class="combat-action primary" {% if preview.weapon == 'crossbow' and ch.combat_reload %}disabled{% endif %}>
+      <strong>⚔️ 快攻</strong>
+      <span>体力-{{ stamina_costs.quick }}。造成完整伤害；速度较慢时敌人可能先行动。</span>
+    </button>
+  </form>
+  <form method="post" action="{{ url_for('action_combat', action='guard') }}">
+    <button class="combat-action tactical">
+      <strong>🛡️ 稳守</strong>
+      <span>体力-{{ stamina_costs.guard }}。先行动并造成约62%伤害，本回合受到的伤害大幅降低。</span>
+    </button>
+  </form>
+  <form method="post" action="{{ url_for('action_combat', action='aim') }}">
+    <button class="combat-action tactical" {% if ch.combat_aim %}disabled{% endif %}>
+      <strong>🎯 瞄准 / 蓄力</strong>
+      <span>体力-{{ stamina_costs.aim }}。本回合不攻击；下一击约1.65倍伤害且更容易暴击。</span>
+    </button>
+  </form>
+  {% if preview.weapon == 'crossbow' and ch.combat_reload %}
+  <form method="post" action="{{ url_for('action_combat', action='reload') }}">
+    <button class="combat-action warning">
+      <strong>🔄 重新装填</strong>
+      <span>弩每次射击后必须上弦，本回合仍可能遭到攻击。</span>
+    </button>
+  </form>
+  {% endif %}
+  <form method="post" action="{{ url_for('action_combat', action='item') }}">
+    <button class="combat-action support" {% if not medical %}disabled{% endif %}>
+      <strong>🩹 使用医疗品</strong>
+      <span>{% if medical %}体力-{{ stamina_costs.item }}。优先使用绷带，再使用急救包；会占用本回合。{% else %}背包里没有绷带或急救包。{% endif %}</span>
+    </button>
+  </form>
+  <form method="post" action="{{ url_for('action_combat', action='terrain') }}">
+    <button class="combat-action tactical" {% if ch.combat_tactic_used %}disabled{% endif %}>
+      <strong>🧭 {% if ch.combat_terrain == 'road' %}借废车拉开距离{% elif ch.combat_terrain == 'hallway' %}踢倒柜架封路{% elif ch.combat_terrain == 'ruins' %}滑入断墙掩体{% elif ch.combat_terrain == 'rooftop' %}推落屋顶碎砖{% else %}绕树伏击{% endif %}</strong>
+      <span>{% if ch.combat_tactic_used %}本场的地形机会已经使用。{% else %}体力-{{ stamina_costs.terrain }}。每场一次；会依据当前地点造成伤害、打断、稳守或创造下一击优势。{% endif %}</span>
+    </button>
+  </form>
+  {% if preview.animal_profile %}
+  <form method="post" action="{{ url_for('action_combat', action='pet') }}">
+    <button class="combat-action support" {% if ch.combat_pet_used %}disabled{% endif %}>
+      <strong>🐾 指挥{{ preview.animal_profile.custom_name }}</strong>
+      <span>{% if ch.combat_pet_used %}伙伴本场已经执行过指令。{% else %}每场一次；伙伴类型决定攻击、掩护或打断效果。{% endif %}</span>
+    </button>
+  </form>
+  {% endif %}
+  {% if preview.can_signal or ch.combat_signal_used %}
+  <form method="post" action="{{ url_for('action_combat', action='signal') }}">
+    <button class="combat-action warning" {% if ch.combat_signal_used %}disabled{% endif %}>
+      <strong>📡 广播战斗求援</strong>
+      <span>{% if ch.combat_signal_used %}坐标已经广播。{% else %}体力-{{ stamina_costs.signal }}。重伤或高感染时发出地图坐标，本回合躲入掩体稳守；附近玩家可带药赶来。{% endif %}</span>
+    </button>
+  </form>
+  {% endif %}
+  <form method="post" action="{{ url_for('action_combat', action='flee') }}">
+    <button class="combat-action danger">
+      <strong>🏃 脱离战斗 · {{ preview.flee_rate }}%</strong>
+      <span>体力-{{ stamina_costs.flee }}。成功则安全离开且没有战利品；失败会触发敌人当前意图。</span>
+    </button>
+  </form>
+</div>
+{% endblock %}

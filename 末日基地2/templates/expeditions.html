@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="family-hero expedition-hero">
+  <div class="section-kicker">OFFLINE EXPEDITION</div>
+  <h1>🧭 远征准备室</h1>
+  <p>选择路线、策略与同行者后即可离线。每次出发消耗{{ stamina_costs.expedition }}体力；体力归零仍可出发，但低体力会影响其他行动。</p>
+</div>
+
+{% if active %}
+<div class="card active-expedition">
+  <strong>{{ routes[active.route_key].name }}正在进行</strong>
+  <p>策略：{{ active.strategy }} · 预计剩余 {{ ((active.return_ts-now_ts)//60)|int if active.return_ts>now_ts else 0 }}分钟</p>
+  <p class="muted">后台会自动结算，不需要停留在页面。离线远征不会直接杀死玩家。</p>
+</div>
+{% else %}
+<form method="post" action="{{ url_for('expedition_start') }}">
+{% for key,r in routes.items() %}
+<label class="card route-choice"><input type="radio" name="route_key" value="{{ key }}" {% if loop.first %}checked{% endif %}><strong>{{ r.name }}</strong>
+  <span class="muted">{{ r.duration//60 }}分钟 · {% for k,v in r.cost.items() %}{{ item_names[k] }}x{{ v }} {% endfor %}</span>
+</label>
+{% endfor %}
+<div class="card">
+  <label>行动策略 <select name="strategy"><option value="careful">谨慎：更安全，耗时+25%</option><option value="balanced" selected>均衡</option><option value="bold">冒险：更快、额外收获、风险更高</option></select></label>
+  <label>同行玩家 <select name="companion_character_id"><option value="">独自行动</option>{% for p in companions %}<option value="{{ p.id }}">{{ display_name(p) }}</option>{% endfor %}</select></label>
+  <label>成年孩子 <select name="child_id"><option value="">不带孩子</option>{% for c in adult_children %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></label>
+  <button class="primary">检查补给并出发 · 体力-{{ stamina_costs.expedition }}</button>
+</div>
+</form>
+{% endif %}
+
+<p class="muted">远征产生的后续事件会统一进入<a href="{{ url_for('story_view') }}">幸存者日志</a>，不再分散在不同页面。</p>
+
+<h2>📡 远征记录</h2>
+{% for e in history %}<div class="card"><strong>{{ routes[e.route_key].name }}</strong><p>{{ e.result_text }}</p></div>{% else %}<p class="muted">还没有完成过远征。</p>{% endfor %}
+{% endblock %}

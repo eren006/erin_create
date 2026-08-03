@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}成年 - 末日基地{% endblock %}
+{% block content %}
+<div class="card">
+  <h2 style="margin-bottom:8px">{{ survivor.name }} 成年了</h2>
+  <p class="muted">是时候选一个专精、分配属性点,正式加入基地建设了。这不是重生,钱包/贡献值/装备都还在。</p>
+</div>
+<div class="card">
+  <form method="post">
+    <label>专精(每种专精在对应行动上有加成,谁都能做所有事)</label>
+    <select name="specialization" required>
+      <option value="">请选择</option>
+      {% for key, spec in specializations.items() %}
+      <option value="{{ key }}">{{ spec.name }} · {{ spec.desc }}</option>
+      {% endfor %}
+    </select>
+
+    <label style="margin-top:16px">属性(每项保底 {{ stat_base }} 点,再自由分配 {{ stat_free_points }} 点 · 剩余 <span id="stat-remaining">{{ stat_free_points }}</span> 点)</label>
+    {% for key, stat in stats.items() %}
+    <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+      <span style="flex:0 0 90px;font-size:13px">{{ stat.name }}</span>
+      <input type="number" class="stat-input" name="{{ key }}" value="0" min="0" max="{{ stat_free_points }}" style="width:80px">
+      <span class="muted" style="font-size:12px">{{ stat.desc }}</span>
+    </div>
+    {% endfor %}
+
+    <button class="btn btn-primary" style="margin-top:16px;width:100%" type="submit">正式成年</button>
+  </form>
+</div>
+<script>
+(function(){
+  var inputs = document.querySelectorAll('.stat-input');
+  var total = {{ stat_free_points }};
+  var remainingEl = document.getElementById('stat-remaining');
+  function update() {
+    var sum = 0;
+    inputs.forEach(function(i){ sum += parseInt(i.value || '0', 10); });
+    remainingEl.textContent = total - sum;
+  }
+  inputs.forEach(function(i){ i.addEventListener('input', update); });
+  update();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}房间 - 末日基地{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>我的房间</h2>
+  <p class="muted">房间是个人的,花钱包升级,等级越高体力回复越快、也给基地带来一点被动士气加成。</p>
+</div>
+
+<div class="card">
+  <h3>当前:{{ room_tiers[tier].name }}(Lv.{{ tier }}/{{ room_tier_max }})</h3>
+  <p class="muted">体力回复速度 +{{ room_tiers[tier].energy_regen_bonus }}% · 基地被动士气 +{{ room_tiers[tier].morale_bonus }}</p>
+  <p class="muted" style="margin-top:4px">钱包:{{ survivor.wallet }}</p>
+</div>
+
+{% if next_tier %}
+<div class="card">
+  <h3>下一级:{{ room_tiers[next_tier].name }}</h3>
+  <p class="muted">花费 {{ room_tiers[next_tier].upgrade_cost.wallet }} 点钱 · 体力回复速度 +{{ room_tiers[next_tier].energy_regen_bonus }}% · 基地被动士气 +{{ room_tiers[next_tier].morale_bonus }}</p>
+  <form method="post" action="{{ url_for('room_upgrade') }}" style="margin-top:8px">
+    <button class="btn btn-primary" type="submit" {{ 'disabled' if survivor.wallet < room_tiers[next_tier].upgrade_cost.wallet }}>搬进{{ room_tiers[next_tier].name }}</button>
+  </form>
+</div>
+{% else %}
+<div class="card"><p class="muted">已经是最好的房间了。</p></div>
+{% endif %}
+
+<div class="card">
+  <h3>生育权</h3>
+  {% if survivor.birth_rights %}
+  <p class="muted">已经买过了。和情侣一起去<a href="{{ url_for('relationship_page') }}">关系</a>页面生孩子。</p>
+  {% elif tier < room_tier_max %}
+  <p class="muted">房间要先升到{{ room_tiers[room_tier_max].name }}才能买。</p>
+  {% else %}
+  <p class="muted">花 {{ birth_rights_cost }} 点钱买下生育权,和情侣双方都买了之后可以在<a href="{{ url_for('relationship_page') }}">关系</a>页面生孩子。</p>
+  <form method="post" action="{{ url_for('room_buy_birth_rights') }}" style="margin-top:8px">
+    <button class="btn btn-primary" type="submit" {{ 'disabled' if survivor.wallet < birth_rights_cost }}>购买生育权</button>
+  </form>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3>我的家具(已装 {{ installed_furniture|length }}/{{ furniture_slots }})</h3>
+  {% if installed_furniture %}
+  <p class="muted">已装进房间:</p>
+  {% for it in installed_furniture %}
+  <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+    <span style="flex:1">{{ furniture_types[it.item_key].name }}{% if furniture_types[it.item_key].effect != 'deco' %}({{ '体力回复' if furniture_types[it.item_key].effect=='energy' else '士气' }}+{{ furniture_types[it.item_key].amount }}){% endif %}</span>
+    <form method="post" action="{{ url_for('room_uninstall', item_id=it.id) }}">
+      <button class="btn" type="submit">拆下</button>
+    </form>
+  </div>
+  {% endfor %}
+  {% endif %}
+  {% if inventory_furniture %}
+  <p class="muted" style="margin-top:10px">背包里(未装/未上架):</p>
+  {% for it in inventory_furniture %}
+  <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+    <span style="flex:1">{{ furniture_types[it.item_key].name }}</span>
+    <form method="post" action="{{ url_for('room_install', item_id=it.id) }}">
+      <button class="btn btn-primary" type="submit" {{ 'disabled' if installed_furniture|length >= furniture_slots }}>装进房间</button>
+    </form>
+    <a href="{{ url_for('market_page') }}" class="btn">去上架卖掉</a>
+  </div>
+  {% endfor %}
+  {% endif %}
+  {% if not installed_furniture and not inventory_furniture %}
+  <p class="muted">还没有家具,去<a href="{{ url_for('build_page') }}">建筑</a>页面打造,或去<a href="{{ url_for('market_page') }}">集市</a>买别人做的。</p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}面试复习{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <nav>
+    <span class="brand">面试复习站</span>
+    <a href="{{ url_for('index') }}" class="{{ 'active' if active == 'home' else '' }}">首页</a>
+    <a href="{{ url_for('sql_page') }}" class="{{ 'active' if active == 'sql' else '' }}">SQL 练习</a>
+    <a href="{{ url_for('pandas_page') }}" class="{{ 'active' if active == 'pandas' else '' }}">Pandas 练习</a>
+    <a href="{{ url_for('learn_page') }}" class="{{ 'active' if active == 'learn' else '' }}">知识点</a>
+    <a href="{{ url_for('basics_page') }}" class="{{ 'active' if active == 'basics' else '' }}">基础知识自测</a>
+  </nav>
+  {% block content %}{% endblock %}
+</body>
+</html>
