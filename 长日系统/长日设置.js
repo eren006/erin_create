@@ -40,12 +40,13 @@ const SETTING_POLL_INTERVAL_MS = 60000;      // 1 分钟
 // ========================
 function getApi()              { return globalThis.__changriApi || null; }
 function mainStorGet(key)      { return getApi()?.kvGetRaw(key) ?? null; }
-function mainStorSet(key, val) { getApi()?.kvSetRaw(key, val); }
+function mainStorSet(key, val) { const api = getApi(); if (api) api.kvSetRaw(key, val); else console.error(`[长日设置] 主插件未加载，写入丢失: ${key}`); }
 
 // JSON 对象读写：走主插件 kvGet/kvSet（带缓存与损坏容错），JSON key 一律用这两个函数
 function mainKvGet(key, def) { const api = getApi(); return api ? api.kvGet(key, def) : def; }
-function mainKvSet(key, val) { getApi()?.kvSet(key, val); }
+function mainKvSet(key, val) { const api = getApi(); if (api) api.kvSet(key, val); else console.error(`[长日设置] 主插件未加载，写入丢失: ${key}`); }
 function isUserAdmin(ctx, msg) { return getApi()?.isUserAdmin(ctx, msg) ?? false; }
+function mainGetTodayCountsLine(day) { return getApi()?.getTodayActivitySummaryLine(day) ?? ""; }
 // 向后兼容：业务逻辑中 getMainExt() 仅作存在性守卫使用
 function getMainExt()          { return getApi(); }
 
@@ -940,7 +941,8 @@ cmd_set_days.solve = (ctx, msg, args) => {
     // ★ 第四步：发送报告
     const announceGid = mainKvGet("adminAnnounceGroupId", null);
     if (announceGid) {
-        sendTextToGroup(platform, announceGid, `📜 全局天数已从 ${prev} 切换到 ${day}（所有计数已自动重置）`);
+        const todayLine = prev !== "未设置" ? `\n${mainGetTodayCountsLine(prev)}` : "";
+        sendTextToGroup(platform, announceGid, `📜 全局天数已从 ${prev} 切换到 ${day}（所有计数已自动重置）${todayLine}`);
     }
     const bgGid = mainKvGet("background_group_id", null);
     const fupanRoutingForReport = mainStorGet("fupan_routing_enabled") === "true";
@@ -992,7 +994,10 @@ function performAutoDayReset(newDay, now) {
 
     // ★ 第四步：发送报告
     const announceGid = mainKvGet("adminAnnounceGroupId", null);
-    if (announceGid) sendTextToGroup("QQ", announceGid, `📜 自动天数推进：${prev} → ${newDay}（所有计数已清空）`);
+    if (announceGid) {
+        const todayLine = prev !== "未设置" ? `\n${mainGetTodayCountsLine(prev)}` : "";
+        sendTextToGroup("QQ", announceGid, `📜 自动天数推进：${prev} → ${newDay}（所有计数已清空）${todayLine}`);
+    }
     const bgGid = mainKvGet("background_group_id", null);
     if (bgGid) sendStatisticsToBackgroundGroup(null, mockMsg, newDay, report, true);
 
@@ -1659,7 +1664,7 @@ cmd_push_all.solve = async (ctx, msg, argv) => {
         "end_game_bonus_templates", "end_game_draw_config",
         "equipment_registry", "equipment_slots", "equipment_slot_names",
         "trade_whitelist", "preset_gifts",
-        "private_appointment_aliases",
+        "private_appointment_aliases", "sms_aliases",
         "available_places", "place_keys",
         "custom_message_templates",
         "craft_recipes",

@@ -67,6 +67,10 @@ function getCustomTypeLabel(subtype) {
     } catch { return subtype; }
 }
 
+function escapeRegExp(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 // 读取整数型设置，兼容 JSON 编码的 '"48"' 与裸字符串 '48' 两种格式
 function getStorageInt(key, defaultVal) {
     const raw = cachedGet(key);
@@ -250,6 +254,7 @@ const WSM = {
             }
         };
         conn.onmessage = (event) => {
+            if (done) return;
             let response;
             try { response = JSON.parse(event.data); } catch (e) { return; }
             if (response.post_type === "meta_event") return;
@@ -315,8 +320,58 @@ function ws(postData, ctx, msg, successreply, errorreply, timeoutMs) {
 // 暴露给其他插件使用
 ext._ws = ws;
 
+// 音乐卡片发送偏慢、偶发失败（OneBot 侧），单独放宽超时并失败重试一次，
+// 重试仍失败才提示用户
+// message 用 OneBot v11 标准数组段格式（而非 CQ 码字符串），
+// 避开 LLOneBot 对 CQ 码字符串解析路径的问题
+function sendMusicCardWithRetry(ctx, msg, gid, songMeta, attempt) {
+    attempt = attempt || 1;
+    const cardMsg = [{ type: "music", data: { type: songMeta.musicType, id: Number(songMeta.songId) } }];
+    WSM.request(
+        { action: "send_group_msg", params: { group_id: gid, message: cardMsg } },
+        (response) => {
+            if (response.status === 'ok' || response.retcode === 0) {
+                seal.replyToSender(ctx, msg, "✅ 点歌已同步至戏群。");
+                return;
+            }
+            console.error(`[WS] 服务端返回错误: ${JSON.stringify(response)}`);
+            if (attempt < 2) {
+                setTimeout(() => sendMusicCardWithRetry(ctx, msg, gid, songMeta, attempt + 1), 1500);
+            } else {
+                sendSongFallbackText(ctx, msg, gid, songMeta);
+            }
+        },
+        () => {
+            if (attempt < 2) {
+                setTimeout(() => sendMusicCardWithRetry(ctx, msg, gid, songMeta, attempt + 1), 1500);
+            } else {
+                sendSongFallbackText(ctx, msg, gid, songMeta);
+            }
+        },
+        6000
+    );
+}
+
+// 卡片重试仍失败时的兜底：文字消息通道已反复验证稳定，
+// 改发文字通知到戏群，保证歌曲信息至少能送达
+// 对玩家呈现为正常点歌结果，不暴露卡片发送失败的细节（LLOneBot 侧问题排查中）
+function sendSongFallbackText(ctx, msg, gid, songMeta) {
+    const { musicType, songId, songTitle, songArtist } = songMeta;
+    const label = musicType === "163" ? "网易云音乐" : musicType === "qq" ? "QQ音乐" : musicType;
+    const link  = musicType === "163" ? `https://music.163.com/#/song?id=${songId}`
+                : musicType === "qq"  ? `https://y.qq.com/n/ryqq/songDetail/${songId}`
+                : "";
+    const songLine = songTitle ? `《${songTitle}》${songArtist ? " - " + songArtist : ""}\n` : "";
+    const text = `🎵 【点歌台】\n${songLine}${label}${link ? "：" + link : "，ID：" + songId}`;
+    ws({ action: "send_group_msg", params: { group_id: gid, message: text } }, ctx, msg,
+        "✅ 点歌已同步至戏群。",
+        "❌ 点歌失败：请稍后重试。");
+}
+
 // 点歌投递：gid/dgr/ly 全部由调用方通过闭包传入，不读全局 temp key
-function handleSongDelivery(ctx, msg, data, gid, dgr, ly) {
+// userSongName：玩家在指令里填的歌名（选填），优先于从卡片 JSON 里猜的 title
+// songTo：点歌献给谁（选填），只用于戏群里的点歌台提示文案
+function handleSongDelivery(ctx, msg, data, gid, dgr, ly, userSongName, songTo) {
     if (!data || !data.message) {
         seal.replyToSender(ctx, msg, "❌ 点歌失败：消息内容为空，请确认回复的是音乐卡片。");
         return;
@@ -347,11 +402,23 @@ function handleSongDelivery(ctx, msg, data, gid, dgr, ly) {
         else if (neteaseFallback) { songId = neteaseFallback[1]; musicType = "163"; }
     }
 
+    // 尝试从分享卡片 JSON 里取歌名/歌手（meta.music 下的 title/desc），仅卡片失败降级成文字时用得上
+    let songTitle = "", songArtist = "";
+    const musicBlockMatch = originalContent.match(/"music"\s*:\s*\{([^}]*)\}/);
+    if (musicBlockMatch) {
+        const titleM = musicBlockMatch[1].match(/"title"\s*:\s*"([^"]*)"/);
+        const descM  = musicBlockMatch[1].match(/"desc"\s*:\s*"([^"]*)"/);
+        if (titleM) songTitle  = titleM[1];
+        if (descM)  songArtist = descM[1];
+    }
+    if (userSongName) songTitle = userSongName;
+
     if (songId) {
-        ws({ action: "send_group_msg", params: { group_id: gid, message: `🎵 【点歌台】\n点歌人：${dgr}\n留言：${ly}` } }, ctx, msg, "");
+        const toLine = songTo ? `送给：${songTo}\n` : "";
+        ws({ action: "send_group_msg", params: { group_id: gid, message: `🎵 【点歌台】\n点歌人：${dgr}\n${toLine}留言：${ly}` } }, ctx, msg, "",
+            "❌ 点歌同步失败：戏群消息发送异常，请稍后重试。");
         setTimeout(() => {
-            ws({ action: "send_group_msg", params: { group_id: gid, message: `[CQ:music,type=${musicType},id=${songId}]` } }, ctx, msg, "");
-            seal.replyToSender(ctx, msg, "✅ 点歌已同步至戏群。");
+            sendMusicCardWithRetry(ctx, msg, gid, { musicType, songId, songTitle, songArtist });
         }, 800);
     } else {
         seal.replyToSender(ctx, msg, "❌ 识别失败，请引用音乐分享卡片。");
@@ -980,11 +1047,10 @@ cmd_bind_role.solve =(ctx, msg, cmdArgs) => {
         `  修改年龄 数字\n` +
         `  修改皮相 明星名\n` +
         `  修改签名 你的签名（12小时冷却）\n` +
-        `\n📬 发送「我的待回」随时看自己还没回的群、还没进的群、还没退的群。\n` +
-        `⏱️ 发送「我的弧长」看自己的回复速度统计，以及当前每个未结场次轮到谁回复。\n` +
+        `\n📋 发送「我的」随时查看"我的待回/我的弧长/我的数量"这些自查指令的速查一览。\n` +
         `\n发送「玩家名单」查看所有角色。`
     );
-    seal.replyToSender(ctx, msg, `📋 记不住指令格式？发送「格式」查看目录，发送「格式+类型」（如「格式心动信」）直接拿可复制的模板。`);
+    seal.replyToSender(ctx, msg, `📋 记不住指令格式？发送「格式」查看目录，发送「格式+类型」（如「格式心动信」）直接拿可复制的模板。\n📖 发送「玩家指南」随时查看这份入门指令一览，发送「基础指南」查看约会互动类指令。`);
     return seal.ext.newCmdExecuteResult(true);
 };
 
@@ -1324,6 +1390,7 @@ const changriApi = {
     // 互动计数与公告
     recordMeetingAndAnnounce,
     recordInteractionStat,
+    getTodayActivitySummaryLine,
     // 统计数据读写（统计卫星用）
     getUserStats,
     saveUserStats,
@@ -1365,6 +1432,7 @@ const changriApi = {
     saveSessionStats: (ss) => saveSessionStats(ss),
     getCustomTypeLabel,
     timeConflict,
+    extractRoleContent,
     setGroupName: (ctx, msg, gid, name) => setGroupName(ctx, msg, gid, name),
     getIdleGroupName,
     cleanupGroupTimer,
@@ -2622,6 +2690,11 @@ function getPrivateAliases() {
     try { return kvGet("private_appointment_aliases", []); } catch { return []; }
 }
 
+// 短信自定义触发词（如「飞鸽传书」），格式/存档/文案均与「短信」本体完全一致，只是换个词触发
+function getSmsAliases() {
+    try { return kvGet("sms_aliases", []); } catch { return []; }
+}
+
 let cmd_appointment_private = {};
 
 function generatePrivateInvitationMessage(sendname, place, day, time, isMulti, otherNames, targetQQ) {
@@ -2692,20 +2765,19 @@ cmd_appointment_private.solve = async (ctx, msg, cmdArgs, aliasConfig) => {
 // ========================
 
 // 🔧 检查两人之间是否已有活跃微信群
-function checkWechatBetweenUsers(platform, user1, user2) {
+// users：完整参与者列表（含发起者）。已存在一个活跃群同时包含这些人时视为重复
+function checkWechatAmongUsers(platform, users) {
     const wechatGroups = kvGet("wechat_groups", {});
     const platformGroups = wechatGroups[platform] || {};
 
     for (const groupId in platformGroups) {
         const group = platformGroups[groupId];
-        if (group.status === "active") {
-            if (group.participants.includes(user1) && group.participants.includes(user2)) {
-                return {
-                    exists: true,
-                    groupId: groupId,
-                    topic: group.topic || "(无主题)"
-                };
-            }
+        if (group.status === "active" && users.every(u => group.participants.includes(u))) {
+            return {
+                exists: true,
+                groupId: groupId,
+                topic: group.topic || "(无主题)"
+            };
         }
     }
 
@@ -2742,28 +2814,28 @@ cmd_wechat.solve =async (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    const toname = cmdArgs.getArgN(1);
-    if (!toname) {
-        const ret = seal.ext.newCmdExecuteResult(true);
-        ret.showHelp = true;
-        return ret;
-    }
-
-    // 新结构：通过 roleName 反查 uid
-    const wechatToUid = getUidByRoleName(platform, toname);
-    if (!wechatToUid) {
-        seal.replyToSender(ctx, msg, `❌ 未找到角色「${toname}」，请确认对方已注册`);
+    const namesArg = cmdArgs.getArgN(1);
+    if (!namesArg) {
+        seal.replyToSender(ctx, msg, "⚠️ 格式：微信 对方角色名[/对方2/...]\n例：微信 张三\n例：微信 张三/李四");
         return seal.ext.newCmdExecuteResult(true);
     }
-
-    if (toname === sendname) {
+    const names = [...new Set(namesArg.replace(/，/g, "/").split("/").map(n => n.trim()).filter(Boolean))];
+    if (names.includes(sendname)) {
         seal.replyToSender(ctx, msg, "❌ 不能邀请自己");
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    const existing = checkWechatBetweenUsers(platform, sendname, toname);
+    // 新结构：通过 roleName 反查 uid，逐个校验是否都已注册
+    const notFoundNames = names.filter(n => !getUidByRoleName(platform, n));
+    if (notFoundNames.length) {
+        seal.replyToSender(ctx, msg, `❌ 未找到角色「${notFoundNames.join("、")}」，请确认对方已注册`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    const allParticipants = [sendname, ...names];
+    const existing = checkWechatAmongUsers(platform, allParticipants);
     if (existing.exists) {
-        seal.replyToSender(ctx, msg, `⚠️ 你和「${toname}」之间已存在活跃微信群：${existing.groupId}（主题：${existing.topic}）`);
+        seal.replyToSender(ctx, msg, `⚠️ 你和「${names.join("、")}」之间已存在活跃微信群：${existing.groupId}（主题：${existing.topic}）`);
         return seal.ext.newCmdExecuteResult(true);
     }
 
@@ -2782,36 +2854,40 @@ cmd_wechat.solve =async (ctx, msg, cmdArgs) => {
             creator: sendname,
             creator_id: uid,
             topic: "",
-            participants: [sendname, toname],
+            participants: allParticipants,
             status: "active",
             created_at: now.toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" }),
             created_timestamp: now.getTime()
         };
         kvSet("wechat_groups", wechatGroups);
 
+        const othersLabel = names.join("、");
+        const nameTag = allParticipants.length > 2 ? "多人" : names.join("&");
+
         // 戏群公告
         const groupMsg = seal.newMessage();
         groupMsg.messageType = "group";
         groupMsg.groupId = `${platform}-Group:${gid}`;
         const groupCtx = seal.createTempCtx(ctx.endPoint, groupMsg);
-        seal.replyToSender(groupCtx, groupMsg, applyMsgTemplate("wechat_announcement", { 发起者: sendname, 对方: toname, 群号: gid })
-            || `💬 微信群已建立\n\n👥 成员：${sendname}、${toname}\n\n💡 长期群聊，无时间限制，每个微信关系只能有一个活跃群。`);
-        setGroupName(groupCtx, groupMsg, gid, `${getCustomTypeLabel("微信")}:${sendname}&${toname}`);
+        seal.replyToSender(groupCtx, groupMsg, applyMsgTemplate("wechat_announcement", { 发起者: sendname, 对方: othersLabel, 群号: gid })
+            || `💬 微信群已建立\n\n👥 成员：${sendname}、${othersLabel}\n\n💡 长期群聊，无时间限制，每个微信关系只能有一个活跃群。`);
+        setGroupName(groupCtx, groupMsg, gid, `${getCustomTypeLabel("微信")}:${sendname}&${nameTag}`);
 
-        // 通知对方（发起者已通过下方 successMsg 得到回执）
-        const toUidLookup = getUidByRoleName(platform, toname);
-        const toInfo = toUidLookup ? a_private_group[platform][toUidLookup] : null;
-        if (toInfo) {
+        // 通知每一位受邀者（发起者已通过下方 successMsg 得到回执）
+        names.forEach(toname => {
+            const toUidLookup = getUidByRoleName(platform, toname);
+            const toInfo = toUidLookup ? a_private_group[platform][toUidLookup] : null;
+            if (!toInfo) return;
             const toBindGid = toInfo[1];
             const notifyMsg = seal.newMessage();
             notifyMsg.messageType = "group";
             notifyMsg.groupId = `${platform}-Group:${toBindGid}`;
             const notifyCtx = seal.createTempCtx(ctx.endPoint, notifyMsg);
-            seal.replyToSender(notifyCtx, notifyMsg, applyMsgTemplate("wechat_notice", { 发起者: sendname, 对方: toname, 群号: gid })
-                || `💬 ${sendname} 邀你加入微信群\n\n📱 群号：${gid}\n👥 成员：${sendname}、${toname}\n\n💡 长期群聊，无时间限制。`);
-        }
+            seal.replyToSender(notifyCtx, notifyMsg, applyMsgTemplate("wechat_notice", { 发起者: sendname, 对方: othersLabel, 群号: gid })
+                || `💬 ${sendname} 邀你加入微信群\n\n📱 群号：${gid}\n👥 成员：${sendname}、${othersLabel}\n\n💡 长期群聊，无时间限制。`);
+        });
 
-        seal.replyToSender(ctx, msg, `✅ 微信群创建成功！\n📱 群号：${gid}\n👥 成员：${sendname}、${toname}`);
+        seal.replyToSender(ctx, msg, `✅ 微信群创建成功！\n📱 群号：${gid}\n👥 成员：${sendname}、${othersLabel}`);
     } catch (e) {
         // 创建失败，释放已分配的群号
         const groupList = kvGet("group", []);
@@ -3794,8 +3870,9 @@ cmd_grouplist_release.solve = (ctx, msg, cmdArgs) => {
             postToArchive("/api/session_end", buildSessionArchive(gid, platform, false));
         }
 
-        // 清除到期记录
+        // 清除到期记录（先取 subtype 供结戏奖励使用，group 号会被复用，事后从 b_confirmedSchedule 反查可能查到旧场次）
         let groupExpireInfo = kvGet("group_expire_info", {});
+        const _endedSubtype = groupExpireInfo[gid]?.subtype || "";
         if (groupExpireInfo[gid]) {
             delete groupExpireInfo[gid];
             kvSet("group_expire_info", groupExpireInfo);
@@ -3808,7 +3885,7 @@ cmd_grouplist_release.solve = (ctx, msg, cmdArgs) => {
         const _endedTimer = getGroupTimers()[gid];
         if (_endedTimer) recordPendingLeaveCheck(gid, _endedTimer.subtype, _endedTimer.participants);
         cleanupGroupTimer(gid);
-        applyEndGameBonuses(ctx, msg, gid, platform);
+        applyEndGameBonuses(ctx, msg, gid, platform, _endedSubtype);
     } else {
         seal.replyToSender(ctx, msg, `⚠️ 当前群号未处于占用状态，无法结束`);
     }
@@ -3817,9 +3894,12 @@ cmd_grouplist_release.solve = (ctx, msg, cmdArgs) => {
 };
 
 // 强结单群的核心逻辑：跳过复盘检查，是否发放结戏奖励取决于「设置 互动参数」中的「强结发放奖励」开关。
-// 供「强结私约」「一键强结」共用，不依赖调用方 ctx/msg 是否身处目标群内（仅用 ctx.endPoint 构造目标群临时上下文）。
+// 供「强结私约」「一键强结」「取消官约」「取消时间线」共用，不依赖调用方 ctx/msg 是否身处目标群内（仅用 ctx.endPoint 构造目标群临时上下文）。
+// releaseTimeline：true 时（「取消官约」「取消时间线」用）视为这场从没真的发生过，直接删掉参与者的时间线记录，
+// 让这段时间能重新约；false（「强结私约」「一键强结」用）保持原行为，只把记录标成 ended，仍占着这段时间线
+// （多数强结场景是场次已经进行了一部分被打断，时间线上确实"发生过"，不该被后续预约覆盖）。
 // 返回 { ok, reason?, isWechat?, rewardGranted? }
-function forceEndGroupCore(ctx, msg, gid, platform, operatorUid) {
+function forceEndGroupCore(ctx, msg, gid, platform, operatorUid, releaseTimeline = false) {
     const targetMsg = seal.newMessage();
     targetMsg.messageType = "group";
     targetMsg.groupId = `${platform}-Group:${gid}`;
@@ -3857,12 +3937,17 @@ function forceEndGroupCore(ctx, msg, gid, platform, operatorUid) {
     let modified = false;
     const participantUids = new Set();
     for (let uidKey in b_confirmedSchedule) {
-        for (let ev of b_confirmedSchedule[uidKey]) {
-            if (ev.group === gid && ev.status !== "ended") {
+        const events = b_confirmedSchedule[uidKey];
+        for (let i = events.length - 1; i >= 0; i--) {
+            const ev = events[i];
+            if (ev.group !== gid) continue;
+            participantUids.add(uidKey);
+            if (releaseTimeline) {
+                events.splice(i, 1); // 取消：删记录释放时间线，而不是标 ended 继续占着
+            } else if (ev.status !== "ended") {
                 ev.status = "ended";
-                modified = true;
-                participantUids.add(uidKey);
             }
+            modified = true;
         }
     }
     if (modified) kvSet("b_confirmedSchedule", b_confirmedSchedule);
@@ -3879,8 +3964,9 @@ function forceEndGroupCore(ctx, msg, gid, platform, operatorUid) {
         postToArchive("/api/session_end", buildSessionArchive(gid, platform, true));
     }
 
-    // 清除到期记录
+    // 清除到期记录（先取 subtype 供结戏奖励使用，group 号会被复用，事后从 b_confirmedSchedule 反查可能查到旧场次）
     let groupExpireInfo = kvGet("group_expire_info", {});
+    const _endedSubtype = groupExpireInfo[gid]?.subtype || "";
     if (groupExpireInfo[gid]) {
         delete groupExpireInfo[gid];
         kvSet("group_expire_info", groupExpireInfo);
@@ -3894,9 +3980,10 @@ function forceEndGroupCore(ctx, msg, gid, platform, operatorUid) {
     cleanupGroupTimer(gid);
 
     // 是否发放结戏奖励由「强结发放奖励」开关决定；开启时复用正常结束的奖励发放路径
-    const rewardGranted = isForceEndRewardEnabled();
+    // 取消（releaseTimeline）视为这场从没真的发生过，不发结戏奖励，不看那个开关
+    const rewardGranted = releaseTimeline ? false : isForceEndRewardEnabled();
     if (rewardGranted) {
-        applyEndGameBonuses(targetCtx, targetMsg, gid, platform);
+        applyEndGameBonuses(targetCtx, targetMsg, gid, platform, _endedSubtype || _forceEndTimer?.subtype || "");
     } else {
         accumulateToSeasonStats(platform, gid);
         const sessionStats = getSessionStats();
@@ -3907,11 +3994,12 @@ function forceEndGroupCore(ctx, msg, gid, platform, operatorUid) {
     }
 
     // 在目标群发送提示，@ 所有参与者请其退群
-    const rewardNote = rewardGranted ? "已发放结戏奖励" : "不发放结戏奖励";
     const atParts = [...participantUids].map(uid => `[CQ:at,qq=${uid}]`).join(" ");
-    const targetNotice = atParts
-        ? `${atParts}\n⚠️ 本群已被管理员强制结束，${rewardNote}，请各位退群。`
-        : `⚠️ 本群已被管理员强制结束，${rewardNote}，请各位退群。`;
+    const targetNotice = releaseTimeline
+        ? (atParts ? `${atParts}\n⚠️ 本群已被管理员取消，占用的时间线已释放，请各位退群。` : `⚠️ 本群已被管理员取消，占用的时间线已释放，请各位退群。`)
+        : (atParts
+            ? `${atParts}\n⚠️ 本群已被管理员强制结束，${rewardGranted ? "已发放结戏奖励" : "不发放结戏奖励"}，请各位退群。`
+            : `⚠️ 本群已被管理员强制结束，${rewardGranted ? "已发放结戏奖励" : "不发放结戏奖励"}，请各位退群。`);
     seal.replyToSender(targetCtx, targetMsg, targetNotice);
     setGroupName(targetCtx, targetMsg, gid, getIdleGroupName());
 
@@ -3923,36 +4011,50 @@ function forceEndGroupCore(ctx, msg, gid, platform, operatorUid) {
 // 用法：强结私约 [群号]  —— 不填群号则对当前群操作
 const cmd_force_end = seal.ext.newCmdItemInfo();
 cmd_force_end.name = "强结私约";
-cmd_force_end.help = "。强结私约 [群号]（管理员专用）：强制结束指定群（不填则当前群），是否发放结戏奖励见「设置 互动参数」的「强结发放奖励」开关，并在目标群 @ 成员提示退群。";
-cmd_force_end.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) {
-        seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+cmd_force_end.help = "。强结私约 [群号]（管理员专用）：强制结束指定群，不区分私约/电话/官约/踩点，任意类型都能用（不填群号则当前群）。场次视为「发生过、只是被打断」，参与者这段时间线仍会被占着，不能重新约同一时段；是否发放结戏奖励见「设置 互动参数」的「强结发放奖励」开关，并在目标群 @ 成员提示退群。如果这场从没真的发生、想连时间线一起释放，用「取消官约」/「取消时间线」。";
+function buildForceEndSolve(releaseTimeline) {
+    return (ctx, msg, cmdArgs) => {
+        if (!isUserAdmin(ctx, msg)) {
+            seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+            return seal.ext.newCmdExecuteResult(true);
+        }
+
+        const platform = msg.platform;
+        const argGid = (cmdArgs.getArgN(1) || "").trim();
+        const gid = argGid || msg.groupId.replace(`${platform}-Group:`, "");
+        const isRemote = !!argGid; // 是否在外部群操作
+        const operatorUid = msg.sender.userId.replace(`${platform}:`, "");
+
+        const result = forceEndGroupCore(ctx, msg, gid, platform, operatorUid, releaseTimeline);
+        if (!result.ok) {
+            seal.replyToSender(ctx, msg, `⚠️ 群号 ${gid} ${result.reason}，无法${releaseTimeline ? "取消" : "结束"}`);
+            return seal.ext.newCmdExecuteResult(true);
+        }
+
+        // 向发令者确认（在外部群操作时才需要额外回复，在目标群操作时目标群已有消息）
+        if (isRemote) {
+            const suffix = result.isWechat
+                ? `已${releaseTimeline ? "取消" : "强结"}微信群 ${gid}。`
+                : releaseTimeline
+                    ? `群 ${gid} 已取消，占用的时间线已释放，已在目标群通知成员退群。`
+                    : `群 ${gid} 已强制结束，已在目标群通知成员退群（${result.rewardGranted ? "已发放" : "未发放"}结戏奖励）。`;
+            seal.replyToSender(ctx, msg, `✅ ${suffix}`);
+        }
+
         return seal.ext.newCmdExecuteResult(true);
-    }
-
-    const platform = msg.platform;
-    const argGid = (cmdArgs.getArgN(1) || "").trim();
-    const gid = argGid || msg.groupId.replace(`${platform}-Group:`, "");
-    const isRemote = !!argGid; // 是否在外部群操作
-    const operatorUid = msg.sender.userId.replace(`${platform}:`, "");
-
-    const result = forceEndGroupCore(ctx, msg, gid, platform, operatorUid);
-    if (!result.ok) {
-        seal.replyToSender(ctx, msg, `⚠️ 群号 ${gid} ${result.reason}，无法结束`);
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    // 向发令者确认（在外部群操作时才需要额外回复，在目标群操作时目标群已有消息）
-    if (isRemote) {
-        const suffix = result.isWechat
-            ? `已强结微信群 ${gid}。`
-            : `群 ${gid} 已强制结束，已在目标群通知成员退群（${result.rewardGranted ? "已发放" : "未发放"}结戏奖励）。`;
-        seal.replyToSender(ctx, msg, `✅ ${suffix}`);
-    }
-
-    return seal.ext.newCmdExecuteResult(true);
-};
+    };
+}
+cmd_force_end.solve = buildForceEndSolve(false);
 ext.cmdMap["强结私约"] = cmd_force_end;
+
+// 「取消官约」/「取消时间线」：跟「强结私约」共用同一套底层逻辑，唯一区别是 releaseTimeline=true——
+// 这场视为从没真的发生过，直接删掉参与者的时间线记录（而不是标 ended 继续占着），让这段时间能重新约，也不发结戏奖励
+const cmd_cancel_timeline = seal.ext.newCmdItemInfo();
+cmd_cancel_timeline.name = "取消官约";
+cmd_cancel_timeline.help = "。取消官约 [群号]（管理员专用，别名「取消时间线」）：取消指定群，不区分私约/电话/官约/踩点，任意类型都能用（不填群号则当前群）。跟「强结私约」的区别：这场视为从没真的发生过，会释放参与者占用的这段时间线，让这个时段能重新约，也不发结戏奖励。如果场次其实已经进行了一部分、只是被打断，想保留这段时间线的占用，请用「强结私约」。";
+cmd_cancel_timeline.solve = buildForceEndSolve(true);
+ext.cmdMap["取消官约"] = cmd_cancel_timeline;
+ext.cmdMap["取消时间线"] = cmd_cancel_timeline;
 
 // ========================
 // 🚨 一键通知 / 一键强结：按「弧长」（单人未回复时长）或「开群」（群开启时长）批量筛选
@@ -4004,26 +4106,10 @@ function getOverdueScheduleTimeLabel(timer, gid) {
     return [info.day, info.time, info.place].filter(Boolean).join(" ");
 }
 
-// 弧长通知的单条发送逻辑（私聊提醒未回复的人 + 公共群里 @ 提示大家耐心等待），从「提醒超时」抽出以便复用
-function sendOverdueParticipantNotice(ctx, timer, gid, name, s, elapsed) {
+// 弧长通知：公共群里 @ 提示大家耐心等待的部分，每群单独发，不受个人合并转发影响
+function sendOverdueGroupNotice(ctx, timer, gid, name, timeStr) {
     const platform = timer.platform;
-    const h = Math.floor(elapsed / 3600000), m = Math.floor((elapsed % 3600000) / 60000);
-    const timeStr = h > 0 ? `${h}h${m}m` : `${m}m`;
-
-    const priv = kvGet("a_private_group", {});
     const roleUid2 = getUidByRoleName(platform, name);
-
-    // 1. 发送给个人小群
-    const pGid = roleUid2 ? priv[platform]?.[roleUid2]?.[1] : null;
-    if (pGid) {
-        const others2 = (timer.participants || []).filter(p => p !== name);
-        const partnerLabel2 = others2.length ? others2.join("、") : "大家";
-        const text = `✨ 亲爱的 ${name}，${partnerLabel2}在「${getOverdueScheduleTimeLabel(timer, gid)}」的约会等你 ${timeStr} 啦。如果不忙的话，记得回一下小伙伴们哦～ ❤️`;
-        const m1 = seal.newMessage(); m1.messageType = "group"; m1.groupId = `${platform}-Group:${pGid}`;
-        seal.replyToSender(seal.createTempCtx(ctx.endPoint, m1), m1, text);
-    }
-
-    // 2. 发送到公共群，@主账号和所有额外账号
     const extras2 = kvGet("extra_accounts", {});
     const allAtUids = roleUid2 && !/^npc_/.test(roleUid2)
         ? [roleUid2, ...Object.entries(extras2)
@@ -4033,8 +4119,66 @@ function sendOverdueParticipantNotice(ctx, timer, gid, name, s, elapsed) {
     const atStr2 = allAtUids.map(u => `[CQ:at,qq=${u}]`).join("") + (allAtUids.length ? "\n" : "");
     const m2 = seal.newMessage(); m2.messageType = "group"; m2.groupId = `${platform}-Group:${gid}`;
     seal.replyToSender(seal.createTempCtx(ctx.endPoint, m2), m2, `${atStr2}🌷 温馨提示：${name} 已经忙碌 ${timeStr} 啦，我们再耐心等一下ta吧～`);
+}
 
-    s.remindedTimes = (s.remindedTimes || 0) + 1;
+// 私聊提醒未回复的人：按人归拢后统一发——只有 1 个超时群时跟原来一样直接发一条；
+// 2 个及以上时先发一条汇总（几个超时群/平均超时时长），再把逐条详情合并转发，避免同一个人的小群被刷屏
+function flushPersonalOverdueNotices(ctx, platform, pGid, name, entries) {
+    if (!pGid || !entries.length) return;
+    const m1 = seal.newMessage(); m1.messageType = "group"; m1.groupId = `${platform}-Group:${pGid}`;
+    const pCtx = seal.createTempCtx(ctx.endPoint, m1);
+
+    if (entries.length === 1) {
+        const { partnerLabel, timeLabel, timeStr } = entries[0];
+        const text = `✨ 亲爱的 ${name}，${partnerLabel}在「${timeLabel}」的约会等你 ${timeStr} 啦。如果不忙的话，记得回一下小伙伴们哦～ ❤️`;
+        seal.replyToSender(pCtx, m1, text);
+        return;
+    }
+
+    const avgMs = entries.reduce((sum, e) => sum + e.elapsed, 0) / entries.length;
+    const avgH = Math.floor(avgMs / 3600000), avgM = Math.floor((avgMs % 3600000) / 60000);
+    const avgStr = avgH > 0 ? `${avgH}h${avgM}m` : `${avgM}m`;
+    seal.replyToSender(pCtx, m1, `✨ 亲爱的 ${name}，你有 ${entries.length} 个超时群在等你回复，平均超时 ${avgStr} 啦，记得抽空看看哦～ ❤️`);
+
+    const botUid = ctx.endPoint.userId;
+    const gidInt = parseInt(String(pGid).replace(/[^\d]/g, ""), 10);
+    const nodes = entries.map(({ partnerLabel, timeLabel, timeStr }) => ({
+        type: "node",
+        data: { name, uin: botUid, content: `📍 ${timeLabel}\n👥 ${partnerLabel}\n⏱️ 已等待 ${timeStr}` }
+    }));
+    ws({ action: "send_group_forward_msg", params: { group_id: gidInt, messages: nodes } }, pCtx, m1, "");
+}
+
+// 一轮超时提醒的批量入口：entries 为 { gid, timer, name, s, elapsed } 列表。
+// 公共群 @ 提示照旧逐条即发；私聊提醒先按人分组，再交给 flushPersonalOverdueNotices 统一处理
+function processOverdueBatch(ctx, entries) {
+    const priv = kvGet("a_private_group", {});
+    const byPerson = new Map();
+
+    entries.forEach(({ gid, timer, name, s, elapsed }) => {
+        const platform = timer.platform;
+        const h = Math.floor(elapsed / 3600000), m = Math.floor((elapsed % 3600000) / 60000);
+        const timeStr = h > 0 ? `${h}h${m}m` : `${m}m`;
+
+        sendOverdueGroupNotice(ctx, timer, gid, name, timeStr);
+
+        const others = (timer.participants || []).filter(p => p !== name);
+        const partnerLabel = others.length ? others.join("、") : "大家";
+        const timeLabel = getOverdueScheduleTimeLabel(timer, gid);
+        const roleUid = getUidByRoleName(platform, name);
+        const pGid = roleUid ? priv[platform]?.[roleUid]?.[1] : null;
+        if (pGid) {
+            const key = `${platform}:${pGid}:${name}`;
+            if (!byPerson.has(key)) byPerson.set(key, { platform, pGid, name, entries: [] });
+            byPerson.get(key).entries.push({ partnerLabel, timeLabel, timeStr, elapsed });
+        }
+
+        s.remindedTimes = (s.remindedTimes || 0) + 1;
+    });
+
+    byPerson.forEach(({ platform, pGid, name, entries: personEntries }) => {
+        flushPersonalOverdueNotices(ctx, platform, pGid, name, personEntries);
+    });
 }
 
 function parseBatchThresholdArgs(cmdArgs) {
@@ -4067,10 +4211,8 @@ cmd_batch_notify.solve = (ctx, msg, cmdArgs) => {
             seal.replyToSender(ctx, msg, `🌙 没有单人超时 ${hours} 小时以上未回的群。`);
             return seal.ext.newCmdExecuteResult(true);
         }
-        const detail = overdue.map(({ gid, timer, name, s, elapsed }) => {
-            sendOverdueParticipantNotice(ctx, timer, gid, name, s, elapsed);
-            return `群${gid}：${name}`;
-        });
+        processOverdueBatch(ctx, overdue);
+        const detail = overdue.map(({ gid, name }) => `群${gid}：${name}`);
         kvSet("group_timers", timers);
         seal.replyToSender(ctx, msg, `💖 已通知 ${overdue.length} 处超时（弧长 ≥${hours}h）：\n${detail.join("\n")}`);
     } else {
@@ -4566,6 +4708,104 @@ ext.cmdMap["更新未退群"] = cmd_fix_noquit;
 // ========================
 // 🗑️ 清空季度数据
 // ========================
+// 「清空季度数据」要清空的全部本地存储 key（仅保留 a_adminList / adminPassword）。
+// 提到顶层常量，方便 check_clear_keys_coverage.py 之类的脚本静态核对：
+// 凡是代码里 kvGet/kvSet/cachedGet/cachedSet 写过的季度相关 key，理论上都该出现在这里，
+// 否则清空季度时会漏清（这份清单历史上已经因为漏加新 key 出过至少两次 bug）。
+const CLEAR_KEYS = [
+    // ── 角色 / 季度 ──
+    "a_private_group",       "a_npc_list",            "a_generic_npc_list",
+    "a_lockedSlots",
+    "a_wishPool",            "a_quick_official_plan", "extra_accounts",
+    "feature_user_blocklist","noquit",                "season_show_name",
+    "season_mode",           "season_schedule_start", "season_schedule_end",
+    "season_supplement_end", "season_created_at",     "love_show_name",
+    // ── 约会 / 日程 ──
+    "appointmentList",       "b_MultiGroupRequest",   "b_confirmedSchedule",
+    "join_request_list",     "allowed_appointment_times",
+    "appointment_coin_cost", "appointment_duration_config",
+    "auto_merge_duplicate_private","enable_join_existing_appointment",
+    "group",                 "group_expire_info",     "group_timers",
+    "group_session_stats",   "group_write_progress",  "pending_leave_check",
+    "fupan_routing_enabled", "fupan_routing_groups",
+    // ── 统计 / 计数 ──
+    "interaction_counts",    "user_stats",            "global_days",
+    "season_player_stats",   "auto_day_reset_enabled","auto_day_last_reset",
+    "global_gift_cooldowns", "global_gift_stats",
+    "global_chaos_letter_counts",
+    "lovemail_day_counts",   "lovemail_pool",
+    "letter_day_counts",     "wish_daily_post_counts","wish_daily_pick_counts",
+    "a_meetingCount_call",   "a_meetingCount_chaosletter",
+    "a_meetingCount_directletter", "a_meetingCount_gift",
+    "a_meetingCount_letter", "a_meetingCount_lovemail",
+    "a_meetingCount_official","a_meetingCount_private",
+    "a_meetingCount_secretletter","a_meetingCount_wish",
+    "a_meetingCount_relation",
+    // ── 角色属性 / 档案 ──
+    "sys_char_profiles",     "sys_character_attrs",   "sys_attr_presets",
+    "rpg_attr_defs",
+    // ── 物品 / 背包 / 商城 ──
+    "item_registry",         "item_currencies",       "item_usage_log",
+    "global_inventories",    "player_draw_records",   "player_equipments",
+    "player_pity_counters",  "player_level",          "player_level_history",
+    "shop_listings",         "secondhand_market",     "market_config",
+    "pool_definitions",      "pool_draw_config",      "presets",
+    "craft_recipes",         "attack_defense_config", "attack_defense_data",
+    "equipment_config",      "equipment_registry",    "equipment_slots",
+    "equipment_slot_names",  "level_up_rules",        "max_level",
+    // ── 道具效果 ──
+    "phone_tap_effects",     "sms_tap_effects",       "sms_echo_wall_effects",
+    "letter_quill_pen_effects","letter_telescope_effects","letter_pending_quill_pens",
+    "apply_item_expose_rate","apply_item_hours",      "apply_item_notification",
+    "item_tracker_show_partner","item_tracker_success_rate","item_tracker_time_restrict",
+    // ── 礼品店 ──
+    "preset_gifts",          "gift_sightings",        "shop_personal_display",
+    "shop_refresh_hours",    "shop_gift_catalog_on_receive",
+    "sighting_daily_count",  "sighting_system_config",
+    // ── 拍卖 ──
+    "auction_items",         "auction_allow_anon",    "auction_broadcast",
+    "auction_currency",      "auction_show_top_bidder",
+    // ── 地点 ──
+    "available_places",      "place_keys",            "place_system_config",
+    // ── 信件 / 心动信 ──
+    "lovemail_default_limit","lovemail_day_limits",   "lovemail_delivery_time",
+    "lovemail_expose",       "lovemail_expose_chance","letter_public_send",
+    "allow_custom_letter_sign","chaos_letter_config", "mailCooldown",
+    "direct_letter_cooldown","direct_letter_daily_limit","direct_letter_min_chars",
+    "direct_letter_reward",
+    // ── 礼物 ──
+    "gift_public_send",      "allow_custom_gift_sign","drop_hide_receiver",
+    "giftCooldown",          "giftDailyLimit",        "giftMode",
+    "giftPublicChance",
+    // ── 心愿 ──
+    "wish_bounty_enabled",   "wish_coin_cost",        "wish_public_send",
+    "wish_max_concurrent",   "wish_daily_post_limit", "wish_daily_pick_limit",
+    // ── 关系线 ──
+    "relationship_lines",    "relationship_system_enabled",
+    "max_relationships_per_user","max_detail_chars",
+    "max_detail_count",      "max_rel_total_chars",  "forward_split_threshold",
+    // ── 社交 / 论坛 / 晚餐 ──
+    "forum_posts",           "forum_max_length",      "dinner_system_data",
+    "wechat_groups",
+    // ── 收集 / 写帖 ──
+    "sys_info_collection",   "sys_info_projects",     "projects",
+    "sys_info_private_projects",
+    // ── Binary Tag / 目击 ──
+    "sys_binary_tags",
+    // ── 时段窗口配置 ──
+    "ts_allowed_durations",  "ts_blocked_by_day",     "ts_feature_windows",
+    "ts_strict_hour_match",
+    // ── 临时数据（点歌/审计中转）──
+    "temp_audit_owner",      "temp_song_dgr",         "temp_song_ly",
+    "temp_source_group_name","temp_target_gid",       "temp_task_type",
+    // ── 系统设置 ──
+    "global_feature_toggle", "custom_message_templates",
+    "allow_private_rooms",   "announceFrequency",     "monitor_settings",
+    "background_group_id",   "song_group_id",         "adminAnnounceGroupId",
+    "end_game_bonus_templates","end_game_draw_config",
+    "end_season_report_enabled","group_expire_hours", "idle_group_name",
+];
+
 let cmd_reset_season_data = seal.ext.newCmdItemInfo();
 cmd_reset_season_data.name = "清空季度数据";
 cmd_reset_season_data.help = `用法：。清空季度数据 [确认]
@@ -4608,99 +4848,20 @@ cmd_reset_season_data.solve = async (ctx, msg, cmdArgs) => {
         }
     }
 
-    // 清空全部数据（仅保留 a_adminList / adminPassword）
-    const CLEAR_KEYS = [
-        // ── 角色 / 季度 ──
-        "a_private_group",       "a_npc_list",            "a_lockedSlots",
-        "a_wishPool",            "a_quick_official_plan", "extra_accounts",
-        "feature_user_blocklist","noquit",                "season_show_name",
-        "season_mode",           "season_schedule_start", "season_schedule_end",
-        "season_supplement_end", "love_show_name",
-        // ── 约会 / 日程 ──
-        "appointmentList",       "b_MultiGroupRequest",   "b_confirmedSchedule",
-        "join_request_list",     "allowed_appointment_times",
-        "appointment_coin_cost", "appointment_duration_config",
-        "auto_merge_duplicate_private","enable_join_existing_appointment",
-        "group",                 "group_expire_info",     "group_timers",
-        "group_session_stats",   "group_write_progress",  "pending_leave_check",
-        "fupan_routing_enabled", "fupan_routing_groups",
-        // ── 统计 / 计数 ──
-        "interaction_counts",    "user_stats",            "global_days",
-        "season_player_stats",   "auto_day_reset_enabled","auto_day_last_reset",
-        "global_gift_cooldowns", "global_gift_stats",
-        "global_chaos_letter_counts",
-        "lovemail_day_counts",   "lovemail_pool",
-        "letter_day_counts",     "wish_daily_post_counts","wish_daily_pick_counts",
-        "a_meetingCount_call",   "a_meetingCount_chaosletter",
-        "a_meetingCount_directletter", "a_meetingCount_gift",
-        "a_meetingCount_letter", "a_meetingCount_lovemail",
-        "a_meetingCount_official","a_meetingCount_private",
-        "a_meetingCount_secretletter","a_meetingCount_wish",
-        "a_meetingCount_relation",
-        // ── 角色属性 / 档案 ──
-        "sys_char_profiles",     "sys_character_attrs",   "sys_attr_presets",
-        "rpg_attr_defs",
-        // ── 物品 / 背包 / 商城 ──
-        "item_registry",         "item_currencies",       "item_usage_log",
-        "global_inventories",    "player_draw_records",   "player_equipments",
-        "player_pity_counters",  "player_level",          "player_level_history",
-        "shop_listings",         "secondhand_market",     "market_config",
-        "pool_definitions",      "pool_draw_config",      "presets",
-        "craft_recipes",         "attack_defense_config", "attack_defense_data",
-        "equipment_config",      "equipment_registry",    "equipment_slots",
-        "equipment_slot_names",  "level_up_rules",        "max_level",
-        // ── 道具效果 ──
-        "phone_tap_effects",     "sms_tap_effects",       "sms_echo_wall_effects",
-        "letter_quill_pen_effects","letter_telescope_effects","letter_pending_quill_pens",
-        "apply_item_expose_rate","apply_item_hours",      "apply_item_notification",
-        "item_tracker_show_partner","item_tracker_success_rate","item_tracker_time_restrict",
-        // ── 礼品店 ──
-        "preset_gifts",          "gift_sightings",        "shop_personal_display",
-        "shop_refresh_hours",    "shop_gift_catalog_on_receive",
-        "sighting_daily_count",  "sighting_system_config",
-        // ── 拍卖 ──
-        "auction_items",         "auction_allow_anon",    "auction_broadcast",
-        "auction_currency",      "auction_show_top_bidder",
-        // ── 地点 ──
-        "available_places",      "place_keys",            "place_system_config",
-        // ── 信件 / 心动信 ──
-        "lovemail_default_limit","lovemail_day_limits",   "lovemail_delivery_time",
-        "lovemail_expose",       "lovemail_expose_chance","letter_public_send",
-        "allow_custom_letter_sign","chaos_letter_config", "mailCooldown",
-        "direct_letter_cooldown","direct_letter_daily_limit","direct_letter_min_chars",
-        "direct_letter_reward",
-        // ── 礼物 ──
-        "gift_public_send",      "allow_custom_gift_sign","drop_hide_receiver",
-        "giftCooldown",          "giftDailyLimit",        "giftMode",
-        "giftPublicChance",
-        // ── 心愿 ──
-        "wish_bounty_enabled",   "wish_coin_cost",        "wish_public_send",
-        "wish_max_concurrent",   "wish_daily_post_limit", "wish_daily_pick_limit",
-        // ── 关系线 ──
-        "relationship_lines",    "relationship_system_enabled",
-        "max_relationships_per_user","max_detail_chars",
-        "max_detail_count",      "max_rel_total_chars",  "forward_split_threshold",
-        // ── 社交 / 论坛 / 晚餐 ──
-        "forum_posts",           "forum_max_length",      "dinner_system_data",
-        "wechat_groups",
-        // ── 收集 / 写帖 ──
-        "sys_info_collection",   "sys_info_projects",     "projects",
-        // ── Binary Tag / 目击 ──
-        "sys_binary_tags",
-        // ── 时段窗口配置 ──
-        "ts_allowed_durations",  "ts_blocked_by_day",     "ts_feature_windows",
-        "ts_strict_hour_match",
-        // ── 临时数据（点歌/审计中转）──
-        "temp_audit_owner",      "temp_song_dgr",         "temp_song_ly",
-        "temp_source_group_name","temp_target_gid",       "temp_task_type",
-        // ── 系统设置 ──
-        "global_feature_toggle", "custom_message_templates",
-        "allow_private_rooms",   "announceFrequency",     "monitor_settings",
-        "background_group_id",   "song_group_id",         "adminAnnounceGroupId",
-        "end_game_bonus_templates","end_game_draw_config",
-        "end_season_report_enabled","group_expire_hours", "idle_group_name",
-    ];
+    // 存档同步：清空前先把所有仍标记为进行中的场次在存档端标记结束，否则网页端「当前占用群」
+    // 会永远停留在清空前的最后一批数据（清空只动本地存储，不会通知存档服务器关闭这些场次）
+    if (isArchiveEnabled() && getSeasonMode() !== "no_review") {
+        const stillOpenGroups = kvGet("group_expire_info", {});
+        for (const gid of Object.keys(stillOpenGroups)) {
+            try {
+                postToArchive("/api/session_end", buildSessionArchive(gid, platform, true));
+            } catch (e) {
+                console.error(`[清空季度数据] 存档同步群 ${gid} 结束状态失败: ${e.message}`);
+            }
+        }
+    }
 
+    // 清空全部数据（仅保留 a_adminList / adminPassword）——具体清单见文件顶部的 CLEAR_KEYS 常量
     for (const key of CLEAR_KEYS) {
         cachedSet(key, "");
     }
@@ -5021,6 +5182,13 @@ cmd_appointment_healthcheck.solve = (ctx, msg, cmdArgs) => {
     if (shouldFix) {
         let fixedCount = 0;
         if (staleExpireInfo.length) {
+            // 同样要在删本地记录前通知存档端结束场次，否则网页端「当前占用群」会留下这批永久卡住的孤儿记录
+            if (isArchiveEnabled() && getSeasonMode() !== "no_review") {
+                staleExpireInfo.forEach(g => {
+                    try { postToArchive("/api/session_end", buildSessionArchive(g, msg.platform, true)); }
+                    catch (e) { console.error(`[约会数据体检] 存档同步群 ${g} 结束状态失败: ${e.message}`); }
+                });
+            }
             staleExpireInfo.forEach(g => delete expireInfo[g]);
             kvSet("group_expire_info", expireInfo);
             fixedCount += staleExpireInfo.length;
@@ -6097,6 +6265,12 @@ cmd_create_official_appointment.solve = async (ctx, msg, cmdArgs) => {
   }
 
   const participants = participantsRaw.replace(/，/g, "/").split("/").map(n => n.trim()).filter(Boolean);
+
+  const dupNames = [...new Set(participants.filter((n, i) => participants.indexOf(n) !== i))];
+  if (dupNames.length > 0) {
+    seal.replyToSender(ctx, msg, `参与者列表中有重复的名字：${dupNames.join("、")}，请检查后重新发送`);
+    return seal.ext.newCmdExecuteResult(true);
+  }
   const platform = msg.platform;
   const a_private_group = kvGet("a_private_group", {});
   const a_lockedSlots = kvGet("a_lockedSlots", {});
@@ -6378,6 +6552,159 @@ cmd_create_official_call.solve = async (ctx, msg, cmdArgs) => {
 ext.cmdMap["发起官电"] = cmd_create_official_call;
 
 // ========================
+// 🛠️ 人工登记（海豹掉线应急用）
+// ========================
+// 场景：海豹中途掉线，管理员已经人工手动拉群处理了私约/官约/电话，
+// 恢复后需要把这场记录补进系统，让「时间线」查得到、群里的到期/复盘计时器也照常跑。
+// 不建群、不改群名、不发任何通知——群是人工已经弄好的，这里只回填数据。
+
+let cmd_manual_backfill = seal.ext.newCmdItemInfo();
+cmd_manual_backfill.name = "人工登记";
+cmd_manual_backfill.help = "。人工登记 类型 群号 D几 时间段 [地点] 参与者1/参与者2/...（管理员专用，海豹掉线期间人工处理完私约/官约/电话后，用此指令补齐参与者时间线并启动该群的计时器（含复盘所需的场次开始时间）；只回填数据，不建群/不改群名/不发通知；类型支持 私约/官约/电话，电话类型省略地点）";
+
+cmd_manual_backfill.solve = async (ctx, msg, cmdArgs) => {
+  if (!isUserAdmin(ctx, msg)) {
+    seal.replyToSender(ctx, msg, `只有管理员可以使用人工登记`);
+    return seal.ext.newCmdExecuteResult(true);
+  }
+
+  const typeArg = cmdArgs.getArgN(1);
+  const subtypeMap = { "私约": "私密", "私密": "私密", "官约": "官约", "电话": "电话" };
+  const subtype = subtypeMap[typeArg];
+  if (!subtype) {
+    seal.replyToSender(ctx, msg, `⚠️ 类型不支持，请使用：私约 / 官约 / 电话\n格式：。人工登记 类型 群号 D几 时间段 [地点] 参与者1/参与者2/...`);
+    return seal.ext.newCmdExecuteResult(true);
+  }
+
+  const gid = cmdArgs.getArgN(2);
+  const day = cmdArgs.getArgN(3);
+  const time = cmdArgs.getArgN(4);
+  const place = subtype === "电话" ? "电话" : cmdArgs.getArgN(5);
+  const participantsRaw = subtype === "电话" ? cmdArgs.getArgN(5) : cmdArgs.getArgN(6);
+
+  if (!gid || !day || !time || !participantsRaw || (subtype !== "电话" && !place)) {
+    const example = subtype === "电话"
+      ? `。人工登记 电话 群号 D1 14:00-15:00 张三/李四`
+      : `。人工登记 ${typeArg} 群号 D1 14:00-15:00 地点 张三/李四`;
+    seal.replyToSender(ctx, msg, `⚠️ 参数不足，正确格式：\n${example}`);
+    return seal.ext.newCmdExecuteResult(true);
+  }
+
+  if (!/^\d+$/.test(gid)) {
+    seal.replyToSender(ctx, msg, `群号需为纯数字`);
+    return seal.ext.newCmdExecuteResult(true);
+  }
+
+  if (!isValidTimeFormat(time)) {
+    seal.replyToSender(ctx, msg, `请输入合法的时间格式，如 14:00-16:00，且结束时间需大于开始时间`);
+    return seal.ext.newCmdExecuteResult(true);
+  }
+
+  const participants = participantsRaw.replace(/，/g, "/").split("/").map(n => n.trim()).filter(Boolean);
+  const dupNames = [...new Set(participants.filter((n, i) => participants.indexOf(n) !== i))];
+  if (dupNames.length > 0) {
+    seal.replyToSender(ctx, msg, `参与者列表中有重复的名字：${dupNames.join("、")}，请检查后重新发送`);
+    return seal.ext.newCmdExecuteResult(true);
+  }
+  if (participants.length < 2) {
+    seal.replyToSender(ctx, msg, `参与者至少需要2人`);
+    return seal.ext.newCmdExecuteResult(true);
+  }
+
+  const platform = msg.platform;
+  const a_private_group = kvGet("a_private_group", {});
+  if (!a_private_group[platform]) {
+    seal.replyToSender(ctx, msg, `当前平台没有绑定任何角色`);
+    return seal.ext.newCmdExecuteResult(true);
+  }
+
+  let validParticipants = [];
+  let invalidParticipants = [];
+  for (let name of participants) {
+    if (getUidByRoleName(platform, name)) {
+      validParticipants.push(name);
+    } else {
+      invalidParticipants.push(name);
+    }
+  }
+  if (invalidParticipants.length > 0) {
+    seal.replyToSender(ctx, msg, `以下参与者未找到：${invalidParticipants.join("、")}`);
+    return seal.ext.newCmdExecuteResult(true);
+  }
+
+  // 该群号是否已有登记中的场次，避免覆盖正在进行中的记录
+  const groupExpireInfo = kvGet("group_expire_info", {});
+  if (groupExpireInfo[gid]) {
+    const existing = groupExpireInfo[gid];
+    seal.replyToSender(ctx, msg, `⚠️ 群号 ${gid} 已有登记中的记录（${existing.subtype} ${existing.day} ${existing.time}），如需覆盖请先「强结私约 ${gid}」`);
+    return seal.ext.newCmdExecuteResult(true);
+  }
+
+  // 时间冲突检查，口径同「发起官约」
+  const a_lockedSlots = kvGet("a_lockedSlots", {});
+  const b_confirmedSchedule = kvGet("b_confirmedSchedule", {});
+  let conflictParticipants = [];
+  for (let name of validParticipants) {
+    const uid = getUidByRoleName(platform, name);
+    const key = `${platform}:${uid}`;
+    const locked = a_lockedSlots[key]?.[day] || [];
+    if (locked.some(slot => timeOverlap(slot, time))) {
+      conflictParticipants.push(`${name}（被锁定）`);
+      continue;
+    }
+    const schedule = b_confirmedSchedule[key] || [];
+    if (schedule.some(ev => timeConflict(day, time, ev.day, ev.time))) {
+      conflictParticipants.push(`${name}（已有安排）`);
+    }
+  }
+  if (conflictParticipants.length > 0) {
+    seal.replyToSender(ctx, msg, `以下参与者时间冲突：\n${conflictParticipants.join("\n")}`);
+    return seal.ext.newCmdExecuteResult(true);
+  }
+
+  // 群号若还在空闲池里，标记占用，避免之后被自动分配系统二次派发
+  const groupPool = kvGet("group", []);
+  if (groupPool.includes(gid)) {
+    kvSet("group", groupPool.map(g => g === gid ? gid + "_占用" : g));
+  }
+
+  // --- 登记时间线 ---
+  for (let name of validParticipants) {
+    const uid = getUidByRoleName(platform, name);
+    const key = `${platform}:${uid}`;
+    if (!b_confirmedSchedule[key]) b_confirmedSchedule[key] = [];
+    const partner = subtype === "官约"
+      ? `官约（${validParticipants.join("、")}）`
+      : (validParticipants.length > 2 ? "多人小群" : validParticipants.find(n => n !== name));
+    b_confirmedSchedule[key].push({
+      day, time, place, partner, subtype, group: gid, status: "active"
+    });
+  }
+  kvSet("b_confirmedSchedule", b_confirmedSchedule);
+
+  // --- 群过期/计时信息 ---
+  const acceptTime = Date.now();
+  const expireHours = getStorageInt("group_expire_hours", 48);
+  const expireTime = acceptTime + expireHours * 60 * 60 * 1000;
+  groupExpireInfo[gid] = {
+    acceptTime, expireTime, participants: validParticipants,
+    subtype, day, time, place
+  };
+  kvSet("group_expire_info", groupExpireInfo);
+
+  // --- 启动该群的状态计时器（含复盘要用的场次开始时间）---
+  if (typeof initGroupTimer === "function") {
+    initGroupTimer(platform, gid, subtype, validParticipants, validParticipants[0]);
+  }
+
+  const placeLine = subtype !== "电话" ? ` 📍 ${place}` : "";
+  seal.replyToSender(ctx, msg, `✅ 已为群 ${gid} 补登记 ${getCustomTypeLabel(subtype)}\n📅 ${day} ${time}${placeLine}\n👥 参与者：${validParticipants.join("、")}\n（仅回填时间线与计时器数据，未发送任何通知）`);
+  return seal.ext.newCmdExecuteResult(true);
+};
+
+ext.cmdMap["人工登记"] = cmd_manual_backfill;
+
+// ========================
 // 📋 Binary Tag 管理
 // ========================
 
@@ -6392,7 +6719,7 @@ cmd_modify_tag.solve = (ctx, msg, cmdArgs) => {
     }
 
     const tagName = cmdArgs.getArgN(1);
-    const rest = cmdArgs.args.slice(2).join(' ').trim();
+    const rest = cmdArgs.args.slice(1).join(' ').trim();
     if (!tagName || !rest) {
         seal.replyToSender(ctx, msg, "格式：。修改tag tag名字 种类1:姓名1，姓名2 种类2:姓名3，姓名4");
         return seal.ext.newCmdExecuteResult(true);
@@ -6572,13 +6899,12 @@ cmd_execute_official.solve = async (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
   }
 
-  const planRaw = cachedGet("a_quick_official_plan");
-  if (!planRaw) {
+  const plan = kvGet("a_quick_official_plan", null);
+  if (!plan) {
     seal.replyToSender(ctx, msg, `❌ 没有已保存的官约方案，请先使用「。计划官约」生成方案`);
     return seal.ext.newCmdExecuteResult(true);
   }
 
-  const plan = JSON.parse(planRaw);
   if (plan.platform !== msg.platform) {
     seal.replyToSender(ctx, msg, `❌ 保存的方案属于其他平台，请重新计划`);
     return seal.ext.newCmdExecuteResult(true);
@@ -6690,7 +7016,7 @@ cmd_execute_official.solve = async (ctx, msg, cmdArgs) => {
   }
 
   // 清空方案
-  cachedSet("a_quick_official_plan", "");
+  kvSet("a_quick_official_plan", null);
 
   let resp = `✅ 便捷官约执行完毕！\n━━━━━━━━━━━━━━\n`;
   if (results.length > 0) resp += results.join("\n");
@@ -6989,13 +7315,16 @@ async function handleStakeout(ctx, msg, cmdArgs) {
     const globalDay = cachedGet("global_days") || "未知日期";
 
     if (!targetArg) {
-        if (!toggle.stakeout_allow_solo) {
-            return seal.replyToSender(ctx, msg, "❌ 踩点需要指定陪伴角色名，或由管理员开启「允许单人踩点」。");
+        // 独立存储键（非 global_feature_toggle 的子字段），默认开启，管理员可在网页端「踩点」分区关闭
+        if (cachedGet("stakeout_allow_solo") === "false") {
+            return seal.replyToSender(ctx, msg, "❌ 踩点需要指定陪伴角色名，管理员已关闭「允许单人踩点」。");
         }
         return createSoloStakeout(ctx, msg, platform, sendname, globalDay, timeArg, placeArg);
     }
 
-    const aliasConfig = { trigger: "踩点", icon: "🕵️" };
+    // 踩点门槛独立于私密门槛，读取网页端「踩点门槛」配置（appointment_duration_config.stakeout）
+    const stakeoutDuration = kvGet("appointment_duration_config", {}).stakeout;
+    const aliasConfig = { trigger: "踩点", icon: "🕵️", minDuration: stakeoutDuration !== undefined ? stakeoutDuration : 59 };
     const fakeCmdArgs = {
         getArgN: (n) => [null, timeArg, placeArg, targetArg][n] || "",
         args: [timeArg, placeArg, targetArg]
@@ -7147,14 +7476,18 @@ function accumulateToSeasonStats(platform, gid) {
 /**
  * 结戏时发放加成奖励（模版系统）
  */
-function applyEndGameBonuses(ctx, msg, gid, platform) {
+function applyEndGameBonuses(ctx, msg, gid, platform, knownSubtype) {
     const templates = kvGet("end_game_bonus_templates", []);
-    // group_expire_info[gid] 在结束流程里已先被删，改从 b_confirmedSchedule 读 subtype
-    const _bSched = kvGet("b_confirmedSchedule", {});
-    let groupSubtype = "";
-    outer: for (const evList of Object.values(_bSched)) {
-        for (const ev of evList) {
-            if (ev.group === gid && ev.subtype) { groupSubtype = ev.subtype; break outer; }
+    // group 号会被回收复用，b_confirmedSchedule 里可能残留同一 gid 的旧场次记录，
+    // 优先用调用方在清除 group_expire_info 前取到的 subtype（当场数据，无歧义）；
+    // 没有传入时（兼容旧调用路径）才退回按 gid 反查 b_confirmedSchedule，且只认未结束场次，降低撞上旧场次的概率
+    let groupSubtype = knownSubtype || "";
+    if (!groupSubtype) {
+        const _bSched = kvGet("b_confirmedSchedule", {});
+        outer: for (const evList of Object.values(_bSched)) {
+            for (const ev of evList) {
+                if (ev.group === gid && ev.subtype && ev.status !== "ended") { groupSubtype = ev.subtype; break outer; }
+            }
         }
     }
     // 模版用用户可读名称，群记录用内部名称，做映射对齐
@@ -7605,6 +7938,116 @@ function extractRoleContent(message, roleName) {
     return combined || null;
 }
 
+// 返回当前时刻相对本季档期的区段：'pre'|'main'|'supplement'|'post'。
+// 未设置档期（season_schedule_start 为空）时始终视为 'main'，不影响没启用档期功能的季度。
+// 逻辑与 rp_archive/app.py 的 _schedule_zone 保持一致（补戏期/超期只留场次记录，不计弧长）；
+// 统一用 UTC+8 位移计算"今天"，不依赖服务器系统时区。
+function getScheduleZone() {
+    const startStr = cachedGet("season_schedule_start") || "";
+    if (!startStr) return "main";
+    const endStr  = cachedGet("season_schedule_end") || startStr;
+    const suppStr = cachedGet("season_supplement_end") || "";
+
+    const mkDateUTC = (mmdd, year) => {
+        if (!mmdd || mmdd.length !== 4) return null;
+        const mm = parseInt(mmdd.slice(0, 2), 10), dd = parseInt(mmdd.slice(2), 10);
+        if (!mm || !dd) return null;
+        return Date.UTC(year, mm - 1, dd);
+    };
+    // 传入的是"东八区位移过的" epoch ms，取其 UTC 年月日字段即得到北京时间的年月日
+    const beijingYMD = (shiftedMs) => {
+        const d = new Date(shiftedMs);
+        return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+    };
+
+    const todayShifted = Date.now() + 8 * 3600 * 1000;
+    const todayUTC = beijingYMD(todayShifted);
+
+    // start 所在的日历年：以「创建本季度时」为基准去猜，而不是用「查询时的今天」猜——
+    // 否则跨年档期（如 12/28~1/5）在元旦之后查询时，会把 start 的年份跟着"今天"往后挪一年，
+    // 变成还没到的未来日期，误判成 pre（其实正处于 main/supplement 期间）。
+    // season_created_at 缺失（这版上线前就已经开着的老季度）时，第一次读到就落一次"当下"当锚点并写回去，
+    // 之后固定不再变——如果每次都临时用"今天"兜底，锚点会随时间不断漂移，季度开得越久跨年判断就越容易再错。
+    let createdAtRaw = parseInt(cachedGet("season_created_at") || "", 10);
+    if (!createdAtRaw) {
+        createdAtRaw = Date.now();
+        cachedSet("season_created_at", String(createdAtRaw));
+    }
+    const anchorShifted = createdAtRaw + 8 * 3600 * 1000;
+    const anchorUTC = beijingYMD(anchorShifted);
+    const anchorYear = new Date(anchorUTC).getUTCFullYear();
+
+    let year = anchorYear, bestDiff = Infinity;
+    for (const y of [anchorYear - 1, anchorYear, anchorYear + 1]) {
+        const s = mkDateUTC(startStr, y);
+        if (s == null) continue;
+        const diff = Math.abs(s - anchorUTC);
+        if (diff < bestDiff) { bestDiff = diff; year = y; }
+    }
+
+    const start = mkDateUTC(startStr, year);
+    const endYear  = (endStr  && endStr  < startStr) ? year + 1 : year;
+    const suppYear = (suppStr && suppStr < startStr) ? year + 1 : year;
+    const end  = mkDateUTC(endStr, endYear);
+    const supp = mkDateUTC(suppStr, suppYear);
+    if (start == null || end == null) return "main";
+
+    if (todayUTC < start) return "pre";
+    if (todayUTC <= end) return "main";
+    if (supp != null && todayUTC <= supp) return "supplement";
+    return "post";
+}
+
+// 剥离正文里"最外层"括号包裹的场外/OOC内容，不计入复盘存档（半角/全角括号均支持）。
+// 只吞掉顶层括号闭合的那一段（含其嵌套内容）；没打闭合的括号原样保留，避免漏打括号误删正文。
+function stripOocParens(text) {
+    if (!text) return text;
+    const OPEN_TO_CLOSE = { "（": "）", "(": ")" };
+    const spans = [];
+    const stack = []; // { closer, start }
+    for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (stack.length === 0) {
+            if (OPEN_TO_CLOSE[ch]) stack.push({ closer: OPEN_TO_CLOSE[ch], start: i });
+        } else {
+            const top = stack[stack.length - 1];
+            if (ch === top.closer) {
+                stack.pop();
+                if (stack.length === 0) spans.push([top.start, i]);
+            } else if (OPEN_TO_CLOSE[ch]) {
+                stack.push({ closer: OPEN_TO_CLOSE[ch], start: i });
+            }
+        }
+    }
+    if (spans.length === 0) return text.trim();
+    let result = "", cursor = 0;
+    for (const [s, e] of spans) { result += text.slice(cursor, s); cursor = e + 1; }
+    result += text.slice(cursor);
+    return result.trim();
+}
+
+// 通用NPC专用：首行不要求匹配某个固定角色名，任意名字+分隔符+正文都算数，
+// 用来支持"一个账号轮流扮演不同龙套"的场景。握手写法与 extractRoleContent 对齐（换行/空格/冒号）。
+function extractGenericRoleContent(message) {
+    const lines = (message || "").split("\n");
+    const first = lines[0].trim();
+    if (!first) return null;
+    const restLines = lines.slice(1).join("\n").trim();
+
+    // 「名字」单独一行（允许末尾带空格/冒号，比如「路人甲：」换行再写正文），正文从下一行开始
+    const nameOnly = first.replace(/[\s:：]+$/, "");
+    if (restLines && nameOnly && nameOnly.length <= 20 && !/[\s:：]/.test(nameOnly)) {
+        return { name: nameOnly, content: restLines };
+    }
+    // 「名字 正文」或「名字：正文」写在同一行
+    const m = first.match(/^(\S{1,20}?)[ \t：:]+(\S.*)$/);
+    if (m) {
+        const content = (m[2].trim() + (restLines ? "\n" + restLines : "")).trim();
+        if (content) return { name: m[1], content };
+    }
+    return null;
+}
+
 function handleReply(platform, groupId, roleName, message) {
     const settings = getMonitorSettings();
     if (!settings.enabled) {
@@ -7617,9 +8060,66 @@ function handleReply(platform, groupId, roleName, message) {
         return false;
     }
 
+    // 通用NPC：账号自身没有固定身份，靠首行写的名字决定这次算谁说的话，用来支持
+    // 一个账号轮流扮演不同龙套。只要该群有计时器就直接按输入的名字存档，不管邀请名单/约会类型，
+    // 也不跑下面参与者专属的轮流状态/字数统计/写帖进度（那些是给邀请对象本人用的）。
+    const _genericNpcList = kvGet("a_generic_npc_list", []);
+    if (_genericNpcList.includes(roleName)) {
+        if (isArchiveEnabled() && getSeasonMode() !== "no_review") {
+            const _npcExtracted = extractGenericRoleContent(message);
+            if (_npcExtracted) {
+                const _npcContent = stripOocParens(_npcExtracted.content);
+                if (_npcContent) {
+                    const _npcSS = getSessionStats()[groupId] || {};
+                    const _npcStartTs = _npcSS._startTime || Date.now();
+                    const _npcExpireInfo = kvGet("group_expire_info", {})[groupId] || {};
+                    postToArchive("/api/rp", {
+                        session_id: `${groupId}_${_npcStartTs}`,
+                        group_id:   groupId,
+                        role_name:  _npcExtracted.name,
+                        is_npc:     true,
+                        game_day:   _npcExpireInfo.day   || timer.day   || cachedGet("global_days") || "",
+                        game_time:  _npcExpireInfo.time  || timer.time  || "",
+                        place:      _npcExpireInfo.place || timer.place || "",
+                        subtype:    timer.subtype || "",
+                        timestamp:  Date.now(),
+                        content:    _npcContent
+                    });
+                    console.log(`[存档] 通用NPC | ${_npcExtracted.name} | ${_npcContent.slice(0,30)}…`);
+                }
+            }
+        }
+        return false;
+    }
+
     const roleStatus = timer.timerStatus[roleName];
     if (!roleStatus) {
-        console.warn(`[监听系统] 处理失败: 角色 [${roleName}] 不在参与者名单中`);
+        // 官约群里管理员经常发旁白，但管理员不在邀请对象内、进不了 timerStatus，正常会被上面这条拦掉。
+        // 官约单独放行：只要开着复盘就整条原样存档，不要求「角色名+分隔符+正文」的握手格式（旁白不是台词），
+        // 也不跑下面参与者专属的轮流状态/字数统计/写帖进度（那些是给邀请对象本人用的，旁白不该污染）。
+        if (timer.subtype === "官约" && isArchiveEnabled() && getSeasonMode() !== "no_review") {
+            const _narratorContent = stripOocParens((message || "").trim());
+            if (_narratorContent) {
+                const _narratorSS = getSessionStats()[groupId] || {};
+                const _narratorStartTs = _narratorSS._startTime || Date.now();
+                const _narratorExpireInfo = kvGet("group_expire_info", {})[groupId] || {};
+                postToArchive("/api/rp", {
+                    session_id: `${groupId}_${_narratorStartTs}`,
+                    group_id:   groupId,
+                    role_name:  roleName,
+                    is_npc:     kvGet("a_npc_list", []).includes(roleName),
+                    game_day:   _narratorExpireInfo.day   || timer.day   || cachedGet("global_days") || "",
+                    game_time:  _narratorExpireInfo.time  || timer.time  || "",
+                    place:      _narratorExpireInfo.place || timer.place || "",
+                    subtype:    timer.subtype || "",
+                    timestamp:  Date.now(),
+                    content:    _narratorContent
+                });
+                console.log(`[存档] 官约旁白 | ${roleName} | ${_narratorContent.slice(0,30)}…`);
+            }
+        } else {
+            console.warn(`[监听系统] 处理失败: 角色 [${roleName}] 不在参与者名单中`);
+        }
         return false;
     }
 
@@ -7645,11 +8145,12 @@ function handleReply(platform, groupId, roleName, message) {
 
         let _archivedContent = null;
         const _arcExtracted = extractRoleContent(message, roleName);
-        if (_arcExtracted) {
-            postToArchive("/api/rp", { ..._archivePayload, content: _arcExtracted });
-            _archivedContent = _arcExtracted;
+        const _arcStripped = _arcExtracted ? stripOocParens(_arcExtracted) : null;
+        if (_arcStripped) {
+            postToArchive("/api/rp", { ..._archivePayload, content: _arcStripped });
+            _archivedContent = _arcStripped;
             if (_logTypes.includes(timer.subtype))
-                console.log(`[存档] ${timer.subtype} | ${_gameDay} | ${roleName}${_npcList.includes(roleName) ? "(NPC)" : ""} | ${_arcExtracted.slice(0,30)}…`);
+                console.log(`[存档] ${timer.subtype} | ${_gameDay} | ${roleName}${_npcList.includes(roleName) ? "(NPC)" : ""} | ${_arcStripped.slice(0,30)}…`);
         }
 
         // 字数统计：凡存档成功的回复（非NPC）都累计，不依赖 timing 状态
@@ -7700,9 +8201,9 @@ function handleReply(platform, groupId, roleName, message) {
         }
     }
 
-    // 1. 字数（与存档段同口径，见 extractRoleContent 支持的三种格式）
+    // 1. 字数（与存档段同口径，见 extractRoleContent 支持的三种格式；同样剥离最外层括号的场外内容）
     // 先做格式校验，再判断计时状态：避免不成格式的日常闲聊也触发"已回复"提示
-    const _wContent = extractRoleContent(message, roleName);
+    const _wContent = stripOocParens(extractRoleContent(message, roleName) || "");
     if (!_wContent) return false;
 
     // 2. 检查计时状态
@@ -7732,7 +8233,11 @@ function handleReply(platform, groupId, roleName, message) {
     const roleUid = getUidByRoleName(platform, roleName);
     const _sessSS = getSessionStats()[groupId] || {};
     const _sessionId = `${groupId}_${_sessSS._startTime || timer.startTime || Date.now()}`;
-    updateUserStats(platform, roleUid || roleName, wordCount, _replyStartTime, roleStatus.repliedTime, _sessionId);
+    // 过了档期结束日（补戏期/忘记结季度后的超期期间）只留场次记录，不计入弧长——
+    // 与 rp_archive 那边「补戏期只保存场次stats，不更新玩家弧长」的口径保持一致
+    if (getScheduleZone() === "main") {
+        updateUserStats(platform, roleUid || roleName, wordCount, _replyStartTime, roleStatus.repliedTime, _sessionId);
+    }
 
     // 5. 【新增逻辑】记录写帖进度 (替代原来的 .写了 指令)
     // 获取该角色的 UID（新结构：直接使用 getUidByRoleName 结果）
@@ -8035,6 +8540,56 @@ function withdrawMsg(ctx, msg, wdId) {
     );
 }
 
+// 「引用+撤回」联动复盘：没有存「QQ消息ID → 复盘条目ID」的映射，只能反查被撤回消息的原文，
+// 按当时的握手格式解析出记录名/正文（三条分支要跟 handleReply 里的存档逻辑一一对应，否则有些消息类型
+// 撤回了也匹配不到，复盘里会留下"幽灵条目"），再去存档服务器按内容匹配删除。
+// 内容相同的情况下靠 orig_timestamp（原消息发送时间）辅助判断删的是哪一条，避免同一人在同一场次
+// 发过两条一模一样内容时删错。
+function syncWithdrawToArchive(wdId, groupId, roleName) {
+    if (!isArchiveEnabled() || getSeasonMode() === "no_review") return;
+    WSM.request(
+        { action: "get_msg", params: { message_id: parseInt(wdId) } },
+        (response) => {
+            if (response.status !== 'ok' && response.retcode !== 0) return;
+            const data = response.data;
+            if (!data) return;
+            let rawContent = data.message;
+            if (Array.isArray(rawContent)) {
+                rawContent = rawContent.filter(seg => seg.type === "text").map(seg => (seg.data && seg.data.text) || "").join("");
+            }
+            if (typeof rawContent !== "string" || !rawContent) return;
+
+            const timers = getGroupTimers();
+            const timer = timers[groupId];
+
+            let matchName = null, matchContent = null;
+            if (kvGet("a_generic_npc_list", []).includes(roleName)) {
+                const g = extractGenericRoleContent(rawContent);
+                if (g) { matchName = g.name; matchContent = stripOocParens(g.content); }
+            } else if (timer && !timer.timerStatus[roleName] && timer.subtype === "官约") {
+                // 官约旁白：不要求「角色名+分隔符」握手格式，整条原样存档——跟 handleReply 里的旁白分支保持一致
+                matchName = roleName;
+                matchContent = stripOocParens(rawContent.trim());
+            } else {
+                const extracted = extractRoleContent(rawContent, roleName);
+                if (extracted) { matchName = roleName; matchContent = stripOocParens(extracted); }
+            }
+            if (!matchName || !matchContent) return;
+
+            const ss = getSessionStats()[groupId] || {};
+            const sessionId = `${groupId}_${ss._startTime || Date.now()}`;
+            const origTimestamp = (typeof data.time === "number" && data.time > 0) ? data.time * 1000 : undefined;
+            postToArchive("/api/rp/delete_by_content", {
+                session_id: sessionId,
+                role_name:  matchName,
+                content:    matchContent,
+                orig_timestamp: origTimestamp
+            });
+        },
+        () => {}
+    );
+}
+
 // 通用条件检查
 function checkCondition(ctx) {
     const triggerCondition = seal.ext.getStringConfig(ext, "群管插件使用需要满足的条件");
@@ -8047,19 +8602,27 @@ function checkCondition(ctx) {
 // ========================
 // ═══ 监听器子处理函数（从 onNotCommandReceived 拆出；触发词匹配仍在监听器内，勿在此加匹配逻辑）═══
 
-// 回复音乐卡片点歌：解析点歌人/留言，经 WS 读原消息后投递到戏群
+// 回复音乐卡片点歌：解析点歌人/留言/歌名/送给，经 WS 读原消息后投递到戏群
+// 歌名/送给由玩家自己填写（均选填）：卡片本身多数情况下不带元数据，等卡片发送失败降级成
+// 文字兜底时才用得上，靠正则去卡片 JSON 里抠歌名歌手并不可靠
 function handleSongCardRequest(ctx, msg, raw, wdId) {
-    const rawGid = cachedGet("song_group_id"), dM = raw.match(/点歌人[:：]\s*(.*?)(?=\s|,|，|留言|$)/), lM = raw.match(/留言[:：]\s*(.*)/);
-    if (!rawGid || !dM || !lM) return seal.replyToSender(ctx, msg, !rawGid ? "❌ 未配置戏群" : "⚠️ 格式错误\n正确用法：回复音乐卡片，消息内容写\n点歌人：名字 留言：内容");
-    const songGid = parseInt(rawGid.replace(/[^\d]/g, ""), 10);
-    const songDgr = dM[1].trim();
-    const songLy  = lM[1].trim();
-    const errMsg  = "❌ 点歌失败：LLOneBot 未能读取该消息（可能不在缓存中）。";
+    const rawGid = cachedGet("song_group_id");
+    const dM = raw.match(/点歌人[:：]\s*(.*?)(?=\s*(?:留言|歌名|送给)[:：]|$)/);
+    const lM = raw.match(/留言[:：]\s*(.*?)(?=\s*(?:点歌人|歌名|送给)[:：]|$)/);
+    const nM = raw.match(/歌名[:：]\s*(.*?)(?=\s*(?:点歌人|留言|送给)[:：]|$)/);
+    const sM = raw.match(/送给[:：]\s*(.*?)(?=\s*(?:点歌人|留言|歌名)[:：]|$)/);
+    if (!rawGid || !dM || !lM) return seal.replyToSender(ctx, msg, !rawGid ? "❌ 未配置戏群" : "⚠️ 格式错误\n正确用法：回复音乐卡片，消息内容写\n点歌人：名字 留言：内容 歌名：歌曲名（选填） 送给：名字（选填）");
+    const songGid  = parseInt(rawGid.replace(/[^\d]/g, ""), 10);
+    const songDgr  = dM[1].trim();
+    const songLy   = lM[1].trim();
+    const songName = nM ? nM[1].trim() : "";
+    const songTo   = sM ? sM[1].trim() : "";
+    const errMsg   = "❌ 点歌失败：LLOneBot 未能读取该消息（可能不在缓存中）。";
     WSM.request(
         { action: "get_msg", params: { message_id: wdId } },
         (response) => {
             if (response.status !== "ok" && response.retcode !== 0) { seal.replyToSender(ctx, msg, errMsg); return; }
-            handleSongDelivery(ctx, msg, response.data, songGid, songDgr, songLy);
+            handleSongDelivery(ctx, msg, response.data, songGid, songDgr, songLy, songName, songTo);
         },
         () => seal.replyToSender(ctx, msg, errMsg)
     );
@@ -8231,6 +8794,39 @@ function handleRoleCardMsg(ctx, msg, platform) {
 
     seal.replyToSender(ctx, msg, out.join("\n"));
     return seal.ext.newCmdExecuteResult(true);
+}
+
+// 「玩家指南」：角色/账号入门指令一览
+function handlePlayerGuideMsg(ctx, msg) {
+    const text = [
+        "📖 玩家指南",
+        "",
+        "【创建角色】",
+        "创建新角色 角色名",
+        "（创建后自动生成初始档案：性别/年龄/皮相）",
+        "",
+        "【修改档案】",
+        "修改名字 新名字",
+        "修改性别 男/女",
+        "修改年龄 数字",
+        "修改皮相 明星名",
+        "修改签名 你的签名（12小时冷却）",
+        "",
+        "【查看】",
+        "玩家名单            查看所有角色",
+        "地点查看            查看可用地点",
+        "我的待回            查看还没回的群/还没进的群/还没退的群，及今日心动信投递情况",
+        "我的弧长            查看自己的回复速度统计",
+        "我的数量            查看自己今天的私约/电话/短信/礼物/心愿次数，及全服今天总数",
+        "（发送「我的」可直接看这三条的速查一览）",
+        "",
+        "【指令模板】",
+        "格式                查看所有指令模板目录",
+        "格式+类型           如「格式心动信」，直接拿可复制的模板",
+        "",
+        "💡 约会/互动类指令（私约、电话、送礼等）发送「基础指南」查看",
+    ].join("\n");
+    seal.replyToSender(ctx, msg, text);
 }
 
 // 「基础指南」：优先从存档服务器拉取，失败回退静态合并转发
@@ -8436,15 +9032,14 @@ function handlePrivateGroupListen(ctx, msg, platform, groupId, uid) {
 
         if (roleName) {
             const _replyResult = handleReply(platform, groupId, roleName, msg.message || "");
-            if (_replyResult === "already_replied") {
-                seal.replyToSender(ctx, msg, "💬 你已经在这场回复过啦，正在等待对方回应，这条不会重复计入哦～");
-            }
+            // “已回复过”静默处理，不再提示，避免正常连续发言被打断
 
             // 格式提示：首行≠角色名时提醒，不计入存档和字数
             // 只在有活跃计时器的群里提示，避免日常闲聊误触发
+            // 通用NPC没有固定角色名可比对，格式由 extractGenericRoleContent 自行判断，跳过这条提示
             const _hintTimers = getGroupTimers();
             const _hintTimer = _hintTimers[groupId];
-            if (_hintTimer) {
+            if (_hintTimer && !kvGet("a_generic_npc_list", []).includes(roleName)) {
                 const _hintLines = (msg.message || "").split("\n");
                 const _hintFirst = _hintLines[0].trim();
                 if (extractRoleContent(msg.message || "", roleName) === null) {
@@ -8480,7 +9075,11 @@ ext.onNotCommandReceived = async (ctx, msg) => {
     const replyMatch = raw.match(/\[CQ:reply,id=(\-?\d+)\]/);
     if (replyMatch) {
         const wdId = Number(replyMatch[1]);
-        if (raw.includes("撤回")) return withdrawMsg(ctx, msg, wdId);
+        if (raw.includes("撤回")) {
+            const _wdRoleName = kvGet("a_private_group", {})[platform]?.[uid]?.[0];
+            if (_wdRoleName) syncWithdrawToArchive(wdId, groupId, _wdRoleName);
+            return withdrawMsg(ctx, msg, wdId);
+        }
         if (raw.includes("点歌")) return handleSongCardRequest(ctx, msg, raw, wdId);
         if (raw.includes("转发复盘")) {
             return seal.replyToSender(ctx, msg, "📋 当前版本无需转发复盘，直接发送「结束私约」退群即可。");
@@ -8489,7 +9088,7 @@ ext.onNotCommandReceived = async (ctx, msg) => {
 
     // 2.5 点歌引导（未回复卡片时单独发点歌）
     if (raw === "点歌") {
-        return seal.replyToSender(ctx, msg, "🎵 点歌用法：回复一张音乐卡片，消息内容写\n点歌人：名字 留言：内容\n例：点歌人：张三 留言：送给你的歌");
+        return seal.replyToSender(ctx, msg, "🎵 点歌用法：回复一张音乐卡片，消息内容写\n点歌人：名字 留言：内容 歌名：歌曲名（选填） 送给：名字（选填）\n例：点歌人：张三 留言：送给你的歌 歌名：晴天 送给：李四");
     }
 
     // 2.6 格式导览：新手记不住各种指令格式时，发「格式」查目录，发「格式+类型」直接拿可复制的模板
@@ -8504,6 +9103,7 @@ ext.onNotCommandReceived = async (ctx, msg) => {
         "悬赏心愿": "悬赏心愿 1400-1500 图书馆 陪我看书 | 滋补汤 1",
         "拉线":   "拉线 张三 在高中时期是同班同学",
         "发帖":   "发帖 张三 今天天气真好！",
+        "点歌":   "（先回复一张音乐卡片，再发送）\n点歌人：张三 留言：这首歌送给你 歌名：晴天（选填） 送给：李四（选填）",
     };
     if (raw === "格式") {
         const nav = Object.keys(FORMAT_TEMPLATES).map(k => `如果需要${k}格式，发送「格式${k}」`).join("\n");
@@ -8513,10 +9113,15 @@ ext.onNotCommandReceived = async (ctx, msg) => {
         return seal.replyToSender(ctx, msg, FORMAT_TEMPLATES[raw.slice(2).trim()]);
     }
 
-    const letM = raw.match(/^(.+?)?短信\s*(.+?)\s+([\s\S]+)$/);
+    const smsTriggers = ["短信", ...getSmsAliases().map(a => a.trigger).filter(Boolean)];
+    let letM = null;
+    for (const trig of smsTriggers) {
+        letM = raw.match(new RegExp(`^(.+?)?${escapeRegExp(trig)}\\s*(.+?)\\s+([\\s\\S]+)$`));
+        if (letM) break;
+    }
     if (letM) {
         return routeChaosLetterMessage(ctx, msg, platform, letM);
-    } else if (/^(.+?)?短信$/.test(raw)) {
+    } else if (smsTriggers.some(trig => new RegExp(`^(.+?)?${escapeRegExp(trig)}$`).test(raw))) {
         return seal.replyToSender(ctx, msg, "💌 短信格式：[署名]短信 收信人 内容\n例：短信 李四 你好！\n例：张三短信 李四 你好！");
     }
 
@@ -8546,7 +9151,10 @@ ext.onNotCommandReceived = async (ctx, msg) => {
     const _matchedAlias = getPrivateAliases().find(a => a.trigger && raw.startsWith(a.trigger));
     if (_matchedAlias) {
         const rest = raw.slice(_matchedAlias.trigger.length).trim();
-        return cmd_appointment_private.solve(ctx, msg, makeFakeCmdArgs(rest ? rest.split(/\s+/) : []), _matchedAlias);
+        const fakeArgs = makeFakeCmdArgs(rest ? rest.split(/\s+/) : []);
+        // baseType === "phone"：别名只是电话的另一个触发词，格式/门槛/开关完全复用电话本体，不论别名改叫什么名字都始终对应「电话门槛」
+        if (_matchedAlias.baseType === "phone") return cmd_phone.solve(ctx, msg, fakeArgs);
+        return cmd_appointment_private.solve(ctx, msg, fakeArgs, _matchedAlias);
     }
 
     if (raw.startsWith("私约")) {
@@ -8664,7 +9272,17 @@ ext.onNotCommandReceived = async (ctx, msg) => {
 
     // 4.11 时间线
     if (raw === "时间线") return cmd_view_schedule.solve(ctx, msg, makeFakeCmdArgs([]));
+    if (raw === "我的") {
+        return seal.replyToSender(ctx, msg,
+            "📋 「我的」系列一览：\n" +
+            "我的待回      还没回的群/还没进的群/还没退的群，及今日心动信投递情况\n" +
+            "我的弧长      自己的历史平均回复速度统计\n" +
+            "我的数量      自己今天的私约/电话/短信/礼物/心愿次数，及全服今天总数"
+        );
+    }
     if (raw === "我的待回") return cmd_my_pending.solve(ctx, msg);
+    if (raw === "我的弧长") return cmdMyArcLength.solve(ctx, msg);
+    if (raw === "我的数量") return cmdMyCounts.solve(ctx, msg);
     if (raw.startsWith("结束私约")) {
         const rest = raw.slice(4).trim();
         return cmd_grouplist_release.solve(ctx, msg, makeFakeCmdArgs(rest ? rest.split(/\s+/) : []));
@@ -8680,6 +9298,9 @@ ext.onNotCommandReceived = async (ctx, msg) => {
         const rest = raw.slice(4).trim();
         if (rest) return cmd_reject_join.solve(ctx, msg, makeFakeCmdArgs([rest]));
     }
+
+    // 4.14.0 玩家指南
+    if (raw === "玩家指南") return handlePlayerGuideMsg(ctx, msg);
 
     // 4.14.1 基础指南
     if (raw === "基础指南") return handleBasicGuideMsg(ctx, msg);
@@ -8852,9 +9473,15 @@ function buildArcLengthReport(platform, roleName, uid) {
         t.timerMode === "turn_taking" && t.timerStatus && t.timerStatus[roleName]
     );
 
-    if (myGroups.length === 0) {
-        rep += `\n当前没有进行中的双嘉宾小群。`;
-    } else {
+    const myIndepGroups = Object.entries(timers).filter(([, t]) =>
+        t.timerMode === "independent" && t.timerStatus && t.timerStatus[roleName]
+    );
+
+    if (myGroups.length === 0 && myIndepGroups.length === 0) {
+        rep += `\n当前没有进行中的场次。`;
+    }
+
+    if (myGroups.length > 0) {
         const lines = myGroups.map(([gid, t]) => {
             const otherName = (t.participants || []).find(p => p !== roleName);
             const myS = t.timerStatus[roleName];
@@ -8875,6 +9502,28 @@ function buildArcLengthReport(platform, roleName, uid) {
         });
         rep += `\n当前未结双嘉宾小群：\n${lines.join("\n")}`;
     }
+
+    if (myIndepGroups.length > 0) {
+        const indepLines = myIndepGroups.map(([gid, t]) => {
+            const myS = t.timerStatus[roleName];
+            const myReplies = myS.sessionReplies || 0;
+            const myTimedReplies = myS.sessionTimedReplies || 0;
+            const myAvg = myTimedReplies > 0 ? Math.round(myS.sessionReplyTimeMs / myTimedReplies / 60000) : 0;
+            const myWaitLine = myS.status === "timing"
+                ? `你还没回：${formatDurationMin(now - myS.startTime)}`
+                : `你已回复，等其他人`;
+
+            const others = (t.participants || []).filter(p => p !== roleName);
+            const waitingOthers = others.filter(p => t.timerStatus[p] && t.timerStatus[p].status === "timing");
+            const othersLine = waitingOthers.length > 0
+                ? waitingOthers.map(p => `${p}未回：${formatDurationMin(now - t.timerStatus[p].startTime)}`).join("、")
+                : "其他人均已回复";
+
+            return `${getCustomTypeLabel(t.subtype)}${gid}：${roleName}所在多人场（共${(t.participants || []).length}人），本人平均${myAvg}分钟（${myTimedReplies}次，本场共${myReplies}次），${myWaitLine}；${othersLine}`;
+        });
+        rep += `\n当前未结多人场次：\n${indepLines.join("\n")}`;
+    }
+
     return rep;
 }
 
@@ -8894,6 +9543,76 @@ cmdMyArcLength.solve = (ctx, msg) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["我的弧长"] = cmdMyArcLength;
+
+// 统计指定游戏日的私约/电话/短信/礼物/心愿数量，供「我的数量」和天数切换公告共用
+// 私约/电话按 b_confirmedSchedule 里当天的场次算，全员总数按 group 号去重避免双人各记一次；
+// 短信/礼物/心愿直接读现成的「每人每天」计数器（本来就是给每日次数上限用的，天然带 day 字段）
+function getDailyActivityCounts(day, userKey) {
+    const b_confirmedSchedule = kvGet("b_confirmedSchedule", {});
+    const isAppointmentType = (subtype) => subtype !== "官约" && subtype !== "踩点";
+    const seenGroups = new Set();
+    let totalPrivate = 0, totalPhone = 0, myPrivate = 0, myPhone = 0;
+    for (const [key, events] of Object.entries(b_confirmedSchedule)) {
+        for (const ev of events) {
+            if (ev.day !== day || !isAppointmentType(ev.subtype)) continue;
+            if (key === userKey) { if (ev.subtype === "电话") myPhone++; else myPrivate++; }
+            if (!ev.group || seenGroups.has(ev.group)) continue;
+            seenGroups.add(ev.group);
+            if (ev.subtype === "电话") totalPhone++; else totalPrivate++;
+        }
+    }
+
+    const sumTodayCounts = (storeKey) => {
+        const store = kvGet(storeKey, {});
+        let mine = 0, total = 0;
+        for (const [key, rec] of Object.entries(store)) {
+            if (!rec || rec.day !== day) continue;
+            total += rec.count || 0;
+            if (key === userKey) mine += rec.count || 0;
+        }
+        return { mine, total };
+    };
+    const sms = sumTodayCounts("global_chaos_letter_counts");
+    const gift = sumTodayCounts("global_gift_stats");
+    const wishPost = sumTodayCounts("wish_daily_post_counts");
+    const wishPick = sumTodayCounts("wish_daily_pick_counts");
+
+    return {
+        my: { private: myPrivate, phone: myPhone, sms: sms.mine, gift: gift.mine, wish: wishPost.mine + wishPick.mine },
+        total: { private: totalPrivate, phone: totalPhone, sms: sms.total, gift: gift.total, wish: wishPost.total + wishPick.total }
+    };
+}
+
+function getTodayActivitySummaryLine(day) {
+    const { total } = getDailyActivityCounts(day, null);
+    return `🌐 全员今天：私约 ${total.private} 次｜电话 ${total.phone} 次｜短信 ${total.sms} 次｜礼物 ${total.gift} 次｜心愿 ${total.wish} 次`;
+}
+
+// 「我的数量」：自己今天发起的私约/电话/短信/心愿次数 + 全服今天的私约/电话/短信/礼物/心愿总数
+let cmdMyCounts = seal.ext.newCmdItemInfo();
+cmdMyCounts.name = "我的数量";
+cmdMyCounts.help = "。我的数量 —— 查看自己今天发起的私约/电话/短信/心愿次数，以及全服今天的私约/电话/短信/礼物/心愿总数";
+cmdMyCounts.solve = (ctx, msg) => {
+    const platform = msg.platform;
+    const rawUid = msg.sender.userId.replace(`${platform}:`, "");
+    const uid = getPrimaryUid(platform, rawUid);
+    const roleName = getRoleName(ctx, msg);
+    if (!roleName) {
+        seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    const userKey = `${platform}:${uid}`;
+    const gameDay = cachedGet("global_days") || "D0";
+    const counts = getDailyActivityCounts(gameDay, userKey);
+
+    let reply = `📊 我的数量（${gameDay}）\n`;
+    reply += `👤 我今天：私约 ${counts.my.private} 次｜电话 ${counts.my.phone} 次｜短信 ${counts.my.sms} 次｜礼物 ${counts.my.gift} 次｜心愿 ${counts.my.wish} 次\n`;
+    reply += getTodayActivitySummaryLine(gameDay);
+
+    seal.replyToSender(ctx, msg, reply);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["我的数量"] = cmdMyCounts;
 
 let cmdViewArcLength = seal.ext.newCmdItemInfo();
 cmdViewArcLength.name = "查看弧长";
@@ -8925,7 +9644,7 @@ cmd_remind_timeouts.solve =(ctx, msg, cmdArgs) => {
 
     const target = cmdArgs.getArgN(1), now = Date.now();
     const timers = kvGet("group_timers", {});
-    let sentCount = 0, detail = [];
+    let sentCount = 0, detail = [], allEntries = [];
 
     for (const [gid, timer] of Object.entries(timers)) {
         if (target && gid !== target) continue;
@@ -8941,7 +9660,7 @@ cmd_remind_timeouts.solve =(ctx, msg, cmdArgs) => {
         });
 
         groupReminders.forEach(([name, s]) => {
-            sendOverdueParticipantNotice(ctx, timer, gid, name, s, now - s.startTime);
+            allEntries.push({ gid, timer, name, s, elapsed: now - s.startTime });
             sentCount++;
         });
 
@@ -8950,6 +9669,7 @@ cmd_remind_timeouts.solve =(ctx, msg, cmdArgs) => {
             detail.push(`群组 ${gid}: ${groupReminders.map(r => r[0]).join("、")}`);
         }
     }
+    processOverdueBatch(ctx, allEntries);
 
     if (sentCount > 0) {
         kvSet("group_timers", timers);
@@ -9029,11 +9749,23 @@ cmd_my_pending.solve = async (ctx, msg) => {
         }
     }
 
-    // 今日心动信
+    // 关系线待回：最后一条细节不是自己发的，说明轮到自己回复（系统强制关系线、已确认完成的不计入）
+    const pendingRel = [];
+    if (cachedGet("relationship_system_enabled") === "true") {
+        const relData = kvGet("relationship_lines", {});
+        const myRels = relData[platform]?.[uid] || {};
+        for (const [counterpartUid, rel] of Object.entries(myRels)) {
+            if (rel.initiator === "SYSTEM" || rel.confirmed || !rel.details?.length) continue;
+            const last = rel.details[rel.details.length - 1];
+            if (last.from !== roleName) pendingRel.push({ name: resolveUidToName(platform, counterpartUid) });
+        }
+    }
+
+    // 今日心动信（功能关闭时不显示）
     const globalDay = cachedGet("global_days") || "";
     let lovemailLine = "（当前未设置游戏天数）";
     let sentToday = [];
-    if (globalDay) {
+    if (isLoveMailEnabled() && globalDay) {
         const dayLimits = kvGet("lovemail_day_limits", {});
         const defaultLimit = parseInt(cachedGet("lovemail_default_limit") || "3");
         const maxPerDay = dayLimits[globalDay] !== undefined ? dayLimits[globalDay] : defaultLimit;
@@ -9044,7 +9776,7 @@ cmd_my_pending.solve = async (ctx, msg) => {
 
     // ---- 1. 先发一份摘要回执 ----
     const overCount = pending.filter(p => p.isOver).length;
-    const hasDetail = pending.length || notJoined.length || stillLingering.length;
+    const hasDetail = pending.length || notJoined.length || stillLingering.length || pendingRel.length;
     const summaryLines = [`📋 ${roleName} 的待回速览`];
     if (!hasDetail) {
         summaryLines.push("🌙 当前没有等待你处理的事项，很守时哦～");
@@ -9052,8 +9784,9 @@ cmd_my_pending.solve = async (ctx, msg) => {
         summaryLines.push(`🔴 待回复：${pending.length} 个群${overCount ? `（其中 ${overCount} 个已超时）` : ""}`);
         if (notJoined.length) summaryLines.push(`🚪 待进群：${notJoined.length} 个`);
         if (stillLingering.length) summaryLines.push(`🚶 待退群：${stillLingering.length} 个`);
+        if (pendingRel.length) summaryLines.push(`🔗 待回关系线：${pendingRel.length} 条`);
     }
-    summaryLines.push(`💌 心动信：${lovemailLine}`);
+    if (isLoveMailEnabled()) summaryLines.push(`💌 心动信：${lovemailLine}`);
     seal.replyToSender(ctx, msg, summaryLines.join("\n"));
 
     if (!hasDetail) return;
@@ -9095,6 +9828,12 @@ cmd_my_pending.solve = async (ctx, msg) => {
         nodes.push({ type: "node", data: { name: "待回管家", uin: botUid, content: "🚶 已结束但你好像还没退群" } });
         stillLingering.forEach(e => {
             nodes.push({ type: "node", data: { name: gidLabel(e.gid), uin: botUid, content: `群：${gidLabel(e.gid)}\n类型：${getCustomTypeLabel(e.subtype)}` } });
+        });
+    }
+    if (pendingRel.length) {
+        nodes.push({ type: "node", data: { name: "待回管家", uin: botUid, content: "🔗 待回关系线" } });
+        pendingRel.forEach(r => {
+            nodes.push({ type: "node", data: { name: r.name, uin: botUid, content: `${r.name}已回复你的关系线\n💡 发送「查看关系线 ${r.name}」查看完整细节并回复` } });
         });
     }
     if (sentToday.length) {
@@ -9372,7 +10111,7 @@ function performLoveMailDelivery(ctx, msg, backgroundGroupId) {
     if (!announceGroupId || announceGroupId === "null") announceGroupId = null;
 
     const mailBox = records.reduce((map, r) => ((map[r.receiver] ??= []).push(r), map), {});
-    let success = 0, fail = 0, publicCount = 0;
+    let success = 0, fail = 0, publicCount = 0, maxReceived = 0;
     const publicNodes = [];
     const failedRecords = [];
 
@@ -9380,6 +10119,7 @@ function performLoveMailDelivery(ctx, msg, backgroundGroupId) {
         const recvUid = getUidByRoleName(platform, receiver);
         const addr = recvUid ? a_private_group[platform]?.[recvUid] : null;
         if (addr) {
+            if (mails.length > maxReceived) maxReceived = mails.length;
             const targetGidRaw = (addr[1] || "").replace(/\D/g, "");
             const personalNodes = [{ type: "node", data: { name: "心动邮局·派送员", uin: "2852199344", content: `💌 亲爱的 ${receiver}，你有一份包含 ${mails.length} 封信件的包裹待启封。` } }];
             const imageGroups = [];
@@ -9427,6 +10167,10 @@ function performLoveMailDelivery(ctx, msg, backgroundGroupId) {
 
     if (publicNodes.length && announceGroupId) {
         sendForward(announceGroupId, [{ type: "node", data: { name: "心动天使", uin: "2852199344", content: `✨ 哎呀，有 ${publicNodes.length} 份心意在飞往信箱的途中，不小心飘落到了公告区...` } }, ...publicNodes]);
+    }
+
+    if (success > 0 && announceGroupId) {
+        sendTextToGroup(platform, announceGroupId, `💌 今日心动信已派送完毕，共派送 ${success} 封信件，最高收信 ${maxReceived} 封～`);
     }
 
     kvSet(mailKey, failedRecords);
@@ -9599,6 +10343,54 @@ cmd_set_npc.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["设为npc"] = cmd_set_npc;
+
+// 通用NPC：账号本身没有固定角色名，在任意有计时器的群里发言时首行写「这次扮演的名字」即可，
+// 用来支持一个账号轮流扮演不同龙套（比如路人甲、路人乙）。需要先创建/绑定过角色，会自动一并标记为NPC。
+let cmd_set_generic_npc = seal.ext.newCmdItemInfo();
+cmd_set_generic_npc.name = "设为通用NPC";
+cmd_set_generic_npc.help = "用法：.设为通用NPC [角色名]\n说明：将角色标记为「通用NPC」——该账号发言时不再要求首行匹配固定角色名，" +
+    "而是把首行写的任意名字当作这次扮演的角色记入复盘（格式同普通角色：名字+换行/空格/冒号+正文）。" +
+    "会自动一并标记为NPC。再次输入可取消标记。";
+cmd_set_generic_npc.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) {
+        seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    let name = cmdArgs.getArgN(1);
+    if (!name) {
+        seal.replyToSender(ctx, msg, "❌ 请输入要操作的角色名。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    let platform = msg.platform;
+    let storage = getRoleStorage();
+
+    if (!storage[platform] || !getUidByRoleName(platform, name)) {
+        seal.replyToSender(ctx, msg, `❌ 未找到角色「${name}」，请先创建角色。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    let genericList = kvGet("a_generic_npc_list", []);
+    let index = genericList.indexOf(name);
+    if (index === -1) {
+        genericList.push(name);
+        kvSet("a_generic_npc_list", genericList);
+        let npcList = kvGet("a_npc_list", []);
+        if (!npcList.includes(name)) {
+            npcList.push(name);
+            kvSet("a_npc_list", npcList);
+        }
+        seal.replyToSender(ctx, msg, `✅ 已将「${name}」设为通用NPC。之后该账号在有计时器的群里发言，首行写谁的名字就记谁的话。`);
+    } else {
+        genericList.splice(index, 1);
+        kvSet("a_generic_npc_list", genericList);
+        seal.replyToSender(ctx, msg, `✅ 已取消「${name}」的通用NPC身份，恢复为按固定角色名匹配。`);
+    }
+
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["设为通用NPC"] = cmd_set_generic_npc;
 
 // 创建NPC（与创建新角色逻辑相同，额外加入 npc_list）
 let cmd_create_npc = seal.ext.newCmdItemInfo();

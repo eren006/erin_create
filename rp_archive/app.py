@@ -761,8 +761,8 @@ CONFIG_SCHEMA = [
         {"key": "stakeout", "label": "踩点门槛", "type": "number", "default": "59"},
     ]},
     {"section": "踩点", "fields": [
-        {"key": "stakeout_allow_solo", "label": "允许单人踩点", "type": "bool", "default": "false",
-         "note": "开启后玩家可发起无伴随的踩点（不填对方角色名）；目击时显示「独自」"},
+        {"key": "stakeout_allow_solo", "label": "允许单人踩点", "type": "bool", "default": "true",
+         "note": "默认开启，玩家可发起无伴随的踩点（不填对方角色名）；目击时显示「独自」。关闭后踩点必须指定陪伴角色"},
     ]},
     {"section": "寄信", "fields": [
         {"key": "mailCooldown",             "label": "寄信冷却（分钟）", "type": "number", "default": "60"},
@@ -922,7 +922,7 @@ def assemble_bot_config(flat):
     for blob_key in ("item_registry", "rpg_attr_defs", "sys_attr_presets",
                      "end_game_bonus_templates", "end_game_draw_config",
                      "custom_message_templates", "preset_gifts",
-                     "private_appointment_aliases",
+                     "private_appointment_aliases", "sms_aliases", "gift_aliases",
                      "equipment_registry", "equipment_slots", "equipment_slot_names",
                      "craft_recipes",
                      "trade_whitelist",
@@ -1438,11 +1438,26 @@ def _schedule_zone(show, now_ts_ms=None):
     else:
         today = datetime.now(TZ_BEIJING).date()
 
-    year  = today.year
-    start = _parse_mmdd(start_str, year)
     end_str  = show.get("schedule_end") or start_str
     supp_str = show.get("supplement_end") or ""
-    # 跨年档期：若 end 的 MMDD < start 的 MMDD，说明 end 在下一年
+
+    # start 所在的日历年：以「创建本季度时」的日期为基准去猜，而不是用「查询时的今天」猜——
+    # 否则跨年档期（比如 12/28~1/5）在元旦之后查询时，会把 start 的年份跟着"今天"往后挪一年，
+    # 变成还没到的未来日期，误判成 pre（这个季度其实正在 main/supplement 期间）。
+    # created_at 缺失（极老数据）时退回用 today 的年份，等价于旧逻辑。
+    created_at = show.get("created_at") or 0
+    anchor_date = (datetime.fromtimestamp(created_at / 1000, TZ_BEIJING).date()
+                   if created_at else today)
+    def _start_at(y):
+        return _parse_mmdd(start_str, y)
+    cand_years = [y for y in (anchor_date.year - 1, anchor_date.year, anchor_date.year + 1)
+                  if _start_at(y) is not None]
+    if not cand_years:
+        return 'main'
+    year = min(cand_years, key=lambda y: abs((_start_at(y) - anchor_date).days))
+
+    start = _start_at(year)
+    # 跨年档期：若 end/supplement 的 MMDD < start 的 MMDD，说明落在 start 的下一年
     end_year  = year + 1 if end_str  and end_str  < start_str else year
     supp_year = year + 1 if supp_str and supp_str < start_str else year
     end   = _parse_mmdd(end_str,  end_year)
@@ -1964,7 +1979,29 @@ def api_end_season():
     db.commit()
     base_url = request.host_url.rstrip("/")
     public_url = f"{base_url}/public/{show['public_token']}" if show["public_token"] else base_url
-    return jsonify({"ok": True, "show_id": show["id"], "name": show["name"], "public_url": public_url})
+    # 跑 SealDice/LLOneBot 的机器不一定和 rp_archive 是同一台，所以给一个带 token 的下载 URL
+    # （/api/show_archive），交给 OneBot 的 download_file 动作去拉，而不是给本地路径。
+    zip_token = request.headers.get("X-Archive-Token", "")
+    zip_url = f"{base_url}/api/show_archive/{show['id']}?token={zip_token}"
+
+    return jsonify({"ok": True, "show_id": show["id"], "name": show["name"],
+                     "public_url": public_url, "zip_url": zip_url})
+
+
+@app.route("/api/show_archive/<int:sid>")
+def api_show_archive(sid):
+    """按 show_id 下载存档 ZIP（token 认证，供 OneBot download_file 机器对机器拉取）。"""
+    tid = _resolve_archive_token()
+    db  = get_db()
+    show = db.execute("SELECT id FROM shows WHERE id=? AND tenant_id=?", (sid, tid)).fetchone()
+    if not show:
+        abort(404)
+    buf, safe_name = _build_show_zip(db, sid)
+    if buf is None:
+        abort(500)
+    date_tag = datetime.now(TZ_BEIJING).strftime("%Y%m%d")
+    zip_name = f"{safe_name}_存档_{date_tag}.zip"
+    return send_file(buf, as_attachment=True, download_name=zip_name, mimetype="application/zip")
 
 _TIME_TITLES = [
     (0,  2,  "零点主播",   "深夜零点还在线，精神可嘉"),
@@ -2664,7 +2701,7 @@ def admin_config_page():
         for blob_key in ("item_registry", "rpg_attr_defs", "sys_attr_presets",
                          "end_game_draw_config",
                          "item_registry_pending", "custom_message_templates",
-                         "private_appointment_aliases",
+                         "private_appointment_aliases", "sms_aliases", "gift_aliases",
                          "equipment_registry", "equipment_registry_pending",
                          "equipment_slots", "equipment_slot_names"):
             raw = request.form.get(blob_key, "")
@@ -2706,6 +2743,8 @@ def admin_config_page():
     pool_defs_json           = flat.get("pool_definitions", "{}")
     item_pending_json        = flat.get("item_registry_pending", "[]")
     aliases_json             = flat.get("private_appointment_aliases", "[]")
+    sms_aliases_json         = flat.get("sms_aliases", "[]")
+    gift_aliases_json        = flat.get("gift_aliases", "[]")
     equip_registry_json      = flat.get("equipment_registry", "{}")
     equip_pending_json       = flat.get("equipment_registry_pending", "[]")
     equip_slots_json         = flat.get("equipment_slots", '["head","chest","hand","leg","foot"]')
@@ -2729,6 +2768,8 @@ def admin_config_page():
                            pool_defs_json=pool_defs_json,
                            item_pending_json=item_pending_json,
                            aliases_json=aliases_json,
+                           sms_aliases_json=sms_aliases_json,
+                           gift_aliases_json=gift_aliases_json,
                            equip_registry_json=equip_registry_json,
                            equip_pending_json=equip_pending_json,
                            equip_slots_json=equip_slots_json,
@@ -4202,7 +4243,8 @@ def api_rp():
         return jsonify({"ok": False, "error": "missing session_id"}), 400
     # 与 /api/session_stats、/api/session_end 保持一致：档期开始前不记录，
     # 否则 entry 单边累加 total_words/total_replies，而 stats 覆盖被 skip，数字永远是错的
-    if _schedule_zone(show, data.get("timestamp")) == 'pre':
+    zone = _schedule_zone(show, data.get("timestamp"))
+    if zone == 'pre':
         return jsonify({"ok": True, "skipped": "pre_schedule"})
     db = get_db()
     if not db.execute("SELECT id FROM sessions WHERE id=? AND show_id=?", (sid, show_id)).fetchone():
@@ -4255,7 +4297,8 @@ def api_rp():
             "UPDATE players SET is_npc=1 WHERE show_id=? AND role_name=?",
             (show_id, role_name)
         )
-    if role_name and cur_ts and not is_npc:
+    # 补戏期/超期（过了档期结束日、季度还没手动结束）：只留 rp_entries/session 场次记录，不计入弧长
+    if role_name and cur_ts and not is_npc and zone == 'main':
         prev = db.execute(
             "SELECT timestamp FROM rp_entries WHERE session_id=? AND show_id=? AND role_name!=? AND timestamp>0 ORDER BY seq DESC LIMIT 1",
             (sid, show_id, role_name)
@@ -4271,6 +4314,39 @@ def api_rp():
 
     db.commit()
     return jsonify({"ok": True})
+
+@app.route("/api/rp/delete_by_content", methods=["POST"])
+def api_rp_delete_by_content():
+    """引用+撤回联动：机器人侧没有存「QQ消息ID→复盘条目ID」的映射，只能反查被撤回消息的原文，
+    按 (session_id, role_name, content) 匹配删除。同名同内容在该场次出现不止一条时（比如同一人发过
+    两条一模一样的短回复），靠 orig_timestamp（被撤回消息的原始发送时间，机器人侧从 get_msg 拿）
+    挑 rp_entries.timestamp 离它最近的那条，而不是无脑删最新一条，避免删错。
+    不回退 sessions 的 total_replies/total_words，与后台手动删除 rp_delete 保持同一口径（那边也不回退）。"""
+    tid  = get_tenant_from_token()
+    show = get_current_show_for_tenant(tid)
+    if not show: abort(503)
+    show_id = show["id"]
+    data = request.json or {}
+    sid       = data.get("session_id", "")
+    role_name = data.get("role_name", "")
+    content   = data.get("content", "")
+    orig_ts   = data.get("orig_timestamp")
+    if not sid or not role_name or not content:
+        return jsonify({"ok": False, "error": "missing session_id/role_name/content"}), 400
+    db = get_db()
+    rows = db.execute(
+        "SELECT id, timestamp FROM rp_entries WHERE session_id=? AND show_id=? AND role_name=? AND content=? ORDER BY seq DESC",
+        (sid, show_id, role_name, content)
+    ).fetchall()
+    if not rows:
+        return jsonify({"ok": True, "deleted": False})
+    if orig_ts and len(rows) > 1:
+        target = min(rows, key=lambda r: abs((r["timestamp"] or 0) - orig_ts))
+    else:
+        target = rows[0]
+    db.execute("DELETE FROM rp_entries WHERE id=?", (target["id"],))
+    db.commit()
+    return jsonify({"ok": True, "deleted": True})
 
 def _compute_player_totals(db, show_id, role_name):
     """从 sessions.stats 重算指定角色的累计回复数、字数、场次数。"""

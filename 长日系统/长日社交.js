@@ -22,14 +22,21 @@ ext.autoActive = true;
 // ========================
 function getApi()                          { return globalThis.__changriApi || null; }
 function mainStorGet(key)                  { return getApi()?.kvGetRaw(key) ?? null; }
-function mainStorSet(key, val)             { getApi()?.kvSetRaw(key, val); }
+function mainStorSet(key, val)             { const api = getApi(); if (api) api.kvSetRaw(key, val); else console.error(`[长日社交] 主插件未加载，写入丢失: ${key}`); }
 
 // JSON 对象读写：走主插件 kvGet/kvSet（带缓存与损坏容错），JSON key 一律用这两个函数
 function mainKvGet(key, def) { const api = getApi(); return api ? api.kvGet(key, def) : def; }
-function mainKvSet(key, val) { getApi()?.kvSet(key, val); }
+function mainKvSet(key, val) { const api = getApi(); if (api) api.kvSet(key, val); else console.error(`[长日社交] 主插件未加载，写入丢失: ${key}`); }
 function getPrimaryUid(platform, uid)      { return getApi()?.getPrimaryUid(platform, uid) ?? uid; }
 function getRoleName(ctx, msg)             { return getApi()?.getRoleName(ctx, msg) ?? null; }
 function getUidByRoleName(platform, name)  { return getApi()?.getUidByRoleName(platform, name) ?? null; }
+
+function escapeRegExp(str) { return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+
+// 送礼自定义触发词（如「投喂」），格式/存档/文案均与「送礼」本体完全一致，只是换个词触发
+function getGiftAliases() {
+    try { return mainKvGet("gift_aliases", []); } catch { return []; }
+}
 function resolveUidToName(platform, uid)   { return getApi()?.resolveUidToName(platform, uid) ?? uid; }
 function isUserAdmin(ctx, msg)             { return getApi()?.isUserAdmin(ctx, msg) ?? false; }
 function isUserFeatureEnabled(uid, key, def = true) { return getApi()?.isUserFeatureEnabled(uid, key, def) ?? def; }
@@ -85,11 +92,23 @@ function sendToAnnounceGroup(ctx, platform, text) {
     }
 }
 
+// 帖子/回复的正文可能是发帖当时随手带的 [CQ:image] 链接，论坛帖子往往过很久才被翻看，
+// QQ 多媒体链接是限时的，届时大概率已过期——合并转发只要有一个节点的图片解析失败，整条转发就会发送失败。
+// 统一在这个出口把图片链接剔掉换成占位提示，避免一张过期图片导致整篇帖子/回复都看不了。
+function stripStaleImages(nodes) {
+    return nodes.map(n => {
+        const content = n?.data?.content || "";
+        if (!/\[CQ:image[^\]]*\]/.test(content)) return n;
+        const textOnly = content.replace(/\[CQ:image[^\]]*\]/g, "").trim();
+        return { ...n, data: { ...n.data, content: `${textOnly}${textOnly ? "\n" : ""}（图片未保留，链接可能已过期）` } };
+    });
+}
+
 function sendForumForward(ctx, msg, nodes) {
     const gid = msg.groupId.replace(/[^\d]/g, "");
     ws({
         "action": "send_group_forward_msg",
-        "params": { "group_id": parseInt(gid, 10), "messages": nodes }
+        "params": { "group_id": parseInt(gid, 10), "messages": stripStaleImages(nodes) }
     }, ctx, msg, "");
 }
 
@@ -480,21 +499,23 @@ function sendCombinedDetails(ctx, msg, toRoleName, fromRoleName, details, self) 
         ? `📜 你与「${toRoleName}」的关系细节`
         : `📜 角色「${sourceRoleName}」更新了与你的关系细节`;
     const charInfo = `共 ${details.length} 条 | 单条上限 ${MAX_DETAIL_CHARS} 字 | 累计 ${totalChars} 字`;
+    // 只在看自己发起的这份关系线时提示撤回（能撤的是自己发的细节，转发给对方看到新细节时提示无意义）
+    const withdrawHint = self ? `\n💡 撤回自己发的细节：撤回关系 ${toRoleName} 要撤回的内容（需与原文完全一致）` : "";
 
     if (totalChars > SPLIT_THRESHOLD) {
         const mid = Math.ceil(details.length / 2);
         const part1 = details.slice(0, mid);
         const part2 = details.slice(mid);
         const header1 = { type: "node", data: { name: "关系线档案", uin: "10001",
-            content: `${headerBase}\n${charInfo}\n⚠️ 内容较多，已拆分为2条转发 · 第1部分（共${mid}条）` } };
+            content: `${headerBase}\n${charInfo}\n⚠️ 内容较多，已拆分为2条转发 · 第1部分（共${mid}条）${withdrawHint}` } };
         const header2 = { type: "node", data: { name: "关系线档案", uin: "10001",
             content: `${headerBase}\n第2部分（共${details.length - mid}条）` } };
-        ws({ action: "send_group_forward_msg", params: { group_id: gid, messages: [header1, ...part1.map(makeNode)] } }, ctx, msg, "");
-        ws({ action: "send_group_forward_msg", params: { group_id: gid, messages: [header2, ...part2.map(makeNode)] } }, ctx, msg, "");
+        ws({ action: "send_group_forward_msg", params: { group_id: gid, messages: stripStaleImages([header1, ...part1.map(makeNode)]) } }, ctx, msg, "");
+        ws({ action: "send_group_forward_msg", params: { group_id: gid, messages: stripStaleImages([header2, ...part2.map(makeNode)]) } }, ctx, msg, "");
     } else {
         const header = { type: "node", data: { name: "关系线档案", uin: "10001",
-            content: `${headerBase}\n${charInfo}` } };
-        ws({ action: "send_group_forward_msg", params: { group_id: gid, messages: [header, ...details.map(makeNode)] } }, ctx, msg, "");
+            content: `${headerBase}\n${charInfo}${withdrawHint}` } };
+        ws({ action: "send_group_forward_msg", params: { group_id: gid, messages: stripStaleImages([header, ...details.map(makeNode)]) } }, ctx, msg, "");
     }
 }
 
@@ -528,7 +549,8 @@ cmd_add_rel_detail.solve = (ctx, msg, cmdArgs) => {
     const toName = cmdArgs.getArgN(1);
     const content = cmdArgs.args.slice(1).join(' ').trim();
 
-    if (!sendName || !toName || !content) return seal.replyToSender(ctx, msg, "格式：。拉线 对方名 内容");
+    if (!sendName) return seal.replyToSender(ctx, msg, "⚠️ 找不到你的角色登记信息，请先完成报名/登记后再拉线。");
+    if (!toName || !content) return seal.replyToSender(ctx, msg, "格式：拉线 对方名 内容");
     if (sendName === toName) return seal.replyToSender(ctx, msg, "⚠️ 你不能跟自己建立关系线哦。");
 
     const MAX_DETAIL_CHARS = getMainStorageInt("max_detail_chars", 500);
@@ -799,6 +821,7 @@ cmd_view_relationship.solve = (ctx, msg, cmdArgs) => {
     const maxRel = getMainStorageInt("max_relationships_per_user", 20);
     const SPLIT_THRESHOLD = getMainStorageInt("forward_split_threshold", 4000);
     let activeCount = 0;
+    let pendingCount = 0;
     let listContent = "";
 
     Object.entries(myRels).forEach(([name, data]) => {
@@ -809,13 +832,17 @@ cmd_view_relationship.solve = (ctx, msg, cmdArgs) => {
         const detailCount = data.details ? data.details.length : 0;
         const totalChars = data.details ? data.details.reduce((sum, d) => sum + (d.text?.length || 0), 0) : 0;
         const charHint = totalChars > SPLIT_THRESHOLD ? `⚠️${totalChars}字·将拆分` : `${totalChars}字`;
-        listContent += `${statusIcon} ${typeTag} 与「${name}」(${detailCount}条 | ${charHint})\n`;
+        // 待回：非强制、未确认完成、且最后一条细节不是自己发的（轮到自己回）
+        const isPending = !isSystem && !data.confirmed && detailCount > 0 && data.details[detailCount - 1].from !== sendName;
+        if (isPending) pendingCount++;
+        listContent += `${statusIcon} ${typeTag} 与「${name}」(${detailCount}条 | ${charHint})${isPending ? " 🔴待回" : ""}\n`;
     });
 
     if (!listContent) {
         reply += "（暂无任何记录）";
     } else {
         reply += listContent;
+        if (pendingCount) reply += `\n🔴 待回复：${pendingCount} 条（对方发了新细节，轮到你回复）`;
         reply += `\n📊 额度占用：${activeCount}/${maxRel}`;
         reply += `\n💡 输入「。查看关系线 名字」同步合并转发细节`;
     }
@@ -930,12 +957,17 @@ ext.onNotCommandReceived = (ctx, msg) => {
 
     // 礼物
     {
-        const giftM = raw.match(/^(.*?)送礼\s+(.+?)\s+([\s\S]+)$/);
+        const giftTriggers = ["送礼", ...getGiftAliases().map(a => a.trigger).filter(Boolean)];
+        let giftM = null;
+        for (const trig of giftTriggers) {
+            giftM = raw.match(new RegExp(`^(.*?)${escapeRegExp(trig)}\\s+(.+?)\\s+([\\s\\S]+)$`));
+            if (giftM) break;
+        }
         if (giftM) {
             if (!requireApi(ctx, msg)) return;
             const customName = giftM[1].trim() || null;
             return handleNaturalGift(ctx, msg, msg.platform, giftM[2].trim(), giftM[3].trim(), customName);
-        } else if (/^(.*?)送礼$/.test(raw)) {
+        } else if (giftTriggers.some(trig => new RegExp(`^(.*?)${escapeRegExp(trig)}$`).test(raw))) {
             return seal.replyToSender(ctx, msg, "📦 送礼格式：送礼 对方名 礼物内容\n例：送礼 张三 一束花\n\n图鉴内礼物：送礼 对方名 #编号（可无限送礼）");
         }
     }

@@ -846,6 +846,8 @@ select.cfg-input { cursor: pointer; }
     <input type="hidden" name="item_registry_pending"      id="item-pending-input"     value="{{ item_pending_json | e }}">
     <input type="hidden" id="pool-defs-input" value="{{ pool_defs_json | e }}">
     <input type="hidden" name="private_appointment_aliases" id="aliases-input"         value="{{ aliases_json | e }}">
+    <input type="hidden" name="sms_aliases"                id="sms-aliases-input"      value="{{ sms_aliases_json | e }}">
+    <input type="hidden" name="gift_aliases"               id="gift-aliases-input"     value="{{ gift_aliases_json | e }}">
     <input type="hidden" name="equipment_registry"         id="equip-registry-input"   value="{{ equip_registry_json | e }}">
     <input type="hidden" name="equipment_registry_pending" id="equip-pending-input"    value="{{ equip_pending_json | e }}">
     <input type="hidden" name="equipment_slots"            id="equip-slots-input"      value="{{ equip_slots_json | e }}">
@@ -1122,10 +1124,38 @@ select.cfg-input { cursor: pointer; }
       <div class="cfg-collapsible-inner">
         <div class="cfg-note" style="margin-bottom:12px;">
           每种类型独立触发、独立结戏奖励模板。保存后在 QQ 发「。拉取全部」生效。<br>
-          格式：用户发 <code style="font-size:11px;">触发词 时间 地点 角色名</code>，群名自动带上该类型名称，时间线和结戏奖励按类型名匹配。
+          格式：用户发 <code style="font-size:11px;">触发词 时间 地点 角色名</code>，群名自动带上该类型名称，时间线和结戏奖励按类型名匹配。<br>
+          基础类型选「私密」：格式同上，门槛用下方留空则自动跟随「私密门槛」，不留空则用你填的固定分钟数。<br>
+          基础类型选「电话」：只是给电话换一个触发词，格式/门槛/开关完全与「电话」邀约一致（无需地点），图标和最短分钟不生效——不论这个触发词改叫什么名字，门槛都始终对应「电话门槛」的当前值。
         </div>
         <div id="aliases-list"></div>
         <button type="button" class="btn-add-alias" onclick="aliasAddRow()">＋ 添加类型</button>
+      </div>
+    </details>
+
+    {# ── 自定义短信触发词 ── #}
+    <details class="cfg-collapsible">
+      <summary>自定义短信触发词 <span class="cfg-badge">飞鸽传书等别名 · 实际仍是短信</span></summary>
+      <div class="cfg-collapsible-inner">
+        <div class="cfg-note" style="margin-bottom:12px;">
+          额外的短信触发词，格式/存档/文案与「短信」完全一致，只是换个词触发。保存后在 QQ 发「。拉取全部」生效。<br>
+          格式：用户发 <code style="font-size:11px;">触发词 收信人 内容</code>，例如「飞鸽传书 张三 你好」。
+        </div>
+        <div id="sms-aliases-list"></div>
+        <button type="button" class="btn-add-alias" onclick="smsAliasAddRow()">＋ 添加触发词</button>
+      </div>
+    </details>
+
+    {# ── 自定义送礼触发词 ── #}
+    <details class="cfg-collapsible">
+      <summary>自定义送礼触发词 <span class="cfg-badge">投喂等别名 · 实际仍是送礼</span></summary>
+      <div class="cfg-collapsible-inner">
+        <div class="cfg-note" style="margin-bottom:12px;">
+          额外的送礼触发词，格式/存档/文案与「送礼」完全一致，只是换个词触发。保存后在 QQ 发「。拉取全部」生效。<br>
+          格式：用户发 <code style="font-size:11px;">触发词 对方名 礼物内容</code>，例如「投喂 张三 一束花」。
+        </div>
+        <div id="gift-aliases-list"></div>
+        <button type="button" class="btn-add-alias" onclick="giftAliasAddRow()">＋ 添加触发词</button>
       </div>
     </details>
 
@@ -1907,10 +1937,15 @@ var Registry = (function() {
       return;
     }
     el.innerHTML = aliasData.map(function(a, i) {
+      var isPhone = a.baseType === 'phone';
       return '<div class="alias-row" data-idx="'+i+'">'
         + '<input class="alias-field alias-trigger" placeholder="触发词（如：乐乐的约会）" value="'+esc(a.trigger||'')+'" oninput="aliasUpdate('+i+',\'trigger\',this.value)">'
-        + '<input class="alias-field alias-icon" placeholder="图标（如：🌸）" value="'+esc(a.icon||'')+'" oninput="aliasUpdate('+i+',\'icon\',this.value)">'
-        + '<input class="alias-field alias-dur" type="number" min="1" placeholder="最短分钟" value="'+(a.minDuration!=null?a.minDuration:'')+'" oninput="aliasUpdate('+i+',\'minDuration\',this.value?parseInt(this.value):undefined)">'
+        + '<select class="alias-field alias-basetype" onchange="aliasUpdate('+i+',\'baseType\',this.value===\'phone\'?\'phone\':undefined)">'
+        +   '<option value="private"'+(isPhone?'':' selected')+'>基础：私密</option>'
+        +   '<option value="phone"'+(isPhone?' selected':'')+'>基础：电话</option>'
+        + '</select>'
+        + '<input class="alias-field alias-icon" placeholder="图标（如：🌸）" value="'+esc(a.icon||'')+'" oninput="aliasUpdate('+i+',\'icon\',this.value)"'+(isPhone?' disabled title="电话类型固定用📱图标，不生效">':'>')
+        + '<input class="alias-field alias-dur" type="number" min="1" placeholder="'+(isPhone?'跟随电话门槛':'留空=跟随私密门槛')+'" value="'+(!isPhone&&a.minDuration!=null?a.minDuration:'')+'" oninput="aliasUpdate('+i+',\'minDuration\',this.value?parseInt(this.value):undefined)"'+(isPhone?' disabled>':'>')
         + '<button type="button" class="alias-del" onclick="aliasDelete('+i+')" title="删除">✕</button>'
         + '</div>';
     }).join('');
@@ -1919,7 +1954,7 @@ var Registry = (function() {
   function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
   window.aliasAddRow = function() {
-    aliasData.push({ trigger:'', icon:'🎭', minDuration:59 });
+    aliasData.push({ trigger:'', icon:'🎭' });
     save(); render();
     var rows = document.querySelectorAll('.alias-row');
     if (rows.length) rows[rows.length-1].querySelector('.alias-trigger').focus();
@@ -1928,6 +1963,10 @@ var Registry = (function() {
     if (!aliasData[i]) return;
     if (val === undefined) delete aliasData[i][key];
     else aliasData[i][key] = val;
+    if (key === 'baseType') {
+      if (val === 'phone') delete aliasData[i].minDuration; // 电话类型门槛固定跟随「电话门槛」，不接受单独覆盖
+      save(); render(); return;
+    }
     save();
   };
   window.aliasDelete = function(i) {
@@ -1937,6 +1976,50 @@ var Registry = (function() {
 
   render();
 })();
+
+/* ── 简单触发词编辑器（短信/送礼共用：只有一个 trigger 字段） ────────────── */
+function initSimpleAliasEditor(inputId, listId, addFnName, placeholder) {
+  var data = [];
+  try { data = JSON.parse(document.getElementById(inputId).value || '[]'); } catch(e) {}
+
+  function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function save() { document.getElementById(inputId).value = JSON.stringify(data); }
+  function render() {
+    var el = document.getElementById(listId);
+    if (!data.length) {
+      el.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:6px 0 10px;">暂无自定义触发词</div>';
+      return;
+    }
+    el.innerHTML = data.map(function(a, i) {
+      return '<div class="alias-row" data-idx="'+i+'">'
+        + '<input class="alias-field alias-trigger" style="flex:1;" placeholder="'+placeholder+'" value="'+esc(a.trigger||'')+'" oninput="this._onchange && this._onchange()">'
+        + '<button type="button" class="alias-del" title="删除">✕</button>'
+        + '</div>';
+    }).join('');
+    Array.prototype.forEach.call(el.querySelectorAll('.alias-row'), function(row) {
+      var i = parseInt(row.getAttribute('data-idx'), 10);
+      row.querySelector('.alias-trigger').addEventListener('input', function() {
+        data[i].trigger = this.value;
+        save();
+      });
+      row.querySelector('.alias-del').addEventListener('click', function() {
+        data.splice(i, 1);
+        save(); render();
+      });
+    });
+  }
+
+  window[addFnName] = function() {
+    data.push({ trigger: '' });
+    save(); render();
+    var rows = document.querySelectorAll('#' + listId + ' .alias-row');
+    if (rows.length) rows[rows.length-1].querySelector('.alias-trigger').focus();
+  };
+
+  render();
+}
+initSimpleAliasEditor('sms-aliases-input', 'sms-aliases-list', 'smsAliasAddRow', '触发词（如：飞鸽传书）');
+initSimpleAliasEditor('gift-aliases-input', 'gift-aliases-list', 'giftAliasAddRow', '触发词（如：投喂）');
 </script>
 
 <style>
@@ -1966,7 +2049,9 @@ var Registry = (function() {
   font-size: 13px;
 }
 .alias-trigger { flex: 2; }
+.alias-basetype { width: 96px; }
 .alias-icon    { width: 70px; text-align: center; }
+.alias-field:disabled { opacity: 0.45; cursor: not-allowed; }
 .alias-dur     { width: 90px; }
 .alias-del {
   background: transparent;
