@@ -1,0 +1,24 @@
+format_version = "1.0.0"
+
+[package]
+id = "changri/farm"
+name = "长露谷（Beta，测试中请勿下载）"
+version = "2.3.0"
+authors = ["长日将尽"]
+license = "MIT"
+description = "【Beta测试版，数值/规则可能随时调整】种地(32种作物)、浇水、养殖(鸡/羊/牛)、钓鱼、酿酒、做饭(25道菜谱)、逛商店的群互动小游戏，成就墙+家园装饰，四季日历+天气生态联动+浮动市场+节日活动+看电视解锁菜谱，作物/动物/酒/菜到期主动提醒，还能互相偷菜/送礼。发送。农场帮助查看详情"
+keywords = ["娱乐", "养成", "农场", "长日将尽"]
+
+[package.seal]
+min_version = "1.5.0"
+
+[permissions]
+network = false
+dangerous = false
+http_server = false
+
+[contents]
+scripts = ["scripts/farm.js"]
+
+[store]
+category = "game"
