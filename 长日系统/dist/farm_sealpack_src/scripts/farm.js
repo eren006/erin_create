@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         长露谷
 // @author       长日将尽
-// @version      2.3.0
-// @description  【Beta测试版，数值/规则可能随时调整】种地(32种作物)、浇水、养殖(鸡/羊/牛)、钓鱼、酿酒、做饭(25道菜谱)、逛商店的群互动小游戏，成就墙+家园装饰，四季日历+天气生态联动+浮动市场+节日活动+看电视解锁菜谱，作物/动物/酒/菜到期主动提醒，还能互相偷菜/送礼。发送。农场帮助查看详情
+// @version      1.9.1
+// @description  【Beta测试版，数值/规则可能随时调整】种地(32种作物)、浇水、养殖(鸡/羊/牛)、钓鱼、酿酒、做饭(25道菜谱)、逛商店的群互动小游戏，成就墙+家园装饰，四季日历+天气生态联动+浮动市场+节日活动+看电视解锁菜谱，作物/动物/酒/菜到期主动提醒，还能互相偷菜/送礼
 // @license      MIT
 // ==/UserScript==
 
@@ -69,7 +69,7 @@
 
 let ext = seal.ext.find('changri_farm');
 if (!ext) {
-    ext = seal.ext.new('changri_farm', '长日将尽', '2.3.0');
+    ext = seal.ext.new('changri_farm', '长日将尽', '1.9.1');
     seal.ext.register(ext);
     ext.autoActive = true;
 }
@@ -660,111 +660,57 @@ function applyWaterBoost(pl, now) {
 // 指令：农场帮助
 // ========================
 
-// 帮助必须拆成几条分开发，不能拼成一条长消息发出去。
-// 线上踩过的坑：原本整篇帮助拼成一条1300多字（UTF-8约3200字节）的消息，指令本身
-// 执行完全正常（日志有"处理完成"、没有异常），但海豹压根没把它发出去——日志里连
-// 内置指令那种"发给(群xxx): yyy"的记录都没有，回复在发送环节被静默丢弃了，群里
-// 什么都看不到，表现得就像"这个指令坏了没反应"。而且发送失败很可能就是海豹反复
-// 重新派发同一条消息、进而打成死循环的诱因。
-// v1.9 时这篇帮助还短所以没事，功能越加越多、文本越来越长之后才越过了那条线。
-// 所以：**以后往帮助里加内容，一定要加到对应的那一段里，别把某一段撑爆，更不要
-// 合并回一条**。单条控制在1000字节以内是安全的（其他指令的回复都远小于这个量级）。
-const HELP_TOPIC_ORDER = ['种地', '养殖', '商店', '加工', '社交'];
-
-// 输入的分类名可以不那么精确，常见的说法都认
-const HELP_TOPIC_ALIAS = {
-    '种植': '种地', '作物': '种地', '农作物': '种地',
-    '动物': '养殖', '钓鱼': '养殖', '牧场': '养殖',
-    '买卖': '商店', 'market': '商店', '市场': '商店', '天气': '商店',
-    '做饭': '加工', '酿酒': '加工', '厨房': '加工', '酒窖': '加工', '菜谱': '加工',
-    '主线': '社交', '还债': '社交', '等级': '社交', '成就': '社交', '偷菜': '社交', '其他': '社交',
-};
-
-function helpTopicText(topic) {
-    if (topic === '种地') {
-        return `🌱 长露谷帮助 · 种地\n${'─'.repeat(16)}\n` +
-            `农场日历         季节、本季可种作物、实时收购价\n` +
-            `种地 作物名 [数量]  在空地种下当季作物，不填数量=1株\n` +
-            `浇水 [编号]      给作物浇水加速生长，不填编号=浇所有能浇的地\n` +
-            `收菜             收获所有成熟作物\n` +
-            `扩地             花金币多开一块地（上限${MAX_PLOTS}块，价格逐次上涨）\n\n` +
-            `每${SEASON_DAYS}天换一季，作物随季节变化，换季不会枯死（已种下的照常长成），换季当天全群有节日礼金。`;
-    }
-    if (topic === '养殖') {
-        return `🐔 长露谷帮助 · 养殖与钓鱼\n${'─'.repeat(16)}\n` +
-            `买动物 类型 [数量]  可养：${ANIMAL_NAMES.join('/')}\n` +
-            `${ANIMAL_NAMES.map(n => ANIMALS[n].collectCmd).join(' / ')}  收取对应产出换成金币\n` +
-            `钓鱼             随机钓到不同价值的鱼（冷却${Math.round(FISH_COOLDOWN / 60000)}分钟）\n\n` +
-            `天气会影响这两块：雨天钓鱼空军率减半，晴天养殖产出+20%。\n` +
-            `动物产出、作物成熟、酒菜做好都会主动@你提醒。`;
-    }
-    if (topic === '商店') {
-        return `🏪 长露谷帮助 · 商店与行情\n${'─'.repeat(16)}\n` +
-            `商店             查看能买的原料和价格\n` +
-            `买材料 名称 [数量]  花钱买原料（比自己种/养贵）\n` +
-            `市场行情         查看今天各作物的实时收购价（每天波动）\n` +
-            `农场天气         今日天气：雨天免费帮全部作物浇一次水+钓鱼空军率减半，晴天养殖产出+20%\n\n` +
-            `镇上限定的面粉/糖/盐/香料/巧克力只能在商店买，自己种不出来。`;
-    }
-    if (topic === '加工') {
-        return `🍷 长露谷帮助 · 加工（后期内容）\n${'─'.repeat(16)}\n` +
-            `收菜、收取养殖产出时会顺手留一份原料，可以拿去深加工：\n` +
-            `建酒窖 / 买酒桶   解锁酿酒、加酒桶槽位（上限${MAX_BARRELS}个）\n` +
-            `酿酒 作物名       消耗1份原料酿酒，耗时更长但更值钱\n` +
-            `收酒             收好的酒存进成品仓库\n` +
-            `建厨房 / 买灶台   解锁做饭、加灶台槽位（上限${MAX_STOVES}个）\n` +
-            `农场菜谱 / 菜谱图鉴  已学会的菜谱 / 全部菜谱的收集进度\n` +
-            `看电视           每天一次，有几率解锁新菜谱\n` +
-            `做饭 菜名 / 出锅   烹饪已学会的菜、做好的菜存进成品仓库\n` +
-            `卖成品 [物品名]   把成品仓库里的酒/菜换成金币，不填=全部卖掉\n` +
-            `送礼 @群友 物品名  把成品仓库里的酒/菜送给朋友`;
-    }
-    return `📜 长露谷帮助 · 主线与社交\n${'─'.repeat(16)}\n` +
-        `还债 [数量]      偿还欠款，不填数量=尽量还清，没有期限\n` +
-        `欠款进度         查看欠款\n` +
-        `等级             查看等级、称号，离下一级还差多少\n` +
-        `成就             长露谷成就墙，各系统的收集/里程碑进度\n` +
-        `装饰 / 佩戴装饰 表情 / 设置招牌 文字   徽记与招牌（纯观赏）\n` +
-        `我的农场         地块/养殖/仓库/金币/欠款/等级/天气总览\n` +
-        `农场排行         本群财富排行榜（前10名）\n` +
-        `偷菜 @群友       偷取对方成熟未收的作物一部分（每天最多${STEAL_DAILY_LIMIT}次）`;
-}
-
-function helpOverviewText() {
-    return `🌾 长露谷 ⚠️Beta测试版\n${'─'.repeat(16)}\n` +
-        `（数值和规则还在调整，遇到问题欢迎反馈）\n\n` +
-        `📜 你继承了长露谷，但背着${DEBT_INITIAL}金币的欠款，「还债」还清就真正是你的了（没有期限，慢慢赚慢慢还）。\n` +
-        `长期目标是等级：靠终身累计赚的钱升到 Lv.100「世界首富」，发送「等级」看进度。\n\n` +
-        `新手三步：「农场日历」看本季能种什么 → 「种地 作物名」种下去 → 熟了发「收菜」。\n` +
-        `新玩家初始 ${START_COINS} 金币、${BASE_PLOTS} 块地，作物成熟会主动@你。\n\n` +
-        `📖 分类查看详细指令：\n` +
-        HELP_TOPIC_ORDER.map(t => `　农场帮助 ${t}`).join('\n') + `\n` +
-        `　农场帮助 全部　（一次看完，会分几条发）\n\n` +
-        `常用：我的农场 / 农场排行 / 成就`;
-}
-
 let cmd_help = seal.ext.newCmdItemInfo();
 cmd_help.name = '农场帮助';
-cmd_help.help = '农场帮助 [分类]\n不填分类=总览；分类可填：' + HELP_TOPIC_ORDER.join('/') + '/全部';
+cmd_help.help = '查看长露谷全部指令';
 cmd_help.solve = (ctx, msg) => {
     const ret = seal.ext.newCmdExecuteResult(true);
-    const arg = msg.message.replace(/^[。.]\S+\s*/, '').trim();
-
-    if (!arg) {
-        seal.replyToSender(ctx, msg, helpOverviewText());
-        return ret;
-    }
-    if (arg === '全部' || arg === 'all') {
-        HELP_TOPIC_ORDER.forEach(t => seal.replyToSender(ctx, msg, helpTopicText(t)));
-        return ret;
-    }
-
-    const topic = HELP_TOPIC_ORDER.indexOf(arg) >= 0 ? arg : HELP_TOPIC_ALIAS[arg];
-    if (!topic) {
-        seal.replyToSender(ctx, msg, `没有「${arg}」这个分类。可以填：${HELP_TOPIC_ORDER.join(' / ')} / 全部\n直接发送「农场帮助」看总览。`);
-        return ret;
-    }
-    seal.replyToSender(ctx, msg, helpTopicText(topic));
+    seal.replyToSender(ctx, msg,
+        `🌾 长露谷 ⚠️Beta测试版\n${'─'.repeat(16)}\n` +
+        `（数值和规则还在调整，遇到问题欢迎反馈）\n\n` +
+        `📜 你继承了长露谷，但背着${DEBT_INITIAL}金币的欠款，「还债」还清就真正是你的了（没有期限，慢慢赚慢慢还）。\n` +
+        `真正的长期目标是等级：靠终身累计赚的钱升级，1~100级，Lv.100 是"世界首富"——「等级」查看进度。\n\n` +
+        `【种地】\n` +
+        `农场日历         季节、本季可种作物、实时收购价\n` +
+        `种地 作物名     在空地种下当季作物\n` +
+        `浇水 [编号]      给作物浇水加速生长，不填编号=浇所有能浇的地\n` +
+        `收菜             收获所有成熟作物\n` +
+        `扩地             花金币多开一块地（上限${MAX_PLOTS}块，价格逐次上涨）\n` +
+        `\n【养殖】\n` +
+        `买动物 类型 [数量]  可养：${ANIMAL_NAMES.join('/')}\n` +
+        `${ANIMAL_NAMES.map(n => ANIMALS[n].collectCmd).join(' / ')}  收取对应产出换成金币\n` +
+        `\n【商店】原料买卖，镇上限定的面粉/糖/盐/香料/巧克力只能这买：\n` +
+        `商店             查看能买的原料和价格\n` +
+        `买材料 名称 [数量]  花钱买原料（比自己种/养贵）\n` +
+        `\n【加工·后期内容】收菜、收取养殖产出时会顺手留一份原料，可以拿去深加工：\n` +
+        `建酒窖 / 买酒桶   解锁酿酒、加酒桶槽位（上限${MAX_BARRELS}个）\n` +
+        `酿酒 作物名       消耗1份原料酿酒，耗时更长但更值钱\n` +
+        `收酒             收好的酒存进成品仓库\n` +
+        `建厨房 / 买灶台   解锁做饭、加灶台槽位（上限${MAX_STOVES}个）\n` +
+        `农场菜谱 / 菜谱图鉴  已学会的菜谱 / 全部菜谱的收集进度\n` +
+        `看电视           每天一次，有几率解锁新菜谱\n` +
+        `做饭 菜名 / 出锅   烹饪已学会的菜、做好的菜存进成品仓库\n` +
+        `卖成品 [物品名]   把成品仓库里的酒/菜换成金币，不填=全部卖掉\n` +
+        `送礼 @群友 物品名  把成品仓库里的酒/菜送给朋友\n` +
+        `\n【钓鱼】\n` +
+        `钓鱼             随机钓到不同价值的鱼（冷却${Math.round(FISH_COOLDOWN / 60000)}分钟，雨天空军率减半）\n` +
+        `\n【市场与天气】\n` +
+        `市场行情         查看今天各作物的实时收购价（每天波动）\n` +
+        `农场天气         查看今天天气：雨天免费帮全部作物浇一次水+钓鱼空军率减半，晴天养殖产出+20%\n` +
+        `\n【主线与社交】\n` +
+        `还债 [数量]      偿还欠款，不填数量=尽量还清，没有期限\n` +
+        `欠款进度         查看欠款\n` +
+        `等级             查看等级、称号，离下一级还差多少（终身累计赚取决定，1~100级）\n` +
+        `成就             长露谷成就墙，汇总各系统的收集/里程碑进度\n` +
+        `装饰 / 佩戴装饰 表情 / 设置招牌 文字   查看/佩戴徽记，给农场起招牌（纯观赏）\n` +
+        `我的农场         地块/养殖/原料/成品/酒窖/厨房/金币/欠款/等级/天气总览\n` +
+        `农场排行         本群财富排行榜（前10名，按终身累计赚取排序）\n` +
+        `偷菜 @群友       偷取对方成熟未收的作物一部分（每天最多${STEAL_DAILY_LIMIT}次）\n` +
+        `地牢入口         长露谷地底似乎藏着什么……（开发中，暂不可进入）\n` +
+        `\n每${SEASON_DAYS}天换一季，春夏秋冬循环，作物随季节变化，换季不会枯死。\n` +
+        `换季那天全群会有一次节日活动，所有农场主都能收到节日礼金。\n` +
+        `新玩家初始 ${START_COINS} 金币、${BASE_PLOTS} 块地。作物成熟、动物产出、酒/菜做好都会主动@你提醒。`
+    );
     return ret;
 };
 ext.cmdMap['农场帮助'] = cmd_help;
@@ -797,18 +743,15 @@ ext.cmdMap['农场日历'] = cmd_calendar;
 
 let cmd_plant = seal.ext.newCmdItemInfo();
 cmd_plant.name = '种地';
-cmd_plant.help = '种地 作物名 [数量]\n可种作物随季节变化，发送「农场日历」查看当季可种作物；不填数量=种1株，地不够或钱不够会尽量多种';
+cmd_plant.help = '种地 作物名\n可种作物随季节变化，发送「农场日历」查看当季可种作物';
 cmd_plant.solve = (ctx, msg) => {
     const ret = seal.ext.newCmdExecuteResult(true);
-    const raw = msg.message.replace(/^[。.]\S+\s*/, '').trim();
-    const parts = raw.split(/\s+/).filter(Boolean);
-    const cropName = parts[0];
-    const wantCount = Math.max(1, parseInt(parts[1]) || 1);
+    const cropName = msg.message.replace(/^[。.]\S+\s*/, '').trim();
     const crop = CROPS[cropName];
     const cal = getCalendar();
 
     if (!crop) {
-        seal.replyToSender(ctx, msg, `没有「${cropName || ''}」这种作物。发送「农场日历」查看本季可种作物。`);
+        seal.replyToSender(ctx, msg, `没有「${cropName}」这种作物。发送「农场日历」查看本季可种作物。`);
         return ret;
     }
     if (crop.season !== cal.season) {
@@ -822,44 +765,24 @@ cmd_plant.solve = (ctx, msg) => {
     const data = getData();
     const p = getPlayer(data, key, roleName, groupId);
 
-    const emptySlots = p.plots.filter(pl => pl === null).length;
-    if (emptySlots === 0) {
-        seal.replyToSender(ctx, msg, `地都种满啦，先「收菜」腾地方，或者「扩地」开新地！`);
-        return ret;
-    }
-    const affordable = Math.floor(p.coins / crop.cost);
-    if (affordable === 0) {
+    if (p.coins < crop.cost) {
         seal.replyToSender(ctx, msg, `金币不够啦！种${cropName}需要${crop.cost}金币，你只有${p.coins}金币。`);
         return ret;
     }
 
-    const actualCount = Math.min(wantCount, emptySlots, affordable);
-    const now = Date.now();
-    const plantedIdx = [];
-    for (let i = 0; i < p.plots.length && plantedIdx.length < actualCount; i++) {
-        if (p.plots[i] === null) {
-            p.plots[i] = { crop: cropName, plantedAt: now, matureAt: now + crop.growMs, notified: false, lastWateredAt: null, groupId };
-            plantedIdx.push(i + 1);
-        }
+    const emptyIdx = p.plots.findIndex(pl => pl === null);
+    if (emptyIdx === -1) {
+        seal.replyToSender(ctx, msg, `地都种满啦，先「收菜」腾地方，或者「扩地」开新地！`);
+        return ret;
     }
-    const totalCost = crop.cost * actualCount;
-    p.coins -= totalCost;
+
+    p.coins -= crop.cost;
+    const now = Date.now();
+    p.plots[emptyIdx] = { crop: cropName, plantedAt: now, matureAt: now + crop.growMs, notified: false, lastWateredAt: null, groupId };
     if (!p.plantedCrops.includes(cropName)) p.plantedCrops.push(cropName); // 成就墙："种过多少种作物"用这个
     saveData(data);
 
-    let shortfallHint = '';
-    if (actualCount < wantCount) {
-        shortfallHint = emptySlots < wantCount
-            ? `（想种${wantCount}株，但地不够，只种了${actualCount}株）`
-            : `（想种${wantCount}株，但金币不够，只种了${actualCount}株）`;
-    }
-
-    const plantedText = actualCount === 1
-        ? `🌱 在第${plantedIdx[0]}块地种下了${cropName}`
-        : `🌱 种下了${actualCount}株${cropName}（第${plantedIdx.join('/')}块地）`;
-    seal.replyToSender(ctx, msg,
-        `${plantedText}${shortfallHint}，约${fmtDuration(crop.growMs)}后成熟。\n共花费${totalCost}金币，剩余：${p.coins}`
-    );
+    seal.replyToSender(ctx, msg, `🌱 在第${emptyIdx + 1}块地种下了${cropName}，约${fmtDuration(crop.growMs)}后成熟。\n剩余金币：${p.coins}`);
     return ret;
 };
 ext.cmdMap['种地'] = cmd_plant;
@@ -2072,110 +1995,35 @@ cmd_steal.solve = (ctx, msg) => {
 ext.cmdMap['偷菜'] = cmd_steal;
 
 // ========================
-// 重复派发去重 + 日志审查：给所有已注册指令统一包一层。
-//
-// 【为什么需要去重】线上实测：玩家在群里只发了一次「。农场帮助」，这个指令的处理
-// 逻辑却被连续调用了几十次，而且每次拿到的 msg.rawId、msg.time、ctx.endPoint.id
-// 全都完全相同——说明是**同一条物理消息**被反复交给指令处理，不是玩家发了很多条。
-// 每一次都会回一条一千多字的长文本，几十次叠加就是刷屏，把连接和数据库一起拖垮，
-// 最后整个海豹进程卡死/崩溃。
-//
-// v1.9 之所以看起来正常，是因为当时那版"防刷屏"（按"2秒内同一人同一指令同样参数"
-// 静默忽略）顺手把这些重复调用全吃掉了；v2.1.2 应要求把防刷屏整个删掉之后，重复
-// 调用就全部放行，问题才暴露成"一用就无限循环"。所以真正的隐患一直都在，只是之前
-// 被那层保护盖住了。
-//
-// 【为什么用 rawId 而不是消息内容】旧的防刷屏按"消息文本"去重，玩家真心想连着发
-// 两次同一条指令也会被误吞；rawId 是这条消息在平台侧的唯一标识，同一个 rawId 只可能
-// 是同一条消息被重复派发，玩家自己再发一次会是一个新的 rawId，不会被误伤。
-// 拿不到 rawId 时（字段缺失/私聊等场景）退回用"用户+群+消息内容+秒级时间戳"兜底，
-// 只在同一秒内去重，正常玩家操作不可能受影响。
+// 指令：地牢入口 —— 纯悬念，还没有实际玩法，先埋个坑
 // ========================
 
-function safeGet(obj, field) {
-    try { return obj ? obj[field] : undefined; } catch (e) { return undefined; }
-}
-
-const SLOW_CMD_MS = 2000;           // 单条指令处理超过这个时间才打日志，正常执行不打（海豹自己已经记了"收到指令"）
-const DEDUPE_KEEP_MS = 60 * 1000;   // 处理过的消息标识保留1分钟，够挡住重复派发，也不会无限占内存
-const _handledMsgs = new Map();     // 消息唯一标识 -> 首次处理时间戳
-let _dupSuppressed = 0;             // 累计挡掉了多少次重复派发，只用于日志观测
-
-function dedupeKeyOf(msg) {
-    const rawId = safeGet(msg, 'rawId');
-    if (rawId !== undefined && rawId !== null && rawId !== '') return `raw:${rawId}`;
-    // 兜底：没有 rawId 就用 用户+群+内容+秒级时间戳，只在同一秒内视为重复
-    const who = msg && msg.sender ? safeGet(msg.sender, 'userId') : '?';
-    const t = safeGet(msg, 'time');
-    return `fb:${who}|${safeGet(msg, 'groupId')}|${safeGet(msg, 'message')}|${t !== undefined ? t : Math.floor(Date.now() / 1000)}`;
-}
-
-function isDuplicateDispatch(msg) {
-    const key = dedupeKeyOf(msg);
-    const now = Date.now();
-    for (const [k, t] of _handledMsgs) {
-        if (now - t > DEDUPE_KEEP_MS) _handledMsgs.delete(k);
-    }
-    if (_handledMsgs.has(key)) return true;
-    _handledMsgs.set(key, now);
-    return false;
-}
-
-let _invokeSeq = 0;
-const _loggedCmds = new Set();
-Object.keys(ext.cmdMap).forEach(name => {
-    const cmd = ext.cmdMap[name];
-    if (_loggedCmds.has(cmd)) return;
-    _loggedCmds.add(cmd);
-    const original = cmd.solve;
-    cmd.solve = (ctx, msg, cmdArgs) => {
-        if (isDuplicateDispatch(msg)) {
-            _dupSuppressed++;
-            console.log(`[长露谷] 同一条消息被重复派发，已忽略（指令「${name}」 rawId=${safeGet(msg, 'rawId')} 累计挡掉${_dupSuppressed}次）`);
-            return seal.ext.newCmdExecuteResult(true);
-        }
-        // 正常执行不打日志——海豹自己已经会记录"收到群内的指令: xxx"，重复记一遍只是白占
-        // 日志面板的内存。只在出异常或者跑得特别慢的时候才打，避免长期运行日志无限膨胀。
-        try {
-            const t0 = Date.now();
-            const result = original(ctx, msg, cmdArgs);
-            const cost = Date.now() - t0;
-            if (cost > SLOW_CMD_MS) console.log(`[长露谷] 指令「${name}」处理偏慢，耗时${cost}ms`);
-            return result;
-        } catch (e) {
-            const who = msg && msg.sender ? stripUid(msg.sender.userId) : '?';
-            const grp = msg ? stripGroup(msg.groupId) : '?';
-            console.error(`[长露谷] 指令「${name}」执行异常（用户=${who} 群=${grp} 消息="${msg && msg.message}"）: ${(e && e.stack) || e}`);
-            try {
-                seal.replyToSender(ctx, msg, `⚠️ 长露谷内部出错了，已记录日志，麻烦反馈给管理员（指令：${name}）`);
-            } catch (e2) {
-                console.error(`[长露谷] 连异常提示都发不出去: ${(e2 && e2.stack) || e2}`);
-            }
-            return seal.ext.newCmdExecuteResult(true);
-        }
-    };
-});
+let cmd_dungeon = seal.ext.newCmdItemInfo();
+cmd_dungeon.name = '地牢入口';
+cmd_dungeon.help = '长露谷地底似乎藏着什么……（地牢系统开发中，暂不可进入）';
+cmd_dungeon.solve = (ctx, msg) => {
+    const ret = seal.ext.newCmdExecuteResult(true);
+    seal.replyToSender(ctx, msg,
+        `🕳️ 长露谷边缘的杂草丛里，一扇锈迹斑斑的石门半掩着，往下延伸的台阶消失在黑暗中。\n` +
+        `门上刻着的纹路很旧了，看不出是什么年代的东西。\n\n` +
+        `——石门纹丝不动，进不去。\n\n` +
+        `（地牢系统开发中，敬请期待）`
+    );
+    return ret;
+};
+ext.cmdMap['地牢入口'] = cmd_dungeon;
+ext.cmdMap['地牢'] = cmd_dungeon;
 
 // ========================
 // 定时检查：换天天气/市场推进 + 下雨免费浇水 + 成熟/产出提醒（每分钟一次）
 // ========================
 
 let _farmTimer = null;
-let _farmTimerRunning = false;
-let _farmTimerTickSeq = 0;
 
 function startFarmTimer() {
     if (_farmTimer) clearInterval(_farmTimer);
     _farmTimer = setInterval(() => {
-        const tickSeq = ++_farmTimerTickSeq;
-        if (_farmTimerRunning) {
-            console.error(`[长露谷] 定时检查#${tickSeq}：上一次tick还没跑完就又触发了，可能是单次tick太慢/卡住了`);
-        }
-        _farmTimerRunning = true;
-        const _tickStart = Date.now();
-      try {
         const now = Date.now();
-
         const data = getData();
         const eps = seal.getEndPoints();
         let dirty = false;
@@ -2261,15 +2109,6 @@ function startFarmTimer() {
             saveWorld(world);
         }
         if (dirty) saveData(data);
-      } catch (e) {
-        console.error(`[长露谷] 定时检查#${tickSeq}整体异常: ${(e && e.stack) || e}`);
-      } finally {
-        _farmTimerRunning = false;
-        // 正常完成不打日志——每60秒一行，一天就是1440行，长期跑纯粹是白占日志内存。
-        // 只有跑得异常慢的时候才记一笔，方便发现性能问题。
-        const cost = Date.now() - _tickStart;
-        if (cost > SLOW_CMD_MS) console.log(`[长露谷] 定时检查#${tickSeq}偏慢，耗时${cost}ms`);
-      }
     }, 60 * 1000);
 }
 
