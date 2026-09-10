@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% block title %}殿选结果{% endblock %}
+{% block body %}
+<h2>殿选</h2>
+{% for r in reactions %}
+<p class="muted" style="margin-bottom:2px">{{ r.who }}：{{ r.ask }}</p>
+<p>你：{{ r.answer }}<br>{{ r.react }}</p>
+{% endfor %}
+<div style="display:flex;gap:20px;align-items:flex-start;margin-top:22px;flex-wrap:wrap">
+  <div class="pai big flip">{{ dn(c) }}</div>
+  <div class="decree" style="flex:1;min-width:240px">
+    太监高声唱道：「{{ full_name(c) }}，留牌子——」<br>
+    {% if title %}皇上赐封号「{{ title }}」。<br>{% endif %}
+    封为{{ dn(c) }}，赐居{{ c.palace }}。
+  </div>
+</div>
+<p class="muted" style="margin-top:14px">殿选得分 {{ total }}。</p>
+<p><a class="btn" href="{{ url_for('index') }}">去{{ c.palace }}</a></p>
+{% endblock %}

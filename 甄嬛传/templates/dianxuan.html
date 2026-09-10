@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% block title %}殿选{% endblock %}
+{% block head %}
+<style>
+.q{margin:0 0 22px}
+.q .who{font-family:var(--kai);font-size:18px;color:var(--zhu-deep)}
+.q label{margin:6px 0;padding:8px 12px;background:var(--paper);border:1px solid var(--line);cursor:pointer}
+.q label:has(input:checked){border-color:var(--zhu);box-shadow:inset 3px 0 0 var(--zhu)}
+</style>
+{% endblock %}
+{% block body %}
+<h2>体元殿·殿选</h2>
+<p>「{{ FAMILIES[c.family].name }}{{ full_name(c) }}，年十五。」太监唱名，你上前行礼。</p>
+<p class="muted">你的容貌 {{ c.appearance }}，才艺 {{ c.talent }}，心计 {{ c.scheme }}，德行 {{ c.virtue }}。回答时借自己擅长的一面，得分更高。</p>
+<form method="post">
+  {% for qu in qs %}
+  <fieldset class="q" style="border:none;padding:0">
+    <legend><span class="who">{{ qu.who }}</span>　{{ qu.ask }}</legend>
+    {% for o in qu.opts %}
+    <label><input type="radio" name="{{ qu.key }}" value="{{ loop.index0 }}" required> {{ o.text }}</label>
+    {% endfor %}
+  </fieldset>
+  {% endfor %}
+  <button>叩首作答</button>
+</form>
+{% endblock %}

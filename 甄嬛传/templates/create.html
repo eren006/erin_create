@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% block title %}秀女名册{% endblock %}
+{% block head %}
+<style>
+.pick{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
+.pick label{margin:0;padding:10px 12px;background:var(--paper);border:1px solid var(--line);cursor:pointer;font-size:14px}
+.pick input{margin-right:6px}
+.pick label:has(input:checked){border-color:var(--zhu);box-shadow:inset 3px 0 0 var(--zhu)}
+.pick b{font-weight:normal;font-family:var(--kai);font-size:17px}
+.pts td{border:none;padding:4px 8px}
+.pts input{width:64px}
+</style>
+{% endblock %}
+{% block body %}
+<h2>秀女名册</h2>
+<p class="muted">这些会记在内务府的名册上，定了就不能改。</p>
+<form method="post" id="f">
+  <div class="row">
+    <div><label for="s">姓</label><input id="s" name="surname" maxlength="4" required value="{{ form.surname or '' }}" style="width:90px"></div>
+    <div><label for="n">名</label><input id="n" name="given" maxlength="3" required value="{{ form.given or '' }}" style="width:110px"></div>
+  </div>
+
+  <label for="age">入宫年龄</label>
+  <select id="age" name="age">{% for n in range(18,23) %}<option value="{{ n }}" {{ 'selected' if (form.get('age',20)|int)==n }}>{{ n }}岁</option>{% endfor %}</select>
+  <p class="muted">宫中一天是半年，每晚长半岁；四十五岁起不再有孕。</p>
+  <h3>出身</h3>
+  <div class="pick">
+  {% for k, f in FAMILIES.items() %}
+    <label><input type="radio" name="family" value="{{ k }}" required {{ 'checked' if form.family==k }} data-mods='{{ f.mods|tojson }}'>
+      <b>{{ f.name }}</b><br>{{ f.desc }}<br>
+      <span class="muted">{% for s, v in f.mods.items() %}{{ STAT_NAMES[s] }}{{ '%+d'|format(v) }} {% endfor %}银子 {{ f.silver }}</span></label>
+  {% endfor %}
+  </div>
+
+  <h3>性格</h3>
+  <div class="pick">
+  {% for k, p in PERSONALITIES.items() %}
+    <label><input type="radio" name="personality" value="{{ k }}" required {{ 'checked' if form.personality==k }} data-mods='{{ p.mods|tojson }}'>
+      <b>{{ p.name }}</b><br>{{ p.desc }}<br>
+      <span class="muted">{% for s, v in p.mods.items() %}{{ STAT_NAMES[s] }}{{ '%+d'|format(v) }} {% endfor %}</span></label>
+  {% endfor %}
+  </div>
+
+  <h3>自身所长</h3>
+  <p class="muted">共 12 点，每项最多 10 点。殿选时皇上和太后会从不同方面考你。</p>
+  <table class="pts">
+    {% for k in ['appearance','talent','scheme','virtue'] %}
+    <tr><td>{{ STAT_NAMES[k] }}</td><td><input type="number" name="{{ k }}" min="0" max="10" value="{{ form[k] or 0 }}" class="pt"></td>
+        <td class="muted">合计 <span id="t-{{ k }}"></span></td></tr>
+    {% endfor %}
+    <tr><td>体质</td><td></td><td class="muted">合计 <span id="t-health"></span></td></tr>
+  </table>
+  <p>剩余点数：<b id="left">12</b></p>
+  <button>呈上名册，参加殿选</button>
+</form>
+<script>
+const BASE={appearance:40,talent:30,scheme:30,virtue:40,health:70};
+function recalc(){
+  let used=0, tot={...BASE};
+  document.querySelectorAll('.pt').forEach(i=>{const v=Math.max(0,Math.min(10,+i.value||0));used+=v;tot[i.name]+=v;});
+  document.querySelectorAll('input[type=radio]:checked').forEach(r=>{const m=JSON.parse(r.dataset.mods);for(const k in m)tot[k]+=m[k];});
+  for(const k in tot){const el=document.getElementById('t-'+k);if(el)el.textContent=Math.max(5,Math.min(100,tot[k]));}
+  const left=12-used, L=document.getElementById('left');L.textContent=left;L.style.color=left<0?'var(--bad)':'';
+}
+document.getElementById('f').addEventListener('input',recalc);recalc();
+</script>
+{% endblock %}

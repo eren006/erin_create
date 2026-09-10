@@ -1,0 +1,110 @@
+{% extends 'base.html' %}
+{% block title %}{{ c.palace or '宫苑' }}{% endblock %}
+{% block head %}
+<style>
+.me-top{display:flex;gap:22px;align-items:flex-start}
+.facts{flex:1;min-width:0}
+.facts .rank{font-family:var(--kai);font-size:28px;color:var(--zhu-deep);line-height:1.3}
+.facts dl{display:grid;grid-template-columns:auto 1fr;gap:2px 14px;margin:10px 0 0;font-size:15px}
+.facts dt{color:var(--muted)}
+.facts dd{margin:0}
+.bar{height:6px;background:var(--line);margin-top:4px;max-width:260px}
+.bar i{display:block;height:100%;background:var(--jin)}
+.pips{letter-spacing:3px;color:var(--zhu)}
+.state-cold{background:#D9DDD9;padding:12px 16px;margin:16px 0;border-left:4px solid #7F8A85}
+.state-conf{background:var(--paper);padding:12px 16px;margin:16px 0;border-left:4px solid var(--jin)}
+.acts{display:grid;gap:0}
+.act{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.act .what{flex:1;min-width:200px}
+.act .what b{font-weight:normal;font-family:var(--kai);font-size:18px}
+.act .cost{font-size:13px;color:var(--muted)}
+.act form{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.msgs{list-style:none;padding:0;margin:0}
+.msgs li{padding:8px 0 8px 12px;border-bottom:1px solid var(--line);border-left:3px solid transparent;font-size:15px}
+.msgs li.good{border-left-color:var(--good)} .msgs li.bad{border-left-color:var(--bad)} .msgs li.decree{border-left-color:var(--jin)}
+.msgs li.new{background:var(--paper)}
+.msgs .d{color:var(--muted);font-size:12px;margin-right:6px}
+@media (max-width:520px){ .me-top{gap:14px} .pai.big{width:48px;min-height:170px;font-size:20px} }
+</style>
+{% endblock %}
+{% block body %}
+<section class="me-top">
+  <div class="pai big {{ 'cold' if c.status=='cold' }}">{{ dn(c) }}</div>
+  <div class="facts">
+    <div class="rank">{{ dn(c) }}</div>
+    <div class="muted">{{ full_name(c) }}　{{ FAMILIES[c.family].name }}　{{ PERSONALITIES[c.personality].name }}</div>
+    <dl>
+      <dt>年龄</dt><dd>{{ age_text(c.age_months) }}　<span class="muted">宫中一天是半年</span></dd>
+      <dt>居所</dt><dd>{{ '冷宫' if c.status=='cold' else c.palace }}</dd>
+      <dt>圣宠</dt><dd>{{ c.favor }}　<span class="muted">{{ favor_word(c.favor) }}</span>
+        {% if promo %}<div class="bar"><i style="width:{{ [100, (c.favor * 100 / promo.favor)|int]|min }}%"></i></div>
+        <div class="muted">晋{{ promo.rank }}：圣宠 {{ promo.favor }}，德行 {{ promo.virtue }}
+          {%- if not promo.days_ok %}，还需在本位分多待些日子{% endif %}
+          {%- if not promo.slot %}，但{{ promo.rank }}名额已满{% endif %}</div>{% endif %}</dd>
+      <dt>银子</dt><dd>{{ c.silver }} 两</dd>
+      <dt>精力</dt><dd><span class="pips" aria-label="精力 {{ c.energy }}">{{ '●' * c.energy }}{{ '○' * (5 - c.energy if c.energy < 5 else 0) }}</span></dd>
+      <dt>容貌</dt><dd>{{ c.appearance }}　<span class="muted">才艺</span> {{ c.talent }}　<span class="muted">心计</span> {{ c.scheme }}　<span class="muted">德行</span> {{ c.virtue }}</dd>
+      <dt>体质</dt><dd>{{ c.health }}{% if sick %}　<span style="color:var(--bad)">卧病在床</span>{% endif %}</dd>
+      {% if c.pregnant_since %}<dt>喜脉</dt><dd>{% set left = PREGNANCY_DAYS - (day - c.pregnant_since) + 1 %}已有喜脉，{{ '今晚' if left <= 1 else ('明晚' if left == 2 else left ~ ' 次结算后') }}临盆　<span class="muted">当心入口的东西</span></dd>{% endif %}
+      {% if eyes %}<dt>眼线</dt><dd>在，到第 {{ c.eyes_until_day }} 日</dd>{% endif %}
+      {% if heirs %}<dt>子嗣</dt><dd>{% for h in heirs %}{{ heir_label(h) }}{{ '、' if not loop.last }}{% endfor %}</dd>{% endif %}
+    </dl>
+  </div>
+</section>
+
+{% if c.poisoned_day %}
+<div class="state-conf" role="alert"><b>你中毒了</b>
+<p>下一次结算（{{ next_settle }}）见生死：请了太医九成能活，没请只有三成五。禁足、冷宫里也能请；姐妹也可以替你请。</p>
+{% if c.poison_treatment %}<p>太医已经在了。</p>
+{% else %}<form method="post" action="{{ url_for('treat', tid=c.id) }}"><button {{ 'disabled' if c.silver < 50 }}>请太医（50 两）</button></form>{% endif %}
+</div>
+{% elif c.protected_until_day >= day %}<p class="state-conf">刚从鬼门关回来，第 {{ c.protected_until_day }} 天前不会再被毒害。</p>{% endif %}
+{% if c.status == 'cold' %}
+<div class="state-cold">你被废为庶人，关在冷宫里。第 {{ c.status_until_day }} 日夜里，皇上或许会念及旧情放你出来。姐妹可以替你求情，你自己也可以闭门自省，等一个转机。</div>
+{% elif c.status == 'confined' %}
+<div class="state-conf">禁足中，第 {{ c.status_until_day }} 日夜里解禁。这几天出不了宫门，只能在宫里修习、保养、自省。</div>
+{% endif %}
+
+<p class="muted" style="margin-top:14px">皇上今日{{ gs.emperor_mood }}，近来喜欢{{ gs.emperor_pref }}。{{ next_settle }} 敬事房递牌子，今天做的事到时一并见分晓。</p>
+
+<h3>今日</h3>
+<div class="acts">
+{% for key, a in ACTIONS.items() %}
+  {% set ok_status = c.status in a.when %}
+  {% if ok_status %}
+  {% set blocked = (a.get('sick_block') and sick) or c.energy < a.energy or c.silver < a.silver or counts[key] >= a.daily %}
+  <div class="act">
+    <div class="what"><b>{{ a.name }}</b>　<span class="cost">
+      {%- if a.energy %}精力 {{ a.energy }}{% endif %}{% if a.silver %}　银子 {{ a.silver }}{% endif %}　今日 {{ counts[key] }}/{{ a.daily }}</span>
+      <div class="muted">{{ a.desc }}</div></div>
+    <form method="post" action="{{ url_for('act', key=key) }}">
+      {% if key == 'study' %}
+        <select name="art" aria-label="才艺">{% for art in ARTS %}<option value="{{ art }}" {{ 'selected' if art==gs.emperor_pref }}>{{ art }}（{{ arts.get(art, 0) }}{% if arts.get(art,0) >= ART_MASTERY %}，精通{% endif %}）</option>{% endfor %}</select>
+      {% elif a.get('target') %}
+        <select name="target_id" aria-label="对象">
+          {% for p in players %}{% if key != 'plead' or p.status in ('confined','cold') %}<option value="{{ p.id }}">{{ dn(p) }}</option>{% endif %}{% endfor %}
+        </select>
+      {% endif %}
+      <button {{ 'disabled' if blocked }}>去做</button>
+    </form>
+  </div>
+  {% endif %}
+{% endfor %}
+</div>
+
+{% if c.secret != 'none' and not c.secret_revealed %}
+<h3>心事</h3>
+<p>你{{ secret.name }}。这件事若被人探去告发，便是{{ secret.penalty }}。</p>
+<form method="post" action="{{ url_for('confess') }}" onsubmit="return confirm('确定向皇上坦白吗？会受罚：{{ secret.confess }}');">
+  <button class="plain">主动向皇上坦白（从轻：{{ secret.confess }}）</button>
+</form>
+{% endif %}
+
+<h3>宫人来报</h3>
+{% if msgs %}
+<ul class="msgs">
+  {% for m in msgs %}<li class="{{ m.kind }} {{ 'new' if not m.is_read }}"><span class="d">第{{ m.day }}日</span>{{ m.text }}</li>{% endfor %}
+</ul>
+{% else %}<p class="muted">还没什么消息。</p>{% endif %}
+<p class="muted" style="margin-top:24px"><a href="{{ url_for('logout') }}">退出</a></p>
+{% endblock %}

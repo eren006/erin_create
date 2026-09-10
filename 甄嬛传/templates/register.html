@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+{% block title %}报名选秀{% endblock %}
+{% block body %}
+<h2>报名选秀</h2>
+<p class="muted">先定一个登录用的账号，下一步再填秀女的名字和出身。</p>
+<form method="post" class="sheet" style="max-width:420px">
+  <label for="u">账号（2~20 字）</label><input id="u" name="username" required autocomplete="username">
+  <label for="p">密码（至少 4 位）</label><input id="p" name="password" type="password" required autocomplete="new-password">
+  <div class="row" style="margin-top:14px"><button>下一步</button><a href="{{ url_for('login') }}">已有账号，去登录</a></div>
+</form>
+{% endblock %}

@@ -1,0 +1,8 @@
+{% extends 'base.html' %}
+{% block title %}宫史{% endblock %}
+{% block body %}
+<h2>我的宫史</h2>
+{% if c.status == 'dead' %}<div class="state-conf"><p>这一段宫中人生已经落幕，旧角色及皇嗣记录将保留。</p><form method="post" action="{{ url_for('rebirth') }}"><button>另建秀女，重新入宫</button></form><p class="muted">新秀女从殿选重新开始，不继承银子、位分、关系和道具。</p></div>{% endif %}
+{% for h in history %}<section class="sheet"><h3>{{ dn(h) }} · {{ full_name(h) }}</h3><p>享年 {{ age_text(h.age_months) }}，于 {{ palace_date(h.death_day) }} 离世。</p><p>{{ h.death_reason }}。末任位分：{{ RANK_NAMES[h.rank] }}。第 {{ h.entered_day }} 天入宫，侍寝 {{ h.bedded_count }} 次。</p></section>{% else %}<p class="muted">尚无已故角色记录。</p>{% endfor %}
+<p><a href="{{ url_for('logout') }}">退出</a></p>
+{% endblock %}
