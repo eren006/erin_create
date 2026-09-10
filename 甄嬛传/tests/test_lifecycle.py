@@ -37,7 +37,7 @@ class LifecycleTests(unittest.TestCase):
     def player(self, name, rank=4):
         uid = game.run('INSERT INTO users(username,password_hash,created_ts) VALUES(?,?,0)', (name, 'test')).lastrowid
         return game.run('''INSERT INTO consorts(user_id,surname,given,rank,status,entered_day,rank_since_day,
-                           family,personality,silver,age_months) VALUES(?,?,?,?,'normal',1,1,?,?,2000,240)''',
+                           family,personality,silver,age_months,recap_seen_day) VALUES(?,?,?,?,'normal',1,1,?,?,2000,240,9)''',
                         (uid, name, '测试', rank, next(iter(game.FAMILIES)), next(iter(game.PERSONALITIES)))).lastrowid
 
     def login(self, cid):
@@ -189,7 +189,8 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(game.get_consort(self.tgt)['status'], 'dead')
 
     def test_render_pages_and_poison_alert(self):
-        for route in ('/', '/intrigue', '/shop', '/social', '/ranks', '/heirs', '/memorial', '/gazette'):
+        for route in ('/', '/intrigue', '/shop', '/social', '/ranks', '/heirs', '/memorial', '/gazette', '/letters',
+                      '/place/home', '/place/jingren', '/place/garden', '/place/yangxin'):
             self.assertEqual(self.client.get(route).status_code, 200, route)
         self.poison()
         self.login(self.tgt)
@@ -206,13 +207,124 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(len(game.q('SELECT * FROM intrigues')), 0)
 
 
+class EmperorTests(unittest.TestCase):
+    """侍寝/召见场景、信任、口谕、昨夜宫中、书信"""
+    setUp = LifecycleTests.setUp
+    tearDown = LifecycleTests.tearDown
+    player = LifecycleTests.player
+    login = LifecycleTests.login
+
+    def test_bed_and_audience_create_scenes_and_recap(self):
+        c3 = self.player('丙')
+        with patch.object(game.random, 'random', return_value=0.99):
+            game.settle_day()
+        scenes = [game.get_scene(game.get_consort(i)) for i in (self.atk, self.tgt, c3)]
+        kinds = sorted((s['key'], s.get('bed')) for s in scenes if s)
+        self.assertEqual(kinds, [('audience', 0), ('audience', 0), ('audience', 1)])   # 1 侍寝 + 2 召见
+        st = game.state()
+        self.assertTrue(game.json.loads(st['last_bed_pool']))
+        # 早上先进「昨夜宫中」，看完再去定夺场景
+        self.assertEqual(self.client.get('/').location, '/recap')
+        body = self.client.get('/recap').get_data(as_text=True)
+        self.assertIn('绿头牌', body)
+        self.assertEqual(self.client.post('/recap/seen').location, '/')
+        self.assertEqual(self.client.get('/').location, '/scene')
+        self.assertIn('就这么办', self.client.get('/scene').get_data(as_text=True))
+        game.run('UPDATE consorts SET scheme=90, virtue=90, talent=90, appearance=90 WHERE id=?', (self.atk,))
+        before = game.get_consort(self.atk)
+        with patch.object(game.random, 'randint', return_value=40):   # 属性和运气都顶格，哪道题都必成
+            r = self.client.post('/scene', data={'opt': 2})             # 直言
+        self.assertEqual(r.status_code, 200)
+        after = game.get_consort(self.atk)
+        self.assertGreater(after['trust'], before['trust'])
+        self.assertEqual(after['pending_scene'], '')
+        self.assertEqual(self.client.get('/').status_code, 200)
+
+    def test_scene_expires_at_next_settlement(self):
+        game.start_scene(self.atk, 'garden_emperor')
+        game.run("UPDATE consorts SET status='cold' WHERE id=?", (self.tgt,))
+        game.run("UPDATE consorts SET status='confined', status_until_day=99 WHERE id=?", (self.atk,))
+        game.settle_day()
+        self.assertEqual(game.get_consort(self.atk)['pending_scene'], '')
+
+    def test_audience_weight_favors_the_unseen(self):
+        a, b = game.get_consort(self.atk), game.get_consort(self.tgt)
+        game.run('UPDATE consorts SET last_audience_day=9 WHERE id=?', (self.atk,))
+        game.run('UPDATE consorts SET last_audience_day=0 WHERE id=?', (self.tgt,))
+        wa = game.audience_weight(game.get_consort(self.atk), 10)
+        wb = game.audience_weight(game.get_consort(self.tgt), 10)
+        self.assertEqual(wa, 10 + 20 * 0.3 + 1 * 4)
+        self.assertEqual(wb, 10 + 20 * 0.3 + 10 * 4)
+
+    def test_plead_in_bed_uses_trust(self):
+        game.run("UPDATE consorts SET status='confined', status_until_day=15 WHERE id=?", (self.tgt,))
+        game.run('INSERT INTO relations(a_id,b_id,sister) VALUES(?,?,1)', (self.atk, self.tgt))
+        game.start_scene(self.atk, 'audience', prompt=0, bed=1)
+        opts = game.scene_view(game.get_consort(self.atk), game.get_scene(game.get_consort(self.atk)))[2]
+        self.assertTrue(opts[-1].get('plead'))
+        game.run('UPDATE consorts SET trust=80 WHERE id=?', (self.atk,))
+        with patch.object(game.random, 'randint', return_value=0):   # 信任 80 + 0 ≥ 50，成
+            self.client.post('/scene', data={'opt': len(opts) - 1, 'target_id': self.tgt})
+        self.assertEqual(game.get_consort(self.tgt)['status_until_day'], 14)
+
+    def test_edicts_follow_real_events(self):
+        game.run("UPDATE consorts SET status='confined', status_until_day=10 WHERE id=?", (self.tgt,))
+        game.run("UPDATE consorts SET entered_day=2, last_audience_day=9 WHERE id=?", (self.atk,))   # 避开入宫周年、久未见驾
+        with patch.object(game.random, 'random', return_value=0.99):
+            game.settle_day()
+        e = game.q("SELECT text FROM messages WHERE consort_id=? AND kind='edict'", (self.tgt,), one=True)
+        self.assertIn('可想明白了', e['text'])
+        # 没发生什么的人不发口谕
+        self.assertIsNone(game.q("SELECT 1 FROM messages WHERE consort_id=? AND kind='edict'", (self.atk,), one=True))
+
+    def test_anniversary_edict_quotes_dianxuan(self):
+        game.run("UPDATE consorts SET entered_day=1, dianxuan_quote='「家母常说，素净是女子本分。」' WHERE id=?", (self.atk,))
+        game.run("UPDATE consorts SET status='cold' WHERE id=?", (self.tgt,))
+        with patch.object(game.random, 'random', return_value=0.99):
+            game.settle_day()   # 第 10 天夜里，入宫满十个半年 = 五年
+        e = game.q("SELECT text FROM messages WHERE consort_id=? AND kind='edict'", (self.atk,), one=True)
+        self.assertIn('你入宫五年了', e['text'])
+        self.assertIn('素净是女子本分', e['text'])
+
+    def test_trust_halves_rumor_and_shapes_expose(self):
+        game.run('UPDATE consorts SET favor=100, trust=60 WHERE id=?', (self.tgt,))
+        it = dict(id=0, method='rumor', attacker_id=self.atk, target_id=self.tgt)
+        with patch.object(game.random, 'random', return_value=0.0):
+            game.resolve_intrigue(it)
+        self.assertEqual(game.get_consort(self.tgt)['favor'], 93)   # 信任 ≥50：只折 7.5%
+        a, t = game.get_consort(self.atk), game.get_consort(self.tgt)
+        game.run('UPDATE consorts SET trust=20 WHERE id=?', (self.atk,))
+        low = game.intrigue_success_p(game.get_consort(self.atk), t, game.INTRIGUES['expose'])
+        game.run('UPDATE consorts SET trust=60 WHERE id=?', (self.atk,))
+        high = game.intrigue_success_p(game.get_consort(self.atk), t, game.INTRIGUES['expose'])
+        self.assertAlmostEqual(high - low, 0.2, places=5)   # 告发人信任每 +1，成功率 +0.5%
+
+    def test_letters_and_affinity_cap(self):
+        game.inv_add(self.atk, 'ruyi', 1)
+        self.client.post('/letters/send', data={'to_id': self.tgt, 'body': '姐姐安好', 'silver': 30, 'item': 'ruyi'})
+        self.client.post('/letters/send', data={'to_id': self.tgt, 'body': '再写一封'})
+        self.assertEqual(len(game.q('SELECT * FROM letters')), 2)
+        self.assertEqual(game.relation(self.atk, self.tgt)['affinity'], 17)   # 第一封 +2，玉如意 +15，第二封不加
+        self.assertEqual(game.get_consort(self.tgt)['silver'], 2030)
+        self.assertEqual(game.inv_qty(self.tgt, 'ruyi'), 0)                   # 玉如意送出即用掉
+        self.login(self.tgt)
+        body = self.client.get('/letters').get_data(as_text=True)
+        self.assertIn('姐姐安好', body)
+        game.run("UPDATE consorts SET status='cold' WHERE id=?", (self.tgt,))
+        self.client.post('/letters/send', data={'to_id': self.atk, 'body': '救我', 'silver': 5})
+        self.assertEqual(len(game.q('SELECT * FROM letters')), 2)             # 冷宫送不出东西
+        self.client.post('/letters/send', data={'to_id': self.atk, 'body': '救我'})
+        self.assertEqual(len(game.q('SELECT * FROM letters')), 3)             # 只写信可以
+
+
 class MigrationTests(unittest.TestCase):
     def test_old_schema_migration_is_repeatable(self):
         with tempfile.TemporaryDirectory() as directory:
             game.DB_PATH = str(Path(directory) / 'old.db')
             schema = (ROOT / 'schema.sql').read_text()
             fields = ('age_months', 'poisoned_day', 'poison_treatment', 'protected_until_day',
-                      'death_day', 'death_reason', 'archived_user_id', 'lethal_ready_day')
+                      'death_day', 'death_reason', 'archived_user_id', 'lethal_ready_day', 'trust', 'pending_scene',
+                      'recap_seen_day', 'last_audience_day', 'last_promote_day', 'dianxuan_quote', 'is_night')
             schema = '\n'.join(line for line in schema.splitlines() if not any(line.strip().startswith(f + ' ') for f in fields))
             with sqlite3.connect(game.DB_PATH) as db: db.executescript(schema)
             game.init_db()

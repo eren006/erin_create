@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block title %}书信{% endblock %}
+{% block head %}
+<style>
+.letter{padding:14px 0;border-bottom:1px solid var(--line)}
+.letter .hd{font-size:14px;color:var(--muted)}
+.letter .hd b{font-weight:normal;font-family:var(--kai);font-size:18px;color:var(--ink);margin-right:6px}
+.letter .body{white-space:pre-wrap;margin:6px 0 0;font-size:16px;line-height:1.85;max-width:34em}
+.letter.new{background:var(--paper);padding-left:12px;border-left:3px solid var(--jin)}
+.compose textarea{width:100%;min-height:120px;line-height:1.7}
+.compose .row{margin-top:10px}
+</style>
+{% endblock %}
+{% block body %}
+<h2>书信</h2>
+<form method="post" action="{{ url_for('letter_send') }}" class="sheet compose">
+  <label for="to">寄给</label>
+  <select id="to" name="to_id" required>
+    {% for o in others %}<option value="{{ o.id }}" {{ 'selected' if o.id == to }}>{{ dn(o) }}{{ '（冷宫）' if o.status == 'cold' }}</option>{% endfor %}
+  </select>
+  <label for="body">写些什么（最多 {{ LETTER_MAX_LEN }} 字）</label>
+  <textarea id="body" name="body" maxlength="{{ LETTER_MAX_LEN }}" required></textarea>
+  {% if c.status != 'cold' %}
+  <div class="row">
+    <label for="silver" style="margin:0">附银子</label><input id="silver" type="number" name="silver" min="0" max="{{ c.silver }}" value="0" style="width:90px">
+    <label for="item" style="margin:0">附东西</label>
+    <select id="item" name="item"><option value="">不附</option>{% for i in inv %}<option value="{{ i.item_key }}">{{ ITEMS[i.item_key].name }} ×{{ i.qty }}</option>{% endfor %}</select>
+  </div>
+  {% endif %}
+  <div class="row"><button {{ 'disabled' if left <= 0 or not others }}>送出去</button>
+    <span class="muted">今天还能送 {{ left }} 封。每天给同一个人的第一封信好感 +2，附玉如意再 +15。</span></div>
+</form>
+
+<h3>收到的</h3>
+{% for l in inbox %}{% set f = get_consort(l.from_id) %}
+<div class="letter {{ 'new' if not l.is_read }}">
+  <div class="hd"><b>{{ dn(f) }}</b>第 {{ l.day }} 天{% if l.silver %}，附银子 {{ l.silver }} 两{% endif %}{% if l.item_key %}，附{{ ITEMS[l.item_key].name if l.item_key in ITEMS else l.item_key }}{% endif %}
+    {% if f.status not in ('dead',) %}　<a href="{{ url_for('letters', to=f.id) }}">回信</a>{% endif %}</div>
+  <p class="body">{{ l.body }}</p>
+</div>
+{% else %}<p class="muted">还没有人给你写过信。</p>{% endfor %}
+
+{% if sent %}
+<h3>送出的</h3>
+{% for l in sent %}{% set t = get_consort(l.to_id) %}
+<div class="letter">
+  <div class="hd"><b>给{{ dn(t) }}</b>第 {{ l.day }} 天{{ '，她已读' if l.is_read else '，还没读' }}</div>
+  <p class="body">{{ l.body }}</p>
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}

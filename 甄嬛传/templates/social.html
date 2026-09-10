@@ -38,6 +38,7 @@
       {% if o.status != 'cold' %}
       <form method="post" action="{{ url_for('act', key='visit') }}"><input type="hidden" name="target_id" value="{{ o.id }}"><input type="hidden" name="back" value="social"><button class="plain">串门</button></form>
       {% endif %}
+      <a class="btn plain" href="{{ url_for('letters', to=o.id) }}">写信</a>
       <form method="post" action="{{ url_for('act', key='spy') }}"><input type="hidden" name="target_id" value="{{ o.id }}"><input type="hidden" name="back" value="social"><button class="plain">打探（30 两）</button></form>
       {% if o.status in ('confined','cold') %}
       <form method="post" action="{{ url_for('act', key='plead') }}"><input type="hidden" name="target_id" value="{{ o.id }}"><input type="hidden" name="back" value="social"><button class="plain">求情（50 两）</button></form>
@@ -48,16 +49,6 @@
       <form method="post" action="{{ url_for('sister', action='invite', tid=o.id) }}"><button class="plain">结为姐妹</button></form>
       {% elif r and r.invite_from == c.id %}<span class="muted">已递话，等她回应</span>{% endif %}
     </div>
-    {% if o.status != 'cold' %}
-    <div>
-      <form method="post" action="{{ url_for('gift', tid=o.id) }}"><input type="hidden" name="kind" value="silver">
-        <input type="number" name="amount" min="1" max="{{ c.silver }}" placeholder="银两" aria-label="送多少银子"><button class="plain">送银子</button></form>
-      {% if inv %}
-      <form method="post" action="{{ url_for('gift', tid=o.id) }}"><input type="hidden" name="kind" value="item">
-        <select name="item" aria-label="送什么">{% for i in inv %}<option value="{{ i.item_key }}">{{ ITEMS[i.item_key].name }} ×{{ i.qty }}</option>{% endfor %}</select><button class="plain">送东西</button></form>
-      {% endif %}
-    </div>
-    {% endif %}
   </div>
 </div>
 {% endfor %}

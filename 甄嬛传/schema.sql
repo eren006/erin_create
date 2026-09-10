@@ -57,6 +57,13 @@ CREATE TABLE IF NOT EXISTS consorts (
     death_reason     TEXT NOT NULL DEFAULT '',
     archived_user_id INTEGER,
 
+    trust            INTEGER NOT NULL DEFAULT 20,   -- 皇上的信任 0~100，与圣宠分开
+    pending_scene    TEXT NOT NULL DEFAULT '',      -- 待定夺的场景 JSON，结算时清空
+    recap_seen_day   INTEGER NOT NULL DEFAULT 0,    -- 看过「昨夜宫中」到第几夜
+    last_audience_day INTEGER NOT NULL DEFAULT 0,   -- 上次侍寝或被召见是哪天
+    last_promote_day INTEGER NOT NULL DEFAULT 0,
+    dianxuan_quote   TEXT NOT NULL DEFAULT '',      -- 殿选时说过的第一句话，入宫周年时皇上会提起
+
     aggression       REAL NOT NULL DEFAULT 0,       -- 仅 NPC：每晚出手概率
     intro            TEXT NOT NULL DEFAULT '',
     created_ts       INTEGER NOT NULL DEFAULT 0
@@ -69,7 +76,8 @@ CREATE TABLE IF NOT EXISTS game_state (
     emperor_mood     TEXT NOT NULL DEFAULT '平和',
     emperor_pref     TEXT NOT NULL DEFAULT '琴',
     last_bed_id      INTEGER NOT NULL DEFAULT 0,
-    last_bed_day     INTEGER NOT NULL DEFAULT 0
+    last_bed_day     INTEGER NOT NULL DEFAULT 0,
+    last_bed_pool    TEXT NOT NULL DEFAULT '[]'     -- 当晚递上去的绿头牌，「昨夜宫中」回放用
 );
 
 CREATE TABLE IF NOT EXISTS intrigues (
@@ -89,17 +97,19 @@ CREATE TABLE IF NOT EXISTS messages (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     consort_id  INTEGER NOT NULL,
     day         INTEGER NOT NULL,
-    kind        TEXT NOT NULL DEFAULT 'info',       -- info / good / bad / decree
+    kind        TEXT NOT NULL DEFAULT 'info',       -- info / good / bad / decree / edict(口谕)
     text        TEXT NOT NULL,
     is_read     INTEGER NOT NULL DEFAULT 0,
+    is_night    INTEGER NOT NULL DEFAULT 0,         -- 夜间结算时产生的
     created_ts  INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS gazette (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     day         INTEGER NOT NULL,
-    kind        TEXT NOT NULL DEFAULT 'news',       -- news / bed / decree / scandal / birth
+    kind        TEXT NOT NULL DEFAULT 'news',       -- news / bed / audience / decree / scandal / birth / death
     text        TEXT NOT NULL,
+    is_night    INTEGER NOT NULL DEFAULT 0,
     created_ts  INTEGER NOT NULL
 );
 
@@ -144,6 +154,19 @@ CREATE TABLE IF NOT EXISTS daily_counters (
     PRIMARY KEY (consort_id, key, day)
 );
 
+CREATE TABLE IF NOT EXISTS letters (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    from_id     INTEGER NOT NULL,
+    to_id       INTEGER NOT NULL,
+    day         INTEGER NOT NULL,
+    body        TEXT NOT NULL,
+    silver      INTEGER NOT NULL DEFAULT 0,
+    item_key    TEXT NOT NULL DEFAULT '',
+    is_read     INTEGER NOT NULL DEFAULT 0,
+    created_ts  INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_letters_to      ON letters(to_id, id DESC);
 CREATE INDEX IF NOT EXISTS idx_consorts_rank    ON consorts(rank DESC, favor DESC);
 CREATE INDEX IF NOT EXISTS idx_intrigues_status ON intrigues(status, day);
 CREATE INDEX IF NOT EXISTS idx_messages_owner   ON messages(consort_id, id DESC);
