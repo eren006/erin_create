@@ -98,6 +98,99 @@ const STEAL_SHARE = 0.4;
 const STEAL_DAILY_LIMIT = 3;
 
 // ========================
+// 配置：地牢（星露谷矿井风格）—— 单指令=下探一层，回合制自动结算，不做逐回合直播文本，
+// 每层结果都控制在几百字节以内，避免重蹈"农场帮助"那条超长消息被平台静默丢弃的覆辙。
+// ========================
+
+const DUNGEON_DAILY_FLOOR_LIMIT = 5;   // 每天最多下探的层数（不是"进入地牢"的次数，是层数预算）
+const DUNGEON_CHECKPOINT_INTERVAL = 5; // 每5层一个电梯存档点，参照星露谷矿井
+const DUNGEON_MAX_FLOOR = 30;          // 目前开放到第30层（6个存档点），后续可加深
+const DUNGEON_EVENT_CHANCE = 0.15;     // 不打斗、直接挖到矿脉/宝箱的概率
+const DUNGEON_MAX_ROUNDS = 15;         // 单场战斗回合数上限，防止极端情况下死循环/消息过长
+const DUNGEON_HIT_CHANCE = 0.9;
+const DUNGEON_CRIT_CHANCE = 0.1;
+const DUNGEON_CRIT_MULT = 1.5;
+
+// 玩家战斗力直接从等级派生，不单独做装备/加点系统——跟"等级是唯一成长轴"的整体设计保持一致。
+const DUNGEON_BASE_HP = 40;
+const DUNGEON_HP_PER_LEVEL = 3;
+const DUNGEON_BASE_ATK = 6;
+const DUNGEON_ATK_PER_LEVEL = 0.6;
+
+// 怪物按楼层区间分桶，越深越强，每个桶对应一个存档点区间。
+const DUNGEON_MONSTER_TIERS = [
+    { maxFloor: 5, names: ['史莱姆', '洞穴蝙蝠'], hp: 18, atk: 4, coinMin: 8, coinMax: 18 },
+    { maxFloor: 10, names: ['骷髅兵', '巨型蜘蛛'], hp: 34, atk: 7, coinMin: 15, coinMax: 32 },
+    { maxFloor: 15, names: ['石头人', '毒沼史莱姆'], hp: 55, atk: 11, coinMin: 26, coinMax: 55 },
+    { maxFloor: 20, names: ['幽灵', '熔岩蟹'], hp: 82, atk: 16, coinMin: 42, coinMax: 85 },
+    { maxFloor: 25, names: ['暗影骑士', '冰霜巨魔'], hp: 115, atk: 22, coinMin: 65, coinMax: 130 },
+    { maxFloor: 30, names: ['深渊守卫', '远古巨龙'], hp: 160, atk: 30, coinMin: 100, coinMax: 200 },
+];
+
+// 稀有材料掉落表：金币每次通关都有，这个是叠加在金币之上的小概率额外收获，
+// 挖矿事件和打赢怪物都会roll一次。走现有 goods 仓库，靠「卖成品」「送礼」流通，
+// 不需要新开指令或新的仓库字段（value 在 goodsValue() 里查）。
+const DUNGEON_LOOT = {
+    '粗糙矿石': { value: 15, chance: 0.12 },
+    '闪光矿石': { value: 45, chance: 0.045 },
+    '幽晶石': { value: 130, chance: 0.012 },
+    '龙鳞碎片': { value: 350, chance: 0.003 },
+};
+const DUNGEON_LOOT_NAMES = Object.keys(DUNGEON_LOOT);
+
+function newDungeonState() {
+    return { floor: 0, hp: null, bestFloor: 0, day: null, floorsToday: 0, lifetimeRuns: 0 };
+}
+
+function dungeonPlayerStats(p) {
+    const level = calcLevel(p.totalEarned);
+    return {
+        maxHp: DUNGEON_BASE_HP + level * DUNGEON_HP_PER_LEVEL,
+        atk: DUNGEON_BASE_ATK + level * DUNGEON_ATK_PER_LEVEL,
+    };
+}
+
+function dungeonMonsterFor(floor) {
+    const tier = DUNGEON_MONSTER_TIERS.find(t => floor <= t.maxFloor) || DUNGEON_MONSTER_TIERS[DUNGEON_MONSTER_TIERS.length - 1];
+    const name = tier.names[Math.floor(Math.random() * tier.names.length)];
+    return { name, hp: tier.hp, atk: tier.atk, coinMin: tier.coinMin, coinMax: tier.coinMax };
+}
+
+function rollDungeonLoot() {
+    const r = Math.random();
+    let cum = 0;
+    for (const name of DUNGEON_LOOT_NAMES) {
+        cum += DUNGEON_LOOT[name].chance;
+        if (r < cum) return name;
+    }
+    return null;
+}
+
+// 双方轮流攻击直到一方倒下或回合数封顶（封顶视为玩家见势不妙撤退，不算失败也没有收获）。
+// playerCombat.hp 传入的是"这一轮探险剩余的HP"，不是满血——层与层之间不自动回血，
+// 只有开新一轮下潜（新的一天/力竭之后）才会回满，这是刻意保留的张力，参照星露谷矿井。
+function resolveDungeonBattle(playerCombat, monster) {
+    let pHp = playerCombat.hp;
+    let mHp = monster.hp;
+    let rounds = 0;
+    while (pHp > 0 && mHp > 0 && rounds < DUNGEON_MAX_ROUNDS) {
+        rounds++;
+        if (Math.random() < DUNGEON_HIT_CHANCE) {
+            const crit = Math.random() < DUNGEON_CRIT_CHANCE;
+            mHp -= Math.round(playerCombat.atk * (crit ? DUNGEON_CRIT_MULT : 1));
+        }
+        if (mHp <= 0) break;
+        if (Math.random() < DUNGEON_HIT_CHANCE) {
+            const crit = Math.random() < DUNGEON_CRIT_CHANCE;
+            pHp -= Math.round(monster.atk * (crit ? DUNGEON_CRIT_MULT : 1));
+        }
+    }
+    if (mHp <= 0) return { win: true, fled: false, roundsUsed: rounds, playerHpLeft: Math.max(0, pHp) };
+    if (pHp <= 0) return { win: false, fled: false, roundsUsed: rounds, playerHpLeft: 0 };
+    return { win: false, fled: true, roundsUsed: rounds, playerHpLeft: Math.max(0, pHp) };
+}
+
+// ========================
 // 配置：四季日历 / 天气 / 市场
 // ========================
 
@@ -309,6 +402,7 @@ const TV_LEARN_CHANCE = 0.4;
 // p.goods 只要存 { 物品名: 数量 } 就够了，卖/送礼时现算现用。
 function goodsValue(itemName) {
     if (RECIPES[itemName]) return RECIPES[itemName].value;
+    if (DUNGEON_LOOT[itemName]) return DUNGEON_LOOT[itemName].value;
     if (itemName.endsWith('酒')) {
         const crop = CROPS[itemName.slice(0, -1)];
         if (crop) return Math.round(crop.sell * WINE_VALUE_MULT);
@@ -572,6 +666,7 @@ function newPlayer(roleName, groupId) {
         lifetimeSteals: 0,
         banner: '',
         equippedDecoration: DEFAULT_DECORATION,
+        dungeon: newDungeonState(),
     };
 }
 
@@ -596,6 +691,7 @@ function getPlayer(data, key, roleName, groupId) {
     if (p.lifetimeSteals == null) p.lifetimeSteals = 0;
     if (p.banner == null) p.banner = '';
     if (!p.equippedDecoration) p.equippedDecoration = DEFAULT_DECORATION;
+    if (!p.dungeon) p.dungeon = newDungeonState();
     if (!p.groups) p.groups = [];
     if (roleName) p.roleName = roleName;
     if (groupId && !p.groups.includes(groupId)) p.groups.push(groupId);
