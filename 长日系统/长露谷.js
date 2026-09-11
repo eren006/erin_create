@@ -498,6 +498,9 @@ const ACHIEVEMENTS = [
     { id: 'lv10', name: '小有所成', desc: '达到 Lv.10', check: p => calcLevel(p.totalEarned) >= 10 },
     { id: 'lv50', name: '一方巨贾', desc: '达到 Lv.50', check: p => calcLevel(p.totalEarned) >= 50 },
     { id: 'lv100', name: '世界首富', desc: '达到 Lv.100', check: p => calcLevel(p.totalEarned) >= 100 },
+    { id: 'dungeon1', name: '初探地牢', desc: '第一次下地牢探险', check: p => (p.dungeon && p.dungeon.lifetimeRuns || 0) >= 1 },
+    { id: 'dungeon10', name: '矿工学徒', desc: `地牢存档点达到第${DUNGEON_CHECKPOINT_INTERVAL * 2}层`, check: p => (p.dungeon && p.dungeon.bestFloor || 0) >= DUNGEON_CHECKPOINT_INTERVAL * 2 },
+    { id: 'dungeonMax', name: '地心探险家', desc: `地牢存档点达到第${DUNGEON_MAX_FLOOR}层`, check: p => (p.dungeon && p.dungeon.bestFloor || 0) >= DUNGEON_MAX_FLOOR },
 ];
 
 // ========================
@@ -515,6 +518,7 @@ const DECORATIONS = {
     '🍷': { name: '酒庄徽记', hint: '建好酒窖', unlock: p => p.brewery.unlocked },
     '🍳': { name: '大厨徽记', hint: `学会全部${RECIPE_NAMES.length}道菜谱`, unlock: p => p.learnedRecipes.length >= RECIPE_NAMES.length },
     '👑': { name: '首富勋章', hint: `达到 Lv.${MAX_LEVEL}`, unlock: p => calcLevel(p.totalEarned) >= MAX_LEVEL },
+    '⛏️': { name: '矿工徽记', hint: `地牢存档点达到第${DUNGEON_CHECKPOINT_INTERVAL * 2}层`, unlock: p => (p.dungeon && p.dungeon.bestFloor || 0) >= DUNGEON_CHECKPOINT_INTERVAL * 2 },
 };
 const DECORATION_EMOJIS = Object.keys(DECORATIONS);
 
@@ -766,6 +770,9 @@ let cmd_help = seal.ext.newCmdItemInfo();
 cmd_help.name = '农场帮助';
 cmd_help.help = '查看长露谷全部指令';
 cmd_help.solve = (ctx, msg) => {
+    // 拆成两条消息发：这条指令曾经是一整条 ~3200 字节的长文本，超过平台单条消息的
+    // 静默丢弃阈值（表现为"指令没反应"），是历史事故之一。现在按内容分两段发，
+    // 每段都远低于那个阈值，加新指令时也不要把新内容塞回一条大消息里。
     const ret = seal.ext.newCmdExecuteResult(true);
     seal.replyToSender(ctx, msg,
         `🌾 长露谷 ⚠️Beta测试版\n${'─'.repeat(16)}\n` +
@@ -798,8 +805,11 @@ cmd_help.solve = (ctx, msg) => {
         `钓鱼             随机钓到不同价值的鱼（冷却${Math.round(FISH_COOLDOWN / 60000)}分钟，雨天空军率减半）\n` +
         `\n【市场与天气】\n` +
         `市场行情         查看今天各作物的实时收购价（每天波动）\n` +
-        `农场天气         查看今天天气：雨天免费帮全部作物浇一次水+钓鱼空军率减半，晴天养殖产出+20%\n` +
-        `\n【主线与社交】\n` +
+        `农场天气         查看今天天气：雨天免费帮全部作物浇一次水+钓鱼空军率减半，晴天养殖产出+20%`
+    );
+    seal.replyToSender(ctx, msg,
+        `🌾 长露谷指令（续）\n${'─'.repeat(16)}\n` +
+        `【主线与社交】\n` +
         `还债 [数量]      偿还欠款，不填数量=尽量还清，没有期限\n` +
         `欠款进度         查看欠款\n` +
         `等级             查看等级、称号，离下一级还差多少（终身累计赚取决定，1~100级）\n` +
@@ -808,7 +818,7 @@ cmd_help.solve = (ctx, msg) => {
         `我的农场         地块/养殖/原料/成品/酒窖/厨房/金币/欠款/等级/天气总览\n` +
         `农场排行         本群财富排行榜（前10名，按终身累计赚取排序）\n` +
         `偷菜 @群友       偷取对方成熟未收的作物一部分（每天最多${STEAL_DAILY_LIMIT}次）\n` +
-        `地牢入口         长露谷地底似乎藏着什么……（开发中，暂不可进入）\n` +
+        `地牢入口         回合制下探地牢，每天限${DUNGEON_DAILY_FLOOR_LIMIT}层，发送「地牢图鉴」看详情\n` +
         `\n每${SEASON_DAYS}天换一季，春夏秋冬循环，作物随季节变化，换季不会枯死。\n` +
         `换季那天全群会有一次节日活动，所有农场主都能收到节日礼金。\n` +
         `新玩家初始 ${START_COINS} 金币、${BASE_PLOTS} 块地。作物成熟、动物产出、酒/菜做好都会主动@你提醒。`
@@ -2097,24 +2107,153 @@ cmd_steal.solve = (ctx, msg) => {
 ext.cmdMap['偷菜'] = cmd_steal;
 
 // ========================
-// 指令：地牢入口 —— 纯悬念，还没有实际玩法，先埋个坑
+// 指令：地牢入口 / 地牢图鉴
 // ========================
+
+// 地牢专用的重复派发防护：只包这一个指令的 solve，不碰任何其它已注册指令。
+// 历史事故（v2.3.0）是给全部指令套了一层全局 monkeypatch 去重+异常捕获，改动面太大，
+// 很可能也是当时"到底是什么改坏了农场帮助"排查不清的原因之一。这里换成只在地牢自己
+// 内部判断，去重逻辑（rawId优先，拿不到就退回"用户+群+内容+秒级时间戳"兜底）跟当年
+// dedupeKeyOf 的思路一致，但爆炸半径缩小到只有地牢这一个功能。
+const DUNGEON_DEDUPE_KEEP_MS = 60 * 1000;
+const _dungeonHandled = new Map();
+function isDuplicateDungeonDispatch(msg) {
+    const rawId = msg && msg.rawId;
+    const key = (rawId !== undefined && rawId !== null && rawId !== '')
+        ? `raw:${rawId}`
+        : `fb:${msg && msg.sender ? msg.sender.userId : '?'}|${msg && msg.groupId}|${msg && msg.message}|${Math.floor(Date.now() / 1000)}`;
+    const now = Date.now();
+    for (const [k, t] of _dungeonHandled) {
+        if (now - t > DUNGEON_DEDUPE_KEEP_MS) _dungeonHandled.delete(k);
+    }
+    if (_dungeonHandled.has(key)) return true;
+    _dungeonHandled.set(key, now);
+    return false;
+}
 
 let cmd_dungeon = seal.ext.newCmdItemInfo();
 cmd_dungeon.name = '地牢入口';
-cmd_dungeon.help = '长露谷地底似乎藏着什么……（地牢系统开发中，暂不可进入）';
+cmd_dungeon.help = `地牢入口\n下探一层，回合制自动战斗结算，每天最多${DUNGEON_DAILY_FLOOR_LIMIT}层。\n` +
+    `每${DUNGEON_CHECKPOINT_INTERVAL}层解锁一次电梯存档点，力竭会被送回最近的存档点（没有额外惩罚）。\n` +
+    `层与层之间HP不回满，只有开新一轮下潜才会满血。发送「地牢图鉴」看怪物和矿藏详情。`;
 cmd_dungeon.solve = (ctx, msg) => {
     const ret = seal.ext.newCmdExecuteResult(true);
-    seal.replyToSender(ctx, msg,
-        `🕳️ 长露谷边缘的杂草丛里，一扇锈迹斑斑的石门半掩着，往下延伸的台阶消失在黑暗中。\n` +
-        `门上刻着的纹路很旧了，看不出是什么年代的东西。\n\n` +
-        `——石门纹丝不动，进不去。\n\n` +
-        `（地牢系统开发中，敬请期待）`
-    );
+    if (isDuplicateDungeonDispatch(msg)) return ret;
+
+    const { groupId, roleName, key } = getCtxInfo(msg);
+    const data = getData();
+    const p = getPlayer(data, key, roleName, groupId);
+
+    const today = currentDayIndex();
+    if (p.dungeon.day !== today) {
+        p.dungeon.day = today;
+        p.dungeon.floorsToday = 0;
+        p.dungeon.floor = p.dungeon.bestFloor; // 新的一天，从存档点重新出发
+        p.dungeon.hp = null; // 强制满血重来
+    }
+
+    if (p.dungeon.floorsToday >= DUNGEON_DAILY_FLOOR_LIMIT) {
+        seal.replyToSender(ctx, msg,
+            `⛏️ 今天已经下探${DUNGEON_DAILY_FLOOR_LIMIT}层了，体力耗尽，明天再来吧。（存档点：第${p.dungeon.bestFloor}层）`);
+        return ret;
+    }
+
+    if (p.dungeon.floor >= DUNGEON_MAX_FLOOR) {
+        seal.replyToSender(ctx, msg,
+            `⛏️ 已经到了目前挖掘到的最深处（第${DUNGEON_MAX_FLOOR}层），再往下的通道还没打通，敬请期待后续更新。`);
+        return ret;
+    }
+
+    const stats = dungeonPlayerStats(p);
+    if (p.dungeon.hp == null) p.dungeon.hp = stats.maxHp;
+
+    const nextFloor = p.dungeon.floor + 1;
+    p.dungeon.floorsToday++;
+    p.dungeon.lifetimeRuns = (p.dungeon.lifetimeRuns || 0) + 1;
+
+    let text = `⛏️ 第${nextFloor}层\n`;
+
+    if (Math.random() < DUNGEON_EVENT_CHANCE) {
+        // 挖矿/宝箱事件，不打斗，直接拿收获
+        const oreCoin = randInt(5, 15 + nextFloor);
+        const leveledUp = earnCoins(p, oreCoin);
+        const loot = rollDungeonLoot();
+        if (loot) p.goods[loot] = (p.goods[loot] || 0) + 1;
+        p.dungeon.floor = nextFloor;
+        let checkpointLine = '';
+        if (nextFloor % DUNGEON_CHECKPOINT_INTERVAL === 0 && nextFloor > p.dungeon.bestFloor) {
+            p.dungeon.bestFloor = nextFloor;
+            checkpointLine = `\n🛗 电梯延伸到了这里，解锁存档点第${nextFloor}层。`;
+        }
+        text += `发现一处矿脉，挖到了${oreCoin}金币${loot ? `，还捡到一块「${loot}」` : ''}！${checkpointLine}\n` +
+            `剩余HP：${p.dungeon.hp}/${stats.maxHp}${levelUpHint(leveledUp)}`;
+        saveData(data);
+        seal.replyToSender(ctx, msg, text);
+        return ret;
+    }
+
+    const monster = dungeonMonsterFor(nextFloor);
+    const battle = resolveDungeonBattle({ atk: stats.atk, hp: p.dungeon.hp }, monster);
+
+    if (battle.win) {
+        const coin = randInt(monster.coinMin, monster.coinMax);
+        const leveledUp = earnCoins(p, coin);
+        const loot = rollDungeonLoot();
+        if (loot) p.goods[loot] = (p.goods[loot] || 0) + 1;
+        p.dungeon.floor = nextFloor;
+        p.dungeon.hp = battle.playerHpLeft;
+        let checkpointLine = '';
+        if (nextFloor % DUNGEON_CHECKPOINT_INTERVAL === 0 && nextFloor > p.dungeon.bestFloor) {
+            p.dungeon.bestFloor = nextFloor;
+            checkpointLine = `\n🛗 电梯延伸到了这里，解锁存档点第${nextFloor}层。`;
+        }
+        text += `遭遇${monster.name}，激战${battle.roundsUsed}回合后击败了它！获得${coin}金币${loot ? `，还捡到一块「${loot}」` : ''}。${checkpointLine}\n` +
+            `剩余HP：${p.dungeon.hp}/${stats.maxHp}${levelUpHint(leveledUp)}`;
+    } else if (battle.fled) {
+        p.dungeon.hp = battle.playerHpLeft;
+        text += `与${monster.name}缠斗了${battle.roundsUsed}回合不分胜负，你见势不妙先撤了，这一层没有收获。\n` +
+            `剩余HP：${p.dungeon.hp}/${stats.maxHp}`;
+    } else {
+        text += `不敌${monster.name}，力竭倒地……被传送回了存档点第${p.dungeon.bestFloor}层，这一层没有收获，好在没有别的损失。`;
+        p.dungeon.floor = p.dungeon.bestFloor;
+        p.dungeon.hp = null; // 下次重新满血
+    }
+
+    saveData(data);
+    seal.replyToSender(ctx, msg, text);
     return ret;
 };
 ext.cmdMap['地牢入口'] = cmd_dungeon;
 ext.cmdMap['地牢'] = cmd_dungeon;
+
+let cmd_dungeon_codex = seal.ext.newCmdItemInfo();
+cmd_dungeon_codex.name = '地牢图鉴';
+cmd_dungeon_codex.help = '查看地牢的怪物分层、矿藏和规则说明';
+cmd_dungeon_codex.solve = (ctx, msg) => {
+    const ret = seal.ext.newCmdExecuteResult(true);
+    const { groupId, roleName, key } = getCtxInfo(msg);
+    const data = getData();
+    const p = getPlayer(data, key, roleName, groupId);
+    saveData(data);
+
+    const tierLines = DUNGEON_MONSTER_TIERS.map((t, i) => {
+        const from = i === 0 ? 1 : DUNGEON_MONSTER_TIERS[i - 1].maxFloor + 1;
+        return `第${from}~${t.maxFloor}层：${t.names.join('/')}（HP${t.hp} 攻${t.atk}，胜利得${t.coinMin}~${t.coinMax}金币）`;
+    });
+    const lootLines = DUNGEON_LOOT_NAMES.map(n =>
+        `${n}  值${DUNGEON_LOOT[n].value}金币  概率${(DUNGEON_LOOT[n].chance * 100).toFixed(1)}%`);
+
+    seal.replyToSender(ctx, msg,
+        `⛏️ 长露谷地牢图鉴\n${'─'.repeat(16)}\n` +
+        `你的存档点：第${p.dungeon.bestFloor}层，今天已下探${p.dungeon.floorsToday}/${DUNGEON_DAILY_FLOOR_LIMIT}层\n\n` +
+        `【怪物分层】\n${tierLines.join('\n')}\n\n` +
+        `【稀有材料】（打赢怪物或挖到矿脉时额外掉落，走成品仓库，可「卖成品」「送礼」）\n${lootLines.join('\n')}\n\n` +
+        `规则：每次「地牢入口」下探一层，回合制自动战斗；层与层之间HP不回满，力竭会被送回最近存档点，` +
+        `不扣钱不扣进度；每${DUNGEON_CHECKPOINT_INTERVAL}层解锁一个新存档点；每天限${DUNGEON_DAILY_FLOOR_LIMIT}层，明天重置。`
+    );
+    return ret;
+};
+ext.cmdMap['地牢图鉴'] = cmd_dungeon_codex;
 
 // ========================
 // 定时检查：换天天气/市场推进 + 下雨免费浇水 + 成熟/产出提醒（每分钟一次）
