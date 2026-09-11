@@ -2,7 +2,7 @@ format_version = "1.0.0"
 
 [package]
 id = "changri/farm"
-name = "长露谷（Beta，测试中请勿下载）"
+name = "长露谷（Beta）"
 version = "2.4.0"
 authors = ["长日将尽"]
 license = "MIT"

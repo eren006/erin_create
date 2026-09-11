@@ -633,7 +633,7 @@ function getCtxInfo(msg) {
 // 注意：很多群要求"@机器人 才能触发指令"，这种情况下消息里第一个 [CQ:at] 其实是机器人，
 // 如果只取第一个匹配会把机器人自己当成偷菜目标，必须过滤掉才能拿到真正 @ 的那个人。
 function extractAtTargets(ctx, msg) {
-    const botUid = ctx && ctx.endPoint && ctx.endPoint.userId ? String(ctx.endPoint.userId) : null;
+    const botUid = ctx && ctx.endPoint && ctx.endPoint.userId ? stripUid(String(ctx.endPoint.userId)) : null;
     const selfUid = stripUid(msg.sender.userId);
     const uids = [...msg.message.matchAll(/\[CQ:at,qq=(\d+)\]/g)].map(m => m[1]);
     return uids.filter(uid => uid !== botUid && uid !== selfUid);
