@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         长露谷
 // @author       长日将尽
-// @version      2.5.0
+// @version      2.5.1
 // @description  【Beta测试版，数值/规则可能随时调整】种地(32种作物)、浇水、养殖(鸡/羊/牛)、钓鱼、酿酒、做饭(25道菜谱)、逛商店的群互动小游戏，成就墙+家园装饰，四季日历+天气生态联动+浮动市场+节日活动+看电视解锁菜谱，作物/动物/酒/菜到期主动提醒，还能互相偷菜/送礼/下地牢
 // @license      MIT
 // ==/UserScript==
@@ -14,6 +14,8 @@
 // 2.5.0：重新做了地牢（星露谷矿井风格：下探分层+电梯存档点+回合制战斗+挖矿事件），
 // 没有加任何重复派发去重/全局 monkeypatch（当年出事的就是那层）；顺手把「农场帮助」
 // 那条一直卡在事故阈值附近的超长消息按内容拆成了两条，避免重蹈覆辙。
+// 2.5.1：存档点楼层（第5/10/15…层）改成固定关底boss战，打赢才解锁电梯，不再跟挖矿
+// 事件随机二选一；boss保底掉一次稀有材料。
 
 /**
  * 数据存储
@@ -78,7 +80,7 @@
 
 let ext = seal.ext.find('changri_farm');
 if (!ext) {
-    ext = seal.ext.new('changri_farm', '长日将尽', '2.5.0');
+    ext = seal.ext.new('changri_farm', '长日将尽', '2.5.1');
     seal.ext.register(ext);
     ext.autoActive = true;
 }
@@ -122,13 +124,20 @@ const DUNGEON_ATK_PER_LEVEL = 0.6;
 
 // 怪物按楼层区间分桶，越深越强，每个桶对应一个存档点区间。
 const DUNGEON_MONSTER_TIERS = [
-    { maxFloor: 5, names: ['史莱姆', '洞穴蝙蝠'], hp: 18, atk: 4, coinMin: 8, coinMax: 18 },
-    { maxFloor: 10, names: ['骷髅兵', '巨型蜘蛛'], hp: 34, atk: 7, coinMin: 15, coinMax: 32 },
-    { maxFloor: 15, names: ['石头人', '毒沼史莱姆'], hp: 55, atk: 11, coinMin: 26, coinMax: 55 },
-    { maxFloor: 20, names: ['幽灵', '熔岩蟹'], hp: 82, atk: 16, coinMin: 42, coinMax: 85 },
-    { maxFloor: 25, names: ['暗影骑士', '冰霜巨魔'], hp: 115, atk: 22, coinMin: 65, coinMax: 130 },
-    { maxFloor: 30, names: ['深渊守卫', '远古巨龙'], hp: 160, atk: 30, coinMin: 100, coinMax: 200 },
+    { maxFloor: 5, names: ['史莱姆', '洞穴蝙蝠'], boss: '巨型史莱姆王', hp: 18, atk: 4, coinMin: 8, coinMax: 18 },
+    { maxFloor: 10, names: ['骷髅兵', '巨型蜘蛛'], boss: '骸骨领主', hp: 34, atk: 7, coinMin: 15, coinMax: 32 },
+    { maxFloor: 15, names: ['石头人', '毒沼史莱姆'], boss: '石中魔像', hp: 55, atk: 11, coinMin: 26, coinMax: 55 },
+    { maxFloor: 20, names: ['幽灵', '熔岩蟹'], boss: '怨灵首领', hp: 82, atk: 16, coinMin: 42, coinMax: 85 },
+    { maxFloor: 25, names: ['暗影骑士', '冰霜巨魔'], boss: '暗影骑士长', hp: 115, atk: 22, coinMin: 65, coinMax: 130 },
+    { maxFloor: 30, names: ['深渊守卫', '远古巨龙'], boss: '巨龙之王', hp: 160, atk: 30, coinMin: 100, coinMax: 200 },
 ];
+
+// 关底怪：每个电梯存档点（第5/10/15…层）不再是普通遭遇/挖矿事件二选一，而是固定一场比同档
+// 怪物更强的boss战，打赢才能解锁存档点；掉落保底——稀有材料没roll中的话至少给最低档一个，
+// 让"守着电梯的怪"名副其实。数值直接在同档怪物基础上乘系数，不单独开一张表。
+const DUNGEON_BOSS_HP_MULT = 1.8;
+const DUNGEON_BOSS_ATK_MULT = 1.3;
+const DUNGEON_BOSS_COIN_MULT = 1.5;
 
 // 稀有材料掉落表：金币每次通关都有，这个是叠加在金币之上的小概率额外收获，
 // 挖矿事件和打赢怪物都会roll一次。走现有 goods 仓库，靠「卖成品」「送礼」流通，
@@ -156,7 +165,19 @@ function dungeonPlayerStats(p) {
 function dungeonMonsterFor(floor) {
     const tier = DUNGEON_MONSTER_TIERS.find(t => floor <= t.maxFloor) || DUNGEON_MONSTER_TIERS[DUNGEON_MONSTER_TIERS.length - 1];
     const name = tier.names[Math.floor(Math.random() * tier.names.length)];
-    return { name, hp: tier.hp, atk: tier.atk, coinMin: tier.coinMin, coinMax: tier.coinMax };
+    return { name, hp: tier.hp, atk: tier.atk, coinMin: tier.coinMin, coinMax: tier.coinMax, isBoss: false };
+}
+
+function dungeonBossFor(floor) {
+    const tier = DUNGEON_MONSTER_TIERS.find(t => floor <= t.maxFloor) || DUNGEON_MONSTER_TIERS[DUNGEON_MONSTER_TIERS.length - 1];
+    return {
+        name: tier.boss,
+        hp: Math.round(tier.hp * DUNGEON_BOSS_HP_MULT),
+        atk: Math.round(tier.atk * DUNGEON_BOSS_ATK_MULT),
+        coinMin: Math.round(tier.coinMin * DUNGEON_BOSS_COIN_MULT),
+        coinMax: Math.round(tier.coinMax * DUNGEON_BOSS_COIN_MULT),
+        isBoss: true,
+    };
 }
 
 function rollDungeonLoot() {
@@ -2116,7 +2137,7 @@ ext.cmdMap['偷菜'] = cmd_steal;
 let cmd_dungeon = seal.ext.newCmdItemInfo();
 cmd_dungeon.name = '地牢入口';
 cmd_dungeon.help = `地牢入口\n下探一层，回合制自动战斗结算，每天最多${DUNGEON_DAILY_FLOOR_LIMIT}层。\n` +
-    `每${DUNGEON_CHECKPOINT_INTERVAL}层解锁一次电梯存档点，力竭会被送回最近的存档点（没有额外惩罚）。\n` +
+    `每${DUNGEON_CHECKPOINT_INTERVAL}层是一场关底boss战，打赢才解锁电梯存档点；力竭会被送回最近的存档点（没有额外惩罚）。\n` +
     `层与层之间HP不回满，只有开新一轮下潜才会满血。发送「地牢图鉴」看怪物和矿藏详情。`;
 cmd_dungeon.solve = (ctx, msg) => {
     const ret = seal.ext.newCmdExecuteResult(true);
@@ -2149,46 +2170,45 @@ cmd_dungeon.solve = (ctx, msg) => {
     if (p.dungeon.hp == null) p.dungeon.hp = stats.maxHp;
 
     const nextFloor = p.dungeon.floor + 1;
+    const isCheckpointFloor = nextFloor % DUNGEON_CHECKPOINT_INTERVAL === 0;
     p.dungeon.floorsToday++;
     p.dungeon.lifetimeRuns = (p.dungeon.lifetimeRuns || 0) + 1;
 
     let text = `⛏️ 第${nextFloor}层\n`;
 
-    if (Math.random() < DUNGEON_EVENT_CHANCE) {
+    // 存档点楼层固定是关底怪，不参与挖矿/宝箱事件的随机——打赢boss才能解锁电梯。
+    if (!isCheckpointFloor && Math.random() < DUNGEON_EVENT_CHANCE) {
         // 挖矿/宝箱事件，不打斗，直接拿收获
         const oreCoin = randInt(5, 15 + nextFloor);
         const leveledUp = earnCoins(p, oreCoin);
         const loot = rollDungeonLoot();
         if (loot) p.goods[loot] = (p.goods[loot] || 0) + 1;
         p.dungeon.floor = nextFloor;
-        let checkpointLine = '';
-        if (nextFloor % DUNGEON_CHECKPOINT_INTERVAL === 0 && nextFloor > p.dungeon.bestFloor) {
-            p.dungeon.bestFloor = nextFloor;
-            checkpointLine = `\n🛗 电梯延伸到了这里，解锁存档点第${nextFloor}层。`;
-        }
-        text += `发现一处矿脉，挖到了${oreCoin}金币${loot ? `，还捡到一块「${loot}」` : ''}！${checkpointLine}\n` +
+        text += `发现一处矿脉，挖到了${oreCoin}金币${loot ? `，还捡到一块「${loot}」` : ''}！\n` +
             `剩余HP：${p.dungeon.hp}/${stats.maxHp}${levelUpHint(leveledUp)}`;
         saveData(data);
         seal.replyToSender(ctx, msg, text);
         return ret;
     }
 
-    const monster = dungeonMonsterFor(nextFloor);
+    const monster = isCheckpointFloor ? dungeonBossFor(nextFloor) : dungeonMonsterFor(nextFloor);
     const battle = resolveDungeonBattle({ atk: stats.atk, hp: p.dungeon.hp }, monster);
 
     if (battle.win) {
         const coin = randInt(monster.coinMin, monster.coinMax);
         const leveledUp = earnCoins(p, coin);
-        const loot = rollDungeonLoot();
+        let loot = rollDungeonLoot();
+        if (!loot && monster.isBoss) loot = DUNGEON_LOOT_NAMES[0]; // boss保底至少给最低档材料
         if (loot) p.goods[loot] = (p.goods[loot] || 0) + 1;
         p.dungeon.floor = nextFloor;
         p.dungeon.hp = battle.playerHpLeft;
         let checkpointLine = '';
-        if (nextFloor % DUNGEON_CHECKPOINT_INTERVAL === 0 && nextFloor > p.dungeon.bestFloor) {
+        if (isCheckpointFloor && nextFloor > p.dungeon.bestFloor) {
             p.dungeon.bestFloor = nextFloor;
             checkpointLine = `\n🛗 电梯延伸到了这里，解锁存档点第${nextFloor}层。`;
         }
-        text += `遭遇${monster.name}，激战${battle.roundsUsed}回合后击败了它！获得${coin}金币${loot ? `，还捡到一块「${loot}」` : ''}。${checkpointLine}\n` +
+        const bossPrefix = monster.isBoss ? '👹 关底！' : '';
+        text += `${bossPrefix}遭遇${monster.name}，激战${battle.roundsUsed}回合后击败了它！获得${coin}金币${loot ? `，还捡到一块「${loot}」` : ''}。${checkpointLine}\n` +
             `剩余HP：${p.dungeon.hp}/${stats.maxHp}${levelUpHint(leveledUp)}`;
     } else if (battle.fled) {
         p.dungeon.hp = battle.playerHpLeft;
@@ -2219,7 +2239,8 @@ cmd_dungeon_codex.solve = (ctx, msg) => {
 
     const tierLines = DUNGEON_MONSTER_TIERS.map((t, i) => {
         const from = i === 0 ? 1 : DUNGEON_MONSTER_TIERS[i - 1].maxFloor + 1;
-        return `第${from}~${t.maxFloor}层：${t.names.join('/')}（HP${t.hp} 攻${t.atk}，胜利得${t.coinMin}~${t.coinMax}金币）`;
+        return `第${from}~${t.maxFloor}层：${t.names.join('/')}（HP${t.hp} 攻${t.atk}，胜利得${t.coinMin}~${t.coinMax}金币）\n` +
+            `　　└ 第${t.maxFloor}层关底：${t.boss}（HP${Math.round(t.hp * DUNGEON_BOSS_HP_MULT)} 攻${Math.round(t.atk * DUNGEON_BOSS_ATK_MULT)}，胜利得${Math.round(t.coinMin * DUNGEON_BOSS_COIN_MULT)}~${Math.round(t.coinMax * DUNGEON_BOSS_COIN_MULT)}金币，稀有材料保底掉落）`;
     });
     const lootLines = DUNGEON_LOOT_NAMES.map(n =>
         `${n}  值${DUNGEON_LOOT[n].value}金币  概率${(DUNGEON_LOOT[n].chance * 100).toFixed(1)}%`);
@@ -2230,7 +2251,7 @@ cmd_dungeon_codex.solve = (ctx, msg) => {
         `【怪物分层】\n${tierLines.join('\n')}\n\n` +
         `【稀有材料】（打赢怪物或挖到矿脉时额外掉落，走成品仓库，可「卖成品」「送礼」）\n${lootLines.join('\n')}\n\n` +
         `规则：每次「地牢入口」下探一层，回合制自动战斗；层与层之间HP不回满，力竭会被送回最近存档点，` +
-        `不扣钱不扣进度；每${DUNGEON_CHECKPOINT_INTERVAL}层解锁一个新存档点；每天限${DUNGEON_DAILY_FLOOR_LIMIT}层，明天重置。`
+        `不扣钱不扣进度；每${DUNGEON_CHECKPOINT_INTERVAL}层是关底boss战，打赢才解锁新存档点；每天限${DUNGEON_DAILY_FLOOR_LIMIT}层，明天重置。`
     );
     return ret;
 };
