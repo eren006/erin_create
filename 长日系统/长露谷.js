@@ -12,8 +12,8 @@
 // 所以标成 2.4.0。被回退掉的 2.3.0 全部内容保存在 git 提交 42c84dc，需要时可取回。
 // 2.4.1：修了送礼/偷菜在"@机器人才能触发指令"群里误把机器人自己当目标的 bug。
 // 2.5.0：重新做了地牢（星露谷矿井风格：下探分层+电梯存档点+回合制战斗+挖矿事件），
-// 这次去重/异常捕获只包地牢指令自己，不做全局 monkeypatch；顺手把「农场帮助」那条
-// 一直卡在事故阈值附近的超长消息拆成了两条，避免重蹈覆辙。
+// 没有加任何重复派发去重/全局 monkeypatch（当年出事的就是那层）；顺手把「农场帮助」
+// 那条一直卡在事故阈值附近的超长消息按内容拆成了两条，避免重蹈覆辙。
 
 /**
  * 数据存储
@@ -2113,27 +2113,6 @@ ext.cmdMap['偷菜'] = cmd_steal;
 // 指令：地牢入口 / 地牢图鉴
 // ========================
 
-// 地牢专用的重复派发防护：只包这一个指令的 solve，不碰任何其它已注册指令。
-// 历史事故（v2.3.0）是给全部指令套了一层全局 monkeypatch 去重+异常捕获，改动面太大，
-// 很可能也是当时"到底是什么改坏了农场帮助"排查不清的原因之一。这里换成只在地牢自己
-// 内部判断，去重逻辑（rawId优先，拿不到就退回"用户+群+内容+秒级时间戳"兜底）跟当年
-// dedupeKeyOf 的思路一致，但爆炸半径缩小到只有地牢这一个功能。
-const DUNGEON_DEDUPE_KEEP_MS = 60 * 1000;
-const _dungeonHandled = new Map();
-function isDuplicateDungeonDispatch(msg) {
-    const rawId = msg && msg.rawId;
-    const key = (rawId !== undefined && rawId !== null && rawId !== '')
-        ? `raw:${rawId}`
-        : `fb:${msg && msg.sender ? msg.sender.userId : '?'}|${msg && msg.groupId}|${msg && msg.message}|${Math.floor(Date.now() / 1000)}`;
-    const now = Date.now();
-    for (const [k, t] of _dungeonHandled) {
-        if (now - t > DUNGEON_DEDUPE_KEEP_MS) _dungeonHandled.delete(k);
-    }
-    if (_dungeonHandled.has(key)) return true;
-    _dungeonHandled.set(key, now);
-    return false;
-}
-
 let cmd_dungeon = seal.ext.newCmdItemInfo();
 cmd_dungeon.name = '地牢入口';
 cmd_dungeon.help = `地牢入口\n下探一层，回合制自动战斗结算，每天最多${DUNGEON_DAILY_FLOOR_LIMIT}层。\n` +
@@ -2141,7 +2120,6 @@ cmd_dungeon.help = `地牢入口\n下探一层，回合制自动战斗结算，�
     `层与层之间HP不回满，只有开新一轮下潜才会满血。发送「地牢图鉴」看怪物和矿藏详情。`;
 cmd_dungeon.solve = (ctx, msg) => {
     const ret = seal.ext.newCmdExecuteResult(true);
-    if (isDuplicateDungeonDispatch(msg)) return ret;
 
     const { groupId, roleName, key } = getCtxInfo(msg);
     const data = getData();
