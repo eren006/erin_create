@@ -11,11 +11,13 @@
 // 直接回退到已知可用的 1.9.1；版本号只能递增（否则装了 2.x 的人收不到这次更新），
 // 所以标成 2.4.0。被回退掉的 2.3.0 全部内容保存在 git 提交 42c84dc，需要时可取回。
 // 2.4.1：修了送礼/偷菜在"@机器人才能触发指令"群里误把机器人自己当目标的 bug。
-// 2.5.0：重新做了地牢（星露谷矿井风格：下探分层+电梯存档点+回合制战斗+挖矿事件），
-// 没有加任何重复派发去重/全局 monkeypatch（当年出事的就是那层）；顺手把「农场帮助」
-// 那条一直卡在事故阈值附近的超长消息按内容拆成了两条，避免重蹈覆辙。
-// 2.5.1：存档点楼层（第5/10/15…层）改成固定关底boss战，打赢才解锁电梯，不再跟挖矿
-// 事件随机二选一；boss保底掉一次稀有材料。
+// 2.5.1：（2.5.0从没实际部署过，这次一起发）重新做了地牢（星露谷矿井风格：下探
+// 分层+电梯存档点+回合制战斗+挖矿事件），存档点楼层固定是关底boss战，打赢才解锁
+// 电梯，boss保底掉一次稀有材料；拆了「农场帮助」那条一直卡在事故阈值附近的超长
+// 消息；修了偷菜/送礼只要真的@到人就完全没反应的 bug——extractAtTargets 原来用
+// matchAll+展开语法取@目标，海豹骰的JS引擎（Goja，不是V8）对这个ES2020迭代器语法
+// 支持不完整，没@命中时不触发（所以两个指令平时看起来正常），一旦真的@到人、需要
+// 从迭代器里取值就直接执行出错。换成更基础的 match 之后问题消失。
 
 /**
  * 数据存储
@@ -760,7 +762,12 @@ function getCtxInfo(msg) {
 function extractAtTargets(ctx, msg) {
     const botUid = ctx && ctx.endPoint && ctx.endPoint.userId ? stripUid(String(ctx.endPoint.userId)) : null;
     const selfUid = stripUid(msg.sender.userId);
-    const uids = [...msg.message.matchAll(/\[CQ:at,qq=(\d+)\]/g)].map(m => m[1]);
+    // 用 match 而不是 matchAll+展开：海豹骰的JS引擎是Goja（纯Go实现，不是V8），
+    // 对matchAll这种ES2020迭代器语法支持不完整，实测消息里真的有@命中时会直接执行
+    // 出错（没有@命中时反而不会触发这个问题，因为根本没有真正取值）——表现就是
+    // 偷菜/送礼一旦真的@到人就完全没反应。match是更老、更基础的API，兼容性更好。
+    const rawMatches = msg.message.match(/\[CQ:at,qq=\d+\]/g) || [];
+    const uids = rawMatches.map(s => s.match(/\d+/)[0]);
     return uids.filter(uid => uid !== botUid && uid !== selfUid);
 }
 
