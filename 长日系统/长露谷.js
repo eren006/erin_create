@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         长露谷
 // @author       长日将尽
-// @version      2.4.0
-// @description  【Beta测试版，数值/规则可能随时调整】种地(32种作物)、浇水、养殖(鸡/羊/牛)、钓鱼、酿酒、做饭(25道菜谱)、逛商店的群互动小游戏，成就墙+家园装饰，四季日历+天气生态联动+浮动市场+节日活动+看电视解锁菜谱，作物/动物/酒/菜到期主动提醒，还能互相偷菜/送礼
+// @version      2.5.0
+// @description  【Beta测试版，数值/规则可能随时调整】种地(32种作物，一键种菜可批量种)、浇水、养殖(鸡/羊/牛)、钓鱼、酿酒、做饭(25道菜谱)、逛商店的群互动小游戏，成就墙+家园装饰，四季日历+天气生态联动+浮动市场+节日活动+看电视解锁菜谱，作物换季不收会枯萎，作物/动物/酒/菜到期主动提醒，还能互相偷菜/送礼
 // @license      MIT
 // ==/UserScript==
 
@@ -10,6 +10,13 @@
 // 2.x 之后加的地牢/防刷屏/指令包装层等改动导致「农场帮助」在群里收不到，排查未果，
 // 直接回退到已知可用的 1.9.1；版本号只能递增（否则装了 2.x 的人收不到这次更新），
 // 所以标成 2.4.0。被回退掉的 2.3.0 全部内容保存在 git 提交 42c84dc，需要时可取回。
+//
+// 2.5.0：在回退后的 1.9.1 基础上新增——
+//   ① 一键种菜：花 AUTO_PLANT_UNLOCK_COST 金币解锁一次，之后可以把当季某种作物一口气种满所有空地；
+//   ② 作物枯萎：换季规则从"跨季也能正常长成"改为"换季时地里还没收的作物会枯死"（类似原版星露谷），
+//      对「种地」「一键种菜」种下的作物一视同仁，在 checkFestival() 换季检测那里统一处理；
+//   ③ 更新公告：老玩家换到这个版本后，下次触发任意长露谷指令时会先收到一条"这次更新了什么"的提示，
+//      只弹一次，靠 p.lastSeenVersion 记录，实现见文件末尾"更新公告"包装。
 
 /**
  * 数据存储
@@ -37,6 +44,8 @@
  *   lifetimeGifts / lifetimeSteals   终身送礼/偷菜次数（不像stealCount那样每天重置），只用于成就墙
  *   banner                     自定义招牌文字，纯观赏
  *   equippedDecoration         佩戴中的徽记（emoji，见 DECORATIONS），纯观赏
+ *   autoPlantUnlocked          是否已解锁「一键种菜」（一次性付费解锁，见 AUTO_PLANT_UNLOCK_COST）
+ *   lastSeenVersion            已看过的更新公告版本号，用于"下次触发任意指令时提示更新内容"只弹一次
  *
  * Plot:
  *   crop            作物名（CROPS 的 key）
@@ -56,8 +65,8 @@
  *   成品到期后「收酒」「出锅」不再直接换钱，而是存进 goods 仓库，靠「卖成品」/「送礼」处理。
  *
  * 日历：全群共用一套虚拟历法，SEASON_DAYS 天一季，四季循环。
- * 已经种下的作物即使跨季也会正常长成（不会因换季枯死），
- * 只是「种地」时只能选当前季节能种的作物。
+ * 「种地」「一键种菜」时只能选当前季节能种的作物；换季那一刻，地里还没收的作物
+ * （不管熟没熟）会枯死清空，类似原版星露谷——见 checkFestival() 里的枯萎处理。
  *
  * 天气与市场：每个虚拟日只在第一次被访问时（定时器或任意指令）重新生成一次，
  * 之后同一天内保持不变。天气生态联动：雨天免费帮所有玩家的生长中作物浇一次水
@@ -74,7 +83,7 @@
 
 let ext = seal.ext.find('changri_farm');
 if (!ext) {
-    ext = seal.ext.new('changri_farm', '长日将尽', '2.4.0');
+    ext = seal.ext.new('changri_farm', '长日将尽', '2.5.0');
     seal.ext.register(ext);
     ext.autoActive = true;
 }
@@ -92,6 +101,18 @@ const EXPAND_STEP_COST = 40;
 
 const WATER_COOLDOWN = 2 * 60 * 60 * 1000;   // 每块地浇水冷却 2 小时
 const WATER_BOOST_RATIO = 0.2;               // 浇一次减少 20% 剩余生长时间
+
+// 一键种菜：一次性解锁，解锁后可以反复用；种子钱仍按种下的地块数量正常单独扣，
+// 5000 只是"解锁这个便利指令"本身的钱。
+const AUTO_PLANT_UNLOCK_COST = 5000;
+
+// 更新公告：版本号改了就把这个也改一遍，老玩家下次触发任意长露谷指令时会看到一次。
+const UPDATE_NOTICE_VERSION = '2.5.0';
+const UPDATE_NOTICE_TEXT =
+    `📢 长露谷更新啦（v${UPDATE_NOTICE_VERSION}）\n${'─'.repeat(16)}\n` +
+    `• 新增「一键种菜」：发送「解锁一键种菜」花${AUTO_PLANT_UNLOCK_COST}金币解锁后，能把当季某种作物一口气种满所有空地（种子钱仍按地块数单独扣）\n` +
+    `• 作物规则调整：换季时地里还没收的作物（不管熟没熟）会枯死清空，记得季末前把地收完，别攒着\n` +
+    `发送「农场帮助」查看完整指令。`;
 
 const STEAL_SHARE = 0.4;
 const STEAL_DAILY_LIMIT = 3;
@@ -513,10 +534,36 @@ function checkFestival(data, eps) {
         // 单条记录处理出错不能中断整批节日发放——一个坏记录不该连累其他人拿不到礼金/收不到公告。
         try {
             const p = data[key];
+            const platform = key.split(':')[0];
+            const uid = key.split(':')[1];
+
+            // 枯萎：换季那一刻，地里还没收的作物（不管熟没熟）一律枯死清空。
+            // 按种下时记录的 groupId 分组，同一个群里枯了几种一起说，不逐块地刷屏。
+            const witherByGroup = {};
+            p.plots.forEach((pl, idx) => {
+                if (!pl) return;
+                const gid = pl.groupId;
+                if (gid) {
+                    if (!witherByGroup[gid]) witherByGroup[gid] = [];
+                    witherByGroup[gid].push(pl.crop);
+                }
+                p.plots[idx] = null;
+            });
+            if (Object.keys(witherByGroup).length) {
+                changed = true;
+                for (const gid in witherByGroup) {
+                    const counted = {};
+                    witherByGroup[gid].forEach(n => { counted[n] = (counted[n] || 0) + 1; });
+                    const listStr = Object.entries(counted).map(([n, c]) => c > 1 ? `${n}×${c}` : n).join('、');
+                    pushToGroup(eps, platform, gid,
+                        `[CQ:at,qq=${uid}] 🥀 换季了，地里没来得及收的${listStr}枯萎了，记得季末前把熟了的地收完哦。`
+                    );
+                }
+            }
+
             earnCoins(p, fest.bonus); // 节日礼金是群发广播，升级提示这里不单独播报，玩家下次查看/赚钱时会看到新等级
             changed = true;
 
-            const platform = key.split(':')[0];
             (p.groups || []).forEach(gid => {
                 const gKey = `${platform}|${gid}`;
                 if (seenGroups.has(gKey)) return;
@@ -571,6 +618,8 @@ function newPlayer(roleName, groupId) {
         lifetimeSteals: 0,
         banner: '',
         equippedDecoration: DEFAULT_DECORATION,
+        autoPlantUnlocked: false,
+        lastSeenVersion: UPDATE_NOTICE_VERSION, // 新玩家一上来就是最新版，不需要再弹"更新了什么"
     };
 }
 
@@ -595,6 +644,8 @@ function getPlayer(data, key, roleName, groupId) {
     if (p.lifetimeSteals == null) p.lifetimeSteals = 0;
     if (p.banner == null) p.banner = '';
     if (!p.equippedDecoration) p.equippedDecoration = DEFAULT_DECORATION;
+    if (p.autoPlantUnlocked == null) p.autoPlantUnlocked = false;
+    if (p.lastSeenVersion == null) p.lastSeenVersion = ''; // 老存档没这个字段，视为"没看过更新公告"
     if (!p.groups) p.groups = [];
     if (roleName) p.roleName = roleName;
     if (groupId && !p.groups.includes(groupId)) p.groups.push(groupId);
@@ -678,6 +729,7 @@ cmd_help.solve = (ctx, msg) => {
         `【种地】\n` +
         `农场日历         季节、本季可种作物、实时收购价\n` +
         `种地 作物名     在空地种下当季作物\n` +
+        `解锁一键种菜     花${AUTO_PLANT_UNLOCK_COST}金币解锁后，「一键种菜 作物名」能一口气种满所有空地\n` +
         `浇水 [编号]      给作物浇水加速生长，不填编号=浇所有能浇的地\n` +
         `收菜             收获所有成熟作物\n` +
         `扩地             花金币多开一块地（上限${MAX_PLOTS}块，价格逐次上涨）\n` +
@@ -712,7 +764,7 @@ cmd_help.solve = (ctx, msg) => {
         `农场排行         本群财富排行榜（前10名，按终身累计赚取排序）\n` +
         `偷菜 @群友       偷取对方成熟未收的作物一部分（每天最多${STEAL_DAILY_LIMIT}次）\n` +
         `地牢入口         长露谷地底似乎藏着什么……（开发中，暂不可进入）\n` +
-        `\n每${SEASON_DAYS}天换一季，春夏秋冬循环，作物随季节变化，换季不会枯死。\n` +
+        `\n每${SEASON_DAYS}天换一季，春夏秋冬循环，作物随季节变化，换季时地里没收的作物（不管熟没熟）会枯死，记得季末前收完。\n` +
         `换季那天全群会有一次节日活动，所有农场主都能收到节日礼金。\n` +
         `新玩家初始 ${START_COINS} 金币、${BASE_PLOTS} 块地。作物成熟、动物产出、酒/菜做好都会主动@你提醒。`
     );
@@ -735,7 +787,7 @@ cmd_calendar.solve = (ctx, msg) => {
     seal.replyToSender(ctx, msg,
         `📅 长露谷历\n${'─'.repeat(16)}\n` +
         `第${cal.year}年 · ${cal.season}季 · 第${cal.dayInSeason}/${SEASON_DAYS}天 · 今日${world.weather}\n` +
-        `（${cal.daysLeftInSeason}天后进入下一季）\n\n本季可种：\n` +
+        `（${cal.daysLeftInSeason}天后进入下一季，地里没收的作物会随换季枯死）\n\n本季可种：\n` +
         list.map(n => `  ${n}  ${fmtDuration(CROPS[n].growMs)}成熟  种子${CROPS[n].cost}金币  收购价${sellPrice(n, world)}金币`).join('\n')
     );
     return ret;
@@ -791,6 +843,99 @@ cmd_plant.solve = (ctx, msg) => {
     return ret;
 };
 ext.cmdMap['种地'] = cmd_plant;
+
+// ========================
+// 指令：一键种菜（解锁一键种菜 / 一键种菜）
+// ========================
+
+let cmd_unlock_autoplant = seal.ext.newCmdItemInfo();
+cmd_unlock_autoplant.name = '解锁一键种菜';
+cmd_unlock_autoplant.help = `解锁一键种菜\n一次性花${AUTO_PLANT_UNLOCK_COST}金币解锁「一键种菜」指令，解锁后可以反复用`;
+cmd_unlock_autoplant.solve = (ctx, msg) => {
+    const ret = seal.ext.newCmdExecuteResult(true);
+    const { groupId, roleName, key } = getCtxInfo(msg);
+    const data = getData();
+    const p = getPlayer(data, key, roleName, groupId);
+
+    if (p.autoPlantUnlocked) {
+        seal.replyToSender(ctx, msg, `已经解锁过啦，直接发送「一键种菜 作物名」就能用。`);
+        return ret;
+    }
+    if (p.coins < AUTO_PLANT_UNLOCK_COST) {
+        seal.replyToSender(ctx, msg, `金币不够！解锁一键种菜需要${AUTO_PLANT_UNLOCK_COST}金币，你只有${p.coins}金币。`);
+        return ret;
+    }
+
+    p.coins -= AUTO_PLANT_UNLOCK_COST;
+    p.autoPlantUnlocked = true;
+    saveData(data);
+
+    seal.replyToSender(ctx, msg,
+        `🌾 解锁成功！以后发送「一键种菜 作物名」能把当季这一种作物一口气种满所有空地（种子钱仍按地块数单独扣）。\n剩余金币：${p.coins}`
+    );
+    return ret;
+};
+ext.cmdMap['解锁一键种菜'] = cmd_unlock_autoplant;
+
+let cmd_autoplant = seal.ext.newCmdItemInfo();
+cmd_autoplant.name = '一键种菜';
+cmd_autoplant.help = '一键种菜 作物名\n把当季这一种作物种满所有空地（金币不够就尽量多种），需要先「解锁一键种菜」';
+cmd_autoplant.solve = (ctx, msg) => {
+    const ret = seal.ext.newCmdExecuteResult(true);
+    const cropName = msg.message.replace(/^[。.]\S+\s*/, '').trim();
+    const crop = CROPS[cropName];
+    const cal = getCalendar();
+
+    const { groupId, roleName, key } = getCtxInfo(msg);
+    const data = getData();
+    const p = getPlayer(data, key, roleName, groupId);
+
+    if (!p.autoPlantUnlocked) {
+        seal.replyToSender(ctx, msg, `还没解锁「一键种菜」，先发送「解锁一键种菜」（${AUTO_PLANT_UNLOCK_COST}金币）吧。`);
+        return ret;
+    }
+    if (!crop) {
+        seal.replyToSender(ctx, msg, `没有「${cropName}」这种作物。发送「农场日历」查看本季可种作物。`);
+        return ret;
+    }
+    if (crop.season !== cal.season) {
+        seal.replyToSender(ctx, msg,
+            `「${cropName}」是${crop.season}季作物，现在是${cal.season}季，种不了。\n发送「农场日历」看看本季能种什么。`
+        );
+        return ret;
+    }
+
+    const emptyIdx = [];
+    p.plots.forEach((pl, i) => { if (pl === null) emptyIdx.push(i); });
+    if (emptyIdx.length === 0) {
+        seal.replyToSender(ctx, msg, `地都种满啦，先「收菜」腾地方，或者「扩地」开新地！`);
+        return ret;
+    }
+
+    const affordable = Math.min(emptyIdx.length, Math.floor(p.coins / crop.cost));
+    if (affordable === 0) {
+        seal.replyToSender(ctx, msg, `金币不够啦！种一块${cropName}需要${crop.cost}金币，你只有${p.coins}金币。`);
+        return ret;
+    }
+
+    const now = Date.now();
+    for (let i = 0; i < affordable; i++) {
+        const idx = emptyIdx[i];
+        p.coins -= crop.cost;
+        p.plots[idx] = { crop: cropName, plantedAt: now, matureAt: now + crop.growMs, notified: false, lastWateredAt: null, groupId };
+    }
+    if (!p.plantedCrops.includes(cropName)) p.plantedCrops.push(cropName); // 成就墙："种过多少种作物"用这个
+    saveData(data);
+
+    const leftoverHint = affordable < emptyIdx.length
+        ? `（金币只够种${affordable}块，还剩${emptyIdx.length - affordable}块空地没种）`
+        : '';
+    seal.replyToSender(ctx, msg,
+        `🌾 一键种下了${affordable}块${cropName}，约${fmtDuration(crop.growMs)}后成熟。${leftoverHint}\n剩余金币：${p.coins}`
+    );
+    return ret;
+};
+ext.cmdMap['一键种菜'] = cmd_autoplant;
 
 // ========================
 // 指令：浇水
@@ -2115,6 +2260,35 @@ function startFarmTimer() {
         }
         if (dirty) saveData(data);
     }, 60 * 1000);
+}
+
+// ========================
+// 更新公告：老玩家换到新版本后，触发任意一条长露谷指令时先收到一次"这次更新了什么"，
+// 之后不再重复弹。只对已经有存档的玩家生效——不主动 getPlayer() 建号，避免刚点了句
+// 「农场帮助」看看的人被悄悄拉进 p.groups / 农场排行。
+// ========================
+
+const _wrappedCmds = new Set();
+for (const _cmdName of Object.keys(ext.cmdMap)) {
+    const _cmd = ext.cmdMap[_cmdName];
+    if (_wrappedCmds.has(_cmd)) continue; // 同一个指令对象可能挂了多个别名（如"地牢入口"/"地牢"），只包一次
+    _wrappedCmds.add(_cmd);
+    const _originalSolve = _cmd.solve;
+    _cmd.solve = (ctx, msg) => {
+        try {
+            const { key } = getCtxInfo(msg);
+            const data = getData();
+            const p = data[key];
+            if (p && p.lastSeenVersion !== UPDATE_NOTICE_VERSION) {
+                p.lastSeenVersion = UPDATE_NOTICE_VERSION;
+                saveData(data);
+                seal.replyToSender(ctx, msg, UPDATE_NOTICE_TEXT);
+            }
+        } catch (e) {
+            console.error('[长露谷] 更新公告发送失败:', e);
+        }
+        return _originalSolve(ctx, msg);
+    };
 }
 
 startFarmTimer();
