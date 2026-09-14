@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}{{ char.name }} - 角色编辑{% endblock %}
+{% block content %}
+<div class="card">
+  <h3>{{ char.name }} <span class="badge badge-jade">{{ char.species }}</span></h3>
+  <p class="muted" style="margin-top:4px">账号: {{ char.username }} · 终极形态: {{ species_info.divine_beast }}</p>
+  {% if char.bio %}<p style="margin-top:8px">{{ char.bio }}</p>{% endif %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:10px">数值编辑(调试/剧情用)</h3>
+  <form method="post">
+    <label>境界</label>
+    <select name="stage_index">
+      {% for s in stages %}
+      <option value="{{ s.index }}" {{ 'selected' if s.index == char.stage_index }}>{{ s.major }}·{{ s.minor }}(需妖力{{ s.yao_power_required }})</option>
+      {% endfor %}
+    </select>
+    <label>妖力</label>
+    <input type="number" name="yao_power" value="{{ char.yao_power }}" min="0">
+    <label>人形值(0-100)</label>
+    <input type="number" name="humanoid_value" value="{{ char.humanoid_value }}" min="0" max="100">
+    <label>人性(0-100,妖性=100-人性)</label>
+    <input type="number" name="humanity" value="{{ char.humanity }}" min="0" max="100">
+    <button class="btn btn-primary" style="margin-top:16px">保存</button>
+  </form>
+</div>
+{% endblock %}

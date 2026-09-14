@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}天魔入侵 - 九霄仙门{% endblock %}
+{% block content %}
+
+<div class="card">
+  <h3 style="margin-bottom:10px">开启天魔入侵</h3>
+  {% if not can_open %}
+    {% if last and last.status == 'active' %}
+    <p class="muted">当前仍有一场天魔入侵进行中,不可重复开启。</p>
+    {% else %}
+    <p class="muted">冷却尚未结束,预计 {{ cooldown_until | fmt_ts }} 后可再次开启(每次开启后 {{ INVASION_COOLDOWN_DAYS }} 天冷却)。</p>
+    {% endif %}
+  {% else %}
+  <form method="post">
+    <label>天魔名号</label>
+    <input name="boss_label" placeholder="天魔·煞" maxlength="20">
+    <label>血量上限</label>
+    <input type="number" name="hp_max" value="200000" min="1">
+    <button class="btn btn-primary" style="margin-top:12px">开启入侵(持续 {{ INVASION_DURATION_HOURS }} 小时)</button>
+  </form>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:10px">当前状态</h3>
+  {% if not last %}
+  <p class="muted">尚未开启过天魔入侵。</p>
+  {% else %}
+  <p>{{ last.boss_label }} —
+    {% if last.status == 'active' %}<span class="badge badge-red">进行中</span>
+    {% elif last.status == 'defeated' %}<span class="badge badge-gold">已剿灭</span>
+    {% else %}<span class="badge badge-purple">已遁走</span>{% endif %}
+  </p>
+  <p class="muted" style="margin-top:6px">{{ INVASION_PHASE_LABELS[last.phase] }} · 气血 {{ last.boss_hp }} / {{ last.boss_hp_max }} · 开启于 {{ last.opened_ts | fmt_ts }} · 截止 {{ last.ends_ts | fmt_ts }}</p>
+  {% if last.status == 'active' %}
+  <form method="post" action="{{ url_for('admin_invasion_close') }}" style="margin-top:10px">
+    <button class="btn">手动结束(按未剿灭结算)</button>
+  </form>
+  {% endif %}
+  {% endif %}
+</div>
+
+{% endblock %}

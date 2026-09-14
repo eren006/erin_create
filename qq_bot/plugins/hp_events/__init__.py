@@ -9,18 +9,23 @@ from plugins.hp_core import spells as spell_catalog
 from plugins.hp_core import storage as core_storage
 
 from . import calendar as hp_calendar
-from . import christmas, duel, forest, newsletter, prefect, quidditch, storage
+from . import christmas, creatures, duel, forest, gnomes, newsletter, prefect, quidditch, storage
 
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler  # noqa: E402
 
 PLATFORM = "qq"
-CALENDAR_POLL_MINUTES = 10
-NOTIFY_DIGEST_MINUTES = 10  # 网页操作汇总播报的间隔
+# 所有会主动往群里发消息的定时任务都统一成30分钟一次，尽量少占主动消息额度。
+CALENDAR_POLL_MINUTES = 30
+NOTIFY_DIGEST_MINUTES = 30  # 网页操作汇总播报的间隔
+SUBMISSION_REMINDER_HOURS = 4  # 待审稿件提醒间隔，本来就比30分钟低频很多，不用跟着改
+GOSSIP_POLL_MINUTES = 30  # 八卦审核通过后多久播报进群一次
 
 
-def _fmt_stats(row) -> str:
-    return "　".join(f"{quidditch.STAT_LABELS[k]}{row[k] + row[f'broom_{k}_bonus']}" for k in quidditch.STAT_KEYS)
+def _mention(uid: str) -> MessageSegment:
+    """@某人。这个机器人账号在QQ开放平台没开通群聊@能力，无论新旧格式的@标签
+    都只会在群里原样显示成文字，所以改用纯文字"@全名"代替真正的@。"""
+    return MessageSegment.text(f"@{core_storage.get_full_name(uid)}")
 
 
 # ======================== 日历调度 ========================
@@ -38,16 +43,45 @@ def _fmt_mvp_awards(mvp_awards: dict) -> list[str]:
     return lines
 
 
+def _fmt_house_contributor_awards(awards: dict) -> list[str]:
+    lines = []
+    for house, award in awards.items():
+        if award:
+            lines.append(f"{house}：{core_storage.get_full_name(award['uid'])}（贡献{award['points']}分）")
+    if lines:
+        lines.insert(0, "🎖 本学年学院个人奖（已解锁称号，贡献清零重新开始）：")
+    return lines
+
+
+# 升到某个年级时顺带播报一句"这个年级新开放了什么"，纯叙事包装，
+# 让"到了这个年级能干嘛"被主动告知，而不是靠玩家自己翻文档发现。
+GRADE_START_HIGHLIGHTS = {
+    2: (
+        f"🧹 二年级解锁飞行课！发「/上课 飞行课」开始上课，"
+        f"飞行课经验攒到{quidditch.FLYING_THRESHOLD}点，就能去网页后台的「魁地奇」页面报名选拔，"
+        f"正式代表学院上场——魁地奇选拔周，现在开始。"
+    ),
+}
+
+
 def _fmt_year_end(data: dict) -> str:
     lines = [
         f"📅 {data['grade_ended']}年级结束，学年测验已完成。",
-        f"全员升入{data['next_grade']}年级，所有学科经验按90%衰减一些（忘了点东西，正常）。",
+        f"全员升入{data['next_grade']}年级，所有学科经验只保留{int(hp_calendar.DECAY_RATE * 100)}%（忘了不少东西，得重新好好上课）。",
         f"参加测验的学生：{data['student_count']}人，用「/我的成绩」查看自己的详细结果。",
     ]
     mvp_lines = _fmt_mvp_awards(data["mvp_awards"])
     if mvp_lines:
         lines.append("")
         lines.extend(mvp_lines)
+    house_lines = _fmt_house_contributor_awards(data["house_contributor_awards"])
+    if house_lines:
+        lines.append("")
+        lines.extend(house_lines)
+    highlight = GRADE_START_HIGHLIGHTS.get(data["next_grade"])
+    if highlight:
+        lines.append("")
+        lines.append(highlight)
     return "\n".join(lines)
 
 
@@ -63,9 +97,37 @@ def _fmt_graduation(data: dict) -> str:
     mvp_lines = _fmt_mvp_awards(data["mvp_awards"])
     if mvp_lines:
         lines.extend(mvp_lines)
+    house_lines = _fmt_house_contributor_awards(data["house_contributor_awards"])
+    if house_lines:
+        lines.extend(house_lines)
     lines.append("")
     lines.append("N.E.W.T.成绩已经登记。发送「/职业列表」查看毕业后的职业方向。")
     lines.append("感谢大家这一个月的陪伴，祝各位巫师前程似锦。")
+    return "\n".join(lines)
+
+
+def _fmt_gnome_award(data: dict) -> str:
+    full = core_storage.get_full_name(data["uid"])
+    lines = [
+        f"🏆 抓地精比赛结束！本届冠军是 {full}，活动期间一共抓了{data['total']}只地精。",
+        f"已解锁「{gnomes.CHAMPION_TITLE_NAME}」称号，外加一座绝版的「地精之王的银质奖杯」——"
+        "对角巷买不到，只有这一次机会能拿到。",
+    ]
+    if data.get("top_house"):
+        lines.append(
+            f"🏠 全院捕获数第一的是 {data['top_house']}（共{data['top_house_total']}只），"
+            f"学院分+{data['house_points']}。"
+        )
+    return "\n".join(lines)
+
+
+def _fmt_creature_award(data: dict) -> str:
+    full = core_storage.get_full_name(data["uid"])
+    lines = [
+        f"🐾 照料神奇生物活动结束！本届冠军是 {full}，活动期间一共成功驯养了{data['total']}只生物。",
+        f"已解锁「{creatures.CHAMPION_TITLE_NAME}」称号，外加一本绝版的「海格亲笔签名的驯兽手册」——"
+        "对角巷买不到，只有这一次机会能拿到。",
+    ]
     return "\n".join(lines)
 
 
@@ -104,6 +166,10 @@ async def _calendar_tick() -> None:
                 text = _fmt_prefect_nomination(event["data"])
             elif event["type"] == "prefect_result":
                 text = _fmt_prefect_result(event["data"])
+            elif event["type"] == "gnome_award":
+                text = _fmt_gnome_award(event["data"])
+            elif event["type"] == "creature_award":
+                text = _fmt_creature_award(event["data"])
             else:
                 text = event["data"]["text"]
             if bot and group_openid:
@@ -144,6 +210,110 @@ async def _notify_digest() -> None:
         return
     core_notify.mark_sent([item["id"] for item in pending])
     core_notify.purge_sent()
+
+
+@scheduler.scheduled_job("interval", hours=SUBMISSION_REMINDER_HOURS, id="hp_submission_reminder")
+async def _submission_reminder() -> None:
+    """有稿件积压在待审核，就隔几小时提醒一次通知群，免得管理员漏看网页后台。"""
+    import submissions
+
+    pending = submissions.list_by_status("pending")
+    if not pending:
+        return
+    group_openid = core_storage.get_game_group_openid()
+    if not group_openid:
+        return
+    try:
+        bot = nonebot.get_bot()
+    except ValueError:
+        return  # 机器人还没连上，下一轮再试
+
+    text = f"📝 稿件审核提醒：还有 {len(pending)} 篇投稿等待审核，去网页后台处理一下吧。"
+    try:
+        await bot.send_to_group(group_openid=group_openid, message=text)
+    except Exception as e:
+        logger.warning(f"[hp_events] 稿件审核提醒发送失败：{e}")
+
+
+@scheduler.scheduled_job("interval", minutes=GOSSIP_POLL_MINUTES, id="hp_gossip_broadcast")
+async def _gossip_broadcast() -> None:
+    """把审核通过、还没播报的八卦发进群，@提到的人。完全匿名——播报里不会出现投稿人是谁。"""
+    import gossip
+
+    pending = gossip.list_pending_broadcast()
+    if not pending:
+        return
+    group_openid = core_storage.get_game_group_openid()
+    if not group_openid:
+        return
+    try:
+        bot = nonebot.get_bot()
+    except ValueError:
+        return  # 机器人还没连上，下一轮再试
+
+    sent_ids = []
+    for item in pending:
+        mentioned = [u for u in item["mentioned_uids"].split(",") if u]
+        message = MessageSegment.text("🗞️ 《女巫周刊》独家爆料（匿名投稿）\n")
+        for mentioned_uid in mentioned:
+            message = message + _mention(mentioned_uid) + MessageSegment.text(" ")
+        message = message + MessageSegment.text(f"\n{item['body']}")
+        try:
+            await bot.send_to_group(group_openid=group_openid, message=message)
+        except Exception as e:
+            logger.warning(f"[hp_events] 八卦播报失败，留到下一轮：{e}")
+            continue
+        sent_ids.append(item["id"])
+    if sent_ids:
+        gossip.mark_broadcast(sent_ids)
+
+
+flush_notify_cmd = on_command("播报")
+
+
+@flush_notify_cmd.handle()
+async def handle_flush_notify(event: MessageEvent):
+    """手动把积压的通知/群公告/八卦播报一次性发出来，用被动回复的方式发。
+    主动消息（定时任务自己推）额度不够或者被限制的时候，被动回复通常不受影响，
+    这个指令就是留着当备用通道用的——群里随便什么人喊一句「/播报」就能把攒的内容倒出来。"""
+    import gossip
+    from plugins.hp_school import storage as school_storage
+
+    parts: list = []
+
+    pending_notify = core_notify.take_pending()
+    if pending_notify:
+        text = core_notify.build_digest(pending_notify, core_storage.get_full_name)
+        if text:
+            parts.append(MessageSegment.text(text))
+        core_notify.mark_sent([item["id"] for item in pending_notify])
+
+    pending_gossip = gossip.list_pending_broadcast()
+    sent_gossip_ids = []
+    for item in pending_gossip:
+        mentioned = [u for u in item["mentioned_uids"].split(",") if u]
+        piece = MessageSegment.text("🗞️ 《女巫周刊》独家爆料（匿名投稿）\n")
+        for mentioned_uid in mentioned:
+            piece = piece + _mention(mentioned_uid) + MessageSegment.text(" ")
+        piece = piece + MessageSegment.text(f"\n{item['body']}")
+        parts.append(piece)
+        sent_gossip_ids.append(item["id"])
+    if sent_gossip_ids:
+        gossip.mark_broadcast(sent_gossip_ids)
+
+    pending_announce = school_storage.get_pending_announcements()
+    for item in pending_announce:
+        parts.append(MessageSegment.text(item["message"]))
+        school_storage.mark_announcement_sent(item["id"])
+
+    if not parts:
+        await flush_notify_cmd.finish("目前没有攒着的通知。")
+        return
+
+    message = parts[0]
+    for p in parts[1:]:
+        message = message + MessageSegment.text("\n\n———\n\n") + p
+    await flush_notify_cmd.finish(message)
 
 
 set_notify_group_cmd = on_command("设为通知群")
@@ -231,7 +401,7 @@ async def handle_invite_ball(event: MessageEvent, args=CommandArg()):
         await invite_ball_cmd.finish(str(e))
         return
     await invite_ball_cmd.finish(
-        MessageSegment.mention_user(target)
+        _mention(target)
         + MessageSegment.text(
             f" {core_storage.get_full_name(uid)} 邀请你做圣诞舞会的舞伴。\n"
             f"「/答应舞伴 {core_storage.get_name(uid)}」或「/婉拒舞伴 {core_storage.get_name(uid)}」"
@@ -329,7 +499,7 @@ async def handle_tree(event: MessageEvent):
         else:
             lines.append("树已经装点完了，可惜你一个装饰都没挂过。")
     else:
-        lines.append("可挂：" + "、".join(n for n, _, _ in christmas.TREE_ORNAMENTS))
+        lines.append("可挂：" + "、".join(n for n, _ in christmas.TREE_ORNAMENTS))
         lines.append("「/挂装饰 名字」——不花体力，但每30分钟只能挂一个。")
     await tree_cmd.finish("\n".join(lines))
 
@@ -342,7 +512,7 @@ async def handle_hang(event: MessageEvent, args=CommandArg()):
     name = args.extract_plain_text().strip()
     if not name:
         await hang_cmd.finish(
-            "用法：/挂装饰 名字\n可挂：" + "、".join(n for n, _, _ in christmas.TREE_ORNAMENTS)
+            "用法：/挂装饰 名字\n可挂：" + "、".join(n for n, _ in christmas.TREE_ORNAMENTS)
         )
         return
     try:
@@ -494,175 +664,6 @@ async def handle_newsletter(event: MessageEvent):
     await newsletter_cmd.finish(newsletter.build())
 
 
-# ======================== 占位 ========================
-
-become_cmd = on_command("成为魁地奇选手")
-
-
-@become_cmd.handle()
-async def handle_become(event: MessageEvent, args=CommandArg()):
-    position = args.extract_plain_text().strip()
-    if not position:
-        await become_cmd.finish(f"用法：/成为魁地奇选手 <位置>\n可选：{'、'.join(quidditch.POSITIONS)}")
-        return
-    uid = event.get_user_id()
-    try:
-        result = quidditch.become_player(uid, position)
-    except quidditch.QuidditchError as e:
-        await become_cmd.finish(str(e))
-        return
-    stats_text = "　".join(f"{k}{v}" for k, v in result["stats"].items())
-    await become_cmd.finish(f"你成为了本院「{result['position']}」！\n初始属性：{stats_text}（10点随机分配）")
-
-
-challenge_cmd = on_command("取代魁地奇")
-
-
-@challenge_cmd.handle()
-async def handle_challenge(event: MessageEvent, args=CommandArg()):
-    position = args.extract_plain_text().strip()
-    if not position:
-        await challenge_cmd.finish(f"用法：/取代魁地奇 <位置>\n可选：{'、'.join(quidditch.POSITIONS)}")
-        return
-    uid = event.get_user_id()
-    try:
-        result = quidditch.challenge_position(uid, position)
-    except quidditch.QuidditchError as e:
-        await challenge_cmd.finish(str(e))
-        return
-    if result["win"]:
-        text = (
-            f"PK成功（判定值{result['chance']:.2f}，比拼{result['stat_desc']}）！\n"
-            f"你取代了 {core_storage.get_full_name(result['opponent'])}，成为本院「{result['position']}」。"
-        )
-    else:
-        text = (
-            f"PK失败（判定值{result['chance']:.2f}，比拼{result['stat_desc']}），"
-            f"位置还是 {core_storage.get_full_name(result['opponent'])} 的。"
-        )
-    await challenge_cmd.finish(text)
-
-
-equip_broom_cmd = on_command("装备扫帚")
-
-
-@equip_broom_cmd.handle()
-async def handle_equip_broom(event: MessageEvent, args=CommandArg()):
-    item_input = args.extract_plain_text().strip()
-    if not item_input:
-        await equip_broom_cmd.finish("用法：/装备扫帚 扫帚名（先「/对角巷 扫帚」看看有哪些）")
-        return
-    uid = event.get_user_id()
-    try:
-        result = quidditch.equip_broom(uid, item_input)
-    except quidditch.QuidditchError as e:
-        await equip_broom_cmd.finish(str(e))
-        return
-    effect_text = "　".join(
-        f"{quidditch.STAT_LABELS[k]}+{v}" for k, v in result["effect"].items() if k in quidditch.STAT_KEYS and v
-    )
-    await equip_broom_cmd.finish(
-        f"装备了「{result['name']}」。\n加成：{effect_text or '无'}（会覆盖之前装备的扫帚加成）\n"
-        f"耐久：{result['durability']}（每打一场比赛磨损1点，归零后加成失效，用「/施咒 修复如初」修好）"
-    )
-
-
-roster_cmd = on_command("魁地奇队")
-
-
-@roster_cmd.handle()
-async def handle_roster(event: MessageEvent, args=CommandArg()):
-    house_input = args.extract_plain_text().strip()
-    if house_input:
-        if house_input not in core_storage.HOUSES:
-            await roster_cmd.finish(f"没有这个学院。可选：{'、'.join(core_storage.HOUSES)}")
-            return
-        house = house_input
-    else:
-        player = core_storage.get_player(event.get_user_id())
-        if not player or not player["house"]:
-            await roster_cmd.finish("你还没有分院，先发「/入学」，或者「/魁地奇队 学院名」查别的院。")
-            return
-        house = player["house"]
-
-    roster = quidditch.get_roster(house)
-    lines = [f"🏆 {house}魁地奇队"]
-    for position in quidditch.POSITIONS:
-        row = roster[position]
-        if row is None:
-            lines.append(f"{position}：空缺")
-        else:
-            lines.append(
-                f"{position}：{core_storage.get_full_name(row['uid'])}"
-                f"{core_storage.get_status_suffix(row['uid'])}（{_fmt_stats(row)}）"
-            )
-    await roster_cmd.finish("\n".join(lines))
-
-
-# ======================== 训练 ========================
-
-train_cmd = on_command("魁地奇训练")
-
-
-@train_cmd.handle()
-async def handle_train(event: MessageEvent):
-    uid = event.get_user_id()
-    try:
-        result = quidditch.train(uid)
-    except quidditch.QuidditchError as e:
-        await train_cmd.finish(str(e))
-        return
-    await train_cmd.finish(
-        f"训练完了，{result['stat']}+{result['gain']}。\n今天训练了{result['today_count']}/{result['daily_limit']}次。"
-    )
-
-
-# ======================== 比赛 ========================
-
-challenge_match_cmd = on_command("魁地奇挑战")
-
-
-@challenge_match_cmd.handle()
-async def handle_match(event: MessageEvent, args=CommandArg()):
-    house_b = args.extract_plain_text().strip()
-    uid = event.get_user_id()
-    player = core_storage.get_player(uid)
-    if not player or not player["house"]:
-        await challenge_match_cmd.finish("你还没有分院，先发「/入学」完成入学测试。")
-        return
-    if not house_b:
-        await challenge_match_cmd.finish(f"用法：/魁地奇挑战 <对方学院>\n可选：{'、'.join(core_storage.HOUSES)}")
-        return
-    if house_b not in core_storage.HOUSES:
-        await challenge_match_cmd.finish(f"没有这个学院。可选：{'、'.join(core_storage.HOUSES)}")
-        return
-
-    try:
-        result = quidditch.simulate_match(uid, player["house"], house_b)
-    except quidditch.QuidditchError as e:
-        await challenge_match_cmd.finish(str(e))
-        return
-
-    lines = [
-        f"🏆 {result['house_a']} {result['score_a']} : {result['score_b']} {result['house_b']}",
-        f"（{result['seeker_winner_house']}的找球手先抓到了金色飞贼，+150分）",
-    ]
-    if result["winner"]:
-        lines.append(f"{result['winner']} 获胜，学院分+{quidditch.MATCH_WIN_HOUSE_POINTS}。")
-    else:
-        lines.append("打平了，没有额外学院分。")
-    if result["scorers"]:
-        lines.append(
-            "得分者：" + "、".join(f"{core_storage.get_name(u)}(+{amount})" for u, amount in result["scorers"])
-        )
-    if result["worn_out"]:
-        lines.append(
-            "⚠️ 扫帚打坏了（加成已失效，要「/施咒 修复如初」修）："
-            + "、".join(core_storage.get_name(u) for u in result["worn_out"])
-        )
-    await challenge_match_cmd.finish("\n".join(lines))
-
-
 # ======================== 决斗 ========================
 
 
@@ -727,7 +728,7 @@ async def handle_challenge(event: MessageEvent, args=CommandArg()):
         return
     my_name = core_storage.get_name(uid)
     await challenge_cmd.finish(
-        MessageSegment.mention_user(result["target"])
+        _mention(result["target"])
         + MessageSegment.text(
             f" {core_storage.get_full_name(uid)} 向你发起了决斗！\n"
             f"用「/接受决斗 {my_name}」应战，或者「/拒绝决斗 {my_name}」拒绝。\n"
@@ -799,7 +800,7 @@ async def handle_accept(event: MessageEvent, args=CommandArg()):
         return
     state = duel.get_state(result["challenger"])
     await accept_cmd.finish(
-        MessageSegment.mention_user(result["challenger"])
+        _mention(result["challenger"])
         + MessageSegment.text(
             f" 决斗开始！{core_storage.get_full_name(result['challenger'])} 先手。\n"
             f"双方各{spell_catalog.DUEL_HP}HP，共{spell_catalog.DUEL_ROUNDS}个回合。\n"
@@ -859,7 +860,7 @@ async def handle_cast_spell(event: MessageEvent, args=CommandArg()):
 
     lines.append(f"\n第{result['round']}回合，轮到 {core_storage.get_full_name(result['next_turn'])}。")
     await cast_spell_cmd.finish(
-        MessageSegment.mention_user(result["next_turn"]) + MessageSegment.text(" " + "\n".join(lines))
+        _mention(result["next_turn"]) + MessageSegment.text(" " + "\n".join(lines))
     )
 
 
@@ -878,7 +879,7 @@ async def handle_duel_skip(event: MessageEvent):
         await duel_skip_cmd.finish("你这一回合什么都没做。\n\n" + _fmt_duel_finish(result, uid))
         return
     await duel_skip_cmd.finish(
-        MessageSegment.mention_user(result["opponent"])
+        _mention(result["opponent"])
         + MessageSegment.text(f" 对方这一回合什么都没做。第{result['round']}回合，轮到你了。")
     )
 
@@ -896,34 +897,6 @@ async def handle_flee(event: MessageEvent):
         return
     await flee_cmd.finish(
         f"你逃跑了，这场决斗判 {core_storage.get_full_name(result['opponent'])} 获胜。\n" + _fmt_duel_finish(result, uid))
-
-
-# ======================== MVP ========================
-
-mvp_cmd = on_command("魁地奇mvp")
-
-
-@mvp_cmd.handle()
-async def handle_mvp(event: MessageEvent, args=CommandArg()):
-    house_input = args.extract_plain_text().strip()
-    if house_input:
-        if house_input not in core_storage.HOUSES:
-            await mvp_cmd.finish(f"没有这个学院。可选：{'、'.join(core_storage.HOUSES)}")
-            return
-        houses = [house_input]
-    else:
-        houses = list(core_storage.HOUSES)
-
-    lines = ["🏆 魁地奇MVP（按赛季累计得分，进球10分/抓到飞贼150分）"]
-    for house in houses:
-        mvp = quidditch.get_mvp(house)
-        if mvp:
-            lines.append(
-                f"{house}：{core_storage.get_full_name(mvp['uid'])}（{mvp['position']}，{mvp['season_score']}分）"
-            )
-        else:
-            lines.append(f"{house}：暂无数据")
-    await mvp_cmd.finish("\n".join(lines))
 
 
 # ======================== 禁林冒险 ========================
@@ -1062,6 +1035,8 @@ async def handle_forest_cast(event: MessageEvent, args=CommandArg()):
         lines.append(f"这一层的收获：{'　'.join(got)}（撤退才真正到手）")
         if loot.get("lucky_material"):
             lines.append(f"🍀 福灵剂在这一刻发热，你额外发现了「{loot['lucky_material']}」。幸运效果已经耗尽。")
+        if loot.get("pattern_learned"):
+            lines.append(f"🧵 你捡到一张裁缝图纸，学会了「{loot['pattern_learned']}」的裁剪方法！")
         if result["can_go_deeper"]:
             lines.append("\n「/继续深入」再赌一层，或者「/撤退」落袋为安。")
         elif result["next_blocked_by_grade"]:

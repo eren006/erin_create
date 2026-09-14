@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}行侠令 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:6px">行侠令</h3>
+  <p class="muted">江湖处处不平事,遇之则出手,量力而行,不必强求。</p>
+  <label style="margin-top:10px">体力 {{ char.stamina }}</label>
+  <p class="muted">当前侠名:<strong style="color:var(--gold-bright)">{{ my_title }}</strong>(侠名值 {{ char.xiaxia_fame }})</p>
+  <p class="muted" style="margin-top:4px">今日已行侠 {{ done_today }} / {{ daily_cap }} 次,用完需等明日</p>
+</div>
+{% if char.pending_story_key %}
+<div class="card" style="border-color:rgba(225,189,112,.5)">
+  <h3 style="margin-bottom:6px">你似乎撞见了些什么</h3>
+  <p class="muted">江湖路上又生出一段插曲,要不要看看?</p>
+  <a href="{{ url_for('xiaxia_story') }}" class="btn btn-primary" style="margin-top:10px;display:inline-block">查看</a>
+</div>
+{% endif %}
+{% for t in tasks %}
+<div class="card">
+  <h3 style="margin-bottom:4px">{{ t.label }}</h3>
+  <p class="muted">{{ t.desc }}</p>
+  <p class="muted" style="margin-top:6px">消耗体力 {{ t.stamina_cost }} · 成功率 {{ t.success_rate }}%</p>
+  <p class="muted">成功:{{ t.reward_desc }}{% if t.fail_reward_desc %} · 未竟全功:{{ t.fail_reward_desc }}{% endif %}</p>
+  <form method="post" action="{{ url_for('xiaxia_do', key=t.key) }}" style="margin-top:10px">
+    <button class="btn btn-primary" {{ 'disabled' if char.stamina < t.stamina_cost or done_today >= daily_cap }}>出手相助</button>
+  </form>
+</div>
+{% endfor %}
+{% endblock %}

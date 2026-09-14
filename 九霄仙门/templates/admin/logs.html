@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}操作日志 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <table>
+    <tr><th>时间</th><th>管理员</th><th>动作</th><th>对象</th><th>详情</th></tr>
+    {% for l in logs %}
+    <tr>
+      <td>{{ l.created_ts | fmt_ts }}</td>
+      <td>{{ l.admin_name or l.admin_id or '系统' }}</td>
+      <td>{{ l.action }}</td>
+      <td class="muted">{{ l.target_type }}{% if l.target_id %}#{{ l.target_id }}{% endif %}</td>
+      <td class="muted">{{ l.detail }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

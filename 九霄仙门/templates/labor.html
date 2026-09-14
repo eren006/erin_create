@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}打工 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">工</span>下山打工</h3></div>
+  {% if active %}
+  {% if ready %}
+  <p>{{ job.label if job else '这份差事' }}已经做完了,可以收工了</p>
+  <p class="muted" style="margin-top:6px">点击收工,结算这次打工的灵石</p>
+  {% else %}
+  <p>你正在{{ job.label if job else '外出打工' }},尚余 <strong>{{ remaining // 3600 }}</strong> 小时 <strong>{{ remaining % 3600 // 60 }}</strong> 分</p>
+  <p class="muted" style="margin-top:6px">打工期间无法打坐/闭关/委托/秘境等其他事务,可随时提前收工,按实际做工时长照单全付</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('labor_claim') }}" style="margin-top:14px">
+    <button class="btn btn-primary" style="width:100%">收工</button>
+  </form>
+  {% else %}
+  <p class="muted">打工是懒惰结算的挂机选项:选个差事和时长,期间锁定其他行动,出工后一次性结算灵石,不吃灵根/境界加成——灵石是独立于修为的第二货币。</p>
+  <form method="post" action="{{ url_for('labor_start') }}" style="margin-top:14px">
+    <select name="job_key" required style="width:100%;margin-bottom:10px">
+      {% for j in jobs %}<option value="{{ j.key }}">{{ j.label }}(灵石+{{ j.lingshi_per_hour }}/时) —— {{ j.desc }}</option>{% endfor %}
+    </select>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      {% for h in durations %}
+      <button class="btn btn-primary" name="hours" value="{{ h }}" style="flex:1;min-width:100px">打工 {{ h }} 小时</button>
+      {% endfor %}
+    </div>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

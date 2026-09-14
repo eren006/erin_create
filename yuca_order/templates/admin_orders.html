@@ -32,7 +32,7 @@
   </form>
 
   {% if orders %}
-  <div class="card" style="padding:0;overflow:hidden;">
+  <div class="card" style="padding:0;overflow-x:auto;-webkit-overflow-scrolling:touch;">
     <table>
       <thead><tr>
         <th>订单号</th><th>类型</th><th>客户</th><th>标题</th>
@@ -47,7 +47,14 @@
             <div>{{ o.customer_name }}</div>
             <div style="font-size:11px;color:var(--muted);">{{ o.customer_contact }}</div>
           </td>
-          <td>{{ o.title }}</td>
+          <td>
+            {{ o.title }}
+            {% if o.new_notes %}
+            <a href="{{ url_for('admin_order_detail', oid=o.id) }}" class="badge"
+               style="background:color-mix(in srgb,var(--warn) 13%,transparent);color:var(--warn);margin-left:6px;white-space:nowrap;"
+               title="客户追加了补充备注，点进详情查看">💬 客户补充 {{ o.new_notes }} 条</a>
+            {% endif %}
+          </td>
           <td style="font-size:12px;color:var(--muted);">{{ o.admin_name or '—' }}</td>
           <td>
             <span class="badge" style="background:{{ o.status|sc }}22;color:{{ o.status|sc }};">

@@ -3,7 +3,7 @@
 {% block body %}
 <div class="page" style="max-width:560px;">
   <div class="card" style="text-align:center;padding:36px 28px;">
-    <div style="font-size:36px;margin-bottom:12px;">✅</div>
+    <div class="receipt-seal" aria-hidden="true">已收</div>
     <div style="font-size:18px;font-weight:600;color:var(--green);margin-bottom:8px;">订单已提交！</div>
     <p class="muted" style="margin-bottom:24px;font-size:13px;">请保存以下信息，凭订单号和验证码可随时查询进度。</p>
 
@@ -22,6 +22,13 @@
       请截图或记录以上信息<br>
       验证码丢失后无法找回，请妥善保存
     </div>
+
+    {% if contact_qq %}
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin-bottom:20px;text-align:left;">
+      <div style="font-size:13px;font-weight:600;color:var(--accent2);margin-bottom:6px;">📌 如有参考图片</div>
+      <div style="font-size:13px;line-height:1.7;">请直接把图片发送到 QQ：<strong style="color:var(--accent);font-family:monospace;">{{ contact_qq }}</strong>，并备注订单号 {{ order_no }}</div>
+    </div>
+    {% endif %}
 
     <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
       <a href="{{ url_for('order_status', order_no=order_no) }}" class="btn btn-primary">查看订单</a>

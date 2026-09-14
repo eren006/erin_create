@@ -337,6 +337,26 @@
 .btn-sm-del { color: var(--red); }
 .btn-sm-del:hover { border-color: var(--red); color: var(--red); }
 
+.pool-recipe-section {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-top: 1px dashed var(--border);
+  flex-wrap: wrap;
+}
+.recipe-label { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.recipe-select {
+  flex: 1;
+  min-width: 90px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 12px;
+  color: var(--text);
+}
+
 /* ── Item rows inside pool ────────────────────────────────────────────────── */
 .pool-body { padding: 0; }
 
@@ -690,6 +710,8 @@ const ITEMS   = {{ item_registry | tojson }};
 const pools   = {{ pool_defs | tojson }};
 const poolCfg = {{ pool_cfg | tojson }};
 const ATTR_DEFS = {{ attr_defs | tojson }};
+// 数量池配方：{ 池子名: { 配方名: [{code,count},...] } }，只用于数量池（权重/保底/分段池不需要）
+const poolSchemas = {{ pool_schemas | tojson }};
 
 // ═══════════════════════════════════════════════════════════════
 // 工具函数
@@ -807,6 +829,14 @@ function buildPoolCard(name) {
     </div>
     <div class="pool-body" id="body-${safeId(name)}"></div>
     <div class="pool-dropzone">⬇ 将物品拖放到这里</div>
+    ${pool.type !== "fixed" ? `
+    <div class="pool-recipe-section">
+      <span class="recipe-label">配方</span>
+      <select class="recipe-select" id="recipe-select-${safeId(name)}"></select>
+      <button class="btn-sm" data-action="apply-recipe">应用</button>
+      <button class="btn-sm" data-action="save-recipe">另存为…</button>
+      <button class="btn-sm btn-sm-del" data-action="del-recipe">删除</button>
+    </div>` : ""}
     <div class="pool-footer" id="footer-${safeId(name)}"></div>
   `;
 
@@ -854,8 +884,67 @@ function buildPoolCard(name) {
     dropItemIntoPool(name, code);
   });
 
+  // ── 配方（仅数量池）──
+  if (pool.type !== "fixed") {
+    renderRecipeSelect(name, card);
+    card.querySelector('[data-action="save-recipe"]').addEventListener("click", () => {
+      const recipeName = prompt("配方名称（同名会覆盖）：");
+      if (!recipeName) return;
+      if (!poolSchemas[name]) poolSchemas[name] = {};
+      poolSchemas[name][recipeName] = JSON.parse(JSON.stringify(pool.items));
+      renderRecipeSelect(name, card, recipeName);
+      saveToServer(true);
+      showToast(`✅ 已保存配方「${recipeName}」`, true);
+    });
+    card.querySelector('[data-action="apply-recipe"]').addEventListener("click", () => {
+      const sel = card.querySelector(".recipe-select");
+      const recipeName = sel.value;
+      if (!recipeName) return showToast("请先选择一份配方", false);
+      if (!confirm(`确认用配方「${recipeName}」覆盖池子「${name}」当前的物品+数量？`)) return;
+      pool.items = JSON.parse(JSON.stringify(poolSchemas[name][recipeName]));
+      renderPoolBody(name, card);
+      saveToServer(true);
+      showToast(`✅ 已应用配方「${recipeName}」`, true);
+    });
+    card.querySelector('[data-action="del-recipe"]').addEventListener("click", () => {
+      const sel = card.querySelector(".recipe-select");
+      const recipeName = sel.value;
+      if (!recipeName) return showToast("请先选择一份配方", false);
+      if (!confirm(`确认删除配方「${recipeName}」？`)) return;
+      delete poolSchemas[name][recipeName];
+      if (!Object.keys(poolSchemas[name]).length) delete poolSchemas[name];
+      renderRecipeSelect(name, card);
+      saveToServer(true);
+      showToast(`✅ 已删除配方「${recipeName}」`, true);
+    });
+  }
+
   renderPoolBody(name, card);
   return card;
+}
+
+// 刷新某个池子卡片的配方下拉框，selectName 传了就选中该项
+// 用 createElement+textContent（而不是拼 innerHTML 字符串）插入配方名，避免配方名里带
+// 引号/尖括号等字符时破坏页面结构
+function renderRecipeSelect(poolName, cardEl, selectName) {
+  const sel = cardEl.querySelector(".recipe-select");
+  if (!sel) return;
+  const names = Object.keys(poolSchemas[poolName] || {});
+  sel.innerHTML = "";
+  if (!names.length) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "（暂无配方）";
+    sel.appendChild(opt);
+    return;
+  }
+  names.forEach(n => {
+    const opt = document.createElement("option");
+    opt.value = n;
+    opt.textContent = n;
+    sel.appendChild(opt);
+  });
+  if (selectName && names.includes(selectName)) sel.value = selectName;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1359,7 +1448,7 @@ async function saveToServer(silent = false) {
     const res = await fetch("{{ url_for('admin_pools_save') }}", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pool_definitions: pools, pool_draw_config: poolCfg })
+      body: JSON.stringify({ pool_definitions: pools, pool_draw_config: poolCfg, pool_schemas: poolSchemas })
     });
     const data = await res.json();
     if (!silent) {

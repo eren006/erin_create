@@ -1,0 +1,6149 @@
+[
+  {
+    "summary": {
+      "run_id": "20260905-222730",
+      "dataset": "type_matrix",
+      "battle_id": "type_matrix-00012972",
+      "pair_seed": "30:367:specialvattack",
+      "stage": 30,
+      "seed": 367,
+      "left_policy": "burst",
+      "right_policy": "burst",
+      "left_type": "special",
+      "right_type": "attack",
+      "left_loadout_id": "special_t4_eclipse|special_t3_venom|special_t2_mirage|special_t5_oblivion",
+      "right_loadout_id": "attack_t3_burst|attack_t5_annihilate|attack_t1_quick|attack_t2_heavy",
+      "winner": "right",
+      "rounds": 8,
+      "timed_out": true,
+      "first_mover": "left",
+      "first_mover_won": false,
+      "interrupts": 0,
+      "control_attempts": 0,
+      "control_hits": 0,
+      "backlash_events": 6,
+      "backlash_self_dmg": 148,
+      "fatigued_basic_attacks": 0,
+      "total_damage": 986,
+      "shield_absorbed": 42,
+      "ultimate_used_left": false,
+      "ultimate_used_right": false,
+      "ultimate_unlocked": false,
+      "n_events": 22
+    },
+    "events": [
+      {
+        "seq": 1,
+        "round": 1,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "special_t4_eclipse",
+        "amount": 103,
+        "target_hp_after": 547
+      },
+      {
+        "seq": 2,
+        "round": 1,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 3,
+        "round": 1,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "attack_t5_annihilate",
+        "amount": 142,
+        "target_hp_after": 508
+      },
+      {
+        "seq": 1,
+        "round": 2,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 2,
+        "round": 2,
+        "type": "debuff_applied",
+        "source": "left",
+        "target": "right",
+        "skill_id": "special_t5_oblivion",
+        "duration": 2,
+        "magnitude": 0.4666666666666667
+      },
+      {
+        "seq": 3,
+        "round": 2,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "attack_t3_burst",
+        "amount": 106,
+        "target_hp_after": 402
+      },
+      {
+        "seq": 1,
+        "round": 3,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "attack_t1_quick",
+        "amount": 71,
+        "target_hp_after": 331
+      },
+      {
+        "seq": 2,
+        "round": 3,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 3,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "special_t3_venom",
+        "amount": 96,
+        "target_hp_after": 451
+      },
+      {
+        "seq": 1,
+        "round": 4,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 80,
+        "target_hp_after": 371
+      },
+      {
+        "seq": 2,
+        "round": 4,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 235
+      },
+      {
+        "seq": 1,
+        "round": 5,
+        "type": "debuff_applied",
+        "source": "left",
+        "target": "right",
+        "skill_id": "special_t2_mirage",
+        "duration": 2,
+        "magnitude": 0.18333333333333332
+      },
+      {
+        "seq": 2,
+        "round": 5,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 5,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "attack_t3_burst",
+        "amount": 106,
+        "target_hp_after": 129
+      },
+      {
+        "seq": 1,
+        "round": 6,
+        "type": "shield_gained",
+        "source": "right",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 6,
+        "type": "shield_absorbed",
+        "target": "right",
+        "amount": 42
+      },
+      {
+        "seq": 3,
+        "round": 6,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 70,
+        "target_hp_after": 311
+      },
+      {
+        "seq": 1,
+        "round": 7,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 7,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "special_t3_venom",
+        "amount": 84,
+        "target_hp_after": 227
+      },
+      {
+        "seq": 3,
+        "round": 7,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 33
+      },
+      {
+        "seq": 1,
+        "round": 8,
+        "type": "shield_gained",
+        "source": "right",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 8,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      }
+    ]
+  },
+  {
+    "summary": {
+      "run_id": "20260905-222730",
+      "dataset": "type_matrix",
+      "battle_id": "type_matrix-00002610",
+      "pair_seed": "30:205:controlvspecial",
+      "stage": 30,
+      "seed": 205,
+      "left_policy": "burst",
+      "right_policy": "burst",
+      "left_type": "control",
+      "right_type": "special",
+      "left_loadout_id": "control_t2_slow|control_t5_disarm|control_t4_stun|control_t3_interrupt_strong",
+      "right_loadout_id": "special_t3_venom|special_t5_oblivion|special_t4_eclipse|special_t3_snare",
+      "winner": "right",
+      "rounds": 13,
+      "timed_out": false,
+      "first_mover": "left",
+      "first_mover_won": false,
+      "interrupts": 1,
+      "control_attempts": 8,
+      "control_hits": 5,
+      "backlash_events": 9,
+      "backlash_self_dmg": 304,
+      "fatigued_basic_attacks": 0,
+      "total_damage": 895,
+      "shield_absorbed": 63,
+      "ultimate_used_left": false,
+      "ultimate_used_right": false,
+      "ultimate_unlocked": false,
+      "n_events": 40
+    },
+    "events": [
+      {
+        "seq": 1,
+        "round": 1,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t3_interrupt_strong",
+        "base_chance": 0.7,
+        "final_chance": 0.608695652173913,
+        "success": false,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 2,
+        "round": 1,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 1,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t4_eclipse",
+        "amount": 82,
+        "target_hp_after": 568
+      },
+      {
+        "seq": 1,
+        "round": 2,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t2_slow",
+        "base_chance": 0.75,
+        "final_chance": 0.6521739130434783,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 2,
+        "round": 2,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 3,
+        "round": 2,
+        "type": "debuff_applied",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t5_oblivion",
+        "duration": 2,
+        "magnitude": 0.4666666666666667
+      },
+      {
+        "seq": 1,
+        "round": 3,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 2,
+        "round": 3,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t5_disarm",
+        "base_chance": 0.6,
+        "final_chance": 0.3391304347826087,
+        "success": false,
+        "target_fatigue_before": 1
+      },
+      {
+        "seq": 3,
+        "round": 3,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t3_venom",
+        "amount": 96,
+        "target_hp_after": 472
+      },
+      {
+        "seq": 1,
+        "round": 4,
+        "type": "shield_gained",
+        "source": "right",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 4,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t4_stun",
+        "base_chance": 0.55,
+        "final_chance": 0.4782608695652174,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 1,
+        "round": 5,
+        "type": "stunned",
+        "source": "right"
+      },
+      {
+        "seq": 2,
+        "round": 5,
+        "type": "shield_absorbed",
+        "target": "right",
+        "amount": 21
+      },
+      {
+        "seq": 3,
+        "round": 5,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 555
+      },
+      {
+        "seq": 1,
+        "round": 6,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 491
+      },
+      {
+        "seq": 2,
+        "round": 6,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 6,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t4_eclipse",
+        "amount": 82,
+        "target_hp_after": 390
+      },
+      {
+        "seq": 1,
+        "round": 7,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 375
+      },
+      {
+        "seq": 2,
+        "round": 7,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 326
+      },
+      {
+        "seq": 1,
+        "round": 8,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 8,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t4_stun",
+        "base_chance": 0.55,
+        "final_chance": 0.4782608695652174,
+        "success": false,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 3,
+        "round": 8,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 210
+      },
+      {
+        "seq": 1,
+        "round": 9,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 9,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t3_interrupt_strong",
+        "base_chance": 0.7,
+        "final_chance": 0.608695652173913,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 3,
+        "round": 9,
+        "type": "will_be_interrupted",
+        "target": "right"
+      },
+      {
+        "seq": 4,
+        "round": 9,
+        "type": "interrupted",
+        "source": "right",
+        "skill_id": "special_t5_oblivion"
+      },
+      {
+        "seq": 5,
+        "round": 9,
+        "type": "debuff_applied",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t5_oblivion",
+        "duration": 2,
+        "magnitude": 0.23333333333333334
+      },
+      {
+        "seq": 1,
+        "round": 10,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t2_slow",
+        "base_chance": 0.75,
+        "final_chance": 0.42391304347826086,
+        "success": true,
+        "target_fatigue_before": 1
+      },
+      {
+        "seq": 2,
+        "round": 10,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 10,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t4_eclipse",
+        "amount": 92,
+        "target_hp_after": 86
+      },
+      {
+        "seq": 1,
+        "round": 11,
+        "type": "shield_gained",
+        "source": "left",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 11,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 11,
+        "type": "shield_absorbed",
+        "target": "left",
+        "amount": 42
+      },
+      {
+        "seq": 4,
+        "round": 11,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t3_venom",
+        "amount": 86,
+        "target_hp_after": 42
+      },
+      {
+        "seq": 1,
+        "round": 12,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 227
+      },
+      {
+        "seq": 2,
+        "round": 12,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 12,
+        "type": "debuff_applied",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t3_snare",
+        "duration": 2,
+        "magnitude": 0.2833333333333333
+      },
+      {
+        "seq": 1,
+        "round": 13,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t2_slow",
+        "base_chance": 0.75,
+        "final_chance": 0.6521739130434783,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 2,
+        "round": 13,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "basic_attack",
+        "amount": 73,
+        "target_hp_after": 0
+      },
+      {
+        "seq": 3,
+        "round": 13,
+        "type": "defeated",
+        "target": "left"
+      }
+    ]
+  },
+  {
+    "summary": {
+      "run_id": "20260905-222730",
+      "dataset": "type_matrix",
+      "battle_id": "type_matrix-00003589",
+      "pair_seed": "30:584:attackvcontrol",
+      "stage": 30,
+      "seed": 584,
+      "left_policy": "burst",
+      "right_policy": "burst",
+      "left_type": "attack",
+      "right_type": "control",
+      "left_loadout_id": "attack_t2_heavy|attack_t5_annihilate|attack_t3_burst|attack_t1_light",
+      "right_loadout_id": "control_t3_silence|control_t4_stun|control_t2_slow|control_t3_interrupt_strong",
+      "winner": "left",
+      "rounds": 7,
+      "timed_out": false,
+      "first_mover": "right",
+      "first_mover_won": false,
+      "interrupts": 0,
+      "control_attempts": 5,
+      "control_hits": 2,
+      "backlash_events": 5,
+      "backlash_self_dmg": 168,
+      "fatigued_basic_attacks": 0,
+      "total_damage": 726,
+      "shield_absorbed": 42,
+      "ultimate_used_left": false,
+      "ultimate_used_right": false,
+      "ultimate_unlocked": false,
+      "n_events": 21
+    },
+    "events": [
+      {
+        "seq": 1,
+        "round": 1,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t3_silence",
+        "base_chance": 0.6,
+        "final_chance": 0.6521739130434783,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 2,
+        "round": 1,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 1,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t3_burst",
+        "amount": 106,
+        "target_hp_after": 544
+      },
+      {
+        "seq": 1,
+        "round": 2,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 480
+      },
+      {
+        "seq": 2,
+        "round": 2,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 554
+      },
+      {
+        "seq": 1,
+        "round": 3,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 3,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t4_stun",
+        "base_chance": 0.55,
+        "final_chance": 0.6086956521739131,
+        "success": false,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 3,
+        "round": 3,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t2_heavy",
+        "amount": 90,
+        "target_hp_after": 338
+      },
+      {
+        "seq": 1,
+        "round": 4,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t2_slow",
+        "base_chance": 0.75,
+        "final_chance": 0.782608695652174,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 2,
+        "round": 4,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 3,
+        "round": 4,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t5_annihilate",
+        "amount": 142,
+        "target_hp_after": 196
+      },
+      {
+        "seq": 1,
+        "round": 5,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t3_interrupt_strong",
+        "base_chance": 0.7,
+        "final_chance": 0.48043478260869565,
+        "success": false,
+        "target_fatigue_before": 1
+      },
+      {
+        "seq": 2,
+        "round": 5,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 5,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t3_burst",
+        "amount": 106,
+        "target_hp_after": 90
+      },
+      {
+        "seq": 1,
+        "round": 6,
+        "type": "shield_gained",
+        "source": "right",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 6,
+        "type": "shield_absorbed",
+        "target": "right",
+        "amount": 42
+      },
+      {
+        "seq": 3,
+        "round": 6,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 68
+      },
+      {
+        "seq": 1,
+        "round": 7,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 7,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t4_stun",
+        "base_chance": 0.55,
+        "final_chance": 0.6086956521739131,
+        "success": false,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 3,
+        "round": 7,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t2_heavy",
+        "amount": 90,
+        "target_hp_after": 0
+      },
+      {
+        "seq": 4,
+        "round": 7,
+        "type": "defeated",
+        "target": "right"
+      }
+    ]
+  },
+  {
+    "summary": {
+      "run_id": "20260905-222730",
+      "dataset": "type_matrix",
+      "battle_id": "type_matrix-00012910",
+      "pair_seed": "30:305:specialvattack",
+      "stage": 30,
+      "seed": 305,
+      "left_policy": "burst",
+      "right_policy": "burst",
+      "left_type": "special",
+      "right_type": "attack",
+      "left_loadout_id": "special_t3_venom|special_t3_snare|special_t2_mirage|special_t4_eclipse",
+      "right_loadout_id": "attack_t2_heavy|attack_t5_annihilate|attack_t4_overpower|attack_t1_light",
+      "winner": "right",
+      "rounds": 7,
+      "timed_out": false,
+      "first_mover": "left",
+      "first_mover_won": false,
+      "interrupts": 0,
+      "control_attempts": 0,
+      "control_hits": 0,
+      "backlash_events": 5,
+      "backlash_self_dmg": 220,
+      "fatigued_basic_attacks": 0,
+      "total_damage": 935,
+      "shield_absorbed": 126,
+      "ultimate_used_left": false,
+      "ultimate_used_right": false,
+      "ultimate_unlocked": false,
+      "n_events": 23
+    },
+    "events": [
+      {
+        "seq": 1,
+        "round": 1,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 1,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "special_t3_venom",
+        "amount": 77,
+        "target_hp_after": 573
+      },
+      {
+        "seq": 3,
+        "round": 1,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 4,
+        "round": 1,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "attack_t4_overpower",
+        "amount": 97,
+        "target_hp_after": 521
+      },
+      {
+        "seq": 1,
+        "round": 2,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 2,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "special_t4_eclipse",
+        "amount": 82,
+        "target_hp_after": 439
+      },
+      {
+        "seq": 3,
+        "round": 2,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "attack_t2_heavy",
+        "amount": 90,
+        "target_hp_after": 379
+      },
+      {
+        "seq": 1,
+        "round": 3,
+        "type": "shield_gained",
+        "source": "left",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 3,
+        "type": "shield_absorbed",
+        "target": "left",
+        "amount": 42
+      },
+      {
+        "seq": 3,
+        "round": 3,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 357
+      },
+      {
+        "seq": 1,
+        "round": 4,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 4,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "special_t3_venom",
+        "amount": 77,
+        "target_hp_after": 362
+      },
+      {
+        "seq": 3,
+        "round": 4,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "attack_t2_heavy",
+        "amount": 90,
+        "target_hp_after": 235
+      },
+      {
+        "seq": 1,
+        "round": 5,
+        "type": "shield_gained",
+        "source": "left",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 5,
+        "type": "shield_absorbed",
+        "target": "left",
+        "amount": 42
+      },
+      {
+        "seq": 3,
+        "round": 5,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "attack_t4_overpower",
+        "amount": 122,
+        "target_hp_after": 155
+      },
+      {
+        "seq": 1,
+        "round": 6,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 91
+      },
+      {
+        "seq": 2,
+        "round": 6,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 6,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "special_t4_eclipse",
+        "amount": 82,
+        "target_hp_after": 280
+      },
+      {
+        "seq": 1,
+        "round": 7,
+        "type": "shield_gained",
+        "source": "left",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 7,
+        "type": "shield_absorbed",
+        "target": "left",
+        "amount": 42
+      },
+      {
+        "seq": 3,
+        "round": 7,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "attack_t2_heavy",
+        "amount": 90,
+        "target_hp_after": 0
+      },
+      {
+        "seq": 4,
+        "round": 7,
+        "type": "defeated",
+        "target": "left"
+      }
+    ]
+  },
+  {
+    "summary": {
+      "run_id": "20260905-222730",
+      "dataset": "type_matrix",
+      "battle_id": "type_matrix-00013599",
+      "pair_seed": "30:394:specialvsupport",
+      "stage": 30,
+      "seed": 394,
+      "left_policy": "burst",
+      "right_policy": "burst",
+      "left_type": "special",
+      "right_type": "support",
+      "left_loadout_id": "special_t3_venom|special_t5_oblivion|special_t3_snare|special_t4_eclipse",
+      "right_loadout_id": "support_t1_weaken|support_t5_ruin|support_t4_sap|support_t2_curse",
+      "winner": "left",
+      "rounds": 13,
+      "timed_out": false,
+      "first_mover": "right",
+      "first_mover_won": false,
+      "interrupts": 0,
+      "control_attempts": 0,
+      "control_hits": 0,
+      "backlash_events": 9,
+      "backlash_self_dmg": 292,
+      "fatigued_basic_attacks": 0,
+      "total_damage": 820,
+      "shield_absorbed": 136,
+      "ultimate_used_left": false,
+      "ultimate_used_right": false,
+      "ultimate_unlocked": false,
+      "n_events": 39
+    },
+    "events": [
+      {
+        "seq": 1,
+        "round": 1,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 1,
+        "type": "debuff_applied",
+        "source": "right",
+        "target": "left",
+        "skill_id": "support_t4_sap",
+        "duration": 2,
+        "magnitude": 0.31666666666666665
+      },
+      {
+        "seq": 3,
+        "round": 1,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 4,
+        "round": 1,
+        "type": "debuff_applied",
+        "source": "left",
+        "target": "right",
+        "skill_id": "special_t5_oblivion",
+        "duration": 2,
+        "magnitude": 0.4666666666666667
+      },
+      {
+        "seq": 1,
+        "round": 2,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "special_t4_eclipse",
+        "amount": 128,
+        "target_hp_after": 470
+      },
+      {
+        "seq": 2,
+        "round": 2,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 3,
+        "round": 2,
+        "type": "debuff_applied",
+        "source": "right",
+        "target": "left",
+        "skill_id": "support_t5_ruin",
+        "duration": 2,
+        "magnitude": 0.38333333333333336
+      },
+      {
+        "seq": 1,
+        "round": 3,
+        "type": "shield_gained",
+        "source": "left",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 3,
+        "type": "debuff_applied",
+        "source": "right",
+        "target": "left",
+        "skill_id": "support_t2_curse",
+        "duration": 2,
+        "magnitude": 0.21666666666666667
+      },
+      {
+        "seq": 1,
+        "round": 4,
+        "type": "debuff_applied",
+        "source": "right",
+        "target": "left",
+        "skill_id": "support_t1_weaken",
+        "duration": 2,
+        "magnitude": 0.16666666666666666
+      },
+      {
+        "seq": 2,
+        "round": 4,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "special_t3_venom",
+        "amount": 77,
+        "target_hp_after": 393
+      },
+      {
+        "seq": 1,
+        "round": 5,
+        "type": "shield_gained",
+        "source": "left",
+        "amount": 42,
+        "shield_total": 52
+      },
+      {
+        "seq": 2,
+        "round": 5,
+        "type": "shield_absorbed",
+        "target": "left",
+        "amount": 52
+      },
+      {
+        "seq": 3,
+        "round": 5,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "basic_attack",
+        "amount": 76,
+        "target_hp_after": 626
+      },
+      {
+        "seq": 1,
+        "round": 6,
+        "type": "debuff_applied",
+        "source": "left",
+        "target": "right",
+        "skill_id": "special_t3_snare",
+        "duration": 2,
+        "magnitude": 0.2833333333333333
+      },
+      {
+        "seq": 2,
+        "round": 6,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "basic_attack",
+        "amount": 69,
+        "target_hp_after": 557
+      },
+      {
+        "seq": 1,
+        "round": 7,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 73,
+        "target_hp_after": 320
+      },
+      {
+        "seq": 2,
+        "round": 7,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 7,
+        "type": "debuff_applied",
+        "source": "right",
+        "target": "left",
+        "skill_id": "support_t4_sap",
+        "duration": 2,
+        "magnitude": 0.31666666666666665
+      },
+      {
+        "seq": 1,
+        "round": 8,
+        "type": "shield_gained",
+        "source": "right",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 8,
+        "type": "shield_absorbed",
+        "target": "right",
+        "amount": 42
+      },
+      {
+        "seq": 3,
+        "round": 8,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 73,
+        "target_hp_after": 237
+      },
+      {
+        "seq": 1,
+        "round": 9,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 9,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "special_t4_eclipse",
+        "amount": 82,
+        "target_hp_after": 155
+      },
+      {
+        "seq": 3,
+        "round": 9,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 4,
+        "round": 9,
+        "type": "debuff_applied",
+        "source": "right",
+        "target": "left",
+        "skill_id": "support_t5_ruin",
+        "duration": 2,
+        "magnitude": 0.38333333333333336
+      },
+      {
+        "seq": 1,
+        "round": 10,
+        "type": "shield_gained",
+        "source": "left",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 10,
+        "type": "shield_absorbed",
+        "target": "left",
+        "amount": 42
+      },
+      {
+        "seq": 3,
+        "round": 10,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "basic_attack",
+        "amount": 76,
+        "target_hp_after": 471
+      },
+      {
+        "seq": 1,
+        "round": 11,
+        "type": "debuff_applied",
+        "source": "right",
+        "target": "left",
+        "skill_id": "support_t2_curse",
+        "duration": 2,
+        "magnitude": 0.21666666666666667
+      },
+      {
+        "seq": 2,
+        "round": 11,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 11,
+        "type": "debuff_applied",
+        "source": "left",
+        "target": "right",
+        "skill_id": "special_t3_snare",
+        "duration": 2,
+        "magnitude": 0.2833333333333333
+      },
+      {
+        "seq": 1,
+        "round": 12,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 73,
+        "target_hp_after": 82
+      },
+      {
+        "seq": 2,
+        "round": 12,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 12,
+        "type": "debuff_applied",
+        "source": "right",
+        "target": "left",
+        "skill_id": "support_t4_sap",
+        "duration": 2,
+        "magnitude": 0.31666666666666665
+      },
+      {
+        "seq": 1,
+        "round": 13,
+        "type": "debuff_applied",
+        "source": "right",
+        "target": "left",
+        "skill_id": "support_t1_weaken",
+        "duration": 2,
+        "magnitude": 0.16666666666666666
+      },
+      {
+        "seq": 2,
+        "round": 13,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 13,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "special_t4_eclipse",
+        "amount": 93,
+        "target_hp_after": 0
+      },
+      {
+        "seq": 4,
+        "round": 13,
+        "type": "defeated",
+        "target": "right"
+      }
+    ]
+  },
+  {
+    "summary": {
+      "run_id": "20260905-222730",
+      "dataset": "type_matrix",
+      "battle_id": "type_matrix-00014776",
+      "pair_seed": "30:371:specialvspecial",
+      "stage": 30,
+      "seed": 371,
+      "left_policy": "burst",
+      "right_policy": "burst",
+      "left_type": "special",
+      "right_type": "special",
+      "left_loadout_id": "special_t5_oblivion|special_t3_venom|special_t1_needle|special_t3_snare",
+      "right_loadout_id": "special_t3_venom|special_t2_mirage|special_t4_eclipse|special_t1_needle",
+      "winner": "left",
+      "rounds": 10,
+      "timed_out": true,
+      "first_mover": "left",
+      "first_mover_won": true,
+      "interrupts": 0,
+      "control_attempts": 0,
+      "control_hits": 0,
+      "backlash_events": 7,
+      "backlash_self_dmg": 232,
+      "fatigued_basic_attacks": 0,
+      "total_damage": 1090,
+      "shield_absorbed": 84,
+      "ultimate_used_left": false,
+      "ultimate_used_right": false,
+      "ultimate_unlocked": false,
+      "n_events": 28
+    },
+    "events": [
+      {
+        "seq": 1,
+        "round": 1,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 1,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "special_t3_venom",
+        "amount": 77,
+        "target_hp_after": 573
+      },
+      {
+        "seq": 3,
+        "round": 1,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 4,
+        "round": 1,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t4_eclipse",
+        "amount": 82,
+        "target_hp_after": 536
+      },
+      {
+        "seq": 1,
+        "round": 2,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "special_t1_needle",
+        "amount": 54,
+        "target_hp_after": 467
+      },
+      {
+        "seq": 2,
+        "round": 2,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t1_needle",
+        "amount": 54,
+        "target_hp_after": 482
+      },
+      {
+        "seq": 1,
+        "round": 3,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 3,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t3_venom",
+        "amount": 77,
+        "target_hp_after": 405
+      },
+      {
+        "seq": 3,
+        "round": 3,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 4,
+        "round": 3,
+        "type": "debuff_applied",
+        "source": "left",
+        "target": "right",
+        "skill_id": "special_t5_oblivion",
+        "duration": 2,
+        "magnitude": 0.4666666666666667
+      },
+      {
+        "seq": 1,
+        "round": 4,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 4,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "special_t3_venom",
+        "amount": 96,
+        "target_hp_after": 339
+      },
+      {
+        "seq": 3,
+        "round": 4,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 309
+      },
+      {
+        "seq": 1,
+        "round": 5,
+        "type": "shield_gained",
+        "source": "left",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 5,
+        "type": "shield_absorbed",
+        "target": "left",
+        "amount": 42
+      },
+      {
+        "seq": 3,
+        "round": 5,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t4_eclipse",
+        "amount": 103,
+        "target_hp_after": 248
+      },
+      {
+        "seq": 1,
+        "round": 6,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 275
+      },
+      {
+        "seq": 2,
+        "round": 6,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t3_venom",
+        "amount": 77,
+        "target_hp_after": 171
+      },
+      {
+        "seq": 1,
+        "round": 7,
+        "type": "debuff_applied",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t2_mirage",
+        "duration": 2,
+        "magnitude": 0.18333333333333332
+      },
+      {
+        "seq": 2,
+        "round": 7,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 7,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "special_t3_venom",
+        "amount": 77,
+        "target_hp_after": 198
+      },
+      {
+        "seq": 1,
+        "round": 8,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "special_t1_needle",
+        "amount": 54,
+        "target_hp_after": 144
+      },
+      {
+        "seq": 2,
+        "round": 8,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "basic_attack",
+        "amount": 70,
+        "target_hp_after": 69
+      },
+      {
+        "seq": 1,
+        "round": 9,
+        "type": "shield_gained",
+        "source": "right",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 9,
+        "type": "shield_absorbed",
+        "target": "right",
+        "amount": 42
+      },
+      {
+        "seq": 3,
+        "round": 9,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 122
+      },
+      {
+        "seq": 1,
+        "round": 10,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "special_t3_venom",
+        "amount": 77,
+        "target_hp_after": 45
+      },
+      {
+        "seq": 2,
+        "round": 10,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      }
+    ]
+  },
+  {
+    "summary": {
+      "run_id": "20260905-222730",
+      "dataset": "type_matrix",
+      "battle_id": "type_matrix-00002965",
+      "pair_seed": "30:560:controlvspecial",
+      "stage": 30,
+      "seed": 560,
+      "left_policy": "burst",
+      "right_policy": "burst",
+      "left_type": "control",
+      "right_type": "special",
+      "left_loadout_id": "control_t3_silence|control_t5_disarm|control_t4_stun|control_t1_interrupt",
+      "right_loadout_id": "special_t4_eclipse|special_t3_snare|special_t2_mirage|special_t5_oblivion",
+      "winner": "right",
+      "rounds": 15,
+      "timed_out": true,
+      "first_mover": "left",
+      "first_mover_won": false,
+      "interrupts": 0,
+      "control_attempts": 9,
+      "control_hits": 5,
+      "backlash_events": 10,
+      "backlash_self_dmg": 272,
+      "fatigued_basic_attacks": 0,
+      "total_damage": 689,
+      "shield_absorbed": 193,
+      "ultimate_used_left": false,
+      "ultimate_used_right": false,
+      "ultimate_unlocked": false,
+      "n_events": 46
+    },
+    "events": [
+      {
+        "seq": 1,
+        "round": 1,
+        "type": "shield_gained",
+        "source": "left",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 1,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 1,
+        "type": "shield_absorbed",
+        "target": "left",
+        "amount": 42
+      },
+      {
+        "seq": 4,
+        "round": 1,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t4_eclipse",
+        "amount": 82,
+        "target_hp_after": 610
+      },
+      {
+        "seq": 1,
+        "round": 2,
+        "type": "shield_gained",
+        "source": "right",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 2,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 2,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t3_silence",
+        "base_chance": 0.6,
+        "final_chance": 0.5217391304347826,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 1,
+        "round": 3,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 2,
+        "round": 3,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t5_disarm",
+        "base_chance": 0.6,
+        "final_chance": 0.3391304347826087,
+        "success": true,
+        "target_fatigue_before": 1
+      },
+      {
+        "seq": 3,
+        "round": 3,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 514
+      },
+      {
+        "seq": 1,
+        "round": 4,
+        "type": "shield_gained",
+        "source": "left",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 4,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 4,
+        "type": "debuff_applied",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t3_snare",
+        "duration": 2,
+        "magnitude": 0.2833333333333333
+      },
+      {
+        "seq": 1,
+        "round": 5,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 5,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t4_stun",
+        "base_chance": 0.55,
+        "final_chance": 0.31086956521739134,
+        "success": false,
+        "target_fatigue_before": 1
+      },
+      {
+        "seq": 3,
+        "round": 5,
+        "type": "debuff_applied",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t2_mirage",
+        "duration": 2,
+        "magnitude": 0.18333333333333332
+      },
+      {
+        "seq": 1,
+        "round": 6,
+        "type": "shield_absorbed",
+        "target": "right",
+        "amount": 2
+      },
+      {
+        "seq": 2,
+        "round": 6,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 504
+      },
+      {
+        "seq": 3,
+        "round": 6,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 4,
+        "round": 6,
+        "type": "debuff_applied",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t5_oblivion",
+        "duration": 2,
+        "magnitude": 0.4666666666666667
+      },
+      {
+        "seq": 1,
+        "round": 7,
+        "type": "shield_gained",
+        "source": "right",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 7,
+        "type": "shield_absorbed",
+        "target": "right",
+        "amount": 42
+      },
+      {
+        "seq": 3,
+        "round": 7,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 482
+      },
+      {
+        "seq": 1,
+        "round": 8,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t3_silence",
+        "base_chance": 0.6,
+        "final_chance": 0.5217391304347826,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 2,
+        "round": 8,
+        "type": "shield_absorbed",
+        "target": "left",
+        "amount": 2
+      },
+      {
+        "seq": 3,
+        "round": 8,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t4_eclipse",
+        "amount": 128,
+        "target_hp_after": 336
+      },
+      {
+        "seq": 1,
+        "round": 9,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 2,
+        "round": 9,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t5_disarm",
+        "base_chance": 0.6,
+        "final_chance": 0.3391304347826087,
+        "success": false,
+        "target_fatigue_before": 1
+      },
+      {
+        "seq": 3,
+        "round": 9,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 272
+      },
+      {
+        "seq": 1,
+        "round": 10,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 10,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t4_stun",
+        "base_chance": 0.55,
+        "final_chance": 0.4782608695652174,
+        "success": false,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 3,
+        "round": 10,
+        "type": "debuff_applied",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t3_snare",
+        "duration": 2,
+        "magnitude": 0.2833333333333333
+      },
+      {
+        "seq": 1,
+        "round": 11,
+        "type": "shield_gained",
+        "source": "right",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 11,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t1_interrupt",
+        "base_chance": 0.65,
+        "final_chance": 0.5652173913043478,
+        "success": false,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 1,
+        "round": 12,
+        "type": "shield_gained",
+        "source": "right",
+        "amount": 42,
+        "shield_total": 63
+      },
+      {
+        "seq": 2,
+        "round": 12,
+        "type": "shield_absorbed",
+        "target": "right",
+        "amount": 63
+      },
+      {
+        "seq": 3,
+        "round": 12,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 481
+      },
+      {
+        "seq": 1,
+        "round": 13,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t3_silence",
+        "base_chance": 0.6,
+        "final_chance": 0.5217391304347826,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 2,
+        "round": 13,
+        "type": "debuff_applied",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t2_mirage",
+        "duration": 2,
+        "magnitude": 0.18333333333333332
+      },
+      {
+        "seq": 1,
+        "round": 14,
+        "type": "shield_gained",
+        "source": "left",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 14,
+        "type": "shield_absorbed",
+        "target": "left",
+        "amount": 42
+      },
+      {
+        "seq": 3,
+        "round": 14,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "basic_attack",
+        "amount": 70,
+        "target_hp_after": 192
+      },
+      {
+        "seq": 1,
+        "round": 15,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 2,
+        "round": 15,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t5_disarm",
+        "base_chance": 0.6,
+        "final_chance": 0.5217391304347826,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 3,
+        "round": 15,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 4,
+        "round": 15,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t4_eclipse",
+        "amount": 89,
+        "target_hp_after": 103
+      }
+    ]
+  },
+  {
+    "summary": {
+      "run_id": "20260905-222730",
+      "dataset": "type_matrix",
+      "battle_id": "type_matrix-00003167",
+      "pair_seed": "30:162:attackvcontrol",
+      "stage": 30,
+      "seed": 162,
+      "left_policy": "burst",
+      "right_policy": "burst",
+      "left_type": "attack",
+      "right_type": "control",
+      "left_loadout_id": "attack_t1_quick|attack_t5_annihilate|attack_t3_burst|attack_t2_heavy",
+      "right_loadout_id": "control_t5_disarm|control_t3_silence|control_t2_slow|control_t3_interrupt_strong",
+      "winner": "left",
+      "rounds": 9,
+      "timed_out": true,
+      "first_mover": "right",
+      "first_mover_won": false,
+      "interrupts": 1,
+      "control_attempts": 5,
+      "control_hits": 3,
+      "backlash_events": 6,
+      "backlash_self_dmg": 128,
+      "fatigued_basic_attacks": 0,
+      "total_damage": 684,
+      "shield_absorbed": 84,
+      "ultimate_used_left": false,
+      "ultimate_used_right": false,
+      "ultimate_unlocked": false,
+      "n_events": 26
+    },
+    "events": [
+      {
+        "seq": 1,
+        "round": 1,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 2,
+        "round": 1,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t5_disarm",
+        "base_chance": 0.6,
+        "final_chance": 0.6521739130434783,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 3,
+        "round": 1,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t2_heavy",
+        "amount": 90,
+        "target_hp_after": 560
+      },
+      {
+        "seq": 1,
+        "round": 2,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 2,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t3_silence",
+        "base_chance": 0.6,
+        "final_chance": 0.42391304347826086,
+        "success": false,
+        "target_fatigue_before": 1
+      },
+      {
+        "seq": 3,
+        "round": 2,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 464
+      },
+      {
+        "seq": 1,
+        "round": 3,
+        "type": "shield_gained",
+        "source": "right",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 3,
+        "type": "shield_absorbed",
+        "target": "right",
+        "amount": 42
+      },
+      {
+        "seq": 3,
+        "round": 3,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 442
+      },
+      {
+        "seq": 1,
+        "round": 4,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 4,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t3_interrupt_strong",
+        "base_chance": 0.7,
+        "final_chance": 0.7391304347826086,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 3,
+        "round": 4,
+        "type": "will_be_interrupted",
+        "target": "left"
+      },
+      {
+        "seq": 4,
+        "round": 4,
+        "type": "interrupted",
+        "source": "left",
+        "skill_id": "attack_t1_quick"
+      },
+      {
+        "seq": 5,
+        "round": 4,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t1_quick",
+        "amount": 35,
+        "target_hp_after": 375
+      },
+      {
+        "seq": 1,
+        "round": 5,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 586
+      },
+      {
+        "seq": 2,
+        "round": 5,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t2_heavy",
+        "amount": 90,
+        "target_hp_after": 285
+      },
+      {
+        "seq": 1,
+        "round": 6,
+        "type": "shield_gained",
+        "source": "right",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 6,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 3,
+        "round": 6,
+        "type": "shield_absorbed",
+        "target": "right",
+        "amount": 42
+      },
+      {
+        "seq": 4,
+        "round": 6,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t5_annihilate",
+        "amount": 142,
+        "target_hp_after": 185
+      },
+      {
+        "seq": 1,
+        "round": 7,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t2_slow",
+        "base_chance": 0.75,
+        "final_chance": 0.782608695652174,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 2,
+        "round": 7,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 121
+      },
+      {
+        "seq": 1,
+        "round": 8,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 8,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t3_interrupt_strong",
+        "base_chance": 0.7,
+        "final_chance": 0.48043478260869565,
+        "success": false,
+        "target_fatigue_before": 1
+      },
+      {
+        "seq": 3,
+        "round": 8,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t1_quick",
+        "amount": 71,
+        "target_hp_after": 18
+      },
+      {
+        "seq": 1,
+        "round": 9,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      }
+    ]
+  },
+  {
+    "summary": {
+      "run_id": "20260905-222730",
+      "dataset": "type_matrix",
+      "battle_id": "type_matrix-00001073",
+      "pair_seed": "30:468:controlvattack",
+      "stage": 30,
+      "seed": 468,
+      "left_policy": "burst",
+      "right_policy": "burst",
+      "left_type": "control",
+      "right_type": "attack",
+      "left_loadout_id": "control_t4_stun|control_t3_silence|control_t1_interrupt|control_t5_disarm",
+      "right_loadout_id": "attack_t4_overpower|attack_t5_annihilate|attack_t2_heavy|attack_t1_quick",
+      "winner": "right",
+      "rounds": 8,
+      "timed_out": false,
+      "first_mover": "left",
+      "first_mover_won": false,
+      "interrupts": 0,
+      "control_attempts": 6,
+      "control_hits": 1,
+      "backlash_events": 5,
+      "backlash_self_dmg": 104,
+      "fatigued_basic_attacks": 0,
+      "total_damage": 715,
+      "shield_absorbed": 42,
+      "ultimate_used_left": false,
+      "ultimate_used_right": false,
+      "ultimate_unlocked": false,
+      "n_events": 23
+    },
+    "events": [
+      {
+        "seq": 1,
+        "round": 1,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 2,
+        "round": 1,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t5_disarm",
+        "base_chance": 0.6,
+        "final_chance": 0.6521739130434783,
+        "success": false,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 3,
+        "round": 1,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "attack_t5_annihilate",
+        "amount": 142,
+        "target_hp_after": 508
+      },
+      {
+        "seq": 1,
+        "round": 2,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 2,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t4_stun",
+        "base_chance": 0.55,
+        "final_chance": 0.6086956521739131,
+        "success": false,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 3,
+        "round": 2,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 4,
+        "round": 2,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "attack_t4_overpower",
+        "amount": 97,
+        "target_hp_after": 359
+      },
+      {
+        "seq": 1,
+        "round": 3,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t1_interrupt",
+        "base_chance": 0.65,
+        "final_chance": 0.6956521739130435,
+        "success": false,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 2,
+        "round": 3,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "attack_t1_quick",
+        "amount": 71,
+        "target_hp_after": 288
+      },
+      {
+        "seq": 1,
+        "round": 4,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 534
+      },
+      {
+        "seq": 2,
+        "round": 4,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 224
+      },
+      {
+        "seq": 1,
+        "round": 5,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t3_silence",
+        "base_chance": 0.6,
+        "final_chance": 0.6521739130434783,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 2,
+        "round": 5,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "attack_t1_quick",
+        "amount": 71,
+        "target_hp_after": 153
+      },
+      {
+        "seq": 1,
+        "round": 6,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t1_interrupt",
+        "base_chance": 0.65,
+        "final_chance": 0.45217391304347826,
+        "success": false,
+        "target_fatigue_before": 1
+      },
+      {
+        "seq": 2,
+        "round": 6,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 89
+      },
+      {
+        "seq": 1,
+        "round": 7,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 2,
+        "round": 7,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t5_disarm",
+        "base_chance": 0.6,
+        "final_chance": 0.6521739130434783,
+        "success": false,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 3,
+        "round": 7,
+        "type": "shield_gained",
+        "source": "right",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 1,
+        "round": 8,
+        "type": "shield_gained",
+        "source": "left",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 8,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 3,
+        "round": 8,
+        "type": "shield_absorbed",
+        "target": "left",
+        "amount": 42
+      },
+      {
+        "seq": 4,
+        "round": 8,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "attack_t5_annihilate",
+        "amount": 142,
+        "target_hp_after": 0
+      },
+      {
+        "seq": 5,
+        "round": 8,
+        "type": "defeated",
+        "target": "left"
+      }
+    ]
+  },
+  {
+    "summary": {
+      "run_id": "20260905-222730",
+      "dataset": "type_matrix",
+      "battle_id": "type_matrix-00003324",
+      "pair_seed": "30:319:attackvcontrol",
+      "stage": 30,
+      "seed": 319,
+      "left_policy": "burst",
+      "right_policy": "burst",
+      "left_type": "attack",
+      "right_type": "control",
+      "left_loadout_id": "attack_t2_heavy|attack_t1_quick|attack_t5_annihilate|attack_t3_burst",
+      "right_loadout_id": "control_t2_slow|control_t5_disarm|control_t3_silence|control_t1_interrupt",
+      "winner": "left",
+      "rounds": 8,
+      "timed_out": false,
+      "first_mover": "right",
+      "first_mover_won": false,
+      "interrupts": 0,
+      "control_attempts": 5,
+      "control_hits": 3,
+      "backlash_events": 5,
+      "backlash_self_dmg": 96,
+      "fatigued_basic_attacks": 0,
+      "total_damage": 684,
+      "shield_absorbed": 42,
+      "ultimate_used_left": false,
+      "ultimate_used_right": false,
+      "ultimate_unlocked": false,
+      "n_events": 23
+    },
+    "events": [
+      {
+        "seq": 1,
+        "round": 1,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 1,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t3_silence",
+        "base_chance": 0.6,
+        "final_chance": 0.6521739130434783,
+        "success": false,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 3,
+        "round": 1,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 4,
+        "round": 1,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t5_annihilate",
+        "amount": 142,
+        "target_hp_after": 476
+      },
+      {
+        "seq": 1,
+        "round": 2,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 2,
+        "round": 2,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t5_disarm",
+        "base_chance": 0.6,
+        "final_chance": 0.6521739130434783,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 3,
+        "round": 2,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 4,
+        "round": 2,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t3_burst",
+        "amount": 106,
+        "target_hp_after": 370
+      },
+      {
+        "seq": 1,
+        "round": 3,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t2_slow",
+        "base_chance": 0.75,
+        "final_chance": 0.5086956521739131,
+        "success": false,
+        "target_fatigue_before": 1
+      },
+      {
+        "seq": 2,
+        "round": 3,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 306
+      },
+      {
+        "seq": 1,
+        "round": 4,
+        "type": "shield_gained",
+        "source": "left",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 4,
+        "type": "shield_gained",
+        "source": "right",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 1,
+        "round": 5,
+        "type": "shield_absorbed",
+        "target": "left",
+        "amount": 21
+      },
+      {
+        "seq": 2,
+        "round": 5,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 575
+      },
+      {
+        "seq": 3,
+        "round": 5,
+        "type": "shield_absorbed",
+        "target": "right",
+        "amount": 21
+      },
+      {
+        "seq": 4,
+        "round": 5,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t2_heavy",
+        "amount": 90,
+        "target_hp_after": 237
+      },
+      {
+        "seq": 1,
+        "round": 6,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t2_slow",
+        "base_chance": 0.75,
+        "final_chance": 0.782608695652174,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 2,
+        "round": 6,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 173
+      },
+      {
+        "seq": 1,
+        "round": 7,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 7,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t3_silence",
+        "base_chance": 0.6,
+        "final_chance": 0.42391304347826086,
+        "success": true,
+        "target_fatigue_before": 1
+      },
+      {
+        "seq": 3,
+        "round": 7,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t2_heavy",
+        "amount": 90,
+        "target_hp_after": 51
+      },
+      {
+        "seq": 1,
+        "round": 8,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 0
+      },
+      {
+        "seq": 2,
+        "round": 8,
+        "type": "defeated",
+        "target": "right"
+      }
+    ]
+  },
+  {
+    "summary": {
+      "run_id": "20260905-222730",
+      "dataset": "type_matrix",
+      "battle_id": "type_matrix-00009137",
+      "pair_seed": "30:132:defensevcontrol",
+      "stage": 30,
+      "seed": 132,
+      "left_policy": "burst",
+      "right_policy": "burst",
+      "left_type": "defense",
+      "right_type": "control",
+      "left_loadout_id": "defense_t5_retaliate|defense_t2_counter|defense_t1_guard|defense_t4_bulwark",
+      "right_loadout_id": "control_t5_disarm|control_t3_interrupt_strong|control_t2_slow|control_t4_stun",
+      "winner": "left",
+      "rounds": 14,
+      "timed_out": false,
+      "first_mover": "left",
+      "first_mover_won": true,
+      "interrupts": 1,
+      "control_attempts": 7,
+      "control_hits": 5,
+      "backlash_events": 9,
+      "backlash_self_dmg": 272,
+      "fatigued_basic_attacks": 0,
+      "total_damage": 683,
+      "shield_absorbed": 150,
+      "ultimate_used_left": false,
+      "ultimate_used_right": false,
+      "ultimate_unlocked": false,
+      "n_events": 44
+    },
+    "events": [
+      {
+        "seq": 1,
+        "round": 1,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 1,
+        "type": "shield_gained",
+        "source": "left",
+        "amount": 126,
+        "shield_total": 126
+      },
+      {
+        "seq": 3,
+        "round": 1,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 4,
+        "round": 1,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t3_interrupt_strong",
+        "base_chance": 0.7,
+        "final_chance": 0.608695652173913,
+        "success": false,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 1,
+        "round": 2,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "defense_t2_counter",
+        "amount": 58,
+        "target_hp_after": 560
+      },
+      {
+        "seq": 2,
+        "round": 2,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 3,
+        "round": 2,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t5_disarm",
+        "base_chance": 0.6,
+        "final_chance": 0.5217391304347826,
+        "success": false,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 1,
+        "round": 3,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 2,
+        "round": 3,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "defense_t5_retaliate",
+        "amount": 97,
+        "target_hp_after": 463
+      },
+      {
+        "seq": 3,
+        "round": 3,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t2_slow",
+        "base_chance": 0.75,
+        "final_chance": 0.6521739130434783,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 1,
+        "round": 4,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "defense_t2_counter",
+        "amount": 58,
+        "target_hp_after": 405
+      },
+      {
+        "seq": 2,
+        "round": 4,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 4,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t4_stun",
+        "base_chance": 0.55,
+        "final_chance": 0.31086956521739134,
+        "success": true,
+        "target_fatigue_before": 1
+      },
+      {
+        "seq": 1,
+        "round": 5,
+        "type": "stunned",
+        "source": "left"
+      },
+      {
+        "seq": 2,
+        "round": 5,
+        "type": "shield_gained",
+        "source": "right",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 1,
+        "round": 6,
+        "type": "shield_absorbed",
+        "target": "right",
+        "amount": 21
+      },
+      {
+        "seq": 2,
+        "round": 6,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "defense_t2_counter",
+        "amount": 58,
+        "target_hp_after": 316
+      },
+      {
+        "seq": 3,
+        "round": 6,
+        "type": "shield_absorbed",
+        "target": "left",
+        "amount": 3
+      },
+      {
+        "seq": 4,
+        "round": 6,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 537
+      },
+      {
+        "seq": 1,
+        "round": 7,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 7,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t3_interrupt_strong",
+        "base_chance": 0.7,
+        "final_chance": 0.608695652173913,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 3,
+        "round": 7,
+        "type": "will_be_interrupted",
+        "target": "left"
+      },
+      {
+        "seq": 4,
+        "round": 7,
+        "type": "interrupted",
+        "source": "left",
+        "skill_id": "basic_attack"
+      },
+      {
+        "seq": 5,
+        "round": 7,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 32,
+        "target_hp_after": 252
+      },
+      {
+        "seq": 1,
+        "round": 8,
+        "type": "shield_gained",
+        "source": "left",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 8,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 8,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t4_stun",
+        "base_chance": 0.55,
+        "final_chance": 0.31086956521739134,
+        "success": true,
+        "target_fatigue_before": 1
+      },
+      {
+        "seq": 1,
+        "round": 9,
+        "type": "stunned",
+        "source": "left"
+      },
+      {
+        "seq": 2,
+        "round": 9,
+        "type": "shield_gained",
+        "source": "right",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 1,
+        "round": 10,
+        "type": "shield_gained",
+        "source": "right",
+        "amount": 42,
+        "shield_total": 63
+      },
+      {
+        "seq": 2,
+        "round": 10,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 3,
+        "round": 10,
+        "type": "shield_absorbed",
+        "target": "right",
+        "amount": 63
+      },
+      {
+        "seq": 4,
+        "round": 10,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "defense_t5_retaliate",
+        "amount": 97,
+        "target_hp_after": 166
+      },
+      {
+        "seq": 1,
+        "round": 11,
+        "type": "shield_gained",
+        "source": "right",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 11,
+        "type": "shield_absorbed",
+        "target": "right",
+        "amount": 42
+      },
+      {
+        "seq": 3,
+        "round": 11,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "defense_t2_counter",
+        "amount": 58,
+        "target_hp_after": 150
+      },
+      {
+        "seq": 1,
+        "round": 12,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 12,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t4_stun",
+        "base_chance": 0.55,
+        "final_chance": 0.4782608695652174,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 3,
+        "round": 12,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 34
+      },
+      {
+        "seq": 1,
+        "round": 13,
+        "type": "stunned",
+        "source": "left"
+      },
+      {
+        "seq": 2,
+        "round": 13,
+        "type": "shield_gained",
+        "source": "right",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 1,
+        "round": 14,
+        "type": "shield_absorbed",
+        "target": "right",
+        "amount": 21
+      },
+      {
+        "seq": 2,
+        "round": 14,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "defense_t5_retaliate",
+        "amount": 97,
+        "target_hp_after": 0
+      },
+      {
+        "seq": 3,
+        "round": 14,
+        "type": "defeated",
+        "target": "right"
+      }
+    ]
+  },
+  {
+    "summary": {
+      "run_id": "20260905-222730",
+      "dataset": "type_matrix",
+      "battle_id": "type_matrix-00000589",
+      "pair_seed": "30:584:controlvcontrol",
+      "stage": 30,
+      "seed": 584,
+      "left_policy": "burst",
+      "right_policy": "burst",
+      "left_type": "control",
+      "right_type": "control",
+      "left_loadout_id": "control_t5_disarm|control_t4_stun|control_t3_interrupt_strong|control_t1_interrupt",
+      "right_loadout_id": "control_t1_interrupt|control_t2_slow|control_t4_stun|control_t5_disarm",
+      "winner": null,
+      "rounds": 15,
+      "timed_out": true,
+      "first_mover": "left",
+      "first_mover_won": false,
+      "interrupts": 2,
+      "control_attempts": 19,
+      "control_hits": 9,
+      "backlash_events": 6,
+      "backlash_self_dmg": 240,
+      "fatigued_basic_attacks": 0,
+      "total_damage": 96,
+      "shield_absorbed": 0,
+      "ultimate_used_left": false,
+      "ultimate_used_right": false,
+      "ultimate_unlocked": false,
+      "n_events": 40
+    },
+    "events": [
+      {
+        "seq": 1,
+        "round": 1,
+        "type": "shield_gained",
+        "source": "left",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 1,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t2_slow",
+        "base_chance": 0.75,
+        "final_chance": 0.6521739130434783,
+        "success": false,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 1,
+        "round": 2,
+        "type": "shield_gained",
+        "source": "left",
+        "amount": 42,
+        "shield_total": 63
+      },
+      {
+        "seq": 2,
+        "round": 2,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t1_interrupt",
+        "base_chance": 0.65,
+        "final_chance": 0.5652173913043478,
+        "success": false,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 1,
+        "round": 3,
+        "type": "shield_gained",
+        "source": "right",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 3,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 3,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t3_interrupt_strong",
+        "base_chance": 0.7,
+        "final_chance": 0.608695652173913,
+        "success": false,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 1,
+        "round": 4,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 4,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t4_stun",
+        "base_chance": 0.55,
+        "final_chance": 0.4782608695652174,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 3,
+        "round": 4,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t2_slow",
+        "base_chance": 0.75,
+        "final_chance": 0.6521739130434783,
+        "success": false,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 1,
+        "round": 5,
+        "type": "stunned",
+        "source": "right"
+      },
+      {
+        "seq": 2,
+        "round": 5,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t1_interrupt",
+        "base_chance": 0.65,
+        "final_chance": 0.3673913043478261,
+        "success": false,
+        "target_fatigue_before": 1
+      },
+      {
+        "seq": 1,
+        "round": 6,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 6,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t4_stun",
+        "base_chance": 0.55,
+        "final_chance": 0.4782608695652174,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 3,
+        "round": 6,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 4,
+        "round": 6,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t5_disarm",
+        "base_chance": 0.6,
+        "final_chance": 0.5217391304347826,
+        "success": false,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 1,
+        "round": 7,
+        "type": "stunned",
+        "source": "left"
+      },
+      {
+        "seq": 2,
+        "round": 7,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t2_slow",
+        "base_chance": 0.75,
+        "final_chance": 0.42391304347826086,
+        "success": true,
+        "target_fatigue_before": 1
+      },
+      {
+        "seq": 1,
+        "round": 8,
+        "type": "shield_gained",
+        "source": "right",
+        "amount": 42,
+        "shield_total": 43
+      },
+      {
+        "seq": 2,
+        "round": 8,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t1_interrupt",
+        "base_chance": 0.65,
+        "final_chance": 0.5652173913043478,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 1,
+        "round": 9,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 9,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t4_stun",
+        "base_chance": 0.55,
+        "final_chance": 0.31086956521739134,
+        "success": false,
+        "target_fatigue_before": 1
+      },
+      {
+        "seq": 3,
+        "round": 9,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t1_interrupt",
+        "base_chance": 0.65,
+        "final_chance": 0.3673913043478261,
+        "success": true,
+        "target_fatigue_before": 1
+      },
+      {
+        "seq": 1,
+        "round": 10,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t3_interrupt_strong",
+        "base_chance": 0.7,
+        "final_chance": 0.608695652173913,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 2,
+        "round": 10,
+        "type": "will_be_interrupted",
+        "target": "right"
+      },
+      {
+        "seq": 3,
+        "round": 10,
+        "type": "interrupted",
+        "source": "right",
+        "skill_id": "basic_attack"
+      },
+      {
+        "seq": 4,
+        "round": 10,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "basic_attack",
+        "amount": 32,
+        "target_hp_after": 482
+      },
+      {
+        "seq": 1,
+        "round": 11,
+        "type": "shield_gained",
+        "source": "left",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 11,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t5_disarm",
+        "base_chance": 0.6,
+        "final_chance": 0.3391304347826087,
+        "success": false,
+        "target_fatigue_before": 1
+      },
+      {
+        "seq": 1,
+        "round": 12,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t1_interrupt",
+        "base_chance": 0.65,
+        "final_chance": 0.5652173913043478,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 2,
+        "round": 12,
+        "type": "will_be_interrupted",
+        "target": "right"
+      },
+      {
+        "seq": 3,
+        "round": 12,
+        "type": "interrupted",
+        "source": "right",
+        "skill_id": "control_t2_slow"
+      },
+      {
+        "seq": 4,
+        "round": 12,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t2_slow",
+        "base_chance": 0.75,
+        "final_chance": 0.6521739130434783,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 1,
+        "round": 13,
+        "type": "shield_gained",
+        "source": "left",
+        "amount": 42,
+        "shield_total": 52
+      },
+      {
+        "seq": 2,
+        "round": 13,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t2_slow",
+        "base_chance": 0.75,
+        "final_chance": 0.42391304347826086,
+        "success": true,
+        "target_fatigue_before": 1
+      },
+      {
+        "seq": 1,
+        "round": 14,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 14,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t4_stun",
+        "base_chance": 0.55,
+        "final_chance": 0.1673913043478261,
+        "success": false,
+        "target_fatigue_before": 2
+      },
+      {
+        "seq": 3,
+        "round": 14,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 482
+      },
+      {
+        "seq": 1,
+        "round": 15,
+        "type": "shield_gained",
+        "source": "left",
+        "amount": 42,
+        "shield_total": 55
+      },
+      {
+        "seq": 2,
+        "round": 15,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t1_interrupt",
+        "base_chance": 0.65,
+        "final_chance": 0.3673913043478261,
+        "success": false,
+        "target_fatigue_before": 1
+      }
+    ]
+  },
+  {
+    "summary": {
+      "run_id": "20260905-222730",
+      "dataset": "type_matrix",
+      "battle_id": "type_matrix-00001103",
+      "pair_seed": "30:498:controlvattack",
+      "stage": 30,
+      "seed": 498,
+      "left_policy": "burst",
+      "right_policy": "burst",
+      "left_type": "control",
+      "right_type": "attack",
+      "left_loadout_id": "control_t5_disarm|control_t1_interrupt|control_t3_interrupt_strong|control_t3_silence",
+      "right_loadout_id": "attack_t3_burst|attack_t2_heavy|attack_t4_overpower|attack_t5_annihilate",
+      "winner": "right",
+      "rounds": 7,
+      "timed_out": false,
+      "first_mover": "left",
+      "first_mover_won": false,
+      "interrupts": 2,
+      "control_attempts": 6,
+      "control_hits": 2,
+      "backlash_events": 4,
+      "backlash_self_dmg": 96,
+      "fatigued_basic_attacks": 0,
+      "total_damage": 678,
+      "shield_absorbed": 0,
+      "ultimate_used_left": false,
+      "ultimate_used_right": false,
+      "ultimate_unlocked": false,
+      "n_events": 23
+    },
+    "events": [
+      {
+        "seq": 1,
+        "round": 1,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 1,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t3_interrupt_strong",
+        "base_chance": 0.7,
+        "final_chance": 0.7391304347826086,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 3,
+        "round": 1,
+        "type": "will_be_interrupted",
+        "target": "right"
+      },
+      {
+        "seq": 4,
+        "round": 1,
+        "type": "interrupted",
+        "source": "right",
+        "skill_id": "attack_t4_overpower"
+      },
+      {
+        "seq": 5,
+        "round": 1,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "attack_t4_overpower",
+        "amount": 61,
+        "target_hp_after": 557
+      },
+      {
+        "seq": 1,
+        "round": 2,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t5_disarm",
+        "base_chance": 0.6,
+        "final_chance": 0.42391304347826086,
+        "success": false,
+        "target_fatigue_before": 1
+      },
+      {
+        "seq": 2,
+        "round": 2,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "attack_t2_heavy",
+        "amount": 90,
+        "target_hp_after": 467
+      },
+      {
+        "seq": 1,
+        "round": 3,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t3_silence",
+        "base_chance": 0.6,
+        "final_chance": 0.6521739130434783,
+        "success": false,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 2,
+        "round": 3,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 403
+      },
+      {
+        "seq": 1,
+        "round": 4,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 586
+      },
+      {
+        "seq": 2,
+        "round": 4,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "attack_t3_burst",
+        "amount": 106,
+        "target_hp_after": 297
+      },
+      {
+        "seq": 1,
+        "round": 5,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t1_interrupt",
+        "base_chance": 0.65,
+        "final_chance": 0.6956521739130435,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 2,
+        "round": 5,
+        "type": "will_be_interrupted",
+        "target": "right"
+      },
+      {
+        "seq": 3,
+        "round": 5,
+        "type": "interrupted",
+        "source": "right",
+        "skill_id": "attack_t2_heavy"
+      },
+      {
+        "seq": 4,
+        "round": 5,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "attack_t2_heavy",
+        "amount": 45,
+        "target_hp_after": 252
+      },
+      {
+        "seq": 1,
+        "round": 6,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t3_interrupt_strong",
+        "base_chance": 0.7,
+        "final_chance": 0.48043478260869565,
+        "success": false,
+        "target_fatigue_before": 1
+      },
+      {
+        "seq": 2,
+        "round": 6,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 3,
+        "round": 6,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "attack_t5_annihilate",
+        "amount": 142,
+        "target_hp_after": 110
+      },
+      {
+        "seq": 1,
+        "round": 7,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 7,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t3_silence",
+        "base_chance": 0.6,
+        "final_chance": 0.6521739130434783,
+        "success": false,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 3,
+        "round": 7,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 4,
+        "round": 7,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "attack_t3_burst",
+        "amount": 106,
+        "target_hp_after": 0
+      },
+      {
+        "seq": 5,
+        "round": 7,
+        "type": "defeated",
+        "target": "left"
+      }
+    ]
+  },
+  {
+    "summary": {
+      "run_id": "20260905-222730",
+      "dataset": "type_matrix",
+      "battle_id": "type_matrix-00002772",
+      "pair_seed": "30:367:controlvspecial",
+      "stage": 30,
+      "seed": 367,
+      "left_policy": "burst",
+      "right_policy": "burst",
+      "left_type": "control",
+      "right_type": "special",
+      "left_loadout_id": "control_t5_disarm|control_t3_silence|control_t4_stun|control_t2_slow",
+      "right_loadout_id": "special_t1_needle|special_t3_snare|special_t3_venom|special_t4_eclipse",
+      "winner": "right",
+      "rounds": 13,
+      "timed_out": false,
+      "first_mover": "left",
+      "first_mover_won": false,
+      "interrupts": 0,
+      "control_attempts": 7,
+      "control_hits": 4,
+      "backlash_events": 8,
+      "backlash_self_dmg": 220,
+      "fatigued_basic_attacks": 0,
+      "total_damage": 803,
+      "shield_absorbed": 129,
+      "ultimate_used_left": false,
+      "ultimate_used_right": false,
+      "ultimate_unlocked": false,
+      "n_events": 41
+    },
+    "events": [
+      {
+        "seq": 1,
+        "round": 1,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 2,
+        "round": 1,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t5_disarm",
+        "base_chance": 0.6,
+        "final_chance": 0.5217391304347826,
+        "success": false,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 3,
+        "round": 1,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t3_venom",
+        "amount": 77,
+        "target_hp_after": 573
+      },
+      {
+        "seq": 1,
+        "round": 2,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 586
+      },
+      {
+        "seq": 2,
+        "round": 2,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 2,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t4_eclipse",
+        "amount": 82,
+        "target_hp_after": 491
+      },
+      {
+        "seq": 1,
+        "round": 3,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 3,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t3_silence",
+        "base_chance": 0.6,
+        "final_chance": 0.5217391304347826,
+        "success": false,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 3,
+        "round": 3,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t1_needle",
+        "amount": 54,
+        "target_hp_after": 405
+      },
+      {
+        "seq": 1,
+        "round": 4,
+        "type": "shield_gained",
+        "source": "left",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 4,
+        "type": "shield_absorbed",
+        "target": "left",
+        "amount": 42
+      },
+      {
+        "seq": 3,
+        "round": 4,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t3_venom",
+        "amount": 77,
+        "target_hp_after": 370
+      },
+      {
+        "seq": 1,
+        "round": 5,
+        "type": "shield_gained",
+        "source": "left",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 5,
+        "type": "shield_absorbed",
+        "target": "left",
+        "amount": 42
+      },
+      {
+        "seq": 3,
+        "round": 5,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t1_needle",
+        "amount": 54,
+        "target_hp_after": 358
+      },
+      {
+        "seq": 1,
+        "round": 6,
+        "type": "shield_gained",
+        "source": "left",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 6,
+        "type": "shield_gained",
+        "source": "right",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 1,
+        "round": 7,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 2,
+        "round": 7,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t5_disarm",
+        "base_chance": 0.6,
+        "final_chance": 0.5217391304347826,
+        "success": false,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 3,
+        "round": 7,
+        "type": "shield_absorbed",
+        "target": "left",
+        "amount": 21
+      },
+      {
+        "seq": 4,
+        "round": 7,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t1_needle",
+        "amount": 54,
+        "target_hp_after": 325
+      },
+      {
+        "seq": 1,
+        "round": 8,
+        "type": "shield_gained",
+        "source": "right",
+        "amount": 42,
+        "shield_total": 52
+      },
+      {
+        "seq": 2,
+        "round": 8,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 8,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t3_silence",
+        "base_chance": 0.6,
+        "final_chance": 0.5217391304347826,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 1,
+        "round": 9,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t2_slow",
+        "base_chance": 0.75,
+        "final_chance": 0.42391304347826086,
+        "success": true,
+        "target_fatigue_before": 1
+      },
+      {
+        "seq": 2,
+        "round": 9,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 229
+      },
+      {
+        "seq": 1,
+        "round": 10,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 10,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t4_stun",
+        "base_chance": 0.55,
+        "final_chance": 0.1673913043478261,
+        "success": true,
+        "target_fatigue_before": 2
+      },
+      {
+        "seq": 3,
+        "round": 10,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t3_venom",
+        "amount": 77,
+        "target_hp_after": 100
+      },
+      {
+        "seq": 4,
+        "round": 10,
+        "type": "control_fatigue_reset",
+        "target": "right"
+      },
+      {
+        "seq": 1,
+        "round": 11,
+        "type": "stunned",
+        "source": "right"
+      },
+      {
+        "seq": 2,
+        "round": 11,
+        "type": "shield_gained",
+        "source": "left",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 1,
+        "round": 12,
+        "type": "shield_absorbed",
+        "target": "left",
+        "amount": 21
+      },
+      {
+        "seq": 2,
+        "round": 12,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t1_needle",
+        "amount": 54,
+        "target_hp_after": 67
+      },
+      {
+        "seq": 3,
+        "round": 12,
+        "type": "shield_absorbed",
+        "target": "right",
+        "amount": 3
+      },
+      {
+        "seq": 4,
+        "round": 12,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 473
+      },
+      {
+        "seq": 1,
+        "round": 13,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 2,
+        "round": 13,
+        "type": "control_resolved",
+        "source": "left",
+        "target": "right",
+        "skill_id": "control_t5_disarm",
+        "base_chance": 0.6,
+        "final_chance": 0.5217391304347826,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 3,
+        "round": 13,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 4,
+        "round": 13,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t4_eclipse",
+        "amount": 82,
+        "target_hp_after": 0
+      },
+      {
+        "seq": 5,
+        "round": 13,
+        "type": "defeated",
+        "target": "left"
+      }
+    ]
+  },
+  {
+    "summary": {
+      "run_id": "20260905-222730",
+      "dataset": "type_matrix",
+      "battle_id": "type_matrix-00003497",
+      "pair_seed": "30:492:attackvcontrol",
+      "stage": 30,
+      "seed": 492,
+      "left_policy": "burst",
+      "right_policy": "burst",
+      "left_type": "attack",
+      "right_type": "control",
+      "left_loadout_id": "attack_t1_quick|attack_t4_overpower|attack_t5_annihilate|attack_t2_heavy",
+      "right_loadout_id": "control_t4_stun|control_t3_silence|control_t3_interrupt_strong|control_t2_slow",
+      "winner": "left",
+      "rounds": 7,
+      "timed_out": false,
+      "first_mover": "right",
+      "first_mover_won": false,
+      "interrupts": 1,
+      "control_attempts": 5,
+      "control_hits": 3,
+      "backlash_events": 4,
+      "backlash_self_dmg": 84,
+      "fatigued_basic_attacks": 0,
+      "total_damage": 694,
+      "shield_absorbed": 42,
+      "ultimate_used_left": false,
+      "ultimate_used_right": false,
+      "ultimate_unlocked": false,
+      "n_events": 22
+    },
+    "events": [
+      {
+        "seq": 1,
+        "round": 1,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t3_silence",
+        "base_chance": 0.6,
+        "final_chance": 0.6521739130434783,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 2,
+        "round": 1,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 3,
+        "round": 1,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t5_annihilate",
+        "amount": 142,
+        "target_hp_after": 508
+      },
+      {
+        "seq": 1,
+        "round": 2,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 2,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t4_stun",
+        "base_chance": 0.55,
+        "final_chance": 0.3956521739130435,
+        "success": false,
+        "target_fatigue_before": 1
+      },
+      {
+        "seq": 3,
+        "round": 2,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 392
+      },
+      {
+        "seq": 1,
+        "round": 3,
+        "type": "shield_gained",
+        "source": "right",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 3,
+        "type": "shield_absorbed",
+        "target": "right",
+        "amount": 42
+      },
+      {
+        "seq": 3,
+        "round": 3,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t4_overpower",
+        "amount": 122,
+        "target_hp_after": 312
+      },
+      {
+        "seq": 1,
+        "round": 4,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 4,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t3_interrupt_strong",
+        "base_chance": 0.7,
+        "final_chance": 0.7391304347826086,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 3,
+        "round": 4,
+        "type": "will_be_interrupted",
+        "target": "left"
+      },
+      {
+        "seq": 4,
+        "round": 4,
+        "type": "interrupted",
+        "source": "left",
+        "skill_id": "basic_attack"
+      },
+      {
+        "seq": 5,
+        "round": 4,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 32,
+        "target_hp_after": 248
+      },
+      {
+        "seq": 1,
+        "round": 5,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 586
+      },
+      {
+        "seq": 2,
+        "round": 5,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 3,
+        "round": 5,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t5_annihilate",
+        "amount": 142,
+        "target_hp_after": 106
+      },
+      {
+        "seq": 1,
+        "round": 6,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t3_silence",
+        "base_chance": 0.6,
+        "final_chance": 0.6521739130434783,
+        "success": true,
+        "target_fatigue_before": 0
+      },
+      {
+        "seq": 2,
+        "round": 6,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 42
+      },
+      {
+        "seq": 1,
+        "round": 7,
+        "type": "control_resolved",
+        "source": "right",
+        "target": "left",
+        "skill_id": "control_t2_slow",
+        "base_chance": 0.75,
+        "final_chance": 0.5086956521739131,
+        "success": false,
+        "target_fatigue_before": 1
+      },
+      {
+        "seq": 2,
+        "round": 7,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 0
+      },
+      {
+        "seq": 3,
+        "round": 7,
+        "type": "defeated",
+        "target": "right"
+      }
+    ]
+  },
+  {
+    "summary": {
+      "run_id": "20260905-222730",
+      "dataset": "type_matrix",
+      "battle_id": "type_matrix-00003913",
+      "pair_seed": "30:308:attackvattack",
+      "stage": 30,
+      "seed": 308,
+      "left_policy": "burst",
+      "right_policy": "burst",
+      "left_type": "attack",
+      "right_type": "attack",
+      "left_loadout_id": "attack_t2_heavy|attack_t3_burst|attack_t4_overpower|attack_t1_light",
+      "right_loadout_id": "attack_t5_annihilate|attack_t2_heavy|attack_t3_burst|attack_t1_light",
+      "winner": "right",
+      "rounds": 7,
+      "timed_out": false,
+      "first_mover": "left",
+      "first_mover_won": false,
+      "interrupts": 0,
+      "control_attempts": 0,
+      "control_hits": 0,
+      "backlash_events": 4,
+      "backlash_self_dmg": 116,
+      "fatigued_basic_attacks": 0,
+      "total_damage": 1147,
+      "shield_absorbed": 42,
+      "ultimate_used_left": false,
+      "ultimate_used_right": false,
+      "ultimate_unlocked": false,
+      "n_events": 20
+    },
+    "events": [
+      {
+        "seq": 1,
+        "round": 1,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 1,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t4_overpower",
+        "amount": 97,
+        "target_hp_after": 553
+      },
+      {
+        "seq": 3,
+        "round": 1,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 4,
+        "round": 1,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "attack_t5_annihilate",
+        "amount": 142,
+        "target_hp_after": 456
+      },
+      {
+        "seq": 1,
+        "round": 2,
+        "type": "shield_gained",
+        "source": "right",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 2,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 2,
+        "type": "shield_absorbed",
+        "target": "right",
+        "amount": 42
+      },
+      {
+        "seq": 4,
+        "round": 2,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t3_burst",
+        "amount": 106,
+        "target_hp_after": 489
+      },
+      {
+        "seq": 1,
+        "round": 3,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t2_heavy",
+        "amount": 90,
+        "target_hp_after": 399
+      },
+      {
+        "seq": 2,
+        "round": 3,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "attack_t2_heavy",
+        "amount": 90,
+        "target_hp_after": 334
+      },
+      {
+        "seq": 1,
+        "round": 4,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t1_light",
+        "amount": 64,
+        "target_hp_after": 335
+      },
+      {
+        "seq": 2,
+        "round": 4,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "attack_t3_burst",
+        "amount": 106,
+        "target_hp_after": 228
+      },
+      {
+        "seq": 1,
+        "round": 5,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "attack_t1_light",
+        "amount": 64,
+        "target_hp_after": 164
+      },
+      {
+        "seq": 2,
+        "round": 5,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 271
+      },
+      {
+        "seq": 1,
+        "round": 6,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 100
+      },
+      {
+        "seq": 2,
+        "round": 6,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 6,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t3_burst",
+        "amount": 106,
+        "target_hp_after": 165
+      },
+      {
+        "seq": 1,
+        "round": 7,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t1_light",
+        "amount": 64,
+        "target_hp_after": 101
+      },
+      {
+        "seq": 2,
+        "round": 7,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "attack_t2_heavy",
+        "amount": 90,
+        "target_hp_after": 0
+      },
+      {
+        "seq": 3,
+        "round": 7,
+        "type": "defeated",
+        "target": "left"
+      }
+    ]
+  },
+  {
+    "summary": {
+      "run_id": "20260905-222730",
+      "dataset": "type_matrix",
+      "battle_id": "type_matrix-00004396",
+      "pair_seed": "30:191:attackvsupport",
+      "stage": 30,
+      "seed": 191,
+      "left_policy": "burst",
+      "right_policy": "burst",
+      "left_type": "attack",
+      "right_type": "support",
+      "left_loadout_id": "attack_t3_burst|attack_t1_light|attack_t5_annihilate|attack_t1_quick",
+      "right_loadout_id": "support_t2_curse|support_t2_ward|support_t4_sap|support_t3_blight",
+      "winner": "left",
+      "rounds": 7,
+      "timed_out": false,
+      "first_mover": "right",
+      "first_mover_won": false,
+      "interrupts": 0,
+      "control_attempts": 0,
+      "control_hits": 0,
+      "backlash_events": 4,
+      "backlash_self_dmg": 116,
+      "fatigued_basic_attacks": 0,
+      "total_damage": 722,
+      "shield_absorbed": 0,
+      "ultimate_used_left": false,
+      "ultimate_used_right": false,
+      "ultimate_unlocked": false,
+      "n_events": 18
+    },
+    "events": [
+      {
+        "seq": 1,
+        "round": 1,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 586
+      },
+      {
+        "seq": 2,
+        "round": 1,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 3,
+        "round": 1,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t5_annihilate",
+        "amount": 142,
+        "target_hp_after": 508
+      },
+      {
+        "seq": 1,
+        "round": 2,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t1_quick",
+        "amount": 71,
+        "target_hp_after": 437
+      },
+      {
+        "seq": 2,
+        "round": 2,
+        "type": "debuff_applied",
+        "source": "right",
+        "target": "left",
+        "skill_id": "support_t2_curse",
+        "duration": 2,
+        "magnitude": 0.21666666666666667
+      },
+      {
+        "seq": 1,
+        "round": 3,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 373
+      },
+      {
+        "seq": 2,
+        "round": 3,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 3,
+        "type": "debuff_applied",
+        "source": "right",
+        "target": "left",
+        "skill_id": "support_t4_sap",
+        "duration": 2,
+        "magnitude": 0.31666666666666665
+      },
+      {
+        "seq": 1,
+        "round": 4,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t1_light",
+        "amount": 64,
+        "target_hp_after": 257
+      },
+      {
+        "seq": 2,
+        "round": 4,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "basic_attack",
+        "amount": 83,
+        "target_hp_after": 503
+      },
+      {
+        "seq": 1,
+        "round": 5,
+        "type": "debuff_applied",
+        "source": "right",
+        "target": "left",
+        "skill_id": "support_t2_curse",
+        "duration": 2,
+        "magnitude": 0.21666666666666667
+      },
+      {
+        "seq": 2,
+        "round": 5,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 5,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t3_burst",
+        "amount": 106,
+        "target_hp_after": 151
+      },
+      {
+        "seq": 1,
+        "round": 6,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t1_light",
+        "amount": 64,
+        "target_hp_after": 87
+      },
+      {
+        "seq": 2,
+        "round": 6,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 6,
+        "type": "debuff_applied",
+        "source": "right",
+        "target": "left",
+        "skill_id": "support_t3_blight",
+        "duration": 2,
+        "magnitude": 0.26666666666666666
+      },
+      {
+        "seq": 1,
+        "round": 7,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t1_light",
+        "amount": 64,
+        "target_hp_after": 0
+      },
+      {
+        "seq": 2,
+        "round": 7,
+        "type": "defeated",
+        "target": "right"
+      }
+    ]
+  },
+  {
+    "summary": {
+      "run_id": "20260905-222730",
+      "dataset": "type_matrix",
+      "battle_id": "type_matrix-00005526",
+      "pair_seed": "30:121:attackvspecial",
+      "stage": 30,
+      "seed": 121,
+      "left_policy": "burst",
+      "right_policy": "burst",
+      "left_type": "attack",
+      "right_type": "special",
+      "left_loadout_id": "attack_t5_annihilate|attack_t3_burst|attack_t1_light|attack_t4_overpower",
+      "right_loadout_id": "special_t1_needle|special_t2_mirage|special_t4_eclipse|special_t3_snare",
+      "winner": "left",
+      "rounds": 7,
+      "timed_out": false,
+      "first_mover": "right",
+      "first_mover_won": false,
+      "interrupts": 0,
+      "control_attempts": 0,
+      "control_hits": 0,
+      "backlash_events": 4,
+      "backlash_self_dmg": 136,
+      "fatigued_basic_attacks": 0,
+      "total_damage": 909,
+      "shield_absorbed": 42,
+      "ultimate_used_left": false,
+      "ultimate_used_right": false,
+      "ultimate_unlocked": false,
+      "n_events": 19
+    },
+    "events": [
+      {
+        "seq": 1,
+        "round": 1,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t1_needle",
+        "amount": 54,
+        "target_hp_after": 596
+      },
+      {
+        "seq": 2,
+        "round": 1,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 3,
+        "round": 1,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t5_annihilate",
+        "amount": 142,
+        "target_hp_after": 508
+      },
+      {
+        "seq": 1,
+        "round": 2,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 444
+      },
+      {
+        "seq": 2,
+        "round": 2,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 2,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t4_eclipse",
+        "amount": 82,
+        "target_hp_after": 514
+      },
+      {
+        "seq": 1,
+        "round": 3,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t1_light",
+        "amount": 64,
+        "target_hp_after": 328
+      },
+      {
+        "seq": 2,
+        "round": 3,
+        "type": "debuff_applied",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t2_mirage",
+        "duration": 2,
+        "magnitude": 0.18333333333333332
+      },
+      {
+        "seq": 1,
+        "round": 4,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "basic_attack",
+        "amount": 70,
+        "target_hp_after": 444
+      },
+      {
+        "seq": 2,
+        "round": 4,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 4,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t3_burst",
+        "amount": 106,
+        "target_hp_after": 222
+      },
+      {
+        "seq": 1,
+        "round": 5,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t1_needle",
+        "amount": 59,
+        "target_hp_after": 353
+      },
+      {
+        "seq": 2,
+        "round": 5,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t4_overpower",
+        "amount": 122,
+        "target_hp_after": 100
+      },
+      {
+        "seq": 1,
+        "round": 6,
+        "type": "shield_gained",
+        "source": "left",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 6,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 6,
+        "type": "shield_absorbed",
+        "target": "left",
+        "amount": 42
+      },
+      {
+        "seq": 4,
+        "round": 6,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t4_eclipse",
+        "amount": 82,
+        "target_hp_after": 313
+      },
+      {
+        "seq": 1,
+        "round": 7,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t1_light",
+        "amount": 64,
+        "target_hp_after": 0
+      },
+      {
+        "seq": 2,
+        "round": 7,
+        "type": "defeated",
+        "target": "right"
+      }
+    ]
+  },
+  {
+    "summary": {
+      "run_id": "20260905-222730",
+      "dataset": "type_matrix",
+      "battle_id": "type_matrix-00005530",
+      "pair_seed": "30:125:attackvspecial",
+      "stage": 30,
+      "seed": 125,
+      "left_policy": "burst",
+      "right_policy": "burst",
+      "left_type": "attack",
+      "right_type": "special",
+      "left_loadout_id": "attack_t2_heavy|attack_t1_light|attack_t5_annihilate|attack_t4_overpower",
+      "right_loadout_id": "special_t4_eclipse|special_t3_snare|special_t1_needle|special_t3_venom",
+      "winner": "left",
+      "rounds": 7,
+      "timed_out": true,
+      "first_mover": "left",
+      "first_mover_won": true,
+      "interrupts": 0,
+      "control_attempts": 0,
+      "control_hits": 0,
+      "backlash_events": 4,
+      "backlash_self_dmg": 136,
+      "fatigued_basic_attacks": 0,
+      "total_damage": 922,
+      "shield_absorbed": 42,
+      "ultimate_used_left": false,
+      "ultimate_used_right": false,
+      "ultimate_unlocked": false,
+      "n_events": 17
+    },
+    "events": [
+      {
+        "seq": 1,
+        "round": 1,
+        "type": "shield_gained",
+        "source": "left",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 1,
+        "type": "shield_absorbed",
+        "target": "left",
+        "amount": 42
+      },
+      {
+        "seq": 3,
+        "round": 1,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t1_needle",
+        "amount": 54,
+        "target_hp_after": 638
+      },
+      {
+        "seq": 1,
+        "round": 2,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t3_venom",
+        "amount": 77,
+        "target_hp_after": 561
+      },
+      {
+        "seq": 2,
+        "round": 2,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t4_overpower",
+        "amount": 122,
+        "target_hp_after": 528
+      },
+      {
+        "seq": 1,
+        "round": 3,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 3,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t4_eclipse",
+        "amount": 82,
+        "target_hp_after": 479
+      },
+      {
+        "seq": 3,
+        "round": 3,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 4,
+        "round": 3,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t5_annihilate",
+        "amount": 142,
+        "target_hp_after": 334
+      },
+      {
+        "seq": 1,
+        "round": 4,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 270
+      },
+      {
+        "seq": 2,
+        "round": 4,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 415
+      },
+      {
+        "seq": 1,
+        "round": 5,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t1_needle",
+        "amount": 54,
+        "target_hp_after": 361
+      },
+      {
+        "seq": 2,
+        "round": 5,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 206
+      },
+      {
+        "seq": 1,
+        "round": 6,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 6,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t3_venom",
+        "amount": 77,
+        "target_hp_after": 284
+      },
+      {
+        "seq": 3,
+        "round": 6,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t4_overpower",
+        "amount": 122,
+        "target_hp_after": 52
+      },
+      {
+        "seq": 1,
+        "round": 7,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 2,
+        "self_damage": 52,
+        "damage_penalty_pct": 0.2,
+        "redirected": false
+      }
+    ]
+  },
+  {
+    "summary": {
+      "run_id": "20260905-222730",
+      "dataset": "type_matrix",
+      "battle_id": "type_matrix-00005537",
+      "pair_seed": "30:132:attackvspecial",
+      "stage": 30,
+      "seed": 132,
+      "left_policy": "burst",
+      "right_policy": "burst",
+      "left_type": "attack",
+      "right_type": "special",
+      "left_loadout_id": "attack_t3_burst|attack_t2_heavy|attack_t1_light|attack_t5_annihilate",
+      "right_loadout_id": "special_t5_oblivion|special_t1_needle|special_t3_venom|special_t3_snare",
+      "winner": "left",
+      "rounds": 10,
+      "timed_out": false,
+      "first_mover": "right",
+      "first_mover_won": false,
+      "interrupts": 0,
+      "control_attempts": 0,
+      "control_hits": 0,
+      "backlash_events": 6,
+      "backlash_self_dmg": 160,
+      "fatigued_basic_attacks": 0,
+      "total_damage": 1172,
+      "shield_absorbed": 136,
+      "ultimate_used_left": false,
+      "ultimate_used_right": false,
+      "ultimate_unlocked": false,
+      "n_events": 31
+    },
+    "events": [
+      {
+        "seq": 1,
+        "round": 1,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 1,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t3_venom",
+        "amount": 77,
+        "target_hp_after": 573
+      },
+      {
+        "seq": 3,
+        "round": 1,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 4,
+        "round": 1,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t3_burst",
+        "amount": 106,
+        "target_hp_after": 512
+      },
+      {
+        "seq": 1,
+        "round": 2,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 2,
+        "round": 2,
+        "type": "debuff_applied",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t3_snare",
+        "duration": 2,
+        "magnitude": 0.2833333333333333
+      },
+      {
+        "seq": 3,
+        "round": 2,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t2_heavy",
+        "amount": 90,
+        "target_hp_after": 390
+      },
+      {
+        "seq": 1,
+        "round": 3,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t1_needle",
+        "amount": 62,
+        "target_hp_after": 479
+      },
+      {
+        "seq": 2,
+        "round": 3,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 3,
+        "self_damage": 0,
+        "damage_penalty_pct": 0.0,
+        "redirected": true
+      },
+      {
+        "seq": 3,
+        "round": 3,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t5_annihilate",
+        "amount": 142,
+        "target_hp_after": 248
+      },
+      {
+        "seq": 1,
+        "round": 4,
+        "type": "shield_gained",
+        "source": "left",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 4,
+        "type": "ring_backlash",
+        "source": "right",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 3,
+        "round": 4,
+        "type": "shield_absorbed",
+        "target": "left",
+        "amount": 42
+      },
+      {
+        "seq": 4,
+        "round": 4,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t3_venom",
+        "amount": 88,
+        "target_hp_after": 433
+      },
+      {
+        "seq": 1,
+        "round": 5,
+        "type": "shield_gained",
+        "source": "left",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 5,
+        "type": "debuff_applied",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t3_snare",
+        "duration": 2,
+        "magnitude": 0.2833333333333333
+      },
+      {
+        "seq": 1,
+        "round": 6,
+        "type": "shield_gained",
+        "source": "right",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 6,
+        "type": "shield_absorbed",
+        "target": "right",
+        "amount": 42
+      },
+      {
+        "seq": 3,
+        "round": 6,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 194
+      },
+      {
+        "seq": 1,
+        "round": 7,
+        "type": "shield_absorbed",
+        "target": "left",
+        "amount": 10
+      },
+      {
+        "seq": 2,
+        "round": 7,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t1_needle",
+        "amount": 62,
+        "target_hp_after": 381
+      },
+      {
+        "seq": 3,
+        "round": 7,
+        "type": "ring_backlash",
+        "source": "left",
+        "overload": 1,
+        "self_damage": 32,
+        "damage_penalty_pct": 0.0,
+        "redirected": false
+      },
+      {
+        "seq": 4,
+        "round": 7,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t3_burst",
+        "amount": 106,
+        "target_hp_after": 88
+      },
+      {
+        "seq": 1,
+        "round": 8,
+        "type": "shield_gained",
+        "source": "right",
+        "amount": 42,
+        "shield_total": 42
+      },
+      {
+        "seq": 2,
+        "round": 8,
+        "type": "shield_absorbed",
+        "target": "right",
+        "amount": 42
+      },
+      {
+        "seq": 3,
+        "round": 8,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 66
+      },
+      {
+        "seq": 1,
+        "round": 9,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t1_light",
+        "amount": 64,
+        "target_hp_after": 2
+      },
+      {
+        "seq": 2,
+        "round": 9,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "special_t3_venom",
+        "amount": 77,
+        "target_hp_after": 272
+      },
+      {
+        "seq": 1,
+        "round": 10,
+        "type": "damage",
+        "source": "right",
+        "target": "left",
+        "skill_id": "basic_attack",
+        "amount": 64,
+        "target_hp_after": 208
+      },
+      {
+        "seq": 2,
+        "round": 10,
+        "type": "damage",
+        "source": "left",
+        "target": "right",
+        "skill_id": "attack_t3_burst",
+        "amount": 106,
+        "target_hp_after": 0
+      },
+      {
+        "seq": 3,
+        "round": 10,
+        "type": "defeated",
+        "target": "right"
+      }
+    ]
+  }
+]

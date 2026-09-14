@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}拜授神位 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">⚡</span>拜授神位</h3></div>
+  <p class="muted" style="margin-top:10px">天劫已渡,飞升在即。天庭为你留了五方还无人认领的神位,五选一,选定即正式证道飞升——此后再无回头路。</p>
+</div>
+
+<div class="card">
+  {% for key in choices %}
+  <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bd)">
+    <p><strong>{{ CELESTIAL_OFFICES[key].label }}</strong></p>
+    <p class="muted" style="margin-top:2px">{{ CELESTIAL_OFFICES[key].desc }}</p>
+    <form method="post" action="{{ url_for('ascend_office_confirm', key=key) }}" style="margin-top:8px"
+          data-confirm-title="拜授「{{ CELESTIAL_OFFICES[key].label }}」"
+          data-confirm-message="选定此位即正式证道飞升，当前角色将永久离开宗门。"
+          data-confirm-button="就此证道" data-confirm-tone="danger">
+      <button class="btn btn-primary" style="width:100%">拜授此位,证道飞升</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -1,4 +1,4 @@
-import io, os, re, json, functools, secrets, time, hmac, logging, traceback, zipfile
+import io, os, re, json, functools, secrets, time, hmac, hashlib, logging, traceback, zipfile
 import shutil, socket, ipaddress, urllib.request
 from urllib.parse import urlparse
 from collections import defaultdict
@@ -807,7 +807,10 @@ CONFIG_SCHEMA = [
         {"key": "forward_split_threshold",     "label": "关系细节转发拆分阈值","type": "number", "default": "4000"},
     ]},
     {"section": "论坛", "fields": [
-        {"key": "forumMaxLength", "label": "帖子/回复字数上限", "type": "number", "default": "500"},
+        # 键名须与机器人读取的 forum_max_length 一致（原先写成 forumMaxLength，机器人读不到）。
+        # opt_in：网页上没明确设置过时不下发，以免「拉取全部」用默认值盖掉 QQ 里设过的值
+        {"key": "forum_max_length", "label": "帖子/回复字数上限", "type": "number", "default": "500", "opt_in": True,
+         "note": "网页上没设置过时，以 QQ「设置 基础设置」里的值为准"},
     ]},
     {"section": "目击系统", "json_parent": "sighting_system_config", "fields": [
         {"key": "enabled",                "label": "启用目击",                    "type": "bool",   "default": "false"},
@@ -872,11 +875,45 @@ CONFIG_SCHEMA = [
         {"key": "public_show_letter",   "label": "公开信件",   "type": "bool", "default": "false"},
     ]},
     {"section": "类型显示别名", "json_parent": "custom_type_labels", "fields": [
-        {"key": "私密", "label": "私约别名", "type": "text", "default": "", "note": "留空=默认「私密」，群名超6字自动省略"},
+        # "私密"改名/加资源已经迁移到下面的「私约名称管理」，这里不再展示这个输入框（hidden=True）——
+        # 但字段定义本身要留着：assemble_bot_config 是按 CONFIG_SCHEMA 里声明的字段逐个拼 JSON 的，
+        # 如果直接删掉这条，"拉取全部"给任何还在用旧版机器人插件（没迁移到 private_resources）的
+        # 群拼出来的 custom_type_labels 就会永远丢失"私密"这个键，把他们已经设置好的自定义名字冲掉。
+        # 保留字段只是不再让人从这个格子编辑，历史值该怎么传还怎么传。
+        {"key": "私密", "label": "私约别名（旧，见下方私约名称管理）", "type": "text", "default": "", "hidden": True},
         {"key": "电话", "label": "电话别名", "type": "text", "default": "", "note": "留空=默认「电话」"},
         {"key": "官约", "label": "官约别名", "type": "text", "default": "", "note": "留空=默认「官约」"},
         {"key": "微信", "label": "微信别名", "type": "text", "default": "", "note": "留空=默认「微信」"},
         {"key": "心愿", "label": "心愿别名", "type": "text", "default": "", "note": "留空=默认「心愿」"},
+    ]},
+    # 电话/私约/官约/官电/踩点除了原来的一行式空格分参数，也支持多行「标签：值」表单（顺序随意），
+    # 例：【电话】\n受邀人：张三\n时间：1400-1500——两种写法机器人始终都认，不受下面的展示开关影响。
+    # 这里改的是：①标签文字 ②「格式电话/私约/踩点」提示里展示哪种示例（_display，仅这三类有）。
+    # 机器人「拉取全部」后生效；key 用 "类型_字段" 复合键，跟机器人存储里 appointment_form_labels
+    # 的扁平结构一一对应，别改成嵌套。
+    {"section": "邀约表单标签", "json_parent": "appointment_form_labels", "fields": [
+        {"key": "电话_display", "label": "电话·「格式电话」展示", "type": "select", "default": "一行式",
+         "options": ["一行式", "表单式"], "note": "只影响「格式电话」显示哪种示例；两种写法机器人始终都认"},
+        {"key": "私密_display", "label": "私约·「格式私约」展示", "type": "select", "default": "一行式",
+         "options": ["一行式", "表单式"], "note": "只影响「格式私约」显示哪种示例；两种写法机器人始终都认"},
+        {"key": "踩点_display", "label": "踩点·「格式踩点」展示", "type": "select", "default": "一行式",
+         "options": ["一行式", "表单式"], "note": "只影响「格式踩点」显示哪种示例；两种写法机器人始终都认"},
+        {"key": "电话_time",  "label": "电话·时间",   "type": "text", "default": "", "note": "留空=默认「时间」"},
+        {"key": "电话_names", "label": "电话·受邀人", "type": "text", "default": "", "note": "留空=默认「受邀人」"},
+        {"key": "电话_title", "label": "电话·标题",   "type": "text", "default": "", "note": "留空=默认「标题」"},
+        {"key": "私密_time",  "label": "私约·时间",   "type": "text", "default": "", "note": "留空=默认「时间」"},
+        {"key": "私密_place", "label": "私约·地点",   "type": "text", "default": "", "note": "留空=默认「地点」"},
+        {"key": "私密_names", "label": "私约·对象",   "type": "text", "default": "", "note": "留空=默认「对象」；约战/自定义私约别名/短信别名共用这一组标签"},
+        {"key": "踩点_time",  "label": "踩点·时间",   "type": "text", "default": "", "note": "留空=默认「时间」"},
+        {"key": "踩点_place", "label": "踩点·地点",   "type": "text", "default": "", "note": "留空=默认「地点」"},
+        {"key": "踩点_names", "label": "踩点·陪同",   "type": "text", "default": "", "note": "留空=默认「陪同」"},
+        {"key": "官约_day",   "label": "官约·日期",   "type": "text", "default": "", "note": "留空=默认「日期」"},
+        {"key": "官约_time",  "label": "官约·时间",   "type": "text", "default": "", "note": "留空=默认「时间」"},
+        {"key": "官约_place", "label": "官约·地点",   "type": "text", "default": "", "note": "留空=默认「地点」"},
+        {"key": "官约_names", "label": "官约·参与者", "type": "text", "default": "", "note": "留空=默认「参与者」"},
+        {"key": "官电_day",   "label": "官电·日期",   "type": "text", "default": "", "note": "留空=默认「日期」"},
+        {"key": "官电_time",  "label": "官电·时间",   "type": "text", "default": "", "note": "留空=默认「时间」"},
+        {"key": "官电_names", "label": "官电·参与者", "type": "text", "default": "", "note": "留空=默认「参与者」"},
     ]},
     {"section": "季末报告", "fields": [
         {"key": "end_season_report_enabled", "label": "季末互动报告", "type": "bool", "default": "false",
@@ -917,17 +954,22 @@ def assemble_bot_config(flat):
             result[jp] = json.dumps(obj, ensure_ascii=False)
         else:
             for f in sec["fields"]:
+                if f.get("opt_in") and f["key"] not in flat:
+                    continue
                 result[f["key"]] = flat.get(f["key"], str(f["default"]))
     # 透传 blob 键（机器人以 JSON 字符串形式存储，原样透传）
+    # place_keys / battle_attrs / player_skills 是玩家数据，以机器人为准，不下发：
+    # 网页上那份是上次「推送全部」的旧快照，下发会把玩家新拿的钥匙、新学的技能、战斗属性回滚
     for blob_key in ("item_registry", "rpg_attr_defs", "sys_attr_presets",
                      "end_game_bonus_templates", "end_game_draw_config",
                      "custom_message_templates", "preset_gifts",
                      "private_appointment_aliases", "sms_aliases", "gift_aliases",
+                     "private_resources",
                      "equipment_registry", "equipment_slots", "equipment_slot_names",
                      "craft_recipes",
                      "trade_whitelist",
-                     "available_places", "place_keys",
-                     "skill_defs", "battle_attrs", "player_skills",
+                     "available_places",
+                     "skill_defs",
                      "attack_defense_config",
                      "shop_listings", "market_config"):
         val = flat.get(blob_key)
@@ -1340,6 +1382,35 @@ def _migrate(conn):
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_collected_images_show ON collected_images(tenant_id, show_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_collected_images_user ON collected_images(tenant_id, show_id, uid)")
+
+    # ── 长日将尽许愿墙：独立的小功能，不挂在 tenant/superadmin 体系下 ──────────
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS changri_wishes (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            content        TEXT    NOT NULL,
+            author_name    TEXT    DEFAULT '',
+            status         TEXT    NOT NULL DEFAULT 'pending',
+            admin_note     TEXT    DEFAULT '',
+            ip_hash        TEXT    DEFAULT '',
+            created_at     INTEGER NOT NULL,
+            implemented_at INTEGER
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_changri_wishes_status ON changri_wishes(status, created_at)")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS changri_wish_config (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+    """)
+    # 默认管理密码，首次建表时写入；已存在就不覆盖（管理员改过密码后重启服务不会被重置）
+    conn.execute(
+        "INSERT OR IGNORE INTO changri_wish_config (key, value) VALUES ('admin_password_hash', ?)",
+        ("pbkdf2:sha256:1000000$h6HaqsWoqxvbV3oL$9f43bd6f110428de3c6037286cc21c76afd0ad62f86d331cbc287fb4f7a3e9ab",)
+    )
+
+    # ── 论坛字数上限旧键：机器人从没读过，且每次保存配置都被重置为 500，直接清掉 ──
+    conn.execute("DELETE FROM site_config WHERE key='forumMaxLength'")
 
     conn.commit()
 
@@ -2687,15 +2758,23 @@ def admin_config_page():
     db  = get_db()
     if request.method == "POST":
         new_flat = {}
+        old_flat = get_flat_config(db, sid)
         for sec in CONFIG_SCHEMA:
             for f in sec["fields"]:
                 db_key = _cfg_db_key(sec, f["key"])
+                # hidden 字段（如旧的 custom_type_labels__私密）在页面上没有对应输入框，
+                # 表单里永远不会带这个 key——不能按"没填=默认值"处理，那样每次保存任何配置都会把
+                # 历史值冲成空字符串。跳过整条，数据库里原有值保持不动，原样透传给拉取全部。
+                if f.get("hidden") and db_key not in request.form:
+                    continue
                 if f["type"] == "bool":
                     value = "true" if request.form.get(db_key) else "false"
                 elif f["type"] == "routing":
                     value = _parse_routing_text(request.form.get(db_key, ""))
                 else:
                     value = _strip_json_str(request.form.get(db_key, str(f["default"])))
+                if f.get("opt_in") and db_key not in old_flat and value == str(f["default"]):
+                    continue
                 new_flat[db_key] = value
         # 保存物品注册表与属性定义（JSON blob，不经过 CONFIG_SCHEMA）
         for blob_key in ("item_registry", "rpg_attr_defs", "sys_attr_presets",
@@ -2703,7 +2782,8 @@ def admin_config_page():
                          "item_registry_pending", "custom_message_templates",
                          "private_appointment_aliases", "sms_aliases", "gift_aliases",
                          "equipment_registry", "equipment_registry_pending",
-                         "equipment_slots", "equipment_slot_names"):
+                         "equipment_slots", "equipment_slot_names",
+                         "private_resources"):
             raw = request.form.get(blob_key, "")
             if raw:
                 try:
@@ -2749,6 +2829,9 @@ def admin_config_page():
     equip_pending_json       = flat.get("equipment_registry_pending", "[]")
     equip_slots_json         = flat.get("equipment_slots", '["head","chest","hand","leg","foot"]')
     equip_slot_names_json    = flat.get("equipment_slot_names", "{}")
+    # 默认资源固定用 "私密" 这个稳定 ID（不随改名变化，机器人那边也是这么存的，改了这里就对不上了）
+    private_resources_json   = flat.get("private_resources") or json.dumps(
+        {"私密": {"name": "私约", "isDefault": True}}, ensure_ascii=False)
     tpl_rows = db.execute(
         "SELECT id, name, config_data, created_at FROM config_templates "
         "WHERE tenant_id=? ORDER BY created_at DESC",
@@ -2774,6 +2857,7 @@ def admin_config_page():
                            equip_pending_json=equip_pending_json,
                            equip_slots_json=equip_slots_json,
                            equip_slot_names_json=equip_slot_names_json,
+                           private_resources_json=private_resources_json,
                            cfg_templates=cfg_templates,
                            tpl_msg=request.args.get("tpl_msg"),
                            tpl_max=_TEMPLATE_MAX)
@@ -4231,6 +4315,136 @@ def api_event():
     db.commit()
     return jsonify({"ok": True})
 
+@app.route("/api/event/delete_by_match", methods=["POST"])
+def api_event_delete_by_match():
+    """发错撤回：玩家引用自己发错人的短信/礼物发「撤回」时，机器人按投递时写入的
+    (type, from_role, to_role, timestamp) 精确删掉那条 extra_events，避免季末公开存档里还能看到。
+    timestamp 是机器人上报 /api/event 时自己带的毫秒时间戳，同一人同一毫秒不会有两条。"""
+    tid  = get_tenant_from_token()
+    show = get_current_show_for_tenant(tid)
+    if not show: abort(503)
+    data = request.json or {}
+    event_type = data.get("type", "")
+    if event_type not in ("sms", "gift"):
+        return jsonify({"ok": False, "error": "invalid type"}), 400
+    db = get_db()
+    cur = db.execute(
+        "DELETE FROM extra_events WHERE show_id=? AND tenant_id=? AND type=? AND from_role=? AND to_role=? AND timestamp=?",
+        (show["id"], tid, event_type, (data.get("from_role") or "").strip(),
+         (data.get("to_role") or "").strip(), data.get("timestamp") or 0)
+    )
+    db.commit()
+    return jsonify({"ok": True, "deleted": cur.rowcount})
+
+# ── 长日将尽许愿墙：独立公开功能，不走 tenant/api_token 鉴权 ─────────────────
+WISH_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000   # 10 分钟
+WISH_RATE_LIMIT_MAX       = 3                # 同一 IP 窗口内最多提交 3 条
+WISH_CONTENT_MAX_LEN      = 300
+WISH_AUTHOR_MAX_LEN       = 30
+WISH_NOTE_MAX_LEN         = 200
+
+def _hash_ip(ip):
+    return hashlib.sha256((ip or "").encode("utf-8")).hexdigest()[:16]
+
+def _check_wish_admin_password(data):
+    db  = get_db()
+    row = db.execute(
+        "SELECT value FROM changri_wish_config WHERE key='admin_password_hash'"
+    ).fetchone()
+    if not row:
+        return False
+    return check_password_hash(row["value"], (data.get("password") or ""))
+
+@app.route("/api/changri_wishes", methods=["GET"])
+def changri_wishes_list():
+    db = get_db()
+    status = request.args.get("status")
+    if status in ("pending", "implemented"):
+        rows = db.execute(
+            "SELECT * FROM changri_wishes WHERE status=? ORDER BY created_at DESC", (status,)
+        ).fetchall()
+    else:
+        rows = db.execute("SELECT * FROM changri_wishes ORDER BY created_at DESC").fetchall()
+    return jsonify({"ok": True, "wishes": [dict(r) for r in rows]})
+
+@app.route("/api/changri_wishes", methods=["POST"])
+def changri_wishes_create():
+    data    = request.json or {}
+    content = (data.get("content") or "").strip()
+    author  = (data.get("author_name") or "").strip()[:WISH_AUTHOR_MAX_LEN]
+    if not content:
+        return jsonify({"ok": False, "error": "许愿内容不能为空"}), 400
+    if len(content) > WISH_CONTENT_MAX_LEN:
+        return jsonify({"ok": False, "error": f"内容太长（最多 {WISH_CONTENT_MAX_LEN} 字）"}), 400
+
+    db      = get_db()
+    now     = int(time.time() * 1000)
+    ip_hash = _hash_ip(request.remote_addr)
+    recent  = db.execute(
+        "SELECT COUNT(*) c FROM changri_wishes WHERE ip_hash=? AND created_at>=?",
+        (ip_hash, now - WISH_RATE_LIMIT_WINDOW_MS)
+    ).fetchone()["c"]
+    if recent >= WISH_RATE_LIMIT_MAX:
+        return jsonify({"ok": False, "error": "提交太频繁，过一会再试试吧"}), 429
+
+    db.execute(
+        "INSERT INTO changri_wishes (content, author_name, status, ip_hash, created_at) VALUES (?,?,?,?,?)",
+        (content, author, "pending", ip_hash, now)
+    )
+    db.commit()
+    return jsonify({"ok": True})
+
+@app.route("/api/changri_wishes/<int:wish_id>/implement", methods=["POST"])
+def changri_wishes_implement(wish_id):
+    data = request.json or {}
+    if not _check_wish_admin_password(data):
+        return jsonify({"ok": False, "error": "密码错误"}), 403
+    db   = get_db()
+    now  = int(time.time() * 1000)
+    note = (data.get("admin_note") or "").strip()[:WISH_NOTE_MAX_LEN]
+    db.execute(
+        "UPDATE changri_wishes SET status='implemented', implemented_at=?, admin_note=? WHERE id=?",
+        (now, note, wish_id)
+    )
+    db.commit()
+    return jsonify({"ok": True})
+
+@app.route("/api/changri_wishes/<int:wish_id>/unimplement", methods=["POST"])
+def changri_wishes_unimplement(wish_id):
+    data = request.json or {}
+    if not _check_wish_admin_password(data):
+        return jsonify({"ok": False, "error": "密码错误"}), 403
+    db = get_db()
+    db.execute("UPDATE changri_wishes SET status='pending', implemented_at=NULL WHERE id=?", (wish_id,))
+    db.commit()
+    return jsonify({"ok": True})
+
+@app.route("/api/changri_wishes/<int:wish_id>", methods=["DELETE"])
+def changri_wishes_delete(wish_id):
+    data = request.json or {}
+    if not _check_wish_admin_password(data):
+        return jsonify({"ok": False, "error": "密码错误"}), 403
+    db = get_db()
+    db.execute("DELETE FROM changri_wishes WHERE id=?", (wish_id,))
+    db.commit()
+    return jsonify({"ok": True})
+
+@app.route("/api/changri_wishes/change_password", methods=["POST"])
+def changri_wishes_change_password():
+    data = request.json or {}
+    if not _check_wish_admin_password(data):
+        return jsonify({"ok": False, "error": "密码错误"}), 403
+    new_pw = (data.get("new_password") or "").strip()
+    if len(new_pw) < 6:
+        return jsonify({"ok": False, "error": "新密码至少 6 位"}), 400
+    db = get_db()
+    db.execute(
+        "UPDATE changri_wish_config SET value=? WHERE key='admin_password_hash'",
+        (generate_password_hash(new_pw),)
+    )
+    db.commit()
+    return jsonify({"ok": True})
+
 @app.route("/api/rp", methods=["POST"])
 def api_rp():
     tid  = get_tenant_from_token()
@@ -5030,28 +5244,9 @@ def admin_places():
                     _save_places(places)
             if is_fetch: return jsonify({"ok": True})
 
-        elif action == "add_key":
-            place = request.form.get("place","").strip()
-            uid   = request.form.get("uid","").strip()
-            plat  = (request.form.get("platform","") or "QQ").strip()
-            if place and uid:
-                keys = _get_keys()
-                keys.setdefault(plat, {}).setdefault(uid, [])
-                if place not in keys[plat][uid]:
-                    keys[plat][uid].append(place)
-                    _save_keys(keys)
-            if is_fetch: return jsonify({"ok": True})
-
-        elif action == "remove_key":
-            place = request.form.get("place","").strip()
-            uid   = request.form.get("uid","").strip()
-            plat  = (request.form.get("platform","") or "QQ").strip()
-            if place and uid:
-                keys = _get_keys()
-                try: keys[plat][uid].remove(place)
-                except (KeyError, ValueError): pass
-                else: _save_keys(keys)
-            if is_fetch: return jsonify({"ok": True})
+        elif action in ("add_key", "remove_key"):
+            # 钥匙是玩家数据，以机器人为准（网页这份只是展示用快照，不会下发给机器人）
+            if is_fetch: return jsonify({"ok": False, "error": "请在 QQ 用「地点管理 钥匙 角色名 地点」发放钥匙"})
 
         elif action == "clear_all":
             if request.form.get("confirm") == "Y":
@@ -5136,6 +5331,10 @@ def _admin_rewards_inner():
         aliases = json.loads(flat.get("private_appointment_aliases", "[]"))
     except Exception:
         aliases = []
+    try:
+        private_resources = json.loads(flat.get("private_resources") or "{}") or {"私密": {"name": "私约", "isDefault": True}}
+    except Exception:
+        private_resources = {"私密": {"name": "私约", "isDefault": True}}
     page    = max(1, request.args.get("page", 1, type=int))
     per_page = 30
     total   = db.execute("SELECT COUNT(*) FROM reward_records WHERE show_id=?", (sid,)).fetchone()[0]
@@ -5156,6 +5355,7 @@ def _admin_rewards_inner():
                            equip_registry=equip_registry,
                            pool_names=pool_names,
                            aliases=aliases,
+                           private_resources=private_resources,
                            records=[dict(r) for r in records],
                            total=total, page=page, total_pages=total_pages,
                            ts_to_str=ts_to_str)
@@ -5384,11 +5584,6 @@ def admin_rpg():
     item_reg = _j("item_registry", {})
     if not item_reg:
         item_reg = _j("reward_item_registry", {})
-    player_rows = db.execute(
-        "SELECT role_name FROM players WHERE show_id=? AND role_name!='' ORDER BY role_name",
-        (sid,)
-    ).fetchall()
-    player_list = [r[0] for r in player_rows]
     return render_template("admin_rpg.html",
         item_registry       = item_reg,
         attr_defs           = _j("rpg_attr_defs", {}),
@@ -5403,7 +5598,6 @@ def admin_rpg():
         attack_defense_cfg  = _j("attack_defense_config", {}),
         player_skills       = _j("player_skills", {}),
         battle_log          = _j("battle_log", []),
-        player_list         = player_list,
         trade_whitelist     = _j("trade_whitelist", []),
     )
 
@@ -5420,12 +5614,21 @@ def admin_rpg_save():
         "item_registry_pending", "equipment_registry",
         "equipment_registry_pending", "equipment_slots", "equipment_slot_names",
         "craft_recipes", "skill_defs",
-        "battle_attrs", "attack_defense_config", "player_skills",
+        "attack_defense_config",
         "trade_whitelist",
     }
+    # battle_attrs / player_skills 是玩家数据，只能在 QQ 里改（「属性 设置」「技能 配置」）
     for key, val in data.items():
         if key not in allowed:
             continue
+        if key == "attack_defense_config" and isinstance(val, dict):
+            # 合并写入：机器人侧还有网页没展示的字段（如 maxRefusals），整体覆盖会把它们丢掉
+            old = db.execute("SELECT value FROM site_config WHERE show_id=? AND key='attack_defense_config'",
+                             (sid,)).fetchone()
+            try: merged = json.loads(old["value"]) if old and old["value"] else {}
+            except (json.JSONDecodeError, TypeError): merged = {}
+            merged.update(val)
+            val = merged
         if isinstance(val, (dict, list)):
             val = json.dumps(val, ensure_ascii=False)
         db.execute(
@@ -5445,11 +5648,13 @@ def admin_pools():
     pool_defs, pool_cfg, item_registry = _get_pool_data(db, sid)
     flat = get_flat_config(db, sid)
     attr_defs = json.loads(flat.get("rpg_attr_defs", "{}") or "{}")
+    pool_schemas = json.loads(flat.get("pool_schemas", "{}") or "{}")
     return render_template("admin_pools.html",
                            pool_defs=pool_defs,
                            pool_cfg=pool_cfg,
                            item_registry=item_registry,
-                           attr_defs=attr_defs)
+                           attr_defs=attr_defs,
+                           pool_schemas=pool_schemas)
 
 
 @app.route("/admin/pools/save", methods=["POST"])
@@ -5463,7 +5668,10 @@ def admin_pools_save():
         return jsonify({"ok": False, "error": "no data"}), 400
     pool_defs = data.get("pool_definitions", {})
     pool_cfg  = data.get("pool_draw_config", {"total": None, "pools": {}})
-    for key, val in (("pool_definitions", pool_defs), ("pool_draw_config", pool_cfg)):
+    to_save = [("pool_definitions", pool_defs), ("pool_draw_config", pool_cfg)]
+    if "pool_schemas" in data:
+        to_save.append(("pool_schemas", data["pool_schemas"]))
+    for key, val in to_save:
         db.execute(
             "INSERT INTO site_config(show_id,tenant_id,key,value) VALUES(?,?,?,?) "
             "ON CONFLICT(show_id,key) DO UPDATE SET value=excluded.value",
@@ -5482,7 +5690,10 @@ def api_pool_config():
         abort(503)
     db = get_db()
     pool_defs, pool_cfg, _ = _get_pool_data(db, show_id)
-    return jsonify({"ok": True, "pool_definitions": pool_defs, "pool_draw_config": pool_cfg})
+    flat = get_flat_config(db, show_id)
+    pool_schemas = json.loads(flat.get("pool_schemas", "{}") or "{}")
+    return jsonify({"ok": True, "pool_definitions": pool_defs, "pool_draw_config": pool_cfg,
+                     "pool_schemas": pool_schemas})
 
 
 @app.route("/api/pool_config", methods=["POST"])
@@ -5501,6 +5712,8 @@ def api_pool_config_push():
         updates.append(("pool_definitions", data["pool_definitions"]))
     if "pool_draw_config" in data:
         updates.append(("pool_draw_config", data["pool_draw_config"]))
+    if "pool_schemas" in data:
+        updates.append(("pool_schemas", data["pool_schemas"]))
     if not updates:
         return jsonify({"ok": False, "error": "missing pool_definitions or pool_draw_config"}), 400
     for key, val in updates:

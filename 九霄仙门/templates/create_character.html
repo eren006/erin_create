@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}拜入九霄 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card" style="max-width:480px;margin:40px auto">
+  <h3 style="margin-bottom:8px">拜入九霄仙门</h3>
+  <p class="muted" style="margin-bottom:16px">审核已通过,填写你的道号,正式成为外门弟子</p>
+  <form method="post" id="create-form">
+    <label>道号</label>
+    <input name="name" value="{{ name }}" required maxlength="12">
+
+    <label>称呼(决定"XX师兄/师姐"称号的性别后缀)</label>
+    <div class="gender-grid">
+      <label class="gender-card {{ 'selected' if gender == 'm' }}">
+        <input type="radio" name="gender" value="m" {{ 'checked' if gender == 'm' }} required>
+        <div style="font-size:16px">师兄</div>
+      </label>
+      <label class="gender-card {{ 'selected' if gender == 'f' }}">
+        <input type="radio" name="gender" value="f" {{ 'checked' if gender == 'f' }} required>
+        <div style="font-size:16px">师姐</div>
+      </label>
+    </div>
+
+    <label>简介(选填)</label>
+    <textarea name="bio" rows="4">{{ bio }}</textarea>
+    <button class="btn btn-primary" style="margin-top:16px;width:100%">确认拜入</button>
+  </form>
+</div>
+<script>
+document.querySelectorAll('.gender-card').forEach(card => {
+  card.addEventListener('click', () => {
+    document.querySelectorAll('.gender-card').forEach(c => c.classList.remove('selected'));
+    card.classList.add('selected');
+  });
+});
+</script>
+{% endblock %}

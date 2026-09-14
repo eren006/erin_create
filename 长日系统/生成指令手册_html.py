@@ -329,6 +329,66 @@ table.g-table tr:nth-child(even) td{{background:var(--bg);}}
 .cmd-row.hidden, .cmd-section.hidden{{display:none;}}
 .empty-hint{{text-align:center;color:var(--muted);padding:40px 0;display:none;}}
 footer{{text-align:center;color:var(--muted);font-size:11px;padding:20px 0;}}
+
+/* 现代文档界面 */
+:root{{--bg:#f6f6f4;--surface:#fff;--border:#e6e6e2;--accent:#e8642c;--accent2:#141414;--text:#191919;--muted:#777773;--admin-bg:#fff0e8;--admin-fg:#b94718;--player-bg:#edf7f1;--player-fg:#25714a;--tab-inactive:#efefec;}}
+@media (prefers-color-scheme:dark){{:root{{--bg:#f6f6f4;--surface:#fff;--border:#e6e6e2;--accent:#e8642c;--accent2:#141414;--text:#191919;--muted:#777773;--admin-bg:#fff0e8;--admin-fg:#b94718;--player-bg:#edf7f1;--player-fg:#25714a;--tab-inactive:#efefec;}}}}
+body{{font-family:Inter,"SF Pro Display","PingFang SC","Microsoft YaHei",sans-serif;line-height:1.65;letter-spacing:-.01em;background:var(--bg);}}
+.topbar{{padding:0 32px;height:76px;flex-direction:row;align-items:center;gap:28px;background:rgba(255,255,255,.92);backdrop-filter:blur(18px);}}
+.topbar h1{{font-size:16px;color:var(--text);letter-spacing:-.03em;white-space:nowrap;}}
+.tabs{{gap:5px;padding:4px;background:var(--tab-inactive);border-radius:12px;width:max-content;}}
+.tab-btn{{flex:none;min-width:116px;border-radius:9px;padding:8px 16px;background:transparent;color:var(--muted);font-size:13px;}}
+.tab-btn.active{{background:#fff;color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.08);}}
+.tab-panel.active{{display:block;}}
+.page{{max-width:1040px;padding:36px 36px 72px;}}
+.guide{{border-radius:18px;margin-bottom:12px;box-shadow:0 1px 1px rgba(0,0,0,.02);}}
+.guide-head{{padding:20px 22px;color:var(--text);font-size:15px;}}
+.guide-head:hover{{background:#fafaf8;}}
+.guide-body{{padding:0 24px 26px;max-width:900px;}}
+.g-p{{font-size:14px;margin:9px 0;}}
+.g-row{{background:#fafaf8;border-color:#ededeb;border-radius:14px;padding:16px 18px;margin:14px 0;}}
+.g-box{{background:#f1f1ee;border-radius:10px;padding:10px 13px;}}
+table.g-table{{border:1px solid var(--border);border-radius:12px;border-collapse:separate;border-spacing:0;overflow:hidden;}}
+table.g-table th{{background:#f0f0ed;color:#444;padding:10px 12px;}}
+table.g-table td{{padding:10px 12px;}}
+
+#panel-cmds.active{{display:grid;grid-template-columns:260px minmax(0,1fr);grid-template-rows:auto auto 1fr;min-height:calc(100vh - 76px);align-items:start;}}
+#panel-cmds>.topbar{{grid-column:2;grid-row:1;height:auto;position:sticky!important;top:76px;padding:22px 36px!important;z-index:80;border-bottom:1px solid var(--border)!important;display:grid;grid-template-columns:minmax(240px,720px) auto;gap:16px;background:rgba(246,246,244,.94);}}
+#search{{padding:14px 18px 14px 46px;border:1px solid var(--border);border-radius:14px;background:#fff;font-size:14px;box-shadow:0 2px 12px rgba(0,0,0,.035);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:17px center;}}
+#search:focus{{border-color:#bbb;box-shadow:0 0 0 4px rgba(0,0,0,.035);}}
+#matchCount{{align-self:center;white-space:nowrap;}}
+.toc{{grid-column:1;grid-row:1/4;position:sticky;top:76px;height:calc(100vh - 76px);overflow-y:auto;display:flex;flex-direction:column;flex-wrap:nowrap;gap:3px;padding:24px 14px;background:#eeeeeb;border:0;border-right:1px solid #deded9;}}
+.toc:before{{content:"功能分类";padding:0 12px 10px;font-size:11px;font-weight:700;color:#999;letter-spacing:.12em;}}
+.toc a{{display:block;background:transparent;border:0;border-radius:9px;padding:8px 12px;font-size:12px;color:#686864;overflow:hidden;text-overflow:ellipsis;}}
+.toc a:hover{{background:#fff;color:#111;}}
+#panel-cmds>.page{{grid-column:2;grid-row:3;width:100%;max-width:1100px;margin:0;padding:16px 36px 72px;}}
+.folder-deck{{grid-column:2;grid-row:2;display:grid;grid-template-columns:repeat(5,1fr);gap:10px;padding:26px 36px 20px;overflow:hidden;}}
+.folder-card{{--folder:#deded7;position:relative;min-width:0;height:112px;padding:43px 16px 14px;border:0;border-radius:6px 16px 16px 16px;background:var(--folder);color:#262624;text-align:left;cursor:pointer;transition:transform .28s cubic-bezier(.2,.8,.2,1),box-shadow .28s,filter .28s;box-shadow:0 7px 16px rgba(0,0,0,.06);}}
+.folder-card:before{{content:"";position:absolute;left:0;top:-18px;width:62%;height:30px;background:var(--folder);border-radius:14px 20px 0 0;clip-path:polygon(0 0,75% 0,88% 100%,100% 100%,100% 100%,0 100%);}}
+.folder-card:after{{content:attr(data-index);position:absolute;right:13px;top:12px;font:10px/1 "SFMono-Regular",monospace;opacity:.42;}}
+.folder-card:nth-child(2){{--folder:#d6e2e0}}.folder-card:nth-child(3){{--folder:#d9d1eb}}.folder-card:nth-child(4){{--folder:#edc5b4}}.folder-card:nth-child(5){{--folder:#d8dfb4}}
+.folder-card:hover{{transform:translateY(-7px) rotate(-.35deg);box-shadow:0 14px 28px rgba(0,0,0,.11);filter:saturate(1.08);}}
+.folder-card.active{{--folder:#ef6a2e;color:#fff;transform:translateY(-9px);box-shadow:0 18px 34px rgba(232,100,44,.25);}}
+.folder-card:focus{{outline:none}}.folder-card:focus-visible{{box-shadow:0 0 0 3px #fff,0 0 0 5px #222,0 18px 34px rgba(0,0,0,.16)}}
+.folder-title{{display:block;font-size:14px;font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}}
+.folder-meta{{display:block;margin-top:5px;font-size:10px;opacity:.65;white-space:nowrap;}}
+.folder-status{{grid-column:2;grid-row:2;align-self:end;z-index:2;display:flex;align-items:center;gap:8px;margin:0 36px 4px;color:#888;font-size:11px;pointer-events:none;}}
+.folder-status:before{{content:"";width:18px;height:1px;background:var(--accent);}}
+.cmd-section{{margin:12px 0 18px;background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden;}}
+.cmd-section-head{{padding:18px 20px;border:0;background:#fff;}}
+.cmd-section-head:hover{{background:#fafaf8;}}
+.cmd-section-head h2{{font-size:15px;color:var(--text);letter-spacing:-.02em;}}
+.cmd-list.open{{border-top:1px solid var(--border);padding:4px 18px 16px;}}
+.cmd-row{{border:0;border-bottom:1px solid #eeeeeb;border-radius:0;margin:0;padding:17px 2px;background:transparent;}}
+.cmd-row:last-child{{border-bottom:0;}}
+.cmd-name{{font-size:14px;background:#f2f2ef;padding:4px 8px;border-radius:6px;font-family:"SFMono-Regular",Consolas,monospace;}}
+.cmd-desc{{color:#5d5d59;padding-left:2px;}}
+.usage{{background:#191919;color:#d9d9d5;border:0;border-radius:10px;padding:12px 14px;}}
+.role-badge{{font-size:10px;padding:3px 8px;}}
+.chevron{{font-size:11px;}}
+footer{{background:#111;color:#777;margin:0;padding:28px;}}
+@media(max-width:760px){{.topbar{{height:auto;min-height:72px;padding:14px 18px;justify-content:space-between;gap:12px}}.topbar h1{{font-size:14px}}.tab-btn{{min-width:auto;padding:8px 11px;font-size:12px}}#panel-cmds.active{{display:block}}#panel-cmds>.topbar{{position:sticky!important;top:72px;padding:12px 16px!important;display:block}}.folder-deck{{display:flex;gap:8px;padding:24px 14px 15px;overflow-x:auto;scrollbar-width:none}}.folder-card{{flex:0 0 132px;height:92px;padding:36px 12px 10px}}.folder-card:before{{top:-14px;height:24px}}.folder-status{{margin:0 16px 12px}}.toc{{position:relative;top:auto;width:100%;height:auto;overflow-x:auto;display:flex;flex-direction:row;gap:5px;padding:10px 14px;border-right:0;border-bottom:1px solid var(--border);scrollbar-width:none}}.toc:before{{display:none}}.toc a{{flex:none;background:#fff;border:1px solid var(--border);padding:7px 11px}}#panel-cmds>.page,.page{{padding:16px 14px 50px}}.guide-head{{padding:17px 16px}}.guide-body{{padding:0 16px 20px}}.g-row{{padding:13px;display:block}}.cmd-list.open{{padding:2px 14px 12px}}}}
+@media(prefers-reduced-motion:reduce){{.folder-card,.chevron{{transition:none!important}}}}
 </style>
 </head>
 <body>
@@ -351,6 +411,14 @@ footer{{text-align:center;color:var(--muted);font-size:11px;padding:20px 0;}}
     <input id="search" type="text" placeholder="搜索指令、关键词或用法…" autocomplete="off">
     <div id="matchCount"></div>
   </div>
+  <div class="folder-deck" role="group" aria-label="指令领域筛选">
+    <button class="folder-card active" data-index="01" data-from="0" data-to="36" aria-pressed="true"><span class="folder-title">全部指令</span><span class="folder-meta">316 COMMANDS</span></button>
+    <button class="folder-card" data-index="02" data-from="0" data-to="10" aria-pressed="false"><span class="folder-title">角色与社交</span><span class="folder-meta">IDENTITY / SOCIAL</span></button>
+    <button class="folder-card" data-index="03" data-from="11" data-to="20" aria-pressed="false"><span class="folder-title">RPG 与成长</span><span class="folder-meta">ITEM / COMBAT</span></button>
+    <button class="folder-card" data-index="04" data-from="21" data-to="26" aria-pressed="false"><span class="folder-title">互动玩法</span><span class="folder-meta">GAME / LETTER</span></button>
+    <button class="folder-card" data-index="05" data-from="27" data-to="36" aria-pressed="false"><span class="folder-title">运营管理</span><span class="folder-meta">SYSTEM / ADMIN</span></button>
+  </div>
+  <div class="folder-status" id="folderStatus">正在浏览：全部指令</div>
   {toc}
   <div class="page" id="content">
 {sections}
@@ -375,6 +443,19 @@ function toggleSection(headEl) {{
   list.classList.toggle('open');
   headEl.querySelector('.chevron').classList.toggle('rot');
 }}
+
+const folderCards = Array.from(document.querySelectorAll('.folder-card'));
+const sectionWraps = Array.from(document.querySelectorAll('#content > div[id^="sec-"]'));
+const tocLinks = Array.from(document.querySelectorAll('.toc a'));
+function selectFolder(card) {{
+  const from = Number(card.dataset.from), to = Number(card.dataset.to);
+  folderCards.forEach(b => {{ b.classList.toggle('active', b === card); b.setAttribute('aria-pressed', b === card ? 'true' : 'false'); }});
+  sectionWraps.forEach(w => {{ const n=Number(w.id.replace('sec-','')); w.style.display=(n>=from&&n<=to)?'':'none'; }});
+  tocLinks.forEach(a => {{ const n=Number(a.getAttribute('href').replace('#sec-','')); a.style.display=(n>=from&&n<=to)?'':'none'; }});
+  document.getElementById('folderStatus').textContent='正在浏览：'+card.querySelector('.folder-title').textContent;
+  search.value=''; applyFilter();
+}}
+folderCards.forEach(card => card.addEventListener('click', () => selectFolder(card)));
 
 // 默认展开第一篇指南
 document.addEventListener('DOMContentLoaded', () => {{

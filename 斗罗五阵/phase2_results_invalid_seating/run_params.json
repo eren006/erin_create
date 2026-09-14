@@ -1,0 +1,60 @@
+{
+  "INVALIDATED": true,
+  "reason": "INVALIDATED\nReason: mirrored seating was a no-op (reordering a list of already-typed\nconfigs does not change which unit id gets which type -- new_battle\nkeys its unit dict by cfg.id, so list order is irrelevant) and the\nswap-based winner-attribution logic inverted roughly half of every\naggregated win count as if the seats had actually flipped.\nDo not use: type matchup win rates, counter-edge win rates, AI-policy\nwin rates, or first-mover win rates from this run.\nControl-fatigue EVENT HISTOGRAM remains valid (it counts raw events by\ntype name, not swap-based win attribution).",
+  "timestamp": "2026-09-05 22:01:36",
+  "MAX_ROUNDS": 15,
+  "BASE_HP": 650,
+  "BASE_ATK": 110,
+  "BASE_DEF": 70,
+  "BASE_RES": 15,
+  "STAGES": {
+    "30": {
+      "power_level": 30,
+      "mult": 1.0
+    },
+    "60": {
+      "power_level": 60,
+      "mult": 1.8
+    },
+    "90": {
+      "power_level": 90,
+      "mult": 3.0
+    }
+  },
+  "ULTIMATE_UNLOCK_LEVEL": 70,
+  "N_TYPE_MATRIX_per_pair_per_seating": 600,
+  "N_POLICY_MATRIX_per_pair_per_seating": 600,
+  "seed_scheme": "deterministic string-keyed random.Random((label, stage, seed, ...)); seed index ranges 0..N-1 per bucket, see code for exact tuples",
+  "note": "code and parameters frozen for this run per explicit instruction; no mid-run tuning performed. ai_policy_battles.csv is a genuine reproducible re-simulation (identical code/params/seed scheme) -- per-battle rows for the AI matrix are NOT reconstructed from the aggregate win-rate matrix, which is not possible after the fact.",
+  "run_id": "20260905-220136",
+  "total_battles": 108000,
+  "datasets": {
+    "type_matrix": {
+      "file": "type_matrix_battles.csv",
+      "rows": 54000,
+      "purpose": "类型、克制边、阶段和席位分析"
+    },
+    "ai_policy_matrix": {
+      "file": "ai_policy_battles.csv",
+      "rows": 54000,
+      "purpose": "固定混合技能配置下的AI策略交叉分析"
+    }
+  },
+  "common_csv_columns": [
+    "run_id",
+    "dataset",
+    "battle_id",
+    "stage",
+    "seed",
+    "left_policy",
+    "right_policy",
+    "left_type",
+    "right_type",
+    "left_loadout_id",
+    "right_loadout_id",
+    "seating",
+    "winner",
+    "rounds",
+    "timed_out"
+  ]
+}

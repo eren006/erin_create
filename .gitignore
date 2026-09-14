@@ -11,3 +11,6 @@ yuca_calendar_beta/yuca_data.db
 yuca_calendar_beta/logs/
 yuca_order/order_data.db
 yuca_order/logs/
+九霄仙门/jiuxiao.db
+九霄仙门/db_backups/
+deploy_dashboard/deploy_dashboard.db

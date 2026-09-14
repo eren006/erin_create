@@ -28,7 +28,9 @@ cd "$LOCAL_DIR"
 collect_files() {
   for file in \
     bot.py newspaper_web.py newspaper_service.py \
-    web_app.py web_auth.py submissions.py requirements.txt .env .env.dev; do
+    web_app.py web_auth.py submissions.py gossip.py admin_reset.py backup.py \
+    my_web.py \
+    requirements.txt .env .env.dev; do
     [ ! -f "$file" ] || printf '%s\n' "$file"
   done
   find plugins templates static -type f \
@@ -110,9 +112,9 @@ fi
 BOT_CHANGED=0
 NEWS_CHANGED=0
 WEB_CHANGED=0
-grep -Eq '^(bot\.py|plugins/|\.env($|\.))' "$ALL_CHANGES" && BOT_CHANGED=1 || true
+grep -Eq '^(bot\.py|gossip\.py|backup\.py|plugins/|\.env($|\.))' "$ALL_CHANGES" && BOT_CHANGED=1 || true
 grep -Eq '^(newspaper_(web|service)\.py|templates/newspaper|plugins/hp_|\.env($|\.))' "$ALL_CHANGES" && NEWS_CHANGED=1 || true
-grep -Eq '^(web_app\.py|web_auth\.py|submissions\.py|templates/web/|static/|plugins/hp_|\.env($|\.))' "$ALL_CHANGES" && WEB_CHANGED=1 || true
+grep -Eq '^(web_app\.py|web_auth\.py|submissions\.py|gossip\.py|admin_reset\.py|templates/web/|static/|plugins/hp_|\.env($|\.))' "$ALL_CHANGES" && WEB_CHANGED=1 || true
 
 restart_service() {
   service="$1"

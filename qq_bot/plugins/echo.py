@@ -12,9 +12,9 @@ async def handle_echo(event: MessageEvent, args=CommandArg()):
         await echo.finish(text)
 
 
-ping = on_command("ping")
+ping = on_command("在吗")
 
 
 @ping.handle()
 async def handle_ping(event: MessageEvent):
-    await ping.finish(MessageSegment.text("pong"))
+    await ping.finish(MessageSegment.text("频道D已接通。拿破仑·索罗在线——放心，一切照常。"))

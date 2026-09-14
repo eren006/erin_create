@@ -1,149 +1,61 @@
 {% extends 'base.html' %}
 {% block title %}排单宝{% endblock %}
 {% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='ink.css', v='18') }}">
 <style>
-/* ── Hero ── */
-.hero{
-  text-align:center;padding:64px 20px 36px;
-  position:relative;overflow:hidden;
-}
-.hero-glow{
-  position:absolute;top:-60px;left:50%;transform:translateX(-50%);
-  width:500px;height:320px;
-  background:radial-gradient(ellipse,color-mix(in srgb,var(--accent) 12%,transparent) 0%,transparent 70%);
-  pointer-events:none;
-}
-.hero-badge{
-  display:inline-flex;align-items:center;gap:6px;
-  background:color-mix(in srgb,var(--accent) 8%,var(--surface));
-  border:1px solid color-mix(in srgb,var(--accent) 25%,var(--border));
-  border-radius:20px;padding:5px 14px;
-  font-size:11px;color:var(--accent2);
-  margin-bottom:18px;letter-spacing:.04em;
-  text-decoration:none;transition:.15s;cursor:pointer;
-}
-.hero-badge:hover{
-  background:color-mix(in srgb,var(--accent) 14%,var(--surface));
-  border-color:var(--accent);color:var(--accent2);
-  transform:translateY(-1px);
-}
-.hero-badge .pulse{
-  width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block;
-  box-shadow:0 0 0 0 color-mix(in srgb,var(--green) 50%,transparent);
-  animation:pulse 2s infinite;
-}
-.hero-badge .pulse.closed-dot{background:var(--muted);animation:none;}
-@keyframes pulse{
-  0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--green) 50%,transparent);}
-  70%{box-shadow:0 0 0 6px transparent;}
-  100%{box-shadow:0 0 0 0 transparent;}
-}
-.hero-title{
-  font-size:40px;font-weight:800;letter-spacing:.04em;
-  background:linear-gradient(135deg,var(--accent2) 20%,color-mix(in srgb,var(--accent) 70%,#6366f1) 100%);
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
-  margin-bottom:8px;line-height:1.2;
-}
-.hero-slogan{font-size:15px;font-weight:500;color:var(--muted);margin-bottom:6px;letter-spacing:.06em;}
-.hero-hint{font-size:12px;color:var(--muted);opacity:.7;margin-top:8px;}
-.hero-sep{width:48px;height:2px;border-radius:2px;
-  background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 30%,transparent));
-  margin:14px auto 0;}
-@media(max-width:480px){.hero{padding:44px 16px 24px;}.hero-title{font-size:30px;}.hero-slogan{font-size:13px;}}
-
-/* ── 入口卡片 ── */
-.entry-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:640px;margin:32px auto 0;}
-@media(max-width:540px){.entry-grid{grid-template-columns:1fr;gap:12px;}}
-.entry-card{
-  background:var(--surface);border:1.5px solid var(--border);border-radius:18px;
-  padding:28px 22px 24px;text-align:center;text-decoration:none;
-  transition:transform .2s,box-shadow .2s,border-color .2s;
-  display:block;position:relative;overflow:hidden;cursor:pointer;
-}
-.entry-card::after{
-  content:'';position:absolute;inset:0;border-radius:18px;
-  background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 6%,transparent),transparent 60%);
-  opacity:0;transition:opacity .2s;pointer-events:none;
-}
-.entry-card:hover{border-color:var(--accent);box-shadow:0 8px 32px var(--shadow);transform:translateY(-4px);}
-.entry-card:hover::after{opacity:1;}
-.entry-icon{font-size:34px;margin-bottom:14px;display:block;}
-.entry-label{font-size:16px;font-weight:700;color:var(--text);margin-bottom:6px;}
-.entry-desc{font-size:12px;color:var(--muted);line-height:1.7;}
-.query-row{display:flex;gap:8px;margin-top:14px;}
-.query-row .fi{flex:1;font-size:12px;padding:7px 10px;}
-
-/* ── 接单方列表 ── */
-.who-section{max-width:640px;margin:40px auto 0;scroll-margin-top:64px;}
-.who-title{font-size:12px;color:var(--muted);text-align:center;letter-spacing:.06em;margin-bottom:14px;text-transform:uppercase;}
-.who-card{
-  background:var(--surface);border:1.5px solid var(--border);border-radius:14px;
-  padding:18px 20px;margin-bottom:12px;
-  display:flex;align-items:center;gap:14px;
-  transition:border-color .15s,box-shadow .15s;
-  text-decoration:none;
-}
-.who-card.clickable:hover{border-color:var(--accent);box-shadow:0 4px 18px var(--shadow);}
-.who-card .who-icon{font-size:26px;flex-shrink:0;}
-.who-info{flex:1;min-width:0;}
-.who-name{font-size:14px;font-weight:600;color:var(--text);}
-.who-desc{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.5;}
-.who-queue{font-size:11px;color:var(--muted);margin-top:4px;}
-.status-badge{
-  flex-shrink:0;display:inline-flex;align-items:center;gap:5px;
-  padding:4px 12px;border-radius:20px;font-size:11px;font-weight:500;
-}
-.sb-open{background:color-mix(in srgb,var(--green) 10%,var(--surface2));
-  color:var(--green);border:1px solid color-mix(in srgb,var(--green) 28%,var(--border));}
-.sb-full{background:color-mix(in srgb,var(--warn) 10%,var(--surface2));
-  color:var(--warn);border:1px solid color-mix(in srgb,var(--warn) 28%,var(--border));}
-.sb-closed{background:var(--surface2);
-  color:var(--muted);border:1px solid var(--border);}
-.sb-dot{width:5px;height:5px;border-radius:50%;}
-.sb-open .sb-dot{background:var(--green);}
-.sb-full .sb-dot{background:var(--warn);}
-.sb-closed .sb-dot{background:var(--muted);}
+.hero-nav{position:absolute;top:30px;right:3.8%;z-index:3;display:flex;align-items:center;gap:20px;font-size:10px;letter-spacing:.18em;color:#aeaeae;}
+.hero-nav a{color:#aeaeae;transition:color .2s;white-space:nowrap;}
+.hero-nav a:hover{color:#f1f1f1;}
+.hero-nav .hn-name{color:#d5d5d5;}
+.hero-nav .hn-badge{display:inline-block;background:#ce142b;color:#f1f1f1;border-radius:50%;min-width:14px;height:14px;line-height:14px;text-align:center;font-size:9px;letter-spacing:0;margin-left:3px;padding:0 2px;}
+@media(max-width:600px){.hero-nav{top:16px;right:5%;left:5%;justify-content:flex-end;gap:12px;font-size:9px;letter-spacing:.12em;flex-wrap:wrap;}}
 </style>
 {% endblock %}
 {% block body %}
-
-<div class="hero">
-  <div class="hero-glow"></div>
-  <a class="hero-badge" href="#who">
-    <span class="pulse {% if not any_open %}closed-dot{% endif %}"></span>
-    {% if any_open %}接受散单中{% else %}暂停接单{% endif %}
-    <span style="opacity:.6;font-size:10px;">↓ 查看详情</span>
-  </a>
-  <div class="hero-title">排单宝</div>
-  <div class="hero-slogan">你的散单专家</div>
-  <div class="hero-sep"></div>
-  <div class="hero-hint">提交需求 · 获取回执号 · 随时查询进度</div>
-</div>
-
-<div class="page" style="padding-top:0;padding-bottom:56px;">
-
-  <div class="entry-grid">
-    <a href="{{ url_for('order_new') }}{% if tenants|length == 1 %}?t={{ tenants[0].id }}{% endif %}" class="entry-card">
-      <span class="entry-icon">✏️</span>
-      <div class="entry-label">提交订单</div>
-      <div class="entry-desc">填写排版需求<br>上传参考图片<br>提交后获取回执号</div>
-    </a>
-    <div class="entry-card" id="query-card" onclick="document.getElementById('qno').focus()">
-      <span class="entry-icon">🔍</span>
-      <div class="entry-label">查询回执</div>
-      <div class="entry-desc">输入回执号<br>查看当前制作进度</div>
-      <form onsubmit="goQuery();return false;" onclick="event.stopPropagation()">
-        <div class="query-row">
-          <input class="fi" id="qno" placeholder="ORD-…" autocomplete="off" spellcheck="false">
-          <button class="btn btn-primary btn-sm" type="submit">查询</button>
-        </div>
-      </form>
-    </div>
+<main>
+<section class="ink-stage" aria-labelledby="hero-title">
+  <div class="landscape" aria-hidden="true">
+    <div class="ink-sun"></div>
+    <div class="sun-atmosphere"><div class="sun-cloud sun-cloud-front"></div><div class="sun-cloud sun-cloud-high"></div></div>
+    <div class="mountain-mist mist-distant"></div>
+    <div class="mountain-mist mist-near"></div>
+    <div class="river-boat"><img class="boat-rock" src="{{ url_for('static', filename='ink-sampan.png') }}" alt="" width="600" height="219"></div>
+    <div class="ink-birds"><img class="ink-swallow-art" src="{{ url_for('static', filename='ink-swallows.png') }}" alt="" width="520" height="261"></div>
   </div>
-
-  <!-- 接单方详情 -->
-  <div class="who-section" id="who">
-    <div class="who-title">接单方</div>
+  {% include '_ballet_scene.html' %}
+  <div class="ballet-sparkles ballet-only" aria-hidden="true"><span>✧</span><span>✧</span><span>✧</span></div>
+  <button class="motion-toggle" type="button" hidden aria-pressed="false">暂停画面动效</button>
+  <div class="edition">TUCA STUDIO <span>图编服务平台</span></div>
+  <nav class="hero-nav">
+    {% include '_theme_picker.html' %}
+    {% if session.get('admin_id') %}
+      <span class="hn-name">{{ session.admin_display_name }}</span>
+      <a href="{{ url_for('admin_dashboard') }}">管理后台</a>
+      <a href="{{ url_for('admin_logout') }}">退出</a>
+    {% elif session.get('superadmin') %}
+      <span class="hn-name">超管</span>
+      <a href="{{ url_for('superadmin_index') }}">超管后台</a>
+      <a href="{{ url_for('superadmin_logout') }}">退出</a>
+    {% elif session.get('account_id') %}
+      <span class="hn-name">{{ session.account_display_name }}</span>
+      <a href="{{ url_for('my_orders') }}">我的账户</a>
+      <a href="{{ url_for('credits_buy') }}">获得次数</a>
+      <a href="{{ url_for('inbox') }}">消息{% if unread_inbox_count %}<span class="hn-badge">{{ unread_inbox_count }}</span>{% endif %}</a>
+      <a href="{{ url_for('user_logout') }}">退出</a>
+    {% else %}
+      <a href="{{ url_for('index') }}#query">查回执</a>
+      <a href="{{ url_for('user_login') }}">会员登录</a>
+      <a href="{{ url_for('admin_login') }}">管理员</a>
+      <a href="{{ url_for('superadmin_login') }}">超管</a>
+    {% endif %}
+  </nav>
+  <header class="hero-heading"><p data-ink-copy="EVERY IDEA, A NEW LANDSCAPE" data-ballet-copy="A LITTLE GRACE, A LITTLE MAGIC">EVERY IDEA, A NEW LANDSCAPE</p><h1 id="hero-title">排单<span>宝</span></h1><div>你 的 散 单 专 家</div></header>
+  <div class="hero-left"><h2>提交订单</h2><p>填写排版需求，提交新的订单。<br>提交后获取订单号与查询验证码。</p><a class="submit-link" href="{{ url_for('order_new') }}{% if tenants|length == 1 %}?t={{ tenants[0].id }}{% endif %}">立即下单 <span class="submit-arrow" aria-hidden="true"><svg viewBox="0 0 16 16" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12 12 4M6.2 4H12v5.8"/></svg></span></a></div>
+  <section class="hero-query" id="query" aria-labelledby="query-title"><h2 id="query-title">查询订单进度</h2><form onsubmit="goQuery(event)"><label for="qno">输入订单号，查询接单及制作状态</label><div class="query-row"><input id="qno" name="receipt" placeholder="ORD-…" required autocomplete="off" spellcheck="false"><button type="submit" aria-label="查询订单进度">查询</button></div></form></section>
+  <div class="vertical-note" aria-hidden="true" data-ink-copy="以墨为引 · 以序成章" data-ballet-copy="轻盈起舞 · 灵感成形">以墨为引 · 以序成章</div>
+  <footer class="stage-footer"><a class="availability" href="#who"><i class="{% if any_open %}is-open{% endif %}"></i>{% if any_open %}接受散单中{% else %}暂停接单{% endif %}<span>查看接单方 ↓︎</span></a><span class="folio">你的图擦平台</span></footer>
+</section>
+<section class="who-section" id="who"><div class="section-heading"><div><h2>创作者清单</h2></div><span>选择接单方，开启新的创作</span></div>
     {% for t in tenants %}
     {% if t.open_status == 'open' %}
       <a class="who-card clickable" href="{{ url_for('order_new') }}?t={{ t.id }}">
@@ -151,23 +63,16 @@
       <div class="who-card">
     {% endif %}
       <div class="who-icon">
-        {% if t.open_status == 'open' %}🎨{% elif t.open_status == 'full' %}⏳{% else %}🔒{% endif %}
+        {{ (t.display_name or t.slug)[0] }}
       </div>
       <div class="who-info">
         <div class="who-name">{{ t.display_name or t.slug }}</div>
         {% if t.description %}
         <div class="who-desc">{{ t.description }}</div>
         {% endif %}
-        {% if t.max_active_orders %}
-        <div class="who-queue">队列 {{ t.active_cnt }} / {{ t.max_active_orders }}</div>
-        {% elif t.open_status == 'open' %}
-        <div class="who-queue">随时接单，无数量限制</div>
-        {% endif %}
       </div>
       {% if t.open_status == 'open' %}
         <span class="status-badge sb-open"><span class="sb-dot"></span>接单中</span>
-      {% elif t.open_status == 'full' %}
-        <span class="status-badge sb-full"><span class="sb-dot"></span>队列已满</span>
       {% else %}
         <span class="status-badge sb-closed"><span class="sb-dot"></span>暂停接单</span>
       {% endif %}
@@ -177,19 +82,64 @@
       </div>
     {% endif %}
     {% endfor %}
-  </div>
-
-</div>
-
+{% if not tenants %}<div class="empty-state">接单方准备中，请稍后再来。</div>{% endif %}
+</section>
+<footer class="site-footer"><span>排单宝 · TUCA STUDIO</span><span>长日将尽运营制作</span></footer>
+</main>
 <script>
-function goQuery(){
-  const v=document.getElementById('qno').value.trim();
-  if(v) location.href='/order/'+v;
-}
-// 点徽章平滑滚动
-document.querySelector('.hero-badge').addEventListener('click',function(e){
-  e.preventDefault();
-  document.getElementById('who').scrollIntoView({behavior:'smooth'});
-});
+function goQuery(event){event.preventDefault();const v=document.getElementById('qno').value.trim();if(v)location.href='/order/'+encodeURIComponent(v);else document.getElementById('qno').focus();}
+// Decorative layers share pause, visibility and reduced-motion controls.
+(function(){
+ const stage=document.querySelector('.ink-stage');
+ const button=document.querySelector('.motion-toggle');
+ const sun=stage.querySelector('.ink-sun');
+ function placeSun(){
+  const w=stage.clientWidth,h=stage.clientHeight;
+  const layers=[sun,stage.querySelector('.sun-atmosphere')];
+  if(w<=600){
+   // 窄屏原本用 h/1024 定尺寸，红日会被撑到接近屏宽、压住下面的入口文案。
+   // 改成按屏宽定尺寸并落在标题正后方，让山水重新露出来。
+   const d=Math.min(w*.62,240);
+   const heading=stage.querySelector('.hero-heading');
+   const cy=heading?heading.offsetTop+heading.offsetHeight/2:170;
+   layers.forEach(function(layer){
+    layer.style.width=d+'px';
+    layer.style.height=d+'px';
+    layer.style.left=((w-d)/2)+'px';
+    layer.style.top=(cy-d/2)+'px';
+   });
+  }else{
+   const scale=Math.max(w/1536,h/1024);
+   const offsetX=(w-1536*scale)*.5;
+   layers.forEach(function(layer){
+    layer.style.width=(374*scale)+'px';
+    layer.style.height=(374*scale)+'px';
+    layer.style.left=(offsetX+613*scale)+'px';
+    layer.style.top=((h-1024*scale)/2+129*scale)+'px';
+   });
+  }
+  stage.style.setProperty('--scene-width',w+'px');
+ }
+ placeSun();
+ if('ResizeObserver' in window)new ResizeObserver(placeSun).observe(stage);
+ else window.addEventListener('resize',placeSun);
+ const preference=matchMedia('(prefers-reduced-motion: no-preference)');
+ let paused=false, visible=true;
+ function syncMotion(){
+  const enabled=preference.matches;
+  button.hidden=!enabled;
+  stage.classList.toggle('motion-enabled',enabled);
+  stage.classList.toggle('motion-paused',paused || document.hidden || !visible);
+  button.textContent=paused?'开启画面动效':'暂停画面动效';
+  button.setAttribute('aria-pressed',String(paused));
+ }
+ button.addEventListener('click',function(){paused=!paused;syncMotion();});
+ document.addEventListener('visibilitychange',syncMotion);
+ preference.addEventListener('change',syncMotion);
+ if('IntersectionObserver' in window){
+  new IntersectionObserver(function(entries){visible=entries[0].isIntersecting;syncMotion();}).observe(stage);
+ }
+ syncMotion();
+})();
 </script>
 {% endblock %}

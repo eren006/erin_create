@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}角色列表 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:10px">交换排名顺序</h3>
+  <p class="muted" style="margin-top:-4px;margin-bottom:10px">互换两人的"大师兄/二师姐"这类称号排位,只影响这两人,其余人不受影响。</p>
+  <form method="post" action="{{ url_for('admin_swap_join_seq') }}" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+    <div>
+      <label>角色A</label>
+      <select name="char_a" required>
+        {% for c in real_chars %}
+        <option value="{{ c.id }}">{{ c.name }}({{ title_for(c.join_seq, c.gender) }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>角色B</label>
+      <select name="char_b" required>
+        {% for c in real_chars %}
+        <option value="{{ c.id }}">{{ c.name }}({{ title_for(c.join_seq, c.gender) }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn btn-primary">交换</button>
+  </form>
+</div>
+<div class="card">
+  <table>
+    <tr><th>道号</th><th>称号</th><th>档位</th><th>境界</th><th>贡献</th><th>所属账号</th><th></th></tr>
+    {% for c in chars %}
+    <tr>
+      <td>{{ c.name }}{% if c.ascended %} <span class="badge badge-gold">已飞升</span>{% endif %}</td>
+      <td>{{ title_for(c.join_seq, c.gender, c.is_npc) }}</td>
+      <td><span class="badge badge-purple">{{ rank_by_tier(c.rank_tier).label }}</span></td>
+      <td>{{ realm_by_index(c.realm_idx).name }}</td>
+      <td>{{ c.total_contribution }}</td>
+      <td>{{ '宗门NPC' if c.is_npc else c.username }}</td>
+      <td>
+        <a class="btn" style="padding:4px 10px" href="{{ url_for('admin_character_detail', char_id=c.id) }}">编辑</a>
+        <a class="btn" style="padding:4px 10px" href="{{ url_for('admin_impersonate', char_id=c.id) }}">化身</a>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

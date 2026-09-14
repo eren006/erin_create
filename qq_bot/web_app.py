@@ -27,16 +27,20 @@ from flask import (  # noqa: E402
     url_for,
 )
 
+import admin_reset  # noqa: E402
+import gossip  # noqa: E402
 import newspaper_service  # noqa: E402
 import submissions  # noqa: E402
 import web_auth  # noqa: E402
+from plugins.hp_core import ambient as core_ambient  # noqa: E402
 from plugins.hp_core import notify as core_notify  # noqa: E402
 from plugins.hp_core import spells as spell_catalog  # noqa: E402
 from plugins.hp_core import storage as core_storage  # noqa: E402
-from plugins.hp_events import christmas, duel, forest, prefect, quidditch  # noqa: E402
+from plugins.hp_events import christmas, creatures, duel, forest, gnomes, grading, prefect, quidditch  # noqa: E402
 from plugins.hp_school import (  # noqa: E402
     careers,
     casting,
+    choc_frog,
     daily_plan,
     homework,
     lesson_events,
@@ -46,15 +50,20 @@ from plugins.hp_school import (  # noqa: E402
     shop,
     shop_catalog,
     sorting,
+    story_mainline,
     subjects,
+    tailor,
+    themes,
     work,
 )
-from plugins.hp_social import romance
+from plugins.hp_social import friendship, romance
 from plugins.hp_social import storage as social_storage  # noqa: E402
 
 web_auth.init_db()
 core_notify.init_db()
 submissions.init_db()
+gossip.init_db()
+themes.init_db()
 
 # 首次启动时生成一个管理密码，只在日志里明文出现这一次；之后可以在后台自行修改
 if not web_auth.has_admin_password():
@@ -65,11 +74,14 @@ if not web_auth.has_admin_password():
 app = Flask(__name__)
 app.secret_key = os.getenv("HOGWARTS_SECRET_KEY") or "hogwarts-dev-secret-change-me"
 
+NEWSPAPER_URL = os.getenv("NEWSPAPER_PUBLIC_URL", "http://120.26.120.128:5017")
+
 ENGINE_ERRORS = (
     christmas.ChristmasError,
     prefect.PrefectError,
     potions.PotionError,
     submissions.SubmissionError,
+    gossip.GossipError,
     sorting.SortingError,
     lessons.LessonError,
     lesson_events.LessonEventError,
@@ -79,11 +91,18 @@ ENGINE_ERRORS = (
     work.WorkError,
     careers.CareerError,
     mainline.MainlineError,
+    story_mainline.StoryError,
     daily_plan.DailyPlanError,
     quidditch.QuidditchError,
     duel.DuelError,
     forest.ForestError,
     romance.RomanceError,
+    friendship.FriendshipError,
+    gnomes.GnomeError,
+    creatures.CreatureError,
+    tailor.TailorError,
+    choc_frog.ChocFrogError,
+    themes.ThemeError,
 )
 
 
@@ -131,11 +150,18 @@ def _display_name(uid: str | None = None) -> str:
 
 @app.context_processor
 def _inject():
+    current_day = core_storage.get_current_day()
+    seasonal_theme = themes.seasonal_theme_for_day(current_day)
+    personal_theme = themes.get_equipped(g.uid) if g.get("uid") and g.get("player") else ""
+    theme_key = seasonal_theme or personal_theme
     return {
         "account": g.get("account"),
         "player": g.get("player"),
         "display_name": _display_name(g.uid) if g.get("uid") and g.get("player") else "",
-        "current_day": core_storage.get_current_day(),
+        "current_day": current_day,
+        "newspaper_url": NEWSPAPER_URL,
+        "current_theme": theme_key,
+        "seasonal_theme": seasonal_theme,
     }
 
 
@@ -260,8 +286,90 @@ def admin():
                     from plugins.hp_school import storage as school_storage
                     announcement_id = school_storage.add_group_announcement(message)
                     flash(f"已添加群通知（ID: {announcement_id}），将在下一个时间窗口发送。", "ok")
+            elif action == "reset_enrollment":
+                identifier = target.strip()
+                confirm = request.form.get("confirm_uid", "").strip()
+                if confirm != identifier:
+                    flash("确认栏没有填一样的内容，为防止误删已取消操作。", "error")
+                else:
+                    # 没绑定网页账号的人不在下面的账号列表里，管理员大概率只知道角色名字、
+                    # 不知道QQ号，所以这里两种都认：纯数字当QQ号，否则按角色名查uid。
+                    resolved_uid = (
+                        identifier if identifier.isdigit()
+                        else core_storage.get_uid_by_name(identifier)
+                    )
+                    if not resolved_uid:
+                        flash(f"「{identifier}」查不到对应的角色，检查一下QQ号或角色名字有没有打对。", "error")
+                    else:
+                        result = admin_reset.reset_enrollment(resolved_uid)
+                        if result["old_house"]:
+                            flash(
+                                f"已清空 {resolved_uid}（原 {result['old_name']}·{result['old_house']}）"
+                                "的入学记录及全部关联数据，本人可在QQ群重新「/入学」。",
+                                "ok",
+                            )
+                        else:
+                            flash(f"{resolved_uid} 本来就还没入学，已清空其残留的中间数据。", "ok")
+            elif action == "rename_player":
+                identifier = target.strip()
+                new_name = request.form.get("new_name", "")
+                new_surname = request.form.get("new_surname", "")
+                resolved_uid = (
+                    identifier if identifier.isdigit()
+                    else core_storage.get_uid_by_name(identifier)
+                )
+                if not resolved_uid:
+                    flash(f"「{identifier}」查不到对应的角色，检查一下QQ号或角色名字有没有打对。", "error")
+                else:
+                    result = admin_reset.rename_player(resolved_uid, new_name, new_surname)
+                    flash(f"已把 {result['old_name']} 改名为 {result['new_name']}。", "ok")
+            elif action == "transfer_house":
+                identifier = target.strip()
+                new_house = request.form.get("new_house", "").strip()
+                confirm = request.form.get("confirm_uid", "").strip()
+                if confirm != identifier:
+                    flash("确认栏没有填一样的内容，为防止误操作已取消。", "error")
+                else:
+                    resolved_uid = (
+                        identifier if identifier.isdigit()
+                        else core_storage.get_uid_by_name(identifier)
+                    )
+                    if not resolved_uid:
+                        flash(f"「{identifier}」查不到对应的角色，检查一下QQ号或角色名字有没有打对。", "error")
+                    else:
+                        result = admin_reset.transfer_house(resolved_uid, new_house)
+                        flash(
+                            f"已把 {result['old_name']} 从 {result['old_house']} 转到 {result['new_house']}"
+                            f"（清零了TA为{result['old_house']}攒下的{result['cleared_points']}点学院分，"
+                            "其余游戏数据不受影响）。",
+                            "ok",
+                        )
+            elif action == "adjust_stat":
+                identifier = target.strip()
+                stat = request.form.get("stat", "")
+                stat_subject = request.form.get("subject", "")
+                try:
+                    amount = int(request.form.get("amount", "0"))
+                except ValueError:
+                    amount = 0
+                resolved_uid = (
+                    identifier if identifier.isdigit()
+                    else core_storage.get_uid_by_name(identifier)
+                )
+                if not resolved_uid:
+                    flash(f"「{identifier}」查不到对应的角色，检查一下QQ号或角色名字有没有打对。", "error")
+                else:
+                    result = admin_reset.adjust_stat(resolved_uid, stat, amount, stat_subject)
+                    sign = "+" if result["delta"] > 0 else ""
+                    flash(
+                        f"已把 {result['name']} 的{result['label']}从 {result['old']} 调整为 {result['new']}"
+                        f"（{sign}{result['delta']}）。",
+                        "ok",
+                    )
 
         except web_auth.AuthError as e:
+            flash(str(e), "error")
+        except admin_reset.ResetError as e:
             flash(str(e), "error")
         except Exception as e:
             flash(f"出错：{str(e)}", "error")
@@ -277,10 +385,50 @@ def admin():
         "web/admin.html",
         pending=[a for a in accounts if a["status"] == "pending"],
         others=[a for a in accounts if a["status"] != "pending"],
+        houses=core_storage.HOUSES,
+        subjects=subjects.SUBJECTS,
     )
 
 
 # ======================== 主页 / 面板 ========================
+
+CAMPUS_FEED_LIMIT = 20
+
+
+def _relative_time(created_at: int, now_ts: int) -> str:
+    elapsed = max(0, now_ts - created_at)
+    if elapsed < 60:
+        return "刚刚"
+    if elapsed < 3600:
+        return f"{elapsed // 60}分钟前"
+    if elapsed < 86400:
+        return f"{elapsed // 3600}小时前"
+    return f"{elapsed // 86400}天前"
+
+
+def _campus_feed(limit: int = CAMPUS_FEED_LIMIT) -> list[dict]:
+    """把真实操作记录（notify队列）和闲逛花絮（ambient）按时间混排，做成首页的"校园动态"。"""
+    now_ts = core_storage.now()
+    entries = [
+        {
+            "name": core_storage.get_full_name(r["uid"]) if r["uid"] else "",
+            "text": r["text"].replace("{n}", str(r["amount"])),
+            "created_at": r["created_at"],
+        }
+        for r in core_notify.list_recent(limit)
+    ]
+    entries += [
+        {
+            "name": core_storage.get_full_name(a["uid"]),
+            "text": f"出现在{a['location']}，{a['activity']}。",
+            "created_at": a["created_at"],
+        }
+        for a in core_ambient.generate(now_ts)
+    ]
+    entries.sort(key=lambda e: e["created_at"], reverse=True)
+    for e in entries:
+        e["relative_time"] = _relative_time(e["created_at"], now_ts)
+    return entries[:limit]
 
 
 @app.get("/")
@@ -297,6 +445,17 @@ def index():
         plan = None
     exp_map = core_storage.get_all_subject_exp(g.uid)
     learned = core_storage.list_learned_spells(g.uid)
+
+    christmas_today = christmas.is_christmas(core_storage.get_current_day() or 1)
+    feast = None
+    if christmas_today:
+        pudding_result = christmas.maybe_draw_pending_puddings()
+        if pudding_result:
+            winner_name = core_storage.get_full_name(pudding_result["winner"])
+            _notify(f"🎅 圣诞布丁抽奖：{winner_name} 吃到了藏着的硬币，赢得 {pudding_result['galleons']} 加隆！", "social")
+        feast = christmas.feast_state(g.uid)
+
+    exams = core_storage.get_exam_results(g.uid)
     return render_template(
         "web/index.html",
         plan=plan,
@@ -305,9 +464,14 @@ def index():
         learned_count=len(learned),
         spell_total=len(spell_catalog.SPELLS),
         status_suffix=core_storage.get_status_suffix(g.uid),
-        exams=core_storage.get_exam_results(g.uid),
+        exams=exams,
+        exam_grades=sorted({row["grade"] for row in exams}),
         subject_names={k: v[0] for k, v in subjects.SUBJECTS_BY_KEY.items()},
         career=careers.get(g.uid),
+        relatives=core_storage.list_relatives(g.uid),
+        campus_feed=_campus_feed(),
+        christmas_today=christmas_today,
+        feast=feast,
     )
 
 
@@ -379,6 +543,7 @@ def lessons_page():
                 "exp": core_storage.get_subject_exp(g.uid, key),
                 "next_spell": lessons.next_spell_for(g.uid, key, g.player["grade"]),
                 "progress": core_storage.get_spell_progress(g.uid, key),
+                "score_preview": grading.preview_score_range(g.uid, key, g.player["grade"]),
             }
         )
     return render_template(
@@ -396,6 +561,8 @@ def _flash_lesson_result(result: dict) -> None:
     parts = [result.get("outcome_text") or "这节课上完了。"]
     if result.get("exp_gained"):
         parts.append(f"{result['subject']} +{result['exp_gained']}经验")
+    if result.get("friend_bonus"):
+        parts.append(f"（含好友同修+{result['friend_bonus']}）")
     subject = result["subject"]
     _notify(f"上了{{n}}节{subject}", "study", merge_key=f"lesson:{subject}")
     if result.get("learned_spell"):
@@ -416,8 +583,27 @@ def homework_page():
     if request.method == "POST":
         try:
             result = homework.submit(g.uid, request.form.get("subject", ""))
-            _notify("交了{n}份作业", "study", merge_key="homework")
-            flash(f"{result['subject']}作业交了，+{result['exp_gained']}经验。", "ok")
+            if result["success"]:
+                _notify("交了{n}份作业", "study", merge_key="homework")
+                msg = f"{result['subject']}作业交了，+{result['exp_gained']}经验。"
+                if result.get("pity"):
+                    msg += f"（试到第{homework.HOMEWORK_PITY_ATTEMPTS}次，保底成功）"
+                if result["completion_reward"]:
+                    msg += f" 📜 今日作业全部交齐，额外拿到{result['completion_reward']}加隆。"
+                flash(msg, "ok")
+            else:
+                flash(
+                    f"「{result['subject']}」这次没做出来，羊皮纸被揉成一团扔进了废纸篓——"
+                    f"可以再交一次重试（每次重试扣{homework.HOMEWORK_RETRY_STAMINA_COST}点体力，"
+                    f"再试{result['attempts_left_to_pity']}次必过）。",
+                    "error",
+                )
+            if result["overdue_settled"]:
+                flash(
+                    f"顺手结算了{result['overdue_settled']}门逾期作业，共扣{result['overdue_penalty']}经验"
+                    f"（每个缺席日最多扣{homework.HOMEWORK_DAILY_PENALTY_CAP}）。",
+                    "warn",
+                )
         except ENGINE_ERRORS as e:
             flash(str(e), "error")
         return redirect(url_for("homework_page"))
@@ -430,6 +616,64 @@ def homework_page():
 
 
 # ======================== 商店 / 背包 ========================
+
+
+@app.route("/themes", methods=["GET", "POST"])
+def themes_page():
+    guard = _require_player()
+    if guard:
+        return guard
+    if request.method == "POST":
+        action = request.form.get("action", "")
+        theme_key = request.form.get("theme", "")
+        try:
+            if action == "buy":
+                result = themes.buy(g.uid, theme_key)
+                _notify(f"在主题商店买了「{result['name']}」", "economy")
+                flash(f"买到了「{result['name']}」，并解锁小游戏《{result['game_name']}》。", "ok")
+            elif action == "equip":
+                result = themes.equip(g.uid, theme_key)
+                flash(f"已经换上「{result['name']}」。", "ok")
+            elif action == "classic":
+                themes.equip(g.uid, "")
+                flash("已经换回学院经典主题。", "ok")
+        except ENGINE_ERRORS as e:
+            flash(str(e), "error")
+        return redirect(url_for("themes_page"))
+    return render_template("web/themes.html", themes=themes.list_for(g.uid))
+
+
+@app.get("/themes/<theme_key>/game")
+def theme_game_page(theme_key: str):
+    guard = _require_player()
+    if guard:
+        return guard
+    try:
+        theme = themes.get_owned_theme(g.uid, theme_key)
+    except ENGINE_ERRORS as e:
+        flash(str(e), "error")
+        return redirect(url_for("themes_page"))
+    board = themes.leaderboard(theme_key)
+    for row in board:
+        row["name"] = _display_name(row["uid"])
+        row["is_me"] = row["uid"] == g.uid
+    return render_template("web/theme_game.html", theme=theme, leaderboard=board)
+
+
+@app.post("/themes/<theme_key>/score")
+def theme_game_score(theme_key: str):
+    guard = _require_player()
+    if guard:
+        return {"ok": False, "error": "请先登录。"}, 401
+    try:
+        result = themes.record_score(g.uid, theme_key, request.form.get("score", ""))
+        board = themes.leaderboard(theme_key)
+        for row in board:
+            row["name"] = _display_name(row["uid"])
+            row["is_me"] = row["uid"] == g.uid
+        return {"ok": True, "result": result, "leaderboard": board}
+    except ENGINE_ERRORS as e:
+        return {"ok": False, "error": str(e)}, 400
 
 
 @app.route("/shop", methods=["GET", "POST"])
@@ -455,6 +699,9 @@ def shop_page():
         if category == "礼物":
             item["stock"] = shop.gift_remaining(key, effect["stock"])
             item["stock_max"] = effect["stock"]
+        elif key == choc_frog.FROG_ITEM_KEY:
+            item["stock"] = shop.frog_remaining()
+            item["stock_max"] = shop.FROG_HOURLY_CAP
         items.append(item)
     return render_template(
         "web/shop.html",
@@ -464,6 +711,7 @@ def shop_page():
         rotating=cat in shop_catalog.ROTATING_CATEGORIES,
         next_rotation=shop.seconds_to_next_rotation() // 60 + 1,
         next_restock=shop.seconds_to_next_restock() // 60 + 1,
+        frog_cap=shop.FROG_HOURLY_CAP,
     )
 
 
@@ -478,8 +726,23 @@ def bag_page():
         try:
             if action == "eat":
                 result = shop.eat_snack(g.uid, item)
-                _notify("吃了{n}份零食补体力", "economy", merge_key="eat")
-                flash(f"吃了「{result['name']}」，体力+{result['restored']}。", "ok")
+                _notify(
+                    f"吃了{{n}}份「{result['name']}」补体力", "economy",
+                    merge_key=f"eat:{result['name']}",
+                )
+                text = f"吃了「{result['name']}」，体力+{result['restored']}。"
+                card = result.get("card")
+                if card:
+                    if card["is_new"]:
+                        text += f"\n🐸 开出新卡片「{card['name']}」（{card['rarity']}）！"
+                    else:
+                        text += f"\n🐸 开出「{card['name']}」，已经有了，换成{card['consolation']}加隆安慰奖。"
+                    if card["unlocked_titles"]:
+                        text += "\n🏅 解锁巧克力蛙称号：" + "、".join(card["unlocked_titles"])
+                    text += "\n去「巧克力蛙图鉴」页看看收集进度。"
+                if result["cavity_triggered"]:
+                    text += f"\n🦷 今天已经吃了{result['eaten_today']}个零食，吃出蛀牙了，体力恢复速度减半，一天后自己好。"
+                flash(text, "ok")
             elif action == "sell":
                 result = shop.sell(g.uid, item, int(request.form.get("quantity", "1")))
                 _notify(
@@ -511,6 +774,259 @@ def _resolve_name(name: str) -> str:
     if uid is None:
         raise LookupError(f"学校里没有叫「{name.strip()}」的人。")
     return uid
+
+
+# ======================== 厨房 ========================
+
+KITCHEN_CATEGORY_NAMES = {
+    "breakfast": "🌅 早餐",
+    "main": "🍽️ 主食",
+    "soup": "🍲 汤类",
+    "dessert": "🍰 甜点",
+    "magic": "✨ 魔法美食",
+    "beverage": "☕ 饮品",
+    "snack": "🍪 点心小食",
+    "other": "📝 其他",
+}
+KITCHEN_CATEGORY_ORDER = ["breakfast", "main", "soup", "dessert", "magic", "beverage", "snack", "other"]
+
+
+@app.route("/kitchen", methods=["GET", "POST"])
+def kitchen_page():
+    guard = _require_player()
+    if guard:
+        return guard
+
+    from plugins.hp_school import kitchen
+
+    if request.method == "POST":
+        action = request.form.get("action")
+        try:
+            if action == "cook_start":
+                result = kitchen.start(g.uid, request.form.get("recipe", ""))
+                if result.get("resumed"):
+                    flash("你还有一份没做完的菜，接着刚才的步骤来。", "ok")
+            elif action == "cook_choose":
+                position = int(request.form.get("position", "0"))
+                result = kitchen.choose(g.uid, position)
+                if result.get("finished"):
+                    if result["success"]:
+                        _notify(f"做出了一份「{result['recipe']}」", "kitchen", merge_key="cook")
+                        flash(
+                            f"🍳 {result['recipe']} 制作{'完美' if result['perfect'] else '成功'}！"
+                            f"（{result['score']}/{result['max_score']}）得到 ×{result['quantity']}，"
+                            f"烹饪经验+{result['cooking_exp_gain']}（目前{result['total_cooking_exp']}）。",
+                            "ok",
+                        )
+                        unlocked = kitchen.check_achievements(g.uid)
+                        if unlocked:
+                            flash("🏅 " + "、".join(unlocked), "ok")
+                    else:
+                        flash(f"🔥 {result['recipe']} 做失败了：{result['accident']}，材料没能保住。", "warn")
+                else:
+                    flash(f"已选择第{position}项，进入下一步。", "ok")
+            elif action == "consume":
+                food_input = request.form.get("food", "")
+                result = kitchen.consume(g.uid, food_input)
+                found = kitchen.find_any_recipe(food_input)
+                if found:
+                    kitchen.apply_food_effects(g.uid, found[0])
+                flash(f"😋 吃了「{result['recipe']}」，效果：{result['effect']}", "ok")
+            elif action == "gift":
+                food_input = request.form.get("food", "")
+                recipient = request.form.get("recipient", "")
+                result = kitchen.gift_food(g.uid, food_input, recipient)
+                _notify(f"送了一份「{result['food_name']}」给 {result['recipient_name']}", "kitchen")
+                flash(f"🎁 送了一份「{result['food_name']}」给 {result['recipient_name']}。", "ok")
+            elif action == "claim_materials":
+                granted = kitchen.grant_weekly_materials(g.uid)
+                text = "、".join(f"{kitchen.get_material_name(k)}×{v}" for k, v in granted.items())
+                flash(f"📦 领到了：{text}", "ok")
+            elif action == "forage":
+                result = kitchen.forage_material(g.uid)
+                flash(f"🔎 探索了一番，找到了一份「{result['material_name']}」！", "ok")
+        except (kitchen.KitchenError, ValueError) as e:
+            flash(str(e), "error")
+        return redirect(url_for("kitchen_page"))
+
+    session_row = kitchen.get_session(g.uid)
+    if session_row:
+        cook_state = kitchen._render_session(session_row, resumed=True)
+        return render_template("web/kitchen.html", cook_state=cook_state)
+
+    player = core_storage.sync_stamina(g.uid)
+    exp = core_storage.get_cooking_exp(g.uid)
+
+    day = core_storage.get_current_day() or 1
+    conn = core_storage.get_conn()
+    try:
+        daily_row = conn.execute(
+            "SELECT count FROM kitchen_daily WHERE uid=? AND day=?", (g.uid, day)
+        ).fetchone()
+        cooked_today = daily_row["count"] if daily_row else 0
+
+        pantry_rows = conn.execute(
+            "SELECT food_key, quantity FROM kitchen_inventory WHERE uid=? AND quantity>0 ORDER BY food_key",
+            (g.uid,),
+        ).fetchall()
+        material_rows = conn.execute(
+            "SELECT item_key, quantity FROM inventory WHERE uid=? AND item_key LIKE 'mat_%' AND quantity>0 "
+            "ORDER BY item_key",
+            (g.uid,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    pantry = [
+        {"key": row["food_key"], "name": kitchen.item_name(row["food_key"]), "quantity": row["quantity"]}
+        for row in pantry_rows
+        if kitchen.item_name(row["food_key"])
+    ]
+    materials = [
+        {"key": row["item_key"], "name": kitchen.get_material_name(row["item_key"]), "quantity": row["quantity"]}
+        for row in material_rows
+    ]
+    have_materials = {row["item_key"]: row["quantity"] for row in material_rows}
+
+    recipes_by_category: dict[str, list] = {}
+    for key, recipe in kitchen.RECIPES.items():
+        cat = recipe.get("category", "other")
+        unlocked = g.player["grade"] >= recipe["grade"] and exp >= recipe["exp"]
+        ingredients = [
+            {
+                "name": kitchen.get_material_name(item_key),
+                "need": amount,
+                "have": have_materials.get(item_key, 0),
+            }
+            for item_key, amount in recipe["ingredients"].items()
+        ]
+        can_afford = all(i["have"] >= i["need"] for i in ingredients)
+        recipes_by_category.setdefault(cat, []).append(
+            {
+                "key": key,
+                "name": recipe["name"],
+                "grade": recipe["grade"],
+                "exp": recipe["exp"],
+                "effect": recipe["effect"],
+                "ingredients": ingredients,
+                "unlocked": unlocked,
+                "can_afford": can_afford,
+            }
+        )
+    for cat in recipes_by_category:
+        recipes_by_category[cat].sort(key=lambda r: (not r["unlocked"], r["grade"], r["exp"]))
+
+    current_festival = kitchen.get_current_festival()
+    festival_recipes = []
+    if current_festival:
+        for key, recipe in kitchen.get_available_festival_foods(current_festival).items():
+            unlocked = g.player["grade"] >= recipe["grade"] and exp >= recipe["exp"]
+            ingredients = [
+                {
+                    "name": kitchen.get_material_name(item_key),
+                    "need": amount,
+                    "have": have_materials.get(item_key, 0),
+                }
+                for item_key, amount in recipe["ingredients"].items()
+            ]
+            festival_recipes.append(
+                {
+                    "key": key,
+                    "name": recipe["name"],
+                    "grade": recipe["grade"],
+                    "exp": recipe["exp"],
+                    "effect": recipe["effect"],
+                    "ingredients": ingredients,
+                    "unlocked": unlocked,
+                    "can_afford": all(i["have"] >= i["need"] for i in ingredients),
+                }
+            )
+
+    return render_template(
+        "web/kitchen.html",
+        cook_state=None,
+        cooking_exp=exp,
+        stamina=player["stamina"],
+        stamina_max=core_storage.STAMINA_MAX,
+        cook_cost=kitchen.COOK_STAMINA_COST,
+        forage_cost=kitchen.FORAGE_STAMINA_COST,
+        cooked_today=cooked_today,
+        daily_limit=kitchen.DAILY_LIMIT,
+        pantry=pantry,
+        materials=materials,
+        current_festival=current_festival,
+        festival_recipes=festival_recipes,
+        category_order=KITCHEN_CATEGORY_ORDER,
+        category_names=KITCHEN_CATEGORY_NAMES,
+        recipes_by_category=recipes_by_category,
+        chef_leaderboard=kitchen.chef_leaderboard(),
+    )
+
+
+# ======================== 裁缝铺（马金夫人长袍店） ========================
+
+
+@app.route("/tailor", methods=["GET", "POST"])
+def tailor_page():
+    guard = _require_player()
+    if guard:
+        return guard
+
+    if request.method == "POST":
+        action = request.form.get("action")
+        try:
+            if action == "take_lesson":
+                result = tailor.take_lesson(g.uid)
+                flash(
+                    f"上完了这堂缝纫课，缝纫等级到{result['level']}级了。"
+                    + ("已经满级！" if result["maxed"] else ""),
+                    "ok",
+                )
+            elif action == "buy_pattern":
+                result = tailor.buy_pattern(g.uid, request.form.get("pattern", ""))
+                flash(f"花{result['price']}加隆学会了「{result['name']}」的裁剪方法。", "ok")
+            elif action == "craft":
+                result = tailor.craft(g.uid, request.form.get("pattern", ""))
+                if result.get("is_new_design"):
+                    _notify(result["notify_text"], "fashion")
+                    flash(
+                        f"🧵 做出了一件「{result['name']}」，第一次做出这个款式，"
+                        f"时尚值+{result['fashion_gain']}！",
+                        "ok",
+                    )
+                else:
+                    _notify(f"做出了一件「{result['name']}」", "kitchen", merge_key="tailor_craft")
+                    flash(f"🧵 做出了一件「{result['name']}」，放进了衣橱。", "ok")
+            elif action == "list_for_sale":
+                result = tailor.list_for_sale(g.uid, request.form.get("clothing", ""))
+                flash(f"「{result['name']}」上架了，等客人来买。", "ok")
+            elif action == "wear":
+                result = tailor.wear(g.uid, request.form.get("clothing", ""))
+                _notify(result["notify_text"], "fashion")
+                flash(f"你穿上了「{result['name']}」，风头都被你抢了。", "ok")
+        except ENGINE_ERRORS as e:
+            flash(str(e), "error")
+        return redirect(url_for("tailor_page"))
+
+    listings_data = tailor.my_listings(g.uid)
+    for event in listings_data["sold_events"]:
+        flash(f"🎉 摊位上的「{event['name']}」被客人买走了，进账{event['amount']}加隆！", "ok")
+
+    player = core_storage.sync_stamina(g.uid)
+    return render_template(
+        "web/tailor.html",
+        status=tailor.status(g.uid),
+        stamina=player["stamina"],
+        stamina_max=core_storage.STAMINA_MAX,
+        lesson_cost=tailor.LESSON_STAMINA_COST,
+        pattern_groups=tailor.patterns_by_slot(g.uid),
+        wardrobe=tailor.my_wardrobe(g.uid),
+        listings=listings_data["listings"],
+        sold_today=listings_data["sold_today"],
+        sale_daily_limit=listings_data["sale_daily_limit"],
+        leaderboard=tailor.leaderboard(),
+        fashion_leaderboard=tailor.fashion_leaderboard(),
+    )
 
 
 # ======================== 魔咒 ========================
@@ -593,7 +1109,12 @@ def work_page():
         try:
             result = work.work(g.uid, request.form.get("job", ""))
             _notify("打了{n}份工", "economy", merge_key="work")
-            flash(result.get("text") or f"打工结束，赚了{result.get('galleons', 0)}加隆。", "ok")
+            flash(
+                f"🧹 {result['job']}：{result['story']}\n"
+                f"工资+{result['earnings']}加隆（现有{result['galleons']}加隆），"
+                f"今天已打工{result['count']}/{result['daily_limit']}次。",
+                "ok",
+            )
         except ENGINE_ERRORS as e:
             flash(str(e), "error")
         return redirect(url_for("work_page"))
@@ -624,13 +1145,32 @@ def quidditch_page():
                         "quidditch",
                     )
                 flash(("PK成功！" if result["win"] else "PK失败。") + f"判定{result['chance']:.2f}", "ok")
+            elif action == "switch":
+                result = quidditch.switch_position(g.uid, request.form.get("position", ""))
+                if result["swapped_with"]:
+                    partner = core_storage.get_full_name(result["swapped_with"])
+                    _notify(
+                        f"和{partner}对调了位置，从{result['old_position']}换到了"
+                        f"{g.player['house']}魁地奇队的{result['position']}",
+                        "quidditch",
+                    )
+                    flash(
+                        f"已经和 {partner} 对调位置：你从「{result['old_position']}」"
+                        f"换到「{result['position']}」。",
+                        "ok",
+                    )
+                else:
+                    _notify(
+                        f"从{result['old_position']}换到了{g.player['house']}魁地奇队的{result['position']}",
+                        "quidditch",
+                    )
+                    flash(f"已经从「{result['old_position']}」换到「{result['position']}」。", "ok")
             elif action == "train":
                 result = quidditch.train(g.uid)
                 _notify("训练了{n}次魁地奇", "quidditch", merge_key="qtrain")
                 flash(f"训练完成，{result['stat']}+{result['gain']}。", "ok")
             elif action == "match":
-                opponent = request.form.get("house", "")
-                result = quidditch.simulate_match(g.uid, g.player["house"], opponent)
+                result = quidditch.simulate_match(g.uid, g.player["house"])
                 winner = result["winner"] or "打平"
                 _notify(
                     f"🧹 魁地奇：{result['house_a']} {result['score_a']} : {result['score_b']} "
@@ -639,7 +1179,9 @@ def quidditch_page():
                     "quidditch",
                 )
                 flash(
-                    f"{result['house_a']} {result['score_a']} : {result['score_b']} {result['house_b']}",
+                    "\n".join(result["log"])
+                    + f"\n\n最终比分：{result['house_a']} {result['score_a']} : "
+                    f"{result['score_b']} {result['house_b']}",
                     "ok",
                 )
         except ENGINE_ERRORS as e:
@@ -652,6 +1194,7 @@ def quidditch_page():
     day = core_storage.get_current_day() or 1
     daily = events_storage.get_daily(g.uid, day) if me else None
     rosters = {house: quidditch.get_roster(house) for house in core_storage.HOUSES}
+    match_totals = events_storage.house_total_matches_all()
     return render_template(
         "web/quidditch.html",
         me=me,
@@ -664,6 +1207,11 @@ def quidditch_page():
         flying_threshold=quidditch.FLYING_THRESHOLD,
         flying_exp=core_storage.get_subject_exp(g.uid, quidditch.FLYING_SUBJECT_KEY),
         mvps={h: quidditch.get_mvp(h) for h in core_storage.HOUSES},
+        position_desc={pos: quidditch.position_desc(pos) for pos in quidditch.POSITIONS},
+        name_of=core_storage.get_full_name,
+        house_total_matches={h: match_totals.get(h, 0) for h in core_storage.HOUSES},
+        house_today_matches={h: events_storage.get_house_daily_matches(h, day) for h in core_storage.HOUSES},
+        house_daily_limit=quidditch.MATCH_HOUSE_DAILY_LIMIT,
     )
 
 
@@ -836,10 +1384,209 @@ def _flash_forest(result: dict) -> None:
             s = result["learned_spell"]
             msg += f" 学会了「{s['name']}」"
             _notify(f"在禁林打倒了{result['monster']}，学会了「{s['name']}」", "forest")
+        pattern_learned = result.get("loot", {}).get("pattern_learned")
+        if pattern_learned:
+            msg += f" 🧵 还捡到一张图纸，学会了「{pattern_learned}」的裁剪方法！"
+            _notify(f"在禁林捡到裁缝图纸，学会了「{pattern_learned}」", "forest")
         flash(msg, "ok")
     if result.get("defeated"):
         _notify(f"在禁林第{result['depth']}层倒下了，这趟的收获全丢了", "forest")
         flash("你倒下了，这趟的收获全丢了。", "error")
+
+
+# ======================== 抓地精（二年级限时活动） ========================
+
+
+@app.route("/gnomes", methods=["GET", "POST"])
+def gnomes_page():
+    guard = _require_player()
+    if guard:
+        return guard
+
+    if request.method == "POST":
+        try:
+            result = gnomes.catch(g.uid)
+            if result["success"]:
+                _notify(f"抓到了一只{result['tier']}，赚了{result['reward']}加隆", "economy")
+                flash(f"{result['line']}　抓到了「{result['tier']}」，+{result['reward']}加隆。", "ok")
+            else:
+                flash(result["line"], "warn")
+        except ENGINE_ERRORS as e:
+            flash(str(e), "error")
+        return redirect(url_for("gnomes_page"))
+
+    from plugins.hp_events import storage as events_storage
+
+    day = core_storage.get_current_day() or 1
+    return render_template(
+        "web/gnomes.html",
+        is_open=gnomes.is_open(day),
+        start_day=gnomes.GNOME_START_DAY,
+        end_day=gnomes.GNOME_END_DAY,
+        cooldown_remaining=gnomes.get_cooldown_remaining(g.uid),
+        my_total=events_storage.get_gnome_total(g.uid),
+        my_today=events_storage.get_gnome_daily(g.uid, day),
+        leaderboard=gnomes.leaderboard(20),
+        house_leaderboard=gnomes.house_leaderboard(),
+        full_name=core_storage.get_full_name,
+    )
+
+
+# ======================== 照料神奇生物（三年级限时活动） ========================
+
+
+@app.route("/creatures", methods=["GET", "POST"])
+def creatures_page():
+    guard = _require_player()
+    if guard:
+        return guard
+
+    if request.method == "POST":
+        try:
+            result = creatures.tend(g.uid)
+            if result["success"]:
+                _notify(f"照料了一只{result['tier']}，赚了{result['reward']}加隆", "economy")
+                msg = f"{result['line']}　照顾好了「{result['tier']}」，+{result['reward']}加隆。"
+            else:
+                msg = result["line"]
+            rare_pet = result.get("rare_pet")
+            if rare_pet:
+                _notify(f"照料神奇生物时意外收服了一只{rare_pet['name']}", "economy")
+                msg += (
+                    f"\n\n{rare_pet['line']}\n"
+                    f"「{rare_pet['name']}」已经放进你的背包，发「/领养宠物 {rare_pet['name']}」正式收养吧。"
+                )
+            flash(msg, "ok" if (result["success"] or rare_pet) else "warn")
+        except ENGINE_ERRORS as e:
+            flash(str(e), "error")
+        return redirect(url_for("creatures_page"))
+
+    from plugins.hp_events import storage as events_storage
+
+    day = core_storage.get_current_day() or 1
+    return render_template(
+        "web/creatures.html",
+        is_open=creatures.is_open(day),
+        start_day=creatures.CREATURE_START_DAY,
+        end_day=creatures.CREATURE_END_DAY,
+        cooldown_remaining=creatures.get_cooldown_remaining(g.uid),
+        my_total=events_storage.get_creature_total(g.uid),
+        my_today=events_storage.get_creature_daily(g.uid, day),
+        leaderboard=creatures.leaderboard(20),
+        full_name=core_storage.get_full_name,
+    )
+
+
+# ======================== 寝室 ========================
+
+
+@app.route("/dorm", methods=["GET", "POST"])
+def dorm_page():
+    guard = _require_player()
+    if guard:
+        return guard
+
+    from plugins.hp_social import dorm, garden
+
+    if request.method == "POST":
+        action = request.form.get("action")
+        try:
+            if action == "invite":
+                target = _resolve_name(request.form.get("target", ""))
+                dorm.invite(g.uid, target)
+                flash(f"已向 {core_storage.get_full_name(target)} 发出同寝邀请。", "ok")
+            elif action == "withdraw":
+                dorm.withdraw(g.uid)
+                flash("已撤回邀请。", "ok")
+            elif action == "decline":
+                dorm.decline(g.uid, request.form.get("from_uid", ""))
+                flash("已拒绝。", "ok")
+            elif action == "accept":
+                result = dorm.accept(g.uid, request.form.get("from_uid", ""))
+                _notify(f"和 {core_storage.get_full_name(result['roommate'])} 同住一间寝室了", "social")
+                flash(f"搬进了「{result['name']}」，室友是 {core_storage.get_full_name(result['roommate'])}。", "ok")
+            elif action == "leave":
+                result = dorm.leave(g.uid)
+                flash(f"退出了寝室，和 {core_storage.get_full_name(result['roommate'])} 各自安好。", "warn")
+            elif action == "rename":
+                result = dorm.rename(g.uid, request.form.get("name", ""))
+                flash(f"寝室改名为「{result['name']}」。", "ok")
+            elif action == "garden_forage":
+                result = garden.forage(g.uid)
+                flash(f"{result['line']} 现在手上有{result['seeds']}颗种子。", "ok")
+            elif action == "garden_plant":
+                result = garden.plant(g.uid)
+                flash(f"种下了一颗种子，大约{result['grow_hours']}小时后可以收获。", "ok")
+            elif action == "garden_harvest":
+                result = garden.harvest(g.uid)
+                if result["success"]:
+                    flash(f"🪴 花盆里长出了一株「{result['plant_name']}」！已经摆进了花园。", "ok")
+                else:
+                    flash(result["line"], "warn")
+        except (dorm.DormError, garden.GardenError, LookupError) as e:
+            flash(str(e), "error")
+        return redirect(url_for("dorm_page"))
+
+    conn = core_storage.get_conn()
+    try:
+        incoming = conn.execute(
+            "SELECT * FROM dorm_invites WHERE to_uid = ? ORDER BY created_at", (g.uid,)
+        ).fetchall()
+        my_outgoing_invite = conn.execute(
+            "SELECT * FROM dorm_invites WHERE from_uid = ?", (g.uid,)
+        ).fetchone()
+    finally:
+        conn.close()
+
+    return render_template(
+        "web/dorm.html",
+        my_dorm=dorm.get_my_dorm(g.uid),
+        incoming_invites=incoming,
+        my_outgoing_invite=my_outgoing_invite,
+        leaderboard=dorm.leaderboard(),
+        pots=garden.list_pots(g.uid),
+        garden_status=garden.status(g.uid),
+        full_name=core_storage.get_full_name,
+    )
+
+
+# ======================== 邮件 ========================
+
+
+@app.route("/mail", methods=["GET", "POST"])
+def mail_page():
+    guard = _require_player()
+    if guard:
+        return guard
+
+    from plugins.hp_social import mail
+
+    if request.method == "POST":
+        action = request.form.get("action")
+        try:
+            if action == "send":
+                target = _resolve_name(request.form.get("target", ""))
+                item_input = request.form.get("item", "")
+                quantity = int(request.form.get("quantity", "1") or "1")
+                result = mail.send(
+                    g.uid, target, request.form.get("content", ""), item_input, quantity
+                )
+                if result["item_name"]:
+                    flash(
+                        f"信寄给了 {result['target_name']}，还捎带了{result['quantity']}份「{result['item_name']}」。",
+                        "ok",
+                    )
+                else:
+                    flash(f"信寄给了 {result['target_name']}。", "ok")
+        except (mail.MailError, LookupError, ValueError) as e:
+            flash(str(e), "error")
+        return redirect(url_for("mail_page"))
+
+    return render_template(
+        "web/mail.html",
+        letters=mail.inbox(g.uid),
+        bag_items=[item for item in shop.get_bag(g.uid) if item["quantity"] > 0],
+    )
 
 
 # ======================== 社交 ========================
@@ -894,23 +1641,38 @@ def social_page():
                         "social",
                     )
                 flash("插足成功。" if result["success"] else "插足失败，对方很不高兴。", "ok")
+            elif action == "hangout":
+                target = _resolve_name(request.form.get("target", ""))
+                result = friendship.hang_out(g.uid, target)
+                flash(f"{result['line']}　友谊值都+{result['gain']}", "ok")
+            elif action == "friend_gift":
+                target = _resolve_name(request.form.get("target", ""))
+                result = friendship.send_gift(g.uid, request.form.get("item", ""), target)
+                _notify(
+                    f"送了 {core_storage.get_full_name(target)} 一份「{result['name']}」（友情）", "social"
+                )
+                flash(f"送出「{result['name']}」，友谊值+{result['gain']}。", "ok")
         except (ENGINE_ERRORS + (LookupError,)) as e:
             flash(str(e), "error")
         return redirect(url_for("social_page"))
 
     state = romance.my_romance(g.uid)
+    friend_state = friendship.my_friends(g.uid)
     gifts = [
         {"name": name, "price": price, "affection": effect["affection"]}
         for _, name, cat, price, _, effect in shop_catalog.list_by_category("礼物")
     ]
     owned = {i["name"] for i in shop.get_bag(g.uid)}
+    owned_gifts = [gift for gift in gifts if gift["name"] in owned]
     return render_template(
         "web/social.html",
         state=state,
-        gifts=[gift for gift in gifts if gift["name"] in owned],
+        friend_state=friend_state,
+        gifts=owned_gifts,
         activities=romance.DATE_ACTIVITIES,
         affection_max=romance.AFFECTION_MAX,
         confess_threshold=romance.CONFESS_THRESHOLD,
+        friend_max=friendship.FRIEND_MAX,
         full_name=core_storage.get_full_name,
         name_of=core_storage.get_name,
         couples=social_storage.list_all_couples(),
@@ -925,12 +1687,35 @@ def mainline_page():
     guard = _require_player()
     if guard:
         return guard
+    if request.method == "POST" and request.form.get("action") == "story_choice":
+        try:
+            result = story_mainline.choose(g.uid, request.form.get("choice", ""))
+            flash(
+                f"你选择了「{result['text']}」，获得{result['reward']}加隆。"
+                + (" 本阶段已经推进。" if result["advanced"] else ""),
+                "ok",
+            )
+            _notify(f"参与了《{story_mainline.STORY_TITLE}》阶段任务", "story")
+        except ENGINE_ERRORS as e:
+            flash(str(e), "error")
+        return redirect(url_for("mainline_page"))
     try:
         book = mainline.open_book(g.uid)
     except ENGINE_ERRORS as e:
         flash(str(e), "error")
         book = None
-    return render_template("web/mainline.html", book=book)
+    try:
+        story_task = story_mainline.task_for(g.uid)
+        story_progress = story_mainline.progress(g.uid)
+    except ENGINE_ERRORS as e:
+        flash(str(e), "error")
+        story_task = None
+        story_progress = None
+    return render_template(
+        "web/mainline.html", book=book, story_task=story_task, story_progress=story_progress,
+        story_title=story_mainline.STORY_TITLE, ending_names=story_mainline.ENDING_NAMES,
+        tag_names=story_mainline.TAG_NAMES,
+    )
 
 
 @app.route("/careers", methods=["GET", "POST"])
@@ -948,6 +1733,29 @@ def careers_page():
         return redirect(url_for("careers_page"))
     return render_template(
         "web/careers.html", options=careers.list_options(g.uid), chosen=careers.get(g.uid)
+    )
+
+
+# ======================== 巧克力蛙图鉴 ========================
+
+
+@app.route("/choc-frog", methods=["GET", "POST"])
+def choc_frog_page():
+    guard = _require_player()
+    if guard:
+        return guard
+    if request.method == "POST":
+        try:
+            name = choc_frog.wear_title(g.uid, request.form.get("title", ""))
+            flash(f"已经佩戴称号「{name}」。", "ok")
+        except ENGINE_ERRORS as e:
+            flash(str(e), "error")
+        return redirect(url_for("choc_frog_page"))
+    return render_template(
+        "web/choc_frog.html",
+        collection=choc_frog.my_collection(g.uid),
+        rarity_order=choc_frog.RARITY_ORDER,
+        titles=choc_frog.title_state(g.uid),
     )
 
 
@@ -1128,10 +1936,27 @@ def christmas_page():
                 if result["just_completed"]:
                     msg += " ✨整棵树亮了起来！"
                     _notify("挂上了最后一件装饰，圣诞树亮了", "social")
+                    for award in result["rank_awards"]:
+                        award_name = core_storage.get_full_name(award["uid"])
+                        core_notify.push(
+                            f"{award_name} 拿下圣诞树贡献榜第{award['rank']}名，"
+                            f"解锁「{award['title']}」称号，+{award['galleons']}加隆",
+                            uid=award["uid"],
+                            category="social",
+                        )
                 flash(msg, "ok")
             elif action == "claim_tree":
                 result = christmas.claim_tree_reward(g.uid)
                 flash(f"🎁 领到 {result['galleons']}加隆 和一份「{result['gift']}」。", "ok")
+            elif action == "eat_feast":
+                result = christmas.eat_feast(g.uid, request.form.get("dish", ""))
+                msg = f"你吃了一道{result['dish']}。"
+                if result["gift"]:
+                    msg += f" 盘子底下压着一份小礼品：{result['gift']}！"
+                if result["got_pudding_entry"]:
+                    msg += " 布丁里的硬币被你吃到了——今晚10点看看运气。"
+                msg += f"（目前吃过 {result['variety']} 种）"
+                flash(msg, "ok")
         except (ENGINE_ERRORS + (LookupError,)) as e:
             flash(str(e), "error")
         return redirect(url_for("christmas_page"))
@@ -1153,7 +1978,13 @@ def christmas_page():
         accessories=christmas.ROBE_ACCESSORIES,
         tree=christmas.tree_state(),
         tree_reward=christmas.tree_reward_state(g.uid),
+        tree_leaderboard=christmas.tree_contributor_leaderboard(limit=5),
         ornaments=christmas.TREE_ORNAMENTS,
+        points_min=christmas.TREE_HANG_POINTS_MIN,
+        points_max=christmas.TREE_HANG_POINTS_MAX,
+        feast=christmas.feast_state(g.uid),
+        feast_leaderboard=christmas.feast_leaderboard(limit=5),
+        pudding_draw=events_storage.get_pudding_draw(year),
         full_name=core_storage.get_full_name,
         name_of=core_storage.get_name,
     )
@@ -1290,10 +2121,91 @@ def admin_submissions():
     return render_template("web/admin_submissions.html", pending=pending, recent=recent)
 
 
+# ======================== 女巫周刊（匿名八卦投稿） ========================
+
+
+@app.route("/gossip", methods=["GET", "POST"])
+def gossip_page():
+    guard = _require_player()
+    if guard:
+        return guard
+    day = core_storage.get_current_day() or 1
+    if request.method == "POST":
+        try:
+            result = gossip.submit(
+                g.uid,
+                request.form.get("body", ""),
+                request.form.get("mentioned", ""),
+                day,
+            )
+            flash(
+                f"投出去了，匿名等审核。今天投了{result['used']}/{result['limit']}条。",
+                "ok",
+            )
+        except ENGINE_ERRORS as e:
+            flash(str(e), "error")
+        return redirect(url_for("gossip_page"))
+
+    return render_template(
+        "web/gossip.html",
+        mine=gossip.list_mine(g.uid),
+        used=gossip.count_today(g.uid, day),
+        limit=gossip.daily_limit_for(g.uid),
+        body_min=gossip.BODY_MIN,
+        body_max=gossip.BODY_MAX,
+    )
+
+
+@app.route("/admin/gossip", methods=["GET", "POST"])
+def admin_gossip():
+    if not session.get(ADMIN_SESSION_KEY):
+        return redirect(url_for("admin_login"))
+    if request.method == "POST":
+        try:
+            gossip_id = int(request.form.get("id", "0"))
+            approved = request.form.get("action") == "approve"
+            row = gossip.review(gossip_id, approved, request.form.get("note", ""))
+            if approved:
+                flash(f"已通过，稿费{row['reward']}加隆已发放，等待下一轮播报进群。", "ok")
+            else:
+                flash("已退稿，没有稿费。", "ok")
+        except (gossip.GossipError, ValueError) as e:
+            flash(str(e), "error")
+        return redirect(url_for("admin_gossip"))
+
+    pending = gossip.list_by_status("pending")
+    recent = [s for s in gossip.list_by_status() if s["status"] != "pending"][:30]
+    for row in pending + recent:
+        row["author"] = core_storage.get_full_name(row["uid"])
+    return render_template("web/admin_gossip.html", pending=pending, recent=recent)
+
+
+@app.route("/admin/quidditch-matchups")
+def admin_quidditch_matchups():
+    """各院当前阵容两两对战的胜率分析——纯计算模拟（不落库），拿真实比赛同一套
+    引擎跑很多次统计胜率，给95%置信区间，帮管理员看战力是否失衡。"""
+    if not session.get(ADMIN_SESSION_KEY):
+        return redirect(url_for("admin_login"))
+    try:
+        trials = int(request.args.get("trials", 1000))
+    except ValueError:
+        trials = 1000
+    trials = max(100, min(trials, 5000))
+
+    matchups = quidditch.all_matchups(trials)
+    return render_template(
+        "web/admin_quidditch_matchups.html",
+        matchups=matchups,
+        trials=trials,
+        positions=quidditch.POSITIONS,
+        position_desc={pos: quidditch.position_desc(pos) for pos in quidditch.POSITIONS},
+    )
+
+
 # ======================== 竞选新人王 ========================
 
 
-@app.get("/freshman-duel")
+@app.route("/freshman-duel", methods=["GET", "POST"])
 def freshman_duel_page():
     guard = _require_player()
     if guard:
@@ -1302,7 +2214,14 @@ def freshman_duel_page():
         return render_template("web/freshman_duel.html", not_available=True)
 
     from plugins.hp_school import freshman_duel
-    my_duel = freshman_duel.storage.get_freshman_duel(g.uid)
+
+    if request.method == "POST":
+        result = freshman_duel.perform_duel(g.uid)
+        flash(result["message"], "ok" if result["ok"] else "warn")
+        return redirect(url_for("freshman_duel_page"))
+
+    my_duel_row = freshman_duel.storage.get_freshman_duel(g.uid)
+    my_duel = dict(my_duel_row) if my_duel_row else None
     rankings = freshman_duel.get_leaderboard()
     can_duel, cooldown_msg = freshman_duel.can_duel(my_duel or {})
 
@@ -1316,22 +2235,6 @@ def freshman_duel_page():
     )
 
 
-@app.post("/freshman-duel/duel")
-def freshman_duel_action():
-    guard = _require_player()
-    if guard:
-        return guard
-    if g.player["grade"] != 1:
-        return {"error": "竞选新人王只对一年级开放"}, 403
-
-    from plugins.hp_school import freshman_duel
-    result = freshman_duel.perform_duel(g.uid)
-    if result["ok"]:
-        return {"success": True, "message": result["message"], "duel": result}
-    else:
-        return {"error": result["message"]}, 400
-
-
 # ======================== 排行榜 ========================
 
 
@@ -1340,10 +2243,16 @@ def rankings():
     guard = _require_player()
     if guard:
         return guard
+    subject_top = core_storage.subject_exam_leaderboard(3)
+    subject_order = [(key, name) for key, name, _, _ in subjects.SUBJECTS if key in subject_top]
     return render_template(
         "web/rankings.html",
-        students=core_storage.student_leaderboard(20),
+        students=core_storage.student_leaderboard(limit=10),
         houses=core_storage.house_leaderboard(),
+        subject_top=subject_top,
+        subject_order=subject_order,
+        quidditch_top=quidditch.get_leaderboard(10),
+        feast_top=christmas.feast_leaderboard(limit=10),
     )
 
 

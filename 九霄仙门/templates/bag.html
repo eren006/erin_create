@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}行囊 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">囊</span>随身行囊</h3><a class="btn btn-primary" href="{{ url_for('gifts_home') }}">进入赠礼阁</a></div>
+  <p class="muted">你在宗门、秘境与人间得到的物品都汇于此处；生灵类伙伴仍由灵兽峰照料。</p>
+</div>
+
+{% if shard_qtys is defined %}
+{% if char.talent_key %}
+<div class="card">
+  <h3 style="margin-bottom:6px">强化传承/血脉</h3>
+  <p class="muted">当前传承/血脉:<strong>{{ TALENTS[char.talent_key].label }}</strong>
+    (修为 小成+{{ TALENTS[char.talent_key].minor_pct }}% → 大成+{{ TALENTS[char.talent_key].major_pct }}%)
+    {% if char.talent_reinforce_count %} · 已强化{{ char.talent_reinforce_count }}次,额外攻击+{{ char.talent_reinforce_count * PASTLIFE_TALENT_REINFORCE_ATTACK_BONUS }} 防御+{{ char.talent_reinforce_count * PASTLIFE_TALENT_REINFORCE_DEFENSE_BONUS }}{% endif %}</p>
+  <p class="muted" style="margin-top:6px">集齐{{ PASTLIFE_TALENT_REINFORCE_COST }}片「{{ TALENTS[char.talent_key].label }}碎片」可强化自身,额外获得攻击+{{ PASTLIFE_TALENT_REINFORCE_ATTACK_BONUS }}、防御+{{ PASTLIFE_TALENT_REINFORCE_DEFENSE_BONUS }},可反复强化,不占用下方的合成/换门机缘。
+    当前碎片 {{ shard_qtys[char.talent_key] }} / {{ PASTLIFE_TALENT_REINFORCE_COST }}</p>
+  {% if shard_qtys[char.talent_key] >= PASTLIFE_TALENT_REINFORCE_COST %}
+  <form method="post" action="{{ url_for('pastlife_talent_reinforce') }}" style="margin-top:8px">
+    <button class="btn btn-primary">强化(花{{ PASTLIFE_TALENT_REINFORCE_COST }}片)</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h3 style="margin-bottom:6px">前尘碎片合成传承/血脉</h3>
+  <p class="muted">静心溯忆前尘时,小概率会随机拾得某一门传承/血脉的碎片,不同门类互不通用。
+    集齐同一门{{ shard_cost }}片即可合成为那一门——{% if char.talent_key %}已有传承/血脉者合成后会被顶替。{% else %}无需再赌打坐机缘。{% endif %}
+    此生仅有这一次机会,一旦合成终身不可再更改,请谨慎抉择先集齐哪一门。</p>
+  {% if char.pastlife_talent_exchanged %}
+  <p style="margin-top:8px"><span class="badge badge-gold">此生机缘已用尽</span>
+    {% if char.talent_key %}<span class="muted">当前传承/血脉:{{ TALENTS[char.talent_key].label }}</span>{% endif %}</p>
+  {% else %}
+  {% if char.talent_key %}<p class="muted" style="margin-top:6px">当前传承/血脉:{{ TALENTS[char.talent_key].label }}</p>{% endif %}
+  <div style="margin-top:8px;display:grid;gap:6px">
+    {% for key, t in TALENTS.items() %}
+    <div style="padding:6px 0;border-top:1px solid var(--bd)">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="min-width:170px">{{ t.label }}({{ '血脉' if t.source == 'bloodline' else '传承' }})</span>
+        <span class="muted">碎片 {{ shard_qtys[key] }} / {{ shard_cost }}</span>
+        {% if shard_qtys[key] >= shard_cost %}
+        <form method="post" action="{{ url_for('pastlife_talent_exchange') }}" style="display:inline"
+              onsubmit="return confirm('此生仅有一次凝聚传承血脉的机会,选定后终身不可再更改,确定要合成「{{ t.label }}」吗?');">
+          <input type="hidden" name="talent_key" value="{{ key }}">
+          <button class="btn btn-primary" style="padding:4px 10px">合成</button>
+        </form>
+        {% endif %}
+      </div>
+      <p class="muted" style="margin-top:2px;font-size:12px">
+        强度:修为 小成+{{ t.minor_pct }}% → 大成({{ talent_awaken_realm_name }}起)+{{ t.major_pct }}%
+      </p>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+<nav class="bag-tabs" role="tablist" aria-label="行囊分类">
+  <button role="tab" type="button" data-bag-tab="all" aria-selected="true">全部</button><button role="tab" type="button" data-bag-tab="gift" aria-selected="false">礼物</button><button role="tab" type="button" data-bag-tab="gear" aria-selected="false">装备</button><button role="tab" type="button" data-bag-tab="material" aria-selected="false">材料</button><button role="tab" type="button" data-bag-tab="consumable" aria-selected="false">丹药法宝</button>
+</nav>
+<div class="bag-grid">
+  {% for gift in gifts %}<article class="bag-item gift-card rare-{{ gift.rarity_key }}" data-bag-kind="gift"><div class="gift-card-head"><strong>{{ gift.gift_name }}</strong><span>{{ gift.rarity.label }}</span></div><p class="gift-trait">{{ gift.source_label }} · {{ gift.trait.label }}</p><small>{{ gift.origin_text }}</small>{% if gift.message %}<blockquote>{{ gift.message }}</blockquote>{% endif %}</article>{% endfor %}
+  {% for item in gear %}<article class="bag-item" data-bag-kind="gear"><span class="bag-mark">兵</span><div><strong>{{ item.label }}</strong><small>{{ {'weapon':'武器','armor':'防具','accessory':'配饰'}.get(item.slot,'装备') }} · 数量 {{ item.qty }}</small></div></article>{% endfor %}
+  {% for item in materials %}<article class="bag-item" data-bag-kind="material"><span class="bag-mark">材</span><div><strong>{{ item.label }}</strong><small>炼制材料 · 数量 {{ item.qty }}</small></div></article>{% endfor %}
+  {% for item in pills %}<article class="bag-item" data-bag-kind="consumable"><span class="bag-mark">丹</span><div><strong>{{ item.label }}</strong><small>丹药 · 数量 {{ item.qty }}</small></div></article>{% endfor %}
+  {% for item in artifacts %}<article class="bag-item" data-bag-kind="consumable"><span class="bag-mark">宝</span><div><strong>{{ item.label }}</strong><small>法宝 · 数量 {{ item.qty }}</small></div></article>{% endfor %}
+</div>
+{% if not gifts and not gear and not materials and not pills and not artifacts %}<div class="card"><p class="muted" style="text-align:center">行囊空空，正好轻装下山。</p></div>{% endif %}
+{% endblock %}

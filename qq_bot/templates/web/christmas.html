@@ -89,9 +89,9 @@
   {% else %}
     <form method="post">
       <input type="hidden" name="action" value="hang">
-      {% for name, desc, points in ornaments %}
+      {% for name, desc in ornaments %}
         <button class="opt" name="ornament" value="{{ name }}">
-          {{ name }}　<span class="muted">{{ desc }}（+{{ points }}）</span>
+          {{ name }}　<span class="muted">{{ desc }}（+{{ points_min }}~{{ points_max }}）</span>
         </button>
       {% endfor %}
     </form>
@@ -101,6 +101,48 @@
   <h3>最近挂上去的</h3>
   <ul class="muted">
     {% for row in tree.recent %}<li>{{ name_of(row.uid) }} 挂了{{ row.ornament }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if tree_leaderboard %}
+  <h3>🎄 贡献榜</h3>
+  <p class="muted">树点亮的瞬间，前三名额外拿称号+加隆奖励，跟人人都有的参与礼分开算。</p>
+  <ul class="muted">
+    {% for row in tree_leaderboard %}
+    <li>{{ row.name }}{% if row.surname %}·{{ row.surname }}{% endif %} — {{ row.total }}点</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>🍽 圣诞大餐</h2>
+  <p class="muted">每小时能吃一道菜，有概率吃出小礼品；圣诞布丁里藏着一枚硬币，吃到的人今晚 22:00 会被抽中赢 100 加隆。</p>
+  {% if pudding_draw %}
+    <p class="flash ok">🎉 今年的布丁硬币被 <b>{{ full_name(pudding_draw.winner_uid) }}</b> 吃到，赢走了 {{ pudding_draw.galleons }} 加隆。</p>
+  {% elif feast.has_pudding_entry %}
+    <p class="flash ok">你吃到了布丁里的硬币，今晚10点看看运气。</p>
+  {% endif %}
+
+  {% if feast.cooldown_remaining > 0 %}
+    <p class="muted">刚吃过一道，肚子还没消化，{{ (feast.cooldown_remaining // 60) + 1 }} 分钟后能再吃。</p>
+  {% endif %}
+  <p>已经吃过 <b>{{ feast.eaten|length }}</b> / {{ feast.dishes|length }} 种。</p>
+  <form method="post">
+    <input type="hidden" name="action" value="eat_feast">
+    {% for name, desc in feast.dishes %}
+      <button class="opt" name="dish" value="{{ name }}" {% if not feast.can_eat %}disabled{% endif %}>
+        {{ name }}{% if name in feast.eaten %} ✓{% endif %}　<span class="muted">{{ desc }}</span>
+      </button>
+    {% endfor %}
+  </form>
+
+  {% if feast_leaderboard %}
+  <h3>🏅 美食家排行榜</h3>
+  <ul class="muted">
+    {% for row in feast_leaderboard %}
+    <li>{{ row.name }}{% if row.surname %}·{{ row.surname }}{% endif %} — 吃过 {{ row.variety }} 种</li>
+    {% endfor %}
   </ul>
   {% endif %}
 </div>

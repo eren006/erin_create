@@ -174,7 +174,7 @@ def _finish(session, winner_uid: str | None, reason: str) -> dict:
         loser_uid = _opponent_of(session, winner_uid)
         winner = core_storage.get_player(winner_uid)
         if winner and winner["house"]:
-            core_storage.add_house_points(winner["house"], spell_catalog.DUEL_WIN_HOUSE_POINTS)
+            core_storage.add_house_points(winner["house"], spell_catalog.DUEL_WIN_HOUSE_POINTS, winner_uid)
         core_storage.add_subject_exp(winner_uid, "defence", spell_catalog.DUEL_WIN_SUBJECT_EXP)
         core_storage.add_subject_exp(loser_uid, "defence", spell_catalog.DUEL_LOSE_SUBJECT_EXP)
         result["house_points"] = spell_catalog.DUEL_WIN_HOUSE_POINTS

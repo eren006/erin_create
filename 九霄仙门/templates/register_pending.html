@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}审核中 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card" style="max-width:360px;margin:40px auto;text-align:center">
+  <h3 style="margin-bottom:8px">注册成功</h3>
+  <p class="muted">账号审核中,请等待管理员审核通过后再登录</p>
+  <a class="btn" style="margin-top:16px;display:inline-block" href="{{ url_for('login') }}">返回登录</a>
+</div>
+{% endblock %}

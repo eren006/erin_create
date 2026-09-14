@@ -27,6 +27,22 @@ CREATE TABLE IF NOT EXISTS admins (
     PRIMARY KEY (platform, uid)
 );
 
+CREATE TABLE IF NOT EXISTS npc_roles (
+    platform TEXT NOT NULL,
+    uid TEXT NOT NULL,
+    marked_at INTEGER NOT NULL,
+    PRIMARY KEY (platform, uid)
+);
+
+CREATE TABLE IF NOT EXISTS web_access_tokens (
+    platform TEXT NOT NULL,
+    uid TEXT NOT NULL,
+    token TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (platform, uid)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_web_access_tokens_token ON web_access_tokens (token);
+
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT

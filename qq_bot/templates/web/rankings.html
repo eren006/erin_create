@@ -2,18 +2,41 @@
 {% block title %}榜单{% endblock %}
 {% block body %}
 <div class="card">
-  <h2>学院杯（按人均分）</h2>
+  <h2>学院杯（按总分）</h2>
   <div class="scroll"><table>
-    <tr><th>#</th><th>学院</th><th>人均</th><th>总分</th><th>人数</th></tr>
+    <tr><th>#</th><th>学院</th><th>人均</th><th>总分</th><th>有贡献/挂名人数</th><th>本学年贡献之星</th></tr>
     {% for h in houses %}
     <tr><td>{{ loop.index }}</td><td>{{ h.house }}</td>
       <td><b>{{ '%.1f'|format(h.avg_points) }}</b></td>
-      <td>{{ h.total_points }}</td><td>{{ h.member_count }}</td></tr>
+      <td>{{ h.total_points }}</td><td>{{ h.active_member_count }}/{{ h.member_count }}</td>
+      <td>{% if h.top_contributor_name %}{{ h.top_contributor_name }}（{{ h.top_contributor_points }}分）{% else %}<span class="muted">还没有</span>{% endif %}</td></tr>
     {% endfor %}
   </table></div>
 </div>
 <div class="card">
-  <h2>全校个人排名（按学科经验总量）</h2>
+  <h2>🏅 各科期末成绩前三名</h2>
+  {% if subject_order %}
+  <div class="scroll"><table>
+    <tr><th>学科</th><th>#</th><th>学生</th><th>学院</th><th>评级</th><th>分数</th></tr>
+    {% for key, name in subject_order %}
+      {% for s in subject_top[key] %}
+      <tr>
+        {% if loop.first %}<td rowspan="{{ subject_top[key]|length }}">{{ name }}</td>{% endif %}
+        <td>{{ loop.index }}</td>
+        <td>{{ s.name }}{% if s.surname %}·{{ s.surname }}{% endif %}</td>
+        <td>{{ s.house }}</td>
+        <td><b>{{ s.band }}</b></td>
+        <td>{{ '%.0f'|format(s.score * 100) }}%</td>
+      </tr>
+      {% endfor %}
+    {% endfor %}
+  </table></div>
+  {% else %}
+  <p class="muted">还没有期末成绩结算记录，等学年结束考完试才会有。</p>
+  {% endif %}
+</div>
+<div class="card">
+  <h2>📚 学习榜（前10，按学科经验总量）</h2>
   <div class="scroll"><table>
     <tr><th>#</th><th>学生</th><th>学院</th><th>总经验</th></tr>
     {% for s in students %}
@@ -22,5 +45,35 @@
       <td>{{ s.house }}</td><td>{{ s.total_exp }}</td></tr>
     {% endfor %}
   </table></div>
+</div>
+<div class="card">
+  <h2>🧹 魁地奇榜（前10，按赛季得分，2年级起可参加）</h2>
+  {% if quidditch_top %}
+  <div class="scroll"><table>
+    <tr><th>#</th><th>学生</th><th>学院</th><th>位置</th><th>赛季得分</th></tr>
+    {% for q in quidditch_top %}
+    <tr><td>{{ loop.index }}</td>
+      <td>{{ q.name }}{% if q.surname %}·{{ q.surname }}{% endif %}</td>
+      <td>{{ q.house }}</td><td>{{ q.position }}</td><td>{{ q.season_score }}</td></tr>
+    {% endfor %}
+  </table></div>
+  {% else %}
+  <p class="muted">还没有魁地奇比赛得分记录。</p>
+  {% endif %}
+</div>
+<div class="card">
+  <h2>🍽 美食家榜（圣诞大餐吃过的菜品种类）</h2>
+  {% if feast_top %}
+  <div class="scroll"><table>
+    <tr><th>#</th><th>学生</th><th>学院</th><th>吃过种类</th></tr>
+    {% for f in feast_top %}
+    <tr><td>{{ loop.index }}</td>
+      <td>{{ f.name }}{% if f.surname %}·{{ f.surname }}{% endif %}</td>
+      <td>{{ f.house }}</td><td>{{ f.variety }}</td></tr>
+    {% endfor %}
+  </table></div>
+  {% else %}
+  <p class="muted">圣诞节当天去大餐上吃点东西，就会出现在这里。</p>
+  {% endif %}
 </div>
 {% endblock %}

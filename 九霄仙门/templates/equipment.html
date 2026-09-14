@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+{% block title %}装备 - 九霄仙门{% endblock %}
+{% block content %}
+
+<header class="equipment-page-head">
+  <div>
+    <p class="equipment-eyebrow">仙府·兵藏</p>
+    <h1>兵甲与本命</h1>
+    <p class="muted">调整配装、磨炼兵道，亦可在此温养本命法宝。</p>
+  </div>
+  <div class="equipment-power"><span>当前兵道</span><strong>{{ weapon_masteries | selectattr('active') | map(attribute='label') | first }}</strong></div>
+</header>
+
+<nav class="equipment-tabs" aria-label="装备页分类" role="tablist">
+  <button type="button" role="tab" data-equipment-tab="loadout" aria-selected="true"><span>配</span>当前配装</button>
+  <button type="button" role="tab" data-equipment-tab="discipline" aria-selected="false"><span>兵</span>兵道修行</button>
+  <button type="button" role="tab" data-equipment-tab="inventory" aria-selected="false"><span>藏</span>装备库藏</button>
+  <button type="button" role="tab" data-equipment-tab="artifact" aria-selected="false"><span>命</span>本命法宝</button>
+  <button type="button" role="tab" data-equipment-tab="materials" aria-selected="false"><span>材</span>材料仓库</button>
+</nav>
+
+<div class="card equipment-panel" data-equipment-panel="loadout">
+  <div class="panel-head"><h3><span class="section-icon">装</span>装备总览</h3><span class="panel-note">当前生效</span></div>
+  <p class="muted" style="margin-top:6px">攻击 +{{ equip_total.attack }} · 防御 +{{ equip_total.defense }} · 灵巧 +{{ equip_total.agility }} · 幸运 +{{ equip_total.luck }}</p>
+  <div class="equipped-summary">
+    {% for slot in ['weapon', 'armor', 'accessory'] %}
+    {% set eq = equipped[slot] %}
+    <button type="button" class="equipped-slot" data-open-equipment-tab="inventory">
+      <span class="equipped-slot-mark">{{ EQUIPMENT_SLOT_LABELS[slot][0] }}</span>
+      <span><small>{{ EQUIPMENT_SLOT_LABELS[slot] }}</small><strong>{{ eq.label if eq else '尚未装备' }}</strong>
+        {% if eq and eq.element %}<small class="muted">属{{ ELEMENTS[eq.element].label }}{% if slot == 'weapon' and not eq.usable %} · 灵根不合{% endif %}</small>{% endif %}</span>
+      <i>更换 ›</i>
+    </button>
+    {% endfor %}
+  </div>
+  {% if equipped_tassel or equipped_jade %}
+  <p class="muted" style="margin-top:10px">
+    {% if equipped_tassel %}剑穗:{{ equipped_tassel.gift_name }}({{ equipped_tassel.maker_name }} 所制){% endif %}
+    {% if equipped_tassel and equipped_jade %} · {% endif %}
+    {% if equipped_jade %}玉佩:{{ equipped_jade.gift_name }}({{ equipped_jade.maker_name }} 所制){% endif %}
+    <a href="{{ url_for('gifts_home') }}" style="margin-left:6px">管理 ›</a>
+  </p>
+  {% endif %}
+  {% if char.equipped_trinket_key == FORGE_MASTER_TRINKET.key %}
+  <p class="muted" style="margin-top:6px">秘宝:{{ FORGE_MASTER_TRINKET.label }}(炼器尊者终身之作)</p>
+  {% endif %}
+</div>
+
+<div class="card equipment-panel" data-equipment-panel="discipline" hidden>
+  <div class="panel-head"><h3><span class="section-icon">堂</span>宗门兵器堂</h3><span class="panel-note">每件 {{ starter_weapon_cost }} 贡献</span></div>
+  <p class="muted">五类制式兵刃向所有弟子开放，用来确定最初的兵道方向；领取后仍可随时换用其他武器。带属性的武器,须与自身灵根属性相合才能驾驭——你的灵根属性：<strong>{{ spirit_root_elements_label(char.spirit_root, char.spirit_root_elements) }}</strong></p>
+  <div class="starter-weapon-grid">
+    {% for weapon in starter_weapons %}
+    <form method="post" action="{{ url_for('equipment_starter_weapon', item_key=weapon.key) }}" class="starter-weapon">
+      <div><strong>{{ weapon.label }}</strong><div class="muted">{{ weapon.discipline_label }} · 属{{ ELEMENTS[weapon.element].label }} · 攻{{ weapon.attack }} 防{{ weapon.defense }} 灵巧{{ weapon.agility }}</div></div>
+      <button class="btn {{ 'btn-primary' if not weapon.owned else '' }}" {{ 'disabled' if weapon.owned or not weapon.usable or char.contribution < starter_weapon_cost }}>{{ '已领取' if weapon.owned else '领取' }}</button>
+      {% if not weapon.owned and not weapon.usable %}<p class="muted" style="margin-top:2px;font-size:12px">你的灵根不含{{ ELEMENTS[weapon.element].label }}属性,驾驭不了</p>
+      {% elif not weapon.owned and char.contribution < starter_weapon_cost %}<p class="muted" style="margin-top:2px;font-size:12px">尚缺{{ starter_weapon_cost - char.contribution }}点贡献</p>{% endif %}
+    </form>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card equipment-panel" data-equipment-panel="discipline" hidden>
+  <div class="panel-head"><h3><span class="section-icon">兵</span>兵道修行</h3><span class="panel-note">实战取胜增长熟练</span></div>
+  <p class="muted">兵道不受峰门限制，也不占用个人道途。持何种兵刃出战，便磨炼对应一途；卸下武器则修拳脚体魄。</p>
+  <div class="weapon-path-grid">
+    {% for path in weapon_masteries %}
+    <div class="weapon-path {{ 'active' if path.active else '' }}">
+      <div class="weapon-path-head"><strong>{{ path.label }}</strong><span class="badge {{ 'badge-gold' if path.active else 'badge-purple' }}">{{ '当前' if path.active else path.title }}</span></div>
+      <div class="muted">{{ path.flavor }}</div>
+      <div class="stat-line" style="margin-top:8px"><span>{{ path.title }}</span><strong>{{ path.mastery }}{% if path.next_threshold %} / {{ path.next_threshold }}{% else %} · 圆满{% endif %}</strong></div>
+      <div class="bar-track"><div class="bar-fill bar-gold" style="width:{{ path.progress_pct }}%"></div></div>
+      <div class="weapon-bonus">{{ path.bonus_desc }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card equipment-panel" data-equipment-panel="loadout">
+  <div class="panel-head"><h3><span class="section-icon">配</span>配装预设</h3></div>
+  {% if equip_locked %}
+  <p class="muted" style="margin-top:6px;color:var(--gold)">秘境探索中或游历途中有事待应对,暂不能切换预设(保存当前装备不受影响)。</p>
+  {% endif %}
+  {% for p in presets %}
+  <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bd)">
+    <p><strong>{{ p.label }}</strong>{% if p.is_current %} <span class="badge badge-purple">当前装备</span>{% endif %}</p>
+    <p class="muted" style="margin-top:4px">
+      {% if p.saved %}{{ p.weapon_label or '空' }} · {{ p.armor_label or '空' }} · {{ p.accessory_label or '空' }}
+      {% else %}尚未保存{% endif %}
+    </p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+      <form method="post" action="{{ url_for('equipment_preset_apply', preset_key=p.key) }}" style="flex:1;min-width:100px">
+        <button class="btn btn-primary" style="width:100%" {{ 'disabled' if not p.saved or equip_locked or p.is_current }}>切换至此</button>
+      </form>
+      <form method="post" action="{{ url_for('equipment_preset_save', preset_key=p.key) }}" style="flex:2;min-width:220px;display:flex;gap:6px">
+        <input name="label" placeholder="{{ p.label }}" value="{{ p.label if p.saved else '' }}" style="flex:1" maxlength="20">
+        <button class="btn">保存当前装备</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+  <p class="muted" style="margin-top:10px">切换预设不消耗任何资源,立即生效;本命法宝终身绑定单一实体,不参与预设。</p>
+</div>
+
+<div class="card equipment-panel" data-equipment-panel="artifact" hidden>
+  <div class="panel-head"><h3><span class="section-icon">命</span>本命法宝</h3></div>
+  {% if not char.artifact_core_bound %}
+  {% if char.realm_idx < ARTIFACT_CORE_UNLOCK_REALM_IDX %}
+  <p class="muted" style="margin-top:10px">修为不足,需达到 {{ realm_by_index(ARTIFACT_CORE_UNLOCK_REALM_IDX).name }} 方可领取法宝胚胎</p>
+  {% else %}
+  <p class="muted" style="margin-top:10px">一枚无属性的法宝胚胎正待与你血脉相融——一旦绑定终身相随,不可解绑(重铸可改方向,但会折损等阶)。</p>
+  <form method="post" action="{{ url_for('artifact_core_bind') }}" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"
+        data-confirm-title="绑定本命法宝" data-confirm-message="法宝胚胎将按你选定的方向与血脉相融，从此终身相随。"
+        data-confirm-warning="绑定后不可解除；日后只能通过转世炼形改变方向。" data-confirm-button="血契绑定" data-confirm-tone="danger">
+    {% for key, o in ARTIFACT_CORE_ORIENTATIONS.items() %}
+    <label style="display:flex;align-items:center;gap:6px;font-weight:normal">
+      <input type="radio" name="orientation" value="{{ key }}" {{ 'checked' if loop.first }} style="width:auto">{{ o.label }}
+    </label>
+    {% endfor %}
+    <button class="btn btn-primary" style="width:100%">绑定本命法宝</button>
+  </form>
+  {% endif %}
+  {% else %}
+  <p style="margin-top:10px"><strong>{{ char.artifact_core_name }}</strong>
+    <span class="badge badge-purple">{{ ARTIFACT_CORE_QUALITIES[core_quality].label }}</span>
+    <span class="badge badge-gold">{{ ARTIFACT_CORE_ORIENTATIONS[char.artifact_core_orientation].label }}</span></p>
+  <p class="muted" style="margin-top:4px">第{{ char.artifact_core_level }}/{{ core_max_level }}层
+    <span class="muted">({{ char.artifact_core_exp }}/{{ ARTIFACT_CORE_EXP_PER_LEVEL }})</span></p>
+  <p class="muted" style="margin-top:4px">器灵性情：{{ char.artifact_core_spirit }}{% if core_growth_title %} · 成长真名：{{ char.artifact_core_name }}·{{ core_growth_title }}{% endif %}</p>
+  {% if core_bonus %}
+  <p class="muted" style="margin-top:4px">攻击+{{ core_bonus.attack }} · 防御+{{ core_bonus.defense }} · 灵巧+{{ core_bonus.agility }}</p>
+  {% endif %}
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+    <form method="post" action="{{ url_for('artifact_core_nurture') }}" style="flex:1;min-width:140px">
+      <input type="hidden" name="tier" value="common">
+      <button class="btn btn-primary" style="width:100%">通用温养({% for k,v in ARTIFACT_CORE_NURTURE_MATERIAL_COST.items() %}{{ MATERIAL_LABELS.get(k,k) }}×{{ v }}{% endfor %})</button>
+    </form>
+    <form method="post" action="{{ url_for('artifact_core_nurture') }}" style="flex:1;min-width:140px">
+      <input type="hidden" name="tier" value="rare">
+      <button class="btn btn-primary" style="width:100%">秘境温养({% for k,v in ARTIFACT_CORE_RARE_NURTURE_MATERIAL_COST.items() %}{{ MATERIAL_LABELS.get(k,k) }}×{{ v }}{% endfor %})</button>
+    </form>
+  </div>
+  {% if stable_upgrade %}
+  <form method="post" action="{{ url_for('artifact_core_stable_upgrade') }}" style="margin-top:10px"
+        data-confirm-title="稳固升阶" data-confirm-message="本命法宝将升至{{ ARTIFACT_CORE_QUALITIES[stable_upgrade.to].label }}，并消耗 {{ stable_upgrade.lingshi }} 灵石与所列材料。"
+        data-confirm-warning="名字、器灵与温养层数会保留，但已消耗的资源不会返还。" data-confirm-button="确认升阶">
+    <span class="muted">稳固升阶至{{ ARTIFACT_CORE_QUALITIES[stable_upgrade.to].label }}：灵石{{ stable_upgrade.lingshi }}、{% for k,v in stable_upgrade.materials.items() %}{{ MATERIAL_LABELS.get(k,k) }}×{{ v }}{% if not loop.last %}、{% endif %}{% endfor %}。保留名字、器灵和温养层数。</span>
+    <button class="btn btn-primary" style="margin-left:6px" {{ 'disabled' if not stable_upgrade_ready }}>稳固升阶</button>
+  </form>
+  {% else %}
+  <p class="muted" style="margin-top:10px">已臻超品，无需继续升阶。</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('artifact_core_rebirth') }}" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"
+        data-confirm-title="转世炼形"
+        data-confirm-message="本次将消耗 {{ ARTIFACT_REBIRTH_LINGSHI_COST }} 灵石与指定材料，并重新塑定本命法宝方向。"
+        data-confirm-warning="法宝温养层数将损失 {{ ARTIFACT_REBIRTH_LEVEL_PENALTY_PCT }}%。" data-confirm-button="确认炼形" data-confirm-tone="danger">
+    <span class="muted">转世炼形(灵石{{ ARTIFACT_REBIRTH_LINGSHI_COST }}、{% for k,v in ARTIFACT_REBIRTH_MATERIAL_COST.items() %}{{ MATERIAL_LABELS.get(k,k) }}×{{ v }}{% endfor %}，温养层数仅损失{{ ARTIFACT_REBIRTH_LEVEL_PENALTY_PCT }}%)：</span>
+    {% for key, o in ARTIFACT_CORE_ORIENTATIONS.items() %}
+    <label style="display:flex;align-items:center;gap:6px;font-weight:normal">
+      <input type="radio" name="orientation" value="{{ key }}" {{ 'checked' if key == char.artifact_core_orientation }} style="width:auto">{{ o.label }}
+    </label>
+    {% endfor %}
+    <button class="btn" {{ 'disabled' if char.lingshi < ARTIFACT_REBIRTH_LINGSHI_COST }}>转世炼形</button>
+  </form>
+  <p class="muted" style="margin-top:4px">材料保底：宗门商店的“雾尘囊”每份含秘境雾尘×3，每日最多兑换3份；灵石可由药圃稳定收获或用贡献兑换。</p>
+  {% endif %}
+</div>
+
+{% for slot in ['weapon', 'armor', 'accessory'] %}
+<div class="card equipment-panel" data-equipment-panel="inventory" hidden>
+  <div class="panel-head"><h3><span class="section-icon">{{ EQUIPMENT_SLOT_LABELS[slot][0] }}</span>{{ EQUIPMENT_SLOT_LABELS[slot] }}</h3></div>
+  {% set eq = equipped[slot] %}
+  {% if eq %}
+  <p style="margin-top:8px"><strong>{{ eq.label }}</strong>{% if eq.element %} <span class="badge {{ 'badge-purple' if (slot != 'weapon' or eq.usable) else 'badge-red' }}">属{{ ELEMENTS[eq.element].label }}{% if slot == 'weapon' and not eq.usable %} · 灵根不合{% endif %}</span>{% endif %}
+    <span class="muted">攻击+{{ eq.attack }} 防御+{{ eq.defense }} 灵巧+{{ eq.agility }} 幸运+{{ eq.luck }}</span></p>
+  <form method="post" action="{{ url_for('equipment_unequip', slot=slot) }}" style="margin-top:6px">
+    <button class="btn" {{ 'disabled' if equip_locked }}>卸下</button>
+    {% if equip_locked %}<p class="muted" style="margin-top:2px;font-size:12px">秘境探索中或游历事件尚未处理,暂不能换装</p>{% endif %}
+  </form>
+  {% else %}
+  <p class="muted" style="margin-top:8px">未装备</p>
+  {% endif %}
+  {% set candidates = owned | selectattr('slot', 'equalto', slot) | list %}
+  {% if candidates %}
+  <p class="muted" style="margin-top:10px">库存:</p>
+  {% for c in candidates %}
+  <div style="margin-top:4px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+    <span>{{ c.label }}{% if c.element %} <small class="muted">(属{{ ELEMENTS[c.element].label }})</small>{% endif %} ×{{ c.qty }}{% if c.lore %}<small class="muted" style="display:block">来历：{{ c.lore }}</small>{% endif %}</span>
+    <span style="display:flex;gap:6px">
+      <form method="post" action="{{ url_for('equipment_equip', slot=slot, item_key=c.item_key) }}">
+        <button class="btn btn-primary" {{ 'disabled' if equip_locked or not c.usable }}>装备</button>
+        {% if not c.usable %}<p class="muted" style="margin-top:2px;font-size:12px">灵根属性不合,驾驭不了</p>
+        {% elif equip_locked %}<p class="muted" style="margin-top:2px;font-size:12px">秘境探索中或游历事件尚未处理,暂不能换装</p>{% endif %}
+      </form>
+      {% if c.zone not in ('unique', 'sect') %}
+      <form method="post" action="{{ url_for('equipment_decompose', item_key=c.item_key) }}"
+            data-confirm-title="分解{{ c.label }}"
+            data-confirm-message="分解后可得：{% for k,v in c.decompose_yield.items() %}{{ MATERIAL_LABELS.get(k,k) }}×{{ v }}{% if not loop.last %}、{% endif %}{% endfor %}。"
+            data-confirm-warning="该件装备将永久消失。" data-confirm-button="确认分解" data-confirm-tone="danger">
+        <button class="btn">分解</button>
+      </form>
+      {% if char.artifact_core_bound %}
+      <form method="post" action="{{ url_for('artifact_core_nurture') }}"
+            data-confirm-title="拿{{ c.label }}温养法宝"
+            data-confirm-message="消耗这件装备,为本命法宝增加{{ ARTIFACT_CORE_EQUIPMENT_NURTURE_EXP_GAIN }}点温养经验(收益低于用通用材料温养)。"
+            data-confirm-warning="这件装备将永久消失,不可再装备或分解。" data-confirm-button="确认温养" data-confirm-tone="danger">
+        <input type="hidden" name="tier" value="equipment">
+        <input type="hidden" name="item_key" value="{{ c.item_key }}">
+        <button class="btn">温养法宝</button>
+      </form>
+      {% endif %}
+      {% endif %}
+    </span>
+  </div>
+  {% endfor %}
+  {% endif %}
+</div>
+{% endfor %}
+
+<div class="card equipment-panel" data-equipment-panel="materials" hidden>
+  <div class="panel-head"><h3><span class="section-icon">材</span>材料仓库</h3></div>
+  <p class="muted" style="margin-top:6px">
+    {% for tier in MATERIAL_TIERS %}{{ MATERIAL_LABELS[tier] }} ×{{ materials_owned.get(tier, 0) }}{{ '　' if not loop.last }}{% endfor %}
+  </p>
+  {% set ns = namespace(any=false) %}
+  {% for key, qty in materials_owned.items() %}{% if key not in MATERIAL_TIERS %}{% set ns.any = true %}{% endif %}{% endfor %}
+  {% if ns.any %}
+  <p class="muted" style="margin-top:8px">
+    {% for key, qty in materials_owned.items() %}{% if key not in MATERIAL_TIERS %}{{ MATERIAL_LABELS.get(key, key) }} ×{{ qty }}　{% endif %}{% endfor %}
+  </p>
+  {% endif %}
+  <p class="muted" style="margin-top:8px">低阶材料囤多了可以合成高阶,每{{ MATERIAL_SYNTHESIZE_RATIO }}枚合1枚:</p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+    {% for tier in MATERIAL_TIERS[:-1] %}
+    <form method="post" action="{{ url_for('materials_synthesize', tier=tier) }}">
+      <button class="btn" {{ 'disabled' if materials_owned.get(tier, 0) < MATERIAL_SYNTHESIZE_RATIO }}>
+        合成{{ MATERIAL_LABELS[tier] }}→{{ MATERIAL_LABELS[MATERIAL_TIERS[loop.index]] }}
+      </button>
+      {% if materials_owned.get(tier, 0) < MATERIAL_SYNTHESIZE_RATIO %}<p class="muted" style="margin-top:2px;font-size:12px">尚缺{{ MATERIAL_SYNTHESIZE_RATIO - materials_owned.get(tier, 0) }}枚{{ MATERIAL_LABELS[tier] }}</p>{% endif %}
+    </form>
+    {% endfor %}
+  </div>
+  <form method="post" action="{{ url_for('donate_material') }}" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <span class="muted">捐献材料换贡献:</span>
+    <select name="tier" style="width:auto">
+      {% for tier in MATERIAL_TIERS %}<option value="{{ tier }}">{{ MATERIAL_LABELS[tier] }}</option>{% endfor %}
+    </select>
+    <input type="number" name="qty" value="1" min="1" style="width:80px">
+    <button class="btn">捐献</button>
+  </form>
+</div>
+
+{% endblock %}

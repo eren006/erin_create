@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}闭关 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">闭</span>闭关静室</h3></div>
+  {% if active %}
+  {% if ready %}
+  <p>闭关时辰已到,可以出关了</p>
+  <p class="muted" style="margin-top:6px">点击出关,结算这次闭关的修为与贡献</p>
+  {% else %}
+  <p>你正闭关静修,尚余 <strong>{{ remaining // 3600 }}</strong> 小时 <strong>{{ remaining % 3600 // 60 }}</strong> 分</p>
+  <p class="muted" style="margin-top:6px">闭关期间无法打坐/委托/探索,可随时提前出关(收益减半结算)</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('retreat_claim') }}" style="margin-top:14px">
+    <button class="btn btn-primary" style="width:100%">出关</button>
+  </form>
+  {% else %}
+  <p class="muted">闭关是懒惰结算的挂机选项:期间无需手动打坐,按小时数一次性结算修为与贡献,收益低于持续手动打坐,但无需一直在线盯着。</p>
+  <p class="muted" style="margin-top:6px">当前境界预计每小时:修为 +{{ hourly_exp }}、贡献 +{{ hourly_contribution }}</p>
+  <form method="post" action="{{ url_for('retreat_start') }}" style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+    {% for h in durations %}
+    <button class="btn btn-primary" name="hours" value="{{ h }}" style="flex:1;min-width:100px">闭关 {{ h }} 小时</button>
+    {% endfor %}
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

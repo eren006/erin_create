@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}审核队列 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="tab-row">
+    <a class="btn {{ 'btn-primary' if status_filter=='pending' }}" href="{{ url_for('admin_pending_users', status='pending') }}">待审核</a>
+    <a class="btn {{ 'btn-primary' if status_filter=='approved' }}" href="{{ url_for('admin_pending_users', status='approved') }}">已通过</a>
+    <a class="btn {{ 'btn-primary' if status_filter=='rejected' }}" href="{{ url_for('admin_pending_users', status='rejected') }}">已拒绝</a>
+    <a class="btn {{ 'btn-primary' if status_filter=='deleted' }}" href="{{ url_for('admin_pending_users', status='deleted') }}">已删除</a>
+    <a class="btn {{ 'btn-primary' if status_filter=='all' }}" href="{{ url_for('admin_pending_users', status='all') }}">全部</a>
+  </div>
+  <table>
+    <tr><th>用户名</th><th>QQ</th><th>状态</th><th>注册时间</th><th></th></tr>
+    {% for u in users %}
+    <tr>
+      <td>{{ u.username }}</td>
+      <td>{{ u.qq }}</td>
+      <td>
+        {% if u.status == 'pending' %}<span class="badge badge-gold">待审核</span>
+        {% elif u.status == 'approved' %}<span class="badge badge-purple">已通过</span>
+        {% elif u.status == 'deleted' %}<span class="badge badge-red">已删除</span>
+        {% else %}<span class="badge badge-red">已拒绝</span>{% endif %}
+      </td>
+      <td>{{ u.created_ts | fmt_ts }}</td>
+      <td style="white-space:nowrap">
+        {% if u.status == 'pending' %}
+        <form method="post" action="{{ url_for('admin_approve_user', uid=u.id) }}" style="display:inline">
+          <button class="btn btn-primary" style="padding:4px 10px">通过</button>
+        </form>
+        <form method="post" action="{{ url_for('admin_reject_user', uid=u.id) }}" style="display:inline">
+          <button class="btn" style="padding:4px 10px">拒绝</button>
+        </form>
+        {% endif %}
+        {% if u.status != 'deleted' %}
+        <details style="display:inline-block">
+          <summary class="btn" style="padding:4px 10px;display:inline-block;cursor:pointer">改密码</summary>
+          <form method="post" action="{{ url_for('admin_reset_password', uid=u.id) }}"
+                style="display:flex;gap:6px;margin-top:6px">
+            <input type="hidden" name="status_filter" value="{{ status_filter }}">
+            <input name="new_password" placeholder="新密码(6-40位)" minlength="6" maxlength="40" required style="width:140px">
+            <button class="btn btn-primary" style="padding:4px 10px">确认</button>
+          </form>
+        </details>
+        <form method="post" action="{{ url_for('admin_delete_user', uid=u.id) }}" style="display:inline"
+              data-confirm-title="删除账号 {{ u.username }}" data-confirm-message="账号将无法再登录,用户名会被腾出以便重新注册;该账号名下的角色数据不会被删除。"
+              data-confirm-warning="此操作不会物理删除角色数据,但账号本身找回需要管理员从数据库备份里手动恢复。" data-confirm-button="确认删除" data-confirm-tone="danger">
+          <input type="hidden" name="status_filter" value="{{ status_filter }}">
+          <button class="btn" style="padding:4px 10px">删除账号</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

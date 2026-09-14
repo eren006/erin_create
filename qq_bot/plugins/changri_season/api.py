@@ -1,6 +1,7 @@
 import re
+from datetime import datetime
 
-from plugins.changri_core.api import get_conn, get_setting, set_setting
+from plugins.changri_core.api import get_conn, get_current_day, get_setting, set_current_day, set_setting
 from plugins.changri_core.archive_client import request_archive
 
 MMDD_RE = re.compile(r"^\d{4}$")
@@ -76,7 +77,32 @@ async def create_season(
     set_setting(f"season:{platform}:schedule_start", schedule_start)
     set_setting(f"season:{platform}:schedule_end", schedule_end)
     set_setting(f"season:{platform}:supplement_end", supplement_end)
-    return True, f"季度「{name}」已创建，档期 {schedule_start}-{schedule_end}"
+    set_current_day(platform, "D100")
+    return True, (
+        f"季度「{name}」已创建，档期 {schedule_start}-{schedule_end}\n"
+        f"当前天数已临时设为 D100（占位，防止开季筹备期被当成正式游戏日），"
+        f"档期开始日（{schedule_start}）0 点会自动切换为 D0，也可以随时手动「/设置天数 D0」提前切换"
+    )
+
+
+def try_auto_start_day(platform: str) -> str | None:
+    """档期开始日 0 点检查：天数如果还停在开季占位值 D100，自动切换成 D0。"""
+    if not has_active_season(platform):
+        return None
+    if get_current_day(platform) != "D100":
+        return None
+    schedule_start = get_setting(f"season:{platform}:schedule_start")
+    if not schedule_start or datetime.now().strftime("%m%d") != schedule_start:
+        return None
+
+    set_current_day(platform, "D0")
+    try:
+        from plugins.changri_wish.api import expire_open_wishes
+
+        expire_open_wishes(platform)
+    except ImportError:
+        pass
+    return "档期开始，当前天数已自动设为 D0"
 
 
 async def update_schedule(

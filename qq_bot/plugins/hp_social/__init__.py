@@ -5,7 +5,7 @@ from nonebot.params import CommandArg
 import plugins.hp_core as hp_core
 from plugins.hp_core import storage as core_storage
 
-from . import romance, storage
+from . import garden, romance, storage
 
 storage.init_db()
 
@@ -193,3 +193,91 @@ async def handle_couples(event: MessageEvent):
     for r in rows:
         lines.append(f"{core_storage.get_full_name(r['uid_a'])} 💗 {core_storage.get_full_name(r['uid_b'])}")
     await couples_cmd.finish("\n".join(lines))
+
+
+# ======================== 种花 ========================
+
+
+def _fmt_duration(seconds: int) -> str:
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60 + 1
+    return f"{hours}小时{minutes}分钟" if hours else f"{minutes}分钟"
+
+
+forage_seed_cmd = on_command("捡种子")
+
+
+@forage_seed_cmd.handle()
+async def handle_forage_seed(event: MessageEvent):
+    try:
+        result = garden.forage(event.get_user_id())
+    except garden.GardenError as e:
+        await forage_seed_cmd.finish(str(e))
+        return
+    await forage_seed_cmd.finish(
+        f"{result['line']}\n"
+        f"现在手上有{result['seeds']}颗种子，用「/种花」种下去。"
+        f"（今天出门找过{result['used_today']}/{result['daily_limit']}次）"
+    )
+
+
+plant_cmd = on_command("种花")
+
+
+@plant_cmd.handle()
+async def handle_plant(event: MessageEvent):
+    try:
+        result = garden.plant(event.get_user_id())
+    except garden.GardenError as e:
+        await plant_cmd.finish(str(e))
+        return
+    await plant_cmd.finish(
+        f"把种子种进了花盆里，大约{result['grow_hours']}小时后可以「/收获」看看长成了什么样子。\n"
+        "十有八九会枯死，但万一活下来了呢？"
+    )
+
+
+garden_status_cmd = on_command("花盆状态")
+
+
+@garden_status_cmd.handle()
+async def handle_garden_status(event: MessageEvent):
+    result = garden.status(event.get_user_id())
+    if not result["growing"]:
+        await garden_status_cmd.finish(f"花盆现在空着。手上有{result['seeds']}颗种子，用「/种花」种下去。")
+        return
+    if result["ready"]:
+        await garden_status_cmd.finish("花盆里的种子已经长好了，用「/收获」看看是死是活。")
+        return
+    await garden_status_cmd.finish(f"花盆里正在培育中，还要等约{_fmt_duration(result['remaining_seconds'])}。")
+
+
+harvest_cmd = on_command("收获")
+
+
+@harvest_cmd.handle()
+async def handle_harvest(event: MessageEvent):
+    try:
+        result = garden.harvest(event.get_user_id())
+    except garden.GardenError as e:
+        await harvest_cmd.finish(str(e))
+        return
+    if result["success"]:
+        await harvest_cmd.finish(f"🪴 花盆里长出了一株「{result['plant_name']}」！已经摆进了你的花园。")
+        return
+    await harvest_cmd.finish(result["line"])
+
+
+my_garden_cmd = on_command("我的花园")
+
+
+@my_garden_cmd.handle()
+async def handle_my_garden(event: MessageEvent):
+    pots = garden.list_pots(event.get_user_id())
+    if not pots:
+        await my_garden_cmd.finish("花园里还没有任何盆栽，用「/捡种子」出门找颗种子开始种吧。")
+        return
+    lines = ["🪴 我的花园"]
+    for pot in pots:
+        lines.append(f"「{pot['plant_name']}」——{pot['owner']}种的")
+    await my_garden_cmd.finish("\n".join(lines))

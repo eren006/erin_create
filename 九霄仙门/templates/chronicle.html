@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}大事记 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:6px">宗门志</h3>
+  <p class="muted">现为宗门第 {{ sect_year }} 年</p>
+</div>
+{% if not entries %}
+<div class="card muted" style="text-align:center">尚无记载</div>
+{% endif %}
+{% for e in entries %}
+<div class="card">
+  <span class="badge badge-gold">宗门第 {{ e.year }} 年</span>
+  <p style="margin-top:8px">{{ e.text }}</p>
+</div>
+{% endfor %}
+{% endblock %}

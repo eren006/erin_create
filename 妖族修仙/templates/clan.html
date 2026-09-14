@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}宗门 - 妖族修仙{% endblock %}
+{% block content %}
+{% if not my_clan_id %}
+<div class="card">
+  <h3 style="margin-bottom:10px">创立宗门</h3>
+  <form method="post" action="{{ url_for('clan_create') }}">
+    <label>宗门名</label>
+    <input name="name" required maxlength="20">
+    <label>简介(选填)</label>
+    <textarea name="description" rows="2"></textarea>
+    <button class="btn btn-primary" style="margin-top:12px">创立</button>
+  </form>
+</div>
+{% endif %}
+
+<div class="card">
+  <h3 style="margin-bottom:10px">宗门列表</h3>
+  {% if not clans %}<p class="muted">还没有任何宗门,来做第一个吧</p>{% endif %}
+  <table>
+    {% for c in clans %}
+    <tr>
+      <td><a href="{{ url_for('clan_detail', clan_id=c.id) }}">{{ c.name }}</a></td>
+      <td class="muted">{{ c.member_count }} 人</td>
+      <td>{% if my_clan_id == c.id %}<span class="badge badge-jade">已加入</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

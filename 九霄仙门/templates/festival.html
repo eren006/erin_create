@@ -1,0 +1,356 @@
+{% extends "base.html" %}
+{% block title %}宗门节日 - 九霄仙门{% endblock %}
+{% block content %}
+
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">庆</span>宗门节日</h3></div>
+  <p class="muted" style="margin-top:6px">宗门定期举办的轻量庆典,不比战力,各有各的看点。</p>
+</div>
+
+{% if xinsui_pending_blessings %}
+<div class="card">
+  <h3 style="margin-bottom:8px">待拆的福签</h3>
+  <p class="muted" style="margin-bottom:8px">收着不拆也没关系,随时可以回来拆开。</p>
+  {% for b in xinsui_pending_blessings %}
+  <div style="margin-top:6px;padding:8px;border:1px solid var(--bd);border-radius:8px;display:flex;justify-content:space-between;align-items:center">
+    <span>{{ b.from_name }} 寄来的{{ b.gift_name }}</span>
+    <form method="post" action="{{ url_for('xinsui_blessing_open', blessing_id=b.id) }}">
+      <button class="btn btn-primary" style="padding:4px 12px">拆开</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if not fest %}
+<div class="card"><p class="muted">当前并无节日活动,静候宗门号令。</p></div>
+
+{% elif fest.status == 'active' %}
+<div class="card">
+  <div class="panel-head"><h3>{{ FESTIVAL_TYPES[fest.type_key].label }}</h3>
+    <span class="badge badge-gold">进行中 · 剩余 {{ ((fest.ends_ts - now_ts) // 3600) }} 小时</span></div>
+  <p class="muted" style="margin-top:8px">{{ FESTIVAL_TYPES[fest.type_key].desc }}</p>
+  {% if fest.type_key == 'pet_show' %}
+  <p class="muted" style="margin-top:10px">评选名录将于活动落幕时自动公布,涵盖以下六个类别:</p>
+  <p class="muted" style="margin-top:4px">{% for cat in PET_SHOW_CATEGORIES %}{{ cat.label }}{{ '、' if not loop.last }}{% endfor %}</p>
+  {% endif %}
+
+  {% if fest.type_key == 'kaishan' %}
+  <div style="margin-top:12px">
+    <p class="muted">典礼进度 · 已有 {{ kaishan_count }} 人领下职责</p>
+    <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+      {% for stage in KAISHAN_STAGES %}
+      <span class="badge {{ 'badge-gold' if loop.index0 <= kaishan_stage_idx else '' }}">
+        {{ stage.label }}(满{{ stage.threshold }}人){% if loop.index0 <= kaishan_stage_idx %} ✓{% endif %}
+      </span>
+      {% endfor %}
+    </div>
+  </div>
+  <div style="margin-top:14px">
+    {% if kaishan_mine %}
+    <p class="muted">你已领下「{{ KAISHAN_DUTIES[kaishan_mine.duty_key].label }}」这份职责:</p>
+    <p style="margin-top:6px">{{ kaishan_mine.line_text }}</p>
+    {% if kaishan_mine.bonus_material_key %}
+    <p class="muted" style="margin-top:6px">辛苦有回报,额外得了{{ MATERIAL_LABELS[kaishan_mine.bonus_material_key] }}×{{ kaishan_mine.bonus_material_qty }}</p>
+    {% endif %}
+    {% else %}
+    <p class="muted" style="margin-bottom:8px">选一份职责,为本届开山大典出一份力(每人限选一次,按你当前的兵刃专精生成专属史书文字):</p>
+    <form method="post" action="{{ url_for('kaishan_join') }}">
+      {% for key, duty in KAISHAN_DUTIES.items() %}
+      <label style="display:flex;align-items:center;gap:8px;padding:4px 2px;font-weight:normal">
+        <input type="radio" name="duty_key" value="{{ key }}" style="width:auto" required>
+        <strong>{{ duty.label }}</strong><span class="muted">{{ duty.desc }}</span>
+      </label>
+      {% endfor %}
+      <button class="btn btn-primary" style="margin-top:10px">领下职责</button>
+    </form>
+    {% endif %}
+  </div>
+  <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--bd)">
+    <p class="muted" style="margin-bottom:8px">典礼摸奖·每小时可抽一次,不限是否已领职责,手气好能得灵材(下品/中品不限量,上品本届个人封顶{{ KAISHAN_HIGH_MATERIAL_CAP }},已拿{{ kaishan_high_got }}/{{ KAISHAN_HIGH_MATERIAL_CAP }}):</p>
+    <form method="post" action="{{ url_for('kaishan_draw') }}">
+      <button class="btn btn-primary" {{ 'disabled' if kaishan_draw_wait_min }}>
+        {{ '还需等' ~ kaishan_draw_wait_min ~ '分钟' if kaishan_draw_wait_min else '摸奖一次' }}
+      </button>
+    </form>
+  </div>
+  {% endif %}
+
+  {% if fest.type_key == 'zhongqiu' %}
+  <style>
+  .moon-hero{position:relative;min-height:210px;margin:8px -20px 18px;padding:30px 28px;overflow:hidden;
+    background:radial-gradient(circle at 82% 25%,rgba(255,238,172,.22) 0 8%,transparent 9%),
+      radial-gradient(circle at 82% 25%,#f5d990 0 10%,#b99353 11%,transparent 12%),
+      linear-gradient(145deg,#080d2b 0%,#151143 48%,#31234c 100%);border-block:1px solid rgba(244,211,137,.3)}
+  .moon-hero:before{content:"";position:absolute;inset:0;opacity:.45;background-image:radial-gradient(circle,#fff 0 1px,transparent 1.5px);background-size:47px 41px}
+  .moon-hero:after{content:"桂";position:absolute;right:3%;bottom:-58px;color:rgba(255,226,157,.06);font-size:190px;line-height:1}
+  .moon-kicker{color:#d7c3ff;font-size:11px;letter-spacing:.38em}.moon-title{font-size:31px;color:#fff1bd;letter-spacing:.2em;margin:7px 0;text-shadow:0 0 24px rgba(255,219,133,.5)}
+  .moon-countdown{display:inline-flex;gap:8px;align-items:center;margin-top:16px;padding:7px 12px;border:1px solid rgba(255,223,150,.35);background:rgba(5,8,30,.48);border-radius:20px;color:#ffe4a0}
+  .moon-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(240px,.75fr);gap:13px;margin-top:14px}.moon-pane{padding:15px;background:rgba(8,10,31,.58);border:1px solid rgba(224,190,121,.2);border-radius:5px 15px 5px 15px}
+  .moon-stat-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}.moon-stat{text-align:center;padding:9px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.07);border-radius:8px}.moon-stat strong{display:block;color:#ffe3a0;font-size:20px}.moon-stat small{color:#aeb1c5}
+  .cake-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:11px}.cake-tile{position:relative;padding:11px 5px;text-align:center;background:rgba(5,8,25,.55);border:1px solid rgba(255,255,255,.08);border-radius:50% 50% 9px 9px}.cake-tile.done{border-color:#d6ac59;background:radial-gradient(circle at 50% 24%,rgba(255,225,151,.2),rgba(81,53,25,.3));box-shadow:0 0 16px rgba(221,176,86,.12)}.cake-icon{display:block;font-size:22px;color:#f3cf80}.cake-tile small{display:block;font-size:10px;line-height:1.3;margin-top:4px}.cake-count{position:absolute;right:3px;top:1px;font-size:10px;color:#ffe4a2}
+  .bake-steps{display:flex;gap:5px;margin:10px 0}.bake-dot{height:5px;flex:1;border-radius:4px;background:rgba(255,255,255,.12)}.bake-dot.done{background:#e7bd67;box-shadow:0 0 8px rgba(231,189,103,.5)}.step-choices{display:grid;grid-template-columns:1fr 1fr;gap:8px}.step-choices .btn{width:100%;min-height:48px}
+  .inventory-row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06)}.inventory-actions{display:flex;gap:5px}.inventory-actions form{display:flex;gap:5px}.inventory-actions select{width:126px;padding:5px}.inventory-actions .btn{padding:5px 9px}
+  .rank-medal{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;margin-right:6px;background:#55401f;color:#ffe19a}.moon-section-title{margin-top:20px!important;color:#ffe8ae!important}
+  @media(max-width:700px){.moon-grid{grid-template-columns:1fr}.cake-grid{grid-template-columns:repeat(2,1fr)}.moon-title{font-size:24px}.moon-hero{padding:24px 18px}.step-choices{grid-template-columns:1fr}.inventory-row{grid-template-columns:1fr}.inventory-actions{flex-wrap:wrap}}
+  </style>
+  <section class="moon-hero">
+    <div style="position:relative;z-index:1">
+      <div class="moon-kicker">JIUXIAO · MID-AUTUMN</div>
+      <div class="moon-title">月满九霄</div>
+      <p style="color:#d9d4e5">踏月赴约，亦入月宫饼坊试炼十味。配方不传于纸，只留给有心人摸索。</p>
+      <div class="moon-countdown">☾ <span id="moon-countdown" data-ends="{{ fest.ends_ts }}">正在计算余下时间…</span></div>
+    </div>
+  </section>
+
+  <h3 class="moon-section-title">月宫饼坊·十味试炼</h3>
+  <p class="muted">每枚月饼共五道工序，每步四选一。一步选错便前功尽弃；每小时可开工 3 次，当前还剩 {{ zhongqiu_bake.attempts_left }} 次。
+  {% if zhongqiu_bake.attempts_left == 0 %}<span id="bake-reset" data-reset="{{ zhongqiu_bake.next_attempt_ts }}"></span>{% endif %}</p>
+  <div class="moon-stat-row">
+    <div class="moon-stat"><strong>{{ zhongqiu_bake.completed|length }}/10</strong><small>我的图鉴</small></div>
+    <div class="moon-stat"><strong>{{ zhongqiu_bake.players }}</strong><small>参赛弟子</small></div>
+    <div class="moon-stat"><strong>{{ zhongqiu_bake.baked }}</strong><small>全宗出炉</small></div>
+  </div>
+
+  <div class="cake-grid">
+    {% for key,cake in ZHONGQIU_MOONCAKES.items() %}
+    <div class="cake-tile {{ 'done' if key in zhongqiu_bake.completed else '' }}">
+      {% if key in zhongqiu_bake.completed %}<span class="cake-count">×{{ zhongqiu_bake.completed[key] }}</span>{% endif %}
+      <span class="cake-icon">{{ cake.icon if key in zhongqiu_bake.completed else '？' }}</span>
+      <small>{{ cake.name if key in zhongqiu_bake.completed else '未解锁月饼' }}</small>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="moon-grid">
+    <div class="moon-pane">
+      {% if zhongqiu_bake.session %}
+      {% set active_cake = ZHONGQIU_MOONCAKES[zhongqiu_bake.session.cake_key] %}
+      <h3>炉中·{{ active_cake.name }}</h3>
+      <p class="muted">第 {{ zhongqiu_bake.session.step_index + 1 }} / 5 道工序</p>
+      <div class="bake-steps">{% for i in range(5) %}<span class="bake-dot {{ 'done' if i < zhongqiu_bake.session.step_index else '' }}"></span>{% endfor %}</div>
+      <form method="post" action="{{ url_for('zhongqiu_bake_step') }}" class="step-choices">
+        {% for option_idx,option in zhongqiu_bake.step_options %}
+        <button class="btn {{ 'btn-primary' if loop.index == 1 else '' }}" name="choice" value="{{ option_idx }}">{{ option[0] }}</button>
+        {% endfor %}
+      </form>
+      {% else %}
+      <h3>选一味开工</h3>
+      <p class="muted">开工即消耗一次机会。已解锁的月饼仍可重复制作，成品可食用或赠送。做对过的工序会被记住，下次直接跳过，只需接着猜后面的工序。</p>
+      <form method="post" action="{{ url_for('zhongqiu_bake_start') }}">
+        <select name="cake_key" required style="margin-top:10px">
+          {% for key,cake in ZHONGQIU_MOONCAKES.items() %}
+          {% set known = zhongqiu_bake.known_steps_by_cake.get(key, 0) %}
+          <option value="{{ key }}">{{ cake.name }}{{ ' · 已解锁' if key in zhongqiu_bake.completed else '' }}{{ ' · 已知%d/5道工序' % known if known and known < 5 else '' }}{{ ' · 配方已全记熟' if known >= 5 else '' }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn btn-primary" style="margin-top:9px" {{ 'disabled' if zhongqiu_bake.attempts_left == 0 }}>点火开工</button>
+      </form>
+      {% endif %}
+    </div>
+    <div class="moon-pane">
+      <h3>十味先登榜</h3>
+      <p class="muted">首先集齐全部月饼的三人当场领取灵石；三甲出齐后，活动进入 {{ ZHONGQIU_BAKE_FINAL_COUNTDOWN_HOURS }} 小时收尾期。</p>
+      {% for rank in range(1,4) %}
+      {% set row = zhongqiu_bake.rankings[rank-1] if zhongqiu_bake.rankings|length >= rank else none %}
+      <p style="margin-top:10px"><span class="rank-medal">{{ rank }}</span>{% if row %}{{ row.name }} · {{ row.reward_lingshi }}灵石{% else %}<span class="muted">虚位以待 · {{ ZHONGQIU_BAKE_RANK_REWARDS[rank] }}灵石</span>{% endif %}</p>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if zhongqiu_bake.inventory %}
+  <div class="moon-pane" style="margin-top:13px"><h3>我的月饼匣</h3>
+    {% for key,qty in zhongqiu_bake.inventory.items() %}{% set cake=ZHONGQIU_MOONCAKES[key] %}
+    <div class="inventory-row"><span class="cake-icon" style="font-size:15px">{{ cake.icon }} <span style="font-size:13px;color:var(--text)">{{ cake.name }} ×{{ qty }}</span></span>
+      <div class="inventory-actions">
+        <form method="post" action="{{ url_for('zhongqiu_mooncake_eat') }}"><input type="hidden" name="cake_key" value="{{ key }}"><button class="btn">食用</button></form>
+        <form method="post" action="{{ url_for('zhongqiu_mooncake_gift') }}"><input type="hidden" name="cake_key" value="{{ key }}"><select name="to_char_id" required><option value="" disabled selected>赠予同门…</option>{% for m in zhongqiu_bake.members %}<option value="{{ m.id }}">{{ m.name }}</option>{% endfor %}</select><button class="btn">赠送</button></form>
+      </div></div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <h3 class="moon-section-title">月下之约</h3>
+  {% if zhongqiu_pending_in %}
+  <div style="margin-top:12px">
+    <p class="muted" style="margin-bottom:6px">收到的赏月之邀:</p>
+    {% for inv in zhongqiu_pending_in %}
+    <div style="margin-top:6px;padding:8px;border:1px solid var(--bd);border-radius:8px">
+      <p>{{ inv.from_name }} 邀你于{{ ZHONGQIU_LOCATIONS[inv.location_key].label }}共度中秋,一同{{ ZHONGQIU_ACTIVITIES[inv.activity_key].label }}</p>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <form method="post" action="{{ url_for('zhongqiu_respond', moment_id=inv.id) }}">
+          <input type="hidden" name="action" value="accept">
+          <button class="btn btn-primary" style="padding:4px 12px" {{ 'disabled' if zhongqiu_mine }}>赴约</button>
+        </form>
+        <form method="post" action="{{ url_for('zhongqiu_respond', moment_id=inv.id) }}">
+          <input type="hidden" name="action" value="decline">
+          <button class="btn" style="padding:4px 12px">婉拒</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <script>
+  (()=>{const pad=n=>String(n).padStart(2,'0'),tick=()=>{const el=document.getElementById('moon-countdown');if(!el)return;let s=Math.max(0,Number(el.dataset.ends)-Math.floor(Date.now()/1000));const d=Math.floor(s/86400);s%=86400;el.textContent=`距落幕还有 ${d}天 ${pad(Math.floor(s/3600))}:${pad(Math.floor(s%3600/60))}:${pad(s%60)}`;const r=document.getElementById('bake-reset');if(r){const rs=Math.max(0,Number(r.dataset.reset)-Math.floor(Date.now()/1000));r.textContent=` · ${Math.floor(rs/60)}分${pad(rs%60)}秒后恢复`;}};tick();setInterval(tick,1000)})();
+  </script>
+
+  <div style="margin-top:14px">
+    {% if zhongqiu_mine %}
+      {% if zhongqiu_mine.status == 'accepted' %}
+      <p class="muted">这届中秋,你留下的记忆:</p>
+      <p style="margin-top:6px">{{ zhongqiu_mine.memory_text }}</p>
+      {% else %}
+      <p class="muted">你已发出赏月之邀,静候对方回应。</p>
+      {% endif %}
+    {% else %}
+    <p class="muted" style="margin-bottom:8px">选一处地点、一样互动,邀人共度中秋,或独自前往赏月:</p>
+    <form method="post" action="{{ url_for('zhongqiu_invite') }}" style="margin-bottom:14px">
+      <label>邀请对象</label>
+      <select name="to_char_id" required>
+        <option value="" selected disabled>选择赏月对象...</option>
+        {% for m in zhongqiu_members %}
+        <option value="{{ m.id }}">{{ m.name }}({{ title_for(m.join_seq, m.gender) }})</option>
+        {% endfor %}
+      </select>
+      <label style="margin-top:8px">地点</label>
+      <select name="location_key" required>
+        {% for key, loc in ZHONGQIU_LOCATIONS.items() %}
+        <option value="{{ key }}">{{ loc.label }}</option>
+        {% endfor %}
+      </select>
+      <label style="margin-top:8px">互动</label>
+      <select name="activity_key" required>
+        {% for key, act in ZHONGQIU_ACTIVITIES.items() %}
+        <option value="{{ key }}">{{ act.label }}——{{ act.desc }}</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-primary" style="margin-top:10px">发出邀约</button>
+    </form>
+    <form method="post" action="{{ url_for('zhongqiu_solo') }}">
+      <label>独自赏月 · 地点</label>
+      <select name="location_key" required>
+        {% for key, loc in ZHONGQIU_LOCATIONS.items() %}
+        <option value="{{ key }}">{{ loc.label }}</option>
+        {% endfor %}
+      </select>
+      <label style="margin-top:8px">互动</label>
+      <select name="activity_key" required>
+        {% for key, act in ZHONGQIU_ACTIVITIES.items() %}
+        <option value="{{ key }}">{{ act.label }}——{{ act.desc }}</option>
+        {% endfor %}
+      </select>
+      <button class="btn" style="margin-top:10px">独自前往</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if fest.type_key == 'xinsui' %}
+  <div style="margin-top:12px">
+    <p class="muted">除岁进度 · 已有 {{ xinsui_activity_count }} 人参与</p>
+    <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+      {% for stage in XINSUI_STAGES %}
+      <span class="badge {{ 'badge-gold' if loop.index0 <= xinsui_stage_idx else '' }}">
+        {{ stage.label }}(满{{ stage.threshold }}人){% if loop.index0 <= xinsui_stage_idx %} ✓{% endif %}
+      </span>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div style="margin-top:14px">
+    <p class="muted" style="margin-bottom:6px">除岁活动:</p>
+    {% if xinsui_activity_mine %}
+    <p>已完成「{{ XINSUI_ACTIVITIES[xinsui_activity_mine.activity_key].label }}」:{{ xinsui_activity_mine.line_text }}</p>
+    {% else %}
+    <form method="post" action="{{ url_for('xinsui_activity') }}">
+      {% for key, act in XINSUI_ACTIVITIES.items() %}
+      <label style="display:flex;align-items:center;gap:8px;padding:4px 2px;font-weight:normal">
+        <input type="radio" name="activity_key" value="{{ key }}" style="width:auto" required>
+        <strong>{{ act.label }}</strong><span class="muted">{{ act.desc }}</span>
+      </label>
+      {% endfor %}
+      <button class="btn btn-primary" style="margin-top:10px">参与除岁</button>
+    </form>
+    {% endif %}
+  </div>
+
+  <div style="margin-top:16px">
+    <p class="muted" style="margin-bottom:6px">许愿:</p>
+    {% if xinsui_wish_mine %}
+    <p>已许下「{{ XINSUI_WISHES[xinsui_wish_mine.wish_key].label }}」之愿,静候新岁降福。</p>
+    {% else %}
+    <form method="post" action="{{ url_for('xinsui_wish') }}">
+      {% for key, wish in XINSUI_WISHES.items() %}
+      <label style="display:flex;align-items:center;gap:8px;padding:4px 2px;font-weight:normal">
+        <input type="radio" name="wish_key" value="{{ key }}" style="width:auto" required>
+        <strong>{{ wish.label }}</strong><span class="muted">{{ wish.desc }}</span>
+      </label>
+      {% endfor %}
+      <button class="btn btn-primary" style="margin-top:10px">许愿</button>
+    </form>
+    {% endif %}
+  </div>
+
+  <div style="margin-top:16px">
+    <p class="muted" style="margin-bottom:6px">寄一份福签给同门:</p>
+    <form method="post" action="{{ url_for('xinsui_blessing_send') }}">
+      <label>赠送对象</label>
+      <select name="to_char_id" required>
+        <option value="" selected disabled>选择赠送对象...</option>
+        {% for m in xinsui_members %}
+        <option value="{{ m.id }}">{{ m.name }}({{ title_for(m.join_seq, m.gender) }})</option>
+        {% endfor %}
+      </select>
+      <label style="margin-top:8px">寄语(留空则随机一句祝福)</label>
+      <textarea name="message" rows="2" style="width:100%" maxlength="200"></textarea>
+      <button class="btn btn-primary" style="margin-top:10px">寄出</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+
+{% else %}
+<div class="card">
+  <div class="panel-head"><h3>{{ FESTIVAL_TYPES[fest.type_key].label }}</h3><span class="badge badge-purple">已落幕</span></div>
+  {% if fest.type_key == 'kaishan' and results and results.lines %}
+  <p class="muted" style="margin-top:10px">宗门{{ results.sect_year }}年,开山大典盛况:</p>
+  <div style="margin-top:8px">
+    {% for line in results.lines %}
+    <p style="margin-top:6px">{{ line }}</p>
+    {% endfor %}
+  </div>
+  {% elif fest.type_key == 'zhongqiu' and results %}
+  <p class="muted" style="margin-top:10px">月饼大赛共有 {{ results.bake_players or 0 }} 人出炉 {{ results.bake_total or 0 }} 枚月饼。</p>
+  {% if results.bake_rankings %}<div style="margin-top:8px">{% for row in results.bake_rankings %}<p><strong>第{{ row.rank }}名</strong>：{{ row.name }} · {{ row.reward_lingshi }}灵石</p>{% endfor %}</div>{% endif %}
+  {% if results.moments %}<p class="muted" style="margin-top:10px">这届中秋,留下的记忆:</p>
+  <div style="margin-top:8px">
+    {% for line in results.moments %}
+    <p style="margin-top:6px">{{ line }}</p>
+    {% endfor %}
+  </div>{% endif %}
+  {% elif fest.type_key == 'xinsui' and results %}
+  <p class="muted" style="margin-top:10px">这届新岁,除岁盛况:</p>
+  <div style="margin-top:8px">
+    {% for line in results.activity_lines %}
+    <p style="margin-top:6px">{{ line }}</p>
+    {% endfor %}
+  </div>
+  <p class="muted" style="margin-top:10px">全宗共有{{ results.wish_count }}人许下新岁之愿,福缘已随信寄出。</p>
+  {% elif results %}
+  <div style="margin-top:10px">
+    {% for cat in PET_SHOW_CATEGORIES %}
+    {% set r = results.get(cat.key) %}
+    {% if r %}
+    <p style="margin-top:6px">{% if r.pet_key %}<img src="{{ pet_image_url(r.pet_key) }}" alt="" style="width:22px;height:22px;border-radius:4px;object-fit:cover;vertical-align:middle;margin-right:4px">{% endif %}<strong>{{ cat.label }}</strong>:{{ r.name }}({{ r.title }})的
+      {{ r.pet_name or r.pet_label }}{% if r.pet_name %}({{ r.pet_label }}){% endif %}</p>
+    {% endif %}
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted" style="margin-top:10px">本届圆满落幕,未评出具名名录。</p>
+  {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}

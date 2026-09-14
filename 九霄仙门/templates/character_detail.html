@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}{{ target.name }} - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <h3>{{ target.name }} <span class="badge badge-gold">{{ title_for(target.join_seq, target.gender, target.is_npc) }}</span>
+    <span class="badge badge-purple">{{ rank.label }}</span>
+    {% if target.ascended %}<span class="badge badge-gold">已飞升</span>{% endif %}
+    {% if target.deceased %}<span class="badge badge-red">已故</span>{% endif %}</h3>
+  <p class="muted" style="margin-top:4px">{% if target.is_npc %}宗门NPC长老 · 不计入弟子辈分{% else %}第 {{ target.join_seq }} 位入门弟子{% endif %}</p>
+  {% if target.bio %}<p style="margin-top:12px">{{ target.bio }}</p>{% endif %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:6px">{{ realm.name }}</h3>
+  <p class="muted">贡献(累计) {{ target.total_contribution }} · 宗门声望 {{ target.reputation }} · 体魄 {{ target.physique }}</p>
+  {% if target.dan_name or target.infant_name %}<p style="margin-top:6px">道果：{% if target.dan_name %}<span class="badge badge-gold">{{ target.dan_name }}</span>{% endif %} {% if target.infant_name %}<span class="badge badge-purple">{{ target.infant_name }}</span>{% endif %}</p>{% endif %}
+  {% if target_dao %}<p style="margin-top:6px">本命道途：<span class="badge badge-gold">{{ target_dao.label }}</span> <span class="muted">{{ target_dao.bonus_desc }}</span></p>{% endif %}
+  {% if target.artifact_core_name %}<p class="muted" style="margin-top:6px">本命法宝：{{ target.artifact_core_name }} · 器灵性情{{ target.artifact_core_spirit }}</p>{% endif %}
+  {% if target_pets %}
+  <div style="margin-top:6px">
+    <label style="margin-top:0">灵宠({{ target_pets|length }})</label>
+    {% for p in target_pets %}
+    <p class="muted" style="margin-top:4px;display:flex;align-items:center;gap:6px">
+      <img src="{{ pet_image_url(p.pet_key) }}" alt="" style="width:22px;height:22px;border-radius:4px;object-fit:cover">
+      {{ p.appearance }}{{ p.species_label }}{% if p.pet_name %}·{{ p.pet_name }}{% endif %}
+      <span class="badge badge-gold">{{ p.quality_label }}</span>，性情{{ p.personality }}，{{ p.habit }}
+      {% if target.equipped_pet_id == p.id %}<span class="badge badge-purple">出战中</span>{% endif %}
+      {% if p.location == 'sanctuary' %}<span class="badge">灵兽峰</span>{% endif %}
+    </p>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <label style="margin-top:10px">资质</label>
+  <p>
+    <span class="badge badge-purple">{{ spirit_root_label(target.spirit_root) }}·{{ spirit_root_elements_label(target.spirit_root, target.spirit_root_elements) }}</span>
+    {% if talent_info %}
+    <span class="badge badge-gold">{{ talent_info.label }}({{ '大成' if talent_info.is_major else '小成' }} {{ talent_info.stat }}+{{ talent_info.pct }}%)</span>
+    {% endif %}
+    {% if bone_label %}<span class="badge badge-gold" title="攻击+{{ bone_bonus.attack }} 防御+{{ bone_bonus.defense }}">{{ bone_label }}</span>{% endif %}
+    {% if pastlife %}<span class="badge badge-gold" title="攻击+{{ pastlife_atk_bonus }} 防御+{{ pastlife_def_bonus }}">{{ pastlife_buff_label }}</span>{% endif %}
+  </p>
+  {% if pastlife %}
+  <label style="margin-top:10px">前尘</label>
+  <p><strong>{{ pastlife.name }}</strong> <span class="muted">{{ pastlife.epithet }}</span></p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">门内境况</h3>
+  {% if target.peak_name %}<p>所在峰: {{ target.peak_name }}</p>{% endif %}
+  {% if as_disciple %}<p class="muted" style="margin-top:6px">师父: {{ as_disciple.name }}{% if as_disciple.zi %}(表字 {{ as_disciple.zi }}){% endif %}</p>{% endif %}
+  {% if as_master %}<p class="muted" style="margin-top:6px">弟子: {% for d in as_master %}{{ d.name }}{% if not loop.last %}、{% endif %}{% endfor %}</p>{% endif %}
+  {% if ancestors %}
+  <p class="muted" style="margin-top:10px">师承:
+    {% for a in ancestors %}{{ ancestor_label(loop.index0) }} {{ a.name }}{% if not loop.last %} → {% endif %}{% endfor %}
+  </p>
+  {% endif %}
+  {% for gen in descendants %}
+  <p class="muted" style="margin-top:6px">{{ descendant_label(loop.index0) }}:
+    {% for d in gen %}{{ d.name }}{% if not loop.last %}、{% endif %}{% endfor %}
+  </p>
+  {% endfor %}
+  {% if not target.ascended and not target.deceased and target.id != me_id %}
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+    <form method="post" action="{{ url_for('interact', char_id=target.id) }}">
+      <button class="btn">请教</button>
+    </form>
+    <a class="btn" href="{{ url_for('mail_compose', char_id=target.id) }}">写信</a>
+    {% for key, bt in bond_types.items() %}
+    {% if key not in bond_status %}
+    <form method="post" action="{{ url_for('bond_invite', char_id=target.id, bond_type=key) }}">
+      <button class="btn btn-primary">{{ bt.label }}</button>
+    </form>
+    {% elif bond_status[key] == 'pending' %}
+    <span class="badge badge-purple">{{ bt.label }}邀约待回应</span>
+    {% elif bond_status[key] == 'active' %}
+    <span class="badge badge-gold">已是{{ bt.label }}</span>
+    {% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% if can_write_immortal %}
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+    <a class="btn btn-primary" href="{{ url_for('mail_compose', char_id=target.id) }}">遥寄尺素(可附带财物)</a>
+  </div>
+  <p class="muted" style="margin-top:6px;font-size:12px">对方已飞升离宗,唯有至亲之人可去信——信寄到仙籍,对方若愿意,也能捎带包裹里的东西给你。</p>
+  {% endif %}
+</div>
+
+{% if cave_info.scenery or cave_info.name or cave_info.trait_labels or cave_info.decoration_labels or target.cave_tier %}
+<div class="card">
+  <h3 style="margin-bottom:8px">洞府风采</h3>
+  <p><span class="badge badge-purple">{{ cave_info.tier_label }}</span>
+    {% if cave_info.name %}<strong style="margin-left:6px">{{ cave_info.name }}</strong>{% endif %}</p>
+  {% if cave_info.scenery %}<p class="muted" style="margin-top:6px">{{ cave_info.scenery }}</p>{% endif %}
+  {% if cave_info.trait_labels %}
+  <p style="margin-top:6px">异象:
+    {% for t in cave_info.trait_labels %}<span class="badge badge-gold">{{ t }}</span>{% endfor %}
+  </p>
+  {% endif %}
+  {% if cave_info.decoration_labels %}
+  <p class="muted" style="margin-top:6px">洞中陈设: {% for d in cave_info.decoration_labels %}{{ d }}{% if not loop.last %}、{% endif %}{% endfor %}</p>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if children %}
+<div class="card">
+  <h3 style="margin-bottom:8px">膝下子嗣</h3>
+  {% for o in children %}
+  <p style="margin-top:6px">{{ o.name }}({{ '男' if o.gender=='m' else '女' }})
+    {% if not o.alive %}<span class="badge">已故</span>
+    {% else %}<span class="badge badge-purple">{{ o.stage }}·{{ o.realm_name }}</span>{% endif %}
+    <span class="muted">性子{{ o.personality_label }},素爱{{ o.hobby_label }} · {{ o.archetype }}{% if o.life_event %} · {{ o.life_event }}{% endif %}{% if o.spouse_name %} · 已与{{ o.spouse_name }}结为连理{% endif %}</span>
+  </p>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h3 style="margin-bottom:8px">成就</h3>
+  {% if not achievements %}<p class="muted">尚无成就</p>{% endif %}
+  {% for a in achievements %}
+  <p class="muted" style="margin-top:4px">{{ a.name }} —{{ a.description }}</p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">江湖轶事</h3>
+  {% if not story_tags %}<p class="muted">尚无江湖传闻</p>{% endif %}
+  {% for t in story_tags %}
+  <span class="badge badge-gold" style="margin-top:4px;display:inline-block;margin-right:6px">{{ t.tag_label }}</span>
+  {% endfor %}
+</div>
+{% endblock %}

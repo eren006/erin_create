@@ -1,0 +1,47 @@
+{% extends "web/base.html" %}
+{% block title %}八卦审核{% endblock %}
+{% block body %}
+<div class="card">
+  <h2>《女巫周刊》审核</h2>
+  <p class="muted">
+    <a href="{{ url_for('admin') }}">账号管理</a>
+    <a href="{{ url_for('admin_submissions') }}">校报稿件审核</a>
+    <a href="{{ url_for('admin_quidditch_matchups') }}">魁地奇战力分析</a>
+    <a href="{{ url_for('admin_logout') }}">退出管理</a>
+  </p>
+  <p class="muted">这里能看到投稿人是谁，方便追责，但通过之后播报进群和玩家自己那边都不会暴露作者。</p>
+</div>
+
+<div class="card">
+  <h2>待审核（{{ pending|length }}）</h2>
+  {% if not pending %}<p class="muted">没有待审的八卦。</p>{% endif %}
+  {% for s in pending %}
+  <div style="padding:10px 0;border-bottom:1px solid var(--line)">
+    <span class="muted">投稿人：{{ s.author }}（仅审核可见）　提到：{{ s.mentioned_names }}　第{{ s.day }}天</span>
+    <p style="white-space:pre-wrap">{{ s.body }}</p>
+    <form method="post" class="row">
+      <input type="hidden" name="id" value="{{ s.id }}">
+      <input name="note" placeholder="给作者的话（选填）" style="flex:1;min-width:160px">
+      <button name="action" value="approve">通过并发稿费</button>
+      <button name="action" value="reject" class="ghost">退稿</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+
+{% if recent %}
+<div class="card">
+  <h2>最近审过的</h2>
+  <div class="scroll"><table>
+    <tr><th>投稿人</th><th>提到</th><th>结果</th><th>稿费</th></tr>
+    {% for s in recent %}
+    <tr>
+      <td>{{ s.author }}</td><td>{{ s.mentioned_names }}</td>
+      <td>{{ '已通过' if s.status == 'approved' else '已退稿' }}</td>
+      <td>{{ s.reward if s.status == 'approved' else '—' }}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}角色列表 - 妖族修仙{% endblock %}
+{% block content %}
+<div class="card">
+  <table>
+    <tr><th>道号</th><th>血脉</th><th>境界</th><th>妖力</th><th>人性</th><th>所属账号</th><th></th></tr>
+    {% for c in chars %}
+    <tr>
+      <td>{{ c.name }}</td>
+      <td><span class="badge badge-jade">{{ c.species }}</span></td>
+      <td>{{ stage_display_name(c.stage_index) }}</td>
+      <td>{{ c.yao_power }}</td>
+      <td>{{ c.humanity }}</td>
+      <td>{{ c.username }}</td>
+      <td>
+        <a class="btn" style="padding:4px 10px" href="{{ url_for('admin_character_detail', char_id=c.id) }}">编辑</a>
+        <a class="btn" style="padding:4px 10px" href="{{ url_for('admin_impersonate', char_id=c.id) }}">化身</a>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

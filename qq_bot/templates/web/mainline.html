@@ -1,6 +1,62 @@
 {% extends "web/base.html" %}
 {% block title %}成长册{% endblock %}
 {% block body %}
+{% if story_task %}
+<div class="card">
+  {% if story_task.ended %}
+    <h2>🔔 {{ story_title }} · 已完结</h2>
+    {% if story_task.ending %}
+      <p><span class="tag">{{ ending_names[story_task.world_ending] }}</span>
+        <span class="tag">{{ tag_names[story_task.ending.personal_tag] }}</span></p>
+      <p>{{ story_task.ending.ending_text }}</p>
+    {% else %}
+      <p class="muted">故事已经结束，你没有留下个人参与记录。</p>
+    {% endif %}
+  {% else %}
+    {% set phase = story_task.phase %}
+    {% set total_votes = story_task.stats.values()|sum %}
+    <h2>🔔 {{ story_title }}</h2>
+    <div class="milestone-head">
+      <span class="year-label">一年级全服主线</span>
+      <b class="milestone-title">{{ phase.number }}/20 · {{ phase.title }}</b>
+      <span class="tag">{{ total_votes }}/{{ story_task.threshold }} 人参与</span>
+    </div>
+    <div class="bar"><i style="width:{{ (phase.number / 20 * 100)|round|int }}%"></i></div>
+
+    {% if story_task.choice %}
+      {% for option in phase.options %}
+        {% if option.key == story_task.choice %}
+          <p class="flash ok">你已选择 {{ option.key }}：{{ option.text }}</p>
+        {% endif %}
+      {% endfor %}
+      <p class="muted">选择已经记录，无法反悔。等待其他学生参与或阶段到期后，故事将自动推进。</p>
+    {% elif not story_task.eligible %}
+      <p class="muted">你今天还没有听见异常钟声。每名学生每天有20%的概率接到当前阶段任务，请之后再来查看。</p>
+    {% else %}
+      <p>{{ phase.prompt }}</p>
+      <p class="muted">选择后获得10加隆，且无法反悔。</p>
+      <form method="post">
+        <input type="hidden" name="action" value="story_choice">
+        {% for option in phase.options %}
+          <button class="opt" name="choice" value="{{ option.key }}" type="submit">
+            <b>{{ option.key }}</b>　{{ option.text }}
+            <span class="tag" style="float:right">{{ story_task.stats[option.key] }}票</span>
+          </button>
+        {% endfor %}
+      </form>
+    {% endif %}
+
+    {% if story_task.choice %}
+      <div class="grid">
+      {% for option in phase.options %}
+        <div class="stat"><span>{{ option.key }} · {{ option.text }}</span><b>{{ story_task.stats[option.key] }}</b></div>
+      {% endfor %}
+      </div>
+    {% endif %}
+  {% endif %}
+</div>
+{% endif %}
+
 <div class="card">
   <h2>📖 霍格沃茨成长册</h2>
   {% if not book %}

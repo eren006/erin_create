@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}兑换码 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card" style="max-width:360px;margin:40px auto">
+  <h3 style="margin-bottom:16px">兑换礼包码</h3>
+  <form method="post">
+    <label>礼包码</label>
+    <input name="code" required>
+    <button class="btn btn-primary" style="margin-top:16px;width:100%">兑换</button>
+  </form>
+</div>
+{% endblock %}

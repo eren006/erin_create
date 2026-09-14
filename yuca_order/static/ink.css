@@ -1,0 +1,96 @@
+.ink-stage{position:relative;isolation:isolate;min-height:760px;height:calc(100svh - 100px);max-height:1080px;margin:15px 24px 0;overflow:hidden;background:#181818;color:#e5e5e5;border:1px solid #3c3c3c}.landscape{position:absolute;inset:0;z-index:-2;background:url('ink-landscape-v3.jpg') center/cover no-repeat}.ink-stage:after{content:'';position:absolute;inset:0;z-index:-1;pointer-events:none;background:linear-gradient(90deg,rgba(10,10,10,.4),transparent 42%,rgba(10,10,10,.18))}.edition{position:absolute;top:30px;left:3.8%;font-size:10px;letter-spacing:.2em;color:#aeaeae}.edition span{margin-left:22px;font-size:10px}.hero-heading{position:absolute;top:12%;left:50%;transform:translateX(-50%);text-align:center;width:60%}.hero-heading p{font-size:10px;letter-spacing:.36em;color:#cbcbcb}.hero-heading h1{font-family:"Songti SC","STSong","Noto Serif CJK SC",serif;font-weight:400;font-size:clamp(64px,7vw,112px);letter-spacing:.18em;line-height:1.55;margin-left:.18em;text-shadow:0 2px 30px #191919}.hero-heading h1 span{margin-left:.15em}.hero-heading>div{font-size:11px;letter-spacing:.35em;color:#cbcbcb}.hero-left{position:absolute;top:32%;left:6%;width:300px}.hero-left h2{font-family:"Songti SC",serif;font-size:25px;font-weight:400;letter-spacing:.12em;margin-bottom:15px}.hero-left p{font-size:12px;line-height:2.2;color:#b4b4b4}.submit-link{margin-top:28px;width:222px;display:flex;align-items:center;justify-content:space-between;padding:15px 22px;background:#ce142b;border:1px solid #ce142b;color:#f1f1f1;font-size:13px;letter-spacing:.16em;transition:background .2s,transform .2s}.submit-link:hover{background:#ce142b;color:white;transform:translateY(-2px)}.submit-link .submit-arrow{display:flex;align-items:center;flex-shrink:0}.hero-query{position:absolute;right:6%;top:43%;width:230px;scroll-margin-top:100px}.eyebrow{font-size:9px;letter-spacing:.25em;color:var(--muted)}.hero-query .eyebrow{color:#b4b4b4}.hero-query h2{font-family:"Songti SC",serif;font-size:25px;font-weight:400;letter-spacing:.16em;margin:8px 0 14px}.hero-query label{font-size:11px;color:#bababa}.query-row{display:flex;border-bottom:1px solid #939393;margin-top:12px;background:#13131370}.query-row input{min-width:0;width:100%;padding:10px 8px;border:0;background:transparent;color:#f1f1f1;font:13px monospace}.query-row input::placeholder{color:#a6a6a6}.query-row button{border:0;background:none;color:#c9c9c9;font-size:24px;padding:0 13px;cursor:pointer}.vertical-note{position:absolute;right:22px;top:19%;writing-mode:vertical-rl;font-family:"Songti SC",serif;font-size:11px;letter-spacing:.3em;color:#999999}.stage-footer{position:absolute;bottom:24px;left:6%;right:6%;display:flex;align-items:center;justify-content:space-between;border-top:1px solid #8a8a8a50;padding-top:17px;font-size:10px;letter-spacing:.12em}.availability{color:#d4d4d4;display:flex;align-items:center;gap:9px}.availability:hover{color:white}.availability i{width:5px;height:5px;background:#9d9d9d;border-radius:50%}.availability i.is-open{background:#ce142b;box-shadow:0 0 12px #ce142b}.availability span{color:#a9a9a9;margin-left:16px}.folio{color:#a9a9a9}.folio b{font-weight:400;color:#ce142b;margin:0 15px}.who-section{max-width:1080px;margin:0 auto;padding:65px 28px;scroll-margin-top:70px}.section-heading{display:flex;align-items:end;justify-content:space-between;margin-bottom:28px}.section-heading h2{font:30px "Songti SC",serif;letter-spacing:.16em;margin-top:9px}.section-heading>span{font-size:11px;color:var(--muted)}.who-card{display:flex;align-items:center;gap:24px;padding:22px 0;border-top:1px solid var(--border);color:var(--text)}.who-card.clickable:hover{background:var(--surface);color:var(--text)}.who-icon{font:26px "Songti SC","STSong",serif;color:var(--accent2);width:46px;text-align:center;flex-shrink:0}.who-info{flex:1;min-width:0}.who-name{font-size:15px}.who-desc,.who-queue{font-size:12px;color:var(--muted);overflow-wrap:anywhere}.status-badge{font-size:11px;display:flex;align-items:center;gap:7px;color:var(--muted)}.sb-dot{width:5px;height:5px;border-radius:50%;background:currentColor}.sb-open{color:var(--green)}.sb-full{color:var(--warn)}.site-footer{margin:0 5%;padding:22px 0;border-top:1px solid var(--border);display:flex;justify-content:space-between;font-size:9px;letter-spacing:.12em;color:var(--muted)}.empty-state{padding:24px 0;color:var(--muted)}
+@media(min-width:1600px){.hero-left{left:9%}.hero-query{right:9%}}
+@media(max-width:900px){.ink-stage{min-height:780px}.hero-heading{top:12%}.hero-left{top:38%;left:6%;width:260px}.hero-query{top:47%;right:6%;width:210px}.hero-left h2{font-size:22px}.edition span{display:none}}
+@media(max-width:600px){.ink-stage{margin:8px;min-height:830px;height:auto}.landscape{background-position:48% center}.hero-heading{top:104px;width:100%}.hero-heading p{font-size:8px;letter-spacing:.2em}.hero-heading h1{font-size:62px}.hero-heading>div{font-size:9px;letter-spacing:.16em}.hero-left{top:285px;left:8%;width:84%}.hero-left p{font-size:12px}.submit-link{margin-top:20px;width:210px}.hero-query{top:535px;left:8%;width:84%;padding-left:0}.hero-query h2{font-size:23px;margin-bottom:10px}.hero-query form{max-width:300px}.vertical-note{top:285px;right:20px}.stage-footer{left:8%;right:8%;bottom:20px}.folio{display:none}.availability span{margin-left:8px}.who-section{padding:42px 24px}.section-heading{align-items:start;gap:15px}.section-heading>span{max-width:110px;text-align:right}.section-heading h2{font-size:26px}.who-card{gap:12px}.who-icon{width:32px;font-size:22px}.site-footer{gap:18px;font-size:8px}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+
+/* Painted landscape: protect copy while retaining the mountain details. */
+.ink-stage:after{background:linear-gradient(90deg,rgba(10,10,10,.52),transparent 43%,rgba(10,10,10,.34)),linear-gradient(0deg,rgba(8,8,8,.72),transparent 22%)}
+.hero-left h2,.hero-left p,.hero-query h2,.hero-query label{text-shadow:0 2px 12px #0e0e0e}
+@media(max-width:600px){.landscape{background-size:auto 100%;background-position:52% center}.ink-stage:after{background:linear-gradient(180deg,rgba(10,10,10,.05) 18%,rgba(10,10,10,.46) 52%,rgba(10,10,10,.6) 100%)} }
+
+/* Clear functional entry points. */
+.hero-left h2,.hero-query h2{font-family:"PingFang SC","Microsoft YaHei",sans-serif;font-size:30px;font-weight:600;letter-spacing:.04em;line-height:1.4;color:#fff}
+.hero-left p,.hero-query label{font-size:13px;color:#e0e0e0;line-height:1.9}
+.submit-link{font-size:16px;font-weight:600;padding:17px 22px;letter-spacing:.08em}
+.hero-query{width:270px}
+.query-row{border:1px solid #888;background:rgba(10,10,10,.85);margin-top:15px;min-height:49px}
+.query-row input{padding:12px 10px;font-size:14px}
+.query-row button{flex-shrink:0;background:#ce142b;color:#fff;padding:0 18px;font:600 14px "PingFang SC","Microsoft YaHei",sans-serif;border-left:1px solid #e43b50}
+.query-row button:hover{background:#e51c36}
+@media(max-width:900px){.hero-query{width:245px}.hero-left h2,.hero-query h2{font-size:27px}}
+@media(max-width:600px){.hero-query{width:84%}.hero-left h2,.hero-query h2{font-size:27px}.hero-query form{max-width:none}.hero-query label{font-size:12px}.submit-link{width:230px}}
+
+
+/* Stationary landscape with independently animated sun and passing birds. */
+.landscape{background-image:url('ink-mountains-still.jpg');animation:none;transform:none}
+.ink-sun{position:absolute;width:25%;aspect-ratio:1;left:40%;top:13%;border-radius:50%;background:url('ink-landscape-v3.jpg') 52.75% 19.85%/410.7% 273.8%;-webkit-mask-image:radial-gradient(circle,#000 64%,transparent 71%);mask-image:radial-gradient(circle,#000 64%,transparent 71%);opacity:.92}
+.ink-birds{position:absolute;left:-160px;top:29%;width:130px;opacity:0;pointer-events:none}
+.ink-birds svg{display:block;width:100%;fill:#090909;stroke:#909090;stroke-width:.3}
+.bird-wing{transform-origin:29px 20px}.bird-wing-two{transform-origin:80px 40px}.bird-wing-three{transform-origin:126px 21px}
+.motion-toggle{position:absolute;top:68px;right:3.8%;padding:6px 10px;border:1px solid #666;background:#1119;color:#ccc;font:11px "PingFang SC",sans-serif;cursor:pointer;letter-spacing:.04em;z-index:2}
+.motion-toggle:hover{color:#fff;border-color:#aaa}.motion-toggle[hidden]{display:none}
+@media(prefers-reduced-motion:no-preference){
+ .motion-enabled .ink-sun{animation:sun-float 12s ease-in-out infinite alternate}
+ .motion-enabled .ink-birds{animation:birds-pass 30s linear infinite}
+ .motion-enabled .bird-wing{animation:bird-flap 1.2s ease-in-out infinite alternate}
+ .motion-enabled .bird-wing-two{animation-delay:-.4s}.motion-enabled .bird-wing-three{animation-delay:-.8s}
+ .motion-paused .ink-sun,.motion-paused .ink-birds,.motion-paused .bird-wing{animation-play-state:paused}
+}
+@keyframes sun-float{from{transform:translateY(0);opacity:.85}to{transform:translateY(-14px);opacity:1}}
+@keyframes birds-pass{0%{transform:translate(0,15px);opacity:0}5%{opacity:.85}55%{opacity:.85}65%,100%{transform:translate(calc(var(--scene-width,100vw) + 180px),-36px);opacity:0}}
+@keyframes bird-flap{from{transform:scaleY(.55)}to{transform:scaleY(1.15)}}
+@media(max-width:600px){.motion-toggle{top:auto;bottom:72px;right:8%;font-size:11px;padding:8px 12px}.ink-birds{width:88px;top:27%}.motion-enabled .ink-sun{animation-name:sun-float-mobile}}
+@keyframes sun-float-mobile{from{transform:translateY(0);opacity:.85}to{transform:translateY(-9px);opacity:1}}
+
+/* Mist moves between fixed ridges; text breathes without shifting its layout. */
+.mountain-mist{position:absolute;pointer-events:none;left:-8%;width:112%;height:24%;opacity:.15;background:radial-gradient(ellipse 36% 18% at 20% 50%,rgba(228,232,232,.55),transparent 75%),radial-gradient(ellipse 43% 21% at 69% 62%,rgba(223,228,228,.45),transparent 72%),radial-gradient(ellipse 23% 12% at 48% 37%,rgba(243,243,243,.3),transparent 75%)}
+.mist-distant{top:52%}
+.mist-near{top:69%;height:21%;opacity:.12;background:radial-gradient(ellipse 45% 16% at 32% 42%,rgba(235,235,235,.5),transparent 73%),radial-gradient(ellipse 31% 22% at 78% 67%,rgba(225,225,225,.45),transparent 76%)}
+@media(prefers-reduced-motion:no-preference){
+ .motion-enabled .mist-distant{animation:mist-drift 11s ease-in-out infinite alternate}
+ .motion-enabled .mist-near{animation:mist-return 15s ease-in-out infinite alternate}
+ .motion-enabled .hero-heading h1{animation:title-breathe 6s ease-in-out infinite alternate}
+ .motion-enabled .hero-heading>p,.motion-enabled .hero-heading>div{animation:title-breathe 8s ease-in-out -2s infinite alternate}
+ .motion-paused .mountain-mist,.motion-paused .hero-heading h1,.motion-paused .hero-heading>p,.motion-paused .hero-heading>div{animation-play-state:paused}
+}
+@keyframes mist-drift{from{transform:translateX(-5%);opacity:.3}to{transform:translateX(7%);opacity:.6}}
+@keyframes mist-return{from{transform:translateX(6%);opacity:.24}to{transform:translateX(-5%);opacity:.48}}
+@keyframes title-breathe{from{opacity:.86}to{opacity:1}}
+@media(max-width:600px){.mountain-mist{width:116%;height:20%}.mist-distant{top:49%}.mist-near{top:73%}.motion-enabled .mist-distant{animation-duration:14s}.motion-enabled .mist-near{animation-duration:18s}}
+
+/* A small sampan on the river, drifting within the water area. */
+.river-boat{position:absolute;left:64%;top:83%;width:90px;pointer-events:none;opacity:.9}
+.boat-rock{display:block;width:100%;transform-origin:50% 70%}
+@media(prefers-reduced-motion:no-preference){
+ .motion-enabled .river-boat{animation:boat-drift 20s ease-in-out infinite alternate}
+ .motion-enabled .boat-rock{animation:boat-bob 3.6s ease-in-out infinite alternate}
+ .motion-paused .river-boat,.motion-paused .boat-rock{animation-play-state:paused}
+}
+@keyframes boat-drift{from{transform:translateX(-18px)}to{transform:translateX(24px)}}
+@keyframes boat-bob{from{transform:translateY(0) rotate(-1.2deg)}to{transform:translateY(2px) rotate(1.2deg)}}
+@media(max-width:600px){.river-boat{left:39%;top:85%;width:70px}}
+
+/* Painted transparent ink assets replace the geometric silhouettes. */
+.river-boat{width:116px;top:89%}
+.boat-rock,.ink-swallow-art{display:block;width:100%;height:auto;object-fit:contain}
+.ink-birds{width:148px;top:28%}
+@media(max-width:600px){.river-boat{width:88px;left:36%;top:90%}.ink-birds{width:108px}}
+
+/* Drifting cloud veils around the independently positioned red sun. */
+.sun-atmosphere{position:absolute;pointer-events:none}
+.sun-cloud{position:absolute;left:-38%;width:176%;height:46%;opacity:.7;background:radial-gradient(ellipse 34% 13% at 30% 45%,rgba(13,13,13,.86),transparent 78%),radial-gradient(ellipse 32% 15% at 65% 56%,rgba(25,25,25,.75),transparent 75%),radial-gradient(ellipse 38% 9% at 48% 66%,rgba(186,186,186,.35),transparent 80%)}
+.sun-cloud-front{top:52%}
+.sun-cloud-high{top:15%;left:-29%;opacity:.45;background:radial-gradient(ellipse 35% 12% at 35% 42%,rgba(161,161,161,.36),transparent 78%),radial-gradient(ellipse 39% 16% at 65% 57%,rgba(13,13,13,.75),transparent 76%)}
+@media(prefers-reduced-motion:no-preference){
+ .motion-enabled .sun-cloud-front{animation:sun-cloud-cross 14s ease-in-out infinite alternate}
+ .motion-enabled .sun-cloud-high{animation:sun-cloud-cross 19s ease-in-out -5s infinite alternate-reverse}
+ .motion-paused .sun-cloud{animation-play-state:paused}
+}
+@keyframes sun-cloud-cross{from{transform:translateX(-9%);opacity:.45}to{transform:translateX(9%);opacity:.85}}
+
+/* 窄屏：红日退到标题背后（尺寸由 placeSun 计算），山水按宽度铺开而不是被高度撑爆 */
+@media(max-width:600px){
+ .ink-sun{opacity:.72}
+ .landscape{background-size:auto 62%;background-position:52% 86%}
+}

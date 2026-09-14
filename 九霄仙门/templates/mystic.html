@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}秘境 - 九霄仙门{% endblock %}
+{% block content %}
+
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">秘</span>秘境</h3>
+    <span class="badge {{ 'badge-gold' if sessions_today < sessions_max else '' }}">今日已探索 {{ sessions_today }}/{{ sessions_max }} 场</span></div>
+  <p class="muted" style="margin-top:6px">不限时间段,一天最多探索{{ sessions_max }}场,每场10点探索点数。</p>
+  <form method="post" action="{{ url_for('tiandi_mystic_extra_session') }}" style="margin-top:8px">
+    <button class="btn" style="padding:6px 12px" {% if tiandi_session_left <= 0 %}disabled{% endif %}>
+      使用天地精华购买次数 · 今日+1场(耗{{ tiandi_session_cost }}天地精华,今日剩{{ tiandi_session_left }}/{{ tiandi_session_cap }}次,余{{ char.tiandi_jinghua }})
+    </button>
+  </form>
+</div>
+
+{% if myst and myst.status == 'active' %}
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">{{ zone.label[0] }}</span>{{ zone.label }} · {{ depth_labels[myst.depth] }}</h3>
+    <span class="badge badge-purple">危险:{{ zone.danger_desc }}</span></div>
+  <div class="stat-block" style="margin-top:8px">
+    <div class="stat-line"><span>气血</span><strong>{{ myst.hp }} / {{ myst.hp_max }}</strong></div>
+    <div class="bar-track"><div class="bar-fill bar-gold" style="width:{{ (myst.hp / myst.hp_max * 100) if myst.hp_max else 0 }}%"></div></div>
+  </div>
+  <p class="muted" style="margin-top:8px">探索点数 {{ myst.stamina }} · 遁符 {{ myst.escape_charms }} · 丹药 {{ myst.heal_uses }}/{{ heal_uses_max }}</p>
+
+  {% if sealed_loot.materials or sealed_loot.reward or sealed_loot.equipment %}
+  <p class="muted" style="margin-top:8px">已封存:
+    {{ sealed_loot_reward_desc }}
+    {% for k, v in (sealed_loot.materials or {}).items() %}{{ MATERIAL_LABELS.get(k, k) }}×{{ v }} {% endfor %}
+    {% for ek in (sealed_loot.equipment or []) %}{{ EQUIPMENT_TEMPLATES_BY_KEY.get(ek, {}).get('label', ek) }} {% endfor %}
+  </p>
+  {% endif %}
+  {% if pending_loot.materials or pending_loot.reward or pending_loot.equipment %}
+  <p style="margin-top:4px;color:var(--gold)">未封存:
+    {{ pending_loot_reward_desc }}
+    {% for k, v in (pending_loot.materials or {}).items() %}{{ MATERIAL_LABELS.get(k, k) }}×{{ v }} {% endfor %}
+    {% for ek in (pending_loot.equipment or []) %}{{ EQUIPMENT_TEMPLATES_BY_KEY.get(ek, {}).get('label', ek) }} {% endfor %}
+    (归零折损过半)</p>
+  {% endif %}
+
+  {% if pending_event %}
+  <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+    <p>{{ pending_event.text }}</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+      {% if pending_event.type == 'beast' %}
+      <a class="btn btn-primary" style="flex:1;min-width:100px;text-align:center"
+         href="{{ url_for('mystic_battle_start', monster_key=pending_event.monster_key) }}">力战</a>
+      <form method="post" action="{{ url_for('mystic_event_resolve') }}" style="flex:1;min-width:100px">
+        <input type="hidden" name="choice" value="bypass"><button class="btn" style="width:100%">绕行</button>
+      </form>
+      <form method="post" action="{{ url_for('mystic_event_resolve') }}" style="flex:1;min-width:100px">
+        <input type="hidden" name="choice" value="flee_charm">
+        <button class="btn" style="width:100%" {{ 'disabled' if myst.escape_charms <= 0 }}>遁符驱赶</button>
+      </form>
+      {% elif pending_event.type == 'herb' %}
+      <form method="post" action="{{ url_for('mystic_event_resolve') }}" style="flex:1;min-width:100px">
+        <input type="hidden" name="choice" value="pick"><button class="btn btn-primary" style="width:100%">立即采摘</button>
+      </form>
+      <form method="post" action="{{ url_for('mystic_event_resolve') }}" style="flex:1;min-width:100px">
+        <input type="hidden" name="choice" value="wait"><button class="btn" style="width:100%">冒险等待成熟</button>
+      </form>
+      {% elif pending_event.type == 'satchel' %}
+      <form method="post" action="{{ url_for('mystic_event_resolve') }}" style="flex:1;min-width:100px">
+        <input type="hidden" name="choice" value="open"><button class="btn btn-primary" style="width:100%">直接打开</button>
+      </form>
+      <form method="post" action="{{ url_for('mystic_event_resolve') }}" style="flex:1;min-width:100px">
+        <input type="hidden" name="choice" value="check"><button class="btn" style="width:100%">先检查禁制</button>
+      </form>
+      {% elif pending_event.type == 'cultivator' %}
+      <form method="post" action="{{ url_for('mystic_event_resolve') }}" style="flex:1;min-width:100px">
+        <input type="hidden" name="choice" value="cooperate"><button class="btn btn-primary" style="width:100%">合作</button>
+      </form>
+      <form method="post" action="{{ url_for('mystic_event_resolve') }}" style="flex:1;min-width:100px">
+        <input type="hidden" name="choice" value="trade"><button class="btn" style="width:100%">交易(灵石30)</button>
+      </form>
+      <form method="post" action="{{ url_for('mystic_event_resolve') }}" style="flex:1;min-width:100px">
+        <input type="hidden" name="choice" value="avoid"><button class="btn" style="width:100%">避让</button>
+      </form>
+      {% elif pending_event.type == 'fortune' %}
+      <form method="post" action="{{ url_for('mystic_event_resolve') }}" style="flex:1;min-width:100px">
+        <input type="hidden" name="choice" value="breakin"><button class="btn btn-primary" style="width:100%">破阵强攻</button>
+      </form>
+      <form method="post" action="{{ url_for('mystic_event_resolve') }}" style="flex:1;min-width:100px">
+        <input type="hidden" name="choice" value="sacrifice"><button class="btn" style="width:100%">献祭资源换取</button>
+      </form>
+      <form method="post" action="{{ url_for('mystic_event_resolve') }}" style="flex:1;min-width:100px">
+        <input type="hidden" name="choice" value="mark"><button class="btn" style="width:100%">记录位置退出准备</button>
+      </form>
+      {% else %}
+      <form method="post" action="{{ url_for('mystic_event_resolve') }}" style="flex:1;min-width:100px">
+        <input type="hidden" name="choice" value="continue"><button class="btn btn-primary" style="width:100%">继续前行</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+    <form method="post" action="{{ url_for('mystic_explore') }}" style="flex:1;min-width:100px">
+      <button class="btn btn-primary" style="width:100%" {{ 'disabled' if myst.stamina <= 0 }}>{{ '探索点数已尽' if myst.stamina <= 0 else '探索' }}</button>
+    </form>
+    <form method="post" action="{{ url_for('mystic_deepen') }}" style="flex:1;min-width:100px">
+      <button class="btn" style="width:100%"
+        {{ 'disabled' if myst.depth >= depth_max or (myst.depth >= 3 and not myst.hidden_unlocked) }}>
+        深入{{ depth_labels.get(myst.depth + 1, '') }}</button>
+    </form>
+    <form method="post" action="{{ url_for('mystic_seal') }}" style="flex:1;min-width:100px">
+      <button class="btn" style="width:100%">封存收获</button>
+    </form>
+    <form method="post" action="{{ url_for('mystic_heal') }}" style="flex:1;min-width:100px">
+      <button class="btn" style="width:100%" {{ 'disabled' if myst.heal_uses >= heal_uses_max or myst.hp >= myst.hp_max }}>服丹回血(灵石60)</button>
+    </form>
+    <form method="post" action="{{ url_for('mystic_retreat') }}" style="flex:1;min-width:100px">
+      <button class="btn" style="width:100%">撤退离开</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+
+{% elif myst and daily_sessions_exhausted %}
+<div class="card">
+  <h3>今日探索已结束</h3>
+  <p class="muted" style="margin-top:6px">
+    {% if myst.status == 'fainted' %}你在{{ zone.label }}昏迷倒地,已被送回,明日再战。
+    {% else %}你已从{{ zone.label }}安然归来,明日可再入秘境。{% endif %}
+  </p>
+</div>
+
+{% else %}
+<div class="card">
+  <h3 style="margin-bottom:10px">选择秘境</h3>
+  <p class="muted">当前体力 {{ char.stamina }} / {{ stamina_cap }}</p>
+  {% for z in zones %}
+  <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+    <p><strong>{{ z.label }}</strong> <span class="badge {{ 'badge-purple' if z.unlocked else '' }}">{{ realm_by_index(z.realm_req).name }}起</span></p>
+    <p class="muted" style="margin-top:4px">{{ z.desc }}</p>
+    <p class="muted" style="margin-top:2px">特色产出:{{ z.material_label }} · 主要危险:{{ z.danger_desc }}</p>
+    <form method="post" action="{{ url_for('mystic_enter', zone_key=z.key) }}" style="margin-top:8px">
+      <button class="btn btn-primary" {{ 'disabled' if not z.unlocked or char.stamina < entry_stamina_cost }}>
+        踏入秘境(体力-{{ entry_stamina_cost }})</button>
+      {% if not z.unlocked %}<p class="muted" style="margin-top:2px;font-size:12px">境界不足,需达到{{ realm_by_index(z.realm_req).name }}</p>
+      {% elif char.stamina < entry_stamina_cost %}<p class="muted" style="margin-top:2px;font-size:12px">尚缺{{ entry_stamina_cost - char.stamina }}点体力</p>{% endif %}
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}

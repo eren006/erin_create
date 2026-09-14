@@ -18,7 +18,7 @@
     const ext = seal.ext.find('排单宝') || seal.ext.new('排单宝', 'yuca', '1.1.0');
     if (seal.ext.find('排单宝')) return; // 已加载则跳过
 
-    seal.ext.registerStringConfig(ext, '服务器地址', 'http://47.99.64.227:5237', '排单宝服务器地址，结尾不要加 /');
+    seal.ext.registerStringConfig(ext, '服务器地址', 'http://124.221.189.86:5023', '排单宝服务器地址，结尾不要加 /');
     seal.ext.registerStringConfig(ext, 'API Token', '', '超管后台创建账户时生成的 Token');
 
     // ── 工具函数 ─────────────────────────────────────────────────────────────

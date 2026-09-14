@@ -5,6 +5,8 @@
   <h2>管理后台</h2>
   <p class="muted">
     <a href="{{ url_for('admin_submissions') }}">稿件审核</a>
+    <a href="{{ url_for('admin_gossip') }}">女巫周刊审核</a>
+    <a href="{{ url_for('admin_quidditch_matchups') }}">魁地奇战力分析</a>
     <a href="{{ url_for('admin_password') }}">修改管理密码</a>
     <a href="{{ url_for('admin_logout') }}">退出管理</a>
     <a href="{{ url_for('index') }}">回到游戏</a>
@@ -62,5 +64,84 @@
     </tr>
     {% endfor %}
   </table></div>
+</div>
+
+<div class="card">
+  <h2>⚠️ 重置入学记录</h2>
+  <p class="muted">
+    清空指定角色的入学信息（姓名、学院、魔杖）和全部关联游戏数据（学科经验、货币、
+    宿舍、恋爱/好友关系、决斗、魁地奇、厨房养成等），恢复成从未入学的状态，让本人可以
+    回QQ群重新发送「/入学 名字」。可以填QQ号，也可以直接填角色名字（比如"赫敏"）——
+    没绑定网页账号的人不会出现在下面的账号列表里，用名字一样能找到。
+    <strong>此操作不可撤销，请谨慎使用</strong>——网页登录账号本身不受影响。
+  </p>
+  <form method="post" onsubmit="return confirm('确定要清空这个角色的入学记录吗？此操作不可撤销。');">
+    <input type="text" name="uid" placeholder="要重置的QQ号或角色名字" required style="width: 220px;">
+    <input type="text" name="confirm_uid" placeholder="再输入一次确认" required style="width: 220px;">
+    <button name="action" value="reset_enrollment" class="ghost">清空并重新入学</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>⚠️ 转院</h2>
+  <p class="muted">
+    把指定角色转到别的学院。TA为原学院攒下的个人学院分贡献会清零（连带从原学院总分里扣除），
+    在新学院从0分重新开始记；学科经验、寝室、恋人/好友关系、决斗与魁地奇战绩等其余游戏数据
+    完全不受影响。可以填QQ号，也可以直接填角色名字。
+    <strong>此操作不可撤销，请谨慎使用。</strong>
+  </p>
+  <form method="post" onsubmit="return confirm('确定要转院吗？原学院的个人学院分贡献会清零，此操作不可撤销。');">
+    <input type="text" name="uid" placeholder="要转院的QQ号或角色名字" required style="width: 220px;">
+    <select name="new_house" required>
+      {% for h in houses %}
+      <option value="{{ h }}">{{ h }}</option>
+      {% endfor %}
+    </select>
+    <input type="text" name="confirm_uid" placeholder="再输入一次确认" required style="width: 220px;">
+    <button name="action" value="transfer_house" class="ghost">确认转院</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>改名</h2>
+  <p class="muted">
+    给指定角色改名字（名/姓）。姓名只存在 players 表里，全站找人、显示名字都是现查这一处，
+    改完立刻在QQ和网页所有地方生效；已经发出去的历史消息（旧播报、旧稿件署名）不会跟着改，
+    那是历史记录。可以填QQ号，也可以直接填角色当前的名字。名字（不含姓）全校唯一，重名会被拒绝。
+  </p>
+  <form method="post">
+    <input type="text" name="uid" placeholder="要改名的QQ号或当前角色名字" required style="width: 220px;">
+    <input type="text" name="new_name" placeholder="新名字" required style="width: 140px;">
+    <input type="text" name="new_surname" placeholder="新姓（可留空）" style="width: 140px;">
+    <button name="action" value="rename_player" class="ghost">确认改名</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>数值调整</h2>
+  <p class="muted">
+    手动加减指定角色的加隆、体力、某一学科经验或魁地奇四维属性，用来修正bug造成的数据偏差——
+    不走游戏内获取/消耗的任何逻辑，直接改底层数值。数值填负数就是扣减；都有下限0，
+    体力另外还有上限。魁地奇属性只有已经加入球队（占了位置）的人才能调。可以填QQ号，也可以直接填角色名字。
+  </p>
+  <form method="post">
+    <input type="text" name="uid" placeholder="QQ号或角色名字" required style="width: 200px;">
+    <select name="stat" id="adjust-stat-select" onchange="document.getElementById('adjust-stat-subject').style.display = this.value === 'exp' ? '' : 'none';">
+      <option value="galleons">加隆</option>
+      <option value="stamina">体力</option>
+      <option value="exp">学科经验</option>
+      <option value="qd_speed">魁地奇-速度</option>
+      <option value="qd_collision">魁地奇-碰撞</option>
+      <option value="qd_stamina">魁地奇-体力</option>
+      <option value="qd_accuracy">魁地奇-准头</option>
+    </select>
+    <select name="subject" id="adjust-stat-subject" style="display: none;">
+      {% for key, name, unlock_grade, category in subjects %}
+      <option value="{{ key }}">{{ name }}</option>
+      {% endfor %}
+    </select>
+    <input type="number" name="amount" placeholder="数值（可负）" required style="width: 120px;">
+    <button name="action" value="adjust_stat" class="ghost">确认调整</button>
+  </form>
 </div>
 {% endblock %}

@@ -1,4 +1,5 @@
-from nonebot import on_command
+import nonebot
+from nonebot import logger, on_command
 from nonebot.adapters.qq import MessageEvent
 from nonebot.params import CommandArg
 
@@ -7,7 +8,17 @@ from plugins.changri_core.api import is_admin
 
 from . import api
 
+nonebot.require("nonebot_plugin_apscheduler")
+from nonebot_plugin_apscheduler import scheduler  # noqa: E402
+
 MODE_MAP = {"复盘": "review", "不复盘": "no_review"}
+
+
+@scheduler.scheduled_job("cron", hour=0, minute=0, id="changri_season_auto_day0")
+async def _auto_start_day():
+    msg = api.try_auto_start_day(PLATFORM)
+    if msg:
+        logger.info(f"[changri_season] {msg}")
 
 create_season_cmd = on_command("创建新季度")
 

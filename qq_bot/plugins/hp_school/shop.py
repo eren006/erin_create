@@ -1,7 +1,7 @@
 """对角巷商店：购买（花加隆进背包）、吃零食（回体力值）、恶作剧道具。
 
 扫帚的装备动作不在这里——扫帚买回来放在背包里，真正"装备"生效是
-hp_events 的 /装备扫帚，因为魁地奇属性表(quidditch_players)归 hp_events 管，
+hp_events.quidditch 的 equip_broom()，因为魁地奇属性表(quidditch_players)归 hp_events 管，
 这边不反向依赖它，保持 hp_events 依赖 hp_school 单向的关系。
 
 宠物/零食池子铺得比较大，每次只随机开放一部分，每3小时刷新——用时间桶当随机种子
@@ -10,17 +10,75 @@ hp_events 的 /装备扫帚，因为魁地奇属性表(quidditch_players)归 hp_
 
 import random
 
+from plugins.hp_core.storage import get_conn
 from plugins.hp_core import storage as core_storage
 
-from . import shop_catalog, storage
+from . import choc_frog, shop_catalog, storage
 
 ROTATION_INTERVAL_SECONDS = 3 * 3600
 ROTATION_SIZE = {"零食": 6, "宠物": 5}
 GIFT_RESTOCK_INTERVAL_SECONDS = 2 * 3600  # 礼物全服库存每2小时补货一轮
 
+# 巧克力蛙额外限量——复用礼物那套全服共享库存表(gift_stock)，只是换一个独立的
+# 按小时计的bucket，跟礼物的2小时补货节奏互不影响。
+FROG_RESTOCK_INTERVAL_SECONDS = 3600
+FROG_HOURLY_CAP = 5
+
+# 蛀牙：不管吃的是哪种零食，糖分都算在同一个"今天吃了几颗"里，超过阈值就蛀牙一天，
+# 体力恢复变慢——之前只统计巧克力蛙，其它零食吃再多都不算，不合理，改成零食通吃。
+CAVITY_THRESHOLD = 7  # 一天吃超过这个数就蛀牙
+CAVITY_LABEL = "蛀牙，体力恢复变慢"
+CAVITY_DURATION_SECONDS = 24 * 60 * 60  # 蛀牙持续一天
+
+SWEETS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS sweets_daily (
+    uid TEXT NOT NULL,
+    day INTEGER NOT NULL,
+    eaten INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (uid, day)
+);
+"""
+
 
 class ShopError(Exception):
     pass
+
+
+def _init_sweets_db() -> None:
+    conn = get_conn()
+    try:
+        conn.executescript(SWEETS_SCHEMA)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+_init_sweets_db()
+
+
+def _track_sweet_eaten_and_check_cavity(uid: str) -> tuple[int, bool]:
+    """记一次今天吃的零食（不分种类），超过阈值就上蛀牙状态。
+    返回（今天吃了几个，这次是不是刚触发蛀牙）。"""
+    day = core_storage.get_current_day() or 1
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO sweets_daily (uid, day, eaten) VALUES (?, ?, 1) "
+            "ON CONFLICT(uid, day) DO UPDATE SET eaten = eaten + 1",
+            (uid, day),
+        )
+        conn.commit()
+        eaten = conn.execute(
+            "SELECT eaten FROM sweets_daily WHERE uid = ? AND day = ?", (uid, day)
+        ).fetchone()["eaten"]
+    finally:
+        conn.close()
+
+    if eaten <= CAVITY_THRESHOLD:
+        return eaten, False
+    already_had = core_storage.has_cavity(uid)
+    core_storage.add_active_effect(uid, core_storage.CAVITY_EFFECT_KEY, CAVITY_LABEL, CAVITY_DURATION_SECONDS)
+    return eaten, not already_had
 
 
 def _rotation_bucket() -> int:
@@ -43,6 +101,18 @@ def gift_remaining(item_key: str, capacity: int) -> int:
     return max(0, capacity - storage.get_gift_sold(item_key, _restock_bucket()))
 
 
+def _frog_bucket() -> int:
+    return core_storage.now() // FROG_RESTOCK_INTERVAL_SECONDS
+
+
+def seconds_to_next_frog_restock() -> int:
+    return FROG_RESTOCK_INTERVAL_SECONDS - (core_storage.now() % FROG_RESTOCK_INTERVAL_SECONDS)
+
+
+def frog_remaining() -> int:
+    return max(0, FROG_HOURLY_CAP - storage.get_gift_sold(choc_frog.FROG_ITEM_KEY, _frog_bucket()))
+
+
 def current_offerings(category: str) -> list[tuple]:
     """扫帚/装备/恶作剧常驻全部返回；零食/宠物按3小时轮换只返回一部分。"""
     pool = shop_catalog.list_by_category(category)
@@ -63,19 +133,27 @@ def buy(uid: str, item_input: str) -> dict:
         raise ShopError("对角巷没有这件东西，检查一下名字。")
     key, name, category, price, desc, effect = item
 
+    if effect.get("unpurchasable"):
+        raise ShopError(f"「{name}」不是用来买的，只能靠活动获得。")
+
     if category in shop_catalog.ROTATING_CATEGORIES:
         if item not in current_offerings(category):
             raise ShopError(f"「{name}」现在没有在卖，等下一轮刷新（用「/对角巷 {category}」看当前在卖什么）。")
+
+    is_frog = key == choc_frog.FROG_ITEM_KEY
 
     # 库存占用、扣钱和写入背包必须同成同败，避免进程在步骤之间退出时丢钱/丢货。
     purchase = storage.buy_item_atomic(
         uid,
         key,
         price,
-        gift_bucket=_restock_bucket() if category == "礼物" else None,
-        gift_capacity=effect["stock"] if category == "礼物" else None,
+        gift_bucket=_restock_bucket() if category == "礼物" else (_frog_bucket() if is_frog else None),
+        gift_capacity=effect["stock"] if category == "礼物" else (FROG_HOURLY_CAP if is_frog else None),
     )
     if purchase == "sold_out":
+        if is_frog:
+            wait_min = seconds_to_next_frog_restock() // 60 + 1
+            raise ShopError(f"「{name}」这一小时已经卖完了，还有约{wait_min}分钟补货。")
         wait_min = seconds_to_next_restock() // 60 + 1
         raise ShopError(f"「{name}」本轮已经被抢光了，还有约{wait_min}分钟补货。")
     if purchase == "insufficient_funds":
@@ -108,7 +186,17 @@ def eat_snack(uid: str, item_input: str) -> dict:
     if actual_restored > 0:
         core_storage.spend_stamina(uid, -actual_restored)  # 负数=增加，复用同一个函数
 
-    return {"name": name, "restored": actual_restored, "new_stamina": new_stamina}
+    eaten_today, cavity_triggered = _track_sweet_eaten_and_check_cavity(uid)
+    result = {
+        "name": name,
+        "restored": actual_restored,
+        "new_stamina": new_stamina,
+        "eaten_today": eaten_today,
+        "cavity_triggered": cavity_triggered,
+    }
+    if key == choc_frog.FROG_ITEM_KEY:
+        result["card"] = choc_frog.open_card(uid)
+    return result
 
 
 def use_prank(uid: str, item_input: str, target_uid: str) -> dict:

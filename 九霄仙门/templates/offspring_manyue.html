@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}满月酒 - 九霄仙门{% endblock %}
+{% block content %}
+
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">宴</span>{{ off.name }}的满月酒</h3>
+    {% if off.manyue_status == 'active' %}<span class="badge badge-purple">进行中 · 剩{{ (time_left // 3600) }}小时</span>
+    {% else %}<span class="badge badge-gold">已揭晓</span>{% endif %}</div>
+  <p class="muted" style="margin-top:6px">来宾花{{ entry_cost }}灵石赴宴,带一件贺礼投入抓周池;一天结束后随机抓中一件,揭晓孩子的秉性与彩头。</p>
+</div>
+
+{% if off.manyue_status == 'done' %}
+<div class="card">
+  <h3 style="margin-bottom:8px">抓周结果</h3>
+  {% if result_item %}
+  <p><strong>{{ off.name }}</strong>抓住了 <strong>{{ result_guest.name if result_guest else '有缘人' }}</strong> 带来的「{{ result_item.label }}」</p>
+  <p class="muted" style="margin-top:6px">{{ result_item.prediction }}</p>
+  {% else %}
+  <p class="muted">抓周池空空如也,没能抓中什么彩头。</p>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if my_pool_row %}
+<div class="card">
+  <h3 style="margin-bottom:8px">你的这一份</h3>
+  <p>你带去了「{{ ZHUAZHOU_ITEMS[my_pool_row.item_key].label }}」</p>
+  {% if my_pool_row.reward_kind == 'accessory' and not my_pool_row.claimed %}
+  <p class="muted" style="margin-top:6px">抽中了饰品档福利,任选一件领取:</p>
+  <div style="margin-top:8px;display:grid;gap:6px">
+    {% for a in MANYUE_GIFT_ACCESSORIES %}
+    <form method="post" action="{{ url_for('offspring_manyue_claim', pool_id=my_pool_row.id, item_key=a.key) }}" style="display:flex;align-items:center;gap:8px">
+      <span style="min-width:120px">{{ a.label }}</span>
+      <span class="muted">攻{{ a.attack }} 防{{ a.defense }} 灵巧{{ a.agility }} 幸运{{ a.luck }}</span>
+      <button class="btn btn-primary" style="padding:4px 10px">领取</button>
+    </form>
+    {% endfor %}
+  </div>
+  {% elif my_pool_row.reward_kind == 'accessory' %}
+  <p class="muted" style="margin-top:6px">已领取饰品福利</p>
+  {% elif my_pool_row.reward_kind == 'physique' %}
+  <p class="muted" style="margin-top:6px">已获赠体魄+{{ my_pool_row.reward_detail.amount }}</p>
+  {% elif my_pool_row.reward_kind == 'material' %}
+  <p class="muted" style="margin-top:6px">已获赠{{ MATERIAL_LABELS.get(my_pool_row.reward_detail.key, my_pool_row.reward_detail.key) }}×{{ my_pool_row.reward_detail.qty }}</p>
+  {% endif %}
+</div>
+{% elif off.manyue_status == 'active' %}
+<div class="card">
+  <h3 style="margin-bottom:8px">赴宴</h3>
+  <form method="post" action="{{ url_for('offspring_manyue_attend', off_id=off.id) }}">
+    <label style="margin-top:0">带上这件贺礼</label>
+    <select name="item_key" required>
+      {% for key, item in ZHUAZHOU_ITEMS.items() %}
+      <option value="{{ key }}">{{ item.label }}</option>
+      {% endfor %}
+    </select>
+    <button class="btn btn-primary" style="margin-top:10px" {{ 'disabled' if char.lingshi < entry_cost }}>
+      花{{ entry_cost }}灵石赴宴
+    </button>
+    {% if char.lingshi < entry_cost %}<p class="muted" style="margin-top:4px;font-size:12px">尚缺{{ entry_cost - char.lingshi }}灵石</p>{% endif %}
+  </form>
+</div>
+{% endif %}
+
+<div class="card">
+  <h3 style="margin-bottom:8px">来宾({{ guests|length }})</h3>
+  {% if not guests %}<p class="muted">尚无人赴宴</p>{% endif %}
+  {% for g in guests %}
+  <p style="margin-top:4px">{{ g.guest_name }} 带来了「{{ ZHUAZHOU_ITEMS[g.item_key].label }}」</p>
+  {% endfor %}
+</div>
+{% endblock %}

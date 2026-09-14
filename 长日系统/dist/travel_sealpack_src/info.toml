@@ -1,0 +1,24 @@
+format_version = "1.0.0"
+
+[package]
+id = "changri/travel"
+name = "旅游地点抽取"
+version = "1.1.0"
+authors = ["长日将尽"]
+license = "MIT"
+description = "来看看你应该去哪里旅游吧！"
+keywords = ["娱乐", "牌堆", "旅游"]
+
+[package.seal]
+min_version = "1.5.0"
+
+[permissions]
+network = false
+dangerous = false
+http_server = false
+
+[contents]
+decks = ["decks/travel.toml"]
+
+[store]
+category = "fun"

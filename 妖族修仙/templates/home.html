@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}洞府 - 妖族修仙{% endblock %}
+{% block content %}
+<div class="card">
+  <h3>{{ char.name }} <span class="badge badge-jade">{{ species_info.label }}</span></h3>
+  <p class="muted" style="margin-top:4px">{{ species_info.start_desc }}</p>
+  {% if char.bio %}<p style="margin-top:12px">{{ char.bio }}</p>{% endif %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:4px">{{ stage.major }}·{{ stage.minor }}</h3>
+  <p class="muted" style="margin-bottom:10px">{{ stage.desc }}</p>
+
+  <label style="margin-top:0">妖力 {{ char.yao_power }}
+    {% if next_stage %} / 下一境界需 {{ next_stage.yao_power_required }}{% else %} · 已至归真境巅峰{% endif %}</label>
+  {% if next_stage %}
+  <div class="bar-track"><div class="bar-fill bar-jade" style="width:{{ stage_progress_pct }}%"></div></div>
+  {% endif %}
+
+  <label>人形值 {{ char.humanoid_value }}/100</label>
+  <div class="bar-track"><div class="bar-fill bar-gold" style="width:{{ char.humanoid_value }}%"></div></div>
+
+  <label>人性 {{ char.humanity }} / 妖性 {{ 100 - char.humanity }}</label>
+  <div class="bar-track"><div class="bar-fill bar-jade" style="width:{{ char.humanity }}%"></div></div>
+
+  {% if char.stage_index >= 11 %}
+  <p class="muted" style="margin-top:12px">
+    {% if char.humanity >= ending_divine_min %}已具备"神兽显灵"资质,终极形态:{{ species_info.divine_beast }}
+    {% elif char.humanity <= ending_feral_max %}妖性已压过人性,正滑向"堕入凶兽"的结局
+    {% else %}人性与妖性势均力敌,若不再突破,将走向"隐世人形"的结局{% endif %}
+  </p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">宗门 / 师承</h3>
+  {% if clan_member %}
+  <p>宗门: <a href="{{ url_for('clan_detail', clan_id=clan_member.id) }}">{{ clan_member.name }}</a></p>
+  {% else %}
+  <p class="muted">尚未加入任何宗门 · <a href="{{ url_for('clan_list') }}">去看看</a></p>
+  {% endif %}
+  {% if as_disciple %}<p class="muted" style="margin-top:6px">师父: {{ as_disciple.name }}</p>{% endif %}
+  {% if as_master %}<p class="muted" style="margin-top:6px">弟子: {% for d in as_master %}{{ d.name }}{% if not loop.last %}、{% endif %}{% endfor %}</p>{% endif %}
+</div>
+
+<div class="card" style="text-align:center;color:var(--muted)">
+  洞府建设中,更多玩法陆续加入
+</div>
+{% endblock %}

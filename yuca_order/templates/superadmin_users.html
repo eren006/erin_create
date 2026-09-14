@@ -1,0 +1,90 @@
+{% extends 'base.html' %}
+{% block title %}全站用户{% endblock %}
+{% block body %}
+<div class="page">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+    <div class="page-title" style="margin-bottom:0;">全站用户</div>
+    <div class="spacer"></div>
+    <a href="{{ url_for('superadmin_index') }}" class="btn btn-ghost btn-sm">← 超管后台</a>
+  </div>
+
+  <div class="g3" style="margin-bottom:16px;">
+    <div class="card card-sm">
+      <div class="fl">注册账号</div>
+      <div style="font-size:20px;font-weight:600;">{{ totals.accounts }}</div>
+    </div>
+    <div class="card card-sm">
+      <div class="fl">累计下单</div>
+      <div style="font-size:20px;font-weight:600;">{{ totals.orders }}</div>
+    </div>
+    <div class="card card-sm">
+      <div class="fl">可用次数合计</div>
+      <div style="font-size:20px;font-weight:600;">{{ totals.credits }}
+        {% if totals.locked %}<span style="font-size:12px;font-weight:400;color:var(--warn);">+{{ totals.locked }} 冷却中</span>{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <form method="get" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+    <input class="fi" name="q" value="{{ q }}" placeholder="搜用户名 / 昵称 / 联系方式" style="max-width:280px;">
+    <button class="btn btn-primary btn-sm" type="submit">搜索</button>
+    {% if q %}<a href="{{ url_for('superadmin_users') }}" class="btn btn-ghost btn-sm">清除</a>{% endif %}
+  </form>
+
+  {% if accounts %}
+  <div class="card" style="padding:0;overflow-x:auto;-webkit-overflow-scrolling:touch;">
+    <table style="min-width:900px;">
+      <thead><tr>
+        <th>账号</th><th>联系方式</th><th>注册时间</th>
+        <th>下单</th><th>可用次数</th><th>按创作者分</th><th>状态</th>
+      </tr></thead>
+      <tbody>
+        {% for a in accounts %}
+        <tr>
+          <td>
+            <div style="font-weight:500;">{{ a.display_name or a.username }}</div>
+            <div class="mono" style="font-size:11px;color:var(--muted);">{{ a.username }}</div>
+          </td>
+          <td style="font-size:12px;color:var(--muted);">{{ a.contact or '—' }}</td>
+          <td style="font-size:12px;color:var(--muted);white-space:nowrap;">{{ a.created_at|fmt }}</td>
+          <td class="mono">
+            {{ a.total_orders }}
+            {% if a.done_orders %}<span style="font-size:11px;color:var(--muted);">（完成 {{ a.done_orders }}）</span>{% endif %}
+          </td>
+          <td class="mono" style="color:{% if a.total_credits %}var(--accent2){% else %}var(--muted){% endif %};white-space:nowrap;">
+            {{ a.total_credits }}
+            {% if a.total_locked %}<span style="font-size:11px;color:var(--warn);">+{{ a.total_locked }}🔒</span>{% endif %}
+          </td>
+          <td style="font-size:12px;">
+            {% if a.parts %}
+              {% for p in a.parts %}
+              <div style="white-space:nowrap;color:var(--muted);">
+                {{ p.tenant }}：<span class="mono" style="color:var(--text);">{{ p.credits }}</span> 次可用
+                {% if p.locked %}<span style="color:var(--warn);">，另有 {{ p.locked }} 次冷却中</span>{% endif %}
+                · 下单 {{ p.orders }}
+                {% if p.contact and p.contact != a.contact %}<span style="color:var(--muted);">· {{ p.contact }}</span>{% endif %}
+              </div>
+              {% endfor %}
+            {% else %}
+              <span class="muted">还没在任何创作者下注册</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if a.is_active %}<span class="badge" style="background:color-mix(in srgb,var(--green) 13%,transparent);color:var(--green);">正常</span>
+            {% else %}<span class="badge" style="background:color-mix(in srgb,var(--red) 13%,transparent);color:var(--red);">已停用</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div style="font-size:12px;color:var(--muted);margin-top:10px;">
+    「可用次数」是马上就能拿去下单的余额，已扣掉用掉的和过期的；🔒 标的是<strong>额外</strong>持有、但还在 24 小时冷却期内的交易次数（冷却过了会并入可用）。次数按创作者分开计算，不能跨创作者使用。
+  </div>
+  {% else %}
+  <div class="card" style="text-align:center;color:var(--muted);padding:40px;">
+    {% if q %}没有匹配「{{ q }}」的账号{% else %}还没有注册账号{% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}审核队列 - 妖族修仙{% endblock %}
+{% block content %}
+<div class="card">
+  <div style="display:flex;gap:8px;margin-bottom:12px">
+    <a class="btn {{ 'btn-primary' if status_filter=='pending' }}" href="{{ url_for('admin_pending_users', status='pending') }}">待审核</a>
+    <a class="btn {{ 'btn-primary' if status_filter=='approved' }}" href="{{ url_for('admin_pending_users', status='approved') }}">已通过</a>
+    <a class="btn {{ 'btn-primary' if status_filter=='rejected' }}" href="{{ url_for('admin_pending_users', status='rejected') }}">已拒绝</a>
+    <a class="btn {{ 'btn-primary' if status_filter=='all' }}" href="{{ url_for('admin_pending_users', status='all') }}">全部</a>
+  </div>
+  <table>
+    <tr><th>用户名</th><th>QQ</th><th>状态</th><th>注册时间</th><th></th></tr>
+    {% for u in users %}
+    <tr>
+      <td>{{ u.username }}</td>
+      <td>{{ u.qq }}</td>
+      <td>
+        {% if u.status == 'pending' %}<span class="badge badge-gold">待审核</span>
+        {% elif u.status == 'approved' %}<span class="badge badge-jade">已通过</span>
+        {% else %}<span class="badge badge-red">已拒绝</span>{% endif %}
+      </td>
+      <td>{{ u.created_ts | fmt_ts }}</td>
+      <td>
+        {% if u.status == 'pending' %}
+        <form method="post" action="{{ url_for('admin_approve_user', uid=u.id) }}" style="display:inline">
+          <button class="btn btn-primary" style="padding:4px 10px">通过</button>
+        </form>
+        <form method="post" action="{{ url_for('admin_reject_user', uid=u.id) }}" style="display:inline">
+          <button class="btn" style="padding:4px 10px">拒绝</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

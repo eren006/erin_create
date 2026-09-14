@@ -769,7 +769,7 @@
   </div>
 
   <!-- ══════════════════════════════════════════════════════
-       战斗系统配置
+       战斗系统配置（字段 / 单位与 长日RPG.js 读取的 attack_defense_config 一致）
   ══════════════════════════════════════════════════════ -->
   <div class="rpg-section">
     <div class="rpg-section-title">⚙️ 战斗系统配置</div>
@@ -780,37 +780,37 @@
           <div class="rpg-field">
             <label class="rpg-label">系统启用</label>
             <select class="rpg-select" id="bc-enabled">
-              <option value="true">✅ 启用</option>
-              <option value="false">❌ 禁用</option>
+              <option value="1">✅ 启用</option>
+              <option value="0">❌ 禁用</option>
             </select>
           </div>
           <div class="rpg-field">
             <label class="rpg-label">默认回合数</label>
-            <input class="rpg-input" id="bc-turns" type="number" min="1" max="99" placeholder="10">
+            <input class="rpg-input" id="bc-defaultTurns" type="number" min="1" max="99" placeholder="10">
           </div>
           <div class="rpg-field">
             <label class="rpg-label">逃脱成功率 (%)</label>
-            <input class="rpg-input" id="bc-escape" type="number" min="0" max="100" placeholder="30">
+            <input class="rpg-input" id="bc-escapeRate" type="number" min="0" max="100" placeholder="30">
           </div>
           <div class="rpg-field">
             <label class="rpg-label">最小参战人数</label>
-            <input class="rpg-input" id="bc-minplayers" type="number" min="2" max="10" placeholder="2">
+            <input class="rpg-input" id="bc-minPlayers" type="number" min="2" max="10" placeholder="2">
           </div>
           <div class="rpg-field">
             <label class="rpg-label">奖励货币名称</label>
-            <input class="rpg-input" id="bc-currency" placeholder="如：金币">
+            <input class="rpg-input" id="bc-rewardCurrency" placeholder="如：金币">
           </div>
           <div class="rpg-field">
             <label class="rpg-label">胜者奖励数量</label>
-            <input class="rpg-input" id="bc-win" type="number" min="0" placeholder="0">
+            <input class="rpg-input" id="bc-rewardWin" type="number" min="0" placeholder="0">
           </div>
           <div class="rpg-field">
             <label class="rpg-label">败者奖励数量</label>
-            <input class="rpg-input" id="bc-lose" type="number" min="0" placeholder="0">
+            <input class="rpg-input" id="bc-rewardLose" type="number" min="0" placeholder="0">
           </div>
           <div class="rpg-field">
             <label class="rpg-label">每日最大发起次数</label>
-            <input class="rpg-input" id="bc-maxinit" type="number" min="1" placeholder="10">
+            <input class="rpg-input" id="bc-maxInitiations" type="number" min="1" placeholder="10">
           </div>
         </div>
         <button class="rpg-submit" onclick="BATTLE_CONFIG.save()">保存配置</button>
@@ -819,20 +819,15 @@
   </div>
 
   <!-- ══════════════════════════════════════════════════════
-       属性批量编辑
+       玩家战斗属性（只读：玩家数据以机器人为准）
   ══════════════════════════════════════════════════════ -->
   <div class="rpg-section">
-    <div class="rpg-section-title">🧬 属性批量编辑</div>
+    <div class="rpg-section-title">🧬 玩家战斗属性</div>
     <div class="rpg-grid" style="grid-template-columns:1fr;">
       <div class="rpg-panel">
-        <div class="rpg-panel-title" style="display:flex;align-items:center;gap:10px;">
-          战斗基础属性
-          <span class="badge" id="ba-count">0</span>
-          <span style="flex:1"></span>
-          <div style="display:flex;gap:6px;align-items:center;">
-            <input class="rpg-input" id="ba-new-name" placeholder="新增角色名" style="width:130px;margin:0;">
-            <button class="mgmt-add-btn" style="margin:0;" onclick="BATTLE_ATTRS.addRow()">+ 添加</button>
-          </div>
+        <div class="rpg-panel-title">
+          战斗基础属性 <span class="badge" id="ba-count">0</span>
+          <span style="font-size:10px;font-weight:400;color:var(--muted);margin-left:6px;">只读 · 机器人「推送全部」后更新</span>
         </div>
         <div style="overflow-x:auto;">
           <table class="reg-table" id="ba-table">
@@ -841,41 +836,35 @@
                 <th style="min-width:90px;">角色名</th>
                 <th>ATK</th><th>DEF</th><th>AGI</th>
                 <th>HP</th><th>MP</th><th>MP_REGEN</th>
-                <th></th>
               </tr>
             </thead>
             <tbody id="ba-tbody"></tbody>
           </table>
         </div>
-        <div style="margin-top:12px;display:flex;gap:8px;">
-          <button class="rpg-submit" onclick="BATTLE_ATTRS.saveAll()">保存全部</button>
-          <button class="rpg-submit" style="background:var(--muted);color:#fff;" onclick="BATTLE_ATTRS.resetDefaults()">批量重置为默认值</button>
-        </div>
+        <div class="rpg-hint" style="margin-top:10px;">修改请在 QQ 用「属性 设置 角色 属性 值」。</div>
       </div>
     </div>
   </div>
 
   <!-- ══════════════════════════════════════════════════════
-       玩家技能分配矩阵
+       玩家技能（只读：玩家数据以机器人为准）
   ══════════════════════════════════════════════════════ -->
   <div class="rpg-section">
-    <div class="rpg-section-title">🌟 玩家技能分配</div>
+    <div class="rpg-section-title">🌟 玩家技能</div>
     <div class="rpg-grid" style="grid-template-columns:1fr;">
       <div class="rpg-panel">
         <div class="rpg-panel-title">
-          技能分配矩阵
-          <span style="font-size:10px;font-weight:400;color:var(--muted);margin-left:6px;">行=角色 · 列=技能 · 勾选即授予</span>
+          技能分配
+          <span style="font-size:10px;font-weight:400;color:var(--muted);margin-left:6px;">只读 · 行=角色 · 列=技能 · 机器人「推送全部」后更新</span>
         </div>
-        <div id="ps-empty" class="pending-empty" style="display:none;">暂无技能或角色，先在上方注册技能</div>
+        <div id="ps-empty" class="pending-empty" style="display:none;">暂无技能或角色</div>
         <div style="overflow-x:auto;">
           <table class="reg-table" id="ps-table">
             <thead><tr id="ps-head"></tr></thead>
             <tbody id="ps-tbody"></tbody>
           </table>
         </div>
-        <div style="margin-top:12px;">
-          <button class="rpg-submit" onclick="PLAYER_SKILLS.saveAll()">保存技能分配</button>
-        </div>
+        <div class="rpg-hint" style="margin-top:10px;">授予 / 撤销请在 QQ 用「技能 配置 授予/撤销 角色名 技能名」。</div>
       </div>
     </div>
   </div>
@@ -930,7 +919,6 @@ var tradeWhitelist = {{ trade_whitelist | tojson }};
 var attackDefenseCfg = {{ attack_defense_cfg | tojson }};
 var playerSkillsMap  = {{ player_skills      | tojson }};
 var battleLog        = {{ battle_log         | tojson }};
-var playerList       = {{ player_list        | tojson }};
 </script>
 
 <script>
@@ -1879,29 +1867,38 @@ var SKILL = (function() {
 /* ──────────────────────────────────────────────
    BATTLE_CONFIG  ⚙️ 战斗系统配置
 ────────────────────────────────────────────── */
+// 本段脚本的提示函数（原先只在别的闭包里定义，这里直接调用 t() 会报错）
+function t(msg, type) { RPG.toast(msg, type); }
+
 var BATTLE_CONFIG = (function() {
+  // 默认值与 长日RPG.js 读取时的兜底一致；逃脱率是百分比（机器人按 0-100 判定）
   function init() {
     var cfg = attackDefenseCfg || {};
-    document.getElementById('bc-enabled').value        = cfg.enabled !== false ? '1' : '0';
-    document.getElementById('bc-defaultTurns').value   = cfg.defaultTurns    != null ? cfg.defaultTurns    : 30;
-    document.getElementById('bc-escapeRate').value     = cfg.escapeRate      != null ? cfg.escapeRate      : 0.5;
+    document.getElementById('bc-enabled').value        = cfg.enabled ? '1' : '0';
+    document.getElementById('bc-defaultTurns').value   = cfg.defaultTurns    != null ? cfg.defaultTurns    : 10;
+    document.getElementById('bc-escapeRate').value     = cfg.escapeRate      != null ? cfg.escapeRate      : 30;
     document.getElementById('bc-minPlayers').value     = cfg.minPlayers      != null ? cfg.minPlayers      : 2;
     document.getElementById('bc-rewardCurrency').value = cfg.rewardCurrency  != null ? cfg.rewardCurrency  : '金币';
-    document.getElementById('bc-rewardWin').value      = cfg.rewardWin       != null ? cfg.rewardWin       : 100;
-    document.getElementById('bc-rewardLose').value     = cfg.rewardLose      != null ? cfg.rewardLose      : 10;
-    document.getElementById('bc-maxInitiations').value = cfg.maxInitiations  != null ? cfg.maxInitiations  : 5;
+    document.getElementById('bc-rewardWin').value      = cfg.rewardWin       != null ? cfg.rewardWin       : 0;
+    document.getElementById('bc-rewardLose').value     = cfg.rewardLose      != null ? cfg.rewardLose      : 0;
+    document.getElementById('bc-maxInitiations').value = cfg.maxInitiations  != null ? cfg.maxInitiations  : 10;
+  }
+
+  function num(id, dft) {
+    var v = parseInt(document.getElementById(id).value);
+    return isNaN(v) ? dft : v;
   }
 
   function save() {
     var cfg = {
       enabled:        document.getElementById('bc-enabled').value === '1',
-      defaultTurns:   parseInt(document.getElementById('bc-defaultTurns').value)   || 30,
-      escapeRate:     parseFloat(document.getElementById('bc-escapeRate').value)    || 0.5,
-      minPlayers:     parseInt(document.getElementById('bc-minPlayers').value)      || 2,
-      rewardCurrency: document.getElementById('bc-rewardCurrency').value.trim()     || '金币',
-      rewardWin:      parseInt(document.getElementById('bc-rewardWin').value)       || 100,
-      rewardLose:     parseInt(document.getElementById('bc-rewardLose').value)      || 10,
-      maxInitiations: parseInt(document.getElementById('bc-maxInitiations').value)  || 5,
+      defaultTurns:   num('bc-defaultTurns', 10),
+      escapeRate:     Math.max(0, Math.min(100, num('bc-escapeRate', 30))),
+      minPlayers:     num('bc-minPlayers', 2),
+      rewardCurrency: document.getElementById('bc-rewardCurrency').value.trim() || '金币',
+      rewardWin:      num('bc-rewardWin', 0),
+      rewardLose:     num('bc-rewardLose', 0),
+      maxInitiations: num('bc-maxInitiations', 10),
     };
     fetch('/admin/rpg/save', {
       method: 'POST',
@@ -1911,7 +1908,7 @@ var BATTLE_CONFIG = (function() {
     .then(function(r) { return r.json(); })
     .then(function(d) {
       attackDefenseCfg = cfg;
-      t(d.ok ? '战斗配置已保存' : '保存失败', d.ok ? 'ok' : 'err');
+      t(d.ok ? '战斗配置已保存，发「。拉取全部」生效' : '保存失败', d.ok ? 'ok' : 'err');
     })
     .catch(function() { t('网络错误', 'err'); });
   }
@@ -1921,151 +1918,68 @@ var BATTLE_CONFIG = (function() {
 })();
 
 /* ──────────────────────────────────────────────
-   BATTLE_ATTRS  🧬 属性批量编辑
+   BATTLE_ATTRS  🧬 玩家战斗属性（只读）
 ────────────────────────────────────────────── */
-var BATTLE_ATTRS = (function() {
-  var KEYS = ['atk','def','agi','hp','mp','mp_regen'];
-  var DEFAULTS = { atk:10, def:5, agi:5, hp:100, mp:50, mp_regen:5 };
-
-  function render() {
-    var tbody = document.getElementById('ba-tbody');
-    tbody.innerHTML = '';
-    var all = battleAttrs || {};
-    var names = Object.keys(all);
-    playerList.forEach(function(p) { if (names.indexOf(p) === -1) names.push(p); });
-    names.forEach(function(name) { _addRow(name, all[name] || {}); });
+(function() {
+  var KEYS = ['ATK', 'DEF', 'AGI', 'HP', 'MP', 'MP_REGEN'];   // 与机器人存的键一致（大写）
+  var tbody = document.getElementById('ba-tbody');
+  var all = battleAttrs || {};
+  var names = Object.keys(all).sort();
+  document.getElementById('ba-count').textContent = names.length;
+  if (!names.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="reg-empty">暂无数据（有人参战后，机器人「推送全部」才会出现）</td></tr>';
+    return;
   }
-
-  function _addRow(name, attrs) {
-    var tbody = document.getElementById('ba-tbody');
+  names.forEach(function(name) {
+    var a = all[name] || {};
     var tr = document.createElement('tr');
     var td0 = document.createElement('td');
     td0.textContent = name;
-    td0.setAttribute('data-name', name);
+    td0.style.fontWeight = '600';
     tr.appendChild(td0);
     KEYS.forEach(function(k) {
       var td = document.createElement('td');
-      var inp = document.createElement('input');
-      inp.type = 'number'; inp.className = 'ba-inp';
-      inp.setAttribute('data-key', k);
-      inp.value = attrs[k] != null ? attrs[k] : DEFAULTS[k];
-      inp.style.width = '60px';
-      td.appendChild(inp);
+      var v = a[k] != null ? a[k] : a[k.toLowerCase()];
+      td.textContent = v != null ? v : '—';
       tr.appendChild(td);
     });
     tbody.appendChild(tr);
-  }
-
-  function addRow() {
-    var name = document.getElementById('ba-new-name').value.trim();
-    if (!name) { t('请输入角色名', 'err'); return; }
-    document.getElementById('ba-new-name').value = '';
-    _addRow(name, {});
-  }
-
-  function saveAll() {
-    var all = {};
-    document.querySelectorAll('#ba-tbody tr').forEach(function(tr) {
-      var name = tr.querySelector('td[data-name]').getAttribute('data-name');
-      var attrs = {};
-      tr.querySelectorAll('.ba-inp').forEach(function(inp) {
-        attrs[inp.getAttribute('data-key')] = parseFloat(inp.value) || 0;
-      });
-      all[name] = attrs;
-    });
-    fetch('/admin/rpg/save', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ battle_attrs: all }),
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(d) {
-      if (d.ok) { battleAttrs = all; t('属性已保存', 'ok'); }
-      else t('保存失败', 'err');
-    })
-    .catch(function() { t('网络错误', 'err'); });
-  }
-
-  function resetDefaults() {
-    document.querySelectorAll('#ba-tbody tr').forEach(function(tr) {
-      tr.querySelectorAll('.ba-inp').forEach(function(inp) {
-        inp.value = DEFAULTS[inp.getAttribute('data-key')];
-      });
-    });
-    t('已重置为默认值（未保存）', 'ok');
-  }
-
-  render();
-  return { addRow: addRow, saveAll: saveAll, resetDefaults: resetDefaults };
+  });
 })();
 
 /* ──────────────────────────────────────────────
-   PLAYER_SKILLS  🌟 玩家技能分配矩阵
+   PLAYER_SKILLS  🌟 玩家技能（只读）
 ────────────────────────────────────────────── */
-var PLAYER_SKILLS = (function() {
-  function render() {
-    var skills = Object.keys(skillDefs || {});
-    var players = playerList.slice();
-    Object.keys(playerSkillsMap || {}).forEach(function(p) {
-      if (players.indexOf(p) === -1) players.push(p);
-    });
-
-    var headRow = document.getElementById('ps-head');
-    headRow.innerHTML = '<th>角色名</th>';
+(function() {
+  var skills = Object.keys(skillDefs || {});
+  var players = Object.keys(playerSkillsMap || {}).sort();
+  if (!skills.length || !players.length) {
+    document.getElementById('ps-empty').style.display = '';
+    return;
+  }
+  var headRow = document.getElementById('ps-head');
+  headRow.innerHTML = '<th>角色名</th>';
+  skills.forEach(function(sk) {
+    var th = document.createElement('th');
+    th.textContent = sk;
+    headRow.appendChild(th);
+  });
+  var tbody = document.getElementById('ps-tbody');
+  players.forEach(function(p) {
+    var tr = document.createElement('tr');
+    var td0 = document.createElement('td');
+    td0.textContent = p;
+    td0.style.fontWeight = '600';
+    tr.appendChild(td0);
+    var owned = playerSkillsMap[p] || [];
     skills.forEach(function(sk) {
-      var th = document.createElement('th');
-      th.textContent = sk;
-      headRow.appendChild(th);
+      var td = document.createElement('td');
+      td.style.textAlign = 'center';
+      td.textContent = owned.indexOf(sk) !== -1 ? '✓' : '';
+      tr.appendChild(td);
     });
-
-    var tbody = document.getElementById('ps-tbody');
-    tbody.innerHTML = '';
-    players.forEach(function(p) {
-      var tr = document.createElement('tr');
-      var td0 = document.createElement('td');
-      td0.textContent = p;
-      td0.setAttribute('data-player', p);
-      tr.appendChild(td0);
-      var owned = (playerSkillsMap || {})[p] || [];
-      skills.forEach(function(sk) {
-        var td = document.createElement('td');
-        var cb = document.createElement('input');
-        cb.type = 'checkbox'; cb.className = 'ps-cb';
-        cb.setAttribute('data-skill', sk);
-        cb.checked = owned.indexOf(sk) !== -1;
-        td.style.textAlign = 'center';
-        td.appendChild(cb);
-        tr.appendChild(td);
-      });
-      tbody.appendChild(tr);
-    });
-  }
-
-  function saveAll() {
-    var result = {};
-    document.querySelectorAll('#ps-tbody tr').forEach(function(tr) {
-      var p = tr.querySelector('td[data-player]').getAttribute('data-player');
-      var owned = [];
-      tr.querySelectorAll('.ps-cb').forEach(function(cb) {
-        if (cb.checked) owned.push(cb.getAttribute('data-skill'));
-      });
-      result[p] = owned;
-    });
-    fetch('/admin/rpg/save', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ player_skills: result }),
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(d) {
-      if (d.ok) { playerSkillsMap = result; t('技能分配已保存', 'ok'); }
-      else t('保存失败', 'err');
-    })
-    .catch(function() { t('网络错误', 'err'); });
-  }
-
-  render();
-  return { saveAll: saveAll, render: render };
+    tbody.appendChild(tr);
+  });
 })();
 
 /* ──────────────────────────────────────────────

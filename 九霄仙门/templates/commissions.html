@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}宗门委托 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <label style="margin-top:0">体力 {{ char.stamina }}</label>
+  <p class="muted">今日已完成 {{ done_today }} 次委托,前 {{ diminish_after }} 次收益全额,之后收益减半、消耗体力翻倍{% if diminished %}(已进入减半阶段){% endif %}</p>
+</div>
+{% for c in commissions %}
+<div class="card">
+  <h3 style="margin-bottom:4px">{{ c.label }}</h3>
+  <p class="muted">{{ c.desc }}</p>
+  <p class="muted" style="margin-top:6px">消耗体力 {{ c.stamina_cost }} · {{ c.reward_desc }}</p>
+  <form method="post" action="{{ url_for('commission_do', key=c.key) }}" style="margin-top:10px">
+    <button class="btn btn-primary" {{ 'disabled' if char.stamina < c.stamina_cost }}>接取</button>
+    {% if char.stamina < c.stamina_cost %}<p class="muted" style="margin-top:2px;font-size:12px">尚缺{{ c.stamina_cost - char.stamina }}点体力</p>{% endif %}
+  </form>
+</div>
+{% endfor %}
+{% endblock %}

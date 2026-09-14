@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}登录 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="game-entry">
+<section class="entry-lore">
+  <div class="entry-kicker">东方玄幻 · 宗门养成</div>
+  <h1 class="entry-title">九霄仙门</h1>
+  <p class="entry-desc">云海之上，仙门重开。自无名弟子起步，修境界、争峰位、入长老席，直至执掌一宗。</p>
+  <div class="entry-runes"><span>修仙问道</span><span>宗门晋升</span><span>诸峰争锋</span></div>
+</section>
+<div class="card entry-panel" style="max-width:380px;width:100%;margin:0 auto">
+  <div class="panel-mark">◇</div>
+  <div class="panel-caption">重返仙门</div>
+  <h3 style="margin-bottom:16px;text-align:center">弟子登录</h3>
+  {% if err %}<div class="flash flash-error">{{ err }}</div>{% endif %}
+  <form method="post">
+    <label>用户名</label>
+    <input name="username" required>
+    <label>密码</label>
+    <input type="password" name="password" required>
+    <button class="btn btn-primary" style="margin-top:18px;width:100%;padding:12px">进入九霄</button>
+  </form>
+  <p class="muted" style="margin-top:12px">还没有账号? <a href="{{ url_for('register') }}">去注册</a></p>
+  <p class="muted" style="margin-top:8px;text-align:right"><a href="{{ url_for('admin_login') }}">管理员入口</a></p>
+</div>
+</div>
+{% endblock %}

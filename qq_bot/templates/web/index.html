@@ -1,6 +1,21 @@
 {% extends "web/base.html" %}
 {% block title %}我的面板{% endblock %}
 {% block body %}
+{% if christmas_today %}
+<div class="snowfall" aria-hidden="true">
+  {% for i in range(28) %}
+  <span style="left:{{ (i*37) % 100 }}%;animation-duration:{{ 9 + (i % 7) }}s;animation-delay:-{{ (i*3) % 12 }}s;width:{{ 4 + (i % 4) }}px;height:{{ 4 + (i % 4) }}px;opacity:{{ 0.4 + (i % 5) * 0.1 }}"></span>
+  {% endfor %}
+</div>
+<div class="card" style="background:linear-gradient(135deg,#7c2635,#1d3b2a);color:#fff8ea;border-color:#e0c57b">
+  <h2 style="color:#fff;border-color:#ffffff35">🎄 圣诞节到了</h2>
+  <p style="color:#f3e6d0">城堡里挂满了槲寄生，礼堂摆上了今年的大餐，晚上八点舞会开场。去尝尝大餐——说不定布丁里就藏着你的运气。</p>
+  {% if feast %}
+  <p style="color:#f3e6d0">你已经吃过 <b>{{ feast.eaten|length }}</b> / {{ feast.dishes|length }} 种菜{% if feast.has_pudding_entry %}，布丁里的硬币也吃到了，今晚10点见分晓{% endif %}。</p>
+  {% endif %}
+  <a class="btn" href="{{ url_for('christmas_page') }}">🍽 去吃圣诞大餐</a>
+</div>
+{% endif %}
 <div class="card hero-card">
   <div>
     <div class="hero-kicker">{{ player.house }} · {{ player.grade }} 年级学生档案</div>
@@ -23,6 +38,20 @@
   <a class="quick-link" href="{{ url_for('forest_page') }}"><i>🌲</i><span>探索禁林<small>材料与神秘遭遇</small></span></a>
   <a class="quick-link" href="{{ url_for('mainline_page') }}"><i>📖</i><span>成长册<small>查看旅程与奖励</small></span></a>
 </div>
+
+{% if campus_feed %}
+<div class="card">
+  <h2>🏰 校园动态</h2>
+  <ul style="list-style:none;margin:0;padding:0">
+    {% for item in campus_feed %}
+    <li style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:7px 0;border-bottom:1px solid var(--line)">
+      <span>{% if item.name %}<b>{{ item.name }}</b> {% endif %}{{ item.text }}</span>
+      <span class="muted" style="flex:none;font-size:.8rem;white-space:nowrap">{{ item.relative_time }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
 
 {% if plan %}
 <div class="card">
@@ -64,15 +93,52 @@
   </table></div>
 </div>
 
-{% if exams %}
+{% if relatives %}
 <div class="card">
-  <h2>考试成绩</h2>
+  <h2>我的亲戚</h2>
+  <p class="muted">同姓即家人，按注册顺序排辈分。</p>
   <div class="scroll"><table>
-    <tr><th>学年</th><th>科目</th><th>评级</th></tr>
-    {% for e in exams %}
-    <tr><td>{{ e.grade }}年级</td><td>{{ subject_names.get(e.subject, e.subject) }}</td><td><b>{{ e.band }}</b></td></tr>
+    <tr><th>称呼</th><th>姓名</th><th>学院</th></tr>
+    {% for r in relatives %}
+    <tr><td>{{ r.relation }}</td><td>{{ r.name }}·{{ r.surname }}</td><td>{{ r.house }}</td></tr>
     {% endfor %}
   </table></div>
 </div>
+{% endif %}
+
+{% if exams %}
+<div class="card">
+  <h2>考试成绩</h2>
+  {% if exam_grades|length > 1 %}
+  <select id="examGradeFilter" onchange="filterExamGrade(this.value)" style="margin-bottom:10px">
+    <option value="all">全部学年</option>
+    {% for g in exam_grades %}
+    <option value="{{ g }}">{{ g }}年级</option>
+    {% endfor %}
+  </select>
+  {% endif %}
+  <div class="scroll"><table>
+    <tr><th>学年</th><th>科目</th><th>评级</th></tr>
+    {% for e in exams %}
+    <tr class="exam-row" data-grade="{{ e.grade }}"><td>{{ e.grade }}年级</td><td>{{ subject_names.get(e.subject, e.subject) }}</td><td><b>{{ e.band }}</b></td></tr>
+    {% endfor %}
+  </table></div>
+</div>
+<script>
+function filterExamGrade(grade) {
+  document.querySelectorAll('.exam-row').forEach(function (row) {
+    row.style.display = (grade === 'all' || row.dataset.grade === grade) ? '' : 'none';
+  });
+}
+</script>
+{% endif %}
+{% endblock %}
+{% block foot %}
+{% if christmas_today %}
+<style>
+.snowfall{position:fixed;inset:0;pointer-events:none;z-index:3;overflow:hidden}
+.snowfall span{position:absolute;top:-10px;background:#fff;border-radius:50%;filter:blur(.2px);box-shadow:0 0 4px #fffb;animation-name:snow-fall;animation-timing-function:linear;animation-iteration-count:infinite}
+@keyframes snow-fall{0%{transform:translateY(-10px)}100%{transform:translateY(100vh)}}
+</style>
 {% endif %}
 {% endblock %}

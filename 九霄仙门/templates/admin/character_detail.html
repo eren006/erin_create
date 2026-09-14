@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block title %}{{ char.name }} - 角色编辑{% endblock %}
+{% block content %}
+<div class="card">
+  <h3>{{ char.name }} <span class="badge badge-gold">{{ title_for(char.join_seq, char.gender, char.is_npc) }}</span></h3>
+  <p class="muted" style="margin-top:4px">{% if char.is_npc %}宗门NPC长老 · 不计入弟子辈分{% else %}账号: {{ char.username }} · 第 {{ char.join_seq }} 位入门弟子{% endif %}</p>
+  {% if char.bio %}<p style="margin-top:8px">{{ char.bio }}</p>{% endif %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:10px">寻找前世(只读)</h3>
+  {% if pastlife_result %}
+  <p><strong>{{ pastlife_result.name }}</strong> <span class="muted">{{ pastlife_result.epithet }}</span></p>
+  <p class="muted" style="margin-top:4px">已揭晓,终身唯一(pastlife_key={{ char.pastlife_key }})</p>
+  {% elif char.pastlife_path_json %}
+  <p class="muted">当前环节:{{ pastlife_stage.label }}(进度 {{ pastlife_progress }}/{{ pastlife_threshold }})</p>
+  <p class="muted" style="margin-top:4px">已定标签:{% if pastlife_path_labels %}{% for l in pastlife_path_labels %}{{ l }}{% if not loop.last %}、{% endif %}{% endfor %}{% else %}(尚未选择){% endif %}</p>
+  {% else %}
+  <p class="muted">尚未开始</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:10px">数值编辑(调试/剧情用)</h3>
+  <form method="post">
+    <label>性别</label>
+    <select name="gender">
+      <option value="m" {{ 'selected' if char.gender == 'm' }}>男</option>
+      <option value="f" {{ 'selected' if char.gender == 'f' }}>女</option>
+    </select>
+    <label>境界</label>
+    <select name="realm_idx">
+      {% for r in realms %}
+      <option value="{{ loop.index0 }}" {{ 'selected' if loop.index0 == char.realm_idx }}>{{ r.name }}(需修为{{ r.exp }})</option>
+      {% endfor %}
+    </select>
+    <label>修为</label>
+    <input type="number" name="exp" value="{{ char.exp }}" min="0">
+    <label>门内档位</label>
+    <select name="rank_tier">
+      {% for r in ranks %}
+      <option value="{{ r.tier }}" {{ 'selected' if r.tier == char.rank_tier }}>{{ r.label }}</option>
+      {% endfor %}
+    </select>
+    <p class="muted" style="margin-top:4px">注:此处仅修改档位数字,不会自动分配/清空峰位,峰主变更请到"宗门设置"操作</p>
+    <label>可用贡献</label>
+    <input type="number" name="contribution" value="{{ char.contribution }}" min="0">
+    <label>累计贡献</label>
+    <input type="number" name="total_contribution" value="{{ char.total_contribution }}" min="0">
+    <label>灵根</label>
+    <select name="spirit_root">
+      {% for key in spirit_root_order %}
+      <option value="{{ key }}" {{ 'selected' if key == char.spirit_root }}>{{ spirit_roots[key].label }}({{ spirit_roots[key].mult }}x)</option>
+      {% endfor %}
+    </select>
+    <p class="muted" style="margin-top:2px">当前属性:{{ spirit_root_elements_label(char.spirit_root, char.spirit_root_elements) }}</p>
+    <label>灵根属性(勾选具体几个;天灵根勾选无效,固定五行皆通;不勾且改了档位则按新档位随机补齐)</label>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:8px">
+      {% for key in ELEMENT_ORDER %}
+      <label style="display:inline-flex;align-items:center;gap:4px;font-weight:normal">
+        <input type="checkbox" name="elements" value="{{ key }}" style="width:auto" {{ 'checked' if key in current_elements }}>{{ ELEMENTS[key].label }}
+      </label>
+      {% endfor %}
+    </div>
+    <label>血脉/传承</label>
+    <select name="talent_key">
+      <option value="">无</option>
+      {% for key, t in talents.items() %}
+      <option value="{{ key }}" {{ 'selected' if key == char.talent_key }}>{{ t.label }}({{ '血脉' if t.source == 'bloodline' else '传承' }})</option>
+      {% endfor %}
+    </select>
+    <label>仙骨</label>
+    <select name="immortal_bone_key">
+      <option value="">无</option>
+      {% for key, b in immortal_bones.items() %}
+      <option value="{{ key }}" {{ 'selected' if key == char.immortal_bone_key }}>{{ b.label }}</option>
+      {% endfor %}
+    </select>
+    <label>额外寿元(年,来自仙骨/丹药/成就)</label>
+    <input type="number" name="bonus_lifespan_years" value="{{ char.bonus_lifespan_years }}" min="0">
+    <label>体力</label>
+    <input type="number" name="stamina" value="{{ char.stamina }}" min="0" max="120">
+    <label>体魄</label>
+    <input type="number" name="physique" value="{{ char.physique }}" min="0">
+    <label>心境(0-100)</label>
+    <input type="number" name="mind_state" value="{{ char.mind_state }}" min="0" max="100">
+    <label>宗门声望</label>
+    <input type="number" name="reputation" value="{{ char.reputation }}" min="0">
+    <label>灵石</label>
+    <input type="number" name="lingshi" value="{{ char.lingshi }}" min="0">
+    <label>已装备武器key(留空为无)</label>
+    <input name="equipped_weapon_key" value="{{ char.equipped_weapon_key or '' }}">
+    <label>已装备防具key(留空为无)</label>
+    <input name="equipped_armor_key" value="{{ char.equipped_armor_key or '' }}">
+    <label>已装备饰品key(留空为无)</label>
+    <input name="equipped_accessory_key" value="{{ char.equipped_accessory_key or '' }}">
+    <label style="display:flex;align-items:center;gap:6px;margin-top:12px">
+      <input type="checkbox" name="deceased" value="1" style="width:auto" {{ 'checked' if char.deceased }}> 标记为寿终正寝
+    </label>
+    <label style="display:flex;align-items:center;gap:6px">
+      <input type="checkbox" name="ascended" value="1" style="width:auto" {{ 'checked' if char.ascended }}> 标记为已飞升
+    </label>
+    <button class="btn btn-primary" style="margin-top:16px">保存</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:10px">材料库存</h3>
+  <p class="muted" style="margin-bottom:10px">改数量或新增一条,数量填0或留空视为删除该条;key要照抄游戏里用的键名(如qinglan_root、low等)</p>
+  <table>
+    <tr><th>material_key</th><th>数量</th><th></th></tr>
+    {% for m in materials %}
+    <tr>
+      <td>{{ m.material_key }}</td>
+      <td colspan="2">
+        <form method="post" action="{{ url_for('admin_character_material', char_id=char.id) }}" style="display:flex;gap:8px;align-items:center">
+          <input type="hidden" name="material_key" value="{{ m.material_key }}">
+          <input type="number" name="qty" value="{{ m.qty }}" min="0" style="width:90px">
+          <button class="btn" style="padding:4px 10px">保存</button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="3" class="muted">暂无材料</td></tr>
+    {% endfor %}
+  </table>
+  <form method="post" action="{{ url_for('admin_character_material', char_id=char.id) }}" style="margin-top:10px;display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+    <div><label>新增/调整 material_key</label><input name="material_key" placeholder="例:qinglan_root" style="width:180px"></div>
+    <div><label>数量</label><input type="number" name="qty" min="0" style="width:90px"></div>
+    <button class="btn btn-primary">保存</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:10px">装备库存</h3>
+  <p class="muted" style="margin-bottom:10px">这里改的是"持有数量",跟已装备的三个槽位是两回事;要让角色实际穿上,还要改上面的"已装备xx key"</p>
+  <table>
+    <tr><th>item_key</th><th>数量</th><th></th></tr>
+    {% for e in equipment %}
+    <tr>
+      <td>{{ e.item_key }}</td>
+      <td colspan="2">
+        <form method="post" action="{{ url_for('admin_character_equipment_item', char_id=char.id) }}" style="display:flex;gap:8px;align-items:center">
+          <input type="hidden" name="item_key" value="{{ e.item_key }}">
+          <input type="number" name="qty" value="{{ e.qty }}" min="0" style="width:90px">
+          <button class="btn" style="padding:4px 10px">保存</button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="3" class="muted">暂无装备</td></tr>
+    {% endfor %}
+  </table>
+  <form method="post" action="{{ url_for('admin_character_equipment_item', char_id=char.id) }}" style="margin-top:10px;display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+    <div><label>新增/调整 item_key</label><input name="item_key" placeholder="装备的key" style="width:180px"></div>
+    <div><label>数量</label><input type="number" name="qty" min="0" style="width:90px"></div>
+    <button class="btn btn-primary">保存</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:10px">灵宠</h3>
+  <p class="muted" style="margin-bottom:10px">发放不受身边8只上限限制,直接进roster;删除是永久删除,不可撤销</p>
+  <table>
+    <tr><th>pet_key</th><th>名字</th><th>等级</th><th>位置</th><th></th></tr>
+    {% for p in pets %}
+    <tr>
+      <td>{{ pet_types.get(p.pet_key, {}).get('label', p.pet_key) }}</td>
+      <td>{{ p.pet_name or '-' }}</td>
+      <td>{{ p.level }}</td>
+      <td>{{ p.location }}{{ '(出战)' if p.id == char.equipped_pet_id else '' }}</td>
+      <td>
+        <form method="post" action="{{ url_for('admin_character_pet_delete', char_id=char.id, pet_id=p.id) }}"
+              onsubmit="return confirm('确定永久删除这只灵宠吗?')">
+          <button class="btn" style="padding:4px 10px">删除</button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="muted">暂无灵宠</td></tr>
+    {% endfor %}
+  </table>
+  <form method="post" action="{{ url_for('admin_character_pet_grant', char_id=char.id) }}" style="margin-top:10px;display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+    <div><label>发放 pet_key</label>
+      <select name="pet_key" style="width:180px">
+        {% for key, p in pet_types.items() %}
+        <option value="{{ key }}">{{ p.label }}({{ key }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div><label>名字(选填)</label><input name="name" style="width:140px"></div>
+    <button class="btn btn-primary">发放</button>
+  </form>
+</div>
+{% endblock %}

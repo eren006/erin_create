@@ -5,12 +5,13 @@
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
     <div class="page-title" style="margin-bottom:0;">账户管理</div>
     <div class="spacer"></div>
+    <a href="{{ url_for('superadmin_users') }}" class="btn btn-ghost btn-sm">全站用户</a>
     <a href="{{ url_for('superadmin_tenant_new') }}" class="btn btn-primary btn-sm">＋ 新建账户</a>
     <a href="{{ url_for('superadmin_logout') }}" class="btn btn-ghost btn-sm">退出超管</a>
   </div>
 
   {% if tenants %}
-  <div class="card" style="padding:0;overflow:hidden;">
+  <div class="card" style="padding:0;overflow-x:auto;-webkit-overflow-scrolling:touch;">
     <table>
       <thead><tr>
         <th>账户名</th><th>Slug</th><th>管理员</th><th>用户</th>
@@ -31,9 +32,9 @@
           </td>
           <td>
             {% if t.is_active %}
-              <span class="badge" style="background:var(--green)22;color:var(--green);">启用</span>
+              <span class="badge" style="background:color-mix(in srgb,var(--green) 13%,transparent);color:var(--green);">启用</span>
             {% else %}
-              <span class="badge" style="background:var(--red)22;color:var(--red);">停用</span>
+              <span class="badge" style="background:color-mix(in srgb,var(--red) 13%,transparent);color:var(--red);">停用</span>
             {% endif %}
           </td>
           <td><a href="{{ url_for('superadmin_tenant', tid=t.id) }}" class="btn btn-ghost btn-sm">管理</a></td>

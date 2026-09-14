@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh" data-theme="qingming">
+<html lang="zh" data-theme="ink">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,13 +7,14 @@
 <!-- 主题在渲染前注入，避免闪烁 -->
 <script>
 (function(){
-  var t = localStorage.getItem('theme') || 'qingming';
-  document.documentElement.setAttribute('data-theme', t);
+  var theme = 'ink';
+  try { var saved = localStorage.getItem('yuca-theme-v2'); if (saved === 'ballet') theme = saved; } catch (e) {}
+  document.documentElement.setAttribute('data-theme', theme);
 })();
 </script>
 <style>
-/* ══ 透明蓝（默认）══ */
-:root,[data-theme="qingming"]{
+/* ══ 基础变量：两套主题各自覆盖，这里是回退值 ══ */
+:root{
   --bg:#eef4fc;--surface:#ffffff;--surface2:#f0f6ff;
   --border:#ccd9f0;--accent:#3b82f6;--accent2:#1d6fe8;
   --text:#1a2540;--muted:#7a90b8;
@@ -26,25 +27,8 @@
   --th-bg:var(--surface2);
   --flash-bg:#e8f4ec;--flash-border:#a8d8b8;--flash-color:#2e8f5a;
   --body-g1:rgba(160,200,255,0.25);--body-g2:rgba(180,210,255,0.18);
-  --theme-label:"透明蓝";
 }
 
-/* ══ 飞鼠（深色）══ */
-[data-theme="feihu"]{
-  --bg:#0e0e18;--surface:#16162a;--surface2:#1e1e32;
-  --border:#2e2e48;--accent:#7c6fef;--accent2:#a59ff8;
-  --text:#dde1f0;--muted:#6674a0;
-  --red:#f47272;--green:#4ade80;--gold:#fbbf24;--warn:#fb923c;
-  --shadow:rgba(0,0,0,0.55);
-  --topbar-bg:rgba(14,14,24,0.92);
-  --menu-bg:rgba(16,16,28,0.98);
-  --input-bg:#1e1e32;
-  --input-placeholder:#40436a;
-  --th-bg:#1a1a2e;
-  --flash-bg:#16261e;--flash-border:#2a4832;--flash-color:#4ade80;
-  --body-g1:rgba(100,80,220,0.13);--body-g2:rgba(80,60,200,0.10);
-  --theme-label:"飞鼠";
-}
 
 /* ══ 全局重置 ══ */
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -171,21 +155,61 @@ th,td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);fon
 th{color:var(--muted);font-weight:500;background:var(--th-bg);}
 tr:hover td{background:color-mix(in srgb,var(--accent) 4%,var(--surface));}
 
+/* 开关（设置页 / 次数审批页共用） */
+.switch{position:relative;display:inline-block;width:46px;height:26px;flex-shrink:0;}
+.switch input{opacity:0;width:0;height:0;}
+.slider{position:absolute;cursor:pointer;inset:0;background:#c8d5ea;border-radius:26px;transition:.2s;}
+.slider:before{position:absolute;content:"";height:20px;width:20px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 4px rgba(0,0,0,.18);}
+input:checked + .slider{background:var(--accent);}
+input:checked + .slider:before{transform:translateX(20px);}
+.toggle-wrap{display:flex;align-items:center;gap:14px;padding:14px 0;}
+.toggle-label{font-size:14px;font-weight:500;flex:1;}
+.toggle-sub{font-size:12px;color:var(--muted);margin-top:2px;}
+
 .muted{color:var(--muted);}
 .mono{font-family:monospace;font-size:12px;}
 
 /* select 深色适配 */
 .fs option{background:var(--surface);color:var(--text);}
 </style>
+<style>
+[data-theme="ink"]{
+--bg:#131313;--surface:#1b1b1b;--surface2:#242424;--border:#3a3a3a;
+--accent:#ce142b;--accent2:#9a9a9a;--text:#e5e5e5;--muted:#a5a5a5;
+--red:#ff677a;--green:#7fb59b;--gold:#c9ad70;--warn:#d5a463;
+--shadow:rgba(0,0,0,.22);--topbar-bg:rgba(20,20,20,.94);--menu-bg:#1b1b1b;
+--input-bg:#171717;--input-placeholder:#868686;--th-bg:#242424;
+--flash-bg:#232323;--flash-border:#484848;--flash-color:#c0c0c0;
+--body-g1:rgba(190,10,30,.07);--body-g2:rgba(190,10,30,.04);
+}
+[data-theme="ink"] .card,[data-theme="ink"] .card-sm{border-radius:3px;}
+[data-theme="ink"] .btn,[data-theme="ink"] .fi,[data-theme="ink"] .fs,[data-theme="ink"] .ft{border-radius:2px;}
+[data-theme="ink"] .topbar{height:70px;padding:0 4vw;box-shadow:none;}
+[data-theme="ink"] .logo{font-family:"Songti SC","STSong",serif;letter-spacing:.2em;color:var(--text);font-size:20px;}
+[data-theme="ink"] .mobile-menu{top:70px;}
+:focus-visible{outline:2px solid var(--accent2);outline-offset:5px;}
+</style>
 {% block head %}{% endblock %}
+<link rel="stylesheet" href="{{ url_for('static', filename='ink-pages.css', v='2') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='tenant-grid.css', v='2') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='ballet.css', v='8') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='ballet-refined.css', v='2') }}">
+<script defer src="{{ url_for('static', filename='ballet-motion.js', v='1') }}"></script>
+<script defer src="{{ url_for('static', filename='themes.js', v='1') }}"></script>
 </head>
-<body>
+{% set ep = request.endpoint or '' %}
+{% set auth_page = ep in ['user_login','user_register','admin_login','superadmin_login','invite_register','order_verify'] or (ep == 'order_status' and order is not defined) %}
+<body class="{% if ep != 'index' %}inner-page {% if auth_page %}auth-page{% elif ep.startswith('admin_') or ep.startswith('superadmin_') %}workspace-page{% else %}customer-page{% endif %}{% endif %}" data-page="{{ ep }}">
+{% if ep != 'index' %}
 <div class="topbar">
   <a class="logo" href="{{ url_for('index') }}">排单宝</a>
   <div class="nav">
-    {% if session.get('user_id') %}
+    {% if session.get('account_id') %}
     <a href="{{ url_for('member_order') }}" {% if request.endpoint in ['order_new','member_order'] %}class="on"{% endif %}>会员下单</a>
     <a href="{{ url_for('my_orders') }}" {% if request.endpoint=='my_orders' %}class="on"{% endif %}>我的订单</a>
+    <a href="{{ url_for('credits_buy') }}" {% if request.endpoint=='credits_buy' %}class="on"{% endif %}>获得下单次数</a>
+    <a href="{{ url_for('trades_hall') }}" {% if request.endpoint=='trades_hall' %}class="on"{% endif %}>交易大厅</a>
+    <a href="{{ url_for('inbox') }}" {% if request.endpoint=='inbox' %}class="on"{% endif %}>消息{% if unread_inbox_count %}<span class="badge" style="background:color-mix(in srgb,var(--red) 13%,transparent);color:var(--red);margin-left:3px;">{{ unread_inbox_count }}</span>{% endif %}</a>
     {% else %}
     <a href="{{ url_for('order_new') }}" {% if request.endpoint=='order_new' %}class="on"{% endif %}>下单</a>
     <a href="{{ url_for('index') }}#query" {% if request.endpoint=='index' %}class="on"{% endif %}>查回执</a>
@@ -193,6 +217,8 @@ tr:hover td{background:color-mix(in srgb,var(--accent) 4%,var(--surface));}
     {% if session.get('admin_id') %}
     <a href="{{ url_for('admin_dashboard') }}" {% if request.endpoint=='admin_dashboard' %}class="on"{% endif %}>概览</a>
     <a href="{{ url_for('admin_orders') }}" {% if request.endpoint in ['admin_orders','admin_order_detail'] %}class="on"{% endif %}>订单</a>
+    <a href="{{ url_for('admin_credits') }}" {% if request.endpoint=='admin_credits' %}class="on"{% endif %}>次数审批</a>
+    <a href="{{ url_for('admin_redeem_codes') }}" {% if request.endpoint=='admin_redeem_codes' %}class="on"{% endif %}>兑换码</a>
     <a href="{{ url_for('admin_cards') }}" {% if request.endpoint=='admin_cards' %}class="on"{% endif %}>卡管理</a>
     <a href="{{ url_for('admin_bot') }}" {% if request.endpoint=='admin_bot' %}class="on"{% endif %}>排单看板</a>
     <a href="{{ url_for('admin_form_builder') }}" {% if request.endpoint=='admin_form_builder' %}class="on"{% endif %}>表单</a>
@@ -200,14 +226,13 @@ tr:hover td{background:color-mix(in srgb,var(--accent) 4%,var(--surface));}
     <a href="{{ url_for('admin_guide') }}" {% if request.endpoint=='admin_guide' %}class="on"{% endif %}>指南</a>
     {% endif %}
     {% if session.get('superadmin') %}
-    <a href="{{ url_for('superadmin_index') }}" {% if 'superadmin' in request.endpoint %}class="on"{% endif %}>超管</a>
+    <a href="{{ url_for('superadmin_index') }}" {% if 'superadmin' in (request.endpoint or '') %}class="on"{% endif %}>超管</a>
+    <a href="{{ url_for('superadmin_users') }}" {% if request.endpoint=='superadmin_users' %}class="on"{% endif %}>用户</a>
+    <a href="{{ url_for('superadmin_trades') }}" {% if request.endpoint=='superadmin_trades' %}class="on"{% endif %}>仲裁</a>
     {% endif %}
   </div>
   <div class="spacer"></div>
-  <button class="theme-pill" onclick="cycleTheme()" id="theme-pill">
-    <span class="dot"></span>
-    <span id="theme-label">透明蓝</span>
-  </button>
+  {% include '_theme_picker.html' %}
   <div class="topbar-right">
     {% if session.get('admin_id') %}
       <span style="color:var(--accent2);font-size:12px;">{{ session.admin_display_name }}</span>
@@ -215,12 +240,13 @@ tr:hover td{background:color-mix(in srgb,var(--accent) 4%,var(--surface));}
     {% elif session.get('superadmin') %}
       <span style="color:var(--accent2);font-size:12px;">超管</span>
       <a href="{{ url_for('superadmin_logout') }}" style="font-size:12px;">退出</a>
-    {% elif session.get('user_id') %}
-      <span style="color:var(--accent2);font-size:12px;">{{ session.user_display_name }}</span>
+    {% elif session.get('account_id') %}
+      <span style="color:var(--accent2);font-size:12px;">{{ session.account_display_name }}</span>
       <a href="{{ url_for('user_logout') }}" style="font-size:12px;">退出</a>
     {% else %}
       <a href="{{ url_for('user_login') }}" style="color:var(--muted);font-size:11px;">会员登录</a>
       <a href="{{ url_for('admin_login') }}" style="color:var(--muted);font-size:11px;">管理员</a>
+      <a href="{{ url_for('superadmin_login') }}" style="color:var(--muted);font-size:11px;">超管</a>
     {% endif %}
   </div>
   <button class="hamburger" id="hamburger" aria-label="菜单">
@@ -230,9 +256,12 @@ tr:hover td{background:color-mix(in srgb,var(--accent) 4%,var(--surface));}
 
 <!-- 移动端下拉菜单 -->
 <div class="mobile-menu" id="mobile-menu">
-  {% if session.get('user_id') %}
+  {% if session.get('account_id') %}
   <a href="{{ url_for('member_order') }}" {% if request.endpoint in ['order_new','member_order'] %}class="on"{% endif %}>✏️ 会员下单</a>
   <a href="{{ url_for('my_orders') }}" {% if request.endpoint=='my_orders' %}class="on"{% endif %}>📋 我的订单</a>
+  <a href="{{ url_for('credits_buy') }}" {% if request.endpoint=='credits_buy' %}class="on"{% endif %}>🎫 获得下单次数</a>
+  <a href="{{ url_for('trades_hall') }}" {% if request.endpoint=='trades_hall' %}class="on"{% endif %}>🔄 交易大厅</a>
+  <a href="{{ url_for('inbox') }}" {% if request.endpoint=='inbox' %}class="on"{% endif %}>📩 消息{% if unread_inbox_count %} ({{ unread_inbox_count }}){% endif %}</a>
   {% else %}
   <a href="{{ url_for('order_new') }}" {% if request.endpoint=='order_new' %}class="on"{% endif %}>✏️ 下单</a>
   <a href="{{ url_for('index') }}#query">🔍 查回执</a>
@@ -241,6 +270,8 @@ tr:hover td{background:color-mix(in srgb,var(--accent) 4%,var(--surface));}
   <div class="divider"></div>
   <a href="{{ url_for('admin_dashboard') }}" {% if request.endpoint=='admin_dashboard' %}class="on"{% endif %}>📊 概览</a>
   <a href="{{ url_for('admin_orders') }}" {% if request.endpoint in ['admin_orders','admin_order_detail'] %}class="on"{% endif %}>📋 订单</a>
+  <a href="{{ url_for('admin_credits') }}" {% if request.endpoint=='admin_credits' %}class="on"{% endif %}>🎫 次数审批</a>
+  <a href="{{ url_for('admin_redeem_codes') }}" {% if request.endpoint=='admin_redeem_codes' %}class="on"{% endif %}>🎁 兑换码</a>
   <a href="{{ url_for('admin_cards') }}" {% if request.endpoint=='admin_cards' %}class="on"{% endif %}>🃏 卡管理</a>
   <a href="{{ url_for('admin_bot') }}" {% if request.endpoint=='admin_bot' %}class="on"{% endif %}>📊 排单看板</a>
   <a href="{{ url_for('admin_form_builder') }}" {% if request.endpoint=='admin_form_builder' %}class="on"{% endif %}>🧩 表单设计</a>
@@ -251,55 +282,29 @@ tr:hover td{background:color-mix(in srgb,var(--accent) 4%,var(--surface));}
   {% elif session.get('superadmin') %}
   <div class="divider"></div>
   <a href="{{ url_for('superadmin_index') }}">⚙️ 超管后台</a>
+  <a href="{{ url_for('superadmin_users') }}">👥 全站用户</a>
+  <a href="{{ url_for('superadmin_trades') }}">⚖️ 仲裁</a>
   <a href="{{ url_for('superadmin_logout') }}" style="color:var(--muted);">退出登录</a>
-  {% elif session.get('user_id') %}
+  {% elif session.get('account_id') %}
   <div class="divider"></div>
-  <a href="{{ url_for('user_logout') }}" style="color:var(--muted);">退出登录（{{ session.user_display_name }}）</a>
+  <a href="{{ url_for('user_logout') }}" style="color:var(--muted);">退出登录（{{ session.account_display_name }}）</a>
   {% else %}
   <div class="divider"></div>
   <a href="{{ url_for('user_login') }}" style="color:var(--muted);">会员登录</a>
   <a href="{{ url_for('admin_login') }}" style="color:var(--muted);">管理员登录</a>
+  <a href="{{ url_for('superadmin_login') }}" style="color:var(--muted);">超管登录</a>
   {% endif %}
   <div class="divider"></div>
-  <div class="theme-row">
-    <span>外观主题</span>
-    <button class="theme-pill" onclick="cycleTheme()" style="pointer-events:auto;">
-      <span class="dot"></span>
-      <span class="m-theme-label">透明蓝</span>
-    </button>
-  </div>
+
 </div>
+{% endif %}
 
 <script>
-const THEMES = [
-  { id:'qingming', label:'透明蓝' },
-  { id:'feihu',    label:'飞鼠'   },
-];
-
-function applyTheme(id) {
-  document.documentElement.setAttribute('data-theme', id);
-  localStorage.setItem('theme', id);
-  const t = THEMES.find(t => t.id === id) || THEMES[0];
-  document.querySelectorAll('#theme-label, .m-theme-label').forEach(el => el.textContent = t.label);
-}
-
-function cycleTheme() {
-  const cur = document.documentElement.getAttribute('data-theme') || 'qingming';
-  const idx = THEMES.findIndex(t => t.id === cur);
-  const next = THEMES[(idx + 1) % THEMES.length];
-  applyTheme(next.id);
-}
-
-// 初始化标签文字（主题已由 head 脚本应用）
-(function(){
-  const cur = document.documentElement.getAttribute('data-theme') || 'qingming';
-  const t = THEMES.find(t => t.id === cur) || THEMES[0];
-  document.querySelectorAll('#theme-label, .m-theme-label').forEach(el => el.textContent = t.label);
-})();
-
-// 汉堡菜单
+// 主题切换由 themes.js 统一管理，仅开放眠眠岁岁和红眼尾。
+// 汉堡菜单（首页无顶栏，跳过绑定）
 const hb = document.getElementById('hamburger');
 const mm = document.getElementById('mobile-menu');
+if (hb && mm) {
 hb.addEventListener('click', () => {
   hb.classList.toggle('open');
   mm.classList.toggle('open');
@@ -312,6 +317,7 @@ document.addEventListener('click', e => {
     hb.classList.remove('open'); mm.classList.remove('open');
   }
 });
+}
 </script>
 
 {% with msgs = get_flashed_messages() %}
@@ -319,6 +325,31 @@ document.addEventListener('click', e => {
     {% for m in msgs %}<div class="flash">{{ m }}</div>{% endfor %}
   {% endif %}
 {% endwith %}
+{% if ep != 'index' %}
+<div class="inner-layout">
+  {% if ep != 'admin_form_builder' %}
+  <aside class="inner-masthead" aria-label="主题横幅">
+    <div class="masthead-copy">
+      <div class="masthead-kicker"><span data-theme-name>眠眠岁岁</span> <span>／ TUCA STUDIO</span></div>
+      {% if auth_page %}
+      <h1>一纸相逢<br>落笔成章</h1><p>{% if ep == 'order_status' %}凭回执与验证码，寻回你的创作进度。{% elif ep in ['user_register','invite_register'] %}开启你的账户，让每一份创作都有归处。{% else %}登录你的账户，让每一份创作都有归处。{% endif %}</p>
+      {% elif ep.startswith('admin_') or ep.startswith('superadmin_') %}
+      <h1>案头有序</h1><p>照看每一份委托，从灵感到交付。</p>
+      {% elif ep == 'order_new' %}
+      <h1>把灵感，交给笔墨。</h1><p>选择接单方 · 填写需求 · 保存回执</p>
+      {% else %}
+      <h1>一笔一程，皆有回音。</h1><p>在这里，查看你的委托与创作进度。</p>
+      {% endif %}
+    </div><span class="masthead-seal" aria-hidden="true"><span class="ink-only">眠眠<br>岁岁</span><span class="ballet-only">红眼<br>尾</span></span>
+  </aside>
+  {% endif %}
+  <main class="inner-content">
+{% endif %}
 {% block body %}{% endblock %}
+{% if ep != 'index' %}
+  </main>
+</div>
+<footer class="inner-footer"><a href="{{ url_for('index') }}">排单宝 · <span data-theme-name>眠眠岁岁</span></a><span data-ink-copy="以墨为引，以序成章" data-ballet-copy="轻盈起舞，灵感成形">以墨为引，以序成章</span></footer>
+{% endif %}
 </body>
 </html>

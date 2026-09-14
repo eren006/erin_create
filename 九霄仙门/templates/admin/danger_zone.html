@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}危险操作 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card" style="border:1px solid rgba(220,80,80,.6)">
+  <h3 style="margin-bottom:10px;color:#e05050">整服重置回初始状态</h3>
+  <p class="muted" style="margin-bottom:6px">这会清空所有用户、角色、宗门记录、市场、信箱等全部数据,重新铺回"刚部署这套代码"时的样子(只留管理员账号,峰位、NPC长老会重新生成)。</p>
+  <p class="muted" style="margin-bottom:6px">操作前会自动把当前 jiuxiao.db 复制一份到服务器本地 backups/ 目录留底,理论上可以找回,但请把这当成真的不可逆操作。</p>
+  <p style="margin-bottom:14px">要继续,请在下方原样输入:<strong style="color:#e05050">{{ confirm_phrase }}</strong></p>
+  <form method="post">
+    <input name="confirm" placeholder="在此输入确认文字" autocomplete="off">
+    <button class="btn" style="margin-top:12px;background:#e05050;border-color:#e05050;color:#fff">确认重置整服</button>
+  </form>
+</div>
+{% endblock %}

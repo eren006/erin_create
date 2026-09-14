@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}{{ clan.name }} - 妖族修仙{% endblock %}
+{% block content %}
+<div class="card">
+  <h3>{{ clan.name }}</h3>
+  {% if clan.description %}<p class="muted" style="margin-top:6px">{{ clan.description }}</p>{% endif %}
+  <div style="margin-top:12px">
+    {% if in_this_clan %}
+    <form method="post" action="{{ url_for('clan_leave', clan_id=clan.id) }}" style="display:inline">
+      <button class="btn">退出宗门</button>
+    </form>
+    {% else %}
+    <form method="post" action="{{ url_for('clan_join', clan_id=clan.id) }}" style="display:inline">
+      <button class="btn btn-primary">加入宗门</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">门人</h3>
+  <table>
+    <tr><th>道号</th><th>血脉</th><th>境界</th><th>身份</th></tr>
+    {% for m in members %}
+    <tr>
+      <td>{{ m.name }}</td>
+      <td>{{ m.species }}</td>
+      <td>{{ stage_display_name(m.stage_index) }}</td>
+      <td>{% if m.rank == 'leader' %}<span class="badge badge-gold">宗主</span>{% else %}门人{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+{% if mentor_pairs %}
+<div class="card">
+  <h3 style="margin-bottom:8px">师徒</h3>
+  {% for p in mentor_pairs %}
+  <p class="muted">{{ p.master_name }} → {{ p.disciple_name }}</p>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if is_leader %}
+<div class="card">
+  <h3 style="margin-bottom:8px">指定师徒(宗主专属)</h3>
+  <form method="post" action="{{ url_for('clan_assign_mentor', clan_id=clan.id) }}">
+    <label>师父</label>
+    <select name="master_id" required>
+      {% for m in members %}<option value="{{ m.char_id }}">{{ m.name }}</option>{% endfor %}
+    </select>
+    <label>徒弟</label>
+    <select name="disciple_id" required>
+      {% for m in members %}<option value="{{ m.char_id }}">{{ m.name }}</option>{% endfor %}
+    </select>
+    <button class="btn btn-primary" style="margin-top:12px">绑定师徒</button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

@@ -28,7 +28,15 @@ CREATE TABLE IF NOT EXISTS quidditch_daily (
     day INTEGER NOT NULL,
     matches INTEGER NOT NULL DEFAULT 0,
     trainings INTEGER NOT NULL DEFAULT 0,
+    initiated INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (uid, day)
+);
+
+CREATE TABLE IF NOT EXISTS quidditch_house_daily (
+    house TEXT NOT NULL,
+    day INTEGER NOT NULL,
+    matches INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (house, day)
 );
 
 CREATE TABLE IF NOT EXISTS duel_challenges (
@@ -117,12 +125,52 @@ CREATE TABLE IF NOT EXISTS forest_defeated (
     PRIMARY KEY (uid, monster_key)
 );
 
+CREATE TABLE IF NOT EXISTS gnome_daily (
+    uid TEXT NOT NULL,
+    day INTEGER NOT NULL,
+    count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (uid, day)
+);
+
+CREATE TABLE IF NOT EXISTS gnome_catches (
+    uid TEXT PRIMARY KEY,
+    total INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS gnome_cooldown (
+    uid TEXT PRIMARY KEY,
+    last_catch_at INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS duel_daily (
     uid TEXT NOT NULL,
     day INTEGER NOT NULL,
     initiated INTEGER NOT NULL DEFAULT 0,
     received INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (uid, day)
+);
+
+CREATE TABLE IF NOT EXISTS creature_daily (
+    uid TEXT NOT NULL,
+    day INTEGER NOT NULL,
+    count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (uid, day)
+);
+
+CREATE TABLE IF NOT EXISTS creature_encounters (
+    uid TEXT PRIMARY KEY,
+    total INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS creature_cooldown (
+    uid TEXT PRIMARY KEY,
+    last_tend_at INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS creature_rare_won (
+    uid TEXT PRIMARY KEY,
+    pet_key TEXT NOT NULL,
+    won_at INTEGER NOT NULL
 );
 """
 
@@ -151,6 +199,10 @@ def init_db() -> None:
                 conn.execute(stmt)
             except sqlite3.OperationalError:
                 pass  # 列已存在（旧库升级用）
+        try:
+            conn.execute("ALTER TABLE quidditch_daily ADD COLUMN initiated INTEGER NOT NULL DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass  # 列已存在（旧库升级用）
         conn.commit()
     finally:
         conn.close()
@@ -311,6 +363,22 @@ def mvp_by_house(house: str, limit: int = 1) -> list[sqlite3.Row]:
         conn.close()
 
 
+def quidditch_leaderboard(limit: int = 10) -> list[dict]:
+    """全校魁地奇个人排名，按赛季累计得分排序，只看还没上过场的0分选手会被排除。"""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT q.uid, q.house, q.position, q.season_score, p.name, p.surname "
+            "FROM quidditch_players q JOIN players p ON p.uid = q.uid "
+            "WHERE q.season_score > 0 "
+            "ORDER BY q.season_score DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
 # ======================== 每日次数 ========================
 
 
@@ -332,7 +400,7 @@ def get_daily(uid: str, day: int) -> sqlite3.Row:
 
 
 def increment_daily(uid: str, day: int, field: str) -> None:
-    assert field in ("matches", "trainings")
+    assert field in ("matches", "trainings", "initiated")
     conn = get_conn()
     try:
         conn.execute(
@@ -341,6 +409,54 @@ def increment_daily(uid: str, day: int, field: str) -> None:
             (uid, day),
         )
         conn.commit()
+    finally:
+        conn.close()
+
+
+def get_house_daily_matches(house: str, day: int) -> int:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT matches FROM quidditch_house_daily WHERE house = ? AND day = ?", (house, day)
+        ).fetchone()
+        return row["matches"] if row else 0
+    finally:
+        conn.close()
+
+
+def increment_house_daily_matches(house: str, day: int) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO quidditch_house_daily (house, day, matches) VALUES (?, ?, 1) "
+            "ON CONFLICT(house, day) DO UPDATE SET matches = matches + 1",
+            (house, day),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_house_total_matches(house: str) -> int:
+    """这个学院从开服到现在一共打了多少场（按天汇总，不受每日上限的表结构限制）。"""
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT COALESCE(SUM(matches), 0) AS total FROM quidditch_house_daily WHERE house = ?", (house,)
+        ).fetchone()
+        return row["total"]
+    finally:
+        conn.close()
+
+
+def house_total_matches_all() -> dict[str, int]:
+    """全院总场次一次性查出来，用于展示各院对比。"""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT house, SUM(matches) AS total FROM quidditch_house_daily GROUP BY house"
+        ).fetchall()
+        return {row["house"]: row["total"] for row in rows}
     finally:
         conn.close()
 
@@ -615,6 +731,216 @@ def increment_forest_daily(uid: str, day: int) -> None:
         conn.close()
 
 
+def get_gnome_daily(uid: str, day: int) -> int:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT count FROM gnome_daily WHERE uid = ? AND day = ?", (uid, day)
+        ).fetchone()
+        return row["count"] if row else 0
+    finally:
+        conn.close()
+
+
+def increment_gnome_daily(uid: str, day: int) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO gnome_daily (uid, day, count) VALUES (?, ?, 1) "
+            "ON CONFLICT(uid, day) DO UPDATE SET count = count + 1",
+            (uid, day),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_gnome_total(uid: str) -> int:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT total FROM gnome_catches WHERE uid = ?", (uid,)).fetchone()
+        return row["total"] if row else 0
+    finally:
+        conn.close()
+
+
+def increment_gnome_total(uid: str) -> int:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO gnome_catches (uid, total) VALUES (?, 1) "
+            "ON CONFLICT(uid) DO UPDATE SET total = total + 1",
+            (uid,),
+        )
+        conn.commit()
+        return conn.execute("SELECT total FROM gnome_catches WHERE uid = ?", (uid,)).fetchone()["total"]
+    finally:
+        conn.close()
+
+
+def get_gnome_last_catch(uid: str) -> int:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT last_catch_at FROM gnome_cooldown WHERE uid = ?", (uid,)
+        ).fetchone()
+        return row["last_catch_at"] if row else 0
+    finally:
+        conn.close()
+
+
+def set_gnome_last_catch(uid: str, ts: int) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO gnome_cooldown (uid, last_catch_at) VALUES (?, ?) "
+            "ON CONFLICT(uid) DO UPDATE SET last_catch_at = excluded.last_catch_at",
+            (uid, ts),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def gnome_leaderboard(limit: int = 20) -> list[dict]:
+    """全服个人捕获总数排行榜。"""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT g.uid, g.total, p.name, p.surname, p.house FROM gnome_catches g "
+            "JOIN players p ON p.uid = g.uid "
+            "WHERE g.total > 0 ORDER BY g.total DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def gnome_house_leaderboard() -> list[dict]:
+    """全院捕获总数排行榜（按学院汇总）。"""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT p.house AS house, COALESCE(SUM(g.total), 0) AS total "
+            "FROM players p LEFT JOIN gnome_catches g ON g.uid = p.uid "
+            "WHERE p.house != '' GROUP BY p.house ORDER BY total DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+# ======================== 神奇生物驯养（三年级限时活动） ========================
+
+
+def get_creature_daily(uid: str, day: int) -> int:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT count FROM creature_daily WHERE uid = ? AND day = ?", (uid, day)
+        ).fetchone()
+        return row["count"] if row else 0
+    finally:
+        conn.close()
+
+
+def increment_creature_daily(uid: str, day: int) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO creature_daily (uid, day, count) VALUES (?, ?, 1) "
+            "ON CONFLICT(uid, day) DO UPDATE SET count = count + 1",
+            (uid, day),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_creature_total(uid: str) -> int:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT total FROM creature_encounters WHERE uid = ?", (uid,)).fetchone()
+        return row["total"] if row else 0
+    finally:
+        conn.close()
+
+
+def increment_creature_total(uid: str) -> int:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO creature_encounters (uid, total) VALUES (?, 1) "
+            "ON CONFLICT(uid) DO UPDATE SET total = total + 1",
+            (uid,),
+        )
+        conn.commit()
+        return conn.execute("SELECT total FROM creature_encounters WHERE uid = ?", (uid,)).fetchone()["total"]
+    finally:
+        conn.close()
+
+
+def get_creature_last_tend(uid: str) -> int:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT last_tend_at FROM creature_cooldown WHERE uid = ?", (uid,)
+        ).fetchone()
+        return row["last_tend_at"] if row else 0
+    finally:
+        conn.close()
+
+
+def set_creature_last_tend(uid: str, ts: int) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO creature_cooldown (uid, last_tend_at) VALUES (?, ?) "
+            "ON CONFLICT(uid) DO UPDATE SET last_tend_at = excluded.last_tend_at",
+            (uid, ts),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def has_won_rare_creature(uid: str) -> bool:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT 1 FROM creature_rare_won WHERE uid = ?", (uid,)).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+def record_rare_creature_win(uid: str, pet_key: str) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO creature_rare_won (uid, pet_key, won_at) VALUES (?, ?, ?)",
+            (uid, pet_key, now()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def creature_leaderboard(limit: int = 20) -> list[dict]:
+    """全服个人驯养成功总数排行榜。"""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT c.uid, c.total, p.name, p.surname, p.house FROM creature_encounters c "
+            "JOIN players p ON p.uid = c.uid "
+            "WHERE c.total > 0 ORDER BY c.total DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
 def has_defeated(uid: str, monster_key: str) -> bool:
     conn = get_conn()
     try:
@@ -705,6 +1031,30 @@ CREATE TABLE IF NOT EXISTS tree_rewards (
     year INTEGER NOT NULL,
     claimed_at INTEGER NOT NULL,
     PRIMARY KEY (uid, year)
+);
+
+CREATE TABLE IF NOT EXISTS feast_eats (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uid TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    dish TEXT NOT NULL,
+    gift_key TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_feast_eats_year_uid ON feast_eats (year, uid);
+
+CREATE TABLE IF NOT EXISTS feast_pudding_entries (
+    uid TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (uid, year)
+);
+
+CREATE TABLE IF NOT EXISTS feast_pudding_draws (
+    year INTEGER PRIMARY KEY,
+    winner_uid TEXT NOT NULL,
+    galleons INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
 );
 """
 
@@ -932,6 +1282,21 @@ def recent_tree_hangs(year: int, limit: int = 8) -> list[sqlite3.Row]:
         conn.close()
 
 
+def tree_contributor_leaderboard(year: int, limit: int = 10) -> list[sqlite3.Row]:
+    """按当年挂饰攒下的总点数排名，同分按谁先攒到这个分数排前面。"""
+    conn = get_conn()
+    try:
+        return conn.execute(
+            "SELECT p.uid, p.name, p.surname, p.house, COALESCE(SUM(t.points), 0) AS total, "
+            "MIN(t.created_at) AS first_hang_at "
+            "FROM tree_hangs t JOIN players p ON p.uid = t.uid "
+            "WHERE t.year = ? GROUP BY t.uid ORDER BY total DESC, first_hang_at ASC LIMIT ?",
+            (year, limit),
+        ).fetchall()
+    finally:
+        conn.close()
+
+
 def mark_tree_reward_claimed(uid: str, year: int) -> None:
     conn = get_conn()
     try:
@@ -974,6 +1339,113 @@ def get_frozen_tree_goal(year: int) -> int | None:
     try:
         row = conn.execute("SELECT goal FROM tree_goals WHERE year = ?", (year,)).fetchone()
         return row["goal"] if row else None
+    finally:
+        conn.close()
+
+
+# ======================== 圣诞：大餐 ========================
+
+
+def add_feast_eat(uid: str, year: int, dish: str, gift_key: str = "") -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO feast_eats (uid, year, dish, gift_key, created_at) VALUES (?, ?, ?, ?, ?)",
+            (uid, year, dish, gift_key, now()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def last_feast_eat_at(uid: str, year: int) -> int | None:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT MAX(created_at) AS ts FROM feast_eats WHERE uid = ? AND year = ?", (uid, year)
+        ).fetchone()
+        return row["ts"]
+    finally:
+        conn.close()
+
+
+def list_feast_dishes_eaten(uid: str, year: int) -> list[str]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT DISTINCT dish FROM feast_eats WHERE uid = ? AND year = ?", (uid, year)
+        ).fetchall()
+        return [r["dish"] for r in rows]
+    finally:
+        conn.close()
+
+
+def feast_variety_leaderboard(year: int, limit: int = 10) -> list[sqlite3.Row]:
+    conn = get_conn()
+    try:
+        return conn.execute(
+            "SELECT p.uid, p.name, p.surname, p.house, COUNT(DISTINCT f.dish) AS variety, "
+            "MAX(f.created_at) AS last_eaten_at "
+            "FROM feast_eats f JOIN players p ON p.uid = f.uid "
+            "WHERE f.year = ? GROUP BY f.uid ORDER BY variety DESC, last_eaten_at ASC LIMIT ?",
+            (year, limit),
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+def add_pudding_entry(uid: str, year: int) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO feast_pudding_entries (uid, year, created_at) VALUES (?, ?, ?)",
+            (uid, year, now()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def has_pudding_entry(uid: str, year: int) -> bool:
+    conn = get_conn()
+    try:
+        return conn.execute(
+            "SELECT 1 FROM feast_pudding_entries WHERE uid = ? AND year = ?", (uid, year)
+        ).fetchone() is not None
+    finally:
+        conn.close()
+
+
+def list_pudding_entrants(year: int) -> list[str]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT uid FROM feast_pudding_entries WHERE year = ?", (year,)
+        ).fetchall()
+        return [r["uid"] for r in rows]
+    finally:
+        conn.close()
+
+
+def get_pudding_draw(year: int) -> sqlite3.Row | None:
+    conn = get_conn()
+    try:
+        return conn.execute(
+            "SELECT * FROM feast_pudding_draws WHERE year = ?", (year,)
+        ).fetchone()
+    finally:
+        conn.close()
+
+
+def record_pudding_draw(year: int, winner_uid: str, galleons: int) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO feast_pudding_draws (year, winner_uid, galleons, created_at) "
+            "VALUES (?, ?, ?, ?)",
+            (year, winner_uid, galleons, now()),
+        )
+        conn.commit()
     finally:
         conn.close()
 

@@ -26,6 +26,7 @@ MILESTONES = (
     ("spell_student", 4, "小有成就的巫师", "累计掌握10个魔咒", 40),
     ("owl_excellent", 5, "O.W.L.优等生", "任意一门O.W.L.取得O", 60),
     ("spell_master", 6, "魔咒大师", "累计掌握15个魔咒", 80),
+    ("card_collector", 3, "巧克力蛙收藏家", "集齐一半的巧克力蛙卡片", 30),
     ("graduated", 7, "霍格沃茨毕业生", "参加N.E.W.T.并完成七年学业", 120),
 )
 
@@ -100,6 +101,15 @@ def _completed(conn: sqlite3.Connection, uid: str, key: str) -> tuple[bool, str]
 
     if key == "spell_master":
         return spell_count >= 15, f"{min(spell_count, 15)}/15"
+
+    if key == "card_collector":
+        from plugins.hp_school import choc_frog
+
+        threshold = choc_frog.TOTAL_CARDS // 2
+        count = 0
+        if _table_exists(conn, "choc_frog_cards"):
+            count = _scalar(conn, "SELECT COUNT(*) FROM choc_frog_cards WHERE uid = ?", (uid,))
+        return count >= threshold, f"{min(count, threshold)}/{threshold}"
 
     if key == "graduated":
         count = _scalar(

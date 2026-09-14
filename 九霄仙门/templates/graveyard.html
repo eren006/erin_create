@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}墓园 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:6px">墓园</h3>
+  <p class="muted">寿终正寝的同门长眠于此(飞升者见「英杰阁」)。每日最多扫墓{{ sweep_limit }}次,今日已{{ swept_today }}次。</p>
+</div>
+
+<div class="card">
+  {% if not graves %}<p class="muted">墓园中尚无人安葬</p>{% endif %}
+  {% for g in graves %}
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--bd)">
+    <div>
+      <p>{{ g.name }}({{ title_for(g.join_seq, g.gender, g.is_npc) }}){% if g.dao_hao %} · 道号「{{ g.dao_hao }}」{% endif %}
+        {% if g.is_kin %}<span class="badge badge-gold">故人</span>{% endif %}
+        <span class="badge">香火 {{ g.incense_count }}</span></p>
+      <p class="muted" style="margin-top:2px">{{ g.death_label or '寿元耗尽,寿终正寝' }}{% if g.death_year is not none %} · 宗门纪年{{ g.death_year }}年{% endif %}</p>
+    </div>
+    <form method="post" action="{{ url_for('graveyard_sweep', dead_id=g.id) }}" style="display:flex;gap:6px;align-items:center">
+      <input type="number" name="incense_lingshi" min="0" placeholder="灵石(选填)" style="width:100px">
+      <button class="btn" style="padding:4px 12px;white-space:nowrap">扫墓</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

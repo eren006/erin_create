@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}诸峰 - 九霄仙门{% endblock %}
+{% block content %}
+{% if can_join_peak %}
+<div class="card muted" style="text-align:center">拜入一峰即终生归属,一生仅有一次转峰机会(需耗贡献,原峰专属功法将作废),请慎重选择</div>
+{% endif %}
+{% for p in peaks %}
+<div class="card">
+  <h3>{{ p.name }} <span class="badge badge-purple">{{ PEAK_SPECIALTIES[p.name].theme }}</span>
+    {% if p.is_leader %}<span class="badge badge-gold">掌门峰</span>{% endif %}</h3>
+  <p class="muted" style="margin-top:4px">{{ PEAK_SPECIALTIES[p.name].desc }}</p>
+  {% if p.elder_id %}
+  <p style="margin-top:6px">{{ '掌门' if p.is_leader else '长老' }}: {{ p.elder_name }}
+    ({{ title_for(p.elder_join_seq, p.elder_gender, p.elder_is_npc) }}) · {{ realm_by_index(p.elder_realm_idx).name }}</p>
+  {% else %}
+  <p class="muted" style="margin-top:6px">
+    {% if p.is_leader %}掌门之位空缺,须由在位长老主动申请继任{% else %}长老之位空缺,静候本峰弟子考核递补{% endif %}
+  </p>
+  {% endif %}
+  <p class="muted" style="margin-top:6px">弟子 {{ p.disciple_count }} / {{ max_disciples }}</p>
+  {% if can_join_peak and p.disciple_count < max_disciples %}
+  <form method="post" action="{{ url_for('peak_join', peak_id=p.id) }}" style="margin-top:10px"
+        data-confirm-title="拜入{{ p.name }}"
+        data-confirm-message="拜峰后将终生归属{{ p.name }}，一生仅有一次转峰机会(需耗贡献,原峰专属功法将作废)。"
+        data-confirm-warning="{% if p.is_leader %}掌门峰不设长老之位,若想日后考核夺得一峰长老,请选其他峰门。{% else %}这会永久决定你的师承归属与峰门关系。{% endif %}"
+        data-confirm-button="确认拜入" data-confirm-tone="danger">
+    <button class="btn btn-primary" style="padding:4px 12px">拜入{{ p.name }}</button>
+  </form>
+  {% elif can_transfer and p.id != char.peak_id and p.disciple_count < max_disciples %}
+  <form method="post" action="{{ url_for('peak_transfer', peak_id=p.id) }}" style="margin-top:10px"
+        data-confirm-title="转投{{ p.name }}"
+        data-confirm-message="转峰机会一生仅此一次{% if transfer_cost %},需耗贡献{{ transfer_cost }}{% else %}(由掌门峰转出,本次免贡献){% endif %},此前所修峰专属功法将作废,需重新习得新峰功法。"
+        data-confirm-warning="请慎重选择。"
+        data-confirm-button="确认转峰" data-confirm-tone="danger">
+    <button class="btn" style="padding:4px 12px">转投{{ p.name }}{% if transfer_cost %}(耗贡献{{ transfer_cost }}){% else %}(免费){% endif %}</button>
+  </form>
+  {% endif %}
+  {% if p.is_leader and can_apply_leader and p.elder_id != char.id %}
+    {% if not application_open %}
+    <p class="muted" style="margin-top:10px">掌门峰前任尚未离宗,暂不受理申请</p>
+    {% else %}
+    <form method="post" action="{{ url_for('apply_leader') }}" style="margin-top:10px"
+          data-confirm-title="{{ '挑战掌门之位' if p.elder_id else '申请就任掌门' }}"
+          data-confirm-message="{% if p.elder_id %}掌门之位已有{{ p.elder_name }}在位,申请即视为发起挑战,双方按战力算分+运气一战定胜负,败者卸任回原峰长老。{% else %}掌门之位空缺,申请即就任,先到先得。{% endif %}"
+          data-confirm-warning="请慎重选择。"
+          data-confirm-button="{{ '确认挑战' if p.elder_id else '确认申请' }}" data-confirm-tone="danger">
+      <button class="btn {{ '' if p.elder_id else 'btn-primary' }}" style="padding:4px 12px">
+        {{ '挑战掌门之位' if p.elder_id else '申请就任掌门' }}
+      </button>
+    </form>
+    {% endif %}
+  {% endif %}
+</div>
+{% endfor %}
+{% if not can_join_peak and char.rank_tier < 3 %}
+<div class="card muted" style="text-align:center">晋升为精英弟子后,方可拜师入峰</div>
+{% endif %}
+{% endblock %}

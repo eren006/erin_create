@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}宗门设置 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:10px">掌门状态</h3>
+  <table>
+    <tr><td>宗门纪年</td><td>第 {{ sect_year }} 年(founded_ts起,1小时=1年)</td></tr>
+    <tr><td>NPC掌门占位名</td><td>{{ cfg.npc_leader_name }}</td></tr>
+    <tr><td>NPC是否已卸任</td><td>{{ '是' if cfg.succession_done else '否' }}</td></tr>
+    <tr><td>预定飞升触发时间</td><td>{{ cfg.succession_target_ts | fmt_ts }}</td></tr>
+    <tr><td>现任掌门</td><td>{{ leader.name if leader else '空缺' }}</td></tr>
+  </table>
+  <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+    <form method="post" action="{{ url_for('admin_trigger_succession') }}">
+      <button class="btn btn-primary">立即开放掌门申请窗口</button>
+    </form>
+    <form method="post" action="{{ url_for('admin_ascend_leader') }}"
+          data-confirm-title="令掌门飞升离宗" data-confirm-message="现任掌门将立即飞升，并离开当前宗门职位。"
+          data-confirm-warning="这会改变掌门与继承状态。" data-confirm-button="确认飞升" data-confirm-tone="danger">
+      <button class="btn" {{ 'disabled' if not leader }}>令现任掌门飞升离宗</button>
+    </form>
+    <form method="post" action="{{ url_for('admin_trigger_lifespan') }}">
+      <button class="btn">立即执行全宗寿元检查</button>
+    </form>
+    <form method="post" action="{{ url_for('admin_trigger_gossip') }}">
+      <button class="btn">立即生成一条宗门闲话</button>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:10px">编辑宗门配置</h3>
+  <form method="post">
+    <label>NPC掌门占位名</label>
+    <input name="npc_leader_name" value="{{ cfg.npc_leader_name }}">
+    <label>预定飞升触发时间(unix秒,调试用,可设为接近当前时间快速验证)</label>
+    <input type="number" name="succession_target_ts" value="{{ cfg.succession_target_ts }}">
+    <button class="btn btn-primary" style="margin-top:12px">保存</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:10px">诸峰一览</h3>
+  <table>
+    <tr><th>峰名</th><th>类型</th><th>峰主</th><th>操作</th></tr>
+    {% for p in peaks %}
+    <tr>
+      <td>{{ p.name }}</td>
+      <td>{{ '掌门峰' if p.is_leader else '长老峰' }}</td>
+      <td class="muted">
+        {% if p.elder_name %}{{ p.elder_name }}{{ '(NPC)' if p.elder_is_npc else '' }}{% else %}空缺{% endif %}
+      </td>
+      <td>
+        {% if not p.is_leader and not p.elder_name %}
+        <form method="post" action="{{ url_for('admin_spawn_npc_elder', peak_id=p.id) }}"
+              data-confirm-title="补任NPC长老" data-confirm-message="将为{{ p.name }}补一名NPC长老。"
+              data-confirm-warning="真实弟子考核达标后，仍可将其顶替。" data-confirm-button="确认补任">
+          <button class="btn" style="padding:4px 10px">补NPC长老</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}飞升 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">⚡</span>飞升仪式</h3><span class="badge badge-gold">{{ char.exp }} 修为 · 大乘圆满</span></div>
+  {% if not ready %}
+  <p class="muted" style="margin-top:10px">尚未至大乘圆满,道途未至尽头,飞升仪式暂不可举行。</p>
+  {% else %}
+  <p class="muted" style="margin-top:10px">道途已至尽头,此身可渡劫飞升。单次仪式失败不会有性命之忧,只是心神略有损耗,随时可以重新尝试——但天劫不会一直等,期限内若始终未能飞升,终将天劫反噬、身陨道消。</p>
+  {% if deadline_remaining is not none %}
+  <div class="stat-block" style="margin-top:10px;{% if deadline_remaining <= 7200 %}border-color:rgba(228,118,103,.5){% endif %}">
+    <div class="stat-line"><span>距天劫降临</span><strong{% if deadline_remaining <= 7200 %} style="color:var(--red)"{% endif %}>{{ (deadline_remaining // 3600) }}小时{{ (deadline_remaining % 3600 // 60) }}分</strong></div>
+  </div>
+  {% endif %}
+  <div class="stat-block" style="margin-top:10px">
+    <div class="stat-line"><span>本次成功率</span><strong>{{ chance_pct }}%</strong></div>
+    <div class="bar-track"><div class="bar-fill bar-gold" style="width:{{ chance_pct }}%"></div></div>
+  </div>
+  <p class="muted" style="margin-top:8px">体力 {{ char.stamina }} · 消耗 {{ stamina_cost }} 点体力方可举行仪式</p>
+  <form method="post" action="{{ url_for('ascend_attempt') }}" style="margin-top:14px"
+        data-confirm-title="举行飞升仪式"
+        data-confirm-message="本次仪式成功率为 {{ chance_pct }}%，将消耗 {{ stamina_cost }} 点体力。"
+        data-confirm-warning="若飞升成功，当前角色将永久离开宗门，成为宗门史上的证道仙人。" data-confirm-button="此去证道" data-confirm-tone="danger">
+    <label style="display:block">证道道号(可选,飞升成功后生效,1-12 位)</label>
+    <input type="text" name="dao_hao" maxlength="12" placeholder="留空则不另取道号"
+           style="margin-top:4px;width:100%;box-sizing:border-box">
+    <label style="display:flex;align-items:center;gap:8px;font-weight:normal;margin-top:10px">
+      <input type="checkbox" name="use_assist" value="1" style="width:auto" {{ 'disabled' if char.contribution < assist_cost }}>
+      花费贡献 {{ assist_cost }} 请宗门代为护道(成功率额外 +{{ assist_bonus_pct }}%)
+      {% if char.contribution < assist_cost %}<span class="muted">(尚缺{{ assist_cost - char.contribution }}点贡献)</span>{% endif %}
+    </label>
+    {% if guardian_options %}
+    <label style="margin-top:10px;display:block">邀一人护法(可选)</label>
+    <label style="display:flex;align-items:center;gap:8px;font-weight:normal;margin-top:4px">
+      <input type="radio" name="guardian_type" value="" checked style="width:auto">无护法,独自飞升
+    </label>
+    {% for g in guardian_options %}
+    <label style="display:flex;align-items:center;gap:8px;font-weight:normal;margin-top:4px">
+      <input type="radio" name="guardian_type" value="{{ g }}" style="width:auto">
+      {{ guardian_types[g].label }}(<span class="muted">{{ guardian_types[g].desc }}</span>)
+    </label>
+    {% endfor %}
+    {% endif %}
+    <button class="btn btn-primary" style="width:100%;margin-top:10px" {{ 'disabled' if char.stamina < stamina_cost }}>举行飞升仪式</button>
+    {% if char.stamina < stamina_cost %}<p class="muted" style="margin-top:4px">尚缺{{ stamina_cost - char.stamina }}点体力</p>{% endif %}
+  </form>
+  <p class="muted" style="margin-top:8px;text-align:center">飞升成功后角色将永久离开宗门,成为宗门史上的证道仙人</p>
+  {% endif %}
+</div>
+{% endblock %}

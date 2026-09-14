@@ -7,17 +7,6 @@
   <div class="card">
     <form method="post">
       <div class="fg">
-        <label class="fl">所属账户 <span class="req">*</span></label>
-        <select name="tenant_id" class="fs" required>
-          <option value="">— 请选择 —</option>
-          {% for t in tenants %}
-          <option value="{{ t.id }}" {% if request.form.get('tenant_id')==t.id|string %}selected{% endif %}>
-            {{ t.display_name or t.slug }}
-          </option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="fg">
         <label class="fl">用户名 <span class="req">*</span></label>
         <input class="fi" name="username" value="{{ request.form.get('username','') }}" autocomplete="username">
       </div>

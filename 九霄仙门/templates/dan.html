@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}凝丹 - 九霄仙门{% endblock %}
+{% block content %}
+
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">丹</span>凝丹</h3></div>
+  <p class="muted" style="margin-top:6px">筑基至金丹,不是修为攒够就能过——须先择定结丹品质、备齐材料,再择日渡劫。品质一旦炼成便伴随终身,渡劫失败保底不卡关。</p>
+  <p class="muted" style="margin-top:6px">灵材不足?装备库藏里用不上的武器防具饰品可以分解换灵材;秘境探索(每日一次)掉落的地区材料能在材料仓库页兑换成对应品级灵材,低阶灵材还能在那合成高阶。</p>
+  <p class="muted" style="margin-top:6px">{{ MATERIAL_LABELS[DAN_CORE_MATERIAL] }}/{{ MATERIAL_LABELS[DAN_WARD_MATERIAL] }}可在下方用赤炎矿核兑换,不必靠运气;{{ MATERIAL_LABELS[DAN_FORTUNE_MATERIAL] }}(极品金丹专用)只能在赤炎洞窟秘境闯关成功时小概率巧遇,不设兑换,多探几次总能碰上。</p>
+</div>
+
+{% if char.dan_quality %}
+<div class="card">
+  <h3 style="margin-bottom:8px">已凝金丹</h3>
+  <p><span class="badge badge-gold">{{ DAN_QUALITIES[char.dan_quality].label }}</span>
+    <span class="muted">攻击+{{ DAN_QUALITIES[char.dan_quality].bonus.attack }} 防御+{{ DAN_QUALITIES[char.dan_quality].bonus.defense }} 修为效率+{{ DAN_QUALITIES[char.dan_quality].bonus.exp_bonus_pct }}%</span></p>
+  {% if upgrade_next %}
+  <form method="post" action="{{ url_for('dan_upgrade') }}" style="margin-top:10px"
+        data-confirm-title="重炼金丹" data-confirm-message="金丹将升炼为{{ DAN_QUALITIES[upgrade_next].label }}，消耗 {{ DAN_UPGRADE_LINGSHI_COST }} 灵石与所列材料。"
+        data-confirm-warning="升炼消耗的资源不会返还。" data-confirm-button="确认升炼">
+    <p class="muted">升炼为{{ DAN_QUALITIES[upgrade_next].label }}需:灵石{{ DAN_UPGRADE_LINGSHI_COST }}
+      + {% for k,v in DAN_QUALITIES[upgrade_next].cost.items() %}{{ MATERIAL_LABELS.get(k,k) }}×{{ v }} {% endfor %}</p>
+    <button class="btn btn-primary" {{ 'disabled' if char.lingshi < DAN_UPGRADE_LINGSHI_COST }}>耗资重炼升品</button>
+  </form>
+  {% else %}
+  <p class="muted" style="margin-top:6px">金丹品质已至巅峰</p>
+  {% endif %}
+</div>
+{% elif not ready %}
+<div class="card"><p class="muted">尚未至筑基后期、修为未攒够,暂不到凝丹之时</p></div>
+{% elif char.dan_stage == 0 %}
+<div class="card">
+  <h3 style="margin-bottom:10px">选择结丹品质</h3>
+  {% for key in DAN_QUALITY_ORDER %}
+  {% set qd = DAN_QUALITIES[key] %}
+  <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bd)">
+    <p><strong>{{ qd.label }}</strong> <span class="badge badge-purple">基础成功率{{ (qd.base_chance*100)|round|int }}%</span></p>
+    <p class="muted" style="margin-top:4px">效果:攻击+{{ qd.bonus.attack }} 防御+{{ qd.bonus.defense }} 修为效率+{{ qd.bonus.exp_bonus_pct }}%</p>
+    <p class="muted" style="margin-top:2px">材料:{% for k,v in qd.cost.items() %}{{ MATERIAL_LABELS.get(k,k) }}×{{ v }} {% endfor %}</p>
+    <form method="post" action="{{ url_for('dan_prepare') }}" style="margin-top:8px"
+          data-confirm-title="选定{{ qd.label }}" data-confirm-message="你将以{{ qd.label }}为目标准备结丹，基础成功率为 {{ (qd.base_chance*100)|round|int }}%。"
+          data-confirm-warning="准备阶段将按此品质要求推进。" data-confirm-button="选定此品质">
+      <input type="hidden" name="quality" value="{{ key }}">
+      <button class="btn btn-primary">选定此品质</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">渡</span>渡劫结丹</h3>
+    <span class="badge badge-gold">{{ DAN_QUALITIES[char.dan_quality_pending].label }}</span></div>
+  <div class="stat-block" style="margin-top:10px">
+    <div class="stat-line"><span>本次成功率</span><strong>{{ chance_pct }}%</strong></div>
+    <div class="bar-track"><div class="bar-fill bar-gold" style="width:{{ chance_pct }}%"></div></div>
+  </div>
+  {% if char.dan_fail_streak > 0 %}
+  <p class="muted" style="margin-top:6px">{% if guaranteed %}连续{{ char.dan_fail_streak }}次未成,此次必定结丹!{% else %}连续{{ char.dan_fail_streak }}次未成,道心愈发凝练{% endif %}</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('dan_attempt') }}" style="margin-top:14px">
+    <label style="display:flex;align-items:center;gap:8px;font-weight:normal">
+      <input type="checkbox" name="use_ward" value="1" style="width:auto" {{ 'disabled' if not MATERIAL_LABELS.get(DAN_WARD_MATERIAL) }}>
+      使用{{ MATERIAL_LABELS[DAN_WARD_MATERIAL] }}(成功率额外+{{ DAN_WARD_CHANCE_BONUS_PCT }}%,用后即耗)
+    </label>
+    <button class="btn btn-primary" style="width:100%;margin-top:10px" {{ 'disabled' if char.stamina < DAN_STAMINA_COST }}>渡劫结丹(体力-{{ DAN_STAMINA_COST }})</button>
+    {% if char.stamina < DAN_STAMINA_COST %}<p class="muted" style="margin-top:4px">尚缺{{ DAN_STAMINA_COST - char.stamina }}点体力</p>{% endif %}
+  </form>
+  <p class="muted" style="margin-top:8px;text-align:center">失败不损已备材料,只耗体力、伤心境,连续失败有保底</p>
+</div>
+{% endif %}
+
+<div class="card">
+  <h3 style="margin-bottom:8px">材料兑换</h3>
+  {% set core_from = DAN_CORE_EXCHANGE['from'] %}
+  {% set core_have = owned.get(core_from, 0) %}
+  <p class="muted">{{ MATERIAL_LABELS[core_from] }}×{{ DAN_CORE_EXCHANGE.rate }} 可兑 {{ MATERIAL_LABELS[DAN_CORE_MATERIAL] }}×1(赤炎洞窟稳定积累,不必只靠运气)</p>
+  <form method="post" action="{{ url_for('dan_exchange', kind='core') }}" style="margin-top:6px">
+    <button class="btn" {{ 'disabled' if core_have < DAN_CORE_EXCHANGE.rate }}>兑换{{ MATERIAL_LABELS[DAN_CORE_MATERIAL] }}</button>
+    <p class="muted" style="margin-top:2px;font-size:12px">
+      现有{{ MATERIAL_LABELS[core_from] }}{{ core_have }}枚{% if core_have < DAN_CORE_EXCHANGE.rate %},尚缺{{ DAN_CORE_EXCHANGE.rate - core_have }}枚{% endif %}</p>
+  </form>
+  {% set ward_from = DAN_WARD_EXCHANGE['from'] %}
+  {% set ward_have = owned.get(ward_from, 0) %}
+  <p class="muted" style="margin-top:10px">{{ MATERIAL_LABELS[ward_from] }}×{{ DAN_WARD_EXCHANGE.rate }} 可兑 {{ MATERIAL_LABELS[DAN_WARD_MATERIAL] }}×1</p>
+  <form method="post" action="{{ url_for('dan_exchange', kind='ward') }}" style="margin-top:6px">
+    <button class="btn" {{ 'disabled' if ward_have < DAN_WARD_EXCHANGE.rate }}>兑换{{ MATERIAL_LABELS[DAN_WARD_MATERIAL] }}</button>
+    <p class="muted" style="margin-top:2px;font-size:12px">
+      现有{{ MATERIAL_LABELS[ward_from] }}{{ ward_have }}枚{% if ward_have < DAN_WARD_EXCHANGE.rate %},尚缺{{ DAN_WARD_EXCHANGE.rate - ward_have }}枚{% endif %}</p>
+  </form>
+  <p class="muted" style="margin-top:10px">贡献{{ DAN_CORE_CONTRIBUTION_COST }} 可兑 {{ MATERIAL_LABELS[DAN_CORE_MATERIAL] }}×1(一辈子仅此一次,给不常去秘境的人留条路)</p>
+  <form method="post" action="{{ url_for('dan_exchange_contribution') }}" style="margin-top:6px">
+    <button class="btn" {{ 'disabled' if char.jindan_core_contrib_used or char.contribution < DAN_CORE_CONTRIBUTION_COST }}>
+      {{ '已用过此途' if char.jindan_core_contrib_used else ('兑换' ~ MATERIAL_LABELS[DAN_CORE_MATERIAL]) }}</button>
+    <p class="muted" style="margin-top:2px;font-size:12px">
+      {% if char.jindan_core_contrib_used %}此途已用过,不再计贡献
+      {% else %}现有贡献{{ char.contribution }}{% if char.contribution < DAN_CORE_CONTRIBUTION_COST %},尚缺{{ DAN_CORE_CONTRIBUTION_COST - char.contribution }}点{% endif %}{% endif %}</p>
+  </form>
+</div>
+
+{% endblock %}

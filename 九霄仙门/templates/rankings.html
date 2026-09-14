@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}排行榜 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:10px">境界榜</h3>
+  <table>
+    <tr><th>#</th><th>道号</th><th>称号</th><th>境界</th></tr>
+    {% for c in by_realm %}
+    <tr style="{{ 'color:var(--gold)' if c.id == me_id }}">
+      <td>{{ loop.index }}</td>
+      <td>{{ c.name }}</td>
+      <td>{{ title_for(c.join_seq, c.gender) }}</td>
+      <td>{{ realm_by_index(c.realm_idx).name }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:10px">贡献榜</h3>
+  <table>
+    <tr><th>#</th><th>道号</th><th>称号</th><th>累计贡献</th></tr>
+    {% for c in by_contribution %}
+    <tr style="{{ 'color:var(--gold)' if c.id == me_id }}">
+      <td>{{ loop.index }}</td>
+      <td>{{ c.name }}</td>
+      <td>{{ title_for(c.join_seq, c.gender) }}</td>
+      <td>{{ c.total_contribution }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:10px">峰荣誉榜</h3>
+  <table>
+    <tr><th>#</th><th>峰名</th><th>峰主</th><th>弟子数</th><th>荣誉值</th></tr>
+    {% for p in by_peak %}
+    <tr>
+      <td>{{ loop.index }}</td>
+      <td>{{ p.name }}{% if p.is_leader %} <span class="badge badge-gold">掌门峰</span>{% endif %}</td>
+      <td class="muted">{{ p.elder_name or '空缺' }}</td>
+      <td>{{ p.disciple_count }}</td>
+      <td>{{ p.power_score }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

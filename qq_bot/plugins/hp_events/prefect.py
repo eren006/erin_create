@@ -171,7 +171,7 @@ def run_duty(uid: str) -> dict:
         raise PrefectError("今天已经巡查过了，明天再来。")
 
     storage.mark_duty_done(uid, day)
-    core_storage.add_house_points(player["house"], DUTY_HOUSE_POINTS)
+    core_storage.add_house_points(player["house"], DUTY_HOUSE_POINTS, uid)
     core_storage.add_galleons(uid, DUTY_GALLEONS)
     return {
         "house": player["house"],

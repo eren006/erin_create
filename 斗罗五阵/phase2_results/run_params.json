@@ -1,0 +1,65 @@
+{
+  "timestamp": "2026-09-05 22:27:30",
+  "fixes_since_invalidated_run": [
+    "seating: no more swap-boolean inference; two directed calls per unordered pair, win attribution reads actual left_type/right_type/winner recorded on each row",
+    "stun status was ticking to 0 in the same round it was applied (same bug class as the earlier cooldown fix)",
+    "stunned units never entered the execution loop, so the 'stunned' event never fired even when the status was correct",
+    "debuff-kind skills now scale def_down magnitude with skill.power (was a fixed 0.2 regardless of power)",
+    "def_down status is now actually read by the damage formula (was applied but never consumed)"
+  ],
+  "MAX_ROUNDS": 15,
+  "BASE_HP": 650,
+  "BASE_ATK": 110,
+  "BASE_DEF": 70,
+  "BASE_RES": 15,
+  "STAGES": {
+    "30": {
+      "power_level": 30,
+      "mult": 1.0
+    },
+    "60": {
+      "power_level": 60,
+      "mult": 1.8
+    },
+    "90": {
+      "power_level": 90,
+      "mult": 3.0
+    }
+  },
+  "ULTIMATE_UNLOCK_LEVEL": 70,
+  "N_TYPE_MATRIX_per_directed_pair": 600,
+  "N_POLICY_MATRIX_per_directed_pair": 600,
+  "seed_scheme": "deterministic string-keyed random.Random((label, stage, seed, ...)); pair_seed field lets the two directed calls for one unordered pair be re-associated for analysis",
+  "note": "code and parameters frozen for game VALUES this run; the seating bug fix is an instrumentation/methodology correction, not a balance change",
+  "run_id": "20260905-222730",
+  "total_battles": 90000,
+  "datasets": {
+    "type_matrix": {
+      "file": "type_matrix_battles.csv",
+      "rows": 45000,
+      "purpose": "类型、克制边、阶段胜率分析(每个有向对独立模拟,不依赖席位互换推断)"
+    },
+    "ai_policy_matrix": {
+      "file": "ai_policy_battles.csv",
+      "rows": 45000,
+      "purpose": "固定混合技能配置下的AI策略交叉分析"
+    }
+  },
+  "common_csv_columns": [
+    "run_id",
+    "dataset",
+    "battle_id",
+    "pair_seed",
+    "stage",
+    "seed",
+    "left_policy",
+    "right_policy",
+    "left_type",
+    "right_type",
+    "left_loadout_id",
+    "right_loadout_id",
+    "winner",
+    "rounds",
+    "timed_out"
+  ]
+}

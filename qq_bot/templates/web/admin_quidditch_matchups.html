@@ -1,0 +1,46 @@
+{% extends "web/base.html" %}
+{% block title %}魁地奇战力分析{% endblock %}
+{% block body %}
+<div class="card">
+  <h2>🧹 魁地奇对战胜率分析</h2>
+  <p class="muted">
+    <a href="{{ url_for('admin') }}">账号管理</a>
+    <a href="{{ url_for('admin_submissions') }}">校报稿件审核</a>
+    <a href="{{ url_for('admin_gossip') }}">女巫周刊审核</a>
+    <a href="{{ url_for('admin_logout') }}">退出管理</a>
+  </p>
+  <p class="muted">拿各院当前实际阵容（含扫帚加成），用跟真实比赛完全同一套判定逻辑
+    纯计算模拟 {{ trials }} 次（不落库、不产生任何副作用），统计出胜率和95%置信区间——
+    区间越窄说明样本量相对这个胜率来说足够稳定，区间跨过50%说明这场对局基本是五五开。</p>
+  <form method="get" class="row">
+    <label class="muted">模拟次数
+      <input type="number" name="trials" value="{{ trials }}" min="100" max="5000" step="100" style="width:100px">
+    </label>
+    <button type="submit">重新计算</button>
+  </form>
+</div>
+
+{% for m in matchups %}
+<div class="card">
+  <h2>{{ m.house_a }} vs {{ m.house_b }}</h2>
+  <p>
+    {{ m.house_a }}胜率 <b>{{ "%.1f"|format(m.win_rate_a * 100) }}%</b>
+    <span class="muted">（95%置信区间 {{ "%.1f"|format(m.ci_low * 100) }}% ~ {{ "%.1f"|format(m.ci_high * 100) }}%）</span>
+  </p>
+  <p class="muted">{{ m.trials }}次模拟：{{ m.house_a }}胜{{ m.wins_a }}　{{ m.house_b }}胜{{ m.wins_b }}
+    {% if m.draws %}　平局{{ m.draws }}{% endif %}</p>
+  <div class="scroll"><table>
+    <tr>
+      <th>位置</th><th>{{ m.house_a }}战力</th><th>{{ m.house_b }}战力</th>
+    </tr>
+    {% for pos in positions %}
+    <tr>
+      <td>{{ pos }}<br><span class="muted">{{ position_desc[pos] }}</span></td>
+      <td>{{ m.power_a[pos] }}</td>
+      <td>{{ m.power_b[pos] }}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</div>
+{% endfor %}
+{% endblock %}

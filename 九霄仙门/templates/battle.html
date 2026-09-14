@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}遭遇战 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">战</span>{{ state.monster_label }}</h3><span class="badge badge-purple">第{{ state.round }}回合</span></div>
+  {% set style = profile.discipline.key %}
+  {% set bloodied = state.monster_max_hp and state.monster_hp <= state.monster_max_hp * 0.35 %}
+  <div class="battle-discipline style-{{ style }}"><span class="battle-discipline-mark">{{ profile.discipline.stack_label[0] }}</span><div><strong>{{ profile.discipline.label }} · {{ profile.discipline.title }}</strong><div class="muted">{{ profile.discipline.flavor }} · {{ profile.discipline.bonus_desc }}</div></div></div>
+  {% if profile.pet_assist %}<span class="battle-style-badge">{{ profile.pet_assist.label }}随行 · 每回合约70%概率追加攻击</span>{% endif %}
+  {% if state.round == 1 and not log %}<p class="battle-intro">{{ profile.discipline.battle_intro_text }}</p>{% endif %}
+
+  <div class="stat-block"><div class="stat-line"><span>你的气血</span><strong>{{ state.player_hp }} / {{ state.player_max_hp }}</strong></div>
+  <div class="bar-track"><div class="bar-fill bar-gold" style="width:{{ (state.player_hp / state.player_max_hp * 100) if state.player_max_hp else 0 }}%"></div></div>
+  {% if style == 'unarmed' %}<span class="battle-style-badge">拳罡护体 · 气血上限+{{ profile.discipline.bonus }}%</span>{% endif %}
+  {% if style == 'heavy' %}<span class="battle-style-badge">卸力 · 反击伤害-{{ profile.discipline.bonus }}%</span>{% endif %}</div>
+  <div class="stat-block"><div class="stat-line"><span>灵力</span><strong>{{ state.player_mp }} / 100</strong></div>
+  <div class="bar-track"><div class="bar-fill bar-purple" style="width:{{ state.player_mp }}%"></div></div>
+  {% if style == 'ranged' %}<span class="battle-style-badge">弦光流转 · 普攻额外回灵</span>{% endif %}</div>
+  <div class="stat-block"><div class="stat-line"><span>{{ state.monster_label }}气血</span><strong>{{ state.monster_hp }} / {{ state.monster_max_hp }}</strong></div>
+  <div class="bar-track{{ ' hp-bloodied' if bloodied and style == 'blade' else '' }}"><div class="bar-fill" style="width:{{ (state.monster_hp / state.monster_max_hp * 100) if state.monster_max_hp else 0 }}%;background:var(--red,#c0392b)"></div></div>
+  {% if style == 'blade' and bloodied %}<span class="battle-style-badge pulse">刀势乘隙 · 追斩伤害+{{ profile.discipline.bonus }}%</span>{% endif %}
+  {% if style == 'spear' and state.round == 1 %}<span class="battle-style-badge pulse">枪出如龙 · 先机已现</span>{% endif %}</div>
+  {% if state.player_stacks %}<p class="muted" style="margin-top:6px">{{ profile.stack_label }} ×{{ state.player_stacks }}{% if style == 'sword' %} · <span class="battle-style-badge">剑意流转 · 破防+{{ profile.discipline.bonus }}%</span>{% endif %}</p>{% endif %}
+  {% if state.round == 1 and not log %}<p class="muted" style="font-size:12px;margin-top:6px">普攻不耗灵力、稳定回血灵力;招式耗灵力但更强;凝神守御能减伤回灵力;遁走可以中途逃跑。最多4回合,打不完可以选择追击或撤离。</p>{% endif %}
+
+  {% if log %}
+  <div class="muted" style="margin-top:10px">{% for line in log %}<p style="margin:2px 0">{{ line }}</p>{% endfor %}</div>
+  {% endif %}
+
+  {% if outcome == 'round_limit' %}
+  <p class="muted" style="margin-top:10px">双方战至僵持,{{ state.monster_label }}未能击败,你也未尽全功。</p>
+  <div class="battle-actions battle-decision-actions">
+    {% if not state.pursuing %}
+    <form method="post" action="{{ url_for('mystic_battle_pursue') }}">
+      <input type="hidden" name="state" value='{{ state_json }}'>
+      <input type="hidden" name="state_sig" value="{{ state_sig }}">
+      <input type="hidden" name="choice" value="pursue">
+      <button class="btn btn-primary" style="width:100%">继续追击(奖励+10%,伤害皆+20%)</button>
+    </form>
+    {% endif %}
+    <form method="post" action="{{ url_for('mystic_battle_pursue') }}">
+      <input type="hidden" name="state" value='{{ state_json }}'>
+      <input type="hidden" name="state_sig" value="{{ state_sig }}">
+      <input type="hidden" name="choice" value="leave">
+      <button class="btn" style="width:100%">收手离开</button>
+    </form>
+  </div>
+  {% else %}
+  <div class="battle-actions">
+    <form method="post" action="{{ url_for('mystic_battle_round') }}">
+      <input type="hidden" name="state" value='{{ state_json }}'>
+      <input type="hidden" name="state_sig" value="{{ state_sig }}">
+      <input type="hidden" name="action" value="basic">
+      <button class="btn btn-primary" style="width:100%">{{ profile.basic_label }}</button>
+    </form>
+    {% for m in profile.moves %}
+    <form method="post" action="{{ url_for('mystic_battle_round') }}">
+      <input type="hidden" name="state" value='{{ state_json }}'>
+      <input type="hidden" name="state_sig" value="{{ state_sig }}">
+      <input type="hidden" name="action" value="{{ m.key }}">
+      <button class="btn btn-primary" style="width:100%" {{ 'disabled' if state.player_mp < m.mp_cost }}>{{ m.label }}(灵力{{ m.mp_cost }})</button>
+    </form>
+    {% endfor %}
+    <form method="post" action="{{ url_for('mystic_battle_round') }}">
+      <input type="hidden" name="state" value='{{ state_json }}'>
+      <input type="hidden" name="state_sig" value="{{ state_sig }}">
+      <input type="hidden" name="action" value="defend">
+      <button class="btn" style="width:100%">凝神守御</button>
+    </form>
+    <form method="post" action="{{ url_for('mystic_battle_round') }}">
+      <input type="hidden" name="state" value='{{ state_json }}'>
+      <input type="hidden" name="state_sig" value="{{ state_sig }}">
+      <input type="hidden" name="action" value="flee">
+      <button class="btn" style="width:100%">遁走(有失败几率)</button>
+    </form>
+    <form method="post" action="{{ url_for('mystic_battle_round') }}">
+      <input type="hidden" name="state" value='{{ state_json }}'>
+      <input type="hidden" name="state_sig" value="{{ state_sig }}">
+      <input type="hidden" name="action" value="flee_charm">
+      <button class="btn">用遁符脱身(必定成功)</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

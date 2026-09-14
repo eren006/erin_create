@@ -1,0 +1,37 @@
+{% extends "web/base.html" %}
+{% block title %}女巫周刊{% endblock %}
+{% block body %}
+<div class="card">
+  <h2>🗞️ 匿名投稿《女巫周刊》</h2>
+  <p class="muted">今天投了 {{ used }}/{{ limit }} 条。完全匿名——除了后台审核，没人知道是你写的，丽塔·斯基特那一套。
+     审核通过会发一笔稿费，之后会在通知群播报，@到八卦里提到的人。跟正式校报是两回事，不进学年特刊。</p>
+  <p class="muted">编辑部只登有意思的料——平淡无奇的流水账会被退稿。退稿不占今天的投稿次数，可以改改重投。</p>
+  {% if used < limit %}
+  <form method="post">
+    <label>提到谁（名字，多个人用逗号隔开）</label>
+    <input name="mentioned" placeholder="比如：赫敏、罗恩" required style="width:100%">
+    <p class="muted" style="margin-top:2px">必须是学校里已经登记在册的名字（入学时用的那个名字），拼错或者查无此人会投稿失败。</p>
+    <label>内容（{{ body_min }}~{{ body_max }}字）</label>
+    <textarea name="body" maxlength="{{ body_max }}" rows="8" required
+              style="width:100%;font:inherit;padding:8px;border:1px solid var(--line);border-radius:3px"></textarea>
+    <p><button type="submit">匿名投出去</button></p>
+  </form>
+  {% else %}
+  <p class="flash warn">今天的投稿名额用完了，明天再来。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>我的投稿</h2>
+  {% if not mine %}<p class="muted">还没投过。</p>{% endif %}
+  {% for s in mine %}
+  <div style="padding:8px 0;border-bottom:1px solid var(--line)">
+    <span class="tag">{{ {'pending':'审核中','approved':'已通过','rejected':'已退稿'}.get(s.status, s.status) }}</span>
+    <span class="muted">提到：{{ s.mentioned_names }}</span>
+    {% if s.status == 'approved' %}<span class="muted">稿费+{{ s.reward }}加隆</span>{% endif %}
+    <div class="muted" style="white-space:pre-wrap">{{ s.body[:120] }}{% if s.body|length > 120 %}…{% endif %}</div>
+    {% if s.review_note %}<div class="muted">编辑部：{{ s.review_note }}</div>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

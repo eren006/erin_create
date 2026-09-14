@@ -1,0 +1,56 @@
+[
+  {
+    "asset": "ballet-island-complete",
+    "before": 1993708,
+    "after": 103226,
+    "size": [
+      1280,
+      853
+    ]
+  },
+  {
+    "asset": "ballet-curtain-pastel",
+    "before": 1853131,
+    "after": 77458,
+    "size": [
+      600,
+      1740
+    ]
+  },
+  {
+    "asset": "ballet-dancer-pastel",
+    "before": 1753033,
+    "after": 56962,
+    "size": [
+      512,
+      768
+    ]
+  },
+  {
+    "asset": "ballet-ribbon-silk",
+    "before": 744687,
+    "after": 24840,
+    "size": [
+      200,
+      600
+    ]
+  },
+  {
+    "asset": "ballet-swan",
+    "before": 1830358,
+    "after": 18894,
+    "size": [
+      360,
+      240
+    ]
+  },
+  {
+    "asset": "ballet-masthead-pastel",
+    "before": 2715846,
+    "after": 120394,
+    "size": [
+      1280,
+      853
+    ]
+  }
+]

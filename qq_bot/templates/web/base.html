@@ -13,6 +13,12 @@
 {% elif player and player.house == '拉文克劳' %}:root{--accent:#28568a;--accent-2:#b58645}
 {% elif player and player.house == '赫奇帕奇' %}:root{--accent:#80601d;--accent-2:#d4ad42}
 {% endif %}
+{% if current_theme == 'great_hall' %}:root{--accent:#743442;--accent-2:#a88653;--paper:#dfd6c8;--theme-bg:url("{{ url_for('static', filename='web/images/themes/great-hall-v2.webp') }}")}
+{% elif current_theme == 'potions' %}:root{--accent:#3f5544;--accent-2:#8d805d;--paper:#d9d9cf;--theme-bg:url("{{ url_for('static', filename='web/images/themes/potions-dungeon-v2.webp') }}")}
+{% elif current_theme == 'quidditch' %}:root{--accent:#536779;--accent-2:#9a865e;--paper:#ddd9ce;--theme-bg:url("{{ url_for('static', filename='web/images/themes/quidditch-stadium-v2.webp') }}")}
+{% elif current_theme == 'forest' %}:root{--accent:#344d5c;--accent-2:#71858c;--paper:#d5d9d7;--theme-bg:url("{{ url_for('static', filename='web/images/themes/forbidden-forest-v2.webp') }}")}
+{% elif current_theme == 'christmas' %}:root{--accent:#982d3f;--accent-2:#2f7254;--paper:#e2ddd2;--card:#fffaf0;--theme-gold:#d2ae62;--theme-bg:url("{{ url_for('static', filename='web/images/themes/christmas-term-end.webp') }}")}
+{% endif %}
 *{box-sizing:border-box}
 html{min-height:100%;background:var(--night)}
 body{margin:0;min-height:100vh;color:var(--ink);font-family:"Iowan Old Style","Songti SC","Noto Serif SC",Georgia,serif;line-height:1.65;
@@ -21,8 +27,19 @@ body:after{content:"";position:absolute;z-index:0;pointer-events:none;left:0;rig
   background:
     linear-gradient(180deg,rgba(9,13,23,.32),rgba(16,20,32,.77) 68%,var(--paper) 100%),
     url("{{ url_for('static', filename='web/images/castle-night.jpg') }}") center 45%/cover no-repeat}
+body.authenticated[data-theme]{background-attachment:fixed}
+{% if current_theme %}body.authenticated:after{height:620px;background:linear-gradient(180deg,rgba(7,11,18,.12),rgba(11,15,22,.62) 58%,var(--paper) 100%),var(--theme-bg) center 44%/cover no-repeat}{% endif %}
 body:before{content:"";position:fixed;z-index:2;inset:0;pointer-events:none;opacity:.12;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='70' height='70' viewBox='0 0 70 70'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.72' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.16'/%3E%3C/svg%3E")}
 body.guest{background:#0d1421}body.guest:after{position:fixed;height:100vh;background:linear-gradient(90deg,rgba(7,11,20,.06),rgba(7,11,20,.18) 55%,rgba(7,11,20,.78)),url("{{ url_for('static', filename='web/images/castle-night.jpg') }}") center/cover no-repeat}
+body.guest[data-theme="christmas"]:after{background:linear-gradient(90deg,rgba(7,11,20,.12),rgba(7,11,20,.35) 55%,rgba(7,11,20,.82)),var(--theme-bg) center/cover no-repeat}
+body[data-theme="christmas"] .nav-shell{border-color:#d2ae6270;background:linear-gradient(105deg,rgba(91,20,35,.82),rgba(19,65,46,.82));box-shadow:0 18px 42px #08110daa}
+body[data-theme="christmas"] nav a.active{color:#fffaf0;background:linear-gradient(135deg,#a82f43,#286849);border-color:#d2ae62;box-shadow:0 4px 16px #07100b99}
+body[data-theme="christmas"] button:not(.ghost),body[data-theme="christmas"] .btn:not(.ghost){background:linear-gradient(135deg,#9d2d40,#245f43);border-color:#d2ae62}
+body[data-theme="christmas"] .tag{color:#56311f;border-color:#b58f47;background:linear-gradient(135deg,#fff3cf,#e8f0df)}
+body[data-theme="christmas"] .card:before{background:linear-gradient(transparent,#9d2d40 28%,#d2ae62 52%,#286849 76%,transparent)}
+.snowfall{position:fixed;z-index:4;inset:0;pointer-events:none;overflow:hidden}.snowflake{position:absolute;top:-24px;color:#fff;opacity:.72;text-shadow:0 0 7px #fff8;animation:snowfall linear infinite}.snowflake:nth-child(3n){opacity:.42}.snowflake:nth-child(4n){filter:blur(1px)}
+@keyframes snowfall{to{transform:translate3d(var(--snow-drift),calc(100vh + 40px),0) rotate(300deg)}}
+@media(prefers-reduced-motion:reduce){.snowfall{display:none}}
 a{color:var(--accent);text-decoration:none}a:hover{text-decoration:none;color:#a67830}
 .wrap{position:relative;z-index:1;max-width:1120px;margin:0 auto;padding:24px 24px 48px}
 body.guest .wrap{min-height:100vh;display:grid;align-content:center}body.guest .card{justify-self:end;width:min(100%,440px);margin:0!important;background:linear-gradient(145deg,rgba(255,252,244,.97),rgba(244,234,214,.96));box-shadow:0 24px 70px #0009}
@@ -31,10 +48,10 @@ header.top{color:#f7edd9;margin-bottom:24px}
 .crest{width:48px;height:55px;display:grid;place-items:center;font-size:1.55rem;color:#251c12;background:linear-gradient(145deg,#e4c978,#9f7332);clip-path:polygon(50% 0,92% 15%,86% 72%,50% 100%,14% 72%,8% 15%);filter:drop-shadow(0 5px 7px #0008)}
 .brand-copy{line-height:1.1}.brand h1{font-size:1.65rem;margin:0;letter-spacing:.14em;font-weight:600}.brand small{display:block;color:#bfb69f;letter-spacing:.24em;font-size:.64rem;margin-top:7px;text-transform:uppercase}
 .who{color:#d4cab7;font-size:.88rem;margin-left:auto;text-align:right}.who a{color:#e2c47b}
-.nav-shell{position:relative;background:rgba(10,13,21,.62);border:1px solid rgba(224,197,123,.28);border-radius:14px;padding:8px;box-shadow:0 18px 42px #080a11aa;backdrop-filter:blur(12px)}
-nav{display:flex;gap:5px;overflow-x:auto;padding:0;scrollbar-width:thin;scrollbar-color:#706243 transparent}
-nav a{flex:0 0 auto;padding:8px 11px;border:1px solid transparent;border-radius:8px;font-size:.88rem;color:#d8d0c1;white-space:nowrap;transition:.18s ease}
-nav a:hover{color:#fff;background:rgba(255,255,255,.07);transform:translateY(-1px)}
+.nav-shell{position:relative;z-index:5;background:rgba(10,13,21,.62);border:1px solid rgba(224,197,123,.28);border-radius:14px;padding:8px;box-shadow:0 18px 42px #080a11aa;backdrop-filter:blur(12px)}
+nav{display:flex;gap:5px;overflow:visible;padding:0;align-items:center}
+nav>a,.nav-more-btn{flex:1 1 auto;min-width:0;padding:8px 10px;border:1px solid transparent;border-radius:8px;font-size:.86rem;color:#d8d0c1;white-space:nowrap;transition:.18s ease;text-align:center}
+nav>a:hover,.nav-more-btn:hover{color:#fff;background:rgba(255,255,255,.07);transform:translateY(-1px)}
 nav a.active{color:#251b0e;background:linear-gradient(135deg,#efd990,#b88c43);border-color:#f2df9f;box-shadow:0 4px 14px #0006;font-weight:700}
 .nav-icon{font-style:normal;margin-right:4px;opacity:.9}
 .card{position:relative;background:linear-gradient(145deg,rgba(255,252,244,.91),rgba(248,239,221,.92)),url("{{ url_for('static', filename='web/images/parchment-texture.jpg') }}") center/450px;border:1px solid rgba(164,137,91,.38);border-radius:13px;padding:20px 22px;margin-bottom:18px;box-shadow:var(--shadow);overflow:hidden}
@@ -42,7 +59,7 @@ nav a.active{color:#251b0e;background:linear-gradient(135deg,#efd990,#b88c43);bo
 .card .card{box-shadow:none;background:rgba(255,252,245,.58);border-color:rgba(164,137,91,.28)}
 .card h2{margin:0 0 14px;font-size:1.18rem;letter-spacing:.04em;border-bottom:1px solid rgba(164,137,91,.35);padding-bottom:9px;color:#272019}
 .card h3{margin:18px 0 7px;font-size:1rem;color:var(--accent)}
-.flash{padding:11px 14px;border-radius:9px;margin-bottom:13px;border:1px solid;border-left-width:4px;box-shadow:0 7px 20px #0000000c}
+.flash{padding:11px 14px;border-radius:9px;margin-bottom:13px;border:1px solid;border-left-width:4px;box-shadow:0 7px 20px #0000000c;white-space:pre-line}
 .flash.ok{background:#edf6ef;border-color:#8eb29a;color:#244e32}.flash.warn{background:#fbf2da;border-color:#d3ac55;color:#71500d}.flash.error{background:#f9e9e5;border-color:#c87c6f;color:#7d251c}
 button,.btn{font:inherit;padding:8px 15px;border:1px solid #362a21;background:linear-gradient(135deg,#3a3028,#201b17);color:#fff8e9;border-radius:7px;cursor:pointer;box-shadow:0 3px 8px #21180f2b;transition:.16s ease}
 button:hover,.btn:hover{background:linear-gradient(135deg,var(--accent),#4b2025);border-color:var(--accent);color:white;transform:translateY(-1px)}
@@ -65,11 +82,12 @@ th{color:#756856;font-weight:700;font-size:.78rem;letter-spacing:.06em;text-tran
 .hero-card>*{position:relative}.hero-card h2{color:#fff;border-color:#ffffff35;font-size:1.7rem;margin-bottom:5px}.hero-card .muted{color:#e6ddce}.hero-kicker{color:#e7cb80;letter-spacing:.18em;font-size:.76rem;font-weight:700}.hero-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}.hero-stat{background:#0f14294d;border:1px solid #ffffff24;border-radius:10px;padding:10px;text-align:center}.hero-stat b{display:block;font-size:1.2rem;color:#f3d780}.hero-stat span{font-size:.72rem;color:#dfd7ca}
 .quick-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}.quick-link{display:flex;align-items:center;gap:11px;padding:13px 14px;background:#fffaf0;border:1px solid #d6c5a8;border-radius:11px;color:var(--ink);box-shadow:0 8px 20px #33251412;transition:.18s ease}.quick-link:hover{color:var(--accent);border-color:var(--accent-2);transform:translateY(-2px);box-shadow:0 12px 22px #3325141f}.quick-link i{font-style:normal;font-size:1.25rem}.quick-link span{font-weight:700}.quick-link small{display:block;color:var(--muted);font-weight:400;font-size:.72rem}
 .timeline{position:relative;margin:6px 0 0;padding-left:34px}.timeline:before{content:"";position:absolute;left:11px;top:10px;bottom:10px;width:1px;background:linear-gradient(var(--accent-2),var(--line))}.milestone{position:relative;padding:4px 0 22px}.milestone:last-child{padding-bottom:4px}.milestone-mark{position:absolute;left:-34px;top:3px;width:23px;height:23px;display:grid;place-items:center;border-radius:50%;border:1px solid #b8a582;background:#f6eddd;color:#8a7b66;font-size:.75rem;box-shadow:0 0 0 4px #f8f0e1}.milestone.done .milestone-mark{color:#fff;background:linear-gradient(135deg,var(--accent),var(--accent-2));border-color:var(--accent-2)}.milestone-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.milestone-title{font-size:1.02rem}.milestone-meta{margin-top:3px;color:var(--muted);font-size:.88rem}.milestone-progress{display:inline-block;margin-top:6px;padding:2px 8px;border-radius:999px;background:rgba(175,145,94,.11);color:#6f5e47;font-size:.78rem}.year-label{color:var(--accent);font-size:.75rem;letter-spacing:.08em;font-weight:700}
-@media(max-width:760px){.wrap{padding:14px 12px 36px}.brand{padding-bottom:13px}.crest{width:40px;height:47px}.brand h1{font-size:1.35rem}.brand small{display:none}.who{width:100%;margin-left:0;text-align:left;font-size:.8rem}.nav-shell{margin-left:-4px;margin-right:-4px}.hero-card{grid-template-columns:1fr;gap:14px;min-height:0}.hero-card h2{font-size:1.42rem}.quick-grid{grid-template-columns:1fr 1fr}.card{padding:16px}.grid{grid-template-columns:1fr}nav a{padding:8px 10px}body.guest .wrap{align-content:end;padding-bottom:28px}body.guest .card{justify-self:center;width:100%}}
+@media(max-width:900px){.wrap{padding:14px 12px 36px}.brand{padding-bottom:13px}.crest{width:40px;height:47px}.brand h1{font-size:1.35rem}.brand small{display:none}.who{width:100%;margin-left:0;text-align:left;font-size:.8rem}.nav-shell{margin-left:-4px;margin-right:-4px;padding:6px}nav{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}nav>a,.nav-more-btn{width:100%;padding:8px 4px;font-size:.8rem}.nav-more-menu{left:0}.nav-more-btn:nth-last-child(-n+2) .nav-more-menu{left:auto;right:0}.hero-card{grid-template-columns:1fr;gap:14px;min-height:0}.hero-card h2{font-size:1.42rem}.quick-grid{grid-template-columns:1fr 1fr}.card{padding:16px}.grid{grid-template-columns:1fr}body.guest .wrap{align-content:end;padding-bottom:28px}body.guest .card{justify-self:center;width:100%}}
 @media(max-width:420px){.quick-grid{grid-template-columns:1fr}.hero-stats{grid-template-columns:1fr 1fr}.row>*{max-width:100%}}
 </style>
 </head>
-<body class="{{ 'authenticated' if account else 'guest' }}">
+<body class="{{ 'authenticated' if account else 'guest' }}"{% if current_theme %} data-theme="{{ current_theme }}"{% endif %}>
+{% if current_theme == 'christmas' %}<div class="snowfall" id="snowfall" aria-hidden="true"></div>{% endif %}
 <div class="wrap">
 {% if account %}
 <header class="top">
@@ -77,6 +95,7 @@ th{color:#756856;font-weight:700;font-size:.78rem;letter-spacing:.06em;text-tran
     <div class="crest">H</div>
     <div class="brand-copy"><h1>霍格沃茨</h1><small>School of Witchcraft &amp; Wizardry</small></div>
     {% if current_day %}<span class="tag">第 {{ current_day }} 天</span>{% endif %}
+    {% if seasonal_theme == 'christmas' %}<span class="tag">❄ 学期末圣诞季</span>{% endif %}
     <span class="who">
       {% if display_name %}{{ display_name }}{% if player %} · {{ player.house }} · {{ player.grade }}年级{% endif %}
       {% else %}{{ account.uid }}{% endif %}
@@ -105,16 +124,30 @@ th{color:#756856;font-weight:700;font-size:.78rem;letter-spacing:.06em;text-tran
         <a href="{{ url_for('duel_page') }}" class="{{ 'active' if ep=='duel_page' }}">⚔ 决斗</a>
         <a href="{{ url_for('forest_page') }}" class="{{ 'active' if ep=='forest_page' }}">♘ 禁林</a>
         <a href="{{ url_for('social_page') }}" class="{{ 'active' if ep=='social_page' }}">社交</a>
+        <a href="{{ url_for('dorm_page') }}" class="{{ 'active' if ep=='dorm_page' }}">🏠 寝室</a>
+        <a href="{{ url_for('mail_page') }}" class="{{ 'active' if ep=='mail_page' }}">🦉 邮件</a>
+        <a href="{{ url_for('kitchen_page') }}" class="{{ 'active' if ep=='kitchen_page' }}">🍳 厨房</a>
+        <a href="{{ url_for('tailor_page') }}" class="{{ 'active' if ep=='tailor_page' }}">🪡 长袍店</a>
+      </div>
+    </div>
+    <div class="nav-more-btn" onclick="toggleMenu('limited')">🎉 限时活动 <span style="font-size:.7rem">▼</span>
+      <div class="nav-more-menu" id="limited-menu">
+        <a href="{{ url_for('prefect_page') }}" class="{{ 'active' if ep=='prefect_page' }}">🎖 级长选举</a>
+        <a href="{{ url_for('christmas_page') }}" class="{{ 'active' if ep=='christmas_page' }}">🎄 圣诞舞会</a>
+        <a href="{{ url_for('freshman_duel_page') }}" class="{{ 'active' if ep=='freshman_duel_page' }}">🏆 一年级新人王竞选</a>
+        <a href="{{ url_for('gnomes_page') }}" class="{{ 'active' if ep=='gnomes_page' }}">🧙 抓地精</a>
+        <a href="{{ url_for('creatures_page') }}" class="{{ 'active' if ep=='creatures_page' }}">🐾 照料神奇生物</a>
       </div>
     </div>
     <div class="nav-more-btn" onclick="toggleMenu('more')">⋯ 更多 <span style="font-size:.7rem">▼</span>
       <div class="nav-more-menu" id="more-menu">
         <a href="{{ url_for('mainline_page') }}" class="{{ 'active' if ep=='mainline_page' }}">成长册</a>
         <a href="{{ url_for('careers_page') }}" class="{{ 'active' if ep=='careers_page' }}">职业</a>
-        <a href="{{ url_for('prefect_page') }}" class="{{ 'active' if ep=='prefect_page' }}">级长</a>
-        <a href="{{ url_for('freshman_duel_page') }}" class="{{ 'active' if ep=='freshman_duel_page' }}">🏆 竞选</a>
-        <a href="{{ url_for('christmas_page') }}" class="{{ 'active' if ep=='christmas_page' }}">🎄 圣诞</a>
+        <a href="{{ url_for('choc_frog_page') }}" class="{{ 'active' if ep=='choc_frog_page' }}">🐸 巧克力蛙图鉴</a>
+        <a href="{{ url_for('themes_page') }}" class="{{ 'active' if ep in ('themes_page','theme_game_page') }}">🎨 主题与小游戏</a>
+        <a href="{{ newspaper_url }}" target="_blank" rel="noopener">📰 校报</a>
         <a href="{{ url_for('submit_page') }}" class="{{ 'active' if ep=='submit_page' }}">投稿</a>
+        <a href="{{ url_for('gossip_page') }}" class="{{ 'active' if ep=='gossip_page' }}">🗞️ 女巫周刊</a>
         <a href="{{ url_for('rankings') }}" class="{{ 'active' if ep=='rankings' }}">榜单</a>
       </div>
     </div>
@@ -144,6 +177,22 @@ document.addEventListener('click', (e) => {
     document.querySelectorAll('.nav-more-menu').forEach(m => m.classList.remove('open'));
   }
 });
+{% if current_theme == 'christmas' %}
+if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  const snowfall = document.getElementById('snowfall');
+  for (let i = 0; i < 38; i++) {
+    const flake = document.createElement('span');
+    flake.className = 'snowflake';
+    flake.textContent = i % 5 === 0 ? '❄' : '•';
+    flake.style.left = `${Math.random() * 100}%`;
+    flake.style.fontSize = `${8 + Math.random() * 11}px`;
+    flake.style.animationDuration = `${9 + Math.random() * 12}s`;
+    flake.style.animationDelay = `${-Math.random() * 20}s`;
+    flake.style.setProperty('--snow-drift', `${-45 + Math.random() * 90}px`);
+    snowfall.appendChild(flake);
+  }
+}
+{% endif %}
 </script>
 </body>
 </html>

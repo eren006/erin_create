@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}花名录 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <table>
+    <tr><th>道号</th><th>皮相</th><th>称号</th><th>档位</th><th>境界</th><th>资质</th><th>所在峰</th><th></th></tr>
+    {% for m in members %}
+    <tr>
+      <td><a href="{{ url_for('character_detail', char_id=m.id) }}">{{ m.name }}</a>{% if m.ascended %} <span class="badge badge-gold">已飞升</span>{% endif %}{% if m.deceased %} <span class="badge badge-red">已故</span>{% endif %}</td>
+      <td class="muted">{{ m.face_claim or '-' }}</td>
+      <td>{{ title_for(m.join_seq, m.gender, m.is_npc) }}</td>
+      <td><span class="badge badge-purple">{{ rank_by_tier(m.rank_tier).label }}</span></td>
+      <td>{{ realm_by_index(m.realm_idx).name }}</td>
+      <td class="muted">
+        {{ spirit_root_label(m.spirit_root) }}·{{ spirit_root_elements_label(m.spirit_root, m.spirit_root_elements) }}
+        {% if m.talent_key %} · {{ TALENTS[m.talent_key].label }}{% endif %}
+        {% if m.immortal_bone_key %} · <span style="color:var(--gold)" title="攻击+{{ IMMORTAL_BONES[m.immortal_bone_key].bonus.attack }} 防御+{{ IMMORTAL_BONES[m.immortal_bone_key].bonus.defense }}">{{ IMMORTAL_BONES[m.immortal_bone_key].label }}</span>{% endif %}
+      </td>
+      <td class="muted">{{ m.peak_name or '-' }}</td>
+      <td>
+        {% if me_id and not m.ascended and not m.deceased and m.id != me_id %}
+        <form method="post" action="{{ url_for('interact', char_id=m.id) }}">
+          <button class="btn" style="padding:4px 10px">请教</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

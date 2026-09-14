@@ -1,0 +1,155 @@
+{% extends "web/base.html" %}
+{% block title %}马金夫人长袍店{% endblock %}
+{% block body %}
+
+<div class="card">
+  <h2>🪡 马金夫人长袍店</h2>
+  <div class="stat"><span>缝纫等级</span><b>{{ status.level }} / 10{% if status.maxed %}（满级）{% endif %}</b></div>
+  <div class="stat"><span>体力</span><b>{{ stamina }} / {{ stamina_max }}</b></div>
+  <div class="bar"><i style="width:{{ (stamina / stamina_max * 100)|round }}%"></i></div>
+  <div class="stat"><span>累计做出</span><b>{{ status.total_crafted }} 件</b></div>
+  <div class="stat"><span>累计卖出所得</span><b>{{ status.total_earned }} 加隆</b></div>
+  <div class="stat"><span>时尚值</span><b>{{ status.fashion_points }}</b></div>
+  {% if not status.maxed %}
+  <p class="muted">上一堂缝纫课消耗{{ lesson_cost }}点体力（不占用作业/成绩），满10级为止，解锁更多图纸。</p>
+  <form method="post">
+    <input type="hidden" name="action" value="take_lesson">
+    <button {% if stamina < lesson_cost %}disabled{% endif %}>上缝纫课</button>
+  </form>
+  {% else %}
+  <p class="muted">缝纫技术已经满级，所有等级解锁的图纸都能用了。</p>
+  {% endif %}
+  <p class="muted">布料去 <a href="{{ url_for('shop_page', cat='布料') }}">对角巷「布料」</a> 采购。</p>
+</div>
+
+{% for group in pattern_groups %}
+<div class="card">
+  <h2>{{ group.slot_name }}</h2>
+  <div class="scroll"><table>
+    <tr><th></th><th>款式</th><th>要求</th><th>材料</th><th>预计售价</th><th></th></tr>
+    {% for p in group.patterns %}
+    <tr>
+      <td>{% if p.unlocked %}✓{% else %}🔒{% endif %}</td>
+      <td>{{ p.name }}</td>
+      <td>
+        {{ p.level }}级
+        {% if p.unlock == 'shop' %}<span class="tag">图纸购买</span>
+        {% elif p.unlock == 'forest' %}<span class="tag">禁林掉落</span>
+        {% endif %}
+      </td>
+      <td>
+        {% for i in p.ingredients %}
+        <span class="{{ 'muted' if i.have >= i.need else '' }}" style="{{ '' if i.have >= i.need else 'color:var(--err)' }}">{{ i.name }}{{ i.need }}{% if not loop.last %}、{% endif %}</span>
+        {% endfor %}
+      </td>
+      <td>{{ p.sell_range[0] }}-{{ p.sell_range[1] }}加隆</td>
+      <td>
+        {% if p.unlocked %}
+          {% if p.can_afford %}
+          <form method="post">
+            <input type="hidden" name="action" value="craft">
+            <input type="hidden" name="pattern" value="{{ p.key }}">
+            <button>制作</button>
+          </form>
+          {% else %}
+          <span class="muted">材料不够</span>
+          {% endif %}
+        {% elif p.unlock == 'shop' %}
+          <form method="post">
+            <input type="hidden" name="action" value="buy_pattern">
+            <input type="hidden" name="pattern" value="{{ p.key }}">
+            <button class="ghost">花{{ p.shop_price }}加隆学图纸</button>
+          </form>
+        {% elif p.unlock == 'forest' %}
+          <span class="muted">禁林探险有概率掉落</span>
+        {% else %}
+          <span class="muted">缝纫等级不够</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</div>
+{% endfor %}
+
+{% if wardrobe %}
+<div class="card">
+  <h2>👗 我的衣橱</h2>
+  <p class="muted">穿上不会消耗库存，之后还能再穿或者拿去卖；每天最多秀3次。</p>
+  <div class="scroll"><table>
+    <tr><th>成衣</th><th>部位</th><th>数量</th><th></th></tr>
+    {% for w in wardrobe %}
+    <tr>
+      <td>{{ w.name }}</td>
+      <td class="muted">{{ w.slot_name }}</td>
+      <td>× {{ w.quantity }}</td>
+      <td>
+        <form method="post" class="row" style="flex-wrap:nowrap">
+          <input type="hidden" name="clothing" value="{{ w.key }}">
+          <button name="action" value="wear" class="ghost">穿上</button>
+          <button name="action" value="list_for_sale">摆上摊位</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</div>
+{% endif %}
+
+{% if listings %}
+<div class="card">
+  <h2>🏪 我的摊位</h2>
+  <p class="muted">
+    摆出去的成衣每小时有30%概率被客人买走，卖出所得直接进账。
+    一天最多卖出{{ sale_daily_limit }}件，今天已经卖了{{ sold_today }}件{% if sold_today >= sale_daily_limit %}——今天卖满了，剩下的衣服留在摊位上，明天接着摇{% endif %}。
+  </p>
+  <div class="scroll"><table>
+    <tr><th>成衣</th><th>下次结算</th></tr>
+    {% for l in listings %}
+    <tr>
+      <td>{{ l.name }}</td>
+      <td>约{{ (l.next_check_in // 60) + 1 }}分钟后</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</div>
+{% endif %}
+
+{% if leaderboard %}
+<div class="card">
+  <h2>🏆 裁缝排行榜</h2>
+  <p class="muted">按累计卖出所得排名。</p>
+  <div class="scroll"><table>
+    <tr><th>排名</th><th>姓名</th><th>缝纫等级</th><th>累计做出</th><th>累计所得</th></tr>
+    {% for r in leaderboard %}
+    <tr>
+      <td>{{ loop.index }}</td>
+      <td>{{ r.name }}</td>
+      <td>{{ r.level }}</td>
+      <td>{{ r.total_crafted }}</td>
+      <td>{{ r.total_earned }}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</div>
+{% endif %}
+
+{% if fashion_leaderboard %}
+<div class="card">
+  <h2>✨ 时尚达人榜</h2>
+  <p class="muted">按解锁过的新款式攒下的时尚值排名，越难做的款式第一次做出来分越高。</p>
+  <div class="scroll"><table>
+    <tr><th>排名</th><th>姓名</th><th>缝纫等级</th><th>时尚值</th></tr>
+    {% for r in fashion_leaderboard %}
+    <tr>
+      <td>{{ loop.index }}</td>
+      <td>{{ r.name }}</td>
+      <td>{{ r.level }}</td>
+      <td>{{ r.fashion_points }}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</div>
+{% endif %}
+
+{% endblock %}

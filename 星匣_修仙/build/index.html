@@ -1,0 +1,1865 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>云京弃子</title>
+<style>
+/* 《云京弃子》—— 水墨暗金 · 移动端优先 */
+*, *::before, *::after { box-sizing: border-box; }
+
+:root {
+  --ink:      #0b0d10;   /* 最深底 */
+  --paper:    #13161b;   /* 正文纸面 */
+  --paper-2:  #1a1e25;   /* 抬起的面 */
+  --line:     #2a3038;   /* 分隔线 */
+  --text:     #d9d3c6;   /* 正文米白 */
+  --text-dim: #8a9098;   /* 次要文字 */
+  --gold:     #c9a227;   /* 暗金强调 */
+  --gold-dim: #7d6518;
+  --blood:    #9c3b34;   /* 危险/代价 */
+  --jade:     #4f8a6d;   /* 增益 */
+  --serif: "Songti SC", "STSong", "SimSun", "Noto Serif CJK SC", serif;
+}
+
+html, body {
+  margin: 0; padding: 0;
+  height: 100%;
+  background: var(--ink);
+  color: var(--text);
+  font-family: var(--serif);
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior: none;
+}
+
+body {
+  display: flex;
+  justify-content: center;
+}
+
+/* 舞台：手机竖屏为基准，桌面居中留白 */
+#stage {
+  width: 100%;
+  max-width: 620px;
+  height: 100%;
+  max-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 0 60px rgba(0,0,0,.6);
+}
+
+/* ── 状态栏 ─────────────────────────────── */
+#hud {
+  flex: 0 0 auto;
+  padding: 10px 16px 8px;
+  background: linear-gradient(180deg, var(--paper-2), var(--paper));
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  letter-spacing: .04em;
+  display: none;               /* 捏人完成前隐藏 */
+}
+#hud.on { display: block; }
+
+#hud .row { display: flex; gap: 14px; flex-wrap: wrap; align-items: baseline; }
+#hud .chapter { color: var(--gold); font-size: 12px; letter-spacing: .18em; }
+#hud .stat { color: var(--text-dim); white-space: nowrap; }
+#hud .stat b { color: var(--text); font-weight: normal; }
+#hud .stat.warn b { color: var(--blood); }
+
+/* 修为进度条 */
+#expbar {
+  margin-top: 7px; height: 2px;
+  background: var(--line); border-radius: 2px; overflow: hidden;
+}
+#expbar i {
+  display: block; height: 100%; width: 0%;
+  background: linear-gradient(90deg, var(--gold-dim), var(--gold));
+  transition: width .6s ease;
+}
+
+/* ── 正文 ───────────────────────────────── */
+#scroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 26px 22px 8px;
+}
+#scroll::-webkit-scrollbar { width: 3px; }
+#scroll::-webkit-scrollbar-thumb { background: var(--line); }
+
+.scene-title {
+  text-align: center;
+  color: var(--gold);
+  font-size: 13px;
+  letter-spacing: .35em;
+  text-indent: .35em;
+  margin: 8px 0 26px;
+  opacity: 0;
+  animation: rise .8s ease forwards;
+}
+.scene-title::after {
+  content: ""; display: block;
+  width: 40px; height: 1px;
+  background: var(--gold-dim);
+  margin: 12px auto 0;
+}
+
+p.para {
+  font-size: 16.5px;
+  line-height: 2.05;
+  margin: 0 0 1.15em;
+  text-indent: 2em;
+  opacity: 0;
+  animation: rise .7s ease forwards;
+}
+/* 对白：不缩进，稍亮 */
+p.para.talk { text-indent: 0; color: #e6e0d2; }
+/* 旁白/心声：小一号，偏灰 */
+p.para.aside { font-size: 15px; color: var(--text-dim); font-style: normal; }
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* 判定条 */
+.roll {
+  margin: 20px 0; padding: 12px 14px;
+  border: 1px solid var(--line);
+  background: var(--paper-2);
+  font-size: 13px; line-height: 1.8;
+  color: var(--text-dim);
+  opacity: 0; animation: rise .6s ease forwards;
+}
+.roll .label { color: var(--gold); letter-spacing: .1em; }
+.roll .win  { color: var(--jade); }
+.roll .lose { color: var(--blood); }
+
+/* 数值变动提示 */
+.delta {
+  margin: 16px 0; text-align: center;
+  font-size: 13px; letter-spacing: .1em;
+  opacity: 0; animation: rise .6s ease forwards;
+}
+.delta .up   { color: var(--jade); }
+.delta .down { color: var(--blood); }
+.delta .item { color: var(--gold); }
+
+/* ── 选项区 ─────────────────────────────── */
+#choices {
+  flex: 0 0 auto;
+  padding: 6px 18px calc(18px + env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, transparent, var(--paper) 22%);
+}
+
+button.choice {
+  display: block; width: 100%;
+  margin: 9px 0; padding: 14px 16px;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--gold-dim);
+  color: var(--text);
+  font-family: var(--serif);
+  font-size: 15.5px; line-height: 1.6;
+  text-align: left;
+  cursor: pointer;
+  opacity: 0;
+  animation: rise .5s ease forwards;
+  transition: background .2s, border-color .2s, transform .12s;
+}
+button.choice:active { transform: scale(.985); }
+@media (hover: hover) {
+  button.choice:hover { background: #212630; border-left-color: var(--gold); }
+}
+button.choice .hint {
+  display: block; margin-top: 5px;
+  font-size: 12.5px; color: var(--text-dim); letter-spacing: .02em;
+}
+button.choice .hint .cost { color: var(--blood); }
+button.choice .hint .gain { color: var(--jade); }
+
+/* 不满足条件的灰选项 */
+button.choice.locked {
+  color: #545a63; border-left-color: #333;
+  cursor: not-allowed;
+}
+button.choice.locked .hint { color: #4a5058; }
+
+/* "继续"按钮 */
+button.next {
+  display: block; margin: 12px auto 4px;
+  padding: 10px 34px;
+  background: none; border: 1px solid var(--line);
+  color: var(--text-dim);
+  font-family: var(--serif); font-size: 14px; letter-spacing: .3em; text-indent: .3em;
+  cursor: pointer;
+  opacity: 0; animation: rise .5s ease forwards;
+  transition: color .2s, border-color .2s;
+}
+button.next:active { transform: scale(.98); }
+@media (hover: hover) {
+  button.next:hover { color: var(--gold); border-color: var(--gold-dim); }
+}
+
+/* ── 顶栏按钮（存档/档案）──────────────── */
+#tools {
+  position: absolute; top: 8px; right: 10px;
+  display: flex; gap: 2px; z-index: 30;
+}
+#tools button {
+  background: none; border: none;
+  color: var(--text-dim); font-family: var(--serif);
+  font-size: 12px; letter-spacing: .1em;
+  padding: 6px 8px; cursor: pointer;
+}
+#tools button:active { color: var(--gold); }
+
+/* ── 弹层 ───────────────────────────────── */
+#modal {
+  position: absolute; inset: 0; z-index: 50;
+  background: rgba(5,6,8,.88);
+  display: none;
+  padding: 40px 22px;
+  overflow-y: auto;
+}
+#modal.on { display: block; animation: rise .3s ease forwards; }
+#modal h3 {
+  color: var(--gold); font-size: 14px; font-weight: normal;
+  letter-spacing: .3em; text-align: center; margin: 0 0 22px;
+}
+#modal .kv { display: flex; justify-content: space-between;
+  padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+#modal .kv span { color: var(--text-dim); }
+#modal .sect { margin: 26px 0 10px; color: var(--gold-dim);
+  font-size: 12px; letter-spacing: .2em; }
+#modal .note { font-size: 13.5px; line-height: 1.9; color: var(--text-dim); }
+#modal .close {
+  display: block; margin: 30px auto 0; padding: 10px 30px;
+  background: none; border: 1px solid var(--line); color: var(--text-dim);
+  font-family: var(--serif); letter-spacing: .3em; text-indent: .3em; cursor: pointer;
+}
+
+/* ── 标题画面 ───────────────────────────── */
+#title {
+  position: absolute; inset: 0; z-index: 60;
+  background: var(--ink);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 40px 24px;
+}
+#title.gone { display: none; }
+#title .main {
+  font-size: 40px; letter-spacing: .5em; text-indent: .5em;
+  color: var(--text);
+  margin-bottom: 18px;
+  animation: rise 1.4s ease forwards;
+}
+#title .sub {
+  font-size: 12.5px; letter-spacing: .35em; text-indent: .35em;
+  color: var(--text-dim); margin-bottom: 56px;
+  opacity: 0; animation: rise 1.2s .5s ease forwards;
+}
+#title button {
+  display: block; width: 210px; margin: 10px 0; padding: 13px;
+  background: none; border: 1px solid var(--line);
+  color: var(--text); font-family: var(--serif);
+  font-size: 15px; letter-spacing: .28em; text-indent: .28em;
+  cursor: pointer; opacity: 0;
+  animation: rise .9s ease forwards;
+  transition: border-color .25s, color .25s;
+}
+#title button:nth-of-type(1) { animation-delay: 1.0s; }
+#title button:nth-of-type(2) { animation-delay: 1.15s; }
+#title button:disabled { color: #4a5058; cursor: not-allowed; }
+@media (hover: hover) {
+  #title button:not(:disabled):hover { color: var(--gold); border-color: var(--gold-dim); }
+}
+#title .foot {
+  position: absolute; bottom: 22px;
+  font-size: 11px; color: #3f454d; letter-spacing: .16em;
+  opacity: 0; animation: rise 1s 1.6s ease forwards;
+}
+
+/* 小屏微调 */
+@media (max-height: 680px) {
+  #scroll { padding-top: 18px; }
+  p.para { font-size: 16px; line-height: 1.95; }
+  #title .main { font-size: 34px; }
+  #title .sub { margin-bottom: 40px; }
+}
+
+</style>
+
+<div id="stage">
+  <div id="hud"></div>
+  <div id="scroll"></div>
+  <div id="choices"></div>
+
+  <div id="tools"><button id="btn-profile">生 平</button></div>
+  <div id="modal"></div>
+
+  <div id="title">
+    <div class="main">云京弃子</div>
+    <div class="sub">测灵之日，有人在石上动了手脚</div>
+    <button id="btn-new">新 的 一 世</button>
+    <button id="btn-continue">续 前 缘</button>
+    <div class="foot">存档保存在本机浏览器</div>
+  </div>
+</div>
+
+<script>
+/* ===== src/engine.js ===== */
+/* 《云京弃子》引擎 —— 场景机 / 数值 / 判定 / 存档 */
+
+// ── 境界阶梯 ───────────────────────────────────────────
+// exp 为「升入下一境所需」。凡人段不修炼，故为 Infinity（须由剧情推进）。
+const REALMS = [
+  { n: '凡人',     need: Infinity, life: 80  },
+  { n: '炼气一层', need: 100,  life: 120 },
+  { n: '炼气二层', need: 160,  life: 120 },
+  { n: '炼气三层', need: 240,  life: 120 },
+  { n: '炼气四层', need: 360,  life: 120 },
+  { n: '炼气五层', need: 520,  life: 120 },
+  { n: '炼气六层', need: 740,  life: 120 },
+  { n: '炼气七层', need: 1040, life: 120 },
+  { n: '炼气八层', need: 1450, life: 120 },
+  { n: '炼气九层', need: 2000, life: 120 },
+  { n: '筑基初期', need: 3200, life: 200 },
+  { n: '筑基中期', need: 4800, life: 200 },
+  { n: '筑基后期', need: 7000, life: 200 },
+  { n: '金丹初期', need: 12000, life: 500 },
+  { n: '金丹中期', need: 18000, life: 500 },
+  { n: '金丹后期', need: 26000, life: 500 },
+  { n: '元婴初期', need: 45000, life: 1000 },
+  { n: '元婴中期', need: 66000, life: 1000 },
+  { n: '元婴后期', need: 95000, life: 1000 },
+  { n: '化神',     need: 180000, life: 2000 },
+  { n: '合体',     need: 400000, life: 5000 },
+  { n: '大乘',     need: Infinity, life: 10000 },
+];
+
+const GRADES = ['丁下','丁上','丙下','丙上','乙下','乙上','甲下','甲上'];
+
+// ── 状态 ───────────────────────────────────────────────
+const S0 = () => ({
+  name: '', gender: '', nature: '',
+  realm: 0, exp: 0,
+  age: 16, months: 0,          // months = 当年内累计月数
+  mind: 60,
+  wits: 5, body: 2,            // GRADES 下标
+  stones: 0,
+  items: {}, npc: {}, flags: {},
+  chapter: '楔子', scene: 'p_start',
+  turns: 0, log: [],
+});
+
+let state = S0();
+const SCENES = {};
+
+/** 注册场景 */
+function S(id, def) { SCENES[id] = def; def.id = id; }
+
+// ── 取值助手 ───────────────────────────────────────────
+const realmName = () => REALMS[state.realm].n;
+const lifespan   = () => REALMS[state.realm].life;
+const expNeed    = () => REALMS[state.realm].need;
+const witsName   = () => GRADES[state.wits];
+const bodyName   = () => GRADES[state.body];
+const has        = (k, n = 1) => (state.items[k] || 0) >= n;
+const fav        = (k) => state.npc[k] || 0;
+const flag       = (k) => !!state.flags[k];
+
+/** 文本插值：{name} {realm} {ta}（他/她） */
+function fill(t) {
+  if (typeof t === 'function') t = t(state);
+  return String(t)
+    .replace(/\{name\}/g, state.name || '你')
+    .replace(/\{realm\}/g, realmName())
+    .replace(/\{ta\}/g, state.gender === '女' ? '她' : '他')
+    .replace(/\{xiong\}/g, state.gender === '女' ? '姑娘' : '小子');
+}
+
+// ── 效果结算 ───────────────────────────────────────────
+// eff: { exp, mind, stones, age(月), wits, body, items:{}, npc:{}, flags:{}, realm:+1 }
+// 返回可展示的变动列表 [{txt, cls}]
+function applyEff(eff) {
+  if (!eff) return [];
+  if (typeof eff === 'function') eff = eff(state) || {};
+  const out = [];
+  const push = (txt, cls) => out.push({ txt, cls });
+
+  if (eff.months) {
+    state.months += eff.months;
+    while (state.months >= 12) { state.months -= 12; state.age++; }
+  }
+  if (eff.exp) {
+    state.exp += eff.exp;
+    push(`修为 ${eff.exp > 0 ? '+' : ''}${eff.exp}`, eff.exp > 0 ? 'up' : 'down');
+    // 自动进阶：仅炼气段内自动，大境界须走剧情/闭关
+    while (state.exp >= expNeed() && REALMS[state.realm + 1] && !REALMS[state.realm + 1].n.startsWith('筑基')) {
+      state.exp -= expNeed();
+      state.realm++;
+      push(`境界提升 —— ${realmName()}`, 'item');
+    }
+  }
+  if (eff.mind) {
+    state.mind = Math.max(0, Math.min(100, state.mind + eff.mind));
+    push(`心境 ${eff.mind > 0 ? '+' : ''}${eff.mind}`, eff.mind > 0 ? 'up' : 'down');
+  }
+  if (eff.stones) {
+    state.stones = Math.max(0, state.stones + eff.stones);
+    push(`灵石 ${eff.stones > 0 ? '+' : ''}${eff.stones}`, eff.stones > 0 ? 'up' : 'down');
+  }
+  if (eff.wits) { state.wits = Math.min(GRADES.length - 1, state.wits + eff.wits); push(`悟性 → ${witsName()}`, 'up'); }
+  if (eff.body) { state.body = Math.min(GRADES.length - 1, state.body + eff.body); push(`体魄 → ${bodyName()}`, 'up'); }
+  if (eff.realm) { state.realm += eff.realm; state.exp = 0; push(`境界提升 —— ${realmName()}`, 'item'); }
+
+  for (const k in eff.items || {}) {
+    const n = eff.items[k];
+    state.items[k] = (state.items[k] || 0) + n;
+    if (state.items[k] <= 0) { delete state.items[k]; push(`失去 ${k}`, 'down'); }
+    else push(n > 0 ? `获得 ${k}` : `失去 ${k}`, n > 0 ? 'item' : 'down');
+  }
+  for (const k in eff.npc || {}) {
+    const n = eff.npc[k];
+    if (!n) continue;
+    state.npc[k] = (state.npc[k] || 0) + n;
+    push(`${k} ${n > 0 ? '好感+' : '好感'}${n}`, n > 0 ? 'up' : 'down');
+  }
+  for (const k in eff.flags || {}) state.flags[k] = eff.flags[k];
+  if (eff.chapter) state.chapter = eff.chapter;
+
+  return out;
+}
+
+// ── 判定 ───────────────────────────────────────────────
+// roll: { label, dc, base:(s)=>num, bonus:[[名,值]|(s)=>[名,值]|null] }
+// 明骰：过程全部展示给玩家
+function doRoll(r) {
+  const base = typeof r.base === 'function' ? r.base(state) : (r.base || 0);
+  const parts = [];
+  let total = base;
+  (r.bonus || []).forEach(b => {
+    const item = typeof b === 'function' ? b(state) : b;
+    if (!item) return;
+    const [label, val] = item;
+    if (!val) return;
+    total += val;
+    parts.push([label, val]);
+  });
+  const luck = 1 + Math.floor(Math.random() * 20);   // 天意 1–20
+  total += luck;
+  parts.push(['天意', luck]);
+  return { dc: r.dc, base, parts, total, win: total >= r.dc, label: r.label };
+}
+
+// ── 存档 ───────────────────────────────────────────────
+const SAVE_KEY = 'yunjing_qizi_save_v1';
+
+function saveGame(slot = 'auto') {
+  try {
+    const all = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}');
+    all[slot] = { s: state, t: Date.now() };
+    localStorage.setItem(SAVE_KEY, JSON.stringify(all));
+    return true;
+  } catch (e) { return false; }
+}
+
+function loadGame(slot = 'auto') {
+  try {
+    const all = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}');
+    if (!all[slot]) return false;
+    state = Object.assign(S0(), all[slot].s);
+    return true;
+  } catch (e) { return false; }
+}
+
+function hasSave(slot = 'auto') {
+  try {
+    const all = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}');
+    return !!all[slot];
+  } catch (e) { return false; }
+}
+
+
+/* ===== src/story/prologue.js ===== */
+/* 楔子 · 云京苏氏 */
+
+S('p_start', {
+  title: '楔子 · 云 京',
+  text: [
+    '云京的三月，槐花落了满地。',
+    '苏氏祠堂前的青石广场上跪着四十七个少年，从卯时跪到辰时，膝盖底下的石头把凉气一寸寸顶进骨头里。今日是苏氏三年一度的测灵之日——测出灵根者入族学，往后是修士；测不出的，发二十两银子，逐出云京，此生与仙途无涉。',
+    '你跪在最末一排。前面的少年们锦袍玉带，腰间悬着族里发的养气玉。你身上是一件洗得发白的粗布直裰，袖口磨破了，昨夜你自己用线缝了三针。',
+    ['aside', '你是苏氏的庶子。生母柳氏是外室，五年前的一个冬夜病故，连块正经的碑都没有。'],
+    '主祠的铜门开了。执事捧着一方半人高的青灰色石头走出来——测灵石。石面粗粝，中间凹下去一个掌印。',
+    ['talk', '「按名录，一个一个来。」'],
+  ],
+  next: 'p_name',
+});
+
+S('p_name', {
+  text: [
+    '执事翻开名录，开始点名。',
+    '你听见自己的名字被念到——那是父亲随口给的，用了十六年。',
+    ['aside', '（你叫什么？）'],
+  ],
+  input: { key: 'name', ph: '输入你的名字', max: 6 },
+  to: 'p_gender',
+});
+
+S('p_gender', {
+  text: [ ['talk', '「{name}」——上前。'] ],
+  choices: [
+    { t: '（少年）', eff: () => (state.gender = '男', {}), to: 'p_nature' },
+    { t: '（少女）', eff: () => (state.gender = '女', {}), to: 'p_nature' },
+  ],
+});
+
+S('p_nature', {
+  text: [
+    '你站起身。跪得太久，左腿有一阵密密麻麻的酸麻往上爬，你咬着牙没让自己晃。',
+    '四十七道目光落在你背上。你能感觉到那些目光的重量——不是敌意，是更轻慢的东西：他们只是在等一场意料之中的笑话。',
+    ['aside', '这些年，你早已学会了一种活法。'],
+  ],
+  choices: [
+    { t: '沉毅隐忍 —— 把牙咬碎了咽下去，路还长',
+      hint: '心境根基更稳，逆境中不易崩',
+      eff: () => (state.nature = '沉毅隐忍', { mind: 10 }), to: 'p_test' },
+    { t: '桀骜锋锐 —— 谁看不起我，我记着',
+      hint: '体魄更强，但心境易动，仇怨结得深',
+      eff: () => (state.nature = '桀骜锋锐', { body: 2, mind: -5 }), to: 'p_test' },
+    { t: '温和圆融 —— 与人为善，总能寻到活路',
+      hint: '悟性更佳，更易得人心',
+      eff: () => (state.nature = '温和圆融', { wits: 1 }), to: 'p_test' },
+  ],
+});
+
+S('p_test', {
+  text: [
+    '你走到测灵石前。',
+    '石头比看上去更冷。你把右掌按进那个凹陷的掌印里，掌心贴上去的一瞬，有什么东西顺着手臂爬上来——不是凉，是一种细微的、像针尖一样的酥麻，从掌心一路窜到肩胛，然后在胸口炸开一小簇火星。',
+    ['aside', '你听见了。极轻的一声，像很远的地方有雷滚过。'],
+    '石头亮了。',
+    '不是那种寻常的、温吞的白光——你眼角的余光里，有一道极细的紫芒沿着石纹一闪而过，快得像错觉。',
+    '广场上安静下来。',
+  ],
+  next: 'p_verdict',
+});
+
+S('p_verdict', {
+  text: [
+    '执事的手在石面上按了一下。',
+    '就那么一下。',
+    '你没看清他做了什么——只看见他袖口里滑出一枚指甲盖大小的黑色符片，贴上石面，又收了回去。快得像抖了抖袖子。',
+    '紫芒灭了。石头恢复成一片死气沉沉的灰。',
+    ['talk', '「五灵根杂驳，灵气不聚。」执事合上名录，声音平平，「不堪修行。」'],
+    ['aside', '你张了张嘴。'],
+    ['aside', '掌心还在发烫。那不是错觉——你确信那不是错觉。'],
+    '但整个广场上，没有一个人看着石头。他们都在看你的脸。',
+  ],
+  next: 'p_shame',
+});
+
+S('p_shame', {
+  text: [
+    '人群里走出一个人。',
+    '锦白长袍，腰佩青玉，十九岁，炼气五层——你的嫡兄，苏彦。他走到你面前，垂眼看你，脸上带着一点近乎温和的怜悯。',
+    ['talk', '「我早说过。」他叹了口气，那口气叹得恰到好处，广场上每个人都听得见，「外室生的，能有什么好根骨。父亲还偏要让你来试一试，白折腾。」'],
+    ['talk', '「二十两银子，够你在青石镇租间屋子，学门手艺。」他伸手，很轻地拍了拍你的肩，「别怨谁。命就是这样。」'],
+    ['aside', '他的手掌落在你肩上，不重。但你后颈的汗毛全竖起来了——'],
+    ['aside', '你想起五年前那个冬夜。母亲咳血的那晚，苏彦也是这样，站在门口，用这个语气说：「请医的银子，府里紧，先缓两日罢。」'],
+    ['aside', '缓了两日。第三日清早，母亲就凉了。'],
+  ],
+  choices: [
+    { t: '低头谢过兄长，把银子接了',
+      hint: '<span class="cost">心境 -8</span>　但苏彦不会再多看你一眼',
+      eff: { mind: -8, npc: { '苏彦': 30 }, flags: { bowed: true } },
+      to: 'p_out' },
+    { t: '打开他的手，一言不发地盯着他',
+      hint: '<span class="cost">心境 -3</span>　<span class="cost">苏彦记住了你</span>',
+      eff: { mind: -3, npc: { '苏彦': 60 }, flags: { defied: true } },
+      to: 'p_out' },
+    { t: '「兄长袖子里那枚符，是什么东西？」',
+      hint: '<span class="cost">当众撕破脸，后果难料</span>',
+      eff: { mind: 5, npc: { '苏彦': 90 }, flags: { accused: true } },
+      to: 'p_accuse' },
+  ],
+});
+
+S('p_accuse', {
+  text: [
+    '你的声音不大，但广场上太安静了。',
+    '苏彦的手停在半空。',
+    '只有一瞬——快得几乎抓不住——他的瞳孔缩了一下。然后他笑了，笑得比刚才更温和。',
+    ['talk', '「符？」他转过身，冲执事扬了扬下巴，「你袖子里有符么？」'],
+    ['talk', '执事把两只袖子都翻了出来。空空如也。'],
+    ['talk', '「疯了。」人群里有人低声说，「测不出灵根，急疯了。」'],
+    '苏彦重新看向你。这一次，他脸上那点怜悯没有了。',
+    ['talk', '「{name}。」他很轻地说，轻到只有你能听见，「你该低头的。低了头，你还能活着走出云京。」'],
+    ['aside', '你记住了这句话。你会记很久。'],
+  ],
+  next: 'p_out',
+});
+
+S('p_out', {
+  onEnter: { stones: 0, items: { '二十两纹银': 1 }, months: 0 },
+  text: [
+    '当日午后，你被送出苏府侧门。',
+    '一个包袱，一把家仆淘汰下来的粗铁剑，二十两纹银。门房把东西塞给你，连门槛都没让你迈第二次。',
+    '身后那扇朱漆大门合上了。',
+    ['aside', '很沉的一声。你在门外站了一会儿，才发现自己一直没有回头。'],
+  ],
+  next: 'p_jade',
+});
+
+S('p_jade', {
+  onEnter: { items: { '旧玉佩': 1 } },
+  text: [
+    '走到街口，你才想起翻包袱。',
+    '里面除了两件旧衣，还有一样东西——一枚玉佩，巴掌大小，边缘缺了一角，断口很旧了，磨得发圆。玉色浑浊，看不出是什么料子。',
+    ['aside', '母亲留下的。她临终前塞进你手心，只说了一句话。'],
+    ['talk', '「若有一日活不下去了……就往北走。别问为什么。」'],
+    '你摩挲着那道缺口。',
+    '玉是凉的。可就在你指腹压上断口的那一瞬，掌心那簇早上炸开过的火星，忽然又跳了一下。',
+    ['aside', '很轻。轻得像是你自己的心跳。'],
+  ],
+  next: 'p_gate',
+});
+
+S('p_gate', {
+  text: [
+    '出城时下起了雨。',
+    '云京的城门有九丈高，门洞里的风把雨吹成斜的，打在脸上生疼。你站在门洞底下，回头最后看了一眼。',
+    '雨幕后面，苏氏的高楼只剩一个灰扑扑的影子。十六年，你在那座楼里连一间朝南的屋子都没有过。',
+    ['aside', '你不知道自己该恨谁。恨苏彦？恨那块石头？还是恨自己命不好？'],
+    ['aside', '你只知道一件事——'],
+    ['aside', '早上那一下，是真的。你的掌心到现在还在发烫。'],
+  ],
+  choices: [
+    { t: '「我会回来的。」',
+      hint: '把这句话咬在牙缝里，往后每一步都要用它撑着',
+      eff: { mind: 6, flags: { vow_return: true } },
+      to: 'p_end' },
+    { t: '什么也没说，转身走进雨里',
+      hint: '有些话说出来就轻了',
+      eff: { mind: 3, flags: { vow_silent: true } },
+      to: 'p_end' },
+  ],
+});
+
+S('p_end', {
+  onEnter: { chapter: '第一章 · 安身立命', months: 3 },
+  text: [
+    '往南三百里，是青石镇。',
+    '你走了十九天。二十两银子花掉四两——路上被狗撵过，被人抢过一次，好在只抢走了半袋干粮。',
+    ['aside', '第二十天清晨，你看见了镇口那棵歪脖子老槐树。'],
+  ],
+  next: 'c1_arrive',
+});
+
+
+/* ===== src/story/ch1.js ===== */
+/* 第一章 · 安身立命 —— 青石镇 */
+
+S('c1_arrive', {
+  title: '第一章 · 安身立命',
+  text: [
+    '青石镇不大，一条主街贯通南北，两侧是药铺、粮行、脚店和赌坊。镇子挨着赤水河，河上有个小码头，每日有船往北去，运的是给仙门的供奉。',
+    '这是个凡人镇子，但抬头能看见——往北四十里，云雾之间浮着几座山峰的轮廓，山腰有白色的光带缓缓流动。',
+    ['talk', '「那是太衍宗的护山大阵。」脚店的伙计顺着你的目光看了一眼，语气很平常，「离得远，看着近。」'],
+    ['aside', '太衍宗。九州第一大宗。三年一次外门大比，凡人也能报名。'],
+    ['aside', '你摸了摸怀里剩下的十六两银子。'],
+    '一间通铺，三十文一晚。你算了算，什么都不做的话，这些银子够你活八个月。',
+  ],
+  next: 'c1_job',
+});
+
+S('c1_job', {
+  text: [
+    '第二天一早，你出门找活。',
+    '镇上招人的地方就三处。',
+  ],
+  choices: [
+    { t: '济生堂药铺 —— 认药、碾药、看柜',
+      hint: '<span class="gain">工钱少，但能识药材、攒人脉</span>',
+      eff: { flags: { job: 'herb' }, npc: { '孙掌柜': 10 } },
+      to: 'c1_job_herb' },
+    { t: '赤水码头 —— 扛货装船',
+      hint: '<span class="gain">工钱高，练筋骨</span>　<span class="cost">伤身</span>',
+      eff: { flags: { job: 'dock' }, body: 1 },
+      to: 'c1_job_dock' },
+    { t: '通宝赌坊 —— 跑腿、收帐',
+      hint: '<span class="gain">来钱最快，消息最灵</span>　<span class="cost">沾一身腥</span>',
+      eff: { flags: { job: 'casino' }, mind: -4 },
+      to: 'c1_job_casino' },
+  ],
+});
+
+S('c1_job_herb', {
+  text: [
+    '济生堂的孙掌柜是个瘦老头，戴一副水晶片磨的眼镜，看了你的手一眼。',
+    ['talk', '「手上有茧，但不是干粗活的茧。」他把一筐没分拣的药材推过来，「认得几味？」'],
+    '你蹲下去翻。苏府的族学里教过一点药理——庶子也能旁听，坐在最后一排。',
+    ['talk', '「黄芪、白术、这是三年的丹参……这个不对，这不是天麻，是赤箭根，长得像，药性差着两截。」'],
+    '老头把眼镜往上推了推。',
+    ['talk', '「一天二十文，管一顿午饭。」他顿了顿，「认得出赤箭根的，我这十年就见过两个。」'],
+  ],
+  next: 'c1_months',
+});
+
+S('c1_job_dock', {
+  text: [
+    '码头的把头姓雷，光着膀子，胸口一道从锁骨拉到肋下的旧疤。',
+    ['talk', '「一天六十文。」他上下打量你，「扛得动一百二十斤的箱子么？」'],
+    '你说扛得动。',
+    '你扛不动。第一箱到肩上的时候，你听见自己的脊椎响了一声。但你没放下——放下就没这份工了。',
+    ['aside', '那天你扛了十一箱。夜里睡在通铺上，翻身都疼，可你睁着眼想的是：'],
+    ['aside', '一天六十文。一个月一两八。'],
+  ],
+  next: 'c1_months',
+});
+
+S('c1_job_casino', {
+  text: [
+    '通宝赌坊的管事叫刀疤六，人不高，笑起来很和气，左边眉毛上有道竖疤。',
+    ['talk', '「跑腿的活，一天一百文。」他摸着那道疤，「但有一条——让你去收帐，你就得收回来。收不回来，你自己垫。」'],
+    '第一个月你去收了九家。七家给了，一家哭，一家动了刀。',
+    ['aside', '动刀那家你没垫钱——你把那把菜刀夺了。手上划了道口子，但你发现自己不怕。'],
+    ['aside', '你只是有点恶心。恶心那个夺刀的、动作那么熟练的自己。'],
+  ],
+  next: 'c1_months',
+});
+
+S('c1_months', {
+  onEnter: (s) => ({
+    months: 4,
+    stones: 0,
+    mind: s.flags.job === 'casino' ? -3 : 2,
+    body: s.flags.job === 'dock' ? 1 : 0,
+  }),
+  text: [
+    '四个月过去了。',
+    '你在青石镇活下来了。有了一间自己的小屋——泥墙草顶，漏雨，但门能从里面闩上。这是十六年来第一次。',
+    ['aside', '可你每天夜里都会坐起来，把右手摊开，盯着掌心看。'],
+    ['aside', '那簇火星再没跳过。'],
+    '你去问过镇上唯一一个见过修士的人——脚店的老板娘。她说，凡人想入道，只有两条路：一是被仙门挑中，二是自己弄到功法，引气入体。',
+    ['talk', '「可功法那玩意儿，」她压低声音，「不是钱能买的。真要有门路……去河东那边的夜市看看罢。别说是我说的。」'],
+  ],
+  next: 'c1_market',
+});
+
+S('c1_market', {
+  text: [
+    '河东夜市在赤水河的另一岸，天黑才开，卯时前散。',
+    '摊子摆在河滩上，没有灯笼，各人点一支蜡。卖的东西你多半不认得——一小截焦黑的木头、装在陶罐里的活虫、几片写着字的黄纸。买东西的人都不说话，比划价钱。',
+    '你在河滩上走了三个来回，才在最角落里看见一个老头。',
+    '他面前铺一块脏布，摆着七八个瓷瓶。人瘦得脱形，一只眼珠子是灰白的，另一只闭着。',
+    ['talk', '「丹药。」他冲空气说，「筑基丹、聚气丹、疗伤丹，童叟无欺。」'],
+    ['aside', '你在济生堂……或者在别处，见过足够多的骗子。这些瓶子里装的多半是面粉。'],
+    '可你注意到一件事：他面前那块布，边角压着四块小石头。石头是灰的，普通得不能再普通——',
+    ['aside', '但你站到布前的时候，掌心又烫了一下。'],
+  ],
+  next: 'c1_oldman',
+});
+
+S('c1_oldman', {
+  text: [
+    '你在他摊子前蹲下。',
+    ['talk', '「买丹？」老头那只灰白的独眼转过来，没有焦点，「聚气丹三两银子一颗，服下能引气入体。」'],
+    ['talk', '「假的。」你说。'],
+    '老头笑了。他笑的时候脸上的皱纹全挤在一起，像一团揉过的纸。',
+    ['talk', '「你怎么知道是假的？」'],
+    ['talk', '「真能引气入体的丹，三两银子就卖了？」你指了指他的摊布，「倒是您压布角的这四块石头……我想问问，这个卖不卖。」'],
+    '老头脸上的笑停住了。',
+    '很长一段时间，河滩上只有水声。',
+    ['talk', '「小子。」他终于开口，那只灰白的眼睛缓缓对准了你，「你看得见那石头里有东西？」'],
+  ],
+  choices: [
+    { t: '「看不见。但我站到这儿，手心发烫。」',
+      hint: '<span class="gain">说实话</span>',
+      eff: { flags: { honest_to_chen: true }, npc: { '陈瞎子': 20 } },
+      to: 'c1_chen_test' },
+    { t: '「看得见。紫色的，一闪一闪。」',
+      hint: '<span class="cost">你在赌他分不出真假</span>',
+      eff: { npc: { '陈瞎子': 5 }, mind: -2 },
+      to: 'c1_chen_lie' },
+    { t: '「我只是随口问问。」转身要走',
+      hint: '<span class="cost">错过</span>　但你确实一无所知',
+      eff: { mind: -3 },
+      to: 'c1_chen_leave' },
+  ],
+});
+
+S('c1_chen_lie', {
+  text: [
+    '老头沉默了很久。',
+    ['talk', '「紫色的。」他重复了一遍，忽然咳嗽起来，咳得整个人弓成一只虾，「……好，好。」'],
+    '他伸手，把那四块石头一颗颗收进袖子里。',
+    ['talk', '「灵石里的气是白的，小子。红的是火灵石，蓝的是水灵石。」他慢慢站起来，开始卷摊布，「紫色的，那叫雷灵石，整个九州拢共出过几块，我这种人一辈子也摸不着。」'],
+    ['talk', '「你要真看见了紫的，那是你自己的东西，不是石头的。」'],
+    '他把摊布往腋下一夹，转身要走。走了两步，又停下。',
+    ['talk', '「不过你撒谎的时候眼睛不眨，这点比很多人强。」'],
+  ],
+  next: 'c1_chen_test',
+});
+
+S('c1_chen_leave', {
+  text: [
+    '你转身走了两步。',
+    ['talk', '「站住。」'],
+    '老头的声音一点也不老。',
+    ['talk', '「你手心发烫，是不是？」他在你身后说，「烫了四个月，一天比一天轻，现在快没了。」'],
+    '你僵在原地。',
+    ['talk', '「回来坐下。」他重新蹲回摊布前，「再过两个月，你那点东西就散干净了。到时候你就真是个凡人，安安分分活到六十，挺好的。」'],
+    ['talk', '「或者你现在回来。」'],
+  ],
+  next: 'c1_chen_test',
+});
+
+S('c1_chen_test', {
+  text: [
+    '老头姓陈，镇上的人叫他陈瞎子。他在青石镇卖了九年假丹药。',
+    '他让你把手伸出来，两根枯瘦的手指搭在你腕上。',
+    ['aside', '有什么东西钻进你的经脉，像一根冰凉的线，绕着走了一圈。'],
+    '搭了很久。久到你以为他睡着了。',
+    ['talk', '「五灵根杂驳。」他收回手，'],
+    ['aside', '你的心沉下去。'],
+    ['talk', '「——这四个字，是谁跟你说的？」'],
+    '你抬起头。',
+    ['talk', '「你这经脉里，」陈瞎子一字一顿，「干净得像刚开的河道。一条主脉，八条支脉，全是通的。这世上没有哪个五灵根杂驳的人，脉是这么长的。」'],
+    ['talk', '「有人在你测灵的时候动了手脚。」'],
+  ],
+  next: 'c1_chen_ask',
+});
+
+S('c1_chen_ask', {
+  text: [
+    '河滩上的风很凉。你听见自己的血在耳朵里跳。',
+    ['aside', '苏彦袖子里那枚黑色的符片。执事翻出来的、空空如也的两只袖子。'],
+    ['aside', '你没有疯。'],
+  ],
+  choices: [
+    { t: '「那我到底是什么灵根？」',
+      eff: {},
+      to: 'c1_chen_answer' },
+    { t: '「教我。」你直接跪了下去',
+      hint: '<span class="gain">陈瞎子好感大增</span>　<span class="cost">心境 -5（你把姿态放到了最低）</span>',
+      eff: { npc: { '陈瞎子': 30 }, mind: -5, flags: { kneel_chen: true } },
+      to: 'c1_chen_answer' },
+  ],
+});
+
+S('c1_chen_answer', {
+  text: [
+    ['talk', '「我不知道。」陈瞎子说得很干脆，「我一个炼气八层的废物，看得出你脉是通的，看不出你是什么根。」'],
+    ['talk', '「但有一样我能告诉你——你那手心发烫，是灵气在自己找路走。找不到路，四个月就散了。」'],
+    '他从怀里摸出一卷东西，很旧，边角都磨烂了，用麻线捆着。',
+    ['talk', '「《引气诀》。最烂的功法，太衍宗外门弟子人手一卷，扔在地上都没人捡。」'],
+    ['talk', '「但对你来说，它是一条路。」'],
+    '他把书卷递过来，又在半空停住。',
+    ['talk', '「拿了它，你就得叫我一声师父。我这个师父不值钱——没门派、没靠山、一身修为卡在炼气八层四十年没动过。跟着我，你学不到什么高深的东西。」'],
+    ['talk', '「但我会告诉你，怎么在这个世道上，不被人当柴烧。」'],
+  ],
+  choices: [
+    { t: '「师父。」双手接过',
+      hint: '<span class="gain">拜师</span>',
+      eff: { items: { '《引气诀》': 1 }, npc: { '陈瞎子': 25 }, flags: { master_chen: true } },
+      to: 'c1_first_night' },
+    { t: '「我可以买。多少钱？」',
+      hint: '<span class="cost">不欠人情，但也没有人教你</span>',
+      eff: { items: { '《引气诀》': 1 }, npc: { '陈瞎子': -10 }, flags: { bought_scroll: true }, mind: -3 },
+      to: 'c1_first_night' },
+  ],
+});
+
+// ── 引气入体 ─────────────────────────────────────────────
+S('c1_first_night', {
+  onEnter: { months: 2 },
+  text: [
+    '那天夜里，你回到自己的小屋，闩上门，把油灯点到最亮。',
+    '《引气诀》一共十七页，字迹潦草，前三页讲的是坐姿和呼吸，第四页开始讲「守窍」——把心神收在丹田那一点上，不动，等。',
+    ['aside', '等什么？书上说：等灵气自己来。'],
+    '你盘腿坐下，把右掌摊在膝上。',
+    '外面下起了雨。屋顶漏水，一滴一滴落在墙角的木盆里，笃、笃、笃。你数到第两千三百下的时候，什么都没有发生。',
+    ['aside', '你想起陈瞎子的话：找不到路，四个月就散了。'],
+    ['aside', '第四个月已经过去了。'],
+  ],
+  choices: [
+    { t: '收心守窍，按书上的法子来',
+      hint: '稳妥。悟性决定成败',
+      roll: { label: '引气入体', dc: 55,
+        base: (s) => 20 + s.wits * 5,
+        bonus: [
+          (s) => s.flags.master_chen ? ['师父指点', 12] : null,
+          (s) => s.mind >= 60 ? ['心境澄明', 8] : (s.mind < 35 ? ['心浮气躁', -10] : null),
+          (s) => s.nature === '温和圆融' ? ['性子沉得住', 5] : null,
+        ] },
+      win: 'c1_qi_success', lose: 'c1_qi_fail' },
+    { t: '不守了 —— 去想早上那一下，去想苏彦的袖子',
+      hint: '<span class="cost">以恨引气，凶险</span>　<span class="gain">但你的恨很具体</span>',
+      roll: { label: '以念引气', dc: 62,
+        base: (s) => 25 + s.wits * 4,
+        bonus: [
+          (s) => s.npc['苏彦'] >= 60 ? ['刻骨之恨', 18] : ['浅淡的怨', 6],
+          (s) => s.nature === '桀骜锋锐' ? ['本性如此', 10] : null,
+        ] },
+      winEff: { mind: -6 },
+      win: 'c1_qi_success_dark', lose: 'c1_qi_fail' },
+  ],
+});
+
+S('c1_qi_fail', {
+  onEnter: { months: 2, mind: -5 },
+  text: [
+    '天亮了。',
+    '你睁开眼，膝盖已经麻得没有知觉。木盆里的水满了，溢出来，在地上摊开一小片。',
+    ['aside', '什么都没有。丹田里空空的，像一口枯井。'],
+    '你没有起身。你重新闭上眼，接着坐。',
+    ['aside', '第二夜，没有。第三夜，没有。第七夜，你在坐着的时候睡着了，梦见母亲在咳嗽。'],
+    '两个月过去了。',
+  ],
+  next: 'c1_retry',
+});
+
+S('c1_retry', {
+  text: [
+    '第六十三天的夜里，陈瞎子敲了你的门。',
+    '他没进来，站在门口，怀里抱着个酒葫芦。',
+    ['talk', '「还坐着呢。」'],
+    ['talk', '「嗯。」'],
+    ['talk', '「知道你为什么引不进气么？」他喝了一口，「因为你在等。等灵气来找你，像等一场雨。」'],
+    ['talk', '「可你不是块地，小子。」他把葫芦扔给你，「你是根杆子。杆子不等雨——杆子往上戳，戳破天，雨才下来。」'],
+    ['aside', '你捧着那个葫芦，忽然明白了什么。'],
+    ['aside', '守窍不是「等」。是「推」。'],
+  ],
+  choices: [
+    { t: '再坐一夜',
+      hint: '<span class="gain">你已经懂了</span>',
+      roll: { label: '引气入体 · 再试', dc: 45,
+        base: (s) => 25 + s.wits * 5,
+        bonus: [ ['陈瞎子那句话', 15], (s) => s.flags.master_chen ? ['师徒名分', 8] : null ] },
+      win: 'c1_qi_success', lose: 'c1_qi_fail2' },
+  ],
+});
+
+S('c1_qi_fail2', {
+  onEnter: { months: 3, mind: -8 },
+  text: [
+    '还是没有。',
+    '又是三个月。你的手心彻底凉了下去，再也不烫了。',
+    ['aside', '陈瞎子来看过你两次，第二次什么也没说，把酒葫芦留下就走了。'],
+    '第九个月的一个夜里，你坐到子时，忽然觉得很累。不是身上累。',
+    ['aside', '你想：算了吧。做个凡人，在济生堂待到六十岁，也挺好的。'],
+    ['aside', '你这么想着，就松开了。'],
+    '——就在你松开的那一瞬间。',
+    '丹田里「嗡」的一声。',
+  ],
+  next: 'c1_qi_success',
+});
+
+S('c1_qi_success', {
+  onEnter: { realm: 1, mind: 10, months: 1 },
+  text: [
+    '有什么东西从四面八方涌进来。',
+    '不是水，不是风——它没有形状，凉，极细，顺着你的口鼻、皮肤、指尖，一丝一丝往里渗。经脉被撑开的时候有一种极清晰的酸胀，像久旱的河床终于过水。',
+    '它绕着你的丹田转了一圈，又一圈，第三圈的时候，收拢成极小的一点。',
+    ['aside', '亮了一下。'],
+    '你睁开眼。',
+    '屋子还是那间漏雨的屋子。可你能「看见」空气了——不是用眼睛，是另一种感觉：空气里浮着无数极细的光点，缓慢地流动，像水里的浮尘。',
+    ['aside', '你伸出手，一小簇光点就朝你掌心聚过来。'],
+    ['aside', '炼气一层。'],
+    '你在黑暗里坐了很久，然后你发现自己在笑。笑着笑着，眼泪就下来了。',
+  ],
+  next: 'c1_thunder',
+});
+
+S('c1_qi_success_dark', {
+  onEnter: { realm: 1, months: 1, flags: { dark_qi: true } },
+  text: [
+    '你不再守窍。你去想那个早上。',
+    '想执事袖口滑出的那枚黑符。想苏彦落在你肩上的、那么轻的一只手。想他说「你该低头的」。想五年前那个冬夜，母亲咳血的声音，一声，一声，隔着一层薄门板。',
+    '——丹田里「轰」的一声。',
+    '灵气不是渗进来的。是撞进来的。像一条被憋了太久的河，堤一破，整个冲垮下来。经脉被撑得剧痛，你尝到血腥味，鼻子和耳朵里都有热的东西流出来。',
+    ['aside', '但你没有停。'],
+    '那股气在你丹田里凶狠地转了三圈，凝成一点，颜色发暗。',
+    ['aside', '炼气一层。'],
+    '你抹了把脸，手背上全是血。',
+    ['aside', '你想：值。'],
+    ['aside', '——只是这一夜之后，你每次运气，心口都会有一点闷。像有个东西堵在那儿，不疼，但一直在。'],
+  ],
+  next: 'c1_thunder',
+});
+
+// ── 雷灵根初显 ───────────────────────────────────────────
+S('c1_thunder', {
+  onEnter: { months: 12, exp: 40 },
+  text: [
+    '入道之后，日子忽然快了起来。',
+    '整整一年，你把《引气诀》翻烂了。白天做工，夜里打坐，灵气一点点在丹田里积起来，像往一口深瓮里存水。',
+    '陈瞎子开始正经教你东西——不是功法，是别的：怎么看一个人的境界，怎么在修士面前把气机压住装成凡人，坊市上哪种丹药是拿死人炼的。',
+    ['talk', '「记住，」他反复说，「炼气期在修真界不算人，算柴。别让人知道你有什么。」'],
+    '直到那个雷雨夜。',
+    '你在屋里打坐，外面雷声一个接一个。第三道闪电劈下来的时候，就在镇口那棵老槐树上——白光炸开，整间屋子亮如白昼。',
+    ['aside', '而你丹田里那点灵气，猛地跳了一下。'],
+    ['aside', '不是被吓的。是……应和。'],
+  ],
+  next: 'c1_thunder2',
+});
+
+S('c1_thunder2', {
+  text: [
+    '你冲出门，站在雨里。',
+    '老槐树烧起来了，半边树冠焦黑，雨浇不灭。而你站在树下，能清晰地感觉到：空气里残留着一种东西，暴烈的、噼啪作响的、带着焦味的东西——',
+    '它在往你身上钻。',
+    '不是你去引它。是它自己找上来的，像铁屑扑向磁石。',
+    ['aside', '你丹田里那一点灵气，在这一瞬间涨了三倍不止。'],
+    ['aside', '而它的颜色，是紫的。'],
+    '你在雨里站到雷停。回屋的时候浑身湿透，牙齿打战，可你觉得从来没有这么清醒过。',
+  ],
+  choices: [
+    { t: '连夜去找陈瞎子',
+      hint: '<span class="gain">他是唯一可信的人</span>',
+      eff: { npc: { '陈瞎子': 15 }, exp: 60 },
+      to: 'c1_thunder_chen' },
+    { t: '什么也不说 —— 「别让人知道你有什么」',
+      hint: '<span class="gain">心境 +8</span>　你学会了他教的第一课',
+      eff: { mind: 8, exp: 60, flags: { hide_thunder: true } },
+      to: 'c1_thunder_hide' },
+  ],
+});
+
+S('c1_thunder_chen', {
+  text: [
+    '陈瞎子听完，很长时间没说话。',
+    '他那只灰白的独眼在黑暗里对着你，忽然抬手，一巴掌拍在你后脑上。',
+    ['talk', '「蠢货！」'],
+    '这是他第一次骂你。',
+    ['talk', '「雷灵根。变异灵根里最凶的一种，三百年出不了一个。」他的手在抖，「你知道这意味着什么吗？意味着但凡有个金丹真人知道了，明天就能把你绑走，剖了炼成他儿子的资质。」'],
+    ['talk', '「这世上活得最短的，就是抱着宝贝到处说的人。」'],
+    '他喘了半天，才慢慢平静下来。',
+    ['talk', '「……但你告诉我了。」'],
+    ['aside', '他忽然笑了一下，笑得很难看。'],
+    ['talk', '「行。这条命，往后算我一半。」'],
+  ],
+  next: 'c1_crisis',
+});
+
+S('c1_thunder_hide', {
+  text: [
+    '你回到屋里，把湿衣服换下来，坐回蒲团上。',
+    '你想过去找陈瞎子。想了很久。',
+    ['aside', '但你脑子里反复响的是他说过的那句话：「别让人知道你有什么。」'],
+    ['aside', '——包括你，师父。'],
+    '你把这件事咽了下去，像咽下一块烧红的炭。',
+    '第二天见到陈瞎子，你照常给他打了酒，听他骂人。他什么都没看出来。',
+    ['aside', '你忽然发现，自己撒谎的时候，眼睛确实不眨。'],
+  ],
+  next: 'c1_crisis',
+});
+
+// ── 危机 · 郑三 ─────────────────────────────────────────
+S('c1_crisis', {
+  onEnter: { months: 6, exp: 120 },
+  text: [
+    '开春的时候，河东夜市来了个收钱的。',
+    '姓郑，行三，炼气四层，散修。他不打人——他只是走到你摊子前站着，笑眯眯地看着你，直到你把钱掏出来。整个夜市三十几个摊子，没人敢不给。',
+    ['aside', '你去问陈瞎子怎么办。他说：给。'],
+    ['talk', '「四层打一层，跟大人打三岁孩子一样。」他把钱数出来，「记住，这不叫怂，这叫算账。」'],
+    '你们给了三个月。',
+    '第四个月，郑三加价了——从每月二百文，加到二两银子。',
+    ['talk', '「老瞎子，」他蹲下来，很和气地拍了拍陈瞎子的脸，「你这假丹药卖了九年，赚的可不止这个数。」'],
+    ['talk', '「师父，」你说，「今晚的钱我垫了。」'],
+    ['talk', '「不用。」陈瞎子抬起头，那只独眼直直对着郑三，「这个月，不给。」'],
+    ['aside', '你后来想了很多次，为什么那晚他忽然不给了。'],
+    ['aside', '你想，大概是因为你在场。'],
+  ],
+  next: 'c1_crisis2',
+});
+
+S('c1_crisis2', {
+  text: [
+    '郑三站起来了。',
+    '他叹了口气，抬脚踩在陈瞎子的右手上——那只手撑在地上，五根指头。他没用多大力，只是慢慢地、一寸一寸地碾下去。',
+    '你听见了骨头的声音。',
+    ['aside', '陈瞎子没有叫。他咬着牙，那只灰白的独眼死死盯着河滩上的沙子。'],
+    ['talk', '「二两。」郑三看着你，笑得很和气，「你师父的手，还剩四根好指头。」'],
+    ['aside', '你丹田里的那点紫气，正在疯了一样地转。'],
+  ],
+  choices: [
+    { t: '掏钱。二两银子，买四根指头',
+      hint: '<span class="cost">心境 -12</span>　这是算账，不是怂',
+      eff: { mind: -12, stones: 0, npc: { '陈瞎子': 10 }, flags: { paid_zheng: true } },
+      to: 'c1_paid' },
+    { t: '拔剑 —— 一层打四层，你知道结果',
+      hint: '<span class="cost">凶险，可能重伤或死</span>',
+      roll: { label: '搏命', dc: 78,
+        base: (s) => 20 + s.body * 6,
+        bonus: [
+          (s) => s.flags.job === 'dock' ? ['码头三年的力气', 12] : null,
+          (s) => s.flags.job === 'casino' ? ['夺过刀，不怯场', 10] : null,
+          (s) => s.flags.hide_thunder || s.flags.dark_qi ? ['紫气应雷而动', 22] : ['紫气骤然暴涨', 22],
+          (s) => s.nature === '桀骜锋锐' ? ['你本就是这种人', 8] : null,
+          (s) => s.mind >= 65 ? ['心不乱', 6] : null,
+        ] },
+      win: 'c1_fight_win', lose: 'c1_fight_lose' },
+    { t: '「郑爷，河滩东头那条船，今夜子时靠岸。」',
+      hint: '<span class="gain">用你这些年攒下的东西</span>',
+      cond: (s) => !!s.flags.job,
+      roll: { label: '设局', dc: 60,
+        base: (s) => 18 + s.wits * 6,
+        bonus: [
+          (s) => s.flags.job === 'casino' ? ['赌坊的路子最野', 20] : null,
+          (s) => s.flags.job === 'herb' ? ['济生堂的药，你认得全', 16] : null,
+          (s) => s.flags.job === 'dock' ? ['码头的船期你烂熟于心', 16] : null,
+          (s) => s.nature === '温和圆融' ? ['话说得圆', 6] : null,
+        ] },
+      win: 'c1_trick_win', lose: 'c1_trick_lose' },
+  ],
+});
+
+S('c1_paid', {
+  text: [
+    '你把二两银子放在他脚边。',
+    '郑三把脚挪开，弯腰捡钱，捡的时候还笑着说了句「这才对嘛」。然后他走了，河滩上的其他摊主一个个低下头去，假装什么都没看见。',
+    '你把陈瞎子扶起来。他的右手废了三根指头，肿得像个发面馒头。',
+    ['talk', '「哭什么。」他说。'],
+    ['talk', '「我没哭。」'],
+    ['talk', '「嗯。」他用左手拍了拍你，「记住今晚。别记恨，记账。修真界就这么个地方——你没实力的时候，连挨打都得排队。」'],
+    ['aside', '那一夜你没睡。你把《引气诀》从头背到尾，背了十一遍。'],
+  ],
+  next: 'c1_news',
+});
+
+S('c1_fight_win', {
+  onEnter: { exp: 200, mind: 8, body: 1, npc: { '陈瞎子': 20 }, flags: { killed_zheng: true } },
+  text: [
+    '你拔剑的时候，郑三甚至没有回头。',
+    '在他眼里，炼气一层拔剑，跟三岁孩子举木棍没有区别。',
+    '——然后紫光炸开了。',
+    '不是你控制的。是你丹田里那点东西，在你动杀念的一瞬间自己烧了起来，顺着经脉冲进右臂，冲进那把破铁剑里。剑身「嗤」地一声亮起，空气里全是焦味。',
+    '郑三终于回头。你看见他脸上的笑还没来得及收。',
+    '一剑。',
+    ['aside', '从左肩到右肋。他的护体灵光像张湿纸一样破了。'],
+    '他倒下去的时候还在看你，独眼里全是不明白。',
+    ['aside', '你站在原地，握剑的右手在抖。手臂从肩到指尖，经脉全裂了，血从毛孔里往外渗。'],
+    ['aside', '你杀了人。第一次。'],
+    '陈瞎子从地上爬起来，一言不发，用那只没废的左手拖着尸体走进赤水河。',
+    ['talk', '「今晚的事，」他回来的时候浑身是水，「你我都不知道。」'],
+  ],
+  next: 'c1_news',
+});
+
+S('c1_fight_lose', {
+  onEnter: { mind: -10, months: 3, exp: 80 },
+  text: [
+    '你拔剑了。',
+    '郑三看都没看，反手一挥——一股气墙撞在你胸口，你整个人倒飞出去，撞在后面的摊子上，嘴里全是血。',
+    '你爬起来，又冲上去。',
+    ['aside', '第二次，你的肋骨断了两根。第三次，你的剑折了。'],
+    '第四次，你已经站不起来了，就在地上爬，抓住了他的脚踝。',
+    '郑三低头看你，第一次收起了笑。',
+    ['talk', '「你这条命，」他有点困惑地说，「值二两银子么？」'],
+    '他没杀你。他只是又踩了陈瞎子一根指头，然后走了。',
+    ['aside', '你在床上躺了三个月。'],
+    ['aside', '陈瞎子每天来给你换药，用他那只废了一半的右手，笨拙地缠绷带。他一句话都没说过。'],
+    ['aside', '——那三个月里，你在心里把郑三杀了不下四百遍。'],
+  ],
+  next: 'c1_news',
+});
+
+S('c1_trick_win', {
+  onEnter: { exp: 150, mind: 5, stones: 0, npc: { '陈瞎子': 25 }, flags: { framed_zheng: true } },
+  text: [
+    '你说那条船上装的是太衍宗的供奉——三箱赤炎矿，走的是外门执事私账，没入宗门册子。',
+    '郑三的脚从陈瞎子手上挪开了。',
+    ['talk', '「你怎么知道？」'],
+    ['talk', (s) => '「我在' + ({herb:'济生堂',dock:'码头',casino:'赌坊'}[s.flags.job] || '这镇上') + '待了这些年。」你说，「郑爷，这镇上还有比我更清楚谁往哪儿走货的人么？」'],
+    '他信了。因为你说的每一个细节都是真的——船是真的，箱子是真的，走私账也是真的。',
+    ['aside', '你只有一件事没说：那三箱矿，是太衍宗刑堂放的饵。'],
+    '三天后，郑三死在赤水河东岸。太衍宗外门执事亲自出的手，一掌把他打成两截，尸首挂在码头示众了七天。',
+    ['aside', '你去看过。看了很久。'],
+    '陈瞎子站在你旁边，那只灰白的独眼盯着尸体，忽然说了一句：',
+    ['talk', '「小子……你这心，有点狠。」'],
+    ['talk', '「师父，」你说，「您教我的第一课，不是别让人知道我有什么么。」'],
+    ['aside', '他没接话。回去的路上，他一句话也没说。'],
+  ],
+  next: 'c1_news',
+});
+
+S('c1_trick_lose', {
+  onEnter: { mind: -8, months: 2, exp: 60, npc: { '陈瞎子': 5 } },
+  text: [
+    '你把船的事说了。',
+    '郑三听完，笑了。',
+    ['talk', '「那条船是刑堂的饵。」他很和气地说，「小子，我在这条河上混了十一年。」'],
+    ['aside', '你后背的汗一下子全下来了。'],
+    ['talk', '「不过——」他慢慢地把脚从陈瞎子手上挪开，「你敢拿这个来诓我，说明你脑子转得快。」'],
+    ['talk', '「二两银子照给。但你这个人，我记住了。」'],
+    '他收了钱走了。临走时回头看了你一眼。',
+    ['aside', '那眼神让你很多年后都记得——不是恨，是那种看一件将来或许有用的东西的眼神。'],
+    '陈瞎子的三根指头还是废了。',
+  ],
+  next: 'c1_news',
+});
+
+// ── 章末 · 大比的消息 ────────────────────────────────────
+S('c1_news', {
+  onEnter: { months: 8, exp: 260 },
+  text: [
+    '那年秋天，太衍宗放榜了。',
+    '外门大比，三年一次，凡九州之内、炼气九层以下、年不过二十者，皆可赴山门应试。取三百人入外门。',
+    '榜文贴在青石镇的镇门口，围了整整一天的人。',
+    ['aside', '你挤在人群外面，把那张榜看了三遍。'],
+    ['aside', '「年不过二十。」'],
+    ['aside', '你今年，十九。'],
+  ],
+  next: 'c1_final',
+});
+
+S('c1_final', {
+  text: [
+    '你回去找陈瞎子。他正在用左手笨拙地磨药，右手那三根废指头蜷着，像干枯的树枝。',
+    ['talk', '「去。」他头都没抬。'],
+    ['talk', '「师父——」'],
+    ['talk', '「我知道你要说什么。」他把药碾停下，「你说你才{realm}，太衍宗外门大比，来的都是世家子、宗门弟子，好些是炼气七八层。你去了是送死。」'],
+    ['talk', '「对。你去了多半连前三千都进不去。」'],
+    '他抬起头，那只独眼对着你。',
+    ['talk', '「但你今年十九。三年后二十二，超龄了。这辈子，就这一次。」'],
+    '他从怀里摸出一个布包，塞给你。里面是三十二枚下品灵石——他攒了九年的全部家当。',
+    ['talk', '「路上买两瓶聚气丹。别买夜市的，那都是我这种人做的。」'],
+    ['aside', '你捏着那个布包，忽然说不出话来。'],
+  ],
+  choices: [
+    { t: '「师父，等我回来。」',
+      hint: '<span class="gain">心境 +10</span>',
+      eff: { mind: 10, stones: 32, npc: { '陈瞎子': 20 }, flags: { promised_return: true } },
+      to: 'c1_depart' },
+    { t: '把布包推回去 ——「我自己有。」',
+      hint: '<span class="cost">灵石 +0</span>　<span class="gain">但你不想再欠这只手</span>',
+      eff: { mind: 4, stones: 8, npc: { '陈瞎子': 30 }, flags: { refused_stones: true } },
+      to: 'c1_depart' },
+  ],
+});
+
+S('c1_depart', {
+  onEnter: { chapter: '第二章 · 登云梯', months: 1, items: { '粗铁剑': 1 } },
+  text: [
+    '你走的那天，陈瞎子没来送。',
+    '他说他一个卖假药的，站在路口哭哭啼啼像什么样子。',
+    ['aside', '但你走出三里地，回头的时候，看见镇口那棵烧焦的老槐树下，站着一个很瘦的影子。'],
+    ['aside', '站了很久，没动。'],
+    '往北四十里，云雾之间，太衍宗的山峰第一次在你眼前显出全貌——七十二峰，峰顶有阁，阁上悬着白色的光带，缓缓流动，像天上垂下来的河。',
+    ['aside', '你在山门外站住了。'],
+    ['aside', '三年前的三月，云京的雨里，你说过一句话。'],
+  ],
+  next: 'c2_gate',
+});
+
+
+/* ===== src/story/ch2.js ===== */
+/* 第二章 · 登云梯 —— 太衍宗外门大比 */
+
+S('c2_gate', {
+  title: '第二章 · 登 云 梯',
+  text: [
+    '太衍宗山门前，是一片开阔到不真实的白石广场。',
+    '广场上站了三万人。',
+    ['aside', '你从来没见过这么多人。'],
+    '青衫的、锦袍的、背剑的、抱琴的；有人身后跟着仆从，有人像你一样孤身一个，鞋底磨穿了。空气里灵气浓得发稠，吸一口，丹田里那点东西就跳一下。',
+    '广场尽头是一道白玉牌坊，上面两个字：太衍。牌坊后面的山道笔直向上，望不到头。',
+    ['talk', '「报名的往这边！报名的往这边！」外门执事踩着飞剑在半空来回喊，声音被灵气推得整个广场都听得见，「三日后开考，两试定去留！过了的，入外门；没过的，趁早回家！」'],
+    ['aside', '你摸了摸怀里那个布包。'],
+  ],
+  next: 'c2_queue',
+});
+
+S('c2_queue', {
+  onEnter: { months: 1 },
+  text: [
+    '报名的队伍排了四里地。你在队里站了一天半。',
+    '排在你前面的是个姑娘，比你矮一头，穿一件洗得发灰的粗麻衣，背上背一把用布条缠了七八层的刀。她一整天没跟人说过话，只是每隔一会儿就回头看一眼——不是看你，是看队尾的方向，像在确认什么。',
+    '第二天正午，日头毒。她忽然晃了一下，膝盖一软。',
+    ['aside', '你伸手扶住了她的胳膊。轻得吓人。'],
+    ['talk', '「……松开。」她说。'],
+    ['talk', '「你几天没吃了？」'],
+    ['talk', '「四天。」她把胳膊抽回去，站直了，「排队的时候不能走，走了要从头排。」'],
+  ],
+  choices: [
+    { t: '把干粮分她一半',
+      hint: '<span class="gain">你也没剩多少</span>',
+      eff: { npc: { '阿萝': 25 }, mind: 4 },
+      to: 'c2_luo' },
+    { t: '「我替你占着。去吃饭。」',
+      hint: '<span class="gain">你替她守位置</span>　<span class="cost">执事若查到，两人都取消资格</span>',
+      eff: { npc: { '阿萝': 35 }, mind: 2, flags: { risked_for_luo: true } },
+      to: 'c2_luo' },
+    { t: '收回手，什么也不说',
+      hint: '你自己也只剩两天的干粮',
+      eff: { mind: -2 },
+      to: 'c2_luo_cold' },
+  ],
+});
+
+S('c2_luo', {
+  text: [
+    '她姓沈，单名一个萝字。青州人，父亲是个猎户，去年冬天进山没回来。',
+    ['talk', '「我把家里的地卖了，」她啃着干粮，说得很平静，「三亩水田，换了七枚灵石和一把刀。」'],
+    ['talk', '「如果没考上呢？」'],
+    ['talk', '「那我就死在山门口。」她抬起头，眼睛很亮，「反正也没地方回。」'],
+    ['aside', '你忽然不知道该说什么。'],
+    ['aside', '你只是想起了三年前云京城门洞里的那场雨。'],
+  ],
+  next: 'c2_pei',
+});
+
+S('c2_luo_cold', {
+  text: [
+    '她没再说话，转过身去，把腰带又紧了一扣。',
+    '你们在队里挨着站了一天半，谁也没开口。',
+    ['aside', '轮到她报名的时候，你听见执事问她姓名。'],
+    ['talk', '「沈萝。青州。」'],
+    ['aside', '你把这个名字记住了。'],
+  ],
+  next: 'c2_pei',
+});
+
+S('c2_pei', {
+  text: [
+    '报名到第三天，出了点事。',
+    '队伍前头一阵骚动——一队人从旁边走过来，直接插到了最前面。为首的少年十七八岁，一身雪青云纹长袍，腰上悬着一枚青玉牌，身后跟着四个执剑的护卫。',
+    ['aside', '你能感觉到他的气机。炼气七层，而且是丹药堆出来的那种饱满、干净、不留隐患的七层。'],
+    ['talk', '「青玄裴氏，裴照。」他把玉牌往执事面前一递，「按例，世家荐名不排队。」'],
+    '执事看了眼玉牌，躬身让开。队伍里没有一个人吭声。',
+    '裴照往里走的时候，目光从队伍上扫过，很随意地在你身上停了一瞬。',
+    ['aside', '不是敌意。是那种看路边石头的眼神——'],
+    ['aside', '你在苏府见过一万次。'],
+  ],
+  choices: [
+    { t: '低下头，让开路',
+      hint: '<span class="gain">你早学会了</span>',
+      eff: { mind: -3, flags: { yield_pei: true } },
+      to: 'c2_night' },
+    { t: '盯着他，一直到他走过去',
+      hint: '<span class="cost">他记住了你的脸</span>',
+      eff: { npc: { '裴照': 20 }, mind: 3, flags: { stare_pei: true } },
+      to: 'c2_night' },
+  ],
+});
+
+S('c2_night', {
+  text: [
+    '开考前夜，三万人挤在广场上露宿。',
+    '你找了个背风的角落坐下打坐。子时刚过，沈萝抱着刀在你旁边坐下来，隔着两步远。',
+    ['talk', '「明天第一试，测灵根。」她低声说，「你知道太衍宗用什么测么？」'],
+    ['talk', '「衍灵盘。」'],
+    ['talk', '「你也听说了。」她把刀横在膝上，「那东西不看你几条灵根，看你灵气的「底子」。据说……什么都藏不住。」'],
+    ['aside', '你的手指在袖子里慢慢收紧了。'],
+    ['aside', '陈瞎子教过你藏气机的法子——把灵气压进经脉深处，让人探不出深浅。可那是骗人的法子，骗的是人的神识。'],
+    ['aside', '衍灵盘不是人。'],
+  ],
+  next: 'c2_test1',
+});
+
+S('c2_test1', {
+  onEnter: { months: 1 },
+  text: [
+    '第一试，测灵。',
+    '广场中央升起十二座青铜圆盘，每座盘面刻满纹路，中间一个凹陷。考生排队上前，掌心按上去，运气三息。',
+    '盘面会亮。亮的颜色和明暗，决定你的去留。',
+    ['aside', '你排在第九千七百三十六位。'],
+    '前面的人一个一个上去。多数人的盘面亮起浑浊的白光，执事在名册上画一笔，让开。偶尔有人亮出淡青或淡红，执事会抬头看一眼那人的脸。',
+    '轮到裴照的时候，盘面亮起了整片的青碧，光柱冲起三丈高。',
+    ['talk', '「木灵根，双灵根，上品。」执事高声唱名，「青玄裴氏，裴照——记，甲等。」'],
+    '广场上一片吸气声。',
+    ['aside', '然后是你。'],
+    '你走上前，把右掌按进那个凹陷里。',
+    ['aside', '掌心贴上去的一瞬，你就知道——它在往外抽你的东西。'],
+  ],
+  choices: [
+    { t: '压。把紫气死死按在丹田最深处',
+      hint: '<span class="gain">藏拙，平稳入外门</span>　<span class="cost">经脉逆压，伤身</span>',
+      roll: { label: '藏气', dc: 58,
+        base: (s) => 22 + s.wits * 5,
+        bonus: [
+          (s) => s.flags.master_chen ? ['陈瞎子教的法子', 18] : ['你自己琢磨的野路子', 6],
+          (s) => s.flags.hide_thunder ? ['你藏了一年，早已熟练', 12] : null,
+          (s) => s.mind >= 60 ? ['心不乱', 6] : ['心跳太快', -8],
+        ] },
+      winEff: { flags: { hid_root: true } },
+      win: 'c2_hid', lose: 'c2_leak' },
+
+    { t: '放。让它烧出来 —— 你藏了三年，够了',
+      hint: '<span class="gain">一步登天</span>　<span class="cost">从此站在所有人的目光里</span>',
+      eff: { flags: { revealed_root: true }, mind: 6 },
+      to: 'c2_reveal' },
+
+    { t: '只放一半 —— 让盘子亮出个「寻常上品」',
+      hint: '既不埋没，也不刺眼',
+      cond: (s) => s.wits >= 6 || s.flags.master_chen,
+      lock: '（悟性不足，也没人教过你这种分寸）',
+      roll: { label: '分寸', dc: 70,
+        base: (s) => 20 + s.wits * 6,
+        bonus: [
+          (s) => s.flags.master_chen ? ['师父那一套', 15] : null,
+          (s) => s.nature === '温和圆融' ? ['你最懂分寸', 10] : null,
+        ] },
+      winEff: { flags: { half_root: true }, mind: 4 },
+      win: 'c2_half', lose: 'c2_leak' },
+  ],
+});
+
+S('c2_hid', {
+  onEnter: { mind: -4, exp: 60 },
+  text: [
+    '你把它按了下去。',
+    '经脉里像塞了一团烧红的铁，硬生生往下压。汗从额头淌进眼睛里，你不敢眨。',
+    '盘面亮了——浑浊的白光，摇了两下，暗下去。',
+    ['talk', '「杂灵根，中下。」执事头也不抬，笔一画，「记，丙等。下一个。」'],
+    '你走下高台。腿在抖，右臂从肩到指尖一片麻木。',
+    ['aside', '没有人看你。三万人的目光里，没有一道落在你身上。'],
+    ['aside', '你想：这样最好。'],
+    ['aside', '——可你的心口，闷得厉害。'],
+  ],
+  next: 'c2_test2',
+});
+
+S('c2_half', {
+  onEnter: { exp: 90, npc: { '裴照': 10 } },
+  text: [
+    '你让它出来一半。',
+    '就一半——像开一道门缝，让风漏出去一线，再迅速合上。',
+    '盘面亮起淡淡的青紫色，不刺眼，但很干净。光柱升到一尺高，稳稳地停在那里。',
+    ['talk', '「变异灵根……」执事抬起头，愣了一下，重新看了看盘面，「雷属，单灵根，中品。」'],
+    ['talk', '「记，乙等。」'],
+    '广场上有零星的议论声。变异灵根难得，但「中品」两个字压住了大半好奇——每届总有那么十几个。',
+    ['aside', '你走下高台的时候，感觉到有一道目光。'],
+    '裴照站在甲等考生的休息区，正看着你。这一次，那眼神不再是看路边的石头。',
+  ],
+  next: 'c2_test2',
+});
+
+S('c2_reveal', {
+  onEnter: { exp: 200, npc: { '裴照': 30 }, flags: { famous: true } },
+  text: [
+    '你松开了。',
+    '整整三年，你把它按在丹田最深的地方，白天做工，夜里打坐，从没让它露过头。',
+    ['aside', '现在你想：够了。'],
+    '——紫光冲上天的时候，整个广场的声音都停了。',
+    '不是光柱。是一根雷。从青铜盘面里炸开，笔直贯上九天，紫白色的电蛇沿着光柱盘旋而上，噼啪作响，空气里全是焦味。十二座衍灵盘同时发出蜂鸣，最近的三座裂了。',
+    '云层被捅开一个洞。',
+    ['aside', '三万人仰着头，一动不动。'],
+    '你站在光柱中央，听见执事的笔掉在了地上。',
+    '很久之后，一个苍老的声音从山门深处传下来，不辨方位，却每个人都听得清清楚楚：',
+    ['talk', '「……天雷之体。」'],
+    ['talk', '「几百年了。」'],
+    ['aside', '那一天之后，太衍宗三万考生里，所有人都知道了你的名字。'],
+    ['aside', '——包括你不想让他知道的那些人。'],
+  ],
+  next: 'c2_test2',
+});
+
+S('c2_leak', {
+  onEnter: { mind: -6, exp: 120, npc: { '裴照': 15 } },
+  text: [
+    '你想压住它。',
+    '可衍灵盘比你想的更贪。它像一只手，探进你的丹田，硬生生往外拽——你压了一息，两息，第三息上，控制不住了。',
+    '紫光「嗤」地窜出来，不高，只有半人多，但颜色极亮，电弧沿着盘面的纹路四散奔走，把一圈青铜烧出了焦痕。',
+    '然后灭了。',
+    '你踉跄着退了一步，喉咙里全是血腥味。',
+    ['talk', '「雷……」执事盯着焦黑的盘面，皱起眉，「变异灵根，雷属。但气机涣散、根基不稳——」'],
+    ['talk', '「记，乙等下。下一个。」'],
+    '你走下台的时候，听见后面有人低声说：',
+    ['talk', '「可惜了，好苗子，废根基。」'],
+    ['aside', '你没有回头。你知道自己的根基好得很。'],
+    ['aside', '你只是还不会用它。'],
+  ],
+  next: 'c2_test2',
+});
+
+S('c2_test2', {
+  onEnter: { months: 1 },
+  text: [
+    '第二试，斗法。',
+    '一万两千人过了第一试。第二试直接抽签配对，两两上擂，赢的留下，输的下山。',
+    '连胜三场者，入外门。',
+    ['aside', '你抽到的第一个对手，是个炼气五层的散修。'],
+    ['aside', '你，{realm}。'],
+  ],
+  next: 'c2_fight1',
+});
+
+S('c2_fight1', {
+  text: [
+    '擂台是块三丈见方的白石。',
+    '对手叫马奎，二十岁，背一把厚背砍刀，胳膊上全是旧伤。他上台前冲你笑了笑，笑得挺客气。',
+    ['talk', '「小兄弟，我劝你认输。」他说得很诚恳，「我这刀没轻重，伤着你不值当。」'],
+    ['aside', '你看着他。'],
+    ['aside', '你想起陈瞎子那三根废掉的指头。'],
+  ],
+  choices: [
+    { t: '拔剑。不说话',
+      hint: '硬拼。境界差两层',
+      roll: { label: '斗法 · 第一场', dc: 65,
+        base: (s) => 18 + s.realm * 5 + s.body * 4,
+        bonus: [
+          (s) => s.flags.revealed_root ? ['雷气奔涌，你已不必再藏', 20] : null,
+          (s) => s.flags.half_root ? ['半开的门，够用', 12] : null,
+          (s) => s.flags.killed_zheng ? ['你杀过人，出手没有迟疑', 12] : null,
+          (s) => s.flags.job === 'dock' ? ['扛过三年箱子的腰力', 8] : null,
+          (s) => s.mind >= 60 ? ['心不乱', 6] : ['心浮', -6],
+        ] },
+      win: 'c2_win1', lose: 'c2_lose1' },
+
+    { t: '让他先出刀 —— 你在等一样东西',
+      hint: '<span class="cost">先挨一刀</span>　<span class="gain">雷气应激而发</span>',
+      cond: (s) => s.flags.revealed_root || s.flags.half_root || s.flags.hid_root,
+      roll: { label: '后发', dc: 72,
+        base: (s) => 15 + s.realm * 5 + s.wits * 4,
+        bonus: [
+          ['以身引雷，凶险但势大', 25],
+          (s) => s.body >= 4 ? ['扛得住那一刀', 10] : ['血肉之躯，扛不太住', -8],
+        ] },
+      winEff: { mind: 5 },
+      loseEff: { mind: -8 },
+      win: 'c2_win1', lose: 'c2_lose1' },
+  ],
+});
+
+S('c2_win1', {
+  onEnter: { exp: 180, mind: 6, flags: { won_r1: true } },
+  text: [
+    '刀落下来的时候，你已经不在那儿了。',
+    '紫光在你脚下炸开一小簇，把你整个人推出去半丈——不是身法，是雷气把你「弹」开的。你自己都没料到。',
+    '马奎的刀砍在空处。你的剑贴着他的刀背滑上去，剑尖抵住了他的喉咙。',
+    '那把粗铁剑上，正有细小的电弧噼啪跳动。',
+    ['aside', '擂台下安静了一瞬。'],
+    ['talk', '「……我认输。」马奎慢慢松开刀，看着你剑上的电光，忽然笑了，「小兄弟，你这运气，是我该认。」'],
+    '他跳下擂台，走了两步又回头。',
+    ['talk', '「往后要是有人问起，就说马奎输给一个炼气三层的。我不丢人。」'],
+  ],
+  next: 'c2_rest',
+});
+
+S('c2_lose1', {
+  onEnter: { mind: -10, months: 1, exp: 60, flags: { lost_r1: true } },
+  text: [
+    '你没躲开。',
+    '刀背拍在你左肩上——他到底还是收了力，用的刀背。可你还是像块破布一样飞出擂台，砸在白石地上，滚了三圈。',
+    '左肩胛骨断了。',
+    ['aside', '你趴在地上，看着自己的血一滴一滴渗进白石的缝里。'],
+    ['talk', '「胜者，马奎。」'],
+    '有人来拖你下场。你挣开了，自己站起来，一步一步走下去。',
+    ['aside', '三万人里，你连第一场都没过。'],
+    ['aside', '你想起沈萝那句话——「那我就死在山门口。」'],
+    ['aside', '你没有地方回。青石镇有个瞎老头在等你。你不能就这样回去。'],
+  ],
+  next: 'c2_lose_turn',
+});
+
+S('c2_lose_turn', {
+  text: [
+    '按规矩，输了的当天就得下山。',
+    '你在山门外的石阶上坐了一夜。天快亮的时候，一个背着刀的影子在你旁边坐下。',
+    ['talk', '「我也输了。」沈萝说。'],
+    ['aside', '她的右手用布条吊在胸前，脸上有一道血痂。'],
+    ['talk', '「第二场，输给一个炼气六层的。」她把刀横在膝上，「差三招。」'],
+    '你们并排坐着，看着东边一点点亮起来。',
+    ['talk', '「山门外二十里有个地方，」她忽然说，「叫落云涧。太衍宗每届大比之后，会在那儿再开一次「补录」——收落榜的，做杂役弟子。」'],
+    ['talk', '「不是外门。是扫地、烧火、看药炉的。三年之后，考核合格，才准转外门。」'],
+    ['talk', '「三年。」你说。'],
+    ['talk', '「三年。」她点头，「你去不去？」'],
+  ],
+  choices: [
+    { t: '「去。」',
+      hint: '<span class="cost">绕三年远路</span>　<span class="gain">但你进得去这座山</span>',
+      eff: { npc: { '沈萝': 30 }, flags: { path_menial: true }, mind: 5 },
+      to: 'c2_end' },
+    { t: '「不去。我回青石镇，三年后再来。」',
+      hint: '<span class="cost">三年后你二十二岁，超龄了</span>',
+      eff: { mind: -5, flags: { path_home: true } },
+      to: 'c2_end' },
+  ],
+});
+
+S('c2_rest', {
+  onEnter: { exp: 240, months: 1, flags: { won_all: true } },
+  text: [
+    '第二场，你赢了。第三场，你也赢了。',
+    '第三场的对手是个世家旁支，比你高着两层，打到一半，他忽然自己跳下了擂台——他说他看见你剑上有紫电，不敢接。',
+    ['aside', '你站在台上，听见台下有人在议论那道贯天的紫光。'],
+    ['aside', '也有人在说：「就是那个乙等下、根基废掉的。」'],
+    '第四天正午，唱名。',
+    ['talk', '「——太衍宗外门，第一百七十三位，{name}。」'],
+    '你站在三百人的队伍里，抬头看那道笔直向上的山道。',
+    ['aside', '三年前，云京城门洞的雨里，你说过一句话。'],
+    ['aside', '现在，你往前走了一步。'],
+  ],
+  next: 'c2_end',
+});
+
+S('c2_end', {
+  onEnter: { chapter: '第三章 · 外门风波' },
+  text: [
+    ['aside', '——第二章 · 完——'],
+    '你在太衍宗的山道上迈出了第一步。',
+    '这座山有七十二峰。外门在最底下那一层，往上是内门，再往上是真传，最高处的那几座峰上住着什么，没有人告诉过你。',
+    ['aside', '而在云京，苏彦刚刚筑基。'],
+    ['aside', '他还不知道，那个被他从祠堂里赶出去的庶子，已经站在了太衍宗的山门里。'],
+    ['aside', '（第三章 · 外门风波 · 制作中）'],
+    ['aside', '你的存档已保留。续写更新后，可从此处继续。'],
+  ],
+  ending: true,
+});
+
+
+/* ===== src/ui.js ===== */
+/* 《云京弃子》渲染层 */
+
+const $scroll  = () => document.getElementById('scroll');
+const $choices = () => document.getElementById('choices');
+const $hud     = () => document.getElementById('hud');
+
+let delayStep = 0;   // 当前场景内的淡入节拍
+
+function el(tag, cls, html) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html != null) e.innerHTML = html;
+  return e;
+}
+
+/** 滚到底部（元素在淡入，故多补几拍） */
+function scrollToEnd() {
+  [60, 260, 560].forEach(d => setTimeout(() => {
+    const s = $scroll();
+    s.scrollTo({ top: s.scrollHeight, behavior: 'instant' });
+  }, d));
+}
+
+/** 按节拍淡入追加 */
+function appear(node) {
+  node.style.animationDelay = Math.min(delayStep * 0.13, 1.3) + 's';
+  delayStep++;
+  $scroll().appendChild(node);
+  return node;
+}
+
+// ── HUD ────────────────────────────────────────────────
+function updateHUD() {
+  const hud = $hud();
+  if (!state.name) { hud.classList.remove('on'); return; }
+  hud.classList.add('on');
+
+  const need = expNeed();
+  const pct = need === Infinity ? 0 : Math.min(100, state.exp / need * 100);
+  const mindWarn = state.mind < 30 ? ' warn' : '';
+  const ageWarn  = state.age > lifespan() * 0.8 ? ' warn' : '';
+
+  hud.innerHTML =
+    '<div class="chapter">' + state.chapter + '</div>' +
+    '<div class="row" style="margin-top:6px">' +
+      '<span class="stat">境界 <b>' + realmName() + '</b></span>' +
+      '<span class="stat' + ageWarn + '">年岁 <b>' + state.age + '</b> / ' + lifespan() + '</span>' +
+      '<span class="stat' + mindWarn + '">心境 <b>' + state.mind + '</b></span>' +
+      '<span class="stat">灵石 <b>' + state.stones + '</b></span>' +
+    '</div>' +
+    '<div id="expbar"><i style="width:' + pct + '%"></i></div>';
+}
+
+// ── 场景渲染 ───────────────────────────────────────────
+function goto(id) {
+  const sc = SCENES[id];
+  if (!sc) { console.error('缺少场景：' + id); return; }
+
+  state.scene = id;
+  state.turns++;
+  delayStep = 0;
+
+  const sr = $scroll();
+  sr.innerHTML = '';
+  $choices().innerHTML = '';
+  sr.scrollTo({ top: 0, behavior: 'instant' });
+
+  // 进场效果
+  if (sc.onEnter) {
+    const deltas = applyEff(sc.onEnter);
+    if (deltas.length) pendingDeltas = deltas;
+  }
+
+  if (sc.title) appear(el('div', 'scene-title', fill(sc.title)));
+
+  // 正文
+  (sc.text || []).forEach(t => {
+    let cls = 'para', body = t;
+    if (Array.isArray(t)) { cls = 'para ' + t[0]; body = t[1]; }
+    appear(el('p', cls, fill(body)));
+  });
+
+  // 进场数值变动
+  if (pendingDeltas) { showDeltas(pendingDeltas); pendingDeltas = null; }
+
+  updateHUD();
+  saveGame('auto');
+
+  // 交互区
+  if (sc.input)        renderInput(sc);
+  else if (sc.choices) renderChoices(sc);
+  else if (sc.next)    renderNext(sc);
+  else if (sc.ending)  renderEnding(sc);
+}
+
+let pendingDeltas = null;
+
+function showDeltas(deltas) {
+  if (!deltas || !deltas.length) return;
+  const html = deltas.map(d => '<span class="' + d.cls + '">' + d.txt + '</span>').join('　');
+  appear(el('div', 'delta', html));
+}
+
+// ── 选项 ───────────────────────────────────────────────
+function renderChoices(sc) {
+  const box = $choices();
+  const base = Math.min(delayStep * 0.13, 1.3) + 0.15;
+
+  sc.choices.forEach((c, i) => {
+    if (c.hide && c.hide(state)) return;             // 完全不显示
+    const ok = !c.cond || c.cond(state);
+    const b = el('button', 'choice' + (ok ? '' : ' locked'));
+    b.innerHTML = '<span>' + fill(c.t) + '</span>' +
+      (c.hint ? '<span class="hint">' + fill(c.hint) + '</span>'
+              : (!ok && c.lock ? '<span class="hint">' + fill(c.lock) + '</span>' : ''));
+    b.style.animationDelay = (base + i * 0.08) + 's';
+    if (ok) b.onclick = () => pick(c);
+    box.appendChild(b);
+  });
+}
+
+function pick(c) {
+  $choices().innerHTML = '';
+
+  // 有判定：先展示明骰，再走分支
+  if (c.roll) {
+    const r = doRoll(c.roll);
+    const parts = r.parts.map(p => p[0] + ' ' + (p[1] >= 0 ? '+' : '') + p[1]).join('　');
+    appear(el('div', 'roll',
+      '〔<span class="label">判定 · ' + r.label + '</span>〕难度 ' + r.dc + '<br>' +
+      '底子 ' + r.base + '　' + parts + '　＝ <b>' + r.total + '</b><br>' +
+      (r.win ? '<span class="win">— 成 —</span>'
+             : '<span class="lose">— 败（差 ' + (r.dc - r.total) + '）—</span>')
+    ));
+    const branch = r.win ? c.win : c.lose;
+    const eff = r.win ? c.winEff : c.loseEff;
+    showDeltas(applyEff(c.eff));
+    showDeltas(applyEff(eff));
+    updateHUD();
+    scrollToEnd();
+    renderNext({ next: branch, nextLabel: '继 续' });
+    return;
+  }
+
+  const deltas = applyEff(c.eff);
+  showDeltas(deltas);
+  updateHUD();
+
+  if (deltas.length) {
+    // 让变动被看见，再进入下一幕
+    scrollToEnd();
+    renderNext({ next: c.to, nextLabel: '继 续' });
+  } else {
+    goto(c.to);
+  }
+}
+
+// ── 继续 ───────────────────────────────────────────────
+function renderNext(sc) {
+  const b = el('button', 'next', sc.nextLabel || '继 续');
+  b.style.animationDelay = Math.min(delayStep * 0.13, 1.3) + 0.2 + 's';
+  b.onclick = () => goto(typeof sc.next === 'function' ? sc.next(state) : sc.next);
+  $choices().appendChild(b);
+}
+
+// ── 输入（捏人）─────────────────────────────────────────
+function renderInput(sc) {
+  const box = $choices();
+  const wrap = el('div');
+  wrap.innerHTML =
+    '<input id="ipt" maxlength="' + (sc.input.max || 8) + '" placeholder="' + sc.input.ph + '" ' +
+    'style="width:100%;padding:13px 14px;background:var(--paper-2);border:1px solid var(--line);' +
+    'border-left:2px solid var(--gold-dim);color:var(--text);font-family:var(--serif);font-size:16px;' +
+    'outline:none;border-radius:0">';
+  box.appendChild(wrap);
+
+  const b = el('button', 'next', '定 名');
+  b.style.animationDelay = '0.1s';
+  b.onclick = () => {
+    const v = document.getElementById('ipt').value.trim();
+    if (!v) { document.getElementById('ipt').focus(); return; }
+    state[sc.input.key] = v;
+    goto(sc.to);
+  };
+  box.appendChild(b);
+  document.getElementById('ipt').addEventListener('keydown', e => {
+    if (e.key === 'Enter') b.click();
+  });
+}
+
+// ── 结局 ───────────────────────────────────────────────
+function renderEnding(sc) {
+  const b = el('button', 'next', '此生已尽 · 重来');
+  b.style.animationDelay = Math.min(delayStep * 0.13, 1.3) + 0.4 + 's';
+  b.onclick = () => location.reload();
+  $choices().appendChild(b);
+}
+
+// ── 档案弹层 ───────────────────────────────────────────
+function openProfile() {
+  const m = document.getElementById('modal');
+  const items = Object.keys(state.items).length
+    ? Object.entries(state.items).map(([k, v]) => k + (v > 1 ? ' ×' + v : '')).join('、')
+    : '身无长物';
+  const npcs = Object.keys(state.npc).length
+    ? Object.entries(state.npc).map(([k, v]) => '<div class="kv"><span>' + k + '</span>' + v + '</div>').join('')
+    : '<div class="note">尚无深交之人。</div>';
+
+  m.innerHTML =
+    '<h3>生 平</h3>' +
+    '<div class="kv"><span>姓名</span>' + state.name + '（' + state.gender + '）</div>' +
+    '<div class="kv"><span>性情</span>' + state.nature + '</div>' +
+    '<div class="kv"><span>境界</span>' + realmName() +
+      (expNeed() === Infinity ? '' : '　修为 ' + state.exp + '/' + expNeed()) + '</div>' +
+    '<div class="kv"><span>年岁</span>' + state.age + ' 岁　寿元 ' + lifespan() + '</div>' +
+    '<div class="kv"><span>心境</span>' + state.mind + ' / 100</div>' +
+    '<div class="kv"><span>悟性</span>' + witsName() + '</div>' +
+    '<div class="kv"><span>体魄</span>' + bodyName() + '</div>' +
+    '<div class="kv"><span>灵石</span>' + state.stones + ' 枚</div>' +
+    '<div class="sect">随 身</div><div class="note">' + items + '</div>' +
+    '<div class="sect">羁 绊</div>' + npcs +
+    '<button class="close">合 上</button>';
+  m.classList.add('on');
+  m.querySelector('.close').onclick = () => m.classList.remove('on');
+}
+
+// ── 启动 ───────────────────────────────────────────────
+function startNew() {
+  state = S0();
+  document.getElementById('title').classList.add('gone');
+  goto('p_start');
+}
+
+function continueGame() {
+  if (!loadGame('auto')) return;
+  document.getElementById('title').classList.add('gone');
+  goto(state.scene);
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('btn-new').onclick = startNew;
+  const bc = document.getElementById('btn-continue');
+  if (hasSave('auto')) bc.onclick = continueGame;
+  else bc.disabled = true;
+  document.getElementById('btn-profile').onclick = openProfile;
+});
+
+</script>

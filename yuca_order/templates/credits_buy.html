@@ -1,0 +1,240 @@
+{% extends 'base.html' %}
+{% block title %}获得下单次数{% endblock %}
+{% block body %}
+
+<!-- 过渡特效层 -->
+<div id="transition-fx"></div>
+
+<div class="on-wrap">
+
+  <div class="card-sm" style="margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+    <span style="font-size:12px;color:var(--muted);">当前剩余次数：</span>
+    <span class="badge" style="background:color-mix(in srgb,var(--accent) 13%,transparent);color:var(--accent2);font-size:13px;">{{ credit_balance }} 次</span>
+  </div>
+
+  <details class="card-sm" style="margin-bottom:16px;">
+    <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--accent2);">❓ 怎么获得次数（点击展开）</summary>
+    <div style="margin-top:10px;font-size:12px;color:var(--muted);line-height:2;">
+      <strong style="color:var(--text);">单口信息</strong>：创作者放出一批次数（可能不止一批，有效期也可能不一样，会分开列出），选好创作者后能看到方块和剩余数量，点"领取"先占一个名额（待审核），管理员确认后才真正到账；如果被拒绝，名额会自动放回去给别人领。<strong style="color:var(--text);">创作者没有放出次数时，是不能申请的</strong>，需要等创作者放出。<br>
+      <strong style="color:var(--text);">兑换码</strong>：管理员事先生成好发给你的一串码（形如 GIFT-XXXXXXXX），一般是活动赠送或线下已经付过款。填进去点"兑换"，立即到账，不需要等审核。<br>
+      这里两种方式获得的次数（单口领取、兑换码）到账后<strong style="color:var(--text);">可以立刻下单</strong>，没有冷却期；<strong style="color:var(--text);">24 小时冷却期</strong>只针对去"交易大厅"跟别人换来的次数。
+    </div>
+  </details>
+
+  <div class="card" style="margin-bottom:24px;">
+    <div class="fl" style="margin-bottom:10px;">使用兑换码</div>
+    <form method="post" action="{{ url_for('credits_redeem') }}" style="display:flex;gap:8px;">
+      <input class="fi" name="code" placeholder="GIFT-XXXXXXXX" style="text-transform:uppercase;" autocomplete="off">
+      <button class="btn btn-primary btn-sm" type="submit" style="flex-shrink:0;">兑换</button>
+    </form>
+    <div class="fh" style="margin-top:6px;">兑换码由管理员发放，兑换后立即到账，可直接用于下单</div>
+  </div>
+
+  <!-- ── STEP 1: 选择创作者 ── -->
+  <div id="step1">
+    <div class="s1-head stepped">
+      <div class="s1-title">抢单口</div>
+      <div class="s1-sub">只有放出了次数的创作者才能领取，选好后进入下一步</div>
+    </div>
+
+    <div class="tenant-grid">
+      {% for t in tenant_data %}
+      <div class="tenant-card {% if t.pool_remaining <= 0 %}closed-card{% endif %}"
+           {% if t.pool_remaining > 0 %}onclick="chooseTenant({{ t.id }}, this)"{% endif %}
+           id="tc-{{ t.id }}">
+        <span class="tc-icon">{{ '%02d' % loop.index }}</span>
+        <div class="tc-name">{{ t.display_name }}</div>
+        {% if t.description %}<div class="tc-desc">{{ t.description }}</div>{% endif %}
+        <div>
+          {% if t.pool_remaining > 0 %}
+            <span class="tc-badge tc-open"><span class="tc-dot"></span>可领取</span>
+          {% elif t.has_pool %}
+            <span class="tc-badge tc-closed"><span class="tc-dot"></span>本轮已被领完</span>
+          {% else %}
+            <span class="tc-badge tc-closed"><span class="tc-dot"></span>暂未放出次数</span>
+          {% endif %}
+        </div>
+        {% if t.has_pool %}
+          <div class="tc-pool">🧩 剩余 {{ t.pool_remaining }} / {{ t.pool_total }} 张</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- ── STEP 2: 领取 ── -->
+  <div id="step2">
+    <div class="s2-head">
+      <div class="s2-back" onclick="goBack()">←</div>
+      <div class="s2-who">
+        <div class="s2-name" id="s2-name"></div>
+        <div class="s2-sub">选一批次数点击领取</div>
+      </div>
+    </div>
+
+    <div id="pool-list"></div>
+    <div id="pool-empty" class="card" style="display:none;text-align:center;color:var(--muted);padding:30px;">该创作者暂未放出次数，暂时无法申请，请等待创作者放出后再来</div>
+  </div>
+
+  {% if pending %}
+  <div class="card" style="margin-top:24px;">
+    <div class="fl" style="margin-bottom:10px;">审核中的申请</div>
+    {% for r in pending %}
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;{% if not loop.last %}border-bottom:1px solid var(--border);{% endif %}">
+      <div>
+        <div style="font-size:13px;">{{ r.tenant_name }} · 申请 {{ r.units }} 次</div>
+        {% if r.note %}<div style="font-size:11px;color:var(--muted);">{{ r.note }}</div>{% endif %}
+      </div>
+      <div style="text-align:right;">
+        <span class="badge" style="background:color-mix(in srgb,var(--warn) 13%,transparent);color:var(--warn);">{{ CREDIT_STATUS_LABEL[r.status] }}</span>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">{{ r.created_at|fmt }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div style="margin-top:16px;">
+    <a href="{{ url_for('my_orders') }}" class="btn btn-ghost btn-sm">← 返回我的账号</a>
+  </div>
+</div>
+
+<script>
+const TENANT_DATA = {
+  {% for t in tenant_data %}
+  "{{ t.id }}": {
+    id: {{ t.id }}, name: {{ t.display_name | tojson }}, pool_remaining: {{ t.pool_remaining }},
+    pools: [
+      {% for p in t.pools %}
+      { id: {{ p.id }}, title: {{ (p.title or '社区次数') | tojson }}, remaining: {{ p.remaining }},
+        expiry: {{ p.expiry_label | tojson }},
+        denoms: [
+          {% for d in p.denoms %}
+          { id: {{ d.id }}, units: {{ d.units }}, count: {{ d.count }}, remaining: {{ d.remaining }} }{% if not loop.last %},{% endif %}
+          {% endfor %}
+        ] }{% if not loop.last %},{% endif %}
+      {% endfor %}
+    ]
+  }{% if not loop.last %},{% endif %}
+  {% endfor %}
+};
+const PRE_TID = "{{ preselect_tid }}";
+
+function chooseTenant(tid, cardEl) {
+  const tenant = TENANT_DATA[String(tid)];
+  if (!tenant || tenant.pool_remaining <= 0) return;
+
+  const rect = cardEl ? cardEl.getBoundingClientRect()
+                      : {left:window.innerWidth/2, top:window.innerHeight/2, width:0, height:0};
+  const cx = rect.left + rect.width  / 2;
+  const cy = rect.top  + rect.height / 2;
+  const dim = Math.max(window.innerWidth, window.innerHeight) * 2.2;
+
+  const fx = document.getElementById('transition-fx');
+  fx.innerHTML = `<div class="fx-ring" style="width:${dim}px;height:${dim}px;top:${cy}px;left:${cx}px;"></div>`;
+  fx.classList.add('run');
+  document.getElementById('step1').classList.add('leave');
+
+  setTimeout(() => {
+    fx.classList.remove('run');
+    fx.innerHTML = '';
+    showStep2(tenant);
+  }, 400);
+}
+
+function showStep2(tenant) {
+  document.getElementById('step1').style.display = 'none';
+  document.getElementById('s2-name').textContent  = tenant.name;
+  renderPools(tenant);
+
+  const s2 = document.getElementById('step2');
+  s2.classList.add('enter');
+  requestAnimationFrame(() => requestAnimationFrame(() => s2.classList.add('visible')));
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+const CLAIM_URL_TMPL = "{{ url_for('credits_pool_claim', did=999999999) }}";
+
+function renderPools(tenant) {
+  const list  = document.getElementById('pool-list');
+  const empty = document.getElementById('pool-empty');
+  list.innerHTML = '';
+  const pools = (tenant.pools || []).filter(p => p.remaining > 0);
+  if (pools.length === 0) {
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+  pools.forEach(p => {
+    const card = document.createElement('div');
+    card.className = 'pool-card';
+
+    let denomsHtml = '';
+    (p.denoms || []).filter(d => d.remaining > 0).forEach(d => {
+      const maxBlocks = 40;
+      let totalBlocks = d.count, filledBlocks = d.count - d.remaining;
+      if (d.count > maxBlocks) {
+        totalBlocks  = maxBlocks;
+        filledBlocks = Math.round((d.count - d.remaining) / d.count * maxBlocks);
+      }
+      let blocksHtml = '';
+      for (let i = 0; i < totalBlocks; i++) {
+        blocksHtml += `<div class="pool-block ${i < filledBlocks ? '' : 'avail'}"></div>`;
+      }
+      denomsHtml += `
+        <div class="denom-block">
+          <div class="pool-card-head">
+            <span class="pool-title">${d.units} 次卡</span>
+            <span class="pool-remaining">剩余 ${d.remaining} / ${d.count} 张</span>
+          </div>
+          <div class="pool-grid">${blocksHtml}</div>
+          <form method="post" action="${CLAIM_URL_TMPL.replace('999999999', d.id)}">
+            <button class="btn btn-primary btn-sm" type="submit" style="width:100%;">领取（得 ${d.units} 次）</button>
+          </form>
+        </div>
+      `;
+    });
+
+    card.innerHTML = `
+      <div class="pool-card-head">
+        <span class="pool-title">🧩 ${escHtml(p.title)}</span>
+        <span class="pool-remaining">剩余 ${p.remaining} 张</span>
+      </div>
+      <div class="pool-expiry">领取通过后：${escHtml(p.expiry)}</div>
+      ${denomsHtml}
+    `;
+    list.appendChild(card);
+  });
+}
+
+function goBack() {
+  const s2 = document.getElementById('step2');
+  s2.classList.remove('visible');
+  setTimeout(() => {
+    s2.classList.remove('enter');
+    const s1 = document.getElementById('step1');
+    s1.style.display = '';
+    s1.classList.remove('leave');
+    window.scrollTo({top:0, behavior:'smooth'});
+  }, 350);
+}
+
+(function() {
+  if (PRE_TID && TENANT_DATA[PRE_TID]) {
+    // 从下单页带 ?t= 跳过来的，不管这个创作者有没有放出次数都直接进第二步
+    // （没放出的话第二步会显示“暂未放出次数”的提示，而不是停在网格上什么反应都没有）
+    document.getElementById('step1').style.display = 'none';
+    showStep2(TENANT_DATA[PRE_TID]);
+    return;
+  }
+  const tids = Object.keys(TENANT_DATA).filter(id => TENANT_DATA[id].pool_remaining > 0);
+  if (tids.length === 1) {
+    chooseTenant(parseInt(tids[0]), null);
+  }
+})();
+</script>
+{% endblock %}

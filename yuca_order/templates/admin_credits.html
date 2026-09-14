@@ -1,0 +1,200 @@
+{% extends 'base.html' %}
+{% block title %}次数审批{% endblock %}
+{% block body %}
+<div class="page">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+    <div class="page-title" style="margin-bottom:0;">次数审批</div>
+    <div class="spacer"></div>
+    <a href="{{ url_for('admin_users') }}" class="btn btn-ghost btn-sm">用户管理</a>
+  </div>
+
+  <details class="card-sm" style="margin-bottom:16px;">
+    <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--accent2);">❓ 使用说明（点击展开）</summary>
+    <div style="margin-top:10px;font-size:12px;color:var(--muted);line-height:2;">
+      这里是会员在"获得下单次数"页点方块领取<strong style="color:var(--text);">单口信息</strong>后产生的申请，需要你在这里点"通过"或"拒绝"才会真正到账。有效期跟随放出该单口时定好的规则，不用再单独填。<br>
+      每批单口可以单独设置<strong style="color:var(--text);">要不要审批</strong>：放出时用开关选，放出后也能在下面的列表里随时改。关掉审批的那批，会员抢到就直接到账，不会出现在待审列表里。<br>
+      通过后次数立即计入会员账号，<strong style="color:var(--text);">可以马上下单，没有冷却期</strong>（冷却期只针对交易大厅换来的次数）；"拒绝"不会扣任何东西，名额会自动放回池子里给别人领。处理结果都会自动发到会员的"消息"里。
+    </div>
+  </details>
+
+  <!-- 单口信息 -->
+  <div class="card" style="margin-bottom:20px;">
+    <div class="fl" style="margin-bottom:10px;">单口信息</div>
+    <form method="post" action="{{ url_for('admin_pool_new') }}" id="pool-form">
+      <div class="fg">
+        <label class="fl">名称（可选）</label>
+        <input class="fi" name="title" placeholder="例如：九月福利次数" style="max-width:280px;">
+      </div>
+      <div id="denom-rows">
+        <div class="denom-row" style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+          <input class="fi" type="number" name="denom_units" min="1" max="999" placeholder="面值" style="width:90px;">
+          <span style="font-size:13px;color:var(--muted);">次 ×</span>
+          <input class="fi" type="number" name="denom_count" min="1" max="9999" placeholder="张数" style="width:90px;">
+          <span style="font-size:13px;color:var(--muted);">张</span>
+          <a href="#" onclick="removeDenomRow(this);return false;" style="font-size:12px;color:var(--red);">删除</a>
+        </div>
+      </div>
+      <button type="button" onclick="addDenomRow()" class="btn btn-ghost btn-sm" style="margin-bottom:14px;">+ 添加一档面值</button>
+      <div class="fg" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+        <div class="fg" style="margin-bottom:0;">
+          <label class="fl" style="font-size:12px;">有效期：天数</label>
+          <input class="fi" type="number" name="valid_days" min="1" placeholder="天数" style="width:90px;">
+        </div>
+        <span style="font-size:11px;color:var(--muted);padding-bottom:10px;">或</span>
+        <div class="fg" style="margin-bottom:0;">
+          <label class="fl" style="font-size:12px;">固定到期日</label>
+          <input class="fi" type="date" name="fixed_expires_date" style="width:150px;">
+        </div>
+      </div>
+
+      <div class="toggle-wrap" style="padding:10px 0;border-top:1px solid var(--border);">
+        <div style="flex:1;">
+          <div class="toggle-label" style="font-size:13px;">这批需要审批</div>
+          <div class="toggle-sub">
+            开着：会员领取后进下面的待审列表，你点"通过"才到账。<br>
+            关掉：会员抢到<strong>直接到账</strong>，跳过申请和审批，先到先得。
+          </div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" name="need_approval" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding-top:10px;border-top:1px solid var(--border);">
+        <button class="btn btn-primary btn-sm" type="submit">放出次数</button>
+        <span style="font-size:11px;color:var(--muted);flex:1;min-width:220px;">例：一档「5 次 × 3 张」+ 一档「3 次 × 1 张」= 一次放出 4 张卡，抢到 5 次卡的直接得 5 次；有效期和审批方式整批共用</span>
+      </div>
+    </form>
+
+    {% if pools %}
+    <table style="margin-top:14px;">
+      <thead><tr><th>名称</th><th>面值 × 张数</th><th>有效期</th><th>领取方式</th><th>状态</th><th>放出时间</th><th>操作</th></tr></thead>
+      <tbody>
+        {% for p in pools %}
+        <tr>
+          <td>{{ p.title or '（未命名）' }}</td>
+          <td class="mono" style="font-size:12px;">
+            {% for d in p.denoms %}{{ d.units }}次×{{ d.remaining }}/{{ d.count }}张{% if not loop.last %}，{% endif %}{% endfor %}
+          </td>
+          <td style="font-size:12px;color:var(--muted);">
+            {% if p.fixed_expires_at %}至 {{ p.fixed_expires_at|fmt }}
+            {% elif p.valid_days %}{{ p.valid_days }} 天内有效
+            {% else %}永久有效{% endif %}
+          </td>
+          <td>
+            <form method="post" action="{{ url_for('admin_pool_approval_mode', pid=p.id) }}"
+                  style="display:flex;align-items:center;gap:6px;">
+              <label class="switch" style="width:38px;height:22px;">
+                <input type="checkbox" name="need_approval" {% if p.need_approval %}checked{% endif %}
+                       onchange="this.form.submit();">
+                <span class="slider"></span>
+              </label>
+              <span style="font-size:12px;color:{% if p.need_approval %}var(--muted){% else %}var(--warn){% endif %};white-space:nowrap;">
+                {{ '需审批' if p.need_approval else '免审批' }}
+              </span>
+            </form>
+          </td>
+          <td>
+            {% if p.status == 'active' %}<span class="badge" style="background:color-mix(in srgb,var(--green) 13%,transparent);color:var(--green);">开放中</span>
+            {% else %}<span class="badge" style="background:color-mix(in srgb,var(--muted) 13%,transparent);color:var(--muted);">已关闭</span>{% endif %}
+          </td>
+          <td style="font-size:12px;color:var(--muted);">{{ p.created_at|fmt }}</td>
+          <td>
+            {% if p.status == 'active' %}
+            <form method="post" action="{{ url_for('admin_pool_close', pid=p.id) }}"
+                  onsubmit="return confirm('确认关闭？未被领取的名额将不再开放（已经在审核中或已通过的不受影响）。');">
+              <button class="btn btn-ghost btn-sm" type="submit">关闭</button>
+            </form>
+            {% else %}<span class="muted" style="font-size:12px;">—</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+
+  <!-- 状态标签 -->
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;">
+    <a href="{{ url_for('admin_credits') }}" class="btn btn-sm {% if not sf or sf=='all' %}btn-primary{% else %}btn-ghost{% endif %}">
+      全部 <span style="opacity:.7;">({{ counts.all }})</span>
+    </a>
+    {% for s, label in CREDIT_STATUS_LABEL.items() %}
+    <a href="{{ url_for('admin_credits', status=s) }}" class="btn btn-sm {% if sf==s %}btn-primary{% else %}btn-ghost{% endif %}">
+      {{ label }} <span style="opacity:.7;">({{ counts[s] }})</span>
+    </a>
+    {% endfor %}
+  </div>
+
+  {% if reqs %}
+  <div class="card" style="padding:0;overflow-x:auto;-webkit-overflow-scrolling:touch;">
+    <table style="min-width:860px;">
+      <thead><tr>
+        <th>用户</th><th>QQ</th><th>来源</th><th>数量</th><th>备注</th><th>状态</th><th>提交时间</th><th>操作</th></tr></thead>
+      <tbody>
+        {% for r in reqs %}
+        <tr>
+          <td>{{ r.user_display_name or r.user_username }}</td>
+          <td style="font-size:12px;color:var(--muted);">{{ r.user_contact or '—' }}</td>
+          <td>
+            {% if r.pool_id %}<span class="badge" style="background:color-mix(in srgb,var(--accent) 13%,transparent);color:var(--accent2);">🧩 {{ r.pool_title or '单口' }}</span>
+            {% else %}<span class="muted" style="font-size:12px;">手动申请</span>{% endif %}
+          </td>
+          <td class="mono">{{ r.units }}</td>
+          <td style="font-size:12px;color:var(--muted);max-width:220px;">{{ r.note or '—' }}</td>
+          <td>
+            {% if r.status == 'approved' %}
+              <span class="badge" style="background:color-mix(in srgb,var(--green) 13%,transparent);color:var(--green);">{{ CREDIT_STATUS_LABEL[r.status] }}</span>
+            {% elif r.status == 'rejected' %}
+              <span class="badge" style="background:color-mix(in srgb,var(--red) 13%,transparent);color:var(--red);">{{ CREDIT_STATUS_LABEL[r.status] }}</span>
+            {% else %}
+              <span class="badge" style="background:color-mix(in srgb,var(--warn) 13%,transparent);color:var(--warn);">{{ CREDIT_STATUS_LABEL[r.status] }}</span>
+            {% endif %}
+          </td>
+          <td style="font-size:12px;color:var(--muted);">{{ r.created_at|fmt }}</td>
+          <td>
+            {% if r.status == 'pending' %}
+            <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+              <form method="post" action="{{ url_for('admin_credit_approve', rid=r.id) }}" style="display:flex;gap:4px;align-items:center;">
+                {% if not r.pool_id %}
+                <input class="fi" type="number" name="expires_days" min="1" placeholder="天数" style="width:64px;padding:4px 8px;font-size:12px;" title="有效天数，与下面的固定日期二选一，都留空=永久有效">
+                <span style="font-size:11px;color:var(--muted);">或</span>
+                <input class="fi" type="date" name="expires_fixed_date" style="width:130px;padding:4px 6px;font-size:12px;" title="固定到期日期，与天数二选一">
+                {% else %}
+                <span style="font-size:11px;color:var(--muted);">有效期跟随单口</span>
+                {% endif %}
+                <button class="btn btn-green btn-sm" type="submit">通过</button>
+              </form>
+              <form method="post" action="{{ url_for('admin_credit_reject', rid=r.id) }}"
+                    onsubmit="return confirm('确认拒绝该次数申请？');">
+                <button class="btn btn-danger btn-sm" type="submit">拒绝</button>
+              </form>
+            </div>
+            {% else %}
+              <span class="muted" style="font-size:12px;">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card" style="text-align:center;color:var(--muted);padding:40px;">暂无申请</div>
+  {% endif %}
+</div>
+
+<script>
+function addDenomRow(){
+  const c = document.getElementById('denom-rows');
+  const row = c.children[0].cloneNode(true);
+  row.querySelectorAll('input').forEach(i => i.value = '');
+  c.appendChild(row);
+}
+function removeDenomRow(a){
+  const c = document.getElementById('denom-rows');
+  if (c.children.length > 1) a.closest('.denom-row').remove();
+}
+</script>
+{% endblock %}

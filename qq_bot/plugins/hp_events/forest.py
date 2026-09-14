@@ -85,8 +85,11 @@ def _spawn_monster(run_id: int, depth: int) -> dict:
 
 
 def _ambush(uid: str, run) -> int:
-    """进层时的遇险判定。学会荧光闪烁能大幅降低概率。"""
+    """进层时的遇险判定。学会荧光闪烁能大幅降低概率；带蟾蜍/老鼠壮胆能在此基础上再打折，见hp_pet。"""
+    from plugins.hp_pet import pet as hp_pet
+
     chance = AMBUSH_CHANCE_WITH_LUMOS if core_storage.has_spell(uid, LUMOS_KEY) else AMBUSH_CHANCE
+    chance *= hp_pet.forest_ambush_multiplier(uid)
     if random.random() >= chance:
         return 0
     damage = random.randint(*AMBUSH_DAMAGE)
@@ -246,14 +249,27 @@ def _monster_turn(uid: str, run, monster) -> dict:
     }
 
 
+PATTERN_DROP_CHANCE = 0.05  # 裁缝图纸掉落概率，见 hp_school/tailor.py
+
+
 def _grant_layer_loot(uid: str, run) -> dict:
-    """打赢一层的战利品——先记在"待结算"里，撤退才真正到手。"""
+    """打赢一层的战利品——先记在"待结算"里，撤退才真正到手。
+
+    图纸是个例外：学到的是手艺不是实物，当场直接学会、不受"撤退才到手"影响，
+    就算这一趟后来被打败也不会因此忘掉。
+    """
     depth = run["depth"]
     galleons = forest_catalog.GALLEON_PER_DEPTH * depth + random.randint(0, 8)
     exp = forest_catalog.EXP_PER_DEPTH * depth
     pool = forest_catalog.materials_for_depth(depth)
     materials = json.loads(run["pending_materials"])
     dropped = []
+
+    pattern_learned = None
+    if random.random() < PATTERN_DROP_CHANCE:
+        from plugins.hp_school import tailor
+
+        pattern_learned = tailor.learn_pattern_from_forest(uid)
     if pool and random.random() < 0.75:
         mat = random.choice(pool)
         materials.append(mat[0])
@@ -289,7 +305,7 @@ def _grant_layer_loot(uid: str, run) -> dict:
     finally:
         conn.close()
     return {"galleons": galleons, "exp": exp, "materials": dropped,
-            "lucky_material": lucky_material}
+            "lucky_material": lucky_material, "pattern_learned": pattern_learned}
 
 
 def cast(uid: str, spell_input: str) -> dict:

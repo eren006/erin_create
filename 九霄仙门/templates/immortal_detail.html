@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}{{ char.name }} · 下凡 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:6px">{{ char.name }}({{ title_for(char.join_seq, char.gender) }})</h3>
+  <p class="muted">{% if char.dao_hao %}道号「{{ char.dao_hao }}」{% endif %}{% if char.celestial_office_key %} · {{ CELESTIAL_OFFICES[char.celestial_office_key].label }} —— {{ CELESTIAL_OFFICES[char.celestial_office_key].desc }}{% endif %}</p>
+  <p class="muted" style="margin-top:6px"><a href="{{ url_for('immortal_home') }}">← 返回仙籍</a></p>
+  <div style="display:flex;gap:8px;margin-top:10px">
+    <a href="{{ url_for('roster') }}" class="btn" style="padding:4px 12px">花名录</a>
+    <a href="{{ url_for('chronicle') }}" class="btn" style="padding:4px 12px">大事记</a>
+  </div>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:6px">教养子嗣</h3>
+  <p class="muted">每位子嗣每日限教养{{ teach_limit }}次。</p>
+  {% if not offspring_rows %}<p class="muted" style="margin-top:8px">尚无在世子嗣</p>{% endif %}
+  {% for o in offspring_rows %}
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--bd)">
+    <div>
+      <p>{{ o.name }} <span class="badge">{{ o.stage }}</span></p>
+      <p class="muted" style="margin-top:2px">{{ o.realm_name }}{% if o.frail_warned_ts %} · <span class="badge badge-red">体弱</span>{% endif %}</p>
+    </div>
+    <form method="post" action="{{ url_for('immortal_offspring_teach', char_id=char.id, off_id=o.id) }}">
+      <button class="btn" style="padding:4px 12px" {% if o.frail_warned_ts or teach_left.get(o.id, 0) <= 0 %}disabled{% endif %}>
+        教养{% if teach_left.get(o.id, 0) <= 0 %}(今日已满){% endif %}
+      </button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+
+{% if pending_gifts %}
+<div class="card">
+  <h3 style="margin-bottom:6px">赠礼阁·待查收</h3>
+  <p class="muted">在世的师徒、道侣义结寄来的礼物,遥遥可以查收或婉拒。</p>
+  {% for g in pending_gifts %}
+  <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bd)">
+    <p>{{ g.maker_name }}寄来「{{ g.rarity.label }}·{{ g.gift_name }}」<span class="muted">(特质:{{ g.trait.label }})</span></p>
+    {% if g.message %}<p class="muted" style="margin-top:2px">寄语:{{ g.message }}</p>{% endif %}
+    <div style="display:flex;gap:8px;margin-top:6px">
+      <form method="post" action="{{ url_for('immortal_gift_respond', char_id=char.id, gift_id=g.id, response='accept') }}">
+        <button class="btn btn-primary" style="padding:4px 12px">收下</button>
+      </form>
+      <form method="post" action="{{ url_for('immortal_gift_respond', char_id=char.id, gift_id=g.id, response='decline') }}">
+        <button class="btn" style="padding:4px 12px">婉拒</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if inbox_mails %}
+<div class="card">
+  <h3 style="margin-bottom:6px">尺素·收信</h3>
+  <p class="muted">在世至亲寄来的信,遥遥可以查收。</p>
+  {% for m in inbox_mails %}
+  <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bd)">
+    <div style="display:flex;justify-content:space-between;align-items:baseline">
+      <strong>{{ m.subject }}</strong>
+      <span class="muted" style="font-size:11px">{{ m.from_label }} · {{ m.created_ts | fmt_ts }}</span>
+    </div>
+    {% if m.body %}<p class="muted" style="margin-top:6px">{{ m.body }}</p>{% endif %}
+    {% if m.attachment %}
+    <div style="margin-top:8px">
+      {% if m.claimed %}
+      <span class="badge badge-gold">已领取: {{ reward_desc(m.attachment) }}</span>
+      {% else %}
+      <form method="post" action="{{ url_for('immortal_mail_claim', char_id=char.id, mail_id=m.id) }}">
+        <button class="btn btn-primary" style="padding:4px 12px">领取附件({{ reward_desc(m.attachment) }})</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% if inbox_hidden %}
+  <p class="muted" style="margin-top:8px;font-size:12px">另有{{ inbox_hidden }}封较早的已处理信件未显示</p>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h3 style="margin-bottom:6px">寄语亲故</h3>
+  <p class="muted">只能寄给在世的师徒、道侣义结、子嗣的另一位家长。今日还可寄{{ mail_left }}/{{ mail_limit }}封。</p>
+  {% if not relations %}<p class="muted" style="margin-top:8px">尘缘已尽,并无可寄之人</p>{% endif %}
+  {% for r in relations %}
+  <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bd)">
+    <p>{{ r.name }}({{ title_for(r.join_seq, r.gender) }})</p>
+    <form method="post" action="{{ url_for('immortal_mail', char_id=char.id, target_id=r.id) }}" style="margin-top:6px">
+      <div style="display:flex;gap:6px">
+        <input type="text" name="body" maxlength="200" placeholder="寄语内容(1-200字)" style="flex:1">
+        <button class="btn" style="padding:4px 12px;white-space:nowrap" {% if mail_left <= 0 %}disabled{% endif %}>寄信</button>
+      </div>
+      {% if materials_owned or equipment_owned %}
+      <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+        {% if materials_owned %}
+        <select name="attach_material_key" style="flex:1;min-width:120px">
+          <option value="">不捎材料</option>
+          {% for key, qty in materials_owned.items() %}
+          <option value="{{ key }}">{{ material_labels.get(key, key) }}(有{{ qty }})</option>
+          {% endfor %}
+        </select>
+        <input name="attach_material_qty" type="number" min="0" value="0" style="width:70px">
+        {% endif %}
+        {% if equipment_owned %}
+        <select name="attach_equipment_key" style="flex:1;min-width:120px">
+          <option value="">不捎装备</option>
+          {% for item in equipment_owned %}
+          <option value="{{ item.item_key }}">{{ item.label }}(有{{ item.qty }})</option>
+          {% endfor %}
+        </select>
+        <input name="attach_equipment_qty" type="number" min="0" value="0" style="width:70px">
+        {% endif %}
+      </div>
+      <p class="muted" style="margin-top:2px;font-size:12px">飞升前的行囊还在,可顺带捎点东西给对方;宗门制式配发、唯一法宝等绑定物品带不下凡</p>
+      {% endif %}
+    </form>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:6px">扫墓追思</h3>
+  <p class="muted">只显示与你有师徒/羁绊之实的故人。今日还可扫{{ sweep_left }}/{{ sweep_limit }}次。</p>
+  {% if not graves %}<p class="muted" style="margin-top:8px">并无相熟的故人安葬于此</p>{% endif %}
+  {% for g in graves %}
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--bd)">
+    <div>
+      <p>{{ g.name }}({{ title_for(g.join_seq, g.gender, g.is_npc) }})</p>
+      <p class="muted" style="margin-top:2px">{{ g.death_label or '寿元耗尽,寿终正寝' }}{% if g.death_year is not none %} · 宗门纪年{{ g.death_year }}年{% endif %}</p>
+    </div>
+    <form method="post" action="{{ url_for('immortal_graveyard_sweep', char_id=char.id, dead_id=g.id) }}">
+      <button class="btn" style="padding:4px 12px;white-space:nowrap" {% if sweep_left <= 0 %}disabled{% endif %}>扫墓</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

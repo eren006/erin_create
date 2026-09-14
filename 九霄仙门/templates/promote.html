@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}晋升 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:8px">当前档位: <span class="badge badge-purple">{{ rank.label }}</span></h3>
+  {% if not next_rank %}
+  <p class="muted">已是长老,掌门之位唯有由长老中修为最高者继任产生,不可考核获得。</p>
+  {% else %}
+  <p class="muted" style="margin-top:6px">下一档位: {{ next_rank.label }}</p>
+  <table style="margin-top:10px">
+    <tr><td>所需修为</td><td>{{ realm_by_index(next_rank.realm_req).name }}</td>
+        <td>{{ '已达标' if char.realm_idx >= next_rank.realm_req else '未达标' }}</td></tr>
+    <tr><td>所需累计贡献</td><td>{{ next_rank.contribution_req }}</td>
+        <td>{{ '已达标' if char.total_contribution >= next_rank.contribution_req else '未达标' }}</td></tr>
+    <tr><td>所需宗门声望</td><td>{{ next_rank.reputation_req }}</td>
+        <td>{{ '已达标' if char.reputation >= next_rank.reputation_req else '未达标' }}</td></tr>
+    {% if next_rank.tier == 5 %}
+    <tr><td>本峰长老</td>
+        <td>{{ {'no_peak': '尚未拜入一峰', 'leader_peak': '掌门峰不可考核',
+                'vacant': '空缺', 'npc': 'NPC在任', 'player': '已有玩家在任'}[peak_elder_status] }}</td>
+        <td>{{ {'no_peak': '需先拜入一峰', 'leader_peak': '',
+                'vacant': '可直接考核', 'npc': '可挑战顶替', 'player': '暂无空缺'}[peak_elder_status] }}</td></tr>
+    {% endif %}
+    <tr><td>考核成功率</td><td>{{ (next_rank.exam_success_rate * 100) | round | int }}%</td><td></td></tr>
+    <tr><td>今日考核次数</td><td>{{ exams_today }} / {{ exam_limit }}</td><td></td></tr>
+  </table>
+  <form method="post" action="{{ url_for('promote_exam') }}" style="margin-top:14px">
+    <button class="btn btn-primary" style="width:100%">参加晋升考核</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

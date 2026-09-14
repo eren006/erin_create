@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}器坊 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:6px">炼器造诣: {{ level_name }}</h3>
+  {% if exp_to_next %}
+  <p class="muted">经验 {{ char.forger_exp }} / {{ exp_to_next }}</p>
+  <div class="bar-track"><div class="bar-fill bar-purple" style="width:{{ (char.forger_exp / exp_to_next * 100) if exp_to_next else 0 }}%"></div></div>
+  {% else %}
+  <p class="muted">已至{{ level_names[-1] }},炼器一道登峰造极</p>
+  {% endif %}
+  <p class="muted" style="margin-top:6px">今日已炼器 {{ crafted_today }} 次,前{{ diminish_after }}次经验全额,之后打折</p>
+</div>
+
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">尊</span>秘宝·{{ FORGE_MASTER_TRINKET.label }}</h3></div>
+  {% if char.equipped_trinket_key == FORGE_MASTER_TRINKET.key %}
+  <p style="margin-top:10px"><strong>{{ FORGE_MASTER_TRINKET.label }}</strong>
+    <span class="badge badge-gold">已打造·终身佩戴</span></p>
+  <p class="muted" style="margin-top:6px">攻击+{{ FORGE_MASTER_TRINKET.attack }} 防御+{{ FORGE_MASTER_TRINKET.defense }}
+    灵巧+{{ FORGE_MASTER_TRINKET.agility }} 幸运+{{ FORGE_MASTER_TRINKET.luck }}</p>
+  <p class="muted" style="margin-top:6px">{{ FORGE_MASTER_TRINKET.desc }}</p>
+  {% elif char.forger_level < max_level %}
+  <p class="muted" style="margin-top:10px">炼器造诣臻至{{ level_names[-1] }}(第{{ max_level }}阶)时,
+    方可打造这第五件终身装备——不入行囊、不可交易、不可替换,是本峰独有的强度回报。</p>
+  <p class="muted" style="margin-top:6px">属性预览:攻击+{{ FORGE_MASTER_TRINKET.attack }} 防御+{{ FORGE_MASTER_TRINKET.defense }}
+    灵巧+{{ FORGE_MASTER_TRINKET.agility }} 幸运+{{ FORGE_MASTER_TRINKET.luck }}</p>
+  {% else %}
+  <p class="muted" style="margin-top:10px">炼器造诣已臻{{ level_names[-1] }},可以打造此宝了。</p>
+  <p class="muted" style="margin-top:6px">属性:攻击+{{ FORGE_MASTER_TRINKET.attack }} 防御+{{ FORGE_MASTER_TRINKET.defense }}
+    灵巧+{{ FORGE_MASTER_TRINKET.agility }} 幸运+{{ FORGE_MASTER_TRINKET.luck }}</p>
+  <p class="muted" style="margin-top:6px">材料:{{ trinket_material_desc }}</p>
+  <form method="post" action="{{ url_for('forge_craft_trinket') }}" style="margin-top:10px"
+        data-confirm-title="打造{{ FORGE_MASTER_TRINKET.label }}"
+        data-confirm-message="终身仅此一次机会,打造后自动佩戴,不可交易、不可替换、不可拆下。"
+        data-confirm-warning="请慎重选择。" data-confirm-button="确认打造" data-confirm-tone="danger">
+    <button class="btn btn-primary" {{ 'disabled' if not has_trinket_materials }}>打造{{ FORGE_MASTER_TRINKET.label }}</button>
+    {% if not has_trinket_materials %}<p class="muted" style="margin-top:2px;font-size:12px">材料不足,备料后再来</p>{% endif %}
+  </form>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">炼</span>炼化本命法宝</h3></div>
+  {% if not char.artifact_core_bound %}
+  <p class="muted" style="margin-top:10px">尚未绑定本命法宝,先去装备页领取胚胎再来炼化。</p>
+  {% else %}
+  <p style="margin-top:10px"><strong>{{ char.artifact_core_name }}</strong>
+    <span class="badge badge-purple">当前品级:{{ ARTIFACT_CORE_QUALITIES[core_quality].label }}</span></p>
+  <p class="muted" style="margin-top:8px">炼器只能炼出下品/中品/上品,超品唯有高阶秘境机缘可得。当前炼器师等阶下,各品级抽取权重:</p>
+  <p class="muted" style="margin-top:4px">
+    {% for key in FORGE_CORE_QUALITY_ORDER %}{{ ARTIFACT_CORE_QUALITIES[key].label }} {{ weights[key] }}%{{ '　' if not loop.last }}{% endfor %}
+  </p>
+  <p class="muted" style="margin-top:6px">材料:{{ core_material_desc }}</p>
+  <form method="post" action="{{ url_for('forge_craft') }}" style="margin-top:10px">
+    <button class="btn btn-primary" {{ 'disabled' if not has_core_materials }}>炼器(品级只升不降)</button>
+    {% if not has_core_materials %}<p class="muted" style="margin-top:2px;font-size:12px">材料不足,备料后再来</p>{% endif %}
+  </form>
+  <p class="muted" style="margin-top:8px;text-align:center">炼不出更高品级也不会前功尽弃,只是略有心得,不影响已有品级</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">锻</span>锻造基础装备</h3></div>
+  <p class="muted" style="margin-top:6px">比秘境里最弱的那档还要再弱一档,不吃随机,稳定产出,给没运气吃到秘境掉落的人一条保底线。</p>
+  <p class="muted" style="margin-top:6px">材料:{{ gear_material_desc }}</p>
+  {% for g in basic_gear %}
+  <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+    <p><strong>{{ g.label }}</strong>
+      <span class="muted">攻击+{{ g.attack }} 防御+{{ g.defense }} 灵巧+{{ g.agility }}</span></p>
+    <form method="post" action="{{ url_for('forge_craft_gear', key=g.key) }}" style="margin-top:6px">
+      <button class="btn" {{ 'disabled' if g.owned or not has_gear_materials }}>
+        {{ '已炼成' if g.owned else '锻造' }}
+      </button>
+      {% if not g.owned and not has_gear_materials %}<p class="muted" style="margin-top:2px;font-size:12px">材料不足,备料后再来</p>{% endif %}
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

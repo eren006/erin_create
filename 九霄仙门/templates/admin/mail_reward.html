@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}批量发奖 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:10px">批量发奖(站内信附件)</h3>
+  <p class="muted" style="margin-top:-4px;margin-bottom:10px">勾选收信人,填写信件内容与附件。下面这排数值奖励要对方在信箱里点"领取附件"才到账,留空或填0表示不带该项;材料/装备/灵宠是发送后立即到账,不用对方另外领取。</p>
+  <form method="post">
+    <label>标题</label>
+    <input name="subject" required>
+    <label>正文(可选)</label>
+    <textarea name="body" rows="3" style="width:100%"></textarea>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-top:10px">
+      {% for key in reward_fields %}
+      <div>
+        <label>{{ reward_labels.get(key, key) }}</label>
+        <input type="number" name="{{ key }}" value="0">
+      </div>
+      {% endfor %}
+    </div>
+
+    <h4 style="margin-top:16px">灵材(立即到账)</h4>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-top:8px">
+      {% for tier in material_tiers %}
+      <div>
+        <label>{{ material_labels.get(tier, tier) }}</label>
+        <input type="number" name="material_{{ tier }}" value="0" min="0">
+      </div>
+      {% endfor %}
+    </div>
+
+    <h4 style="margin-top:16px">装备(立即到账)</h4>
+    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:8px">
+      <div>
+        <label>装备</label>
+        <select name="equipment_key">
+          <option value="">不发放</option>
+          {% for key, tpl in equipment_templates.items() %}
+          <option value="{{ key }}">{{ tpl.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div><label>数量</label><input type="number" name="equipment_qty" value="0" min="0" style="width:90px"></div>
+    </div>
+
+    <h4 style="margin-top:16px">灵宠(立即到账,发几人就各发一只)</h4>
+    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:8px">
+      <div>
+        <label>灵宠</label>
+        <select name="pet_key">
+          <option value="">不发放</option>
+          {% for key, p in pet_types.items() %}
+          <option value="{{ key }}">{{ p.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div><label>名字(选填,统一)</label><input name="pet_name" style="width:140px"></div>
+    </div>
+
+    <div style="margin-top:16px;display:flex;justify-content:space-between;align-items:baseline">
+      <h4>收信人</h4>
+      <span>
+        <a href="javascript:void(0)" onclick="document.querySelectorAll('.mr-check').forEach(c=>c.checked=true)">全选</a>
+        ·
+        <a href="javascript:void(0)" onclick="document.querySelectorAll('.mr-check').forEach(c=>c.checked=false)">清空</a>
+      </span>
+    </div>
+    <div style="max-height:420px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:8px;margin-top:6px">
+      {% for c in chars %}
+      <label style="display:flex;align-items:center;gap:8px;padding:4px 2px">
+        <input class="mr-check" type="checkbox" name="char_ids" value="{{ c.id }}">
+        {{ c.name }}({{ title_for(c.join_seq, c.gender) }})
+      </label>
+      {% endfor %}
+    </div>
+
+    <button class="btn btn-primary" style="margin-top:14px">发送</button>
+  </form>
+</div>
+{% endblock %}

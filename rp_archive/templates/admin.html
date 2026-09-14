@@ -87,6 +87,44 @@
   <div class="success-banner">✅ 所有数据已清空。</div>
   {% endif %}
 
+  <!-- 玩家指南链接 -->
+  <div class="success-banner" style="background:var(--surface);border-color:var(--border);color:var(--text);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+    <span>🎮 有一份专门给玩家看的功能一览页（卡片式，不含管理员功能），可以直接把链接发给玩家</span>
+    <a href="/static/docs/player_guide.html" target="_blank" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--accent);color:#fff;text-decoration:none;white-space:nowrap;">打开玩家指南</a>
+  </div>
+
+  <!-- 可个性化定制 -->
+  <div class="admin-section">
+    <h3>🎨 可个性化定制</h3>
+    <div class="admin-grid" style="grid-template-columns:repeat(3,1fr);">
+      <a href="{{ url_for('admin_config_page') }}#" class="stat-box" style="text-align:left;text-decoration:none;">
+        <div style="font-size:14px;font-weight:700;color:var(--text);">私约触发词</div>
+        <div class="lbl" style="margin-top:6px;line-height:1.5;">「自定义约会类型」区块，给私约/电话另起触发词（如「密会」），门槛/图标可各自配置</div>
+      </a>
+      <a href="{{ url_for('admin_config_page') }}#" class="stat-box" style="text-align:left;text-decoration:none;">
+        <div style="font-size:14px;font-weight:700;color:var(--text);">短信触发词</div>
+        <div class="lbl" style="margin-top:6px;line-height:1.5;">「自定义短信触发词」区块，格式/存档/文案不变，只是多几个入口词（如「飞鸽传书」）</div>
+      </a>
+      <a href="{{ url_for('admin_config_page') }}#" class="stat-box" style="text-align:left;text-decoration:none;">
+        <div style="font-size:14px;font-weight:700;color:var(--text);">送礼触发词</div>
+        <div class="lbl" style="margin-top:6px;line-height:1.5;">「自定义送礼触发词」区块，同上（如「投喂」）</div>
+      </a>
+      <a href="{{ url_for('admin_pools') }}" class="stat-box" style="text-align:left;text-decoration:none;">
+        <div style="font-size:14px;font-weight:700;color:var(--text);">数量池配方</div>
+        <div class="lbl" style="margin-top:6px;line-height:1.5;">数量池卡片底部「配方」栏，把当前库存另存一份命名配方，抽空了一键还原，不用重新添加物品</div>
+      </a>
+      <a href="{{ url_for('admin_config_page') }}#" class="stat-box" style="text-align:left;text-decoration:none;">
+        <div style="font-size:14px;font-weight:700;color:var(--text);">类型显示别名</div>
+        <div class="lbl" style="margin-top:6px;line-height:1.5;">「类型显示别名」区块，改私约/电话/官约/微信/心愿在群名与时间线上显示的名称（不影响触发词）</div>
+      </a>
+      <a href="{{ url_for('admin_config_page') }}#" class="stat-box" style="text-align:left;text-decoration:none;">
+        <div style="font-size:14px;font-weight:700;color:var(--text);">通知消息模板</div>
+        <div class="lbl" style="margin-top:6px;line-height:1.5;">「消息模板」区块，自定义私约/电话/微信/心愿/短信/礼物的通知文案，留空则用系统默认</div>
+      </a>
+    </div>
+    <div class="lbl" style="margin-top:8px;">改完后都要在机器人发送「。拉取全部」才会生效。</div>
+  </div>
+
   <!-- 统计概览 -->
   <div class="admin-section">
     <h3>数据概览</h3>

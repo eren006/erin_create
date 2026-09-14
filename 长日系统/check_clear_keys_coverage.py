@@ -26,7 +26,7 @@ IGNORE_DIR_PARTS = ("长日extra", "_archive")
 INTENTIONALLY_PERSISTENT = {
     "a_adminList", "adminPassword",  # 清空季度时明确保留：管理员列表、密令
     "custom_type_labels", "force_end_grant_reward", "private_appointment_aliases",
-    "sms_aliases",
+    "sms_aliases", "gift_aliases",
     "stakeout_allow_solo", "ts_slot_mode",
     # 目前代码里只有读没有写，大概率是尚未接完的功能，暂按持续配置对待
     "ts_reality_slot_size",

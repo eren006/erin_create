@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}交易行 - 九霄仙门{% endblock %}
+{% block content %}
+
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">行</span>交易行</h3><span class="badge">灵石 {{ char.lingshi }}</span></div>
+  <p class="muted">寄售制,一口价买断,非拍卖。挂单即托管,卖出所得扣{{ tax_pct }}%手续费。</p>
+  <p class="muted" style="margin-top:6px">在架挂单 {{ active_count }}/{{ max_active }} · 今日已上架 {{ daily_used }}/{{ daily_limit }}</p>
+</div>
+
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">上</span>上架我的库存</h3></div>
+  {% if not my_materials and not my_pills and not my_artifacts and not my_gear and not my_pets %}
+  <p class="muted" style="margin-top:10px">暂无可上架的物品或灵宠</p>
+  {% endif %}
+  {% for r in my_pets %}
+  <form method="post" action="{{ url_for('market_list_create') }}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
+    <input type="hidden" name="item_kind" value="pet"><input type="hidden" name="key1" value="{{ r.id }}"><input type="hidden" name="qty" value="1">
+    <img src="{{ pet_image_url(r.pet_key) }}" alt="" style="width:32px;height:32px;border-radius:4px;object-fit:cover">
+    <span style="min-width:180px"><strong>{{ r.label }}</strong> <span class="badge badge-gold">{{ r.quality_label }}</span> <span class="muted">(Lv.{{ r.level }} · {{ r.personality }} · {{ r.habit }})</span></span>
+    <input type="number" name="price" min="1" value="200" style="width:100px" placeholder="售价">
+    <button class="btn">为它寻找新主人</button>
+  </form>
+  {% endfor %}
+  {% for r in my_materials %}
+  <form method="post" action="{{ url_for('market_list_create') }}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
+    <input type="hidden" name="item_kind" value="material">
+    <input type="hidden" name="key1" value="{{ r.material_key }}">
+    <span style="min-width:120px">{{ r.label }} <span class="muted">(库存{{ r.qty }})</span></span>
+    <input type="number" name="qty" min="1" max="{{ r.qty }}" value="1" style="width:80px" placeholder="数量">
+    <input type="number" name="price" min="{{ 1 }}" value="10" style="width:90px" placeholder="单价">
+    <button class="btn">上架</button>
+  </form>
+  {% endfor %}
+  {% for r in my_pills %}
+  <form method="post" action="{{ url_for('market_list_create') }}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
+    <input type="hidden" name="item_kind" value="pill">
+    <input type="hidden" name="key1" value="{{ r.recipe_key }}">
+    <span style="min-width:120px">{{ r.label }} <span class="muted">(库存{{ r.qty }})</span></span>
+    <input type="number" name="qty" min="1" max="{{ r.qty }}" value="1" style="width:80px" placeholder="数量">
+    <input type="number" name="price" min="1" value="20" style="width:90px" placeholder="单价">
+    <button class="btn">上架</button>
+  </form>
+  {% endfor %}
+  {% for r in my_artifacts %}
+  <form method="post" action="{{ url_for('market_list_create') }}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
+    <input type="hidden" name="item_kind" value="artifact">
+    <input type="hidden" name="key1" value="{{ r.form }}">
+    <input type="hidden" name="key2" value="{{ r.element_key }}">
+    <input type="hidden" name="key3" value="{{ r.rarity_key }}">
+    <span style="min-width:120px">{{ r.label }} <span class="muted">(库存{{ r.qty }})</span></span>
+    <input type="number" name="qty" min="1" max="{{ r.qty }}" value="1" style="width:80px" placeholder="数量">
+    <input type="number" name="price" min="1" value="50" style="width:90px" placeholder="单价">
+    <button class="btn">上架</button>
+  </form>
+  {% endfor %}
+  {% for r in my_gear %}
+  <form method="post" action="{{ url_for('market_list_create') }}" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
+    <input type="hidden" name="item_kind" value="gear">
+    <input type="hidden" name="key1" value="{{ r.item_key }}">
+    <span style="min-width:120px">{{ r.label }} <span class="muted">(库存{{ r.qty }})</span></span>
+    <input type="number" name="qty" min="1" max="{{ r.qty }}" value="1" style="width:80px" placeholder="数量">
+    <input type="number" name="price" min="1" value="40" style="width:90px" placeholder="单价">
+    <button class="btn">上架</button>
+  </form>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">架</span>在架挂单</h3></div>
+  {% if not listings %}<p class="muted" style="margin-top:10px">交易行暂空,不如去卖点什么</p>{% endif %}
+  {% for l in listings %}
+  <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+    <span>{{ l.label }} ×{{ l.qty_remaining }}
+      <span class="muted">单价{{ l.price_per_unit }}灵石 · {{ l.seller_name }}寄售</span></span>
+    {% if l.pet_profile %}<span class="muted" style="flex-basis:100%"><img src="{{ pet_image_url(l.pet_profile.pet_key) }}" alt="" style="width:24px;height:24px;border-radius:4px;object-fit:cover;vertical-align:middle;margin-right:4px"><span class="badge badge-gold">{{ l.pet_quality_label }}</span> Lv.{{ l.pet_profile.level }} · 性情{{ l.pet_profile.personality }} · {{ l.pet_profile.habit }} · 培育者{{ l.pet_profile.breeder_name }}</span>{% endif %}
+    {% if l.is_mine %}
+    <form method="post" action="{{ url_for('market_cancel', listing_id=l.id) }}">
+      <button class="btn">下架</button>
+    </form>
+    {% else %}
+    <form method="post" action="{{ url_for('market_buy', listing_id=l.id) }}" style="display:flex;gap:6px;align-items:center">
+      <input type="number" name="qty" min="1" max="{{ l.qty_remaining }}" value="1" style="width:70px">
+      <button class="btn btn-primary" {{ 'disabled' if char.lingshi < l.price_per_unit }}>购买</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+{% if recent_trades %}
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">录</span>最近成交</h3></div>
+  {% for t in recent_trades %}
+  <p style="margin-top:6px" class="muted">{{ t.buyer_name }} 从 {{ t.seller_name }} 处购得 {{ t.label }}×{{ t.qty }},单价{{ t.price_per_unit }}灵石</p>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}

@@ -44,7 +44,7 @@
       <div style="font-size:11px;color:var(--muted);margin-top:4px;">完成率 {{ web_rate }}%</div>
     </div>
     <div class="stat-card">
-      <div class="stat-num" style="color:#8b5cf6;">{{ bot_active|length }}</div>
+      <div class="stat-num" style="color:var(--accent2);">{{ bot_active|length }}</div>
       <div class="stat-label">Bot 进行中</div>
     </div>
     <div class="stat-card">
@@ -65,7 +65,7 @@
       <div style="font-size:11px;color:var(--muted);">Bot 待接单</div>
     </div>
     <div class="card-sm" style="flex:1;min-width:120px;text-align:center;">
-      <div style="font-size:20px;font-weight:700;color:#3b82f6;">{{ (bot_active|length) - (bot_pending|length) }}</div>
+      <div style="font-size:20px;font-weight:700;color:var(--text);">{{ (bot_active|length) - (bot_pending|length) }}</div>
       <div style="font-size:11px;color:var(--muted);">Bot 制作中</div>
     </div>
     <div class="card-sm" style="flex:1;min-width:120px;text-align:center;">

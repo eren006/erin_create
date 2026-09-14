@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deploy Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Deploy Dashboard</h1>
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="projects">项目</button>
+      <button class="tab-btn" data-tab="history">更新记录</button>
+    </div>
+    <button class="btn btn-primary" id="add-project-btn">+ 添加项目</button>
+  </header>
+
+  <main>
+    <section id="tab-projects" class="tab-panel active">
+      <div id="project-grid" class="project-grid"></div>
+      <p id="empty-state" class="empty-state" hidden>还没有项目,点右上角"添加项目"开始。</p>
+    </section>
+
+    <section id="tab-history" class="tab-panel">
+      <div id="history-list" class="history-list"></div>
+      <p id="history-empty" class="empty-state" hidden>还没有部署记录。</p>
+    </section>
+  </main>
+
+  <div id="add-modal" class="modal-overlay" hidden>
+    <div class="modal">
+      <h2>添加项目</h2>
+      <form id="add-form">
+        <label>项目名称
+          <input type="text" id="f-name" placeholder="比如:九霄仙门" required>
+        </label>
+        <label>本地路径
+          <input type="text" id="f-path" placeholder="比如:/Users/erinren/erin_creation/九霄仙门" required>
+        </label>
+        <label>部署脚本(相对路径,默认 deploy.sh)
+          <input type="text" id="f-script" placeholder="deploy.sh" value="deploy.sh">
+        </label>
+        <p class="form-error" id="form-error" hidden></p>
+        <div class="modal-actions">
+          <button type="button" class="btn" id="cancel-add">取消</button>
+          <button type="submit" class="btn btn-primary">添加</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="output-modal" class="modal-overlay" hidden>
+    <div class="modal modal-wide">
+      <div class="modal-header-row">
+        <h2 id="output-title">部署输出</h2>
+        <span id="output-status" class="badge"></span>
+      </div>
+      <pre id="output-body" class="output-body"></pre>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-primary" id="close-output">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+</body>
+</html>

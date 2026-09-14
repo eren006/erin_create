@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}丹房 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:6px">炼丹造诣: {{ level_name }}</h3>
+  {% if exp_to_next %}
+  <p class="muted">经验 {{ char.alchemist_exp }} / {{ exp_to_next }}</p>
+  <div class="bar-track"><div class="bar-fill bar-purple" style="width:{{ (char.alchemist_exp / exp_to_next * 100) if exp_to_next else 0 }}%"></div></div>
+  {% else %}
+  <p class="muted">已至{{ level_names[-1] }},炼丹一道登峰造极</p>
+  {% endif %}
+  <p class="muted" style="margin-top:6px">今日已炼制 {{ crafted_today }} 炉,前{{ diminish_after }}炉炼丹经验全额,之后打折</p>
+</div>
+
+{% for r in known_recipes %}
+<div class="card">
+  <h3 style="margin-bottom:4px">{{ r.label }}{% if r.locked %} <span class="badge badge-red">等阶不足</span>{% endif %}</h3>
+  <p class="muted">成功率 {{ r.success_rate }}% · 材料 {{ r.material_cost_desc }} · 库存 {{ r.pill_qty }}</p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+    <form method="post" action="{{ url_for('alchemy_craft', recipe_key=r.key) }}">
+      <button class="btn btn-primary" {{ 'disabled' if r.locked or not r.has_materials }}>炼制</button>
+      {% if not r.locked and not r.has_materials %}<p class="muted" style="margin-top:2px;font-size:12px">材料不足,备料后再来</p>{% endif %}
+    </form>
+    {% if r.pill_qty > 0 %}
+    <form method="post" action="{{ url_for('alchemy_consume', recipe_key=r.key) }}">
+      <button class="btn">服用</button>
+    </form>
+    <form method="post" action="{{ url_for('alchemy_sell', recipe_key=r.key) }}">
+      <button class="btn">出售(灵石+{{ r.sell_price }})</button>
+    </form>
+    <form method="post" action="{{ url_for('alchemy_recycle', recipe_key=r.key) }}">
+      <button class="btn">回炉(炼丹经验+{{ recycle_exp }})</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+
+{% if buyable_recipes %}
+<div class="card">
+  <h3 style="margin-bottom:8px">配方谱(购买后方可炼制)</h3>
+  {% for r in buyable_recipes %}
+  <p style="margin-top:6px">{{ r.label }}(需{{ level_names[r.min_level - 1] }},{{ r.buy_cost }} 贡献)
+    <form method="post" action="{{ url_for('alchemy_learn', recipe_key=r.key) }}" style="display:inline">
+      <button class="btn" style="padding:2px 8px;font-size:12px" {{ 'disabled' if char.contribution < r.buy_cost }}>购买配方</button>
+    </form>
+    {% if char.contribution < r.buy_cost %}<span class="muted" style="font-size:12px">(尚缺{{ r.buy_cost - char.contribution }}点贡献)</span>{% endif %}
+  </p>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

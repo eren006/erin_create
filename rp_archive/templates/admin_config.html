@@ -577,6 +577,8 @@ select.cfg-input { cursor: pointer; }
   {# ── Macros ── #}
   {% macro field(f, jp) %}
     {% set db_key = (jp + '__' + f.key) if jp else f.key %}
+    {% if f.hidden %}{# 保留字段仅供后端拼装 JSON 透传用，页面上不出输入框，见 CONFIG_SCHEMA 里的注释 #}
+    {% else %}
     {% set cur = flat.get(db_key, f.default|string) | strip_json_str %}
     {% if f.type == 'bool' %}
     <div class="cfg-field">
@@ -635,6 +637,7 @@ select.cfg-input { cursor: pointer; }
              {% if f.note is defined and f.key not in ['lovemail_delivery_time', 'apply_item_hours'] %}placeholder="{{ f.note }}"{% endif %}>
       {% if f.note is defined %}<div class="cfg-note">{{ f.note }}</div>{% endif %}
     </div>
+    {% endif %}
     {% endif %}
   {% endmacro %}
 
@@ -700,6 +703,26 @@ select.cfg-input { cursor: pointer; }
     <div class="cfg-card">
       <div class="cfg-card-title">类型显示别名 <span class="cfg-badge">仅影响 QQ 群名与时间线，存档记录不变</span></div>
       {{ grid(s['类型显示别名']) }}
+    </div>
+
+    {# ═══════════════════════════════════════════ #}
+    {# 3c. 邀约表单标签                            #}
+    {# ═══════════════════════════════════════════ #}
+
+    <div class="cfg-card">
+      <div class="cfg-card-title">邀约表单标签 <span class="cfg-badge">留空用默认文字</span></div>
+      <div class="cfg-desc">
+        电话/私约/官约/官电/踩点除了「电话 1400-1500 张三」这种一行式写法，也支持多行表单（每行顺序随意）：<br>
+        【电话】<br>受邀人：张三<br>时间：1400-1500<br>
+        两种写法机器人始终都认。这里可以改表单里各字段的标签文字；「电话/私约/踩点·展示」这三项决定
+        玩家发「格式电话」「格式私约」「格式踩点」时看到的是一行式还是表单式示例。改完机器人「拉取全部」生效。
+      </div>
+      <details class="cfg-collapsible">
+        <summary>展开编辑</summary>
+        <div class="cfg-collapsible-inner">
+          {{ grid(s['邀约表单标签']) }}
+        </div>
+      </details>
     </div>
 
     {# ═══════════════════════════════════════════ #}
@@ -821,6 +844,12 @@ select.cfg-input { cursor: pointer; }
       {{ grid(s['季末报告']) }}
     </div>
 
+    {# 论坛：以前这块没渲染，表单里没有这个字段，每次保存配置都会被重置成默认值 #}
+    <div class="cfg-card">
+      <div class="cfg-card-title">论坛 <span class="cfg-badge">论坛 DLC</span></div>
+      {{ grid(s['论坛']) }}
+    </div>
+
     {# ═══════════════════════════════════════════ #}
     {# 8. 高级设置：道具 + 拍卖（可折叠）         #}
     {# ═══════════════════════════════════════════ #}
@@ -846,6 +875,7 @@ select.cfg-input { cursor: pointer; }
     <input type="hidden" name="item_registry_pending"      id="item-pending-input"     value="{{ item_pending_json | e }}">
     <input type="hidden" id="pool-defs-input" value="{{ pool_defs_json | e }}">
     <input type="hidden" name="private_appointment_aliases" id="aliases-input"         value="{{ aliases_json | e }}">
+    <input type="hidden" name="private_resources"          id="pr-input"               value="{{ private_resources_json | e }}">
     <input type="hidden" name="sms_aliases"                id="sms-aliases-input"      value="{{ sms_aliases_json | e }}">
     <input type="hidden" name="gift_aliases"               id="gift-aliases-input"     value="{{ gift_aliases_json | e }}">
     <input type="hidden" name="equipment_registry"         id="equip-registry-input"   value="{{ equip_registry_json | e }}">
@@ -1118,18 +1148,39 @@ select.cfg-input { cursor: pointer; }
       </div>
     </details>
 
-    {# ── 自定义约会类型 ── #}
+    {# ── 自定义电话触发词 ── #}
     <details class="cfg-collapsible">
-      <summary>自定义约会类型 <span class="cfg-badge">私约别名 · 触发词 · 图标 · 最短时长</span></summary>
+      <summary>自定义电话触发词 <span class="cfg-badge">给电话换个触发词</span></summary>
       <div class="cfg-collapsible-inner">
         <div class="cfg-note" style="margin-bottom:12px;">
-          每种类型独立触发、独立结戏奖励模板。保存后在 QQ 发「。拉取全部」生效。<br>
-          格式：用户发 <code style="font-size:11px;">触发词 时间 地点 角色名</code>，群名自动带上该类型名称，时间线和结戏奖励按类型名匹配。<br>
-          基础类型选「私密」：格式同上，门槛用下方留空则自动跟随「私密门槛」，不留空则用你填的固定分钟数。<br>
-          基础类型选「电话」：只是给电话换一个触发词，格式/门槛/开关完全与「电话」邀约一致（无需地点），图标和最短分钟不生效——不论这个触发词改叫什么名字，门槛都始终对应「电话门槛」的当前值。
+          只是给「电话」邀约换一个额外的触发词，格式/门槛/开关完全跟「电话」本体一致（无需地点）。
+          保存后在 QQ 发「。拉取全部」生效。格式：用户发 <code style="font-size:11px;">触发词 时间 角色名</code>。<br>
+          <b>私约</b>的改名和额外资源不在这里配，见下面「私约名称管理」。
         </div>
         <div id="aliases-list"></div>
-        <button type="button" class="btn-add-alias" onclick="aliasAddRow()">＋ 添加类型</button>
+        <button type="button" class="btn-add-alias" onclick="aliasAddRow()">＋ 添加触发词</button>
+      </div>
+    </details>
+
+    {# ── 私约名称管理 ── #}
+    <details class="cfg-collapsible" id="private-resources-section">
+      <summary>私约名称管理 <span class="cfg-badge">改默认私约的名字 · 加额外资源</span></summary>
+      <div class="cfg-collapsible-inner">
+        <div class="cfg-note" style="margin-bottom:12px;">
+          改这里的名字，同时决定：<b>用什么词触发</b>、<b>群名/时间线显示什么</b>、<b>计数按什么名字显示</b>——
+          改一处，三处一起变；旧名字这一季立即不再触发。改名不影响已有次数的累计（底层还是同一个资源，只是名字换了）。<br>
+          「额外资源」是独立的私约类型：有自己的名字、自己的时长门槛、自己的次数统计，跟默认私约和其它额外资源都不合并、也不冲时间——
+          同一个人在两个私约资源里约了同一时段，照样会被判定冲突。<br>
+          保存后在 QQ 发「。拉取全部」生效。新一季「清空季度数据」时，默认私约的名字会自动恢复成「私约」，额外资源本身会保留（次数清零，跟其它统计一样按季重置）。
+        </div>
+        <div class="rpg-field" style="margin-bottom:14px;">
+          <label class="rpg-label" style="display:block;margin-bottom:4px;font-size:11px;color:var(--muted);font-weight:700;letter-spacing:.5px;text-transform:uppercase;">默认私约的名字</label>
+          <input class="cfg-input" id="pr-default-name" style="max-width:260px;" placeholder="私约">
+          <div id="pr-default-warn" style="display:none;color:var(--red);font-size:11px;margin-top:3px;"></div>
+        </div>
+        <div style="font-size:11px;color:var(--muted);font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px;">额外资源</div>
+        <div id="pr-extra-list"></div>
+        <button type="button" class="btn-add-alias" onclick="prAddExtra()">＋ 添加资源</button>
       </div>
     </details>
 
@@ -1921,31 +1972,24 @@ var Registry = (function() {
   });
 })();
 
-/* ── 自定义约会类型编辑器 ───────────────────────────────────────────── */
+/* ── 自定义电话触发词编辑器 ─────────────────────────────────────────
+   原来这里还能选"基础：私密"，私约那部分已经迁移到下面的「私约名称管理」——
+   改名/加资源都在那边做，这里只保留电话的自定义触发词（跟短信/送礼是同一套简单编辑器） ── */
 (function() {
   var aliasData = [];
   try { aliasData = JSON.parse(document.getElementById('aliases-input').value || '[]'); } catch(e) {}
 
-  function save() {
-    document.getElementById('aliases-input').value = JSON.stringify(aliasData);
-  }
+  function save() { document.getElementById('aliases-input').value = JSON.stringify(aliasData); }
 
   function render() {
     var el = document.getElementById('aliases-list');
     if (!aliasData.length) {
-      el.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:6px 0 10px;">暂无自定义类型</div>';
+      el.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:6px 0 10px;">暂无自定义触发词</div>';
       return;
     }
     el.innerHTML = aliasData.map(function(a, i) {
-      var isPhone = a.baseType === 'phone';
       return '<div class="alias-row" data-idx="'+i+'">'
-        + '<input class="alias-field alias-trigger" placeholder="触发词（如：乐乐的约会）" value="'+esc(a.trigger||'')+'" oninput="aliasUpdate('+i+',\'trigger\',this.value)">'
-        + '<select class="alias-field alias-basetype" onchange="aliasUpdate('+i+',\'baseType\',this.value===\'phone\'?\'phone\':undefined)">'
-        +   '<option value="private"'+(isPhone?'':' selected')+'>基础：私密</option>'
-        +   '<option value="phone"'+(isPhone?' selected':'')+'>基础：电话</option>'
-        + '</select>'
-        + '<input class="alias-field alias-icon" placeholder="图标（如：🌸）" value="'+esc(a.icon||'')+'" oninput="aliasUpdate('+i+',\'icon\',this.value)"'+(isPhone?' disabled title="电话类型固定用📱图标，不生效">':'>')
-        + '<input class="alias-field alias-dur" type="number" min="1" placeholder="'+(isPhone?'跟随电话门槛':'留空=跟随私密门槛')+'" value="'+(!isPhone&&a.minDuration!=null?a.minDuration:'')+'" oninput="aliasUpdate('+i+',\'minDuration\',this.value?parseInt(this.value):undefined)"'+(isPhone?' disabled>':'>')
+        + '<input class="alias-field alias-trigger" style="flex:1;" placeholder="触发词（如：夜半私语）" value="'+esc(a.trigger||'')+'" oninput="aliasUpdate('+i+',\'trigger\',this.value)">'
         + '<button type="button" class="alias-del" onclick="aliasDelete('+i+')" title="删除">✕</button>'
         + '</div>';
     }).join('');
@@ -1954,19 +1998,14 @@ var Registry = (function() {
   function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
   window.aliasAddRow = function() {
-    aliasData.push({ trigger:'', icon:'🎭' });
+    aliasData.push({ trigger:'', baseType:'phone' });
     save(); render();
-    var rows = document.querySelectorAll('.alias-row');
+    var rows = document.querySelectorAll('#aliases-list .alias-row');
     if (rows.length) rows[rows.length-1].querySelector('.alias-trigger').focus();
   };
   window.aliasUpdate = function(i, key, val) {
     if (!aliasData[i]) return;
-    if (val === undefined) delete aliasData[i][key];
-    else aliasData[i][key] = val;
-    if (key === 'baseType') {
-      if (val === 'phone') delete aliasData[i].minDuration; // 电话类型门槛固定跟随「电话门槛」，不接受单独覆盖
-      save(); render(); return;
-    }
+    aliasData[i][key] = val;
     save();
   };
   window.aliasDelete = function(i) {
@@ -1992,7 +2031,7 @@ function initSimpleAliasEditor(inputId, listId, addFnName, placeholder) {
     }
     el.innerHTML = data.map(function(a, i) {
       return '<div class="alias-row" data-idx="'+i+'">'
-        + '<input class="alias-field alias-trigger" style="flex:1;" placeholder="'+placeholder+'" value="'+esc(a.trigger||'')+'" oninput="this._onchange && this._onchange()">'
+        + '<input class="alias-field alias-trigger" style="flex:1;" placeholder="'+placeholder+'" value="'+esc(a.trigger||'')+'">'
         + '<button type="button" class="alias-del" title="删除">✕</button>'
         + '</div>';
     }).join('');
@@ -2020,6 +2059,110 @@ function initSimpleAliasEditor(inputId, listId, addFnName, placeholder) {
 }
 initSimpleAliasEditor('sms-aliases-input', 'sms-aliases-list', 'smsAliasAddRow', '触发词（如：飞鸽传书）');
 initSimpleAliasEditor('gift-aliases-input', 'gift-aliases-list', 'giftAliasAddRow', '触发词（如：投喂）');
+
+/* ── 私约名称管理：默认资源改名 + 额外资源增删改 ──────────────────────────
+   改一处（这里的 name 字段），机器人那边指令触发/群名/时间线/计数显示四处一起变。
+   ⚠️ 这里的重名/保留词校验只在浏览器里做，不是服务器强制的——如果两个人分头改出了重名，
+   机器人「拉取全部」时目前不会报错阻止，只会在多个资源同名时按后出现的那个当命中，
+   这个校验缺口目前只在客户端做了提醒，还没有做成服务器端强制拒绝。 */
+(function() {
+  var DEFAULT_ID = '私密';
+  var RESERVED = ['电话', '踩点', '约战', '短信', '送礼', '微信'];
+  var data = {};
+  try { data = JSON.parse(document.getElementById('pr-input').value || '{}'); } catch (e) {}
+  if (!data[DEFAULT_ID]) data[DEFAULT_ID] = { name: '私约', isDefault: true };
+
+  function save() { document.getElementById('pr-input').value = JSON.stringify(data); cfgMarkDirty(); }
+  function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function extraIds() { return Object.keys(data).filter(function (id) { return id !== DEFAULT_ID; }); }
+
+  // 返回这个名字的问题描述；没问题返回空字符串。只做客户端提醒，不阻止保存。
+  function nameWarning(name, excludeId) {
+    var t = (name || '').trim();
+    if (!t) return '名字不能为空';
+    if (RESERVED.indexOf(t) !== -1) return '「' + t + '」是保留词，会跟其它功能冲突';
+    for (var id in data) {
+      if (id !== excludeId && data[id] && data[id].name === t) return '「' + t + '」已经被另一个私约资源占用';
+    }
+    return '';
+  }
+
+  function applyWarning(inputEl, warnEl, name, excludeId) {
+    var w = nameWarning(name, excludeId);
+    inputEl.style.borderColor = w ? 'var(--red)' : '';
+    warnEl.textContent = w;
+    warnEl.style.display = w ? '' : 'none';
+  }
+
+  function renderDefault() {
+    var input = document.getElementById('pr-default-name');
+    input.value = data[DEFAULT_ID].name || '私约';
+    applyWarning(input, document.getElementById('pr-default-warn'), input.value, DEFAULT_ID);
+  }
+
+  function renderExtras() {
+    var el = document.getElementById('pr-extra-list');
+    var ids = extraIds();
+    if (!ids.length) {
+      el.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:6px 0 10px;">暂无额外资源</div>';
+      return;
+    }
+    el.innerHTML = ids.map(function (id) {
+      var r = data[id];
+      return '<div class="alias-row" style="align-items:flex-start;flex-wrap:wrap;" data-id="' + esc(id) + '">'
+        + '<div style="flex:1;min-width:160px;">'
+        +   '<input class="alias-field pr-extra-name" style="width:100%;" placeholder="资源名字（如：深夜私约）" value="' + esc(r.name || '') + '" data-id="' + esc(id) + '">'
+        +   '<div class="pr-warn" style="display:none;color:var(--red);font-size:11px;margin-top:3px;"></div>'
+        + '</div>'
+        + '<input class="alias-field pr-extra-dur" type="number" min="1" style="width:150px;" placeholder="留空=跟随私约门槛（分钟）" value="' + (r.minDuration != null ? r.minDuration : '') + '" data-id="' + esc(id) + '">'
+        + '<button type="button" class="alias-del" data-id="' + esc(id) + '" title="删除">✕</button>'
+        + '</div>';
+    }).join('');
+    Array.prototype.forEach.call(el.querySelectorAll('.pr-extra-name'), function (input) {
+      var id = input.getAttribute('data-id');
+      var warnEl = input.parentElement.querySelector('.pr-warn');
+      applyWarning(input, warnEl, input.value, id);
+      input.addEventListener('input', function () {
+        data[id].name = this.value;
+        save();
+        applyWarning(input, warnEl, this.value, id);
+      });
+    });
+    Array.prototype.forEach.call(el.querySelectorAll('.pr-extra-dur'), function (input) {
+      var id = input.getAttribute('data-id');
+      input.addEventListener('input', function () {
+        if (this.value) data[id].minDuration = parseInt(this.value); else delete data[id].minDuration;
+        save();
+      });
+    });
+    Array.prototype.forEach.call(el.querySelectorAll('.alias-del'), function (btn) {
+      btn.addEventListener('click', function () {
+        var id = this.getAttribute('data-id');
+        if (!confirm('删除资源「' + ((data[id] && data[id].name) || id) + '」？它的名字会立即停止触发；已经用它建过的群不受影响。')) return;
+        delete data[id];
+        save(); renderExtras();
+      });
+    });
+  }
+
+  window.prAddExtra = function () {
+    var id = 'pr_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    data[id] = { name: '', isDefault: false };
+    save(); renderExtras();
+    var rows = document.querySelectorAll('#pr-extra-list .pr-extra-name');
+    if (rows.length) rows[rows.length - 1].focus();
+  };
+
+  var defaultInput = document.getElementById('pr-default-name');
+  defaultInput.addEventListener('input', function () {
+    data[DEFAULT_ID].name = this.value;
+    save();
+    applyWarning(defaultInput, document.getElementById('pr-default-warn'), this.value, DEFAULT_ID);
+  });
+
+  renderDefault();
+  renderExtras();
+})();
 </script>
 
 <style>
