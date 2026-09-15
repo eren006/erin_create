@@ -1,22 +1,26 @@
 // ==UserScript==
 // @name         长露谷
 // @author       长日将尽
-// @version      2.5.0
-// @description  【Beta测试版，数值/规则可能随时调整】种地(32种作物，一键种菜可批量种)、浇水、养殖(鸡/羊/牛)、钓鱼、酿酒、做饭(25道菜谱)、逛商店的群互动小游戏，成就墙+家园装饰，四季日历+天气生态联动+浮动市场+节日活动+看电视解锁菜谱，作物换季不收会枯萎，作物/动物/酒/菜到期主动提醒，还能互相偷菜/送礼
+// @version      2.6.0
+// @description  【Beta测试版，数值/规则可能随时调整】种地(32种作物)、浇水、养殖(鸡/羊/牛)、钓鱼、酿酒、做饭(25道菜谱)、逛商店的群互动小游戏，成就墙+家园装饰+宠物，四季日历+天气生态联动+浮动市场+节日活动+看电视解锁菜谱，作物/动物/酒/菜到期主动提醒，还能互相偷菜/送礼/下地牢
 // @license      MIT
 // ==/UserScript==
 
-// 注意：版本号是 2.4.0，但代码内容是 v1.9.1 的原样回退。
+// 注意：版本号是 2.4.x/2.5.x，但代码内容底子是 v1.9.1 的原样回退。
 // 2.x 之后加的地牢/防刷屏/指令包装层等改动导致「农场帮助」在群里收不到，排查未果，
 // 直接回退到已知可用的 1.9.1；版本号只能递增（否则装了 2.x 的人收不到这次更新），
 // 所以标成 2.4.0。被回退掉的 2.3.0 全部内容保存在 git 提交 42c84dc，需要时可取回。
-//
-// 2.5.0：在回退后的 1.9.1 基础上新增——
-//   ① 一键种菜：花 AUTO_PLANT_UNLOCK_COST 金币解锁一次，之后可以把当季某种作物一口气种满所有空地；
-//   ② 作物枯萎：换季规则从"跨季也能正常长成"改为"换季时地里还没收的作物会枯死"（类似原版星露谷），
-//      对「种地」「一键种菜」种下的作物一视同仁，在 checkFestival() 换季检测那里统一处理；
-//   ③ 更新公告：老玩家换到这个版本后，下次触发任意长露谷指令时会先收到一条"这次更新了什么"的提示，
-//      只弹一次，靠 p.lastSeenVersion 记录，实现见文件末尾"更新公告"包装。
+// 2.4.1：修了送礼/偷菜在"@机器人才能触发指令"群里误把机器人自己当目标的 bug。
+// 2.5.1：（2.5.0从没实际部署过，这次一起发）重新做了地牢（星露谷矿井风格：下探
+// 分层+电梯存档点+回合制战斗+挖矿事件），存档点楼层固定是关底boss战，打赢才解锁
+// 电梯，boss保底掉一次稀有材料；拆了「农场帮助」那条一直卡在事故阈值附近的超长
+// 消息；修了偷菜/送礼只要真的@到人就完全没反应的 bug——extractAtTargets 原来用
+// matchAll+展开语法取@目标，海豹骰的JS引擎（Goja，不是V8）对这个ES2020迭代器语法
+// 支持不完整，没@命中时不触发（所以两个指令平时看起来正常），一旦真的@到人、需要
+// 从迭代器里取值就直接执行出错。换成更基础的 match 之后问题消失。
+// 2.6.0：新增宠物系统（猫/狗）——花金币领养，靠「撸猫/遛狗」（免费，有冷却）或「喂宠物」
+// （花钱，每天限一次）攒幸福度，幸福度越高被动加成越强：猫降低被偷菜成功率，狗降低钓鱼
+// 空军率。幸福度不额外起定时任务衰减，只在查询/结算时按闲置天数现算。
 
 /**
  * 数据存储
@@ -44,8 +48,10 @@
  *   lifetimeGifts / lifetimeSteals   终身送礼/偷菜次数（不像stealCount那样每天重置），只用于成就墙
  *   banner                     自定义招牌文字，纯观赏
  *   equippedDecoration         佩戴中的徽记（emoji，见 DECORATIONS），纯观赏
- *   autoPlantUnlocked          是否已解锁「一键种菜」（一次性付费解锁，见 AUTO_PLANT_UNLOCK_COST）
- *   lastSeenVersion            已看过的更新公告版本号，用于"下次触发任意指令时提示更新内容"只弹一次
+ *   pets: { 猫?: PetState, 狗?: PetState }   已领养的宠物，key 不存在=没养，见 PET_TYPES
+ *
+ * PetState: { happiness, lastInteractDay, lastTouchAt, lastFeedDay }
+ *   happiness 是"截至 lastInteractDay 那天"的值，实际值靠 petEffectiveHappiness() 按闲置天数现算。
  *
  * Plot:
  *   crop            作物名（CROPS 的 key）
@@ -65,8 +71,8 @@
  *   成品到期后「收酒」「出锅」不再直接换钱，而是存进 goods 仓库，靠「卖成品」/「送礼」处理。
  *
  * 日历：全群共用一套虚拟历法，SEASON_DAYS 天一季，四季循环。
- * 「种地」「一键种菜」时只能选当前季节能种的作物；换季那一刻，地里还没收的作物
- * （不管熟没熟）会枯死清空，类似原版星露谷——见 checkFestival() 里的枯萎处理。
+ * 已经种下的作物即使跨季也会正常长成（不会因换季枯死），
+ * 只是「种地」时只能选当前季节能种的作物。
  *
  * 天气与市场：每个虚拟日只在第一次被访问时（定时器或任意指令）重新生成一次，
  * 之后同一天内保持不变。天气生态联动：雨天免费帮所有玩家的生长中作物浇一次水
@@ -83,7 +89,7 @@
 
 let ext = seal.ext.find('changri_farm');
 if (!ext) {
-    ext = seal.ext.new('changri_farm', '长日将尽', '2.5.0');
+    ext = seal.ext.new('changri_farm', '长日将尽', '2.6.0');
     seal.ext.register(ext);
     ext.autoActive = true;
 }
@@ -102,20 +108,120 @@ const EXPAND_STEP_COST = 40;
 const WATER_COOLDOWN = 2 * 60 * 60 * 1000;   // 每块地浇水冷却 2 小时
 const WATER_BOOST_RATIO = 0.2;               // 浇一次减少 20% 剩余生长时间
 
-// 一键种菜：一次性解锁，解锁后可以反复用；种子钱仍按种下的地块数量正常单独扣，
-// 5000 只是"解锁这个便利指令"本身的钱。
-const AUTO_PLANT_UNLOCK_COST = 5000;
-
-// 更新公告：版本号改了就把这个也改一遍，老玩家下次触发任意长露谷指令时会看到一次。
-const UPDATE_NOTICE_VERSION = '2.5.0';
-const UPDATE_NOTICE_TEXT =
-    `📢 长露谷更新啦（v${UPDATE_NOTICE_VERSION}）\n${'─'.repeat(16)}\n` +
-    `• 新增「一键种菜」：发送「解锁一键种菜」花${AUTO_PLANT_UNLOCK_COST}金币解锁后，能把当季某种作物一口气种满所有空地（种子钱仍按地块数单独扣）\n` +
-    `• 作物规则调整：换季时地里还没收的作物（不管熟没熟）会枯死清空，记得季末前把地收完，别攒着\n` +
-    `发送「农场帮助」查看完整指令。`;
-
 const STEAL_SHARE = 0.4;
 const STEAL_DAILY_LIMIT = 3;
+
+// ========================
+// 配置：地牢（星露谷矿井风格）—— 单指令=下探一层，回合制自动结算，不做逐回合直播文本，
+// 每层结果都控制在几百字节以内，避免重蹈"农场帮助"那条超长消息被平台静默丢弃的覆辙。
+// ========================
+
+const DUNGEON_DAILY_FLOOR_LIMIT = 5;   // 每天最多下探的层数（不是"进入地牢"的次数，是层数预算）
+const DUNGEON_CHECKPOINT_INTERVAL = 5; // 每5层一个电梯存档点，参照星露谷矿井
+const DUNGEON_MAX_FLOOR = 30;          // 目前开放到第30层（6个存档点），后续可加深
+const DUNGEON_EVENT_CHANCE = 0.15;     // 不打斗、直接挖到矿脉/宝箱的概率
+const DUNGEON_MAX_ROUNDS = 15;         // 单场战斗回合数上限，防止极端情况下死循环/消息过长
+const DUNGEON_HIT_CHANCE = 0.9;
+const DUNGEON_CRIT_CHANCE = 0.1;
+const DUNGEON_CRIT_MULT = 1.5;
+
+// 玩家战斗力直接从等级派生，不单独做装备/加点系统——跟"等级是唯一成长轴"的整体设计保持一致。
+const DUNGEON_BASE_HP = 40;
+const DUNGEON_HP_PER_LEVEL = 3;
+const DUNGEON_BASE_ATK = 6;
+const DUNGEON_ATK_PER_LEVEL = 0.6;
+
+// 怪物按楼层区间分桶，越深越强，每个桶对应一个存档点区间。
+const DUNGEON_MONSTER_TIERS = [
+    { maxFloor: 5, names: ['史莱姆', '洞穴蝙蝠'], boss: '巨型史莱姆王', hp: 18, atk: 4, coinMin: 8, coinMax: 18 },
+    { maxFloor: 10, names: ['骷髅兵', '巨型蜘蛛'], boss: '骸骨领主', hp: 34, atk: 7, coinMin: 15, coinMax: 32 },
+    { maxFloor: 15, names: ['石头人', '毒沼史莱姆'], boss: '石中魔像', hp: 55, atk: 11, coinMin: 26, coinMax: 55 },
+    { maxFloor: 20, names: ['幽灵', '熔岩蟹'], boss: '怨灵首领', hp: 82, atk: 16, coinMin: 42, coinMax: 85 },
+    { maxFloor: 25, names: ['暗影骑士', '冰霜巨魔'], boss: '暗影骑士长', hp: 115, atk: 22, coinMin: 65, coinMax: 130 },
+    { maxFloor: 30, names: ['深渊守卫', '远古巨龙'], boss: '巨龙之王', hp: 160, atk: 30, coinMin: 100, coinMax: 200 },
+];
+
+// 关底怪：每个电梯存档点（第5/10/15…层）不再是普通遭遇/挖矿事件二选一，而是固定一场比同档
+// 怪物更强的boss战，打赢才能解锁存档点；掉落保底——稀有材料没roll中的话至少给最低档一个，
+// 让"守着电梯的怪"名副其实。数值直接在同档怪物基础上乘系数，不单独开一张表。
+const DUNGEON_BOSS_HP_MULT = 1.8;
+const DUNGEON_BOSS_ATK_MULT = 1.3;
+const DUNGEON_BOSS_COIN_MULT = 1.5;
+
+// 稀有材料掉落表：金币每次通关都有，这个是叠加在金币之上的小概率额外收获，
+// 挖矿事件和打赢怪物都会roll一次。走现有 goods 仓库，靠「卖成品」「送礼」流通，
+// 不需要新开指令或新的仓库字段（value 在 goodsValue() 里查）。
+const DUNGEON_LOOT = {
+    '粗糙矿石': { value: 15, chance: 0.12 },
+    '闪光矿石': { value: 45, chance: 0.045 },
+    '幽晶石': { value: 130, chance: 0.012 },
+    '龙鳞碎片': { value: 350, chance: 0.003 },
+};
+const DUNGEON_LOOT_NAMES = Object.keys(DUNGEON_LOOT);
+
+function newDungeonState() {
+    return { floor: 0, hp: null, bestFloor: 0, day: null, floorsToday: 0, lifetimeRuns: 0 };
+}
+
+function dungeonPlayerStats(p) {
+    const level = calcLevel(p.totalEarned);
+    return {
+        maxHp: DUNGEON_BASE_HP + level * DUNGEON_HP_PER_LEVEL,
+        atk: DUNGEON_BASE_ATK + level * DUNGEON_ATK_PER_LEVEL,
+    };
+}
+
+function dungeonMonsterFor(floor) {
+    const tier = DUNGEON_MONSTER_TIERS.find(t => floor <= t.maxFloor) || DUNGEON_MONSTER_TIERS[DUNGEON_MONSTER_TIERS.length - 1];
+    const name = tier.names[Math.floor(Math.random() * tier.names.length)];
+    return { name, hp: tier.hp, atk: tier.atk, coinMin: tier.coinMin, coinMax: tier.coinMax, isBoss: false };
+}
+
+function dungeonBossFor(floor) {
+    const tier = DUNGEON_MONSTER_TIERS.find(t => floor <= t.maxFloor) || DUNGEON_MONSTER_TIERS[DUNGEON_MONSTER_TIERS.length - 1];
+    return {
+        name: tier.boss,
+        hp: Math.round(tier.hp * DUNGEON_BOSS_HP_MULT),
+        atk: Math.round(tier.atk * DUNGEON_BOSS_ATK_MULT),
+        coinMin: Math.round(tier.coinMin * DUNGEON_BOSS_COIN_MULT),
+        coinMax: Math.round(tier.coinMax * DUNGEON_BOSS_COIN_MULT),
+        isBoss: true,
+    };
+}
+
+function rollDungeonLoot() {
+    const r = Math.random();
+    let cum = 0;
+    for (const name of DUNGEON_LOOT_NAMES) {
+        cum += DUNGEON_LOOT[name].chance;
+        if (r < cum) return name;
+    }
+    return null;
+}
+
+// 双方轮流攻击直到一方倒下或回合数封顶（封顶视为玩家见势不妙撤退，不算失败也没有收获）。
+// playerCombat.hp 传入的是"这一轮探险剩余的HP"，不是满血——层与层之间不自动回血，
+// 只有开新一轮下潜（新的一天/力竭之后）才会回满，这是刻意保留的张力，参照星露谷矿井。
+function resolveDungeonBattle(playerCombat, monster) {
+    let pHp = playerCombat.hp;
+    let mHp = monster.hp;
+    let rounds = 0;
+    while (pHp > 0 && mHp > 0 && rounds < DUNGEON_MAX_ROUNDS) {
+        rounds++;
+        if (Math.random() < DUNGEON_HIT_CHANCE) {
+            const crit = Math.random() < DUNGEON_CRIT_CHANCE;
+            mHp -= Math.round(playerCombat.atk * (crit ? DUNGEON_CRIT_MULT : 1));
+        }
+        if (mHp <= 0) break;
+        if (Math.random() < DUNGEON_HIT_CHANCE) {
+            const crit = Math.random() < DUNGEON_CRIT_CHANCE;
+            pHp -= Math.round(monster.atk * (crit ? DUNGEON_CRIT_MULT : 1));
+        }
+    }
+    if (mHp <= 0) return { win: true, fled: false, roundsUsed: rounds, playerHpLeft: Math.max(0, pHp) };
+    if (pHp <= 0) return { win: false, fled: false, roundsUsed: rounds, playerHpLeft: 0 };
+    return { win: false, fled: true, roundsUsed: rounds, playerHpLeft: Math.max(0, pHp) };
+}
 
 // ========================
 // 配置：四季日历 / 天气 / 市场
@@ -228,6 +334,48 @@ function rollFish() {
 function randInt(min, max) { return min + Math.floor(Math.random() * (max - min + 1)); }
 
 // ========================
+// 配置：宠物 —— 猫/狗，领养后靠互动攒"幸福度"，幸福度转化成被动加成（猫降低被偷菜
+// 成功率、狗降低钓鱼空军率）。幸福度不持久化衰减过程，只在用到的那一刻靠"距上次
+// 互动过了几天"现算，互动（摸/喂）时会先把当前实际值算出来再加成长量，避免存档里
+// 需要一个额外的定时任务专门跑衰减。
+// ========================
+
+const PET_ADOPT_COST = 80;
+const PET_HAPPINESS_MAX = 100;
+const PET_HAPPINESS_START = 50;
+const PET_DECAY_PER_DAY = 6;               // 超过一天没有任何互动（摸/喂），幸福度每天衰减这么多
+const PET_TOUCH_COOLDOWN = 4 * 60 * 60 * 1000;
+const PET_TOUCH_GAIN = 8;
+const PET_FEED_GAIN = 15;                  // 每天限一次，效果比摸更强但要花钱
+const PET_FEED_COST = 10;
+
+const PET_TYPES = {
+    '猫': { emoji: '🐱', touchVerb: '撸猫', effect: '被偷菜成功率降低', maxBonus: 0.25 },
+    '狗': { emoji: '🐶', touchVerb: '遛狗', effect: '钓鱼空军率降低', maxBonus: 0.3 },
+};
+const PET_NAMES = Object.keys(PET_TYPES);
+
+function newPet() {
+    return { happiness: PET_HAPPINESS_START, lastInteractDay: currentDayIndex(), lastTouchAt: null, lastFeedDay: null };
+}
+// 幸福度现算：存的 happiness 是"截至 lastInteractDay 那天"的值，查询时按闲置天数扣减，不改动存档。
+function petEffectiveHappiness(pet) {
+    const idleDays = Math.max(0, currentDayIndex() - pet.lastInteractDay);
+    return Math.max(0, pet.happiness - idleDays * PET_DECAY_PER_DAY);
+}
+// 摸/喂共用：在当前实际值（已扣衰减）基础上加成长量，再把互动日刷新成今天。
+function petGainHappiness(pet, amount) {
+    pet.happiness = Math.min(PET_HAPPINESS_MAX, petEffectiveHappiness(pet) + amount);
+    pet.lastInteractDay = currentDayIndex();
+}
+// target 是效果生效的那个玩家（猫防偷看目标，狗钓鱼看操作者自己），没养对应宠物就是 0 加成。
+function petBonus(p, typeName) {
+    const pet = p.pets && p.pets[typeName];
+    if (!pet) return 0;
+    return (petEffectiveHappiness(pet) / PET_HAPPINESS_MAX) * PET_TYPES[typeName].maxBonus;
+}
+
+// ========================
 // 配置：加工（酒窖 / 厨房）—— 后期内容，把种地/养殖的产出深加工成更值钱的成品
 // ========================
 
@@ -329,6 +477,7 @@ const TV_LEARN_CHANCE = 0.4;
 // p.goods 只要存 { 物品名: 数量 } 就够了，卖/送礼时现算现用。
 function goodsValue(itemName) {
     if (RECIPES[itemName]) return RECIPES[itemName].value;
+    if (DUNGEON_LOOT[itemName]) return DUNGEON_LOOT[itemName].value;
     if (itemName.endsWith('酒')) {
         const crop = CROPS[itemName.slice(0, -1)];
         if (crop) return Math.round(crop.sell * WINE_VALUE_MULT);
@@ -424,6 +573,11 @@ const ACHIEVEMENTS = [
     { id: 'lv10', name: '小有所成', desc: '达到 Lv.10', check: p => calcLevel(p.totalEarned) >= 10 },
     { id: 'lv50', name: '一方巨贾', desc: '达到 Lv.50', check: p => calcLevel(p.totalEarned) >= 50 },
     { id: 'lv100', name: '世界首富', desc: '达到 Lv.100', check: p => calcLevel(p.totalEarned) >= 100 },
+    { id: 'dungeon1', name: '初探地牢', desc: '第一次下地牢探险', check: p => (p.dungeon && p.dungeon.lifetimeRuns || 0) >= 1 },
+    { id: 'dungeon10', name: '矿工学徒', desc: `地牢存档点达到第${DUNGEON_CHECKPOINT_INTERVAL * 2}层`, check: p => (p.dungeon && p.dungeon.bestFloor || 0) >= DUNGEON_CHECKPOINT_INTERVAL * 2 },
+    { id: 'dungeonMax', name: '地心探险家', desc: `地牢存档点达到第${DUNGEON_MAX_FLOOR}层`, check: p => (p.dungeon && p.dungeon.bestFloor || 0) >= DUNGEON_MAX_FLOOR },
+    { id: 'petBoth', name: '猫狗双全', desc: '同时领养猫和狗', check: p => PET_NAMES.every(t => p.pets && p.pets[t]) },
+    { id: 'petHappy', name: '幸福宠物', desc: '任意宠物幸福度达到满值', check: p => PET_NAMES.some(t => p.pets && p.pets[t] && petEffectiveHappiness(p.pets[t]) >= PET_HAPPINESS_MAX) },
 ];
 
 // ========================
@@ -441,6 +595,8 @@ const DECORATIONS = {
     '🍷': { name: '酒庄徽记', hint: '建好酒窖', unlock: p => p.brewery.unlocked },
     '🍳': { name: '大厨徽记', hint: `学会全部${RECIPE_NAMES.length}道菜谱`, unlock: p => p.learnedRecipes.length >= RECIPE_NAMES.length },
     '👑': { name: '首富勋章', hint: `达到 Lv.${MAX_LEVEL}`, unlock: p => calcLevel(p.totalEarned) >= MAX_LEVEL },
+    '⛏️': { name: '矿工徽记', hint: `地牢存档点达到第${DUNGEON_CHECKPOINT_INTERVAL * 2}层`, unlock: p => (p.dungeon && p.dungeon.bestFloor || 0) >= DUNGEON_CHECKPOINT_INTERVAL * 2 },
+    '🐾': { name: '铲屎官徽记', hint: '同时领养猫和狗', unlock: p => PET_NAMES.every(t => p.pets && p.pets[t]) },
 };
 const DECORATION_EMOJIS = Object.keys(DECORATIONS);
 
@@ -534,36 +690,10 @@ function checkFestival(data, eps) {
         // 单条记录处理出错不能中断整批节日发放——一个坏记录不该连累其他人拿不到礼金/收不到公告。
         try {
             const p = data[key];
-            const platform = key.split(':')[0];
-            const uid = key.split(':')[1];
-
-            // 枯萎：换季那一刻，地里还没收的作物（不管熟没熟）一律枯死清空。
-            // 按种下时记录的 groupId 分组，同一个群里枯了几种一起说，不逐块地刷屏。
-            const witherByGroup = {};
-            p.plots.forEach((pl, idx) => {
-                if (!pl) return;
-                const gid = pl.groupId;
-                if (gid) {
-                    if (!witherByGroup[gid]) witherByGroup[gid] = [];
-                    witherByGroup[gid].push(pl.crop);
-                }
-                p.plots[idx] = null;
-            });
-            if (Object.keys(witherByGroup).length) {
-                changed = true;
-                for (const gid in witherByGroup) {
-                    const counted = {};
-                    witherByGroup[gid].forEach(n => { counted[n] = (counted[n] || 0) + 1; });
-                    const listStr = Object.entries(counted).map(([n, c]) => c > 1 ? `${n}×${c}` : n).join('、');
-                    pushToGroup(eps, platform, gid,
-                        `[CQ:at,qq=${uid}] 🥀 换季了，地里没来得及收的${listStr}枯萎了，记得季末前把熟了的地收完哦。`
-                    );
-                }
-            }
-
             earnCoins(p, fest.bonus); // 节日礼金是群发广播，升级提示这里不单独播报，玩家下次查看/赚钱时会看到新等级
             changed = true;
 
+            const platform = key.split(':')[0];
             (p.groups || []).forEach(gid => {
                 const gKey = `${platform}|${gid}`;
                 if (seenGroups.has(gKey)) return;
@@ -618,8 +748,8 @@ function newPlayer(roleName, groupId) {
         lifetimeSteals: 0,
         banner: '',
         equippedDecoration: DEFAULT_DECORATION,
-        autoPlantUnlocked: false,
-        lastSeenVersion: UPDATE_NOTICE_VERSION, // 新玩家一上来就是最新版，不需要再弹"更新了什么"
+        dungeon: newDungeonState(),
+        pets: {},
     };
 }
 
@@ -644,8 +774,8 @@ function getPlayer(data, key, roleName, groupId) {
     if (p.lifetimeSteals == null) p.lifetimeSteals = 0;
     if (p.banner == null) p.banner = '';
     if (!p.equippedDecoration) p.equippedDecoration = DEFAULT_DECORATION;
-    if (p.autoPlantUnlocked == null) p.autoPlantUnlocked = false;
-    if (p.lastSeenVersion == null) p.lastSeenVersion = ''; // 老存档没这个字段，视为"没看过更新公告"
+    if (!p.dungeon) p.dungeon = newDungeonState();
+    if (!p.pets) p.pets = {};
     if (!p.groups) p.groups = [];
     if (roleName) p.roleName = roleName;
     if (groupId && !p.groups.includes(groupId)) p.groups.push(groupId);
@@ -684,9 +814,14 @@ function getCtxInfo(msg) {
 // 注意：很多群要求"@机器人 才能触发指令"，这种情况下消息里第一个 [CQ:at] 其实是机器人，
 // 如果只取第一个匹配会把机器人自己当成偷菜目标，必须过滤掉才能拿到真正 @ 的那个人。
 function extractAtTargets(ctx, msg) {
-    const botUid = ctx && ctx.endPoint && ctx.endPoint.userId ? String(ctx.endPoint.userId) : null;
+    const botUid = ctx && ctx.endPoint && ctx.endPoint.userId ? stripUid(String(ctx.endPoint.userId)) : null;
     const selfUid = stripUid(msg.sender.userId);
-    const uids = [...msg.message.matchAll(/\[CQ:at,qq=(\d+)\]/g)].map(m => m[1]);
+    // 用 match 而不是 matchAll+展开：海豹骰的JS引擎是Goja（纯Go实现，不是V8），
+    // 对matchAll这种ES2020迭代器语法支持不完整，实测消息里真的有@命中时会直接执行
+    // 出错（没有@命中时反而不会触发这个问题，因为根本没有真正取值）——表现就是
+    // 偷菜/送礼一旦真的@到人就完全没反应。match是更老、更基础的API，兼容性更好。
+    const rawMatches = msg.message.match(/\[CQ:at,qq=\d+\]/g) || [];
+    const uids = rawMatches.map(s => s.match(/\d+/)[0]);
     return uids.filter(uid => uid !== botUid && uid !== selfUid);
 }
 
@@ -720,6 +855,9 @@ let cmd_help = seal.ext.newCmdItemInfo();
 cmd_help.name = '农场帮助';
 cmd_help.help = '查看长露谷全部指令';
 cmd_help.solve = (ctx, msg) => {
+    // 拆成两条消息发：这条指令曾经是一整条 ~3200 字节的长文本，超过平台单条消息的
+    // 静默丢弃阈值（表现为"指令没反应"），是历史事故之一。现在按内容分两段发，
+    // 每段都远低于那个阈值，加新指令时也不要把新内容塞回一条大消息里。
     const ret = seal.ext.newCmdExecuteResult(true);
     seal.replyToSender(ctx, msg,
         `🌾 长露谷 ⚠️Beta测试版\n${'─'.repeat(16)}\n` +
@@ -729,7 +867,6 @@ cmd_help.solve = (ctx, msg) => {
         `【种地】\n` +
         `农场日历         季节、本季可种作物、实时收购价\n` +
         `种地 作物名     在空地种下当季作物\n` +
-        `解锁一键种菜     花${AUTO_PLANT_UNLOCK_COST}金币解锁后，「一键种菜 作物名」能一口气种满所有空地\n` +
         `浇水 [编号]      给作物浇水加速生长，不填编号=浇所有能浇的地\n` +
         `收菜             收获所有成熟作物\n` +
         `扩地             花金币多开一块地（上限${MAX_PLOTS}块，价格逐次上涨）\n` +
@@ -753,8 +890,11 @@ cmd_help.solve = (ctx, msg) => {
         `钓鱼             随机钓到不同价值的鱼（冷却${Math.round(FISH_COOLDOWN / 60000)}分钟，雨天空军率减半）\n` +
         `\n【市场与天气】\n` +
         `市场行情         查看今天各作物的实时收购价（每天波动）\n` +
-        `农场天气         查看今天天气：雨天免费帮全部作物浇一次水+钓鱼空军率减半，晴天养殖产出+20%\n` +
-        `\n【主线与社交】\n` +
+        `农场天气         查看今天天气：雨天免费帮全部作物浇一次水+钓鱼空军率减半，晴天养殖产出+20%`
+    );
+    seal.replyToSender(ctx, msg,
+        `🌾 长露谷指令（续）\n${'─'.repeat(16)}\n` +
+        `【主线与社交】\n` +
         `还债 [数量]      偿还欠款，不填数量=尽量还清，没有期限\n` +
         `欠款进度         查看欠款\n` +
         `等级             查看等级、称号，离下一级还差多少（终身累计赚取决定，1~100级）\n` +
@@ -763,10 +903,19 @@ cmd_help.solve = (ctx, msg) => {
         `我的农场         地块/养殖/原料/成品/酒窖/厨房/金币/欠款/等级/天气总览\n` +
         `农场排行         本群财富排行榜（前10名，按终身累计赚取排序）\n` +
         `偷菜 @群友       偷取对方成熟未收的作物一部分（每天最多${STEAL_DAILY_LIMIT}次）\n` +
-        `地牢入口         长露谷地底似乎藏着什么……（开发中，暂不可进入）\n` +
-        `\n每${SEASON_DAYS}天换一季，春夏秋冬循环，作物随季节变化，换季时地里没收的作物（不管熟没熟）会枯死，记得季末前收完。\n` +
+        `地牢入口         回合制下探地牢，每天限${DUNGEON_DAILY_FLOOR_LIMIT}层，发送「地牢图鉴」看详情\n` +
+        `\n每${SEASON_DAYS}天换一季，春夏秋冬循环，作物随季节变化，换季不会枯死。\n` +
         `换季那天全群会有一次节日活动，所有农场主都能收到节日礼金。\n` +
         `新玩家初始 ${START_COINS} 金币、${BASE_PLOTS} 块地。作物成熟、动物产出、酒/菜做好都会主动@你提醒。`
+    );
+    seal.replyToSender(ctx, msg,
+        `🌾 长露谷指令（宠物）\n${'─'.repeat(16)}\n` +
+        `【宠物】领养后每天互动攒幸福度，幸福度越高被动加成越强：\n` +
+        `领养宠物 猫/狗   花${PET_ADOPT_COST}金币领养\n` +
+        `${PET_TYPES['猫'].touchVerb} / ${PET_TYPES['狗'].touchVerb}   免费互动，冷却${Math.round(PET_TOUCH_COOLDOWN / 3600000)}小时，幸福度+${PET_TOUCH_GAIN}\n` +
+        `喂宠物 猫/狗     花${PET_FEED_COST}金币，每天限一次，幸福度+${PET_FEED_GAIN}\n` +
+        `我的宠物         查看幸福度和被动加成（🐱降低被偷成功率，🐶降低钓鱼空军率）\n` +
+        `超过一天没互动，幸福度每天衰减${PET_DECAY_PER_DAY}点。`
     );
     return ret;
 };
@@ -787,7 +936,7 @@ cmd_calendar.solve = (ctx, msg) => {
     seal.replyToSender(ctx, msg,
         `📅 长露谷历\n${'─'.repeat(16)}\n` +
         `第${cal.year}年 · ${cal.season}季 · 第${cal.dayInSeason}/${SEASON_DAYS}天 · 今日${world.weather}\n` +
-        `（${cal.daysLeftInSeason}天后进入下一季，地里没收的作物会随换季枯死）\n\n本季可种：\n` +
+        `（${cal.daysLeftInSeason}天后进入下一季）\n\n本季可种：\n` +
         list.map(n => `  ${n}  ${fmtDuration(CROPS[n].growMs)}成熟  种子${CROPS[n].cost}金币  收购价${sellPrice(n, world)}金币`).join('\n')
     );
     return ret;
@@ -843,99 +992,6 @@ cmd_plant.solve = (ctx, msg) => {
     return ret;
 };
 ext.cmdMap['种地'] = cmd_plant;
-
-// ========================
-// 指令：一键种菜（解锁一键种菜 / 一键种菜）
-// ========================
-
-let cmd_unlock_autoplant = seal.ext.newCmdItemInfo();
-cmd_unlock_autoplant.name = '解锁一键种菜';
-cmd_unlock_autoplant.help = `解锁一键种菜\n一次性花${AUTO_PLANT_UNLOCK_COST}金币解锁「一键种菜」指令，解锁后可以反复用`;
-cmd_unlock_autoplant.solve = (ctx, msg) => {
-    const ret = seal.ext.newCmdExecuteResult(true);
-    const { groupId, roleName, key } = getCtxInfo(msg);
-    const data = getData();
-    const p = getPlayer(data, key, roleName, groupId);
-
-    if (p.autoPlantUnlocked) {
-        seal.replyToSender(ctx, msg, `已经解锁过啦，直接发送「一键种菜 作物名」就能用。`);
-        return ret;
-    }
-    if (p.coins < AUTO_PLANT_UNLOCK_COST) {
-        seal.replyToSender(ctx, msg, `金币不够！解锁一键种菜需要${AUTO_PLANT_UNLOCK_COST}金币，你只有${p.coins}金币。`);
-        return ret;
-    }
-
-    p.coins -= AUTO_PLANT_UNLOCK_COST;
-    p.autoPlantUnlocked = true;
-    saveData(data);
-
-    seal.replyToSender(ctx, msg,
-        `🌾 解锁成功！以后发送「一键种菜 作物名」能把当季这一种作物一口气种满所有空地（种子钱仍按地块数单独扣）。\n剩余金币：${p.coins}`
-    );
-    return ret;
-};
-ext.cmdMap['解锁一键种菜'] = cmd_unlock_autoplant;
-
-let cmd_autoplant = seal.ext.newCmdItemInfo();
-cmd_autoplant.name = '一键种菜';
-cmd_autoplant.help = '一键种菜 作物名\n把当季这一种作物种满所有空地（金币不够就尽量多种），需要先「解锁一键种菜」';
-cmd_autoplant.solve = (ctx, msg) => {
-    const ret = seal.ext.newCmdExecuteResult(true);
-    const cropName = msg.message.replace(/^[。.]\S+\s*/, '').trim();
-    const crop = CROPS[cropName];
-    const cal = getCalendar();
-
-    const { groupId, roleName, key } = getCtxInfo(msg);
-    const data = getData();
-    const p = getPlayer(data, key, roleName, groupId);
-
-    if (!p.autoPlantUnlocked) {
-        seal.replyToSender(ctx, msg, `还没解锁「一键种菜」，先发送「解锁一键种菜」（${AUTO_PLANT_UNLOCK_COST}金币）吧。`);
-        return ret;
-    }
-    if (!crop) {
-        seal.replyToSender(ctx, msg, `没有「${cropName}」这种作物。发送「农场日历」查看本季可种作物。`);
-        return ret;
-    }
-    if (crop.season !== cal.season) {
-        seal.replyToSender(ctx, msg,
-            `「${cropName}」是${crop.season}季作物，现在是${cal.season}季，种不了。\n发送「农场日历」看看本季能种什么。`
-        );
-        return ret;
-    }
-
-    const emptyIdx = [];
-    p.plots.forEach((pl, i) => { if (pl === null) emptyIdx.push(i); });
-    if (emptyIdx.length === 0) {
-        seal.replyToSender(ctx, msg, `地都种满啦，先「收菜」腾地方，或者「扩地」开新地！`);
-        return ret;
-    }
-
-    const affordable = Math.min(emptyIdx.length, Math.floor(p.coins / crop.cost));
-    if (affordable === 0) {
-        seal.replyToSender(ctx, msg, `金币不够啦！种一块${cropName}需要${crop.cost}金币，你只有${p.coins}金币。`);
-        return ret;
-    }
-
-    const now = Date.now();
-    for (let i = 0; i < affordable; i++) {
-        const idx = emptyIdx[i];
-        p.coins -= crop.cost;
-        p.plots[idx] = { crop: cropName, plantedAt: now, matureAt: now + crop.growMs, notified: false, lastWateredAt: null, groupId };
-    }
-    if (!p.plantedCrops.includes(cropName)) p.plantedCrops.push(cropName); // 成就墙："种过多少种作物"用这个
-    saveData(data);
-
-    const leftoverHint = affordable < emptyIdx.length
-        ? `（金币只够种${affordable}块，还剩${emptyIdx.length - affordable}块空地没种）`
-        : '';
-    seal.replyToSender(ctx, msg,
-        `🌾 一键种下了${affordable}块${cropName}，约${fmtDuration(crop.growMs)}后成熟。${leftoverHint}\n剩余金币：${p.coins}`
-    );
-    return ret;
-};
-ext.cmdMap['一键种菜'] = cmd_autoplant;
 
 // ========================
 // 指令：浇水
@@ -1710,7 +1766,9 @@ cmd_fish.solve = (ctx, msg) => {
     p.lastFishAt = now;
 
     const isRain = getWorld().weather === '雨';
-    const emptyChance = isRain ? FISH_EMPTY_CHANCE * RAIN_FISH_EMPTY_MULT : FISH_EMPTY_CHANCE;
+    let emptyChance = isRain ? FISH_EMPTY_CHANCE * RAIN_FISH_EMPTY_MULT : FISH_EMPTY_CHANCE;
+    const dogBonus = petBonus(p, '狗');
+    if (dogBonus > 0) emptyChance *= (1 - dogBonus); // 狗陪着一起钓，空军率打折
 
     if (Math.random() < emptyChance) {
         saveData(data);
@@ -2123,6 +2181,14 @@ cmd_steal.solve = (ctx, msg) => {
         return ret;
     }
 
+    const catBonus = petBonus(target, '猫');
+    if (catBonus > 0 && Math.random() < catBonus) {
+        p.stealCount++; // 尝试还是算一次，只是没得手——不然猫等于白养
+        saveData(data);
+        seal.replyToSender(ctx, msg, `🐱 ${target.roleName}家的猫警惕地盯着你，你偷菜失败了，作物安然无恙。\n（今天还能偷${STEAL_DAILY_LIMIT - p.stealCount}次）`);
+        return ret;
+    }
+
     const plot = target.plots[idx];
     const sell = sellPrice(plot.crop, getWorld());
     const stolen = Math.round(sell * STEAL_SHARE);
@@ -2145,24 +2211,274 @@ cmd_steal.solve = (ctx, msg) => {
 ext.cmdMap['偷菜'] = cmd_steal;
 
 // ========================
-// 指令：地牢入口 —— 纯悬念，还没有实际玩法，先埋个坑
+// 指令：地牢入口 / 地牢图鉴
 // ========================
 
 let cmd_dungeon = seal.ext.newCmdItemInfo();
 cmd_dungeon.name = '地牢入口';
-cmd_dungeon.help = '长露谷地底似乎藏着什么……（地牢系统开发中，暂不可进入）';
+cmd_dungeon.help = `地牢入口\n下探一层，回合制自动战斗结算，每天最多${DUNGEON_DAILY_FLOOR_LIMIT}层。\n` +
+    `每${DUNGEON_CHECKPOINT_INTERVAL}层是一场关底boss战，打赢才解锁电梯存档点；力竭会被送回最近的存档点（没有额外惩罚）。\n` +
+    `层与层之间HP不回满，只有开新一轮下潜才会满血。发送「地牢图鉴」看怪物和矿藏详情。`;
 cmd_dungeon.solve = (ctx, msg) => {
     const ret = seal.ext.newCmdExecuteResult(true);
-    seal.replyToSender(ctx, msg,
-        `🕳️ 长露谷边缘的杂草丛里，一扇锈迹斑斑的石门半掩着，往下延伸的台阶消失在黑暗中。\n` +
-        `门上刻着的纹路很旧了，看不出是什么年代的东西。\n\n` +
-        `——石门纹丝不动，进不去。\n\n` +
-        `（地牢系统开发中，敬请期待）`
-    );
+
+    const { groupId, roleName, key } = getCtxInfo(msg);
+    const data = getData();
+    const p = getPlayer(data, key, roleName, groupId);
+
+    const today = currentDayIndex();
+    if (p.dungeon.day !== today) {
+        p.dungeon.day = today;
+        p.dungeon.floorsToday = 0;
+        p.dungeon.floor = p.dungeon.bestFloor; // 新的一天，从存档点重新出发
+        p.dungeon.hp = null; // 强制满血重来
+    }
+
+    if (p.dungeon.floorsToday >= DUNGEON_DAILY_FLOOR_LIMIT) {
+        seal.replyToSender(ctx, msg,
+            `⛏️ 今天已经下探${DUNGEON_DAILY_FLOOR_LIMIT}层了，体力耗尽，明天再来吧。（存档点：第${p.dungeon.bestFloor}层）`);
+        return ret;
+    }
+
+    if (p.dungeon.floor >= DUNGEON_MAX_FLOOR) {
+        seal.replyToSender(ctx, msg,
+            `⛏️ 已经到了目前挖掘到的最深处（第${DUNGEON_MAX_FLOOR}层），再往下的通道还没打通，敬请期待后续更新。`);
+        return ret;
+    }
+
+    const stats = dungeonPlayerStats(p);
+    if (p.dungeon.hp == null) p.dungeon.hp = stats.maxHp;
+
+    const nextFloor = p.dungeon.floor + 1;
+    const isCheckpointFloor = nextFloor % DUNGEON_CHECKPOINT_INTERVAL === 0;
+    p.dungeon.floorsToday++;
+    p.dungeon.lifetimeRuns = (p.dungeon.lifetimeRuns || 0) + 1;
+
+    let text = `⛏️ 第${nextFloor}层\n`;
+
+    // 存档点楼层固定是关底怪，不参与挖矿/宝箱事件的随机——打赢boss才能解锁电梯。
+    if (!isCheckpointFloor && Math.random() < DUNGEON_EVENT_CHANCE) {
+        // 挖矿/宝箱事件，不打斗，直接拿收获
+        const oreCoin = randInt(5, 15 + nextFloor);
+        const leveledUp = earnCoins(p, oreCoin);
+        const loot = rollDungeonLoot();
+        if (loot) p.goods[loot] = (p.goods[loot] || 0) + 1;
+        p.dungeon.floor = nextFloor;
+        text += `发现一处矿脉，挖到了${oreCoin}金币${loot ? `，还捡到一块「${loot}」` : ''}！\n` +
+            `剩余HP：${p.dungeon.hp}/${stats.maxHp}${levelUpHint(leveledUp)}`;
+        saveData(data);
+        seal.replyToSender(ctx, msg, text);
+        return ret;
+    }
+
+    const monster = isCheckpointFloor ? dungeonBossFor(nextFloor) : dungeonMonsterFor(nextFloor);
+    const battle = resolveDungeonBattle({ atk: stats.atk, hp: p.dungeon.hp }, monster);
+
+    if (battle.win) {
+        const coin = randInt(monster.coinMin, monster.coinMax);
+        const leveledUp = earnCoins(p, coin);
+        let loot = rollDungeonLoot();
+        if (!loot && monster.isBoss) loot = DUNGEON_LOOT_NAMES[0]; // boss保底至少给最低档材料
+        if (loot) p.goods[loot] = (p.goods[loot] || 0) + 1;
+        p.dungeon.floor = nextFloor;
+        p.dungeon.hp = battle.playerHpLeft;
+        let checkpointLine = '';
+        if (isCheckpointFloor && nextFloor > p.dungeon.bestFloor) {
+            p.dungeon.bestFloor = nextFloor;
+            checkpointLine = `\n🛗 电梯延伸到了这里，解锁存档点第${nextFloor}层。`;
+        }
+        const bossPrefix = monster.isBoss ? '👹 关底！' : '';
+        text += `${bossPrefix}遭遇${monster.name}，激战${battle.roundsUsed}回合后击败了它！获得${coin}金币${loot ? `，还捡到一块「${loot}」` : ''}。${checkpointLine}\n` +
+            `剩余HP：${p.dungeon.hp}/${stats.maxHp}${levelUpHint(leveledUp)}`;
+    } else if (battle.fled) {
+        p.dungeon.hp = battle.playerHpLeft;
+        text += `与${monster.name}缠斗了${battle.roundsUsed}回合不分胜负，你见势不妙先撤了，这一层没有收获。\n` +
+            `剩余HP：${p.dungeon.hp}/${stats.maxHp}`;
+    } else {
+        text += `不敌${monster.name}，力竭倒地……被传送回了存档点第${p.dungeon.bestFloor}层，这一层没有收获，好在没有别的损失。`;
+        p.dungeon.floor = p.dungeon.bestFloor;
+        p.dungeon.hp = null; // 下次重新满血
+    }
+
+    saveData(data);
+    seal.replyToSender(ctx, msg, text);
     return ret;
 };
 ext.cmdMap['地牢入口'] = cmd_dungeon;
 ext.cmdMap['地牢'] = cmd_dungeon;
+
+let cmd_dungeon_codex = seal.ext.newCmdItemInfo();
+cmd_dungeon_codex.name = '地牢图鉴';
+cmd_dungeon_codex.help = '查看地牢的怪物分层、矿藏和规则说明';
+cmd_dungeon_codex.solve = (ctx, msg) => {
+    const ret = seal.ext.newCmdExecuteResult(true);
+    const { groupId, roleName, key } = getCtxInfo(msg);
+    const data = getData();
+    const p = getPlayer(data, key, roleName, groupId);
+    saveData(data);
+
+    const tierLines = DUNGEON_MONSTER_TIERS.map((t, i) => {
+        const from = i === 0 ? 1 : DUNGEON_MONSTER_TIERS[i - 1].maxFloor + 1;
+        return `第${from}~${t.maxFloor}层：${t.names.join('/')}（HP${t.hp} 攻${t.atk}，胜利得${t.coinMin}~${t.coinMax}金币）\n` +
+            `　　└ 第${t.maxFloor}层关底：${t.boss}（HP${Math.round(t.hp * DUNGEON_BOSS_HP_MULT)} 攻${Math.round(t.atk * DUNGEON_BOSS_ATK_MULT)}，胜利得${Math.round(t.coinMin * DUNGEON_BOSS_COIN_MULT)}~${Math.round(t.coinMax * DUNGEON_BOSS_COIN_MULT)}金币，稀有材料保底掉落）`;
+    });
+    const lootLines = DUNGEON_LOOT_NAMES.map(n =>
+        `${n}  值${DUNGEON_LOOT[n].value}金币  概率${(DUNGEON_LOOT[n].chance * 100).toFixed(1)}%`);
+
+    seal.replyToSender(ctx, msg,
+        `⛏️ 长露谷地牢图鉴\n${'─'.repeat(16)}\n` +
+        `你的存档点：第${p.dungeon.bestFloor}层，今天已下探${p.dungeon.floorsToday}/${DUNGEON_DAILY_FLOOR_LIMIT}层\n\n` +
+        `【怪物分层】\n${tierLines.join('\n')}\n\n` +
+        `【稀有材料】（打赢怪物或挖到矿脉时额外掉落，走成品仓库，可「卖成品」「送礼」）\n${lootLines.join('\n')}\n\n` +
+        `规则：每次「地牢入口」下探一层，回合制自动战斗；层与层之间HP不回满，力竭会被送回最近存档点，` +
+        `不扣钱不扣进度；每${DUNGEON_CHECKPOINT_INTERVAL}层是关底boss战，打赢才解锁新存档点；每天限${DUNGEON_DAILY_FLOOR_LIMIT}层，明天重置。`
+    );
+    return ret;
+};
+ext.cmdMap['地牢图鉴'] = cmd_dungeon_codex;
+
+// ========================
+// 指令：领养宠物 / 撸猫 / 遛狗 / 喂宠物 / 我的宠物
+// ========================
+
+let cmd_adopt_pet = seal.ext.newCmdItemInfo();
+cmd_adopt_pet.name = '领养宠物';
+cmd_adopt_pet.help = `领养宠物 猫/狗\n花${PET_ADOPT_COST}金币领养一只宠物，靠互动攒幸福度换被动加成`;
+cmd_adopt_pet.solve = (ctx, msg) => {
+    const ret = seal.ext.newCmdExecuteResult(true);
+    const raw = msg.message.replace(/^[。.]\S+\s*/, '').trim();
+    const typeName = raw.split(/\s+/)[0];
+    const cfg = PET_TYPES[typeName];
+    if (!cfg) {
+        seal.replyToSender(ctx, msg, `格式：领养宠物 猫/狗`);
+        return ret;
+    }
+
+    const { groupId, roleName, key } = getCtxInfo(msg);
+    const data = getData();
+    const p = getPlayer(data, key, roleName, groupId);
+
+    if (p.pets[typeName]) {
+        seal.replyToSender(ctx, msg, `你已经养了一只${cfg.emoji}${typeName}啦，不用重复领养。`);
+        return ret;
+    }
+    if (p.coins < PET_ADOPT_COST) {
+        seal.replyToSender(ctx, msg, `金币不够！领养${typeName}需要${PET_ADOPT_COST}金币，你只有${p.coins}金币。`);
+        return ret;
+    }
+
+    p.coins -= PET_ADOPT_COST;
+    p.pets[typeName] = newPet();
+    saveData(data);
+
+    seal.replyToSender(ctx, msg,
+        `${cfg.emoji} 领养成功！初始幸福度${PET_HAPPINESS_START}/${PET_HAPPINESS_MAX}，发送「${cfg.touchVerb}」或「喂宠物 ${typeName}」提升幸福度——幸福度越高，${cfg.effect}越多。\n剩余金币：${p.coins}`
+    );
+    return ret;
+};
+ext.cmdMap['领养宠物'] = cmd_adopt_pet;
+
+function registerPetTouchCmd(typeName) {
+    const cfg = PET_TYPES[typeName];
+    const cmd = seal.ext.newCmdItemInfo();
+    cmd.name = cfg.touchVerb;
+    cmd.help = `${cfg.touchVerb}\n和你养的${typeName}互动，幸福度+${PET_TOUCH_GAIN}（冷却${Math.round(PET_TOUCH_COOLDOWN / 3600000)}小时），不花钱`;
+    cmd.solve = (ctx, msg) => {
+        const ret = seal.ext.newCmdExecuteResult(true);
+        const { groupId, roleName, key } = getCtxInfo(msg);
+        const data = getData();
+        const p = getPlayer(data, key, roleName, groupId);
+        const pet = p.pets[typeName];
+        if (!pet) {
+            seal.replyToSender(ctx, msg, `你还没有${typeName}，发送「领养宠物 ${typeName}」先领养一只吧（${PET_ADOPT_COST}金币）。`);
+            return ret;
+        }
+
+        const now = Date.now();
+        if (pet.lastTouchAt && now - pet.lastTouchAt < PET_TOUCH_COOLDOWN) {
+            seal.replyToSender(ctx, msg, `${typeName}现在有点不耐烦，${fmtDuration(PET_TOUCH_COOLDOWN - (now - pet.lastTouchAt))}后再${cfg.touchVerb}吧。`);
+            return ret;
+        }
+
+        pet.lastTouchAt = now;
+        petGainHappiness(pet, PET_TOUCH_GAIN);
+        saveData(data);
+        seal.replyToSender(ctx, msg, `${cfg.emoji} ${cfg.touchVerb}成功，幸福度+${PET_TOUCH_GAIN}，现在是${pet.happiness}/${PET_HAPPINESS_MAX}。`);
+        return ret;
+    };
+    ext.cmdMap[cfg.touchVerb] = cmd;
+}
+PET_NAMES.forEach(registerPetTouchCmd);
+
+let cmd_feed_pet = seal.ext.newCmdItemInfo();
+cmd_feed_pet.name = '喂宠物';
+cmd_feed_pet.help = `喂宠物 猫/狗\n花${PET_FEED_COST}金币喂食，每天限一次，幸福度+${PET_FEED_GAIN}`;
+cmd_feed_pet.solve = (ctx, msg) => {
+    const ret = seal.ext.newCmdExecuteResult(true);
+    const raw = msg.message.replace(/^[。.]\S+\s*/, '').trim();
+    const typeName = raw.split(/\s+/)[0];
+    const cfg = PET_TYPES[typeName];
+    if (!cfg) {
+        seal.replyToSender(ctx, msg, `格式：喂宠物 猫/狗`);
+        return ret;
+    }
+
+    const { groupId, roleName, key } = getCtxInfo(msg);
+    const data = getData();
+    const p = getPlayer(data, key, roleName, groupId);
+    const pet = p.pets[typeName];
+    if (!pet) {
+        seal.replyToSender(ctx, msg, `你还没有${typeName}，发送「领养宠物 ${typeName}」先领养一只吧（${PET_ADOPT_COST}金币）。`);
+        return ret;
+    }
+
+    const today = currentDayIndex();
+    if (pet.lastFeedDay === today) {
+        seal.replyToSender(ctx, msg, `今天已经喂过${typeName}了，明天再来吧。`);
+        return ret;
+    }
+    if (p.coins < PET_FEED_COST) {
+        seal.replyToSender(ctx, msg, `金币不够！喂食需要${PET_FEED_COST}金币，你只有${p.coins}金币。`);
+        return ret;
+    }
+
+    p.coins -= PET_FEED_COST;
+    pet.lastFeedDay = today;
+    petGainHappiness(pet, PET_FEED_GAIN);
+    saveData(data);
+    seal.replyToSender(ctx, msg, `${cfg.emoji} 喂食成功，幸福度+${PET_FEED_GAIN}，现在是${pet.happiness}/${PET_HAPPINESS_MAX}。\n剩余金币：${p.coins}`);
+    return ret;
+};
+ext.cmdMap['喂宠物'] = cmd_feed_pet;
+
+let cmd_pet_status = seal.ext.newCmdItemInfo();
+cmd_pet_status.name = '我的宠物';
+cmd_pet_status.help = '查看已领养宠物的幸福度和被动加成';
+cmd_pet_status.solve = (ctx, msg) => {
+    const ret = seal.ext.newCmdExecuteResult(true);
+    const { groupId, roleName, key } = getCtxInfo(msg);
+    const data = getData();
+    const p = getPlayer(data, key, roleName, groupId);
+    saveData(data);
+
+    const lines = PET_NAMES.map(typeName => {
+        const cfg = PET_TYPES[typeName];
+        const pet = p.pets[typeName];
+        if (!pet) return `  ${cfg.emoji}${typeName}：还没领养（「领养宠物 ${typeName}」，${PET_ADOPT_COST}金币）`;
+        const happiness = petEffectiveHappiness(pet);
+        const bonus = (happiness / PET_HAPPINESS_MAX) * cfg.maxBonus;
+        return `  ${cfg.emoji}${typeName}：幸福度${happiness}/${PET_HAPPINESS_MAX}，${cfg.effect}${(bonus * 100).toFixed(1)}%`;
+    });
+
+    seal.replyToSender(ctx, msg,
+        `🐾 ${roleName}的宠物\n${'─'.repeat(16)}\n${lines.join('\n')}\n\n` +
+        `${PET_TYPES['猫'].touchVerb}/${PET_TYPES['狗'].touchVerb}：免费互动，冷却${Math.round(PET_TOUCH_COOLDOWN / 3600000)}小时，幸福度+${PET_TOUCH_GAIN}\n` +
+        `喂宠物 猫/狗：花${PET_FEED_COST}金币，每天一次，幸福度+${PET_FEED_GAIN}\n` +
+        `超过一天没互动，幸福度每天衰减${PET_DECAY_PER_DAY}点，记得常来看看。`
+    );
+    return ret;
+};
+ext.cmdMap['我的宠物'] = cmd_pet_status;
 
 // ========================
 // 定时检查：换天天气/市场推进 + 下雨免费浇水 + 成熟/产出提醒（每分钟一次）
@@ -2260,35 +2576,6 @@ function startFarmTimer() {
         }
         if (dirty) saveData(data);
     }, 60 * 1000);
-}
-
-// ========================
-// 更新公告：老玩家换到新版本后，触发任意一条长露谷指令时先收到一次"这次更新了什么"，
-// 之后不再重复弹。只对已经有存档的玩家生效——不主动 getPlayer() 建号，避免刚点了句
-// 「农场帮助」看看的人被悄悄拉进 p.groups / 农场排行。
-// ========================
-
-const _wrappedCmds = new Set();
-for (const _cmdName of Object.keys(ext.cmdMap)) {
-    const _cmd = ext.cmdMap[_cmdName];
-    if (_wrappedCmds.has(_cmd)) continue; // 同一个指令对象可能挂了多个别名（如"地牢入口"/"地牢"），只包一次
-    _wrappedCmds.add(_cmd);
-    const _originalSolve = _cmd.solve;
-    _cmd.solve = (ctx, msg) => {
-        try {
-            const { key } = getCtxInfo(msg);
-            const data = getData();
-            const p = data[key];
-            if (p && p.lastSeenVersion !== UPDATE_NOTICE_VERSION) {
-                p.lastSeenVersion = UPDATE_NOTICE_VERSION;
-                saveData(data);
-                seal.replyToSender(ctx, msg, UPDATE_NOTICE_TEXT);
-            }
-        } catch (e) {
-            console.error('[长露谷] 更新公告发送失败:', e);
-        }
-        return _originalSolve(ctx, msg);
-    };
 }
 
 startFarmTimer();
