@@ -267,7 +267,7 @@ body{background:#d8d8d6;letter-spacing:-.01em;}
       <a href="player_guide.html" target="_blank">玩家指南</a>
       <a href="changri_wishes.html">许愿墙</a>
     </div>
-    <div class="nav-meta">SYSTEM · v1.5.9</div>
+    <div class="nav-meta">SYSTEM · v1.6.0</div>
   </div>
 </nav>
 
@@ -283,7 +283,7 @@ body{background:#d8d8d6;letter-spacing:-.01em;}
     <div class="hero-stats">
       <div class="hero-stat"><b>10</b><span>个子系统</span></div>
       <div class="hero-stat"><b>200+</b><span>条指令</span></div>
-      <div class="hero-stat"><b>v1.5.9</b><span>当前版本</span></div>
+      <div class="hero-stat"><b>v1.6.0</b><span>当前版本</span></div>
     </div>
     <div class="hero-cta">
       <a class="btn btn-light" onclick="showTab('manual')">进入指令手册 →</a>
@@ -330,6 +330,10 @@ body{background:#d8d8d6;letter-spacing:-.01em;}
 
     <div id="tab-changelog" class="tab-panel active">
       <div id="verList"></div>
+      <div id="verArchiveToggle" style="display:none;text-align:center;padding:22px 0 0;">
+        <button class="btn btn-outline" onclick="toggleVerArchive()" id="verArchiveBtn"></button>
+      </div>
+      <div id="verArchiveList" style="display:none;"></div>
       <div class="ver-note">更早版本（1.5.3 及之前）的更新记录尚未整理，从 1.5.4 开始持续记录。</div>
     </div>
 
@@ -463,9 +467,19 @@ document.getElementById("subsysGrid").innerHTML = SUBSYSTEMS.map(s => `
 // ========================
 const CHANGELOG = [
   {
+    version: "1.6.0",
+    date: "2026-09-15",
+    latest: true,
+    groups: [
+      { type: "feat", title: "新增", items: [
+        "「我的待回」新增「还没回的信」提醒：谁给你写了正式信件、你还没回信给对方，会在摘要和详情里列出来（xx给你写了信还没回），跟原来的群/关系线待回提醒一起展示；给对方回一封信即视为回复，会自动清掉这条提醒",
+      ]},
+    ]
+  },
+  {
     version: "1.5.9",
     date: "2026-09-11",
-    latest: true,
+    latest: false,
     groups: [
       { type: "feat", title: "新增", items: [
         "新增管理员指令「重置次数」，统一改私约（按资源）/电话/短信/礼物的次数：私约、电话改的是「第N次记录」公告用的全局计数，短信、礼物改的是某个角色今日的次数，不用再分别记不同指令",
@@ -571,12 +585,12 @@ const CHANGELOG = [
 // 每个版本一个色号，循环使用；最新版本固定用主题色，第一眼就认出来
 const FOLDER_COLORS = ["#4247A8", "#1D7A44", "#8B5CF6", "#0F6E77", "#7A3416"];
 
-function renderChangelog() {
-  const root = document.getElementById("verList");
+const VER_RECENT_COUNT = 5;
+
+function renderVerFolder(v, i) {
   const tagLabel = { feat: "新增", fix: "修复", improve: "优化", chore: "清理" };
-  root.innerHTML = CHANGELOG.map((v, i) => {
-    const color = v.latest ? "var(--accent)" : FOLDER_COLORS[i % FOLDER_COLORS.length];
-    return `
+  const color = v.latest ? "var(--accent)" : FOLDER_COLORS[i % FOLDER_COLORS.length];
+  return `
     <div class="folder" data-idx="${i}">
       <button class="folder-tab" style="background:${color}" onclick="toggleFolder(${i})">
         <span class="folder-tab-chip" style="background:${color}">v${v.version}</span>
@@ -596,7 +610,21 @@ function renderChangelog() {
         </div>
       </div>
     </div>`;
-  }).join("");
+}
+
+function renderChangelog() {
+  const recent = CHANGELOG.slice(0, VER_RECENT_COUNT);
+  const archived = CHANGELOG.slice(VER_RECENT_COUNT);
+
+  document.getElementById("verList").innerHTML = recent.map((v, i) => renderVerFolder(v, i)).join("");
+
+  if (archived.length) {
+    document.getElementById("verArchiveList").innerHTML =
+      archived.map((v, i) => renderVerFolder(v, i + VER_RECENT_COUNT)).join("");
+    document.getElementById("verArchiveToggle").style.display = "";
+    document.getElementById("verArchiveBtn").textContent = `查看更早的 ${archived.length} 个版本 ▾`;
+  }
+
   // 默认展开最新版本
   const latestIdx = CHANGELOG.findIndex(v => v.latest);
   if (latestIdx >= 0) toggleFolder(latestIdx);
@@ -606,6 +634,16 @@ function toggleFolder(i) {
   const folder = document.querySelector(`.folder[data-idx="${i}"]`);
   folder.classList.toggle("open");
 }
+
+function toggleVerArchive() {
+  const list = document.getElementById("verArchiveList");
+  const btn = document.getElementById("verArchiveBtn");
+  const archivedCount = CHANGELOG.length - VER_RECENT_COUNT;
+  const showing = list.style.display !== "none";
+  list.style.display = showing ? "none" : "";
+  btn.textContent = showing ? `查看更早的 ${archivedCount} 个版本 ▾` : `收起更早的版本 ▴`;
+}
+
 renderChangelog();
 
 

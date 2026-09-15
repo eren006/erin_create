@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         长日写信综
 // @author       长日将尽
-// @version      1.6.1
+// @version      1.6.2
 // @description  独立的正式信件系统，支持发送信件、写信币赏金、配置管理
 // @timestamp    1778742000
 // @license      MIT
@@ -65,7 +65,7 @@ function getMainStorageInt(key, def)   { return getApi()?.getStorageInt(key, def
 // 本地扩展对象（用于注册命令）
 let ext = seal.ext.find("letter_system");
 if (!ext) {
-    ext = seal.ext.new("letter_system", "长日将尽", "1.6.1");
+    ext = seal.ext.new("letter_system", "长日将尽", "1.6.2");
     seal.ext.register(ext);
 }
 
@@ -84,6 +84,28 @@ function getMainStorage(key, defaultValue) {
 }
 
 function setMainStorage(key, value) { mainStorSet(key, value); }
+
+// fromRole 给 toRole 寄了一封信：记一笔「toRole 欠 fromRole 一个回复」；
+// 同时这封信也顺带回复了 fromRole 自己欠 toRole 的信（如果有的话）
+function recordLetterPendingReply(platform, fromRole, toRole) {
+    if (fromRole === toRole) return;
+    const store = mainKvGet("letter_pending_replies", {});
+    store[platform] = store[platform] || {};
+
+    // fromRole 这封信顺带回复了自己欠 toRole 的信
+    const fromOwed = (store[platform][fromRole] || []).filter(e => e.fromRole !== toRole);
+    if (fromOwed.length) store[platform][fromRole] = fromOwed;
+    else delete store[platform][fromRole];
+
+    // toRole 现在欠 fromRole 一个回复
+    const toOwed = store[platform][toRole] || [];
+    if (!toOwed.some(e => e.fromRole === fromRole)) {
+        toOwed.push({ fromRole, timestamp: Date.now() });
+        store[platform][toRole] = toOwed;
+    }
+
+    mainKvSet("letter_pending_replies", store);
+}
 
 // ========================
 // 【1】开关和初始化
@@ -547,6 +569,7 @@ function handleSendLetter(ctx, msg) {
     ];
     sendAtNoticeToRole(a_private_group, platform, ctx, receiver, "✉️ 你收到一封新信件，请查看下方合并转发内容");
     sendLetterForward(targetEntry[1], letterNodes, ctx);
+    recordLetterPendingReply(platform, senderRoleName, receiver);
 
     // 8.5 处理望远镜效果：抄录一份给施加人
     if (effectToHandle?.type === "telescope") {
@@ -796,6 +819,7 @@ cmd_quill_pen_modify.solve = (ctx, msg, cmdArgs) => {
     ];
     sendAtNoticeToRole(a_private_group, platform, ctx, letterData.receiverName, "✉️ 你收到一封新信件，请查看下方合并转发内容");
     sendLetterForward(targetEntry[1], modLetterNodes, ctx);
+    recordLetterPendingReply(platform, letterData.senderName, letterData.receiverName);
 
     // 同步到 rp_archive（若开关开启）
     if (isLetterSyncEnabled()) {

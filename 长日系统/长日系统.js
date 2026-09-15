@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         长日将尽系统
 // @author       长日将尽
-// @version      1.5.9
+// @version      1.6.0
 // @description  无
 // @timestamp    1778742000
 // @license      MIT
@@ -9,7 +9,7 @@
 
 let ext = seal.ext.find("changri")
 if (!ext) {
-    ext = seal.ext.new("changri", "长日将尽", "1.5.9");
+    ext = seal.ext.new("changri", "长日将尽", "1.6.0");
     // 注册扩展
     seal.ext.register(ext);
     ext.autoActive = true;
@@ -9767,7 +9767,7 @@ function handlePlayerGuideMsg(ctx, msg) {
         "【查看】",
         "玩家名单            查看所有角色",
         "地点查看            查看可用地点",
-        "我的待回            查看还没回的群/还没进的群/还没退的群，及今日心动信投递情况",
+        "我的待回            查看还没回的群/还没进的群/还没退的群/还没回的信，及今日心动信投递情况",
         "我的弧长            查看自己的回复速度统计",
         "我的数量            查看自己今天的私约/电话/短信/礼物/心愿次数，及全服今天总数",
         "我的                直接看以上三条的速查一览",
@@ -9859,7 +9859,7 @@ function handleBasicGuideMsg(ctx, msg) {
              "。撤回心动信 编号   撤回已投递的信",
              "查看信箱            查看收到的心动信",
              "",
-             "我的待回            先出一份数量摘要，再以合并转发列出每个群的群名和已经弧了多久（含还没进的群、已结束还没退的群、今日心动信投递情况）"],
+             "我的待回            先出一份数量摘要，再以合并转发列出每个群的群名和已经弧了多久（含还没进的群、已结束还没退的群、还没回的信、今日心动信投递情况）"],
         ];
         sendGuideForward(ctx, msg, "基础指南", sections);
     })();
@@ -10435,7 +10435,7 @@ ext.onNotCommandReceived = async (ctx, msg) => {
     if (raw === "我的") {
         return seal.replyToSender(ctx, msg,
             "📋 「我的」系列一览：\n" +
-            "我的待回      还没回的群/还没进的群/还没退的群，及今日心动信投递情况\n" +
+            "我的待回      还没回的群/还没进的群/还没退的群/还没回的信，及今日心动信投递情况\n" +
             "我的弧长      自己的历史平均回复速度统计\n" +
             "我的数量      自己今天的私约/电话/短信/礼物/心愿次数，及全服今天总数"
         );
@@ -10864,7 +10864,7 @@ cmd_remind_timeouts.solve =(ctx, msg, cmdArgs) => {
 };
 
 // ========================
-// 📋 我的待回：列出玩家自己还没回的群（超时的置顶）+ 今日心动信投递情况
+// 📋 我的待回：列出玩家自己还没回的群（超时的置顶）+ 还没回的信 + 今日心动信投递情况
 // ========================
 let cmd_my_pending = {};
 cmd_my_pending.solve = async (ctx, msg) => {
@@ -10944,6 +10944,14 @@ cmd_my_pending.solve = async (ctx, msg) => {
         }
     }
 
+    // 待回信件（xx给你写了信还没回，功能关闭时不显示）
+    let pendingLetters = [];
+    if (isLetterSystemEnabled()) {
+        const letterPendingStore = kvGet("letter_pending_replies", {});
+        pendingLetters = (letterPendingStore[platform] || {})[roleName] || [];
+        pendingLetters = [...pendingLetters].sort((a, b) => a.timestamp - b.timestamp);
+    }
+
     // 今日心动信（功能关闭时不显示）
     const globalDay = cachedGet("global_days") || "";
     let lovemailLine = "（当前未设置游戏天数）";
@@ -10959,7 +10967,7 @@ cmd_my_pending.solve = async (ctx, msg) => {
 
     // ---- 1. 先发一份摘要回执 ----
     const overCount = pending.filter(p => p.isOver).length;
-    const hasDetail = pending.length || notJoined.length || stillLingering.length || pendingRel.length;
+    const hasDetail = pending.length || notJoined.length || stillLingering.length || pendingRel.length || pendingLetters.length;
     const summaryLines = [`📋 ${roleName} 的待回速览`];
     if (!hasDetail) {
         summaryLines.push("🌙 当前没有等待你处理的事项，很守时哦～");
@@ -10968,6 +10976,7 @@ cmd_my_pending.solve = async (ctx, msg) => {
         if (notJoined.length) summaryLines.push(`🚪 待进群：${notJoined.length} 个`);
         if (stillLingering.length) summaryLines.push(`🚶 待退群：${stillLingering.length} 个`);
         if (pendingRel.length) summaryLines.push(`🔗 待回关系线：${pendingRel.length} 条`);
+        if (pendingLetters.length) summaryLines.push(`✉️ 待回信件：${pendingLetters.length} 封`);
     }
     if (isLoveMailEnabled()) summaryLines.push(`💌 心动信：${lovemailLine}`);
     seal.replyToSender(ctx, msg, summaryLines.join("\n"));
@@ -11017,6 +11026,12 @@ cmd_my_pending.solve = async (ctx, msg) => {
         nodes.push({ type: "node", data: { name: "待回管家", uin: botUid, content: "🔗 待回关系线" } });
         pendingRel.forEach(r => {
             nodes.push({ type: "node", data: { name: r.name, uin: botUid, content: `${r.name}已回复你的关系线\n💡 发送「查看关系线 ${r.name}」查看完整细节并回复` } });
+        });
+    }
+    if (pendingLetters.length) {
+        nodes.push({ type: "node", data: { name: "待回管家", uin: botUid, content: "✉️ 还没回的信" } });
+        pendingLetters.forEach(l => {
+            nodes.push({ type: "node", data: { name: l.fromRole, uin: botUid, content: `${l.fromRole}给你写了信还没回\n已经等了：${fmtElapsed(now - l.timestamp)}` } });
         });
     }
     if (sentToday.length) {
