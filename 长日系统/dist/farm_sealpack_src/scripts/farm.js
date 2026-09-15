@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         长露谷
 // @author       长日将尽
-// @version      2.6.0
-// @description  【Beta测试版，数值/规则可能随时调整】种地(32种作物)、浇水、养殖(鸡/羊/牛)、钓鱼、酿酒、做饭(25道菜谱)、逛商店的群互动小游戏，成就墙+家园装饰+宠物，四季日历+天气生态联动+浮动市场+节日活动+看电视解锁菜谱，作物/动物/酒/菜到期主动提醒，还能互相偷菜/送礼/下地牢
+// @version      2.7.0
+// @description  【Beta测试版，数值/规则可能随时调整】种地(32种常规作物+4种隐藏变异作物)、浇水、养殖(鸡/羊/牛)、钓鱼、酿酒、做饭(29道菜谱)、逛商店的群互动小游戏，成就墙+家园装饰+宠物，四季日历+天气生态联动+浮动市场+节日活动+看电视解锁菜谱，一键种地，作物/动物/酒/菜到期主动提醒，还能互相偷菜/送礼/下地牢
 // @license      MIT
 // ==/UserScript==
 
@@ -21,6 +21,10 @@
 // 2.6.0：新增宠物系统（猫/狗）——花金币领养，靠「撸猫/遛狗」（免费，有冷却）或「喂宠物」
 // （花钱，每天限一次）攒幸福度，幸福度越高被动加成越强：猫降低被偷菜成功率，狗降低钓鱼
 // 空军率。幸福度不额外起定时任务衰减，只在查询/结算时按闲置天数现算。
+// 2.7.0：新增4种隐藏变异作物——不在「农场日历」「商店」露面，种下对应的原型作物时才有
+// 一次极小概率被发现，解锁后永久可种，配了4道对应的高价值菜谱；同时把之前只在2.5.0设计
+// 稿里出现、从没实际发布过的「一键种地」补上：一次性付费解锁后，能把当季某种作物一口气
+// 种满所有空地，种子钱仍按实际种下的地块数单独扣。
 
 /**
  * 数据存储
@@ -49,6 +53,8 @@
  *   banner                     自定义招牌文字，纯观赏
  *   equippedDecoration         佩戴中的徽记（emoji，见 DECORATIONS），纯观赏
  *   pets: { 猫?: PetState, 狗?: PetState }   已领养的宠物，key 不存在=没养，见 PET_TYPES
+ *   unlockedMutantCrops: [ 作物名, ... ]   已发现的隐藏变异作物（全局永久，只涨不掉），见 MUTANT_CROPS
+ *   autoPlantUnlocked           是否已解锁「一键种地」（一次性付费解锁，见 AUTO_PLANT_UNLOCK_COST）
  *
  * PetState: { happiness, lastInteractDay, lastTouchAt, lastFeedDay }
  *   happiness 是"截至 lastInteractDay 那天"的值，实际值靠 petEffectiveHappiness() 按闲置天数现算。
@@ -89,7 +95,7 @@
 
 let ext = seal.ext.find('changri_farm');
 if (!ext) {
-    ext = seal.ext.new('changri_farm', '长日将尽', '2.6.0');
+    ext = seal.ext.new('changri_farm', '长日将尽', '2.7.0');
     seal.ext.register(ext);
     ext.autoActive = true;
 }
@@ -110,6 +116,10 @@ const WATER_BOOST_RATIO = 0.2;               // 浇一次减少 20% 剩余生长
 
 const STEAL_SHARE = 0.4;
 const STEAL_DAILY_LIMIT = 3;
+
+// 一键种地：花一次钱解锁，之后可以把当季某种作物一口气种满所有空地——种子钱仍按
+// 实际种下的地块数正常单独扣，这笔钱只买"解锁这个便利指令本身"。
+const AUTO_PLANT_UNLOCK_COST = 5000;
 
 // ========================
 // 配置：地牢（星露谷矿井风格）—— 单指令=下探一层，回合制自动结算，不做逐回合直播文本，
@@ -288,9 +298,33 @@ const CROPS = {
     '甘蔗': { season: '冬', cost: 20, growMs: 3 * 60 * 60 * 1000, sell: 73 },
     '芋头': { season: '冬', cost: 22, growMs: 4 * 60 * 60 * 1000, sell: 97 },
 };
-const CROP_NAMES = Object.keys(CROPS);
+const BASE_CROP_NAMES = Object.keys(CROPS); // 成就墙"全能农夫"按这32种算，不含下面的隐藏变异作物
 
-function cropsInSeason(season) { return CROP_NAMES.filter(n => CROPS[n].season === season); }
+// ========================
+// 配置：变异作物 —— 稀有隐藏作物，不在「农场日历」「商店」默认露面，只有在种下对应的
+// 原型作物（parent）那一刻，才有一次极小概率的"发现"判定；解锁是全局永久的（跟学会菜谱
+// 一样只涨不掉），解锁后随时能在「种地」里种。杂货店永远买不到——想要只能自己种运气。
+// ========================
+const MUTANT_CROPS = {
+    '赤晶草莓': { season: '春', cost: 60, growMs: 3 * 60 * 60 * 1000, sell: 260, mutant: true, parent: '草莓', unlockChance: 0.03 },
+    '虹光番茄': { season: '夏', cost: 45, growMs: 2.5 * 60 * 60 * 1000, sell: 220, mutant: true, parent: '番茄', unlockChance: 0.035 },
+    '虚空南瓜': { season: '秋', cost: 90, growMs: 8 * 60 * 60 * 1000, sell: 520, mutant: true, parent: '南瓜', unlockChance: 0.025 },
+    '寒霜白菜': { season: '冬', cost: 30, growMs: 2 * 60 * 60 * 1000, sell: 170, mutant: true, parent: '白菜', unlockChance: 0.03 },
+};
+Object.assign(CROPS, MUTANT_CROPS);
+const MUTANT_NAMES = Object.keys(MUTANT_CROPS);
+const CROP_NAMES = Object.keys(CROPS); // 含变异作物，市场行情/存在性判断等通用逻辑用这个
+
+// parent作物名 -> 由它触发判定的变异作物列表，「种地」种下parent那一刻用来查表roll。
+const MUTANT_BY_PARENT = {};
+MUTANT_NAMES.forEach(n => {
+    const parent = MUTANT_CROPS[n].parent;
+    (MUTANT_BY_PARENT[parent] || (MUTANT_BY_PARENT[parent] = [])).push(n);
+});
+
+// 「农场日历」「商店」只展示常规作物，变异作物解锁前完全不露面；商店也不收变异作物原料
+// （见 shopPrice），逼玩家真去地里碰运气，而不是花钱绕过去。
+function cropsInSeason(season) { return CROP_NAMES.filter(n => CROPS[n].season === season && !CROPS[n].mutant); }
 
 // ========================
 // 配置：养殖
@@ -428,6 +462,11 @@ const RECIPES = {
     '葡萄司康':   { need: { '葡萄': 1, '面粉': 1, '奶油': 1 },               cookMs: 2 * 60 * 60 * 1000, value: 310 },
     '核桃派':     { need: { '核桃': 1, '面粉': 1, '蜂蜜': 1 },               cookMs: 2.5 * 60 * 60 * 1000, value: 418 },
     '丰收盛宴':   { need: { '苹果': 1, '葡萄': 1, '核桃': 1, '蜂蜜': 1, '奶油': 1 }, cookMs: 4 * 60 * 60 * 1000, value: 920 },
+    // 变异作物菜谱：材料含隐藏变异作物，得先在地里撞大运解锁对应作物才能凑齐，价值也按变异作物的高身价走。
+    '赤晶草莓塔': { need: { '赤晶草莓': 1, '面粉': 1, '奶油': 1 },              cookMs: 2 * 60 * 60 * 1000, value: 620 },
+    '虹光番茄浓汤': { need: { '虹光番茄': 1, '奶油': 1 },                       cookMs: 50 * 60 * 1000, value: 515 },
+    '寒霜白菜卷': { need: { '寒霜白菜': 1, '蛋': 1 },                          cookMs: 40 * 60 * 1000, value: 387 },
+    '虚空南瓜浓汤': { need: { '虚空南瓜': 1, '香草': 1 },                       cookMs: 3.5 * 60 * 60 * 1000, value: 1188 },
 };
 const RECIPE_NAMES = Object.keys(RECIPES);
 
@@ -460,7 +499,7 @@ const TOWN_INGREDIENT_NAMES = Object.keys(TOWN_INGREDIENTS);
 // 查不到就是这样东西没法在商店买（比如已经酿好的酒/做好的菜，那些走「卖成品」「送礼」）。
 function shopPrice(name) {
     if (TOWN_INGREDIENTS[name] != null) return TOWN_INGREDIENTS[name];
-    if (CROPS[name]) return Math.round(CROPS[name].sell * SHOP_MARKUP);
+    if (CROPS[name] && !CROPS[name].mutant) return Math.round(CROPS[name].sell * SHOP_MARKUP); // 变异作物杂货店不卖，只能自己种
     const animalCfg = Object.values(ANIMALS).find(a => a.product === name);
     if (animalCfg) return Math.round(animalCfg.price * SHOP_MARKUP);
     return null;
@@ -559,7 +598,8 @@ const ACHIEVEMENTS = [
     { id: 'season3', name: '三季务农', desc: '在3个不同季节种过作物', check: p => seasonsCovered(p) >= 3 },
     { id: 'season4', name: '四季轮回', desc: '春夏秋冬都种过作物', check: p => seasonsCovered(p) >= 4 },
     { id: 'crop16', name: '作物收藏家', desc: '种过16种以上作物', check: p => (p.plantedCrops || []).length >= 16 },
-    { id: 'cropAll', name: '全能农夫', desc: `种过全部${CROP_NAMES.length}种作物`, check: p => (p.plantedCrops || []).length >= CROP_NAMES.length },
+    { id: 'cropAll', name: '全能农夫', desc: `种过全部${BASE_CROP_NAMES.length}种常规作物`, check: p => (p.plantedCrops || []).length >= BASE_CROP_NAMES.length },
+    { id: 'mutantAll', name: '变异学家', desc: `发现全部${MUTANT_NAMES.length}种隐藏变异作物`, check: p => MUTANT_NAMES.every(n => (p.unlockedMutantCrops || []).includes(n)) },
     { id: 'ranch1', name: '小小牧场主', desc: '同时养过鸡、羊、牛', check: p => ANIMAL_NAMES.every(t => p.animals[t].count > 0) },
     { id: 'ranchFull', name: '满编牧场', desc: '任意一种动物养到上限', check: p => ANIMAL_NAMES.some(t => p.animals[t].count >= ANIMALS[t].cap) },
     { id: 'fish1', name: '渔夫初体验', desc: '钓到第一条鱼', check: p => (p.caughtFish || []).length >= 1 },
@@ -591,7 +631,8 @@ const DECORATIONS = {
     '🌱': { name: '新手徽记', hint: '新玩家默认拥有', unlock: () => true },
     '💰': { name: '脱贫纪念章', hint: '还清欠款', unlock: p => p.debt.paidOff },
     '🎣': { name: '渔夫徽记', hint: `钓到全部${FISH_TABLE.length}种鱼`, unlock: p => (p.caughtFish || []).length >= FISH_TABLE.length },
-    '🌾': { name: '全能农夫徽记', hint: `种过全部${CROP_NAMES.length}种作物`, unlock: p => (p.plantedCrops || []).length >= CROP_NAMES.length },
+    '🌾': { name: '全能农夫徽记', hint: `种过全部${BASE_CROP_NAMES.length}种常规作物`, unlock: p => (p.plantedCrops || []).length >= BASE_CROP_NAMES.length },
+    '🧬': { name: '变异学家徽记', hint: `发现全部${MUTANT_NAMES.length}种隐藏变异作物`, unlock: p => MUTANT_NAMES.every(n => (p.unlockedMutantCrops || []).includes(n)) },
     '🍷': { name: '酒庄徽记', hint: '建好酒窖', unlock: p => p.brewery.unlocked },
     '🍳': { name: '大厨徽记', hint: `学会全部${RECIPE_NAMES.length}道菜谱`, unlock: p => p.learnedRecipes.length >= RECIPE_NAMES.length },
     '👑': { name: '首富勋章', hint: `达到 Lv.${MAX_LEVEL}`, unlock: p => calcLevel(p.totalEarned) >= MAX_LEVEL },
@@ -750,6 +791,8 @@ function newPlayer(roleName, groupId) {
         equippedDecoration: DEFAULT_DECORATION,
         dungeon: newDungeonState(),
         pets: {},
+        unlockedMutantCrops: [],
+        autoPlantUnlocked: false,
     };
 }
 
@@ -776,6 +819,8 @@ function getPlayer(data, key, roleName, groupId) {
     if (!p.equippedDecoration) p.equippedDecoration = DEFAULT_DECORATION;
     if (!p.dungeon) p.dungeon = newDungeonState();
     if (!p.pets) p.pets = {};
+    if (!p.unlockedMutantCrops) p.unlockedMutantCrops = [];
+    if (p.autoPlantUnlocked == null) p.autoPlantUnlocked = false;
     if (!p.groups) p.groups = [];
     if (roleName) p.roleName = roleName;
     if (groupId && !p.groups.includes(groupId)) p.groups.push(groupId);
@@ -865,8 +910,9 @@ cmd_help.solve = (ctx, msg) => {
         `📜 你继承了长露谷，但背着${DEBT_INITIAL}金币的欠款，「还债」还清就真正是你的了（没有期限，慢慢赚慢慢还）。\n` +
         `真正的长期目标是等级：靠终身累计赚的钱升级，1~100级，Lv.100 是"世界首富"——「等级」查看进度。\n\n` +
         `【种地】\n` +
-        `农场日历         季节、本季可种作物、实时收购价\n` +
-        `种地 作物名     在空地种下当季作物\n` +
+        `农场日历         季节、本季可种作物、实时收购价、已解锁的变异作物\n` +
+        `种地 作物名     在空地种下当季作物；种植特定作物时有极小概率发现隐藏的变异作物\n` +
+        `解锁一键种地 / 一键种地 作物名   一次性花${AUTO_PLANT_UNLOCK_COST}金币解锁后，把当季某种作物一口气种满所有空地\n` +
         `浇水 [编号]      给作物浇水加速生长，不填编号=浇所有能浇的地\n` +
         `收菜             收获所有成熟作物\n` +
         `扩地             花金币多开一块地（上限${MAX_PLOTS}块，价格逐次上涨）\n` +
@@ -930,15 +976,27 @@ cmd_calendar.name = '农场日历';
 cmd_calendar.help = '查看当前年份/季节与本季可种作物';
 cmd_calendar.solve = (ctx, msg) => {
     const ret = seal.ext.newCmdExecuteResult(true);
+    const { groupId, roleName, key } = getCtxInfo(msg);
+    const data = getData();
+    const p = getPlayer(data, key, roleName, groupId);
+    saveData(data);
+
     const cal = getCalendar();
     const world = getWorld();
     const list = cropsInSeason(cal.season);
-    seal.replyToSender(ctx, msg,
-        `📅 长露谷历\n${'─'.repeat(16)}\n` +
+    const cropLine = n => `  ${n}  ${fmtDuration(CROPS[n].growMs)}成熟  种子${CROPS[n].cost}金币  收购价${sellPrice(n, world)}金币`;
+
+    let text = `📅 长露谷历\n${'─'.repeat(16)}\n` +
         `第${cal.year}年 · ${cal.season}季 · 第${cal.dayInSeason}/${SEASON_DAYS}天 · 今日${world.weather}\n` +
         `（${cal.daysLeftInSeason}天后进入下一季）\n\n本季可种：\n` +
-        list.map(n => `  ${n}  ${fmtDuration(CROPS[n].growMs)}成熟  种子${CROPS[n].cost}金币  收购价${sellPrice(n, world)}金币`).join('\n')
-    );
+        list.map(cropLine).join('\n');
+
+    const unlockedMutants = MUTANT_NAMES.filter(n => CROPS[n].season === cal.season && p.unlockedMutantCrops.includes(n));
+    text += unlockedMutants.length > 0
+        ? `\n\n✨ 已解锁的变异作物：\n${unlockedMutants.map(cropLine).join('\n')}`
+        : `\n\n✨ 种植某些作物时有极小概率发现隐藏的变异作物，解锁后会出现在这里。`;
+
+    seal.replyToSender(ctx, msg, text);
     return ret;
 };
 ext.cmdMap['农场日历'] = cmd_calendar;
@@ -971,6 +1029,10 @@ cmd_plant.solve = (ctx, msg) => {
     const data = getData();
     const p = getPlayer(data, key, roleName, groupId);
 
+    if (crop.mutant && !p.unlockedMutantCrops.includes(cropName)) {
+        seal.replyToSender(ctx, msg, `「${cropName}」是还没发现的隐藏变异作物，种不了——多种${crop.parent}，也许会有意外收获。`);
+        return ret;
+    }
     if (p.coins < crop.cost) {
         seal.replyToSender(ctx, msg, `金币不够啦！种${cropName}需要${crop.cost}金币，你只有${p.coins}金币。`);
         return ret;
@@ -986,12 +1048,129 @@ cmd_plant.solve = (ctx, msg) => {
     const now = Date.now();
     p.plots[emptyIdx] = { crop: cropName, plantedAt: now, matureAt: now + crop.growMs, notified: false, lastWateredAt: null, groupId };
     if (!p.plantedCrops.includes(cropName)) p.plantedCrops.push(cropName); // 成就墙："种过多少种作物"用这个
+
+    // 变异作物发现判定：只有种下"原型"作物那一刻才会roll，命中就永久解锁对应的隐藏作物。
+    let discoverLine = '';
+    const candidates = (MUTANT_BY_PARENT[cropName] || []).filter(n => !p.unlockedMutantCrops.includes(n));
+    for (const mutantName of candidates) {
+        if (Math.random() < MUTANT_CROPS[mutantName].unlockChance) {
+            p.unlockedMutantCrops.push(mutantName);
+            discoverLine = `\n\n✨ 你在${cropName}地里发现了从没见过的变种！解锁隐藏作物「${mutantName}」，以后可以直接「种地 ${mutantName}」了。`;
+            break; // 一次种地最多触发一个，避免小概率连中时消息太长
+        }
+    }
+
     saveData(data);
 
-    seal.replyToSender(ctx, msg, `🌱 在第${emptyIdx + 1}块地种下了${cropName}，约${fmtDuration(crop.growMs)}后成熟。\n剩余金币：${p.coins}`);
+    seal.replyToSender(ctx, msg, `🌱 在第${emptyIdx + 1}块地种下了${cropName}，约${fmtDuration(crop.growMs)}后成熟。\n剩余金币：${p.coins}${discoverLine}`);
     return ret;
 };
 ext.cmdMap['种地'] = cmd_plant;
+
+// ========================
+// 指令：解锁一键种地 / 一键种地
+// ========================
+
+let cmd_unlock_auto_plant = seal.ext.newCmdItemInfo();
+cmd_unlock_auto_plant.name = '解锁一键种地';
+cmd_unlock_auto_plant.help = `解锁一键种地\n一次性花${AUTO_PLANT_UNLOCK_COST}金币解锁，之后「一键种地 作物名」能把当季这种作物一口气种满所有空地`;
+cmd_unlock_auto_plant.solve = (ctx, msg) => {
+    const ret = seal.ext.newCmdExecuteResult(true);
+    const { groupId, roleName, key } = getCtxInfo(msg);
+    const data = getData();
+    const p = getPlayer(data, key, roleName, groupId);
+
+    if (p.autoPlantUnlocked) {
+        seal.replyToSender(ctx, msg, `已经解锁过一键种地啦，发送「一键种地 作物名」直接用。`);
+        return ret;
+    }
+    if (p.coins < AUTO_PLANT_UNLOCK_COST) {
+        seal.replyToSender(ctx, msg, `金币不够！解锁一键种地需要${AUTO_PLANT_UNLOCK_COST}金币，你只有${p.coins}金币。`);
+        return ret;
+    }
+
+    p.coins -= AUTO_PLANT_UNLOCK_COST;
+    p.autoPlantUnlocked = true;
+    saveData(data);
+
+    seal.replyToSender(ctx, msg, `🌱 解锁成功！以后发送「一键种地 作物名」能把当季这种作物一口气种满所有空地（种子钱仍按种下的地块数单独扣）。\n剩余金币：${p.coins}`);
+    return ret;
+};
+ext.cmdMap['解锁一键种地'] = cmd_unlock_auto_plant;
+
+let cmd_auto_plant = seal.ext.newCmdItemInfo();
+cmd_auto_plant.name = '一键种地';
+cmd_auto_plant.help = `一键种地 作物名\n需要先「解锁一键种地」，把当季这种作物一口气种满所有空地`;
+cmd_auto_plant.solve = (ctx, msg) => {
+    const ret = seal.ext.newCmdExecuteResult(true);
+    const cropName = msg.message.replace(/^[。.]\S+\s*/, '').trim();
+    const crop = CROPS[cropName];
+    const cal = getCalendar();
+
+    if (!crop) {
+        seal.replyToSender(ctx, msg, `没有「${cropName}」这种作物。发送「农场日历」查看本季可种作物。`);
+        return ret;
+    }
+    if (crop.season !== cal.season) {
+        seal.replyToSender(ctx, msg,
+            `「${cropName}」是${crop.season}季作物，现在是${cal.season}季，种不了。\n发送「农场日历」看看本季能种什么。`
+        );
+        return ret;
+    }
+
+    const { groupId, roleName, key } = getCtxInfo(msg);
+    const data = getData();
+    const p = getPlayer(data, key, roleName, groupId);
+
+    if (!p.autoPlantUnlocked) {
+        seal.replyToSender(ctx, msg, `还没解锁一键种地，发送「解锁一键种地」花${AUTO_PLANT_UNLOCK_COST}金币解锁。`);
+        return ret;
+    }
+    if (crop.mutant && !p.unlockedMutantCrops.includes(cropName)) {
+        seal.replyToSender(ctx, msg, `「${cropName}」是还没发现的隐藏变异作物，种不了——多种${crop.parent}，也许会有意外收获。`);
+        return ret;
+    }
+
+    const emptyCount = p.plots.filter(pl => pl === null).length;
+    if (emptyCount === 0) {
+        seal.replyToSender(ctx, msg, `地都种满啦，先「收菜」腾地方，或者「扩地」开新地！`);
+        return ret;
+    }
+    const affordable = Math.floor(p.coins / crop.cost);
+    const plantCount = Math.min(emptyCount, affordable);
+    if (plantCount === 0) {
+        seal.replyToSender(ctx, msg, `金币不够啦！种一株${cropName}需要${crop.cost}金币，你只有${p.coins}金币。`);
+        return ret;
+    }
+
+    const now = Date.now();
+    let discoverLine = '';
+    let planted = 0;
+    for (let i = 0; i < p.plots.length && planted < plantCount; i++) {
+        if (p.plots[i] !== null) continue;
+        p.coins -= crop.cost;
+        p.plots[i] = { crop: cropName, plantedAt: now, matureAt: now + crop.growMs, notified: false, lastWateredAt: null, groupId };
+        planted++;
+
+        if (!discoverLine) {
+            const candidates = (MUTANT_BY_PARENT[cropName] || []).filter(n => !p.unlockedMutantCrops.includes(n));
+            for (const mutantName of candidates) {
+                if (Math.random() < MUTANT_CROPS[mutantName].unlockChance) {
+                    p.unlockedMutantCrops.push(mutantName);
+                    discoverLine = `\n\n✨ 你在${cropName}地里发现了从没见过的变种！解锁隐藏作物「${mutantName}」，以后可以直接「种地 ${mutantName}」了。`;
+                    break;
+                }
+            }
+        }
+    }
+    if (!p.plantedCrops.includes(cropName)) p.plantedCrops.push(cropName); // 成就墙："种过多少种作物"用这个
+    saveData(data);
+
+    const shortfallHint = planted < emptyCount ? `（还有${emptyCount - planted}块地没种，金币不够了）` : '';
+    seal.replyToSender(ctx, msg, `🌱 一口气种下了${planted}株${cropName}，约${fmtDuration(crop.growMs)}后成熟。${shortfallHint}\n剩余金币：${p.coins}${discoverLine}`);
+    return ret;
+};
+ext.cmdMap['一键种地'] = cmd_auto_plant;
 
 // ========================
 // 指令：浇水
