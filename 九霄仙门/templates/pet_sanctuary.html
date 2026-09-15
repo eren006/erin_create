@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}灵兽峰 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:6px">灵兽峰</h3>
+  <p class="muted">身边最多同时带{{ roster_cap }}只灵宠出战/训养,多的先进临时驿站,24小时内不处理会自动移入灵兽峰安置——灵兽峰里的灵宠仍可探视,只是不能再出战或训养。</p>
+  {% if can_adopt %}
+  <form method="post" action="{{ url_for('pet_adopt') }}" style="margin-top:10px;display:flex;gap:8px">
+    <input name="name" placeholder="给新灵宠取个名字(选填)" style="flex:1">
+    <button class="btn btn-primary">收养灵宠(体力{{ pet_adopt_cost }},今日剩{{ adopt_left }}次)</button>
+  </form>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">身边({{ roster|length }}/{{ roster_cap }})</h3>
+  {% if not roster %}<p class="muted">暂无</p>{% endif %}
+  {% for p in roster %}
+  <div style="display:flex;gap:10px;align-items:flex-start;margin-top:10px;padding-top:10px;border-top:1px solid var(--bd)">
+    <img src="{{ pet_image_url(p.pet_key) }}" alt="" style="width:48px;height:48px;border-radius:6px;object-fit:cover;flex-shrink:0">
+    <div style="flex:1">
+      <p>{{ pet_types[p.pet_key].label }}{% if p.pet_name %}·{{ p.pet_name }}{% endif %}
+        <span class="badge badge-gold">{{ pet_qualities[pet_quality(p.pet_key)].label }}</span>
+        Lv.{{ p.level }}/{{ pet_max_level(p.pet_key) }}
+        {% if char.equipped_pet_id == p.id %}<span class="badge badge-purple">出战中</span>{% endif %}</p>
+      {% if p.level < pet_max_level(p.pet_key) %}
+      <p class="muted" style="margin-top:2px">训养经验 {{ p.exp }} / {{ pet_exp_per_level }}</p>
+      {% endif %}
+      <form method="post" action="{{ url_for('pet_rename', pet_id=p.id) }}" style="margin-top:6px;display:flex;gap:6px">
+        <input name="name" placeholder="改名" value="{{ p.pet_name or '' }}" style="flex:1">
+        <button class="btn" style="padding:4px 10px">保存</button>
+      </form>
+      <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+        {% if p.level < pet_max_level(p.pet_key) %}
+        <form method="post" action="{{ url_for('pet_train', pet_id=p.id) }}">
+          <button class="btn" style="padding:4px 10px">训养(体力{{ pet_train_cost }},今日剩{{ train_left }}次)</button>
+        </form>
+        {% endif %}
+        {% if char.equipped_pet_id != p.id %}
+        <form method="post" action="{{ url_for('pet_set_active', pet_id=p.id) }}">
+          <button class="btn" style="padding:4px 10px">设为出战</button>
+        </form>
+        {% endif %}
+        <form method="post" action="{{ url_for('pet_relocate', pet_id=p.id, location='sanctuary') }}">
+          <button class="btn" style="padding:4px 10px">送去灵兽峰</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% if holding %}
+<div class="card" style="border-color:rgba(225,189,112,.5)">
+  <h3 style="margin-bottom:8px">临时驿站</h3>
+  <p class="muted" style="margin-bottom:6px">身边已满,这里的灵宠到期不处理会自动移入灵兽峰</p>
+  {% for p in holding %}
+  <div style="display:flex;gap:10px;align-items:flex-start;margin-top:10px;padding-top:10px;border-top:1px solid var(--bd)">
+    <img src="{{ pet_image_url(p.pet_key) }}" alt="" style="width:48px;height:48px;border-radius:6px;object-fit:cover;flex-shrink:0">
+    <div style="flex:1">
+      <p>{{ pet_types[p.pet_key].label }}{% if p.pet_name %}·{{ p.pet_name }}{% endif %}
+        <span class="badge badge-gold">{{ pet_qualities[pet_quality(p.pet_key)].label }}</span> Lv.{{ p.level }}</p>
+      <p class="muted" style="margin-top:2px">剩余约 {{ p.hours_left }} 小时后自动移入灵兽峰</p>
+      <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+        <form method="post" action="{{ url_for('pet_relocate', pet_id=p.id, location='roster') }}">
+          <button class="btn" style="padding:4px 10px">立即带回身边</button>
+        </form>
+        <form method="post" action="{{ url_for('pet_relocate', pet_id=p.id, location='sanctuary') }}">
+          <button class="btn" style="padding:4px 10px">直接送去灵兽峰</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h3 style="margin-bottom:8px">灵兽峰安置({{ sanctuary|length }})</h3>
+  {% if not sanctuary %}<p class="muted">暂无</p>{% endif %}
+  {% for p in sanctuary %}
+  <div style="display:flex;gap:10px;align-items:flex-start;margin-top:10px;padding-top:10px;border-top:1px solid var(--bd)">
+    <img src="{{ pet_image_url(p.pet_key) }}" alt="" style="width:48px;height:48px;border-radius:6px;object-fit:cover;flex-shrink:0">
+    <div style="flex:1">
+      <p>{{ pet_types[p.pet_key].label }}{% if p.pet_name %}·{{ p.pet_name }}{% endif %}
+        <span class="badge badge-gold">{{ pet_qualities[pet_quality(p.pet_key)].label }}</span> Lv.{{ p.level }}</p>
+      <form method="post" action="{{ url_for('pet_rename', pet_id=p.id) }}" style="margin-top:6px;display:flex;gap:6px">
+        <input name="name" placeholder="改名" value="{{ p.pet_name or '' }}" style="flex:1">
+        <button class="btn" style="padding:4px 10px">保存</button>
+      </form>
+      <form method="post" action="{{ url_for('pet_relocate', pet_id=p.id, location='roster') }}" style="margin-top:6px">
+        <button class="btn" style="padding:4px 10px">召回身边</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,52 @@
+{% extends "web/base.html" %}
+{% block title %}抓地精{% endblock %}
+{% block body %}
+<div class="card">
+  <h2>🧙 抓地精</h2>
+  <p class="muted">二年级前两天（第{{ start_day }}~{{ end_day }}天）限定的活动，德思礼/韦斯莱家除地精的经典桥段。
+     抓一次要等冷却，地精有不同稀有度，越稀有加隆越多。活动结束次日会给当时排名第一的人颁"地精之王"称号和绝版奖杯，
+     捕获总数第一的学院也会额外加院分。</p>
+
+  {% if not is_open %}
+  <p class="flash warn">现在不是第{{ start_day }}~{{ end_day }}天，活动还没开始或者已经结束了。</p>
+  {% else %}
+  <div class="stat"><span>我的累计捕获</span><b>{{ my_total }}</b></div>
+  <div class="stat"><span>今天已抓</span><b>{{ my_today }}</b></div>
+  {% if cooldown_remaining > 0 %}
+  <p class="muted">手还没缓过来，约{{ (cooldown_remaining // 60) + 1 }}分钟后可以再抓一次。</p>
+  <form method="post"><button disabled>抓地精</button></form>
+  {% else %}
+  <form method="post"><button>抓地精</button></form>
+  {% endif %}
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>🏆 全服排行榜</h2>
+  {% if leaderboard %}
+  <div class="scroll"><table>
+    <tr><th>#</th><th>姓名</th><th>学院</th><th>捕获数</th></tr>
+    {% for r in leaderboard %}
+    <tr>
+      <td>{{ loop.index }}</td>
+      <td>{{ r.name }}{% if r.surname %}·{{ r.surname }}{% endif %}</td>
+      <td>{{ r.house }}</td>
+      <td>{{ r.total }}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}
+  <p class="muted">还没有人抓到地精。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>🏠 全院排行榜</h2>
+  <div class="scroll"><table>
+    <tr><th>#</th><th>学院</th><th>捕获总数</th></tr>
+    {% for h in house_leaderboard %}
+    <tr><td>{{ loop.index }}</td><td>{{ h.house }}</td><td>{{ h.total }}</td></tr>
+    {% endfor %}
+  </table></div>
+</div>
+{% endblock %}

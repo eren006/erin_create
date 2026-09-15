@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ role_name }} · 我的主页</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+         max-width: 640px; margin: 0 auto; padding: 24px 16px 60px;
+         background: #faf8f5; color: #2b2620; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #17140f; color: #ece6dc; }
+    .card, .day { background: #24201a !important; border-color: #39332a !important; }
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; }
+  h2 { font-size: 1.1rem; margin: 28px 0 10px; }
+  .sub { color: #8a7f6e; font-size: 0.85rem; margin-bottom: 8px; }
+  .card { display: block; background: #fff; border: 1px solid #ecdfc8;
+          border-radius: 10px; padding: 12px 14px; margin-bottom: 8px;
+          text-decoration: none; color: inherit; }
+  .card:hover { border-color: #c9a866; }
+  .name { font-weight: 600; }
+  .tag { font-size: 0.75rem; padding: 2px 8px; border-radius: 999px;
+         background: #f1e6cc; color: #8a6d1f; margin-left: 6px; }
+  .tag.system { background: #e8d9f5; color: #6d3f9e; }
+  .meta { color: #8a7f6e; font-size: 0.82rem; margin-top: 4px; }
+  .day { background: #fff; border: 1px solid #ecdfc8; border-radius: 10px;
+         padding: 12px 14px; margin-bottom: 8px; }
+  .day-title { font-weight: 600; margin-bottom: 6px; }
+  .item { padding: 4px 0; border-top: 1px dashed #ecdfc8; font-size: 0.92rem; }
+  .item:first-of-type { border-top: none; }
+  .item .subtype { color: #b08d3e; font-weight: 600; }
+  .status-active { color: #7a9e5c; }
+  .empty { color: #8a7f6e; padding: 16px 0; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>👤 {{ role_name }} 的主页</h1>
+  <div class="sub">这个链接只有你能看，别转发给别人</div>
+
+  <h2>🔗 关系线（共 {{ rels|length }} 条 · 发起 {{ rels|selectattr('is_initiator')|rejectattr('is_system')|list|length }}/{{ config.max_relationships_per_user }}）</h2>
+  {% if rels %}
+    {% for r in rels %}
+    <a class="card" href="/my/{{ token }}/relationship/{{ r.other_name }}">
+      <span class="name">{{ r.other_name }}</span>
+      {% if r.is_system %}<span class="tag system">强制</span>
+      {% elif r.is_initiator %}<span class="tag">发起</span>
+      {% else %}<span class="tag">收到</span>{% endif %}
+      {% if r.line.confirmed %}<span class="tag">✅ 已确认</span>{% else %}<span class="tag">⏳ 未确认</span>{% endif %}
+      <div class="meta">{{ r.detail_count }} 条细节 · 共 {{ r.total_chars }} 字</div>
+    </a>
+    {% endfor %}
+  {% else %}
+    <div class="empty">还没有任何关系线</div>
+  {% endif %}
+
+  <h2>📅 时间线</h2>
+  {% if timeline %}
+    {% for g in timeline %}
+    <div class="day">
+      <div class="day-title">{{ g.day }} · {{ g.entries|length }} 场</div>
+      {% for item in g.entries %}
+      <div class="item">
+        <span class="subtype">【{{ item.subtype }}】</span>
+        与 {{ item.partner_role }}　{{ item.time_range }}
+        {% if item.place %}　📍{{ item.place }}{% endif %}
+        {% if item.status == 'active' %}<span class="status-active"> ・进行中</span>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty">还没有任何时间线记录</div>
+  {% endif %}
+</body>
+</html>

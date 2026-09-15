@@ -1,0 +1,36 @@
+{% extends "web/base.html" %}
+{% block title %}主题与小游戏 · 霍格沃茨{% endblock %}
+{% block body %}
+<style>
+.theme-hero{padding:26px 28px}.theme-hero h2{font-size:1.55rem}.theme-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.theme-card{min-height:360px;padding:0!important;display:flex;align-items:flex-end;background-position:center;background-size:cover!important;border-color:#d4b96b!important}
+.theme-card:before{display:none}.theme-shade{width:100%;padding:78px 20px 20px;background:linear-gradient(transparent,rgba(8,11,18,.9) 48%);color:#fff}
+.theme-shade h3{color:#fff;margin:0 0 4px;font-size:1.16rem}.theme-shade p{color:#ded8cb;margin:4px 0}.theme-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:13px}.theme-actions form{margin:0}.theme-game{font-size:.86rem;color:#f0d88a!important}.theme-price{float:right}.theme-card .ghost{color:#fff;border-color:#d8c894}.theme-card .ghost:hover{background:#fff;color:#28221c}
+@media(max-width:760px){.theme-grid{grid-template-columns:1fr}.theme-card{min-height:320px}}
+</style>
+<section class="card theme-hero">
+  <h2>🎨 魔法主题商店</h2>
+  <p>每款主题售价 <b>40 加隆</b>。购买后永久拥有，可随时换肤，并解锁一款专属小游戏。小游戏仅供娱乐，不额外产出加隆。</p>
+  {% if current_theme %}<form method="post"><input type="hidden" name="action" value="classic"><button class="ghost">换回学院经典主题</button></form>{% endif %}
+</section>
+<div class="theme-grid">
+{% for theme in themes %}
+  <article class="card theme-card" style="background-image:url('{{ url_for('static', filename=theme.image) }}')">
+    <div class="theme-shade">
+      <span class="tag theme-price">{{ theme.price }} 加隆</span>
+      <h3>{{ theme.icon }} {{ theme.name }}</h3>
+      <p>{{ theme.description }}</p>
+      <p class="theme-game">解锁《{{ theme.game_name }}》 · {{ theme.game_description }}</p>
+      <div class="theme-actions">
+      {% if not theme.owned %}
+        <form method="post"><input type="hidden" name="action" value="buy"><input type="hidden" name="theme" value="{{ theme.key }}"><button>40 加隆购买</button></form>
+      {% else %}
+        {% if theme.equipped %}<button disabled>正在使用</button>{% else %}<form method="post"><input type="hidden" name="action" value="equip"><input type="hidden" name="theme" value="{{ theme.key }}"><button>装备主题</button></form>{% endif %}
+        <a class="btn ghost" href="{{ url_for('theme_game_page', theme_key=theme.key) }}">开始小游戏</a>
+      {% endif %}
+      </div>
+    </div>
+  </article>
+{% endfor %}
+</div>
+{% endblock %}

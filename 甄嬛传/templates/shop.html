@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block title %}内务府{% endblock %}
+{% block body %}
+<h2>内务府</h2>
+<p class="muted">你手里有 {{ c.silver }} 两银子。月例每晚按位分发放。</p>
+<div class="scroll">
+<table>
+  <tr><th>物件</th><th>用处</th><th>价钱</th><th>手里</th><th></th></tr>
+  {% for k, it in ITEMS.items() %}
+  <tr>
+    <td style="font-family:var(--kai);font-size:17px;white-space:nowrap">{{ it.name }}{% if it.get('black') %}<br><span class="muted" style="font-family:var(--song)">托人从宫外带</span>{% endif %}</td>
+    <td>{{ it.desc }}</td>
+    <td style="white-space:nowrap">{{ it.price }} 两</td>
+    <td>{{ inv.get(k, 0) }}</td>
+    <td style="white-space:nowrap">
+      <form method="post" action="{{ url_for('shop_buy', key=k) }}" style="display:inline"><button class="plain" {{ 'disabled' if c.silver < it.price }}>买</button></form>
+      {% if it.usable and inv.get(k, 0) %}<form method="post" action="{{ url_for('shop_use', key=k) }}" style="display:inline"><button>用</button></form>{% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+</div>
+<p class="muted" style="margin-top:12px">玉如意和其他物件可以在「六宫」送给别人。</p>
+{% endblock %}

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}洞府地图 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">图</span>宗门地图</h3></div>
+  <p class="muted">入门弟子皆住宗门后山公共居所,拜入一峰(即有了师父)后,可搬进本峰弟子居所,与师兄弟姐妹比邻而居。</p>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">宗门后山公共居所</h3>
+  <p class="muted">人人皆可入住,无特殊加成</p>
+  {% if at_common %}<span class="badge badge-purple">当前居所</span>{% endif %}
+</div>
+
+<div class="cave-map-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-top:12px">
+  {% for loc in locations %}
+  <div class="card" style="{{ 'opacity:.5' if not loc.unlocked }}">
+    <h3 style="margin-bottom:6px">{{ loc.name }}弟子居所</h3>
+    <p class="muted" style="font-size:13px">
+      {% for k, v in loc.bonus.items() %}
+        {% if k == 'cave_qi' %}灵气{{ '+' if v>=0 else '' }}{{ v }}{% endif %}
+        {% if k == 'cave_purity' %}清净{{ '+' if v>=0 else '' }}{{ v }}{% endif %}
+        {% if k == 'cave_stability' %}稳固{{ '+' if v>=0 else '' }}{{ v }}{% endif %}
+        {% if k == 'cave_reputation_pct' %}声望+{{ v }}%{% endif %}
+        {{ ' · ' if not loop.last }}
+      {% endfor %}
+    </p>
+    {% if loc.current %}
+    <span class="badge badge-purple" style="margin-top:6px">当前居所</span>
+    {% elif loc.unlocked %}
+    <form method="post" action="{{ url_for('cave_relocate') }}" style="margin-top:8px">
+      <button class="btn btn-primary" style="width:100%">搬入此处</button>
+    </form>
+    {% else %}
+    <p class="muted" style="margin-top:6px">{% if peak_name %}非本峰弟子无法入住{% else %}需拜入此峰(有师父)方可入住{% endif %}</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

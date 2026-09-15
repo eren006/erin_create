@@ -1,0 +1,48 @@
+{% extends "web/base.html" %}
+{% block title %}{{ theme.game_name }} · 霍格沃茨{% endblock %}
+{% block body %}
+<style>
+.game-stage{min-height:420px;color:#fff;background:linear-gradient(rgba(7,10,18,.42),rgba(7,10,18,.72)),url('{{ url_for('static', filename=theme.image) }}') center/cover;border-color:#d4b96b;padding:24px}.game-stage h2{color:#fff;border-color:#ffffff45}.game-stage .muted{color:#e4dfd4}.game-panel{max-width:700px;margin:34px auto 0;padding:24px;background:rgba(9,12,20,.78);border:1px solid #ffffff38;border-radius:14px;text-align:center;backdrop-filter:blur(8px)}
+.game-score{font-size:1.1rem;color:#f0d88a;margin-bottom:14px}.game-board{min-height:190px;position:relative;display:grid;place-items:center;gap:10px}.game-board button{font-size:1.15rem}.candle-grid{display:grid;grid-template-columns:repeat(3,70px);gap:12px}.candle{height:64px;font-size:1.8rem;padding:0}.candle.dim{opacity:.34}.ingredient-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}.snitch{position:absolute;font-size:2rem;padding:8px;background:transparent;border:0;box-shadow:none}.paths{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:100%}.paths button{min-height:100px}.game-message{min-height:28px;margin-top:12px;color:#f0d88a}.leaderboard{margin-top:18px}.leaderboard h3{margin-top:0}.leaderboard tr.me td{background:color-mix(in srgb,var(--accent) 10%,transparent);font-weight:700}.leaderboard .empty{text-align:center;padding:20px}
+@media(max-width:560px){.game-panel{padding:16px}.candle-grid{grid-template-columns:repeat(3,58px)}.paths{grid-template-columns:1fr}}
+</style>
+<section class="card game-stage">
+  <h2>{{ theme.icon }} {{ theme.game_name }}</h2><p class="muted">{{ theme.game_description }}</p>
+  <div class="game-panel">
+    <div class="game-score">得分：<b id="score">0</b></div>
+    <div class="game-board" id="game-board"></div>
+    <div class="game-message" id="game-message">点击开始，准备接受挑战。</div>
+    <button type="button" id="start-game">开始游戏</button>
+  </div>
+</section>
+<section class="card leaderboard">
+  <h3>🏆 {{ theme.game_name }}排行榜</h3>
+  <p class="muted">完成过至少一局的玩家会出现在这里，按历史最高分排名。</p>
+  <div class="scroll"><table>
+    <thead><tr><th>名次</th><th>玩家</th><th>最高分</th><th>最近成绩</th><th>游玩次数</th></tr></thead>
+    <tbody id="leaderboard-body">
+    {% for row in leaderboard %}<tr class="{{ 'me' if row.is_me }}"><td>{{ loop.index }}</td><td>{{ row.name }}</td><td>{{ row.best_score }}</td><td>{{ row.last_score }}</td><td>{{ row.plays }}</td></tr>
+    {% else %}<tr><td class="empty muted" colspan="5">还没有人完成过游戏，来拿下第一名吧。</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+</section>
+<p><a class="btn ghost" href="{{ url_for('themes_page') }}">← 返回主题商店</a></p>
+{% endblock %}
+{% block foot %}
+<script>
+(() => {
+  const key={{ theme.key|tojson }}, scoreUrl={{ url_for('theme_game_score', theme_key=theme.key)|tojson }}, board=document.getElementById('game-board'), scoreEl=document.getElementById('score'), msg=document.getElementById('game-message'), start=document.getElementById('start-game'), leaderboardBody=document.getElementById('leaderboard-body');
+  let score=0, timer=null, step=0, answer=[];
+  const setScore=n=>{score=n;scoreEl.textContent=n};
+  const escapeHtml=value=>String(value).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+  const refreshBoard=rows=>{leaderboardBody.innerHTML=rows.length?rows.map((row,i)=>`<tr class="${row.is_me?'me':''}"><td>${i+1}</td><td>${escapeHtml(row.name)}</td><td>${row.best_score}</td><td>${row.last_score}</td><td>${row.plays}</td></tr>`).join(''):'<tr><td class="empty muted" colspan="5">还没有人完成过游戏。</td></tr>'};
+  const submitScore=async()=>{try{const body=new URLSearchParams({score:String(score)});const response=await fetch(scoreUrl,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});const data=await response.json();if(!data.ok)throw new Error(data.error||'提交失败');refreshBoard(data.leaderboard);if(data.result.new_best)msg.textContent+='　✨ 新的个人最高分！'}catch(error){msg.textContent+=`　（成绩未保存：${error.message}）`}};
+  const finish=text=>{clearInterval(timer);timer=null;msg.textContent=text;start.disabled=false;submitScore()};
+  function candle(){board.innerHTML='<div class="candle-grid">'+Array.from({length:9},(_,i)=>`<button class="candle" data-i="${i}">🕯️</button>`).join('')+'</div>';let left=20;msg.textContent='20秒内点亮变暗的蜡烛';timer=setInterval(()=>{left--;const all=[...board.querySelectorAll('.candle')];all.forEach(x=>x.classList.remove('dim'));all[Math.floor(Math.random()*all.length)].classList.add('dim');msg.textContent=`剩余 ${left} 秒`;if(left<=0)finish(`礼堂重新亮起来了！最终得分 ${score}`)},1000);board.onclick=e=>{if(e.target.classList.contains('dim')){setScore(score+1);e.target.classList.remove('dim')}}}
+  function potion(){const items=['水仙根','月长石','薄荷叶','独角兽毛'];answer=[...items].sort(()=>Math.random()-.5).slice(0,3);step=0;board.innerHTML='<div><p>配方：'+answer.join(' → ')+'</p><div class="ingredient-row">'+items.map(x=>`<button data-item="${x}">${x}</button>`).join('')+'</div></div>';msg.textContent='按配方顺序投入材料';board.onclick=e=>{const x=e.target.dataset.item;if(!x)return;if(x===answer[step]){step++;setScore(score+1);msg.textContent=step===answer.length?'完美魔药！重新开始可获得新配方。':'正确，继续';if(step===answer.length)finish('坩埚冒出了漂亮的银色蒸汽！')}else finish('顺序错了，坩埚发出了可疑的咕噜声。')};}
+  function quidditch(){let left=20;board.innerHTML='<button class="snitch" aria-label="金色飞贼">✨</button>';const s=board.querySelector('.snitch');const move=()=>{s.style.left=Math.floor(Math.random()*82)+'%';s.style.top=Math.floor(Math.random()*72)+'%'};move();s.onclick=()=>{setScore(score+1);move()};msg.textContent='20秒内抓住尽可能多的飞贼';timer=setInterval(()=>{left--;msg.textContent=`剩余 ${left} 秒`;if(left<=0)finish(`哨声响起！你抓到了 ${score} 次飞贼。`)},1000)}
+  function forest(){let rounds=0;const round=()=>{const correct=Math.floor(Math.random()*3);board.innerHTML='<div class="paths">'+['左侧小径','月光石桥','右侧林道'].map((x,i)=>`<button data-path="${i}">${i===correct?'✨ ':''}${x}</button>`).join('')+'</div>';board.onclick=e=>{if(e.target.dataset.path===undefined)return;if(+e.target.dataset.path===correct){setScore(score+1);msg.textContent='发光足迹延伸到了下一段路。'}else msg.textContent='树影晃动，你绕了一点远路。';rounds++;rounds>=5?finish(`守护神带你走出了禁林，答对 ${score}/5 段。`):setTimeout(round,450)}};round()}
+  start.onclick=()=>{clearInterval(timer);timer=null;setScore(0);start.disabled=true;board.onclick=null;({great_hall:candle,potions:potion,quidditch,forest}[key])()};
+})();
+</script>
+{% endblock %}

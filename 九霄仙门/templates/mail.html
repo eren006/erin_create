@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}信箱 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">笺</span>写新信</h3></div>
+  <p class="muted" style="margin-top:6px">选一位同门,给他/她写一封信</p>
+  <select onchange="if(this.value) location.href=this.value" style="margin-top:8px">
+    <option value="" selected>选择收信人...</option>
+    {% for m in members %}
+    <option value="{{ url_for('mail_compose', char_id=m.id) }}">{{ m.name }}({{ title_for(m.join_seq, m.gender) }})</option>
+    {% endfor %}
+  </select>
+</div>
+{% if not mails %}
+<div class="card muted" style="text-align:center">信箱空空如也</div>
+{% endif %}
+{% if hidden_count %}
+<p class="muted" style="text-align:center;font-size:12px">仅显示近{{ mails|length }}封,另有{{ hidden_count }}封较早的已处理信件未显示</p>
+{% endif %}
+{% for m in mails %}
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:baseline">
+    <strong>{% if m.direction == 'out' %}<span class="badge badge-purple" style="margin-right:6px">送出</span>{% endif %}{{ m.subject }}</strong>
+    {% if m.direction == 'out' %}
+    <span class="muted" style="font-size:11px">寄给 {{ m.recipient_name }} · {{ m.created_ts | fmt_ts }}</span>
+    {% else %}
+    <span class="muted" style="font-size:11px">{{ m.from_label }} · {{ m.created_ts | fmt_ts }}</span>
+    {% endif %}
+  </div>
+  {% if m.body %}<p class="muted" style="margin-top:6px">{{ m.body }}</p>{% endif %}
+  {% if m.direction == 'in' and m.attachment %}
+  <div style="margin-top:10px">
+    {% if m.claimed %}
+    <span class="badge badge-gold">已领取: {{ reward_desc(m.attachment) }}</span>
+    {% else %}
+    <form method="post" action="{{ url_for('mail_claim', mail_id=m.id) }}">
+      <button class="btn btn-primary" style="padding:4px 12px">领取附件({{ reward_desc(m.attachment) }})</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% if m.direction == 'in' and m.link_url %}
+  <a class="btn btn-primary" style="margin-top:8px;padding:4px 10px;font-size:12px;display:inline-block" href="{{ m.link_url }}">前往查看</a>
+  {% endif %}
+  {% if m.direction == 'in' and m.from_char_id %}
+  <a class="btn" style="margin-top:8px;padding:4px 10px;font-size:12px;display:inline-block" href="{{ url_for('mail_compose', char_id=m.from_char_id) }}">回信</a>
+  {% endif %}
+</div>
+{% endfor %}
+{% endblock %}

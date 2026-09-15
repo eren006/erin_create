@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}化婴 - 九霄仙门{% endblock %}
+{% block content %}
+
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">婴</span>化婴</h3></div>
+  <p class="muted" style="margin-top:6px">金丹至元婴,须历经备料、心魔试炼、碎丹、渡雷劫四段,前三段做完便锁定进度,只有渡劫才是真正的生死关——渡不过也不会打回原形,调养后可再渡。</p>
+</div>
+
+{% if char.realm_idx != 8 %}
+<div class="card"><p class="muted">尚未至化婴之时</p></div>
+{% elif char.exp < REALMS[9].exp %}
+<div class="card"><p class="muted">修为尚未攒够</p></div>
+
+{% elif char.infant_stage == 0 %}
+<div class="card">
+  <h3 style="margin-bottom:8px">一、备料</h3>
+  <p class="muted">需:{% for k,v in INFANT_GATHER_COST.items() %}{{ MATERIAL_LABELS.get(k,k) }}×{{ v }} {% endfor %}</p>
+  <form method="post" action="{{ url_for('infant_gather') }}" style="margin-top:8px">
+    <button class="btn btn-primary">备齐资源</button>
+  </form>
+</div>
+
+{% elif char.infant_stage == 1 %}
+<div class="card">
+  <h3 style="margin-bottom:8px">二、心魔试炼</h3>
+  <p>心魔幻化万千魔相,直逼本心。是直面而过,还是静心避其锋芒?</p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+    <form method="post" action="{{ url_for('infant_trial', choice='bold') }}" style="flex:1;min-width:140px">
+      <button class="btn btn-primary" style="width:100%">直面心魔(心境-{{ INFANT_TRIAL_BOLD_MIND_COST }},渡劫成功率+{{ 8 }}%)</button>
+    </form>
+    <form method="post" action="{{ url_for('infant_trial', choice='safe') }}" style="flex:1;min-width:140px">
+      <button class="btn" style="width:100%">静心避让(无损无益,稳妥渡过)</button>
+    </form>
+  </div>
+</div>
+
+{% elif char.infant_stage == 2 %}
+<div class="card">
+  <h3 style="margin-bottom:8px">三、碎丹</h3>
+  <p class="muted">金丹将碎,元婴初凝,一旦碎丹便再无退路。</p>
+  <form method="post" action="{{ url_for('infant_shatter') }}" style="margin-top:8px"
+        data-confirm-title="碎丹化婴" data-confirm-message="金丹将碎，元婴初凝，此后修行将进入下一阶段。"
+        data-confirm-warning="一旦碎丹便再无退路。" data-confirm-button="碎丹化婴" data-confirm-tone="danger">
+    <button class="btn btn-primary">碎丹化婴</button>
+  </form>
+</div>
+
+{% else %}
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">雷</span>四、渡雷劫</h3></div>
+  {% if weak %}
+  <p class="muted" style="margin-top:10px">元气尚虚,尚需调养 {{ (weak_remaining // 3600) + 1 }} 小时方可再渡</p>
+  <form method="post" action="{{ url_for('infant_recover') }}" style="margin-top:8px">
+    <button class="btn btn-primary" {{ 'disabled' if char.lingshi < 150 }}>服丹速愈(灵石150,立即恢复)</button>
+    {% if char.lingshi < 150 %}<p class="muted" style="margin-top:2px;font-size:12px">尚缺{{ 150 - char.lingshi }}灵石</p>{% endif %}
+  </form>
+  {% else %}
+  <div class="stat-block" style="margin-top:10px">
+    <div class="stat-line"><span>本次渡劫成功率</span><strong>{{ chance_pct }}%</strong></div>
+    <div class="bar-track"><div class="bar-fill bar-gold" style="width:{{ chance_pct }}%"></div></div>
+  </div>
+  <p class="muted" style="margin-top:6px">成功率来自:根基保底 + 灵巧身法 + 本命法宝护持 + 心魔试炼所得{% if char.infant_trial_buff %}(已生效){% endif %}</p>
+  {% if char.infant_fail_streak > 0 %}
+  <p class="muted" style="margin-top:4px">{% if guaranteed %}连续{{ char.infant_fail_streak }}次未渡,此次必定渡劫成功!{% else %}连续{{ char.infant_fail_streak }}次未渡,劫后凝练,把握渐增{% endif %}</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('infant_tribulation') }}" style="margin-top:14px">
+    <label style="display:flex;align-items:center;gap:8px;font-weight:normal">
+      <input type="checkbox" name="use_ward" value="1" style="width:auto">
+      使用{{ MATERIAL_LABELS[INFANT_WARD_MATERIAL] }}(成功率额外+{{ INFANT_WARD_CHANCE_BONUS_PCT }}%,用后即耗)
+    </label>
+    <button class="btn btn-primary" style="width:100%;margin-top:10px" {{ 'disabled' if char.stamina < INFANT_STAMINA_COST }}>渡雷劫(体力-{{ INFANT_STAMINA_COST }})</button>
+    {% if char.stamina < INFANT_STAMINA_COST %}<p class="muted" style="margin-top:4px">尚缺{{ INFANT_STAMINA_COST - char.stamina }}点体力</p>{% endif %}
+  </form>
+  <p class="muted" style="margin-top:8px;text-align:center">渡劫不成不会打回重炼,只需调养后再渡,连续失败有保底</p>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h3 style="margin-bottom:8px">材料兑换</h3>
+  {% set core_from = INFANT_CORE_EXCHANGE['from'] %}
+  {% set core_have = owned.get(core_from, 0) %}
+  <p class="muted">{{ MATERIAL_LABELS[core_from] }}×{{ INFANT_CORE_EXCHANGE.rate }} 可兑 {{ MATERIAL_LABELS[INFANT_CORE_MATERIAL] }}×1(古修洞府稳定积累)</p>
+  <form method="post" action="{{ url_for('infant_exchange', kind='core') }}" style="margin-top:6px">
+    <button class="btn" {{ 'disabled' if core_have < INFANT_CORE_EXCHANGE.rate }}>兑换{{ MATERIAL_LABELS[INFANT_CORE_MATERIAL] }}</button>
+    <p class="muted" style="margin-top:2px;font-size:12px">
+      现有{{ MATERIAL_LABELS[core_from] }}{{ core_have }}枚{% if core_have < INFANT_CORE_EXCHANGE.rate %},尚缺{{ INFANT_CORE_EXCHANGE.rate - core_have }}枚{% endif %}</p>
+  </form>
+  {% set ward_from = INFANT_WARD_EXCHANGE['from'] %}
+  {% set ward_have = owned.get(ward_from, 0) %}
+  <p class="muted" style="margin-top:10px">{{ MATERIAL_LABELS[ward_from] }}×{{ INFANT_WARD_EXCHANGE.rate }} 可兑 {{ MATERIAL_LABELS[INFANT_WARD_MATERIAL] }}×1</p>
+  <form method="post" action="{{ url_for('infant_exchange', kind='ward') }}" style="margin-top:6px">
+    <button class="btn" {{ 'disabled' if ward_have < INFANT_WARD_EXCHANGE.rate }}>兑换{{ MATERIAL_LABELS[INFANT_WARD_MATERIAL] }}</button>
+    <p class="muted" style="margin-top:2px;font-size:12px">
+      现有{{ MATERIAL_LABELS[ward_from] }}{{ ward_have }}枚{% if ward_have < INFANT_WARD_EXCHANGE.rate %},尚缺{{ INFANT_WARD_EXCHANGE.rate - ward_have }}枚{% endif %}</p>
+  </form>
+  <p class="muted" style="margin-top:10px">贡献{{ INFANT_CORE_CONTRIBUTION_COST }} 可兑 {{ MATERIAL_LABELS[INFANT_CORE_MATERIAL] }}×1(一辈子仅此一次,给不常去秘境的人留条路)</p>
+  <form method="post" action="{{ url_for('infant_exchange_contribution') }}" style="margin-top:6px">
+    <button class="btn" {{ 'disabled' if char.yuanying_core_contrib_used or char.contribution < INFANT_CORE_CONTRIBUTION_COST }}>
+      {{ '已用过此途' if char.yuanying_core_contrib_used else ('兑换' ~ MATERIAL_LABELS[INFANT_CORE_MATERIAL]) }}</button>
+    <p class="muted" style="margin-top:2px;font-size:12px">
+      {% if char.yuanying_core_contrib_used %}此途已用过,不再计贡献
+      {% else %}现有贡献{{ char.contribution }}{% if char.contribution < INFANT_CORE_CONTRIBUTION_COST %},尚缺{{ INFANT_CORE_CONTRIBUTION_COST - char.contribution }}点{% endif %}{% endif %}</p>
+  </form>
+</div>
+
+{% endblock %}

@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+{% block title %}子嗣 - 九霄仙门{% endblock %}
+{% block content %}
+
+<p class="muted" style="margin-bottom:10px">子嗣入束发后寿元悠长,在本宗时间尺度内不结算自然寿终——真正的风险只在襁褓、幼学这段年幼时光。</p>
+
+{% if companion %}
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">麟</span>求子</h3></div>
+  {% if companion.gen_capped %}
+  <p class="muted" style="margin-top:10px">血脉传承已至圆满,不必再求</p>
+  {% elif companion.growing %}
+  <p class="muted" style="margin-top:10px">{{ companion.growing.name }}尚未长成({{ offspring_stage(companion.growing.realm_idx) }}),且宽限些时日,长成后方可再求</p>
+  {% elif not companion.wait_ok %}
+  <p class="muted" style="margin-top:10px">结为道侣尚需 {{ companion.wait_days_left }} 日方可求子</p>
+  {% else %}
+  <p class="muted">求子非易事,需耗体力贡献,且非每试必成——但绝不会永远求不得。</p>
+  <div class="stat-block" style="margin-top:10px">
+    <div class="stat-line"><span>本次成功率</span><strong>{{ companion.chance_pct }}%</strong></div>
+    <div class="bar-track"><div class="bar-fill bar-gold" style="width:{{ companion.chance_pct }}%"></div></div>
+  </div>
+  {% if companion.streak > 0 %}
+  <p class="muted" style="margin-top:6px">
+    {% if companion.guaranteed %}连续{{ companion.streak }}次未得,此次天赐麟儿,必定求得!
+    {% else %}连续{{ companion.streak }}次未得,成功率已提升{% endif %}
+  </p>
+  {% endif %}
+  {% if companion.cooldown_left > 0 %}
+  <p class="muted" style="margin-top:6px">刚试过,稍候片刻再试</p>
+  {% elif conceive_daily_left <= 0 %}
+  <p class="muted" style="margin-top:6px">今日已求子{{ conceive_daily_cap }}次,明日再来</p>
+  {% else %}
+  <form method="post" action="{{ url_for('offspring_conceive') }}" style="margin-top:14px">
+    <input type="text" name="name" maxlength="12" placeholder="为孩子取名(留空则随缘)" style="width:100%;box-sizing:border-box">
+    <button class="btn btn-primary" style="width:100%;margin-top:8px" {{ 'disabled' if char.stamina < OFFSPRING_CONCEIVE_STAMINA_COST or char.contribution < OFFSPRING_CONCEIVE_CONTRIBUTION_COST }}>
+      求子(体力 -{{ OFFSPRING_CONCEIVE_STAMINA_COST }} · 贡献 -{{ OFFSPRING_CONCEIVE_CONTRIBUTION_COST }} · 今日剩{{ conceive_daily_left }}/{{ conceive_daily_cap }}次)
+    </button>
+    {% if char.stamina < OFFSPRING_CONCEIVE_STAMINA_COST %}<p class="muted" style="margin-top:2px;font-size:12px">尚缺{{ OFFSPRING_CONCEIVE_STAMINA_COST - char.stamina }}点体力</p>
+    {% elif char.contribution < OFFSPRING_CONCEIVE_CONTRIBUTION_COST %}<p class="muted" style="margin-top:2px;font-size:12px">尚缺{{ OFFSPRING_CONCEIVE_CONTRIBUTION_COST - char.contribution }}点贡献</p>{% endif %}
+  </form>
+  {% endif %}
+  {% endif %}
+</div>
+{% endif %}
+
+{% for mc in married_couples %}
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">麟</span>{{ mc.off.name }}与{{ mc.spouse_name }}求子</h3></div>
+  {% if mc.gen_capped %}
+  <p class="muted" style="margin-top:10px">血脉传承已至圆满,不再繁衍</p>
+  {% elif mc.growing %}
+  <p class="muted" style="margin-top:10px">{{ mc.growing.name }}尚未长成({{ offspring_stage(mc.growing.realm_idx) }}),且宽限些时日</p>
+  {% else %}
+  <div class="stat-block" style="margin-top:10px">
+    <div class="stat-line"><span>本次成功率</span><strong>{{ mc.chance_pct }}%</strong></div>
+    <div class="bar-track"><div class="bar-fill bar-gold" style="width:{{ mc.chance_pct }}%"></div></div>
+  </div>
+  {% if mc.streak > 0 %}
+  <p class="muted" style="margin-top:6px">{% if mc.guaranteed %}连续{{ mc.streak }}次未得,此次必定求得!{% else %}连续{{ mc.streak }}次未得,成功率已提升{% endif %}</p>
+  {% endif %}
+  {% if mc.cooldown_left > 0 %}
+  <p class="muted" style="margin-top:6px">刚试过,稍候片刻再试</p>
+  {% elif conceive_daily_left <= 0 %}
+  <p class="muted" style="margin-top:6px">今日已求子{{ conceive_daily_cap }}次,明日再来</p>
+  {% else %}
+  <form method="post" action="{{ url_for('offspring_conceive') }}" style="margin-top:14px">
+    <input type="hidden" name="via_offspring_id" value="{{ mc.off.id }}">
+    <input type="text" name="name" maxlength="12" placeholder="为孩子取名(留空则随缘)" style="width:100%;box-sizing:border-box">
+    <button class="btn btn-primary" style="width:100%;margin-top:8px" {{ 'disabled' if char.stamina < OFFSPRING_CONCEIVE_STAMINA_COST or char.contribution < OFFSPRING_CONCEIVE_CONTRIBUTION_COST }}>
+      求子(体力 -{{ OFFSPRING_CONCEIVE_STAMINA_COST }} · 贡献 -{{ OFFSPRING_CONCEIVE_CONTRIBUTION_COST }} · 今日剩{{ conceive_daily_left }}/{{ conceive_daily_cap }}次)
+    </button>
+    {% if char.stamina < OFFSPRING_CONCEIVE_STAMINA_COST %}<p class="muted" style="margin-top:2px;font-size:12px">尚缺{{ OFFSPRING_CONCEIVE_STAMINA_COST - char.stamina }}点体力</p>
+    {% elif char.contribution < OFFSPRING_CONCEIVE_CONTRIBUTION_COST %}<p class="muted" style="margin-top:2px;font-size:12px">尚缺{{ OFFSPRING_CONCEIVE_CONTRIBUTION_COST - char.contribution }}点贡献</p>{% endif %}
+  </form>
+  {% endif %}
+  {% endif %}
+</div>
+{% endfor %}
+
+{% macro offspring_card(o) %}
+  <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+    <p><strong>{{ o.name }}</strong>
+      {% if not o.alive %}<span class="badge">已故</span>
+      {% else %}<span class="badge badge-purple">{{ o.stage }}·{{ o.realm_name }}</span>{% endif %}
+      <span class="badge">{{ '男' if o.gender=='m' else '女' }}</span>
+    </p>
+    {% if o.alive %}
+    <form method="post" action="{{ url_for('offspring_rename', off_id=o.id) }}" style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <input type="text" name="name" maxlength="12" placeholder="改名" style="flex:1;min-width:100px">
+      <select name="pay_with" style="width:auto">
+        <option value="contribution">贡献-{{ OFFSPRING_RENAME_COST }}</option>
+        <option value="lingshi">灵石-{{ OFFSPRING_RENAME_COST }}</option>
+      </select>
+      <button class="btn" style="padding:4px 10px">改名</button>
+    </form>
+    {% endif %}
+    {% if o.alive %}
+    {% if o.manyue_revealed %}
+    <p class="muted" style="margin-top:4px">性子{{ o.personality_label }},素爱{{ o.hobby_label }}
+      {% if o.married %} · 已与{{ o.spouse_name }}结为连理{% endif %}</p>
+    <p class="muted" style="margin-top:3px">人物小传：{{ o.archetype }}{% if o.life_event %} · {{ o.life_event }}{% endif %}</p>
+    {% else %}
+    <p class="muted" style="margin-top:4px">秉性尚是个谜{% if o.married %} · 已与{{ o.spouse_name }}结为连理{% endif %}
+      {% if o.manyue_status == 'active' %} · 满月酒进行中,一天后揭晓{% endif %}</p>
+    {% if not o.manyue_status %}
+    <form method="post" action="{{ url_for('offspring_manyue_host', off_id=o.id) }}" style="margin-top:6px">
+      <button class="btn btn-primary">举办满月酒(全宗广发请柬,持续1天,探探孩子秉性)</button>
+    </form>
+    {% else %}
+    <a class="btn" style="margin-top:6px;display:inline-block" href="{{ url_for('offspring_manyue', off_id=o.id) }}">前往满月酒</a>
+    {% endif %}
+    {% endif %}
+    {% if o.frail_warned_ts %}
+    <p style="margin-top:4px;color:var(--red)">此子近来体弱,恐生变故——成长已暂停,须寻医或明确冒险教养,不会无声无息自行恶化</p>
+    {% endif %}
+    {% if o.npc_proposal_name %}
+    <p class="muted" style="margin-top:4px">游方散修{{ o.npc_proposal_name }}前来求亲</p>
+    {% endif %}
+    {% if o.married and o.revoke_left and o.revoke_left > 0 %}
+    <p class="muted" style="margin-top:4px">刚结亲,尚在磋商期({{ (o.revoke_left // 60) + 1 }}分钟内可撤回)</p>
+    {% endif %}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+      {% if o.frail_warned_ts %}
+      <form method="post" action="{{ url_for('offspring_heal', off_id=o.id) }}">
+        <button class="btn btn-primary" {{ 'disabled' if char.contribution < o.heal_cost }}>
+          寻医(贡献 -{{ o.heal_cost }}{% if o.heal_late %}·已逾宽限期{% endif %},必成)</button>
+        {% if char.contribution < o.heal_cost %}<p class="muted" style="margin-top:2px;font-size:12px">尚缺{{ o.heal_cost - char.contribution }}点贡献</p>{% endif %}
+      </form>
+      <form method="post" action="{{ url_for('offspring_teach_risky', off_id=o.id) }}"
+            data-confirm-title="冒险教养"
+            data-confirm-message="此次教养将消耗 {{ OFFSPRING_TEACH_STAMINA_COST }} 点体力，并且存在子嗣夭折的风险。"
+            data-confirm-warning="夭折结果无法撤销。" data-confirm-button="仍要冒险" data-confirm-tone="danger">
+        <button class="btn" style="color:var(--red);border-color:var(--red)" {{ 'disabled' if char.stamina < OFFSPRING_TEACH_STAMINA_COST }}>
+          冒险教养(体力 -{{ OFFSPRING_TEACH_STAMINA_COST }},有夭折风险)</button>
+        {% if char.stamina < OFFSPRING_TEACH_STAMINA_COST %}<p class="muted" style="margin-top:2px;font-size:12px">尚缺{{ OFFSPRING_TEACH_STAMINA_COST - char.stamina }}点体力</p>{% endif %}
+      </form>
+      {% elif o.realm_idx < OFFSPRING_REALM_CAP_IDX %}
+      <form method="post" action="{{ url_for('offspring_teach', off_id=o.id) }}">
+        <button class="btn btn-primary">教养(体力 -{{ OFFSPRING_TEACH_STAMINA_COST }})</button>
+      </form>
+      {% endif %}
+      {% if o.npc_proposal_name %}
+      <form method="post" action="{{ url_for('offspring_npc_marry_accept', off_id=o.id) }}">
+        <button class="btn btn-primary">应允此门婚事</button>
+      </form>
+      <form method="post" action="{{ url_for('offspring_npc_marry_decline', off_id=o.id) }}">
+        <button class="btn">回绝</button>
+      </form>
+      {% endif %}
+      {% if o.married and o.revoke_left and o.revoke_left > 0 %}
+      <form method="post" action="{{ url_for('offspring_revoke_marriage', off_id=o.id) }}"
+            data-confirm-title="撤回婚事" data-confirm-message="确定撤回这门婚事吗？"
+            data-confirm-warning="撤回后当前结亲关系将解除。" data-confirm-button="确认撤回">
+        <button class="btn">撤回此门婚事</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+{% endmacro %}
+
+{% set gen_labels = {1: '一代 · 子嗣', 2: '二代 · 孙辈'} %}
+
+{% if family_tree %}
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">谱</span>家族树</h3></div>
+  <p class="muted" style="margin-top:6px">{{ char.name }}</p>
+  <ul style="list-style:none;margin:8px 0 0;padding-left:14px;border-left:1px dashed var(--border)">
+    {% for branch in family_tree %}
+    <li style="margin-top:8px">
+      <span>├ <strong>{{ branch.parent.name }}</strong>
+        {% if not branch.parent.alive %}<span class="badge">已故</span>{% endif %}
+        {% if branch.parent.married %} · ♥ {{ branch.parent.spouse_name }}{% endif %}</span>
+      {% if branch.children %}
+      <ul style="list-style:none;margin:6px 0 0;padding-left:16px;border-left:1px dashed var(--border)">
+        {% for c in branch.children %}
+        <li style="margin-top:4px">└ {{ c.name }}{% if not c.alive %}<span class="badge" style="margin-left:4px">已故</span>{% endif %}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">嗣</span>膝下子嗣</h3></div>
+  {% if not mine %}<p class="muted" style="margin-top:10px">尚无子嗣</p>{% endif %}
+  {% for gen_num in generations.keys() | sort %}
+  <div style="margin-top:14px">
+    <h4 style="margin:0;color:var(--gold)">{{ gen_labels.get(gen_num, '第%d代' % gen_num) }}</h4>
+    {% for o in generations[gen_num] %}
+      {{ offspring_card(o) }}
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+
+{% if pending_received or pending_sent %}
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">缘</span>提亲往来</h3></div>
+  {% for p in pending_received %}
+  <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+    <span>{{ p.from_name }}家托人向{{ p.to_name }}提亲</span>
+    <div style="display:flex;gap:8px">
+      <form method="post" action="{{ url_for('offspring_proposal_accept', proposal_id=p.id) }}"><button class="btn btn-primary">应允</button></form>
+      <form method="post" action="{{ url_for('offspring_proposal_decline', proposal_id=p.id) }}"><button class="btn">回绝</button></form>
+    </div>
+  </div>
+  {% endfor %}
+  {% for p in pending_sent %}
+  <p style="margin-top:10px" class="muted">已向{{ p.to_name }}提亲,静候回应</p>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% set eligible_mine = mine | selectattr('alive') | selectattr('marriageable') | rejectattr('married') | list %}
+{% if eligible_mine and candidates %}
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">良</span>良缘录</h3></div>
+  <p class="muted">全宗其他家族适婚子嗣,可为膝下子嗣提亲联姻</p>
+  {% for mineo in eligible_mine %}
+  <p style="margin-top:12px"><strong>{{ mineo.name }}</strong>({{ mineo.stage }}·{{ mineo.realm_name }})待字闺中,可提亲对象:</p>
+  {% for c in candidates %}
+  <div style="margin-top:6px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+    <span>{{ c.name }}({{ '男' if c.gender=='m' else '女' }}·{{ offspring_stage(c.realm_idx) }}·{{ REALMS[c.realm_idx].name }})</span>
+    <form method="post" action="{{ url_for('offspring_propose', off_id=mineo.id, target_id=c.id) }}">
+      <button class="btn">提亲</button>
+    </form>
+  </div>
+  {% endfor %}
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}赠礼阁 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card gift-hero">
+  <div class="panel-head"><h3><span class="section-icon">礼</span>同心鉴·赠礼阁</h3><a class="btn" href="{{ url_for('bag_home') }}">返回行囊</a></div>
+  <p class="muted">亲手制作的礼物会生成独立品相与特质；秘境、人间游历和行侠途中，也可能遇见不可复制的稀有之物。</p>
+</div>
+
+{% if incoming %}
+<div class="card" style="border-color:rgba(225,189,112,.48)">
+  <div class="panel-head"><h3><span class="section-icon">笺</span>待你亲启</h3><span class="badge badge-gold">{{ incoming|length }} 份心意</span></div>
+  {% for gift in incoming %}
+  <article class="gift-card rare-{{ gift.rarity_key }}">
+    <div class="gift-card-head"><div><span class="badge badge-gold">{{ gift.rarity.label }}</span><strong>{{ gift.gift_name }}</strong></div><span>{{ gift.maker_name or '有缘人' }} 所赠</span></div>
+    <p>{{ gift.origin_text }}</p><p class="gift-trait">「{{ gift.trait.label }}」——{{ gift.trait.desc }}</p>
+    {% if gift.message %}<blockquote>{{ gift.message }}</blockquote>{% endif %}
+    <div class="gift-actions">
+      <form method="post" action="{{ url_for('gift_respond', gift_id=gift.id, response='accept') }}"><button class="btn btn-primary">欣然收下并珍藏</button></form>
+      <form method="post" action="{{ url_for('gift_respond', gift_id=gift.id, response='decline') }}" data-confirm-title="婉言谢绝" data-confirm-message="礼物将原样退回赠礼人。" data-confirm-button="确认谢绝"><button class="btn">婉言谢绝</button></form>
+    </div>
+  </article>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if outgoing %}
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">雁</span>已送出的心意</h3><span class="panel-note">对方尚未回应</span></div>
+  {% for gift in outgoing %}<article class="gift-card"><div class="gift-card-head"><strong>{{ gift.gift_name }}</strong><span>等待 {{ gift.recipient_name }} 亲启</span></div>{% if gift.message %}<blockquote>{{ gift.message }}</blockquote>{% endif %}<form method="post" action="{{ url_for('gift_recall', gift_id=gift.id) }}" style="margin-top:8px" data-confirm-title="收回礼物" data-confirm-message="对方将无法再收下这份礼物。" data-confirm-button="确认收回"><button class="btn">收回行囊</button></form></article>{% endfor %}
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">制</span>亲手制作</h3><span class="panel-note">品相与特质会随机生成</span></div>
+  <div class="gift-craft-grid">
+    {% for key, gift in gift_types.items() %}
+    <form method="post" action="{{ url_for('gift_craft', gift_type=key) }}" class="gift-craft">
+      <strong>{{ gift.label }}</strong><p class="muted">可能成为：{{ gift.names|join('、') }}</p>
+      <p>{% for material,qty in gift.cost.items() %}{{ material_labels.get(material,material) }} {{ materials.get(material,0) }}/{{ qty }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
+      <button class="btn btn-primary" {{ 'disabled' if not gift.can_craft }}>{{ '材料不足' if not gift.can_craft else '开炉制作' }}</button>
+    </form>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">囊</span>可赠之物</h3><span class="panel-note">每段羁绊每日可赠礼一次</span></div>
+  {% if not owned %}<p class="muted">行囊中暂无可赠礼物，可亲手制作，也可外出寻觅。</p>{% endif %}
+  {% for gift in owned %}
+  <article class="gift-card rare-{{ gift.rarity_key }}">
+    <div class="gift-card-head"><div><span class="badge badge-purple">{{ gift.source_label }}</span><strong>{{ gift.gift_name }}</strong></div><span>{{ gift.rarity.label }}</span></div>
+    <p>{{ gift.origin_text }}</p><p class="gift-trait">「{{ gift.trait.label }}」——{{ gift.trait.desc }}</p>
+    {% if gift.equip_slot %}
+    <p class="muted" style="margin-top:6px">{{ '剑穗挂在武器上' if gift.equip_slot == 'tassel' else '玉佩随身佩戴' }},攻击+1 防御+1
+      {% if gift.is_equipped %}<span class="badge badge-gold">佩戴中</span>{% endif %}</p>
+    {% if gift.is_equipped %}
+    <form method="post" action="{{ url_for('gift_unequip', slot=gift.equip_slot) }}" style="margin-top:4px"><button class="btn">卸下</button></form>
+    {% else %}
+    <form method="post" action="{{ url_for('gift_equip', gift_id=gift.id) }}" style="margin-top:4px"><button class="btn btn-primary">佩戴</button></form>
+    {% endif %}
+    {% endif %}
+    {% if bonds %}<form method="post" action="{{ url_for('gift_send', gift_id=gift.id) }}" class="gift-send">
+      <select name="bond_id" required>{% for bond in bonds %}<option value="{{ bond.id }}">赠予 {{ bond.partner.name }}（{{ BOND_TYPES[bond.bond_type].label }}）</option>{% endfor %}</select>
+      <input name="message" maxlength="80" placeholder="附上一句话（可选，最多80字）">
+      <button class="btn btn-primary">送出此礼</button>
+    </form>{% else %}<p class="muted">需先与同门结下羁绊，才能赠出。</p>{% endif %}
+  </article>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">藏</span>珍藏之物</h3><span class="panel-note">收下后永久保留来历与留言</span></div>
+  {% if not cherished %}<p class="muted">尚无珍藏，但总会有人把你放在心上。</p>{% endif %}
+  <div class="gift-collection">{% for gift in cherished %}<article class="gift-card rare-{{ gift.rarity_key }}"><div class="gift-card-head"><strong>{{ gift.gift_name }}</strong><span>{{ gift.maker_name }} 所赠</span></div><p class="gift-trait">{{ gift.rarity.label }} · {{ gift.trait.label }} · {{ gift.source_label }}</p>{% if gift.message %}<blockquote>{{ gift.message }}</blockquote>{% endif %}
+    {% if gift.equip_slot %}
+    <p class="muted" style="margin-top:6px">{{ '剑穗挂在武器上' if gift.equip_slot == 'tassel' else '玉佩随身佩戴' }},攻击+1 防御+1
+      {% if gift.is_equipped %}<span class="badge badge-gold">佩戴中</span>{% endif %}</p>
+    {% if gift.is_equipped %}
+    <form method="post" action="{{ url_for('gift_unequip', slot=gift.equip_slot) }}" style="margin-top:4px"><button class="btn">卸下</button></form>
+    {% else %}
+    <form method="post" action="{{ url_for('gift_equip', gift_id=gift.id) }}" style="margin-top:4px"><button class="btn btn-primary">佩戴</button></form>
+    {% endif %}
+    {% endif %}
+  </article>{% endfor %}</div>
+</div>
+{% endblock %}

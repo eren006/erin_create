@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+{% block title %}后台{% endblock %}
+{% block body %}
+<h2>后台登录</h2>
+<form method="post" class="sheet" style="max-width:380px">
+  <label for="u">账号</label><input id="u" name="username" required>
+  <label for="p">密码</label><input id="p" name="password" type="password" required>
+  <div style="margin-top:14px"><button>登录</button></div>
+</form>
+{% endblock %}

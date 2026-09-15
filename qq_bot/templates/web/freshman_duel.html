@@ -16,15 +16,15 @@
     <p><b>你的竞选进度</b></p>
     <p>总积分：<b>{{ my_duel.score }}</b>分</p>
     {% if positions %}
-    <p>位置：{{ positions[min(my_duel.progress, positions|length-1)] }}</p>
+    <p>位置：{{ positions[[my_duel.progress, positions|length-1]|min] }}</p>
     {% endif %}
     <div style="width: 100%; background: #ddd; height: 20px; border-radius: 3px; margin: 10px 0; overflow: hidden;">
-      <div style="width: {{ (my_duel.progress / (positions|length-1) * 100)|int }}%; height: 100%; background: #4CAF50;"></div>
+      <div style="width: {{ [(my_duel.progress / (positions|length-1) * 100)|int, 100]|min }}%; height: 100%; background: #4CAF50;"></div>
     </div>
   </div>
   {% endif %}
 
-  <form method="post" action="{{ url_for('freshman_duel_action') }}" style="margin: 15px 0;">
+  <form method="post" action="{{ url_for('freshman_duel_page') }}" style="margin: 15px 0;">
     {% if can_duel %}
     <button type="submit" class="primary">参加一次竞选</button>
     {% else %}

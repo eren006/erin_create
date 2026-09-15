@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}辨灵石 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="game-entry">
+<section class="entry-lore">
+  <div class="entry-kicker">仙途初启 · 叩石辨灵</div>
+  <h1 class="entry-title">山门辨灵石</h1>
+  <p class="entry-desc">山门外立着一方古朴灵石,相传能感应来者根骨。伸手叩石,石中灵光或应或寂——这一线缘分,只能亲手去试。</p>
+  <div class="entry-runes"><span>叩石而问</span><span>静候灵光</span><span>缘至入门</span></div>
+</section>
+<div class="card entry-panel" style="max-width:390px;width:100%;margin:0 auto">
+  <h3 style="margin-bottom:8px">第 {{ attempt_number }} 次叩石</h3>
+  <p class="muted" style="margin-bottom:16px">本次感应几率 <strong style="color:var(--accent, #c9a15a)">{{ chance }}%</strong></p>
+
+  {% if can_attempt %}
+  <form method="post">
+    <button class="btn btn-primary" style="width:100%">叩石辨灵</button>
+  </form>
+  {% else %}
+  <button class="btn" style="width:100%" disabled>灵石尚在沉寂,稍候再试</button>
+  <p class="muted" style="margin-top:10px;font-size:13px">灵石感应需要时间平复,约 {{ (wait_seconds // 60) }} 分钟后可再次尝试。</p>
+  {% endif %}
+</div>
+</div>
+{% endblock %}

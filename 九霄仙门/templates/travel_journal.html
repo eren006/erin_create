@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}游历志 - 九霄仙门{% endblock %}
+{% block content %}
+
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">志</span>游历志</h3>
+    <a href="{{ url_for('travel_home') }}" class="btn" style="padding:4px 10px">回到游历</a></div>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">地区熟悉度</h3>
+  {% for key, r in TRAVEL_REGIONS_BY_KEY.items() %}
+  <p class="muted" style="margin-top:4px">{{ r.label }}:{{ familiarity.get(key, 0) }}</p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">奇遇进展</h3>
+  {% if threads %}
+  {% for t in threads %}
+  <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+    <p><strong>{{ t.label }}</strong> <span class="badge {{ 'badge-gold' if t.status == 'completed' else ('badge-purple' if t.status == 'ready' else '') }}">{{ TRAVEL_THREAD_STATUS_LABELS.get(t.status, t.status) }}</span></p>
+    {% if t.last_choice_label %}<p class="muted" style="margin-top:4px">你的选择:{{ t.last_choice_label }}</p>{% endif %}
+    {% if t.last_result_text %}<p class="muted" style="margin-top:2px">{{ t.last_result_text }}</p>{% endif %}
+  </div>
+  {% endfor %}
+  {% else %}
+  <p class="muted" style="margin-top:6px">尚无奇遇线索,多出去走走或许会有意外收获。</p>
+  {% endif %}
+</div>
+{% endblock %}

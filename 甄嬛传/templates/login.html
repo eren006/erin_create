@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}入宫{% endblock %}
+{% block body %}
+<div style="display:flex;gap:26px;align-items:flex-start;flex-wrap:wrap">
+  <div class="pai big" aria-hidden="true">待选秀女</div>
+  <div style="flex:1;min-width:240px">
+    <h2>入宫</h2>
+    <p class="muted">雍正元年，宫中大选。登录后回到你的宫苑。</p>
+    <form method="post" class="sheet">
+      <label for="u">账号</label><input id="u" name="username" required autocomplete="username">
+      <label for="p">密码</label><input id="p" name="password" type="password" required autocomplete="current-password">
+      <div class="row" style="margin-top:14px"><button>进宫</button><a href="{{ url_for('register') }}">还没有账号？报名选秀</a></div>
+    </form>
+  </div>
+</div>
+{% endblock %}

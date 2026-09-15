@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block title %}我的消息{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-title">我的消息</div>
+  <div class="fh" style="margin-bottom:16px;">💡 订单接单/拒绝/完成、次数申请通过/拒绝、次数即将过期或已清除、交易和仲裁进展，都会在这里通知你</div>
+
+  {% if msgs %}
+  <div class="card" style="padding:0;overflow-x:auto;-webkit-overflow-scrolling:touch;">
+    {% for m in msgs %}
+    <div style="display:flex;gap:12px;align-items:flex-start;padding:14px 18px;{% if not loop.last %}border-bottom:1px solid var(--border);{% endif %}{% if not m.is_read %}background:color-mix(in srgb,var(--accent) 5%,transparent);{% endif %}">
+      <span style="font-size:18px;flex-shrink:0;">{{ INBOX_KIND_ICON.get(m.kind, '📩') }}</span>
+      <div style="flex:1;">
+        <div style="font-size:13px;line-height:1.6;">{{ m.content }}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px;">
+          {{ m.created_at|fmt }}
+          {% if m.order_no %}&nbsp;·&nbsp;<a href="{{ url_for('order_status', order_no=m.order_no) }}">查看订单</a>{% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card" style="text-align:center;color:var(--muted);padding:40px;">暂无消息</div>
+  {% endif %}
+</div>
+{% endblock %}

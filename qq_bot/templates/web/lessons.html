@@ -21,12 +21,18 @@
      同一门课每天前{{ per_subject }}节算成绩。
      🪄标记的实操课疲劳满了还能继续加练咒语，只是不再涨成绩。</p>
   <div class="scroll"><table>
-    <tr><th>学科</th><th>今日</th><th>经验</th><th>正在学的咒语</th><th></th></tr>
+    <tr><th>学科</th><th>今日</th><th>经验</th><th>期末预估</th><th>正在学的咒语</th><th></th></tr>
     {% for s in subjects %}
     <tr>
       <td>{% if s.is_spell %}🪄 {% endif %}{{ s.name }}<br><span class="muted">{{ s.category }}</span></td>
       <td>{{ s.today }}节<br><span class="muted">计分{{ s.scored }}/{{ per_subject }}</span></td>
       <td>{{ s.exp }}</td>
+      <td>
+        {% if s.score_preview %}
+        {{ s.score_preview.low_band }}~{{ s.score_preview.high_band }}
+        <br><span class="muted">{{ s.score_preview.low_pct }}%~{{ s.score_preview.high_pct }}%</span>
+        {% else %}<span class="muted">—</span>{% endif %}
+      </td>
       <td>
         {% if s.next_spell %}{{ s.next_spell[1] }}
           <span class="muted">{{ s.progress }}/{{ lessons_per_spell }}</span>

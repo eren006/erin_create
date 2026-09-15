@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}洞府 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">洞</span>{{ char.cave_name or '无名洞府' }}</h3><span class="badge badge-purple">{{ tier.label }}</span></div>
+  <p class="muted">{{ char.cave_scenery }}{% if char.peak_id %} · 与师兄弟同游{% endif %}</p>
+  <form method="post" action="{{ url_for('cave_rename') }}" style="margin-top:8px;display:flex;gap:8px">
+    <input name="name" placeholder="给洞府起个名字" maxlength="16" style="flex:1" value="{{ char.cave_name or '' }}">
+    <button class="btn">改名</button>
+  </form>
+  <a class="btn" style="margin-top:8px;display:inline-block" href="{{ url_for('cave_map') }}">前往洞府地图</a>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">灵石 <span data-stat="lingshi">{{ char.lingshi }}</span></h3>
+  <p class="muted">贡献 {{ char.contribution }}(可用)</p>
+  <form method="post" action="{{ url_for('lingshi_exchange') }}" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+    <input type="hidden" name="direction" value="to_lingshi">
+    <input name="amount" type="number" min="1" placeholder="贡献数量" style="flex:1;min-width:100px">
+    <button class="btn">兑灵石({{ contrib_rate }}贡献=1灵石)</button>
+  </form>
+  <form method="post" action="{{ url_for('lingshi_exchange') }}" style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+    <input type="hidden" name="direction" value="to_contribution">
+    <input name="amount" type="number" min="1" placeholder="灵石数量" style="flex:1;min-width:100px">
+    <button class="btn" {{ 'disabled' if exchanges_today >= exchange_limit }}>兑贡献({{ lingshi_rate }}灵石=1贡献,今日{{ exchanges_today }}/{{ exchange_limit }})</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">洞府三维</h3>
+  <div class="stat-block"><div class="stat-line"><span>灵气 {{ cave_qi }}</span><strong>闭关+{{ qi_bonus_pct }}%</strong></div></div>
+  <div class="stat-block"><div class="stat-line"><span>清净 {{ cave_purity }}</span><strong>心魔触发-{{ purity_reduction_pct }}%</strong></div></div>
+  <div class="stat-block"><div class="stat-line"><span>稳固 {{ cave_stability }}</span><strong>突破体力-{{ stability_discount }}</strong></div></div>
+  {% if next_tier %}
+  <p class="muted" style="margin-top:10px">下一品阶 {{ next_tier.label }}:需修为达 {{ realm_by_index(next_tier.realm_req).name }}
+    · 灵石{{ next_tier.lingshi_cost }}
+    {% for k, v in next_tier.materials.items() %} · {{ material_labels[k] }}×{{ v }}{% endfor %}
+    {% if next_tier.rank_req %} · 需门内档位达标{% endif %}
+  </p>
+  <form method="post" action="{{ url_for('cave_upgrade') }}" style="margin-top:8px">
+    <button class="btn btn-primary" style="width:100%">扩建洞府</button>
+  </form>
+  {% else %}
+  <p class="muted" style="margin-top:10px">已至洞天福地,道途尽头</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">灵材仓库</h3>
+  <div class="resource-strip" style="grid-template-columns:repeat(4,1fr)">
+    {% for k in MATERIAL_TIERS %}
+    <div class="resource-chip"><small>{{ material_labels[k] }}</small><strong>{{ materials.get(k, 0) }}</strong></div>
+    {% endfor %}
+  </div>
+  {% set ns = namespace(any=false) %}
+  {% for k, v in materials.items() %}{% if k not in MATERIAL_TIERS %}{% set ns.any = true %}{% endif %}{% endfor %}
+  {% if ns.any %}
+  <p class="muted" style="margin-top:8px">
+    {% for k, v in materials.items() %}{% if k not in MATERIAL_TIERS %}{{ material_labels.get(k, k) }} ×{{ v }}　{% endif %}{% endfor %}
+  </p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">聚灵阵</h3>
+  {% if array %}<p class="muted">当前:{{ array.label }}(灵气+{{ array.cave_qi }},日耗灵石{{ array.daily_upkeep }})</p>{% else %}<p class="muted">尚未建造</p>{% endif %}
+  {% if next_array %}
+  <p class="muted" style="margin-top:4px">升级至{{ next_array.label }}:灵石{{ next_array.lingshi_cost }}
+    {% for k, v in next_array.materials.items() %} · {{ material_labels[k] }}×{{ v }}{% endfor %}</p>
+  <form method="post" action="{{ url_for('cave_array_build') }}" style="margin-top:8px">
+    <button class="btn btn-primary" style="width:100%">{{ '建造' if not array else '升级' }}聚灵阵</button>
+  </form>
+  {% else %}
+  <p class="muted" style="margin-top:4px">已至最高等级</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">药圃</h3>
+  {% if garden_crop %}
+  <p class="muted">种有{{ garden_crop.label }}{% if garden_ready %},已成熟{% else %},尚在生长{% endif %}</p>
+  {% if garden_ready %}
+  <form method="post" action="{{ url_for('cave_garden_harvest') }}" style="margin-top:8px">
+    <button class="btn btn-primary" style="width:100%">收获</button>
+  </form>
+  {% endif %}
+  {% else %}
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+    {% for c in crops %}
+    {% if tier and char.cave_tier >= c.min_cave_tier %}
+    <form method="post" action="{{ url_for('cave_garden_plant', crop_key=c.key) }}" style="flex:1;min-width:120px">
+      <button class="btn" style="width:100%">种{{ c.label }}({{ c.hours }}h)</button>
+    </form>
+    {% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">洞府特征 / 装饰</h3>
+  {% if not traits %}<p class="muted">尚未发现特殊异象,继续扩建洞府或许有所收获</p>{% endif %}
+  {% for key in traits %}
+  {% set t = cave_traits_data[key] %}
+  <p style="margin-top:6px">
+    <span class="badge badge-gold">{{ t.label }}</span>
+    {% if t.decoration_key in owned_decorations %}
+    <span class="muted">已建成 {{ t.decoration_label }}</span>
+    {% else %}
+    <form method="post" action="{{ url_for('cave_decoration_build', trait_key=key) }}" style="display:inline">
+      <button class="btn" style="padding:4px 12px">建造{{ t.decoration_label }}(灵石{{ t.lingshi_cost }})</button>
+    </form>
+    {% endif %}
+  </p>
+  {% endfor %}
+</div>
+{% endblock %}

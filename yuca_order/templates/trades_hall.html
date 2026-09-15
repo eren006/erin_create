@@ -1,0 +1,178 @@
+{% extends 'base.html' %}
+{% block title %}交易大厅{% endblock %}
+{% block body %}
+<div class="page">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap;">
+    <div class="page-title" style="margin-bottom:0;">交易大厅</div>
+    {% if tenants|length > 1 %}
+    <div class="spacer"></div>
+    <span style="font-size:12px;color:var(--muted);">当前创作者：</span>
+    <select class="fs" style="width:auto;" onchange="location.href='{{ url_for('trades_hall') }}?t='+this.value">
+      {% for t in tenants %}
+      <option value="{{ t.id }}" {% if t.id == current_tenant.id %}selected{% endif %}>{{ t.display_name or t.slug }}</option>
+      {% endfor %}
+    </select>
+    {% endif %}
+  </div>
+
+  <details class="card-sm" style="margin-bottom:16px;">
+    <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--accent2);">❓ 使用说明（点击展开）</summary>
+    <div style="margin-top:10px;font-size:12px;color:var(--muted);line-height:2;">
+      <strong style="color:var(--text);">卖出次数</strong>：挂出后线下收款（比如微信/支付宝转账），备注里写清楚价格和收款方式。对方点"发起交易"后，你们私下确认收款完成，再由你点"转交次数"，对方才会真正到账。<br>
+      <strong style="color:var(--text);">交换次数</strong>：填好"出让数量"和"希望换回数量"发布。对方一点"发起交易"，系统会自动检查对方余额够不够——够就立刻双向到账；不够就自动取消，挂单会重新出现在大厅，你不需要做任何操作。<br>
+      <strong style="color:var(--text);">挂单期间</strong>：出让的次数会立即从原批次里扣掉占用，别人看不到你还剩多少，你自己"发布新挂单"里也不会重复算。撤回挂单或交易取消都会自动退回。<br>
+      <strong style="color:var(--text);">24 小时冷却</strong>：只针对从交易大厅换来的次数——刚交易到手的次数要等满 24 小时才能再拿去挂单或下单，所以不会马上出现在"从哪个批次出"的下拉里；单口领取、兑换码来的次数没有这个限制，随时可以挂出去。<br>
+      <strong style="color:var(--text);">申请仲裁</strong>：仅在交易已完成（已转交/已交换）后可用，比如"我把次数转过去了，对方却没付款"。一申请，对方在这笔交易里拿到的次数会立即冻结，不能再用；然后请联系 QQ <strong style="color:var(--text);">{{ arbitration_qq }}</strong> 提供转账记录、聊天记录等证据，等待超管处理（超管会选择把冻结的次数转回给你，或者驳回申请、解冻还给对方）。
+    </div>
+  </details>
+
+  <!-- 发布挂单 -->
+  <div class="card">
+    <div class="fl" style="margin-bottom:10px;">发布新挂单</div>
+    {% if my_batches %}
+    <form method="post" action="{{ url_for('trades_new') }}" id="trade-form">
+      <div class="g2">
+        <div class="fg">
+          <label class="fl">交易类型</label>
+          <select class="fs" name="kind" id="trade-kind" onchange="toggleWant()">
+            <option value="sell">卖出次数（线下收款，对方转账后你手动转交次数）</option>
+            <option value="exchange">交换次数（自动按数量匹配，双方即时到账）</option>
+          </select>
+        </div>
+        <div class="fg">
+          <label class="fl">从哪个批次出</label>
+          <select class="fs" name="batch_id" id="trade-batch">
+            {% for b in my_batches %}
+            <option value="{{ b.id }}" data-left="{{ b.units_left }}">
+              {{ b.units_left }} 次 · {{ b.expires_at|fmt if b.expires_at else '永久有效' }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="g2">
+        <div class="fg">
+          <label class="fl">出让数量</label>
+          <input class="fi" type="number" name="offer_units" min="1" placeholder="例如 3">
+        </div>
+        <div class="fg" id="want-field">
+          <label class="fl">希望换回数量</label>
+          <input class="fi" type="number" name="want_units" min="1" placeholder="例如 2">
+        </div>
+      </div>
+      <div class="fg">
+        <label class="fl">备注（卖出类型建议写明价格/收款方式）</label>
+        <input class="fi" name="note" placeholder="例如：3 元/次，微信转账">
+      </div>
+      <button class="btn btn-primary" type="submit">发布到大厅</button>
+    </form>
+    <script>
+    function toggleWant(){
+      document.getElementById('want-field').style.display =
+        document.getElementById('trade-kind').value === 'exchange' ? '' : 'none';
+    }
+    toggleWant();
+    </script>
+    {% else %}
+    <div class="muted" style="font-size:13px;">你暂无可挂出的次数（刚交易到的次数需过 24 小时冷却期才能再次挂单）</div>
+    {% endif %}
+  </div>
+
+  <!-- 大厅列表 -->
+  <div class="card" style="padding:0;overflow-x:auto;-webkit-overflow-scrolling:touch;">
+    <div style="padding:14px 18px 0;font-size:13px;font-weight:600;color:var(--accent2);">大厅挂单</div>
+    {% if listings %}
+    <table>
+      <thead><tr><th>发布人</th><th>QQ</th><th>类型</th><th>出让</th><th>期望</th><th>备注</th><th>时间</th><th></th></tr></thead>
+      <tbody>
+        {% for l in listings %}
+        <tr>
+          <td>{{ l.poster_name or l.poster_username }}</td>
+          <td style="font-size:12px;color:var(--muted);">{{ l.poster_contact or '—' }}</td>
+          <td>{% if l.kind=='sell' %}<span class="badge" style="background:color-mix(in srgb,var(--warn) 13%,transparent);color:var(--warn);">卖出</span>{% else %}<span class="badge" style="background:color-mix(in srgb,var(--accent) 13%,transparent);color:var(--accent2);">交换</span>{% endif %}</td>
+          <td class="mono">{{ l.offer_units }} 次 · {{ l.offer_expires_at|fmt if l.offer_expires_at else '永久' }}</td>
+          <td class="mono">{% if l.kind=='exchange' %}换 {{ l.want_units }} 次{% else %}—{% endif %}</td>
+          <td style="font-size:12px;color:var(--muted);max-width:180px;">{{ l.note or '—' }}</td>
+          <td style="font-size:12px;color:var(--muted);">{{ l.created_at|fmt }}</td>
+          <td>
+            {% if l.poster_id == uid %}
+            <form method="post" action="{{ url_for('trades_listing_cancel', lid=l.id) }}">
+              <button class="btn btn-ghost btn-sm" type="submit">撤回</button>
+            </form>
+            {% else %}
+            <form method="post" action="{{ url_for('trades_initiate', lid=l.id) }}"
+                  onsubmit="return confirm('确认发起这笔交易？');">
+              <button class="btn btn-green btn-sm" type="submit">发起交易</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div style="text-align:center;color:var(--muted);padding:30px;">暂无挂单</div>
+    {% endif %}
+  </div>
+
+  <!-- 我的交易 -->
+  <div class="card" style="padding:0;overflow-x:auto;-webkit-overflow-scrolling:touch;margin-top:16px;">
+    <div style="padding:14px 18px 0;font-size:13px;font-weight:600;color:var(--accent2);">我的交易</div>
+    {% if my_trades %}
+    <table>
+      <thead><tr><th>对方</th><th>类型</th><th>数量</th><th>状态</th><th>时间</th><th></th></tr></thead>
+      <tbody>
+        {% for t in my_trades %}
+        {% set is_poster = (t.poster_id == uid) %}
+        {% set other_name = t.taker_name or t.taker_username if is_poster else (t.poster_name or t.poster_username) %}
+        {% set other_contact = t.taker_contact if is_poster else t.poster_contact %}
+        <tr>
+          <td>{{ other_name }}<div style="font-size:11px;color:var(--muted);">{{ other_contact or '—' }}</div></td>
+          <td>{{ '卖出' if t.kind=='sell' else '交换' }}</td>
+          <td class="mono">
+            {{ t.offer_units }} 次{% if t.kind=='exchange' %} ⇄ {{ t.want_units }} 次{% endif %}
+          </td>
+          <td>
+            {% if t.status == 'pending' %}<span class="badge" style="background:color-mix(in srgb,var(--warn) 13%,transparent);color:var(--warn);">{% if t.kind=='sell' %}待转交{% else %}处理中{% endif %}</span>
+            {% elif t.status == 'exchanged' %}<span class="badge" style="background:color-mix(in srgb,var(--green) 13%,transparent);color:var(--green);">已交换</span>
+            {% elif t.status == 'transferred' %}<span class="badge" style="background:color-mix(in srgb,var(--green) 13%,transparent);color:var(--green);">已转交</span>
+            {% elif t.status == 'cancelled' %}<span class="badge" style="background:color-mix(in srgb,var(--red) 13%,transparent);color:var(--red);">已取消</span>
+            {% endif %}
+            {% if t.dispute_status == 'pending' %}<div style="margin-top:3px;"><span class="badge" style="background:color-mix(in srgb,var(--red) 13%,transparent);color:var(--red);">仲裁中</span></div>
+            {% elif t.dispute_status == 'resolved_reversed' %}<div style="margin-top:3px;"><span class="badge" style="background:color-mix(in srgb,var(--muted) 13%,transparent);color:var(--muted);">仲裁：已转回</span></div>
+            {% elif t.dispute_status == 'resolved_rejected' %}<div style="margin-top:3px;"><span class="badge" style="background:color-mix(in srgb,var(--muted) 13%,transparent);color:var(--muted);">仲裁：已驳回</span></div>
+            {% endif %}
+          </td>
+          <td style="font-size:12px;color:var(--muted);">{{ t.created_at|fmt }}</td>
+          <td>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              {% if t.status == 'pending' %}
+                {% if t.kind == 'sell' and is_poster %}
+                <form method="post" action="{{ url_for('trades_transfer', trade_id=t.id) }}"
+                      onsubmit="return confirm('确认已经私下收到对方付款，现在转交次数？');">
+                  <button class="btn btn-green btn-sm" type="submit">转交次数</button>
+                </form>
+                {% endif %}
+                <form method="post" action="{{ url_for('trades_cancel', trade_id=t.id) }}"
+                      onsubmit="return confirm('确认取消这笔交易？');">
+                  <button class="btn btn-ghost btn-sm" type="submit">取消</button>
+                </form>
+              {% elif t.status in ('transferred','exchanged') and not t.dispute_status %}
+                <form method="post" action="{{ url_for('trades_dispute', trade_id=t.id) }}"
+                      onsubmit="return confirm('确认申请仲裁？申请后对方相关次数会被冻结，请准备好交易证据联系 QQ {{ arbitration_qq }}。');">
+                  <input type="hidden" name="dispute_note" value="">
+                  <button class="btn btn-danger btn-sm" type="submit">申请仲裁</button>
+                </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div style="text-align:center;color:var(--muted);padding:30px;">暂无交易记录</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

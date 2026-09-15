@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}道途已尽 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card" style="max-width:480px;margin:40px auto;text-align:center">
+  <h3 style="margin-bottom:8px">道途已尽</h3>
+  {% if ever_ascended %}
+  <p class="muted">你已渡劫飞升,证道成仙,此身道途至此圆满,不再转世轮回。</p>
+  {% else %}
+  <p class="muted">你的转世机缘已然用尽,此身道途已至终点,无法再入九霄仙门。</p>
+  {% endif %}
+  <a href="{{ url_for('immortal_home') }}" class="btn" style="margin-top:10px;display:inline-block">前往仙籍</a>
+</div>
+<div class="card" style="max-width:480px;margin:0 auto">
+  <h3 style="margin-bottom:10px">历世道号</h3>
+  <table>
+    <tr><th>道号</th><th>称号</th><th>结局</th></tr>
+    {% for p in prior %}
+    <tr>
+      <td>{{ p.name }}</td>
+      <td>{{ title_for(p.join_seq, p.gender) }}</td>
+      <td>{{ '渡劫飞升' if p.ascended else ('寿终正寝' if p.deceased else '在世') }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

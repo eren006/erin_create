@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+{% block title %}交易仲裁{% endblock %}
+{% block body %}
+<div class="page">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+    <div class="page-title" style="margin-bottom:0;">交易仲裁</div>
+    <div class="spacer"></div>
+    <a href="{{ url_for('superadmin_index') }}" class="btn btn-ghost btn-sm">← 账户列表</a>
+  </div>
+  <details class="card-sm" style="margin-bottom:16px;">
+    <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--accent2);">❓ 使用说明（点击展开）</summary>
+    <div style="margin-top:10px;font-size:12px;color:var(--muted);line-height:2;">
+      有人申请仲裁时，"被诉方"在这笔交易里拿到的次数会<strong style="color:var(--text);">立即自动冻结</strong>（列表里不显示这一步，是后台已经处理好的），双方账号里都会看到通知。<br>
+      申请人应联系 QQ <strong style="color:var(--text);">{{ arbitration_qq }}</strong> 提供交易证据（转账记录、聊天记录等），核实无误后再处理：<br>
+      <strong style="color:var(--text);">冻结并转回</strong>：把被诉方冻结的那部分次数收回，转给申请人（如果对方在冻结前已经用掉一部分，只能追回剩下的数量）。<br>
+      <strong style="color:var(--text);">驳回</strong>：仲裁不成立，冻结的次数解冻还给原来的持有人。<br>
+      两种操作都会给双方各发一条消息通知，处理后不可撤销，请务必先核实证据再操作。
+    </div>
+  </details>
+
+  {% if trades %}
+  <div class="card" style="padding:0;overflow-x:auto;-webkit-overflow-scrolling:touch;">
+    <table>
+      <thead><tr>
+        <th>账户</th><th>申请人</th><th>QQ</th><th>被诉方</th><th>类型</th><th>次数</th><th>申请说明</th><th>状态</th><th>申请时间</th><th></th>
+      </tr></thead>
+      <tbody>
+        {% for t in trades %}
+        <tr>
+          <td style="font-size:12px;color:var(--muted);">{{ t.tenant_name or t.tenant_slug }}</td>
+          <td>{{ t.complainant_name }}</td>
+          <td style="font-size:12px;color:var(--muted);">
+            {{ t.poster_contact if t.dispute_by==t.poster_id else t.taker_contact }}
+          </td>
+          <td>{{ t.other_name }}</td>
+          <td>{{ '卖出' if t.kind=='sell' else '交换' }}</td>
+          <td class="mono">{{ t.offer_units }}{% if t.kind=='exchange' %} ⇄ {{ t.want_units }}{% endif %}</td>
+          <td style="font-size:12px;color:var(--muted);max-width:200px;">{{ t.dispute_note or '—' }}</td>
+          <td>
+            {% if t.dispute_status == 'pending' %}<span class="badge" style="background:color-mix(in srgb,var(--warn) 13%,transparent);color:var(--warn);">待处理</span>
+            {% elif t.dispute_status == 'resolved_reversed' %}<span class="badge" style="background:color-mix(in srgb,var(--green) 13%,transparent);color:var(--green);">已转回</span>
+            {% elif t.dispute_status == 'resolved_rejected' %}<span class="badge" style="background:color-mix(in srgb,var(--muted) 13%,transparent);color:var(--muted);">已驳回</span>
+            {% endif %}
+          </td>
+          <td style="font-size:12px;color:var(--muted);">{{ t.dispute_at|fmt }}</td>
+          <td>
+            {% if t.dispute_status == 'pending' %}
+            <div style="display:flex;gap:6px;">
+              <form method="post" action="{{ url_for('superadmin_trade_resolve', trade_id=t.id) }}"
+                    onsubmit="return confirm('确认冻结被诉方相关次数并转回给申请人？');">
+                <input type="hidden" name="action" value="reverse">
+                <button class="btn btn-danger btn-sm" type="submit">冻结并转回</button>
+              </form>
+              <form method="post" action="{{ url_for('superadmin_trade_resolve', trade_id=t.id) }}"
+                    onsubmit="return confirm('确认驳回该仲裁申请？次数将解冻给原持有人。');">
+                <input type="hidden" name="action" value="reject">
+                <button class="btn btn-ghost btn-sm" type="submit">驳回</button>
+              </form>
+            </div>
+            {% else %}
+              <span class="muted" style="font-size:12px;">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card" style="text-align:center;color:var(--muted);padding:40px;">暂无仲裁申请</div>
+  {% endif %}
+</div>
+{% endblock %}

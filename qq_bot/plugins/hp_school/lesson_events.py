@@ -12,6 +12,29 @@ class LessonEventError(Exception):
     pass
 
 
+FRIEND_STUDY_BONUS = 2
+
+
+def _friend_study_bonus(uid: str, subject_key: str) -> int:
+    """好朋友（双向友谊值都达标）今天也上过这门课，双方直接各+2经验——
+    这是独立于正常上课计分的奖励通道，不看这次上课有没有撞上每日单科/全科疲劳上限。
+    延迟导入 hp_social.friendship 避免 hp_school/hp_social 两个包互相在模块顶层导入。
+    每对好友+这门课+当天只发一次，靠 friendship.claim_study_bonus_once 去重，
+    不会因为两人当天各上好几节同科目课就重复领。"""
+    from plugins.hp_social import friendship
+
+    day = core_storage.get_current_day() or 1
+    for friend_uid in friendship.good_friends_of(uid):
+        if core_storage.get_lesson_count(friend_uid, subject_key, day) <= 0:
+            continue
+        if not friendship.claim_study_bonus_once(uid, friend_uid, subject_key, day):
+            continue
+        core_storage.add_subject_exp(uid, subject_key, FRIEND_STUDY_BONUS)
+        core_storage.add_subject_exp(friend_uid, subject_key, FRIEND_STUDY_BONUS)
+        return FRIEND_STUDY_BONUS
+    return 0
+
+
 # 三种处理风格会按情境轮换最佳解，避免永远点击同一个按钮。
 CHOICES = (
     ("严格按课本步骤", "你稳稳完成了要求，教授满意地点了点头。"),
@@ -190,10 +213,13 @@ def resolve(uid: str, token: str, position: int) -> dict:
             uid, row["token"], row["subject_key"], row["scenario_index"]
         )
         raise
-    # 每个情境轮换最佳策略；奖励只在当天仍有基础经验时发放，防止无限刷分。
-    best = row["scenario_index"] % len(CHOICES)
+    # 最佳选项按token（每次上课随机生成）决定，不跟情境文本绑定——
+    # 不然同一个情境反复出现，老玩家记熟"看到这句台词就点第几个"，
+    # 新人怎么追都追不上。基础分再叠一层随机浮动，同一个选择每次给分也不完全一样。
+    best = int(row["token"], 16) % len(CHOICES)
     distance = (position - best) % len(CHOICES)
-    bonus = (2, 0, 1)[distance] if result["gives_exp"] else 0
+    base_bonus = (2, 0, 1)[distance]
+    bonus = max(0, base_bonus + random.choice((-1, 0, 1))) if result["gives_exp"] else 0
     if bonus:
         result["exp_gained"] += bonus
         result["total_exp"] = core_storage.add_subject_exp(uid, row["subject_key"], bonus)
@@ -201,9 +227,15 @@ def resolve(uid: str, token: str, position: int) -> dict:
     if potion_bonus:
         result["exp_gained"] += potion_bonus
         result["total_exp"] += potion_bonus
+    # 好友结伴学习奖励是独立通道，不看这次上课是否算作计分课，也不看疲劳/单科上限。
+    friend_bonus = _friend_study_bonus(uid, row["subject_key"])
+    if friend_bonus:
+        result["exp_gained"] += friend_bonus
+        result["total_exp"] = core_storage.get_subject_exp(uid, row["subject_key"])
     result["event_result"] = CHOICES[position][1]
     result["event_bonus"] = bonus
     result["potion_bonus"] = potion_bonus
+    result["friend_bonus"] = friend_bonus
     result["herbology_material"] = (
         storage.claim_herbology_material(uid, core_storage.get_current_day() or 1)
         if result["gives_exp"] and row["subject_key"] == "herbology"

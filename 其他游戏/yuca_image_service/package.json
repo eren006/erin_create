@@ -1,0 +1,16 @@
+{
+  "name": "yuca-helper-image-server",
+  "version": "1.0.0",
+  "description": "语擦助手 + 恋综：战棋 共用的本地图片渲染服务",
+  "main": "board_server.js",
+  "scripts": {
+    "start": "node board_server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@napi-rs/canvas": "^1.0.8"
+  }
+}

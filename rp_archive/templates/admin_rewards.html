@@ -449,6 +449,8 @@ var tplData   = {{ bonus_templates | tojson }};
 var itemReg   = {{ item_registry  | tojson }};
 var equipReg  = {{ equip_registry | tojson }};
 var aliasTypes = {{ aliases | tojson }}.map(function(a){ return a.trigger; }).filter(Boolean);
+// 私约资源（默认资源当前名字 + 所有额外资源）：改名后这里自动跟着显示新名字，额外资源也天然出现在选项里
+var privateResourceNames = Object.values({{ private_resources | tojson }}).map(function(r){ return r.name; }).filter(Boolean);
 
 // 从 item_registry 提取货币列表
 var currencies = Object.entries(itemReg)
@@ -558,7 +560,7 @@ function renderEditor() {
     +'<div class="editor-name-row">'
     +'  <input type="text" id="e-name" placeholder="模版名称（如：基础字数奖励）" value="'+esc(tpl.name)+'">'
     +'  <select id="e-subtype" style="background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:5px 8px;font-size:12px;">'
-    +  ['通用','心意','官约','私约','电话'].concat(aliasTypes).map(function(s){return '<option value="'+s+'"'+((tpl.subtype||'通用')===s?' selected':'')+'>'+s+'</option>';}).join('')
+    +  ['通用','心意','官约','电话'].concat(privateResourceNames).concat(aliasTypes).map(function(s){return '<option value="'+s+'"'+((tpl.subtype||'通用')===s?' selected':'')+'>'+s+'</option>';}).join('')
     +'  </select>'
     +'  <label class="editor-enabled-toggle">'
     +'    <input type="checkbox" id="e-enabled" '+(tpl.enabled?'checked':'')+'> 启用'

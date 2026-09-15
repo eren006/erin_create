@@ -1,0 +1,1413 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>玩家功能一览</title>
+<style>
+:root {
+  --bg:#fbf6ef; --surface:#ffffff; --border:#eadfce;
+  --accent:#c0392b; --accent2:#8B4513; --text:#2c2c2c; --muted:#8a7f6e;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg:#17140f; --surface:#231f18; --border:#3a3428;
+    --accent:#f0a58c; --accent2:#f4c98f; --text:#ecdfc8; --muted:#a99a80; }
+}
+:root[data-theme="dark"] { --bg:#17140f; --surface:#231f18; --border:#3a3428;
+    --accent:#f0a58c; --accent2:#f4c98f; --text:#ecdfc8; --muted:#a99a80; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text);
+  font-family:"PingFang SC","Microsoft YaHei",sans-serif; font-size:14px; line-height:1.7; }
+.topbar { position:sticky; top:0; z-index:10; background:var(--surface); border-bottom:1px solid var(--border);
+  padding:14px 20px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+.topbar h1 { margin:0; font-size:18px; color:var(--accent2); }
+.topbar .sub { font-size:12px; color:var(--muted); }
+#search { margin-left:auto; padding:7px 14px; border-radius:20px; border:1px solid var(--border);
+  background:var(--bg); color:var(--text); font-size:13px; width:220px; }
+#search:focus { outline:none; border-color:var(--accent); }
+.wrap { max-width:960px; margin:0 auto; padding:20px; }
+.intro { background:var(--surface); border:1px solid var(--border); border-radius:14px;
+  padding:16px 20px; margin-bottom:20px; color:var(--muted); font-size:13px; }
+.toc { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:26px; }
+.toc a { font-size:12px; color:var(--muted); text-decoration:none; padding:5px 12px;
+  border-radius:20px; background:var(--surface); border:1px solid var(--border); white-space:nowrap; }
+.toc a:hover { color:var(--accent); border-color:var(--accent); }
+.feat-section { margin-bottom:34px; }
+.feat-section h2 { font-size:16px; color:var(--accent2); margin:0 0 12px;
+  display:flex; align-items:center; gap:8px; }
+.feat-icon { font-size:20px; }
+.cmd-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:10px; }
+.cmd-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px 16px; }
+.cmd-name { font-weight:700; color:var(--accent); font-size:13.5px; margin-bottom:6px; }
+.cmd-desc { color:var(--text); font-size:13px; }
+.ex { margin:10px 0 0; background:var(--bg); border:1px solid var(--border); border-radius:8px;
+  padding:8px 10px; font-size:12px; color:var(--muted); white-space:pre-wrap; word-break:break-all;
+  font-family:inherit; }
+[hidden] { display:none !important; }
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Noto+Serif+SC:wght@400;600&display=swap');
+:root{--bg:#d8cfb7;--surface:#f5f0e2;--border:#c9bea2;--accent:#8f2f2a;--accent2:#233f35;--text:#2d3028;--muted:#746e5d}
+body{background:#273b32;font-family:"Noto Serif SC",serif}
+body:before{content:"";position:fixed;inset:0;background:rgba(26,39,33,.08);pointer-events:none}
+body:after{content:"";position:fixed;z-index:100;inset:0;pointer-events:none;opacity:.18;mix-blend-mode:multiply;background-image:repeating-radial-gradient(circle at 20% 30%,rgba(72,59,35,.16) 0 1px,transparent 1px 4px);background-size:5px 5px}
+.topbar{background:rgba(245,240,226,.92);border:0;border-bottom:1px solid rgba(70,60,42,.25);backdrop-filter:blur(14px);padding:12px max(20px,calc((100vw - 960px)/2));}
+.topbar h1{font-family:"Cormorant Garamond","Noto Serif SC",serif;color:var(--accent2);font-size:20px}
+.hero-scroll{position:relative;min-height:560px;display:grid;place-items:center;padding:80px 20px 130px;text-align:center;color:#f4ead4;background-image:linear-gradient(rgba(22,34,28,.12),rgba(22,34,28,.32)),url('assets/player-guide-renaissance-v2.jpg');background-position:center;background-size:cover;background-repeat:no-repeat}
+.hero-scroll:after{content:"";position:absolute;inset:auto 0 0;height:160px;background:linear-gradient(transparent,#d8cfb7)}
+.hero-inner{position:relative;z-index:1;max-width:800px;text-shadow:0 2px 16px rgba(0,0,0,.35)}
+.hero-kicker{font:600 12px/1 "Noto Serif SC",serif;letter-spacing:.3em;text-transform:uppercase}
+.hero-scroll h2{font:italic 500 clamp(56px,9vw,112px)/.9 "Cormorant Garamond","Noto Serif SC",serif;margin:24px 0 18px;letter-spacing:-.045em}
+.hero-scroll p{font-size:14px;letter-spacing:.13em}
+.hero-mark{width:52px;height:52px;margin:0 auto 22px;border:1px solid rgba(255,255,255,.65);border-radius:50%;display:grid;place-items:center;font:italic 26px "Cormorant Garamond"}
+.wrap{position:relative;max-width:960px;background:var(--surface);padding:58px 68px 90px;box-shadow:0 24px 80px rgba(24,18,8,.3)}
+.wrap{background-image:linear-gradient(90deg,rgba(130,112,72,.035) 1px,transparent 1px),linear-gradient(rgba(130,112,72,.025) 1px,transparent 1px);background-size:27px 27px}
+.wrap:before,.wrap:after{content:"✦  ❧  ✦";display:block;text-align:center;color:#9d8c69;letter-spacing:1.2em;margin-bottom:34px}
+.wrap:after{margin:55px 0 0}
+.intro{border:0;border-radius:0;padding:24px 8%;text-align:center;background:transparent;color:#665f4f;font-size:14px;line-height:2;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.toc{justify-content:center;margin:28px 0 50px}
+.toc a{background:transparent;border:0;border-bottom:1px solid transparent;border-radius:0;padding:5px 9px;color:#6b6557}
+.toc a:hover{border-color:var(--accent);color:var(--accent)}
+.feat-section{margin-bottom:56px;scroll-margin-top:80px}
+.guide-main{counter-reset:chapter}
+.feat-section{counter-increment:chapter;position:relative}
+.feat-section h2:after{content:"CHAPTER " counter(chapter,decimal-leading-zero);margin-left:auto;font:500 9px/1 "Cormorant Garamond",serif;letter-spacing:.18em;color:#a39477}
+.feat-section:before{content:"❦";position:absolute;right:-30px;top:62px;color:#b5a47f;font-size:18px;opacity:.55;transform:rotate(12deg)}
+.feat-section h2{font:italic 600 34px "Cormorant Garamond","Noto Serif SC",serif;color:var(--accent2);gap:12px;padding-bottom:12px;border-bottom:1px solid var(--border)}
+.cmd-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:0 30px}
+.cmd-card{background:transparent;border:0;border-bottom:1px solid rgba(120,105,75,.22);border-radius:0;padding:20px 4px;transition:transform .2s,background .2s}
+.cmd-card:hover{transform:translateX(5px);background:rgba(255,255,255,.28)}
+.cmd-name{font:600 16px "Noto Serif SC",serif;color:var(--accent);margin-bottom:8px}
+.cmd-desc{line-height:1.8;color:#4d4a40}
+.ex{background:#e9dec6;border:0;border-left:2px solid #9b8770;border-radius:0;padding:10px 12px;font-family:"Noto Serif SC",serif;color:#6d6253}
+#search{background:rgba(255,255,255,.65);border-color:#baae93;color:#3f3c34}
+@media(max-width:700px){.hero-scroll{min-height:460px}.wrap{padding:38px 20px 60px}.cmd-grid{grid-template-columns:1fr}.topbar .sub{display:none}#search{width:150px}}
+.menu-toggle{display:none;border:1px solid #baae93;background:transparent;color:var(--accent2);border-radius:999px;padding:7px 12px;font-family:inherit;cursor:pointer}
+.wrap{max-width:1180px;padding:48px 46px 80px}
+.guide-layout{display:grid;grid-template-columns:230px minmax(0,1fr);gap:52px;align-items:start}
+.side-panel{position:sticky;top:76px;max-height:calc(100vh - 96px);overflow:auto;padding:8px 0 28px;border-right:1px solid var(--border)}
+.side-head{padding:0 22px 14px 0;font:600 11px "Noto Serif SC",serif;color:#91866f;letter-spacing:.18em}
+.side-close{display:none}
+.toc{display:flex;flex-direction:column;align-items:stretch;gap:2px;margin:0;padding-right:22px}
+.toc a{display:block;padding:9px 11px;border:0;border-radius:7px;font-size:12px;color:#6b6557;transition:background .18s,color .18s}
+.toc a:hover,.toc a.active{background:#e9dec6;color:var(--accent)}
+.guide-main{min-width:0}
+.guide-main .intro{margin-bottom:44px}
+.nav-scrim{display:none}
+.mobile-dock{display:none}
+.desk-pet{position:fixed;z-index:34;right:14px;bottom:16px;width:108px;border:0;background:transparent;padding:0;cursor:pointer;filter:drop-shadow(0 10px 12px rgba(35,26,14,.22));transform-origin:50% 100%;animation:petBreathe 3.8s ease-in-out infinite}
+.desk-pet img{display:block;width:100%;height:auto;pointer-events:none;transition:opacity .14s ease,transform .22s ease}.desk-pet:hover{animation:petWave .7s ease-in-out}.desk-pet.is-happy{animation:petHop .65s ease}.desk-pet.is-changing img{opacity:.25;transform:scale(.92)}
+.pet-bubble{position:fixed;z-index:36;right:96px;bottom:112px;max-width:180px;padding:9px 12px;border:1px solid #c7b996;border-radius:14px 14px 3px 14px;background:#f7efd9;color:#4b463a;box-shadow:0 8px 22px rgba(35,26,14,.15);font-size:11px;line-height:1.55;opacity:0;transform:translateY(8px);pointer-events:none;transition:opacity .2s,transform .2s}.pet-bubble.show{opacity:1;transform:none}
+@keyframes petBreathe{0%,100%{transform:translateY(0) rotate(-.5deg)}50%{transform:translateY(-7px) rotate(.6deg)}}@keyframes petWave{0%,100%{transform:rotate(0)}35%{transform:rotate(-4deg)}70%{transform:rotate(3deg)}}@keyframes petHop{0%,100%{transform:translateY(0) scale(1)}45%{transform:translateY(-18px) scale(1.03)}}
+.reading-progress{position:fixed;z-index:120;top:0;left:0;height:2px;width:0;background:linear-gradient(90deg,#b88a46,#8f2f2a);box-shadow:0 0 10px rgba(184,138,70,.45);pointer-events:none}
+.feat-section{margin:0 0 12px;border:1px solid rgba(128,108,73,.28);border-radius:18px;background:rgba(250,247,237,.72);box-shadow:0 7px 22px rgba(54,42,20,.055);overflow:hidden;transition:border-color .25s,box-shadow .25s,background .25s}
+.feat-section[open]{margin-bottom:22px;background:rgba(250,247,237,.94);border-color:#b9a57e;box-shadow:0 18px 42px rgba(54,42,20,.11)}
+.feat-section>summary{position:relative;min-height:92px;display:grid;grid-template-columns:minmax(210px,.8fr) minmax(260px,1.2fr) 42px 28px;align-items:center;gap:18px;padding:18px 22px;cursor:pointer;list-style:none;user-select:none}
+.feat-section>summary::-webkit-details-marker{display:none}
+.feat-section>summary:hover{background:rgba(232,220,194,.36)}
+.feat-section h2{margin:0;padding:0;border:0;font:600 22px/1.25 "Noto Serif SC",serif;display:flex;align-items:center;min-width:0}
+.feat-section h2:after{display:none}
+.feat-icon{width:34px;flex:0 0 34px;font-size:19px}
+.section-preview{display:flex;gap:7px;min-width:0;overflow:hidden}
+.section-preview span{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:5px 9px;border:1px solid rgba(135,113,75,.18);border-radius:999px;background:rgba(255,255,255,.46);color:#857b67;font-size:10.5px}
+.section-count{font:600 12px/1 "Cormorant Garamond",serif;letter-spacing:.12em;color:#9a8868;text-align:center}
+.section-arrow{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;color:#6c624f;background:#e9dec6;transition:transform .28s,background .2s}
+.feat-section[open] .section-arrow{transform:rotate(180deg);background:#294a3d;color:#f7efdc}
+.feat-section[open] .section-preview{opacity:.36}
+.feat-section>.cmd-grid{padding:4px 24px 26px;border-top:1px solid rgba(128,108,73,.18);background:linear-gradient(180deg,rgba(236,226,204,.24),transparent 70px)}
+.feat-section:before{display:none}
+.ornament-left,.ornament-right{position:absolute;z-index:0;top:42%;font:italic 140px/1 "Cormorant Garamond",serif;color:rgba(116,101,66,.08);pointer-events:none;user-select:none}
+.ornament-left{left:-46px;transform:rotate(-90deg)}.ornament-right{right:-36px;transform:rotate(90deg)}
+.reveal{opacity:0;transform:translateY(18px);transition:opacity .7s ease,transform .7s cubic-bezier(.2,.8,.2,1)}.reveal.is-visible{opacity:1;transform:none}
+@media(max-width:760px){
+  body{padding-bottom:82px}.topbar{position:absolute;top:0;width:100%;flex-wrap:nowrap;padding:16px 18px;background:linear-gradient(rgba(24,35,29,.46),transparent);border:0;backdrop-filter:none}.topbar h1{font-size:14px;color:#f4ead4;text-shadow:0 1px 8px rgba(0,0,0,.35)}.topbar .sub,.menu-toggle{display:none}#search{width:116px;margin-left:auto;padding:8px 12px;background:rgba(245,240,226,.9);border:0;color:#39352e;font-size:12px}#search::placeholder{color:#716b5e}
+  .hero-scroll{min-height:440px;padding:92px 18px 82px;background-image:linear-gradient(rgba(22,34,28,.08),rgba(22,34,28,.28)),url('assets/player-guide-renaissance-v2.jpg');background-position:center;background-size:auto 100%;background-repeat:no-repeat;background-color:#69705c}.hero-scroll h2{font-size:62px;margin:18px 0 12px}.hero-kicker{font-size:8px;letter-spacing:.22em}.hero-scroll p{font-size:10px;letter-spacing:.08em}.hero-mark{width:44px;height:44px;font-size:22px}
+  .wrap{z-index:2;margin-top:-28px;padding:38px 18px 64px;width:calc(100% - 16px);border-radius:28px 28px 0 0;box-shadow:0 -12px 36px rgba(30,23,12,.2)}.wrap:before{font-size:11px;margin-bottom:24px}.guide-layout{display:block}
+  .side-panel{position:fixed;z-index:50;left:0;top:0;width:min(86vw,336px);height:100dvh;max-height:none;padding:28px 20px;background:linear-gradient(145deg,#f7f0dc,#e9dec5);border:0;box-shadow:18px 0 50px rgba(20,15,8,.32);transform:translateX(-105%);transition:transform .28s cubic-bezier(.2,.8,.2,1);overflow-y:auto}
+  body.nav-open .side-panel{transform:translateX(0)}.side-head{display:flex;justify-content:space-between;align-items:center;padding:0 4px 18px}.side-close{display:grid;place-items:center;width:34px;height:34px;border:1px solid var(--border);border-radius:50%;background:transparent;font-size:18px}
+  .toc{padding:0;gap:3px}.toc a{font-size:14px;padding:12px 13px;border-bottom:1px solid rgba(130,110,75,.12);border-radius:8px}
+  .nav-scrim{display:block;position:fixed;z-index:40;inset:0;background:rgba(239,230,207,.12);opacity:0;pointer-events:none;transition:opacity .25s}body.nav-open .nav-scrim{opacity:1;pointer-events:auto}
+  .guide-main .intro{margin-bottom:28px;padding:20px 8px;font-size:13px;line-height:1.9}.cmd-grid{grid-template-columns:1fr;gap:0}.feat-section{margin-bottom:10px;border-radius:15px}.feat-section[open]{margin-bottom:16px}.feat-section>summary{min-height:78px;grid-template-columns:1fr 34px 24px;gap:8px;padding:14px 15px}.feat-section h2{font-size:17px;flex-wrap:nowrap}.feat-icon{width:30px;flex-basis:30px;font-size:17px}.section-preview{grid-column:1/-1;grid-row:2;gap:5px;margin-left:30px}.section-preview span{max-width:112px;padding:3px 7px;font-size:9px}.section-count{grid-column:2;grid-row:1}.section-arrow{grid-column:3;grid-row:1;width:23px;height:23px}.feat-section>.cmd-grid{padding:2px 15px 20px}.cmd-card{padding:18px 8px}.cmd-card:hover{transform:none}.cmd-name{font-size:15px}.cmd-desc{font-size:13px;line-height:1.75}.ex{font-size:11.5px;border-radius:8px;border-left:0;padding:12px}.ornament-left,.ornament-right{display:none}
+  .mobile-dock{position:fixed;z-index:35;left:50%;bottom:max(14px,env(safe-area-inset-bottom));transform:translateX(-50%);display:flex;gap:4px;padding:5px;background:rgba(35,46,39,.91);border:1px solid rgba(255,255,255,.18);border-radius:999px;box-shadow:0 12px 34px rgba(15,12,7,.3);backdrop-filter:blur(16px)}.mobile-dock button{min-width:116px;border:0;border-radius:999px;padding:12px 18px;background:transparent;color:#e9dfca;font:600 13px "Noto Serif SC",serif}.mobile-dock button:first-child{background:#f0e6d1;color:#263c33}
+  .desk-pet{right:6px;bottom:76px;width:62px}.pet-bubble{right:54px;bottom:132px;max-width:150px;font-size:10.5px}
+}
+@media(prefers-reduced-motion:reduce){.side-panel,.nav-scrim{transition:none}}
+@media(prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none;transition:none}.desk-pet{animation:none}}
+</style>
+</head>
+<body>
+<div class="reading-progress" id="readingProgress"></div>
+<div class="topbar">
+  <button class="menu-toggle" id="menuToggle" aria-expanded="false" aria-controls="sidePanel">☰ 目录</button>
+  <h1>🎮 玩家功能一览</h1>
+  <span class="sub">共 147 项</span>
+  <input type="text" id="search" placeholder="搜索功能…">
+</div>
+<header class="hero-scroll">
+  <div class="hero-inner">
+    <div class="hero-mark">长</div>
+    <div class="hero-kicker">An Almanac for Every Encounter</div>
+    <h2>长日将尽</h2>
+    <p>玩家功能手册 · THE PLAYER'S COMPENDIUM</p>
+  </div>
+</header>
+<div class="wrap">
+  <span class="ornament-left">Flora</span><span class="ornament-right">Lunga</span>
+  <div class="guide-layout">
+  <aside class="side-panel" id="sidePanel">
+    <div class="side-head"><span>功能目录</span><button class="side-close" id="sideClose" aria-label="关闭目录">×</button></div>
+    <nav class="toc">
+      <a href="#sec-角色与账号">👤 角色与账号</a>
+<a href="#sec-邀约发起">💌 邀约发起</a>
+<a href="#sec-时间线管理">⏱️ 时间线管理</a>
+<a href="#sec-前置电话">📞 前置电话</a>
+<a href="#sec-弧长与统计">📊 弧长与统计</a>
+<a href="#sec-地点系统">🗺️ 地点系统</a>
+<a href="#sec-社交互动">💌 社交互动</a>
+<a href="#sec-关系线">🔗 关系线</a>
+<a href="#sec-论坛">📰 论坛</a>
+<a href="#sec-背包与商城">🎒 背包与商城</a>
+<a href="#sec-交易与合成">🔄 交易与合成</a>
+<a href="#sec-装备">🛡️ 装备</a>
+<a href="#sec-升级系统">📈 升级系统</a>
+<a href="#sec-抽取">🎰 抽取</a>
+<a href="#sec-状态与技能">📊 状态与技能</a>
+<a href="#sec-PK 对战">⚔️ PK 对战</a>
+<a href="#sec-晚餐">🍽️ 晚餐</a>
+<a href="#sec-戳泡泡小游戏">🫧 戳泡泡小游戏</a>
+<a href="#sec-俄罗斯轮盘小游戏">🔫 俄罗斯轮盘小游戏</a>
+<a href="#sec-巡逻捉迷藏小游戏">🕵️ 巡逻捉迷藏小游戏</a>
+<a href="#sec-写信综系统">✉️ 写信综系统</a>
+<a href="#sec-加百列闹钟">🔔 加百列闹钟</a>
+<a href="#sec-群组与平台管理">📡 群组与平台管理</a>
+<a href="#sec-季度与存档">📊 季度与存档</a>
+<a href="#sec-拍卖">🏆 拍卖</a>
+<a href="#sec-信息收集">📋 信息收集</a>
+<a href="#sec-出场系统">🎭 出场系统</a>
+<a href="#sec-帮助与基础">📖 帮助与基础</a>
+<a href="#sec-议价交易系统（DLC）">💱 议价交易系统（DLC）</a>
+    </nav>
+  </aside>
+  <main class="guide-main">
+  <div class="intro">
+    欢迎来到长日系统！这里是指令导览，请注意，并非所有指令都在开启状态，请在使用前查看公告群或者询问管理是否开启某系统！
+  </div>
+  
+  <details class="feat-section" id="sec-角色与账号">
+    <summary>
+      <h2><span class="feat-icon">👤</span><span>角色与账号</span></h2>
+      <div class="section-preview"><span>创建新角色 [角色名]</span><span>玩家名单</span><span>修改名字 [新名字]</span></div>
+      <span class="section-count">09</span>
+      <span class="section-arrow" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="cmd-grid">
+      
+        <div class="cmd-card" data-search="创建新角色 [角色名] 注册并绑定你的 rp 角色名">
+          <div class="cmd-name">创建新角色 [角色名]</div>
+          <div class="cmd-desc">注册并绑定你的 RP 角色名</div>
+          <pre class="ex">例：创建新角色 张三</pre>
+        </div>
+        <div class="cmd-card" data-search="玩家名单 查看当前所有已注册玩家">
+          <div class="cmd-name">玩家名单</div>
+          <div class="cmd-desc">查看当前所有已注册玩家</div>
+          
+        </div>
+        <div class="cmd-card" data-search="修改名字 [新名字] 修改自己的角色名">
+          <div class="cmd-name">修改名字 [新名字]</div>
+          <div class="cmd-desc">修改自己的角色名</div>
+          <pre class="ex">例：修改名字 李四</pre>
+        </div>
+        <div class="cmd-card" data-search="修改性别 男/女 修改角色性别">
+          <div class="cmd-name">修改性别 男/女</div>
+          <div class="cmd-desc">修改角色性别</div>
+          
+        </div>
+        <div class="cmd-card" data-search="修改年龄 [数字] 修改角色年龄（0-200）">
+          <div class="cmd-name">修改年龄 [数字]</div>
+          <div class="cmd-desc">修改角色年龄（0-200）</div>
+          
+        </div>
+        <div class="cmd-card" data-search="修改皮相 [明星名] 修改角色外貌对应的明星（2小时冷却）">
+          <div class="cmd-name">修改皮相 [明星名]</div>
+          <div class="cmd-desc">修改角色外貌对应的明星（2小时冷却）</div>
+          <pre class="ex">例：修改皮相 刘亦菲</pre>
+        </div>
+        <div class="cmd-card" data-search="修改签名 [内容] 修改角色个性签名（12小时冷却）">
+          <div class="cmd-name">修改签名 [内容]</div>
+          <div class="cmd-desc">修改角色个性签名（12小时冷却）</div>
+          
+        </div>
+        <div class="cmd-card" data-search="角色卡 查看自己的完整角色信息卡（基础信息/战斗属性含装备加成/当前装备）">
+          <div class="cmd-name">角色卡</div>
+          <div class="cmd-desc">查看自己的完整角色信息卡（基础信息/战斗属性含装备加成/当前装备）</div>
+          
+        </div>
+        <div class="cmd-card" data-search="额外账号 [qq号] 将另一个 qq 绑定为本角色的辅助账号">
+          <div class="cmd-name">额外账号 [QQ号]</div>
+          <div class="cmd-desc">将另一个 QQ 绑定为本角色的辅助账号</div>
+          <pre class="ex">额外账号 删除 QQ号  → 移除辅助账号
+额外账号  → 查看已绑定的辅助账号</pre>
+        </div>
+    </div>
+  </details>
+
+  <details class="feat-section" id="sec-邀约发起">
+    <summary>
+      <h2><span class="feat-icon">💌</span><span>邀约发起</span></h2>
+      <div class="section-preview"><span>私约 [时间] [地点] [对方]</span><span>电话 [时间] [对方]</span><span>踩点 [时间] [地点] [对方]</span></div>
+      <span class="section-count">09</span>
+      <span class="section-arrow" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="cmd-grid">
+      
+        <div class="cmd-card" data-search="私约 [时间] [地点] [对方] 向一名或多名角色发起私密约会邀请">
+          <div class="cmd-name">私约 [时间] [地点] [对方]</div>
+          <div class="cmd-desc">向一名或多名角色发起私密约会邀请</div>
+          <pre class="ex">私约 1400-1500 咖啡厅 张三
+私约 1400-1500 餐厅 李四/王五</pre>
+        </div>
+        <div class="cmd-card" data-search="电话 [时间] [对方] 向对方发起电话邀请（无需地点）">
+          <div class="cmd-name">电话 [时间] [对方]</div>
+          <div class="cmd-desc">向对方发起电话邀请（无需地点）</div>
+          <pre class="ex">电话 1400-1500 张三
+电话 1400-1500 张三/李四</pre>
+        </div>
+        <div class="cmd-card" data-search="踩点 [时间] [地点] [对方] 【dlc: dlc_stakeout】发起踩点私约；对方可省略即可独行（默认开启，管理员可在网页端关闭「允许单人踩点」），目击时显示「一个人去」">
+          <div class="cmd-name">踩点 [时间] [地点] [对方]</div>
+          <div class="cmd-desc">【DLC: dlc_stakeout】发起踩点私约；对方可省略即可独行（默认开启，管理员可在网页端关闭「允许单人踩点」），目击时显示「一个人去」</div>
+          <pre class="ex">踩点 20:00-21:00 大图书馆 李四
+踩点 20:00-21:00 大图书馆   ← 单人踩点（默认可用）</pre>
+        </div>
+        <div class="cmd-card" data-search="约战 [时间] [地点] [对方] 【dlc: dlc_battle_appt】发起战斗类私约，走标准私约流程">
+          <div class="cmd-name">约战 [时间] [地点] [对方]</div>
+          <div class="cmd-desc">【DLC: dlc_battle_appt】发起战斗类私约，走标准私约流程</div>
+          <pre class="ex">约战 20:00-21:00 训练场 李四</pre>
+        </div>
+        <div class="cmd-card" data-search="微信 [对方] 向对方发起微信群组（不占时间线）">
+          <div class="cmd-name">微信 [对方]</div>
+          <div class="cmd-desc">向对方发起微信群组（不占时间线）</div>
+          <pre class="ex">微信 张三 / 微信 张三/李四</pre>
+        </div>
+        <div class="cmd-card" data-search="申请加入 [对方名] [时间] 申请加入对方正在进行的约会">
+          <div class="cmd-name">申请加入 [对方名] [时间]</div>
+          <div class="cmd-desc">申请加入对方正在进行的约会</div>
+          <pre class="ex">申请加入 张三 14:00</pre>
+        </div>
+        <div class="cmd-card" data-search="加入请求 查看收到的加入申请列表">
+          <div class="cmd-name">加入请求</div>
+          <div class="cmd-desc">查看收到的加入申请列表</div>
+          
+        </div>
+        <div class="cmd-card" data-search="同意加入 [编号] 同意对应编号的加入申请">
+          <div class="cmd-name">同意加入 [编号]</div>
+          <div class="cmd-desc">同意对应编号的加入申请</div>
+          
+        </div>
+        <div class="cmd-card" data-search="拒绝加入 [编号] 拒绝对应编号的加入申请">
+          <div class="cmd-name">拒绝加入 [编号]</div>
+          <div class="cmd-desc">拒绝对应编号的加入申请</div>
+          
+        </div>
+    </div>
+  </details>
+
+  <details class="feat-section" id="sec-时间线管理">
+    <summary>
+      <h2><span class="feat-icon">⏱️</span><span>时间线管理</span></h2>
+      <div class="section-preview"><span>时间线</span><span>我的待回</span><span>修改时间线 [D几] [时间]</span></div>
+      <span class="section-count">05</span>
+      <span class="section-arrow" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="cmd-grid">
+      
+        <div class="cmd-card" data-search="时间线 查看自己当前的所有日程安排">
+          <div class="cmd-name">时间线</div>
+          <div class="cmd-desc">查看自己当前的所有日程安排</div>
+          
+        </div>
+        <div class="cmd-card" data-search="我的待回 查看自己还没回复的群（超时置顶）、已开场但还没进的群、已结束但还没退的群、待回关系线（对方已回复、轮到你回的关系线），以及今日心动信投递情况">
+          <div class="cmd-name">我的待回</div>
+          <div class="cmd-desc">查看自己还没回复的群（超时置顶）、已开场但还没进的群、已结束但还没退的群、待回关系线（对方已回复、轮到你回的关系线），以及今日心动信投递情况</div>
+          
+        </div>
+        <div class="cmd-card" data-search="修改时间线 [d几] [时间] 在约会群内修改本场的时间记录">
+          <div class="cmd-name">修改时间线 [D几] [时间]</div>
+          <div class="cmd-desc">在约会群内修改本场的时间记录</div>
+          <pre class="ex">修改时间线 D1 1400-1500</pre>
+        </div>
+        <div class="cmd-card" data-search="拒绝时间线 [群号] 拒绝指定群的时间线修改申请">
+          <div class="cmd-name">拒绝时间线 [群号]</div>
+          <div class="cmd-desc">拒绝指定群的时间线修改申请</div>
+          
+        </div>
+        <div class="cmd-card" data-search="结束私约 在约会群内主动结束当前的私约">
+          <div class="cmd-name">结束私约</div>
+          <div class="cmd-desc">在约会群内主动结束当前的私约</div>
+          
+        </div>
+    </div>
+  </details>
+
+  <details class="feat-section" id="sec-前置电话">
+    <summary>
+      <h2><span class="feat-icon">📞</span><span>前置电话</span></h2>
+      <div class="section-preview"><span>前置电话收集 [内容]</span><span>查看前置电话收集</span><span>前置电话 [编号]</span></div>
+      <span class="section-count">04</span>
+      <span class="section-arrow" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="cmd-grid">
+      
+        <div class="cmd-card" data-search="前置电话收集 [内容] （仅「收集」模式）自助提交前置电话的自我介绍类内容；可随时重发来修改，不会新增一条只会覆盖；查看时不显示提交人和时间，全部非npc角色都交齐后才能查看，届时编号会被随机打乱分配（不是提交顺序）">
+          <div class="cmd-name">前置电话收集 [内容]</div>
+          <div class="cmd-desc">（仅「收集」模式）自助提交前置电话的自我介绍类内容；可随时重发来修改，不会新增一条只会覆盖；查看时不显示提交人和时间，全部非NPC角色都交齐后才能查看，届时编号会被随机打乱分配（不是提交顺序）</div>
+          <pre class="ex">前置电话收集 喜欢安静的地方，聊得来最重要</pre>
+        </div>
+        <div class="cmd-card" data-search="查看前置电话收集 （仅「收集」模式）收齐前只显示进度（n/总人数），不透露任何内容；收齐后按打乱后的编号顺序显示所有人的内容，开启本轮时选了「显示性别」的话每条前面会带性别标注">
+          <div class="cmd-name">查看前置电话收集</div>
+          <div class="cmd-desc">（仅「收集」模式）收齐前只显示进度（N/总人数），不透露任何内容；收齐后按打乱后的编号顺序显示所有人的内容，开启本轮时选了「显示性别」的话每条前面会带性别标注</div>
+          
+        </div>
+        <div class="cmd-card" data-search="前置电话 [编号] 表达自己想接编号n的电话的意向（看不到编号对应谁），可以多次执行选不同编号">
+          <div class="cmd-name">前置电话 [编号]</div>
+          <div class="cmd-desc">表达自己想接编号N的电话的意向（看不到编号对应谁），可以多次执行选不同编号</div>
+          <pre class="ex">前置电话 1
+前置电话 2</pre>
+        </div>
+        <div class="cmd-card" data-search="取消前置电话 [编号] 在管理员「安排前置电话」之前，撤回自己选过的某个编号">
+          <div class="cmd-name">取消前置电话 [编号]</div>
+          <div class="cmd-desc">在管理员「安排前置电话」之前，撤回自己选过的某个编号</div>
+          <pre class="ex">取消前置电话 1</pre>
+        </div>
+    </div>
+  </details>
+
+  <details class="feat-section" id="sec-弧长与统计">
+    <summary>
+      <h2><span class="feat-icon">📊</span><span>弧长与统计</span></h2>
+      <div class="section-preview"><span>我的</span><span>我的弧长</span><span>我的数量</span></div>
+      <span class="section-count">03</span>
+      <span class="section-arrow" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="cmd-grid">
+      
+        <div class="cmd-card" data-search="我的 「我的待回/我的弧长/我的数量」这几条自查指令的速查一览（一句话说明+用法），不用来回翻聊天记录找">
+          <div class="cmd-name">我的</div>
+          <div class="cmd-desc">「我的待回/我的弧长/我的数量」这几条自查指令的速查一览（一句话说明+用法），不用来回翻聊天记录找</div>
+          
+        </div>
+        <div class="cmd-card" data-search="我的弧长 查看自己的历史平均回复耗时（含已结/未结场次），以及当前所有未结双人小群里，自己和对方各自的回复次数对比、本场平均耗时、当前轮到谁回复及已等待时长">
+          <div class="cmd-name">我的弧长</div>
+          <div class="cmd-desc">查看自己的历史平均回复耗时（含已结/未结场次），以及当前所有未结双人小群里，自己和对方各自的回复次数对比、本场平均耗时、当前轮到谁回复及已等待时长</div>
+          <pre class="ex">。我的弧长</pre>
+        </div>
+        <div class="cmd-card" data-search="我的数量 查看自己今天发起的私约/电话/短信/礼物/心愿次数，以及全服今天的私约/电话/短信/礼物/心愿总数">
+          <div class="cmd-name">我的数量</div>
+          <div class="cmd-desc">查看自己今天发起的私约/电话/短信/礼物/心愿次数，以及全服今天的私约/电话/短信/礼物/心愿总数</div>
+          <pre class="ex">。我的数量</pre>
+        </div>
+    </div>
+  </details>
+
+  <details class="feat-section" id="sec-地点系统">
+    <summary>
+      <h2><span class="feat-icon">🗺️</span><span>地点系统</span></h2>
+      <div class="section-preview"><span>地点 查看</span><span>地点 钥匙</span><span>地点查看 / 查看地点</span></div>
+      <span class="section-count">03</span>
+      <span class="section-arrow" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="cmd-grid">
+      
+        <div class="cmd-card" data-search="地点 查看 查看当前开放的所有地点列表">
+          <div class="cmd-name">地点 查看</div>
+          <div class="cmd-desc">查看当前开放的所有地点列表</div>
+          <pre class="ex">。地点 查看</pre>
+        </div>
+        <div class="cmd-card" data-search="地点 钥匙 查看自己持有的地点钥匙">
+          <div class="cmd-name">地点 钥匙</div>
+          <div class="cmd-desc">查看自己持有的地点钥匙</div>
+          <pre class="ex">。地点 钥匙</pre>
+        </div>
+        <div class="cmd-card" data-search="地点查看 / 查看地点 同上，无句号的快捷方式">
+          <div class="cmd-name">地点查看 / 查看地点</div>
+          <div class="cmd-desc">同上，无句号的快捷方式</div>
+          
+        </div>
+    </div>
+  </details>
+
+  <details class="feat-section" id="sec-社交互动">
+    <summary>
+      <h2><span class="feat-icon">💌</span><span>社交互动</span></h2>
+      <div class="section-preview"><span>拉黑 [角色名] [静默/不静默]</span><span>取消拉黑 [角色名]</span><span>拉黑列表</span></div>
+      <span class="section-count">18</span>
+      <span class="section-arrow" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="cmd-grid">
+      
+        <div class="cmd-card" data-search="拉黑 [角色名] [静默/不静默] 单方面屏蔽指定角色对你发起的短信/礼物/私约/电话/微信/漂流瓶回信联系，不影响你主动联系对方；不填模式默认不静默——对方联系你时会被明确告知已被拒绝；填「静默」则对方感觉不到自己被拉黑（私约/电话/微信会收到「发起失败」的通用提示，短信/礼物/漂流瓶回信则会看到跟正常送达一样的成功提示）">
+          <div class="cmd-name">拉黑 [角色名] [静默/不静默]</div>
+          <div class="cmd-desc">单方面屏蔽指定角色对你发起的短信/礼物/私约/电话/微信/漂流瓶回信联系，不影响你主动联系对方；不填模式默认不静默——对方联系你时会被明确告知已被拒绝；填「静默」则对方感觉不到自己被拉黑（私约/电话/微信会收到「发起失败」的通用提示，短信/礼物/漂流瓶回信则会看到跟正常送达一样的成功提示）</div>
+          <pre class="ex">拉黑 张三
+拉黑 张三 静默</pre>
+        </div>
+        <div class="cmd-card" data-search="取消拉黑 [角色名] 解除对指定角色的拉黑">
+          <div class="cmd-name">取消拉黑 [角色名]</div>
+          <div class="cmd-desc">解除对指定角色的拉黑</div>
+          <pre class="ex">取消拉黑 张三</pre>
+        </div>
+        <div class="cmd-card" data-search="拉黑列表 查看自己当前拉黑了哪些人、分别是否静默">
+          <div class="cmd-name">拉黑列表</div>
+          <div class="cmd-desc">查看自己当前拉黑了哪些人、分别是否静默</div>
+          
+        </div>
+        <div class="cmd-card" data-search="[署名]短信 [收信人] [内容] 发送短信给角色（署名可省略，将使用本角色名）">
+          <div class="cmd-name">[署名]短信 [收信人] [内容]</div>
+          <div class="cmd-desc">发送短信给角色（署名可省略，将使用本角色名）</div>
+          <pre class="ex">短信 张三 你好！
+李四短信 张三 晚上有空吗？</pre>
+        </div>
+        <div class="cmd-card" data-search="漂流瓶 [内容] 不填收件人，随机送到某个在世玩家手里；对方捡到后会得到一个编号">
+          <div class="cmd-name">漂流瓶 [内容]</div>
+          <div class="cmd-desc">不填收件人，随机送到某个在世玩家手里；对方捡到后会得到一个编号</div>
+          <pre class="ex">漂流瓶 有人能听到我说话吗</pre>
+        </div>
+        <div class="cmd-card" data-search="漂流瓶 [编号] [内容] 回信给编号对应的漂流瓶，原路送回抛瓶人/捡瓶人手中；同一编号可以来回一直用">
+          <div class="cmd-name">漂流瓶 [编号] [内容]</div>
+          <div class="cmd-desc">回信给编号对应的漂流瓶，原路送回抛瓶人/捡瓶人手中；同一编号可以来回一直用</div>
+          <pre class="ex">漂流瓶 1 我听到啦，你还好吗</pre>
+        </div>
+        <div class="cmd-card" data-search="送礼 [对方名] [礼物内容] 赠送礼物给角色（记入存档）">
+          <div class="cmd-name">送礼 [对方名] [礼物内容]</div>
+          <div class="cmd-desc">赠送礼物给角色（记入存档）</div>
+          <pre class="ex">送礼 张三 一束玫瑰
+送礼 张三 #001（图鉴编号，可无限送）</pre>
+        </div>
+        <div class="cmd-card" data-search="礼品店 查看预设礼品店目录">
+          <div class="cmd-name">礼品店</div>
+          <div class="cmd-desc">查看预设礼品店目录</div>
+          
+        </div>
+        <div class="cmd-card" data-search="图鉴 / 我的图鉴 查看自己已收到/送出的礼物图鉴">
+          <div class="cmd-name">图鉴 / 我的图鉴</div>
+          <div class="cmd-desc">查看自己已收到/送出的礼物图鉴</div>
+          <pre class="ex">图鉴  /  图鉴 [对方角色名]</pre>
+        </div>
+        <div class="cmd-card" data-search="发送心动信 向其他角色匿名投递心动信">
+          <div class="cmd-name">发送心动信</div>
+          <div class="cmd-desc">向其他角色匿名投递心动信</div>
+          <pre class="ex">发送心动信
+【发送对象】角色名
+【内容】想说的话
+【署名】自定义昵称（可省略）</pre>
+        </div>
+        <div class="cmd-card" data-search="查看信箱 查看自己收到的心动信">
+          <div class="cmd-name">查看信箱</div>
+          <div class="cmd-desc">查看自己收到的心动信</div>
+          
+        </div>
+        <div class="cmd-card" data-search="撤回心动信 [编号] 撤回已投递但未派送的心动信">
+          <div class="cmd-name">撤回心动信 [编号]</div>
+          <div class="cmd-desc">撤回已投递但未派送的心动信</div>
+          <pre class="ex">。撤回心动信 3</pre>
+        </div>
+        <div class="cmd-card" data-search="挂心愿 [时间] [地点] [内容] 发布一条心愿约会，等待他人摘取">
+          <div class="cmd-name">挂心愿 [时间] [地点] [内容]</div>
+          <div class="cmd-desc">发布一条心愿约会，等待他人摘取</div>
+          <pre class="ex">挂心愿 1400-1500 花园 一起散步</pre>
+        </div>
+        <div class="cmd-card" data-search="悬赏心愿 [时间] [地点] [内容] | [物品] [数量] 挂出附带物品奖励的心愿">
+          <div class="cmd-name">悬赏心愿 [时间] [地点] [内容] | [物品] [数量]</div>
+          <div class="cmd-desc">挂出附带物品奖励的心愿</div>
+          <pre class="ex">悬赏心愿 1400-1500 图书馆 陪我看书 | 滋补汤 1</pre>
+        </div>
+        <div class="cmd-card" data-search="看心愿 查看当前所有开放的心愿">
+          <div class="cmd-name">看心愿</div>
+          <div class="cmd-desc">查看当前所有开放的心愿</div>
+          
+        </div>
+        <div class="cmd-card" data-search="摘心愿 [编号] 认领并接受对应编号的心愿">
+          <div class="cmd-name">摘心愿 [编号]</div>
+          <div class="cmd-desc">认领并接受对应编号的心愿</div>
+          <pre class="ex">摘心愿 1</pre>
+        </div>
+        <div class="cmd-card" data-search="撤心愿 [编号] 撤回自己发布的心愿">
+          <div class="cmd-name">撤心愿 [编号]</div>
+          <div class="cmd-desc">撤回自己发布的心愿</div>
+          
+        </div>
+        <div class="cmd-card" data-search="本场统计 查看本场 rp 的个人互动数据统计">
+          <div class="cmd-name">本场统计</div>
+          <div class="cmd-desc">查看本场 RP 的个人互动数据统计</div>
+          
+        </div>
+    </div>
+  </details>
+
+  <details class="feat-section" id="sec-关系线">
+    <summary>
+      <h2><span class="feat-icon">🔗</span><span>关系线</span></h2>
+      <div class="section-preview"><span>拉线 [对方名] [关系描述]</span><span>确认关系线 [对方名]</span><span>撤回关系 [对方名] [内容]</span></div>
+      <span class="section-count">04</span>
+      <span class="section-arrow" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="cmd-grid">
+      
+        <div class="cmd-card" data-search="拉线 [对方名] [关系描述] 添加与对方角色之间的关系细节">
+          <div class="cmd-name">拉线 [对方名] [关系描述]</div>
+          <div class="cmd-desc">添加与对方角色之间的关系细节</div>
+          <pre class="ex">拉线 张三 在高中时期是同班同学</pre>
+        </div>
+        <div class="cmd-card" data-search="确认关系线 [对方名] 确认接受对方提出的关系线">
+          <div class="cmd-name">确认关系线 [对方名]</div>
+          <div class="cmd-desc">确认接受对方提出的关系线</div>
+          
+        </div>
+        <div class="cmd-card" data-search="撤回关系 [对方名] [内容] 精确撤回自己发送的某条关系细节">
+          <div class="cmd-name">撤回关系 [对方名] [内容]</div>
+          <div class="cmd-desc">精确撤回自己发送的某条关系细节</div>
+          <pre class="ex">撤回关系 张三 在高中时期是同班同学</pre>
+        </div>
+        <div class="cmd-card" data-search="查看关系线 [对方名] 查看与对方的关系详情（不加名字则看列表）">
+          <div class="cmd-name">查看关系线 [对方名]</div>
+          <div class="cmd-desc">查看与对方的关系详情（不加名字则看列表）</div>
+          <pre class="ex">查看关系线
+查看关系线 张三</pre>
+        </div>
+    </div>
+  </details>
+
+  <details class="feat-section" id="sec-论坛">
+    <summary>
+      <h2><span class="feat-icon">📰</span><span>论坛</span></h2>
+      <div class="section-preview"><span>发帖 [署名] [内容]</span><span>回复帖子 [贴号] [引用N|署名] [内容]</span><span>点赞 [贴号]</span></div>
+      <span class="section-count">07</span>
+      <span class="section-arrow" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="cmd-grid">
+      
+        <div class="cmd-card" data-search="发帖 [署名] [内容] 在论坛发一篇帖子">
+          <div class="cmd-name">发帖 [署名] [内容]</div>
+          <div class="cmd-desc">在论坛发一篇帖子</div>
+          <pre class="ex">发帖 张三 今天天气真好！</pre>
+        </div>
+        <div class="cmd-card" data-search="回复帖子 [贴号] [引用n|署名] [内容] 回复指定帖子">
+          <div class="cmd-name">回复帖子 [贴号] [引用N|署名] [内容]</div>
+          <div class="cmd-desc">回复指定帖子</div>
+          <pre class="ex">回复帖子 001 你说得对！</pre>
+        </div>
+        <div class="cmd-card" data-search="点赞 [贴号] 点赞帖子">
+          <div class="cmd-name">点赞 [贴号]</div>
+          <div class="cmd-desc">点赞帖子</div>
+          <pre class="ex">。点赞 001</pre>
+        </div>
+        <div class="cmd-card" data-search="点踩 [贴号] 点踩帖子">
+          <div class="cmd-name">点踩 [贴号]</div>
+          <div class="cmd-desc">点踩帖子</div>
+          <pre class="ex">。点踩 001</pre>
+        </div>
+        <div class="cmd-card" data-search="点赞楼层 [贴号] [楼层] 点赞帖子内的指定楼层">
+          <div class="cmd-name">点赞楼层 [贴号] [楼层]</div>
+          <div class="cmd-desc">点赞帖子内的指定楼层</div>
+          <pre class="ex">。点赞楼层 001 3</pre>
+        </div>
+        <div class="cmd-card" data-search="点踩楼层 [贴号] [楼层] 点踩帖子内的指定楼层">
+          <div class="cmd-name">点踩楼层 [贴号] [楼层]</div>
+          <div class="cmd-desc">点踩帖子内的指定楼层</div>
+          
+        </div>
+        <div class="cmd-card" data-search="查看帖子 查看论坛所有帖子列表">
+          <div class="cmd-name">查看帖子</div>
+          <div class="cmd-desc">查看论坛所有帖子列表</div>
+          
+        </div>
+    </div>
+  </details>
+
+  <details class="feat-section" id="sec-背包与商城">
+    <summary>
+      <h2><span class="feat-icon">🎒</span><span>背包与商城</span></h2>
+      <div class="section-preview"><span>我的背包 / 背包</span><span>商城</span><span>使用 [物品] [目标]</span></div>
+      <span class="section-count">06</span>
+      <span class="section-arrow" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="cmd-grid">
+      
+        <div class="cmd-card" data-search="我的背包 / 背包 查看自己的背包道具">
+          <div class="cmd-name">我的背包 / 背包</div>
+          <div class="cmd-desc">查看自己的背包道具</div>
+          
+        </div>
+        <div class="cmd-card" data-search="商城 查看商城；子命令「购买」直接下单">
+          <div class="cmd-name">商城</div>
+          <div class="cmd-desc">查看商城；子命令「购买」直接下单</div>
+          <pre class="ex">商城
+商城 购买 ITEM_001 2</pre>
+        </div>
+        <div class="cmd-card" data-search="使用 [物品] [目标] 使用背包物品：省略目标=自用；填目标=互动物品；「使用 特殊 道具名」=spec类">
+          <div class="cmd-name">使用 [物品] [目标]</div>
+          <div class="cmd-desc">使用背包物品：省略目标=自用；填目标=互动物品；「使用 特殊 道具名」=SPEC类</div>
+          <pre class="ex">使用 ITEM_001          ← 自用
+使用 治疗术 张三    ← 对他人
+使用 特殊 SPEC_001  ← 特殊道具
+施加 张三 治疗术    ← 旧格式仍兼容</pre>
+        </div>
+        <div class="cmd-card" data-search="赠送道具 [角色名] [物品码] [数量] 将背包中的道具赠给其他角色">
+          <div class="cmd-name">赠送道具 [角色名] [物品码] [数量]</div>
+          <div class="cmd-desc">将背包中的道具赠给其他角色</div>
+          <pre class="ex">赠送道具 张三 ITEM_001 1</pre>
+        </div>
+        <div class="cmd-card" data-search="背包 搜/详情 [关键词/物品名] 搜索物品或查看详情">
+          <div class="cmd-name">背包 搜/详情 [关键词/物品名]</div>
+          <div class="cmd-desc">搜索物品或查看详情</div>
+          <pre class="ex">背包 搜 金苹果
+背包 详情 ITEM_001</pre>
+        </div>
+        <div class="cmd-card" data-search="物品列表 [类型] 查看所有注册物品（物品/互动/货币/预设/全部）">
+          <div class="cmd-name">物品列表 [类型]</div>
+          <div class="cmd-desc">查看所有注册物品（物品/互动/货币/预设/全部）</div>
+          <pre class="ex">。物品列表 全部</pre>
+        </div>
+    </div>
+  </details>
+
+  <details class="feat-section" id="sec-交易与合成">
+    <summary>
+      <h2><span class="feat-icon">🔄</span><span>交易与合成</span></h2>
+      <div class="section-preview"><span>二手</span><span>交易 提出 [对方] [给:物品×N,...] [要:物品×N,...] [备注]</span><span>交易 接受/拒绝/撤回 [单号]</span></div>
+      <span class="section-count">07</span>
+      <span class="section-arrow" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="cmd-grid">
+      
+        <div class="cmd-card" data-search="二手 查看二手市场；子命令「卖」上架、「撤」撤单、「买」购买、「设定」管理员配置">
+          <div class="cmd-name">二手</div>
+          <div class="cmd-desc">查看二手市场；子命令「卖」上架、「撤」撤单、「买」购买、「设定」管理员配置</div>
+          <pre class="ex">二手
+二手 卖 ITEM_001 8 金币 2
+二手 撤 0001
+二手 买 0001</pre>
+        </div>
+        <div class="cmd-card" data-search="交易 提出 [对方] [给:物品×n,...] [要:物品×n,...] [备注] 【dlc: dlc_trade】向对方发起以物换物提案；物品可用名称或编码，多件逗号分隔不加空格；双方持有才能成交">
+          <div class="cmd-name">交易 提出 [对方] [给:物品×N,...] [要:物品×N,...] [备注]</div>
+          <div class="cmd-desc">【DLC: dlc_trade】向对方发起以物换物提案；物品可用名称或编码，多件逗号分隔不加空格；双方持有才能成交</div>
+          <pre class="ex">。交易 提出 李四 给:铁剑×1,回血药×2 要:金币×50 换个好东西</pre>
+        </div>
+        <div class="cmd-card" data-search="交易 接受/拒绝/撤回 [单号] 接受（双方同时校验持有）/ 拒绝 / 撤回自己发出的提案">
+          <div class="cmd-name">交易 接受/拒绝/撤回 [单号]</div>
+          <div class="cmd-desc">接受（双方同时校验持有）/ 拒绝 / 撤回自己发出的提案</div>
+          <pre class="ex">。交易 接受 TR0001
+。交易 拒绝 TR0001</pre>
+        </div>
+        <div class="cmd-card" data-search="交易 还价 [单号] [给:...] [要:...] [备注] 对方提出新条件；原提案自动关闭，生成新单号供对方回应">
+          <div class="cmd-name">交易 还价 [单号] [给:...] [要:...] [备注]</div>
+          <div class="cmd-desc">对方提出新条件；原提案自动关闭，生成新单号供对方回应</div>
+          <pre class="ex">。交易 还价 TR0001 给:回血药×1 要:铁剑×1</pre>
+        </div>
+        <div class="cmd-card" data-search="交易 列表 查看我的所有进行中及近期（最多5条）交易记录">
+          <div class="cmd-name">交易 列表</div>
+          <div class="cmd-desc">查看我的所有进行中及近期（最多5条）交易记录</div>
+          
+        </div>
+        <div class="cmd-card" data-search="交易 详情 [单号] 查看指定交易单的完整物品与状态信息">
+          <div class="cmd-name">交易 详情 [单号]</div>
+          <div class="cmd-desc">查看指定交易单的完整物品与状态信息</div>
+          <pre class="ex">。交易 详情 TR0001</pre>
+        </div>
+        <div class="cmd-card" data-search="合成 [物品码] 用背包材料合成指定物品；「合成 查看」查看所有配方">
+          <div class="cmd-name">合成 [物品码]</div>
+          <div class="cmd-desc">用背包材料合成指定物品；「合成 查看」查看所有配方</div>
+          <pre class="ex">合成 CRAFT_001
+合成 查看</pre>
+        </div>
+    </div>
+  </details>
+
+  <details class="feat-section" id="sec-装备">
+    <summary>
+      <h2><span class="feat-icon">🛡️</span><span>装备</span></h2>
+      <div class="section-preview"><span>装备 [装备名/物品码]</span><span>装备 脱 [槽位]</span><span>装备 详情 [装备码]</span></div>
+      <span class="section-count">04</span>
+      <span class="section-arrow" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="cmd-grid">
+      
+        <div class="cmd-card" data-search="装备 [装备名/物品码] 穿上装备；穿在哪个槽位由装备注册时绑定的槽位决定，不能自己指定槽位">
+          <div class="cmd-name">装备 [装备名/物品码]</div>
+          <div class="cmd-desc">穿上装备；穿在哪个槽位由装备注册时绑定的槽位决定，不能自己指定槽位</div>
+          <pre class="ex">。装备 铁剑
+。装备      ← 查看当前装备</pre>
+        </div>
+        <div class="cmd-card" data-search="装备 脱 [槽位] 卸下指定槽位的装备">
+          <div class="cmd-name">装备 脱 [槽位]</div>
+          <div class="cmd-desc">卸下指定槽位的装备</div>
+          <pre class="ex">。装备 脱 hand</pre>
+        </div>
+        <div class="cmd-card" data-search="装备 详情 [装备码] 查看某件装备的槽位、描述与基础属性加成">
+          <div class="cmd-name">装备 详情 [装备码]</div>
+          <div class="cmd-desc">查看某件装备的槽位、描述与基础属性加成</div>
+          <pre class="ex">。装备 详情 EQUIP_001</pre>
+        </div>
+        <div class="cmd-card" data-search="装备 槽位 查看 查看当前所有装备槽位（槽位码+显示名称）">
+          <div class="cmd-name">装备 槽位 查看</div>
+          <div class="cmd-desc">查看当前所有装备槽位（槽位码+显示名称）</div>
+          <pre class="ex">。装备 槽位 查看</pre>
+        </div>
+    </div>
+  </details>
+
+  <details class="feat-section" id="sec-升级系统">
+    <summary>
+      <h2><span class="feat-icon">📈</span><span>升级系统</span></h2>
+      <div class="section-preview"><span>升级</span><span>升级 列表</span><span>升级 信息</span></div>
+      <span class="section-count">04</span>
+      <span class="section-arrow" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="cmd-grid">
+      
+        <div class="cmd-card" data-search="升级 消耗资源进行角色升级">
+          <div class="cmd-name">升级</div>
+          <div class="cmd-desc">消耗资源进行角色升级</div>
+          
+        </div>
+        <div class="cmd-card" data-search="升级 列表 查看当前可升级的项目">
+          <div class="cmd-name">升级 列表</div>
+          <div class="cmd-desc">查看当前可升级的项目</div>
+          
+        </div>
+        <div class="cmd-card" data-search="升级 信息 查看自己的升级进度与当前等级详情">
+          <div class="cmd-name">升级 信息</div>
+          <div class="cmd-desc">查看自己的升级进度与当前等级详情</div>
+          
+        </div>
+        <div class="cmd-card" data-search="升级 历史 [n] 查看自己最近 n 条升级记录（默认10条）">
+          <div class="cmd-name">升级 历史 [N]</div>
+          <div class="cmd-desc">查看自己最近 N 条升级记录（默认10条）</div>
+          
+        </div>
+    </div>
+  </details>
+
+  <details class="feat-section" id="sec-抽取">
+    <summary>
+      <h2><span class="feat-icon">🎰</span><span>抽取</span></h2>
+      <div class="section-preview"><span>查看池子 [池子名]</span><span>抽取 [池子名]</span><span>我的抽取次数 / 抽取次数</span></div>
+      <span class="section-count">04</span>
+      <span class="section-arrow" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="cmd-grid">
+      
+        <div class="cmd-card" data-search="查看池子 [池子名] 查看池子详情及当前库存">
+          <div class="cmd-name">查看池子 [池子名]</div>
+          <div class="cmd-desc">查看池子详情及当前库存</div>
+          
+        </div>
+        <div class="cmd-card" data-search="抽取 [池子名] 从抽取池随机获得物品，不填池名则抽默认池">
+          <div class="cmd-name">抽取 [池子名]</div>
+          <div class="cmd-desc">从抽取池随机获得物品，不填池名则抽默认池</div>
+          <pre class="ex">抽取 / 抽取 限定池</pre>
+        </div>
+        <div class="cmd-card" data-search="我的抽取次数 / 抽取次数 查看今日各池子的抽取次数剩余">
+          <div class="cmd-name">我的抽取次数 / 抽取次数</div>
+          <div class="cmd-desc">查看今日各池子的抽取次数剩余</div>
+          
+        </div>
+        <div class="cmd-card" data-search="我的保底 / 保底进度 查看自己在各保底池的累计抽取次数">
+          <div class="cmd-name">我的保底 / 保底进度</div>
+          <div class="cmd-desc">查看自己在各保底池的累计抽取次数</div>
+          
+        </div>
+    </div>
+  </details>
+
+  <details class="feat-section" id="sec-状态与技能">
+    <summary>
+      <h2><span class="feat-icon">📊</span><span>状态与技能</span></h2>
+      <div class="section-preview"><span>我的状态</span><span>属性 [角色名]</span><span>技能</span></div>
+      <span class="section-count">05</span>
+      <span class="section-arrow" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="cmd-grid">
+      
+        <div class="cmd-card" data-search="我的状态 查看自己所有 rpg 属性（带进度条的可视化版本）">
+          <div class="cmd-name">我的状态</div>
+          <div class="cmd-desc">查看自己所有 RPG 属性（带进度条的可视化版本）</div>
+          
+        </div>
+        <div class="cmd-card" data-search="属性 [角色名] 查看自己（或他人）的战斗属性，含装备加成对比">
+          <div class="cmd-name">属性 [角色名]</div>
+          <div class="cmd-desc">查看自己（或他人）的战斗属性，含装备加成对比</div>
+          <pre class="ex">。属性
+。属性 张三（管理员查他人）</pre>
+        </div>
+        <div class="cmd-card" data-search="技能 查看自己已解锁的技能列表">
+          <div class="cmd-name">技能</div>
+          <div class="cmd-desc">查看自己已解锁的技能列表</div>
+          
+        </div>
+        <div class="cmd-card" data-search="技能 库 查看所有已在 rp_archive 管理端注册的技能">
+          <div class="cmd-name">技能 库</div>
+          <div class="cmd-desc">查看所有已在 rp_archive 管理端注册的技能</div>
+          
+        </div>
+        <div class="cmd-card" data-search="技能 使用 [技能名] [目标] 消耗 mp 使用已解锁的技能，aoe 技能无需指定目标">
+          <div class="cmd-name">技能 使用 [技能名] [目标]</div>
+          <div class="cmd-desc">消耗 MP 使用已解锁的技能，AOE 技能无需指定目标</div>
+          <pre class="ex">。技能 使用 火球术 张三
+。技能 使用 大爆炸</pre>
+        </div>
+    </div>
+  </details>
+
+  <details class="feat-section" id="sec-PK 对战">
+    <summary>
+      <h2><span class="feat-icon">⚔️</span><span>PK 对战</span></h2>
+      <div class="section-preview"><span>PK 发起 [对手名]...</span><span>PK 接受 [战斗ID]</span><span>PK 拒绝 [战斗ID]</span></div>
+      <span class="section-count">10</span>
+      <span class="section-arrow" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="cmd-grid">
+      
+        <div class="cmd-card" data-search="pk 发起 [对手名]... 发起战斗（可指定对手；留空则为开放挑战，等待他人「pk 接受」加入）">
+          <div class="cmd-name">PK 发起 [对手名]...</div>
+          <div class="cmd-desc">发起战斗（可指定对手；留空则为开放挑战，等待他人「PK 接受」加入）</div>
+          <pre class="ex">。PK 发起 张三
+。PK 发起      ← 开放挑战</pre>
+        </div>
+        <div class="cmd-card" data-search="pk 接受 [战斗id] 接受/加入战斗">
+          <div class="cmd-name">PK 接受 [战斗ID]</div>
+          <div class="cmd-desc">接受/加入战斗</div>
+          <pre class="ex">。PK 接受 B-XXXX</pre>
+        </div>
+        <div class="cmd-card" data-search="pk 拒绝 [战斗id] 拒绝战斗邀请">
+          <div class="cmd-name">PK 拒绝 [战斗ID]</div>
+          <div class="cmd-desc">拒绝战斗邀请</div>
+          <pre class="ex">。PK 拒绝 B-XXXX</pre>
+        </div>
+        <div class="cmd-card" data-search="攻击 [目标名] 普通攻击目标（受 def 减伤，±10% 随机浮动）">
+          <div class="cmd-name">攻击 [目标名]</div>
+          <div class="cmd-desc">普通攻击目标（受 DEF 减伤，±10% 随机浮动）</div>
+          <pre class="ex">。攻击 张三</pre>
+        </div>
+        <div class="cmd-card" data-search="防守 进入防守姿态，下次受到的攻击伤害减半">
+          <div class="cmd-name">防守</div>
+          <div class="cmd-desc">进入防守姿态，下次受到的攻击伤害减半</div>
+          
+        </div>
+        <div class="cmd-card" data-search="投降 / 逃跑 投降：直接认负；逃跑：有成功率（默认30%）">
+          <div class="cmd-name">投降 / 逃跑</div>
+          <div class="cmd-desc">投降：直接认负；逃跑：有成功率（默认30%）</div>
+          
+        </div>
+        <div class="cmd-card" data-search="战况 查看当前战斗局面（hp / mp / 盾 / buff / 防守状态）">
+          <div class="cmd-name">战况</div>
+          <div class="cmd-desc">查看当前战斗局面（HP / MP / 盾 / Buff / 防守状态）</div>
+          
+        </div>
+        <div class="cmd-card" data-search="战况 历史 [战斗id] [页码] 查看指定战斗的完整行动记录">
+          <div class="cmd-name">战况 历史 [战斗ID] [页码]</div>
+          <div class="cmd-desc">查看指定战斗的完整行动记录</div>
+          
+        </div>
+        <div class="cmd-card" data-search="战况 用品 [物品名/代码] 在战斗中消耗背包物品（仅生效 hp / mp 恢复效果）">
+          <div class="cmd-name">战况 用品 [物品名/代码]</div>
+          <div class="cmd-desc">在战斗中消耗背包物品（仅生效 HP / MP 恢复效果）</div>
+          <pre class="ex">。战况 用品 滋补汤</pre>
+        </div>
+        <div class="cmd-card" data-search="施加 目标 物品 【旧指令，已合并入「使用」】对他人使用互动物品，自动转发到新指令处理">
+          <div class="cmd-name">施加 目标 物品</div>
+          <div class="cmd-desc">【旧指令，已合并入「使用」】对他人使用互动物品，自动转发到新指令处理</div>
+          <pre class="ex">施加 张三 治疗术  ← 等价于：使用 治疗术 张三</pre>
+        </div>
+    </div>
+  </details>
+
+  <details class="feat-section" id="sec-晚餐">
+    <summary>
+      <h2><span class="feat-icon">🍽️</span><span>晚餐</span></h2>
+      <div class="section-preview"><span>入座</span><span>戳你一下 [对方角色名]</span></div>
+      <span class="section-count">02</span>
+      <span class="section-arrow" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="cmd-grid">
+      
+        <div class="cmd-card" data-search="入座 参加当前晚餐并随机入座">
+          <div class="cmd-name">入座</div>
+          <div class="cmd-desc">参加当前晚餐并随机入座</div>
+          
+        </div>
+        <div class="cmd-card" data-search="戳你一下 [对方角色名] 对相邻座位玩家戳一下（冷却5分钟）">
+          <div class="cmd-name">戳你一下 [对方角色名]</div>
+          <div class="cmd-desc">对相邻座位玩家戳一下（冷却5分钟）</div>
+          <pre class="ex">。戳你一下 张三</pre>
+        </div>
+    </div>
+  </details>
+
+  <details class="feat-section" id="sec-戳泡泡小游戏">
+    <summary>
+      <h2><span class="feat-icon">🫧</span><span>戳泡泡小游戏</span></h2>
+      <div class="section-preview"><span>戳泡泡 [编号]</span></div>
+      <span class="section-count">01</span>
+      <span class="section-arrow" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="cmd-grid">
+      
+        <div class="cmd-card" data-search="戳泡泡 [编号] 戳破指定编号的泡泡">
+          <div class="cmd-name">戳泡泡 [编号]</div>
+          <div class="cmd-desc">戳破指定编号的泡泡</div>
+          <pre class="ex">。戳泡泡 7</pre>
+        </div>
+    </div>
+  </details>
+
+  <details class="feat-section" id="sec-俄罗斯轮盘小游戏">
+    <summary>
+      <h2><span class="feat-icon">🔫</span><span>俄罗斯轮盘小游戏</span></h2>
+      <div class="section-preview"><span>开枪</span></div>
+      <span class="section-count">01</span>
+      <span class="section-arrow" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="cmd-grid">
+      
+        <div class="cmd-card" data-search="开枪 轮盘游戏中扣动扳机">
+          <div class="cmd-name">开枪</div>
+          <div class="cmd-desc">轮盘游戏中扣动扳机</div>
+          
+        </div>
+    </div>
+  </details>
+
+  <details class="feat-section" id="sec-巡逻捉迷藏小游戏">
+    <summary>
+      <h2><span class="feat-icon">🕵️</span><span>巡逻捉迷藏小游戏</span></h2>
+      <div class="section-preview"><span>巡逻报名</span><span>巡逻躲藏 [地点名]</span></div>
+      <span class="section-count">02</span>
+      <span class="section-arrow" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="cmd-grid">
+      
+        <div class="cmd-card" data-search="巡逻报名 加入本轮巡逻赛">
+          <div class="cmd-name">巡逻报名</div>
+          <div class="cmd-desc">加入本轮巡逻赛</div>
+          
+        </div>
+        <div class="cmd-card" data-search="巡逻躲藏 [地点名] 选择本回合的藏身地点">
+          <div class="cmd-name">巡逻躲藏 [地点名]</div>
+          <div class="cmd-desc">选择本回合的藏身地点</div>
+          
+        </div>
+    </div>
+  </details>
+
+  <details class="feat-section" id="sec-写信综系统">
+    <summary>
+      <h2><span class="feat-icon">✉️</span><span>写信综系统</span></h2>
+      <div class="section-preview"><span>发送信件</span><span>信件状态</span><span>写信综指南</span></div>
+      <span class="section-count">04</span>
+      <span class="section-arrow" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="cmd-grid">
+      
+        <div class="cmd-card" data-search="发送信件 发送正式信件给另一角色（多行标签格式，不加。号也能直接触发）">
+          <div class="cmd-name">发送信件</div>
+          <div class="cmd-desc">发送正式信件给另一角色（多行标签格式，不加。号也能直接触发）</div>
+          <pre class="ex">发送信件
+【收件人】张三
+【内容】亲爱的张三，一别已是经年...
+【日期】选填
+【附件】选填
+【署名】选填，默认为本角色名</pre>
+        </div>
+        <div class="cmd-card" data-search="信件状态 查看信件系统状态和个人可用额度">
+          <div class="cmd-name">信件状态</div>
+          <div class="cmd-desc">查看信件系统状态和个人可用额度</div>
+          
+        </div>
+        <div class="cmd-card" data-search="写信综指南 无句号版，查看写信综玩家使用说明（私约/信件/短信/送礼/道具等）；与上一条管理员版是两条不同指令，靠有无。号区分">
+          <div class="cmd-name">写信综指南</div>
+          <div class="cmd-desc">无句号版，查看写信综玩家使用说明（私约/信件/短信/送礼/道具等）；与上一条管理员版是两条不同指令，靠有无。号区分</div>
+          
+        </div>
+        <div class="cmd-card" data-search="羽毛笔修改 [序号] [新内容] 查看被羽毛笔截获的待改信件清单，或指定序号修改后发出">
+          <div class="cmd-name">羽毛笔修改 [序号] [新内容]</div>
+          <div class="cmd-desc">查看被羽毛笔截获的待改信件清单，或指定序号修改后发出</div>
+          <pre class="ex">羽毛笔修改  ← 查看清单
+。羽毛笔修改 1 新的信件内容</pre>
+        </div>
+    </div>
+  </details>
+
+  <details class="feat-section" id="sec-加百列闹钟">
+    <summary>
+      <h2><span class="feat-icon">🔔</span><span>加百列闹钟</span></h2>
+      <div class="section-preview"><span>提醒 [时间] [内容]</span><span>我的提醒</span><span>删除提醒 [编号]</span></div>
+      <span class="section-count">08</span>
+      <span class="section-arrow" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="cmd-grid">
+      
+        <div class="cmd-card" data-search="提醒 [时间] [内容] 设置闹钟提醒">
+          <div class="cmd-name">提醒 [时间] [内容]</div>
+          <div class="cmd-desc">设置闹钟提醒</div>
+          <pre class="ex">。提醒 30分钟后 记得喝水
+。提醒 14:30 开会
+。提醒 每天08:00 早安</pre>
+        </div>
+        <div class="cmd-card" data-search="我的提醒 查看所有已设置的提醒">
+          <div class="cmd-name">我的提醒</div>
+          <div class="cmd-desc">查看所有已设置的提醒</div>
+          
+        </div>
+        <div class="cmd-card" data-search="删除提醒 [编号] 删除指定编号的提醒">
+          <div class="cmd-name">删除提醒 [编号]</div>
+          <div class="cmd-desc">删除指定编号的提醒</div>
+          
+        </div>
+        <div class="cmd-card" data-search="再提醒我 [x分钟] 延迟再触发一次提醒（默认10分钟）">
+          <div class="cmd-name">再提醒我 [X分钟]</div>
+          <div class="cmd-desc">延迟再触发一次提醒（默认10分钟）</div>
+          
+        </div>
+        <div class="cmd-card" data-search="谢谢加百列 向加百列道谢，提升好感度（每天一次）">
+          <div class="cmd-name">谢谢加百列</div>
+          <div class="cmd-desc">向加百列道谢，提升好感度（每天一次）</div>
+          
+        </div>
+        <div class="cmd-card" data-search="加百列好感度 查看与加百列的当前好感度">
+          <div class="cmd-name">加百列好感度</div>
+          <div class="cmd-desc">查看与加百列的当前好感度</div>
+          
+        </div>
+        <div class="cmd-card" data-search="加百列图鉴 查看从加百列处收到的礼物图鉴">
+          <div class="cmd-name">加百列图鉴</div>
+          <div class="cmd-desc">查看从加百列处收到的礼物图鉴</div>
+          
+        </div>
+        <div class="cmd-card" data-search="加百列闹钟帮助 查看加百列闹钟的所有可用指令">
+          <div class="cmd-name">加百列闹钟帮助</div>
+          <div class="cmd-desc">查看加百列闹钟的所有可用指令</div>
+          
+        </div>
+    </div>
+  </details>
+
+  <details class="feat-section" id="sec-群组与平台管理">
+    <summary>
+      <h2><span class="feat-icon">📡</span><span>群组与平台管理</span></h2>
+      <div class="section-preview"><span>群头衔 [内容]</span></div>
+      <span class="section-count">01</span>
+      <span class="section-arrow" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="cmd-grid">
+      
+        <div class="cmd-card" data-search="群头衔 [内容] 更改自己（或@他人）的群头衔">
+          <div class="cmd-name">群头衔 [内容]</div>
+          <div class="cmd-desc">更改自己（或@他人）的群头衔</div>
+          <pre class="ex">。群头衔 读书人
+。群头衔 权限切换  → 切换可使用此指令的权限</pre>
+        </div>
+    </div>
+  </details>
+
+  <details class="feat-section" id="sec-季度与存档">
+    <summary>
+      <h2><span class="feat-icon">📊</span><span>季度与存档</span></h2>
+      <div class="section-preview"><span>全部复盘</span><span>查看复盘 [编号]</span><span>[引用自己发的RP消息] 撤回</span></div>
+      <span class="section-count">03</span>
+      <span class="section-arrow" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="cmd-grid">
+      
+        <div class="cmd-card" data-search="全部复盘 仅复盘模式季度可用，查看自己本季度所有已结场次（类型/时间/地点/伙伴），合并消息返回并编号（编号仅本次结果有效）">
+          <div class="cmd-name">全部复盘</div>
+          <div class="cmd-desc">仅复盘模式季度可用，查看自己本季度所有已结场次（类型/时间/地点/伙伴），合并消息返回并编号（编号仅本次结果有效）</div>
+          
+        </div>
+        <div class="cmd-card" data-search="查看复盘 [编号] 查看「全部复盘」结果里指定编号场次的完整 rp 正文，合并消息还原整场戏">
+          <div class="cmd-name">查看复盘 [编号]</div>
+          <div class="cmd-desc">查看「全部复盘」结果里指定编号场次的完整 RP 正文，合并消息还原整场戏</div>
+          <pre class="ex">。查看复盘 1</pre>
+        </div>
+        <div class="cmd-card" data-search="[引用自己发的rp消息] 撤回 撤回该条qq消息；若这条消息当时被计入了复盘，会按内容精确匹配同步删除复盘里对应的那条记录">
+          <div class="cmd-name">[引用自己发的RP消息] 撤回</div>
+          <div class="cmd-desc">撤回该条QQ消息；若这条消息当时被计入了复盘，会按内容精确匹配同步删除复盘里对应的那条记录</div>
+          
+        </div>
+    </div>
+  </details>
+
+  <details class="feat-section" id="sec-拍卖">
+    <summary>
+      <h2><span class="feat-icon">🏆</span><span>拍卖</span></h2>
+      <div class="section-preview"><span>查看拍卖</span><span>实名出价 [价格] [#编号]</span><span>匿名出价 [价格] [#编号]</span></div>
+      <span class="section-count">03</span>
+      <span class="section-arrow" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="cmd-grid">
+      
+        <div class="cmd-card" data-search="查看拍卖 查看当前所有进行中的拍卖">
+          <div class="cmd-name">查看拍卖</div>
+          <div class="cmd-desc">查看当前所有进行中的拍卖</div>
+          
+        </div>
+        <div class="cmd-card" data-search="实名出价 [价格] [#编号] 以实名参与拍卖出价">
+          <div class="cmd-name">实名出价 [价格] [#编号]</div>
+          <div class="cmd-desc">以实名参与拍卖出价</div>
+          <pre class="ex">实名出价 150 #1</pre>
+        </div>
+        <div class="cmd-card" data-search="匿名出价 [价格] [#编号] 以匿名参与拍卖出价">
+          <div class="cmd-name">匿名出价 [价格] [#编号]</div>
+          <div class="cmd-desc">以匿名参与拍卖出价</div>
+          
+        </div>
+    </div>
+  </details>
+
+  <details class="feat-section" id="sec-信息收集">
+    <summary>
+      <h2><span class="feat-icon">📋</span><span>信息收集</span></h2>
+      <div class="section-preview"><span>我提交 [项目名]: [内容]</span><span>查看收集 [项目名]</span><span>删除上传 [项目名] [序号]</span></div>
+      <span class="section-count">04</span>
+      <span class="section-arrow" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="cmd-grid">
+      
+        <div class="cmd-card" data-search="我提交 [项目名]: [内容] 向指定项目提交信息（可以不带图片；带图片会转存到rp存档服务器换成永久链接，每人每季度限额30mb、单图3mb，结束季度时自动清空；提交后会自动推送提醒到后台群）">
+          <div class="cmd-name">我提交 [项目名]: [内容]</div>
+          <div class="cmd-desc">向指定项目提交信息（可以不带图片；带图片会转存到RP存档服务器换成永久链接，每人每季度限额30MB、单图3MB，结束季度时自动清空；提交后会自动推送提醒到后台群）</div>
+          <pre class="ex">我提交 人物档案: 张三，22岁，擅长弹琴</pre>
+        </div>
+        <div class="cmd-card" data-search="查看收集 [项目名] 查看指定项目的所有提交（不填则列出项目；私密项目对非管理员隐藏且拒绝查看；查看时会顺便检查图片是否已被超级管理员在rp存档后台删除，删了的整条记录会自动消失）">
+          <div class="cmd-name">查看收集 [项目名]</div>
+          <div class="cmd-desc">查看指定项目的所有提交（不填则列出项目；私密项目对非管理员隐藏且拒绝查看；查看时会顺便检查图片是否已被超级管理员在RP存档后台删除，删了的整条记录会自动消失）</div>
+          
+        </div>
+        <div class="cmd-card" data-search="删除上传 [项目名] [序号] 删除自己的提交记录（带图片的话，rp存档服务器上的图片文件也会一起删掉，不会占着配额；删除后会自动推送提醒到后台群）">
+          <div class="cmd-name">删除上传 [项目名] [序号]</div>
+          <div class="cmd-desc">删除自己的提交记录（带图片的话，RP存档服务器上的图片文件也会一起删掉，不会占着配额；删除后会自动推送提醒到后台群）</div>
+          
+        </div>
+        <div class="cmd-card" data-search="定时收集 [项目名] [内容] 向定时收集项目提交内容（跟「我提交」是两套不同机制：这个要先由管理员定好开启时间，到点才能提交）">
+          <div class="cmd-name">定时收集 [项目名] [内容]</div>
+          <div class="cmd-desc">向定时收集项目提交内容（跟「我提交」是两套不同机制：这个要先由管理员定好开启时间，到点才能提交）</div>
+          <pre class="ex">定时收集 心情调查 今天很开心</pre>
+        </div>
+    </div>
+  </details>
+
+  <details class="feat-section" id="sec-出场系统">
+    <summary>
+      <h2><span class="feat-icon">🎭</span><span>出场系统</span></h2>
+      <div class="section-preview"><span>提交出场 [名字]（换行）[内容]</span><span>提交出场图片</span></div>
+      <span class="section-count">02</span>
+      <span class="section-arrow" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="cmd-grid">
+      
+        <div class="cmd-card" data-search="提交出场 [名字]（换行）[内容] 提交自己的出场内容，名字须与自己绑定的角色一致，反复提交会覆盖">
+          <div class="cmd-name">提交出场 [名字]（换行）[内容]</div>
+          <div class="cmd-desc">提交自己的出场内容，名字须与自己绑定的角色一致，反复提交会覆盖</div>
+          <pre class="ex">提交出场 张三
+缓缓从庭院走出，环视四周</pre>
+        </div>
+        <div class="cmd-card" data-search="提交出场图片 先发一张图片，再回复那条消息提交出场配图，可附评论；每人限存一张，反复提交覆盖；转存失败会提示重新发图，不会保存迟早失效的qq链接">
+          <div class="cmd-name">提交出场图片</div>
+          <div class="cmd-desc">先发一张图片，再回复那条消息提交出场配图，可附评论；每人限存一张，反复提交覆盖；转存失败会提示重新发图，不会保存迟早失效的QQ链接</div>
+          <pre class="ex">① 发一张图片
+② 回复该图片发送：提交出场图片 今日份的美貌</pre>
+        </div>
+    </div>
+  </details>
+
+  <details class="feat-section" id="sec-帮助与基础">
+    <summary>
+      <h2><span class="feat-icon">📖</span><span>帮助与基础</span></h2>
+      <div class="section-preview"><span>长日菜单</span><span>点歌</span><span>基础指南</span></div>
+      <span class="section-count">07</span>
+      <span class="section-arrow" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="cmd-grid">
+      
+        <div class="cmd-card" data-search="长日菜单 查看长日将尽系统的分类总览（9 个子模块的高频入口），不知道有什么功能时从这里开始">
+          <div class="cmd-name">长日菜单</div>
+          <div class="cmd-desc">查看长日将尽系统的分类总览（9 个子模块的高频入口），不知道有什么功能时从这里开始</div>
+          
+        </div>
+        <div class="cmd-card" data-search="点歌 提示点歌用法（需回复音乐卡片触发实际发送）">
+          <div class="cmd-name">点歌</div>
+          <div class="cmd-desc">提示点歌用法（需回复音乐卡片触发实际发送）</div>
+          <pre class="ex">① 回复一张音乐卡片
+② 消息内容写：点歌人：张三 留言：这首歌送给你 歌名：晴天（选填） 送给：李四（选填）
+③ 机器人自动转发到戏群</pre>
+        </div>
+        <div class="cmd-card" data-search="基础指南 获取玩家基础操作指南（从存档服务器拉取）">
+          <div class="cmd-name">基础指南</div>
+          <div class="cmd-desc">获取玩家基础操作指南（从存档服务器拉取）</div>
+          
+        </div>
+        <div class="cmd-card" data-search="玩家指南 查看角色/账号入门指令一览（创建角色、修改档案、查看类指令速查）">
+          <div class="cmd-name">玩家指南</div>
+          <div class="cmd-desc">查看角色/账号入门指令一览（创建角色、修改档案、查看类指令速查）</div>
+          
+        </div>
+        <div class="cmd-card" data-search="格式 查看所有支持的指令格式类型清单">
+          <div class="cmd-name">格式</div>
+          <div class="cmd-desc">查看所有支持的指令格式类型清单</div>
+          
+        </div>
+        <div class="cmd-card" data-search="格式 [类型] 直接获取指定类型的可复制粘贴指令模板，不带任何说明文字，复制后改内容就能发。支持类型：心动信/短信/漂流瓶/前置电话/信件/私约/电话/送礼/心愿/悬赏心愿/拉线/发帖/点歌，以及管理员在网页端配置的私约/短信/送礼自定义触发词">
+          <div class="cmd-name">格式 [类型]</div>
+          <div class="cmd-desc">直接获取指定类型的可复制粘贴指令模板，不带任何说明文字，复制后改内容就能发。支持类型：心动信/短信/漂流瓶/前置电话/信件/私约/电话/送礼/心愿/悬赏心愿/拉线/发帖/点歌，以及管理员在网页端配置的私约/短信/送礼自定义触发词</div>
+          <pre class="ex">格式心动信
+格式短信
+格式漂流瓶
+格式信件
+格式悬赏心愿
+格式点歌</pre>
+        </div>
+        <div class="cmd-card" data-search="加百列闹钟帮助 查看加百列闹钟所有指令">
+          <div class="cmd-name">加百列闹钟帮助</div>
+          <div class="cmd-desc">查看加百列闹钟所有指令</div>
+          
+        </div>
+    </div>
+  </details>
+
+  <details class="feat-section" id="sec-议价交易系统（DLC）">
+    <summary>
+      <h2><span class="feat-icon">💱</span><span>议价交易系统（DLC）</span></h2>
+      <div class="section-preview"><span>交易 提出 [对方] [给:物品×N,...] [要:物品×N,...] [备注]</span><span>交易 接受 [单号]</span><span>交易 拒绝 [单号]</span></div>
+      <span class="section-count">07</span>
+      <span class="section-arrow" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="cmd-grid">
+      
+        <div class="cmd-card" data-search="交易 提出 [对方] [给:物品×n,...] [要:物品×n,...] [备注] 发起以物换物提案；物品可用名称或编码，多件逗号分隔不加空格；系统立即校验你持有「给」的物品">
+          <div class="cmd-name">交易 提出 [对方] [给:物品×N,...] [要:物品×N,...] [备注]</div>
+          <div class="cmd-desc">发起以物换物提案；物品可用名称或编码，多件逗号分隔不加空格；系统立即校验你持有「给」的物品</div>
+          <pre class="ex">。交易 提出 李四 给:铁剑×1,回血药×2 要:金币×50 换个好东西</pre>
+        </div>
+        <div class="cmd-card" data-search="交易 接受 [单号] 接受提案；系统同时校验双方背包是否足够，若对方物品已消失则提示拒绝重谈">
+          <div class="cmd-name">交易 接受 [单号]</div>
+          <div class="cmd-desc">接受提案；系统同时校验双方背包是否足够，若对方物品已消失则提示拒绝重谈</div>
+          <pre class="ex">。交易 接受 TR0001</pre>
+        </div>
+        <div class="cmd-card" data-search="交易 拒绝 [单号] 拒绝收到的提案，对方收到通知">
+          <div class="cmd-name">交易 拒绝 [单号]</div>
+          <div class="cmd-desc">拒绝收到的提案，对方收到通知</div>
+          <pre class="ex">。交易 拒绝 TR0001</pre>
+        </div>
+        <div class="cmd-card" data-search="交易 还价 [单号] [给:物品×n,...] [要:物品×n,...] [备注] 对收到的提案提出新条件；原提案自动标记为「已还价」，生成新单号，对方可再次接受/拒绝/还价">
+          <div class="cmd-name">交易 还价 [单号] [给:物品×N,...] [要:物品×N,...] [备注]</div>
+          <div class="cmd-desc">对收到的提案提出新条件；原提案自动标记为「已还价」，生成新单号，对方可再次接受/拒绝/还价</div>
+          <pre class="ex">。交易 还价 TR0001 给:回血药×1 要:铁剑×1 少一件行吗</pre>
+        </div>
+        <div class="cmd-card" data-search="交易 撤回 [单号] 撤回自己发出但对方还未回应的提案">
+          <div class="cmd-name">交易 撤回 [单号]</div>
+          <div class="cmd-desc">撤回自己发出但对方还未回应的提案</div>
+          <pre class="ex">。交易 撤回 TR0001</pre>
+        </div>
+        <div class="cmd-card" data-search="交易 列表 查看我的全部进行中提案（含收到/发出）及最近5条已结案记录">
+          <div class="cmd-name">交易 列表</div>
+          <div class="cmd-desc">查看我的全部进行中提案（含收到/发出）及最近5条已结案记录</div>
+          
+        </div>
+        <div class="cmd-card" data-search="交易 详情 [单号] 查看指定单号的完整物品、备注、关联单号及状态">
+          <div class="cmd-name">交易 详情 [单号]</div>
+          <div class="cmd-desc">查看指定单号的完整物品、备注、关联单号及状态</div>
+          <pre class="ex">。交易 详情 TR0001</pre>
+        </div>
+    </div>
+  </details>
+  </main>
+  </div>
+</div>
+<div class="nav-scrim" id="navScrim"></div>
+<div class="mobile-dock" aria-label="移动端快捷操作">
+  <button id="dockMenu">☰ 章节目录</button>
+  <button id="dockSearch">⌕ 搜索</button>
+</div>
+<div class="pet-bubble" id="petBubble" role="status"></div>
+<button class="desk-pet" id="deskPet" aria-label="点击切换兔耳向导的动作"><img id="petImage" src="assets/player-guide-bunny-idle-v2.png" alt=""></button>
+<script>
+var menuToggle = document.getElementById('menuToggle');
+function setNav(open) {
+  document.body.classList.toggle('nav-open', open);
+  menuToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+menuToggle.addEventListener('click', function() { setNav(!document.body.classList.contains('nav-open')); });
+document.getElementById('sideClose').addEventListener('click', function() { setNav(false); });
+document.getElementById('navScrim').addEventListener('click', function() { setNav(false); });
+document.getElementById('dockMenu').addEventListener('click', function() { setNav(true); });
+document.getElementById('dockSearch').addEventListener('click', function() {
+  window.scrollTo({top:0,behavior:'smooth'});
+  setTimeout(function() { document.getElementById('search').focus(); }, 350);
+});
+var petStates=[
+  {src:'assets/player-guide-bunny-idle-v2.png',line:'今天想找什么指令？'},
+  {src:'assets/player-guide-bunny-wave-v2.png',line:'欢迎回来，要一起翻手册吗？'},
+  {src:'assets/player-guide-bunny-surprise-v2.png',line:'咦，发现新的指令了！'},
+  {src:'assets/player-guide-bunny-shy-v2.png',line:'再点一下，我还有别的表情。'}
+];
+petStates.forEach(function(state){var preload=new Image();preload.src=state.src});
+var petStateIndex=0;
+var petTimer;
+document.getElementById('deskPet').addEventListener('click',function(){
+  var pet=this,bubble=document.getElementById('petBubble');
+  petStateIndex=(petStateIndex+1)%petStates.length;
+  var state=petStates[petStateIndex],image=document.getElementById('petImage');
+  pet.classList.add('is-changing');
+  setTimeout(function(){image.src=state.src;pet.classList.remove('is-changing')},120);
+  bubble.textContent=state.line;
+  bubble.classList.add('show');pet.classList.remove('is-happy');void pet.offsetWidth;pet.classList.add('is-happy');
+  clearTimeout(petTimer);petTimer=setTimeout(function(){bubble.classList.remove('show')},2800);
+});
+document.querySelectorAll('.toc a').forEach(function(link) {
+  link.addEventListener('click', function() {
+    document.querySelectorAll('.toc a').forEach(function(a) { a.classList.toggle('active', a === link); });
+    var target=document.querySelector(link.getAttribute('href'));
+    if(target){target.open=true;setTimeout(function(){target.scrollIntoView({behavior:'smooth',block:'start'})},60)}
+    setNav(false);
+  });
+});
+var sections = Array.from(document.querySelectorAll('.feat-section'));
+sections.forEach(function(section){
+  section.addEventListener('toggle',function(){
+    if(!section.open || document.body.classList.contains('is-searching'))return;
+    sections.forEach(function(other){if(other!==section)other.open=false});
+  });
+});
+sections.forEach(function(section) { section.classList.add('reveal'); });
+var revealObserver = new IntersectionObserver(function(entries) {
+  entries.forEach(function(entry) { if (entry.isIntersecting) entry.target.classList.add('is-visible'); });
+}, {rootMargin:'0px 0px -8% 0px',threshold:.05});
+sections.forEach(function(section) { revealObserver.observe(section); });
+var activeObserver = new IntersectionObserver(function(entries) {
+  entries.forEach(function(entry) {
+    if (!entry.isIntersecting) return;
+    document.querySelectorAll('.toc a').forEach(function(a) {
+      a.classList.toggle('active', decodeURIComponent(a.getAttribute('href').slice(1)) === entry.target.id);
+    });
+  });
+}, {rootMargin:'-20% 0px -65% 0px'});
+sections.forEach(function(section) { activeObserver.observe(section); });
+function updateProgress() {
+  var max = document.documentElement.scrollHeight - innerHeight;
+  document.getElementById('readingProgress').style.width = (max > 0 ? scrollY / max * 100 : 0) + '%';
+}
+addEventListener('scroll', updateProgress, {passive:true}); updateProgress();
+document.addEventListener('keydown', function(e) { if (e.key === 'Escape') setNav(false); });
+document.getElementById('search').addEventListener('input', function(e) {
+  var q = e.target.value.trim().toLowerCase();
+  document.body.classList.toggle('is-searching',!!q);
+  document.querySelectorAll('.cmd-card').forEach(function(card) {
+    var hit = !q || (card.dataset.search || '').includes(q);
+    card.hidden = !hit;
+  });
+  document.querySelectorAll('.feat-section').forEach(function(sec) {
+    var anyVisible = Array.from(sec.querySelectorAll('.cmd-card')).some(function(c) { return !c.hidden; });
+    sec.hidden = !anyVisible;
+    if(q && anyVisible) sec.open = true;
+  });
+});
+</script>
+</body>
+</html>

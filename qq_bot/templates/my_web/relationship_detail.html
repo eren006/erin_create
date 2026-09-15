@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ role_name }} × {{ other_name }} · 关系线</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+         max-width: 640px; margin: 0 auto; padding: 24px 16px 60px;
+         background: #faf8f5; color: #2b2620; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #17140f; color: #ece6dc; }
+    .bubble { background: #24201a !important; border-color: #39332a !important; }
+  }
+  a.back { color: #b08d3e; text-decoration: none; font-size: 0.9rem; }
+  h1 { font-size: 1.3rem; margin: 12px 0 4px; }
+  .sub { color: #8a7f6e; font-size: 0.85rem; margin-bottom: 20px; }
+  .bubble { background: #fff; border: 1px solid #ecdfc8; border-radius: 10px;
+            padding: 12px 14px; margin-bottom: 10px; }
+  .from { font-weight: 600; font-size: 0.85rem; color: #b08d3e; margin-bottom: 4px; }
+  .content { white-space: pre-wrap; word-break: break-word; }
+  .empty { color: #8a7f6e; padding: 20px 0; text-align: center; }
+</style>
+</head>
+<body>
+  <a class="back" href="/my/{{ token }}">← 返回我的主页</a>
+  <h1>🔗 {{ role_name }} × {{ other_name }}</h1>
+  <div class="sub">
+    {% if rel.is_mandatory %}【强制关系线】{% endif %}
+    {% if rel.confirmed %}✅ 已确认{% else %}⏳ 未确认{% endif %}
+    · 共 {{ rel.details|length }} 条细节
+  </div>
+
+  {% if rel.details %}
+    {% for d in rel.details %}
+    <div class="bubble">
+      <div class="from">{{ d.from_name }}</div>
+      <div class="content">{{ d.content }}</div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty">还没有添加任何细节</div>
+  {% endif %}
+</body>
+</html>

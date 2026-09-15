@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% block title %}六宫{% endblock %}
+{% block head %}
+<style>
+.who{display:flex;gap:16px;padding:14px 0;border-bottom:1px solid var(--line)}
+.who .pai{min-height:120px;font-size:17px}
+.who .body{flex:1;min-width:0}
+.who .nm{font-family:var(--kai);font-size:20px}
+.who form{display:inline-flex;gap:6px;align-items:center;margin:4px 6px 0 0;flex-wrap:wrap}
+.who input[type=number]{width:80px}
+.tag{font-size:13px;padding:0 6px;border:1px solid var(--line);margin-left:6px;color:var(--muted)}
+.tag.sis{border-color:var(--jin);color:var(--jin)}
+</style>
+{% endblock %}
+{% block body %}
+<h2>六宫</h2>
+<p class="muted">和其他小主来往。好感 40 以上可以结为姐妹（最多三位）：姐妹会让算计你的人更难得手，也能为彼此求情。</p>
+{% if not others %}<p>宫里暂时只有你一位新人。等其他秀女入宫吧。</p>{% endif %}
+{% for o in others %}
+{% set r = rels[o.id] %}
+<div class="who">
+  <div class="pai {{ 'cold' if o.status=='cold' }}">{{ dn(o) }}</div>
+  <div class="body">
+    <div class="nm">{{ dn(o) }}{% if r and r.sister %}<span class="tag sis">姐妹</span>{% endif %}
+      {% if o.status=='confined' %}<span class="tag">禁足</span>{% elif o.status=='cold' %}<span class="tag">冷宫</span>{% endif %}
+      {% if o.pregnant_since %}<span class="tag">有喜</span>{% endif %}</div>
+    <div class="muted">{{ full_name(o) }}　{{ age_text(o.age_months) }}　{{ '冷宫' if o.status=='cold' else o.palace }}　{{ favor_word(o.favor) }}　好感 {{ r.affinity if r else 0 }}
+      {% if o.id in known %}　底细：{{ SECRETS[o.secret].name }}{% endif %}</div>
+    {% if o.poisoned_day %}<p style="color:var(--bad);margin:4px 0">中毒了，{{ '太医已经在了' if o.poison_treatment else '还没请太医' }}</p>
+    {% if not o.poison_treatment and r and (r.sister or r.affinity >= 30) %}
+    <form method="post" action="{{ url_for('treat', tid=o.id) }}"><button>替她请太医（50 两）</button></form>{% endif %}{% endif %}
+    {% if r and r.invite_from == o.id %}
+      <p style="margin:6px 0">她想与你义结金兰。</p>
+      <form method="post" action="{{ url_for('sister', action='accept', tid=o.id) }}"><button>答应</button></form>
+      <form method="post" action="{{ url_for('sister', action='decline', tid=o.id) }}"><button class="plain">婉拒</button></form>
+    {% endif %}
+    <div>
+      {% if o.status != 'cold' %}
+      <form method="post" action="{{ url_for('act', key='visit') }}"><input type="hidden" name="target_id" value="{{ o.id }}"><input type="hidden" name="back" value="social"><button class="plain">串门</button></form>
+      {% endif %}
+      <a class="btn plain" href="{{ url_for('letters', to=o.id) }}">写信</a>
+      <form method="post" action="{{ url_for('act', key='spy') }}"><input type="hidden" name="target_id" value="{{ o.id }}"><input type="hidden" name="back" value="social"><button class="plain">打探（30 两）</button></form>
+      {% if o.status in ('confined','cold') %}
+      <form method="post" action="{{ url_for('act', key='plead') }}"><input type="hidden" name="target_id" value="{{ o.id }}"><input type="hidden" name="back" value="social"><button class="plain">求情（50 两）</button></form>
+      {% endif %}
+      {% if r and r.sister %}
+      <form method="post" action="{{ url_for('sister', action='break', tid=o.id) }}" onsubmit="return confirm('割袍断义后好感 -30，确定？')"><button class="plain">反目</button></form>
+      {% elif r and r.affinity >= 40 and r.invite_from == 0 and sister_count < 3 %}
+      <form method="post" action="{{ url_for('sister', action='invite', tid=o.id) }}"><button class="plain">结为姐妹</button></form>
+      {% elif r and r.invite_from == c.id %}<span class="muted">已递话，等她回应</span>{% endif %}
+    </div>
+  </div>
+</div>
+{% endfor %}
+{% endblock %}

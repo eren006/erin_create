@@ -49,10 +49,12 @@ def build(uid: str) -> dict:
             if _table_exists(conn, "quidditch_players"):
                 qp = _one(conn, "SELECT position FROM quidditch_players WHERE uid=?", (uid,))
             if qp and qp["position"]:
-                daily = _one(conn, "SELECT trainings, matches FROM quidditch_daily WHERE uid=? AND day=?", (uid, day))
+                daily = _one(
+                    conn, "SELECT trainings, initiated FROM quidditch_daily WHERE uid=? AND day=?", (uid, day)
+                )
                 trainings = daily["trainings"] if daily else 0
-                matches = daily["matches"] if daily else 0
-                activities.append(f"魁地奇：训练{trainings}/3，比赛{matches}/2")
+                initiated = daily["initiated"] if daily else 0
+                activities.append(f"魁地奇：训练{trainings}/3，发起比赛{initiated}/2")
             else:
                 activities.append("魁地奇：已解锁，可争取球队位置")
         if player["grade"] >= 3:

@@ -1,0 +1,158 @@
+{% extends "web/base.html" %}
+{% block title %}厨房{% endblock %}
+{% block body %}
+
+{% if cook_state %}
+<div class="card">
+  <h2>🔪 {{ cook_state.recipe }}（第 {{ cook_state.step }}/{{ cook_state.total_steps }} 步）</h2>
+  {% if cook_state.resumed %}<p class="muted">继续上次进行到的地方——</p>{% endif %}
+  <p><b>{{ cook_state.prompt }}</b></p>
+  <form method="post">
+    <input type="hidden" name="action" value="cook_choose">
+    {% for opt in cook_state.options %}
+    <button class="opt" name="position" value="{{ loop.index }}">{{ loop.index }}. {{ opt }}</button>
+    {% endfor %}
+  </form>
+</div>
+
+{% else %}
+
+<div class="card">
+  <h2>🍳 厨房</h2>
+  <div class="stat"><span>烹饪经验</span><b>{{ cooking_exp }}</b></div>
+  <div class="stat"><span>体力</span><b>{{ stamina }} / {{ stamina_max }}</b></div>
+  <div class="bar"><i style="width:{{ (stamina / stamina_max * 100)|round }}%"></i></div>
+  <div class="stat"><span>今日烹饪次数</span><b>{{ cooked_today }} / {{ daily_limit }}</b></div>
+  <p class="muted">每次烹饪消耗{{ cook_cost }}点体力，跟上课、决斗、禁林用的是同一个体力池。材料不够就去对角巷「烹饪材料」区买、每周领一次补给，或者花{{ forage_cost }}点体力免费探索碰运气。</p>
+  <div class="row">
+    <form method="post"><input type="hidden" name="action" value="claim_materials"><button>📦 领取本周材料补给</button></form>
+    <form method="post"><input type="hidden" name="action" value="forage"><button class="ghost">🔎 探索寻找食材（{{ forage_cost }}活力）</button></form>
+    <a class="btn" href="{{ url_for('shop_page', cat='烹饪材料') }}">🛒 去对角巷买材料</a>
+  </div>
+</div>
+
+{% if chef_leaderboard %}
+<div class="card">
+  <h2>🏅 厨神榜</h2>
+  <div class="scroll"><table>
+    <tr><th>排名</th><th>姓名</th><th>学院</th><th>烹饪经验</th></tr>
+    {% for r in chef_leaderboard %}
+    <tr>
+      <td>{{ loop.index }}</td>
+      <td>{{ r.name }}{% if r.surname %}·{{ r.surname }}{% endif %}</td>
+      <td>{{ r.house }}</td>
+      <td>{{ r.cooking_exp }}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</div>
+{% endif %}
+
+{% if pantry %}
+<div class="card">
+  <h2>🍽️ 你的食柜</h2>
+  <div class="scroll"><table>
+    <tr><th>食物</th><th>数量</th><th></th></tr>
+    {% for f in pantry %}
+    <tr>
+      <td>{{ f.name }}</td>
+      <td>× {{ f.quantity }}</td>
+      <td>
+        <form method="post" class="row" style="flex-wrap:nowrap">
+          <input type="hidden" name="food" value="{{ f.name }}">
+          <button name="action" value="consume">食用</button>
+          <input name="recipient" placeholder="送给谁" style="width:100px">
+          <button name="action" value="gift" class="ghost">赠送</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</div>
+{% endif %}
+
+{% if materials %}
+<div class="card">
+  <h2>📦 烹饪材料</h2>
+  <div class="grid">
+    {% for m in materials %}
+    <div class="tag">{{ m.name }} × {{ m.quantity }}</div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if current_festival and festival_recipes %}
+<div class="card">
+  <h2>🎉 {{ current_festival }}限定食物</h2>
+  <p class="muted">仅{{ current_festival }}期间可以制作。</p>
+  <div class="scroll"><table>
+    <tr><th></th><th>食物</th><th>要求</th><th>材料</th><th></th></tr>
+    {% for r in festival_recipes %}
+    <tr>
+      <td>{% if r.unlocked %}○{% else %}🔒{% endif %}</td>
+      <td>{{ r.name }}<br><span class="muted">{{ r.effect }}</span></td>
+      <td>{{ r.grade }}年级 · {{ r.exp }}经验</td>
+      <td>
+        {% for i in r.ingredients %}
+        <span class="{{ 'muted' if i.have >= i.need else '' }}" style="{{ '' if i.have >= i.need else 'color:var(--err)' }}">{{ i.name }}{{ i.need }}{% if not loop.last %}、{% endif %}</span>
+        {% endfor %}
+      </td>
+      <td>
+        {% if r.unlocked and r.can_afford %}
+        <form method="post">
+          <input type="hidden" name="action" value="cook_start">
+          <input type="hidden" name="recipe" value="{{ r.key }}">
+          <button>制作</button>
+        </form>
+        {% elif not r.unlocked %}
+        <span class="muted">未解锁</span>
+        {% else %}
+        <span class="muted">材料不够</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</div>
+{% endif %}
+
+{% for cat in category_order %}
+{% if cat in recipes_by_category %}
+<div class="card">
+  <h2>{{ category_names[cat] }}</h2>
+  <div class="scroll"><table>
+    <tr><th></th><th>食物</th><th>要求</th><th>材料</th><th></th></tr>
+    {% for r in recipes_by_category[cat] %}
+    <tr>
+      <td>{% if r.unlocked %}○{% else %}🔒{% endif %}</td>
+      <td>{{ r.name }}<br><span class="muted">{{ r.effect }}</span></td>
+      <td>{{ r.grade }}年级 · {{ r.exp }}经验</td>
+      <td>
+        {% for i in r.ingredients %}
+        <span style="{{ '' if i.have >= i.need else 'color:var(--err)' }}">{{ i.name }}{{ i.need }}{% if not loop.last %}、{% endif %}</span>
+        {% endfor %}
+      </td>
+      <td>
+        {% if r.unlocked and r.can_afford %}
+        <form method="post">
+          <input type="hidden" name="action" value="cook_start">
+          <input type="hidden" name="recipe" value="{{ r.key }}">
+          <button>制作</button>
+        </form>
+        {% elif not r.unlocked %}
+        <span class="muted">未解锁</span>
+        {% else %}
+        <span class="muted">材料不够</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table></div>
+</div>
+{% endif %}
+{% endfor %}
+
+{% endif %}
+
+{% endblock %}

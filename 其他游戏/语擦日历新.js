@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         语擦助手
 // @author       长日将尽
-// @version      2.1.0
-// @description  记录和管理语擦档期，支持跨年录入、撞档预警、本月在档/空闲查询、本年数据统计（含主题题材）、月视图。
+// @version      2.2.0
+// @description  记录和管理语擦档期，支持跨年录入、撞档预警、本月在档/空闲查询、本年数据统计（含主题题材）、月视图、导出档期迁移。
 // @timestamp    2026-04-25
 // @license      CC BY-NC-SA
 // ==/UserScript//
@@ -32,11 +32,15 @@
  * v2.1.0 改动：
  * - 录入档期：保存后检测与已有档期的时间重叠，给出撞档提醒（不阻止录入）
  * - 本年数据：新增主题题材分布统计
+ *
+ * v2.2.0 改动：
+ * - 新增。导出档期 [年份|全部]：把自己的数据导出成一段文本，用于迁移到其它机器人；
+ *   新版「语擦助手」（含卡救星合并版）有对应的。导入档期 可以直接接收。
  */
 
 let ext = seal.ext.find('yuca_helper');
 if (!ext) {
-    ext = seal.ext.new('yuca_helper', '长日将尽', '2.1.0');
+    ext = seal.ext.new('yuca_helper', '长日将尽', '2.2.0');
     seal.ext.register(ext);
 }
 
@@ -255,7 +259,7 @@ let cmd_help = seal.ext.newCmdItemInfo();
 cmd_help.name = '档期帮助';
 cmd_help.help = '。档期帮助 —— 显示所有可用指令';
 cmd_help.solve = (ctx, msg, cmdArgs) => {
-    let help = `📅 【语擦助手 v2.1 指令列表】
+    let help = `📅 【语擦助手 v2.2 指令列表】
 ══════════════
 📝 录入与管理
   。录入档期          录入新档期（多行键值格式）
@@ -271,6 +275,9 @@ cmd_help.solve = (ctx, msg, cmdArgs) => {
 
 📊 统计
   。本年数据 [年]   年度数据统计
+
+📦 迁移
+  。导出档期 [年份|全部]   导出数据，用于迁移到其它机器人
 
 💡 时间段格式：MMDD MMDD
    同年示例：0315 0320（3月15日至3月20日）
@@ -849,3 +856,95 @@ cmd_month_view.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap['月视图'] = cmd_month_view;
+
+// ======================== 导出档期（用于迁移到其它机器人） ========================
+
+const EXPORT_TYPE = 'yuca_export_v1';
+const EXPORT_CHUNK_CHAR_LIMIT = 3500;
+
+function buildExportEntries(userData, filterFn) {
+    let entries = {};
+    for (let name in userData) {
+        if (filterFn && !filterFn(name, userData[name])) continue;
+        let e = userData[name];
+        entries[name] = {
+            startYear: e.startYear, timeRange: e.timeRange, status: e.status,
+            character: e.character, orientation: e.orientation, theme: e.theme,
+            roleName: e.roleName, roleType: e.roleType, gender: e.gender, outcome: e.outcome
+        };
+    }
+    return entries;
+}
+
+function encodeExportBatch(entries) {
+    return JSON.stringify({ __type: EXPORT_TYPE, exportedAt: Date.now(), entries });
+}
+
+// 把一批 entries 拆成若干"每份都能独立导入"的小批次，每份长度不超过限制，避免单条消息太长发不出去
+function splitEntriesIntoBatches(entries) {
+    let names = Object.keys(entries);
+    let batches = [];
+    let cur = {};
+    for (let name of names) {
+        let trial = Object.assign({}, cur, { [name]: entries[name] });
+        if (encodeExportBatch(trial).length > EXPORT_CHUNK_CHAR_LIMIT && Object.keys(cur).length > 0) {
+            batches.push(cur);
+            cur = { [name]: entries[name] };
+        } else {
+            cur = trial;
+        }
+    }
+    if (Object.keys(cur).length > 0) batches.push(cur);
+    return batches;
+}
+
+let cmd_export = seal.ext.newCmdItemInfo();
+cmd_export.name = '导出档期';
+cmd_export.help = '。导出档期 [年份|全部] —— 导出你自己的档期数据，用于迁移到其它机器人（新版语擦助手可以直接用。导入档期 接收）。不带参数显示年份概览；带年份只导出那一年；发送"全部"导出所有年份，数据多时会自动拆成多条消息，每条都要单独发给目标机器人。';
+cmd_export.solve = (ctx, msg, cmdArgs) => {
+    let userData = getUserData(ctx, msg);
+    if (Object.keys(userData).length === 0) {
+        seal.replyToSender(ctx, msg, '📭 你还没有任何档期记录，没什么可导出的。');
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    let yearCounts = {};
+    for (let name in userData) {
+        let y = userData[name].startYear;
+        yearCounts[y] = (yearCounts[y] || 0) + 1;
+    }
+    let sortedYears = Object.keys(yearCounts).map(Number).sort((a, b) => a - b);
+
+    let param = cmdArgs.getArgN(1);
+    if (!param) {
+        let reply = '📦 【导出档期】\n══════════════\n';
+        sortedYears.forEach(y => { reply += `✨ ${y} 年：${yearCounts[y]} 条\n`; });
+        reply += '══════════════\n💡 发送。导出档期 年份 只导出那一年；发送。导出档期 全部 导出所有年份';
+        seal.replyToSender(ctx, msg, reply);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
+    let entries;
+    if (param === '全部') {
+        entries = buildExportEntries(userData);
+    } else {
+        let year = parseInt(param, 10);
+        if (isNaN(year) || !yearCounts[year]) {
+            seal.replyToSender(ctx, msg, `❌ ${param} 年没有档期记录。可用年份：${sortedYears.join('、')}，或发送。导出档期 全部`);
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        entries = buildExportEntries(userData, (name, e) => e.startYear === year);
+    }
+
+    let batches = splitEntriesIntoBatches(entries);
+    if (batches.length === 1) {
+        seal.replyToSender(ctx, msg, '📦 导出完成，把下面这条完整发给目标机器人的。导入档期：\n' + encodeExportBatch(batches[0]));
+    } else {
+        seal.replyToSender(ctx, msg, `📦 数据较多，拆成了 ${batches.length} 份，每一份都要单独完整发给目标机器人的。导入档期（顺序不影响）：`);
+        batches.forEach((batch, i) => {
+            seal.replyToSender(ctx, msg, `— 第 ${i + 1}/${batches.length} 份 —\n` + encodeExportBatch(batch));
+        });
+    }
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap['导出档期'] = cmd_export;

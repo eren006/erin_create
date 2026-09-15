@@ -79,7 +79,7 @@ pre,code{font-family:"JetBrains Mono","Cascadia Code",monospace;}
       <table class="cmd-table">
         <tr>
           <td class="cmd" style="width:120px;">网页端地址</td>
-          <td class="desc"><code>http://47.99.64.227:5237</code></td>
+          <td class="desc"><code>http://124.221.189.86:5023</code></td>
         </tr>
         <tr>
           <td class="cmd">网页端Token</td>
@@ -88,15 +88,15 @@ pre,code{font-family:"JetBrains Mono","Cascadia Code",monospace;}
       </table>
     </div>
     <div class="fh">
-      超管入口：<a href="/superadmin/login" target="_blank">http://47.99.64.227:5237/superadmin/login</a>
-      &nbsp;·&nbsp; 默认密码见 app.py 第 25 行 <code>SUPERADMIN_PASS</code>
+      超管入口：<a href="/superadmin/login" target="_blank">http://124.221.189.86:5023/superadmin/login</a>
+      &nbsp;·&nbsp; 默认密码见部署时记录的 <code>SUPERADMIN_PASS</code>（deploy.sh 首次部署时生成并打印过一次，不会再显示）
     </div>
   </div>
 
   <!-- ── Bot 指令 ── -->
   <div class="guide-section">
     <h2>📋 Bot 指令一览</h2>
-    <div class="card" style="padding:0;overflow:hidden;">
+    <div class="card" style="padding:0;overflow-x:auto;-webkit-overflow-scrolling:touch;">
       <table class="cmd-table">
 
         <tr class="cmd-group"><td colspan="3">🔗 网页端同步（管理员）</td></tr>
@@ -276,7 +276,7 @@ pre,code{font-family:"JetBrains Mono","Cascadia Code",monospace;}
   <!-- ── 网页管理功能 ── -->
   <div class="guide-section">
     <h2>🖥️ 网页管理功能</h2>
-    <div class="card" style="padding:0;overflow:hidden;">
+    <div class="card" style="padding:0;overflow-x:auto;-webkit-overflow-scrolling:touch;">
       <table class="cmd-table">
         <tr class="cmd-group"><td colspan="2">管理员登录后可用</td></tr>
         <tr>
@@ -292,14 +292,57 @@ pre,code{font-family:"JetBrains Mono","Cascadia Code",monospace;}
           <td class="desc">上半部分显示 Bot 快照用户余额（需先 .同步网页端），下半部分可手动增删</td>
         </tr>
         <tr>
+          <td class="cmd">次数审批</td>
+          <td class="desc">会员在"获得下单次数"页提交的申请，核对付款后通过（可设有效期）或拒绝</td>
+        </tr>
+        <tr>
+          <td class="cmd">兑换码</td>
+          <td class="desc">批量生成礼品兑换码（可混搭不同次数/有效期），发给会员自助兑换</td>
+        </tr>
+        <tr>
           <td class="cmd">排单看板</td>
           <td class="desc">Bot 订单实时看板（需 .同步网页端 更新），含进行中 / 已完成 / 用户余额三个 Tab</td>
         </tr>
         <tr>
           <td class="cmd">设置</td>
-          <td class="desc">开关散单接受 / 设置最大并发散单数，超出后网页自动提示队列已满</td>
+          <td class="desc">开关是否接受散单；也在这里设置收图 QQ 号</td>
         </tr>
       </table>
+    </div>
+  </div>
+
+  <!-- ── 会员次数系统 ── -->
+  <div class="guide-section">
+    <h2>🎫 会员次数系统</h2>
+    <div class="card-sm" style="font-size:13px;line-height:2;">
+      2026-09 起，网页下单改成了"登录 + 消耗次数"的模式：会员必须先登录，账号里要有下单次数才能提交订单，提交时立即占用 1 次；管理员<strong>拒绝</strong>或<strong>取消</strong>订单会自动把次数退回，只有<strong>完成</strong>订单次数才算真正用掉。
+      <div style="margin-top:8px;">
+        会员账号是<strong>全站统一</strong>的一套登录，以后如果上线了不止一个创作者，同一个账号可以分别在不同创作者名下各有一份独立的次数/订单/交易记录，互不相通——"我的订单"页会按创作者分开列出次数，"获得下单次数""交易大厅"页在有多个创作者时会出现选择框。目前只有一个创作者在跑，所以日常操作感觉不到这层区分。
+      </div>
+      <div class="flow-row" style="margin-top:8px;">
+        <div class="flow-box">单口领取 / 兑换码</div>
+        <div class="flow-arr">→</div>
+        <div class="flow-box">立刻可用</div>
+      </div>
+      <div class="flow-row" style="margin-top:6px;">
+        <div class="flow-box">交易大厅换到</div>
+        <div class="flow-arr">→</div>
+        <div class="flow-box hl">24 小时冷却</div>
+        <div class="flow-arr">→</div>
+        <div class="flow-box">下单 / 再次挂单</div>
+      </div>
+      <div style="margin-top:8px;">
+        会员获得次数有两条路：<strong>单口信息</strong>（管理员在"次数审批"页放出一批次数，会员点方块自己领取，先待审，管理员通过才到账；没放出次数的创作者不能申请）、<strong>兑换码</strong>（管理员批量生成，会员自助兑换）。这两种到账后<strong>立刻可用，没有冷却期</strong>。只有会员之间在<strong>交易大厅</strong>换到的次数才有 24 小时冷却期，冷却期内不能下单也不能再次挂单——这是为了防止刚换到的次数被立刻转手套利。
+      </div>
+      <div style="margin-top:8px;">
+        是否接单只看两点：会员手里有没有可用次数（由单口决定），以及<strong>设置</strong>页"接受散单"开关有没有打开——两个都满足才能提交订单；开关关掉可以随时暂停接单（比如请假），跟会员手里还有没有次数无关。
+      </div>
+      <div style="margin-top:8px;">
+        <strong>交易大厅</strong>（会员登录后可见，导航栏"交易大厅"）：会员可以把自己的次数挂出去卖（线下收款，卖方手动点"转交次数"）或找人交换（次数够就自动双向到账，不够自动取消回大厅）。交易完成后任一方可以"申请仲裁"，对方相关次数会立即冻结，双方需要联系仲裁 QQ <strong>3052553938</strong> 提供证据，交由<strong>超管</strong>在"仲裁"页面处理（冻结转回给申请人，或驳回解冻还给原持有人）——这部分只有超管能操作，普通管理员看不到"仲裁"入口。
+      </div>
+      <div style="margin-top:8px;">
+        会员的订单状态变化、次数审批结果、次数到期提醒、交易和仲裁进展，都会自动发到会员账号的"消息"里，不需要你手动通知。
+      </div>
     </div>
   </div>
 
@@ -308,10 +351,11 @@ pre,code{font-family:"JetBrains Mono","Cascadia Code",monospace;}
     <h2>🔗 常用地址</h2>
     <div class="card-sm">
       <table class="cmd-table">
-        <tr><td class="cmd" style="width:120px;">客户下单</td><td><a href="/" target="_blank">http://47.99.64.227:5237/</a></td></tr>
-        <tr><td class="cmd">查回执进度</td><td><a href="/" target="_blank">http://47.99.64.227:5237/#query</a></td></tr>
-        <tr><td class="cmd">管理员登录</td><td><a href="/admin/login" target="_blank">http://47.99.64.227:5237/admin/login</a></td></tr>
-        <tr><td class="cmd">超管后台</td><td><a href="/superadmin/login" target="_blank">http://47.99.64.227:5237/superadmin/login</a></td></tr>
+        <tr><td class="cmd" style="width:120px;">客户下单</td><td><a href="/" target="_blank">http://124.221.189.86:5023/</a></td></tr>
+        <tr><td class="cmd">查回执进度</td><td><a href="/#query" target="_blank">http://124.221.189.86:5023/#query</a></td></tr>
+        <tr><td class="cmd">会员登录</td><td><a href="/login" target="_blank">http://124.221.189.86:5023/login</a></td></tr>
+        <tr><td class="cmd">管理员登录</td><td><a href="/admin/login" target="_blank">http://124.221.189.86:5023/admin/login</a></td></tr>
+        <tr><td class="cmd">超管后台</td><td><a href="/superadmin/login" target="_blank">http://124.221.189.86:5023/superadmin/login</a></td></tr>
       </table>
     </div>
   </div>

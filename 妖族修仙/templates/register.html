@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}注册 - 妖族修仙{% endblock %}
+{% block content %}
+<div class="card" style="max-width:360px;margin:40px auto">
+  <h3 style="margin-bottom:16px">注册</h3>
+  <form method="post">
+    <label>用户名</label>
+    <input name="username" required>
+    <label>密码(至少6位)</label>
+    <input type="password" name="password" required>
+    <label>QQ号</label>
+    <input name="qq" required>
+    <label>邀请码(选填,填写有效邀请码可免审核直接登录)</label>
+    <input name="invite_code">
+    <button class="btn btn-primary" style="margin-top:16px;width:100%">提交注册</button>
+  </form>
+  <p class="muted" style="margin-top:12px">已有账号? <a href="{{ url_for('login') }}">去登录</a></p>
+</div>
+{% endblock %}

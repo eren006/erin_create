@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}紫禁城{% endblock %} · 甄嬛传</title>
+<style>
+:root{
+  --ground:#E4EBE6;      /* 月白 */
+  --paper:#F7F9F6;
+  --ink:#1E2830;         /* 黛 */
+  --muted:#5E6A70;
+  --line:#C6D1CA;
+  --zhu:#8C2B25;         /* 宫墙朱 */
+  --zhu-deep:#6B1F1A;
+  --jin:#A9832A;         /* 琉璃金 */
+  --jin-soft:#EBDDB3;
+  --qing:#2E5A5F;        /* 石青 */
+  --lv:#3E6A4D;          /* 绿头牌 */
+  --ivory:#F1EAD6;
+  --good:#2E6B45; --bad:#8C2B25;
+  --kai:"Kaiti SC","STKaiti","KaiTi","BiauKai","Noto Serif SC",serif;
+  --song:"Songti SC","STSong","SimSun","Noto Serif SC","Source Han Serif SC",serif;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--song);font-size:16px;line-height:1.75}
+a{color:var(--qing)}
+a:focus-visible,button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--jin);outline-offset:2px}
+header.gate{background:var(--zhu);color:var(--ivory);border-bottom:3px solid var(--jin)}
+header.gate .in{max-width:760px;margin:0 auto;padding:14px 18px 0;display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
+header.gate h1{margin:0;font-family:var(--kai);font-weight:normal;font-size:26px;letter-spacing:.12em}
+header.gate .clock{font-size:13px;opacity:.85}
+nav.halls{max-width:760px;margin:0 auto;padding:6px 10px 0;display:flex;gap:2px;overflow-x:auto;scrollbar-width:none}
+nav.halls a{color:var(--ivory);text-decoration:none;font-family:var(--kai);font-size:17px;padding:6px 12px 8px;white-space:nowrap;border-radius:3px 3px 0 0}
+nav.halls a.on{background:var(--ground);color:var(--zhu)}
+nav.halls a:hover:not(.on){background:var(--zhu-deep)}
+main{max-width:760px;margin:0 auto;padding:22px 18px 60px}
+h2{font-family:var(--kai);font-weight:normal;font-size:24px;margin:0 0 10px;color:var(--zhu-deep)}
+h3{font-family:var(--kai);font-weight:normal;font-size:19px;margin:28px 0 8px;color:var(--ink);border-bottom:1px solid var(--line);padding-bottom:4px}
+p{margin:0 0 10px}
+.muted{color:var(--muted);font-size:14px}
+.flash{padding:10px 14px;margin:0 0 14px;background:var(--paper);border-left:4px solid var(--qing);font-size:15px}
+.flash.good{border-color:var(--good)} .flash.bad{border-color:var(--bad)}
+button,.btn{font-family:var(--song);font-size:15px;cursor:pointer;border:1px solid var(--zhu);background:var(--zhu);color:var(--ivory);padding:6px 14px;border-radius:2px;text-decoration:none;display:inline-block;line-height:1.5}
+button:hover,.btn:hover{background:var(--zhu-deep)}
+button.plain,.btn.plain{background:transparent;color:var(--zhu)}
+button.plain:hover{background:var(--paper)}
+button:disabled{opacity:.45;cursor:not-allowed}
+input,select,textarea{font-family:var(--song);font-size:16px;padding:6px 8px;border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:2px;max-width:100%}
+label{display:block;margin:10px 0 4px}
+.sheet{background:var(--paper);padding:16px 18px;border:1px solid var(--line)}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+table{border-collapse:collapse;width:100%;font-size:14px}
+td,th{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{font-weight:normal;color:var(--muted)}
+.scroll{overflow-x:auto}
+/* 绿头牌 */
+.pai{writing-mode:vertical-rl;text-orientation:upright;font-family:var(--kai);font-size:19px;letter-spacing:.18em;
+     width:44px;min-height:150px;padding:34px 0 12px;display:flex;align-items:center;justify-content:flex-start;
+     background:linear-gradient(var(--lv) 0 26px, var(--jin) 26px 29px, var(--ivory) 29px);color:var(--ink);
+     border:1px solid #9FAE9F;border-radius:6px 6px 2px 2px;box-shadow:1px 2px 0 rgba(30,40,48,.18);flex:none}
+.pai.big{width:58px;min-height:200px;font-size:24px;padding-top:40px;background:linear-gradient(var(--lv) 0 32px, var(--jin) 32px 36px, var(--ivory) 36px)}
+.pai.me{outline:2px solid var(--zhu);outline-offset:2px}
+.pai.npc{background:linear-gradient(#5C6B63 0 26px, #8D9A91 26px 29px, #E9E6DC 29px);color:var(--muted)}
+.pai.cold{background:#D9DDD9;color:#8A938F;border-style:dashed;box-shadow:none}
+.pai .note{font-size:12px;letter-spacing:0;color:var(--muted);margin-top:8px}
+@media (prefers-reduced-motion:no-preference){ .flip{animation:flip .9s ease-out both} }
+@keyframes flip{from{transform:rotateX(80deg) translateY(-18px);opacity:0}to{transform:none;opacity:1}}
+nav.halls .dot{display:inline-block;min-width:18px;height:18px;line-height:18px;margin-left:4px;padding:0 5px;border-radius:9px;background:var(--jin);color:var(--ink);font-family:var(--song);font-size:12px;text-align:center}
+.decree{background:var(--jin-soft);border:1px solid var(--jin);padding:14px 18px;font-family:var(--kai);font-size:18px;line-height:1.9}
+</style>
+{% block head %}{% endblock %}
+</head>
+<body>
+<header class="gate">
+  <div class="in">
+    <h1>紫禁城</h1>
+    {% if gs %}<span class="clock">{{ palace_date(gs.day) }}　第 {{ gs.day }} 天　皇上今日{{ gs.emperor_mood }}　下次翻牌 {{ next_settle }}</span>{% endif %}
+  </div>
+  {% if session.uid and g.me and g.me.status != 'xiunv' %}
+  {% set ep = request.endpoint %}
+  <nav class="halls">
+    <a href="{{ url_for('index') }}" class="{{ 'on' if ep in ('index','place') }}">宫城</a>
+    <a href="{{ url_for('social') }}" class="{{ 'on' if ep=='social' }}">六宫</a>
+    <a href="{{ url_for('intrigue') }}" class="{{ 'on' if ep=='intrigue' }}">使计</a>
+    <a href="{{ url_for('letters') }}" class="{{ 'on' if ep=='letters' }}">书信{% if unread_letters %}<span class="dot" aria-label="{{ unread_letters }} 封未读">{{ unread_letters }}</span>{% endif %}</a>
+    <a href="{{ url_for('shop') }}" class="{{ 'on' if ep=='shop' }}">内务府</a>
+    <a href="{{ url_for('ranks') }}" class="{{ 'on' if ep=='ranks' }}">位分</a>
+    <a href="{{ url_for('gazette_page') }}" class="{{ 'on' if ep=='gazette_page' }}">邸报</a>
+    <a href="{{ url_for('memorial') }}" class="{{ 'on' if ep=='memorial' }}">宫史</a>
+    <a href="{{ url_for('heirs') }}" class="{{ 'on' if ep=='heirs' }}">子嗣</a>
+  </nav>
+  {% else %}<div style="height:10px"></div>{% endif %}
+</header>
+<main>
+  {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% for cat, m in msgs %}<div class="flash {{ cat }}">{{ m }}</div>{% endfor %}
+  {% endwith %}
+  {% block body %}{% endblock %}
+</main>
+</body>
+</html>

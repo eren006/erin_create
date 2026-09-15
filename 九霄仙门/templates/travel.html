@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}游历 - 九霄仙门{% endblock %}
+{% block content %}
+
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">历</span>游历人间</h3>
+    <a href="{{ url_for('travel_journal') }}" class="btn" style="padding:4px 10px">游历志</a></div>
+  <p class="muted" style="margin-top:6px">行程点数 {{ char.travel_points }} / {{ TRAVEL_POINTS_CAP }} · 游历期间仍可打坐、接委托、入秘境,不耽误其他事</p>
+</div>
+
+{% if severe_injury %}
+<div class="card" style="border-color:rgba(220,80,80,.5)">
+  <p class="muted">你身负轻伤,约 {{ (severe_injury_remaining // 3600) }} 小时后方能再度出行(打坐、委托收益已减半)。</p>
+</div>
+{% endif %}
+
+{% if trip %}
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">{{ TRAVEL_REGIONS_BY_KEY[trip.region_key].label[0] }}</span>{{ TRAVEL_REGIONS_BY_KEY[trip.region_key].label }} · {{ TRAVEL_DURATIONS_BY_KEY[trip.duration_key].label }}</h3></div>
+  <p class="muted" style="margin-top:6px">见闻进度 {{ trip.events_done }} / {{ trip.events_total }}
+    {% if trip_seconds_left > 0 %} · 预计 {{ trip_seconds_left // 3600 }} 小时{{ (trip_seconds_left % 3600) // 60 }} 分钟后可整理归来{% endif %}</p>
+
+  {% if pending %}
+  <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+    <p>{{ pending.text }}</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+      {% if pending.kind == 'danger' %}
+      <form method="post" action="{{ url_for('travel_event_resolve') }}" style="flex:1;min-width:100px">
+        <input type="hidden" name="choice" value="fight"><button class="btn btn-primary" style="width:100%">力战</button>
+      </form>
+      <form method="post" action="{{ url_for('travel_event_resolve') }}" style="flex:1;min-width:100px">
+        <input type="hidden" name="choice" value="rescue"><button class="btn" style="width:100%">呼叫宗门求援</button>
+      </form>
+      <form method="post" action="{{ url_for('travel_event_resolve') }}" style="flex:1;min-width:100px">
+        <input type="hidden" name="choice" value="flee"><button class="btn" style="width:100%">设法脱身</button>
+      </form>
+      {% else %}
+      {% for c in pending.choices %}
+      {% set gated = c.requires and stats.get(c.requires.stat, 0) < c.requires.min %}
+      <form method="post" action="{{ url_for('travel_event_resolve') }}" style="flex:1;min-width:100px">
+        <input type="hidden" name="choice" value="{{ c.key }}">
+        <button class="btn {{ 'btn-primary' if loop.first else '' }}" style="width:100%" {{ 'disabled' if gated }}>
+          {{ c.label }}{% if gated %}({{ c.requires.stat }}不足){% endif %}
+        </button>
+      </form>
+      {% endfor %}
+      {% endif %}
+    </div>
+  </div>
+  {% elif ready_thread_nodes %}
+  {% for t in ready_thread_nodes %}
+  <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+    <p><span class="badge badge-purple">{{ t.thread_label }}</span></p>
+    <p style="margin-top:6px">{{ t.node.text }}</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+      {% for c in t.node.choices %}
+      {% set gated = c.requires and stats.get(c.requires.stat, 0) < c.requires.min %}
+      <form method="post" action="{{ url_for('travel_thread_resolve', thread_key=t.thread_key) }}" style="flex:1;min-width:100px">
+        <input type="hidden" name="choice" value="{{ c.key }}">
+        <button class="btn {{ 'btn-primary' if loop.first else '' }}" style="width:100%" {{ 'disabled' if gated }}>
+          {{ c.label }}{% if gated %}({{ c.requires.stat }}不足){% endif %}
+        </button>
+      </form>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+  {% elif can_finish %}
+  <form method="post" action="{{ url_for('travel_claim') }}" style="margin-top:14px">
+    <button class="btn btn-primary" style="width:100%">整理见闻,启程归来</button>
+  </form>
+  {% else %}
+  <p class="muted" style="margin-top:10px">旅途平静,静待下一段见闻。</p>
+  {% endif %}
+</div>
+
+{% if log_entries %}
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">录</span>本次见闻</h3></div>
+  {% for line in log_entries %}
+  <p class="muted" style="margin-top:6px">{{ line }}</p>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% else %}
+<div class="card">
+  <h3 style="margin-bottom:10px">选择地区与行程</h3>
+  {% for r in regions %}
+  <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+    <p><strong>{{ r.label }}</strong> <span class="badge {{ 'badge-purple' if r.unlocked else '' }}">{{ r.realm_name }}起</span></p>
+    <p class="muted" style="margin-top:4px">{{ r.desc }}</p>
+    {% if r.unlocked %}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+      {% for d in durations %}
+      <form method="post" action="{{ url_for('travel_start', region_key=r.key, duration_key=d.key) }}">
+        <button class="btn" {{ 'disabled' if char.travel_points < d.cost or severe_injury }}>
+          {{ d.label }}({{ d.hours }}小时,行程点-{{ d.cost }})</button>
+        {% if severe_injury %}<p class="muted" style="margin-top:2px;font-size:12px">身负轻伤,暂不能出行</p>
+        {% elif char.travel_points < d.cost %}<p class="muted" style="margin-top:2px;font-size:12px">尚缺{{ d.cost - char.travel_points }}点行程点</p>{% endif %}
+      </form>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted" style="margin-top:4px">修为不足,暂不可前往</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}

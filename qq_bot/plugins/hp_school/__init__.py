@@ -12,12 +12,13 @@ from nonebot.adapters.qq.models import (
 )
 from nonebot.params import CommandArg
 
+import backup
 import plugins.hp_core as hp_core
 from plugins.hp_core import spells as spell_catalog
 from plugins.hp_core import storage as core_storage
 from plugins.hp_core import web_binding
 
-from . import careers, casting, daily_plan, freshman_duel, homework, kitchen, lesson_events, lessons, mainline, potions, shop, shop_catalog, sorting, storage, story_mainline, subjects, wands, work
+from . import careers, casting, choc_frog, daily_plan, freshman_duel, homework, kitchen, lesson_events, lessons, mainline, potions, shop, shop_catalog, sorting, storage, story_mainline, subjects, tailor, wands, work
 
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler  # noqa: E402
@@ -337,8 +338,10 @@ async def handle_lesson_button(bot: Bot, event: InteractionCreateEvent):
             bonuses.append("振奋药剂+1")
         bonus_text = f"，其中{'、'.join(bonuses)}" if bonuses else ""
         lines.append(
-            f"{result['subject']}课上完了，+{result['exp_gained']}经验{bonus_text}（累计{result['total_exp']}）。"
+            f"{result['subject']}课上完了，+{result['exp_gained']}经验{bonus_text}（目前成绩：{result['total_exp']}）。"
         )
+        if not result["event_bonus"]:
+            lines.append("想再提升成绩：课堂情境里选对选项能拿到额外的课堂表现加成，喝振奋药剂也能再加一点。")
     else:
         if result["score_block_reason"] == "fatigue_limit":
             reason = "八节计分课已经耗尽了今天的课堂精力"
@@ -347,6 +350,15 @@ async def handle_lesson_button(bot: Bot, event: InteractionCreateEvent):
         lines.append(
             f"你留在教室继续加练。{reason}，这次不增加学科经验和课堂表现奖励，"
             "但挥杖练习仍然推进了魔咒进度。"
+        )
+        lines.append(
+            f"目前{result['subject']}成绩：{result['total_exp']}。"
+            "想继续提升：明天再来上计分课，或者发「/交作业」交一份能额外加学科经验。"
+        )
+    if result.get("friend_bonus"):
+        lines.append(
+            f"🤝 好朋友今天也上过这门课，结伴学习的默契让双方各多拿了{result['friend_bonus']}点经验"
+            "（这份奖励不占计分课名额，跟疲劳上限无关）。"
         )
     lines.append(f"你揉了揉发酸的肩膀。今日课堂疲劳：{result['fatigue']}/{result['fatigue_max']}。")
     if result["fatigue"] >= result["fatigue_max"]:
@@ -559,7 +571,7 @@ async def handle_story_progress(event: MessageEvent):
     await story_progress_cmd.finish(text)
 
 
-@scheduler.scheduled_job("interval", minutes=10, id="hp_story_mainline_tick")
+@scheduler.scheduled_job("interval", minutes=30, id="hp_story_mainline_tick")
 async def _story_mainline_tick() -> None:
     day = core_storage.get_current_day()
     if day is None:
@@ -581,7 +593,7 @@ async def _story_mainline_tick() -> None:
         logger.warning(f"[hp_school] 主线公告发送失败：{e}")
 
 
-@scheduler.scheduled_job("interval", minutes=5, id="hp_group_announcements")
+@scheduler.scheduled_job("interval", minutes=30, id="hp_group_announcements")
 async def _send_group_announcements() -> None:
     """定时发送管理员添加的群通知。"""
     announcements = storage.get_pending_announcements()
@@ -597,6 +609,12 @@ async def _send_group_announcements() -> None:
             storage.mark_announcement_sent(item["id"])
     except Exception as e:
         logger.warning(f"[hp_school] 群通知发送失败：{e}")
+
+
+@scheduler.scheduled_job("cron", hour=3, minute=0, id="hp_daily_backup")
+def _daily_backup() -> None:
+    """每天凌晨3点给hogwarts.db做一次在线备份，本地滚动保留最近14份。"""
+    backup.run_backup()
 
 
 # ======================== 作业 ========================
@@ -616,7 +634,10 @@ async def handle_homework_submit(event: MessageEvent, args=CommandArg()):
     except homework.HomeworkError as e:
         await homework_cmd.finish(str(e))
         return
-    text = f"{result['subject']}作业交了，+{result['exp_gained']}经验（累计{result['total_exp']}）。"
+    if result["success"]:
+        text = f"{result['subject']}作业交了，+{result['exp_gained']}经验（累计{result['total_exp']}）。"
+    else:
+        text = f"{result['subject']}作业这次没做出来，可以再交一次重试（每次重试扣{homework.HOMEWORK_RETRY_STAMINA_COST}点体力）。"
     if result["overdue_settled"]:
         text += (
             f"\n（顺手结算了{result['overdue_settled']}门逾期作业，共扣{result['overdue_penalty']}经验；"
@@ -1107,7 +1128,60 @@ async def handle_eat(event: MessageEvent, args=CommandArg()):
     except shop.ShopError as e:
         await eat_cmd.finish(str(e))
         return
-    await eat_cmd.finish(f"吃了「{result['name']}」，体力值+{result['restored']}（现在{result['new_stamina']}/{core_storage.STAMINA_MAX}）。")
+    text = f"吃了「{result['name']}」，体力值+{result['restored']}（现在{result['new_stamina']}/{core_storage.STAMINA_MAX}）。"
+    card = result.get("card")
+    if card:
+        if card["is_new"]:
+            text += f"\n🐸 卡片里跳出一张「{card['name']}」（{card['rarity']}）！{card['blurb']}"
+            if card["unlocked_titles"]:
+                text += "\n🏅 解锁巧克力蛙称号：" + "、".join(card["unlocked_titles"])
+        else:
+            text += f"\n🐸 卡片是「{card['name']}」，你已经有了，换成了{card['consolation']}加隆当安慰奖。"
+        text += "\n发送「/巧克力蛙图鉴」查看收集进度。"
+    if result["cavity_triggered"]:
+        text += f"\n🦷 今天已经吃了{result['eaten_today']}个零食，吃出蛀牙了，体力恢复速度减半，一天后自己好。"
+    await eat_cmd.finish(text)
+
+
+choc_frog_book_cmd = on_command("巧克力蛙图鉴")
+choc_frog_titles_cmd = on_command("巧克力蛙称号")
+wear_choc_frog_title_cmd = on_command("佩戴巧克力蛙称号")
+
+
+@choc_frog_book_cmd.handle()
+async def handle_choc_frog_book(event: MessageEvent):
+    data = choc_frog.my_collection(event.get_user_id())
+    lines = [f"🐸 巧克力蛙卡片图鉴（{data['owned_count']}/{data['total']}）"]
+    for rarity in choc_frog.RARITY_ORDER:
+        cards = data["by_rarity"][rarity]
+        owned_in_tier = sum(1 for c in cards if c["owned"])
+        lines.append(f"\n【{rarity}】{owned_in_tier}/{len(cards)}")
+        for c in cards:
+            mark = "✓" if c["owned"] else "？"
+            lines.append(f"　{mark} {c['name']}" + (f"——{c['blurb']}" if c["owned"] else ""))
+    lines.append("\n发送「/吃 巧克力蛙」抽卡（先去「/对角巷 零食」买几个）。")
+    await choc_frog_book_cmd.finish("\n".join(lines))
+
+
+@choc_frog_titles_cmd.handle()
+async def handle_choc_frog_titles(event: MessageEvent):
+    rows = choc_frog.title_state(event.get_user_id())
+    lines = ["🏅 巧克力蛙称号"]
+    for row in rows:
+        mark = "佩戴中" if row["active"] else "已解锁" if row["unlocked"] else "未解锁"
+        lines.append(f"{'✓' if row['unlocked'] else '🔒'} {row['name']}（{mark}）——{row['requirement']}")
+    lines.append("发送「/佩戴巧克力蛙称号 称号名」佩戴。")
+    await choc_frog_titles_cmd.finish("\n".join(lines))
+
+
+@wear_choc_frog_title_cmd.handle()
+async def handle_wear_choc_frog_title(event: MessageEvent, args=CommandArg()):
+    try:
+        name = choc_frog.wear_title(event.get_user_id(), args.extract_plain_text().strip())
+    except choc_frog.ChocFrogError as e:
+        await wear_choc_frog_title_cmd.finish(str(e))
+        return
+    await wear_choc_frog_title_cmd.finish(f"已经佩戴称号「{name}」。")
 
 
 # ======================== 我的成绩 ========================
@@ -1188,7 +1262,7 @@ student_rank_cmd = on_command("全校排名")
 
 @student_rank_cmd.handle()
 async def handle_student_rank(event: MessageEvent):
-    rows = core_storage.student_leaderboard()
+    rows = core_storage.student_leaderboard(limit=None)
     if not rows:
         await student_rank_cmd.finish("还没有人分院，暂无排名。")
         return
@@ -1208,9 +1282,10 @@ async def handle_house_rank(event: MessageEvent):
     rows = core_storage.house_leaderboard()
     lines = ["🏆 学院杯排行（按人均分）"]
     for i, r in enumerate(rows):
+        top = f"，贡献之星{r['top_contributor_name']}（{r['top_contributor_points']}分）" if r["top_contributor_name"] else ""
         lines.append(
             f"{i + 1}. {r['house']} —— 人均{r['avg_points']:.1f}"
-            f"（总分{r['total_points']} / {r['member_count']}人）"
+            f"（总分{r['total_points']} / 有贡献{r['active_member_count']}人，挂名{r['member_count']}人{top}）"
         )
     await house_rank_cmd.finish("\n".join(lines))
 
@@ -1297,7 +1372,8 @@ async def handle_cook_choice(event: MessageEvent, args=CommandArg()):
             f"🍳 烹饪完成：{result['recipe']}！"
             f"{'✅ 完美！' if result['perfect'] else '✓ 成功！'}（{result['score']}/{result['max_score']}）\n"
             f"你得到「{result['recipe']}」×{result['quantity']}。\n"
-            "发送「/食柜」查看你的存货。"
+            f"烹饪经验+{result['cooking_exp_gain']}（目前{result['total_cooking_exp']}）。\n"
+            "发送「/食柜」查看你的存货，「/烹饪配方」看看还能解锁什么。"
         )
 
         # 检查成就
@@ -1343,7 +1419,7 @@ async def handle_pantry(event: MessageEvent):
             name = kitchen.item_name(row["food_key"])
             if name:
                 recipe_key = row["food_key"].replace("food_", "")
-                recipe = kitchen.RECIPES.get(recipe_key)
+                recipe = kitchen.ALL_RECIPES.get(recipe_key)
                 cat = recipe.get("category", "other") if recipe else "other"
 
                 if cat not in by_category:
@@ -1449,7 +1525,7 @@ async def handle_consume_food(event: MessageEvent, args=CommandArg()):
         return
 
     # 应用buff效果
-    found = kitchen.find_recipe(food_input)
+    found = kitchen.find_any_recipe(food_input)
     if found:
         recipe_key = found[0]
         effects = kitchen.apply_food_effects(uid, recipe_key)
@@ -1479,7 +1555,11 @@ async def handle_get_materials(event: MessageEvent):
         await get_materials_cmd.finish("你还没有分院。先完成 /入学")
         return
 
-    granted = kitchen.grant_weekly_materials(uid)
+    try:
+        granted = kitchen.grant_weekly_materials(uid)
+    except kitchen.KitchenError as e:
+        await get_materials_cmd.finish(str(e))
+        return
 
     lines = ["📦 领取每周材料补充"]
     for mat_key, amount in granted.items():
@@ -1489,6 +1569,29 @@ async def handle_get_materials(event: MessageEvent):
     lines.append("\n这些材料可以用来烹饪。发送「/烹饪 配方名」开始做菜！")
 
     await get_materials_cmd.finish("\n".join(lines))
+
+
+forage_material_cmd = on_command("探索食材")
+
+
+@forage_material_cmd.handle()
+async def handle_forage_material(event: MessageEvent):
+    uid = event.get_user_id()
+    player = core_storage.get_player(uid)
+    if not player or not player["house"]:
+        await forage_material_cmd.finish("你还没有分院。先完成 /入学")
+        return
+
+    try:
+        result = kitchen.forage_material(uid)
+    except kitchen.KitchenError as e:
+        await forage_material_cmd.finish(str(e))
+        return
+
+    await forage_material_cmd.finish(
+        f"🔎 你四处探索了一番，找到了一份「{result['material_name']}」！"
+        f"（消耗{kitchen.FORAGE_STAMINA_COST}点体力）"
+    )
 
 
 gift_food_cmd = on_command("赠送食物")

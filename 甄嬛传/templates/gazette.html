@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block title %}邸报{% endblock %}
+{% block head %}
+<style>
+.day{margin:0 0 22px}
+.day h3{margin-top:0}
+.day ul{list-style:none;padding:0;margin:0}
+.day li{padding:6px 0 6px 12px;border-left:3px solid var(--line);margin:0 0 4px}
+.day li.decree{border-color:var(--jin)} .day li.bed{border-color:var(--lv)}
+.day li.scandal{border-color:var(--zhu)} .day li.birth{border-color:var(--qing)}
+</style>
+{% endblock %}
+{% block body %}
+<h2>邸报</h2>
+<p class="muted">近七日宫中大事。谁被翻了牌子、谁晋了位分、谁出了事，六宫都会知道。</p>
+{% for d, items in days %}
+<section class="day">
+  <h3>第 {{ d }} 日{% if d == day %}（今日）{% endif %}</h3>
+  <ul>{% for it in items %}<li class="{{ it.kind }}">{{ it.text }}</li>{% endfor %}</ul>
+</section>
+{% else %}
+<p>宫里还很安静。</p>
+{% endfor %}
+{% endblock %}

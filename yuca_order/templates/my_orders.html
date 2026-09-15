@@ -4,6 +4,63 @@
 <div class="page">
   <div class="page-title">我的订单</div>
 
+  <div class="card" style="margin-bottom:16px;">
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+      <div>
+        <div class="fl">剩余次数（所有创作者合计）</div>
+        <div style="font-size:22px;font-weight:700;color:var(--accent2);">{{ credit_balance }} 次</div>
+      </div>
+      <div class="spacer"></div>
+      <a href="{{ url_for('credits_buy') }}" class="btn btn-primary btn-sm">获得下单次数</a>
+    </div>
+    <div class="fh" style="margin-top:10px;">💡 次数按创作者分开计算，不能跨创作者使用；单口领取、兑换码获得的次数可以立刻用，去<a href="{{ url_for('trades_hall') }}">交易大厅</a>换来的次数需满 24 小时冷却期后才能下单或再次挂单</div>
+
+    {% if creator_credits %}
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+      <div class="fl" style="margin-bottom:8px;">按创作者分开（🔒 表示交易换来的次数还在 24 小时冷却期内）</div>
+      {% for c in creator_credits %}
+      <div style="{% if not loop.last %}margin-bottom:14px;padding-bottom:14px;border-bottom:1px dashed var(--border);{% endif %}">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:13px;font-weight:600;color:var(--text);">{{ c.tenant_name }}</span>
+          <span class="badge" style="background:color-mix(in srgb,var(--accent) 13%,transparent);color:var(--accent2);">{{ c.balance }} 次</span>
+        </div>
+        {% if c.batches %}
+        <div style="margin-top:6px;">
+          {% for b in c.batches %}
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px;color:var(--muted);">
+            <span>{{ b.units_left }} 次{% if b.locked_until %} <span>🔒 {{ b.locked_until|fmt }} 解锁</span>{% endif %}</span>
+            {% if b.expires_at %}<span>{{ b.expires_at|fmt }} 过期</span>{% else %}<span>永久有效</span>{% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  {% if credit_requests %}
+  <div class="card">
+    <div class="fl" style="margin-bottom:10px;">次数申请记录</div>
+    {% for r in credit_requests %}
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;{% if not loop.last %}border-bottom:1px solid var(--border);{% endif %}">
+      <div style="font-size:13px;">{{ r.tenant_name }} · 申请 {{ r.units }} 次</div>
+      <div style="text-align:right;">
+        {% if r.status == 'approved' %}
+          <span class="badge" style="background:color-mix(in srgb,var(--green) 13%,transparent);color:var(--green);">{{ CREDIT_STATUS_LABEL[r.status] }}</span>
+        {% elif r.status == 'rejected' %}
+          <span class="badge" style="background:color-mix(in srgb,var(--red) 13%,transparent);color:var(--red);">{{ CREDIT_STATUS_LABEL[r.status] }}</span>
+        {% else %}
+          <span class="badge" style="background:color-mix(in srgb,var(--warn) 13%,transparent);color:var(--warn);">{{ CREDIT_STATUS_LABEL[r.status] }}</span>
+        {% endif %}
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">{{ r.created_at|fmt }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
   {% if announcements %}
   <div class="card" style="margin-bottom:16px;border-color:color-mix(in srgb,var(--accent) 28%,var(--border));background:color-mix(in srgb,var(--accent) 5%,var(--surface));">
     <div style="font-size:12px;font-weight:600;color:var(--accent2);margin-bottom:10px;display:flex;align-items:center;gap:6px;">
@@ -12,14 +69,14 @@
     {% for a in announcements %}
     <div style="{% if not loop.last %}padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--border);{% endif %}">
       <div style="font-size:13px;line-height:1.7;white-space:pre-wrap;">{{ a.content }}</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:4px;">{{ a.created_at|fmt }}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;">{{ a.tenant_name }} · {{ a.created_at|fmt }}</div>
     </div>
     {% endfor %}
   </div>
   {% endif %}
 
   {% if orders %}
-  <div class="card" style="padding:0;overflow:hidden;">
+  <div class="card" style="padding:0;overflow-x:auto;-webkit-overflow-scrolling:touch;">
     <table>
       <thead><tr>
         <th>订单号</th><th>接单方</th><th>类型</th><th>标题</th><th>状态</th><th>提交时间</th>
@@ -33,7 +90,7 @@
           <td>{{ o.title }}</td>
           <td>
             <span class="badge" style="background:{{ o.status|sc }}22;color:{{ o.status|sc }};">
-              {{ o.status|sl }}
+              {{ '管理正在排单中' if o.status == 'pending' else o.status|sl }}
             </span>
           </td>
           <td class="muted">{{ o.created_at|fmt }}</td>

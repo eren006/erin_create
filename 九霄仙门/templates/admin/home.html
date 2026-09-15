@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}管理后台 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:12px">数据概览</h3>
+  <table>
+    <tr><td>待审核账号</td><td>{{ stats.pending }}</td></tr>
+    <tr><td>已通过账号</td><td>{{ stats.approved }}</td></tr>
+    <tr><td>已拒绝账号</td><td>{{ stats.rejected }}</td></tr>
+    <tr><td>已创建角色</td><td>{{ stats.characters }}</td></tr>
+    <tr><td>峰数</td><td>{{ stats.peaks }}</td></tr>
+    <tr><td>在位长老</td><td>{{ stats.elders }} / 7</td></tr>
+  </table>
+</div>
+{% endblock %}

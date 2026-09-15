@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+{% block title %}使计{% endblock %}
+{% block head %}
+<style>
+.methods{display:grid;gap:8px;margin:8px 0 14px}
+.methods label{margin:0;padding:10px 12px;background:var(--paper);border:1px solid var(--line);cursor:pointer;font-size:14px}
+.methods label:has(input:checked){border-color:var(--zhu);box-shadow:inset 3px 0 0 var(--zhu)}
+.methods label.off{opacity:.5}
+.methods b{font-weight:normal;font-family:var(--kai);font-size:18px}
+</style>
+{% endblock %}
+{% block body %}
+<h2>使计</h2>
+<p class="muted">一天只能谋划一件事，今夜翻牌子前统一见分晓。对方心计越高、有眼线、有姐妹护着，越难得手；失手还可能被当场拿住。</p>
+
+{% if c.status != 'normal' %}
+<p>你自身难保，先顾好自己吧。</p>
+{% elif used_today %}
+<p>今天已经安排过一件事了，明天再说。</p>
+{% else %}
+<form method="post" action="{{ url_for('intrigue_submit') }}">
+  <label for="t">对谁下手</label>
+  <select id="t" name="target_id" required>
+    {% for t in targets %}<option value="{{ t.id }}">{{ dn(t) }}{{ '（宫里老人）' if t.npc_key }}{{ '（有喜）' if t.pregnant_since }}</option>{% endfor %}
+  </select>
+  <div class="methods">
+  {% for k, m in INTRIGUES.items() %}
+    {% set off = c.rank < m.min_rank or c.silver < m.silver or c.energy < m.energy or (m.get('item') and inventory.get(m.item,0) < 1) %}
+    <label class="{{ 'off' if off }}"><input type="radio" name="method" value="{{ k }}" required {{ 'disabled' if off }}>
+      <b>{{ m.name }}</b>　<span class="muted">精力 {{ m.energy }}{% if m.silver %}　银子 {{ m.silver }}{% endif %}{% if m.get('item') %}　需{{ ITEMS[m.item].name }}（有 {{ inventory.get(m.item,0) }}）{% endif %}{% if m.min_rank > 1 %}　{{ RANK_NAMES[m.min_rank] }}以上{% endif %}{% if not m.npc_ok %}　只能对玩家{% endif %}</span><br>{{ m.desc }}</label>
+  {% endfor %}
+  </div>
+  <button>安排下去</button>
+</form>
+{% endif %}
+
+<h3>手里的把柄</h3>
+{% if known %}
+<ul>{% for k in known %}{% set t = get_consort(k.target_id) %}
+  <li>{{ dn(t) }}：{{ SECRETS[k.secret].name }}{% if k.secret_revealed %}（已人尽皆知）{% endif %}</li>{% endfor %}</ul>
+{% else %}<p class="muted">还没有。去「六宫」打探，或者多去御花园转转。</p>{% endif %}
+
+<h3>近来的谋划</h3>
+{% if mine %}
+<div class="scroll"><table>
+  <tr><th>日</th><th>对象</th><th>计策</th><th>结果</th><th></th></tr>
+  {% for it in mine %}{% set t = get_consort(it.target_id) %}
+  <tr><td>{{ it.day }}</td><td>{{ dn(t) }}</td><td>{{ INTRIGUES[it.method].name }}</td>
+    <td>{{ {'pending':'等今夜','cancelled':'已撤回'}.get(it.status) or {'success':'成了','caught':'败露','fizzle':'没成','void':'落空'}.get(it.result, '') }}</td>
+    <td>{% if it.status == 'pending' %}<form method="post" action="{{ url_for('intrigue_cancel', iid=it.id) }}"><button class="plain">撤回</button></form>{% endif %}</td></tr>
+  {% endfor %}
+</table></div>
+{% else %}<p class="muted">你还没算计过谁。</p>{% endif %}
+{% endblock %}

@@ -1,0 +1,39 @@
+{% extends "web/base.html" %}
+{% block title %}巧克力蛙图鉴{% endblock %}
+{% block body %}
+
+<div class="card">
+  <h2>🐸 巧克力蛙卡片图鉴（{{ collection.owned_count }}/{{ collection.total }}）</h2>
+  <p class="muted">去「对角巷」买巧克力蛙，在「背包」里吃掉就会开一张卡。抽到已有的卡会换成安慰加隆。</p>
+  {% for rarity in rarity_order %}
+  <h3>{{ rarity }}</h3>
+  <div class="scroll"><table>
+    <tr><th>名字</th><th>简介</th></tr>
+    {% for card in collection.by_rarity[rarity] %}
+    <tr class="{{ '' if card.owned else 'muted' }}">
+      <td>{{ card.name }}</td>
+      <td>{{ card.blurb }}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h2>🏅 巧克力蛙称号</h2>
+  {% for t in titles %}
+  <div class="row" style="margin-bottom:8px">
+    <span style="flex:1">
+      {{ t.name }}
+      <span class="muted">（{{ t.requirement }}）</span>
+      {% if t.active %}<b>· 佩戴中</b>{% endif %}
+    </span>
+    <form method="post">
+      <input type="hidden" name="title" value="{{ t.name }}">
+      <button {% if not t.unlocked or t.active %}disabled{% endif %}>佩戴</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+
+{% endblock %}

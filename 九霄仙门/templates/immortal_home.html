@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}仙籍 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:6px">仙籍</h3>
+  <p class="muted">飞升证道的前辈虽已退场,不再参与宗门任何俗务,但偶尔仍可下凡教养子嗣、寄语亲故、扫墓追思,
+    亦可俯瞰人间——花名录、大事记随时可看,只是不再能亲自下场了。</p>
+  <div style="display:flex;gap:8px;margin-top:10px">
+    <a href="{{ url_for('roster') }}" class="btn" style="padding:4px 12px">花名录</a>
+    <a href="{{ url_for('chronicle') }}" class="btn" style="padding:4px 12px">大事记</a>
+  </div>
+</div>
+
+<div class="card">
+  {% if not immortals %}<p class="muted">你尚无已飞升的前辈</p>{% endif %}
+  {% for c in immortals %}
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--bd)">
+    <div>
+      <p>{{ c.name }}({{ title_for(c.join_seq, c.gender) }}){% if c.dao_hao %} · 道号「{{ c.dao_hao }}」{% endif %}
+        {% if c.celestial_office_key %} · <span class="badge badge-gold">{{ CELESTIAL_OFFICES[c.celestial_office_key].label }}</span>{% endif %}</p>
+    </div>
+    <a href="{{ url_for('immortal_detail', char_id=c.id) }}" class="btn" style="padding:4px 12px;white-space:nowrap">下凡</a>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}英杰阁 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:10px">飞升仙人</h3>
+  {% if not immortals %}<p class="muted">尚无人证道飞升</p>{% endif %}
+  {% for c in immortals %}
+  <p style="margin-top:4px">{{ c.name }}({{ title_for(c.join_seq, c.gender) }}){% if c.dao_hao %} · 道号「{{ c.dao_hao }}」{% endif %}{% if c.celestial_office_key %} · {{ CELESTIAL_OFFICES[c.celestial_office_key].label }}{% endif %} <span class="badge badge-gold">飞升仙去</span>
+    {% if c.celestial_office_key %}<br><span class="muted" style="font-size:12px">{{ CELESTIAL_OFFICES[c.celestial_office_key].desc }}</span>{% endif %}</p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:10px">仙侣录</h3>
+  {% if not companion_rows %}<p class="muted">尚无人结为道侣</p>{% endif %}
+  {% for b in companion_rows %}
+  <p style="margin-top:4px">{{ b.ca_name }}({{ title_for(b.ca_seq, b.ca_gender) }}) 与 {{ b.cb_name }}({{ title_for(b.cb_seq, b.cb_gender) }}) <span class="badge badge-gold">道侣</span></p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:10px">氏族谱</h3>
+  {% if not offspring_rows %}<p class="muted">尚无子嗣降世</p>{% endif %}
+  {% for o in offspring_rows %}
+  <p style="margin-top:4px">
+    <span class="badge">{{ o.generation }}代</span>
+    {{ o.name }}({{ '男' if o.gender=='m' else '女' }}) —{{ o.parent_a_name }}与{{ o.parent_b_name }}之后
+    {% if not o.alive %}<span class="badge">已故</span>
+    {% else %}<span class="badge badge-purple">{{ o.stage }}·{{ o.realm_name }}</span>{% endif %}
+    {% if o.spouse_name %}<span class="badge badge-gold">配{{ o.spouse_name }}</span>{% endif %}
+  </p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:10px">历代掌门</h3>
+  {% if not leaders_undefeated and not leaders_defeated %}<p class="muted">尚无掌门</p>{% endif %}
+  {% for l in leaders_undefeated %}
+  <p style="margin-top:4px">{{ l.name }}({{ title_for(l.join_seq, l.gender) }})
+    {% if not l.ended_ts %}<span class="badge badge-purple">在位</span>
+    {% elif l.end_reason == 'ascended' %}<span class="badge badge-gold">已飞升</span>
+    {% elif l.end_reason == 'deceased' %}<span class="badge">已故</span>
+    {% endif %}</p>
+  {% endfor %}
+  {% if leaders_defeated %}
+  <p class="muted" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--bd)">曾被挑落掌门之位:</p>
+  {% for l in leaders_defeated %}
+  <p style="margin-top:4px">{{ l.name }}({{ title_for(l.join_seq, l.gender) }})
+    <span class="badge badge-red">被{{ l.defeaters_label }}击败{% if l.times > 1 %} ×{{ l.times }}次{% endif %}</span></p>
+  {% endfor %}
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:10px">仙骨持有者(全宗仅{{ IMMORTAL_BONES|length }}枚)</h3>
+  {% if not bone_holders %}<p class="muted">尚无人觅得仙骨</p>{% endif %}
+  {% for c in bone_holders %}
+  <p style="margin-top:4px">{{ c.name }}({{ title_for(c.join_seq, c.gender) }}) —
+    <span style="color:var(--gold)">{{ IMMORTAL_BONES[c.immortal_bone_key].label }}</span>
+    <span class="muted">(攻击+{{ IMMORTAL_BONES[c.immortal_bone_key].bonus.attack }} 防御+{{ IMMORTAL_BONES[c.immortal_bone_key].bonus.defense }})</span></p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:10px">前尘录(全宗仅{{ pastlife_total }}位可认领)</h3>
+  {% if not pastlife_holders %}<p class="muted">尚无人溯得前尘</p>{% endif %}
+  {% for c in pastlife_holders %}
+  <p style="margin-top:4px">{{ c.name }}({{ title_for(c.join_seq, c.gender) }}) —
+    <span style="color:var(--gold)">{{ PAST_LIFE_FIGURES[c.pastlife_key].name }}</span>
+    <span class="muted">{{ PAST_LIFE_FIGURES[c.pastlife_key].epithet }}</span></p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:10px">血脉/传承大成者</h3>
+  {% if not talent_masters %}<p class="muted">尚无人大成</p>{% endif %}
+  {% for c in talent_masters %}
+  <p style="margin-top:4px">{{ c.name }}({{ title_for(c.join_seq, c.gender) }}) — {{ TALENTS[c.talent_key].label }}</p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:10px">侠名榜</h3>
+  {% if not xiaxia_rows %}<p class="muted">尚无人行走江湖</p>{% endif %}
+  {% for c in xiaxia_rows %}
+  <p style="margin-top:4px">{{ c.name }}({{ title_for(c.join_seq, c.gender) }}) —
+    <span class="badge badge-gold">{{ xiaxia_title(c.xiaxia_fame) }}</span>
+    <span class="muted">侠名值 {{ c.xiaxia_fame }}</span></p>
+  {% endfor %}
+</div>
+{% endblock %}

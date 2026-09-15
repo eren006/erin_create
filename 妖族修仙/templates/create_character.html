@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}创建角色 - 妖族修仙{% endblock %}
+{% block content %}
+<div class="card" style="max-width:480px;margin:40px auto">
+  <h3 style="margin-bottom:8px">化形初显</h3>
+  <p class="muted" style="margin-bottom:16px">审核已通过,填写你的妖族角色信息</p>
+  <form method="post" id="create-form">
+    <label>道号</label>
+    <input name="name" value="{{ name }}" required maxlength="12">
+
+    <label>起始血脉(选一种,日后境界圆满可突破为对应神兽)</label>
+    <div class="species-grid">
+      {% for key in species_order %}
+      {% set info = species_info[key] %}
+      <label class="species-card {{ 'selected' if species == key }}" data-key="{{ key }}">
+        <input type="radio" name="species" value="{{ key }}" {{ 'checked' if species == key }} required>
+        <div style="font-size:20px">{{ info.label }}</div>
+        <div class="muted" style="font-size:11px;margin-top:4px">→ {{ info.divine_beast }}</div>
+      </label>
+      {% endfor %}
+    </div>
+    <p class="muted" id="species-desc" style="min-height:32px"></p>
+
+    <label>简介(选填)</label>
+    <textarea name="bio" rows="4">{{ bio }}</textarea>
+    <button class="btn btn-primary" style="margin-top:16px;width:100%">确认化形</button>
+  </form>
+</div>
+<script>
+const SPECIES_INFO = {{ species_info | tojson }};
+const cards = document.querySelectorAll('.species-card');
+const descEl = document.getElementById('species-desc');
+function updateDesc(key) {
+  const info = SPECIES_INFO[key];
+  descEl.textContent = info ? (info.start_desc + '  终极形态:' + info.divine_beast + ' —— ' + info.divine_desc) : '';
+}
+cards.forEach(card => {
+  card.addEventListener('click', () => {
+    cards.forEach(c => c.classList.remove('selected'));
+    card.classList.add('selected');
+    updateDesc(card.dataset.key);
+  });
+});
+const initial = document.querySelector('.species-card.selected');
+if (initial) updateDesc(initial.dataset.key);
+</script>
+{% endblock %}

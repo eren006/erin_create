@@ -1,0 +1,106 @@
+Phase 2 full structured suite v2 -- seating bug fixed, 1v1 only, no game-value tuning
+run_id: 20260905-222730
+total battles simulated: 90000   (type_matrix_battles.csv: 45000 rows, ai_policy_battles.csv: 45000 rows)   wall time: 97.3s
+special->control excluded from any '5-ring balance' conclusion (not implemented).
+fusion/3v3 team mechanics out of scope -- support/control's numbers here are
+1v1-only and say nothing about their team-oriented kit.
+Prior run in phase2_results_invalid_seating/ is INVALIDATED -- do not compare against it.
+
+=== Stage 30 (n=15000 battles across type matrix) ===
+avg rounds: 13.62  median: 15.0  draw rate: 0.2%  timeout(no-KO) rate: 64.3%
+first-mover win rate: 41.2% (n=14974)  [note: 'first mover' = fastest-resolving action this round, not necessarily a strategic edge -- some templates put negative speed_mod on their strongest skills, so this can conflate with 'used a weak filler skill']
+control hit rate: 52.0% (attempts=46873)
+ring backlash: 37044 events (2.47/battle), avg self-dmg when triggered: 24.4
+soul-exhaustion (fatigued basic attack) count: 0
+shield absorbed as % of (damage+absorbed): 20.4%
+
+type matchup win-rate matrix (row's win rate vs column, directed, no swap inference):
+            control    attack   support   defense   special
+control      52.0%      0.0%     30.9%      0.8%      0.3% 
+attack      100.0%     50.7%    100.0%     93.0%     99.2% 
+support      67.8%      0.0%     49.1%      3.0%      1.0% 
+defense      99.7%      7.2%     97.0%     45.9%     87.0% 
+special      99.8%      0.8%     97.7%     10.5%     51.4% 
+
+counter edges (countering side's win rate; target 53-60%):
+  control->attack       0.0% (decided 600) <-- OUTSIDE TARGET
+  attack->support      100.0% (decided 600) <-- OUTSIDE TARGET
+  support->defense      3.0% (decided 600) <-- OUTSIDE TARGET
+  defense->special     87.0% (decided 599) <-- OUTSIDE TARGET
+  special->control     99.8% (decided 600)  [NOT IMPLEMENTED, excluded]
+
+AI policy win-rate matrix (mixed kit, row's win rate vs column):
+              random     burst   control  survival  resource
+random        46.7%     25.5%     42.0%     27.6%     38.5% 
+burst         76.0%     48.4%     67.3%     47.8%     63.3% 
+control       58.7%     31.1%     48.1%     29.7%     52.9% 
+survival      75.6%     49.2%     68.2%     49.5%     66.1% 
+resource      61.7%     36.0%     52.3%     36.1%     54.5% 
+
+=== Stage 60 (n=15000 battles across type matrix) ===
+avg rounds: 13.31  median: 15.0  draw rate: 0.1%  timeout(no-KO) rate: 55.8%
+first-mover win rate: 37.6% (n=14986)  [note: 'first mover' = fastest-resolving action this round, not necessarily a strategic edge -- some templates put negative speed_mod on their strongest skills, so this can conflate with 'used a weak filler skill']
+control hit rate: 51.9% (attempts=46585)
+ring backlash: 5235 events (0.35/battle), avg self-dmg when triggered: 58.0
+soul-exhaustion (fatigued basic attack) count: 0
+shield absorbed as % of (damage+absorbed): 13.1%
+
+type matchup win-rate matrix (row's win rate vs column, directed, no swap inference):
+            control    attack   support   defense   special
+control      51.2%      0.0%     38.5%      0.7%      0.8% 
+attack      100.0%     45.3%    100.0%     99.0%     99.2% 
+support      64.8%      0.0%     50.2%      1.8%      1.0% 
+defense      99.2%      0.8%     96.5%     52.2%     51.8% 
+special     100.0%      2.3%     99.3%     52.3%     49.2% 
+
+counter edges (countering side's win rate; target 53-60%):
+  control->attack       0.0% (decided 600) <-- OUTSIDE TARGET
+  attack->support      100.0% (decided 600) <-- OUTSIDE TARGET
+  support->defense      1.8% (decided 600) <-- OUTSIDE TARGET
+  defense->special     51.8% (decided 599) <-- OUTSIDE TARGET
+  special->control     100.0% (decided 600)  [NOT IMPLEMENTED, excluded]
+
+AI policy win-rate matrix (mixed kit, row's win rate vs column):
+              random     burst   control  survival  resource
+random        49.8%     22.0%     32.7%     27.1%     33.6% 
+burst         78.8%     49.2%     64.4%     56.0%     65.7% 
+control       65.8%     36.1%     53.8%     38.6%     52.0% 
+survival      74.8%     42.0%     61.7%     47.2%     60.0% 
+resource      69.4%     34.2%     47.7%     41.2%     51.2% 
+
+=== Stage 90 (n=15000 battles across type matrix) ===
+avg rounds: 12.80  median: 15.0  draw rate: 0.1%  timeout(no-KO) rate: 48.0%
+first-mover win rate: 34.3% (n=14992)  [note: 'first mover' = fastest-resolving action this round, not necessarily a strategic edge -- some templates put negative speed_mod on their strongest skills, so this can conflate with 'used a weak filler skill']
+control hit rate: 53.2% (attempts=44209)
+ring backlash: 0 events (0.00/battle), avg self-dmg when triggered: 0.0
+soul-exhaustion (fatigued basic attack) count: 0
+shield absorbed as % of (damage+absorbed): 8.6%
+ultimate release rate: 79.4%  used-and-won rate among releases: 68.0%
+
+type matchup win-rate matrix (row's win rate vs column, directed, no swap inference):
+            control    attack   support   defense   special
+control      51.5%      0.0%     42.7%      1.8%      0.0% 
+attack      100.0%     52.0%    100.0%     99.5%     94.8% 
+support      52.3%      0.0%     53.9%      5.2%      0.0% 
+defense      97.8%      0.0%     94.3%     50.7%     20.3% 
+special      99.8%      6.8%    100.0%     76.0%     47.7% 
+
+counter edges (countering side's win rate; target 53-60%):
+  control->attack       0.0% (decided 600) <-- OUTSIDE TARGET
+  attack->support      100.0% (decided 600) <-- OUTSIDE TARGET
+  support->defense      5.2% (decided 600) <-- OUTSIDE TARGET
+  defense->special     20.3% (decided 600) <-- OUTSIDE TARGET
+  special->control     99.8% (decided 600)  [NOT IMPLEMENTED, excluded]
+
+AI policy win-rate matrix (mixed kit, row's win rate vs column):
+              random     burst   control  survival  resource
+random        49.1%     23.7%     34.4%     34.2%     46.3% 
+burst         77.0%     49.3%     64.8%     66.7%     73.0% 
+control       63.3%     33.3%     53.7%     43.2%     63.2% 
+survival      67.8%     33.8%     49.2%     50.0%     64.9% 
+resource      48.0%     24.3%     34.1%     31.3%     47.8% 
+
+=== skill configuration rate across full run (uniform-random sampling caveat applies) ===
+config rate here reflects the random sampler (~66.7% by construction), not player
+preference -- usage-given-equipped is the more meaningful number; full per-skill
+breakdown available by post-processing type_matrix_battles.csv.

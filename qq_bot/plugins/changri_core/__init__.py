@@ -1,3 +1,4 @@
+import os
 import secrets
 import time
 
@@ -15,10 +16,13 @@ PLATFORM = "qq"
 
 CHANGRI_BOT_SELF_ID = "102100533"
 
+PERSONAL_WEB_BASE_URL = os.getenv("PERSONAL_WEB_BASE_URL", "http://120.26.120.128:5020")
+
 NOTIFICATION_ICONS = {
     "短信": "💬",
     "礼物": "🎁",
     "邀约": "💌",
+    "关系线": "🔗",
 }
 
 driver = get_driver()
@@ -53,6 +57,42 @@ async def handle_bind_role(event: MessageEvent, args=CommandArg()):
     await bind_role_cmd.finish(f"角色创建成功：{role_name}")
 
 
+create_npc_cmd = on_command("创建NPC")
+
+
+@create_npc_cmd.handle()
+async def handle_create_npc(event: MessageEvent, args=CommandArg()):
+    role_name = args.extract_plain_text().strip()
+    if not role_name:
+        await create_npc_cmd.finish("用法：/创建NPC <角色名>")
+    uid = event.get_user_id()
+    if api.get_uid_by_role_name(PLATFORM, role_name) not in (None, api.get_primary_uid(PLATFORM, uid)):
+        await create_npc_cmd.finish(f"角色名「{role_name}」已被占用，换一个吧")
+    gid = event.group_openid if isinstance(event, GroupMessageCreateEvent) else None
+    api.bind_role(PLATFORM, uid, role_name, gid)
+    if not api.is_npc(PLATFORM, uid):
+        api.toggle_npc(PLATFORM, uid)
+    await create_npc_cmd.finish(f"✅ NPC「{role_name}」创建成功，已自动标记为NPC身份。")
+
+
+set_npc_cmd = on_command("设为npc")
+
+
+@set_npc_cmd.handle()
+async def handle_set_npc(event: MessageEvent, args=CommandArg()):
+    if not api.is_admin(PLATFORM, event.get_user_id()):
+        await set_npc_cmd.finish("❌ 权限不足，仅管理员可用。")
+    role_name = args.extract_plain_text().strip()
+    if not role_name:
+        await set_npc_cmd.finish("用法：/设为npc <角色名>")
+    target_uid = api.get_uid_by_role_name(PLATFORM, role_name)
+    if target_uid is None:
+        await set_npc_cmd.finish(f"❌ 未找到角色「{role_name}」，请先创建角色。")
+    now_npc = api.toggle_npc(PLATFORM, target_uid)
+    if now_npc:
+        await set_npc_cmd.finish(f"✅ 已将「{role_name}」设为 NPC。")
+    else:
+        await set_npc_cmd.finish(f"✅ 已取消「{role_name}」的 NPC 身份。")
 
 
 grant_admin_cmd = on_command("授予管理员")
@@ -143,7 +183,8 @@ async def handle_reset_season_data(event: MessageEvent, args=CommandArg()):
 # ── 群激活 ──────────────────────────────────────────────────────────────
 
 ACTIVATE_CMD_TEXT = "激活"
-ACTIVATION_EXEMPT_COMMANDS = ("激活", "设置激活码", "取消激活", "已激活群列表")
+ACTIVATION_EXEMPT_COMMANDS = ("激活", "设置激活码", "取消激活", "已激活群列表", "在吗", "私聊开关")
+PRIVATE_CHAT_EXEMPT_COMMANDS = ("在吗", "私聊开关")
 
 
 activate_cmd = on_command(ACTIVATE_CMD_TEXT)
@@ -196,6 +237,23 @@ async def handle_deactivate_group(event: GroupMessageCreateEvent):
     await deactivate_group_cmd.finish("本群本来就没激活")
 
 
+private_chat_toggle_cmd = on_command("私聊开关")
+
+
+@private_chat_toggle_cmd.handle()
+async def handle_private_chat_toggle(event: MessageEvent, args=CommandArg()):
+    if not api.is_admin(PLATFORM, event.get_user_id()):
+        await private_chat_toggle_cmd.finish("权限不足，仅管理员可用")
+        return
+    action = args.extract_plain_text().strip()
+    if action not in ("开", "关"):
+        state = "✅开启" if api.is_private_chat_enabled() else "❌关闭（默认）"
+        await private_chat_toggle_cmd.finish(f"私聊功能当前：{state}\n用法：/私聊开关 开/关")
+        return
+    api.set_private_chat_enabled(action == "开")
+    await private_chat_toggle_cmd.finish(f"私聊功能已{action}，现在私聊{'可以' if action == '开' else '不能'}使用大部分指令了")
+
+
 activated_groups_cmd = on_command("已激活群列表")
 
 
@@ -216,6 +274,11 @@ async def _check_group_activated(bot: BaseBot, event: BaseEvent):
     if bot.self_id != CHANGRI_BOT_SELF_ID:
         return  # 群激活/C2C屏蔽只针对长日机器人自己，其他挂在同进程的机器人不受影响
     if isinstance(event, C2CMessageCreateEvent):
+        text = event.get_plaintext().strip()
+        if any(text.startswith(f"/{cmd}") for cmd in PRIVATE_CHAT_EXEMPT_COMMANDS):
+            return
+        if api.is_private_chat_enabled():
+            return
         raise IgnoredException("private chat disabled")
     if not isinstance(event, GroupMessageCreateEvent):
         return
@@ -307,6 +370,8 @@ FEATURE_LABELS = {
     "auction": "拍卖",
     "appointment": "私约",
     "letters": "写信",
+    "forum": "论坛",
+    "relationship": "关系线",
 }
 
 feature_toggle_cmd = on_command("系统开关")
@@ -494,6 +559,32 @@ async def handle_mailbox(event: MessageEvent, args=CommandArg()):
         lines.append("")
     api.mark_notifications_read([n["id"] for n in items])
     await mailbox_cmd.finish(MessageSegment.markdown("\n".join(lines)))
+
+
+# ── 个人主页(关系线+时间线网页) ────────────────────────────────────────────
+
+web_link_cmd = on_command("我的主页", aliases={"网页链接"})
+
+
+@web_link_cmd.handle()
+async def handle_web_link(event: MessageEvent, args=CommandArg()):
+    uid = event.get_user_id()
+    if api.get_role_name(PLATFORM, uid) is None:
+        await web_link_cmd.finish("你还没有角色，先用「/创建新角色 <角色名>」创建一个")
+        return
+    action = args.extract_plain_text().strip()
+    if action == "重置":
+        token = api.regenerate_web_token(PLATFORM, uid)
+        await web_link_cmd.finish(
+            f"🔒 旧链接已失效，这是你的新专属主页：\n{PERSONAL_WEB_BASE_URL}/my/{token}\n"
+            f"（这个链接能看到你的关系线和时间线，不要转发给别人）"
+        )
+        return
+    token = api.get_or_create_web_token(PLATFORM, uid)
+    await web_link_cmd.finish(
+        f"🏠 你的专属主页（只有你能看，别转发）：\n{PERSONAL_WEB_BASE_URL}/my/{token}\n"
+        f"如果链接泄露了，发送「/我的主页 重置」换一个新的"
+    )
 
 
 # ── 地点系统 ──────────────────────────────────────────────────────────────

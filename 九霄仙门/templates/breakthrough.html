@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}突破 - 九霄仙门{% endblock %}
+{% block content %}
+{% if not event %}
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">⚡</span>突破仪式</h3><span class="badge badge-purple">{{ realm.name }}</span></div>
+  <p class="stat-line"><span>当前修为</span><strong>{{ char.exp }}</strong></p>
+  {% if next_realm %}
+  <p class="stat-line"><span>下一境界 {{ next_realm.name }} 需</span><strong>{{ next_realm.exp }}</strong></p>
+  {% if not ready %}
+  <p class="muted" style="margin-top:10px">修为尚未攒够,继续打坐修炼吧</p>
+  {% else %}
+  <p class="muted" style="margin-top:10px">体力 {{ char.stamina }} · 消耗 {{ stamina_cost }} 点体力方可尝试突破</p>
+  <div class="stat-block" style="margin-top:10px">
+    <div class="stat-line"><span>本次成功率</span><strong>{{ chance_pct }}%</strong></div>
+    <div class="bar-track"><div class="bar-fill bar-gold" style="width:{{ chance_pct }}%"></div></div>
+  </div>
+  {% if streak > 0 %}
+  <p class="muted" style="margin-top:6px">
+    {% if guaranteed %}{{ pity_label }}:此次尝试必定突破!
+    {% else %}{{ pity_label }}:连续{{ streak }}次未成,道心愈发凝练,此次成功率已大幅提升{% endif %}
+  </p>
+  {% endif %}
+  <form method="post" action="{{ url_for('breakthrough_attempt') }}" style="margin-top:14px">
+    <label style="display:flex;align-items:center;gap:8px;font-weight:normal">
+      <input type="checkbox" name="use_assist" value="1" style="width:auto" {{ 'disabled' if char.contribution < assist_cost }}>
+      花费贡献 {{ assist_cost }} 向丹房求援一枚护脉丹(成功率额外 +{{ assist_bonus_pct }}%,失败时护住部分心境)
+      {% if char.contribution < assist_cost %}<span class="muted">(尚缺{{ assist_cost - char.contribution }}点贡献)</span>{% endif %}
+    </label>
+    {% if guardian_options %}
+    <label style="margin-top:10px;display:block">邀一人护法(可选)</label>
+    <label style="display:flex;align-items:center;gap:8px;font-weight:normal;margin-top:4px">
+      <input type="radio" name="guardian_type" value="" checked style="width:auto">无护法,独自问道
+    </label>
+    {% for g in guardian_options %}
+    <label style="display:flex;align-items:center;gap:8px;font-weight:normal;margin-top:4px">
+      <input type="radio" name="guardian_type" value="{{ g }}" style="width:auto">
+      {{ guardian_types[g].label }}(<span class="muted">{{ guardian_types[g].desc }}</span>)
+    </label>
+    {% endfor %}
+    {% endif %}
+    <button class="btn btn-primary" style="width:100%;margin-top:10px" {{ 'disabled' if char.stamina < stamina_cost }}>渡劫突破</button>
+    {% if char.stamina < stamina_cost %}<p class="muted" style="margin-top:4px">尚缺{{ stamina_cost - char.stamina }}点体力</p>{% endif %}
+  </form>
+  <p class="muted" style="margin-top:8px;text-align:center">突破失败不损修为,只耗体力、伤心境(单次最多5点,连续3次保底后必成)</p>
+  {% endif %}
+  {% else %}
+  <p class="muted" style="margin-top:10px">已至大乘圆满,道途尽头,静候飞升机缘</p>
+  {% endif %}
+</div>
+{% else %}
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">👹</span>心魔现前</h3></div>
+  <p>{{ event.text }}</p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+    {% for c in event.choices %}
+    <form method="post" action="{{ url_for('breakthrough_mind_demon') }}" style="flex:1;min-width:140px">
+      <input type="hidden" name="event_key" value="{{ event.key }}">
+      <input type="hidden" name="choice_key" value="{{ c.key }}">
+      <button class="btn btn-primary" style="width:100%">{{ c.label }}</button>
+    </form>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}

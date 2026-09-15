@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}信箱 - 妖族修仙{% endblock %}
+{% block content %}
+{% if not mails %}
+<div class="card muted" style="text-align:center">信箱空空如也</div>
+{% endif %}
+{% for m in mails %}
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:baseline">
+    <strong>{{ m.subject }}</strong>
+    <span class="muted" style="font-size:11px">{{ m.from_label }} · {{ m.created_ts | fmt_ts }}</span>
+  </div>
+  {% if m.body %}<p class="muted" style="margin-top:6px">{{ m.body }}</p>{% endif %}
+  {% if m.attachment %}
+  <div style="margin-top:10px">
+    {% if m.claimed %}
+    <span class="badge badge-jade">已领取: 妖力 +{{ m.attachment.yao_power|default(0) }}</span>
+    {% else %}
+    <form method="post" action="{{ url_for('mail_claim', mail_id=m.id) }}">
+      <button class="btn btn-primary" style="padding:4px 12px">领取附件 (妖力 +{{ m.attachment.yao_power|default(0) }})</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+{% endblock %}

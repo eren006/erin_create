@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}宗门节日 - 九霄仙门{% endblock %}
+{% block content %}
+
+<div class="card">
+  <h3 style="margin-bottom:10px">开启节日活动</h3>
+  {% if not can_open %}
+  <p class="muted">当前仍有一场节日活动进行中,不可重复开启。</p>
+  {% else %}
+  <form method="post">
+    <label>节日类型</label>
+    <select name="type_key">
+      {% for key, t in FESTIVAL_TYPES.items() %}
+      <option value="{{ key }}">{{ t.label }}{{ '' if key in FESTIVAL_TYPES_IMPLEMENTED else '(仅公告,未实现评选)' }}</option>
+      {% endfor %}
+    </select>
+    <button class="btn btn-primary" style="margin-top:12px">开启(持续 {{ FESTIVAL_DURATION_HOURS }} 小时)</button>
+  </form>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:10px">当前状态</h3>
+  {% if not last %}
+  <p class="muted">尚未开启过节日活动。</p>
+  {% else %}
+  <p>{{ FESTIVAL_TYPES[last.type_key].label }} —
+    {% if last.status == 'active' %}<span class="badge badge-gold">进行中</span>
+    {% else %}<span class="badge badge-purple">已落幕</span>{% endif %}
+  </p>
+  <p class="muted" style="margin-top:6px">开启于 {{ last.opened_ts | fmt_ts }} · 截止 {{ last.ends_ts | fmt_ts }}</p>
+  {% if last.status == 'active' %}
+  <form method="post" action="{{ url_for('admin_festival_close') }}" style="margin-top:10px">
+    <button class="btn">手动收尾</button>
+  </form>
+  {% endif %}
+  {% endif %}
+</div>
+
+{% endblock %}

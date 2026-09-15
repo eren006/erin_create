@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}化神 - 九霄仙门{% endblock %}
+{% block content %}
+
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">神</span>化神</h3></div>
+  <p class="muted" style="margin-top:6px">元婴至化神,须先备齐材料,再择日渡劫。渡劫失败保底不卡关。</p>
+  <p class="muted" style="margin-top:6px">{{ MATERIAL_LABELS[SHEN_CORE_MATERIAL] }}/{{ MATERIAL_LABELS[SHEN_WARD_MATERIAL] }}可在下方用断剑之魄兑换,不必靠运气;{{ MATERIAL_LABELS[SHEN_GATE_MATERIAL] }}是化神的硬性门槛,不设兑换,只能在葬剑遗址秘境闯关成功时小概率巧遇,多探几次总能碰上。</p>
+</div>
+
+{% if char.shen_quality %}
+<div class="card">
+  <h3 style="margin-bottom:8px">已成化神</h3>
+  <p><span class="badge badge-gold">{{ SHEN_QUALITIES[char.shen_quality].label }}</span>
+    <span class="muted">攻击+{{ SHEN_QUALITIES[char.shen_quality].bonus.attack }} 防御+{{ SHEN_QUALITIES[char.shen_quality].bonus.defense }} 修为效率+{{ SHEN_QUALITIES[char.shen_quality].bonus.exp_bonus_pct }}%</span></p>
+  {% if upgrade_next %}
+  <form method="post" action="{{ url_for('shen_upgrade') }}" style="margin-top:10px"
+        data-confirm-title="重炼化神品质" data-confirm-message="化神品质将升炼为{{ SHEN_QUALITIES[upgrade_next].label }}，消耗 {{ SHEN_UPGRADE_LINGSHI_COST }} 灵石与所列材料。"
+        data-confirm-warning="升炼消耗的资源不会返还。" data-confirm-button="确认升炼">
+    <p class="muted">升炼为{{ SHEN_QUALITIES[upgrade_next].label }}需:灵石{{ SHEN_UPGRADE_LINGSHI_COST }}
+      + {% for k,v in SHEN_QUALITIES[upgrade_next].cost.items() %}{{ MATERIAL_LABELS.get(k,k) }}×{{ v }} {% endfor %}</p>
+    <button class="btn btn-primary" {{ 'disabled' if char.lingshi < SHEN_UPGRADE_LINGSHI_COST }}>耗资重炼升品</button>
+    {% if char.lingshi < SHEN_UPGRADE_LINGSHI_COST %}<p class="muted" style="margin-top:2px;font-size:12px">尚缺{{ SHEN_UPGRADE_LINGSHI_COST - char.lingshi }}灵石</p>{% endif %}
+  </form>
+  {% else %}
+  <p class="muted" style="margin-top:6px">化神品质已至巅峰</p>
+  {% endif %}
+</div>
+{% elif not ready %}
+<div class="card"><p class="muted">尚未至元婴后期、修为未攒够,暂不到化神之时</p></div>
+{% elif char.shen_stage == 0 %}
+<div class="card">
+  <h3 style="margin-bottom:10px">选择化神品质</h3>
+  {% for key in SHEN_QUALITY_ORDER %}
+  {% set qd = SHEN_QUALITIES[key] %}
+  <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bd)">
+    <p><strong>{{ qd.label }}</strong> <span class="badge badge-purple">基础成功率{{ (qd.base_chance*100)|round|int }}%</span></p>
+    <p class="muted" style="margin-top:4px">效果:攻击+{{ qd.bonus.attack }} 防御+{{ qd.bonus.defense }} 修为效率+{{ qd.bonus.exp_bonus_pct }}%</p>
+    <p class="muted" style="margin-top:2px">材料:{% for k,v in qd.cost.items() %}{{ MATERIAL_LABELS.get(k,k) }}×{{ v }} {% endfor %}</p>
+    <form method="post" action="{{ url_for('shen_prepare') }}" style="margin-top:8px"
+          data-confirm-title="选定{{ qd.label }}" data-confirm-message="你将以{{ qd.label }}为目标准备化神，基础成功率为 {{ (qd.base_chance*100)|round|int }}%。"
+          data-confirm-warning="准备阶段将按此品质要求推进。" data-confirm-button="选定此品质">
+      <input type="hidden" name="quality" value="{{ key }}">
+      <button class="btn btn-primary">选定此品质</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">渡</span>渡劫化神</h3>
+    <span class="badge badge-gold">{{ SHEN_QUALITIES[char.shen_quality_pending].label }}</span></div>
+  <div class="stat-block" style="margin-top:10px">
+    <div class="stat-line"><span>本次成功率</span><strong>{{ chance_pct }}%</strong></div>
+    <div class="bar-track"><div class="bar-fill bar-gold" style="width:{{ chance_pct }}%"></div></div>
+  </div>
+  {% if char.shen_fail_streak > 0 %}
+  <p class="muted" style="margin-top:6px">{% if guaranteed %}连续{{ char.shen_fail_streak }}次未成,此次必定化神!{% else %}连续{{ char.shen_fail_streak }}次未成,神魂愈发凝练{% endif %}</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('shen_attempt') }}" style="margin-top:14px">
+    <label style="display:flex;align-items:center;gap:8px;font-weight:normal">
+      <input type="checkbox" name="use_ward" value="1" style="width:auto">
+      使用{{ MATERIAL_LABELS[SHEN_WARD_MATERIAL] }}(成功率额外+{{ SHEN_WARD_CHANCE_BONUS_PCT }}%,用后即耗)
+    </label>
+    <button class="btn btn-primary" style="width:100%;margin-top:10px" {{ 'disabled' if char.stamina < SHEN_STAMINA_COST }}>渡劫化神(体力-{{ SHEN_STAMINA_COST }})</button>
+    {% if char.stamina < SHEN_STAMINA_COST %}<p class="muted" style="margin-top:4px">尚缺{{ SHEN_STAMINA_COST - char.stamina }}点体力</p>{% endif %}
+  </form>
+  <p class="muted" style="margin-top:8px;text-align:center">失败不损已备材料,只耗体力、伤心境,连续失败有保底</p>
+</div>
+{% endif %}
+
+<div class="card">
+  <h3 style="margin-bottom:8px">材料兑换</h3>
+  <p class="muted">{{ MATERIAL_LABELS[SHEN_CORE_EXCHANGE.from] }}×{{ SHEN_CORE_EXCHANGE.rate }} 可兑 {{ MATERIAL_LABELS[SHEN_CORE_MATERIAL] }}×1(葬剑遗址稳定积累,不必只靠运气)</p>
+  <form method="post" action="{{ url_for('shen_exchange', kind='core') }}" style="margin-top:6px">
+    <button class="btn">兑换{{ MATERIAL_LABELS[SHEN_CORE_MATERIAL] }}</button>
+  </form>
+  <p class="muted" style="margin-top:10px">{{ MATERIAL_LABELS[SHEN_WARD_EXCHANGE.from] }}×{{ SHEN_WARD_EXCHANGE.rate }} 可兑 {{ MATERIAL_LABELS[SHEN_WARD_MATERIAL] }}×1</p>
+  <form method="post" action="{{ url_for('shen_exchange', kind='ward') }}" style="margin-top:6px">
+    <button class="btn">兑换{{ MATERIAL_LABELS[SHEN_WARD_MATERIAL] }}</button>
+  </form>
+</div>
+
+{% endblock %}

@@ -163,6 +163,49 @@
   </div>
   {% endif %}
 
+  <!-- 补充备注（客户可见） -->
+  {% if notes or can_append %}
+  <div class="card">
+    <div class="fl" style="margin-bottom:4px;">补充备注</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">
+      橙色是<strong>客户</strong>在订单页追加的补充要求（客户加了会在订单列表上提醒你）；
+      你自己在这里追加的<strong>只有你们看得到，客户看不到</strong>。
+    </div>
+
+    {% for n in notes %}
+    <div style="padding:10px 12px;margin-bottom:8px;border-radius:8px;
+                background:{% if n.author_type == 'admin' %}color-mix(in srgb,var(--accent) 7%,var(--surface2)){% else %}var(--surface2){% endif %};
+                border:1px solid {% if n.author_type == 'admin' %}color-mix(in srgb,var(--accent) 25%,var(--border)){% else %}var(--border){% endif %};">
+      <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;margin-bottom:5px;">
+        <span class="badge" style="background:{% if n.author_type == 'admin' %}color-mix(in srgb,var(--accent) 13%,transparent);color:var(--accent2){% else %}color-mix(in srgb,var(--warn) 13%,transparent);color:var(--warn){% endif %};">
+          {{ '我方（客户不可见）' if n.author_type == 'admin' else '客户' }}
+        </span>
+        <span style="font-size:12px;color:var(--muted);">{{ n.author_name }}</span>
+        <div class="spacer"></div>
+        <span style="font-size:11px;color:var(--muted);">{{ n.created_at|fmt }}</span>
+      </div>
+      <div style="font-size:13px;white-space:pre-wrap;word-break:break-word;">{{ n.content }}</div>
+    </div>
+    {% endfor %}
+
+    {% if can_append %}
+    <form method="post" action="{{ url_for('admin_append_note', oid=order.id) }}" style="margin-top:12px;">
+      <div class="fg">
+        <textarea class="ft" name="content" id="anote-input" maxlength="{{ NOTE_MAX_LEN }}" required
+                  placeholder="补充说明（最多 {{ NOTE_MAX_LEN }} 字，只有你们自己看得到）" style="min-height:80px;"
+                  oninput="document.getElementById('anote-count').textContent = this.value.length;"></textarea>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <button class="btn btn-primary btn-sm" type="submit">追加备注</button>
+        <span style="font-size:12px;color:var(--muted);"><span id="anote-count">0</span>/{{ NOTE_MAX_LEN }} 字</span>
+      </div>
+    </form>
+    {% else %}
+    <div style="font-size:12px;color:var(--muted);">只有已接单 / 制作中的订单可以追加备注。</div>
+    {% endif %}
+  </div>
+  {% endif %}
+
   <!-- 管理备注 -->
   <div class="card">
     <div class="fl" style="margin-bottom:10px;">内部备注（客户不可见）</div>

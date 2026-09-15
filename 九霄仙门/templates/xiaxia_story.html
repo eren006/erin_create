@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}行侠奇遇 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:8px">{{ encounter.title }}</h3>
+  <p style="margin-top:6px">{{ encounter.text }}</p>
+</div>
+{% for c in encounter.choices %}
+<div class="card">
+  <form method="post" action="{{ url_for('xiaxia_story_resolve', choice_key=c.key) }}">
+    <button class="btn btn-primary" style="width:100%;text-align:left;padding:14px 16px">{{ c.label }}</button>
+  </form>
+</div>
+{% endfor %}
+{% endblock %}

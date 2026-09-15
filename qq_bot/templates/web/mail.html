@@ -1,0 +1,41 @@
+{% extends "web/base.html" %}
+{% block title %}邮件{% endblock %}
+{% block body %}
+
+<div class="card">
+  <h2>🦉 寄信</h2>
+  <form method="post">
+    <input type="hidden" name="action" value="send">
+    <p><input name="target" placeholder="收件人名字" required style="width:100%"></p>
+    <p><textarea name="content" placeholder="写点什么……" rows="4" required style="width:100%"></textarea></p>
+    {% if bag_items %}
+    <div class="row">
+      <select name="item">
+        <option value="">不捎带东西</option>
+        {% for it in bag_items %}
+        <option value="{{ it.name }}">{{ it.name }}（{{ it.category }}，还有{{ it.quantity }}份）</option>
+        {% endfor %}
+      </select>
+      <input type="number" name="quantity" value="1" min="1" style="width:70px">
+    </div>
+    {% endif %}
+    <p><button name="action" value="send">寄出</button></p>
+  </form>
+</div>
+
+<div class="card">
+  <h2>📬 收件箱</h2>
+  {% if letters %}
+  {% for l in letters %}
+  <div class="card" style="margin-bottom:10px">
+    <p>{{ l.from_name }}{% if l.was_unread %} <span class="flash ok" style="padding:1px 6px">新</span>{% endif %}</p>
+    <p>{{ l.content }}</p>
+    {% if l.item_name %}<p class="muted">📦 附赠：{{ l.item_name }} × {{ l.item_quantity }}</p>{% endif %}
+  </div>
+  {% endfor %}
+  {% else %}
+  <p class="muted">收件箱还是空的。</p>
+  {% endif %}
+</div>
+
+{% endblock %}

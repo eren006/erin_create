@@ -1,0 +1,99 @@
+{% extends 'base.html' %}
+{% block title %}宫城{% endblock %}
+{% block head %}
+<style>
+.me-top{display:flex;gap:22px;align-items:flex-start}
+.facts{flex:1;min-width:0}
+.facts .rank{font-family:var(--kai);font-size:28px;color:var(--zhu-deep);line-height:1.3}
+.facts dl{display:grid;grid-template-columns:auto 1fr;gap:2px 14px;margin:10px 0 0;font-size:15px}
+.facts dt{color:var(--muted)}
+.facts dd{margin:0}
+.bar{height:6px;background:var(--line);margin-top:4px;max-width:260px}
+.bar i{display:block;height:100%;background:var(--jin)}
+.pips{letter-spacing:3px;color:var(--zhu)}
+.state-cold{background:#D9DDD9;padding:12px 16px;margin:16px 0;border-left:4px solid #7F8A85}
+.state-conf{background:var(--paper);padding:12px 16px;margin:16px 0;border-left:4px solid var(--jin)}
+.edict{margin:18px 0 0}
+.edict .from{font-family:var(--song);font-size:13px;color:var(--muted);display:block;margin-bottom:2px}
+/* 宫城：北面御花园，中轴本宫，西养心殿，东景仁宫，南边内务府/六宫/书信 */
+.map{display:grid;grid-template-columns:repeat(3,1fr);grid-template-areas:". garden ." "yangxin home jingren" "neiwu liugong letters";gap:8px;margin-top:8px}
+.tile{display:block;text-decoration:none;color:var(--ink);background:var(--paper);border:1px solid var(--line);padding:14px 12px 12px;min-height:84px;position:relative}
+.tile b{display:block;font-weight:normal;font-family:var(--kai);font-size:20px;line-height:1.3}
+.tile span{font-size:13px;color:var(--muted)}
+.tile:hover{border-color:var(--zhu)}
+.tile.home{border-color:var(--zhu);box-shadow:inset 0 3px 0 var(--zhu)}
+.tile.off{opacity:.5}
+.tile.alert::after{content:"";position:absolute;top:10px;right:10px;width:8px;height:8px;border-radius:50%;background:var(--zhu)}
+.msgs{list-style:none;padding:0;margin:0}
+.msgs li{padding:8px 0 8px 12px;border-bottom:1px solid var(--line);border-left:3px solid transparent;font-size:15px}
+.msgs li.good{border-left-color:var(--good)} .msgs li.bad{border-left-color:var(--bad)} .msgs li.decree{border-left-color:var(--jin)}
+.msgs li.new{background:var(--paper)}
+.msgs .d{color:var(--muted);font-size:12px;margin-right:6px}
+@media (max-width:520px){ .me-top{gap:14px} .pai.big{width:48px;min-height:170px;font-size:20px} .tile{padding:12px 8px 10px} .tile b{font-size:18px} }
+</style>
+{% endblock %}
+{% block body %}
+<section class="me-top">
+  <div class="pai big {{ 'cold' if c.status=='cold' }}">{{ dn(c) }}</div>
+  <div class="facts">
+    <div class="rank">{{ dn(c) }}</div>
+    <div class="muted">{{ full_name(c) }}　{{ FAMILIES[c.family].name }}　{{ PERSONALITIES[c.personality].name }}</div>
+    <dl>
+      <dt>年龄</dt><dd>{{ age_text(c.age_months) }}　<span class="muted">宫中一天是半年</span></dd>
+      <dt>圣宠</dt><dd>{{ c.favor }}　<span class="muted">{{ favor_word(c.favor) }}</span>
+        {% if promo %}<div class="bar"><i style="width:{{ [100, (c.favor * 100 / promo.favor)|int]|min }}%"></i></div>
+        <div class="muted">晋{{ promo.rank }}：圣宠 {{ promo.favor }}，德行 {{ promo.virtue }}
+          {%- if not promo.days_ok %}，还需在本位分多待些日子{% endif %}
+          {%- if not promo.slot %}，但{{ promo.rank }}名额已满{% endif %}</div>{% endif %}</dd>
+      <dt>信任</dt><dd>{{ c.trust }}　<span class="muted">皇上对你{{ trust_word(c.trust) }}。求情、告发成不成，被人陷害时皇上信不信，都看这个</span></dd>
+      <dt>精力</dt><dd><span class="pips" aria-label="精力 {{ c.energy }}">{{ '●' * c.energy }}{{ '○' * (5 - c.energy if c.energy < 5 else 0) }}</span></dd>
+      <dt>容貌</dt><dd>{{ c.appearance }}　<span class="muted">才艺</span> {{ c.talent }}　<span class="muted">心计</span> {{ c.scheme }}　<span class="muted">德行</span> {{ c.virtue }}</dd>
+      <dt>体质</dt><dd>{{ c.health }}{% if sick %}　<span style="color:var(--bad)">卧病在床</span>{% endif %}</dd>
+      {% if c.pregnant_since %}<dt>喜脉</dt><dd>{% set left = PREGNANCY_DAYS - (day - c.pregnant_since) + 1 %}已有喜脉，{{ '今晚' if left <= 1 else ('明晚' if left == 2 else left ~ ' 次结算后') }}临盆　<span class="muted">当心入口的东西</span></dd>{% endif %}
+      {% if eyes %}<dt>眼线</dt><dd>在，到第 {{ c.eyes_until_day }} 天</dd>{% endif %}
+      {% if heirs %}<dt>子嗣</dt><dd>{% for h in heirs %}{{ heir_label(h) }}{{ '、' if not loop.last }}{% endfor %}</dd>{% endif %}
+    </dl>
+  </div>
+</section>
+
+{% if edict %}
+<div class="decree edict"><span class="from">第 {{ edict.day }} 天夜里</span>{{ edict.text }}</div>
+{% endif %}
+
+{% if c.poisoned_day %}
+<div class="state-conf" role="alert"><b>你中毒了</b>
+<p>下一次结算（{{ next_settle }}）见生死：请了太医九成能活，没请只有三成五。禁足、冷宫里也能请；姐妹也可以替你请。</p>
+{% if c.poison_treatment %}<p>太医已经在了。</p>
+{% else %}<form method="post" action="{{ url_for('treat', tid=c.id) }}"><button {{ 'disabled' if c.silver < 50 }}>请太医（50 两）</button></form>{% endif %}
+</div>
+{% elif c.protected_until_day >= day %}<p class="state-conf">刚从鬼门关回来，第 {{ c.protected_until_day }} 天前不会再被毒害。</p>{% endif %}
+{% if c.status == 'cold' %}
+<div class="state-cold">你被废为庶人，关在冷宫里。第 {{ c.status_until_day }} 天夜里，皇上或许会念及旧情放你出来。姐妹可以替你求情，你自己也可以闭门自省，等一个转机。</div>
+{% elif c.status == 'confined' %}
+<div class="state-conf">禁足中，第 {{ c.status_until_day }} 天夜里解禁。这几天出不了宫门，只能在自己宫里修习、保养、自省。</div>
+{% endif %}
+
+<h3>宫城</h3>
+<p class="muted">皇上今日{{ gs.emperor_mood }}，近来喜欢{{ gs.emperor_pref }}。{{ next_settle }} 敬事房递牌子，今天做的事到时一并见分晓。</p>
+<nav class="map" aria-label="宫城">
+  {% for t in tiles %}
+  <a class="tile {{ 'home' if t.home }} {{ 'off' if t.off }} {{ 'alert' if t.alert }}" style="grid-area:{{ t.area }}" href="{{ t.url }}"><b>{{ t.name }}</b><span>{{ t.note }}</span></a>
+  {% endfor %}
+</nav>
+
+{% if c.secret != 'none' and not c.secret_revealed %}
+<h3>心事</h3>
+<p>你{{ secret.name }}。这件事若被人探去告发，便是{{ secret.penalty }}。</p>
+<form method="post" action="{{ url_for('confess') }}" onsubmit="return confirm('确定向皇上坦白吗？会受罚：{{ secret.confess }}');">
+  <button class="plain">主动向皇上坦白（从轻：{{ secret.confess }}，信任 +5）</button>
+</form>
+{% endif %}
+
+<h3>宫人来报</h3>
+{% if msgs %}
+<ul class="msgs">
+  {% for m in msgs %}<li class="{{ m.kind }} {{ 'new' if not m.is_read }}"><span class="d">第{{ m.day }}天{{ '夜' if m.is_night }}</span>{{ m.text }}</li>{% endfor %}
+</ul>
+{% else %}<p class="muted">还没什么消息。</p>{% endif %}
+<p class="muted" style="margin-top:24px"><a href="{{ url_for('logout') }}">退出</a></p>
+{% endblock %}

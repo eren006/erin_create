@@ -1,0 +1,368 @@
+{% extends "base.html" %}
+{% block title %}静室 - 九霄仙门{% endblock %}
+{% block content %}
+{% if pending_result %}
+<script>document.addEventListener('DOMContentLoaded', () => { if (window.showResult) showResult({{ pending_result | tojson }}); });</script>
+{% endif %}
+{% if cultivate_cooldown_remaining %}
+<script>document.addEventListener('DOMContentLoaded', () => { if (window.resumeCooldown) resumeCooldown({{ cultivate_cooldown_remaining }}); });</script>
+{% endif %}
+<div class="dashboard-grid">
+<div class="card hero-panel dashboard-span-2">
+  <div class="hero-main">
+    <div class="avatar-seal"><span class="avatar-glyph">{{ char.name[:1] }}</span></div>
+    <div>
+      <div class="hero-name">{{ char.name }}{% if char.zi %}<span class="muted" style="font-size:14px;font-weight:normal">(表字 {{ char.zi }})</span>{% endif %}
+        <details style="display:inline-block;font-size:12px;font-weight:normal;vertical-align:middle">
+          <summary style="cursor:pointer;color:var(--muted)">改名</summary>
+          <form method="post" action="{{ url_for('character_rename') }}" style="display:flex;gap:6px;margin-top:6px">
+            <input name="name" maxlength="12" value="{{ char.name }}" style="width:140px;font-size:13px">
+            <button class="btn" style="padding:4px 10px;font-size:12px">保存</button>
+          </form>
+        </details>
+        <details style="display:inline-block;font-size:12px;font-weight:normal;vertical-align:middle;margin-left:6px">
+          <summary style="cursor:pointer;color:var(--muted)">皮相{% if char.face_claim %}：{{ char.face_claim }}{% endif %}</summary>
+          <form method="post" action="{{ url_for('character_face_claim') }}" style="display:flex;gap:6px;margin-top:6px">
+            <input name="face_claim" maxlength="20" value="{{ char.face_claim or '' }}" placeholder="扮演者/明星名,全宗唯一" style="width:180px;font-size:13px">
+            <button class="btn" style="padding:4px 10px;font-size:12px">保存</button>
+          </form>
+        </details>
+      </div>
+      <div class="muted">{{ char.bio or '静心问道，步步登霄。' }}</div>
+      <div class="hero-meta">
+        <span class="badge badge-gold">{{ title_for(char.join_seq, char.gender) }}</span>
+        <span class="badge badge-purple">{{ rank.label }}</span>
+        <span class="badge badge-purple">{{ realm.name }}</span>
+        <span class="badge badge-gold">{{ weapon_discipline.label }} · {{ weapon_discipline.title }}</span>
+        {% if peak %}<span class="badge badge-gold">{{ peak.name }}</span>{% endif %}
+        {% if char.dan_name %}<span class="badge badge-gold">{{ char.dan_name }}</span>{% endif %}
+        {% if char.infant_name %}<span class="badge badge-purple">{{ char.infant_name }}</span>{% endif %}
+      </div>
+    </div>
+    <div class="hero-year">第 {{ char.join_seq }} 位入门弟子<br>宗门第 {{ sect_year }} 年</div>
+  </div>
+  <div class="resource-strip">
+    <div class="resource-chip"><small>体力</small><strong><span data-stat="stamina">{{ char.stamina }}</span> / {{ stamina_cap }}</strong></div>
+    <div class="resource-chip"><small>可用贡献</small><strong data-stat="contribution">{{ char.contribution }}</strong></div>
+    <div class="resource-chip"><small>心境</small><strong><span data-stat="mind">{{ char.mind_state }}</span> / 100</strong></div>
+    <div class="resource-chip" {{ 'style="color:#e05050"' if lifespan_warning }}><small>寿元</small><strong>{{ age_years }} / {{ lifespan_years }} 年</strong></div>
+  </div>
+</div>
+
+{% if lifespan_warning %}
+<div class="card dashboard-span-2" style="border-color:rgba(220,80,80,.5)">
+  <div class="panel-head"><h3><span class="section-icon">寿</span>寿元将尽</h3></div>
+  <p class="muted" style="margin-top:6px">当前境界寿元上限{{ lifespan_years }}年,只剩约<strong style="color:#e05050">{{ lifespan_remaining }}年</strong>——突破境界能提高寿元上限,续命秘药(宗门商店"九转回魂丹")也能续上一段,别蹉跎到寿终正寝。</p>
+</div>
+{% endif %}
+
+{% if severe_injury %}
+<div class="card dashboard-span-2" style="border-color:rgba(220,80,80,.5)">
+  <div class="panel-head"><h3><span class="section-icon">伤</span>身负轻伤</h3></div>
+  <p class="muted" style="margin-top:6px">游历途中遇险,约 {{ (severe_injury_remaining // 3600) }} 小时{{ (severe_injury_remaining % 3600) // 60 }} 分钟后方能痊愈——期间打坐、委托收益减半,暂不能入秘境或再次出行游历,其余照常。</p>
+</div>
+{% endif %}
+
+{% if my_rescue_call and my_rescue_call.status == 'open' %}
+<div class="card dashboard-span-2" style="border-color:rgba(225,189,112,.4)">
+  <div class="panel-head"><h3><span class="section-icon">援</span>你的求援信号还未有人响应</h3></div>
+  <p class="muted" style="margin-top:6px">{{ my_rescue_call.danger_text }}静候师兄弟赶来相助,过时会由宗门后备力量兜底救你,只是会耽误些时候。</p>
+</div>
+{% endif %}
+
+{% if open_rescue_calls %}
+<div class="card dashboard-span-2">
+  <div class="panel-head"><h3><span class="section-icon">援</span>同门游历途中遇险</h3></div>
+  {% for c in open_rescue_calls %}
+  <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+    <p><strong>{{ c.char_name }}</strong>({{ title_for(c.join_seq, c.gender) }})</p>
+    <p class="muted" style="margin-top:4px">{{ c.danger_text }}</p>
+    {% if c.can_complete %}
+    <form method="post" action="{{ url_for('travel_rescue_complete', call_id=c.id) }}" style="margin-top:8px">
+      <button class="btn btn-primary">完成救援</button>
+    </form>
+    {% else %}
+    <form method="post" action="{{ url_for('travel_rescue_respond', call_id=c.id) }}" style="margin-top:8px">
+      <button class="btn btn-primary">前往救援</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if next_actions %}
+<div class="card">
+  <h3 style="margin-bottom:8px">下一步行动</h3>
+  {% for a in next_actions %}
+  <p style="margin-top:6px"><strong>{{ a.label }}</strong> <span class="muted">{{ a.detail }}</span>
+    <a href="{{ a.href }}" class="btn" style="padding:3px 10px;margin-left:6px">前往</a></p>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">课</span>今日修行</h3><span class="panel-note">完成任意 {{ daily_required }}/{{ daily_shown }} 项</span></div>
+  <div class="daily-list">
+  {% for t in daily_tasks_today %}
+  <div class="daily-item {{ 'done' if t.done else '' }}">
+    <span class="daily-check">{{ '✓' if t.done else '·' }}</span>
+    <div><strong>{{ t.label }}</strong><div class="muted">{{ t.desc }}</div></div>
+  </div>
+  {% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">息</span>身心状态</h3><span class="badge badge-purple">{{ mind_band.label }}</span></div>
+  <div class="stat-block"><div class="stat-line"><span>体力</span><strong><span data-stat="stamina">{{ char.stamina }}</span> / {{ stamina_cap }}</strong></div>
+  <div class="bar-track"><div class="bar-fill bar-gold" data-bar="stamina" data-max="{{ stamina_cap }}" style="width:{{ (char.stamina / stamina_cap * 100) if stamina_cap else 0 }}%"></div></div>
+  </div><div class="stat-block"><div class="stat-line"><span>心境</span><strong><span data-stat="mind">{{ char.mind_state }}</span> / 100</strong></div>
+  <div class="bar-track"><div class="bar-fill bar-purple" data-bar="mind" data-max="100" style="width:{{ char.mind_state }}%"></div></div>
+  </div>
+  <div class="resource-strip" style="grid-template-columns:1fr 1fr;margin-top:4px"><div class="resource-chip"><small>体魄</small><strong>{{ char.physique }}</strong></div><div class="resource-chip"><small>宗门声望</small><strong>{{ char.reputation }}</strong></div></div>
+  <div class="resource-strip" style="grid-template-columns:1fr 1fr;margin-top:4px">
+    <div class="resource-chip"><small>{{ '神识' if sense_unlocked else '灵觉' }}</small><strong>{{ spirit_sense_value if sense_unlocked else '未显' }}</strong></div>
+    <div class="resource-chip"><small>识海稳固</small><strong>{{ spirit_sea_stability_value }}</strong></div>
+  </div>
+  <form method="post" action="{{ url_for('rest') }}" class="js-game-action" data-action="rest" style="margin-top:10px">
+    <button class="btn" style="width:100%">休整 · 体力+18 / 心境+3</button>
+  </form>
+  <form method="post" action="{{ url_for('tiandi_stamina_boost') }}" style="margin-top:8px">
+    <button class="btn" style="width:100%" {% if char.stamina >= stamina_cap or tiandi_boost_left <= 0 %}disabled{% endif %}>
+      使用天地精华加速 · 体力+{{ tiandi_boost_amount }}(耗{{ tiandi_boost_cost }}天地精华,今日剩{{ tiandi_boost_left }}/{{ tiandi_boost_cap }}次,余{{ char.tiandi_jinghua }})
+    </button>
+  </form>
+</div>
+
+<div class="card cultivation-panel dashboard-span-2">
+  <div class="panel-head"><h3><span class="section-icon">炼</span>静室修炼</h3><span class="panel-note">每 {{ cultivate_cooldown }} 秒可打坐一次</span></div>
+  <p class="muted" style="margin-top:4px;font-size:12px{% if cultivate_diminish_done >= cultivate_diminish_after %};color:#e05050{% endif %}">今日修炼额度 {{ [cultivate_diminish_done, cultivate_diminish_after] | min }}/{{ cultivate_diminish_after }}{% if cultivate_diminish_done >= cultivate_diminish_after %}(已超额,收益打折){% endif %}</p>
+  <div class="realm-display"><div class="realm-orbit" id="realm-orbit"><canvas id="qi-canvas" aria-hidden="true"></canvas><span class="realm-name" data-stat-text="realm">{{ realm.name }}</span></div></div>
+  <div class="stat-line"><span>当前修为 <b data-stat="exp">{{ char.exp }}</b></span><strong>
+    {% if next_realm %}下一境界需 {{ next_realm.exp }}{% else %}已至大乘圆满{% endif %}
+  </strong></div>
+  {% if next_realm %}
+  <div class="bar-track"><div class="bar-fill bar-gold" data-bar="realm" style="width:{{ realm_progress_pct }}%"></div></div>
+  {% endif %}
+
+  <label>贡献 <span data-stat="contribution">{{ char.contribution }}</span>(可用) · 累计 <span data-stat="total_contribution">{{ char.total_contribution }}</span></label>
+
+  <label>资质</label>
+  <p>
+    <span class="badge badge-purple">{{ spirit_root_label(char.spirit_root) }}·{{ spirit_root_elements_label(char.spirit_root, char.spirit_root_elements) }}</span>
+    {% if talent_info %}
+    <span class="badge badge-gold">{{ talent_info.label }}({{ '大成' if talent_info.is_major else '小成' }} {{ talent_info.stat }}+{{ talent_info.pct }}%)</span>
+    {% endif %}
+    {% if bone_label %}
+    <span class="badge badge-gold">{{ bone_label }}(攻击+{{ bone_bonus.attack }} 防御+{{ bone_bonus.defense }})</span>
+    {% endif %}
+    {% if mutation_label %}
+    <span class="badge badge-gold">变异·{{ mutation_label }}</span>
+    {% endif %}
+  </p>
+
+  {% if next_realm and char.exp >= next_realm.exp %}
+  <div class="card" style="margin-top:14px;border-color:rgba(225,189,112,.4)">
+    <p><span class="badge badge-gold">修为已足</span> 可前往尝试突破至 {{ next_realm.name }}</p>
+    <a class="btn btn-primary" style="width:100%;margin-top:8px;text-align:center;display:block" href="{{ url_for('breakthrough_home') }}">前往突破</a>
+  </div>
+  {% elif not next_realm %}
+  <div class="card" style="margin-top:14px;border-color:{% if dacheng_remaining is not none and dacheng_remaining <= 7200 %}rgba(228,118,103,.5){% else %}rgba(225,189,112,.4){% endif %}">
+    <p><span class="badge badge-gold">大乘圆满</span> 道途已至尽头,可举行仪式飞升,亦可暂留宗门
+      {% if dacheng_remaining is not none %}
+      · <span{% if dacheng_remaining <= 7200 %} style="color:var(--red)"{% endif %}>距天劫降临还剩{{ (dacheng_remaining // 3600) }}小时{{ (dacheng_remaining % 3600 // 60) }}分</span>
+      {% endif %}
+    </p>
+    <a class="btn btn-primary" style="width:100%;margin-top:8px;text-align:center;display:block" href="{{ url_for('ascend_home') }}">前往飞升</a>
+  </div>
+  {% endif %}
+  {% if retreat_active %}
+  <div class="card" style="margin-top:14px;border-color:rgba(178,143,245,.4)">
+    {% if retreat_ready %}
+    <p><span class="badge badge-gold">闭关时辰已到</span> 速回静室出关结算</p>
+    {% else %}
+    <p><span class="badge badge-purple">闭关中</span> 尚余 {{ (retreat_remaining // 3600) }}小时{{ (retreat_remaining % 3600 // 60) }}分,期间无法打坐/委托/探索</p>
+    {% endif %}
+    <a class="btn btn-primary" style="width:100%;margin-top:8px;text-align:center;display:block" href="{{ url_for('retreat_home') }}">前往静室查看</a>
+  </div>
+  {% elif labor_active %}
+  <div class="card" style="margin-top:14px;border-color:rgba(178,143,245,.4)">
+    {% if labor_ready %}
+    <p><span class="badge badge-gold">打工时辰已到</span> 速回静室收工结算</p>
+    {% else %}
+    <p><span class="badge badge-purple">打工中</span> 尚余 {{ (labor_remaining // 3600) }}小时{{ (labor_remaining % 3600 // 60) }}分,期间无法打坐/委托/秘境</p>
+    {% endif %}
+    <a class="btn btn-primary" style="width:100%;margin-top:8px;text-align:center;display:block" href="{{ url_for('labor_home') }}">前往查看</a>
+  </div>
+  {% else %}
+  <div class="cultivate-actions" style="margin-top:16px">
+    {% for key, cm in techniques.items() %}
+    <form method="post" action="{{ url_for('cultivate', method=key) }}" class="js-game-action js-cultivate" data-action="cultivate" data-cooldown-mult="{{ cm.cooldown_mult }}" style="flex:1;min-width:120px">
+      <button class="btn btn-primary" style="width:100%" data-label="{{ cm.label }}">{{ cm.label }}{% if cm.mastery is defined %}(熟练{{ cm.mastery }}{% if cm.affinity_label %}·{{ cm.affinity_label }}{% endif %}{% if cm.insight %}·领悟「{{ cm.insight }}」{% endif %}){% endif %}</button>
+    </form>
+    {% endfor %}
+  </div>
+  <p class="muted" style="margin-top:8px;text-align:center">深度入定冷却翻倍，但更易有所悟{% if peak %} · 已习得{{ peak.name }}专属功法{% endif %}</p>
+  <div class="quick-links">
+    <a class="btn" style="flex:1;text-align:center" href="{{ url_for('commissions_list') }}">宗门委托</a>
+    <a class="btn" style="flex:1;text-align:center" href="{{ url_for('mystic_home') }}">秘境</a>
+    <a class="btn" style="flex:1;text-align:center" href="{{ url_for('retreat_home') }}">闭关静修</a>
+    <a class="btn" style="flex:1;text-align:center" href="{{ url_for('cave_home') }}">洞府</a>
+    <a class="btn" style="flex:1;text-align:center" href="{{ url_for('offspring_home') }}">子嗣</a>
+  </div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">门内境况</h3>
+  <p>当前档位: <span class="badge badge-purple">{{ rank.label }}</span></p>
+  {% if peak %}
+  <p style="margin-top:6px">所在峰: {{ peak.name }} <span class="badge badge-purple">{{ specialty.theme }}</span></p>
+  <p class="muted" style="margin-top:4px">{{ specialty.desc }}</p>
+  {% if pet_info or specialty.pet %}
+    {% if pet_info %}
+    <div style="display:flex;gap:10px;align-items:flex-start;margin-top:6px">
+      <img src="{{ pet_image_url(equipped_pet.pet_key) }}" alt="{{ pet_info.label }}" style="width:56px;height:56px;border-radius:6px;object-fit:cover;flex-shrink:0">
+      <div>
+        <p>出战灵宠: {{ pet_info.label }}{% if equipped_pet.pet_name %}·{{ equipped_pet.pet_name }}{% endif %}
+          <span class="badge badge-gold">{{ pet_quality_info.label }}</span> Lv.{{ equipped_pet.level }}/{{ pet_max_level }}
+          <span class="muted">—{{ pet_info.desc }}</span></p>
+        <p class="muted" style="margin-top:2px">{{ equipped_pet.appearance }}{{ pet_info.label }} · 性情{{ equipped_pet.personality }} · {{ equipped_pet.habit }}</p>
+        <p class="muted" style="margin-top:2px">培育者：{{ equipped_pet.breeder_name }}{% if equipped_pet.history %} · {{ equipped_pet.history }}{% endif %}</p>
+        {% if equipped_pet.level < pet_max_level %}
+        <p class="muted" style="margin-top:2px">训养经验 {{ equipped_pet.exp }} / {{ pet_exp_per_level }}</p>
+        <form method="post" action="{{ url_for('pet_train', pet_id=equipped_pet.id) }}" style="margin-top:6px;display:inline-block">
+          <button class="btn" style="padding:4px 12px">训养灵宠(体力 {{ pet_train_cost }},每日限{{ pet_train_limit }}次)</button>
+        </form>
+        {% else %}
+        <p class="muted" style="margin-top:2px">灵宠已臻大成</p>
+        {% endif %}
+      </div>
+    </div>
+    <a href="{{ url_for('pet_sanctuary') }}" class="btn" style="margin-top:8px;display:inline-block;padding:4px 12px">→ 灵兽峰(管理全部灵宠)</a>
+    {% else %}
+    <form method="post" action="{{ url_for('pet_adopt') }}" style="margin-top:8px;display:flex;gap:8px">
+      <input name="name" placeholder="给灵宠取个名字(选填)" style="flex:1">
+      <button class="btn btn-primary">收养灵宠(体力{{ pet_adopt_cost }},今日剩{{ pet_adopt_left }}次)</button>
+    </form>
+    <a href="{{ url_for('pet_sanctuary') }}" class="btn" style="margin-top:8px;display:inline-block;padding:4px 12px">→ 灵兽峰</a>
+    {% endif %}
+  {% endif %}
+  {% if specialty.alchemy %}
+  <a class="btn btn-primary" style="margin-top:8px;display:inline-block" href="{{ url_for('alchemy_home') }}">前往丹房</a>
+  {% endif %}
+  {% if specialty.forge %}
+  <a class="btn btn-primary" style="margin-top:8px;display:inline-block" href="{{ url_for('forge_home') }}">前往器坊</a>
+  {% endif %}
+  {% endif %}
+  {% if as_disciple %}<p class="muted" style="margin-top:6px">师父: {{ as_disciple.name }}{% if as_disciple.zi %}(表字 {{ as_disciple.zi }}){% endif %}</p>{% endif %}
+  {% if as_master %}<p class="muted" style="margin-top:6px">弟子: {% for d in as_master %}{{ d.name }}{% if not loop.last %}、{% endif %}{% endfor %}</p>{% endif %}
+  <p class="muted" style="margin-top:10px">
+    {% if leader %}现任掌门: {{ leader.name }}({{ title_for(leader.join_seq, leader.gender) }})
+    {% elif not cfg.succession_done %}掌门: {{ cfg.npc_leader_name }}(暂代)
+    {% else %}掌门之位暂时空悬,静候贤能递补{% endif %}
+  </p>
+</div>
+
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">道</span>个人道途</h3><span class="panel-note">每人只能正式选择一条</span></div>
+  {% for path in dao_paths %}
+  <div style="margin-top:8px">
+    <strong>{{ path.label }}</strong>
+    {% if path.chosen %}<span class="badge badge-gold">本命道途 · {{ path.bonus_desc }}</span>
+    {% elif path.eligible and not chosen_dao_path %}
+    <span class="badge badge-purple">已达标</span> <span class="muted">选择后：{{ path.bonus_desc }}</span>
+    <form method="post" action="{{ url_for('dao_path_choose', path_key=path.key) }}" style="display:inline;margin-left:6px"
+          data-confirm-title="择定「{{ path.label }}」"
+          data-confirm-message="正式选择后，你将获得：{{ path.bonus_desc }}。"
+          data-confirm-warning="每人只能选择一条本命道途，选定后无法改投其他道途。" data-confirm-button="此心无悔" data-confirm-tone="danger">
+      <button class="btn btn-primary" style="padding:3px 10px">择此道</button>
+    </form>
+    {% elif path.eligible %}<span class="muted">曾达成候选，但你已选择其他道途</span>
+    {% else %}<span class="muted">{{ path.progress }}/{{ path.target }} · {{ path.requirement }}
+      {% if path.daily_cap %}(今日已计入{{ path.daily_used }}/{{ path.daily_cap }}次,超过部分不再累积进度){% endif %}</span>{% endif %}
+  </div>
+  {% endfor %}
+  {% if not chosen_dao_path %}<p class="muted" style="margin-top:10px">达标只是获得候选资格；正式选择后不可再选其他道途，请慎重决定。</p>{% endif %}
+</div>
+
+<div class="card" id="bonds">
+  <div class="panel-head"><h3><span class="section-icon">缘</span>同心鉴</h3><span><a class="btn" style="padding:4px 9px;font-size:10px" href="{{ url_for('gifts_home') }}">赠礼阁</a> <span class="panel-note">每日可互动一次</span></span></div>
+  {% if not my_bonds %}<div class="bond-empty"><span>缘</span><p>尚未与人结下羁绊</p><a class="btn" href="{{ url_for('roster') }}">前往花名录寻访同门</a></div>{% endif %}
+  {% for b in my_bonds %}
+  <article class="bond-card">
+    <div class="bond-head">
+      <div class="bond-seal">{{ BOND_TYPES[b.bond_type].label[0] }}</div>
+      <div class="bond-identity"><div><span class="badge badge-gold">{{ BOND_TYPES[b.bond_type].label }}</span><strong>{{ b.partner.name }}</strong></div><small>{{ title_for(b.partner.join_seq, b.partner.gender) }} · 结缘于 {{ b.accepted_ts | fmt_ts }}</small></div>
+      <div class="bond-stage"><small>关系境界</small><strong>{{ b.stage.label }}</strong><small>打坐修为 +{{ b.cultivation_bonus }}%</small></div>
+    </div>
+    <div class="bond-affinity">
+      <div class="stat-line"><span>默契 {{ b.affinity }} / 100</span><strong>{% if b.stage.next_threshold %}距下一境 {{ b.stage.next_threshold - b.affinity }}{% else %}已至圆满{% endif %}</strong></div>
+      <div class="bar-track"><div class="bar-fill bar-gold" style="width:{{ b.stage.progress_pct }}%"></div></div>
+    </div>
+    {% if b.partner.ascended %}
+    <div class="bond-actions">
+      <a class="btn btn-primary" href="{{ url_for('mail_compose', char_id=b.partner.id) }}">
+        <strong>遥寄尺素</strong><small>对方已飞升离宗，可去信问候、附带财物</small>
+      </a>
+    </div>
+    <p class="bond-daily-done">{{ b.partner.name }}已飞升离宗，往日相伴的互动已用不上，唯有尺素可通。</p>
+    {% elif b.partner.deceased %}
+    <p class="bond-daily-done">{{ b.partner.name }}已然离世，这段情谊仍系着，可去墓园祭拜追思。</p>
+    {% else %}
+    <div class="bond-actions">
+      {% for action in b.actions %}
+      <form method="post" action="{{ url_for('bond_interact', bond_id=b.id, action_key=action.key) }}">
+        <button class="btn {{ 'btn-primary' if loop.first and not b.interacted_today else '' }}" {{ 'disabled' if b.interacted_today or char.stamina < action.stamina_cost }}>
+          <strong>{{ action.label }}</strong><small>{% if action.stamina_cost %}体力-{{ action.stamina_cost }} · {% endif %}{{ action.reward_desc }} · 默契+{{ action.affinity_gain }}</small>
+        </button>
+      </form>
+      {% endfor %}
+    </div>
+    {% if b.interacted_today %}<p class="bond-daily-done">今日已与{{ b.partner.name }}相伴过，明日可再续此缘。</p>{% endif %}
+    {% endif %}
+    <div class="bond-memories">
+      <div class="bond-memory-title">共同回忆</div>
+      {% if b.memories %}{% for memory in b.memories %}<p><time>{{ memory.created_ts | fmt_ts }}</time>{{ memory.memory_text }}</p>{% endfor %}
+      {% else %}<p class="muted">你们的故事才刚刚开始。</p>{% endif %}
+    </div>
+    <details class="bond-manage"><summary>关系设置</summary>
+      <form method="post" action="{{ url_for('bond_dissolve', bond_id=b.id) }}"
+            data-confirm-title="解除{{ BOND_TYPES[b.bond_type].label }}"
+            data-confirm-message="确定解除与 {{ b.partner.name }} 的「{{ BOND_TYPES[b.bond_type].label }}」关系吗？"
+            data-confirm-warning="双方已建立的该类羁绊将被解除。" data-confirm-button="确认解除" data-confirm-tone="danger">
+        <button class="btn">解除这段羁绊</button>
+      </form>
+    </details>
+  </article>
+  {% endfor %}
+
+  {% if bonds_received %}
+  <p class="muted" style="margin-top:12px">收到的邀约</p>
+  {% for b in bonds_received %}
+  <p style="margin-top:4px">{{ b.partner_name }} 邀你{{ BOND_TYPES[b.bond_type].label }}
+    <form method="post" action="{{ url_for('bond_accept', bond_id=b.id) }}" style="display:inline">
+      <button class="btn btn-primary" style="padding:2px 8px;font-size:11px">接受</button>
+    </form>
+    <form method="post" action="{{ url_for('bond_decline', bond_id=b.id) }}" style="display:inline">
+      <button class="btn" style="padding:2px 8px;font-size:11px">拒绝</button>
+    </form>
+  </p>
+  {% endfor %}
+  {% endif %}
+
+  {% if bonds_sent %}
+  <p class="muted" style="margin-top:12px">发出的邀约</p>
+  {% for b in bonds_sent %}
+  <p style="margin-top:4px">邀{{ b.partner_name }}{{ BOND_TYPES[b.bond_type].label }},静候回应
+    <form method="post" action="{{ url_for('bond_decline', bond_id=b.id) }}" style="display:inline">
+      <button class="btn" style="padding:2px 8px;font-size:11px">撤回</button>
+    </form>
+  </p>
+  {% endfor %}
+  {% endif %}
+</div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block title %}{{ title }}{% endblock %}
+{% block head %}
+<style>
+.back{font-size:14px}
+.act{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.act .what{flex:1;min-width:200px}
+.act .what b{font-weight:normal;font-family:var(--kai);font-size:19px}
+.act .cost{font-size:13px;color:var(--muted)}
+.act form{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.lede{font-size:17px;margin:4px 0 6px}
+</style>
+{% endblock %}
+{% block body %}
+<p class="back"><a href="{{ url_for('index') }}">回宫城</a></p>
+<h2>{{ title }}</h2>
+{% if desc %}<p class="lede">{{ desc }}</p>{% endif %}
+{% if extra %}<p class="muted">{{ extra }}</p>{% endif %}
+<p class="muted">精力还剩 {{ c.energy }}，银子 {{ c.silver }} 两。</p>
+
+{% if not acts %}
+<p>{{ '禁足中，出不了宫门。' if c.status == 'confined' else ('冷宫里的人，哪儿也去不了。' if c.status == 'cold' else '现在没什么可做的。') }}</p>
+{% endif %}
+{% for key, a in acts %}
+  {% set blocked = (a.get('sick_block') and sick) or c.energy < a.energy or c.silver < a.silver or counts[key] >= a.daily %}
+  <div class="act">
+    <div class="what"><b>{{ a.name }}</b>　<span class="cost">
+      {%- if a.energy %}精力 {{ a.energy }}{% endif %}{% if a.silver %}　银子 {{ a.silver }}{% endif %}　今日 {{ counts[key] }}/{{ a.daily }}</span>
+      <div class="muted">{{ a.desc }}{% if key == 'plead' %}（你现在求情约 {{ plead_p }}% 能成）{% endif %}</div></div>
+    <form method="post" action="{{ url_for('act', key=key) }}">
+      <input type="hidden" name="back" value="{{ request.view_args.key }}">
+      {% if key == 'study' %}
+        <select name="art" aria-label="才艺">{% for art in ARTS %}<option value="{{ art }}" {{ 'selected' if art==gs.emperor_pref }}>{{ art }}（{{ arts.get(art, 0) }}{% if arts.get(art,0) >= ART_MASTERY %}，精通{% endif %}）</option>{% endfor %}</select>
+      {% elif key == 'plead' %}
+        {% if plead_targets %}
+        <select name="target_id" aria-label="替谁求情">{% for p in plead_targets %}<option value="{{ p.id }}">{{ dn(p) }}（{{ '冷宫' if p.status == 'cold' else '禁足' }}）</option>{% endfor %}</select>
+        {% else %}{% set blocked = true %}<span class="muted">眼下没有人在受罚</span>{% endif %}
+      {% endif %}
+      <button {{ 'disabled' if blocked }}>{{ a.name }}</button>
+    </form>
+  </div>
+{% endfor %}
+{% endblock %}

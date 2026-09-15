@@ -1,0 +1,51 @@
+/* Delicate pastel illustrations keep their original proportions. */
+[data-theme="ballet"] .ink-stage{min-height:960px;background:#fbf4ee}
+[data-theme="ballet"] .landscape{background:radial-gradient(ellipse at 50% 50%,#fffaf2 0,#f8ede8 65%,#eddfdf 100%)}
+.ballet-theatre{mix-blend-mode:multiply}
+[data-theme="ballet"] .ballet-sparkles{display:none!important}
+.pastel-curtain{position:absolute;top:-18px;width:clamp(180px,24%,340px);pointer-events:none}
+.pastel-curtain img{display:block;width:100%;height:auto;mix-blend-mode:multiply}
+.pastel-curtain-left{left:-14px}
+.pastel-curtain-right{right:-14px;top:-9px}
+.pastel-curtain-right img{transform:scaleX(-1)}
+.theatre-story{top:31%;width:min(47%,640px);overflow:visible;mix-blend-mode:multiply}
+.painted-ribbon{opacity:.78;transform-box:view-box;transform-origin:181px 405px}
+.painted-ribbon.silk-right{transform-origin:414px 403px;opacity:.66}
+[data-theme="ballet"] .motion-enabled .storybook-dancer{transform-origin:273px 345px}
+.ballet-swan{transform-origin:428px 347px}
+@media(prefers-reduced-motion:no-preference){
+ [data-theme="ballet"] .motion-enabled .pastel-curtain-right{animation:pastel-curtain-lift 8s ease-in-out infinite alternate}
+ [data-theme="ballet"] .motion-enabled .painted-ribbon{animation:painted-silk-breeze 7s ease-in-out infinite alternate}
+ [data-theme="ballet"] .motion-enabled .silk-right{animation-delay:-3.7s;animation-duration:8.5s}
+ [data-theme="ballet"] .motion-enabled .ballet-swan{animation:swan-breath 5.8s ease-in-out infinite alternate}
+}
+@keyframes pastel-curtain-lift{from{transform:translateY(-3px)}to{transform:translateY(5px)}}
+@keyframes painted-silk-breeze{0%{transform:rotate(-3deg) skewX(-1deg)}50%{transform:rotate(1deg) skewX(1.4deg)}100%{transform:rotate(4deg) skewX(-.5deg)}}
+@keyframes swan-breath{from{transform:translate(0,0) rotate(-.7deg) scaleY(1)}to{transform:translate(-1.5px,-2px) rotate(.8deg) scaleY(1.018)}}
+/* Dedicated rehearsal-room artwork for every interior masthead. */
+[data-theme="ballet"] .inner-masthead{background:#f4e8df url('ballet-masthead-pastel.webp') center 58%/cover no-repeat}
+[data-theme="ballet"] .inner-masthead:before{background:linear-gradient(90deg,#fff7eceb,#fff6ebbd 40%,#fff6eb30 80%)}
+[data-theme="ballet"] .auth-page .inner-masthead{background-size:auto 100%;background-position:66% center;min-height:620px}
+[data-theme="ballet"] .auth-page .inner-masthead:before{background:linear-gradient(180deg,#fff7e9e8 0,#fff7e9c2 28%,#fff7e942 52%,transparent 76%)}
+[data-theme="ballet"] .auth-page .inner-masthead h1{font-size:36px;max-width:360px;line-height:1.6;letter-spacing:.06em;text-wrap:balance}
+[data-theme="ballet"] .auth-page .inner-masthead p{max-width:310px;color:#704e5a}
+[data-theme="ballet"] .workspace-page .inner-masthead{background-position:center 48%}
+@media(min-width:601px) and (max-width:1050px){
+ [data-theme="ballet"] .ink-stage{min-height:1130px}
+ .theatre-story{top:26%;width:470px;max-width:74%}
+ .pastel-curtain{width:25%;min-width:170px}
+}
+@media(max-width:600px){
+ [data-theme="ballet"] .ink-stage{min-height:1170px}
+ .pastel-curtain{width:220px;min-width:0;top:-8px}
+ .pastel-curtain-left{left:-55px}
+ .pastel-curtain-right{right:-55px;top:-3px}
+ .theatre-story{top:254px;width:92%;max-width:365px}
+ [data-theme="ballet"] .hero-left{top:600px}
+ [data-theme="ballet"] .hero-query{top:830px}
+ [data-theme="ballet"] .vertical-note{display:none}
+ [data-theme="ballet"] .auth-page .inner-masthead{min-height:310px;background-size:cover;background-position:center 58%}
+ [data-theme="ballet"] .auth-page .inner-masthead:before{background:linear-gradient(90deg,#fff7ece8,#fff7ecad 55%,#fff7ec35)}
+ [data-theme="ballet"] .auth-page .inner-masthead h1{font-size:28px;max-width:260px;margin-top:14px}
+ [data-theme="ballet"] .auth-page .inner-masthead p{max-width:230px}
+}

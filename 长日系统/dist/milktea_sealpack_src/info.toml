@@ -1,0 +1,24 @@
+format_version = "1.0.0"
+
+[package]
+id = "changri/boba"
+name = "来一杯奶茶"
+version = "1.1.2"
+authors = ["长日将尽"]
+license = "MIT"
+description = "想来一杯奶茶吗？来一杯吧！发「.draw 来一杯奶茶」，喜茶、茶百道、茶话弄都可以，让店员现摇给你。"
+keywords = ["娱乐", "牌堆", "奶茶"]
+
+[package.seal]
+min_version = "1.5.0"
+
+[permissions]
+network = false
+dangerous = false
+http_server = false
+
+[contents]
+decks = ["decks/milktea.toml"]
+
+[store]
+category = "fun"

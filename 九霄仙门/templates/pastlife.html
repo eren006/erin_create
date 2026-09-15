@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}寻找前世 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:6px">寻找前世{% if event_time_left is not none %}<span class="badge badge-{{ 'gold' if event_time_left > 0 else 'red' }}" style="margin-left:8px">{% if event_time_left > 0 %}限时活动 · 剩{{ event_time_left // 86400 }}天{{ (event_time_left % 86400) // 3600 }}小时{% else %}活动已结束{% endif %}</span>{% endif %}</h3>
+  <p class="muted">静心溯忆前尘旧梦,五环节依次拨开性别、时代、身份、气质、结局五重迷雾。全宗共{{ total_figures }}位历史前尘,一人一份、先到先得——一旦揭晓，终身唯一。</p>
+  {% if event_expired and not result %}<p style="margin-top:6px;color:var(--red)">活动已结束,不能再新增溯忆进度;若已攒够进度可继续做出抉择。</p>{% endif %}
+</div>
+
+{% if result %}
+<div class="card">
+  <h3 style="margin-bottom:8px">前尘已然揭晓</h3>
+  <p style="font-size:18px"><strong>{{ result.name }}</strong></p>
+  <p class="muted" style="margin-top:6px">{{ result.epithet }}</p>
+  <p style="margin-top:10px">
+    {% for l in path_labels %}<span class="badge badge-gold" style="margin-right:4px">{{ l }}</span>{% endfor %}
+  </p>
+</div>
+{% else %}
+
+{% if char.realm_idx < unlock_realm_idx %}
+<div class="card">
+  <p class="muted">修为不足,需达到{{ unlock_realm_name }}方能溯查前尘。</p>
+</div>
+{% else %}
+
+<div class="card">
+  <h3 style="margin-bottom:8px">第{{ stage_idx + 1 }}环节 · {{ stage.label }}</h3>
+  <p class="muted">{{ stage.desc }}</p>
+  {% if path_labels %}
+  <p style="margin-top:10px">已明晰:
+    {% for l in path_labels %}<span class="badge badge-purple" style="margin-right:4px">{{ l }}</span>{% endfor %}
+  </p>
+  {% endif %}
+  <div class="stat-block" style="margin-top:10px">
+    <div class="stat-line"><span>本环节感悟</span><strong>{{ progress }} / {{ threshold }}</strong></div>
+    <div class="bar-track"><div class="bar-fill bar-gold" style="width:{{ (progress / threshold * 100) if threshold else 0 }}%"></div></div>
+  </div>
+
+  {% if pending_choice %}
+  <p style="margin-top:14px">感悟已足,前尘将往何处收窄?</p>
+  <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+    {% for opt in pending_choice %}
+    <form method="post" action="{{ url_for('pastlife_choose') }}">
+      <input type="hidden" name="value" value="{{ opt.value }}">
+      <button class="btn btn-primary" style="width:100%;text-align:left;padding:10px 12px">
+        {{ opt.flavor }}
+      </button>
+    </form>
+    {% endfor %}
+  </div>
+  {% else %}
+  <form method="post" action="{{ url_for('pastlife_reflect') }}" style="margin-top:14px">
+    <button class="btn btn-primary" {% if attempts_left <= 0 or event_expired %}disabled{% endif %}>
+      静心溯忆(体力{{ stamina_cost }},今日剩{{ attempts_left }}/{{ daily_limit }}次)
+    </button>
+  </form>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">五环节</h3>
+  {% for s in stages %}
+  <p style="margin-top:4px">
+    {% if loop.index0 < stage_idx or (loop.index0 == stage_idx and pending_choice) %}<span class="badge badge-gold">已明晰</span>
+    {% elif loop.index0 == stage_idx %}<span class="badge badge-purple">进行中</span>
+    {% else %}<span class="badge">未至</span>{% endif %}
+    {{ s.label }}
+  </p>
+  {% endfor %}
+</div>
+
+{% endif %}
+{% endif %}
+
+<div class="card">
+  <h3 style="margin-bottom:6px">碎片交换板</h3>
+  <p class="muted">用你多余门类的碎片,换你集齐还差一口气的那一门。挂出即抵押1片;成交后双方各自在信箱领取附件,未成交前随时可撤销退回行囊。</p>
+
+  {% if has_shards %}
+  {% if my_trade_count < trade_max_active %}
+  <form method="post" action="{{ url_for('pastlife_shard_trade_create') }}" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <span class="muted">我有</span>
+    <select name="offer_talent_key" style="flex:1;min-width:160px">
+      {% for key, t in TALENTS.items() %}
+      {% if shard_qtys[key] > 0 %}
+      <option value="{{ key }}">{{ t.label }}碎片(持有{{ shard_qtys[key] }})</option>
+      {% endif %}
+      {% endfor %}
+    </select>
+    <span class="muted">换</span>
+    <select name="want_talent_key" style="flex:1;min-width:160px">
+      {% for key, t in TALENTS.items() %}
+      <option value="{{ key }}">{{ t.label }}碎片</option>
+      {% endfor %}
+    </select>
+    <button class="btn btn-primary">挂出×1(剩{{ trade_max_active - my_trade_count }}条可挂)</button>
+  </form>
+  {% else %}
+  <p class="muted" style="margin-top:8px">挂出的交换请求已达上限({{ trade_max_active }}条),先撤销一些再挂新的。</p>
+  {% endif %}
+  {% else %}
+  <p class="muted" style="margin-top:8px">你手上还没有任何传承血脉碎片,静心溯忆前尘时小概率会拾得。</p>
+  {% endif %}
+
+  <div style="margin-top:12px;display:grid;gap:6px">
+    {% if not open_trades %}<p class="muted">目前没有人挂出交换请求。</p>{% endif %}
+    {% for t in open_trades %}
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--bd)">
+      <span>{{ t.offerer_name }}:{{ TALENTS[t.offer_talent_key].label }}碎片×1 换 {{ TALENTS[t.want_talent_key].label }}碎片×1</span>
+      {% if t.offerer_char_id == char.id %}
+      <form method="post" action="{{ url_for('pastlife_shard_trade_cancel', trade_id=t.id) }}">
+        <button class="btn" style="padding:4px 10px">撤销</button>
+      </form>
+      {% elif shard_qtys[t.want_talent_key] > 0 %}
+      <form method="post" action="{{ url_for('pastlife_shard_trade_accept', trade_id=t.id) }}">
+        <button class="btn btn-primary" style="padding:4px 10px">接受</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

@@ -79,13 +79,50 @@ def take_pending(limit: int = 500) -> list[dict]:
     conn = get_conn()
     try:
         rows = conn.execute(
-            "SELECT id, uid, category, merge_key, text, amount FROM notifications "
+            "SELECT id, uid, category, merge_key, text, amount, created_at FROM notifications "
             "WHERE sent = 0 ORDER BY id LIMIT ?",
             (limit,),
         ).fetchall()
         return [dict(r) for r in rows]
     finally:
         conn.close()
+
+
+def _merge_entries(items: list[dict]) -> list[dict]:
+    """按 (uid, category, merge_key) 合并同类项，amount 累加；merge_key 为空的各算一条不参与合并。
+    created_at 取合并组里最新的一条，方便按时间排序展示。"""
+    merged: dict = {}
+    order: list = []
+    for item in items:
+        key = (item["uid"], item["category"], item["merge_key"] or f"__unique_{item['id']}")
+        if key in merged:
+            merged[key]["amount"] += item["amount"]
+            merged[key]["created_at"] = max(merged[key].get("created_at", 0), item.get("created_at", 0))
+        else:
+            merged[key] = dict(item)
+            order.append(key)
+    return [merged[k] for k in order]
+
+
+def list_recent(limit: int = 20) -> list[dict]:
+    """按时间倒序取最近的通知（已合并同类项），供网页首页"校园动态"展示用。
+
+    只读，不改 sent 状态——跟QQ播报那边"取走就要标记已发"的消费队列语义不冲突，
+    两边各看各的，互不干扰。合并逻辑跟 build_digest 是同一套，不然网页上连着
+    吃三口零食会拆成三条一模一样的动态，很难看。
+    """
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT id, uid, category, merge_key, text, amount, created_at FROM notifications "
+            "ORDER BY id DESC LIMIT ?",
+            (limit * 4,),
+        ).fetchall()
+    finally:
+        conn.close()
+    merged = _merge_entries([dict(r) for r in rows])
+    merged.sort(key=lambda e: e["created_at"], reverse=True)
+    return merged[:limit]
 
 
 def mark_sent(ids: list[int]) -> None:
@@ -116,25 +153,8 @@ def build_digest(pending: list[dict], name_of) -> str:
     if not pending:
         return ""
 
-    # 合并：同一个人 + 同一个 merge_key 的累加次数；merge_key 为空的各算一条
-    merged: dict = {}
-    order: list = []
-    for item in pending:
-        key = (item["uid"], item["category"], item["merge_key"] or f"__unique_{item['id']}")
-        if key in merged:
-            merged[key]["amount"] += item["amount"]
-        else:
-            merged[key] = {
-                "uid": item["uid"],
-                "category": item["category"],
-                "text": item["text"],
-                "amount": item["amount"],
-            }
-            order.append(key)
-
     by_category: dict = {}
-    for key in order:
-        entry = merged[key]
+    for entry in _merge_entries(pending):
         by_category.setdefault(entry["category"] or "study", []).append(entry)
 
     lines = ["📋 霍格沃茨动态"]

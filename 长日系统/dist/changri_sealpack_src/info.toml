@@ -1,0 +1,45 @@
+format_version = "1.0.0"
+
+[package]
+id = "changri/changriyuca"
+name = "（私人用）长日将尽系统"
+version = "1.5.9"
+authors = ["长日将尽"]
+license = "MIT"
+description = "长日将尽 QQ 群语擦恋综系统：设置、社交、闹钟、季度、拍卖、晚餐、出场、写信综、RPG"
+keywords = ["社交", "养成", "长日将尽"]
+
+[package.seal]
+min_version = "1.5.0"
+
+[permissions]
+network = true
+network_hosts = [
+    "raw.githubusercontent.com",
+    "raw.gitmirror.com",
+    "github.com",
+    "music.163.com",
+    "y.qq.com",
+    "120.26.120.128",
+]
+dangerous = false
+http_server = false
+
+[contents]
+scripts = [
+    "scripts/core.js",
+    "scripts/settings.js",
+    "scripts/social.js",
+    "scripts/alarm.js",
+    "scripts/season.js",
+    "scripts/auction.js",
+    "scripts/dinner.js",
+    "scripts/entrance.js",
+    "scripts/letters.js",
+    "scripts/rpg.js",
+]
+
+[store]
+icon = "assets/icon.png"
+banner = "assets/banner.png"
+category = "social"

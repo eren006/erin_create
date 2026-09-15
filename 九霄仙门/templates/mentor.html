@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}拜师 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:6px">拜师</h3>
+  <p class="muted">须先拜入一峰,方可在同峰师兄姐中择一人拜师。一生只能拜一位师父,除非师父身故,否则无法另投他师;师父飞升不解除名分,仍尊为师。</p>
+</div>
+
+{% if master %}
+<div class="card">
+  <h3 style="margin-bottom:6px">你的师父</h3>
+  <p>{{ master.name }}{% if master.zi %}(表字 {{ master.zi }}){% endif %} · {{ realm_by_index(master.realm_idx).name }}</p>
+  <form method="post" action="{{ url_for('mentor_consult') }}" style="margin-top:10px">
+    <button class="btn btn-primary" style="padding:4px 12px" {% if consult_left <= 0 %}disabled{% endif %}>
+      请教师父{% if consult_left <= 0 %}(今日已请教){% endif %}
+    </button>
+  </form>
+</div>
+{% elif pending_target %}
+<div class="card muted" style="text-align:center">拜师帖已递交{{ pending_target.name }},静候回应</div>
+{% elif not peak_name %}
+<div class="card muted" style="text-align:center">尚未拜入一峰,暂无法拜师</div>
+{% else %}
+<div class="card">
+  <h3 style="margin-bottom:8px">{{ peak_name }}同门</h3>
+  {% if not candidates %}<p class="muted">暂无可拜之人</p>{% endif %}
+  {% for c in candidates %}
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:8px;border-top:1px solid var(--bd)">
+    <div>
+      <p>{{ c.name }}{% if c.zi %}(表字 {{ c.zi }}){% endif %}{% if c.is_npc %}<span class="badge">NPC</span>{% endif %}</p>
+      <p class="muted" style="margin-top:2px">{{ realm_by_index(c.realm_idx).name }}</p>
+    </div>
+    <form method="post" action="{{ url_for('mentor_propose', target_id=c.id) }}"
+          data-confirm-title="拜{{ c.name }}为师"
+          data-confirm-message="拜师是终生之约,一旦对方应允便无法转投他师,除非师父身故。"
+          data-confirm-warning="请慎重选择。"
+          data-confirm-button="确认拜师" data-confirm-tone="danger">
+      <button class="btn btn-primary" style="padding:4px 12px">拜师</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if disciples %}
+<div class="card">
+  <h3 style="margin-bottom:6px">带徒训练</h3>
+  <p class="muted">每日可择一名徒弟一同操练，师徒二人体魄各+{{ mentor_train_physique }}。
+    {% if train_left <= 0 %}今日已完成。{% endif %}
+  </p>
+  {% for d in disciples %}
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:8px;border-top:1px solid var(--bd)">
+    <div>
+      <p>{{ d.name }}{% if d.zi %}(表字 {{ d.zi }}){% endif %}</p>
+      <p class="muted" style="margin-top:2px">{{ realm_by_index(d.realm_idx).name }} · 体魄{{ d.physique }}</p>
+    </div>
+    <form method="post" action="{{ url_for('mentor_train', disciple_id=d.id) }}">
+      <button class="btn btn-primary" style="padding:4px 12px" {% if train_left <= 0 %}disabled{% endif %}>
+        {% if train_left > 0 %}一同训练{% else %}今日已训练{% endif %}
+      </button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if incoming %}
+<div class="card" style="border-color:rgba(225,189,112,.5)">
+  <h3 style="margin-bottom:8px">待你回应的拜师帖</h3>
+  {% for p in incoming %}
+  <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bd)">
+    <p>{{ p.name }} 欲拜入你门下为徒</p>
+    <form method="post" action="{{ url_for('mentor_accept', disciple_id=p.id) }}" style="margin-top:8px">
+      <input name="zi" placeholder="赐字(必填,如「子轩」)" maxlength="6" style="width:100%">
+      <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap">
+        {% if my_materials %}
+        <select name="gift_key_material" style="flex:1;min-width:160px" onchange="this.form.gift_kind.value='material';this.form.gift_key.value=this.value;if(this.form.gift_key_gear)this.form.gift_key_gear.selectedIndex=0;this.form.gift_qty.max=this.selectedOptions[0].dataset.qty||1;this.form.gift_qty.value=Math.min(this.form.gift_qty.value,this.form.gift_qty.max)">
+          <option value="">选材料为礼...</option>
+          {% for m in my_materials %}<option value="{{ m.material_key }}" data-qty="{{ m.qty }}">{{ m.label }}(持有{{ m.qty }})</option>{% endfor %}
+        </select>
+        {% endif %}
+        {% if my_gear %}
+        <select name="gift_key_gear" style="flex:1;min-width:160px" onchange="this.form.gift_kind.value='gear';this.form.gift_key.value=this.value;if(this.form.gift_key_material)this.form.gift_key_material.selectedIndex=0;this.form.gift_qty.max=this.selectedOptions[0].dataset.qty||1;this.form.gift_qty.value=Math.min(this.form.gift_qty.value,this.form.gift_qty.max)">
+          <option value="">选装备为礼...</option>
+          {% for g in my_gear %}<option value="{{ g.item_key }}" data-qty="{{ g.qty }}">{{ g.label }}(持有{{ g.qty }})</option>{% endfor %}
+        </select>
+        {% endif %}
+        <label style="display:flex;align-items:center;gap:6px">数量
+          <input type="number" name="gift_qty" value="1" min="1" max="1" inputmode="numeric" style="width:80px">
+        </label>
+      </div>
+      <input type="hidden" name="gift_kind" value="">
+      <input type="hidden" name="gift_key" value="">
+      <div style="margin-top:8px;display:flex;gap:8px">
+        <button class="btn btn-primary" style="padding:4px 12px">收为徒弟</button>
+        <button type="submit" formaction="{{ url_for('mentor_decline', disciple_id=p.id) }}" class="btn" style="padding:4px 12px">婉拒</button>
+      </div>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

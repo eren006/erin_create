@@ -1,0 +1,127 @@
+{% extends 'base.html' %}
+{% block title %}兑换码{% endblock %}
+{% block body %}
+<div class="page">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+    <div class="page-title" style="margin-bottom:0;">礼品兑换码</div>
+    <div class="spacer"></div>
+    <a href="{{ url_for('admin_credits') }}" class="btn btn-ghost btn-sm">次数审批</a>
+  </div>
+
+  <details class="card-sm" style="margin-bottom:16px;">
+    <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--accent2);">❓ 使用说明（点击展开）</summary>
+    <div style="margin-top:10px;font-size:12px;color:var(--muted);line-height:2;">
+      每一"组"是一种"次数 × 个数 × 有效期"的组合，点"+ 添加一组"可以在一次生成里混搭多种，比如同时生成 1 个永久的 5 次码和 2 个 30 天的 3 次码。<br>
+      有效期同样是<strong style="color:var(--text);">天数</strong>和<strong style="color:var(--text);">固定日期</strong>二选一，都不填就是永久；这里的天数是从<strong style="color:var(--text);">对方兑换那一刻</strong>开始算，不是从生成时算。<br>
+      生成后码会显示在下面的列表里，点"复制"能单独复制一个码，如果刚生成完一批，页面会自动过滤到"仅看本批次"，可以用"复制本批次所有码"一次性复制发给要发放的人。兑换码发给谁、什么时候兑换的、对方 QQ 是什么，兑换后都能在列表里查到，方便对账。
+    </div>
+  </details>
+
+  <!-- 生成兑换码 -->
+  <div class="card">
+    <div class="fl" style="margin-bottom:10px;">批量生成</div>
+    <form method="post" action="{{ url_for('admin_redeem_generate') }}" id="gen-form">
+      <div id="denom-rows">
+        <div class="denom-row" style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+          <input class="fi" type="number" name="denom_units" min="1" placeholder="次数" style="width:90px;">
+          <span style="font-size:13px;color:var(--muted);">次 ×</span>
+          <input class="fi" type="number" name="denom_count" min="1" placeholder="个数" style="width:90px;">
+          <span style="font-size:13px;color:var(--muted);">个，有效期</span>
+          <input class="fi" type="number" name="denom_days" min="1" placeholder="天数" style="width:80px;">
+          <span style="font-size:13px;color:var(--muted);">天　或到</span>
+          <input class="fi" type="date" name="denom_fixed_date" style="width:150px;">
+          <span style="font-size:13px;color:var(--muted);">过期（二选一，都留空=永久）</span>
+          <a href="#" onclick="removeDenomRow(this);return false;" style="font-size:12px;color:var(--red);">删除</a>
+        </div>
+      </div>
+      <button type="button" onclick="addDenomRow()" class="btn btn-ghost btn-sm" style="margin-bottom:14px;">+ 添加一组</button>
+      <div class="fg">
+        <label class="fl">批次备注</label>
+        <input class="fi" name="batch_note" placeholder="例如「国庆活动」，可留空">
+      </div>
+      <button type="submit" class="btn btn-primary">生成兑换码</button>
+      <span style="font-size:11px;color:var(--muted);margin-left:8px;">例：1 组「5 次 × 1 个 永久」+ 1 组「3 次 × 2 个 30 天」= 一次生成 3 个码</span>
+    </form>
+  </div>
+
+  <!-- 状态标签 -->
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;align-items:center;">
+    <a href="{{ url_for('admin_redeem_codes') }}" class="btn btn-sm {% if sf=='all' and not batch_f %}btn-primary{% else %}btn-ghost{% endif %}">
+      全部 <span style="opacity:.7;">({{ counts.all }})</span>
+    </a>
+    <a href="{{ url_for('admin_redeem_codes', status='unused') }}" class="btn btn-sm {% if sf=='unused' and not batch_f %}btn-primary{% else %}btn-ghost{% endif %}">
+      未使用 <span style="opacity:.7;">({{ counts.unused }})</span>
+    </a>
+    <a href="{{ url_for('admin_redeem_codes', status='redeemed') }}" class="btn btn-sm {% if sf=='redeemed' and not batch_f %}btn-primary{% else %}btn-ghost{% endif %}">
+      已兑换 <span style="opacity:.7;">({{ counts.redeemed }})</span>
+    </a>
+    {% if batch_f %}
+    <span class="badge" style="background:color-mix(in srgb,var(--accent) 13%,transparent);color:var(--accent2);">仅看本批次</span>
+    <a href="{{ url_for('admin_redeem_codes', status=sf) }}" style="font-size:12px;">清除</a>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="copyAllCodes()">复制本批次所有码</button>
+    {% endif %}
+  </div>
+
+  {% if codes %}
+  <div class="card" style="padding:0;overflow-x:auto;-webkit-overflow-scrolling:touch;">
+    <table>
+      <thead><tr>
+        <th>兑换码</th><th>次数</th><th>有效期</th><th>批次备注</th><th>状态</th><th>兑换人</th><th>QQ</th><th>生成时间</th><th>兑换时间</th><th></th>
+      </tr></thead>
+      <tbody>
+        {% for c in codes %}
+        <tr>
+          <td class="mono code-cell">{{ c.code }}</td>
+          <td class="mono">{{ c.units }}</td>
+          <td style="font-size:12px;color:var(--muted);">
+            {% if c.fixed_expires_at %}至 {{ c.fixed_expires_at|fmt }}
+            {% elif c.valid_days %}{{ c.valid_days }} 天（自兑换起）
+            {% else %}永久{% endif %}
+          </td>
+          <td style="font-size:12px;color:var(--muted);">{{ c.batch_note or '—' }}</td>
+          <td>
+            {% if c.status == 'redeemed' %}
+              <span class="badge" style="background:color-mix(in srgb,var(--green) 13%,transparent);color:var(--green);">已兑换</span>
+            {% else %}
+              <span class="badge" style="background:color-mix(in srgb,var(--warn) 13%,transparent);color:var(--warn);">未使用</span>
+            {% endif %}
+          </td>
+          <td style="font-size:12px;color:var(--muted);">{{ c.redeemed_by_name or c.redeemed_by_username or '—' }}</td>
+          <td style="font-size:12px;color:var(--muted);">{{ c.redeemed_by_contact or '—' }}</td>
+          <td style="font-size:12px;color:var(--muted);">{{ c.created_at|fmt }}</td>
+          <td style="font-size:12px;color:var(--muted);">{{ c.redeemed_at|fmt if c.redeemed_at else '—' }}</td>
+          <td><button type="button" class="btn btn-ghost btn-sm" onclick="copyCode('{{ c.code }}', this)">复制</button></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card" style="text-align:center;color:var(--muted);padding:40px;">暂无兑换码</div>
+  {% endif %}
+</div>
+
+<script>
+function addDenomRow(){
+  const c = document.getElementById('denom-rows');
+  const row = c.children[0].cloneNode(true);
+  row.querySelectorAll('input').forEach(i => i.value = '');
+  c.appendChild(row);
+}
+function removeDenomRow(a){
+  const c = document.getElementById('denom-rows');
+  if (c.children.length > 1) a.closest('.denom-row').remove();
+}
+function copyCode(code, btn){
+  navigator.clipboard.writeText(code).then(() => {
+    const old = btn.textContent; btn.textContent = '已复制';
+    setTimeout(() => { btn.textContent = old; }, 1200);
+  });
+}
+function copyAllCodes(){
+  const codes = Array.from(document.querySelectorAll('.code-cell')).map(td => td.textContent.trim());
+  navigator.clipboard.writeText(codes.join('\n'));
+  alert('已复制 ' + codes.length + ' 个兑换码');
+}
+</script>
+{% endblock %}

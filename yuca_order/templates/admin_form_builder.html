@@ -112,7 +112,6 @@
         <div class="pal-item" onclick="addField('short_text')"><span class="pal-icon">✏️</span><div class="pal-name">单行文字</div></div>
         <div class="pal-item" onclick="addField('textarea')"><span class="pal-icon">📄</span><div class="pal-name">多行文字</div></div>
         <div class="pal-item" onclick="addField('radio')"><span class="pal-icon">🔘</span><div class="pal-name">单选</div></div>
-        <div class="pal-item" onclick="addField('upload')"><span class="pal-icon">🖼️</span><div class="pal-name">图片上传</div></div>
         <div class="pal-item" onclick="addField('heading')"><span class="pal-icon">📌</span><div class="pal-name">分组标题</div></div>
       </div>
       <div style="margin-top:12px;font-size:11px;color:var(--muted);line-height:1.7;">
@@ -150,11 +149,10 @@ const TYPE_LABELS = {
   short_text:   '单行文字',
   textarea:     '多行文字',
   radio:        '单选',
-  upload:       '图片上传',
   heading:      '分组标题',
 };
 const TYPE_ICONS = {
-  builtin_name:'👤', builtin_qq:'💬', short_text:'✏️', textarea:'📄', radio:'🔘', upload:'🖼️', heading:'📌',
+  builtin_name:'👤', builtin_qq:'💬', short_text:'✏️', textarea:'📄', radio:'🔘', heading:'📌',
 };
 
 function uid() { return '_' + Math.random().toString(36).slice(2, 9); }
@@ -231,7 +229,6 @@ function addField(type) {
     short_text: { id, type, label:'新字段', required:false, placeholder:'', hint:'' },
     textarea:   { id, type, label:'新文本区', required:false, placeholder:'', hint:'' },
     radio:      { id, type, label:'单选字段', required:false, options:['选项一','选项二'], default:'' },
-    upload:     { id, type, label:'图片上传', required:false, hint:'最多10张，支持 JPG/PNG/GIF/WebP' },
     heading:    { id, type, label:'分组标题' },
   };
   schema.push(defaults[type]);

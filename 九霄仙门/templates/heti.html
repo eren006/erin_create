@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}合体 - 九霄仙门{% endblock %}
+{% block content %}
+
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">合</span>合体</h3></div>
+  <p class="muted" style="margin-top:6px">化神至合体,须历经备料、灵珠秘境、本我试炼、神魔初融、渡天劫五段,前四段做完便锁定进度,只有渡劫才是真正的生死关——渡不过也不会打回原形,调养后可再渡。</p>
+</div>
+
+{% if char.realm_idx != 14 %}
+<div class="card"><p class="muted">尚未至合体之时</p></div>
+{% elif char.exp < REALMS[15].exp %}
+<div class="card"><p class="muted">修为尚未攒够</p></div>
+
+{% elif char.heti_stage == 0 %}
+<div class="card">
+  <h3 style="margin-bottom:8px">一、备料</h3>
+  <p class="muted">需:{% for k,v in HETI_GATHER_COST.items() %}{{ MATERIAL_LABELS.get(k,k) }}×{{ v }} {% endfor %}</p>
+  <form method="post" action="{{ url_for('heti_gather') }}" style="margin-top:8px">
+    <button class="btn btn-primary">备齐资源</button>
+  </form>
+</div>
+
+{% elif char.heti_stage == 1 %}
+<div class="card">
+  <h3 style="margin-bottom:8px">二、灵珠秘境</h3>
+  <p class="muted">神魂自行开辟出的幻境,神魔劫兽盘踞其间,守着凝就本我与真我的灵珠——集齐{{ lingzhu_required }}颗即可离境,此境只在此环节开放,过时不候。</p>
+  <p class="stat-line" style="margin-top:8px"><span>已获灵珠</span><strong>{{ lingzhu_count }}/{{ lingzhu_required }}</strong></p>
+  <div class="bar-track"><div class="bar-fill bar-gold" style="width:{{ (lingzhu_count / lingzhu_required * 100) if lingzhu_required else 0 }}%"></div></div>
+  <p class="stat-line" style="margin-top:4px"><span>已入境次数</span><strong>{{ lingzhu_entries_used }}/{{ lingzhu_entries_max }}</strong></p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+    <form method="post" action="{{ url_for('mystic_enter', zone_key='lingzhu') }}" style="flex:1;min-width:140px">
+      <button class="btn btn-primary" style="width:100%" {{ 'disabled' if lingzhu_entries_used >= lingzhu_entries_max }}>进入灵珠秘境</button>
+    </form>
+    <form method="post" action="{{ url_for('heti_lingzhu_advance') }}" style="flex:1;min-width:140px">
+      <button class="btn" style="width:100%" {{ 'disabled' if lingzhu_count < lingzhu_required }}>凝聚灵珠,离境</button>
+    </form>
+  </div>
+  <p class="muted" style="margin-top:8px;font-size:12px">进入后的探索/战斗跟平日秘境操作一致(在「秘境」页进行),打完记得回这里查看进度。</p>
+</div>
+
+{% elif char.heti_stage == 2 %}
+<div class="card">
+  <h3 style="margin-bottom:8px">三、本我试炼</h3>
+  <p>真我与本我于神魂中交锋,是直面以求淬炼,还是静心以求安稳?</p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+    <form method="post" action="{{ url_for('heti_trial', choice='bold') }}" style="flex:1;min-width:140px">
+      <button class="btn btn-primary" style="width:100%">直面本我(心境-{{ HETI_TRIAL_BOLD_MIND_COST }},渡劫成功率+8%)</button>
+    </form>
+    <form method="post" action="{{ url_for('heti_trial', choice='safe') }}" style="flex:1;min-width:140px">
+      <button class="btn" style="width:100%">静心以对(无损无益,稳妥渡过)</button>
+    </form>
+  </div>
+</div>
+
+{% elif char.heti_stage == 3 %}
+<div class="card">
+  <h3 style="margin-bottom:8px">四、神魔初融</h3>
+  <p class="muted">神魔二相将融,一旦初融便再无退路。</p>
+  <form method="post" action="{{ url_for('heti_fuse') }}" style="margin-top:8px"
+        data-confirm-title="神魔初融" data-confirm-message="神魔二相将在体内初步融合，修行将进入下一阶段。"
+        data-confirm-warning="一旦初融便再无退路。" data-confirm-button="开始初融" data-confirm-tone="danger">
+    <button class="btn btn-primary">神魔初融</button>
+  </form>
+</div>
+
+{% else %}
+<div class="card">
+  <div class="panel-head"><h3><span class="section-icon">雷</span>五、渡天劫</h3></div>
+  {% if weak %}
+  <p class="muted" style="margin-top:10px">元气尚虚,尚需调养 {{ (weak_remaining // 3600) + 1 }} 小时方可再渡</p>
+  <form method="post" action="{{ url_for('heti_recover') }}" style="margin-top:8px">
+    <button class="btn btn-primary" {{ 'disabled' if char.lingshi < HETI_RECOVER_LINGSHI_COST }}>服丹速愈(灵石{{ HETI_RECOVER_LINGSHI_COST }},立即恢复)</button>
+    {% if char.lingshi < HETI_RECOVER_LINGSHI_COST %}<p class="muted" style="margin-top:2px;font-size:12px">尚缺{{ HETI_RECOVER_LINGSHI_COST - char.lingshi }}灵石</p>{% endif %}
+  </form>
+  {% else %}
+  <div class="stat-block" style="margin-top:10px">
+    <div class="stat-line"><span>本次渡劫成功率</span><strong>{{ chance_pct }}%</strong></div>
+    <div class="bar-track"><div class="bar-fill bar-gold" style="width:{{ chance_pct }}%"></div></div>
+  </div>
+  <p class="muted" style="margin-top:6px">成功率来自:根基保底 + 灵巧身法 + 本命法宝护持 + 本我试炼所得{% if char.heti_trial_buff %}(已生效){% endif %}
+    + 子嗣及冠及笄庇佑{% if adult_children %}(已有{{ adult_children }}位,+{{ child_bonus_pct }}%,不受95%上限压制){% else %}(暂无及冠及笄的子嗣){% endif %}</p>
+  {% if char.heti_fail_streak > 0 %}
+  <p class="muted" style="margin-top:4px">{% if guaranteed %}连续{{ char.heti_fail_streak }}次未渡,此次必定渡劫成功!{% else %}连续{{ char.heti_fail_streak }}次未渡,劫后凝练,把握渐增{% endif %}</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('heti_tribulation') }}" style="margin-top:14px">
+    <label style="display:flex;align-items:center;gap:8px;font-weight:normal">
+      <input type="checkbox" name="use_ward" value="1" style="width:auto">
+      使用{{ MATERIAL_LABELS[HETI_WARD_MATERIAL] }}(成功率额外+{{ HETI_WARD_CHANCE_BONUS_PCT }}%,用后即耗)
+    </label>
+    <button class="btn btn-primary" style="width:100%;margin-top:10px" {{ 'disabled' if char.stamina < HETI_STAMINA_COST }}>渡天劫(体力-{{ HETI_STAMINA_COST }})</button>
+    {% if char.stamina < HETI_STAMINA_COST %}<p class="muted" style="margin-top:4px">尚缺{{ HETI_STAMINA_COST - char.stamina }}点体力</p>{% endif %}
+  </form>
+  <p class="muted" style="margin-top:8px;text-align:center">渡劫不成不会打回重炼,只需调养后再渡,连续失败有保底</p>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h3 style="margin-bottom:8px">材料兑换</h3>
+  <p class="muted">{% for k,v in HETI_CORE_EXCHANGE.items() %}{{ MATERIAL_LABELS.get(k,k) }}×{{ v }} {% endfor %}可兑 {{ MATERIAL_LABELS[HETI_CORE_MATERIAL] }}×1(幽渊魂晶九幽渊稳定积累,器灵丝靠游历传说奇遇)</p>
+  <form method="post" action="{{ url_for('heti_exchange', kind='core') }}" style="margin-top:6px">
+    <button class="btn">兑换{{ MATERIAL_LABELS[HETI_CORE_MATERIAL] }}</button>
+  </form>
+  <p class="muted" style="margin-top:10px">{% for k,v in HETI_WARD_EXCHANGE.items() %}{{ MATERIAL_LABELS.get(k,k) }}×{{ v }} {% endfor %}可兑 {{ MATERIAL_LABELS[HETI_WARD_MATERIAL] }}×1</p>
+  <form method="post" action="{{ url_for('heti_exchange', kind='ward') }}" style="margin-top:6px">
+    <button class="btn">兑换{{ MATERIAL_LABELS[HETI_WARD_MATERIAL] }}</button>
+  </form>
+</div>
+
+{% endblock %}

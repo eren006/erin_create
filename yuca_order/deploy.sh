@@ -1,91 +1,66 @@
 #!/bin/bash
-# 排单宝 — 部署脚本
-# 用法：bash deploy.sh [first|update]
-#   first  — 首次部署（生成密钥、创建 systemd 服务）
-#   update — 仅同步代码并重启（默认）
-
+# 排单宝 — 部署脚本（贾维斯：腾讯云 Ubuntu 124.221.189.86:5023，systemd）
+# 用法：bash deploy.sh
+#
+# 只同步代码：app.py / requirements.txt / templates/ / static/，
+# 绝不碰服务器上的 order_data.db、uploads/、logs/、venv/。
+# 用 rsync 增量传输——本地到腾讯云的上行只有几 KB/s，整包重传会很慢。
+# 服务器上的环境变量（PORT / FLASK_SECRET / SUPERADMIN_PASS）在 /etc/yuca_order.env，不在本仓库。
+# 服务配置：/etc/systemd/system/yuca_order.service（waitress :5023），
+#           waitress 直接对外监听 5023，不经过 nginx（80 端口留给别的项目）。
+# 旧服务器（奥创，阿里云 Windows）的脚本留在 deploy_ultron.sh，那边服务已停，仅作回滚参考。
 set -e
 
-SERVER="administrator@47.99.64.227"
-REMOTE="/opt/yuca_order"
+SERVER="jarvis"
+REMOTE_DIR="/home/ubuntu/yuca_order"
 SERVICE="yuca_order"
-PORT=5003
-MODE="${1:-update}"
+PUBLIC_URL="http://124.221.189.86:5023"
+LOCAL_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "======================================"
-echo " 排单宝部署  mode=$MODE  port=$PORT"
+echo " 排单宝部署 → 贾维斯 ($PUBLIC_URL)"
 echo "======================================"
 
-# ── 1. 同步文件 ──────────────────────────────────────────────────────────────
-echo "[1/4] 同步文件到 ${SERVER}:${REMOTE}"
-ssh "$SERVER" "mkdir -p ${REMOTE}/logs ${REMOTE}/uploads"
-rsync -avz --delete \
-  --exclude '__pycache__' \
-  --exclude '*.pyc' \
-  --exclude 'order_data.db' \
-  --exclude 'uploads/' \
-  --exclude 'logs/' \
-  --exclude '.DS_Store' \
-  ./ "${SERVER}:${REMOTE}/"
-
-# ── 2. 安装依赖 ──────────────────────────────────────────────────────────────
-echo "[2/4] 安装 Python 依赖"
-ssh "$SERVER" "pip3 install -q -r ${REMOTE}/requirements.txt"
-
-# ── 3. 首次部署：创建 systemd 服务 ───────────────────────────────────────────
-if [ "$MODE" = "first" ]; then
-  echo "[3/4] 生成密钥并创建 systemd 服务"
-
-  # 生成随机密钥（仅首次，存在则跳过）
-  FLASK_SECRET=$(python3 -c "import secrets; print(secrets.token_urlsafe(40))")
-  SUPER_PASS=$(python3 -c "import secrets; print(secrets.token_urlsafe(16))")
-
-  echo ""
-  echo "  ⚠️  请立即记录以下凭据，部署完成后不再显示："
-  echo "  FLASK_SECRET : $FLASK_SECRET"
-  echo "  SUPERADMIN密码: $SUPER_PASS"
-  echo ""
-
-  ssh "$SERVER" "sudo tee /etc/systemd/system/${SERVICE}.service > /dev/null << 'UNIT'
-[Unit]
-Description=排单宝 Order Portal
-After=network.target
-
-[Service]
-Type=simple
-User=administrator
-WorkingDirectory=${REMOTE}
-Environment=FLASK_SECRET=${FLASK_SECRET}
-Environment=SUPERADMIN_PASS=${SUPER_PASS}
-ExecStart=/usr/bin/python3 -m gunicorn -w 2 -b 0.0.0.0:${PORT} --timeout 60 --access-logfile ${REMOTE}/logs/access.log app:app
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-UNIT
-sudo systemctl daemon-reload
-sudo systemctl enable ${SERVICE}"
-
-else
-  echo "[3/4] 跳过 systemd 配置（update 模式）"
+# 芭蕾主题的 PNG 原稿不上线（见 AGENTS.md，线上只用压缩后的 webp），部署时会排除；
+# 这里先确认没有页面引用它们，免得漏传。
+if grep -rqE "ballet-[A-Za-z0-9_-]+\.png" "$LOCAL_DIR/templates" "$LOCAL_DIR/static"/*.css "$LOCAL_DIR/static"/*.js "$LOCAL_DIR/app.py"; then
+  echo "有页面引用了 ballet-*.png 原稿，但部署会排除这些文件，请改用压缩版 webp"
+  exit 1
 fi
 
-# ── 4. 重启服务 ──────────────────────────────────────────────────────────────
-echo "[4/4] 重启服务"
-ssh "$SERVER" "sudo systemctl restart ${SERVICE} && sleep 2 && sudo systemctl status ${SERVICE} --no-pager -l"
+# ── 1. 同步代码 ──────────────────────────────────────────────────────────────
+echo "[1/3] 同步代码"
+rsync -az "$LOCAL_DIR/app.py" "$LOCAL_DIR/requirements.txt" "$SERVER:$REMOTE_DIR/"
+rsync -az --delete --exclude='.DS_Store' "$LOCAL_DIR/templates/" "$SERVER:$REMOTE_DIR/templates/"
+# static/ 不加 --delete：保留服务器上已有的其他资源
+rsync -az --exclude='.DS_Store' --exclude='ballet-*.png' "$LOCAL_DIR/static/" "$SERVER:$REMOTE_DIR/static/"
+
+# ── 2. 装依赖 + 重启 ─────────────────────────────────────────────────────────
+echo "[2/3] 安装依赖并重启服务"
+ssh "$SERVER" "cd $REMOTE_DIR && venv/bin/pip install -q -r requirements.txt && sudo systemctl restart $SERVICE"
+READY=0
+for ATTEMPT in $(seq 1 10); do
+  sleep 2
+  CODE=$(ssh "$SERVER" "curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:5023/" || true)
+  if [ "$CODE" = "200" ]; then
+    READY=1
+    break
+  fi
+done
+if [ "$READY" != "1" ]; then
+  echo "服务没有正常响应，最近日志："
+  ssh "$SERVER" "systemctl status $SERVICE --no-pager | head -15; tail -20 $REMOTE_DIR/logs/err.log"
+  exit 1
+fi
+
+# ── 3. 外网验证 ──────────────────────────────────────────────────────────────
+echo "[3/3] 外网验证"
+curl -s -o /dev/null -w "HTTP %{http_code}\n" --max-time 10 "$PUBLIC_URL/" || echo "（外网连不通，检查腾讯云控制台防火墙有没有放行 5023）"
 
 echo ""
 echo "======================================"
 echo " 部署完成！"
-echo " 访问地址：http://47.99.64.227:${PORT}"
-echo " 管理员入口：http://47.99.64.227:${PORT}/admin/login"
-echo " 超管入口：http://47.99.64.227:${PORT}/superadmin/login"
-echo " API 文档："
-echo "   GET  /api/orders?token=<token>&status=pending"
-echo "   GET  /api/orders/<order_no>?token=<token>"
-echo "   POST /api/orders/<order_no>/accept"
-echo "   POST /api/orders/<order_no>/complete  {result_text}"
-echo "   POST /api/orders/<order_no>/note       {note}"
-echo "   GET  /api/stats?token=<token>"
+echo " 访问地址：$PUBLIC_URL"
+echo " 管理员入口：$PUBLIC_URL/admin/login"
+echo " 超管入口：$PUBLIC_URL/superadmin/login"
 echo "======================================"

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}充值 - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card">
+  <h3 style="margin-bottom:6px">天地精华</h3>
+  <p class="muted">悄悄说句大实话:这里其实还没真的通充值,谁也花不出去钱——纯属带大家过来体验一把"氪金"的快感,点着玩,图一乐!</p>
+  <p style="margin-top:10px">当前余额:<strong>{{ char.tiandi_jinghua }}</strong> 天地精华</p>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">充值档位</h3>
+  <div class="bag-grid">
+    {% for t in tiers %}
+    <article class="bag-item">
+      <span class="bag-mark">精</span>
+      <div>
+        <strong>天地精华×{{ t.amount }}</strong>
+        <small>¥{{ t.price_cny }}</small>
+      </div>
+      <form method="post" action="{{ url_for('recharge_buy') }}" style="margin-left:auto">
+        <input type="hidden" name="price_cny" value="{{ t.price_cny }}">
+        {% if easter_egg_used_today %}
+        <button class="btn" style="padding:4px 12px" disabled>今日已中过</button>
+        {% else %}
+        <button class="btn btn-primary" style="padding:4px 12px">购买</button>
+        {% endif %}
+      </form>
+    </article>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:6px">天地精华商城</h3>
+  <p class="muted">金木水火土各一件,秘境与锻造均不会掉落,唯有此处可用天地精华真实兑换——先攒够精华(比如去充值档位那边碰碰运气)。</p>
+  <div class="bag-grid" style="margin-top:10px">
+    {% for w in shop_weapons %}
+    <article class="bag-item">
+      <span class="bag-mark">{{ ELEMENTS[w.element].label }}</span>
+      <div>
+        <strong>{{ w.label }}</strong>
+        <small>属{{ ELEMENTS[w.element].label }} · 攻{{ w.attack }} 防{{ w.defense }} 灵巧{{ w.agility }}</small>
+        <small>{{ shop_weapon_cost }} 天地精华</small>
+      </div>
+      <form method="post" action="{{ url_for('tiandi_shop_buy', item_key=w.key) }}" style="margin-left:auto">
+        <button class="btn btn-primary" style="padding:4px 12px" {% if char.tiandi_jinghua < shop_weapon_cost %}disabled{% endif %}>购买</button>
+      </form>
+    </article>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

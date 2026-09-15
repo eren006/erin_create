@@ -5,7 +5,7 @@
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
     <div class="page-title" style="margin-bottom:0;">订单详情</div>
     <span class="badge" style="background:{{ order.status|sc }}22;color:{{ order.status|sc }};border:1px solid {{ order.status|sc }}44;">
-      {{ order.status|sl }}
+      {{ '管理正在排单中' if order.status == 'pending' else order.status|sl }}
     </span>
     <div class="spacer"></div>
     <span class="mono muted">{{ order.order_no }}</span>
@@ -80,6 +80,52 @@
   <div class="card" style="border-color:color-mix(in srgb,var(--red) 35%,var(--border));">
     <div style="color:var(--red);font-weight:500;margin-bottom:6px;">已拒绝</div>
     {% if order.admin_notes %}<div style="font-size:13px;color:var(--muted);">{{ order.admin_notes }}</div>{% endif %}
+    {% if order.credit_consumed %}<div style="font-size:12px;color:var(--muted);margin-top:4px;">已使用的次数已退回账号</div>{% endif %}
+  </div>
+  {% elif order.status == 'pending' %}
+  <div class="card" style="border-color:color-mix(in srgb,var(--warn) 35%,var(--border));">
+    <div style="color:var(--warn);font-weight:500;">⏳ 管理正在排单中</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:4px;">管理员审核通过后开始制作，若被拒绝，已使用的次数会自动退回账号</div>
+  </div>
+  {% endif %}
+
+  {% if notes or can_append %}
+  <div class="card">
+    <div class="fl" style="margin-bottom:4px;">补充备注</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">
+      订单被接下之后，还想补充的要求写在这里，接单方会收到提醒。
+    </div>
+
+    {% for n in notes %}
+    <div style="padding:10px 12px;margin-bottom:8px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);">
+      <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;margin-bottom:5px;">
+        <span class="badge" style="background:var(--surface);color:var(--muted);">我</span>
+        <div class="spacer"></div>
+        <span style="font-size:11px;color:var(--muted);">{{ n.created_at|fmt }}</span>
+      </div>
+      <div style="font-size:13px;white-space:pre-wrap;word-break:break-word;">{{ n.content }}</div>
+    </div>
+    {% endfor %}
+
+    {% if can_append %}
+    <form method="post" action="{{ url_for('order_add_note', order_no=order.order_no) }}" style="margin-top:12px;">
+      <div class="fg">
+        <textarea class="ft" name="content" id="note-input" maxlength="{{ NOTE_MAX_LEN }}" required
+                  placeholder="补充说明（最多 {{ NOTE_MAX_LEN }} 字）" style="min-height:80px;"
+                  oninput="document.getElementById('note-count').textContent = this.value.length;"></textarea>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <button class="btn btn-primary btn-sm" type="submit">追加备注</button>
+        <span style="font-size:12px;color:var(--muted);">
+          <span id="note-count">0</span>/{{ NOTE_MAX_LEN }} 字 · 还可追加 {{ notes_left }} 条
+        </span>
+      </div>
+    </form>
+    {% elif order.status in ['accepted', 'processing'] %}
+    <div style="font-size:12px;color:var(--muted);margin-top:8px;">
+      追加条数已达上限，需要补充请直接联系接单方。
+    </div>
+    {% endif %}
   </div>
   {% endif %}
 

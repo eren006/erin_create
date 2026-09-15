@@ -110,19 +110,7 @@
 .key-item  { display:flex; align-items:center; gap:6px; }
 .key-role  { font-size:13px; color:var(--text); flex:1; }
 .key-uid   { font-size:11px; color:var(--muted); font-family:monospace; }
-.btn-revoke { padding:2px 8px; font-size:11px; border-radius:5px; cursor:pointer;
-  background:#3a1a1a; color:var(--red); border:1px solid #5a2a2a; }
-.btn-revoke:hover { background:#4a1f1f; }
 .key-empty { font-size:12px; color:var(--muted); padding:4px 0; }
-.key-add-row {
-  display:flex; gap:6px; align-items:center; padding:8px 14px;
-  border-top:1px solid var(--border);
-}
-.key-add-row select {
-  flex:1; background:var(--surface); border:1px solid var(--border);
-  color:var(--text); border-radius:6px; padding:4px 8px; font-size:12px;
-}
-.key-add-row select:focus { outline:none; border-color:var(--accent); }
 
 /* 孤儿钥匙 */
 .orphan-section { padding:14px 18px; }
@@ -226,8 +214,8 @@
   <!-- ── 钥匙管理 ───────────────────────────────────────────────────────── -->
   <div class="section-card">
     <div class="section-header">
-      <span class="section-title">🔑 钥匙管理</span>
-      <span class="section-meta">点击「授予」给玩家添加地点钥匙</span>
+      <span class="section-title">🔑 钥匙持有情况</span>
+      <span class="section-meta">只读 · 发放 / 收回请在 QQ 用「地点管理 钥匙 角色名 地点」，「推送全部」后这里更新</span>
     </div>
 
     {% if places %}
@@ -245,28 +233,17 @@
             <div class="key-item" id="ki-{{ loop.index }}-{{ h.uid }}">
               <span class="key-role">{{ h.role }}</span>
               <span class="key-uid">{{ h.uid }}</span>
-              <button class="btn-revoke"
-                onclick="removeKey('{{ name }}', '{{ h.uid }}', '{{ h.platform }}', this)">撤销</button>
             </div>
             {% endfor %}
           {% else %}
           <span class="key-empty">暂无持有者</span>
           {% endif %}
         </div>
-        <div class="key-add-row">
-          <select id="sel-{{ loop.index }}">
-            <option value="">— 选择玩家 —</option>
-            {% for p in players %}
-            <option value="{{ p.qq }}">{{ p.role_name or p.qq }}</option>
-            {% endfor %}
-          </select>
-          <button class="btn-sm" onclick="addKey('{{ name }}', {{ loop.index }})">授予</button>
-        </div>
       </div>
       {% endfor %}
     </div>
     {% else %}
-    <div style="padding:20px 18px; color:var(--muted); font-size:13px;">先添加地点，再管理钥匙。</div>
+    <div style="padding:20px 18px; color:var(--muted); font-size:13px;">还没有地点。</div>
     {% endif %}
   </div>
 
@@ -284,7 +261,6 @@
         <span style="color:var(--muted)">→</span>
         <span>{{ o.role }}</span>
         <span class="key-uid">{{ o.uid }}</span>
-        <button class="btn-revoke" onclick="removeKey('{{ o.place }}', '{{ o.uid }}', '{{ o.platform }}', this)">清除</button>
       </div>
       {% endfor %}
     </div>
@@ -322,7 +298,7 @@
   </div>
 
   <div style="font-size:12px; color:var(--muted); margin-top:8px;">
-    💡 修改后需在机器人执行「。拉取全部」才能生效；或在机器人执行「。推送全部」将本地数据同步到此页面。
+    💡 地点修改后需在机器人执行「。拉取全部」才能生效；钥匙以机器人为准，在机器人执行「。推送全部」后这里显示最新持有情况。
   </div>
 </div>
 
@@ -435,41 +411,6 @@ async function saveDesc(name, idx) {
     de.style.display = "none";
     display.style.display = "";
     showBanner("✅ 描述已更新");
-  }
-}
-
-async function addKey(place, idx) {
-  const sel = document.getElementById(`sel-${idx}`);
-  const uid = sel.value;
-  if (!uid) { showBanner("请选择玩家", false); return; }
-  const role = sel.options[sel.selectedIndex].text;
-  const res = await post({ action:"add_key", place, uid, platform:"QQ" });
-  if (res.ok) {
-    const list = document.getElementById(`kl-${idx}`);
-    // Remove "暂无持有者" if present
-    const empty = list.querySelector(".key-empty");
-    if (empty) empty.remove();
-    const div = document.createElement("div");
-    div.className = "key-item";
-    div.id = `ki-${idx}-${uid}`;
-    div.innerHTML = `<span class="key-role">${role}</span><span class="key-uid">${uid}</span>` +
-      `<button class="btn-revoke" onclick="removeKey('${place}','${uid}','QQ',this)">撤销</button>`;
-    list.appendChild(div);
-    sel.value = "";
-    showBanner(`✅ 已授予「${role}」地点「${place}」的钥匙`);
-  }
-}
-
-async function removeKey(place, uid, platform, btn) {
-  const res = await post({ action:"remove_key", place, uid, platform });
-  if (res.ok) {
-    const item = btn.closest(".key-item,.orphan-row");
-    if (item) {
-      item.style.opacity = "0";
-      item.style.transition = "opacity .2s";
-      setTimeout(() => item.remove(), 220);
-    }
-    showBanner(`✅ 已撤销钥匙`);
   }
 }
 

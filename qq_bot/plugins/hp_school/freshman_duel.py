@@ -56,15 +56,15 @@ def perform_duel(uid: str) -> dict:
     steps = die1 + die2
 
     current_progress = duel_data.get("progress", 0)
-    new_progress = min(current_progress + steps, BOARD_WIDTH - 1)
+    new_progress = current_progress + steps  # 不设上限，排名最终看总分
     points_gained = steps
     new_score = duel_data.get("score", 0) + points_gained
 
     storage.update_freshman_duel(uid, new_score, new_progress)
 
-    # 构建结果消息
-    current_position = BOARD_POSITIONS[current_progress]
-    new_position = BOARD_POSITIONS[new_progress]
+    # 构建结果消息（棋盘只有固定几个命名格子，位置描述封顶展示）
+    current_position = BOARD_POSITIONS[min(current_progress, BOARD_WIDTH - 1)]
+    new_position = BOARD_POSITIONS[min(new_progress, BOARD_WIDTH - 1)]
 
     message = f"🎲 竞选新人王骰子对决\n"
     message += f"骰子结果：{die1} + {die2} = {steps}\n"
@@ -73,8 +73,8 @@ def perform_duel(uid: str) -> dict:
     message += f"获得积分：{points_gained}分\n"
     message += f"当前总分：{new_score}分"
 
-    if new_progress == BOARD_WIDTH - 1:
-        message += f"\n\n🏆 恭喜！你已经到达终点，成为一年级新人王候选人！"
+    if new_progress >= BOARD_WIDTH - 1 and current_progress < BOARD_WIDTH - 1:
+        message += f"\n\n🏆 恭喜！你已经到达终点，成为一年级新人王候选人！排名最终看总分高低。"
 
     return {
         "ok": True,

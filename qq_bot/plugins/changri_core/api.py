@@ -1,3 +1,4 @@
+import secrets
 import time
 
 from .storage import get_conn, init_db
@@ -101,6 +102,79 @@ def get_uid_by_role_name(platform: str, role_name: str) -> str | None:
         return row["uid"] if row is not None else None
     finally:
         conn.close()
+
+
+def toggle_npc(platform: str, uid: str) -> bool:
+    """标记/取消标记为 NPC，返回操作后是否为 NPC。"""
+    uid = get_primary_uid(platform, uid)
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM npc_roles WHERE platform = ? AND uid = ?", (platform, uid)
+        ).fetchone()
+        if row is None:
+            conn.execute(
+                "INSERT INTO npc_roles (platform, uid, marked_at) VALUES (?, ?, ?)",
+                (platform, uid, int(time.time())),
+            )
+            conn.commit()
+            return True
+        conn.execute("DELETE FROM npc_roles WHERE platform = ? AND uid = ?", (platform, uid))
+        conn.commit()
+        return False
+    finally:
+        conn.close()
+
+
+def is_npc(platform: str, uid: str) -> bool:
+    uid = get_primary_uid(platform, uid)
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM npc_roles WHERE platform = ? AND uid = ?", (platform, uid)
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+def get_or_create_web_token(platform: str, uid: str) -> str:
+    uid = get_primary_uid(platform, uid)
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT token FROM web_access_tokens WHERE platform = ? AND uid = ?", (platform, uid)
+        ).fetchone()
+        if row is not None:
+            return row["token"]
+        token = secrets.token_urlsafe(20)
+        conn.execute(
+            "INSERT INTO web_access_tokens (platform, uid, token, created_at) VALUES (?, ?, ?, ?)",
+            (platform, uid, token, int(time.time())),
+        )
+        conn.commit()
+        return token
+    finally:
+        conn.close()
+
+
+def regenerate_web_token(platform: str, uid: str) -> str:
+    uid = get_primary_uid(platform, uid)
+    token = secrets.token_urlsafe(20)
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            INSERT INTO web_access_tokens (platform, uid, token, created_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT (platform, uid) DO UPDATE SET token = excluded.token, created_at = excluded.created_at
+            """,
+            (platform, uid, token, int(time.time())),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return token
 
 
 def bind_extra_account(platform: str, uid: str, main_uid: str) -> None:
@@ -456,7 +530,7 @@ def set_current_day(platform: str, day: str) -> None:
     set_setting(f"global_days:{platform}", day)
 
 
-FEATURE_KEYS = {"wish", "gift", "auction", "appointment", "letters"}
+FEATURE_KEYS = {"wish", "gift", "auction", "appointment", "letters", "forum", "relationship"}
 
 
 def is_feature_enabled(feature_key: str) -> bool:
@@ -466,6 +540,14 @@ def is_feature_enabled(feature_key: str) -> bool:
 
 def set_feature_enabled(feature_key: str, enabled: bool) -> None:
     set_setting(f"feature_enabled:{feature_key}", "1" if enabled else "0")
+
+
+def is_private_chat_enabled() -> bool:
+    return get_setting("private_chat_enabled") == "1"  # 默认关闭，管理员显式开启才允许私聊
+
+
+def set_private_chat_enabled(enabled: bool) -> None:
+    set_setting("private_chat_enabled", "1" if enabled else "0")
 
 
 def get_admin_password() -> str | None:

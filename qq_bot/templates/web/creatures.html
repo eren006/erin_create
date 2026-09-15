@@ -1,0 +1,43 @@
+{% extends "web/base.html" %}
+{% block title %}照料神奇生物{% endblock %}
+{% block body %}
+<div class="card">
+  <h2>🐾 照料神奇生物</h2>
+  <p class="muted">三年级前两天（第{{ start_day }}~{{ end_day }}天）限定的活动，呼应新解锁的保护神奇动物学。
+     照料一次要等冷却，遇到的生物有不同稀有度，越稀有加隆越多。每次照料还有独立的小概率
+     （不管这次照料成不成功）意外撞见一只谁都没见过的珍稀宠物，直接进背包——一辈子只有一次机会。
+     活动结束次日会给当时驯养成功总数第一的人颁"海格的得意门生"称号和绝版纪念手册。</p>
+
+  {% if not is_open %}
+  <p class="flash warn">现在不是第{{ start_day }}~{{ end_day }}天，活动还没开始或者已经结束了。</p>
+  {% else %}
+  <div class="stat"><span>我的累计驯养成功</span><b>{{ my_total }}</b></div>
+  <div class="stat"><span>今天已照料</span><b>{{ my_today }}</b></div>
+  {% if cooldown_remaining > 0 %}
+  <p class="muted">生物们还没休息够，约{{ (cooldown_remaining // 60) + 1 }}分钟后可以再照料一次。</p>
+  <form method="post"><button disabled>照料神奇生物</button></form>
+  {% else %}
+  <form method="post"><button>照料神奇生物</button></form>
+  {% endif %}
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>🏆 全服排行榜</h2>
+  {% if leaderboard %}
+  <div class="scroll"><table>
+    <tr><th>#</th><th>姓名</th><th>学院</th><th>驯养成功数</th></tr>
+    {% for r in leaderboard %}
+    <tr>
+      <td>{{ loop.index }}</td>
+      <td>{{ r.name }}{% if r.surname %}·{{ r.surname }}{% endif %}</td>
+      <td>{{ r.house }}</td>
+      <td>{{ r.total }}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}
+  <p class="muted">还没有人成功驯养过生物。</p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,6 +1,8 @@
 """上课：消耗体力并增加课堂疲劳，获得学科经验和魔咒进度。
 
-每天全科共享8点疲劳上限，每完成一节计分课疲劳+1；同一门课每天前2节计分。
+每天全科共享8点疲劳上限，每完成一节计分课疲劳+1；同一门课每天前3节计分。
+全科上限没跟着单科上限一起涨，所以解锁科目一多，根本没法每门都上够——
+必须挑重点，这也是低年级不可能所有学科都拿高分的原因。
 疲劳满后，三门实操课仍能继续加练魔咒，但不再获得学科经验和课堂表现奖励。
 """
 
@@ -9,11 +11,27 @@ from plugins.hp_core import storage as core_storage
 
 from . import subjects
 
-STAMINA_COST = 4
 DAILY_GLOBAL_LIMIT = 8  # 玩家侧显示为疲劳值上限
-DAILY_LIMIT_PER_SUBJECT = 2
+DAILY_LIMIT_PER_SUBJECT = 3
 DAILY_EXP_LESSONS = DAILY_LIMIT_PER_SUBJECT  # 保留给旧调用方；现在允许上的课都会计分
 EXP_PER_LESSON = 8
+
+# 年级切换日：与 hp_events.grading.GRADE_END_DAY（1:4,2:8,3:12,4:16,5:21,6:25,7:30）
+# 各+1，即每个年级最后一天结束后的第一天。日历轮询(hp_events.CALENDAR_POLL_MINUTES=30分钟)
+# 要等这一天开始后才会跑学年结算，跳天和结算之间有个最长30分钟的空档——这段时间里
+# 玩家的年级字段还没被推到下一级。这里用同样30分钟的宽限期直接封住上课入口，
+# 免得有人卡这个空档用旧年级的身份把课蹭了，导致新年级的第一天数据对不上。
+NEW_GRADE_START_DAYS = {5, 9, 13, 17, 22, 26, 31}
+SETTLEMENT_GRACE_SECONDS = 30 * 60
+
+
+def in_settlement_grace_window(day: int) -> bool:
+    return day in NEW_GRADE_START_DAYS and core_storage.seconds_since_beijing_midnight() < SETTLEMENT_GRACE_SECONDS
+
+
+def stamina_cost_for_grade(grade: int) -> int:
+    """年级越高课业越重，上一节课耗的体力也跟着涨：2年级8点，每升一级+1点。"""
+    return 6 + grade
 
 
 class LessonError(Exception):
@@ -26,6 +44,10 @@ def check_lesson_available(uid: str, subject_input: str) -> tuple:
     if not player or not player["house"]:
         raise LessonError("你还没有分院，先发「/入学」完成入学测试。")
 
+    day = core_storage.get_current_day() or 1
+    if in_settlement_grace_window(day):
+        raise LessonError("教务处还在统计上一学年的成绩，半小时后再来上课。")
+
     found = subjects.find(subject_input.strip())
     if not found:
         names = "、".join(name for _, name, _, _ in subjects.SUBJECTS)
@@ -34,7 +56,6 @@ def check_lesson_available(uid: str, subject_input: str) -> tuple:
     if player["grade"] < unlock_grade:
         raise LessonError(f"「{name}」要到{unlock_grade}年级才能上，你现在是{player['grade']}年级。")
 
-    day = core_storage.get_current_day() or 1
     today_count = core_storage.get_lesson_count(uid, key, day)
     fatigue = core_storage.get_total_scored_lesson_count(uid, day)
     is_spell_subject = key in spell_catalog.SPELL_SUBJECTS
@@ -51,11 +72,13 @@ def check_lesson_available(uid: str, subject_input: str) -> tuple:
         )
 
     player = core_storage.sync_stamina(uid)
-    if player["stamina"] < STAMINA_COST:
+    stamina_cost = stamina_cost_for_grade(player["grade"])
+    if player["stamina"] < stamina_cost:
         wait_min = core_storage.seconds_to_next_stamina(player) // 60 + 1
         raise LessonError(
             f"你握着魔杖的手已经有些发沉，当前体力{player['stamina']}/{core_storage.STAMINA_MAX}，"
-            f"上完一节课需要{STAMINA_COST}点。先休息一下，约{wait_min}分钟后会恢复一轮体力。"
+            f"{player['grade']}年级的课业更重，上完一节课需要{stamina_cost}点。"
+            f"先休息一下，约{wait_min}分钟后会恢复一轮体力。"
         )
     return player, found
 
@@ -93,7 +116,7 @@ def take_lesson(uid: str, subject_input: str) -> dict:
     subject_scored_count = core_storage.get_scored_lesson_count(uid, key, day)
     fatigue_before = core_storage.get_total_scored_lesson_count(uid, day)
 
-    core_storage.spend_stamina(uid, STAMINA_COST)
+    core_storage.spend_stamina(uid, stamina_cost_for_grade(player["grade"]))
     core_storage.increment_lesson_count(uid, key, day)
 
     gives_exp = (

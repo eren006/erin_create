@@ -23,21 +23,33 @@ BALL_START_HOUR = 20
 BALL_END_HOUR = 23
 
 TREE_ORNAMENTS = [
-    ("星星", "一颗歪歪扭扭但很努力的锡纸星星", 3),
-    ("彩球", "会自己变换颜色的玻璃彩球", 3),
-    ("糖果拐杖", "薄荷味的，据说有人偷咬过一口", 2),
-    ("小雪人", "施了咒的雪人，会对路过的人挥手", 4),
-    ("金铃铛", "碰一下会响半分钟", 4),
-    ("蜡烛", "永远不会烧完，也不会点着树", 3),
-    ("槲寄生", "挂高一点，不然底下总有人排队", 5),
-    ("猫头鹰挂饰", "很像你的猫头鹰，就是不会叫", 4),
+    ("星星", "一颗歪歪扭扭但很努力的锡纸星星"),
+    ("彩球", "会自己变换颜色的玻璃彩球"),
+    ("糖果拐杖", "薄荷味的，据说有人偷咬过一口"),
+    ("小雪人", "施了咒的雪人，会对路过的人挥手"),
+    ("金铃铛", "碰一下会响半分钟"),
+    ("蜡烛", "永远不会烧完，也不会点着树"),
+    ("槲寄生", "挂高一点，不然底下总有人排队"),
+    ("猫头鹰挂饰", "很像你的猫头鹰，就是不会叫"),
 ]
-ORNAMENTS_BY_NAME = {name: (name, desc, points) for name, desc, points in TREE_ORNAMENTS}
+ORNAMENTS_BY_NAME = {name: (name, desc) for name, desc in TREE_ORNAMENTS}
+
+TREE_HANG_POINTS_MIN = 2  # 挂哪种装饰不影响点数，每次挂上去现掷一个2-5的随机点数
+TREE_HANG_POINTS_MAX = 5
 
 TREE_GOAL_PER_PLAYER = 25  # 目标 = 全校人数 × 这个数，人多目标才高
 TREE_GOAL_MIN = 60
 HANG_COOLDOWN_SECONDS = 30 * 60
 TREE_REWARD_GALLEONS = 40
+
+# 树点亮的瞬间额外给贡献前三名颁奖，跟人人都能领的参与礼（TREE_REWARD_GALLEONS）分开算，
+# 奖励重复挂饰的人，不是随便挂一个就跟拼手速的人拿一样多。
+TREE_RANK_REWARDS = [
+    ("圣诞树装饰冠军", 150),
+    ("圣诞树装饰亚军", 90),
+    ("圣诞树装饰季军", 50),
+]
+TREE_RANK_TITLE_PREFIX = "tree_decorator_rank"
 
 ROBE_COLORS = ["午夜蓝", "祖母绿", "酒红", "银白", "墨黑", "香槟金", "淡紫", "雪青", "赭石", "孔雀蓝"]
 ROBE_STYLES = ["长摆礼袍", "立领礼服", "束腰长裙", "双排扣礼服", "斗篷式礼袍", "简约直筒", "缀满褶皱的裙撑", "剪裁利落的三件套"]
@@ -225,7 +237,7 @@ def attend(uid: str) -> dict:
     storage.mark_ball_attended(uid, year, bool(robe))
 
     player = core_storage.get_player(uid)
-    core_storage.add_house_points(player["house"], ATTEND_HOUSE_POINTS)
+    core_storage.add_house_points(player["house"], ATTEND_HOUSE_POINTS, uid)
 
     result = {
         "robe": robe,
@@ -292,6 +304,32 @@ def tree_state() -> dict:
     }
 
 
+def _award_tree_top_contributors(year: int) -> list[dict]:
+    """树点亮那一刻结算一次贡献榜前三名，颁一次性称号+加隆奖励。"""
+    top = storage.tree_contributor_leaderboard(year, len(TREE_RANK_REWARDS))
+    awards = []
+    for rank, row in enumerate(top):
+        title_name, galleons = TREE_RANK_REWARDS[rank]
+        core_storage.add_galleons(row["uid"], galleons)
+        core_storage.unlock_title(row["uid"], f"{TREE_RANK_TITLE_PREFIX}{rank + 1}_y{year}")
+        awards.append(
+            {
+                "uid": row["uid"],
+                "rank": rank + 1,
+                "title": title_name,
+                "galleons": galleons,
+                "points": row["total"],
+            }
+        )
+    return awards
+
+
+def tree_contributor_leaderboard(year: int | None = None, limit: int = 10) -> list[dict]:
+    if year is None:
+        year = _year_of(core_storage.get_current_day() or 1)
+    return [dict(row) for row in storage.tree_contributor_leaderboard(year, limit)]
+
+
 def hang(uid: str, ornament_input: str) -> dict:
     _require_player(uid)
     day = core_storage.get_current_day() or 1
@@ -304,9 +342,10 @@ def hang(uid: str, ornament_input: str) -> dict:
     item = ORNAMENTS_BY_NAME.get(ornament_input.strip())
     if not item:
         raise ChristmasError(
-            "没有这种装饰。可挂的：" + "、".join(name for name, _, _ in TREE_ORNAMENTS)
+            "没有这种装饰。可挂的：" + "、".join(name for name, _ in TREE_ORNAMENTS)
         )
-    name, desc, points = item
+    name, desc = item
+    points = random.randint(TREE_HANG_POINTS_MIN, TREE_HANG_POINTS_MAX)
 
     year = _year_of(day)
     last = storage.last_tree_hang_at(uid, year)
@@ -321,6 +360,7 @@ def hang(uid: str, ornament_input: str) -> dict:
     was_done = storage.get_tree_progress(year) >= goal
     progress = storage.add_tree_hang(uid, year, name, points)
     just_completed = not was_done and progress >= goal
+    rank_awards = _award_tree_top_contributors(year) if just_completed else []
 
     return {
         "ornament": name,
@@ -329,6 +369,7 @@ def hang(uid: str, ornament_input: str) -> dict:
         "progress": progress,
         "goal": goal,
         "just_completed": just_completed,
+        "rank_awards": rank_awards,
     }
 
 
@@ -363,3 +404,131 @@ def tree_reward_state(uid: str) -> dict:
         "participated": storage.has_hung_on_tree(uid, year),
         "claimed": storage.has_claimed_tree_reward(uid, year),
     }
+
+
+# ======================== 圣诞：大餐 ========================
+
+FEAST_DISHES = [
+    ("鼠尾草黄油烤火鸡", "整只火鸡抹了鼠尾草黄油进炉，皮脆得一碰就掉渣"),
+    ("白兰地火焰圣诞布丁", "浇一勺白兰地点着端上桌，硬币就趁着火光被搅进了你那份"),
+    ("培根卷迷你香肠串", "一口一个，培根卷得整整齐齐，走一圈能顺走一整盘"),
+    ("鼠尾草洋葱面包屑填料", "塞在火鸡肚子里焖出来的，比火鸡本身还抢手"),
+    ("约克郡布丁佐肉汁", "外壳鼓得像小碗，专门用来接肉汁"),
+    ("蜜汁栗子抱子甘蓝", "苦涩的抱子甘蓝被蜂蜜栗子哄得服服帖帖"),
+    ("蜂蜜烤防风草根", "长得像胡萝卜，甜得却像糖水煮过"),
+    ("蔓越莓酱烤金土豆", "外壳烤得金黄咯吱响，酸甜酱是灵魂"),
+    ("陈年车达奶酪拼盘", "配一小块饼干，吃完满手都是奶酪香"),
+    ("雪莉酒英式圣诞松糕", "海绵蛋糕吸饱了雪莉酒，一层奶油一层果酱叠上去"),
+    ("白兰地黄油百果馅派", "小小一个，馅料甜得发腻，配一勺白兰地黄油刚刚好"),
+    ("肉桂热红酒炖梨", "整颗梨炖得酒香扑鼻，小口喝汤最烫嘴"),
+    ("巧克力圣诞柴薪蛋糕", "做成木柴的样子，切开全是夹心巧克力"),
+    ("肉豆蔻蛋奶热酒", "撒一层现磨肉豆蔻，喝一口浑身都暖"),
+]
+FEAST_PUDDING_DISH = "白兰地火焰圣诞布丁"
+FEAST_EAT_COOLDOWN_SECONDS = 60 * 60
+FEAST_SMALL_GIFT_CHANCE = 0.3
+FEAST_SMALL_GIFT_POOL = [
+    "snack_pumpkin_pasty", "snack_chocolate_frog", "snack_fizzing_whizzbee", "snack_liquorice_wand",
+]
+FEAST_PUDDING_GALLEONS = 100
+FEAST_PUDDING_DRAW_HOUR = 22
+
+
+def feast_state(uid: str) -> dict:
+    day = core_storage.get_current_day() or 1
+    year = _year_of(day)
+    last = storage.last_feast_eat_at(uid, year)
+    now = core_storage.now()
+    cooldown_remaining = max(0, FEAST_EAT_COOLDOWN_SECONDS - (now - last)) if last else 0
+    return {
+        "is_christmas": is_christmas(day),
+        "dishes": FEAST_DISHES,
+        "eaten": storage.list_feast_dishes_eaten(uid, year),
+        "cooldown_remaining": cooldown_remaining,
+        "can_eat": is_christmas(day) and cooldown_remaining <= 0,
+        "has_pudding_entry": storage.has_pudding_entry(uid, year),
+    }
+
+
+def eat_feast(uid: str, dish: str) -> dict:
+    _require_player(uid)
+    day = core_storage.get_current_day() or 1
+    if not is_christmas(day):
+        nxt = next_christmas(day)
+        raise ChristmasError(
+            f"今天没有圣诞大餐。{'下一次在第' + str(nxt) + '天。' if nxt else ''}"
+        )
+    valid_names = {name for name, _ in FEAST_DISHES}
+    if dish not in valid_names:
+        raise ChristmasError("菜单上没有这道菜。可选：" + "、".join(valid_names))
+
+    year = _year_of(day)
+    last = storage.last_feast_eat_at(uid, year)
+    now = core_storage.now()
+    if last and now - last < FEAST_EAT_COOLDOWN_SECONDS:
+        wait = (FEAST_EAT_COOLDOWN_SECONDS - (now - last)) // 60 + 1
+        raise ChristmasError(f"刚吃过一道菜，肚子还没消化。{wait}分钟后再来。")
+
+    gift_key = ""
+    if random.random() < FEAST_SMALL_GIFT_CHANCE:
+        gift_key = random.choice(FEAST_SMALL_GIFT_POOL)
+        from plugins.hp_school import storage as school_storage
+        school_storage.add_item(uid, gift_key, 1)
+
+    storage.add_feast_eat(uid, year, dish, gift_key)
+    got_pudding_entry = False
+    if dish == FEAST_PUDDING_DISH and not storage.has_pudding_entry(uid, year):
+        storage.add_pudding_entry(uid, year)
+        got_pudding_entry = True
+
+    gift_name = ""
+    if gift_key:
+        from plugins.hp_school import shop_catalog
+        item = shop_catalog.find(gift_key)
+        gift_name = item[1] if item else ""
+
+    return {
+        "dish": dish,
+        "gift": gift_name,
+        "got_pudding_entry": got_pudding_entry,
+        "variety": len(storage.list_feast_dishes_eaten(uid, year)),
+    }
+
+
+def feast_leaderboard(year: int | None = None, limit: int = 10) -> list[dict]:
+    if year is None:
+        year = _year_of(core_storage.get_current_day() or 1)
+    return [dict(row) for row in storage.feast_variety_leaderboard(year, limit)]
+
+
+def draw_pudding_winner(year: int) -> dict | None:
+    """从今年吃过圣诞布丁的人里随机抽一个，赢 100 加隆——传统布丁藏硬币的老规矩。
+    结果落库防重复抽，同一年只会抽一次。"""
+    if storage.get_pudding_draw(year):
+        return None
+    entrants = storage.list_pudding_entrants(year)
+    if not entrants:
+        return None
+    winner = random.choice(entrants)
+    storage.record_pudding_draw(year, winner, FEAST_PUDDING_GALLEONS)
+    core_storage.add_galleons(winner, FEAST_PUDDING_GALLEONS)
+    return {"winner": winner, "galleons": FEAST_PUDDING_GALLEONS, "year": year}
+
+
+def maybe_draw_pending_puddings() -> dict | None:
+    """没有独立的定时任务进程，靠有人访问网页时顺手结算——
+    圣诞节当天22点之后，或者那天已经过去了，就把还没抽的那年布丁奖抽掉。"""
+    current_day = core_storage.get_current_day() or 1
+    hour = time.localtime().tm_hour
+    for day in sorted(christmas_days()):
+        if day > current_day:
+            break
+        if day == current_day and hour < FEAST_PUDDING_DRAW_HOUR:
+            continue
+        year = _year_of(day)
+        if storage.get_pudding_draw(year):
+            continue
+        result = draw_pudding_winner(year)
+        if result:
+            return result
+    return None

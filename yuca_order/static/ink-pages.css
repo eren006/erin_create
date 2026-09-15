@@ -1,0 +1,141 @@
+/* Shared interior design; other appearance themes keep their own palette. */
+.inner-masthead,.inner-footer{display:none}
+[data-theme="ink"]{--bg:#101010;--surface:#191919;--surface2:#222;--border:#363636;--accent:#ce142b;--accent2:#ff677a;--text:#ededed;--muted:#aaa;--red:#ff677a;--green:#7fb59b;--warn:#d5a463;--gold:#c9ad70;--input-bg:#121212;--input-placeholder:#808080;--topbar-bg:rgba(16,16,16,.96);--menu-bg:#181818;--body-g1:transparent;--body-g2:transparent}
+[data-theme="ink"] .inner-layout{max-width:1440px;margin:auto}
+[data-theme="ink"] .inner-masthead{display:flex;align-items:center;justify-content:space-between;min-height:216px;margin:24px 32px 0;padding:38px 52px;border:1px solid #333;position:relative;isolation:isolate;overflow:hidden;background:#111 url('ink-landscape-v3.jpg') center 43%/cover}
+[data-theme="ink"] .inner-masthead:before{content:'';position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,rgba(10,10,10,.93),rgba(10,10,10,.7) 50%,rgba(10,10,10,.3))}
+[data-theme="ink"] .masthead-kicker{font-size:11px;letter-spacing:.22em;color:#ddd;margin-bottom:17px}
+[data-theme="ink"] .masthead-kicker span{font-size:9px;color:#a3a3a3;margin-left:10px;letter-spacing:.15em}
+[data-theme="ink"] .inner-masthead h1{font:36px/1.5 "Songti SC","STSong",serif;letter-spacing:.12em;color:#f0f0f0}
+[data-theme="ink"] .inner-masthead p{font-size:12px;color:#b8b8b8;margin-top:12px;letter-spacing:.08em}
+[data-theme="ink"] .masthead-seal{border:1px solid #e33a4d;color:#ef465b;padding:7px 6px;font:17px/1.2 "Songti SC",serif;letter-spacing:.12em;transform:rotate(-5deg);flex-shrink:0;margin-left:20px}
+[data-theme="ink"] .inner-content>.page{max-width:1160px;padding:38px 28px 56px;width:100%}
+[data-theme="ink"] .inner-content .page-title{font:26px/1.5 "Songti SC","STSong",serif;letter-spacing:.12em;color:#eee;margin-bottom:26px;display:flex;align-items:center;gap:13px}
+[data-theme="ink"] .inner-content .page-title:before{content:'';width:3px;height:22px;background:var(--accent);flex-shrink:0}
+[data-theme="ink"] .inner-content .card{padding:26px 28px;border-radius:3px;background:linear-gradient(135deg,#1c1c1c,#171717);box-shadow:0 8px 30px #0002;margin-bottom:20px;border-color:#353535}
+[data-theme="ink"] .inner-content .card-sm{border-radius:3px;padding:16px 18px;background:#191919;box-shadow:none}
+[data-theme="ink"] .inner-content .fg{gap:8px;margin-bottom:22px;min-width:0}
+[data-theme="ink"] .inner-content .fl{font-size:12px;letter-spacing:.035em;color:#bdbdbd}
+[data-theme="ink"] .inner-content .fi,[data-theme="ink"] .inner-content .fs,[data-theme="ink"] .inner-content .ft{border:1px solid #414141;padding:12px 14px;border-radius:2px;line-height:1.5;background:#121212;color:#eee}
+[data-theme="ink"] .inner-content .fi:focus,[data-theme="ink"] .inner-content .fs:focus,[data-theme="ink"] .inner-content .ft:focus{border-color:#ed3b52;box-shadow:0 0 0 3px #ce142b1a}
+[data-theme="ink"] .inner-content input[readonly]{background:#202020;color:#aaa;border-style:dashed}
+[data-theme="ink"] .inner-content .ft{min-height:130px}
+[data-theme="ink"] .inner-content .btn{justify-content:center;min-height:40px;padding:10px 20px;letter-spacing:.035em;border-radius:2px;line-height:1.5}
+[data-theme="ink"] .inner-content .btn-primary{background:#bc1429;color:white;border:1px solid #e43147}
+[data-theme="ink"] .inner-content .btn-primary:hover{background:#dc1b34;color:white}
+[data-theme="ink"] .inner-content .btn-sm{min-height:32px;padding:6px 12px;font-size:12px}
+[data-theme="ink"] .inner-content .btn-ghost{color:#c5c5c5;border-color:#484848}
+[data-theme="ink"] .inner-content .btn-ghost:hover{background:#292929;color:#fff;border-color:#888}
+[data-theme="ink"] .inner-content .badge,[data-theme="ink"] .inner-content .tag{border-radius:3px;padding:3px 9px}
+[data-theme="ink"] .inner-content .table-wrap{border-radius:2px}
+[data-theme="ink"] .inner-content th{background:#222;font-size:11px;letter-spacing:.06em;color:#b6b6b6;padding:14px 16px;white-space:nowrap}
+[data-theme="ink"] .inner-content td{padding:15px 16px;border-bottom-color:#303030;line-height:1.7}
+[data-theme="ink"] .inner-content tr:hover td{background:#ffffff04}
+[data-theme="ink"] .inner-content .g2,[data-theme="ink"] .inner-content .g3{gap:22px}
+[data-theme="ink"] .inner-content .mono{font-size:12px;overflow-wrap:anywhere}
+[data-theme="ink"] .inner-footer{display:flex;justify-content:space-between;max-width:1120px;margin:0 auto;padding:24px 28px;border-top:1px solid #333;font-size:10px;color:#888;letter-spacing:.12em}
+[data-theme="ink"] .inner-footer a{color:#aaa}
+/* Split artwork and account form. */
+[data-theme="ink"] .auth-page .inner-layout{display:grid;grid-template-columns:1fr 1fr;max-width:1100px;margin:56px auto;min-height:590px;border:1px solid #333;background:#171717}
+[data-theme="ink"] .auth-page .inner-masthead{margin:0;min-height:100%;padding:54px 44px;border:0;border-right:1px solid #333;align-items:flex-start;background-position:48% center;background-size:auto 100%}
+[data-theme="ink"] .auth-page .inner-masthead:before{background:linear-gradient(180deg,#09090933,#09090905 45%,#0909097d)}
+[data-theme="ink"] .auth-page .inner-masthead h1{font-size:48px;line-height:1.6;margin-top:44px;letter-spacing:.16em;text-shadow:0 3px 25px #000}
+[data-theme="ink"] .auth-page .inner-masthead p{max-width:220px;line-height:2;margin-top:24px}
+[data-theme="ink"] .auth-page .masthead-seal{position:absolute;bottom:34px;right:30px}
+[data-theme="ink"] .auth-page .inner-content{display:flex;align-items:center;min-width:0}
+[data-theme="ink"] .auth-page .inner-content>.page{max-width:none!important;padding:42px 44px}
+[data-theme="ink"] .auth-page .inner-content .card{padding:0;background:none;border:0;box-shadow:none;margin-bottom:0}
+[data-theme="ink"] .auth-page .inner-content .page-title{font-size:28px;margin-bottom:32px}
+[data-theme="ink"] .auth-page .inner-content .btn-primary{width:100%;margin-top:8px;min-height:46px}
+/* Commission steps. */
+[data-theme="ink"] .on-wrap{max-width:820px;padding:34px 28px 64px;min-height:0}
+[data-theme="ink"] .s1-head{text-align:left;padding:4px 0 28px}
+[data-theme="ink"] .s1-title{font:28px "Songti SC",serif;background:none;-webkit-text-fill-color:#eee;letter-spacing:.12em}
+[data-theme="ink"] .s1-sub{font-size:12px;margin-top:14px}
+[data-theme="ink"] .tenant-grid{gap:18px}
+[data-theme="ink"] .tenant-card{padding:30px;text-align:left;border:1px solid #424242;border-radius:3px;background:linear-gradient(135deg,#202020,#151515)}
+[data-theme="ink"] .tenant-card:after{border-radius:2px}
+[data-theme="ink"] .tenant-card.closed-card{opacity:1;border-style:dashed}
+[data-theme="ink"] .tc-icon{font:40px Georgia,serif;color:#ff677a;margin-bottom:20px;filter:grayscale(1)}
+[data-theme="ink"] .tc-name{font:23px "Songti SC",serif;margin-bottom:12px;letter-spacing:.06em}
+[data-theme="ink"] .tc-badge{border-radius:3px;margin-top:20px}
+[data-theme="ink"] #step2{padding:30px;background:#191919;border:1px solid #393939}
+[data-theme="ink"] .s2-head{padding-bottom:24px;margin-bottom:28px;gap:16px}
+[data-theme="ink"] .s2-name{font:25px "Songti SC",serif;letter-spacing:.08em}
+[data-theme="ink"] .s2-sub{margin-top:7px}
+[data-theme="ink"] .dform-heading{font:20px "Songti SC",serif;color:#eee;border-bottom-color:#444;padding:18px 0 14px;margin:20px 0}
+[data-theme="ink"] .radio-opt span{border-radius:2px;padding:10px 18px}
+[data-theme="ink"] .radio-opt input:focus-visible+span{outline:2px solid #ff677a;outline-offset:3px}
+[data-theme="ink"] .submit-row{border-top:1px solid #363636;padding-top:24px;flex-wrap:wrap}
+[data-theme="ink"] .receipt-seal{display:grid;place-items:center;width:64px;height:64px;margin:0 auto 24px;border:2px solid #ce142b;color:#ff677a;font:25px "Songti SC",serif;transform:rotate(-5deg)}
+/* Dense workspace panels. */
+/* 后台每天要用，横幅压成一行标识，抒情副标题留给对外页面 */
+[data-theme="ink"] .workspace-page .inner-masthead{min-height:0;padding:16px 40px}
+[data-theme="ink"] .workspace-page .masthead-kicker{margin-bottom:8px}
+[data-theme="ink"] .workspace-page .inner-masthead h1{font-size:21px;letter-spacing:.08em}
+[data-theme="ink"] .workspace-page .inner-masthead p{display:none}
+[data-theme="ink"] .workspace-page .masthead-seal{font-size:12px;padding:5px 5px}
+[data-theme="ink"] .stat-card{border-radius:3px;padding:24px;text-align:left;background:#191919;box-shadow:none;border-color:#3a3a3a}
+[data-theme="ink"] .stat-card.accent{border-color:#a62436;box-shadow:none;background:linear-gradient(135deg,#30171b,#191919)}
+[data-theme="ink"] .stat-num{font:42px/1.2 Georgia,serif;color:#eee!important}
+[data-theme="ink"] .stat-label{margin-top:12px;font-size:12px}
+[data-theme="ink"] .progress-bar-bg{background:#ffffff0d;height:3px;margin-top:18px}
+[data-theme="ink"] .progress-bar{background:#ce142b}
+[data-theme="ink"] .section-head{color:#ddd;letter-spacing:.08em;font-size:14px;margin:28px 0 15px}
+[data-theme="ink"] .section-head .cnt{background:#ffffff0a;color:#ccc}
+[data-theme="ink"] .tag-bot,[data-theme="ink"] .tag-web{background:#292929;color:#ccc;border-color:#484848}
+[data-theme="ink"] .tag-urgent,[data-theme="ink"] .tag-rush,[data-theme="ink"] .urgent-tag{background:#35171c;color:#ff8998;border:1px solid #73313b}
+[data-theme="ink"] .order-row{padding:14px 0;flex-wrap:wrap}
+[data-theme="ink"] .code-block{background:#141414;color:#ddd;border-color:#444;border-radius:2px}
+[data-theme="ink"] .copy-btn,[data-theme="ink"] .cmd-group td{background:#262626}
+[data-theme="ink"] .flow-box.hl{background:#30191d;border-color:#65303a;color:#eee}
+[data-theme="ink"] .fb-wrap{height:calc(100svh - 70px)}
+[data-theme="ink"] .fb-canvas-col{padding:32px;background:#111}
+[data-theme="ink"] .fb-panel-col{background:#1b1b1b}
+[data-theme="ink"] .fb-header h2{font:25px "Songti SC",serif;color:#eee}
+[data-theme="ink"] .fbc,[data-theme="ink"] .pal-item,[data-theme="ink"] .fb-empty{border-radius:3px}
+[data-theme="ink"] .fbc{padding:20px}
+[data-theme="ink"] .panel-title{letter-spacing:.12em}
+[data-theme="ink"] .pal-icon{filter:grayscale(1)}
+[data-theme="ink"] .s-待接单,[data-theme="ink"] .s-制作中,[data-theme="ink"] .s-草图阶段,[data-theme="ink"] .s-已完成,[data-theme="ink"] .s-已拒绝,[data-theme="ink"] .s-已撤单{background:#292929;color:#ddd;border:1px solid #444}
+[data-theme="ink"] .s-已拒绝{background:#35171c;color:#ff8998}
+@media(min-width:641px) and (max-width:1150px){[data-theme="ink"] .workspace-page .nav{overflow-x:auto;flex:1;min-width:0}[data-theme="ink"] .workspace-page .spacer{display:none}[data-theme="ink"] .workspace-page .topbar{padding:0 18px;gap:12px}[data-theme="ink"] .workspace-page .nav a{padding:5px 8px}}
+@media(max-width:1150px){[data-theme="ink"] .auth-page .inner-layout{margin:32px 24px}}
+@media(max-width:820px){[data-theme="ink"] .fb-wrap{height:auto;overflow:visible}[data-theme="ink"] .auth-page .inner-masthead{padding:35px 26px}[data-theme="ink"] .auth-page .inner-masthead h1{font-size:38px}[data-theme="ink"] .auth-page .inner-content>.page{padding:32px 28px}}
+@media(max-width:600px){
+[data-theme="ink"] .inner-masthead,[data-theme="ink"] .workspace-page .inner-masthead{margin:12px 12px 0;min-height:180px;padding:26px 22px}
+[data-theme="ink"] .inner-masthead h1,[data-theme="ink"] .workspace-page .inner-masthead h1{font-size:27px;letter-spacing:.05em}
+[data-theme="ink"] .inner-masthead p{font-size:11px;line-height:1.8;max-width:240px}
+[data-theme="ink"] .masthead-kicker{font-size:10px}.masthead-kicker span{display:none}
+[data-theme="ink"] .masthead-seal{font-size:13px;margin-left:10px}
+[data-theme="ink"] .inner-content>.page{padding:28px 16px 36px}
+[data-theme="ink"] .inner-content .page-title{font-size:23px;letter-spacing:.04em;gap:9px}
+[data-theme="ink"] .inner-content .card{padding:20px 16px}
+[data-theme="ink"] .inner-content .g2,[data-theme="ink"] .inner-content .g3{gap:16px}
+[data-theme="ink"] .inner-content .fi,[data-theme="ink"] .inner-content .fs,[data-theme="ink"] .inner-content .ft{font-size:16px}
+[data-theme="ink"] .inner-content .btn{min-height:42px;padding:9px 14px}
+[data-theme="ink"] .inner-content .btn-sm{min-height:36px;padding:6px 10px}
+[data-theme="ink"] .auth-page .inner-layout{display:block;margin:12px;min-height:0}
+[data-theme="ink"] .auth-page .inner-masthead{min-height:235px;padding:26px;border-right:0;border-bottom:1px solid #333;background-size:cover;background-position:center 35%}
+[data-theme="ink"] .auth-page .inner-masthead h1{font-size:31px;line-height:1.5;margin-top:20px}
+[data-theme="ink"] .auth-page .inner-masthead h1 br{display:none}
+[data-theme="ink"] .auth-page .inner-masthead p{margin-top:16px;max-width:230px}
+[data-theme="ink"] .auth-page .inner-content>.page{padding:30px 24px}
+[data-theme="ink"] .auth-page .inner-content .page-title{font-size:25px;margin-bottom:26px}
+[data-theme="ink"] .auth-page .inner-content .card{padding:0}
+[data-theme="ink"] .on-wrap{padding:28px 16px 40px}
+[data-theme="ink"] #step2{padding:22px 16px}
+[data-theme="ink"] .tenant-card{padding:24px}
+[data-theme="ink"] .stat-card{padding:18px 16px}
+[data-theme="ink"] .stat-num{font-size:34px}
+[data-theme="ink"] .fb-canvas-col{padding:22px 14px}
+[data-theme="ink"] .fb-header{flex-wrap:wrap}
+[data-theme="ink"] .inner-footer{margin:0 16px;padding:22px 0;font-size:9px;gap:16px}
+}
+@media(prefers-reduced-motion:reduce){[data-theme="ink"] .inner-page *{animation:none!important;transition:none!important}}
+
+/* 窄屏后台同样压缩（覆盖上面与对外页面共用的那条） */
+@media(max-width:600px){
+[data-theme="ink"] .workspace-page .inner-masthead{min-height:0;padding:14px 16px}
+[data-theme="ink"] .workspace-page .inner-masthead h1{font-size:19px;letter-spacing:.04em}
+}

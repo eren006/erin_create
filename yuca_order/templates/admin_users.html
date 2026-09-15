@@ -8,20 +8,21 @@
     <a href="{{ url_for('admin_orders') }}" class="btn btn-ghost btn-sm">← 订单列表</a>
   </div>
   {% if users %}
-  <div class="card" style="padding:0;overflow:hidden;">
+  <div class="card" style="padding:0;overflow-x:auto;-webkit-overflow-scrolling:touch;">
     <table>
-      <thead><tr><th>用户名</th><th>显示名</th><th>联系方式</th><th>状态</th><th>注册时间</th><th></th></tr></thead>
+      <thead><tr><th>用户名</th><th>显示名</th><th>联系方式</th><th>剩余次数</th><th>状态</th><th>注册时间</th><th></th></tr></thead>
       <tbody>
         {% for u in users %}
         <tr>
           <td class="mono">{{ u.username }}</td>
           <td>{{ u.display_name or '—' }}</td>
           <td style="color:var(--muted);font-size:12px;">{{ u.contact or '—' }}</td>
+          <td class="mono">{{ u.credit_available }}</td>
           <td>
             {% if u.is_active %}
-              <span class="badge" style="background:var(--green)22;color:var(--green);">正常</span>
+              <span class="badge" style="background:color-mix(in srgb,var(--green) 13%,transparent);color:var(--green);">正常</span>
             {% else %}
-              <span class="badge" style="background:var(--red)22;color:var(--red);">已禁用</span>
+              <span class="badge" style="background:color-mix(in srgb,var(--red) 13%,transparent);color:var(--red);">已禁用</span>
             {% endif %}
           </td>
           <td class="muted">{{ u.created_at|fmt }}</td>

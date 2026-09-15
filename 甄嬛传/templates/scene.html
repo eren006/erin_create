@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block title %}{{ title }}{% endblock %}
+{% block head %}
+<style>
+.scene-text{font-family:var(--kai);font-size:21px;line-height:1.9;margin:6px 0 20px;max-width:34em}
+.opt{display:block;margin:8px 0;padding:10px 14px;background:var(--paper);border:1px solid var(--line);cursor:pointer}
+.opt:has(input:checked){border-color:var(--zhu);box-shadow:inset 3px 0 0 var(--zhu)}
+.opt .hint{font-size:13px;color:var(--muted);margin-left:6px;white-space:nowrap}
+.opt select{margin:8px 0 0 22px}
+.outcome{font-family:var(--kai);font-size:20px;padding:12px 16px;border-left:4px solid var(--good);background:var(--paper)}
+.outcome.bad{border-left-color:var(--bad)}
+.mine{font-size:13px;color:var(--muted);margin-bottom:14px}
+</style>
+{% endblock %}
+{% block body %}
+<h2>{{ title }}</h2>
+<p class="scene-text">{{ text }}</p>
+{% if not done %}
+<p class="mine">你的容貌 {{ c.appearance }}、才艺 {{ c.talent }}、心计 {{ c.scheme }}、德行 {{ c.virtue }}、信任 {{ c.trust }}。标着「看某项」的选项，这一项加上运气过线就能成。</p>
+<form method="post">
+  {% for o in opts %}
+  <label class="opt"><input type="radio" name="opt" value="{{ loop.index0 }}" required> {{ o.text }}
+    <span class="hint">{{ '看' ~ CHECK_NAMES[o.stat] if o.stat else '稳妥' }}</span>
+    {% if o.get('plead') %}<br><select name="target_id" aria-label="替谁求情">{% for p in plead_targets %}<option value="{{ p.id }}">{{ dn(p) }}（{{ '冷宫' if p.status == 'cold' else '禁足' }}）</option>{% endfor %}</select>{% endif %}
+  </label>
+  {% endfor %}
+  <div style="margin-top:14px"><button>就这么办</button></div>
+</form>
+{% else %}
+<p class="muted">你：{{ chosen }}</p>
+<p class="outcome {{ '' if ok else 'bad' }}">{{ outcome }}</p>
+{% if summary %}<p class="muted">{{ summary }}</p>{% endif %}
+<p style="margin-top:18px"><a class="btn" href="{{ url_for('index') }}">回宫城</a></p>
+{% endif %}
+{% endblock %}

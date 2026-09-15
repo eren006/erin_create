@@ -15,7 +15,9 @@ core.DB_PATH = Path(_IMPORT_BOX.name) / "import.db"
 core.init_db()
 
 from plugins.hp_events import forest, storage as event_storage
-from plugins.hp_school import lesson_events, potions, storage as school_storage
+from plugins.hp_school import lesson_events, potions, storage as school_storage, tailor
+from plugins.hp_pet import storage as pet_storage
+from plugins.hp_social import friendship
 
 
 class PotionSystemTest(unittest.TestCase):
@@ -25,6 +27,9 @@ class PotionSystemTest(unittest.TestCase):
         core.init_db()
         school_storage.init_db()
         event_storage.init_db()
+        pet_storage.init_db()
+        friendship.init_db()
+        tailor.init_db()
         now = core.now()
         conn = core.get_conn()
         conn.execute(
@@ -129,7 +134,12 @@ class PotionSystemTest(unittest.TestCase):
         event_storage.create_run("u", my_hp=100, depth=6, phase="cleared", monster_key="troll")
         school_storage.add_item("u", "potion_wolfsbane", 1)
         potions.use("u", "狼毒药剂")
-        result = forest.go_deeper("u")
+        original_is_full_moon = forest.moon.is_full_moon
+        try:
+            forest.moon.is_full_moon = lambda day: True
+            result = forest.go_deeper("u")
+        finally:
+            forest.moon.is_full_moon = original_is_full_moon
         self.assertTrue(result["wolfsbane_potion"])
         run = event_storage.get_active_run("u")
         self.assertEqual(run["monster_key"], "werewolf")

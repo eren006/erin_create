@@ -11,6 +11,7 @@
   </nav>
   {% if rotating %}<p class="muted">这一类每3小时换一批，下次刷新约 {{ next_rotation }} 分钟后。</p>{% endif %}
   {% if cat == '礼物' %}<p class="muted">礼物是全服共享库存，每2小时补货，下次约 {{ next_restock }} 分钟后。</p>{% endif %}
+  {% if cat == '零食' %}<p class="muted">巧克力蛙全服每小时限量{{ frog_cap }}份，卖完等下一小时刷新。</p>{% endif %}
   <div class="grid">
     {% for it in items %}
     <div class="card" style="margin:0">

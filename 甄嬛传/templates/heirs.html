@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block title %}子嗣{% endblock %}
+{% block body %}
+<h2>皇嗣</h2>
+<p class="muted">侍寝后有机会怀上龙胎，诊出喜脉后再过两次结算临盆（约现实两天）。诞下皇子的母亲在有名额时晋一级位分。孕中要当心，宫里不是人人都盼着你平安生产。</p>
+{% if rows %}
+<div class="scroll"><table>
+  <tr><th>皇嗣</th><th>生母</th><th>生于 / 年龄</th><th></th></tr>
+  {% for h in rows %}{% set m = get_consort(h.mother_id) %}
+  <tr><td style="font-family:var(--kai);font-size:17px">{{ heir_label(h) }}{% if h.name %}<span class="muted" style="font-family:var(--song)">（{{ '皇子' if h.gender=='皇子' else '公主' }}）</span>{% endif %}</td>
+    <td>{{ dn(m) }}</td><td>{{ palace_date(h.born_day) }} / {{ age_text([0, (gs.day - 1 - h.born_day)*6]|max) }}</td>
+    <td>{% if h.mother_id == c.id and not h.name %}
+      <form method="post" class="row"><input type="hidden" name="heir_id" value="{{ h.id }}"><input name="name" maxlength="4" placeholder="取名" style="width:100px" aria-label="名字"><button class="plain">请皇上赐名</button></form>
+    {% endif %}</td></tr>
+  {% endfor %}
+</table></div>
+{% else %}<p>宫里还没有新的皇嗣降生。</p>{% endif %}
+{% endblock %}

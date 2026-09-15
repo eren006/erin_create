@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}写信给{{ target.name }} - 九霄仙门{% endblock %}
+{% block content %}
+<div class="card" style="max-width:480px;margin:40px auto">
+  <h3 style="margin-bottom:16px">写信给 {{ target.name }}</h3>
+  <form method="post">
+    <label>标题</label>
+    <input name="subject" value="{{ subject }}" required maxlength="40">
+    <label>正文</label>
+    <textarea name="body" rows="6">{{ body }}</textarea>
+    <label style="margin-top:10px">随信附上灵石(当前 {{ char.lingshi }})</label>
+    <input name="attach_lingshi" type="number" min="0" value="0">
+    <label style="margin-top:10px">随信附上材料</label>
+    <div style="display:flex;gap:8px">
+      <select name="attach_material_key" style="flex:1">
+        <option value="">不附材料</option>
+        {% for key, qty in materials_owned.items() %}
+        <option value="{{ key }}">{{ material_labels.get(key, key) }}(有{{ qty }})</option>
+        {% endfor %}
+      </select>
+      <input name="attach_material_qty" type="number" min="0" value="0" style="width:90px">
+    </div>
+    <label style="margin-top:10px">随信附上装备</label>
+    <div style="display:flex;gap:8px">
+      <select name="attach_equipment_key" style="flex:1">
+        <option value="">不附装备</option>
+        {% for item in equipment_owned %}
+        <option value="{{ item.item_key }}">{{ item.label }}(有{{ item.qty }})</option>
+        {% endfor %}
+      </select>
+      <input name="attach_equipment_qty" type="number" min="0" value="0" style="width:90px">
+    </div>
+    <p class="muted" style="margin-top:4px;font-size:12px">宗门制式配发、唯一法宝等绑定物品不可转赠,不会出现在上面的列表里</p>
+    <button class="btn btn-primary" style="margin-top:16px;width:100%">寄出</button>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,285 @@
+/* Two deliberately separate art directions, one shared functional interface. */
+.ballet-only{display:none}
+.masthead-kicker [data-theme-name]{display:inline!important;font-size:inherit!important;margin-left:0!important;letter-spacing:inherit!important}
+[data-theme="ballet"] .ballet-only{display:block}
+[data-theme="ballet"] .ink-only{display:none}
+.theme-picker{display:inline-flex;align-items:center;gap:7px;white-space:nowrap;font-size:11px;letter-spacing:.04em;flex-shrink:0;color:var(--text)}
+.theme-picker>span{font-size:10px;color:var(--muted)}
+.theme-picker select{font:inherit;letter-spacing:inherit;color:var(--text);background:var(--surface);border:1px solid var(--border);padding:6px 24px 6px 10px;border-radius:4px;min-height:34px;cursor:pointer;max-width:125px}
+.theme-picker select:focus-visible{outline:2px solid var(--accent2);outline-offset:3px}
+.hero-nav .theme-picker{letter-spacing:.03em}
+[data-theme="ballet"]{
+ --bg:#fff5f7;--surface:#fffafb;--surface2:#fbe8ed;--border:#e7c4cf;
+ --accent:#a64267;--accent2:#8c3657;--text:#593342;--muted:#85606e;
+ --red:#ad3552;--green:#4d7566;--gold:#956142;--warn:#99603b;
+ --shadow:rgba(119,50,75,.08);--topbar-bg:rgba(255,247,249,.96);--menu-bg:#fff7fa;
+ --input-bg:#fffdfd;--input-placeholder:#967180;--th-bg:#f8e5ec;
+ --flash-bg:#eff5f1;--flash-border:#b8d2c2;--flash-color:#426754;
+ --body-g1:rgba(244,179,200,.16);--body-g2:rgba(247,218,227,.28);color-scheme:light;
+}
+[data-theme="ballet"] body{background-color:var(--bg)}
+[data-theme="ballet"] .ink-stage{background:#f9e4e9;border:1px solid #e5bfc9;color:var(--text);border-radius:18px;margin:18px 24px 0;box-shadow:0 10px 50px #a7456510}
+[data-theme="ballet"] .landscape{background:radial-gradient(ellipse at 50% 55%,#fff9ee 0,#fae9e7 43%,#efd0db 100%)}
+[data-theme="ballet"] .landscape>*{display:none!important}
+[data-theme="ballet"] .ink-stage:after{background:linear-gradient(90deg,#fff5f53d,transparent 36%,transparent 65%,#fff5f54d),linear-gradient(0deg,#fff5f780,transparent 18%)}
+[data-theme="ballet"] .edition,[data-theme="ballet"] .hero-nav a,[data-theme="ballet"] .hero-nav .hn-name{color:#664052}
+[data-theme="ballet"] .hero-nav a:hover{color:#a64267}
+[data-theme="ballet"] .hero-heading{top:15%;width:60%}
+[data-theme="ballet"] .hero-heading p{color:#805466;font-size:10px;letter-spacing:.28em}
+[data-theme="ballet"] .hero-heading h1{color:#8b3e5a;text-shadow:0 2px 12px #fff8fa99;font-weight:400;font-size:clamp(64px,6.5vw,100px);letter-spacing:.2em}
+[data-theme="ballet"] .hero-heading>div{color:#75485b;letter-spacing:.22em}
+[data-theme="ballet"] .hero-left{top:43%;left:4%;width:270px;padding:24px 22px;background:#fff8fad9;border:1px solid #ffffffbd;border-radius:12px;box-shadow:0 8px 28px #93596b0d}
+[data-theme="ballet"] .hero-left h2,[data-theme="ballet"] .hero-query h2{font-family:"Songti SC","STSong",serif;font-size:26px;color:#693b4f;text-shadow:none;letter-spacing:.06em}
+[data-theme="ballet"] .hero-left p,[data-theme="ballet"] .hero-query label{color:#795363;text-shadow:none;font-size:12px;line-height:1.9}
+[data-theme="ballet"] .submit-link{width:100%;padding:13px 18px;margin-top:22px;background:#a64267;border-color:#a64267;color:#fff;font-size:14px;border-radius:6px;box-shadow:0 5px 12px #a642671a}
+[data-theme="ballet"] .submit-link:hover{background:#893553;color:white;transform:translateY(-2px)}
+[data-theme="ballet"] .hero-query{top:43%;right:4%;width:280px;padding:24px 22px;background:#fff8fad9;border:1px solid #ffffffbd;border-radius:12px;box-shadow:0 8px 28px #93596b0d}
+[data-theme="ballet"] .hero-query h2{font-size:24px;letter-spacing:.02em;white-space:nowrap}
+[data-theme="ballet"] .query-row{background:#fffafc;border-color:#cca2b0;border-radius:6px;overflow:hidden;min-height:44px}
+[data-theme="ballet"] .query-row input{color:#593342;font-size:13px}
+[data-theme="ballet"] .query-row input::placeholder{color:#967180}
+[data-theme="ballet"] .query-row button{background:#a64267;border-color:#a64267;color:#fff;padding:0 14px;font-size:13px}
+[data-theme="ballet"] .query-row button:hover{background:#893553}
+[data-theme="ballet"] .vertical-note{color:#926779}
+[data-theme="ballet"] .stage-footer{border-color:#bd8e9d80}
+[data-theme="ballet"] .availability,[data-theme="ballet"] .availability span,[data-theme="ballet"] .folio{color:#74485b}
+[data-theme="ballet"] .availability i.is-open{background:#a64267;box-shadow:0 0 8px #d688a0}
+[data-theme="ballet"] .motion-toggle{background:#fff5f7db;color:#805466;border-color:#d6afbd;border-radius:20px}
+[data-theme="ballet"] .motion-toggle:hover{color:#593342;border-color:#a64267}
+[data-theme="ballet"] .who-section{padding-top:54px}
+[data-theme="ballet"] .who-card{border-radius:10px;border:1px solid var(--border);background:#fffbfc;padding:20px 24px;margin-bottom:12px;box-shadow:0 4px 18px #a6426706}
+[data-theme="ballet"] .who-card.clickable:hover{background:#fceaf0;border-color:#cc8fa5}
+[data-theme="ballet"] .who-icon{color:#b16b86;font-family:"Songti SC","STSong",serif}
+[data-theme="ballet"] .site-footer{color:#85606e;border-color:#e7c4cf}
+.ballet-sparkles{position:absolute;inset:0;pointer-events:none;color:#b56f8b;z-index:-1}
+.ballet-sparkles span{position:absolute;font:28px Georgia,serif;opacity:.7;left:35%;top:40%}
+.ballet-sparkles span:nth-child(2){left:66%;top:36%;font-size:20px}
+.ballet-sparkles span:nth-child(3){left:59%;top:73%;font-size:17px}
+@media(prefers-reduced-motion:no-preference){
+ [data-theme="ballet"] .motion-enabled .ballet-sparkles span{animation:ballet-twinkle 5s ease-in-out infinite alternate}
+ [data-theme="ballet"] .motion-enabled .ballet-sparkles span:nth-child(2){animation-delay:-2s}
+ [data-theme="ballet"] .motion-enabled .ballet-sparkles span:nth-child(3){animation-delay:-4s}
+ [data-theme="ballet"] .motion-paused .ballet-sparkles span{animation-play-state:paused}
+}
+@keyframes ballet-twinkle{from{opacity:.25;transform:scale(.88)}to{opacity:.8;transform:scale(1.08)}}
+/* Interior pages keep functional contrast on soft illustrated surfaces. */
+[data-theme="ballet"] .topbar{height:70px;padding:0 4vw;box-shadow:none;border-color:var(--border)}
+[data-theme="ballet"] .logo{font:20px "Songti SC",serif;letter-spacing:.12em;color:#8c3657}
+[data-theme="ballet"] .mobile-menu{top:70px}
+[data-theme="ballet"] .inner-layout{max-width:1440px;margin:auto}
+[data-theme="ballet"] .inner-masthead{display:flex;align-items:center;justify-content:space-between;min-height:216px;margin:24px 32px 0;padding:38px 52px;border:1px solid #e7c4cf;border-radius:14px;position:relative;isolation:isolate;overflow:hidden;background:#f9e4e9 radial-gradient(ellipse at 70% 80%,#fff6e9,transparent 65%)}
+[data-theme="ballet"] .inner-masthead:before{content:'';position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,#fff5f7ed,#fff5f78c 60%,#fff5f730)}
+[data-theme="ballet"] .masthead-kicker{font-size:11px;letter-spacing:.2em;color:#805466;margin-bottom:17px}
+[data-theme="ballet"] .masthead-kicker>span:last-child{font-size:9px;color:#85606e;margin-left:10px;letter-spacing:.15em}
+[data-theme="ballet"] .inner-masthead h1{font:34px/1.6 "Songti SC","STSong",serif;letter-spacing:.09em;color:#754158}
+[data-theme="ballet"] .inner-masthead p{font-size:12px;color:#795363;margin-top:12px;letter-spacing:.06em}
+[data-theme="ballet"] .masthead-seal{display:grid;place-items:center;width:66px;height:66px;flex-shrink:0;margin-left:20px;border:1px solid #c789a0;border-radius:50%;background:#fff8face;color:#a64267;font:15px/1.35 "Songti SC","STSong",serif;letter-spacing:.14em;text-align:center;padding:0}
+[data-theme="ballet"] .inner-content>.page{max-width:1160px;padding:38px 28px 56px;width:100%}
+[data-theme="ballet"] .inner-content .page-title{font:26px/1.5 "Songti SC",serif;letter-spacing:.1em;color:#754158;margin-bottom:26px}
+[data-theme="ballet"] .inner-content .card{padding:26px 28px;border-radius:12px;background:#fffafb;box-shadow:0 6px 24px #a6426708;margin-bottom:20px}
+[data-theme="ballet"] .inner-content .card-sm{padding:16px 18px;border-radius:8px;background:#fffafb;box-shadow:none}
+[data-theme="ballet"] .inner-content .fg{gap:8px;margin-bottom:22px;min-width:0}
+[data-theme="ballet"] .inner-content .fl{font-size:12px;letter-spacing:.035em;color:#795363}
+[data-theme="ballet"] .inner-content .fi,[data-theme="ballet"] .inner-content .fs,[data-theme="ballet"] .inner-content .ft{padding:12px 14px;border-radius:6px;line-height:1.5;border-color:#dbb4c2}
+[data-theme="ballet"] .inner-content .ft{min-height:130px}
+[data-theme="ballet"] .inner-content input[readonly]{background:#f8edf1;color:#85606e;border-style:dashed}
+[data-theme="ballet"] .inner-content .btn{justify-content:center;min-height:40px;padding:10px 20px;letter-spacing:.035em;border-radius:6px;line-height:1.5}
+[data-theme="ballet"] .inner-content .btn-primary:hover{color:#fff}
+[data-theme="ballet"] .inner-content .btn-sm{min-height:32px;padding:6px 12px;font-size:12px}
+[data-theme="ballet"] .inner-content .badge,[data-theme="ballet"] .inner-content .tag{border-radius:5px;padding:3px 9px}
+[data-theme="ballet"] .inner-content th{font-size:11px;letter-spacing:.06em;padding:14px 16px;white-space:nowrap}
+[data-theme="ballet"] .inner-content td{padding:15px 16px;line-height:1.7}
+[data-theme="ballet"] .inner-content .g2,[data-theme="ballet"] .inner-content .g3{gap:22px}
+[data-theme="ballet"] .inner-footer{display:flex;justify-content:space-between;max-width:1120px;margin:0 auto;padding:24px 28px;border-top:1px solid var(--border);font-size:10px;color:#85606e;letter-spacing:.12em}
+[data-theme="ballet"] .auth-page .inner-layout{display:grid;grid-template-columns:1fr 1fr;max-width:1100px;margin:56px auto;min-height:590px;border:1px solid #e7c4cf;background:#fffafb;border-radius:16px;overflow:hidden}
+[data-theme="ballet"] .auth-page .inner-masthead{margin:0;min-height:100%;padding:54px 40px;border:0;border-right:1px solid #e7c4cf;border-radius:0;align-items:flex-start;background-position:50% center;background-size:auto 100%}
+[data-theme="ballet"] .auth-page .inner-masthead:before{background:linear-gradient(180deg,#fff5f799,transparent 65%,#fff5f71a)}
+[data-theme="ballet"] .auth-page .inner-masthead h1{font-size:42px;line-height:1.65;margin-top:30px;max-width:310px;letter-spacing:.12em}
+[data-theme="ballet"] .auth-page .inner-masthead p{max-width:255px;line-height:2;margin-top:20px}
+[data-theme="ballet"] .auth-page .masthead-seal{position:absolute;bottom:26px;right:30px}
+[data-theme="ballet"] .auth-page .inner-content{display:flex;align-items:center;min-width:0}
+[data-theme="ballet"] .auth-page .inner-content>.page{max-width:none!important;padding:42px 44px}
+[data-theme="ballet"] .auth-page .inner-content .card{padding:0;background:none;border:0;box-shadow:none;margin-bottom:0}
+[data-theme="ballet"] .auth-page .inner-content .page-title{font-size:28px;margin-bottom:32px}
+[data-theme="ballet"] .auth-page .inner-content .btn-primary{width:100%;margin-top:8px;min-height:46px}
+[data-theme="ballet"] .on-wrap{max-width:820px;padding:34px 28px 64px;min-height:0}
+[data-theme="ballet"] .s1-head{text-align:left;padding:4px 0 28px}
+[data-theme="ballet"] .s1-title{font:28px "Songti SC",serif;background:none;-webkit-text-fill-color:#754158;letter-spacing:.1em}
+[data-theme="ballet"] .s1-sub{font-size:12px;margin-top:14px}
+[data-theme="ballet"] .tenant-grid{gap:18px}
+[data-theme="ballet"] .tenant-card{padding:28px;text-align:left;border:1px solid #e3bccb;border-radius:12px;background:linear-gradient(135deg,#fffafb,#fbedf2)}
+[data-theme="ballet"] .tenant-card.closed-card{opacity:1;border-style:dashed}
+[data-theme="ballet"] .tc-icon{font:36px Georgia,serif;color:#b3758b;margin-bottom:18px}
+[data-theme="ballet"] .tc-name{font:23px "Songti SC",serif;margin-bottom:12px}
+[data-theme="ballet"] #step2{padding:30px;background:#fffafb;border:1px solid #e3bccb;border-radius:12px}
+[data-theme="ballet"] .s2-head{padding-bottom:24px;margin-bottom:28px;gap:16px}
+[data-theme="ballet"] .s2-name{font:25px "Songti SC",serif;letter-spacing:.06em}
+[data-theme="ballet"] .dform-heading{font:20px "Songti SC",serif;padding:18px 0 14px;margin:20px 0}
+[data-theme="ballet"] .radio-opt span{border-radius:6px;padding:10px 18px}
+[data-theme="ballet"] .radio-opt input:focus-visible+span{outline:2px solid #a64267;outline-offset:3px}
+[data-theme="ballet"] .submit-row{border-top:1px solid var(--border);padding-top:24px;flex-wrap:wrap}
+[data-theme="ballet"] .receipt-seal{display:grid;place-items:center;width:64px;height:64px;margin:0 auto 24px;border:1px solid #c789a0;border-radius:50%;color:#a64267;font:25px "Songti SC",serif}
+[data-theme="ballet"] .workspace-page .inner-masthead{min-height:0;padding:16px 40px}
+[data-theme="ballet"] .workspace-page .masthead-kicker{margin-bottom:8px}
+[data-theme="ballet"] .workspace-page .inner-masthead h1{font-size:21px;letter-spacing:.08em}
+[data-theme="ballet"] .workspace-page .inner-masthead p{display:none}
+[data-theme="ballet"] .workspace-page .masthead-seal{width:46px;height:46px;font-size:11px}
+[data-theme="ballet"] .stat-card{border-radius:10px;padding:24px;text-align:left;background:#fffafb;box-shadow:none;border-color:#e7c4cf}
+[data-theme="ballet"] .stat-card.accent{border-color:#c789a0;box-shadow:none;background:#fbe8ef}
+[data-theme="ballet"] .stat-num{font:42px/1.2 Georgia,serif;color:#8c3657!important}
+[data-theme="ballet"] .stat-label{margin-top:12px;font-size:12px}
+[data-theme="ballet"] .progress-bar-bg{background:#eecfdc;height:3px;margin-top:18px}
+[data-theme="ballet"] .progress-bar{background:#b56886}
+[data-theme="ballet"] .section-head .cnt,[data-theme="ballet"] .tag-bot,[data-theme="ballet"] .tag-web{background:#f7e5ec;color:#805466;border-color:#dbb4c2}
+[data-theme="ballet"] .order-row{padding:14px 0;flex-wrap:wrap}
+[data-theme="ballet"] .code-block{background:#fbeef3;color:#674052;border-color:#e7c4cf;border-radius:6px}
+[data-theme="ballet"] .copy-btn,[data-theme="ballet"] .cmd-group td{background:#f7e5ec}
+[data-theme="ballet"] .flow-box.hl{background:#f7e5ec;border-color:#dbaabd;color:#8c3657}
+[data-theme="ballet"] .fb-wrap{height:calc(100svh - 70px)}
+[data-theme="ballet"] .fb-canvas-col{padding:32px;background:#fff5f7}
+[data-theme="ballet"] .fb-header h2{font:25px "Songti SC",serif}
+@media(min-width:641px){.topbar .nav{overflow-x:auto;flex:1;min-width:0}.topbar>.spacer{display:none}}
+@media(max-width:1150px){[data-theme="ballet"] .auth-page .inner-layout{margin:32px 24px}.topbar .theme-picker>span{display:none}}
+@media(max-width:900px){[data-theme="ballet"] .hero-heading{top:15%;width:80%}[data-theme="ballet"] .hero-left{width:240px;left:4%;padding:20px;top:43%}[data-theme="ballet"] .hero-query{width:250px;right:4%;padding:20px;top:43%}[data-theme="ballet"] .hero-left h2{font-size:25px}[data-theme="ballet"] .hero-query h2{font-size:23px}.hero-nav{gap:12px}}
+@media(max-width:820px){[data-theme="ballet"] .fb-wrap{height:auto;overflow:visible}[data-theme="ballet"] .auth-page .inner-masthead{padding:35px 26px}[data-theme="ballet"] .auth-page .inner-masthead h1{font-size:34px}[data-theme="ballet"] .auth-page .inner-content>.page{padding:32px 28px}}
+@media(max-width:600px){
+ .theme-picker{font-size:11px;gap:4px}.theme-picker>span{display:none}.theme-picker select{padding:5px 20px 5px 8px;min-height:32px}
+ .hero-nav{gap:9px;align-items:center}.hero-nav .theme-picker{order:2}
+ .edition{top:64px}
+ [data-theme="ballet"] .ink-stage{margin:8px;min-height:1070px;border-radius:12px}
+ [data-theme="ballet"] .landscape{background-size:auto 530px;background-position:center top;background-color:#f9e7ed}
+ [data-theme="ballet"] .ink-stage:after{background:linear-gradient(180deg,transparent 36%,#fff5f722 48%,#fff5f75c)}
+ [data-theme="ballet"] .hero-heading{top:112px;width:100%}
+ [data-theme="ballet"] .hero-heading h1{font-size:58px}
+ [data-theme="ballet"] .hero-heading p{font-size:8px;letter-spacing:.17em}
+ [data-theme="ballet"] .hero-heading>div{font-size:9px;letter-spacing:.08em}
+ [data-theme="ballet"] .hero-left{top:470px;left:6%;width:88%;padding:22px;background:#fffafbee}
+ [data-theme="ballet"] .hero-left h2{font-size:25px;margin-bottom:10px}
+ [data-theme="ballet"] .hero-left p{font-size:12px}
+ [data-theme="ballet"] .submit-link{margin-top:15px;padding:11px 16px}
+ [data-theme="ballet"] .hero-query{top:743px;left:6%;right:auto;width:88%;padding:22px;background:#fffafbee}
+ [data-theme="ballet"] .hero-query h2{font-size:25px;margin-bottom:10px}
+ [data-theme="ballet"] .hero-query label{font-size:12px}
+ [data-theme="ballet"] .vertical-note{top:290px;right:16px;font-size:10px}
+ [data-theme="ballet"] .motion-toggle{bottom:70px;right:6%}
+ [data-theme="ballet"] .stage-footer{left:6%;right:6%;font-size:9px}
+ [data-theme="ballet"] .ballet-sparkles span{top:27%;left:20%}
+ [data-theme="ballet"] .ballet-sparkles span:nth-child(2){top:33%;left:77%}
+ [data-theme="ballet"] .ballet-sparkles span:nth-child(3){top:40%;left:65%}
+ [data-theme="ballet"] .who-card{padding:18px 16px}
+ [data-theme="ballet"] .inner-masthead,[data-theme="ballet"] .workspace-page .inner-masthead{margin:12px 12px 0;min-height:180px;padding:26px 22px}
+ [data-theme="ballet"] .inner-masthead h1{font-size:27px;letter-spacing:.05em}
+ [data-theme="ballet"] .inner-masthead p{font-size:11px;line-height:1.8;max-width:240px}
+ [data-theme="ballet"] .masthead-kicker{font-size:10px}
+ [data-theme="ballet"] .masthead-kicker>span:first-child{display:inline}
+ [data-theme="ballet"] .masthead-seal{width:52px;height:52px;font-size:12px;margin-left:10px}
+ [data-theme="ballet"] .inner-content>.page{padding:28px 16px 36px}
+ [data-theme="ballet"] .inner-content .page-title{font-size:23px}
+ [data-theme="ballet"] .inner-content .card{padding:20px 16px}
+ [data-theme="ballet"] .inner-content .g2,[data-theme="ballet"] .inner-content .g3{gap:16px}
+ [data-theme="ballet"] .inner-content .fi,[data-theme="ballet"] .inner-content .fs,[data-theme="ballet"] .inner-content .ft{font-size:16px}
+ [data-theme="ballet"] .inner-content .btn{min-height:42px;padding:9px 14px}
+ [data-theme="ballet"] .inner-content .btn-sm{min-height:36px;padding:6px 10px}
+ [data-theme="ballet"] .auth-page .inner-layout{display:block;margin:12px;min-height:0}
+ [data-theme="ballet"] .auth-page .inner-masthead{min-height:235px;padding:26px;border:0;border-bottom:1px solid #e7c4cf;background-size:cover;background-position:center 30%}
+ [data-theme="ballet"] .auth-page .inner-masthead h1{font-size:30px;line-height:1.5;margin-top:20px;max-width:270px}
+ [data-theme="ballet"] .auth-page .inner-content>.page{padding:30px 24px}
+ [data-theme="ballet"] .auth-page .inner-content .card{padding:0}
+ [data-theme="ballet"] .on-wrap{padding:28px 16px 40px}
+ [data-theme="ballet"] #step2{padding:22px 16px}
+ [data-theme="ballet"] .tenant-card{padding:24px}
+ [data-theme="ballet"] .stat-card{padding:18px 16px}
+ [data-theme="ballet"] .stat-num{font-size:34px}
+ [data-theme="ballet"] .fb-canvas-col{padding:22px 14px}
+ [data-theme="ballet"] .fb-header{flex-wrap:wrap}
+ [data-theme="ballet"] .inner-footer{margin:0 16px;padding:22px 0;font-size:9px;gap:16px}
+}
+@media(prefers-reduced-motion:reduce){[data-theme="ballet"] .inner-page *{animation:none!important;transition:none!important}}
+
+/* A paper theatre: title above, performers below, velvet at the edges. */
+.ballet-theatre{position:absolute;inset:0;z-index:-1;pointer-events:none;overflow:hidden}
+.theatre-drapes{position:absolute;inset:0;width:100%;height:100%;opacity:.86}
+.theatre-story{position:absolute;width:clamp(350px,43vw,610px);height:auto;left:50%;top:36%;transform:translateX(-50%);overflow:visible}
+[data-theme="ballet"] .hero-heading{top:13%;z-index:1}
+[data-theme="ballet"] .hero-heading h1 span{margin-left:0}
+[data-theme="ballet"] .hero-heading h1{animation:none;text-shadow:0 2px 18px #fff8f0}
+[data-theme="ballet"] .ink-stage:after{background:linear-gradient(0deg,#fff5f755,transparent 15%);z-index:-1}
+[data-theme="ballet"] .hero-left,[data-theme="ballet"] .hero-query{z-index:1}
+@media(prefers-reduced-motion:no-preference){
+ [data-theme="ballet"] .motion-enabled .curtain-right{animation:curtain-rise 6s ease-in-out infinite alternate}
+ [data-theme="ballet"] .motion-enabled .storybook-dancer{transform-origin:306px 360px;animation:dancer-reverie 4s ease-in-out infinite alternate}
+ [data-theme="ballet"] .motion-enabled .story-coin{animation:coin-wish 3.8s ease-in-out infinite}
+ [data-theme="ballet"] .motion-enabled .coin-two{animation-delay:-1.3s}
+ [data-theme="ballet"] .motion-enabled .coin-three{animation-delay:-2.6s}
+ [data-theme="ballet"] .motion-enabled .story-stars{animation:ballet-twinkle 4s ease-in-out infinite alternate;transform-origin:center}
+ [data-theme="ballet"] .motion-paused .ballet-theatre *{animation-play-state:paused!important}
+}
+@keyframes curtain-rise{from{transform:translateY(-5px)}to{transform:translateY(7px)}}
+@keyframes dancer-reverie{from{transform:translateY(0) rotate(-3deg)}to{transform:translateY(-7px) rotate(3deg)}}
+@keyframes coin-wish{0%,100%{transform:translateY(0);opacity:.45}50%{transform:translateY(-12px);opacity:1}}
+@media(min-width:601px) and (max-width:1050px){
+ [data-theme="ballet"] .ink-stage{min-height:980px}
+ .theatre-story{top:30%;width:430px}
+ [data-theme="ballet"] .hero-left,[data-theme="ballet"] .hero-query{top:auto;bottom:105px;width:42%}
+}
+@media(max-width:600px){
+ [data-theme="ballet"] .hero-heading{top:112px}
+ .theatre-drapes{height:470px;width:140%;left:-20%;opacity:.65}
+ .theatre-story{top:245px;width:285px}
+ [data-theme="ballet"] .hero-left{top:492px}
+ [data-theme="ballet"] .hero-query{top:765px}
+ [data-theme="ballet"] .ink-stage{min-height:1100px}
+ [data-theme="ballet"] .vertical-note{top:300px}
+}
+[data-theme="ballet"] .hero-nav{padding:8px 12px;border-radius:7px;background:#fff8f0de}
+@media(max-width:600px){
+ .theatre-drapes{width:100%;left:0}
+ [data-theme="ballet"] .hero-nav{padding:4px 6px;left:auto;max-width:90%}
+}
+@media(min-width:601px){[data-theme="ballet"] .motion-toggle{top:86px}}
+@media(min-width:601px) and (max-width:1050px){.theatre-story{top:28%}}
+
+/* Detailed painted assets, independently animated over a stationary stage. */
+[data-theme="ballet"] .motion-enabled .storybook-dancer{transform-origin:306px 361px;animation-name:dancer-fine}
+@keyframes dancer-fine{from{transform:rotate(-1.2deg)}to{transform:rotate(1.2deg)}}
+@media(prefers-reduced-motion:no-preference){
+ [data-theme="ballet"] .motion-enabled .floating-snow{animation:snow-drift 7s ease-in-out infinite alternate;transform-box:fill-box;transform-origin:center}
+ [data-theme="ballet"] .motion-enabled .snow-two{animation-delay:-3s;animation-duration:9s}
+ [data-theme="ballet"] .motion-enabled .snow-three{animation-delay:-5s;animation-duration:8s}
+ [data-theme="ballet"] .motion-enabled .floating-candy{animation:sweet-drift 6s ease-in-out infinite alternate;transform-box:fill-box;transform-origin:center}
+ [data-theme="ballet"] .motion-enabled .candy-two{animation-delay:-2s;animation-duration:8s}
+ [data-theme="ballet"] .motion-enabled .candy-three{animation-delay:-4s;animation-duration:7s}
+}
+@keyframes snow-drift{from{transform:translate(-3px,5px) rotate(-12deg);opacity:.65}to{transform:translate(4px,-9px) rotate(15deg);opacity:1}}
+@keyframes sweet-drift{from{transform:translate(-3px,4px) rotate(-7deg)}to{transform:translate(4px,-9px) rotate(8deg)}}
+
+/* White paper blends into the page; sheer ribbons hang below the platform. */
+.theatre-story{mix-blend-mode:multiply;top:32%}
+[data-theme="ballet"] .ink-stage{min-height:900px}
+.stage-ribbon{transform-origin:var(--ribbon-origin)}
+@media(prefers-reduced-motion:no-preference){
+ [data-theme="ballet"] .motion-enabled .stage-ribbon{animation:ribbon-whisper 6s ease-in-out infinite alternate}
+ [data-theme="ballet"] .motion-enabled .ribbon-center{animation-duration:7.5s;animation-delay:-2s}
+ [data-theme="ballet"] .motion-enabled .ribbon-right{animation-duration:6.8s;animation-delay:-4s}
+}
+@keyframes ribbon-whisper{from{transform:rotate(-3deg) skewX(-1deg)}to{transform:rotate(3deg) skewX(1deg)}}
+@media(min-width:601px) and (max-width:1050px){
+ [data-theme="ballet"] .ink-stage{min-height:1100px}
+ .theatre-story{top:27%;width:430px}
+}
+@media(max-width:600px){
+ .theatre-story{top:245px;width:285px}
+ [data-theme="ballet"] .hero-left{top:535px}
+ [data-theme="ballet"] .hero-query{top:762px}
+ [data-theme="ballet"] .ink-stage{min-height:1095px}
+}
+.ballet-theatre{mix-blend-mode:multiply}
+
+[data-theme="ballet"] .motion-enabled .storybook-dancer{transform-origin:273px 374px}
+
+/* 窄屏后台同样压缩（覆盖上面与对外页面共用的那条） */
+@media(max-width:600px){
+[data-theme="ballet"] .workspace-page .inner-masthead{min-height:0;padding:14px 16px}
+[data-theme="ballet"] .workspace-page .inner-masthead h1{font-size:19px;letter-spacing:.04em}
+[data-theme="ballet"] .workspace-page .masthead-seal{width:42px;height:42px;font-size:10px}
+}

@@ -1,0 +1,101 @@
+{% extends "web/base.html" %}
+{% block title %}寝室{% endblock %}
+{% block body %}
+
+<div class="card">
+  <h2>🏠 我的寝室</h2>
+  {% if my_dorm %}
+    <p>寝室名：<b>{{ my_dorm.name }}</b></p>
+    <p>室友：<b>{{ my_dorm.roommate_name }}</b></p>
+    <p>寝室战力：<b>{{ my_dorm.score }}</b></p>
+    <div class="row">
+      <form method="post" class="row">
+        <input name="name" placeholder="新寝室名" maxlength="20" required>
+        <button name="action" value="rename" class="ghost">改名</button>
+      </form>
+      <form method="post"><button name="action" value="leave" class="ghost">退出寝室</button></form>
+    </div>
+  {% else %}
+    <p class="muted">你现在还没有寝室。新政策允许跨学院合住，但必须同性别、一间两人。</p>
+    {% if my_outgoing_invite %}
+      <p>你邀请了 <b>{{ full_name(my_outgoing_invite.to_uid) }}</b> 同住，等对方回应。</p>
+      <form method="post"><button name="action" value="withdraw" class="ghost">撤回邀请</button></form>
+    {% else %}
+      <h3>邀请同寝</h3>
+      <form method="post" class="row">
+        <input name="target" placeholder="对方名字" required>
+        <button name="action" value="invite">发出邀请</button>
+      </form>
+    {% endif %}
+  {% endif %}
+</div>
+
+{% if incoming_invites %}
+<div class="card">
+  <h2>收到的邀请</h2>
+  {% for inv in incoming_invites %}
+  <form method="post" class="row" style="margin-bottom:8px">
+    <input type="hidden" name="from_uid" value="{{ inv.from_uid }}">
+    <span style="flex:1">{{ full_name(inv.from_uid) }} 邀请你同住一间寝室</span>
+    <button name="action" value="accept">接受</button>
+    <button name="action" value="decline" class="ghost">拒绝</button>
+  </form>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>🪴 花园</h2>
+  {% if garden_status.growing %}
+    {% if garden_status.ready %}
+    <p>花盆里的种子已经长好了，点「收获」看看是死是活。</p>
+    {% else %}
+    <p>花盆里正在培育中，还要等约
+      {% set h = garden_status.remaining_seconds // 3600 %}
+      {% set m = (garden_status.remaining_seconds % 3600) // 60 + 1 %}
+      {% if h %}{{ h }}小时{% endif %}{{ m }}分钟。
+    </p>
+    {% endif %}
+  {% else %}
+    <p>花盆现在空着，手上有 <b>{{ garden_status.seeds }}</b> 颗种子。</p>
+  {% endif %}
+  <div class="row">
+    <form method="post"><button name="action" value="garden_forage" class="ghost">出门捡种子</button></form>
+    <form method="post"><button name="action" value="garden_plant" class="ghost">种下种子</button></form>
+    <form method="post"><button name="action" value="garden_harvest">收获</button></form>
+  </div>
+  {% if pots %}
+  <div class="scroll"><table>
+    <tr><th>盆栽</th><th>种植者</th></tr>
+    {% for pot in pots %}
+    <tr>
+      <td>{{ pot.plant_name }}</td>
+      <td>{{ pot.owner }}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}
+  <p class="muted">还没有任何盆栽。出门捡种子、种下去，等3小时后收获，十有八九会枯死，但万一活下来了呢？</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>🏆 最强宿舍</h2>
+  {% if leaderboard %}
+  <div class="scroll"><table>
+    <tr><th>排名</th><th>寝室</th><th>成员</th><th>战力</th></tr>
+    {% for d in leaderboard %}
+    <tr>
+      <td>{{ loop.index }}</td>
+      <td>{{ d.name }}</td>
+      <td>{{ d.member_a_name }} 、 {{ d.member_b_name }}</td>
+      <td>{{ d.score }}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}
+  <p class="muted">还没有寝室组建起来。</p>
+  {% endif %}
+</div>
+
+{% endblock %}

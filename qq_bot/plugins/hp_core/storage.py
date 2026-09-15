@@ -16,6 +16,9 @@ STAMINA_MAX = 50
 STAMINA_REGEN_INTERVAL = 30 * 60  # 30分钟恢复7点体力
 STAMINA_REGEN_AMOUNT = 7
 
+CAVITY_EFFECT_KEY = "choc_frog_cavity"  # 一天吃太多巧克力蛙触发的蛀牙状态，见 hp_school/choc_frog.py
+CAVITY_REGEN_MULTIPLIER = 2  # 蛀牙期间体力恢复间隔翻倍，相当于恢复速度减半
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS players (
     uid TEXT PRIMARY KEY,
@@ -76,6 +79,7 @@ CREATE TABLE IF NOT EXISTS homework (
     subject TEXT NOT NULL,
     day INTEGER NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
+    attempts INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (uid, subject, day)
 );
 
@@ -83,6 +87,12 @@ CREATE TABLE IF NOT EXISTS house_points (
     house TEXT PRIMARY KEY,
     total_points INTEGER NOT NULL DEFAULT 0,
     member_count INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS house_contributions (
+    uid TEXT PRIMARY KEY,
+    house TEXT NOT NULL,
+    points INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS titles (
@@ -130,6 +140,7 @@ CREATE TABLE IF NOT EXISTS kitchen_exp (
     exp INTEGER NOT NULL DEFAULT 0,
     kitchen_stamina INTEGER NOT NULL DEFAULT 40,
     stamina_updated_at INTEGER NOT NULL DEFAULT 0,
+    last_weekly_materials_at INTEGER NOT NULL DEFAULT 0,
     updated_at INTEGER NOT NULL DEFAULT 0
 );
 
@@ -197,6 +208,15 @@ def init_db() -> None:
     conn = get_conn()
     try:
         conn.executescript(SCHEMA)
+        # 旧存档迁移：CREATE TABLE IF NOT EXISTS 不会给已存在的表加新列，要单独补。
+        for stmt in (
+            "ALTER TABLE kitchen_exp ADD COLUMN last_weekly_materials_at INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE homework ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0",
+        ):
+            try:
+                conn.execute(stmt)
+            except sqlite3.OperationalError:
+                pass
         # 旧存档迁移：过去每科最多把前2节视为计分课。新逻辑会严格执行全科8节上限。
         conn.execute(
             "INSERT OR IGNORE INTO lesson_score_log (uid, subject, day, count) "
@@ -324,18 +344,32 @@ def try_spend_galleons(uid: str, amount: int) -> bool:
         conn.close()
 
 
+def has_cavity(uid: str) -> bool:
+    """一天吃超过阈值的巧克力蛙会蛀牙一天，期间体力恢复变慢，见 hp_school/choc_frog.py。"""
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM active_effects WHERE uid = ? AND effect_key = ? AND expires_at > ?",
+            (uid, CAVITY_EFFECT_KEY, now()),
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
 def sync_stamina(uid: str) -> sqlite3.Row:
     """按经过的时间自然回复体力值，回复到读的这一刻为止。"""
     player = get_or_create_player(uid)
     if player["stamina"] >= STAMINA_MAX:
         return player
+    interval = STAMINA_REGEN_INTERVAL * CAVITY_REGEN_MULTIPLIER if has_cavity(uid) else STAMINA_REGEN_INTERVAL
     elapsed = now() - player["stamina_updated_at"]
-    ticks = elapsed // STAMINA_REGEN_INTERVAL
+    ticks = elapsed // interval
     if ticks <= 0:
         return player
     gained = ticks * STAMINA_REGEN_AMOUNT
     new_stamina = min(STAMINA_MAX, player["stamina"] + gained)
-    consumed_seconds = ticks * STAMINA_REGEN_INTERVAL
+    consumed_seconds = ticks * interval
     conn = get_conn()
     try:
         conn.execute(
@@ -351,8 +385,9 @@ def sync_stamina(uid: str) -> sqlite3.Row:
 def seconds_to_next_stamina(player: sqlite3.Row) -> int:
     if player["stamina"] >= STAMINA_MAX:
         return 0
-    elapsed_into_tick = (now() - player["stamina_updated_at"]) % STAMINA_REGEN_INTERVAL
-    return STAMINA_REGEN_INTERVAL - elapsed_into_tick
+    interval = STAMINA_REGEN_INTERVAL * CAVITY_REGEN_MULTIPLIER if has_cavity(player["uid"]) else STAMINA_REGEN_INTERVAL
+    elapsed_into_tick = (now() - player["stamina_updated_at"]) % interval
+    return interval - elapsed_into_tick
 
 
 def spend_stamina(uid: str, amount: int) -> None:
@@ -467,6 +502,19 @@ def complete_homework(uid: str, subject: str, day: int) -> None:
         conn.close()
 
 
+def record_homework_attempt(uid: str, subject: str, day: int) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "UPDATE homework SET attempts = attempts + 1 "
+            "WHERE uid = ? AND subject = ? AND day = ? AND status = 'pending'",
+            (uid, subject, day),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def mark_homework_overdue(uid: str, subject: str, day: int) -> None:
     conn = get_conn()
     try:
@@ -507,13 +555,23 @@ def settle_homework_with_daily_cap(
     try:
         conn.execute("BEGIN IMMEDIATE")
         rows = conn.execute(
-            "SELECT subject, day FROM homework "
+            "SELECT subject, day, attempts FROM homework "
             "WHERE uid = ? AND day < ? AND status = 'pending' ORDER BY day, subject",
             (uid, before_day),
         ).fetchall()
         penalties_by_day: dict[int, int] = {}
         total_penalty = 0
+        overdue_count = 0
         for row in rows:
+            if row["attempts"] > 0:
+                # 概率制作业：只要当天试过（体力耗尽也没成功），不算"没交"，不扣分。
+                conn.execute(
+                    "UPDATE homework SET status = 'failed' "
+                    "WHERE uid = ? AND subject = ? AND day = ? AND status = 'pending'",
+                    (uid, row["subject"], row["day"]),
+                )
+                continue
+            overdue_count += 1
             used = penalties_by_day.get(row["day"], 0)
             penalty = min(penalty_per_item, max(0, daily_cap - used))
             if penalty:
@@ -530,7 +588,7 @@ def settle_homework_with_daily_cap(
                 (uid, row["subject"], row["day"]),
             )
         conn.commit()
-        return len(rows), total_penalty
+        return overdue_count, total_penalty
     except Exception:
         conn.rollback()
         raise
@@ -673,23 +731,105 @@ def increment_lesson_count(uid: str, subject: str, day: int) -> None:
         conn.close()
 
 
-def student_leaderboard(limit: int = 10) -> list[dict]:
-    """全校个人排名：按所有学科经验值加总排序，是学院人均分之外的个人视角。"""
+def student_leaderboard(limit: int | None = 10) -> list[dict]:
+    """全校个人排名：按所有学科经验值加总排序，是学院人均分之外的个人视角。
+    limit 为 None 时不截断，返回全校所有已入学的人。"""
     conn = get_conn()
     try:
-        rows = conn.execute(
+        sql = (
             "SELECT p.uid, p.name, p.surname, p.house, p.active_title, COALESCE(SUM(s.exp), 0) AS total_exp "
             "FROM players p LEFT JOIN subject_exp s ON s.uid = p.uid "
             "WHERE p.house != '' "
-            "GROUP BY p.uid ORDER BY total_exp DESC LIMIT ?",
-            (limit,),
-        ).fetchall()
+            "GROUP BY p.uid ORDER BY total_exp DESC"
+        )
+        params: tuple = ()
+        if limit is not None:
+            sql += " LIMIT ?"
+            params = (limit,)
+        rows = conn.execute(sql, params).fetchall()
         return [dict(r) for r in rows]
     finally:
         conn.close()
 
 
-def add_house_points(house: str, amount: int) -> None:
+def subject_exam_leaderboard(top_n: int = 3) -> dict[str, list[dict]]:
+    """每门学科最近一次期末考试的前N名，按学科key分组。
+
+    "最近一次"取每个人在该学科打分最高的那个grade——学年结算是全员统一推进的，
+    正常情况下所有人在同一学科的最新一条就是同一个grade，不用另外传当前年级进来。
+    """
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT e.subject, e.uid, e.score, e.band, e.grade, p.name, p.surname, p.house "
+            "FROM exam_results e "
+            "JOIN players p ON p.uid = e.uid "
+            "WHERE e.grade = ("
+            "  SELECT MAX(e2.grade) FROM exam_results e2 "
+            "  WHERE e2.uid = e.uid AND e2.subject = e.subject"
+            ") "
+            "ORDER BY e.subject, e.score DESC"
+        ).fetchall()
+    finally:
+        conn.close()
+
+    by_subject: dict[str, list[dict]] = {}
+    for r in rows:
+        bucket = by_subject.setdefault(r["subject"], [])
+        if len(bucket) < top_n:
+            bucket.append(dict(r))
+    return by_subject
+
+
+def list_relatives(uid: str) -> list[dict]:
+    """同姓即兄弟姐妹，纯氛围关系。按注册顺序（created_at）排，早注册的是哥哥/姐姐。"""
+    conn = get_conn()
+    try:
+        me = conn.execute(
+            "SELECT surname, created_at FROM players WHERE uid = ?", (uid,)
+        ).fetchone()
+        if not me or not me["surname"]:
+            return []
+        rows = conn.execute(
+            "SELECT uid, name, surname, gender, house, created_at FROM players "
+            "WHERE surname = ? AND name != '' ORDER BY created_at ASC",
+            (me["surname"],),
+        ).fetchall()
+        relatives = []
+        for r in rows:
+            if r["uid"] == uid:
+                continue
+            older = r["created_at"] < me["created_at"]
+            relation = ("哥哥" if r["gender"] == "男" else "姐姐") if older else \
+                ("弟弟" if r["gender"] == "男" else "妹妹")
+            relatives.append({
+                "name": r["name"],
+                "surname": r["surname"],
+                "house": r["house"],
+                "relation": relation,
+            })
+        return relatives
+    finally:
+        conn.close()
+
+
+def add_house_contribution(uid: str, house: str, points: int) -> None:
+    """只记个人贡献，不动学院总分——配合"总分已经单独加过一次，只是要把功劳分给参与的几个人"
+    这种场景用（比如魁地奇获胜按上场的真人队员分别记功，学院分本身只加一次，不会翻倍）。"""
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO house_contributions (uid, house, points) VALUES (?, ?, ?) "
+            "ON CONFLICT(uid) DO UPDATE SET points = points + excluded.points, house = excluded.house",
+            (uid, house, points),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def add_house_points(house: str, amount: int, uid: str | None = None) -> None:
+    """给学院加分；传uid时顺便记一笔这个人的个人贡献，用来算人均分时把挂名不出力的人踢出分母。"""
     conn = get_conn()
     try:
         conn.execute(
@@ -699,28 +839,68 @@ def add_house_points(house: str, amount: int) -> None:
         conn.commit()
     finally:
         conn.close()
+    if uid:
+        add_house_contribution(uid, house, amount)
 
 
 def house_leaderboard() -> list[dict]:
-    """按人均分（total_points / member_count）从高到低排序，避免人数不均衡的学院吃亏或占便宜。"""
+    """按总分从高到低排序（人均分仅作为展示列，不参与排序）。
+    顺便带上本学年目前贡献最多的人，学期末会拿这个人颁"学院个人奖"。"""
     conn = get_conn()
     try:
         rows = conn.execute("SELECT * FROM house_points").fetchall()
+        contributor_rows = conn.execute(
+            "SELECT house, COUNT(*) AS cnt FROM house_contributions WHERE points > 0 GROUP BY house"
+        ).fetchall()
+        top_rows = conn.execute(
+            "SELECT uid, house, MAX(points) AS points FROM house_contributions "
+            "WHERE points > 0 GROUP BY house"
+        ).fetchall()
     finally:
         conn.close()
+    contributor_counts = {r["house"]: r["cnt"] for r in contributor_rows}
+    top_contributors = {r["house"]: r for r in top_rows}
     result = []
     for r in rows:
-        avg = r["total_points"] / r["member_count"] if r["member_count"] else 0.0
+        active_members = contributor_counts.get(r["house"], 0)
+        avg = r["total_points"] / active_members if active_members else 0.0
+        top = top_contributors.get(r["house"])
         result.append(
             {
                 "house": r["house"],
                 "total_points": r["total_points"],
                 "member_count": r["member_count"],
+                "active_member_count": active_members,
                 "avg_points": avg,
+                "top_contributor_name": get_full_name(top["uid"]) if top else "",
+                "top_contributor_points": top["points"] if top else 0,
             }
         )
-    result.sort(key=lambda x: x["avg_points"], reverse=True)
+    result.sort(key=lambda x: x["total_points"], reverse=True)
     return result
+
+
+def top_house_contributor(house: str) -> sqlite3.Row | None:
+    """该学院本学年对学院分贡献最多的人，学期末颁"学院个人奖"用。"""
+    conn = get_conn()
+    try:
+        return conn.execute(
+            "SELECT * FROM house_contributions WHERE house = ? AND points > 0 "
+            "ORDER BY points DESC LIMIT 1",
+            (house,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+
+def reset_house_contributions() -> None:
+    """学年结算颁完"学院个人奖"之后清零，下学年重新计贡献。"""
+    conn = get_conn()
+    try:
+        conn.execute("DELETE FROM house_contributions")
+        conn.commit()
+    finally:
+        conn.close()
 
 
 # ======================== 游戏时钟 ========================
@@ -743,8 +923,22 @@ def ensure_game_started() -> int:
         conn.close()
 
 
+BEIJING_OFFSET = 8 * 3600  # UTC+8，没有夏令时
+
+
+def _beijing_calendar_day(ts: int) -> int:
+    """把UTC时间戳换算成"北京时间的第几天"（从epoch起算），用于把跳天对齐到北京时间0点。"""
+    return (ts + BEIJING_OFFSET) // 86400
+
+
+def seconds_since_beijing_midnight() -> int:
+    """现在距离北京时间当天0点过了多少秒，给"新的一天开头留N分钟宽限期"这类判断用。"""
+    return (now() + BEIJING_OFFSET) % 86400
+
+
 def get_current_day() -> int | None:
-    """第一天算Day1。游戏还没开始（没人触发过/入学）时返回None。"""
+    """第一天算Day1，此后每天在北京时间0点自动跳到下一天（不是从入学那一刻起满24小时才跳）。
+    游戏还没开始（没人触发过/入学）时返回None。"""
     conn = get_conn()
     try:
         row = conn.execute("SELECT started_at FROM game_clock WHERE id = 1").fetchone()
@@ -752,7 +946,7 @@ def get_current_day() -> int | None:
         conn.close()
     if not row:
         return None
-    return (now() - row["started_at"]) // 86400 + 1
+    return _beijing_calendar_day(now()) - _beijing_calendar_day(row["started_at"]) + 1
 
 
 def ensure_game_group(group_openid: str) -> None:
@@ -930,11 +1124,12 @@ def get_or_create_kitchen_exp(uid: str) -> sqlite3.Row:
         if row:
             return row
 
-        # 新玩家初始化
+        # 新玩家初始化。exp 给10点起步分（最低门槛的配方要5经验），
+        # 不然新手一份配方都做不出来，后续经验全靠 kitchen.choose() 烹饪成功时发放。
         ts = now()
         conn.execute(
             "INSERT INTO kitchen_exp (uid, exp, kitchen_stamina, stamina_updated_at, updated_at) "
-            "VALUES (?, 0, 40, ?, ?)",
+            "VALUES (?, 10, 40, ?, ?)",
             (uid, ts, ts),
         )
 
@@ -960,38 +1155,6 @@ def get_or_create_kitchen_exp(uid: str) -> sqlite3.Row:
         return conn.execute("SELECT * FROM kitchen_exp WHERE uid = ?", (uid,)).fetchone()
     finally:
         conn.close()
-
-
-def sync_kitchen_stamina(uid: str) -> sqlite3.Row:
-    """按经过的时间自然回复厨房活力。"""
-    KITCHEN_STAMINA_MAX = 40
-    KITCHEN_STAMINA_REGEN_INTERVAL = 25 * 60  # 25分钟
-    KITCHEN_STAMINA_REGEN_AMOUNT = 8
-
-    row = get_or_create_kitchen_exp(uid)
-    if row["kitchen_stamina"] >= KITCHEN_STAMINA_MAX:
-        return row
-
-    elapsed = now() - row["stamina_updated_at"]
-    ticks = elapsed // KITCHEN_STAMINA_REGEN_INTERVAL
-    if ticks <= 0:
-        return row
-
-    gained = ticks * KITCHEN_STAMINA_REGEN_AMOUNT
-    new_stamina = min(KITCHEN_STAMINA_MAX, row["kitchen_stamina"] + gained)
-    consumed_seconds = ticks * KITCHEN_STAMINA_REGEN_INTERVAL
-
-    conn = get_conn()
-    try:
-        conn.execute(
-            "UPDATE kitchen_exp SET kitchen_stamina = ?, stamina_updated_at = ?, updated_at = ? WHERE uid = ?",
-            (new_stamina, row["stamina_updated_at"] + consumed_seconds, now(), uid),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-    return get_or_create_kitchen_exp(uid)
 
 
 def get_cooking_exp(uid: str) -> int:
