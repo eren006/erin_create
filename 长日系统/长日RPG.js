@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         RPG系统
 // @author       长日将尽
-// @version      2.0.2
+// @version      2.1.0
 // @description  物品注册、背包、商城、抽取池、二手市场。所有数据存储在主插件 changri 中。
 // @timestamp    1778742000
 // @license      CC BY-NC-SA
@@ -15,7 +15,7 @@
 
 let ext = seal.ext.find('changriRPG');
 if (!ext) {
-    ext = seal.ext.new("changriRPG", "长日将尽", "2.0.2");
+    ext = seal.ext.new("changriRPG", "长日将尽", "2.1.0");
     seal.ext.register(ext);
 }
 
@@ -48,6 +48,8 @@ function getSafeEndPoint(platform = "QQ") {
 function getMainExt()                      { return getApi(); }
 const isArchiveEnabled = (...a) => getApi()?.isArchiveEnabled(...a) ?? false;
 const postToArchive    = (...a) => getApi()?.postToArchive(...a);
+// 「玩家自主改属性」开关：开启后非管理员也能用「属性名+值」自己改自己的属性（见 onNotCommandReceived）
+function isSelfAttrEditEnabled()           { return mainKvGet('global_feature_toggle', {}).enable_self_attr_edit === true; }
 
 // 将长文本按空行切块，攒到 CHUNK_LEN 就切一段，供合并转发按段拆成多个节点
 function chunkBagText(text) {
@@ -736,57 +738,8 @@ function formatInventory(roleKey, roleName, reg, category = "全部", page = 1) 
 // 管理员指令
 // ========================
 
-let cmd_reg_attr = seal.ext.newCmdItemInfo();
-cmd_reg_attr.name = "注册属性";
-cmd_reg_attr.help = `【管理员】注册/查看 RPG 属性
-注册属性 列表
-注册属性 名称                     无范围限制，默认值0
-注册属性 名称 min max             有范围，默认值=min
-注册属性 名称 min max default
-注册属性 名称 min max default 描述`;
-cmd_reg_attr.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
-    const defs = getAttrDefs();
-    if (cmdArgs.getArgN(1) === "列表") {
-        const attrs = getValidAttrs();
-        return seal.replyToSender(ctx, msg, attrs.length ? `📋 已注册属性：${attrs.join("、")}` : "📋 暂无已注册属性。");
-    }
-    const arg1 = cmdArgs.getArgN(1);
-    if (!arg1) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
-    const arg2 = cmdArgs.getArgN(2);
-    const arg3 = cmdArgs.getArgN(3);
-    const arg4 = cmdArgs.getArgN(4);
-
-    const reg = getRegistry();
-    const currencyNames = new Set(Object.values(reg).filter(r => r.type === "currency").map(r => r.name));
-
-    // 格式：我创建属性 [名] [最小] [最大] [默认]
-    if (arg2 !== "" && !isNaN(Number(arg2))) {
-        if (currencyNames.has(arg1)) return seal.replyToSender(ctx, msg, `❌ 属性名「${arg1}」已被货币占用`);
-        const min = Number(arg2);
-        const max = arg3 !== "" && !isNaN(Number(arg3)) ? Number(arg3) : null;
-        const defaultVal = arg4 !== "" && !isNaN(Number(arg4)) ? Number(arg4) : 0;
-        const existDefs = getAttrDefs();
-        const isNew = !existDefs[arg1];
-        existDefs[arg1] = { min, max, default: defaultVal, desc: existDefs[arg1]?.desc || "" };
-        saveAttrDefs(existDefs);
-        return seal.replyToSender(ctx, msg, `✅ ${isNew ? "新增" : "更新"}属性「${arg1}」：最小${min} 最大${max ?? "无限"} 默认${defaultVal}`);
-    }
-
-    // 旧格式：批量注册属性名（无范围）
-    const newAttrs = [arg1];
-    for (let i = 2; ; i++) { const a = cmdArgs.getArgN(i); if (!a) break; newAttrs.push(a); }
-    const conflicted = newAttrs.filter(a => currencyNames.has(a));
-    if (conflicted.length) return seal.replyToSender(ctx, msg, `❌ 以下属性名已被货币占用：${conflicted.join("、")}`);
-
-    const attrs = getValidAttrs();
-    let added = 0;
-    for (const a of newAttrs) if (!attrs.includes(a)) { attrs.push(a); added++; }
-    saveValidAttrs(attrs);
-    seal.replyToSender(ctx, msg, `✅ 新增 ${added} 个属性。当前：${attrs.join("、")}`);
-    return seal.ext.newCmdExecuteResult(true);
-};
-// ext.cmdMap["注册属性"] = cmd_reg_attr; (合入属性子命令)
+// 注册/创建属性、删除属性的独立入口已合并进无前缀指令「创建属性」「删除属性」（见 onNotCommandReceived），
+// 这里不再保留 cmd_reg_attr/cmd_del_attr 这两份重复实现。
 
 // ========================
 // 初始化预设物品
@@ -941,24 +894,7 @@ cmd_item_list.solve = (ctx, msg, cmdArgs) => {
 };
 ext.cmdMap["物品列表"] = cmd_item_list;
 
-let cmd_del_attr = seal.ext.newCmdItemInfo();
-cmd_del_attr.name = "删除属性";
-cmd_del_attr.help = "【管理员】删除已注册属性\n删除属性 名称";
-cmd_del_attr.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
-    const name = cmdArgs.getArgN(1);
-    if (!name) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
-    const defs = getAttrDefs();
-    if (!defs[name]) return seal.replyToSender(ctx, msg, `❌ 未找到属性「${name}」`);
-    const poolDefs = getPoolDefs();
-    const boundPools = Object.values(poolDefs).filter(p => p.type === "tiered" && p.attr === name).map(p => p.name);
-    if (boundPools.length) return seal.replyToSender(ctx, msg, `❌ 属性「${name}」正被分段池「${boundPools.join("、")}」绑定，无法删除。\n请先删除或修改这些池子。`);
-    delete defs[name];
-    saveAttrDefs(defs);
-    seal.replyToSender(ctx, msg, `✅ 属性「${name}」已删除（已有角色的数值不受影响）`);
-    return seal.ext.newCmdExecuteResult(true);
-};
-// ext.cmdMap["删除属性"] = cmd_del_attr; (合入属性子命令)
+// 删除属性的独立入口已合并进「删除属性」（见 onNotCommandReceived），这里不再保留 cmd_del_attr。
 
 let cmd_set_attr = seal.ext.newCmdItemInfo();
 cmd_set_attr.name = "设置属性";
@@ -3219,6 +3155,76 @@ cmd_reg_craft.solve = (ctx, msg, cmdArgs) => {
 // 无前缀指令触发
 // ========================
 
+// 「角色:属性++值」「角色 属性+值」共用的角色列表解析："全体"展开成当前所有已建角色，否则按顿号/逗号拆分
+function resolveDeltaRoles(rolesPart, platform) {
+    const priv = mainKvGet("a_private_group", {})[platform] || {};
+    // 新结构：priv 以 uid 为 key，value[0] 是 roleName
+    return rolesPart.trim() === "全体"
+        ? Object.values(priv).map(v => v[0]).filter(Boolean)
+        : rolesPart.split(/[、,，]/).map(r => r.trim());
+}
+
+// 「角色:属性++值」「角色 属性+值」「属性+值（自主改属性）」共用的执行逻辑：
+// attrName 命中已注册属性就改 charAttrs（按 defs 的 min/max 截断），命中货币名就改背包；都没命中返回 false（调用方当作没匹配上）
+function applyAttrOrCurrencyDelta(ctx, msg, platform, roles, attrName, op, vals) {
+    const defs = getAttrDefs();
+    const reg = getRegistry();
+    const currencyCode = Object.entries(reg).find(([_, info]) => info.type === "currency" && info.name === attrName)?.[0];
+
+    if (defs[attrName]) {
+        const charAttrs = getCharAttrs();
+        const res = [];
+        const notifyList = [];
+        roles.forEach((r, i) => {
+            const rUid = getRoleUid(platform, r);
+            if (!rUid) return;
+            const rPrimaryUid = getPrimaryUid(platform, rUid);
+            if (!charAttrs[rPrimaryUid]) charAttrs[rPrimaryUid] = {};
+            const v = isNaN(vals[i]) ? vals[0] : vals[i];
+            const old = charAttrs[rPrimaryUid][attrName] ?? (defs[attrName].default ?? 0);
+            const next = clampAttr(defs[attrName], op === "++" ? old + v : old - v);
+            charAttrs[rPrimaryUid][attrName] = next;
+            res.push(`${r}：${old}→${next}`);
+            notifyList.push({ r, old, next });
+        });
+        if (!res.length) return false;
+        saveCharAttrs(charAttrs);
+        notifyList.forEach(({ r, old, next }) => {
+            notifyPlayer(ctx, platform, r, `${op === "++" ? "📈" : "📉"}【属性变动】你的「${attrName}」：${old} → ${next}`);
+        });
+        seal.replyToSender(ctx, msg, `${op === "++" ? "📈" : "📉"} ${attrName} 变更：\n${res.join("\n")}`);
+        return true;
+    }
+
+    if (currencyCode) {
+        const res = [];
+        const notifyList = [];
+        roles.forEach((r, i) => {
+            const rUid = getRoleUid(platform, r);
+            if (!rUid) return;
+            const roleKey = `${platform}:${getPrimaryUid(platform, rUid)}`;
+            const v = isNaN(vals[i]) ? vals[0] : vals[i];
+            const inv = getInv(roleKey);
+            const entry = inv.find(e => e.code === currencyCode);
+            const old = entry?.count || 0;
+            if (op === "++") addToInv(roleKey, currencyCode, v);
+            else removeFromInv(roleKey, currencyCode, Math.min(v, old));
+            const newEntry = getInv(roleKey).find(e => e.code === currencyCode);
+            const next = newEntry?.count || 0;
+            res.push(`${r}：${old}→${next}`);
+            notifyList.push({ r, old, next });
+        });
+        if (!res.length) return false;
+        notifyList.forEach(({ r, old, next }) => {
+            notifyPlayer(ctx, platform, r, `${op === "++" ? "💰" : "💸"}【货币变动】你的「${attrName}」：${old} → ${next}`);
+        });
+        seal.replyToSender(ctx, msg, `${op === "++" ? "💰" : "💸"} 货币「${attrName}」变更：\n${res.join("\n")}`);
+        return true;
+    }
+
+    return false;
+}
+
 ext.onNotCommandReceived = (ctx, msg) => {
     const raw = (msg.message || "").trim();
     const fa = (parts) => ({ getArgN: (n) => parts[n - 1] || "", args: parts });
@@ -3237,7 +3243,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
         // 新结构：charAttrs 以 uid 为 key
         const roleAttrs = charAttrs[myStatusUid] || {};
         const attrNames = Object.keys(defs);
-        if (!attrNames.length) return seal.replyToSender(ctx, msg, `🎭 【${roleName}】暂无属性，管理员可用「我创建属性」添加。`);
+        if (!attrNames.length) return seal.replyToSender(ctx, msg, `🎭 【${roleName}】暂无属性，管理员可用「创建属性」添加。`);
 
         // 分类属性
         const limitedAttrs = [];
@@ -3298,9 +3304,9 @@ ext.onNotCommandReceived = (ctx, msg) => {
         return seal.replyToSender(ctx, msg, result);
     }
 
-    // 我创建属性（管理员，无前缀）换行批量：每行 属性名 [最小 最大 默认]
-    if (raw.startsWith("我创建属性") && isAdmin) {
-        const body = raw.slice(5).trim();
+    // 创建属性（管理员，无前缀）换行批量：每行 属性名 [最小 最大 默认]
+    if (raw.startsWith("创建属性") && isAdmin) {
+        const body = raw.slice(4).trim();
         if (!body) return seal.replyToSender(ctx, msg, "❌ 请提供属性定义，格式：属性名 最小 最大 默认");
         const lines = body.split(/\n/).map(l => l.trim()).filter(Boolean);
         const reg = getRegistry();
@@ -3328,18 +3334,21 @@ ext.onNotCommandReceived = (ctx, msg) => {
         saveAttrDefs(defs);
         return seal.replyToSender(ctx, msg, results.join("\n"));
     }
-    if (raw.startsWith("我移除属性") && isAdmin) {
-        const body = raw.slice(5).trim();
-        if (!body) return seal.replyToSender(ctx, msg, "❌ 请指定要移除的属性名。");
+    if (raw.startsWith("删除属性") && isAdmin) {
+        const body = raw.slice(4).trim();
+        if (!body) return seal.replyToSender(ctx, msg, "❌ 请指定要删除的属性名。");
         const names = body.split(/\n/).map(l => l.trim()).filter(Boolean);
         const defs = getAttrDefs();
         const charAttrs = getCharAttrs();
+        const poolDefs = getPoolDefs();
         const results = [];
         for (const attrName of names) {
             if (!defs[attrName]) { results.push(`❌ 「${attrName}」不存在`); continue; }
+            const boundPools = Object.values(poolDefs).filter(p => p.type === "tiered" && p.attr === attrName).map(p => p.name);
+            if (boundPools.length) { results.push(`❌ 「${attrName}」正被分段池「${boundPools.join("、")}」绑定，无法删除`); continue; }
             delete defs[attrName];
             for (const role of Object.keys(charAttrs)) delete charAttrs[role][attrName];
-            results.push(`✅ 已移除「${attrName}」`);
+            results.push(`✅ 已删除「${attrName}」`);
         }
         saveAttrDefs(defs);
         saveCharAttrs(charAttrs);
@@ -3348,79 +3357,38 @@ ext.onNotCommandReceived = (ctx, msg) => {
         return seal.replyToSender(ctx, msg, results.join("\n"));
     }
 
-    // 角色:属性++值 / 角色:属性--值 / 角色:货币++值（管理员批量改属性或货币）
+    // 角色:属性++值 / 角色:属性--值 / 角色:货币++值（管理员批量改属性或货币，老写法，继续保留）
+    // 角色/全体 属性+值 / 属性-值（同一件事的新写法，不用切符号键盘找冒号、连打两个加减号）
     if (isAdmin) {
-        const attrM = raw.match(/^(.+?)[:：](.+?)([+\-]{2})([\d、,，]+)$/);
-        if (attrM) {
-            const [, rolesPart, attrName, op, valsPart] = attrM;
-            const main = getMainExt();
-            if (!main) return;
-            const priv = mainKvGet("a_private_group", {})[platform] || {};
-            // 新结构：priv 以 uid 为 key，value[0] 是 roleName
-            // roles 统一为 roleName 列表
-            const roles = rolesPart === "全体"
-                ? Object.values(priv).map(v => v[0]).filter(Boolean)
-                : rolesPart.split(/[、,，]/).map(r => r.trim());
+        const legacyM = raw.match(/^(.+?)[:：](.+?)([+\-]{2})([\d、,，]+)$/);
+        if (legacyM) {
+            const [, rolesPart, attrName, op, valsPart] = legacyM;
+            const roles = resolveDeltaRoles(rolesPart, platform);
             const vals = valsPart.split(/[、,，]/).map(v => parseInt(v));
-            const res = [];
+            applyAttrOrCurrencyDelta(ctx, msg, platform, roles, attrName, op, vals);
+        } else {
+            const naturalM = raw.match(/^(.+?)\s+(\S+?)([+\-])(\d+)$/);
+            if (naturalM) {
+                const [, rolesPart, attrName, sign, valStr] = naturalM;
+                const op = sign === "+" ? "++" : "--";
+                const roles = resolveDeltaRoles(rolesPart, platform);
+                const v = parseInt(valStr);
+                applyAttrOrCurrencyDelta(ctx, msg, platform, roles, attrName, op, roles.map(() => v));
+            }
+        }
+    }
 
-            // 检查是属性还是货币
+    // 玩家自主改属性（管理员在「设置」里开启这个开关后才生效）：属性+值 / 属性-值，整条消息就这一段、不用带角色名，
+    // 永远只改自己、只认已注册的属性（不认货币，涉及经济平衡的东西不开放自助）
+    if (!isAdmin && isSelfAttrEditEnabled()) {
+        const selfM = raw.match(/^(\S+?)([+\-])(\d+)$/);
+        if (selfM) {
+            const [, attrName, sign, valStr] = selfM;
             const defs = getAttrDefs();
-            const reg = getRegistry();
-            const currencyCode = Object.entries(reg).find(([_, info]) => info.type === "currency" && info.name === attrName)?.[0];
-
-            if (defs[attrName]) {
-                // 处理属性
-                const charAttrs = getCharAttrs();
-                const notifyList = [];
-                roles.forEach((r, i) => {
-                    // 新结构：通过 roleName 反查 uid
-                    const rUidAttr = getRoleUid(platform, r);
-                    if (!rUidAttr) return;
-                    const rPrimaryUidAttr = getPrimaryUid(platform, rUidAttr);
-                    if (!charAttrs[rPrimaryUidAttr]) charAttrs[rPrimaryUidAttr] = {};
-                    const v = isNaN(vals[i]) ? vals[0] : vals[i];
-                    const old = charAttrs[rPrimaryUidAttr][attrName] ?? (defs[attrName].default ?? 0);
-                    const next = clampAttr(defs[attrName], op === "++" ? old + v : old - v);
-                    charAttrs[rPrimaryUidAttr][attrName] = next;
-                    res.push(`${r}：${old}→${next}`);
-                    notifyList.push({ r, old, next });
-                });
-                if (res.length) {
-                    saveCharAttrs(charAttrs);
-                    notifyList.forEach(({ r, old, next }) => {
-                        notifyPlayer(ctx, platform, r, `${op === "++" ? "📈" : "📉"}【属性变动】你的「${attrName}」：${old} → ${next}`);
-                    });
-                    return seal.replyToSender(ctx, msg, `${op === "++" ? "📈" : "📉"} ${attrName} 变更：\n${res.join("\n")}`);
-                }
-            } else if (currencyCode) {
-                // 处理货币
-                const notifyList = [];
-                roles.forEach((r, i) => {
-                    // 新结构：通过 roleName 反查 uid
-                    const rUid = getRoleUid(platform, r);
-                    if (!rUid) return;
-                    const roleKey = `${platform}:${getPrimaryUid(platform, rUid)}`;
-                    const v = isNaN(vals[i]) ? vals[0] : vals[i];
-                    const inv = getInv(roleKey);
-                    const entry = inv.find(e => e.code === currencyCode);
-                    const old = entry?.count || 0;
-                    if (op === "++") {
-                        addToInv(roleKey, currencyCode, v);
-                    } else {
-                        removeFromInv(roleKey, currencyCode, Math.min(v, old));
-                    }
-                    const newEntry = getInv(roleKey).find(e => e.code === currencyCode);
-                    const next = newEntry?.count || 0;
-                    res.push(`${r}：${old}→${next}`);
-                    notifyList.push({ r, old, next });
-                });
-                if (res.length) {
-                    notifyList.forEach(({ r, old, next }) => {
-                        notifyPlayer(ctx, platform, r, `${op === "++" ? "💰" : "💸"}【货币变动】你的「${attrName}」：${old} → ${next}`);
-                    });
-                    return seal.replyToSender(ctx, msg, `${op === "++" ? "💰" : "💸"} 货币「${attrName}」变更：\n${res.join("\n")}`);
-                }
+            const selfRole = defs[attrName] ? getRoleName(ctx, msg) : null;
+            if (selfRole) {
+                const op = sign === "+" ? "++" : "--";
+                applyAttrOrCurrencyDelta(ctx, msg, platform, [selfRole], attrName, op, [parseInt(valStr)]);
             }
         }
     }
@@ -4529,23 +4497,9 @@ cmd_battle_attrs.solve = (ctx, msg, cmdArgs) => {
     const self = getRoleName(ctx, msg);
     const subCmd = cmdArgs.getArgN(1);
 
-    if (subCmd === "注册") {
-        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
-        return cmd_reg_attr.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
-    }
-    if (subCmd === "删除") {
-        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
-        const name = cmdArgs.getArgN(2);
-        if (!name) return seal.replyToSender(ctx, msg, "❌ 请输入属性名：。属性 删除 名称");
-        const defs = getAttrDefs();
-        if (!defs[name]) return seal.replyToSender(ctx, msg, `❌ 未找到属性「${name}」`);
-        const poolDefs = getPoolDefs();
-        const boundPools = Object.values(poolDefs).filter(p => p.type === "tiered" && p.attr === name).map(p => p.name);
-        if (boundPools.length) return seal.replyToSender(ctx, msg, `❌ 属性「${name}」正被分段池「${boundPools.join("、")}」绑定，无法删除。`);
-        delete defs[name];
-        saveAttrDefs(defs);
-        return seal.replyToSender(ctx, msg, `✅ 属性「${name}」已删除`);
-    }
+    // 注：通用属性的注册/删除已统一到无前缀指令「创建属性」「删除属性」（不受这里的攻防系统开关限制），
+    // 这里不再重复实现——原来这两条子命令还有个隐藏问题：卡在上面的 config.enabled 检查之后，
+    // 攻防系统一关，管理员连通用属性（跟战斗无关，物品/合成/池子都要用）都建不了。
     if (subCmd === "列表") {
         const attrs = getValidAttrs();
         return seal.replyToSender(ctx, msg, attrs.length ? `📋 已注册属性：${attrs.join("、")}` : "📋 暂无已注册属性。");
@@ -5205,7 +5159,7 @@ function doUnequip(ctx, msg, slot) {
 // 装备系统 - 管理员命令：注册装备
 // ========================
 
-const cmd_register_equip_help = "【管理员】注册新装备\n注册装备 <装备名>*<描述>*<槽位>*<基础属性>\n\n属性格式: ATK+15,DEF+10 (用逗号分隔多个属性)\n属性必须已注册，执行「我创建属性」可注册新属性\n槽位：执行「槽位 查看」查看所有可用槽位\n\n示例:\n注册装备 铁制短剑*普通短剑*hand*ATK+15\n注册装备 钢铁胸甲*防御胸甲*chest*DEF+20,HP+50\n注册装备 智者法杖*法术武器*hand*智力+20,MP+50";
+const cmd_register_equip_help = "【管理员】注册新装备\n注册装备 <装备名>*<描述>*<槽位>*<基础属性>\n\n属性格式: ATK+15,DEF+10 (用逗号分隔多个属性)\n属性必须已注册，执行「创建属性」可注册新属性\n槽位：执行「槽位 查看」查看所有可用槽位\n\n示例:\n注册装备 铁制短剑*普通短剑*hand*ATK+15\n注册装备 钢铁胸甲*防御胸甲*chest*DEF+20,HP+50\n注册装备 智者法杖*法术武器*hand*智力+20,MP+50";
 function doRegisterEquip(ctx, msg, inputStr) {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
 
@@ -5260,7 +5214,7 @@ function doRegisterEquip(ctx, msg, inputStr) {
     }
 
     if (unregisteredAttrs.length > 0) {
-        return seal.replyToSender(ctx, msg, `❌ 以下属性未注册: ${unregisteredAttrs.join(", ")}\n\n请先执行 \"我创建属性 <属性名>\" 来注册这些属性。`);
+        return seal.replyToSender(ctx, msg, `❌ 以下属性未注册: ${unregisteredAttrs.join(", ")}\n\n请先执行 \"创建属性 <属性名>\" 来注册这些属性。`);
     }
 
     const registry = getEquipRegistry();

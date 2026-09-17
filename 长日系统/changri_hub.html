@@ -267,7 +267,7 @@ body{background:#d8d8d6;letter-spacing:-.01em;}
       <a href="player_guide.html" target="_blank">玩家指南</a>
       <a href="changri_wishes.html">许愿墙</a>
     </div>
-    <div class="nav-meta">SYSTEM · v1.6.1</div>
+    <div class="nav-meta">SYSTEM · v1.7.0</div>
   </div>
 </nav>
 
@@ -283,7 +283,7 @@ body{background:#d8d8d6;letter-spacing:-.01em;}
     <div class="hero-stats">
       <div class="hero-stat"><b>10</b><span>个子系统</span></div>
       <div class="hero-stat"><b>200+</b><span>条指令</span></div>
-      <div class="hero-stat"><b>v1.6.1</b><span>当前版本</span></div>
+      <div class="hero-stat"><b>v1.7.0</b><span>当前版本</span></div>
     </div>
     <div class="hero-cta">
       <a class="btn btn-light" onclick="showTab('manual')">进入指令手册 →</a>
@@ -467,9 +467,25 @@ document.getElementById("subsysGrid").innerHTML = SUBSYSTEMS.map(s => `
 // ========================
 const CHANGELOG = [
   {
-    version: "1.6.1",
+    version: "1.7.0",
     date: "2026-09-16",
     latest: true,
+    groups: [
+      { type: "feat", title: "新增", items: [
+        "RPG 属性改法新增自然写法「角色/全体 属性名+数值」「属性名-数值」，跟原来的「角色:属性++数值」等价，不用切符号键盘打冒号、连打两个加减号；老写法继续可用，两种写法都认",
+        "新增开关「玩家自主改属性」（。设置 功能开关）：开启后玩家可以直接发「属性名+数值」改自己名下的属性（只认已注册属性、只能改自己，不涉及货币），不用找管理员代劳",
+        "新增「修改简称」：数字/英文字母/汉字均可，跟任何人的本名、简称都不能重复；名字长的话，短信/私约等一切填名字的地方都能拿简称代替本名。不设置就默认跟随本名，改名字时也跟着变；一旦手动设置过，改名字不会再动已设的简称",
+        "「修改性别」「修改年龄」「修改皮相」「修改签名」「修改简称」支持一次发多行一起改（每行一条指令），创建角色时会提示这个用法；改名字涉及联动改关系线/场次/统计等一堆历史记录，暂不并入批量",
+      ]},
+      { type: "improve", title: "优化", items: [
+        "RPG 属性的创建/删除统一到「创建属性」「删除属性」两条无前缀指令（原来「注册属性」「我创建属性」「属性 注册」三份重复实现只保留一份；「属性 删除」「我移除属性」同理，且统一成会清理角色残留值、也会检查分段池绑定的更完整版本）",
+      ]},
+    ]
+  },
+  {
+    version: "1.6.1",
+    date: "2026-09-16",
+    latest: false,
     groups: [
       { type: "fix", title: "修复", items: [
         "修复私约「第N次记录」计数不随天数清零的问题：私约资源迁移后实际计数键变成了按资源单独存储的 a_meetingCount_private_res:&lt;资源ID&gt;，但自动天数推进/手动「设置天数」清空的还是迁移前的老键，导致这个计数一直跨天累加、不像电话/短信/礼物那样每天归零",

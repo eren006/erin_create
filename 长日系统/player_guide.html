@@ -247,7 +247,7 @@ body:after{content:"";position:fixed;z-index:100;inset:0;pointer-events:none;opa
     <summary>
       <h2><span class="feat-icon">👤</span><span>角色与账号</span></h2>
       <div class="section-preview"><span>创建新角色 [角色名]</span><span>玩家名单</span><span>修改名字 [新名字]</span></div>
-      <span class="section-count">09</span>
+      <span class="section-count">11</span>
       <span class="section-arrow" aria-hidden="true">⌄</span>
     </summary>
     <div class="cmd-grid">
@@ -285,7 +285,19 @@ body:after{content:"";position:fixed;z-index:100;inset:0;pointer-events:none;opa
         <div class="cmd-card" data-search="修改签名 [内容] 修改角色个性签名（12小时冷却）">
           <div class="cmd-name">修改签名 [内容]</div>
           <div class="cmd-desc">修改角色个性签名（12小时冷却）</div>
-          
+
+        </div>
+        <div class="cmd-card" data-search="修改简称 [简称] 数字/英文字母/汉字，1-10位，跟任何人的本名、简称都不能重复；名字长的话，短信/私约等一切填名字的地方都能拿简称代替本名。不设置就默认跟随本名，改名字时也会跟着变；设置后改名字不影响已设的简称">
+          <div class="cmd-name">修改简称 [简称]</div>
+          <div class="cmd-desc">数字/英文字母/汉字，1-10位，跟任何人的本名、简称都不能重复；名字长的话，短信/私约等一切填名字的地方都能拿简称代替本名</div>
+          <pre class="ex">例：修改简称 阿明
+默认跟随本名，改名字时也跟着变；设置过就不再自动跟改</pre>
+        </div>
+        <div class="cmd-card" data-search="批量改档案 修改性别/修改年龄/修改皮相/修改签名/修改简称支持一次发多行一起改，每行一条">
+          <div class="cmd-name">批量改档案（性别/年龄/皮相/签名/简称）</div>
+          <div class="cmd-desc">这几项互不联动，可以一次发多行一起改，每行一条指令（改名字涉及联动，暂不支持批量）</div>
+          <pre class="ex">修改年龄 20
+修改简称 阿明</pre>
         </div>
         <div class="cmd-card" data-search="角色卡 查看自己的完整角色信息卡（基础信息/战斗属性含装备加成/当前装备）">
           <div class="cmd-name">角色卡</div>
@@ -862,15 +874,21 @@ body:after{content:"";position:fixed;z-index:100;inset:0;pointer-events:none;opa
     <summary>
       <h2><span class="feat-icon">📊</span><span>状态与技能</span></h2>
       <div class="section-preview"><span>我的状态</span><span>属性 [角色名]</span><span>技能</span></div>
-      <span class="section-count">05</span>
+      <span class="section-count">06</span>
       <span class="section-arrow" aria-hidden="true">⌄</span>
     </summary>
     <div class="cmd-grid">
-      
+
         <div class="cmd-card" data-search="我的状态 查看自己所有 rpg 属性（带进度条的可视化版本）">
           <div class="cmd-name">我的状态</div>
           <div class="cmd-desc">查看自己所有 RPG 属性（带进度条的可视化版本）</div>
-          
+
+        </div>
+        <div class="cmd-card" data-search="[属性名]+数值 [属性名]-数值 自主改属性开关开启后，直接改自己名下已注册的属性，只能改自己、不涉及货币">
+          <div class="cmd-name">[属性名]+数值 / [属性名]-数值</div>
+          <div class="cmd-desc">管理员开启「玩家自主改属性」开关后可用：直接改自己名下已注册的属性，不用找管理员代劳（只能改自己，不涉及货币）</div>
+          <pre class="ex">力量+5
+体力-10</pre>
         </div>
         <div class="cmd-card" data-search="属性 [角色名] 查看自己（或他人）的战斗属性，含装备加成对比">
           <div class="cmd-name">属性 [角色名]</div>

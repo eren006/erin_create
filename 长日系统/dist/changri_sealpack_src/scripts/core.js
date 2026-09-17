@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         长日将尽系统
 // @author       长日将尽
-// @version      1.6.1
+// @version      1.7.0
 // @description  无
 // @timestamp    1778742000
 // @license      CC BY-NC-SA
@@ -15,7 +15,7 @@
 
 let ext = seal.ext.find("changri")
 if (!ext) {
-    ext = seal.ext.new("changri", "长日将尽", "1.6.1");
+    ext = seal.ext.new("changri", "长日将尽", "1.7.0");
     // 注册扩展
     seal.ext.register(ext);
     ext.autoActive = true;
@@ -993,10 +993,9 @@ cmd_bind_role.solve =(ctx, msg, cmdArgs) => {
 
     if (!storage[platform]) storage[platform] = {};
 
-    // 检查名称是否被他人占用（新结构：uid为key，roleName在value[0]）
-    const existingUidForName = Object.entries(storage[platform]).find(([k, v]) => v[0] === name && k !== uid)?.[0];
-    if (existingUidForName) {
-        seal.replyToSender(ctx, msg, `❌ 名称「${name}」已被其他用户占用`);
+    // 检查名称是否被他人占用（新结构：uid为key，roleName在value[0]；也要跟别人的简称一起查重，见 isNameOrNicknameTaken）
+    if (isNameOrNicknameTaken(platform, name, uid)) {
+        seal.replyToSender(ctx, msg, `❌ 名称「${name}」已被其他用户的本名或简称占用`);
         return seal.ext.newCmdExecuteResult(true);
     }
 
@@ -1022,6 +1021,9 @@ cmd_bind_role.solve =(ctx, msg, cmdArgs) => {
         `  修改年龄 数字\n` +
         `  修改皮相 明星名\n` +
         `  修改签名 你的签名（12小时冷却）\n` +
+        `  修改简称 简称（名字长的话，短信/私约等填名字的地方都能用简称代替本名）\n` +
+        `这几条可以一次发多行一起改，每行一条，比如：\n` +
+        `  修改年龄 20\n  修改简称 阿明\n` +
         `\n📋 发送「我的」随时查看"我的待回/我的弧长/我的数量"这些自查指令的速查一览。\n` +
         `\n发送「玩家名单」查看所有角色。`
     );
@@ -1041,8 +1043,7 @@ function doRenameRole(ctx, msg, newName) {
     const oldName = entry[0];
     if (oldName === newName) return seal.replyToSender(ctx, msg, "❌ 新名字与当前名字相同");
 
-    const takenByOther = Object.entries(storage[platform]).find(([k, v]) => v[0] === newName && k !== uid);
-    if (takenByOther) return seal.replyToSender(ctx, msg, `❌ 名字「${newName}」已被他人使用`);
+    if (isNameOrNicknameTaken(platform, newName, uid)) return seal.replyToSender(ctx, msg, `❌ 名字「${newName}」已被他人的本名或简称占用`);
 
     storage[platform][uid][0] = newName;
     kvSet("a_private_group", storage);
@@ -1122,6 +1123,76 @@ function doRenameRole(ctx, msg, newName) {
 
     seal.replyToSender(ctx, msg, `✅ 角色名已由「${oldName}」改为「${newName}」。`);
     return seal.ext.newCmdExecuteResult(true);
+}
+
+// 简称：数字/英文字母/汉字，1-10 位，跟任何人的本名、简称都不能重复。
+// 不单独存"是否自定义"这个标记——不设置就是 entry[2] 为 undefined，getUidByRoleName 找不到就退回按本名匹配，
+// 效果上自然等于"简称永远显示成当前本名"；改名时 doRenameRole 只改 entry[0]，entry[2] 原样不动，
+// 所以没设置过简称的人改名后"简称"会自动跟着变成新名字，设置过的人改名不影响已设的简称。
+function setNickname(platform, roleName, val) {
+    if (!val) return "❌ 请输入简称，例：修改简称 小明";
+    if (!/^[0-9A-Za-z一-龥]{1,10}$/.test(val)) return "❌ 简称只能是数字、英文字母、汉字，长度 1-10";
+    const uid = getUidByRoleName(platform, roleName);
+    if (!uid) return "❌ 请先创建角色。";
+    const storage = getRoleStorage();
+    if (val === roleName) {
+        if (storage[platform][uid][2] !== undefined) {
+            delete storage[platform][uid][2];
+            kvSet("a_private_group", storage);
+        }
+        return `✅ 简称已重置为跟随本名（当前：${roleName}）`;
+    }
+    if (isNameOrNicknameTaken(platform, val, uid)) return `❌ 简称「${val}」已被占用`;
+    storage[platform][uid][2] = val;
+    kvSet("a_private_group", storage);
+    return `✅ 简称已设为「${val}」，以后短信/私约等填名字的地方都能用它代替本名`;
+}
+
+// 4.8 角色档案批量编辑用：性别/年龄/皮相/签名/简称共用的前缀表和单行处理器（见下方 onNotCommandReceived 里的调用）
+const PROFILE_EDIT_PREFIXES = ["修改性别", "修改年龄", "修改皮相", "修改签名", "修改简称"];
+function processProfileFieldLine(platform, roleName, line) {
+    if (line.startsWith("修改性别")) {
+        const val = line.slice(4).trim();
+        if (val !== "男" && val !== "女") return "❌ 性别仅支持：男 / 女";
+        setCharProfile(platform, roleName, { gender: val });
+        return `✅ 性别已更新为：${val}`;
+    }
+    if (line.startsWith("修改年龄")) {
+        const val = parseInt(line.slice(4).trim());
+        if (isNaN(val) || val < 0 || val > 10000) return "❌ 请输入有效年龄（0-10000）";
+        setCharProfile(platform, roleName, { age: val });
+        return `✅ 年龄已更新为：${val}`;
+    }
+    if (line.startsWith("修改皮相")) {
+        const val = line.slice(4).trim();
+        if (!val) return "❌ 请输入明星名，例：修改皮相 刘亦菲";
+        const prof = getCharProfile(platform, roleName);
+        const now = Date.now();
+        const cooldown = 2 * 3600 * 1000;
+        if (prof.lookUpdatedAt && now - prof.lookUpdatedAt < cooldown) {
+            const remain = Math.ceil((cooldown - (now - prof.lookUpdatedAt)) / 60000);
+            return `⏳ 皮相修改冷却中，还需等待 ${remain} 分钟`;
+        }
+        setCharProfile(platform, roleName, { look: val, lookUpdatedAt: now });
+        return `✅ 皮相已更新为：${val}`;
+    }
+    if (line.startsWith("修改签名")) {
+        const val = line.slice(4).trim();
+        if (!val) return "❌ 请输入签名内容，例：修改签名 愿岁月温柔以待";
+        const prof = getCharProfile(platform, roleName);
+        const now = Date.now();
+        const cooldown = 12 * 3600 * 1000;
+        if (prof.bioUpdatedAt && now - prof.bioUpdatedAt < cooldown) {
+            const remain = Math.ceil((cooldown - (now - prof.bioUpdatedAt)) / 60000);
+            return `⏳ 签名修改冷却中，还需等待 ${remain} 分钟`;
+        }
+        setCharProfile(platform, roleName, { bio: val, bioUpdatedAt: now });
+        return `✅ 签名已更新为：${val}`;
+    }
+    if (line.startsWith("修改简称")) {
+        return setNickname(platform, roleName, line.slice(4).trim());
+    }
+    return `❌ 无法识别：${line}`;
 }
 
 // 2. 玩家名单
@@ -1319,11 +1390,20 @@ const getUserRoleName = (platform, fullUid) => {
     return store.get("a_private_group")[platform]?.[uid]?.[0] || null;
 };
 
-// 通过 roleName 反查 uid（O(n) 扫描，仅在必要时使用）
+// 通过 roleName 或简称反查 uid（O(n) 扫描，仅在必要时使用）
+// value 结构：[roleName, gid, nickname?]——nickname 是玩家自设的简称，不设置时默认跟随本名（见「修改简称」）。
+// 这是全系统唯一的「输入的名字 → uid」入口，短信/私约/属性改动等所有指令参数里填人名的地方都走这里，
+// 所以简称只需要在这一个函数里生效，不用去每个指令单独适配。
 const getUidByRoleName = (platform, roleName) => {
     const roles = store.get("a_private_group")[platform] || {};
-    return Object.entries(roles).find(([_, v]) => v[0] === roleName)?.[0] || null;
+    return Object.entries(roles).find(([_, v]) => v[0] === roleName || v[2] === roleName)?.[0] || null;
 };
+
+// 本名/简称是否已被别人占用（跨这两类一起查重，保证「填一个名字」永远只对应一个人）；excludeUid 传自己的 uid 表示排除自己
+function isNameOrNicknameTaken(platform, candidate, excludeUid) {
+    const roles = store.get("a_private_group")[platform] || {};
+    return Object.entries(roles).some(([uid, v]) => uid !== excludeUid && (v[0] === candidate || v[2] === candidate));
+}
 
 // uid → roleName 显示（找不到则返回 uid 本身）
 const resolveUidToName = (platform, uid) => {
@@ -9720,9 +9800,10 @@ function handleRoleCardMsg(ctx, msg, platform) {
     } catch(e) { console.error(`[名片] 读取 ${roleKey} 货币失败:`, e.message); }
 
     // ── 拼接 ──────────────────────────────────────────────
+    const nickname = getRoleStorage()[platform]?.[uid]?.[2];
     const out = [];
     out.push(`★━━━━━━━━━━★`);
-    out.push(`🃏 【${roleName}】`);
+    out.push(`🃏 【${roleName}】${nickname ? `（简称：${nickname}）` : ""}`);
     out.push(`★━━━━━━━━━━★`);
     out.push(``);
     out.push(`${genderText} · ${ageText}`);
@@ -9769,6 +9850,8 @@ function handlePlayerGuideMsg(ctx, msg) {
         "修改年龄 数字",
         "修改皮相 明星名",
         "修改签名 你的签名 —— 12小时冷却",
+        "修改简称 简称 —— 数字/英文/汉字，名字长的话短信/私约等填名字的地方都能拿它代替本名",
+        "以上除改名字外都能一次发多行一起改（每行一条指令）",
         "",
         "【查看】",
         "玩家名单            查看所有角色",
@@ -10378,60 +10461,26 @@ ext.onNotCommandReceived = async (ctx, msg) => {
     }
 
     // 4.8 角色档案修改（无前缀）
+    // 改名字涉及联动改关系线/场次/统计等一大堆历史记录（见 doRenameRole），暂不纳入批量，单独一条条发。
     if (raw.startsWith("修改名字") || raw.startsWith("修改姓名")) {
         const newName = raw.slice(4).trim();
         if (!newName) return seal.replyToSender(ctx, msg, "格式：修改名字 新名字");
         return doRenameRole(ctx, msg, newName);
     }
 
-    if (raw.startsWith("修改性别")) {
+    // 性别/年龄/皮相/签名/简称这几个字段互不联动，支持一次发多行一起改（每行一条指令），单条照样能用。
+    // 判断是不是「批量」：必须每一行都能独立认出是这几个前缀之一，否则当成单条指令处理（值本身允许带换行，
+    // 比如签名写成两行，只要第二行不是恰好撞上某个前缀开头，就还是当整段签名内容，不会被拆开）。
+    if (PROFILE_EDIT_PREFIXES.some(p => raw.startsWith(p))) {
         const roleName = getRoleName(ctx, msg);
         if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
-        const val = raw.slice(4).trim();
-        if (val !== "男" && val !== "女") return seal.replyToSender(ctx, msg, "性别仅支持：男 / 女");
-        setCharProfile(platform, roleName, { gender: val });
-        return seal.replyToSender(ctx, msg, `✅ 性别已更新为：${val}`);
-    }
-
-    if (raw.startsWith("修改年龄")) {
-        const roleName = getRoleName(ctx, msg);
-        if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
-        const val = parseInt(raw.slice(4).trim());
-        if (isNaN(val) || val < 0 || val > 10000) return seal.replyToSender(ctx, msg, "❌ 请输入有效年龄（0-10000）");
-        setCharProfile(platform, roleName, { age: val });
-        return seal.replyToSender(ctx, msg, `✅ 年龄已更新为：${val}`);
-    }
-
-    if (raw.startsWith("修改皮相")) {
-        const roleName = getRoleName(ctx, msg);
-        if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
-        const val = raw.slice(4).trim();
-        if (!val) return seal.replyToSender(ctx, msg, "请输入明星名，例：修改皮相 刘亦菲");
-        const prof = getCharProfile(platform, roleName);
-        const now = Date.now();
-        const cooldown = 2 * 3600 * 1000;
-        if (prof.lookUpdatedAt && now - prof.lookUpdatedAt < cooldown) {
-            const remain = Math.ceil((cooldown - (now - prof.lookUpdatedAt)) / 60000);
-            return seal.replyToSender(ctx, msg, `⏳ 皮相修改冷却中，还需等待 ${remain} 分钟`);
+        const lines = raw.split(/\n/).map(l => l.trim()).filter(Boolean);
+        const isBatch = lines.length > 1 && lines.every(l => PROFILE_EDIT_PREFIXES.some(p => l.startsWith(p)));
+        if (isBatch) {
+            const results = lines.map(l => processProfileFieldLine(platform, roleName, l));
+            return seal.replyToSender(ctx, msg, results.join("\n"));
         }
-        setCharProfile(platform, roleName, { look: val, lookUpdatedAt: now });
-        return seal.replyToSender(ctx, msg, `✅ 皮相已更新为：${val}`);
-    }
-
-    if (raw.startsWith("修改签名")) {
-        const roleName = getRoleName(ctx, msg);
-        if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
-        const val = raw.slice(4).trim();
-        if (!val) return seal.replyToSender(ctx, msg, "请输入签名内容，例：修改签名 愿岁月温柔以待");
-        const prof = getCharProfile(platform, roleName);
-        const now = Date.now();
-        const cooldown = 12 * 3600 * 1000;
-        if (prof.bioUpdatedAt && now - prof.bioUpdatedAt < cooldown) {
-            const remain = Math.ceil((cooldown - (now - prof.bioUpdatedAt)) / 60000);
-            return seal.replyToSender(ctx, msg, `⏳ 签名修改冷却中，还需等待 ${remain} 分钟`);
-        }
-        setCharProfile(platform, roleName, { bio: val, bioUpdatedAt: now });
-        return seal.replyToSender(ctx, msg, `✅ 签名已更新为：${val}`);
+        return seal.replyToSender(ctx, msg, processProfileFieldLine(platform, roleName, raw));
     }
 
     if (raw === "角色卡") return handleRoleCardMsg(ctx, msg, platform);
@@ -11629,10 +11678,9 @@ cmd_create_npc.solve = (ctx, msg, cmdArgs) => {
     const storage = getRoleStorage();
     if (!storage[platform]) storage[platform] = {};
 
-    // 检查名称是否被他人占用
-    const existingUidForName = Object.entries(storage[platform]).find(([k, v]) => v[0] === name && k !== uid)?.[0];
-    if (existingUidForName) {
-        seal.replyToSender(ctx, msg, `❌ 名称「${name}」已被其他用户占用`);
+    // 检查名称是否被他人占用（也要跟别人的简称一起查重，见 isNameOrNicknameTaken）
+    if (isNameOrNicknameTaken(platform, name, uid)) {
+        seal.replyToSender(ctx, msg, `❌ 名称「${name}」已被其他用户的本名或简称占用`);
         return seal.ext.newCmdExecuteResult(true);
     }
 

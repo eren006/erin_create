@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         长日设置
 // @author       长日将尽
-// @version      1.4.3
+// @version      1.5.0
 // @description  独立的设置控制台（基础、互动、信件、公告）及天数系统、统计报告。所有数据统一存储在主插件 changri 中。
 // @timestamp    1778742000
 // @license      CC BY-NC-SA
@@ -23,7 +23,7 @@
 
 let ext = seal.ext.find('setting_system');
 if (!ext) {
-    ext = seal.ext.new("setting_system", "长日将尽", "1.4.3");
+    ext = seal.ext.new("setting_system", "长日将尽", "1.5.0");
     seal.ext.register(ext);
 }
 
@@ -291,6 +291,8 @@ settingsConfig['基础设置'] = {
 settingsConfig['功能开关'] = {
     title: "。设置 功能开关",
     params: [
+        // 放在最前面：这个开关直接决定玩家能不能自己动 RPG 属性数值，比下面这些收发类功能开关更需要一眼看到
+        { label: '玩家自主改属性', key: 'global_feature_toggle', nested: 'enable_self_attr_edit', type: 'bool', default: false },
         { label: '微信', key: 'global_feature_toggle', nested: 'enable_wechat', type: 'bool', default: false },
         { label: '礼物', key: 'global_feature_toggle', nested: 'enable_general_gift', type: 'bool', default: true },
         { label: '发起邀约', key: 'global_feature_toggle', nested: 'enable_general_appointment', type: 'bool', default: true },
@@ -577,7 +579,8 @@ function ensureDefaults(main) {
             enable_chaos_letter: true, enable_secret_letter: true, enable_wish_system: true,
             enable_lovemail: false, enable_wechat: false, enable_direct_letter: false,
             dlc_sighting: false, dlc_fupan: false, dlc_auction: false,
-            dlc_attack: false, dlc_forum: false, dlc_auto_day: false
+            dlc_attack: false, dlc_forum: false, dlc_auto_day: false,
+            enable_self_attr_edit: false
         }),
         "chaos_letter_config": JSON.stringify({ misdelivery: 0, blackoutText: 0, loseContent: 0, antonymReplace: 0, reverseOrder: 0, mistakenSignature: 0, tornPage: 0, dailyLimit: 5, publicChance: 50, giftLost: 0, giftMisdelivery: 0 }),
         "sighting_system_config": JSON.stringify({ enabled: false, send_to_all: true, max_reports_per_day: 5, include_ended_meetings: false, time_overlap_threshold: 0.3 }),
@@ -657,7 +660,8 @@ function ensureDefaults(main) {
             const newFields = {
                 enable_direct_letter: false,
                 dlc_sighting: false, dlc_fupan: false, dlc_auction: false,
-                dlc_attack: false, dlc_forum: false, dlc_auto_day: false
+                dlc_attack: false, dlc_forum: false, dlc_auto_day: false,
+                enable_self_attr_edit: false
             };
             let changed = false;
             for (const [k, v] of Object.entries(newFields)) {
