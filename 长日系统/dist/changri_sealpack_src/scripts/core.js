@@ -1155,6 +1155,7 @@ function processProfileFieldLine(platform, roleName, line) {
         const val = line.slice(4).trim();
         if (val !== "男" && val !== "女") return "❌ 性别仅支持：男 / 女";
         setCharProfile(platform, roleName, { gender: val });
+        refreshLookWall(platform); // 性别决定皮相墙分栏，换性别要挪到另一栏
         return `✅ 性别已更新为：${val}`;
     }
     if (line.startsWith("修改年龄")) {
@@ -1174,6 +1175,7 @@ function processProfileFieldLine(platform, roleName, line) {
             return `⏳ 皮相修改冷却中，还需等待 ${remain} 分钟`;
         }
         setCharProfile(platform, roleName, { look: val, lookUpdatedAt: now });
+        refreshLookWall(platform);
         return `✅ 皮相已更新为：${val}`;
     }
     if (line.startsWith("修改签名")) {
@@ -1193,6 +1195,71 @@ function processProfileFieldLine(platform, roleName, line) {
         return setNickname(platform, roleName, line.slice(4).trim());
     }
     return `❌ 无法识别：${line}`;
+}
+
+// ========================
+// 🌸 皮相墙：水群里按性别分栏展示所有已设置皮相的角色，改皮相/改性别都会重新生成整份公告
+// ========================
+// OneBot 的群公告没有"编辑"动作，只能先找到旧的删掉，再发一条新的。用固定开头当签名去匹配旧公告，
+// 不依赖 _send_group_notice 返回值里是否带 notice_id——go-cqhttp/napcat/LLOneBot 这块返回不完全一致，
+// 读回来按内容匹配删，比记 id 更稳。水群没配置（water_group_id 是默认值"未设置"）时直接跳过，不报错。
+// ⚠️ 没有真实 OneBot 环境测试过 _get_group_notice 的返回结构，先按标准 OneBot 扩展格式
+// （data 是数组，每条 { notice_id, message: { text } }）实现，实测格式不符的话需要调整解析这段。
+const LOOK_WALL_SIGNATURE = "🌸 皮相墙 🌸";
+
+function buildLookWallContent(platform) {
+    const roles = store.get("a_private_group")[platform] || {};
+    const byGender = { "男": [], "女": [] };
+    for (const uid of Object.keys(roles)) {
+        const roleName = roles[uid][0];
+        const prof = getCharProfile(platform, roleName);
+        if (!prof.look) continue;
+        const bucket = byGender[prof.gender];
+        if (bucket) bucket.push(`${roleName}：${prof.look}`);
+    }
+    return [
+        LOOK_WALL_SIGNATURE,
+        "",
+        "👨 男生",
+        ...(byGender["男"].length ? byGender["男"] : ["（暂无）"]),
+        "",
+        "👩 女生",
+        ...(byGender["女"].length ? byGender["女"] : ["（暂无）"]),
+    ].join("\n");
+}
+
+function refreshLookWall(platform) {
+    const gid = kvGet("water_group_id", "未设置");
+    if (!gid || gid === "未设置") return;
+    const groupIdNum = parseInt(String(gid).replace(/\D/g, ""), 10);
+    if (!groupIdNum) return;
+
+    const postNew = () => {
+        WSM.request(
+            { action: "_send_group_notice", params: { group_id: groupIdNum, content: buildLookWallContent(platform) } },
+            () => {},
+            () => console.error("[皮相墙] 发布新公告失败")
+        );
+    };
+
+    WSM.request(
+        { action: "_get_group_notice", params: { group_id: groupIdNum } },
+        (resp) => {
+            if (resp.status !== "ok" && resp.retcode !== 0) return console.error(`[皮相墙] 读取群公告失败: ${JSON.stringify(resp)}`);
+            const list = resp.data || [];
+            const oldOnes = list.filter(n => (n.message?.text || n.text || "").startsWith(LOOK_WALL_SIGNATURE));
+            if (!oldOnes.length) return postNew();
+            let remaining = oldOnes.length;
+            oldOnes.forEach(n => {
+                WSM.request(
+                    { action: "_del_group_notice", params: { group_id: groupIdNum, notice_id: n.notice_id } },
+                    () => { if (--remaining <= 0) postNew(); },
+                    () => { if (--remaining <= 0) postNew(); }
+                );
+            });
+        },
+        () => console.error("[皮相墙] 读取群公告列表失败，跳过本次更新")
+    );
 }
 
 // 2. 玩家名单
