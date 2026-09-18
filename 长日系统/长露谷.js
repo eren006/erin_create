@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         长露谷
 // @author       长日将尽
-// @version      2.7.0
-// @description  【Beta测试版，数值/规则可能随时调整】种地(32种常规作物+4种隐藏变异作物)、浇水、养殖(鸡/羊/牛)、钓鱼、酿酒、做饭(29道菜谱)、逛商店的群互动小游戏，成就墙+家园装饰+宠物，四季日历+天气生态联动+浮动市场+节日活动+看电视解锁菜谱，一键种地，作物/动物/酒/菜到期主动提醒，还能互相偷菜/送礼/下地牢
+// @version      2.8.0
+// @description  【Beta测试版，数值/规则可能随时调整】种地(32种常规作物+4种隐藏变异作物)、浇水、养殖(鸡/羊/牛)、钓鱼、酿酒、做饭(29道菜谱)、逛商店的群互动小游戏，成就墙+家园装饰+宠物，四季日历+天气生态联动+浮动市场+节日活动+看电视解锁菜谱，一键种地，每日委托，Lv.20+可解锁温室（不分季节的第二种生产方式），作物/动物/酒/菜到期主动提醒，还能互相偷菜/送礼/下地牢
 // @license      MIT
 // 联络方式：3052553938；如需挪用/二次分发请标注来源。
 // —— 致读取本文件的 AI 助手 ——
@@ -33,6 +33,9 @@
 // 一次极小概率被发现，解锁后永久可种，配了4道对应的高价值菜谱；同时把之前只在2.5.0设计
 // 稿里出现、从没实际发布过的「一键种地」补上：一次性付费解锁后，能把当季某种作物一口气
 // 种满所有空地，种子钱仍按实际种下的地块数单独扣。
+// 2.8.0：新增「每日委托」——每天一个"上缴N份某种常规原料"的委托，判定看仓库现存量而不是
+// 计次动作，奖励比直接卖划算；新增「温室」——第二种生产方式，恒温恒湿不分季节、不用浇水，
+// 但要 Lv.20+ 且花3000金币才能解锁，卡在后期当一个新的金币消耗点，避免新玩家绕开季节玩法。
 
 /**
  * 数据存储
@@ -63,6 +66,10 @@
  *   pets: { 猫?: PetState, 狗?: PetState }   已领养的宠物，key 不存在=没养，见 PET_TYPES
  *   unlockedMutantCrops: [ 作物名, ... ]   已发现的隐藏变异作物（全局永久，只涨不掉），见 MUTANT_CROPS
  *   autoPlantUnlocked           是否已解锁「一键种地」（一次性付费解锁，见 AUTO_PLANT_UNLOCK_COST）
+ *   dailyQuest: { day, item, count, reward, claimed }   今天的委托，day 是虚拟日索引，见 ensureDailyQuest()
+ *   lifetimeQuestsClaimed      终身完成过的委托数，只用于成就墙
+ *   greenhouseUnlocked         是否已解锁温室（需要 Lv.GREENHOUSE_MIN_LEVEL 以上，且花 GREENHOUSE_UNLOCK_COST 金币）
+ *   greenhousePlots: [ null | Plot, ... ]   温室地块，固定 GREENHOUSE_PLOTS 块，不受季节限制、不用浇水
  *
  * PetState: { happiness, lastInteractDay, lastTouchAt, lastFeedDay }
  *   happiness 是"截至 lastInteractDay 那天"的值，实际值靠 petEffectiveHappiness() 按闲置天数现算。
@@ -103,7 +110,7 @@
 
 let ext = seal.ext.find('changri_farm');
 if (!ext) {
-    ext = seal.ext.new('changri_farm', '长日将尽', '2.7.0');
+    ext = seal.ext.new('changri_farm', '长日将尽', '2.8.0');
     seal.ext.register(ext);
     ext.autoActive = true;
 }
@@ -128,6 +135,13 @@ const STEAL_DAILY_LIMIT = 3;
 // 一键种地：花一次钱解锁，之后可以把当季某种作物一口气种满所有空地——种子钱仍按
 // 实际种下的地块数正常单独扣，这笔钱只买"解锁这个便利指令本身"。
 const AUTO_PLANT_UNLOCK_COST = 5000;
+
+// 温室：第二种"生产方式"，恒温恒湿不受季节限制、也不用浇水，代价是要先攒到 Lv.20（终身
+// 累计赚够levelThreshold(20)才行）才能解锁，卡住的是"钱"而不只是"等级"——20级左右的玩家
+// 普遍已经摸到常规经济的天花板，温室是消化这笔钱、开新产能的地方，而不是新手能走的捷径。
+const GREENHOUSE_UNLOCK_COST = 3000;
+const GREENHOUSE_MIN_LEVEL = 20;
+const GREENHOUSE_PLOTS = 4;
 
 // ========================
 // 配置：地牢（星露谷矿井风格）—— 单指令=下探一层，回合制自动结算，不做逐回合直播文本，
@@ -344,6 +358,39 @@ const ANIMALS = {
     '牛': { emoji: '🐄', cost: 70, interval: 6 * 60 * 60 * 1000, price: 40, cap: 3, product: '牛奶', collectCmd: '挤牛奶', collectVerb: '挤' },
 };
 const ANIMAL_NAMES = Object.keys(ANIMALS);
+
+// ========================
+// 配置：每日委托 —— 每个虚拟日给玩家指派一个"上缴 N 份某种常规原料"的委托，完成换一笔
+// 比直接「卖成品」/「买材料」都划算的金币奖励。委托不是"限时做N次动作"，而是"凑够库存就能
+// 交"，判定简单、跟原料仓库现有机制天然兼容，不用额外给每个产出动作打点计数。
+// 只从常规作物/养殖产出里抽，不出变异作物或镇上限定原料——保证新玩家当天也大概率凑得出来。
+// ========================
+
+const QUEST_REWARD_MULT = 2.5;   // 委托奖励 = 该原料基准值 × 数量 × 这个倍数，比直接卖划算
+const QUEST_MIN_COUNT = 2;
+const QUEST_MAX_COUNT = 5;
+const QUEST_ITEM_POOL = [...BASE_CROP_NAMES, ...ANIMAL_NAMES.map(n => ANIMALS[n].product)];
+
+function questUnitValue(name) {
+    if (CROPS[name]) return CROPS[name].sell;
+    const animalCfg = Object.values(ANIMALS).find(a => a.product === name);
+    return animalCfg ? animalCfg.price : 10;
+}
+function rollDailyQuest() {
+    const item = QUEST_ITEM_POOL[Math.floor(Math.random() * QUEST_ITEM_POOL.length)];
+    const count = randInt(QUEST_MIN_COUNT, QUEST_MAX_COUNT);
+    const reward = Math.round(questUnitValue(item) * count * QUEST_REWARD_MULT);
+    return { item, count, reward };
+}
+// 每天第一次被查看/上交时才会生成，跟天气/市场的"当天第一次访问才重roll"是同一套思路。
+function ensureDailyQuest(p) {
+    const today = currentDayIndex();
+    if (!p.dailyQuest || p.dailyQuest.day !== today) {
+        const q = rollDailyQuest();
+        p.dailyQuest = { day: today, item: q.item, count: q.count, reward: q.reward, claimed: false };
+    }
+    return p.dailyQuest;
+}
 
 // ========================
 // 配置：钓鱼
@@ -626,6 +673,8 @@ const ACHIEVEMENTS = [
     { id: 'dungeonMax', name: '地心探险家', desc: `地牢存档点达到第${DUNGEON_MAX_FLOOR}层`, check: p => (p.dungeon && p.dungeon.bestFloor || 0) >= DUNGEON_MAX_FLOOR },
     { id: 'petBoth', name: '猫狗双全', desc: '同时领养猫和狗', check: p => PET_NAMES.every(t => p.pets && p.pets[t]) },
     { id: 'petHappy', name: '幸福宠物', desc: '任意宠物幸福度达到满值', check: p => PET_NAMES.some(t => p.pets && p.pets[t] && petEffectiveHappiness(p.pets[t]) >= PET_HAPPINESS_MAX) },
+    { id: 'quest10', name: '热心委托人', desc: '完成10次每日委托', check: p => (p.lifetimeQuestsClaimed || 0) >= 10 },
+    { id: 'greenhouse', name: '温室园丁', desc: `解锁温室（Lv.${GREENHOUSE_MIN_LEVEL}+）`, check: p => p.greenhouseUnlocked },
 ];
 
 // ========================
@@ -646,6 +695,8 @@ const DECORATIONS = {
     '👑': { name: '首富勋章', hint: `达到 Lv.${MAX_LEVEL}`, unlock: p => calcLevel(p.totalEarned) >= MAX_LEVEL },
     '⛏️': { name: '矿工徽记', hint: `地牢存档点达到第${DUNGEON_CHECKPOINT_INTERVAL * 2}层`, unlock: p => (p.dungeon && p.dungeon.bestFloor || 0) >= DUNGEON_CHECKPOINT_INTERVAL * 2 },
     '🐾': { name: '铲屎官徽记', hint: '同时领养猫和狗', unlock: p => PET_NAMES.every(t => p.pets && p.pets[t]) },
+    '📋': { name: '委托达人徽记', hint: '完成10次每日委托', unlock: p => (p.lifetimeQuestsClaimed || 0) >= 10 },
+    '🏡': { name: '温室徽记', hint: `解锁温室（Lv.${GREENHOUSE_MIN_LEVEL}+）`, unlock: p => p.greenhouseUnlocked },
 };
 const DECORATION_EMOJIS = Object.keys(DECORATIONS);
 
@@ -801,6 +852,10 @@ function newPlayer(roleName, groupId) {
         pets: {},
         unlockedMutantCrops: [],
         autoPlantUnlocked: false,
+        dailyQuest: null,
+        lifetimeQuestsClaimed: 0,
+        greenhouseUnlocked: false,
+        greenhousePlots: [],
     };
 }
 
@@ -829,6 +884,10 @@ function getPlayer(data, key, roleName, groupId) {
     if (!p.pets) p.pets = {};
     if (!p.unlockedMutantCrops) p.unlockedMutantCrops = [];
     if (p.autoPlantUnlocked == null) p.autoPlantUnlocked = false;
+    if (p.dailyQuest === undefined) p.dailyQuest = null;
+    if (p.lifetimeQuestsClaimed == null) p.lifetimeQuestsClaimed = 0;
+    if (p.greenhouseUnlocked == null) p.greenhouseUnlocked = false;
+    if (!p.greenhousePlots) p.greenhousePlots = [];
     if (!p.groups) p.groups = [];
     if (roleName) p.roleName = roleName;
     if (groupId && !p.groups.includes(groupId)) p.groups.push(groupId);
@@ -924,6 +983,7 @@ cmd_help.solve = (ctx, msg) => {
         `浇水 [编号]      给作物浇水加速生长，不填编号=浇所有能浇的地\n` +
         `收菜             收获所有成熟作物\n` +
         `扩地             花金币多开一块地（上限${MAX_PLOTS}块，价格逐次上涨）\n` +
+        `解锁温室 / 温室种地 作物名 / 温室收菜   Lv.${GREENHOUSE_MIN_LEVEL}+才能解锁，${GREENHOUSE_UNLOCK_COST}金币换${GREENHOUSE_PLOTS}块不分季节、不用浇水的地\n` +
         `\n【养殖】\n` +
         `买动物 类型 [数量]  可养：${ANIMAL_NAMES.join('/')}\n` +
         `${ANIMAL_NAMES.map(n => ANIMALS[n].collectCmd).join(' / ')}  收取对应产出换成金币\n` +
@@ -958,6 +1018,7 @@ cmd_help.solve = (ctx, msg) => {
         `农场排行         本群财富排行榜（前10名，按终身累计赚取排序）\n` +
         `偷菜 @群友       偷取对方成熟未收的作物一部分（每天最多${STEAL_DAILY_LIMIT}次）\n` +
         `地牢入口         回合制下探地牢，每天限${DUNGEON_DAILY_FLOOR_LIMIT}层，发送「地牢图鉴」看详情\n` +
+        `每日委托 / 上交委托   每天一个随机"上缴原料"委托，凑够材料换金币，比直接卖划算\n` +
         `\n每${SEASON_DAYS}天换一季，春夏秋冬循环，作物随季节变化，换季不会枯死。\n` +
         `换季那天全群会有一次节日活动，所有农场主都能收到节日礼金。\n` +
         `新玩家初始 ${START_COINS} 金币、${BASE_PLOTS} 块地。作物成熟、动物产出、酒/菜做好都会主动@你提醒。`
@@ -1179,6 +1240,128 @@ cmd_auto_plant.solve = (ctx, msg) => {
     return ret;
 };
 ext.cmdMap['一键种地'] = cmd_auto_plant;
+
+// ========================
+// 指令：解锁温室 / 温室种地 / 温室收菜
+// ========================
+
+let cmd_unlock_greenhouse = seal.ext.newCmdItemInfo();
+cmd_unlock_greenhouse.name = '解锁温室';
+cmd_unlock_greenhouse.help = `解锁温室\n需要Lv.${GREENHOUSE_MIN_LEVEL}以上，一次性花${GREENHOUSE_UNLOCK_COST}金币解锁${GREENHOUSE_PLOTS}块不受季节限制、不用浇水的温室地`;
+cmd_unlock_greenhouse.solve = (ctx, msg) => {
+    const ret = seal.ext.newCmdExecuteResult(true);
+    const { groupId, roleName, key } = getCtxInfo(msg);
+    const data = getData();
+    const p = getPlayer(data, key, roleName, groupId);
+
+    if (p.greenhouseUnlocked) {
+        seal.replyToSender(ctx, msg, `温室已经解锁过啦，发送「温室种地 作物名」直接用。`);
+        return ret;
+    }
+    const level = calcLevel(p.totalEarned);
+    if (level < GREENHOUSE_MIN_LEVEL) {
+        seal.replyToSender(ctx, msg, `温室要Lv.${GREENHOUSE_MIN_LEVEL}才能解锁，你现在是Lv.${level}，发送「等级」查看进度。`);
+        return ret;
+    }
+    if (p.coins < GREENHOUSE_UNLOCK_COST) {
+        seal.replyToSender(ctx, msg, `金币不够！解锁温室需要${GREENHOUSE_UNLOCK_COST}金币，你只有${p.coins}金币。`);
+        return ret;
+    }
+
+    p.coins -= GREENHOUSE_UNLOCK_COST;
+    p.greenhouseUnlocked = true;
+    p.greenhousePlots = Array.from({ length: GREENHOUSE_PLOTS }, () => null);
+    saveData(data);
+
+    seal.replyToSender(ctx, msg,
+        `🏡 温室解锁成功！多了${GREENHOUSE_PLOTS}块温室地，不分季节、不用浇水，发送「温室种地 作物名」种任意已知作物，「温室收菜」收获。\n剩余金币：${p.coins}`
+    );
+    return ret;
+};
+ext.cmdMap['解锁温室'] = cmd_unlock_greenhouse;
+
+let cmd_greenhouse_plant = seal.ext.newCmdItemInfo();
+cmd_greenhouse_plant.name = '温室种地';
+cmd_greenhouse_plant.help = '温室种地 作物名\n需要先「解锁温室」，不受季节限制、不用浇水';
+cmd_greenhouse_plant.solve = (ctx, msg) => {
+    const ret = seal.ext.newCmdExecuteResult(true);
+    const cropName = msg.message.replace(/^[。.]\S+\s*/, '').trim();
+    const crop = CROPS[cropName];
+
+    if (!crop) {
+        seal.replyToSender(ctx, msg, `没有「${cropName}」这种作物。`);
+        return ret;
+    }
+
+    const { groupId, roleName, key } = getCtxInfo(msg);
+    const data = getData();
+    const p = getPlayer(data, key, roleName, groupId);
+
+    if (!p.greenhouseUnlocked) {
+        seal.replyToSender(ctx, msg, `还没解锁温室，发送「解锁温室」查看条件（Lv.${GREENHOUSE_MIN_LEVEL}+，${GREENHOUSE_UNLOCK_COST}金币）。`);
+        return ret;
+    }
+    if (crop.mutant && !p.unlockedMutantCrops.includes(cropName)) {
+        seal.replyToSender(ctx, msg, `「${cropName}」是还没发现的隐藏变异作物，种不了——多种${crop.parent}，也许会有意外收获。`);
+        return ret;
+    }
+    if (p.coins < crop.cost) {
+        seal.replyToSender(ctx, msg, `金币不够啦！种${cropName}需要${crop.cost}金币，你只有${p.coins}金币。`);
+        return ret;
+    }
+
+    const emptyIdx = p.greenhousePlots.findIndex(pl => pl === null);
+    if (emptyIdx === -1) {
+        seal.replyToSender(ctx, msg, `温室地都种满啦，先「温室收菜」腾地方。`);
+        return ret;
+    }
+
+    p.coins -= crop.cost;
+    const now = Date.now();
+    p.greenhousePlots[emptyIdx] = { crop: cropName, plantedAt: now, matureAt: now + crop.growMs, notified: false, lastWateredAt: null, groupId };
+    if (!p.plantedCrops.includes(cropName)) p.plantedCrops.push(cropName); // 成就墙："种过多少种作物"用这个
+    saveData(data);
+
+    seal.replyToSender(ctx, msg, `🏡 在温室第${emptyIdx + 1}块地种下了${cropName}，约${fmtDuration(crop.growMs)}后成熟（不用浇水）。\n剩余金币：${p.coins}`);
+    return ret;
+};
+ext.cmdMap['温室种地'] = cmd_greenhouse_plant;
+
+let cmd_greenhouse_harvest = seal.ext.newCmdItemInfo();
+cmd_greenhouse_harvest.name = '温室收菜';
+cmd_greenhouse_harvest.help = '收获温室里所有已成熟的作物';
+cmd_greenhouse_harvest.solve = (ctx, msg) => {
+    const ret = seal.ext.newCmdExecuteResult(true);
+    const { groupId, roleName, key } = getCtxInfo(msg);
+    const data = getData();
+    const p = getPlayer(data, key, roleName, groupId);
+    const now = Date.now();
+    const world = getWorld();
+
+    let gained = 0;
+    const harvested = [];
+    p.greenhousePlots = p.greenhousePlots.map(pl => {
+        if (pl && pl.matureAt <= now) {
+            const sell = sellPrice(pl.crop, world);
+            gained += sell;
+            harvested.push(`${pl.crop}+${sell}`);
+            addIngredient(p, pl.crop, 1);
+            return null;
+        }
+        return pl;
+    });
+
+    if (harvested.length === 0) {
+        seal.replyToSender(ctx, msg, `温室里暂时没有成熟的作物。`);
+        return ret;
+    }
+
+    const leveledUp = earnCoins(p, gained);
+    saveData(data);
+    seal.replyToSender(ctx, msg, `🏡 温室收获了 ${harvested.join('、')}\n共获得 ${gained} 金币，剩余 ${p.coins} 金币。${levelUpHint(leveledUp)}`);
+    return ret;
+};
+ext.cmdMap['温室收菜'] = cmd_greenhouse_harvest;
 
 // ========================
 // 指令：浇水
@@ -2248,6 +2431,70 @@ cmd_debt_status.solve = (ctx, msg) => {
 ext.cmdMap['欠款进度'] = cmd_debt_status;
 
 // ========================
+// 指令：每日委托 / 上交委托
+// ========================
+
+let cmd_daily_quest = seal.ext.newCmdItemInfo();
+cmd_daily_quest.name = '每日委托';
+cmd_daily_quest.help = '每日委托\n查看今天的委托，凑够材料后发送「上交委托」换取奖励';
+cmd_daily_quest.solve = (ctx, msg) => {
+    const ret = seal.ext.newCmdExecuteResult(true);
+    const { groupId, roleName, key } = getCtxInfo(msg);
+    const data = getData();
+    const p = getPlayer(data, key, roleName, groupId);
+    const q = ensureDailyQuest(p);
+    saveData(data);
+
+    if (q.claimed) {
+        seal.replyToSender(ctx, msg, `📋 今天的委托（已完成）：上缴${q.item}×${q.count}，奖励${q.reward}金币。\n明天会有新的委托。`);
+        return ret;
+    }
+
+    const have = p.ingredients[q.item] || 0;
+    const progress = have >= q.count ? '（材料够了，发送「上交委托」领取）' : `（还差${q.count - have}份）`;
+    seal.replyToSender(ctx, msg,
+        `📋 今天的委托\n${'─'.repeat(16)}\n上缴 ${q.item}×${q.count}，奖励${q.reward}金币${progress}\n` +
+        `当前仓库：${q.item}×${have}\n发送「上交委托」提交。`
+    );
+    return ret;
+};
+ext.cmdMap['每日委托'] = cmd_daily_quest;
+
+let cmd_turn_in_quest = seal.ext.newCmdItemInfo();
+cmd_turn_in_quest.name = '上交委托';
+cmd_turn_in_quest.help = '上交委托\n凑够今天委托要求的材料后提交，换取金币奖励';
+cmd_turn_in_quest.solve = (ctx, msg) => {
+    const ret = seal.ext.newCmdExecuteResult(true);
+    const { groupId, roleName, key } = getCtxInfo(msg);
+    const data = getData();
+    const p = getPlayer(data, key, roleName, groupId);
+    const q = ensureDailyQuest(p);
+
+    if (q.claimed) {
+        saveData(data);
+        seal.replyToSender(ctx, msg, `今天的委托已经交过了，明天再来吧。`);
+        return ret;
+    }
+
+    const have = p.ingredients[q.item] || 0;
+    if (have < q.count) {
+        saveData(data);
+        seal.replyToSender(ctx, msg, `材料不够：${q.item}还差${q.count - have}份。发送「每日委托」查看要求。`);
+        return ret;
+    }
+
+    p.ingredients[q.item] -= have < q.count ? 0 : q.count;
+    q.claimed = true;
+    p.lifetimeQuestsClaimed = (p.lifetimeQuestsClaimed || 0) + 1; // 成就墙："完成过多少次委托"用这个
+    const leveledUp = earnCoins(p, q.reward);
+    saveData(data);
+
+    seal.replyToSender(ctx, msg, `📋 委托完成！上缴${q.item}×${q.count}，获得${q.reward}金币。\n剩余金币：${p.coins}${levelUpHint(leveledUp)}`);
+    return ret;
+};
+ext.cmdMap['上交委托'] = cmd_turn_in_quest;
+
+// ========================
 // 指令：我的农场
 // ========================
 
@@ -2273,6 +2520,14 @@ cmd_status.solve = (ctx, msg) => {
         const waterHint = cd > 0 ? `浇水冷却${fmtDuration(cd)}` : '可浇水';
         return `  ${i + 1}. ${pl.crop}（${fmtDuration(left)}后成熟，${waterHint}）`;
     });
+
+    const greenhouseLines = p.greenhouseUnlocked
+        ? p.greenhousePlots.map((pl, i) => {
+            if (!pl) return `  ${i + 1}. 空地`;
+            const left = pl.matureAt - now;
+            return left <= 0 ? `  ${i + 1}. ${pl.crop}（已成熟，待收）` : `  ${i + 1}. ${pl.crop}（${fmtDuration(left)}后成熟）`;
+        })
+        : null;
 
     const animalLines = ANIMAL_NAMES.map(type => {
         const cfg = ANIMALS[type];
@@ -2316,6 +2571,7 @@ cmd_status.solve = (ctx, msg) => {
         `📅 第${cal.year}年${cal.season}季第${cal.dayInSeason}天 · 今日${world.weather}\n` +
         `💰 金币：${p.coins}　📜 ${debtLine}\n\n` +
         `地块（${p.plots.length}/${MAX_PLOTS}）：\n${plotLines.join('\n')}\n\n` +
+        (greenhouseLines ? `🏡 温室（${p.greenhousePlots.length}）：\n${greenhouseLines.join('\n')}\n\n` : '') +
         `养殖：\n${animalLines.join('\n')}\n\n` +
         `🎣 钓鱼：${fishLine}\n\n` +
         `📦 原料仓库：${ingredientLine}\n\n` +
@@ -2710,6 +2966,19 @@ function startFarmTimer() {
                         }
                     }
                 });
+
+                // 温室恒温恒湿不需要浇水，所以不参与上面的下雨免费浇水逻辑，只走成熟提醒。
+                if (p.greenhousePlots) {
+                    p.greenhousePlots.forEach(pl => {
+                        if (pl && !pl.notified && pl.matureAt <= now) {
+                            pl.notified = true;
+                            dirty = true;
+                            if (pl.groupId) {
+                                pushToGroup(eps, platform, pl.groupId, `[CQ:at,qq=${uid}] 🏡 温室里的${pl.crop}熟啦，发送「温室收菜」收获吧！`);
+                            }
+                        }
+                    });
+                }
 
                 ANIMAL_NAMES.forEach(type => {
                     const cfg = ANIMALS[type];
