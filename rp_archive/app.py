@@ -970,6 +970,7 @@ def assemble_bot_config(flat):
                      "trade_whitelist",
                      "available_places",
                      "skill_defs",
+                     "rpg_point_groups",
                      "attack_defense_config",
                      "shop_listings", "market_config"):
         val = flat.get(blob_key)
@@ -1101,7 +1102,7 @@ def _migrate(conn):
             name                TEXT NOT NULL DEFAULT '第一季',
             description         TEXT DEFAULT '',
             is_current          INTEGER DEFAULT 0,
-            public_view_enabled INTEGER DEFAULT 0,
+            public_view_enabled INTEGER DEFAULT 1,
             public_token        TEXT UNIQUE,
             created_at          INTEGER DEFAULT 0
         )
@@ -1113,7 +1114,7 @@ def _migrate(conn):
         if not conn.execute("SELECT id FROM shows WHERE tenant_id=?", (tid,)).fetchone():
             conn.execute(
                 "INSERT INTO shows (tenant_id,name,is_current,public_view_enabled,public_token,created_at) "
-                "VALUES (?,?,1,0,?,?)",
+                "VALUES (?,?,1,1,?,?)",
                 (tid, "第一季", secrets.token_urlsafe(24), int(time.time() * 1000))
             )
 
@@ -1982,7 +1983,7 @@ def api_new_season():
     db.execute(
         "INSERT INTO shows (tenant_id,name,description,is_current,public_view_enabled,public_token,"
         "created_at,schedule_start,schedule_end,supplement_end) "
-        "VALUES (?,?,?,1,0,?,?,?,?,?)",
+        "VALUES (?,?,?,1,1,?,?,?,?,?)",
         (tid, name, mode, token, int(time.time() * 1000),
          sched_start, sched_end, supp_end)
     )
@@ -2049,7 +2050,7 @@ def api_end_season():
     _cleanup_show_collected_images(db, tid, show["id"])
     db.commit()
     base_url = request.host_url.rstrip("/")
-    public_url = f"{base_url}/public/{show['public_token']}" if show["public_token"] else base_url
+    public_url = f"{base_url}/view/{show['public_token']}" if show["public_token"] else base_url
     # 跑 SealDice/LLOneBot 的机器不一定和 rp_archive 是同一台，所以给一个带 token 的下载 URL
     # （/api/show_archive），交给 OneBot 的 download_file 动作去拉，而不是给本地路径。
     zip_token = request.headers.get("X-Archive-Token", "")
@@ -2263,7 +2264,7 @@ def superadmin_tenant_new():
         if new_tenant:
             db.execute(
                 "INSERT INTO shows (tenant_id,name,is_current,public_view_enabled,public_token,created_at) "
-                "VALUES (?,?,1,0,?,?)",
+                "VALUES (?,?,1,1,?,?)",
                 (new_tenant["id"], "第一季", secrets.token_urlsafe(24), now)
             )
             db.commit()
@@ -2386,7 +2387,7 @@ def admin_show_new():
     now = int(time.time() * 1000)
     db.execute(
         "INSERT INTO shows (tenant_id,name,description,is_current,public_view_enabled,public_token,created_at) "
-        "VALUES (?,?,?,0,0,?,?)",
+        "VALUES (?,?,?,0,1,?,?)",
         (tid, name, desc, secrets.token_urlsafe(24), now)
     )
     db.commit()
@@ -5599,6 +5600,7 @@ def admin_rpg():
         player_skills       = _j("player_skills", {}),
         battle_log          = _j("battle_log", []),
         trade_whitelist     = _j("trade_whitelist", []),
+        point_groups        = _j("rpg_point_groups", {}),
     )
 
 
@@ -5616,6 +5618,7 @@ def admin_rpg_save():
         "craft_recipes", "skill_defs",
         "attack_defense_config",
         "trade_whitelist",
+        "rpg_point_groups",
     }
     # battle_attrs / player_skills 是玩家数据，只能在 QQ 里改（「属性 设置」「技能 配置」）
     for key, val in data.items():

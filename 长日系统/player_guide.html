@@ -874,21 +874,26 @@ body:after{content:"";position:fixed;z-index:100;inset:0;pointer-events:none;opa
     <summary>
       <h2><span class="feat-icon">📊</span><span>状态与技能</span></h2>
       <div class="section-preview"><span>我的状态</span><span>属性 [角色名]</span><span>技能</span></div>
-      <span class="section-count">06</span>
+      <span class="section-count">07</span>
       <span class="section-arrow" aria-hidden="true">⌄</span>
     </summary>
     <div class="cmd-grid">
 
-        <div class="cmd-card" data-search="我的状态 查看自己所有 rpg 属性（带进度条的可视化版本）">
+        <div class="cmd-card" data-search="我的状态 查看自己所有 rpg 属性（带进度条的可视化版本），有加点模板的话还会显示剩余点数">
           <div class="cmd-name">我的状态</div>
-          <div class="cmd-desc">查看自己所有 RPG 属性（带进度条的可视化版本）</div>
+          <div class="cmd-desc">查看自己所有 RPG 属性（带进度条的可视化版本）；如果身上有属性绑了「加点模板」，还会多显示一行剩余点数</div>
 
         </div>
-        <div class="cmd-card" data-search="[属性名]+数值 [属性名]-数值 自主改属性开关开启后，直接改自己名下已注册的属性，只能改自己、不涉及货币">
+        <div class="cmd-card" data-search="[属性名]+数值 [属性名]-数值 自主改属性开关开启后，直接改自己名下已注册的属性，只能改自己、不涉及货币，绑了加点模板的属性会按剩余点数自动封顶">
           <div class="cmd-name">[属性名]+数值 / [属性名]-数值</div>
-          <div class="cmd-desc">管理员开启「玩家自主改属性」开关后可用：直接改自己名下已注册的属性，不用找管理员代劳（只能改自己，不涉及货币）</div>
+          <div class="cmd-desc">管理员开启「玩家自主改属性」开关后可用：直接改自己名下已注册的属性，不用找管理员代劳（只能改自己，不涉及货币）。如果这个属性属于某个「加点模板」（自由加点，比如战士方案共 165 点），涨的时候会自动按剩余点数封顶，不会超支</div>
           <pre class="ex">力量+5
 体力-10</pre>
+        </div>
+        <div class="cmd-card" data-search="查看加点组 查看加点模板 查看所有加点模板，包括总点数和绑定的属性上下限">
+          <div class="cmd-name">查看加点组 / 查看加点模板</div>
+          <div class="cmd-desc">查看当前所有「加点模板」（自由加点），包括每份模板的总点数和绑定的属性上下限。模板只能在 RP 存档网页端创建/编辑，管理员在网页端配好后执行「拉取全部」同步到机器人</div>
+
         </div>
         <div class="cmd-card" data-search="属性 [角色名] 查看自己（或他人）的战斗属性，含装备加成对比">
           <div class="cmd-name">属性 [角色名]</div>
@@ -899,7 +904,7 @@ body:after{content:"";position:fixed;z-index:100;inset:0;pointer-events:none;opa
         <div class="cmd-card" data-search="技能 查看自己已解锁的技能列表">
           <div class="cmd-name">技能</div>
           <div class="cmd-desc">查看自己已解锁的技能列表</div>
-          
+
         </div>
         <div class="cmd-card" data-search="技能 库 查看所有已在 rp_archive 管理端注册的技能">
           <div class="cmd-name">技能 库</div>

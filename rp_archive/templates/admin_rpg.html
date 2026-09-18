@@ -555,6 +555,49 @@
         </div>
       </div>
 
+      <!-- 加点模板（自由加点） -->
+      <div class="rpg-panel">
+        <div class="rpg-panel-title">
+          🧮 加点模板（自由加点）
+          <span class="badge" id="pg-count">0</span>
+        </div>
+        <div class="info-bar">
+          把几个已注册属性绑成一份模板，共享同一份总点数预算。玩家/管理员在 QQ 用「角色 属性+值」（或开启「玩家自主改属性」后自己用「属性+值」）改这些属性时，会自动按剩余点数封顶，不会超支。
+          只能在这里创建/编辑，机器人那边执行「拉取全部」后同步生效。
+        </div>
+        <div id="pg-list"></div>
+        <div class="mgmt-add-form" id="pg-form" style="flex-direction:column;align-items:stretch;gap:10px;">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:140px;display:flex;flex-direction:column;gap:4px;">
+              <input class="rpg-input" id="pg-name" placeholder="模板名，如：战斗属性">
+              <div class="rpg-hint">内部标识，创建后不可改名</div>
+            </div>
+            <div style="flex:1;min-width:140px;display:flex;flex-direction:column;gap:4px;">
+              <input class="rpg-input" id="pg-label" placeholder="显示名（可选，默认同模板名）">
+              <div class="rpg-hint">玩家「我的状态」里看到的名字</div>
+            </div>
+            <div style="width:100px;display:flex;flex-direction:column;gap:4px;">
+              <input class="rpg-input" id="pg-total" type="number" placeholder="总点数">
+              <div class="rpg-hint">如 165</div>
+            </div>
+          </div>
+          <div class="attr-effects-wrap">
+            <div class="attr-chips" id="pg-attr-chips"></div>
+            <div class="attr-picker-row">
+              <select class="rpg-select" id="pg-attr-name"><option value="">— 选择属性 —</option></select>
+              <input class="rpg-input" id="pg-attr-min" type="number" placeholder="下限（可空）" style="width:100px;">
+              <input class="rpg-input" id="pg-attr-max" type="number" placeholder="上限（可空）" style="width:100px;">
+              <button class="attr-picker-add" onclick="RPG.addPointGroupAttr()">添加</button>
+            </div>
+            <div class="rpg-hint">上下限留空则沿用该属性在「属性管理」里注册的全局上下限</div>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="mgmt-add-btn" id="pg-save-btn" onclick="RPG.savePointGroup()">+ 创建模板</button>
+            <button class="mgmt-add-btn" style="background:transparent;color:var(--fg);border:1px solid var(--border);" onclick="RPG.resetPointGroupForm()">清空/取消编辑</button>
+          </div>
+        </div>
+      </div>
+
       <!-- 槽位管理 -->
       <div class="rpg-panel">
         <div class="rpg-panel-title">
@@ -912,6 +955,7 @@ var equipPend = {{ equip_pending    | tojson }};
 var slots     = {{ equip_slots      | tojson }};
 var slotNames    = {{ equip_slot_names | tojson }};
 var attrDefs     = {{ attr_defs        | tojson }};
+var pointGroups  = {{ point_groups     | tojson }};
 var craftRecipes = {{ craft_recipes    | tojson }};
 var skillDefs    = {{ skill_defs       | tojson }};
 var battleAttrs  = {{ battle_attrs     | tojson }};
@@ -966,7 +1010,7 @@ var RPG = (function() {
     var names = Object.keys(attrDefs);
     var opts = '<option value="">— 选择属性 —</option>' +
       names.map(function(n) { return '<option value="' + esc(n) + '">' + esc(n) + '</option>'; }).join('');
-    ['pick-attr-name', 'pick-base-name'].forEach(function(id) {
+    ['pick-attr-name', 'pick-base-name', 'pg-attr-name'].forEach(function(id) {
       var el = document.getElementById(id);
       if (el) { var v = el.value; el.innerHTML = opts; el.value = v; }
     });
@@ -1270,6 +1314,119 @@ var RPG = (function() {
     save(function() { toast('已删除属性 ' + name); renderAttrs(); });
   }
 
+  // ── 加点模板（自由加点） ─────────────────────────────
+  var pgDraft = { editingKey: null, attrs: {} };
+
+  function renderPointGroups() {
+    var el = document.getElementById('pg-list');
+    var names = Object.keys(pointGroups);
+    document.getElementById('pg-count').textContent = names.length;
+    if (!names.length) {
+      el.innerHTML = '<div class="pending-empty">暂无加点模板</div>';
+      return;
+    }
+    el.innerHTML = names.map(function(key) {
+      var g = pointGroups[key] || {};
+      var attrList = Object.keys(g.attrs || {}).map(function(a) {
+        var b = g.attrs[a] || {};
+        var range = (b.min != null || b.max != null)
+          ? ('（' + (b.min != null ? b.min : '-') + '~' + (b.max != null ? b.max : '-') + '）') : '';
+        return esc(a) + range;
+      }).join('、');
+      return '<div class="mgmt-row">' +
+        '<div><div class="mgmt-row-name">' + esc(g.label || key) +
+          '<span style="font-weight:400;color:var(--muted);font-size:11px;margin-left:6px;">总点数 ' + g.total + '</span></div>' +
+        '<div class="mgmt-row-meta">' + (attrList || '（无属性）') + '</div></div>' +
+        '<div style="display:flex;gap:6px;">' +
+        '<button class="reg-del" style="background:transparent;border:1px solid var(--border);color:var(--fg);" onclick="RPG.editPointGroup(\'' + esc(key) + '\')">编辑</button>' +
+        '<button class="reg-del" onclick="RPG.delPointGroup(\'' + esc(key) + '\')">删除</button>' +
+        '</div></div>';
+    }).join('');
+  }
+
+  function renderPointGroupAttrChips() {
+    var el = document.getElementById('pg-attr-chips');
+    var names = Object.keys(pgDraft.attrs);
+    if (!names.length) { el.innerHTML = '<span style="font-size:11px;color:var(--muted);">尚未添加属性</span>'; return; }
+    el.innerHTML = names.map(function(a) {
+      var b = pgDraft.attrs[a] || {};
+      var range = (b.min != null || b.max != null)
+        ? ('（' + (b.min != null ? b.min : '-') + '~' + (b.max != null ? b.max : '-') + '）') : '（沿用全局上下限）';
+      return '<span class="attr-chip attr-chip-pos">' + esc(a) + range +
+        '<button class="attr-chip-rm" onclick="RPG.removePointGroupAttr(\'' + esc(a) + '\')" title="移除">×</button></span>';
+    }).join('');
+  }
+
+  function addPointGroupAttr() {
+    var nameEl = document.getElementById('pg-attr-name');
+    var minEl  = document.getElementById('pg-attr-min');
+    var maxEl  = document.getElementById('pg-attr-max');
+    var name = nameEl.value;
+    if (!name) { toast('请先选择属性', 'err'); return; }
+    if (pgDraft.attrs[name]) { toast('已添加过「' + name + '」', 'err'); return; }
+    pgDraft.attrs[name] = {
+      min: minEl.value.trim() !== '' ? parseInt(minEl.value) : null,
+      max: maxEl.value.trim() !== '' ? parseInt(maxEl.value) : null,
+    };
+    minEl.value = ''; maxEl.value = ''; nameEl.value = '';
+    renderPointGroupAttrChips();
+  }
+
+  function removePointGroupAttr(name) {
+    delete pgDraft.attrs[name];
+    renderPointGroupAttrChips();
+  }
+
+  function resetPointGroupForm() {
+    pgDraft = { editingKey: null, attrs: {} };
+    document.getElementById('pg-name').value = '';
+    document.getElementById('pg-name').disabled = false;
+    document.getElementById('pg-label').value = '';
+    document.getElementById('pg-total').value = '';
+    document.getElementById('pg-save-btn').textContent = '+ 创建模板';
+    renderPointGroupAttrChips();
+  }
+
+  function editPointGroup(key) {
+    var g = pointGroups[key];
+    if (!g) return;
+    pgDraft = { editingKey: key, attrs: JSON.parse(JSON.stringify(g.attrs || {})) };
+    document.getElementById('pg-name').value = key;
+    document.getElementById('pg-name').disabled = true;
+    document.getElementById('pg-label').value = g.label || '';
+    document.getElementById('pg-total').value = g.total;
+    document.getElementById('pg-save-btn').textContent = '💾 保存修改';
+    renderPointGroupAttrChips();
+    document.getElementById('pg-form').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function delPointGroup(key) {
+    var g = pointGroups[key] || {};
+    if (!confirm('删除加点模板「' + (g.label || key) + '」？')) return;
+    delete pointGroups[key];
+    save(function() {
+      toast('已删除模板');
+      renderPointGroups();
+      if (pgDraft.editingKey === key) resetPointGroupForm();
+    });
+  }
+
+  function savePointGroup() {
+    var key   = document.getElementById('pg-name').value.trim();
+    var label = document.getElementById('pg-label').value.trim();
+    var total = parseInt(document.getElementById('pg-total').value);
+    if (!key) { toast('请填写模板名', 'err'); return; }
+    if (!pgDraft.editingKey && pointGroups[key]) { toast('模板名「' + key + '」已存在', 'err'); return; }
+    if (isNaN(total) || total < 0) { toast('请填写合法的总点数', 'err'); return; }
+    if (!Object.keys(pgDraft.attrs).length) { toast('请至少添加一个属性', 'err'); return; }
+    pointGroups[key] = { label: label || key, total: total, attrs: pgDraft.attrs };
+    save(function() {
+      toast('模板「' + (label || key) + '」已保存 ✓');
+      renderPointGroups();
+      resetPointGroupForm();
+    });
+  }
+
   // ── 槽位管理 ───────────────────────────────────────
   function renderSlots() {
     var el = document.getElementById('slot-list');
@@ -1332,6 +1489,7 @@ var RPG = (function() {
         equipment_slot_names:       slotNames,
         skill_defs:                 skillDefs,
         trade_whitelist:            tradeWhitelist,
+        rpg_point_groups:           pointGroups,
       })
     })
     .then(function(r) { return r.json(); })
@@ -1405,6 +1563,8 @@ var RPG = (function() {
     renderPending();
     renderRegistry();
     renderAttrs();
+    renderPointGroups();
+    resetPointGroupForm();
     renderSlots();
     renderSpecStatus();
     renderTradeWhitelist();
@@ -1473,6 +1633,12 @@ var RPG = (function() {
     delEquip: delEquip,
     addAttr: addAttr,
     delAttr: delAttr,
+    addPointGroupAttr: addPointGroupAttr,
+    removePointGroupAttr: removePointGroupAttr,
+    editPointGroup: editPointGroup,
+    delPointGroup: delPointGroup,
+    savePointGroup: savePointGroup,
+    resetPointGroupForm: resetPointGroupForm,
     addSlot: addSlot,
     delSlot: delSlot,
     toast: toast,
