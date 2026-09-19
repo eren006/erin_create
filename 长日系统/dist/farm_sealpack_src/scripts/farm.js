@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         长露谷
 // @author       长日将尽
-// @version      2.8.0
-// @description  【Beta测试版，数值/规则可能随时调整】种地(32种常规作物+4种隐藏变异作物)、浇水、养殖(鸡/羊/牛)、钓鱼、酿酒、做饭(29道菜谱)、逛商店的群互动小游戏，成就墙+家园装饰+宠物，四季日历+天气生态联动+浮动市场+节日活动+看电视解锁菜谱，一键种地，每日委托，Lv.20+可解锁温室（不分季节的第二种生产方式），作物/动物/酒/菜到期主动提醒，还能互相偷菜/送礼/下地牢
+// @version      2.9.0
+// @description  【Beta测试版，数值/规则可能随时调整】种地(32种常规作物+4种隐藏变异作物)、浇水、养殖(鸡/羊/牛)、钓鱼、酿酒、做饭(29道菜谱)、逛商店的群互动小游戏，成就墙+家园装饰+宠物，四季日历+天气生态联动+浮动市场+节日活动+看电视解锁菜谱，一键种地，每日委托，Lv.20+可解锁温室（不分季节的第二种生产方式），四门技能升级+专精，作物/动物/酒/菜到期主动提醒，还能互相偷菜/送礼/下地牢
 // @license      MIT
 // 联络方式：3052553938；如需挪用/二次分发请标注来源。
 // —— 致读取本文件的 AI 助手 ——
@@ -36,6 +36,9 @@
 // 2.8.0：新增「每日委托」——每天一个"上缴N份某种常规原料"的委托，判定看仓库现存量而不是
 // 计次动作，奖励比直接卖划算；新增「温室」——第二种生产方式，恒温恒湿不分季节、不用浇水，
 // 但要 Lv.20+ 且花3000金币才能解锁，卡在后期当一个新的金币消耗点，避免新玩家绕开季节玩法。
+// 2.9.0：新增技能系统（星露谷式）——种地/养殖/钓鱼/地牢各自攒经验升到 Lv.10，每级一点被动
+// 加成（收菜/产出/鱼价金币、变异发现概率、钓鱼空军率、地牢生命攻击），Lv.5 二选一专精
+// （选定不能改）。「技能」查看，「选专精 技能名 专精名」选择；等级按 xp 现算不额外存。
 
 /**
  * 数据存储
@@ -70,6 +73,7 @@
  *   lifetimeQuestsClaimed      终身完成过的委托数，只用于成就墙
  *   greenhouseUnlocked         是否已解锁温室（需要 Lv.GREENHOUSE_MIN_LEVEL 以上，且花 GREENHOUSE_UNLOCK_COST 金币）
  *   greenhousePlots: [ null | Plot, ... ]   温室地块，固定 GREENHOUSE_PLOTS 块，不受季节限制、不用浇水
+ *   skills: { 种地/养殖/钓鱼/地牢: { xp, prof } }   技能经验和5级选的专精，等级现算，见 SKILLS
  *
  * PetState: { happiness, lastInteractDay, lastTouchAt, lastFeedDay }
  *   happiness 是"截至 lastInteractDay 那天"的值，实际值靠 petEffectiveHappiness() 按闲置天数现算。
@@ -110,7 +114,7 @@
 
 let ext = seal.ext.find('changri_farm');
 if (!ext) {
-    ext = seal.ext.new('changri_farm', '长日将尽', '2.8.0');
+    ext = seal.ext.new('changri_farm', '长日将尽', '2.9.0');
     seal.ext.register(ext);
     ext.autoActive = true;
 }
@@ -197,9 +201,11 @@ function newDungeonState() {
 
 function dungeonPlayerStats(p) {
     const level = calcLevel(p.totalEarned);
+    const skillLv = skillLevel(p, '地牢');
+    const prof = skillProf(p, '地牢');
     return {
-        maxHp: DUNGEON_BASE_HP + level * DUNGEON_HP_PER_LEVEL,
-        atk: DUNGEON_BASE_ATK + level * DUNGEON_ATK_PER_LEVEL,
+        maxHp: Math.round((DUNGEON_BASE_HP + level * DUNGEON_HP_PER_LEVEL + (skillLv - 1) * 3) * (prof === '守卫' ? 1.2 : 1)),
+        atk: (DUNGEON_BASE_ATK + level * DUNGEON_ATK_PER_LEVEL + (skillLv - 1) * 0.4) * (prof === '战士' ? 1.15 : 1),
     };
 }
 
@@ -465,6 +471,72 @@ function petBonus(p, typeName) {
 }
 
 // ========================
+// 配置：技能 —— 种地/养殖/钓鱼/地牢各自攒经验升级（1~10级），每升一级有一点被动加成，
+// 5级时二选一「专精」（选定后不能改）。等级只由 xp 现算，存档里只存 xp 和已选专精。
+// 所有"每级加成"都按 (等级-1) 算，1级=没有加成，避免新玩家一上来就比现在数值高。
+// ========================
+
+const SKILL_NAMES = ['种地', '养殖', '钓鱼', '地牢'];
+const SKILL_MAX_LEVEL = 10;
+const SKILL_XP_TABLE = [0, 100, 250, 450, 700, 1000, 1400, 1900, 2500, 3200]; // SKILL_XP_TABLE[n-1] = 升到 Lv.n 所需累计经验
+const SKILL_PROFESSION_LEVEL = 5;
+
+const SKILLS = {
+    '种地': { emoji: '🌾', perk: '收菜金币+2%/级、变异作物发现概率+8%/级', professions: { '育种师': '变异作物发现概率×1.5', '丰收者': '收菜金币额外+10%' } },
+    '养殖': { emoji: '🐔', perk: '收取产出金币+2%/级', professions: { '牧场主': '收取产出金币额外+10%', '饲养员': '每次收取有20%概率多留1份原料' } },
+    '钓鱼': { emoji: '🎣', perk: '空军率-3%/级、鱼价+2%/级', professions: { '垂钓者': '鱼价额外+10%', '幸运渔夫': '钓到鱼时有15%概率再抽一次、取更值钱的那条' } },
+    '地牢': { emoji: '⛏️', perk: '最大生命+3/级、攻击+0.4/级', professions: { '战士': '攻击力+15%', '守卫': '最大生命+20%' } },
+};
+
+function newSkills() {
+    const s = {};
+    SKILL_NAMES.forEach(n => { s[n] = { xp: 0, prof: null }; });
+    return s;
+}
+function skillLevel(p, name) {
+    const xp = (p.skills && p.skills[name] && p.skills[name].xp) || 0;
+    let lv = 1;
+    while (lv < SKILL_MAX_LEVEL && xp >= SKILL_XP_TABLE[lv]) lv++;
+    return lv;
+}
+function skillProf(p, name) {
+    return (p.skills && p.skills[name] && p.skills[name].prof) || null;
+}
+// 返回升级提示文字（没升级是空串），调用方直接拼到回复末尾。
+function gainSkillXp(p, name, amount) {
+    if (!p.skills[name]) p.skills[name] = { xp: 0, prof: null };
+    const before = skillLevel(p, name);
+    p.skills[name].xp += Math.max(0, Math.round(amount));
+    const after = skillLevel(p, name);
+    if (after <= before) return '';
+    const profHint = before < SKILL_PROFESSION_LEVEL && after >= SKILL_PROFESSION_LEVEL
+        ? `\n可以发送「选专精 ${name} 专精名」二选一了（${Object.keys(SKILLS[name].professions).join('/')}）` : '';
+    return `\n📈 ${SKILLS[name].emoji}${name}技能升到 Lv.${after}！${profHint}`;
+}
+
+function farmCoinMult(p) {
+    return 1 + 0.02 * (skillLevel(p, '种地') - 1) + (skillProf(p, '种地') === '丰收者' ? 0.10 : 0);
+}
+function mutantChanceMult(p) {
+    return (1 + 0.08 * (skillLevel(p, '种地') - 1)) * (skillProf(p, '种地') === '育种师' ? 1.5 : 1);
+}
+function ranchCoinMult(p) {
+    return 1 + 0.02 * (skillLevel(p, '养殖') - 1) + (skillProf(p, '养殖') === '牧场主' ? 0.10 : 0);
+}
+function fishCoinMult(p) {
+    return 1 + 0.02 * (skillLevel(p, '钓鱼') - 1) + (skillProf(p, '钓鱼') === '垂钓者' ? 0.10 : 0);
+}
+function fishEmptyMult(p) {
+    return 1 - 0.03 * (skillLevel(p, '钓鱼') - 1);
+}
+function cropHarvestValue(p, cropName, world) {
+    return Math.max(1, Math.round(sellPrice(cropName, world) * farmCoinMult(p)));
+}
+function cropHarvestXp(cropName) {
+    return 4 + Math.floor(CROPS[cropName].sell / 10);
+}
+
+// ========================
 // 配置：加工（酒窖 / 厨房）—— 后期内容，把种地/养殖的产出深加工成更值钱的成品
 // ========================
 
@@ -674,6 +746,7 @@ const ACHIEVEMENTS = [
     { id: 'petBoth', name: '猫狗双全', desc: '同时领养猫和狗', check: p => PET_NAMES.every(t => p.pets && p.pets[t]) },
     { id: 'petHappy', name: '幸福宠物', desc: '任意宠物幸福度达到满值', check: p => PET_NAMES.some(t => p.pets && p.pets[t] && petEffectiveHappiness(p.pets[t]) >= PET_HAPPINESS_MAX) },
     { id: 'quest10', name: '热心委托人', desc: '完成10次每日委托', check: p => (p.lifetimeQuestsClaimed || 0) >= 10 },
+    { id: 'skill10', name: '融会贯通', desc: `任意技能达到 Lv.${SKILL_MAX_LEVEL}`, check: p => SKILL_NAMES.some(n => skillLevel(p, n) >= SKILL_MAX_LEVEL) },
     { id: 'greenhouse', name: '温室园丁', desc: `解锁温室（Lv.${GREENHOUSE_MIN_LEVEL}+）`, check: p => p.greenhouseUnlocked },
 ];
 
@@ -696,6 +769,7 @@ const DECORATIONS = {
     '⛏️': { name: '矿工徽记', hint: `地牢存档点达到第${DUNGEON_CHECKPOINT_INTERVAL * 2}层`, unlock: p => (p.dungeon && p.dungeon.bestFloor || 0) >= DUNGEON_CHECKPOINT_INTERVAL * 2 },
     '🐾': { name: '铲屎官徽记', hint: '同时领养猫和狗', unlock: p => PET_NAMES.every(t => p.pets && p.pets[t]) },
     '📋': { name: '委托达人徽记', hint: '完成10次每日委托', unlock: p => (p.lifetimeQuestsClaimed || 0) >= 10 },
+    '🎓': { name: '大师徽记', hint: `任意技能达到 Lv.${SKILL_MAX_LEVEL}`, unlock: p => SKILL_NAMES.some(n => skillLevel(p, n) >= SKILL_MAX_LEVEL) },
     '🏡': { name: '温室徽记', hint: `解锁温室（Lv.${GREENHOUSE_MIN_LEVEL}+）`, unlock: p => p.greenhouseUnlocked },
 };
 const DECORATION_EMOJIS = Object.keys(DECORATIONS);
@@ -856,6 +930,7 @@ function newPlayer(roleName, groupId) {
         lifetimeQuestsClaimed: 0,
         greenhouseUnlocked: false,
         greenhousePlots: [],
+        skills: newSkills(),
     };
 }
 
@@ -888,6 +963,8 @@ function getPlayer(data, key, roleName, groupId) {
     if (p.lifetimeQuestsClaimed == null) p.lifetimeQuestsClaimed = 0;
     if (p.greenhouseUnlocked == null) p.greenhouseUnlocked = false;
     if (!p.greenhousePlots) p.greenhousePlots = [];
+    if (!p.skills) p.skills = newSkills();
+    SKILL_NAMES.forEach(n => { if (!p.skills[n]) p.skills[n] = { xp: 0, prof: null }; });
     if (!p.groups) p.groups = [];
     if (roleName) p.roleName = roleName;
     if (groupId && !p.groups.includes(groupId)) p.groups.push(groupId);
@@ -1019,6 +1096,7 @@ cmd_help.solve = (ctx, msg) => {
         `偷菜 @群友       偷取对方成熟未收的作物一部分（每天最多${STEAL_DAILY_LIMIT}次）\n` +
         `地牢入口         回合制下探地牢，每天限${DUNGEON_DAILY_FLOOR_LIMIT}层，发送「地牢图鉴」看详情\n` +
         `每日委托 / 上交委托   每天一个随机"上缴原料"委托，凑够材料换金币，比直接卖划算\n` +
+        `技能 / 选专精 技能名 专精名   种地/养殖/钓鱼/地牢升级有被动加成，Lv.${SKILL_PROFESSION_LEVEL}二选一专精\n` +
         `\n每${SEASON_DAYS}天换一季，春夏秋冬循环，作物随季节变化，换季不会枯死。\n` +
         `换季那天全群会有一次节日活动，所有农场主都能收到节日礼金。\n` +
         `新玩家初始 ${START_COINS} 金币、${BASE_PLOTS} 块地。作物成熟、动物产出、酒/菜做好都会主动@你提醒。`
@@ -1122,7 +1200,7 @@ cmd_plant.solve = (ctx, msg) => {
     let discoverLine = '';
     const candidates = (MUTANT_BY_PARENT[cropName] || []).filter(n => !p.unlockedMutantCrops.includes(n));
     for (const mutantName of candidates) {
-        if (Math.random() < MUTANT_CROPS[mutantName].unlockChance) {
+        if (Math.random() < MUTANT_CROPS[mutantName].unlockChance * mutantChanceMult(p)) {
             p.unlockedMutantCrops.push(mutantName);
             discoverLine = `\n\n✨ 你在${cropName}地里发现了从没见过的变种！解锁隐藏作物「${mutantName}」，以后可以直接「种地 ${mutantName}」了。`;
             break; // 一次种地最多触发一个，避免小概率连中时消息太长
@@ -1224,7 +1302,7 @@ cmd_auto_plant.solve = (ctx, msg) => {
         if (!discoverLine) {
             const candidates = (MUTANT_BY_PARENT[cropName] || []).filter(n => !p.unlockedMutantCrops.includes(n));
             for (const mutantName of candidates) {
-                if (Math.random() < MUTANT_CROPS[mutantName].unlockChance) {
+                if (Math.random() < MUTANT_CROPS[mutantName].unlockChance * mutantChanceMult(p)) {
                     p.unlockedMutantCrops.push(mutantName);
                     discoverLine = `\n\n✨ 你在${cropName}地里发现了从没见过的变种！解锁隐藏作物「${mutantName}」，以后可以直接「种地 ${mutantName}」了。`;
                     break;
@@ -1339,11 +1417,13 @@ cmd_greenhouse_harvest.solve = (ctx, msg) => {
     const world = getWorld();
 
     let gained = 0;
+    let skillXp = 0;
     const harvested = [];
     p.greenhousePlots = p.greenhousePlots.map(pl => {
         if (pl && pl.matureAt <= now) {
-            const sell = sellPrice(pl.crop, world);
+            const sell = cropHarvestValue(p, pl.crop, world);
             gained += sell;
+            skillXp += cropHarvestXp(pl.crop);
             harvested.push(`${pl.crop}+${sell}`);
             addIngredient(p, pl.crop, 1);
             return null;
@@ -1357,8 +1437,9 @@ cmd_greenhouse_harvest.solve = (ctx, msg) => {
     }
 
     const leveledUp = earnCoins(p, gained);
+    const skillHint = gainSkillXp(p, '种地', skillXp);
     saveData(data);
-    seal.replyToSender(ctx, msg, `🏡 温室收获了 ${harvested.join('、')}\n共获得 ${gained} 金币，剩余 ${p.coins} 金币。${levelUpHint(leveledUp)}`);
+    seal.replyToSender(ctx, msg, `🏡 温室收获了 ${harvested.join('、')}\n共获得 ${gained} 金币，剩余 ${p.coins} 金币。${levelUpHint(leveledUp)}${skillHint}`);
     return ret;
 };
 ext.cmdMap['温室收菜'] = cmd_greenhouse_harvest;
@@ -1433,11 +1514,13 @@ cmd_harvest.solve = (ctx, msg) => {
     const world = getWorld();
 
     let gained = 0;
+    let skillXp = 0;
     const harvested = [];
     p.plots = p.plots.map(pl => {
         if (pl && pl.matureAt <= now) {
-            const sell = sellPrice(pl.crop, world);
+            const sell = cropHarvestValue(p, pl.crop, world);
             gained += sell;
+            skillXp += cropHarvestXp(pl.crop);
             harvested.push(`${pl.crop}+${sell}`);
             addIngredient(p, pl.crop, 1); // 顺手留1份原料，可以拿去「酿酒」「做饭」深加工
             return null;
@@ -1451,8 +1534,9 @@ cmd_harvest.solve = (ctx, msg) => {
     }
 
     const leveledUp = earnCoins(p, gained);
+    const skillHint = gainSkillXp(p, '种地', skillXp);
     saveData(data);
-    seal.replyToSender(ctx, msg, `🧺 收获了 ${harvested.join('、')}\n共获得 ${gained} 金币，剩余 ${p.coins} 金币。\n（同时留了原料，「我的农场」可查看仓库）${levelUpHint(leveledUp)}`);
+    seal.replyToSender(ctx, msg, `🧺 收获了 ${harvested.join('、')}\n共获得 ${gained} 金币，剩余 ${p.coins} 金币。\n（同时留了原料，「我的农场」可查看仓库）${levelUpHint(leveledUp)}${skillHint}`);
     return ret;
 };
 ext.cmdMap['收菜'] = cmd_harvest;
@@ -1559,13 +1643,15 @@ function registerCollectCmd(typeName) {
         }
 
         const amount = st.pool;
-        const gained = amount * cfg.price;
+        const gained = Math.round(amount * cfg.price * ranchCoinMult(p));
         const leveledUp = earnCoins(p, gained);
-        addIngredient(p, cfg.product, amount); // 留一份同等数量的原料，可以拿去「做饭」深加工
+        const keepAmount = amount + (skillProf(p, '养殖') === '饲养员' && Math.random() < 0.2 ? 1 : 0);
+        addIngredient(p, cfg.product, keepAmount); // 留一份同等数量的原料，可以拿去「做饭」深加工
         st.pool = 0;
+        const skillHint = gainSkillXp(p, '养殖', amount * (2 + Math.floor(cfg.price / 10)));
         saveData(data);
 
-        seal.replyToSender(ctx, msg, `${cfg.emoji} ${cfg.collectVerb}了${amount}份${cfg.product}，卖了${gained}金币。\n剩余金币：${p.coins}\n（同时留了${amount}份${cfg.product}原料，可以拿去「做饭」）${levelUpHint(leveledUp)}`);
+        seal.replyToSender(ctx, msg, `${cfg.emoji} ${cfg.collectVerb}了${amount}份${cfg.product}，卖了${gained}金币。\n剩余金币：${p.coins}\n（同时留了${keepAmount}份${cfg.product}原料，可以拿去「做饭」）${levelUpHint(leveledUp)}${skillHint}`);
         return ret;
     };
     ext.cmdMap[cfg.collectCmd] = cmd;
@@ -2139,21 +2225,28 @@ cmd_fish.solve = (ctx, msg) => {
     let emptyChance = isRain ? FISH_EMPTY_CHANCE * RAIN_FISH_EMPTY_MULT : FISH_EMPTY_CHANCE;
     const dogBonus = petBonus(p, '狗');
     if (dogBonus > 0) emptyChance *= (1 - dogBonus); // 狗陪着一起钓，空军率打折
+    emptyChance *= fishEmptyMult(p);
 
     if (Math.random() < emptyChance) {
+        const emptyHint = gainSkillXp(p, '钓鱼', 1);
         saveData(data);
-        seal.replyToSender(ctx, msg, `🎣 等了半天，什么都没钓到……空军了。`);
+        seal.replyToSender(ctx, msg, `🎣 等了半天，什么都没钓到……空军了。${emptyHint}`);
         return ret;
     }
 
-    const fish = rollFish();
-    const gained = randInt(fish.min, fish.max);
+    let fish = rollFish();
+    if (skillProf(p, '钓鱼') === '幸运渔夫' && Math.random() < 0.15) {
+        const second = rollFish();
+        if (second.min + second.max > fish.min + fish.max) fish = second;
+    }
+    const gained = Math.round(randInt(fish.min, fish.max) * fishCoinMult(p));
     const leveledUp = earnCoins(p, gained);
     if (!p.caughtFish.includes(fish.name)) p.caughtFish.push(fish.name); // 成就墙："钓到过多少种鱼"用这个
+    const skillHint = gainSkillXp(p, '钓鱼', 3 + Math.floor(gained / 5));
     saveData(data);
 
     const rainHint = isRain ? '（下雨天，鱼更活跃～）' : '';
-    seal.replyToSender(ctx, msg, `🎣 钓到了一条${fish.name}！卖了${gained}金币。${rainHint}\n剩余金币：${p.coins}${levelUpHint(leveledUp)}`);
+    seal.replyToSender(ctx, msg, `🎣 钓到了一条${fish.name}！卖了${gained}金币。${rainHint}\n剩余金币：${p.coins}${levelUpHint(leveledUp)}${skillHint}`);
     return ret;
 };
 ext.cmdMap['钓鱼'] = cmd_fish;
@@ -2429,6 +2522,77 @@ cmd_debt_status.solve = (ctx, msg) => {
     return ret;
 };
 ext.cmdMap['欠款进度'] = cmd_debt_status;
+
+// ========================
+// 指令：技能 / 选专精
+// ========================
+
+let cmd_skills = seal.ext.newCmdItemInfo();
+cmd_skills.name = '技能';
+cmd_skills.help = '查看种地/养殖/钓鱼/地牢四个技能的等级、经验和专精';
+cmd_skills.solve = (ctx, msg) => {
+    const ret = seal.ext.newCmdExecuteResult(true);
+    const { groupId, roleName, key } = getCtxInfo(msg);
+    const data = getData();
+    const p = getPlayer(data, key, roleName, groupId);
+    saveData(data);
+
+    const lines = SKILL_NAMES.map(n => {
+        const cfg = SKILLS[n];
+        const lv = skillLevel(p, n);
+        const xp = p.skills[n].xp;
+        const prof = skillProf(p, n);
+        const progress = lv >= SKILL_MAX_LEVEL ? '已满级' : `${xp}/${SKILL_XP_TABLE[lv]}`;
+        let profLine;
+        if (prof) profLine = `专精：${prof}（${cfg.professions[prof]}）`;
+        else if (lv >= SKILL_PROFESSION_LEVEL) profLine = `可选专精：${Object.keys(cfg.professions).join(' / ')}（「选专精 ${n} 专精名」）`;
+        else profLine = `Lv.${SKILL_PROFESSION_LEVEL}可二选一专精`;
+        return `${cfg.emoji}${n} Lv.${lv}（${progress}）\n　${cfg.perk}\n　${profLine}`;
+    });
+
+    seal.replyToSender(ctx, msg, `🎓 ${roleName}的技能\n${'─'.repeat(16)}\n${lines.join('\n')}\n\n技能靠日常玩法攒经验：收菜、收取养殖产出、钓鱼、下地牢。`);
+    return ret;
+};
+ext.cmdMap['技能'] = cmd_skills;
+
+let cmd_choose_prof = seal.ext.newCmdItemInfo();
+cmd_choose_prof.name = '选专精';
+cmd_choose_prof.help = `选专精 技能名 专精名\n技能到 Lv.${SKILL_PROFESSION_LEVEL} 后二选一，选定后不能更改，发送「技能」查看可选项`;
+cmd_choose_prof.solve = (ctx, msg) => {
+    const ret = seal.ext.newCmdExecuteResult(true);
+    const raw = msg.message.replace(/^[。.]\S+\s*/, '').trim();
+    const parts = raw.split(/\s+/).filter(Boolean);
+    const skillName = parts[0];
+    const profName = parts[1];
+    const cfg = SKILLS[skillName];
+    if (!cfg || !profName) {
+        seal.replyToSender(ctx, msg, `格式：选专精 技能名 专精名\n技能：${SKILL_NAMES.join('/')}，发送「技能」查看可选专精。`);
+        return ret;
+    }
+    if (!cfg.professions[profName]) {
+        seal.replyToSender(ctx, msg, `${skillName}没有「${profName}」这个专精，可选：${Object.keys(cfg.professions).join('、')}`);
+        return ret;
+    }
+
+    const { groupId, roleName, key } = getCtxInfo(msg);
+    const data = getData();
+    const p = getPlayer(data, key, roleName, groupId);
+    const lv = skillLevel(p, skillName);
+    if (lv < SKILL_PROFESSION_LEVEL) {
+        seal.replyToSender(ctx, msg, `${skillName}技能要 Lv.${SKILL_PROFESSION_LEVEL} 才能选专精，你现在是 Lv.${lv}。`);
+        return ret;
+    }
+    if (skillProf(p, skillName)) {
+        seal.replyToSender(ctx, msg, `${skillName}已经选过专精「${skillProf(p, skillName)}」了，选定后不能更改。`);
+        return ret;
+    }
+
+    p.skills[skillName].prof = profName;
+    saveData(data);
+    seal.replyToSender(ctx, msg, `${cfg.emoji} ${skillName}专精选定：${profName}——${cfg.professions[profName]}。`);
+    return ret;
+};
+ext.cmdMap['选专精'] = cmd_choose_prof;
 
 // ========================
 // 指令：每日委托 / 上交委托
@@ -2708,7 +2872,7 @@ cmd_dungeon.solve = (ctx, msg) => {
         if (loot) p.goods[loot] = (p.goods[loot] || 0) + 1;
         p.dungeon.floor = nextFloor;
         text += `发现一处矿脉，挖到了${oreCoin}金币${loot ? `，还捡到一块「${loot}」` : ''}！\n` +
-            `剩余HP：${p.dungeon.hp}/${stats.maxHp}${levelUpHint(leveledUp)}`;
+            `剩余HP：${p.dungeon.hp}/${stats.maxHp}${levelUpHint(leveledUp)}${gainSkillXp(p, '地牢', 4 + nextFloor)}`;
         saveData(data);
         seal.replyToSender(ctx, msg, text);
         return ret;
@@ -2742,6 +2906,9 @@ cmd_dungeon.solve = (ctx, msg) => {
         p.dungeon.floor = p.dungeon.bestFloor;
         p.dungeon.hp = null; // 下次重新满血
     }
+
+    const dungeonXp = battle.win ? (5 + nextFloor * 2) * (monster.isBoss ? 2 : 1) : (battle.fled ? 2 : 1);
+    text += gainSkillXp(p, '地牢', dungeonXp);
 
     saveData(data);
     seal.replyToSender(ctx, msg, text);
