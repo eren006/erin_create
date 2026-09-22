@@ -37,6 +37,25 @@
   {% endfor %}
 </table></div>
 
+<h3>投诉举报（待处理 {{ reports|length }}）</h3>
+{% for r in reports %}
+<div class="sheet" style="margin-bottom:10px">
+  <div class="muted">#{{ r.id }} · {{ r.category }} · {{ dn(get_consort(r.reporter_id)) }} 举报 {{ dn(get_consort(r.target_id)) if r.target_id else '（未指定）' }}</div>
+  <p style="margin:6px 0">理由：{{ r.reason }}</p>
+  {% if r.snapshot %}<p style="white-space:pre-wrap;margin:6px 0;color:var(--muted)">信件内容：{{ r.snapshot }}</p>{% endif %}
+  <form method="post" action="{{ url_for('admin_report_handle', rid=r.id) }}" class="row">
+    {% if r.letter_id %}<button name="action" value="delete" class="plain">删除该信</button>
+    <button name="action" value="ban" onclick="return confirm('删除该信并停用被举报账号？')">删信并停用账号</button>{% endif %}
+    <button name="action" value="dismiss" class="plain">不违规，驳回</button>
+  </form>
+</div>
+{% else %}<p class="muted">没有待处理的举报。</p>{% endfor %}
+{% if done_reports %}<details><summary class="muted">最近处理的举报</summary>
+<ul>{% for r in done_reports %}<li>#{{ r.id }} {{ r.category }}：{{ r.result }}</li>{% endfor %}</ul></details>{% endif %}
+{% if banned %}<h3>已停用账号</h3>
+<ul>{% for u in banned %}<li>{{ u.username }}
+  <form method="post" action="{{ url_for('admin_unban', uid=u.id) }}" style="display:inline"><button class="plain">解除停用</button></form></li>{% endfor %}</ul>{% endif %}
+
 <h3>今夜待结算的阴谋</h3>
 {% if pend %}
 <ul>{% for it in pend %}<li>{{ dn(get_consort(it.attacker_id)) }} → {{ dn(get_consort(it.target_id)) }}：{{ INTRIGUES[it.method].name }}</li>{% endfor %}</ul>

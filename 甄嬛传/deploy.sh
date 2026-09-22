@@ -2,7 +2,7 @@
 # 甄嬛传·紫禁城 — 部署到贾维斯（腾讯云 Ubuntu 124.221.189.86:5024，systemd）
 # 用法：bash deploy.sh
 #
-# 只同步代码：app.py / run.py / schema.sql / requirements.txt / templates/，
+# 只同步代码：app.py / run.py / schema.sql / blocklist.txt / requirements.txt / templates/，
 # 绝不碰服务器上的 zhenhuan.db、db_backups/、logs/、venv/。
 # 本地到腾讯云上行只有几 KB/s，所以用 rsync 增量传。
 # 环境变量（PORT / FLASK_SECRET / ADMIN_PASSWORD / SETTLE_HOUR）在服务器 /etc/zhenhuan.env，不在仓库里。
@@ -22,7 +22,7 @@ echo "======================================"
 
 echo "[1/3] 同步代码"
 ssh "$SERVER" "mkdir -p $REMOTE_DIR/logs"
-rsync -az "$LOCAL_DIR/app.py" "$LOCAL_DIR/run.py" "$LOCAL_DIR/schema.sql" "$LOCAL_DIR/requirements.txt" "$SERVER:$REMOTE_DIR/"
+rsync -az "$LOCAL_DIR/app.py" "$LOCAL_DIR/run.py" "$LOCAL_DIR/schema.sql" "$LOCAL_DIR/blocklist.txt" "$LOCAL_DIR/requirements.txt" "$SERVER:$REMOTE_DIR/"
 rsync -az --delete --exclude='.DS_Store' "$LOCAL_DIR/templates/" "$SERVER:$REMOTE_DIR/templates/"
 
 echo "[2/3] 安装依赖并重启服务"

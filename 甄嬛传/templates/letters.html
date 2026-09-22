@@ -35,7 +35,7 @@
 {% for l in inbox %}{% set f = get_consort(l.from_id) %}
 <div class="letter {{ 'new' if not l.is_read }}">
   <div class="hd"><b>{{ dn(f) }}</b>第 {{ l.day }} 天{% if l.silver %}，附银子 {{ l.silver }} 两{% endif %}{% if l.item_key %}，附{{ ITEMS[l.item_key].name if l.item_key in ITEMS else l.item_key }}{% endif %}
-    {% if f.status not in ('dead',) %}　<a href="{{ url_for('letters', to=f.id) }}">回信</a>{% endif %}</div>
+    {% if f.status not in ('dead',) %}　<a href="{{ url_for('letters', to=f.id) }}">回信</a>{% endif %}　<a href="{{ url_for('report', letter=l.id) }}" class="muted">举报</a></div>
   <p class="body">{{ l.body }}</p>
 </div>
 {% else %}<p class="muted">还没有人给你写过信。</p>{% endfor %}

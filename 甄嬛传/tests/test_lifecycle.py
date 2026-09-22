@@ -316,6 +316,45 @@ class EmperorTests(unittest.TestCase):
         self.client.post('/letters/send', data={'to_id': self.atk, 'body': '救我'})
         self.assertEqual(len(game.q('SELECT * FROM letters')), 3)             # 只写信可以
 
+    def test_report_letter_and_admin_ban(self):
+        lid = game.run("INSERT INTO letters(from_id,to_id,day,body,created_ts) VALUES(?,?,10,'违规内容',0)",
+                       (self.tgt, self.atk)).lastrowid
+        self.assertEqual(self.client.get(f'/report?letter={lid}').status_code, 200)
+        self.assertIn('举报', self.client.get('/letters').get_data(as_text=True))
+        data = {'letter': lid, 'category': '辱骂骚扰', 'reason': '骚扰'}
+        self.assertEqual(self.client.post('/report', data=data).status_code, 302)
+        self.client.post('/report', data=data)                    # 重复举报不新增
+        rows = game.q("SELECT * FROM reports")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual((rows[0]['target_id'], rows[0]['snapshot']), (self.tgt, '违规内容'))
+        # 只能举报发给自己的信
+        other = game.run("INSERT INTO letters(from_id,to_id,day,body,created_ts) VALUES(?,?,10,'x',0)",
+                         (self.atk, self.tgt)).lastrowid
+        self.assertEqual(self.client.get(f'/report?letter={other}').status_code, 302)
+        # 管理员删信并停用账号
+        with self.client.session_transaction() as sess: sess['admin'] = True
+        self.assertIn('违规内容', self.client.get('/admin').get_data(as_text=True))
+        self.client.post(f"/admin/report/{rows[0]['id']}", data={'action': 'ban'})
+        self.assertIn('已被管理员删除', game.q("SELECT body FROM letters WHERE id=?", (lid,), one=True)['body'])
+        self.assertEqual(game.q("SELECT banned FROM users WHERE id=?", (game.get_consort(self.tgt)['user_id'],), one=True)['banned'], 1)
+        self.assertEqual(game.q("SELECT status FROM reports", one=True)['status'], 'done')
+        # 被停用的账号登不进去，已登录的会被踢出
+        self.login(self.tgt)
+        self.assertEqual(self.client.get('/letters').status_code, 302)
+        with self.client.session_transaction() as sess: self.assertNotIn('uid', sess)
+
+
+    def test_blocklist_rejects_letters_and_names(self):
+        with patch.object(game, 'MODERATION_LOG', str(Path(self.temp.name) / 'mod.log')):
+            r = self.client.post('/letters/send', data={'to_id': self.tgt, 'body': '你这个 傻 逼', 'silver': 0})
+            self.assertEqual(r.status_code, 302)
+            self.assertEqual(game.q("SELECT COUNT(*) n FROM letters", one=True)['n'], 0)
+            self.client.post('/letters/send', data={'to_id': self.tgt, 'body': '问安', 'silver': 0})
+            self.assertEqual(game.q("SELECT COUNT(*) n FROM letters", one=True)['n'], 1)
+            self.assertIn('傻逼', (Path(self.temp.name) / 'mod.log').read_text(encoding='utf-8'))
+            self.assertEqual(game.blocked_hit('赐名', '安宁'), None)
+            self.assertIsNotNone(game.blocked_hit('姓名', '赌 博'))
+
 
 class MigrationTests(unittest.TestCase):
     def test_old_schema_migration_is_repeatable(self):

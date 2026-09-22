@@ -167,6 +167,22 @@ CREATE TABLE IF NOT EXISTS letters (
 );
 
 CREATE INDEX IF NOT EXISTS idx_letters_to      ON letters(to_id, id DESC);
+
+-- 投诉举报：snapshot 存被举报内容的快照，管理员删信后仍留有记录
+CREATE TABLE IF NOT EXISTS reports (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    reporter_id INTEGER NOT NULL,
+    target_id   INTEGER NOT NULL DEFAULT 0,
+    letter_id   INTEGER NOT NULL DEFAULT 0,
+    category    TEXT NOT NULL,
+    reason      TEXT NOT NULL,
+    snapshot    TEXT NOT NULL DEFAULT '',
+    status      TEXT NOT NULL DEFAULT 'open',
+    result      TEXT NOT NULL DEFAULT '',
+    created_ts  INTEGER NOT NULL,
+    handled_ts  INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_reports_status  ON reports(status, id DESC);
 CREATE INDEX IF NOT EXISTS idx_consorts_rank    ON consorts(rank DESC, favor DESC);
 CREATE INDEX IF NOT EXISTS idx_intrigues_status ON intrigues(status, day);
 CREATE INDEX IF NOT EXISTS idx_messages_owner   ON messages(consort_id, id DESC);

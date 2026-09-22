@@ -3,16 +3,39 @@
 玩家以秀女身份入宫，经殿选后在后宫里争宠、结盟、使计。
 皇帝是系统 NPC，每晚固定时刻（SETTLE_HOUR）统一结算：阴谋 → 翻牌子 → 生产 → 晋封 → 月例。
 """
-import os, json, random, math, time, threading
+import os, re, json, random, math, time, threading
 from datetime import datetime, timezone, timedelta
 from functools import wraps
 from flask import (Flask, render_template, request, redirect,
-                   url_for, session as S, flash, g)
+                   url_for, session as S, flash, g, has_request_context)
 from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__)
+
+# ── 访问日志（留存 200 天，按天轮转） ────────────────────────────────────────────
+import logging.handlers
+_access_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+os.makedirs(_access_dir, exist_ok=True)
+_access_h = logging.handlers.TimedRotatingFileHandler(os.path.join(_access_dir, "access.log"),
+                                                     when="midnight", backupCount=200, encoding="utf-8")
+_access_h.setFormatter(logging.Formatter("%(message)s"))
+_access_log = logging.getLogger("access_log")
+_access_log.setLevel(logging.INFO)
+_access_log.propagate = False
+_access_log.addHandler(_access_h)
+
+@app.after_request
+def _write_access_log(resp):
+    try:
+        ip = (request.headers.get("X-Forwarded-For") or request.remote_addr or "-").split(",")[0].strip()
+        _access_log.info("%s\t%s\t%s\t%s %s\t%s\t%s" % (
+            datetime.now().isoformat(timespec="seconds"), ip, request.environ.get("SERVER_PORT", "-"),
+            request.method, request.full_path.rstrip("?"), resp.status_code, S.get('uid') or '-'))
+    except Exception:
+        pass
+    return resp
 app.secret_key = os.environ.get("FLASK_SECRET", "zhenhuan_dev_secret")
 app.permanent_session_lifetime = timedelta(days=30)
 
@@ -458,7 +481,8 @@ def init_db():
         'messages': {'is_night': 'INTEGER NOT NULL DEFAULT 0'},
         'gazette': {'is_night': 'INTEGER NOT NULL DEFAULT 0'},
         'game_state': {'last_bed_pool': "TEXT NOT NULL DEFAULT '[]'"},
-        'users': {'lethal_ready_day': 'INTEGER NOT NULL DEFAULT 0'}
+        'users': {'lethal_ready_day': 'INTEGER NOT NULL DEFAULT 0',
+                  'banned': 'INTEGER NOT NULL DEFAULT 0'}
     }
     for table, fields in migrations.items():
         existing = {r[1] for r in db.execute(f'PRAGMA table_info({table})')}
@@ -668,6 +692,40 @@ def emperor_art_bonus(c):
     arts = arts_of(c)
     return arts.get(state()['emperor_pref'], 0) >= ART_MASTERY
 
+# ── 违禁词过滤 ─────────────────────────────────────────────────────────────────
+
+BLOCKLIST_PATH = os.path.join(BASE_DIR, "blocklist.txt")
+MODERATION_LOG = os.path.join(BASE_DIR, "logs", "moderation.log")
+_blocklist_cache = {'mtime': None, 'words': []}
+_NOISE = re.compile(r'[\s\W_]+')
+
+def _blocked_words():
+    try:
+        mtime = os.path.getmtime(BLOCKLIST_PATH)
+    except OSError:
+        return []
+    if _blocklist_cache['mtime'] != mtime:
+        with open(BLOCKLIST_PATH, encoding='utf-8') as f:
+            words = [_NOISE.sub('', ln.strip().lower()) for ln in f if ln.strip() and not ln.lstrip().startswith('#')]
+        _blocklist_cache.update(mtime=mtime, words=[w for w in words if w])
+    return _blocklist_cache['words']
+
+def blocked_hit(field, text):
+    """文本命中违禁词返回该词，并写入 moderation.log；干净返回 None。去掉空格标点后再比，防止拆字规避。"""
+    flat = _NOISE.sub('', (text or '').lower())
+    for w in _blocked_words():
+        if w in flat:
+            try:
+                os.makedirs(os.path.dirname(MODERATION_LOG), exist_ok=True)
+                with open(MODERATION_LOG, 'a', encoding='utf-8') as f:
+                    f.write(f"{datetime.now(TZ).isoformat(timespec='seconds')}\tuid={S.get('uid') if has_request_context() else '-'}\t{field}\t命中「{w}」\t{text}\n")
+            except OSError:
+                pass
+            return w
+    return None
+
+BLOCKED_MSG = '内容含有不允许的字词，请修改后再试。'
+
 # ── 登录 ───────────────────────────────────────────────────────────────────────
 
 def login_required(f):
@@ -675,6 +733,11 @@ def login_required(f):
     @atomic
     def wrapper(*a, **kw):
         if not S.get('uid'):
+            return redirect(url_for('login'))
+        u = q("SELECT banned FROM users WHERE id=?", (S['uid'],), one=True)
+        if u is None or u['banned']:
+            S.pop('uid', None)
+            flash('该账号已被停用，如有异议请联系管理员。', 'bad')
             return redirect(url_for('login'))
         c = my_consort()
         if c is None:
@@ -718,6 +781,9 @@ def login():
         password = request.form.get('password', '')
         u = q("SELECT * FROM users WHERE username=?", (username,), one=True)
         if u and check_password_hash(u['password_hash'], password):
+            if u['banned']:
+                flash('该账号因违规已被停用，如有异议请联系管理员。', 'bad')
+                return render_template('login.html')
             S.permanent = True
             S['uid'] = u['id']
             return redirect(url_for('index'))
@@ -733,6 +799,8 @@ def register():
             flash('账号要 2 到 20 个字。', 'bad')
         elif len(password) < 4:
             flash('密码至少 4 位。', 'bad')
+        elif blocked_hit('账号', username):
+            flash(BLOCKED_MSG, 'bad')
         elif q("SELECT 1 FROM users WHERE username=?", (username,), one=True):
             flash('这个账号已经有人用了。', 'bad')
         else:
@@ -767,6 +835,8 @@ def create():
         err = None
         if not (1 <= len(surname) <= 4) or not (1 <= len(given) <= 3):
             err = '姓 1~4 个字，名 1~3 个字。'
+        elif blocked_hit('姓名', surname + given):
+            err = BLOCKED_MSG
         elif pts is not None and not 18 <= age <= 22:
             err = '入宫年龄为十八至二十二岁。'
         elif fam not in FAMILIES or per not in PERSONALITIES:
@@ -1397,6 +1467,8 @@ def heirs():
             flash('名字已经定了，改不了。', 'bad')
         elif not (2 <= len(name) <= 4):
             flash('名字 2~4 个字。', 'bad')
+        elif blocked_hit('赐名', name):
+            flash(BLOCKED_MSG, 'bad')
         else:
             run("UPDATE heirs SET name=? WHERE id=?", (name, hid))
             flash(f"皇上允了，赐名「{name}」。", 'good')
@@ -1844,8 +1916,11 @@ def admin_login():
 def admin():
     rows = q("SELECT c.*, u.username FROM consorts c LEFT JOIN users u ON u.id=c.user_id ORDER BY c.user_id IS NULL, c.rank DESC, c.favor DESC")
     pend = q("SELECT * FROM intrigues WHERE status='pending' ORDER BY id")
+    reports = q("SELECT * FROM reports WHERE status='open' ORDER BY id")
+    done_reports = q("SELECT * FROM reports WHERE status!='open' ORDER BY handled_ts DESC LIMIT 10")
+    banned = q("SELECT id, username FROM users WHERE banned=1 ORDER BY id")
     return render_template('admin.html', rows=rows, pend=pend, get_consort=get_consort, INTRIGUES=INTRIGUES,
-                           SECRETS=SECRETS)
+                           SECRETS=SECRETS, reports=reports, done_reports=done_reports, banned=banned)
 
 @app.route('/admin/settle', methods=['POST'])
 @admin_required
@@ -1893,7 +1968,7 @@ def admin_reset():
     if request.form.get('confirm') != '重开':
         flash('要在框里输入「重开」才会重置。', 'bad')
         return redirect(url_for('admin'))
-    for t in ('intrigues', 'messages', 'gazette', 'relations', 'known_secrets', 'inventory', 'heirs', 'letters',
+    for t in ('intrigues', 'messages', 'gazette', 'relations', 'known_secrets', 'inventory', 'heirs', 'letters', 'reports',
               'daily_counters', 'consorts', 'game_state'):
         run(f"DELETE FROM {t}")
     if request.form.get('keep_users') != '1':
@@ -1901,6 +1976,41 @@ def admin_reset():
     run('UPDATE users SET lethal_ready_day=0')
     init_db()
     flash('已重开一届选秀。', 'good')
+    return redirect(url_for('admin'))
+
+@app.route('/admin/report/<int:rid>', methods=['POST'])
+@admin_required
+def admin_report_handle(rid):
+    r = q("SELECT * FROM reports WHERE id=?", (rid,), one=True)
+    if not r or r['status'] != 'open':
+        flash('这条举报已经处理过了。', 'bad')
+        return redirect(url_for('admin'))
+    action = request.form.get('action')
+    done = []
+    if action in ('delete', 'ban') and r['letter_id']:
+        run("UPDATE letters SET body='【该信件因违规已被管理员删除】' WHERE id=?", (r['letter_id'],))
+        done.append('已删除该信件')
+    if action == 'ban':
+        t = get_consort(r['target_id']) if r['target_id'] else None
+        if t and t['user_id']:
+            run("UPDATE users SET banned=1 WHERE id=?", (t['user_id'],))
+            done.append('已停用被举报账号')
+    if action == 'dismiss':
+        done.append('经核实不违规，不予处理')
+    elif not done:
+        flash('没有可执行的处理。', 'bad')
+        return redirect(url_for('admin'))
+    run("UPDATE reports SET status=?, result=?, handled_ts=? WHERE id=?",
+        ('dismissed' if action == 'dismiss' else 'done', '；'.join(done), now_ts(), rid))
+    notify(r['reporter_id'], '你的举报已由管理员处理：' + '；'.join(done) + '。', 'info')
+    flash('已处理。', 'good')
+    return redirect(url_for('admin'))
+
+@app.route('/admin/unban/<int:uid>', methods=['POST'])
+@admin_required
+def admin_unban(uid):
+    run("UPDATE users SET banned=0 WHERE id=?", (uid,))
+    flash('已解除停用。', 'good')
     return redirect(url_for('admin'))
 
 @app.route('/admin/logout')
@@ -2242,6 +2352,7 @@ def letter_send():
     err = None
     if not t or not t['user_id'] or t['id'] == c['id'] or t['status'] in ('xiunv', 'dead'): err = '没有这个人。'
     elif not body or len(body) > LETTER_MAX_LEN: err = f'信要写点什么，最多 {LETTER_MAX_LEN} 字。'
+    elif blocked_hit('书信', body): err = BLOCKED_MSG
     elif daily_count(c['id'], 'letter') >= LETTER_DAILY_MAX: err = f'今天已经送出 {LETTER_DAILY_MAX} 封信了。'
     elif amt < 0 or amt > c['silver']: err = '银子数目不对。'
     elif item and (item not in ITEMS or inv_qty(c['id'], item) < 1): err = '你没有这件东西。'
@@ -2270,6 +2381,47 @@ def letter_send():
     notify(tid, f"{display_name(c)}差人送来一封信" + (f"，还附了{extras}" if extras else '') + '。去「书信」看看。', 'good')
     flash(f"信送到{t['palace'] if t['status'] != 'cold' else '冷宫'}了。" + (f"好感 +{aff}。" if aff else ''), 'good')
     return redirect(url_for('letters'))
+
+
+
+# ── 投诉举报 ───────────────────────────────────────────────────────────────────
+
+REPORT_CATEGORIES = ('违法违规内容', '辱骂骚扰', '侵犯他人权益', '其他')
+REPORT_DAILY_MAX = 10
+REPORT_MAX_LEN = 200
+
+@app.route('/report', methods=['GET', 'POST'])
+@login_required
+def report():
+    c = g.me
+    src = request.values.get('letter', type=int) or 0
+    letter = q("SELECT * FROM letters WHERE id=? AND to_id=?", (src, c['id']), one=True) if src else None
+    if src and not letter:
+        flash('只能举报发给你的信。', 'bad')
+        return redirect(url_for('letters'))
+    if request.method == 'POST':
+        category = request.form.get('category', '')
+        reason = request.form.get('reason', '').strip()
+        err = None
+        if category not in REPORT_CATEGORIES: err = '请选择举报类型。'
+        elif not reason or len(reason) > REPORT_MAX_LEN: err = f'请写明举报理由，最多 {REPORT_MAX_LEN} 字。'
+        elif daily_count(c['id'], 'report') >= REPORT_DAILY_MAX: err = '今天举报的次数已经用完，请明天再来。'
+        elif letter and q("SELECT 1 FROM reports WHERE reporter_id=? AND letter_id=?", (c['id'], letter['id']), one=True):
+            err = '这封信已经举报过了，管理员会尽快处理。'
+        if err:
+            flash(err, 'bad')
+            return render_template('report.html', letter=letter, categories=REPORT_CATEGORIES,
+                                   get_consort=get_consort, REPORT_MAX_LEN=REPORT_MAX_LEN)
+        run("""INSERT INTO reports (reporter_id, target_id, letter_id, category, reason, snapshot, created_ts)
+               VALUES (?,?,?,?,?,?,?)""",
+            (c['id'], letter['from_id'] if letter else 0, letter['id'] if letter else 0, category, reason,
+             letter['body'] if letter else '', now_ts()))
+        daily_inc(c['id'], 'report')
+        flash('举报已提交，管理员会尽快核实处理。', 'good')
+        return redirect(url_for('letters' if letter else 'index'))
+    return render_template('report.html', letter=letter, categories=REPORT_CATEGORIES,
+                           get_consort=get_consort, REPORT_MAX_LEN=REPORT_MAX_LEN)
+
 
 if __name__ == '__main__':
     init_db()

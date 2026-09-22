@@ -99,5 +99,6 @@ nav.halls .dot{display:inline-block;min-width:18px;height:18px;line-height:18px;
   {% endwith %}
   {% block body %}{% endblock %}
 </main>
+<footer style="text-align:center;padding:24px 0 32px" class="muted">{% if session.uid %}<a href="{{ url_for('report') }}">投诉举报</a>　{% endif %}投诉举报 QQ：3052553938　<a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">浙ICP备2026078867号-1</a></footer>
 </body>
 </html>
