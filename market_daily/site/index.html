@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>纽约晨昏</title>
+<meta name="description" content="每个美股交易日纽约时间 8:30 与 17:00 各出一版：市场、AI 板块、中国映射、美联储与政策。">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="sheet" id="app" aria-live="polite">
+  <p class="boot">正在取报纸……</p>
+</div>
+<p class="beian"><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">浙ICP备2026078867号-1</a></p>
+
+<dialog id="archive" aria-label="往期">
+  <form method="dialog" class="arc-head">
+    <h2>往期</h2>
+    <button aria-label="关闭">关闭</button>
+  </form>
+  <div id="archive-list"></div>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>
