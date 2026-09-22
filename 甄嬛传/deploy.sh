@@ -1,19 +1,20 @@
 #!/bin/bash
-# 甄嬛传·紫禁城 — 部署到贾维斯（腾讯云 Ubuntu 124.221.189.86:5024，systemd）
+# 甄嬛传·紫禁城 — 部署到贾维斯（腾讯云 Ubuntu 124.221.189.86，https://zhenhuan.changri.work，systemd）
 # 用法：bash deploy.sh
 #
 # 只同步代码：app.py / run.py / schema.sql / blocklist.txt / requirements.txt / templates/，
 # 绝不碰服务器上的 zhenhuan.db、db_backups/、logs/、venv/。
 # 本地到腾讯云上行只有几 KB/s，所以用 rsync 增量传。
 # 环境变量（PORT / FLASK_SECRET / ADMIN_PASSWORD / SETTLE_HOUR）在服务器 /etc/zhenhuan.env，不在仓库里。
-# 服务配置：/etc/systemd/system/zhenhuan.service（waitress 直接对外监听 5024）。
+# 服务配置：/etc/systemd/system/zhenhuan.service（waitress 监听 5024），对外由 nginx 按子域名反代并提供 HTTPS
+# （/etc/nginx/sites-available/changri，本地副本 changri_home/nginx_changri.conf）。
 set -e
 
 SERVER="jarvis"
 REMOTE_DIR="/home/ubuntu/zhenhuan"
 SERVICE="zhenhuan"
 PORT=5024
-PUBLIC_URL="http://124.221.189.86:$PORT"
+PUBLIC_URL="https://zhenhuan.changri.work"
 LOCAL_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "======================================"
@@ -40,5 +41,5 @@ if [ "$READY" != "1" ]; then
 fi
 
 echo "[3/3] 外网验证"
-curl -s -o /dev/null -w "HTTP %{http_code}\n" --max-time 10 "$PUBLIC_URL/login" || echo "（外网连不通，检查腾讯云控制台防火墙有没有放行 $PORT）"
+curl -s -o /dev/null -w "HTTP %{http_code}\n" --max-time 10 "$PUBLIC_URL/login" || echo "（外网连不通，检查 nginx 和腾讯云控制台防火墙的 443 端口）"
 echo "完成：$PUBLIC_URL"

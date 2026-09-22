@@ -1,5 +1,5 @@
 #!/bin/bash
-# 排单宝 — 部署脚本（贾维斯：腾讯云 Ubuntu 124.221.189.86:5023，systemd）
+# 排单宝 — 部署脚本（贾维斯：腾讯云 Ubuntu 124.221.189.86，https://order.changri.work，systemd）
 # 用法：bash deploy.sh
 #
 # 只同步代码：app.py / requirements.txt / templates/ / static/，
@@ -7,14 +7,15 @@
 # 用 rsync 增量传输——本地到腾讯云的上行只有几 KB/s，整包重传会很慢。
 # 服务器上的环境变量（PORT / FLASK_SECRET / SUPERADMIN_PASS）在 /etc/yuca_order.env，不在本仓库。
 # 服务配置：/etc/systemd/system/yuca_order.service（waitress :5023），
-#           waitress 直接对外监听 5023，不经过 nginx（80 端口留给别的项目）。
+#           waitress 监听 5023，对外由 nginx 按子域名反代并提供 HTTPS（/etc/nginx/sites-available/changri，
+#           本地副本 changri_home/nginx_changri.conf）。
 # 旧服务器（奥创，阿里云 Windows）的脚本留在 deploy_ultron.sh，那边服务已停，仅作回滚参考。
 set -e
 
 SERVER="jarvis"
 REMOTE_DIR="/home/ubuntu/yuca_order"
 SERVICE="yuca_order"
-PUBLIC_URL="http://124.221.189.86:5023"
+PUBLIC_URL="https://order.changri.work"
 LOCAL_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "======================================"
@@ -55,7 +56,7 @@ fi
 
 # ── 3. 外网验证 ──────────────────────────────────────────────────────────────
 echo "[3/3] 外网验证"
-curl -s -o /dev/null -w "HTTP %{http_code}\n" --max-time 10 "$PUBLIC_URL/" || echo "（外网连不通，检查腾讯云控制台防火墙有没有放行 5023）"
+curl -s -o /dev/null -w "HTTP %{http_code}\n" --max-time 10 "$PUBLIC_URL/" || echo "（外网连不通，检查 nginx 和腾讯云控制台防火墙的 443 端口）"
 
 echo ""
 echo "======================================"
