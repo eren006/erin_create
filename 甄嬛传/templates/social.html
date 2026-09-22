@@ -39,7 +39,7 @@
       <form method="post" action="{{ url_for('act', key='visit') }}"><input type="hidden" name="target_id" value="{{ o.id }}"><input type="hidden" name="back" value="social"><button class="plain">串门</button></form>
       {% endif %}
       <a class="btn plain" href="{{ url_for('letters', to=o.id) }}">写信</a>
-      <form method="post" action="{{ url_for('act', key='spy') }}"><input type="hidden" name="target_id" value="{{ o.id }}"><input type="hidden" name="back" value="social"><button class="plain">打探（30 两）</button></form>
+      <form method="post" action="{{ url_for('act', key='spy') }}"><input type="hidden" name="target_id" value="{{ o.id }}"><input type="hidden" name="back" value="social"><button class="plain">派宫人打探（30 两）</button></form>
       {% if o.status in ('confined','cold') %}
       <form method="post" action="{{ url_for('act', key='plead') }}"><input type="hidden" name="target_id" value="{{ o.id }}"><input type="hidden" name="back" value="social"><button class="plain">求情（50 两）</button></form>
       {% endif %}

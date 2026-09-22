@@ -13,6 +13,11 @@
   <input name="text" style="flex:1;min-width:220px" placeholder="例如：中秋家宴，六宫同庆。"><button class="plain">发布</button>
 </form>
 
+<h3>宫人改名（名字违规时用）</h3>
+<form method="post" action="{{ url_for('admin_maid_rename') }}" class="row">
+  <input name="old" placeholder="原名" style="width:90px" aria-label="原名"><input name="new" placeholder="新名（两个字）" style="width:130px" aria-label="新名"><button class="plain">改名</button>
+</form>
+
 <h3>妃嫔</h3>
 <div class="scroll"><table>
   <tr><th>名号</th><th>账号</th><th>属性</th><th>秘密</th><th>圣宠 / 银子 / 位分 / 状态</th></tr>

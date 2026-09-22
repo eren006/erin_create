@@ -18,6 +18,18 @@
 {% if extra %}<p class="muted">{{ extra }}</p>{% endif %}
 <p class="muted">精力还剩 {{ c.energy }}，银子 {{ c.silver }} 两。</p>
 
+{% if maid_ev %}{% set text, opts, data, names = maid_ev %}
+<div class="sheet" style="margin:14px 0">
+  <p style="font-family:var(--kai);font-size:18px">{{ text }}</p>
+  <form method="post" action="{{ url_for('maid_event_choose') }}" class="row">
+    {% for o in opts %}<button name="opt" value="{{ loop.index0 }}" class="{{ 'plain' if not loop.first }}">{{ o }}</button>{% endfor %}
+  </form>
+</div>
+{% endif %}
+{% if maid_info %}
+<p class="muted"><a href="{{ url_for('maids_page') }}">宫人 {{ maid_info.n }}/{{ maid_info.quota }}</a>{% if c.status != 'cold' and maid_info.n %}　今天还能差遣 {{ maid_info.errands }} 人{% endif %}</p>
+{% endif %}
+
 {% if not acts %}
 <p>{{ '禁足中，出不了宫门。' if c.status == 'confined' else ('冷宫里的人，哪儿也去不了。' if c.status == 'cold' else '现在没什么可做的。') }}</p>
 {% endif %}

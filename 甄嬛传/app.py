@@ -244,8 +244,8 @@ ACTIONS = {
                     desc='五天内更难被算计，被害时能知道是谁'),
     'visit':   dict(name='串门', energy=1, silver=0, daily=3, when={'normal'}, sick_block=True, target=True,
                     desc='双方好感 +6~10'),
-    'spy':     dict(name='打探底细', energy=1, silver=30, daily=1, when={'normal'}, target=True,
-                    desc='有机会探到对方的秘密'),
+    'spy':     dict(name='打探底细', energy=0, silver=30, daily=1, when={'normal'}, target=True, errand=True,
+                    desc='派一个宫人去打听对方的秘密（用一次差使，不花精力）'),
     'plead':   dict(name='向皇上求情', energy=1, silver=50, daily=1, when={'normal'}, target=True,
                     desc='为禁足或冷宫中的姐妹求情，缩短日子。成败看皇上对你的信任'),
 }
@@ -267,6 +267,9 @@ INTRIGUES = {
                    desc='需先探到对方的秘密。皇上信不信看你的信任。成：按秘密处罚对方，你信任 +5。不信：自己德行 -8，圣宠 -15%，信任 -10'),
     'witch':  dict(name='构陷巫蛊', silver=300, energy=3, min_rank=4, base=0.35, npc_ok=True,
                    desc='成：对方打入冷宫。败露：打入冷宫的是你'),
+    'punish': dict(name='发落宫人', silver=50, energy=2, min_rank=5, base=0.50, npc_ok=False,
+                   desc='找个由头，把对方宫里一个宫人拖去慎刑司。要比对方高两级以上，每 7 天一次；'
+                        '对方会知道是你。成：那个宫人没了，对方全宫宫人忠心 -5。败露：德行 -8，信任 -10'),
 }
 INTRIGUE_TARGET_DAILY_MAX = 2
 
@@ -477,7 +480,11 @@ def init_db():
                      'recap_seen_day': 'INTEGER NOT NULL DEFAULT 0',
                      'last_audience_day': 'INTEGER NOT NULL DEFAULT 0',
                      'last_promote_day': 'INTEGER NOT NULL DEFAULT 0',
-                     'dianxuan_quote': "TEXT NOT NULL DEFAULT ''"},
+                     'dianxuan_quote': "TEXT NOT NULL DEFAULT ''",
+                     'maid_offer': "TEXT NOT NULL DEFAULT ''",
+                     'maid_event': "TEXT NOT NULL DEFAULT ''",
+                     'punish_ready_day': 'INTEGER NOT NULL DEFAULT 0',
+                     'maid_punished_day': 'INTEGER NOT NULL DEFAULT 0'},
         'messages': {'is_night': 'INTEGER NOT NULL DEFAULT 0'},
         'gazette': {'is_night': 'INTEGER NOT NULL DEFAULT 0'},
         'game_state': {'last_bed_pool': "TEXT NOT NULL DEFAULT '[]'"},
@@ -939,7 +946,8 @@ def index():
         promo = dict(rank=RANK_NAMES[nxt], favor=PROMOTE_FAVOR[nxt], virtue=PROMOTE_VIRTUE[nxt],
                      slot=slot_free(nxt, c['id']), days_ok=(day - c['rank_since_day']) >= MIN_DAYS_AT_RANK)
     heirs = q("SELECT * FROM heirs WHERE mother_id=? ORDER BY id", (c['id'],))
-    return render_template('index.html', c=c, msgs=msgs, promo=promo, heirs=heirs, edict=edict,
+    maid_gap = 0 if c['status'] == 'cold' else maid_quota(c['rank']) - len(active_maids(c['id']))
+    return render_template('index.html', c=c, msgs=msgs, promo=promo, heirs=heirs, edict=edict, maid_gap=maid_gap,
                            sick=is_sick(c), eyes=eyes_active(c), secret=SECRETS[c['secret']],
                            day=day, PREGNANCY_DAYS=PREGNANCY_DAYS, tiles=map_tiles(c))
 
@@ -983,6 +991,8 @@ def act(key):
             raise Reject(f"银子不够，需要 {cfg['silver']} 两。")
         if daily_count(c['id'], key) >= cfg['daily']:
             raise Reject(f"「{cfg['name']}」今天已经做过 {cfg['daily']} 次了。")
+        if cfg.get('errand') and not free_errand_maids(c):
+            raise Reject('宫人今天都派出去了。' if active_maids(c['id']) else '你宫里还没有宫人，先去内务府挑一个。')
         msg, kind = ACTION_HANDLERS[key](c, cfg)
         daily_inc(c['id'], key)
         if getattr(g, 'scene_started', False):
@@ -1133,18 +1143,21 @@ def do_spy(c, cfg):
     if q("SELECT 1 FROM known_secrets WHERE knower_id=? AND target_id=?", (c['id'], t['id']), one=True):
         raise Reject('她的底细你已经摸清了。')
     charge(c, cfg)
-    p = clamp((0.35 + (c['scheme'] - t['scheme']) * 0.01 - (0.15 if eyes_active(t) else 0)) * 100, 10, 85) / 100
+    m = take_errand(c, prefer='jiling')
+    p = 0.35 + (c['scheme'] - t['scheme']) * 0.01 - (0.15 if eyes_active(t) else 0)
+    if m['trait'] == 'jiling': p += 0.10
+    p = clamp(p * 100, 10, 85) / 100
     if random.random() < p:
         run("INSERT OR IGNORE INTO known_secrets (knower_id, target_id, day) VALUES (?,?,?)",
             (c['id'], t['id'], cur_day()))
         if t['secret'] == 'none':
-            return f"你使银子打听了一圈：{display_name(t)}身家清白，没什么把柄。", 'info'
-        return f"打听到了：{display_name(t)}{SECRETS[t['secret']]['name']}。", 'good'
+            return f"{m['name']}使银子打听了一圈：{display_name(t)}身家清白，没什么把柄。", 'info'
+        return f"{m['name']}打听到了：{display_name(t)}{SECRETS[t['secret']]['name']}。", 'good'
     if random.random() < (0.6 if eyes_active(t) else 0.25):
         who = display_name(c) if eyes_active(t) else '有人'
         notify(t['id'], f"眼线来报：{who}在打听你的底细。", 'bad')
-        return "银子花了，什么也没打听到，还惊动了对方。", 'bad'
-    return "银子花了，什么也没打听到。", 'info'
+        return f"{m['name']}银子花了，什么也没打听到，还惊动了对方。", 'bad'
+    return f"{m['name']}银子花了，什么也没打听到。", 'info'
 
 def do_plead(c, cfg):
     t = pick_target(c)
@@ -1390,6 +1403,8 @@ def intrigue_submit():
         elif t['secret'] == 'none': err = '她身家清白，没什么可告发的。'
     elif method == 'steal' and (t['pregnant_since'] or is_sick(t)):
         err = '她今晚本就侍不了寝。'
+    elif method == 'punish':
+        err = punish_block(c, t, day)
     if err:
         flash(err, 'bad')
         return redirect(url_for('intrigue'))
@@ -1399,6 +1414,8 @@ def intrigue_submit():
            VALUES (?,?,?,?,?,?,?)""", (day, c['id'], tid, method, cfg['silver'], cfg.get('item', ''), now_ts()))
     if method == 'lethal':
         run('UPDATE users SET lethal_ready_day=? WHERE id=?', (day + LETHAL_COOLDOWN, c['user_id']))
+    if method == 'punish':   # 和毒害一样，撤回也不重置冷却
+        run('UPDATE consorts SET punish_ready_day=? WHERE id=?', (day + PUNISH_COOLDOWN, c['id']))
     daily_inc(c['id'], 'intrigue')
     flash(f"已安排下去。{next_settle_text()} 见分晓。", 'info')
     return redirect(url_for('intrigue'))
@@ -1414,6 +1431,406 @@ def intrigue_cancel(iid):
         if it['item_used']: inv_add(c['id'], it['item_used'], 1)
         flash('你把人叫了回来，银子和东西收回了，花掉的精力回不来。', 'info')
     return redirect(url_for('intrigue'))
+
+# ── 宫人 ───────────────────────────────────────────────────────────────────────
+# 玩家在内务府亲手挑、亲手赐名。名字两个字、全宫不重复（已故、已离开的也算）。
+# 每个宫人每天能跑一次差使；每晚领 1 两月钱，忠心随主子的处境涨落。
+
+MAID_QUOTA = {1: 1, 2: 2, 3: 2, 4: 3}   # 官女子 1、答应/常在 2、贵人 3，嫔以上 4
+MAID_TRAITS = {
+    'shouqiao': dict(name='手巧', desc='手脚利落，心细如发。'),
+    'zuijin':   dict(name='嘴紧', desc='什么话到她这儿都烂在肚子里。'),
+    'suizui':   dict(name='碎嘴', desc='消息灵通，主子散布流言时成算 +10%。可她自己的嘴也管不住。'),
+    'tancai':   dict(name='贪财', desc='见钱眼开，忠心最高只到 70。', cap=70),
+    'zhonghou': dict(name='忠厚', desc='老实本分，忠心不会低于 40。', floor=40),
+    'jiling':   dict(name='机灵', desc='眼疾手快，派她去打探，成算 +10%。'),
+}
+MAID_BACKSTORIES = [
+    '浣衣局调来的，手上还有冻疮。',
+    '原先伺候过一位答应，那位小主没了。',
+    '内务府管事的远房侄女，说话带着京腔。',
+    '江南织造送进来的，会绣双面绣。',
+    '家里兄弟多，十二岁就进宫了。',
+    '在御膳房烧过三年火，闻得出菜里的味道。',
+    '以前在太后宫里当过差，不知为何被调了出来。',
+    '识得几个字，说是爹从前是个账房先生。',
+    '满脸稚气，说话还有些怯。',
+    '在花房伺候过，认得宫里所有的花草。',
+    '一手好梳头的手艺，原先是给嬷嬷们梳头的。',
+    '性子闷，一整天说不了三句话。',
+    '笑起来眼睛弯弯的，谁见了都喜欢。',
+    '从辛者库出来的，没人知道她犯过什么事。',
+    '父亲是宫里的侍卫，常托人捎东西进来。',
+    '左眉有颗痣，嬷嬷说那是有福的相。',
+]
+MAID_WAGE = 1              # 每个宫人每晚的月钱
+MAID_REROLL_COST = 10      # 每天第二次起换一批候选
+MAID_REWARD_COST = 20
+MAID_BURY_COST = 20
+MAID_EVENT_CHANCE = 0.3    # 每天第一次进本宫时，宫人来找你的概率
+MAID_NEW_SHIELD = 3        # 刚挑的宫人 3 天内不会被发落
+PUNISH_COOLDOWN = 7        # 发落宫人：出手的人 7 天一次；每个人的宫人 7 天内最多被发落一个
+HUAFEI_PUNISH_CHANCE = 0.05
+_HAN2 = re.compile(r'^[一-鿿]{2}$')
+
+def maid_quota(rank):
+    return 0 if rank < 1 else MAID_QUOTA.get(rank, 4)
+
+def active_maids(cid):
+    return q("SELECT * FROM maids WHERE owner_id=? AND status='active' ORDER BY id", (cid,))
+
+def get_maid(mid):
+    return q("SELECT * FROM maids WHERE id=?", (mid,), one=True)
+
+def add_loyalty(mid, delta):
+    m = get_maid(mid)
+    t = MAID_TRAITS.get(m['trait'], {})
+    run("UPDATE maids SET loyalty=? WHERE id=?",
+        (max(t.get('floor', 0), min(t.get('cap', 100), m['loyalty'] + int(delta))), mid))
+
+def loyalty_word(v):
+    return '死心塌地' if v >= 80 else '忠心' if v >= 60 else '尚可' if v >= 40 else '离心'
+
+def maid_leave(mid, status, reason):
+    run("UPDATE maids SET status=?, left_day=?, left_reason=? WHERE id=?", (status, cur_day(), reason, mid))
+
+def has_maid_trait(cid, trait):
+    return any(m['trait'] == trait and m['sick_until_day'] < cur_day() for m in active_maids(cid))
+
+def free_errand_maids(c):
+    """今天还没跑过差使、没卧病的宫人。冷宫里宫人不在身边"""
+    if c['status'] == 'cold': return []
+    day = cur_day()
+    return [m for m in active_maids(c['id'])
+            if m['sick_until_day'] < day and daily_count(c['id'], f"errand:{m['id']}") == 0]
+
+def take_errand(c, prefer=None):
+    free = free_errand_maids(c)
+    if not free:
+        raise Reject('宫人今天都派出去了。')
+    m = next((x for x in free if x['trait'] == prefer), free[0])
+    daily_inc(c['id'], f"errand:{m['id']}")
+    return m
+
+def roll_maid_offer():
+    out = []
+    for story in random.sample(MAID_BACKSTORIES, 4):
+        trait = random.choice(list(MAID_TRAITS))
+        out.append(dict(trait=trait, loyalty=random.randint(50, 70), backstory=story))
+    return out
+
+def maid_offer(c):
+    try:
+        offer = json.loads(c['maid_offer']) if c['maid_offer'] else None
+    except ValueError:
+        offer = None
+    if not offer:
+        offer = roll_maid_offer()
+        run("UPDATE consorts SET maid_offer=? WHERE id=?", (json.dumps(offer, ensure_ascii=False), c['id']))
+    return offer
+
+def maid_name_error(name):
+    if not _HAN2.match(name or ''):
+        return '宫人的名字要是两个汉字。'
+    if blocked_hit('宫人名', name):
+        return BLOCKED_MSG
+    if q("SELECT 1 FROM maids WHERE name=?", (name,), one=True):
+        return f'宫里已经有过叫「{name}」的宫人了，换一个吧。'
+    if q("SELECT 1 FROM consorts WHERE given=?", (name,), one=True):
+        return f'「{name}」和一位小主的名字撞了，宫人不能用。'
+    return None
+
+def punishable_maids(cid):
+    day = cur_day()
+    return [m for m in active_maids(cid) if day - m['joined_day'] >= MAID_NEW_SHIELD]
+
+def punish_block(c, t, day):
+    if c['rank'] < t['rank'] + 2:
+        return '要比她高两级以上，才发落得了她宫里的人。'
+    if c['punish_ready_day'] > day:
+        return f"你上次发落宫人还没过 {PUNISH_COOLDOWN} 天，第 {c['punish_ready_day']} 天才能再动手。"
+    if t['maid_punished_day'] and day - t['maid_punished_day'] < PUNISH_COOLDOWN:
+        return '她宫里前几天才没了人，这会儿再动太扎眼。'
+    if not punishable_maids(t['id']):
+        return '她宫里眼下没有能拿来做文章的宫人（刚挑的宫人 3 天内动不得）。'
+    return None
+
+def huafei_punish(day):
+    """华妃记恨谁，每晚有 5% 找由头发落那人宫里的宫人"""
+    hf = q("SELECT * FROM consorts WHERE npc_key='huafei' AND status='normal'", one=True)
+    if not hf or hf['punish_ready_day'] > day: return
+    for p in q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND status='normal' AND entered_day<?", (day,)):
+        rel = relation(hf['id'], p['id'])
+        if not rel or rel['affinity'] > -20 or random.random() >= HUAFEI_PUNISH_CHANCE: continue
+        if punish_block(hf, p, day): continue
+        if q("SELECT COUNT(*) n FROM intrigues WHERE target_id=? AND day=? AND status='pending'",
+             (p['id'], day), one=True)['n'] >= INTRIGUE_TARGET_DAILY_MAX: continue
+        run("INSERT INTO intrigues (day, attacker_id, target_id, method, created_ts) VALUES (?,?,?,?,?)",
+            (day, hf['id'], p['id'], 'punish', now_ts()))
+        run("UPDATE consorts SET punish_ready_day=? WHERE id=?", (day + PUNISH_COOLDOWN, hf['id']))
+        return
+
+def maid_upkeep(day):
+    for c in q("SELECT * FROM consorts WHERE status NOT IN ('xiunv','dead')"):
+        maids = active_maids(c['id'])
+        if not maids: continue
+        for m in maids:
+            if m['sick_until_day'] and m['sick_until_day'] <= day:
+                run("UPDATE maids SET sick_until_day=0 WHERE id=?", (m['id'],))
+        if c['status'] == 'cold':          # 冷宫里宫人不在跟前，不发月钱，心也散了
+            for m in maids: add_loyalty(m['id'], -5)
+            continue
+        wage = MAID_WAGE * len(maids)
+        if c['silver'] < wage:
+            for m in maids: add_loyalty(m['id'], -5)
+            if c['user_id']:
+                notify(c['id'], f"宫人的月钱发不出来（{len(maids)} 人要 {wage} 两），全宫宫人忠心 -5。", 'bad')
+            continue
+        add_silver(c['id'], -wage)
+        for m in maids:
+            add_loyalty(m['id'], -2 if c['status'] == 'confined' else 1)
+    run("UPDATE consorts SET maid_event='' WHERE maid_event!=''")
+
+# ── 宫人的小事 ─────────────────────────────────────────────────────────────────
+# 每条选项的效果：loyalty 当事宫人忠心 / loyalty2 另一个宫人 / silver / virtue / appearance / seek 今晚翻牌加成
+# affinity 和被牵扯的那位小主的好感 / gossip 听闲话 / hide 替她瞒下烧纸
+
+MAID_EVENTS = {
+    'mother_ill': dict(text='{m}红着眼圈来回话：家里捎信说老娘病了，想跟小主讨 10 两银子抓药。', opts=[
+        dict(text='给她 10 两', silver=-10, loyalty=10, say='{m}磕了个头，眼泪都掉下来了。'),
+        dict(text='宫里有宫里的规矩，不给', loyalty=-5, say='{m}低着头退下了，一句话也没说。')]),
+    'vase': dict(text='{m}收拾博古架时失了手，打碎了你最心爱的那只瓶子，跪在地上直发抖。', opts=[
+        dict(text='罚她去院里跪着', loyalty=-8, say='{m}在院里跪到天黑。'),
+        dict(text='碎碎平安，算了', loyalty=6, say='{m}愣了半晌，才敢起身谢恩。')]),
+    'gossip': dict(text='{m}从御花园回来，神神秘秘地说听到了别宫的闲话。', opts=[
+        dict(text='让她说', gossip=True, say=''),
+        dict(text='叫她别乱传', virtue=1, loyalty=2, say='{m}吐了吐舌头：「奴婢记下了。」')]),
+    'quarrel': dict(text='{m}和{m2}不知为什么拌起嘴来，一前一后来找你评理。', two=True, opts=[
+        dict(text='向着{m}', loyalty=8, loyalty2=-8, say='{m}得意地瞥了{m2}一眼。'),
+        dict(text='向着{m2}', loyalty=-8, loyalty2=8, say='{m}咬着嘴唇，眼圈红了。'),
+        dict(text='各打五十大板', loyalty=-2, loyalty2=-2, say='两个人都不吭声了。')]),
+    'birthday': dict(text='今天是{m}的生辰，她自己没提，是别人悄悄告诉你的。', opts=[
+        dict(text='赏她一支簪子（15 两）', silver=-15, loyalty=10, say='{m}把簪子捧在手里看了又看。'),
+        dict(text='说句吉祥话', loyalty=3, say='{m}笑着福了福身。')]),
+    'bullied': dict(text='{m}哭着回来，说在甬道上被{t}宫里的人推搡了，还挨了两句骂。', needs_target=True, opts=[
+        dict(text='替她出头', loyalty=12, affinity=-5, say='你亲自去{t}那儿讨了个说法，{m}感激得不得了。'),
+        dict(text='让她忍着', loyalty=-4, say='{m}抹着眼泪下去了。')]),
+    'burning': dict(text='夜里你闻见烟味，原来是{m}躲在后院偷偷给过世的爹娘烧纸——这在宫里是犯忌讳的。', opts=[
+        dict(text='替她瞒着', loyalty=15, hide=True, say='{m}跪下给你磕了三个头。这事要是哪天被人翻出来，你也脱不了干系。'),
+        dict(text='按规矩上报', loyalty=-20, virtue=2, say='{m}被内务府罚了月钱。她再看你的眼神，不一样了。')]),
+    'sachet': dict(text='{m}熬了几个晚上，绣了个香囊孝敬你，针脚细密。', opts=[
+        dict(text='自己戴着', appearance=1, loyalty=2, say='你把香囊系在腰间，{m}高兴得什么似的。'),
+        dict(text='托人转送养心殿', seek=5, say='香囊送去了养心殿。今晚翻牌子的机会大了些。')]),
+}
+
+def roll_maid_event(c):
+    """每天第一次进本宫时掷一次。同一件事同一个宫人不会遇到两次"""
+    if c['status'] == 'cold' or c['maid_event'] or daily_count(c['id'], 'maid_event_roll'): return
+    daily_inc(c['id'], 'maid_event_roll')
+    if random.random() >= MAID_EVENT_CHANCE: return
+    maids = list(active_maids(c['id']))
+    if not maids: return
+    random.shuffle(maids)
+    others = q("""SELECT id FROM consorts WHERE id!=? AND status='normal' AND rank>=1""", (c['id'],))
+    for key in random.sample(list(MAID_EVENTS), len(MAID_EVENTS)):
+        ev = MAID_EVENTS[key]
+        if ev.get('needs_target') and not others: continue
+        for m in maids:
+            if key in json.loads(m['seen_events'] or '[]'): continue
+            data = dict(key=key, maid=m['id'], day=cur_day())
+            if ev.get('two'):
+                m2 = next((x for x in maids if x['id'] != m['id']), None)
+                if not m2: break
+                data['maid2'] = m2['id']
+            if ev.get('needs_target'):
+                data['target'] = random.choice(others)['id']
+            run("UPDATE consorts SET maid_event=? WHERE id=?", (json.dumps(data), c['id']))
+            return
+
+def maid_event_view(c):
+    """返回 (正文, 选项文字列表, 数据, 名字表)；事情已经过期或当事人不在了就返回 None"""
+    try:
+        data = json.loads(c['maid_event']) if c['maid_event'] else None
+    except ValueError:
+        return None
+    if not data or data.get('day') != cur_day(): return None
+    m = get_maid(data['maid'])
+    m2 = get_maid(data['maid2']) if data.get('maid2') else None
+    t = get_consort(data['target']) if data.get('target') else None
+    if not m or m['status'] != 'active' or m['owner_id'] != c['id']: return None
+    if data.get('maid2') and (not m2 or m2['status'] != 'active' or m2['owner_id'] != c['id']): return None
+    names = dict(m=m['name'], m2=m2['name'] if m2 else '', t=display_name(t) if t else '')
+    ev = MAID_EVENTS[data['key']]
+    return ev['text'].format(**names), [o['text'].format(**names) for o in ev['opts']], data, names
+
+@app.route('/maids/event', methods=['POST'])
+@login_required
+def maid_event_choose():
+    c = g.me
+    view = maid_event_view(c)
+    if not view:
+        run("UPDATE consorts SET maid_event='' WHERE id=?", (c['id'],))
+        return redirect(url_for('place', key='home'))
+    _, _, data, names = view
+    ev = MAID_EVENTS[data['key']]
+    try:
+        opt = ev['opts'][int(request.form.get('opt', ''))]
+    except (ValueError, IndexError):
+        return redirect(url_for('place', key='home'))
+    if opt.get('silver') and c['silver'] < -opt['silver']:
+        flash(f"手头只有 {c['silver']} 两，拿不出来。", 'bad')
+        return redirect(url_for('place', key='home'))
+    run("UPDATE consorts SET maid_event='' WHERE id=?", (c['id'],))
+    m = get_maid(data['maid'])
+    seen = json.loads(m['seen_events'] or '[]') + [data['key']]
+    run("UPDATE maids SET seen_events=? WHERE id=?", (json.dumps(seen), m['id']))
+    parts = []
+    if opt.get('silver'):
+        add_silver(c['id'], opt['silver']); parts.append(f"银子 {opt['silver']:+d}")
+    if opt.get('loyalty'):
+        add_loyalty(m['id'], opt['loyalty']); parts.append(f"{m['name']}忠心 {opt['loyalty']:+d}")
+    if opt.get('loyalty2') and data.get('maid2'):
+        add_loyalty(data['maid2'], opt['loyalty2']); parts.append(f"{names['m2']}忠心 {opt['loyalty2']:+d}")
+    for k in ('virtue', 'appearance'):
+        if opt.get(k):
+            add_stat(c['id'], k, opt[k]); parts.append(f"{STAT_NAMES[k]} {opt[k]:+d}")
+    if opt.get('seek'):
+        if c['status'] == 'normal':
+            run("UPDATE consorts SET seek_bonus=seek_bonus+? WHERE id=?", (opt['seek'], c['id']))
+        else:
+            parts.append('可你眼下见不着皇上，香囊白送了')
+    if opt.get('affinity') and data.get('target'):
+        add_affinity(c['id'], data['target'], opt['affinity']); parts.append(f"和{names['t']}好感 {opt['affinity']:+d}")
+    if opt.get('hide'):
+        run("UPDATE maids SET hid_burning=1 WHERE id=?", (m['id'],))
+    say = opt['say'].format(**names)
+    if opt.get('gossip'):
+        say = maid_gossip(c, m)
+    flash('　'.join(x for x in (say, '，'.join(parts) + ('。' if parts else '')) if x), 'good')
+    return redirect(url_for('place', key='home'))
+
+GOSSIP_WORDS = dict(greet='去景仁宫请了安', study='练了才艺', groom='梳妆打扮', garden='逛了御花园',
+                    seek='往养心殿送了汤羹', rest='在宫里静养', reflect='闭门抄经', visit='四处串门',
+                    spy='派人打听别人的事', plead='去养心殿替人求情', letter='写了信', intrigue='私下里安排了什么事')
+
+def maid_gossip(c, m):
+    others = q("""SELECT * FROM consorts WHERE user_id IS NOT NULL AND id!=? AND status NOT IN ('xiunv','dead')""", (c['id'],))
+    if not others:
+        return f"{m['name']}说了半天，都是些没影的事。"
+    t = random.choice(others)
+    did = [GOSSIP_WORDS[r['key']] + (f" {r['count']} 回" if r['count'] > 1 else '')
+           for r in q("SELECT key, count FROM daily_counters WHERE consort_id=? AND day=?", (t['id'], cur_day()))
+           if r['key'] in GOSSIP_WORDS]
+    if not did:
+        return f"{m['name']}说：「{display_name(t)}今儿个一步都没出宫门，不知在忙什么。」"
+    return f"{m['name']}说：「{display_name(t)}今儿个{'、'.join(did)}。」"
+
+# ── 宫人页面 ───────────────────────────────────────────────────────────────────
+
+@app.route('/maids')
+@login_required
+def maids_page():
+    c = g.me
+    mine = active_maids(c['id'])
+    quota = maid_quota(c['rank'])
+    can_pick = c['status'] != 'cold' and len(mine) < quota
+    past = q("SELECT * FROM maids WHERE owner_id=? AND status!='active' ORDER BY left_day DESC, id DESC", (c['id'],))
+    return render_template('maids.html', c=c, mine=mine, quota=quota, can_pick=can_pick,
+                           offer=maid_offer(c) if can_pick else [], past=past, TRAITS=MAID_TRAITS,
+                           loyalty_word=loyalty_word, free_reroll=daily_count(c['id'], 'maid_reroll') == 0,
+                           rewarded=daily_count(c['id'], 'maid_reward') > 0,
+                           errands=len(free_errand_maids(c)), costs=dict(reroll=MAID_REROLL_COST,
+                           reward=MAID_REWARD_COST, bury=MAID_BURY_COST, wage=MAID_WAGE))
+
+@app.route('/maids/pick', methods=['POST'])
+@login_required
+def maid_pick():
+    c = g.me
+    name = request.form.get('name', '').strip()
+    try: idx = int(request.form.get('idx', ''))
+    except ValueError: idx = -1
+    offer = maid_offer(c)
+    err = None
+    if c['status'] == 'cold': err = '冷宫里，内务府不会派人来。'
+    elif len(active_maids(c['id'])) >= maid_quota(c['rank']):
+        err = f"按{RANK_NAMES[c['rank']]}的份例，你宫里的宫人已经满了。"
+    elif not 0 <= idx < len(offer): err = '选一个人。'
+    else: err = maid_name_error(name)
+    if err:
+        flash(err, 'bad')
+        return redirect(url_for('maids_page'))
+    pick = offer[idx]
+    run("""INSERT INTO maids (owner_id, name, trait, loyalty, backstory, joined_day, created_ts)
+           VALUES (?,?,?,?,?,?,?)""", (c['id'], name, pick['trait'], pick['loyalty'], pick['backstory'], cur_day(), now_ts()))
+    run("UPDATE consorts SET maid_offer='' WHERE id=?", (c['id'],))
+    flash(f"你给她赐名「{name}」。{name}跪下谢恩，从今往后就是{c['palace'] or '你宫里'}的人了。", 'good')
+    return redirect(url_for('maids_page'))
+
+@app.route('/maids/reroll', methods=['POST'])
+@login_required
+def maid_reroll():
+    c = g.me
+    cost = 0 if daily_count(c['id'], 'maid_reroll') == 0 else MAID_REROLL_COST
+    if c['status'] == 'cold' or len(active_maids(c['id'])) >= maid_quota(c['rank']):
+        return redirect(url_for('maids_page'))
+    if c['silver'] < cost:
+        flash(f'换一批要打点 {cost} 两。', 'bad')
+        return redirect(url_for('maids_page'))
+    add_silver(c['id'], -cost)
+    daily_inc(c['id'], 'maid_reroll')
+    run("UPDATE consorts SET maid_offer=? WHERE id=?", (json.dumps(roll_maid_offer(), ensure_ascii=False), c['id']))
+    flash('内务府又领来了几个人。' + (f'打点 {cost} 两。' if cost else ''), 'info')
+    return redirect(url_for('maids_page'))
+
+@app.route('/maids/reward', methods=['POST'])
+@login_required
+def maid_reward():
+    c = g.me
+    mine = active_maids(c['id'])
+    err = None
+    if c['status'] == 'cold': err = '冷宫里连自己都顾不上。'
+    elif not mine: err = '你宫里还没有宫人。'
+    elif daily_count(c['id'], 'maid_reward'): err = '今天已经赏过了。'
+    elif c['silver'] < MAID_REWARD_COST: err = f'要 {MAID_REWARD_COST} 两银子。'
+    if err:
+        flash(err, 'bad')
+        return redirect(url_for('maids_page'))
+    add_silver(c['id'], -MAID_REWARD_COST)
+    daily_inc(c['id'], 'maid_reward')
+    for m in mine: add_loyalty(m['id'], 5)
+    flash(f'你赏了宫人们些果子和银钱。全宫宫人忠心 +5。', 'good')
+    return redirect(url_for('maids_page'))
+
+@app.route('/maids/bury/<int:mid>', methods=['POST'])
+@login_required
+def maid_bury(mid):
+    c = g.me
+    m = get_maid(mid)
+    err = None
+    if not m or m['owner_id'] != c['id'] or m['status'] != 'dead': err = '没有这个人。'
+    elif m['buried']: err = '已经厚葬过了。'
+    elif c['silver'] < MAID_BURY_COST: err = f'要 {MAID_BURY_COST} 两银子。'
+    if err:
+        flash(err, 'bad')
+        return redirect(url_for('maids_page'))
+    add_silver(c['id'], -MAID_BURY_COST)
+    run("UPDATE maids SET buried=1 WHERE id=?", (mid,))
+    for other in active_maids(c['id']): add_loyalty(other['id'], 10)
+    flash(f"你出银子给{m['name']}置了口薄棺，托人送回她家乡。宫里的人都看在眼里，全宫宫人忠心 +10。", 'good')
+    return redirect(url_for('maids_page'))
+
+@app.route('/admin/maid_rename', methods=['POST'])
+@admin_required
+def admin_maid_rename():
+    old, new = request.form.get('old', '').strip(), request.form.get('new', '').strip()
+    m = q("SELECT * FROM maids WHERE name=?", (old,), one=True)
+    err = '没有叫这个名字的宫人。' if not m else maid_name_error(new)
+    if err:
+        flash(err, 'bad')
+    else:
+        run("UPDATE maids SET name=? WHERE id=?", (new, m['id']))
+        flash(f'已把宫人「{old}」改名为「{new}」。', 'good')
+    return redirect(url_for('admin'))
 
 # ── 位分榜 / 邸报 / 子嗣 ───────────────────────────────────────────────────────
 
@@ -1489,6 +1906,8 @@ def intrigue_success_p(atk, tgt, cfg):
     p -= tgt['trust'] * 0.0015                      # 皇上信任的人难扳倒：信任 100 时 -15%
     if cfg is INTRIGUES['expose']:
         p += (atk['trust'] - 40) * 0.005            # 告发看告发人自己的信任：信任 0 时 -20%，100 时 +30%
+    if cfg is INTRIGUES['rumor'] and has_maid_trait(atk['id'], 'suizui'):
+        p += 0.10                                   # 碎嘴的宫人替主子把话传出去
     return max(0.08, min(0.85, p))
 
 def intrigue_caught_p(atk, tgt):
@@ -1521,6 +1940,9 @@ def resolve_intrigue(it, bed_id=None):
     if it['method'] == 'lethal' and (atk['status'] != 'normal' or is_sick(atk) or
             tgt['poisoned_day'] or tgt['protected_until_day'] >= cur_day()):
         if atk['user_id']: notify(atk['id'], f"你对{tn}的毒害落空了：局面已经变了，银子白花了。")
+        return done('void')
+    if it['method'] == 'punish' and (atk['status'] != 'normal' or not punishable_maids(tgt['id'])):
+        if atk['user_id']: notify(atk['id'], f"你想发落{tn}的宫人，可眼下找不到由头，只好作罢。")
         return done('void')
     tell_name = eyes_active(tgt)
     if it['method'] == 'expose':
@@ -1584,6 +2006,15 @@ def resolve_intrigue(it, bed_id=None):
             add_trust(atk['id'], 5)
             victim = f"{an}在皇上面前告发你{sec['name']}。皇上震怒：{sec['penalty']}。"
             gz = f"{an}告发{tn}{sec['name']}，皇上震怒，{sec['penalty']}。"
+        elif m == 'punish':
+            maid = random.choice(punishable_maids(tgt['id']))
+            maid_leave(maid['id'], 'dead', f"被{an}以冲撞为由拖去慎刑司，杖毙")
+            for other in active_maids(tgt['id']):
+                add_loyalty(other['id'], -5)
+            run('UPDATE consorts SET maid_punished_day=? WHERE id=?', (cur_day(), tgt['id']))
+            # 发落是明面上的欺压：主子一定知道是谁，不看眼线
+            victim = f"{an}说你宫里的{maid['name']}冲撞了她，把人拖去慎刑司，杖毙了。宫里的人都吓坏了，全宫宫人忠心 -5。"
+            gz = f"{tgt['palace']}宫人{maid['name']}没了。"
         elif m == 'witch':
             send_to_cold(tgt['id'])
             victim = f"你宫中搜出了写着皇上生辰八字的巫蛊人偶。百口莫辩，你被打入冷宫。" + \
@@ -1616,14 +2047,18 @@ def resolve_intrigue(it, bed_id=None):
         elif m == 'expose':
             add_stat(atk['id'], 'virtue', -8); cut_favor(atk['id'], 0.15)
             pen = '德行 -8，圣宠 -15%'
+        elif m == 'punish':
+            add_stat(atk['id'], 'virtue', -8)
+            pen = '德行 -8'
         else:  # witch
             send_to_cold(atk['id'])
             pen = '打入冷宫'
         if mood_extra and m != 'witch':
             cut_favor(atk['id'], 0.1); pen += '（皇上正在气头上，圣宠再 -10%）'
         if atk['user_id']:
-            add_trust(atk['id'], -10 if m == 'expose' else -15)
-            pen += '，信任 -' + ('10' if m == 'expose' else '15')
+            tloss = 10 if m in ('expose', 'punish') else 15
+            add_trust(atk['id'], -tloss)
+            pen += f'，信任 -{tloss}'
             night_mark(atk['id'], 'caught')
         if atk['user_id']: notify(atk['id'], f"你对{tn}的「{cfg['name']}」败露了。{pen}。", 'bad')
         if tgt['user_id']: notify(tgt['id'], f"{an}想对你「{cfg['name']}」，被当场拿住。", 'good')
@@ -1634,6 +2069,8 @@ def resolve_intrigue(it, bed_id=None):
         return done('caught')
 
     if atk['user_id']: notify(atk['id'], f"你对{tn}的「{cfg['name']}」没成，好在没人察觉。")
+    if it['method'] == 'punish' and tgt['user_id']:
+        notify(tgt['id'], f"{an}想找由头发落你宫里的人，被你挡了回去。")
     return done('fizzle')
 
 def npc_schemes(day):
@@ -1664,6 +2101,7 @@ def npc_schemes(day):
             continue
         run("INSERT INTO intrigues (day, attacker_id, target_id, method, created_ts) VALUES (?,?,?,?,?)",
             (day, npc['id'], target['id'], method, now_ts()))
+    huafei_punish(day)
 
 def bed_weight(c, day):
     w = 10 + c['favor'] * 0.15 + c['appearance'] * 0.3 + c['talent'] * 0.15 + c['seek_bonus']
@@ -1826,6 +2264,9 @@ def _settle_night():
                 add_stat(c['id'], 'virtue', -3)
                 notify(c['id'], f"你已经 {missed} 天没去给皇后请安了，宫里说你恃宠而骄。德行 -3。", 'bad')
 
+    # 5b. 宫人：月钱、忠心、病好了没有；白天没处理的小事作废
+    maid_upkeep(day)
+
     # 6. 口谕：根据每个人这一夜的真实经历挑一句，没什么可说的就不说
     issue_edicts(day)
 
@@ -1968,7 +2409,7 @@ def admin_reset():
     if request.form.get('confirm') != '重开':
         flash('要在框里输入「重开」才会重置。', 'bad')
         return redirect(url_for('admin'))
-    for t in ('intrigues', 'messages', 'gazette', 'relations', 'known_secrets', 'inventory', 'heirs', 'letters', 'reports',
+    for t in ('intrigues', 'messages', 'gazette', 'relations', 'known_secrets', 'inventory', 'heirs', 'letters', 'reports', 'maids',
               'daily_counters', 'consorts', 'game_state'):
         run(f"DELETE FROM {t}")
     if request.form.get('keep_users') != '1':
@@ -2048,6 +2489,8 @@ def die(cid, reason):
            pregnant_since=0, poisoned_day=0, poison_treatment=0,
            energy=0, seek_bonus=0, status_until_day=0 WHERE id=?""", (cur_day(), reason, cid))
     run("UPDATE intrigues SET status='done', result='void' WHERE status='pending' AND (attacker_id=? OR target_id=?)", (cid, cid))
+    for m in active_maids(cid):
+        maid_leave(m['id'], 'gone', '主子没了，散去')
     notify(cid, f'你因{reason}离世，终年{age_text(c["age_months"])}。可以另建一位秀女重新入宫。', 'bad')
     gazette(f'{name}因{reason}薨逝，终年{age_text(c["age_months"])}。', 'death')
 
@@ -2098,7 +2541,10 @@ def treat(tid):
 def memorial():
     c = g.me
     history = q("SELECT * FROM consorts WHERE archived_user_id=? AND status='dead' ORDER BY death_day DESC, id DESC", (S['uid'],))
-    return render_template('memorial.html', c=c, history=history)
+    past_maids = q("""SELECT m.* FROM maids m JOIN consorts c ON c.id=m.owner_id
+                       WHERE (c.user_id=? OR c.archived_user_id=?) AND m.status!='active'
+                       ORDER BY m.left_day DESC, m.id DESC""", (S['uid'], S['uid']))
+    return render_template('memorial.html', c=c, history=history, past_maids=past_maids, get_consort=get_consort)
 
 
 @app.route('/rebirth', methods=['POST'])
@@ -2168,7 +2614,12 @@ def place(key):
     acts = [(k, ACTIONS[k]) for k in PLACES[key]['actions'] if c['status'] in ACTIONS[k]['when']]
     counts = {k: daily_count(c['id'], k) for k in PLACES[key]['actions']}
     title, desc, extra = PLACES[key]['name'], '', ''
+    maid_ev, maid_info = None, None
     if key == 'home':
+        roll_maid_event(c)
+        c = get_consort(c['id'])
+        maid_ev = maid_event_view(c)
+        maid_info = dict(n=len(active_maids(c['id'])), quota=maid_quota(c['rank']), errands=len(free_errand_maids(c)))
         title = '冷宫' if c['status'] == 'cold' else c['palace']
         desc = '四面高墙，窗纸破了也没人来补。' if c['status'] == 'cold' else PALACE_DESC.get(c['palace'], '')
     elif key == 'jingren':
@@ -2186,7 +2637,8 @@ def place(key):
                       (c['id'],)) if key == 'yangxin' else []
     return render_template('place.html', c=c, key=key, title=title, desc=desc, extra=extra, acts=acts,
                            counts=counts, sick=is_sick(c), arts=arts_of(c), ARTS=ARTS, ART_MASTERY=ART_MASTERY,
-                           plead_targets=plead_targets, plead_p=int(plead_chance(c) * 100))
+                           plead_targets=plead_targets, plead_p=int(plead_chance(c) * 100),
+                           maid_ev=maid_ev, maid_info=maid_info)
 
 # ── 场景 ───────────────────────────────────────────────────────────────────────
 

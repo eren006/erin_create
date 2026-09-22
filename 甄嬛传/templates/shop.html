@@ -3,6 +3,7 @@
 {% block body %}
 <h2>内务府</h2>
 <p class="muted">你手里有 {{ c.silver }} 两银子。月例每晚按位分发放。</p>
+<p><a href="{{ url_for('maids_page') }}">挑宫人</a>　<span class="muted">按位分份例添人，亲自赐名</span></p>
 <div class="scroll">
 <table>
   <tr><th>物件</th><th>用处</th><th>价钱</th><th>手里</th><th></th></tr>

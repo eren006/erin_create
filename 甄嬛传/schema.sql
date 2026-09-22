@@ -64,6 +64,11 @@ CREATE TABLE IF NOT EXISTS consorts (
     last_promote_day INTEGER NOT NULL DEFAULT 0,
     dianxuan_quote   TEXT NOT NULL DEFAULT '',      -- 殿选时说过的第一句话，入宫周年时皇上会提起
 
+    maid_offer       TEXT NOT NULL DEFAULT '',      -- 内务府摆出来的宫人候选 JSON
+    maid_event       TEXT NOT NULL DEFAULT '',      -- 今天宫人来找的小事 JSON，结算时清空
+    punish_ready_day INTEGER NOT NULL DEFAULT 0,    -- 发落宫人冷却：到这天才能再发落
+    maid_punished_day INTEGER NOT NULL DEFAULT 0,   -- 自己宫里上次有宫人被发落是哪天
+
     aggression       REAL NOT NULL DEFAULT 0,       -- 仅 NPC：每晚出手概率
     intro            TEXT NOT NULL DEFAULT '',
     created_ts       INTEGER NOT NULL DEFAULT 0
@@ -145,6 +150,26 @@ CREATE TABLE IF NOT EXISTS heirs (
     name        TEXT NOT NULL DEFAULT '',
     born_day    INTEGER NOT NULL
 );
+
+-- 宫人：玩家亲手挑、亲手赐名；名字全宫不重复（已故的也算）
+CREATE TABLE IF NOT EXISTS maids (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner_id       INTEGER NOT NULL,                 -- 伺候的主子（consorts.id）
+    name           TEXT NOT NULL UNIQUE,
+    trait          TEXT NOT NULL,
+    loyalty        INTEGER NOT NULL DEFAULT 60,
+    backstory      TEXT NOT NULL DEFAULT '',
+    status         TEXT NOT NULL DEFAULT 'active',   -- active / dead / gone
+    sick_until_day INTEGER NOT NULL DEFAULT 0,
+    joined_day     INTEGER NOT NULL,
+    left_day       INTEGER NOT NULL DEFAULT 0,
+    left_reason    TEXT NOT NULL DEFAULT '',
+    buried         INTEGER NOT NULL DEFAULT 0,
+    seen_events    TEXT NOT NULL DEFAULT '[]',       -- 遇到过的小事，同一件不重复
+    hid_burning    INTEGER NOT NULL DEFAULT 0,       -- 主子替她瞒下了烧纸的事（以后查案搜宫会用到）
+    created_ts     INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_maids_owner ON maids(owner_id, status);
 
 CREATE TABLE IF NOT EXISTS daily_counters (
     consort_id  INTEGER NOT NULL,

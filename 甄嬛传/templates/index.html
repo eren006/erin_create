@@ -73,6 +73,10 @@
 <div class="state-conf">禁足中，第 {{ c.status_until_day }} 天夜里解禁。这几天出不了宫门，只能在自己宫里修习、保养、自省。</div>
 {% endif %}
 
+{% if maid_gap > 0 %}
+<p class="state-conf">按{{ RANK_NAMES[c.rank] }}的份例，你宫里还能再添 {{ maid_gap }} 个宫人。<a href="{{ url_for('maids_page') }}">去内务府挑人</a></p>
+{% endif %}
+
 <h3>宫城</h3>
 <p class="muted">皇上今日{{ gs.emperor_mood }}，近来喜欢{{ gs.emperor_pref }}。{{ next_settle }} 敬事房递牌子，今天做的事到时一并见分晓。</p>
 <nav class="map" aria-label="宫城">

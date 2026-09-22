@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+{% block title %}宫人{% endblock %}
+{% block head %}
+<style>
+.maid{display:flex;gap:14px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.maid .nm{font-family:var(--kai);font-size:22px;min-width:3em}
+.maid .info{flex:1;min-width:200px;font-size:15px}
+.trait{display:inline-block;padding:0 6px;border:1px solid var(--jin);color:var(--zhu-deep);font-size:13px;margin-right:6px}
+.offer{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin:10px 0}
+.offer form{background:var(--paper);border:1px solid var(--line);padding:12px}
+.offer input{width:6em;margin-right:6px}
+</style>
+{% endblock %}
+{% block body %}
+<p class="back"><a href="{{ url_for('place', key='home') }}">回本宫</a></p>
+<h2>宫人</h2>
+<p class="muted">按{{ RANK_NAMES[c.rank] }}的份例，你宫里能有 {{ quota }} 个宫人。每个宫人每天能替你跑一次差使（今天还能差遣 {{ errands }} 人），每晚领 {{ costs.wage }} 两月钱；发不出月钱，人心就散了。</p>
+
+{% if mine %}
+{% for m in mine %}
+<div class="maid">
+  <div class="nm">{{ m.name }}</div>
+  <div class="info"><span class="trait">{{ TRAITS[m.trait].name }}</span>忠心 {{ m.loyalty }}（{{ loyalty_word(m.loyalty) }}）　<span class="muted">第 {{ m.joined_day }} 天来的</span>
+    {% if m.sick_until_day >= gs.day %}　<span style="color:var(--bad)">病着</span>{% endif %}
+    <div class="muted">{{ m.backstory }}{{ TRAITS[m.trait].desc }}</div></div>
+</div>
+{% endfor %}
+<form method="post" action="{{ url_for('maid_reward') }}" style="margin-top:10px">
+  <button class="plain" {{ 'disabled' if rewarded or c.silver < costs.reward or c.status == 'cold' }}>赏宫人（{{ costs.reward }} 两，全宫忠心 +5）</button>
+  {% if rewarded %}<span class="muted">今天已经赏过了</span>{% endif %}
+</form>
+{% else %}<p>你宫里还没有宫人。</p>{% endif %}
+
+{% if can_pick %}
+<h3>内务府领来的人</h3>
+<p class="muted">挑一个，亲自赐名。名字要两个汉字，全宫不能重复——哪怕那个名字的宫人早已不在了。</p>
+<div class="offer">
+{% for o in offer %}
+  <form method="post" action="{{ url_for('maid_pick') }}">
+    <p><span class="trait">{{ TRAITS[o.trait].name }}</span>忠心 {{ o.loyalty }}</p>
+    <p class="muted">{{ o.backstory }}{{ TRAITS[o.trait].desc }}</p>
+    <input type="hidden" name="idx" value="{{ loop.index0 }}">
+    <input name="name" maxlength="2" required placeholder="赐名" aria-label="赐名"><button>就她了</button>
+  </form>
+{% endfor %}
+</div>
+<form method="post" action="{{ url_for('maid_reroll') }}"><button class="plain" {{ 'disabled' if not free_reroll and c.silver < costs.reroll }}>换一批（{{ '今天头一次不要钱' if free_reroll else costs.reroll ~ ' 两' }}）</button></form>
+{% elif c.status == 'cold' %}<p class="muted">冷宫里，内务府不会派人来。</p>{% endif %}
+
+{% if past %}
+<h3>走了的人</h3>
+{% for m in past %}
+<div class="maid">
+  <div class="nm" style="color:var(--muted)">{{ m.name }}</div>
+  <div class="info">{{ TRAITS[m.trait].name }}，伺候了 {{ m.left_day - m.joined_day }} 天。{{ m.left_reason }}。
+    {% if m.status == 'dead' and not m.buried %}
+    <form method="post" action="{{ url_for('maid_bury', mid=m.id) }}" style="margin-top:6px"><button class="plain" {{ 'disabled' if c.silver < costs.bury }}>厚葬（{{ costs.bury }} 两，全宫忠心 +10）</button></form>
+    {% elif m.buried %}<span class="muted">已厚葬。</span>{% endif %}
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}

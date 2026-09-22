@@ -4,5 +4,16 @@
 <h2>我的宫史</h2>
 {% if c.status == 'dead' %}<div class="state-conf"><p>这一段宫中人生已经落幕，旧角色及皇嗣记录将保留。</p><form method="post" action="{{ url_for('rebirth') }}"><button>另建秀女，重新入宫</button></form><p class="muted">新秀女从殿选重新开始，不继承银子、位分、关系和道具。</p></div>{% endif %}
 {% for h in history %}<section class="sheet"><h3>{{ dn(h) }} · {{ full_name(h) }}</h3><p>享年 {{ age_text(h.age_months) }}，于 {{ palace_date(h.death_day) }} 离世。</p><p>{{ h.death_reason }}。末任位分：{{ RANK_NAMES[h.rank] }}。第 {{ h.entered_day }} 天入宫，侍寝 {{ h.bedded_count }} 次。</p></section>{% else %}<p class="muted">尚无已故角色记录。</p>{% endfor %}
+<h3>宫人</h3>
+{% if past_maids %}
+<div class="scroll"><table>
+  <tr><th>名字</th><th>伺候过</th><th>日子</th><th>怎么走的</th></tr>
+  {% for m in past_maids %}{% set o = get_consort(m.owner_id) %}
+  <tr><td style="font-family:var(--kai);font-size:17px">{{ m.name }}</td><td>{{ dn(o) }}</td>
+    <td>第 {{ m.joined_day }} 天 ~ 第 {{ m.left_day }} 天，{{ m.left_day - m.joined_day }} 天</td>
+    <td>{{ m.left_reason }}{% if m.buried %}（已厚葬）{% endif %}</td></tr>
+  {% endfor %}
+</table></div>
+{% else %}<p class="muted">还没有宫人离开过。</p>{% endif %}
 <p><a href="{{ url_for('logout') }}">退出</a></p>
 {% endblock %}
