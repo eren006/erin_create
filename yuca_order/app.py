@@ -3,12 +3,35 @@ from datetime import datetime
 from functools import wraps
 from flask import (Flask, render_template, request, redirect,
                    url_for, session, g, abort, flash, jsonify,
-                   send_from_directory)
+                   send_from_directory, has_request_context)
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import sqlite3
 
 app = Flask(__name__)
+
+# ── 访问日志（留存 200 天，按天轮转） ────────────────────────────────────────────
+import logging.handlers
+_access_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+os.makedirs(_access_dir, exist_ok=True)
+_access_h = logging.handlers.TimedRotatingFileHandler(os.path.join(_access_dir, "access.log"),
+                                                     when="midnight", backupCount=200, encoding="utf-8")
+_access_h.setFormatter(logging.Formatter("%(message)s"))
+_access_log = logging.getLogger("access_log")
+_access_log.setLevel(logging.INFO)
+_access_log.propagate = False
+_access_log.addHandler(_access_h)
+
+@app.after_request
+def _write_access_log(resp):
+    try:
+        ip = (request.headers.get("X-Forwarded-For") or request.remote_addr or "-").split(",")[0].strip()
+        _access_log.info("%s\t%s\t%s\t%s %s\t%s\t%s" % (
+            datetime.now().isoformat(timespec="seconds"), ip, request.environ.get("SERVER_PORT", "-"),
+            request.method, request.full_path.rstrip("?"), resp.status_code, session.get('account_id') or '-'))
+    except Exception:
+        pass
+    return resp
 app.secret_key = os.environ.get("FLASK_SECRET", "yuca_order_secret_change_me_in_prod")
 
 _log_dir = os.path.join(os.path.dirname(__file__), "logs")
@@ -685,6 +708,39 @@ def _get_form_schema(tenant):
     except Exception:
         return [f.copy() for f in DEFAULT_FORM_SCHEMA]
 
+# ── 违禁词过滤 ─────────────────────────────────────────────────────────────────
+
+BLOCKLIST_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "blocklist.txt")
+MODERATION_LOG = os.path.join(_log_dir, "moderation.log")
+_blocklist_cache = {'mtime': None, 'words': []}
+_NOISE = re.compile(r'[\s\W_]+')
+BLOCKED_MSG = '内容含有不允许的字词，请修改后再试'
+
+def _blocked_words():
+    try:
+        mtime = os.path.getmtime(BLOCKLIST_PATH)
+    except OSError:
+        return []
+    if _blocklist_cache['mtime'] != mtime:
+        with open(BLOCKLIST_PATH, encoding='utf-8') as f:
+            words = [_NOISE.sub('', ln.strip().lower()) for ln in f if ln.strip() and not ln.lstrip().startswith('#')]
+        _blocklist_cache.update(mtime=mtime, words=[w for w in words if w])
+    return _blocklist_cache['words']
+
+def blocked_hit(field, text):
+    """文本命中违禁词返回该词，并写入 moderation.log；干净返回 None。去掉空格标点后再比，防止拆字规避。"""
+    flat = _NOISE.sub('', (text or '').lower())
+    for w in _blocked_words():
+        if w in flat:
+            try:
+                with open(MODERATION_LOG, 'a', encoding='utf-8') as f:
+                    who = session.get('account_id') if has_request_context() else '-'
+                    f.write(f"{datetime.now().isoformat(timespec='seconds')}\taccount={who}\t{field}\t命中「{w}」\t{text}\n")
+            except OSError:
+                pass
+            return w
+    return None
+
 def _process_order_form(form_data, schema):
     """从 request.form 按 schema 提取字段，返回 (name, contact, title, desc, errors)"""
     customer_name    = ''
@@ -720,6 +776,8 @@ def _process_order_form(form_data, schema):
                     desc_parts.append(f'【{label}】{val}')
     desc  = '\n\n'.join(desc_parts)
     title = title_val or customer_name
+    if blocked_hit('下单内容', '\n'.join([customer_name, title, desc])):
+        errors.append(BLOCKED_MSG)
     return customer_name, customer_contact, title, desc, errors
 
 def _delete_order_files(order_id):
@@ -763,6 +821,8 @@ def _validate_note(content, db=None, order_id=None, author_type=None):
     """校验一条补充备注，通过返回 None，不通过返回给用户看的提示文案。"""
     if not content:
         return "备注内容不能为空"
+    if blocked_hit('订单备注', content):
+        return BLOCKED_MSG
     if len(content) > ORDER_NOTE_MAX_LEN:
         return f"备注最多 {ORDER_NOTE_MAX_LEN} 字，当前 {len(content)} 字"
     if author_type == 'customer' and db is not None:
@@ -1081,6 +1141,7 @@ def user_register():
         if not tenant:
             errors.append("系统尚未配置账户，请联系管理员")
         if not uname or len(uname) < 3:  errors.append("用户名至少 3 个字符")
+        if blocked_hit('注册名称', uname + dname): errors.append(BLOCKED_MSG)
         if not pw    or len(pw)    < 6:  errors.append("密码至少 6 个字符")
         if not contact: errors.append("请填写 QQ 号")
         if not errors:
@@ -1321,6 +1382,8 @@ def trades_new():
     except ValueError:
         flash("请填写正确的次数数量"); return redirect(url_for('trades_hall'))
     note = request.form.get('note', '').strip()
+    if blocked_hit('交易备注', note):
+        flash(BLOCKED_MSG); return redirect(url_for('trades_hall'))
     batch = db.execute('''SELECT cb.*, u.account_id FROM credit_batches cb JOIN users u ON u.id=cb.user_id
                           WHERE cb.id=? AND cb.status='active' ''', (batch_id,)).fetchone()
     if not batch or batch['account_id'] != aid:
@@ -1468,6 +1531,8 @@ def trades_dispute(trade_id):
     if t['dispute_status'] == 'pending':
         flash("该交易已在仲裁中"); return redirect(url_for('trades_hall', t=t['tenant_id']))
     note = request.form.get('dispute_note', '').strip()
+    if blocked_hit('仲裁说明', note):
+        flash(BLOCKED_MSG); return redirect(url_for('trades_hall', t=t['tenant_id']))
     my_id = t['poster_id'] if im_poster else t['taker_id']
     other_id = t['taker_id'] if im_poster else t['poster_id']
     disputed_batch = t['result_batch_to_taker'] if im_poster else t['result_batch_to_poster']

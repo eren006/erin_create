@@ -31,7 +31,7 @@ fi
 
 # ── 1. 同步代码 ──────────────────────────────────────────────────────────────
 echo "[1/3] 同步代码"
-rsync -az "$LOCAL_DIR/app.py" "$LOCAL_DIR/requirements.txt" "$SERVER:$REMOTE_DIR/"
+rsync -az "$LOCAL_DIR/app.py" "$LOCAL_DIR/blocklist.txt" "$LOCAL_DIR/requirements.txt" "$SERVER:$REMOTE_DIR/"
 rsync -az --delete --exclude='.DS_Store' "$LOCAL_DIR/templates/" "$SERVER:$REMOTE_DIR/templates/"
 # static/ 不加 --delete：保留服务器上已有的其他资源
 rsync -az --exclude='.DS_Store' --exclude='ballet-*.png' "$LOCAL_DIR/static/" "$SERVER:$REMOTE_DIR/static/"
