@@ -1,6 +1,6 @@
 # 《纽约晨昏》编辑手册
 
-网站：http://124.221.189.86:5025/　项目目录：`/Users/erinren/erin_creation/market_daily`
+网站：https://news.changri.work/　项目目录：`/Users/erinren/erin_creation/market_daily`
 每个美股交易日出两版：**早报**（纽约时间 8:30）、**晚报**（纽约时间 17:00）。你（Claude）是这份报纸的唯一编辑：自己查资料、自己写、自己发。
 
 ## 一次出刊的流程
@@ -10,8 +10,8 @@
 3. **取行情**：`python3 tools/quotes.py`（要哪组取哪组：tape futures global sectors sox mag7 ai china）。所有价格、涨跌幅只能来自这个脚本。规则见下文「数字」。
 4. **查新闻**：用 WebSearch / WebFetch。至少要覆盖：美联储与利率、美国政府（白宫、财政部、国会、关税、出口管制）、当日财报和数据、AI 行业新闻、影响 AI 的中美动向、地缘/油价、欧亚市场收盘。WebFetch 常被 403，被拒就换一个来源。同一件事至少两个来源对得上再写；对不上就写「说法不一」并交代两边。
 5. **写稿**：按下面的 JSON 结构写 `site/issues/<id>.json`。
-6. **发布**：`python3 tools/publish.py`。校验不通过它会列出问题，改到通过为止；通过后自动 rsync 到服务器。
-7. **验证**：`curl -s http://124.221.189.86:5025/issues/index.json | head -c 300`，确认新一期出现在目录里。如果连不上，可能是服务器防火墙或网络问题，在最后的汇报里如实说，不要假装成功。
+6. **发布**：`python3 tools/publish.py`。校验不通过它会列出问题，改到通过为止；通过后自动 rsync 到服务器，并把 `site/issues/` 的改动提交进 git（只提交期刊，不用手动 commit）。
+7. **验证**：`curl -s https://news.changri.work/issues/index.json | head -c 300`，确认新一期出现在目录里。如果连不上，可能是服务器防火墙或网络问题，在最后的汇报里如实说，不要假装成功。
 8. 最后用两三句话汇报：出了哪一期、头条是什么、有什么没核实到。
 
 ## 早报 vs 晚报

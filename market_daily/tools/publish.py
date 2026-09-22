@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""校验所有期刊 JSON → 重建 issues/index.json → rsync 到贾维斯。
+"""校验所有期刊 JSON → 重建 issues/index.json → rsync 到贾维斯 → git 提交期刊。
 
 用法：
-  python3 tools/publish.py            # 校验 + 重建目录 + 部署
+  python3 tools/publish.py            # 校验 + 重建目录 + 部署 + 提交
   python3 tools/publish.py --check    # 只校验、重建目录，不部署
 校验不过就非零退出，不会部署半成品。
+部署成功后只提交 site/issues/ 下的改动，不碰仓库里其他项目的暂存或未提交内容；
+提交失败只打印警告，不影响已上线的结果。
 """
 import json
 import re
@@ -17,7 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SITE = ROOT / "site"
 ISSUES = SITE / "issues"
 REMOTE = "jarvis:/var/www/market_daily/"
-PUBLIC_URL = "http://124.221.189.86:5025/"
+PUBLIC_URL = "https://news.changri.work/"
 
 MAG7 = {"AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA"}
 # 写稿时最常见的套话，出现就打回重写
@@ -158,6 +160,26 @@ def main():
         print("✗ rsync 失败：", r.stderr.strip())
         sys.exit(2)
     print(f"✓ 已部署 {PUBLIC_URL}")
+    git_commit_issues()
+
+
+def git_commit_issues():
+    """把 site/issues/ 的新增和改动提交进 git；commit 带 pathspec，别的已暂存文件不会被带进来。"""
+    def git(*args):
+        return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True)
+    git("add", "--", str(ISSUES))
+    changed = git("diff", "--cached", "--name-only", "--", str(ISSUES)).stdout.split()
+    if not changed:
+        print("✓ 期刊没有新改动，无需提交")
+        return
+    ids = sorted(Path(p).stem for p in changed if ID_RE.match(Path(p).stem))
+    msg = f"纽约晨昏：发布 {'、'.join(ids)}" if ids else "纽约晨昏：更新期刊目录"
+    msg += "\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+    r = git("commit", "-q", "-m", msg, "--", str(ISSUES))
+    if r.returncode != 0:
+        print("⚠ git 提交失败（已上线不受影响）：", (r.stderr or r.stdout).strip())
+        return
+    print("✓ 已提交 git：", git("log", "-1", "--format=%h %s").stdout.strip())
 
 
 if __name__ == "__main__":
