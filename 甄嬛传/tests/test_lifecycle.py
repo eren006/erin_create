@@ -45,9 +45,11 @@ class LifecycleTests(unittest.TestCase):
             sess['uid'] = game.get_consort(cid)['user_id']
 
     def plan_poison(self):
-        response = self.client.post('/intrigue/submit', data={'method': 'lethal', 'target_id': self.tgt})
+        game.inv_add(self.atk, 'lihun')
+        game.add_silver(self.atk, -500)
+        response = self.client.post('/intrigue/submit', data={'method': 'drug', 'drug': 'lihun', 'target_id': self.tgt})
         self.assertEqual(response.status_code, 302)
-        it = game.q("SELECT * FROM intrigues WHERE method='lethal' ORDER BY id DESC", one=True)
+        it = game.q("SELECT * FROM intrigues WHERE method='drug' AND drug='lihun' ORDER BY id DESC", one=True)
         self.assertIsNotNone(it)
         return it
 
@@ -154,15 +156,20 @@ class LifecycleTests(unittest.TestCase):
     def test_cooldown_survives_cancel(self):
         it = self.plan_poison()
         self.client.post(f'/intrigue/cancel/{it["id"]}')
-        self.assertEqual(game.get_consort(self.atk)['silver'], 2000)   # 银子退回
+        self.assertEqual(game.get_consort(self.atk)['silver'], 1500)   # 撤回退药，不退购药钱
+        self.assertEqual(game.inv_qty(self.atk, 'lihun'), 1)
         game.run('UPDATE game_state SET day=11')
-        self.client.post('/intrigue/submit', data={'method': 'lethal', 'target_id': self.tgt})
-        self.assertEqual(len(game.q("SELECT * FROM intrigues WHERE method='lethal'")), 1)   # 冷却没重置
+        self.client.post('/intrigue/submit', data={'method': 'drug', 'drug': 'lihun', 'target_id': self.tgt})
+        self.assertEqual(len(game.q("SELECT * FROM intrigues WHERE method='drug' AND drug='lihun'")), 1)   # 冷却没重置
 
     def test_failed_poison_punishment_and_ally_rescue(self):
         it = self.plan_poison()
         with patch.object(game.random, 'random', side_effect=[0.99, 0.0]):
             self.assertEqual(game.resolve_intrigue(it)[0], 'caught')
+        self.assertEqual(game.get_consort(self.atk)['status'], 'normal')  # 先开案，不能当场定罪
+        game.run('UPDATE consorts SET trust=0 WHERE id=?', (self.atk,))
+        game.run('UPDATE case_suspects SET suspicion=60 WHERE consort_id=?', (self.atk,))
+        game.resolve_drug_cases(11)
         self.assertEqual(game.get_consort(self.atk)['status'], 'cold')
         self.assertEqual(game.get_consort(self.tgt)['poisoned_day'], 0)
         game.run('UPDATE consorts SET poisoned_day=10 WHERE id=?', (self.tgt,))
@@ -200,10 +207,10 @@ class LifecycleTests(unittest.TestCase):
 
     def test_newcomer_and_already_poisoned_guards(self):
         game.run('UPDATE consorts SET entered_day=9 WHERE id=?', (self.tgt,))
-        self.client.post('/intrigue/submit', data={'method': 'lethal', 'target_id': self.tgt})
+        self.client.post('/intrigue/submit', data={'method': 'drug', 'drug': 'lihun', 'target_id': self.tgt})
         self.assertEqual(len(game.q('SELECT * FROM intrigues')), 0)
         game.run('UPDATE consorts SET entered_day=1, poisoned_day=9 WHERE id=?', (self.tgt,))
-        self.client.post('/intrigue/submit', data={'method': 'lethal', 'target_id': self.tgt})
+        self.client.post('/intrigue/submit', data={'method': 'drug', 'drug': 'lihun', 'target_id': self.tgt})
         self.assertEqual(len(game.q('SELECT * FROM intrigues')), 0)
 
 
@@ -374,3 +381,28 @@ class MigrationTests(unittest.TestCase):
 
 
 if __name__ == '__main__': unittest.main()
+
+
+class GuirenSlotTests(unittest.TestCase):
+    """贵人定员 8（含 NPC 曹贵人），满了常在就晋不上去"""
+    setUp = LifecycleTests.setUp
+    tearDown = LifecycleTests.tearDown
+    player = LifecycleTests.player
+    login = LifecycleTests.login
+
+    def test_guiren_cap_blocks_promotion(self):
+        game.run("UPDATE consorts SET status='normal' WHERE npc_key='caoguiren'")   # 曹贵人占一个
+        for i in range(6):
+            self.player(f'贵{i}', rank=4)      # 加上 setUp 里的乙（贵人），共 8 个
+        self.assertFalse(game.slot_free(4))
+        hopeful = self.player('丁', rank=3)
+        game.run('UPDATE consorts SET favor=500, virtue=60 WHERE id=?', (hopeful,))
+        with patch.object(game.random, 'random', return_value=0.99):
+            game.settle_day()
+        self.assertEqual(game.get_consort(hopeful)['rank'], 3)
+        self.assertTrue(any('名额' in m['text'] or '满了' in m['text']
+                            for m in game.q('SELECT text FROM messages WHERE consort_id=?', (hopeful,))))
+        game.run("UPDATE consorts SET status='cold' WHERE id=?", (self.tgt,))   # 有人进冷宫，腾出位子
+        with patch.object(game.random, 'random', return_value=0.99):
+            game.settle_day()
+        self.assertEqual(game.get_consort(hopeful)['rank'], 4)

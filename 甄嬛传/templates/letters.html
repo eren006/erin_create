@@ -9,6 +9,22 @@
 .letter.new{background:var(--paper);padding-left:12px;border-left:3px solid var(--jin)}
 .compose textarea{width:100%;min-height:120px;line-height:1.7}
 .compose .row{margin-top:10px}
+.letter,.letter.new{padding:20px;background:var(--paper);border:1px solid var(--line);margin:14px 0}.letter.new{border-left:4px solid var(--jin)}.letter .hd{padding-bottom:10px;border-bottom:1px solid var(--line)}.letter .body{line-height:2;margin-top:14px}.compose textarea{min-height:180px}.compose>label:first-child{margin-top:0}
+
+.letter,.letter.new{position:relative;padding:24px 26px;border-top:3px double var(--line);box-shadow:0 3px 0 var(--shadow)}
+.letter .hd{padding-right:16px}.letter .body{padding-left:14px;border-left:1px solid var(--line)}
+.letter.new::after{content:"";position:absolute;right:14px;top:15px;width:10px;height:10px;border:3px double var(--zhu);transform:rotate(8deg)}
+.compose textarea{padding:14px;line-height:2}
+@media(max-width:520px){.letter,.letter.new{padding:18px 16px}.letter .body{padding-left:10px}}
+
+
+.compose{border:5px double var(--line);position:relative;background:var(--paper);padding:26px}
+.compose::before{content:"";position:absolute;right:20px;top:20px;width:32px;height:40px;border:4px double var(--zhu);pointer-events:none}
+.compose>label:first-child{padding-right:48px}.compose textarea{border:0;border-bottom:1px solid var(--line);background:var(--ground);min-height:210px}
+.letter{border-left:5px double var(--line);box-shadow:4px 4px 0 var(--shadow);margin-block:22px}.letter.new{border-left:5px double var(--zhu)}
+.letter.new::after{width:19px;height:23px;top:15px;border-width:4px;transform:rotate(-7deg)}.letter .hd{padding-right:28px}
+@media(max-width:520px){.compose{padding:18px}.compose::before{right:14px;top:16px;width:24px;height:32px}}
+
 </style>
 {% endblock %}
 {% block body %}
@@ -24,7 +40,7 @@
   <div class="row">
     <label for="silver" style="margin:0">附银子</label><input id="silver" type="number" name="silver" min="0" max="{{ c.silver }}" value="0" style="width:90px">
     <label for="item" style="margin:0">附东西</label>
-    <select id="item" name="item"><option value="">不附</option>{% for i in inv %}<option value="{{ i.item_key }}">{{ ITEMS[i.item_key].name }} ×{{ i.qty }}</option>{% endfor %}</select>
+    <select id="item" name="item"><option value="">不附</option>{% for i in inv if i.item_key in ITEMS %}<option value="{{ i.item_key }}">{{ ITEMS[i.item_key].name }} ×{{ i.qty }}</option>{% endfor %}</select>
   </div>
   {% endif %}
   <div class="row"><button {{ 'disabled' if left <= 0 or not others }}>送出去</button>

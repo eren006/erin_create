@@ -2,23 +2,29 @@
 {% block title %}昨夜宫中{% endblock %}
 {% block head %}
 <style>
-.tray{display:flex;gap:10px;flex-wrap:wrap;padding:26px 16px 16px;background:#5B3A2A;border:1px solid #3F281D;border-radius:3px;margin:10px 0 12px}
+.tray{display:flex;gap:10px;flex-wrap:wrap;padding:26px 16px 16px;background:var(--tray);border:1px solid var(--line);border-radius:3px;margin:10px 0 12px}
 .tray .pai{min-height:140px}
 .tray .pai.chosen{outline:2px solid var(--jin);outline-offset:2px}
 .reveal{font-family:var(--kai);font-size:22px;margin:4px 0 18px}
 .list{list-style:none;padding:0;margin:0}
 .list li{padding:8px 0 8px 12px;border-bottom:1px solid var(--line);border-left:3px solid transparent}
 .list li.good{border-left-color:var(--good)} .list li.bad{border-left-color:var(--bad)} .list li.decree{border-left-color:var(--jin)}
-.list li.scandal{border-left-color:var(--zhu)} .list li.birth,.list li.audience{border-left-color:var(--qing)} .list li.death{border-left-color:#555}
+.list li.scandal{border-left-color:var(--zhu)} .list li.birth,.list li.audience{border-left-color:var(--qing)} .list li.death{border-left-color:var(--muted)}
 @media (prefers-reduced-motion:no-preference){
   .tray .pai.rest{animation:dim .6s ease-out 1.3s both}
   .tray .pai.chosen{animation:lift .7s ease-out 1.1s both}
   .reveal,.after{animation:show .6s ease-out 1.9s both}
 }
-@media (prefers-reduced-motion:reduce){ .tray .pai.rest{opacity:.4} .tray .pai.chosen{transform:translateY(-18px)} }
-@keyframes dim{to{opacity:.4}}
+@media (prefers-reduced-motion:reduce){ .tray .pai.rest{opacity:.75} .tray .pai.chosen{transform:translateY(-18px)} }
+@keyframes dim{to{opacity:.75}}
 @keyframes lift{to{transform:translateY(-18px)}}
 @keyframes show{from{opacity:0}to{opacity:1}}
+.tray{background:var(--tray);border:4px double var(--line);padding:38px 22px 22px;gap:16px;border-radius:3px}.list li{padding:12px 14px}.list li.death{border-left-color:var(--muted)}.reveal{padding:12px 0;color:var(--zhu-deep)}
+
+.tray{position:relative;justify-content:center;gap:22px;padding:58px 28px 35px;background:var(--lacquer);border:8px double var(--silver);border-radius:45% 45% 12px 12px / 18px 18px 12px 12px;box-shadow:inset 0 0 0 5px var(--lacquer),inset 0 0 0 6px var(--silver),0 8px 0 var(--shadow);margin:26px 0}
+.tray .pai{min-height:174px}.tray .pai.chosen{outline:3px solid var(--roof);outline-offset:5px}.reveal{text-align:center;font-size:27px;padding:14px 10px;border-block:3px double var(--jin)}
+@media(max-width:520px){.tray{gap:17px;padding:45px 18px 26px}.tray .pai{min-height:150px}.reveal{font-size:23px}}
+
 </style>
 {% endblock %}
 {% block body %}

@@ -12,7 +12,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-app = Flask(__name__)
+app = Flask(__name__, template_folder=os.path.join(BASE_DIR, 'templates'))
 
 # ── 访问日志（留存 200 天，按天轮转） ────────────────────────────────────────────
 import logging.handlers
@@ -99,7 +99,7 @@ def atomic(fn):
 RANK_NAMES = ['秀女', '官女子', '答应', '常在', '贵人', '嫔', '妃', '贵妃', '皇贵妃', '皇后']
 PROMOTE_FAVOR  = {2: 40, 3: 90, 4: 170, 5: 300, 6: 480, 7: 720, 8: 1000}   # 晋到该位分所需圣宠
 PROMOTE_VIRTUE = {2: 0, 3: 10, 4: 20, 5: 35, 6: 50, 7: 60, 8: 70}          # 晋到该位分所需德行
-RANK_SLOTS     = {5: 6, 6: 4, 7: 2, 8: 1, 9: 1}                           # 嫔以上有名额，含 NPC
+RANK_SLOTS     = {4: 8, 5: 6, 6: 4, 7: 2, 8: 1, 9: 1}                     # 贵人以上有名额，含 NPC
 MIN_DAYS_AT_RANK = 2
 STIPEND = {1: 5, 2: 10, 3: 15, 4: 25, 5: 40, 6: 60, 7: 90, 8: 130, 9: 200}  # 每日月例银
 PLAYER_MAX_RANK = 8   # 玩家最高到皇贵妃，皇后位由 NPC 占着
@@ -125,8 +125,31 @@ LONG_UNSEEN_DAYS = 6        # 这么多天没见过皇上，算"久未见驾"（
 
 TITLE_POOL = list('莞惠安祺瑾婉容贞淳柔懿宁怡颖璟瑶玥韵馨娴淑嘉恬澜宸昭徽祥和敏')
 
-PLAYER_PALACES = ['碎玉轩', '延禧宫', '咸福宫', '永寿宫', '钟粹宫', '储秀宫',
-                  '永和宫', '景阳宫', '长春宫', '启祥宫']
+# 承乾宫暂不开放；十三处宫院各四间，初始七间正殿留待晋封。
+PALACES = {
+    '景仁宫': dict(group='东六宫', desc='东边甬道到此一折，宫门便藏在两株古柏后。庭中砖缝修得齐整，雨后也少见积水。', main='正殿檐下悬着素色宫灯，长窗相对，晨间一眼能望到庭心。'),
+    '钟粹宫': dict(group='东六宫', desc='宫墙近处有一道旧钟楼的影子，晴日总要缓缓挪过院落。廊柱漆色稍旧，石阶却被洒扫得发亮。', main='正殿临着宽阶，窗格细密，日光落在地上如一张浅金的网。'),
+    '景阳宫': dict(group='东六宫', desc='沿东边长巷走到深处才见宫门，平日少有人经过。院角一架藤萝，入夏便遮住半面白墙。', main='正殿地势略高，推窗可见藤梢，风来时纸页也跟着轻响。'),
+    '永和宫': dict(group='东六宫', desc='两重小院以短廊相接，走动时不必绕过露天庭心。旧人爱在廊下晒书，木架至今还留着。', main='正殿梁架素净，靠北有一面旧书格，灯下闻得到淡淡木香。'),
+    '延禧宫': dict(group='东六宫', desc='东侧宫墙外有一道排水渠，夏雨一来，隔墙便听得水声。院中几块石板颜色不同，是旧年修补留下的。', main='正殿窗前留着低矮花台，雨丝斜入时，先打湿青砖边沿。'),
+    '永寿宫': dict(group='西六宫', desc='宫门内外两道影壁挡住穿堂风，冬天比邻院安稳些。庭里一棵老槐，树荫年年落在同一口石缸上。', main='正殿南窗宽敞，冬日暖光铺到榻前，槐影停在帘外。'),
+    '翊坤宫': dict(group='西六宫', desc='西路甬道在宫前放宽，仪仗经过也转得开。台阶两侧的石兽常年有人擦拭，雨里仍泛着润光。', main='正殿进深阔大，重帘垂到近地处，香炉的烟缓缓绕过绣屏。'),
+    '储秀宫': dict(group='西六宫', desc='庭院不大，花木却修剪得格外细致。相传从前掌事宫人每季换一种花，后来便成了此处的习惯。', main='正殿门窗漆色鲜亮，檐角投下的阴影正好遮住阶前花盆。'),
+    '启祥宫': dict(group='西六宫', desc='出宫门便是往养心殿去的长巷，清晨常听见远处靴声。院里东西两条廊道相通，下雨也能走个来回。', main='正殿前廊深长，窗内铺着旧毡，外头的脚步声到此便轻了。'),
+    '长春宫': dict(group='西六宫', desc='宫前两丛丁香开得早，花谢以后仍有绿叶遮着窗。后院石桌一角微缺，宫人说是搬树时不慎磕的。', main='正殿临着花庭，帘钩样式古朴，春风来时满屋都是丁香气。'),
+    '咸福宫': dict(group='西六宫', desc='院落方整，廊檐低缓，住在这里的人说话也像放轻了些。西墙根留着一小片苔痕，洒扫时总绕开它。', main='正殿陈设疏朗，一张长案靠着明窗，午后适合静坐理线。'),
+    '延庆殿': dict(group='独院', desc='这处院子离热闹的宫巷稍远，门前青石常覆着薄薄落叶。没有穿行的近路，来人多是专程探望。', main='正殿帘色清淡，药柜藏在屏后，窗外竹叶替屋里滤去强光。'),
+    '碎玉轩': dict(group='独院', desc='小院缩在一段曲墙后，转过月洞门才见屋舍。墙边一株老梅枝干倾斜，宫人年年替它添一根支木。', main='正殿不甚宽大，窗边恰容一榻，冬日坐着便能看见梅枝。'),
+}
+HALL_NAMES = dict(main='正殿', east='东配殿', west='西配殿', back='后殿')
+HALL_DESCS = dict(
+    main='庭院在阶前展开，廊下有人候着，开门便看得到各处灯火。',
+    east='早上先见着日头，窗纸渐渐透亮，檐下的露水还没干。',
+    west='午后西晒，日影缓缓越过窗棂，热时要把竹帘放低些。',
+    back='屋子窄些，挨着宫墙，夜里能听见巡更人在墙外走过。',
+)
+DISCIPLINE_COOLDOWN = 3
+
 
 ARTS = ['琴', '棋', '书', '画', '诗', '舞', '女红']
 ART_MASTERY = 8       # 修习满这么多次算精通
@@ -220,9 +243,45 @@ ITEMS = {
     'qinpu':    dict(name='前朝琴谱', price=50, usable=True, desc='才艺 +3'),
     'antai':    dict(name='安胎药', price=100, usable=False, desc='放在身边：有孕时若遭人下药，可保住胎儿一次'),
     'ruyi':     dict(name='玉如意', price=120, usable=False, desc='赠给别人，对方好感 +15'),
-    'shexiang': dict(name='麝香', price=200, usable=False, black=True, desc='使计「暗下麝香」必需。私藏被查到可不好说'),
+    'yinzhen':  dict(name='银针', price=60, usable=False, desc='放在身边：被人下药时成算 -15%，挡下一次就断一根'),
 }
 
+# ── 药材（内务府暗柜）──────────────────────────────────────────────────────────
+# 药名全部原创。case：什么时候开案——now 当晚 / bed 被翻牌那夜 / diag 被诊出时 / due 临盆那夜 / none 不开案
+# eat：是吃进去的（试毒宫人尝得出来）；days：药效持续几晚（含当晚）
+
+DRUGS = {
+    'yanzhi':   dict(name='胭脂霰', rank=2, price=80,  case='now', eat=False, days=3,
+                     desc='掺在胭脂里，脸上起红疹：容貌 -10，3 天内不被翻牌'),
+    'jingmeng': dict(name='惊梦香', rank=2, price=100, case='bed', eat=False, days=3,
+                     desc='夜里惊悸：3 天内若被翻牌，侍寝不涨圣宠反扣 30%、信任 -5'),
+    'yachan':   dict(name='哑蝉汤', rank=3, price=120, case='now', eat=True, days=3,
+                     desc='嗓子坏了：才艺 -8，3 天内被召见、侍寝时只答得出「体谅」'),
+    'hanshui':  dict(name='寒水散', rank=3, price=200, case='now', eat=True, days=10,
+                     desc='伤胞宫：体质 -25，有孕则小产（安胎药可挡一次），没孕则 10 天内不会有孕'),
+    'qingsi':   dict(name='青丝引', rank=4, price=250, case='diag', eat=True, days=0,
+                     desc='慢毒：每晚体质 -6，直到被太医诊出；体质掉到 1 就转成中毒'),
+    'chunxin':  dict(name='春信丹', rank=4, price=300, case='due', eat=True, days=0,
+                     desc='假孕：诊出「喜脉」，到临盆那夜真相大白。皇上若不信她，她要背欺君的罪名'),
+    'lihun':    dict(name='离魂草', rank=5, price=500, case='now', eat=True, days=0,
+                     desc='致死毒：对方中毒，下一次结算前请了太医九成能活，没请只有三成五。每个账号 7 天一次'),
+    'wuming':   dict(name='无名', rank=6, price=800, case='none', eat=False, days=0,
+                     desc='出手时再选一种药（离魂草除外），事后不开案，成悬案。每个账号 15 天一次'),
+}
+DRUG_ENERGY = 2
+DRUG_BASE = 0.35
+CABINET_SLOTS = 3             # 暗柜每人每天刷几种
+LEDGER_CHANCE = 0.10          # 暗柜买药被内务府记一笔的概率
+NAMELESS_COOLDOWN = 15
+DRUG_NEWCOMER_SHIELD = 5      # 入宫不满 5 天不能被下药、宫人不能被收买
+DRUGGED_SHIELD = 2            # 被下药得手后 2 天内不能再被下药
+SELF_HAND_PENALTY = 0.15      # 没有内应、自己动手
+NEEDLE_BLOCK = 0.15
+TASTER_LOYALTY = 80           # 忠心到这里的宫人会替主子试毒
+TASTER_CHANCE = 0.20
+GIFT_DRUG_CHANCE = 0.05       # 手巧、忠心 ≥80 的宫人每晚献药
+DIAGNOSE_CHANCE = 0.70
+SLOW_POISON_TICK = 6
 # ── 行动 ───────────────────────────────────────────────────────────────────────
 
 ACTIONS = {
@@ -253,16 +312,14 @@ ACTIONS = {
 # ── 阴谋 ───────────────────────────────────────────────────────────────────────
 
 INTRIGUES = {
-    'lethal': dict(name='毒害', silver=500, energy=3, min_rank=5, base=0.35, npc_ok=False,
-                   desc='成：对方中毒，下一次结算前请了太医九成能活，没请只有三成五。败露：自己打入冷宫。每个账号 7 天一次'),
     'rumor':  dict(name='散布流言', silver=30, energy=2, min_rank=1, base=0.55, npc_ok=True,
                    desc='成：对方圣宠 -15%，德行 -3。败露：自己德行 -5，圣宠 -10%'),
     'steal':  dict(name='截宠', silver=60, energy=2, min_rank=1, base=0.50, npc_ok=True,
                    desc='若今晚翻的是对方的牌子，由你顶上。败露：圣宠 -15%，禁足 1 天'),
     'frame':  dict(name='栽赃陷害', silver=100, energy=2, min_rank=2, base=0.45, npc_ok=True,
                    desc='成：对方禁足 2 天，圣宠 -20%。败露：自己禁足 2 天'),
-    'poison': dict(name='暗下麝香', silver=0, item='shexiang', energy=2, min_rank=3, base=0.45, npc_ok=False,
-                   desc='成：对方体质 -30，有孕则小产。败露：自己降一级并禁足 3 天'),
+    'drug':   dict(name='下药', silver=0, energy=DRUG_ENERGY, min_rank=2, base=DRUG_BASE, npc_ok=False,
+                   desc='用手里的药，交给对方宫里的内应去下，或者自己动手'),
     'expose': dict(name='告发秘密', silver=50, energy=2, min_rank=1, base=0.70, npc_ok=False,
                    desc='需先探到对方的秘密。皇上信不信看你的信任。成：按秘密处罚对方，你信任 +5。不信：自己德行 -8，圣宠 -15%，信任 -10'),
     'witch':  dict(name='构陷巫蛊', silver=300, energy=3, min_rank=4, base=0.35, npc_ok=True,
@@ -272,6 +329,13 @@ INTRIGUES = {
                         '对方会知道是你。成：那个宫人没了，对方全宫宫人忠心 -5。败露：德行 -8，信任 -10'),
 }
 INTRIGUE_TARGET_DAILY_MAX = 2
+LEGACY_INTRIGUE_NAMES = dict(lethal='毒害', poison='暗下麝香')
+
+def intrigue_label(it):
+    if it['method'] == 'drug' and it['drug'] in DRUGS:
+        used = it['item_used']
+        return '下药·' + (f"{DRUGS[used]['name']}（{DRUGS[it['drug']]['name']}）" if used == 'wuming' else DRUGS[it['drug']]['name'])
+    return INTRIGUES[it['method']]['name'] if it['method'] in INTRIGUES else LEGACY_INTRIGUE_NAMES.get(it['method'], it['method'])
 
 # ── 场景（带选择的小剧情）─────────────────────────────────────────────────────
 # 每个选项：stat 为空=必成；否则 属性值 + 随机 0~40 ≥ dc 算成（dc 70 时属性 50 约五成）。
@@ -370,28 +434,28 @@ EFFECT_NAMES = dict(favor='圣宠', trust='信任', virtue='德行', health='体
 # ── NPC ────────────────────────────────────────────────────────────────────────
 
 NPCS = [
-    dict(npc_key='huanghou', surname='乌拉那拉', given='宜修', title='', rank=9, palace='景仁宫',
+    dict(npc_key='huanghou', hall='main', surname='乌拉那拉', given='宜修', title='', rank=9, palace='景仁宫',
          appearance=62, talent=70, scheme=92, virtue=80, health=75, favor=250, aggression=0.35,
          intro='中宫皇后，待人宽和，六宫都说她贤德。'),
-    dict(npc_key='huafei', surname='年', given='世兰', title='华', rank=6, palace='翊坤宫',
+    dict(npc_key='huafei', hall='main', surname='年', given='世兰', title='华', rank=6, palace='翊坤宫',
          appearance=90, talent=55, scheme=70, virtue=30, health=85, favor=420, aggression=0.4,
          intro='宠冠六宫，兄长年羹尧手握重兵。最见不得别人得宠。'),
-    dict(npc_key='duanfei', surname='齐', given='月宾', title='端', rank=6, palace='延庆殿',
+    dict(npc_key='duanfei', hall='main', surname='齐', given='月宾', title='端', rank=6, palace='延庆殿',
          appearance=55, talent=60, scheme=65, virtue=75, health=20, favor=40, aggression=0,
          intro='常年卧病，深居简出，却什么都看在眼里。'),
-    dict(npc_key='qifei', surname='李', given='静言', title='齐', rank=6, palace='长春宫',
+    dict(npc_key='qifei', hall='main', surname='李', given='静言', title='齐', rank=6, palace='长春宫',
          appearance=58, talent=35, scheme=30, virtue=50, health=70, favor=90, aggression=0.05,
          intro='三阿哥生母，心直口快，常被人当枪使。'),
-    dict(npc_key='jingpin', surname='冯', given='若昭', title='敬', rank=5, palace='咸福宫',
+    dict(npc_key='jingpin', hall='main', surname='冯', given='若昭', title='敬', rank=5, palace='咸福宫',
          appearance=60, talent=58, scheme=50, virtue=70, health=72, favor=110, aggression=0,
          intro='性子温吞，与人为善，在宫里熬了许多年。'),
-    dict(npc_key='lipin', surname='费', given='云烟', title='丽', rank=5, palace='启祥宫',
+    dict(npc_key='lipin', hall='main', surname='费', given='云烟', title='丽', rank=5, palace='启祥宫',
          appearance=75, talent=40, scheme=40, virtue=35, health=75, favor=170, aggression=0.12,
          intro='华妃跟前的人，嘴快心浅。'),
-    dict(npc_key='caoguiren', surname='曹', given='琴默', title='', rank=4, palace='启祥宫',
+    dict(npc_key='caoguiren', hall='east', surname='曹', given='琴默', title='', rank=4, palace='启祥宫',
          appearance=62, talent=55, scheme=80, virtue=45, health=65, favor=150, aggression=0.2,
          intro='温宜公主生母，华妃的智囊，笑里藏刀。'),
-    dict(npc_key='xinchangzai', surname='吕', given='盈风', title='欣', rank=3, palace='储秀宫',
+    dict(npc_key='xinchangzai', hall='east', surname='吕', given='盈风', title='欣', rank=3, palace='储秀宫',
          appearance=55, talent=45, scheme=40, virtue=55, health=70, favor=70, aggression=0,
          intro='资历老，位分低，说话爽利。'),
 ]
@@ -484,11 +548,20 @@ def init_db():
                      'maid_offer': "TEXT NOT NULL DEFAULT ''",
                      'maid_event': "TEXT NOT NULL DEFAULT ''",
                      'punish_ready_day': 'INTEGER NOT NULL DEFAULT 0',
-                     'maid_punished_day': 'INTEGER NOT NULL DEFAULT 0'},
+                     'maid_punished_day': 'INTEGER NOT NULL DEFAULT 0',
+                     'drugged_day': 'INTEGER NOT NULL DEFAULT 0',
+                     'drug_ledger': 'INTEGER NOT NULL DEFAULT 0',
+                     'hall': "TEXT NOT NULL DEFAULT ''",
+                     'discipline_ready_day': 'INTEGER NOT NULL DEFAULT 0',
+                     'housing_waiting': "TEXT NOT NULL DEFAULT ''"},
+        'cases': {'convicted_id': 'INTEGER NOT NULL DEFAULT 0', 'wrongful': 'INTEGER NOT NULL DEFAULT 0'},
+        'intrigues': {'drug': "TEXT NOT NULL DEFAULT ''",
+                      'agent_maid_id': 'INTEGER NOT NULL DEFAULT 0'},
         'messages': {'is_night': 'INTEGER NOT NULL DEFAULT 0'},
         'gazette': {'is_night': 'INTEGER NOT NULL DEFAULT 0'},
         'game_state': {'last_bed_pool': "TEXT NOT NULL DEFAULT '[]'"},
         'users': {'lethal_ready_day': 'INTEGER NOT NULL DEFAULT 0',
+                  'nameless_ready_day': 'INTEGER NOT NULL DEFAULT 0',
                   'banned': 'INTEGER NOT NULL DEFAULT 0'}
     }
     for table, fields in migrations.items():
@@ -496,6 +569,7 @@ def init_db():
         for field, definition in fields.items():
             if field not in existing:
                 db.execute(f'ALTER TABLE {table} ADD COLUMN {field} {definition}')
+    retire_musk(db)
     if not db.execute("SELECT 1 FROM game_state WHERE id=1").fetchone():
         now = datetime.now(TZ)
         # 开服时若已过今天的结算时刻，视为今天已结算，免得一开服就空结算一次
@@ -511,8 +585,31 @@ def init_db():
                        (n['npc_key'], n['surname'], n['given'], n['title'], n['rank'], n['palace'],
                         n['appearance'], n['talent'], n['scheme'], n['virtue'], n['health'],
                         n['favor'], n['aggression'], n['intro'], now_ts()))
+    for n in NPCS:
+        db.execute("UPDATE consorts SET hall=? WHERE npc_key=? AND hall='' AND status NOT IN ('cold','dead')",
+                   (n['hall'], n['npc_key']))
     db.commit()
     db.close()
+    with app.app_context():
+        housing_sync()      # 老存档里的玩家第一次启动时分好住处；之后每次都是空操作
+
+def retire_musk(db):
+    """v1.4：「暗下麝香」「毒害」并入「下药」。手里的麝香按 200 两退钱，还没结算的旧计策撤回退款（幂等）"""
+    row = db.execute("SELECT day FROM game_state WHERE id=1").fetchone()
+    day, ts = (row[0] if row else 1), now_ts()
+    refunds = {}
+    for cid, qty in db.execute("SELECT consort_id, qty FROM inventory WHERE item_key='shexiang' AND qty>0").fetchall():
+        refunds[cid] = refunds.get(cid, 0) + 200 * qty
+    for iid, cid, paid, item in db.execute("""SELECT id, attacker_id, silver_paid, item_used FROM intrigues
+                                             WHERE status='pending' AND method IN ('poison','lethal')""").fetchall():
+        refunds[cid] = refunds.get(cid, 0) + paid + (200 if item == 'shexiang' else 0)
+        db.execute("UPDATE intrigues SET status='cancelled' WHERE id=?", (iid,))
+    db.execute("DELETE FROM inventory WHERE item_key='shexiang'")
+    for cid, amt in refunds.items():
+        if not amt: continue
+        db.execute("UPDATE consorts SET silver=silver+? WHERE id=?", (amt, cid))
+        db.execute("INSERT INTO messages (consort_id, day, kind, text, created_ts) VALUES (?,?,?,?,?)",
+                   (cid, day, 'info', f'内务府不再私下卖麝香，「暗下麝香」「毒害」改成了「下药」。你手里的麝香和还没办的事折成 {amt} 两银子退给你了。', ts))
 
 def past_settle_time(now):
     return (now.hour, now.minute) >= (SETTLE_HOUR, SETTLE_MINUTE)
@@ -669,6 +766,7 @@ def set_rank(cid, new_rank, reason_day=None):
     c = get_consort(cid)
     if new_rank >= 5 and not c['title']:
         assign_title(cid)
+    housing_sync(fill_main=not settling())
 
 def confine(cid, days):
     c = get_consort(cid)
@@ -681,15 +779,17 @@ def send_to_cold(cid):
     if c['status'] == 'dead': return
     # 废为庶人：封号一并褫夺，出冷宫后要重新挣
     run("""UPDATE consorts SET status='cold', status_until_day=?, rank_before_cold=?,
-           favor=0, pregnant_since=0, seek_bonus=0, title=? WHERE id=?""",
+           favor=0, pregnant_since=0, seek_bonus=0, hall='', housing_waiting='', title=? WHERE id=?""",
         (cur_day() + COLD_DAYS, c['rank'], c['title'] if c['npc_key'] else '', cid))
+    housing_sync(fill_main=not settling())
 
 def release_from_cold(cid, reason):
     c = get_consort(cid)
     if c['npc_key'] or c['status'] == 'dead': return   # NPC 进了冷宫就不再出来
     new_rank = min(2, max(1, c['rank_before_cold']))
     run("""UPDATE consorts SET status='normal', status_until_day=0, rank=?, rank_since_day=?,
-           favor=20 WHERE id=?""", (new_rank, cur_day(), cid))
+           favor=20, palace='', hall='', housing_waiting='' WHERE id=?""", (new_rank, cur_day(), cid))
+    housing_sync(fill_main=not settling())
     c = get_consort(cid)
     night_mark(cid, 'cold_release')
     notify(cid, f"{reason}你被放出冷宫，复为{RANK_NAMES[new_rank]}。", 'decree')
@@ -769,12 +869,13 @@ def admin_required(f):
 @app.context_processor
 def inject_globals():
     ctx = dict(dn=display_name, full_name=full_name, RANK_NAMES=RANK_NAMES, STAT_NAMES=STAT_NAMES,
-               favor_word=favor_word, trust_word=trust_word, ITEMS=ITEMS, FAMILIES=FAMILIES, PERSONALITIES=PERSONALITIES, age_text=age_text, palace_date=palace_date,
+               favor_word=favor_word, trust_word=trust_word, residence_name=residence_name, HALL_NAMES=HALL_NAMES, ITEMS=ITEMS, DRUGS=DRUGS, daily_count=daily_count, intrigue_label=intrigue_label, FAMILIES=FAMILIES, PERSONALITIES=PERSONALITIES, age_text=age_text, palace_date=palace_date,
                poison_deadline=lambda ts: datetime.fromtimestamp(ts, TZ).strftime('%m月%d日 %H:%M'))
     try:
         ctx['gs'] = state()
         ctx['next_settle'] = next_settle_text()
         me = getattr(g, 'me', None)
+        ctx['open_cases_count'] = q("SELECT COUNT(DISTINCT c.id) FROM cases c LEFT JOIN case_suspects s ON s.case_id=c.id WHERE c.status='open' AND (c.victim_id=? OR s.consort_id=?)", (me['id'], me['id']), one=True)[0] if me else 0
         ctx['unread_letters'] = q("SELECT COUNT(*) n FROM letters WHERE to_id=? AND is_read=0",
                                   (me['id'],), one=True)['n'] if me else 0
     except Exception:
@@ -897,20 +998,25 @@ def dianxuan():
         total += FAMILIES[c['family']]['dx']
         total = int(round(total))
         rank = next(r for th, r in DIANXUAN_TIERS if total >= th)
+        if not slot_free(rank):     # 贵人满员时，殿选再出色也只能先封常在
+            rank -= 1
         day = cur_day()
-        taken = [r['palace'] for r in q("SELECT palace FROM consorts WHERE user_id IS NOT NULL AND status NOT IN ('cold','dead')")]
-        palace = min(PLAYER_PALACES, key=lambda p: (taken.count(p), random.random()))
+        room = empty_residence((('east', 'west'), ('back',)))
+        if room is None:
+            flash('宫中屋舍暂满，且候内务府另行传唤。', 'info')
+            return redirect(url_for('dianxuan'))
+        palace, hall = room
         favor = {4: 40, 3: 20, 2: 10, 1: 0}[rank]
-        run("""UPDATE consorts SET status='normal', rank=?, rank_since_day=?, palace=?, favor=?,
+        run("""UPDATE consorts SET status='normal', rank=?, rank_since_day=?, palace=?, hall=?, favor=?,
                entered_day=?, dianxuan_score=?, energy=?, trust=?, last_audience_day=?, recap_seen_day=?,
                dianxuan_quote=? WHERE id=?""",
-            (rank, day, palace, favor, day, total, ENERGY_MAX, TRUST_START, day, day - 1, quote, c['id']))
+            (rank, day, palace, hall, favor, day, total, ENERGY_MAX, TRUST_START, day, day - 1, quote, c['id']))
         title = ''
         if rank >= 4 or (rank == 3 and random.random() < 0.3):
             title = assign_title(c['id'])
         c = get_consort(c['id'])
         decree = f"{FAMILIES[c['family']]['name']}{full_name(c)}，留牌子，" \
-                 f"{'赐封号「' + title + '」，' if title else ''}封为{display_name(c)}，赐居{palace}。"
+                 f"{'赐封号「' + title + '」，' if title else ''}封为{display_name(c)}，赐居{palace}{HALL_NAMES[hall]}。"
         gazette(f"殿选：{decree}", 'decree')
         notify(c['id'], f"殿选中选。{decree}", 'decree')
         if risky_huafei:
@@ -1301,7 +1407,7 @@ def sister(action, tid):
 def shop():
     c = g.me
     inv = {r['item_key']: r['qty'] for r in q("SELECT * FROM inventory WHERE consort_id=?", (c['id'],))}
-    return render_template('shop.html', c=c, inv=inv)
+    return render_template('shop.html', c=c, inv=inv, stock=cabinet_stock(c['id'], cur_day()))
 
 @app.route('/shop/buy/<key>', methods=['POST'])
 @login_required
@@ -1365,7 +1471,7 @@ def intrigue():
                  JOIN consorts c ON c.id=k.target_id WHERE k.knower_id=?""", (c['id'],))
     return render_template('intrigue.html', c=c, targets=intrigue_targets(c), INTRIGUES=INTRIGUES, mine=mine,
                            known=known, SECRETS=SECRETS, day=day, get_consort=get_consort,
-                           used_today=daily_count(c['id'], 'intrigue'), inventory={k: inv_qty(c['id'], k) for k in ITEMS})
+                           used_today=daily_count(c['id'], 'intrigue'), inventory={k: inv_qty(c['id'], k) for k in (*ITEMS, *DRUGS)}, agents=drug_agents(c['id']))
 
 @app.route('/intrigue/submit', methods=['POST'])
 @login_required
@@ -1380,6 +1486,10 @@ def intrigue_submit():
     t = get_consort(tid)
     err = None
     day = cur_day()
+    used = request.form.get('drug', '')
+    drug = request.form.get('effect', '') if used == 'wuming' else used
+    try: mid = int(request.form.get('agent_maid_id', 0))
+    except ValueError: mid = -1
     if not cfg: err = '选一个计策。'
     elif c['status'] != 'normal': err = '你自身难保，先顾好自己吧。'
     elif is_sick(c): err = '你病着，没力气算计别人。'
@@ -1394,8 +1504,8 @@ def intrigue_submit():
     elif q("SELECT COUNT(*) n FROM intrigues WHERE target_id=? AND day=? AND status='pending'",
            (tid, day), one=True)['n'] >= INTRIGUE_TARGET_DAILY_MAX:
         err = '今天盯着她的人已经够多了，换个日子吧。'
-    elif method == 'lethal':
-        err = lethal_block(c, t, day)
+    elif method == 'drug':
+        err = drug_block(c, t, drug, used, mid, day)
     elif method == 'expose':
         if t['secret_revealed']: err = '她的事早就人尽皆知了。'
         elif not q("SELECT 1 FROM known_secrets WHERE knower_id=? AND target_id=?", (c['id'], tid), one=True):
@@ -1412,8 +1522,14 @@ def intrigue_submit():
     if cfg.get('item'): inv_add(c['id'], cfg['item'], -1)
     run("""INSERT INTO intrigues (day, attacker_id, target_id, method, silver_paid, item_used, created_ts)
            VALUES (?,?,?,?,?,?,?)""", (day, c['id'], tid, method, cfg['silver'], cfg.get('item', ''), now_ts()))
-    if method == 'lethal':
-        run('UPDATE users SET lethal_ready_day=? WHERE id=?', (day + LETHAL_COOLDOWN, c['user_id']))
+    if method == 'drug':
+        iid = q('SELECT last_insert_rowid()', one=True)[0]
+        inv_add(c['id'], used, -1)
+        run('UPDATE intrigues SET drug=?, item_used=?, agent_maid_id=? WHERE id=?', (drug, used, mid, iid))
+        if drug == 'lihun':
+            run('UPDATE users SET lethal_ready_day=? WHERE id=?', (day + LETHAL_COOLDOWN, c['user_id']))
+        if used == 'wuming':
+            run('UPDATE users SET nameless_ready_day=? WHERE id=?', (day + NAMELESS_COOLDOWN, c['user_id']))
     if method == 'punish':   # 和毒害一样，撤回也不重置冷却
         run('UPDATE consorts SET punish_ready_day=? WHERE id=?', (day + PUNISH_COOLDOWN, c['id']))
     daily_inc(c['id'], 'intrigue')
@@ -1718,12 +1834,15 @@ def maid_gossip(c, m):
     if not others:
         return f"{m['name']}说了半天，都是些没影的事。"
     t = random.choice(others)
+    return f"{m['name']}说：「{display_name(t)}今儿个{daily_activity(t['id'], cur_day())}。」"
+
+
+def daily_activity(cid, day):
     did = [GOSSIP_WORDS[r['key']] + (f" {r['count']} 回" if r['count'] > 1 else '')
-           for r in q("SELECT key, count FROM daily_counters WHERE consort_id=? AND day=?", (t['id'], cur_day()))
-           if r['key'] in GOSSIP_WORDS]
-    if not did:
-        return f"{m['name']}说：「{display_name(t)}今儿个一步都没出宫门，不知在忙什么。」"
-    return f"{m['name']}说：「{display_name(t)}今儿个{'、'.join(did)}。」"
+           for r in q("SELECT key,count FROM daily_counters WHERE consort_id=? AND day=? ORDER BY key", (cid, day))
+           if r['key'] in GOSSIP_WORDS and r['count'] > 0]
+    return '、'.join(did) if did else '一步都没出宫门'
+
 
 # ── 宫人页面 ───────────────────────────────────────────────────────────────────
 
@@ -1906,6 +2025,8 @@ def intrigue_success_p(atk, tgt, cfg):
     p -= tgt['trust'] * 0.0015                      # 皇上信任的人难扳倒：信任 100 时 -15%
     if cfg is INTRIGUES['expose']:
         p += (atk['trust'] - 40) * 0.005            # 告发看告发人自己的信任：信任 0 时 -20%，100 时 +30%
+    if cfg is INTRIGUES['frame'] and same_palace(atk, tgt):
+        p += 0.10
     if cfg is INTRIGUES['rumor'] and has_maid_trait(atk['id'], 'suizui'):
         p += 0.10                                   # 碎嘴的宫人替主子把话传出去
     return max(0.08, min(0.85, p))
@@ -1917,6 +2038,7 @@ def intrigue_caught_p(atk, tgt):
 
 def resolve_intrigue(it, bed_id=None):
     """结算一条阴谋。steal 需要传入今晚被翻牌的人。返回 (result, 被截宠后的新侍寝人或 None)"""
+    if it['method'] == 'drug': return resolve_drug(it)
     cfg = INTRIGUES[it['method']]
     atk, tgt = get_consort(it['attacker_id']), get_consort(it['target_id'])
     an, tn = display_name(atk), display_name(tgt)
@@ -2081,8 +2203,9 @@ def npc_schemes(day):
         if not players: return
         key = npc['npc_key']
         if key == 'huanghou':
-            preg = [p for p in players if p['pregnant_since']]
-            if preg: target, method = random.choice(preg), 'poison'
+            preg = [p for p in players if p['pregnant_since']
+                    and not drug_block(npc, p, 'hanshui', 'hanshui', 0, day, False)]
+            if preg: target, method = random.choice(preg), 'drug'
             elif random.random() < 0.4:
                 target, method = max(players, key=lambda p: p['favor']), 'rumor'
             else: continue
@@ -2099,8 +2222,9 @@ def npc_schemes(day):
         if q("SELECT COUNT(*) n FROM intrigues WHERE target_id=? AND day=? AND status='pending'",
              (target['id'], day), one=True)['n'] >= INTRIGUE_TARGET_DAILY_MAX:
             continue
-        run("INSERT INTO intrigues (day, attacker_id, target_id, method, created_ts) VALUES (?,?,?,?,?)",
-            (day, npc['id'], target['id'], method, now_ts()))
+        drug = 'hanshui' if method == 'drug' else ''   # 皇后给有孕的人下寒水散
+        run("""INSERT INTO intrigues (day, attacker_id, target_id, method, item_used, drug, created_ts)
+               VALUES (?,?,?,?,?,?,?)""", (day, npc['id'], target['id'], method, drug, drug, now_ts()))
     huafei_punish(day)
 
 def bed_weight(c, day):
@@ -2135,6 +2259,7 @@ def _settle_night():
 
     # 先处理之前几天中的毒；当晚新中毒的人不会当晚就死
     resolve_poison_crises(day)
+    resolve_drug_cases(day)
 
     # 1. NPC 出手 + 结算阴谋（截宠除外，要等翻牌子）
     npc_schemes(day)
@@ -2143,9 +2268,11 @@ def _settle_night():
     for it in pend:
         resolve_intrigue(it)
 
+    tick_drugs(day)
+
     # 2. 翻牌子
     cands = [c for c in q("""SELECT * FROM consorts WHERE status='normal' AND rank BETWEEN 1 AND 8
-                             AND pregnant_since=0""") if not is_sick(c)]
+                             AND pregnant_since=0""") if not is_sick(c) and not affliction(c['id'], 'yanzhi', day)]
     bed = None
     if cands:
         bed = random.choices(cands, weights=[bed_weight(c, day) for c in cands])[0]
@@ -2155,7 +2282,7 @@ def _settle_night():
             _, new_bed = resolve_intrigue(it, bed['id'] if bed else None)
             if new_bed and bed and new_bed != bed['id']:
                 nb = get_consort(new_bed)
-                if nb['status'] == 'normal' and not nb['pregnant_since']:
+                if nb['status'] == 'normal' and not nb['pregnant_since'] and not is_sick(nb) and not affliction(nb['id'], 'yanzhi', day):
                     bed = nb
     if bed:
         bed = get_consort(bed['id'])
@@ -2163,19 +2290,28 @@ def _settle_night():
         tray = [c['id'] for c in sorted(cands, key=lambda c: -bed_weight(c, day))[:7]]
         if bed['id'] not in tray: tray[-1:] = [bed['id']]
         random.shuffle(tray)
-        gain = add_favor(bed['id'], 20 + bed['appearance'] * 0.15)
+        dream = affliction(bed['id'], 'jingmeng', day)
+        if dream:
+            cut_favor(bed['id'], 0.30)
+            add_trust(bed['id'], -5)
+            gain = 0
+            open_drug_case(q('SELECT * FROM intrigues WHERE id=?', (dream['intrigue_id'],), one=True))
+            notify(bed['id'], '惊梦香发作，惊扰圣驾，圣宠 -30%、信任 -5。', 'bad')
+        else:
+            gain = add_favor(bed['id'], 20 + bed['appearance'] * 0.15)
         run("UPDATE consorts SET bedded_count=bedded_count+1, last_audience_day=? WHERE id=?", (day, bed['id']))
         run("UPDATE game_state SET last_bed_id=?, last_bed_day=?, last_bed_pool=? WHERE id=1",
             (bed['id'], day, json.dumps(tray)))
         gazette(f"敬事房：今夜皇上翻了{display_name(bed)}的牌子。", 'bed')
         if bed['user_id']:
             msg = f"敬事房来传话：今夜皇上翻了你的牌子。圣宠 +{gain}。"
-            if bed['age_months'] < FERTILE_BEFORE_AGE * 12 and random.random() < 0.12 + bed['health'] / 1000:
+            if not affliction(bed['id'], 'hanshui', day) and bed['age_months'] < FERTILE_BEFORE_AGE * 12 and random.random() < 0.12 + bed['health'] / 1000:
                 run("UPDATE consorts SET pregnant_since=? WHERE id=?", (day, bed['id']))
                 msg += f"……太医诊出了喜脉，{PREGNANCY_DAYS} 天后临盆。"
                 gazette(f"{display_name(bed)}有喜了。", 'birth')
             notify(bed['id'], msg, 'good')
-            start_scene(bed['id'], 'audience', prompt=random.randrange(len(AUDIENCE_PROMPTS)), bed=1)
+            start_scene(bed['id'], 'audience', prompt=random.randrange(len(AUDIENCE_PROMPTS)), bed=1, hoarse=bool(affliction(bed['id'], 'yachan', day)))
+        housing_visit(bed)
         report.append(f"侍寝：{display_name(bed)}")
 
     # 2b. 召见：侍寝之外，另召几位玩家单独说话，让更多人有机会见到皇上
@@ -2188,10 +2324,14 @@ def _settle_night():
         add_favor(r['id'], 5)
         run("UPDATE consorts SET last_audience_day=? WHERE id=?", (day, r['id']))
         notify(r['id'], '苏培盛来传话：皇上要召你去养心殿说话。圣宠 +5。', 'good')
-        start_scene(r['id'], 'audience', prompt=random.randrange(len(AUDIENCE_PROMPTS)), bed=0)
+        start_scene(r['id'], 'audience', prompt=random.randrange(len(AUDIENCE_PROMPTS)), bed=0, hoarse=bool(affliction(r['id'], 'yachan', day)))
     if called:
         gazette(f"皇上召见了{'、'.join(display_name(c) for c in called)}。", 'audience')
         report.append('召见：' + '、'.join(display_name(c) for c in called))
+
+    # 同宫日间动向先回报，管教在生产与迁宫前处理。
+    housing_reports(day)
+    npc_housing_discipline(day)
 
     # 3. 生产
     for c in q("SELECT * FROM consorts WHERE status!='dead' AND pregnant_since>0 AND ?-pregnant_since>=?", (day, PREGNANCY_DAYS)):
@@ -2238,6 +2378,9 @@ def _settle_night():
         night_mark(c['id'], 'promoted', quick=quick, rank=RANK_NAMES[nxt])
         report.append(f"晋封：{display_name(c2)}")
 
+    # 位分全部定下后，按位分、圣宠安置等待正殿的人。
+    housing_sync()
+
     # 5. 日常：长半岁、月例、圣宠流失、精力、禁足/冷宫期满、请安
     for c in q("SELECT * FROM consorts WHERE status NOT IN ('xiunv','dead')"):
         c = get_consort(c['id'])
@@ -2265,6 +2408,7 @@ def _settle_night():
                 notify(c['id'], f"你已经 {missed} 天没去给皇后请安了，宫里说你恃宠而骄。德行 -3。", 'bad')
 
     # 5b. 宫人：月钱、忠心、病好了没有；白天没处理的小事作废
+    drug_gifts(day)
     maid_upkeep(day)
 
     # 6. 口谕：根据每个人这一夜的真实经历挑一句，没什么可说的就不说
@@ -2391,6 +2535,7 @@ def admin_edit(cid):
         run("UPDATE consorts SET status_until_day=? WHERE id=?",
             (cur_day() + (CONFINE_DAYS if status == 'confined' else COLD_DAYS), cid))
     if rank >= 5 and not c['title']: assign_title(cid)
+    housing_sync()
     flash(f"已修改 {full_name(c)}。", 'good')
     return redirect(url_for('admin'))
 
@@ -2410,7 +2555,7 @@ def admin_reset():
         flash('要在框里输入「重开」才会重置。', 'bad')
         return redirect(url_for('admin'))
     for t in ('intrigues', 'messages', 'gazette', 'relations', 'known_secrets', 'inventory', 'heirs', 'letters', 'reports', 'maids',
-              'daily_counters', 'consorts', 'game_state'):
+              'bribes', 'afflictions', 'cases', 'case_suspects', 'case_actions', 'daily_counters', 'consorts', 'game_state'):
         run(f"DELETE FROM {t}")
     if request.form.get('keep_users') != '1':
         run("DELETE FROM users")
@@ -2487,11 +2632,12 @@ def die(cid, reason):
     name = display_name(c)
     run("""UPDATE consorts SET status='dead', death_day=?, death_reason=?, archived_user_id=user_id,
            pregnant_since=0, poisoned_day=0, poison_treatment=0,
-           energy=0, seek_bonus=0, status_until_day=0 WHERE id=?""", (cur_day(), reason, cid))
+           energy=0, seek_bonus=0, status_until_day=0, hall='', housing_waiting='' WHERE id=?""", (cur_day(), reason, cid))
     run("UPDATE intrigues SET status='done', result='void' WHERE status='pending' AND (attacker_id=? OR target_id=?)", (cid, cid))
     for m in active_maids(cid):
         maid_leave(m['id'], 'gone', '主子没了，散去')
-    notify(cid, f'你因{reason}离世，终年{age_text(c["age_months"])}。可以另建一位秀女重新入宫。', 'bad')
+    housing_sync(fill_main=not settling())
+    if c['user_id']: notify(cid, f'你因{reason}离世，终年{age_text(c["age_months"])}。可以另建一位秀女重新入宫。', 'bad')
     gazette(f'{name}因{reason}薨逝，终年{age_text(c["age_months"])}。', 'death')
 
 
@@ -2566,18 +2712,6 @@ PLACES = {
     'yangxin': dict(name='养心殿', actions=['seek', 'plead']),
 }
 
-PALACE_DESC = {
-    '碎玉轩': '偏僻清静，院里一株老梅，冬天开得最好。',
-    '延禧宫': '临着御花园的水榭，夏日荷风阵阵。',
-    '咸福宫': '殿前种着丁香，花开时整条回廊都是香的。',
-    '永寿宫': '格局方正，冬日向阳，暖意来得比别处早。',
-    '钟粹宫': '陈设精巧，采光极好，据说住在这里的人气色都好。',
-    '储秀宫': '装饰繁丽，金碧辉煌，住在这里本身就是一种体面。',
-    '永和宫': '书卷气重，适合性情沉静的人。',
-    '景阳宫': '位置偏僻，少有人来，自有一番清幽。',
-    '长春宫': '花木扶疏，春日里满院桃花。',
-    '启祥宫': '离养心殿近，皇上路过时常能听见院里的动静。',
-}
 
 def map_tiles(c):
     day, st = cur_day(), state()
@@ -2592,7 +2726,7 @@ def map_tiles(c):
              note=shut or (f'还能逛 {garden_left} 次' if garden_left > 0 else '今天逛够了'), off=bool(shut)),
         dict(key='yangxin', name='养心殿', area='yangxin', url=url_for('place', key='yangxin'),
              note=shut or f"皇上今日{st['emperor_mood']}", off=bool(shut)),
-        dict(key='home', name='冷宫' if cold else c['palace'], area='home', url=url_for('place', key='home'),
+        dict(key='home', name=residence_name(c), area='home', url=url_for('place', key='home'),
              note=f"精力 {c['energy']}", off=False, home=True),
         dict(key='jingren', name='景仁宫', area='jingren', url=url_for('place', key='jingren'),
              note=shut or ('今日已请安' if c['greet_day'] == day else '还没去请安'), off=bool(shut)),
@@ -2620,8 +2754,13 @@ def place(key):
         c = get_consort(c['id'])
         maid_ev = maid_event_view(c)
         maid_info = dict(n=len(active_maids(c['id'])), quota=maid_quota(c['rank']), errands=len(free_errand_maids(c)))
-        title = '冷宫' if c['status'] == 'cold' else c['palace']
-        desc = '四面高墙，窗纸破了也没人来补。' if c['status'] == 'cold' else PALACE_DESC.get(c['palace'], '')
+        title = residence_name(c)
+        if c['status'] == 'cold':
+            desc = '四面高墙，窗纸破了也没人来补。'
+        elif has_residence(c):
+            desc = (PALACES[c['palace']]['main'] if c['hall'] == 'main' else '') + HALL_DESCS[c['hall']]
+        else:
+            desc = '行李暂且收好，等内务府来传话。'
     elif key == 'jingren':
         desc = '皇后的居所。每日晨昏定省，六宫都在这里碰面。'
         came = q("""SELECT * FROM consorts WHERE user_id IS NOT NULL AND greet_day=? AND status='normal'
@@ -2638,7 +2777,9 @@ def place(key):
     return render_template('place.html', c=c, key=key, title=title, desc=desc, extra=extra, acts=acts,
                            counts=counts, sick=is_sick(c), arts=arts_of(c), ARTS=ARTS, ART_MASTERY=ART_MASTERY,
                            plead_targets=plead_targets, plead_p=int(plead_chance(c) * 100),
-                           maid_ev=maid_ev, maid_info=maid_info)
+                           maid_ev=maid_ev, maid_info=maid_info,
+                           household=palace_household(c['palace']) if key == 'home' and has_residence(c) else [],
+                           is_head=has_residence(c) and c['hall'] == 'main' and c['rank'] >= 5)
 
 # ── 场景 ───────────────────────────────────────────────────────────────────────
 
@@ -2673,6 +2814,8 @@ def scene_view(c, sc):
         else:
             title, lead = '召见', '苏培盛引你进了养心殿。皇上放下奏折：'
         opts = list(prompt['opts'])
+        if sc.get('hoarse'):
+            return title, lead + prompt['ask'], [opts[0]]
         if sc.get('bed') and plead_candidates(c):
             opts.append(PLEAD_IN_BED)
         return title, lead + prompt['ask'], opts
@@ -2708,12 +2851,16 @@ CHECK_NAMES = dict(STAT_NAMES, trust='信任')
 def scene():
     c = g.me
     sc = get_scene(c)
+    if sc and sc['key'] == 'audience' and affliction(c['id'], 'yachan'):
+        sc['hoarse'] = True
     if not sc:
         return redirect(url_for('index'))
     title, text, opts = scene_view(c, sc)
     if request.method == 'POST':
         try:
-            opt = opts[int(request.form.get('opt', ''))]
+            idx = int(request.form.get('opt', ''))
+            if idx < 0: raise IndexError
+            opt = opts[idx]
         except (ValueError, IndexError):
             flash('选一个。', 'bad')
             return redirect(url_for('scene'))
@@ -2874,6 +3021,550 @@ def report():
     return render_template('report.html', letter=letter, categories=REPORT_CATEGORIES,
                            get_consort=get_consort, REPORT_MAX_LEN=REPORT_MAX_LEN)
 
+
+# ── 下药：暗柜、药效与案发 ──────────────────────────────────────────────────
+
+def cabinet_stock(cid, day):
+    # 独立随机源，刷新页面和重启都不会换货，也不影响结算掷骰。
+    return random.Random(f'cabinet:{cid}:{day}').sample(list(DRUGS), CABINET_SLOTS)
+
+
+def drug_agents(cid, tid=None):
+    return q("""SELECT m.*, b.counter FROM bribes b JOIN maids m ON m.id=b.maid_id
+                JOIN consorts c ON c.id=m.owner_id
+                WHERE b.briber_id=? AND b.turned=1 AND m.status='active'
+                AND m.sick_until_day<? AND c.status NOT IN ('dead','cold','xiunv')
+                AND (? IS NULL OR m.owner_id=?)""", (cid, cur_day(), tid, tid))
+
+
+def drug_block(c, t, drug, used, mid, day, submitting=True):
+    if drug not in DRUGS or used not in DRUGS or drug == 'wuming': return '请选择手里的药。'
+    if used != drug and used != 'wuming': return '药材与药性不符。'
+    if used == 'wuming' and drug == 'lihun': return '无名不能配离魂草。'
+    if t['npc_key'] or t['status'] in ('dead', 'cold', 'xiunv'): return '她现在不能当目标。'
+    if day - t['entered_day'] < DRUG_NEWCOMER_SHIELD: return '她入宫还不满 5 天，动不得。'
+    if t['drugged_day'] and day - t['drugged_day'] <= DRUGGED_SHIELD: return '她刚遭过下药，这两天动不得。'
+    if drug == 'lihun' and (t['poisoned_day'] or t['protected_until_day'] >= day): return '她正中毒或刚获救，动不得。'
+    if drug == 'chunxin' and t['pregnant_since']: return '她已有喜脉，春信丹用不上。'
+    if mid and not any(m['id'] == mid for m in drug_agents(c['id'], t['id'])): return '这名宫人现在不能替你办事。'
+    if submitting:
+        if c['rank'] < DRUGS[used]['rank']: return '你的位分还使不得这种药。'
+        if inv_qty(c['id'], used) < 1: return '手里没有这份药。'
+        account = q('SELECT * FROM users WHERE id=?', (c['user_id'],), one=True)
+        if drug == 'lihun' and account['lethal_ready_day'] > day: return '离魂草的七天冷却还没过，撤回也不重置。'
+        if used == 'wuming' and account['nameless_ready_day'] > day: return '无名的十五天冷却还没过，撤回也不重置。'
+    return None
+
+
+@app.route('/shop/drug/<key>', methods=['POST'])
+@login_required
+def buy_drug(key):
+    c, day = g.me, cur_day()
+    cfg = DRUGS.get(key)
+    if not cfg or key not in cabinet_stock(c['id'], day): msg = '今日暗柜没有这份药。'
+    elif c['status'] == 'cold' or c['rank'] < cfg['rank']: msg = '内务府不肯把这份药交给你。'
+    elif daily_count(c['id'], 'cabinet:' + key): msg = '今日这一份已经买过了。'
+    elif c['silver'] < cfg['price']: msg = '银子不够。'
+    else:
+        add_silver(c['id'], -cfg['price'])
+        inv_add(c['id'], key)
+        daily_inc(c['id'], 'cabinet:' + key)
+        if random.random() < LEDGER_CHANCE:
+            run('UPDATE consorts SET drug_ledger=1 WHERE id=?', (c['id'],))
+        flash(f"你收好了{cfg['name']}。", 'good')
+        return redirect(url_for('shop'))
+    flash(msg, 'bad')
+    return redirect(url_for('shop'))
+
+
+def affliction(cid, drug, day=None):
+    return q("""SELECT * FROM afflictions WHERE consort_id=? AND drug=? AND status='active'
+                AND (until_day=0 OR until_day>=?) ORDER BY id LIMIT 1""", (cid, drug, cur_day() if day is None else day), one=True)
+
+
+def poison_player(cid, day):
+    run('UPDATE consorts SET poisoned_day=?, poison_treatment=0, health=MAX(1,health-20) WHERE id=?', (day, cid))
+    notify(cid, f'你中毒了，体质 -20。下一次结算前请太医（{TREAT_COST} 两）：请了九成能活，不请只有三成五。', 'bad')
+    gazette(f'{display_name(get_consort(cid))}突然中毒，性命垂危。')
+    night_mark(cid, 'poisoned')
+
+
+def open_drug_case(it, punished=0):
+    if it['item_used'] == 'wuming': return None
+    old = q('SELECT id FROM cases WHERE intrigue_id=?', (it['id'],), one=True)
+    if old: return old['id']
+    day = cur_day() + (1 if settling() else 0)
+    case_id = run('''INSERT INTO cases(day,victim_id,culprit_id,intrigue_id,drug,agent_maid_id,victim_punished,created_ts)
+                     VALUES(?,?,?,?,?,?,?,?)''', (day, it['target_id'], it['attacker_id'], it['id'], it['drug'], it['agent_maid_id'], punished, now_ts())).lastrowid
+    culprit = get_consort(it['attacker_id'])
+    m = get_maid(it['agent_maid_id']) if it['agent_maid_id'] else None
+    score = 30 + random.randint(0, 20) + (0 if m else 20)
+    if m: score += {'zuijin': -10, 'suizui': 10}.get(m['trait'], 0)
+    run('INSERT INTO case_suspects(case_id,consort_id,suspicion) VALUES(?,?,?)', (case_id, culprit['id'], score))
+    victim = get_consort(it['target_id'])
+    candidates = q("SELECT * FROM consorts WHERE id NOT IN (?,?) AND status NOT IN ('dead','xiunv','cold') AND ?-entered_day>=5",
+                   (culprit['id'], victim['id'], day))
+    def affinity(c):
+        r = relation(c['id'], victim['id'])
+        return r['affinity'] if r else 0
+    candidates = sorted(candidates, key=lambda c: (affinity(c), abs(c['favor'] - victim['favor'])))
+    for c in candidates:
+        active = q("SELECT COUNT(*) FROM case_suspects s JOIN cases c ON c.id=s.case_id WHERE s.consort_id=? AND c.status='open'", (c['id'],), one=True)[0]
+        recent = q('SELECT COUNT(*) FROM case_suspects s JOIN cases c ON c.id=s.case_id WHERE s.consort_id=? AND c.culprit_id!=? AND c.day>?', (c['id'], c['id'], day-7), one=True)[0]
+        if active >= 2 or recent >= 2: continue
+        run('INSERT INTO case_suspects(case_id,consort_id,suspicion) VALUES(?,?,?)', (case_id, c['id'], min(40, 10+random.randint(0,20)+(10 if affinity(c)<0 else 0))))
+        if q('SELECT COUNT(*) FROM case_suspects WHERE case_id=?', (case_id,), one=True)[0] >= 4: break
+    suspects = q('SELECT consort_id FROM case_suspects WHERE case_id=?', (case_id,))
+    names = '、'.join(display_name(get_consort(s['consort_id'])) for s in suspects)
+    gazette(f'{display_name(victim)}出了事，皇后命慎刑司彻查。待查：{names}。', day=day)
+    for cid in {victim['id'], *(s['consort_id'] for s in suspects)}:
+        notify(cid, f'你被卷进了第 {case_id} 桩案子，请去慎刑司陈情，下一次结算定案。', 'bad')
+    if eyes_active(victim): notify(victim['id'], f'眼线回报：这回下手的是{display_name(culprit)}。')
+    return case_id
+
+
+def resolve_drug(it):
+    it = q('SELECT * FROM intrigues WHERE id=?', (it['id'],), one=True)
+    if it['status'] != 'pending': return it['result'], None
+    c, t, day = get_consort(it['attacker_id']), get_consort(it['target_id']), cur_day()
+    def done(result):
+        run("UPDATE intrigues SET status='done', result=? WHERE id=?", (result, it['id']))
+        if c['user_id']: notify(c['id'], f"对{display_name(t)}的下药：" + {'void':'局面已变，落空了。','fizzle':'没能得手。','caught':'没能得手，事情被察觉了。','success':'药已下进去。'}[result])
+        return result, None
+    if c['status'] != 'normal' or is_sick(c) or drug_block(c,t,it['drug'],it['item_used'],it['agent_maid_id'],day,False): return done('void')
+    agents = drug_agents(c['id'], t['id'])
+    m = next((m for m in agents if m['id'] == it['agent_maid_id']), None)
+    p = DRUG_BASE + (c['scheme']-t['scheme'])*0.008
+    p += min(2,len(agents))*0.10 + (0.08 if m and m['trait']=='shouqiao' else 0)
+    p -= (0 if m or same_palace(c, t) else SELF_HAND_PENALTY) + (0.12 if eyes_active(t) else 0)
+    p -= min(0.15,0.05*active_sister_count(t['id'])) + (0.05 if t['personality']=='dignified' else 0)
+    p -= (0.05 if t['virtue']>=70 else 0) + t['trust']*0.0015
+    needle = inv_qty(t['id'], 'yinzhen') > 0
+    before = max(0.08,min(0.85,p))
+    after = max(0.08,min(0.85,p-(NEEDLE_BLOCK if needle else 0)))
+    roll = random.random()
+    if (m and m['counter']) or roll >= after:
+        if needle and after <= roll < before and not (m and m['counter']):
+            inv_add(t['id'],'yinzhen',-1)
+            notify(t['id'],'银针挡下了异样，折了一根。')
+        caught = not m or bool(m['counter']) or random.random()<0.5
+        if caught: open_drug_case(it)
+        return done('caught' if caught else 'fizzle')
+    if DRUGS[it['drug']]['eat']:
+        tasters = [m for m in active_maids(t['id']) if m['loyalty']>=TASTER_LOYALTY and m['sick_until_day']<day]
+        if tasters and random.random()<TASTER_CHANCE:
+            m = tasters[0]
+            if it['drug'] in ('lihun','qingsi'):
+                maid_leave(m['id'],'dead','替主子试毒身亡')
+                gazette(f"{display_name(t)}的宫人{m['name']}试毒身亡，忠心可鉴。")
+            else: run('UPDATE maids SET sick_until_day=? WHERE id=?', (day+3,m['id']))
+            notify(t['id'],f"{m['name']}尝出了异样，替你挡下一劫。",'bad')
+            open_drug_case(it)
+            return done('fizzle')
+    drug = it['drug']
+    run('UPDATE consorts SET drugged_day=? WHERE id=?', (day,t['id']))
+    days = DRUGS[drug]['days']
+    run('INSERT INTO afflictions(consort_id,drug,attacker_id,intrigue_id,start_day,until_day) VALUES(?,?,?,?,?,?)',
+        (t['id'],drug,c['id'],it['id'],day,day+days-1 if days else 0))
+    if drug=='yanzhi': add_stat(t['id'],'appearance',-10)
+    elif drug=='yachan': add_stat(t['id'],'talent',-8)
+    elif drug=='hanshui':
+        add_stat(t['id'],'health',-25)
+        if t['pregnant_since']:
+            if inv_qty(t['id'],'antai'):
+                inv_add(t['id'],'antai',-1)
+                notify(t['id'],'安胎药保住了胎儿。')
+            else:
+                run('UPDATE consorts SET pregnant_since=0 WHERE id=?',(t['id'],))
+                run("UPDATE afflictions SET status='done' WHERE consort_id=? AND drug='chunxin'",(t['id'],))
+                night_mark(t['id'],'miscarriage')
+                notify(t['id'],'你小产了。','bad')
+    elif drug=='lihun': poison_player(t['id'],day)
+    elif drug=='chunxin':
+        run('UPDATE consorts SET pregnant_since=? WHERE id=?',(day,t['id']))
+        notify(t['id'],'太医诊出了喜脉。','good')
+        gazette(f'{display_name(t)}有喜了。','birth')
+    if DRUGS[drug]['case']=='now':
+        notify(t['id'],f"太医查出你遭了{DRUGS[drug]['name']}。{DRUGS[drug]['desc']}",'bad')
+        open_drug_case(it)
+    return done('success')
+
+
+def diagnose_slow(a):
+    run("UPDATE afflictions SET status='done' WHERE id=?",(a['id'],))
+    notify(a['consort_id'],'太医查出了青丝引，药性已解，体质不再逐夜下降。','good')
+    open_drug_case(q('SELECT * FROM intrigues WHERE id=?',(a['intrigue_id'],),one=True))
+
+
+@app.route('/diagnose', methods=['POST'])
+@login_required
+def diagnose():
+    c = g.me
+    if c['silver']<20: flash('请太医诊脉要 20 两。','bad')
+    elif daily_count(c['id'],'diagnose'): flash('今日已经诊过脉了。','bad')
+    else:
+        add_silver(c['id'],-20)
+        daily_inc(c['id'],'diagnose')
+        a = affliction(c['id'],'qingsi')
+        if a and random.random()<DIAGNOSE_CHANCE:
+            diagnose_slow(a)
+            flash('太医查出了青丝引，已解去药性。','good')
+        else: flash('这次没诊出异样；若仍不舒服，明日再请太医。','info')
+    return redirect(url_for('index'))
+
+
+def tick_drugs(day):
+    run("UPDATE afflictions SET status='done' WHERE until_day>0 AND until_day<?",(day,))
+    for a in q("SELECT * FROM afflictions WHERE status='active'"):
+        c = get_consort(a['consort_id'])
+        if c['status']=='dead':
+            run("UPDATE afflictions SET status='done' WHERE id=?",(a['id'],)); continue
+        if a['drug']=='qingsi':
+            run('UPDATE consorts SET health=MAX(1,health-?) WHERE id=?',(SLOW_POISON_TICK,c['id']))
+            health = get_consort(c['id'])['health']
+            notify(c['id'],'近来总觉得乏力。','bad')
+            if health<=1 and not c['poisoned_day']: poison_player(c['id'],day)
+            if health<25: diagnose_slow(a)
+        elif a['drug']=='chunxin' and day-a['start_day']>=PREGNANCY_DAYS:
+            punished = c['trust']<50
+            run('UPDATE consorts SET pregnant_since=0 WHERE id=?',(c['id'],))
+            run("UPDATE afflictions SET status='done' WHERE id=?",(a['id'],))
+            if punished: confine(c['id'],3); add_trust(c['id'],-15)
+            notify(c['id'],'喜脉竟是春信丹所致。'+('皇上疑你欺君，禁足三天、信任 -15。' if punished else '皇上相信你是被人所害。'),'bad')
+            open_drug_case(q('SELECT * FROM intrigues WHERE id=?',(a['intrigue_id'],),one=True),int(punished))
+
+
+def drug_gifts(day):
+    for m in q("SELECT m.* FROM maids m JOIN consorts c ON c.id=m.owner_id WHERE m.status='active' AND m.trait='shouqiao' AND m.loyalty>=80 AND m.sick_until_day<? AND c.status NOT IN ('dead','cold','xiunv')",(day,)):
+        if random.random()<GIFT_DRUG_CHANCE:
+            key=random.choice([k for k in DRUGS if k not in ('lihun','wuming')])
+            inv_add(m['owner_id'],key)
+            notify(m['owner_id'],f"{m['name']}悄悄献上了一份{DRUGS[key]['name']}。")
+
+
+# 案件保留真凶与冤案记录；模板仅收到公开信息。
+@app.route('/cases')
+@login_required
+def drug_cases():
+    cases = []
+    for case in q('SELECT * FROM cases ORDER BY id DESC LIMIT 30'):
+        suspects = q('SELECT s.*, c.surname, c.given, c.title, c.rank, c.status FROM case_suspects s JOIN consorts c ON c.id=s.consort_id WHERE s.case_id=?', (case['id'],))
+        involved = g.me['id'] == case['victim_id'] or any(s['consort_id']==g.me['id'] for s in suspects)
+        public = {k:case[k] for k in ('id','day','victim_id','status','closed_day')}
+        public['suspects'] = [dict(id=s['consort_id'], name=display_name(s), suspicion=s['suspicion'] if involved else None) for s in suspects]
+        public['victim'] = display_name(get_consort(case['victim_id']))
+        cases.append(public)
+    return render_template('cases.html', cases=cases)
+
+
+@app.route('/cases/<int:case_id>/act', methods=['POST'])
+@login_required
+def case_action(case_id):
+    c, day = g.me, cur_day()
+    case = q('SELECT * FROM cases WHERE id=?',(case_id,),one=True)
+    action = request.form.get('action','')
+    try: tid = int(request.form.get('target_id',0))
+    except ValueError: tid = 0
+    if action in ('plead','pay'): tid=c['id']
+    suspect = q('SELECT * FROM case_suspects WHERE case_id=? AND consort_id=?',(case_id,tid),one=True)
+    count = q('SELECT COUNT(*) FROM case_actions WHERE case_id=? AND consort_id=? AND day=?',(case_id,c['id'],day),one=True)[0]
+    err = None
+    if not case or case['status']!='open' or case['day']>day: err='这桩案子现在不能陈情。'
+    elif action not in ('plead','pay','witness','accuse','search','frame'): err='请选择行动。'
+    elif not suspect: err='她不在待查名单中。'
+    elif count>=2 or q('SELECT 1 FROM case_actions WHERE case_id=? AND consort_id=? AND day=? AND action=?',(case_id,c['id'],day,action),one=True): err='每案每天最多两项，每项一次。'
+    if not err:
+        rel=relation(c['id'],tid)
+        delta=0
+        if action=='plead': delta=-int(c['trust']*0.2)
+        elif action=='pay':
+            try: amount=int(request.form.get('silver',0))
+            except ValueError: amount=0
+            if amount<10 or amount>200 or amount>c['silver']: err='打点需 10～200 两，不能超过手里的银子。'
+            else: add_silver(c['id'],-amount); delta=-(amount//10)
+        elif action=='witness':
+            if not rel or rel['affinity']<30: err='好感至少三十才能替她作证。'
+            else: delta=-10
+        elif action=='accuse': delta=10
+        elif action=='search':
+            if c['id']!=case['victim_id'] and c['id'] not in sisters_of(case['victim_id']): err='只有受害人和她的姐妹能请求搜宫。'
+            else:
+                target=get_consort(tid)
+                hidden=target['drug_ledger'] or any(inv_qty(tid,k)>0 for k in DRUGS)
+                delta=(20 if hidden else 0)+(10 if tid==case['culprit_id'] else 0)
+                if not delta: add_affinity(c['id'],tid,-10)
+        elif action=='frame':
+            agents=drug_agents(c['id'],tid)
+            if not agents: err='你在她宫里没有内应。'
+            else:
+                agent=agents[0]
+                delta=25
+                if agent['counter']:
+                    tid=c['id']
+                    run('INSERT OR IGNORE INTO case_suspects(case_id,consort_id,suspicion) VALUES(?,?,0)',(case_id,tid))
+        if not err:
+            run('UPDATE case_suspects SET suspicion=MAX(0,MIN(100,suspicion+?)) WHERE case_id=? AND consort_id=?',(delta,case_id,tid))
+            if action=='plead': run('UPDATE case_suspects SET pleaded=1 WHERE case_id=? AND consort_id=?',(case_id,tid))
+            run('INSERT INTO case_actions(case_id,consort_id,day,action,target_id) VALUES(?,?,?,?,?)',(case_id,c['id'],day,action,tid))
+            flash('慎刑司记下了你的陈情。','info')
+    if err: flash(err,'bad')
+    return redirect(url_for('drug_cases'))
+
+
+def resolve_drug_cases(day):
+    for case in q("SELECT * FROM cases WHERE status='open' AND day<=?",(day,)):
+        for s in q('SELECT * FROM case_suspects WHERE case_id=?',(case['id'],)):
+            c=get_consort(s['consort_id'])
+            reduction=(0 if s['pleaded'] else int(c['trust']*0.2))+(20 if c['npc_key']=='huanghou' else 0)
+            run('UPDATE case_suspects SET suspicion=MAX(0,suspicion-?), pleaded=1 WHERE case_id=? AND consort_id=?',(reduction,case['id'],c['id']))
+        s=q('SELECT * FROM case_suspects WHERE case_id=? ORDER BY suspicion DESC, consort_id LIMIT 1',(case['id'],),one=True)
+        convicted=s['consort_id'] if s and s['suspicion']>=50 else 0
+        if convicted:
+            c=get_consort(convicted)
+            if c['status']!='dead':
+                if case['drug']=='lihun': send_to_cold(convicted)
+                elif case['drug']=='hanshui':
+                    if c['rank']>1: set_rank(convicted,c['rank']-1)
+                    confine(convicted,3)
+                else: confine(convicted,2); cut_favor(convicted,0.15)
+                add_trust(convicted,-15)
+            gazette(f"慎刑司定案：{display_name(c)}获罪。")
+            notify(convicted,'慎刑司将你定罪，信任 -15，并按案情受罚。','bad')
+            if convicted==case['culprit_id']:
+                m=get_maid(case['agent_maid_id'])
+                if m and m['status']=='active': maid_leave(m['id'],'dead','下药案连坐')
+                if case['victim_punished']:
+                    victim=get_consort(case['victim_id'])
+                    if victim['status']=='confined': run("UPDATE consorts SET status='normal',status_until_day=0 WHERE id=?",(victim['id'],))
+                    add_trust(victim['id'],15)
+                    notify(victim['id'],'春信丹案查明，退还信任，解除禁足。','good')
+        else: gazette(f"慎刑司：第 {case['id']} 桩案子证据不足，暂作悬案。")
+        for a in q("SELECT * FROM case_actions WHERE case_id=? AND action='accuse'",(case['id'],)):
+            if a['target_id']!=convicted: add_stat(a['consort_id'],'virtue',-3)
+        run('UPDATE cases SET status=?,closed_day=?,convicted_id=?,wrongful=? WHERE id=?',('convicted' if convicted else 'unsolved',day,convicted,int(bool(convicted and convicted!=case['culprit_id'])),case['id']))
+
+
+@app.route('/agents')
+@login_required
+def agents_page():
+    c=g.me
+    targets=q("SELECT m.*, c.surname,c.given,c.title,c.rank, c.status AS owner_status FROM maids m JOIN consorts c ON c.id=m.owner_id WHERE m.status='active' AND c.user_id IS NOT NULL AND c.id!=? AND c.status NOT IN ('dead','cold','xiunv') AND ?-c.entered_day>=5",(c['id'],cur_day()))
+    bribes={b['maid_id']:b for b in q('SELECT * FROM bribes WHERE briber_id=?',(c['id'],))}
+    found=q('SELECT m.name,b.maid_id,b.briber_id FROM bribes b JOIN maids m ON m.id=b.maid_id WHERE m.owner_id=? AND m.status=\'active\' AND b.exposed=1 AND b.counter=0',(c['id'],))
+    return render_template('agents.html',targets=[dict(m, status=m['owner_status']) for m in targets],bribes=bribes,found=found,c=c)
+
+
+@app.route('/agents/act', methods=['POST'])
+@login_required
+def agent_action():
+    c=g.me; day=cur_day(); action=request.form.get('action')
+    try: mid=int(request.form.get('maid_id',0))
+    except ValueError: mid=0
+    m=get_maid(mid)
+    err=None
+    if c['status']!='normal' or is_sick(c): err='现在顾不上这件事。'
+    elif action=='bribe':
+        owner=get_consort(m['owner_id']) if m else None
+        if not m or m['status']!='active' or m['owner_id']==c['id'] or not owner['user_id'] or owner['status'] in ('dead','cold','xiunv') or day-owner['entered_day']<5: err='不能收买这名宫人。'
+        elif c['silver']<30: err='要三十两银子。'
+        elif daily_count(c['id'],f'bribe:{mid}'): err='今天已打点过她。'
+        elif q("SELECT COUNT(*) FROM bribes b JOIN maids m ON m.id=b.maid_id WHERE b.briber_id=? AND b.turned=1 AND m.status='active'", (c['id'],), one=True)[0]>=3: err='你已有三个内应。'
+        elif not free_errand_maids(c): err='没有空闲宫人去办差。'
+        else:
+            take_errand(c); add_silver(c['id'],-30); daily_inc(c['id'],f'bribe:{mid}')
+            gain=int((15+c['scheme']*0.15)*{'suizui':1.5,'tancai':1.5,'zhonghou':0.5}.get(m['trait'],1))
+            run('INSERT INTO bribes(briber_id,maid_id,progress,last_day) VALUES(?,?,?,?) ON CONFLICT(briber_id,maid_id) DO UPDATE SET progress=progress+excluded.progress,last_day=excluded.last_day',(c['id'],mid,gain,day))
+            run('UPDATE bribes SET turned=(progress>=?) WHERE briber_id=? AND maid_id=?',(m['loyalty'],c['id'],mid))
+            if has_maid_trait(owner['id'],'jiling') and random.random()<0.4:
+                notify(owner['id'],'有人在打点咱们宫里的人。'+(f"眼线说是{display_name(c)}。" if eyes_active(owner) else ''))
+    elif action=='inspect':
+        if not free_errand_maids(c): err='没有空闲宫人去清查。'
+        else:
+            take_errand(c)
+            for b in q("SELECT b.* FROM bribes b JOIN maids m ON m.id=b.maid_id WHERE m.owner_id=? AND m.status='active'",(c['id'],)):
+                if random.random()<min(0.85,0.4+c['scheme']*0.004):
+                    run('UPDATE bribes SET exposed=1 WHERE briber_id=? AND maid_id=?',(b['briber_id'],b['maid_id']))
+    elif action in ('dismiss','counter'):
+        if not m or m['owner_id']!=c['id'] or not q('SELECT 1 FROM bribes WHERE maid_id=? AND exposed=1',(mid,),one=True): err='没有查实这件事。'
+        elif action=='dismiss': maid_leave(mid,'gone','收买败露，遣出宫去')
+        else: run('UPDATE bribes SET counter=1 WHERE maid_id=? AND exposed=1',(mid,))
+    else: err='请选择行动。'
+    flash(err or '事情已办妥。','bad' if err else 'info')
+    return redirect(url_for('agents_page'))
+
+
+# ── 住处 ────────────────────────────────────────────────────────────────────
+
+def residence_name(c):
+    if c['status'] == 'cold': return '冷宫'
+    if c['status'] == 'dead': return '已故'
+    if c['palace'] in PALACES and c['hall'] in HALL_NAMES:
+        return f"{c['palace']}·{HALL_NAMES[c['hall']]}"
+    return '候旨安置'
+
+
+def has_residence(c):
+    return bool(c and c['status'] in ('normal', 'confined') and
+                c['palace'] in PALACES and c['hall'] in HALL_NAMES)
+
+
+def same_palace(a, b):
+    return has_residence(a) and has_residence(b) and a['palace'] == b['palace']
+
+
+def palace_household(palace):
+    people = {c['hall']: c for c in q("""SELECT * FROM consorts WHERE palace=?
+              AND hall!='' AND status IN ('normal','confined') ORDER BY id""", (palace,))}
+    return [dict(key=hall, name=name, occupant=people.get(hall)) for hall, name in HALL_NAMES.items()]
+
+
+def empty_residence(halls, preferred=''):
+    occupied = {(c['palace'], c['hall']) for c in q(
+        "SELECT palace,hall FROM consorts WHERE hall!='' AND status IN ('normal','confined')")}
+    if preferred in PALACES:
+        for tier in halls:
+            available = [(preferred, h) for h in tier if (preferred, h) not in occupied]
+            if available: return random.choice(available)
+    for tier in halls:
+        available = [(p, h) for p in PALACES for h in tier if (p, h) not in occupied]
+        if available: return random.choice(available)
+    return None
+
+
+def move_residence(c, room, announce=True):
+    palace, hall = room
+    run("UPDATE consorts SET palace=?,hall=?,housing_waiting='' WHERE id=?", (palace, hall, c['id']))
+    if not announce: return
+    if hall == 'main':
+        text = f"奉旨迁居{palace}正殿，为一宫主位。"
+        gazette(f"{display_name(c)}{text}", 'decree')
+    else:
+        text = f"内务府已收拾妥当，迁居{palace}{HALL_NAMES[hall]}。"
+    if c['user_id']: notify(c['id'], text, 'decree')
+
+
+@atomic
+def housing_sync(fill_main=True):
+    """修复旧档及重复房间；每间一人，重复运行不搬家、不重复报信。
+
+    夜间位分变动只腾房、安置配殿，等晋封全部结束再按位分、圣宠补正殿。
+    满房时留待安置，不挤占别人房间，也不打断整晚结算。
+    """
+    run("UPDATE consorts SET hall='',housing_waiting='' WHERE status NOT IN ('normal','confined') AND (hall!='' OR housing_waiting!='')")
+    residents = q("""SELECT * FROM consorts WHERE status IN ('normal','confined')
+                     ORDER BY user_id IS NOT NULL, rank DESC, favor DESC, id""")
+    occupied = set()
+    for c in residents:
+        room = (c['palace'], c['hall'])
+        valid = has_residence(c) and (c['hall'] != 'main' or c['rank'] >= 5)
+        if valid and room not in occupied:
+            occupied.add(room)
+        elif c['hall']:
+            run("UPDATE consorts SET hall='' WHERE id=?", (c['id'],))
+
+    if fill_main:
+        waiting = q("""SELECT * FROM consorts WHERE status IN ('normal','confined')
+                       AND rank>=5 AND hall!='main' ORDER BY rank DESC,favor DESC,id""")
+        for c in waiting:
+            room = empty_residence((('main',),))
+            if room: move_residence(c, room)
+
+    for c in q("SELECT * FROM consorts WHERE status IN ('normal','confined') AND hall='' ORDER BY rank DESC,favor DESC,id"):
+        # 老档、降位留在原宫优先；入宫单独随机分配，不传 preferred。
+        room = empty_residence((('east', 'west'), ('back',)), preferred=c['palace'])
+        if room: move_residence(c, room)
+
+    for c in q("SELECT * FROM consorts WHERE status IN ('normal','confined')"):
+        waiting = 'main' if c['rank'] >= 5 and c['hall'] != 'main' else ('side' if not c['hall'] else '')
+        if waiting == 'main' and not fill_main: continue
+        if waiting == c['housing_waiting']: continue
+        run('UPDATE consorts SET housing_waiting=? WHERE id=?', (waiting, c['id']))
+        if waiting and c['user_id']:
+            text = '各处正殿尚有人居住，先安居眼下住处，待有空缺再奉旨迁宫。' if waiting == 'main' and c['hall'] else '各处屋舍暂满，内务府已记下，待腾出住处便来传话。'
+            notify(c['id'], text)
+
+
+def housing_visit(bed):
+    if not has_residence(bed) or bed['hall'] != 'main' or bed['rank'] < 5: return
+    for c in q("""SELECT * FROM consorts WHERE palace=? AND hall IN ('east','west','back')
+                  AND user_id IS NOT NULL AND status='normal' AND pregnant_since=0 AND id!=?""", (bed['palace'], bed['id'])):
+        if not is_sick(c) and random.random() < 0.10:
+            add_favor(c['id'], 10, gain_mult=False)
+            notify(c['id'], f"皇上驾临{bed['palace']}，经过廊下时瞧见了你，停步说了两句话。圣宠 +10。", 'good')
+
+
+def housing_reports(day):
+    for head in q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND rank>=5 AND hall='main' AND status IN ('normal','confined')"):
+        if not has_residence(head): continue
+        others = q("""SELECT * FROM consorts WHERE palace=? AND id!=? AND user_id IS NOT NULL
+                      AND hall IN ('east','west','back') AND status IN ('normal','confined') ORDER BY id""", (head['palace'], head['id']))
+        if others:
+            text = '；'.join(f"{display_name(c)}今日{daily_activity(c['id'], day)}" for c in others)
+            notify(head['id'], f'宫人来回话：{text}。')
+
+
+def discipline_error(head, target, action, day):
+    if not has_residence(head) or head['hall'] != 'main' or head['rank'] < 5:
+        return '你还不是这一宫的主位。'
+    if action not in ('kneel', 'reward'): return '要罚要赏，须有个准话。'
+    if head['discipline_ready_day'] > day: return f"第 {head['discipline_ready_day']} 天才能再传话。"
+    if not target or not target['user_id'] or target['id'] == head['id'] or not same_palace(head, target) or target['hall'] not in ('east', 'west', 'back'):
+        return '这位不在你宫中听差。'
+    if action == 'kneel' and target['pregnant_since']: return '她有孕在身，不能罚跪。'
+    return None
+
+
+def apply_discipline(head, target, action, day):
+    if action == 'kneel':
+        add_stat(target['id'], 'health', -8)
+        add_affinity(head['id'], target['id'], -5)
+        text = f"{display_name(head)}传话，罚你在廊下跪了一阵。体质 -8，好感 -5。"
+    else:
+        add_affinity(head['id'], target['id'], 5)
+        text = f"{display_name(head)}遣人来赏你，叮嘱宫人好生照应。好感 +5。"
+    run('UPDATE consorts SET discipline_ready_day=? WHERE id=?', (day + DISCIPLINE_COOLDOWN, head['id']))
+    if target['user_id']: notify(target['id'], text, 'bad' if action == 'kneel' else 'good')
+
+
+@app.route('/housing/discipline/<int:tid>', methods=['POST'])
+@login_required
+def housing_discipline(tid):
+    head, target = g.me, get_consort(tid)
+    action = request.form.get('action', '')
+    err = discipline_error(head, target, action, cur_day())
+    if err: flash(err, 'bad')
+    else:
+        apply_discipline(head, target, action, cur_day())
+        flash('话已传到。', 'info')
+    return redirect(url_for('place', key='home'))
+
+
+def npc_housing_discipline(day):
+    temper = dict(huafei=('kneel', 0.30), lipin=('kneel', 0.30),
+                  huanghou=('reward', 0.20), duanfei=('reward', 0.20),
+                  jingpin=('reward', 0.20), qifei=('reward', 0.20))
+    for head in q("SELECT * FROM consorts WHERE npc_key IS NOT NULL AND hall='main' AND rank>=5 AND status IN ('normal','confined') AND discipline_ready_day<=?", (day,)):
+        if head['npc_key'] not in temper or not has_residence(head): continue
+        action, chance = temper[head['npc_key']]
+        candidates = []
+        for target in q("SELECT * FROM consorts WHERE palace=? AND user_id IS NOT NULL AND hall IN ('east','west','back') AND status IN ('normal','confined')", (head['palace'],)):
+            if discipline_error(head, target, action, day): continue
+            rel = relation(head['id'], target['id'])
+            if action == 'kneel' and rel and rel['affinity'] > 0: continue
+            candidates.append(target)
+        # 每三天掷一次，即便没有发话也不在次日重掷。
+        run('UPDATE consorts SET discipline_ready_day=? WHERE id=?', (day + DISCIPLINE_COOLDOWN, head['id']))
+        if candidates and random.random() < chance:
+            apply_discipline(head, random.choice(candidates), action, day)
+
+
+@app.route('/palaces')
+@login_required
+def palaces():
+    groups = [(group, [dict(name=name, desc=cfg['desc'], rooms=palace_household(name))
+                       for name, cfg in PALACES.items() if cfg['group'] == group])
+              for group in ('东六宫', '西六宫', '独院')]
+    return render_template('palaces.html', groups=groups)
 
 if __name__ == '__main__':
     init_db()

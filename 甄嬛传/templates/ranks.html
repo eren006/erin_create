@@ -9,6 +9,7 @@
 .tier .rn small{display:block;font-family:var(--song);font-size:12px;color:var(--muted)}
 .rack{display:flex;gap:10px;flex-wrap:wrap}
 .empty{width:44px;min-height:150px;border:1px dashed var(--line);border-radius:6px 6px 2px 2px}
+.lastbed{border-top:3px solid var(--jin);padding:24px}.tier{grid-template-columns:5em minmax(0,1fr);padding:22px 0}.rack{gap:14px}.empty{width:48px;min-height:158px;border-radius:12px 12px 2px 2px}.tier .rn small{margin-top:8px}@media(max-width:520px){.tier{grid-template-columns:3.5em minmax(0,1fr);gap:12px}.rack{gap:10px}.lastbed{padding:16px}}
 </style>
 {% endblock %}
 {% block body %}
@@ -19,7 +20,7 @@
   <div><div class="muted">第 {{ gs.last_bed_day }} 日夜，敬事房</div><div class="t">皇上翻了{{ dn(last_bed) }}的牌子。</div></div>
 </div>
 {% endif %}
-<p class="muted">灰色的是宫里原有的妃嫔；虚线空位表示还有名额。嫔以上有定员，满了就得等别人倒下。</p>
+<p class="muted">灰色的是宫里原有的妃嫔；虚线空位表示还有名额。贵人以上有定员，满了就得等别人倒下。</p>
 {% for grp in groups %}
 <div class="tier">
   <div class="rn">{{ grp.name }}{% if grp.cap %}<small>定员 {{ grp.cap }}</small>{% endif %}</div>

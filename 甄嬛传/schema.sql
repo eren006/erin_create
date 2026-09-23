@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
     username      TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     lethal_ready_day INTEGER NOT NULL DEFAULT 0,
+    nameless_ready_day INTEGER NOT NULL DEFAULT 0,  -- 「无名」冷却，死后重建也不重置
     created_ts    INTEGER NOT NULL
 );
 
@@ -68,6 +69,11 @@ CREATE TABLE IF NOT EXISTS consorts (
     maid_event       TEXT NOT NULL DEFAULT '',      -- 今天宫人来找的小事 JSON，结算时清空
     punish_ready_day INTEGER NOT NULL DEFAULT 0,    -- 发落宫人冷却：到这天才能再发落
     maid_punished_day INTEGER NOT NULL DEFAULT 0,   -- 自己宫里上次有宫人被发落是哪天
+    drugged_day      INTEGER NOT NULL DEFAULT 0,    -- 上次被下药得手是哪天（之后 2 天不能再被下药）
+    drug_ledger      INTEGER NOT NULL DEFAULT 0,    -- 在暗柜买药时被内务府记了几笔（查案搜宫时用）
+    hall             TEXT NOT NULL DEFAULT '',      -- 住在 palace 的哪一间：main 正殿 / east 东配殿 / west 西配殿 / back 后殿；空=没有住处（冷宫、已故）
+    housing_waiting   TEXT NOT NULL DEFAULT '',      -- main/side：已通知等候安置，腾房后清空
+    discipline_ready_day INTEGER NOT NULL DEFAULT 0, -- 主位管教配殿的冷却：到这天才能再罚/赏
 
     aggression       REAL NOT NULL DEFAULT 0,       -- 仅 NPC：每晚出手概率
     intro            TEXT NOT NULL DEFAULT '',
@@ -93,6 +99,8 @@ CREATE TABLE IF NOT EXISTS intrigues (
     method       TEXT NOT NULL,
     silver_paid  INTEGER NOT NULL DEFAULT 0,
     item_used    TEXT NOT NULL DEFAULT '',
+    drug         TEXT NOT NULL DEFAULT '',          -- 下药：实际下的是哪种药（用「无名」时是出手时选的那种）
+    agent_maid_id INTEGER NOT NULL DEFAULT 0,       -- 下药：经手的内应宫人，0=自己动手
     status       TEXT NOT NULL DEFAULT 'pending',   -- pending / done / cancelled
     result       TEXT NOT NULL DEFAULT '',          -- success / caught / fizzle / void
     created_ts   INTEGER NOT NULL
@@ -171,6 +179,48 @@ CREATE TABLE IF NOT EXISTS maids (
 );
 CREATE INDEX IF NOT EXISTS idx_maids_owner ON maids(owner_id, status);
 
+-- 收买宫人：倾心(progress) ≥ 宫人忠心时 turned=1，成了收买者的内应
+CREATE TABLE IF NOT EXISTS bribes (
+    briber_id   INTEGER NOT NULL,
+    maid_id     INTEGER NOT NULL,
+    progress    INTEGER NOT NULL DEFAULT 0,
+    turned      INTEGER NOT NULL DEFAULT 0,
+    counter     INTEGER NOT NULL DEFAULT 0,          -- 主子已知情、将计就计
+    exposed     INTEGER NOT NULL DEFAULT 0,          -- 清查时被查出，等主子定夺
+    reported    INTEGER NOT NULL DEFAULT 0,          -- 忠心的宫人把收银子的事告诉了主子，等主子定夺
+    last_day    INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (briber_id, maid_id)
+);
+
+-- 药效：发作有先后（惊梦香等被翻牌才发作、青丝引每晚扣体质、春信丹临盆才露馅）
+CREATE TABLE IF NOT EXISTS afflictions (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    consort_id    INTEGER NOT NULL,
+    drug          TEXT NOT NULL,
+    attacker_id   INTEGER NOT NULL DEFAULT 0,
+    intrigue_id   INTEGER NOT NULL DEFAULT 0,
+    start_day     INTEGER NOT NULL,
+    until_day     INTEGER NOT NULL DEFAULT 0,        -- 到这天（含）为止；0=直到被诊出
+    status        TEXT NOT NULL DEFAULT 'active'     -- active / done
+);
+CREATE INDEX IF NOT EXISTS idx_afflictions ON afflictions(consort_id, status);
+
+-- 案子：药性发作被发现时开案，下一次结算定案。v1.4 的慎刑司查案会在这张表上加嫌疑人
+CREATE TABLE IF NOT EXISTS cases (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    day           INTEGER NOT NULL,                  -- 开案那天
+    victim_id     INTEGER NOT NULL,
+    culprit_id    INTEGER NOT NULL,
+    intrigue_id   INTEGER NOT NULL DEFAULT 0,
+    drug          TEXT NOT NULL DEFAULT '',
+    agent_maid_id INTEGER NOT NULL DEFAULT 0,
+    victim_punished INTEGER NOT NULL DEFAULT 0,      -- 春信丹：受害人先被当成欺君罚了
+    status        TEXT NOT NULL DEFAULT 'open',      -- open / convicted / unsolved
+    closed_day    INTEGER NOT NULL DEFAULT 0,
+    created_ts    INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_cases_status ON cases(status, day);
+
 CREATE TABLE IF NOT EXISTS daily_counters (
     consort_id  INTEGER NOT NULL,
     key         TEXT NOT NULL,
@@ -212,3 +262,14 @@ CREATE INDEX IF NOT EXISTS idx_consorts_rank    ON consorts(rank DESC, favor DES
 CREATE INDEX IF NOT EXISTS idx_intrigues_status ON intrigues(status, day);
 CREATE INDEX IF NOT EXISTS idx_messages_owner   ON messages(consort_id, id DESC);
 CREATE INDEX IF NOT EXISTS idx_gazette_day      ON gazette(day DESC, id DESC);
+
+CREATE TABLE IF NOT EXISTS case_suspects (
+ case_id INTEGER NOT NULL, consort_id INTEGER NOT NULL,
+ suspicion INTEGER NOT NULL DEFAULT 0, pleaded INTEGER NOT NULL DEFAULT 0,
+ PRIMARY KEY(case_id,consort_id)
+);
+CREATE TABLE IF NOT EXISTS case_actions (
+ case_id INTEGER NOT NULL, consort_id INTEGER NOT NULL, day INTEGER NOT NULL,
+ action TEXT NOT NULL, target_id INTEGER NOT NULL,
+ PRIMARY KEY(case_id,consort_id,day,action)
+);

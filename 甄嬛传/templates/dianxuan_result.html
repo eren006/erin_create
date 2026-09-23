@@ -11,9 +11,9 @@
   <div class="decree" style="flex:1;min-width:240px">
     太监高声唱道：「{{ full_name(c) }}，留牌子——」<br>
     {% if title %}皇上赐封号「{{ title }}」。<br>{% endif %}
-    封为{{ dn(c) }}，赐居{{ c.palace }}。
+    封为{{ dn(c) }}，赐居{{ residence_name(c) }}。
   </div>
 </div>
 <p class="muted" style="margin-top:14px">殿选得分 {{ total }}。</p>
-<p><a class="btn" href="{{ url_for('index') }}">去{{ c.palace }}</a></p>
+<p><a class="btn" href="{{ url_for('index') }}">去{{ residence_name(c) }}</a></p>
 {% endblock %}

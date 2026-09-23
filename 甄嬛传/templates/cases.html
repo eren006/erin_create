@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}慎刑司{% endblock %}
+{% block body %}
+<h2>慎刑司</h2>
+<p>每案每天最多陈情两项，每项一次。未亲自喊冤者定案前会自动喊冤。嫌疑最高且不低于五十才会定罪。</p>
+{% for case in cases %}
+<section><h3>第 {{ case.id }} 案 · {{ case.victim }}</h3><p>第 {{ case.day }} 天开案 · {{ {'open':'待审','convicted':'已定罪','unsolved':'悬案'}[case.status] }}</p>
+<ul>{% for s in case.suspects %}<li>{{ s.name }}{% if s.suspicion is not none %}：嫌疑 {{ s.suspicion }}{% endif %}</li>{% endfor %}</ul>
+{% if case.status=='open' and case.day<=gs.day %}
+<form method="post" action="{{ url_for('case_action',case_id=case.id) }}">
+<label>陈情事项<select name="action"><option value="plead">为自己喊冤</option><option value="pay">为自己打点</option><option value="witness">替她作证（好感至少三十）</option><option value="accuse">指证她（未定罪扣德行三点）</option><option value="search">搜她的宫（受害人或姐妹）</option><option value="frame">嫁祸她（需内应）</option></select></label>
+<label>涉及的人<select name="target_id">{% for s in case.suspects %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select></label>
+<label>打点银两<input name="silver" type="number" min="10" max="200" value="100"></label><button>递交陈情</button></form>
+{% endif %}</section>
+{% else %}<p>眼下没有案子。</p>{% endfor %}
+{% endblock %}

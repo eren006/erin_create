@@ -14,6 +14,7 @@
 {% endblock %}
 {% block body %}
 <h2>六宫</h2>
+<p><a href="{{ url_for('palaces') }}">东西六宫 · 看各宫住处</a></p>
 <p class="muted">和其他小主来往。好感 40 以上可以结为姐妹（最多三位）：姐妹会让算计你的人更难得手，也能为彼此求情。</p>
 {% if not others %}<p>宫里暂时只有你一位新人。等其他秀女入宫吧。</p>{% endif %}
 {% for o in others %}

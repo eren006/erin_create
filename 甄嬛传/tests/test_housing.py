@@ -1,0 +1,313 @@
+"""住处分配、迁居、同宫牵连和页面的回归测试。"""
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+import test_lifecycle as fixtures
+
+game = fixtures.game
+
+
+class HousingTests(unittest.TestCase):
+    player = fixtures.LifecycleTests.player
+    login = fixtures.LifecycleTests.login
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        game.DB_PATH = str(Path(self.temp.name) / 'housing.db')
+        game.app.config['TESTING'] = True
+        game.init_db()
+        self.ctx = game.app.app_context()
+        self.ctx.push()
+        game.run('UPDATE game_state SET day=10')
+        self.client = game.app.test_client()
+
+    def tearDown(self):
+        self.ctx.pop()
+        self.temp.cleanup()
+
+    def housed(self, name, rank=4, palace='永寿宫', hall='east'):
+        cid = self.player(name, rank)
+        game.run('UPDATE consorts SET palace=?,hall=? WHERE id=?', (palace, hall, cid))
+        return cid
+
+    def npc(self, key):
+        return game.q('SELECT * FROM consorts WHERE npc_key=?', (key,), one=True)
+
+    def fill_mains(self):
+        ids = []
+        for name in game.PALACES:
+            if not game.q("SELECT 1 FROM consorts WHERE palace=? AND hall='main' AND status IN ('normal','confined')", (name,), one=True):
+                ids.append(self.housed('主'+str(len(ids)), 5, name, 'main'))
+        return ids
+
+    def snapshot(self):
+        return {t: [tuple(r) for r in game.q(f'SELECT * FROM {t} ORDER BY id')]
+                for t in ('consorts','messages','gazette')}
+
+    def test_initial_palaces_npcs_and_seven_free_mains(self):
+        self.assertEqual(len(game.PALACES), 13)
+        self.assertNotIn('承乾宫', game.PALACES)
+        self.assertEqual(len([p for p in game.PALACES.values() if p['group']=='东六宫']), 5)
+        self.assertEqual(self.npc('caoguiren')['hall'], 'east')
+        self.assertEqual(self.npc('xinchangzai')['hall'], 'east')
+        occupied = game.q("SELECT COUNT(*) FROM consorts WHERE hall='main'", one=True)[0]
+        self.assertEqual(len(game.PALACES)-occupied, 7)
+        self.assertFalse(game.q('SELECT * FROM messages'))
+
+    def test_entry_random_annex_in_npc_palace_and_decree(self):
+        cid = self.player('新')
+        game.run("UPDATE consorts SET status='xiunv',rank=0 WHERE id=?", (cid,))
+        self.login(cid)
+        questions = game.dianxuan_questions_for(cid)
+        # Questions are not risky; the only random.choice is the room selection.
+        data = {q['key']: next(i for i,o in enumerate(q['opts']) if not o.get('risky')) for q in questions}
+        with patch.object(game.random, 'choice', return_value=('翊坤宫','east')), patch.object(game.random, 'random', return_value=.99):
+            response = self.client.post('/dianxuan', data=data)
+        c = game.get_consort(cid)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual((c['palace'], c['hall']), ('翊坤宫','east'))
+        self.assertIn('翊坤宫·东配殿', response.get_data(as_text=True))
+        self.assertIn('赐居翊坤宫东配殿', game.q('SELECT text FROM gazette ORDER BY id DESC', one=True)[0])
+
+    def test_annex_before_back_and_full_capacity_no_crash(self):
+        for palace in game.PALACES:
+            for hall in ('east','west'):
+                if not game.q('SELECT 1 FROM consorts WHERE palace=? AND hall=?',(palace,hall),one=True):
+                    self.housed(f'{palace}{hall}',1,palace,hall)
+        room = game.empty_residence((('east','west'),('back',)))
+        self.assertEqual(room[1], 'back')
+        for palace in game.PALACES: self.housed(palace+'后',1,palace,'back')
+        cid = self.player('待安置',1)
+        game.housing_sync()
+        self.assertEqual(game.get_consort(cid)['hall'], '')
+        self.assertEqual(game.get_consort(cid)['housing_waiting'], 'side')
+        before = self.snapshot(); game.housing_sync(); self.assertEqual(before,self.snapshot())
+        with patch.object(game,'npc_schemes'), patch.object(game.random,'random',return_value=.99):
+            game.settle_day()
+        self.assertEqual(game.cur_day(),11)
+        # A new selection waits rather than overbooking a room.
+        newcomer = self.player('满宫秀女',1)
+        game.run("UPDATE consorts SET status='xiunv' WHERE id=?",(newcomer,))
+        self.login(newcomer)
+        qs=game.dianxuan_questions_for(newcomer)
+        self.client.post('/dianxuan',data={q['key']:0 for q in qs})
+        self.assertEqual(game.get_consort(newcomer)['status'],'xiunv')
+
+    def test_promote_to_main_and_idempotence(self):
+        cid = self.housed('晋封')
+        game.set_rank(cid,5)
+        self.assertEqual(game.get_consort(cid)['hall'],'main')
+        self.assertIn('为一宫主位',game.q('SELECT text FROM messages WHERE consort_id=? ORDER BY id DESC',(cid,),one=True)[0])
+        before=self.snapshot(); game.housing_sync(); game.housing_sync()
+        self.assertEqual(before,self.snapshot())
+
+    def test_wait_notice_once_then_rank_and_favor_priority(self):
+        heads=self.fill_mains()
+        low=self.housed('低位',5,'碎玉轩','east')
+        higher=self.housed('高位',6,'碎玉轩','west')
+        favored=self.housed('同位高宠',6,'碎玉轩','back')
+        game.run('UPDATE consorts SET favor=900 WHERE id=?',(low,))
+        game.run('UPDATE consorts SET favor=20 WHERE id=?',(favored,))
+        game.housing_sync()
+        count=game.q('SELECT COUNT(*) FROM messages WHERE consort_id=?',(low,),one=True)[0]
+        for _ in range(2): game.housing_sync()
+        self.assertEqual(game.q('SELECT COUNT(*) FROM messages WHERE consort_id=?',(low,),one=True)[0],count)
+        game.send_to_cold(heads[0])
+        self.assertEqual(game.get_consort(favored)['hall'],'main')
+        self.assertNotEqual(game.get_consort(higher)['hall'],'main')
+        game.die(heads[1],'测试')
+        self.assertEqual(game.get_consort(higher)['hall'],'main')
+        self.assertNotEqual(game.get_consort(low)['hall'],'main')
+
+    def test_demote_prefers_same_palace_and_then_other_annex(self):
+        cid=self.housed('降位',5,'永寿宫','main')
+        self.housed('东邻',2,'永寿宫','east')
+        game.set_rank(cid,4)
+        self.assertEqual((game.get_consort(cid)['palace'],game.get_consort(cid)['hall']),('永寿宫','west'))
+        # A filled original palace forces a move elsewhere.
+        game.run("UPDATE consorts SET rank=5,hall='main' WHERE id=?",(cid,))
+        self.housed('西邻',2,'永寿宫','west'); self.housed('后邻',2,'永寿宫','back')
+        game.set_rank(cid,4)
+        self.assertNotEqual(game.get_consort(cid)['palace'],'永寿宫')
+        self.assertIn(game.get_consort(cid)['hall'],('east','west'))
+
+    def test_cold_release_and_death_clear_hall(self):
+        cid=self.housed('冷宫',5,'永寿宫','main')
+        game.send_to_cold(cid)
+        self.assertEqual(game.get_consort(cid)['hall'],'')
+        game.release_from_cold(cid,'')
+        self.assertIn(game.get_consort(cid)['hall'],('east','west'))
+        game.die(cid,'测试')
+        self.assertEqual(game.get_consort(cid)['hall'],'')
+        game.housing_sync()
+        self.assertEqual(game.get_consort(cid)['hall'],'')
+
+    def test_admin_rank_status_edits_rehouse(self):
+        cid=self.housed('后改')
+        with self.client.session_transaction() as session: session['admin']=True
+        for rank,status,halls in [(5,'normal',('main',)),(4,'normal',('east','west','back')),(4,'cold',('',)),(4,'normal',('east','west','back'))]:
+            response=self.client.post(f'/admin/edit/{cid}',data=dict(rank=rank,status=status,favor=0,silver=500))
+            self.assertEqual(response.status_code,302)
+            self.assertIn(game.get_consort(cid)['hall'],halls)
+
+    def test_sync_repairs_legacy_duplicates_and_keeps_npc_rooms(self):
+        cid=self.housed('撞房',4,'启祥宫','east')
+        orphan=self.player('旧档',3)
+        game.run("UPDATE consorts SET palace='旧宫名',hall='unknown' WHERE id=?",(orphan,))
+        game.housing_sync()
+        self.assertEqual(self.npc('caoguiren')['hall'],'east')
+        self.assertNotEqual((game.get_consort(cid)['palace'],game.get_consort(cid)['hall']),('启祥宫','east'))
+        self.assertTrue(game.has_residence(game.get_consort(orphan)))
+        rooms=[(c['palace'],c['hall']) for c in game.q("SELECT * FROM consorts WHERE hall!=''")]
+        self.assertEqual(len(rooms),len(set(rooms)))
+        before=self.snapshot(); game.init_db(); game.housing_sync()
+        self.assertEqual(before,self.snapshot())
+
+    def test_visit_player_or_npc_main_and_exclusions(self):
+        head=self.housed('主位',5,'永寿宫','main')
+        side=self.housed('同宫',2,'永寿宫','east')
+        other=self.housed('别宫',2,'碎玉轩','east')
+        game.run("UPDATE consorts SET personality='gentle' WHERE id=?",(side,))
+        with patch.object(game.random,'random',return_value=0): game.housing_visit(game.get_consort(head))
+        self.assertEqual(game.get_consort(side)['favor'],10)
+        self.assertEqual(game.get_consort(other)['favor'],0)
+        for changes in ("health=24", "health=70,poisoned_day=9", "poisoned_day=0,pregnant_since=9", "pregnant_since=0,status='confined'"):
+            game.run(f'UPDATE consorts SET {changes} WHERE id=?',(side,))
+            with patch.object(game.random,'random',return_value=0): game.housing_visit(game.get_consort(head))
+        self.assertEqual(game.get_consort(side)['favor'],10)
+        game.run("UPDATE consorts SET status='normal',palace='翊坤宫' WHERE id=?",(side,))
+        with patch.object(game.random,'random',return_value=0): game.housing_visit(self.npc('huafei'))
+        self.assertEqual(game.get_consort(side)['favor'],20)
+        # A consort in an annex receiving the emperor brings no shared bonus.
+        with patch.object(game.random,'random',return_value=0): game.housing_visit(game.get_consort(side))
+        self.assertEqual(game.get_consort(side)['favor'],20)
+
+    def test_reports_reuse_daily_counters_without_private_contents(self):
+        head=self.housed('主位',5,'永寿宫','main')
+        side=self.housed('写信',2,'永寿宫','east')
+        quiet=self.housed('静居',2,'永寿宫','west')
+        elsewhere=self.housed('别宫',2,'碎玉轩','east')
+        game.daily_inc(side,'letter',2); game.daily_inc(side,'study'); game.daily_inc(side,'bribe:1')
+        game.daily_inc(elsewhere,'garden')
+        game.housing_reports(10)
+        messages=game.q('SELECT * FROM messages WHERE consort_id=?',(head,))
+        self.assertEqual(len(messages),1)
+        text=messages[0]['text']
+        self.assertIn('写了信 2 回',text); self.assertIn('练了才艺',text)
+        self.assertIn('静居',text); self.assertIn('一步都没出宫门',text)
+        self.assertNotIn('别宫',text); self.assertNotIn('bribe',text)
+        self.assertFalse(game.q('SELECT m.* FROM messages m JOIN consorts c ON c.id=m.consort_id WHERE c.user_id IS NULL'))
+
+    def test_same_palace_frame_bonus_only(self):
+        a=self.housed('攻',4,'永寿宫','east'); b=self.housed('守',4,'永寿宫','west')
+        ca,cb=game.get_consort(a),game.get_consort(b)
+        same=game.intrigue_success_p(ca,cb,game.INTRIGUES['frame'])
+        rumor=game.intrigue_success_p(ca,cb,game.INTRIGUES['rumor'])
+        game.run("UPDATE consorts SET palace='碎玉轩' WHERE id=?",(b,))
+        self.assertAlmostEqual(same-game.intrigue_success_p(ca,game.get_consort(b),game.INTRIGUES['frame']),.10)
+        self.assertEqual(rumor,game.intrigue_success_p(ca,game.get_consort(b),game.INTRIGUES['rumor']))
+
+    def test_same_palace_self_drug_has_no_penalty(self):
+        a=self.housed('下药',4,'永寿宫','east'); b=self.housed('受药',4,'永寿宫','west')
+        self.login(a)
+        game.run("UPDATE consorts SET scheme=50,trust=0,virtue=50 WHERE id IN (?,?)",(a,b))
+        for palace,expected in [('碎玉轩','caught'),('永寿宫','success')]:
+            game.run('UPDATE consorts SET palace=?,drugged_day=0 WHERE id=?',(palace,b))
+            game.run("DELETE FROM daily_counters WHERE key='intrigue'")
+            game.inv_add(a,'yanzhi')
+            self.client.post('/intrigue/submit',data=dict(method='drug',drug='yanzhi',target_id=b))
+            it=game.q('SELECT * FROM intrigues ORDER BY id DESC',one=True)
+            with patch.object(game.random,'random',return_value=.25):
+                self.assertEqual(game.resolve_drug(it)[0],expected)
+
+    def test_discipline_shared_cooldown_pregnancy_and_authorization(self):
+        head=self.housed('主位',5,'永寿宫','main'); side=self.housed('配殿',2,'永寿宫','east')
+        outsider=self.housed('别宫',2,'碎玉轩','east')
+        self.login(head)
+        post=lambda cid,action: self.client.post(f'/housing/discipline/{cid}',data={'action':action})
+        for tid in (head,outsider,self.npc('caoguiren')['id'],999999): post(tid,'kneel')
+        self.assertEqual(game.get_consort(head)['discipline_ready_day'],0)
+        game.run('UPDATE consorts SET pregnant_since=9 WHERE id=?',(side,))
+        post(side,'kneel')
+        self.assertEqual(game.get_consort(head)['discipline_ready_day'],0)
+        post(side,'reward'); post(side,'kneel')
+        self.assertEqual(game.get_consort(head)['discipline_ready_day'],13)
+        self.assertEqual(game.relation(head,side)['affinity'],5)
+        self.assertEqual(game.get_consort(side)['health'],70)
+        game.run('UPDATE game_state SET day=13')
+        game.run("UPDATE consorts SET pregnant_since=0,status='confined' WHERE id=?",(side,))
+        post(side,'kneel'); post(side,'reward')
+        self.assertEqual(game.get_consort(side)['health'],62)
+        self.assertEqual(game.relation(head,side)['affinity'],0)
+        self.assertEqual(game.get_consort(head)['discipline_ready_day'],16)
+        self.assertIn(game.display_name(game.get_consort(head)),game.q('SELECT text FROM messages WHERE consort_id=? ORDER BY id DESC',(side,),one=True)[0])
+        self.login(side); post(head,'reward')
+        self.assertEqual(game.get_consort(side)['discipline_ready_day'],0)
+
+    def test_npc_discipline_chance_cooldown_and_target_guards(self):
+        punished=self.housed('受罚',2,'翊坤宫','east')
+        pregnant=self.housed('有孕',2,'翊坤宫','west')
+        liked=self.housed('相好',2,'翊坤宫','back')
+        rewarded=self.housed('受赏',2,'景仁宫','east')
+        game.run('UPDATE consorts SET pregnant_since=9 WHERE id=?',(pregnant,))
+        game.add_affinity(self.npc('huafei')['id'],liked,1)
+        with patch.object(game.random,'random',return_value=.25):
+            game.npc_housing_discipline(10); game.npc_housing_discipline(11)
+        self.assertEqual(game.get_consort(punished)['health'],62)
+        self.assertEqual(game.get_consort(pregnant)['health'],70)
+        self.assertEqual(game.get_consort(liked)['health'],70)
+        self.assertIsNone(game.relation(self.npc('huanghou')['id'],rewarded))
+        with patch.object(game.random,'random',return_value=.19): game.npc_housing_discipline(13)
+        self.assertEqual(game.get_consort(punished)['health'],54)
+        self.assertEqual(game.relation(self.npc('huanghou')['id'],rewarded)['affinity'],5)
+        self.assertFalse(game.q('SELECT m.* FROM messages m JOIN consorts c ON c.id=m.consort_id WHERE c.user_id IS NULL'))
+
+    def test_night_sync_and_atomic_rollback(self):
+        cid=self.housed('待晋',4,'永寿宫','east')
+        game.run('UPDATE consorts SET favor=320,virtue=50 WHERE id=?',(cid,))
+        before=self.snapshot()
+        with patch.object(game,'issue_edicts',side_effect=RuntimeError('rollback')):
+            with self.assertRaises(RuntimeError): game.settle_day()
+        self.assertEqual(before,self.snapshot())
+        with patch.object(game,'npc_schemes'),patch.object(game.random,'random',return_value=.99): game.settle_day()
+        self.assertEqual(game.get_consort(cid)['rank'],5)
+        self.assertEqual(game.get_consort(cid)['hall'],'main')
+
+    def test_pages_map_and_cooldown_buttons(self):
+        head=self.housed('主位',5,'永寿宫','main'); side=self.housed('配殿',2,'永寿宫','east')
+        self.login(head)
+        game.run('UPDATE consorts SET discipline_ready_day=13 WHERE id=?',(head,))
+        for path in ('/palaces','/place/home','/','/social'):
+            response=self.client.get(path)
+            self.assertEqual(response.status_code,200,path)
+        home=self.client.get('/place/home').get_data(as_text=True)
+        self.assertIn('永寿宫·正殿',home); self.assertIn('第 13 天',home)
+        self.assertIn('value="kneel" class="plain" disabled',home)
+        self.login(side)
+        self.assertIn('永寿宫·东配殿',self.client.get('/').get_data(as_text=True))
+        self.assertNotIn('value="kneel"',self.client.get('/place/home').get_data(as_text=True))
+        directory=self.client.get('/palaces').get_data(as_text=True)
+        self.assertIn('空着',directory); self.assertIn('东六宫',directory); self.assertIn('独院',directory)
+
+    def test_old_schema_adds_housing_fields(self):
+        # Use q/run just as runtime code does; rebuild the old shape in a separate database.
+        old = str(Path(self.temp.name)/'older.db')
+        original=game.DB_PATH
+        game.DB_PATH=old
+        with game.app.app_context():
+            schema=(fixtures.ROOT/'schema.sql').read_text()
+            fields=('hall ', 'discipline_ready_day ', 'housing_waiting ')
+            schema='\n'.join(line for line in schema.splitlines() if not line.strip().startswith(fields))
+            for statement in schema.split(';'):
+                # Existing schema comments contain semicolons: use the known table DDL only.
+                pass
+        # sqlite3 is used solely to construct the fixture, matching MigrationTests.
+        import sqlite3
+        with sqlite3.connect(old) as db: db.executescript(schema)
+        game.init_db(); game.init_db()
+        with game.app.app_context():
+            fields={r['name'] for r in game.q('PRAGMA table_info(consorts)')}
+            self.assertTrue({'hall','discipline_ready_day','housing_waiting'}<=fields)
+            self.assertEqual(game.q("SELECT hall FROM consorts WHERE npc_key='huanghou'",one=True)[0],'main')
+        game.DB_PATH=original

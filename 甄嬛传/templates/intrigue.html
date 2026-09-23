@@ -7,10 +7,11 @@
 .methods label:has(input:checked){border-color:var(--zhu);box-shadow:inset 3px 0 0 var(--zhu)}
 .methods label.off{opacity:.5}
 .methods b{font-weight:normal;font-family:var(--kai);font-size:18px}
+.methods{gap:12px;margin:16px 0 20px}.methods label{padding:16px 18px}.methods label:hover{border-color:var(--jin)}.methods label:focus-within{outline:2px solid var(--focus);outline-offset:3px}.methods label.off{opacity:1;color:var(--muted);background:var(--cold);border-style:dashed}
 </style>
 {% endblock %}
 {% block body %}
-<h2>使计</h2>
+<h2>使计</h2><p><a href="{{ url_for('drug_cases') }}">去慎刑司查案</a>　<a href="{{ url_for('agents_page') }}">打点宫人</a></p>
 <p class="muted">一天只能谋划一件事，今夜翻牌子前统一见分晓。对方心计越高、有眼线、有姐妹护着，越难得手；失手还可能被当场拿住。</p>
 
 {% if c.status != 'normal' %}
@@ -30,6 +31,12 @@
       <b>{{ m.name }}</b>　<span class="muted">精力 {{ m.energy }}{% if m.silver %}　银子 {{ m.silver }}{% endif %}{% if m.get('item') %}　需{{ ITEMS[m.item].name }}（有 {{ inventory.get(m.item,0) }}）{% endif %}{% if m.min_rank > 1 %}　{{ RANK_NAMES[m.min_rank] }}以上{% endif %}{% if not m.npc_ok %}　只能对玩家{% endif %}</span><br>{{ m.desc }}</label>
   {% endfor %}
   </div>
+  <fieldset><legend>下药时选用</legend>
+  <label for="drug">手里的药</label><select id="drug" name="drug"><option value="">请选择</option>
+  {% for k, d in DRUGS.items() %}{% if inventory.get(k,0) %}<option value="{{ k }}">{{ d.name }} ×{{ inventory[k] }}</option>{% endif %}{% endfor %}</select>
+  <label for="effect">用「无名」时的药性</label><select id="effect" name="effect">{% for k,d in DRUGS.items() %}{% if k not in ('wuming','lihun') %}<option value="{{ k }}">{{ d.name }} — {{ d.desc }}</option>{% endif %}{% endfor %}</select>
+  <label for="agent">经手人</label><select id="agent" name="agent_maid_id"><option value="0">自己动手（成算 -15%，失手必被察觉）</option>{% for m in agents %}<option value="{{ m.id }}">{{ m.name }}（{{ dn(get_consort(m.owner_id)) }}宫里）</option>{% endfor %}</select>
+  <p class="muted">新人入宫五天内不能下药，得手后两天内不能再下。撤回退药，账号冷却不退。</p></fieldset>
   <button>安排下去</button>
 </form>
 {% endif %}
@@ -45,7 +52,7 @@
 <div class="scroll"><table>
   <tr><th>日</th><th>对象</th><th>计策</th><th>结果</th><th></th></tr>
   {% for it in mine %}{% set t = get_consort(it.target_id) %}
-  <tr><td>{{ it.day }}</td><td>{{ dn(t) }}</td><td>{{ INTRIGUES[it.method].name }}</td>
+  <tr><td>{{ it.day }}</td><td>{{ dn(t) }}</td><td>{{ intrigue_label(it) }}</td>
     <td>{{ {'pending':'等今夜','cancelled':'已撤回'}.get(it.status) or {'success':'成了','caught':'败露','fizzle':'没成','void':'落空'}.get(it.result, '') }}</td>
     <td>{% if it.status == 'pending' %}<form method="post" action="{{ url_for('intrigue_cancel', iid=it.id) }}"><button class="plain">撤回</button></form>{% endif %}</td></tr>
   {% endfor %}

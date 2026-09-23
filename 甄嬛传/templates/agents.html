@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block title %}打点宫人{% endblock %}
+{% block body %}
+<h2>打点宫人</h2><p>每次三十两、一次差使；同一宫人每日一次，倾心达到忠心后成为内应，最多三个。</p>
+{% for m in targets %}{% set b=bribes.get(m.id) %}
+<p>{{ dn(m) }}宫里的{{ m.name }} · 倾心 {{ b.progress if b else 0 }}{% if b and b.turned %} · 已是内应{% endif %}</p>
+<form method="post" action="{{ url_for('agent_action') }}"><input type="hidden" name="maid_id" value="{{ m.id }}"><button name="action" value="bribe">打点她（30 两）</button></form>
+{% else %}<p>眼下没有可以打点的宫人。</p>{% endfor %}
+<h3>清查本宫</h3><form method="post" action="{{ url_for('agent_action') }}"><button name="action" value="inspect">派宫人清查（一次差使）</button></form>
+{% for m in found %}<p>{{ m.name }}被查出受人收买。</p><form method="post" action="{{ url_for('agent_action') }}"><input type="hidden" name="maid_id" value="{{ m.maid_id }}"><button name="action" value="dismiss">打发出去</button><button name="action" value="counter">将计就计</button></form>{% endfor %}
+<p><a href="{{ url_for('intrigue') }}">回使计</a></p>
+{% endblock %}

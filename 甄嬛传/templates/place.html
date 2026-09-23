@@ -9,6 +9,7 @@
 .act .cost{font-size:13px;color:var(--muted)}
 .act form{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .lede{font-size:17px;margin:4px 0 6px}
+.act{margin:12px 0;padding:18px;background:var(--paper);border:1px solid var(--line);border-left:3px solid var(--jin)}.act .what{min-width:min(200px,100%)}.act form{max-width:100%;gap:8px}.lede{margin-bottom:12px}@media(max-width:520px){.act{padding:16px}.act form{width:100%}}
 </style>
 {% endblock %}
 {% block body %}
@@ -28,6 +29,26 @@
 {% endif %}
 {% if maid_info %}
 <p class="muted"><a href="{{ url_for('maids_page') }}">宫人 {{ maid_info.n }}/{{ maid_info.quota }}</a>{% if c.status != 'cold' and maid_info.n %}　今天还能差遣 {{ maid_info.errands }} 人{% endif %}</p>
+{% endif %}
+
+{% if request.view_args.key == 'home' %}
+<section aria-label="同宫">
+<h3>同宫</h3>
+<p><a href="{{ url_for('palaces') }}">东西六宫 · 看各宫住处</a></p>
+{% if is_head and c.discipline_ready_day > gs.day %}<p class="muted">前番话才传下，第 {{ c.discipline_ready_day }} 天再议赏罚。</p>{% endif %}
+{% for room in household %}{% set person = room.occupant %}
+<div class="act">
+  <div class="what">{{ room.name }} · {% if person %}<span class="{{ 'muted' if person.npc_key }}">{{ dn(person) }}{{ '（本宫）' if person.id == c.id }}{{ '（禁足）' if person.status == 'confined' }}</span>{% else %}<span class="muted">空着</span>{% endif %}</div>
+  {% if is_head and person and person.user_id and room.key != 'main' %}
+  <form method="post" action="{{ url_for('housing_discipline', tid=person.id) }}">
+    <button name="action" value="kneel" class="plain" {{ 'disabled' if c.discipline_ready_day > gs.day or person.pregnant_since }}>罚跪</button>
+    <button name="action" value="reward" class="plain" {{ 'disabled' if c.discipline_ready_day > gs.day }}>赏</button>
+    {% if person.pregnant_since %}<span class="muted">有孕，免罚跪</span>{% endif %}
+  </form>
+  {% endif %}
+</div>
+{% else %}<p class="muted">眼下没有同宫的人。</p>{% endfor %}
+</section>
 {% endif %}
 
 {% if not acts %}

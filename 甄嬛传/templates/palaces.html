@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block title %}东西六宫{% endblock %}
+{% block body %}
+<p><a href="{{ url_for('place', key='home') }}">回本宫</a>　<a href="{{ url_for('social') }}">去六宫走走</a></p>
+<h2>东西六宫</h2>
+<p class="muted">重门深院，各有各的灯火。承乾宫暂未启用。</p>
+{% for group, palaces in groups %}
+<section aria-label="{{ group }}"><h3>{{ group }}</h3>
+{% for palace in palaces %}
+<article class="sheet" style="margin:14px 0">
+<h4>{{ palace.name }}</h4><p>{{ palace.desc }}</p>
+<dl>{% for room in palace.rooms %}{% set c = room.occupant %}
+<dt>{{ room.name }}</dt><dd>{% if c %}<span class="{{ 'muted' if c.npc_key }}">{{ dn(c) }}{{ '（禁足）' if c.status == 'confined' }}</span>{% else %}<span class="muted">空着</span>{% endif %}</dd>
+{% endfor %}</dl>
+</article>
+{% endfor %}</section>
+{% endfor %}
+{% endblock %}

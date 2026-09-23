@@ -22,4 +22,8 @@
 </table>
 </div>
 <p class="muted" style="margin-top:12px">玉如意和其他物件可以在「六宫」送给别人。</p>
+{% if c.rank >= 2 %}<h3>暗柜</h3><p class="muted">每人每天三种，每种一份。私藏药材可能被搜出；买药也可能被内务府记账。</p>
+{% for k in stock %}{% set d=DRUGS[k] %}<p><b>{{ d.name }}</b> · {{ d.price }} 两 · {{ RANK_NAMES[d.rank] }}以上<br>{{ d.desc }}</p>
+<form method="post" action="{{ url_for('buy_drug', key=k) }}"><button {{ 'disabled' if c.rank<d.rank or c.silver<d.price or c.status=='cold' or daily_count(c.id,'cabinet:' ~ k) }}>买一份{{ d.name }}</button></form>{% endfor %}
+<h3>收着的药</h3>{% for k,d in DRUGS.items() %}{% if inv.get(k,0) %}<p>{{ d.name }} ×{{ inv[k] }}：{{ d.desc }}</p>{% endif %}{% endfor %}<a href="{{ url_for('intrigue') }}">去使计</a>{% endif %}
 {% endblock %}
