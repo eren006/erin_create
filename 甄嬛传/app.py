@@ -2979,6 +2979,7 @@ def recap_seen():
 
 LETTER_DAILY_MAX = 5
 LETTER_MAX_LEN = 300
+LETTER_ATTACH_SHIELD = 5   # 入宫不满 5 天不能附银子、道具、雅趣作品，防小号一进宫就把家底转给大号
 
 @app.route('/letters')
 @login_required
@@ -2998,6 +2999,7 @@ def letters():
     return render_template('letters.html', c=c, inbox=inbox, sent=sent, others=others, inv=inv, held=held, to=to,
                            hobby_item=hobby_item, get_hobby_item=lambda iid: q('SELECT * FROM hobby_items WHERE id=?', (iid,), one=True),
                            get_consort=get_consort, left=LETTER_DAILY_MAX - daily_count(c['id'], 'letter'),
+                           can_attach=cur_day() - c['entered_day'] >= LETTER_ATTACH_SHIELD, LETTER_ATTACH_SHIELD=LETTER_ATTACH_SHIELD,
                            LETTER_MAX_LEN=LETTER_MAX_LEN, hobby_item_desc=hobby_item_desc)
 
 @app.route('/letters/send', methods=['POST'])
@@ -3024,6 +3026,8 @@ def letter_send():
     elif item and (item not in ITEMS or inv_qty(c['id'], item) < 1): err = '你没有这件东西。'
     elif hobby_item_id and (not hitem or hitem['holder_id'] != c['id']): err = '你手里没有这件雅趣作品。'
     elif item and hobby_item_id: err = '一次只能附一样东西。'
+    elif (amt or item or hobby_item_id) and cur_day() - c['entered_day'] < LETTER_ATTACH_SHIELD:
+        err = f'入宫不满 {LETTER_ATTACH_SHIELD} 天，信里还带不了银子和东西。'
     elif c['status'] == 'cold' and (amt or item or hobby_item_id): err = '冷宫里只能托人带句话，送不出东西。'
     if err:
         flash(err, 'bad')
@@ -3438,7 +3442,10 @@ def agent_action():
     except ValueError: mid=0
     m=get_maid(mid)
     err=None
-    if c['status']!='normal' or is_sick(c): err='现在顾不上这件事。'
+    # 差使是派宫人去办的事：本人卧病不耽误宫人跑腿；禁足只出不了宫门，清查自己宫里不受影响，
+    # 但收买要伸手到别人宫里，禁足时办不到（见设计文档九点十节）
+    if c['status'] not in ('normal','confined'): err='现在顾不上这件事。'
+    elif action=='bribe' and c['status']!='normal': err='禁足在身，宫人出不了门，伸不到别人宫里去。'
     elif action=='bribe':
         owner=get_consort(m['owner_id']) if m else None
         if not m or m['status']!='active' or m['owner_id']==c['id'] or not owner['user_id'] or owner['status'] in ('dead','cold','xiunv') or day-owner['entered_day']<5: err='不能收买这名宫人。'

@@ -36,7 +36,7 @@
   </select>
   <label for="body">写些什么（最多 {{ LETTER_MAX_LEN }} 字）</label>
   <textarea id="body" name="body" maxlength="{{ LETTER_MAX_LEN }}" required></textarea>
-  {% if c.status != 'cold' %}
+  {% if c.status != 'cold' and can_attach %}
   <div class="row">
     <label for="silver" style="margin:0">附银子</label><input id="silver" type="number" name="silver" min="0" max="{{ c.silver }}" value="0" style="width:90px">
     <label for="item" style="margin:0">附东西</label>
@@ -48,6 +48,8 @@
     </select>
     {% endif %}
   </div>
+  {% elif c.status != 'cold' %}
+  <p class="muted">入宫不满 {{ LETTER_ATTACH_SHIELD }} 天，信里还带不了银子和东西。</p>
   {% endif %}
   <div class="row"><button {{ 'disabled' if left <= 0 or not others }}>送出去</button>
     <span class="muted">今天还能送 {{ left }} 封。每天给同一个人的第一封信好感 +2，附玉如意再 +15，附自己做的雅趣作品再 +10。</span></div>
