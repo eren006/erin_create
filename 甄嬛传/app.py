@@ -2263,6 +2263,67 @@ def heir_age_days(h, day=None):
     return (day or cur_day()) - h['born_day']
 
 
+def heir_age_years(h, day=None):
+    return heir_age_days(h, day) // 2
+
+
+# ── 皇上考校 / 随驾秋狝 ──────────────────────────────────────────────────────
+
+HEIR_EXAM_INTERVAL = 7
+HEIR_EXAM_MIN_AGE, HEIR_EXAM_MAX_AGE = 6, 15
+HEIR_HUNT_INTERVAL = 14
+HEIR_HUNT_MIN_AGE = 12
+HEIR_HUNT_ROLL = 20
+HEIR_HUNT_REWARD = 15
+
+# 每 7 天随机抽一位 6~15 岁的皇嗣，给抚养人一段场景替他应对。题目判定用孩子的属性，不是抚养人自己的——
+# 跟别的场景不一样，scene() 里专门判了 sc['key']=='exam' 这一支
+EXAM_PROMPTS = [
+    dict(topic='学问', ask='「听闻{h}近来读书用心，都读了些什么？」', opts=[
+        dict(text='让他自己从容应答', stat='study', dc=60, win=dict(heir_favor=8), win_text='他答得条理分明，皇上频频点头。',
+             lose=dict(), lose_text='他答得磕磕绊绊，皇上没说什么，只是叹了口气。'),
+        dict(text='在一旁替他圆场', stat='study', dc=45, win=dict(heir_favor=5), win_text='你帮着搭了两句话，皇上倒也满意。',
+             lose=dict(), lose_text='圆得不太漂亮，皇上不置可否。')]),
+    dict(topic='骑射', ask='「{h}这几日骑射练得怎么样了，可敢当场演武？」', opts=[
+        dict(text='让他上场演武', stat='riding', dc=60, win=dict(heir_favor=8), win_text='一箭中的，皇上抚掌称好。',
+             lose=dict(), lose_text='箭偏了准头，皇上没说什么。'),
+        dict(text='说他还年幼，容后再练', stat='riding', dc=45, win=dict(heir_favor=5), win_text='皇上倒也没多说什么，点了点头。',
+             lose=dict(), lose_text='皇上似乎不太满意，只是没当场说破。')]),
+    dict(topic='孝道', ask='「{h}平日待人接物，学得怎么样了？」', opts=[
+        dict(text='如实讲他这些日子的长进', stat='virtue', dc=60, win=dict(heir_favor=10), win_text='皇上听得高兴，连声说好。',
+             lose=dict(), lose_text='皇上听着，没说什么。'),
+        dict(text='谦虚几句，说还要多教导', stat='virtue', dc=45, win=dict(heir_favor=6), win_text='皇上说你教子有方。',
+             lose=dict(), lose_text='皇上「嗯」了一声，不甚在意。')]),
+]
+
+
+def heir_exam_tick(day):
+    if day % HEIR_EXAM_INTERVAL: return
+    eligible = [h for h in q("SELECT * FROM heirs WHERE caretaker_id!=0")
+                if HEIR_EXAM_MIN_AGE <= heir_age_years(h, day) <= HEIR_EXAM_MAX_AGE]
+    if not eligible: return
+    h = random.choice(eligible)
+    caretaker = get_consort(h['caretaker_id'])
+    if not caretaker['user_id'] or caretaker['status'] != 'normal' or get_scene(caretaker):
+        return   # 抚养人是 NPC、不在能应对的状态、或今晚已经有别的场景在排队，这次考校就错过了
+    prompt_idx = random.randrange(len(EXAM_PROMPTS))
+    start_scene(caretaker['id'], 'exam', heir=h['id'], prompt=prompt_idx)
+    gazette(f"皇上考校{heir_label(h)}的功课。", 'news')
+
+
+def heir_hunt_tick(day):
+    if day % HEIR_HUNT_INTERVAL: return
+    eligible = [h for h in q("SELECT * FROM heirs WHERE gender='皇子'") if heir_age_years(h, day) >= HEIR_HUNT_MIN_AGE]
+    if not eligible: return
+    winner = max(eligible, key=lambda h: h['riding'] + random.randint(0, HEIR_HUNT_ROLL))
+    run('UPDATE heirs SET favor=favor+? WHERE id=?', (HEIR_HUNT_REWARD, winner['id']))
+    label = heir_label(winner)
+    gazette(f"随驾秋狝，{label}猎获最多，圣眷 +{HEIR_HUNT_REWARD}。", 'news')
+    caretaker = get_consort(winner['caretaker_id'])
+    if caretaker['user_id']:
+        notify(caretaker['id'], f"{label}随驾秋狝，猎获最多，圣眷 +{HEIR_HUNT_REWARD}。", 'good')
+
+
 def add_heir_affinity(hid, which, delta):
     col = 'mother_affinity' if which == 'mother' else 'caretaker_affinity'
     h = q('SELECT * FROM heirs WHERE id=?', (hid,), one=True)
@@ -2773,8 +2834,10 @@ def _settle_night():
         notify(c['id'], f"你诞下了{label}。{extra}", 'good')
         night_mark(c['id'], 'birth', label=label, son=gender == '皇子')
 
-    # 3b. 皇嗣周岁抓周（贵人以下的生母，这天孩子按祖制改指给别人抚养）
+    # 3b. 皇嗣周岁抓周（贵人以下的生母，这天孩子按祖制改指给别人抚养）、皇上考校、随驾秋狝
     heir_growth_tick(day)
+    heir_exam_tick(day)
+    heir_hunt_tick(day)
 
     # 4. 晋封（按圣宠高低排队抢名额，每晚每人最多晋一级）
     for c in q("""SELECT * FROM consorts WHERE user_id IS NOT NULL AND status IN ('normal','confined')
@@ -3183,9 +3246,8 @@ def old_age_tick(day):
                 if c['trust'] >= 70 and c['rank'] < PLAYER_MAX_RANK:
                     set_rank(c['id'], c['rank'] + 1, reason_day=day)
                 elif c['trust'] >= 40:
-                    shi = random.choice(SHI_WORDS)
-                    if shi not in c['title']:
-                        run("UPDATE consorts SET title=? WHERE id=?", (c['title'] + shi, c['id']))
+                    pool = [w for w in SHI_WORDS if w not in c['title']] or SHI_WORDS
+                    run("UPDATE consorts SET title=? WHERE id=?", (c['title'] + random.choice(pool), c['id']))
             die(c['id'], '寿终')
         elif c['user_id'] and c['age_months'] >= OLD_AGE_REMINDER_START and c['age_months'] % OLD_AGE_REMINDER_STEP == 0:
             notify(c['id'], '许嬷嬷：「近来总觉得精神短了，小主往后多静养些。」')
@@ -3361,6 +3423,11 @@ def scene_view(c, sc):
         if sc.get('bed') and plead_candidates(c):
             opts.append(PLEAD_IN_BED)
         return title, lead + prompt['ask'], opts
+    if sc['key'] == 'exam':
+        prompt = EXAM_PROMPTS[sc['prompt'] % len(EXAM_PROMPTS)]
+        h = q('SELECT * FROM heirs WHERE id=?', (sc['heir'],), one=True)
+        label = heir_label(h) if h else '孩子'
+        return f"考校·{prompt['topic']}", '苏培盛来传话，皇上要考校' + label + '的功课。' + prompt['ask'].format(h=label), prompt['opts']
     cfg = SCENES[sc['key']]
     return cfg['place'], cfg['text'], cfg['opts']
 
@@ -3387,6 +3454,7 @@ def apply_effects(cid, eff):
     return '，'.join(parts)
 
 CHECK_NAMES = dict(STAT_NAMES, trust='信任')
+HEIR_CHECK_NAMES = dict(study='孩子的学问', riding='孩子的骑射', virtue='孩子的品行')
 
 @app.route('/scene', methods=['GET', 'POST'])
 @login_required
@@ -3398,6 +3466,8 @@ def scene():
     if not sc:
         return redirect(url_for('index'))
     title, text, opts = scene_view(c, sc)
+    is_exam = sc['key'] == 'exam'
+    heir = q('SELECT * FROM heirs WHERE id=?', (sc['heir'],), one=True) if is_exam else None
     if request.method == 'POST':
         try:
             idx = int(request.form.get('opt', ''))
@@ -3415,16 +3485,30 @@ def scene():
                 flash('选一位要替她求情的人。', 'bad')
                 return redirect(url_for('scene'))
         run("UPDATE consorts SET pending_scene='' WHERE id=?", (c['id'],))
-        ok = opt['stat'] is None or c[opt['stat']] + random.randint(0, SCENE_ROLL) >= opt['dc']
-        outcome = opt['win_text'] if ok else opt['lose_text']
-        summary = apply_effects(c['id'], opt['win'] if ok else opt.get('lose', {}))
-        if target and ok:
-            cut = shorten_punishment(c, target)
-            summary = '，'.join(x for x in (summary, f"{full_name(target)}的日子缩短 {cut} 天") if x)
+        if is_exam and not heir:   # 考校场景等到玩家来应对时，孩子已经不在了（比如被讨回、抱走）
+            flash('这事已经过去了。', 'info')
+            return redirect(url_for('index'))
+        if is_exam:
+            ok = heir[opt['stat']] + random.randint(0, SCENE_ROLL) >= opt['dc']
+            outcome = opt['win_text'] if ok else opt['lose_text']
+            gain = (opt['win'] if ok else opt.get('lose', {})).get('heir_favor', 0)
+            if gain:
+                run('UPDATE heirs SET favor=favor+? WHERE id=?', (gain, heir['id']))
+            summary = f"{heir_label(heir)}圣眷 {gain:+d}" if gain else ''
+        else:
+            ok = opt['stat'] is None or c[opt['stat']] + random.randint(0, SCENE_ROLL) >= opt['dc']
+            outcome = opt['win_text'] if ok else opt['lose_text']
+            summary = apply_effects(c['id'], opt['win'] if ok else opt.get('lose', {}))
+            if target and ok:
+                cut = shorten_punishment(c, target)
+                summary = '，'.join(x for x in (summary, f"{full_name(target)}的日子缩短 {cut} 天") if x)
         return render_template('scene.html', c=get_consort(c['id']), title=title, text=text, done=True,
                                chosen=opt['text'], ok=ok, outcome=outcome, summary=summary)
-    return render_template('scene.html', c=c, title=title, text=text, opts=opts, done=False, CHECK_NAMES=CHECK_NAMES,
-                           plead_targets=plead_candidates(c) if any(o.get('plead') for o in opts) else [])
+    check_names = HEIR_CHECK_NAMES if is_exam else CHECK_NAMES
+    mine_line = (f"{heir_label(heir)}的学问 {heir['study']}、骑射 {heir['riding']}、品行 {heir['virtue']}。"
+                "标着「看某项」的选项，这一项加上运气过线就能成。") if is_exam and heir else None
+    return render_template('scene.html', c=c, title=title, text=text, opts=opts, done=False, CHECK_NAMES=check_names,
+                           mine_line=mine_line, plead_targets=plead_candidates(c) if any(o.get('plead') for o in opts) else [])
 
 # ── 昨夜宫中 ───────────────────────────────────────────────────────────────────
 

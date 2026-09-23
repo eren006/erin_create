@@ -25,7 +25,7 @@
 <h2>{{ title }}</h2>
 <p class="scene-text">{{ text }}</p>
 {% if not done %}
-<p class="mine">你的容貌 {{ c.appearance }}、才艺 {{ c.talent }}、心计 {{ c.scheme }}、德行 {{ c.virtue }}、信任 {{ c.trust }}。标着「看某项」的选项，这一项加上运气过线就能成。</p>
+<p class="mine">{{ mine_line or ('你的容貌 ' ~ c.appearance ~ '、才艺 ' ~ c.talent ~ '、心计 ' ~ c.scheme ~ '、德行 ' ~ c.virtue ~ '、信任 ' ~ c.trust ~ '。标着「看某项」的选项，这一项加上运气过线就能成。') }}</p>
 <form method="post">
   {% for o in opts %}
   <label class="opt"><input type="radio" name="opt" value="{{ loop.index0 }}" required> {{ o.text }}

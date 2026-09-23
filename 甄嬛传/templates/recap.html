@@ -53,7 +53,7 @@
 <ul class="list">{% for n in news %}<li class="{{ n.kind }}">{{ n.text }}</li>{% endfor %}</ul>
 {% endif %}
 
-{% if scene %}<p style="margin-top:18px">{{ '昨夜侍寝时，皇上问了你一句话。' if scene.get('bed') else ('皇上召你去养心殿说话。' if scene.key == 'audience' else '还有一件事等你定夺。') }}</p>{% endif %}
+{% if scene %}<p style="margin-top:18px">{{ '昨夜侍寝时，皇上问了你一句话。' if scene.get('bed') else ('皇上召你去养心殿说话。' if scene.key == 'audience' else ('皇上要考校孩子的功课，等你去应对。' if scene.key == 'exam' else '还有一件事等你定夺。')) }}</p>{% endif %}
 <form method="post" action="{{ url_for('recap_seen') }}" style="margin-top:18px"><button>{{ '去见皇上' if scene else '进宫' }}</button></form>
 </div>
 {% endblock %}
