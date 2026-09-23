@@ -247,5 +247,27 @@ class MiscarriageDifficultBirthHookTests(unittest.TestCase):
         self.assertGreaterEqual(c['postpartum_until'], game.cur_day())
 
 
+class NpcIllnessTests(unittest.TestCase):
+    """时疫不该把 NPC 成批带走：太医院自会照看她们"""
+    setUp = fixtures.LifecycleTests.setUp
+    tearDown = fixtures.LifecycleTests.tearDown
+    player = fixtures.LifecycleTests.player
+    login = fixtures.LifecycleTests.login
+
+    def test_npc_illness_is_treated_from_the_start(self):
+        npc = game.q("SELECT id FROM consorts WHERE npc_key='huanghou'", one=True)['id']
+        game.fall_ill(npc, 10, '染上了时疫')
+        c = game.get_consort(npc)
+        self.assertEqual((c['ill_day'], c['ill_treatment']), (10, 1))
+        with patch.object(game.random, 'random', return_value=0.5):   # 请了太医九成能活，0.5 该活
+            game.resolve_illness_crises(11)
+        self.assertNotEqual(game.get_consort(npc)['status'], 'dead')
+
+    def test_player_illness_still_needs_a_doctor(self):
+        c = game.get_consort(self.atk)
+        game.fall_ill(self.atk, 10, '染上了时疫')
+        self.assertEqual(game.get_consort(self.atk)['ill_treatment'], 0)
+
+
 if __name__ == '__main__':
     unittest.main()

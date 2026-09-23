@@ -29,7 +29,7 @@
   {% for k, f in FAMILIES.items() %}
     <label><input type="radio" name="family" value="{{ k }}" required {{ 'checked' if form.get('family')==k }}>
       <b>{{ f.name }}</b><br>{{ f.desc }}<br>
-      <span class="muted">{% for s, v in f.mods.items() %}{{ STAT_NAMES[s] }}{{ '%+d'|format(v) }} {% endfor %}起始银子 {{ f.silver }}　殿选 {{ '%+d'|format(f.dx) }}</span></label>
+      <span class="muted">{% for s, v in f.mods.items() %}{{ STAT_NAMES[s] }}{{ '%+d'|format(v) }} {% endfor %}起始银子 {{ f.silver }}　殿选 {{ '%+d'|format(f.dx) }}<br>家主起点：{{ TIER_OFFICE_TEXT[k] }}</span></label>
   {% endfor %}
   </div>
   <p class="muted">门第决定家主（你的父亲）的官职起点，也决定每位成员的属性加成、起始银子和殿选加分。</p>
@@ -49,7 +49,7 @@
 </div>
 <form method="post" id="f">
   <div class="row">
-    <div><label>姓</label><div style="padding:8px 0;font-family:var(--kai);font-size:20px">{{ fam.surname }}</div></div>
+    <div><label>姓</label><input value="{{ fam.surname }}" disabled style="width:90px;font-family:var(--kai);font-size:20px" aria-label="姓"></div>
     <div><label for="n">名</label><input id="n" name="given" maxlength="3" required value="{{ form.get('given', '') }}" style="width:110px"></div>
   </div>
   <label for="age">入宫年龄</label>

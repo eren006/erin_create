@@ -1328,6 +1328,11 @@ def consort_uid(c):
     return (c['user_id'] or c['archived_user_id']) if c else None
 
 
+def family_label(fam):
+    """门第档次：名望 + 家主官职（一品 = 72 分）一起看，免得三品将门被叫成寒门"""
+    return prestige_label(fam['prestige'] + fam['head_office'] * 8)
+
+
 def family_row(uid):
     return q("SELECT * FROM families WHERE user_id=?", (uid,), one=True) if uid else None
 
@@ -1582,12 +1587,14 @@ VENTURE_MIN, VENTURE_MAX = 50, 400
 LETTER_SILVER = (20, 60)
 
 VENTURES = {
-    'silk':  dict(name='绸缎庄', days=3, scold=0.0, outcomes=[(0.70, 0.25), (0.25, 0.0), (0.05, -0.4)],
-                  desc='稳当：七成赚两成半，二成半持平，一成不到亏四成。不会惹上官司。'),
-    'salt':  dict(name='漕运盐引', days=5, scold=0.12, outcomes=[(0.45, 0.8), (0.25, 0.0), (0.20, -0.5), (0.10, -1.0)],
-                  desc='有赚头：近半赚八成，两成亏一半，一成血本无归；一成二的可能被御史参一本（名望 −8，信任 −6）。'),
-    'usury': dict(name='印子钱', days=7, scold=0.25, outcomes=[(0.35, 1.5), (0.25, 0.0), (0.40, -1.0)],
-                  desc='暴利也暴险：三成半翻两倍半，四成本金全赔；两成半的可能东窗事发（名望 −15，信任 −8，圣宠 −10%，家底抄没一半）。'),
+    # 三种生意的期望收益按「每天」算：绸缎庄约 3%，盐引约 5%，印子钱约 6%，险越大、日子越长，赚头越大；
+    # 险的两种还要另担御史参奏的风险，所以只有敢赌的人才会选
+    'silk':  dict(name='绸缎庄', days=3, scold=0.0, outcomes=[(0.70, 0.15), (0.25, 0.0), (0.05, -0.3)],
+                  desc='稳当：七成赚一成半，二成半持平，一成不到亏三成。不会惹上官司。'),
+    'salt':  dict(name='漕运盐引', days=5, scold=0.12, outcomes=[(0.45, 1.0), (0.25, 0.0), (0.20, -0.5), (0.10, -1.0)],
+                  desc='有赚头：近半赚一倍，两成亏一半，一成血本无归；一成二的可能被御史参一本（名望 −8，信任 −6）。'),
+    'usury': dict(name='印子钱', days=7, scold=0.25, outcomes=[(0.42, 2.0), (0.16, 0.0), (0.42, -1.0)],
+                  desc='暴利也暴险：四成多翻三倍，四成多本金全赔；两成半的可能东窗事发（名望 −15，信任 −8，圣宠 −10%，家底抄没一半）。'),
 }
 FAMILY_LETTER_NEWS = [
     '父兄来信，说朝中近来风向有变，让你在宫里少说多看。',
@@ -1842,7 +1849,7 @@ def family_page():
     opts = [_rival(i) for i in json.loads(req['data'] or '{}').get('options', [])] if req and req['kind'] == 'backing' else []
     return render_template('family.html', c=c, fam=fam, head=head_text(fam), req=req, req_text=request_text(fam, req) if req else '',
                            req_opts=[h for h in opts if h], rivals=rivals, backing=backing, ventures=ventures, history=history, log=log,
-                           VENTURES=VENTURES, day=day, prestige_label=prestige_label(fam['prestige']),
+                           VENTURES=VENTURES, day=day, prestige_label=family_label(fam),
                            can_act=c is not None and c['status'] in ('normal', 'confined'), heir_standing=heir_standing,
                            OFFICE_TITLES=OFFICE_TITLES, TIER_JOB=TIER_JOB, open_venture=any(v['consort_id'] == c['id'] for v in ventures),
                            SEND_MIN=SEND_MIN, SEND_MAX=SEND_MAX, SEND_PER_PRESTIGE=SEND_PER_PRESTIGE, WITHDRAW_MAX=WITHDRAW_MAX,
@@ -2107,7 +2114,7 @@ def _clan_context(uid):
     honors = list(q("SELECT * FROM family_log WHERE user_id=? AND honor=1 ORDER BY id DESC", (uid,)))
     log = list(q("SELECT * FROM family_log WHERE user_id=? AND honor=0 ORDER BY id DESC LIMIT 15", (uid,)))
     return dict(fam=fam, groups=sorted(groups.items(), reverse=True), honors=honors, log=log, uid=uid,
-                tier_name=FAMILIES[fam['tier']]['name'], prestige_label=prestige_label(fam['prestige']),
+                tier_name=FAMILIES[fam['tier']]['name'], prestige_label=family_label(fam),
                 head=head_text(fam), mine=(uid == S.get('uid')), RANK_NAMES=RANK_NAMES, json=json)
 
 
@@ -2137,7 +2144,7 @@ def clans():
     for fam in q("SELECT * FROM families ORDER BY prestige DESC, user_id"):
         ms = [m for m in family_members(fam['user_id']) if m['status'] != 'xiunv']
         rows.append(dict(fam=fam, n=len(ms), alive=any(m['user_id'] and m['status'] != 'dead' for m in ms),
-                         tier_name=FAMILIES[fam['tier']]['name'], label=prestige_label(fam['prestige'])))
+                         tier_name=FAMILIES[fam['tier']]['name'], label=family_label(fam)))
     return render_template('clans.html', c=g.me, rows=rows, mine=S['uid'])
 
 
@@ -2198,6 +2205,7 @@ def dianxuan():
                                                       'disgraced': '只是姑母那一辈站错了队，新帝对你家有成见。'}.get(c['patron'], ''), 'info')
         apply_inheritance(c)
         guide_start(c['id'])
+        guide_tip(c['id'], 'family', '「宫里的俸禄只够过日子。缺银子了，去『家里』看看：往家里递个话、投一笔生意，家里有难处也会来求你，帮得上忙的，往后都是你的靠山。」')
         if risky_huafei:
             add_affinity(c['id'], q("SELECT id FROM consorts WHERE npc_key='huafei'", one=True)['id'], -30)
         return render_template('dianxuan_result.html', c=c, reactions=reactions, total=total, title=title)
@@ -3206,6 +3214,8 @@ def heir_label(h):
     return f"{cn_ordinal(h['ordinal'])}阿哥" if h['gender'] == '皇子' else f"{cn_ordinal(h['ordinal'])}公主"
 
 app.jinja_env.globals['heir_label'] = heir_label
+app.jinja_env.globals['cn_ordinal'] = cn_ordinal
+app.jinja_env.globals['TIER_OFFICE_TEXT'] = {k: f"{TIER_JOB[k]}{OFFICE_TITLES[TIER_OFFICE[k]]}" for k in TIER_JOB}
 
 @app.route('/heirs', methods=['GET', 'POST'])
 @login_required
@@ -5234,7 +5244,7 @@ def admin():
         ms = [m for m in family_members(fam['user_id']) if m['status'] != 'xiunv']
         families.append(dict(fam=fam, n=len(ms), this_reign=sum(1 for m in ms if m['reign_no'] == state()['reign_no']),
                              alive=[full_name(m) for m in ms if m['user_id'] and m['status'] != 'dead'],
-                             head=head_text(fam), label=prestige_label(fam['prestige']), tier_name=FAMILIES[fam['tier']]['name']))
+                             head=head_text(fam), label=family_label(fam), tier_name=FAMILIES[fam['tier']]['name']))
     return render_template('admin.html', families=families, OFFICE_TITLES=OFFICE_TITLES, emperor_age=emperor_age_years(), rows=rows, pend=pend, get_consort=get_consort, INTRIGUES=INTRIGUES,
                            SECRETS=SECRETS, reports=reports, done_reports=done_reports, banned=banned,
                            broadcasts=broadcasts, players=players, dn=display_name)
@@ -5501,7 +5511,8 @@ def fall_ill(cid, day, cause):
     """染病，走和中毒一样的生死判定：下一次结算前请太医，九成能活，不请只有三成五"""
     c = get_consort(cid)
     if c['status'] == 'dead' or c['ill_day'] or c['poisoned_day']: return   # 已经病着或中毒着，不重复触发
-    run('UPDATE consorts SET ill_day=?, ill_treatment=0, weak_days=0, health=MAX(1,health-15) WHERE id=?', (day, cid))
+    # NPC 没人替她们请太医，太医院自然会来：直接算请过了，不然每逢时疫就成批地没
+    run('UPDATE consorts SET ill_day=?, ill_treatment=?, weak_days=0, health=MAX(1,health-15) WHERE id=?', (day, 1 if c['npc_key'] else 0, cid))
     if c['user_id']:
         notify(cid, f'你{cause}，病倒了。体质 -15。下一次结算前请太医（{TREAT_COST} 两，姐妹也能替你请）：'
                     f'请了九成能活，不请只有三成五。', 'bad')

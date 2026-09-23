@@ -447,6 +447,12 @@ class FamilyTests(unittest.TestCase):
         self.assertEqual(game.q('SELECT title FROM heirs WHERE id=?', (hid,), one=True)['title'], '亲王')
         self.assertEqual(self.frow(uid)['prestige'], game.PRESTIGE_PRINCE_TITLE)
 
+    def test_family_label_counts_the_heads_office_too(self):
+        low = dict(prestige=0, head_office=0)
+        general = dict(prestige=0, head_office=7)
+        top = dict(prestige=40, head_office=9)
+        self.assertEqual([game.family_label(f) for f in (low, general, top)], ['寒门', '小康之家', '望族'])
+
     def test_prestige_labels(self):
         self.assertEqual([game.prestige_label(p) for p in (0, 19, 20, 59, 60, 119, 120)],
                          ['寒门', '寒门', '小康之家', '小康之家', '望族', '望族', '簪缨世家'])
@@ -755,7 +761,7 @@ class FamilyTests(unittest.TestCase):
         self.assertEqual(game.q('SELECT status FROM family_ventures', one=True)['status'], 'open')
         with patch.object(game.random, 'random', return_value=0.0):
             game.family_venture_tick(v['mature_day'])
-        self.assertEqual(game.get_consort(self.atk)['silver'], s0 + 25)
+        self.assertEqual(game.get_consort(self.atk)['silver'], s0 + 15)
         self.assertEqual(game.q('SELECT status FROM family_ventures', one=True)['status'], 'done')
         self.assertTrue(any('结账' in m for m in self.msgs(self.atk)))
 
@@ -770,6 +776,14 @@ class FamilyTests(unittest.TestCase):
         self.start_venture('nope', 100)
         self.assertEqual(game.q('SELECT COUNT(*) n FROM family_ventures', one=True)['n'], 0)
 
+    def test_riskier_ventures_pay_more_per_day(self):
+        """险大的生意每天的期望收益该更高，不然没人会选：绸缎庄 < 盐引 < 印子钱"""
+        per_day = {k: sum(p * r for p, r in v['outcomes']) / v['days'] for k, v in game.VENTURES.items()}
+        self.assertLess(per_day['silk'], per_day['salt'])
+        self.assertLess(per_day['salt'], per_day['usury'])
+        self.assertGreater(per_day['silk'], 0.02)
+        self.assertLess(per_day['usury'], 0.08)
+
     def test_every_venture_outcome_table_sums_to_one(self):
         for k, v in game.VENTURES.items():
             self.assertAlmostEqual(sum(p for p, _ in v['outcomes']), 1.0, msg=k)
@@ -777,8 +791,8 @@ class FamilyTests(unittest.TestCase):
     def test_venture_outcomes_by_roll(self):
         self.fam(self.atk)
         game.run('UPDATE consorts SET silver=1000 WHERE id=?', (self.atk,))
-        for kind, roll, expect in (('salt', 0.0, 180), ('salt', 0.5, 100), ('salt', 0.8, 50), ('salt', 0.95, 0),
-                                   ('usury', 0.0, 250), ('usury', 0.5, 100), ('usury', 0.9, 0), ('silk', 0.99, 60)):
+        for kind, roll, expect in (('salt', 0.0, 200), ('salt', 0.5, 100), ('salt', 0.8, 50), ('salt', 0.95, 0),
+                                   ('usury', 0.0, 300), ('usury', 0.5, 100), ('usury', 0.9, 0), ('silk', 0.99, 70)):
             game.run('DELETE FROM family_ventures'); game.run('DELETE FROM daily_counters'); game.run('UPDATE consorts SET energy=5, silver=1000 WHERE id=?', (self.atk,))
             self.start_venture(kind, 100)
             v = game.q('SELECT * FROM family_ventures', one=True)
@@ -794,7 +808,7 @@ class FamilyTests(unittest.TestCase):
         s0 = game.get_consort(self.atk)['silver']
         with patch.object(game.random, 'random', return_value=0.0):
             game.family_venture_tick(v['mature_day'])
-        self.assertEqual(game.get_consort(self.atk)['silver'], s0 + 100 + round(25 * 1.15))
+        self.assertEqual(game.get_consort(self.atk)['silver'], s0 + 100 + round(15 * 1.15))
 
     def test_risky_venture_can_get_the_family_scolded(self):
         uid = self.fam(self.atk, prestige=30)
@@ -836,7 +850,7 @@ class FamilyTests(unittest.TestCase):
         game.die(self.atk, '病逝')
         with patch.object(game.random, 'random', return_value=0.0):
             game.family_venture_tick(v['mature_day'])
-        self.assertEqual(self.frow(uid)['estate'], 10 + 125)
+        self.assertEqual(self.frow(uid)['estate'], 10 + 115)
 
     # ── 家里送钱 ─────────────────────────────────────────────────────────────
 
@@ -1038,7 +1052,7 @@ class FamilyTests(unittest.TestCase):
         self.past_member(uid, reign_no=1, given='太后', reason='先帝驾崩，圣母皇太后', survived=1)
         game.family_log_add(uid, '沈云成为圣母皇太后', 1)
         page = self.client.get('/clan').get_data(as_text=True)
-        for t in ('沈氏族谱', '小康之家', '第 1 届', '沈云', '长女', '承稷（皇子）', '历两朝', '中毒身亡', '家族荣耀', '成为圣母皇太后', '在宫中'):
+        for t in ('沈氏族谱', '望族', '第 1 届', '沈云', '长女', '承稷（皇子）', '历两朝', '中毒身亡', '家族荣耀', '成为圣母皇太后', '在宫中'):
             self.assertIn(t, page)
 
     def test_anyone_can_read_another_clan_but_not_its_purse(self):
@@ -1172,6 +1186,29 @@ class FamilyTests(unittest.TestCase):
         self.assertIn('/admin/login', page)
         self.admin()
         self.assertIn('href="/admin"', self.client.get('/clans').get_data(as_text=True))
+
+    # ── 试玩里发现的问题 ─────────────────────────────────────────────────────
+
+    def test_dianxuan_announces_the_real_age(self):
+        uid = self.new_user()
+        game.create_family(uid, '江', 'dali')
+        self.create_member('云', age=21)
+        page = self.client.get('/dianxuan').get_data(as_text=True)
+        self.assertIn('年二十一', page)
+        self.assertNotIn('年十五', page)
+
+    def test_entering_the_palace_points_the_newcomer_at_the_family_page(self):
+        uid = self.new_user()
+        game.create_family(uid, '江', 'dali')
+        self.create_member('云')
+        cid = self.enter_palace(uid)
+        self.assertTrue(any('家里' in m and '许嬷嬷' in m for m in self.msgs(cid)))
+
+    def test_create_pages_show_the_heads_starting_office(self):
+        self.new_user()
+        page = self.client.get('/create').get_data(as_text=True)
+        self.assertIn('家主起点', page)
+        self.assertIn('镇边军中三品', page)
 
 
 if __name__ == '__main__':
