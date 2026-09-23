@@ -41,6 +41,25 @@ class LivingTests(unittest.TestCase):
         self.assertEqual(game.pregnancy_chance(dict(age_months=45 * 12, health=100)), 0)
         self.assertLessEqual(game.pregnancy_chance(dict(age_months=240, health=9999)), game.PREGNANCY_MAX)
 
+    def test_blessing_makes_conceiving_easier(self):
+        plain = dict(age_months=240, health=60, blessing=0)
+        blessed = dict(age_months=240, health=60, blessing=50)
+        full = dict(age_months=240, health=60, blessing=100)
+        self.assertAlmostEqual(game.pregnancy_chance(blessed) - game.pregnancy_chance(plain), 0.10)
+        self.assertAlmostEqual(game.pregnancy_chance(full) - game.pregnancy_chance(plain), 0.20)
+        old = dict(age_months=45 * 12, health=60, blessing=100)
+        self.assertEqual(game.pregnancy_chance(old), 0, '福报也救不了年纪')
+        old_mother = dict(age_months=36 * 12, health=60, blessing=100)
+        self.assertAlmostEqual(game.pregnancy_chance(old_mother), (0.24 + 0.12 + 0.20) * 0.6)
+
+    def test_blessed_player_conceives_where_a_plain_one_would_not(self):
+        with patch.object(game.random, 'random', return_value=0.45):   # 体质 60 时 36% 怀不上；福报 50 时 46% 该怀上
+            game.do_bedding(self.c(), game.cur_day(), True, [])
+            self.assertEqual(self.c()['pregnant_since'], 0)
+            game.run('UPDATE consorts SET blessing=50 WHERE id=?', (self.atk,))
+            game.do_bedding(self.c(), game.cur_day(), True, [])
+        self.assertEqual(self.c()['pregnant_since'], game.cur_day())
+
     def test_a_bedding_can_start_a_pregnancy(self):
         with patch.object(game.random, 'random', return_value=0.30):   # 体质 60 时怀孕率 36%，0.30 该怀上
             game.do_bedding(self.c(), game.cur_day(), True, [])
@@ -345,6 +364,30 @@ class LivingTests(unittest.TestCase):
         with patch.object(game.random, 'random', return_value=0.0):
             game.repair_tick(5)
         self.assertIsNone(game.repair_state(self.c()))
+
+    def test_diet_and_temple_live_in_a_folded_panel(self):
+        page = self.client.get('/place/home').get_data(as_text=True)
+        self.assertIn('<details', page)
+        self.assertIn('本宫起居', page)
+        self.assertNotIn('<details class="sheet" style="margin:14px 0" open', page)
+        self.assertIn('饮食：普通', page)
+        opened = self.client.get('/place/home?living=1').get_data(as_text=True)
+        self.assertIn('<details class="sheet" style="margin:14px 0" open', opened)
+
+    def test_changing_diet_or_praying_brings_you_back_with_the_panel_open(self):
+        r = self.client.post('/diet', data=dict(tier='lavish'))
+        self.assertIn('living=1', r.headers['Location'])
+        game.run('UPDATE consorts SET silver=500 WHERE id=?', (self.atk,))
+        r = self.client.post('/act/pray', data=dict(amount=20, back='home'))
+        self.assertIn('living=1', r.headers['Location'])
+
+    def test_repair_and_pregnancy_cards_stay_outside_the_fold(self):
+        self.housed()
+        self.set_repair('leak')
+        self.pregnant()
+        page = self.client.get('/place/home').get_data(as_text=True)
+        self.assertLess(page.index('屋顶漏雨'), page.index('本宫起居'))
+        self.assertLess(page.index('有喜'), page.index('本宫起居'))
 
     def test_home_page_shows_repair_and_diet_and_temple(self):
         self.housed()

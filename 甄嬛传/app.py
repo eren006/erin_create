@@ -2311,7 +2311,7 @@ def act(key):
         flash(str(e), 'bad')
     back = request.form.get('back', '')
     if back in PLACES:
-        return redirect(url_for('place', key=back))
+        return redirect(url_for('place', key=back, **({'living': 1} if key == 'pray' else {})))
     return redirect(url_for('social') if back == 'social' else url_for('index'))
 
 def do_greet(c, cfg):
@@ -2570,7 +2570,7 @@ def set_diet():
     else:
         run("UPDATE consorts SET diet=? WHERE id=?", (tier, c['id']))
         flash(f"往后饮食按「{DIETS[tier]['name']}」，每晚约 {diet_cost(c['rank'], tier)} 两。", 'good')
-    return redirect(url_for('place', key='home'))
+    return redirect(url_for('place', key='home', living=1))
 
 
 REPAIRS = {
@@ -5098,7 +5098,7 @@ def reigns():
 
 # ── 生育：侍寝人数、怀孕率、孕期 ─────────────────────────────────────────────────
 BED_PLAYERS_PER_EXTRA, MAX_BEDS = 6, 6      # 宫里每多 6 位玩家，每晚多翻一位牌子，最多 6 位
-PREGNANCY_BASE, PREGNANCY_PER_HEALTH = 0.24, 0.002
+PREGNANCY_BASE, PREGNANCY_PER_HEALTH, PREGNANCY_PER_BLESSING = 0.24, 0.002, 0.002   # 福报每 1 点再 +0.2%，攒满 100 点 +20%
 OLD_MOTHER_AGE, OLD_MOTHER_FACTOR, PREGNANCY_MAX = 35, 0.6, 0.6
 PRENATAL_ENERGY, PRENATAL_STAT_CAP = 1, 6
 PRENATAL = {
@@ -5111,9 +5111,9 @@ LABOR_RISK_BASE, LABOR_RISK_PER_REST = 0.30, 0.10    # 体质不到 50 的人难
 
 
 def pregnancy_chance(c):
-    """一次侍寝怀上的概率：24% + 体质×0.2%（体质 60 约 36%）；35 岁起打六折；45 岁起不再有孕"""
+    """一次侍寝怀上的概率：24% + 体质×0.2% + 福报×0.2%（体质 60 约 36%，福报满 100 再 +20%）；35 岁起打六折；45 岁起不再有孕"""
     if c['age_months'] >= FERTILE_BEFORE_AGE * 12: return 0.0
-    p = PREGNANCY_BASE + c['health'] * PREGNANCY_PER_HEALTH
+    p = PREGNANCY_BASE + c['health'] * PREGNANCY_PER_HEALTH + (c['blessing'] if 'blessing' in c.keys() else 0) * PREGNANCY_PER_BLESSING
     if c['age_months'] >= OLD_MOTHER_AGE * 12: p *= OLD_MOTHER_FACTOR
     return min(PREGNANCY_MAX, p)
 
@@ -5945,7 +5945,7 @@ def place(key):
                            plead_targets=plead_targets, plead_p=int(plead_chance(c) * 100),
                            maid_ev=maid_ev, maid_info=maid_info, heir_ev=heir_ev, my_heirs=my_heirs, heir_todo=heir_todo, HEIR_RAISE=HEIR_RAISE, PRENATAL=PRENATAL,
                            DIETS=DIETS, PREGNANCY_DAYS=PREGNANCY_DAYS, diet_costs=diet_costs(c['rank']), repair=repair_state(c), REPAIRS=REPAIRS, PRAY_TIERS=PRAY_TIERS,
-                           is_quiet=is_quiet(c) if c['status'] in ('normal', 'confined') else False,
+                           is_quiet=is_quiet(c) if c['status'] in ('normal', 'confined') else False, open_living=request.args.get('living') == '1',
                            household=palace_household(c['palace']) if key == 'home' and has_residence(c) else [],
                            is_head=has_residence(c) and c['hall'] == 'main' and c['rank'] >= 5)
 

@@ -38,28 +38,11 @@
   </form>
 </div>
 {% endif %}
-{% if key == 'home' and c.status in ('normal', 'confined') %}
-{% if repair %}
+{% if key == 'home' and c.status in ('normal', 'confined') and repair %}
 <div class="sheet" style="margin:14px 0;border-left:4px solid var(--zhu)">
   <b>宫里有东西坏了：{{ REPAIRS[repair.kind].name }}</b>（已 {{ repair.days }} 晚）
   <p class="muted" style="margin:6px 0">{{ REPAIRS[repair.kind].line }}不修的话，每晚体质 −1{% if REPAIRS[repair.kind].sev >= 2 %}，宫人也跟着寒心{% endif %}{% if REPAIRS[repair.kind].sev >= 3 %}，圣宠也在掉{% endif %}。</p>
   <form method="post" action="{{ url_for('do_repair') }}"><button {{ 'disabled' if c.silver < repair.cost }}>找内务府修（{{ repair.cost }} 两）</button></form>
-</div>
-{% endif %}
-<div class="sheet" style="margin:14px 0">
-  <h3 style="margin-top:0">本宫饮食</h3>
-  <form method="post" action="{{ url_for('set_diet') }}" class="row">
-    {% for k, d in DIETS.items() %}<button name="tier" value="{{ k }}" class="{{ 'plain' if c.diet != k }}" title="{{ d.desc }}">{{ d.name }}（约 {{ diet_costs[k] }} 两/晚）</button>{% endfor %}
-  </form>
-  <p class="muted" style="margin:6px 0 0">当前：<b>{{ DIETS[c.diet].name }}</b>。{{ DIETS[c.diet].desc }}每晚开伙按选的档次扣银子，不够就自动降一档。</p>
-</div>
-<div class="sheet" style="margin:14px 0">
-  <h3 style="margin-top:0">佛堂</h3>
-  <p class="muted">福报 {{ c.blessing }}（老死更慢、病重更有活路）。{% if is_quiet %}你这十天清清静静，没对谁使过计，佛前的香油钱有机会换来延寿。{% else %}这十天里你对人使过计，佛前多半只攒福报，不会延寿。{% endif %}{% if c.longevity %}已延寿 {{ c.longevity }} 年。{% endif %}</p>
-  <form method="post" action="{{ url_for('act', key='pray') }}" class="row">
-    <input type="hidden" name="back" value="home">
-    {% for amt, pt in PRAY_TIERS.items() %}<button name="amount" value="{{ amt }}" class="plain" {{ 'disabled' if c.energy < 1 or c.silver < amt or daily_count(c.id, 'pray') }}>添 {{ amt }} 两香油</button>{% endfor %}
-  </form>
 </div>
 {% endif %}
 {% if c.pregnant_since %}
@@ -70,6 +53,22 @@
     {% for k, pn in PRENATAL.items() %}<button name="kind" value="{{ k }}" class="plain" {{ 'disabled' if c.energy < 1 or daily_count(c.id, 'prenatal') }}>{{ pn.name }}</button>{% endfor %}
   </form>
 </div>
+{% endif %}
+{% if key == 'home' and c.status in ('normal', 'confined') %}
+<details class="sheet" style="margin:14px 0" {{ 'open' if open_living }}>
+  <summary style="cursor:pointer"><b>本宫起居</b>　<span class="muted">饮食：{{ DIETS[c.diet].name }}（约 {{ diet_costs[c.diet] }} 两/晚）　福报 {{ c.blessing }}{% if c.longevity %}　已延寿 {{ c.longevity }} 年{% endif %}</span></summary>
+  <h3 style="margin-top:14px">本宫饮食</h3>
+  <form method="post" action="{{ url_for('set_diet') }}" class="row">
+    {% for k, d in DIETS.items() %}<button name="tier" value="{{ k }}" class="{{ 'plain' if c.diet != k }}" title="{{ d.desc }}">{{ d.name }}（约 {{ diet_costs[k] }} 两/晚）</button>{% endfor %}
+  </form>
+  <p class="muted" style="margin:6px 0 0">当前：<b>{{ DIETS[c.diet].name }}</b>。{{ DIETS[c.diet].desc }}每晚开伙按选的档次扣银子，不够就自动降一档。</p>
+  <h3>佛堂</h3>
+  <p class="muted">福报 {{ c.blessing }}：老死更慢、病重更有活路，也更容易怀上孩子。{% if is_quiet %}你这十天清清静静，没对谁使过计，佛前的香油钱有机会换来延寿。{% else %}这十天里你对人使过计，佛前多半只攒福报，不会延寿。{% endif %}{% if c.longevity %}已延寿 {{ c.longevity }} 年。{% endif %}</p>
+  <form method="post" action="{{ url_for('act', key='pray') }}" class="row">
+    <input type="hidden" name="back" value="home">
+    {% for amt, pt in PRAY_TIERS.items() %}<button name="amount" value="{{ amt }}" class="plain" {{ 'disabled' if c.energy < 1 or c.silver < amt or daily_count(c.id, 'pray') }}>添 {{ amt }} 两香油</button>{% endfor %}
+  </form>
+</details>
 {% endif %}
 {% if heir_todo %}<p class="sheet" style="margin:14px 0">有 {{ heir_todo }} 件皇嗣的事等你拿主意（差事或指婚）。<a href="{{ url_for('heirs') }}">去子嗣页</a></p>{% endif %}
 {% if my_heirs %}
