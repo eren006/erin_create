@@ -708,7 +708,11 @@ def init_db():
                   'mother_affinity': 'INTEGER NOT NULL DEFAULT 50',
                   'caretaker_affinity': 'INTEGER NOT NULL DEFAULT 50',
                   'zhuazhou': "TEXT NOT NULL DEFAULT ''",
-                  'seen_events': "TEXT NOT NULL DEFAULT '[]'"},
+                  'seen_events': "TEXT NOT NULL DEFAULT '[]'",
+                  'foster_request_to': 'INTEGER NOT NULL DEFAULT 0',
+                  'visit_banned': 'INTEGER NOT NULL DEFAULT 0',
+                  'concealed': 'INTEGER NOT NULL DEFAULT 0',
+                  'reclaim_after_day': 'INTEGER NOT NULL DEFAULT 0'},
         'cases': {'convicted_id': 'INTEGER NOT NULL DEFAULT 0', 'wrongful': 'INTEGER NOT NULL DEFAULT 0'},
         'intrigues': {'drug': "TEXT NOT NULL DEFAULT ''",
                       'agent_maid_id': 'INTEGER NOT NULL DEFAULT 0'},
@@ -2195,7 +2199,23 @@ def heirs():
             flash(f"皇上允了，赐名「{name}」。", 'good')
         return redirect(url_for('heirs'))
     rows = q("SELECT h.*, c.surname FROM heirs h JOIN consorts c ON c.id=h.mother_id ORDER BY h.id")
-    return render_template('heirs.html', c=c, rows=rows, get_consort=get_consort)
+    day = cur_day()
+    acts = {}
+    for h in rows:
+        a = {}
+        if h['mother_id'] == c['id'] and h['caretaker_id'] == c['id'] and c['rank'] < 5 and c['status'] == 'normal' \
+                and not h['zhuazhou'] and heir_age_days(h, day) < ZHUAZHOU_AGE_DAYS:
+            a['entrust'] = True
+            if h['foster_request_to']: a['waiting_on'] = get_consort(h['foster_request_to'])
+        if h['foster_request_to'] == c['id']: a['reply'] = True
+        if h['mother_id'] == c['id'] and h['caretaker_id'] not in (0, c['id']) and c['status'] != 'dead':
+            a['visit'] = True
+            if c['rank'] >= 5: a['reclaim'] = True
+            a['reclaim_wait'] = max(0, h['reclaim_after_day'] - day)
+        if h['caretaker_id'] == c['id'] and h['mother_id'] != c['id']: a['can_ban'] = True
+        if a: acts[h['id']] = a
+    targets = entrust_candidates(c) if any(a.get('entrust') for a in acts.values()) else []
+    return render_template('heirs.html', c=c, rows=rows, get_consort=get_consort, acts=acts, targets=targets)
 
 # ── 皇嗣成长（九点六节 A~D：还没做成年、抚养关系博弈、夺嫡） ─────────────────────
 
@@ -2252,7 +2272,7 @@ HEIR_EVENTS = {
         dict(text='原样退回', affinity=-1, say='退是退了，只是不知这份心思该往哪儿搁。')]),
     'true_mother': dict(text='他忽然问：「我的亲额娘，到底是谁？」', foster_only=True, opts=[
         dict(text='说实话', to_mother_affinity=10, say='他沉默了许久，没再说话。'),
-        dict(text='瞒着', affinity=5, say='他似乎不太信，但没再追问——只是往后，这事早晚要被人说破。')]),
+        dict(text='瞒着', affinity=5, conceal=True, say='他似乎不太信，但没再追问——只是往后，这事早晚要被人说破。')]),
     'sneak_visit': dict(text='宫人来报，他偷偷跑去看了生母，被拦在了半路上。', foster_only=True, opts=[
         dict(text='由他去', to_mother_affinity=6, say='你叹了口气，没有阻拦。'),
         dict(text='拦下', affinity=-3, say='他被拦回来，一路上都没说话。')]),
@@ -2333,27 +2353,199 @@ def add_heir_affinity(hid, which, delta):
         run(f'UPDATE heirs SET {other}=? WHERE id=?', (clamp(h[other] + delta), hid))
 
 
+def pick_foster(exclude=()):
+    """挑一位嫔以上、正在当差的妃嫔当养母：带孩子最少的优先，同样多时 NPC 在前"""
+    marks = ','.join('?' * len(exclude)) or '-1'
+    rows = q(f"""SELECT c.id, COUNT(h2.id) n FROM consorts c LEFT JOIN heirs h2 ON h2.caretaker_id=c.id
+                 WHERE c.rank>=5 AND c.status='normal' AND c.id NOT IN ({marks})
+                 GROUP BY c.id ORDER BY n, c.npc_key IS NULL, c.id""", tuple(exclude))
+    return get_consort(rows[0]['id']) if rows else None
+
+
 def heir_growth_tick(day):
-    """抓周（出生满周岁那天，一定触发）：贵人以下的生母，抓周时把孩子指给一位无子的嫔以上 NPC 抚养"""
+    """抓周（出生满周岁那天，一定触发）：贵人以下的生母，抓周时孩子按祖制改由嫔以上抚养。
+    周岁前已经托付成了的不用再指；没托付的，皇上指给一位无子的嫔以上"""
     for h in q("SELECT * FROM heirs WHERE zhuazhou='' AND ?-born_day=?", (day, ZHUAZHOU_AGE_DAYS)):
         item = random.choice(ZHUAZHOU_ITEMS)
-        run(f"UPDATE heirs SET zhuazhou=?, {item['stat']}={item['stat']}+? WHERE id=?", (item['key'], ZHUAZHOU_GAIN, h['id']))
+        run(f"UPDATE heirs SET zhuazhou=?, foster_request_to=0, {item['stat']}={item['stat']}+? WHERE id=?",
+            (item['key'], ZHUAZHOU_GAIN, h['id']))
         mother = get_consort(h['mother_id'])
         label = heir_label(h)
         gazette(f"{label}周岁抓周，{item['line']}。", 'news')
         if mother['user_id']:
             notify(mother['id'], f"{label}今日抓周，{item['line']}。{HEIR_STATS[item['stat']]} +{ZHUAZHOU_GAIN}。", 'good')
-        if mother['rank'] < 5:
-            candidates = q("""SELECT c.id, COUNT(h2.id) n FROM consorts c LEFT JOIN heirs h2 ON h2.caretaker_id=c.id
-                              WHERE c.rank>=5 AND c.status='normal' GROUP BY c.id ORDER BY n, c.npc_key IS NULL, c.id""")
-            if candidates:
-                foster = get_consort(candidates[0]['id'])
+        if mother['rank'] < 5 and h['caretaker_id'] == h['mother_id']:
+            foster = pick_foster()
+            if foster:
                 run('UPDATE heirs SET caretaker_id=?, caretaker_affinity=50 WHERE id=?', (foster['id'], h['id']))
                 gazette(f"祖制：{label}生母位分不及，皇上指{display_name(foster)}抚养{label}。", 'decree')
                 if mother['user_id']:
                     notify(mother['id'], f"按祖制，{label}被抱去{display_name(foster)}宫里抚养了。晋到嫔位后可以去养心殿求皇上把孩子讨回来。", 'bad')
                 if foster['user_id']:
                     notify(foster['id'], f"皇上把{label}指给你抚养了。去本宫就能教养。", 'good')
+
+
+def heir_rehome_tick(day):
+    """抚养人进了冷宫或没了，孩子一律换人带：生母已是嫔以上又正当差，还给生母；否则皇上另指一位"""
+    for h in q("SELECT * FROM heirs WHERE caretaker_id!=0"):
+        cur = get_consort(h['caretaker_id'])
+        if cur['status'] not in ('cold', 'dead'): continue
+        mother = get_consort(h['mother_id'])
+        label = heir_label(h)
+        cur_gone = '进了冷宫' if cur['status'] == 'cold' else '薨逝了'
+        if h['caretaker_id'] != h['mother_id'] and mother['status'] == 'normal' and mother['rank'] >= 5:
+            run('UPDATE heirs SET caretaker_id=?, caretaker_affinity=mother_affinity WHERE id=?', (mother['id'], h['id']))
+            gazette(f"{display_name(cur)}{cur_gone}，{label}由生母{display_name(mother)}领回抚养。", 'decree')
+            if mother['user_id']:
+                notify(mother['id'], f"{display_name(cur)}{cur_gone}，皇上让你把{label}领回去了。", 'good')
+            continue
+        foster = pick_foster(exclude=(cur['id'], mother['id']))
+        if not foster: continue   # 一位合适的都没有，明晚再看
+        run('UPDATE heirs SET caretaker_id=?, caretaker_affinity=50 WHERE id=?', (foster['id'], h['id']))
+        gazette(f"{display_name(cur)}{cur_gone}，皇上指{display_name(foster)}抚养{label}。", 'decree')
+        if cur['user_id']:
+            notify(cur['id'], f"你{cur_gone}，{label}被皇上指给{display_name(foster)}抚养了。", 'bad')
+        if mother['id'] != cur['id'] and mother['user_id'] and mother['status'] != 'dead':
+            notify(mother['id'], f"{label}的抚养人{cur_gone}，皇上指{display_name(foster)}接着抚养。", 'info')
+        if foster['user_id']:
+            notify(foster['id'], f"皇上把{label}指给你抚养了。去本宫就能教养。", 'good')
+
+
+# ── 抚养博弈：托付、探视、讨回（九点六节 C） ──────────────────────────────────────
+
+HEIR_VISIT_ENERGY = 1
+HEIR_VISIT_GAIN = 4
+HEIR_RECLAIM_ENERGY = 1
+HEIR_RECLAIM_COOLDOWN = 7
+HEIR_ENTRUST_MIN_AFFINITY = 40
+HEIR_EXPOSED_PENALTY = 20    # 养母瞒着身世，被生母探视时说破，孩子对养母的情分
+
+def entrust_candidates(c):
+    """能托付孩子的人：在线的、嫔以上、正当差、好感够"""
+    out = []
+    for t in q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND status='normal' AND rank>=5 AND id!=?", (c['id'],)):
+        rel = relation(c['id'], t['id'])
+        if rel and rel['affinity'] >= HEIR_ENTRUST_MIN_AFFINITY: out.append(t)
+    return out
+
+
+@app.route('/heirs/entrust/<int:hid>', methods=['POST'])
+@login_required
+def heir_entrust(hid):
+    c = g.me
+    h = q('SELECT * FROM heirs WHERE id=?', (hid,), one=True)
+    try: tid = int(request.form.get('target_id', 0))
+    except ValueError: tid = 0
+    t = get_consort(tid) if tid else None
+    err = None
+    if not h or h['mother_id'] != c['id'] or h['caretaker_id'] != c['id']: err = '这不是你亲自带着的孩子。'
+    elif h['zhuazhou'] or heir_age_days(h) >= ZHUAZHOU_AGE_DAYS: err = '孩子已经周岁，祖制已定，托付不及了。'
+    elif c['rank'] >= 5: err = '你已是嫔位，本就可以亲自抚养，不必托付。'
+    elif c['status'] != 'normal': err = '眼下这个境况，托付不了人。'
+    elif not t or t['id'] not in {x['id'] for x in entrust_candidates(c)}:
+        err = f'要托付给嫔位以上、且与你好感不低于 {HEIR_ENTRUST_MIN_AFFINITY} 的姐妹。'
+    if err:
+        flash(err, 'bad'); return redirect(url_for('heirs'))
+    label = heir_label(h)
+    run('UPDATE heirs SET foster_request_to=? WHERE id=?', (t['id'], hid))
+    notify(t['id'], f"{display_name(c)}想把{label}托付给你抚养。去「子嗣」页点头或回绝。周岁抓周前不答复，祖制就另指别人了。", 'info')
+    flash(f"已请{display_name(t)}过目。对方点头之前，孩子还在你身边。", 'good')
+    return redirect(url_for('heirs'))
+
+
+@app.route('/heirs/entrust_reply/<int:hid>', methods=['POST'])
+@login_required
+def heir_entrust_reply(hid):
+    c = g.me
+    h = q('SELECT * FROM heirs WHERE id=?', (hid,), one=True)
+    if not h or h['foster_request_to'] != c['id']:
+        flash('没有这桩托付。', 'bad'); return redirect(url_for('heirs'))
+    mother = get_consort(h['mother_id'])
+    label = heir_label(h)
+    run('UPDATE heirs SET foster_request_to=0 WHERE id=?', (hid,))
+    if request.form.get('reply') != 'yes':
+        if mother['user_id']: notify(mother['id'], f"{display_name(c)}婉拒了你托付{label}的请求。", 'bad')
+        flash('已回绝。', 'good'); return redirect(url_for('heirs'))
+    if c['rank'] < 5 or c['status'] != 'normal' or h['zhuazhou'] or h['caretaker_id'] != h['mother_id'] or mother['status'] == 'dead':
+        flash('这桩托付已经办不成了。', 'bad'); return redirect(url_for('heirs'))
+    run('UPDATE heirs SET caretaker_id=?, caretaker_affinity=50 WHERE id=?', (c['id'], hid))
+    add_affinity(c['id'], mother['id'], 5)
+    gazette(f"{display_name(mother)}将{label}托付给{display_name(c)}抚养。", 'news')
+    if mother['user_id']: notify(mother['id'], f"{display_name(c)}应下了，{label}往后由她抚养。晋到嫔位后可以去求皇上讨回。", 'good')
+    flash(f"{label}往后由你抚养，去本宫就能教养。", 'good')
+    return redirect(url_for('heirs'))
+
+
+@app.route('/heirs/visit/<int:hid>', methods=['POST'])
+@login_required
+def heir_visit(hid):
+    c = g.me
+    h = q('SELECT * FROM heirs WHERE id=?', (hid,), one=True)
+    err = None
+    if not h or h['mother_id'] != c['id'] or h['caretaker_id'] in (0, c['id']): err = '孩子不在别人宫里，用不着探视。'
+    elif c['status'] != 'normal': err = '你现在出不了门。'
+    elif c['energy'] < HEIR_VISIT_ENERGY: err = '精力不够了。'
+    elif daily_count(c['id'], f'hvisit:{hid}'): err = '今天已经去看过了。'
+    else:
+        fo = get_consort(h['caretaker_id'])
+        if fo['status'] != 'normal': err = '抚养人眼下不在宫里，见不着。'
+        elif h['visit_banned'] and fo['user_id']: err = f"{display_name(fo)}不许你探视。"
+    if err:
+        flash(err, 'bad'); return redirect(url_for('heirs'))
+    label = heir_label(h)
+    run('UPDATE consorts SET energy=energy-? WHERE id=?', (HEIR_VISIT_ENERGY, c['id']))
+    daily_inc(c['id'], f'hvisit:{hid}')
+    add_heir_affinity(hid, 'mother', HEIR_VISIT_GAIN)
+    msg = f"你去{display_name(fo)}宫里看了{label}，跟生母的情分 +{HEIR_VISIT_GAIN}。"
+    if h['concealed']:
+        run('UPDATE heirs SET concealed=0 WHERE id=?', (hid,))
+        add_heir_affinity(hid, 'caretaker', -HEIR_EXPOSED_PENALTY)
+        msg += f"你忍不住说破了身世，{label}才知道被瞒了这么久。"
+        if fo['user_id']:
+            notify(fo['id'], f"生母来探视{label}，把当年瞒着的身世说破了。{label}对你的情分 -{HEIR_EXPOSED_PENALTY}。", 'bad')
+    flash(msg, 'good')
+    return redirect(url_for('heirs'))
+
+
+@app.route('/heirs/ban/<int:hid>', methods=['POST'])
+@login_required
+def heir_ban(hid):
+    c = g.me
+    h = q('SELECT * FROM heirs WHERE id=?', (hid,), one=True)
+    if not h or h['caretaker_id'] != c['id'] or h['mother_id'] == c['id']:
+        flash('这不是你抱养的孩子。', 'bad'); return redirect(url_for('heirs'))
+    run('UPDATE heirs SET visit_banned=? WHERE id=?', (0 if h['visit_banned'] else 1, hid))
+    flash('已不许生母探视。' if not h['visit_banned'] else '又许生母来探视了。', 'good')
+    return redirect(url_for('heirs'))
+
+
+@app.route('/heirs/reclaim/<int:hid>', methods=['POST'])
+@login_required
+def heir_reclaim(hid):
+    c = g.me
+    h = q('SELECT * FROM heirs WHERE id=?', (hid,), one=True)
+    err = None
+    if not h or h['mother_id'] != c['id'] or h['caretaker_id'] in (0, c['id']): err = '孩子本就在你身边。'
+    elif c['rank'] < 5: err = '嫔位以上才能求皇上把孩子还回来。'
+    elif c['status'] != 'normal': err = '你现在去不了养心殿。'
+    elif cur_day() < h['reclaim_after_day']: err = f"皇上刚驳回过，{h['reclaim_after_day'] - cur_day()} 天后才能再求。"
+    elif c['energy'] < HEIR_RECLAIM_ENERGY: err = '精力不够了。'
+    if err:
+        flash(err, 'bad'); return redirect(url_for('heirs'))
+    run('UPDATE consorts SET energy=energy-? WHERE id=?', (HEIR_RECLAIM_ENERGY, c['id']))
+    label = heir_label(h)
+    old = get_consort(h['caretaker_id'])
+    if random.random() < plead_chance(c):
+        run('UPDATE heirs SET caretaker_id=?, caretaker_affinity=mother_affinity, visit_banned=0, concealed=0 WHERE id=?', (c['id'], hid))
+        gazette(f"{display_name(c)}向皇上求得恩典，将{label}领回亲自抚养。", 'decree')
+        if old['user_id']:
+            notify(old['id'], f"皇上准了{display_name(c)}的请求，{label}被领回生母身边。", 'bad')
+            add_affinity(c['id'], old['id'], -10)
+        flash(f"皇上准了。{label}回到你身边，往后由你亲自教养。", 'good')
+    else:
+        run('UPDATE heirs SET reclaim_after_day=? WHERE id=?', (cur_day() + HEIR_RECLAIM_COOLDOWN, hid))
+        flash(f"皇上说：「孩子在{display_name(old)}那里养得好好的。」{HEIR_RECLAIM_COOLDOWN} 天内不能再求。", 'bad')
+    return redirect(url_for('heirs'))
 
 
 @app.route('/heirs/raise/<int:hid>', methods=['POST'])
@@ -2467,6 +2659,8 @@ def heir_event_choose():
         parts.append(f"圣眷 {opt['favor']:+d}")
     if opt.get('affinity'):
         add_heir_affinity(h['id'], 'caretaker', opt['affinity']); parts.append(f"情分 {opt['affinity']:+d}")
+    if opt.get('conceal'):
+        run('UPDATE heirs SET concealed=1 WHERE id=?', (h['id'],))
     if opt.get('to_mother_affinity'):
         add_heir_affinity(h['id'], 'mother', opt['to_mother_affinity']); parts.append(f"跟生母的情分 {opt['to_mother_affinity']:+d}")
     if opt.get('target_affinity') and data.get('target'):
@@ -2836,6 +3030,7 @@ def _settle_night():
 
     # 3b. 皇嗣周岁抓周（贵人以下的生母，这天孩子按祖制改指给别人抚养）、皇上考校、随驾秋狝
     heir_growth_tick(day)
+    heir_rehome_tick(day)
     heir_exam_tick(day)
     heir_hunt_tick(day)
 

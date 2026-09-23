@@ -16,6 +16,22 @@
     <td>{{ h.caretaker_affinity }}{% if fo and fo.id != h.mother_id %}<span class="muted">（生母 {{ h.mother_affinity }}）</span>{% endif %}</td>
     <td>{% if h.mother_id == c.id and not h.name %}
       <form method="post" class="row"><input type="hidden" name="heir_id" value="{{ h.id }}"><input name="name" maxlength="4" placeholder="取名" style="width:100px" aria-label="名字"><button class="plain">请皇上赐名</button></form>
+    {% endif %}
+    {% set a = acts.get(h.id) %}{% if a %}
+      {% if a.entrust %}
+        {% if a.waiting_on %}<div class="muted">已托付给{{ dn(a.waiting_on) }}，等她点头。</div>
+        {% elif targets %}<form method="post" action="{{ url_for('heir_entrust', hid=h.id) }}" class="row">
+          <select name="target_id" aria-label="托付给">{% for t in targets %}<option value="{{ t.id }}">{{ dn(t) }}</option>{% endfor %}</select>
+          <button class="plain" title="周岁抓周前，生母贵人以下的孩子要抱给嫔以上抚养。趁早托付给相熟的姐妹，好过被皇上随手指人。">托付</button></form>
+        {% else %}<div class="muted">周岁前可托付给相熟的嫔位以上姐妹（好感 ≥ 40）。</div>{% endif %}
+      {% endif %}
+      {% if a.reply %}<form method="post" action="{{ url_for('heir_entrust_reply', hid=h.id) }}" class="row">
+        <span>{{ dn(get_consort(h.mother_id)) }}想把孩子托付给你</span>
+        <button class="plain" name="reply" value="yes">应下</button><button class="plain" name="reply" value="no">回绝</button></form>{% endif %}
+      {% if a.visit %}<form method="post" action="{{ url_for('heir_visit', hid=h.id) }}" class="row" style="display:inline"><button class="plain" title="1 精力，跟孩子的情分 +4">探视</button></form>{% endif %}
+      {% if a.reclaim %}{% if a.reclaim_wait %}<span class="muted">{{ a.reclaim_wait }} 天后可再求</span>
+        {% else %}<form method="post" action="{{ url_for('heir_reclaim', hid=h.id) }}" class="row" style="display:inline"><button class="plain" title="1 精力，成败看皇上对你的信任">求皇上讨回</button></form>{% endif %}{% endif %}
+      {% if a.can_ban %}<form method="post" action="{{ url_for('heir_ban', hid=h.id) }}" class="row" style="display:inline"><button class="plain">{{ '允许探视' if h.visit_banned else '不许探视' }}</button></form>{% endif %}
     {% endif %}</td></tr>
   {% endfor %}
 </table></div>

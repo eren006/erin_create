@@ -176,7 +176,11 @@ CREATE TABLE IF NOT EXISTS heirs (
     mother_affinity    INTEGER NOT NULL DEFAULT 50,  -- 跟生母的情分
     caretaker_affinity INTEGER NOT NULL DEFAULT 50,  -- 跟现在抚养人的情分；自己养时两个数一起动
     zhuazhou    TEXT NOT NULL DEFAULT '',            -- 抓周抓到的东西，走过一次之后不再是空
-    seen_events TEXT NOT NULL DEFAULT '[]'           -- 遇到过的小事件，同一件不重复
+    seen_events TEXT NOT NULL DEFAULT '[]',          -- 遇到过的小事件，同一件不重复
+    foster_request_to INTEGER NOT NULL DEFAULT 0,    -- 周岁前生母托付给了谁、还在等对方点头（consorts.id）
+    visit_banned INTEGER NOT NULL DEFAULT 0,         -- 玩家养母设了「不许探视」
+    concealed   INTEGER NOT NULL DEFAULT 0,          -- 养母瞒着孩子身世；生母下次探视会说破
+    reclaim_after_day INTEGER NOT NULL DEFAULT 0     -- 求皇上讨回失败后，这天之前不能再求
 );
 
 -- 宫人：玩家亲手挑、亲手赐名；名字全宫不重复（已故的也算）
