@@ -376,6 +376,8 @@ ACTIONS = {
                     desc='派一个宫人去打听对方的秘密（用一次差使，不花精力）'),
     'plead':   dict(name='向皇上求情', energy=1, silver=50, daily=1, when={'normal'}, target=True,
                     desc='为禁足或冷宫中的姐妹求情，缩短日子。成败看皇上对你的信任'),
+    'shoukang': dict(name='去寿康宫请安', energy=1, silver=0, daily=1, when={'normal'}, sick_block=True,
+                     desc='太妃姑母会悄悄告诉你一件宫里的旧事。7 天一次'),
     'attend':  dict(name='去养心殿侍疾', energy=1, silver=0, daily=1, when={'normal'}, sick_block=True,
                     desc='皇上病重时才有。成败看信任：成了信任 +5，你抚养的阿哥圣眷 +5'),
 }
@@ -758,7 +760,20 @@ def init_db():
                      'ill_treatment': 'INTEGER NOT NULL DEFAULT 0',
                      'weak_days': 'INTEGER NOT NULL DEFAULT 0',
                      'postpartum_until': 'INTEGER NOT NULL DEFAULT 0',
-                     'heir_event': "TEXT NOT NULL DEFAULT ''"},
+                     'heir_event': "TEXT NOT NULL DEFAULT ''",
+                     'reign_no': 'INTEGER NOT NULL DEFAULT 1',
+                     'seq': 'INTEGER NOT NULL DEFAULT 0',
+                     'entry_age': 'INTEGER NOT NULL DEFAULT 0',
+                     'lineage': "TEXT NOT NULL DEFAULT ''",
+                     'patron': "TEXT NOT NULL DEFAULT ''",
+                     'peak_rank': 'INTEGER NOT NULL DEFAULT 0',
+                     'prestige_top': 'INTEGER NOT NULL DEFAULT 0',
+                     'kids': "TEXT NOT NULL DEFAULT '[]'",
+                     'survived': 'INTEGER NOT NULL DEFAULT 0',
+                     'heirloom_maid_id': 'INTEGER NOT NULL DEFAULT 0',
+                     'culprit_id': 'INTEGER NOT NULL DEFAULT 0',
+                     'inherit': "TEXT NOT NULL DEFAULT '{}'",
+                     'shoukang_day': 'INTEGER NOT NULL DEFAULT 0'},
         'heirs': {'caretaker_id': 'INTEGER NOT NULL DEFAULT 0',
                   'personality': "TEXT NOT NULL DEFAULT ''",
                   'study': 'INTEGER NOT NULL DEFAULT 20',
@@ -811,7 +826,8 @@ def init_db():
                        'era_name': "TEXT NOT NULL DEFAULT ''",
                        'emperor_name': "TEXT NOT NULL DEFAULT ''",
                        'emperor_traits': "TEXT NOT NULL DEFAULT '{}'",
-                       'dowager': "TEXT NOT NULL DEFAULT ''"},
+                       'dowager': "TEXT NOT NULL DEFAULT ''",
+                       'dowager_uid': 'INTEGER NOT NULL DEFAULT 0'},
         'users': {'forge_used': 'INTEGER NOT NULL DEFAULT 0',
                   'lethal_ready_day': 'INTEGER NOT NULL DEFAULT 0',
                   'nameless_ready_day': 'INTEGER NOT NULL DEFAULT 0',
@@ -830,6 +846,7 @@ def init_db():
                     # 老档里的皇嗣一律先算生母在带，之后 heir_growth_tick 该抓周的会照常判
                     db.execute("UPDATE heirs SET caretaker_id=mother_id WHERE caretaker_id=0")
     retire_musk(db)
+    migrate_families(db)
     if not db.execute("SELECT 1 FROM game_state WHERE id=1").fetchone():
         now = datetime.now(TZ)
         # 开服时若已过今天的结算时刻，视为今天已结算，免得一开服就空结算一次
@@ -908,6 +925,26 @@ def seed_npc_heirs(db):
                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,'')""",
                    (mother, mother, sp['gender'], sp['ordinal'], sp['name'], sp['born'], sp['personality'], sp['study'], sp['riding'],
                     sp['virtue'], sp['health'], sp['zhuazhou'], 50, 50, sp['key'], sp['ambition'], sp['faction'], sp['deadline']))
+
+def migrate_families(db):
+    """老档：每个有过角色的账号补一个家族（姓氏、门第取第一位角色的），角色补上入宫序号和辈分说法"""
+    for (uid,) in db.execute("SELECT id FROM users").fetchall():
+        if db.execute("SELECT 1 FROM families WHERE user_id=?", (uid,)).fetchone(): continue
+        rows = db.execute("SELECT id, surname, given, family, rank FROM consorts WHERE user_id=? OR archived_user_id=? ORDER BY id", (uid, uid)).fetchall()
+        if not rows: continue
+        surname, tier = rows[0][1], rows[0][3]
+        if tier not in FAMILIES: tier = 'dali'
+        h = new_head(surname, tier, 0)
+        db.execute("""INSERT INTO families (user_id, surname, tier, head_name, head_role, head_gen, head_age_months, head_office, created_ts)
+                      VALUES (?,?,?,?,?,?,?,?,?)""", (uid, surname, tier, h['head_name'], h['head_role'], 0, h['head_age_months'],
+                                                      TIER_OFFICE[tier], now_ts()))
+        prev = None
+        for i, (cid, _sn, given, _fam, rank) in enumerate(rows):
+            lineage = '长女' if i == 0 else (f"{prev}之妹" if i == 1 else f"{prev}的堂妹")
+            db.execute("UPDATE consorts SET seq=?, lineage=?, peak_rank=MAX(peak_rank,?), prestige_top=MAX(prestige_top,?) WHERE id=? AND lineage=''",
+                       (i + 1, lineage, rank, rank, cid))
+            prev = given
+
 
 def retire_musk(db):
     """v1.4：「暗下麝香」「毒害」并入「下药」。手里的麝香按 200 两退钱，还没结算的旧计策撤回退款（幂等）"""
@@ -1084,6 +1121,12 @@ def set_rank(cid, new_rank, reason_day=None):
     c = get_consort(cid)
     if new_rank >= 5 and not c['title']:
         assign_title(cid)
+    if not c['npc_key']:
+        run("UPDATE consorts SET peak_rank=MAX(peak_rank, ?) WHERE id=?", (new_rank, cid))
+        if new_rank > c['prestige_top']:
+            gain = sum(v for r_, v in PRESTIGE_RANK_GAIN.items() if c['prestige_top'] < r_ <= new_rank)
+            run("UPDATE consorts SET prestige_top=? WHERE id=?", (new_rank, cid))
+            if gain: add_prestige(c, gain, f"{full_name(c)}晋为{RANK_NAMES[new_rank]}")
     housing_sync(fill_main=not settling())
 
 def confine(cid, days):
@@ -1096,6 +1139,7 @@ def send_to_cold(cid):
     c = get_consort(cid)
     if c['status'] == 'dead': return
     # 废为庶人：封号一并褫夺，出冷宫后要重新挣
+    if c['user_id']: add_prestige(c, PRESTIGE_COLD, f"{full_name(c)}被打入冷宫")
     run("""UPDATE consorts SET status='cold', status_until_day=?, rank_before_cold=?,
            favor=0, pregnant_since=0, seek_bonus=0, hall='', housing_waiting='', title=? WHERE id=?""",
         (cur_day() + COLD_DAYS, c['rank'], c['title'] if c['npc_key'] else '', cid))
@@ -1167,11 +1211,11 @@ def login_required(f):
             return redirect(url_for('login'))
         c = my_consort()
         if c is None:
-            if request.endpoint not in ('create', 'logout', 'reigns', 'memorial'):
+            if request.endpoint not in ('create', 'logout', 'reigns', 'memorial', 'clan', 'clans'):
                 return redirect(url_for('create'))
         elif c['status'] == 'xiunv' and request.endpoint not in ('dianxuan', 'logout'):
             return redirect(url_for('dianxuan'))
-        elif c['status'] == 'dead' and request.endpoint not in ('memorial', 'rebirth', 'logout'):
+        elif c['status'] == 'dead' and request.endpoint not in ('memorial', 'rebirth', 'logout', 'clan', 'clans', 'family_page', 'reigns'):
             return redirect(url_for('memorial'))
         g.me = c
         return f(*a, **kw)
@@ -1247,6 +1291,196 @@ def logout():
 
 # ── 创建秀女 ───────────────────────────────────────────────────────────────────
 
+# ── 家族（九点九节）：一个账号就是一个家族，跨届一直在 ─────────────────────────────
+
+FAMILY_MAX_MEMBERS = 4          # 每一届最多送四位入宫
+FAMILY_MOURN_DAYS = 2           # 死后隔一天治丧，第三天才能送下一位
+DOWAGER_DX_BONUS = 10           # 太后的侄女殿选加分
+TRUST_DOWAGER, TRUST_DISGRACED = 30, 10
+DOWAGER_AUDIENCE_INTERVAL, DOWAGER_AUDIENCE_FAVOR = 7, 10
+SHOUKANG_INTERVAL = 7
+DOWRY_RATIO, DOWRY_MAX = 0.10, 200
+FELLOW_AFFINITY = 20
+HEIRLOOM_MAID_LOYALTY = 80
+PRESTIGE_DX_STEP, PRESTIGE_DX_MAX = 20, 10         # 每 20 点名望殿选 +1，最多 +10
+PRESTIGE_SILVER_MAX = 100                           # 起始银子 + 名望，最多 +100
+PRESTIGE_RANK_GAIN = {5: 5, 6: 10, 7: 20, 8: 20}    # 成员第一次晋到该位分给家里的名望
+PRESTIGE_BORN_PRINCE, PRESTIGE_PRINCE_TITLE, PRESTIGE_DOWAGER, PRESTIGE_OLD_AGE = 5, 10, 50, 5
+PRESTIGE_COLD, PRESTIGE_EXPOSED = -10, -5
+
+SURNAME_POOL = list('江林沈宋顾谢程萧韩魏薛卢尹段姜裴孟柳谭邵白俞秦郑穆蒋许潘戴夏苏陆袁丁莫汪范叶方彭石任钟廖崔贾邹史龙万熊常季严金安尚')
+
+OFFICE_TITLES = ['白身', '九品', '八品', '七品', '六品', '五品', '四品', '三品', '二品', '一品']
+OFFICE_MAX = len(OFFICE_TITLES) - 1
+TIER_OFFICE = dict(dali=6, jizhou=6, songyang=2, merchant=0, general=7, hanlin=6, physician=3, manchu=5)
+TIER_JOB = dict(dali='大理寺', jizhou='济州协领', songyang='松阳县衙', merchant='江南商号', general='镇边军中',
+                hanlin='翰林院', physician='太医院', manchu='满洲旗下')
+HEAD_ROLES = ['父亲', '兄长', '侄子', '族叔']         # 家主一代代换：父亲没了是兄长，兄长没了是侄子，再往后是族叔
+HEAD_AGE_RANGE = [(46, 56), (26, 36), (20, 28), (40, 55)]
+HEAD_GIVEN = ['明德', '守正', '兆麟', '世昌', '怀仁', '延年', '景行', '鸿儒', '子安', '文彬', '崇礼', '嘉树', '绍祖', '惟清', '伯谦']
+HEAD_OLD_YEARS, HEAD_OLD_RATE = 55, 0.005           # 家主 55 岁起每晚可能病逝，每多一岁概率 +0.5%
+HEAD_ILL_DEATH, HEAD_ILL_RECOVER = 0.20, 0.10       # 病着且没请医时每晚 20% 撒手；自己好转 10%
+HEAD_PROMOTE_BASE, HEAD_DEMOTE_BASE = 0.03, 0.015    # 每晚升迁 / 降职的底
+PRESTIGE_LABELS = [(120, '簪缨世家'), (60, '望族'), (20, '小康之家'), (0, '寒门')]
+
+
+def consort_uid(c):
+    return (c['user_id'] or c['archived_user_id']) if c else None
+
+
+def family_row(uid):
+    return q("SELECT * FROM families WHERE user_id=?", (uid,), one=True) if uid else None
+
+
+def prestige_label(p):
+    return next(t for lo, t in PRESTIGE_LABELS if p >= lo)
+
+
+def family_log_add(uid, text, honor=0):
+    if not uid: return
+    run("INSERT INTO family_log (user_id, reign_no, day, text, honor) VALUES (?,?,?,?,?)",
+        (uid, state()['reign_no'], cur_day(), text, honor))
+
+
+def add_prestige_uid(uid, delta, why=''):
+    fam = family_row(uid)
+    if not fam or not delta: return
+    run("UPDATE families SET prestige=MAX(0, prestige+?) WHERE user_id=?", (int(delta), uid))
+    if why: family_log_add(uid, f"{why}（名望 {int(delta):+d}）")
+
+
+def add_prestige(c, delta, why=''):
+    """给这位成员的家族加减名望；NPC 没有家族"""
+    if c and not c['npc_key']: add_prestige_uid(consort_uid(c), delta, why)
+
+
+def head_text(fam):
+    return f"{fam['head_role']}{fam['head_name']}（{TIER_JOB[fam['tier']]}{OFFICE_TITLES[fam['head_office']]}，{fam['head_age_months'] // 12} 岁）"
+
+
+def new_head(surname, tier, gen):
+    lo, hi = HEAD_AGE_RANGE[min(gen, len(HEAD_AGE_RANGE) - 1)]
+    return dict(head_name=surname + random.choice(HEAD_GIVEN), head_role=HEAD_ROLES[min(gen, len(HEAD_ROLES) - 1)],
+                head_gen=gen, head_age_months=random.randint(lo, hi) * 12, head_ill_day=0)
+
+
+def create_family(uid, surname, tier):
+    h = new_head(surname, tier, 0)
+    run("""INSERT INTO families (user_id, surname, tier, head_name, head_role, head_gen, head_age_months, head_office, created_ts)
+           VALUES (?,?,?,?,?,?,?,?,?)""",
+        (uid, surname, tier, h['head_name'], h['head_role'], 0, h['head_age_months'], TIER_OFFICE[tier], now_ts()))
+
+
+def npc_surnames():
+    names = {n['surname'] for n in NPCS}
+    for s_ in NPC_SETS:
+        names |= {v['surname'] for v in s_.values()}
+    return names
+
+
+def surname_taken(surname):
+    return bool(q("SELECT 1 FROM families WHERE surname=?", (surname,), one=True)) or surname in npc_surnames() \
+        or bool(q("SELECT 1 FROM consorts WHERE npc_key IS NOT NULL AND surname=?", (surname,), one=True))
+
+
+def suggest_surnames(n=3):
+    free = [s_ for s_ in SURNAME_POOL if not surname_taken(s_)]
+    return random.sample(free, min(n, len(free)))
+
+
+def family_members(uid, reign_no=None):
+    sql = "SELECT * FROM consorts WHERE (user_id=? OR archived_user_id=?)"
+    args = [uid, uid]
+    if reign_no is not None:
+        sql += " AND reign_no=?"; args.append(reign_no)
+    return list(q(sql + " ORDER BY id", args))
+
+
+def family_gate(uid):
+    """现在能不能再送一位入宫：本届人数、治丧"""
+    members = family_members(uid, state()['reign_no'])
+    if len(members) >= FAMILY_MAX_MEMBERS:
+        return False, f'这一届你家已经送了 {FAMILY_MAX_MEMBERS} 位入宫，都没了，本届门庭凋零。等下一届再送人吧。'
+    last = members[-1] if members else None
+    if last and last['status'] == 'dead' and cur_day() - last['death_day'] < FAMILY_MOURN_DAYS:
+        wait = FAMILY_MOURN_DAYS - (cur_day() - last['death_day'])
+        return False, f'家里正在给{full_name(last)}治丧，还要 {wait} 天才能送下一位入宫。'
+    return True, ''
+
+
+def member_class(m):
+    reason = m['death_reason'] or ''
+    if '圣母皇太后' in reason: return 'dowager'
+    if '太妃' in reason: return 'concubine'
+    if '押错' in reason or '失势' in reason: return 'disgraced'
+    return ''
+
+
+def family_inheritance(uid, reign_no):
+    """上一辈（最近有成员入宫的那一届）里最有分量的一位，决定这位新人的辈分说法和照拂"""
+    prev = q("""SELECT MAX(reign_no) r FROM consorts WHERE (user_id=? OR archived_user_id=?) AND reign_no<? AND status!='xiunv'""",
+             (uid, uid, reign_no), one=True)['r']
+    if not prev: return dict(relative=None, patron='', depth=0)
+    order = dict(dowager=0, concubine=1, disgraced=2)
+    best = min(family_members(uid, prev), key=lambda m: (order.get(member_class(m), 3), -m['peak_rank'], m['id']))
+    return dict(relative=best, patron=member_class(best) if prev == reign_no - 1 else '', depth=reign_no - prev)
+
+
+def make_lineage(members, inh):
+    if not members:
+        rel = inh['relative']
+        if not rel: return '长女'
+        role = dict(dowager='太后', concubine='太妃').get(member_class(rel), RANK_NAMES[rel['peak_rank']])
+        word = {1: '侄女', 2: '侄孙女'}.get(inh['depth'], '族中晚辈')
+        return f"前朝{role}{full_name(rel)}之{word}"
+    prev = members[-1]
+    return f"{prev['given']}之妹" if len(members) == 1 else f"{prev['given']}的堂妹"
+
+
+def heirloom_maids(uid):
+    """这一届里已故成员宫里忠心够高的宫人，新人可以带一个过来"""
+    ids = [m['id'] for m in family_members(uid, state()['reign_no']) if m['status'] == 'dead']
+    if not ids: return []
+    marks = ','.join('?' * len(ids))
+    return list(q(f"""SELECT * FROM maids WHERE owner_id IN ({marks}) AND status='gone' AND loyalty>=?
+                      AND left_reason LIKE '主子没了%' ORDER BY loyalty DESC""", (*ids, HEIRLOOM_MAID_LOYALTY)))
+
+
+def apply_inheritance(c):
+    """入宫那一刻，姐姐留下的东西接上：姐妹情、遗书、旧宫人"""
+    try: inh = json.loads(c['inherit'] or '{}')
+    except ValueError: inh = {}
+    pred = get_consort(inh['from']) if inh.get('from') else None
+    if pred:
+        for sid in sisters_of(pred['id']):
+            s_ = get_consort(sid)
+            if s_ and s_['status'] != 'dead' and s_['id'] != c['id']:
+                add_affinity(c['id'], sid, FELLOW_AFFINITY)
+        if pred['culprit_id']:
+            culprit = get_consort(pred['culprit_id'])
+            if culprit:
+                run("""INSERT INTO letters (from_id, to_id, day, body, sender_label, created_ts) VALUES (0,?,?,?,?,?)""",
+                    (c['id'], cur_day(),
+                     f"妹妹：姐姐走得不明不白。我生前安了眼线，查到害我的人是{display_name(culprit)}{full_name(culprit)}。"
+                     f"这笔账，往后就交给你了。", f"{full_name(pred)}遗书", now_ts()))
+                notify(c['id'], f"你收到了姐姐{full_name(pred)}的一封遗书，去「书信」看看。", 'bad')
+    if c['heirloom_maid_id']:
+        m = get_maid(c['heirloom_maid_id'])
+        c = get_consort(c['id'])
+        if m and m['status'] == 'gone' and len(active_maids(c['id'])) < maid_quota(c['rank']):
+            run("""UPDATE maids SET owner_id=?, status='active', left_day=0, left_reason='', joined_day=? WHERE id=?""",
+                (c['id'], cur_day(), m['id']))
+            notify(c['id'], f"姐姐宫里的{m['name']}认得你的眉眼，主动跟了过来。", 'good')
+        elif m:
+            notify(c['id'], f"{m['name']}想跟你过来，可你宫里的宫人名额已满。", 'info')
+
+
+def family_dx_bonus(fam, patron):
+    bonus = min(PRESTIGE_DX_MAX, fam['prestige'] // PRESTIGE_DX_STEP)
+    if patron == 'dowager': bonus += DOWAGER_DX_BONUS
+    return bonus
+
+
 @app.route('/create', methods=['GET', 'POST'])
 @login_required
 def create():
@@ -1255,46 +1489,657 @@ def create():
     if state()['mourning']:
         flash('国丧一日，明晚起开下一届选秀。先看看上一届的遗诏吧。', 'info')
         return redirect(url_for('reigns'))
-    if request.method == 'POST':
-        f = request.form
-        surname, given = f.get('surname', '').strip(), f.get('given', '').strip()
-        fam, per = f.get('family'), f.get('personality')
+    uid = S['uid']
+    fam = family_row(uid)
+    f = request.form
+    if fam is None:                      # 第一次：先定家族的姓氏和门第，定了就不能改
+        if request.method == 'POST' and f.get('step') == 'family':
+            surname = (f.get('surname_custom', '').strip() or f.get('surname', '').strip())
+            tier = f.get('family')
+            err = None
+            if not 1 <= len(surname) <= 2: err = '姓氏 1~2 个字。'
+            elif blocked_hit('姓氏', surname): err = BLOCKED_MSG
+            elif tier not in FAMILIES: err = '请选择门第。'
+            elif surname_taken(surname): err = f'「{surname}」已经有人家用了（宫里的、别的玩家家族的都算），换一个吧。'
+            if err:
+                flash(err, 'bad')
+                return render_template('create.html', fam=None, choices=suggest_surnames(), form=f)
+            create_family(uid, surname, tier)
+            flash(f'{surname}氏一门，{FAMILIES[tier]["name"][:-2]}。家里的事，往后都记在族谱上。', 'good')
+            return redirect(url_for('create'))
+        return render_template('create.html', fam=None, choices=suggest_surnames(), form={})
+    ok, why = family_gate(uid)
+    if not ok:
+        flash(why, 'bad')
+        return redirect(url_for('clan'))
+    reign_no = state()['reign_no']
+    members = family_members(uid, reign_no)
+    inh = family_inheritance(uid, reign_no)
+    lineage = make_lineage(members, inh)
+    if request.method == 'POST' and f.get('step') != 'family':
+        given, per = f.get('given', '').strip(), f.get('personality')
         try:
             age = int(f.get('age', 20))
             pts = {k: int(f.get(k, 0) or 0) for k in STAT_KEYS}
         except ValueError:
             pts = None
+        try: maid_id = int(f.get('heirloom_maid') or 0)
+        except ValueError: maid_id = 0
         err = None
-        if not (1 <= len(surname) <= 4) or not (1 <= len(given) <= 3):
-            err = '姓 1~4 个字，名 1~3 个字。'
-        elif blocked_hit('姓名', surname + given):
-            err = BLOCKED_MSG
-        elif pts is not None and not 18 <= age <= 22:
-            err = '入宫年龄为十八至二十二岁。'
-        elif fam not in FAMILIES or per not in PERSONALITIES:
-            err = '请选择出身和性格。'
-        elif pts is None or any(v < 0 or v > POINT_CAP_PER_STAT for v in pts.values()) \
-                or sum(pts.values()) > FREE_POINTS:
+        if not 1 <= len(given) <= 3: err = '名 1~3 个字。'
+        elif blocked_hit('姓名', fam['surname'] + given): err = BLOCKED_MSG
+        elif pts is not None and not 18 <= age <= 22: err = '入宫年龄为十八至二十二岁。'
+        elif per not in PERSONALITIES: err = '请选择性格。'
+        elif pts is None or any(v < 0 or v > POINT_CAP_PER_STAT for v in pts.values()) or sum(pts.values()) > FREE_POINTS:
             err = f'加点有误：总共 {FREE_POINTS} 点，每项最多 {POINT_CAP_PER_STAT} 点。'
-        elif q("SELECT 1 FROM consorts WHERE surname=? AND given=?", (surname, given), one=True):
+        elif q("SELECT 1 FROM consorts WHERE surname=? AND given=?", (fam['surname'], given), one=True):
             err = '宫里已经有同名的人了，换个名字吧。'
+        elif maid_id and maid_id not in {m['id'] for m in heirloom_maids(uid)}: err = '那位宫人跟不过来。'
         if err:
             flash(err, 'bad')
-            return render_template('create.html', form=f)
+            return render_template('create.html', fam=fam, form=f, lineage=lineage, heirlooms=heirloom_maids(uid),
+                                   inh=inh, members=members)
+        tier = fam['tier']
         stats = dict(STAT_BASE)
         for k in STAT_KEYS: stats[k] += pts[k]
-        for src in (FAMILIES[fam]['mods'], PERSONALITIES[per]['mods']):
+        for src in (FAMILIES[tier]['mods'], PERSONALITIES[per]['mods']):
             for k, v in src.items(): stats[k] += v
         stats = {k: clamp(v, 5, 100) for k, v in stats.items()}
+        pred = members[-1] if members and members[-1]['status'] == 'dead' else None
+        dowry = 0
+        if pred and pred['silver'] > 0:
+            dowry = min(DOWRY_MAX, int(pred['silver'] * DOWRY_RATIO))
+            run("UPDATE consorts SET silver=0 WHERE id=?", (pred['id'],))
+        silver = FAMILIES[tier]['silver'] + min(PRESTIGE_SILVER_MAX, fam['prestige']) + dowry
+        inherit = dict(dowry=dowry, **({'from': pred['id']} if pred else {}))
         run("""INSERT INTO consorts (user_id, surname, given, family, personality,
-               appearance, talent, scheme, virtue, health, silver, secret, status, created_ts)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'xiunv', ?)""",
-            (S['uid'], surname, given, fam, per, stats['appearance'], stats['talent'],
-             stats['scheme'], stats['virtue'], stats['health'], FAMILIES[fam]['silver'],
-             roll_secret(), now_ts()))
-        run('UPDATE consorts SET age_months=? WHERE user_id=?', (age * 12, S['uid']))
+               appearance, talent, scheme, virtue, health, silver, secret, status, created_ts,
+               reign_no, seq, entry_age, lineage, patron, inherit, heirloom_maid_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'xiunv', ?, ?,?,?,?,?,?,?)""",
+            (uid, fam['surname'], given, tier, per, stats['appearance'], stats['talent'],
+             stats['scheme'], stats['virtue'], stats['health'], silver, roll_secret(), now_ts(),
+             reign_no, len(members) + 1, age, lineage, inh['patron'], json.dumps(inherit), maid_id))
+        run('UPDATE consorts SET age_months=? WHERE user_id=? AND status=?', (age * 12, uid, 'xiunv'))
         return redirect(url_for('dianxuan'))
-    return render_template('create.html', form={})
+    return render_template('create.html', fam=fam, form={}, lineage=lineage, heirlooms=heirloom_maids(uid),
+                           inh=inh, members=members)
+
+
+# ── 家主：会老、会病、会升降，也会来求你 ──────────────────────────────────────────
+
+REQUEST_INTERVAL, REQUEST_CHANCE, REQUEST_DAYS = 3, 0.35, 3
+PROMOTE_COST_BASE, PROMOTE_COST_STEP = 80, 40
+DEBT_COST_BASE, DEBT_COST_STEP = 60, 10
+ILL_COST = 120
+BACKING_COST, BACKING_LOCK_DAYS, BACKING_SCOLD = 100, 7, 0.10
+BACKING_WIN_OFFICE, BACKING_WIN_PRESTIGE, BACKING_LOSE_OFFICE, BACKING_LOSE_PRESTIGE = 2, 10, 1, 8
+SUPPORT_CAP = 15
+SEND_MIN, SEND_MAX = 10, 500
+SEND_PER_PRESTIGE = 100
+WITHDRAW_MAX, WITHDRAW_INTERVAL = 200, 3
+PETITION_COST, PETITION_WIN, PETITION_SCOLD, PETITION_INTERVAL = 150, 0.55, 0.20, 7
+VENTURE_MIN, VENTURE_MAX = 50, 400
+LETTER_SILVER = (20, 60)
+
+VENTURES = {
+    'silk':  dict(name='绸缎庄', days=3, scold=0.0, outcomes=[(0.70, 0.25), (0.25, 0.0), (0.05, -0.4)],
+                  desc='稳当：七成赚两成半，二成半持平，一成不到亏四成。不会惹上官司。'),
+    'salt':  dict(name='漕运盐引', days=5, scold=0.12, outcomes=[(0.45, 0.8), (0.25, 0.0), (0.20, -0.5), (0.10, -1.0)],
+                  desc='有赚头：近半赚八成，两成亏一半，一成血本无归；一成二的可能被御史参一本（名望 −8，信任 −6）。'),
+    'usury': dict(name='印子钱', days=7, scold=0.25, outcomes=[(0.35, 1.5), (0.25, 0.0), (0.40, -1.0)],
+                  desc='暴利也暴险：三成半翻两倍半，四成本金全赔；两成半的可能东窗事发（名望 −15，信任 −8，圣宠 −10%，家底抄没一半）。'),
+}
+FAMILY_LETTER_NEWS = [
+    '父兄来信，说朝中近来风向有变，让你在宫里少说多看。',
+    '家里来信，说今年收成还好，让你不必挂念，保重身子要紧。',
+    '族里长辈捎话：宫里的一举一动，家里都听着，切莫因小失大。',
+    '家书里夹着几片晒干的桂花，说是院里那棵树今年开得格外好。',
+]
+
+
+def head_office_level(fam):
+    return fam['head_office']
+
+
+def alive_members(uid):
+    return [m for m in family_members(uid) if m['user_id'] and m['status'] in ('normal', 'confined', 'cold')]
+
+
+def notify_family(uid, text, kind='info'):
+    for m in alive_members(uid):
+        notify(m['id'], text, kind)
+
+
+def head_dies(fam, day):
+    uid = fam['user_id']
+    gen = fam['head_gen'] + 1
+    h = new_head(fam['surname'], fam['tier'], gen)
+    office = max(0, fam['head_office'] - 2)
+    run("""UPDATE families SET head_name=?, head_role=?, head_gen=?, head_age_months=?, head_ill_day=0, head_office=? WHERE user_id=?""",
+        (h['head_name'], h['head_role'], gen, h['head_age_months'], office, uid))
+    text = f"{fam['head_role']}{fam['head_name']}病逝，由{h['head_role']}{h['head_name']}接掌家事（{OFFICE_TITLES[office]}）。"
+    family_log_add(uid, text)
+    notify_family(uid, f"家里传来讣告：{text}", 'bad')
+
+
+def family_tick(day):
+    """每晚：家主长半岁，可能病、可能没；没病没死的可能升迁或降职；家里也可能来求你"""
+    for fam in list(q("SELECT * FROM families")):
+        uid = fam['user_id']
+        age = fam['head_age_months'] + 6
+        run("UPDATE families SET head_age_months=? WHERE user_id=?", (age, uid))
+        fam = family_row(uid)
+        years = age / 12
+        ill = bool(fam['head_ill_day'])
+        if ill and random.random() < HEAD_ILL_RECOVER:
+            run("UPDATE families SET head_ill_day=0 WHERE user_id=?", (uid,))
+            notify_family(uid, f"家里来信：{fam['head_role']}的病渐渐好了。", 'good')
+            ill = False
+        elif not ill and years >= 50 and random.random() < 0.01 * (years - 49):
+            run("UPDATE families SET head_ill_day=? WHERE user_id=?", (day, uid))
+            notify_family(uid, f"家里来信：{fam['head_role']}病倒了，请医吃药要银子。", 'bad')
+            ill = True
+        p_die = max(0.0, (years - HEAD_OLD_YEARS) * HEAD_OLD_RATE) + (HEAD_ILL_DEATH if ill else 0)
+        if random.random() < p_die:
+            head_dies(fam, day)
+            continue
+        if fam['head_office'] < OFFICE_MAX and years < 66 and random.random() < HEAD_PROMOTE_BASE + min(0.03, fam['prestige'] / 3000):
+            run("UPDATE families SET head_office=head_office+1, prestige=prestige+3 WHERE user_id=?", (uid,))
+            text = f"{fam['head_role']}{fam['head_name']}升任{OFFICE_TITLES[fam['head_office'] + 1]}。"
+            family_log_add(uid, text)
+            notify_family(uid, f"家里来信：{text}", 'good')
+        elif fam['head_office'] > 0 and random.random() < max(0.005, HEAD_DEMOTE_BASE - fam['prestige'] / 8000):
+            run("UPDATE families SET head_office=head_office-1, prestige=MAX(0,prestige-3) WHERE user_id=?", (uid,))
+            text = f"{fam['head_role']}{fam['head_name']}被降为{OFFICE_TITLES[fam['head_office'] - 1]}。"
+            family_log_add(uid, text)
+            notify_family(uid, f"家里来信：{text}", 'bad')
+    family_request_tick(day)
+
+
+# ── 家里来求助 ────────────────────────────────────────────────────────────────
+
+def request_text(fam, r):
+    d = json.loads(r['data'] or '{}')
+    role = fam['head_role']
+    if r['kind'] == 'promotion':
+        return f"{role}来信：想在仕途上再进一步，吏部那边要打点，托你拿 {d['cost']} 两周转。成了家主升一级，不成银子就打了水漂。"
+    if r['kind'] == 'trouble':
+        return f"{role}在外头闯了祸，被人告到了御史台，托你在皇上跟前说句话。你肯出面，成败看皇上对你的信任；不肯，家里只有硬扛。"
+    if r['kind'] == 'debt':
+        return f"家里生意周转不开，欠了外债，想跟你借 {d['cost']} 两。"
+    if r['kind'] == 'illness':
+        return f"{role}病得起不来床，请医吃药要 {d['cost']} 两，托你帮衬。不请医，一天比一天危险。"
+    return f"{role}来信问：这场储位之争，咱们家该站哪一边？站对了家里跟着水涨船高，站错了要吃亏。"
+
+
+def open_request(uid):
+    return q("SELECT * FROM family_requests WHERE user_id=? AND status='open' ORDER BY id DESC", (uid,), one=True)
+
+
+def lapse_request(fam, r, day):
+    run("UPDATE family_requests SET status='lapsed' WHERE id=?", (r['id'],))
+    uid = fam['user_id']
+    if r['kind'] == 'trouble':
+        run("UPDATE families SET head_office=MAX(0, head_office-1) WHERE user_id=?", (uid,))
+        add_prestige_uid(uid, -2, '家主闯了祸，没人出面说情')
+    elif r['kind'] == 'debt':
+        add_prestige_uid(uid, -1, '欠了外债，没人接济')
+    notify(r['consort_id'], '你迟迟没有回信，家里只好自己想办法了。', 'info')
+
+
+def family_request_tick(day):
+    for fam in list(q("SELECT * FROM families")):
+        uid = fam['user_id']
+        r = open_request(uid)
+        if r:
+            if day >= r['expires_day']: lapse_request(fam, r, day)
+            continue
+        if day - fam['request_day'] < REQUEST_INTERVAL: continue
+        mem = [m for m in alive_members(uid) if m['status'] in ('normal', 'confined')]
+        if not mem or random.random() >= REQUEST_CHANCE: continue
+        c = mem[-1]
+        kinds, weights = ['trouble', 'debt'], [2, 2]
+        if fam['head_office'] < OFFICE_MAX: kinds.append('promotion'); weights.append(3)
+        if fam['head_ill_day']: kinds.append('illness'); weights.append(4)
+        rivals = sorted(rival_princes(day), key=heir_standing, reverse=True)
+        if rivals and not fam['backing_heir_id']: kinds.append('backing'); weights.append(3)
+        kind = random.choices(kinds, weights=weights)[0]
+        data = {}
+        if kind == 'promotion': data['cost'] = PROMOTE_COST_BASE + PROMOTE_COST_STEP * fam['head_office']
+        elif kind == 'debt': data['cost'] = DEBT_COST_BASE + DEBT_COST_STEP * fam['head_office']
+        elif kind == 'illness': data['cost'] = ILL_COST
+        elif kind == 'backing': data['options'] = [h['id'] for h in rivals[:3]]
+        run("INSERT INTO family_requests (user_id, consort_id, kind, day, expires_day, data) VALUES (?,?,?,?,?,?)",
+            (uid, c['id'], kind, day, day + REQUEST_DAYS, json.dumps(data)))
+        run("UPDATE families SET request_day=? WHERE user_id=?", (day, uid))
+        notify(c['id'], f"家里来信了，是求你帮忙的事。去「家里」看看，{REQUEST_DAYS} 天内回信。", 'info')
+
+
+def scold_chance(base, fam):
+    return base * (1 - min(0.5, fam['prestige'] / 200))
+
+
+def answer_request(c, fam, r, answer, heir_id=0):
+    """返回 (提示, 类别)。answer 是 'yes' / 'no'"""
+    uid, d, day = fam['user_id'], json.loads(r['data'] or '{}'), cur_day()
+    kind = r['kind']
+    role = fam['head_role']
+    if answer != 'yes':
+        run("UPDATE family_requests SET status='declined' WHERE id=?", (r['id'],))
+        if kind == 'trouble':
+            run("UPDATE families SET head_office=MAX(0, head_office-1) WHERE user_id=?", (uid,))
+            add_prestige_uid(uid, -2, f'{role}闯了祸，你没有出面')
+            return f'你没有出面。家里硬扛下来，{role}被降了一级，名望 −2。', 'bad'
+        if kind == 'debt':
+            add_prestige_uid(uid, -1, '欠了外债，你没有接济')
+            return '你没有借。家里另想办法，名望 −1。', 'info'
+        return '你回信推了。', 'info'
+    if kind in ('promotion', 'debt', 'illness'):
+        cost = d['cost']
+        if c['silver'] < cost: return f'手头只有 {c["silver"]} 两，不够 {cost} 两。', 'bad'
+    if kind == 'trouble' and c['energy'] < 1: return '精力不够了。', 'bad'
+    if kind == 'backing':
+        if heir_id not in d.get('options', []) or not _rival(heir_id):
+            return '选一位家里问的那几位阿哥。', 'bad'
+    run("UPDATE family_requests SET status='done' WHERE id=?", (r['id'],))
+    if kind == 'promotion':
+        add_silver(c['id'], -d['cost'])
+        if random.random() < min(0.85, 0.5 + fam['prestige'] / 400):
+            run("UPDATE families SET head_office=MIN(?, head_office+1) WHERE user_id=?", (OFFICE_MAX, uid))
+            add_prestige_uid(uid, 3, f'{role}打点得力，升任{OFFICE_TITLES[min(OFFICE_MAX, fam["head_office"] + 1)]}')
+            msg, k = f'银子送到了。{role}升任{OFFICE_TITLES[min(OFFICE_MAX, fam["head_office"] + 1)]}，名望 +3。', 'good'
+        else:
+            msg, k = '银子送出去了，却没有下文。这笔钱算是打了水漂。', 'bad'
+        if random.random() < scold_chance(0.10, fam):
+            add_prestige_uid(uid, -5, '买官的事被御史听说了')
+            add_trust(c['id'], -3)
+            msg += '偏偏这事被御史听说了，名望 −5，信任 −3。'
+        return msg, k
+    if kind == 'trouble':
+        run('UPDATE consorts SET energy=energy-1 WHERE id=?', (c['id'],))
+        if random.random() < plead_chance(c):
+            add_prestige_uid(uid, 1, f'你在皇上跟前替{role}说了情')
+            return '皇上听了你的话，没有深究。名望 +1。', 'good'
+        add_trust(c['id'], -3)
+        run("UPDATE families SET head_office=MAX(0, head_office-1) WHERE user_id=?", (uid,))
+        add_prestige_uid(uid, -2, f'替{role}说情没能成')
+        return f'皇上脸色一沉，没有松口。信任 −3，{role}被降一级，名望 −2。', 'bad'
+    if kind == 'debt':
+        add_silver(c['id'], -d['cost'])
+        add_prestige_uid(uid, 1, '你接济了家里')
+        return f'借了 {d["cost"]} 两，家里渡过了难关。名望 +1。', 'good'
+    if kind == 'illness':
+        add_silver(c['id'], -d['cost'])
+        run("UPDATE families SET head_ill_day=0 WHERE user_id=?", (uid,))
+        add_prestige_uid(uid, 1, f'你出银子替{role}请了名医')
+        return f'{role}吃了药，病去了大半。名望 +1。', 'good'
+    run("UPDATE families SET backing_heir_id=?, backing_day=? WHERE user_id=?", (heir_id, day, uid))
+    return f'你回信定下：家里这一届站在{heir_full_title(_rival(heir_id))}一边。', 'good'
+
+
+# ── 家里帮不帮夺嫡 ────────────────────────────────────────────────────────────
+
+def family_backing_id(fam):
+    """家里这一届支持哪位阿哥：明说了的；没说就跟着自家的孩子走"""
+    if fam['backing_heir_id'] and _rival(fam['backing_heir_id']): return fam['backing_heir_id']
+    ids = [m['id'] for m in family_members(fam['user_id'], state()['reign_no'])]
+    for h in q("SELECT * FROM heirs WHERE gender='皇子' AND status!='deposed' ORDER BY id"):
+        if (h['mother_id'] in ids or h['caretaker_id'] in ids) and heir_age_years(h) >= RIVAL_MIN_AGE:
+            return h['id']
+    return 0
+
+
+def family_support(h):
+    """外朝助力：站在这位阿哥一边的各家，家主官职越高帮得越多，最多 +15"""
+    total = 0
+    for fam in q("SELECT * FROM families"):
+        if family_backing_id(fam) == h['id']: total += fam['head_office']
+    return min(SUPPORT_CAP, total)
+
+
+def settle_family_backing(winner, day):
+    """开匾那晚：站对了的家族家主升官，站错了的降官"""
+    for fam in list(q("SELECT * FROM families")):
+        bid = family_backing_id(fam)
+        if not bid: continue
+        uid = fam['user_id']
+        if winner and bid == winner['id']:
+            run("UPDATE families SET head_office=MIN(?, head_office+?) WHERE user_id=?", (OFFICE_MAX, BACKING_WIN_OFFICE, uid))
+            add_prestige_uid(uid, BACKING_WIN_PRESTIGE, f"家里押对了阿哥，{fam['head_role']}{fam['head_name']}连升{BACKING_WIN_OFFICE}级")
+            family_log_add(uid, '家里在夺嫡里站对了新帝', 1)
+        else:
+            run("UPDATE families SET head_office=MAX(0, head_office-?) WHERE user_id=?", (BACKING_LOSE_OFFICE, uid))
+            add_prestige_uid(uid, -BACKING_LOSE_PRESTIGE, f"家里押错了阿哥，{fam['head_role']}{fam['head_name']}被新帝贬了一级")
+    run("UPDATE families SET backing_heir_id=0, backing_day=0")
+
+
+# ── 联络家里：送银子、支取、生意、荐官、家书 ──────────────────────────────────────
+
+def _family_actor():
+    c = g.me
+    fam = family_row(consort_uid(c)) if c else None
+    if not c or not fam or c['status'] not in ('normal', 'confined'):
+        flash('你现在联络不上家里。', 'bad')
+        return None, None
+    return c, fam
+
+
+@app.route('/family')
+@login_required
+def family_page():
+    c = g.me
+    uid = consort_uid(c)
+    fam = family_row(uid)
+    if not fam:
+        return redirect(url_for('clan'))
+    day = cur_day()
+    req = open_request(uid)
+    rivals = sorted(rival_princes(day), key=heir_standing, reverse=True)
+    backing = family_backing_id(fam)
+    ventures = list(q("SELECT * FROM family_ventures WHERE user_id=? AND status='open' ORDER BY id", (uid,)))
+    history = list(q("SELECT * FROM family_ventures WHERE user_id=? AND status='done' ORDER BY id DESC LIMIT 6", (uid,)))
+    log = list(q("SELECT * FROM family_log WHERE user_id=? ORDER BY id DESC LIMIT 12", (uid,)))
+    opts = [_rival(i) for i in json.loads(req['data'] or '{}').get('options', [])] if req and req['kind'] == 'backing' else []
+    return render_template('family.html', c=c, fam=fam, head=head_text(fam), req=req, req_text=request_text(fam, req) if req else '',
+                           req_opts=[h for h in opts if h], rivals=rivals, backing=backing, ventures=ventures, history=history, log=log,
+                           VENTURES=VENTURES, day=day, prestige_label=prestige_label(fam['prestige']),
+                           can_act=c is not None and c['status'] in ('normal', 'confined'), heir_standing=heir_standing,
+                           OFFICE_TITLES=OFFICE_TITLES, TIER_JOB=TIER_JOB, open_venture=any(v['consort_id'] == c['id'] for v in ventures),
+                           SEND_MIN=SEND_MIN, SEND_MAX=SEND_MAX, SEND_PER_PRESTIGE=SEND_PER_PRESTIGE, WITHDRAW_MAX=WITHDRAW_MAX,
+                           WITHDRAW_INTERVAL=WITHDRAW_INTERVAL, PETITION_COST=PETITION_COST, PETITION_INTERVAL=PETITION_INTERVAL,
+                           BACKING_COST=BACKING_COST, BACKING_LOCK_DAYS=BACKING_LOCK_DAYS, VENTURE_MIN=VENTURE_MIN, VENTURE_MAX=VENTURE_MAX,
+                           daily_count=daily_count, backing_heir=_rival(backing) if backing else None)
+
+
+def _toint(name, default=0):
+    try: return int(request.form.get(name, default))
+    except (TypeError, ValueError): return default
+
+
+@app.route('/family/request/<int:rid>', methods=['POST'])
+@login_required
+def family_request_answer(rid):
+    c, fam = _family_actor()
+    if not c: return redirect(url_for('family_page'))
+    r = q("SELECT * FROM family_requests WHERE id=?", (rid,), one=True)
+    if not r or r['user_id'] != fam['user_id'] or r['status'] != 'open':
+        flash('这封信已经回过了。', 'bad'); return redirect(url_for('family_page'))
+    msg, kind = answer_request(c, fam, r, request.form.get('answer'), _toint('heir_id'))
+    flash(msg, kind)
+    return redirect(url_for('family_page'))
+
+
+@app.route('/family/send', methods=['POST'])
+@login_required
+def family_send():
+    c, fam = _family_actor()
+    if not c: return redirect(url_for('family_page'))
+    amt = _toint('amount')
+    if not SEND_MIN <= amt <= SEND_MAX: flash(f'一次送 {SEND_MIN}~{SEND_MAX} 两。', 'bad')
+    elif c['silver'] < amt: flash(f'手头只有 {c["silver"]} 两。', 'bad')
+    elif daily_count(c['id'], 'fam_send'): flash('今天已经往家里送过银子了。', 'bad')
+    else:
+        add_silver(c['id'], -amt)
+        daily_inc(c['id'], 'fam_send')
+        run("UPDATE families SET estate=estate+? WHERE user_id=?", (amt, fam['user_id']))
+        gain = amt // SEND_PER_PRESTIGE
+        if gain: add_prestige_uid(fam['user_id'], gain)
+        flash(f"送了 {amt} 两回家，记进家底。" + (f"家里体面了些，名望 +{gain}。" if gain else ''), 'good')
+    return redirect(url_for('family_page'))
+
+
+@app.route('/family/withdraw', methods=['POST'])
+@login_required
+def family_withdraw():
+    c, fam = _family_actor()
+    if not c: return redirect(url_for('family_page'))
+    amt = _toint('amount')
+    if not 1 <= amt <= WITHDRAW_MAX: flash(f'一次最多支取 {WITHDRAW_MAX} 两。', 'bad')
+    elif amt > fam['estate']: flash(f'家底只有 {fam["estate"]} 两。', 'bad')
+    elif cur_day() - fam['withdraw_day'] < WITHDRAW_INTERVAL: flash(f'家里刚给过，{WITHDRAW_INTERVAL} 天才能再取一次。', 'bad')
+    else:
+        run("UPDATE families SET estate=estate-?, withdraw_day=? WHERE user_id=?", (amt, cur_day(), fam['user_id']))
+        add_silver(c['id'], amt)
+        flash(f'家里捎来 {amt} 两体己。', 'good')
+    return redirect(url_for('family_page'))
+
+
+@app.route('/family/venture', methods=['POST'])
+@login_required
+def family_venture():
+    c, fam = _family_actor()
+    if not c: return redirect(url_for('family_page'))
+    kind, amt = request.form.get('kind'), _toint('amount')
+    v = VENTURES.get(kind)
+    err = None
+    if not v: err = '选一门生意。'
+    elif not VENTURE_MIN <= amt <= VENTURE_MAX: err = f'本金 {VENTURE_MIN}~{VENTURE_MAX} 两。'
+    elif c['silver'] < amt: err = f'手头只有 {c["silver"]} 两。'
+    elif c['energy'] < 1: err = '精力不够了。'
+    elif q("SELECT 1 FROM family_ventures WHERE consort_id=? AND status='open'", (c['id'],), one=True): err = '你已经有一笔生意在做了。'
+    if err:
+        flash(err, 'bad'); return redirect(url_for('family_page'))
+    run('UPDATE consorts SET energy=energy-1 WHERE id=?', (c['id'],))
+    add_silver(c['id'], -amt)
+    run("INSERT INTO family_ventures (user_id, consort_id, kind, principal, start_day, mature_day) VALUES (?,?,?,?,?,?)",
+        (fam['user_id'], c['id'], kind, amt, cur_day(), cur_day() + v['days']))
+    flash(f"{amt} 两投给了家里的{v['name']}，{v['days']} 天后见分晓。", 'good')
+    return redirect(url_for('family_page'))
+
+
+def family_venture_tick(day):
+    for v in list(q("SELECT * FROM family_ventures WHERE status='open' AND mature_day<=?", (day,))):
+        cfg = VENTURES[v['kind']]
+        fam = family_row(v['user_id'])
+        c = get_consort(v['consort_id'])
+        roll, rate = random.random(), 0.0
+        acc = 0.0
+        for p, r_ in cfg['outcomes']:
+            acc += p
+            if roll < acc:
+                rate = r_; break
+        if rate > 0 and fam and fam['tier'] == 'merchant': rate *= 1.15
+        payout = max(0, v['principal'] + int(round(v['principal'] * rate)))
+        alive = c and c['user_id'] and c['status'] != 'dead'
+        if alive: add_silver(c['id'], payout)
+        elif fam and payout: run("UPDATE families SET estate=estate+? WHERE user_id=?", (payout, fam['user_id']))
+        word = f"赚了 {payout - v['principal']} 两" if rate > 0 else ('持平' if rate == 0 else f"亏了 {v['principal'] - payout} 两")
+        text = f"家里的{cfg['name']}结账了：本金 {v['principal']} 两，{word}，到手 {payout} 两。"
+        scold = fam and cfg['scold'] and random.random() < scold_chance(cfg['scold'], fam)
+        if scold:
+            loss = 8 if v['kind'] == 'salt' else 15
+            add_prestige_uid(fam['user_id'], -loss, f"{cfg['name']}被御史参了一本")
+            text += f"偏偏被御史参了一本，名望 −{loss}。"
+            if alive:
+                add_trust(c['id'], -(6 if v['kind'] == 'salt' else 8))
+                if v['kind'] == 'usury':
+                    cut_favor(c['id'], 0.1)
+            if v['kind'] == 'usury':
+                run("UPDATE families SET estate=estate/2 WHERE user_id=?", (fam['user_id'],))
+                text += '家底被抄没了一半。'
+        run("UPDATE family_ventures SET status='done', result=? WHERE id=?", (text, v['id']))
+        if alive: notify(c['id'], text, 'good' if rate > 0 and not scold else 'bad')
+
+
+@app.route('/family/petition', methods=['POST'])
+@login_required
+def family_petition():
+    c, fam = _family_actor()
+    if not c: return redirect(url_for('family_page'))
+    day = cur_day()
+    err = None
+    if fam['head_office'] >= OFFICE_MAX: err = '家主已是一品，再往上没有了。'
+    elif c['silver'] < PETITION_COST: err = f'银子不够，要 {PETITION_COST} 两。'
+    elif c['energy'] < 1: err = '精力不够了。'
+    elif day - fam['petition_day'] < PETITION_INTERVAL: err = f'刚打点过，{PETITION_INTERVAL} 天后才能再来。'
+    if err:
+        flash(err, 'bad'); return redirect(url_for('family_page'))
+    run('UPDATE consorts SET energy=energy-1 WHERE id=?', (c['id'],))
+    add_silver(c['id'], -PETITION_COST)
+    run("UPDATE families SET petition_day=? WHERE user_id=?", (day, fam['user_id']))
+    role = fam['head_role']
+    if random.random() < PETITION_WIN:
+        run("UPDATE families SET head_office=head_office+1 WHERE user_id=?", (fam['user_id'],))
+        add_prestige_uid(fam['user_id'], 3, f"{role}得了荐举，升任{OFFICE_TITLES[fam['head_office'] + 1]}")
+        msg, kind = f"你托人在朝中递了话，{role}升任{OFFICE_TITLES[fam['head_office'] + 1]}，名望 +3。", 'good'
+    else:
+        msg, kind = '银子花出去了，吏部那边没有回音。', 'bad'
+    if random.random() < scold_chance(PETITION_SCOLD, fam):
+        add_prestige_uid(fam['user_id'], -8, '荐官的事被御史弹劾')
+        add_trust(c['id'], -5)
+        msg += '偏偏被御史弹劾了，名望 −8，信任 −5。'
+        kind = 'bad'
+    flash(msg, kind)
+    return redirect(url_for('family_page'))
+
+
+@app.route('/family/letter', methods=['POST'])
+@login_required
+def family_letter():
+    c, fam = _family_actor()
+    if not c: return redirect(url_for('family_page'))
+    if c['energy'] < 1: flash('精力不够了。', 'bad'); return redirect(url_for('family_page'))
+    if daily_count(c['id'], 'fam_letter'): flash('今天已经写过家书了。', 'bad'); return redirect(url_for('family_page'))
+    run('UPDATE consorts SET energy=energy-1 WHERE id=?', (c['id'],))
+    daily_inc(c['id'], 'fam_letter')
+    r = random.random()
+    if r < 0.35:
+        npcs = [n for n in q("SELECT * FROM consorts WHERE npc_key IS NOT NULL AND status!='dead' AND secret!='none'")
+                if not q("SELECT 1 FROM known_secrets WHERE knower_id=? AND target_id=?", (c['id'], n['id']), one=True)]
+        if npcs:
+            n = random.choice(npcs)
+            run("INSERT OR IGNORE INTO known_secrets (knower_id, target_id, day) VALUES (?,?,?)", (c['id'], n['id'], cur_day()))
+            flash(f"{fam['head_role']}托人打听到了：{display_name(n)}{SECRETS[n['secret']]['name']}。", 'good')
+            return redirect(url_for('family_page'))
+    if r < 0.70:
+        amt = random.randint(*LETTER_SILVER)
+        add_silver(c['id'], amt)
+        flash(f"家书里夹着 {amt} 两体己。", 'good')
+    else:
+        flash(random.choice(FAMILY_LETTER_NEWS), 'info')
+    return redirect(url_for('family_page'))
+
+
+@app.route('/family/backing', methods=['POST'])
+@login_required
+def family_backing():
+    c, fam = _family_actor()
+    if not c: return redirect(url_for('family_page'))
+    hid = _toint('heir_id')
+    h = _rival(hid) if hid else None
+    day = cur_day()
+    err = None
+    if hid and not h: err = f'要 {RIVAL_MIN_AGE} 岁以上、没被废黜的阿哥。'
+    elif c['silver'] < BACKING_COST: err = f'银子不够，要 {BACKING_COST} 两打点。'
+    elif c['energy'] < 1: err = '精力不够了。'
+    elif fam['backing_day'] and day - fam['backing_day'] < BACKING_LOCK_DAYS: err = f'刚表过态，{BACKING_LOCK_DAYS} 天内不能改。'
+    if err:
+        flash(err, 'bad'); return redirect(url_for('family_page'))
+    run('UPDATE consorts SET energy=energy-1 WHERE id=?', (c['id'],))
+    add_silver(c['id'], -BACKING_COST)
+    run("UPDATE families SET backing_heir_id=?, backing_day=? WHERE user_id=?", (hid, day, fam['user_id']))
+    msg = f"家里定下支持{heir_full_title(h)}，家主的官职会成为他的助力。" if h else '家里这一届谁也不押，由着自家的孩子走。'
+    if h and random.random() < scold_chance(BACKING_SCOLD * (2.5 if heir_faction_count(h) > FACTION_SCOLD else 1), fam):
+        add_prestige_uid(fam['user_id'], -5, '家里明着站队，被御史参了结党')
+        run("UPDATE families SET head_office=MAX(0, head_office-1) WHERE user_id=?", (fam['user_id'],))
+        msg += f"偏偏被御史参了结党，{fam['head_role']}被降一级，名望 −5。"
+    flash(msg, 'good')
+    return redirect(url_for('family_page'))
+
+
+# ── 太后侄女、太妃侄女的照拂 ─────────────────────────────────────────────────────
+
+def family_patron_tick(day):
+    """太后的侄女每 7 天被召去说话一次，圣宠 +10"""
+    for c in q("SELECT * FROM consorts WHERE patron='dowager' AND user_id IS NOT NULL AND status='normal' AND entered_day<?", (day,)):
+        if (day - c['entered_day']) % DOWAGER_AUDIENCE_INTERVAL == 0:
+            add_favor(c['id'], DOWAGER_AUDIENCE_FAVOR, gain_mult=False)
+            notify(c['id'], f"太后召你去慈宁宫说话，赏了茶点。圣宠 +{DOWAGER_AUDIENCE_FAVOR}。", 'good')
+
+
+def do_shoukang(c, cfg):
+    day = cur_day()
+    if c['patron'] != 'concubine': raise Reject('你姑母不是太妃，用不着去寿康宫。')
+    if day - c['shoukang_day'] < SHOUKANG_INTERVAL:
+        raise Reject(f"刚去过寿康宫，{SHOUKANG_INTERVAL - (day - c['shoukang_day'])} 天后才好再去。")
+    charge(c, cfg)
+    run("UPDATE consorts SET shoukang_day=? WHERE id=?", (day, c['id']))
+    npcs = [n for n in q("SELECT * FROM consorts WHERE npc_key IS NOT NULL AND status!='dead' AND secret!='none'")
+            if not q("SELECT 1 FROM known_secrets WHERE knower_id=? AND target_id=?", (c['id'], n['id']), one=True)]
+    if not npcs: return '姑母拉着你说了半天旧事，都是些无关紧要的闲话。', 'info'
+    n = random.choice(npcs)
+    run("INSERT OR IGNORE INTO known_secrets (knower_id, target_id, day) VALUES (?,?,?)", (c['id'], n['id'], day))
+    return f"太妃拉着你的手，悄悄说起一件旧事：{display_name(n)}{SECRETS[n['secret']]['name']}。", 'good'
+
+
+# ── 家族发达了，定期送钱来 ────────────────────────────────────────────────────────
+
+REMIT_INTERVAL = 5            # 每 5 天一次
+REMIT_PER_OFFICE, REMIT_PRESTIGE_DIV, REMIT_MAX = 8, 10, 150
+REMIT_MIN_OFFICE, REMIT_MIN_PRESTIGE = 2, 30            # 家主至少七品，或名望够了，家里才有余钱
+
+
+def remit_amount(fam):
+    if fam['head_office'] < REMIT_MIN_OFFICE and fam['prestige'] < REMIT_MIN_PRESTIGE: return 0
+    amt = fam['head_office'] * REMIT_PER_OFFICE + fam['prestige'] // REMIT_PRESTIGE_DIV
+    if fam['tier'] == 'merchant': amt = int(amt * 1.2)
+    if fam['head_ill_day']: amt //= 2                    # 家主病着，家里的钱都花在药上
+    return min(REMIT_MAX, amt)
+
+
+def family_remit_tick(day):
+    if day % REMIT_INTERVAL: return
+    for fam in q("SELECT * FROM families"):
+        amt = remit_amount(fam)
+        mem = [m for m in alive_members(fam['user_id']) if m['status'] in ('normal', 'confined')]
+        if not amt or not mem: continue
+        c = mem[-1]
+        add_silver(c['id'], amt)
+        notify(c['id'], f"家里托人送来 {amt} 两体己。{fam['head_role']}说，家里一切都好。", 'good')
+
+
+def _clan_context(uid):
+    fam = family_row(uid)
+    if not fam: return None
+    members = [m for m in family_members(uid) if m['status'] != 'xiunv']
+    groups = {}
+    for m in members: groups.setdefault(m['reign_no'], []).append(m)
+    honors = list(q("SELECT * FROM family_log WHERE user_id=? AND honor=1 ORDER BY id DESC", (uid,)))
+    log = list(q("SELECT * FROM family_log WHERE user_id=? AND honor=0 ORDER BY id DESC LIMIT 15", (uid,)))
+    return dict(fam=fam, groups=sorted(groups.items(), reverse=True), honors=honors, log=log, uid=uid,
+                tier_name=FAMILIES[fam['tier']]['name'], prestige_label=prestige_label(fam['prestige']),
+                head=head_text(fam), mine=(uid == S.get('uid')), RANK_NAMES=RANK_NAMES, json=json)
+
+
+@app.route('/clan')
+@login_required
+def clan():
+    ctx = _clan_context(S['uid'])
+    if not ctx:
+        return redirect(url_for('create'))
+    return render_template('clan.html', c=g.me, **ctx)
+
+
+@app.route('/clan/<int:uid>')
+@login_required
+def clan_of(uid):
+    ctx = _clan_context(uid)
+    if not ctx:
+        flash('没有这户人家。', 'bad')
+        return redirect(url_for('clans'))
+    return render_template('clan.html', c=g.me, **ctx)
+
+
+@app.route('/clans')
+@login_required
+def clans():
+    rows = []
+    for fam in q("SELECT * FROM families ORDER BY prestige DESC, user_id"):
+        ms = [m for m in family_members(fam['user_id']) if m['status'] != 'xiunv']
+        rows.append(dict(fam=fam, n=len(ms), alive=any(m['user_id'] and m['status'] != 'dead' for m in ms),
+                         tier_name=FAMILIES[fam['tier']]['name'], label=prestige_label(fam['prestige'])))
+    return render_template('clans.html', c=g.me, rows=rows, mine=S['uid'])
+
 
 @app.route('/dianxuan', methods=['GET', 'POST'])
 @login_required
@@ -1322,7 +2167,8 @@ def dianxuan():
             total += val
             quote = quote or opt['text']      # 记下第一问的回答，入宫周年时皇上会提起
             reactions.append(dict(ask=qu['ask'], who=qu['who'], answer=opt['text'], react=opt['react']))
-        total += FAMILIES[c['family']]['dx']
+        fam = family_row(consort_uid(c))
+        total += FAMILIES[c['family']]['dx'] + (family_dx_bonus(fam, c['patron']) if fam else 0)
         total = int(round(total))
         rank = next(r for th, r in DIANXUAN_TIERS if total >= th)
         if not slot_free(rank):     # 贵人满员时，殿选再出色也只能先封常在
@@ -1334,10 +2180,11 @@ def dianxuan():
             return redirect(url_for('dianxuan'))
         palace, hall = room
         favor = {4: 40, 3: 20, 2: 10, 1: 0}[rank]
+        trust0 = {'dowager': TRUST_DOWAGER, 'disgraced': TRUST_DISGRACED}.get(c['patron'], TRUST_START)
         run("""UPDATE consorts SET status='normal', rank=?, rank_since_day=?, palace=?, hall=?, favor=?,
                entered_day=?, dianxuan_score=?, energy=?, trust=?, last_audience_day=?, recap_seen_day=?,
-               dianxuan_quote=? WHERE id=?""",
-            (rank, day, palace, hall, favor, day, total, ENERGY_MAX, TRUST_START, day, day - 1, quote, c['id']))
+               dianxuan_quote=?, peak_rank=?, prestige_top=? WHERE id=?""",
+            (rank, day, palace, hall, favor, day, total, ENERGY_MAX, trust0, day, day - 1, quote, rank, rank, c['id']))
         title = ''
         if rank >= 4 or (rank == 3 and random.random() < 0.3):
             title = assign_title(c['id'])
@@ -1346,6 +2193,10 @@ def dianxuan():
                  f"{'赐封号「' + title + '」，' if title else ''}封为{display_name(c)}，赐居{palace}{HALL_NAMES[hall]}。"
         gazette(f"殿选：{decree}", 'decree')
         notify(c['id'], f"殿选中选。{decree}", 'decree')
+        if c['lineage'].startswith('前朝'):
+            notify(c['id'], f"你是{c['lineage']}。" + {'dowager': '太后念着娘家的情分，会照拂你。', 'concubine': '太妃姑母在寿康宫等着你去请安。',
+                                                      'disgraced': '只是姑母那一辈站错了队，新帝对你家有成见。'}.get(c['patron'], ''), 'info')
+        apply_inheritance(c)
         guide_start(c['id'])
         if risky_huafei:
             add_affinity(c['id'], q("SELECT id FROM consorts WHERE npc_key='huafei'", one=True)['id'], -30)
@@ -1649,13 +2500,14 @@ def do_attend(c, cfg):
 
 
 ACTION_HANDLERS = dict(greet=do_greet, study=do_study, groom=do_groom, rest=do_rest, reflect=do_reflect,
-                       eyes=do_eyes, seek=do_seek, garden=do_garden, visit=do_visit, spy=do_spy, plead=do_plead, attend=do_attend)
+                       eyes=do_eyes, seek=do_seek, garden=do_garden, visit=do_visit, spy=do_spy, plead=do_plead, attend=do_attend, shoukang=do_shoukang)
 
 # ── 秘密坦白 ───────────────────────────────────────────────────────────────────
 
 def apply_secret_penalty(cid, confessed):
     c = get_consort(cid)
     s = c['secret']
+    if not confessed and s != 'none': add_prestige(c, PRESTIGE_EXPOSED, f"{full_name(c)}的秘密被人告发")
     if s == 'lover':
         if confessed: cut_favor(cid, 0.2)
         else:
@@ -2340,6 +3192,15 @@ def cn_ordinal(n):
     if n < 20: return '十' + CN_NUM[n - 10]
     return CN_NUM[n // 10] + '十' + (CN_NUM[n % 10] if n % 10 else '')
 
+def maternal_kin(c, h):
+    """生母，或者跟生母同一家族、同一届的姐妹（孩子的姨母）"""
+    if not h['mother_id'] or not c: return False
+    if h['mother_id'] == c['id']: return True
+    m = get_consort(h['mother_id'])
+    uid = consort_uid(c)
+    return bool(m and uid and consort_uid(m) == uid and m['reign_no'] == c['reign_no'])
+
+
 def heir_label(h):
     if h['name']: return h['name']
     return f"{cn_ordinal(h['ordinal'])}阿哥" if h['gender'] == '皇子' else f"{cn_ordinal(h['ordinal'])}公主"
@@ -2380,7 +3241,7 @@ def heirs():
         if ev and h['caretaker_id'] == c['id'] and ev.get('key') in ERRANDS:
             a['errand'] = dict(name=ERRANDS[ev['key']]['name'], line=ERRANDS[ev['key']]['line'], approach=ev.get('approach'),
                                can_shift=bool(other_adult_princes(h)))
-        if h['mother_id'] == c['id'] and h['caretaker_id'] not in (0, c['id']) and c['status'] != 'dead' and not h['adult_day']:
+        if maternal_kin(c, h) and h['caretaker_id'] not in (0, c['id']) and c['status'] != 'dead' and not h['adult_day']:
             a['visit'] = True
             if c['rank'] >= 5: a['reclaim'] = True
             a['reclaim_wait'] = max(0, h['reclaim_after_day'] - day)
@@ -2655,7 +3516,7 @@ def heir_visit(hid):
     c = g.me
     h = q('SELECT * FROM heirs WHERE id=?', (hid,), one=True)
     err = None
-    if not h or h['mother_id'] != c['id'] or h['caretaker_id'] in (0, c['id']): err = '孩子不在别人宫里，用不着探视。'
+    if not h or not maternal_kin(c, h) or h['caretaker_id'] in (0, c['id']): err = '孩子不在别人宫里，用不着探视。'
     elif c['status'] != 'normal': err = '你现在出不了门。'
     elif c['energy'] < HEIR_VISIT_ENERGY: err = '精力不够了。'
     elif daily_count(c['id'], f'hvisit:{hid}'): err = '今天已经去看过了。'
@@ -2698,7 +3559,7 @@ def heir_reclaim(hid):
     c = g.me
     h = q('SELECT * FROM heirs WHERE id=?', (hid,), one=True)
     err = None
-    if not h or h['mother_id'] != c['id'] or h['caretaker_id'] in (0, c['id']): err = '孩子本就在你身边。'
+    if not h or not maternal_kin(c, h) or h['caretaker_id'] in (0, c['id']): err = '孩子本就在你身边。'
     elif c['rank'] < 5: err = '嫔位以上才能求皇上把孩子还回来。'
     elif c['status'] != 'normal': err = '你现在去不了养心殿。'
     elif cur_day() < h['reclaim_after_day']: err = f"皇上刚驳回过，{h['reclaim_after_day'] - cur_day()} 天后才能再求。"
@@ -2813,6 +3674,9 @@ def heir_come_of_age(h, day):
             amb = clamp(35 + AMBITION_BASE.get(h['personality'], 0) + random.randint(-10, 10))
             run('UPDATE heirs SET ambition=? WHERE id=?', (amb, h['id']))
         gazette(f"{label}年满十六，封为{title}，出宫开府。", 'decree')
+        if title == '亲王':
+            for uid_ in {consort_uid(p_) for p_ in heir_parents(h)}:
+                add_prestige_uid(uid_, PRESTIGE_PRINCE_TITLE, f"{label}封了亲王")
         for p in heir_parents(h):
             notify(p['id'], f"{label}年满十六，皇上封为{title}，出宫开府了。往后每晚有孝敬银子，每 {ERRAND_INTERVAL} 天还会有一件差事等你帮他拿主意（去「子嗣」页）。", 'decree')
         return
@@ -3047,7 +3911,7 @@ def heir_standing(h):
     care = get_consort(h['caretaker_id']) if h['caretaker_id'] else None
     if care and care['status'] != 'dead':
         v += RANK_BONUS.get(care['rank'], 0) + care['trust'] * 0.1
-    return int(round(v))
+    return int(round(v)) + family_support(h)
 
 
 def heir_faction_count(h):
@@ -3058,7 +3922,7 @@ def heir_faction_count(h):
         if not cid: continue
         for x in (cid, *sisters_of(cid)):
             c = get_consort(x)
-            if c and c['status'] != 'dead': fams.add(c['family'] or f"#{x}")
+            if c and c['status'] != 'dead': fams.add(f"u{consort_uid(c)}" if consort_uid(c) else f"#{x}")
     open_n = q("SELECT COUNT(*) n FROM stances WHERE kind='open' AND heir_id=?", (h['id'],), one=True)['n']
     return len(fams) + open_n + h['faction']
 
@@ -3632,6 +4496,7 @@ def resolve_intrigue(it, bed_id=None):
     if success:
         who = an if tell_name else '有人'
         m = it['method']
+        if tell_name and tgt['user_id']: run("UPDATE consorts SET culprit_id=? WHERE id=?", (atk['id'], tgt['id']))
         if m == 'lethal':
             run('UPDATE consorts SET poisoned_day=?, poison_treatment=0, health=MAX(1,health-20) WHERE id=?',
                 (cur_day(), tgt['id']))
@@ -3774,7 +4639,7 @@ def npc_schemes(day):
         else:
             pool = [p for p in players if p['favor'] >= 30]
             if not pool: continue
-            target, method = random.choice(pool), 'rumor'
+            target, method = random.choices(pool, weights=[2 if p['patron'] == 'dowager' else 1 for p in pool])[0], 'rumor'   # 太后的人更招眼
         if q("SELECT COUNT(*) n FROM intrigues WHERE target_id=? AND day=? AND status='pending'",
              (target['id'], day), one=True)['n'] >= INTRIGUE_TARGET_DAILY_MAX:
             continue
@@ -3902,8 +4767,13 @@ def end_reign(day):
         for sn in stances:
             if sn['kind'] == 'open' and sn['heir_id'] != winner['id']:
                 titles[sn['consort_id']] = '押错了阿哥，新帝记了一笔'
+    imprisoned = [h for h in rival_princes(day, exclude_id=winner['id'] if winner else 0)
+                  if h['adult_day'] and h['ambition'] >= 80 and heir_faction_count(h) >= 5]
+    for h in imprisoned:
+        for par in heir_parents(h): titles.setdefault(par['id'], '所抚养的阿哥被圈禁，失势')
     if dowager: titles[dowager['id']] = '圣母皇太后'
     if concubine: titles[concubine['id']] = '太妃'
+    settle_family_backing(winner, day)
 
     fates = []
     for c in players:
@@ -3925,7 +4795,7 @@ def end_reign(day):
             edict.append(f"{full_name(c)}早年示好新帝，封{titles[c['id']]}。")
     for h in rival_princes(day, exclude_id=winner['id'] if winner else 0):
         if not h['adult_day']: continue
-        if h['ambition'] >= 80 and heir_faction_count(h) >= 5:
+        if h in imprisoned or h['id'] in {x['id'] for x in imprisoned}:
             edict.append(f"{heir_full_title(h)}野心勃勃、结党甚众，新帝不放心，圈禁。")
         elif h['title']:
             edict.append(f"{heir_full_title(h)}安分守己，仍以{h['title']}奉养。")
@@ -3943,6 +4813,25 @@ def end_reign(day):
         kids = {c['id']: q("SELECT COUNT(*) n FROM heirs WHERE caretaker_id=?", (c['id'],), one=True)['n'] for c in players}
         most = max(players, key=lambda c: kids[c['id']])
         if kids[most['id']]: records.append(f"养大皇嗣最多：{full_name(most)}，{kids[most['id']]} 位")
+
+    # 家族的荣耀与皇嗣名录，要在清空之前记下
+    if dowager and not dowager['npc_key']:
+        add_prestige(dowager, PRESTIGE_DOWAGER, f"{full_name(dowager)}成了圣母皇太后")
+        family_log_add(consort_uid(dowager), f"{full_name(dowager)}成为圣母皇太后，{name}尊为太后", 1)
+    if concubine and not concubine['npc_key']:
+        family_log_add(consort_uid(concubine), f"{full_name(concubine)}封太妃", 1)
+    for sn in stances:
+        c = get_consort(sn['consort_id'])
+        if winner and sn['heir_id'] == winner['id'] and sn['kind'] == 'open' and c and c['status'] != 'dead' and titles.get(c['id'], '') .endswith('太妃') \
+                and c['id'] not in ((dowager and dowager['id']), (concubine and concubine['id'])):
+            family_log_add(consort_uid(c), f"{full_name(c)}早年示好新帝，封{titles[c['id']]}", 1)
+    for h in q("SELECT * FROM heirs"):
+        if h['title'] and (h['title'] == '亲王' or '公主' in h['title']):
+            for uid_ in {consort_uid(p_) for p_ in heir_parents(h)}:
+                family_log_add(uid_, f"{heir_full_title(h)}（{h['gender']}）{'封' + h['title'] if h['gender'] == '皇子' else '册封' + h['title']}", 1)
+    for c in players:
+        kids = [heir_full_title(h) + ('（' + h['gender'] + '）') for h in q("SELECT * FROM heirs WHERE mother_id=? ORDER BY id", (c['id'],))]
+        run("UPDATE consorts SET kids=? WHERE id=?", (json.dumps(kids, ensure_ascii=False), c['id']))
 
     run("""INSERT INTO reigns (reign_no, era_name, emperor_name, start_age, end_age_text, start_day, end_day, successor, dowager,
                               edict, fates, records, created_ts) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
@@ -3962,7 +4851,7 @@ def end_reign(day):
     for f in fates:
         if f['alive']:
             run("""UPDATE consorts SET status='dead', death_day=?, death_reason=?, archived_user_id=user_id, user_id=NULL,
-                   pregnant_since=0, energy=0, hall='', housing_waiting='' WHERE id=?""",
+                   pregnant_since=0, energy=0, hall='', housing_waiting='', survived=1 WHERE id=?""",
                 (day, f"先帝驾崩，{f['fate']}", f['cid']))
     run("UPDATE maids SET status='gone', left_day=?, left_reason='主子随先帝殡天，散去' WHERE status='active'", (day,))
     run("DELETE FROM consorts WHERE npc_key IS NOT NULL")
@@ -3978,10 +4867,10 @@ def end_reign(day):
     era = random.choice([e for e in ERA_NAMES if e != st['era_name']])
     dowager_text = f"圣母皇太后{full_name(dowager)}" if dowager else ''
     run("""UPDATE game_state SET day=?, last_settle_date=?, reign_no=?, reign_start_day=?, emperor_start_age=?, emperor_death_day=0,
-           mourning=1, era_name=?, emperor_name=?, emperor_traits=?, dowager=?, emperor_mood='平和', last_bed_id=0, last_bed_day=0,
+           mourning=1, era_name=?, emperor_name=?, emperor_traits=?, dowager=?, dowager_uid=?, emperor_mood='平和', last_bed_id=0, last_bed_day=0,
            last_bed_pool='[]' WHERE id=1""",
         (day + 1, datetime.now(TZ).date().isoformat(), st['reign_no'] + 1, day + 2, NEXT_EMPEROR_START_AGE, era, name,
-         json.dumps(traits, ensure_ascii=False), dowager_text))
+         json.dumps(traits, ensure_ascii=False), dowager_text, consort_uid(dowager) if dowager and not dowager['npc_key'] else 0))
     seed_npcs(_RunDB); seed_npc_heirs(_RunDB)
     housing_sync(fill_main=False)
     gazette(f"先帝驾崩。{edict[0]}国丧一日，新帝改元{era}。", 'decree')
@@ -4154,6 +5043,7 @@ def _settle_night():
             run('UPDATE consorts SET postpartum_until=? WHERE id=?', (day + POSTPARTUM_SICK_DAYS, c['id']))
         label = f"{cn_ordinal(ordinal)}{'阿哥' if gender == '皇子' else '公主'}"
         if gender == '皇子':
+            add_prestige(c, PRESTIGE_BORN_PRINCE, f"{full_name(c)}诞下皇子")
             add_favor(c['id'], 100, gain_mult=False)
             if c['rank'] < PLAYER_MAX_RANK and slot_free(c['rank'] + 1, c['id']):
                 set_rank(c['id'], c['rank'] + 1)
@@ -4169,6 +5059,10 @@ def _settle_night():
     heir_rehome_tick(day)
     heir_adult_tick(day)
     heir_succession_tick(day)
+    family_tick(day)
+    family_venture_tick(day)
+    family_patron_tick(day)
+    family_remit_tick(day)
     heir_exam_tick(day)
     heir_hunt_tick(day)
 
@@ -4629,6 +5523,7 @@ def old_age_tick(day):
                 elif c['trust'] >= 40:
                     pool = [w for w in SHI_WORDS if w not in c['title']] or SHI_WORDS
                     run("UPDATE consorts SET title=? WHERE id=?", (c['title'] + random.choice(pool), c['id']))
+            add_prestige(c, PRESTIGE_OLD_AGE, f"{full_name(c)}寿终正寝")
             die(c['id'], '寿终')
         elif c['user_id'] and c['age_months'] >= OLD_AGE_REMINDER_START and c['age_months'] % OLD_AGE_REMINDER_STEP == 0:
             notify(c['id'], '许嬷嬷：「近来总觉得精神短了，小主往后多静养些。」')
@@ -4680,6 +5575,10 @@ def memorial():
 def rebirth():
     if g.me['status'] != 'dead':
         return redirect(url_for('index'))
+    ok, why = family_gate(consort_uid(g.me))
+    if not ok:
+        flash(why, 'bad')
+        return redirect(url_for('memorial'))
     # 保留旧角色、皇嗣和事件引用；仅释放账号的一人一角约束。
     run("UPDATE consorts SET user_id=NULL WHERE id=? AND status='dead'", (g.me['id'],))
     return redirect(url_for('create'))
@@ -4688,7 +5587,7 @@ def rebirth():
 # ── 宫城地图 / 地点 ────────────────────────────────────────────────────────────
 
 PLACES = {
-    'home':    dict(name='本宫', actions=['study', 'groom', 'rest', 'reflect', 'eyes']),
+    'home':    dict(name='本宫', actions=['study', 'groom', 'rest', 'reflect', 'eyes', 'shoukang']),
     'jingren': dict(name='景仁宫', actions=['greet']),
     'garden':  dict(name='御花园', actions=['garden']),
     'yangxin': dict(name='养心殿', actions=['seek', 'attend', 'plead']),
@@ -4727,7 +5626,7 @@ def place(key):
     r = pending_redirect(c)
     if r: return r
     day, st = cur_day(), state()
-    acts = [(k, ACTIONS[k]) for k in PLACES[key]['actions'] if c['status'] in ACTIONS[k]['when'] and not (k == 'attend' and not emperor_ill())]
+    acts = [(k, ACTIONS[k]) for k in PLACES[key]['actions'] if c['status'] in ACTIONS[k]['when'] and not (k == 'attend' and not emperor_ill()) and not (k == 'shoukang' and c['patron'] != 'concubine')]
     counts = {k: daily_count(c['id'], k) for k in PLACES[key]['actions']}
     title, desc, extra = PLACES[key]['name'], '', ''
     maid_ev, maid_info, heir_ev, my_heirs, heir_todo = None, None, None, [], 0
@@ -5237,7 +6136,9 @@ def open_drug_case(it, punished=0):
     for cid in {victim['id'], *(s['consort_id'] for s in suspects)}:
         notify(cid, f'你被卷进了第 {case_id} 桩案子，请去慎刑司陈情，下一次结算定案。', 'bad')
         guide_tip(cid, 'case', '「案子上了身，别慌。该喊冤喊冤，该打点打点，慎刑司认的是嫌疑，不是脾气。」')
-    if eyes_active(victim): notify(victim['id'], f'眼线回报：这回下手的是{display_name(culprit)}。')
+    if eyes_active(victim):
+        notify(victim['id'], f'眼线回报：这回下手的是{display_name(culprit)}。')
+        run("UPDATE consorts SET culprit_id=? WHERE id=?", (culprit['id'], victim['id']))
     return case_id
 
 

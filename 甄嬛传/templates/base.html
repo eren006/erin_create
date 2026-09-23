@@ -140,6 +140,20 @@ main{max-width:1080px;padding-top:32px}
 main>h2{font-size:32px;margin-bottom:22px}
 footer.muted{max-width:1024px}
 @media(max-width:520px){header.gate .in{padding:20px 16px 12px;gap:14px}header.gate h1{font-size:25px;padding:4px 15px}header.gate .clock{padding-left:10px;font-size:12px}nav.halls a{min-width:0;flex:1 0 18%;font-size:17px;padding:7px 4px}main{padding-top:22px}main>h2{font-size:27px}}
+/* Palace stationery: shared surfaces and navigation. */
+body{background-image:radial-gradient(ellipse at 50% 0,transparent,var(--shadow)),repeating-linear-gradient(90deg,transparent 0,transparent 79px,var(--shadow) 80px)}
+header.gate{background-image:linear-gradient(110deg,var(--gate-deep),transparent 60%),repeating-linear-gradient(90deg,transparent 0,transparent 95px,rgba(238,226,188,.04) 96px)}
+header.gate h1{box-shadow:inset 0 0 0 3px var(--gate),0 4px 12px rgba(0,0,0,.15)}
+nav.halls{padding-bottom:8px;gap:3px}
+nav.halls a{border:1px solid transparent;border-radius:2px;font-size:18px;min-width:64px;padding:8px 12px}
+nav.halls a.on{background:var(--ivory);color:var(--gate-deep);border-color:var(--roof);box-shadow:inset 0 0 0 3px var(--ivory),inset 0 0 0 4px var(--roof)}
+.sheet{background-image:linear-gradient(120deg,transparent,var(--shadow));box-shadow:inset 0 4px 0 var(--jin-soft),0 6px 18px var(--shadow)}
+h3{margin-top:36px;margin-bottom:18px}
+button,.btn{letter-spacing:.05em}
+input:not([type=radio]):not([type=checkbox]),select,textarea{box-shadow:inset 0 2px 4px var(--shadow)}
+::selection{background:var(--jin-soft);color:var(--ink)}
+@media(prefers-reduced-motion:no-preference){button,.btn,nav.halls a{transition:background-color .18s ease,box-shadow .18s ease}}
+@media(max-width:520px){nav.halls{gap:3px;padding-bottom:10px}nav.halls a{font-size:16px;padding:7px 4px;min-width:0}header.gate .clock{line-height:1.9}}
 </style>
 {% block head %}{% endblock %}
 </head>
@@ -163,6 +177,8 @@ footer.muted{max-width:1024px}
     <a href="{{ url_for('memorial') }}" class="{{ 'on' if ep=='memorial' }}">宫史</a>
     <a href="{{ url_for('heirs') }}" class="{{ 'on' if ep=='heirs' }}">子嗣</a>
     <a href="{{ url_for('succession') }}" class="{{ 'on' if ep=='succession' }}">夺嫡</a>
+    <a href="{{ url_for('family_page') }}" class="{{ 'on' if ep in ('family_page',) }}">家里</a>
+    <a href="{{ url_for('clan') }}" class="{{ 'on' if ep in ('clan','clan_of','clans') }}">族谱</a>
   </nav>
   {% else %}<div style="height:10px"></div>{% endif %}
 </header>

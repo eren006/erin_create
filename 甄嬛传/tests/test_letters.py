@@ -148,9 +148,10 @@ class BroadcastTests(unittest.TestCase):
         self.assertEqual(game.q('SELECT claimed FROM letters WHERE id=?', (lid,), one=True)['claimed'], 0, '死了的角色领不了')
 
         # 重生：释放账号，建一个新秀女，走完殿选
+        game.run('UPDATE game_state SET day=day+?', (game.FAMILY_MOURN_DAYS,))   # 家里治丧两天才能送人
         self.client.post('/rebirth')
-        self.client.post('/create', data=dict(surname='新', given='人', age=18,
-                                               family=next(iter(game.FAMILIES)), personality=next(iter(game.PERSONALITIES)),
+        self.client.post('/create', data={'step': 'family', 'surname': '新', 'family': next(iter(game.FAMILIES))})
+        self.client.post('/create', data=dict(given='人', age=18, personality=next(iter(game.PERSONALITIES)),
                                                **{k: 0 for k in game.STAT_KEYS}))
         new_cid = game.q("SELECT id FROM consorts WHERE user_id=? AND status='xiunv'", (uid,), one=True)['id']
         qs = game.dianxuan_questions_for(new_cid)

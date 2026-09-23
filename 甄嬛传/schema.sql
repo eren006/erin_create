@@ -106,7 +106,8 @@ CREATE TABLE IF NOT EXISTS game_state (
     era_name         TEXT NOT NULL DEFAULT '',       -- 年号（第一届为空）
     emperor_name     TEXT NOT NULL DEFAULT '',       -- 今上的名字（第一届为空）
     emperor_traits   TEXT NOT NULL DEFAULT '{}',     -- 今上的性格与学问/骑射/品行（第一届为空）
-    dowager          TEXT NOT NULL DEFAULT ''        -- 今上的太后（第一届为空）
+    dowager          TEXT NOT NULL DEFAULT '',       -- 今上的太后（第一届为空）
+    dowager_uid      INTEGER NOT NULL DEFAULT 0      -- 太后是哪个玩家家族的人（0 = NPC 或没有）
 );
 
 -- 历代：每一届驾崩那晚定格一条
@@ -416,4 +417,62 @@ CREATE TABLE IF NOT EXISTS displays (
     slot        TEXT NOT NULL,                       -- window / desk / wall / tea
     item_id     INTEGER NOT NULL,
     PRIMARY KEY (consort_id, slot)
+);
+
+
+-- ── 家族（九点九节）：一个账号就是一个家族，跨届一直在 ─────────────────────────────
+CREATE TABLE IF NOT EXISTS families (
+    user_id      INTEGER PRIMARY KEY,
+    surname      TEXT NOT NULL,                      -- 全家族共用，注册时定下，不能改
+    tier         TEXT NOT NULL,                      -- 门第（FAMILIES 的 key），不能改
+    prestige     INTEGER NOT NULL DEFAULT 0,         -- 名望，跨届累积
+    estate       INTEGER NOT NULL DEFAULT 0,         -- 家底：送回家的银子，家里的存款，谁都能支取
+    head_name    TEXT NOT NULL DEFAULT '',           -- 家主（代表人）：先是父亲，父亲没了是兄长，再是侄子、族叔
+    head_role    TEXT NOT NULL DEFAULT '父亲',
+    head_gen     INTEGER NOT NULL DEFAULT 0,
+    head_age_months INTEGER NOT NULL DEFAULT 0,
+    head_office  INTEGER NOT NULL DEFAULT 0,         -- 官职品级，0 白身 ~ 9 一品
+    head_ill_day INTEGER NOT NULL DEFAULT 0,         -- 家主病了：从哪天起，0 = 没病
+    backing_heir_id INTEGER NOT NULL DEFAULT 0,      -- 家里这一届支持哪位阿哥，0 = 默认跟着自家的孩子走
+    backing_day  INTEGER NOT NULL DEFAULT 0,
+    withdraw_day INTEGER NOT NULL DEFAULT 0,         -- 上次支取家底的日子
+    petition_day INTEGER NOT NULL DEFAULT 0,         -- 上次荐官的日子
+    request_day  INTEGER NOT NULL DEFAULT 0,         -- 上次家里来求助的日子
+    created_ts   INTEGER NOT NULL
+);
+
+-- 家里的大事记（也是族谱页最上面的荣耀：太后、太妃、亲王、公主）
+CREATE TABLE IF NOT EXISTS family_log (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id   INTEGER NOT NULL,
+    reign_no  INTEGER NOT NULL,
+    day       INTEGER NOT NULL,
+    text      TEXT NOT NULL,
+    honor     INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_family_log_user ON family_log(user_id, id);
+
+-- 家里的生意：本金投出去，几天后有盈有亏，还可能被御史参一本
+CREATE TABLE IF NOT EXISTS family_ventures (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    consort_id  INTEGER NOT NULL,
+    kind        TEXT NOT NULL,
+    principal   INTEGER NOT NULL,
+    start_day   INTEGER NOT NULL,
+    mature_day  INTEGER NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'open',        -- open / done
+    result      TEXT NOT NULL DEFAULT ''
+);
+
+-- 家里来求你帮忙：升迁要打点、闯了祸要说情、欠了债、家主病了、该站哪位阿哥
+CREATE TABLE IF NOT EXISTS family_requests (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    consort_id  INTEGER NOT NULL,
+    kind        TEXT NOT NULL,
+    day         INTEGER NOT NULL,
+    expires_day INTEGER NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'open',        -- open / done / declined / lapsed
+    data        TEXT NOT NULL DEFAULT '{}'
 );

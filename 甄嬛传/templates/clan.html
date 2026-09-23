@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}族谱{% endblock %}
+{% block body %}
+<h2>{{ fam.surname }}氏族谱</h2>
+<p class="muted">{{ tier_name }}。{{ prestige_label }}，名望 {{ fam.prestige }}。
+  {% if mine %}<a href="{{ url_for('family_page') }}">联络家里</a>　{% endif %}<a href="{{ url_for('clans') }}">看别的人家</a></p>
+<p>家主：{{ head }}{% if fam.head_ill_day %}<span class="muted">（病着）</span>{% endif %}</p>
+{% if honors %}
+<h3>家族荣耀</h3>
+{% for h in honors %}<p style="margin:4px 0">第 {{ h.reign_no }} 届　{{ h.text }}</p>{% endfor %}
+{% endif %}
+{% for reign_no, ms in groups %}
+<h3>第 {{ reign_no }} 届</h3>
+<div class="scroll"><table>
+  <tr><th>成员</th><th>入宫</th><th>最高位分</th><th>生了谁</th><th>结局</th></tr>
+  {% for m in ms %}
+  <tr>
+    <td style="font-family:var(--kai);font-size:17px">{{ m.surname }}{{ m.given }}<br><span class="muted" style="font-family:var(--song);font-size:12px">{{ m.lineage }}</span></td>
+    <td>{{ m.entry_age }} 岁，第 {{ m.entered_day }} 天</td>
+    <td>{{ RANK_NAMES[m.peak_rank or m.rank] }}{% if m.title %}<br><span class="muted">「{{ m.title }}」</span>{% endif %}</td>
+    <td>{% set ks = json.loads(m.kids or '[]') %}{{ '、'.join(ks) if ks else '' }}</td>
+    <td>{% if m.status != 'dead' %}在宫中{% elif m.survived %}<b>历两朝</b>　{{ m.death_reason.replace('先帝驾崩，', '') }}{% else %}{{ m.death_reason }}（第 {{ m.death_day }} 天）{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table></div>
+{% else %}<p class="muted">还没有人入宫。</p>{% endfor %}
+{% if log %}
+<h3>家里的事</h3>
+{% for l in log %}<p class="muted" style="margin:3px 0">第 {{ l.reign_no }} 届 第 {{ l.day }} 天　{{ l.text }}</p>{% endfor %}
+{% endif %}
+{% endblock %}

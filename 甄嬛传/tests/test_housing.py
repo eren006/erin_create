@@ -161,6 +161,7 @@ class HousingTests(unittest.TestCase):
         self.assertTrue(game.has_residence(game.get_consort(orphan)))
         rooms=[(c['palace'],c['hall']) for c in game.q("SELECT * FROM consorts WHERE hall!=''")]
         self.assertEqual(len(rooms),len(set(rooms)))
+        game.init_db()   # 头一次 init_db 会给老档补家族和辈分，先跑一遍再比
         before=self.snapshot(); game.init_db(); game.housing_sync()
         self.assertEqual(before,self.snapshot())
 

@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block title %}各家{% endblock %}
+{% block body %}
+<h2>各家</h2>
+<p class="muted">每个玩家一个家族，跨届一直在。族谱和宫史一样公开，害人的凶手照旧不写。</p>
+<div class="scroll"><table>
+  <tr><th>家族</th><th>门第</th><th>名望</th><th>入过宫的女儿</th><th></th></tr>
+  {% for r in rows %}
+  <tr><td style="font-family:var(--kai);font-size:17px">{{ r.fam.surname }}氏{% if r.fam.user_id == mine %}（你家）{% endif %}</td>
+    <td>{{ r.tier_name }}</td><td>{{ r.label }}（{{ r.fam.prestige }}）</td>
+    <td>{{ r.n }} 位{% if not r.alive %}<span class="muted">　眼下宫里没人</span>{% endif %}</td>
+    <td><a href="{{ url_for('clan_of', uid=r.fam.user_id) }}">族谱</a></td></tr>
+  {% endfor %}
+</table></div>
+{% endblock %}

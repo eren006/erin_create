@@ -1,0 +1,93 @@
+{% extends 'base.html' %}
+{% block title %}家里{% endblock %}
+{% block body %}
+<h2>家里</h2>
+<p class="muted">{{ fam.surname }}氏，{{ prestige_label }}，名望 {{ fam.prestige }}；家底 {{ fam.estate }} 两。<a href="{{ url_for('clan') }}">族谱</a>　<a href="{{ url_for('clans') }}">各家</a></p>
+<div class="sheet" style="margin:10px 0">
+  <b>家主</b>：{{ head }}{% if fam.head_ill_day %}<span style="color:var(--bad)">　病着</span>{% endif %}
+  <p class="muted" style="margin:6px 0 0">家主会一年年老去，也会升迁、降职；他官越高，家里越发达：每 5 天会托人给你送体己，夺嫡时也是你家阿哥的助力。家主没了，由兄长、侄子接着来，官职比上一任低。
+  {% set gift = 0 %}</p>
+</div>
+
+{% if req %}
+<div class="sheet" style="margin:10px 0;border-left:4px solid var(--zhu)">
+  <b>家里来信</b>（{{ req.expires_day - day }} 天内回信）
+  <p>{{ req_text }}</p>
+  {% if can_act %}
+  {% if req.kind == 'backing' %}
+  <form method="post" action="{{ url_for('family_request_answer', rid=req.id) }}" class="row">
+    <input type="hidden" name="answer" value="yes">
+    <select name="heir_id">{% for h in req_opts %}<option value="{{ h.id }}">{{ heir_label(h) }}（圣眷 {{ heir_standing(h) }}）</option>{% endfor %}</select>
+    <button>回信：站这一位</button>
+  </form>
+  <form method="post" action="{{ url_for('family_request_answer', rid=req.id) }}" style="display:inline"><input type="hidden" name="answer" value="no"><button class="plain">回信：观望，不押</button></form>
+  {% else %}
+  <form method="post" action="{{ url_for('family_request_answer', rid=req.id) }}" class="row">
+    <button name="answer" value="yes">答应</button><button name="answer" value="no" class="plain">推辞</button>
+  </form>
+  {% endif %}
+  {% endif %}
+</div>
+{% endif %}
+
+<h3>联络家里</h3>
+<div class="sheet">
+  <form method="post" action="{{ url_for('family_send') }}" class="row">
+    <b>送银子回家</b>
+    <input type="number" name="amount" min="{{ SEND_MIN }}" max="{{ SEND_MAX }}" value="100" style="width:90px">
+    <button class="plain" {{ 'disabled' if not can_act }}>送回去</button>
+    <span class="muted">记进家底，下一辈也能取用。每 {{ SEND_PER_PRESTIGE }} 两名望 +1。每天一次。</span>
+  </form>
+  <form method="post" action="{{ url_for('family_withdraw') }}" class="row">
+    <b>支取家底</b>
+    <input type="number" name="amount" min="1" max="{{ WITHDRAW_MAX }}" value="{{ [fam.estate, 100] | min }}" style="width:90px">
+    <button class="plain" {{ 'disabled' if not can_act }}>取</button>
+    <span class="muted">一次最多 {{ WITHDRAW_MAX }} 两，{{ WITHDRAW_INTERVAL }} 天一次。</span>
+  </form>
+  <form method="post" action="{{ url_for('family_letter') }}" class="row">
+    <b>写家书</b>
+    <button class="plain" {{ 'disabled' if not can_act or daily_count(c.id, 'fam_letter') }}>写（1 精力）</button>
+    <span class="muted">家里托人打听宫里旧事、捎点体己，或者只是问个平安。每天一次。</span>
+  </form>
+  <form method="post" action="{{ url_for('family_petition') }}" class="row">
+    <b>替家主荐官</b>（{{ PETITION_COST }} 两）
+    <button class="plain" {{ 'disabled' if not can_act }}>托人递话（1 精力）</button>
+    <span class="muted">五成半能升一级、名望 +3；两成的可能被御史弹劾（名望 −8，信任 −5）。{{ PETITION_INTERVAL }} 天一次。名望越高越不容易被参。</span>
+  </form>
+</div>
+
+<h3>家里的生意</h3>
+<p class="muted">本金投进去，几天后结账，有赚也有亏，最险的还会招来御史。这是宫里俸禄之外最快的进项——也最容易连累家里。</p>
+<div class="sheet">
+  {% if ventures %}
+    {% for v in ventures %}<p>{{ VENTURES[v.kind].name }}：本金 {{ v.principal }} 两，第 {{ v.mature_day }} 天结账。</p>{% endfor %}
+  {% endif %}
+  {% if not open_venture %}
+  <form method="post" action="{{ url_for('family_venture') }}" class="row">
+    <select name="kind">{% for k, v in VENTURES.items() %}<option value="{{ k }}">{{ v.name }}（{{ v.days }} 天）</option>{% endfor %}</select>
+    <input type="number" name="amount" min="{{ VENTURE_MIN }}" max="{{ VENTURE_MAX }}" value="100" style="width:90px">
+    <button {{ 'disabled' if not can_act }}>投本金（1 精力）</button>
+  </form>
+  {% for k, v in VENTURES.items() %}<p class="muted" style="margin:2px 0"><b>{{ v.name }}</b>：{{ v.desc }}</p>{% endfor %}
+  {% endif %}
+  {% for v in history %}<p class="muted" style="margin:3px 0">{{ v.result }}</p>{% endfor %}
+</div>
+
+<h3>夺嫡里的家里</h3>
+<div class="sheet">
+  <p>家里这一届支持：{% if backing_heir %}<b>{{ heir_label(backing_heir) }}</b>（家主官职会成为他的助力，最多 +15 圣眷）{% else %}<span class="muted">还没有人选</span>{% endif %}
+  <br><span class="muted">没表态时，家里默认跟着你家的孩子走。站对了新帝，家主连升两级、名望 +10；站错了，降一级、名望 −8。</span></p>
+  {% if rivals %}
+  <form method="post" action="{{ url_for('family_backing') }}" class="row">
+    <select name="heir_id"><option value="0">谁也不押</option>{% for h in rivals %}<option value="{{ h.id }}" {{ 'selected' if backing == h.id }}>{{ heir_label(h) }}（圣眷 {{ heir_standing(h) }}）</option>{% endfor %}</select>
+    <button class="plain" {{ 'disabled' if not can_act }}>打点表态（{{ BACKING_COST }} 两，1 精力）</button>
+    <span class="muted">{{ BACKING_LOCK_DAYS }} 天内不能改；明着站队也可能被御史参结党。</span>
+  </form>
+  {% else %}<p class="muted">眼下还没有十二岁以上的阿哥。</p>{% endif %}
+</div>
+
+{% if log %}
+<h3>近来家里的事</h3>
+{% for l in log %}<p class="muted" style="margin:3px 0">第 {{ l.day }} 天　{{ l.text }}</p>{% endfor %}
+{% endif %}
+{% endblock %}

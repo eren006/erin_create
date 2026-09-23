@@ -84,10 +84,13 @@ class LifecycleTests(unittest.TestCase):
         game.run('UPDATE users SET lethal_ready_day=99 WHERE id=?', (uid,))
         self.assertEqual(self.client.get('/memorial').status_code, 200)
         self.client.post('/rebirth')
+        self.assertEqual(game.get_consort(self.tgt)['user_id'], uid, '家里还在治丧，头两天送不了新人')
+        game.run('UPDATE game_state SET day=day+?', (game.FAMILY_MOURN_DAYS,))
+        self.client.post('/rebirth')
         self.assertIsNone(game.get_consort(self.tgt)['user_id'])
         self.assertEqual(game.get_consort(self.tgt)['archived_user_id'], uid)
-        form = {'surname': '新', 'given': '秀女', 'age': 18,
-                'family': next(iter(game.FAMILIES)), 'personality': next(iter(game.PERSONALITIES))}
+        self.client.post('/create', data={'step': 'family', 'surname': '新', 'family': next(iter(game.FAMILIES))})
+        form = {'given': '秀女', 'age': 18, 'personality': next(iter(game.PERSONALITIES))}
         self.client.post('/create', data=form)
         new = game.q('SELECT * FROM consorts WHERE user_id=?', (uid,), one=True)
         self.assertEqual(new['age_months'], 216)
