@@ -1320,7 +1320,7 @@ HEAD_AGE_RANGE = [(46, 56), (26, 36), (20, 28), (40, 55)]
 HEAD_GIVEN = ['明德', '守正', '兆麟', '世昌', '怀仁', '延年', '景行', '鸿儒', '子安', '文彬', '崇礼', '嘉树', '绍祖', '惟清', '伯谦']
 HEAD_OLD_YEARS, HEAD_OLD_RATE = 55, 0.005           # 家主 55 岁起每晚可能病逝，每多一岁概率 +0.5%
 HEAD_ILL_DEATH, HEAD_ILL_RECOVER = 0.20, 0.10       # 病着且没请医时每晚 20% 撒手；自己好转 10%
-HEAD_PROMOTE_BASE, HEAD_DEMOTE_BASE = 0.03, 0.015    # 每晚升迁 / 降职的底
+HEAD_PROMOTE_BASE, HEAD_DEMOTE_BASE = 0.04, 0.010    # 每晚升迁 / 降职的底（试玩里官职一路往下掉，才调成这样）
 PRESTIGE_LABELS = [(120, '簪缨世家'), (60, '望族'), (20, '小康之家'), (0, '寒门')]
 
 
@@ -1572,9 +1572,9 @@ def create():
 
 # ── 家主：会老、会病、会升降，也会来求你 ──────────────────────────────────────────
 
-REQUEST_INTERVAL, REQUEST_CHANCE, REQUEST_DAYS = 3, 0.35, 3
-PROMOTE_COST_BASE, PROMOTE_COST_STEP = 80, 40
-DEBT_COST_BASE, DEBT_COST_STEP = 60, 10
+REQUEST_INTERVAL, REQUEST_CHANCE, REQUEST_DAYS = 4, 0.25, 5
+PROMOTE_COST_BASE, PROMOTE_COST_STEP = 60, 25
+DEBT_COST_BASE, DEBT_COST_STEP = 50, 8
 ILL_COST = 120
 BACKING_COST, BACKING_LOCK_DAYS, BACKING_SCOLD = 100, 7, 0.10
 BACKING_WIN_OFFICE, BACKING_WIN_PRESTIGE, BACKING_LOSE_OFFICE, BACKING_LOSE_PRESTIGE = 2, 10, 1, 8
@@ -1621,7 +1621,7 @@ def head_dies(fam, day):
     uid = fam['user_id']
     gen = fam['head_gen'] + 1
     h = new_head(fam['surname'], fam['tier'], gen)
-    office = max(0, fam['head_office'] - 2)
+    office = max(0, fam['head_office'] - 1)     # 接班的人官职比上一任低一级
     run("""UPDATE families SET head_name=?, head_role=?, head_gen=?, head_age_months=?, head_ill_day=0, head_office=? WHERE user_id=?""",
         (h['head_name'], h['head_role'], gen, h['head_age_months'], office, uid))
     text = f"{fam['head_role']}{fam['head_name']}病逝，由{h['head_role']}{h['head_name']}接掌家事（{OFFICE_TITLES[office]}）。"
@@ -1650,7 +1650,7 @@ def family_tick(day):
         if random.random() < p_die:
             head_dies(fam, day)
             continue
-        if fam['head_office'] < OFFICE_MAX and years < 66 and random.random() < HEAD_PROMOTE_BASE + min(0.03, fam['prestige'] / 3000):
+        if fam['head_office'] < OFFICE_MAX and years < 66 and random.random() < HEAD_PROMOTE_BASE + min(0.03, fam['prestige'] / 2500):
             run("UPDATE families SET head_office=head_office+1, prestige=prestige+3 WHERE user_id=?", (uid,))
             text = f"{fam['head_role']}{fam['head_name']}升任{OFFICE_TITLES[fam['head_office'] + 1]}。"
             family_log_add(uid, text)

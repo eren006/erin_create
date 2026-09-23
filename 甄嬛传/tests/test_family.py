@@ -471,7 +471,7 @@ class FamilyTests(unittest.TestCase):
         with patch.object(game.random, 'random', return_value=0.0):
             game.family_tick(10)
         f = self.frow(uid)
-        self.assertEqual((f['head_role'], f['head_gen'], f['head_office']), ('兄长', 1, 4))
+        self.assertEqual((f['head_role'], f['head_gen'], f['head_office']), ('兄长', 1, 5))
         self.assertNotEqual(f['head_name'], old)
         self.assertTrue(24 <= f['head_age_months'] // 12 <= 36)
         self.assertTrue(any('病逝' in m for m in self.msgs(self.atk)))
@@ -1179,7 +1179,7 @@ class FamilyTests(unittest.TestCase):
         self.assertFalse(self.frow(uid)['head_ill_day'])
         self.client.post(f'/admin/family/{uid}', data=dict(act='head_dies'))
         f = self.frow(uid)
-        self.assertEqual((f['head_role'], f['head_office']), ('兄长', 4))
+        self.assertEqual((f['head_role'], f['head_office']), ('兄长', 5))
 
     def test_footer_links_to_admin_login(self):
         page = self.client.get('/clans').get_data(as_text=True)
