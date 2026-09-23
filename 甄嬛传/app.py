@@ -5097,7 +5097,7 @@ def reigns():
 
 
 # ── 生育：侍寝人数、怀孕率、孕期 ─────────────────────────────────────────────────
-BED_PLAYERS_PER_EXTRA, MAX_BEDS = 6, 4      # 宫里每多 6 位玩家，每晚多翻一位牌子，最多 4 位
+BED_PLAYERS_PER_EXTRA, MAX_BEDS = 6, 6      # 宫里每多 6 位玩家，每晚多翻一位牌子，最多 6 位
 PREGNANCY_BASE, PREGNANCY_PER_HEALTH = 0.24, 0.002
 OLD_MOTHER_AGE, OLD_MOTHER_FACTOR, PREGNANCY_MAX = 35, 0.6, 0.6
 PRENATAL_ENERGY, PRENATAL_STAT_CAP = 1, 6
@@ -5944,7 +5944,7 @@ def place(key):
                            counts=counts, sick=is_sick(c), arts=arts_of(c), ARTS=ARTS, ART_MASTERY=ART_MASTERY,
                            plead_targets=plead_targets, plead_p=int(plead_chance(c) * 100),
                            maid_ev=maid_ev, maid_info=maid_info, heir_ev=heir_ev, my_heirs=my_heirs, heir_todo=heir_todo, HEIR_RAISE=HEIR_RAISE, PRENATAL=PRENATAL,
-                           DIETS=DIETS, diet_costs=diet_costs(c['rank']), repair=repair_state(c), REPAIRS=REPAIRS, PRAY_TIERS=PRAY_TIERS,
+                           DIETS=DIETS, PREGNANCY_DAYS=PREGNANCY_DAYS, diet_costs=diet_costs(c['rank']), repair=repair_state(c), REPAIRS=REPAIRS, PRAY_TIERS=PRAY_TIERS,
                            is_quiet=is_quiet(c) if c['status'] in ('normal', 'confined') else False,
                            household=palace_household(c['palace']) if key == 'home' and has_residence(c) else [],
                            is_head=has_residence(c) and c['hall'] == 'main' and c['rank'] >= 5)

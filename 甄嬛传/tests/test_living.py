@@ -64,7 +64,7 @@ class LivingTests(unittest.TestCase):
         return [dict(user_id=1)] * players + [dict(user_id=None)] * npcs
 
     def test_bed_count_grows_with_players_not_npcs(self):
-        self.assertEqual([game.bed_count(self.cands(n)) for n in (1, 5, 6, 11, 12, 17, 18, 40)], [1, 1, 2, 2, 3, 3, 4, 4])
+        self.assertEqual([game.bed_count(self.cands(n)) for n in (1, 5, 6, 11, 12, 17, 18, 29, 30, 60)], [1, 1, 2, 2, 3, 3, 4, 5, 6, 6])
         self.assertEqual(game.bed_count(self.cands(2, npcs=30)), 1)
         self.assertEqual(game.bed_count([]), 1)
 
@@ -170,6 +170,7 @@ class LivingTests(unittest.TestCase):
         self.assertNotIn('安胎静养', self.client.get('/place/home').get_data(as_text=True))
         self.pregnant()
         page = self.client.get('/place/home').get_data(as_text=True)
+        self.assertIn(f'{game.PREGNANCY_DAYS} 天后临盆', page)   # 试玩里这里漏过数字
         for t in ('有喜', '安胎静养', '诵读诗书', '礼佛积德'):
             self.assertIn(t, page)
 
@@ -349,7 +350,7 @@ class LivingTests(unittest.TestCase):
         self.housed()
         self.set_repair('stove')
         page = self.client.get('/place/home').get_data(as_text=True)
-        for t in ('地龙坏了', '找内务府修', '本宫饮食', '奢华', '佛堂', '香油'):
+        for t in ('地龙坏了', '找内务府修', '本宫饮食', '奢华', '佛堂', '香油', '当前：<b>普通</b>'):
             self.assertIn(t, page)
 
     # ── 礼佛 ─────────────────────────────────────────────────────────────────

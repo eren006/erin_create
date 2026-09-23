@@ -51,7 +51,7 @@
   <form method="post" action="{{ url_for('set_diet') }}" class="row">
     {% for k, d in DIETS.items() %}<button name="tier" value="{{ k }}" class="{{ 'plain' if c.diet != k }}" title="{{ d.desc }}">{{ d.name }}（约 {{ diet_costs[k] }} 两/晚）</button>{% endfor %}
   </form>
-  <p class="muted" style="margin:6px 0 0">{{ DIETS[c.diet].desc }}每晚开伙按选的档次扣银子，不够就自动降一档。</p>
+  <p class="muted" style="margin:6px 0 0">当前：<b>{{ DIETS[c.diet].name }}</b>。{{ DIETS[c.diet].desc }}每晚开伙按选的档次扣银子，不够就自动降一档。</p>
 </div>
 <div class="sheet" style="margin:14px 0">
   <h3 style="margin-top:0">佛堂</h3>

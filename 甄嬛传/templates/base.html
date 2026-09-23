@@ -178,8 +178,7 @@ input:not([type=radio]):not([type=checkbox]),select,textarea{box-shadow:inset 0 
     <a href="{{ url_for('memorial') }}" class="{{ 'on' if ep=='memorial' }}">宫史</a>
     <a href="{{ url_for('heirs') }}" class="{{ 'on' if ep=='heirs' }}">子嗣</a>
     <a href="{{ url_for('succession') }}" class="{{ 'on' if ep=='succession' }}">夺嫡</a>
-    <a href="{{ url_for('family_page') }}" class="{{ 'on' if ep in ('family_page',) }}">家里</a>
-    <a href="{{ url_for('clan') }}" class="{{ 'on' if ep in ('clan','clan_of','clans') }}">族谱</a>
+    <a href="{{ url_for('family_page') }}" class="{{ 'on' if ep in ('family_page','clan','clan_of','clans') }}">家族</a>
   </nav>
   {% else %}<div style="height:10px"></div>{% endif %}
 </header>
