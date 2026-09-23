@@ -1130,6 +1130,49 @@ class FamilyTests(unittest.TestCase):
         self.client.post('/admin/reset', data={'confirm': '重开', 'keep_users': '1'})
         self.assertEqual(self.client.get('/admin').status_code, 200)
 
+    # ── 后台 ─────────────────────────────────────────────────────────────────
+
+    def admin(self):
+        with self.client.session_transaction() as sess: sess['admin'] = True
+
+    def test_admin_lists_families_and_edits_them(self):
+        uid = self.fam(self.atk, surname='沈')
+        self.admin()
+        page = self.client.get('/admin').get_data(as_text=True)
+        self.assertIn('各家族', page)
+        self.assertIn('沈氏', page)
+        self.client.post(f'/admin/family/{uid}', data=dict(act='edit', prestige=88, estate=1234, office=7, age=61))
+        f = self.frow(uid)
+        self.assertEqual((f['prestige'], f['estate'], f['head_office'], f['head_age_months']), (88, 1234, 7, 61 * 12))
+
+    def test_admin_family_edit_rejects_junk_and_needs_admin(self):
+        uid = self.fam(self.atk)
+        self.client.post(f'/admin/family/{uid}', data=dict(act='edit', prestige=1, estate=1, office=1, age=40))
+        self.assertNotEqual(self.frow(uid)['prestige'], 1, '没登录后台不行')
+        self.admin()
+        self.client.post(f'/admin/family/{uid}', data=dict(act='edit', prestige='x', estate=1, office=1, age=40))
+        self.assertEqual(self.frow(uid)['prestige'], 0)
+        self.client.post(f'/admin/family/{uid}', data=dict(act='edit', prestige=5, estate=1, office=99, age=40))
+        self.assertEqual(self.frow(uid)['head_office'], game.OFFICE_MAX, '越界的收回范围内')
+        self.assertEqual(self.client.post('/admin/family/99999', data=dict(act='edit')).status_code, 302)
+
+    def test_admin_can_make_head_ill_recover_or_die(self):
+        uid = self.fam(self.atk, head_office=6)
+        self.admin()
+        self.client.post(f'/admin/family/{uid}', data=dict(act='head_ill'))
+        self.assertTrue(self.frow(uid)['head_ill_day'])
+        self.client.post(f'/admin/family/{uid}', data=dict(act='head_ill'))
+        self.assertFalse(self.frow(uid)['head_ill_day'])
+        self.client.post(f'/admin/family/{uid}', data=dict(act='head_dies'))
+        f = self.frow(uid)
+        self.assertEqual((f['head_role'], f['head_office']), ('兄长', 4))
+
+    def test_footer_links_to_admin_login(self):
+        page = self.client.get('/clans').get_data(as_text=True)
+        self.assertIn('/admin/login', page)
+        self.admin()
+        self.assertIn('href="/admin"', self.client.get('/clans').get_data(as_text=True))
+
 
 if __name__ == '__main__':
     unittest.main()

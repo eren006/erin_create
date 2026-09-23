@@ -5229,7 +5229,13 @@ def admin():
                       COUNT(*) total, SUM(claimed) got, MIN(created_ts) created_ts
                       FROM letters WHERE broadcast_id>0 GROUP BY broadcast_id ORDER BY broadcast_id DESC LIMIT 20""")
     players = q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND status NOT IN ('xiunv','dead') ORDER BY rank DESC")
-    return render_template('admin.html', emperor_age=emperor_age_years(), rows=rows, pend=pend, get_consort=get_consort, INTRIGUES=INTRIGUES,
+    families = []
+    for fam in q("SELECT f.*, u.username FROM families f LEFT JOIN users u ON u.id=f.user_id ORDER BY f.prestige DESC, f.user_id"):
+        ms = [m for m in family_members(fam['user_id']) if m['status'] != 'xiunv']
+        families.append(dict(fam=fam, n=len(ms), this_reign=sum(1 for m in ms if m['reign_no'] == state()['reign_no']),
+                             alive=[full_name(m) for m in ms if m['user_id'] and m['status'] != 'dead'],
+                             head=head_text(fam), label=prestige_label(fam['prestige']), tier_name=FAMILIES[fam['tier']]['name']))
+    return render_template('admin.html', families=families, OFFICE_TITLES=OFFICE_TITLES, emperor_age=emperor_age_years(), rows=rows, pend=pend, get_consort=get_consort, INTRIGUES=INTRIGUES,
                            SECRETS=SECRETS, reports=reports, done_reports=done_reports, banned=banned,
                            broadcasts=broadcasts, players=players, dn=display_name)
 
@@ -5270,6 +5276,35 @@ def admin_emperor():
         else:
             finish_mourning(day, st)
             flash('已跳过国丧，新一届选秀开始。', 'good')
+    return redirect(url_for('admin'))
+
+@app.route('/admin/family/<int:uid>', methods=['POST'])
+@admin_required
+def admin_family(uid):
+    fam = family_row(uid)
+    if not fam:
+        flash('没有这户人家。', 'bad')
+        return redirect(url_for('admin'))
+    act = request.form.get('act')
+    def num(name, lo, hi):
+        try: return max(lo, min(hi, int(request.form.get(name, ''))))
+        except ValueError: return None
+    if act == 'edit':
+        prestige, estate = num('prestige', 0, 100000), num('estate', 0, 1000000)
+        office, age = num('office', 0, OFFICE_MAX), num('age', 15, 100)
+        if None in (prestige, estate, office, age):
+            flash('数值有误。', 'bad'); return redirect(url_for('admin'))
+        run("UPDATE families SET prestige=?, estate=?, head_office=?, head_age_months=? WHERE user_id=?",
+            (prestige, estate, office, age * 12, uid))
+        flash(f"已修改{fam['surname']}氏。", 'good')
+    elif act == 'head_ill':
+        run("UPDATE families SET head_ill_day=? WHERE user_id=?", (0 if fam['head_ill_day'] else cur_day(), uid))
+        flash('家主已' + ('痊愈。' if fam['head_ill_day'] else '病倒。'), 'good')
+    elif act == 'head_dies':
+        head_dies(fam, cur_day())
+        flash('家主已病逝，由下一位接掌。', 'good')
+    else:
+        flash('没有这个操作。', 'bad')
     return redirect(url_for('admin'))
 
 @app.route('/admin/settle', methods=['POST'])
