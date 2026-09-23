@@ -75,6 +75,10 @@ CREATE TABLE IF NOT EXISTS consorts (
     housing_waiting   TEXT NOT NULL DEFAULT '',      -- main/side：已通知等候安置，腾房后清空
     discipline_ready_day INTEGER NOT NULL DEFAULT 0, -- 主位管教配殿的冷却：到这天才能再罚/赏
 
+    guide_step       INTEGER NOT NULL DEFAULT 0,    -- 教引嬷嬷引导线走到第几步；-1=跳过，等于步数上限=走完了
+    guide_progress   TEXT NOT NULL DEFAULT '[]',    -- 当前这一步已经做到的子项
+    guide_tips       TEXT NOT NULL DEFAULT '[]',    -- 已经出现过的「遇事提点」，同一件事只说一次
+
     aggression       REAL NOT NULL DEFAULT 0,       -- 仅 NPC：每晚出手概率
     intro            TEXT NOT NULL DEFAULT '',
     created_ts       INTEGER NOT NULL DEFAULT 0

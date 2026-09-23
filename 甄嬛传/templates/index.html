@@ -42,6 +42,16 @@
 </style>
 {% endblock %}
 {% block body %}
+{% if guide %}
+<section class="sheet" style="margin:0 0 16px" aria-label="教引嬷嬷">
+  <p style="font-family:var(--kai);font-size:17px">许嬷嬷：{{ guide.open_line }}</p>
+  <ul style="margin:8px 0 4px;padding-left:1.2em">
+    {% for label, done in guide.checklist %}<li style="{{ 'color:var(--muted);text-decoration:line-through' if done }}">{{ label }}{% if done %}　✓{% endif %}</li>{% endfor %}
+  </ul>
+  <p class="muted">{{ guide.teach }}</p>
+  <form method="post" action="{{ url_for('guide_skip') }}"><button class="plain">不必了</button></form>
+</section>
+{% endif %}
 {% if open_cases_count %}<p class="state-conf" role="alert">你被卷进了 {{ open_cases_count }} 桩案子，<a href="{{ url_for('drug_cases') }}">去慎刑司陈情</a>。</p>{% endif %}
 <form method="post" action="{{ url_for('diagnose') }}"><button class="plain">请太医诊脉（20 两，每日一次）</button></form>
 

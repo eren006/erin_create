@@ -393,6 +393,72 @@ def intrigue_label(it):
         return '下药·' + (f"{DRUGS[used]['name']}（{DRUGS[it['drug']]['name']}）" if used == 'wuming' else DRUGS[it['drug']]['name'])
     return INTRIGUES[it['method']]['name'] if it['method'] in INTRIGUES else LEGACY_INTRIGUE_NAMES.get(it['method'], it['method'])
 
+# ── 教引嬷嬷 ───────────────────────────────────────────────────────────────────
+# 新人引导线：guide_step 走到第几步（-1=跳过，len(GUIDE_STEPS)=走完了），
+# guide_progress 记当前这一步已经做到的子项，全做到才算这一步过关、发银子、进下一步。
+# reqs 是「子项组」的列表，每组只要占到其中一个 key 就算过；guide_tips 是遇事提点的去重记录。
+
+GUIDE_REWARD = 10
+REQ_LABELS = dict(maid='挑一个宫人、赐名', greet='去景仁宫请安', study='修习一次才艺', garden='去御花园走走',
+                  visit='串一次门', letter='写一封信', gazette='看一次邸报', eyes='安插眼线', inspect='清查一次宫人')
+
+GUIDE_STEPS = [
+    dict(title='入宫当天', reqs=[frozenset({'maid'})],
+         teach='内务府会按你的位分给宫人份例，往后不少事都要靠宫人跑腿；精力每天 5 点，例银按位分每晚发。',
+         open_line='「小主头一日进宫，先别急着往养心殿跑。规矩没学会，见了皇上也是白见。去内务府挑个贴身的人，往后有些跑腿的事，还得靠她。」',
+         close_line='「像个样子了。」'),
+    dict(title='第一天', reqs=[frozenset({'greet'}), frozenset({'study'}), frozenset({'garden'})],
+         teach='请安断了两天，德行会掉；场景里的选择看的是属性加一点运气，不是瞎选。',
+         open_line='「今日去景仁宫请个安，皇后娘娘瞧着和气，规矩却不能少。得空再练一门才艺，御花园也去走走，散散心。」',
+         close_line='「老奴多嘴一句：宫里送来的吃食，入口前多看一眼。」'),
+    dict(title='第二天', reqs=[frozenset({'visit'}), frozenset({'letter'}), frozenset({'gazette'})],
+         teach='好感够了能结拜姐妹，姐妹会让算计你的人更难得手；邸报上的事，六宫都看得到。',
+         open_line='「串串门，跟人处熟络些；写封信，宫里书信往来都是有规矩的。邸报也该看看，宫里出了什么事，一目了然。」',
+         close_line='「多个照应，总比孤零零一个人强。」'),
+    dict(title='第三天', reqs=[frozenset({'eyes', 'inspect'})],
+         teach='宫里不是人人都安分，你身上还有几天新人保护，趁这几天把眼线安插好。',
+         open_line='「老奴在这宫里三十年，见过比小主聪明的，也见过比小主得宠的。活到最后的，都是沉得住气的。去安插个眼线，或是清查一下宫人，学着防备些。」',
+         close_line='「往后的路，小主自己走吧。有事只管来找老奴。」'),
+]
+
+def guide_start(cid):
+    run("UPDATE consorts SET guide_step=0, guide_progress='[]', guide_tips='[]' WHERE id=?", (cid,))
+    notify(cid, f"许嬷嬷凑上前来：{GUIDE_STEPS[0]['open_line']}", 'info')
+
+def guide_mark(cid, key):
+    c = get_consort(cid)
+    if not c or not c['user_id'] or not (0 <= c['guide_step'] < len(GUIDE_STEPS)): return
+    try: progress = set(json.loads(c['guide_progress'] or '[]'))
+    except ValueError: progress = set()
+    if key in progress: return
+    progress.add(key)
+    step = GUIDE_STEPS[c['guide_step']]
+    if not all(progress & req for req in step['reqs']):
+        run("UPDATE consorts SET guide_progress=? WHERE id=?", (json.dumps(sorted(progress)), cid))
+        return
+    add_silver(cid, GUIDE_REWARD)
+    new_step = c['guide_step'] + 1
+    run("UPDATE consorts SET guide_step=?, guide_progress='[]' WHERE id=?", (new_step, cid))
+    line = GUIDE_STEPS[new_step]['open_line'] if new_step < len(GUIDE_STEPS) else '「往后的路，小主自己走吧。有事只管来找老奴。」'
+    notify(cid, f"许嬷嬷{step['close_line']}银子 +{GUIDE_REWARD} 两。{line}", 'good')
+
+def guide_view(c):
+    if not (0 <= c['guide_step'] < len(GUIDE_STEPS)): return None
+    step = GUIDE_STEPS[c['guide_step']]
+    try: progress = set(json.loads(c['guide_progress'] or '[]'))
+    except ValueError: progress = set()
+    checklist = [(' / '.join(REQ_LABELS[k] for k in sorted(req)), bool(progress & req)) for req in step['reqs']]
+    return dict(title=step['title'], teach=step['teach'], open_line=step['open_line'], checklist=checklist)
+
+def guide_tip(cid, key, line):
+    c = get_consort(cid)
+    if not c or not c['user_id']: return
+    try: seen = json.loads(c['guide_tips'] or '[]')
+    except ValueError: seen = []
+    if key in seen: return
+    run("UPDATE consorts SET guide_tips=? WHERE id=?", (json.dumps(seen + [key], ensure_ascii=False), cid))
+    notify(cid, f"许嬷嬷：{line}", 'info')
+
 # ── 场景（带选择的小剧情）─────────────────────────────────────────────────────
 # 每个选项：stat 为空=必成；否则 属性值 + 随机 0~40 ≥ dc 算成（dc 70 时属性 50 约五成）。
 # win/lose 里的键：favor 圣宠 / trust 信任 / virtue 德行 / health 体质 / appearance 容貌 /
@@ -610,7 +676,10 @@ def init_db():
                      'hall': "TEXT NOT NULL DEFAULT ''",
                      'discipline_ready_day': 'INTEGER NOT NULL DEFAULT 0',
                      'housing_waiting': "TEXT NOT NULL DEFAULT ''",
-                     'hobby_kinds': "TEXT NOT NULL DEFAULT ''"},
+                     'hobby_kinds': "TEXT NOT NULL DEFAULT ''",
+                     'guide_step': 'INTEGER NOT NULL DEFAULT 0',
+                     'guide_progress': "TEXT NOT NULL DEFAULT '[]'",
+                     'guide_tips': "TEXT NOT NULL DEFAULT '[]'"},
         'cases': {'convicted_id': 'INTEGER NOT NULL DEFAULT 0', 'wrongful': 'INTEGER NOT NULL DEFAULT 0'},
         'intrigues': {'drug': "TEXT NOT NULL DEFAULT ''",
                       'agent_maid_id': 'INTEGER NOT NULL DEFAULT 0'},
@@ -627,6 +696,10 @@ def init_db():
         for field, definition in fields.items():
             if field not in existing:
                 db.execute(f'ALTER TABLE {table} ADD COLUMN {field} {definition}')
+                if table == 'consorts' and field == 'guide_step':
+                    # 教引嬷嬷是新功能，老档里已经存在的角色（不管在不在冷宫、死没死）都已经过了新人这一段，
+                    # 直接跳过；只有这次迁移之后新入宫、新重生的角色才会在 dianxuan()/rebirth() 里显式置 0
+                    db.execute("UPDATE consorts SET guide_step=-1")
     retire_musk(db)
     if not db.execute("SELECT 1 FROM game_state WHERE id=1").fetchone():
         now = datetime.now(TZ)
@@ -840,6 +913,7 @@ def send_to_cold(cid):
            favor=0, pregnant_since=0, seek_bonus=0, hall='', housing_waiting='', title=? WHERE id=?""",
         (cur_day() + COLD_DAYS, c['rank'], c['title'] if c['npc_key'] else '', cid))
     housing_sync(fill_main=not settling())
+    guide_tip(cid, 'cold', '「冷宫的日子不好熬，但没到头呢。多闭门自省，未必没有转机。」')
 
 def release_from_cold(cid, reason):
     c = get_consort(cid)
@@ -1078,6 +1152,7 @@ def dianxuan():
                  f"{'赐封号「' + title + '」，' if title else ''}封为{display_name(c)}，赐居{palace}{HALL_NAMES[hall]}。"
         gazette(f"殿选：{decree}", 'decree')
         notify(c['id'], f"殿选中选。{decree}", 'decree')
+        guide_start(c['id'])
         if risky_huafei:
             add_affinity(c['id'], q("SELECT id FROM consorts WHERE npc_key='huafei'", one=True)['id'], -30)
         return render_template('dianxuan_result.html', c=c, reactions=reactions, total=total, title=title)
@@ -1113,8 +1188,15 @@ def index():
     heirs = q("SELECT * FROM heirs WHERE mother_id=? ORDER BY id", (c['id'],))
     maid_gap = 0 if c['status'] == 'cold' else maid_quota(c['rank']) - len(active_maids(c['id']))
     return render_template('index.html', c=c, msgs=msgs, promo=promo, heirs=heirs, edict=edict, maid_gap=maid_gap,
-                           sick=is_sick(c), eyes=eyes_active(c), secret=SECRETS[c['secret']],
+                           sick=is_sick(c), eyes=eyes_active(c), secret=SECRETS[c['secret']], guide=guide_view(c),
                            day=day, PREGNANCY_DAYS=PREGNANCY_DAYS, tiles=map_tiles(c))
+
+@app.route('/guide/skip', methods=['POST'])
+@login_required
+def guide_skip():
+    run("UPDATE consorts SET guide_step=-1 WHERE id=?", (g.me['id'],))
+    flash('许嬷嬷福了福身：「小主既有主意，老奴便不多嘴了，有事只管来找老奴。」', 'info')
+    return redirect(url_for('index'))
 
 class Reject(Exception):
     pass
@@ -1160,6 +1242,7 @@ def act(key):
             raise Reject('宫人今天都派出去了。' if active_maids(c['id']) else '你宫里还没有宫人，先去内务府挑一个。')
         msg, kind = ACTION_HANDLERS[key](c, cfg)
         daily_inc(c['id'], key)
+        if key in REQ_LABELS: guide_mark(c['id'], key)
         if getattr(g, 'scene_started', False):
             return redirect(url_for('scene'))
         flash(msg, kind)
@@ -1668,6 +1751,9 @@ def loyalty_word(v):
 
 def maid_leave(mid, status, reason):
     run("UPDATE maids SET status=?, left_day=?, left_reason=? WHERE id=?", (status, cur_day(), reason, mid))
+    if status == 'dead':
+        owner = get_consort(get_maid(mid)['owner_id'])
+        guide_tip(owner['id'], 'maid_death', '「宫里的人来来去去，是常事。厚葬一下，也算全了这份情分。」')
 
 def has_maid_trait(cid, trait):
     return any(m['trait'] == trait and m['sick_until_day'] < cur_day() for m in active_maids(cid))
@@ -1941,6 +2027,7 @@ def maid_pick():
     run("""INSERT INTO maids (owner_id, name, trait, loyalty, backstory, joined_day, created_ts)
            VALUES (?,?,?,?,?,?,?)""", (c['id'], name, pick['trait'], pick['loyalty'], pick['backstory'], cur_day(), now_ts()))
     run("UPDATE consorts SET maid_offer='' WHERE id=?", (c['id'],))
+    guide_mark(c['id'], 'maid')
     flash(f"你给她赐名「{name}」。{name}跪下谢恩，从今往后就是{c['palace'] or '你宫里'}的人了。", 'good')
     return redirect(url_for('maids_page'))
 
@@ -2034,6 +2121,7 @@ def gazette_page():
     days = {}
     for r in rows:
         days.setdefault(r['day'], []).append(r)
+    if g.me: guide_mark(g.me['id'], 'gazette')
     return render_template('gazette.html', days=sorted(days.items(), reverse=True), day=day)
 
 CN_NUM = '零一二三四五六七八九十'
@@ -2364,11 +2452,16 @@ def _settle_night():
         gazette(f"敬事房：今夜皇上翻了{display_name(bed)}的牌子。", 'bed')
         if bed['user_id']:
             msg = f"敬事房来传话：今夜皇上翻了你的牌子。圣宠 +{gain}。"
+            newly_pregnant = False
             if not affliction(bed['id'], 'hanshui', day) and bed['age_months'] < FERTILE_BEFORE_AGE * 12 and random.random() < 0.12 + bed['health'] / 1000:
                 run("UPDATE consorts SET pregnant_since=? WHERE id=?", (day, bed['id']))
                 msg += f"……太医诊出了喜脉，{PREGNANCY_DAYS} 天后临盆。"
                 gazette(f"{display_name(bed)}有喜了。", 'birth')
+                newly_pregnant = True
             notify(bed['id'], msg, 'good')
+            guide_tip(bed['id'], 'bed', '「头一回侍寝，忐忑也是常事。往后皇上想起你，全看这几日的功夫。」')
+            if newly_pregnant:
+                guide_tip(bed['id'], 'pregnant', '「有喜是大事，往后当心着些，别的事都往后放一放。」')
             start_scene(bed['id'], 'audience', prompt=random.randrange(len(AUDIENCE_PROMPTS)), bed=1, hoarse=bool(affliction(bed['id'], 'yachan', day)))
         housing_visit(bed)
         report.append(f"侍寝：{display_name(bed)}")
@@ -2383,6 +2476,7 @@ def _settle_night():
         add_favor(r['id'], 5)
         run("UPDATE consorts SET last_audience_day=? WHERE id=?", (day, r['id']))
         notify(r['id'], '苏培盛来传话：皇上要召你去养心殿说话。圣宠 +5。', 'good')
+        guide_tip(r['id'], 'audience', '「皇上召见，规规矩矩应答就是，不必太紧张。」')
         start_scene(r['id'], 'audience', prompt=random.randrange(len(AUDIENCE_PROMPTS)), bed=0, hoarse=bool(affliction(r['id'], 'yachan', day)))
     if called:
         gazette(f"皇上召见了{'、'.join(display_name(c) for c in called)}。", 'audience')
@@ -3045,6 +3139,7 @@ def letter_send():
     run("""INSERT INTO letters (from_id, to_id, day, body, silver, item_key, hobby_item_id, created_ts)
            VALUES (?,?,?,?,?,?,?,?)""", (c['id'], tid, cur_day(), body, amt, item, hobby_item_id, now_ts()))
     daily_inc(c['id'], 'letter')
+    guide_mark(c['id'], 'letter')
     # 好感：每天每个方向第一封信 +2，附玉如意再 +15，附自己做的雅趣作品再 +10；银子和普通物件不额外加，免得两人来回倒腾刷好感
     aff = 0
     if daily_count(c['id'], f'letter_aff:{tid}') == 0:
@@ -3167,6 +3262,7 @@ def poison_player(cid, day):
     notify(cid, f'你中毒了，体质 -20。下一次结算前请太医（{TREAT_COST} 两）：请了九成能活，不请只有三成五。', 'bad')
     gazette(f'{display_name(get_consort(cid))}突然中毒，性命垂危。')
     night_mark(cid, 'poisoned')
+    guide_tip(cid, 'poisoned', '「快请太医！这钱不能省，命才是自己的。」')
 
 
 def open_drug_case(it, punished=0):
@@ -3199,6 +3295,7 @@ def open_drug_case(it, punished=0):
     gazette(f'{display_name(victim)}出了事，皇后命慎刑司彻查。待查：{names}。', day=day)
     for cid in {victim['id'], *(s['consort_id'] for s in suspects)}:
         notify(cid, f'你被卷进了第 {case_id} 桩案子，请去慎刑司陈情，下一次结算定案。', 'bad')
+        guide_tip(cid, 'case', '「案子上了身，别慌。该喊冤喊冤，该打点打点，慎刑司认的是嫌疑，不是脾气。」')
     if eyes_active(victim): notify(victim['id'], f'眼线回报：这回下手的是{display_name(culprit)}。')
     return case_id
 
@@ -3464,6 +3561,7 @@ def agent_action():
         if not free_errand_maids(c): err='没有空闲宫人去清查。'
         else:
             take_errand(c)
+            guide_mark(c['id'],'inspect')
             for b in q("SELECT b.* FROM bribes b JOIN maids m ON m.id=b.maid_id WHERE m.owner_id=? AND m.status='active'",(c['id'],)):
                 if random.random()<min(0.85,0.4+c['scheme']*0.004):
                     run('UPDATE bribes SET exposed=1 WHERE briber_id=? AND maid_id=?',(b['briber_id'],b['maid_id']))
