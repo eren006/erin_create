@@ -41,16 +41,22 @@
     <label for="silver" style="margin:0">附银子</label><input id="silver" type="number" name="silver" min="0" max="{{ c.silver }}" value="0" style="width:90px">
     <label for="item" style="margin:0">附东西</label>
     <select id="item" name="item"><option value="">不附</option>{% for i in inv if i.item_key in ITEMS %}<option value="{{ i.item_key }}">{{ ITEMS[i.item_key].name }} ×{{ i.qty }}</option>{% endfor %}</select>
+    {% if held %}
+    <label for="hobby_item_id" style="margin:0">附自己做的雅趣</label>
+    <select id="hobby_item_id" name="hobby_item_id"><option value="">不附</option>
+      {% for i in held %}<option value="{{ i.id }}" {{ 'selected' if i.id == hobby_item }}>{{ HOBBIES[i.kind].name }}·{{ i.style }}（{{ i.quality }}）</option>{% endfor %}
+    </select>
+    {% endif %}
   </div>
   {% endif %}
   <div class="row"><button {{ 'disabled' if left <= 0 or not others }}>送出去</button>
-    <span class="muted">今天还能送 {{ left }} 封。每天给同一个人的第一封信好感 +2，附玉如意再 +15。</span></div>
+    <span class="muted">今天还能送 {{ left }} 封。每天给同一个人的第一封信好感 +2，附玉如意再 +15，附自己做的雅趣作品再 +10。</span></div>
 </form>
 
 <h3>收到的</h3>
 {% for l in inbox %}{% set f = get_consort(l.from_id) %}
 <div class="letter {{ 'new' if not l.is_read }}">
-  <div class="hd"><b>{{ dn(f) }}</b>第 {{ l.day }} 天{% if l.silver %}，附银子 {{ l.silver }} 两{% endif %}{% if l.item_key %}，附{{ ITEMS[l.item_key].name if l.item_key in ITEMS else l.item_key }}{% endif %}
+  <div class="hd"><b>{{ dn(f) }}</b>第 {{ l.day }} 天{% if l.silver %}，附银子 {{ l.silver }} 两{% endif %}{% if l.item_key %}，附{{ ITEMS[l.item_key].name if l.item_key in ITEMS else l.item_key }}{% endif %}{% if l.hobby_item_id %}{% set hi = get_hobby_item(l.hobby_item_id) %}{% if hi %}，附{{ HOBBIES[hi.kind].name }}·{{ hi.style }}（{{ hi.quality }}）{% endif %}{% endif %}
     {% if f.status not in ('dead',) %}　<a href="{{ url_for('letters', to=f.id) }}">回信</a>{% endif %}　<a href="{{ url_for('report', letter=l.id) }}" class="muted">举报</a></div>
   <p class="body">{{ l.body }}</p>
 </div>

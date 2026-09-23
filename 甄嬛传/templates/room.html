@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+{% block title %}{{ dn(t) }}的寝宫{% endblock %}
+{% block head %}
+<style>
+.slots{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr));gap:14px;margin:12px 0}
+.slots .slot{background:var(--paper);border:1px solid var(--line);padding:16px;border-top:3px solid var(--jin);min-height:80px}
+.slots .slot h4{margin:0 0 8px;font-family:var(--kai);font-weight:normal;font-size:16px;color:var(--muted)}
+.slots .slot .nm{font-family:var(--kai);font-size:18px}
+.prov{font-size:13px;color:var(--muted);margin-top:6px}
+</style>
+{% endblock %}
+{% block body %}
+<p class="back">{% if mine %}<a href="{{ url_for('place', key='home') }}">回本宫</a>{% else %}<a href="{{ url_for('social') }}">回六宫</a>{% endif %}</p>
+<h2>{{ dn(t) }}{{ '的寝宫' if not mine else '——你的寝宫' }}</h2>
+{% if not mine %}<p class="muted">串门时能看到这四样陈设。</p>{% endif %}
+
+<div class="slots">
+{% for slot, name in DISPLAY_SLOTS.items() %}
+{% set s = slots[slot] %}
+<div class="slot">
+  <h4>{{ name }}</h4>
+  {% if s %}
+    <div class="nm">{{ HOBBIES[s.item.kind].name }}·{{ s.item.style }}（{{ s.item.quality }}）</div>
+    <div class="prov">{{ s.prov }}</div>
+    {% if mine %}<form method="post" action="{{ url_for('hobby_undisplay', slot=slot) }}" style="margin-top:8px"><button class="plain">收起来</button></form>{% endif %}
+  {% else %}<p class="muted">空着</p>{% endif %}
+</div>
+{% endfor %}
+</div>
+
+{% if mine %}
+<h3>手里还有的</h3>
+{% set unplaced = held | rejectattr('id', 'in', displayed_ids) | list %}
+{% if unplaced %}
+{% for it in unplaced %}
+<p>{{ HOBBIES[it.kind].name }}·{{ it.style }}（{{ it.quality }}）
+  <form method="post" action="{{ url_for('hobby_display') }}" style="display:inline">
+    <input type="hidden" name="item_id" value="{{ it.id }}">
+    <select name="slot" aria-label="摆在哪">{% for s, name in DISPLAY_SLOTS.items() %}<option value="{{ s }}">{{ name }}</option>{% endfor %}</select>
+    <button class="plain">摆进去</button>
+  </form>
+</p>
+{% endfor %}
+{% else %}<p class="muted">都摆出去了。</p>{% endif %}
+<p class="muted" style="margin-top:10px"><a href="{{ url_for('hobby') }}">去暇趣再做一件</a></p>
+{% endif %}
+{% endblock %}

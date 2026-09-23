@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+{% block title %}暇趣{% endblock %}
+{% block head %}
+<style>
+.kinds{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:14px;margin:12px 0}
+.kinds form{background:var(--paper);border:1px solid var(--line);padding:16px;border-top:3px solid var(--jin)}
+.kinds select{width:100%;margin:8px 0}
+.stage{font-size:13px;color:var(--muted)}
+.stage b{color:var(--zhu-deep)}
+.item{display:flex;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.item .nm{font-family:var(--kai);font-size:18px}
+.item form{display:inline-flex;gap:6px;align-items:center}
+</style>
+{% endblock %}
+{% block body %}
+<p class="back"><a href="{{ url_for('place', key='home') }}">回本宫</a></p>
+<h2>暇趣</h2>
+<p class="muted">争宠、使计之外，也总要有一件自己的事。雅趣不给属性、不给圣宠，只留下故事和人情。
+{% if free %}你近来{{ favor_word(c.favor) }}，雅趣今天不花精力。{% else %}打理一次占精力 {{ HOBBY_ENERGY }} 点。{% endif %}</p>
+
+{% if proj %}
+<h3>手里正做着</h3>
+<div class="sheet">
+  <p style="font-family:var(--kai);font-size:18px">{{ HOBBIES[proj.kind].name }}·{{ proj.style }}</p>
+  <p class="stage">已经<b>{{ ['起意', '打磨'][proj.stage] if proj.stage < 2 else '成了' }}</b>，还差 {{ 2 - proj.stage }} 步</p>
+  <form method="post" action="{{ url_for('hobby_act') }}">
+    <button {{ 'disabled' if done_today }}>{{ '今天已经打理过了' if done_today else '打理一下' }}</button>
+  </form>
+</div>
+{% elif can_pick_first or unlocked %}
+<h3>{{ '选一样雅趣' if can_pick_first else '接着做一件' }}</h3>
+<div class="kinds">
+{% for k, cfg in HOBBIES.items() if can_pick_first or k in unlocked %}
+<form method="post" action="{{ url_for('hobby_start') }}">
+  <b style="font-family:var(--kai);font-size:19px">{{ cfg.name }}</b>
+  <input type="hidden" name="kind" value="{{ k }}">
+  <select name="style" aria-label="{{ cfg.verb }}">
+    {% for s in cfg.styles %}<option value="{{ loop.index0 }}">{{ s }}</option>{% endfor %}
+  </select>
+  <button>{{ cfg.verb }}</button>
+</form>
+{% endfor %}
+</div>
+{% endif %}
+
+{% if can_unlock_second %}
+<h3>兼修</h3>
+<p class="muted">你已经做出 {{ HOBBY_UNLOCK_ITEMS }} 件作品了，可以再学一样。</p>
+<div class="kinds">
+{% for k, cfg in HOBBIES.items() if k not in unlocked %}
+<form method="post" action="{{ url_for('hobby_unlock') }}">
+  <input type="hidden" name="kind" value="{{ k }}">
+  <button class="plain">兼修{{ cfg.name }}</button>
+</form>
+{% endfor %}
+</div>
+{% endif %}
+
+<h3>你的作品</h3>
+{% if held %}
+{% for it in held %}
+<div class="item">
+  <div class="nm">{{ hobby_item_desc(it) }}</div>
+  {% if it.id in displayed_ids %}<span class="muted">摆在寝宫里</span>
+  {% else %}
+  <form method="post" action="{{ url_for('hobby_display') }}">
+    <input type="hidden" name="item_id" value="{{ it.id }}">
+    <select name="slot" aria-label="摆在哪">{% for s, name in DISPLAY_SLOTS.items() %}<option value="{{ s }}">{{ name }}</option>{% endfor %}</select>
+    <button class="plain">摆进寝宫</button>
+  </form>
+  {% endif %}
+  <a class="btn plain" href="{{ url_for('letters', hobby_item=it.id) }}">写信相赠</a>
+</div>
+{% endfor %}
+{% else %}<p class="muted">还没做出什么来。</p>{% endif %}
+<p class="muted" style="margin-top:10px"><a href="{{ url_for('room') }}">看看自己的寝宫</a></p>
+{% endblock %}

@@ -154,6 +154,7 @@ footer.muted{max-width:1024px}
   <nav class="halls">
     <a href="{{ url_for('index') }}" class="{{ 'on' if ep in ('index','place') }}">宫城</a>
     <a href="{{ url_for('social') }}" class="{{ 'on' if ep=='social' }}">六宫</a>
+    <a href="{{ url_for('hobby') }}" class="{{ 'on' if ep=='hobby' }}">暇趣</a>
     <a href="{{ url_for('intrigue') }}" class="{{ 'on' if ep=='intrigue' }}">使计</a>
     <a href="{{ url_for('letters') }}" class="{{ 'on' if ep=='letters' }}">书信{% if unread_letters %}<span class="dot" aria-label="{{ unread_letters }} 封未读">{{ unread_letters }}</span>{% endif %}</a>
     <a href="{{ url_for('shop') }}" class="{{ 'on' if ep=='shop' }}">内务府</a>

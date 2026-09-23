@@ -282,6 +282,62 @@ TASTER_CHANCE = 0.20
 GIFT_DRUG_CHANCE = 0.05       # 手巧、忠心 ≥80 的宫人每晚献药
 DIAGNOSE_CHANCE = 0.70
 SLOW_POISON_TICK = 6
+
+# ── 雅趣 ───────────────────────────────────────────────────────────────────────
+# 每件作品三步：0 起意（选定就有的那句）→ act 一次 1 打磨 → act 两次 2 成了，进 hobby_items。
+# 不给属性、不给圣宠，只给故事和人情——这是底线，见设计文档九点十三节。
+
+HOBBIES = {
+    'flower': dict(name='莳花', verb='选一个花种', item_word='花',
+        styles=['白山茶', '绿萼梅', '素心兰', '西府海棠', '月季', '丁香'],
+        texts=[
+            '你在殿角辟出一小块地，种下了{style}的苗。',
+            '这几日得空就去看它，浇水、除虫、挪盆晒太阳，眼看着日渐抽枝。',
+            '你养了些日子的{style}终于开了，满殿都是若有若无的香气。',
+        ]),
+    'incense': dict(name='调香', verb='选一个香方打底', item_word='香',
+        styles=['沉水', '梨花白', '冷香', '琥珀', '素馨', '龙涎'],
+        texts=[
+            '你翻出旧年的香谱，挑了{style}这个方子，先配了个底子。',
+            '这几天你总在试配比例，多一分则腻，少一分则淡，反反复复地改。',
+            '你终于调出了满意的{style}，往后这便是你自己的常用香了。',
+        ]),
+    'painting': dict(name='书画', verb='挑一个题目', item_word='字画',
+        styles=['寒梅傲雪', '秋山行旅', '临兰亭序', '一枝墨竹', '春江水暖', '小楷心经'],
+        texts=[
+            '你铺开一张素纸，定下了「{style}」这个题目，先打了几遍草稿。',
+            '这几日闲下来就练笔，废了的纸攒了一叠，但落笔渐渐稳了。',
+            '你终于落定最后一笔，一幅「{style}」就此成了，墨迹犹新。',
+        ]),
+    'tea': dict(name='茶事', verb='选一款茶试水', item_word='茶',
+        styles=['明前龙井', '武夷岩茶', '六安瓜片', '云雾茶', '滇红', '白毫银针'],
+        texts=[
+            '你收了一份{style}，先净手温杯，试了第一道水。',
+            '这几日你换着水温、换着茶具，慢慢琢磨出合口的路数。',
+            '你把{style}的冲泡诀窍摸熟了，往后待客也有了自己的一套。',
+        ]),
+}
+HOBBY_ENERGY = 1
+HOBBY_FREE_FAVOR = 80          # 圣宠到「偶承恩泽」以下（不含）时，雅趣免精力——失宠时更该有地方可去
+HOBBY_UNLOCK_ITEMS = 3         # 做出几件作品后，开放兼修第二样
+HOBBY_QUALITIES = ['普通', '精巧', '上品']
+HOBBY_GIFT_AFFINITY = 10       # 送自己做的作品，好感 +10（比玉如意 15 克制一点，比普通东西更值钱）
+DISPLAY_SLOTS = dict(window='窗边', desk='案头', wall='墙上', tea='茶席')
+
+def roll_hobby_quality(cid, kind):
+    """品级只看做过几件同类作品加一点运气，跟属性无关——雅趣拼的是用心，不是天赋"""
+    made = q('SELECT COUNT(*) n FROM hobby_items WHERE maker_id=? AND kind=?', (cid, kind), one=True)['n']
+    r = random.random() + made * 0.05
+    if r >= 0.92: return '上品'
+    if r >= 0.60: return '精巧'
+    return '普通'
+
+def hobby_item_desc(item):
+    return f"{HOBBIES[item['kind']]['name']}·{item['style']}（{item['quality']}）"
+
+def hobby_unlocked_kinds(c):
+    return [k for k in c['hobby_kinds'].split(',') if k]
+
 # ── 行动 ───────────────────────────────────────────────────────────────────────
 
 ACTIONS = {
@@ -553,10 +609,12 @@ def init_db():
                      'drug_ledger': 'INTEGER NOT NULL DEFAULT 0',
                      'hall': "TEXT NOT NULL DEFAULT ''",
                      'discipline_ready_day': 'INTEGER NOT NULL DEFAULT 0',
-                     'housing_waiting': "TEXT NOT NULL DEFAULT ''"},
+                     'housing_waiting': "TEXT NOT NULL DEFAULT ''",
+                     'hobby_kinds': "TEXT NOT NULL DEFAULT ''"},
         'cases': {'convicted_id': 'INTEGER NOT NULL DEFAULT 0', 'wrongful': 'INTEGER NOT NULL DEFAULT 0'},
         'intrigues': {'drug': "TEXT NOT NULL DEFAULT ''",
                       'agent_maid_id': 'INTEGER NOT NULL DEFAULT 0'},
+        'letters': {'hobby_item_id': 'INTEGER NOT NULL DEFAULT 0'},
         'messages': {'is_night': 'INTEGER NOT NULL DEFAULT 0'},
         'gazette': {'is_night': 'INTEGER NOT NULL DEFAULT 0'},
         'game_state': {'last_bed_pool': "TEXT NOT NULL DEFAULT '[]'"},
@@ -869,7 +927,8 @@ def admin_required(f):
 @app.context_processor
 def inject_globals():
     ctx = dict(dn=display_name, full_name=full_name, RANK_NAMES=RANK_NAMES, STAT_NAMES=STAT_NAMES,
-               favor_word=favor_word, trust_word=trust_word, residence_name=residence_name, HALL_NAMES=HALL_NAMES, ITEMS=ITEMS, DRUGS=DRUGS, daily_count=daily_count, intrigue_label=intrigue_label, FAMILIES=FAMILIES, PERSONALITIES=PERSONALITIES, age_text=age_text, palace_date=palace_date,
+               favor_word=favor_word, trust_word=trust_word, residence_name=residence_name, HALL_NAMES=HALL_NAMES, ITEMS=ITEMS, DRUGS=DRUGS, HOBBIES=HOBBIES, DISPLAY_SLOTS=DISPLAY_SLOTS,
+               HOBBY_ENERGY=HOBBY_ENERGY, HOBBY_UNLOCK_ITEMS=HOBBY_UNLOCK_ITEMS, daily_count=daily_count, intrigue_label=intrigue_label, FAMILIES=FAMILIES, PERSONALITIES=PERSONALITIES, age_text=age_text, palace_date=palace_date,
                poison_deadline=lambda ts: datetime.fromtimestamp(ts, TZ).strftime('%m月%d日 %H:%M'))
     try:
         ctx['gs'] = state()
@@ -2555,7 +2614,8 @@ def admin_reset():
         flash('要在框里输入「重开」才会重置。', 'bad')
         return redirect(url_for('admin'))
     for t in ('intrigues', 'messages', 'gazette', 'relations', 'known_secrets', 'inventory', 'heirs', 'letters', 'reports', 'maids',
-              'bribes', 'afflictions', 'cases', 'case_suspects', 'case_actions', 'daily_counters', 'consorts', 'game_state'):
+              'bribes', 'afflictions', 'cases', 'case_suspects', 'case_actions',
+              'hobby_projects', 'hobby_items', 'displays', 'daily_counters', 'consorts', 'game_state'):
         run(f"DELETE FROM {t}")
     if request.form.get('keep_users') != '1':
         run("DELETE FROM users")
@@ -2930,11 +2990,15 @@ def letters():
     others = q("""SELECT * FROM consorts WHERE user_id IS NOT NULL AND id!=? AND status NOT IN ('xiunv','dead')
                   ORDER BY rank DESC, favor DESC""", (c['id'],))
     inv = q("SELECT * FROM inventory WHERE consort_id=? AND qty>0", (c['id'],))
+    held = q("SELECT * FROM hobby_items WHERE holder_id=? ORDER BY id DESC", (c['id'],))
     try: to = int(request.args.get('to', 0))
     except ValueError: to = 0
-    return render_template('letters.html', c=c, inbox=inbox, sent=sent, others=others, inv=inv, to=to,
+    try: hobby_item = int(request.args.get('hobby_item', 0))
+    except ValueError: hobby_item = 0
+    return render_template('letters.html', c=c, inbox=inbox, sent=sent, others=others, inv=inv, held=held, to=to,
+                           hobby_item=hobby_item, get_hobby_item=lambda iid: q('SELECT * FROM hobby_items WHERE id=?', (iid,), one=True),
                            get_consort=get_consort, left=LETTER_DAILY_MAX - daily_count(c['id'], 'letter'),
-                           LETTER_MAX_LEN=LETTER_MAX_LEN)
+                           LETTER_MAX_LEN=LETTER_MAX_LEN, hobby_item_desc=hobby_item_desc)
 
 @app.route('/letters/send', methods=['POST'])
 @login_required
@@ -2947,6 +3011,9 @@ def letter_send():
     except ValueError:
         tid, amt = 0, -1
     item = f.get('item', '')
+    try: hobby_item_id = int(f.get('hobby_item_id', 0) or 0)
+    except ValueError: hobby_item_id = 0
+    hitem = q('SELECT * FROM hobby_items WHERE id=?', (hobby_item_id,), one=True) if hobby_item_id else None
     t = get_consort(tid)
     err = None
     if not t or not t['user_id'] or t['id'] == c['id'] or t['status'] in ('xiunv', 'dead'): err = '没有这个人。'
@@ -2955,7 +3022,9 @@ def letter_send():
     elif daily_count(c['id'], 'letter') >= LETTER_DAILY_MAX: err = f'今天已经送出 {LETTER_DAILY_MAX} 封信了。'
     elif amt < 0 or amt > c['silver']: err = '银子数目不对。'
     elif item and (item not in ITEMS or inv_qty(c['id'], item) < 1): err = '你没有这件东西。'
-    elif c['status'] == 'cold' and (amt or item): err = '冷宫里只能托人带句话，送不出东西。'
+    elif hobby_item_id and (not hitem or hitem['holder_id'] != c['id']): err = '你手里没有这件雅趣作品。'
+    elif item and hobby_item_id: err = '一次只能附一样东西。'
+    elif c['status'] == 'cold' and (amt or item or hobby_item_id): err = '冷宫里只能托人带句话，送不出东西。'
     if err:
         flash(err, 'bad')
         return redirect(url_for('letters', to=tid))
@@ -2965,18 +3034,25 @@ def letter_send():
         inv_add(c['id'], item, -1)
         if item != 'ruyi':           # 玉如意送出即用掉，不进对方背包，没法来回倒腾
             inv_add(tid, item, 1)
-    run("INSERT INTO letters (from_id, to_id, day, body, silver, item_key, created_ts) VALUES (?,?,?,?,?,?,?)",
-        (c['id'], tid, cur_day(), body, amt, item, now_ts()))
+    if hitem:
+        history = json.loads(hitem['history'] or '[]') + [{'from': c['id'], 'to': tid, 'day': cur_day()}]
+        run('UPDATE hobby_items SET holder_id=?, history=? WHERE id=?', (tid, json.dumps(history, ensure_ascii=False), hitem['id']))
+        run('DELETE FROM displays WHERE consort_id=? AND item_id=?', (c['id'], hitem['id']))   # 送出去了，自己寝宫不再摆着
+    run("""INSERT INTO letters (from_id, to_id, day, body, silver, item_key, hobby_item_id, created_ts)
+           VALUES (?,?,?,?,?,?,?,?)""", (c['id'], tid, cur_day(), body, amt, item, hobby_item_id, now_ts()))
     daily_inc(c['id'], 'letter')
-    # 好感：每天每个方向第一封信 +2，附玉如意再 +15；银子和普通物件不额外加，免得两人来回倒腾刷好感
+    # 好感：每天每个方向第一封信 +2，附玉如意再 +15，附自己做的雅趣作品再 +10；银子和普通物件不额外加，免得两人来回倒腾刷好感
     aff = 0
     if daily_count(c['id'], f'letter_aff:{tid}') == 0:
         aff += 2
         daily_inc(c['id'], f'letter_aff:{tid}')
     if item == 'ruyi':
         aff += 15
+    elif hitem:
+        aff += HOBBY_GIFT_AFFINITY
     if aff: add_affinity(c['id'], tid, aff)
-    extras = '、'.join(x for x in ((f'{amt} 两银子' if amt else ''), (ITEMS[item]['name'] if item else '')) if x)
+    extras = '、'.join(x for x in ((f'{amt} 两银子' if amt else ''), (ITEMS[item]['name'] if item else ''),
+                                   (hobby_item_desc(hitem) if hitem else '')) if x)
     notify(tid, f"{display_name(c)}差人送来一封信" + (f"，还附了{extras}" if extras else '') + '。去「书信」看看。', 'good')
     flash(f"信送到{t['palace'] if t['status'] != 'cold' else '冷宫'}了。" + (f"好感 +{aff}。" if aff else ''), 'good')
     return redirect(url_for('letters'))
@@ -3565,6 +3641,156 @@ def palaces():
                        for name, cfg in PALACES.items() if cfg['group'] == group])
               for group in ('东六宫', '西六宫', '独院')]
     return render_template('palaces.html', groups=groups)
+
+# ── 雅趣 ───────────────────────────────────────────────────────────────────────
+
+def current_hobby_project(cid):
+    return q("SELECT * FROM hobby_projects WHERE owner_id=? AND status='active'", (cid,), one=True)
+
+def hobby_charge(c):
+    """圣宠到「偶承恩泽」以下（不含 80）时雅趣免精力，够宠的人才占精力池"""
+    if c['favor'] >= HOBBY_FREE_FAVOR:
+        if c['energy'] < HOBBY_ENERGY:
+            raise Reject('今天精力用完了，等夜里结算后恢复。')
+        run('UPDATE consorts SET energy=energy-? WHERE id=?', (HOBBY_ENERGY, c['id']))
+
+@app.route('/hobby')
+@login_required
+def hobby():
+    c = g.me
+    proj = current_hobby_project(c['id'])
+    unlocked = hobby_unlocked_kinds(c)
+    made = q('SELECT COUNT(*) n FROM hobby_items WHERE maker_id=?', (c['id'],), one=True)['n']
+    held = q("SELECT * FROM hobby_items WHERE holder_id=? ORDER BY id DESC", (c['id'],))
+    displayed_ids = {r['item_id'] for r in q('SELECT item_id FROM displays WHERE consort_id=?', (c['id'],))}
+    return render_template('hobby.html', c=c, HOBBIES=HOBBIES, proj=proj, unlocked=unlocked,
+                           can_pick_first=not unlocked, can_unlock_second=len(unlocked) == 1 and made >= HOBBY_UNLOCK_ITEMS,
+                           done_today=proj is not None and proj['last_day'] == cur_day(),
+                           held=held, displayed_ids=displayed_ids, DISPLAY_SLOTS=DISPLAY_SLOTS,
+                           hobby_item_desc=hobby_item_desc, free=c['favor'] < HOBBY_FREE_FAVOR)
+
+@app.route('/hobby/start', methods=['POST'])
+@login_required
+def hobby_start():
+    c = g.me
+    kind = request.form.get('kind', '')
+    try: style_idx = int(request.form.get('style', ''))
+    except ValueError: style_idx = -1
+    unlocked = hobby_unlocked_kinds(c)
+    try:
+        if current_hobby_project(c['id']): raise Reject('手里已经有一件在做了，先忙完这件。')
+        if kind not in HOBBIES: raise Reject('选一样雅趣。')
+        if unlocked and kind not in unlocked: raise Reject('这一样你还没学，先去内务府「兼修」解锁。')
+        if not 0 <= style_idx < len(HOBBIES[kind]['styles']): raise Reject(f"{HOBBIES[kind]['verb']}。")
+        style = HOBBIES[kind]['styles'][style_idx]
+        hobby_charge(c)
+        if not unlocked:
+            run('UPDATE consorts SET hobby_kinds=? WHERE id=?', (kind, c['id']))
+        run("""INSERT INTO hobby_projects (owner_id, kind, style, stage, started_day)
+               VALUES (?,?,?,0,?)""", (c['id'], kind, style, cur_day()))
+        flash(HOBBIES[kind]['texts'][0].format(style=style), 'good')
+    except Reject as e:
+        flash(str(e), 'bad')
+    return redirect(url_for('hobby'))
+
+@app.route('/hobby/unlock', methods=['POST'])
+@login_required
+def hobby_unlock():
+    c = g.me
+    kind = request.form.get('kind', '')
+    unlocked = hobby_unlocked_kinds(c)
+    made = q('SELECT COUNT(*) n FROM hobby_items WHERE maker_id=?', (c['id'],), one=True)['n']
+    if len(unlocked) != 1 or made < HOBBY_UNLOCK_ITEMS:
+        flash(f'做出 {HOBBY_UNLOCK_ITEMS} 件作品后才能兼修另一样。', 'bad')
+    elif kind not in HOBBIES or kind in unlocked:
+        flash('选一样还没学过的。', 'bad')
+    else:
+        run("UPDATE consorts SET hobby_kinds=? WHERE id=?", (unlocked[0] + ',' + kind, c['id']))
+        flash(f"你开始兼修{HOBBIES[kind]['name']}了。", 'good')
+    return redirect(url_for('hobby'))
+
+@app.route('/hobby/act', methods=['POST'])
+@login_required
+def hobby_act():
+    c = g.me
+    day = cur_day()
+    proj = current_hobby_project(c['id'])
+    try:
+        if not proj: raise Reject('你手里还没有正在做的雅趣。')
+        if proj['last_day'] == day: raise Reject('今天已经打理过了，明天再来。')
+        hobby_charge(c)
+        cfg = HOBBIES[proj['kind']]
+        stage = proj['stage'] + 1
+        if stage >= len(cfg['texts']) - 1:
+            item_id = run("""INSERT INTO hobby_items (kind, style, quality, maker_id, holder_id, created_day, history)
+                             VALUES (?,?,?,?,?,?,'[]')""",
+                          (proj['kind'], proj['style'], roll_hobby_quality(c['id'], proj['kind']),
+                           c['id'], c['id'], day)).lastrowid
+            run("UPDATE hobby_projects SET status='done', stage=?, last_day=? WHERE id=?", (stage, day, proj['id']))
+            item = q('SELECT * FROM hobby_items WHERE id=?', (item_id,), one=True)
+            flash(cfg['texts'][-1].format(style=proj['style']) + f"（{item['quality']}）——去下面看看，摆进寝宫或是送给谁。", 'good')
+        else:
+            run("UPDATE hobby_projects SET stage=?, last_day=? WHERE id=?", (stage, day, proj['id']))
+            flash(cfg['texts'][stage].format(style=proj['style']), 'good')
+    except Reject as e:
+        flash(str(e), 'bad')
+    return redirect(url_for('hobby'))
+
+@app.route('/hobby/display', methods=['POST'])
+@login_required
+def hobby_display():
+    c = g.me
+    try: item_id = int(request.form.get('item_id', 0))
+    except ValueError: item_id = 0
+    slot = request.form.get('slot', '')
+    item = q('SELECT * FROM hobby_items WHERE id=?', (item_id,), one=True)
+    if slot not in DISPLAY_SLOTS or not item or item['holder_id'] != c['id']:
+        flash('摆不了这个。', 'bad')
+    else:
+        run('INSERT INTO displays (consort_id, slot, item_id) VALUES (?,?,?) '
+            'ON CONFLICT(consort_id, slot) DO UPDATE SET item_id=excluded.item_id', (c['id'], slot, item_id))
+        flash(f"{hobby_item_desc(item)}摆在了{DISPLAY_SLOTS[slot]}。", 'good')
+    return redirect(url_for('hobby'))
+
+@app.route('/hobby/undisplay/<slot>', methods=['POST'])
+@login_required
+def hobby_undisplay(slot):
+    run('DELETE FROM displays WHERE consort_id=? AND slot=?', (g.me['id'], slot))
+    return redirect(url_for('hobby'))
+
+def hobby_provenance(item):
+    """陈设旁边那句来历：谁做的、送没送过人"""
+    history = json.loads(item['history'] or '[]')
+    if item['maker_id'] != item['holder_id'] or history:
+        maker = get_consort(item['maker_id'])
+        return f"{display_name(maker)}做的，第 {history[-1]['day'] if history else item['created_day']} 天送到了这里"
+    return f"第 {item['created_day']} 天做的，一直留在自己身边"
+
+def room_view(cid, mine):
+    t = get_consort(cid)
+    if not t or t['status'] in ('dead', 'xiunv'):
+        flash('没有这个人。', 'bad')
+        return redirect(url_for('social'))
+    slots = {}
+    for slot in DISPLAY_SLOTS:
+        row = q("""SELECT h.* FROM displays d JOIN hobby_items h ON h.id=d.item_id
+                   WHERE d.consort_id=? AND d.slot=?""", (cid, slot), one=True)
+        slots[slot] = dict(item=row, prov=hobby_provenance(row) if row else '') if row else None
+    held = q("SELECT * FROM hobby_items WHERE holder_id=? ORDER BY id DESC", (cid,)) if mine else []
+    displayed_ids = {r['item_id'] for r in q('SELECT item_id FROM displays WHERE consort_id=?', (cid,))} if mine else set()
+    return render_template('room.html', t=t, mine=mine, slots=slots, DISPLAY_SLOTS=DISPLAY_SLOTS,
+                           held=held, displayed_ids=displayed_ids, hobby_item_desc=hobby_item_desc, HOBBIES=HOBBIES)
+
+@app.route('/room')
+@login_required
+def room():
+    return room_view(g.me['id'], True)
+
+@app.route('/room/<int:cid>')
+@login_required
+def room_other(cid):
+    return room_view(cid, cid == g.me['id'])
+
 
 if __name__ == '__main__':
     init_db()

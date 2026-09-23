@@ -30,6 +30,9 @@
 {% if maid_info %}
 <p class="muted"><a href="{{ url_for('maids_page') }}">宫人 {{ maid_info.n }}/{{ maid_info.quota }}</a>{% if c.status != 'cold' and maid_info.n %}　今天还能差遣 {{ maid_info.errands }} 人{% endif %}</p>
 {% endif %}
+{% if request.view_args.key == 'home' %}
+<p class="muted"><a href="{{ url_for('hobby') }}">暇趣</a>　<a href="{{ url_for('room') }}">寝宫陈设</a></p>
+{% endif %}
 
 {% if request.view_args.key == 'home' %}
 <section aria-label="同宫">

@@ -237,6 +237,7 @@ CREATE TABLE IF NOT EXISTS letters (
     body        TEXT NOT NULL,
     silver      INTEGER NOT NULL DEFAULT 0,
     item_key    TEXT NOT NULL DEFAULT '',
+    hobby_item_id INTEGER NOT NULL DEFAULT 0,       -- 附的是雅趣作品而不是内务府的东西时用这个
     is_read     INTEGER NOT NULL DEFAULT 0,
     created_ts  INTEGER NOT NULL
 );
@@ -272,4 +273,38 @@ CREATE TABLE IF NOT EXISTS case_actions (
  case_id INTEGER NOT NULL, consort_id INTEGER NOT NULL, day INTEGER NOT NULL,
  action TEXT NOT NULL, target_id INTEGER NOT NULL,
  PRIMARY KEY(case_id,consort_id,day,action)
+);
+
+-- 雅趣：每件作品起意→打磨→成了，三步；成了之后进 hobby_items，可摆可送
+CREATE TABLE IF NOT EXISTS hobby_projects (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner_id    INTEGER NOT NULL,
+    kind        TEXT NOT NULL,                     -- flower / incense / painting / tea
+    style       TEXT NOT NULL,                      -- 选的花种/香方/题目/茶款
+    stage       INTEGER NOT NULL DEFAULT 0,          -- 0 起意，做完一次 act 才 +1，到 2 完成
+    last_day    INTEGER NOT NULL DEFAULT 0,          -- 上次推进是哪天，同一天不能再推进
+    started_day INTEGER NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'active'       -- active / done
+);
+CREATE INDEX IF NOT EXISTS idx_hobby_projects_owner ON hobby_projects(owner_id, status);
+
+-- 雅趣作品：独一份，不是内务府买来的东西，holder_id 记着现在摆在谁那儿
+CREATE TABLE IF NOT EXISTS hobby_items (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind        TEXT NOT NULL,
+    style       TEXT NOT NULL,
+    quality     TEXT NOT NULL DEFAULT '普通',        -- 普通 / 精巧 / 上品
+    maker_id    INTEGER NOT NULL,
+    holder_id   INTEGER NOT NULL,
+    created_day INTEGER NOT NULL,
+    history     TEXT NOT NULL DEFAULT '[]'           -- [{"from":id,"to":id,"day":n}, ...] 送过谁的记录
+);
+CREATE INDEX IF NOT EXISTS idx_hobby_items_holder ON hobby_items(holder_id);
+
+-- 寝宫陈设：固定 4 个位置，放自己或别人送的作品
+CREATE TABLE IF NOT EXISTS displays (
+    consort_id  INTEGER NOT NULL,
+    slot        TEXT NOT NULL,                       -- window / desk / wall / tea
+    item_id     INTEGER NOT NULL,
+    PRIMARY KEY (consort_id, slot)
 );
