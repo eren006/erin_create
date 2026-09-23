@@ -112,9 +112,22 @@ LETHAL_COOLDOWN = 7     # 同一账号两次毒害至少隔 7 天，死后重建
 NEWCOMER_LETHAL_SHIELD = 3   # 入宫前 3 天不能被毒害
 RESCUE_PROTECT_DAYS = 3      # 中毒获救后 3 天不能再被毒害
 TREAT_COST = 50
-POISON_SURVIVE = {0: 0.35, 1: 0.90}   # 没请太医 / 请了太医
+POISON_SURVIVE = {0: 0.35, 1: 0.90}   # 没请太医 / 请了太医（病重沿用同一套概率）
 CONFINE_DAYS = 2
 COLD_DAYS = 5
+
+# ── 老死与病死 ─────────────────────────────────────────────────────────────────
+OLD_AGE_START = 600          # 50 岁（600 个月）起，每晚有寿终的可能
+OLD_AGE_BASE = 0.003          # 概率 = (年龄 - 50) × 0.3%，体质 ≥60 减半、<30 翻倍
+OLD_AGE_REMINDER_START = 660  # 55 岁起，每满 5 岁提醒一句
+OLD_AGE_REMINDER_STEP = 60
+WEAK_SICK_DAYS = 3            # 连续体质 <25 这么多天，染病
+COLD_SICK_CHANCE = 0.05       # 冷宫阴寒，每晚染病概率
+EPIDEMIC_INTERVAL = 10        # 全宫时疫，每隔这么多天可能来一次
+EPIDEMIC_CHANCE = 0.3         # 到了日子，真发生时疫的概率
+POSTPARTUM_SICK_DAYS = 3      # 小产、难产后这么多天内
+POSTPARTUM_SICK_CHANCE = 0.10 # ……每晚染病概率
+SHI_WORDS = ['孝', '敬', '贞', '惠', '顺', '安', '静', '和']  # 老死时嫔以上追封的谥字
 
 TRUST_START = 20
 TRUST_WORDS = [(70, '倚重'), (40, '信得过'), (20, '尚可'), (-1, '存疑')]
@@ -679,7 +692,11 @@ def init_db():
                      'hobby_kinds': "TEXT NOT NULL DEFAULT ''",
                      'guide_step': 'INTEGER NOT NULL DEFAULT 0',
                      'guide_progress': "TEXT NOT NULL DEFAULT '[]'",
-                     'guide_tips': "TEXT NOT NULL DEFAULT '[]'"},
+                     'guide_tips': "TEXT NOT NULL DEFAULT '[]'",
+                     'ill_day': 'INTEGER NOT NULL DEFAULT 0',
+                     'ill_treatment': 'INTEGER NOT NULL DEFAULT 0',
+                     'weak_days': 'INTEGER NOT NULL DEFAULT 0',
+                     'postpartum_until': 'INTEGER NOT NULL DEFAULT 0'},
         'cases': {'convicted_id': 'INTEGER NOT NULL DEFAULT 0', 'wrongful': 'INTEGER NOT NULL DEFAULT 0'},
         'intrigues': {'drug': "TEXT NOT NULL DEFAULT ''",
                       'agent_maid_id': 'INTEGER NOT NULL DEFAULT 0'},
@@ -773,7 +790,7 @@ def my_consort():
     return q("SELECT * FROM consorts WHERE user_id=?", (uid,), one=True)
 
 def is_sick(c):
-    return c['health'] < 25 or bool(c['poisoned_day'])
+    return c['health'] < 25 or bool(c['poisoned_day']) or bool(c['ill_day'])
 
 def arts_of(c):
     try: return json.loads(c['arts'] or '{}')
@@ -2409,8 +2426,9 @@ def _settle_night():
     # 白天没来得及定夺的场景、昨夜的侍寝/召见场景，到今晚都作废
     run("UPDATE consorts SET pending_scene='' WHERE pending_scene!=''")
 
-    # 先处理之前几天中的毒；当晚新中毒的人不会当晚就死
+    # 先处理之前几天中的毒、病重；当晚新中毒/病倒的人不会当晚就死
     resolve_poison_crises(day)
+    resolve_illness_crises(day)
     resolve_drug_cases(day)
 
     # 1. NPC 出手 + 结算阴谋（截宠除外，要等翻牌子）
@@ -2502,6 +2520,7 @@ def _settle_night():
         extra = ''
         if c['health'] < 50 and random.random() < 0.3:
             add_stat(c['id'], 'health', -20); extra = '难产了一整夜，元气大伤，体质 -20。'
+            run('UPDATE consorts SET postpartum_until=? WHERE id=?', (day + POSTPARTUM_SICK_DAYS, c['id']))
         label = f"{cn_ordinal(ordinal)}{'阿哥' if gender == '皇子' else '公主'}"
         if gender == '皇子':
             add_favor(c['id'], 100, gain_mult=False)
@@ -2565,6 +2584,10 @@ def _settle_night():
                 add_stat(c['id'], 'virtue', -3)
                 notify(c['id'], f"你已经 {missed} 天没去给皇后请安了，宫里说你恃宠而骄。德行 -3。", 'bad')
 
+    # 5a. 老死、染病：年岁到了、体虚、冷宫、时疫、产后失调
+    old_age_tick(day)
+    illness_onset_tick(day)
+
     # 5b. 宫人：月钱、忠心、病好了没有；白天没处理的小事作废
     drug_gifts(day)
     maid_upkeep(day)
@@ -2585,12 +2608,14 @@ def _settle_night():
 # ── 口谕 ───────────────────────────────────────────────────────────────────────
 # 按优先级取第一条命中的：当夜经历 > 入宫周年 > 皇嗣六岁 > 久未见驾。都不命中就不发。
 
-EDICT_ORDER = ['poisoned', 'rescued', 'cold_release', 'miscarriage', 'birth', 'caught',
+EDICT_ORDER = ['poisoned', 'ill', 'rescued', 'ill_rescued', 'cold_release', 'miscarriage', 'birth', 'caught',
                'victim', 'promoted', 'unconfined']
 
 def edict_for_event(key, data):
     if key == 'poisoned':     return '朕已命太医院全力救治，你要撑住。'
+    if key == 'ill':          return '好端端怎么病倒了，太医院不许怠慢。'
     if key == 'rescued':      return '太医说你已无大碍，朕才放心。'
+    if key == 'ill_rescued':  return '病去如抽丝，往后多当心身子。'
     if key == 'cold_release': return '冷宫里那些日子，委屈你了。'
     if key == 'miscarriage':  return '孩子的事，朕会给你一个交代。'
     if key == 'birth':
@@ -2826,14 +2851,15 @@ def lethal_block(c, t, day):
     return None
 
 
-def die(cid, reason):
+def die(cid, reason, memorial_reason=None):
     c = get_consort(cid)
     if c['status'] == 'dead':
         return
     name = display_name(c)
     run("""UPDATE consorts SET status='dead', death_day=?, death_reason=?, archived_user_id=user_id,
-           pregnant_since=0, poisoned_day=0, poison_treatment=0,
-           energy=0, seek_bonus=0, status_until_day=0, hall='', housing_waiting='' WHERE id=?""", (cur_day(), reason, cid))
+           pregnant_since=0, poisoned_day=0, poison_treatment=0, ill_day=0, ill_treatment=0,
+           energy=0, seek_bonus=0, status_until_day=0, hall='', housing_waiting='' WHERE id=?""",
+        (cur_day(), memorial_reason or reason, cid))
     run("UPDATE intrigues SET status='done', result='void' WHERE status='pending' AND (attacker_id=? OR target_id=?)", (cid, cid))
     for m in active_maids(cid):
         maid_leave(m['id'], 'gone', '主子没了，散去')
@@ -2855,18 +2881,86 @@ def resolve_poison_crises(day):
             gazette(f'{display_name(c)}脱离险境，留宫静养。', 'news')
 
 
+def fall_ill(cid, day, cause):
+    """染病，走和中毒一样的生死判定：下一次结算前请太医，九成能活，不请只有三成五"""
+    c = get_consort(cid)
+    if c['status'] == 'dead' or c['ill_day'] or c['poisoned_day']: return   # 已经病着或中毒着，不重复触发
+    run('UPDATE consorts SET ill_day=?, ill_treatment=0, weak_days=0, health=MAX(1,health-15) WHERE id=?', (day, cid))
+    if c['user_id']:
+        notify(cid, f'你{cause}，病倒了。体质 -15。下一次结算前请太医（{TREAT_COST} 两，姐妹也能替你请）：'
+                    f'请了九成能活，不请只有三成五。', 'bad')
+        guide_tip(cid, 'sick', '「病来如山倒，别硬撑，该请太医就请，银子不能省。」')
+    gazette(f'{display_name(c)}{cause}，卧床不起。')
+    night_mark(cid, 'ill')
+
+
+def resolve_illness_crises(day):
+    for c in q("SELECT * FROM consorts WHERE status!='dead' AND ill_day>0 AND ill_day<?", (day,)):
+        if random.random() >= POISON_SURVIVE[min(1, c['ill_treatment'])]:
+            die(c['id'], '病重不治', memorial_reason='病逝')
+        else:
+            run('''UPDATE consorts SET ill_day=0, ill_treatment=0,
+                   protected_until_day=?, health=MAX(health,35) WHERE id=?''', (day + RESCUE_PROTECT_DAYS, c['id']))
+            if c['user_id']:
+                notify(c['id'], f'你的病好了。接下来 {RESCUE_PROTECT_DAYS} 天好好静养。', 'good')
+                night_mark(c['id'], 'ill_rescued')
+            gazette(f'{display_name(c)}病愈，留宫静养。', 'news')
+
+
+def illness_onset_tick(day):
+    """每晚判定会不会染病：连续体虚、冷宫阴寒、全宫时疫、产后失调"""
+    epidemic = day % EPIDEMIC_INTERVAL == 0 and random.random() < EPIDEMIC_CHANCE
+    if epidemic: gazette('宫里近来时疫流传，人人自危。', 'news')
+    for c in q("SELECT * FROM consorts WHERE status!='dead'"):
+        if c['ill_day'] or c['poisoned_day']: continue
+        if c['health'] < 25:
+            weak = c['weak_days'] + 1
+            run('UPDATE consorts SET weak_days=? WHERE id=?', (weak, c['id']))
+            if weak >= WEAK_SICK_DAYS:
+                fall_ill(c['id'], day, '久病体虚'); continue
+        elif c['weak_days']:
+            run('UPDATE consorts SET weak_days=0 WHERE id=?', (c['id'],))
+        if c['status'] == 'cold' and random.random() < COLD_SICK_CHANCE:
+            fall_ill(c['id'], day, '在冷宫里冻着了'); continue
+        if c['postpartum_until'] >= day and random.random() < POSTPARTUM_SICK_CHANCE:
+            fall_ill(c['id'], day, '产后没调养好'); continue
+        if epidemic and random.random() < (100 - c['health']) / 100:
+            fall_ill(c['id'], day, '染上了时疫')
+
+
+def old_age_tick(day):
+    """50 岁起每晚可能寿终；55 岁起每满 5 岁提醒一句；嫔以上寿终按信任追封"""
+    for c in q("SELECT * FROM consorts WHERE status!='dead' AND age_months>=?", (OLD_AGE_START,)):
+        years_over = (c['age_months'] - OLD_AGE_START) / 12
+        p = years_over * OLD_AGE_BASE
+        if c['health'] >= 60: p /= 2
+        elif c['health'] < 30: p *= 2
+        if random.random() < p:
+            if c['rank'] >= 5:
+                if c['trust'] >= 70 and c['rank'] < PLAYER_MAX_RANK:
+                    set_rank(c['id'], c['rank'] + 1, reason_day=day)
+                elif c['trust'] >= 40:
+                    shi = random.choice(SHI_WORDS)
+                    if shi not in c['title']:
+                        run("UPDATE consorts SET title=? WHERE id=?", (c['title'] + shi, c['id']))
+            die(c['id'], '寿终')
+        elif c['user_id'] and c['age_months'] >= OLD_AGE_REMINDER_START and c['age_months'] % OLD_AGE_REMINDER_STEP == 0:
+            notify(c['id'], '许嬷嬷：「近来总觉得精神短了，小主往后多静养些。」')
+
+
 @app.route('/treat/<int:tid>', methods=['POST'])
 @login_required
 def treat(tid):
-    """请太医：本人（禁足、冷宫也行）或姐妹/好感 30 以上的人都能请，谁请谁出银子"""
+    """请太医：本人（禁足、冷宫也行）或姐妹/好感 30 以上的人都能请，谁请谁出银子。中毒、病重都走这个"""
     c, t = g.me, get_consort(tid)
+    crisis = 'poison' if t and t['poisoned_day'] else ('ill' if t and t['ill_day'] else None)
     err = None
-    if not t or not t['poisoned_day'] or t['status'] == 'dead':
+    if not t or not crisis or t['status'] == 'dead':
         err = '她现在不需要请太医。'
     elif c['id'] != tid and not (tid in sisters_of(c['id']) or
                                  (relation(c['id'], tid) or {'affinity': 0})['affinity'] >= 30):
         err = '你与她交情不够，要结为姐妹或好感 30 以上才能替她请太医。'
-    elif t['poison_treatment']:
+    elif (t['poison_treatment'] if crisis == 'poison' else t['ill_treatment']):
         err = '太医已经在了。'
     elif c['silver'] < TREAT_COST:
         err = f'请太医要 {TREAT_COST} 两银子。'
@@ -2874,7 +2968,8 @@ def treat(tid):
         flash(err, 'bad')
     else:
         add_silver(c['id'], -TREAT_COST)
-        run('UPDATE consorts SET poison_treatment=1 WHERE id=?', (tid,))
+        col = 'poison_treatment' if crisis == 'poison' else 'ill_treatment'
+        run(f'UPDATE consorts SET {col}=1 WHERE id=?', (tid,))
         text = '太医来了，九成能救回来，下一次结算见分晓。'
         if c['id'] != tid:
             notify(tid, f'{display_name(c)}替你请了太医。{text}', 'good')
@@ -3484,7 +3579,7 @@ def resolve_drug(it):
                 inv_add(t['id'],'antai',-1)
                 notify(t['id'],'安胎药保住了胎儿。')
             else:
-                run('UPDATE consorts SET pregnant_since=0 WHERE id=?',(t['id'],))
+                run('UPDATE consorts SET pregnant_since=0, postpartum_until=? WHERE id=?',(day+POSTPARTUM_SICK_DAYS,t['id']))
                 run("UPDATE afflictions SET status='done' WHERE consort_id=? AND drug='chunxin'",(t['id'],))
                 night_mark(t['id'],'miscarriage')
                 notify(t['id'],'你小产了。','bad')

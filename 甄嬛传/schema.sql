@@ -79,6 +79,11 @@ CREATE TABLE IF NOT EXISTS consorts (
     guide_progress   TEXT NOT NULL DEFAULT '[]',    -- 当前这一步已经做到的子项
     guide_tips       TEXT NOT NULL DEFAULT '[]',    -- 已经出现过的「遇事提点」，同一件事只说一次
 
+    ill_day          INTEGER NOT NULL DEFAULT 0,    -- 病重：哪天病倒的，0=没病；走和中毒一样的生死判定
+    ill_treatment    INTEGER NOT NULL DEFAULT 0,    -- 0=没请太医 1=请了
+    weak_days        INTEGER NOT NULL DEFAULT 0,    -- 连续体质<25 的天数，够 3 天染病
+    postpartum_until INTEGER NOT NULL DEFAULT 0,    -- 小产/难产后这几天内，每晚有概率染病
+
     aggression       REAL NOT NULL DEFAULT 0,       -- 仅 NPC：每晚出手概率
     intro            TEXT NOT NULL DEFAULT '',
     created_ts       INTEGER NOT NULL DEFAULT 0
