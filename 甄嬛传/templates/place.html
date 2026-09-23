@@ -38,6 +38,7 @@
   </form>
 </div>
 {% endif %}
+{% if heir_todo %}<p class="sheet" style="margin:14px 0">有 {{ heir_todo }} 件皇嗣的事等你拿主意（差事或指婚）。<a href="{{ url_for('heirs') }}">去子嗣页</a></p>{% endif %}
 {% if my_heirs %}
 <div class="sheet" style="margin:14px 0">
   <h3 style="margin-top:0">教养</h3>

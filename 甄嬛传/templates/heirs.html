@@ -11,7 +11,7 @@
     <td>{{ dn(m) }}</td>
     <td>{{ dn(fo) if fo and fo.id != h.mother_id else '（自己养）' }}</td>
     <td>{{ HEIR_PERSONALITIES[h.personality].name if h.personality else '' }}</td>
-    <td>{{ heir_age_days(h)//2 }} 岁</td>
+    <td>{{ heir_age_days(h)//2 }} 岁{% if h.title %}<br><span class="muted">{{ h.title }}{% if h.marriage=='capital' %}·留京{% elif h.marriage=='mongol' %}·抚蒙古{% endif %}</span>{% elif h.marriage=='choice' %}<br><span class="muted">待指婚</span>{% endif %}</td>
     <td>{{ h.study }}/{{ h.riding }}/{{ h.virtue }}/{{ h.health }}</td>
     <td>{{ h.caretaker_affinity }}{% if fo and fo.id != h.mother_id %}<span class="muted">（生母 {{ h.mother_affinity }}）</span>{% endif %}</td>
     <td>{% if h.mother_id == c.id and not h.name %}
@@ -32,6 +32,12 @@
       {% if a.reclaim %}{% if a.reclaim_wait %}<span class="muted">{{ a.reclaim_wait }} 天后可再求</span>
         {% else %}<form method="post" action="{{ url_for('heir_reclaim', hid=h.id) }}" class="row" style="display:inline"><button class="plain" title="1 精力，成败看皇上对你的信任">求皇上讨回</button></form>{% endif %}{% endif %}
       {% if a.can_ban %}<form method="post" action="{{ url_for('heir_ban', hid=h.id) }}" class="row" style="display:inline"><button class="plain">{{ '允许探视' if h.visit_banned else '不许探视' }}</button></form>{% endif %}
+      {% if a.marry %}<form method="post" action="{{ url_for('heir_marry', hid=h.id) }}" class="row">
+        <span>指婚：</span><button class="plain" name="kind" value="capital" title="留京下嫁：天天回宫请安，你的圣宠流失减半">留京下嫁</button>
+        <button class="plain" name="kind" value="mongol" title="抚蒙古：封号高一等，信任 +10，每 7 天收到家书">抚蒙古</button></form>{% endif %}
+      {% if a.errand %}<div>差事：<b>{{ a.errand.name }}</b><br><span class="muted">{{ a.errand.line }}。{{ '已定：' ~ ERRAND_APPROACHES[a.errand.approach].name if a.errand.approach else '还没定办法，不选就稳妥办。' }}</span></div>
+        <form method="post" action="{{ url_for('heir_errand', hid=h.id) }}" class="row">
+          {% for k, ap in ERRAND_APPROACHES.items() if k != 'shift' or a.errand.can_shift %}<button class="plain" name="approach" value="{{ k }}">{{ ap.name }}</button>{% endfor %}</form>{% endif %}
     {% endif %}</td></tr>
   {% endfor %}
 </table></div>

@@ -75,7 +75,7 @@
 {% set other = get_consort(l.to_id if mine_role == 'from' else l.from_id) %}
 <div class="letter {{ 'new' if mine_role == 'to' and not l.is_read }}">
   <div class="hd">
-    <b>{{ ('给' if mine_role == 'from' else '') ~ ('内务府' if l.from_id == 0 and mine_role == 'to' else dn(other)) }}</b>
+    <b>{{ ('给' if mine_role == 'from' else '') ~ ((l.sender_label or '内务府') if l.from_id == 0 and mine_role == 'to' else dn(other)) }}</b>
     第 {{ l.day }} 天
     {% if mine_role == 'from' %}{{ '，她已读' if l.is_read else '，还没读' }}{% endif %}
     {% if l.silver %}，附银子 {{ l.silver }} 两{% endif %}{% if l.item_key %}，附{{ ITEMS[l.item_key].name if l.item_key in ITEMS else l.item_key }}{% endif %}
