@@ -696,7 +696,19 @@ def init_db():
                      'ill_day': 'INTEGER NOT NULL DEFAULT 0',
                      'ill_treatment': 'INTEGER NOT NULL DEFAULT 0',
                      'weak_days': 'INTEGER NOT NULL DEFAULT 0',
-                     'postpartum_until': 'INTEGER NOT NULL DEFAULT 0'},
+                     'postpartum_until': 'INTEGER NOT NULL DEFAULT 0',
+                     'heir_event': "TEXT NOT NULL DEFAULT ''"},
+        'heirs': {'caretaker_id': 'INTEGER NOT NULL DEFAULT 0',
+                  'personality': "TEXT NOT NULL DEFAULT ''",
+                  'study': 'INTEGER NOT NULL DEFAULT 20',
+                  'riding': 'INTEGER NOT NULL DEFAULT 20',
+                  'virtue': 'INTEGER NOT NULL DEFAULT 20',
+                  'health': 'INTEGER NOT NULL DEFAULT 60',
+                  'favor': 'INTEGER NOT NULL DEFAULT 0',
+                  'mother_affinity': 'INTEGER NOT NULL DEFAULT 50',
+                  'caretaker_affinity': 'INTEGER NOT NULL DEFAULT 50',
+                  'zhuazhou': "TEXT NOT NULL DEFAULT ''",
+                  'seen_events': "TEXT NOT NULL DEFAULT '[]'"},
         'cases': {'convicted_id': 'INTEGER NOT NULL DEFAULT 0', 'wrongful': 'INTEGER NOT NULL DEFAULT 0'},
         'intrigues': {'drug': "TEXT NOT NULL DEFAULT ''",
                       'agent_maid_id': 'INTEGER NOT NULL DEFAULT 0'},
@@ -722,6 +734,9 @@ def init_db():
                     # 教引嬷嬷是新功能，老档里已经存在的角色（不管在不在冷宫、死没死）都已经过了新人这一段，
                     # 直接跳过；只有这次迁移之后新入宫、新重生的角色才会在 dianxuan()/rebirth() 里显式置 0
                     db.execute("UPDATE consorts SET guide_step=-1")
+                if table == 'heirs' and field == 'caretaker_id':
+                    # 老档里的皇嗣一律先算生母在带，之后 heir_growth_tick 该抓周的会照常判
+                    db.execute("UPDATE heirs SET caretaker_id=mother_id WHERE caretaker_id=0")
     retire_musk(db)
     if not db.execute("SELECT 1 FROM game_state WHERE id=1").fetchone():
         now = datetime.now(TZ)
@@ -1025,6 +1040,7 @@ def inject_globals():
     ctx = dict(dn=display_name, full_name=full_name, RANK_NAMES=RANK_NAMES, STAT_NAMES=STAT_NAMES,
                favor_word=favor_word, trust_word=trust_word, residence_name=residence_name, HALL_NAMES=HALL_NAMES, ITEMS=ITEMS, DRUGS=DRUGS, HOBBIES=HOBBIES, DISPLAY_SLOTS=DISPLAY_SLOTS,
                HOBBY_ENERGY=HOBBY_ENERGY, HOBBY_UNLOCK_ITEMS=HOBBY_UNLOCK_ITEMS, daily_count=daily_count, intrigue_label=intrigue_label, FAMILIES=FAMILIES, PERSONALITIES=PERSONALITIES, age_text=age_text, palace_date=palace_date,
+               HEIR_STATS=HEIR_STATS, HEIR_PERSONALITIES=HEIR_PERSONALITIES, heir_age_days=heir_age_days,
                poison_deadline=lambda ts: datetime.fromtimestamp(ts, TZ).strftime('%m月%d日 %H:%M'))
     try:
         ctx['gs'] = state()
@@ -2181,6 +2197,224 @@ def heirs():
     rows = q("SELECT h.*, c.surname FROM heirs h JOIN consorts c ON c.id=h.mother_id ORDER BY h.id")
     return render_template('heirs.html', c=c, rows=rows, get_consort=get_consort)
 
+# ── 皇嗣成长（九点六节 A~D：还没做成年、抚养关系博弈、夺嫡） ─────────────────────
+
+HEIR_STATS = dict(study='学问', riding='骑射', virtue='品行', health='体质')
+
+HEIR_PERSONALITIES = {
+    'clever':   dict(name='聪敏', desc='读书涨得更快'),
+    'honest':   dict(name='憨厚', desc='立规矩效果加倍，读书慢一些'),
+    'naughty':  dict(name='顽皮', desc='陪他玩情分涨得多，读书慢一些'),
+    'timid':    dict(name='怯懦', desc='将来考校吃亏，但情分涨得快'),
+    'stubborn': dict(name='倔强', desc='被罚时情分掉得多，骑射涨得更快'),
+}
+
+ZHUAZHOU_ITEMS = [
+    dict(key='book', name='书卷', stat='study', line='一把抓住了那卷书，攥得紧紧的'),
+    dict(key='bow', name='弓箭', stat='riding', line='径直扑向那张小弓，谁都拉不开他的手'),
+    dict(key='seal', name='印章', stat='virtue', line='摸到那方印章，端端正正地捧在手里'),
+    dict(key='abacus', name='算盘', stat='virtue', line='拨弄起了算盘珠子，拨得叮当响'),
+    dict(key='rouge', name='胭脂', stat='health', line='伸手碰了碰那盒胭脂，咯咯笑了起来'),
+]
+ZHUAZHOU_GAIN = 10
+ZHUAZHOU_AGE_DAYS = 2      # 出生第 2 天=周岁，一定触发抓周
+
+HEIR_RAISE_ENERGY = 1
+HEIR_RAISE = {
+    'study':      dict(name='读书', gain=dict(study=3)),
+    'ride':       dict(name='骑射', gain=dict(riding=3)),
+    'ride_girl':  dict(name='琴棋', gain=dict(study=2, virtue=1)),   # 公主版的「骑射」
+    'discipline': dict(name='立规矩', gain=dict(virtue=3), affinity=-1),
+    'play':       dict(name='陪他玩', affinity=5),
+}
+
+HEIR_EVENT_CHANCE = 0.25
+HEIR_FOSTER_TALK_AGE_DAYS = 16   # 抱养的孩子 8 岁（出生第 16 天）起才会问「我的亲额娘是谁」
+
+HEIR_EVENTS = {
+    'father_visit': dict(text='「额娘，皇阿玛好久没来了。」', opts=[
+        dict(text='如实说', virtue=2, affinity=2, say='他似懂非懂地点点头。'),
+        dict(text='哄他说皇阿玛忙', affinity=4, say='他信以为真，笑了。')]),
+    'fight': dict(text='他在上书房和{t}宫里的孩子打了一架，师傅来告状。', needs_target=True, opts=[
+        dict(text='罚他', virtue=3, affinity=-3, say='他跪了半个时辰，一声没吭。'),
+        dict(text='护着他', affinity=5, target_affinity=-5, say='你替他挡了下来，只是从此和{t}的关系僵了。')]),
+    'puppy': dict(text='他缠着要养一只小狗。', opts=[
+        dict(text='准了（10 两）', silver=-10, affinity=5, say='他抱着那只小狗，乐得合不拢嘴。'),
+        dict(text='不准', affinity=-2, say='他闷闷不乐地走开了。')]),
+    'praise': dict(text='师傅来回话，夸他这几日文章写得好。', opts=[
+        dict(text='让他去给皇阿玛请安', favor=3, say='皇上听了几句，点头称许。'),
+        dict(text='私下赏他', affinity=4, say='他把那点赏赐宝贝似的收了起来。')]),
+    'fever': dict(text='夜里他发起热来，烧得脸通红。', opts=[
+        dict(text='守一夜', mother_health=-5, affinity=10, say='你守到天明，他终于退了烧。'),
+        dict(text='交给太医', say='太医说不打紧，你这才松了口气。')]),
+    'treat': dict(text='{t}着人送来一碟点心，说是给孩子的。', needs_target=True, opts=[
+        dict(text='收下', target_affinity=3, say='他吃得满嘴都是渣，你和{t}的交情也厚实了些。'),
+        dict(text='原样退回', affinity=-1, say='退是退了，只是不知这份心思该往哪儿搁。')]),
+    'true_mother': dict(text='他忽然问：「我的亲额娘，到底是谁？」', foster_only=True, opts=[
+        dict(text='说实话', to_mother_affinity=10, say='他沉默了许久，没再说话。'),
+        dict(text='瞒着', affinity=5, say='他似乎不太信，但没再追问——只是往后，这事早晚要被人说破。')]),
+    'sneak_visit': dict(text='宫人来报，他偷偷跑去看了生母，被拦在了半路上。', foster_only=True, opts=[
+        dict(text='由他去', to_mother_affinity=6, say='你叹了口气，没有阻拦。'),
+        dict(text='拦下', affinity=-3, say='他被拦回来，一路上都没说话。')]),
+}
+
+
+def heir_age_days(h, day=None):
+    return (day or cur_day()) - h['born_day']
+
+
+def add_heir_affinity(hid, which, delta):
+    col = 'mother_affinity' if which == 'mother' else 'caretaker_affinity'
+    h = q('SELECT * FROM heirs WHERE id=?', (hid,), one=True)
+    run(f'UPDATE heirs SET {col}=? WHERE id=?', (clamp(h[col] + delta), hid))
+    if h['caretaker_id'] == h['mother_id']:
+        other = 'caretaker_affinity' if which == 'mother' else 'mother_affinity'
+        run(f'UPDATE heirs SET {other}=? WHERE id=?', (clamp(h[other] + delta), hid))
+
+
+def heir_growth_tick(day):
+    """抓周（出生满周岁那天，一定触发）：贵人以下的生母，抓周时把孩子指给一位无子的嫔以上 NPC 抚养"""
+    for h in q("SELECT * FROM heirs WHERE zhuazhou='' AND ?-born_day=?", (day, ZHUAZHOU_AGE_DAYS)):
+        item = random.choice(ZHUAZHOU_ITEMS)
+        run(f"UPDATE heirs SET zhuazhou=?, {item['stat']}={item['stat']}+? WHERE id=?", (item['key'], ZHUAZHOU_GAIN, h['id']))
+        mother = get_consort(h['mother_id'])
+        label = heir_label(h)
+        gazette(f"{label}周岁抓周，{item['line']}。", 'news')
+        if mother['user_id']:
+            notify(mother['id'], f"{label}今日抓周，{item['line']}。{HEIR_STATS[item['stat']]} +{ZHUAZHOU_GAIN}。", 'good')
+        if mother['rank'] < 5:
+            candidates = q("""SELECT c.id, COUNT(h2.id) n FROM consorts c LEFT JOIN heirs h2 ON h2.caretaker_id=c.id
+                              WHERE c.rank>=5 AND c.status='normal' GROUP BY c.id ORDER BY n, c.npc_key IS NULL, c.id""")
+            if candidates:
+                foster = get_consort(candidates[0]['id'])
+                run('UPDATE heirs SET caretaker_id=?, caretaker_affinity=50 WHERE id=?', (foster['id'], h['id']))
+                gazette(f"祖制：{label}生母位分不及，皇上指{display_name(foster)}抚养{label}。", 'decree')
+                if mother['user_id']:
+                    notify(mother['id'], f"按祖制，{label}被抱去{display_name(foster)}宫里抚养了。晋到嫔位后可以去养心殿求皇上把孩子讨回来。", 'bad')
+                if foster['user_id']:
+                    notify(foster['id'], f"皇上把{label}指给你抚养了。去本宫就能教养。", 'good')
+
+
+@app.route('/heirs/raise/<int:hid>', methods=['POST'])
+@login_required
+def heir_raise(hid):
+    c = g.me
+    h = q('SELECT * FROM heirs WHERE id=?', (hid,), one=True)
+    key = request.form.get('opt', '')
+    if key == 'ride' and h and h['gender'] == '公主': key = 'ride_girl'
+    cfg = HEIR_RAISE.get(key)
+    err = None
+    if not h or h['caretaker_id'] != c['id']: err = '这不是你在抚养的孩子。'
+    elif not cfg: err = '选一样教养的法子。'
+    elif c['energy'] < HEIR_RAISE_ENERGY: err = '精力不够了。'
+    elif daily_count(c['id'], f'raise:{hid}'): err = '今天已经教养过他了。'
+    if err:
+        flash(err, 'bad')
+        return redirect(url_for('place', key='home'))
+    run('UPDATE consorts SET energy=energy-? WHERE id=?', (HEIR_RAISE_ENERGY, c['id']))
+    daily_inc(c['id'], f'raise:{hid}')
+    parts = []
+    for stat, amt in cfg.get('gain', {}).items():
+        if h['personality'] == 'clever' and stat == 'study': amt = round(amt * 1.5)
+        elif h['personality'] == 'honest' and stat == 'study': amt = round(amt * 0.7)
+        elif h['personality'] == 'naughty' and stat == 'study': amt = round(amt * 0.5)
+        elif h['personality'] == 'stubborn' and stat == 'riding': amt = round(amt * 1.3)
+        run(f'UPDATE heirs SET {stat}=? WHERE id=?', (clamp(h[stat] + amt), hid))
+        parts.append(f"{HEIR_STATS[stat]} +{amt}")
+    aff = cfg.get('affinity', 0)
+    if h['personality'] == 'honest' and key == 'discipline': aff = round(aff * 1.5)
+    if h['personality'] == 'naughty' and key == 'play': aff = round(aff * 2)
+    if h['personality'] == 'stubborn' and aff < 0: aff = round(aff * 1.5)
+    if h['personality'] == 'timid' and aff > 0: aff = round(aff * 1.5)
+    if aff:
+        add_heir_affinity(hid, 'caretaker', aff)
+        parts.append(f"情分 {aff:+d}")
+    flash(f"{cfg['name']}：" + '，'.join(parts) + '。', 'good')
+    return redirect(url_for('place', key='home'))
+
+
+def roll_heir_event(c):
+    """每天第一次进本宫时掷一次。同一件事同一个孩子不会遇到两次"""
+    if c['status'] == 'cold' or c['heir_event'] or daily_count(c['id'], 'heir_event_roll'): return
+    daily_inc(c['id'], 'heir_event_roll')
+    if random.random() >= HEIR_EVENT_CHANCE: return
+    mine = list(q("SELECT * FROM heirs WHERE caretaker_id=?", (c['id'],)))
+    if not mine: return
+    random.shuffle(mine)
+    day = cur_day()
+    others = q("SELECT id FROM consorts WHERE id!=? AND user_id IS NOT NULL AND status='normal'", (c['id'],))
+    for key in random.sample(list(HEIR_EVENTS), len(HEIR_EVENTS)):
+        ev = HEIR_EVENTS[key]
+        if ev.get('needs_target') and not others: continue
+        for h in mine:
+            if ev.get('foster_only') and (h['caretaker_id'] == h['mother_id'] or heir_age_days(h, day) < HEIR_FOSTER_TALK_AGE_DAYS):
+                continue
+            if key in json.loads(h['seen_events'] or '[]'): continue
+            data = dict(key=key, heir=h['id'], day=day)
+            if ev.get('needs_target'): data['target'] = random.choice(others)['id']
+            run("UPDATE consorts SET heir_event=? WHERE id=?", (json.dumps(data), c['id']))
+            return
+
+
+def heir_event_view(c):
+    try:
+        data = json.loads(c['heir_event']) if c['heir_event'] else None
+    except ValueError:
+        return None
+    if not data or data.get('day') != cur_day(): return None
+    h = q('SELECT * FROM heirs WHERE id=?', (data['heir'],), one=True)
+    if not h or h['caretaker_id'] != c['id']: return None
+    t = get_consort(data['target']) if data.get('target') else None
+    if data.get('target') and (not t or t['status'] != 'normal'): return None
+    ev = HEIR_EVENTS[data['key']]
+    names = dict(h=heir_label(h), t=display_name(t) if t else '')
+    return ev['text'].format(**names), [o['text'].format(**names) for o in ev['opts']], data, names
+
+
+@app.route('/heirs/event', methods=['POST'])
+@login_required
+def heir_event_choose():
+    c = g.me
+    view = heir_event_view(c)
+    if not view:
+        run("UPDATE consorts SET heir_event='' WHERE id=?", (c['id'],))
+        return redirect(url_for('place', key='home'))
+    _, _, data, names = view
+    ev = HEIR_EVENTS[data['key']]
+    try:
+        opt = ev['opts'][int(request.form.get('opt', ''))]
+    except (ValueError, IndexError):
+        return redirect(url_for('place', key='home'))
+    if opt.get('silver') and c['silver'] < -opt['silver']:
+        flash(f"手头只有 {c['silver']} 两，拿不出来。", 'bad')
+        return redirect(url_for('place', key='home'))
+    run("UPDATE consorts SET heir_event='' WHERE id=?", (c['id'],))
+    h = q('SELECT * FROM heirs WHERE id=?', (data['heir'],), one=True)
+    seen = json.loads(h['seen_events'] or '[]') + [data['key']]
+    run("UPDATE heirs SET seen_events=? WHERE id=?", (json.dumps(seen), h['id']))
+    parts = []
+    if opt.get('silver'):
+        add_silver(c['id'], opt['silver']); parts.append(f"银子 {opt['silver']:+d}")
+    if opt.get('mother_health'):
+        add_stat(c['id'], 'health', opt['mother_health']); parts.append(f"体质 {opt['mother_health']:+d}")
+    for stat in ('virtue',):
+        if opt.get(stat):
+            run(f'UPDATE heirs SET {stat}=? WHERE id=?', (clamp(h[stat] + opt[stat]), h['id']))
+            parts.append(f"{HEIR_STATS[stat]} {opt[stat]:+d}")
+    if opt.get('favor'):
+        run('UPDATE heirs SET favor=favor+? WHERE id=?', (opt['favor'], h['id']))
+        parts.append(f"圣眷 {opt['favor']:+d}")
+    if opt.get('affinity'):
+        add_heir_affinity(h['id'], 'caretaker', opt['affinity']); parts.append(f"情分 {opt['affinity']:+d}")
+    if opt.get('to_mother_affinity'):
+        add_heir_affinity(h['id'], 'mother', opt['to_mother_affinity']); parts.append(f"跟生母的情分 {opt['to_mother_affinity']:+d}")
+    if opt.get('target_affinity') and data.get('target'):
+        add_affinity(c['id'], data['target'], opt['target_affinity']); parts.append(f"和{names['t']}好感 {opt['target_affinity']:+d}")
+    say = opt['say'].format(**names)
+    flash('　'.join(x for x in (say, '，'.join(parts) + ('。' if parts else '')) if x), 'good')
+    return redirect(url_for('place', key='home'))
+
+
 # ── 每晚结算 ───────────────────────────────────────────────────────────────────
 
 def intrigue_success_p(atk, tgt, cfg):
@@ -2514,8 +2748,14 @@ def _settle_night():
         gender = random.choice(['皇子', '公主'])
         n = q("SELECT COUNT(*) n FROM heirs WHERE gender=?", (gender,), one=True)['n']
         ordinal = n + (6 if gender == '皇子' else 3)
-        run("INSERT INTO heirs (mother_id, gender, ordinal, born_day) VALUES (?,?,?,?)",
-            (c['id'], gender, ordinal, day))
+        personality = random.choice(list(HEIR_PERSONALITIES))
+        run("""INSERT INTO heirs (mother_id, caretaker_id, gender, ordinal, born_day, personality, study, riding, virtue, health)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (c['id'], c['id'], gender, ordinal, day, personality,
+             clamp(random.randint(10, 30) + c['talent'] * 0.1, 0, 100),
+             clamp(random.randint(10, 30), 0, 100),
+             clamp(random.randint(10, 30) + c['virtue'] * 0.1, 0, 100),
+             clamp(60 + c['health'] * 0.1, 0, 100)))
         run("UPDATE consorts SET pregnant_since=0 WHERE id=?", (c['id'],))
         extra = ''
         if c['health'] < 50 and random.random() < 0.3:
@@ -2532,6 +2772,9 @@ def _settle_night():
         gazette(f"{display_name(c)}诞下{label}。{extra}", 'birth')
         notify(c['id'], f"你诞下了{label}。{extra}", 'good')
         night_mark(c['id'], 'birth', label=label, son=gender == '皇子')
+
+    # 3b. 皇嗣周岁抓周（贵人以下的生母，这天孩子按祖制改指给别人抚养）
+    heir_growth_tick(day)
 
     # 4. 晋封（按圣宠高低排队抢名额，每晚每人最多晋一级）
     for c in q("""SELECT * FROM consorts WHERE user_id IS NOT NULL AND status IN ('normal','confined')
@@ -3044,12 +3287,15 @@ def place(key):
     acts = [(k, ACTIONS[k]) for k in PLACES[key]['actions'] if c['status'] in ACTIONS[k]['when']]
     counts = {k: daily_count(c['id'], k) for k in PLACES[key]['actions']}
     title, desc, extra = PLACES[key]['name'], '', ''
-    maid_ev, maid_info = None, None
+    maid_ev, maid_info, heir_ev, my_heirs = None, None, None, []
     if key == 'home':
         roll_maid_event(c)
+        roll_heir_event(c)
         c = get_consort(c['id'])
         maid_ev = maid_event_view(c)
         maid_info = dict(n=len(active_maids(c['id'])), quota=maid_quota(c['rank']), errands=len(free_errand_maids(c)))
+        heir_ev = heir_event_view(c)
+        my_heirs = q("SELECT * FROM heirs WHERE caretaker_id=?", (c['id'],))
         title = residence_name(c)
         if c['status'] == 'cold':
             desc = '四面高墙，窗纸破了也没人来补。'
@@ -3073,7 +3319,7 @@ def place(key):
     return render_template('place.html', c=c, key=key, title=title, desc=desc, extra=extra, acts=acts,
                            counts=counts, sick=is_sick(c), arts=arts_of(c), ARTS=ARTS, ART_MASTERY=ART_MASTERY,
                            plead_targets=plead_targets, plead_p=int(plead_chance(c) * 100),
-                           maid_ev=maid_ev, maid_info=maid_info,
+                           maid_ev=maid_ev, maid_info=maid_info, heir_ev=heir_ev, my_heirs=my_heirs, HEIR_RAISE=HEIR_RAISE,
                            household=palace_household(c['palace']) if key == 'home' and has_residence(c) else [],
                            is_head=has_residence(c) and c['hall'] == 'main' and c['rank'] >= 5)
 

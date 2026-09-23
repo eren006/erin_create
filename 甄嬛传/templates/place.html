@@ -30,6 +30,30 @@
 {% if maid_info %}
 <p class="muted"><a href="{{ url_for('maids_page') }}">宫人 {{ maid_info.n }}/{{ maid_info.quota }}</a>{% if c.status != 'cold' and maid_info.n %}　今天还能差遣 {{ maid_info.errands }} 人{% endif %}</p>
 {% endif %}
+{% if heir_ev %}{% set htext, hopts, hdata, hnames = heir_ev %}
+<div class="sheet" style="margin:14px 0">
+  <p style="font-family:var(--kai);font-size:18px">{{ htext }}</p>
+  <form method="post" action="{{ url_for('heir_event_choose') }}" class="row">
+    {% for o in hopts %}<button name="opt" value="{{ loop.index0 }}" class="{{ 'plain' if not loop.first }}">{{ o }}</button>{% endfor %}
+  </form>
+</div>
+{% endif %}
+{% if my_heirs %}
+<div class="sheet" style="margin:14px 0">
+  <h3 style="margin-top:0">教养</h3>
+  {% for h in my_heirs %}
+  <div style="margin:10px 0;padding-bottom:10px;border-bottom:1px solid var(--line)">
+    <p><b style="font-family:var(--kai)">{{ heir_label(h) }}</b>　<span class="muted">{{ HEIR_PERSONALITIES[h.personality].name if h.personality else '' }}　{{ heir_age_days(h)//2 }} 岁　学问 {{ h.study }}　骑射 {{ h.riding }}　品行 {{ h.virtue }}　体质 {{ h.health }}　情分 {{ h.caretaker_affinity }}</span></p>
+    <form method="post" action="{{ url_for('heir_raise', hid=h.id) }}" class="row">
+      {% for k, r in HEIR_RAISE.items() if not (k == 'ride' and h.gender == '公主') and not (k == 'ride_girl' and h.gender == '皇子') %}
+      <button name="opt" value="{{ k }}" class="plain" {{ 'disabled' if c.energy < 1 or daily_count(c.id, 'raise:' ~ h.id) }}>{{ r.name }}</button>
+      {% endfor %}
+    </form>
+  </div>
+  {% endfor %}
+  <a class="muted" href="{{ url_for('heirs') }}">看全部皇嗣</a>
+</div>
+{% endif %}
 {% if request.view_args.key == 'home' %}
 <p class="muted"><a href="{{ url_for('hobby') }}">暇趣</a>　<a href="{{ url_for('room') }}">寝宫陈设</a></p>
 {% endif %}

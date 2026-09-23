@@ -162,10 +162,21 @@ CREATE TABLE IF NOT EXISTS inventory (
 CREATE TABLE IF NOT EXISTS heirs (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     mother_id   INTEGER NOT NULL,
+    caretaker_id INTEGER NOT NULL DEFAULT 0,         -- 现在跟谁：抓周前恒等于生母；贵人以下的生母，抓周那天可能改指给别人
     gender      TEXT NOT NULL,                      -- 皇子 / 公主
     ordinal     INTEGER NOT NULL,
     name        TEXT NOT NULL DEFAULT '',
-    born_day    INTEGER NOT NULL
+    born_day    INTEGER NOT NULL,
+    personality TEXT NOT NULL DEFAULT '',            -- 聪敏/憨厚/顽皮/怯懦/倔强，出生时随机
+    study       INTEGER NOT NULL DEFAULT 20,         -- 学问
+    riding      INTEGER NOT NULL DEFAULT 20,         -- 骑射
+    virtue      INTEGER NOT NULL DEFAULT 20,         -- 品行
+    health      INTEGER NOT NULL DEFAULT 60,         -- 体质
+    favor       INTEGER NOT NULL DEFAULT 0,          -- 圣眷，教养/小事件/考校累加，夺嫡阶段另按公式重算
+    mother_affinity    INTEGER NOT NULL DEFAULT 50,  -- 跟生母的情分
+    caretaker_affinity INTEGER NOT NULL DEFAULT 50,  -- 跟现在抚养人的情分；自己养时两个数一起动
+    zhuazhou    TEXT NOT NULL DEFAULT '',            -- 抓周抓到的东西，走过一次之后不再是空
+    seen_events TEXT NOT NULL DEFAULT '[]'           -- 遇到过的小事件，同一件不重复
 );
 
 -- 宫人：玩家亲手挑、亲手赐名；名字全宫不重复（已故的也算）
