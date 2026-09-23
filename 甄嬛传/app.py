@@ -604,7 +604,7 @@ NPCS = [
 # 系统皇子：开服就在。三阿哥是长子、老实鲁钝，朝中老臣认他；四阿哥学问骑射都不低，可惜没人抱他
 NPC_HEIRS = dict(
     third=dict(ordinal=3, age_days=28, personality='honest', study=30, riding=40, virtue=45, health=65, ambition=40, faction=3, zhuazhou='seal'),
-    fourth=dict(ordinal=4, age_days=16, personality='clever', study=70, riding=65, virtue=70, health=80, ambition=65, faction=0, zhuazhou='book'),
+    fourth=dict(ordinal=4, age_days=16, personality='clever', study=60, riding=55, virtue=60, health=80, ambition=65, faction=0, zhuazhou='book'),
 )
 NPC_ORPHAN_DEADLINE_DAYS = 14   # 开服第 15 天还没人求到，皇后就把四阿哥抱走
 
@@ -909,7 +909,7 @@ def npc_heir_specs(day, reign_no, reign_start_day):
              ambition=r(40, 60), faction=2, zhuazhou='seal'),
         dict(key='fourth', gender='皇子', name=names[1], ordinal=2, born=reign_start_day - 16, mother=None,
              deadline=reign_start_day + NPC_ORPHAN_DEADLINE_DAYS,
-             personality=random.choice(pers), study=r(55, 75), riding=r(55, 75), virtue=r(55, 75), health=r(65, 85),
+             personality=random.choice(pers), study=r(45, 65), riding=r(45, 65), virtue=r(45, 65), health=r(65, 85),
              ambition=r(50, 70), faction=0, zhuazhou='book'),
         dict(key='princess', gender='公主', name=random.choice(NPC_PRINCESS_NAMES), ordinal=1, born=reign_start_day - 20,
              mother='caoguiren', deadline=0, personality=random.choice(pers), study=r(35, 55), riding=r(20, 40),
@@ -3754,7 +3754,7 @@ FILIAL_SILVER = {'亲王': 24, '郡王': 16, '贝勒': 10, '贝子': 5}   # 每�
 PRINCE_PLEAD_INTERVAL = 7
 PRINCE_PLEAD_FAVOR_BONUS = 0.003
 ERRAND_INTERVAL = 3
-MARRY_MIN_FAVOR, MARRY_MIN_TRUST = 60, 50
+MARRY_MIN_FAVOR, MARRY_MIN_TRUST = 35, 30   # 公主自己的圣眷、抚养人的信任够了才能自己选（试玩里原来的 60 / 50 一次也没人够到）
 MARRY_CHOICE_DAYS = 3         # 母亲三天不表态，就按留京下嫁办
 MONGOL_TRUST_GAIN = 10
 MONGOL_LETTER_INTERVAL = 7
@@ -4029,6 +4029,8 @@ def heir_errand(hid):
 # ── 夺嫡（九点六节 F，第一阶段）：圣眷、党羽、野心、站队、立储/废储、万寿节、手段 ───────────
 
 RIVAL_MIN_AGE = 12                    # 12 岁起算进储位人选、可以站队
+NPC_MERIT_CAP = 15                    # 系统皇子（三阿哥、四阿哥等）累计功绩最多算 15，试玩里他们靠秋狝、差事攒到 100+，玩家的孩子再怎么养也追不上
+NPC_CARETAKER_BONUS_CAP = 10          # 抚养他们的 NPC 妃嫔（皇后、齐妃）给的位分加成最多算 10
 RANK_BONUS = {5: 5, 6: 10, 7: 15, 8: 20, 9: 20}          # 抚养人位分给皇子圣眷的加成
 FACTION_WARN, FACTION_SCOLD = 5, 8    # 党羽超过 5 圣眷每晚 -2；超过 8 皇上当众训斥
 FACTION_WARN_LOSS, FACTION_SCOLD_LOSS, FACTION_SCOLD_INTERVAL = 2, 15, 10
@@ -4071,10 +4073,13 @@ BIRTHDAY_WIN, BIRTHDAY_LOSE = 10, -5
 def heir_standing(h):
     """圣眷 = 学问×0.3 + 骑射×0.2 + 品行×0.3 + 累计功绩（考校、秋狝、差事、站队相助）+ 抚养人位分加成 + 抚养人信任×0.1。
     heirs.favor 存的是「累计功绩」那一项，皇子真正的圣眷用这个函数算"""
-    v = h['study'] * 0.3 + h['riding'] * 0.2 + h['virtue'] * 0.3 + h['favor']
+    merit = min(h['favor'], NPC_MERIT_CAP) if h['npc_key'] else h['favor']    # 系统皇子的功绩封顶，免得玩家的孩子永远追不上
+    v = h['study'] * 0.3 + h['riding'] * 0.2 + h['virtue'] * 0.3 + merit
     care = get_consort(h['caretaker_id']) if h['caretaker_id'] else None
     if care and care['status'] != 'dead':
-        v += RANK_BONUS.get(care['rank'], 0) + care['trust'] * 0.1
+        bonus = RANK_BONUS.get(care['rank'], 0)
+        if care['npc_key']: bonus = min(bonus, NPC_CARETAKER_BONUS_CAP)
+        v += bonus + care['trust'] * 0.1
     return int(round(v)) + family_support(h)
 
 

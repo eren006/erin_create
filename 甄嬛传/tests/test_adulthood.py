@@ -250,25 +250,25 @@ class AdulthoodTests(unittest.TestCase):
     # ── 公主指婚 ─────────────────────────────────────────────────────────────
 
     def test_princess_eligible_mother_gets_to_choose(self):
-        game.run('UPDATE consorts SET trust=60 WHERE id=?', (self.atk,))
-        hid = self.grown(self.atk, gender='公主', favor=60)
+        game.run('UPDATE consorts SET trust=? WHERE id=?', (game.MARRY_MIN_TRUST, self.atk))
+        hid = self.grown(self.atk, gender='公主', favor=game.MARRY_MIN_FAVOR)
         game.heir_adult_tick(game.cur_day())
         h = self.row(hid)
         self.assertEqual(h['marriage'], 'choice')
         self.assertEqual(h['title'], '')
 
     def test_princess_ineligible_is_sent_to_mongolia_without_bonus(self):
-        game.run('UPDATE consorts SET trust=49 WHERE id=?', (self.atk,))
+        game.run('UPDATE consorts SET trust=? WHERE id=?', (game.MARRY_MIN_TRUST - 1, self.atk))
         hid = self.grown(self.atk, gender='公主', favor=90)
         game.heir_adult_tick(game.cur_day())
         h = self.row(hid)
         self.assertEqual((h['marriage'], h['title']), ('mongol', '固伦公主'))
-        self.assertEqual(game.get_consort(self.atk)['trust'], 49)
+        self.assertEqual(game.get_consort(self.atk)['trust'], game.MARRY_MIN_TRUST - 1)
 
     @patch.object(game, 'heir_standing', favor_only)   # 这里只测门槛，圣眷公式另有用例
     def test_princess_low_favor_also_sent_away(self):
         game.run('UPDATE consorts SET trust=90 WHERE id=?', (self.atk,))
-        hid = self.grown(self.atk, gender='公主', favor=59)
+        hid = self.grown(self.atk, gender='公主', favor=game.MARRY_MIN_FAVOR - 1)
         game.heir_adult_tick(game.cur_day())
         self.assertEqual(self.row(hid)['marriage'], 'mongol')
 

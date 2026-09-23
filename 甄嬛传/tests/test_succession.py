@@ -64,6 +64,32 @@ class SuccessionTests(unittest.TestCase):
         hid = self.prince(self.atk, study=100, riding=50, virtue=100, favor=7)
         self.assertEqual(game.heir_standing(self.row(hid)), 30 + 10 + 30 + 7 + 10 + 5)
 
+    def test_system_princes_merit_is_capped_but_players_children_are_not(self):
+        npc = self.prince(0, caretaker=0, study=0, riding=0, virtue=0, favor=200, npc_key='third')
+        mine = self.prince(0, caretaker=0, study=0, riding=0, virtue=0, favor=200)
+        self.assertEqual(game.heir_standing(self.row(npc)), game.NPC_MERIT_CAP)
+        self.assertEqual(game.heir_standing(self.row(mine)), 200)
+        low = self.prince(0, caretaker=0, study=0, riding=0, virtue=0, favor=10, npc_key='fourth')
+        self.assertEqual(game.heir_standing(self.row(low)), 10, '没到封顶的照实算')
+
+    def test_npc_caretaker_bonus_is_capped(self):
+        queen = game.q("SELECT id FROM consorts WHERE npc_key='huanghou'", one=True)['id']
+        game.run('UPDATE consorts SET trust=0 WHERE id=?', (queen,))
+        npc = self.prince(0, caretaker=queen, study=0, riding=0, virtue=0, favor=0, npc_key='fourth')
+        mine = self.prince(0, caretaker=0, study=0, riding=0, virtue=0, favor=0)
+        game.run('UPDATE consorts SET rank=9 WHERE id=?', (queen,))
+        self.assertEqual(game.heir_standing(self.row(npc)), game.NPC_CARETAKER_BONUS_CAP)
+        boss = self.player('丙', rank=8)
+        game.run('UPDATE consorts SET trust=0 WHERE id=?', (boss,))
+        game.run('UPDATE heirs SET caretaker_id=? WHERE id=?', (boss, mine))
+        self.assertEqual(game.heir_standing(self.row(mine)), 20, '玩家抚养的照实给：皇贵妃 +20')
+
+    def test_a_well_raised_player_prince_can_outrank_the_system_princes(self):
+        game.run('UPDATE consorts SET rank=6, trust=40 WHERE id=?', (self.atk,))
+        npc = self.prince(0, caretaker=0, study=70, riding=65, virtue=70, favor=500, npc_key='fourth')   # 功绩再高也只算 15
+        mine = self.prince(self.atk, study=70, riding=65, virtue=70, favor=60)
+        self.assertGreater(game.heir_standing(self.row(mine)), game.heir_standing(self.row(npc)))
+
     def test_standing_without_caretaker_is_stats_plus_merit(self):
         hid = self.prince(0, caretaker=0, study=10, riding=10, virtue=10, favor=5)
         self.assertEqual(game.heir_standing(self.row(hid)), 3 + 2 + 3 + 5)
