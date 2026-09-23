@@ -186,7 +186,33 @@ CREATE TABLE IF NOT EXISTS heirs (
     marriage    TEXT NOT NULL DEFAULT '',            -- 公主：choice 等母亲拿主意 / capital 留京下嫁 / mongol 抚蒙古
     marry_day   INTEGER NOT NULL DEFAULT 0,
     errand      TEXT NOT NULL DEFAULT '',            -- 皇子手上的差事 JSON：{key, day, approach}
-    plead_ready_day INTEGER NOT NULL DEFAULT 0       -- 替母亲求情，这天之前不能再求
+    plead_ready_day INTEGER NOT NULL DEFAULT 0,      -- 皇子：替母亲求情，这天之前不能再求；公主：进言，这天之前不能再进言
+    npc_key     TEXT NOT NULL DEFAULT '',            -- 系统皇子：third 三阿哥 / fourth 四阿哥，玩家生的恒为空
+    ambition    INTEGER NOT NULL DEFAULT 30,         -- 野心，成年那晚按性格定
+    faction     INTEGER NOT NULL DEFAULT 0,          -- 自己结交的朝臣数
+    status      TEXT NOT NULL DEFAULT '',            -- '' / crown 太子 / deposed 废太子圈禁
+    exam_bonus  INTEGER NOT NULL DEFAULT 0,          -- 下一次考校判定加成（站队者递消息、收买上书房），考校后清零
+    feud_until_day INTEGER NOT NULL DEFAULT 0,       -- 被人挑拨兄弟，这天之前每晚圣眷 -3
+    gift        TEXT NOT NULL DEFAULT '',            -- 万寿节备下的寿礼：calligraphy / fur / antique
+    orphan_deadline_day INTEGER NOT NULL DEFAULT 0,  -- 没人要的皇子：这天还无人抚养，皇后就抱走
+    reprimand_ready_day INTEGER NOT NULL DEFAULT 0   -- 结党过多被当众训斥，这天之前不再训斥
+);
+
+-- 站队：每人最多一个明站、一个暗站，7 天内不能改
+CREATE TABLE IF NOT EXISTS stances (
+    consort_id  INTEGER NOT NULL,
+    kind        TEXT NOT NULL,                       -- open / secret
+    heir_id     INTEGER NOT NULL,
+    since_day   INTEGER NOT NULL,
+    PRIMARY KEY (consort_id, kind)
+);
+
+-- 求皇上把没人要的皇子抱来抚养；每晚在求过的人里按信任、位分加权抽一位
+CREATE TABLE IF NOT EXISTS heir_claims (
+    consort_id  INTEGER NOT NULL,
+    heir_id     INTEGER NOT NULL,
+    day         INTEGER NOT NULL,
+    PRIMARY KEY (consort_id, heir_id)
 );
 
 -- 宫人：玩家亲手挑、亲手赐名；名字全宫不重复（已故的也算）

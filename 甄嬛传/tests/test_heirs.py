@@ -206,7 +206,8 @@ class HeirTests(unittest.TestCase):
         self.heir(self.atk)
         with self.client.session_transaction() as sess: sess['admin'] = True
         self.client.post('/admin/reset', data={'confirm': '重开'})
-        self.assertFalse(game.q('SELECT 1 FROM heirs'))
+        self.assertFalse(game.q("SELECT 1 FROM heirs WHERE npc_key=''"), '玩家的孩子清掉')
+        self.assertEqual(game.q('SELECT COUNT(*) n FROM heirs', one=True)['n'], 2, '开服自带的三阿哥、四阿哥重新播种')
 
 
 class HeirExamHuntTests(unittest.TestCase):

@@ -1,0 +1,109 @@
+{% extends 'base.html' %}
+{% block title %}夺嫡{% endblock %}
+{% block body %}
+<h2>夺嫡</h2>
+<p class="muted">十二岁以上的皇子都算储位人选。圣眷 = 学问×0.3 + 骑射×0.2 + 品行×0.3 + 累计功绩 + 抚养人位分加成 + 抚养人信任×0.1。党羽超过 5 个，皇上就要忌惮；超过 8 个，当众训斥。
+  下次朝议立储在第 {{ next_court }} 天（最高圣眷 ≥ 70 且领先第二名 15 以上才明立太子），万寿节在第 {{ next_birthday }} 天。</p>
+
+<div class="scroll"><table>
+  <tr><th>阿哥</th><th>年龄</th><th>抚养</th><th>圣眷</th><th>党羽</th><th>站队</th></tr>
+  {% for r in board %}{% set h = r.h %}
+  <tr>
+    <td style="font-family:var(--kai);font-size:17px">{{ heir_label(h) }}{% if h.title %}<span class="muted" style="font-family:var(--song)">（{{ h.title }}）</span>{% endif %}{% if h.status == 'crown' %} <b>太子</b>{% endif %}</td>
+    <td>{{ heir_age_years(h) }} 岁</td>
+    <td>{{ dn(r.cared_by) if r.cared_by else '无人抚养' }}</td>
+    <td>{{ r.standing }}</td>
+    <td>{{ r.faction }}</td>
+    <td>{% if not r.mine %}
+      <form method="post" action="{{ url_for('succession_stance') }}" class="row" style="display:inline">
+        <input type="hidden" name="heir_id" value="{{ h.id }}">
+        <button class="plain" name="kind" value="open" title="邸报公开；党羽 +1">明着站</button>
+        <button class="plain" name="kind" value="secret" title="不公开、不加党羽，每天可以塞银子">暗里站</button>
+      </form>{% else %}<span class="muted">你抚养的</span>{% endif %}</td>
+  </tr>
+  {% else %}<tr><td colspan="6" class="muted">还没有满十二岁的阿哥。</td></tr>{% endfor %}
+</table></div>
+
+<h3>我的站队</h3>
+{% for kind, label in (('open', '明站'), ('secret', '暗站')) %}
+  {% set st = stances.get(kind) %}
+  <div class="sheet" style="margin:8px 0">
+    <b>{{ label }}</b>：
+    {% if st %}{% set sh = board | selectattr('h.id', 'equalto', st.heir_id) | list %}
+      {{ heir_label(sh[0].h) if sh else '（已不在人选里）' }}（第 {{ st.since_day }} 天起）
+      <form method="post" action="{{ url_for('succession_stance') }}" class="row" style="display:inline">
+        <input type="hidden" name="kind" value="{{ kind }}"><input type="hidden" name="withdraw" value="1">
+        <button class="plain" {{ 'disabled' if st.since_day + STANCE_LOCK_DAYS > day }}>撤下</button></form>
+      {% if st.since_day + STANCE_LOCK_DAYS > day %}<span class="muted">{{ st.since_day + STANCE_LOCK_DAYS - day }} 天后能改</span>{% endif %}
+      <form method="post" action="{{ url_for('succession_act') }}" class="row">
+        {% for k, a in STANCE_ACTS.items() if a.kind == kind %}
+        <button class="plain" name="act" value="{{ k }}" {{ 'disabled' if daily_count(c.id, 'stance:' ~ kind) }}>{{ a.name }}{% if a.silver %}（{{ a.silver }} 两）{% endif %}</button>
+        {% endfor %}
+      </form>
+    {% else %}<span class="muted">还没站队。在上面的表里选一位。</span>{% endif %}
+  </div>
+{% endfor %}
+
+{% if mine_adult_princes %}
+<h3>我抚养的成年阿哥</h3>
+{% for h in mine_adult_princes %}
+<div class="sheet" style="margin:8px 0">
+  <b style="font-family:var(--kai)">{{ heir_label(h) }}</b>（{{ h.title }}）　野心 {{ h.ambition }}　自己结交朝臣 {{ h.faction }} 位
+  <form method="post" action="{{ url_for('heir_persuade', hid=h.id) }}" class="row" style="display:inline">
+    <button class="plain" name="kind" value="calm" {{ 'disabled' if c.energy < PERSUADE_ENERGY or daily_count(c.id, 'persuade:' ~ h.id) }} title="野心 −10；情分低于 40 时一半概率他不听">劝他收敛些</button>
+    <button class="plain" name="kind" value="strive" {{ 'disabled' if c.energy < PERSUADE_ENERGY or daily_count(c.id, 'persuade:' ~ h.id) }} title="野心 +10">劝他争口气</button>
+  </form>
+  <form method="post" action="{{ url_for('succession_gift', hid=h.id) }}" class="row">
+    万寿节寿礼：{% for k, gf in GIFTS.items() %}<button class="plain" name="gift" value="{{ k }}" {% if h.gift == k %}style="font-weight:bold"{% endif %}>{{ gf.name }}{% if gf.silver %}（{{ gf.silver }} 两）{% endif %}</button>{% endfor %}
+    <span class="muted">{{ '已备：' ~ GIFTS[h.gift].name if h.gift else '没备就随他自己拿主意' }}</span>
+  </form>
+</div>
+{% endfor %}
+{% endif %}
+
+{% if orphans %}
+<h3>没人抚养的阿哥</h3>
+{% for h in orphans %}
+<div class="sheet" style="margin:8px 0">
+  <b style="font-family:var(--kai)">{{ heir_label(h) }}</b>　{{ heir_age_years(h) }} 岁　学问 {{ h.study }}　骑射 {{ h.riding }}　品行 {{ h.virtue }}
+  <span class="muted">生母早逝，一直养在园子里。{% if h.orphan_deadline_day %}第 {{ h.orphan_deadline_day }} 天前没人求到，皇后就抱走了。{% endif %}</span>
+  {% if h.id in my_claims %}<span class="muted">你已求过，等今晚皇上定夺。</span>
+  {% elif c.rank >= 5 %}<form method="post" action="{{ url_for('succession_claim', hid=h.id) }}" style="display:inline"><button class="plain">求皇上把他交给我（1 精力）</button></form>
+  {% else %}<span class="muted">嫔位以上才能求。</span>{% endif %}
+</div>
+{% endfor %}
+{% endif %}
+
+<h3>手段</h3>
+<div class="sheet">
+  <form method="post" action="{{ url_for('succession_move') }}" class="row">
+    <input type="hidden" name="move" value="discord">
+    <b>离间</b>（{{ SUCCESSION_MOVES.discord.silver }} 两）
+    <select name="target_id" aria-label="对谁">{% for r in board if not r.mine %}<option value="{{ r.h.id }}">{{ heir_label(r.h) }}</option>{% endfor %}</select>
+    <button class="plain">散流言</button><span class="muted">圣眷 −8，太子更容易中招；有一成半的可能被对方母亲查到是你。</span>
+  </form>
+  <form method="post" action="{{ url_for('succession_move') }}" class="row">
+    <input type="hidden" name="move" value="bribe">
+    <b>收买上书房</b>（{{ SUCCESSION_MOVES.bribe.silver }} 两）
+    <select name="target_id" aria-label="替谁">{% for h in my_kids_exam %}<option value="{{ h.id }}">{{ heir_label(h) }}</option>{% endfor %}</select>
+    <button class="plain" {{ 'disabled' if not my_kids_exam }}>打点</button><span class="muted">下一次考校判定 +15。</span>
+  </form>
+  <form method="post" action="{{ url_for('succession_move') }}" class="row">
+    <input type="hidden" name="move" value="counsel">
+    <b>公主进言</b>
+    <select name="princess_id" aria-label="哪位公主">{% for h in princesses %}<option value="{{ h.id }}">{{ heir_label(h) }}</option>{% endfor %}</select>
+    替
+    <select name="target_id" aria-label="哪位阿哥">{% for r in board %}<option value="{{ r.h.id }}">{{ heir_label(r.h) }}</option>{% endfor %}</select>
+    <button class="plain" {{ 'disabled' if not princesses }}>说好话</button><span class="muted">圣眷 +8，每位公主 7 天一次。</span>
+  </form>
+  <form method="post" action="{{ url_for('succession_move') }}" class="row">
+    <input type="hidden" name="move" value="feud">
+    <b>挑拨兄弟</b>（{{ SUCCESSION_MOVES.feud.silver }} 两，心计 ≥ {{ SUCCESSION_MOVES.feud.min_scheme }}）
+    <select name="target_id" aria-label="一位">{% for r in board %}<option value="{{ r.h.id }}">{{ heir_label(r.h) }}</option>{% endfor %}</select>
+    和
+    <select name="other_id" aria-label="另一位">{% for r in board %}<option value="{{ r.h.id }}">{{ heir_label(r.h) }}</option>{% endfor %}</select>
+    <button class="plain">挑拨</button><span class="muted">之后 3 天两人的圣眷每天各 −3。</span>
+  </form>
+</div>
+<p class="muted">你不能直接害死皇嗣，只能在圣眷上做文章。构陷皇子、窥匾、矫诏要等查案和皇上驾崩的规则接上来才有。</p>
+{% endblock %}

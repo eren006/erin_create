@@ -595,6 +595,13 @@ NPCS = [
          intro='资历老，位分低，说话爽利。'),
 ]
 
+# 系统皇子：开服就在。三阿哥是长子、老实鲁钝，朝中老臣认他；四阿哥学问骑射都不低，可惜没人抱他
+NPC_HEIRS = dict(
+    third=dict(ordinal=3, age_days=28, personality='honest', study=30, riding=40, virtue=45, health=65, ambition=40, faction=3, zhuazhou='seal'),
+    fourth=dict(ordinal=4, age_days=16, personality='clever', study=70, riding=65, virtue=70, health=80, ambition=65, faction=0, zhuazhou='book'),
+)
+NPC_ORPHAN_DEADLINE_DAYS = 14   # 开服第 15 天还没人求到，皇后就把四阿哥抱走
+
 # ── 殿选 ───────────────────────────────────────────────────────────────────────
 
 DIANXUAN_QUESTIONS = [
@@ -718,7 +725,16 @@ def init_db():
                   'marriage': "TEXT NOT NULL DEFAULT ''",
                   'marry_day': 'INTEGER NOT NULL DEFAULT 0',
                   'errand': "TEXT NOT NULL DEFAULT ''",
-                  'plead_ready_day': 'INTEGER NOT NULL DEFAULT 0'},
+                  'plead_ready_day': 'INTEGER NOT NULL DEFAULT 0',
+                  'npc_key': "TEXT NOT NULL DEFAULT ''",
+                  'ambition': 'INTEGER NOT NULL DEFAULT 30',
+                  'faction': 'INTEGER NOT NULL DEFAULT 0',
+                  'status': "TEXT NOT NULL DEFAULT ''",
+                  'exam_bonus': 'INTEGER NOT NULL DEFAULT 0',
+                  'feud_until_day': 'INTEGER NOT NULL DEFAULT 0',
+                  'gift': "TEXT NOT NULL DEFAULT ''",
+                  'orphan_deadline_day': 'INTEGER NOT NULL DEFAULT 0',
+                  'reprimand_ready_day': 'INTEGER NOT NULL DEFAULT 0'},
         'cases': {'convicted_id': 'INTEGER NOT NULL DEFAULT 0', 'wrongful': 'INTEGER NOT NULL DEFAULT 0'},
         'intrigues': {'drug': "TEXT NOT NULL DEFAULT ''",
                       'agent_maid_id': 'INTEGER NOT NULL DEFAULT 0'},
@@ -767,10 +783,26 @@ def init_db():
     for n in NPCS:
         db.execute("UPDATE consorts SET hall=? WHERE npc_key=? AND hall='' AND status NOT IN ('cold','dead')",
                    (n['hall'], n['npc_key']))
+    seed_npc_heirs(db)
     db.commit()
     db.close()
     with app.app_context():
         housing_sync()      # 老存档里的玩家第一次启动时分好住处；之后每次都是空操作
+
+def seed_npc_heirs(db):
+    """三阿哥（齐妃所出，开服时 14 岁）和四阿哥（8 岁，生母早逝没人抚养），保证一开服就有局可争"""
+    day = db.execute("SELECT day FROM game_state WHERE id=1").fetchone()[0]
+    qifei = db.execute("SELECT id FROM consorts WHERE npc_key='qifei'").fetchone()
+    for key, spec in NPC_HEIRS.items():
+        if db.execute("SELECT 1 FROM heirs WHERE npc_key=?", (key,)).fetchone(): continue
+        if key == 'third' and not qifei: continue
+        mother = caretaker = qifei[0] if key == 'third' else 0
+        db.execute("""INSERT INTO heirs (mother_id, caretaker_id, gender, ordinal, born_day, personality, study, riding, virtue, health,
+                       zhuazhou, mother_affinity, caretaker_affinity, npc_key, ambition, faction, orphan_deadline_day, adult_day, title)
+                       VALUES (?,?,'皇子',?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,'')""",
+                   (mother, caretaker, spec['ordinal'], day - spec['age_days'], spec['personality'], spec['study'], spec['riding'],
+                    spec['virtue'], spec['health'], spec['zhuazhou'], 50, 50, key, spec['ambition'], spec['faction'],
+                    day + NPC_ORPHAN_DEADLINE_DAYS if key == 'fourth' else 0))
 
 def retire_musk(db):
     """v1.4：「暗下麝香」「毒害」并入「下药」。手里的麝香按 200 两退钱，还没结算的旧计策撤回退款（幂等）"""
@@ -2205,7 +2237,7 @@ def heirs():
             run("UPDATE heirs SET name=? WHERE id=?", (name, hid))
             flash(f"皇上允了，赐名「{name}」。", 'good')
         return redirect(url_for('heirs'))
-    rows = q("SELECT h.*, c.surname FROM heirs h JOIN consorts c ON c.id=h.mother_id ORDER BY h.id")
+    rows = q("SELECT h.*, c.surname FROM heirs h LEFT JOIN consorts c ON c.id=h.mother_id ORDER BY h.id")
     day = cur_day()
     acts = {}
     for h in rows:
@@ -2346,14 +2378,14 @@ def heir_exam_tick(day):
 
 def heir_hunt_tick(day):
     if day % HEIR_HUNT_INTERVAL: return
-    eligible = [h for h in q("SELECT * FROM heirs WHERE gender='皇子'") if heir_age_years(h, day) >= HEIR_HUNT_MIN_AGE]
+    eligible = [h for h in q("SELECT * FROM heirs WHERE gender='皇子' AND status!='deposed'") if heir_age_years(h, day) >= HEIR_HUNT_MIN_AGE]
     if not eligible: return
     winner = max(eligible, key=lambda h: h['riding'] + random.randint(0, HEIR_HUNT_ROLL))
     run('UPDATE heirs SET favor=favor+? WHERE id=?', (HEIR_HUNT_REWARD, winner['id']))
     label = heir_label(winner)
     gazette(f"随驾秋狝，{label}猎获最多，圣眷 +{HEIR_HUNT_REWARD}。", 'news')
-    caretaker = get_consort(winner['caretaker_id'])
-    if caretaker['user_id']:
+    caretaker = get_consort(winner['caretaker_id']) if winner['caretaker_id'] else None
+    if caretaker and caretaker['user_id']:
         notify(caretaker['id'], f"{label}随驾秋狝，猎获最多，圣眷 +{HEIR_HUNT_REWARD}。", 'good')
 
 
@@ -2403,22 +2435,22 @@ def heir_rehome_tick(day):
     for h in q("SELECT * FROM heirs WHERE caretaker_id!=0 AND adult_day=0"):
         cur = get_consort(h['caretaker_id'])
         if cur['status'] not in ('cold', 'dead'): continue
-        mother = get_consort(h['mother_id'])
+        mother = get_consort(h['mother_id']) if h['mother_id'] else None
         label = heir_label(h)
         cur_gone = '进了冷宫' if cur['status'] == 'cold' else '薨逝了'
-        if h['caretaker_id'] != h['mother_id'] and mother['status'] == 'normal' and mother['rank'] >= 5:
+        if mother and h['caretaker_id'] != h['mother_id'] and mother['status'] == 'normal' and mother['rank'] >= 5:
             run('UPDATE heirs SET caretaker_id=?, caretaker_affinity=mother_affinity WHERE id=?', (mother['id'], h['id']))
             gazette(f"{display_name(cur)}{cur_gone}，{label}由生母{display_name(mother)}领回抚养。", 'decree')
             if mother['user_id']:
                 notify(mother['id'], f"{display_name(cur)}{cur_gone}，皇上让你把{label}领回去了。", 'good')
             continue
-        foster = pick_foster(exclude=(cur['id'], mother['id']))
+        foster = pick_foster(exclude=(cur['id'], mother['id'] if mother else -1))
         if not foster: continue   # 一位合适的都没有，明晚再看
         run('UPDATE heirs SET caretaker_id=?, caretaker_affinity=50 WHERE id=?', (foster['id'], h['id']))
         gazette(f"{display_name(cur)}{cur_gone}，皇上指{display_name(foster)}抚养{label}。", 'decree')
         if cur['user_id']:
             notify(cur['id'], f"你{cur_gone}，{label}被皇上指给{display_name(foster)}抚养了。", 'bad')
-        if mother['id'] != cur['id'] and mother['user_id'] and mother['status'] != 'dead':
+        if mother and mother['id'] != cur['id'] and mother['user_id'] and mother['status'] != 'dead':
             notify(mother['id'], f"{label}的抚养人{cur_gone}，皇上指{display_name(foster)}接着抚养。", 'info')
         if foster['user_id']:
             notify(foster['id'], f"皇上把{label}指给你抚养了。去本宫就能教养。", 'good')
@@ -2636,7 +2668,7 @@ def marry_off(h, kind, chosen):
 def choose_marriage_default(h):
     """没有能拿主意的玩家母亲：够格的（圣眷、抚养人信任）留京，不够格的皇上直接指婚抚蒙古"""
     caretaker = get_consort(h['caretaker_id'])
-    if caretaker and h['favor'] >= MARRY_MIN_FAVOR and caretaker['trust'] >= MARRY_MIN_TRUST:
+    if caretaker and heir_standing(h) >= MARRY_MIN_FAVOR and caretaker['trust'] >= MARRY_MIN_TRUST:
         marry_off(h, 'capital', False)
     else:
         marry_off(h, 'mongol', False)
@@ -2647,14 +2679,17 @@ def heir_come_of_age(h, day):
     run('UPDATE heirs SET adult_day=?, foster_request_to=0 WHERE id=?', (day, h['id']))
     h = q('SELECT * FROM heirs WHERE id=?', (h['id'],), one=True)
     if h['gender'] == '皇子':
-        title = prince_title_for(h['favor'])
+        title = prince_title_for(heir_standing(h))
         run('UPDATE heirs SET title=? WHERE id=?', (title, h['id']))
+        if not h['npc_key']:
+            amb = clamp(35 + AMBITION_BASE.get(h['personality'], 0) + random.randint(-10, 10))
+            run('UPDATE heirs SET ambition=? WHERE id=?', (amb, h['id']))
         gazette(f"{label}年满十六，封为{title}，出宫开府。", 'decree')
         for p in heir_parents(h):
             notify(p['id'], f"{label}年满十六，皇上封为{title}，出宫开府了。往后每晚有孝敬银子，每 {ERRAND_INTERVAL} 天还会有一件差事等你帮他拿主意（去「子嗣」页）。", 'decree')
         return
     caretaker = get_consort(h['caretaker_id'])
-    eligible = h['favor'] >= MARRY_MIN_FAVOR and caretaker and caretaker['trust'] >= MARRY_MIN_TRUST
+    eligible = heir_standing(h) >= MARRY_MIN_FAVOR and caretaker and caretaker['trust'] >= MARRY_MIN_TRUST
     if caretaker and caretaker['user_id'] and caretaker['status'] != 'dead' and eligible:
         run("UPDATE heirs SET marriage='choice' WHERE id=?", (h['id'],))
         notify(caretaker['id'], f"{label}年满十六，该指婚了。皇上念你的功劳，许你自己拿主意：留京下嫁，还是抚蒙古？去「子嗣」页选，{MARRY_CHOICE_DAYS} 天内不表态，就按留京下嫁办。", 'decree')
@@ -2671,7 +2706,7 @@ def heir_marriage_deadline_tick(day):
 def heir_filial_tick(day):
     """开府的皇子每晚孝敬：按跟生母、养母的情分分账，只有玩家收得到"""
     totals = {}
-    for h in q("SELECT * FROM heirs WHERE adult_day>0 AND gender='皇子' AND title!=''"):
+    for h in q("SELECT * FROM heirs WHERE adult_day>0 AND gender='皇子' AND title!='' AND status!='deposed'"):
         total = FILIAL_SILVER.get(h['title'], 0)
         ps = heir_parents(h)
         if not total or not ps: continue
@@ -2725,23 +2760,31 @@ def errand_view(h):
 
 
 def other_adult_princes(h):
-    return list(q("SELECT * FROM heirs WHERE adult_day>0 AND gender='皇子' AND title!='' AND id!=?", (h['id'],)))
+    return list(q("SELECT * FROM heirs WHERE adult_day>0 AND gender='皇子' AND title!='' AND status!='deposed' AND id!=?", (h['id'],)))
+
+
+def errand_default_approach(h):
+    """玩家没交代办法时，皇子自己看着办：野心大的抢功，没野心的能推就推"""
+    if h['ambition'] >= 60: return 'grab'
+    if h['ambition'] < 30 and other_adult_princes(h): return 'shift'
+    return 'steady'
 
 
 def heir_errand_tick(day):
     """先把手上的差事办了，再看今天该不该派新的。差事办法由抚养人选；没选的按稳妥办，NPC 抚养的自己随机"""
-    for h in q("SELECT * FROM heirs WHERE adult_day>0 AND gender='皇子' AND title!='' AND errand!=''"):
+    for h in q("SELECT * FROM heirs WHERE adult_day>0 AND gender='皇子' AND title!='' AND status!='deposed' AND errand!=''"):
         data = errand_view(h)
         if data and data.get('day', 0) >= day: continue   # 今晚刚派的，明晚才交差
         run("UPDATE heirs SET errand='' WHERE id=?", (h['id'],))
         ern = ERRANDS.get((data or {}).get('key'))
         if not ern: continue
-        key = data.get('approach') or 'steady'
+        key = data.get('approach') or errand_default_approach(h)
         if key == 'shift' and not other_adult_princes(h): key = 'steady'
         ap = ERRAND_APPROACHES[key]
-        p = max(0.15, min(0.9, ap['base'] + (h[ern['stat']] - 50) * 0.004))
+        p = ap['base'] + (h[ern['stat']] - 50) * 0.004 + min(FACTION_ERRAND_BONUS_CAP, heir_faction_count(h) * FACTION_ERRAND_BONUS)
+        p = max(0.15, min(0.9, p))
         ok = random.random() < p
-        delta = ap['win'] if ok else ap['lose']
+        delta = ap['win'] if ok else ap['lose'] * (2 if h['status'] == 'crown' else 1)
         run('UPDATE heirs SET favor=MAX(0, favor+?) WHERE id=?', (delta, h['id']))
         who = heir_full_title(h)
         rival_line = ''
@@ -2756,13 +2799,13 @@ def heir_errand_tick(day):
             notify(p_['id'], text, 'good' if ok else 'bad')
         if abs(delta) >= 6:
             gazette(f"{who}办{ern['name']}差事，{'得了皇上称赞' if ok else '办得不力，被皇上申饬'}。", 'news')
-    for h in q("SELECT * FROM heirs WHERE adult_day>0 AND gender='皇子' AND title!='' AND errand=''"):
+    for h in q("SELECT * FROM heirs WHERE adult_day>0 AND gender='皇子' AND title!='' AND status!='deposed' AND errand=''"):
         if (day - h['adult_day']) % ERRAND_INTERVAL: continue
         key = random.choice(list(ERRANDS))
         data = dict(key=key, day=day)
         caretaker = get_consort(h['caretaker_id'])
         if not (caretaker and caretaker['user_id'] and caretaker['status'] != 'dead'):
-            data['approach'] = random.choice(['steady', 'steady', 'grab'])   # 没有玩家拿主意，皇子自己看着办
+            data['approach'] = errand_default_approach(h)   # 没有玩家拿主意，皇子自己看着办
         run('UPDATE heirs SET errand=? WHERE id=?', (json.dumps(data), h['id']))
         if caretaker and caretaker['user_id'] and caretaker['status'] != 'dead':
             notify(caretaker['id'], f"{heir_full_title(h)}接了一件{ERRANDS[key]['name']}的差事：{ERRANDS[key]['line']}。明晚交差前，去「子嗣」页替他选办法。", 'info')
@@ -2825,6 +2868,420 @@ def heir_errand(hid):
     run('UPDATE heirs SET errand=? WHERE id=?', (json.dumps(data), hid))
     flash(f"已交代：{ERRAND_APPROACHES[key]['name']}。", 'good')
     return redirect(url_for('heirs'))
+
+
+# ── 夺嫡（九点六节 F，第一阶段）：圣眷、党羽、野心、站队、立储/废储、万寿节、手段 ───────────
+
+RIVAL_MIN_AGE = 12                    # 12 岁起算进储位人选、可以站队
+RANK_BONUS = {5: 5, 6: 10, 7: 15, 8: 20, 9: 20}          # 抚养人位分给皇子圣眷的加成
+FACTION_WARN, FACTION_SCOLD = 5, 8    # 党羽超过 5 圣眷每晚 -2；超过 8 皇上当众训斥
+FACTION_WARN_LOSS, FACTION_SCOLD_LOSS, FACTION_SCOLD_INTERVAL = 2, 15, 10
+FACTION_ERRAND_BONUS, FACTION_ERRAND_BONUS_CAP = 0.02, 0.10
+CROWN_MIN_STANDING, CROWN_MIN_LEAD, CROWN_DEPOSE_BELOW = 70, 15, 50
+CROWN_INTERVAL = 10
+BIRTHDAY_INTERVAL = 20
+FEUD_DAYS, FEUD_LOSS = 3, 3
+STANCE_LOCK_DAYS = 7
+CROWN_HIT_BONUS = 0.15                # 别人对太子使离间，成功率 +15%
+AMBITION_BASE = dict(clever=15, stubborn=20, naughty=5, timid=-15, honest=-10)
+AMBITION_SPY_CHANCE, AMBITION_MAKE_FRIEND_CHANCE, AMBITION_DISCORD_CHANCE = 0.0, 0.40, 0.15
+FACTION_SELF_CAP = 12
+PERSUADE_ENERGY, PERSUADE_STEP, PERSUADE_DEAF_BELOW = 1, 10, 40
+
+SUCCESSION_MOVES = {
+    'discord': dict(name='离间', silver=30, energy=1),
+    'bribe':   dict(name='收买上书房', silver=100, energy=1),
+    'counsel': dict(name='公主进言', silver=0, energy=1),
+    'feud':    dict(name='挑拨兄弟', silver=80, energy=1, min_scheme=50),
+}
+DISCORD_BASE, DISCORD_LOSS, DISCORD_CAUGHT = 0.60, 8, 0.15
+BRIBE_BONUS, COUNSEL_GAIN, COUNSEL_INTERVAL = 15, 8, 7
+STANCE_ACTS = {
+    'tidy':   dict(name='替他打点', silver=25, energy=1, kind='open', merit=2, line='你替他上下打点了一番'),
+    'tip':    dict(name='考校前递消息', silver=0, energy=1, kind='open', exam=5, line='你把师傅的偏好悄悄递给了他'),
+    'gift':   dict(name='暗里塞银子', silver=50, energy=0, kind='secret', merit=2, line='你悄悄给他塞了银子'),
+}
+GIFTS = {
+    'calligraphy': dict(name='自己写的字', stat='study', silver=0),
+    'fur':         dict(name='亲手猎的貂皮', stat='riding', silver=0),
+    'antique':     dict(name='花重金买的古玩', stat=None, silver=100),
+}
+ANTIQUE_BASE, ANTIQUE_ROLL, GIFT_ROLL = 60, 20, 30
+BIRTHDAY_WIN, BIRTHDAY_LOSE = 10, -5
+
+
+def heir_standing(h):
+    """圣眷 = 学问×0.3 + 骑射×0.2 + 品行×0.3 + 累计功绩（考校、秋狝、差事、站队相助）+ 抚养人位分加成 + 抚养人信任×0.1。
+    heirs.favor 存的是「累计功绩」那一项，皇子真正的圣眷用这个函数算"""
+    v = h['study'] * 0.3 + h['riding'] * 0.2 + h['virtue'] * 0.3 + h['favor']
+    care = get_consort(h['caretaker_id']) if h['caretaker_id'] else None
+    if care and care['status'] != 'dead':
+        v += RANK_BONUS.get(care['rank'], 0) + care['trust'] * 0.1
+    return int(round(v))
+
+
+def heir_faction_count(h):
+    """党羽 = 生母、养母及她们姐妹的家族数 + 明着站过来的人 + 自己结交的朝臣。
+    家族系统（九点九节）还没做，家族先按角色的 family 字段算，NPC 每人算一家"""
+    fams = set()
+    for cid in (h['mother_id'], h['caretaker_id']):
+        if not cid: continue
+        for x in (cid, *sisters_of(cid)):
+            c = get_consort(x)
+            if c and c['status'] != 'dead': fams.add(c['family'] or f"#{x}")
+    open_n = q("SELECT COUNT(*) n FROM stances WHERE kind='open' AND heir_id=?", (h['id'],), one=True)['n']
+    return len(fams) + open_n + h['faction']
+
+
+def rival_princes(day=None, exclude_id=0):
+    """夺嫡人选：12 岁以上、没被废的皇子"""
+    return [h for h in q("SELECT * FROM heirs WHERE gender='皇子' AND status!='deposed' AND id!=?", (exclude_id,))
+            if heir_age_years(h, day) >= RIVAL_MIN_AGE]
+
+
+def add_merit(hid, delta):
+    run('UPDATE heirs SET favor=MAX(0, favor+?) WHERE id=?', (delta, hid))
+
+
+def sow_discord(target, source_label, attacker=None):
+    """对某位皇子散流言：成功圣眷 -8（太子更容易中）。attacker 是玩家时，败露有概率被对方的母亲查到"""
+    p = DISCORD_BASE + (CROWN_HIT_BONUS if target['status'] == 'crown' else 0)
+    ok = random.random() < p
+    if ok: add_merit(target['id'], -DISCORD_LOSS)
+    label = heir_full_title(target)
+    for par in heir_parents(target):
+        if ok: notify(par['id'], f"宫里有人在传{label}的闲话，皇上听了几句，{label}的圣眷 -{DISCORD_LOSS}。", 'bad')
+    if attacker and random.random() < DISCORD_CAUGHT:
+        for par in heir_parents(target):
+            notify(par['id'], f"你查到，散布{label}流言的是{display_name(attacker)}。", 'bad')
+            add_affinity(attacker['id'], par['id'], -20)
+    return ok
+
+
+def heir_orphan_tick(day):
+    """四阿哥这样没人抚养的皇子：每晚在求过的人里按信任×1 + 位分加成抽一位；到了截止日还没人求，皇后抱走"""
+    for h in q("SELECT * FROM heirs WHERE caretaker_id=0 AND npc_key!='' AND adult_day=0"):
+        claims = [c for c in (get_consort(r['consort_id']) for r in q("SELECT * FROM heir_claims WHERE heir_id=?", (h['id'],)))
+                  if c and c['status'] == 'normal' and c['rank'] >= 5]
+        label = heir_label(h)
+        if claims:
+            pool = [(c, max(1, c['trust'] + RANK_BONUS.get(c['rank'], 0))) for c in claims]
+            win = random.choices([c for c, _ in pool], weights=[w for _, w in pool])[0]
+            run('UPDATE heirs SET caretaker_id=?, caretaker_affinity=50, orphan_deadline_day=0 WHERE id=?', (win['id'], h['id']))
+            gazette(f"皇上把{label}交给{display_name(win)}抚养。", 'decree')
+            notify(win['id'], f"皇上准了你的请求，{label}往后由你抚养。去本宫就能教养，他可是个好苗子。", 'good')
+            for c in claims:
+                if c['id'] != win['id']: notify(c['id'], f"皇上把{label}交给了{display_name(win)}，没有选中你。", 'info')
+            run('DELETE FROM heir_claims WHERE heir_id=?', (h['id'],))
+        elif h['orphan_deadline_day'] and day >= h['orphan_deadline_day']:
+            queen = q("SELECT * FROM consorts WHERE npc_key='huanghou' AND status='normal'", one=True)
+            if not queen: continue
+            run('UPDATE heirs SET caretaker_id=?, caretaker_affinity=50, orphan_deadline_day=0 WHERE id=?', (queen['id'], h['id']))
+            gazette(f"皇后把没人照管的{label}抱到景仁宫抚养。", 'decree')
+
+
+def heir_ambition_tick(day):
+    """成年皇子有自己的心思：野心 ≥ 60 去结交朝臣，≥ 80 会私下对兄弟使绊子。事后才通知抚养人"""
+    for h in q("SELECT * FROM heirs WHERE adult_day>0 AND gender='皇子' AND title!='' AND status!='deposed'"):
+        who = heir_full_title(h)
+        if h['ambition'] >= 60 and h['faction'] < FACTION_SELF_CAP and random.random() < AMBITION_MAKE_FRIEND_CHANCE:
+            run('UPDATE heirs SET faction=faction+1 WHERE id=?', (h['id'],))
+            for par in heir_parents(h): notify(par['id'], f"{who}近来常与朝臣走动，又结交了一位。", 'info')
+        if h['ambition'] >= 80 and random.random() < AMBITION_DISCORD_CHANCE:
+            rivals = rival_princes(day, exclude_id=h['id'])
+            if rivals:
+                target = random.choice(rivals)
+                sow_discord(target, who)
+                for par in heir_parents(h): notify(par['id'], f"{who}私下对{heir_full_title(target)}使了绊子，事后才有人告诉你。", 'info')
+
+
+def heir_feud_tick(day):
+    for h in q("SELECT * FROM heirs WHERE feud_until_day>=?", (day,)):
+        add_merit(h['id'], -FEUD_LOSS)
+
+
+def heir_faction_tick(day):
+    """结党过多：超过 5 个每晚圣眷 -2，超过 8 个皇上当众训斥（10 天一次）"""
+    for h in q("SELECT * FROM heirs WHERE gender='皇子' AND status!='deposed'"):
+        n = heir_faction_count(h)
+        if n <= FACTION_WARN: continue
+        add_merit(h['id'], -FACTION_WARN_LOSS)
+        if n > FACTION_SCOLD and day >= h['reprimand_ready_day']:
+            add_merit(h['id'], -FACTION_SCOLD_LOSS)
+            run('UPDATE heirs SET reprimand_ready_day=? WHERE id=?', (day + FACTION_SCOLD_INTERVAL, h['id']))
+            label = heir_full_title(h)
+            gazette(f"皇上当众训斥{label}结党营私。", 'news')
+            for par in heir_parents(h): notify(par['id'], f"{label}结党过多，皇上当众训斥，圣眷 -{FACTION_SCOLD_LOSS}。", 'bad')
+
+
+def depose_crown(h):
+    run("UPDATE heirs SET status='deposed', errand='' WHERE id=?", (h['id'],))
+    label = heir_full_title(h)
+    gazette(f"皇上下旨废黜太子{label}，圈禁高墙。", 'decree')
+    care = get_consort(h['caretaker_id']) if h['caretaker_id'] else None
+    if care and care['user_id'] and care['status'] != 'dead' and care['rank'] > 1:
+        set_rank(care['id'], care['rank'] - 1)
+    for par in heir_parents(h):
+        notify(par['id'], f"太子{label}被废，圈禁。" + ('你受牵连，降了一级。' if par['id'] == h['caretaker_id'] else ''), 'bad')
+
+
+def heir_court_tick(day):
+    """朝议立储：每 10 天，最高圣眷 ≥ 70 且领先第二名 15 以上，明立太子；否则留中不发。太子圣眷低于 50 就废"""
+    for h in q("SELECT * FROM heirs WHERE status='crown'"):
+        if heir_standing(h) < CROWN_DEPOSE_BELOW: depose_crown(h)
+    if day % CROWN_INTERVAL: return
+    ranked = sorted(rival_princes(day), key=heir_standing, reverse=True)
+    if not ranked or any(h['status'] == 'crown' for h in ranked): return
+    top = heir_standing(ranked[0])
+    second = heir_standing(ranked[1]) if len(ranked) > 1 else 0
+    if top >= CROWN_MIN_STANDING and top - second >= CROWN_MIN_LEAD:
+        run("UPDATE heirs SET status='crown' WHERE id=?", (ranked[0]['id'],))
+        label = heir_full_title(ranked[0])
+        gazette(f"大臣联名请立储，皇上准奏，册立{label}为皇太子。", 'decree')
+        for par in heir_parents(ranked[0]): notify(par['id'], f"{label}被册立为太子。树大招风，往后别人对他使绊子更容易得手，他办砸差事也要扣双倍。", 'decree')
+    else:
+        gazette('大臣上折请立储，皇上留中不发。', 'news')
+
+
+def heir_birthday_tick(day):
+    """万寿节（皇上生辰）：12 岁以上的皇子各献寿礼，皇上当众评点，头名圣眷 +10，末名 -5"""
+    if day % BIRTHDAY_INTERVAL: return
+    princes = rival_princes(day)
+    if not princes: return
+    scores = {}
+    for h in princes:
+        gift = h['gift'] if h['gift'] in GIFTS else random.choice(['calligraphy', 'fur'])
+        care = get_consort(h['caretaker_id']) if h['caretaker_id'] else None
+        if GIFTS[gift]['silver']:
+            if care and care['silver'] >= GIFTS[gift]['silver']: add_silver(care['id'], -GIFTS[gift]['silver'])
+            else: gift = 'calligraphy'   # 银子不够，只好自己写幅字
+        stat = GIFTS[gift]['stat']
+        scores[h['id']] = (ANTIQUE_BASE + random.randint(0, ANTIQUE_ROLL)) if not stat else h[stat] + random.randint(0, GIFT_ROLL)
+        run("UPDATE heirs SET gift='' WHERE id=?", (h['id'],))
+    best = max(princes, key=lambda h: scores[h['id']])
+    add_merit(best['id'], BIRTHDAY_WIN)
+    gazette(f"万寿节，{heir_full_title(best)}献的寿礼最得皇上欢心，圣眷 +{BIRTHDAY_WIN}。", 'news')
+    for par in heir_parents(best): notify(par['id'], f"万寿节上，{heir_full_title(best)}的寿礼拔得头筹，圣眷 +{BIRTHDAY_WIN}。", 'good')
+    if len(princes) > 1:
+        worst = min(princes, key=lambda h: scores[h['id']])
+        if worst['id'] != best['id']:
+            add_merit(worst['id'], BIRTHDAY_LOSE)
+            for par in heir_parents(worst): notify(par['id'], f"万寿节上，{heir_full_title(worst)}的寿礼不称圣意，圣眷 {BIRTHDAY_LOSE}。", 'bad')
+
+
+def heir_succession_tick(day):
+    heir_orphan_tick(day)
+    heir_ambition_tick(day)
+    heir_feud_tick(day)
+    heir_faction_tick(day)
+    heir_court_tick(day)
+    heir_birthday_tick(day)
+
+
+@app.route('/heirs/persuade/<int:hid>', methods=['POST'])
+@login_required
+def heir_persuade(hid):
+    c = g.me
+    h = q('SELECT * FROM heirs WHERE id=?', (hid,), one=True)
+    kind = request.form.get('kind')
+    err = None
+    if not h or h['caretaker_id'] != c['id'] or not h['adult_day'] or h['gender'] != '皇子': err = '这不是你抚养的成年阿哥。'
+    elif kind not in ('calm', 'strive'): err = '劝他什么？'
+    elif c['energy'] < PERSUADE_ENERGY: err = '精力不够了。'
+    elif daily_count(c['id'], f'persuade:{hid}'): err = '今天已经劝过他了。'
+    if err:
+        flash(err, 'bad'); return redirect(url_for('succession'))
+    run('UPDATE consorts SET energy=energy-? WHERE id=?', (PERSUADE_ENERGY, c['id']))
+    daily_inc(c['id'], f'persuade:{hid}')
+    label = heir_label(h)
+    if h['caretaker_affinity'] < PERSUADE_DEAF_BELOW and random.random() < 0.5:
+        flash(f"{label}把脸一扭：「额娘又不是我亲额娘。」他没听进去。", 'bad')
+    else:
+        delta = -PERSUADE_STEP if kind == 'calm' else PERSUADE_STEP
+        run('UPDATE heirs SET ambition=? WHERE id=?', (clamp(h['ambition'] + delta), hid))
+        flash(f"{label}听进去了。野心 {delta:+d}。", 'good')
+    return redirect(url_for('succession'))
+
+
+@app.route('/succession')
+@login_required
+def succession():
+    c = g.me
+    day = cur_day()
+    princes = sorted(rival_princes(day), key=heir_standing, reverse=True)
+    board = [dict(h=h, standing=heir_standing(h), faction=heir_faction_count(h), parents=heir_parents(h)) for h in princes]
+    for row in board:
+        h = row['h']
+        row['mine'] = h['caretaker_id'] == c['id']
+        row['cared_by'] = get_consort(h['caretaker_id']) if h['caretaker_id'] else None
+    stances = {r['kind']: r for r in q("SELECT * FROM stances WHERE consort_id=?", (c['id'],))}
+    mine_adult_princes = [h for h in q("SELECT * FROM heirs WHERE caretaker_id=? AND gender='皇子' AND adult_day>0 AND status!='deposed'", (c['id'],))]
+    my_kids_exam = [h for h in q("SELECT * FROM heirs WHERE caretaker_id=? AND adult_day=0", (c['id'],)) if 6 <= heir_age_years(h, day) <= 15]
+    princesses = [h for h in q("SELECT * FROM heirs WHERE caretaker_id=? AND gender='公主'", (c['id'],)) if heir_age_years(h, day) >= RIVAL_MIN_AGE]
+    orphans = q("SELECT * FROM heirs WHERE caretaker_id=0 AND npc_key!='' AND adult_day=0")
+    my_claims = {r['heir_id'] for r in q("SELECT heir_id FROM heir_claims WHERE consort_id=?", (c['id'],))}
+    return render_template('succession.html', c=c, day=day, board=board, stances=stances, mine_adult_princes=mine_adult_princes,
+                           my_kids_exam=my_kids_exam, princesses=princesses, orphans=orphans, my_claims=my_claims,
+                           get_consort=get_consort, heir_standing=heir_standing, STANCE_ACTS=STANCE_ACTS, GIFTS=GIFTS,
+                           SUCCESSION_MOVES=SUCCESSION_MOVES, STANCE_LOCK_DAYS=STANCE_LOCK_DAYS, PERSUADE_ENERGY=PERSUADE_ENERGY,
+                           next_birthday=day + (-day) % BIRTHDAY_INTERVAL, next_court=day + (-day) % CROWN_INTERVAL,
+                           daily_count=daily_count, heir_age_years=heir_age_years, RANK_BONUS=RANK_BONUS)
+
+
+def _rival(hid):
+    h = q('SELECT * FROM heirs WHERE id=?', (hid,), one=True)
+    return h if h and h['gender'] == '皇子' and h['status'] != 'deposed' and heir_age_years(h) >= RIVAL_MIN_AGE else None
+
+
+@app.route('/succession/stance', methods=['POST'])
+@login_required
+def succession_stance():
+    c = g.me
+    kind = request.form.get('kind')
+    try: hid = int(request.form.get('heir_id', 0))
+    except ValueError: hid = 0
+    h = _rival(hid)
+    cur = q("SELECT * FROM stances WHERE consort_id=? AND kind=?", (c['id'], kind), one=True) if kind in ('open', 'secret') else None
+    err = None
+    if kind not in ('open', 'secret'): err = '明着站还是暗里站？'
+    elif request.form.get('withdraw') == '1':
+        if not cur: err = '你本就没站队。'
+        elif cur and cur['since_day'] + STANCE_LOCK_DAYS > cur_day(): err = f"站队 {STANCE_LOCK_DAYS} 天内不能改。"
+        else:
+            run("DELETE FROM stances WHERE consort_id=? AND kind=?", (c['id'], kind))
+            flash('已撤下。', 'good'); return redirect(url_for('succession'))
+    elif not h: err = f'要 {RIVAL_MIN_AGE} 岁以上、没被废黜的阿哥才能站队。'
+    elif h['caretaker_id'] == c['id'] or h['mother_id'] == c['id']: err = '自己的孩子，不必站队。'
+    elif c['status'] != 'normal': err = '你现在做不了这个。'
+    elif cur and cur['since_day'] + STANCE_LOCK_DAYS > cur_day(): err = f"站队 {STANCE_LOCK_DAYS} 天内不能改。"
+    else:
+        other = q("SELECT * FROM stances WHERE consort_id=? AND kind!=?", (c['id'], kind), one=True)
+        if other and other['heir_id'] == hid: err = '明站和暗站不必是同一位。'
+    if err:
+        flash(err, 'bad'); return redirect(url_for('succession'))
+    run("INSERT OR REPLACE INTO stances (consort_id, kind, heir_id, since_day) VALUES (?,?,?,?)", (c['id'], kind, hid, cur_day()))
+    label = heir_full_title(h)
+    if kind == 'open':
+        gazette(f"{display_name(c)}向{label}示好。", 'news')
+        for par in heir_parents(h): notify(par['id'], f"{display_name(c)}公开向{label}示好，他的党羽多了一位。", 'good')
+        flash(f"已明着站在{label}一边。", 'good')
+    else:
+        flash(f"已暗里站在{label}一边，没人知道。", 'good')
+    return redirect(url_for('succession'))
+
+
+@app.route('/succession/act', methods=['POST'])
+@login_required
+def succession_act():
+    """站队后每天替他做的一件事"""
+    c = g.me
+    key = request.form.get('act')
+    cfg = STANCE_ACTS.get(key)
+    st = q("SELECT * FROM stances WHERE consort_id=? AND kind=?", (c['id'], cfg['kind']), one=True) if cfg else None
+    h = _rival(st['heir_id']) if st else None
+    err = None
+    if not cfg or not st: err = '你还没站队。'
+    elif not h: err = '他已经不在储位人选里了。'
+    elif c['status'] != 'normal': err = '你现在做不了这个。'
+    elif daily_count(c['id'], f"stance:{cfg['kind']}"): err = '今天已经替他办过一件事了。'
+    elif c['energy'] < cfg['energy']: err = '精力不够了。'
+    elif c['silver'] < cfg['silver']: err = f"银子不够，要 {cfg['silver']} 两。"
+    elif cfg.get('exam') and not (6 <= heir_age_years(h) <= 15): err = '他已经不参加考校了。'
+    if err:
+        flash(err, 'bad'); return redirect(url_for('succession'))
+    run('UPDATE consorts SET energy=energy-? WHERE id=?', (cfg['energy'], c['id']))
+    if cfg['silver']: add_silver(c['id'], -cfg['silver'])
+    daily_inc(c['id'], f"stance:{cfg['kind']}")
+    if cfg.get('merit'): add_merit(h['id'], cfg['merit'])
+    if cfg.get('exam'): run('UPDATE heirs SET exam_bonus=MAX(exam_bonus,?) WHERE id=?', (cfg['exam'], h['id']))
+    flash(f"{cfg['line']}。", 'good')
+    return redirect(url_for('succession'))
+
+
+@app.route('/succession/claim/<int:hid>', methods=['POST'])
+@login_required
+def succession_claim(hid):
+    c = g.me
+    h = q('SELECT * FROM heirs WHERE id=?', (hid,), one=True)
+    err = None
+    if not h or h['caretaker_id'] != 0 or not h['npc_key'] or h['adult_day']: err = '这个孩子已经有人照管了。'
+    elif c['rank'] < 5: err = '嫔位以上才能求皇上把皇子交给你抚养。'
+    elif c['status'] != 'normal': err = '你现在去不了养心殿。'
+    elif q("SELECT 1 FROM heir_claims WHERE consort_id=? AND heir_id=?", (c['id'], hid), one=True): err = '你已经求过了，等皇上定夺。'
+    elif c['energy'] < 1: err = '精力不够了。'
+    if err:
+        flash(err, 'bad'); return redirect(url_for('succession'))
+    run('UPDATE consorts SET energy=energy-1 WHERE id=?', (c['id'],))
+    run("INSERT INTO heir_claims (consort_id, heir_id, day) VALUES (?,?,?)", (c['id'], hid, cur_day()))
+    flash(f"你在养心殿求了皇上。今晚结算时，皇上会在求过的人里挑一位（信任高、位分高的更有把握）。", 'good')
+    return redirect(url_for('succession'))
+
+
+@app.route('/succession/move', methods=['POST'])
+@login_required
+def succession_move():
+    c = g.me
+    key = request.form.get('move')
+    mv = SUCCESSION_MOVES.get(key)
+    def toint(name):
+        try: return int(request.form.get(name, 0))
+        except ValueError: return 0
+    err, target, mine, other = None, _rival(toint('target_id')), None, _rival(toint('other_id'))
+    day = cur_day()
+    if not mv: err = '要做什么？'
+    elif c['status'] != 'normal': err = '你现在做不了这个。'
+    elif c['energy'] < mv['energy']: err = '精力不够了。'
+    elif c['silver'] < mv['silver']: err = f"银子不够，要 {mv['silver']} 两。"
+    elif key == 'discord':
+        if not target: err = '选一位 12 岁以上的阿哥。'
+        elif target['caretaker_id'] == c['id']: err = '那是你自己的孩子。'
+    elif key == 'bribe':
+        mine = q('SELECT * FROM heirs WHERE id=?', (toint('target_id'),), one=True)
+        if not mine or mine['caretaker_id'] != c['id'] or mine['adult_day'] or not 6 <= heir_age_years(mine, day) <= 15:
+            err = '只能替自己抚养的、6~15 岁的孩子打点上书房。'
+    elif key == 'counsel':
+        mine = q('SELECT * FROM heirs WHERE id=?', (toint('princess_id'),), one=True)
+        if not mine or mine['caretaker_id'] != c['id'] or mine['gender'] != '公主' or heir_age_years(mine, day) < RIVAL_MIN_AGE:
+            err = '要你抚养的、12 岁以上的公主才能进言。'
+        elif day < mine['plead_ready_day']: err = f"公主刚进过言，{mine['plead_ready_day'] - day} 天后才能再进。"
+        elif not target: err = '替哪位阿哥说话？'
+    elif key == 'feud':
+        if c['scheme'] < mv['min_scheme']: err = f"心计要 {mv['min_scheme']} 以上才使得出这招。"
+        elif not target or not other or target['id'] == other['id']: err = '选两位不同的、12 岁以上的阿哥。'
+    if err:
+        flash(err, 'bad'); return redirect(url_for('succession'))
+    run('UPDATE consorts SET energy=energy-? WHERE id=?', (mv['energy'], c['id']))
+    if mv['silver']: add_silver(c['id'], -mv['silver'])
+    if key == 'discord':
+        ok = sow_discord(target, display_name(c), attacker=c)
+        flash(f"流言散出去了，{heir_full_title(target)}的圣眷 -{DISCORD_LOSS}。" if ok else '流言没能传到皇上耳朵里，银子白花了。', 'good' if ok else 'bad')
+    elif key == 'bribe':
+        run('UPDATE heirs SET exam_bonus=MAX(exam_bonus,?) WHERE id=?', (BRIBE_BONUS, mine['id']))
+        flash(f"上书房那边打点妥当，{heir_label(mine)}下一次考校判定 +{BRIBE_BONUS}。", 'good')
+    elif key == 'counsel':
+        run('UPDATE heirs SET plead_ready_day=? WHERE id=?', (day + COUNSEL_INTERVAL, mine['id']))
+        add_merit(target['id'], COUNSEL_GAIN)
+        flash(f"{heir_label(mine)}在皇上面前替{heir_full_title(target)}说了好话，他的圣眷 +{COUNSEL_GAIN}。", 'good')
+        for par in heir_parents(target): notify(par['id'], f"{heir_label(mine)}公主在皇上面前替{heir_full_title(target)}说了好话，圣眷 +{COUNSEL_GAIN}。", 'good')
+    elif key == 'feud':
+        for hh in (target, other): run('UPDATE heirs SET feud_until_day=? WHERE id=?', (day + FEUD_DAYS, hh['id']))
+        flash(f"{heir_full_title(target)}和{heir_full_title(other)}从此结了怨，之后 {FEUD_DAYS} 天两人的圣眷每天各 -{FEUD_LOSS}。", 'good')
+        for hh in (target, other):
+            for par in heir_parents(hh): notify(par['id'], f"{heir_full_title(hh)}和兄弟起了嫌隙，之后 {FEUD_DAYS} 天圣眷每天 -{FEUD_LOSS}。", 'bad')
+    return redirect(url_for('succession'))
+
+
+@app.route('/succession/gift/<int:hid>', methods=['POST'])
+@login_required
+def succession_gift(hid):
+    c = g.me
+    h = q('SELECT * FROM heirs WHERE id=?', (hid,), one=True)
+    gift = request.form.get('gift')
+    if not h or h['caretaker_id'] != c['id'] or gift not in GIFTS or heir_age_years(h) < RIVAL_MIN_AGE:
+        flash('备不了这份寿礼。', 'bad'); return redirect(url_for('succession'))
+    run('UPDATE heirs SET gift=? WHERE id=?', (gift, hid))
+    flash(f"寿礼备下了：{GIFTS[gift]['name']}。" + ('万寿节那晚扣 100 两，银子不够就只好写幅字。' if GIFTS[gift]['silver'] else ''), 'good')
+    return redirect(url_for('succession'))
 
 
 @app.route('/heirs/raise/<int:hid>', methods=['POST'])
@@ -3312,6 +3769,7 @@ def _settle_night():
     heir_growth_tick(day)
     heir_rehome_tick(day)
     heir_adult_tick(day)
+    heir_succession_tick(day)
     heir_exam_tick(day)
     heir_hunt_tick(day)
 
@@ -3563,7 +4021,7 @@ def admin_reset():
         flash('要在框里输入「重开」才会重置。', 'bad')
         return redirect(url_for('admin'))
     for t in ('intrigues', 'messages', 'gazette', 'relations', 'known_secrets', 'inventory', 'heirs', 'letters', 'letter_stars', 'reports', 'maids',
-              'bribes', 'afflictions', 'cases', 'case_suspects', 'case_actions',
+              'bribes', 'afflictions', 'cases', 'case_suspects', 'case_actions', 'stances', 'heir_claims',
               'hobby_projects', 'hobby_items', 'displays', 'daily_counters', 'consorts', 'game_state'):
         run(f"DELETE FROM {t}")
     if request.form.get('keep_users') != '1':
@@ -3968,7 +4426,8 @@ def scene():
             flash('这事已经过去了。', 'info')
             return redirect(url_for('index'))
         if is_exam:
-            ok = heir[opt['stat']] + random.randint(0, SCENE_ROLL) >= opt['dc']
+            ok = heir[opt['stat']] + heir['exam_bonus'] + random.randint(0, SCENE_ROLL) >= opt['dc']
+            if heir['exam_bonus']: run('UPDATE heirs SET exam_bonus=0 WHERE id=?', (heir['id'],))
             outcome = opt['win_text'] if ok else opt['lose_text']
             gain = (opt['win'] if ok else opt.get('lose', {})).get('heir_favor', 0)
             if gain:

@@ -9,6 +9,10 @@ import test_heirs
 game = test_heirs.game
 
 
+def favor_only(h):
+    return h['favor']
+
+
 class AdulthoodTests(unittest.TestCase):
     setUp = test_heirs.fixtures.LifecycleTests.setUp
     tearDown = test_heirs.fixtures.LifecycleTests.tearDown
@@ -32,6 +36,7 @@ class AdulthoodTests(unittest.TestCase):
 
     # ── 皇子封爵 ─────────────────────────────────────────────────────────────
 
+    @patch.object(game, 'heir_standing', favor_only)   # 这里只测门槛，圣眷公式另有用例
     def test_prince_title_by_favor(self):
         for favor, title in [(100, '亲王'), (80, '亲王'), (79, '郡王'), (60, '郡王'), (59, '贝勒'), (40, '贝勒'), (39, '贝子'), (0, '贝子')]:
             hid = self.grown(self.atk, favor=favor)
@@ -45,6 +50,7 @@ class AdulthoodTests(unittest.TestCase):
         game.heir_adult_tick(game.cur_day())
         self.assertEqual(self.row(hid)['adult_day'], 0)
 
+    @patch.object(game, 'heir_standing', favor_only)   # 这里只测门槛，圣眷公式另有用例
     def test_coming_of_age_fires_once_and_notifies_parents(self):
         hid = self.grown(self.tgt, caretaker=self.atk, favor=65)
         game.heir_adult_tick(game.cur_day())
@@ -259,6 +265,7 @@ class AdulthoodTests(unittest.TestCase):
         self.assertEqual((h['marriage'], h['title']), ('mongol', '固伦公主'))
         self.assertEqual(game.get_consort(self.atk)['trust'], 49)
 
+    @patch.object(game, 'heir_standing', favor_only)   # 这里只测门槛，圣眷公式另有用例
     def test_princess_low_favor_also_sent_away(self):
         game.run('UPDATE consorts SET trust=90 WHERE id=?', (self.atk,))
         hid = self.grown(self.atk, gender='公主', favor=59)

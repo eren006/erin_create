@@ -25,6 +25,7 @@ class LifecycleTests(unittest.TestCase):
         self.ctx.push()
         game.run('UPDATE game_state SET day=10')
         game.run("UPDATE consorts SET status='cold'")   # NPC 全部靠边，免得干扰
+        game.run('DELETE FROM heirs')                    # 开服自带的三阿哥、四阿哥也清掉；夺嫡的用例自己重新播种
         self.atk = self.player('甲', rank=5)
         self.tgt = self.player('乙', rank=4)
         self.client = game.app.test_client()
