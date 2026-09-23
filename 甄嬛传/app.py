@@ -376,6 +376,8 @@ ACTIONS = {
                     desc='派一个宫人去打听对方的秘密（用一次差使，不花精力）'),
     'plead':   dict(name='向皇上求情', energy=1, silver=50, daily=1, when={'normal'}, target=True,
                     desc='为禁足或冷宫中的姐妹求情，缩短日子。成败看皇上对你的信任'),
+    'pray':    dict(name='去佛堂礼佛', energy=1, silver=0, daily=1, when={'normal', 'confined'},
+                    desc='添香油钱，攒福报：福报高的人不容易老死、病重时活路更大。这十天没对人使过计的「躺平」之人，佛前还有机会延年益寿'),
     'shoukang': dict(name='去寿康宫请安', energy=1, silver=0, daily=1, when={'normal'}, sick_block=True,
                      desc='太妃姑母会悄悄告诉你一件宫里的旧事。7 天一次'),
     'attend':  dict(name='去养心殿侍疾', energy=1, silver=0, daily=1, when={'normal'}, sick_block=True,
@@ -773,7 +775,13 @@ def init_db():
                      'heirloom_maid_id': 'INTEGER NOT NULL DEFAULT 0',
                      'culprit_id': 'INTEGER NOT NULL DEFAULT 0',
                      'inherit': "TEXT NOT NULL DEFAULT '{}'",
-                     'shoukang_day': 'INTEGER NOT NULL DEFAULT 0'},
+                     'shoukang_day': 'INTEGER NOT NULL DEFAULT 0',
+                     'prenatal': "TEXT NOT NULL DEFAULT '{}'",
+                     'diet': "TEXT NOT NULL DEFAULT 'normal'",
+                     'diet_eff': "TEXT NOT NULL DEFAULT 'normal'",
+                     'repair': "TEXT NOT NULL DEFAULT ''",
+                     'blessing': 'INTEGER NOT NULL DEFAULT 0',
+                     'longevity': 'INTEGER NOT NULL DEFAULT 0'},
         'heirs': {'caretaker_id': 'INTEGER NOT NULL DEFAULT 0',
                   'personality': "TEXT NOT NULL DEFAULT ''",
                   'study': 'INTEGER NOT NULL DEFAULT 20',
@@ -2507,8 +2515,154 @@ def do_attend(c, cfg):
     return '苏培盛拦在殿外：「皇上需要静养，小主的心意奴才转达。」', 'info'
 
 
+# ── 宫里的日常开销：饮食、维修、礼佛 ─────────────────────────────────────────────
+
+DIET_RATIO = 0.4        # 普通饮食每晚花掉例银的四成，奢华 2.5 倍、节俭四成
+DIETS = {
+    'frugal': dict(name='节俭', mult=0.4, order=0, desc='清粥小菜，省钱，只是日子久了身子虚：每 3 晚体质 −1。'),
+    'normal': dict(name='普通', mult=1.0, order=1, desc='按位分的份例吃，不好不坏。'),
+    'lavish': dict(name='奢华', mult=2.5, order=2, desc='燕窝鱼翅、四时鲜果：每 2 晚体质 +1、每 6 晚容貌 +1、翻牌权重 +8、宫人忠心 +1；'
+                                                     '只是贵人以下摆这个排场，难免有人说你逾制。'),
+}
+LAVISH_ILL_FORM_CHANCE = 0.06     # 贵人以下吃奢华，每晚被人参「逾制」的概率
+LAVISH_BED_BONUS = 8
+
+
+def diet_cost(rank, tier):
+    return max(1, round(STIPEND.get(rank, 5) * DIET_RATIO * DIETS[tier]['mult']))
+
+
+def diet_costs(rank):
+    return {k: diet_cost(rank, k) for k in DIETS}
+
+
+def diet_tick(day):
+    """每晚开伙：按选的档次扣银子，银子不够就自动降一档，再不够就只能勒紧裤腰带；再按实际吃的档次给好处或坏处"""
+    for c in list(q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND status IN ('normal','confined')")):
+        choice = c['diet'] if c['diet'] in DIETS else 'normal'
+        eff = choice
+        while eff != 'frugal' and c['silver'] < diet_cost(c['rank'], eff):
+            eff = 'normal' if eff == 'lavish' else 'frugal'
+        cost = min(c['silver'], diet_cost(c['rank'], eff))
+        if cost: add_silver(c['id'], -cost)
+        if eff != choice:
+            notify(c['id'], f"银子不够，这几日的饮食只好从{DIETS[choice]['name']}降到{DIETS[eff]['name']}。", 'info')
+        run("UPDATE consorts SET diet_eff=? WHERE id=?", (eff, c['id']))
+        if eff == 'frugal' and day % 3 == 0 and c['health'] > 20:
+            add_stat(c['id'], 'health', -1)
+        elif eff == 'lavish':
+            if day % 2 == 0 and c['health'] < 95: add_stat(c['id'], 'health', 1)
+            if day % 6 == 0 and c['appearance'] < 95: add_stat(c['id'], 'appearance', 1)
+            for m in active_maids(c['id']): add_loyalty(m['id'], 1)
+            if c['rank'] <= 4 and random.random() < LAVISH_ILL_FORM_CHANCE:
+                add_stat(c['id'], 'virtue', -2)
+                cut_favor(c['id'], 0.05)
+                notify(c['id'], '有人在皇后跟前说你吃穿用度逾了制。德行 −2，圣宠 −5%。', 'bad')
+
+
+@app.route('/diet', methods=['POST'])
+@login_required
+def set_diet():
+    c = g.me
+    tier = request.form.get('tier')
+    if tier not in DIETS or c['status'] not in ('normal', 'confined'):
+        flash('现在改不了饮食。', 'bad')
+    else:
+        run("UPDATE consorts SET diet=? WHERE id=?", (tier, c['id']))
+        flash(f"往后饮食按「{DIETS[tier]['name']}」，每晚约 {diet_cost(c['rank'], tier)} 两。", 'good')
+    return redirect(url_for('place', key='home'))
+
+
+REPAIRS = {
+    'window': dict(name='窗纸破了', base=20, sev=1, weight=3, line='窗纸被风吹破了，屋里灌风。'),
+    'leak':   dict(name='屋顶漏雨', base=55, sev=2, weight=2, line='屋顶漏雨，被褥都潮了。'),
+    'stove':  dict(name='地龙坏了', base=40, sev=2, weight=2, line='烧地龙的火道塌了，屋里一夜比一夜冷。'),
+    'well':   dict(name='井水浑浊', base=35, sev=1, weight=2, line='院里的井水浑了，吃着一股土腥气。'),
+    'beam':   dict(name='梁柱朽坏', base=140, sev=3, weight=1, line='一根梁柱朽了，屋里吱呀作响，让人不敢安睡。'),
+}
+REPAIR_CHANCE, REPAIR_COST_PER_RANK = 0.04, 0.15
+
+
+def repair_cost(kind, rank):
+    return round(REPAIRS[kind]['base'] * (1 + REPAIR_COST_PER_RANK * rank))
+
+
+def repair_state(c):
+    try: st = json.loads(c['repair']) if c['repair'] else None
+    except ValueError: st = None
+    return st if st and st.get('kind') in REPAIRS else None
+
+
+def repair_tick(day):
+    """宫里的屋子偶尔会坏：没修的每晚体质 −1（重一点的还会让宫人寒心、圣宠掉），修好为止"""
+    for c in list(q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND status IN ('normal','confined') AND hall!=''")):
+        st = repair_state(c)
+        if st:
+            sev = REPAIRS[st['kind']]['sev']
+            if c['health'] > 20: add_stat(c['id'], 'health', -1)
+            if sev >= 2:
+                for m in active_maids(c['id']): add_loyalty(m['id'], -1)
+            if sev >= 3: cut_favor(c['id'], 0.02)
+            st['days'] = st.get('days', 0) + 1
+            run("UPDATE consorts SET repair=? WHERE id=?", (json.dumps(st), c['id']))
+        elif random.random() < REPAIR_CHANCE:
+            kind = random.choices(list(REPAIRS), weights=[r['weight'] for r in REPAIRS.values()])[0]
+            cost = repair_cost(kind, c['rank'])
+            run("UPDATE consorts SET repair=? WHERE id=?", (json.dumps(dict(kind=kind, cost=cost, day=day, days=0)), c['id']))
+            notify(c['id'], f"{REPAIRS[kind]['line']}找内务府来修，要 {cost} 两；不修，身子和宫人都要跟着受罪。去本宫看看。", 'bad')
+
+
+@app.route('/repair', methods=['POST'])
+@login_required
+def do_repair():
+    c = g.me
+    st = repair_state(c)
+    if not st:
+        flash('宫里没有要修的东西。', 'bad')
+    elif c['silver'] < st['cost']:
+        flash(f"银子不够，要 {st['cost']} 两。", 'bad')
+    else:
+        add_silver(c['id'], -st['cost'])
+        run("UPDATE consorts SET repair='' WHERE id=?", (c['id'],))
+        flash(f"内务府的匠人来了，{REPAIRS[st['kind']]['name']}修好了，花了 {st['cost']} 两。", 'good')
+    return redirect(url_for('place', key='home'))
+
+
+PRAY_TIERS = {20: dict(blessing=1, chance=0.08), 60: dict(blessing=3, chance=0.15), 150: dict(blessing=8, chance=0.25)}
+BLESSING_CAP, QUIET_DAYS, LONGEVITY_MAX = 100, 10, 5
+BLESSING_OLD_AGE_DIV, BLESSING_OLD_AGE_MAX = 200, 0.5     # 福报每 2 点，老死的概率少 1%，最多少一半
+BLESSING_SURVIVE_DIV, BLESSING_SURVIVE_MAX = 500, 0.15    # 福报每 5 点，病重、中毒时多 1% 的活路，最多多 15%
+
+
+def is_quiet(c, day=None):
+    """躺平：这十天没有对人使过计"""
+    day = cur_day() if day is None else day
+    return not q("SELECT 1 FROM intrigues WHERE attacker_id=? AND day>=?", (c['id'], day - QUIET_DAYS), one=True)
+
+
+def blessing_survive_bonus(c):
+    return min(BLESSING_SURVIVE_MAX, c['blessing'] / BLESSING_SURVIVE_DIV)
+
+
+def do_pray(c, cfg):
+    try: amount = int(request.form.get('amount', 0))
+    except ValueError: amount = 0
+    tier = PRAY_TIERS.get(amount)
+    if not tier: raise Reject('香油钱有 20、60、150 两三档。')
+    if c['silver'] < amount: raise Reject(f'手头只有 {c["silver"]} 两，不够 {amount} 两。')
+    charge(c, cfg)
+    add_silver(c['id'], -amount)
+    run("UPDATE consorts SET blessing=MIN(?, blessing+?) WHERE id=?", (BLESSING_CAP, tier['blessing'], c['id']))
+    add_stat(c['id'], 'health', 1)
+    msg = f"你在佛前添了 {amount} 两香油，心里静了下来。福报 +{tier['blessing']}，体质 +1。"
+    if is_quiet(c) and c['longevity'] < LONGEVITY_MAX and random.random() < tier['chance']:
+        run("UPDATE consorts SET age_months=MAX(216, age_months-12), longevity=longevity+1 WHERE id=?", (c['id'],))
+        msg += '香烟直直地往上走，你忽然觉得身子轻了些，像是又年轻了一岁。'
+    return msg, 'good'
+
+
 ACTION_HANDLERS = dict(greet=do_greet, study=do_study, groom=do_groom, rest=do_rest, reflect=do_reflect,
-                       eyes=do_eyes, seek=do_seek, garden=do_garden, visit=do_visit, spy=do_spy, plead=do_plead, attend=do_attend, shoukang=do_shoukang)
+                       eyes=do_eyes, seek=do_seek, garden=do_garden, visit=do_visit, spy=do_spy, plead=do_plead, attend=do_attend, shoukang=do_shoukang, pray=do_pray)
 
 # ── 秘密坦白 ───────────────────────────────────────────────────────────────────
 
@@ -4319,6 +4473,34 @@ def succession_gift(hid):
     return redirect(url_for('succession'))
 
 
+@app.route('/prenatal', methods=['POST'])
+@login_required
+def prenatal():
+    c = g.me
+    kind = request.form.get('kind')
+    cfg = PRENATAL.get(kind)
+    err = None
+    if not c['pregnant_since']: err = '你没有身孕。'
+    elif not cfg: err = '选一样安胎的法子。'
+    elif c['status'] not in ('normal', 'confined'): err = '现在做不了这个。'
+    elif c['energy'] < PRENATAL_ENERGY: err = '精力不够了。'
+    elif daily_count(c['id'], 'prenatal'): err = '今天已经安过胎了。'
+    if err:
+        flash(err, 'bad'); return redirect(url_for('place', key='home'))
+    run('UPDATE consorts SET energy=energy-? WHERE id=?', (PRENATAL_ENERGY, c['id']))
+    daily_inc(c['id'], 'prenatal')
+    st = prenatal_state(c)
+    if kind == 'rest':
+        if st.get('rest', 0) < 3:      # 调养到第三次就到头了，再躺也没有更多好处
+            add_stat(c['id'], 'health', 5)
+        st['rest'] = min(3, st.get('rest', 0) + 1)
+    else:
+        st[cfg['stat']] = min(PRENATAL_STAT_CAP, st.get(cfg['stat'], 0) + cfg['gain'])
+    run("UPDATE consorts SET prenatal=? WHERE id=?", (json.dumps(st), c['id']))
+    flash(cfg['line'], 'good')
+    return redirect(url_for('place', key='home'))
+
+
 @app.route('/heirs/raise/<int:hid>', methods=['POST'])
 @login_required
 def heir_raise(hid):
@@ -4914,9 +5096,75 @@ def reigns():
     return render_template('reigns.html', c=g.me, rows=rows, letters=letters, uid=S['uid'], st=state())
 
 
+# ── 生育：侍寝人数、怀孕率、孕期 ─────────────────────────────────────────────────
+BED_PLAYERS_PER_EXTRA, MAX_BEDS = 6, 4      # 宫里每多 6 位玩家，每晚多翻一位牌子，最多 4 位
+PREGNANCY_BASE, PREGNANCY_PER_HEALTH = 0.24, 0.002
+OLD_MOTHER_AGE, OLD_MOTHER_FACTOR, PREGNANCY_MAX = 35, 0.6, 0.6
+PRENATAL_ENERGY, PRENATAL_STAT_CAP = 1, 6
+PRENATAL = {
+    'rest':   dict(name='安胎静养', line='你卧床静养，一步不出，体质 +5，难产的风险小了些。'),
+    'study':  dict(name='诵读诗书', stat='study', gain=2, line='你日日诵诗读书，孩子出世后学问底子更好。'),
+    'ride':   dict(name='听乐观射', stat='riding', gain=2, line='你常让人在院里演武、奏乐，孩子出世后骑射底子更好。'),
+    'virtue': dict(name='礼佛积德', stat='virtue', gain=2, line='你日日礼佛抄经，孩子出世后品行底子更好。'),
+}
+LABOR_RISK_BASE, LABOR_RISK_PER_REST = 0.30, 0.10    # 体质不到 50 的人难产概率，每次安胎静养减 10 个点
+
+
+def pregnancy_chance(c):
+    """一次侍寝怀上的概率：24% + 体质×0.2%（体质 60 约 36%）；35 岁起打六折；45 岁起不再有孕"""
+    if c['age_months'] >= FERTILE_BEFORE_AGE * 12: return 0.0
+    p = PREGNANCY_BASE + c['health'] * PREGNANCY_PER_HEALTH
+    if c['age_months'] >= OLD_MOTHER_AGE * 12: p *= OLD_MOTHER_FACTOR
+    return min(PREGNANCY_MAX, p)
+
+
+def bed_count(cands):
+    """今晚翻几位：一晚只翻一位的话，人一多每个人几十天才轮得到一次，所以玩家每多 6 位加一位"""
+    players = sum(1 for c in cands if c['user_id'])
+    return max(1, min(MAX_BEDS, 1 + players // BED_PLAYERS_PER_EXTRA))
+
+
+def prenatal_state(c):
+    try: return json.loads(c['prenatal'] or '{}')
+    except ValueError: return {}
+
+
+def do_bedding(bed, day, primary, tray):
+    """一位被翻牌的人：圣宠、怀孕、通知、场景。primary 那位还负责记「昨夜宫中」的绿头牌盘"""
+    dream = affliction(bed['id'], 'jingmeng', day)
+    if dream:
+        cut_favor(bed['id'], 0.30)
+        add_trust(bed['id'], -5)
+        gain = 0
+        open_drug_case(q('SELECT * FROM intrigues WHERE id=?', (dream['intrigue_id'],), one=True))
+        notify(bed['id'], '惊梦香发作，惊扰圣驾，圣宠 -30%、信任 -5。', 'bad')
+    else:
+        gain = add_favor(bed['id'], 20 + bed['appearance'] * 0.15)
+    run("UPDATE consorts SET bedded_count=bedded_count+1, last_audience_day=? WHERE id=?", (day, bed['id']))
+    if primary:
+        run("UPDATE game_state SET last_bed_id=?, last_bed_day=?, last_bed_pool=? WHERE id=1",
+            (bed['id'], day, json.dumps(tray)))
+    gazette(f"敬事房：今夜皇上翻了{display_name(bed)}的牌子。", 'bed')
+    if bed['user_id']:
+        msg = f"敬事房来传话：今夜皇上翻了你的牌子。圣宠 +{gain}。"
+        newly_pregnant = False
+        if not affliction(bed['id'], 'hanshui', day) and random.random() < pregnancy_chance(bed):
+            run("UPDATE consorts SET pregnant_since=?, prenatal='{}' WHERE id=?", (day, bed['id']))
+            msg += f"……太医诊出了喜脉，{PREGNANCY_DAYS} 天后临盆。这几天可以在本宫安胎、胎教。"
+            gazette(f"{display_name(bed)}有喜了。", 'birth')
+            newly_pregnant = True
+        notify(bed['id'], msg, 'good')
+        guide_tip(bed['id'], 'bed', '「头一回侍寝，忐忑也是常事。往后皇上想起你，全看这几日的功夫。」')
+        if newly_pregnant:
+            guide_tip(bed['id'], 'pregnant', '「有喜是大事，往后当心着些，别的事都往后放一放。」')
+        start_scene(bed['id'], 'audience', prompt=random.randrange(len(AUDIENCE_PROMPTS)), bed=1, hoarse=bool(affliction(bed['id'], 'yachan', day)))
+    housing_visit(bed)
+
+
 def bed_weight(c, day):
     w = 10 + c['favor'] * 0.15 + c['appearance'] * 0.3 + c['talent'] * 0.15 + c['seek_bonus']
     if emperor_art_bonus(c): w += 20
+    if c['diet_eff'] == 'lavish': w += LAVISH_BED_BONUS
     if c['user_id'] and day - c['entered_day'] <= 3: w += 15   # 皇上喜新
     tr = emperor_traits()
     if tr.get('study', 0) >= 60: w += c['talent'] * 0.1      # 学问高的皇上偏爱才艺
@@ -4978,44 +5226,27 @@ def _settle_night():
                 nb = get_consort(new_bed)
                 if nb['status'] == 'normal' and not nb['pregnant_since'] and not is_sick(nb) and not affliction(nb['id'], 'yanzhi', day):
                     bed = nb
+    beds = []
     if bed:
-        bed = get_consort(bed['id'])
+        beds.append(get_consort(bed['id']))
         # 敬事房这一盘递上去的绿头牌：权重最高的 7 块 + 被翻的那块，打乱顺序，给「昨夜宫中」回放用
         tray = [c['id'] for c in sorted(cands, key=lambda c: -bed_weight(c, day))[:7]]
         if bed['id'] not in tray: tray[-1:] = [bed['id']]
         random.shuffle(tray)
-        dream = affliction(bed['id'], 'jingmeng', day)
-        if dream:
-            cut_favor(bed['id'], 0.30)
-            add_trust(bed['id'], -5)
-            gain = 0
-            open_drug_case(q('SELECT * FROM intrigues WHERE id=?', (dream['intrigue_id'],), one=True))
-            notify(bed['id'], '惊梦香发作，惊扰圣驾，圣宠 -30%、信任 -5。', 'bad')
-        else:
-            gain = add_favor(bed['id'], 20 + bed['appearance'] * 0.15)
-        run("UPDATE consorts SET bedded_count=bedded_count+1, last_audience_day=? WHERE id=?", (day, bed['id']))
-        run("UPDATE game_state SET last_bed_id=?, last_bed_day=?, last_bed_pool=? WHERE id=1",
-            (bed['id'], day, json.dumps(tray)))
-        gazette(f"敬事房：今夜皇上翻了{display_name(bed)}的牌子。", 'bed')
-        if bed['user_id']:
-            msg = f"敬事房来传话：今夜皇上翻了你的牌子。圣宠 +{gain}。"
-            newly_pregnant = False
-            if not affliction(bed['id'], 'hanshui', day) and bed['age_months'] < FERTILE_BEFORE_AGE * 12 and random.random() < 0.12 + bed['health'] / 1000:
-                run("UPDATE consorts SET pregnant_since=? WHERE id=?", (day, bed['id']))
-                msg += f"……太医诊出了喜脉，{PREGNANCY_DAYS} 天后临盆。"
-                gazette(f"{display_name(bed)}有喜了。", 'birth')
-                newly_pregnant = True
-            notify(bed['id'], msg, 'good')
-            guide_tip(bed['id'], 'bed', '「头一回侍寝，忐忑也是常事。往后皇上想起你，全看这几日的功夫。」')
-            if newly_pregnant:
-                guide_tip(bed['id'], 'pregnant', '「有喜是大事，往后当心着些，别的事都往后放一放。」')
-            start_scene(bed['id'], 'audience', prompt=random.randrange(len(AUDIENCE_PROMPTS)), bed=1, hoarse=bool(affliction(bed['id'], 'yachan', day)))
-        housing_visit(bed)
-        report.append(f"侍寝：{display_name(bed)}")
+        rest = [c for c in cands if c['id'] != bed['id']]
+        for _ in range(bed_count(cands) - 1):    # 人多的时候，多翻几位
+            if not rest: break
+            ex = random.choices(rest, weights=[bed_weight(c, day) for c in rest])[0]
+            rest = [c for c in rest if c['id'] != ex['id']]
+            beds.append(get_consort(ex['id']))
+        for k, b in enumerate(beds):
+            do_bedding(b, day, k == 0, tray)
+            report.append(f"侍寝：{display_name(b)}")
+    bed_ids = {b['id'] for b in beds}
 
     # 2b. 召见：侍寝之外，另召几位玩家单独说话，让更多人有机会见到皇上
     pool = [] if ill else [c for c in q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND status='normal'")
-            if not is_sick(c) and not (bed and c['id'] == bed['id'])]
+            if not is_sick(c) and c['id'] not in bed_ids]
     called = []
     for _ in range(min(AUDIENCE_PER_NIGHT, len(pool))):
         r = random.choices(pool, weights=[audience_weight(c, day) for c in pool])[0]
@@ -5039,16 +5270,17 @@ def _settle_night():
         n = q("SELECT COUNT(*) n FROM heirs WHERE gender=?", (gender,), one=True)['n']
         ordinal = n + (6 if gender == '皇子' else 3)
         personality = random.choice(list(HEIR_PERSONALITIES))
+        pre = prenatal_state(c)
         run("""INSERT INTO heirs (mother_id, caretaker_id, gender, ordinal, born_day, personality, study, riding, virtue, health)
                VALUES (?,?,?,?,?,?,?,?,?,?)""",
             (c['id'], c['id'], gender, ordinal, day, personality,
-             clamp(random.randint(10, 30) + c['talent'] * 0.1, 0, 100),
-             clamp(random.randint(10, 30), 0, 100),
-             clamp(random.randint(10, 30) + c['virtue'] * 0.1, 0, 100),
+             clamp(random.randint(10, 30) + c['talent'] * 0.1 + pre.get('study', 0), 0, 100),
+             clamp(random.randint(10, 30) + pre.get('riding', 0), 0, 100),
+             clamp(random.randint(10, 30) + c['virtue'] * 0.1 + pre.get('virtue', 0), 0, 100),
              clamp(60 + c['health'] * 0.1, 0, 100)))
-        run("UPDATE consorts SET pregnant_since=0 WHERE id=?", (c['id'],))
+        run("UPDATE consorts SET pregnant_since=0, prenatal='{}' WHERE id=?", (c['id'],))
         extra = ''
-        if c['health'] < 50 and random.random() < 0.3:
+        if c['health'] < 50 and random.random() < max(0.0, LABOR_RISK_BASE - LABOR_RISK_PER_REST * pre.get('rest', 0)):
             add_stat(c['id'], 'health', -20); extra = '难产了一整夜，元气大伤，体质 -20。'
             run('UPDATE consorts SET postpartum_until=? WHERE id=?', (day + POSTPARTUM_SICK_DAYS, c['id']))
         label = f"{cn_ordinal(ordinal)}{'阿哥' if gender == '皇子' else '公主'}"
@@ -5069,6 +5301,8 @@ def _settle_night():
     heir_rehome_tick(day)
     heir_adult_tick(day)
     heir_succession_tick(day)
+    diet_tick(day)
+    repair_tick(day)
     family_tick(day)
     family_venture_tick(day)
     family_patron_tick(day)
@@ -5497,7 +5731,7 @@ def die(cid, reason, memorial_reason=None):
 def resolve_poison_crises(day):
     # 只处理之前几天中的毒：当晚刚中毒的人至少有一整天可以请太医
     for c in q("SELECT * FROM consorts WHERE status!='dead' AND poisoned_day>0 AND poisoned_day<?", (day,)):
-        if random.random() >= POISON_SURVIVE[min(1, c['poison_treatment'])]:
+        if random.random() >= POISON_SURVIVE[min(1, c['poison_treatment'])] + blessing_survive_bonus(c):
             die(c['id'], '中毒救治无效')
         else:
             run('''UPDATE consorts SET poisoned_day=0, poison_treatment=0,
@@ -5523,7 +5757,7 @@ def fall_ill(cid, day, cause):
 
 def resolve_illness_crises(day):
     for c in q("SELECT * FROM consorts WHERE status!='dead' AND ill_day>0 AND ill_day<?", (day,)):
-        if random.random() >= POISON_SURVIVE[min(1, c['ill_treatment'])]:
+        if random.random() >= POISON_SURVIVE[min(1, c['ill_treatment'])] + blessing_survive_bonus(c):
             die(c['id'], '病重不治', memorial_reason='病逝')
         else:
             run('''UPDATE consorts SET ill_day=0, ill_treatment=0,
@@ -5559,7 +5793,7 @@ def old_age_tick(day):
     """50 岁起每晚可能寿终；55 岁起每满 5 岁提醒一句；嫔以上寿终按信任追封"""
     for c in q("SELECT * FROM consorts WHERE status!='dead' AND age_months>=?", (OLD_AGE_START,)):
         years_over = (c['age_months'] - OLD_AGE_START) / 12
-        p = years_over * OLD_AGE_BASE
+        p = years_over * OLD_AGE_BASE * (1 - min(BLESSING_OLD_AGE_MAX, c['blessing'] / BLESSING_OLD_AGE_DIV))
         if c['health'] >= 60: p /= 2
         elif c['health'] < 30: p *= 2
         if random.random() < p:
@@ -5709,7 +5943,9 @@ def place(key):
     return render_template('place.html', c=c, key=key, title=title, desc=desc, extra=extra, acts=acts,
                            counts=counts, sick=is_sick(c), arts=arts_of(c), ARTS=ARTS, ART_MASTERY=ART_MASTERY,
                            plead_targets=plead_targets, plead_p=int(plead_chance(c) * 100),
-                           maid_ev=maid_ev, maid_info=maid_info, heir_ev=heir_ev, my_heirs=my_heirs, heir_todo=heir_todo, HEIR_RAISE=HEIR_RAISE,
+                           maid_ev=maid_ev, maid_info=maid_info, heir_ev=heir_ev, my_heirs=my_heirs, heir_todo=heir_todo, HEIR_RAISE=HEIR_RAISE, PRENATAL=PRENATAL,
+                           DIETS=DIETS, diet_costs=diet_costs(c['rank']), repair=repair_state(c), REPAIRS=REPAIRS, PRAY_TIERS=PRAY_TIERS,
+                           is_quiet=is_quiet(c) if c['status'] in ('normal', 'confined') else False,
                            household=palace_household(c['palace']) if key == 'home' and has_residence(c) else [],
                            is_head=has_residence(c) and c['hall'] == 'main' and c['rank'] >= 5)
 
