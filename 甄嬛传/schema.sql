@@ -97,8 +97,47 @@ CREATE TABLE IF NOT EXISTS game_state (
     emperor_pref     TEXT NOT NULL DEFAULT '琴',
     last_bed_id      INTEGER NOT NULL DEFAULT 0,
     last_bed_day     INTEGER NOT NULL DEFAULT 0,
-    last_bed_pool    TEXT NOT NULL DEFAULT '[]'     -- 当晚递上去的绿头牌，「昨夜宫中」回放用
+    last_bed_pool    TEXT NOT NULL DEFAULT '[]',    -- 当晚递上去的绿头牌，「昨夜宫中」回放用
+    reign_no         INTEGER NOT NULL DEFAULT 1,     -- 第几届（一位皇上一届）
+    reign_start_day  INTEGER NOT NULL DEFAULT 1,
+    emperor_start_age INTEGER NOT NULL DEFAULT 45,   -- 这一届开始时皇上几岁，之后每晚长半岁
+    emperor_death_day INTEGER NOT NULL DEFAULT 0,    -- 已定下的驾崩日（病重从它前两天算起，共 3 天）；0 = 还没病
+    mourning         INTEGER NOT NULL DEFAULT 0,     -- 国丧：驾崩后停一天，下一次结算时开下一届选秀
+    era_name         TEXT NOT NULL DEFAULT '',       -- 年号（第一届为空）
+    emperor_name     TEXT NOT NULL DEFAULT '',       -- 今上的名字（第一届为空）
+    emperor_traits   TEXT NOT NULL DEFAULT '{}',     -- 今上的性格与学问/骑射/品行（第一届为空）
+    dowager          TEXT NOT NULL DEFAULT ''        -- 今上的太后（第一届为空）
 );
+
+-- 历代：每一届驾崩那晚定格一条
+CREATE TABLE IF NOT EXISTS reigns (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    reign_no      INTEGER NOT NULL,
+    era_name      TEXT NOT NULL DEFAULT '',
+    emperor_name  TEXT NOT NULL DEFAULT '',
+    start_age     INTEGER NOT NULL,
+    end_age_text  TEXT NOT NULL DEFAULT '',
+    start_day     INTEGER NOT NULL,
+    end_day       INTEGER NOT NULL,
+    successor     TEXT NOT NULL DEFAULT '',          -- 新帝
+    dowager       TEXT NOT NULL DEFAULT '',          -- 新帝的太后
+    edict         TEXT NOT NULL DEFAULT '[]',        -- 遗诏：一句话开头 + 这一届的大事，JSON 数组
+    fates         TEXT NOT NULL DEFAULT '[]',        -- 每位玩家的最终位分和结局，JSON 数组
+    records       TEXT NOT NULL DEFAULT '[]',        -- 几项纪录，JSON 数组
+    created_ts    INTEGER NOT NULL
+);
+
+-- 每届结束时，玩家自己的信原样存进来，只有本人能翻、不能再回
+CREATE TABLE IF NOT EXISTS reign_letters (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    reign_no    INTEGER NOT NULL,
+    user_id     INTEGER NOT NULL,
+    day         INTEGER NOT NULL,
+    from_name   TEXT NOT NULL,
+    to_name     TEXT NOT NULL,
+    body        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_reign_letters_user ON reign_letters(user_id, reign_no);
 
 CREATE TABLE IF NOT EXISTS intrigues (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -195,7 +234,8 @@ CREATE TABLE IF NOT EXISTS heirs (
     feud_until_day INTEGER NOT NULL DEFAULT 0,       -- 被人挑拨兄弟，这天之前每晚圣眷 -3
     gift        TEXT NOT NULL DEFAULT '',            -- 万寿节备下的寿礼：calligraphy / fur / antique
     orphan_deadline_day INTEGER NOT NULL DEFAULT 0,  -- 没人要的皇子：这天还无人抚养，皇后就抱走
-    reprimand_ready_day INTEGER NOT NULL DEFAULT 0   -- 结党过多被当众训斥，这天之前不再训斥
+    reprimand_ready_day INTEGER NOT NULL DEFAULT 0,  -- 结党过多被当众训斥，这天之前不再训斥
+    forged      INTEGER NOT NULL DEFAULT 0           -- 矫诏成功：驾崩那晚匾后改成他
 );
 
 -- 站队：每人最多一个明站、一个暗站，7 天内不能改

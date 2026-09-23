@@ -106,7 +106,7 @@
 {% endif %}
 
 <h3>宫城</h3>
-<p class="muted">皇上今日{{ gs.emperor_mood }}，近来喜欢{{ gs.emperor_pref }}。{{ next_settle }} 敬事房递牌子，今天做的事到时一并见分晓。</p>
+<p class="muted">皇上{{ emperor_state_text(gs) }}{% if not gs.emperor_death_day %}，近来喜欢{{ gs.emperor_pref }}{% endif %}。{{ next_settle }} 敬事房递牌子，今天做的事到时一并见分晓。</p>
 <nav class="map" aria-label="宫城">
   {% for t in tiles %}
   <a class="tile {{ 'home' if t.home }} {{ 'off' if t.off }} {{ 'alert' if t.alert }}" style="grid-area:{{ t.area }}" href="{{ t.url }}"><b>{{ t.name }}</b><span>{{ t.note }}</span></a>

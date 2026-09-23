@@ -93,9 +93,22 @@
 <ul>{% for it in pend %}<li>{{ dn(get_consort(it.attacker_id)) }} → {{ dn(get_consort(it.target_id)) }}：{{ INTRIGUES[it.method].name }}</li>{% endfor %}</ul>
 {% else %}<p class="muted">没有。</p>{% endif %}
 
+<h3>皇上与这一届</h3>
+<p class="muted">第 {{ gs.reign_no }} 届{% if gs.era_name %}（{{ gs.era_name }}，{{ gs.emperor_name }}）{% endif %}，开局 {{ gs.emperor_start_age }} 岁，今年 {{ '%g'|format(emperor_age) }} 岁；
+  {% if gs.mourning %}国丧中。{% elif gs.emperor_death_day %}病重，第 {{ gs.emperor_death_day }} 天驾崩。{% else %}龙体安康。{% endif %}</p>
+<form method="post" action="{{ url_for('admin_emperor') }}" class="row">
+  <input name="age" type="number" placeholder="起始年龄" style="width:100px"><button name="act" value="start_age">改起始年龄</button>
+  <button name="act" value="ill">触发病重（3 天后驾崩）</button>
+  <button name="act" value="postpone">驾崩延后一天</button>
+  <button name="act" value="recover">痊愈</button>
+  <button name="act" value="end_now" onclick="return confirm('立刻开匾换届，所有玩家角色随先帝殡天，确定？')">立即驾崩，开下一届</button>
+  <button name="act" value="skip_mourning">跳过国丧</button>
+</form>
+
 <h3>重开一届</h3>
 <form method="post" action="{{ url_for('admin_reset') }}" class="row" onsubmit="return confirm('所有妃嫔、消息、阴谋、子嗣都会清空，确定？')">
   <input name="confirm" placeholder="输入「重开」" style="width:140px">
+  <input name="start_age" type="number" placeholder="皇上起始年龄（默认 45）" style="width:170px">
   <label style="margin:0"><input type="checkbox" name="keep_users" value="1" checked> 保留玩家账号（重新走选秀）</label>
   <button>清空重开</button>
 </form>

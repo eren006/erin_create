@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% block title %}历代{% endblock %}
+{% block body %}
+<h2>历代</h2>
+{% if st.mourning %}<div class="sheet"><b>国丧。</b>新帝{{ st.emperor_name }}改元{{ st.era_name }}，明晚起开下一届选秀。</div>{% endif %}
+<p class="muted">每一届皇上驾崩那一晚定格一页：新帝是谁、太后是谁、每个人的结局。账号和这里的记录会一直留着，角色、银子、关系和皇嗣都从头再来。</p>
+{% for e in rows %}{% set r = e.r %}
+<section class="sheet" style="margin:14px 0">
+  <h3 style="margin-top:0">第 {{ r.reign_no }} 届{% if r.era_name %}·{{ r.era_name }}{% endif %}{% if r.emperor_name %}　{{ r.emperor_name }}{% endif %}</h3>
+  <p class="muted">开局 {{ r.start_age }} 岁，{{ r.end_age_text }}驾崩。第 {{ r.start_day }} 天到第 {{ r.end_day }} 天。新帝{{ r.successor }}{% if r.dowager %}，太后{{ r.dowager }}{% else %}，这一届没有太后{% endif %}。</p>
+  <h4>遗诏</h4>
+  {% for line in e.edict %}<p style="margin:4px 0">{{ line }}</p>{% endfor %}
+  {% if e.records %}<h4>纪录</h4>{% for line in e.records %}<p style="margin:4px 0">{{ line }}</p>{% endfor %}{% endif %}
+  <h4>众人结局</h4>
+  {% if e.fates %}
+  <div class="scroll"><table>
+    <tr><th>小主</th><th>末任位分</th><th>结局</th></tr>
+    {% for f in e.fates %}<tr {% if f.user == uid %}style="font-weight:bold"{% endif %}><td>{{ f.name }}{% if f.user == uid %}（你）{% endif %}</td><td>{{ f.rank }}</td><td>{{ f.fate }}</td></tr>{% endfor %}
+  </table></div>
+  {% else %}<p class="muted">这一届没有玩家。</p>{% endif %}
+</section>
+{% else %}<p class="muted">还没有哪一届结束。</p>{% endfor %}
+
+{% if letters %}
+<h3>我留下的信</h3>
+<p class="muted">只有你自己翻得到，也回不了了。</p>
+{% for l in letters %}
+<details class="sheet" style="margin:6px 0"><summary>第 {{ l.reign_no }} 届　第 {{ l.day }} 天　{{ l.from_name }} → {{ l.to_name }}</summary><p class="body">{{ l.body }}</p></details>
+{% endfor %}
+{% endif %}
+<p><a href="{{ url_for('memorial') }}">我的宫史</a></p>
+{% endblock %}

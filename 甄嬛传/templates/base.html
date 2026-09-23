@@ -147,7 +147,7 @@ footer.muted{max-width:1024px}
 <header class="gate">
   <div class="in">
     <h1>紫禁城</h1>
-    {% if gs %}<span class="clock">{{ palace_date(gs.day) }}　第 {{ gs.day }} 天　皇上今日{{ gs.emperor_mood }}　下次翻牌 {{ next_settle }}</span>{% endif %}
+    {% if gs %}<span class="clock">{{ palace_date(gs.day) }}　第 {{ gs.day }} 天　{% if gs.era_name %}{{ gs.era_name }}朝　{% endif %}皇上{{ emperor_state_text(gs) }}　下次翻牌 {{ next_settle }}</span>{% endif %}
   </div>
   {% if session.uid and g.me and g.me.status != 'xiunv' %}
   {% set ep = request.endpoint %}

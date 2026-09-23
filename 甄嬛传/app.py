@@ -98,7 +98,7 @@ def atomic(fn):
 
 RANK_NAMES = ['秀女', '官女子', '答应', '常在', '贵人', '嫔', '妃', '贵妃', '皇贵妃', '皇后']
 PROMOTE_FAVOR  = {2: 40, 3: 90, 4: 170, 5: 300, 6: 480, 7: 720, 8: 1000}   # 晋到该位分所需圣宠
-PROMOTE_VIRTUE = {2: 0, 3: 10, 4: 20, 5: 35, 6: 50, 7: 60, 8: 70}          # 晋到该位分所需德行
+PROMOTE_VIRTUE = {2: 0, 3: 10, 4: 20, 5: 35, 6: 50, 7: 60, 8: 70}          # 晋到该位分所需德行（品行高的皇上再打九折，见 promote_virtue_need）
 RANK_SLOTS     = {4: 8, 5: 6, 6: 4, 7: 2, 8: 1, 9: 1}                     # 贵人以上有名额，含 NPC
 MIN_DAYS_AT_RANK = 2
 STIPEND = {1: 5, 2: 10, 3: 15, 4: 25, 5: 40, 6: 60, 7: 90, 8: 130, 9: 200}  # 每日月例银
@@ -376,6 +376,8 @@ ACTIONS = {
                     desc='派一个宫人去打听对方的秘密（用一次差使，不花精力）'),
     'plead':   dict(name='向皇上求情', energy=1, silver=50, daily=1, when={'normal'}, target=True,
                     desc='为禁足或冷宫中的姐妹求情，缩短日子。成败看皇上对你的信任'),
+    'attend':  dict(name='去养心殿侍疾', energy=1, silver=0, daily=1, when={'normal'}, sick_block=True,
+                    desc='皇上病重时才有。成败看信任：成了信任 +5，你抚养的阿哥圣眷 +5'),
 }
 
 # ── 阴谋 ───────────────────────────────────────────────────────────────────────
@@ -602,6 +604,58 @@ NPC_HEIRS = dict(
 )
 NPC_ORPHAN_DEADLINE_DAYS = 14   # 开服第 15 天还没人求到，皇后就把四阿哥抱走
 
+# 下一届的 NPC 妃嫔：新帝潜邸的旧人。位分、封号、住处沿用 NPCS（代码里不少地方按 npc_key 认人，比如华妃发难），
+# 只换名字、性格介绍和数值。第二届用甲套，第三届用乙套，之后轮着来
+NPC_SETS = [
+    dict(  # 甲
+        huanghou=dict(surname='富察', given='婉清', appearance=66, talent=68, scheme=88, virtue=84, health=72, favor=240, aggression=0.30,
+                      intro='新帝潜邸时的嫡福晋，端庄持重，一府的事早就是她管着。'),
+        huafei=dict(surname='钮祜禄', given='明玥', appearance=88, talent=52, scheme=68, virtue=32, health=84, favor=400, aggression=0.42,
+                    intro='出身显赫，仗着娘家的势，最爱与人争一口气。'),
+        duanfei=dict(surname='舒穆禄', given='静姝', appearance=52, talent=64, scheme=60, virtue=78, health=22, favor=40, aggression=0,
+                     intro='体弱多病，不与人争，冷眼看着一切。'),
+        qifei=dict(surname='完颜', given='芷兰', appearance=56, talent=38, scheme=32, virtue=52, health=70, favor=95, aggression=0.05,
+                   intro='长子生母，心直口快，藏不住话。'),
+        jingpin=dict(surname='瓜尔佳', given='素心', appearance=58, talent=56, scheme=48, virtue=72, health=72, favor=105, aggression=0,
+                     intro='老实温厚，潜邸时就伺候在跟前。'),
+        lipin=dict(surname='郭络罗', given='嫣然', appearance=76, talent=42, scheme=42, virtue=36, health=74, favor=165, aggression=0.12,
+                   intro='华妃跟前得意的人，口齿伶俐，心里没多少弯弯绕。'),
+        caoguiren=dict(surname='赫舍里', given='云舒', appearance=64, talent=58, scheme=78, virtue=46, health=66, favor=145, aggression=0.2,
+                       intro='公主生母，心思缜密，笑起来最让人不放心。'),
+        xinchangzai=dict(surname='董鄂', given='秋棠', appearance=54, talent=46, scheme=38, virtue=56, health=70, favor=70, aggression=0,
+                         intro='资历老，位分低，说话直来直去。'),
+    ),
+    dict(  # 乙
+        huanghou=dict(surname='马佳', given='淑仪', appearance=60, talent=72, scheme=90, virtue=78, health=76, favor=245, aggression=0.33,
+                      intro='潜邸旧人里最有分量的一位，面上温和，什么都记在心里。'),
+        huafei=dict(surname='那拉', given='锦瑟', appearance=92, talent=58, scheme=72, virtue=28, health=86, favor=430, aggression=0.45,
+                    intro='容色艳压六宫，脾气也一样张扬。'),
+        duanfei=dict(surname='叶赫', given='清漪', appearance=50, talent=66, scheme=62, virtue=76, health=18, favor=35, aggression=0,
+                     intro='常年吃药，闭门读书，宫里的事她比谁都清楚。'),
+        qifei=dict(surname='陈', given='婉凝', appearance=55, talent=36, scheme=34, virtue=50, health=72, favor=88, aggression=0.05,
+                   intro='长子生母，性子软，常被人推出去顶事。'),
+        jingpin=dict(surname='徐', given='若水', appearance=60, talent=54, scheme=46, virtue=70, health=70, favor=112, aggression=0,
+                     intro='凡事忍让，与谁都说得上话。'),
+        lipin=dict(surname='赵', given='明珠', appearance=74, talent=44, scheme=44, virtue=38, health=76, favor=172, aggression=0.13,
+                   intro='华妃的应声虫，嘴快心浅。'),
+        caoguiren=dict(surname='何', given='玉容', appearance=66, talent=60, scheme=76, virtue=48, health=64, favor=150, aggression=0.18,
+                       intro='公主生母，最擅长借刀杀人。'),
+        xinchangzai=dict(surname='孙', given='小满', appearance=56, talent=44, scheme=36, virtue=58, health=72, favor=68, aggression=0,
+                         intro='入府最早，位分却低，脾气爽利，不怕得罪人。'),
+    ),
+]
+ERA_NAMES = ['嘉和', '景元', '昭泰', '乾宁', '永熙', '崇德', '宣和', '明昌', '天佑', '启祥']
+NPC_PRINCE_NAMES = ['承稷', '承煦', '承晏', '承祺', '承昀', '承恪', '承瑾', '承烨', '承璋', '承珩']
+NPC_PRINCESS_NAMES = ['和婉', '宁悦', '淑安', '静姝', '玉衡', '兰沁']
+
+
+def npcs_for_reign(reign_no):
+    """这一届的 NPC 名册：第一届是 NPCS 原样，之后按届数轮着换套人设"""
+    if reign_no <= 1: return NPCS
+    override = NPC_SETS[(reign_no - 2) % len(NPC_SETS)]
+    return [dict(n, **override.get(n['npc_key'], {})) for n in NPCS]
+
+
 # ── 殿选 ───────────────────────────────────────────────────────────────────────
 
 DIANXUAN_QUESTIONS = [
@@ -734,7 +788,8 @@ def init_db():
                   'feud_until_day': 'INTEGER NOT NULL DEFAULT 0',
                   'gift': "TEXT NOT NULL DEFAULT ''",
                   'orphan_deadline_day': 'INTEGER NOT NULL DEFAULT 0',
-                  'reprimand_ready_day': 'INTEGER NOT NULL DEFAULT 0'},
+                  'reprimand_ready_day': 'INTEGER NOT NULL DEFAULT 0',
+                  'forged': 'INTEGER NOT NULL DEFAULT 0'},
         'cases': {'convicted_id': 'INTEGER NOT NULL DEFAULT 0', 'wrongful': 'INTEGER NOT NULL DEFAULT 0'},
         'intrigues': {'drug': "TEXT NOT NULL DEFAULT ''",
                       'agent_maid_id': 'INTEGER NOT NULL DEFAULT 0'},
@@ -747,8 +802,18 @@ def init_db():
                     'sender_label': "TEXT NOT NULL DEFAULT ''"},
         'messages': {'is_night': 'INTEGER NOT NULL DEFAULT 0'},
         'gazette': {'is_night': 'INTEGER NOT NULL DEFAULT 0'},
-        'game_state': {'last_bed_pool': "TEXT NOT NULL DEFAULT '[]'"},
-        'users': {'lethal_ready_day': 'INTEGER NOT NULL DEFAULT 0',
+        'game_state': {'last_bed_pool': "TEXT NOT NULL DEFAULT '[]'",
+                       'reign_no': 'INTEGER NOT NULL DEFAULT 1',
+                       'reign_start_day': 'INTEGER NOT NULL DEFAULT 1',
+                       'emperor_start_age': 'INTEGER NOT NULL DEFAULT 45',
+                       'emperor_death_day': 'INTEGER NOT NULL DEFAULT 0',
+                       'mourning': 'INTEGER NOT NULL DEFAULT 0',
+                       'era_name': "TEXT NOT NULL DEFAULT ''",
+                       'emperor_name': "TEXT NOT NULL DEFAULT ''",
+                       'emperor_traits': "TEXT NOT NULL DEFAULT '{}'",
+                       'dowager': "TEXT NOT NULL DEFAULT ''"},
+        'users': {'forge_used': 'INTEGER NOT NULL DEFAULT 0',
+                  'lethal_ready_day': 'INTEGER NOT NULL DEFAULT 0',
                   'nameless_ready_day': 'INTEGER NOT NULL DEFAULT 0',
                   'banned': 'INTEGER NOT NULL DEFAULT 0'}
     }
@@ -771,7 +836,18 @@ def init_db():
         last = now.date().isoformat() if past_settle_time(now) else ''
         db.execute("INSERT INTO game_state (id, day, last_settle_date, emperor_mood, emperor_pref) VALUES (1,1,?,?,?)",
                    (last, '平和', random.choice(ARTS)))
-    for n in NPCS:
+    seed_npcs(db)
+    seed_npc_heirs(db)
+    db.commit()
+    db.close()
+    with app.app_context():
+        housing_sync()      # 老存档里的玩家第一次启动时分好住处；之后每次都是空操作
+
+def seed_npcs(db):
+    """把这一届的 NPC 妃嫔补齐（已有的不动）。db 只要有 execute 就行，init_db 传连接，换届时传 run 的包装"""
+    reign_no = db.execute("SELECT reign_no FROM game_state WHERE id=1").fetchone()[0]
+    roster = npcs_for_reign(reign_no)
+    for n in roster:
         if not db.execute("SELECT 1 FROM consorts WHERE npc_key=?", (n['npc_key'],)).fetchone():
             db.execute("""INSERT INTO consorts (npc_key, surname, given, title, rank, palace,
                           appearance, talent, scheme, virtue, health, favor, aggression, intro,
@@ -780,29 +856,58 @@ def init_db():
                        (n['npc_key'], n['surname'], n['given'], n['title'], n['rank'], n['palace'],
                         n['appearance'], n['talent'], n['scheme'], n['virtue'], n['health'],
                         n['favor'], n['aggression'], n['intro'], now_ts()))
-    for n in NPCS:
+    for n in roster:
         db.execute("UPDATE consorts SET hall=? WHERE npc_key=? AND hall='' AND status NOT IN ('cold','dead')",
                    (n['hall'], n['npc_key']))
-    seed_npc_heirs(db)
-    db.commit()
-    db.close()
-    with app.app_context():
-        housing_sync()      # 老存档里的玩家第一次启动时分好住处；之后每次都是空操作
+
+
+class _RunDB:
+    """让 seed_* 函数在请求里也能用：execute 走 run()，跟着当前事务走"""
+    @staticmethod
+    def execute(sql, args=()):
+        return run(sql, args)
+
+
+def npc_heir_specs(day, reign_no, reign_start_day):
+    """这一届开局的系统皇子。第一届是三阿哥、四阿哥；之后是新帝潜邸带出来的长子、没人要的皇子、公主"""
+    if reign_no <= 1:
+        return [dict(key=k, gender='皇子', name='', born=day - v['age_days'], mother='qifei' if k == 'third' else None,
+                     deadline=day + NPC_ORPHAN_DEADLINE_DAYS if k == 'fourth' else 0, **{f: v[f] for f in
+                     ('ordinal', 'personality', 'study', 'riding', 'virtue', 'health', 'ambition', 'faction', 'zhuazhou')})
+                for k, v in NPC_HEIRS.items()]
+    names = random.sample(NPC_PRINCE_NAMES, 2)
+    pers = list(HEIR_PERSONALITIES)
+    r = random.randint
+    return [
+        dict(key='third', gender='皇子', name=names[0], ordinal=1, born=reign_start_day - 24, mother='qifei', deadline=0,
+             personality=random.choice(pers), study=r(35, 55), riding=r(35, 55), virtue=r(35, 55), health=r(55, 75),
+             ambition=r(40, 60), faction=2, zhuazhou='seal'),
+        dict(key='fourth', gender='皇子', name=names[1], ordinal=2, born=reign_start_day - 16, mother=None,
+             deadline=reign_start_day + NPC_ORPHAN_DEADLINE_DAYS,
+             personality=random.choice(pers), study=r(55, 75), riding=r(55, 75), virtue=r(55, 75), health=r(65, 85),
+             ambition=r(50, 70), faction=0, zhuazhou='book'),
+        dict(key='princess', gender='公主', name=random.choice(NPC_PRINCESS_NAMES), ordinal=1, born=reign_start_day - 20,
+             mother='caoguiren', deadline=0, personality=random.choice(pers), study=r(35, 55), riding=r(20, 40),
+             virtue=r(40, 60), health=r(55, 75), ambition=30, faction=0, zhuazhou='rouge'),
+    ]
+
 
 def seed_npc_heirs(db):
-    """三阿哥（齐妃所出，开服时 14 岁）和四阿哥（8 岁，生母早逝没人抚养），保证一开服就有局可争"""
-    day = db.execute("SELECT day FROM game_state WHERE id=1").fetchone()[0]
-    qifei = db.execute("SELECT id FROM consorts WHERE npc_key='qifei'").fetchone()
-    for key, spec in NPC_HEIRS.items():
-        if db.execute("SELECT 1 FROM heirs WHERE npc_key=?", (key,)).fetchone(): continue
-        if key == 'third' and not qifei: continue
-        mother = caretaker = qifei[0] if key == 'third' else 0
-        db.execute("""INSERT INTO heirs (mother_id, caretaker_id, gender, ordinal, born_day, personality, study, riding, virtue, health,
+    """开局的系统皇子（每种只播一次）。第一届是三阿哥、四阿哥，之后每一届是新帝潜邸的长子、没人要的皇子、公主"""
+    row = db.execute("SELECT day, reign_no, reign_start_day FROM game_state WHERE id=1").fetchone()
+    day, reign_no, start = row[0], row[1], row[2]
+    for sp in npc_heir_specs(day, reign_no, start):
+        if db.execute("SELECT 1 FROM heirs WHERE npc_key=?", (sp['key'],)).fetchone(): continue
+        mother = 0
+        if sp['mother']:
+            m = db.execute("SELECT id FROM consorts WHERE npc_key=?", (sp['mother'],)).fetchone()
+            if not m: continue
+            mother = m[0]
+        db.execute("""INSERT INTO heirs (mother_id, caretaker_id, gender, ordinal, name, born_day, personality, study, riding, virtue, health,
                        zhuazhou, mother_affinity, caretaker_affinity, npc_key, ambition, faction, orphan_deadline_day, adult_day, title)
-                       VALUES (?,?,'皇子',?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,'')""",
-                   (mother, caretaker, spec['ordinal'], day - spec['age_days'], spec['personality'], spec['study'], spec['riding'],
-                    spec['virtue'], spec['health'], spec['zhuazhou'], 50, 50, key, spec['ambition'], spec['faction'],
-                    day + NPC_ORPHAN_DEADLINE_DAYS if key == 'fourth' else 0))
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,'')""",
+                   (mother, mother, sp['gender'], sp['ordinal'], sp['name'], sp['born'], sp['personality'], sp['study'], sp['riding'],
+                    sp['virtue'], sp['health'], sp['zhuazhou'], 50, 50, sp['key'], sp['ambition'], sp['faction'], sp['deadline']))
 
 def retire_musk(db):
     """v1.4：「暗下麝香」「毒害」并入「下药」。手里的麝香按 200 两退钱，还没结算的旧计策撤回退款（幂等）"""
@@ -871,6 +976,8 @@ def night_mark(cid, key, **data):
         g.night_events.setdefault(cid, {})[key] = data
 
 def add_trust(cid, delta):
+    if delta > 0 and emperor_traits().get('personality') == 'stubborn':
+        delta = max(1, round(delta * 0.7))                  # 倔强的皇上，信任涨得慢
     run("UPDATE consorts SET trust=MAX(0, MIN(100, trust+?)) WHERE id=?", (int(delta), cid))
 
 def trust_word(t):
@@ -1060,7 +1167,7 @@ def login_required(f):
             return redirect(url_for('login'))
         c = my_consort()
         if c is None:
-            if request.endpoint not in ('create', 'logout'):
+            if request.endpoint not in ('create', 'logout', 'reigns', 'memorial'):
                 return redirect(url_for('create'))
         elif c['status'] == 'xiunv' and request.endpoint not in ('dianxuan', 'logout'):
             return redirect(url_for('dianxuan'))
@@ -1145,6 +1252,9 @@ def logout():
 def create():
     if g.me is not None:
         return redirect(url_for('index'))
+    if state()['mourning']:
+        flash('国丧一日，明晚起开下一届选秀。先看看上一届的遗诏吧。', 'info')
+        return redirect(url_for('reigns'))
     if request.method == 'POST':
         f = request.form
         surname, given = f.get('surname', '').strip(), f.get('given', '').strip()
@@ -1189,6 +1299,9 @@ def create():
 @app.route('/dianxuan', methods=['GET', 'POST'])
 @login_required
 def dianxuan():
+    if state()['mourning']:
+        flash('国丧一日，明晚起开下一届选秀。', 'info')
+        return redirect(url_for('reigns'))
     c = g.me
     if c['status'] != 'xiunv':
         return redirect(url_for('index'))
@@ -1264,7 +1377,7 @@ def index():
     nxt = c['rank'] + 1
     promo = None
     if c['status'] not in ('cold',) and nxt <= PLAYER_MAX_RANK:
-        promo = dict(rank=RANK_NAMES[nxt], favor=PROMOTE_FAVOR[nxt], virtue=PROMOTE_VIRTUE[nxt],
+        promo = dict(rank=RANK_NAMES[nxt], favor=PROMOTE_FAVOR[nxt], virtue=promote_virtue_need(nxt),
                      slot=slot_free(nxt, c['id']), days_ok=(day - c['rank_since_day']) >= MIN_DAYS_AT_RANK)
     heirs = q("SELECT * FROM heirs WHERE mother_id=? ORDER BY id", (c['id'],))
     maid_gap = 0 if c['status'] == 'cold' else maid_quota(c['rank']) - len(active_maids(c['id']))
@@ -1398,6 +1511,8 @@ def do_eyes(c, cfg):
     return "你打点了几个宫人做眼线，接下来五天宫里的风吹草动都瞒不过你。", 'good'
 
 def do_seek(c, cfg):
+    if emperor_ill():
+        raise Reject('皇上病重，不见外人。要尽心就去侍疾。')
     charge(c, cfg)
     mood = state()['emperor_mood']
     run("UPDATE consorts SET seek_bonus=seek_bonus+15 WHERE id=?", (c['id'],))
@@ -1520,8 +1635,21 @@ def shorten_punishment(helper, t):
             notify(t['id'], '禁足解了。', 'good')
     return cut
 
+def do_attend(c, cfg):
+    if not emperor_ill():
+        raise Reject('皇上龙体安康，用不着侍疾。')
+    charge(c, cfg)
+    if random.random() < plead_chance(c):
+        add_trust(c['id'], ATTEND_TRUST_GAIN)
+        kids = list(q("SELECT * FROM heirs WHERE caretaker_id=? AND gender='皇子' AND status!='deposed' AND adult_day>=0", (c['id'],)))
+        for h in kids: add_merit(h['id'], ATTEND_HEIR_GAIN)
+        extra = f"，你抚养的{len(kids)}位阿哥圣眷 +{ATTEND_HEIR_GAIN}" if kids else ''
+        return f"你在榻前伺候汤药，皇上睁眼看了你一眼，什么也没说。信任 +{ATTEND_TRUST_GAIN}{extra}。", 'good'
+    return '苏培盛拦在殿外：「皇上需要静养，小主的心意奴才转达。」', 'info'
+
+
 ACTION_HANDLERS = dict(greet=do_greet, study=do_study, groom=do_groom, rest=do_rest, reflect=do_reflect,
-                       eyes=do_eyes, seek=do_seek, garden=do_garden, visit=do_visit, spy=do_spy, plead=do_plead)
+                       eyes=do_eyes, seek=do_seek, garden=do_garden, visit=do_visit, spy=do_spy, plead=do_plead, attend=do_attend)
 
 # ── 秘密坦白 ───────────────────────────────────────────────────────────────────
 
@@ -2893,6 +3021,8 @@ SUCCESSION_MOVES = {
     'bribe':   dict(name='收买上书房', silver=100, energy=1),
     'counsel': dict(name='公主进言', silver=0, energy=1),
     'feud':    dict(name='挑拨兄弟', silver=80, energy=1, min_scheme=50),
+    'peek':    dict(name='窥匾', silver=500, energy=1, min_rank=5),
+    'forge':   dict(name='矫诏', silver=1000, energy=2, min_rank=7),
 }
 DISCORD_BASE, DISCORD_LOSS, DISCORD_CAUGHT = 0.60, 8, 0.15
 BRIBE_BONUS, COUNSEL_GAIN, COUNSEL_INTERVAL = 15, 8, 7
@@ -3125,7 +3255,8 @@ def succession():
                            get_consort=get_consort, heir_standing=heir_standing, STANCE_ACTS=STANCE_ACTS, GIFTS=GIFTS,
                            SUCCESSION_MOVES=SUCCESSION_MOVES, STANCE_LOCK_DAYS=STANCE_LOCK_DAYS, PERSUADE_ENERGY=PERSUADE_ENERGY,
                            next_birthday=day + (-day) % BIRTHDAY_INTERVAL, next_court=day + (-day) % CROWN_INTERVAL,
-                           daily_count=daily_count, heir_age_years=heir_age_years, RANK_BONUS=RANK_BONUS)
+                           daily_count=daily_count, heir_age_years=heir_age_years, RANK_BONUS=RANK_BONUS,
+                           emperor_ill=emperor_ill())
 
 
 def _rival(hid):
@@ -3248,6 +3379,14 @@ def succession_move():
     elif key == 'feud':
         if c['scheme'] < mv['min_scheme']: err = f"心计要 {mv['min_scheme']} 以上才使得出这招。"
         elif not target or not other or target['id'] == other['id']: err = '选两位不同的、12 岁以上的阿哥。'
+    elif key == 'peek':
+        if c['rank'] < mv['min_rank']: err = '嫔位以上才够得着养心殿的匾。'
+    elif key == 'forge':
+        me = q('SELECT forge_used FROM users WHERE id=?', (c['user_id'],), one=True)
+        if c['rank'] < mv['min_rank']: err = '贵妃以上才有这个胆子。'
+        elif not emperor_ill(): err = '只有皇上病重的这几天，才有人能近得了遗诏。'
+        elif me['forge_used']: err = '一个人一辈子只能试这一次，你已经试过了。'
+        elif not target or target['caretaker_id'] != c['id']: err = '只能把匾改成你自己抚养的阿哥。'
     if err:
         flash(err, 'bad'); return redirect(url_for('succession'))
     run('UPDATE consorts SET energy=energy-? WHERE id=?', (mv['energy'], c['id']))
@@ -3263,6 +3402,28 @@ def succession_move():
         add_merit(target['id'], COUNSEL_GAIN)
         flash(f"{heir_label(mine)}在皇上面前替{heir_full_title(target)}说了好话，他的圣眷 +{COUNSEL_GAIN}。", 'good')
         for par in heir_parents(target): notify(par['id'], f"{heir_label(mine)}公主在皇上面前替{heir_full_title(target)}说了好话，圣眷 +{COUNSEL_GAIN}。", 'good')
+    elif key == 'peek':
+        r = random.random()
+        leader = choose_successor(day)
+        if r < PEEK_LEARN:
+            flash(f"苏培盛一时不慎露了口风：匾后写的是{heir_full_title(leader)}。（这是眼下的排位，后面还会变。）" if leader
+                  else '匾后的名字，是从宗室里过继的一位，眼下还不是任何一位阿哥。', 'good')
+        elif r < PEEK_LEARN + PEEK_CAUGHT:
+            gazette(f"{display_name(c)}私窥立储密匾，被侍卫拿下，打入冷宫。", 'decree')
+            send_to_cold(c['id'])
+            flash('你被侍卫当场拿住，打入冷宫。', 'bad')
+        else:
+            flash('银子花了，什么也没打听到。', 'info')
+    elif key == 'forge':
+        run('UPDATE users SET forge_used=1 WHERE id=?', (c['user_id'],))
+        if random.random() < FORGE_BASE + c['scheme'] * FORGE_PER_SCHEME:
+            run('UPDATE heirs SET forged=0')
+            run('UPDATE heirs SET forged=1 WHERE id=?', (target['id'],))
+            flash(f"苏培盛应下了。遗诏上的名字，到时会是{heir_full_title(target)}。这件事只有你知道。", 'good')
+        else:
+            gazette(f"{display_name(c)}矫诏事发，赐死。", 'decree')
+            die(c['id'], '矫诏败露，赐死')
+            flash('事发了。你被赐了白绫。', 'bad')
     elif key == 'feud':
         for hh in (target, other): run('UPDATE heirs SET feud_until_day=? WHERE id=?', (day + FEUD_DAYS, hh['id']))
         flash(f"{heir_full_title(target)}和{heir_full_title(other)}从此结了怨，之后 {FEUD_DAYS} 天两人的圣眷每天各 -{FEUD_LOSS}。", 'good')
@@ -3622,10 +3783,245 @@ def npc_schemes(day):
                VALUES (?,?,?,?,?,?,?)""", (day, npc['id'], target['id'], method, drug, drug, now_ts()))
     huafei_punish(day)
 
+# ── 皇上的寿数、驾崩、开匾、下一届（九点六节 G） ─────────────────────────────────
+
+NEXT_EMPEROR_START_AGE = 40   # 新帝登基多年，下一届开局时他 40 岁
+HAZARD_AFTER_YEARS = 15       # 开局年龄 + 15 岁起，每晚有驾崩的可能（第一届是 60 岁）
+HAZARD_PER_YEAR = 0.005
+MAX_REIGN_DAYS = 70           # 一届最晚到这一天必定驾崩
+ILL_DAYS = 3                  # 驾崩前一定有 3 天病重
+ATTEND_TRUST_GAIN, ATTEND_HEIR_GAIN = 5, 5
+PEEK_LEARN, PEEK_CAUGHT = 0.20, 0.15
+FORGE_BASE, FORGE_PER_SCHEME = 0.15, 0.003
+SUPPORT_TITLES = [(12, '皇贵太妃'), (6, '贵太妃'), (0, '太妃')]   # 明站的人按支持了几天封
+REIGN_EVENT_KINDS = ('decree', 'death', 'birth')
+REIGN_EVENT_LIMIT = 14
+
+
+def promote_virtue_need(rank):
+    need = PROMOTE_VIRTUE[rank]
+    return int(need * 0.9) if emperor_traits().get('virtue', 0) >= 60 else need
+
+
+def emperor_age_years(st=None, day=None):
+    st = st or state()
+    day = st['day'] if day is None else day
+    return st['emperor_start_age'] + (day - st['reign_start_day']) / 2
+
+
+def emperor_ill(st=None, day=None):
+    """驾崩日 d 定下之后，d-2、d-1、d 这三天皇上病重"""
+    st = st or state()
+    day = st['day'] if day is None else day
+    return bool(st['emperor_death_day']) and day >= st['emperor_death_day'] - ILL_DAYS + 1
+
+
+def emperor_traits(st=None):
+    try: return json.loads((st or state())['emperor_traits'] or '{}')
+    except ValueError: return {}
+
+
+def fall_emperor_ill(day, death_day):
+    death_day = max(day + 1, death_day)
+    run('UPDATE game_state SET emperor_death_day=? WHERE id=1', (death_day,))
+    gazette('皇上龙体违和，太医院日夜守候，六宫不得喧哗。', 'decree')
+    for c in q("SELECT id FROM consorts WHERE user_id IS NOT NULL AND status NOT IN ('xiunv','dead')"):
+        notify(c['id'], '皇上病重。这几天翻牌子、召见都停了。去养心殿侍疾，或许能换来皇上一点心意；'
+                        '这也是夺嫡最后的几天。', 'decree')
+
+
+def emperor_tick(day):
+    """结算末尾：驾崩日到了就开匾换届；还没病的，按年龄掷一次。返回 True 表示这一晚换届了"""
+    st = state()
+    if st['emperor_death_day']:
+        if day >= st['emperor_death_day']:
+            end_reign(day)
+            return True
+        return False
+    reign_days = day - st['reign_start_day']
+    hazard = max(0.0, (emperor_age_years(st, day) - (st['emperor_start_age'] + HAZARD_AFTER_YEARS)) * HAZARD_PER_YEAR)
+    if reign_days >= MAX_REIGN_DAYS - ILL_DAYS or random.random() < hazard:
+        fall_emperor_ill(day, min(day + ILL_DAYS, st['reign_start_day'] + MAX_REIGN_DAYS))
+    return False
+
+
+def choose_successor(day):
+    """匾后是谁：矫诏成功的那位；否则圣眷最高的（同分取年长的）。没有 12 岁以上的皇子就是 None，从宗室过继"""
+    cands = rival_princes(day)
+    if not cands: return None
+    pool = [h for h in cands if h['forged']] or cands
+    return max(pool, key=lambda h: (heir_standing(h), -h['born_day']))
+
+
+def support_title(days):
+    return next(t for lo, t in SUPPORT_TITLES if days >= lo)
+
+
+def reign_players(st):
+    return list(q("""SELECT * FROM consorts WHERE (user_id IS NOT NULL OR archived_user_id IS NOT NULL)
+                     AND status!='xiunv' AND entered_day>=?""", (st['reign_start_day'],)))
+
+
+def new_emperor_name(winner):
+    if winner and winner['name']: return winner['name']
+    taken = {r['emperor_name'] for r in q('SELECT emperor_name FROM reigns')} | {state()['emperor_name']}
+    pool = [n for n in NPC_PRINCE_NAMES if n not in taken] or NPC_PRINCE_NAMES
+    return random.choice(pool)
+
+
+@atomic
+def end_reign(day):
+    """驾崩那一晚：开匾、定太后、清算、定格这一届、清空、装下一届。国丧一天，第二天的结算开选秀"""
+    st = state()
+    winner = choose_successor(day)
+    players = reign_players(st)
+    age_txt = age_text(int(emperor_age_years(st, day) * 12))
+    name = new_emperor_name(winner)
+
+    # 太后与太妃：生母、养母里在世的，跟他情分高的成太后，另一位成太妃
+    mom = get_consort(winner['mother_id']) if winner and winner['mother_id'] else None
+    care = get_consort(winner['caretaker_id']) if winner and winner['caretaker_id'] else None
+    parents = list({x['id']: x for x in (mom, care) if x and x['status'] in ('normal', 'confined')}.values())
+    dowager = concubine = None
+    if len(parents) == 1:
+        dowager = parents[0]
+    elif len(parents) == 2:
+        aff = {mom['id']: winner['mother_affinity'], care['id']: winner['caretaker_affinity']}
+        dowager = max(parents, key=lambda x: aff[x['id']])
+        concubine = next(x for x in parents if x['id'] != dowager['id'])
+
+    # 站队的结算、落选皇子的清算
+    titles = {}
+    stances = list(q("SELECT * FROM stances"))
+    if winner:
+        for sn in stances:
+            if sn['heir_id'] == winner['id'] and sn['kind'] == 'open':
+                titles[sn['consort_id']] = support_title(day - sn['since_day'])
+            elif sn['heir_id'] == winner['id'] and sn['kind'] == 'secret':
+                titles.setdefault(sn['consort_id'], '暗中相助有功，新帝另有赏赐')
+        for sn in stances:
+            if sn['kind'] == 'open' and sn['heir_id'] != winner['id']:
+                titles[sn['consort_id']] = '押错了阿哥，新帝记了一笔'
+    if dowager: titles[dowager['id']] = '圣母皇太后'
+    if concubine: titles[concubine['id']] = '太妃'
+
+    fates = []
+    for c in players:
+        alive = c['status'] != 'dead'
+        fate = titles.get(c['id'], '迁居寿康宫，安享晚年') if alive else f"{c['death_reason']}（第 {c['death_day']} 天）"
+        fates.append(dict(user=c['user_id'] or c['archived_user_id'], name=full_name(c), rank=RANK_NAMES[c['rank']],
+                          fate=fate, alive=alive, bedded=c['bedded_count'], entered=c['entered_day'], cid=c['id']))
+
+    edict = [f"先帝{age_txt}龙驭上宾。遗诏：传位于{name}" + (f"（{heir_label(winner)}）。" if winner else "，自宗室过继。")]
+    if dowager:
+        edict.append(f"尊{name}之{'生母' if dowager['id'] == winner['mother_id'] else '养母'}{full_name(dowager)}为圣母皇太后，居慈宁宫。")
+    elif winner:
+        edict.append('生母、养母皆已不在，追尊而已，此届不设太后。')
+    if concubine:
+        edict.append(f"{full_name(concubine)}封太妃。")
+    for sn in stances:
+        c = get_consort(sn['consort_id'])
+        if winner and sn['heir_id'] == winner['id'] and sn['kind'] == 'open' and c and c['status'] != 'dead' and c['id'] not in (dowager and dowager['id'], concubine and concubine['id']):
+            edict.append(f"{full_name(c)}早年示好新帝，封{titles[c['id']]}。")
+    for h in rival_princes(day, exclude_id=winner['id'] if winner else 0):
+        if not h['adult_day']: continue
+        if h['ambition'] >= 80 and heir_faction_count(h) >= 5:
+            edict.append(f"{heir_full_title(h)}野心勃勃、结党甚众，新帝不放心，圈禁。")
+        elif h['title']:
+            edict.append(f"{heir_full_title(h)}安分守己，仍以{h['title']}奉养。")
+    events = [r for r in q("SELECT day, text FROM gazette WHERE kind IN (?,?,?) ORDER BY id", REIGN_EVENT_KINDS)][-REIGN_EVENT_LIMIT:]
+    if events:
+        edict.append('——这一届的大事——')
+        edict += [f"第 {r['day']} 天　{r['text']}" for r in events]
+
+    records = []
+    if players:
+        bed = max(players, key=lambda c: c['bedded_count'])
+        if bed['bedded_count']: records.append(f"侍寝最多：{full_name(bed)}，{bed['bedded_count']} 次")
+        top = max(players, key=lambda c: (c['rank'], -c['rank_since_day']))
+        records.append(f"位分最高：{full_name(top)}，{RANK_NAMES[top['rank']]}")
+        kids = {c['id']: q("SELECT COUNT(*) n FROM heirs WHERE caretaker_id=?", (c['id'],), one=True)['n'] for c in players}
+        most = max(players, key=lambda c: kids[c['id']])
+        if kids[most['id']]: records.append(f"养大皇嗣最多：{full_name(most)}，{kids[most['id']]} 位")
+
+    run("""INSERT INTO reigns (reign_no, era_name, emperor_name, start_age, end_age_text, start_day, end_day, successor, dowager,
+                              edict, fates, records, created_ts) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (st['reign_no'], st['era_name'], st['emperor_name'], st['emperor_start_age'], age_txt, st['reign_start_day'], day,
+         name, full_name(dowager) if dowager else '', json.dumps(edict, ensure_ascii=False),
+         json.dumps(fates, ensure_ascii=False), json.dumps(records, ensure_ascii=False), now_ts()))
+    reign_id = q('SELECT MAX(id) m FROM reigns', one=True)['m']
+
+    # 玩家自己的信原样存起来，只有本人翻得到
+    for c in players:
+        uid = c['user_id'] or c['archived_user_id']
+        for l in q("SELECT * FROM letters WHERE (to_id=? AND deleted_by_to=0) OR (from_id=? AND deleted_by_from=0) ORDER BY id", (c['id'], c['id'])):
+            frm = (l['sender_label'] or '内务府') if l['from_id'] == 0 else display_name(get_consort(l['from_id']))
+            to = display_name(get_consort(l['to_id']))
+            run("INSERT INTO reign_letters (reign_no, user_id, day, from_name, to_name, body) VALUES (?,?,?,?,?,?)",
+                (st['reign_no'], uid, l['day'], frm, to, l['body']))
+    for f in fates:
+        if f['alive']:
+            run("""UPDATE consorts SET status='dead', death_day=?, death_reason=?, archived_user_id=user_id, user_id=NULL,
+                   pregnant_since=0, energy=0, hall='', housing_waiting='' WHERE id=?""",
+                (day, f"先帝驾崩，{f['fate']}", f['cid']))
+    run("UPDATE maids SET status='gone', left_day=?, left_reason='主子随先帝殡天，散去' WHERE status='active'", (day,))
+    run("DELETE FROM consorts WHERE npc_key IS NOT NULL")
+    for t in ('intrigues', 'messages', 'gazette', 'relations', 'known_secrets', 'inventory', 'heirs', 'letters', 'letter_stars',
+              'bribes', 'afflictions', 'cases', 'case_suspects', 'case_actions', 'stances', 'heir_claims',
+              'hobby_projects', 'hobby_items', 'displays', 'daily_counters'):
+        run(f"DELETE FROM {t}")
+    run('UPDATE users SET lethal_ready_day=0, nameless_ready_day=0, forge_used=0')
+
+    # 新的一届：下一届的皇上就是这位新帝，40 岁那年开选秀
+    traits = dict(personality=winner['personality'], study=winner['study'], riding=winner['riding'], virtue=winner['virtue']) if winner else \
+        dict(personality=random.choice(list(HEIR_PERSONALITIES)), study=random.randint(40, 70), riding=random.randint(40, 70), virtue=random.randint(40, 70))
+    era = random.choice([e for e in ERA_NAMES if e != st['era_name']])
+    dowager_text = f"圣母皇太后{full_name(dowager)}" if dowager else ''
+    run("""UPDATE game_state SET day=?, last_settle_date=?, reign_no=?, reign_start_day=?, emperor_start_age=?, emperor_death_day=0,
+           mourning=1, era_name=?, emperor_name=?, emperor_traits=?, dowager=?, emperor_mood='平和', last_bed_id=0, last_bed_day=0,
+           last_bed_pool='[]' WHERE id=1""",
+        (day + 1, datetime.now(TZ).date().isoformat(), st['reign_no'] + 1, day + 2, NEXT_EMPEROR_START_AGE, era, name,
+         json.dumps(traits, ensure_ascii=False), dowager_text))
+    seed_npcs(_RunDB); seed_npc_heirs(_RunDB)
+    housing_sync(fill_main=False)
+    gazette(f"先帝驾崩。{edict[0]}国丧一日，新帝改元{era}。", 'decree')
+    return reign_id
+
+
+def finish_mourning(day, st):
+    """国丧过后的第一次结算：下一届选秀开始"""
+    run("UPDATE game_state SET mourning=0, day=?, last_settle_date=?, emperor_mood='平和' WHERE id=1",
+        (day + 1, datetime.now(TZ).date().isoformat()))
+    gazette(f"国丧期满，新帝{st['emperor_name']}改元{st['era_name']}，新一届选秀开始。", 'decree', day=day + 1)
+    return ['国丧期满，开下一届选秀']
+
+
+def emperor_state_text(st):
+    if st['mourning']: return '国丧'
+    if emperor_ill(st): return '龙体违和'
+    return f"今日{st['emperor_mood']}"
+
+
+app.jinja_env.globals['emperor_state_text'] = emperor_state_text
+
+
+@app.route('/reigns')
+@login_required
+def reigns():
+    rows = []
+    for r in q("SELECT * FROM reigns ORDER BY id DESC"):
+        rows.append(dict(r=r, edict=json.loads(r['edict']), fates=json.loads(r['fates']), records=json.loads(r['records'])))
+    letters = q("SELECT * FROM reign_letters WHERE user_id=? ORDER BY reign_no DESC, id", (S['uid'],))
+    return render_template('reigns.html', c=g.me, rows=rows, letters=letters, uid=S['uid'], st=state())
+
+
 def bed_weight(c, day):
     w = 10 + c['favor'] * 0.15 + c['appearance'] * 0.3 + c['talent'] * 0.15 + c['seek_bonus']
     if emperor_art_bonus(c): w += 20
     if c['user_id'] and day - c['entered_day'] <= 3: w += 15   # 皇上喜新
+    tr = emperor_traits()
+    if tr.get('study', 0) >= 60: w += c['talent'] * 0.1      # 学问高的皇上偏爱才艺
+    if tr.get('riding', 0) >= 60: w += c['health'] * 0.2     # 骑射高的皇上欣赏体质好的
     if c['personality'] == 'charming': w *= 1.15
     if c['npc_key']: w *= NPC_BED_MULT
     return max(1, w)
@@ -3648,6 +4044,9 @@ def _settle_night():
     st = state()
     day = st['day']
     report = []
+    if st['mourning']:
+        return finish_mourning(day, st)
+    ill = emperor_ill(st, day)   # 皇上病重的这几晚，不翻牌子、不召见
 
     # 白天没来得及定夺的场景、昨夜的侍寝/召见场景，到今晚都作废
     run("UPDATE consorts SET pending_scene='' WHERE pending_scene!=''")
@@ -3667,7 +4066,7 @@ def _settle_night():
     tick_drugs(day)
 
     # 2. 翻牌子
-    cands = [c for c in q("""SELECT * FROM consorts WHERE status='normal' AND rank BETWEEN 1 AND 8
+    cands = [] if ill else [c for c in q("""SELECT * FROM consorts WHERE status='normal' AND rank BETWEEN 1 AND 8
                              AND pregnant_since=0""") if not is_sick(c) and not affliction(c['id'], 'yanzhi', day)]
     bed = None
     if cands:
@@ -3716,7 +4115,7 @@ def _settle_night():
         report.append(f"侍寝：{display_name(bed)}")
 
     # 2b. 召见：侍寝之外，另召几位玩家单独说话，让更多人有机会见到皇上
-    pool = [c for c in q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND status='normal'")
+    pool = [] if ill else [c for c in q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND status='normal'")
             if not is_sick(c) and not (bed and c['id'] == bed['id'])]
     called = []
     for _ in range(min(AUDIENCE_PER_NIGHT, len(pool))):
@@ -3779,7 +4178,7 @@ def _settle_night():
         c = get_consort(c['id'])
         nxt = c['rank'] + 1
         if c['status'] != 'normal': continue
-        if c['favor'] < PROMOTE_FAVOR[nxt] or c['virtue'] < PROMOTE_VIRTUE[nxt]: continue
+        if c['favor'] < PROMOTE_FAVOR[nxt] or c['virtue'] < promote_virtue_need(nxt): continue
         need_days = 1 if c['rank'] == 1 else MIN_DAYS_AT_RANK
         if day - c['rank_since_day'] < need_days: continue
         if not slot_free(nxt, c['id']):
@@ -3835,6 +4234,10 @@ def _settle_night():
 
     # 6. 口谕：根据每个人这一夜的真实经历挑一句，没什么可说的就不说
     issue_edicts(day)
+
+    # 6b. 皇上的寿数：驾崩日到了就开匾换届；没病的按年龄掷一次
+    if emperor_tick(day):
+        return report
 
     # 7. 进入新的一天
     new_day = day + 1
@@ -3932,9 +4335,48 @@ def admin():
                       COUNT(*) total, SUM(claimed) got, MIN(created_ts) created_ts
                       FROM letters WHERE broadcast_id>0 GROUP BY broadcast_id ORDER BY broadcast_id DESC LIMIT 20""")
     players = q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND status NOT IN ('xiunv','dead') ORDER BY rank DESC")
-    return render_template('admin.html', rows=rows, pend=pend, get_consort=get_consort, INTRIGUES=INTRIGUES,
+    return render_template('admin.html', emperor_age=emperor_age_years(), rows=rows, pend=pend, get_consort=get_consort, INTRIGUES=INTRIGUES,
                            SECRETS=SECRETS, reports=reports, done_reports=done_reports, banned=banned,
                            broadcasts=broadcasts, players=players, dn=display_name)
+
+@app.route('/admin/emperor', methods=['POST'])
+@admin_required
+def admin_emperor():
+    act = request.form.get('act')
+    st = state()
+    day = st['day']
+    if act == 'start_age':
+        try: age = int(request.form.get('age', ''))
+        except ValueError: age = 0
+        if not 20 <= age <= 70: flash('起始年龄要在 20~70 之间。', 'bad')
+        else:
+            run('UPDATE game_state SET emperor_start_age=? WHERE id=1', (age,))
+            flash(f"这一届皇上的起始年龄改为 {age} 岁（今年 {emperor_age_years(state()):g} 岁）。", 'good')
+    elif act == 'ill':
+        if st['mourning'] or st['emperor_death_day']: flash('已经在病重或国丧了。', 'bad')
+        else:
+            fall_emperor_ill(day, day + ILL_DAYS - 1)   # 白天触发：今天起就病重，连今天三天，第三天夜里驾崩
+            flash(f"皇上病重，第 {day + ILL_DAYS - 1} 天夜里驾崩。", 'good')
+    elif act == 'postpone':
+        if not st['emperor_death_day']: flash('皇上没有在病重。', 'bad')
+        else:
+            run('UPDATE game_state SET emperor_death_day=emperor_death_day+1 WHERE id=1')
+            flash('驾崩日往后推了一天。', 'good')
+    elif act == 'recover':
+        run('UPDATE game_state SET emperor_death_day=0 WHERE id=1')
+        gazette('皇上龙体渐愈，太医院上下松了口气。', 'news')
+        flash('皇上痊愈了。', 'good')
+    elif act == 'end_now':
+        if st['mourning']: flash('已经在国丧了。', 'bad')
+        else:
+            end_reign(day)
+            flash('已开匾换届，国丧一日。', 'good')
+    elif act == 'skip_mourning':
+        if not st['mourning']: flash('现在不在国丧。', 'bad')
+        else:
+            finish_mourning(day, st)
+            flash('已跳过国丧，新一届选秀开始。', 'good')
+    return redirect(url_for('admin'))
 
 @app.route('/admin/settle', methods=['POST'])
 @admin_required
@@ -4026,8 +4468,12 @@ def admin_reset():
         run(f"DELETE FROM {t}")
     if request.form.get('keep_users') != '1':
         run("DELETE FROM users")
-    run('UPDATE users SET lethal_ready_day=0')
+    run('DELETE FROM reigns'); run('DELETE FROM reign_letters')
+    run('UPDATE users SET lethal_ready_day=0, nameless_ready_day=0, forge_used=0')
     init_db()
+    try: age = int(request.form.get('start_age', ''))
+    except ValueError: age = 0
+    if 20 <= age <= 70: run('UPDATE game_state SET emperor_start_age=? WHERE id=1', (age,))
     flash('已重开一届选秀。', 'good')
     return redirect(url_for('admin'))
 
@@ -4245,7 +4691,7 @@ PLACES = {
     'home':    dict(name='本宫', actions=['study', 'groom', 'rest', 'reflect', 'eyes']),
     'jingren': dict(name='景仁宫', actions=['greet']),
     'garden':  dict(name='御花园', actions=['garden']),
-    'yangxin': dict(name='养心殿', actions=['seek', 'plead']),
+    'yangxin': dict(name='养心殿', actions=['seek', 'attend', 'plead']),
 }
 
 
@@ -4281,7 +4727,7 @@ def place(key):
     r = pending_redirect(c)
     if r: return r
     day, st = cur_day(), state()
-    acts = [(k, ACTIONS[k]) for k in PLACES[key]['actions'] if c['status'] in ACTIONS[k]['when']]
+    acts = [(k, ACTIONS[k]) for k in PLACES[key]['actions'] if c['status'] in ACTIONS[k]['when'] and not (k == 'attend' and not emperor_ill())]
     counts = {k: daily_count(c['id'], k) for k in PLACES[key]['actions']}
     title, desc, extra = PLACES[key]['name'], '', ''
     maid_ev, maid_info, heir_ev, my_heirs, heir_todo = None, None, None, [], 0
@@ -4426,7 +4872,7 @@ def scene():
             flash('这事已经过去了。', 'info')
             return redirect(url_for('index'))
         if is_exam:
-            ok = heir[opt['stat']] + heir['exam_bonus'] + random.randint(0, SCENE_ROLL) >= opt['dc']
+            ok = heir[opt['stat']] + heir['exam_bonus'] + random.randint(0, SCENE_ROLL) >= opt['dc'] + (5 if emperor_traits().get('personality') == 'clever' else 0)   # 聪敏的皇上，考校题更难
             if heir['exam_bonus']: run('UPDATE heirs SET exam_bonus=0 WHERE id=?', (heir['id'],))
             outcome = opt['win_text'] if ok else opt['lose_text']
             gain = (opt['win'] if ok else opt.get('lose', {})).get('heir_favor', 0)
