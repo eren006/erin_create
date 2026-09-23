@@ -29,6 +29,17 @@
 {% endblock %}
 {% block body %}
 <h2>书信</h2>
+
+{% if unclaimed %}
+{% for l in unclaimed %}
+<div class="letter new" style="border-left-color:var(--jin)">
+  <div class="hd"><b>内务府</b>第 {{ l.day }} 天{% if l.silver %}，附银子 {{ l.silver }} 两{% endif %}{% if l.item_key %}，附{{ ITEMS[l.item_key].name if l.item_key in ITEMS else l.item_key }}{% endif %}</div>
+  <p class="body">{{ l.body }}</p>
+  <form method="post" action="{{ url_for('letter_claim', lid=l.id) }}"><button>领取</button></form>
+</div>
+{% endfor %}
+{% endif %}
+
 <form method="post" action="{{ url_for('letter_send') }}" class="sheet compose">
   <label for="to">寄给</label>
   <select id="to" name="to_id" required>
@@ -55,22 +66,52 @@
     <span class="muted">今天还能送 {{ left }} 封。每天给同一个人的第一封信好感 +2，附玉如意再 +15，附自己做的雅趣作品再 +10。</span></div>
 </form>
 
-<h3>收到的</h3>
-{% for l in inbox %}{% set f = get_consort(l.from_id) %}
-<div class="letter {{ 'new' if not l.is_read }}">
-  <div class="hd"><b>{{ dn(f) }}</b>第 {{ l.day }} 天{% if l.silver %}，附银子 {{ l.silver }} 两{% endif %}{% if l.item_key %}，附{{ ITEMS[l.item_key].name if l.item_key in ITEMS else l.item_key }}{% endif %}{% if l.hobby_item_id %}{% set hi = get_hobby_item(l.hobby_item_id) %}{% if hi %}，附{{ HOBBIES[hi.kind].name }}·{{ hi.style }}（{{ hi.quality }}）{% endif %}{% endif %}
-    {% if f.status not in ('dead',) %}　<a href="{{ url_for('letters', to=f.id) }}">回信</a>{% endif %}　<a href="{{ url_for('report', letter=l.id) }}" class="muted">举报</a></div>
-  <p class="body">{{ l.body }}</p>
-</div>
-{% else %}<p class="muted">还没有人给你写过信。</p>{% endfor %}
+{% if with_id %}
+{% set who = get_consort(with_id) %}
+<p class="muted">只看和{{ dn(who) }}的往来。<a href="{{ url_for('letters') }}">看全部</a></p>
+{% endif %}
 
-{% if sent %}
-<h3>送出的</h3>
-{% for l in sent %}{% set t = get_consort(l.to_id) %}
-<div class="letter">
-  <div class="hd"><b>给{{ dn(t) }}</b>第 {{ l.day }} 天{{ '，她已读' if l.is_read else '，还没读' }}</div>
+{% macro letter_row(l, mine_role) %}
+{% set other = get_consort(l.to_id if mine_role == 'from' else l.from_id) %}
+<div class="letter {{ 'new' if mine_role == 'to' and not l.is_read }}">
+  <div class="hd">
+    <b>{{ ('给' if mine_role == 'from' else '') ~ ('内务府' if l.from_id == 0 and mine_role == 'to' else dn(other)) }}</b>
+    第 {{ l.day }} 天
+    {% if mine_role == 'from' %}{{ '，她已读' if l.is_read else '，还没读' }}{% endif %}
+    {% if l.silver %}，附银子 {{ l.silver }} 两{% endif %}{% if l.item_key %}，附{{ ITEMS[l.item_key].name if l.item_key in ITEMS else l.item_key }}{% endif %}
+    {% if l.hobby_item_id %}{% set hi = get_hobby_item(l.hobby_item_id) %}{% if hi %}，附{{ HOBBIES[hi.kind].name }}·{{ hi.style }}（{{ hi.quality }}）{% endif %}{% endif %}
+    {% if other %}　<a href="{{ url_for('letters', with=other.id) }}" class="muted">只看她</a>{% endif %}
+    {% if mine_role == 'to' and l.from_id != 0 and other.status not in ('dead',) %}　<a href="{{ url_for('letters', to=other.id) }}">回信</a>{% endif %}
+    {% if mine_role == 'to' %}　<a href="{{ url_for('report', letter=l.id) }}" class="muted">举报</a>{% endif %}
+  </div>
   <p class="body">{{ l.body }}</p>
+  <div class="row" style="margin-top:6px">
+    <form method="post" action="{{ url_for('letter_star', lid=l.id) }}" style="display:inline"><button class="plain">{{ '取消标星' if l.id in starred_ids else '标星' }}</button></form>
+    <form method="post" action="{{ url_for('letter_delete', lid=l.id) }}" style="display:inline" onsubmit="return confirm('从你的信箱删掉这封信？')"><button class="plain">删除</button></form>
+  </div>
 </div>
-{% endfor %}
+{% endmacro %}
+
+<h3>收到的{% if inbox_total %}（共 {{ inbox_total }} 封{% if inbox_pages > 1 %}，第 {{ p }}/{{ inbox_pages }} 页{% endif %}）{% endif %}</h3>
+{% for l in inbox_starred %}{{ letter_row(l, 'to') }}{% endfor %}
+{% for l in inbox %}{{ letter_row(l, 'to') }}{% endfor %}
+{% if not inbox_starred and not inbox %}<p class="muted">还没有人给你写过信。</p>{% endif %}
+{% if inbox_pages > 1 %}
+<p class="row">
+  {% if p > 1 %}<a href="{{ url_for('letters', p=p-1, sp=sp, with=with_id or none) }}">上一页</a>{% endif %}
+  {% if p < inbox_pages %}<a href="{{ url_for('letters', p=p+1, sp=sp, with=with_id or none) }}">下一页</a>{% endif %}
+</p>
+{% endif %}
+
+{% if sent_starred or sent %}
+<h3>送出的{% if sent_total %}（共 {{ sent_total }} 封{% if sent_pages > 1 %}，第 {{ sp }}/{{ sent_pages }} 页{% endif %}）{% endif %}</h3>
+{% for l in sent_starred %}{{ letter_row(l, 'from') }}{% endfor %}
+{% for l in sent %}{{ letter_row(l, 'from') }}{% endfor %}
+{% if sent_pages > 1 %}
+<p class="row">
+  {% if sp > 1 %}<a href="{{ url_for('letters', sp=sp-1, p=p, with=with_id or none) }}">上一页</a>{% endif %}
+  {% if sp < sent_pages %}<a href="{{ url_for('letters', sp=sp+1, p=p, with=with_id or none) }}">下一页</a>{% endif %}
+</p>
+{% endif %}
 {% endif %}
 {% endblock %}

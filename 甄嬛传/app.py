@@ -683,7 +683,12 @@ def init_db():
         'cases': {'convicted_id': 'INTEGER NOT NULL DEFAULT 0', 'wrongful': 'INTEGER NOT NULL DEFAULT 0'},
         'intrigues': {'drug': "TEXT NOT NULL DEFAULT ''",
                       'agent_maid_id': 'INTEGER NOT NULL DEFAULT 0'},
-        'letters': {'hobby_item_id': 'INTEGER NOT NULL DEFAULT 0'},
+        'letters': {'hobby_item_id': 'INTEGER NOT NULL DEFAULT 0',
+                    'is_broadcast': 'INTEGER NOT NULL DEFAULT 0',
+                    'broadcast_id': 'INTEGER NOT NULL DEFAULT 0',
+                    'claimed': 'INTEGER NOT NULL DEFAULT 1',
+                    'deleted_by_from': 'INTEGER NOT NULL DEFAULT 0',
+                    'deleted_by_to': 'INTEGER NOT NULL DEFAULT 0'},
         'messages': {'is_night': 'INTEGER NOT NULL DEFAULT 0'},
         'gazette': {'is_night': 'INTEGER NOT NULL DEFAULT 0'},
         'game_state': {'last_bed_pool': "TEXT NOT NULL DEFAULT '[]'"},
@@ -1009,7 +1014,7 @@ def inject_globals():
         ctx['next_settle'] = next_settle_text()
         me = getattr(g, 'me', None)
         ctx['open_cases_count'] = q("SELECT COUNT(DISTINCT c.id) FROM cases c LEFT JOIN case_suspects s ON s.case_id=c.id WHERE c.status='open' AND (c.victim_id=? OR s.consort_id=?)", (me['id'], me['id']), one=True)[0] if me else 0
-        ctx['unread_letters'] = q("SELECT COUNT(*) n FROM letters WHERE to_id=? AND is_read=0",
+        ctx['unread_letters'] = q("SELECT COUNT(*) n FROM letters WHERE to_id=? AND is_read=0 AND deleted_by_to=0",
                                   (me['id'],), one=True)['n'] if me else 0
     except Exception:
         pass
@@ -2657,8 +2662,13 @@ def admin():
     reports = q("SELECT * FROM reports WHERE status='open' ORDER BY id")
     done_reports = q("SELECT * FROM reports WHERE status!='open' ORDER BY handled_ts DESC LIMIT 10")
     banned = q("SELECT id, username FROM users WHERE banned=1 ORDER BY id")
+    broadcasts = q("""SELECT broadcast_id, MIN(body) body, MIN(silver) silver, MIN(item_key) item_key,
+                      COUNT(*) total, SUM(claimed) got, MIN(created_ts) created_ts
+                      FROM letters WHERE broadcast_id>0 GROUP BY broadcast_id ORDER BY broadcast_id DESC LIMIT 20""")
+    players = q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND status NOT IN ('xiunv','dead') ORDER BY rank DESC")
     return render_template('admin.html', rows=rows, pend=pend, get_consort=get_consort, INTRIGUES=INTRIGUES,
-                           SECRETS=SECRETS, reports=reports, done_reports=done_reports, banned=banned)
+                           SECRETS=SECRETS, reports=reports, done_reports=done_reports, banned=banned,
+                           broadcasts=broadcasts, players=players, dn=display_name)
 
 @app.route('/admin/settle', methods=['POST'])
 @admin_required
@@ -2701,13 +2711,50 @@ def admin_decree():
         flash('已发布到邸报。', 'good')
     return redirect(url_for('admin'))
 
+@app.route('/admin/broadcast', methods=['POST'])
+@admin_required
+def admin_broadcast():
+    f = request.form
+    body = f.get('body', '').strip()
+    try: amt = max(0, int(f.get('silver', 0) or 0))
+    except ValueError: amt = 0
+    item = f.get('item', '')
+    target = f.get('target', 'all')
+    ids = f.getlist('to_ids')
+    if not body:
+        flash('总要写点什么。', 'bad')
+        return redirect(url_for('admin'))
+    if item and item not in ITEMS:
+        flash('没有这样东西。', 'bad')
+        return redirect(url_for('admin'))
+    if target == 'all':
+        recipients = [r['id'] for r in q("SELECT id FROM consorts WHERE user_id IS NOT NULL AND status NOT IN ('xiunv','dead')")]
+    else:
+        try: recipients = [int(i) for i in ids]
+        except ValueError: recipients = []
+        recipients = [r['id'] for r in q(f"SELECT id FROM consorts WHERE id IN ({','.join('?' * len(recipients)) or '0'}) AND user_id IS NOT NULL AND status NOT IN ('xiunv','dead')", recipients)] if recipients else []
+    if not recipients:
+        flash('没有能收到信的人。', 'bad')
+        return redirect(url_for('admin'))
+    claimed = 0 if (amt or item) else 1
+    first = run("""INSERT INTO letters (from_id, to_id, day, body, silver, item_key, is_broadcast, claimed, created_ts)
+                   VALUES (0,?,?,?,?,?,1,?,?)""", (recipients[0], cur_day(), body, amt, item, claimed, now_ts())).lastrowid
+    run("UPDATE letters SET broadcast_id=? WHERE id=?", (first, first))
+    for rid in recipients[1:]:
+        run("""INSERT INTO letters (from_id, to_id, day, body, silver, item_key, is_broadcast, broadcast_id, claimed, created_ts)
+               VALUES (0,?,?,?,?,?,1,?,?,?)""", (rid, cur_day(), body, amt, item, first, claimed, now_ts()))
+        notify(rid, '内务府差人送来一封信，去「书信」看看。', 'good')
+    notify(recipients[0], '内务府差人送来一封信，去「书信」看看。', 'good')
+    flash(f'已群发给 {len(recipients)} 位。', 'good')
+    return redirect(url_for('admin'))
+
 @app.route('/admin/reset', methods=['POST'])
 @admin_required
 def admin_reset():
     if request.form.get('confirm') != '重开':
         flash('要在框里输入「重开」才会重置。', 'bad')
         return redirect(url_for('admin'))
-    for t in ('intrigues', 'messages', 'gazette', 'relations', 'known_secrets', 'inventory', 'heirs', 'letters', 'reports', 'maids',
+    for t in ('intrigues', 'messages', 'gazette', 'relations', 'known_secrets', 'inventory', 'heirs', 'letters', 'letter_stars', 'reports', 'maids',
               'bribes', 'afflictions', 'cases', 'case_suspects', 'case_actions',
               'hobby_projects', 'hobby_items', 'displays', 'daily_counters', 'consorts', 'game_state'):
         run(f"DELETE FROM {t}")
@@ -3074,13 +3121,47 @@ def recap_seen():
 LETTER_DAILY_MAX = 5
 LETTER_MAX_LEN = 300
 LETTER_ATTACH_SHIELD = 5   # 入宫不满 5 天不能附银子、道具、雅趣作品，防小号一进宫就把家底转给大号
+LETTER_PAGE_SIZE = 20      # 收件箱每页 20 封，标星的不参与翻页，永远排最前面
+
+def reachable_letter_ids(c):
+    """自己 + 同账号死掉的角色：群发信的附件死了领不了，归新建的秀女领"""
+    dead = [r['id'] for r in q('SELECT id FROM consorts WHERE archived_user_id=?', (c['user_id'],))]
+    return [c['id'], *dead]
+
+def letter_page(c, side, page, with_id):
+    """side='to' 收件箱 / 'from' 已发出。标星的信全部列出、不算进分页；其余按页翻。返回 (starred, rows, total, pages)
+    只看自己这个角色收发的信——死掉的旧角色的私信不会跑到新秀女的信箱里，能继承的只有群发补偿信的未领附件"""
+    ids = [c['id']]
+    deleted_col = 'deleted_by_to' if side == 'to' else 'deleted_by_from'
+    starred_ids = {r['letter_id'] for r in q("SELECT letter_id FROM letter_stars WHERE consort_id=?", (c['id'],))}
+    where = f"{side}_id IN ({','.join('?' * len(ids))}) AND {deleted_col}=0"
+    args = list(ids)
+    if with_id:
+        other_col = 'from_id' if side == 'to' else 'to_id'
+        where += f" AND {other_col}=?"
+        args.append(with_id)
+    rows = q(f"SELECT * FROM letters WHERE {where} ORDER BY id DESC", args)
+    starred = [r for r in rows if r['id'] in starred_ids]
+    rest = [r for r in rows if r['id'] not in starred_ids]
+    total = len(rest)
+    pages = max(1, -(-total // LETTER_PAGE_SIZE))
+    page = max(1, min(page, pages))
+    return starred, rest[(page - 1) * LETTER_PAGE_SIZE: page * LETTER_PAGE_SIZE], total, pages, page
 
 @app.route('/letters')
 @login_required
 def letters():
     c = g.me
-    inbox = q("SELECT * FROM letters WHERE to_id=? ORDER BY id DESC LIMIT 30", (c['id'],))
-    sent = q("SELECT * FROM letters WHERE from_id=? ORDER BY id DESC LIMIT 15", (c['id'],))
+    try: p = int(request.args.get('p', 1))
+    except ValueError: p = 1
+    try: sp = int(request.args.get('sp', 1))
+    except ValueError: sp = 1
+    try: wid = int(request.args.get('with', 0))
+    except ValueError: wid = 0
+    unclaimed = q(f"""SELECT * FROM letters WHERE is_broadcast=1 AND claimed=0
+                      AND to_id IN ({','.join('?' * len(reachable_letter_ids(c)))}) ORDER BY id""", reachable_letter_ids(c))
+    inbox_starred, inbox, inbox_total, inbox_pages, p = letter_page(c, 'to', p, wid)
+    sent_starred, sent, sent_total, sent_pages, sp = letter_page(c, 'from', sp, wid)
     run("UPDATE letters SET is_read=1 WHERE to_id=? AND is_read=0", (c['id'],))
     others = q("""SELECT * FROM consorts WHERE user_id IS NOT NULL AND id!=? AND status NOT IN ('xiunv','dead')
                   ORDER BY rank DESC, favor DESC""", (c['id'],))
@@ -3090,11 +3171,62 @@ def letters():
     except ValueError: to = 0
     try: hobby_item = int(request.args.get('hobby_item', 0))
     except ValueError: hobby_item = 0
-    return render_template('letters.html', c=c, inbox=inbox, sent=sent, others=others, inv=inv, held=held, to=to,
+    starred_ids = {r['letter_id'] for r in q("SELECT letter_id FROM letter_stars WHERE consort_id=?", (c['id'],))}
+    return render_template('letters.html', c=c, inbox=inbox, inbox_starred=inbox_starred, sent=sent, sent_starred=sent_starred,
+                           inbox_total=inbox_total, inbox_pages=inbox_pages, p=p, sent_total=sent_total, sent_pages=sent_pages, sp=sp,
+                           with_id=wid, unclaimed=unclaimed, starred_ids=starred_ids,
+                           others=others, inv=inv, held=held, to=to,
                            hobby_item=hobby_item, get_hobby_item=lambda iid: q('SELECT * FROM hobby_items WHERE id=?', (iid,), one=True),
                            get_consort=get_consort, left=LETTER_DAILY_MAX - daily_count(c['id'], 'letter'),
                            can_attach=cur_day() - c['entered_day'] >= LETTER_ATTACH_SHIELD, LETTER_ATTACH_SHIELD=LETTER_ATTACH_SHIELD,
                            LETTER_MAX_LEN=LETTER_MAX_LEN, hobby_item_desc=hobby_item_desc)
+
+@app.route('/letters/claim/<int:lid>', methods=['POST'])
+@login_required
+def letter_claim(lid):
+    c = g.me
+    l = q('SELECT * FROM letters WHERE id=?', (lid,), one=True)
+    if not l or not l['is_broadcast'] or l['claimed'] or l['to_id'] not in reachable_letter_ids(c):
+        flash('这封信没有能领的东西。', 'bad')
+        return redirect(url_for('letters'))
+    run('UPDATE letters SET claimed=1 WHERE id=?', (lid,))
+    parts = []
+    if l['silver']:
+        add_silver(c['id'], l['silver']); parts.append(f"银子 {l['silver']} 两")
+    if l['item_key'] and l['item_key'] in ITEMS:
+        inv_add(c['id'], l['item_key'], 1); parts.append(ITEMS[l['item_key']]['name'])
+    flash(('领到了：' + '、'.join(parts) + '。') if parts else '已确认收悉。', 'good')
+    return redirect(url_for('letters'))
+
+@app.route('/letters/star/<int:lid>', methods=['POST'])
+@login_required
+def letter_star(lid):
+    c = g.me
+    l = q('SELECT * FROM letters WHERE id=?', (lid,), one=True)
+    if not l or c['id'] not in (l['from_id'], l['to_id']):
+        flash('没有这封信。', 'bad')
+        return redirect(url_for('letters'))
+    if q('SELECT 1 FROM letter_stars WHERE letter_id=? AND consort_id=?', (lid, c['id']), one=True):
+        run('DELETE FROM letter_stars WHERE letter_id=? AND consort_id=?', (lid, c['id']))
+    else:
+        run('INSERT INTO letter_stars (letter_id, consort_id) VALUES (?,?)', (lid, c['id']))
+    return redirect(url_for('letters'))
+
+@app.route('/letters/delete/<int:lid>', methods=['POST'])
+@login_required
+def letter_delete(lid):
+    c = g.me
+    l = q('SELECT * FROM letters WHERE id=?', (lid,), one=True)
+    if not l or c['id'] not in (l['from_id'], l['to_id']):
+        flash('没有这封信。', 'bad')
+    elif c['id'] == l['to_id'] and l['is_broadcast'] and not l['claimed']:
+        flash('附件还没领，先领了再删。', 'bad')
+    else:
+        col = 'deleted_by_to' if c['id'] == l['to_id'] else 'deleted_by_from'
+        run(f'UPDATE letters SET {col}=1 WHERE id=?', (lid,))
+        run('DELETE FROM letter_stars WHERE letter_id=? AND consort_id=?', (lid, c['id']))
+        flash('信已经从你的信箱里删掉了。', 'info')
+    return redirect(url_for('letters'))
 
 @app.route('/letters/send', methods=['POST'])
 @login_required

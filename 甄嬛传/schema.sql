@@ -243,7 +243,19 @@ CREATE TABLE IF NOT EXISTS letters (
     item_key    TEXT NOT NULL DEFAULT '',
     hobby_item_id INTEGER NOT NULL DEFAULT 0,       -- 附的是雅趣作品而不是内务府的东西时用这个
     is_read     INTEGER NOT NULL DEFAULT 0,
+    is_broadcast INTEGER NOT NULL DEFAULT 0,        -- 管理员群发的补偿信，from_id=0 显示为「内务府」
+    broadcast_id INTEGER NOT NULL DEFAULT 0,        -- 同一次群发共享一个 id（取这批第一封信自己的 id），方便后台统计领取人数
+    claimed     INTEGER NOT NULL DEFAULT 1,         -- 普通信送出即到账，恒为 1；群发信有附件时送出先是 0，点了「领取」才到账
+    deleted_by_from INTEGER NOT NULL DEFAULT 0,     -- 删信只对自己的信箱生效，对方那份不受影响
+    deleted_by_to   INTEGER NOT NULL DEFAULT 0,
     created_ts  INTEGER NOT NULL
+);
+
+-- 标星：谁把哪封信标了星，标星的信放最前面、不参与翻页
+CREATE TABLE IF NOT EXISTS letter_stars (
+    letter_id   INTEGER NOT NULL,
+    consort_id  INTEGER NOT NULL,
+    PRIMARY KEY (letter_id, consort_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_letters_to      ON letters(to_id, id DESC);

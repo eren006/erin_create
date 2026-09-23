@@ -18,6 +18,33 @@
   <input name="old" placeholder="原名" style="width:90px" aria-label="原名"><input name="new" placeholder="新名（两个字）" style="width:130px" aria-label="新名"><button class="plain">改名</button>
 </form>
 
+<h3>发信（内务府，可附银子/东西；停服补偿、活动奖励走这个）</h3>
+<form method="post" action="{{ url_for('admin_broadcast') }}">
+  <textarea name="body" placeholder="信里写什么" style="width:100%;min-height:80px" required></textarea>
+  <div class="row" style="margin-top:8px">
+    <label>附银子 <input type="number" name="silver" value="0" min="0" style="width:90px"></label>
+    <label>附东西 <select name="item"><option value="">不附</option>{% for k, it in ITEMS.items() %}<option value="{{ k }}">{{ it.name }}</option>{% endfor %}</select></label>
+  </div>
+  <div class="row" style="margin-top:8px">
+    <label><input type="radio" name="target" value="all" checked> 全体玩家</label>
+    <label><input type="radio" name="target" value="pick"> 指定几位：</label>
+    <select name="to_ids" multiple size="6" style="min-width:180px">
+      {% for p in players %}<option value="{{ p.id }}">{{ dn(p) }}</option>{% endfor %}
+    </select>
+  </div>
+  <button style="margin-top:8px">发送</button>
+</form>
+{% if broadcasts %}
+<div class="scroll" style="margin-top:10px"><table>
+  <tr><th>信</th><th>附件</th><th>领取</th></tr>
+  {% for b in broadcasts %}
+  <tr><td style="max-width:280px">{{ b.body[:40] }}{{ '…' if b.body|length > 40 }}</td>
+    <td>{% if b.silver %}{{ b.silver }} 两{% endif %}{% if b.item_key %}　{{ ITEMS[b.item_key].name if b.item_key in ITEMS else b.item_key }}{% endif %}</td>
+    <td>{{ b.got or 0 }}/{{ b.total }}</td></tr>
+  {% endfor %}
+</table></div>
+{% endif %}
+
 <h3>妃嫔</h3>
 <div class="scroll"><table>
   <tr><th>名号</th><th>账号</th><th>属性</th><th>秘密</th><th>圣宠 / 银子 / 位分 / 状态</th></tr>
