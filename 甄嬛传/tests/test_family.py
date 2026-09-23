@@ -972,7 +972,7 @@ class FamilyTests(unittest.TestCase):
         uid_a = self.fam(self.atk, head_office=4, prestige=20)
         uid_b = self.fam(self.tgt, head_office=4, prestige=20)
         uid_c = self.fam(self.player('丙', rank=4), head_office=4, prestige=20, backing_heir_id=0)
-        game.settle_family_backing(game.choose_successor(game.cur_day()), game.cur_day())
+        game.settle_family_backing(game.succession_favorite(game.cur_day())[0], game.cur_day())
         a, b, c = self.frow(uid_a), self.frow(uid_b), self.frow(uid_c)
         self.assertEqual((a['head_office'], a['prestige']), (4 + game.BACKING_WIN_OFFICE, 20 + game.BACKING_WIN_PRESTIGE))
         self.assertEqual((b['head_office'], b['prestige']), (4 - game.BACKING_LOSE_OFFICE, 20 - game.BACKING_LOSE_PRESTIGE))

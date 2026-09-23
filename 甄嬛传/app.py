@@ -4437,9 +4437,10 @@ def succession_move():
         for par in heir_parents(target): notify(par['id'], f"{heir_label(mine)}公主在皇上面前替{heir_full_title(target)}说了好话，圣眷 +{COUNSEL_GAIN}。", 'good')
     elif key == 'peek':
         r = random.random()
-        leader = choose_successor(day)
+        leader, chance = succession_favorite(day)
         if r < PEEK_LEARN:
-            flash(f"苏培盛一时不慎露了口风：匾后写的是{heir_full_title(leader)}。（这是眼下的排位，后面还会变。）" if leader
+            flash(f"苏培盛一时不慎露了口风：皇上眼下最看重的是{heir_full_title(leader)}，胜面约 {round(chance * 100)}%。"
+                  f"（这是眼下的行情，后面还会变；圣意难测，最后未必是他。）" if leader
                   else '匾后的名字，是从宗室里过继的一位，眼下还不是任何一位阿哥。', 'good')
         elif r < PEEK_LEARN + PEEK_CAUGHT:
             gazette(f"{display_name(c)}私窥立储密匾，被侍卫拿下，打入冷宫。", 'decree')
@@ -4907,12 +4908,39 @@ def emperor_tick(day):
     return False
 
 
-def choose_successor(day):
-    """匾后是谁：矫诏成功的那位；否则圣眷最高的（同分取年长的）。没有 12 岁以上的皇子就是 None，从宗室过继"""
+def pick_weighted(items, weights):
+    return random.choices(items, weights=weights)[0]
+
+
+SUCCESSION_EXPONENT, CROWN_WEIGHT = 2, 1.3    # 匾后按圣眷的平方加权抽签；太子有名分，权重再 ×1.3
+
+
+def succession_odds(day):
+    """每位候选人这一刻的胜面 [(皇子, 概率)]：矫诏成功的那位是 100%；否则按 圣眷² 加权（太子 ×1.3）。
+    圣眷 100 对 50，胜面 80% 对 20%——圣意难测，弱的也有机会，这样玩家的孩子才有戏"""
     cands = rival_princes(day)
-    if not cands: return None
-    pool = [h for h in cands if h['forged']] or cands
-    return max(pool, key=lambda h: (heir_standing(h), -h['born_day']))
+    if not cands: return []
+    forged = [h for h in cands if h['forged']]
+    if forged:
+        top = max(forged, key=lambda h: (heir_standing(h), -h['born_day']))
+        return [(h, 1.0 if h['id'] == top['id'] else 0.0) for h in cands]
+    w = [max(1, heir_standing(h)) ** SUCCESSION_EXPONENT * (CROWN_WEIGHT if h['status'] == 'crown' else 1) for h in cands]
+    total = sum(w)
+    return [(h, x / total) for h, x in zip(cands, w)]
+
+
+def succession_favorite(day):
+    """眼下胜面最大的那位（窥匾看到的）和他的胜面"""
+    odds = succession_odds(day)
+    if not odds: return None, 0.0
+    return max(odds, key=lambda t: (t[1], -t[0]['born_day']))
+
+
+def choose_successor(day):
+    """匾后是谁：矫诏成功的那位；否则按胜面抽签（`succession_odds`）。没有 12 岁以上的皇子就是 None，从宗室过继"""
+    odds = succession_odds(day)
+    if not odds: return None
+    return pick_weighted([h for h, _ in odds], [p for _, p in odds])
 
 
 def support_title(days):

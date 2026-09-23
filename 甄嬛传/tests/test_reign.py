@@ -144,7 +144,68 @@ class ReignTests(unittest.TestCase):
         game.run('UPDATE consorts SET rank=1, trust=0')
         a = self.prince(self.atk, favor=90)
         b = self.prince(self.tgt, favor=30)
-        self.assertEqual(game.choose_successor(game.cur_day())['id'], a)
+        self.assertEqual(game.choose_successor(game.cur_day())['id'], a, '测试夹具让胜面最大的赢')
+        self.assertEqual(game.succession_favorite(game.cur_day())[0]['id'], a)
+
+    # ── 开匾抽签 ─────────────────────────────────────────────────────────────
+
+    def two_princes(self, fa, fb, **kw):
+        game.run('UPDATE consorts SET rank=1, trust=0')
+        a = self.prince(self.atk, favor=fa, study=0, riding=0, virtue=0, **kw)
+        b = self.prince(self.tgt, favor=fb, study=0, riding=0, virtue=0)
+        return a, b
+
+    def test_odds_follow_standing_squared(self):
+        a, b = self.two_princes(100, 50)
+        odds = {h['id']: p for h, p in game.succession_odds(game.cur_day())}
+        self.assertAlmostEqual(odds[a], 0.8)
+        self.assertAlmostEqual(odds[b], 0.2)
+        self.assertAlmostEqual(sum(odds.values()), 1.0)
+
+    def test_crown_prince_has_a_weight_bonus(self):
+        a, b = self.two_princes(50, 50)
+        game.run("UPDATE heirs SET status='crown' WHERE id=?", (a,))
+        odds = {h['id']: p for h, p in game.succession_odds(game.cur_day())}
+        self.assertAlmostEqual(odds[a], 1.3 / 2.3)
+
+    def test_weak_prince_can_still_win_the_lottery(self):
+        import random as _r
+        a, b = self.two_princes(100, 50)
+        odds = game.succession_odds(game.cur_day())
+        rng = _r.Random(7)
+        wins = sum(1 for _ in range(4000) if rng.choices([h['id'] for h, _ in odds], weights=[p for _, p in odds])[0] == b)
+        self.assertTrue(0.16 < wins / 4000 < 0.24, wins)
+
+    def test_choose_successor_draws_with_the_odds_as_weights(self):
+        a, b = self.two_princes(100, 50)
+        seen = {}
+        def spy(items, weights):
+            seen.update(zip([h['id'] for h in items], weights))
+            return items[1]
+        with patch.object(game, 'pick_weighted', spy):
+            self.assertEqual(game.choose_successor(game.cur_day())['id'], b, '抽签抽到谁就是谁')
+        self.assertAlmostEqual(seen[a], 0.8)
+
+    def test_forgery_makes_the_odds_certain(self):
+        a, b = self.two_princes(100, 1)
+        game.run('UPDATE heirs SET forged=1 WHERE id=?', (b,))
+        odds = {h['id']: p for h, p in game.succession_odds(game.cur_day())}
+        self.assertEqual((odds[a], odds[b]), (0.0, 1.0))
+
+    def test_no_princes_no_odds(self):
+        self.assertEqual(game.succession_odds(game.cur_day()), [])
+        self.assertEqual(game.succession_favorite(game.cur_day()), (None, 0.0))
+
+    def test_peek_reports_the_chance_not_a_certainty(self):
+        self.two_princes(100, 50)
+        game.run('UPDATE consorts SET rank=5 WHERE id=?', (self.atk,))   # 窥匾要嫔位以上
+        chance = round(game.succession_favorite(game.cur_day())[1] * 100)
+        self.assertGreater(chance, 70)
+        with patch.object(game.random, 'random', return_value=0.0):
+            r = self.client.post('/succession/move', data=dict(move='peek'), follow_redirects=True)
+        page = r.get_data(as_text=True)
+        self.assertIn(f'胜面约 {chance}%', page)
+        self.assertIn('圣意难测', page)
 
     def test_forged_prince_beats_higher_standing(self):
         game.run('UPDATE consorts SET rank=1, trust=0')

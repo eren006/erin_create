@@ -2,7 +2,7 @@
 {% block title %}夺嫡{% endblock %}
 {% block body %}
 <h2>夺嫡</h2>
-<p class="muted">十二岁以上的皇子都算储位人选。圣眷 = 学问×0.3 + 骑射×0.2 + 品行×0.3 + 累计功绩 + 抚养人位分加成 + 抚养人信任×0.1。党羽超过 5 个，皇上就要忌惮；超过 8 个，当众训斥。
+<p class="muted">十二岁以上的皇子都算储位人选。皇上驾崩那晚，匾后是谁按圣眷的平方加权抽签：圣眷高的胜面大，弱的也有机会，太子略占便宜。圣眷 = 学问×0.3 + 骑射×0.2 + 品行×0.3 + 累计功绩 + 抚养人位分加成 + 抚养人信任×0.1。党羽超过 5 个，皇上就要忌惮；超过 8 个，当众训斥。
   下次朝议立储在第 {{ next_court }} 天（最高圣眷 ≥ 70 且领先第二名 15 以上才明立太子），万寿节在第 {{ next_birthday }} 天。</p>
 
 <div class="scroll"><table>
@@ -109,7 +109,7 @@
   <form method="post" action="{{ url_for('succession_move') }}" class="row">
     <input type="hidden" name="move" value="peek">
     <b>窥匾</b>（{{ SUCCESSION_MOVES.peek.silver }} 两，嫔位以上）
-    <button class="plain">买通苏培盛</button><span class="muted">两成能得知眼下匾后是谁（这是眼下的排位，之后还会变）；有一成半败露，直接打入冷宫。</span>
+    <button class="plain">买通苏培盛</button><span class="muted">两成能得知皇上眼下最看重谁、他的胜面有几成（匾后是按圣眷的平方抽签定的，圣意难测，之后还会变）；有一成半败露，直接打入冷宫。</span>
   </form>
   {% if c.rank >= SUCCESSION_MOVES.forge.min_rank %}
   <form method="post" action="{{ url_for('succession_move') }}" class="row">
