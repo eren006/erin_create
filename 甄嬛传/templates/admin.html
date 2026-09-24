@@ -8,6 +8,12 @@
   <form method="post" action="{{ url_for('admin_settle') }}" onsubmit="return confirm('立刻结算一天？结算后今天算已结算，今晚不会再自动跑一次。')"><button>立即结算一天</button></form>
 </div>
 
+{% if open_alerts or settle_late >= 30 %}
+<div class="sheet" style="margin:12px 0;border-left:4px solid var(--zhu)">
+  <b style="color:var(--zhu)">有 {{ open_alerts }} 条告警没处理{% if settle_late >= 30 %}；今晚的结算已经拖了 {{ settle_late }} 分钟{% endif %}。</b> 见下方「告警」。
+</div>
+{% endif %}
+
 <h3>下旨（发到邸报）</h3>
 <form method="post" action="{{ url_for('admin_decree') }}" class="row">
   <input name="text" style="flex:1;min-width:220px" placeholder="例如：中秋家宴，六宫同庆。"><button class="plain">发布</button>
@@ -104,6 +110,24 @@
   <button name="act" value="end_now" onclick="return confirm('立刻开匾换届，所有玩家角色随先帝殡天，确定？')">立即驾崩，开下一届</button>
   <button name="act" value="skip_mourning">跳过国丧</button>
 </form>
+
+<h3>告警</h3>
+<p class="muted">结算出错、结算拖延（过点 30 分钟还没跑完）、页面 500、备份失败会记在这里；同一件事没处理前只累加次数。
+  {% if alert_webhook %}已配置推送（{{ alert_style }}）。<form method="post" action="{{ url_for('admin_alert_test') }}" style="display:inline"><button class="plain">发一条测试推送</button></form>
+  {% else %}还没配置推送：在服务器的 <code>/etc/zhenhuan.env</code> 里加一行 <code>ALERT_WEBHOOK=群机器人的地址</code>（企业微信、钉钉、飞书的自定义机器人都行，再用 <code>ALERT_WEBHOOK_STYLE=wecom</code> / <code>dingtalk</code> / <code>feishu</code> 选格式，默认是 <code>{"text": …}</code>），然后 <code>sudo systemctl restart zhenhuan</code>。
+  探针地址：<code>/healthz</code>，结算拖延时返回 503。{% endif %}</p>
+{% if alerts %}
+<div class="scroll"><table>
+  <tr><th>时间</th><th>类型</th><th>内容</th><th>次数</th><th></th></tr>
+  {% for a in alerts %}
+  <tr style="{{ 'opacity:.5' if a.resolved }}"><td>{{ ts_text(a.last_ts) }}</td><td>{{ a.kind }}</td>
+    <td>{{ a.message }}{% if a.detail %}<details><summary class="muted">详情</summary><pre style="white-space:pre-wrap;font-size:12px">{{ a.detail }}</pre></details>{% endif %}</td>
+    <td>{{ a.count }}</td>
+    <td>{% if not a.resolved %}<form method="post" action="{{ url_for('admin_alert_resolve', aid=a.id) }}"><button class="plain">已处理</button></form>{% else %}已处理{% endif %}</td></tr>
+  {% endfor %}
+</table></div>
+{% if open_alerts %}<form method="post" action="{{ url_for('admin_alert_resolve_all') }}" style="margin-top:6px"><button class="plain">全部标成已处理</button></form>{% endif %}
+{% else %}<p class="muted">没有告警。</p>{% endif %}
 
 <h3>各家族</h3>
 <p class="muted">名望、家底、家主的官职和年龄都能手改；家主也可以直接让他病倒、痊愈或病逝（由下一位接掌，官职降两级）。</p>

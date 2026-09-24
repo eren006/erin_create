@@ -188,6 +188,6 @@ input:not([type=radio]):not([type=checkbox]),select,textarea{box-shadow:inset 0 
   {% endwith %}
   {% block body %}{% endblock %}
 </main>
-<footer style="text-align:center;padding:24px 0 32px" class="muted">{% if session.uid %}<a href="{{ url_for('report') }}">投诉举报</a>　{% endif %}投诉举报 QQ：3052553938　<a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">浙ICP备2026078867号-1</a>　<a href="{{ url_for('admin') if session.admin else url_for('admin_login') }}" rel="nofollow">后台</a></footer>
+<footer style="text-align:center;padding:24px 0 32px" class="muted"><a href="{{ url_for('help_page') }}">玩法说明</a>　{% if session.uid %}<a href="{{ url_for('report') }}">投诉举报</a>　{% endif %}投诉举报 QQ：3052553938　<a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">浙ICP备2026078867号-1</a>　<a href="{{ url_for('admin') if session.admin else url_for('admin_login') }}" rel="nofollow">后台</a></footer>
 </body>
 </html>

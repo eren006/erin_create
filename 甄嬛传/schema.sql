@@ -476,3 +476,19 @@ CREATE TABLE IF NOT EXISTS family_requests (
     status      TEXT NOT NULL DEFAULT 'open',        -- open / done / declined / lapsed
     data        TEXT NOT NULL DEFAULT '{}'
 );
+
+
+-- 告警：结算出错、结算拖延、页面 500、备份失败。同一件事没处理前只累加次数，1 小时内不重复推送
+CREATE TABLE IF NOT EXISTS alerts (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind        TEXT NOT NULL,
+    key         TEXT NOT NULL,
+    message     TEXT NOT NULL,
+    detail      TEXT NOT NULL DEFAULT '',
+    count       INTEGER NOT NULL DEFAULT 1,
+    first_ts    INTEGER NOT NULL,
+    last_ts     INTEGER NOT NULL,
+    notified_ts INTEGER NOT NULL DEFAULT 0,
+    resolved    INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_alerts_open ON alerts(resolved, key);

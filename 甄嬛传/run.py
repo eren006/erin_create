@@ -1,7 +1,7 @@
-"""生产入口：waitress + 后台结算线程 + 每小时备份数据库"""
-import os, time, threading, sqlite3, traceback
+"""生产入口：waitress + 后台结算线程 + 每小时备份数据库。出错、拖延、备份失败都会记告警（见 app.run_settle_cycle）"""
+import os, time, threading, traceback
 from waitress import serve
-from app import app, init_db, maybe_settle, DB_PATH
+from app import app, init_db, run_settle_cycle, backup_db, raise_alert
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -13,28 +13,20 @@ def _settle_loop():
     # 按"日期是否已结算"判断而不是 sleep 固定秒数，服务重启不会漏结算或重复结算。
     while True:
         try:
-            with app.app_context():
-                maybe_settle()
+            run_settle_cycle()
         except Exception:
             traceback.print_exc()
         time.sleep(60)
 
 def _backup_loop():
     backup_dir = os.path.join(BASE_DIR, 'db_backups')
-    os.makedirs(backup_dir, exist_ok=True)
     while True:
         time.sleep(3600)
         try:
-            dst = os.path.join(backup_dir, f"zhenhuan_{time.strftime('%Y%m%d_%H%M%S')}.db")
-            # WAL 模式下直接拷文件可能漏掉还没合并的写入，用 SQLite 自带的在线备份
-            src, out = sqlite3.connect(DB_PATH), sqlite3.connect(dst)
-            with out: src.backup(out)
-            src.close(); out.close()
-            files = sorted([f for f in os.listdir(backup_dir) if f.endswith('.db')], reverse=True)
-            for old in files[48:]:
-                os.remove(os.path.join(backup_dir, old))
-        except Exception:
+            backup_db(backup_dir)
+        except Exception as e:
             traceback.print_exc()
+            raise_alert('backup', 'backup-failed', f"数据库备份失败：{type(e).__name__}: {str(e)[:150]}", traceback.format_exc()[-1500:])
 
 threading.Thread(target=_settle_loop, daemon=True).start()
 threading.Thread(target=_backup_loop, daemon=True).start()

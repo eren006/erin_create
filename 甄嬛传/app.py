@@ -3,11 +3,11 @@
 玩家以秀女身份入宫，经殿选后在后宫里争宠、结盟、使计。
 皇帝是系统 NPC，每晚固定时刻（SETTLE_HOUR）统一结算：阴谋 → 翻牌子 → 生产 → 晋封 → 月例。
 """
-import os, re, json, random, math, time, threading
+import os, re, json, random, math, time, threading, traceback
 from datetime import datetime, timezone, timedelta
 from functools import wraps
 from flask import (Flask, render_template, request, redirect,
-                   url_for, session as S, flash, g, has_request_context)
+                   url_for, session as S, flash, g, has_request_context, jsonify)
 from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 
@@ -2213,6 +2213,7 @@ def dianxuan():
                                                       'disgraced': '只是姑母那一辈站错了队，新帝对你家有成见。'}.get(c['patron'], ''), 'info')
         apply_inheritance(c)
         guide_start(c['id'])
+        guide_tip(c['id'], 'help', '「规矩多，一时记不全。页脚有一页『玩法说明』，位分、银子、算计、子嗣、夺嫡都写在里头，遇事翻一翻。」')
         guide_tip(c['id'], 'family', '「宫里的俸禄只够过日子。缺银子了，去『家里』看看：往家里递个话、投一笔生意，家里有难处也会来求你，帮得上忙的，往后都是你的靠山。」')
         if risky_huafei:
             add_affinity(c['id'], q("SELECT id FROM consorts WHERE npc_key='huafei'", one=True)['id'], -30)
@@ -5476,6 +5477,137 @@ def issue_edicts(day):
         if line:
             notify(c['id'], f"苏培盛来传皇上口谕：「{line}」", 'edict')
 
+# ── 告警：出了事要有人知道 ─────────────────────────────────────────────────────────
+# 结算出错、结算拖延、页面 500、备份失败都记进 alerts 表（后台首页有红色提示和列表）；
+# 配了环境变量 ALERT_WEBHOOK 就同时推送到群机器人。用独立的数据库连接写，不跟随出错的那个事务。
+
+ALERT_WEBHOOK = os.environ.get("ALERT_WEBHOOK", "")
+ALERT_STYLE = os.environ.get("ALERT_WEBHOOK_STYLE", "json")     # json / wecom / dingtalk / feishu
+ALERT_COOLDOWN = 3600                                           # 同一件事 1 小时内不重复推送
+SETTLE_OVERDUE_MINUTES = 30                                     # 过了结算时刻这么久还没结算，就是出事了
+SLOW_SETTLE_SECONDS = 10
+BACKUP_KEEP = 48
+
+
+def alert_payload(style, text):
+    if style in ('wecom', 'dingtalk'): return {'msgtype': 'text', 'text': {'content': text}}
+    if style == 'feishu': return {'msg_type': 'text', 'content': {'text': text}}
+    return {'text': text}
+
+
+def _post_webhook(url, style, text):
+    import urllib.request
+    req = urllib.request.Request(url, data=json.dumps(alert_payload(style, text), ensure_ascii=False).encode('utf-8'),
+                                 headers={'Content-Type': 'application/json'}, method='POST')
+    urllib.request.urlopen(req, timeout=5).read()
+
+
+def send_alert_webhook(text):
+    """推送放在线程里，慢了、挂了都不拖累主流程"""
+    if not ALERT_WEBHOOK: return False
+    def go():
+        try: _post_webhook(ALERT_WEBHOOK, ALERT_STYLE, text)
+        except Exception: traceback.print_exc()
+    threading.Thread(target=go, daemon=True).start()
+    return True
+
+
+def raise_alert(kind, key, message, detail=''):
+    """记一条告警。同一个 key 没处理前只累加次数；超过冷却时间再推送一次"""
+    try:
+        db = sqlite3.connect(DB_PATH, timeout=15)
+        db.row_factory = sqlite3.Row
+        now, push = now_ts(), False
+        row = db.execute("SELECT * FROM alerts WHERE key=? AND resolved=0", (key,)).fetchone()
+        if row:
+            db.execute("UPDATE alerts SET count=count+1, last_ts=?, message=?, detail=? WHERE id=?", (now, message, detail, row['id']))
+            if now - row['notified_ts'] >= ALERT_COOLDOWN:
+                push = True
+                db.execute("UPDATE alerts SET notified_ts=? WHERE id=?", (now, row['id']))
+        else:
+            db.execute("INSERT INTO alerts (kind, key, message, detail, first_ts, last_ts, notified_ts) VALUES (?,?,?,?,?,?,?)",
+                       (kind, key, message, detail, now, now, now))
+            push = True
+        db.commit(); db.close()
+        if push: send_alert_webhook(f"【甄嬛传告警】{message}")
+    except Exception:
+        traceback.print_exc()
+
+
+def settle_overdue_minutes(now, st):
+    """今天的结算时刻已经过了几分钟、却还没结算；没到点或已结算返回 0"""
+    if st['last_settle_date'] == now.date().isoformat(): return 0
+    target = now.replace(hour=SETTLE_HOUR, minute=SETTLE_MINUTE, second=0, microsecond=0)
+    return max(0, int((now - target).total_seconds() // 60))
+
+
+def run_settle_cycle():
+    """后台线程每分钟调用一次：该结算就结算；出错、太慢、拖延都报警"""
+    with app.app_context():
+        start = time.time()
+        try:
+            maybe_settle()
+        except Exception as e:
+            raise_alert('settle', 'settle-exception', f"夜间结算出错：{type(e).__name__}: {str(e)[:150]}", traceback.format_exc()[-1800:])
+            return
+        took = time.time() - start
+        if took > SLOW_SETTLE_SECONDS:
+            raise_alert('slow', 'settle-slow', f"这次结算用了 {took:.0f} 秒，比平时慢得多", '')
+        now = datetime.now(TZ)
+        late = settle_overdue_minutes(now, state())
+        if late >= SETTLE_OVERDUE_MINUTES:
+            raise_alert('settle', f"settle-overdue:{now.date().isoformat()}", f"今晚的结算已经拖了 {late} 分钟还没跑完，玩家在等牌子", '')
+
+
+def backup_db(backup_dir):
+    """用 SQLite 自带的在线备份（WAL 下直接拷文件可能漏写入），只留最近 BACKUP_KEEP 份"""
+    os.makedirs(backup_dir, exist_ok=True)
+    dst = os.path.join(backup_dir, f"zhenhuan_{time.strftime('%Y%m%d_%H%M%S')}.db")
+    src, out = sqlite3.connect(DB_PATH), sqlite3.connect(dst)
+    with out: src.backup(out)
+    src.close(); out.close()
+    files = sorted([f for f in os.listdir(backup_dir) if f.endswith('.db')], reverse=True)
+    for old in files[BACKUP_KEEP:]:
+        os.remove(os.path.join(backup_dir, old))
+    return dst
+
+
+@app.route('/help')
+def help_page():
+    """玩法说明：不用登录就能看；数字全部从游戏里的常量读，调数值后自动跟着变"""
+    return render_template('help.html', ACTIONS={k: a for k, a in ACTIONS.items() if k not in ('attend', 'shoukang')},
+                           RANK_NAMES=RANK_NAMES, RANK_SLOTS=RANK_SLOTS, STIPEND=STIPEND, PROMOTE_FAVOR=PROMOTE_FAVOR,
+                           PROMOTE_VIRTUE=PROMOTE_VIRTUE, MAID_QUOTA=MAID_QUOTA, MAID_WAGE=MAID_WAGE,
+                           diet_norm={r: diet_cost(r, 'normal') for r in range(1, 10)}, DIETS=DIETS, DIET_RATIO=DIET_RATIO,
+                           INTRIGUES=INTRIGUES, VENTURES=VENTURES, VENTURE_MAX=VENTURE_MAX, PRAY_TIERS=PRAY_TIERS,
+                           FAMILY_MAX=FAMILY_MAX_MEMBERS, ENERGY_MAX=ENERGY_MAX, FAVOR_DECAY=FAVOR_DECAY, CONFINE_DAYS=CONFINE_DAYS,
+                           COLD_DAYS=COLD_DAYS, PREGNANCY_BASE=PREGNANCY_BASE, PREGNANCY_DAYS=PREGNANCY_DAYS,
+                           settle_h=SETTLE_HOUR, settle_m=SETTLE_MINUTE)
+
+
+@app.route('/healthz')
+def healthz():
+    """给监控探针用：结算拖延或数据库出问题返回 503。只有几个布尔和数字，不含玩家信息"""
+    try:
+        st = state()
+        late = settle_overdue_minutes(datetime.now(TZ), st)
+        open_alerts = q("SELECT COUNT(*) n FROM alerts WHERE resolved=0", one=True)['n']
+        ok = late < SETTLE_OVERDUE_MINUTES
+        return jsonify(ok=ok, settle_overdue_minutes=late, last_settle_date=st['last_settle_date'], day=st['day'],
+                       mourning=bool(st['mourning']), open_alerts=open_alerts), (200 if ok else 503)
+    except Exception as e:
+        return jsonify(ok=False, error=type(e).__name__), 503
+
+
+@app.errorhandler(500)
+def on_server_error(e):
+    orig = getattr(e, 'original_exception', None) or e
+    tb = ''.join(traceback.format_exception(type(orig), orig, orig.__traceback__))
+    raise_alert('error', f"http500:{request.endpoint}:{type(orig).__name__}",
+                f"页面出错 {request.method} {request.path}：{type(orig).__name__}: {str(orig)[:120]}", tb[-1800:])
+    return '出了点问题，已经记下了，稍后再试。', 500
+
+
 @atomic
 def maybe_settle():
     """后台线程每分钟调用：过了今天的结算时刻且今天还没结算过，就结算一次"""
@@ -5512,7 +5644,11 @@ def admin():
         families.append(dict(fam=fam, n=len(ms), this_reign=sum(1 for m in ms if m['reign_no'] == state()['reign_no']),
                              alive=[full_name(m) for m in ms if m['user_id'] and m['status'] != 'dead'],
                              head=head_text(fam), label=family_label(fam), tier_name=FAMILIES[fam['tier']]['name']))
-    return render_template('admin.html', families=families, OFFICE_TITLES=OFFICE_TITLES, emperor_age=emperor_age_years(), rows=rows, pend=pend, get_consort=get_consort, INTRIGUES=INTRIGUES,
+    alerts = list(q("SELECT * FROM alerts ORDER BY resolved, last_ts DESC LIMIT 30"))
+    late = settle_overdue_minutes(datetime.now(TZ), state())
+    return render_template('admin.html', alerts=alerts, open_alerts=sum(1 for a in alerts if not a['resolved']), settle_late=late,
+                           alert_webhook=bool(ALERT_WEBHOOK), alert_style=ALERT_STYLE, ts_text=lambda t: datetime.fromtimestamp(t, TZ).strftime('%m-%d %H:%M'),
+                           families=families, OFFICE_TITLES=OFFICE_TITLES, emperor_age=emperor_age_years(), rows=rows, pend=pend, get_consort=get_consort, INTRIGUES=INTRIGUES,
                            SECRETS=SECRETS, reports=reports, done_reports=done_reports, banned=banned,
                            broadcasts=broadcasts, players=players, dn=display_name)
 
@@ -5583,6 +5719,32 @@ def admin_family(uid):
     else:
         flash('没有这个操作。', 'bad')
     return redirect(url_for('admin'))
+
+@app.route('/admin/alerts/resolve/<int:aid>', methods=['POST'])
+@admin_required
+def admin_alert_resolve(aid):
+    run("UPDATE alerts SET resolved=1 WHERE id=?", (aid,))
+    return redirect(url_for('admin'))
+
+
+@app.route('/admin/alerts/resolve_all', methods=['POST'])
+@admin_required
+def admin_alert_resolve_all():
+    run("UPDATE alerts SET resolved=1 WHERE resolved=0")
+    flash('告警都标成已处理了。', 'good')
+    return redirect(url_for('admin'))
+
+
+@app.route('/admin/alerts/test', methods=['POST'])
+@admin_required
+def admin_alert_test():
+    if not ALERT_WEBHOOK:
+        flash('还没配置 ALERT_WEBHOOK，告警只记在这个页面上。配置方法见页面下方的说明。', 'bad')
+    else:
+        send_alert_webhook('【甄嬛传告警】这是一条测试推送，收到说明告警通道是通的。')
+        flash('测试推送已发出，看看群里有没有收到。', 'good')
+    return redirect(url_for('admin'))
+
 
 @app.route('/admin/settle', methods=['POST'])
 @admin_required
