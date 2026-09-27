@@ -74,4 +74,22 @@
 {% endfor %}
 {% else %}<p class="muted">还没做出什么来。</p>{% endif %}
 <p class="muted" style="margin-top:10px"><a href="{{ url_for('room') }}">看看自己的寝宫</a></p>
+
+{% if season %}
+<div class="sheet" style="margin:14px 0;border-left:4px solid var(--jin)">
+  <b>今日{{ season.name }}</b><p class="muted" style="margin:4px 0 0">{{ season.flavor }}这几天做出的作品、张罗的小聚，都算应景的一笔。</p>
+</div>
+{% endif %}
+
+<h3>小聚</h3>
+{% if can_gather %}
+<p class="muted">邀一两位一起清谈，或是探探口风。对方不用同时在线，她今天上线时会看到。一天最多张罗 {{ gather_left + (0 if gather_left else 1) }} 场。</p>
+<form method="post" action="{{ url_for('hobby_gather') }}" class="row">
+  <select name="theme" aria-label="由头">{% for k, t in GATHER_THEMES.items() %}<option value="{{ k }}">{{ t.name }}</option>{% endfor %}</select>
+  <select name="guest_id" multiple size="4" style="min-width:160px" aria-label="请谁（可多选，最多两位）">
+    {% for o in others %}<option value="{{ o.id }}">{{ dn(o) }}</option>{% endfor %}
+  </select>
+  <button class="plain" {{ 'disabled' if not gather_left or not others }}>{{ '发帖子邀约' if gather_left else '今天已经张罗过了' }}</button>
+</form>
+{% else %}<p class="muted">先做出一件雅趣上的东西，才张罗得起小聚。</p>{% endif %}
 {% endblock %}

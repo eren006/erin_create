@@ -337,10 +337,12 @@ HOBBY_QUALITIES = ['普通', '精巧', '上品']
 HOBBY_GIFT_AFFINITY = 10       # 送自己做的作品，好感 +10（比玉如意 15 克制一点，比普通东西更值钱）
 DISPLAY_SLOTS = dict(window='窗边', desk='案头', wall='墙上', tea='茶席')
 
-def roll_hobby_quality(cid, kind):
-    """品级只看做过几件同类作品加一点运气，跟属性无关——雅趣拼的是用心，不是天赋"""
+def roll_hobby_quality(cid, kind, day=None):
+    """品级只看做过几件同类作品加一点运气，跟属性无关——雅趣拼的是用心，不是天赋。
+    赶上节令小事那天成型，运气再添一点，只影响这个品级文案，不影响任何数值"""
     made = q('SELECT COUNT(*) n FROM hobby_items WHERE maker_id=? AND kind=?', (cid, kind), one=True)['n']
     r = random.random() + made * 0.05
+    if active_season(day if day is not None else cur_day()): r += SEASON_QUALITY_BONUS
     if r >= 0.92: return '上品'
     if r >= 0.60: return '精巧'
     return '普通'
@@ -776,6 +778,7 @@ def init_db():
                      'culprit_id': 'INTEGER NOT NULL DEFAULT 0',
                      'inherit': "TEXT NOT NULL DEFAULT '{}'",
                      'shoukang_day': 'INTEGER NOT NULL DEFAULT 0',
+                     'gather_event': "TEXT NOT NULL DEFAULT ''",
                      'prenatal': "TEXT NOT NULL DEFAULT '{}'",
                      'diet': "TEXT NOT NULL DEFAULT 'normal'",
                      'diet_eff': "TEXT NOT NULL DEFAULT 'normal'",
@@ -813,7 +816,8 @@ def init_db():
                   'orphan_deadline_day': 'INTEGER NOT NULL DEFAULT 0',
                   'reprimand_ready_day': 'INTEGER NOT NULL DEFAULT 0',
                   'forged': 'INTEGER NOT NULL DEFAULT 0'},
-        'cases': {'convicted_id': 'INTEGER NOT NULL DEFAULT 0', 'wrongful': 'INTEGER NOT NULL DEFAULT 0'},
+        'cases': {'convicted_id': 'INTEGER NOT NULL DEFAULT 0', 'wrongful': 'INTEGER NOT NULL DEFAULT 0',
+                  'appeal_ready_day': 'INTEGER NOT NULL DEFAULT 0'},
         'intrigues': {'drug': "TEXT NOT NULL DEFAULT ''",
                       'agent_maid_id': 'INTEGER NOT NULL DEFAULT 0'},
         'letters': {'hobby_item_id': 'INTEGER NOT NULL DEFAULT 0',
@@ -1088,6 +1092,26 @@ def add_affinity(a, b, delta):
     run("""INSERT INTO relations (a_id, b_id, affinity) VALUES (?,?,?)
            ON CONFLICT(a_id, b_id) DO UPDATE SET affinity=MAX(-100, MIN(100, affinity+?))""",
         (x, y, max(-100, min(100, delta)), delta))
+
+def remember(a, b, kind, note=''):
+    """记一件够分量的事。a、b 不分先后，查的时候两个方向都要看"""
+    run("INSERT INTO memories (a_id, b_id, kind, day, note) VALUES (?,?,?,?,?)", (a, b, kind, cur_day(), note))
+
+
+def memories_between(a, b):
+    return q("SELECT * FROM memories WHERE (a_id=? AND b_id=?) OR (a_id=? AND b_id=?) ORDER BY id", (a, b, b, a))
+
+
+def memory_line(a, b):
+    """挑一件两人之间记着的事，回一句能接在场景/小聚开头的话；没有就是空"""
+    rows = memories_between(a, b)
+    if not rows: return ''
+    r = random.choice(rows)
+    lines = dict(treat='想起她病中替你请过太医的事', visit_cold='想起她在你困顿时仍来看过你',
+                 first_gift='想起她把自己做的第一件东西送了给你', testify='想起她当年替你在案子上作过证',
+                 festival='想起你们曾一起过节')
+    return lines.get(r['kind'], '')
+
 
 def sisters_of(cid):
     rows = q("""SELECT c.id FROM relations r JOIN consorts c
@@ -2445,6 +2469,8 @@ def do_visit(c, cfg):
     daily_inc(c['id'], f'visit:{t["id"]}')
     gain = random.randint(6, 10)
     add_affinity(c['id'], t['id'], gain)
+    if t['status'] == 'confined':
+        remember(c['id'], t['id'], 'visit_cold')
     notify(t['id'], f"{display_name(c)}来{t['palace']}坐了坐。好感 +{gain}。")
     return f"你去{t['palace']}看了{display_name(t)}，一起喝茶说话。好感 +{gain}。", 'good'
 
@@ -4052,9 +4078,12 @@ SUCCESSION_MOVES = {
     'bribe':   dict(name='收买上书房', silver=100, energy=1),
     'counsel': dict(name='公主进言', silver=0, energy=1),
     'feud':    dict(name='挑拨兄弟', silver=80, energy=1, min_scheme=50),
+    'frame':   dict(name='构陷皇子', silver=400, energy=2, min_rank=6),
     'peek':    dict(name='窥匾', silver=500, energy=1, min_rank=5),
     'forge':   dict(name='矫诏', silver=1000, energy=2, min_rank=7),
 }
+FRAME_PRINCE_BASE, FRAME_PRINCE_PER_SCHEME = 0.30, 0.004
+FRAME_PRINCE_CAUGHT, FRAME_PRINCE_CAUGHT_TRUST, FRAME_PRINCE_CAUGHT_VIRTUE = 0.20, 8, 5
 DISCORD_BASE, DISCORD_LOSS, DISCORD_CAUGHT = 0.60, 8, 0.15
 BRIBE_BONUS, COUNSEL_GAIN, COUNSEL_INTERVAL = 15, 8, 7
 STANCE_ACTS = {
@@ -4413,6 +4442,10 @@ def succession_move():
     elif key == 'feud':
         if c['scheme'] < mv['min_scheme']: err = f"心计要 {mv['min_scheme']} 以上才使得出这招。"
         elif not target or not other or target['id'] == other['id']: err = '选两位不同的、12 岁以上的阿哥。'
+    elif key == 'frame':
+        if c['rank'] < mv['min_rank']: err = '妃位以上才压得住这样的局。'
+        elif not target: err = '选一位 12 岁以上的阿哥。'
+        elif target['caretaker_id'] == c['id'] or target['mother_id'] == c['id']: err = '那是你自己的孩子，不能这么办。'
     elif key == 'peek':
         if c['rank'] < mv['min_rank']: err = '嫔位以上才够得着养心殿的匾。'
     elif key == 'forge':
@@ -4428,6 +4461,25 @@ def succession_move():
     if key == 'discord':
         ok = sow_discord(target, display_name(c), attacker=c)
         flash(f"流言散出去了，{heir_full_title(target)}的圣眷 -{DISCORD_LOSS}。" if ok else '流言没能传到皇上耳朵里，银子白花了。', 'good' if ok else 'bad')
+    elif key == 'frame':
+        label = heir_full_title(target)
+        if random.random() < min(0.75, FRAME_PRINCE_BASE + c['scheme'] * FRAME_PRINCE_PER_SCHEME):
+            run("UPDATE heirs SET status='deposed', errand='' WHERE id=?", (target['id'],))
+            gazette(f"慎刑司查实{label}结交外臣、图谋不轨，圈禁高墙，逐出储位人选。", 'decree')
+            care = get_consort(target['caretaker_id']) if target['caretaker_id'] else None
+            if care and care['status'] != 'dead' and care['rank'] > 1:
+                set_rank(care['id'], care['rank'] - 1)
+            for par in heir_parents(target):
+                notify(par['id'], f"{label}被查出结交外臣，圈禁出局。" + ('你受牵连，降了一级。' if care and par['id'] == care['id'] else ''), 'bad')
+            flash(f"构陷成了，{label}被圈禁出局。", 'good')
+        else:
+            flash('这一局没能坐实，银子打了水漂。', 'bad')
+            if random.random() < FRAME_PRINCE_CAUGHT:
+                add_trust(c['id'], -FRAME_PRINCE_CAUGHT_TRUST)
+                add_stat(c['id'], 'virtue', -FRAME_PRINCE_CAUGHT_VIRTUE)
+                for par in heir_parents(target):
+                    if par['id'] != c['id']: notify(par['id'], f"查出是{display_name(c)}想构陷{label}，事情没成。", 'info')
+                flash(f"反倒被人查出是你在背后使坏。信任 -{FRAME_PRINCE_CAUGHT_TRUST}，德行 -{FRAME_PRINCE_CAUGHT_VIRTUE}。", 'bad')
     elif key == 'bribe':
         run('UPDATE heirs SET exam_bonus=MAX(exam_bonus,?) WHERE id=?', (BRIBE_BONUS, mine['id']))
         flash(f"上书房那边打点妥当，{heir_label(mine)}下一次考校判定 +{BRIBE_BONUS}。", 'good')
@@ -5083,7 +5135,7 @@ def end_reign(day):
     run("DELETE FROM consorts WHERE npc_key IS NOT NULL")
     for t in ('intrigues', 'messages', 'gazette', 'relations', 'known_secrets', 'inventory', 'heirs', 'letters', 'letter_stars',
               'bribes', 'afflictions', 'cases', 'case_suspects', 'case_actions', 'stances', 'heir_claims',
-              'hobby_projects', 'hobby_items', 'displays', 'daily_counters'):
+              'hobby_projects', 'hobby_items', 'displays', 'daily_counters', 'memories', 'gatherings'):
         run(f"DELETE FROM {t}")
     run('UPDATE users SET lethal_ready_day=0, nameless_ready_day=0, forge_used=0')
 
@@ -5419,6 +5471,10 @@ def _settle_night():
         (new_day, datetime.now(TZ).date().isoformat(), mood, pref))
     if pref != st['emperor_pref']:
         gazette(f"听养心殿的人说，皇上这几日格外喜欢{pref}。", 'news', day=new_day)
+    fest = active_festival(new_day)
+    if fest: gazette(FESTIVALS[fest]['line'], 'news', day=new_day)
+    season = active_season(new_day)
+    if season: gazette(f"{SEASONS[season]['name']}到了，暇趣里应景的一笔，格外让人惦记。", 'news', day=new_day)
     return report
 
 # ── 口谕 ───────────────────────────────────────────────────────────────────────
@@ -5832,7 +5888,7 @@ def admin_reset():
         return redirect(url_for('admin'))
     for t in ('intrigues', 'messages', 'gazette', 'relations', 'known_secrets', 'inventory', 'heirs', 'letters', 'letter_stars', 'reports', 'maids',
               'bribes', 'afflictions', 'cases', 'case_suspects', 'case_actions', 'stances', 'heir_claims',
-              'hobby_projects', 'hobby_items', 'displays', 'daily_counters', 'consorts', 'game_state'):
+              'hobby_projects', 'hobby_items', 'displays', 'daily_counters', 'memories', 'gatherings', 'consorts', 'game_state'):
         run(f"DELETE FROM {t}")
     if request.form.get('keep_users') != '1':
         run("DELETE FROM users")
@@ -6030,6 +6086,7 @@ def treat(tid):
         if c['id'] != tid:
             notify(tid, f'{display_name(c)}替你请了太医。{text}', 'good')
             add_affinity(c['id'], tid, 5)
+            remember(c['id'], tid, 'treat')
         flash(text, 'good')
     return redirect(url_for('index' if c['id'] == tid else 'social'))
 
@@ -6104,7 +6161,7 @@ def place(key):
     acts = [(k, ACTIONS[k]) for k in PLACES[key]['actions'] if c['status'] in ACTIONS[k]['when'] and not (k == 'attend' and not emperor_ill()) and not (k == 'shoukang' and c['patron'] != 'concubine')]
     counts = {k: daily_count(c['id'], k) for k in PLACES[key]['actions']}
     title, desc, extra = PLACES[key]['name'], '', ''
-    maid_ev, maid_info, heir_ev, my_heirs, heir_todo = None, None, None, [], 0
+    maid_ev, maid_info, heir_ev, my_heirs, heir_todo, gather_ev = None, None, None, [], 0, None
     if key == 'home':
         roll_maid_event(c)
         roll_heir_event(c)
@@ -6115,6 +6172,7 @@ def place(key):
         my_heirs = q("SELECT * FROM heirs WHERE caretaker_id=? AND adult_day=0", (c['id'],))
         heir_todo = sum(1 for h in q("SELECT * FROM heirs WHERE caretaker_id=? AND adult_day>0", (c['id'],))
                         if h['marriage'] == 'choice' or (h['errand'] and not (errand_view(h) or {}).get('approach')))
+        gather_ev = gather_view(c)
         title = residence_name(c)
         if c['status'] == 'cold':
             desc = '四面高墙，窗纸破了也没人来补。'
@@ -6142,7 +6200,9 @@ def place(key):
                            DIETS=DIETS, PREGNANCY_DAYS=PREGNANCY_DAYS, diet_costs=diet_costs(c['rank']), repair=repair_state(c), REPAIRS=REPAIRS, PRAY_TIERS=PRAY_TIERS,
                            is_quiet=is_quiet(c) if c['status'] in ('normal', 'confined') else False, open_living=request.args.get('living') == '1',
                            household=palace_household(c['palace']) if key == 'home' and has_residence(c) else [],
-                           is_head=has_residence(c) and c['hall'] == 'main' and c['rank'] >= 5)
+                           is_head=has_residence(c) and c['hall'] == 'main' and c['rank'] >= 5,
+                           gather_ev=gather_ev, GATHER_THEMES=GATHER_THEMES, active_festival=FESTIVALS.get(active_festival(day)),
+                           festival_done=daily_count(c['id'], 'festival'))
 
 # ── 场景 ───────────────────────────────────────────────────────────────────────
 
@@ -6450,9 +6510,12 @@ def letter_send():
         if item != 'ruyi':           # 玉如意送出即用掉，不进对方背包，没法来回倒腾
             inv_add(tid, item, 1)
     if hitem:
+        first_gift_ever = not q("SELECT 1 FROM letters WHERE from_id=? AND hobby_item_id!=0", (c['id'],), one=True)
         history = json.loads(hitem['history'] or '[]') + [{'from': c['id'], 'to': tid, 'day': cur_day()}]
         run('UPDATE hobby_items SET holder_id=?, history=? WHERE id=?', (tid, json.dumps(history, ensure_ascii=False), hitem['id']))
         run('DELETE FROM displays WHERE consort_id=? AND item_id=?', (c['id'], hitem['id']))   # 送出去了，自己寝宫不再摆着
+        if first_gift_ever and hitem['maker_id'] == c['id']:
+            remember(c['id'], tid, 'first_gift')
     run("""INSERT INTO letters (from_id, to_id, day, body, silver, item_key, hobby_item_id, created_ts)
            VALUES (?,?,?,?,?,?,?,?)""", (c['id'], tid, cur_day(), body, amt, item, hobby_item_id, now_ts()))
     daily_inc(c['id'], 'letter')
@@ -6749,8 +6812,9 @@ def drug_cases():
         public = {k:case[k] for k in ('id','day','victim_id','status','closed_day')}
         public['suspects'] = [dict(id=s['consort_id'], name=display_name(s), suspicion=s['suspicion'] if involved else None) for s in suspects]
         public['victim'] = display_name(get_consort(case['victim_id']))
+        public['can_appeal'] = can_appeal(g.me, case)
         cases.append(public)
-    return render_template('cases.html', cases=cases)
+    return render_template('cases.html', cases=cases, APPEAL_SILVER=APPEAL_SILVER)
 
 
 @app.route('/cases/<int:case_id>/act', methods=['POST'])
@@ -6780,7 +6844,7 @@ def case_action(case_id):
             else: add_silver(c['id'],-amount); delta=-(amount//10)
         elif action=='witness':
             if not rel or rel['affinity']<30: err='好感至少三十才能替她作证。'
-            else: delta=-10
+            else: delta=-10; remember(c['id'], tid, 'testify')
         elif action=='accuse': delta=10
         elif action=='search':
             if c['id']!=case['victim_id'] and c['id'] not in sisters_of(case['victim_id']): err='只有受害人和她的姐妹能请求搜宫。'
@@ -6838,6 +6902,61 @@ def resolve_drug_cases(day):
         for a in q("SELECT * FROM case_actions WHERE case_id=? AND action='accuse'",(case['id'],)):
             if a['target_id']!=convicted: add_stat(a['consort_id'],'virtue',-3)
         run('UPDATE cases SET status=?,closed_day=?,convicted_id=?,wrongful=? WHERE id=?',('convicted' if convicted else 'unsolved',day,convicted,int(bool(convicted and convicted!=case['culprit_id'])),case['id']))
+
+
+APPEAL_MIN_DAYS_CLOSED = 5
+APPEAL_ENERGY, APPEAL_SILVER = 1, 100
+APPEAL_WRONGFUL_BASE, APPEAL_WRONGFUL_PER_SCHEME = 0.55, 0.003
+APPEAL_GUILTY_BASE = 0.08          # 真被定了罪的人想翻案脱罪，希望很小
+APPEAL_INTERVAL = 10
+
+
+def can_appeal(c, case):
+    return case['status'] == 'convicted' and case['convicted_id'] and \
+        (c['id'] == case['convicted_id'] or c['id'] in sisters_of(case['convicted_id'])) and \
+        cur_day() >= case['closed_day'] + APPEAL_MIN_DAYS_CLOSED and cur_day() >= case['appeal_ready_day']
+
+
+@app.route('/cases/<int:case_id>/appeal', methods=['POST'])
+@login_required
+def case_appeal(case_id):
+    c = g.me
+    day = cur_day()
+    case = q('SELECT * FROM cases WHERE id=?', (case_id,), one=True)
+    err = None
+    if not case or not can_appeal(c, case): err = '这桩案子现在翻不了。'
+    elif c['energy'] < APPEAL_ENERGY: err = '精力不够了。'
+    elif c['silver'] < APPEAL_SILVER: err = f'翻案要托人打点，得 {APPEAL_SILVER} 两。'
+    if err:
+        flash(err, 'bad'); return redirect(url_for('drug_cases'))
+    run('UPDATE consorts SET energy=energy-? WHERE id=?', (APPEAL_ENERGY, c['id']))
+    add_silver(c['id'], -APPEAL_SILVER)
+    convicted = get_consort(case['convicted_id'])
+    name = display_name(convicted)
+    wrongful = bool(case['wrongful'])
+    p = (APPEAL_WRONGFUL_BASE + c['scheme'] * APPEAL_WRONGFUL_PER_SCHEME) if wrongful else APPEAL_GUILTY_BASE
+    if random.random() < min(0.9, p):
+        run("UPDATE cases SET status='overturned' WHERE id=?", (case_id,))
+        add_trust(convicted['id'], 15)
+        if convicted['status'] == 'cold':
+            release_from_cold(convicted['id'], '沉冤得雪，')
+        elif convicted['status'] == 'confined':
+            run("UPDATE consorts SET status='normal', status_until_day=0 WHERE id=?", (convicted['id'],))
+            notify(convicted['id'], '慎刑司复查了旧案，禁足解了。', 'good')
+        if case['drug'] == 'hanshui' and slot_free(convicted['rank'] + 1, convicted['id']):
+            set_rank(convicted['id'], convicted['rank'] + 1)
+        gazette(f"慎刑司复查第 {case_id} 桩旧案，还{name}一个清白。", 'decree')
+        if wrongful and case['culprit_id'] and case['culprit_id'] != convicted['id']:
+            culprit = get_consort(case['culprit_id'])
+            if culprit and culprit['status'] not in ('dead', 'cold'):
+                cut_favor(culprit['id'], 0.15)
+                add_trust(culprit['id'], -10)
+                notify(culprit['id'], f"{name}的旧案翻了出来，苗头渐渐指向你。圣宠 −15%，信任 −10。", 'bad')
+        flash('翻案成了，慎刑司当众更正了案情。', 'good')
+    else:
+        run('UPDATE cases SET appeal_ready_day=? WHERE id=?', (day + APPEAL_INTERVAL, case_id))
+        flash(f'慎刑司驳回了申诉，说证据不足以推翻原判。{APPEAL_INTERVAL} 天后才能再申。', 'bad')
+    return redirect(url_for('drug_cases'))
 
 
 @app.route('/agents')
@@ -7071,6 +7190,183 @@ def palaces():
 def current_hobby_project(cid):
     return q("SELECT * FROM hobby_projects WHERE owner_id=? AND status='active'", (cid,), one=True)
 
+# ── 节庆宴会：除夕、上元、中秋，轮着来（万寿节是皇上的生辰，在九点六节 F 里）────────────
+FESTIVALS = {
+    'reunion':   dict(name='除夕家宴', action_name='守岁', line='除夕家宴，宫里张灯结彩，隐约传来鞭炮声。'),
+    'lantern':   dict(name='上元节', action_name='去猜灯谜', line='上元灯会，六宫处处挂满了花灯。'),
+    'midautumn': dict(name='中秋节', action_name='赏月家宴', line='中秋家宴，圆月高悬，宫里飘着桂花香。'),
+}
+FESTIVAL_ORDER = ['reunion', 'lantern', 'midautumn']
+FESTIVAL_INTERVAL = 18
+FESTIVAL_FAVOR_RANGE = (6, 12)
+FESTIVAL_SISTER_AFFINITY = 3
+FESTIVAL_LANTERN_SILVER = 15
+
+
+def active_festival(day):
+    if day <= 0 or day % FESTIVAL_INTERVAL: return None
+    return FESTIVAL_ORDER[(day // FESTIVAL_INTERVAL - 1) % len(FESTIVAL_ORDER)]
+
+
+@app.route('/festival', methods=['POST'])
+@login_required
+def do_festival():
+    c = g.me
+    day = cur_day()
+    key = active_festival(day)
+    if not key or c['status'] not in ('normal', 'confined'):
+        flash('今天不是节庆。', 'bad'); return redirect(url_for('place', key='home'))
+    if daily_count(c['id'], 'festival'):
+        flash('今天已经过节了。', 'bad'); return redirect(url_for('place', key='home'))
+    daily_inc(c['id'], 'festival')
+    cfg = FESTIVALS[key]
+    gain = add_favor(c['id'], random.randint(*FESTIVAL_FAVOR_RANGE))
+    parts = [f"圣宠 +{gain}"]
+    if key == 'reunion':
+        add_stat(c['id'], 'virtue', 2)
+        parts.append('德行 +2')
+        mates = sisters_of(c['id'])
+        for sid in mates:
+            s = get_consort(sid)
+            if s and s['status'] not in ('dead', 'xiunv'):
+                add_affinity(c['id'], sid, FESTIVAL_SISTER_AFFINITY)
+                remember(c['id'], sid, 'festival')
+        if mates: parts.append('跟姐妹们的好感也涨了些')
+    elif key == 'lantern':
+        add_silver(c['id'], FESTIVAL_LANTERN_SILVER)
+        parts.append(f'灯谜猜中了，得了 {FESTIVAL_LANTERN_SILVER} 两彩头')
+    elif key == 'midautumn':
+        add_trust(c['id'], 2)
+        parts.append('信任 +2')
+    flash(f"{cfg['line']}你{cfg['action_name']}。" + '，'.join(parts) + '。', 'good')
+    return redirect(url_for('place', key='home'))
+
+
+# ── 雅趣后半：小聚、人情、节令小事（九点十三节 C/D/E）────────────────────────────
+
+SEASONS = {
+    'snow':  dict(name='初雪', flavor='今日初雪，落在殿角的琉璃瓦上，是这一年头一场。'),
+    'lotus': dict(name='荷花开', flavor='御花园的荷花开了满池，风一过满是清香。'),
+    'qixi':  dict(name='七夕', flavor='七夕这日，宫里的姑娘们都在院里穿针乞巧。'),
+    'chrys': dict(name='重阳', flavor='重阳到了，内务府送来了茱萸和菊花酒。'),
+}
+SEASON_ORDER = ['snow', 'lotus', 'qixi', 'chrys']
+SEASON_INTERVAL = 15
+SEASON_QUALITY_BONUS = 0.15   # 节令当天成型的作品，品级骰子多这么些，只影响文案和展示，不影响数值
+
+
+def active_season(day):
+    if day <= 0 or day % SEASON_INTERVAL: return None
+    return SEASON_ORDER[(day // SEASON_INTERVAL - 1) % len(SEASON_ORDER)]
+
+
+GATHER_THEMES = {
+    'chat': dict(name='清谈', verb='请她清谈几句'),
+    'probe': dict(name='探口风', verb='请她坐下探探口风'),
+}
+GATHER_HOST_DAILY_MAX = 1
+GATHER_GUEST_DAILY_MAX = 2
+GATHER_PROBE_HIT = 0.45          # 探口风探出点什么的概率；探出来的话也不一定可信
+GATHER_PROBE_RELIABLE = 0.55
+
+
+def hobby_can_gather(c):
+    return bool(hobby_unlocked_kinds(c)) or q('SELECT 1 FROM hobby_items WHERE maker_id=?', (c['id'],), one=True)
+
+
+def pending_gathering(c):
+    return q("SELECT * FROM gatherings WHERE guest_id=? AND day=? AND status='pending' ORDER BY id",
+             (c['id'], cur_day()), one=True)
+
+
+@app.route('/hobby/gather', methods=['POST'])
+@login_required
+def hobby_gather():
+    c = g.me
+    theme = request.form.get('theme')
+    try:
+        gids = [int(x) for x in request.form.getlist('guest_id') if x]
+    except ValueError:
+        gids = []
+    gids = gids[:2]
+    err = None
+    if not hobby_can_gather(c): err = '你还没有雅趣上的门道，先做一件东西再说。'
+    elif theme not in GATHER_THEMES: err = '选一个由头。'
+    elif not gids: err = '请一两位一起。'
+    elif c['status'] not in ('normal', 'confined'): err = '你现在张罗不了这个。'
+    elif daily_count(c['id'], 'gather_host') >= GATHER_HOST_DAILY_MAX: err = '今天已经张罗过一场了。'
+    if err:
+        flash(err, 'bad'); return redirect(url_for('hobby'))
+    day = cur_day()
+    sent = 0
+    for gid in gids:
+        guest = get_consort(gid)
+        if not guest or guest['id'] == c['id'] or not guest['user_id'] or guest['status'] not in ('normal', 'confined'): continue
+        run("INSERT INTO gatherings (host_id, guest_id, theme, day, status) VALUES (?,?,?,?,'pending')", (c['id'], gid, theme, day))
+        sent += 1
+    if not sent:
+        flash('请的人现在都不方便。', 'bad'); return redirect(url_for('hobby'))
+    daily_inc(c['id'], 'gather_host')
+    season = active_season(day)
+    extra = f"（今日{SEASONS[season]['name']}，倒是个由头）" if season else ''
+    flash(f"你请了 {sent} 位来{GATHER_THEMES[theme]['verb']}{extra}，她们今天上线时会看到。", 'good')
+    return redirect(url_for('hobby'))
+
+
+def gather_view(c):
+    g_ = pending_gathering(c)
+    if not g_: return None
+    host = get_consort(g_['host_id'])
+    if not host or host['status'] not in ('normal', 'confined'): return None
+    line = memory_line(c['id'], g_['host_id'])
+    prefix = f"（{line}）" if line else ''
+    season = active_season(cur_day())
+    season_line = f"（{SEASONS[season]['flavor']}）" if season else ''
+    text = f"{prefix}{display_name(host)}请你{GATHER_THEMES[g_['theme']]['verb']}。{season_line}"
+    return text, g_
+
+
+@app.route('/hobby/gather/respond', methods=['POST'])
+@login_required
+def hobby_gather_respond():
+    c = g.me
+    view = gather_view(c)
+    if not view:
+        return redirect(url_for('place', key='home'))
+    _, g_ = view
+    if daily_count(c['id'], 'gather_guest') >= GATHER_GUEST_DAILY_MAX:
+        run("UPDATE gatherings SET status='lapsed' WHERE id=?", (g_['id'],))
+        flash('今天已经赴过两场了，这场只好错过。', 'bad')
+        return redirect(url_for('place', key='home'))
+    opt = request.form.get('opt')
+    run("UPDATE gatherings SET status='done' WHERE id=?", (g_['id'],))
+    daily_inc(c['id'], 'gather_guest')
+    host = get_consort(g_['host_id'])
+    if g_['theme'] == 'chat':
+        gain = random.randint(6, 8) if opt == 'warm' else random.randint(4, 6)
+        add_affinity(c['id'], g_['host_id'], gain)
+        say = '你敞开了聊，两人越说越投机。' if opt == 'warm' else '你只静静听着，偶尔应一声，她倒也不介意。'
+        flash(f"{say}好感 +{gain}。", 'good')
+    else:   # probe
+        if opt == 'press' and random.random() < GATHER_PROBE_HIT:
+            reliable = random.random() < GATHER_PROBE_RELIABLE
+            others = [x['id'] for x in q("SELECT id FROM consorts WHERE user_id IS NOT NULL AND status='normal' AND id NOT IN (?,?)", (c['id'], g_['host_id']))]
+            if others:
+                who = random.choice(others)
+                hint = f"你隐约觉得该多留意{display_name(get_consort(who))}。" if reliable else f"她话里话外像是在提{display_name(get_consort(who))}，只是听着也不一定作数。"
+            else:
+                hint = '她欲言又止，到底没说出口。'
+            add_affinity(c['id'], g_['host_id'], 2)
+            flash(f"你多问了两句。{hint}", 'good')
+        elif opt == 'press':
+            add_affinity(c['id'], g_['host_id'], 1)
+            flash('你多问了两句，她只是笑笑，什么也没说破。', 'info')
+        else:
+            add_affinity(c['id'], g_['host_id'], 3)
+            flash('你含糊带过，没有追问。她倒松了口气。', 'good')
+    return redirect(url_for('place', key='home'))
+
+
 def hobby_charge(c):
     """圣宠到「偶承恩泽」以下（不含 80）时雅趣免精力，够宠的人才占精力池"""
     if c['favor'] >= HOBBY_FREE_FAVOR:
@@ -7087,11 +7383,17 @@ def hobby():
     made = q('SELECT COUNT(*) n FROM hobby_items WHERE maker_id=?', (c['id'],), one=True)['n']
     held = q("SELECT * FROM hobby_items WHERE holder_id=? ORDER BY id DESC", (c['id'],))
     displayed_ids = {r['item_id'] for r in q('SELECT item_id FROM displays WHERE consort_id=?', (c['id'],))}
+    day = cur_day()
+    others = q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND status IN ('normal','confined') AND id!=?", (c['id'],))
+    season = active_season(day)
     return render_template('hobby.html', c=c, HOBBIES=HOBBIES, proj=proj, unlocked=unlocked,
                            can_pick_first=not unlocked, can_unlock_second=len(unlocked) == 1 and made >= HOBBY_UNLOCK_ITEMS,
                            done_today=proj is not None and proj['last_day'] == cur_day(),
                            held=held, displayed_ids=displayed_ids, DISPLAY_SLOTS=DISPLAY_SLOTS,
-                           hobby_item_desc=hobby_item_desc, free=c['favor'] < HOBBY_FREE_FAVOR)
+                           hobby_item_desc=hobby_item_desc, free=c['favor'] < HOBBY_FREE_FAVOR,
+                           GATHER_THEMES=GATHER_THEMES, others=others, can_gather=hobby_can_gather(c),
+                           gather_left=GATHER_HOST_DAILY_MAX - daily_count(c['id'], 'gather_host'),
+                           season=SEASONS[season] if season else None, dn=display_name)
 
 @app.route('/hobby/start', methods=['POST'])
 @login_required
@@ -7148,11 +7450,13 @@ def hobby_act():
         if stage >= len(cfg['texts']) - 1:
             item_id = run("""INSERT INTO hobby_items (kind, style, quality, maker_id, holder_id, created_day, history)
                              VALUES (?,?,?,?,?,?,'[]')""",
-                          (proj['kind'], proj['style'], roll_hobby_quality(c['id'], proj['kind']),
+                          (proj['kind'], proj['style'], roll_hobby_quality(c['id'], proj['kind'], day),
                            c['id'], c['id'], day)).lastrowid
             run("UPDATE hobby_projects SET status='done', stage=?, last_day=? WHERE id=?", (stage, day, proj['id']))
             item = q('SELECT * FROM hobby_items WHERE id=?', (item_id,), one=True)
-            flash(cfg['texts'][-1].format(style=proj['style']) + f"（{item['quality']}）——去下面看看，摆进寝宫或是送给谁。", 'good')
+            season = active_season(day)
+            season_line = f"今日{SEASONS[season]['name']}，" if season else ''
+            flash(season_line + cfg['texts'][-1].format(style=proj['style']) + f"（{item['quality']}）——去下面看看，摆进寝宫或是送给谁。", 'good')
         else:
             run("UPDATE hobby_projects SET stage=?, last_day=? WHERE id=?", (stage, day, proj['id']))
             flash(cfg['texts'][stage].format(style=proj['style']), 'good')

@@ -30,6 +30,26 @@
 {% if maid_info %}
 <p class="muted"><a href="{{ url_for('maids_page') }}">宫人 {{ maid_info.n }}/{{ maid_info.quota }}</a>{% if c.status != 'cold' and maid_info.n %}　今天还能差遣 {{ maid_info.errands }} 人{% endif %}</p>
 {% endif %}
+{% if gather_ev %}{% set gtext, grow = gather_ev %}
+<div class="sheet" style="margin:14px 0">
+  <p style="font-family:var(--kai);font-size:18px">{{ gtext }}</p>
+  <form method="post" action="{{ url_for('hobby_gather_respond') }}" class="row">
+    {% if grow.theme == 'chat' %}
+      <button name="opt" value="warm">敞开了聊</button>
+      <button name="opt" value="quiet" class="plain">只静静听着</button>
+    {% else %}
+      <button name="opt" value="press">多问两句</button>
+      <button name="opt" value="deflect" class="plain">含糊带过</button>
+    {% endif %}
+  </form>
+</div>
+{% endif %}
+{% if active_festival and key == 'home' and c.status in ('normal', 'confined') %}
+<div class="sheet" style="margin:14px 0;border-left:4px solid var(--jin)">
+  <b>{{ active_festival.name }}</b><p class="muted" style="margin:4px 0 0">{{ active_festival.line }}</p>
+  <form method="post" action="{{ url_for('do_festival') }}"><button {{ 'disabled' if festival_done }}>{{ '已经过节了' if festival_done else active_festival.action_name }}</button></form>
+</div>
+{% endif %}
 {% if heir_ev %}{% set htext, hopts, hdata, hnames = heir_ev %}
 <div class="sheet" style="margin:14px 0">
   <p style="font-family:var(--kai);font-size:18px">{{ htext }}</p>

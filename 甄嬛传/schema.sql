@@ -492,3 +492,26 @@ CREATE TABLE IF NOT EXISTS alerts (
     resolved    INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_alerts_open ON alerts(resolved, key);
+
+
+-- 人情：几件够分量的事，不新开一条数值，只记"发生过"
+CREATE TABLE IF NOT EXISTS memories (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    a_id    INTEGER NOT NULL,
+    b_id    INTEGER NOT NULL,
+    kind    TEXT NOT NULL,
+    day     INTEGER NOT NULL,
+    note    TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_memories_ab ON memories(a_id, b_id);
+
+-- 小聚：主人邀约挂在客人账号上，客人当天上线随时能看到、回应
+CREATE TABLE IF NOT EXISTS gatherings (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    host_id  INTEGER NOT NULL,
+    guest_id INTEGER NOT NULL,
+    theme    TEXT NOT NULL,
+    day      INTEGER NOT NULL,
+    status   TEXT NOT NULL DEFAULT 'pending'   -- pending / done / lapsed
+);
+CREATE INDEX IF NOT EXISTS idx_gatherings_guest ON gatherings(guest_id, day, status);
