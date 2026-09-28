@@ -40,8 +40,8 @@
 <p class="muted">{{ FAMILIES[fam.tier].name }}。家主{{ fam.head_role }}{{ fam.head_name }}。</p>
 <div class="sheet" style="margin:10px 0">
   <b>她是：{{ lineage }}</b>
-  {% if inh.patron == 'dowager' %}<p class="muted">姑母是当朝太后：殿选 +10，起始信任 30，太后每 7 天召你说话一次；只是六宫都知道你是太后的人，被人算计的机会也更多。</p>
-  {% elif inh.patron == 'concubine' %}<p class="muted">姑母是太妃：每 7 天可以去寿康宫请安一次，太妃会悄悄告诉你一件宫里的旧事。</p>
+  {% if inh.patron == 'dowager' %}<p class="muted">姑母是当朝太后：殿选 +10，起始信任 30，太后每 {{ DOWAGER_AUDIENCE_INTERVAL }} 天召你说话一次；只是六宫都知道你是太后的人，被人算计的机会也更多。</p>
+  {% elif inh.patron == 'concubine' %}<p class="muted">姑母是太妃：每 {{ SHOUKANG_INTERVAL }} 天可以去寿康宫请安一次，太妃会悄悄告诉你一件宫里的旧事。</p>
   {% elif inh.patron == 'disgraced' %}<p class="muted">上一辈站错了队：新帝对你家有成见，起始信任只有 10。</p>{% endif %}
   {% if fam.prestige >= 20 %}<p class="muted">家里名望 {{ fam.prestige }}：殿选加 {{ [fam.prestige // 20, 10] | min }} 分，起始银子加 {{ [fam.prestige, 100] | min }} 两。</p>{% endif %}
   {% set gone = members | selectattr('status', 'equalto', 'dead') | list %}

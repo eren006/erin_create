@@ -84,19 +84,18 @@ class IllnessOnsetTests(unittest.TestCase):
     player = fixtures.LifecycleTests.player
     login = fixtures.LifecycleTests.login
 
-    def test_weak_body_three_days_in_a_row_falls_ill(self):
+    def test_weak_body_days_in_a_row_falls_ill(self):
         game.run('UPDATE game_state SET day=11')   # 避开 day % EPIDEMIC_INTERVAL == 0 的巧合
         game.run('UPDATE consorts SET health=10 WHERE id=?', (self.atk,))
         day = game.cur_day()
         with patch.object(game.random, 'random', return_value=0.99):   # 不触发冷宫/产后/时疫这些概率事件
-            game.illness_onset_tick(day)
-            self.assertEqual(game.get_consort(self.atk)['weak_days'], 1)
-            self.assertFalse(game.get_consort(self.atk)['ill_day'])
-            game.illness_onset_tick(day)
-            self.assertEqual(game.get_consort(self.atk)['weak_days'], 2)
+            for i in range(1, game.WEAK_SICK_DAYS):
+                game.illness_onset_tick(day)
+                self.assertEqual(game.get_consort(self.atk)['weak_days'], i)
+                self.assertFalse(game.get_consort(self.atk)['ill_day'])
             game.illness_onset_tick(day)
         c = game.get_consort(self.atk)
-        self.assertTrue(c['ill_day'], '连续三天体质 <25，该染病了')
+        self.assertTrue(c['ill_day'], f'连续 {game.WEAK_SICK_DAYS} 天体质 <25，该染病了')
         self.assertEqual(c['weak_days'], 0, '染病后计数器清零')
 
     def test_weak_days_resets_when_health_recovers(self):

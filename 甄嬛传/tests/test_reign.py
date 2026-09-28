@@ -35,7 +35,7 @@ class ReignTests(unittest.TestCase):
 
     def prince(self, mother, age_years=13, **kw):
         kw.setdefault('title', '')
-        return self.heir(mother, gender='皇子', born=game.cur_day() - age_years * 2, zhuazhou='book', **kw)
+        return self.heir(mother, gender='皇子', born=game.cur_day() - age_years * game.HEIR_DAYS_PER_YEAR, zhuazhou='book', **kw)
 
     def row(self, hid):
         return game.q('SELECT * FROM heirs WHERE id=?', (hid,), one=True)
@@ -61,20 +61,24 @@ class ReignTests(unittest.TestCase):
         self.set_day(11)
         self.assertEqual(game.emperor_age_years(), 50)   # 每晚半岁
 
-    def test_no_death_risk_before_sixty(self):
-        self.set_day(31)   # 45 + 15 = 60 岁整，还没有风险
+    def test_no_death_risk_before_the_threshold_age(self):
+        d = 2 * game.HAZARD_AFTER_YEARS   # 开局年龄 + HAZARD_AFTER_YEARS 岁整，还没有风险
+        self.set_day(d)
         with patch.object(game.random, 'random', return_value=0.0):
-            self.assertFalse(game.emperor_tick(31))
+            self.assertFalse(game.emperor_tick(d))
         self.assertEqual(self.st()['emperor_death_day'], 0)
 
-    def test_hazard_grows_with_age_after_sixty(self):
-        self.set_day(41)   # 65 岁：风险 (65-60) × 0.5% = 2.5%
-        with patch.object(game.random, 'random', return_value=0.02):
-            game.emperor_tick(41)
-        self.assertEqual(self.st()['emperor_death_day'], 44, '掷中后 3 天驾崩')
+    def test_hazard_grows_with_age_past_the_threshold(self):
+        years_over = 5
+        d = 2 * (game.HAZARD_AFTER_YEARS + years_over) + 1   # reign_start_day 默认是 1，age = start + (day-1)/2
+        p = years_over * game.HAZARD_PER_YEAR
+        self.set_day(d)
+        with patch.object(game.random, 'random', return_value=p - 0.001):
+            game.emperor_tick(d)
+        self.assertEqual(self.st()['emperor_death_day'], d + 3, '掷中后 3 天驾崩')
         game.run('UPDATE game_state SET emperor_death_day=0')
-        with patch.object(game.random, 'random', return_value=0.03):
-            game.emperor_tick(41)
+        with patch.object(game.random, 'random', return_value=p + 0.001):
+            game.emperor_tick(d)
         self.assertEqual(self.st()['emperor_death_day'], 0)
 
     def test_forced_before_max_reign_days(self):

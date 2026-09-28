@@ -63,7 +63,7 @@ class DrugTests(unittest.TestCase):
         game.run('UPDATE game_state SET day=11')
         self.client.post('/intrigue/submit',data=dict(method='drug',drug='wuming',effect='yanzhi',target_id=self.tgt))
         self.assertEqual(len(game.q('SELECT * FROM intrigues')),1)
-        self.assertEqual(game.q('SELECT nameless_ready_day FROM users WHERE id=?',(game.get_consort(self.atk)['user_id'],),one=True)[0],25)
+        self.assertEqual(game.q('SELECT nameless_ready_day FROM users WHERE id=?',(game.get_consort(self.atk)['user_id'],),one=True)[0],10+game.NAMELESS_COOLDOWN)
 
     def test_newcomer_and_success_protection_at_settlement(self):
         game.run('UPDATE consorts SET entered_day=6 WHERE id=?',(self.tgt,))

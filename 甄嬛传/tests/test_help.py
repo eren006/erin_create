@@ -96,3 +96,44 @@ class HelpTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class PacingRescaleHelpTests(unittest.TestCase):
+    """30 天活动、一届约 13 天的压缩之后，帮助页和其他模板里手写的天数不该还停在旧数字上"""
+    setUp = fixtures.LifecycleTests.setUp
+    tearDown = fixtures.LifecycleTests.tearDown
+    player = fixtures.LifecycleTests.player
+    login = fixtures.LifecycleTests.login
+
+    def test_help_page_reign_and_interval_numbers_are_live(self):
+        page = game.app.test_client().get('/help').get_data(as_text=True)
+        self.assertIn(f"开局年龄 + {game.HAZARD_AFTER_YEARS} 岁", page)
+        self.assertIn(f"最晚第 {game.MAX_REIGN_DAYS} 天必驾崩", page)
+        self.assertIn(f"每 {game.CROWN_INTERVAL} 天一次", page)
+        self.assertIn(f"万寿节</b>每 {game.BIRTHDAY_INTERVAL} 天", page)
+        self.assertIn(f"每 {game.HEIR_EXAM_INTERVAL} 天考校", page)
+        self.assertIn(f"{game.STANCE_LOCK_DAYS} 天内不能改", page)
+        self.assertNotIn('60 岁起', page)
+        self.assertNotIn('最晚第 70 天', page)
+
+    def test_create_page_dowager_and_concubine_text_is_live(self):
+        uid = game.run("INSERT INTO users(username,password_hash,created_ts) VALUES('新家',?,0)", ('x',)).lastrowid
+        game.create_family(uid, '沈', 'dali')
+        prev = game.run("""INSERT INTO consorts(surname,given,rank,status,entered_day,rank_since_day,family,personality,silver,age_months,recap_seen_day,archived_user_id,death_day,death_reason,reign_no)
+                           VALUES('沈','云',5,'dead',1,1,'dali','gentle',0,240,9,?,5,'先帝驾崩，圣母皇太后',1)""", (uid,)).lastrowid
+        game.run('UPDATE game_state SET reign_no=2')
+        with game.app.test_client() as c:
+            with c.session_transaction() as sess: sess['uid'] = uid
+            page = c.get('/create').get_data(as_text=True)
+        self.assertIn(f"太后每 {game.DOWAGER_AUDIENCE_INTERVAL} 天召你", page)
+
+    def test_heirs_page_mongol_text_is_live(self):
+        game.run("""INSERT INTO heirs(mother_id,caretaker_id,gender,ordinal,born_day,marriage,favor)
+                     VALUES(?,?,'公主',1,1,'choice',70)""", (self.atk, self.atk))
+        game.run('UPDATE consorts SET trust=60 WHERE id=?', (self.atk,))
+        page = self.client.get('/heirs').get_data(as_text=True)
+        self.assertIn(f"每 {game.MONGOL_LETTER_INTERVAL} 天收到家书", page)
+
+    def test_succession_page_counsel_text_is_live(self):
+        page = self.client.get('/succession').get_data(as_text=True)
+        self.assertIn(f"每位公主 {game.COUNSEL_INTERVAL} 天一次", page)

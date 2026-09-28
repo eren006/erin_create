@@ -94,7 +94,7 @@
     <select name="princess_id" aria-label="哪位公主">{% for h in princesses %}<option value="{{ h.id }}">{{ heir_label(h) }}</option>{% endfor %}</select>
     替
     <select name="target_id" aria-label="哪位阿哥">{% for r in board %}<option value="{{ r.h.id }}">{{ heir_label(r.h) }}</option>{% endfor %}</select>
-    <button class="plain" {{ 'disabled' if not princesses }}>说好话</button><span class="muted">圣眷 +8，每位公主 7 天一次。</span>
+    <button class="plain" {{ 'disabled' if not princesses }}>说好话</button><span class="muted">圣眷 +8，每位公主 {{ COUNSEL_INTERVAL }} 天一次。</span>
   </form>
   {% if c.rank >= SUCCESSION_MOVES.frame.min_rank %}
   <form method="post" action="{{ url_for('succession_move') }}" class="row">

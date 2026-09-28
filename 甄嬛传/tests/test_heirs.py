@@ -219,7 +219,7 @@ class HeirExamHuntTests(unittest.TestCase):
 
     def heir(self, mother, caretaker=None, gender='皇子', age_years=10, **kw):
         caretaker = caretaker if caretaker is not None else mother
-        born = game.cur_day() - age_years * 2
+        born = game.cur_day() - age_years * game.HEIR_DAYS_PER_YEAR
         fields = dict(mother_id=mother, caretaker_id=caretaker, gender=gender, ordinal=1, born_day=born,
                      personality='clever', study=20, riding=20, virtue=20, health=60,
                      mother_affinity=50, caretaker_affinity=50)
@@ -237,40 +237,44 @@ class HeirExamHuntTests(unittest.TestCase):
         self.assertFalse(game.get_consort(self.atk)['pending_scene'])
 
     def test_exam_age_window(self):
-        game.run('UPDATE game_state SET day=?', (70,))   # 7 的倍数
+        day = game.HEIR_EXAM_INTERVAL * 10   # 考校间隔的倍数
+        game.run('UPDATE game_state SET day=?', (day,))
         too_young = self.heir(self.atk, age_years=5)
         too_old = self.player('丙', rank=6)
         self.heir(too_old, age_years=16)
-        game.heir_exam_tick(70)
+        game.heir_exam_tick(day)
         self.assertFalse(game.get_consort(self.atk)['pending_scene'], '5 岁还不到考校的年纪')
         self.assertFalse(game.get_consort(too_old)['pending_scene'], '16 岁已经过了考校的年纪')
 
     def test_exam_skips_when_caretaker_already_has_a_scene(self):
-        game.run('UPDATE game_state SET day=?', (70,))
+        day = game.HEIR_EXAM_INTERVAL * 10
+        game.run('UPDATE game_state SET day=?', (day,))
         self.heir(self.atk)
         game.start_scene(self.atk, 'audience', prompt=0, bed=1)
         with patch.object(game.random, 'random', return_value=0.0):
-            game.heir_exam_tick(70)
+            game.heir_exam_tick(day)
         sc = game.get_scene(game.get_consort(self.atk))
         self.assertEqual(sc['key'], 'audience', '当晚已经有场景在排队，考校不该把它顶掉')
 
     def test_exam_judges_heir_stat_not_caretaker_stat(self):
-        game.run('UPDATE game_state SET day=?', (70,))
+        day = game.HEIR_EXAM_INTERVAL * 10
+        game.run('UPDATE game_state SET day=?', (day,))
         game.run('UPDATE consorts SET talent=0, scheme=0, virtue=0 WHERE id=?', (self.atk,))   # 抚养人自己属性拉满低
         hid = self.heir(self.atk, study=100, riding=100, virtue=100)   # 孩子属性拉满
         with patch.object(game.random, 'random', return_value=0.0), \
              patch.object(game.random, 'randrange', return_value=0):
-            game.heir_exam_tick(70)
+            game.heir_exam_tick(day)
         self.login(self.atk)
         r = self.client.post('/scene', data=dict(opt=0))
         h = game.q('SELECT favor FROM heirs WHERE id=?', (hid,), one=True)
         self.assertGreater(h['favor'], 0, '孩子属性拉满，就算抚养人自己属性是 0 也该判定成功')
 
     def test_exam_gone_heir_does_not_crash(self):
-        game.run('UPDATE game_state SET day=?', (70,))
+        day = game.HEIR_EXAM_INTERVAL * 10
+        game.run('UPDATE game_state SET day=?', (day,))
         hid = self.heir(self.atk)
         with patch.object(game.random, 'random', return_value=0.0):
-            game.heir_exam_tick(70)
+            game.heir_exam_tick(day)
         game.run('DELETE FROM heirs WHERE id=?', (hid,))
         self.login(self.atk)
         r = self.client.get('/scene')
@@ -289,19 +293,21 @@ class HeirExamHuntTests(unittest.TestCase):
         self.assertFalse(game.q('SELECT 1 FROM heirs WHERE favor>0'))
 
     def test_hunt_excludes_too_young_and_princesses(self):
-        game.run('UPDATE game_state SET day=?', (28,))
+        day = game.HEIR_HUNT_INTERVAL * 5
+        game.run('UPDATE game_state SET day=?', (day,))
         young = self.heir(self.atk, age_years=11, riding=99)
         girl = self.heir(self.atk, gender='公主', age_years=13, riding=99)
         winner = self.heir(self.atk, age_years=13, riding=50)
         with patch.object(game.random, 'randint', return_value=0):
-            game.heir_hunt_tick(28)
+            game.heir_hunt_tick(day)
         self.assertEqual(game.q('SELECT favor FROM heirs WHERE id=?', (young,), one=True)['favor'], 0)
         self.assertEqual(game.q('SELECT favor FROM heirs WHERE id=?', (girl,), one=True)['favor'], 0)
         self.assertEqual(game.q('SELECT favor FROM heirs WHERE id=?', (winner,), one=True)['favor'], game.HEIR_HUNT_REWARD)
 
     def test_hunt_no_eligible_princes_does_nothing(self):
-        game.run('UPDATE game_state SET day=?', (28,))
-        game.heir_hunt_tick(28)   # 不该报错
+        day = game.HEIR_HUNT_INTERVAL * 5
+        game.run('UPDATE game_state SET day=?', (day,))
+        game.heir_hunt_tick(day)   # 不该报错
 
 
 if __name__ == '__main__':

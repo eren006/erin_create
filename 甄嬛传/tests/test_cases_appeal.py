@@ -144,7 +144,7 @@ class FramePrinceTests(unittest.TestCase):
 
     def prince(self, mother, age_years=13, **kw):
         kw.setdefault('title', '')
-        return self.heir(mother, gender='皇子', born=game.cur_day() - age_years * 2, zhuazhou='book', **kw)
+        return self.heir(mother, gender='皇子', born=game.cur_day() - age_years * game.HEIR_DAYS_PER_YEAR, zhuazhou='book', **kw)
 
     def row(self, hid):
         return game.q('SELECT * FROM heirs WHERE id=?', (hid,), one=True)

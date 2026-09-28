@@ -108,24 +108,24 @@ FAVOR_DECAY = 0.04    # 每晚圣宠自然流失比例
 ENERGY_MAX = 5
 PREGNANCY_DAYS = 2      # 诊出喜脉后，再经过两次结算分娩
 FERTILE_BEFORE_AGE = 45 # 四十五岁起不再新怀孕
-LETHAL_COOLDOWN = 7     # 同一账号两次毒害至少隔 7 天，死后重建也不重置
+LETHAL_COOLDOWN = 3     # 同一账号两次毒害至少隔这么多天，死后重建也不重置（2026-09-28 从 7 压到 3）
 NEWCOMER_LETHAL_SHIELD = 3   # 入宫前 3 天不能被毒害
-RESCUE_PROTECT_DAYS = 3      # 中毒获救后 3 天不能再被毒害
+RESCUE_PROTECT_DAYS = 2      # 中毒获救后这么多天不能再被毒害（2026-09-28 从 3 压到 2）
 TREAT_COST = 50
 POISON_SURVIVE = {0: 0.35, 1: 0.90}   # 没请太医 / 请了太医（病重沿用同一套概率）
-CONFINE_DAYS = 2
-COLD_DAYS = 5
+CONFINE_DAYS = 1   # 2026-09-28 从 2 压到 1
+COLD_DAYS = 3   # 2026-09-28 从 5 压到 3
 
 # ── 老死与病死 ─────────────────────────────────────────────────────────────────
 OLD_AGE_START = 600          # 50 岁（600 个月）起，每晚有寿终的可能
 OLD_AGE_BASE = 0.003          # 概率 = (年龄 - 50) × 0.3%，体质 ≥60 减半、<30 翻倍
 OLD_AGE_REMINDER_START = 660  # 55 岁起，每满 5 岁提醒一句
 OLD_AGE_REMINDER_STEP = 60
-WEAK_SICK_DAYS = 3            # 连续体质 <25 这么多天，染病
+WEAK_SICK_DAYS = 2            # 连续体质 <25 这么多天，染病（2026-09-28 从 3 压到 2）
 COLD_SICK_CHANCE = 0.05       # 冷宫阴寒，每晚染病概率
-EPIDEMIC_INTERVAL = 10        # 全宫时疫，每隔这么多天可能来一次
+EPIDEMIC_INTERVAL = 5        # 全宫时疫，每隔这么多天可能来一次（2026-09-28 从 10 压到 5）
 EPIDEMIC_CHANCE = 0.3         # 到了日子，真发生时疫的概率
-POSTPARTUM_SICK_DAYS = 3      # 小产、难产后这么多天内
+POSTPARTUM_SICK_DAYS = 2      # 小产、难产后这么多天内（2026-09-28 从 3 压到 2）
 POSTPARTUM_SICK_CHANCE = 0.10 # ……每晚染病概率
 SHI_WORDS = ['孝', '敬', '贞', '惠', '顺', '安', '静', '和']  # 老死时嫔以上追封的谥字
 
@@ -134,7 +134,7 @@ TRUST_WORDS = [(70, '倚重'), (40, '信得过'), (20, '尚可'), (-1, '存疑')
 TRUSTED_LINE = 50           # 信任到这条线，被散流言/栽赃时圣宠损失减半
 NPC_BED_MULT = 0.5          # NPC 翻牌权重打五折，免得宫里原有的妃嫔占掉大半夜晚
 AUDIENCE_PER_NIGHT = 2      # 每晚除侍寝外再单独召见几位玩家
-LONG_UNSEEN_DAYS = 6        # 这么多天没见过皇上，算"久未见驾"（宫中三年）
+LONG_UNSEEN_DAYS = 3        # 这么多天没见过皇上，算"久未见驾"（2026-09-28 从 6 压到 3）
 
 TITLE_POOL = list('莞惠安祺瑾婉容贞淳柔懿宁怡颖璟瑶玥韵馨娴淑嘉恬澜宸昭徽祥和敏')
 
@@ -285,7 +285,7 @@ DRUG_ENERGY = 2
 DRUG_BASE = 0.35
 CABINET_SLOTS = 3             # 暗柜每人每天刷几种
 LEDGER_CHANCE = 0.10          # 暗柜买药被内务府记一笔的概率
-NAMELESS_COOLDOWN = 15
+NAMELESS_COOLDOWN = 6   # 2026-09-28 从 15 压到 6
 DRUG_NEWCOMER_SHIELD = 5      # 入宫不满 5 天不能被下药、宫人不能被收买
 DRUGGED_SHIELD = 2            # 被下药得手后 2 天内不能再被下药
 SELF_HAND_PENALTY = 0.15      # 没有内应、自己动手
@@ -605,10 +605,10 @@ NPCS = [
 
 # 系统皇子：开服就在。三阿哥是长子、老实鲁钝，朝中老臣认他；四阿哥学问骑射都不低，可惜没人抱他
 NPC_HEIRS = dict(
-    third=dict(ordinal=3, age_days=28, personality='honest', study=30, riding=40, virtue=45, health=65, ambition=40, faction=3, zhuazhou='seal'),
-    fourth=dict(ordinal=4, age_days=16, personality='clever', study=60, riding=55, virtue=60, health=80, ambition=65, faction=0, zhuazhou='book'),
+    third=dict(ordinal=3, age_days=14, personality='honest', study=30, riding=40, virtue=45, health=65, ambition=40, faction=3, zhuazhou='seal'),
+    fourth=dict(ordinal=4, age_days=8, personality='clever', study=60, riding=55, virtue=60, health=80, ambition=65, faction=0, zhuazhou='book'),
 )
-NPC_ORPHAN_DEADLINE_DAYS = 14   # 开服第 15 天还没人求到，皇后就把四阿哥抱走
+NPC_ORPHAN_DEADLINE_DAYS = 6   # 开服第 7 天还没人求到，皇后就把四阿哥抱走（2026-09-28 从 14 压到 6）
 
 # 下一届的 NPC 妃嫔：新帝潜邸的旧人。位分、封号、住处沿用 NPCS（代码里不少地方按 npc_key 认人，比如华妃发难），
 # 只换名字、性格介绍和数值。第二届用甲套，第三届用乙套，之后轮着来
@@ -908,14 +908,14 @@ def npc_heir_specs(day, reign_no, reign_start_day):
     pers = list(HEIR_PERSONALITIES)
     r = random.randint
     return [
-        dict(key='third', gender='皇子', name=names[0], ordinal=1, born=reign_start_day - 24, mother='qifei', deadline=0,
+        dict(key='third', gender='皇子', name=names[0], ordinal=1, born=reign_start_day - 12, mother='qifei', deadline=0,
              personality=random.choice(pers), study=r(35, 55), riding=r(35, 55), virtue=r(35, 55), health=r(55, 75),
              ambition=r(40, 60), faction=2, zhuazhou='seal'),
-        dict(key='fourth', gender='皇子', name=names[1], ordinal=2, born=reign_start_day - 16, mother=None,
+        dict(key='fourth', gender='皇子', name=names[1], ordinal=2, born=reign_start_day - 8, mother=None,
              deadline=reign_start_day + NPC_ORPHAN_DEADLINE_DAYS,
              personality=random.choice(pers), study=r(45, 65), riding=r(45, 65), virtue=r(45, 65), health=r(65, 85),
              ambition=r(50, 70), faction=0, zhuazhou='book'),
-        dict(key='princess', gender='公主', name=random.choice(NPC_PRINCESS_NAMES), ordinal=1, born=reign_start_day - 20,
+        dict(key='princess', gender='公主', name=random.choice(NPC_PRINCESS_NAMES), ordinal=1, born=reign_start_day - 10,
              mother='caoguiren', deadline=0, personality=random.choice(pers), study=r(35, 55), riding=r(20, 40),
              virtue=r(40, 60), health=r(55, 75), ambition=30, faction=0, zhuazhou='rouge'),
     ]
@@ -1326,11 +1326,11 @@ def logout():
 # ── 家族（九点九节）：一个账号就是一个家族，跨届一直在 ─────────────────────────────
 
 FAMILY_MAX_MEMBERS = 4          # 每一届最多送四位入宫
-FAMILY_MOURN_DAYS = 2           # 死后隔一天治丧，第三天才能送下一位
+FAMILY_MOURN_DAYS = 1           # 死后当天治丧，第二天就能送下一位（2026-09-28 从 2 压到 1）
 DOWAGER_DX_BONUS = 10           # 太后的侄女殿选加分
 TRUST_DOWAGER, TRUST_DISGRACED = 30, 10
-DOWAGER_AUDIENCE_INTERVAL, DOWAGER_AUDIENCE_FAVOR = 7, 10
-SHOUKANG_INTERVAL = 7
+DOWAGER_AUDIENCE_INTERVAL, DOWAGER_AUDIENCE_FAVOR = 3, 10   # 2026-09-28 从 7 压到 3
+SHOUKANG_INTERVAL = 3   # 2026-09-28 从 7 压到 3
 DOWRY_RATIO, DOWRY_MAX = 0.10, 200
 FELLOW_AFFINITY = 20
 HEIRLOOM_MAID_LOYALTY = 80
@@ -1575,7 +1575,7 @@ def create():
         if err:
             flash(err, 'bad')
             return render_template('create.html', fam=fam, form=f, lineage=lineage, heirlooms=heirloom_maids(uid),
-                                   inh=inh, members=members)
+                                   inh=inh, members=members, DOWAGER_AUDIENCE_INTERVAL=DOWAGER_AUDIENCE_INTERVAL, SHOUKANG_INTERVAL=SHOUKANG_INTERVAL)
         tier = fam['tier']
         stats = dict(STAT_BASE)
         for k in STAT_KEYS: stats[k] += pts[k]
@@ -1599,7 +1599,7 @@ def create():
         run('UPDATE consorts SET age_months=? WHERE user_id=? AND status=?', (age * 12, uid, 'xiunv'))
         return redirect(url_for('dianxuan'))
     return render_template('create.html', fam=fam, form={}, lineage=lineage, heirlooms=heirloom_maids(uid),
-                           inh=inh, members=members)
+                           inh=inh, members=members, DOWAGER_AUDIENCE_INTERVAL=DOWAGER_AUDIENCE_INTERVAL, SHOUKANG_INTERVAL=SHOUKANG_INTERVAL)
 
 
 # ── 家主：会老、会病、会升降，也会来求你 ──────────────────────────────────────────
@@ -1608,13 +1608,13 @@ REQUEST_INTERVAL, REQUEST_CHANCE, REQUEST_DAYS = 4, 0.25, 5
 PROMOTE_COST_BASE, PROMOTE_COST_STEP = 60, 25
 DEBT_COST_BASE, DEBT_COST_STEP = 50, 8
 ILL_COST = 120
-BACKING_COST, BACKING_LOCK_DAYS, BACKING_SCOLD = 100, 7, 0.10
+BACKING_COST, BACKING_LOCK_DAYS, BACKING_SCOLD = 100, 3, 0.10   # 锁定天数 2026-09-28 从 7 压到 3
 BACKING_WIN_OFFICE, BACKING_WIN_PRESTIGE, BACKING_LOSE_OFFICE, BACKING_LOSE_PRESTIGE = 2, 10, 1, 8
 SUPPORT_CAP = 15
 SEND_MIN, SEND_MAX = 10, 500
 SEND_PER_PRESTIGE = 100
 WITHDRAW_MAX, WITHDRAW_INTERVAL = 200, 3
-PETITION_COST, PETITION_WIN, PETITION_SCOLD, PETITION_INTERVAL = 150, 0.55, 0.20, 7
+PETITION_COST, PETITION_WIN, PETITION_SCOLD, PETITION_INTERVAL = 150, 0.55, 0.20, 3   # 间隔 2026-09-28 从 7 压到 3
 VENTURE_MIN, VENTURE_MAX = 50, 400
 LETTER_SILVER = (20, 60)
 
@@ -2113,7 +2113,7 @@ def do_shoukang(c, cfg):
 
 # ── 家族发达了，定期送钱来 ────────────────────────────────────────────────────────
 
-REMIT_INTERVAL = 5            # 每 5 天一次
+REMIT_INTERVAL = 3            # 每 3 天一次（2026-09-28 从 5 压到 3）
 REMIT_PER_OFFICE, REMIT_PRESTIGE_DIV, REMIT_MAX = 8, 10, 150
 REMIT_MIN_OFFICE, REMIT_MIN_PRESTIGE = 2, 30            # 家主至少七品，或名望够了，家里才有余钱
 
@@ -3440,7 +3440,7 @@ def heirs():
         if a: acts[h['id']] = a
     targets = entrust_candidates(c) if any(a.get('entrust') for a in acts.values()) else []
     return render_template('heirs.html', c=c, rows=rows, get_consort=get_consort, acts=acts, targets=targets,
-                           ERRAND_APPROACHES=ERRAND_APPROACHES)
+                           ERRAND_APPROACHES=ERRAND_APPROACHES, MONGOL_LETTER_INTERVAL=MONGOL_LETTER_INTERVAL)
 
 # ── 皇嗣成长（九点六节 A~D：还没做成年、抚养关系博弈、夺嫡） ─────────────────────
 
@@ -3454,6 +3454,7 @@ HEIR_PERSONALITIES = {
     'stubborn': dict(name='倔强', desc='被罚时情分掉得多，骑射涨得更快'),
 }
 
+HEIR_DAYS_PER_YEAR = 1   # 孩子的岁数按这个折算成天数；大人是 2（见 add_favor 附近的年龄换算不受此影响）
 ZHUAZHOU_ITEMS = [
     dict(key='book', name='书卷', stat='study', line='一把抓住了那卷书，攥得紧紧的'),
     dict(key='bow', name='弓箭', stat='riding', line='径直扑向那张小弓，谁都拉不开他的手'),
@@ -3462,7 +3463,7 @@ ZHUAZHOU_ITEMS = [
     dict(key='rouge', name='胭脂', stat='health', line='伸手碰了碰那盒胭脂，咯咯笑了起来'),
 ]
 ZHUAZHOU_GAIN = 10
-ZHUAZHOU_AGE_DAYS = 2      # 出生第 2 天=周岁，一定触发抓周
+ZHUAZHOU_AGE_DAYS = 1 * HEIR_DAYS_PER_YEAR      # 满周岁那天，一定触发抓周
 
 HEIR_RAISE_ENERGY = 1
 HEIR_RAISE = {
@@ -3474,7 +3475,7 @@ HEIR_RAISE = {
 }
 
 HEIR_EVENT_CHANCE = 0.25
-HEIR_FOSTER_TALK_AGE_DAYS = 16   # 抱养的孩子 8 岁（出生第 16 天）起才会问「我的亲额娘是谁」
+HEIR_FOSTER_TALK_AGE_DAYS = 8 * HEIR_DAYS_PER_YEAR   # 抱养的孩子 8 岁起才会问「我的亲额娘是谁」
 
 HEIR_EVENTS = {
     'father_visit': dict(text='「额娘，皇阿玛好久没来了。」', opts=[
@@ -3509,14 +3510,16 @@ def heir_age_days(h, day=None):
 
 
 def heir_age_years(h, day=None):
-    return heir_age_days(h, day) // 2
+    """孩子长得比大人快一倍：1 天 = 1 岁（大人是 1 天 = 半岁）。一届只有十几天，
+    不这样孩子永远长不到 12 岁夺嫡、16 岁成年——2026-09-28 配合压缩后的一届时长改的"""
+    return heir_age_days(h, day) // HEIR_DAYS_PER_YEAR
 
 
 # ── 皇上考校 / 随驾秋狝 ──────────────────────────────────────────────────────
 
-HEIR_EXAM_INTERVAL = 7
+HEIR_EXAM_INTERVAL = 3   # 2026-09-28 从 7 压到 3，配合一届约 13 天
 HEIR_EXAM_MIN_AGE, HEIR_EXAM_MAX_AGE = 6, 15
-HEIR_HUNT_INTERVAL = 14
+HEIR_HUNT_INTERVAL = 6   # 2026-09-28 从 14 压到 6
 HEIR_HUNT_MIN_AGE = 12
 HEIR_HUNT_ROLL = 20
 HEIR_HUNT_REWARD = 15
@@ -3775,16 +3778,16 @@ def heir_reclaim(hid):
 
 # ── 成年（九点六节 E）：皇子封爵开府、孝敬、差事、替母求情；公主指婚 ─────────────────────
 
-HEIR_ADULT_AGE_DAYS = 32      # 16 岁
+HEIR_ADULT_AGE_DAYS = 16 * HEIR_DAYS_PER_YEAR      # 16 岁
 PRINCE_TITLES = [(80, '亲王'), (60, '郡王'), (40, '贝勒'), (0, '贝子')]
 FILIAL_SILVER = {'亲王': 24, '郡王': 16, '贝勒': 10, '贝子': 5}   # 每晚孝敬的银子，按情分分给生母、养母
-PRINCE_PLEAD_INTERVAL = 7
+PRINCE_PLEAD_INTERVAL = 3   # 2026-09-28 从 7 压到 3
 PRINCE_PLEAD_FAVOR_BONUS = 0.003
 ERRAND_INTERVAL = 3
 MARRY_MIN_FAVOR, MARRY_MIN_TRUST = 35, 30   # 公主自己的圣眷、抚养人的信任够了才能自己选（试玩里原来的 60 / 50 一次也没人够到）
 MARRY_CHOICE_DAYS = 3         # 母亲三天不表态，就按留京下嫁办
 MONGOL_TRUST_GAIN = 10
-MONGOL_LETTER_INTERVAL = 7
+MONGOL_LETTER_INTERVAL = 3   # 2026-09-28 从 7 压到 3
 CAPITAL_DECAY_FACTOR = 0.5    # 女儿留京、天天回宫请安，母亲的圣宠流失减半
 
 ERRANDS = {
@@ -4060,13 +4063,13 @@ NPC_MERIT_CAP = 15                    # 系统皇子（三阿哥、四阿哥等�
 NPC_CARETAKER_BONUS_CAP = 10          # 抚养他们的 NPC 妃嫔（皇后、齐妃）给的位分加成最多算 10
 RANK_BONUS = {5: 5, 6: 10, 7: 15, 8: 20, 9: 20}          # 抚养人位分给皇子圣眷的加成
 FACTION_WARN, FACTION_SCOLD = 5, 8    # 党羽超过 5 圣眷每晚 -2；超过 8 皇上当众训斥
-FACTION_WARN_LOSS, FACTION_SCOLD_LOSS, FACTION_SCOLD_INTERVAL = 2, 15, 10
+FACTION_WARN_LOSS, FACTION_SCOLD_LOSS, FACTION_SCOLD_INTERVAL = 2, 15, 5   # 训斥间隔 2026-09-28 从 10 压到 5
 FACTION_ERRAND_BONUS, FACTION_ERRAND_BONUS_CAP = 0.02, 0.10
 CROWN_MIN_STANDING, CROWN_MIN_LEAD, CROWN_DEPOSE_BELOW = 70, 15, 50
-CROWN_INTERVAL = 10
-BIRTHDAY_INTERVAL = 20
+CROWN_INTERVAL = 5   # 2026-09-28 从 10 压到 5
+BIRTHDAY_INTERVAL = 8   # 2026-09-28 从 20 压到 8
 FEUD_DAYS, FEUD_LOSS = 3, 3
-STANCE_LOCK_DAYS = 7
+STANCE_LOCK_DAYS = 3   # 2026-09-28 从 7 压到 3
 CROWN_HIT_BONUS = 0.15                # 别人对太子使离间，成功率 +15%
 AMBITION_BASE = dict(clever=15, stubborn=20, naughty=5, timid=-15, honest=-10)
 AMBITION_SPY_CHANCE, AMBITION_MAKE_FRIEND_CHANCE, AMBITION_DISCORD_CHANCE = 0.0, 0.40, 0.15
@@ -4085,7 +4088,7 @@ SUCCESSION_MOVES = {
 FRAME_PRINCE_BASE, FRAME_PRINCE_PER_SCHEME = 0.30, 0.004
 FRAME_PRINCE_CAUGHT, FRAME_PRINCE_CAUGHT_TRUST, FRAME_PRINCE_CAUGHT_VIRTUE = 0.20, 8, 5
 DISCORD_BASE, DISCORD_LOSS, DISCORD_CAUGHT = 0.60, 8, 0.15
-BRIBE_BONUS, COUNSEL_GAIN, COUNSEL_INTERVAL = 15, 8, 7
+BRIBE_BONUS, COUNSEL_GAIN, COUNSEL_INTERVAL = 15, 8, 3   # 间隔 2026-09-28 从 7 压到 3
 STANCE_ACTS = {
     'tidy':   dict(name='替他打点', silver=25, energy=1, kind='open', merit=2, line='你替他上下打点了一番'),
     'tip':    dict(name='考校前递消息', silver=0, energy=1, kind='open', exam=5, line='你把师傅的偏好悄悄递给了他'),
@@ -4319,7 +4322,7 @@ def succession():
                            SUCCESSION_MOVES=SUCCESSION_MOVES, STANCE_LOCK_DAYS=STANCE_LOCK_DAYS, PERSUADE_ENERGY=PERSUADE_ENERGY,
                            next_birthday=day + (-day) % BIRTHDAY_INTERVAL, next_court=day + (-day) % CROWN_INTERVAL,
                            daily_count=daily_count, heir_age_years=heir_age_years, RANK_BONUS=RANK_BONUS,
-                           emperor_ill=emperor_ill())
+                           emperor_ill=emperor_ill(), COUNSEL_INTERVAL=COUNSEL_INTERVAL)
 
 
 def _rival(hid):
@@ -4902,9 +4905,9 @@ def npc_schemes(day):
 # ── 皇上的寿数、驾崩、开匾、下一届（九点六节 G） ─────────────────────────────────
 
 NEXT_EMPEROR_START_AGE = 40   # 新帝登基多年，下一届开局时他 40 岁
-HAZARD_AFTER_YEARS = 15       # 开局年龄 + 15 岁起，每晚有驾崩的可能（第一届是 60 岁）
-HAZARD_PER_YEAR = 0.005
-MAX_REIGN_DAYS = 70           # 一届最晚到这一天必定驾崩
+HAZARD_AFTER_YEARS = 1        # 开局年龄 + 1 岁起，每晚有驾崩的可能——2026-09-28 从 15 压到 1，配合「30 天活动、一届约 13 天」
+HAZARD_PER_YEAR = 0.04
+MAX_REIGN_DAYS = 20           # 一届最晚到这一天必定驾崩。模拟均值≈13 天，中位 13，多数落在 8~19 天
 ILL_DAYS = 3                  # 驾崩前一定有 3 天病重
 ATTEND_TRUST_GAIN, ATTEND_HEIR_GAIN = 5, 5
 PEEK_LEARN, PEEK_CAUGHT = 0.20, 0.15
@@ -5510,7 +5513,7 @@ def memory_edict(c, day):
             said = f"你说{q_}" if q_.startswith('「') else f"你{q_}"
             return f"你入宫{years}年了。朕还记得殿选那日，{said.rstrip('。')}。"
         return f"你入宫{years}年了。"
-    for h in q("SELECT * FROM heirs WHERE mother_id=? AND ?-born_day=12", (c['id'], day)):
+    for h in q("SELECT * FROM heirs WHERE mother_id=? AND ?-born_day=?", (c['id'], day, 6 * HEIR_DAYS_PER_YEAR)):
         return f"{heir_label(h)}六岁了，朕想着该给{'他' if h['gender'] == '皇子' else '她'}挑个师傅。"
     unseen = day - c['last_audience_day']
     if c['status'] == 'normal' and unseen >= LONG_UNSEEN_DAYS and unseen % LONG_UNSEEN_DAYS == 0:
@@ -5638,7 +5641,12 @@ def help_page():
                            INTRIGUES=INTRIGUES, VENTURES=VENTURES, VENTURE_MAX=VENTURE_MAX, PRAY_TIERS=PRAY_TIERS,
                            FAMILY_MAX=FAMILY_MAX_MEMBERS, ENERGY_MAX=ENERGY_MAX, FAVOR_DECAY=FAVOR_DECAY, CONFINE_DAYS=CONFINE_DAYS,
                            COLD_DAYS=COLD_DAYS, PREGNANCY_BASE=PREGNANCY_BASE, PREGNANCY_DAYS=PREGNANCY_DAYS,
-                           settle_h=SETTLE_HOUR, settle_m=SETTLE_MINUTE)
+                           settle_h=SETTLE_HOUR, settle_m=SETTLE_MINUTE, REMIT_INTERVAL=REMIT_INTERVAL,
+                           HEIR_EXAM_INTERVAL=HEIR_EXAM_INTERVAL, HEIR_EXAM_MIN_AGE=HEIR_EXAM_MIN_AGE, HEIR_EXAM_MAX_AGE=HEIR_EXAM_MAX_AGE,
+                           ERRAND_INTERVAL=ERRAND_INTERVAL, CROWN_INTERVAL=CROWN_INTERVAL, BIRTHDAY_INTERVAL=BIRTHDAY_INTERVAL,
+                           HAZARD_AFTER_YEARS=HAZARD_AFTER_YEARS, MAX_REIGN_DAYS=MAX_REIGN_DAYS,
+                           REQUEST_INTERVAL=REQUEST_INTERVAL, REQUEST_DAYS=REQUEST_DAYS, DOWAGER_AUDIENCE_INTERVAL=DOWAGER_AUDIENCE_INTERVAL,
+                           HEIR_ADULT_AGE_DAYS=HEIR_ADULT_AGE_DAYS, HEIR_DAYS_PER_YEAR=HEIR_DAYS_PER_YEAR, STANCE_LOCK_DAYS=STANCE_LOCK_DAYS)
 
 
 @app.route('/healthz')
@@ -6908,7 +6916,7 @@ APPEAL_MIN_DAYS_CLOSED = 5
 APPEAL_ENERGY, APPEAL_SILVER = 1, 100
 APPEAL_WRONGFUL_BASE, APPEAL_WRONGFUL_PER_SCHEME = 0.55, 0.003
 APPEAL_GUILTY_BASE = 0.08          # 真被定了罪的人想翻案脱罪，希望很小
-APPEAL_INTERVAL = 10
+APPEAL_INTERVAL = 5   # 2026-09-28 从 10 压到 5
 
 
 def can_appeal(c, case):
@@ -7197,7 +7205,7 @@ FESTIVALS = {
     'midautumn': dict(name='中秋节', action_name='赏月家宴', line='中秋家宴，圆月高悬，宫里飘着桂花香。'),
 }
 FESTIVAL_ORDER = ['reunion', 'lantern', 'midautumn']
-FESTIVAL_INTERVAL = 18
+FESTIVAL_INTERVAL = 7   # 2026-09-28 从 18 压到 7，配合一届约 13 天
 FESTIVAL_FAVOR_RANGE = (6, 12)
 FESTIVAL_SISTER_AFFINITY = 3
 FESTIVAL_LANTERN_SILVER = 15
@@ -7251,7 +7259,7 @@ SEASONS = {
     'chrys': dict(name='重阳', flavor='重阳到了，内务府送来了茱萸和菊花酒。'),
 }
 SEASON_ORDER = ['snow', 'lotus', 'qixi', 'chrys']
-SEASON_INTERVAL = 15
+SEASON_INTERVAL = 6   # 2026-09-28 从 15 压到 6
 SEASON_QUALITY_BONUS = 0.15   # 节令当天成型的作品，品级骰子多这么些，只影响文案和展示，不影响数值
 
 

@@ -34,7 +34,7 @@
       {% if a.can_ban %}<form method="post" action="{{ url_for('heir_ban', hid=h.id) }}" class="row" style="display:inline"><button class="plain">{{ '允许探视' if h.visit_banned else '不许探视' }}</button></form>{% endif %}
       {% if a.marry %}<form method="post" action="{{ url_for('heir_marry', hid=h.id) }}" class="row">
         <span>指婚：</span><button class="plain" name="kind" value="capital" title="留京下嫁：天天回宫请安，你的圣宠流失减半">留京下嫁</button>
-        <button class="plain" name="kind" value="mongol" title="抚蒙古：封号高一等，信任 +10，每 7 天收到家书">抚蒙古</button></form>{% endif %}
+        <button class="plain" name="kind" value="mongol" title="抚蒙古：封号高一等，信任 +10，每 {{ MONGOL_LETTER_INTERVAL }} 天收到家书">抚蒙古</button></form>{% endif %}
       {% if a.errand %}<div>差事：<b>{{ a.errand.name }}</b><br><span class="muted">{{ a.errand.line }}。{{ '已定：' ~ ERRAND_APPROACHES[a.errand.approach].name if a.errand.approach else '还没定办法，不选就稳妥办。' }}</span></div>
         <form method="post" action="{{ url_for('heir_errand', hid=h.id) }}" class="row">
           {% for k, ap in ERRAND_APPROACHES.items() if k != 'shift' or a.errand.can_shift %}<button class="plain" name="approach" value="{{ k }}">{{ ap.name }}</button>{% endfor %}</form>{% endif %}

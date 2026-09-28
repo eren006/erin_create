@@ -27,7 +27,7 @@ class SuccessionTests(unittest.TestCase):
 
     def prince(self, mother, age_years=13, **kw):
         kw.setdefault('title', '')
-        return self.heir(mother, gender='皇子', born=game.cur_day() - age_years * 2, zhuazhou='book', **kw)
+        return self.heir(mother, gender='皇子', born=game.cur_day() - age_years * game.HEIR_DAYS_PER_YEAR, zhuazhou='book', **kw)
 
     def msgs(self, cid):
         return [m['text'] for m in game.q('SELECT text FROM messages WHERE consort_id=?', (cid,))]
@@ -262,9 +262,9 @@ class SuccessionTests(unittest.TestCase):
         self.client.post('/succession/stance', data=dict(kind='secret', heir_id=b))
         self.assertEqual(game.q('SELECT COUNT(*) n FROM stances', one=True)['n'], 2)
 
-    def test_stance_locked_for_seven_days(self):
+    def test_stance_locked_for_the_lock_period(self):
         a, b = self.prince(self.tgt, age_years=13), self.prince(self.tgt, age_years=14)
-        game.run("INSERT INTO stances(consort_id,kind,heir_id,since_day) VALUES(?,?,?,?)", (self.atk, 'open', a, game.cur_day() - 3))
+        game.run("INSERT INTO stances(consort_id,kind,heir_id,since_day) VALUES(?,?,?,?)", (self.atk, 'open', a, game.cur_day()))
         self.client.post('/succession/stance', data=dict(kind='open', heir_id=b))
         self.assertEqual(game.q("SELECT heir_id FROM stances WHERE consort_id=?", (self.atk,), one=True)['heir_id'], a)
         game.run("UPDATE stances SET since_day=?", (game.cur_day() - game.STANCE_LOCK_DAYS,))
@@ -383,7 +383,7 @@ class SuccessionTests(unittest.TestCase):
         a = self.prince(self.atk, age_years=13, favor=10, study=90, gift='calligraphy')
         b = self.prince(self.tgt, age_years=13, favor=10, study=5, gift='calligraphy')
         with patch.object(game.random, 'randint', return_value=0):
-            game.heir_birthday_tick(20)
+            game.heir_birthday_tick(game.BIRTHDAY_INTERVAL * 3)
         self.assertEqual(self.row(a)['favor'], 10 + game.BIRTHDAY_WIN)
         self.assertEqual(self.row(b)['favor'], 10 + game.BIRTHDAY_LOSE)
         self.assertEqual(self.row(a)['gift'], '', '寿礼用完清掉')
@@ -392,22 +392,22 @@ class SuccessionTests(unittest.TestCase):
         game.run('UPDATE consorts SET rank=1 WHERE id=?', (self.atk,))
         self.prince(self.atk, age_years=13, gift='antique')
         s = game.get_consort(self.atk)['silver']
-        game.heir_birthday_tick(20)
+        game.heir_birthday_tick(game.BIRTHDAY_INTERVAL * 3)
         self.assertEqual(game.get_consort(self.atk)['silver'], s - 100)
         game.run('UPDATE consorts SET silver=10 WHERE id=?', (self.atk,))
         game.run("UPDATE heirs SET gift='antique'")
-        game.heir_birthday_tick(40)
+        game.heir_birthday_tick(game.BIRTHDAY_INTERVAL * 6)
         self.assertEqual(game.get_consort(self.atk)['silver'], 10, '银子不够就自己写幅字，不扣也不欠')
 
     def test_birthday_only_on_interval_and_needs_princes(self):
-        game.heir_birthday_tick(20)   # 一个皇子都没有，不该报错
+        game.heir_birthday_tick(game.BIRTHDAY_INTERVAL * 3)   # 一个皇子都没有，不该报错
         a = self.prince(self.atk, age_years=13, favor=10)
-        game.heir_birthday_tick(21)
+        game.heir_birthday_tick(game.BIRTHDAY_INTERVAL * 3 + 1)
         self.assertEqual(self.row(a)['favor'], 10)
 
     def test_lone_prince_does_not_lose_on_birthday(self):
         a = self.prince(self.atk, age_years=13, favor=10)
-        game.heir_birthday_tick(20)
+        game.heir_birthday_tick(game.BIRTHDAY_INTERVAL * 3)
         self.assertEqual(self.row(a)['favor'], 10 + game.BIRTHDAY_WIN)
 
     # ── 手段 ─────────────────────────────────────────────────────────────────
@@ -456,7 +456,7 @@ class SuccessionTests(unittest.TestCase):
         self.assertEqual(self.row(prince)['favor'], 10 + game.COUNSEL_GAIN, '7 天内不能再进')
 
     def test_young_princess_cannot_counsel(self):
-        princess = self.heir(self.atk, gender='公主', born=game.cur_day() - 20)
+        princess = self.heir(self.atk, gender='公主', born=game.cur_day() - (game.RIVAL_MIN_AGE - 2) * game.HEIR_DAYS_PER_YEAR)
         prince = self.prince(self.tgt, age_years=13, favor=10)
         self.client.post('/succession/move', data=dict(move='counsel', princess_id=princess, target_id=prince))
         self.assertEqual(self.row(prince)['favor'], 10)
