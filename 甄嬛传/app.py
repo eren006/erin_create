@@ -97,12 +97,12 @@ def atomic(fn):
 # ── 位分 ───────────────────────────────────────────────────────────────────────
 
 RANK_NAMES = ['秀女', '官女子', '答应', '常在', '贵人', '嫔', '妃', '贵妃', '皇贵妃', '皇后']
-PROMOTE_FAVOR  = {2: 40, 3: 90, 4: 170, 5: 300, 6: 480, 7: 720, 8: 1000}   # 晋到该位分所需圣宠
-PROMOTE_VIRTUE = {2: 0, 3: 10, 4: 20, 5: 35, 6: 50, 7: 60, 8: 70}          # 晋到该位分所需德行（品行高的皇上再打九折，见 promote_virtue_need）
+PROMOTE_FAVOR  = {2: 40, 3: 90, 4: 170, 5: 300, 6: 480, 7: 720, 8: 1000, 9: 1300}   # 晋到该位分所需圣宠
+PROMOTE_VIRTUE = {2: 0, 3: 10, 4: 20, 5: 35, 6: 50, 7: 60, 8: 70, 9: 75}          # 晋到该位分所需德行（品行高的皇上再打九折，见 promote_virtue_need）
 RANK_SLOTS     = {4: 8, 5: 6, 6: 4, 7: 2, 8: 1, 9: 1}                     # 贵人以上有名额，含 NPC
 MIN_DAYS_AT_RANK = 2
 STIPEND = {1: 5, 2: 10, 3: 15, 4: 25, 5: 40, 6: 60, 7: 90, 8: 130, 9: 200}  # 每日月例银
-PLAYER_MAX_RANK = 8   # 玩家最高到皇贵妃，皇后位由 NPC 占着
+PLAYER_MAX_RANK = 9   # 皇后位是普通位分，跟其他位分一样按圣宠/德行/名额晋封——名额（RANK_SLOTS[9]=1）常年被 NPC 皇后占着，除非她没了、进了冷宫，才轮得到玩家
 
 FAVOR_DECAY = 0.04    # 每晚圣宠自然流失比例
 ENERGY_MAX = 5
@@ -1336,7 +1336,7 @@ FELLOW_AFFINITY = 20
 HEIRLOOM_MAID_LOYALTY = 80
 PRESTIGE_DX_STEP, PRESTIGE_DX_MAX = 20, 10         # 每 20 点名望殿选 +1，最多 +10
 PRESTIGE_SILVER_MAX = 100                           # 起始银子 + 名望，最多 +100
-PRESTIGE_RANK_GAIN = {5: 5, 6: 10, 7: 20, 8: 20}    # 成员第一次晋到该位分给家里的名望
+PRESTIGE_RANK_GAIN = {5: 5, 6: 10, 7: 20, 8: 20, 9: 40}    # 成员第一次晋到该位分给家里的名望
 PRESTIGE_BORN_PRINCE, PRESTIGE_PRINCE_TITLE, PRESTIGE_DOWAGER, PRESTIGE_OLD_AGE = 5, 10, 50, 5
 PRESTIGE_COLD, PRESTIGE_EXPOSED = -10, -5
 
