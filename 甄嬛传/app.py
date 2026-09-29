@@ -839,7 +839,9 @@ def init_db():
                        'emperor_name': "TEXT NOT NULL DEFAULT ''",
                        'emperor_traits': "TEXT NOT NULL DEFAULT '{}'",
                        'dowager': "TEXT NOT NULL DEFAULT ''",
-                       'dowager_uid': 'INTEGER NOT NULL DEFAULT 0'},
+                       'dowager_uid': 'INTEGER NOT NULL DEFAULT 0',
+                       'event_started': 'INTEGER NOT NULL DEFAULT 1',
+                       'maintenance': 'INTEGER NOT NULL DEFAULT 0'},
         'users': {'forge_used': 'INTEGER NOT NULL DEFAULT 0',
                   'lethal_ready_day': 'INTEGER NOT NULL DEFAULT 0',
                   'nameless_ready_day': 'INTEGER NOT NULL DEFAULT 0',
@@ -988,6 +990,8 @@ def cur_day():
 def next_settle_text():
     now = datetime.now(TZ)
     st = state()
+    if st['maintenance']: return '系统维护中'
+    if not st['event_started']: return '活动还没开始'
     target = now.replace(hour=SETTLE_HOUR, minute=SETTLE_MINUTE, second=0, microsecond=0)
     if st['last_settle_date'] == now.date().isoformat():
         target += timedelta(days=1)
@@ -5601,8 +5605,10 @@ def settle_overdue_minutes(now, st):
 
 
 def run_settle_cycle():
-    """后台线程每分钟调用一次：该结算就结算；出错、太慢、拖延都报警"""
+    """后台线程每分钟调用一次：该结算就结算；出错、太慢、拖延都报警。活动没开始计时、或者在维护中，整个跳过，不结算也不报警"""
     with app.app_context():
+        st = state()
+        if not st['event_started'] or st['maintenance']: return
         start = time.time()
         try:
             maybe_settle()
@@ -5651,13 +5657,15 @@ def help_page():
 
 @app.route('/healthz')
 def healthz():
-    """给监控探针用：结算拖延或数据库出问题返回 503。只有几个布尔和数字，不含玩家信息"""
+    """给监控探针用：结算拖延或数据库出问题返回 503。活动没开始计时、或者在维护中，不算拖延——那是故意停的。只有几个布尔和数字，不含玩家信息"""
     try:
         st = state()
-        late = settle_overdue_minutes(datetime.now(TZ), st)
+        paused = (not st['event_started']) or st['maintenance']
+        late = 0 if paused else settle_overdue_minutes(datetime.now(TZ), st)
         open_alerts = q("SELECT COUNT(*) n FROM alerts WHERE resolved=0", one=True)['n']
         ok = late < SETTLE_OVERDUE_MINUTES
-        return jsonify(ok=ok, settle_overdue_minutes=late, last_settle_date=st['last_settle_date'], day=st['day'],
+        return jsonify(ok=ok, paused=paused, maintenance=bool(st['maintenance']), event_started=bool(st['event_started']),
+                       settle_overdue_minutes=late, last_settle_date=st['last_settle_date'], day=st['day'],
                        mourning=bool(st['mourning']), open_alerts=open_alerts), (200 if ok else 503)
     except Exception as e:
         return jsonify(ok=False, error=type(e).__name__), 503
@@ -5674,9 +5682,11 @@ def on_server_error(e):
 
 @atomic
 def maybe_settle():
-    """后台线程每分钟调用：过了今天的结算时刻且今天还没结算过，就结算一次"""
+    """后台线程每分钟调用：活动开始计时了、不在维护中、过了今天的结算时刻、且今天还没结算过，才结算一次"""
     now = datetime.now(TZ)
-    if past_settle_time(now) and state()['last_settle_date'] != now.date().isoformat():
+    st = state()
+    if not st['event_started'] or st['maintenance']: return
+    if past_settle_time(now) and st['last_settle_date'] != now.date().isoformat():
         settle_day()
 
 # ── 后台 ───────────────────────────────────────────────────────────────────────
@@ -5753,6 +5763,23 @@ def admin_emperor():
         else:
             finish_mourning(day, st)
             flash('已跳过国丧，新一届选秀开始。', 'good')
+    elif act == 'event_start':
+        run("UPDATE game_state SET event_started=1, day=1, reign_no=1, reign_start_day=1, emperor_start_age=45, "
+            "emperor_death_day=0, mourning=0, last_settle_date='', era_name='', emperor_name='', emperor_traits='{}', "
+            "dowager='', dowager_uid=0 WHERE id=1")
+        flash('活动正式开始：已回到第 1 届第 1 天，今晚起照常结算。', 'good')
+    elif act == 'event_pause':
+        run('UPDATE game_state SET event_started=0 WHERE id=1')
+        flash('已暂停：天数、皇上寿数都停在这里，不会再自动结算。', 'good')
+    elif act == 'event_resume':
+        run('UPDATE game_state SET event_started=1 WHERE id=1')
+        flash('已恢复：今晚起照常结算。', 'good')
+    elif act == 'maintenance_on':
+        run('UPDATE game_state SET maintenance=1 WHERE id=1')
+        flash('维护模式已开启：不会自动结算，玩家页面顶部会看到提示。', 'good')
+    elif act == 'maintenance_off':
+        run('UPDATE game_state SET maintenance=0 WHERE id=1')
+        flash('维护模式已关闭，照常结算。', 'good')
     return redirect(url_for('admin'))
 
 @app.route('/admin/family/<int:uid>', methods=['POST'])

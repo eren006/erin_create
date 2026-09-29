@@ -159,6 +159,7 @@ input:not([type=radio]):not([type=checkbox]),select,textarea{box-shadow:inset 0 
 {% block head %}{% endblock %}
 </head>
 <body>
+{% if gs and gs.maintenance %}<div style="background:var(--zhu);color:var(--ivory);text-align:center;padding:8px 12px;font-size:14px">系统维护中：管理员正在调整，今晚不会自动结算，逛别的页面不受影响，等提示消失了再翻牌</div>{% endif %}
 <header class="gate">
   <div class="in">
     <h1>紫禁城</h1>

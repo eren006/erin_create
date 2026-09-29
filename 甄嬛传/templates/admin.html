@@ -99,9 +99,24 @@
 <ul>{% for it in pend %}<li>{{ dn(get_consort(it.attacker_id)) }} → {{ dn(get_consort(it.target_id)) }}：{{ INTRIGUES[it.method].name }}</li>{% endfor %}</ul>
 {% else %}<p class="muted">没有。</p>{% endif %}
 
+<h3>维护模式</h3>
+<p class="muted">{% if gs.maintenance %}<b style="color:var(--zhu)">维护中</b>：不会自动结算，玩家页面顶部会看到提示条。适合你手动改数据库、临时调整数值的时候用。{% else %}没在维护。{% endif %}</p>
+<form method="post" action="{{ url_for('admin_emperor') }}"><button name="act" value="{{ 'maintenance_off' if gs.maintenance else 'maintenance_on' }}">{{ '关闭维护模式' if gs.maintenance else '开启维护模式' }}</button></form>
+
+<h3>活动计时</h3>
+{% if not gs.event_started %}
+<p class="muted" style="color:var(--zhu)"><b>活动还没开始</b>：天数、皇上寿数都停着，玩家能照常注册、立家、殿选、逛各个页面，就是不会有夜间结算。</p>
+<form method="post" action="{{ url_for('admin_emperor') }}"><button name="act" value="event_start" onclick="return confirm('回到第 1 届第 1 天，今晚起正式开始计时？（现有角色、家族、宫史都不受影响，只是重置了天数和皇上）')">正式开始活动（回到第 1 届第 1 天）</button></form>
+{% else %}
+<p class="muted">活动进行中。<form method="post" action="{{ url_for('admin_emperor') }}" style="display:inline"><button class="plain" name="act" value="event_pause" onclick="return confirm('暂停计时？天数、皇上寿数都会停在当下，不会再自动结算，直到你点「恢复」。')">暂停计时</button></form></p>
+{% endif %}
+
 <h3>皇上与这一届</h3>
 <p class="muted">第 {{ gs.reign_no }} 届{% if gs.era_name %}（{{ gs.era_name }}，{{ gs.emperor_name }}）{% endif %}，开局 {{ gs.emperor_start_age }} 岁，今年 {{ '%g'|format(emperor_age) }} 岁；
-  {% if gs.mourning %}国丧中。{% elif gs.emperor_death_day %}病重，第 {{ gs.emperor_death_day }} 天驾崩。{% else %}龙体安康。{% endif %}</p>
+  {% if not gs.event_started %}活动暂停中，寿数不涨。{% elif gs.mourning %}国丧中。{% elif gs.emperor_death_day %}病重，第 {{ gs.emperor_death_day }} 天驾崩。{% else %}龙体安康。{% endif %}</p>
+{% if not gs.event_started %}
+<form method="post" action="{{ url_for('admin_emperor') }}" class="row"><button name="act" value="event_resume">恢复计时（不重置天数）</button></form>
+{% endif %}
 <form method="post" action="{{ url_for('admin_emperor') }}" class="row">
   <input name="age" type="number" placeholder="起始年龄" style="width:100px"><button name="act" value="start_age">改起始年龄</button>
   <button name="act" value="ill">触发病重（3 天后驾崩）</button>

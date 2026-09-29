@@ -615,3 +615,149 @@ class ReignTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class EventPauseTests(unittest.TestCase):
+    """活动没正式开始前可以先停着：天数、皇上寿数都不动，也不自动结算，见九点十九节"""
+    setUp = test_heirs.fixtures.LifecycleTests.setUp
+    tearDown = test_heirs.fixtures.LifecycleTests.tearDown
+    player = test_heirs.fixtures.LifecycleTests.player
+    login = test_heirs.fixtures.LifecycleTests.login
+
+    def admin(self):
+        with self.client.session_transaction() as sess: sess['admin'] = True
+
+    def test_default_is_started(self):
+        self.assertEqual(game.state()['event_started'], 1)
+
+    def test_paused_maybe_settle_does_nothing_even_past_settle_time(self):
+        game.run("UPDATE game_state SET event_started=0, last_settle_date=''")
+        with patch.object(game, 'past_settle_time', return_value=True):
+            game.maybe_settle()
+        self.assertEqual(game.state()['last_settle_date'], '')
+        self.assertEqual(game.cur_day(), 10)
+
+    def test_paused_run_settle_cycle_is_a_total_no_op(self):
+        game.run("UPDATE game_state SET event_started=0")
+        with patch.object(game, 'maybe_settle') as ms:
+            game.run_settle_cycle()
+        ms.assert_not_called()
+
+    def test_started_run_settle_cycle_still_calls_maybe_settle(self):
+        with patch.object(game, 'maybe_settle') as ms, patch.object(game, 'settle_overdue_minutes', return_value=0):
+            game.run_settle_cycle()
+        ms.assert_called_once()
+
+    def test_next_settle_text_when_paused(self):
+        game.run("UPDATE game_state SET event_started=0")
+        self.assertEqual(game.next_settle_text(), '活动还没开始')
+
+    def test_admin_can_pause_and_resume_without_resetting_day(self):
+        self.admin()
+        self.client.post('/admin/emperor', data=dict(act='event_pause'))
+        st = game.state()
+        self.assertEqual((st['event_started'], st['day']), (0, 10))
+        self.client.post('/admin/emperor', data=dict(act='event_resume'))
+        st = game.state()
+        self.assertEqual((st['event_started'], st['day']), (1, 10))
+
+    def test_admin_event_start_resets_to_day_one_reign_one(self):
+        self.admin()
+        game.run("UPDATE game_state SET day=19, reign_no=3, era_name='嘉和', emperor_name='承稷', mourning=1, emperor_death_day=15, event_started=0")
+        self.client.post('/admin/emperor', data=dict(act='event_start'))
+        st = game.state()
+        self.assertEqual((st['event_started'], st['day'], st['reign_no'], st['reign_start_day'], st['emperor_start_age'],
+                          st['emperor_death_day'], st['mourning'], st['era_name'], st['emperor_name']),
+                         (1, 1, 1, 1, 45, 0, 0, '', ''))
+
+    def test_admin_page_shows_the_toggle(self):
+        self.admin()
+        page = self.client.get('/admin').get_data(as_text=True)
+        self.assertIn('活动进行中', page)
+        self.assertIn('暂停计时', page)
+        game.run('UPDATE game_state SET event_started=0')
+        page = self.client.get('/admin').get_data(as_text=True)
+        self.assertIn('活动还没开始', page)
+        self.assertIn('正式开始活动', page)
+        self.assertIn('恢复计时', page)
+
+    def test_players_can_still_register_and_create_while_paused(self):
+        game.run('UPDATE game_state SET event_started=0')
+        uid = game.run("INSERT INTO users(username,password_hash,created_ts) VALUES('新人',?,0)", ('x',)).lastrowid
+        with self.client.session_transaction() as sess: sess['uid'] = uid
+        r = self.client.get('/create')
+        self.assertEqual(r.status_code, 200)
+        self.assertIn('立家', r.get_data(as_text=True))
+
+
+class MaintenanceModeTests(unittest.TestCase):
+    """管理员调整期间的维护模式：跟「活动还没开始」是两个开关，各管各的，见九点十九节"""
+    setUp = test_heirs.fixtures.LifecycleTests.setUp
+    tearDown = test_heirs.fixtures.LifecycleTests.tearDown
+    player = test_heirs.fixtures.LifecycleTests.player
+    login = test_heirs.fixtures.LifecycleTests.login
+
+    def admin(self):
+        with self.client.session_transaction() as sess: sess['admin'] = True
+
+    def test_default_is_not_in_maintenance(self):
+        self.assertEqual(game.state()['maintenance'], 0)
+
+    def test_maintenance_blocks_settlement_even_when_event_started(self):
+        game.run("UPDATE game_state SET maintenance=1, last_settle_date=''")
+        with patch.object(game, 'past_settle_time', return_value=True):
+            game.maybe_settle()
+        self.assertEqual(game.state()['last_settle_date'], '')
+
+    def test_maintenance_run_settle_cycle_is_a_no_op(self):
+        game.run("UPDATE game_state SET maintenance=1")
+        with patch.object(game, 'maybe_settle') as ms:
+            game.run_settle_cycle()
+        ms.assert_not_called()
+
+    def test_maintenance_and_event_paused_are_independent(self):
+        game.run("UPDATE game_state SET maintenance=1, event_started=0")
+        self.assertEqual(game.next_settle_text(), '系统维护中', '维护提示优先于活动未开始的提示')
+        game.run("UPDATE game_state SET maintenance=0")
+        self.assertEqual(game.next_settle_text(), '活动还没开始')
+        game.run("UPDATE game_state SET event_started=1")
+        self.assertNotIn(game.next_settle_text(), ('系统维护中', '活动还没开始'))
+
+    def test_admin_can_toggle_maintenance(self):
+        self.admin()
+        self.client.post('/admin/emperor', data=dict(act='maintenance_on'))
+        self.assertEqual(game.state()['maintenance'], 1)
+        self.client.post('/admin/emperor', data=dict(act='maintenance_off'))
+        self.assertEqual(game.state()['maintenance'], 0)
+
+    def test_admin_page_shows_maintenance_toggle(self):
+        self.admin()
+        page = self.client.get('/admin').get_data(as_text=True)
+        self.assertIn('开启维护模式', page)
+        game.run('UPDATE game_state SET maintenance=1')
+        page = self.client.get('/admin').get_data(as_text=True)
+        self.assertIn('维护中', page)
+        self.assertIn('关闭维护模式', page)
+
+    def test_player_pages_show_the_maintenance_banner(self):
+        page = self.client.get('/').get_data(as_text=True)
+        self.assertNotIn('系统维护中', page)
+        game.run('UPDATE game_state SET maintenance=1')
+        page = self.client.get('/').get_data(as_text=True)
+        self.assertIn('系统维护中', page)
+
+    def test_healthz_reports_paused_states_without_flagging_overdue(self):
+        game.run("UPDATE game_state SET maintenance=1, last_settle_date=''")
+        with patch.object(game, 'past_settle_time', return_value=True):
+            r = self.client.get('/healthz')
+        j = r.get_json()
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual((j['ok'], j['paused'], j['maintenance'], j['settle_overdue_minutes']), (True, True, True, 0))
+
+    def test_healthz_still_flags_real_overdue_when_running_normally(self):
+        game.run("UPDATE game_state SET last_settle_date=''")
+        now = game.datetime.now(game.TZ)
+        with patch.object(game, 'settle_overdue_minutes', return_value=game.SETTLE_OVERDUE_MINUTES):
+            r = self.client.get('/healthz')
+        self.assertEqual(r.status_code, 503)
+        self.assertFalse(r.get_json()['ok'])

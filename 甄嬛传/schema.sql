@@ -107,7 +107,9 @@ CREATE TABLE IF NOT EXISTS game_state (
     emperor_name     TEXT NOT NULL DEFAULT '',       -- 今上的名字（第一届为空）
     emperor_traits   TEXT NOT NULL DEFAULT '{}',     -- 今上的性格与学问/骑射/品行（第一届为空）
     dowager          TEXT NOT NULL DEFAULT '',       -- 今上的太后（第一届为空）
-    dowager_uid      INTEGER NOT NULL DEFAULT 0      -- 太后是哪个玩家家族的人（0 = NPC 或没有）
+    dowager_uid      INTEGER NOT NULL DEFAULT 0,     -- 太后是哪个玩家家族的人（0 = NPC 或没有）
+    event_started    INTEGER NOT NULL DEFAULT 1,     -- 活动是否已经开始计时；0 时每晚不自动结算，天数、皇上寿数都停着
+    maintenance      INTEGER NOT NULL DEFAULT 0      -- 管理员正在调整（改数据库、部署等）；0/1，跟 event_started 分开管
 );
 
 -- 历代：每一届驾崩那晚定格一条
