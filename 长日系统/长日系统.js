@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         长日将尽系统
 // @author       长日将尽
-// @version      1.7.1
+// @version      1.7.5
 // @description  无
 // @timestamp    1778742000
 // @license      CC BY-NC-SA
@@ -18,7 +18,7 @@
 
 let ext = seal.ext.find("changri")
 if (!ext) {
-    ext = seal.ext.new("changri", "长日将尽", "1.7.1");
+    ext = seal.ext.new("changri", "长日将尽", "1.7.5");
     // 注册扩展
     seal.ext.register(ext);
     ext.autoActive = true;
@@ -63,7 +63,12 @@ function kvGet(key, def) {
         return def;
     }
 }
-function kvSet(key, val) { cachedSet(key, JSON.stringify(val)); }
+function kvSet(key, val) {
+    cachedSet(key, JSON.stringify(val));
+    // 群号池（"gid_占用"）变化就是占用/释放：所有开群、结束、强结、取消、微信群建立/解散都会走到这里，
+    // 在这一处统一同步给存档端，不用在每条路径上各自补上报
+    if (key === "group") scheduleOccupancySync();
+}
 
 // 读取自定义类型别名，留空则返回原 subtype 值
 // 私约（含它的额外资源）已经迁移到统一注册表 private_resources，这里优先查那边；
@@ -590,6 +595,224 @@ function buildSessionArchive(gid, platform, forced) {
     };
 }
 
+// ── 合并转发统一分批（季度「查看复盘」、个人群复盘转发、RPG「背包」共用，通过 getApi() 暴露）──────────────
+// 协议端对单条合并转发的节点数和总字数都有上限，超了整条拒收（retcode 1200「发送消息失败」），
+// 空 content 的节点同样会让整条失败。所以：跳过空气泡、超长正文拆成多个气泡、按「节点数 或 总字数」先到者为准分批，
+// 多条转发错开发送以保证顺序。阈值只在这里改。
+const FORWARD_NODE_LIMIT = 90;
+const FORWARD_CHAR_LIMIT = 6000;
+const FORWARD_TEXT_CHUNK = 2000;
+
+// 按码点切（不是按 UTF-16 码元），避免把 emoji 的代理对从中间切开
+function splitForwardText(text, size = FORWARD_TEXT_CHUNK) {
+    const chars = Array.from(text);
+    if (chars.length <= size) return [text];
+    const out = [];
+    for (let i = 0; i < chars.length; i += size) out.push(chars.slice(i, i + size).join(""));
+    return out;
+}
+
+// nodes: [{ type: "node", data: { name, uin, content } }]；startDelayMs 用于调用方自己还要错开的场景
+function sendForwardBatched(ctx, msg, gid, nodes, startDelayMs = 0) {
+    const flat = [];
+    for (const n of nodes) {
+        const content = n?.data?.content;
+        if (typeof content !== "string") { flat.push(n); continue; }   // 非纯文本内容原样放行，不拆
+        if (!content.trim()) continue;
+        for (const part of splitForwardText(content)) flat.push({ ...n, data: { ...n.data, content: part } });
+    }
+    const sizeOf = n => typeof n.data.content === "string" ? n.data.content.length : 0;
+    const batches = [];
+    let cur = [], curChars = 0;
+    for (const n of flat) {
+        const len = sizeOf(n);
+        if (cur.length && (cur.length >= FORWARD_NODE_LIMIT || curChars + len > FORWARD_CHAR_LIMIT)) {
+            batches.push(cur); cur = []; curChars = 0;
+        }
+        cur.push(n); curChars += len;
+    }
+    if (cur.length) batches.push(cur);
+    batches.forEach((b, i) => {
+        setTimeout(() => ws({ action: "send_group_forward_msg", params: { group_id: gid, messages: b } }, ctx, msg, ""),
+                   startDelayMs + i * 1500);
+    });
+    return batches.length;
+}
+
+// ── 结束复盘后转发到个人群 ─────────────────────────────────────────────────
+// 复盘模式的季度里，结束私约/结束复盘/强结之后，把这场的完整记录（同「查看复盘」的合并转发）和本场数据
+// 自动发到每位参与者的个人群（创建角色时所在的群）：本群总耗时 + 该玩家本场写的总字数、平均弧长、平均字数。
+// 不复盘的季度不发（没有存对话内容）；取消官约/取消时间线不发（视为没发生过）；NPC、没有个人群的角色跳过。
+
+// 必须在清理计时器/场次统计之前同步调用：平均弧长要读计时器里的本场累计
+function buildReviewSummary(gid, platform, payload) {
+    const timer = getGroupTimers()[gid] || {};
+    const priv = kvGet("a_private_group", {})[platform] || {};
+    const npcs = new Set([...kvGet("a_npc_list", []), ...kvGet("a_generic_npc_list", [])]);
+    const people = [];
+    for (const roleName of payload.participants || []) {
+        if (npcs.has(roleName)) continue;
+        const uid = getUidByRoleName(platform, roleName);
+        const pGid = uid ? String(priv[uid]?.[1] || "") : "";
+        if (!/^\d+$/.test(pGid) || pGid === "0") continue;   // 没有个人群（在私聊里建的角色）
+        const st = payload.stats?.[roleName] || {};
+        const ts = timer.timerStatus?.[roleName] || {};
+        people.push({
+            roleName, pGid,
+            words: st.words || 0,
+            replies: st.replies || 0,
+            avgArcMs: ts.sessionTimedReplies > 0 ? ts.sessionReplyTimeMs / ts.sessionTimedReplies : null,
+        });
+    }
+    return {
+        sessionId: payload.session_id, platform,
+        day: payload.game_day, time: payload.game_time, place: payload.place,
+        subtype: (payload.subtype || "").replace(/\|补戏$/, "").trim(),
+        participants: payload.participants || [],
+        durationMs: (payload.end_ts || 0) - (payload.start_ts || 0),
+        people,
+    };
+}
+
+function formatArcMs(ms) {
+    if (ms == null) return "暂无数据";
+    return ms < 60000 ? `${Math.max(1, Math.round(ms / 1000))}秒` : formatDurationMin(ms);
+}
+
+async function sendReviewToPersonalGroups(ctx, sm, endPromise) {
+    if (!sm.people.length) return;
+    try { await endPromise; } catch (e) { /* 上报失败也照样尝试拉取，拉不到就只发数据 */ }
+
+    // 拉本场完整记录（同「查看复盘」）
+    let entries = [];
+    try {
+        const base = (seal.ext.getStringConfig(ext, "RP存档服务器地址") || "").replace(/\/$/, "");
+        const token = seal.ext.getStringConfig(ext, "RP存档Token") || "";
+        if (base) {
+            const resp = await fetch(`${base}/api/session_full/${encodeURIComponent(sm.sessionId)}`, {
+                headers: { "X-Archive-Token": token }
+            });
+            if (resp.ok) {
+                const d = await resp.json();
+                if (d.ok) entries = d.entries || [];
+            }
+        }
+    } catch (e) {
+        console.error(`[复盘转发] 拉取场次记录失败: ${e.message || e}`);
+    }
+    if (!entries.length && sm.people.every(p => !p.words)) return;   // 一句话都没写的空场次不打扰
+
+    const typeLabel = getCustomTypeLabel(sm.subtype) || sm.subtype || "通用";
+    const botUid = ctx.endPoint.userId;
+
+    // 同一个个人群里有多位参与者（大家在同一个群建的角色）时只发一份，数据分人列出
+    const byGroup = {};
+    for (const p of sm.people) (byGroup[p.pGid] = byGroup[p.pGid] || []).push(p);
+
+    let delay = 0;
+    for (const [pGid, ppl] of Object.entries(byGroup)) {
+        setTimeout(() => {
+            try {
+                const m1 = seal.newMessage(); m1.messageType = "group"; m1.groupId = `${sm.platform}-Group:${pGid}`;
+                const pCtx = seal.createTempCtx(ctx.endPoint, m1);
+
+                const lines = [
+                    `📖 本场复盘已存档（${typeLabel}）`,
+                    `📌 ${sm.day || "日期未知"} ${sm.time || ""}${sm.place ? `　📍 ${sm.place}` : ""}`,
+                    `👥 ${sm.participants.join("、") || "（无）"}`,
+                ];
+                if (sm.durationMs >= 60000) lines.push(`⏱ 本群总耗时：${formatDurationMin(sm.durationMs)}`);
+                for (const p of ppl) {
+                    lines.push("", `✍️ ${p.roleName}：共写 ${p.words} 字（${p.replies} 段）`);
+                    lines.push(`⏳ 平均弧长：${formatArcMs(p.avgArcMs)}`);
+                    lines.push(`📝 平均字数：${p.replies ? Math.round(p.words / p.replies) : 0} 字/段`);
+                }
+                seal.replyToSender(pCtx, m1, lines.join("\n"));
+
+                if (!entries.length) return;
+                // 图片链接大多已过期，合并转发里只要有一个 CQ:image 解析失败整条就发不出去，统一剔掉（同「查看复盘」）
+                const nodes = [{ type: "node", data: { name: "复盘", uin: botUid,
+                    content: `📌 ${sm.day || "日期未知"} ${sm.time || ""}\n📍 ${sm.place || "地点未知"}　类型：${typeLabel}\n👥 参与者：${sm.participants.join("、") || "（无）"}` } }];
+                for (const e of entries) {
+                    const hadImage = /\[CQ:image[^\]]*\]/.test(e.content || "");
+                    const textOnly = (e.content || "").replace(/\[CQ:image[^\]]*\]/g, "").trim();
+                    const content = hadImage ? `${textOnly}${textOnly ? "\n" : ""}（图片未随复盘保留，链接可能已过期）` : textOnly;
+                    nodes.push({ type: "node", data: { name: e.role_name || "未知", uin: botUid, content } });
+                }
+                // 空气泡跳过、超长拆分、按节点数/字数分批都在 sendForwardBatched 里统一处理
+                sendForwardBatched(pCtx, m1, parseInt(pGid, 10), nodes, 1000);
+            } catch (e) {
+                console.error(`[复盘转发] 发到个人群 ${pGid} 失败: ${e.message || e}`);
+            }
+        }, delay);
+        delay += 3000;   // 多个个人群错开发，避免瞬间刷屏被风控
+    }
+}
+
+// 结束点的统一入口：只在复盘季度触发；数据必须同步取（计时器马上要被清理），发送异步进行，任何异常都不能影响结束流程
+function queueReviewToPersonalGroups(ctx, gid, platform, payload, endPromise) {
+    try {
+        if (getSeasonMode() !== "review") return;
+        const sm = buildReviewSummary(gid, platform, payload);
+        sendReviewToPersonalGroups(ctx, sm, endPromise).catch(e => console.error(`[复盘转发] 失败: ${e.message || e}`));
+    } catch (e) {
+        console.error(`[复盘转发] 准备失败: ${e.message || e}`);
+    }
+}
+
+// ── 群号占用快照 ──────────────────────────────────────────────────────────────
+// 占用状态的唯一真相是本地群号池里的 "gid_占用"。存档端后台「当前占用群」以前靠场次记录推算
+// （有人回复才建占位行、走了结束流程才关掉），强结/取消漏关、没有场次记录的微信群都会算错，
+// 现在改成整体上报此刻真实占用的全部群，存档端直接照着显示。
+function buildOccupancySnapshot() {
+    const pool = kvGet("group", []);
+    const timers = getGroupTimers();
+    const expire = kvGet("group_expire_info", {});
+    const wechat = kvGet("wechat_groups", {});
+    const sessStats = getSessionStats();
+    const groups = [];
+    for (const entry of pool) {
+        if (typeof entry !== "string" || !entry.endsWith("_占用")) continue;
+        const gid = entry.slice(0, -"_占用".length);
+        let wc = null;
+        for (const pf of Object.keys(wechat)) {
+            const w = wechat[pf]?.[gid];
+            if (w && w.status === "active") { wc = w; break; }
+        }
+        if (wc) {
+            groups.push({ group_id: gid, subtype: "微信", game_day: "", game_time: "", place: "",
+                          participants: wc.participants || [], start_ts: wc.created_timestamp || 0 });
+            continue;
+        }
+        const timer = timers[gid] || {};
+        const exp = expire[gid] || {};
+        groups.push({
+            group_id: gid,
+            subtype: timer.subtype || exp.subtype || "",
+            game_day: exp.day || timer.day || "",
+            game_time: exp.time || timer.time || "",
+            place: exp.place || timer.place || "",
+            participants: timer.participants || exp.participants || [],
+            start_ts: sessStats[gid]?._startTime || exp.acceptTime || 0,
+        });
+    }
+    return groups;
+}
+
+let _occupancySyncTimer = null;
+// 防抖：一次开群/结束会连着改好几个 key（群号池、到期记录、计时器…），等 3 秒让它们都写完再上报一份完整的
+function scheduleOccupancySync() {
+    if (_occupancySyncTimer) return;
+    _occupancySyncTimer = setTimeout(() => {
+        _occupancySyncTimer = null;
+        try {
+            if (isArchiveEnabled()) postToArchive("/api/group_occupancy", { groups: buildOccupancySnapshot() });
+        } catch (e) {
+            console.error(`[占用同步] 失败: ${e.message}`);
+        }
+    }, 3000);
+}
+
 // ========================
 // 🔧 核心工具函数
 // ========================
@@ -1031,6 +1254,7 @@ cmd_bind_role.solve =(ctx, msg, cmdArgs) => {
         `\n发送「玩家名单」查看所有角色。`
     );
     seal.replyToSender(ctx, msg, `📋 记不住指令格式？发送「格式」查看目录，发送「格式+类型」（如「格式心动信」）直接拿可复制的模板。\n📖 发送「玩家指南」随时查看这份入门指令一览，发送「基础指南」查看约会互动类指令。`);
+    sendLuckyHint(ctx, msg);
     return seal.ext.newCmdExecuteResult(true);
 };
 
@@ -1212,13 +1436,16 @@ const LOOK_WALL_SIGNATURE = "🌸 皮相墙 🌸";
 
 function buildLookWallContent(platform) {
     const roles = store.get("a_private_group")[platform] || {};
+    const submitted = kvGet("form2_submitted", {});
     const byGender = { "男": [], "女": [] };
     for (const uid of Object.keys(roles)) {
         const roleName = roles[uid][0];
         const prof = getCharProfile(platform, roleName);
         if (!prof.look) continue;
+        // 行首图标标二表状态：✅ 已提交，⬜ 还没提交（回复消息发「提交二表」后自动变 ✅）
+        const mark = submitted[`${platform}:${uid}`] ? "✅" : "⬜";
         const bucket = byGender[prof.gender];
-        if (bucket) bucket.push(`${roleName}：${prof.look}`);
+        if (bucket) bucket.push(`${mark} ${roleName}｜${prof.look}`);
     }
     return [
         LOOK_WALL_SIGNATURE,
@@ -1228,6 +1455,8 @@ function buildLookWallContent(platform) {
         "",
         "👩 女生",
         ...(byGender["女"].length ? byGender["女"] : ["（暂无）"]),
+        "",
+        "✅ 已提交二表　⬜ 尚未提交",
     ].join("\n");
 }
 
@@ -1241,28 +1470,40 @@ function refreshLookWall(platform) {
         WSM.request(
             { action: "_send_group_notice", params: { group_id: groupIdNum, content: buildLookWallContent(platform) } },
             () => {},
-            () => console.error("[皮相墙] 发布新公告失败")
+            () => console.error("[皮相墙] 发布新公告失败"),
+            8000
         );
     };
 
-    WSM.request(
-        { action: "_get_group_notice", params: { group_id: groupIdNum } },
-        (resp) => {
-            if (resp.status !== "ok" && resp.retcode !== 0) return console.error(`[皮相墙] 读取群公告失败: ${JSON.stringify(resp)}`);
-            const list = resp.data || [];
-            const oldOnes = list.filter(n => (n.message?.text || n.text || "").startsWith(LOOK_WALL_SIGNATURE));
-            if (!oldOnes.length) return postNew();
-            let remaining = oldOnes.length;
-            oldOnes.forEach(n => {
-                WSM.request(
-                    { action: "_del_group_notice", params: { group_id: groupIdNum, notice_id: n.notice_id } },
-                    () => { if (--remaining <= 0) postNew(); },
-                    () => { if (--remaining <= 0) postNew(); }
-                );
-            });
-        },
-        () => console.error("[皮相墙] 读取群公告列表失败，跳过本次更新")
-    );
+    // 群公告这几个动作在部分 OneBot 实现下是代理到 QQ 网页端接口的，比一般动作慢，
+    // 默认 3000ms 超时太紧，实测会在连接刚建立、后端还没返回时就判超时——放宽到 8000ms，
+    // 跟 set_group_name/get_group_msg_history 等已知偏慢动作保持一致
+    const fetchNotice = (attemptsLeft) => {
+        WSM.request(
+            { action: "_get_group_notice", params: { group_id: groupIdNum } },
+            (resp) => {
+                if (resp.status !== "ok" && resp.retcode !== 0) return console.error(`[皮相墙] 读取群公告失败: ${JSON.stringify(resp)}`);
+                const list = resp.data || [];
+                const oldOnes = list.filter(n => (n.message?.text || n.text || "").startsWith(LOOK_WALL_SIGNATURE));
+                if (!oldOnes.length) return postNew();
+                let remaining = oldOnes.length;
+                oldOnes.forEach(n => {
+                    WSM.request(
+                        { action: "_del_group_notice", params: { group_id: groupIdNum, notice_id: n.notice_id } },
+                        () => { if (--remaining <= 0) postNew(); },
+                        () => { if (--remaining <= 0) postNew(); },
+                        8000
+                    );
+                });
+            },
+            () => {
+                if (attemptsLeft > 0) return fetchNotice(attemptsLeft - 1);
+                console.error("[皮相墙] 读取群公告列表失败，跳过本次更新");
+            },
+            8000
+        );
+    };
+    fetchNotice(1);
 }
 
 // 2. 玩家名单
@@ -1291,11 +1532,114 @@ cmd_role_list.solve =(ctx, msg) => {
         const age = prof.age !== undefined ? prof.age : 18;
         const look = prof.look || (gender === "男" ? "亨利卡维尔" : "刘亦菲");
         const bio = prof.bio ? `\n   签名：${prof.bio}` : "";
-        rep += `👤 ${name}${npcTag}\n   ${gender} · ${age}岁 · 皮相：${look}${bio}\n\n`;
+        const nick = info[2];
+        rep += `👤 ${nick || name}${npcTag}\n${nick ? `   全名：${name}\n` : ""}   ${gender} · ${age}岁 · 皮相：${look}${bio}\n\n`;
     }
     seal.replyToSender(ctx, msg, rep.trim());
     return seal.ext.newCmdExecuteResult(true);
 }
+// ========================
+// 🍀 幸运邂逅：随机挑一个人 + 一件「当前已开放」的事（短信/送礼/私约/电话）
+// ========================
+// 私约可做的事：通用预设，不绑定具体地点/剧情，玩家自己按需要改
+const LUCKY_DATE_IDEAS = [
+    "一起去逛街，谁也不许空手回来",
+    "找家咖啡厅坐一下午，聊聊最近的烦心事",
+    "傍晚沿着河边散步，走到哪算哪",
+    "挤在一起看一场电影，散场后互相吐槽",
+    "半夜睡不着，约出来吃碗热腾腾的夜宵",
+    "一起下厨，做一道谁都没做过的菜",
+    "去游乐园，把每个项目都玩一遍",
+    "去海边看日落，等第一颗星星出来",
+    "并排坐在图书馆里各看各的书，偶尔对视一眼",
+    "打一晚上游戏，输的人答应对方一个要求",
+    "逛夜市，一人一样小吃互相尝",
+    "爬上天台吹吹风，聊聊各自不肯说的秘密",
+    "一起去看一场展览，挑一件最喜欢的作品说说理由",
+    "起个大早去山顶等日出",
+];
+
+function pickRandom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function pickRandomN(arr, n) {
+    const pool = [...arr], out = [];
+    while (out.length < n && pool.length) out.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+    return out;
+}
+
+// 当前这个人能用的互动方式：全局开关、个人开关、功能开放时段都要满足，才算「已经打开的功能」
+function getLuckyOptions(uid) {
+    const toggle = kvGet("global_feature_toggle", {});
+    const opts = [];
+    if (toggle.enable_chaos_letter !== false && isUserFeatureEnabled(uid, "enable_chaos_letter")) opts.push("sms");
+    if ((toggle.enable_general_gift ?? true) && isUserFeatureEnabled(uid, "enable_general_gift")
+        && checkTsFeatureWindow("enable_general_gift").ok) opts.push("gift");
+    if ((toggle.enable_general_appointment ?? true) && isUserFeatureEnabled(uid, "enable_general_appointment")) {
+        opts.push("date");
+        if (!isLetterSystemEnabled()) opts.push("phone"); // 写信综模式下电话被整体禁用
+    }
+    return opts;
+}
+
+function buildLuckyEncounter(ctx, msg) {
+    const platform = msg.platform;
+    const roleName = getRoleName(ctx, msg);
+    if (!roleName) return "✨ 请先使用「创建新角色」认领你的身份吧。";
+    const uid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
+
+    const opts = getLuckyOptions(uid);
+    if (!opts.length) return "🍀 现在没有开放的互动功能，晚点再来碰碰运气吧。";
+
+    // 候选对象：别的玩家角色；NPC 不算，也不推荐已经把你拉黑的人
+    const npc = new Set([...kvGet("a_npc_list", []), ...kvGet("a_generic_npc_list", [])]);
+    const roles = getRoleStorage()[platform] || {};
+    const candidates = Object.entries(roles).filter(([tuid, info]) =>
+        tuid !== uid && !npc.has(info[0]) && !getBlockEntry(platform, tuid, uid));
+    if (!candidates.length) return "🍀 现在还没有别的角色可以邂逅，等更多人加入吧～";
+
+    const [, info] = pickRandom(candidates);
+    const target = info[2] || info[0];                       // 命令里填的名字：有简称用简称
+    const shown = info[2] ? `${info[2]}（${info[0]}）` : info[0];
+    const kind = pickRandom(opts);
+    const time = getExampleTimeRange();
+
+    const lines = ["🍀 幸运邂逅", `${"━".repeat(14)}`];
+    if (kind === "sms") {
+        lines.push(`📱 你应该给「${shown}」发一条短信`, `👉 短信 ${target} 想说的话`);
+    } else if (kind === "gift") {
+        lines.push(`🎁 你应该送「${shown}」一份礼物`);
+        const presetGifts = kvGet("preset_gifts", {});
+        const owned = (kvGet("gift_sightings", {})[`${platform}:${uid}`]?.unlocked_gifts || []).filter(id => presetGifts[id]);
+        if (owned.length) {
+            const id = pickRandom(owned);
+            lines.push(`📚 从你的图鉴里挑了一个：${id}「${presetGifts[id].name}」`, `👉 送礼 ${target} ${id}`);
+        } else {
+            lines.push(`📚 你的图鉴还是空的，发「礼品店」去收集，或者自己写一份`, `👉 送礼 ${target} 一束花`);
+        }
+    } else if (kind === "date") {
+        lines.push(`🌙 你应该约「${shown}」来一场${getCustomTypeLabel("私密")}`, `💡 可以一起做的事：`);
+        for (const idea of pickRandomN(LUCKY_DATE_IDEAS, 3)) lines.push(`   · ${idea}`);
+        lines.push(`👉 ${getCustomTypeLabel("私密")} ${time} 地点 ${target}`);
+    } else {
+        lines.push(`📞 你应该给「${shown}」打一通电话`, `👉 电话 ${time} ${target}`);
+    }
+    lines.push("", `不满意？再发一次「幸运邂逅」重新抽～`);
+    return lines.join("\n");
+}
+
+let cmd_lucky_encounter = seal.ext.newCmdItemInfo();
+cmd_lucky_encounter.name = "幸运邂逅";
+cmd_lucky_encounter.help = "。幸运邂逅 —— 随机挑一个角色和一件事（短信/送礼/私约/电话，只会抽到当前已开放的），送礼会从你的图鉴里挑，私约会附带几个可以做的事";
+cmd_lucky_encounter.solve = (ctx, msg) => {
+    seal.replyToSender(ctx, msg, buildLuckyEncounter(ctx, msg));
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["幸运邂逅"] = cmd_lucky_encounter;
+
+// 创建新角色 / 「我的xx」自查指令之后，单独补发的一条功能提示
+function sendLuckyHint(ctx, msg) {
+    seal.replyToSender(ctx, msg, "🍀 不知道该找谁、做什么？发送「幸运邂逅」，帮你随机挑一个人和一件事～");
+}
+
 // 3. 清除玩家
 let cmd_del_role = seal.ext.newCmdItemInfo();
 cmd_del_role.name = "清除玩家";
@@ -1560,11 +1904,13 @@ const changriApi = {
     wsRequest: (postData, onResponse, onTimeout, timeoutMs) => WSM.request(postData, onResponse, onTimeout, timeoutMs),
     // OneBot WS（常驻连接）
     ws,
+    sendForwardBatched,
     wsBatchSync,
     // 季度/时间线/场次卫星所需
     getSeasonShowName,
     hasActiveSeason,
     isRoleStorageEmpty,
+    resetSeasonData: (ctx, msg, force, quiet) => resetSeasonDataCore(ctx, msg, force, quiet),
     getSessionStats: () => getSessionStats(),
     saveSessionStats: (ss) => saveSessionStats(ss),
     getCustomTypeLabel,
@@ -1704,11 +2050,21 @@ try {
 // ========================
 // 角色档案系统
 // ========================
+// 新建角色时没填皮相会按性别给一个默认皮相（见 initCharProfile），创建时默认性别是「女」→ 刘亦菲
+const DEFAULT_LOOKS = { "男": "亨利卡维尔", "女": "刘亦菲" };
 function getCharProfile(platform, roleName) {
     // 新结构：通过 roleName 反查 uid
     const uid = getUidByRoleName(platform, roleName);
     if (!uid) return {};
-    return store.get("sys_char_profiles")[`${platform}:${uid}`] || {};
+    const p = store.get("sys_char_profiles")[`${platform}:${uid}`];
+    if (!p) return {};
+    // 从没自己改过皮相（lookUpdatedAt 为 0），且存的还是「另一个性别的默认皮相」：说明只是改了性别、皮相还是创建时
+    // 按默认性别「女」套上的默认值，读出来时按当前性别换成对应的默认皮相，不然皮相墙的男生栏会出现刘亦菲
+    if (!p.lookUpdatedAt && DEFAULT_LOOKS[p.gender] && p.look !== DEFAULT_LOOKS[p.gender]
+        && Object.values(DEFAULT_LOOKS).includes(p.look)) {
+        return { ...p, look: DEFAULT_LOOKS[p.gender] };
+    }
+    return p;
 }
 
 function setCharProfile(platform, roleName, patch) {
@@ -4318,8 +4674,12 @@ cmd_grouplist_release.solve = (ctx, msg, cmdArgs) => {
         }
 
         // 存档必须在清除 group_expire_info 之前，否则拿不到 day/time/place
-        if (isArchiveEnabled() && getSeasonMode() !== "no_review") {
-            postToArchive("/api/session_end", buildSessionArchive(gid, platform, false));
+        // 场次结束上报不看「复盘/不复盘」：不复盘只是不存对话内容，场次本身仍要告诉存档端「结束了」，
+        // 否则不复盘季度的场次记录会永远停在「进行中」（没有结束时间和时长）
+        if (isArchiveEnabled()) {
+            const _endPayload = buildSessionArchive(gid, platform, false);
+            const _endPromise = postToArchive("/api/session_end", _endPayload);
+            queueReviewToPersonalGroups(ctx, gid, platform, _endPayload, _endPromise);
         }
 
         // 清除到期记录（先取 subtype 供结戏奖励使用，group 号会被复用，事后从 b_confirmedSchedule 反查可能查到旧场次）
@@ -4412,8 +4772,13 @@ function forceEndGroupCore(ctx, msg, gid, platform, operatorUid, releaseTimeline
     }
 
     // 存档必须在清除 group_expire_info 之前，否则拿不到 day/time/place。复盘与正常结束一致，只是中途打断
-    if (isArchiveEnabled() && getSeasonMode() !== "no_review") {
-        postToArchive("/api/session_end", buildSessionArchive(gid, platform, true));
+    // 场次结束上报不看「复盘/不复盘」：不复盘只是不存对话内容，场次本身仍要告诉存档端「结束了」，
+    // 否则不复盘季度的场次记录会永远停在「进行中」（没有结束时间和时长）
+    if (isArchiveEnabled()) {
+        const _endPayload = buildSessionArchive(gid, platform, true);
+        const _endPromise = postToArchive("/api/session_end", _endPayload);
+        // 取消（releaseTimeline）视为这场从没发生过，不转发复盘
+        if (!releaseTimeline) queueReviewToPersonalGroups(targetCtx, gid, platform, _endPayload, _endPromise);
     }
 
     // 清除到期记录（先取 subtype 供结戏奖励使用，group 号会被复用，事后从 b_confirmedSchedule 反查可能查到旧场次）
@@ -5183,8 +5548,13 @@ cmd_reset_season_data.solve = async (ctx, msg, cmdArgs) => {
         seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
         return seal.ext.newCmdExecuteResult(true);
     }
+    await resetSeasonDataCore(ctx, msg, (cmdArgs.getArgN(1) || "").trim() === "确认", false);
+    return seal.ext.newCmdExecuteResult(true);
+};
 
-    const force = (cmdArgs.getArgN(1) || "").trim() === "确认";
+// 清空逻辑本体：「清空季度数据」和「创建新季度」发现残留数据后的确认清空共用。
+// 返回 true=已清空；false=被残留玩家拦下。quiet=true 时不发"已清空/可以创建新季度"的收尾提示
+async function resetSeasonDataCore(ctx, msg, force, quiet) {
     const platform = msg.platform;
     const roles = getRoleStorage()[platform] || {};
     const npcs = kvGet("a_npc_list", []);
@@ -5213,13 +5583,15 @@ cmd_reset_season_data.solve = async (ctx, msg, cmdArgs) => {
                 `⚠️ 以下 ${remaining.length} 名玩家仍在群内，请先执行「更新未退群 驱逐」再清空：\n${list}\n\n` +
                 `如需跳过检查强制清空，发送「。清空季度数据 确认」`
             );
-            return seal.ext.newCmdExecuteResult(true);
+            return false;
         }
     }
 
     // 存档同步：清空前先把所有仍标记为进行中的场次在存档端标记结束，否则网页端「当前占用群」
     // 会永远停留在清空前的最后一批数据（清空只动本地存储，不会通知存档服务器关闭这些场次）
-    if (isArchiveEnabled() && getSeasonMode() !== "no_review") {
+    // 场次结束上报不看「复盘/不复盘」：不复盘只是不存对话内容，场次本身仍要告诉存档端「结束了」，
+    // 否则不复盘季度的场次记录会永远停在「进行中」（没有结束时间和时长）
+    if (isArchiveEnabled()) {
         const stillOpenGroups = kvGet("group_expire_info", {});
         for (const gid of Object.keys(stillOpenGroups)) {
             try {
@@ -5252,12 +5624,16 @@ cmd_reset_season_data.solve = async (ctx, msg, cmdArgs) => {
         }
     }
 
-    seal.replyToSender(ctx, msg,
-        `✅ 季度数据已全量清空\n仅保留：管理员列表、密令。\n\n` +
-        `现在可以执行：\n。创建新季度 恋综名 复盘/不复盘 MMDD-MMDD`
-    );
-    return seal.ext.newCmdExecuteResult(true);
-};
+    if (quiet) {
+        seal.replyToSender(ctx, msg, "✅ 上季数据已清空，正在创建新季度…");
+    } else {
+        seal.replyToSender(ctx, msg,
+            `✅ 季度数据已全量清空\n仅保留：管理员列表、密令。\n\n` +
+            `现在可以执行：\n。创建新季度 恋综名 复盘/不复盘 MMDD-MMDD`
+        );
+    }
+    return true;
+}
 ext.cmdMap["清空季度数据"] = cmd_reset_season_data;
 
 // --- 辅助提取：统一的角色信息获取 ---
@@ -5561,7 +5937,9 @@ cmd_appointment_healthcheck.solve = (ctx, msg, cmdArgs) => {
         let fixedCount = 0;
         if (staleExpireInfo.length) {
             // 同样要在删本地记录前通知存档端结束场次，否则网页端「当前占用群」会留下这批永久卡住的孤儿记录
-            if (isArchiveEnabled() && getSeasonMode() !== "no_review") {
+            // 场次结束上报不看「复盘/不复盘」：不复盘只是不存对话内容，场次本身仍要告诉存档端「结束了」，
+            // 否则不复盘季度的场次记录会永远停在「进行中」（没有结束时间和时长）
+            if (isArchiveEnabled()) {
                 staleExpireInfo.forEach(g => {
                     try { postToArchive("/api/session_end", buildSessionArchive(g, msg.platform, true)); }
                     catch (e) { console.error(`[约会数据体检] 存档同步群 ${g} 结束状态失败: ${e.message}`); }
@@ -6761,6 +7139,10 @@ async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, co
     }) || `[CQ:at,qq=${trueRecipientUid}]\n📱 ${trueRecipientName}，你收到一条短信：\n「${content}」\n\n${recipientSignature}`;
     seal.replyToSender(newctx, newmsg, notice);
     recordInteractionStat(platform, sendname, trueRecipientName, "sms");
+    // 截信器：拦截发送者本人发出的短信原文（真实身份，不看伪装署名）
+    consumeSmsTap(ctx, realSendname, sendname, contentOriginal);
+    // 回音壁：感知收件人实际收到的内容（已经过错投/侵蚀等短信系统自身的干扰）
+    consumeEchoWallTap(ctx, trueRecipientName, sendname, content);
     // 发错撤回：记下每一处投递，撤回时去这些群里找回并删除
     const recallDeliveries = [{ gid: String(targetEntry[1]), snippet: content, at: Date.now() }];
 
@@ -8768,6 +9150,20 @@ function getScheduleZone() {
     return "post";
 }
 
+// 存档时彻底剔除图片：标签整段删掉、不留任何占位痕迹，对电话/私约/官约/心愿/通用NPC旁白统一生效，
+// 图片彻底不落档（跟「结束复盘」转发时才临时把图片换成提示文字不同，这里是从根源上不存）
+function stripImageTags(text) {
+    if (!text || !/\[CQ:image[^\]]*\]/.test(text)) return text;   // 没有图片就原样返回，不改动排版（全角缩进、空行等）
+    const out = [];
+    for (const line of text.split("\n")) {
+        if (!/\[CQ:image[^\]]*\]/.test(line)) { out.push(line); continue; }
+        // 只清理带图片标签的那一行：标签删掉、标签两侧留下的多余空格并成一个；整行只有图片就整行删掉
+        const rest = line.replace(/\[CQ:image[^\]]*\]/g, "").replace(/[ \t]{2,}/g, " ").trimEnd();
+        if (rest.trim()) out.push(rest);
+    }
+    return out.join("\n").replace(/^\n+|\n+$/g, "");
+}
+
 // 剥离正文里"最外层"括号包裹的场外/OOC内容，不计入复盘存档（半角/全角括号均支持）。
 // 只吞掉顶层括号闭合的那一段（含其嵌套内容）；没打闭合的括号原样保留，避免漏打括号误删正文。
 function stripOocParens(text) {
@@ -8838,7 +9234,7 @@ function handleReply(platform, groupId, roleName, message) {
         if (isArchiveEnabled() && getSeasonMode() !== "no_review") {
             const _npcExtracted = extractGenericRoleContent(message);
             if (_npcExtracted) {
-                const _npcContent = stripOocParens(_npcExtracted.content);
+                const _npcContent = stripImageTags(stripOocParens(_npcExtracted.content));
                 if (_npcContent) {
                     const _npcSS = getSessionStats()[groupId] || {};
                     const _npcStartTs = _npcSS._startTime || Date.now();
@@ -8868,7 +9264,7 @@ function handleReply(platform, groupId, roleName, message) {
         // 官约单独放行：只要开着复盘就整条原样存档，不要求「角色名+分隔符+正文」的握手格式（旁白不是台词），
         // 也不跑下面参与者专属的轮流状态/字数统计/写帖进度（那些是给邀请对象本人用的，旁白不该污染）。
         if (timer.subtype === "官约" && isArchiveEnabled() && getSeasonMode() !== "no_review") {
-            const _narratorContent = stripOocParens((message || "").trim());
+            const _narratorContent = stripImageTags(stripOocParens((message || "").trim()));
             if (_narratorContent) {
                 const _narratorSS = getSessionStats()[groupId] || {};
                 const _narratorStartTs = _narratorSS._startTime || Date.now();
@@ -8915,7 +9311,7 @@ function handleReply(platform, groupId, roleName, message) {
 
         let _archivedContent = null;
         const _arcExtracted = extractRoleContent(message, roleName);
-        const _arcStripped = _arcExtracted ? stripOocParens(_arcExtracted) : null;
+        const _arcStripped = _arcExtracted ? stripImageTags(stripOocParens(_arcExtracted)) : null;
         if (_arcStripped) {
             postToArchive("/api/rp", { ..._archivePayload, content: _arcStripped });
             _archivedContent = _arcStripped;
@@ -9638,6 +10034,42 @@ function handleSongCardRequest(ctx, msg, raw, wdId) {
     return seal.ext.newCmdExecuteResult(true);
 }
 
+// ── 提交二表：玩家回复自己要提交的那条消息发「提交二表」，原样转发到后台群备份，并标记为已提交
+// （皮相墙据此把该角色前面的 ⬜ 换成 ✅）。提交过之后可以随时再提交（比如二表改过内容），每次都会重新转发，不限次数
+function handleSubmitForm2(ctx, msg, wdId) {
+    const platform = msg.platform;
+    const roleName = getRoleName(ctx, msg);
+    if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+    const bgGid = kvGet("background_group_id", null);
+    if (!bgGid) return seal.replyToSender(ctx, msg, "❌ 未配置后台群，请联系管理员配置后再提交。");
+    const errMsg = "❌ 提交失败：没能读取到被引用的消息内容（可能已经不在缓存中了），请确认引用的是你要提交的那条消息。";
+
+    WSM.request(
+        { action: "get_msg", params: { message_id: wdId } },
+        (response) => {
+            if (response.status !== "ok" && response.retcode !== 0) return seal.replyToSender(ctx, msg, errMsg);
+            const data = response.data;
+            const content = (data && data.raw_message) || (data && typeof data.message === "string" ? data.message : null);
+            if (!content) return seal.replyToSender(ctx, msg, errMsg);
+
+            const rawUid = msg.sender.userId.replace(`${platform}:`, "");
+            const uid = getPrimaryUid(platform, rawUid);
+            const key = `${platform}:${uid}`;
+            const submitted = kvGet("form2_submitted", {});
+            const isResubmit = !!submitted[key];
+            submitted[key] = { roleName, time: Date.now() };
+            kvSet("form2_submitted", submitted);
+            refreshLookWall(platform); // 提交后皮相墙里该角色前面的 ⬜ 变 ✅
+
+            sendTextToGroup(platform, bgGid, `📋【二表${isResubmit ? "重新提交" : "提交"}】${roleName}：\n${content}`);
+            seal.replyToSender(ctx, msg, `✅ 「${roleName}」的二表已${isResubmit ? "重新" : ""}提交，感谢配合！`);
+        },
+        () => seal.replyToSender(ctx, msg, errMsg),
+        8000
+    );
+    return seal.ext.newCmdExecuteResult(true);
+}
+
 // ========================
 // 🍾 漂流瓶：不填收件人的匿名短信，随机送到某个在世玩家手里，
 // 靠编号回信（编号绑定「抛瓶人↔捡瓶人」这一对，双方可以一直用同一个编号来回）
@@ -9959,6 +10391,7 @@ function handlePlayerGuideMsg(ctx, msg) {
         "我的弧长",
         "我的数量",
         "我的",
+        "幸运邂逅",
         "格式",
     ];
     const sections = [index, ...bareCommands.map(c => [c])];
@@ -10189,6 +10622,66 @@ function maybeSendWechatEndHint(ctx, msg, platform, groupId, uid) {
     }
 }
 
+// ═══ 窃听器 / 截信器 / 回音壁：道具「特殊使用」只负责部署（见 长日RPG.js SPEC_006/007/008），
+// 真正的截听效果——监听电话群发言/短信收发、按干扰率决定内容是否失真、次数耗尽自动失效——在这里消费 ═══
+
+// 命中干扰率时把内容替换成杂讯字符，标点/空白原样保留，读得出节奏但读不出内容
+function garbleTapContent(text) {
+    const NOISE = "░▒▓×";
+    return [...text].map(ch => /[\s，。！？、,.!?~～\n]/.test(ch) ? ch : NOISE[Math.floor(Math.random() * NOISE.length)]).join("");
+}
+
+// 找到角色当前所在的个人群，私聊发一条通知；找不到（角色已删除等）就放弃
+function notifyTapOwner(ctx, platform, roleName, text) {
+    const uid = getUidByRoleName(platform, roleName);
+    if (!uid) return;
+    const info = kvGet("a_private_group", {})[platform]?.[uid];
+    if (!info) return;
+    const nmsg = seal.newMessage();
+    nmsg.messageType = "group";
+    nmsg.groupId = `${platform}-Group:${info[1]}`;
+    seal.replyToSender(seal.createTempCtx(ctx.endPoint, nmsg), nmsg, text);
+}
+
+// 消耗一次监听效果：按 blurProb 决定这条清晰还是失真，剩余次数耗尽则自动移除该效果
+function consumeTapEffect(ctx, effectsKey, targetName, content, buildText) {
+    if (!content) return;
+    const effects = kvGet(effectsKey, {});
+    const tap = effects[targetName];
+    if (!tap) return;
+    const jammed = Math.random() * 100 < (tap.blurProb || 0);
+    const shown = jammed ? garbleTapContent(content) : content;
+    tap.remainCount -= 1;
+    const exhausted = tap.remainCount <= 0;
+    if (exhausted) delete effects[targetName]; else effects[targetName] = tap;
+    kvSet(effectsKey, effects);
+    notifyTapOwner(ctx, tap.platform, tap.ownerRoleName, buildText(shown, jammed, Math.max(tap.remainCount, 0), exhausted));
+}
+
+function consumePhoneTap(ctx, targetName, content) {
+    consumeTapEffect(ctx, "phone_tap_effects", targetName, content, (shown, jammed, remain, exhausted) =>
+        `📡 窃听器截获一段通话（来自「${targetName}」）：\n「${shown}」` +
+        (jammed ? "\n（信号干扰，内容有些模糊……）" : "") +
+        `\n剩余截听次数：${remain}` +
+        (exhausted ? "\n📡 窃听器电量耗尽，已自动失效。" : ""));
+}
+
+function consumeSmsTap(ctx, targetName, senderDisplay, content) {
+    consumeTapEffect(ctx, "sms_tap_effects", targetName, content, (shown, jammed, remain, exhausted) =>
+        `📱 截信器拦下一条短信（来自「${targetName}」，署名「${senderDisplay}」）：\n「${shown}」` +
+        (jammed ? "\n（信号偶有失真……）" : "") +
+        `\n剩余拦截次数：${remain}` +
+        (exhausted ? "\n📱 截信器已自动失效。" : ""));
+}
+
+function consumeEchoWallTap(ctx, targetName, senderDisplay, content) {
+    consumeTapEffect(ctx, "sms_echo_wall_effects", targetName, content, (shown, jammed, remain, exhausted) =>
+        `🪞 回音壁感知到「${targetName}」收到一条短信（来自「${senderDisplay}」）：\n「${shown}」` +
+        (jammed ? "\n（回声有些失真……）" : "") +
+        `\n剩余感知次数：${remain}` +
+        (exhausted ? "\n🪞 回音壁已自动失效。" : ""));
+}
+
 // 私有群监听：RP 正文计入存档/字数，并对格式错误的首行给出提醒
 function handlePrivateGroupListen(ctx, msg, platform, groupId, uid) {
     try {
@@ -10223,6 +10716,12 @@ function handlePrivateGroupListen(ctx, msg, platform, groupId, uid) {
                     }
                 }
             }
+
+            // 窃听器：电话群里，被装了窃听器的人每说一句符合格式的台词，都可能被截听转发给持有者
+            if (_hintTimer && _hintTimer.subtype === "电话") {
+                const _tapContent = stripOocParens(extractRoleContent(msg.message || "", roleName) || "");
+                if (_tapContent) consumePhoneTap(ctx, roleName, _tapContent);
+            }
         }
     } catch (e) {
         console.error('监听系统错误:', e);
@@ -10237,7 +10736,7 @@ ext.onNotCommandReceived = async (ctx, msg) => {
     const groupId = msg.groupId.replace(`${platform}-Group:`, ''), isAdmin = isUserAdmin(ctx, msg);
     const getS = (k) => kvGet(k, (k.includes("list") || k.includes("presets") || k.includes("projects")) ? [] : {});
 
-    // 1. 回复卡片逻辑 (撤回/点歌/复盘)
+    // 1. 回复卡片逻辑 (撤回/点歌/复盘/提交二表)
     const replyMatch = raw.match(/\[CQ:reply,id=(\-?\d+)\]/);
     if (replyMatch) {
         const wdId = Number(replyMatch[1]);
@@ -10250,6 +10749,7 @@ ext.onNotCommandReceived = async (ctx, msg) => {
             return handleQuotedWithdraw(ctx, msg, wdId, raw);
         }
         if (raw.includes("点歌")) return handleSongCardRequest(ctx, msg, raw, wdId);
+        if (raw.includes("提交二表")) return handleSubmitForm2(ctx, msg, wdId);
         if (raw.includes("转发复盘")) {
             return seal.replyToSender(ctx, msg, "📋 当前版本无需转发复盘，直接发送「结束私约」/「结束复盘」退群即可。");
         }
@@ -10281,6 +10781,7 @@ ext.onNotCommandReceived = async (ctx, msg) => {
         "发帖":   "发帖 张三 今天天气真好！",
         "点歌":   "（先回复一张音乐卡片，再发送）\n点歌人：张三 留言：这首歌送给你 歌名：晴天（选填） 送给：李四（选填）",
         "撤回":   "短信/礼物/拉线发错人时：\n长按你发的那条（或机器人回的「已送达」那条）→ 引用/回复 → 发送：\n撤回\n\n· 2 分钟内有效，已送到对方群里的那条会一起删掉\n· 今日次数返还，可以马上重发给对的人\n· 超过 2 分钟请联系管理员帮忙撤回",
+        "提交二表": "长按你要提交的那条消息 → 引用/回复 → 发送：\n提交二表\n\n· 会原样转发到后台群备份，并在皮相墙把你名字前面的 ⬜ 换成 ✅\n· 提交过之后随时可以再提交（比如内容改过），不限次数",
     };
     // 私约（默认资源 + 每个额外资源）：用当前名字当 key，改名后旧名字这里也跟着一起失效，
     // 不会出现"格式X"还显示着一个已经不能用的旧名字模板的情况
@@ -10308,7 +10809,10 @@ ext.onNotCommandReceived = async (ctx, msg) => {
     }
     if (raw === "格式") {
         const nav = Object.keys(FORMAT_TEMPLATES).map(k => `如果需要${k}格式，发送「格式${k}」`).join("\n");
-        return seal.replyToSender(ctx, msg, `📋 输入「格式+类型」直接拿可复制的指令模板：\n\n${nav}`);
+        // 目录最下方附玩家手册网址（跟「长日网址」一样从 RP存档服务器地址拼，没配置就不附）
+        const guideBase = (seal.ext.getStringConfig(ext, "RP存档服务器地址") || "").replace(/\/$/, "");
+        const guideLine = guideBase ? `\n\n📖 玩家手册：${guideBase}/static/docs/player_guide.html` : "";
+        return seal.replyToSender(ctx, msg, `📋 输入「格式+类型」直接拿可复制的指令模板：\n\n${nav}${guideLine}`);
     }
     if (raw.startsWith("格式") && FORMAT_TEMPLATES[raw.slice(2).trim()]) {
         return seal.replyToSender(ctx, msg, FORMAT_TEMPLATES[raw.slice(2).trim()]);
@@ -10522,6 +11026,7 @@ ext.onNotCommandReceived = async (ctx, msg) => {
     }
 
     if (raw === "玩家名单") return cmd_role_list.solve(ctx, msg, makeFakeCmdArgs([]));
+    if (raw === "幸运邂逅") return cmd_lucky_encounter.solve(ctx, msg);
 
     if (raw === "地点查看" || raw === "查看地点") {
         return cmdPlace.solve(ctx, msg, makeFakeCmdArgs(["查看"]));
@@ -10551,13 +11056,14 @@ ext.onNotCommandReceived = async (ctx, msg) => {
     if (PROFILE_EDIT_PREFIXES.some(p => raw.startsWith(p))) {
         const roleName = getRoleName(ctx, msg);
         if (!roleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
-        const lines = raw.split(/\n/).map(l => l.trim()).filter(Boolean);
+        // 不同客户端/OneBot 实现的换行不一定是 \n（可能是单独的 \r、\u2028 等），行首尾还可能夹零宽字符，统一处理
+        const lines = raw.split(/\r\n|[\r\n\u2028\u2029\u0085]/).map(l => l.replace(/^[\s\u200b-\u200d\u2060\ufeff]+|[\s\u200b-\u200d\u2060\ufeff]+$/g, "")).filter(Boolean);
         const isBatch = lines.length > 1 && lines.every(l => PROFILE_EDIT_PREFIXES.some(p => l.startsWith(p)));
         if (isBatch) {
             const results = lines.map(l => processProfileFieldLine(platform, roleName, l));
             return seal.replyToSender(ctx, msg, results.join("\n"));
         }
-        return seal.replyToSender(ctx, msg, processProfileFieldLine(platform, roleName, raw));
+        return seal.replyToSender(ctx, msg, processProfileFieldLine(platform, roleName, lines.length === 1 ? lines[0] : raw));
     }
 
     if (raw === "角色卡") return handleRoleCardMsg(ctx, msg, platform);
@@ -10572,7 +11078,11 @@ ext.onNotCommandReceived = async (ctx, msg) => {
             "我的数量      自己今天的私约/电话/短信/礼物/心愿次数，及全服今天总数"
         );
     }
-    if (raw === "我的待回") return cmd_my_pending.solve(ctx, msg);
+    if (raw === "我的待回") {
+        const pendingRet = await cmd_my_pending.solve(ctx, msg);
+        if (getRoleName(ctx, msg)) sendLuckyHint(ctx, msg);
+        return pendingRet;
+    }
     if (raw === "我的弧长") return cmdMyArcLength.solve(ctx, msg);
     if (raw === "我的数量") return cmdMyCounts.solve(ctx, msg);
     // 「结束私约」「结束复盘」是同一个指令的两个正式名字（不分主次）：结束的不一定是私约，
@@ -10841,6 +11351,7 @@ cmdMyArcLength.solve = (ctx, msg) => {
     const rawUid = msg.sender.userId.replace(`${platform}:`, "");
     const uid = getPrimaryUid(platform, rawUid);
     seal.replyToSender(ctx, msg, buildArcLengthReport(platform, roleName, uid));
+    sendLuckyHint(ctx, msg);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["我的弧长"] = cmdMyArcLength;
@@ -10925,6 +11436,7 @@ cmdMyCounts.solve = (ctx, msg) => {
     reply += getTodayActivitySummaryLine(gameDay);
 
     seal.replyToSender(ctx, msg, reply);
+    sendLuckyHint(ctx, msg);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["我的数量"] = cmdMyCounts;
@@ -11650,10 +12162,13 @@ function checkExpiredGroups() {
 
     if (changed) kvSet("group_expire_info", groupInfo);
 }
+let _occupancyHeartbeat = 0;
 setInterval(() => {
     checkAutoD0();
     checkExpiredGroups();
     loveMailTick();
+    // 约每 10 分钟补报一次占用快照：万一某次上报因网络丢了，或者存档服务器重启过，最多 10 分钟自愈
+    if (++_occupancyHeartbeat >= 20) { _occupancyHeartbeat = 0; scheduleOccupancySync(); }
 }, 30000);
 
 // ========================

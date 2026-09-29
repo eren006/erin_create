@@ -247,7 +247,7 @@ body:after{content:"";position:fixed;z-index:100;inset:0;pointer-events:none;opa
     <summary>
       <h2><span class="feat-icon">👤</span><span>角色与账号</span></h2>
       <div class="section-preview"><span>创建新角色 [角色名]</span><span>玩家名单</span><span>修改名字 [新名字]</span></div>
-      <span class="section-count">11</span>
+      <span class="section-count">12</span>
       <span class="section-arrow" aria-hidden="true">⌄</span>
     </summary>
     <div class="cmd-grid">
@@ -257,10 +257,15 @@ body:after{content:"";position:fixed;z-index:100;inset:0;pointer-events:none;opa
           <div class="cmd-desc">注册并绑定你的 RP 角色名</div>
           <pre class="ex">例：创建新角色 张三</pre>
         </div>
-        <div class="cmd-card" data-search="玩家名单 查看当前所有已注册玩家">
+        <div class="cmd-card" data-search="玩家名单 查看当前所有已注册玩家（设置了简称的显示简称和全名两行）">
           <div class="cmd-name">玩家名单</div>
-          <div class="cmd-desc">查看当前所有已注册玩家</div>
+          <div class="cmd-desc">查看当前所有已注册玩家（设置了简称的会显示简称和全名两行）</div>
           
+        </div>
+        <div class="cmd-card" data-search="幸运邂逅 随机挑一个人和一件事 短信 送礼 私约 电话 图鉴 不知道找谁">
+          <div class="cmd-name">幸运邂逅</div>
+          <div class="cmd-desc">不知道该找谁、做什么？随机挑一个角色和一件当前已开放的事：发短信 / 送礼 / 私约 / 打电话。送礼会从你的图鉴里推荐一件，私约会附带几个可以一起做的事；不满意可以再发一次重新抽</div>
+          <pre class="ex">例：幸运邂逅</pre>
         </div>
         <div class="cmd-card" data-search="修改名字 [新名字] 修改自己的角色名">
           <div class="cmd-name">修改名字 [新名字]</div>
@@ -402,9 +407,9 @@ body:after{content:"";position:fixed;z-index:100;inset:0;pointer-events:none;opa
           <div class="cmd-desc">拒绝指定群的时间线修改申请</div>
           
         </div>
-        <div class="cmd-card" data-search="结束私约 在约会群内主动结束当前的私约">
-          <div class="cmd-name">结束私约</div>
-          <div class="cmd-desc">在约会群内主动结束当前的私约</div>
+        <div class="cmd-card" data-search="结束私约 结束复盘 在约会群内主动结束当前的私约 复盘模式的季度会自动把本场记录和数据发到你的个人群 总耗时 总字数 平均弧长 平均字数">
+          <div class="cmd-name">结束私约（结束复盘）</div>
+          <div class="cmd-desc">在约会群内主动结束当前的私约；两个说法等价。复盘模式的季度里，结束后会自动把本场完整记录和你的本场数据（本群总耗时、你写的总字数、平均弧长、平均字数）发到你的个人群</div>
           
         </div>
     </div>
@@ -1228,12 +1233,12 @@ body:after{content:"";position:fixed;z-index:100;inset:0;pointer-events:none;opa
   <details class="feat-section" id="sec-信息收集">
     <summary>
       <h2><span class="feat-icon">📋</span><span>信息收集</span></h2>
-      <div class="section-preview"><span>我提交 [项目名]: [内容]</span><span>查看收集 [项目名]</span><span>删除上传 [项目名] [序号]</span></div>
-      <span class="section-count">04</span>
+      <div class="section-preview"><span>我提交 [项目名]: [内容]</span><span>查看收集 [项目名]</span><span>[引用要提交的消息] 提交二表</span></div>
+      <span class="section-count">05</span>
       <span class="section-arrow" aria-hidden="true">⌄</span>
     </summary>
     <div class="cmd-grid">
-      
+
         <div class="cmd-card" data-search="我提交 [项目名]: [内容] 向指定项目提交信息（可以不带图片；带图片会转存到rp存档服务器换成永久链接，每人每季度限额30mb、单图3mb，结束季度时自动清空）">
           <div class="cmd-name">我提交 [项目名]: [内容]</div>
           <div class="cmd-desc">向指定项目提交信息（可以不带图片；带图片会转存到RP存档服务器换成永久链接，每人每季度限额30MB、单图3MB，结束季度时自动清空）</div>
@@ -1242,17 +1247,22 @@ body:after{content:"";position:fixed;z-index:100;inset:0;pointer-events:none;opa
         <div class="cmd-card" data-search="查看收集 [项目名] 查看指定项目的所有提交（不填则列出项目；私密项目对非管理员隐藏且拒绝查看；查看时会顺便检查图片是否已被超级管理员在rp存档后台删除，删了的整条记录会自动消失）">
           <div class="cmd-name">查看收集 [项目名]</div>
           <div class="cmd-desc">查看指定项目的所有提交（不填则列出项目；私密项目对非管理员隐藏且拒绝查看；查看时会顺便检查图片是否已被超级管理员在RP存档后台删除，删了的整条记录会自动消失）</div>
-          
+
         </div>
         <div class="cmd-card" data-search="删除上传 [项目名] [序号] 删除自己的提交记录（带图片的话，rp存档服务器上的图片文件也会一起删掉，不会占着配额）">
           <div class="cmd-name">删除上传 [项目名] [序号]</div>
           <div class="cmd-desc">删除自己的提交记录（带图片的话，RP存档服务器上的图片文件也会一起删掉，不会占着配额）</div>
-          
+
         </div>
-        <div class="cmd-card" data-search="定时收集 [项目名] [内容] 向定时收集项目提交内容（跟「我提交」是两套不同机制：这个要先由管理员定好开启时间，到点才能提交）">
+        <div class="cmd-card" data-search="定时收集 [项目名] [内容] 向定时收集项目提交内容（跟「我提交」是两套不同机制：这个要先由管理员定好开启时间，到点才能提交；提交后会自动提醒后台群有新内容）">
           <div class="cmd-name">定时收集 [项目名] [内容]</div>
-          <div class="cmd-desc">向定时收集项目提交内容（跟「我提交」是两套不同机制：这个要先由管理员定好开启时间，到点才能提交）</div>
+          <div class="cmd-desc">向定时收集项目提交内容（跟「我提交」是两套不同机制：这个要先由管理员定好开启时间，到点才能提交）；提交后会自动提醒后台群有新内容，管理员不用再自己发「查看定时收集」才知道</div>
           <pre class="ex">定时收集 心情调查 今天很开心</pre>
+        </div>
+        <div class="cmd-card" data-search="[引用要提交的消息] 提交二表 长按要提交的那条消息，引用/回复后发送提交二表，原样转发到后台群备份，并在皮相墙摘掉自己名字后面的星号；提交过之后可以随时再提交，不限次数">
+          <div class="cmd-name">[引用要提交的消息] 提交二表</div>
+          <div class="cmd-desc">长按要提交的那条消息，引用/回复后发送「提交二表」，原样转发到后台群备份，并在皮相墙把自己名字前面的「⬜」自动换成「✅」；提交过之后可以随时再提交（比如内容改过），不限次数</div>
+          <pre class="ex">（引用你要提交的那条消息）提交二表</pre>
         </div>
     </div>
   </details>
@@ -1314,7 +1324,7 @@ body:after{content:"";position:fixed;z-index:100;inset:0;pointer-events:none;opa
         </div>
         <div class="cmd-card" data-search="格式 查看所有支持的指令格式类型清单">
           <div class="cmd-name">格式</div>
-          <div class="cmd-desc">查看所有支持的指令格式类型清单</div>
+          <div class="cmd-desc">查看所有支持的指令格式类型清单，最下方附有玩家手册网址</div>
           
         </div>
         <div class="cmd-card" data-search="格式 [类型] 直接获取指定类型的可复制粘贴指令模板，不带任何说明文字，复制后改内容就能发。支持类型：心动信/短信/漂流瓶/前置电话/信件/私约/电话/送礼/心愿/悬赏心愿/拉线/发帖/点歌，以及管理员在网页端配置的私约/短信/送礼自定义触发词">

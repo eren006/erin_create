@@ -87,6 +87,26 @@ function sendTextToGroup(platform, gid, text) {
 // 通用解析引擎（用于设置模板）
 // ========================
 
+// ── 机器人 ↔ 网页端同步状态 ─────────────────────────────────────────────────
+// 在群里用「。设置」等指令改了东西，网页端还是旧值。这时如果网页端又改了别的项，自动拉取会按网页端整体内容覆盖、把群里这次改动盖掉。
+// 所以群里改完就标记「有未同步改动」：提醒管理员回复「确认」推送到网页，在同步完成前自动拉取暂停
+const WEB_DIRTY_KEY = "web_sync_dirty";
+const _pendingWebPush = new Map();
+const PENDING_WEB_PUSH_TTL_MS = 30 * 60 * 1000;
+function webPushKey(msg) { return `${msg.platform}:${msg.sender.userId}:${msg.groupId || ""}`; }
+function isWebDirty() { return !!mainStorGet(WEB_DIRTY_KEY); }
+function markWebSynced() { mainStorSet(WEB_DIRTY_KEY, ""); }
+function markWebDirty(ctx, msg) {
+    mainStorSet(WEB_DIRTY_KEY, String(Date.now()));
+    _pendingWebPush.set(webPushKey(msg), Date.now());
+    seal.replyToSender(ctx, msg,
+        "⚠️ 这次改动只在机器人里，网页端还是旧值。\n" +
+        "回复「确认」→ 同步到网页端（推荐）。\n" +
+        "同步之前「自动拉取」会暂停，网页端的改动暂时不会进机器人，避免覆盖你刚改的内容。"
+    );
+}
+globalThis.__changriMarkWebDirty = markWebDirty;
+
 function handleApply(ctx, msg, rawMessage, paramHandler) {
     const lines = rawMessage.split('\n');
     const success = [];
@@ -103,6 +123,7 @@ function handleApply(ctx, msg, rawMessage, paramHandler) {
     let reply = `✅ 处理完成（成功 ${success.length} 项）\n` + success.join('\n');
     if (error.length > 0) reply += `\n\n❌ 失败项：\n` + error.join('\n');
     seal.replyToSender(ctx, msg, reply);
+    if (success.length > 0) markWebDirty(ctx, msg);
     return seal.ext.newCmdExecuteResult(true);
 }
 
@@ -1699,48 +1720,24 @@ async function fetchServerConfig() {
 // 一键初始化指令（先尝试拉取 UI 配置，拉不到则用内置默认值）
 // ========================
 
-let cmd_init_settings = seal.ext.newCmdItemInfo();
-cmd_init_settings.name = "初始化设置";
-cmd_init_settings.help = "【管理员】一键补全缺失的系统默认配置（优先从存档 UI 拉取）\n使用方法：。初始化设置";
-cmd_init_settings.solve = async (ctx, msg, argv) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
-
+// 不再作为玩家/管理员指令暴露：「创建新季度」成功后自动调用（清空季度数据会清掉这些设置，需要补回默认值）。
+// 只补空白项，已有设置不受影响；要强制覆盖用「。拉取全部」。返回从 UI 拉到的配置项数，拉不到（未配置/连不上）返回 null 并用内置默认值
+async function initSettingsCore() {
     const main = getMainExt();
-    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件 changri");
-
-    try {
-        const serverConfig = await fetchServerConfig();
-
-        if (serverConfig) {
-            // 只补空白项：server config 作为默认值，不覆盖已有设置
-            for (const [key, value] of Object.entries(serverConfig)) {
-                const existing = mainStorGet(key);
-                if (!existing || existing.trim() === "") {
-                    mainStorSet(key, String(value));
-                }
+    if (!main) return null;
+    const serverConfig = await fetchServerConfig();
+    if (serverConfig) {
+        for (const [key, value] of Object.entries(serverConfig)) {
+            const existing = mainStorGet(key);
+            if (!existing || existing.trim() === "") {
+                mainStorSet(key, String(value));
             }
-            ensureDefaults(main); // 补 server config 未覆盖的项
-            seal.replyToSender(ctx, msg,
-                `✅ 初始化完成（已从 UI 配置拉取 ${Object.keys(serverConfig).length} 项）\n` +
-                "• 仅补全空白项，已有设置不受影响\n" +
-                "• 如需强制覆盖所有设置，请使用「。拉取全部」"
-            );
-        } else {
-            ensureDefaults(main);
-            seal.replyToSender(ctx, msg,
-                "✅ 初始化完成（存档服务器未配置或无法连接，已使用内置默认值）\n" +
-                "• 仅补全空白项，已有设置不受影响"
-            );
         }
-    } catch (e) {
-        console.error("初始化失败:", e);
-        seal.replyToSender(ctx, msg, `❌ 初始化过程中出现错误: ${e.message}`);
     }
-
-    return seal.ext.newCmdExecuteResult(true);
-};
-
-ext.cmdMap["初始化设置"] = cmd_init_settings;
+    ensureDefaults(main); // 补 server config 未覆盖的项
+    return serverConfig ? Object.keys(serverConfig).length : null;
+}
+globalThis.__changriInitSettings = initSettingsCore;
 
 // 推送全部 使用的配置键列表
 const SYNC_DIRECT_KEYS = [
@@ -1814,15 +1811,21 @@ cmd_push_all.name = "推送全部";
 cmd_push_all.help = "【管理员】将机器人所有数据一次性推送到存档网页端\n使用方法：。推送全部";
 cmd_push_all.solve = async (ctx, msg, argv) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+    await pushAllCore(t => seal.replyToSender(ctx, msg, t));
+    return seal.ext.newCmdExecuteResult(true);
+};
+
+// 推送全部的本体：「。推送全部」和「。设置」改完后回复「确认」共用。返回 true=完成
+async function pushAllCore(say) {
 
     const main = getMainExt();
-    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件 changri");
+    if (!main) return say("❌ 无法连接主插件 changri");
 
     const base  = (seal.ext.getStringConfig(main.ext, "RP存档服务器地址") || "").replace(/\/$/, "");
     const token = seal.ext.getStringConfig(main.ext, "RP存档Token") || "";
-    if (!base) return seal.replyToSender(ctx, msg, "❌ 未配置存档服务器地址");
+    if (!base) return say("❌ 未配置存档服务器地址");
 
-    seal.replyToSender(ctx, msg, "⏳ 正在推送所有数据到网页端…");
+    say("⏳ 正在推送所有数据到网页端…");
 
     const authHeaders = { "Content-Type": "application/json", "X-Archive-Token": token };
     const payload = {};
@@ -1882,13 +1885,13 @@ cmd_push_all.solve = async (ctx, msg, argv) => {
             body: JSON.stringify(payload)
         });
         if (resp.status === 401 || resp.status === 403) {
-            return seal.replyToSender(ctx, msg, "❌ Token 无效或未配置，请检查插件设置里的「RP存档Token」");
+            return say("❌ Token 无效或未配置，请检查插件设置里的「RP存档Token」");
         }
         if (!resp.ok) throw new Error(`sync_config 返回 ${resp.status}`);
         const result = await resp.json();
         configSynced = result.synced || Object.keys(payload).length;
     } catch (e) {
-        return seal.replyToSender(ctx, msg, `❌ 配置推送失败：${e.message}`);
+        return say(`❌ 配置推送失败：${e.message}`);
     }
 
     // ── 推送池子 ─────────────────────────────────────────────────────────────
@@ -1927,10 +1930,10 @@ cmd_push_all.solve = async (ctx, msg, argv) => {
     msg_lines.push(`📋 配置+注册表+模版：${configSynced} 项`);
     msg_lines.push(poolErr ? `⚠️ 池子推送失败：${poolErr}` : `🎲 池子：${poolCount} 个`);
     msg_lines.push(auctionErr ? `⚠️ 拍卖快照推送失败：${auctionErr}` : `🔨 拍卖快照：${auctionCount} 件`);
-    seal.replyToSender(ctx, msg, msg_lines.join("\n"));
-
-    return seal.ext.newCmdExecuteResult(true);
-};
+    say(msg_lines.join("\n"));
+    markWebSynced();
+    return true;
+}
 ext.cmdMap["推送全部"] = cmd_push_all;
 
 
@@ -1942,15 +1945,21 @@ cmd_pull_all.name = "拉取全部";
 cmd_pull_all.help = "【管理员】将存档网页端所有数据一次性拉取到机器人\n使用方法：。拉取全部";
 cmd_pull_all.solve = async (ctx, msg, argv) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+    await pullAllCore(t => seal.replyToSender(ctx, msg, t));
+    return seal.ext.newCmdExecuteResult(true);
+};
+
+// 拉取全部的本体：「。拉取全部」手动触发和后台自动拉取共用。say 负责发进度/结果（自动拉取时只写日志）。返回 true=完成
+async function pullAllCore(say) {
 
     const main = getMainExt();
-    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件 changri");
+    if (!main) return say("❌ 无法连接主插件 changri");
 
     const base  = (seal.ext.getStringConfig(main.ext, "RP存档服务器地址") || "").replace(/\/$/, "");
     const token = seal.ext.getStringConfig(main.ext, "RP存档Token") || "";
-    if (!base) return seal.replyToSender(ctx, msg, "❌ 未配置存档服务器地址（在海豹插件设置里填写）");
+    if (!base) return say("❌ 未配置存档服务器地址（在海豹插件设置里填写）");
 
-    seal.replyToSender(ctx, msg, "⏳ 正在从网页端拉取所有数据…");
+    say("⏳ 正在从网页端拉取所有数据…");
 
     const headers = { "X-Archive-Token": token };
 
@@ -1987,7 +1996,7 @@ cmd_pull_all.solve = async (ctx, msg, argv) => {
             configCount++;
         }
     } catch (e) {
-        return seal.replyToSender(ctx, msg, `❌ 基础配置拉取失败：${e.message}`);
+        return say(`❌ 基础配置拉取失败：${e.message}`);
     }
 
     // ── 2. 处理「待上载物品」（从网页端拉取并合并入本地注册表） ───────────────────────
@@ -2183,11 +2192,88 @@ cmd_pull_all.solve = async (ctx, msg, argv) => {
     }
     
     msg_lines.push(`所有设置已立即生效。`);
-    seal.replyToSender(ctx, msg, msg_lines.join("\n"));
+    say(msg_lines.join("\n"));
+    markWebSynced();      // 刚按网页端整体覆盖过，机器人和网页端已一致
+    return true;
+}
+ext.cmdMap["拉取全部"] = cmd_pull_all;
 
+// ========================
+// 自动拉取：网页端改完不用再发「。拉取全部」
+// 不需要改存档服务器：机器人每 2 分钟看一眼网页端配置/池子/拍卖队列有没有变化，变了就静默跑一次拉取全部（只写日志，不在群里刷屏）。
+// 只在「网页端内容和上次看到的不一样」时才拉——机器人这边用「。设置」等指令改过、而网页端没动的值不会被旧值盖回去。
+// 前提是不要在网页和群里同时改同一项：先在群里改了、之后网页端又改了别的项，自动拉取会按网页端整体内容覆盖，群里那次改动可能丢
+// ========================
+const AUTO_PULL_INTERVAL_MS = 2 * 60 * 1000;
+let _autoPullBusy = false;
+
+async function fetchWebSnapshotHash() {
+    const main = getMainExt();
+    if (!main) return null;
+    const base  = (seal.ext.getStringConfig(main.ext, "RP存档服务器地址") || "").replace(/\/$/, "");
+    const token = seal.ext.getStringConfig(main.ext, "RP存档Token") || "";
+    if (!base) return null;
+    const headers = { "X-Archive-Token": token };
+    let raw = "";
+    for (const path of ["/api/config", "/api/pool_config", "/api/auction_queue"]) {
+        const resp = await fetch(base + path, { headers });
+        if (!resp.ok) return null;                    // 任何一个取不到就本轮放弃，别拿残缺快照去比
+        let text = await resp.text();
+        // 机器人自己每次同步都会刷新的时间戳，不算「网页端改了」
+        text = text.replace(/"_last_bot_sync"\s*:\s*"?\d+"?/g, "");
+        raw += path + "\n" + text + "\n";
+    }
+    let h = 5381;                                      // djb2，够用来判「变没变」
+    for (let i = 0; i < raw.length; i++) h = ((h << 5) + h + raw.charCodeAt(i)) | 0;
+    return `${raw.length}:${h}`;
+}
+
+async function autoPullTick() {
+    if (_autoPullBusy) return;
+    if ((mainStorGet("auto_pull_enabled") || "on") === "off") return;
+    if (isWebDirty()) return;          // 群里有改动还没同步到网页，先别拉，免得被网页旧值盖掉
+    _autoPullBusy = true;
+    try {
+        const hash = await fetchWebSnapshotHash();
+        if (!hash) return;
+        const last = mainStorGet("auto_pull_hash");
+        if (!last) { mainStorSet("auto_pull_hash", hash); return; }   // 第一次只记基准，不拉
+        if (hash === last) return;
+        console.log("[自动拉取] 检测到网页端有更新，开始拉取…");
+        const logs = [];
+        const ok = await pullAllCore(t => logs.push(t));
+        console.log("[自动拉取] " + logs.filter(t => !t.startsWith("⏳")).join(" | "));
+        if (ok) {
+            // 拉取过程会往网页端回写（_last_bot_sync、注册表回写等），以拉完之后的网页端内容为新基准，避免自己触发自己
+            const after = await fetchWebSnapshotHash();
+            mainStorSet("auto_pull_hash", after || hash);
+        }
+    } catch (e) {
+        console.error("[自动拉取] 失败: " + e.message);
+    } finally {
+        _autoPullBusy = false;
+    }
+}
+
+if (globalThis.__changriAutoPullTimer) clearInterval(globalThis.__changriAutoPullTimer);
+globalThis.__changriAutoPullTimer = setInterval(autoPullTick, AUTO_PULL_INTERVAL_MS);
+
+let cmd_auto_pull = seal.ext.newCmdItemInfo();
+cmd_auto_pull.name = "自动拉取";
+cmd_auto_pull.help = "【管理员】网页端有改动时机器人自动拉取（每 2 分钟检查一次，默认开启）\n使用方法：。自动拉取 开启/关闭/状态";
+cmd_auto_pull.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+    const a = (cmdArgs.getArgN(1) || "状态").trim();
+    if (a === "开启" || a === "关闭") {
+        mainStorSet("auto_pull_enabled", a === "开启" ? "on" : "off");
+        if (a === "开启") mainStorSet("auto_pull_hash", "");   // 重新记基准，别把关闭期间的改动当成刚发生的
+    }
+    const on = (mainStorGet("auto_pull_enabled") || "on") !== "off";
+    seal.replyToSender(ctx, msg, `自动拉取：${on ? "✅ 开启" : "⛔ 关闭"}（网页端有改动时每 2 分钟内自动生效；也可随时手动「。拉取全部」）` +
+        (isWebDirty() ? "\n⚠️ 当前有群里改的内容还没同步到网页，自动拉取已暂停：发「。推送全部」同步到网页，或「。拉取全部」放弃群里的改动、以网页端为准" : ""));
     return seal.ext.newCmdExecuteResult(true);
 };
-ext.cmdMap["拉取全部"] = cmd_pull_all;
+ext.cmdMap["自动拉取"] = cmd_auto_pull;
 
 // ── 同步指南 ──────────────────────────────────────────────────────────────────
 
@@ -2260,6 +2346,21 @@ function sendSyncGuideForward(groupId) {
 
 ext.onNotCommandReceived = (ctx, msg) => {
     const raw = (msg.rawMessage || msg.message || "").trim();
+    if (raw === "确认") {
+        const key = webPushKey(msg);
+        const t = _pendingWebPush.get(key);
+        if (t) {
+            _pendingWebPush.delete(key);
+            if (!isUserAdmin(ctx, msg)) return;
+            if (Date.now() - t > PENDING_WEB_PUSH_TTL_MS) {
+                seal.replyToSender(ctx, msg, "⌛ 确认已超时，请发「。推送全部」手动同步到网页端。");
+                return seal.ext.newCmdExecuteResult(true);
+            }
+            pushAllCore(text => seal.replyToSender(ctx, msg, text));
+            return seal.ext.newCmdExecuteResult(true);
+        }
+        return;
+    }
     if (raw !== "同步指南") return;
     if (!msg.groupId) {
         seal.replyToSender(ctx, msg, "请在群内使用此指令。");

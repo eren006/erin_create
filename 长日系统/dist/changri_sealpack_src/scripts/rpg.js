@@ -18,7 +18,7 @@
 
 let ext = seal.ext.find('changriRPG');
 if (!ext) {
-    ext = seal.ext.new("changriRPG", "长日将尽", "2.1.0");
+    ext = seal.ext.new("changriRPG", "长日将尽", "2.2.0");
     seal.ext.register(ext);
 }
 
@@ -39,6 +39,7 @@ function getRoleName(ctx, msg)             { return getApi()?.getRoleName(ctx, m
 function getRoleUid(platform, roleName)    { return getApi()?.getUidByRoleName(platform, roleName) ?? null; }
 function isUserAdmin(ctx, msg)             { return getApi()?.isUserAdmin(ctx, msg) ?? false; }
 function ws(postData, ctx, msg, ok)        { return getApi()?.ws(postData, ctx, msg, ok); }
+function sendForwardBatched(ctx, msg, gid, nodes, startDelayMs) { return getApi()?.sendForwardBatched(ctx, msg, gid, nodes, startDelayMs); }
 function getSafeEndPoint(platform = "QQ") {
     const api = getApi();
     if (api) return api.getSafeEndPoint(platform);
@@ -56,7 +57,7 @@ function isSelfAttrEditEnabled()           { return mainKvGet('global_feature_to
 
 // 将长文本按空行切块，攒到 CHUNK_LEN 就切一段，供合并转发按段拆成多个节点
 function chunkBagText(text) {
-    const CHUNK_LEN = 300;
+    const CHUNK_LEN = 1000;
     const parts = [];
     let current = "";
     for (const block of text.split("\n\n")) {
@@ -72,13 +73,14 @@ function chunkBagText(text) {
     return parts;
 }
 
-// 群聊内以合并转发发送多段内容；私聊没有合并转发能力，退化为逐条普通消息
+// 群聊内以合并转发发送多段内容；节点数/字数超限时由主插件的 sendForwardBatched 自动拆成多条依次发出；
+// 私聊没有合并转发能力，退化为逐条普通消息
 function sendForwardOrPlain(ctx, msg, contents, nickname = "长日系统") {
     if (!contents.length) return;
     if (msg.groupId) {
-        const nodes = contents.map(content => ({ type: "node", data: { name: nickname, uin: "2852199344", content } }));
-        const targetGid = msg.groupId.replace(/[^\d]/g, "");
-        ws({ action: "send_group_forward_msg", params: { group_id: parseInt(targetGid, 10), messages: nodes } }, ctx, msg, "");
+        const botUid = String(ctx.endPoint?.userId || "").replace(/^[A-Za-z]+:/, "") || "2852199344";
+        const nodes = contents.map(content => ({ type: "node", data: { name: nickname, uin: botUid, content } }));
+        sendForwardBatched(ctx, msg, parseInt(msg.groupId.replace(/[^\d]/g, ""), 10), nodes);
     } else {
         for (const content of contents) seal.replyToSender(ctx, msg, content);
     }
@@ -893,6 +895,7 @@ cmd_upload.solve = (ctx, msg, cmdArgs) => {
 
     saveRegistry(reg);
     seal.replyToSender(ctx, msg, `上载结果（共${results.length}条）：\n${results.join("\n")}`);
+    if (results.some(r => r.startsWith("✅"))) globalThis.__changriMarkWebDirty?.(ctx, msg);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["上载"] = cmd_upload;
@@ -6172,6 +6175,23 @@ function sendToAdminGroupRPG(platform, text) {
     } catch (e) { console.error("[定时收集] sendToAdminGroup:", e.message); }
 }
 
+// 「收集开启」这类面向玩家的播报走上面的公告群；单条提交是给管理员看的后台提醒，
+// 跟长日系统.js「我提交」「提交二表」一样走后台群，两者是不同的群，别混用
+function sendToBackgroundGroupRPG(platform, text) {
+    const main = getMainExt();
+    if (!main) return;
+    const gid = mainKvGet("background_group_id", null);
+    if (!gid) return;
+    try {
+        const ep = getSafeEndPoint(platform);
+        if (!ep) return;
+        const m = seal.newMessage();
+        m.messageType = "group";
+        m.groupId = `${platform}-Group:${gid}`;
+        seal.replyToSender(seal.createTempCtx(ep, m), m, text);
+    } catch (e) { console.error("[定时收集] sendToBackgroundGroup:", e.message); }
+}
+
 // withAt=true 时在每个玩家的私人群里单独艾特该玩家
 function broadcastToAllPlayerGroups(platform, text, withAt) {
     const main = getMainExt();
@@ -6363,6 +6383,7 @@ cmd_collection_submit.solve = (ctx, msg, cmdArgs) => {
     }
     const name = sub;
     if (!name) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    const platform = msg.platform;
     const cols = getCollections();
     if (!cols[name]) return seal.replyToSender(ctx, msg, `❌ 找不到收集「${name}」。`);
     if (!cols[name].active) {
@@ -6391,6 +6412,8 @@ cmd_collection_submit.solve = (ctx, msg, cmdArgs) => {
     if (!cols[name].submissions) cols[name].submissions = [];
     cols[name].submissions.push({ roleName, time: timeStr, content });
     saveCollections(cols);
+    // 之前只回复玩家本人，管理员得自己发「查看定时收集」才知道有没有新提交——现在跟「我提交」一样提醒后台群
+    sendToBackgroundGroupRPG(platform, `📥 ${roleName} 向「${name}」提交了定时收集（当前共 ${cols[name].submissions.length} 条），发送「查看定时收集 ${name}」查看。`);
     seal.replyToSender(ctx, msg, `✅ 已提交「${name}」收集，谢谢！`);
     return seal.ext.newCmdExecuteResult(true);
 };

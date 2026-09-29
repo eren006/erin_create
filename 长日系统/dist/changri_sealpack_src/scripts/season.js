@@ -38,6 +38,7 @@ function mainKvSet(key, val) { const api = getApi(); if (api) api.kvSet(key, val
 function isUserAdmin(ctx, msg)         { return getApi()?.isUserAdmin(ctx, msg) ?? false; }
 function isArchiveEnabled()            { return getApi()?.isArchiveEnabled() ?? false; }
 function ws(postData, ctx, msg, ok, err) { return getApi()?.ws(postData, ctx, msg, ok, err); }
+function sendForwardBatched(ctx, msg, gid, nodes, startDelayMs) { return getApi()?.sendForwardBatched(ctx, msg, gid, nodes, startDelayMs); }
 function wsRequest(postData, onResponse, onTimeout, timeoutMs) { return getApi()?.wsRequest(postData, onResponse, onTimeout, timeoutMs); }
 function wsBatchSync(queue, ctx, msg)  { return getApi()?.wsBatchSync(queue, ctx, msg); }
 function getRoleDetails(platform, name){ return getApi()?.getRoleDetails(platform, name) ?? {}; }
@@ -128,15 +129,12 @@ cmd_admin_help.solve = (ctx, msg) => {
              `   ${groupsUrl}`,
              "2. 【网页】创建指令指南：",
              `   ${guidesUrl}`,
-             "3. 。清空季度数据  ← 扫描残留玩家并清空上季数据",
-             "4. 。创建新季度 恋综名 复盘/不复盘 MMDD-MMDD [补戏MMDD]",
-             "5. 。开启群号组 组名  ← 从后台拉取群号到戏群池",
-             "6. 确认/更新戏群、后台群、公告群、水群群号（本季可能变化，清空季度数据会清空这四项）：",
+             "3. 。创建新季度 恋综名 复盘/不复盘 MMDD-MMDD [补戏MMDD]  ← 上季数据没清会提示回复「确认」自动清空",
+             "4. 。开启群号组 组名  ← 从后台拉取群号到戏群池",
+             "5. 确认/更新戏群、后台群、公告群、水群群号（本季可能变化，清空季度数据会清空这四项；系统其余设置创建季度时已自动补全）：",
              "   网页端系统参数配置 或 。设置 基础设置",
-             "7. 。初始化设置  ← 从后台拉取系统配置（或 。拉取全部 强制覆盖）",
-             "8. 。创建NPC 角色名  ← 注册所有NPC（复盘模式必须）",
-             "9. 玩家自行：创建新角色 角色名",
-             "10. 。设置天数 D0  ← 确认天数状态"],
+             "6. 。创建NPC 角色名  ← 注册所有NPC（复盘模式必须）",
+             "7. 玩家自行：创建新角色 角色名（天数已自动占位 D100，档期开始日自动切 D0，无需手动设置）"],
             ["【📅 日常运营】",
              "• 查看进行中         ← 查看所有进行中约会",
              "• 查看计时器         ← 查看活跃群倒计时",
@@ -160,10 +158,8 @@ cmd_admin_help.solve = (ctx, msg) => {
             "。创建新季度 恋综名 复盘/不复盘 MMDD-MMDD [补戏MMDD]",
             "。开启群号组 组名",
             "。设置 基础设置",
-            "。初始化设置",
             "。拉取全部",
             "。创建NPC 角色名",
-            "。设置天数 D0",
             "查看进行中",
             "查看计时器",
             "提醒超时",
@@ -197,15 +193,12 @@ function buildSeasonGuideSections() {
     const index = [
         ["📆 季度指南"],
         ["【🆕 开季】",
-         "1. 。清空季度数据  ← 扫描残留玩家并清空上季数据",
-         "2. 。创建新季度 恋综名 复盘/不复盘 MMDD-MMDD [补戏MMDD]",
-         "3. 。开启群号组 组名  ← 从后台拉取群号到戏群池",
-         "4. 确认/更新戏群、后台群、公告群、水群群号（本季可能变化，清空季度数据会清空这四项）：",
+         "1. 。创建新季度 恋综名 复盘/不复盘 MMDD-MMDD [补戏MMDD]  ← 上季数据没清会提示回复「确认」自动清空",
+         "2. 。开启群号组 组名  ← 从后台拉取群号到戏群池",
+         "3. 确认/更新戏群、后台群、公告群、水群群号（本季可能变化，清空季度数据会清空这四项；系统其余设置创建季度时已自动补全）：",
          "   网页端系统参数配置 或 。设置 基础设置",
-         "5. 。初始化设置  ← 从后台拉取系统配置（或 。拉取全部 强制覆盖）",
-         "6. 。创建NPC 角色名  ← 注册所有NPC（复盘模式必须）",
-         "7. 玩家自行：创建新角色 角色名",
-         "8. 。设置天数 D0  ← 确认天数状态"],
+         "4. 。创建NPC 角色名  ← 注册所有NPC（复盘模式必须）",
+         "5. 玩家自行：创建新角色 角色名（天数已自动占位 D100，档期开始日自动切 D0，无需手动设置）"],
         ["【📅 进行中】",
          "• 。设置天数 Dx / 。开启自动天数  ← 推进游戏天数",
          "• 。修改档期 MMDD-MMDD [补戏MMDD]  ← 中途调整档期范围",
@@ -230,10 +223,8 @@ function buildSeasonGuideSections() {
         "。创建新季度 恋综名 复盘/不复盘 MMDD-MMDD [补戏MMDD]",
         "。开启群号组 组名",
         "。设置 基础设置",
-        "。初始化设置",
         "。拉取全部",
         "。创建NPC 角色名",
-        "。设置天数 D0",
         "。设置天数 Dx",
         "。开启自动天数",
         "。修改档期 MMDD-MMDD [补戏MMDD]",
@@ -610,10 +601,17 @@ cmd_abolish_schedule.solve = (ctx, msg, cmdArgs) => {
 // ========================
 // ── 创建新季度
 // ========================
+// 「创建新季度」发现残留数据时挂起的参数，等同一人在同一处回复「确认」；仅内存，重启即丢，5 分钟过期
+const _pendingNewSeason = new Map();
+const PENDING_NEW_SEASON_TTL_MS = 5 * 60 * 1000;
+function pendingSeasonKey(msg) {
+    return `${msg.platform}:${msg.sender.userId}:${msg.groupId || ""}`;
+}
+
 let cmd_new_season = seal.ext.newCmdItemInfo();
 cmd_new_season.name = "创建新季度";
 cmd_new_season.help = `用法：。创建新季度 恋综名 复盘/不复盘 MMDD-MMDD [补戏MMDD]
-前提：须先执行「。清空季度数据」（角色存储为空）
+若上季数据还没清空，会提示回复「确认」自动清空后继续创建，不用再单独发「。清空季度数据」
 
 参数说明：
   恋综名       季度显示名
@@ -648,14 +646,19 @@ cmd_new_season.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    if (!isRoleStorageEmpty()) {
-        seal.replyToSender(ctx, msg, "❌ 请先执行「。清空季度数据」清空角色数据，再创建新季度。");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
     let scheduleStart = "", scheduleEnd = "", supplementEnd = "";
     if (!scheduleArg || !/^\d{4}-\d{4}$/.test(scheduleArg)) {
         seal.replyToSender(ctx, msg, `❌ 档期为必填项，格式 MMDD-MMDD（如 0610-0614）。\n完整用法：。创建新季度 恋综名 复盘/不复盘 MMDD-MMDD [补戏MMDD]`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    if (!isRoleStorageEmpty()) {
+        // 发现上季残留：不再让管理员先手敲「清空季度数据」，记下这次的参数，等回复「确认」后自动清空并继续创建
+        _pendingNewSeason.set(pendingSeasonKey(msg), { args: [seasonName, modeArg, scheduleArg, suppArg].filter(Boolean), ts: Date.now() });
+        seal.replyToSender(ctx, msg,
+            `⚠️ 检测到上季角色数据还没清空。\n` +
+            `回复「确认」将自动清空上季数据（会先检查群里有无残留玩家），然后继续创建「${seasonName}」。\n` +
+            `（5 分钟内有效，不想清空就忽略这条）`
+        );
         return seal.ext.newCmdExecuteResult(true);
     }
     [scheduleStart, scheduleEnd] = scheduleArg.split("-");
@@ -724,6 +727,16 @@ cmd_new_season.solve = (ctx, msg, cmdArgs) => {
             if (!reg["CUR_LETTER"])           { reg["CUR_LETTER"] = { code: "CUR_LETTER", name: "写信币", desc: "通过发送信件获得的货币，可用于各种消费。", type: "currency", attrs: null }; regChanged = true; }
             if (regChanged) mainKvSet("item_registry", reg);
 
+            // 原「。初始化设置」：清空季度数据会清掉系统设置，创建季度后自动补回（只补空白项，优先取网页端配置）
+            let initHint = "";
+            try {
+                const n = await globalThis.__changriInitSettings?.();
+                initHint = n == null ? `\n⚙️ 系统设置已补全默认值` : `\n⚙️ 系统设置已补全（从网页端取到 ${n} 项配置）`;
+            } catch (e) {
+                console.error("[创建新季度] 自动初始化设置失败:", e.message);
+                initHint = `\n⚠️ 系统设置自动补全失败，请发「。拉取全部」`;
+            }
+
             let scheduleHint = "";
             if (scheduleStart && scheduleEnd) {
                 const mm1 = scheduleStart.slice(0,2), dd1 = scheduleStart.slice(2);
@@ -734,11 +747,15 @@ cmd_new_season.solve = (ctx, msg, cmdArgs) => {
                     scheduleHint += `（补戏至 ${parseInt(mms)}/${parseInt(dds)}）`;
                 }
                 scheduleHint += `\n   · 档期前：互动不记录 · 天数已占位为 D100，开始日自动切 D0`;
+                const tMMDD = (d => String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0"))(new Date());
+                if (scheduleStart < tMMDD && scheduleStart <= scheduleEnd) {
+                    scheduleHint += `\n   ⚠️ 档期开始日已过，不会自动切 D0，请手动「。设置天数 Dx」`;
+                }
                 if (supplementEnd) scheduleHint += `\n   · 补戏期：场次记录，弧长不计`;
             }
 
             seal.replyToSender(ctx, msg,
-                `✅ 季度「${seasonName}」已开启（${modeLabel}模式）${scheduleHint}\n\n` +
+                `✅ 季度「${seasonName}」已开启（${modeLabel}模式）${scheduleHint}${initHint}\n\n` +
                 `现在可以使用：\n` +
                 `• 创建新角色 角色名\n` +
                 `• 创建NPC 角色名\n\n` +
@@ -1846,12 +1863,13 @@ cmd_review_view.solve = (ctx, msg, cmdArgs) => {
                 entries.forEach(e => {
                     const hadImage = /\[CQ:image[^\]]*\]/.test(e.content || "");
                     const textOnly = (e.content || "").replace(/\[CQ:image[^\]]*\]/g, "").trim();
-                    const content = hadImage ? `${textOnly}${textOnly ? "\n" : ""}（图片未随复盘保留，链接可能已过期）` : (e.content || "");
+                    const content = hadImage ? `${textOnly}${textOnly ? "\n" : ""}（图片未随复盘保留，链接可能已过期）` : textOnly;
                     nodes.push({ type: "node", data: { name: e.role_name || "未知", uin: botUid, content } });
                 });
             }
 
-            ws({ action: "send_group_forward_msg", params: { group_id: gidInt, messages: nodes } }, ctx, msg, "");
+            // 空气泡跳过、超长正文拆分、按节点数/字数分批、多条错开发送，都在主插件的 sendForwardBatched 里统一处理
+            sendForwardBatched(ctx, msg, gidInt, nodes);
         } catch (e) {
             seal.replyToSender(ctx, msg, `❌ 请求异常：${e.message || String(e)}`);
         }
@@ -1872,6 +1890,25 @@ ext.onNotCommandReceived = (ctx, msg) => {
         args: ['', ...parts],
         getArgN: (n) => parts[n - 1] || "",
     });
+
+    // 「创建新季度」发现残留数据后，管理员在同一处回复「确认」→ 自动清空上季数据并继续创建
+    if (raw === "确认") {
+        const key = pendingSeasonKey(msg);
+        const pending = _pendingNewSeason.get(key);
+        if (pending) {
+            _pendingNewSeason.delete(key);
+            if (Date.now() - pending.ts > PENDING_NEW_SEASON_TTL_MS) {
+                seal.replyToSender(ctx, msg, "⌛ 确认已超时，请重新发送「。创建新季度 …」。");
+                return seal.ext.newCmdExecuteResult(true);
+            }
+            if (!isUserAdmin(ctx, msg)) return;
+            (async () => {
+                const cleared = await getApi().resetSeasonData(ctx, msg, false, true);
+                if (cleared && isRoleStorageEmpty()) cmd_new_season.solve(ctx, msg, makeFakeCmdArgs(pending.args));
+            })();
+            return seal.ext.newCmdExecuteResult(true);
+        }
+    }
 
     if (raw.startsWith("修改时间线")) {
         const rest = raw.slice(5).trim();
