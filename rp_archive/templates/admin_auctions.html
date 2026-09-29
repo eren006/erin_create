@@ -296,7 +296,7 @@
 
 <div class="sync-tip">
   💡 <b>同步流程：</b>
-  在网页添加待拍卖物品后，在机器人发送&nbsp;<code>拉取拍卖队列</code>&nbsp;即可激活；
+  在网页添加待拍卖物品并保存后，机器人 2 分钟内自动激活；
   发送&nbsp;<code>上传拍卖</code>&nbsp;可将机器人当前拍卖状态推送到此页面查看。
 </div>
 
@@ -428,7 +428,7 @@ function renderQueue() {
   countEl.textContent = queue.length ? `${queue.length} 件待拍` : "";
 
   if (!queue.length) {
-    list.innerHTML = `<div class="empty-note">队列为空<br>添加物品后保存，再在机器人中发送「拉取拍卖队列」</div>`;
+    list.innerHTML = `<div class="empty-note">队列为空<br>添加物品后保存，机器人 2 分钟内自动激活</div>`;
     return;
   }
 
@@ -488,7 +488,7 @@ async function saveQueue() {
       body: JSON.stringify({ queue })
     });
     const data = await res.json();
-    if (data.ok) showToast("✅ 保存成功！在机器人中发送「拉取拍卖队列」即可激活。", true);
+    if (data.ok) showToast("✅ 保存成功！机器人 2 分钟内自动激活。", true);
     else showToast("❌ 保存失败：" + (data.error || "未知错误"), false);
   } catch (e) {
     showToast("❌ 网络错误：" + e.message, false);

@@ -386,7 +386,7 @@ async function saveShop() {
     });
     const d = await res.json();
     if (d.ok) {
-      showToast('✅ 商城已保存。在机器人发送「拉取全部」可推送到机器人。');
+      showToast('✅ 商城已保存，机器人 2 分钟内自动同步。');
       document.getElementById('shop-save-status').textContent = '';
     } else {
       showToast('❌ 保存失败：' + (d.error || '未知错误'));

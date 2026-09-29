@@ -188,6 +188,9 @@
     {% else %}
     <div class="occ-empty">目前没有进行中的场次，所有群处于空闲状态。</div>
     {% endif %}
+    {% if occupied_synced_str %}
+    <div style="padding:8px 16px;font-size:12px;color:var(--muted);">机器人最近一次上报：{{ occupied_synced_str }}（群号池变化后几秒内自动上报，含微信群）</div>
+    {% endif %}
   </div>
 
   {% if msg and msg.startswith('bulk_added_') %}

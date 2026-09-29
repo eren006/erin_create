@@ -485,24 +485,36 @@ function savePlayerDrawRec(records, key, rec) {
     mainKvSet("player_draw_records", records);
 }
 
+// 额外次数是一次性的：当日基础次数用完后才动用，用一次扣一次（不随游戏日重置）
 function canDraw(rec, config, poolName) {
     const usedTotal = rec.used._total || 0;
     const extraTotal = rec.extra._total || 0;
     const totalBase = (config.total !== null && config.total !== undefined) ? config.total : Infinity;
-    if (usedTotal >= totalBase + extraTotal) return { ok: false, reason: "今日总抽取次数已用完" };
+    if (usedTotal >= totalBase && extraTotal <= 0) return { ok: false, reason: "今日总抽取次数已用完" };
     if (poolName) {
         const poolBase = config.pools?.[poolName];
         if (poolBase !== null && poolBase !== undefined) {
             const usedPool = rec.used[poolName] || 0;
             const extraPool = rec.extra[poolName] || 0;
-            if (usedPool >= poolBase + extraPool) return { ok: false, reason: `「${poolName}」今日抽取次数已用完` };
+            if (usedPool >= poolBase && extraPool <= 0) return { ok: false, reason: `「${poolName}」今日抽取次数已用完` };
         }
     }
     return { ok: true };
 }
 
-function consumeDraw(rec, poolName) {
-    rec.used._total = (rec.used._total || 0) + 1;
+function consumeDraw(rec, config, poolName) {
+    if (!rec.extra) rec.extra = {};
+    const usedTotal = rec.used._total || 0;
+    const totalBase = (config.total !== null && config.total !== undefined) ? config.total : Infinity;
+    if (usedTotal >= totalBase && (rec.extra._total || 0) > 0) rec.extra._total -= 1;
+    if (poolName) {
+        const poolBase = config.pools?.[poolName];
+        if (poolBase !== null && poolBase !== undefined
+            && (rec.used[poolName] || 0) >= poolBase && (rec.extra[poolName] || 0) > 0) {
+            rec.extra[poolName] -= 1;
+        }
+    }
+    rec.used._total = usedTotal + 1;
     if (poolName) rec.used[poolName] = (rec.used[poolName] || 0) + 1;
 }
 
@@ -895,10 +907,11 @@ cmd_upload.solve = (ctx, msg, cmdArgs) => {
 
     saveRegistry(reg);
     seal.replyToSender(ctx, msg, `上载结果（共${results.length}条）：\n${results.join("\n")}`);
-    if (results.some(r => r.startsWith("✅"))) globalThis.__changriMarkWebDirty?.(ctx, msg);
     return seal.ext.newCmdExecuteResult(true);
 };
-ext.cmdMap["上载"] = cmd_upload;
+// 「上载」指令已取消：物品统一在网页端物品库添加（以网页端为准，机器人 2 分钟内自动同步）。
+// 群里上载的物品只存在机器人里，下次网页端有改动自动拉取时会被覆盖丢失，所以不再注册这个指令；函数体暂留，需要时取消下面这行注释即可恢复
+// ext.cmdMap["上载"] = cmd_upload;
 
 
 let cmd_item_list = seal.ext.newCmdItemInfo();
@@ -1299,7 +1312,7 @@ ext.cmdMap["调整"] = cmd_adjust;
 
 let cmd_grant_draws = seal.ext.newCmdItemInfo();
 cmd_grant_draws.name = "发放抽取";
-cmd_grant_draws.help = "【管理员】给玩家额外抽取次数（永久，不随游戏日重置）\n发放抽取 角色名 N —— 总量额外N次\n发放抽取 角色名 池子名 N —— 特定池额外N次";
+cmd_grant_draws.help = "【管理员】给玩家额外抽取次数（一次性，当日基础次数用完后才消耗，用掉即扣，不随游戏日重置）\n发放抽取 角色名 N —— 总量额外N次\n发放抽取 角色名 池子名 N —— 特定池额外N次";
 cmd_grant_draws.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     const roleName = cmdArgs.getArgN(1);
@@ -2383,7 +2396,7 @@ cmd_draw.solve = (ctx, msg, cmdArgs) => {
         drawnCode = drawFromFree(pool, defs);
     }
     if (!drawnCode) return seal.replyToSender(ctx, msg, `❌ 池子「${poolName}」已空。`);
-    consumeDraw(rec, poolName);
+    consumeDraw(rec, config, poolName);
     savePlayerDrawRec(records, key, rec);
     addToInv(roleKey, drawnCode, 1);
     const item = reg[drawnCode] || { name: drawnCode, desc: "" };
@@ -2414,16 +2427,15 @@ cmd_draw_count.solve = (ctx, msg) => {
     const usedTotal = rec.used._total || 0;
     const extraTotal = rec.extra._total || 0;
     const totalBase = (config.total !== null && config.total !== undefined) ? config.total : null;
-    const totalMax = totalBase !== null ? totalBase + extraTotal : null;
-    const remaining = totalMax !== null ? Math.max(0, totalMax - usedTotal) : "∞";
-    let text = `🎲 【${roleName}】今日抽取：\n总量：${usedTotal}/${totalMax !== null ? totalMax : "∞"}，剩余 ${remaining}`;
-    if (extraTotal > 0) text += `（含额外 ${extraTotal} 次）`;
+    const remaining = totalBase !== null ? Math.max(0, totalBase - usedTotal) + extraTotal : "∞";
+    let text = `🎲 【${roleName}】今日抽取：\n总量：已用 ${usedTotal}${totalBase !== null ? `/${totalBase}` : ""}，剩余 ${remaining}`;
+    if (extraTotal > 0) text += `（含一次性额外 ${extraTotal} 次）`;
     const defs = getPoolDefs();
     for (const [pn, base] of Object.entries(config.pools || {})) {
         if (defs[pn]?.enabled) {
             const usedP = rec.used[pn] || 0;
             const extraP = rec.extra[pn] || 0;
-            text += `\n  · ${pn}：${usedP}/${base + extraP}`;
+            text += `\n  · ${pn}：${usedP}/${base}` + (extraP > 0 ? `（另有一次性额外 ${extraP} 次）` : "");
         }
     }
     seal.replyToSender(ctx, msg, text);

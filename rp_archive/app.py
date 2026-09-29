@@ -69,6 +69,7 @@ SUPERADMIN_PASS = os.environ.get("SUPERADMIN_PASS",
 PLAYERS_PER_PAGE = 50
 
 # 信息收集图片：单张大小上限 / 每用户每季度累计配额上限（结束季度时清空重置）
+MAX_SHOWS_PER_TENANT = 10   # 每个租户最多保留的季度数（含已结束的），满了要先删旧的
 COLLECT_IMAGE_MAX_BYTES = 3 * 1024 * 1024
 COLLECT_IMAGE_USER_QUOTA_BYTES = 30 * 1024 * 1024
 COLLECT_IMAGE_DIR = os.path.join(os.path.dirname(__file__), "static", "collected_images")
@@ -418,14 +419,14 @@ COMMAND_BLOCKS = [
         "  设置各天数的心动信每日上限",
         "  例：。设置信箱上限 默认 3",
         "",
-        "。初始化设置",
-        "  将所有设置恢复为默认值（慎用）",
+        "。自动拉取 开启/关闭/状态/立即检查/通知开启/通知关闭",
+        "  网页端改完保存后，机器人每 2 分钟自动拉取（默认开启），并往后台群发合并转发说明改了什么",
         "",
         "。推送全部",
-        "  【推荐】将机器人所有数据一次性推送到网页端（配置+注册表+模版+池子+礼品库）",
+        "  将机器人里改过的配置推送到网页端；物品和池子以网页端为准，默认不推送，加「含物品池子」才一起推",
         "",
         "。拉取全部",
-        "  【推荐】将网页端所有数据一次性拉取到机器人（配置+注册表+模版+池子）",
+        "  立即把网页端所有数据拉取到机器人（配置+注册表+模版+池子+拍卖队列）；日常不用发，自动拉取会做",
         "",
         "。创建新季度 恋综名 复盘/不复盘 [MMDD-MMDD] [补戏MMDD]",
         "  新建一个游戏季度，可指定档期",
@@ -546,12 +547,9 @@ COMMAND_BLOCKS = [
     ]},
     {"key": "adm_items", "label": "🎲 物品管理", "category": "admin", "lines": [
         "【注册】",
-        "。上载物品 名称*描述[*属性效果]  （支持多行批量）",
-        "  例：。上载物品 急救包*紧急治疗用品*体力+20",
+        "物品、互动物品统一在网页端「物品注册管理」添加（支持批量粘贴一大段，一行一件），保存后机器人 2 分钟内自动同步",
         "。注册货币 名称*描述",
         "  例：。注册货币 金币*基础流通货币",
-        "。上载互动物品 名称*描述*互动效果",
-        "  注册可施加给他人的互动类道具",
         "。删除物品 物品码",
         "  删除已注册的物品",
         "。物品列表 [物品|货币|预设|全部]",
@@ -672,7 +670,7 @@ COMMAND_BLOCKS = [
         "。结算拍卖 #编号",
         "  手动结算指定拍卖（无需到期）",
         "",
-        "（拍卖队列拉取 / 快照推送已并入「。拉取全部」和「。推送全部」）",
+        "（拍卖队列会随网页端保存自动同步；快照推送包含在「。推送全部」里）",
     ]},
     {"key": "adm_collect", "label": "📋 定时收集管理", "category": "admin", "lines": [
         "。创建定时收集 时间 项目名",
@@ -1208,6 +1206,27 @@ def _migrate(conn):
             description TEXT DEFAULT '',
             created_at  INTEGER DEFAULT 0,
             set_name    TEXT NOT NULL DEFAULT ''
+        )
+    """)
+    # 群号占用快照：机器人按本地群号池的真实状态整体上报，后台「当前占用群」优先用这张表
+    # （之前靠场次记录推算：强结漏关的、没有场次记录的微信群都会算错）
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS group_occupancy (
+            tenant_id    INTEGER NOT NULL,
+            group_id     TEXT    NOT NULL,
+            subtype      TEXT    NOT NULL DEFAULT '',
+            game_day     TEXT    NOT NULL DEFAULT '',
+            game_time    TEXT    NOT NULL DEFAULT '',
+            place        TEXT    NOT NULL DEFAULT '',
+            participants TEXT    NOT NULL DEFAULT '[]',
+            start_ts     INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (tenant_id, group_id)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS group_occupancy_sync (
+            tenant_id INTEGER PRIMARY KEY,
+            synced_at INTEGER NOT NULL DEFAULT 0
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_known_groups_tenant ON known_groups(tenant_id)")
@@ -1972,6 +1991,9 @@ def api_new_season():
     supp_end    = (data.get("supplement_end") or "").strip()
 
     db = get_db()
+    total = db.execute("SELECT COUNT(*) FROM shows WHERE tenant_id=?", (tid,)).fetchone()[0]
+    if total >= MAX_SHOWS_PER_TENANT:
+        return jsonify({"ok": False, "error": f"季度数已达上限（{MAX_SHOWS_PER_TENANT} 个），请先登录后台「季管理」删除不需要的旧季度"}), 400
     # 把已有 is_current=1 的 show 全部关掉（处理 JSCLEAR 未先结束季度的情况），
     # 同时清理这些季度收集的图片，避免因跳过「结束季度」导致图片一直不清
     stale_shows = db.execute("SELECT id FROM shows WHERE tenant_id=? AND is_current=1", (tid,)).fetchall()
@@ -2226,11 +2248,13 @@ def api_season_report(show_id):
 @require_superadmin
 def superadmin_cleanup_empty_sessions():
     db = get_db()
-    # 找出已结束（end_ts>0）且无任何 rp_entries 的 session
+    # 找出已结束（end_ts>0）且无任何 rp_entries 的 session。
+    # 不复盘季度的场次结束后同样会被标记结束、而它们本来就没有对话记录，必须排除，否则会连统计一起删掉
     rows = db.execute("""
         SELECT s.id FROM sessions s
         WHERE s.end_ts > 0
         AND (SELECT count(*) FROM rp_entries e WHERE e.session_id = s.id) = 0
+        AND s.show_id NOT IN (SELECT id FROM shows WHERE description='no_review')
     """).fetchall()
     ids = [r[0] for r in rows]
     if ids:
@@ -2278,6 +2302,8 @@ def superadmin_tenant_delete(tid):
     db = get_db()
     for table in ("sessions", "rp_entries", "extra_events", "players", "site_config"):
         db.execute(f"DELETE FROM {table} WHERE tenant_id=?", (tid,))
+    shutil.rmtree(os.path.join(COLLECT_IMAGE_DIR, str(tid)), ignore_errors=True)
+    db.execute("DELETE FROM collected_images WHERE tenant_id=?", (tid,))
     db.execute("DELETE FROM shows   WHERE tenant_id=?", (tid,))
     db.execute("DELETE FROM tenants WHERE id=?",        (tid,))
     db.commit()
@@ -2353,6 +2379,98 @@ def superadmin_delete_collected_image(img_id):
                              tid=request.form.get("tid"), show_id=request.form.get("show_id")))
 
 
+def _scan_collected_images(db):
+    """全局盘点收集图片：按 (租户, 季度) 汇总数据库记录，并对比磁盘找出孤儿文件（磁盘有、数据库没记录）。
+    返回 (groups, orphans)。orphans 每项含 tid/show_id/uid/filename/size/相对路径。"""
+    tenants = {t["id"]: (t["display_name"] or t["username"]) for t in db.execute("SELECT id, display_name, username FROM tenants")}
+    shows   = {s["id"]: dict(s) for s in db.execute("SELECT id, tenant_id, name, is_current FROM shows")}
+    rows    = db.execute("SELECT tenant_id, show_id, uid, filename, size_bytes FROM collected_images").fetchall()
+    known   = {(r["tenant_id"], r["show_id"], r["uid"], r["filename"]) for r in rows}
+
+    groups = {}
+    for r in rows:
+        key = (r["tenant_id"], r["show_id"])
+        g = groups.setdefault(key, {"tid": r["tenant_id"], "show_id": r["show_id"], "count": 0, "bytes": 0})
+        g["count"] += 1
+        g["bytes"] += r["size_bytes"]
+    for g in groups.values():
+        sh = shows.get(g["show_id"])
+        g["tenant_name"] = tenants.get(g["tid"], f"租户{g['tid']}（已删除）")
+        g["show_name"]   = (sh["name"] or f"场次 {sh['id']}") if sh else f"场次 {g['show_id']}（已删除）"
+        g["is_current"]  = bool(sh and sh["is_current"])
+        g["show_exists"] = sh is not None
+
+    orphans = []
+    if os.path.isdir(COLLECT_IMAGE_DIR):
+        for tdir in os.listdir(COLLECT_IMAGE_DIR):
+            for sdir in os.listdir(os.path.join(COLLECT_IMAGE_DIR, tdir)) if tdir.isdigit() else []:
+                if not sdir.isdigit():
+                    continue
+                sroot = os.path.join(COLLECT_IMAGE_DIR, tdir, sdir)
+                if not os.path.isdir(sroot):
+                    continue
+                for uid in os.listdir(sroot):
+                    udir = os.path.join(sroot, uid)
+                    if not os.path.isdir(udir):
+                        continue
+                    for fn in os.listdir(udir):
+                        if (int(tdir), int(sdir), uid, fn) in known:
+                            continue
+                        try:
+                            size = os.path.getsize(os.path.join(udir, fn))
+                        except OSError:
+                            size = 0
+                        orphans.append({"tid": int(tdir), "show_id": int(sdir), "uid": uid,
+                                        "filename": fn, "size": size})
+    groups = sorted(groups.values(), key=lambda g: (g["is_current"], -g["bytes"]))
+    return groups, orphans
+
+@app.route("/superadmin/collected_images_overview")
+@require_superadmin
+def superadmin_collected_images_overview():
+    """全局总览：所有租户、所有季度还留着多少收集图片，以及磁盘上的孤儿文件。"""
+    db = get_db()
+    groups, orphans = _scan_collected_images(db)
+    stale = [g for g in groups if not g["is_current"]]
+    return render_template("superadmin_collected_overview.html",
+                            groups=groups, orphans=orphans,
+                            total_count=sum(g["count"] for g in groups),
+                            total_bytes=sum(g["bytes"] for g in groups),
+                            stale_count=sum(g["count"] for g in stale),
+                            stale_bytes=sum(g["bytes"] for g in stale),
+                            orphan_bytes=sum(o["size"] for o in orphans),
+                            done=request.args.get("done"))
+
+@app.route("/superadmin/collected_images_overview/cleanup_ended", methods=["POST"])
+@require_superadmin
+def superadmin_cleanup_ended_images():
+    """清理所有「非进行中季度」残留的收集图片（进行中的季度不动）。"""
+    db = get_db()
+    groups, _ = _scan_collected_images(db)
+    n = 0
+    for g in groups:
+        if not g["is_current"]:
+            n += g["count"]
+            _cleanup_show_collected_images(db, g["tid"], g["show_id"])
+    db.commit()
+    return redirect(url_for("superadmin_collected_images_overview", done=f"已清理 {n} 张已结束季度的残留图片"))
+
+@app.route("/superadmin/collected_images_overview/delete_orphans", methods=["POST"])
+@require_superadmin
+def superadmin_delete_orphan_images():
+    """删除磁盘上有、数据库里没有记录的孤儿文件。重新扫描后再删，不信任页面传来的路径。"""
+    db = get_db()
+    _, orphans = _scan_collected_images(db)
+    n = 0
+    for o in orphans:
+        try:
+            os.remove(os.path.join(COLLECT_IMAGE_DIR, str(o["tid"]), str(o["show_id"]), o["uid"], o["filename"]))
+            n += 1
+        except OSError:
+            pass
+    return redirect(url_for("superadmin_collected_images_overview", done=f"已删除 {n} 个孤儿文件"))
+
+
 # ── 季管理路由 ───────────────────────────────────────────────────────────────
 
 @app.route("/admin/shows")
@@ -2382,7 +2500,7 @@ def admin_show_new():
         return redirect(url_for("admin_shows") + "?msg=empty_name")
     db  = get_db()
     count = db.execute("SELECT COUNT(*) FROM shows WHERE tenant_id=?", (tid,)).fetchone()[0]
-    if count >= 5:
+    if count >= MAX_SHOWS_PER_TENANT:
         return redirect(url_for("admin_shows") + "?msg=limit_reached")
     now = int(time.time() * 1000)
     db.execute(
@@ -2488,6 +2606,7 @@ def admin_show_delete(sid):
     for table in ("sessions", "rp_entries", "extra_events", "players", "site_config",
                   "config_history", "reward_records"):
         db.execute(f"DELETE FROM {table} WHERE show_id=?", (sid,))
+    _cleanup_show_collected_images(db, tid, sid)   # 之前漏了这步，删季度后收集图片会残留在磁盘
     db.execute("DELETE FROM shows WHERE id=?", (sid,))
     db.commit()
     if session.get("view_show_id") == sid:
@@ -4729,6 +4848,11 @@ def api_session_end():
     db.commit()
     return jsonify({"ok": True, "zone": zone})
 
+def _show_is_no_review(db, show_id):
+    """该季是否「不复盘」（只记统计，不存对话内容）。"""
+    row = db.execute("SELECT description FROM shows WHERE id=?", (show_id,)).fetchone()
+    return bool(row and row["description"] == "no_review")
+
 @app.route("/api/recent_sessions", methods=["GET"])
 def api_recent_sessions():
     """Bot 用：拉取最近 N 场已结束场次的基本信息和个人统计，供奖励情况核查。"""
@@ -4738,6 +4862,8 @@ def api_recent_sessions():
         return jsonify({"ok": False, "error": "no current show"}), 404
     limit = min(int(request.args.get("limit", 10)), 50)
     db    = get_db()
+    if _show_is_no_review(db, show_id):   # 不复盘季度的场次没有对话内容，不列入奖励核查/复盘
+        return jsonify({"ok": True, "sessions": []})
     rows  = db.execute(
         """SELECT id, group_id, platform, game_day, game_time, place, subtype,
                   participants, start_ts, end_ts, forced, stats
@@ -4764,6 +4890,8 @@ def api_my_sessions():
         return jsonify({"ok": False, "error": "role_name required"}), 400
     limit = min(int(request.args.get("limit", 30)), 50)
     db   = get_db()
+    if _show_is_no_review(db, show_id):   # 不复盘季度的场次没有对话内容，不列入「全部复盘」
+        return jsonify({"ok": True, "sessions": []})
     rows = db.execute(
         """SELECT id, group_id, game_day, game_time, place, subtype,
                   participants, start_ts, end_ts
@@ -4946,27 +5074,44 @@ def admin_groups():
         sn = r["set_name"] or "（未分组）"
         sets.setdefault(sn, []).append(dict(r))
 
-    # 当前占用群：end_ts=0 且 start_ts>0 的进行中场次
-    active_sessions = db.execute(
-        """SELECT group_id, game_day, game_time, place, subtype, participants, start_ts
-           FROM sessions
-           WHERE tenant_id=? AND end_ts=0 AND start_ts>0
-           ORDER BY start_ts ASC""",
-        (tid,)
-    ).fetchall()
     import json as _json
     occupied = []
-    for s in active_sessions:
-        sd = dict(s)
-        try:
-            parts = _json.loads(sd.get("participants") or "[]")
-        except Exception:
-            parts = []
-        sd["participants_list"] = parts
-        sd["start_str"] = ts_to_str(sd.get("start_ts", 0))
-        occupied.append(sd)
+    occupied_synced_str = None
+    sync_row = db.execute("SELECT synced_at FROM group_occupancy_sync WHERE tenant_id=?", (tid,)).fetchone()
+    if sync_row:
+        # 机器人已上报过真实占用快照：以它为准（含微信群，强结释放后立即消失）
+        occupied_synced_str = ts_to_str(sync_row["synced_at"])
+        for r in db.execute(
+            "SELECT * FROM group_occupancy WHERE tenant_id=? ORDER BY start_ts ASC, group_id", (tid,)
+        ).fetchall():
+            sd = dict(r)
+            try:
+                sd["participants_list"] = _json.loads(sd.get("participants") or "[]")
+            except Exception:
+                sd["participants_list"] = []
+            sd["start_str"] = ts_to_str(sd["start_ts"]) if sd.get("start_ts") else "—"
+            occupied.append(sd)
+    else:
+        # 旧版机器人（还不会上报快照）：退回按场次记录推算——end_ts=0 且 start_ts>0 的进行中场次
+        active_sessions = db.execute(
+            """SELECT group_id, game_day, game_time, place, subtype, participants, start_ts
+               FROM sessions
+               WHERE tenant_id=? AND end_ts=0 AND start_ts>0
+               ORDER BY start_ts ASC""",
+            (tid,)
+        ).fetchall()
+        for s in active_sessions:
+            sd = dict(s)
+            try:
+                parts = _json.loads(sd.get("participants") or "[]")
+            except Exception:
+                parts = []
+            sd["participants_list"] = parts
+            sd["start_str"] = ts_to_str(sd.get("start_ts", 0))
+            occupied.append(sd)
 
-    return render_template("admin_groups.html", sets=sets, msg=msg, occupied=occupied)
+    return render_template("admin_groups.html", sets=sets, msg=msg, occupied=occupied,
+                           occupied_synced_str=occupied_synced_str)
 
 
 # ── 结戏奖励 Dashboard ────────────────────────────────────────────────────────
@@ -5493,6 +5638,35 @@ def _enrich_session(s, rest_pair=None):
 
 def _enrich_sessions(rows, rest_pair=None):
     return [_enrich_session(dict(r), rest_pair) for r in rows]
+
+
+@app.route("/api/group_occupancy", methods=["POST"])
+def api_group_occupancy():
+    """机器人上报「此刻真实被占用的全部群」（整体快照，覆盖式），后台群号组页据此显示当前占用群。"""
+    tid  = get_tenant_from_token()
+    data = request.json or {}
+    groups = data.get("groups")
+    if not isinstance(groups, list):
+        return jsonify({"ok": False, "error": "groups must be a list"}), 400
+    db  = get_db()
+    now = int(time.time() * 1000)
+    db.execute("DELETE FROM group_occupancy WHERE tenant_id=?", (tid,))
+    for g in groups:
+        gid = str(g.get("group_id", "")).strip()
+        if not gid:
+            continue
+        parts = g.get("participants") or []
+        db.execute(
+            "INSERT OR REPLACE INTO group_occupancy"
+            "(tenant_id,group_id,subtype,game_day,game_time,place,participants,start_ts) VALUES(?,?,?,?,?,?,?,?)",
+            (tid, gid, str(g.get("subtype", "") or ""), str(g.get("game_day", "") or ""),
+             str(g.get("game_time", "") or ""), str(g.get("place", "") or ""),
+             json.dumps(parts if isinstance(parts, list) else [], ensure_ascii=False),
+             int(g.get("start_ts") or 0))
+        )
+    db.execute("INSERT OR REPLACE INTO group_occupancy_sync(tenant_id,synced_at) VALUES(?,?)", (tid, now))
+    db.commit()
+    return jsonify({"ok": True, "count": len(groups)})
 
 
 @app.route("/api/groups", methods=["GET"])

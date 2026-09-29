@@ -275,7 +275,7 @@ cmd_add_auction.solve = (ctx, msg, cmdArgs) => {
         const parsed = _parseAuctionItem(item);
         if (parsed.err) { results.details.push(`❌ ${parsed.err}`); results.failed++; continue; }
         const regItem = findItem_rpg(reg, parsed.itemInput);
-        if (!regItem) { results.details.push(`❌ 未找到物品「${parsed.itemInput}」，请先上载物品`); results.failed++; continue; }
+        if (!regItem) { results.details.push(`❌ 未找到物品「${parsed.itemInput}」，请先在网页端物品库添加物品`); results.failed++; continue; }
         const id = _nextAuctionId(auctions);
         const canResell = regItem.allowSecondhand === true;
         auctions[id] = { id, code: regItem.code, name: regItem.name, desc: regItem.desc || "", startPrice: parsed.startPrice, minIncrement: parsed.minIncrement, durationHours: parsed.durationHours, expireHours: parsed.expireHours, canResell, startTime: now, endTime: now + parsed.durationHours * 3600 * 1000, bids: [], status: "active", winner: null };

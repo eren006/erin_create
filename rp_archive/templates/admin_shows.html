@@ -148,15 +148,15 @@
   {% elif msg == 'empty_name' %}
   <div class="banner banner-err">⚠️ 季名不能为空。</div>
   {% elif msg == 'limit_reached' %}
-  <div class="banner banner-err">⚠️ 每个存档最多 5 个季，请先删除一个再创建新季。</div>
+  <div class="banner banner-err">⚠️ 每个存档最多 10 个季，请先删除一个再创建新季。</div>
   {% endif %}
 
   <!-- 新建 -->
   <div class="new-card">
     <h3>新建季</h3>
-    {% if shows|length >= 5 %}
+    {% if shows|length >= 10 %}
     <div style="color:var(--muted);font-size:13px;">
-      已达上限（5 个季）。请先删除一个旧季，再创建新季。
+      已达上限（10 个季）。请先删除一个旧季，再创建新季。
     </div>
     {% else %}
     <form method="post" action="{{ url_for('admin_show_new') }}">

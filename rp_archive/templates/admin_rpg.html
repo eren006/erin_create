@@ -345,7 +345,7 @@
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
     <div>
       <div style="font-size:18px;font-weight:700;margin-bottom:3px;">RPG 管理</div>
-      <div style="font-size:12px;color:var(--muted);">注册物品 · 装备 · 属性 · 槽位，改完后机器人执行「拉取全部」同步</div>
+      <div style="font-size:12px;color:var(--muted);">注册物品 · 装备 · 属性 · 槽位，改完保存后机器人 2 分钟内自动同步</div>
     </div>
   </div>
 
@@ -359,7 +359,7 @@
 
         <div class="info-bar">
           填写后点「立即注册」，编号自动分配并写入注册表。<br>
-          之后在机器人执行 <b>。拉取全部</b> 即可生效。
+          机器人 2 分钟内自动同步生效。
         </div>
 
         <!-- 类型选择 -->
@@ -468,7 +468,7 @@
       <!-- 旧版待同步队列（仅在有遗留数据时显示） -->
       <div class="rpg-panel" id="legacy-pending-panel" style="display:none;">
         <div class="rpg-panel-title">
-          ⏳ 旧版待同步（发「。拉取全部」清空）
+          ⏳ 旧版待同步（机器人下次自动同步后清空）
           <span class="badge" id="pending-count">0</span>
         </div>
         <div id="pending-list"></div>
@@ -563,7 +563,7 @@
         </div>
         <div class="info-bar">
           把几个已注册属性绑成一份模板，共享同一份总点数预算。玩家/管理员在 QQ 用「角色 属性+值」（或开启「玩家自主改属性」后自己用「属性+值」）改这些属性时，会自动按剩余点数封顶，不会超支。
-          只能在这里创建/编辑，机器人那边执行「拉取全部」后同步生效。
+          只能在这里创建/编辑，保存后机器人 2 分钟内自动同步生效。
         </div>
         <div id="pg-list"></div>
         <div class="mgmt-add-form" id="pg-form" style="flex-direction:column;align-items:stretch;gap:10px;">
@@ -1126,7 +1126,7 @@ var RPG = (function() {
     fx['base-attrs'] = []; renderEffectChips('base-attrs');
 
     save(function() {
-      toast('「' + name + '」已注册 [' + code + '] ✓，发「。拉取全部」生效');
+      toast('「' + name + '」已注册 [' + code + '] ✓，机器人 2 分钟内自动同步');
       renderRegistry();
     });
   }
@@ -2074,7 +2074,7 @@ var BATTLE_CONFIG = (function() {
     .then(function(r) { return r.json(); })
     .then(function(d) {
       attackDefenseCfg = cfg;
-      t(d.ok ? '战斗配置已保存，发「。拉取全部」生效' : '保存失败', d.ok ? 'ok' : 'err');
+      t(d.ok ? '战斗配置已保存，机器人 2 分钟内自动同步' : '保存失败', d.ok ? 'ok' : 'err');
     })
     .catch(function() { t('网络错误', 'err'); });
   }

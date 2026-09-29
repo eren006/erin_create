@@ -288,6 +288,20 @@ select.cfg-input { cursor: pointer; }
 }
 
 /* ── Registry management ────────────────── */
+.reg-bulk { margin-bottom: 16px; border: 1px solid var(--border, rgba(255,255,255,0.08)); border-radius: 10px; }
+.reg-bulk > summary { cursor: pointer; padding: 10px 14px; font-size: 13px; color: var(--muted); user-select: none; }
+.reg-bulk[open] > summary { color: var(--text); border-bottom: 1px solid var(--border, rgba(255,255,255,0.08)); }
+.reg-bulk-body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+.reg-bulk-hint { font-size: 12px; line-height: 1.9; color: var(--muted); }
+.reg-bulk-hint code { background: rgba(255,255,255,0.06); padding: 1px 5px; border-radius: 4px; font-size: 11.5px; color: var(--text); }
+#reg-bulk-text { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; line-height: 1.7; resize: vertical; }
+.reg-bulk-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.reg-bulk-clear { background: none; border: 1px solid var(--border, rgba(255,255,255,0.15)); color: var(--muted); border-radius: 8px; padding: 6px 12px; font-size: 12px; cursor: pointer; }
+.reg-bulk-tip { font-size: 11px; color: var(--muted); }
+.reg-bulk-result { font-size: 12px; line-height: 1.8; }
+.reg-bulk-result .ok   { color: #6fcf97; }
+.reg-bulk-result .skip { color: #f2c94c; }
+.reg-bulk-result .err  { color: #eb5757; }
 .reg-tabs { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
 .reg-tab {
   font-size: 12px; padding: 5px 14px; border-radius: 7px; cursor: pointer;
@@ -495,8 +509,8 @@ select.cfg-input { cursor: pointer; }
   </div>
   <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;
               padding:11px 16px;margin-bottom:20px;font-size:13px;color:var(--muted);">
-    修改后点击保存，然后在 QQ 发 <b style="color:var(--accent)">。拉取全部</b> 即可同步到海豹。
-    如需将机器人当前配置推送到此 UI，发送 <b style="color:var(--accent)">。推送全部</b>。
+    修改后点击保存，机器人 2 分钟内会自动同步（不需要发指令）；同步后会往后台群发一条说明改了什么的合并转发。
+    如需将机器人里改过的设置推送到此 UI，在群里用「。设置」改完后回复「确认」，或发 <b style="color:var(--accent)">。推送全部</b>。
   </div>
 
   {% if current_show and not current_show.is_current %}
@@ -514,7 +528,7 @@ select.cfg-input { cursor: pointer; }
   {% endif %}
 
   {% if saved %}
-  <div class="saved-tip" style="margin-bottom:18px;">✅ 配置已保存，发送「。拉取全部」生效。</div>
+  <div class="saved-tip" style="margin-bottom:18px;">✅ 配置已保存，机器人 2 分钟内自动同步。</div>
   {% endif %}
 
   {# ── 配置预设面板 ── #}
@@ -715,7 +729,7 @@ select.cfg-input { cursor: pointer; }
         电话/私约/官约/官电/踩点除了「电话 1400-1500 张三」这种一行式写法，也支持多行表单（每行顺序随意）：<br>
         【电话】<br>受邀人：张三<br>时间：1400-1500<br>
         两种写法机器人始终都认。这里可以改表单里各字段的标签文字；「电话/私约/踩点·展示」这三项决定
-        玩家发「格式电话」「格式私约」「格式踩点」时看到的是一行式还是表单式示例。改完机器人「拉取全部」生效。
+        玩家发「格式电话」「格式私约」「格式踩点」时看到的是一行式还是表单式示例。改完保存后机器人自动同步。
       </div>
       <details class="cfg-collapsible">
         <summary>展开编辑</summary>
@@ -861,7 +875,7 @@ select.cfg-input { cursor: pointer; }
         {{ grid(s['道具']) }}
         <div class="cfg-sub">拍卖</div>
         {{ grid(s['拍卖']) }}
-        <div class="cfg-sub">监听参数 <span class="cfg-badge" style="text-transform:none;letter-spacing:0;font-weight:400;">超时单位：小时 · 保存后「。拉取全部」生效</span></div>
+        <div class="cfg-sub">监听参数 <span class="cfg-badge" style="text-transform:none;letter-spacing:0;font-weight:400;">超时单位：小时 · 保存后自动同步</span></div>
         {{ grid(s['监听参数']) }}
       </div>
     </details>
@@ -885,6 +899,27 @@ select.cfg-input { cursor: pointer; }
 
     <div class="cfg-card" id="registry-card">
       <div class="cfg-card-title">物品注册管理</div>
+
+      {# ── 批量粘贴录入（格式同机器人「。上载」，一行一件） ── #}
+      <details class="reg-bulk" id="reg-bulk">
+        <summary>📋 批量粘贴录入（一次录入很多件，比一条一条快）</summary>
+        <div class="reg-bulk-body">
+          <div class="reg-bulk-hint">
+            一行一件，格式：<code>物品名【标签】【标签】…</code>，标签可叠加、顺序随意：<br>
+            <code>【描述文字】</code> 物品描述　<code>【N次】</code> 使用次数，<code>【无限】</code> 无限次（不写默认无限）　<code>【体力+10,力量-2】</code> 属性效果（属性要先在「属性」页注册）<br>
+            <code>【互动】</code> 互动物品　<code>【货币】</code> 注册为货币　<code>【二手】</code> 允许二手交易<br>
+            例：<code>金苹果【恢复体力】【5次】【体力+10】</code>　<code>爱心糖【甜蜜道具】【互动】【二手】</code>　<code>银币【货币】</code><br>
+            从机器人聊天记录里复制的、带「。上载」开头的行也能直接粘贴。已存在的名字会自动跳过。
+          </div>
+          <textarea class="cfg-input" id="reg-bulk-text" rows="8" placeholder="金苹果【恢复体力】【5次】【体力+10】&#10;爱心糖【甜蜜道具】【互动】【二手】&#10;银币【货币】"></textarea>
+          <div class="reg-bulk-actions">
+            <button type="button" class="reg-add-btn" onclick="Registry.bulkImport()">录入</button>
+            <button type="button" class="reg-bulk-clear" onclick="Registry.bulkClear()">清空</button>
+            <span class="reg-bulk-tip">录入后编号立即分配、直接进入注册表；别忘了点页面上的「保存」，保存后机器人 2 分钟内自动同步</span>
+          </div>
+          <div class="reg-bulk-result" id="reg-bulk-result"></div>
+        </div>
+      </details>
 
       <div class="reg-tabs">
         <div class="reg-tab active" data-tab="currency">货币</div>
@@ -1154,7 +1189,7 @@ select.cfg-input { cursor: pointer; }
       <div class="cfg-collapsible-inner">
         <div class="cfg-note" style="margin-bottom:12px;">
           只是给「电话」邀约换一个额外的触发词，格式/门槛/开关完全跟「电话」本体一致（无需地点）。
-          保存后在 QQ 发「。拉取全部」生效。格式：用户发 <code style="font-size:11px;">触发词 时间 角色名</code>。<br>
+          保存后机器人 2 分钟内自动同步。格式：用户发 <code style="font-size:11px;">触发词 时间 角色名</code>。<br>
           <b>私约</b>的改名和额外资源不在这里配，见下面「私约名称管理」。
         </div>
         <div id="aliases-list"></div>
@@ -1171,7 +1206,7 @@ select.cfg-input { cursor: pointer; }
           改一处，三处一起变；旧名字这一季立即不再触发。改名不影响已有次数的累计（底层还是同一个资源，只是名字换了）。<br>
           「额外资源」是独立的私约类型：有自己的名字、自己的时长门槛、自己的次数统计，跟默认私约和其它额外资源都不合并、也不冲时间——
           同一个人在两个私约资源里约了同一时段，照样会被判定冲突。<br>
-          保存后在 QQ 发「。拉取全部」生效。新一季「清空季度数据」时，默认私约的名字会自动恢复成「私约」，额外资源本身会保留（次数清零，跟其它统计一样按季重置）。
+          保存后机器人 2 分钟内自动同步。新一季「清空季度数据」时，默认私约的名字会自动恢复成「私约」，额外资源本身会保留（次数清零，跟其它统计一样按季重置）。
         </div>
         <div class="rpg-field" style="margin-bottom:14px;">
           <label class="rpg-label" style="display:block;margin-bottom:4px;font-size:11px;color:var(--muted);font-weight:700;letter-spacing:.5px;text-transform:uppercase;">默认私约的名字</label>
@@ -1189,7 +1224,7 @@ select.cfg-input { cursor: pointer; }
       <summary>自定义短信触发词 <span class="cfg-badge">飞鸽传书等别名 · 实际仍是短信</span></summary>
       <div class="cfg-collapsible-inner">
         <div class="cfg-note" style="margin-bottom:12px;">
-          额外的短信触发词，格式/存档/文案与「短信」完全一致，只是换个词触发。保存后在 QQ 发「。拉取全部」生效。<br>
+          额外的短信触发词，格式/存档/文案与「短信」完全一致，只是换个词触发。保存后机器人 2 分钟内自动同步。<br>
           格式：用户发 <code style="font-size:11px;">触发词 收信人 内容</code>，例如「飞鸽传书 张三 你好」。
         </div>
         <div id="sms-aliases-list"></div>
@@ -1202,7 +1237,7 @@ select.cfg-input { cursor: pointer; }
       <summary>自定义送礼触发词 <span class="cfg-badge">投喂等别名 · 实际仍是送礼</span></summary>
       <div class="cfg-collapsible-inner">
         <div class="cfg-note" style="margin-bottom:12px;">
-          额外的送礼触发词，格式/存档/文案与「送礼」完全一致，只是换个词触发。保存后在 QQ 发「。拉取全部」生效。<br>
+          额外的送礼触发词，格式/存档/文案与「送礼」完全一致，只是换个词触发。保存后机器人 2 分钟内自动同步。<br>
           格式：用户发 <code style="font-size:11px;">触发词 对方名 礼物内容</code>，例如「投喂 张三 一束花」。
         </div>
         <div id="gift-aliases-list"></div>
@@ -1216,7 +1251,7 @@ select.cfg-input { cursor: pointer; }
         <span class="btn-save-text">保存配置</span>
         <span class="btn-save-spinner"></span>
       </button>
-      <span class="save-hint">保存后在 QQ 发「。拉取全部」立即生效</span>
+      <span class="save-hint">保存后机器人 2 分钟内自动同步</span>
     </div>
 
   </form>
@@ -1229,7 +1264,7 @@ select.cfg-input { cursor: pointer; }
         修改完成后，请按以下步骤让配置生效：
         <ul class="dirty-modal-steps">
           <li data-n="1">点击页面底部的 <b>「保存配置」</b> 按钮</li>
-          <li data-n="2">在 QQ 群发送指令 <code>。拉取全部</code>，机器人将读取最新配置</li>
+          <li data-n="2">机器人会在 2 分钟内自动读取最新配置，不需要发指令</li>
         </ul>
       </div>
       <button class="btn-dirty-ok" id="dirty-modal-ok">我知道了</button>
@@ -1379,7 +1414,7 @@ var cfgEsc = function(s) {
           '> Writing config to persistent store... OK',
           '> System config updated.',
           '> Day phase synchronized with SealDice.',
-          '> Send「。拉取全部」to apply in-game.'
+          '> Bot will auto-sync within 2 minutes.'
         ]);
       }
     } catch(err) {
@@ -1543,7 +1578,7 @@ var Registry = (function() {
     el.innerHTML =
       '<div class="reg-pending-section">' +
       '<div class="reg-pending-label">待同步 <span class="reg-pending-count">' + items.length + '</span>' +
-      '<span style="font-weight:400;font-size:10px;color:var(--muted);text-transform:none;letter-spacing:0"> — 发送「。拉取全部」后由机器人分配编号并自动同步回本页</span></div>' +
+      '<span style="font-weight:400;font-size:10px;color:var(--muted);text-transform:none;letter-spacing:0"> — 旧版遗留的待同步条目，机器人下次自动同步时分配编号并同步回本页</span></div>' +
       items.map(function(x) {
         var p = x.p;
         var meta = (p.maxUses === -1 ? '无限次' : p.maxUses + '次') +
@@ -1587,7 +1622,7 @@ var Registry = (function() {
     el.innerHTML =
       '<div class="reg-pending-section">' +
       '<div class="reg-pending-label">待同步 <span class="reg-pending-count">' + _equipPending.length + '</span>' +
-      '<span style="font-weight:400;font-size:10px;color:var(--muted);text-transform:none;letter-spacing:0"> — 发送「。拉取全部」后由机器人分配编号并自动同步回本页</span></div>' +
+      '<span style="font-weight:400;font-size:10px;color:var(--muted);text-transform:none;letter-spacing:0"> — 旧版遗留的待同步条目，机器人下次自动同步时分配编号并同步回本页</span></div>' +
       _equipPending.map(function(p, i) {
         var slotLabel = equipSlotNames[p.slot] || defaultNames[p.slot] || p.slot || '';
         var meta = slotLabel + (p.baseAttrs ? ' · ' + cfgEsc(p.baseAttrs) : '');
@@ -1798,15 +1833,104 @@ var Registry = (function() {
     if (_pending.some(function(p) { return p.name === name; })) {
       alert('「' + name + '」已在待同步列表中'); return;
     }
-    _pending.push({ name: name, desc: desc, type: type, maxUses: uses,
-                    attrs: attrsVal || null, canResell: resell });
+    // 网页端直接分配编号（规则同机器人：ITEM_001 / INTER_001…），不再走「待同步」
+    var code = genCode(type === 'interact' ? 'INTER_' : 'ITEM_', 3);
+    if (!code) { alert('编号空间已满'); return; }
+    reg[code] = { code: code, name: name, desc: desc, type: type, maxUses: uses,
+                  attrs: attrsVal || null, price: 0, canResell: resell };
     document.getElementById('reg-' + prefix + '-name').value = '';
     document.getElementById('reg-' + prefix + '-desc').value = '';
     document.getElementById('reg-' + prefix + '-resell').checked = false;
     _fx[type] = [];
     renderEffectChips(type);
-    savePending();
-    renderPending(type);
+    save();
+    renderType(type);
+  }
+
+  /* ── 批量粘贴录入：格式同机器人「。上载」（一行一件） ── */
+  var _EFFECT_PAT = /^[\w\u4e00-\u9fff\u3400-\u4dbf]+[+-]\d+([,，][\w\u4e00-\u9fff\u3400-\u4dbf]+[+-]\d+)*$/;
+
+  function parseBulkLine(line, currencyNames) {
+    var blocks = [];
+    var name = line.replace(/【([^】]*)】/g, function(_, c) { blocks.push(c.trim()); return ''; }).trim();
+    if (!name) return { error: '物品名不能为空' };
+    var type = 'item', desc = null, maxUses = -1, attrsRaw = null, canResell = false;
+    for (var i = 0; i < blocks.length; i++) {
+      var b = blocks[i];
+      if (b === '互动') { type = 'interact'; continue; }
+      if (b === '货币') { type = 'currency'; continue; }
+      if (b === '二手') { canResell = true; continue; }
+      if (b === '无限') { maxUses = -1; continue; }
+      if (b === '一次') { maxUses = 1; continue; }
+      var tm = b.match(/^(\d+)次$/);
+      if (tm) { maxUses = parseInt(tm[1], 10); continue; }
+      if (_EFFECT_PAT.test(b)) {
+        var segs = b.split(/[,，]/);
+        for (var j = 0; j < segs.length; j++) {
+          var m = segs[j].trim().match(/^(.+?)([+-]\d+)$/);
+          if (!m) return { error: '效果格式错误「' + segs[j] + '」' };
+          if (!attrs[m[1]] && !currencyNames[m[1]]) return { error: '未知属性「' + m[1] + '」，请先在「属性」页注册' };
+        }
+        attrsRaw = b; continue;
+      }
+      if (desc === null) desc = b;
+    }
+    return { name: name, type: type, desc: desc, maxUses: maxUses, attrsRaw: attrsRaw, canResell: canResell };
+  }
+
+  function bulkImport() {
+    var raw = document.getElementById('reg-bulk-text').value;
+    var lines = raw.split(/\r?\n/).map(function(l) {
+      return l.replace(/^\s*[。.]?\s*上载(物品)?\s*/, '').trim();
+    }).filter(function(l) { return l; });
+    var out = document.getElementById('reg-bulk-result');
+    if (!lines.length) { out.innerHTML = '<span class="skip">没有可录入的内容</span>'; return; }
+
+    var currencyNames = {};
+    Object.keys(reg).forEach(function(c) { if (reg[c].type === 'currency') currencyNames[reg[c].name] = true; });
+    // 同一批里先声明的货币，后面的行也可以当效果属性引用
+    lines.forEach(function(l) {
+      var pl = parseBulkLine(l, currencyNames);
+      if (!pl.error && pl.type === 'currency') currencyNames[pl.name] = true;
+    });
+
+    var taken = {};
+    Object.keys(reg).forEach(function(c) { taken[reg[c].name] = true; });
+    _pending.forEach(function(p) { taken[p.name] = true; });
+
+    var rows = [], added = 0, curAdded = 0, itemAdded = 0;
+    lines.forEach(function(l) {
+      var p = parseBulkLine(l, currencyNames);
+      if (p.error) { rows.push('<div class="err">❌ ' + cfgEsc(l.slice(0, 30)) + '：' + cfgEsc(p.error) + '</div>'); return; }
+      if (taken[p.name]) { rows.push('<div class="skip">⚠️ 「' + cfgEsc(p.name) + '」已存在或本批重复，跳过</div>'); return; }
+      taken[p.name] = true;
+      if (p.type === 'currency') {
+        var code = genCode('CUR_', 3);
+        if (!code) { rows.push('<div class="err">❌ 货币编号空间已满</div>'); return; }
+        reg[code] = { code: code, name: p.name, desc: p.desc || '暂无描述', type: 'currency', attrs: null };
+        curAdded++; added++;
+        rows.push('<div class="ok">✅ 💰 [' + code + '] ' + cfgEsc(p.name) + '（货币）</div>');
+      } else {
+        // 物品/互动物品也由网页端直接分配编号（规则同机器人：ITEM_001 / INTER_001…），不再走「待同步」
+        var icode = genCode(p.type === 'interact' ? 'INTER_' : 'ITEM_', 3);
+        if (!icode) { rows.push('<div class="err">❌ 编号空间已满</div>'); return; }
+        reg[icode] = { code: icode, name: p.name, desc: p.desc || '暂无描述', type: p.type, maxUses: p.maxUses,
+                       attrs: p.attrsRaw || null, price: 0, canResell: p.canResell };
+        itemAdded++; added++;
+        var useText = p.maxUses === -1 ? '无限' : p.maxUses + '次';
+        rows.push('<div class="ok">✅ ' + (p.type === 'interact' ? '🎭' : '📦') + ' [' + icode + '] ' + cfgEsc(p.name) +
+                  ' | ' + useText + ' | 效果:' + cfgEsc(p.attrsRaw || '无') + (p.canResell ? ' | 可二手' : '') + '</div>');
+      }
+    });
+    if (added) save();
+    renderAll();
+    out.innerHTML = '<div><b>共 ' + lines.length + ' 行，录入 ' + added + ' 件</b>' +
+      (added ? '（货币 ' + curAdded + '、物品/互动物品 ' + itemAdded + '）— 请点页面上的「保存」' : '') + '</div>' + rows.join('');
+  }
+
+  function bulkClear() {
+    document.getElementById('reg-bulk-text').value = '';
+    document.getElementById('reg-bulk-result').innerHTML = '';
   }
 
   function addAttr() {
@@ -1863,7 +1987,7 @@ var Registry = (function() {
 
   load(); initTabs(); renderAll();
 
-  return { addCurrency: addCurrency, addItem: addItem, addAttr: addAttr, del: del, delAttr: delAttr,
+  return { bulkImport: bulkImport, bulkClear: bulkClear, addCurrency: addCurrency, addItem: addItem, addAttr: addAttr, del: del, delAttr: delAttr,
            addEffect: addEffect, removeEffect: removeEffect, removePending: removePending,
            addEquip: addEquip, delEquip: delEquip, addEquipEffect: addEquipEffect,
            removeEquipPending: removeEquipPending };

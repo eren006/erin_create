@@ -1808,15 +1808,20 @@ const SYNC_JSON_PARENT_KEYS = {
 // ========================
 let cmd_push_all = seal.ext.newCmdItemInfo();
 cmd_push_all.name = "推送全部";
-cmd_push_all.help = "【管理员】将机器人所有数据一次性推送到存档网页端\n使用方法：。推送全部";
+cmd_push_all.help = "【管理员】将机器人的配置推送到存档网页端（物品和池子以网页端为准，默认不推送）\n使用方法：。推送全部\n。推送全部 含物品池子  ← 连物品/装备/合成配方/礼品库/池子也推上去（只在网页端是空的时用）";
 cmd_push_all.solve = async (ctx, msg, argv) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
-    await pushAllCore(t => seal.replyToSender(ctx, msg, t));
+    await pushAllCore(t => seal.replyToSender(ctx, msg, t), (argv.getArgN(1) || "").trim() === "含物品池子");
     return seal.ext.newCmdExecuteResult(true);
 };
 
 // 推送全部的本体：「。推送全部」和「。设置」改完后回复「确认」共用。返回 true=完成
-async function pushAllCore(say) {
+// 池子和物品（含装备、合成配方、礼品库）以网页端为准：日常只在网页端改，机器人只往下拉、不往上推，
+// 否则群里清空季度数据、重装插件之后机器人这边是空的，一推就会把网页端辛苦配好的池子和物品整个冲掉
+const WEB_OWNED_KEYS = ["item_registry", "equipment_registry", "equipment_slots", "equipment_slot_names", "craft_recipes", "preset_gifts"];
+
+// includeAssets=true 才会把物品/装备/合成配方/礼品库和池子也推上去（「。推送全部 含物品池子」，仅用于网页端是空的、要把机器人这份当初始数据灌上去的场合）
+async function pushAllCore(say, includeAssets) {
 
     const main = getMainExt();
     if (!main) return say("❌ 无法连接主插件 changri");
@@ -1825,13 +1830,14 @@ async function pushAllCore(say) {
     const token = seal.ext.getStringConfig(main.ext, "RP存档Token") || "";
     if (!base) return say("❌ 未配置存档服务器地址");
 
-    say("⏳ 正在推送所有数据到网页端…");
+    say(includeAssets ? "⏳ 正在推送所有数据（含物品和池子）到网页端…" : "⏳ 正在推送配置到网页端…（物品和池子以网页端为准，不推送）");
 
     const authHeaders = { "Content-Type": "application/json", "X-Archive-Token": token };
     const payload = {};
 
     // 1. 直存配置键
     for (const key of SYNC_DIRECT_KEYS) {
+        if (!includeAssets && WEB_OWNED_KEYS.includes(key)) continue;
         const val = mainStorGet(key);
         if (val !== null && val !== undefined && val !== "") payload[key] = val;
     }
@@ -1872,6 +1878,7 @@ async function pushAllCore(say) {
         "shop_listings", "market_config",
     ];
     for (const key of PUSH_ALL_BLOB_KEYS) {
+        if (!includeAssets && WEB_OWNED_KEYS.includes(key)) continue;
         const val = mainStorGet(key);
         if (val !== null && val !== undefined && val !== "") payload[key] = val;
     }
@@ -1897,7 +1904,7 @@ async function pushAllCore(say) {
     // ── 推送池子 ─────────────────────────────────────────────────────────────
     let poolCount = 0;
     let poolErr = null;
-    try {
+    if (includeAssets) try {
         let poolDefs = {}, poolDrawCfg = { total: null, pools: {} }, poolSchemas = {};
         try { poolDefs    = mainKvGet("pool_definitions", {}); } catch(e) { console.error("[设置] 推送配置读取 pool_definitions 失败:", e.message); }
         try { poolDrawCfg = mainKvGet("pool_draw_config", {}); } catch(e) { console.error("[设置] 推送配置读取 pool_draw_config 失败:", e.message); }
@@ -1928,10 +1935,12 @@ async function pushAllCore(say) {
     // ── 汇报结果 ─────────────────────────────────────────────────────────────
     let msg_lines = [`✅ 推送全部完成！`];
     msg_lines.push(`📋 配置+注册表+模版：${configSynced} 项`);
-    msg_lines.push(poolErr ? `⚠️ 池子推送失败：${poolErr}` : `🎲 池子：${poolCount} 个`);
+    msg_lines.push(!includeAssets ? `🎲 物品和池子以网页端为准，未推送（要推送发「。推送全部 含物品池子」）` : poolErr ? `⚠️ 池子推送失败：${poolErr}` : `🎲 池子：${poolCount} 个`);
     msg_lines.push(auctionErr ? `⚠️ 拍卖快照推送失败：${auctionErr}` : `🔨 拍卖快照：${auctionCount} 件`);
     say(msg_lines.join("\n"));
     markWebSynced();
+    // 推送会改动网页端内容，把自动拉取的基准刷新成推送之后的样子，免得下一次检查把「自己刚推上去的」当成网页端有新改动、白拉一次
+    try { await apRecordBaseline(null); } catch (e) { /* 取不到就算了，最多多拉一次 */ }
     return true;
 }
 ext.cmdMap["推送全部"] = cmd_push_all;
@@ -2212,7 +2221,8 @@ const apLog = (m) => console.log("[自动拉取] " + m);
 // 最近一次检查的结果，「。自动拉取 状态」里显示，方便判断它到底有没有在工作
 const _autoPullInfo = { lastTick: 0, lastResult: "还没检查过（插件加载后 2 分钟内会第一次检查）" };
 
-async function fetchWebSnapshotHash() {
+// 取网页端快照：hash 用来判断「变没变」，parts 留作下次比较时列出「改了什么」
+async function fetchWebSnapshot() {
     const main = getMainExt();
     if (!main) throw new Error("主插件未加载");
     const base  = (seal.ext.getStringConfig(main.ext, "RP存档服务器地址") || "").replace(/\/$/, "");
@@ -2220,56 +2230,203 @@ async function fetchWebSnapshotHash() {
     if (!base) throw new Error("未配置「RP存档服务器地址」");
     const headers = { "X-Archive-Token": token };
     let raw = "";
+    const texts = {};
     for (const path of ["/api/config", "/api/pool_config", "/api/auction_queue"]) {
-        apLog("请求 " + path);
         const resp = await fetch(base + path, { headers });
         if (!resp.ok) throw new Error(`${path} 返回 HTTP ${resp.status}` + (resp.status === 503 ? "（网页端该账号下没有任何季度）" : resp.status === 401 || resp.status === 403 ? "（Token 不对？）" : ""));
-        let text = await resp.text();
-        apLog(path + " 已收到 " + text.length + " 字符");
+        const original = await resp.text();
+        texts[path] = original;
         // 机器人自己每次同步都会刷新的时间戳，不算「网页端改了」
-        text = text.replace(/"_last_bot_sync"\s*:\s*"?\d+"?/g, "");
-        raw += path + "\n" + text + "\n";
+        raw += path + "\n" + original.replace(/"_last_bot_sync"\s*:\s*"?\d+"?/g, "") + "\n";
     }
+    return {
+        hash: apHash(raw),
+        parts: {
+            config: texts["/api/config"],
+            pool: apHash(texts["/api/pool_config"]),
+            auction: apHash(texts["/api/auction_queue"]),
+        },
+    };
+}
+
+function apHash(str) {
     let h = 5381;                                      // djb2，够用来判「变没变」
-    for (let i = 0; i < raw.length; i++) h = ((h << 5) + h + raw.charCodeAt(i)) | 0;
-    return `${raw.length}:${h}`;
+    for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+    return `${str.length}:${h}`;
+}
+
+// 记下当前网页端的样子作为基准（hash + 用于下次列出改动的配置原文）
+async function apRecordBaseline(snap) {
+    const s = snap || await fetchWebSnapshot();
+    mainStorSet("auto_pull_hash", s.hash);
+    // 配置原文很大（物品/装备注册表多了可能几十万字）时不存，只是下次没法列出具体改了什么
+    const parts = { ...s.parts, config: s.parts.config.length <= 300000 ? s.parts.config : "" };
+    mainStorSet("auto_pull_parts", JSON.stringify(parts));
+    return s;
+}
+
+// ── 列出「网页端改了什么」 ───────────────────────────────────────────────────
+const AP_BLOB_LABELS = {
+    item_registry: "物品注册表", equipment_registry: "装备注册表", equipment_slots: "装备槽位", equipment_slot_names: "装备槽位名",
+    craft_recipes: "合成配方", skill_defs: "技能", rpg_attr_defs: "属性定义", sys_attr_presets: "系统属性预设",
+    end_game_bonus_templates: "结戏奖励模版", end_game_draw_config: "结戏抽取配置", custom_message_templates: "自定义消息模版",
+    preset_gifts: "预设礼物", private_resources: "私约资源", available_places: "地点", trade_whitelist: "交易白名单",
+    global_feature_toggle: "功能开关", monitor_settings: "计时器设置",
+};
+let _apLabelMap = null;
+function apLabel(key, sub) {
+    if (!_apLabelMap) {
+        _apLabelMap = {};
+        for (const cat of Object.values(settingsConfig)) {
+            for (const prm of (cat.params || [])) {
+                if (prm.key && prm.label) _apLabelMap[prm.key + (prm.nested ? "." + prm.nested : "")] = prm.label;
+            }
+        }
+    }
+    if (sub !== undefined && _apLabelMap[key + "." + sub]) return _apLabelMap[key + "." + sub];
+    if (sub === undefined && _apLabelMap[key]) return _apLabelMap[key];
+    return null;
+}
+function apIsObj(v) { return v !== null && typeof v === "object" && !Array.isArray(v); }
+function apParse(v) {
+    if (typeof v !== "string") return v;
+    const t = v.trim();
+    if (t[0] === "{" || t[0] === "[") { try { return JSON.parse(t); } catch (e) { /* 不是 JSON，按原文 */ } }
+    return v;
+}
+function apShort(v) {
+    if (v === undefined) return "（无）";
+    if (v === true) return "开启";
+    if (v === false) return "关闭";
+    let t = typeof v === "string" ? v : JSON.stringify(v);
+    t = String(t).replace(/\s+/g, " ");
+    return t.length > 40 ? t.slice(0, 40) + "…" : t;
+}
+function apDiffConfig(oldText, newText) {
+    const lines = [];
+    let oldO, newO;
+    try { oldO = JSON.parse(oldText); newO = JSON.parse(newText); } catch (e) { return null; }
+    delete oldO._last_bot_sync; delete newO._last_bot_sync;
+    const keys = Array.from(new Set([...Object.keys(oldO), ...Object.keys(newO)]));
+    for (const key of keys) {
+        const a = oldO[key], b = newO[key];
+        if (JSON.stringify(a) === JSON.stringify(b)) continue;
+        const pa = apParse(a), pb = apParse(b);
+        const label = apLabel(key) || AP_BLOB_LABELS[key] || key;
+        if (apIsObj(pa) && apIsObj(pb)) {
+            const subs = Array.from(new Set([...Object.keys(pa), ...Object.keys(pb)]));
+            for (const sub of subs) {
+                const va = pa[sub], vb = pb[sub];
+                if (JSON.stringify(va) === JSON.stringify(vb)) continue;
+                if (apIsObj(va) || apIsObj(vb)) {           // 注册表类：一项一个对象，按名字说「新增/删除/修改」
+                    const name = (vb && vb.name) || (va && va.name) || sub;
+                    if (va === undefined) lines.push(`➕ ${label}：新增 ${name}`);
+                    else if (vb === undefined) lines.push(`➖ ${label}：删除 ${name}`);
+                    else lines.push(`✏️ ${label}：${name} 有修改`);
+                } else {
+                    const sl = apLabel(key, sub);
+                    lines.push(`${sl || label + "·" + sub}：${apShort(va)} → ${apShort(vb)}`);
+                }
+            }
+        } else {
+            lines.push(`${label}：${apShort(a !== undefined ? pa : a)} → ${apShort(b !== undefined ? pb : b)}`);
+        }
+    }
+    return lines;
+}
+
+// 自动同步完成后，往后台群发一条合并转发，说明网页端改了什么
+function apNotify(headerLines, changeLines, noteLines) {
+    if ((mainStorGet("auto_pull_notify") || "on") === "off") return;
+    const gid = String(mainKvGet("background_group_id", "") || "").replace(/\D/g, "");
+    if (!gid) { apLog("未配置后台群，不发变更通知"); return; }
+    const nodes = [{ type: "node", data: { name: "网页同步", uin: "10001", content: headerLines.join("\n") } }];
+    const PER_NODE = 12;
+    for (let i = 0; i < changeLines.length; i += PER_NODE) {
+        nodes.push({ type: "node", data: { name: "改动明细", uin: "10001", content: changeLines.slice(i, i + PER_NODE).join("\n") } });
+    }
+    if (noteLines.length) nodes.push({ type: "node", data: { name: "拉取结果", uin: "10001", content: noteLines.join("\n") } });
+    try {
+        const eps = seal.getEndPoints();
+        const ep = eps.find(e => e.platform === "QQ" && e.state === 1) || eps.find(e => e.state === 1) || eps[0];
+        if (!ep) { console.error("[自动拉取] 找不到可用端点，不发变更通知"); return; }
+        const m = seal.newMessage();
+        m.messageType = "group";
+        m.groupId = `QQ-Group:${gid}`;
+        getApi().sendForwardBatched(seal.createTempCtx(ep, m), m, parseInt(gid, 10), nodes, 0);
+    } catch (e) {
+        console.error("[自动拉取] 发送变更通知失败: " + e.message);
+    }
+}
+
+// 注意：实测海豹的 JS 引擎在 async 函数里「try 块中提前 return + finally」会崩（Panic in auxJob: index out of range，
+// 每次都出在「取到快照后提前收尾」那一步；走完整拉取、没有提前 return 的那次是好的），所以检查逻辑拆成 autoPullCheck（只返回结果文字，不写 try/finally），
+// autoPullTick 只负责占用/释放「进行中」标记和记录结果
+async function autoPullCheck() {
+    const snap = await fetchWebSnapshot();
+    const last = mainStorGet("auto_pull_hash");
+    if (!last) {
+        await apRecordBaseline(snap);
+        return "已记录基准（第一次检查不拉取，之后网页端有改动才会拉）";
+    }
+    if (snap.hash === last) return "网页端没有变化";
+
+    // 拉取前先算好「改了什么」（拉取会覆盖本地，之后就比不出来了）
+    let oldParts = null;
+    try { oldParts = JSON.parse(mainStorGet("auto_pull_parts") || "null"); } catch (e) { oldParts = null; }
+    let changeLines = [];
+    let canList = false;
+    if (oldParts && oldParts.config) {
+        const d = apDiffConfig(oldParts.config, snap.parts.config);
+        if (d) { changeLines = d; canList = true; }
+    }
+    const extra = [];
+    if (oldParts && oldParts.pool !== undefined && oldParts.pool !== snap.parts.pool) extra.push("🎲 抽取池有更新");
+    if (oldParts && oldParts.auction !== undefined && oldParts.auction !== snap.parts.auction) extra.push("🔨 拍卖队列有更新");
+
+    apLog("检测到网页端有更新，开始拉取…");
+    const logs = [];
+    const ok = await pullAllCore(t => logs.push(t));
+    apLog("拉取结束：" + logs.filter(t => !t.startsWith("⏳")).join(" | "));
+    if (!ok) return "检测到网页端有更新，但拉取失败：" + (logs[logs.length - 1] || "未知原因");
+
+    const total = changeLines.length + extra.length;
+    const header = [
+        "🔄 网页端有改动，机器人已自动同步",
+        canList ? `共 ${total} 处变化${changeLines.length > 60 ? "（明细只列前 60 条）" : ""}` : "（这次没法列出具体改了什么，只知道网页端有更新）",
+    ];
+    // 能列出明细却一条改动都没有（比如只是字段顺序、回写时间戳这类不算内容的变化）就不说话
+    if (total > 0 || !canList) {
+        apNotify(header, changeLines.slice(0, 60).concat(extra), logs.filter(t => !t.startsWith("⏳") && !t.startsWith("✅ 拉取全部完成")));
+    }
+
+    // 拉取过程会往网页端回写（_last_bot_sync、注册表回写等），以拉完之后的网页端内容为新基准，避免自己触发自己
+    try { await apRecordBaseline(null); } catch (e) { await apRecordBaseline(snap); }
+    return "检测到网页端有更新，已自动拉取" + (canList ? (total > 0 ? `（${total} 处变化，已通知后台群）` : "（没有实质内容变化，未通知）") : "");
 }
 
 async function autoPullTick() {
-    if (_autoPullBusy) {
-        if (Date.now() - _autoPullBusySince < AUTO_PULL_BUSY_TIMEOUT_MS) return;
+    if (_autoPullBusy && Date.now() - _autoPullBusySince >= AUTO_PULL_BUSY_TIMEOUT_MS) {
         apLog("上一次检查超过 90 秒没结束（可能被中断），已重置");
         _autoPullBusy = false;
     }
+    if (_autoPullBusy) return;
     _autoPullInfo.lastTick = Date.now();
-    if ((mainStorGet("auto_pull_enabled") || "on") === "off") { _autoPullInfo.lastResult = "已关闭"; return; }
-    if (isWebDirty()) { _autoPullInfo.lastResult = "暂停：群里有改动还没同步到网页（回复「确认」或发「。推送全部」）"; return; }
-    _autoPullBusy = true;
-    _autoPullBusySince = Date.now();
-    try {
-        apLog("开始检查网页端");
-        const hash = await fetchWebSnapshotHash();
-        apLog("已取到网页端快照 " + hash);
-        const last = mainStorGet("auto_pull_hash");
-        if (!last) { mainStorSet("auto_pull_hash", hash); _autoPullInfo.lastResult = "已记录基准（第一次检查不拉取，之后网页端有改动才会拉）"; return; }
-        if (hash === last) { _autoPullInfo.lastResult = "网页端没有变化"; return; }
-        apLog("检测到网页端有更新，开始拉取…");
-        const logs = [];
-        const ok = await pullAllCore(t => logs.push(t));
-        apLog("拉取结束：" + logs.filter(t => !t.startsWith("⏳")).join(" | "));
-        if (ok) {
-            // 拉取过程会往网页端回写（_last_bot_sync、注册表回写等），以拉完之后的网页端内容为新基准，避免自己触发自己
-            let after = hash;
-            try { after = await fetchWebSnapshotHash(); } catch (e) {}
-            mainStorSet("auto_pull_hash", after);
-            _autoPullInfo.lastResult = "检测到网页端有更新，已自动拉取";
-        } else {
-            _autoPullInfo.lastResult = "检测到网页端有更新，但拉取失败：" + (logs[logs.length - 1] || "未知原因");
+    if ((mainStorGet("auto_pull_enabled") || "on") === "off") {
+        _autoPullInfo.lastResult = "已关闭";
+    } else if (isWebDirty()) {
+        _autoPullInfo.lastResult = "暂停：群里有改动还没同步到网页（回复「确认」或发「。推送全部」）";
+    } else {
+        _autoPullBusy = true;
+        _autoPullBusySince = Date.now();
+        let result;
+        try {
+            result = await autoPullCheck();
+        } catch (e) {
+            result = "检查失败：" + e.message;
+            console.error("[自动拉取] 失败: " + e.message);
         }
-    } catch (e) {
-        _autoPullInfo.lastResult = "检查失败：" + e.message;
-        console.error("[自动拉取] 失败: " + e.message);
-    } finally {
+        _autoPullInfo.lastResult = result;
         _autoPullBusy = false;
     }
 }
@@ -2279,10 +2436,11 @@ globalThis.__changriAutoPullTimer = setInterval(autoPullTick, AUTO_PULL_INTERVAL
 
 let cmd_auto_pull = seal.ext.newCmdItemInfo();
 cmd_auto_pull.name = "自动拉取";
-cmd_auto_pull.help = "【管理员】网页端有改动时机器人自动拉取（每 2 分钟检查一次，默认开启）\n使用方法：。自动拉取 开启/关闭/状态/立即检查";
+cmd_auto_pull.help = "【管理员】网页端有改动时机器人自动拉取（每 2 分钟检查一次，默认开启）\n使用方法：。自动拉取 开启/关闭/状态/立即检查/通知开启/通知关闭\n自动拉取到网页端的改动后，会往后台群发一条合并转发说明改了什么；没有改动就不说话";
 cmd_auto_pull.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) { seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。"); return seal.ext.newCmdExecuteResult(true); }
     const a = (cmdArgs.getArgN(1) || "状态").trim();
+    if (a === "通知开启" || a === "通知关闭") mainStorSet("auto_pull_notify", a === "通知开启" ? "on" : "off");
     if (a === "开启" || a === "关闭") {
         mainStorSet("auto_pull_enabled", a === "开启" ? "on" : "off");
         if (a === "开启") mainStorSet("auto_pull_hash", "");   // 重新记基准，别把关闭期间的改动当成刚发生的
@@ -2292,7 +2450,7 @@ cmd_auto_pull.solve = (ctx, msg, cmdArgs) => {
         const ago = _autoPullInfo.lastTick ? `${Math.round((Date.now() - _autoPullInfo.lastTick) / 1000)} 秒前` : "—";
         seal.replyToSender(ctx, msg,
             `自动拉取：${on ? "✅ 开启" : "⛔ 关闭"}（每 2 分钟检查一次网页端，有改动就自动拉取）\n` +
-            `最近一次检查：${ago}\n结果：${_autoPullInfo.lastResult}` +
+            `最近一次检查：${ago}\n结果：${_autoPullInfo.lastResult}\n同步后通知后台群：${(mainStorGet("auto_pull_notify") || "on") === "off" ? "⛔ 关闭" : "✅ 开启"}` +
             (isWebDirty() ? "\n⚠️ 群里改的内容还没同步到网页，自动拉取已暂停：发「。推送全部」同步到网页，或「。拉取全部」放弃群里的改动、以网页端为准" : "") +
             `\n\n发「。自动拉取 立即检查」可马上检查一次。`);
     };
@@ -2321,33 +2479,33 @@ function sendSyncGuideForward(groupId) {
 
     const sections = [
         ["📡 同步指南",
-         "RP 存档系统同步命令速查",
+         "网页端和机器人现在会自动同步，日常不用发指令",
          "",
-         "⬇  存档服务器 → 机器人（拉取，覆盖本地）",
-         "⬆  机器人 → 存档服务器（推送，覆盖网页）",
+         "⬇  网页端改了 → 机器人每 2 分钟自动拉取",
+         "⬆  群里用「。设置」改了 → 回复「确认」推送到网页",
          "",
          "发送「同步指南」随时查阅"],
 
-        ["🌐 全量操作（长日设置插件，管理员）",
+        ["🤖 自动同步（长日设置插件，管理员）",
          "─────────────────────────────",
-         "⬇ 拉取全部",
-         "从存档服务器拉取全部数据，覆盖本地",
-         "涵盖：配置+注册表+模版、待上载物品/装备合并、池子、拍卖队列/快照",
-         "用法：拉取全部",
+         "网页端改完保存后，机器人每 2 分钟检查一次，有改动就自动拉取，",
+         "并往后台群发一条合并转发，说明改了什么；没有改动就不说话。",
+         "物品、池子、装备、合成配方、礼品库以网页端为准，只在网页端改。",
          "",
-         "⬆ 推送全部",
-         "将机器人当前数据全量推送到存档网页端",
-         "涵盖：设置项、物品/装备注册表、结戏加成模版、礼品库、池子、拍卖快照",
-         "用法：推送全部"],
+         "。自动拉取 状态  ← 看最近一次检查和结果",
+         "。自动拉取 立即检查  ← 不想等 2 分钟时用",
+         "。自动拉取 开启/关闭  ← 总开关",
+         "。自动拉取 通知开启/通知关闭  ← 后台群通知开关"],
 
-        ["💡 常用场景速查",
+        ["🌐 手动同步（一般用不到）",
          "─────────────────────────────",
-         "网页端编辑完池子/设置/物品 → 拉取全部",
-         "新部署机器人 / 初始化 → 拉取全部",
-         "机器人这边配置/物品/池子有改动，要同步给网页 → 推送全部",
+         "⬇ 拉取全部：立即把网页端全部数据拉到机器人，覆盖本地",
+         "涵盖：配置+注册表+模版、池子、拍卖队列/快照",
          "",
-         "⚠️ 现已合并为「推送全部」「拉取全部」两条一键全量指令",
-         "不再有单独的同步设置/同步池子/上传池子/全量同步/全量上传等指令，也没有预览模式"],
+         "⬆ 推送全部：把机器人里改过的配置推送到网页端",
+         "物品和池子以网页端为准，默认不推送；网页端是空的、要把机器人这份灌上去时，发「推送全部 含物品池子」",
+         "",
+         "在群里用「。设置」改完后，机器人会提醒回复「确认」，确认后自动推送；同步之前自动拉取会暂停，避免覆盖你刚改的内容"],
     ];
 
     const nodes = sections.map(lines => ({

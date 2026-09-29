@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>长日存档 · 图片总览</title>
+<style>
+:root {
+  --bg:#0f0f13; --surface:#1a1a22; --surface2:#22222e; --border:#2e2e3e;
+  --accent:#f59e0b; --accent2:#fcd34d; --text:#e2e2ec; --muted:#7878a0;
+  --red:#f87171; --green:#86efac;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:"PingFang SC","Microsoft YaHei",sans-serif;font-size:14px;line-height:1.7;}
+a{color:var(--accent);text-decoration:none;}
+a:hover{color:var(--accent2);}
+
+.topbar{
+  background:var(--surface);border-bottom:1px solid var(--border);
+  padding:0 24px;display:flex;align-items:center;gap:16px;height:52px;
+  position:sticky;top:0;z-index:100;
+}
+.topbar .logo{font-size:16px;font-weight:700;color:var(--accent2);}
+.topbar .logout{margin-left:auto;font-size:12px;color:var(--muted);}
+
+.page{max-width:1100px;margin:0 auto;padding:28px 20px;}
+.page-title{font-size:20px;font-weight:600;color:var(--accent2);margin-bottom:6px;}
+.page-sub{font-size:13px;color:var(--muted);margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid var(--border);}
+
+.show-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;}
+.show-tab{
+  padding:6px 14px;border-radius:8px;font-size:13px;border:1px solid var(--border);
+  background:var(--surface);color:var(--muted);
+}
+.show-tab.active{background:var(--accent);color:#0f0f13;border-color:var(--accent);font-weight:700;}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;}
+.card{
+  background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  overflow:hidden;
+}
+.card img{width:100%;height:160px;object-fit:cover;display:block;background:var(--surface2);}
+.card-body{padding:10px 12px;}
+.card-meta{font-size:12px;color:var(--muted);margin-bottom:8px;}
+.card-meta .role{color:var(--text);font-weight:600;}
+.btn-delete{
+  width:100%;background:#3a1a1a;color:var(--red);border:1px solid #5a2a2a;
+  border-radius:6px;padding:6px 0;font-size:12px;cursor:pointer;font-weight:600;
+}
+.btn-delete:hover{background:#4a1f1f;}
+.empty{color:var(--muted);text-align:center;padding:40px 0;}
+.stats{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 16px;}
+.stat b{display:block;font-size:18px;color:var(--accent2);}
+.stat span{font-size:12px;color:var(--muted);}
+h2{font-size:15px;color:var(--accent2);margin:24px 0 10px;}
+table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+th,td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);font-size:13px;}
+th{color:var(--muted);font-weight:500;background:var(--surface2);}
+.tag{font-size:11px;padding:1px 8px;border-radius:10px;}
+.tag.cur{background:#1a2d1a;color:var(--green);}
+.tag.old{background:#3a1a1a;color:var(--red);}
+.btn-danger{background:#3a1a1a;color:var(--red);border:1px solid #5a2a2a;border-radius:6px;padding:6px 14px;font-size:13px;cursor:pointer;font-weight:600;}
+.notice{background:#1a2d1a;color:var(--green);border-radius:8px;padding:8px 14px;margin-bottom:16px;}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <span class="logo">⚙️ 超级管理员</span>
+  <nav style="display:flex;gap:4px;">
+    <a href="{{ url_for('superadmin') }}" style="color:var(--muted);font-size:13px;padding:4px 10px;border-radius:6px;">租户管理</a>
+    <a href="{{ url_for('superadmin_players') }}" style="color:var(--muted);font-size:13px;padding:4px 10px;border-radius:6px;">玩家档案</a>
+    <a href="{{ url_for('superadmin_analysis') }}" style="color:var(--muted);font-size:13px;padding:4px 10px;border-radius:6px;">数据分析</a>
+  </nav>
+  <a class="logout" href="{{ url_for('superadmin_logout') }}">退出超管</a>
+</div>
+
+<div class="page">
+  <div class="page-title">📷 收集图片总览</div>
+  <div class="page-sub">所有租户、所有季度还留在服务器上的「我提交」收集图片。「进行中」的季度是正常占用，其余的应该在结束季度时已被清掉，还在这里就是残留。</div>
+
+  {% if done %}<div class="notice">✅ {{ done }}</div>{% endif %}
+
+  <div class="stats">
+    <div class="stat"><b>{{ total_count }} 张 / {{ (total_bytes / 1048576) | round(2) }} MB</b><span>数据库记录总计</span></div>
+    <div class="stat"><b>{{ stale_count }} 张 / {{ (stale_bytes / 1048576) | round(2) }} MB</b><span>其中已结束季度的残留</span></div>
+    <div class="stat"><b>{{ orphans | length }} 个 / {{ (orphan_bytes / 1048576) | round(2) }} MB</b><span>磁盘孤儿文件（无数据库记录）</span></div>
+  </div>
+
+  <h2>按季度汇总</h2>
+  {% if groups %}
+  <table>
+    <tr><th>租户</th><th>季度</th><th>状态</th><th>图片数</th><th>占用</th><th></th></tr>
+    {% for g in groups %}
+    <tr>
+      <td>{{ g.tenant_name }}</td>
+      <td>{{ g.show_name }}</td>
+      <td>{% if g.is_current %}<span class="tag cur">进行中</span>{% else %}<span class="tag old">已结束/残留</span>{% endif %}</td>
+      <td>{{ g.count }}</td>
+      <td>{{ (g.bytes / 1024) | round(1) }} KB</td>
+      <td>{% if g.show_exists %}<a href="{{ url_for('superadmin_collected_images', tid=g.tid, show_id=g.show_id) }}">查看/逐张删除</a>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% if stale_count %}
+  <form method="post" action="{{ url_for('superadmin_cleanup_ended_images') }}" style="margin-top:12px;"
+        onsubmit="return confirm('清理所有已结束季度残留的 {{ stale_count }} 张图片？进行中的季度不受影响，此操作不可恢复。')">
+    <button type="submit" class="btn-danger">🧹 一键清理已结束季度的残留</button>
+  </form>
+  {% endif %}
+  {% else %}
+  <div class="empty">数据库里没有任何收集图片记录 ✨</div>
+  {% endif %}
+
+  <h2>孤儿文件</h2>
+  {% if orphans %}
+  <table>
+    <tr><th>租户ID</th><th>季度ID</th><th>玩家</th><th>文件</th><th>大小</th></tr>
+    {% for o in orphans %}
+    <tr><td>{{ o.tid }}</td><td>{{ o.show_id }}</td><td>{{ o.uid }}</td><td>{{ o.filename }}</td><td>{{ (o.size / 1024) | round(1) }} KB</td></tr>
+    {% endfor %}
+  </table>
+  <form method="post" action="{{ url_for('superadmin_delete_orphan_images') }}" style="margin-top:12px;"
+        onsubmit="return confirm('删除以上 {{ orphans | length }} 个孤儿文件？此操作不可恢复。')">
+    <button type="submit" class="btn-danger">🗑 删除全部孤儿文件</button>
+  </form>
+  {% else %}
+  <div class="empty">磁盘上没有孤儿文件 ✨</div>
+  {% endif %}
+</div>
+</body>
+</html>
