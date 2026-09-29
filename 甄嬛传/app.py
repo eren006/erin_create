@@ -3528,6 +3528,8 @@ def heir_age_years(h, day=None):
     不这样孩子永远长不到 12 岁夺嫡、16 岁成年——2026-09-28 配合压缩后的一届时长改的"""
     return heir_age_days(h, day) // HEIR_DAYS_PER_YEAR
 
+app.jinja_env.globals['heir_age_years'] = heir_age_years
+
 
 # ── 皇上考校 / 随驾秋狝 ──────────────────────────────────────────────────────
 

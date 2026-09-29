@@ -11,7 +11,7 @@
     <td>{{ dn(m) if m else '（早逝）' }}</td>
     <td>{{ (dn(fo) if fo.id != h.mother_id else '（自己养）') if fo else '（无人抚养）' }}</td>
     <td>{{ HEIR_PERSONALITIES[h.personality].name if h.personality else '' }}</td>
-    <td>{{ heir_age_days(h)//2 }} 岁{% if h.status=='crown' %}<br><span class="muted">太子</span>{% elif h.status=='deposed' %}<br><span class="muted">废黜圈禁</span>{% endif %}{% if h.title %}<br><span class="muted">{{ h.title }}{% if h.marriage=='capital' %}·留京{% elif h.marriage=='mongol' %}·抚蒙古{% endif %}</span>{% elif h.marriage=='choice' %}<br><span class="muted">待指婚</span>{% endif %}</td>
+    <td>{{ heir_age_years(h) }} 岁{% if h.status=='crown' %}<br><span class="muted">太子</span>{% elif h.status=='deposed' %}<br><span class="muted">废黜圈禁</span>{% endif %}{% if h.title %}<br><span class="muted">{{ h.title }}{% if h.marriage=='capital' %}·留京{% elif h.marriage=='mongol' %}·抚蒙古{% endif %}</span>{% elif h.marriage=='choice' %}<br><span class="muted">待指婚</span>{% endif %}</td>
     <td>{{ h.study }}/{{ h.riding }}/{{ h.virtue }}/{{ h.health }}</td>
     <td>{{ h.caretaker_affinity }}{% if fo and fo.id != h.mother_id %}<span class="muted">（生母 {{ h.mother_affinity }}）</span>{% endif %}</td>
     <td>{% if h.mother_id == c.id and not h.name %}
