@@ -3376,7 +3376,17 @@ def gazette_page():
     for r in rows:
         days.setdefault(r['day'], []).append(r)
     if g.me: guide_mark(g.me['id'], 'gazette')
-    return render_template('gazette.html', days=sorted(days.items(), reverse=True), day=day)
+    rank_rows = q("SELECT * FROM consorts WHERE status NOT IN ('xiunv','dead') ORDER BY rank DESC, favor DESC")
+    groups = []
+    for r in range(9, 0, -1):
+        members = [x for x in rank_rows if x['rank'] == r and x['status'] != 'cold']
+        if members or r in RANK_SLOTS:
+            groups.append(dict(rank=r, name=RANK_NAMES[r], members=members, cap=RANK_SLOTS.get(r)))
+    cold = [x for x in rank_rows if x['status'] == 'cold']
+    st = state()
+    last_bed = get_consort(st['last_bed_id']) if st['last_bed_id'] else None
+    return render_template('gazette.html', days=sorted(days.items(), reverse=True), day=day,
+                            groups=groups, cold=cold, last_bed=last_bed, me=g.me)
 
 CN_NUM = '零一二三四五六七八九十'
 

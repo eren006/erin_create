@@ -155,6 +155,13 @@ input:not([type=radio]):not([type=checkbox]),select,textarea{box-shadow:inset 0 
 ::selection{background:var(--jin-soft);color:var(--ink)}
 @media(prefers-reduced-motion:no-preference){button,.btn,nav.halls a{transition:background-color .18s ease,box-shadow .18s ease}}
 @media(max-width:520px){nav.halls{gap:3px;padding-bottom:10px}nav.halls a{font-size:16px;padding:7px 4px;min-width:0}header.gate .clock{line-height:1.9}}
+
+/* 主导航六项在窄屏也挤在一行；次级导航（子嗣/夺嫡/家族/邸报/宫史）弱化一档、分开一行 */
+@media(max-width:520px){nav.halls-main a{flex:0 1 auto;padding-inline:6px}}
+nav.halls-sub{margin-top:2px;gap:3px}
+nav.halls-sub a{font-size:14px;min-width:0;min-height:0;padding:5px 12px;opacity:.78}
+nav.halls-sub a.on{opacity:1}
+@media(max-width:520px){nav.halls-sub a{font-size:13px;padding:5px 8px;flex:0 1 auto}}
 </style>
 {% block head %}{% endblock %}
 </head>
@@ -167,19 +174,20 @@ input:not([type=radio]):not([type=checkbox]),select,textarea{box-shadow:inset 0 
   </div>
   {% if session.uid and g.me and g.me.status != 'xiunv' %}
   {% set ep = request.endpoint %}
-  <nav class="halls">
+  <nav class="halls halls-main">
     <a href="{{ url_for('index') }}" class="{{ 'on' if ep in ('index','place') }}">宫城</a>
     <a href="{{ url_for('social') }}" class="{{ 'on' if ep=='social' }}">六宫</a>
     <a href="{{ url_for('hobby') }}" class="{{ 'on' if ep=='hobby' }}">暇趣</a>
     <a href="{{ url_for('intrigue') }}" class="{{ 'on' if ep=='intrigue' }}">使计</a>
     <a href="{{ url_for('letters') }}" class="{{ 'on' if ep=='letters' }}">书信{% if unread_letters %}<span class="dot" aria-label="{{ unread_letters }} 封未读">{{ unread_letters }}</span>{% endif %}</a>
     <a href="{{ url_for('shop') }}" class="{{ 'on' if ep=='shop' }}">内务府</a>
-    <a href="{{ url_for('ranks') }}" class="{{ 'on' if ep=='ranks' }}">位分</a>
-    <a href="{{ url_for('gazette_page') }}" class="{{ 'on' if ep=='gazette_page' }}">邸报</a>
-    <a href="{{ url_for('memorial') }}" class="{{ 'on' if ep=='memorial' }}">宫史</a>
+  </nav>
+  <nav class="halls halls-sub">
     <a href="{{ url_for('heirs') }}" class="{{ 'on' if ep=='heirs' }}">子嗣</a>
     <a href="{{ url_for('succession') }}" class="{{ 'on' if ep=='succession' }}">夺嫡</a>
     <a href="{{ url_for('family_page') }}" class="{{ 'on' if ep in ('family_page','clan','clan_of','clans') }}">家族</a>
+    <a href="{{ url_for('gazette_page') }}" class="{{ 'on' if ep=='gazette_page' }}">邸报</a>
+    <a href="{{ url_for('memorial') }}" class="{{ 'on' if ep=='memorial' }}">宫史</a>
   </nav>
   {% else %}<div style="height:10px"></div>{% endif %}
 </header>
