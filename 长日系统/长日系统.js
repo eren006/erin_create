@@ -3044,13 +3044,23 @@ async function checkAppointmentPreflight(ctx, msg, cmdArgs, subtype, minDuration
 
     if (!checkRealityHourLimit(time, ctx, msg)) return { valid: false, errorMsg: "" };
 
-    // 时间调度：禁约时段（按游戏日）
+    // 时间调度：禁约时段（按游戏日，网页端「时间调度」里按小时勾选）
+    // 约会覆盖到的每一个小时都要查，不能只看开始的那个小时——以前 14、15 点禁约时，
+    // 「14:00-16:00」会被拦、「13:00-16:00」却能约进去；跨午夜的（23:00-01:00）按次日凌晨继续算
     {
-        const _blocked = kvGet("ts_blocked_by_day", {})[day] || [];
-        if (_blocked.length > 0) {
-            const _startHour = parseInt(time.split(":")[0]);
-            if (_blocked.includes(_startHour)) {
-                return { valid: false, errorMsg: `⚠️ ${day} ${String(_startHour).padStart(2,"0")}:00 时段已被系统禁约，请选择其他时间。` };
+        const _blocked = (kvGet("ts_blocked_by_day", {})[day] || []).map(Number);
+        const _m = _blocked.length ? time.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/) : null;
+        if (_m) {
+            const _s = parseInt(_m[1]) * 60 + parseInt(_m[2]);
+            let _e = parseInt(_m[3]) * 60 + parseInt(_m[4]);
+            if (_e <= _s) _e += 1440;
+            const _hit = [];
+            for (let _h = Math.floor(_s / 60); _h * 60 < _e; _h++) {
+                if (_blocked.includes(_h % 24) && !_hit.includes(_h % 24)) _hit.push(_h % 24);
+            }
+            if (_hit.length) {
+                const _fmt = _hit.map(h => `${String(h).padStart(2, "0")}:00`).join("、");
+                return { valid: false, errorMsg: `⚠️ ${day} 的 ${_fmt} 时段已被系统禁约，这次约会覆盖到了，请换个时间。` };
             }
         }
     }
@@ -3061,7 +3071,8 @@ async function checkAppointmentPreflight(ctx, msg, cmdArgs, subtype, minDuration
         if (_allowedDurs.length > 0) {
             const _m = time.match(/(\d{2}):(\d{2})-(\d{2}):(\d{2})/);
             if (_m) {
-                const _durMins = (parseInt(_m[3]) * 60 + parseInt(_m[4])) - (parseInt(_m[1]) * 60 + parseInt(_m[2]));
+                let _durMins = (parseInt(_m[3]) * 60 + parseInt(_m[4])) - (parseInt(_m[1]) * 60 + parseInt(_m[2]));
+                if (_durMins <= 0) _durMins += 1440;   // 跨午夜（23:00-01:00）以前算成负数，永远对不上允许的弧长
                 const _durHours = _durMins / 60;
                 if (!_allowedDurs.includes(_durHours)) {
                     const _opts = _allowedDurs.map(h => `${h}h`).join("、");
@@ -10137,7 +10148,9 @@ function handleSubmitForm2(ctx, msg, wdId) {
         (response) => {
             if (response.status !== "ok" && response.retcode !== 0) return seal.replyToSender(ctx, msg, errMsg);
             const data = response.data;
-            const content = (data && data.raw_message) || (data && typeof data.message === "string" ? data.message : null);
+            // 纯图片消息在部分协议端 raw_message 是空的，只要 message 段数组非空就算读到了（正文靠整条转发）
+            const content = (data && data.raw_message) || (data && typeof data.message === "string" ? data.message : null)
+                || (data && Array.isArray(data.message) && data.message.length ? "[图片/消息]" : null);
             if (!content) return seal.replyToSender(ctx, msg, errMsg);
 
             const rawUid = msg.sender.userId.replace(`${platform}:`, "");
@@ -10149,7 +10162,26 @@ function handleSubmitForm2(ctx, msg, wdId) {
             kvSet("form2_submitted", submitted);
             refreshLookWall(platform); // 提交后皮相墙里该角色前面的 ⬜ 变 ✅
 
-            sendTextToGroup(platform, bgGid, `📋【二表${isResubmit ? "重新提交" : "提交"}】${roleName}：\n${content}`);
+            // 先发一行抬头，再把原消息整条转发到后台群：原样保留图片/表情/排版，也不受单条 1000 字节的限制。
+            // 以前是把 raw_message 当文字重发：llbot 取回来的图片段是本地文件名（file=xxx.image），重发时找不到文件，
+            // 图片丢失甚至整条发不出去；二表长的话文字版也会超长被静默丢掉。
+            // 转发失败（协议端不支持 forward_group_single_msg）才退回文字版，并把图片换成 url 形式尽量保住
+            const header = `📋【二表${isResubmit ? "重新提交" : "提交"}】${roleName}：`;
+            const bgNum = parseInt(String(bgGid).replace(/\D/g, ""), 10);
+            const fallbackText = () => {
+                const withUrls = content.replace(/\[CQ:image,([^\]]*)\]/g, (m, args) => {
+                    const u = (args.match(/(?:^|,)url=([^,\]]+)/) || [])[1];
+                    return u ? `[CQ:image,file=${u.replace(/&amp;/g, "&")}]` : m;
+                });
+                sendTextToGroup(platform, bgGid, `${header}\n${withUrls}`);
+            };
+            sendTextToGroup(platform, bgGid, header);
+            setTimeout(() => WSM.request(
+                { action: "forward_group_single_msg", params: { group_id: bgNum, message_id: wdId } },
+                (r) => { if (r.status !== "ok" && r.retcode !== 0) { console.error(`[提交二表] 转发原消息失败，改发文字版: ${JSON.stringify(r)}`); fallbackText(); } },
+                () => { console.error("[提交二表] 转发原消息超时，改发文字版"); fallbackText(); },
+                8000
+            ), 800);   // 等抬头先发出去，保证后台群里抬头在上、原消息在下
             seal.replyToSender(ctx, msg, `✅ 「${roleName}」的二表已${isResubmit ? "重新" : ""}提交，感谢配合！`);
         },
         () => seal.replyToSender(ctx, msg, errMsg),

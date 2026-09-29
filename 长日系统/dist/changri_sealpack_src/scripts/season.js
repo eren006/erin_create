@@ -129,6 +129,15 @@ const SEASON_FLOW = {
     },
 };
 
+// 开季成功后单独发给管理员的提醒（改这里就行；单条要控制在 1000 字节以内，超长会被平台静默丢掉）
+const SEASON_START_REMINDER = [
+    "📌 开季后别忘了",
+    "1. 通知玩家交二表：长按自己的二表那条消息 → 引用 → 发「提交二表」，会整条转发到后台群，皮相墙上名字前的 ⬜ 变 ✅",
+    "2. 皮相墙：玩家设了皮相就自动更新到公告群（没配公告群发水群）",
+    "3. 把玩家指南发给大家：群里发「长日网址」拿链接",
+    "4. 写信综、DLC 等非默认功能每季要重新打开：「。设置 功能开关」「。设置 DLC」",
+].join("\n");
+
 // 把 SEASON_FLOW 渲染成合并转发的气泡：前几个是带编号/说明的索引，后面每条指令单独一个干净气泡，长按就能复制发送。
 // extra：{ sections: 额外的说明气泡, commands: 额外的可复制指令 }，给「管理帮助」塞日常运营条目用
 function buildFlowSections(heading, extra) {
@@ -694,6 +703,8 @@ async function applySeasonLocal(ctx, msg, opts) {
     );
     // 开季准备单独一条发：和上面拼在一起容易超过单条 1000 字节，会被平台静默丢掉
     if (prepHint) seal.replyToSender(ctx, msg, "🧰 开季准备" + prepHint);
+    // 开季后要记得通知玩家/自己去开的东西：这些每季都有、又容易忘（用户点名要二表），单独一条发
+    seal.replyToSender(ctx, msg, SEASON_START_REMINDER);
     // 开季成功后自动附带发一份季度指南，接下来开季清单里剩下的步骤（3-8）不用再手动查
     sendSeasonGuide(ctx, msg);
 }
