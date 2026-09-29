@@ -61,41 +61,115 @@
   border-radius: 8px; padding: 6px 16px; cursor: pointer; font-size: 13px;
 }
 .search-box button:hover { background: var(--accent2); }
+
+.adm-hero { display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:12px 16px; margin-bottom:18px; font-size:13px; }
+.adm-hero .dot { width:8px; height:8px; border-radius:50%; background:#6fcf97; flex:0 0 auto; }
+.adm-hero .dot.off { background:var(--muted); }
+.adm-hero b { color:var(--text); }
+.adm-hero .muted { color:var(--muted); }
+.adm-steps { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:12px; margin-bottom:26px; }
+.adm-step { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px 16px; display:flex; flex-direction:column; gap:8px; }
+.adm-step .n { font-size:11px; font-weight:700; color:var(--accent); letter-spacing:.08em; }
+.adm-step .t { font-size:15px; font-weight:700; }
+.adm-step .d { font-size:12px; color:var(--muted); line-height:1.7; flex:1; }
+.adm-step .go { display:flex; gap:6px; flex-wrap:wrap; }
+.adm-step .go a { font-size:12px; padding:4px 11px; border-radius:999px; border:1px solid var(--border); color:var(--text); text-decoration:none; background:var(--bg); }
+.adm-step .go a.pri { background:var(--accent); border-color:var(--accent); color:#fff; }
+.adm-step .go a:hover { border-color:var(--accent); }
+.adm-map { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:12px; }
+.adm-map .grp { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:13px 15px; }
+.adm-map .grp h4 { margin:0 0 8px; font-size:13.5px; }
+.adm-map .grp a { display:block; padding:5px 0; text-decoration:none; color:var(--text); font-size:12.5px; border-top:1px solid var(--border); }
+.adm-map .grp a:first-of-type { border-top:none; }
+.adm-map .grp a span { display:block; font-size:11.5px; color:var(--muted); margin-top:1px; }
+.adm-map .grp a:hover { color:var(--accent); }
+details.adm-fold { margin-bottom:28px; border:1px solid var(--border); border-radius:12px; background:var(--surface); }
+details.adm-fold > summary { cursor:pointer; padding:12px 16px; font-size:13.5px; font-weight:600; color:var(--muted); user-select:none; }
+details.adm-fold[open] > summary { color:var(--text); border-bottom:1px solid var(--border); }
+details.adm-fold .adm-fold-body { padding:16px 16px 4px; }
 </style>
 {% endblock %}
 
 {% block body %}
 <div class="page">
   <div class="page-title" style="display:flex;align-items:center;justify-content:space-between;">
-    <span>管理后台</span>
+    <span>🏠 管理后台 · 总览</span>
     <a href="{{ url_for('admin_logout') }}" style="font-size:12px;color:var(--muted);font-weight:400;">退出后台</a>
-  </div>
-
-  <div style="display:flex;gap:6px;margin-bottom:24px;flex-wrap:wrap;">
-    <a href="{{ url_for('admin') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--accent);border:1px solid var(--accent);color:#fff;">总览</a>
-    <a href="{{ url_for('admin_config_page') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">游戏配置</a>
-    <a href="{{ url_for('admin_groups') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">已知群</a>
-    <a href="{{ url_for('admin_places') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">地点管理</a>
-    <a href="{{ url_for('admin_rewards') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">结戏奖励</a>
-    <a href="{{ url_for('admin_player_controls') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">玩家控制</a>
-    <a href="{{ url_for('admin_shows') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">季管理</a>
-    <a href="{{ url_for('admin_command_guides') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">指令指南</a>
-    <a href="{{ url_for('admin_time_schedule') }}" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">时间调度</a>
   </div>
 
   {% if cleared %}
   <div class="success-banner">✅ 所有数据已清空。</div>
   {% endif %}
 
-  <!-- 玩家指南链接 -->
-  <div class="success-banner" style="background:var(--surface);border-color:var(--border);color:var(--text);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-    <span>🎮 有一份专门给玩家看的功能一览页（卡片式，不含管理员功能），可以直接把链接发给玩家</span>
-    <a href="/static/docs/player_guide.html" target="_blank" style="font-size:13px;padding:5px 14px;border-radius:8px;background:var(--accent);color:#fff;text-decoration:none;white-space:nowrap;">打开玩家指南</a>
+  <!-- 同步状态 -->
+  <div class="adm-hero">
+    <span class="dot {{ '' if last_sync else 'off' }}"></span>
+    <span><b>网页 ⇄ 机器人已自动同步</b>：在网页保存后，机器人 2 分钟内自动拉取，不用在群里发指令。</span>
+    <span class="muted" style="margin-left:auto;">机器人最近一次同步：{{ last_sync or '还没有同步过（机器人第一次检查后会显示）' }}</span>
+  </div>
+
+  <!-- 快速开始 -->
+  <div class="admin-section">
+    <h3>🚀 快速开始（第一次用，按这三步）</h3>
+    <div class="adm-steps">
+      <div class="adm-step">
+        <div class="n">STEP 1</div>
+        <div class="t">📦 录入游戏内容</div>
+        <div class="d">物品、货币、装备、属性、槽位、合成配方、礼品。每一块下面都有<b>批量粘贴录入</b>，还有可以复制给 AI 的提示词，一次录入一大堆。</div>
+        <div class="go"><a class="pri" href="{{ url_for('admin_rpg') }}">进入资料库</a><a href="{{ url_for('admin_bulk_help') }}">📖 批量录入教程</a></div>
+      </div>
+      <div class="adm-step">
+        <div class="n">STEP 2</div>
+        <div class="t">🎲 设定玩法</div>
+        <div class="d">游戏配置（功能开关、冷却、消息模板…）、抽取池、商城、拍卖、结戏奖励。改完保存即可，机器人自动同步。</div>
+        <div class="go"><a class="pri" href="{{ url_for('admin_config_page') }}">游戏配置</a><a href="{{ url_for('admin_pools') }}">抽取池</a><a href="{{ url_for('admin_rewards') }}">结戏奖励</a></div>
+      </div>
+      <div class="adm-step">
+        <div class="n">STEP 3</div>
+        <div class="t">📅 开一季、发指南</div>
+        <div class="d">在「季管理」新建并启用一季，在「群号组」录入群号；再把玩家指南链接发给玩家。</div>
+        <div class="go"><a class="pri" href="{{ url_for('admin_shows') }}">季管理</a><a href="{{ url_for('admin_groups') }}">群号组</a><a href="/static/docs/player_guide.html" target="_blank">🎮 玩家指南</a></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 全部功能入口 -->
+  <div class="admin-section">
+    <h3>🧭 全部功能（按「做什么」分）</h3>
+    <div class="adm-map">
+      <div class="grp"><h4>📦 资料库</h4>
+        <a href="{{ url_for('admin_rpg') }}">物品 · 装备 · 属性 · 合成<span>货币、物品、装备、槽位、属性与加点、合成配方、技能、战斗</span></a>
+        <a href="{{ url_for('admin_gifts') }}">礼品店<span>玩家用「送礼 对方 #编号」赠送的预设礼品</span></a>
+        <a href="{{ url_for('admin_bulk_help') }}">📖 批量录入教程<span>各种格式说明 + AI 提示词</span></a>
+      </div>
+      <div class="grp"><h4>🎲 玩法与经济</h4>
+        <a href="{{ url_for('admin_pools') }}">抽取池<span>新建池子、配物品与权重、保底</span></a>
+        <a href="{{ url_for('admin_shop') }}">商城<span>上架物品、设置价格</span></a>
+        <a href="{{ url_for('admin_auctions') }}">拍卖<span>待拍队列、起拍价、加价幅度</span></a>
+        <a href="{{ url_for('admin_rewards') }}">结戏奖励<span>私约结束后按字数/段数自动发奖励</span></a>
+      </div>
+      <div class="grp"><h4>⚙️ 系统设置</h4>
+        <a href="{{ url_for('admin_config_page') }}">游戏配置<span>功能开关、冷却、消息模板、触发词、类型别名</span></a>
+        <a href="{{ url_for('admin_places') }}">地点<span>可选的约会地点与钥匙</span></a>
+        <a href="{{ url_for('admin_time_schedule') }}">时间调度<span>禁约时段、约会时长档位、开放时间窗口</span></a>
+        <a href="{{ url_for('admin_groups') }}">群号组<span>录入并管理群号池</span></a>
+        <a href="{{ url_for('admin_config_history') }}">配置历史<span>查看并回滚以前的配置</span></a>
+      </div>
+      <div class="grp"><h4>👥 玩家与数据</h4>
+        <a href="{{ url_for('admin_player_controls') }}">玩家控制<span>功能权限、背包与属性</span></a>
+        <a href="{{ url_for('admin_stats') }}">数据统计<span>互动、场次、活跃度</span></a>
+        <a href="{{ url_for('admin_blacklist') }}">黑名单<span>禁止参与的账号</span></a>
+      </div>
+      <div class="grp"><h4>📅 季与存档</h4>
+        <a href="{{ url_for('admin_shows') }}">季管理<span>新建/启用/结束一季，档期与公开链接</span></a>
+        <a href="{{ url_for('admin_command_guides') }}">指令指南<span>给玩家看的指令说明页</span></a>
+      </div>
+    </div>
   </div>
 
   <!-- 可个性化定制 -->
   <div class="admin-section">
-    <h3>🎨 可个性化定制</h3>
+    <h3>🎨 可以自己定制的地方</h3>
     <div class="admin-grid" style="grid-template-columns:repeat(3,1fr);">
       <a href="{{ url_for('admin_config_page') }}#" class="stat-box" style="text-align:left;text-decoration:none;">
         <div style="font-size:14px;font-weight:700;color:var(--text);">私约触发词</div>
@@ -148,6 +222,10 @@
     </div>
   </div>
 
+  <!-- 账号与数据安全（折叠，平时不用看） -->
+  <details class="adm-fold">
+    <summary>🔒 账号与数据安全：修改密码 · 备份导出 · 危险操作</summary>
+    <div class="adm-fold-body">
   <!-- 密码管理 -->
   <div class="admin-section">
     <h3>修改密码</h3>
@@ -180,17 +258,6 @@
     </form>
   </div>
 
-  <!-- UI 配置 -->
-  <div class="admin-section">
-    <h3>UI 配置</h3>
-    <a href="{{ url_for('admin_config_page') }}"
-       style="display:inline-block;background:var(--accent);
-              color:#fff;border-radius:8px;padding:7px 18px;font-size:13px;text-decoration:none;font-weight:600;">
-      ⚙ 进入配置页面
-    </a>
-    <span style="font-size:12px;color:var(--muted);margin-left:12px;">在网页改好保存后，机器人 2 分钟内自动同步</span>
-  </div>
-
   <!-- 数据备份与导出 -->
   <div class="admin-section">
     <h3>数据备份 / 导出</h3>
@@ -217,6 +284,9 @@
       <button type="submit" class="btn-danger">🗑 清空所有记录</button>
     </form>
   </div>
+
+    </div>
+  </details>
 
   <!-- 玩家查询 -->
   <div class="admin-section">

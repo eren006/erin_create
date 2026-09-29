@@ -603,6 +603,7 @@ cmd_abolish_schedule.solve = (ctx, msg, cmdArgs) => {
 // ========================
 // 「创建新季度」发现残留数据时挂起的参数，等同一人在同一处回复「确认」；仅内存，重启即丢，5 分钟过期
 const _pendingNewSeason = new Map();
+globalThis.__changriPendingNewSeason = _pendingNewSeason;   // 「。设置」那边的「确认」要避开同一个人正在等的「创建新季度」确认，免得一句确认同时触发两件事
 const PENDING_NEW_SEASON_TTL_MS = 5 * 60 * 1000;
 function pendingSeasonKey(msg) {
     return `${msg.platform}:${msg.sender.userId}:${msg.groupId || ""}`;

@@ -77,6 +77,30 @@
   align-items: center;
   gap: 5px;
 }
+
+/* ── 批量粘贴录入 ─────────────────────────────── */
+.bulk-box { margin-top: 14px; border: 1px solid var(--border); border-radius: 10px; }
+.bulk-box > summary { cursor: pointer; padding: 9px 14px; font-size: 12.5px; color: var(--muted); user-select: none; }
+.bulk-box[open] > summary { color: var(--text); border-bottom: 1px solid var(--border); }
+.bulk-body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 9px; }
+.bulk-hint { font-size: 11.5px; line-height: 1.85; color: var(--muted); }
+.bulk-hint code { background: rgba(255,255,255,0.06); padding: 1px 5px; border-radius: 4px; font-size: 11px; color: var(--text); }
+.bulk-text { width: 100%; box-sizing: border-box; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; line-height: 1.7; resize: vertical; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 8px 10px; }
+.bulk-text:focus { outline: none; border-color: var(--accent); }
+.bulk-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.bulk-go { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 7px 18px; font-size: 13px; cursor: pointer; font-weight: 600; }
+.bulk-clear { background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 6px 12px; font-size: 12px; cursor: pointer; }
+.bulk-out { font-size: 12px; line-height: 1.8; }
+.bulk-out .ok   { color: #6fcf97; }
+.bulk-out .skip { color: #f2c94c; }
+.bulk-out .err  { color: #eb5757; }
+/* ── 标签页 ─────────────────────────────── */
+.rpg-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.rpg-tabs button { background: var(--surface); border: 1px solid var(--border); color: var(--muted); border-radius: 999px; padding: 7px 16px; font-size: 13px; cursor: pointer; font-family: inherit; }
+.rpg-tabs button:hover { color: var(--text); border-color: var(--accent); }
+.rpg-tabs button.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+[data-rpg-tab].tab-hide { display: none !important; }
+.rpg-layout.one-col { grid-template-columns: 1fr; }
 .rpg-hint {
   font-size: 10px;
   color: var(--muted);
@@ -344,14 +368,23 @@
 <div class="page">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
     <div>
-      <div style="font-size:18px;font-weight:700;margin-bottom:3px;">RPG 管理</div>
-      <div style="font-size:12px;color:var(--muted);">注册物品 · 装备 · 属性 · 槽位，改完保存后机器人 2 分钟内自动同步</div>
+      <div style="font-size:18px;font-weight:700;margin-bottom:3px;">资料库 · 物品 装备 属性 合成</div>
+      <div style="font-size:12px;color:var(--muted);">游戏里的内容都在这里注册；每一块下面都有「批量粘贴录入」，改完保存后机器人 2 分钟内自动同步。</div>
     </div>
+    <a href="{{ url_for('admin_bulk_help') }}" style="font-size:12.5px;color:var(--accent);white-space:nowrap;">📖 批量录入教程</a>
+  </div>
+
+  <div class="rpg-tabs" id="rpg-tabs">
+    <button type="button" data-tab="items">📦 物品 · 装备 · 货币</button>
+    <button type="button" data-tab="attrs">📊 属性 · 加点</button>
+    <button type="button" data-tab="craft">🧪 合成配方</button>
+    <button type="button" data-tab="trade">💱 交易白名单</button>
+    <button type="button" data-tab="battle">⚔️ 战斗</button>
   </div>
 
   <div class="rpg-layout">
     <!-- ══ 左栏：注册 + 待同步 ══ -->
-    <div>
+    <div data-rpg-tab="items">
 
       <!-- 注册新条目 -->
       <div class="rpg-panel">
@@ -463,6 +496,36 @@
         </div>
 
         <button class="rpg-submit" onclick="RPG.addToRegistry()">立即注册</button>
+
+        <details class="bulk-box">
+          <summary>📋 批量粘贴录入（物品 / 互动物品 / 货币）</summary>
+          <div class="bulk-body">
+            <div class="bulk-hint">一行一件，物品名后接若干【标签】：<code>【描述】</code> <code>【N次】</code>/<code>【无限】</code> <code>【体力+10,力量-2】</code>（属性效果，属性需已注册）<code>【互动】</code> <code>【货币】</code> <code>【二手】</code>；重名自动跳过。<br>例：<code>金苹果【恢复体力】【5次】【体力+10】</code>　<code>银币【货币】</code></div>
+            <textarea class="bulk-text" id="bulk-items" rows="6" placeholder="金苹果【恢复体力】【5次】【体力+10】&#10;爱心糖【甜蜜道具】【互动】【二手】&#10;银币【货币】"></textarea>
+            <div class="bulk-actions">
+              <button type="button" class="bulk-go" onclick="RPG.bulkItems()">一键录入</button>
+              <button type="button" class="bulk-clear" onclick="RPG.bulkClear('items')">清空</button>
+              <button type="button" class="bulk-clear" onclick="BulkHelp.copyPrompt('items', this)">🤖 复制 AI 提示词</button>
+              <a class="bh-link" href="{{ url_for('admin_bulk_help') }}#items" target="_blank">📖 格式教程</a>
+            </div>
+            <div class="bulk-out" id="bulk-out-items"></div>
+          </div>
+        </details>
+
+        <details class="bulk-box">
+          <summary>📋 批量粘贴录入（装备）</summary>
+          <div class="bulk-body">
+            <div class="bulk-hint">一行一件：<code>装备名*描述*槽位*属性效果</code>，槽位写槽位码或显示名（如 <code>hand</code> / <code>手部</code>），属性效果如 <code>ATK+15,DEF+10</code>，可再加 <code>*耐久N</code>；属性需已注册（战斗属性 ATK/DEF/AGI/HP/MP/MP_REGEN 除外）。<br>例：<code>铁制短剑*普通短剑*hand*ATK+15</code>　<code>钢铁胸甲*防御胸甲*chest*DEF+20,HP+50*耐久100</code></div>
+            <textarea class="bulk-text" id="bulk-equip" rows="6" placeholder="铁制短剑*普通短剑*hand*ATK+15&#10;钢铁胸甲*防御胸甲*chest*DEF+20,HP+50"></textarea>
+            <div class="bulk-actions">
+              <button type="button" class="bulk-go" onclick="RPG.bulkEquip()">一键录入</button>
+              <button type="button" class="bulk-clear" onclick="RPG.bulkClear('equip')">清空</button>
+              <button type="button" class="bulk-clear" onclick="BulkHelp.copyPrompt('equip', this)">🤖 复制 AI 提示词</button>
+              <a class="bh-link" href="{{ url_for('admin_bulk_help') }}#equip" target="_blank">📖 格式教程</a>
+            </div>
+            <div class="bulk-out" id="bulk-out-equip"></div>
+          </div>
+        </details>
       </div>
 
       <!-- 旧版待同步队列（仅在有遗留数据时显示） -->
@@ -480,7 +543,7 @@
     <div>
 
       <!-- SPEC 特殊道具 -->
-      <div class="rpg-panel">
+      <div class="rpg-panel" data-rpg-tab="items">
         <div class="rpg-panel-title">
           🔮 特殊道具 (SPEC)
           <span class="badge" id="spec-imported-count">0 / 8</span>
@@ -493,7 +556,7 @@
       </div>
 
       <!-- 已注册条目 -->
-      <div class="rpg-panel">
+      <div class="rpg-panel" data-rpg-tab="items">
         <div class="rpg-panel-title">
           📋 已注册条目
           <span class="badge" id="reg-count">0</span>
@@ -525,7 +588,7 @@
       </div>
 
       <!-- 属性管理 -->
-      <div class="rpg-panel">
+      <div class="rpg-panel" data-rpg-tab="attrs">
         <div class="rpg-panel-title">
           📊 属性管理
           <span class="badge" id="attr-count">0</span>
@@ -553,10 +616,25 @@
           </div>
           <button class="mgmt-add-btn" onclick="RPG.addAttr()">+ 注册属性</button>
         </div>
+
+        <details class="bulk-box">
+          <summary>📋 批量粘贴录入（属性）</summary>
+          <div class="bulk-body">
+            <div class="bulk-hint">一行一个：<code>属性名 [最小 最大 默认]</code>，只写名字就是不限范围、默认 0；已存在且带数字会更新范围。<br>例：<code>体力 0 100 50</code>　<code>精力</code></div>
+            <textarea class="bulk-text" id="bulk-attrs" rows="6" placeholder="体力 0 100 50&#10;精力&#10;魅力 0 20 5"></textarea>
+            <div class="bulk-actions">
+              <button type="button" class="bulk-go" onclick="RPG.bulkAttrs()">一键录入</button>
+              <button type="button" class="bulk-clear" onclick="RPG.bulkClear('attrs')">清空</button>
+              <button type="button" class="bulk-clear" onclick="BulkHelp.copyPrompt('attrs', this)">🤖 复制 AI 提示词</button>
+              <a class="bh-link" href="{{ url_for('admin_bulk_help') }}#attrs" target="_blank">📖 格式教程</a>
+            </div>
+            <div class="bulk-out" id="bulk-out-attrs"></div>
+          </div>
+        </details>
       </div>
 
       <!-- 加点模板（自由加点） -->
-      <div class="rpg-panel">
+      <div class="rpg-panel" data-rpg-tab="attrs">
         <div class="rpg-panel-title">
           🧮 加点模板（自由加点）
           <span class="badge" id="pg-count">0</span>
@@ -599,7 +677,7 @@
       </div>
 
       <!-- 槽位管理 -->
-      <div class="rpg-panel">
+      <div class="rpg-panel" data-rpg-tab="items">
         <div class="rpg-panel-title">
           🎯 槽位管理
           <span class="badge" id="slot-count">0</span>
@@ -620,13 +698,28 @@
           </div>
           <button class="mgmt-add-btn" onclick="RPG.addSlot()">+ 添加槽位</button>
         </div>
+
+        <details class="bulk-box">
+          <summary>📋 批量粘贴录入（槽位）</summary>
+          <div class="bulk-body">
+            <div class="bulk-hint">一行一个：<code>槽位码 显示名</code>（空格或 <code>=</code> 隔开），槽位码建议英文小写。<br>例：<code>ring1 戒指1</code>　<code>neck 项链</code></div>
+            <textarea class="bulk-text" id="bulk-slots" rows="6" placeholder="ring1 戒指1&#10;ring2 戒指2&#10;neck 项链"></textarea>
+            <div class="bulk-actions">
+              <button type="button" class="bulk-go" onclick="RPG.bulkSlots()">一键录入</button>
+              <button type="button" class="bulk-clear" onclick="RPG.bulkClear('slots')">清空</button>
+              <button type="button" class="bulk-clear" onclick="BulkHelp.copyPrompt('slots', this)">🤖 复制 AI 提示词</button>
+              <a class="bh-link" href="{{ url_for('admin_bulk_help') }}#slots" target="_blank">📖 格式教程</a>
+            </div>
+            <div class="bulk-out" id="bulk-out-slots"></div>
+          </div>
+        </details>
       </div>
 
     </div>
   </div>
 
   <!-- ══ 议价交易白名单 ══ -->
-  <div style="margin-top:18px;">
+  <div style="margin-top:18px;" data-rpg-tab="trade">
     <div class="rpg-panel">
       <div class="rpg-panel-title">
         💱 可交易物品白名单
@@ -640,7 +733,7 @@
   </div>
 
   <!-- ══ 合成配方 ══ -->
-  <div style="margin-top:18px;">
+  <div style="margin-top:18px;" data-rpg-tab="craft">
     <div class="rpg-layout" style="grid-template-columns:400px 1fr;">
 
       <!-- 左：注册表单 -->
@@ -713,6 +806,21 @@
         </div>
 
         <button class="rpg-submit" onclick="CRAFT.registerRecipe()">注册配方</button>
+
+        <details class="bulk-box">
+          <summary>📋 批量粘贴录入（合成配方）</summary>
+          <div class="bulk-body">
+            <div class="bulk-hint">一行一条：<code>产物*描述*材料1:数量,材料2:数量[*限制条件[*成功率]]</code>，产物和材料可以写名称或编号；限制如 <code>attr:体力:50,currency:金币:10</code>；成功率 0-100（默认 100）。已有同产物的配方会被覆盖。<br>例：<code>高级丹*升级丹药*初级丹:3,金币:100*attr:体力:50*80</code>　<code>糖果*甜*白糖:2,面粉:1</code></div>
+            <textarea class="bulk-text" id="bulk-recipes" rows="6" placeholder="高级丹*升级丹药*初级丹:3,金币:100*attr:体力:50*80&#10;糖果*甜*白糖:2,面粉:1"></textarea>
+            <div class="bulk-actions">
+              <button type="button" class="bulk-go" onclick="CRAFT.bulkRecipes()">一键录入</button>
+              <button type="button" class="bulk-clear" onclick="RPG.bulkClear('recipes')">清空</button>
+              <button type="button" class="bulk-clear" onclick="BulkHelp.copyPrompt('recipes', this)">🤖 复制 AI 提示词</button>
+              <a class="bh-link" href="{{ url_for('admin_bulk_help') }}#recipes" target="_blank">📖 格式教程</a>
+            </div>
+            <div class="bulk-out" id="bulk-out-recipes"></div>
+          </div>
+        </details>
       </div>
 
       <!-- 右：已有配方 -->
@@ -728,7 +836,7 @@
   </div>
 
   <!-- ══ 战斗技能 ══ -->
-  <div style="margin-top:18px;">
+  <div style="margin-top:18px;" data-rpg-tab="battle">
     <div class="rpg-layout" style="grid-template-columns:360px 1fr;">
 
       <!-- 左：注册表单 -->
@@ -814,7 +922,7 @@
   <!-- ══════════════════════════════════════════════════════
        战斗系统配置（字段 / 单位与 长日RPG.js 读取的 attack_defense_config 一致）
   ══════════════════════════════════════════════════════ -->
-  <div class="rpg-section">
+  <div class="rpg-section" data-rpg-tab="battle">
     <div class="rpg-section-title">⚙️ 战斗系统配置</div>
     <div class="rpg-grid" style="grid-template-columns:1fr;">
       <div class="rpg-panel">
@@ -864,7 +972,7 @@
   <!-- ══════════════════════════════════════════════════════
        玩家战斗属性（只读：玩家数据以机器人为准）
   ══════════════════════════════════════════════════════ -->
-  <div class="rpg-section">
+  <div class="rpg-section" data-rpg-tab="battle">
     <div class="rpg-section-title">🧬 玩家战斗属性</div>
     <div class="rpg-grid" style="grid-template-columns:1fr;">
       <div class="rpg-panel">
@@ -892,7 +1000,7 @@
   <!-- ══════════════════════════════════════════════════════
        玩家技能（只读：玩家数据以机器人为准）
   ══════════════════════════════════════════════════════ -->
-  <div class="rpg-section">
+  <div class="rpg-section" data-rpg-tab="battle">
     <div class="rpg-section-title">🌟 玩家技能</div>
     <div class="rpg-grid" style="grid-template-columns:1fr;">
       <div class="rpg-panel">
@@ -915,7 +1023,7 @@
   <!-- ══════════════════════════════════════════════════════
        战斗记录总览
   ══════════════════════════════════════════════════════ -->
-  <div class="rpg-section">
+  <div class="rpg-section" data-rpg-tab="battle">
     <div class="rpg-section-title">📋 战斗记录</div>
     <div class="rpg-grid" style="grid-template-columns:1fr;">
       <div class="rpg-panel">
@@ -944,6 +1052,45 @@
 
 </div>
 
+{% include "_bulk_help.html" %}
+<script>
+// 标签页：按 data-rpg-tab 显示/隐藏；#items / #attrs / #craft / #trade / #battle 可以直接链接，上次看的标签会记住
+(function() {
+  var TABS = ['items', 'attrs', 'craft', 'trade', 'battle'];
+  var layout = document.querySelector('.rpg-layout');
+  function show(t) {
+    if (TABS.indexOf(t) < 0) t = 'items';
+    document.querySelectorAll('[data-rpg-tab]').forEach(function(el) { el.classList.toggle('tab-hide', el.getAttribute('data-rpg-tab') !== t); });
+    document.querySelectorAll('#rpg-tabs button').forEach(function(b) { b.classList.toggle('on', b.getAttribute('data-tab') === t); });
+    if (layout) layout.classList.toggle('one-col', t !== 'items');
+    try { localStorage.setItem('rpg_tab', t); } catch (e) {}
+    if (location.hash.replace('#', '') !== t) history.replaceState(null, '', '#' + t);
+  }
+  document.getElementById('rpg-tabs').addEventListener('click', function(ev) {
+    var b = ev.target.closest('button'); if (b) show(b.getAttribute('data-tab'));
+  });
+  window.addEventListener('hashchange', function() {   // 在已打开的页面里改 #标签 也要跟着切换
+    var h = location.hash.replace('#', '');
+    if (TABS.indexOf(h) >= 0) show(h);
+  });
+  var start = location.hash.replace('#', '');
+  if (TABS.indexOf(start) < 0) { try { start = localStorage.getItem('rpg_tab'); } catch (e) { start = null; } }
+  show(start);
+})();
+
+// 批量录入的「AI 提示词」用：把页面里当前已有的内容带进提示词，AI 就不会写出不存在的属性或重名
+window.BULK_CTX = function() {
+  function names(reg, pred) { return Object.keys(reg).map(function(k) { return reg[k]; }).filter(pred).map(function(r) { return r.name; }); }
+  return {
+    attrs: Object.keys(attrDefs),
+    slots: slots.map(function(sc) { return { code: sc, name: slotNames[sc] || { head:'头部', chest:'胸部', hand:'手部', leg:'腿部', foot:'脚部' }[sc] || sc }; }),
+    currencies: names(itemReg, function(r) { return r.type === 'currency'; }),
+    items: names(itemReg, function(r) { return r.type !== 'currency'; }),
+    equips: names(equipReg, function() { return true; }),
+    recipes: Object.keys(craftRecipes).map(function(c) { return itemReg[c] ? itemReg[c].name : c; })
+  };
+};
+</script>
 <div id="rpg-toast"></div>
 
 <!-- 数据 -->
@@ -1291,6 +1438,167 @@ var RPG = (function() {
     populateAttrDropdowns();
   }
 
+
+  // ── 批量粘贴录入（格式同原来机器人里的注册指令）─────────────
+  function bulkOut(id, total, added, rows, saved) {
+    var out = document.getElementById('bulk-out-' + id);
+    if (!out) return;
+    out.innerHTML = '<div><b>共 ' + total + ' 行，录入 ' + added + ' 条</b>' + (added && !saved ? '（⚠️ 保存失败，请重试）' : (added ? '，已保存，机器人 2 分钟内自动同步' : '')) + '</div>' + rows.join('');
+  }
+  function bulkLines(id) {
+    return document.getElementById('bulk-' + id).value.split(/\r?\n/).map(function(l) { return l.trim(); }).filter(function(l) { return l; });
+  }
+  function bulkClear(id) {
+    document.getElementById('bulk-' + id).value = '';
+    document.getElementById('bulk-out-' + id).innerHTML = '';
+  }
+  function bulkFinish(id, lines, added, rows, after) {
+    if (!added) { bulkOut(id, lines.length, 0, rows, true); return; }
+    save(function() { after(); bulkOut(id, lines.length, added, rows, true); });
+  }
+
+  var _EFFECT_PAT = /^[\w一-鿿㐀-䶿]+[+-]\d+([,，][\w一-鿿㐀-䶿]+[+-]\d+)*$/;
+  function bulkParseItem(line, currencyNames) {
+    var blocks = [];
+    var name = line.replace(/【([^】]*)】/g, function(_, c) { blocks.push(c.trim()); return ''; }).trim();
+    if (!name) return { error: '物品名不能为空' };
+    var type = 'item', desc = null, maxUses = -1, attrsRaw = null, canResell = false;
+    for (var i = 0; i < blocks.length; i++) {
+      var b = blocks[i];
+      if (b === '互动') { type = 'interact'; continue; }
+      if (b === '货币') { type = 'currency'; continue; }
+      if (b === '二手') { canResell = true; continue; }
+      if (b === '无限') { maxUses = -1; continue; }
+      if (b === '一次') { maxUses = 1; continue; }
+      var tm = b.match(/^(\d+)次$/);
+      if (tm) { maxUses = parseInt(tm[1], 10); continue; }
+      if (_EFFECT_PAT.test(b)) {
+        var segs = b.split(/[,，]/);
+        for (var j = 0; j < segs.length; j++) {
+          var m = segs[j].trim().match(/^(.+?)([+-]\d+)$/);
+          if (!m) return { error: '效果格式错误「' + segs[j] + '」' };
+          if (!attrDefs[m[1]] && !currencyNames[m[1]]) return { error: '未知属性「' + m[1] + '」，请先注册属性' };
+        }
+        attrsRaw = b; continue;
+      }
+      if (desc === null) desc = b;
+    }
+    return { name: name, type: type, desc: desc, maxUses: maxUses, attrsRaw: attrsRaw, canResell: canResell };
+  }
+
+  function bulkItems() {
+    var lines = bulkLines('items').map(function(l) { return l.replace(/^[。.]?\s*上载(物品)?\s*/, ''); }).filter(function(l) { return l; });
+    var currencyNames = {};
+    Object.keys(itemReg).forEach(function(c) { if (itemReg[c].type === 'currency') currencyNames[itemReg[c].name] = true; });
+    lines.forEach(function(l) { var pl = bulkParseItem(l, currencyNames); if (!pl.error && pl.type === 'currency') currencyNames[pl.name] = true; });
+    var taken = {};
+    Object.keys(itemReg).forEach(function(c) { taken[itemReg[c].name] = true; });
+    Object.keys(equipReg).forEach(function(c) { taken[equipReg[c].name] = true; });
+    var rows = [], added = 0;
+    lines.forEach(function(l) {
+      var p = bulkParseItem(l, currencyNames);
+      if (p.error) { rows.push('<div class="err">❌ ' + esc(l.slice(0, 30)) + '：' + esc(p.error) + '</div>'); return; }
+      if (taken[p.name]) { rows.push('<div class="skip">⚠️ 「' + esc(p.name) + '」已存在或本批重复，跳过</div>'); return; }
+      taken[p.name] = true;
+      if (p.type === 'currency') {
+        var cc = null;   // 网页端新建货币从 CUR_010 起编号：CUR_001~009 留给机器人在创建季度时注册的默认货币（金币/银币/写信币），避免同号不同币
+        for (var cd = 10; cd < 10000; cd++) { var ccand = 'CUR_' + String(cd).padStart(3, '0'); if (!itemReg[ccand]) { cc = ccand; break; } }
+        itemReg[cc] = { code: cc, name: p.name, desc: p.desc || '暂无描述', type: 'currency', attrs: null };
+        rows.push('<div class="ok">✅ 💰 [' + cc + '] ' + esc(p.name) + '（货币）</div>');
+      } else {
+        var ic = genCode(p.type === 'interact' ? 'INTER_' : 'ITEM_', itemReg);
+        itemReg[ic] = { code: ic, name: p.name, desc: p.desc || '暂无描述', type: p.type, maxUses: p.maxUses, attrs: p.attrsRaw || null, price: 0, canResell: p.canResell };
+        rows.push('<div class="ok">✅ ' + (p.type === 'interact' ? '🎭' : '📦') + ' [' + ic + '] ' + esc(p.name) + ' | ' + (p.maxUses === -1 ? '无限' : p.maxUses + '次') + ' | 效果:' + esc(p.attrsRaw || '无') + '</div>');
+      }
+      added++;
+    });
+    bulkFinish('items', lines, added, rows, function() { renderRegistry(); });
+  }
+
+  var _BATTLE_ATTRS = { ATK: 1, DEF: 1, AGI: 1, HP: 1, MP: 1, MP_REGEN: 1 };
+  function bulkEquip() {
+    var lines = bulkLines('equip').map(function(l) { return l.replace(/^[。.]?\s*(装备\s*)?注册装备?\s*/, ''); }).filter(function(l) { return l; });
+    var taken = {};
+    Object.keys(itemReg).forEach(function(c) { taken[itemReg[c].name] = true; });
+    Object.keys(equipReg).forEach(function(c) { taken[equipReg[c].name] = true; });
+    var slotByName = {};
+    slots.forEach(function(sc) { slotByName[sc] = sc; slotByName[slotNames[sc] || DEFAULT_SLOT_NAMES[sc] || sc] = sc; });
+    var rows = [], added = 0;
+    lines.forEach(function(l) {
+      var parts = l.split(/[*＊]/).map(function(x) { return x.trim(); });
+      if (parts.length < 4) { rows.push('<div class="err">❌ ' + esc(l.slice(0, 30)) + '：参数不足，格式 装备名*描述*槽位*属性效果</div>'); return; }
+      var name = parts[0], desc = parts[1] || '暂无描述', slotIn = parts[2], attrStr = parts[3];
+      if (!name) { rows.push('<div class="err">❌ 装备名不能为空</div>'); return; }
+      if (taken[name]) { rows.push('<div class="skip">⚠️ 「' + esc(name) + '」已存在或本批重复，跳过</div>'); return; }
+      var slot = slotByName[slotIn];
+      if (!slot) { rows.push('<div class="err">❌ 「' + esc(name) + '」：无效槽位「' + esc(slotIn) + '」，可用：' + esc(slots.join('、')) + '</div>'); return; }
+      var baseAttrs = {}, bad = null;
+      attrStr.split(/[,，]/).forEach(function(seg) {
+        seg = seg.trim(); if (!seg) return;
+        var m = seg.match(/^(.+?)([+-]\d+)$/);
+        if (!m) { bad = '属性格式错误「' + seg + '」'; return; }
+        if (!_BATTLE_ATTRS[m[1]] && !attrDefs[m[1]]) { bad = '未知属性「' + m[1] + '」，请先注册属性'; return; }
+        baseAttrs[m[1]] = parseInt(m[2], 10);
+      });
+      if (bad) { rows.push('<div class="err">❌ 「' + esc(name) + '」：' + esc(bad) + '</div>'); return; }
+      if (!Object.keys(baseAttrs).length) { rows.push('<div class="err">❌ 「' + esc(name) + '」：装备必须至少有一条基础属性</div>'); return; }
+      taken[name] = true;
+      var code = genCode('EQUIP_', equipReg);
+      var ep = { code: code, name: name, desc: desc, type: 'equipment', slot: slot, baseAttrs: baseAttrs };
+      var dm = (parts[4] || '').match(/(\d+)/);
+      if (dm && parseInt(dm[1], 10) > 0) ep.durability = parseInt(dm[1], 10);
+      equipReg[code] = ep;
+      rows.push('<div class="ok">✅ 🛡️ [' + code + '] ' + esc(name) + ' | ' + esc(slotNames[slot] || DEFAULT_SLOT_NAMES[slot] || slot) + ' | ' + esc(attrStr) + (ep.durability ? ' | 耐久' + ep.durability : '') + '</div>');
+      added++;
+    });
+    bulkFinish('equip', lines, added, rows, function() { renderRegistry(); });
+  }
+
+  function bulkAttrs() {
+    var lines = bulkLines('attrs').map(function(l) { return l.replace(/^[。.]?\s*创建属性\s*/, ''); }).filter(function(l) { return l; });
+    var currencyNames = {};
+    Object.keys(itemReg).forEach(function(c) { if (itemReg[c].type === 'currency') currencyNames[itemReg[c].name] = true; });
+    var rows = [], added = 0;
+    lines.forEach(function(line) {
+      var parts = line.split(/\s+/);
+      var name = parts[0];
+      if (!name) return;
+      if (currencyNames[name]) { rows.push('<div class="err">❌ 「' + esc(name) + '」已被货币占用</div>'); return; }
+      var isNum = function(x) { return x !== undefined && x !== '' && !isNaN(Number(x)); };
+      var isNew = !attrDefs[name];
+      if (isNum(parts[1])) {
+        var mn = Number(parts[1]);
+        var mx = isNum(parts[2]) ? Number(parts[2]) : null;
+        var df = isNum(parts[3]) ? Number(parts[3]) : 0;
+        attrDefs[name] = { 'default': df, min: mn, max: mx, desc: (attrDefs[name] && attrDefs[name].desc) || '' };
+        rows.push('<div class="ok">' + (isNew ? '✅ 新增' : '🔄 更新') + '「' + esc(name) + '」：' + mn + '~' + (mx === null ? '∞' : mx) + ' 默认' + df + '</div>');
+        added++;
+      } else if (isNew) {
+        attrDefs[name] = { 'default': 0, min: null, max: null, desc: '' };
+        rows.push('<div class="ok">✅ 新增「' + esc(name) + '」</div>');
+        added++;
+      } else {
+        rows.push('<div class="skip">⚠️ 「' + esc(name) + '」已存在，跳过</div>');
+      }
+    });
+    bulkFinish('attrs', lines, added, rows, function() { renderAttrs(); });
+  }
+
+  function bulkSlots() {
+    var lines = bulkLines('slots');
+    var rows = [], added = 0;
+    lines.forEach(function(line) {
+      var m = line.match(/^(\S+?)\s*(?:[=＝:：]|\s)\s*(.+)$/);
+      if (!m) { rows.push('<div class="err">❌ ' + esc(line.slice(0, 30)) + '：格式应为 槽位码 显示名</div>'); return; }
+      var code = m[1].trim(), name = m[2].trim();
+      if (slots.indexOf(code) !== -1) { rows.push('<div class="skip">⚠️ 槽位码「' + esc(code) + '」已存在，跳过</div>'); return; }
+      slots.push(code); slotNames[code] = name;
+      rows.push('<div class="ok">✅ 🎯 ' + esc(code) + ' → ' + esc(name) + '</div>');
+      added++;
+    });
+    bulkFinish('slots', lines, added, rows, function() { renderSlots(); });
+  }
+
   function addAttr() {
     var name   = document.getElementById('new-attr-name').value.trim();
     var defVal = parseInt(document.getElementById('new-attr-default').value) || 0;
@@ -1622,6 +1930,7 @@ var RPG = (function() {
   init();
 
   return {
+    bulkItems: bulkItems, bulkEquip: bulkEquip, bulkAttrs: bulkAttrs, bulkSlots: bulkSlots, bulkClear: bulkClear,
     setType: setType,
     addToRegistry: addToRegistry,
     addPending: addPending,
@@ -1821,6 +2130,65 @@ var CRAFT = (function() {
     });
   }
 
+
+  // ── 批量粘贴录入合成配方（格式同原来机器人的「注册合成」）─────────
+  function resolveItem(input) {
+    input = (input || '').trim();
+    if (!input) return null;
+    if (itemReg[input]) return input;
+    var hit = null;
+    Object.keys(itemReg).forEach(function(c) { if (!hit && itemReg[c].name === input) hit = c; });
+    return hit;
+  }
+  function bulkRecipes() {
+    var box = document.getElementById('bulk-recipes');
+    var out = document.getElementById('bulk-out-recipes');
+    var lines = box.value.split(/\r?\n/).map(function(l) { return l.replace(/^\s*[。.]?\s*注册合成\s*/, '').trim(); }).filter(function(l) { return l; });
+    var rows = [], added = 0;
+    lines.forEach(function(line) {
+      var parts = line.split(/[*＊]/).map(function(x) { return x.trim(); });
+      if (parts.length < 3) { rows.push('<div class="err">❌ ' + e(line.slice(0, 30)) + '：参数不足，格式 产物*描述*材料:数量,…</div>'); return; }
+      var outCode = resolveItem(parts[0]);
+      if (!outCode) { rows.push('<div class="err">❌ 产物「' + e(parts[0]) + '」不在物品注册表里</div>'); return; }
+      var desc = parts[1] || '暂无描述';
+      var matsObj = {}, bad = null;
+      parts[2].split(/[,，]/).forEach(function(seg) {
+        seg = seg.trim(); if (!seg || bad) return;
+        var m = seg.match(/^(.+?)[:：]\s*(\d+)$/);
+        if (!m) { bad = '材料格式错误「' + seg + '」（应为 材料:数量）'; return; }
+        var mc = resolveItem(m[1]);
+        if (!mc) { bad = '材料「' + m[1] + '」不在物品注册表里'; return; }
+        matsObj[mc] = parseInt(m[2], 10);
+      });
+      if (bad) { rows.push('<div class="err">❌ ' + e(parts[0]) + '：' + e(bad) + '</div>'); return; }
+      if (!Object.keys(matsObj).length) { rows.push('<div class="err">❌ ' + e(parts[0]) + '：至少要有一种材料</div>'); return; }
+      var limAttrs = {}, limCurr = {}, rate = 100, limStr = parts[3] || '', rateStr = parts[4];
+      if (/^\d+%?$/.test(limStr) && rateStr === undefined) { rateStr = limStr; limStr = ''; }   // 没有限制条件时可以直接跟成功率
+      limStr.split(/[,，]/).forEach(function(seg) {
+        seg = seg.trim(); if (!seg || bad) return;
+        var m = seg.match(/^(attr|currency):(.+?):(\d+)$/i);
+        if (!m) { bad = '限制条件格式错误「' + seg + '」（应为 attr:属性名:最小值 或 currency:货币名:最小值）'; return; }
+        (m[1].toLowerCase() === 'attr' ? limAttrs : limCurr)[m[2].trim()] = parseInt(m[3], 10);
+      });
+      if (bad) { rows.push('<div class="err">❌ ' + e(parts[0]) + '：' + e(bad) + '</div>'); return; }
+      if (rateStr !== undefined && rateStr !== '') {
+        var rn = parseInt(String(rateStr).replace('%', ''), 10);
+        if (isNaN(rn) || rn < 0 || rn > 100) { rows.push('<div class="err">❌ ' + e(parts[0]) + '：成功率应为 0-100</div>'); return; }
+        rate = rn;
+      }
+      var overwrite = !!craftRecipes[outCode];
+      craftRecipes[outCode] = { output: outCode, materials: matsObj, desc: desc, limits: { attrs: limAttrs, currencies: limCurr }, successRate: rate };
+      var oi = itemReg[outCode];
+      rows.push('<div class="ok">' + (overwrite ? '🔄 覆盖' : '✅ 新增') + ' 🧪 [' + e(outCode) + '] ' + e(oi ? oi.name : outCode) + ' ← ' + e(Object.keys(matsObj).map(function(c) { return (itemReg[c] ? itemReg[c].name : c) + '×' + matsObj[c]; }).join(' + ')) + (rate < 100 ? ' | 成功率' + rate + '%' : '') + '</div>');
+      added++;
+    });
+    var show = function() {
+      out.innerHTML = '<div><b>共 ' + lines.length + ' 行，录入 ' + added + ' 条</b>' + (added ? '，已保存，机器人 2 分钟内自动同步' : '') + '</div>' + rows.join('');
+    };
+    if (!added) { show(); return; }
+    save(function() { renderRecipes(); show(); });
+  }
+
   // ── 配方列表渲染 ──────────────────────────────────────
   function renderRecipes() {
     var el      = document.getElementById('craft-recipe-list');
@@ -1902,6 +2270,7 @@ var CRAFT = (function() {
     removeLimitCurr: removeLimitCurr,
     toggleLimits:  toggleLimits,
     registerRecipe: registerRecipe,
+    bulkRecipes:   bulkRecipes,
     deleteRecipe:  deleteRecipe,
   };
 })();

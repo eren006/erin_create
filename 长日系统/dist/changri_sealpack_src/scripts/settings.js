@@ -1972,6 +1972,13 @@ async function pullAllCore(say) {
 
     const headers = { "X-Archive-Token": token };
 
+    // 「特殊道具 SPEC_*」和「默认货币 CUR_*」由机器人在创建季度时注册，网页端的物品注册表可能没有它们；
+    // 网页端下发注册表时会整个覆盖本地，所以拉取前先记下本地的注册表，拉完把缺的系统条目补回来（并回写网页端）
+    let sysKept = 0;
+    const guardedKeys = [];       // 网页端是空的、因此没有覆盖机器人的数据键
+    let prevRegRaw = "";
+    try { prevRegRaw = mainStorGet("item_registry") || ""; } catch (e) { prevRegRaw = ""; }
+
     // ── 1. 拉取并重组基础配置 ─────────────────────────────────────────────────
     let configCount = 0;
     try {
@@ -1993,6 +2000,15 @@ async function pullAllCore(say) {
                 }
                 reconstructedParents[parent][subKey] = value;
             } else {
+                // 网页端拥有的数据（物品/装备/合成配方/礼品库/属性）：网页端是空的、而机器人里有内容时不覆盖，
+                // 否则网页端一份空注册表（新装、被误清空）一拉就会把机器人里整份数据清成空的
+                if (WEB_OWNED_KEYS.includes(key) || key === "rpg_attr_defs") {
+                    const v = String(value).trim();
+                    const local = String(mainStorGet(key) || "").trim();
+                    const webEmpty = v === "" || v === "{}" || v === "[]";
+                    const localHas = local !== "" && local !== "{}" && local !== "[]";
+                    if (webEmpty && localHas) { guardedKeys.push(key); continue; }
+                }
                 // 普通直存键直接写入
                 mainStorSet(key, String(value));
                 configCount++;
@@ -2003,6 +2019,21 @@ async function pullAllCore(say) {
         for (const [parent, obj] of Object.entries(reconstructedParents)) {
             mainKvSet(parent, obj);
             configCount++;
+        }
+
+        // 网页端下发了物品注册表 → 把本地有、网页端没有的系统条目（SPEC_* / CUR_*）补回来
+        if (config.item_registry && prevRegRaw) {
+            try {
+                const prevReg = JSON.parse(prevRegRaw);
+                const curReg = JSON.parse(mainStorGet("item_registry") || "{}");
+                for (const [code, r] of Object.entries(prevReg)) {
+                    if (!/^(SPEC_|CUR_)/.test(code) || curReg[code]) continue;
+                    if (r && Object.values(curReg).some(x => x && x.name === r.name)) continue;   // 网页端已有同名条目，不硬塞回去
+                    curReg[code] = r;
+                    sysKept++;
+                }
+                if (sysKept > 0) mainStorSet("item_registry", JSON.stringify(curReg));
+            } catch (e) { console.warn(`[拉取全部] 保留系统条目失败: ${e.message}`); }
         }
     } catch (e) {
         return say(`❌ 基础配置拉取失败：${e.message}`);
@@ -2085,10 +2116,10 @@ async function pullAllCore(say) {
     // ── 3.5 若合流了新物品/装备，把带编号的完整注册表回写网页端 ─────────────────
     // 编号由机器人分配，之前需要再手动发一次「推送全部」网页才能显示新编号；
     // 这里在同一条「拉取全部」里自动回写，避免两步操作。
-    if (pendingMerged > 0 || equipPendingMerged > 0) {
+    if (pendingMerged > 0 || equipPendingMerged > 0 || sysKept > 0) {
         try {
             const writeback = {};
-            if (pendingMerged > 0)      writeback.item_registry      = mainStorGet("item_registry");
+            if (pendingMerged > 0 || sysKept > 0) writeback.item_registry = mainStorGet("item_registry");
             if (equipPendingMerged > 0) writeback.equipment_registry = mainStorGet("equipment_registry");
             await fetch(`${base}/api/sync_config`, {
                 method: "POST",
@@ -2200,6 +2231,7 @@ async function pullAllCore(say) {
         msg_lines.push(`🔨 拍卖快照：已还原 ${auctionSnapshotRestored} 件进行中拍卖`);
     }
     
+    if (guardedKeys.length > 0) msg_lines.push(`⚠️ 网页端的 ${guardedKeys.join("、")} 是空的，已保留机器人里的内容（没有覆盖）`);
     msg_lines.push(`所有设置已立即生效。`);
     say(msg_lines.join("\n"));
     markWebSynced();      // 刚按网页端整体覆盖过，机器人和网页端已一致
@@ -2539,6 +2571,9 @@ ext.onNotCommandReceived = (ctx, msg) => {
     if (raw === "确认") {
         const key = webPushKey(msg);
         const t = _pendingWebPush.get(key);
+        // 同一个人同一处还在等「创建新季度」的确认（会清空上季数据）：这句「确认」留给它，不要同时触发推送
+        const seasonPending = globalThis.__changriPendingNewSeason;
+        if (seasonPending && seasonPending.has(key)) return;
         if (t) {
             _pendingWebPush.delete(key);
             if (!isUserAdmin(ctx, msg)) return;

@@ -275,11 +275,10 @@ COMMAND_BLOCKS = [
         "。攻击 / 。防守 / 。投降 / 。逃跑",
         "  战斗中的行动指令",
         "",
-        "。战斗状态",
+        "。战况",
         "  查看当前战斗状态与属性",
-        "",
-        "。战斗历史",
-        "  查看历史战斗记录",
+        "。战况 历史   查看历史战斗记录",
+        "。战况 用品   查看战斗可用道具",
     ]},
     {"key": "letter", "label": "✉️ 发送信件（写信综）", "category": "player", "lines": [
         "。发送信件",
@@ -406,8 +405,8 @@ COMMAND_BLOCKS = [
         "  查看指定角色的全部时间安排",
     ]},
     {"key": "adm_settings", "label": "⚙️ 系统设置", "category": "admin", "lines": [
-        "。设置 基础 / 互动 / 信件 / 公告 / 道具 / 群组 / 季末报告",
-        "  进入对应模块的设置面板",
+        "。设置 基础设置 / 功能开关 / 互动参数 / 信件与礼品 / 公告设置 / DLC",
+        "  进入对应模块的设置面板；改完后机器人会提醒回复「确认」同步到网页端",
         "",
         "。设置天数 D1 / D2 / D3...",
         "  切换当前游戏天数",
@@ -428,8 +427,12 @@ COMMAND_BLOCKS = [
         "。拉取全部",
         "  立即把网页端所有数据拉取到机器人（配置+注册表+模版+池子+拍卖队列）；日常不用发，自动拉取会做",
         "",
-        "。创建新季度 恋综名 复盘/不复盘 [MMDD-MMDD] [补戏MMDD]",
-        "  新建一个游戏季度，可指定档期",
+        "。创建新季度 恋综名 复盘/不复盘 MMDD-MMDD [补戏MMDD]",
+        "  新建一个游戏季度（档期必填）。上季数据没清会提示回复「确认」自动清空；",
+        "  创建成功后自动补全系统设置；天数自动占位 D100，档期开始日自动切 D0",
+        "",
+        "。清空季度数据 [确认]",
+        "  扫描各群确认无玩家残留后清空上季数据；一般不用单独发，创建新季度会提示",
         "",
         "。修改档期 MMDD-MMDD [补戏MMDD]",
         "  修改当前季度的档期",
@@ -459,9 +462,6 @@ COMMAND_BLOCKS = [
         "",
         "关系线统计（无前缀）",
         "  查看所有角色的关系线数量统计",
-        "",
-        "。存入统计",
-        "  将全场玩家历史数据导出为字段格式",
         "",
         "。信箱统计",
         "  查看心动信投递总量及分类统计",
@@ -547,9 +547,8 @@ COMMAND_BLOCKS = [
     ]},
     {"key": "adm_items", "label": "🎲 物品管理", "category": "admin", "lines": [
         "【注册】",
-        "物品、互动物品统一在网页端「物品注册管理」添加（支持批量粘贴一大段，一行一件），保存后机器人 2 分钟内自动同步",
-        "。注册货币 名称*描述",
-        "  例：。注册货币 金币*基础流通货币",
+        "物品、互动物品统一在网页端「资料库」添加（支持批量粘贴一大段，一行一件），保存后机器人 2 分钟内自动同步",
+        "货币同样在网页端注册（批量粘贴时写 银币【货币】）",
         "。删除物品 物品码",
         "  删除已注册的物品",
         "。物品列表 [物品|货币|预设|全部]",
@@ -580,16 +579,12 @@ COMMAND_BLOCKS = [
         "。二手设定 手续费:N  （2-5，默认3）",
         "",
         "【记录】",
-        "。物品使用记录 [N]   查看今日最近N条",
+        "。背包 记录 [N]   查看今日最近N条物品使用记录",
     ]},
     {"key": "adm_rpg", "label": "🧬 RPG 属性 & 合成", "category": "admin", "lines": [
         "【属性注册】",
-        "。注册属性 属性名1 属性名2 ...",
-        "  注册可用属性名（防止与货币重名）",
-        "。注册属性 列表",
-        "  查看已注册属性列表",
-        "。删除属性 属性名",
-        "  删除已注册的属性",
+        "属性、装备、槽位、合成配方统一在网页端「资料库」注册，每一块下面都有「批量粘贴录入」，",
+        "  粘贴一大段按格式一键录入；保存后机器人 2 分钟内自动同步（群里不再支持注册）",
         "。设置属性 角色名 属性名 值",
         "  直接设置角色某属性为指定值",
         "",
@@ -600,14 +595,12 @@ COMMAND_BLOCKS = [
         "  例：全体:精力++5   所有角色增加",
         "",
         "【合成】",
-        "。注册合成 产物码*描述*材料码1:数量1,材料码2:数量2[*限制]",
-        "  例：。注册合成 高级丹*升级丹药*初级丹:3,金币:100",
-        "属性限制：*attr:属性名:最小值",
-        "货币限制：*currency:货币名:最小值",
+        "合成配方在网页端「资料库 → 合成配方」配置（支持批量粘贴）",
+        "  格式：产物*描述*材料1:数量,材料2:数量[*限制条件[*成功率]]",
+        "  例：高级丹*升级丹药*初级丹:3,金币:100*attr:体力:50*80",
         "",
         "【装备与升级】",
-        "。注册装备 装备名*描述*槽位[*属性效果]",
-        "  注册可穿戴装备",
+        "装备、槽位同样在网页端「资料库」注册（支持批量粘贴）",
         "。上传升级等级 等级配置",
         "  上传升级等级配置表",
         "。查看升级配置",
@@ -631,12 +624,8 @@ COMMAND_BLOCKS = [
         "。结戏加成 删除模版 模版名",
     ]},
     {"key": "adm_giftshop", "label": "🛒 礼品店管理", "category": "admin", "lines": [
-        "。上传预设礼物 #1&玫瑰花&一束红玫瑰",
-        "  批量：#1&礼物1&内容$#2&礼物2&内容",
-        "。上传预设礼物 导出  （导出所有礼物 JSON）",
-        "",
-        "。删除预设礼物 编号",
-        "。删除预设礼物 全部 确认  ⚠️",
+        "礼品店统一在网页端「礼品店管理」配置（编号、名称、描述），保存后机器人 2 分钟内自动同步",
+        "玩家用「送礼 对方名 #编号」引用",
     ]},
     {"key": "adm_relationship", "label": "🔗 关系线管理", "category": "admin", "lines": [
         "。设置强制关系线 角色A 角色B 描述",
@@ -3273,8 +3262,14 @@ def admin():
         (sid, PLAYERS_PER_PAGE, offset)
     ).fetchall()
     total_pages = max(1, (total_players + PLAYERS_PER_PAGE - 1) // PLAYERS_PER_PAGE)
+    # 机器人最近一次和网页端同步的时间（机器人每次拉取/推送都会刷新它）
+    last_sync_ts = get_flat_config(db, sid).get("_last_bot_sync")
+    try:
+        last_sync = ts_to_str(int(last_sync_ts)) if last_sync_ts else None
+    except (TypeError, ValueError):
+        last_sync = None
 
-    return render_template("admin.html",
+    return render_template("admin.html", last_sync=last_sync,
                            sessions_count=sessions_count, rp_count=rp_count,
                            events_count=events_count, players=[dict(p) for p in players],
                            players_count=total_players, page=page, total_pages=total_pages,
@@ -5742,6 +5737,38 @@ def _get_pool_data(db, show_id):
     if not item_registry:
         item_registry = json.loads(flat.get("reward_item_registry", "{}") or "{}")
     return pool_defs, pool_cfg, item_registry
+
+
+@app.route("/admin/help/bulk", methods=["GET"])
+@require_admin
+def admin_bulk_help():
+    """批量录入教程：各种格式说明 + 可复制的 AI 提示词（提示词里带上当前已有的属性/槽位/物品名）。"""
+    sid = get_show_id()
+    db  = get_db()
+    flat = get_flat_config(db, sid)
+    def _j(key, default):
+        raw = flat.get(key) or ""
+        try:
+            return json.loads(raw) if raw else default
+        except (json.JSONDecodeError, TypeError):
+            return default
+    item_reg  = _j("item_registry", {}) or {}
+    equip_reg = _j("equipment_registry", {}) or {}
+    slots     = _j("equipment_slots", ["head", "chest", "hand", "leg", "foot"]) or []
+    slot_names = _j("equipment_slot_names", {}) or {}
+    default_slot_names = {"head": "头部", "chest": "胸部", "hand": "手部", "leg": "腿部", "foot": "脚部"}
+    recipes   = _j("craft_recipes", {}) or {}
+    gifts     = _j("preset_gifts", {}) or {}
+    ctx = {
+        "attrs":      list((_j("rpg_attr_defs", {}) or {}).keys()),
+        "slots":      [{"code": c, "name": slot_names.get(c) or default_slot_names.get(c) or c} for c in slots],
+        "currencies": [r.get("name") for r in item_reg.values() if isinstance(r, dict) and r.get("type") == "currency" and r.get("name")],
+        "items":      [r.get("name") for r in item_reg.values() if isinstance(r, dict) and r.get("type") != "currency" and r.get("name")],
+        "equips":     [r.get("name") for r in equip_reg.values() if isinstance(r, dict) and r.get("name")],
+        "recipes":    [(item_reg.get(code) or {}).get("name") or code for code in recipes.keys()],
+        "gifts":      [f"{code} {g.get('name', '')}".strip() for code, g in gifts.items() if isinstance(g, dict)],
+    }
+    return render_template("admin_bulk_help.html", ctx=ctx)
 
 
 @app.route("/admin/rpg", methods=["GET"])

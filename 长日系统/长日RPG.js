@@ -815,6 +815,13 @@ ext.cmdMap["初始化预设物品"] = cmd_init_preset;
 // 上载：统一注册指令（物品 / 互动物品 / 货币）
 // ========================
 
+// 物品 / 装备 / 合成配方 / 属性 / 槽位的注册统一在网页端做：这些数据以网页端为准，
+// 群里注册的内容只存在机器人里，下次自动拉取网页端时会被覆盖丢失。所以这几个注册入口只回引导，不再执行
+function movedToWeb(what, where) {
+    return `ℹ️ ${what}统一在存档网页端配置，不再支持在群里注册（群里注册的内容下次自动拉取时会被网页端覆盖丢失）。\n` +
+           `请到网页端「${where}」添加，支持粘贴一大段按格式批量录入；保存后机器人 2 分钟内自动同步。`;
+}
+
 function parseUploadTags(line, defs, currencyNames) {
     const blocks = [];
     const name = line.replace(/【([^】]*)】/g, (_, c) => { blocks.push(c.trim()); return ''; }).trim();
@@ -912,6 +919,15 @@ cmd_upload.solve = (ctx, msg, cmdArgs) => {
 // 「上载」指令已取消：物品统一在网页端物品库添加（以网页端为准，机器人 2 分钟内自动同步）。
 // 群里上载的物品只存在机器人里，下次网页端有改动自动拉取时会被覆盖丢失，所以不再注册这个指令；函数体暂留，需要时取消下面这行注释即可恢复
 // ext.cmdMap["上载"] = cmd_upload;
+let cmd_upload_moved = seal.ext.newCmdItemInfo();
+cmd_upload_moved.name = "上载";
+cmd_upload_moved.help = "【已迁移】物品统一在网页端「资料库 → 物品 · 装备 · 货币」添加（支持批量粘贴）";
+cmd_upload_moved.solve = (ctx, msg) => {
+    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+    seal.replyToSender(ctx, msg, movedToWeb("物品、互动物品、货币", "资料库 → 物品 · 装备 · 货币"));
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["上载"] = cmd_upload_moved;
 
 
 let cmd_item_list = seal.ext.newCmdItemInfo();
@@ -2626,9 +2642,7 @@ ${lines.join("\n")}`);
 
     if (sub === "注册") {
         if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
-        // 委托给独立的注册合成逻辑（通过重新解析消息）
-        const fakeArgs = { getArgN: (n) => cmdArgs.getArgN(n + 1) };
-        return cmd_reg_craft.solve(ctx, msg, fakeArgs);
+        return seal.replyToSender(ctx, msg, movedToWeb("合成配方", "资料库 → 合成配方"));
     }
 
     const roleName = getRoleName(ctx, msg);
@@ -3310,7 +3324,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
         // 新结构：charAttrs 以 uid 为 key
         const roleAttrs = charAttrs[myStatusUid] || {};
         const attrNames = Object.keys(defs);
-        if (!attrNames.length) return seal.replyToSender(ctx, msg, `🎭 【${roleName}】暂无属性，管理员可用「创建属性」添加。`);
+        if (!attrNames.length) return seal.replyToSender(ctx, msg, `🎭 【${roleName}】暂无属性，管理员请到网页端「资料库 → 属性 · 加点」添加。`);
 
         // 分类属性
         const limitedAttrs = [];
@@ -3387,6 +3401,10 @@ ext.onNotCommandReceived = (ctx, msg) => {
         return seal.replyToSender(ctx, msg, result);
     }
 
+    // 属性的创建/删除已迁移到网页端（下面两段旧实现已停用）
+    if ((raw.startsWith("创建属性") || raw.startsWith("删除属性")) && isAdmin) {
+        return seal.replyToSender(ctx, msg, movedToWeb("属性", "资料库 → 属性 · 加点"));
+    }
     // 创建属性（管理员，无前缀）换行批量：每行 属性名 [最小 最大 默认]
     if (raw.startsWith("创建属性") && isAdmin) {
         const body = raw.slice(4).trim();
@@ -5263,6 +5281,8 @@ function doUnequip(ctx, msg, slot) {
 const cmd_register_equip_help = "【管理员】注册新装备\n注册装备 <装备名>*<描述>*<槽位>*<基础属性>\n\n属性格式: ATK+15,DEF+10 (用逗号分隔多个属性)\n属性必须已注册，执行「创建属性」可注册新属性\n槽位：执行「槽位 查看」查看所有可用槽位\n\n示例:\n注册装备 铁制短剑*普通短剑*hand*ATK+15\n注册装备 钢铁胸甲*防御胸甲*chest*DEF+20,HP+50\n注册装备 智者法杖*法术武器*hand*智力+20,MP+50";
 function doRegisterEquip(ctx, msg, inputStr) {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+    return seal.replyToSender(ctx, msg, movedToWeb("装备", "资料库 → 物品 · 装备 · 货币"));
+    // 以下为旧的群内注册实现，已停用（保留供参考）
 
     const input = (inputStr || "").trim();
 
@@ -5360,6 +5380,8 @@ function doEquipSlots(ctx, msg, subCmd, arg2, arg3) {
     }
 
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+
+    if (subCmd === "添加" || subCmd === "删除") return seal.replyToSender(ctx, msg, movedToWeb("装备槽位", "资料库 → 物品 · 装备 · 货币 → 槽位管理"));
 
     if (subCmd === "添加") {
         const slotCode = arg2;

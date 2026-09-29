@@ -218,11 +218,12 @@
     <div class="panel-body">
       <div style="font-size:12px;color:var(--muted);margin-bottom:8px;line-height:1.7;">
         每行一条，格式：<code style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-family:monospace;">[#编号 ]名称*内容</code>，不填编号则自动顺延。<br>
-        与机器人「上传礼品」指令格式一致，可直接互相复制粘贴。
       </div>
       <textarea id="batch-input" rows="6" placeholder="玫瑰花束*一束盛开的玫瑰&#10;#010 巧克力*一盒黑巧克力&#10;怀表*古旧的银色怀表" style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:8px 10px;font-size:13px;box-sizing:border-box;font-family:monospace;resize:vertical;"></textarea>
       <div style="margin-top:10px;">
         <button class="btn-add" onclick="batchAddGifts()">批量添加</button>
+        <button type="button" class="btn-add" style="background:transparent;color:var(--muted);border:1px solid var(--border);" onclick="BulkHelp.copyPrompt('gifts', this)">🤖 复制 AI 提示词</button>
+        <a class="bh-link" href="{{ url_for('admin_bulk_help') }}#gifts" target="_blank">📖 格式教程</a>
       </div>
     </div>
   </div>
@@ -233,6 +234,10 @@
   </div>
 </div>
 
+{% include "_bulk_help.html" %}
+<script>
+window.BULK_CTX = function() { return { gifts: Object.keys(gifts).map(function(c) { return c + ' ' + (gifts[c].name || ''); }) }; };
+</script>
 <div id="toast"></div>
 
 <script>

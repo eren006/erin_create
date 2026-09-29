@@ -1,0 +1,223 @@
+{# 批量录入的格式说明 + AI 提示词（统一来源）。
+   使用：页面里 {% include "_bulk_help.html" %}，批量框旁边放
+     <button type="button" class="bulk-clear" onclick="BulkHelp.copyPrompt('equip', this)">🤖 复制 AI 提示词</button>
+   页面可以定义 window.BULK_CTX = function(){ return {attrs:[...], slots:[{code,name}], items:[...], currencies:[...], equips:[...], recipes:[...], gifts:[...]}; }
+   提示词里会自动带上「当前已有的内容」，AI 就不会写出不存在的属性或重名。 #}
+<style>
+.bh-link { display:inline-block; font-size:12px; color:var(--accent); text-decoration:none; padding:6px 4px; }
+.bh-link:hover { text-decoration:underline; }
+.bh-copied { color:#6fcf97 !important; border-color:#6fcf97 !important; }
+</style>
+<script>
+window.BulkHelp = (function() {
+  function uniq(a) { var o = {}, r = []; (a || []).forEach(function(x) { if (x !== undefined && x !== '' && !o[x]) { o[x] = 1; r.push(x); } }); return r; }
+  function list(a, max) {
+    a = uniq(a);
+    if (!a.length) return '（暂无）';
+    var s = a.slice(0, max || 80).join('、');
+    return a.length > (max || 80) ? s + ' 等共 ' + a.length + ' 个' : s;
+  }
+
+  var FORMATS = {
+    items: {
+      title: '物品 / 互动物品 / 货币',
+      where: '「资料库 → 物品 · 装备 · 货币」标签，左侧「注册新条目」下方的「批量粘贴录入（物品 / 互动物品 / 货币）」',
+      format: '物品名【标签】【标签】…',
+      parts: [
+        ['【描述文字】', '物品描述，写一个就行（第一个没被识别成其他标签的【】内容会当描述）'],
+        ['【N次】 / 【无限】 / 【一次】', '使用次数；不写默认无限'],
+        ['【属性+10,力量-2】', '使用后的属性效果，多个用逗号；属性必须已经注册（货币名也能写）'],
+        ['【互动】', '互动物品（对他人使用）'],
+        ['【货币】', '注册成货币，只需要名称和描述'],
+        ['【二手】', '允许在二手市场交易']
+      ],
+      examples: ['金苹果【恢复体力】【5次】【体力+10】', '爱心糖【甜蜜道具】【互动】【二手】', '银币【货币】【流通的零钱】'],
+      rules: [
+        '一行一件，物品名放在最前面，标签放后面，顺序随意。',
+        '名称不能和已有的物品、装备、货币重名（重名的会跳过）。',
+        '属性效果里的属性必须已经在「属性」里注册过，否则这一行会报错。',
+        '标签用中文方括号【】，不要用 [] 或 「」。'
+      ],
+      errors: [
+        ['未知属性「魔力」，请先注册属性', '这一行的效果引用了没注册的属性：先去注册属性，或把这个效果删掉'],
+        ['已存在或本批重复，跳过', '名称重复了，改个名字']
+      ],
+      task: '物品',
+      ctxLines: function(c) {
+        return ['- 已注册的属性（效果只能用这些）：' + list(c.attrs),
+                '- 已有的物品/货币名（不要重名）：' + list((c.items || []).concat(c.currencies || []))];
+      }
+    },
+    equip: {
+      title: '装备',
+      where: '「资料库 → 物品 · 装备 · 货币」标签，左侧「注册新条目」下方的「批量粘贴录入（装备）」',
+      format: '装备名*描述*槽位*属性效果[*耐久N]',
+      parts: [
+        ['装备名', '不能和已有物品、装备重名'],
+        ['描述', '一句话介绍'],
+        ['槽位', '槽位码或显示名都行，如 hand 或 手部；必须是已有槽位'],
+        ['属性效果', '属性+数值，多个用逗号，如 ATK+15,DEF+10；至少一条；战斗属性 ATK/DEF/AGI/HP/MP/MP_REGEN 可直接用，其他属性要先注册'],
+        ['*耐久N（可选）', '耐久上限，写成 *耐久100 或 *100']
+      ],
+      examples: ['铁制短剑*普通短剑*hand*ATK+15', '钢铁胸甲*防御胸甲*胸部*DEF+20,HP+50*耐久100'],
+      rules: ['各部分之间用英文星号 * 隔开（中文的＊也行）。', '槽位不存在会报错，可以先到「槽位」里加。'],
+      errors: [
+        ['无效槽位「wing」', '槽位码写错了，或还没有这个槽位'],
+        ['未知属性「魔力」，请先注册属性', '效果里的属性没注册']
+      ],
+      task: '装备',
+      ctxLines: function(c) {
+        var sl = (c.slots || []).map(function(s) { return s.code + '（' + s.name + '）'; });
+        return ['- 可用槽位：' + list(sl),
+                '- 可用属性（战斗属性 ATK、DEF、AGI、HP、MP、MP_REGEN 永远可用）：' + list(c.attrs),
+                '- 已有的装备/物品名（不要重名）：' + list((c.equips || []).concat(c.items || []))];
+      }
+    },
+    attrs: {
+      title: '属性',
+      where: '「资料库 → 属性 · 加点」标签，「属性管理」下方的「批量粘贴录入（属性）」',
+      format: '属性名 [最小 最大 默认]',
+      parts: [
+        ['属性名', '全局唯一，不能和货币同名'],
+        ['最小 最大 默认', '三个数字用空格隔开；只写名字表示不限范围、默认 0']
+      ],
+      examples: ['体力 0 100 50', '精力', '魅力 0 20 5'],
+      rules: ['一行一个属性，各部分用空格隔开。', '已存在的属性，如果带了数字会更新它的范围和默认值；没带数字则跳过。'],
+      errors: [['已被货币占用', '这个名字是货币名，换一个']],
+      task: '属性',
+      ctxLines: function(c) {
+        return ['- 已有的属性（已存在的会更新范围）：' + list(c.attrs),
+                '- 不能使用的名字（已是货币）：' + list(c.currencies)];
+      }
+    },
+    slots: {
+      title: '装备槽位',
+      where: '「资料库 → 物品 · 装备 · 货币」标签，右侧「槽位管理」下方的「批量粘贴录入（槽位）」',
+      format: '槽位码 显示名',
+      parts: [
+        ['槽位码', '程序内部标识，建议英文小写、数字、下划线'],
+        ['显示名', '玩家看到的名称']
+      ],
+      examples: ['ring1 戒指1', 'neck 项链', 'back=披风'],
+      rules: ['槽位码和显示名用空格隔开（也可以用 = 或 :）。', '已存在的槽位码会跳过。'],
+      errors: [['格式应为 槽位码 显示名', '这一行缺了显示名，或只写了一个词']],
+      task: '装备槽位',
+      ctxLines: function(c) {
+        var sl = (c.slots || []).map(function(s) { return s.code + '（' + s.name + '）'; });
+        return ['- 已有槽位（不要重复）：' + list(sl)];
+      }
+    },
+    recipes: {
+      title: '合成配方',
+      where: '「资料库 → 合成配方」标签，左侧下方的「批量粘贴录入（合成配方）」',
+      format: '产物*描述*材料1:数量,材料2:数量[*限制条件[*成功率]]',
+      parts: [
+        ['产物', '合成出来的东西，写名称或编号，必须已经在物品注册表里'],
+        ['描述', '合成说明'],
+        ['材料', '材料名:数量，多个用逗号；名称或编号都行，也可以是货币'],
+        ['限制条件（可选）', '玩家需要满足的条件：attr:属性名:最小值 或 currency:货币名:最小值，多个用逗号'],
+        ['成功率（可选）', '0-100，默认 100；失败时材料照扣']
+      ],
+      examples: [
+        '高级丹*升级丹药*初级丹:3,金币:100*attr:体力:50*80',
+        '糖果*甜甜的*白糖:2,面粉:1',
+        '幸运符*小概率成功*废纸:5*30'
+      ],
+      rules: [
+        '没有限制条件时，成功率可以直接跟在材料后面，如 幸运符*小概率*废纸:5*30。',
+        '同一个产物已经有配方的话，会被这一行覆盖。',
+        '产物和材料都必须已经注册过，先录物品、再录配方。'
+      ],
+      errors: [
+        ['产物「xx」不在物品注册表里', '先把这个物品注册好'],
+        ['材料「xx」不在物品注册表里', '材料名写错，或还没注册'],
+        ['材料格式错误', '材料要写成 名称:数量']
+      ],
+      task: '合成配方',
+      ctxLines: function(c) {
+        return ['- 可用的物品/材料/货币名（产物和材料只能用这些）：' + list((c.items || []).concat(c.currencies || []), 120),
+                '- 已注册的属性（限制条件可用）：' + list(c.attrs),
+                '- 已经有配方的产物（再写会覆盖）：' + list(c.recipes)];
+      }
+    },
+    gifts: {
+      title: '礼品店礼品',
+      where: '「礼品」页的「批量添加」',
+      format: '[#编号 ]名称*内容',
+      parts: [
+        ['#编号（可选）', '# 加数字，如 #010；不写会自动接着最大编号往下排'],
+        ['名称', '礼品名'],
+        ['内容', '送出时发给收件人的一段话']
+      ],
+      examples: ['玫瑰花束*一束盛开的红玫瑰', '#010 巧克力*一盒黑巧克力', '怀表*古旧的银色怀表'],
+      rules: ['一行一件，名称和内容用英文星号 * 隔开。', '编号已存在的会跳过。'],
+      errors: [['格式错误', '缺了 * 或名称/内容为空']],
+      task: '礼品店礼品',
+      ctxLines: function(c) {
+        return ['- 已有的礼品（编号不要重复）：' + list(c.gifts)];
+      }
+    }
+  };
+
+  function ctx() {
+    try { return (window.BULK_CTX && window.BULK_CTX()) || window.BULK_CTX_DATA || {}; } catch (e) { return {}; }
+  }
+
+  function buildPrompt(key, context) {
+    var f = FORMATS[key]; if (!f) return '';
+    var c = context || ctx();
+    var L = [];
+    L.push('你是「长日将尽」恋综 RP 系统的设定助手。请根据我给的想法，生成【' + f.title + '】的批量录入内容。');
+    L.push('');
+    L.push('【输出要求】');
+    L.push('1. 只输出录入内容本身，放进一个代码块里，一行一条。');
+    L.push('2. 不要编号、不要标题、不要解释、不要表格，不要在行首加 - 或数字。');
+    L.push('3. 严格按下面的格式，符号（* 、【】 : ,）不要替换成别的，也不要多加空格。');
+    L.push('4. 不确定的地方宁可少写，不要编造下面「已有内容」里没有的东西。');
+    L.push('');
+    L.push('【格式】');
+    L.push(f.format);
+    f.parts.forEach(function(p) { L.push('- ' + p[0] + '：' + p[1]); });
+    L.push('');
+    L.push('【规则】');
+    f.rules.forEach(function(r) { L.push('- ' + r); });
+    L.push('');
+    L.push('【正确示例】');
+    f.examples.forEach(function(e) { L.push(e); });
+    L.push('');
+    L.push('【当前已有的内容（请遵守）】');
+    f.ctxLines(c).forEach(function(x) { L.push(x); });
+    L.push('');
+    L.push('【我的需求】');
+    L.push('（在这里写你想要的' + f.task + '，例如：想要 10 个……，风格是……，数值大概……）');
+    return L.join('\n');
+  }
+
+  function copyText(text, btn, okLabel) {
+    function done() {
+      if (!btn) return;
+      var old = btn.getAttribute('data-old') || btn.textContent;
+      btn.setAttribute('data-old', old);
+      btn.textContent = okLabel || '✅ 已复制';
+      btn.classList.add('bh-copied');
+      setTimeout(function() { btn.textContent = old; btn.classList.remove('bh-copied'); }, 1600);
+    }
+    function fallback() {
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch (e) { window.prompt('复制下面的内容：', text); }
+      document.body.removeChild(ta);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback);
+    else fallback();
+  }
+
+  return {
+    FORMATS: FORMATS,
+    buildPrompt: buildPrompt,
+    copyText: copyText,
+    copyPrompt: function(key, btn) { copyText(buildPrompt(key), btn, '✅ 提示词已复制'); }
+  };
+})();
+</script>

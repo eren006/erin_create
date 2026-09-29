@@ -1,0 +1,72 @@
+{# 后台统一导航：一级按「做什么」分组，二级是当前分组里的页面。base.html 在 admin* 页面自动引入，各页面不用再放自己的导航条。 #}
+{% set _adm_groups = [
+  ('overview', '🏠 总览', 'admin', [
+    ('admin', '总览'),
+  ]),
+  ('library', '📦 资料库', 'admin_rpg', [
+    ('admin_rpg', '物品 · 装备 · 属性 · 合成'),
+    ('admin_gifts', '礼品店'),
+    ('admin_bulk_help', '📖 批量录入教程'),
+  ]),
+  ('economy', '🎲 玩法与经济', 'admin_pools', [
+    ('admin_pools', '抽取池'),
+    ('admin_shop', '商城'),
+    ('admin_auctions', '拍卖'),
+    ('admin_rewards', '结戏奖励'),
+  ]),
+  ('system', '⚙️ 系统设置', 'admin_config_page', [
+    ('admin_config_page', '游戏配置'),
+    ('admin_places', '地点'),
+    ('admin_time_schedule', '时间调度'),
+    ('admin_groups', '群号组'),
+    ('admin_config_history', '配置历史'),
+  ]),
+  ('players', '👥 玩家与数据', 'admin_player_controls', [
+    ('admin_player_controls', '玩家控制'),
+    ('admin_stats', '数据统计'),
+    ('admin_blacklist', '黑名单'),
+  ]),
+  ('season', '📅 季与存档', 'admin_shows', [
+    ('admin_shows', '季管理'),
+    ('admin_command_guides', '指令指南'),
+  ]),
+] %}
+{% set _adm_alias = {
+  'admin_player': 'admin_player_controls',
+  'admin_command_guide_new': 'admin_command_guides',
+  'admin_command_guide_edit': 'admin_command_guides',
+  'admin_config_rollback': 'admin_config_history',
+} %}
+{% set _adm_cur = _adm_alias.get(request.endpoint, request.endpoint) %}
+{% set _adm_active = namespace(group=None) %}
+{% for g in _adm_groups %}{% for it in g[3] %}{% if it[0] == _adm_cur %}{% set _adm_active.group = g[0] %}{% endif %}{% endfor %}{% endfor %}
+<style>
+.adm-nav { background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 40; }
+.adm-nav-in { max-width: 1240px; margin: 0 auto; padding: 0 16px; }
+.adm-l1, .adm-l2 { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.adm-l1 { padding: 8px 0 0; }
+.adm-l1 a { padding: 7px 14px; font-size: 13.5px; font-weight: 600; color: var(--muted); border-radius: 8px 8px 0 0; border-bottom: 2px solid transparent; text-decoration: none; }
+.adm-l1 a:hover { color: var(--text); }
+.adm-l1 a.on { color: var(--accent); border-bottom-color: var(--accent); background: var(--bg); }
+.adm-l2 { padding: 8px 0 9px; border-top: 1px solid var(--border); background: var(--bg); margin: 0 -16px; padding-left: 16px; padding-right: 16px; }
+.adm-l2 a { padding: 4px 12px; font-size: 12.5px; color: var(--muted); border-radius: 999px; border: 1px solid transparent; text-decoration: none; }
+.adm-l2 a:hover { color: var(--text); background: var(--surface2); }
+.adm-l2 a.on { color: #fff; background: var(--accent); }
+.adm-l2 .adm-sync { margin-left: auto; font-size: 11.5px; color: var(--muted); }
+@media (max-width: 720px) { .adm-l1 a { padding: 6px 9px; font-size: 12.5px; } .adm-l2 .adm-sync { display: none; } }
+</style>
+<div class="adm-nav">
+  <div class="adm-nav-in">
+    <div class="adm-l1">
+      {% for g in _adm_groups %}
+      <a href="{{ url_for(g[2]) }}" class="{{ 'on' if g[0] == _adm_active.group else '' }}">{{ g[1] }}</a>
+      {% endfor %}
+    </div>
+    {% for g in _adm_groups if g[0] == _adm_active.group and g[3]|length > 1 %}
+    <div class="adm-l2">
+      {% for it in g[3] %}<a href="{{ url_for(it[0]) }}" class="{{ 'on' if it[0] == _adm_cur else '' }}">{{ it[1] }}</a>{% endfor %}
+      <span class="adm-sync">保存后机器人 2 分钟内自动同步</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>

@@ -197,25 +197,7 @@ a:hover { color: var(--accent2); }
   <nav class="nav">
     <a href="{{ url_for('home') }}">场次</a>
     <a href="{{ url_for('interactions_index') }}">互动</a>
-    <div class="nav-drop">
-      <span class="nav-drop-btn">数据</span>
-      <div class="nav-drop-menu">
-        <a href="{{ url_for('admin_stats') }}">数据统计</a>
-        <a href="{{ url_for('admin_blacklist') }}">黑名单</a>
-      </div>
-    </div>
     <a href="{{ url_for('letters_view') }}">信件</a>
-    <div class="nav-drop">
-      <span class="nav-drop-btn">道具</span>
-      <div class="nav-drop-menu">
-        <a href="{{ url_for('admin_rpg') }}">RPG</a>
-        <a href="{{ url_for('admin_pools') }}">池子</a>
-        <a href="{{ url_for('admin_shop') }}">商城</a>
-        <a href="{{ url_for('admin_auctions') }}">拍卖</a>
-        <a href="{{ url_for('admin_gifts') }}">礼品</a>
-        <a href="{{ url_for('admin_rewards') }}">结戏奖励</a>
-      </div>
-    </div>
     <a href="{{ url_for('admin') }}">后台</a>
   </nav>
   <form class="search-form" action="{{ url_for('search') }}" method="get">
@@ -225,6 +207,7 @@ a:hover { color: var(--accent2); }
   <span style="color:var(--muted);font-size:12px;flex-shrink:0;">{{ session.get('tenant_display_name') or session.get('tenant_username') }}</span>
   <a class="logout" href="{{ url_for('logout') }}">退出</a>
 </div>
+{% if request.endpoint and request.endpoint.startswith('admin') and request.endpoint not in ('admin_login', 'admin_logout') %}{% include "_admin_nav.html" %}{% endif %}
 {% block body %}{% endblock %}
 <div id="tp"><button id="tp-btn" onclick="document.getElementById('tp-panel').classList.toggle('open')" title="切换主题">🎨</button><div id="tp-panel"><div class="tp-item" onclick="setTheme('default')"><span class="tp-dot" style="background:#8b7cf6"></span>默认</div><div class="tp-item" onclick="setTheme('spring')"><span class="tp-dot" style="background:#f472b6"></span>春 · 樱</div><div class="tp-item" onclick="setTheme('summer')"><span class="tp-dot" style="background:#06b6d4"></span>夏 · 海</div><div class="tp-item" onclick="setTheme('autumn')"><span class="tp-dot" style="background:#f59e0b"></span>秋 · 枫</div><div class="tp-item" onclick="setTheme('winter')"><span class="tp-dot" style="background:#7dd3fc"></span>冬 · 冰</div><div class="tp-item" onclick="setTheme('monet')"><span class="tp-dot" style="background:#a8d8ea"></span>莫奈</div><div class="tp-item" onclick="setTheme('detroit')"><span class="tp-dot" style="background:#00b4ff"></span>底特律</div><div class="tp-sep">日间 ☀</div><div class="tp-item" onclick="setTheme('spring-day')"><span class="tp-dot" style="background:#db2777"></span>春 · 樱</div><div class="tp-item" onclick="setTheme('summer-day')"><span class="tp-dot" style="background:#0284c7"></span>夏 · 海</div><div class="tp-item" onclick="setTheme('autumn-day')"><span class="tp-dot" style="background:#b45309"></span>秋 · 枫</div><div class="tp-item" onclick="setTheme('winter-day')"><span class="tp-dot" style="background:#1d6fa0"></span>冬 · 冰</div><div class="tp-item" onclick="setTheme('monet-day')"><span class="tp-dot" style="background:#4a8fa8"></span>莫奈</div></div></div>
 <style>

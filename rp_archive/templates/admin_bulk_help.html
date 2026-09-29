@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}批量录入教程 · 长日存档{% endblock %}
+
+{% block head %}
+<style>
+.bh-wrap { max-width: 980px; margin: 0 auto; padding: 22px 18px 60px; }
+.bh-hero { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px 22px; margin-bottom: 18px; }
+.bh-hero h1 { margin: 0 0 8px; font-size: 20px; }
+.bh-hero p { margin: 4px 0; color: var(--muted); font-size: 13px; line-height: 1.8; }
+.bh-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; margin-top: 14px; }
+.bh-step { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 11px 13px; font-size: 12.5px; line-height: 1.7; }
+.bh-step b { color: var(--accent); }
+.bh-toc { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+.bh-toc a { font-size: 12.5px; padding: 6px 13px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text); text-decoration: none; }
+.bh-toc a:hover { border-color: var(--accent); color: var(--accent); }
+.bh-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; margin-bottom: 16px; scroll-margin-top: 70px; }
+.bh-card h2 { margin: 0 0 4px; font-size: 17px; }
+.bh-where { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+.bh-h { font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: .06em; margin: 14px 0 6px; }
+.bh-format { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13.5px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; color: var(--accent); word-break: break-all; }
+.bh-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.bh-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; line-height: 1.6; }
+.bh-table td:first-child { white-space: nowrap; font-family: ui-monospace, Menlo, Consolas, monospace; color: var(--text); width: 1%; padding-right: 16px; }
+.bh-table tr:last-child td { border-bottom: none; }
+.bh-ex { display: flex; align-items: center; gap: 8px; margin: 5px 0; }
+.bh-ex code { flex: 1; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; background: var(--bg); border: 1px solid var(--border); border-radius: 7px; padding: 6px 10px; word-break: break-all; }
+.bh-btn { flex: 0 0 auto; background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 7px; padding: 4px 10px; font-size: 11.5px; cursor: pointer; }
+.bh-btn:hover { color: var(--text); border-color: var(--accent); }
+.bh-list { margin: 0; padding-left: 18px; font-size: 12.5px; line-height: 1.9; color: var(--text); }
+.bh-err { font-size: 12.5px; line-height: 1.8; }
+.bh-err b { color: #eb5757; font-weight: 600; }
+.bh-prompt { width: 100%; box-sizing: border-box; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.7; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 10px 12px; min-height: 240px; resize: vertical; }
+.bh-prompt-bar { display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+.bh-go { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 7px 16px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.bh-tip { font-size: 11.5px; color: var(--muted); }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="bh-wrap">
+  <div class="bh-hero">
+    <h1>📖 批量录入教程</h1>
+    <p>物品、装备、属性、槽位、合成配方、礼品，都可以<b>一次粘贴一大段、一键录入</b>，比一条一条填快得多。</p>
+    <p>每一种都有：格式说明、可以直接复制的示例、常见报错怎么办，以及一段<b>「AI 提示词」</b>——复制给 AI（Claude、ChatGPT 等都行），再写上你想要什么，它就会按这里的格式生成，你直接粘贴回来就能录入。</p>
+    <div class="bh-steps">
+      <div class="bh-step"><b>① 复制提示词</b><br>点某一种格式下面的「复制 AI 提示词」，里面已经带上你当前已有的属性、槽位、物品名。</div>
+      <div class="bh-step"><b>② 发给 AI</b><br>粘贴给 AI，把最后「我的需求」那一行改成你想要的内容再发送。</div>
+      <div class="bh-step"><b>③ 粘贴录入</b><br>把 AI 输出的代码块内容复制，粘贴到对应页面的「批量粘贴录入」框，点「一键录入」。</div>
+      <div class="bh-step"><b>④ 自动同步</b><br>录入成功即已保存，机器人 2 分钟内自动同步，不用发指令。</div>
+    </div>
+  </div>
+
+  <div class="bh-toc" id="bh-toc"></div>
+  <div id="bh-cards"></div>
+</div>
+
+{% include "_bulk_help.html" %}
+<script>
+window.BULK_CTX_DATA = {{ ctx | tojson }};
+
+(function() {
+  var ORDER = ['items', 'equip', 'attrs', 'slots', 'recipes', 'gifts'];
+  var ICON = { items: '📦', equip: '🛡️', attrs: '📊', slots: '🎯', recipes: '🧪', gifts: '🎁' };
+  function esc(s) { return String(s).replace(/[&<>"]/g, function(c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  var toc = document.getElementById('bh-toc'), cards = document.getElementById('bh-cards');
+  ORDER.forEach(function(k) {
+    var f = BulkHelp.FORMATS[k];
+    toc.insertAdjacentHTML('beforeend', '<a href="#' + k + '">' + ICON[k] + ' ' + esc(f.title) + '</a>');
+    var h = '<div class="bh-card" id="' + k + '">' +
+      '<h2>' + ICON[k] + ' ' + esc(f.title) + '</h2>' +
+      '<div class="bh-where">在哪里录入：' + esc(f.where) + '</div>' +
+      '<div class="bh-h">格式（一行一条）</div><div class="bh-format">' + esc(f.format) + '</div>' +
+      '<div class="bh-h">每一部分是什么</div><table class="bh-table">' +
+        f.parts.map(function(p) { return '<tr><td>' + esc(p[0]) + '</td><td>' + esc(p[1]) + '</td></tr>'; }).join('') + '</table>' +
+      '<div class="bh-h">示例（点复制，粘贴到批量框里试试）</div>' +
+        f.examples.map(function(e, i) { return '<div class="bh-ex"><code>' + esc(e) + '</code><button class="bh-btn" data-k="' + k + '" data-i="' + i + '">复制</button></div>'; }).join('') +
+      '<div class="bh-h">注意事项</div><ul class="bh-list">' + f.rules.map(function(r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ul>' +
+      '<div class="bh-h">常见报错怎么办</div>' + f.errors.map(function(er) { return '<div class="bh-err"><b>' + esc(er[0]) + '</b>　→　' + esc(er[1]) + '</div>'; }).join('') +
+      '<div class="bh-h">🤖 AI 提示词（复制给 AI，再补上你的需求）</div>' +
+      '<textarea class="bh-prompt" id="bh-p-' + k + '" spellcheck="false"></textarea>' +
+      '<div class="bh-prompt-bar"><button class="bh-go" data-p="' + k + '">复制 AI 提示词</button>' +
+      '<span class="bh-tip">提示词里已经带上了你当前已有的内容；最后一行「我的需求」可以直接在这里改好再复制。</span></div>' +
+      '</div>';
+    cards.insertAdjacentHTML('beforeend', h);
+    document.getElementById('bh-p-' + k).value = BulkHelp.buildPrompt(k);
+  });
+  document.addEventListener('click', function(ev) {
+    var b = ev.target.closest('button'); if (!b) return;
+    if (b.dataset.p) { BulkHelp.copyText(document.getElementById('bh-p-' + b.dataset.p).value, b, '✅ 已复制'); }
+    else if (b.dataset.k) { BulkHelp.copyText(BulkHelp.FORMATS[b.dataset.k].examples[+b.dataset.i], b); }
+  });
+})();
+</script>
+{% endblock %}
