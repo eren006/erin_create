@@ -2206,6 +2206,9 @@ ext.cmdMap["拉取全部"] = cmd_pull_all;
 // ========================
 const AUTO_PULL_INTERVAL_MS = 2 * 60 * 1000;
 let _autoPullBusy = false;
+let _autoPullBusySince = 0;      // 防卡死：异步任务被海豹中途打断（如 panic）时 finally 不会执行，靠超时把「进行中」标记放掉
+const AUTO_PULL_BUSY_TIMEOUT_MS = 90 * 1000;
+const apLog = (m) => console.log("[自动拉取] " + m);
 // 最近一次检查的结果，「。自动拉取 状态」里显示，方便判断它到底有没有在工作
 const _autoPullInfo = { lastTick: 0, lastResult: "还没检查过（插件加载后 2 分钟内会第一次检查）" };
 
@@ -2218,9 +2221,11 @@ async function fetchWebSnapshotHash() {
     const headers = { "X-Archive-Token": token };
     let raw = "";
     for (const path of ["/api/config", "/api/pool_config", "/api/auction_queue"]) {
+        apLog("请求 " + path);
         const resp = await fetch(base + path, { headers });
         if (!resp.ok) throw new Error(`${path} 返回 HTTP ${resp.status}` + (resp.status === 503 ? "（网页端该账号下没有任何季度）" : resp.status === 401 || resp.status === 403 ? "（Token 不对？）" : ""));
         let text = await resp.text();
+        apLog(path + " 已收到 " + text.length + " 字符");
         // 机器人自己每次同步都会刷新的时间戳，不算「网页端改了」
         text = text.replace(/"_last_bot_sync"\s*:\s*"?\d+"?/g, "");
         raw += path + "\n" + text + "\n";
@@ -2231,20 +2236,27 @@ async function fetchWebSnapshotHash() {
 }
 
 async function autoPullTick() {
-    if (_autoPullBusy) return;
+    if (_autoPullBusy) {
+        if (Date.now() - _autoPullBusySince < AUTO_PULL_BUSY_TIMEOUT_MS) return;
+        apLog("上一次检查超过 90 秒没结束（可能被中断），已重置");
+        _autoPullBusy = false;
+    }
     _autoPullInfo.lastTick = Date.now();
     if ((mainStorGet("auto_pull_enabled") || "on") === "off") { _autoPullInfo.lastResult = "已关闭"; return; }
     if (isWebDirty()) { _autoPullInfo.lastResult = "暂停：群里有改动还没同步到网页（回复「确认」或发「。推送全部」）"; return; }
     _autoPullBusy = true;
+    _autoPullBusySince = Date.now();
     try {
+        apLog("开始检查网页端");
         const hash = await fetchWebSnapshotHash();
+        apLog("已取到网页端快照 " + hash);
         const last = mainStorGet("auto_pull_hash");
         if (!last) { mainStorSet("auto_pull_hash", hash); _autoPullInfo.lastResult = "已记录基准（第一次检查不拉取，之后网页端有改动才会拉）"; return; }
         if (hash === last) { _autoPullInfo.lastResult = "网页端没有变化"; return; }
-        console.log("[自动拉取] 检测到网页端有更新，开始拉取…");
+        apLog("检测到网页端有更新，开始拉取…");
         const logs = [];
         const ok = await pullAllCore(t => logs.push(t));
-        console.log("[自动拉取] " + logs.filter(t => !t.startsWith("⏳")).join(" | "));
+        apLog("拉取结束：" + logs.filter(t => !t.startsWith("⏳")).join(" | "));
         if (ok) {
             // 拉取过程会往网页端回写（_last_bot_sync、注册表回写等），以拉完之后的网页端内容为新基准，避免自己触发自己
             let after = hash;
@@ -2268,24 +2280,29 @@ globalThis.__changriAutoPullTimer = setInterval(autoPullTick, AUTO_PULL_INTERVAL
 let cmd_auto_pull = seal.ext.newCmdItemInfo();
 cmd_auto_pull.name = "自动拉取";
 cmd_auto_pull.help = "【管理员】网页端有改动时机器人自动拉取（每 2 分钟检查一次，默认开启）\n使用方法：。自动拉取 开启/关闭/状态/立即检查";
-cmd_auto_pull.solve = async (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+cmd_auto_pull.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) { seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。"); return seal.ext.newCmdExecuteResult(true); }
     const a = (cmdArgs.getArgN(1) || "状态").trim();
     if (a === "开启" || a === "关闭") {
         mainStorSet("auto_pull_enabled", a === "开启" ? "on" : "off");
         if (a === "开启") mainStorSet("auto_pull_hash", "");   // 重新记基准，别把关闭期间的改动当成刚发生的
     }
+    const reply = () => {
+        const on = (mainStorGet("auto_pull_enabled") || "on") !== "off";
+        const ago = _autoPullInfo.lastTick ? `${Math.round((Date.now() - _autoPullInfo.lastTick) / 1000)} 秒前` : "—";
+        seal.replyToSender(ctx, msg,
+            `自动拉取：${on ? "✅ 开启" : "⛔ 关闭"}（每 2 分钟检查一次网页端，有改动就自动拉取）\n` +
+            `最近一次检查：${ago}\n结果：${_autoPullInfo.lastResult}` +
+            (isWebDirty() ? "\n⚠️ 群里改的内容还没同步到网页，自动拉取已暂停：发「。推送全部」同步到网页，或「。拉取全部」放弃群里的改动、以网页端为准" : "") +
+            `\n\n发「。自动拉取 立即检查」可马上检查一次。`);
+    };
     if (a === "立即检查") {
+        // 指令函数必须同步返回结果对象（返回 Promise 会被海豹当成"未匹配指令"），异步的检查放进立即执行函数里
         if (_autoPullBusy) { seal.replyToSender(ctx, msg, "⏳ 正在检查/拉取中，稍后再试"); return seal.ext.newCmdExecuteResult(true); }
-        await autoPullTick();
+        (async () => { await autoPullTick(); reply(); })();
+    } else {
+        reply();
     }
-    const on = (mainStorGet("auto_pull_enabled") || "on") !== "off";
-    const ago = _autoPullInfo.lastTick ? `${Math.round((Date.now() - _autoPullInfo.lastTick) / 1000)} 秒前` : "—";
-    seal.replyToSender(ctx, msg,
-        `自动拉取：${on ? "✅ 开启" : "⛔ 关闭"}（每 2 分钟检查一次网页端，有改动就自动拉取）\n` +
-        `最近一次检查：${ago}\n结果：${_autoPullInfo.lastResult}` +
-        (isWebDirty() ? "\n⚠️ 群里改的内容还没同步到网页，自动拉取已暂停：发「。推送全部」同步到网页，或「。拉取全部」放弃群里的改动、以网页端为准" : "") +
-        `\n\n发「。自动拉取 立即检查」可马上检查一次。`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["自动拉取"] = cmd_auto_pull;
