@@ -1441,14 +1441,18 @@ function processProfileFieldLine(platform, roleName, line) {
 }
 
 // ========================
-// 🌸 皮相墙：水群里按性别分栏展示所有已设置皮相的角色，改皮相/改性别都会重新生成整份公告
+// 🌸 皮相墙：公告群里按性别分栏展示所有已设置皮相的角色，改皮相/改性别/提交二表都会重新生成整份公告
 // ========================
-// OneBot 的群公告没有"编辑"动作，只能先找到旧的删掉，再发一条新的。用固定开头当签名去匹配旧公告，
-// 不依赖 _send_group_notice 返回值里是否带 notice_id——go-cqhttp/napcat/LLOneBot 这块返回不完全一致，
-// 读回来按内容匹配删，比记 id 更稳。水群没配置（water_group_id 是默认值"未设置"）时直接跳过，不报错。
-// ⚠️ 没有真实 OneBot 环境测试过 _get_group_notice 的返回结构，先按标准 OneBot 扩展格式
-// （data 是数组，每条 { notice_id, message: { text } }）实现，实测格式不符的话需要调整解析这段。
+// QQ 群公告没有"编辑"接口（OneBot 只有 _send_group_notice / _get_group_notice / _del_group_notice），
+// 所以做法是：读公告列表 → 删掉所有旧皮相墙 → 发一条新的，群里看起来始终只有一份。
+// 发到公告群（adminAnnounceGroupId）；没配公告群的沿用水群（water_group_id）。两个都没配就跳过，不报错。
+//
+// 坑（2026-09-30 实测 llbot）：_get_group_notice 返回的 message.text 是 HTML 实体转义过的，
+// 换行是「&#10;」、emoji 也会变成「&#127800;」这种，以前直接拿「🌸 皮相墙 🌸」去 startsWith 永远对不上，
+// 旧公告一条都没删掉，每改一次皮相就多一条。现在先解码实体、再按「第一行含皮相墙 + 末行是二表图例」识别，
+// 两头都对上才删，不会误删管理员自己发的、正文里提到皮相墙的公告。
 const LOOK_WALL_SIGNATURE = "🌸 皮相墙 🌸";
+const LOOK_WALL_LEGEND = "✅ 已提交二表　⬜ 尚未提交";
 
 function buildLookWallContent(platform) {
     const roles = store.get("a_private_group")[platform] || {};
@@ -1472,54 +1476,87 @@ function buildLookWallContent(platform) {
         "👩 女生",
         ...(byGender["女"].length ? byGender["女"] : ["（暂无）"]),
         "",
-        "✅ 已提交二表　⬜ 尚未提交",
+        LOOK_WALL_LEGEND,
     ].join("\n");
 }
 
-function refreshLookWall(platform) {
-    const gid = kvGet("water_group_id", "未设置");
-    if (!gid || gid === "未设置") return;
-    const groupIdNum = parseInt(String(gid).replace(/\D/g, ""), 10);
-    if (!groupIdNum) return;
+// 群公告正文的 HTML 实体解码（&#10; &#x1F338; &amp; &nbsp; 等）
+function decodeNoticeText(t) {
+    return String(t || "")
+        .replace(/&#x([0-9a-f]+);/gi, (_, h) => { try { return String.fromCodePoint(parseInt(h, 16)); } catch (e) { return _; } })
+        .replace(/&#(\d+);/g, (_, d) => { try { return String.fromCodePoint(parseInt(d, 10)); } catch (e) { return _; } })
+        .replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+        .replace(/&amp;/g, "&");
+}
 
-    const postNew = () => {
-        WSM.request(
-            { action: "_send_group_notice", params: { group_id: groupIdNum, content: buildLookWallContent(platform) } },
-            () => {},
-            () => console.error("[皮相墙] 发布新公告失败"),
-            8000
-        );
-    };
+function isLookWallNotice(n) {
+    const text = decodeNoticeText(n.message?.text ?? n.text ?? n.content ?? "").replace(/\r/g, "").trim();
+    const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+    if (!lines.length) return false;
+    return lines[0].includes("皮相墙") && lines[lines.length - 1].includes("已提交二表");
+}
 
-    // 群公告这几个动作在部分 OneBot 实现下是代理到 QQ 网页端接口的，比一般动作慢，
-    // 默认 3000ms 超时太紧，实测会在连接刚建立、后端还没返回时就判超时——放宽到 8000ms，
-    // 跟 set_group_name/get_group_msg_history 等已知偏慢动作保持一致
+// 读 gid 群的公告，删掉所有旧皮相墙，全部删完（或删失败）后调 then()
+function sweepLookWalls(groupIdNum, then) {
     const fetchNotice = (attemptsLeft) => {
+        // 群公告这几个动作在部分 OneBot 实现下是代理到 QQ 网页端接口的，比一般动作慢，默认 3000ms 超时太紧，放宽到 8000ms
         WSM.request(
             { action: "_get_group_notice", params: { group_id: groupIdNum } },
             (resp) => {
-                if (resp.status !== "ok" && resp.retcode !== 0) return console.error(`[皮相墙] 读取群公告失败: ${JSON.stringify(resp)}`);
-                const list = resp.data || [];
-                const oldOnes = list.filter(n => (n.message?.text || n.text || "").startsWith(LOOK_WALL_SIGNATURE));
-                if (!oldOnes.length) return postNew();
+                if (resp.status !== "ok" && resp.retcode !== 0) { console.error(`[皮相墙] 读取群公告失败: ${JSON.stringify(resp)}`); return then(false); }
+                const oldOnes = (Array.isArray(resp.data) ? resp.data : []).filter(isLookWallNotice);
+                if (!oldOnes.length) return then(true);
                 let remaining = oldOnes.length;
-                oldOnes.forEach(n => {
-                    WSM.request(
-                        { action: "_del_group_notice", params: { group_id: groupIdNum, notice_id: n.notice_id } },
-                        () => { if (--remaining <= 0) postNew(); },
-                        () => { if (--remaining <= 0) postNew(); },
-                        8000
-                    );
-                });
+                const one = () => { if (--remaining <= 0) then(true); };
+                oldOnes.forEach(n => WSM.request(
+                    { action: "_del_group_notice", params: { group_id: groupIdNum, notice_id: n.notice_id } },
+                    one,
+                    () => { console.error(`[皮相墙] 删除旧公告超时 ${n.notice_id}`); one(); },
+                    8000
+                ));
             },
             () => {
                 if (attemptsLeft > 0) return fetchNotice(attemptsLeft - 1);
                 console.error("[皮相墙] 读取群公告列表失败，跳过本次更新");
+                then(false);
             },
             8000
         );
     };
     fetchNotice(1);
+}
+
+const toGroupNum = (v) => { const n = parseInt(String(v || "").replace(/\D/g, ""), 10); return n || 0; };
+
+// 刷新合并：几秒内连续改皮相/改性别/提交二表只发一次；正在删旧发新时来的刷新排到本轮结束后再跑一次。
+// 不合并的话，两次刷新会同时读到同一批旧公告、各自删完各发一条，又变成两份
+let _lookWallTimer = null, _lookWallBusy = false, _lookWallAgain = false;
+function refreshLookWall(platform) {
+    if (_lookWallTimer) clearTimeout(_lookWallTimer);
+    _lookWallTimer = setTimeout(() => { _lookWallTimer = null; runLookWallRefresh(platform); }, 3000);
+}
+
+function runLookWallRefresh(platform) {
+    if (_lookWallBusy) { _lookWallAgain = true; return; }
+    const announceGid = toGroupNum(kvGet("adminAnnounceGroupId", ""));
+    const waterGid = toGroupNum(kvGet("water_group_id", ""));
+    const target = announceGid || waterGid;
+    if (!target) return;
+    _lookWallBusy = true;
+    const finish = () => {
+        _lookWallBusy = false;
+        if (_lookWallAgain) { _lookWallAgain = false; runLookWallRefresh(platform); }
+    };
+    const postNew = () => WSM.request(
+        { action: "_send_group_notice", params: { group_id: target, content: buildLookWallContent(platform) } },
+        finish,
+        () => { console.error("[皮相墙] 发布新公告失败"); finish(); },
+        8000
+    );
+    // 以前发在水群：改到公告群后顺手把水群里的旧皮相墙也清掉（水群没配、或和公告群是同一个群就不用）
+    const sweepOld = (next) => (waterGid && waterGid !== target) ? sweepLookWalls(waterGid, next) : next();
+    // 目标群的旧公告读不到时不发新的——读不到就删不掉，再发只会多一条
+    sweepOld(() => sweepLookWalls(target, (ok) => ok ? postNew() : finish()));
 }
 
 // 2. 玩家名单
