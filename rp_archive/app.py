@@ -4579,6 +4579,10 @@ def character_interactions(role_name):
 
     pairs = {}
     for e in events:
+        # 配对统计只有心动信/短信/礼物三栏；写信综的 direct_letter 等其它类型在「信件」页看，这里跳过——
+        # 以前直接拿 f"{type}_sent" 当键去加，碰到 direct_letter 就 KeyError，写过信的角色互动页整页 500
+        if e["type"] not in ("lovemail", "sms", "gift"):
+            continue
         other  = e["to_role"] if e["from_role"] == role_name else e["from_role"]
         pairs.setdefault(other, {"lovemail_sent":0,"lovemail_recv":0,"sms_sent":0,"sms_recv":0,"gift_sent":0,"gift_recv":0})
         pairs[other][f"{e['type']}_{'sent' if e['from_role']==role_name else 'recv'}"] += 1
@@ -5763,23 +5767,30 @@ _PARAM_MAP = {
     '耗费时间': '结戏最多耗费时间',
 }
 
+def _to_int(v, default):
+    """网页表单里的数字：留空/乱填回退默认值，小数取整。以前直接 int()，一个框留空整份结戏奖励就保存失败（500）"""
+    try:
+        return int(float(str(v).strip()))
+    except (TypeError, ValueError):
+        return default
+
 def _convert_ui_block(blk):
     conds = []
     for c in blk.get('conditions', []):
         param = _PARAM_MAP.get(c.get('param', ''), c.get('param', ''))
         cond = {'param': param, 'op': c.get('op', '>=')}
         if c.get('op') == 'range':
-            cond['value'] = [int(c.get('min', 0)), int(c.get('max', 0))]
+            cond['value'] = [_to_int(c.get('min'), 0), _to_int(c.get('max'), 0)]
         else:
-            cond['value'] = int(c.get('value', 0))
+            cond['value'] = _to_int(c.get('value'), 0)
         conds.append(cond)
     rwds = []
     for r in blk.get('rewards', []):
         rtype = r.get('rtype', '货币')
-        reward = {'type': 'fixed', 'amount': int(r.get('amount', 0))}
+        reward = {'type': 'fixed', 'amount': _to_int(r.get('amount'), 0)}
         prob = r.get('prob')
-        if prob is not None and int(prob) < 100:
-            reward['prob'] = int(prob)
+        if _to_int(prob, 100) < 100:
+            reward['prob'] = _to_int(prob, 100)
         if rtype == '货币':
             reward['target'] = (r.get('target') or '').strip()
             reward['targetType'] = 'currency'
@@ -5790,7 +5801,7 @@ def _convert_ui_block(blk):
             pool_name = (r.get('pool_name') or '').strip()
             if not pool_name:
                 continue
-            rwds.append({'type': 'named_draw', 'pool_name': pool_name, 'amount': int(r.get('amount', 1))})
+            rwds.append({'type': 'named_draw', 'pool_name': pool_name, 'amount': _to_int(r.get('amount'), 1)})
             continue
         else:
             reward['target'] = (r.get('name') or '').strip()
