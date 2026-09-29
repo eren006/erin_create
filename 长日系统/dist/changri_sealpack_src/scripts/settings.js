@@ -2206,18 +2206,20 @@ ext.cmdMap["拉取全部"] = cmd_pull_all;
 // ========================
 const AUTO_PULL_INTERVAL_MS = 2 * 60 * 1000;
 let _autoPullBusy = false;
+// 最近一次检查的结果，「。自动拉取 状态」里显示，方便判断它到底有没有在工作
+const _autoPullInfo = { lastTick: 0, lastResult: "还没检查过（插件加载后 2 分钟内会第一次检查）" };
 
 async function fetchWebSnapshotHash() {
     const main = getMainExt();
-    if (!main) return null;
+    if (!main) throw new Error("主插件未加载");
     const base  = (seal.ext.getStringConfig(main.ext, "RP存档服务器地址") || "").replace(/\/$/, "");
     const token = seal.ext.getStringConfig(main.ext, "RP存档Token") || "";
-    if (!base) return null;
+    if (!base) throw new Error("未配置「RP存档服务器地址」");
     const headers = { "X-Archive-Token": token };
     let raw = "";
     for (const path of ["/api/config", "/api/pool_config", "/api/auction_queue"]) {
         const resp = await fetch(base + path, { headers });
-        if (!resp.ok) return null;                    // 任何一个取不到就本轮放弃，别拿残缺快照去比
+        if (!resp.ok) throw new Error(`${path} 返回 HTTP ${resp.status}` + (resp.status === 503 ? "（网页端该账号下没有任何季度）" : resp.status === 401 || resp.status === 403 ? "（Token 不对？）" : ""));
         let text = await resp.text();
         // 机器人自己每次同步都会刷新的时间戳，不算「网页端改了」
         text = text.replace(/"_last_bot_sync"\s*:\s*"?\d+"?/g, "");
@@ -2230,25 +2232,30 @@ async function fetchWebSnapshotHash() {
 
 async function autoPullTick() {
     if (_autoPullBusy) return;
-    if ((mainStorGet("auto_pull_enabled") || "on") === "off") return;
-    if (isWebDirty()) return;          // 群里有改动还没同步到网页，先别拉，免得被网页旧值盖掉
+    _autoPullInfo.lastTick = Date.now();
+    if ((mainStorGet("auto_pull_enabled") || "on") === "off") { _autoPullInfo.lastResult = "已关闭"; return; }
+    if (isWebDirty()) { _autoPullInfo.lastResult = "暂停：群里有改动还没同步到网页（回复「确认」或发「。推送全部」）"; return; }
     _autoPullBusy = true;
     try {
         const hash = await fetchWebSnapshotHash();
-        if (!hash) return;
         const last = mainStorGet("auto_pull_hash");
-        if (!last) { mainStorSet("auto_pull_hash", hash); return; }   // 第一次只记基准，不拉
-        if (hash === last) return;
+        if (!last) { mainStorSet("auto_pull_hash", hash); _autoPullInfo.lastResult = "已记录基准（第一次检查不拉取，之后网页端有改动才会拉）"; return; }
+        if (hash === last) { _autoPullInfo.lastResult = "网页端没有变化"; return; }
         console.log("[自动拉取] 检测到网页端有更新，开始拉取…");
         const logs = [];
         const ok = await pullAllCore(t => logs.push(t));
         console.log("[自动拉取] " + logs.filter(t => !t.startsWith("⏳")).join(" | "));
         if (ok) {
             // 拉取过程会往网页端回写（_last_bot_sync、注册表回写等），以拉完之后的网页端内容为新基准，避免自己触发自己
-            const after = await fetchWebSnapshotHash();
-            mainStorSet("auto_pull_hash", after || hash);
+            let after = hash;
+            try { after = await fetchWebSnapshotHash(); } catch (e) {}
+            mainStorSet("auto_pull_hash", after);
+            _autoPullInfo.lastResult = "检测到网页端有更新，已自动拉取";
+        } else {
+            _autoPullInfo.lastResult = "检测到网页端有更新，但拉取失败：" + (logs[logs.length - 1] || "未知原因");
         }
     } catch (e) {
+        _autoPullInfo.lastResult = "检查失败：" + e.message;
         console.error("[自动拉取] 失败: " + e.message);
     } finally {
         _autoPullBusy = false;
@@ -2260,17 +2267,25 @@ globalThis.__changriAutoPullTimer = setInterval(autoPullTick, AUTO_PULL_INTERVAL
 
 let cmd_auto_pull = seal.ext.newCmdItemInfo();
 cmd_auto_pull.name = "自动拉取";
-cmd_auto_pull.help = "【管理员】网页端有改动时机器人自动拉取（每 2 分钟检查一次，默认开启）\n使用方法：。自动拉取 开启/关闭/状态";
-cmd_auto_pull.solve = (ctx, msg, cmdArgs) => {
+cmd_auto_pull.help = "【管理员】网页端有改动时机器人自动拉取（每 2 分钟检查一次，默认开启）\n使用方法：。自动拉取 开启/关闭/状态/立即检查";
+cmd_auto_pull.solve = async (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
     const a = (cmdArgs.getArgN(1) || "状态").trim();
     if (a === "开启" || a === "关闭") {
         mainStorSet("auto_pull_enabled", a === "开启" ? "on" : "off");
         if (a === "开启") mainStorSet("auto_pull_hash", "");   // 重新记基准，别把关闭期间的改动当成刚发生的
     }
+    if (a === "立即检查") {
+        if (_autoPullBusy) { seal.replyToSender(ctx, msg, "⏳ 正在检查/拉取中，稍后再试"); return seal.ext.newCmdExecuteResult(true); }
+        await autoPullTick();
+    }
     const on = (mainStorGet("auto_pull_enabled") || "on") !== "off";
-    seal.replyToSender(ctx, msg, `自动拉取：${on ? "✅ 开启" : "⛔ 关闭"}（网页端有改动时每 2 分钟内自动生效；也可随时手动「。拉取全部」）` +
-        (isWebDirty() ? "\n⚠️ 当前有群里改的内容还没同步到网页，自动拉取已暂停：发「。推送全部」同步到网页，或「。拉取全部」放弃群里的改动、以网页端为准" : ""));
+    const ago = _autoPullInfo.lastTick ? `${Math.round((Date.now() - _autoPullInfo.lastTick) / 1000)} 秒前` : "—";
+    seal.replyToSender(ctx, msg,
+        `自动拉取：${on ? "✅ 开启" : "⛔ 关闭"}（每 2 分钟检查一次网页端，有改动就自动拉取）\n` +
+        `最近一次检查：${ago}\n结果：${_autoPullInfo.lastResult}` +
+        (isWebDirty() ? "\n⚠️ 群里改的内容还没同步到网页，自动拉取已暂停：发「。推送全部」同步到网页，或「。拉取全部」放弃群里的改动、以网页端为准" : "") +
+        `\n\n发「。自动拉取 立即检查」可马上检查一次。`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["自动拉取"] = cmd_auto_pull;

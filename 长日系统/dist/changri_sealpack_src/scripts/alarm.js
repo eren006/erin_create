@@ -548,9 +548,47 @@ ext.cmdMap['我的提醒'] = cmd_alarm_list;
 
 let cmd_alarm_del = seal.ext.newCmdItemInfo();
 cmd_alarm_del.name = '删除提醒';
-cmd_alarm_del.help = '删除提醒 编号';
+cmd_alarm_del.help = '删除提醒 编号\n管理员：删除提醒 QQ号（查看此人的提醒）/ 删除提醒 QQ号 编号 / 删除提醒 QQ号 全部';
 cmd_alarm_del.solve = (ctx, msg, cmdArgs) => {
     const ret = seal.ext.newCmdExecuteResult(true);
+
+    // 管理员代删别人的提醒：第一个参数是 QQ 号（5 位以上纯数字）。用于清掉发不出去、又没法让本人自己删的提醒
+    const firstArg = (cmdArgs.getArgN(1) || '').trim();
+    if (/^\d{5,}$/.test(firstArg)) {
+        if (!isAdmin(ctx, msg)) {
+            seal.replyToSender(ctx, msg, '❌ 权限不足，只有管理员能处理别人的提醒。');
+            return ret;
+        }
+        const platform = msg.platform;
+        const targetUid = getPrimaryUid(platform, firstArg);
+        const target = (cmdArgs.getArgN(2) || '').trim().toUpperCase();
+        const all = getList();
+        const mine = all.filter(r => r.platform === platform && r.uid === targetUid);
+        if (mine.length === 0) {
+            seal.replyToSender(ctx, msg, `QQ ${firstArg} 名下没有提醒。`);
+            return ret;
+        }
+        if (!target) {
+            const lines = mine.sort((a, b) => a.triggerAt - b.triggerAt).map(r => {
+                const rLabel = r.repeat !== 'none' ? ` 🔁${repeatLabel(r.repeat)}` : '';
+                return `[${r.id}] ${formatTime(r.triggerAt)}${rLabel} 群${r.groupId}\n　　${r.content}`;
+            });
+            seal.replyToSender(ctx, msg, `QQ ${firstArg} 的提醒（${mine.length} 条）\n${lines.join('\n')}\n\n删除：删除提醒 ${firstArg} 编号　或　删除提醒 ${firstArg} 全部`);
+            return ret;
+        }
+        const drop = target === '全部' ? (r => r.platform === platform && r.uid === targetUid)
+                                        : (r => r.platform === platform && r.uid === targetUid && r.id === target);
+        const kept = all.filter(r => !drop(r));
+        const n = all.length - kept.length;
+        if (n === 0) {
+            seal.replyToSender(ctx, msg, `QQ ${firstArg} 名下没有编号「${target}」。`);
+            return ret;
+        }
+        saveList(kept);
+        seal.replyToSender(ctx, msg, `✅ 已删除 QQ ${firstArg} 的 ${n} 条提醒。`);
+        return ret;
+    }
+
     const id  = msg.message.replace(/^[。.]\S+\s*/, '').trim().toUpperCase();
     if (!id) {
         seal.replyToSender(ctx, msg, '格式：删除提醒 编号\n编号见「我的提醒」');
