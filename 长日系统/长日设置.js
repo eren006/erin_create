@@ -1193,11 +1193,55 @@ function performAutoDayReset(newDay, now) {
     console.log(`[自动天数] 已从 ${prev} 推进至 ${newDay}，并清空所有计数`);
 }
 
+// ========================
+// 季度自动开关：档期开始（自动切到 D0 那一刻）自动打开「自动天数」和「心动信」，
+// 档期（含补戏期）结束后自动关闭。开/关之后都推送到网页端——不推的话，网页端还是旧值，
+// 下次网页上随便改点什么，自动拉取就会把开关盖回去。
+// 自动关只做一次（season_auto_toggles_off 标记，清空季度数据时清掉）：过了档期管理员手动再打开的，不会被反复关掉。
+// ========================
+const SEASON_AUTO_OFF_KEY = "season_auto_toggles_off";
+function syncTogglesToWeb() {
+    pushAllCore(() => {}, false).catch(e => console.error("[季度自动开关] 同步到网页端失败:", e.message));
+}
+function seasonAnnounce(text) {
+    const gid = mainKvGet("adminAnnounceGroupId", null) || mainKvGet("background_group_id", null);
+    if (gid) sendTextToGroup("QQ", gid, text);
+}
+function seasonAutoTogglesStart() {
+    setDLC('dlc_auto_day', true);
+    mainStorSet("auto_day_reset_enabled", "true");
+    setDLC('enable_lovemail', true);
+    mainStorSet(SEASON_AUTO_OFF_KEY, "");
+    const t = (mainStorGet("lovemail_delivery_time") || "22:00").replace(/"/g, "").trim() || "22:00";
+    seasonAnnounce(
+        `⚙️ 已自动打开：\n• 自动天数：每天 23:59 天数 +1 并清空计数\n• 心动信：每天 ${t} 统一派送\n` +
+        `档期结束后会自动关闭。不需要的话：「。关闭自动天数」，心动信在「。设置 功能开关」里关。`);
+    syncTogglesToWeb();
+}
+globalThis.__changriSeasonAutoStart = seasonAutoTogglesStart;   // 主插件 checkAutoD0 切到 D0 时调用
+
+function checkSeasonAutoOff() {
+    if (mainGetScheduleZone() !== "post") return;
+    if (mainStorGet(SEASON_AUTO_OFF_KEY) === "1") return;
+    mainStorSet(SEASON_AUTO_OFF_KEY, "1");
+    const ft = mainKvGet('global_feature_toggle', {});
+    if (!ft.dlc_auto_day && !ft.enable_lovemail) return;
+    setDLC('dlc_auto_day', false);
+    mainStorSet("auto_day_reset_enabled", "false");
+    setDLC('enable_lovemail', false);
+    seasonAnnounce(
+        `📅 档期（含补戏期）已结束，已自动关闭：自动天数（天数停在 ${mainStorGet("global_days") || "D0"}）、心动信。\n` +
+        `还要继续的话手动「。开启自动天数」/在「。设置 功能开关」打开心动信，之后不会再自动关。\n` +
+        `季度收尾：「。结束季度」→「。收尾」。`);
+    syncTogglesToWeb();
+}
+
 function registerAutoDaySystem() {
     if (autoDayTimer) clearInterval(autoDayTimer);
     autoDayTimer = setInterval(() => {
         const main = getMainExt();
         if (!main) return;
+        try { checkSeasonAutoOff(); } catch (e) { console.error("[季度自动开关] 检查失败:", e.message); }
         if (!isDLC('dlc_auto_day')) return;
         const now = new Date();
         if (now.getHours() === 23 && now.getMinutes() === 59) {
@@ -1208,15 +1252,6 @@ function registerAutoDaySystem() {
             // global_days 已经不是 "D100" 了就不会自动切 D0，导致整季从错误天数开始。
             // 不关闭 DLC，只是这一天跳过推进，档期开始后 zone 变成 main，下面的逻辑会自动恢复正常推进
             if (mainGetScheduleZone() === "pre") {
-                mainStorSet("auto_day_last_reset", todayKey);
-                return;
-            }
-            // 现实时间已经过了档期结束（含补戏日期，如果设了的话），季度还没手动结束——
-            // 自动天数没有理由再往下走，自动关闭并提醒管理员，而不是无限推进下去
-            if (mainGetScheduleZone() === "post") {
-                setDLC('dlc_auto_day', false);
-                const announceGid = mainKvGet("adminAnnounceGroupId", null);
-                if (announceGid) sendTextToGroup("QQ", announceGid, `📅 已过档期结束时间，自动天数推进已自动暂停（当前天数保留在 ${mainStorGet("global_days") || "D0"}）。需要的话请「结束季度」或手动「开启自动天数」继续。`);
                 mainStorSet("auto_day_last_reset", todayKey);
                 return;
             }

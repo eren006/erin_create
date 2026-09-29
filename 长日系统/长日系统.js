@@ -5513,7 +5513,7 @@ const CLEAR_KEYS = [
     "feature_user_blocklist","noquit",                "season_show_name",
     "season_mode",           "season_schedule_start", "season_schedule_end",
     "season_supplement_end", "season_created_at",     "love_show_name",
-    "pending_npc_names",
+    "pending_npc_names",   "season_auto_toggles_off",
     // ── 约会 / 日程 ──
     "appointmentList",       "b_MultiGroupRequest",   "b_confirmedSchedule",
     "join_request_list",     "allowed_appointment_times",
@@ -5529,7 +5529,7 @@ const CLEAR_KEYS = [
     "global_chaos_letter_counts",    "drift_bottles",
     "pretel_list",            "pretel_picks",          "pretel_mode",           "pretel_collection",
     "pretel_show_gender",
-    "lovemail_day_counts",   "lovemail_pool",
+    "lovemail_day_counts",   "lovemail_pool",         "lovemail_received_log",
     "letter_day_counts",     "wish_daily_post_counts","wish_daily_pick_counts",
     "a_meetingCount_call",   "a_meetingCount_chaosletter",
     "a_meetingCount_directletter", "a_meetingCount_gift",
@@ -12080,10 +12080,16 @@ function performLoveMailDelivery(ctx, msg, backgroundGroupId) {
     const publicNodes = [];
     const failedRecords = [];
 
+    // 每人最近 30 封已送达的心动信（拆信刀 SPEC_009 从这里 + 待派送池里随机挑一封给人偷看）
+    const receivedLog = kvGet("lovemail_received_log", {});
     for (const [receiver, mails] of Object.entries(mailBox)) {
         const recvUid = getUidByRoleName(platform, receiver);
         const addr = recvUid ? a_private_group[platform]?.[recvUid] : null;
         if (addr) {
+            const recvName = a_private_group[platform]?.[recvUid]?.[0] || receiver;
+            receivedLog[recvName] = (receivedLog[recvName] || []).concat(
+                mails.map(m => ({ content: m.content, signature: m.signature, gameDay: m.gameDay || "", timestamp: m.timestamp || Date.now() }))
+            ).slice(-30);
             if (mails.length > maxReceived) maxReceived = mails.length;
             const targetGidRaw = (addr[1] || "").replace(/\D/g, "");
             const personalNodes = [{ type: "node", data: { name: "心动邮局·派送员", uin: "2852199344", content: `💌 亲爱的 ${receiver}，你有一份包含 ${mails.length} 封信件的包裹待启封。` } }];
@@ -12139,6 +12145,7 @@ function performLoveMailDelivery(ctx, msg, backgroundGroupId) {
     }
 
     kvSet(mailKey, failedRecords);
+    kvSet("lovemail_received_log", receivedLog);
     if (success > 0) recordMeetingAndAnnounce("心动信", platform, ctx, ep);
     return { success, fail, publicCount, empty: false, status: "派送完成" };
 }
@@ -12256,6 +12263,8 @@ function checkAutoD0() {
     _lastAutoD0Date = today;
     const announceGid = kvGet("adminAnnounceGroupId", null);
     if (announceGid) sendTextToGroup("QQ", announceGid, `🗓️ 档期正式开始！游戏天数已自动设置为 D0（所有计数已清空）。`);
+    // 档期开始顺带自动打开「自动天数」和「心动信」（设置插件里实现，会同步到网页端）
+    try { globalThis.__changriSeasonAutoStart?.(); } catch (e) { console.error("[自动D0] 自动打开自动天数/心动信失败:", e.message); }
 }
 
 // 到期约会群自动巡检：group_expire_info 到期后不会自动清理，

@@ -619,6 +619,7 @@ async function applySeasonLocal(ctx, msg, opts) {
         { code: "SPEC_006", name: "窃听器",   desc: "一枚微型窃听装置，激活后可悄悄截录目标的电话内容——信号有时会有些干扰……" },
         { code: "SPEC_007", name: "截信器",   desc: "一台隐蔽的信号截断仪，激活后可拦截目标发出的短信，但内容偶有失真……" },
         { code: "SPEC_008", name: "回音壁",   desc: "一面奇异的墙壁，贴上后可感知所有投向目标的信件内容——对方收到什么，你便知晓什么。" },
+        { code: "SPEC_009", name: "拆信刀",   desc: "一把薄如蝉翼的拆信刀，能悄悄拆开别人信箱里的一封心动信看上一眼，再原样封好，对方毫无察觉。" },
     ];
     let regChanged = false;
     for (const item of specItems) {

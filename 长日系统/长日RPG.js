@@ -640,6 +640,10 @@ function initPresetItems() {
         reg["SPEC_008"] = { code: "SPEC_008", name: "回音壁", desc: "一面奇异的墙壁，贴上后可感知所有投向目标的信件内容——对方收到什么，你便知晓什么。", type: "preset", attrs: null };
         changed = true;
     }
+    if (!reg["SPEC_009"]) {
+        reg["SPEC_009"] = { code: "SPEC_009", name: "拆信刀", desc: "一把薄如蝉翼的拆信刀，能悄悄拆开别人信箱里的一封心动信看上一眼，再原样封好，对方毫无察觉。", type: "preset", attrs: null };
+        changed = true;
+    }
     // 默认货币：金币、银币（按名称判断，避免重复注册）
     const currencyNames = new Set(Object.values(reg).filter(r => r.type === "currency").map(r => r.name));
     if (!currencyNames.has("金币")) {
@@ -805,7 +809,7 @@ cmd_init_preset.solve = (ctx, msg, cmdArgs) => {
     }
 
     initPresetItems();
-    seal.replyToSender(ctx, msg, "✅ 已初始化系统预设物品：追踪器、万能钥匙、望远镜、羽毛笔、捕鼠器、窃听器、截信器、回音壁，以及默认货币金币/银币");
+    seal.replyToSender(ctx, msg, "✅ 已初始化系统预设物品：追踪器、万能钥匙、望远镜、羽毛笔、捕鼠器、窃听器、截信器、回音壁、拆信刀，以及默认货币金币/银币");
     return seal.ext.newCmdExecuteResult(true);
 };
 
@@ -2921,7 +2925,8 @@ cmd_special_use.help = `使用特殊道具（SPEC类）
 捕鼠器：特殊使用 捕鼠器 目标角色 时间（整点，如 14）
 窃听器：特殊使用 窃听器 目标角色 [条数=10] [干扰率=30]
 截信器：特殊使用 截信器 目标角色 [条数=10] [干扰率=30]
-回音壁：特殊使用 回音壁 目标角色 [条数=10] [干扰率=30]`;
+回音壁：特殊使用 回音壁 目标角色 [条数=10] [干扰率=30]
+拆信刀：特殊使用 拆信刀 目标角色（偷看对方信箱里的一封心动信）`;
 
 cmd_special_use.solve = (ctx, msg, cmdArgs) => {
     const main = getMainExt();
@@ -3130,6 +3135,29 @@ cmd_special_use.solve = (ctx, msg, cmdArgs) => {
         mainKvSet("sms_echo_wall_effects", echoWalls);
 
         return seal.replyToSender(ctx, msg, `🪞 回音壁已贴附！\n目标：${targetName}\n最多截取：${remainCount} 条\n干扰率：${blurProb}%\n（回音壁已消耗）`);
+    }
+
+    // ── SPEC_009 拆信刀：随机偷看目标信箱里的一封心动信（已收到的，或今晚待派送的），对方不会收到任何提示 ──
+    // 已收到的来自主插件派送时记的 lovemail_received_log（每人最近 30 封），待派送的直接读 lovemail_pool。
+    // 对方信箱是空的就不扣道具
+    if (item.code === "SPEC_009") {
+        const targetName = cmdArgs.getArgN(2);
+        if (!targetName) return seal.replyToSender(ctx, msg, "✉️ 请指定目标：特殊使用 拆信刀 角色名");
+        const targetUid = getRoleUid(platform, targetName);
+        if (!targetUid) return seal.replyToSender(ctx, msg, `❌ 未找到角色「${targetName}」。`);
+        if (targetName === roleName) return seal.replyToSender(ctx, msg, "✉️ 自己的信不用拆信刀也能看，留着它去拆别人的吧。");
+        const pending = mainKvGet("lovemail_pool", []).filter(r => r && getRoleUid(platform, r.receiver) === targetUid).map(r => ({ ...r, _pending: true }));
+        const received = mainKvGet("lovemail_received_log", {})[targetName] || [];
+        const all = pending.concat(received);
+        if (!all.length) return seal.replyToSender(ctx, msg, `📭 「${targetName}」的信箱里还没有心动信，拆信刀先留着吧。（未消耗）`);
+        if (!removeFromInv(roleKey, "SPEC_009", 1)) return seal.replyToSender(ctx, msg, "❌ 背包中没有可用的拆信刀。");
+        const pick = all[Math.floor(Math.random() * all.length)];
+        let text = String(pick.content || "").replace(/\[CQ:image[^\]]*\]/g, "[图片]").trim() || "（只有图片）";
+        if (text.length > 220) text = text.slice(0, 220) + "……（后面看不清了）";
+        return seal.replyToSender(ctx, msg,
+            `✉️ 你用拆信刀悄悄拆开了「${targetName}」${pick._pending ? "今晚才会收到" : "收到"}的一封心动信：\n` +
+            `「${text}」\n📝 署名：${pick.signature || "（无）"}${pick.gameDay ? `　📅 ${pick.gameDay}` : ""}\n` +
+            `信已原样封好，对方不会察觉。（拆信刀已消耗）`);
     }
 
     return seal.replyToSender(ctx, msg, `❌ 未知的特殊道具 [${item.code}]，请联系管理员。`);
