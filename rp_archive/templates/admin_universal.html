@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}长日存档 · 通用物品库{% endblock %}
+
+{% block head %}
+<style>
+.card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px 22px; margin-bottom:16px; }
+.card h3 { font-size:13px; font-weight:700; color:var(--muted); letter-spacing:1px; margin-bottom:12px; }
+.quota { font-size:13px; color:var(--muted); margin-bottom:14px; } .quota.full{color:var(--red);}
+.bar { height:6px; background:var(--surface2); border-radius:3px; overflow:hidden; margin-top:6px; }
+.bar i { display:block; height:100%; background:var(--accent); }
+.btn { border-radius:8px; padding:6px 14px; font-size:13px; cursor:pointer; font-weight:600; background:var(--surface2); color:var(--text); border:1px solid var(--border); }
+.btn:hover { border-color:var(--accent); } .btn-pri { background:var(--accent); color:#fff; border-color:var(--accent); }
+.btn-del { background:none; border:none; color:var(--red); cursor:pointer; font-size:12px; }
+table { width:100%; border-collapse:collapse; font-size:13px; }
+th { text-align:left; font-size:11px; color:var(--muted); padding:6px 8px; border-bottom:1px solid var(--border); }
+td { padding:7px 8px; border-bottom:1px solid var(--border); vertical-align:top; }
+td.d { color:var(--muted); }
+.tag { font-size:11px; padding:1px 8px; border-radius:10px; background:var(--surface2); color:var(--muted); }
+.row { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:10px; }
+.field label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+.field input, .field select { background:var(--surface2); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:7px 10px; font-size:13px; }
+.msg { font-size:12px; min-height:16px; margin-top:6px; } .msg.err{color:var(--red);} .msg.ok{color:var(--green);}
+.hint { font-size:12px; color:var(--muted); line-height:1.7; }
+.pick { max-height:260px; overflow:auto; border:1px solid var(--border); border-radius:8px; padding:6px 10px; margin:10px 0; }
+.pick label { display:flex; gap:8px; align-items:center; padding:3px 0; font-size:13px; }
+.pick .dim { opacity:.45; }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="page">
+  <div class="page-title">通用物品库</div>
+  <div class="hint" style="margin-bottom:14px">
+    跨季度共用的货币、物品、互动物品库，不属于任何一个季度，最多 {{ limit }} 件。
+    平时把常用的存进来，新季度（包括提前预订的季度）一键导入，不用每季重新上传。
+  </div>
+
+  <div class="card">
+    <div class="quota {% if total >= limit %}full{% endif %}">已存 {{ total }} / {{ limit }} 件{% if total >= limit %}，已满，请先删除一些再添加{% endif %}
+      <div class="bar"><i style="width:{{ (total / limit * 100)|round(1) }}%"></i></div></div>
+
+    <h3>导入到季度</h3>
+    <div class="row">
+      <div class="field"><label>目标季度</label>
+        <select id="impShow">
+          {% for s in shows %}<option value="{{ s.id }}">{{ s.name }}{% if s.is_current %}（进行中）{% elif s.booked %}（已预订）{% endif %}</option>{% endfor %}
+        </select></div>
+      <button class="btn btn-pri" onclick="doImport()">导入选中的物品</button>
+      <button class="btn" onclick="toggleAll(true)">全选</button>
+      <button class="btn" onclick="toggleAll(false)">全不选</button>
+    </div>
+    <div class="msg" id="impMsg"></div>
+    <table>
+      <thead><tr><th></th><th>名称</th><th>类型</th><th>说明</th><th>次数</th><th>属性</th><th></th></tr></thead>
+      <tbody>
+      {% for it in items %}
+        <tr>
+          <td><input type="checkbox" class="ck" value="{{ it.id }}"></td>
+          <td><b>{{ it.name }}</b></td>
+          <td><span class="tag">{{ {'currency':'货币','item':'物品','interact':'互动物品'}[it.type] }}</span></td>
+          <td class="d">{{ it.desc }}</td>
+          <td class="d">{% if it.type != 'currency' %}{{ '无限' if it.maxUses == -1 else (it.maxUses if it.maxUses is not none else '—') }}{% endif %}</td>
+          <td class="d">{{ it.attrs or '' }}</td>
+          <td><button class="btn-del" onclick="delItem({{ it.id }}, this)">删除</button></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7" class="d" style="text-align:center;padding:16px">通用库还是空的，可以从下面加</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3>从某个季度加入通用库</h3>
+    <div class="row">
+      <div class="field"><label>来源季度</label>
+        <select id="srcShow" onchange="loadSrc()">
+          {% for s in shows %}<option value="{{ s.id }}">{{ s.name }}{% if s.is_current %}（进行中）{% elif s.booked %}（已预订）{% endif %}</option>{% endfor %}
+        </select></div>
+      <button class="btn btn-pri" onclick="addFromShow()">加入选中的</button>
+    </div>
+    <div class="pick" id="srcList">加载中…</div>
+    <div class="msg" id="srcMsg"></div>
+    <div class="hint">系统预置的特殊道具（追踪器等）和写信币不用存，每季开始时会自动补。已在库里的同名项会灰掉。</div>
+  </div>
+
+  <div class="card">
+    <h3>直接新增一件</h3>
+    <div class="row">
+      <div class="field"><label>类型</label>
+        <select id="nType" onchange="typeChg()"><option value="item">物品</option><option value="interact">互动物品</option><option value="currency">货币</option></select></div>
+      <div class="field"><label>名称 *</label><input id="nName" style="width:130px"></div>
+      <div class="field"><label>说明</label><input id="nDesc" style="width:200px"></div>
+    </div>
+    <div class="row" id="nMore">
+      <div class="field"><label>可用次数（-1 无限）</label><input type="number" id="nUses" value="-1" style="width:120px"></div>
+      <div class="field"><label>属性变化</label><input id="nAttrs" placeholder="体力+20,好感度-10" style="width:190px"></div>
+      <label style="font-size:13px"><input type="checkbox" id="nResell"> 允许二手</label>
+    </div>
+    <button class="btn btn-pri" onclick="addOne()">加入通用库</button>
+    <div class="msg" id="nMsg"></div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const post = async (u, b) => { const r = await fetch(u, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(b||{})}); return r.json(); };
+const show = (id, d, okText) => { const m = $(id); m.textContent = d.ok ? '✅ ' + okText(d) : '❌ ' + (d.error || '失败'); m.className = 'msg ' + (d.ok ? 'ok' : 'err'); };
+function toggleAll(v) { document.querySelectorAll('.ck').forEach(c => c.checked = v); }
+function typeChg() { $('nMore').style.display = $('nType').value === 'currency' ? 'none' : ''; }
+async function doImport() {
+  const ids = [...document.querySelectorAll('.ck:checked')].map(c => +c.value);
+  if (!ids.length) { show('impMsg', {error:'请先勾选要导入的物品'}); return; }
+  const d = await post('/admin/universal/import', {show_id: +$('impShow').value, ids});
+  show('impMsg', d, d => `已导入 ${d.added} 件，跳过 ${d.skipped} 件（目标季度已有同名）`);
+}
+async function delItem(id, btn) {
+  if (!confirm('从通用库删除这件？（已导入到各季度的不受影响）')) return;
+  const d = await post(`/admin/universal/${id}/delete`);
+  if (d.ok) location.reload();
+}
+async function loadSrc() {
+  const box = $('srcList'); box.textContent = '加载中…';
+  const r = await fetch('/admin/universal/show_items/' + $('srcShow').value); const d = await r.json();
+  const T = {currency:'货币', item:'物品', interact:'互动物品'};
+  box.innerHTML = d.items.length ? '' : '这个季度还没有可加入的物品';
+  d.items.forEach(it => {
+    const l = document.createElement('label'); if (it.in_library) l.className = 'dim';
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.value = it.code; cb.disabled = it.in_library;
+    const nm = document.createElement('span'); nm.textContent = it.name;
+    const tg = document.createElement('span'); tg.className = 'tag'; tg.textContent = T[it.type];
+    l.append(cb, nm, tg);
+    if (it.in_library) { const h = document.createElement('span'); h.className = 'tag'; h.textContent = '已在库里'; l.append(h); }
+    box.appendChild(l);
+  });
+}
+async function addFromShow() {
+  const codes = [...$('srcList').querySelectorAll('input:checked')].map(c => c.value);
+  if (!codes.length) { show('srcMsg', {error:'请先勾选'}); return; }
+  const d = await post('/admin/universal/from_show', {show_id: +$('srcShow').value, codes});
+  show('srcMsg', d, d => `已加入 ${d.added} 件`); if (d.ok) setTimeout(() => location.reload(), 600);
+}
+async function addOne() {
+  const t = $('nType').value;
+  const b = {type: t, name: $('nName').value, desc: $('nDesc').value};
+  if (t !== 'currency') { b.maxUses = parseInt($('nUses').value); if (isNaN(b.maxUses)) b.maxUses = -1; b.attrs = $('nAttrs').value.trim() || null; b.canResell = $('nResell').checked; }
+  const d = await post('/admin/universal/add', b);
+  show('nMsg', d, () => '已加入'); if (d.ok) setTimeout(() => location.reload(), 500);
+}
+typeChg(); loadSrc();
+</script>
+{% endblock %}

@@ -28,6 +28,8 @@
   ]),
   ('season', '📅 季与存档', 'admin_shows', [
     ('admin_shows', '季管理'),
+    ('admin_calendar', '季度日历'),
+    ('admin_universal', '通用物品库'),
     ('admin_command_guides', '指令指南'),
   ]),
 ] %}
@@ -53,7 +55,15 @@
 .adm-l2 a:hover { color: var(--text); background: var(--surface2); }
 .adm-l2 a.on { color: #fff; background: var(--accent); }
 .adm-l2 .adm-sync { margin-left: auto; font-size: 11.5px; color: var(--muted); }
-@media (max-width: 720px) { .adm-l1 a { padding: 6px 9px; font-size: 12.5px; } .adm-l2 .adm-sync { display: none; } }
+/* 手机：两级导航各占一行、横向滑动（以前一级换行成两行、再加二级，要占掉小半屏）；顶栏在手机上高度不固定，这里不再吸顶，免得叠在一起 */
+@media (max-width: 720px) {
+  .adm-nav { position: static; }
+  .adm-l1, .adm-l2 { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .adm-l1::-webkit-scrollbar, .adm-l2::-webkit-scrollbar { display: none; }
+  .adm-l1 a, .adm-l2 a { flex-shrink: 0; white-space: nowrap; }
+  .adm-l1 a { padding: 6px 10px; font-size: 13px; }
+  .adm-l2 .adm-sync { display: none; }
+}
 </style>
 <div class="adm-nav">
   <div class="adm-nav-in">
@@ -70,3 +80,10 @@
     {% endfor %}
   </div>
 </div>
+<script>
+// 手机上导航是横向滑动的：把当前选中的那一项滑到可见位置
+document.querySelectorAll('.adm-l1 a.on, .adm-l2 a.on').forEach(function (a) {
+  var p = a.parentElement;
+  if (p.scrollWidth > p.clientWidth) p.scrollLeft = a.offsetLeft - (p.clientWidth - a.offsetWidth) / 2;
+});
+</script>

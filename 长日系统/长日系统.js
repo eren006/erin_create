@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         长日将尽系统
 // @author       长日将尽
-// @version      1.7.9
+// @version      1.8.0
 // @description  无
 // @timestamp    1778742000
 // @license      CC BY-NC-SA
@@ -18,7 +18,7 @@
 
 let ext = seal.ext.find("changri")
 if (!ext) {
-    ext = seal.ext.new("changri", "长日将尽", "1.7.9");
+    ext = seal.ext.new("changri", "长日将尽", "1.8.0");
     // 注册扩展
     seal.ext.register(ext);
     ext.autoActive = true;
@@ -98,7 +98,7 @@ seal.ext.registerStringConfig(ext, "ws地址", "ws://localhost:3001");
     seal.ext.registerStringConfig(ext, "群管插件使用需要满足的条件", '1', "使用豹语表达式，例如：$t群号_RAW=='2001'，1为所有群可用");
     seal.ext.registerBoolConfig(ext, "开启现实时段校验", false, "是否限制玩家只能发起与当前现实时间对应的剧情时段邀约");
     seal.ext.registerBoolConfig(ext, "启用RP存档传输", false, "开启后，监听到的RP正文、短信、礼物将在结戏时发送到存档服务器");
-    seal.ext.registerStringConfig(ext, "RP存档服务器地址", "http://localhost:6666", "Flask存档服务器地址，末尾不带/");
+    seal.ext.registerStringConfig(ext, "RP存档服务器地址", "https://archive.changri.work", "Flask存档服务器地址，末尾不带/");
     seal.ext.registerStringConfig(ext, "RP存档Token", "", "存档服务器API验证Token，与服务器端RP_API_TOKEN环境变量一致，留空则不验证");
 
 
@@ -1208,7 +1208,7 @@ cmd_bind_role.solve =(ctx, msg, cmdArgs) => {
     }
 
     if (isArchiveEnabled() && !hasActiveSeason()) {
-        seal.replyToSender(ctx, msg, "⚠️ 当前没有活跃的季度，请联系主办发起「创建新季度」后再创建角色。");
+        seal.replyToSender(ctx, msg, "⚠️ 当前没有活跃的季度，请等主办开季（「。开始季度」）后再创建角色。");
         return seal.ext.newCmdExecuteResult(true);
     }
 
@@ -1235,6 +1235,22 @@ cmd_bind_role.solve =(ctx, msg, cmdArgs) => {
     storage[platform][uid] = [name, gid];
     kvSet("a_private_group", storage);
     initCharProfile(platform, name);
+
+    // 网页预订季度时填的 NPC 名单（「。开始季度」写入 pending_npc_names）：名字对上就直接当 NPC 建，扮演的账号不用另记「创建NPC」
+    const pendingNpcs = kvGet("pending_npc_names", []);
+    if (pendingNpcs.includes(name)) {
+        const npcList = kvGet("a_npc_list", []);
+        if (!npcList.includes(name)) { npcList.push(name); kvSet("a_npc_list", npcList); }
+        kvSet("pending_npc_names", pendingNpcs.filter(n => n !== name));
+        const profile = getCharProfile(platform, name);
+        seal.replyToSender(ctx, msg,
+            `✅ NPC「${name}」创建成功！（在本季预设的 NPC 名单里，已自动标记为 NPC，不计入弧长统计）\n` +
+            `\n👤 性别：${profile.gender}　年龄：${profile.age}\n` +
+            `🌸 皮相：${profile.look}\n` +
+            `\n💡 可发送「修改性别/修改年龄/修改皮相/修改签名 …」定制角色。`
+        );
+        return seal.ext.newCmdExecuteResult(true);
+    }
 
     const profile = getCharProfile(platform, name);
     seal.replyToSender(ctx, msg,
@@ -4317,34 +4333,19 @@ cmd_show_group.solve = (ctx, msg, cmdArgs) => {
 ext.cmdMap["查看群号"] = cmd_show_group;
 
 // 开启群号组（从 rp_archive 拉取组内 QQ 号批量注入）
-let cmd_open_group_set = seal.ext.newCmdItemInfo();
-cmd_open_group_set.name = "开启群号组";
-cmd_open_group_set.help = "。开启群号组 组名\n从 rp_archive 后台读取该组所有群号，批量加入可用池";
-cmd_open_group_set.solve = async (ctx, msg, cmdArgs) => {
-    if (!msg.isMaster && !isUserAdmin(ctx, msg)) {
-        seal.replyToSender(ctx, msg, `此指令仅限骰主或管理员使用`);
-        return seal.ext.newCmdExecuteResult(true);
-    }
-    const setName = cmdArgs.getArgN(1);
-    if (!setName) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+// 本体抽出来：「。开启群号组」手动开和「。开始季度」按预订自动开共用。返回回复文案，出错也是返回文案（不抛）
+async function openGroupSetCore(setName) {
     const base  = (seal.ext.getStringConfig(ext, "RP存档服务器地址") || "").replace(/\/$/, "");
     const token = seal.ext.getStringConfig(ext, "RP存档Token") || "";
-    if (!base) {
-        seal.replyToSender(ctx, msg, `❌ 未配置 RP 存档服务器地址。`);
-        return seal.ext.newCmdExecuteResult(true);
-    }
+    if (!base) return `❌ 未配置 RP 存档服务器地址。`;
     try {
         const resp = await fetch(`${base}/api/group_set/${encodeURIComponent(setName)}`, {
             headers: { "X-Archive-Token": token }
         });
-        if (!resp.ok) {
-            seal.replyToSender(ctx, msg, `❌ 服务器返回 ${resp.status}，请检查组名是否正确。`);
-            return seal.ext.newCmdExecuteResult(true);
-        }
+        if (!resp.ok) return `❌ 服务器返回 ${resp.status}，请检查组名是否正确。`;
         const data = await resp.json();
         if (!data.ok || !data.group_ids || data.group_ids.length === 0) {
-            seal.replyToSender(ctx, msg, `⚠️ 群号组「${setName}」在后台不存在或暂无群号。`);
-            return seal.ext.newCmdExecuteResult(true);
+            return `⚠️ 群号组「${setName}」在后台不存在或暂无群号。`;
         }
         let group = kvGet("group", []);
         let added = 0;
@@ -4355,10 +4356,24 @@ cmd_open_group_set.solve = async (ctx, msg, cmdArgs) => {
             }
         }
         kvSet("group", group);
-        seal.replyToSender(ctx, msg, `✅ 群号组「${setName}」已开启，新注入 ${added} 个群号（共 ${data.group_ids.length} 个），当前可用池共 ${group.length} 个。`);
+        return `✅ 群号组「${setName}」已开启，新注入 ${added} 个群号（共 ${data.group_ids.length} 个），当前可用池共 ${group.length} 个。`;
     } catch (e) {
-        seal.replyToSender(ctx, msg, `❌ 请求失败：${e.message || String(e)}`);
+        return `❌ 请求失败：${e.message || String(e)}`;
     }
+}
+globalThis.__changriOpenGroupSet = openGroupSetCore;   // 季度插件「。开始季度」按预订自动开启群号组
+
+let cmd_open_group_set = seal.ext.newCmdItemInfo();
+cmd_open_group_set.name = "开启群号组";
+cmd_open_group_set.help = "。开启群号组 组名\n从 rp_archive 后台读取该组所有群号，批量加入可用池";
+cmd_open_group_set.solve = async (ctx, msg, cmdArgs) => {
+    if (!msg.isMaster && !isUserAdmin(ctx, msg)) {
+        seal.replyToSender(ctx, msg, `此指令仅限骰主或管理员使用`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    const setName = cmdArgs.getArgN(1);
+    if (!setName) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
+    seal.replyToSender(ctx, msg, await openGroupSetCore(setName));
     return seal.ext.newCmdExecuteResult(true);
 }
 ext.cmdMap["开启群号组"] = cmd_open_group_set;
@@ -5450,6 +5465,7 @@ const CLEAR_KEYS = [
     "feature_user_blocklist","noquit",                "season_show_name",
     "season_mode",           "season_schedule_start", "season_schedule_end",
     "season_supplement_end", "season_created_at",     "love_show_name",
+    "pending_npc_names",
     // ── 约会 / 日程 ──
     "appointmentList",       "b_MultiGroupRequest",   "b_confirmedSchedule",
     "join_request_list",     "allowed_appointment_times",
@@ -5552,8 +5568,8 @@ cmd_reset_season_data.solve = async (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 
-// 清空逻辑本体：「清空季度数据」和「创建新季度」发现残留数据后的确认清空共用。
-// 返回 true=已清空；false=被残留玩家拦下。quiet=true 时不发"已清空/可以创建新季度"的收尾提示
+// 清空逻辑本体：「清空季度数据」和「开始季度」发现残留数据后的确认清空共用。
+// 返回 true=已清空；false=被残留玩家拦下。quiet=true 时不发"已清空/可以开始新季度"的收尾提示
 async function resetSeasonDataCore(ctx, msg, force, quiet) {
     const platform = msg.platform;
     const roles = getRoleStorage()[platform] || {};
@@ -5625,16 +5641,51 @@ async function resetSeasonDataCore(ctx, msg, force, quiet) {
     }
 
     if (quiet) {
-        seal.replyToSender(ctx, msg, "✅ 上季数据已清空，正在创建新季度…");
+        seal.replyToSender(ctx, msg, "✅ 上季数据已清空，正在开始新季度…");
     } else {
         seal.replyToSender(ctx, msg,
             `✅ 季度数据已全量清空\n仅保留：管理员列表、密令。\n\n` +
-            `现在可以执行：\n。创建新季度 恋综名 复盘/不复盘 MMDD-MMDD`
+            `下一季：在网页「季度日历」预订好，到时发「。开始季度」即可。`
         );
     }
     return true;
 }
 ext.cmdMap["清空季度数据"] = cmd_reset_season_data;
+
+// ========================
+// 🧹 收尾：结季后一条指令完成「更新未退群 驱逐」+「清空季度数据」
+// ========================
+let cmd_season_wrapup = seal.ext.newCmdItemInfo();
+cmd_season_wrapup.name = "收尾";
+cmd_season_wrapup.help = `用法：。收尾
+「结束季度」之后用：踢出所有仍在戏群里的玩家（含额外账号，NPC 不踢），确认没人残留后清空本季数据。
+等于依次执行「更新未退群 驱逐」和「清空季度数据」。有人没踢掉会列出来，处理后再发一次即可。
+也可以不收尾，下次「。开始季度」时会提示回复「确认」再清空。`;
+cmd_season_wrapup.solve = async (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) {
+        seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    if (cmdArgs.getArgN(1) === "help") {
+        const ret = seal.ext.newCmdExecuteResult(true);
+        ret.showHelp = true;
+        return ret;
+    }
+    // 清空不可恢复：季度还开着时不收尾，免得把正在进行的季度清掉
+    if (hasActiveSeason()) {
+        seal.replyToSender(ctx, msg, `❌ 季度「${getSeasonShowName()}」还没结束，请先「。结束季度」并确认存档无误，再「。收尾」。`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    await cmd_fix_noquit.solve(ctx, msg, { args: ["驱逐"], getArgN: (n) => n === 1 ? "驱逐" : "" });
+    // 踢人是异步生效的，稍等一会儿再扫残留，免得刚踢的人还显示在群成员里
+    await new Promise(r => setTimeout(r, 5000));
+    const cleared = await resetSeasonDataCore(ctx, msg, false, false);
+    if (!cleared) {
+        seal.replyToSender(ctx, msg, "↻ 处理完上面列出的玩家后（或稍等片刻），再发一次「。收尾」。");
+    }
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["收尾"] = cmd_season_wrapup;
 
 // --- 辅助提取：统一的角色信息获取 ---
 const getRoleDetails = (platform, name) => {
@@ -12275,7 +12326,7 @@ cmd_create_npc.solve = (ctx, msg, cmdArgs) => {
 
     // archive 开启时必须先有活跃季度
     if (isArchiveEnabled() && !hasActiveSeason()) {
-        seal.replyToSender(ctx, msg, "❌ 当前无活跃季度。请先运行「创建新季度 恋综名 复盘/不复盘 MMDD-MMDD」。");
+        seal.replyToSender(ctx, msg, "❌ 当前无活跃季度。请先在网页「季度日历」预订，再发「。开始季度」。");
         return seal.ext.newCmdExecuteResult(true);
     }
 

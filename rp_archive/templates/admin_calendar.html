@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+{% block title %}长日存档 · 季度日历{% endblock %}
+
+{% block head %}
+<style>
+.cal-wrap { display:grid; grid-template-columns: minmax(0,1.5fr) minmax(280px,1fr); gap:20px; align-items:start; }
+@media (max-width:860px){ .cal-wrap{ grid-template-columns:minmax(0,1fr); } }
+.cal-wrap > div, .row2 > * { min-width:0; }
+.card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px 22px; margin-bottom:16px; }
+.card h3 { font-size:13px; font-weight:700; color:var(--muted); letter-spacing:1px; margin-bottom:14px; }
+.cal-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+.cal-head b { font-size:16px; }
+.cal-nav { display:flex; gap:6px; }
+.btn { border:none; border-radius:8px; padding:6px 14px; font-size:13px; cursor:pointer; font-weight:600; background:var(--surface2); color:var(--text); border:1px solid var(--border); }
+.btn:hover { border-color:var(--accent); }
+.btn-pri { background:var(--accent); color:#fff; border-color:var(--accent); }
+.btn-danger { background:#3a1a1a; color:var(--red); border:1px solid #5a2a2a; }
+.grid { display:grid; grid-template-columns:repeat(7,1fr); gap:3px; }
+.dow { font-size:11px; color:var(--muted); text-align:center; padding:4px 0; }
+.day { min-height:58px; border-radius:6px; background:var(--surface2); padding:3px 4px; font-size:11px; color:var(--muted); cursor:pointer; position:relative; overflow:hidden; }
+.day.out { opacity:.35; }
+.day.today { outline:2px solid var(--accent); }
+.day .bar { display:block; margin-top:2px; height:6px; border-radius:3px; }
+.st-booked { background:#e0a83a; } .st-active { background:#3fb96a; } .st-ended { background:#6b6b7a; }
+.st-supp { opacity:.45; }
+.legend { display:flex; gap:14px; font-size:12px; color:var(--muted); margin-top:12px; flex-wrap:wrap; }
+.legend i { display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:5px; vertical-align:-1px; }
+.ev { display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--border); font-size:13px; flex-wrap:wrap; }
+.ev:last-child { border-bottom:none; }
+.ev .nm { font-weight:700; }
+.ev .rg { color:var(--muted); font-size:12px; }
+.ev .sp { flex:1; }
+.field { margin-bottom:10px; }
+.field label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+.field input, .field select, .field textarea { width:100%; background:var(--surface2); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:7px 10px; font-size:13px; }
+.row2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.msg { font-size:12px; margin-top:8px; min-height:16px; } .msg.err{color:var(--red);} .msg.ok{color:var(--green);}
+.quota { font-size:12px; color:var(--muted); margin-bottom:12px; }
+.quota.full { color:var(--red); }
+.field textarea { min-height:70px; resize:vertical; font-family:inherit; }
+.prep { border-top:1px dashed var(--border); margin-top:14px; padding-top:12px; }
+.prep-t { font-size:12px; font-weight:700; color:var(--text); margin-bottom:8px; }
+.prep-t small { font-weight:400; color:var(--muted); }
+.uni-pick { max-height:180px; overflow:auto; border:1px solid var(--border); border-radius:8px; padding:6px 10px; }
+.uni-pick label { display:flex; gap:6px; align-items:center; font-size:13px; padding:2px 0; color:var(--text); }
+.uni-pick small { color:var(--muted); font-size:11px; }
+.hint { font-size:11px; color:var(--muted); line-height:1.7; margin-top:10px; }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="page">
+  <div class="page-title">季度日历</div>
+  <div class="cal-wrap">
+    <div>
+      <div class="card">
+        <div class="cal-head">
+          <b id="monthTitle"></b>
+          <div class="cal-nav">
+            <button class="btn" onclick="shiftMonth(-1)">‹</button>
+            <button class="btn" onclick="goToday()">今天</button>
+            <button class="btn" onclick="shiftMonth(1)">›</button>
+          </div>
+        </div>
+        <div class="grid" id="grid"></div>
+        <div class="legend">
+          <span><i class="st-booked"></i>已预订</span><span><i class="st-active"></i>进行中</span>
+          <span><i class="st-ended"></i>已结束</span><span><i class="st-booked st-supp"></i>补戏期</span>
+        </div>
+      </div>
+      <div class="card">
+        <h3>所有季度</h3>
+        <div id="evList"></div>
+        {% if unscheduled %}
+        <div class="hint">以下季度没有带年份的档期，日历里显示不出来：{% for x in unscheduled %}「{{ x.name }}」{% endfor %}（可在「季管理」里查看）</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div>
+      <div class="card" id="formCard">
+        <h3 id="formTitle">预订新季度</h3>
+        <div class="quota {% if total >= limit %}full{% endif %}">已用 {{ total }} / {{ limit }} 个季度名额（预订和已结束的都算）
+          {% if total >= limit %}<br>名额已满，请先到「季管理」删除旧季度再预订。{% endif %}
+        </div>
+        <div class="field"><label>季名 *</label><input id="fName" placeholder="如 夏日恋综"></div>
+        <div class="field"><label>模式</label>
+          <select id="fMode"><option value="review">复盘</option><option value="no_review">不复盘</option></select></div>
+        <div class="row2">
+          <div class="field"><label>档期开始 *</label><input type="date" id="fStart"></div>
+          <div class="field"><label>档期结束 *</label><input type="date" id="fEnd"></div>
+        </div>
+        <div class="field"><label>补戏截止（可空）</label><input type="date" id="fSupp"></div>
+        <div class="prep">
+          <div class="prep-t">开季准备 <small>都可以留空；填了的话「。开始季度」时自动完成</small></div>
+          <div class="field"><label>群号组（自动开启，放进戏群池）</label>
+            <select id="fSet"><option value="">— 不自动开启 —</option>
+              {% for n in set_names %}<option value="{{ n }}">{{ n }}</option>{% endfor %}
+            </select>
+            {% if not set_names %}<div class="hint" style="margin-top:4px">还没有群号组，先去 <a href="{{ url_for('admin_groups') }}">群号组</a> 建一个。</div>{% endif %}
+          </div>
+          <div class="row2">
+            {% for key, label in group_keys %}
+            <div class="field"><label>{{ label }}群号</label><input id="g_{{ key }}" inputmode="numeric" placeholder="QQ 群号"></div>
+            {% endfor %}
+          </div>
+          <div class="field"><label>NPC 名单（一行一个）</label>
+            <textarea id="fNpc" placeholder="林深&#10;沈老师"></textarea>
+          </div>
+        </div>
+        <div class="prep" id="newOnly">
+          <div class="prep-t">预配内容 <small>只在新预订时生效；之后可点「配置此季」再调</small></div>
+          <div class="field"><label>复制配置自</label>
+            <select id="fCopy">
+              <option value="">— 不复制（全默认）—</option>
+              {% if copy_shows %}<optgroup label="季度">
+                {% for x in copy_shows %}<option value="show:{{ x.id }}" {% if loop.first %}selected{% endif %}>{{ x.name }}{% if x.is_current %}（进行中）{% endif %}</option>{% endfor %}
+              </optgroup>{% endif %}
+              {% if copy_tpls %}<optgroup label="配置预设">
+                {% for x in copy_tpls %}<option value="tpl:{{ x.id }}">{{ x.name }}</option>{% endfor %}
+              </optgroup>{% endif %}
+            </select>
+            <div class="hint" style="margin-top:4px">复制各项设置、模版、池子等；不带物品注册表和上季玩家数据，物品从下面的通用库挑。上面填的群号优先。</div>
+          </div>
+          <div class="field"><label>从通用库带入物品 <small id="uniCnt"></small></label>
+            {% if uni_items %}
+            <div style="display:flex;gap:6px;margin-bottom:6px">
+              <button type="button" class="btn" onclick="uniAll(true)">全选</button>
+              <button type="button" class="btn" onclick="uniAll(false)">全不选</button>
+            </div>
+            <div class="uni-pick">
+              {% for it in uni_items %}
+              <label><input type="checkbox" class="uck" value="{{ it.id }}" onchange="uniCount()"> {{ it.name }}
+                <small>{{ {'currency':'货币','item':'物品','interact':'互动物品'}[it.type] }}</small></label>
+              {% endfor %}
+            </div>
+            {% else %}
+            <div class="hint" style="margin-top:0">通用库还是空的，可以先去 <a href="{{ url_for('admin_universal') }}">通用物品库</a> 存一些。</div>
+            {% endif %}
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-pri" id="btnSave" onclick="save()" {% if total >= limit %}disabled{% endif %}>预订</button>
+          <button class="btn" id="btnCancelEdit" style="display:none" onclick="resetForm()">取消编辑</button>
+        </div>
+        <div class="msg" id="fMsg"></div>
+        <div class="hint">
+          到时候群里发一句「。开始季度」（不带名字会按今天的日期自动选）就会正式启用：档期、群号、群号组都会自动落地。<br>
+          NPC 名单里的名字会被预登记：扮演的账号在自己的群里照常发「创建新角色 名字」，就会自动成为 NPC，不用再单独「创建NPC」。<br>
+          群号默认沿用上一季。开始前网页不公开；预订后点列表里的「配置此季」可以继续细调设置、货币、道具。
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const EVENTS = {{ events|tojson }};
+const TODAY = "{{ today }}";
+const STL = {booked:'已预订', active:'进行中', ended:'已结束'};
+const PREP_DEFAULTS = {{ prep_defaults|tojson }};
+const GROUP_KEYS = {{ group_keys|map('first')|list|tojson }};
+function fillPrep(p) {
+  fSet.value = [...fSet.options].some(o => o.value === p.group_set) ? p.group_set : '';
+  GROUP_KEYS.forEach(k => { document.getElementById('g_' + k).value = (p.groups || {})[k] || ''; });
+  fNpc.value = p.npc_names || '';
+}
+let cur = new Date(TODAY + 'T00:00:00'); cur.setDate(1);
+let editing = null;
+const iso = d => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+
+function render() {
+  document.getElementById('monthTitle').textContent = cur.getFullYear() + ' 年 ' + (cur.getMonth()+1) + ' 月';
+  const g = document.getElementById('grid'); g.innerHTML = '';
+  '日一二三四五六'.split('').forEach(t => { const e = document.createElement('div'); e.className='dow'; e.textContent=t; g.appendChild(e); });
+  const first = new Date(cur); first.setDate(1 - first.getDay());
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(first); d.setDate(first.getDate() + i); const k = iso(d);
+    const c = document.createElement('div');
+    c.className = 'day' + (d.getMonth() !== cur.getMonth() ? ' out' : '') + (k === TODAY ? ' today' : '');
+    c.innerHTML = d.getDate();
+    EVENTS.forEach(ev => {
+      if (k >= ev.start && k <= ev.supp) {
+        const b = document.createElement('span');
+        b.className = 'bar st-' + ev.status + (k > ev.end ? ' st-supp' : '');
+        b.title = ev.name; c.appendChild(b);
+      }
+    });
+    c.onclick = () => {
+      if (!editing) { document.getElementById('fStart').value = k; if (!document.getElementById('fEnd').value || document.getElementById('fEnd').value < k) document.getElementById('fEnd').value = k; }
+      // 窄屏时表单在日历下面，点完日期滚过去，不然看不到填进去了
+      if (window.innerWidth <= 860) formCard.scrollIntoView({behavior:'smooth'});
+    };
+    g.appendChild(c);
+  }
+  const l = document.getElementById('evList');
+  const sorted = [...EVENTS].sort((a,b) => a.start < b.start ? 1 : -1);
+  l.innerHTML = sorted.length ? '' : '<div class="hint">还没有带日期的季度。</div>';
+  sorted.forEach(ev => {
+    const r = document.createElement('div'); r.className = 'ev';
+    r.innerHTML = `<i class="st-${ev.status}" style="width:10px;height:10px;border-radius:3px;display:inline-block"></i>
+      <span class="nm"></span><span class="rg">${ev.start} ~ ${ev.end}${ev.supp !== ev.end ? '（补戏至 ' + ev.supp + '）' : ''} · ${STL[ev.status]}</span><span class="sp"></span>`;
+    r.querySelector('.nm').textContent = ev.name;
+    if (ev.status === 'booked') {
+      const cf = document.createElement('form'); cf.method = 'post'; cf.action = `/admin/shows/${ev.id}/configure`; cf.style.display = 'inline';
+      const cb = document.createElement('button'); cb.className = 'btn btn-pri'; cb.textContent = '配置此季'; cf.appendChild(cb); r.appendChild(cf);
+      const e = document.createElement('button'); e.className='btn'; e.textContent='改期'; e.onclick=()=>edit(ev); r.appendChild(e);
+      const x = document.createElement('button'); x.className='btn btn-danger'; x.textContent='取消预订'; x.onclick=()=>cancelBook(ev); r.appendChild(x);
+    }
+    l.appendChild(r);
+  });
+}
+function shiftMonth(n) { cur.setMonth(cur.getMonth() + n); render(); }
+function goToday() { cur = new Date(TODAY + 'T00:00:00'); cur.setDate(1); render(); }
+function edit(ev) {
+  editing = ev.id;
+  document.getElementById('formTitle').textContent = '修改预订：' + ev.name;
+  fName.value = ev.name; fMode.value = ev.mode; fStart.value = ev.start; fEnd.value = ev.end; fSupp.value = ev.supp !== ev.end ? ev.supp : '';
+  fillPrep(ev);
+  newOnly.style.display = 'none';
+  btnSave.textContent = '保存修改'; btnSave.disabled = false; btnCancelEdit.style.display = '';
+  formCard.scrollIntoView({behavior:'smooth'});
+}
+function resetForm() {
+  editing = null; document.getElementById('formTitle').textContent = '预订新季度';
+  fName.value = fStart.value = fEnd.value = fSupp.value = ''; fMode.value = 'review';
+  fillPrep(PREP_DEFAULTS);
+  newOnly.style.display = '';
+  btnSave.textContent = '预订'; btnCancelEdit.style.display = 'none';
+}
+async function save() {
+  const body = {name: fName.value, mode: fMode.value, start: fStart.value, end: fEnd.value, supplement_end: fSupp.value,
+                group_set: fSet.value, npc_names: fNpc.value};
+  GROUP_KEYS.forEach(k => { body[k] = document.getElementById('g_' + k).value.trim(); });
+  if (!editing) {
+    body.copy_from = fCopy.value;
+    body.universal_ids = [...document.querySelectorAll('.uck:checked')].map(c => +c.value);
+  }
+  const m = document.getElementById('fMsg');
+  const r = await fetch(editing ? `/admin/shows/${editing}/rebook` : '/admin/shows/book',
+    {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  const d = await r.json();
+  if (d.ok && !editing) {
+    m.textContent = `✅ 已预订${d.copied ? `，复制了 ${d.copied} 项配置` : ''}${d.items_added ? `，带入 ${d.items_added} 件物品` : ''}`;
+    m.className = 'msg ok'; setTimeout(() => location.reload(), 1200);
+  } else if (d.ok) { m.textContent = '✅ 已保存'; m.className = 'msg ok'; setTimeout(() => location.reload(), 500); }
+  else { m.textContent = '❌ ' + (d.error || '失败'); m.className = 'msg err'; }
+}
+async function cancelBook(ev) {
+  if (!confirm(`取消预订「${ev.name}」？它预配的设置、货币、道具也会一起删除，不可恢复。`)) return;
+  const r = await fetch(`/admin/shows/${ev.id}/delete`, {method:'POST', headers:{'X-Fetch':'1'}});
+  const d = await r.json();
+  if (d.ok) location.reload(); else alert('取消失败');
+}
+function uniCount() { const n = document.querySelectorAll('.uck:checked').length; const el = document.getElementById('uniCnt'); if (el) el.textContent = n ? `（已选 ${n} 件）` : ''; }
+function uniAll(v) { document.querySelectorAll('.uck').forEach(c => c.checked = v); uniCount(); }
+fillPrep(PREP_DEFAULTS);
+render();
+</script>
+{% endblock %}

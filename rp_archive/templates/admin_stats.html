@@ -115,7 +115,6 @@
     <!-- 每个角色的面板 -->
     {% for role in role_names %}
     {% set p = players | selectattr('role_name','eq',role) | first | default({'total_replies':0,'total_words':0,'qq':''}) %}
-    {% set role_sessions = sessions | selectattr('stats.' ~ role, 'defined') | list %}
     {# 包含参与了但 stats 里可能没写满的场次 #}
     {% set participated = [] %}
     {% for s in sessions %}

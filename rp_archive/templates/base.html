@@ -78,6 +78,14 @@ a:hover { color: var(--accent2); }
 @media(max-width:600px) {
   .search-form { display: none; }
   .logout { display: none; }
+  /* 手机上顶栏分两行：第一行 logo + 导航（场次/互动/信件/后台），第二行季度切换横向滑动。
+     以前挤在一行，季度按钮会把导航顶出屏幕，只能横着滑才找得到 */
+  .topbar { height: auto; flex-wrap: wrap; padding: 8px 14px; row-gap: 6px; overflow: visible; }
+  .topbar .logo { order: 1; }
+  .topbar .nav { order: 2; margin-left: auto; }
+  .topbar .who { display: none; }
+  .show-pills { order: 3; width: 100%; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; padding-bottom: 2px; }
+  .show-pills::-webkit-scrollbar { display: none; }
 }
 
 .show-pills { display: flex; align-items: center; gap: 4px; }
@@ -103,6 +111,9 @@ a:hover { color: var(--accent2); }
 .page { max-width: 1100px; margin: 0 auto; padding: 28px 20px; }
 @media(max-width:600px) { .page { padding: 16px 14px; } }
 
+.booked-edit-bar { position:sticky; top:0; z-index:50; background:rgba(224,168,58,.16); border-bottom:1px solid rgba(224,168,58,.5);
+  color:#e0a83a; font-size:13px; padding:8px 16px; display:flex; gap:12px; flex-wrap:wrap; align-items:center; backdrop-filter:blur(8px); }
+.booked-edit-bar a { color:inherit; text-decoration:underline; margin-left:auto; }
 .superadmin-bar {
   background: #1a1200; border-bottom: 1px solid #5a3a00;
   padding: 8px 20px; display: flex; align-items: center; gap: 12px;
@@ -149,6 +160,14 @@ a:hover { color: var(--accent2); }
 
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 @media(max-width:700px) { .grid-2 { grid-template-columns: 1fr; } }
+
+/* ── 手机：输入框 16px 防止 iOS 聚焦时自动放大；主题按钮缩小并抬高，别压住底部的保存栏 ── */
+@media(max-width:600px) {
+  input, select, textarea { font-size: 16px !important; }
+  #tp { bottom: 84px !important; right: 12px !important; }
+  #tp-btn { width: 36px !important; height: 36px !important; font-size: 16px !important; opacity: .85; }
+  img, video { max-width: 100%; height: auto; }
+}
 [data-theme=spring]{--bg:#0f0a10;--surface:#1a1020;--surface2:#22152a;--border:#3e2040;--accent:#f472b6;--accent2:#e879f9;--text:#fce7f3;--muted:#a07898}
 [data-theme=summer]{--bg:#080f10;--surface:#0d1a1c;--surface2:#122225;--border:#1a3a40;--accent:#06b6d4;--accent2:#22d3ee;--text:#e0f7fa;--muted:#70a8ba}
 [data-theme=autumn]{--bg:#100a04;--surface:#1c1008;--surface2:#261508;--border:#4a2a08;--accent:#f59e0b;--accent2:#f97316;--text:#fef3c7;--muted:#a07a58}
@@ -204,10 +223,16 @@ a:hover { color: var(--accent2); }
     <input name="q" placeholder="搜索角色名…" autocomplete="off">
     <button type="submit">搜索</button>
   </form>
-  <span style="color:var(--muted);font-size:12px;flex-shrink:0;">{{ session.get('tenant_display_name') or session.get('tenant_username') }}</span>
+  <span class="who" style="color:var(--muted);font-size:12px;flex-shrink:0;">{{ session.get('tenant_display_name') or session.get('tenant_username') }}</span>
   <a class="logout" href="{{ url_for('logout') }}">退出</a>
 </div>
 {% if request.endpoint and request.endpoint.startswith('admin') and request.endpoint not in ('admin_login', 'admin_logout') %}{% include "_admin_nav.html" %}{% endif %}
+{% if current_show and current_show.booked and request.endpoint and request.endpoint.startswith('admin') and request.endpoint not in ('admin_login', 'admin_logout', 'admin_calendar') %}
+<div class="booked-edit-bar">
+  📆 正在编辑预订季度「<b>{{ current_show.name }}</b>」（未开始）：这里保存的内容会在它「。开始季度」时生效，不影响进行中的季度。
+  <a href="{{ url_for('admin_calendar') }}">← 回季度日历</a>
+</div>
+{% endif %}
 {% block body %}{% endblock %}
 <div id="tp"><button id="tp-btn" onclick="document.getElementById('tp-panel').classList.toggle('open')" title="切换主题">🎨</button><div id="tp-panel"><div class="tp-item" onclick="setTheme('default')"><span class="tp-dot" style="background:#8b7cf6"></span>默认</div><div class="tp-item" onclick="setTheme('spring')"><span class="tp-dot" style="background:#f472b6"></span>春 · 樱</div><div class="tp-item" onclick="setTheme('summer')"><span class="tp-dot" style="background:#06b6d4"></span>夏 · 海</div><div class="tp-item" onclick="setTheme('autumn')"><span class="tp-dot" style="background:#f59e0b"></span>秋 · 枫</div><div class="tp-item" onclick="setTheme('winter')"><span class="tp-dot" style="background:#7dd3fc"></span>冬 · 冰</div><div class="tp-item" onclick="setTheme('monet')"><span class="tp-dot" style="background:#a8d8ea"></span>莫奈</div><div class="tp-item" onclick="setTheme('detroit')"><span class="tp-dot" style="background:#00b4ff"></span>底特律</div><div class="tp-sep">日间 ☀</div><div class="tp-item" onclick="setTheme('spring-day')"><span class="tp-dot" style="background:#db2777"></span>春 · 樱</div><div class="tp-item" onclick="setTheme('summer-day')"><span class="tp-dot" style="background:#0284c7"></span>夏 · 海</div><div class="tp-item" onclick="setTheme('autumn-day')"><span class="tp-dot" style="background:#b45309"></span>秋 · 枫</div><div class="tp-item" onclick="setTheme('winter-day')"><span class="tp-dot" style="background:#1d6fa0"></span>冬 · 冰</div><div class="tp-item" onclick="setTheme('monet-day')"><span class="tp-dot" style="background:#4a8fa8"></span>莫奈</div></div></div>
 <style>

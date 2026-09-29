@@ -92,7 +92,76 @@ function addToInv_local(roleKey, code, count) {
 }
 
 // ========================
-// 📋 管理帮助（运营清单）
+// 📆 季度流程（唯一一份）：「管理帮助」「季度指南」「开始季度成功后附带的指南」都从这里生成，
+// 改流程只改这一处，别再在别的地方另写一份步骤（以前三份各写各的，编号和内容对不上）
+// ========================
+// 每步 t=说明，c=可直接复制发送的指令（没有就省略）；web=网页后台路径（生成时拼上存档服务器地址）
+const SEASON_FLOW = {
+    open: {
+        title: "【🆕 开季】",
+        steps: [
+            { t: "【网页】群号组：录好本季要用的戏群", web: "/admin/groups" },
+            { t: "【网页】季度日历：预订一季——档期、复盘模式、群号组、戏群/后台群/公告群/水群、NPC 名单一张表填完", web: "/admin/calendar" },
+            { t: "到日子发「。开始季度」← 自动开启群号组、写入群号、预登记 NPC；上季数据没清会提示回复「确认」", c: "。开始季度" },
+            { t: "玩家和 NPC 账号各自在自己的群发「创建新角色 名字」（NPC 名单里的名字自动成为 NPC；档期开始前是筹备期，开始日自动进入 D0）" },
+        ],
+        note: "临时开季：在季度日历里订一个今天开始的季度，再发「。开始季度」",
+    },
+    running: {
+        title: "【📅 进行中】",
+        steps: [
+            { t: "查看进行中 / 查看计时器  ← 查看活跃约会", c: "查看进行中" },
+            { t: "提醒超时  ← 向超时未回复的群发送提醒", c: "提醒超时" },
+            { t: "。设置天数 Dx / 。开启自动天数  ← 推进游戏天数", c: "。开启自动天数" },
+            { t: "。修改档期 MMDD-MMDD [补戏MMDD]  ← 中途调整档期", c: "。修改档期 MMDD-MMDD [补戏MMDD]" },
+            { t: "。约会数据体检 [修复]  ← 核对群号池/计时器/日程是否一致", c: "。约会数据体检 修复" },
+            { t: "。场次状态  ← 各活跃群写帖进度与结戏奖励达成情况", c: "。场次状态" },
+            { t: "。调整场次 群号 角色名 字数偏移 [段数偏移]  ← 手动纠正字数", c: "。调整场次 群号 角色名 字数偏移 [段数偏移]" },
+            { t: "。补发奖励  ← 对已结束场次补发结戏奖励", c: "。补发奖励" },
+        ],
+    },
+    close: {
+        title: "【🏁 结季】",
+        steps: [
+            { t: "。结束季度  ← 封存并拿到公开存档链接，打开核对一下（季末报告开关在网页「游戏配置」）", c: "。结束季度" },
+            { t: "。收尾  ← 踢出还在戏群里的玩家并清空本季数据（也可以不发，下季「。开始季度」时回复「确认」再清）", c: "。收尾" },
+        ],
+    },
+};
+
+// 把 SEASON_FLOW 渲染成合并转发的气泡：前几个是带编号/说明的索引，后面每条指令单独一个干净气泡，长按就能复制发送。
+// extra：{ sections: 额外的说明气泡, commands: 额外的可复制指令 }，给「管理帮助」塞日常运营条目用
+function buildFlowSections(heading, extra) {
+    const base = getArchiveBase();
+    const url = p => base ? `${base}${p}` : "（未配置存档服务器地址）";
+    const render = (part, numbered) => {
+        const lines = [part.title];
+        part.steps.forEach((st, i) => {
+            lines.push(`${numbered ? `${i + 1}. ` : "• "}${st.t}`);
+            if (st.web) lines.push(`   ${url(st.web)}`);
+        });
+        if (part.note) lines.push(`（${part.note}）`);
+        return lines;
+    };
+    const close = render(SEASON_FLOW.close, true);
+    close.push("", "👇 下面每条都是可以直接复制发送的指令");
+    const index = [
+        [heading],
+        render(SEASON_FLOW.open, true),
+        render(SEASON_FLOW.running, false),
+        ...((extra && extra.sections) || []),
+        close,
+    ];
+    const cmds = [];
+    for (const part of [SEASON_FLOW.open, SEASON_FLOW.running, SEASON_FLOW.close]) {
+        for (const st of part.steps) if (st.c && !cmds.includes(st.c)) cmds.push(st.c);
+    }
+    for (const c of ((extra && extra.commands) || [])) if (!cmds.includes(c)) cmds.push(c);
+    return [...index, ...cmds.map(c => [c])];
+}
+
+// ========================
+// 📋 管理帮助（季度流程 + 日常运营杂项）
 // ========================
 let cmd_admin_help = seal.ext.newCmdItemInfo();
 cmd_admin_help.name = "管理帮助";
@@ -102,9 +171,7 @@ cmd_admin_help.solve = (ctx, msg) => {
         return seal.ext.newCmdExecuteResult(true);
     }
     const base = getArchiveBase();
-    const groupsUrl = base ? `${base}/admin/groups`         : "（未配置存档服务器地址）";
-    const guidesUrl = base ? `${base}/admin/command_guides` : "（未配置存档服务器地址）";
-    const statsUrl  = base ? `${base}/admin/stats`          : "（未配置存档服务器地址）";
+    const url = p => base ? `${base}${p}` : "（未配置存档服务器地址）";
     (async () => {
         let guideSection = null;
         if (base) {
@@ -122,57 +189,16 @@ cmd_admin_help.solve = (ctx, msg) => {
                 }
             } catch (e) { console.error("[季度] 拉取 command_guides 失败:", e.message); }
         }
-        const index = [
-            ["📋 长日运营清单"],
-            ["【🆕 开季流程】",
-             "1. 【网页】录入群号组：",
-             `   ${groupsUrl}`,
-             "2. 【网页】创建指令指南：",
-             `   ${guidesUrl}`,
-             "3. 。创建新季度 恋综名 复盘/不复盘 MMDD-MMDD [补戏MMDD]  ← 上季数据没清会提示回复「确认」自动清空",
-             "4. 。开启群号组 组名  ← 从后台拉取群号到戏群池",
-             "5. 确认/更新戏群、后台群、公告群、水群群号（本季可能变化，清空季度数据会清空这四项；系统其余设置创建季度时已自动补全）：",
-             "   网页端系统参数配置 或 。设置 基础设置",
-             "6. 。创建NPC 角色名  ← 注册所有NPC（复盘模式必须）",
-             "7. 玩家自行：创建新角色 角色名（天数已自动占位 D100，档期开始日自动切 D0，无需手动设置）"],
-            ["【📅 日常运营】",
-             "• 查看进行中         ← 查看所有进行中约会",
-             "• 查看计时器         ← 查看活跃群倒计时",
-             "• 提醒超时           ← 向超时群发送提醒",
-             "• 。约会数据体检     ← 核对群号池/计时器/日程是否一致（加\"修复\"清理垃圾记录）",
-             "• 。设置天数 Dx      ← 手动推进天数（或 。开启自动天数）",
-             "• 。功能权限 角色名 功能 开启/关闭  ← 管控玩家权限",
-             "• 。调整 角色名 物品码 +N/-N       ← 调整背包物品",
-             "• 。群体闹钟 添加    ← 定时去每位玩家个人群@提醒（可多行，一行「日期 时间 内容」）",
-             `• 全员统计/本季报表：${statsUrl}`],
-            ["【🏁 结季流程】",
-             "1. 。结束季度  ← 封存并获取公开存档链接",
-             "2. 确认存档链接内容无误",
-             "3. 更新未退群 驱逐  ← 踢出所有仍在群内的玩家",
-             "4. 。清空季度数据  ← 确认无人残留后清空",
-             "",
-             "👇 下面每条都是可以直接复制发送的指令"],
-        ];
-        const bareCommands = [
-            "。清空季度数据",
-            "。创建新季度 恋综名 复盘/不复盘 MMDD-MMDD [补戏MMDD]",
-            "。开启群号组 组名",
-            "。设置 基础设置",
-            "。拉取全部",
-            "。创建NPC 角色名",
-            "查看进行中",
-            "查看计时器",
-            "提醒超时",
-            "。约会数据体检 修复",
-            "。设置天数 Dx",
-            "。开启自动天数",
-            "。功能权限 角色名 功能 开启",
-            "。调整 角色名 物品码 +N",
-            "。群体闹钟 添加",
-            "。结束季度",
-            "更新未退群 驱逐",
-        ];
-        const sections = [...index, ...bareCommands.map(c => [c])];
+        const sections = buildFlowSections("📋 长日运营清单", {
+            sections: [["【🧰 日常杂项】",
+                "• 。功能权限 角色名 功能 开启/关闭  ← 管控玩家权限",
+                "• 。调整 角色名 物品码 +N/-N       ← 调整背包物品",
+                "• 。群体闹钟 添加    ← 定时去每位玩家个人群@提醒（可多行，一行「日期 时间 内容」）",
+                "• 。拉取全部         ← 网页改完想立刻生效（平时 2 分钟内自动同步）",
+                `• 指令指南（给玩家的说明页）：${url("/admin/command_guides")}`,
+                `• 全员统计/本季报表：${url("/admin/stats")}`]],
+            commands: ["。功能权限 角色名 功能 开启", "。调整 角色名 物品码 +N", "。群体闹钟 添加", "。拉取全部"],
+        });
         if (guideSection) sections.push(guideSection);
         sendGuideForward(ctx, msg, "管理帮助", sections);
     })();
@@ -181,66 +207,13 @@ cmd_admin_help.solve = (ctx, msg) => {
 ext.cmdMap["管理帮助"] = cmd_admin_help;
 
 // ========================
-// 📆 季度指南（专注季度全生命周期：开季 → 进行中 → 结季，与「管理帮助」的日常运营清单分开）
+// 📆 季度指南（只讲季度全生命周期：开季 → 进行中 → 结季）
 // ========================
 let cmd_season_guide = seal.ext.newCmdItemInfo();
 cmd_season_guide.name = "季度指南";
 cmd_season_guide.help = "查看季度全生命周期涉及的指令（开季→进行中→结季），管理员专用";
-// 抽成独立函数：「季度指南」手动查看和「创建新季度」成功后自动附带发一次，共用同一份内容。
-// 前三个气泡是带编号/说明的索引（开季→进行中→结季），方便看懂每一步在干什么；
-// 后面每条真正的指令各自单独一个干净气泡（不带编号/箭头说明），长按就能直接复制发送
 function buildSeasonGuideSections() {
-    const index = [
-        ["📆 季度指南"],
-        ["【🆕 开季】",
-         "1. 。创建新季度 恋综名 复盘/不复盘 MMDD-MMDD [补戏MMDD]  ← 上季数据没清会提示回复「确认」自动清空",
-         "2. 。开启群号组 组名  ← 从后台拉取群号到戏群池",
-         "3. 确认/更新戏群、后台群、公告群、水群群号（本季可能变化，清空季度数据会清空这四项；系统其余设置创建季度时已自动补全）：",
-         "   网页端系统参数配置 或 。设置 基础设置",
-         "4. 。创建NPC 角色名  ← 注册所有NPC（复盘模式必须）",
-         "5. 玩家自行：创建新角色 角色名（天数已自动占位 D100，档期开始日自动切 D0，无需手动设置）"],
-        ["【📅 进行中】",
-         "• 。设置天数 Dx / 。开启自动天数  ← 推进游戏天数",
-         "• 。修改档期 MMDD-MMDD [补戏MMDD]  ← 中途调整档期范围",
-         "• 查看进行中 / 查看计时器  ← 查看活跃约会",
-         "• 提醒超时  ← 向超时未回复的群发送提醒",
-         "• 。约会数据体检 [修复]  ← 核对群号池/计时器/日程是否一致",
-         "• 。场次状态  ← 查看所有活跃群的写帖进度与结戏奖励达成情况",
-         "• 。查奖励情况  ← 预览按当前模板该发多少结戏奖励",
-         "• 。调整场次 群号 角色名 字数偏移 [段数偏移]  ← 手动纠正字数",
-         "• 。补发奖励  ← 对已结束场次手动补发结戏奖励"],
-        ["【🏁 结季】",
-         "1. 。季末报告 开启/关闭/状态  ← 确认结束季度时是否发互动报告",
-         "2. 。结束季度  ← 封存并获取公开存档链接",
-         "3. 确认存档链接内容无误",
-         "4. 更新未退群 驱逐  ← 踢出所有仍在群内的玩家",
-         "5. 。清空季度数据  ← 确认无人残留后清空",
-         "",
-         "👇 下面每条都是可以直接复制发送的指令"],
-    ];
-    const bareCommands = [
-        "。清空季度数据",
-        "。创建新季度 恋综名 复盘/不复盘 MMDD-MMDD [补戏MMDD]",
-        "。开启群号组 组名",
-        "。设置 基础设置",
-        "。拉取全部",
-        "。创建NPC 角色名",
-        "。设置天数 Dx",
-        "。开启自动天数",
-        "。修改档期 MMDD-MMDD [补戏MMDD]",
-        "查看进行中",
-        "查看计时器",
-        "提醒超时",
-        "。约会数据体检 修复",
-        "。场次状态",
-        "。查奖励情况",
-        "。调整场次 群号 角色名 字数偏移 [段数偏移]",
-        "。补发奖励",
-        "。季末报告 开启",
-        "。结束季度",
-        "更新未退群 驱逐",
-    ];
-    return [...index, ...bareCommands.map(c => [c])];
+    return buildFlowSections("📆 季度指南");
 }
 
 // 通用的"指南类合并转发"发送器：一个 section 一个气泡。要求在群内使用（合并转发是群消息能力）
@@ -599,175 +572,234 @@ cmd_abolish_schedule.solve = (ctx, msg, cmdArgs) => {
 
 
 // ========================
-// ── 创建新季度
+// ── 开季共用（开始季度）
 // ========================
-// 「创建新季度」发现残留数据时挂起的参数，等同一人在同一处回复「确认」；仅内存，重启即丢，5 分钟过期
+// 「开始季度」发现残留数据时挂起的参数，等同一人在同一处回复「确认」；仅内存，重启即丢，5 分钟过期
 const _pendingNewSeason = new Map();
-globalThis.__changriPendingNewSeason = _pendingNewSeason;   // 「。设置」那边的「确认」要避开同一个人正在等的「创建新季度」确认，免得一句确认同时触发两件事
+globalThis.__changriPendingNewSeason = _pendingNewSeason;   // 「。设置」那边的「确认」要避开同一个人正在等的「开始季度」确认，免得一句确认同时触发两件事
 const PENDING_NEW_SEASON_TTL_MS = 5 * 60 * 1000;
 function pendingSeasonKey(msg) {
     return `${msg.platform}:${msg.sender.userId}:${msg.groupId || ""}`;
 }
 
+// 服务器那边已启用季度后，机器人本地这部分的落地（「开始季度」用）。
+// opts: { seasonName, mode, scheduleStart, scheduleEnd, supplementEnd, viaBooking }
+async function applySeasonLocal(ctx, msg, opts) {
+    const { seasonName, mode, scheduleStart, scheduleEnd, supplementEnd, viaBooking, groupSet, npcNames } = opts;
+    const isReview  = mode === "review";
+    const modeLabel = isReview ? "复盘" : "不复盘";
+    mainStorSet("season_show_name", seasonName);
+    mainStorSet("season_mode", mode);
+    mainStorSet("season_schedule_start", scheduleStart);
+    mainStorSet("season_schedule_end",   scheduleEnd);
+    mainStorSet("season_supplement_end", supplementEnd);
+    // 创建季度的时刻，用作跨年档期（如 12/28~1/5）判断 start 所在日历年的锚点，
+    // 不随「修改档期」改动——具体原理见 长日系统.js 的 getScheduleZone()
+    mainStorSet("season_created_at", String(Date.now()));
+    // 占位天数：防止开季筹备期（创建角色、配置道具等）被当成正式游戏日 D0。
+    // 档期开始日当天会被 长日系统.js 的 checkAutoD0() 自动切换为 D0，管理员也可随时手动「设置天数 D0」提前切换。
+    mainStorSet("global_days", "D100");
+
+    const reg = mainKvGet("item_registry", {});
+    const specItems = [
+        { code: "SPEC_001", name: "追踪器",   desc: "一枚散发着微光的微型追踪器，轻轻按动便能感知目标此刻的行踪。" },
+        { code: "SPEC_002", name: "万能钥匙", desc: "一把泛着银光的万能钥匙，据说能开启世间任何一扇被锁住的门。" },
+        { code: "SPEC_003", name: "望远镜",   desc: "一架精致的望远镜，使用后可在目标下次发信时悄悄抄录一份副本。" },
+        { code: "SPEC_004", name: "羽毛笔",   desc: "一支神奇的羽毛笔，使用后可截获目标发出的下一封信并在发送前修改内容。" },
+        { code: "SPEC_005", name: "捕鼠器",   desc: "一个精巧的捕鼠器，激活后将锁定目标指定小时内的行动，使其无法私约、电话或摘心愿。" },
+        { code: "SPEC_006", name: "窃听器",   desc: "一枚微型窃听装置，激活后可悄悄截录目标的电话内容——信号有时会有些干扰……" },
+        { code: "SPEC_007", name: "截信器",   desc: "一台隐蔽的信号截断仪，激活后可拦截目标发出的短信，但内容偶有失真……" },
+        { code: "SPEC_008", name: "回音壁",   desc: "一面奇异的墙壁，贴上后可感知所有投向目标的信件内容——对方收到什么，你便知晓什么。" },
+    ];
+    let regChanged = false;
+    for (const item of specItems) {
+        if (!reg[item.code]) { reg[item.code] = { code: item.code, name: item.name, desc: item.desc, type: "preset", attrs: null }; regChanged = true; }
+    }
+    const currencyNames = new Set(Object.values(reg).filter(r => r.type === "currency").map(r => r.name));
+    if (!currencyNames.has("金币"))   { reg["CUR_001"]    = { code: "CUR_001",    name: "金币",   desc: "流通于玩家间的基础货币。",              type: "currency", attrs: null }; regChanged = true; }
+    if (!currencyNames.has("银币"))   { reg["CUR_002"]    = { code: "CUR_002",    name: "银币",   desc: "比金币更零碎的辅助货币。",              type: "currency", attrs: null }; regChanged = true; }
+    if (!reg["CUR_LETTER"])           { reg["CUR_LETTER"] = { code: "CUR_LETTER", name: "写信币", desc: "通过发送信件获得的货币，可用于各种消费。", type: "currency", attrs: null }; regChanged = true; }
+    if (regChanged) mainKvSet("item_registry", reg);
+
+    // 原「。初始化设置」：清空季度数据会清掉系统设置，创建季度后自动补回（只补空白项，优先取网页端配置）
+    let initHint = "";
+    try {
+        const n = await globalThis.__changriInitSettings?.();
+        initHint = n == null ? `\n⚙️ 系统设置已补全默认值` : `\n⚙️ 系统设置已补全（从网页端取到 ${n} 项配置）`;
+    } catch (e) {
+        console.error("[开始季度] 自动初始化设置失败:", e.message);
+        initHint = `\n⚠️ 系统设置自动补全失败，请发「。拉取全部」`;
+    }
+
+    // 开始的是预订季度：网页端预配的货币/道具/模版/池子等一并拉进来（拉全部会顺手带回天数，占位天数拉完写回）
+    let bookHint = "";
+    if (viaBooking) {
+        const keepDays = mainStorGet("global_days");
+        try {
+            const pull = globalThis.__changriPullAll;
+            if (!pull) throw new Error("设置插件未加载");
+            const logs = [];
+            const ok = await pull(t => { logs.push(t); });
+            bookHint = (ok && !logs.some(x => /❌/.test(x))) ? `\n📦 预订里预配的设置/货币/道具已拉取` : `\n⚠️ 预配内容拉取没有完整完成，请发「。拉取全部」（${logs.filter(x => /❌/.test(x)).join("；") || "原因见日志"}）`;
+        } catch (e) {
+            console.error("[开始季度] 拉取预配内容失败:", e.message);
+            bookHint = `\n⚠️ 预配内容拉取失败，请发「。拉取全部」`;
+        }
+        if (keepDays != null) mainStorSet("global_days", keepDays);
+    }
+
+    // 预订表单里填的开季准备：群号组自动开启、NPC 名字预登记（扮演账号发「创建新角色 名字」即自动成为 NPC）
+    let prepHint = "";
+    if (viaBooking) {
+        if (groupSet) {
+            const open = globalThis.__changriOpenGroupSet;
+            prepHint += "\n" + (open ? await open(groupSet) : `⚠️ 主插件未加载，请手动「。开启群号组 ${groupSet}」`);
+        }
+        if (npcNames && npcNames.length) {
+            mainKvSet("pending_npc_names", npcNames);
+            prepHint += `\n🎭 已预登记 ${npcNames.length} 个 NPC：${npcNames.slice(0, 15).join("、")}${npcNames.length > 15 ? " 等" : ""}\n   扮演的账号在自己的群里发「创建新角色 名字」即自动成为 NPC`;
+        }
+        // 四个群号来自预订里的配置（上面的拉取已写入），这里列一下，没填的提醒补
+        const groupLabels = [["song_group_id", "戏群"], ["background_group_id", "后台群"], ["adminAnnounceGroupId", "公告群"], ["water_group_id", "水群"]];
+        const missing = groupLabels.filter(([k]) => { const v = String(mainStorGet(k) || "").trim(); return !v || v === "未设置"; }).map(([, l]) => l);
+        prepHint += missing.length
+            ? `\n⚠️ 还没填：${missing.join("、")}群号（网页「游戏配置」或「。设置 基础设置」补）`
+            : `\n📮 戏群/后台群/公告群/水群群号已就位`;
+    }
+
+    let scheduleHint = "";
+    if (scheduleStart && scheduleEnd) {
+        const mm1 = scheduleStart.slice(0,2), dd1 = scheduleStart.slice(2);
+        const mm2 = scheduleEnd.slice(0,2),   dd2 = scheduleEnd.slice(2);
+        scheduleHint = `\n📅 档期：${parseInt(mm1)}/${parseInt(dd1)} – ${parseInt(mm2)}/${parseInt(dd2)}`;
+        if (supplementEnd) {
+            const mms = supplementEnd.slice(0,2), dds = supplementEnd.slice(2);
+            scheduleHint += `（补戏至 ${parseInt(mms)}/${parseInt(dds)}）`;
+        }
+        scheduleHint += `\n   · 档期开始前是筹备期：互动不记录，开始日自动进入 D0`;
+        const tMMDD = (d => String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0"))(new Date());
+        if (scheduleStart < tMMDD && scheduleStart <= scheduleEnd) {
+            scheduleHint += `\n   ⚠️ 档期开始日已过，不会自动切 D0，请手动「。设置天数 Dx」`;
+        }
+        if (supplementEnd) scheduleHint += `\n   · 补戏期：场次记录，弧长不计`;
+    }
+
+    seal.replyToSender(ctx, msg,
+        `✅ 季度「${seasonName}」已开启（${modeLabel}模式）${scheduleHint}${initHint}${bookHint}\n\n` +
+        `现在可以使用：\n` +
+        `• 创建新角色 角色名\n` +
+        `• 创建NPC 角色名\n\n` +
+        (isReview ? `💡 复盘模式：所有戏和场次均会存档。\n记得所有 NPC 也需要「创建NPC」，否则无法自动复盘。` :
+                    `💡 不复盘模式：戏和场次不存档，仅记录玩家数据到超管后台。`)
+    );
+    // 开季准备单独一条发：和上面拼在一起容易超过单条 1000 字节，会被平台静默丢掉
+    if (prepHint) seal.replyToSender(ctx, msg, "🧰 开季准备" + prepHint);
+    // 开季成功后自动附带发一份季度指南，接下来开季清单里剩下的步骤（3-8）不用再手动查
+    sendSeasonGuide(ctx, msg);
+}
+
+// 季度统一在网页「季度日历」创建（档期/群号/NPC/预配内容一张表填完），群里只负责「。开始季度」。
+// 这条指令保留只为给习惯了旧用法的管理员指路；临时开季 = 在日历里订一个今天开始的季度，再发「。开始季度」
 let cmd_new_season = seal.ext.newCmdItemInfo();
 cmd_new_season.name = "创建新季度";
-cmd_new_season.help = `用法：。创建新季度 恋综名 复盘/不复盘 MMDD-MMDD [补戏MMDD]
-若上季数据还没清空，会提示回复「确认」自动清空后继续创建，不用再单独发「。清空季度数据」
-
-参数说明：
-  恋综名       季度显示名
-  复盘/不复盘  是否生成复盘存档
-  MMDD-MMDD    必填，正式档期范围，如 0528-0601
-                 · 开始日前：短信/礼物等互动不记录
-                 · 创建时天数占位为 D100，开始日自动切 D0
-  补戏MMDD     可选，补戏截止日（如 0604）
-                 · 补戏期：场次记录，但不计弧长
-
-示例：
-  创建新季度 某某恋综 复盘 0610-0614
-  创建新季度 某某恋综 复盘 0610-0614 0617`;
-cmd_new_season.solve = (ctx, msg, cmdArgs) => {
+cmd_new_season.help = "季度改为只在网页「季度日历」里创建，群里发「。开始季度」开始。";
+cmd_new_season.solve = (ctx, msg) => {
     if (!isUserAdmin(ctx, msg)) {
         seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
         return seal.ext.newCmdExecuteResult(true);
     }
-    const seasonName = cmdArgs.getArgN(1);
-    const modeArg    = cmdArgs.getArgN(2);
-    const scheduleArg = cmdArgs.getArgN(3);
-    const suppArg     = cmdArgs.getArgN(4);
+    const base = getArchiveBase();
+    seal.replyToSender(ctx, msg,
+        `ℹ️ 季度现在只在网页上创建：\n` +
+        `1. 打开季度日历预订（临时开季就把档期开始日选今天）：${base ? base + "/admin/calendar" : "（未配置存档服务器地址）"}\n` +
+        `2. 回群里发「。开始季度」`);
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["创建新季度"] = cmd_new_season;
 
-    if (!seasonName || seasonName === "help") {
+// ========================
+// ── 开始季度（启用网页日历里已预订的季度）
+// ========================
+let cmd_start_season = seal.ext.newCmdItemInfo();
+cmd_start_season.name = "开始季度";
+cmd_start_season.help = `用法：。开始季度 [季名]
+启用在网页「季度日历」里预订好的季度：名称、模式、档期、以及预配的设置/货币/道具都从预订里来。
+不带季名：按今天的日期自动选（今天正落在档期内的优先，其次是最近要开始的；档期已过的不会自动选，要带名字）。
+已有进行中的季度时不能开始，要先「结束季度」。
+「。开始季度 同步」：上次开季中途断了、服务器已开但本地没记录时，把它接回来。
+上季数据没清会提示回复「确认」自动清空后继续。
+临时开季：在网页「季度日历」订一个今天开始的季度，再发本指令。`;
+cmd_start_season.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) {
+        seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    const rawArg = cmdArgs.getArgN(1);
+    if (rawArg === "help") {
         const ret = seal.ext.newCmdExecuteResult(true);
         ret.showHelp = true;
         return ret;
     }
-
+    // 「。开始季度 同步」：上次开季中途断了（服务器已开、本地没记录）时把服务器上进行中的季度接回来，不会启用新的预订
+    const syncOnly = rawArg === "同步";
+    const nameArg = syncOnly ? "" : rawArg;
     if (hasActiveSeason()) {
-        seal.replyToSender(ctx, msg, `❌ 已有活跃季度「${getSeasonShowName()}」，请先「结束季度」再开新季度。`);
+        seal.replyToSender(ctx, msg, `❌ 已有活跃季度「${getSeasonShowName()}」，请先「结束季度」再开始新季度。`);
         return seal.ext.newCmdExecuteResult(true);
     }
-
-    let scheduleStart = "", scheduleEnd = "", supplementEnd = "";
-    if (!scheduleArg || !/^\d{4}-\d{4}$/.test(scheduleArg)) {
-        seal.replyToSender(ctx, msg, `❌ 档期为必填项，格式 MMDD-MMDD（如 0610-0614）。\n完整用法：。创建新季度 恋综名 复盘/不复盘 MMDD-MMDD [补戏MMDD]`);
-        return seal.ext.newCmdExecuteResult(true);
-    }
-    if (!isRoleStorageEmpty()) {
-        // 发现上季残留：不再让管理员先手敲「清空季度数据」，记下这次的参数，等回复「确认」后自动清空并继续创建
-        _pendingNewSeason.set(pendingSeasonKey(msg), { args: [seasonName, modeArg, scheduleArg, suppArg].filter(Boolean), ts: Date.now() });
+    if (!syncOnly && !isRoleStorageEmpty()) {
+        _pendingNewSeason.set(pendingSeasonKey(msg), { cmd: "start", args: [nameArg].filter(Boolean), ts: Date.now() });
         seal.replyToSender(ctx, msg,
             `⚠️ 检测到上季角色数据还没清空。\n` +
-            `回复「确认」将自动清空上季数据（会先检查群里有无残留玩家），然后继续创建「${seasonName}」。\n` +
+            `回复「确认」将自动清空上季数据（会先检查群里有无残留玩家），然后继续开始${nameArg ? `「${nameArg}」` : "预订的季度"}。\n` +
             `（5 分钟内有效，不想清空就忽略这条）`
         );
         return seal.ext.newCmdExecuteResult(true);
     }
-    [scheduleStart, scheduleEnd] = scheduleArg.split("-");
-    if (suppArg && /^\d{4}$/.test(suppArg)) {
-        supplementEnd = suppArg;
-    } else if (suppArg) {
-        seal.replyToSender(ctx, msg, `⚠️ 补戏日期格式错误，应为 MMDD（如 0617），已忽略。`);
-    }
-
-    const isReview  = !modeArg || modeArg === "复盘";
-    const mode      = isReview ? "review" : "no_review";
-    const modeLabel = isReview ? "复盘" : "不复盘";
 
     (async () => {
         const base  = getArchiveBase();
         const token = getArchiveToken();
         if (!base) {
-            seal.replyToSender(ctx, msg, "❌ 未配置 RP 存档服务器地址，无法创建季度。");
+            seal.replyToSender(ctx, msg, "❌ 未配置 RP 存档服务器地址，无法开始季度。");
             return;
         }
         try {
-            const resp = await fetch(`${base}/api/new_season`, {
+            const resp = await fetch(`${base}/api/start_season`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "X-Archive-Token": token },
-                body: JSON.stringify({ name: seasonName, mode,
-                    schedule_start: scheduleStart,
-                    schedule_end:   scheduleEnd,
-                    supplement_end: supplementEnd })
+                body: JSON.stringify(syncOnly ? { sync_only: true } : (nameArg ? { name: nameArg } : {}))
             });
             const data = await resp.json();
             if (!data.ok) {
-                seal.replyToSender(ctx, msg, `❌ 创建季度失败：${data.error || resp.status}`);
+                if (resp.status === 409 && data.running) {
+                    seal.replyToSender(ctx, msg,
+                        `❌ ${data.error}\n` +
+                        `若机器人这边其实没有这个季度的记录（比如上次开季中途断了），发「。开始季度 同步」把它接回来。`);
+                    return;
+                }
+                let extra = "";
+                try {
+                    const lr = await fetch(`${base}/api/booked_seasons`, { method: "POST", headers: { "Content-Type": "application/json", "X-Archive-Token": token }, body: "{}" });
+                    const ld = await lr.json();
+                    if (ld.ok && ld.booked.length) extra = "\n当前预订：" + ld.booked.map(b => `「${b.name}」${b.start}~${b.end}`).join("、");
+                    else if (ld.ok) extra = "\n网页「季度日历」里还没有预订的季度，临时开季就订一个今天开始的季度。";
+                } catch (_) {}
+                seal.replyToSender(ctx, msg, `❌ 开始季度失败：${data.error || resp.status}${extra}`);
                 return;
             }
+            if (data.synced) seal.replyToSender(ctx, msg, `🔄 服务器上「${data.name}」正在进行，已接回机器人本地。`);
+            const how = data.synced ? "" : { in_schedule: "今天正在它的档期内", upcoming: "档期最近", overdue: "已过档期还没开始", name: "按名字匹配" }[data.matched_by] || "";
+            if (how) seal.replyToSender(ctx, msg, `📆 选中预订季度「${data.name}」（${how}）`);
 
-            mainStorSet("season_show_name", seasonName);
-            mainStorSet("season_mode", mode);
-            mainStorSet("season_schedule_start", scheduleStart);
-            mainStorSet("season_schedule_end",   scheduleEnd);
-            mainStorSet("season_supplement_end", supplementEnd);
-            // 创建季度的时刻，用作跨年档期（如 12/28~1/5）判断 start 所在日历年的锚点，
-            // 不随「修改档期」改动——具体原理见 长日系统.js 的 getScheduleZone()
-            mainStorSet("season_created_at", String(Date.now()));
-            // 占位天数：防止开季筹备期（创建角色、配置道具等）被当成正式游戏日 D0。
-            // 档期开始日当天会被 长日系统.js 的 checkAutoD0() 自动切换为 D0，管理员也可随时手动「设置天数 D0」提前切换。
-            mainStorSet("global_days", "D100");
-
-            const reg = mainKvGet("item_registry", {});
-            const specItems = [
-                { code: "SPEC_001", name: "追踪器",   desc: "一枚散发着微光的微型追踪器，轻轻按动便能感知目标此刻的行踪。" },
-                { code: "SPEC_002", name: "万能钥匙", desc: "一把泛着银光的万能钥匙，据说能开启世间任何一扇被锁住的门。" },
-                { code: "SPEC_003", name: "望远镜",   desc: "一架精致的望远镜，使用后可在目标下次发信时悄悄抄录一份副本。" },
-                { code: "SPEC_004", name: "羽毛笔",   desc: "一支神奇的羽毛笔，使用后可截获目标发出的下一封信并在发送前修改内容。" },
-                { code: "SPEC_005", name: "捕鼠器",   desc: "一个精巧的捕鼠器，激活后将锁定目标指定小时内的行动，使其无法私约、电话或摘心愿。" },
-                { code: "SPEC_006", name: "窃听器",   desc: "一枚微型窃听装置，激活后可悄悄截录目标的电话内容——信号有时会有些干扰……" },
-                { code: "SPEC_007", name: "截信器",   desc: "一台隐蔽的信号截断仪，激活后可拦截目标发出的短信，但内容偶有失真……" },
-                { code: "SPEC_008", name: "回音壁",   desc: "一面奇异的墙壁，贴上后可感知所有投向目标的信件内容——对方收到什么，你便知晓什么。" },
-            ];
-            let regChanged = false;
-            for (const item of specItems) {
-                if (!reg[item.code]) { reg[item.code] = { code: item.code, name: item.name, desc: item.desc, type: "preset", attrs: null }; regChanged = true; }
-            }
-            const currencyNames = new Set(Object.values(reg).filter(r => r.type === "currency").map(r => r.name));
-            if (!currencyNames.has("金币"))   { reg["CUR_001"]    = { code: "CUR_001",    name: "金币",   desc: "流通于玩家间的基础货币。",              type: "currency", attrs: null }; regChanged = true; }
-            if (!currencyNames.has("银币"))   { reg["CUR_002"]    = { code: "CUR_002",    name: "银币",   desc: "比金币更零碎的辅助货币。",              type: "currency", attrs: null }; regChanged = true; }
-            if (!reg["CUR_LETTER"])           { reg["CUR_LETTER"] = { code: "CUR_LETTER", name: "写信币", desc: "通过发送信件获得的货币，可用于各种消费。", type: "currency", attrs: null }; regChanged = true; }
-            if (regChanged) mainKvSet("item_registry", reg);
-
-            // 原「。初始化设置」：清空季度数据会清掉系统设置，创建季度后自动补回（只补空白项，优先取网页端配置）
-            let initHint = "";
-            try {
-                const n = await globalThis.__changriInitSettings?.();
-                initHint = n == null ? `\n⚙️ 系统设置已补全默认值` : `\n⚙️ 系统设置已补全（从网页端取到 ${n} 项配置）`;
-            } catch (e) {
-                console.error("[创建新季度] 自动初始化设置失败:", e.message);
-                initHint = `\n⚠️ 系统设置自动补全失败，请发「。拉取全部」`;
-            }
-
-            let scheduleHint = "";
-            if (scheduleStart && scheduleEnd) {
-                const mm1 = scheduleStart.slice(0,2), dd1 = scheduleStart.slice(2);
-                const mm2 = scheduleEnd.slice(0,2),   dd2 = scheduleEnd.slice(2);
-                scheduleHint = `\n📅 档期：${parseInt(mm1)}/${parseInt(dd1)} – ${parseInt(mm2)}/${parseInt(dd2)}`;
-                if (supplementEnd) {
-                    const mms = supplementEnd.slice(0,2), dds = supplementEnd.slice(2);
-                    scheduleHint += `（补戏至 ${parseInt(mms)}/${parseInt(dds)}）`;
-                }
-                scheduleHint += `\n   · 档期前：互动不记录 · 天数已占位为 D100，开始日自动切 D0`;
-                const tMMDD = (d => String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0"))(new Date());
-                if (scheduleStart < tMMDD && scheduleStart <= scheduleEnd) {
-                    scheduleHint += `\n   ⚠️ 档期开始日已过，不会自动切 D0，请手动「。设置天数 Dx」`;
-                }
-                if (supplementEnd) scheduleHint += `\n   · 补戏期：场次记录，弧长不计`;
-            }
-
-            seal.replyToSender(ctx, msg,
-                `✅ 季度「${seasonName}」已开启（${modeLabel}模式）${scheduleHint}${initHint}\n\n` +
-                `现在可以使用：\n` +
-                `• 创建新角色 角色名\n` +
-                `• 创建NPC 角色名\n\n` +
-                (isReview ? `💡 复盘模式：所有戏和场次均会存档。\n记得所有 NPC 也需要「创建NPC」，否则无法自动复盘。` :
-                            `💡 不复盘模式：戏和场次不存档，仅记录玩家数据到超管后台。`)
-            );
-            // 开季成功后自动附带发一份季度指南，接下来开季清单里剩下的步骤（3-8）不用再手动查
-            sendSeasonGuide(ctx, msg);
+            await applySeasonLocal(ctx, msg, {
+                seasonName: data.name, mode: data.mode,
+                scheduleStart: data.schedule_start, scheduleEnd: data.schedule_end, supplementEnd: data.supplement_end,
+                viaBooking: true, groupSet: data.group_set || "", npcNames: data.npc_names || []
+            });
         } catch (e) {
             seal.replyToSender(ctx, msg,
-                `❌ 无法连接存档服务器，季度未创建。\n` +
+                `❌ 无法连接存档服务器，季度未开始。\n` +
                 `原始报错：${e.message || String(e)}\n` +
                 `请检查：「RP存档服务器地址」是否填写正确、服务器是否在运行、网络是否通畅（用「。设置」可查看当前配置）。`
             );
@@ -776,7 +808,7 @@ cmd_new_season.solve = (ctx, msg, cmdArgs) => {
 
     return seal.ext.newCmdExecuteResult(true);
 };
-ext.cmdMap["创建新季度"] = cmd_new_season;
+ext.cmdMap["开始季度"] = cmd_start_season;
 
 // ========================
 // ── 修改档期
@@ -893,12 +925,12 @@ cmd_end_season.solve = (ctx, msg, cmdArgs) => {
                 if (data.error === "no active season") {
                     // 本地缓存的 season_show_name 只有「清空季度数据」会清，服务器端的 is_current
                     // 却可能已经被别的路径（如网页端「历史季度管理」切换）改掉，导致两边不同步：
-                    // 本地以为还有活跃季度、服务器却查不到，「创建新季度」和「结束季度」两边都会卡住。
+                    // 本地以为还有活跃季度、服务器却查不到，「开始季度」和「结束季度」两边都会卡住。
                     // 这里顺手把本地缓存清掉自愈，免得管理员卡在两头都过不去的死角。
                     mainStorSet("season_show_name", "");
                     seal.replyToSender(ctx, msg,
                         `⚠️ 服务器端查无活跃季度，本地记录的「${currentName}」是残留缓存，已自动清除。\n` +
-                        `请执行「。清空季度数据」清空玩家数据后再「。创建新季度」。`
+                        `请发「。收尾」清空玩家数据后再「。开始季度」。`
                     );
                 } else {
                     seal.replyToSender(ctx, msg, `❌ 结束季度失败：${data.error || resp.status}`);
@@ -909,9 +941,8 @@ cmd_end_season.solve = (ctx, msg, cmdArgs) => {
                 `✅ 季度「${currentName}」已封存\n` +
                 `📎 公开存档：${data.public_url}\n` +
                 `─────────────────────\n` +
-                `请确认存档内容无误后：\n` +
-                `第一步：。清空季度数据\n` +
-                `第二步：创建新季度 恋综名 复盘/不复盘 MMDD-MMDD`
+                `打开链接确认存档无误后，发「。收尾」：踢出还在戏群的玩家并清空本季数据。\n` +
+                `（不收尾也行，下一季「。开始季度」时会提示回复「确认」再清）`
             );
 
             if (data.zip_url) {
@@ -1892,20 +1923,20 @@ ext.onNotCommandReceived = (ctx, msg) => {
         getArgN: (n) => parts[n - 1] || "",
     });
 
-    // 「创建新季度」发现残留数据后，管理员在同一处回复「确认」→ 自动清空上季数据并继续创建
+    // 「开始季度」发现残留数据后，管理员在同一处回复「确认」→ 自动清空上季数据并继续开始
     if (raw === "确认") {
         const key = pendingSeasonKey(msg);
         const pending = _pendingNewSeason.get(key);
         if (pending) {
             _pendingNewSeason.delete(key);
             if (Date.now() - pending.ts > PENDING_NEW_SEASON_TTL_MS) {
-                seal.replyToSender(ctx, msg, "⌛ 确认已超时，请重新发送「。创建新季度 …」。");
+                seal.replyToSender(ctx, msg, "⌛ 确认已超时，请重新发送「。开始季度」。");
                 return seal.ext.newCmdExecuteResult(true);
             }
             if (!isUserAdmin(ctx, msg)) return;
             (async () => {
                 const cleared = await getApi().resetSeasonData(ctx, msg, false, true);
-                if (cleared && isRoleStorageEmpty()) cmd_new_season.solve(ctx, msg, makeFakeCmdArgs(pending.args));
+                if (cleared && isRoleStorageEmpty()) cmd_start_season.solve(ctx, msg, makeFakeCmdArgs(pending.args));
             })();
             return seal.ext.newCmdExecuteResult(true);
         }

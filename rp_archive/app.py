@@ -12,6 +12,12 @@ import sqlite3
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET", "rp_archive_secret_key_change_me")
+# 部署在 nginx 后面时（贾维斯）设 BEHIND_PROXY=1：按 X-Forwarded-* 还原真实的协议/域名/来访 IP，
+# 否则 request.host_url 会是 http://127.0.0.1:5001，结束季度生成的公开存档链接就打不开。
+# 直接对外（没有反代）时别开，不然来访者可以自己伪造 X-Forwarded-For
+if os.environ.get("BEHIND_PROXY") == "1":
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 
 # ── 错误日志 ──────────────────────────────────────────────────────────────────
@@ -69,6 +75,7 @@ SUPERADMIN_PASS = os.environ.get("SUPERADMIN_PASS",
 PLAYERS_PER_PAGE = 50
 
 # 信息收集图片：单张大小上限 / 每用户每季度累计配额上限（结束季度时清空重置）
+UNIVERSAL_MAX_ITEMS = 500   # 通用物品库上限（跨季度，货币/物品/互动物品合计）
 MAX_SHOWS_PER_TENANT = 10   # 每个租户最多保留的季度数（含已结束的），满了要先删旧的
 COLLECT_IMAGE_MAX_BYTES = 3 * 1024 * 1024
 COLLECT_IMAGE_USER_QUOTA_BYTES = 30 * 1024 * 1024
@@ -427,12 +434,12 @@ COMMAND_BLOCKS = [
         "。拉取全部",
         "  立即把网页端所有数据拉取到机器人（配置+注册表+模版+池子+拍卖队列）；日常不用发，自动拉取会做",
         "",
-        "。创建新季度 恋综名 复盘/不复盘 MMDD-MMDD [补戏MMDD]",
-        "  新建一个游戏季度（档期必填）。上季数据没清会提示回复「确认」自动清空；",
-        "  创建成功后自动补全系统设置；天数自动占位 D100，档期开始日自动切 D0",
+        "。开始季度 [季名]",
+        "  开始网页「季度日历」里预订的季度（季度只能在网页上创建；临时开季就订一个今天开始的）。",
+        "  不带季名按今天日期自动选；上季数据没清会提示回复「确认」自动清空；天数占位 D100，档期开始日自动切 D0",
         "",
         "。清空季度数据 [确认]",
-        "  扫描各群确认无玩家残留后清空上季数据；一般不用单独发，创建新季度会提示",
+        "  扫描各群确认无玩家残留后清空上季数据；一般不用单独发，开始季度会提示",
         "",
         "。修改档期 MMDD-MMDD [补戏MMDD]",
         "  修改当前季度的档期",
@@ -1275,6 +1282,19 @@ def _migrate(conn):
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_config_history_show ON config_history(show_id, created_at)")
 
+    # ── universal_items 表（通用物品库：租户级，跨季度，上限 UNIVERSAL_MAX_ITEMS）──
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS universal_items (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            tenant_id  INTEGER NOT NULL,
+            name       TEXT NOT NULL,
+            type       TEXT NOT NULL DEFAULT 'item',
+            entry_json TEXT NOT NULL DEFAULT '{}',
+            created_at INTEGER DEFAULT 0,
+            UNIQUE (tenant_id, name)
+        )
+    """)
+
     # ── config_templates 表 ─────────────────────────────────────────────────
     conn.execute("""
         CREATE TABLE IF NOT EXISTS config_templates (
@@ -1376,6 +1396,22 @@ def _migrate(conn):
         conn.execute("ALTER TABLE shows ADD COLUMN schedule_end TEXT NOT NULL DEFAULT ''")
     if "supplement_end" not in _col_names(conn, "shows"):
         conn.execute("ALTER TABLE shows ADD COLUMN supplement_end TEXT NOT NULL DEFAULT ''")
+    # 预订季度：booked=1 表示还没开始（网页日历预订），schedule_year 是档期开始日所在的年份（MMDD 本身不带年）
+    if "booked" not in _col_names(conn, "shows"):
+        conn.execute("ALTER TABLE shows ADD COLUMN booked INTEGER NOT NULL DEFAULT 0")
+    if "schedule_year" not in _col_names(conn, "shows"):
+        conn.execute("ALTER TABLE shows ADD COLUMN schedule_year INTEGER NOT NULL DEFAULT 0")
+    # 预订时顺手填好的开季准备：「。开始季度」时机器人自动开启这个群号组、把这些名字预登记为 NPC（一行一个）
+    if "group_set" not in _col_names(conn, "shows"):
+        conn.execute("ALTER TABLE shows ADD COLUMN group_set TEXT NOT NULL DEFAULT ''")
+    if "npc_names" not in _col_names(conn, "shows"):
+        conn.execute("ALTER TABLE shows ADD COLUMN npc_names TEXT NOT NULL DEFAULT ''")
+    # 老季度（这次改动前创建的）补上档期年份，日历和重叠检查才看得见它们
+    for _r in conn.execute("SELECT id, schedule_start, created_at FROM shows "
+                           "WHERE schedule_year=0 AND schedule_start!='' AND booked=0").fetchall():
+        _y = _infer_schedule_year(_r[1], _r[2])
+        if _y:
+            conn.execute("UPDATE shows SET schedule_year=? WHERE id=?", (_y, _r[0]))
 
     # ── 15. collected_images 表（信息收集里提交的图片，按 show 隔离，结束季度时整体清理）──
     conn.execute("""
@@ -1463,7 +1499,7 @@ def get_show_id():
     db  = get_db()
     row = db.execute("SELECT id FROM shows WHERE tenant_id=? AND is_current=1", (tid,)).fetchone()
     if not row:
-        row = db.execute("SELECT id FROM shows WHERE tenant_id=? ORDER BY id", (tid,)).fetchone()
+        row = db.execute("SELECT id FROM shows WHERE tenant_id=? AND booked=0 ORDER BY id", (tid,)).fetchone()
     if row:
         session["view_show_id"] = row["id"]
         return row["id"]
@@ -1474,7 +1510,7 @@ def get_current_show_id_for_tenant(tenant_id):
     db  = get_db()
     row = db.execute("SELECT id FROM shows WHERE tenant_id=? AND is_current=1", (tenant_id,)).fetchone()
     if not row:
-        row = db.execute("SELECT id FROM shows WHERE tenant_id=? ORDER BY id DESC", (tenant_id,)).fetchone()
+        row = db.execute("SELECT id FROM shows WHERE tenant_id=? AND booked=0 ORDER BY id DESC", (tenant_id,)).fetchone()
     return row["id"] if row else None
 
 def get_current_show_for_tenant(tenant_id):
@@ -1482,7 +1518,7 @@ def get_current_show_for_tenant(tenant_id):
     db  = get_db()
     row = db.execute("SELECT * FROM shows WHERE tenant_id=? AND is_current=1", (tenant_id,)).fetchone()
     if not row:
-        row = db.execute("SELECT * FROM shows WHERE tenant_id=? ORDER BY id DESC", (tenant_id,)).fetchone()
+        row = db.execute("SELECT * FROM shows WHERE tenant_id=? AND booked=0 ORDER BY id DESC", (tenant_id,)).fetchone()
     return dict(row) if row else None
 
 # ── 档期时区工具 ──────────────────────────────────────────────────────────────
@@ -1965,8 +2001,206 @@ def superadmin_toggle_exclude(entry_id):
     db.commit()
     return jsonify({"ok": True, "is_excluded": new_val})
 
+# ── 预订季度（网页日历）───────────────────────────────────────────────────────
+def _infer_schedule_year(start_mmdd, anchor_ms):
+    """给只有 MMDD 的档期定开始日所在年份：以「创建/预订时刻」为锚点，开始日落在锚点之前超过 180 天的算明年
+    （如 12 月创建、档期 0105 → 明年）。和插件里 getScheduleZone 用 season_created_at 的思路一致。"""
+    try:
+        anchor = datetime.fromtimestamp(int(anchor_ms) / 1000, TZ_BEIJING).date()
+        mm, dd = int(start_mmdd[:2]), int(start_mmdd[2:])
+        y = anchor.year
+        cand = _date(y, mm, dd)
+        if (anchor - cand).days > 180:
+            y += 1
+        return y
+    except (ValueError, TypeError, OSError):
+        return 0
+
+def _book_range(row):
+    """预订/进行中季度的 (开始日, 结束日, 补戏截止日)，date 对象；数据不全返回 None。
+    MMDD 不带年，靠 schedule_year（开始日所在年）定年；结束日早于开始日视为跨年。"""
+    y = row["schedule_year"] or 0
+    st, en, sp = row["schedule_start"], row["schedule_end"], row["supplement_end"]
+    if not y or not st or not en:
+        return None
+    try:
+        d0 = _date(y, int(st[:2]), int(st[2:]))
+        d1 = _date(y, int(en[:2]), int(en[2:]))
+        if d1 < d0:
+            d1 = _date(y + 1, d1.month, d1.day)
+        d2 = d1
+        if sp:
+            d2 = _date(d1.year, int(sp[:2]), int(sp[2:]))
+            if d2 < d1:
+                d2 = _date(d1.year + 1, d2.month, d2.day)
+    except ValueError:
+        return None
+    return d0, d1, d2
+
+def _parse_ymd(v):
+    try:
+        return datetime.strptime((v or "").strip(), "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+def _book_fields_from_payload(data):
+    """网页表单/接口里的完整日期 → (year, MMDD 三件套, 错误信息)。补戏日可空。"""
+    d0, d1 = _parse_ymd(data.get("start")), _parse_ymd(data.get("end"))
+    if not d0 or not d1:
+        return None, "档期开始/结束日期必填，格式 YYYY-MM-DD"
+    if d1 < d0:
+        return None, "结束日期不能早于开始日期"
+    supp_raw = (data.get("supplement_end") or "").strip()
+    d2 = None
+    if supp_raw:
+        d2 = _parse_ymd(supp_raw)
+        if not d2 or d2 < d1:
+            return None, "补戏截止日期格式错误，或早于档期结束日"
+    if (d1 - d0).days > 366 or (d2 and (d2 - d1).days > 366):
+        return None, "档期跨度过长"
+    today = datetime.now(TZ_BEIJING).date()
+    if (d2 or d1) < today:
+        return None, "档期已经过去了，预订只能订今天及以后的日期"
+    if d0.year > today.year + 3:
+        return None, "档期太远了（最多预订 3 年内）"
+    mm = lambda d: f"{d.month:02d}{d.day:02d}"
+    return {"year": d0.year, "start": mm(d0), "end": mm(d1), "supp": mm(d2) if d2 else ""}, None
+
+def _book_overlap(db, tid, d0, d1, exclude_id=None):
+    """与其它预订/进行中季度的档期区间重叠时，返回那个季度的名字。"""
+    rows = db.execute(
+        "SELECT * FROM shows WHERE tenant_id=? AND (booked=1 OR is_current=1)", (tid,)).fetchall()
+    for r in rows:
+        if exclude_id and r["id"] == exclude_id:
+            continue
+        rng = _book_range(r)
+        if rng and d0 <= rng[2] and rng[0] <= d1:
+            return r["name"]
+    return None
+
+# 预订表单里一起填的四个群号：写进预订季度自己的 site_config，「。开始季度」拉取预配内容时就会带到机器人
+BOOK_GROUP_KEYS = [("song_group_id", "戏群"), ("background_group_id", "后台群"),
+                   ("adminAnnounceGroupId", "公告群"), ("water_group_id", "水群")]
+
+def _split_npc_names(raw):
+    """NPC 名单：一行一个（也认逗号/顿号/空格分隔），去重保序。"""
+    out = []
+    for n in re.split(r"[\s,，、;；]+", raw or ""):
+        n = n.strip()
+        if n and n not in out:
+            out.append(n)
+    return out
+
+def _book_prep_from_payload(db, tid, data):
+    """预订表单里的开季准备（群号组 / 四个群号 / NPC 名单）→ (dict, 错误信息)。都可以留空。"""
+    set_name = (data.get("group_set") or "").strip()
+    if set_name and not db.execute("SELECT 1 FROM known_group_sets WHERE tenant_id=? AND set_name=?",
+                                   (tid, set_name)).fetchone():
+        return None, f"群号组「{set_name}」不存在，请先到「群号组」页面建好"
+    groups = {}
+    for key, label in BOOK_GROUP_KEYS:
+        v = str(data.get(key) or "").strip()
+        if v and not v.isdigit():
+            return None, f"{label}群号只能填数字"
+        groups[key] = v
+    npcs = _split_npc_names(data.get("npc_names"))
+    if len(npcs) > 50:
+        return None, "NPC 名单最多 50 个"
+    if any(len(n) > 20 for n in npcs):
+        return None, "NPC 名字太长了（每个最多 20 字）"
+    return {"group_set": set_name, "groups": groups, "npc_names": "\n".join(npcs)}, None
+
+def _save_book_prep(db, tid, sid, prep):
+    db.execute("UPDATE shows SET group_set=?, npc_names=? WHERE id=?", (prep["group_set"], prep["npc_names"], sid))
+    for key, v in prep["groups"].items():
+        db.execute(
+            "INSERT INTO site_config(show_id,tenant_id,key,value) VALUES(?,?,?,?) "
+            "ON CONFLICT(show_id,key) DO UPDATE SET value=excluded.value",
+            (sid, tid, key, v))
+
+def _book_prep_defaults(db, tid):
+    """新预订的默认值：沿用最近一季的四个群号和群号组，省得每季重填。"""
+    last = db.execute("SELECT id, group_set FROM shows WHERE tenant_id=? AND booked=0 ORDER BY id DESC LIMIT 1",
+                      (tid,)).fetchone()
+    if not last:
+        return {"group_set": "", "groups": {k: "" for k, _ in BOOK_GROUP_KEYS}}
+    flat = get_flat_config(db, last["id"])
+    return {"group_set": last["group_set"] or "", "groups": {k: flat.get(k, "") for k, _ in BOOK_GROUP_KEYS}}
+
+# 预订时「复制配置」不带的键：天数/同步时间戳是运行态；物品注册表走通用库按需挑；
+# 待上载队列和 place_keys/battle_attrs/player_skills 是上一季的玩家数据
+_BOOK_COPY_EXCLUDE = frozenset({
+    "global_days", "_last_bot_sync",
+    "item_registry", "reward_item_registry", "item_registry_pending", "equipment_registry_pending",
+    "place_keys", "battle_attrs", "player_skills",
+})
+
+def _book_copy_config(db, tid, sid, src):
+    """src: "" 不复制 / "show:<id>" 复制某季配置 / "tpl:<id>" 套配置预设。写库不 commit，返回复制的键数；来源无效返回 None。"""
+    if not src:
+        return 0
+    kind, _, ref = src.partition(":")
+    try:
+        ref = int(ref)
+    except ValueError:
+        return None
+    if kind == "show":
+        if ref == sid or not db.execute("SELECT 1 FROM shows WHERE id=? AND tenant_id=?", (ref, tid)).fetchone():
+            return None
+        data = get_flat_config(db, ref)
+    elif kind == "tpl":
+        row = db.execute("SELECT config_data FROM config_templates WHERE id=? AND tenant_id=?", (ref, tid)).fetchone()
+        if not row:
+            return None
+        try:
+            data = json.loads(row["config_data"] or "{}")
+        except json.JSONDecodeError:
+            return None
+    else:
+        return None
+    n = 0
+    for k, v in data.items():
+        if k in _BOOK_COPY_EXCLUDE:
+            continue
+        db.execute("INSERT INTO site_config(show_id,tenant_id,key,value) VALUES(?,?,?,?) "
+                   "ON CONFLICT(show_id,key) DO UPDATE SET value=excluded.value", (sid, tid, k, v))
+        n += 1
+    return n
+
+def _pick_booked_show(db, tid, name=None, today=None):
+    """「。开始季度」选哪个预订：给了名字按名字；否则按日期——
+    今天正落在档期（含补戏期）内的优先，其次是开始日最近的未来预订，最后才是已过期没开的（取最近的）。"""
+    today = today or datetime.now(TZ_BEIJING).date()
+    rows = db.execute("SELECT * FROM shows WHERE tenant_id=? AND booked=1", (tid,)).fetchall()
+    if name:
+        hits = [r for r in rows if r["name"] == name] or [r for r in rows if name in r["name"]]
+        if len(hits) == 1:
+            return hits[0], "name", None
+        return None, "name", (f"预订里有多个名字含「{name}」的季度，请写全名" if hits else f"没有名为「{name}」的预订季度")
+    inprog, upcoming, overdue = [], [], []
+    for r in rows:
+        rng = _book_range(r)
+        if not rng:
+            continue
+        if rng[0] <= today <= rng[2]:
+            inprog.append((rng[0], r))
+        elif rng[0] > today:
+            upcoming.append((rng[0], r))
+        else:
+            overdue.append((rng[0], r))
+    if inprog:
+        return sorted(inprog, key=lambda x: x[0])[-1][1], "in_schedule", None
+    if upcoming:
+        return sorted(upcoming, key=lambda x: x[0])[0][1], "upcoming", None
+    if overdue:
+        return sorted(overdue, key=lambda x: x[0])[-1][1], "overdue", None
+    return None, "date", "没有已预订的季度"
+
+
 @app.route("/api/new_season", methods=["POST"])
 def api_new_season():
+    # 兼容旧版插件的「。创建新季度」：新版插件已不再调用（季度只在网页日历创建）。
+    # 多个群共用本服务，等各群都升级到带「。开始季度」的版本后可以删掉这个接口
     tid  = get_tenant_from_token()
     data = request.json or {}
     name = (data.get("name") or "").strip()
@@ -1993,10 +2227,11 @@ def api_new_season():
     token = secrets.token_urlsafe(24)
     db.execute(
         "INSERT INTO shows (tenant_id,name,description,is_current,public_view_enabled,public_token,"
-        "created_at,schedule_start,schedule_end,supplement_end) "
-        "VALUES (?,?,?,1,1,?,?,?,?,?)",
+        "created_at,schedule_start,schedule_end,supplement_end,schedule_year) "
+        "VALUES (?,?,?,1,1,?,?,?,?,?,?)",
         (tid, name, mode, token, int(time.time() * 1000),
-         sched_start, sched_end, supp_end)
+         sched_start, sched_end, supp_end,
+         _infer_schedule_year(sched_start, int(time.time() * 1000)) if sched_start else 0)
     )
     db.commit()
     show = db.execute("SELECT id FROM shows WHERE public_token=?", (token,)).fetchone()
@@ -2010,12 +2245,12 @@ def api_current_season():
     tid = get_tenant_from_token()
     db  = get_db()
     show = db.execute(
-        "SELECT id, name, description FROM shows WHERE tenant_id=? AND is_current=1", (tid,)
+        "SELECT * FROM shows WHERE tenant_id=? AND is_current=1", (tid,)
     ).fetchone()
     if not show:
         # 没有 is_current=1，取最新的
         show = db.execute(
-            "SELECT id, name, description FROM shows WHERE tenant_id=? ORDER BY id DESC LIMIT 1", (tid,)
+            "SELECT * FROM shows WHERE tenant_id=? AND booked=0 ORDER BY id DESC LIMIT 1", (tid,)
         ).fetchone()
     if not show:
         return jsonify({"ok": False, "error": "no show found"}), 404
@@ -2024,6 +2259,73 @@ def api_current_season():
                     "schedule_start": show["schedule_start"] or "",
                     "schedule_end":   show["schedule_end"]   or "",
                     "supplement_end": show["supplement_end"] or ""})
+
+@app.route("/api/start_season", methods=["POST"])
+def api_start_season():
+    """Bot 用（。开始季度）：把网页日历里预订的季度转成进行中。不带 name 按今天的日期挑。"""
+    tid  = get_tenant_from_token()
+    data = request.json or {}
+    name = (data.get("name") or "").strip()
+    db = get_db()
+    def _running_resp():
+        run = db.execute("SELECT * FROM shows WHERE tenant_id=? AND is_current=1", (tid,)).fetchone()
+        if not run:
+            return None
+        rmode = run["description"] if run["description"] in ("review", "no_review") else "review"
+        return jsonify({"ok": False, "error": f"已有进行中的季度「{run['name']}」，请先结束季度再开始新的",
+                        "running": {"name": run["name"], "mode": rmode,
+                                    "schedule_start": run["schedule_start"] or "",
+                                    "schedule_end": run["schedule_end"] or "",
+                                    "supplement_end": run["supplement_end"] or ""}}), 409
+    if data.get("sync_only"):
+        # 「。开始季度 同步」：上次开季中途断了（服务器已开、机器人本地没记录）时，把服务器上进行中的季度接回本地；绝不启用新的预订
+        run = db.execute("SELECT * FROM shows WHERE tenant_id=? AND is_current=1", (tid,)).fetchone()
+        if not run:
+            return jsonify({"ok": False, "error": "服务器上没有进行中的季度，不需要同步"}), 404
+        rmode = run["description"] if run["description"] in ("review", "no_review") else "review"
+        return jsonify({"ok": True, "synced": True, "name": run["name"], "mode": rmode,
+                        "schedule_start": run["schedule_start"] or "",
+                        "schedule_end": run["schedule_end"] or "",
+                        "supplement_end": run["supplement_end"] or ""})
+    resp = _running_resp()
+    if resp:
+        return resp
+    show, how, err = _pick_booked_show(db, tid, name or None)
+    if not show:
+        return jsonify({"ok": False, "error": err}), 404
+    if how == "overdue" and not name:
+        return jsonify({"ok": False, "error": f"没有正在档期内或即将开始的预订；最近的「{show['name']}」档期已经过了，"
+                                              f"要开它请带上名字：。开始季度 {show['name']}"}), 404
+    # 单条语句里同时确认「没有进行中的季度」和「这条还是预订状态」，避免两个请求同时进来把两个季度都开成进行中
+    cur = db.execute(
+        "UPDATE shows SET is_current=1, booked=0, public_view_enabled=1 WHERE id=? AND booked=1 AND tenant_id=? "
+        "AND NOT EXISTS (SELECT 1 FROM shows WHERE tenant_id=? AND is_current=1)",
+        (show["id"], tid, tid))
+    if cur.rowcount != 1:
+        db.rollback()
+        return _running_resp() or (jsonify({"ok": False, "error": "这个预订刚刚被别人处理了，请重试"}), 409)
+    db.commit()
+    mode = show["description"] if show["description"] in ("review", "no_review") else "review"
+    return jsonify({"ok": True, "show_id": show["id"], "name": show["name"], "mode": mode,
+                    "matched_by": how,
+                    "schedule_start": show["schedule_start"] or "",
+                    "schedule_end":   show["schedule_end"]   or "",
+                    "supplement_end": show["supplement_end"] or "",
+                    "group_set": show["group_set"] or "",
+                    "npc_names": _split_npc_names(show["npc_names"])})
+
+@app.route("/api/booked_seasons", methods=["POST"])
+def api_booked_seasons():
+    """Bot 用：列出预订中的季度（供「。开始季度」无预订/多预订时提示）。"""
+    tid = get_tenant_from_token()
+    rows = get_db().execute("SELECT * FROM shows WHERE tenant_id=? AND booked=1", (tid,)).fetchall()
+    out = []
+    for r in rows:
+        rng = _book_range(r)
+        out.append({"show_id": r["id"], "name": r["name"],
+                    "start": rng[0].isoformat() if rng else "", "end": rng[1].isoformat() if rng else ""})
+    out.sort(key=lambda x: x["start"])
+    return jsonify({"ok": True, "booked": out})
 
 @app.route("/api/update_schedule", methods=["POST"])
 def api_update_schedule():
@@ -2041,8 +2343,8 @@ def api_update_schedule():
             return jsonify({"ok": False, "error": f"格式错误：{v}，需为 MMDD 四位数字"}), 400
     db = get_db()
     db.execute(
-        "UPDATE shows SET schedule_start=?, schedule_end=?, supplement_end=? WHERE id=?",
-        (start, end, supp, show["id"])
+        "UPDATE shows SET schedule_start=?, schedule_end=?, supplement_end=?, schedule_year=? WHERE id=?",
+        (start, end, supp, _infer_schedule_year(start, show["created_at"]) if start else 0, show["id"])
     )
     db.commit()
     return jsonify({"ok": True, "show_id": show["id"],
@@ -2293,6 +2595,7 @@ def superadmin_tenant_delete(tid):
         db.execute(f"DELETE FROM {table} WHERE tenant_id=?", (tid,))
     shutil.rmtree(os.path.join(COLLECT_IMAGE_DIR, str(tid)), ignore_errors=True)
     db.execute("DELETE FROM collected_images WHERE tenant_id=?", (tid,))
+    db.execute("DELETE FROM universal_items WHERE tenant_id=?", (tid,))
     db.execute("DELETE FROM shows   WHERE tenant_id=?", (tid,))
     db.execute("DELETE FROM tenants WHERE id=?",        (tid,))
     db.commit()
@@ -2482,44 +2785,303 @@ def admin_shows():
 @app.route("/admin/shows/new", methods=["POST"])
 @require_admin
 def admin_show_new():
-    tid  = current_tenant_id()
-    name = request.form.get("name", "").strip()
-    desc = request.form.get("description", "").strip()
-    if not name:
-        return redirect(url_for("admin_shows") + "?msg=empty_name")
+    """旧的「新建季」建出来的是没档期的空壳季度（不进日历、不能「。开始季度」），已并入季度日历的预订。"""
+    return redirect(url_for("admin_calendar"))
+
+# ── 通用物品库（跨季度）─────────────────────────────────────────────────────────
+_UNI_TYPES = {"currency": "CUR_", "item": "ITM_", "interact": "INT_"}
+
+def _uni_count(db, tid):
+    return db.execute("SELECT COUNT(*) FROM universal_items WHERE tenant_id=?", (tid,)).fetchone()[0]
+
+def _uni_clean_entry(raw):
+    """入库前清洗：去掉 code（导入时按目标季度重新编号）；只留已知字段。"""
+    if not isinstance(raw, dict):
+        return None
+    name = str(raw.get("name") or "").strip()
+    typ  = raw.get("type")
+    if not name or typ not in _UNI_TYPES:
+        return None
+    e = {"name": name, "type": typ, "desc": str(raw.get("desc") or "暂无描述")}
+    if typ != "currency":
+        for k in ("maxUses", "attrs", "canResell", "durability", "price"):
+            if k in raw and raw[k] is not None:
+                e[k] = raw[k]
+    return e
+
+def _load_show_registry(db, tid, sid):
+    if not db.execute("SELECT id FROM shows WHERE id=? AND tenant_id=?", (sid, tid)).fetchone():
+        return None
+    flat = get_flat_config(db, sid)
+    for k in ("item_registry", "reward_item_registry"):
+        try:
+            reg = json.loads(flat.get(k) or "{}")
+        except (json.JSONDecodeError, TypeError):
+            reg = {}
+        if reg:
+            return reg
+    return {}
+
+def _uni_import(db, tid, sid, reg, ids):
+    """把通用库条目加进 sid 的注册表 reg（原地改）：同名跳过、按类型重新编号。写库但不 commit，返回 (added, skipped)。"""
+    names = {r.get("name") for r in reg.values() if isinstance(r, dict)}
+    added = skipped = 0
+    for i in ids:
+        try:
+            i = int(i)
+        except (TypeError, ValueError):
+            skipped += 1
+            continue
+        row = db.execute("SELECT entry_json FROM universal_items WHERE id=? AND tenant_id=?", (i, tid)).fetchone()
+        e = json.loads(row["entry_json"]) if row else None
+        if not e or e["name"] in names:
+            skipped += 1
+            continue
+        prefix = _UNI_TYPES[e["type"]]
+        code = next((prefix + str(d).zfill(3) for d in range(1, 10000) if (prefix + str(d).zfill(3)) not in reg), None)
+        if not code:
+            skipped += 1
+            continue
+        reg[code] = {"code": code, **e}
+        names.add(e["name"]); added += 1
+    if added:
+        val = json.dumps(reg, ensure_ascii=False)
+        _save_reward_config_key(db, sid, tid, "item_registry", val)
+        _save_reward_config_key(db, sid, tid, "reward_item_registry", val)
+    return added, skipped
+
+@app.route("/admin/universal")
+@require_admin
+def admin_universal():
+    tid = current_tenant_id()
     db  = get_db()
-    count = db.execute("SELECT COUNT(*) FROM shows WHERE tenant_id=?", (tid,)).fetchone()[0]
-    if count >= MAX_SHOWS_PER_TENANT:
-        return redirect(url_for("admin_shows") + "?msg=limit_reached")
-    now = int(time.time() * 1000)
-    db.execute(
-        "INSERT INTO shows (tenant_id,name,description,is_current,public_view_enabled,public_token,created_at) "
-        "VALUES (?,?,?,0,1,?,?)",
-        (tid, name, desc, secrets.token_urlsafe(24), now)
-    )
+    items = []
+    for r in db.execute("SELECT * FROM universal_items WHERE tenant_id=? ORDER BY type, id", (tid,)).fetchall():
+        e = json.loads(r["entry_json"] or "{}")
+        e["id"] = r["id"]
+        items.append(e)
+    shows = [dict(x) for x in db.execute(
+        "SELECT id, name, is_current, booked FROM shows WHERE tenant_id=? ORDER BY created_at", (tid,)).fetchall()]
+    return render_template("admin_universal.html", items=items, shows=shows,
+                           total=len(items), limit=UNIVERSAL_MAX_ITEMS)
+
+@app.route("/admin/universal/add", methods=["POST"])
+@require_admin
+def admin_universal_add():
+    tid = current_tenant_id()
+    db  = get_db()
+    e = _uni_clean_entry(request.json or {})
+    if not e:
+        return jsonify({"ok": False, "error": "名称和类型（货币/物品/互动物品）必填"}), 400
+    if _uni_count(db, tid) >= UNIVERSAL_MAX_ITEMS:
+        return jsonify({"ok": False, "error": f"通用库已满（{UNIVERSAL_MAX_ITEMS} 件），请先删除一些再添加"}), 400
+    if db.execute("SELECT 1 FROM universal_items WHERE tenant_id=? AND name=?", (tid, e["name"])).fetchone():
+        return jsonify({"ok": False, "error": f"「{e['name']}」已在通用库里"}), 400
+    db.execute("INSERT INTO universal_items(tenant_id,name,type,entry_json,created_at) VALUES(?,?,?,?,?)",
+               (tid, e["name"], e["type"], json.dumps(e, ensure_ascii=False), int(time.time() * 1000)))
     db.commit()
-    return redirect(url_for("admin_shows") + "?msg=created")
+    return jsonify({"ok": True})
+
+@app.route("/admin/universal/show_items/<int:sid>")
+@require_admin
+def admin_universal_show_items(sid):
+    """某一季注册表里能加入通用库的条目（排除系统预置 SPEC_/CUR_LETTER 和已在库里的同名项）。"""
+    tid = current_tenant_id()
+    db  = get_db()
+    reg = _load_show_registry(db, tid, sid)
+    if reg is None:
+        abort(404)
+    have = {r["name"] for r in db.execute("SELECT name FROM universal_items WHERE tenant_id=?", (tid,)).fetchall()}
+    out = []
+    for code, r in reg.items():
+        if code.startswith("SPEC_") or code == "CUR_LETTER":
+            continue
+        e = _uni_clean_entry(r)
+        if e:
+            out.append({"code": code, "name": e["name"], "type": e["type"], "in_library": e["name"] in have})
+    return jsonify({"ok": True, "items": out})
+
+@app.route("/admin/universal/from_show", methods=["POST"])
+@require_admin
+def admin_universal_from_show():
+    tid  = current_tenant_id()
+    data = request.json or {}
+    db   = get_db()
+    reg  = _load_show_registry(db, tid, int(data.get("show_id") or 0))
+    if reg is None:
+        return jsonify({"ok": False, "error": "季度不存在"}), 404
+    have = {r["name"] for r in db.execute("SELECT name FROM universal_items WHERE tenant_id=?", (tid,)).fetchall()}
+    n = _uni_count(db, tid)
+    added = skipped = 0
+    for code in data.get("codes") or []:
+        e = _uni_clean_entry(reg.get(code))
+        if not e or e["name"] in have:
+            skipped += 1
+            continue
+        if n >= UNIVERSAL_MAX_ITEMS:
+            db.commit()
+            return jsonify({"ok": False, "error": f"通用库已满（{UNIVERSAL_MAX_ITEMS} 件），已加入 {added} 件，其余未加。请先删除一些再继续"}), 400
+        db.execute("INSERT INTO universal_items(tenant_id,name,type,entry_json,created_at) VALUES(?,?,?,?,?)",
+                   (tid, e["name"], e["type"], json.dumps(e, ensure_ascii=False), int(time.time() * 1000)))
+        have.add(e["name"]); n += 1; added += 1
+    db.commit()
+    return jsonify({"ok": True, "added": added, "skipped": skipped})
+
+@app.route("/admin/universal/import", methods=["POST"])
+@require_admin
+def admin_universal_import():
+    """把通用库里选中的条目加进某一季的注册表：同名跳过，重新分配编号。"""
+    tid  = current_tenant_id()
+    data = request.json or {}
+    db   = get_db()
+    sid  = int(data.get("show_id") or 0)
+    reg  = _load_show_registry(db, tid, sid)
+    if reg is None:
+        return jsonify({"ok": False, "error": "季度不存在"}), 404
+    added, skipped = _uni_import(db, tid, sid, reg, data.get("ids") or [])
+    db.commit()
+    return jsonify({"ok": True, "added": added, "skipped": skipped})
+
+@app.route("/admin/universal/<int:uid>/delete", methods=["POST"])
+@require_admin
+def admin_universal_delete(uid):
+    tid = current_tenant_id()
+    db  = get_db()
+    db.execute("DELETE FROM universal_items WHERE id=? AND tenant_id=?", (uid, tid))
+    db.commit()
+    return jsonify({"ok": True})
+
+@app.route("/admin/calendar")
+@require_admin
+def admin_calendar():
+    tid = current_tenant_id()
+    db  = get_db()
+    shows = [dict(x) for x in db.execute(
+        "SELECT * FROM shows WHERE tenant_id=? ORDER BY created_at", (tid,)).fetchall()]
+    events = []
+    for x in shows:
+        rng = _book_range(x)
+        if not rng:
+            continue
+        status = "active" if x["is_current"] else ("booked" if x["booked"] else "ended")
+        ev = {"id": x["id"], "name": x["name"], "status": status,
+              "start": rng[0].isoformat(), "end": rng[1].isoformat(), "supp": rng[2].isoformat(),
+              "mode": x["description"] if x["description"] in ("review", "no_review") else "review"}
+        if status == "booked":
+            flat = get_flat_config(db, x["id"])
+            ev.update(group_set=x["group_set"] or "", npc_names=x["npc_names"] or "",
+                      groups={k: flat.get(k, "") for k, _ in BOOK_GROUP_KEYS})
+        events.append(ev)
+    set_names = [r["set_name"] for r in db.execute(
+        "SELECT set_name FROM known_group_sets WHERE tenant_id=? ORDER BY created_at", (tid,)).fetchall()]
+    return render_template("admin_calendar.html", events=events, total=len(shows),
+                           limit=MAX_SHOWS_PER_TENANT, today=datetime.now(TZ_BEIJING).date().isoformat(),
+                           unscheduled=[x for x in shows if not _book_range(x)],
+                           set_names=set_names, group_keys=BOOK_GROUP_KEYS,
+                           prep_defaults=_book_prep_defaults(db, tid),
+                           copy_shows=[x for x in shows if not x["booked"]][::-1],
+                           copy_tpls=[dict(r) for r in db.execute(
+                               "SELECT id, name FROM config_templates WHERE tenant_id=? ORDER BY created_at DESC", (tid,)).fetchall()],
+                           uni_items=[dict(r) for r in db.execute(
+                               "SELECT id, name, type FROM universal_items WHERE tenant_id=? ORDER BY type, id", (tid,)).fetchall()])
+
+@app.route("/admin/shows/book", methods=["POST"])
+@require_admin
+def admin_show_book():
+    """网页日历预订一个季度：建一条 booked=1 的 show，自带独立配置，开始前不公开。"""
+    tid  = current_tenant_id()
+    data = request.json or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "季名不能为空"}), 400
+    mode = "no_review" if data.get("mode") == "no_review" else "review"
+    f, err = _book_fields_from_payload(data)
+    if err:
+        return jsonify({"ok": False, "error": err}), 400
+    db = get_db()
+    total = db.execute("SELECT COUNT(*) FROM shows WHERE tenant_id=?", (tid,)).fetchone()[0]
+    if total >= MAX_SHOWS_PER_TENANT:
+        return jsonify({"ok": False, "error": f"季度数已满（{MAX_SHOWS_PER_TENANT} 个，预订和已结束的都算），请先到「季管理」删除不需要的旧季度再预订"}), 400
+    d0, d1 = _parse_ymd(data["start"]), _parse_ymd(data["end"])
+    d2 = _parse_ymd(data.get("supplement_end")) or d1
+    clash = _book_overlap(db, tid, d0, d2)
+    if clash:
+        return jsonify({"ok": False, "error": f"档期和「{clash}」重叠了"}), 400
+    prep, err = _book_prep_from_payload(db, tid, data)
+    if err:
+        return jsonify({"ok": False, "error": err}), 400
+    cur = db.execute(
+        "INSERT INTO shows (tenant_id,name,description,is_current,booked,public_view_enabled,public_token,"
+        "created_at,schedule_start,schedule_end,supplement_end,schedule_year) VALUES (?,?,?,0,1,0,?,?,?,?,?,?)",
+        (tid, name, mode, secrets.token_urlsafe(24), int(time.time() * 1000),
+         f["start"], f["end"], f["supp"], f["year"]))
+    new_id = cur.lastrowid
+    copied = _book_copy_config(db, tid, new_id, (data.get("copy_from") or "").strip())
+    if copied is None:
+        db.rollback()
+        return jsonify({"ok": False, "error": "复制来源不存在，请刷新页面重选"}), 400
+    _save_book_prep(db, tid, new_id, prep)   # 表单里填的群号以表单为准，覆盖复制来源里的
+    added, _ = _uni_import(db, tid, new_id, {}, data.get("universal_ids") or [])
+    db.commit()
+    return jsonify({"ok": True, "show_id": new_id, "copied": copied, "items_added": added})
+
+@app.route("/admin/shows/<int:sid>/configure", methods=["POST"])
+@require_admin
+def admin_show_configure(sid):
+    """日历「配置此季」：把查看对象切到这个季度，直接进配置页。"""
+    tid = current_tenant_id()
+    if not get_db().execute("SELECT id FROM shows WHERE id=? AND tenant_id=?", (sid, tid)).fetchone():
+        abort(404)
+    session["view_show_id"] = sid
+    return redirect(url_for("admin_config_page"))
+
+@app.route("/admin/shows/<int:sid>/rebook", methods=["POST"])
+@require_admin
+def admin_show_rebook(sid):
+    """改预订季度的名称/模式/档期。只允许改 booked=1 的。"""
+    tid = current_tenant_id()
+    db  = get_db()
+    row = db.execute("SELECT * FROM shows WHERE id=? AND tenant_id=?", (sid, tid)).fetchone()
+    if not row:
+        abort(404)
+    if not row["booked"]:
+        return jsonify({"ok": False, "error": "只能修改还没开始的预订季度"}), 400
+    data = request.json or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "季名不能为空"}), 400
+    mode = "no_review" if data.get("mode") == "no_review" else "review"
+    f, err = _book_fields_from_payload(data)
+    if err:
+        return jsonify({"ok": False, "error": err}), 400
+    d0, d1 = _parse_ymd(data["start"]), _parse_ymd(data["end"])
+    d2 = _parse_ymd(data.get("supplement_end")) or d1
+    clash = _book_overlap(db, tid, d0, d2, exclude_id=sid)
+    if clash:
+        return jsonify({"ok": False, "error": f"档期和「{clash}」重叠了"}), 400
+    prep, err = _book_prep_from_payload(db, tid, data)
+    if err:
+        return jsonify({"ok": False, "error": err}), 400
+    db.execute(
+        "UPDATE shows SET name=?, description=?, schedule_start=?, schedule_end=?, supplement_end=?, schedule_year=? WHERE id=?",
+        (name, mode, f["start"], f["end"], f["supp"], f["year"], sid))
+    _save_book_prep(db, tid, sid, prep)
+    db.commit()
+    return jsonify({"ok": True})
 
 @app.route("/admin/shows/<int:sid>/activate", methods=["POST"])
 @require_admin
 def admin_show_activate(sid):
-    """将指定季设为「当前季」（机器人数据写入此季）；原本是当前季的视为已结束，清理其收集图片。"""
+    """已停用：网页上把季度设为活跃只改服务器，机器人本地没有开季（季名/天数占位/补道具都没做），两边会对不上，
+    之后「。开始季度」「。结束季度」都会卡住。季度只在「季度日历」创建，群里用「。开始季度」开；
+    已结束的季度不能再重新启用。"""
     tid = current_tenant_id()
-    db  = get_db()
-    if not db.execute("SELECT id FROM shows WHERE id=? AND tenant_id=?", (sid, tid)).fetchone():
+    if not get_db().execute("SELECT id FROM shows WHERE id=? AND tenant_id=?", (sid, tid)).fetchone():
         abort(404)
-    stale_shows = db.execute(
-        "SELECT id FROM shows WHERE tenant_id=? AND is_current=1 AND id!=?", (tid, sid)
-    ).fetchall()
-    db.execute("UPDATE shows SET is_current=0 WHERE tenant_id=?", (tid,))
-    db.execute("UPDATE shows SET is_current=1 WHERE id=?", (sid,))
-    for stale in stale_shows:
-        _cleanup_show_collected_images(db, tid, stale["id"])
-    db.commit()
-    session.pop("view_show_id", None)
+    err = "网页上不能设为活跃：预订的季度请在群里发「。开始季度」，已结束的季度不能重新启用"
     if request.headers.get("X-Fetch") == "1":
-        return jsonify({"ok": True})
-    return redirect(url_for("admin_shows") + "?msg=activated")
+        return jsonify({"ok": False, "error": err})
+    return redirect(url_for("admin_shows") + "?msg=activate_disabled")
 
 @app.route("/admin/shows/<int:sid>/view", methods=["POST"])
 @require_admin
@@ -2552,8 +3114,11 @@ def admin_show_schedule(sid):
     """更新该季的档期设置。"""
     tid = current_tenant_id()
     db  = get_db()
-    if not db.execute("SELECT id FROM shows WHERE id=? AND tenant_id=?", (sid, tid)).fetchone():
+    row = db.execute("SELECT * FROM shows WHERE id=? AND tenant_id=?", (sid, tid)).fetchone()
+    if not row:
         abort(404)
+    if row["booked"]:
+        return jsonify({"ok": False, "error": "预订中的季度请在「季度日历」里改期（要带年份）"}), 400
     data = request.json or {}
     start = (data.get("schedule_start") or "").strip()
     end   = (data.get("schedule_end")   or "").strip()
@@ -2563,8 +3128,8 @@ def admin_show_schedule(sid):
         if v and (len(v) != 4 or not v.isdigit()):
             return jsonify({"ok": False, "error": f"格式错误：{v}，需为 MMDD 四位数字"}), 400
     db.execute(
-        "UPDATE shows SET schedule_start=?, schedule_end=?, supplement_end=? WHERE id=?",
-        (start, end, supp, sid)
+        "UPDATE shows SET schedule_start=?, schedule_end=?, supplement_end=?, schedule_year=? WHERE id=?",
+        (start, end, supp, _infer_schedule_year(start, row["created_at"]) if start else 0, sid)
     )
     db.commit()
     return jsonify({"ok": True})
@@ -2788,7 +3353,7 @@ def _current_show_zip(tid):
     ).fetchone()
     if not show_row:
         show_row = db.execute(
-            "SELECT id FROM shows WHERE tenant_id=? ORDER BY id DESC LIMIT 1", (tid,)
+            "SELECT id FROM shows WHERE tenant_id=? AND booked=0 ORDER BY id DESC LIMIT 1", (tid,)
         ).fetchone()
     if not show_row:
         abort(404)
@@ -3243,6 +3808,57 @@ def rp_edit(session_id, entry_id):
 
 # ── 管理后台路由 ─────────────────────────────────────────────────────────────
 
+def _season_phase(db, tid):
+    """总览顶部那一条「当前阶段 + 下一步」。按租户的当前季/预订季和今天日期算，不看管理员正在「查看」哪一季。
+    对外只说筹备期/进行中/补戏期，不暴露机器人内部的 D100 占位天数。"""
+    today = datetime.now(TZ_BEIJING).date()
+    md = lambda d: f"{d.month}/{d.day}"
+    def missing_groups(show_id):
+        flat = get_flat_config(db, show_id)
+        return [label for key, label in BOOK_GROUP_KEYS if not (flat.get(key) or "").strip()]
+
+    cur = db.execute("SELECT * FROM shows WHERE tenant_id=? AND is_current=1", (tid,)).fetchone()
+    if cur:
+        rng = _book_range(cur)
+        todos = []
+        miss = missing_groups(cur["id"])
+        if miss:
+            todos.append({"t": f"填{'、'.join(miss)}群号", "href": url_for("admin_config_page")})
+        players = db.execute("SELECT COUNT(*) FROM players WHERE show_id=?", (cur["id"],)).fetchone()[0]
+        if not rng:
+            return {"tone": "on", "phase": f"进行中 · {cur['name']}", "todos": todos,
+                    "next": "日常运营中；群里发「管理帮助」看常用指令"}
+        if today < rng[0]:
+            days = (rng[0] - today).days
+            return {"tone": "prep", "phase": f"筹备期 · {cur['name']} · {md(rng[0])} 开始（还有 {days} 天）", "todos": todos,
+                    "next": (f"已有 {players} 个角色；" if players else "等玩家和 NPC 在自己的群发「创建新角色 名字」；")
+                            + f"{md(rng[0])} 当天自动进入 D0"}
+        if today <= rng[1]:
+            return {"tone": "on", "phase": f"进行中 · {cur['name']} · 档期第 {(today - rng[0]).days + 1} 天（{md(rng[1])} 结束）",
+                    "todos": todos, "next": "日常运营中；群里发「管理帮助」看常用指令"}
+        if today <= rng[2]:
+            return {"tone": "on", "phase": f"补戏期 · {cur['name']} · 补到 {md(rng[2])}", "todos": todos,
+                    "next": f"{md(rng[2])} 补戏截止后，群里发「。结束季度」"}
+        return {"tone": "warn", "phase": f"档期已过 · {cur['name']} 还没结束", "todos": todos,
+                "next": "群里发「。结束季度」，打开存档链接核对无误后发「。收尾」"}
+
+    booked, how, _ = _pick_booked_show(db, tid)
+    if booked and how in ("in_schedule", "upcoming"):
+        rng = _book_range(booked)
+        todos = []
+        miss = missing_groups(booked["id"])
+        if miss:
+            todos.append({"t": f"预订里还没填{'、'.join(miss)}群号", "href": url_for("admin_calendar")})
+        if not booked["group_set"]:
+            todos.append({"t": "预订里还没选群号组", "href": url_for("admin_calendar")})
+        if how == "in_schedule":
+            return {"tone": "warn", "phase": f"待开季 · 「{booked['name']}」档期已经开始了", "todos": todos,
+                    "next": "现在就在群里发「。开始季度」"}
+        return {"tone": "prep", "phase": f"休季 · 已预订「{booked['name']}」{md(rng[0])} 开始", "todos": todos,
+                "next": f"到 {md(rng[0])} 前后在群里发「。开始季度」（可以提前开，开始日前算筹备期）"}
+    return {"tone": "idle", "phase": "休季 · 还没有预订下一季", "todos": [],
+            "next": "去「季度日历」预订下一季", "next_href": url_for("admin_calendar")}
+
 @app.route("/admin")
 @require_admin
 def admin():
@@ -3269,7 +3885,7 @@ def admin():
     except (TypeError, ValueError):
         last_sync = None
 
-    return render_template("admin.html", last_sync=last_sync,
+    return render_template("admin.html", last_sync=last_sync, phase=_season_phase(db, tid),
                            sessions_count=sessions_count, rp_count=rp_count,
                            events_count=events_count, players=[dict(p) for p in players],
                            players_count=total_players, page=page, total_pages=total_pages,
@@ -5517,20 +6133,49 @@ def admin_rewards_save_config():
         _save_reward_config_key(db, sid, tid, "reward_draw_config", val)
         db.commit()
     elif section == "items":
-        raw = request.form.get("item_registry_json","").strip()
+        # 只收「增/删」操作，在服务器当前的注册表上应用，不再接收页面内存里的整份注册表——
+        # 否则页面打开期间别处（通用库导入、另一个页签、机器人推送）加进去的条目，会被这页旧内存整份覆盖掉。
+        # 返回合并后的最新注册表，页面用它刷新，顺带把旧页面漏掉的条目补看见。
+        if request.form.get("item_registry_json") and not request.form.get("ops"):
+            return jsonify({"ok": False, "error": "页面版本过旧，请刷新后再操作（避免覆盖别处的改动）"})
         try:
-            parsed = json.loads(raw)
-            val = json.dumps(parsed, ensure_ascii=False)
-        except Exception:
-            if request.headers.get("X-Fetch") == "1":
-                return jsonify({"ok": False, "error": "json_parse"})
-            return redirect(url_for("admin_rewards") + "?err=json")
-        # 同时写主注册表（机器人拉取）和兼容 key
-        _save_reward_config_key(db, sid, tid, "item_registry", val)
-        _save_reward_config_key(db, sid, tid, "reward_item_registry", val)
+            ops = json.loads(request.form.get("ops") or "[]")
+            if not isinstance(ops, list):
+                raise ValueError
+        except (ValueError, json.JSONDecodeError):
+            return jsonify({"ok": False, "error": "json_parse"})
+        if not db.in_transaction:
+            db.execute("BEGIN IMMEDIATE")   # 读-改-写期间锁住写入，避免两个保存交错
+        reg = _load_show_registry(db, tid, sid) or {}
+        err = None
+        for op in ops:
+            if not isinstance(op, dict):
+                continue
+            if op.get("op") == "add":
+                e = _uni_clean_entry(op.get("entry"))
+                if not e:
+                    err = "名称和类型必填"
+                    break
+                if any(isinstance(r, dict) and r.get("name") == e["name"] for r in reg.values()):
+                    err = f"「{e['name']}」已存在"
+                    break
+                prefix = _UNI_TYPES[e["type"]]
+                code = next((prefix + str(d).zfill(3) for d in range(1, 10000)
+                             if (prefix + str(d).zfill(3)) not in reg), None)
+                if not code:
+                    err = "编号空间已满"
+                    break
+                reg[code] = {"code": code, **e}
+            elif op.get("op") == "del":
+                reg.pop(str(op.get("code") or ""), None)
+        if not err and ops:
+            val = json.dumps(reg, ensure_ascii=False)
+            # 同时写主注册表（机器人拉取）和兼容 key
+            _save_reward_config_key(db, sid, tid, "item_registry", val)
+            _save_reward_config_key(db, sid, tid, "reward_item_registry", val)
         db.commit()
         if request.headers.get("X-Fetch") == "1":
-            return jsonify({"ok": True})
+            return jsonify({"ok": not err, "error": err, "registry": reg})
     elif section == "bonus":
         raw = request.form.get("bonus_templates_json","").strip()
         try:

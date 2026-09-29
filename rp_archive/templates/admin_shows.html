@@ -147,36 +147,19 @@
   <div class="banner banner-err">⚠️ 无法删除当前活跃季，请先切换到其他季再删除。</div>
   {% elif msg == 'empty_name' %}
   <div class="banner banner-err">⚠️ 季名不能为空。</div>
+  {% elif msg in ('booked_use_cmd', 'activate_disabled') %}
+  <div class="banner banner-err">⚠️ 网页上不能设为活跃：预订的季度请在群里发「。开始季度」，已结束的季度不能重新启用。</div>
   {% elif msg == 'limit_reached' %}
   <div class="banner banner-err">⚠️ 每个存档最多 10 个季，请先删除一个再创建新季。</div>
   {% endif %}
 
-  <!-- 新建 -->
+  <!-- 新建：统一走季度日历 -->
   <div class="new-card">
-    <h3>新建季</h3>
-    {% if shows|length >= 10 %}
-    <div style="color:var(--muted);font-size:13px;">
-      已达上限（10 个季）。请先删除一个旧季，再创建新季。
+    <h3>新季度</h3>
+    <div style="font-size:13px;color:var(--muted);">
+      新季度请在 <a href="{{ url_for('admin_calendar') }}" style="color:var(--accent)">季度日历</a> 里预订（可以顺带复制上季配置、挑通用库物品），到时群里发「。开始季度」开始；
+      临时开季就订一个今天开始的季度。（已用 {{ shows|length }}/10）
     </div>
-    {% else %}
-    <form method="post" action="{{ url_for('admin_show_new') }}">
-      <div class="form-row">
-        <div class="field">
-          <label>季名 <span style="color:var(--red)">*</span></label>
-          <input type="text" name="name" placeholder="如 第二季 / 夏季档" required>
-        </div>
-        <div class="field">
-          <label>备注（可选）</label>
-          <input type="text" name="description" placeholder="简短说明">
-        </div>
-        <button type="submit" class="btn btn-view" style="margin-bottom:1px;">＋ 创建</button>
-      </div>
-      <div style="font-size:11px;color:var(--muted);margin-top:8px;">
-        新季默认不是活跃季，创建后点「设为活跃」才会让机器人往里写数据。
-        （{{ shows|length }}/5）
-      </div>
-    </form>
-    {% endif %}
   </div>
 
   <!-- 季列表 -->
@@ -186,6 +169,8 @@
       <span class="show-title">{{ s.name }}</span>
       {% if s.is_current %}
       <span class="badge badge-current">● 活跃季</span>
+      {% elif s.booked %}
+      <span class="badge badge-public">📆 已预订</span>
       {% else %}
       <span class="badge badge-archive">已归档</span>
       {% endif %}
@@ -210,6 +195,7 @@
       {% endif %}
     </div>
 
+    {% if not s.booked %}
     <!-- 档期编辑（可展开） -->
     <details class="schedule-details" id="sched-{{ s.id }}">
       <summary>🗓 编辑档期</summary>
@@ -245,6 +231,7 @@
         <div class="sched-msg" id="sched-msg-{{ s.id }}"></div>
       </div>
     </details>
+    {% endif %}
 
     <div class="actions">
       <!-- 查看此季数据（保留普通 form，跳转主页） -->
@@ -252,10 +239,11 @@
         <button type="submit" class="btn btn-view">👁 查看此季</button>
       </form>
 
-      <!-- 设为活跃 -->
-      {% if not s.is_current %}
-      <button class="btn btn-activate" id="btn-activate-{{ s.id }}"
-              onclick="activateShow(this, {{ s.id }}, '{{ s.name|e }}')">⚡ 设为活跃</button>
+      <!-- 预订季度：配置入口（网页不能设为活跃，开季走群里的「。开始季度」） -->
+      {% if s.booked %}
+      <form method="post" action="{{ url_for('admin_show_configure', sid=s.id) }}">
+        <button type="submit" class="btn btn-toggle">⚙ 配置此季</button>
+      </form>
       {% endif %}
 
       <!-- 下载 ZIP -->
@@ -337,26 +325,6 @@ async function fetchShow(url, btn) {
     alert('操作失败，请重试。');
     return null;
   }
-}
-
-async function activateShow(btn, sid, name) {
-  if (!confirm('切换活跃季后，机器人数据将写入「' + name + '」。确认？')) return;
-  const json = await fetchShow('/admin/shows/' + sid + '/activate', btn);
-  if (!json || !json.ok) { btn.disabled = false; btn.textContent = '⚡ 设为活跃'; return; }
-  // 把其他季的「活跃」徽章和状态全部刷新
-  document.querySelectorAll('.badge-current').forEach(b => {
-    b.closest('.show-card').classList.remove('is-current');
-    b.remove();
-  });
-  document.querySelectorAll('[id^="btn-activate-"]').forEach(b => { b.disabled = false; b.textContent = '⚡ 设为活跃'; });
-  const card = btn.closest('.show-card');
-  card.classList.add('is-current');
-  const header = card.querySelector('.show-header');
-  const badge = document.createElement('span');
-  badge.className = 'badge badge-current';
-  badge.textContent = '● 活跃季';
-  header.insertBefore(badge, header.children[1]);
-  btn.remove();
 }
 
 async function togglePublic(btn, sid) {

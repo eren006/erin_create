@@ -1,28 +1,26 @@
 #!/bin/bash
-# 推送 rp_archive 代码到服务器（不覆盖数据库）
-# 用法: ./deploy.sh [服务器IP]
+# 推送 rp_archive 代码到贾维斯（不覆盖数据库、图片、日志、备份）
+# 2026-09-30 起 rp_archive 跑在贾维斯：systemd 服务 rp_archive（waitress 127.0.0.1:5001），
+# nginx 反代 https://archive.changri.work；环境变量在 /etc/rp_archive.env。
+# 奥创 120.26.120.128:5001 上现在只是转发程序（nssm 服务 RPForward），别再往奥创部署。
+# 用法: ./deploy.sh
 set -e
 
-SERVER="120.26.120.128"
-USER="Administrator"
-REMOTE_DIR="C:/Users/Administrator/rp_archive"
-LOCAL_DIR="$(dirname "$0")"
+LOCAL_DIR="$(cd "$(dirname "$0")" && pwd)"
+REMOTE="jarvis:/home/ubuntu/rp_archive/"
 
-echo ">>> 推送 rp_archive 到 $USER@$SERVER:$REMOTE_DIR"
+echo ">>> 推送代码到 $REMOTE"
+rsync -az --delete \
+  --exclude 'venv/' --exclude '*.db' --exclude '*.db-*' --exclude 'static/' \
+  --exclude 'logs/' --exclude 'backups/' --exclude 'error.log' --exclude '__pycache__/' \
+  --exclude 'deploy.sh' --exclude 'start.bat' --exclude '.gitignore' --exclude 'backup_daily.sh' \
+  "$LOCAL_DIR/app.py" "$LOCAL_DIR/backup.py" "$LOCAL_DIR/schema.sql" "$LOCAL_DIR/requirements.txt" \
+  "$LOCAL_DIR/run.py" "$LOCAL_DIR/templates" "$REMOTE"
 
-scp "$LOCAL_DIR/app.py"           "ultron:$REMOTE_DIR/app.py"
-scp "$LOCAL_DIR/backup.py"        "ultron:$REMOTE_DIR/backup.py"
-scp "$LOCAL_DIR/requirements.txt" "ultron:$REMOTE_DIR/requirements.txt"
-scp "$LOCAL_DIR/schema.sql"       "ultron:$REMOTE_DIR/schema.sql"
-scp "$LOCAL_DIR/start.bat"        "ultron:$REMOTE_DIR/start.bat"
+echo ">>> 安装依赖并重启..."
+ssh jarvis 'cd /home/ubuntu/rp_archive && venv/bin/pip install -q -r requirements.txt && sudo systemctl restart rp_archive && sleep 3 && systemctl is-active rp_archive'
 
-echo ">>> 清理远端旧 templates/（scp -r 遇到已存在的同名目录会嵌套成 templates/templates）"
-ssh ultron "rmdir /S /Q \"$REMOTE_DIR/templates\" 2>nul & exit 0"
-
-echo ">>> 推送 templates/"
-scp -r "$LOCAL_DIR/templates/"    "ultron:$REMOTE_DIR/templates/"
-
-echo ">>> 重启服务..."
-ssh ultron "nssm restart RPArchive"
-
-echo ">>> 完成！"
+echo ">>> 自检..."
+code=$(curl -s -o /dev/null -w "%{http_code}" https://archive.changri.work/login)
+[ "$code" = "200" ] || { echo "❌ /login 返回 $code，去看 ssh jarvis 'sudo journalctl -u rp_archive -n 50'"; exit 1; }
+echo ">>> 完成！https://archive.changri.work 正常"

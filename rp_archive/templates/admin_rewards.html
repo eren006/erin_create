@@ -854,14 +854,6 @@ document.querySelectorAll('#ir-tabs .ir-tab').forEach(function(tab) {
   });
 });
 
-function irGenCode(prefix, pad) {
-  for (var d = 1; d < 10000; d++) {
-    var code = prefix + String(d).padStart(pad, '0');
-    if (!itemReg[code]) return code;
-  }
-  return null;
-}
-
 function irRenderAll() {
   irRenderTable('currency');
   irRenderTable('item');
@@ -905,13 +897,11 @@ function irAddCurrency() {
   var name = document.getElementById('ir-cur-name').value.trim();
   var desc = document.getElementById('ir-cur-desc').value.trim() || '暂无描述';
   if (!name) { alert('请填写货币名称'); return; }
-  if (Object.values(itemReg).some(function(r) { return r.name === name; })) { alert('「' + name + '」已存在'); return; }
-  var code = irGenCode('CUR_', 3);
-  if (!code) { alert('编号空间已满'); return; }
-  itemReg[code] = { code: code, name: name, desc: desc, type: 'currency' };
-  document.getElementById('ir-cur-name').value = '';
-  document.getElementById('ir-cur-desc').value = '';
-  persistItems().then(function(ok) { if (ok) irRenderAll(); });
+  persistItems({op: 'add', entry: {name: name, desc: desc, type: 'currency'}}).then(function(ok) {
+    if (!ok) return;
+    document.getElementById('ir-cur-name').value = '';
+    document.getElementById('ir-cur-desc').value = '';
+  });
 }
 
 function irAddItem(type) {
@@ -923,32 +913,31 @@ function irAddItem(type) {
   var resell = document.getElementById('ir-' + prefix + '-resell').checked;
   if (!name) { alert('请填写名称'); return; }
   if (isNaN(uses)) { alert('次数必须是数字'); return; }
-  if (Object.values(itemReg).some(function(r) { return r.name === name; })) { alert('「' + name + '」已存在'); return; }
-  var codePrefix = type === 'interact' ? 'INT_' : 'ITM_';
-  var code = irGenCode(codePrefix, 3);
-  if (!code) { alert('编号空间已满'); return; }
-  itemReg[code] = { code: code, name: name, desc: desc, type: type, maxUses: uses, attrs: attrs || null, canResell: resell };
-  document.getElementById('ir-' + prefix + '-name').value = '';
-  document.getElementById('ir-' + prefix + '-desc').value = '';
-  document.getElementById('ir-' + prefix + '-attrs').value = '';
-  document.getElementById('ir-' + prefix + '-resell').checked = false;
-  persistItems().then(function(ok) { if (ok) irRenderAll(); });
+  persistItems({op: 'add', entry: {name: name, desc: desc, type: type, maxUses: uses, attrs: attrs || null, canResell: resell}}).then(function(ok) {
+    if (!ok) return;
+    document.getElementById('ir-' + prefix + '-name').value = '';
+    document.getElementById('ir-' + prefix + '-desc').value = '';
+    document.getElementById('ir-' + prefix + '-attrs').value = '';
+    document.getElementById('ir-' + prefix + '-resell').checked = false;
+  });
 }
 
 function irDel(code) {
   if (!confirm('删除「' + code + '」？')) return;
-  delete itemReg[code];
-  persistItems().then(function(ok) { if (ok) irRenderAll(); });
+  persistItems({op: 'del', code: code});
 }
 
-async function persistItems() {
+// 只提交这一次的增/删操作，服务器在它当前的注册表上应用并返回合并后的最新版；
+// 不再把页面内存里的整份注册表推上去，免得覆盖页面打开期间别处加进来的条目
+async function persistItems(op) {
   var fd = new FormData();
   fd.append('section', 'items');
-  fd.append('item_registry_json', JSON.stringify(itemReg));
+  fd.append('ops', JSON.stringify([op]));
   try {
     var resp = await fetch(SAVE_URL, {method:'POST', headers:{'X-Fetch':'1'}, body:fd});
     var j = await resp.json();
-    if (!j.ok) { alert('保存失败'); return false; }
+    if (j.registry) { itemReg = j.registry; irRenderAll(); }   // 有最新版就刷新，失败时也让页面看到别处的改动
+    if (!j.ok) { alert(j.error === 'json_parse' ? '保存失败' : (j.error || '保存失败')); return false; }
     irShowSyncBanner();
     return true;
   } catch(e) { alert('网络错误'); return false; }

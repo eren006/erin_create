@@ -309,6 +309,17 @@ select.cfg-input { cursor: pointer; }
   transition: background .15s, color .15s, border-color .15s; user-select: none;
 }
 .reg-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* ── 配置页标签 ─────────────────────────── */
+.cfg-tabs { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.cfg-tabs button { position: relative; background: var(--surface); border: 1px solid var(--border); color: var(--muted); border-radius: 999px; padding: 7px 16px; font-size: 13px; cursor: pointer; font-family: inherit; }
+.cfg-tabs button:hover { color: var(--text); border-color: var(--accent); }
+.cfg-tabs button.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.cfg-tabs button.dirty::after { content: ""; position: absolute; top: 3px; right: 5px; width: 8px; height: 8px; border-radius: 50%; background: #f2994a; border: 1px solid var(--bg); }
+.cfg-tabs-tip { font-size: 11.5px; color: var(--muted); margin-left: auto; }
+.cfg-tab-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #f2994a; vertical-align: middle; }
+.cfg-tabpane.tab-hide { display: none; }
+@media (max-width: 720px) { .cfg-tabs-tip { margin-left: 0; width: 100%; } }
 .reg-panel { display: none; }
 .reg-panel.active { display: block; }
 .reg-table { width: 100%; border-collapse: collapse; font-size: 12px; }
@@ -502,7 +513,7 @@ select.cfg-input { cursor: pointer; }
     如需将机器人里改过的设置推送到此 UI，在群里用「。设置」改完后回复「确认」，或发 <b style="color:var(--accent)">。推送全部</b>。
   </div>
 
-  {% if current_show and not current_show.is_current %}
+  {% if current_show and not current_show.is_current and not current_show.booked %}
   <div style="background:rgba(220,140,0,0.13);border:1px solid rgba(220,140,0,0.45);
               border-radius:10px;padding:11px 16px;margin-bottom:16px;
               font-size:13px;color:#e8a020;display:flex;align-items:center;gap:10px;">
@@ -668,9 +679,19 @@ select.cfg-input { cursor: pointer; }
     </div>
   {% endmacro %}
 
+  <div class="cfg-tabs" id="cfg-tabs">
+    <button type="button" data-tab="basic">📍 基础与开关</button>
+    <button type="button" data-tab="play">💌 互动玩法</button>
+    <button type="button" data-tab="text">🏷️ 显示与文案</button>
+    <button type="button" data-tab="alias">🔀 触发词与别名</button>
+    <button type="button" data-tab="adv">🔧 高级</button>
+    <span class="cfg-tabs-tip">所有标签共用底部的「保存配置」，一次保存全部；有 <i class="cfg-tab-dot"></i> 的标签里有未保存的改动</span>
+  </div>
+
   <form method="post" id="cfg-form">
 
     {# ═══════════════════════════════════════════ #}
+<div class="cfg-tabpane" data-cfg-tab="basic">
     {# 1. 群组 ID                                 #}
     {# ═══════════════════════════════════════════ #}
 
@@ -681,6 +702,9 @@ select.cfg-input { cursor: pointer; }
     </div>
 
     {# ═══════════════════════════════════════════ #}
+</div>
+
+<div class="cfg-tabpane" data-cfg-tab="basic">
     {# 2b. 公开链接                               #}
     {# ═══════════════════════════════════════════ #}
 
@@ -691,6 +715,9 @@ select.cfg-input { cursor: pointer; }
     </div>
 
 {# ═══════════════════════════════════════════ #}
+</div>
+
+<div class="cfg-tabpane" data-cfg-tab="basic">
     {# 3. 功能开关                                 #}
     {# ═══════════════════════════════════════════ #}
 
@@ -700,6 +727,9 @@ select.cfg-input { cursor: pointer; }
     </div>
 
     {# ═══════════════════════════════════════════ #}
+</div>
+
+<div class="cfg-tabpane" data-cfg-tab="text">
     {# 3b. 类型显示别名                            #}
     {# ═══════════════════════════════════════════ #}
 
@@ -709,6 +739,9 @@ select.cfg-input { cursor: pointer; }
     </div>
 
     {# ═══════════════════════════════════════════ #}
+</div>
+
+<div class="cfg-tabpane" data-cfg-tab="text">
     {# 3c. 邀约表单标签                            #}
     {# ═══════════════════════════════════════════ #}
 
@@ -729,6 +762,9 @@ select.cfg-input { cursor: pointer; }
     </div>
 
     {# ═══════════════════════════════════════════ #}
+</div>
+
+<div class="cfg-tabpane" data-cfg-tab="play">
     {# 4. 邀约 · 寄信 · 礼物（三列）              #}
     {# ═══════════════════════════════════════════ #}
 
@@ -788,6 +824,9 @@ select.cfg-input { cursor: pointer; }
     <div style="height:0;margin-bottom:16px;"></div>
 
     {# ═══════════════════════════════════════════ #}
+</div>
+
+<div class="cfg-tabpane" data-cfg-tab="play">
     {# 5. 心动信 · 发送信件 · 心愿系统（三列）    #}
     {# ═══════════════════════════════════════════ #}
 
@@ -812,6 +851,9 @@ select.cfg-input { cursor: pointer; }
     <div style="height:0;margin-bottom:16px;"></div>
 
     {# ═══════════════════════════════════════════ #}
+</div>
+
+<div class="cfg-tabpane" data-cfg-tab="play">
     {# 6. 关系系统 · 目击系统 · 场所系统（三列）  #}
     {# ═══════════════════════════════════════════ #}
 
@@ -839,6 +881,9 @@ select.cfg-input { cursor: pointer; }
     {# 短信效果配置已移入「寄信 / 短信」卡片；礼物丢失/误送已移入「礼物」卡片 #}
 
     {# ═══════════════════════════════════════════ #}
+</div>
+
+<div class="cfg-tabpane" data-cfg-tab="basic">
     {# 7b. 季末报告                               #}
     {# ═══════════════════════════════════════════ #}
 
@@ -854,6 +899,9 @@ select.cfg-input { cursor: pointer; }
     </div>
 
     {# ═══════════════════════════════════════════ #}
+</div>
+
+<div class="cfg-tabpane" data-cfg-tab="adv">
     {# 8. 高级设置：道具 + 拍卖（可折叠）         #}
     {# ═══════════════════════════════════════════ #}
 
@@ -870,6 +918,9 @@ select.cfg-input { cursor: pointer; }
     </details>
 
     {# ═══════════════════════════════════════════ #}
+</div>
+
+<div class="cfg-tabpane" data-cfg-tab="adv">
     {# 9. 物品注册管理                            #}
     {# ═══════════════════════════════════════════ #}
 
@@ -887,7 +938,9 @@ select.cfg-input { cursor: pointer; }
         · <a href="{{ url_for('admin_bulk_help') }}" style="color:var(--accent);">📖 批量录入教程</a>（含可复制给 AI 的提示词）
       </div>
     </div>
+</div>
 
+<div class="cfg-tabpane" data-cfg-tab="text">
     {# ── 消息模板编辑器 ── #}
     <input type="hidden" name="custom_message_templates" id="msg-tpl-input"
            value="{{ flat.get('custom_message_templates', '{}') | e }}">
@@ -961,7 +1014,9 @@ select.cfg-input { cursor: pointer; }
         {% endfor %}
       </div>
     </details>
+</div>
 
+<div class="cfg-tabpane" data-cfg-tab="alias">
     {# ── 自定义电话触发词 ── #}
     <details class="cfg-collapsible">
       <summary>自定义电话触发词 <span class="cfg-badge">给电话换个触发词</span></summary>
@@ -975,7 +1030,9 @@ select.cfg-input { cursor: pointer; }
         <button type="button" class="btn-add-alias" onclick="aliasAddRow()">＋ 添加触发词</button>
       </div>
     </details>
+</div>
 
+<div class="cfg-tabpane" data-cfg-tab="alias">
     {# ── 私约名称管理 ── #}
     <details class="cfg-collapsible" id="private-resources-section">
       <summary>私约名称管理 <span class="cfg-badge">改默认私约的名字 · 加额外资源</span></summary>
@@ -997,7 +1054,9 @@ select.cfg-input { cursor: pointer; }
         <button type="button" class="btn-add-alias" onclick="prAddExtra()">＋ 添加资源</button>
       </div>
     </details>
+</div>
 
+<div class="cfg-tabpane" data-cfg-tab="alias">
     {# ── 自定义短信触发词 ── #}
     <details class="cfg-collapsible">
       <summary>自定义短信触发词 <span class="cfg-badge">飞鸽传书等别名 · 实际仍是短信</span></summary>
@@ -1010,7 +1069,9 @@ select.cfg-input { cursor: pointer; }
         <button type="button" class="btn-add-alias" onclick="smsAliasAddRow()">＋ 添加触发词</button>
       </div>
     </details>
+</div>
 
+<div class="cfg-tabpane" data-cfg-tab="alias">
     {# ── 自定义送礼触发词 ── #}
     <details class="cfg-collapsible">
       <summary>自定义送礼触发词 <span class="cfg-badge">投喂等别名 · 实际仍是送礼</span></summary>
@@ -1023,6 +1084,7 @@ select.cfg-input { cursor: pointer; }
         <button type="button" class="btn-add-alias" onclick="giftAliasAddRow()">＋ 添加触发词</button>
       </div>
     </details>
+</div>
 
     {# ── 保存栏 ── #}
     <div class="save-bar">
@@ -1555,6 +1617,54 @@ initSimpleAliasEditor('gift-aliases-input', 'gift-aliases-list', 'giftAliasAddRo
   renderExtras();
 })();
 </script>
+<script>
+// 标签页：所有输入框都在同一个表单里，只是隐藏了没选中的标签；保存时一次提交全部
+(function() {
+  var TABS = ['basic', 'play', 'text', 'alias', 'adv'];
+  var form = document.getElementById('cfg-form');
+  function show(t, scrollToEl) {
+    if (TABS.indexOf(t) < 0) t = 'basic';
+    document.querySelectorAll('.cfg-tabpane').forEach(function(p) { p.classList.toggle('tab-hide', p.getAttribute('data-cfg-tab') !== t); });
+    document.querySelectorAll('#cfg-tabs button').forEach(function(b) { b.classList.toggle('on', b.getAttribute('data-tab') === t); });
+    try { localStorage.setItem('cfg_tab', t); } catch (e) {}
+    if (scrollToEl) scrollToEl.scrollIntoView({ block: 'start' });
+  }
+  function fromHash() {
+    var h = location.hash.replace('#', '');
+    if (!h) return false;
+    if (TABS.indexOf(h) >= 0) { show(h); return true; }
+    var el = document.getElementById(h);                 // #msg-tpl-section 这类区块锚点：切到它所在的标签
+    var pane = el && el.closest('.cfg-tabpane');
+    if (pane) {
+      show(pane.getAttribute('data-cfg-tab'), el);
+      if (el.tagName === 'DETAILS') el.open = true;
+      return true;
+    }
+    return false;
+  }
+  document.getElementById('cfg-tabs').addEventListener('click', function(ev) {
+    var b = ev.target.closest('button'); if (!b) return;
+    show(b.getAttribute('data-tab'));
+    history.replaceState(null, '', '#' + b.getAttribute('data-tab'));
+  });
+  window.addEventListener('hashchange', fromHash);
+  // 改动提示：哪个标签里动过输入框，标签上就亮一个点
+  function markDirty(ev) {
+    var pane = ev.target.closest && ev.target.closest('.cfg-tabpane');
+    if (!pane) return;
+    var btn = document.querySelector('#cfg-tabs button[data-tab="' + pane.getAttribute('data-cfg-tab') + '"]');
+    if (btn) btn.classList.add('dirty');
+  }
+  form.addEventListener('input', markDirty);
+  form.addEventListener('change', markDirty);
+  if (!fromHash()) {
+    var start = null;
+    try { start = localStorage.getItem('cfg_tab'); } catch (e) {}
+    show(start);
+  }
+})();
+</script>
+
 
 <style>
 .btn-add-alias {

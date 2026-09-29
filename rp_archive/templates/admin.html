@@ -67,6 +67,15 @@
 .adm-hero .dot.off { background:var(--muted); }
 .adm-hero b { color:var(--text); }
 .adm-hero .muted { color:var(--muted); }
+.adm-phase { background:var(--surface); border:1px solid var(--border); border-left:4px solid var(--muted); border-radius:12px; padding:14px 18px; margin-bottom:12px; }
+.adm-phase.prep { border-left-color:#e0a83a; } .adm-phase.on { border-left-color:#3fb96a; } .adm-phase.warn { border-left-color:var(--red); }
+.adm-phase .ph { font-size:15px; font-weight:700; color:var(--text); }
+.adm-phase .nx { font-size:13px; color:var(--muted); margin-top:6px; }
+.adm-phase .nx b { color:var(--text); font-weight:600; }
+.adm-phase .td { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; font-size:12.5px; }
+.adm-phase .td span { color:var(--muted); }
+.adm-phase .td a { padding:2px 10px; border-radius:999px; border:1px solid var(--border); color:var(--text); text-decoration:none; background:var(--surface2); }
+.adm-phase .td a:hover { border-color:var(--accent); }
 .adm-steps { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:12px; margin-bottom:26px; }
 .adm-step { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:14px 16px; display:flex; flex-direction:column; gap:8px; }
 .adm-step .n { font-size:11px; font-weight:700; color:var(--accent); letter-spacing:.08em; }
@@ -101,6 +110,15 @@ details.adm-fold .adm-fold-body { padding:16px 16px 4px; }
   <div class="success-banner">✅ 所有数据已清空。</div>
   {% endif %}
 
+  <!-- 当前阶段 + 下一步（_season_phase 算的，按租户当前季/预订季，不随「查看此季」切换） -->
+  <div class="adm-phase {{ phase.tone }}">
+    <div class="ph">{{ phase.phase }}</div>
+    <div class="nx">下一步：<b>{% if phase.next_href %}<a href="{{ phase.next_href }}">{{ phase.next }}</a>{% else %}{{ phase.next }}{% endif %}</b></div>
+    {% if phase.todos %}
+    <div class="td"><span>还差：</span>{% for t in phase.todos %}<a href="{{ t.href }}">{{ t.t }}</a>{% endfor %}</div>
+    {% endif %}
+  </div>
+
   <!-- 同步状态 -->
   <div class="adm-hero">
     <span class="dot {{ '' if last_sync else 'off' }}"></span>
@@ -127,8 +145,8 @@ details.adm-fold .adm-fold-body { padding:16px 16px 4px; }
       <div class="adm-step">
         <div class="n">STEP 3</div>
         <div class="t">📅 开一季、发指南</div>
-        <div class="d">在「季管理」新建并启用一季，在「群号组」录入群号；再把玩家指南链接发给玩家。</div>
-        <div class="go"><a class="pri" href="{{ url_for('admin_shows') }}">季管理</a><a href="{{ url_for('admin_groups') }}">群号组</a><a href="/static/docs/player_guide.html" target="_blank">🎮 玩家指南</a></div>
+        <div class="d">先在「群号组」录好戏群；再到「季度日历」预订一季（档期、群号、NPC 一张表填完），到日子在群里发「。开始季度」。最后把玩家指南链接发给玩家。</div>
+        <div class="go"><a class="pri" href="{{ url_for('admin_calendar') }}">季度日历</a><a href="{{ url_for('admin_groups') }}">群号组</a><a href="/static/docs/player_guide.html" target="_blank">🎮 玩家指南</a></div>
       </div>
     </div>
   </div>

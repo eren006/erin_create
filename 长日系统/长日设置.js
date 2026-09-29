@@ -1720,7 +1720,7 @@ async function fetchServerConfig() {
 // 一键初始化指令（先尝试拉取 UI 配置，拉不到则用内置默认值）
 // ========================
 
-// 不再作为玩家/管理员指令暴露：「创建新季度」成功后自动调用（清空季度数据会清掉这些设置，需要补回默认值）。
+// 不再作为玩家/管理员指令暴露：「开始季度」成功后自动调用（清空季度数据会清掉这些设置，需要补回默认值）。
 // 只补空白项，已有设置不受影响；要强制覆盖用「。拉取全部」。返回从 UI 拉到的配置项数，拉不到（未配置/连不上）返回 null 并用内置默认值
 async function initSettingsCore() {
     const main = getMainExt();
@@ -1958,6 +1958,7 @@ cmd_pull_all.solve = async (ctx, msg, argv) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 
+globalThis.__changriPullAll = (...a) => pullAllCore(...a);   // 「。开始季度」开预订季度后要拉预配内容
 // 拉取全部的本体：「。拉取全部」手动触发和后台自动拉取共用。say 负责发进度/结果（自动拉取时只写日志）。返回 true=完成
 async function pullAllCore(say) {
 
@@ -2571,7 +2572,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
     if (raw === "确认") {
         const key = webPushKey(msg);
         const t = _pendingWebPush.get(key);
-        // 同一个人同一处还在等「创建新季度」的确认（会清空上季数据）：这句「确认」留给它，不要同时触发推送
+        // 同一个人同一处还在等「开始季度」的确认（会清空上季数据）：这句「确认」留给它，不要同时触发推送
         const seasonPending = globalThis.__changriPendingNewSeason;
         if (seasonPending && seasonPending.has(key)) return;
         if (t) {
