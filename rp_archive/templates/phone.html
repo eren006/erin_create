@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
-<title>{% if mode == 'thread' %}{{ group.name if group else other.partition('＠')[0] }} · {% elif mode == 'group_new' %}发起群聊 · {% elif mode == 'stats' %}时间线与统计 · {% elif mode == 'public' %}公开播报 · {% elif mode == 'moments' %}朋友圈 · {% elif mode == 'song' %}点歌 · {% elif mode == 'games' %}小游戏 · {% elif mode == 'shop' %}礼品店 · {% elif mode == 'lovemail' %}心动信箱 · {% elif mode == 'library' %}{{ '收藏' if library_view == 'saved' else '检索' }} · {% elif mode == 'profile' %}我的手机 · {% endif %}短信</title>
+<title>{% if mode == 'thread' %}{{ group.name if group else other.partition('＠')[0] }} · {% elif mode == 'group_new' %}发起群聊 · {% elif mode == 'stats' %}时间线与统计 · {% elif mode == 'public' %}公开播报 · {% elif mode == 'moments' %}朋友圈 · {% elif mode == 'song' %}点歌 · {% elif mode == 'games' %}小游戏 · {% elif mode == 'shop' %}礼品店 · {% elif mode == 'lovemail' %}心动信箱 · {% elif mode == 'char' %}角色 · {% elif mode == 'library' %}{{ '收藏' if library_view == 'saved' else '检索' }} · {% elif mode == 'profile' %}我的手机 · {% endif %}短信</title>
 <style>
 :root {
   --page: #d9d9e0;
@@ -600,6 +600,10 @@ a { color: var(--link); text-decoration: none; }
       <div class="avatar public-avatar">📱</div>
       <div class="body"><div class="top"><span class="name">小手机</span></div><div class="preview">使用指南：怎么发、怎么点歌、哪些不能发</div></div>
     </a>{% endif %}
+    {% if not admin_as and mode == 'inbox' %}<a class="row public-row guide-row" data-other="__lovemail__"{% if lovemail_last %} data-received-ts="{{ lovemail_last }}"{% endif %} href="{{ url_for('player_lovemail') }}">
+      <div class="avatar public-avatar">💌</div>
+      <div class="body"><div class="top"><span class="name">心动信箱</span></div><div class="preview">匿名来信、寄出的信、写信</div></div>
+    </a>{% endif %}
     {% if flash %}<div class="notice inbox-flash">{{ flash }}</div>{% endif %}
     {% for t in threads %}
     {% if t.group %}
@@ -868,6 +872,64 @@ a { color: var(--link); text-decoration: none; }
   })();
   </script>
 
+{% elif mode == 'char' %}
+  <header class="bar tab-bar">
+    <div class="tab-head"><h1>角色</h1></div>
+    <div class="tab-sub">{{ owner }}{% if rpg_time %} · 同步于 {{ rpg_time }}{% endif %}</div>
+  </header>
+  <div class="scroll ch-page">
+    <nav class="song-tabs lm-tabs" aria-label="角色">
+      <a href="{{ url_for('player_character') }}"{% if view == 'bag' %} aria-current="page"{% endif %}>背包</a>
+      <a href="{{ url_for('player_character', view='attrs') }}"{% if view == 'attrs' %} aria-current="page"{% endif %}>属性</a>
+    </nav>
+    {% if not rpg %}
+    <div class="gm-empty ch-empty">还没有同步到背包和属性。机器人插件更新到新版并同步一次（约 2 分钟）后就能在这里看到。</div>
+    {% elif view == 'bag' %}
+      {% if rpg.currencies %}<div class="ch-cur">{% for c in rpg.currencies %}<div><b>{{ c.count }}</b><span>{{ c.name }}</span></div>{% endfor %}</div>{% endif %}
+      {% for title, rows in (('道具', rpg.presets), ('物品', rpg['items'])) %}{% if rows %}
+      <h3 class="ch-h">{{ title }}（{{ rows|length }}）</h3>
+      <div class="ch-list">{% for it in rows %}
+        <div class="ch-item"><div class="top"><span class="nm">{{ it.name }}</span><span class="ct">×{{ it.count }}</span></div>
+          {% if it.desc %}<div class="ds">{{ it.desc }}</div>{% endif %}
+          {% if it.effect or it.uses is not none %}<div class="ef">{% if it.effect %}{{ it.effect }}{% endif %}{% if it.uses is not none %}{% if it.effect %} · {% endif %}剩余 {{ it.uses }} 次{% endif %}</div>{% endif %}
+        </div>{% endfor %}</div>
+      {% endif %}{% endfor %}
+      {% if not rpg.presets and not rpg['items'] %}<div class="gm-empty ch-empty">背包里还没有道具和物品</div>{% endif %}
+    {% else %}
+      {% if rpg.attrs %}
+      <div class="ch-list">{% for a in rpg.attrs %}
+        <div class="ch-item"><div class="top"><span class="nm">{{ a.name }}</span><span class="ct">{{ a.value }}{% if a.max is not none %} / {{ a.max }}{% endif %}</span></div>
+          {% if a.max is not none %}{% set lo = a.min if a.min is not none else 0 %}{% set span = (a.max - lo) or 1 %}<div class="ch-bar"><i style="width: {{ [0, [100, ((a.value - lo) * 100 / span)]|min]|max|round|int }}%"></i></div>{% endif %}
+          {% if a.desc %}<div class="ds">{{ a.desc }}</div>{% endif %}
+        </div>{% endfor %}</div>
+      {% else %}<div class="gm-empty ch-empty">还没有注册任何属性</div>{% endif %}
+      {% if rpg.equips %}
+      <h3 class="ch-h">装备</h3>
+      <div class="ch-list">{% for e in rpg.equips %}
+        <div class="ch-item"><div class="top"><span class="nm">{{ e.slot }}</span><span class="ct">{{ e.name or '—' }}</span></div>
+          {% if e.bonus %}<div class="ef">{% for k, v in e.bonus.items() %}{{ k }}{{ '+' if v > 0 else '' }}{{ v }}{% if not loop.last %}　{% endif %}{% endfor %}</div>{% endif %}
+        </div>{% endfor %}</div>
+      {% endif %}
+    {% endif %}
+  </div>
+  <style>
+  .ch-page { padding-bottom: 24px; }
+  .ch-page .song-tabs + .ch-list { margin-top: 12px; }
+  .gm-empty { color: var(--muted); font-size: 13px; text-align: center; }
+  .ch-empty { padding: 28px 24px; line-height: 1.7; }
+  .ch-cur { display: flex; gap: 8px; padding: 12px var(--gutter, 18px) 0; flex-wrap: wrap; }
+  .ch-cur div { flex: 1; min-width: 88px; text-align: center; border: 1px solid var(--line); border-radius: 12px; padding: 8px 6px; }
+  .ch-cur b { display: block; font-size: 20px; } .ch-cur span { font-size: 12px; color: var(--muted); }
+  .ch-h { margin: 16px var(--gutter, 18px) 6px; font-size: 13px; color: var(--muted); font-weight: 600; }
+  .ch-list { margin: 0 var(--gutter, 18px); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  .ch-item { padding: 10px 14px; border-bottom: .5px solid var(--line); }
+  .ch-item:last-child { border-bottom: 0; }
+  .ch-item .top { display: flex; justify-content: space-between; gap: 10px; font-size: 15px; }
+  .ch-item .nm { font-weight: 600; } .ch-item .ct { font-variant-numeric: tabular-nums; }
+  .ch-item .ds, .ch-item .ef { margin-top: 3px; font-size: 12px; color: var(--muted); line-height: 1.6; }
+  .ch-bar { height: 6px; border-radius: 3px; background: var(--theirs); margin-top: 7px; overflow: hidden; }
+  .ch-bar i { display: block; height: 100%; background: var(--mine); border-radius: 3px; }
+  </style>
 {% elif mode == 'games' %}
 {% include '_phone_games.html' %}
 {% elif mode == 'song' %}
@@ -1044,7 +1106,7 @@ a { color: var(--link); text-decoration: none; }
 
 {% elif mode == 'lovemail' %}
   <header class="bar tab-bar">
-    <div class="tab-head"><h1>心动信箱</h1></div>
+    <div class="tab-head"><h1>心动信箱</h1><div class="tab-actions"><a class="quiet-button" href="{{ url_for('player_phone_inbox') }}">‹ 消息</a></div></div>
     <div class="tab-sub lm-sub"><small>{% if lm.ready %}{{ lm.game_day }} 已投 {{ lm.used }}/{{ lm.limit }}{% if lm.delivery_time %} · {{ lm.delivery_time }} 派送{% endif %}{% else %}匿名来信{% endif %}</small></div>
   </header>
   <div class="scroll lm-page" data-received-ts="{{ recv[0].id if recv else 0 }}">
@@ -1477,7 +1539,7 @@ a { color: var(--link); text-decoration: none; }
 </dialog>
 {% endif %}
 
-{% if mode in ('inbox', 'thread', 'public', 'moments', 'new', 'song', 'library', 'profile', 'shop', 'lovemail', 'group_new', 'stats', 'games') %}
+{% if mode in ('inbox', 'thread', 'public', 'moments', 'new', 'song', 'library', 'profile', 'shop', 'lovemail', 'group_new', 'stats', 'games', 'char') %}
 <dialog class="appearance notice-dialog" id="phoneNotice" aria-labelledby="phoneNoticeTitle">
   <div class="heading"><h2 id="phoneNoticeTitle">使用须知</h2></div>
   <div class="notice-body">
@@ -1573,7 +1635,7 @@ a { color: var(--link); text-decoration: none; }
     b.remove();
   });
 </script>
-{% if mode in ('inbox', 'thread', 'public', 'moments', 'song', 'library', 'profile', 'new', 'shop', 'lovemail', 'group_new', 'stats', 'games') %}
+{% if mode in ('inbox', 'thread', 'public', 'moments', 'song', 'library', 'profile', 'new', 'shop', 'lovemail', 'group_new', 'stats', 'games', 'char') %}
 <script>
 (function () {
   var scope = {{ ([sid, owner]|tojson) }};

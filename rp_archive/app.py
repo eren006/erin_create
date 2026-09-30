@@ -7898,6 +7898,21 @@ def _lm_for_bot(db, sid, done_ids, revoke_done):
               "signature": m["signature"], "game_day": m["game_day"], "timestamp": m["created_at"]} for m in mails],
             [{"id": r["id"], "from_role": r["from_role"], "ts": r["mail_ts"]} for r in revokes])
 
+@app.route("/p/me/character")
+def player_character():
+    """角色页：背包 / 属性（只读）。数据是插件随 phone_reports 每 2 分钟上报的 rpg 快照，操作仍在 QQ 里。"""
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    if owner == PHONE_ADMIN:
+        return redirect(url_for("admin_phone_index"))
+    row = get_db().execute("SELECT data, updated_at FROM phone_reports WHERE show_id=? AND role=?", (sid, owner)).fetchone()
+    rpg = (json.loads(row["data"]).get("rpg") if row else None) or None
+    return render_template("phone.html", mode="char", owner=owner, sid=sid, csrf=_phone_csrf(), rpg=rpg,
+                           rpg_time=(ts_to_str(row["updated_at"]) if row and rpg else ""),
+                           view="attrs" if request.args.get("view") == "attrs" else "bag")
+
 @app.route("/p/me/lovemail")
 def player_lovemail():
     who = _phone_current()

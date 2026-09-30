@@ -12595,6 +12595,46 @@ function buildPhoneSessions(platform, roleName) {
     return out;
 }
 
+// 网页手机「背包 / 属性」：只读快照，数据来自 RPG 卫星存的 KV（global_inventories / item_registry / sys_character_attrs 等）
+function buildPhoneRpg(platform, primary) {
+    const cut = (t, n) => { t = String(t == null ? "" : t); return t.length > n ? t.slice(0, n - 1) + "…" : t; };
+    const reg = Object.assign({}, kvGet("item_registry", {}), kvGet("equipment_registry", {}));
+    const roleKey = `${platform}:${primary}`;
+    const inv = (kvGet("global_inventories", {})[roleKey] || []).filter(e => e && e.count > 0 && (!e.expiresAt || e.expiresAt > Date.now()));
+    const byCode = {};
+    for (const e of inv) {
+        const b = byCode[e.code] || (byCode[e.code] = { count: 0, n: 0, uses: e.remainingUses });
+        b.count += e.count; b.n++;
+    }
+    const currencies = [], presets = [], items = [];
+    for (const [code, info] of Object.entries(reg)) {
+        if (info && info.type === "currency") currencies.push({ name: info.name, count: byCode[code]?.count || 0 });
+    }
+    for (const [code, b] of Object.entries(byCode)) {
+        const info = reg[code] || { name: code, type: "item" };
+        if (info.type === "currency") continue;
+        const row = { name: cut(info.name, 20), count: b.count, desc: cut(info.desc, 80),
+                      uses: (b.n === 1 && b.uses != null && b.uses >= 0) ? b.uses : null,
+                      effect: cut(typeof info.attrs === "string" ? info.attrs : "", 60) };
+        (info.type === "preset" ? presets : items).push(row);
+    }
+    const defs = kvGet("rpg_attr_defs", {});
+    const mine = kvGet("sys_character_attrs", {})[primary] || {};
+    const attrs = Object.keys(defs).slice(0, 40).map(k => {
+        const d = defs[k] || {};
+        return { name: k, value: parseInt(mine[k] ?? (d.default ?? 0)) || 0, min: d.min ?? null, max: d.max ?? null, desc: cut(d.desc, 40) };
+    });
+    const slots = kvGet("equipment_slots", []), slotNames = kvGet("equipment_slot_names", {});
+    const worn = kvGet("player_equipments", {})[roleKey] || {};
+    const equips = [];
+    for (const slot of (slots.length ? slots : Object.keys(worn))) {
+        const w = worn[slot];
+        equips.push({ slot: slotNames[slot] || slot, name: w && w.code ? cut(reg[w.code]?.name || w.code, 20) : "",
+                      bonus: w && w.code && reg[w.code]?.baseAttrs ? reg[w.code].baseAttrs : null });
+    }
+    return { currencies: currencies.slice(0, 20), presets: presets.slice(0, 60), items: items.slice(0, 100), attrs, equips: equips.slice(0, 20) };
+}
+
 function buildPhoneReports(platform) {
     const priv = kvGet("a_private_group", {})[platform] || {};
     const gameDay = cachedGet("global_days") || "D0";
@@ -12614,7 +12654,8 @@ function buildPhoneReports(platform) {
                 timeline: view.allEvents.map(ev => ({ day: ev.day, time: ev.time, icon: ev.icon, label: ev.label, tag: ev.tag,
                                                       place: ev.place || "", partner: ev.partner || "", progress: (ev.progressText || "").trim(),
                                                       wechat: !!ev.isWechat })),
-                pending: buildPhonePendingLite(platform, primary, name)
+                pending: buildPhonePendingLite(platform, primary, name),
+                rpg: buildPhoneRpg(platform, primary)
             };
         } catch (e) {
             console.warn(`[网页手机报告] ${name} 生成失败：${e.message || e}`);
