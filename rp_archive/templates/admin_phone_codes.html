@@ -42,6 +42,20 @@
     玩家入口：<code>{{ base_url }}/p</code>（输码），或直接点专属链接。码泄露了就点「重置」，旧码和已经打开的页面立即失效。
   </p>
   <div class="pc-add">
+    <label>临时暂停所有通讯</label>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <form method="post" onsubmit="return {{ 'true' if comm_paused else 'confirm(\'暂停后玩家不能发短信、礼物、群聊、点歌、朋友圈、心动信，确定吗？\')' }}">
+        <input type="hidden" name="action" value="comm_pause">
+        <input type="hidden" name="on" value="{{ '0' if comm_paused else '1' }}">
+        <button class="pc-btn{{ '' if comm_paused else ' ghost' }}" type="submit">{{ '恢复通讯' if comm_paused else '暂停所有通讯' }}</button></form>
+      <span style="font-size:13px;">当前：<b style="color:{{ 'var(--red)' if comm_paused else 'var(--green)' }}">{{ '已暂停' if comm_paused else '正常' }}</b></span>
+    </div>
+    <div style="font-size:12px;color:var(--muted);line-height:1.8;">
+      暂停期间，玩家网页手机上的短信、礼物、群聊、匿名对话、点歌、朋友圈（发帖/评论/点赞）、写心动信都发不出去，页面顶部会提示「通讯暂时关闭」；已有内容照常能看，小游戏不受影响。<br>
+      不影响 QQ 群里的指令，也不会拦住已经在信池里的心动信（到点照常派送）。和下面的「网页发送」开关互相独立，恢复后原来的设置不变。
+    </div>
+  </div>
+  <div class="pc-add">
     <label>网页发送（机器人挂了时的备用通道）</label>
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
       <form method="post"><input type="hidden" name="action" value="web_send">

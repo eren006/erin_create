@@ -1561,6 +1561,8 @@ def _migrate(conn):
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_moment_comments_moment ON moment_comments(moment_id)")
+    if "comm_paused" not in _col_names(conn, "phone_settings"):
+        conn.execute("ALTER TABLE phone_settings ADD COLUMN comm_paused INTEGER NOT NULL DEFAULT 0")  # 管理员「暂停所有通讯」
     if "moment_quota" not in _col_names(conn, "phone_settings"):
         conn.execute("ALTER TABLE phone_settings ADD COLUMN moment_quota INTEGER NOT NULL DEFAULT 0")  # 0 = 默认张数
     if "moment_quota_mb" not in _col_names(conn, "tenants"):
@@ -5586,6 +5588,34 @@ def _phone_web_send_on(db, sid):
     row = db.execute("SELECT web_send FROM phone_settings WHERE show_id=?", (sid,)).fetchone()
     return bool(row and row["web_send"])
 
+_PAUSE_MSG = "通讯暂时关闭了，稍后开放"
+
+def _phone_comm_paused(db, sid):
+    """管理员「暂停所有通讯」：短信、礼物、群聊、匿名对话、点歌、朋友圈发帖/评论/点赞、心动信都发不出去，已有内容照常能看"""
+    row = db.execute("SELECT comm_paused FROM phone_settings WHERE show_id=?", (sid,)).fetchone()
+    return bool(row and row["comm_paused"])
+
+def _comm_pause_json(db, sid):
+    """JSON 接口用：暂停中返回 400 响应，否则 None"""
+    return _moment_json(False, _PAUSE_MSG) if _phone_comm_paused(db, sid) else None
+
+_PAUSE_FORMS = {"/p/me/send": "phone_flash", "/p/me/alias": "phone_flash", "/p/me/lovemail": "lm_flash"}
+
+@app.before_request
+def _phone_comm_pause_guard():
+    """表单类的发送接口（短信/礼物、建化名、群聊发言、写心动信）在暂停期间统一拦掉，带提示跳回原页面"""
+    if request.method != "POST" or not request.path.startswith("/p/me/"):
+        return None
+    path = request.path
+    key = _PAUSE_FORMS.get(path) or ("phone_flash" if re.fullmatch(r"/p/me/g/\d+/send", path) else None)
+    if not key or (path == "/p/me/lovemail" and request.form.get("action") == "revoke"):
+        return None
+    who = _phone_current()
+    if not who or who[1] == PHONE_ADMIN or not _phone_comm_paused(get_db(), who[0]):
+        return None
+    session[key] = "❌ " + _PAUSE_MSG
+    return redirect(request.referrer or url_for("player_phone_inbox"))
+
 def _phone_sync_row(db, sid):
     row = db.execute("SELECT * FROM phone_sync WHERE show_id=?", (sid,)).fetchone()
     if not row:
@@ -5648,6 +5678,9 @@ def _phone_status(db, sid, role):
     show = db.execute("SELECT * FROM shows WHERE id=?", (sid,)).fetchone()
     sync = _phone_sync_row(db, sid)
     st = {"can": False, "why": "", "sms": None, "gift": None}
+    if _phone_comm_paused(db, sid):
+        st["why"] = _PAUSE_MSG
+        return st
     if not _phone_web_send_on(db, sid):
         return st
     if not sync:
@@ -6404,6 +6437,8 @@ def _moment_feed(db, sid, viewer, before=None, limit=20, role=None):
 
 def _moment_can_write(db, sid):
     """发帖/点赞/评论：本季进行中 + 主档期；返回不能的原因，能就返回 None"""
+    if _phone_comm_paused(db, sid):
+        return _PAUSE_MSG
     show = db.execute("SELECT * FROM shows WHERE id=?", (sid,)).fetchone()
     if not show or _schedule_zone(dict(show)) != "main":
         return "不在档期内，朋友圈暂时只能看"
@@ -6576,6 +6611,9 @@ def player_moment_post():
     if err:
         return err
     sid, owner, tid = ok_
+    _p = _comm_pause_json(get_db(), sid)
+    if _p:
+        return _p
     db = get_db()
     why = _moment_can_write(db, sid)
     if why:
@@ -6642,6 +6680,9 @@ def player_moment_like(mid):
     if err:
         return err
     sid, owner, _ = ok_
+    _p = _comm_pause_json(get_db(), sid)
+    if _p:
+        return _p
     db = get_db()
     if not db.execute("SELECT 1 FROM moments WHERE id=? AND show_id=? AND deleted=0", (mid, sid)).fetchone():
         return _moment_json(False, "这条朋友圈不见了")
@@ -6666,6 +6707,9 @@ def player_moment_comment(mid):
     if err:
         return err
     sid, owner, _ = ok_
+    _p = _comm_pause_json(get_db(), sid)
+    if _p:
+        return _p
     db = get_db()
     if not db.execute("SELECT 1 FROM moments WHERE id=? AND show_id=? AND deleted=0", (mid, sid)).fetchone():
         return _moment_json(False, "这条朋友圈不见了")
@@ -6803,7 +6847,8 @@ def inject_phone_npcs():
     try:
         who = _phone_current()
         sync = _phone_sync_row(get_db(), who[0]) if who else None
-        return {"phone_npcs": [r["name"] for r in ((sync["snap"].get("roster") or []) if sync else []) if r.get("npc")]}
+        return {"phone_npcs": [r["name"] for r in ((sync["snap"].get("roster") or []) if sync else []) if r.get("npc")],
+                "comm_paused": bool(who and who[1] != PHONE_ADMIN and _phone_comm_paused(get_db(), who[0]))}
     except Exception:
         return {}
 
@@ -7116,7 +7161,7 @@ def player_song():
     sid, owner = who
     db = get_db()
     show = db.execute("SELECT * FROM shows WHERE id=?", (sid,)).fetchone()
-    why = None if _schedule_zone(dict(show)) == "main" else "不在档期内，暂时不能点歌"
+    why = _PAUSE_MSG if _phone_comm_paused(db, sid) else (None if _schedule_zone(dict(show)) == "main" else "不在档期内，暂时不能点歌")
     return render_template("phone.html", mode="song", owner=owner, sid=sid, csrf=_phone_csrf(), why=why,
                            contacts=sorted(n for n in _song_roster(db, sid) if n != owner),
                            preset_to=request.args.get("to", ""), cap=_song_daily_cap(db, sid),
@@ -7148,6 +7193,9 @@ def player_song_post():
     if err:
         return err
     sid, owner, tid = ok_
+    _p = _comm_pause_json(get_db(), sid)
+    if _p:
+        return _p
     db = get_db()
     platform = "qq" if request.form.get("platform") == "qq" else "163"
     song_key = (request.form.get("song_id") or "").strip()[:40]
@@ -8004,7 +8052,7 @@ def player_lovemail():
     return render_template("phone.html", mode="lovemail", owner=owner, sid=sid, view=view, lm=_lm_state(db, sid, owner),
                            recv=recv, sent=sent, csrf=_phone_csrf(), max_len=_LM_MAX_LEN, sig_max=_LM_SIG_MAX,
                            contacts=sorted(n for n in _phone_roster(_phone_sync_row(db, sid)) if n != owner),
-                           preset_to=request.args.get("to", ""), flash=session.pop("lm_flash", None),
+                           preset_to=request.args.get("to", ""), flash=session.pop("lm_flash", None) or (_PAUSE_MSG if _phone_comm_paused(db, sid) else None),
                            draft=session.pop("lm_draft", None))
 
 @app.route("/p/me/lovemail", methods=["POST"])
@@ -8305,6 +8353,10 @@ def admin_phone_codes():
             db.execute("INSERT INTO phone_settings (show_id, web_send) VALUES (?, ?) "
                        "ON CONFLICT(show_id) DO UPDATE SET web_send=excluded.web_send",
                        (sid, 1 if request.form.get("on") == "1" else 0))
+        elif action == "comm_pause":
+            db.execute("INSERT INTO phone_settings (show_id, web_send, comm_paused) VALUES (?, 0, ?) "
+                       "ON CONFLICT(show_id) DO UPDATE SET comm_paused=excluded.comm_paused",
+                       (sid, 1 if request.form.get("on") == "1" else 0))
         elif action == "admin_code":
             db.execute("DELETE FROM phone_admin_codes WHERE show_id=?", (sid,))  # 生成/重置：旧码立即作废
             db.execute("INSERT INTO phone_admin_codes (show_id, tenant_id, code, created_at) VALUES (?,?,?,?)",
@@ -8358,7 +8410,7 @@ def admin_phone_codes():
         sync_ago = max(0, int(time.time() * 1000) - sync["synced_at"]) // 60000
     return render_template("admin_phone_codes.html", rows=rows, show=show,
                            base_url=_phone_base_url(),
-                           web_send=_phone_web_send_on(db, sid), sync_ago=sync_ago, has_sync=bool(sync),
+                           web_send=_phone_web_send_on(db, sid), comm_paused=_phone_comm_paused(db, sid), sync_ago=sync_ago, has_sync=bool(sync),
                            song_daily=_song_daily_cap(db, sid), song_default=_SONG_DEFAULT_DAILY,
                            admin_code=(db.execute("SELECT code FROM phone_admin_codes WHERE show_id=?", (sid,)).fetchone() or {"code": None})["code"],
                            songs=[dict(r, time=ts_to_str(r["created_at"])) for r in db.execute(
