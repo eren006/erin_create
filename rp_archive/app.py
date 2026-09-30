@@ -1623,6 +1623,17 @@ def _migrate(conn):
         )
     """)
 
+    # ── 29. 微信名：玩家自设的显示名，消息列表/对话标题里显示成「微信名（真名）」；只改显示，不参与任何规则 ──
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS phone_nicknames (
+            show_id    INTEGER NOT NULL,
+            role       TEXT    NOT NULL,
+            nick       TEXT    NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (show_id, role)
+        )
+    """)
+
     # ── 28. 待回「暂不提醒」：key 认的是「这一次」等待（场次按开始等的时间、信按寄来时间、关系线按条数），对方再回一轮就是新的提醒 ──
     conn.execute("""
         CREATE TABLE IF NOT EXISTS phone_pending_dismiss (
@@ -5206,7 +5217,9 @@ def player_phone_library():
     if view not in ("search", "saved", "profile"):
         view = "search"
     return render_template("phone.html", mode="profile" if view == "profile" else "library",
-                           library_view=view, sid=sid, owner=owner, csrf=_phone_csrf())
+                           library_view=view, sid=sid, owner=owner, csrf=_phone_csrf(),
+                           flash=session.pop("phone_flash", None), nick_max=_NICK_MAX,
+                           my_nick=_nick_map(get_db(), sid).get(owner, "") if owner != PHONE_ADMIN else "")
 
 # ── 首页全局搜索 ─────────────────────────────────────────────────────────────────
 # 一个搜索框搜自己手机里能看到的一切：联系人/群聊、短信和礼物（含群聊消息）、心动信（收到的只有署名）、朋友圈。
@@ -6675,9 +6688,64 @@ def inject_phone_avatars():
         rows = db.execute("SELECT role_name, updated_at FROM phone_avatars WHERE show_id=?", (who[0],)).fetchall()
         # 底部导航「心动信」的未读点：收到的最新一封心动信的存档 id（进过信箱就记成已读）
         last = db.execute("SELECT MAX(id) FROM extra_events WHERE show_id=? AND type='lovemail' AND to_role=?", who).fetchone()[0]
-        return {"phone_avatars": {r["role_name"]: r["updated_at"] for r in rows}, "lovemail_last": last or 0}
+        nicks = _nick_map(db, who[0])
+        def disp(name):
+            """名字的显示写法：设了微信名就是「微信名（真名）」，没设就是真名"""
+            nick = nicks.get(name)
+            return f"{nick}（{name}）" if nick else name
+        return {"phone_avatars": {r["role_name"]: r["updated_at"] for r in rows}, "lovemail_last": last or 0, "disp": disp}
     except Exception:
         return {}
+
+# ── 微信名 ──────────────────────────────────────────────────────────────────────
+# 在「我的」里自己设，别人在消息列表和对话标题里看到「微信名（真名）」；真名永远跟在括号里，所以冒充不了别人。
+# 规则：1–12 字；不能带括号（不然能伪造「某某（别人的真名）」）、不能是 CQ 码、不过违禁词、
+# 不能和别人的真名或微信名重复；填空就是清除。只影响显示，匿名对话的化名、心动信署名、落款都不受影响。
+_NICK_MAX = 12
+
+def _nick_map(db, sid):
+    return {r["role"]: r["nick"] for r in db.execute("SELECT role, nick FROM phone_nicknames WHERE show_id=?", (sid,))}
+
+def _nick_set(db, sid, owner, raw):
+    """返回 (ok, 提示)；调用方持有 _phone_send_lock"""
+    nick = (raw or "").strip()
+    if not nick or nick == owner:
+        db.execute("DELETE FROM phone_nicknames WHERE show_id=? AND role=?", (sid, owner))
+        db.commit()
+        return True, "已清除微信名，别人只会看到你的名字"
+    if len(nick) > _NICK_MAX:
+        return False, f"❌ 微信名最多 {_NICK_MAX} 个字（现在 {len(nick)} 个）"
+    if re.search(r"[()（）\[\]【】\n\r]", nick) or _CQ_CODE.search(nick):
+        return False, "❌ 微信名里不能有括号或特殊符号"
+    if nick in _ALIAS_RESERVED:
+        return False, "❌ 这个微信名不能用，换一个"
+    roster = _phone_roster(_phone_sync_row(db, sid))
+    taken = {n for n in roster if n != owner} | {k for r, k in _nick_map(db, sid).items() if r != owner}   # 别人的真名和别人的微信名
+    if nick in taken:
+        return False, "❌ 这个名字已经有人用了，换一个"
+    if _blocked_hit(sid, owner, "微信名", nick):
+        return False, BLOCKED_MSG
+    db.execute("""INSERT INTO phone_nicknames (show_id, role, nick, updated_at) VALUES (?,?,?,?)
+                  ON CONFLICT(show_id, role) DO UPDATE SET nick=excluded.nick, updated_at=excluded.updated_at""",
+               (sid, owner, nick, int(time.time() * 1000)))
+    db.commit()
+    return True, f"✅ 微信名已设为「{nick}」，别人会看到「{nick}（{owner}）」"
+
+@app.route("/p/me/nickname", methods=["POST"])
+def player_nickname():
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    if not hmac.compare_digest(request.form.get("csrf", ""), session.get("phone_csrf", "") or "-"):
+        session["phone_flash"] = "❌ 页面过期了，刷新后再试"
+    elif owner == PHONE_ADMIN:
+        session["phone_flash"] = "❌ 管理身份不能设置微信名"
+    else:
+        with _phone_send_lock:
+            ok_, msg = _nick_set(get_db(), sid, owner, request.form.get("nick", ""))
+        session["phone_flash"] = msg
+    return redirect(url_for("player_phone_library", view="profile"))
 
 @app.route("/p/me/avatar", methods=["POST"])
 def player_avatar_upload():

@@ -364,7 +364,6 @@ a { color: var(--link); text-decoration: none; }
 .stats-table th, .stats-table td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: center; white-space: nowrap; }
 .stats-table th:first-child, .stats-table td:first-child { text-align: left; }
 .stats-table th small { font-weight: 400; color: var(--muted); }
-.search-pill { display: flex; align-items: center; gap: 6px; margin: 10px 16px 6px; padding: 9px 12px; border-radius: 12px; background: var(--theirs); color: var(--muted); font-size: 15px; text-decoration: none; }
 .group-avatar { background: var(--theirs) !important; color: var(--text) !important; font-weight: 600; }
 .group-sys { font-size: 12px; margin: 10px 24px 4px; }
 .inbox-flash { margin: 10px auto 4px; }
@@ -469,7 +468,7 @@ a { color: var(--link); text-decoration: none; }
 
 /* 首页：标题 → 搜索行 → 待回卡片，每层之间 14px 留白，不再叠一排按钮 */
 .find-row { display: flex; align-items: center; gap: 10px; margin: 14px var(--gutter) 14px; }
-.search-pill { flex: 1; min-width: 0; margin: 0; gap: 8px; height: 42px; padding: 0 14px; border-radius: 12px; font-size: 15px; }
+.search-pill { display: flex; align-items: center; flex: 1; min-width: 0; margin: 0; gap: 8px; height: 42px; padding: 0 14px; border-radius: 12px; font-size: 15px; background: var(--theirs); color: var(--muted); text-decoration: none; }
 .search-pill svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; flex-shrink: 0; }
 .timeline-btn { position: relative; flex-shrink: 0; width: 42px; height: 42px; border-radius: 12px; background: var(--theirs); color: var(--text); display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
 .timeline-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -526,6 +525,15 @@ a { color: var(--link); text-decoration: none; }
 .pending-muted .pending-list { margin-top: 8px; }
 .pending-muted summary { margin: 0 var(--gutter); font-size: 13px; color: var(--muted); cursor: pointer; }
 @media (prefers-color-scheme: dark) { .pending-chip.is-due { background: #351f20; color: #ffb4a0; } }
+
+/* 微信名设置（「我的」页） */
+.nick-form { margin: 14px var(--gutter) 6px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); }
+.nick-form label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.nick-row { display: flex; gap: 8px; align-items: center; }
+.nick-row input { flex: 1; min-width: 0; height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font: inherit; font-size: 16px; }
+.nick-row .quiet-button { min-height: 40px; padding: 0 10px; font-size: 15px; font-weight: 600; }
+.nick-hint { margin: 8px 0 0; font-size: 12px; line-height: 1.6; color: var(--muted); }
+.profile-flash { margin: 10px var(--gutter) 0; }
 </style>
 </head>
 <body>
@@ -575,7 +583,7 @@ a { color: var(--link); text-decoration: none; }
   {% endif %}
   <div class="scroll list" id="inbox">
     {% if not admin_as %}<div class="find-row">
-      <label class="search-pill" for="phoneSearch"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><input id="phoneSearch" type="search" placeholder="搜索联系人、消息、心动信、朋友圈" autocomplete="off" enterkeyhint="search" maxlength="40" aria-label="搜索"><button type="button" class="search-clear" id="phoneSearchClear" aria-label="清除" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="currentColor" stroke="none" opacity=".35"/><path d="m9 9 6 6M15 9l-6 6" stroke="var(--bg)" stroke-width="2"/></svg></button></label>
+      <label class="search-pill" for="phoneSearch"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><input id="phoneSearch" type="search" placeholder="搜索联系人、消息、朋友圈" autocomplete="off" enterkeyhint="search" maxlength="40" aria-label="搜索"><button type="button" class="search-clear" id="phoneSearchClear" aria-label="清除" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="currentColor" stroke="none" opacity=".35"/><path d="m9 9 6 6M15 9l-6 6" stroke="var(--bg)" stroke-width="2"/></svg></button></label>
       <a class="timeline-btn" href="{{ url_for('player_stats', view='timeline') }}" aria-label="时间线与统计" title="时间线与统计"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4M7.5 14h3M13.5 14h3M7.5 17h3"/></svg>{% if timeline_n %}<b>{{ timeline_n }}</b>{% endif %}</a>
     </div>{% endif %}
     {% if not admin_as %}<div id="searchResults" class="search-results" hidden></div>{% include '_phone_pending_entry.html' %}{% endif %}
@@ -607,7 +615,7 @@ a { color: var(--link); text-decoration: none; }
     <a class="row" data-other="{{ t.other }}" data-received-ts="{{ t.received_ts }}" href="{{ purl('player_phone_thread', other=t.other, _as=admin_as) }}">
       <div class="avatar" data-name="{{ _who }}">{{ _who[:1] }}</div>
       <div class="body">
-        <div class="top"><span class="name">{% if _alias %}{{ _who }}{{ npc(_who) }}<span class="alias-tag">化名·{{ _alias }}</span>{% else %}{{ t.other }}{{ npc(t.other) }}{% endif %}</span><span class="time">{{ t.last.game_day }} {{ t.time }}</span></div>
+        <div class="top"><span class="name">{% if _alias %}{{ disp(_who) if disp else _who }}{{ npc(_who) }}<span class="alias-tag">化名·{{ _alias }}</span>{% else %}{{ disp(t.other) if disp else t.other }}{{ npc(t.other) }}{% endif %}</span><span class="time">{{ t.last.game_day }} {{ t.time }}</span></div>
         <div class="preview">{{ t.preview }}</div>
       </div>
     </a>
@@ -1024,7 +1032,7 @@ a { color: var(--link); text-decoration: none; }
     <label>拉谁进群（至少 2 个，最多 {{ max_members - 1 }} 个）</label>
     <div class="group-pick">
       {% for n in contacts %}
-      <label class="group-pick-row"><input type="checkbox" name="member" value="{{ n }}"><span class="avatar sm" data-name="{{ n }}">{{ n[:1] }}</span>{{ n }}{{ npc(n) }}</label>
+      <label class="group-pick-row"><input type="checkbox" name="member" value="{{ n }}"><span class="avatar sm" data-name="{{ n }}">{{ n[:1] }}</span>{{ disp(n) if disp else n }}{{ npc(n) }}</label>
       {% else %}<div class="empty">还没有可以拉的人</div>{% endfor %}
     </div>
     <button type="submit" class="song-submit"{% if why %} disabled{% endif %}>建群</button>
@@ -1196,7 +1204,7 @@ a { color: var(--link); text-decoration: none; }
     {% for n in contacts %}
     <a class="row" data-contact="{{ n }}" href="{{ url_for('player_phone_thread', other=n) }}">
       <div class="avatar sm" data-name="{{ n }}">{{ n[:1] }}</div>
-      <div class="body"><div class="top"><span class="name">{{ n }}{{ npc(n) }}</span></div></div>
+      <div class="body"><div class="top"><span class="name">{{ disp(n) if disp else n }}{{ npc(n) }}</span></div></div>
     </a>
     {% else %}
     <div class="empty">还没有可以发送的对象</div>
@@ -1222,9 +1230,9 @@ a { color: var(--link); text-decoration: none; }
   <header class="bar">
     <a class="back" href="{{ purl('player_phone_inbox', _as=admin_as) }}">信息</a>
     {% if group %}<div class="title"><div class="avatar head group-avatar">{{ group.name[:1] }}</div>{{ group.name }}<small>群聊 · {{ group.n }} 人</small></div>
-    {% elif alias_thread == 'out' %}<div class="title">{% set _w = other.partition('＠')[0] %}<div class="avatar head" data-name="{{ _w }}">{{ _w[:1] }}</div>{{ _w }}<small>你的化名：{{ other.partition('＠')[2] }}</small></div>
+    {% elif alias_thread == 'out' %}<div class="title">{% set _w = other.partition('＠')[0] %}<div class="avatar head" data-name="{{ _w }}">{{ _w[:1] }}</div>{{ disp(_w) if disp else _w }}<small>你的化名：{{ other.partition('＠')[2] }}</small></div>
     {% elif alias_thread == 'back' %}<div class="title"><div class="avatar head public-avatar">?</div>{{ other }}<small>匿名</small></div>
-    {% else %}<div class="title"><div class="avatar head" data-name="{{ other }}">{{ other[:1] }}</div>{{ other }}{{ npc(other) }}{% if admin_as %}<small>管理 · 以 {{ owner }} 的视角</small>{% endif %}</div>{% endif %}
+    {% else %}<div class="title"><div class="avatar head" data-name="{{ other }}">{{ other[:1] }}</div>{{ disp(other) if disp else other }}{{ npc(other) }}{% if admin_as %}<small>管理 · 以 {{ owner }} 的视角</small>{% endif %}</div>{% endif %}
     <div class="right">{% if alias_state and alias_state.party and not alias_state.blocked and not phone_admin %}
       <form method="post" action="{{ url_for('player_alias_block') }}" onsubmit="return confirm('拉黑后这段匿名对话立刻结束，双方都不能再发；满 2 小时后你才能解除。确定？')">
         <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="key" value="{{ other }}">
