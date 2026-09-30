@@ -59,6 +59,17 @@
     </div>
   </div>
   <div class="pc-add">
+    <label>管理员手机码（用它进网页手机是「管理身份」：能用任何角色的视角查看，能删短信、礼物、朋友圈、评论、图片、点歌、头像；不能发）</label>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      {% if admin_code %}<span class="pc-code">{{ admin_code }}</span>
+      <button class="pc-btn ghost sm" type="button" data-copy="{{ base_url }}/p/{{ admin_code }}">复制链接</button>{% endif %}
+      <form method="post" onsubmit="return {{ 'confirm(\'重置后旧的管理员码立即失效，确定？\')' if admin_code else 'true' }}">
+        <input type="hidden" name="action" value="admin_code">
+        <button class="pc-btn{{ ' ghost sm' if admin_code else '' }}" type="submit">{{ '重置' if admin_code else '生成管理员手机码' }}</button></form>
+    </div>
+    <div style="font-size:12px;color:var(--muted);">只给管理员自己用，别发给玩家。本季结束后自动失效。</div>
+  </div>
+  <div class="pc-add">
     <label>点歌（一律匿名；这里能看到是谁点的）</label>
     <form method="post" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;">
       <input type="hidden" name="action" value="song_daily">

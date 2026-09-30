@@ -67,7 +67,11 @@ js = group_song("林晚", "晴天", platform="qq", message="QQ 版"); ok(js["ok"
 js = web_song(lin, "163", "186016"); ok(not js["ok"] and "今天已经点了 3 首" in js["msg"], js)
 ok(not group_song("周屿", "搜不到")["ok"], "not found")
 ok("不能点给自己" in group_song("周屿", "晴天", to="周屿")["msg"], "self")
-ok("找不到" in group_song("周屿", "晴天", to="路人")["msg"], "unknown target")
+js = group_song("周屿", "晴天", to="小狐狸"); ok(js["ok"] and "给 小狐狸" in js["msg"], js)  # 名单外的称呼可以
+ok("有人点给 小狐狸" in sz.get("/p/me/public").get_data(as_text=True), "custom target in public")
+ok("点歌台" not in sz.get("/p/me").get_data(as_text=True), "custom target reaches nobody")
+ok("最多 20 字" in group_song("周屿", "晴天", to="长" * 21)["msg"], "target too long")
+ok("不允许的字词" in group_song("周屿", "晴天", to="加vx")["msg"], "blocked target")
 ok("不允许的字词" in group_song("周屿", "晴天", message="加vx")["msg"], "blocked message")
 ok(app.test_client().post("/api/song/request", json={}).status_code == 403, "api needs token")
 
@@ -81,7 +85,7 @@ def sync(done=None):
     return app.test_client().post("/api/phone/sync", headers={"X-Archive-Token": TOKEN},
                                   json={"after": 0, "songs_done": done or [], "snapshot": {"game_day": "D1",
                                         "roster": [{"name": n} for n in ("林晚", "周屿", "沈知意")], "rules": {}}}).get_json()
-songs = sync()["songs"]; ok(len(songs) == 3 and {s["platform"] for s in songs} == {"163", "qq"} and "from_role" not in songs[0], songs)
+songs = sync()["songs"]; ok(len(songs) == 4 and {s["platform"] for s in songs} == {"163", "qq"} and "from_role" not in songs[0], songs)
 ok(sync(done=[s["id"] for s in songs])["songs"] == [], "acked")
 # 超过 2 小时没播的不补发
 group_song("周屿", "晴天")

@@ -1584,6 +1584,16 @@ def _migrate(conn):
     if "song_daily" not in _col_names(conn, "phone_settings"):
         conn.execute("ALTER TABLE phone_settings ADD COLUMN song_daily INTEGER NOT NULL DEFAULT 0")  # 0 = 默认次数
 
+    # ── 21. 管理员手机码：一季一个，用它进网页手机是「管理身份」（只看和删，不能发）────────
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS phone_admin_codes (
+            show_id    INTEGER PRIMARY KEY,
+            tenant_id  INTEGER NOT NULL,
+            code       TEXT    NOT NULL UNIQUE,
+            created_at INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+
     # ── 长日将尽许愿墙：独立的小功能，不挂在 tenant/superadmin 体系下 ──────────
     conn.execute("""
         CREATE TABLE IF NOT EXISTS changri_wishes (
@@ -4918,7 +4928,8 @@ def _phone_note_fail():
 def _new_phone_code(db):
     while True:
         code = "".join(secrets.choice(_PHONE_CODE_ALPHABET) for _ in range(_PHONE_CODE_LEN))
-        if not db.execute("SELECT 1 FROM phone_codes WHERE code=?", (code,)).fetchone():
+        if not db.execute("SELECT 1 FROM phone_codes WHERE code=? UNION SELECT 1 FROM phone_admin_codes WHERE code=?",
+                          (code, code)).fetchone():
             return code
 
 def _phone_code_owner(db, code):
@@ -4930,7 +4941,16 @@ def _phone_code_owner(db, code):
         SELECT c.show_id, c.role_name FROM phone_codes c JOIN shows s ON s.id=c.show_id
         WHERE c.code=? AND s.is_current=1
     """, (code,)).fetchone()
-    return (row["show_id"], row["role_name"]) if row else None
+    if row:
+        return (row["show_id"], row["role_name"])
+    row = db.execute("""
+        SELECT c.show_id FROM phone_admin_codes c JOIN shows s ON s.id=c.show_id
+        WHERE c.code=? AND s.is_current=1
+    """, (code,)).fetchone()
+    return (row["show_id"], PHONE_ADMIN) if row else None
+
+# 管理身份用的「角色名」：带 \0，任何真实角色名都不可能跟它撞
+PHONE_ADMIN = "\0管理员"
 
 def _phone_try_enter(code):
     """校验码并写入独立 cookie；不改变团账号或后台会话的期限"""
@@ -4940,7 +4960,8 @@ def _phone_try_enter(code):
     if not _phone_code_owner(get_db(), code):
         _phone_note_fail()
         return render_template("phone.html", mode="entry", error=_PHONE_BAD_CODE), 404
-    resp = redirect(url_for("player_phone_inbox"))
+    who = _phone_code_owner(get_db(), code)
+    resp = redirect(url_for("admin_phone_index" if who and who[1] == PHONE_ADMIN else "player_phone_inbox"))
     resp.set_cookie(_PHONE_COOKIE, _phone_signer().dumps(code), max_age=_PHONE_COOKIE_AGE,
                     httponly=True, samesite="Lax", secure=not _phone_local(), path="/p")
     return resp
@@ -5031,6 +5052,8 @@ def player_phone_inbox():
     if not who:
         return redirect(url_for("phone_code_entry"))
     sid, owner = who
+    if owner == PHONE_ADMIN:
+        return redirect(url_for("admin_phone_index"))
     db = get_db()
     return render_template("phone.html", mode="inbox", owner=owner, sid=sid,
                            threads=_phone_threads(db, sid, owner), status=_phone_status(db, sid, owner),
@@ -5073,6 +5096,7 @@ def player_phone_public():
     sid, owner = who
     db = get_db()
     return render_template("phone.html", mode="public", owner=owner, sid=sid,
+                           phone_admin=(owner == PHONE_ADMIN), csrf=_phone_csrf(),
                            items=_phone_public_items(db, sid),
                            revision=_phone_revision(_phone_views(db, sid, owner)))
 
@@ -5162,7 +5186,8 @@ def _phone_public_items(db, sid):
             continue
         item = {"kind": e["type"], "from": info.get("from_custom_name") or e["from_role"],
                 "to": "某人" if info.get("hide_receiver") else (info.get("intended_to") or e["to_role"]),
-                "ts": e["timestamp"] or 0, "time": _phone_time(e["timestamp"]), "game_day": e["game_day"] or ""}
+                "ts": e["timestamp"] or 0, "time": _phone_time(e["timestamp"]), "game_day": e["game_day"] or "",
+                "admin_note": _admin_note(e), "admin_del": f"event:{e['id']}"}  # 只有管理身份的页面会显示这两个
         if e["type"] == "sms":
             item["text"] = (info.get("delivered") or e["content"]) if info.get("public_show_effect") else e["content"]
         else:
@@ -5170,6 +5195,7 @@ def _phone_public_items(db, sid):
         items.append(item)
     for sg in _song_rows(db, sid):
         items.append({"kind": "song", "from": "有人", "to": sg["to_role"] or "大家", "text": sg["message"],
+                      "admin_note": f"点歌人：{sg['from_role']}", "admin_del": f"song:{sg['id']}",
                       "ts": sg["created_at"], "time": _phone_time(sg["created_at"]), "game_day": sg["game_day"],
                       "song": _song_view(sg)})
     items.sort(key=lambda it: it["ts"])
@@ -5491,6 +5517,8 @@ def player_phone_send():
     if not who:
         return redirect(url_for("phone_code_entry"))
     sid, owner = who
+    if owner == PHONE_ADMIN:
+        return redirect(url_for("admin_phone_index"))
     to_name = request.form.get("to", "").strip()
     back = url_for("player_phone_thread", other=to_name) if to_name else url_for("player_phone_inbox")
     if not hmac.compare_digest(request.form.get("csrf", ""), session.get("phone_csrf", "") or "-"):
@@ -5688,6 +5716,8 @@ def _moment_guard():
     if not hmac.compare_digest(token, session.get("phone_csrf", "") or "-"):
         return None, _moment_json(False, "页面过期了，刷新后再试")
     sid, owner = who
+    if owner == PHONE_ADMIN:
+        return None, _moment_json(False, "管理身份只能查看和删除，不能发")
     tid = get_db().execute("SELECT tenant_id FROM shows WHERE id=?", (sid,)).fetchone()["tenant_id"]
     return (sid, owner, tid), None
 
@@ -5708,7 +5738,9 @@ def player_moments():
     quota = _moment_player_quota(db, sid)
     tenant_full = _moment_tenant_used(db, tid) >= _moment_tenant_quota_bytes(db, tid)
     return render_template("phone.html", mode="moments", owner=owner, sid=sid, posts=posts, more=more,
-                           mine_only=mine_only, csrf=_phone_csrf(), why=_moment_can_write(db, sid),
+                           mine_only=mine_only, csrf=_phone_csrf(),
+                           why=("管理身份：可以删除任何朋友圈、评论和图片，不能发" if owner == PHONE_ADMIN else _moment_can_write(db, sid)),
+                           phone_admin=(owner == PHONE_ADMIN),
                            img_used=_moment_player_used(db, sid, owner), img_quota=quota, tenant_full=tenant_full,
                            max_images=_MOMENT_MAX_IMAGES, max_text=_MOMENT_MAX_TEXT, max_comment=_MOMENT_MAX_COMMENT,
                            latest_ts=(posts[0]["created_at"] if posts and not before and not mine_only else 0))
@@ -5940,9 +5972,22 @@ def _avatar_remove(db, sid, role):
         db.execute("DELETE FROM phone_avatars WHERE show_id=? AND role_name=?", (sid, role))
 
 @app.context_processor
+def inject_phone_urls():
+    """模板里用 purl() 生成对话/首页链接：管理员以某人视角查看时换成管理员路由"""
+    def purl(endpoint, **kw):
+        as_role = kw.pop("_as", None)
+        if as_role:
+            if endpoint == "player_phone_thread":
+                return url_for("admin_phone_thread", role=as_role, other=kw["other"])
+            if endpoint == "player_phone_inbox":
+                return url_for("admin_phone_inbox", role=as_role)
+        return url_for(endpoint, **kw)
+    return {"purl": purl}
+
+@app.context_processor
 def inject_phone_avatars():
     """网页手机页面用：本季谁有头像 {名字: 版本号}，前端据此把名字头像换成图片"""
-    if not request.path.startswith("/p/me"):
+    if not (request.path.startswith("/p/me") or request.path.startswith("/p/admin")):
         return {}
     try:
         who = _phone_current()
@@ -6140,17 +6185,18 @@ def _song_create(db, sid, tid, from_role, to_role, song, message, source):
     show = db.execute("SELECT * FROM shows WHERE id=?", (sid,)).fetchone()
     if not show or _schedule_zone(dict(show)) != "main":
         return False, "❌ 不在档期内，暂时不能点歌", None
+    # 「送给」可以写名单外的称呼（比如情侣间的化名）：是角色本名就进那个人的点歌台，否则只在公开播报里显示
     to_role = (to_role or "").strip()
     if to_role in ("大家", "所有人"):
         to_role = ""
-    if to_role and to_role not in _song_roster(db, sid):
-        return False, f"❌ 找不到「{to_role}」", None
+    if len(to_role) > 20:
+        return False, "❌ 「送给」最多 20 字", None
     if to_role == from_role:
         return False, "❌ 不能点给自己", None
     message = (message or "").strip()
     if len(message) > _SONG_MAX_MSG:
         return False, f"❌ 寄语最多 {_SONG_MAX_MSG} 字", None
-    if _blocked_hit(sid, from_role, "点歌寄语", message):
+    if _blocked_hit(sid, from_role, "点歌寄语", to_role, message):
         return False, BLOCKED_MSG, None
     cap = _song_daily_cap(db, sid)
     used = _song_used_today(db, sid, from_role)
@@ -6175,7 +6221,7 @@ def _song_view(sg):
             "id": sg["song_id"], "name": sg["song_name"], "artists": sg["artists"], "cover": sg["cover"],
             "vip": bool(sg["fee"]), "embed": (not qq),
             "link": (f"https://y.qq.com/n/ryqq/songDetail/{sg['song_mid']}" if qq
-                     else f"https://music.163.com/song?id={sg['song_id']}")}
+                     else f"https://y.music.163.com/m/song?id={sg['song_id']}")}
 
 def _song_rows(db, sid):
     return [dict(r) for r in db.execute(
@@ -6283,6 +6329,154 @@ def _song_pending_for_bot(db, sid, done_ids):
              "name": r["song_name"], "artists": r["artists"], "to": r["to_role"], "message": r["message"]}
             for r in db.execute("SELECT * FROM song_requests WHERE show_id=? AND announced=0 AND deleted=0 ORDER BY id LIMIT 20",
                                 (sid,))]
+
+# ── 管理身份（网页手机里维护）───────────────────────────────────────────────────
+# 用后台生成的「管理员手机码」进门：能以任何角色的视角翻手机（每条带管理员才看得到的真实情况小字），
+# 能删短信/礼物/朋友圈/评论/图片/点歌/头像；前端每次删除都有二次确认，后端每次删除都记 moderation.log。
+# 不能发任何东西（所有玩家写接口对管理身份一律拒绝）。
+
+def _phone_admin_current():
+    who = _phone_current()
+    return who if who and who[1] == PHONE_ADMIN else None
+
+def _admin_role_list(db, sid):
+    names = set(_phone_roster(_phone_sync_row(db, sid)))
+    names |= {r["role_name"] for r in db.execute("SELECT role_name FROM phone_codes WHERE show_id=?", (sid,))}
+    for r in db.execute("SELECT from_role, to_role FROM extra_events WHERE show_id=? AND type IN ('sms','gift')", (sid,)):
+        names.update(n for n in (r["from_role"], r["to_role"]) if n)
+    return sorted(names)
+
+def _admin_note(e):
+    """管理员看的真实情况：一行小字"""
+    info = e.get("extra_info") or {}
+    if e["type"] == "song":
+        return f"点歌人：{e['from_role']}"
+    parts = [f"实际：{e['from_role']} → {e['to_role'] or '（静默拉黑，未送达）'}"]
+    if info.get("from_custom_name"):
+        parts.append(f"署名「{info['from_custom_name']}」")
+    intended = info.get("intended_to")
+    if intended and intended != e["to_role"] and e["to_role"]:
+        parts.append(f"误送，本来给{intended}")
+    if e["type"] == "sms":
+        if info.get("is_content_chaos"):
+            parts.append(f"原文：{e['content']}")
+        if info.get("is_signature_chaos"):
+            parts.append(f"落款被换成{_sig_name(info.get('signature'))}")
+        if info.get("is_torn"):
+            parts.append(f"撕信，后半页在{info.get('torn_holder')}")
+    if e["type"] == "gift" and info.get("isLost"):
+        parts.append("礼物丢失")
+    if info.get("source") == "web":
+        parts.append("网页发送")
+    return " · ".join(parts)
+
+def _admin_log(sid, what):
+    try:
+        os.makedirs(os.path.dirname(MODERATION_LOG), exist_ok=True)
+        with open(MODERATION_LOG, "a", encoding="utf-8") as f:
+            f.write(f"{datetime.now(TZ_BEIJING).isoformat(timespec='seconds')}\tshow={sid}\tADMIN\t删除\t{what}\n")
+    except OSError:
+        pass
+
+@app.route("/p/admin")
+def admin_phone_index():
+    who = _phone_admin_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid = who[0]
+    db = get_db()
+    rows = []
+    for name in _admin_role_list(db, sid):
+        n = db.execute("SELECT COUNT(*) FROM extra_events WHERE show_id=? AND type IN ('sms','gift') AND (from_role=? OR to_role=?)",
+                       (sid, name, name)).fetchone()[0]
+        rows.append({"name": name, "count": n})
+    return render_template("phone.html", mode="admin_index", owner="管理员", sid=sid, roles=rows, csrf=_phone_csrf(),
+                           phone_admin=True)
+
+@app.route("/p/admin/as/<role>")
+def admin_phone_inbox(role):
+    who = _phone_admin_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid = who[0]
+    db = get_db()
+    return render_template("phone.html", mode="inbox", owner=role, sid=sid, admin_as=role, phone_admin=True,
+                           threads=_phone_threads(db, sid, role), status={"can": False, "why": "", "sms": None, "gift": None},
+                           public=None, moments_latest=None, revision="", csrf=_phone_csrf())
+
+@app.route("/p/admin/as/<role>/<other>")
+def admin_phone_thread(role, other):
+    who = _phone_admin_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid = who[0]
+    db = get_db()
+    events = {e["id"]: e for e in _phone_events(db, sid)}
+    msgs = _phone_msgs(db, sid, role, other)
+    for m in msgs:
+        e = events.get(m["id"])
+        m["admin_note"] = _admin_note(e) if e else ""
+        m["admin_del"] = _admin_del_key(m["id"])
+    return render_template("phone.html", mode="thread", owner=role, sid=sid, other=other, admin_as=role, phone_admin=True,
+                           msgs=msgs, status={"can": False, "why": "管理身份：只能查看和删除", "sms": None, "gift": None},
+                           can_reply=False, revision="", csrf=_phone_csrf(), stickers=[], flash=None, draft="",
+                           draft_kind="sms", draft_gift="", sent=False)
+
+def _admin_del_key(view_id):
+    """手机视图里的 id → 删除接口用的 (类型, 真实 id)：正数是 extra_events，≤-1000000 是点歌，其余负数是静默拉黑的网页短信"""
+    if view_id > 0:
+        return f"event:{view_id}"
+    if view_id <= -1_000_000:
+        return f"song:{-view_id - 1_000_000}"
+    return f"silent:{-view_id}"
+
+@app.route("/p/admin/delete", methods=["POST"])
+def admin_phone_delete():
+    who = _phone_admin_current()
+    if not who:
+        return jsonify(ok=False, msg="管理身份已失效"), 401
+    token = request.headers.get("X-CSRF", "") or request.form.get("csrf", "")
+    if not hmac.compare_digest(token, session.get("phone_csrf", "") or "-"):
+        return _moment_json(False, "页面过期了，刷新后再试")
+    sid = who[0]
+    db = get_db()
+    kind, _, raw_id = (request.form.get("target") or "").partition(":")
+    if kind == "avatar":
+        _avatar_remove(db, sid, raw_id)
+        db.commit(); _admin_log(sid, f"头像 {raw_id}")
+        return _moment_json(True, "已删除")
+    try:
+        tid_ = int(raw_id)
+    except ValueError:
+        return _moment_json(False, "不认识要删的东西")
+    if kind == "event":
+        row = db.execute("SELECT type, from_role, to_role, content FROM extra_events WHERE id=? AND show_id=? AND type IN ('sms','gift')",
+                         (tid_, sid)).fetchone()
+        if not row:
+            return _moment_json(False, "已经不在了")
+        db.execute("DELETE FROM extra_events WHERE id=?", (tid_,))
+        what = f"{'短信' if row['type'] == 'sms' else '礼物'} {row['from_role']}→{row['to_role']}：{row['content']}"
+    elif kind == "silent":
+        if not db.execute("SELECT 1 FROM phone_silent WHERE id=? AND show_id=?", (tid_, sid)).fetchone():
+            return _moment_json(False, "已经不在了")
+        db.execute("DELETE FROM phone_silent WHERE id=?", (tid_,)); what = f"静默拉黑短信 #{tid_}"
+    elif kind == "song":
+        db.execute("UPDATE song_requests SET deleted=1 WHERE id=? AND show_id=?", (tid_, sid)); what = f"点歌 #{tid_}"
+    elif kind == "moment":
+        if not db.execute("SELECT 1 FROM moments WHERE id=? AND show_id=?", (tid_, sid)).fetchone():
+            return _moment_json(False, "已经不在了")
+        _moment_delete_images(db, "moment_id=?", (tid_,))
+        db.execute("UPDATE moments SET deleted=1 WHERE id=?", (tid_,)); what = f"朋友圈 #{tid_}"
+    elif kind == "comment":
+        db.execute("UPDATE moment_comments SET deleted=1 WHERE id=? AND moment_id IN (SELECT id FROM moments WHERE show_id=?)",
+                   (tid_, sid)); what = f"评论 #{tid_}"
+    elif kind == "image":
+        _moment_delete_images(db, "id=? AND show_id=?", (tid_, sid)); what = f"朋友圈图片 #{tid_}"
+    else:
+        return _moment_json(False, "不认识要删的东西")
+    db.commit()
+    _admin_log(sid, what)
+    return _moment_json(True, "已删除")
 
 # ── 后台：朋友圈管理（空间/额度/删帖删图） ──
 
@@ -6396,6 +6590,10 @@ def admin_phone_codes():
             db.execute("INSERT INTO phone_settings (show_id, web_send) VALUES (?, ?) "
                        "ON CONFLICT(show_id) DO UPDATE SET web_send=excluded.web_send",
                        (sid, 1 if request.form.get("on") == "1" else 0))
+        elif action == "admin_code":
+            db.execute("DELETE FROM phone_admin_codes WHERE show_id=?", (sid,))  # 生成/重置：旧码立即作废
+            db.execute("INSERT INTO phone_admin_codes (show_id, tenant_id, code, created_at) VALUES (?,?,?,?)",
+                       (sid, tid, _new_phone_code(db), now))
         elif action == "song_daily":
             try:
                 n = max(0, min(50, int(request.form.get("n") or 0)))
@@ -6447,6 +6645,7 @@ def admin_phone_codes():
                            base_url=_phone_base_url(),
                            web_send=_phone_web_send_on(db, sid), sync_ago=sync_ago, has_sync=bool(sync),
                            song_daily=_song_daily_cap(db, sid), song_default=_SONG_DEFAULT_DAILY,
+                           admin_code=(db.execute("SELECT code FROM phone_admin_codes WHERE show_id=?", (sid,)).fetchone() or {"code": None})["code"],
                            songs=[dict(r, time=ts_to_str(r["created_at"])) for r in db.execute(
                                "SELECT * FROM song_requests WHERE show_id=? AND deleted=0 ORDER BY id DESC LIMIT 50", (sid,))],
                            stickers_custom="\n".join(_phone_parse_stickers((db.execute(
