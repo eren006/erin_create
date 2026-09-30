@@ -268,7 +268,7 @@ body{background:#d8d8d6;letter-spacing:-.01em;}
       <a href="player_guide.html" target="_blank">玩家指南</a>
       <a href="changri_wishes.html">许愿墙</a>
     </div>
-    <div class="nav-meta">SYSTEM · v1.11.0</div>
+    <div class="nav-meta">SYSTEM · v1.10.1</div>
   </div>
 </nav>
 
@@ -284,7 +284,7 @@ body{background:#d8d8d6;letter-spacing:-.01em;}
     <div class="hero-stats">
       <div class="hero-stat"><b>10</b><span>个子系统</span></div>
       <div class="hero-stat"><b>200+</b><span>条指令</span></div>
-      <div class="hero-stat"><b>v1.11.0</b><span>当前版本</span></div>
+      <div class="hero-stat"><b>v1.10.1</b><span>当前版本</span></div>
     </div>
     <div class="hero-cta">
       <a class="btn btn-light" onclick="showTab('manual')">进入指令手册 →</a>
@@ -461,20 +461,13 @@ document.getElementById("subsysGrid").innerHTML = SUBSYSTEMS.map(s => `
 // ========================
 const CHANGELOG = [
   {
-    version: "1.11.0",
+    version: "1.10.1",
     date: "2026-09-30",
     latest: true,
     groups: [
       { type: "feat", title: "新功能", items: [
         "网页手机的对话页「⋯」菜单里可以直接拉黑 / 静默拉黑对方，也能解除；和群里「拉黑」「取消拉黑」是同一份名单，半分钟内群里同步生效，同样满 2 小时才能解除"
-      ]}
-    ]
-  },
-  {
-    version: "1.10.1",
-    date: "2026-09-30",
-    latest: false,
-    groups: [
+      ]},
       { type: "fix", title: "修复", items: [
         "修复回复图片发「提交出场图片」时，有时明明回复的是图片却提示「回复的消息里没有找到可下载的图片链接」"
       ]}
