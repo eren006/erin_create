@@ -162,4 +162,17 @@ c.execute("UPDATE phone_sync SET synced_at=1 WHERE show_id=?", (SID,)); c.commit
 assert admin_gate.post("/admin/phone_codes", data={"action":"web_send","on":"1"}).status_code == 302
 assert c.execute("SELECT web_send FROM phone_settings WHERE show_id=?", (SID,)).fetchone()[0] == 1
 assert "关闭网页发送" in admin_gate.get("/admin/phone_codes").get_data(as_text=True)
+# 表情面板：能回复时显示默认表情；后台自定义后替换；清空恢复默认；只读时不显示
+A._PHONE_MIN_GAP_MS = 0
+pg = lin.get("/p/me/周屿").get_data(as_text=True)
+ok('id="stickers"' in pg and "(｡･ω･｡)" in pg and "😊" in pg, "default stickers")
+adm.post("/admin/phone_codes", data={"action": "stickers", "stickers": "(=^･ω･^=)\n\n🐱\n🐱\n" + "长" * 21})
+pg = lin.get("/p/me/周屿").get_data(as_text=True)
+ok("(=^･ω･^=)" in pg and pg.count('data-s="🐱"') == 1 and "(｡･ω･｡)" not in pg and "长" * 21 not in pg, "custom stickers")
+ok("(=^･ω･^=)" in adm.get("/admin/phone_codes").get_data(as_text=True), "admin shows custom")
+adm.post("/admin/phone_codes", data={"action": "stickers", "stickers": ""})
+ok("(｡･ω･｡)" in lin.get("/p/me/周屿").get_data(as_text=True), "reset to default")
+ok('id="stickers"' not in lin.get("/p/me/未知号码").get_data(as_text=True), "no stickers when cannot reply")
+adm.post("/admin/phone_codes", data={"action": "web_send", "on": "0"})
+ok('id="stickers"' not in lin.get("/p/me/周屿").get_data(as_text=True), "no stickers when web send off")
 print("ALL OK")

@@ -59,6 +59,15 @@
     </div>
   </div>
   <form method="post" class="pc-add">
+    <input type="hidden" name="action" value="stickers">
+    <label>表情面板（网页发送时输入框旁的 ☺，一行一个 emoji 或颜文字，每个不超过 20 字，最多 60 个；留空 = 用默认那套）</label>
+    <textarea name="stickers" rows="5" placeholder="{{ stickers_default }}">{{ stickers_custom }}</textarea>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="pc-btn" type="submit">保存表情面板</button>
+      {% if stickers_custom %}<button class="pc-btn ghost" type="submit" onclick="this.form.stickers.value=''">恢复默认</button>{% endif %}
+    </div>
+  </form>
+  <form method="post" class="pc-add">
     <input type="hidden" name="action" value="add_roles">
     <label>手动添加角色（一行一个，名字要跟群里「创建新角色」时的本名完全一致）</label>
     <textarea name="names" rows="3" placeholder="张三&#10;李四"></textarea>

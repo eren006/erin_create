@@ -176,6 +176,21 @@ a { color: var(--link); text-decoration: none; }
 .compose.gift-mode .gift-toggle { background: var(--gift-bg); filter: none; opacity: 1; box-shadow: 0 0 0 1px var(--gift-line); }
 .compose .send { background: var(--mine); color: var(--mine-text); font-weight: 700; }
 .compose .send:disabled { opacity: .4; }
+.compose .sticker-toggle { background: var(--theirs); color: var(--muted); }
+.compose .sticker-toggle[aria-expanded="true"] { background: var(--mine); color: var(--mine-text); }
+.stickers {
+  position: sticky; bottom: 53px; z-index: 5; max-height: 42vh; overflow-y: auto;
+  padding: 10px 10px 6px; background: var(--bar); border-top: .5px solid var(--line);
+  backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px);
+  display: flex; flex-wrap: wrap; gap: 6px;
+}
+.stickers[hidden] { display: none; }
+.stickers button {
+  font: inherit; font-size: 15px; line-height: 1.3; padding: 6px 10px; border-radius: 14px; cursor: pointer;
+  border: .5px solid var(--line); background: var(--bg); color: var(--text); white-space: nowrap;
+}
+.stickers button.emoji { font-size: 22px; padding: 4px 6px; border-color: transparent; background: none; }
+.stickers button:active { background: var(--theirs); }
 .remaining { font-size: 11px; color: var(--muted); align-self: center; white-space: nowrap; }
 .compose-note { text-align: center; font-size: 12px; color: var(--muted); padding: 10px 16px calc(env(safe-area-inset-bottom) + 10px); border-top: .5px solid var(--line); }
 </style>
@@ -263,11 +278,17 @@ a { color: var(--link); text-decoration: none; }
     </div>
   </div>
   {% if can_reply and (status.sms or status.gift) %}
+  {% if stickers %}
+  <div class="stickers" id="stickers" hidden>
+    {% for st in stickers %}<button type="button" class="{{ 'emoji' if st|length <= 2 else '' }}" data-s="{{ st }}">{{ st }}</button>{% endfor %}
+  </div>
+  {% endif %}
   <form class="compose{{ ' gift-mode' if draft_kind == 'gift' and status.gift else '' }}" id="compose" method="post" action="{{ url_for('player_phone_send') }}">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <input type="hidden" name="to" value="{{ other }}">
     <input type="hidden" name="kind" id="kind" value="{{ 'gift' if draft_kind == 'gift' and status.gift else 'sms' }}">
     {% if status.gift %}<button class="icon gift-toggle" type="button" id="giftToggle" title="送礼物" aria-label="切换送礼物">🎁</button>{% endif %}
+    {% if stickers %}<button class="icon sticker-toggle" type="button" id="stickerToggle" aria-expanded="false" aria-controls="stickers" aria-label="表情">☺</button>{% endif %}
     <textarea name="text" id="text" rows="1" maxlength="500" placeholder="短信">{{ draft }}</textarea>
     <span class="remaining" id="remaining" aria-live="polite" hidden></span>
     <button class="icon send" type="submit" id="sendBtn" aria-label="发送">↑</button>
@@ -311,6 +332,23 @@ a { color: var(--link); text-decoration: none; }
         }
       });
       window.addEventListener('pagehide', saveDraft);
+      // 表情面板：点一下插到光标处（不能发图，emoji 和颜文字都是纯文字）
+      var sp = document.getElementById('stickers'), st = document.getElementById('stickerToggle');
+      if (sp && st) {
+        st.addEventListener('click', function () {
+          sp.hidden = !sp.hidden; st.setAttribute('aria-expanded', String(!sp.hidden));
+        });
+        sp.addEventListener('click', function (e) {
+          var btn = e.target.closest('button[data-s]');
+          if (!btn) return;
+          var ins = btn.dataset.s, a = t.selectionStart, z = t.selectionEnd;
+          if (Array.from(t.value).length + Array.from(ins).length > 500) return;
+          if (typeof a !== 'number') { a = z = t.value.length; }
+          t.value = t.value.slice(0, a) + ins + t.value.slice(z);
+          t.selectionStart = t.selectionEnd = a + ins.length;
+          grow(); saveDraft();
+        });
+      }
       f.addEventListener('submit', function (e) {
         if (!t.value.trim() || b.disabled && b.dataset.sent) { e.preventDefault(); return; }
         b.disabled = true; b.dataset.sent = '1';  // 防连点重复发送
@@ -369,7 +407,7 @@ a { color: var(--link); text-decoration: none; }
   document.addEventListener('phone:updated', unread);
   document.addEventListener('visibilitychange', unread);
   window.addEventListener('storage', unread);
-  var revision = null, busy = false;
+  var revision = {{ (revision or '')|tojson }}, busy = false;
   function avatars() {
     document.querySelectorAll('.avatar[data-name]').forEach(function (el) {
       var h = 0, s = el.dataset.name;
@@ -393,10 +431,13 @@ a { color: var(--link); text-decoration: none; }
       var selector = {{ ("#inbox" if mode == "inbox" else ".chat")|tojson }};
       var current = document.querySelector(selector), next = doc.querySelector(selector);
       if (!current || !next) return;
+      // 只在本来就停在底部附近时才跟到最新一条；正在往上翻历史的不拽回去
+      var sc = document.getElementById('scroll'), root = document.scrollingElement;
+      var nearBottom = sc && (sc.scrollHeight - sc.scrollTop - sc.clientHeight < 120)
+                       && (root.scrollHeight - root.scrollTop - root.clientHeight < 120);
       // 只替换消息区域，输入框、光标、输入法状态都保留。
       current.replaceWith(next);
-      var sc = document.getElementById('scroll');
-      if (sc) sc.scrollTop = sc.scrollHeight;
+      if (sc && nearBottom) { sc.scrollTop = sc.scrollHeight; root.scrollTop = root.scrollHeight; }
       avatars();
       document.dispatchEvent(new Event('phone:updated'));
       revision = data.revision;

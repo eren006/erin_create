@@ -1457,6 +1457,9 @@ def _migrate(conn):
             web_send INTEGER NOT NULL DEFAULT 0
         )
     """)
+    if "stickers" not in _col_names(conn, "phone_settings"):
+        # 网页手机表情面板（一行一个 emoji/颜文字），空 = 用默认那套
+        conn.execute("ALTER TABLE phone_settings ADD COLUMN stickers TEXT NOT NULL DEFAULT ''")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS phone_sync (
             show_id   INTEGER PRIMARY KEY,
@@ -4876,7 +4879,17 @@ def player_phone_inbox():
     sid, owner = who
     db = get_db()
     return render_template("phone.html", mode="inbox", owner=owner, sid=sid,
-                           threads=_phone_threads(db, sid, owner), status=_phone_status(db, sid, owner))
+                           threads=_phone_threads(db, sid, owner), status=_phone_status(db, sid, owner),
+                           revision=_phone_revision(_phone_views(db, sid, owner)))
+
+def _phone_views(db, sid, owner):
+    return [m for e in _phone_events(db, sid) if (m := _phone_view_of(e, owner)) and m["other"]]
+
+def _phone_revision(views):
+    """玩家视角内容的指纹：先翻译成玩家视角再算，隐藏事件（别人的信、静默拉黑）不会让它变化。
+    页面渲染时也带上它，这样第一次轮询不会白白整段重拉、把正在翻历史的人拽回底部。"""
+    visible = [{k: v for k, v in m.items() if k != "id"} for m in views]
+    return hashlib.sha256(json.dumps(visible, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 @app.route("/p/me/poll")
 def player_phone_poll():
@@ -4884,11 +4897,8 @@ def player_phone_poll():
     if not who:
         return jsonify(error="手机登录已失效"), 401
     sid, owner = who
-    # 先翻译玩家视角，再生成版本和概况；隐藏事件不能触发可观察的变化。
-    views = [m for e in _phone_events(get_db(), sid)
-             if (m := _phone_view_of(e, owner)) and m["other"]]
-    visible = [{k: v for k, v in m.items() if k != "id"} for m in views]
-    revision = hashlib.sha256(json.dumps(visible, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+    views = _phone_views(get_db(), sid, owner)
+    revision = _phone_revision(views)
     incoming = {}
     for m in views:
         if not m["mine"]:
@@ -4908,6 +4918,8 @@ def player_phone_thread(other):
     can_reply = st["can"] and other in _phone_roster(_phone_sync_row(db, sid)) and other != owner
     return render_template("phone.html", mode="thread", owner=owner, sid=sid, other=other,
                            msgs=_phone_msgs(db, sid, owner, other), status=st, can_reply=can_reply,
+                           revision=_phone_revision(_phone_views(db, sid, owner)),
+                           stickers=_phone_stickers(db, sid) if can_reply else [],
                            csrf=_phone_csrf(), sent=session.pop("phone_sent", False), flash=session.pop("phone_flash", None),
                            draft=session.pop("phone_draft", ""), draft_kind=session.pop("phone_draft_kind", "sms"))
 
@@ -4933,6 +4945,31 @@ _PHONE_MIN_GAP_MS    = 5000          # 冷却配置成 0 也至少隔 5 秒，�
 _phone_send_lock     = threading.Lock()
 _CHAOS_CHAR_POOL     = ["梦", "影", "幻", "虚", "无", "断", "零", "终", "念", "尘", "迹", "雾", "嘘", "寂"]
 _BLACKOUT_CHARS      = ["◼︎", "█", "■", "▮"]
+
+# 网页发送不能发图，给一块表情面板：emoji 和颜文字都是纯文字，点一下插进输入框。
+# 后台「短信激活码」页可以按季改成自己的一套（一行一个），留空就用这里的默认。
+_PHONE_DEFAULT_STICKERS = [
+    "😊", "😂", "🥺", "😭", "😳", "🥰", "😘", "😤", "🙄", "🤔", "😴", "🫠",
+    "❤️", "💔", "✨", "🌹", "🌙", "☕", "🎂", "👀", "🙏", "👌",
+    "(｡･ω･｡)", "(๑•̀ㅂ•́)و✧", "(╥﹏╥)", "(ﾉ>ω<)ﾉ", "(*/ω＼*)", "(｀へ´)", "(・∀・)",
+    "(⁄ ⁄•⁄ω⁄•⁄ ⁄)", "(´･_･`)", "ヾ(≧▽≦*)o", "(っ´ω`c)", "ᕦ(ò_óˇ)ᕤ", "(￣▽￣)~*", "orz",
+]
+_PHONE_STICKER_MAX     = 60
+_PHONE_STICKER_MAX_LEN = 20
+
+def _phone_parse_stickers(raw):
+    """一行一个，去空行去重，单个太长的丢掉，最多 60 个"""
+    out = []
+    for line in (raw or "").splitlines():
+        t = line.strip()
+        if t and len(t) <= _PHONE_STICKER_MAX_LEN and t not in out:
+            out.append(t)
+    return out[:_PHONE_STICKER_MAX]
+
+def _phone_stickers(db, sid):
+    row = db.execute("SELECT stickers FROM phone_settings WHERE show_id=?", (sid,)).fetchone()
+    custom = _phone_parse_stickers(row["stickers"]) if row else []
+    return custom or _PHONE_DEFAULT_STICKERS
 
 def _phone_web_send_on(db, sid):
     row = db.execute("SELECT web_send FROM phone_settings WHERE show_id=?", (sid,)).fetchone()
@@ -5279,6 +5316,10 @@ def admin_phone_codes():
             db.execute("INSERT INTO phone_settings (show_id, web_send) VALUES (?, ?) "
                        "ON CONFLICT(show_id) DO UPDATE SET web_send=excluded.web_send",
                        (sid, 1 if request.form.get("on") == "1" else 0))
+        elif action == "stickers":
+            text = "\n".join(_phone_parse_stickers(request.form.get("stickers", "")))
+            db.execute("INSERT INTO phone_settings (show_id, stickers) VALUES (?, ?) "
+                       "ON CONFLICT(show_id) DO UPDATE SET stickers=excluded.stickers", (sid, text))
         elif action == "add_roles":
             # 一行一个（也接受逗号/顿号/空格分隔），名字要跟群里「创建新角色」时的本名一字不差
             names = {n.strip() for n in re.split(r"[\n,，、\s]+", request.form.get("names", "")) if n.strip()}
@@ -5316,6 +5357,9 @@ def admin_phone_codes():
     return render_template("admin_phone_codes.html", rows=rows, show=show,
                            base_url=_phone_base_url(),
                            web_send=_phone_web_send_on(db, sid), sync_ago=sync_ago, has_sync=bool(sync),
+                           stickers_custom="\n".join(_phone_parse_stickers((db.execute(
+                               "SELECT stickers FROM phone_settings WHERE show_id=?", (sid,)).fetchone() or {"stickers": ""})["stickers"])),
+                           stickers_default="\n".join(_PHONE_DEFAULT_STICKERS),
                            sync_fresh=bool(sync) and sync_ago is not None and sync_ago < 10,
                            zone=_schedule_zone(dict(show)))
 
