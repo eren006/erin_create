@@ -342,6 +342,7 @@ a { color: var(--link); text-decoration: none; }
 .stats-table th, .stats-table td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: center; white-space: nowrap; }
 .stats-table th:first-child, .stats-table td:first-child { text-align: left; }
 .stats-table th small { font-weight: 400; color: var(--muted); }
+.search-pill { display: flex; align-items: center; gap: 6px; margin: 10px 16px 6px; padding: 9px 12px; border-radius: 12px; background: var(--theirs); color: var(--muted); font-size: 15px; text-decoration: none; }
 .group-avatar { background: var(--theirs) !important; color: var(--text) !important; font-weight: 600; }
 .group-sys { font-size: 12px; margin: 10px 24px 4px; }
 .inbox-flash { margin: 10px auto 4px; }
@@ -462,12 +463,13 @@ a { color: var(--link); text-decoration: none; }
 
 {% elif mode == 'inbox' %}
   <header class="bar">
-    {% if admin_as %}<a class="back" href="{{ url_for('admin_phone_index') }}">角色</a>{% else %}<a class="quiet-button" href="{{ url_for('player_phone_library') }}">检索</a>{% endif %}
+    {% if admin_as %}<a class="back" href="{{ url_for('admin_phone_index') }}">角色</a>{% else %}<span></span>{% endif %}
     <div class="title">信息<small>{% if admin_as %}管理 · 以 {{ owner }} 的视角{% else %}{{ owner }}{% endif %}</small></div>
     <div class="right">{% if not admin_as %}<a class="quiet-button" href="{{ url_for('player_stats') }}">时间线</a>{% endif %}</div>
     {% include "_phone_quota.html" %}
   </header>
   <div class="scroll list" id="inbox">
+    {% if not admin_as %}<a class="search-pill" href="{{ url_for('player_phone_library') }}"><span aria-hidden="true">🔍</span>检索短信和礼物</a>{% endif %}
     {% if public %}
     <a class="row public-row" data-other="__public__" data-received-ts="{{ public.ts }}" href="{{ url_for('player_phone_public') }}">
       <div class="avatar public-avatar">📢</div>
