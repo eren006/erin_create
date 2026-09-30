@@ -333,7 +333,11 @@ a { color: var(--link); text-decoration: none; }
 .song-form textarea { min-height: 70px; resize: vertical; }
 .song-submit { padding: 11px; font-weight: 600; }
 .song-submit:disabled { opacity: .45; }
-.stats-tabs a { padding: 7px 2px; font-size: 13px; }
+.phone[data-mode="stats"] .stats-page { min-height: 0; }
+@media (max-width: 599px) { .phone[data-mode="stats"] { height: 100dvh; min-height: 0; } }
+.stats-page .stats-tabs { position: sticky; top: 0; z-index: 2; margin: 0; padding: 10px 12px; gap: 3px; background: var(--bar); backdrop-filter: blur(20px); border-bottom: 1px solid var(--line); }
+.stats-page .stats-tabs a { min-height: 44px; display: flex; align-items: center; justify-content: center; padding: 7px 2px; font-size: 13px; border: 0; border-radius: 10px; }
+.stats-page .stats-tabs a[aria-current] { background: var(--theirs); color: var(--text); font-weight: 600; box-shadow: none; }
 .stats-card { padding: 12px 16px; }
 .stats-title { font-weight: 600; font-size: 15px; }
 .stats-line { font-size: 14px; color: var(--text); margin-top: 4px; line-height: 1.6; }
@@ -842,20 +846,7 @@ a { color: var(--link); text-decoration: none; }
     {% if view != 'interact' and not report %}
       <div class="song-note">这部分要等机器人升级到新版本、同步过一次才能看到。现在可以先在群里发「{{ {'timeline': '时间线', 'counts': '我的数量', 'pending': '我的待回', 'arc': '我的弧长'}[view] }}」查看。</div>
     {% elif view == 'timeline' %}
-      {% for d in days %}
-      <div class="stamp"><b>{{ d.day if d.day != '微信群' else '💬 我的微信群' }}</b></div>
-      {% for ev in d.events %}
-      <article class="lm-letter lm-sent stats-card">
-        <div class="lm-to">{{ ev.time }}{% if ev.tag %} · {{ ev.tag }}{% endif %}</div>
-        <div class="stats-title">{{ ev.icon }} {{ ev.label }}</div>
-        {% if ev.place %}<div class="stats-line">📍 {{ ev.place }}</div>{% endif %}
-        {% if ev.partner %}<div class="stats-line">👥 {{ ev.partner }}</div>{% endif %}
-        {% if ev.progress %}<div class="stats-line">{{ ev.progress }}</div>{% endif %}
-      </article>
-      {% endfor %}
-      {% else %}
-      <div class="empty">当前暂无行程安排</div>
-      {% endfor %}
+      {% include '_phone_timeline.html' %}
     {% elif view == 'counts' %}
       <article class="lm-letter lm-sent"><div class="lm-body">{{ report.counts }}</div></article>
     {% elif view == 'arc' %}
@@ -882,14 +873,15 @@ a { color: var(--link); text-decoration: none; }
       {% endif %}
       <p class="song-note">待进群、待退群和群名要实时问 QQ，这里看不到，在群里发「我的待回」查看。心动信投递情况在底部「心动信」里。</p>
     {% else %}
+      <div class="song-note"><strong>{{ owner }} · 我的互动</strong><br>只统计我与他人的往来，不包含其他人之间的互动。</div>
       {% if inter or lm_recv %}
       <div class="stats-table-wrap"><table class="stats-table">
-        <thead><tr><th>对象</th><th>短信<br><small>发 / 收</small></th><th>礼物<br><small>发 / 收</small></th><th>心动信<br><small>寄出</small></th></tr></thead>
+        <thead><tr><th>往来对象</th><th>短信<br><small>我发 / 我收</small></th><th>礼物<br><small>我送 / 我收</small></th><th>心动信<br><small>我寄出</small></th></tr></thead>
         <tbody>
         {% for r in inter %}<tr><td>{{ r.name }}</td><td>{{ r.sms_sent }} / {{ r.sms_recv }}</td><td>{{ r.gift_sent }} / {{ r.gift_recv }}</td><td>{{ r.lm_sent }}</td></tr>{% endfor %}
         </tbody>
       </table></div>
-      <p class="song-note">本季一共收到 {{ lm_recv }} 封心动信（来信是匿名的，不按人统计）。短信和礼物按你手机里看到的算。</p>
+      <p class="song-note">本季我一共收到 {{ lm_recv }} 封心动信（来信是匿名的，不按人统计）。短信和礼物按你手机里看到的算。</p>
       {% else %}
       <div class="empty">本季还没有短信、礼物或心动信往来</div>
       {% endif %}

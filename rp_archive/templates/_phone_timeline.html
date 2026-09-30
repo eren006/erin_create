@@ -1,0 +1,77 @@
+<style>
+.agenda { padding: 24px 16px 12px; }
+.agenda-intro { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 18px; }
+.agenda-intro h1 { font-size: 24px; font-weight: 700; letter-spacing: -.6px; margin: 0; }
+.agenda-intro p { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+.agenda-day-label { flex-shrink: 0; padding: 8px 12px; border-radius: 12px; background: var(--theirs); color: var(--text); font-size: 13px; }
+.agenda-jump { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 10px; margin-bottom: 12px; }
+.agenda-jump a { flex-shrink: 0; min-height: 44px; padding: 0 16px; display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 22px; font-size: 13px; color: var(--text); background: var(--bg); }
+.agenda-jump a[data-today] { background: var(--mine); color: var(--mine-text); border-color: transparent; }
+.agenda-section { scroll-margin-top: 76px; margin: 6px 0 26px; }
+.agenda-heading { display: flex; align-items: center; gap: 8px; margin: 0 0 16px; font-size: 17px; }
+.agenda-heading small { margin-left: auto; font-size: 12px; font-weight: 400; color: var(--muted); }
+.agenda-today { color: var(--link); font-size: 11px; font-weight: 500; }
+.agenda-list { list-style: none; padding: 0; margin: 0; }
+.agenda-event { position: relative; display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 15px; padding-bottom: 14px; }
+.agenda-event::before { content: ''; position: absolute; left: 65px; top: 12px; bottom: -12px; width: 1px; background: var(--line); }
+.agenda-event:last-child::before { bottom: 25px; }
+.agenda-time { padding-top: 13px; color: var(--text); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; line-height: 1.5; }
+.agenda-time::after { content: ''; position: absolute; left: 62px; top: 19px; width: 7px; height: 7px; border-radius: 50%; background: var(--link); box-shadow: 0 0 0 4px var(--bg); }
+.agenda-card { min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 16px; background: var(--bg); overflow-wrap: anywhere; }
+.agenda-card h3 { font-size: var(--reading-size, 16px); line-height: 1.5; margin: 0; font-weight: 600; }
+.agenda-status { display: inline-block; margin-top: 8px; padding: 3px 8px; border-radius: 6px; background: var(--theirs); color: var(--text); font-size: 12px; line-height: 1.6; }
+.agenda-details { margin: 12px 0 0; display: grid; grid-template-columns: 28px minmax(0,1fr); gap: 6px 8px; font-size: calc(var(--reading-size, 16px) - 2px); line-height: 1.6; }
+.agenda-details dt { color: var(--muted); font-size: 12px; padding-top: 1px; }
+.agenda-details dd { margin: 0; white-space: pre-wrap; }
+.agenda-progress { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 12px; color: var(--muted); font-size: calc(var(--reading-size, 16px) - 3px); line-height: 1.6; white-space: pre-wrap; }
+.agenda-groups .agenda-event { display: block; padding-bottom: 10px; }
+.agenda-groups .agenda-event::before { display: none; }
+.agenda-empty { padding: 48px 16px; text-align: center; border: 1px solid var(--line); border-radius: 20px; background: var(--bg); }
+.agenda-empty svg { width: 36px; height: 36px; margin-bottom: 16px; stroke: var(--muted); fill: none; stroke-width: 1.5; }
+.agenda-empty h2 { font-size: 17px; margin: 0 0 8px; }
+.agenda-empty p { font-size: 13px; color: var(--muted); margin: 0; line-height: 1.7; }
+@media (max-width: 350px) {
+  .agenda { padding-inline: 12px; }
+  .agenda-event { grid-template-columns: 54px minmax(0,1fr); column-gap: 13px; }
+  .agenda-event::before { left: 54px; }
+  .agenda-time::after { left: 51px; }
+  .agenda-card { padding: 12px; }
+}
+</style>
+<div class="agenda">
+  <div class="agenda-intro">
+    <div><h1>我的日程</h1><p>行程与相遇，都在这里</p></div>
+    {% if report.day %}<span class="agenda-day-label">当前 {{ report.day }}</span>{% endif %}
+  </div>
+  {% if days|length > 1 %}
+  <nav class="agenda-jump" aria-label="跳转到游戏日">
+    {% for d in days %}<a href="#agenda-day-{{ loop.index }}"{% if d.day == report.day %} data-today{% endif %}>{{ '微信群' if d.day == '微信群' else (d.day or '未标日期') }}</a>{% endfor %}
+  </nav>
+  {% endif %}
+  {% for d in days %}
+  <section class="agenda-section{% if d.day == '微信群' %} agenda-groups{% endif %}" id="agenda-day-{{ loop.index }}" aria-labelledby="agenda-heading-{{ loop.index }}">
+    <h2 class="agenda-heading" id="agenda-heading-{{ loop.index }}"><b>{{ '我的微信群' if d.day == '微信群' else (d.day or '未标日期') }}</b>{% if d.day == report.day %}<span class="agenda-today">当前游戏日</span>{% endif %}<small>{{ d.events|length }} {{ '个群' if d.day == '微信群' else '项行程' }}</small></h2>
+    <ol class="agenda-list">
+    {% for ev in d.events %}
+      <li class="agenda-event">
+        {% if d.day != '微信群' %}<div class="agenda-time">{{ ev.time or '待定' }}</div>{% endif %}
+        <article class="agenda-card">
+          <h3>{% if ev.icon %}<span aria-hidden="true">{{ ev.icon }}</span> {% endif %}{{ ev.label }}</h3>
+          {% if ev.tag %}<span class="agenda-status">{{ ev.tag }}</span>{% endif %}
+          {% if ev.place or ev.partner %}<dl class="agenda-details">
+            {% if ev.place %}<dt>{{ '群名' if ev.wechat else '地点' }}</dt><dd>{{ ev.place }}</dd>{% endif %}
+            {% if ev.partner %}<dt>{{ '成员' if ev.wechat else '同行' }}</dt><dd>{{ ev.partner }}</dd>{% endif %}
+          </dl>{% endif %}
+          {% if ev.progress %}<div class="agenda-progress">{{ ev.progress }}</div>{% endif %}
+        </article>
+      </li>
+    {% endfor %}
+    </ol>
+  </section>
+  {% else %}
+  <div class="agenda-empty">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="5" y="7" width="22" height="22" rx="4"/><path d="M5 14h22M11 3v8M21 3v8m-10 9 3 3 7-7"/></svg>
+    <h2>当前暂无行程安排</h2><p>有新的安排后，会同步出现在这里。</p>
+  </div>
+  {% endfor %}
+</div>

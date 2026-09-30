@@ -58,7 +58,7 @@ sync(REP)
 ok(sorted(r[0] for r in c.execute("SELECT role FROM phone_reports")) == sorted(["林晚", "周屿"]), "bad reports dropped")
 t = page(lin, "timeline")
 tb = t.split('aria-label="时间线与统计"')[1]
-ok(tb.index("D1") < tb.index("<b>D2") < tb.index("我的微信群") and "天台" in tb and "3v4" in tb and "12v10" in tb and "进行中 [⏳未回]" in tb, "timeline")
+ok(tb.index("<b>D1") < tb.index("<b>D2") < tb.index("<b>我的微信群") and "天台" in tb and "3v4" in tb and "12v10" in tb and "进行中 [⏳未回]" in tb, "timeline")
 ok("D2 · " in t and "更新" in t, "updated time in header")
 ok("私约 1 次" in page(lin, "counts") and "周屿的数" not in page(lin, "counts"), "counts only mine")
 ok("本人总平均：12分钟" in page(lin, "arc"), "arc")
@@ -86,6 +86,17 @@ zi = page(zy, "interact")
 ok("<td>林晚</td>" in zi and "收到 1 封心动信" in zi, "zy interact")
 zrow = re.search(r"<tr><td>林晚</td>(.*?)</tr>", zi).group(1)
 ok(zrow.endswith("<td>0</td>"), "zy did not send lovemail: " + zrow)
+
+# 他人与他人之间的往来不能进入我的统计；URL 参数不能切换统计身份。
+before = page(lin, "interact")
+event("sms", "周屿", "沈知意", "别人的短信", {"signature": "落款：周屿"})
+event("gift", "陌生甲", "陌生乙", "别人的礼物", {"giftName": "花"})
+event("lovemail", "陌生甲", "陌生乙", "别人的心动信", {})
+after = page(lin, "interact")
+ok(before == after, "other peoples interactions must not change my page")
+spoof = lin.get("/p/me/stats?view=interact&owner=周屿&role=周屿").get_data(as_text=True)
+ok(spoof == after, "query parameters cannot switch interaction identity")
+ok("林晚 · 我的互动" in after and "我发 / 我收" in after, "personal scope is explicit")
 
 # 管理身份、没登录
 adm = app.test_client(); adm.get("/p/ADMINCODE1")
