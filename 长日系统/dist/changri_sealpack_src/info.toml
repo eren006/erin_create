@@ -3,7 +3,7 @@ format_version = "1.0.0"
 [package]
 id = "changri/changriyuca"
 name = "（私人用请勿下载）长日将尽系统"
-version = "1.9.1"
+version = "1.9.2"
 authors = ["长日将尽"]
 license = "CC BY-NC-SA"
 description = "长日将尽 QQ 群语擦恋综系统：设置、社交、闹钟、季度、拍卖、晚餐、出场、写信综、RPG；联络方式：3052553938，如需挪用请标注来源"

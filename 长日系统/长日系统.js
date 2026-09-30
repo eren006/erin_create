@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         长日将尽系统
 // @author       长日将尽
-// @version      1.9.1
+// @version      1.9.2
 // @description  无
 // @timestamp    1778742000
 // @license      CC BY-NC-SA
@@ -18,7 +18,7 @@
 
 let ext = seal.ext.find("changri")
 if (!ext) {
-    ext = seal.ext.new("changri", "长日将尽", "1.9.1");
+    ext = seal.ext.new("changri", "长日将尽", "1.9.2");
     // 注册扩展
     seal.ext.register(ext);
     ext.autoActive = true;
@@ -12515,147 +12515,154 @@ function checkExpiredGroups() {
 //   · web_send：管理员在存档站后台打开了「网页发送」→ 群里的短信/送礼改成提示去网页发（二选一，免得两边同时发）；
 //   · events：上次之后网页上发出的短信/礼物，这里计进每日次数、冷却和互动统计，切回群里发时次数是连续的。
 // 游标存在 phone_web_cursor（存档站的 extra_events.id），只往前走，同一条不会被计两次。
+// 注意：海豹的 JS 引擎在 async 函数里「try 块中提前 return + finally」会崩（Panic in auxJob: index out of range，自动拉取踩过同一个坑），
+// 所以同步主体 phoneWebSyncCore 里不写 try/finally，外层只用 try/catch，「进行中」标记另外释放，再加超时防卡死
 let _phoneSyncBusy = false;
+let _phoneSyncBusySince = 0;
 async function phoneWebSync() {
-    if (_phoneSyncBusy) return;
+    if (_phoneSyncBusy && Date.now() - _phoneSyncBusySince < 90 * 1000) return;
     if (!isArchiveEnabled()) { if (kvGet("phone_web_send", {}).on) kvSet("phone_web_send", {}); return; }
     const base = (seal.ext.getStringConfig(ext, "RP存档服务器地址") || "").replace(/\/$/, "");
     const token = seal.ext.getStringConfig(ext, "RP存档Token") || "";
     if (!base) return;
     _phoneSyncBusy = true;
+    _phoneSyncBusySince = Date.now();
     try {
-        const platform = "QQ";
-        const priv = kvGet("a_private_group", {})[platform] || {};
-        const nameOf = (uid) => priv[uid]?.[0] || null;
-        const gameDay = cachedGet("global_days") || "D0";
-        const npcSet = new Set([...kvGet("a_npc_list", []), ...kvGet("a_generic_npc_list", [])]);
-        const roster = [...new Set(Object.values(priv).map(v => v && v[0]).filter(Boolean))]
-            .map(name => ({ name, npc: npcSet.has(name) }));
-
-        const toggle = kvGet("global_feature_toggle", {});
-        const giftWin = kvGet("ts_feature_windows", []).find(w => w.feature === "enable_general_gift");
-        const rules = {
-            sms_enabled: toggle.enable_chaos_letter !== false,
-            gift_enabled: toggle.enable_general_gift ?? true,
-            chaos: {
-                misdelivery: 0, blackoutText: 0, loseContent: 0, antonymReplace: 0,
-                reverseOrder: 0, mistakenSignature: 0, tornPage: 0, dailyLimit: 5, publicChance: 50,
-                ...kvGet("chaos_letter_config", {})
-            },
-            mail_cooldown_min: getStorageInt("mailCooldown", 60),
-            gift_cooldown_min: getStorageInt("giftCooldown", 30),
-            gift_daily_limit: getStorageInt("giftDailyLimit", 100),
-            gift_mode: getStorageInt("giftMode", 0),
-            gift_window: giftWin ? { start: giftWin.start, end: giftWin.end } : null,
-            // 公开播报：网页发送时照同样的开关和概率决定是否公开（网页发的只进网页「公开播报」，不发群）
-            sms_public: !!kvGet("letter_public_send", false),
-            gift_public: !!kvGet("gift_public_send", false),
-            gift_public_chance: getStorageInt("giftPublicChance", 50),
-            hide_receiver: cachedGet("drop_hide_receiver") === "true"
-        };
-
-        const featureOff = {};
-        for (const [uid, cfg] of Object.entries(kvGet("feature_user_blocklist", {}))) {
-            const name = nameOf(uid);
-            if (!name || !cfg) continue;
-            const off = [];
-            if (cfg.enable_chaos_letter === false) off.push("sms");
-            if (cfg.enable_general_gift === false) off.push("gift");
-            if (off.length) featureOff[name] = off;
-        }
-        const blocks = [];
-        for (const [blockerUid, m] of Object.entries(kvGet("sys_blocklist", {})[platform] || {})) {
-            for (const [blockedUid, entry] of Object.entries(m || {})) {
-                const blocker = nameOf(blockerUid), blocked = nameOf(blockedUid);
-                if (blocker && blocked && entry) blocks.push({ blocker, blocked, silent: !!entry.silent });
-            }
-        }
-        const counts = { sms: {}, gift: {} }, last = { sms: {}, gift: {} };
-        const smsCounts = kvGet("global_chaos_letter_counts", {});
-        const giftStats = kvGet("global_gift_stats", {});
-        const giftCds = kvGet("global_gift_cooldowns", {});
-        for (const uid of Object.keys(priv)) {
-            const name = nameOf(uid), key = `${platform}:${uid}`;
-            if (!name) continue;
-            if (smsCounts[key]?.day === gameDay) counts.sms[name] = smsCounts[key].count || 0;
-            if (giftStats[key]?.day === gameDay) counts.gift[name] = giftStats[key].count || 0;
-            const smsLast = parseInt(cachedGet(`chaos_letter_cooldown_${key}`) || "0");
-            if (smsLast) last.sms[name] = smsLast;
-            if (giftCds[key]) last.gift[name] = giftCds[key];
-        }
-
-        // 礼品店/图鉴：网页手机也能逛礼品店、送预设礼物，跟群里共用同一个图鉴和今日货架
-        const sightings = kvGet("gift_sightings", {}), displaysRaw = kvGet("shop_personal_display", {});
-        const catalogs = {}, displays = {};
-        for (const uid of Object.keys(priv)) {
-            const name = nameOf(uid), key = `${platform}:${uid}`;
-            if (!name) continue;
-            if (sightings[key]?.unlocked_gifts?.length) catalogs[name] = sightings[key].unlocked_gifts;
-            if (displaysRaw[key]) displays[name] = displaysRaw[key];
-        }
-        const shop = {
-            refresh_hours: parseInt(cachedGet("shop_refresh_hours") || "24") || 24,
-            catalog_on_receive: cachedGet("shop_gift_catalog_on_receive") === "true"
-        };
-
-        const after = parseInt(cachedGet("phone_web_cursor") || "0") || 0;
-        const shopAfter = parseInt(cachedGet("phone_shop_cursor") || "0") || 0;
-        const songsDone = kvGet("phone_songs_done", []);
-        const resp = await fetch(base + "/api/phone/sync", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "X-Archive-Token": token },
-            body: JSON.stringify({ after, shop_after: shopAfter, songs_done: songsDone,
-                snapshot: { game_day: gameDay, roster, rules, feature_off: featureOff, blocks, counts, last, catalogs, displays, shop } })
-        });
-        if (!resp.ok) return;
-        const data = await resp.json();
-        // 存档站已经收到这批回报，清掉；再把这次给的待播点歌发到公告群
-        if (songsDone.length) kvSet("phone_songs_done", []);
-        phoneAnnounceSongs(platform, data.songs || []);
-        phoneApplyShopEvents(platform, data.shop_events || [], shopAfter);
-        kvSet("phone_web_send", { on: !!data.web_send, url: `${base}/p`, at: Date.now() });
-
-        const events = data.events || [];
-        if (!events.length) return;
-        // 网页发出的记录：计次数（只算当前游戏日的）/ 冷却 / 互动统计，跟群里发的一样
-        const smsC = kvGet("global_chaos_letter_counts", {});
-        const giftS = kvGet("global_gift_stats", {});
-        const giftC = kvGet("global_gift_cooldowns", {});
-        let cursor = after;
-        for (const ev of events) {
-            cursor = Math.max(cursor, ev.id);
-            const rawUid = getUidByRoleName(platform, ev.from_role);
-            if (!rawUid) continue;
-            const key = `${platform}:${getPrimaryUid(platform, rawUid)}`;
-            const ts = ev.timestamp || 0;
-            if (ev.type === "sms") {
-                if (ev.day_key === gameDay) {
-                    const rec = smsC[key]?.day === gameDay ? smsC[key] : { day: gameDay, count: 0 };
-                    rec.count += 1;
-                    smsC[key] = rec;
-                }
-                const ck = `chaos_letter_cooldown_${key}`;
-                if (ts > (parseInt(cachedGet(ck) || "0") || 0)) cachedSet(ck, String(ts));
-                recordInteractionStat(platform, ev.from_role, ev.to_role, "sms");
-            } else if (ev.type === "gift") {
-                if (ev.day_key === gameDay) {
-                    const rec = giftS[key]?.day === gameDay ? giftS[key] : { day: gameDay, count: 0 };
-                    rec.count += 1;
-                    giftS[key] = rec;
-                }
-                if (ts > (giftC[key] || 0)) giftC[key] = ts;
-                recordInteractionStat(platform, ev.from_role, ev.to_role, "gift", !!ev.lost);
-            }
-        }
-        kvSet("global_chaos_letter_counts", smsC);
-        kvSet("global_gift_stats", giftS);
-        kvSet("global_gift_cooldowns", giftC);
-        cachedSet("phone_web_cursor", String(cursor));
+        await phoneWebSyncCore(base, token);
     } catch (e) {
         console.warn(`[网页手机同步] 失败：${e.message || e}`);
-    } finally {
-        _phoneSyncBusy = false;
     }
+    _phoneSyncBusy = false;
+}
+
+async function phoneWebSyncCore(base, token) {
+    const platform = "QQ";
+    const priv = kvGet("a_private_group", {})[platform] || {};
+    const nameOf = (uid) => priv[uid]?.[0] || null;
+    const gameDay = cachedGet("global_days") || "D0";
+    const npcSet = new Set([...kvGet("a_npc_list", []), ...kvGet("a_generic_npc_list", [])]);
+    const roster = [...new Set(Object.values(priv).map(v => v && v[0]).filter(Boolean))]
+        .map(name => ({ name, npc: npcSet.has(name) }));
+
+    const toggle = kvGet("global_feature_toggle", {});
+    const giftWin = kvGet("ts_feature_windows", []).find(w => w.feature === "enable_general_gift");
+    const rules = {
+        sms_enabled: toggle.enable_chaos_letter !== false,
+        gift_enabled: toggle.enable_general_gift ?? true,
+        chaos: {
+            misdelivery: 0, blackoutText: 0, loseContent: 0, antonymReplace: 0,
+            reverseOrder: 0, mistakenSignature: 0, tornPage: 0, dailyLimit: 5, publicChance: 50,
+            ...kvGet("chaos_letter_config", {})
+        },
+        mail_cooldown_min: getStorageInt("mailCooldown", 60),
+        gift_cooldown_min: getStorageInt("giftCooldown", 30),
+        gift_daily_limit: getStorageInt("giftDailyLimit", 100),
+        gift_mode: getStorageInt("giftMode", 0),
+        gift_window: giftWin ? { start: giftWin.start, end: giftWin.end } : null,
+        // 公开播报：网页发送时照同样的开关和概率决定是否公开（网页发的只进网页「公开播报」，不发群）
+        sms_public: !!kvGet("letter_public_send", false),
+        gift_public: !!kvGet("gift_public_send", false),
+        gift_public_chance: getStorageInt("giftPublicChance", 50),
+        hide_receiver: cachedGet("drop_hide_receiver") === "true"
+    };
+
+    const featureOff = {};
+    for (const [uid, cfg] of Object.entries(kvGet("feature_user_blocklist", {}))) {
+        const name = nameOf(uid);
+        if (!name || !cfg) continue;
+        const off = [];
+        if (cfg.enable_chaos_letter === false) off.push("sms");
+        if (cfg.enable_general_gift === false) off.push("gift");
+        if (off.length) featureOff[name] = off;
+    }
+    const blocks = [];
+    for (const [blockerUid, m] of Object.entries(kvGet("sys_blocklist", {})[platform] || {})) {
+        for (const [blockedUid, entry] of Object.entries(m || {})) {
+            const blocker = nameOf(blockerUid), blocked = nameOf(blockedUid);
+            if (blocker && blocked && entry) blocks.push({ blocker, blocked, silent: !!entry.silent });
+        }
+    }
+    const counts = { sms: {}, gift: {} }, last = { sms: {}, gift: {} };
+    const smsCounts = kvGet("global_chaos_letter_counts", {});
+    const giftStats = kvGet("global_gift_stats", {});
+    const giftCds = kvGet("global_gift_cooldowns", {});
+    for (const uid of Object.keys(priv)) {
+        const name = nameOf(uid), key = `${platform}:${uid}`;
+        if (!name) continue;
+        if (smsCounts[key]?.day === gameDay) counts.sms[name] = smsCounts[key].count || 0;
+        if (giftStats[key]?.day === gameDay) counts.gift[name] = giftStats[key].count || 0;
+        const smsLast = parseInt(cachedGet(`chaos_letter_cooldown_${key}`) || "0");
+        if (smsLast) last.sms[name] = smsLast;
+        if (giftCds[key]) last.gift[name] = giftCds[key];
+    }
+
+    // 礼品店/图鉴：网页手机也能逛礼品店、送预设礼物，跟群里共用同一个图鉴和今日货架
+    const sightings = kvGet("gift_sightings", {}), displaysRaw = kvGet("shop_personal_display", {});
+    const catalogs = {}, displays = {};
+    for (const uid of Object.keys(priv)) {
+        const name = nameOf(uid), key = `${platform}:${uid}`;
+        if (!name) continue;
+        if (sightings[key]?.unlocked_gifts?.length) catalogs[name] = sightings[key].unlocked_gifts;
+        if (displaysRaw[key]) displays[name] = displaysRaw[key];
+    }
+    const shop = {
+        refresh_hours: parseInt(cachedGet("shop_refresh_hours") || "24") || 24,
+        catalog_on_receive: cachedGet("shop_gift_catalog_on_receive") === "true"
+    };
+
+    const after = parseInt(cachedGet("phone_web_cursor") || "0") || 0;
+    const shopAfter = parseInt(cachedGet("phone_shop_cursor") || "0") || 0;
+    const songsDone = kvGet("phone_songs_done", []);
+    const resp = await fetch(base + "/api/phone/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Archive-Token": token },
+        body: JSON.stringify({ after, shop_after: shopAfter, songs_done: songsDone,
+            snapshot: { game_day: gameDay, roster, rules, feature_off: featureOff, blocks, counts, last, catalogs, displays, shop } })
+    });
+    if (!resp.ok) return;
+    const data = await resp.json();
+    // 存档站已经收到这批回报，清掉；再把这次给的待播点歌发到公告群
+    if (songsDone.length) kvSet("phone_songs_done", []);
+    phoneAnnounceSongs(platform, data.songs || []);
+    phoneApplyShopEvents(platform, data.shop_events || [], shopAfter);
+    kvSet("phone_web_send", { on: !!data.web_send, url: `${base}/p`, at: Date.now() });
+
+    const events = data.events || [];
+    if (!events.length) return;
+    // 网页发出的记录：计次数（只算当前游戏日的）/ 冷却 / 互动统计，跟群里发的一样
+    const smsC = kvGet("global_chaos_letter_counts", {});
+    const giftS = kvGet("global_gift_stats", {});
+    const giftC = kvGet("global_gift_cooldowns", {});
+    let cursor = after;
+    for (const ev of events) {
+        cursor = Math.max(cursor, ev.id);
+        const rawUid = getUidByRoleName(platform, ev.from_role);
+        if (!rawUid) continue;
+        const key = `${platform}:${getPrimaryUid(platform, rawUid)}`;
+        const ts = ev.timestamp || 0;
+        if (ev.type === "sms") {
+            if (ev.day_key === gameDay) {
+                const rec = smsC[key]?.day === gameDay ? smsC[key] : { day: gameDay, count: 0 };
+                rec.count += 1;
+                smsC[key] = rec;
+            }
+            const ck = `chaos_letter_cooldown_${key}`;
+            if (ts > (parseInt(cachedGet(ck) || "0") || 0)) cachedSet(ck, String(ts));
+            recordInteractionStat(platform, ev.from_role, ev.to_role, "sms");
+        } else if (ev.type === "gift") {
+            if (ev.day_key === gameDay) {
+                const rec = giftS[key]?.day === gameDay ? giftS[key] : { day: gameDay, count: 0 };
+                rec.count += 1;
+                giftS[key] = rec;
+            }
+            if (ts > (giftC[key] || 0)) giftC[key] = ts;
+            recordInteractionStat(platform, ev.from_role, ev.to_role, "gift", !!ev.lost);
+        }
+    }
+    kvSet("global_chaos_letter_counts", smsC);
+    kvSet("global_gift_stats", giftS);
+    kvSet("global_gift_cooldowns", giftC);
+    cachedSet("phone_web_cursor", String(cursor));
 }
 
 // 网页礼品店的变化写回图鉴：新收的礼物加进 gift_sightings，货架比本地新就覆盖 shop_personal_display。
