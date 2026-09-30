@@ -186,8 +186,8 @@ a { color: var(--link); text-decoration: none; }
   border-top: .5px solid var(--line);
 }
 .compose textarea {
-  flex: 1; min-width: 0; min-height: 38px; resize: none; font: inherit; font-size: 16px; line-height: 1.35; max-height: 140px;
-  padding: 7px 14px; border-radius: 19px; border: 1px solid var(--line); background: var(--bg); color: var(--text);
+  flex: 1; min-width: 0; min-height: 40px; resize: none; font: inherit; font-size: 16px; line-height: 1.35; max-height: 140px;
+  padding: 9px 14px; border-radius: 20px; box-sizing: border-box; border: 1px solid var(--line); background: var(--bg); color: var(--text);
   overflow-y: hidden;
 }
 .compose textarea:focus { outline: none; border-color: var(--mine); }
@@ -214,15 +214,20 @@ a { color: var(--link); text-decoration: none; }
 .compose.gift-mode .gift-name { display: block; }
 .gift-row .gift-name { order: 0; flex-basis: auto; }
 .compose .icon {
-  flex-shrink: 0; width: 44px; height: 44px; border-radius: 50%; border: none; cursor: pointer;
-  font-size: 18px; line-height: 44px; text-align: center; padding: 0;
+  flex-shrink: 0; width: 40px; height: 40px; border-radius: 50%; border: none; cursor: pointer;
+  font-size: 18px; line-height: 40px; text-align: center; padding: 0; display: inline-flex; align-items: center; justify-content: center;
 }
 .compose .gift-toggle { background: var(--theirs); filter: grayscale(1); opacity: .7; }
 .compose.gift-mode .gift-toggle { background: var(--gift-bg); filter: none; opacity: 1; box-shadow: 0 0 0 1px var(--gift-line); }
-.compose .send { background: var(--mine); color: var(--mine-text); font-weight: 700; }
-.compose .send:disabled { opacity: .4; }
-.compose .sticker-toggle { background: var(--theirs); color: var(--muted); }
-.compose .sticker-toggle[aria-expanded="true"] { background: var(--line); color: var(--text); }
+.compose .send { background: var(--mine); color: var(--mine-text); transition: background .15s, color .15s, transform .1s; }
+.compose .send:active:not(:disabled) { transform: scale(.94); }
+.compose .send:disabled { background: var(--theirs); color: var(--muted); opacity: 1; cursor: default; }
+.compose .send svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.compose .input-wrap { position: relative; flex: 1; min-width: 0; display: flex; }
+.compose .input-wrap textarea { width: 100%; padding-right: 44px; }
+.compose .emoji-in { position: absolute; right: 4px; bottom: 4px; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.compose .emoji-in svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.compose .emoji-in[aria-expanded="true"] { background: var(--theirs); color: var(--text); }
 .stickers {
   position: absolute; bottom: 100%; left: 0; right: 0; z-index: 5; max-height: 42vh; overflow-y: auto;
   padding: 10px 10px 6px; background: var(--bar); border-top: .5px solid var(--line);
@@ -1416,7 +1421,6 @@ a { color: var(--link); text-decoration: none; }
     <input type="hidden" name="to" value="{{ other }}">
     <input type="hidden" name="kind" id="kind" value="{{ 'gift' if draft_kind == 'gift' and status.gift else 'sms' }}">
     {% if status.gift %}<button class="icon gift-toggle" type="button" id="giftToggle" title="送礼物" aria-label="切换送礼物">🎁</button>{% endif %}
-    {% if stickers %}<button class="icon sticker-toggle" type="button" id="stickerToggle" aria-expanded="false" aria-controls="stickers" aria-label="表情">☺</button>{% endif %}
     {% if status.gift %}
     <div class="stickers preset-panel" id="presetPanel" hidden>
       {% for g in my_presets %}<button type="button" class="preset-item" data-pid="{{ g.id }}" data-name="{{ g.name }}"><b>{{ g.name }}</b><span>{{ g.content }}</span></button>
@@ -1430,9 +1434,12 @@ a { color: var(--link); text-decoration: none; }
       <button type="button" class="preset-clear" id="presetClear" hidden aria-label="改成自己写礼物">×</button>
     </div>
     {% endif %}
-    <textarea name="text" id="text" rows="1" maxlength="500" placeholder="短信">{{ draft }}</textarea>
+    <div class="input-wrap">
+      <textarea name="text" id="text" rows="1" maxlength="500" placeholder="短信">{{ draft }}</textarea>
+      {% if stickers %}<button class="emoji-in" type="button" id="stickerToggle" aria-expanded="false" aria-controls="stickers" aria-label="表情"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.2c.9 1.3 2 1.9 3.5 1.9s2.6-.6 3.5-1.9"/><circle cx="9" cy="9.8" r=".6" fill="currentColor"/><circle cx="15" cy="9.8" r=".6" fill="currentColor"/></svg></button>{% endif %}
+    </div>
     <span class="remaining" id="remaining" aria-live="polite" hidden></span>
-    <button class="icon send" type="submit" id="sendBtn" aria-label="发送">↑</button>
+    <button class="icon send" type="submit" id="sendBtn" aria-label="发送"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></svg></button>
   </form>
   <script>
     (function () {
