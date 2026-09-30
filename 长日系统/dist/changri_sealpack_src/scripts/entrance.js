@@ -287,22 +287,54 @@ function handleEntranceSubmit(ctx, msg, subM) {
     return seal.ext.newCmdExecuteResult(true);
 }
 
-// 从 get_msg 结果里找第一张图片的链接：先看 CQ 码字符串（message 或 raw_message），再看消息段数组
+// 从 get_msg 结果里找第一张图片的链接：先看 CQ 码字符串（message 或 raw_message），再看消息段数组，
+// 最后把整个返回 JSON 扫一遍 QQ 图床域名兜底——各协议端（LLOneBot/NapCat/Lagrange）字段名不统一，
+// 1.10.1 只认 image 段的 url/file 时，表情包(mface)、url 为空而链接在 raw_message 里等情况仍会漏
+const QQ_IMG_HOST_RE = /https?:\/\/(?:multimedia\.nt\.qq\.com\.cn|gchat\.qpic\.cn|c2cpicdw\.qpic\.cn|[\w.-]*\.qpic\.cn|[\w.-]*\.photo\.store\.qq\.com)[^\s"'\],\\]*/i;
+function unescapeCq(u) {
+    return String(u).replace(/&amp;/g, "&").replace(/&#44;/g, ",").replace(/&#91;/g, "[").replace(/&#93;/g, "]");
+}
 function findImageUrl(data) {
     for (const text of [data.message, data.raw_message]) {
         if (typeof text !== "string") continue;
-        const tag = text.match(/\[CQ:image,[^\]]*\]/);
+        const tag = text.match(/\[CQ:(?:image|mface),[^\]]*\]/);
         const url = tag && extractImageSrc(tag[0]);
-        if (url) return url;
+        if (url) return unescapeCq(url);
     }
-    if (Array.isArray(data.message)) {
-        for (const seg of data.message) {
-            if (!seg || seg.type !== "image" || !seg.data) continue;
-            if (seg.data.url) return seg.data.url;
-            if (/^https?:\/\//i.test(seg.data.file || "")) return seg.data.file;
+    for (const segs of [data.message, data.elements]) {
+        if (!Array.isArray(segs)) continue;
+        for (const seg of segs) {
+            if (!seg || !/^(image|mface)$/.test(seg.type || "")) continue;
+            const d = seg.data || seg;
+            for (const k of ["url", "file", "path"]) {
+                if (/^https?:\/\//i.test(d[k] || "")) return unescapeCq(d[k]);
+            }
         }
     }
-    return null;
+    let json = "";
+    try { json = JSON.stringify(data); } catch (e) { return null; }
+    const m = json.match(QQ_IMG_HOST_RE);
+    return m ? unescapeCq(m[0].replace(/\\u0026/g, "&")) : null;
+}
+
+// 最近收到的图片（只存内存，重启就清空）：机器人收图时消息里本来就带完整链接，
+// get_msg 在部分协议端读不出链接时，按被引用的消息 ID（对不上就退到本人 10 分钟内最后一张）兜底
+const recentImages = new Map(); // rawId -> { url, sender, groupId, time }
+function rememberImage(msg, groupId, raw) {
+    const tag = raw.match(/\[CQ:(?:image|mface),[^\]]*\]/);
+    const url = tag && extractImageSrc(tag[0]);
+    if (!url) return;
+    recentImages.set(String(msg.rawId), { url: unescapeCq(url), sender: msg.sender.userId, groupId, time: Date.now() });
+    while (recentImages.size > 300) recentImages.delete(recentImages.keys().next().value);
+}
+function recallImage(wdId, sender, groupId) {
+    const hit = recentImages.get(String(wdId));
+    if (hit) return hit.url;
+    let best = null;
+    for (const v of recentImages.values()) {
+        if (v.sender === sender && v.groupId === groupId && Date.now() - v.time < 10 * 60 * 1000) best = v;
+    }
+    return best ? best.url : null;
 }
 
 // 回复自己发的图片消息「提交出场图片 评论」：和点歌一样经 get_msg 读原消息。
@@ -318,21 +350,37 @@ function handleEntranceImageSubmit(ctx, msg, raw, wdId) {
     const commentMatch = raw.match(/提交出场图片\s*([\s\S]*)$/);
     const comment = commentMatch ? commentMatch[1].trim() : "";
     const errMsg = "❌ 提交失败：LLOneBot 未能读取该消息（可能不在缓存中）。";
+    const save = (srcUrl) => {
+        let images = mainKvGet("sys_entrance_image", {});
+        images[uid] = { roleName, url: srcUrl, comment, time: Date.now() };
+        mainKvSet("sys_entrance_image", images);
+        seal.replyToSender(ctx, msg, "✅ 出场图片已保存，轮到你时会自动发出。");
+        tryAdvanceEntrance(ctx, platform);
+    };
+    const fromCache = () => recallImage(wdId, msg.sender.userId, msg.groupId);
     wsRequest(
         { action: "get_msg", params: { message_id: wdId } },
         (response) => {
-            if (response.status !== "ok" && response.retcode !== 0) return seal.replyToSender(ctx, msg, errMsg);
             const data = response.data;
+            if (response.status !== "ok" && response.retcode !== 0) {
+                const cached = fromCache();
+                return cached ? save(cached) : seal.replyToSender(ctx, msg, errMsg);
+            }
             // 协议端可能返回 CQ 码字符串，也可能返回消息段数组（此时 raw_message 也不一定有），两种都要认
-            const srcUrl = data && findImageUrl(data);
-            if (!srcUrl) return seal.replyToSender(ctx, msg, "❌ 回复的消息里没有找到可下载的图片链接");
-            let images = mainKvGet("sys_entrance_image", {});
-            images[uid] = { roleName, url: srcUrl, comment, time: Date.now() };
-            mainKvSet("sys_entrance_image", images);
-            seal.replyToSender(ctx, msg, "✅ 出场图片已保存，轮到你时会自动发出。");
-            tryAdvanceEntrance(ctx, platform);
+            const srcUrl = (data && findImageUrl(data)) || fromCache();
+            if (!srcUrl) {
+                // 打出原始返回，下次再读不到能直接看协议端给的是什么格式
+                let dump = "";
+                try { dump = JSON.stringify(data).slice(0, 1500); } catch (e) { dump = String(data); }
+                console.error(`[长日出场] 提交出场图片读不到链接 message_id=${wdId} get_msg=${dump}`);
+                return seal.replyToSender(ctx, msg, "❌ 回复的消息里没有找到图片链接。请确认引用的是图片本身那条消息（不是转发/合并聊天记录），或重新发一次图片再引用");
+            }
+            save(srcUrl);
         },
-        () => seal.replyToSender(ctx, msg, errMsg)
+        () => {
+            const cached = fromCache();
+            return cached ? save(cached) : seal.replyToSender(ctx, msg, errMsg);
+        }
     );
     return seal.ext.newCmdExecuteResult(true);
 }
@@ -344,6 +392,7 @@ ext.onNotCommandReceived = (ctx, msg) => {
     const raw = (msg.rawMessage || msg.message || "").trim();
     const platform = msg.platform;
     const groupId = msg.groupId.replace(`${platform}-Group:`, '');
+    if (raw.includes("[CQ:image") || raw.includes("[CQ:mface")) rememberImage(msg, msg.groupId, raw);
 
     // 回复图片消息「提交出场图片 评论」
     const replyMatch = raw.match(/\[CQ:reply,id=(\-?\d+)\]/);
