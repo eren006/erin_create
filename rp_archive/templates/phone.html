@@ -237,6 +237,8 @@ a { color: var(--link); text-decoration: none; }
 .stickers button.emoji { font-size: 22px; padding: 4px 6px; border-color: transparent; background: none; }
 .stickers button:active { background: var(--theirs); }
 .public-avatar { background: var(--theirs) !important; font-size: 19px; filter: grayscale(.7); }
+.daily-quote { margin: 0 var(--gutter, 18px) 8px; font-size: 13px; line-height: 1.6; color: var(--muted); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.daily-quote small { font-size: 12px; opacity: .8; margin-left: 6px; }
 .quick-chips { display: flex; gap: 8px; padding: 0 var(--gutter, 18px) 10px; overflow-x: auto; scrollbar-width: none; }
 .quick-chips::-webkit-scrollbar { display: none; }
 .quick-chips .chip { position: relative; flex: none; font-size: 13px; padding: 6px 12px; border-radius: 999px; background: var(--theirs); color: var(--text); text-decoration: none; white-space: nowrap; }
@@ -594,7 +596,8 @@ a { color: var(--link); text-decoration: none; }
       <a class="chip" data-other="__lovemail__"{% if lovemail_last %} data-received-ts="{{ lovemail_last }}"{% endif %} href="{{ url_for('player_lovemail') }}">💌 心动信箱</a>
       <a class="chip" href="{{ url_for('player_song') }}">🎵 点歌台</a>
       <a class="chip" href="{{ url_for('phone_guide') }}">📱 使用指南</a>
-    </nav>{% endif %}
+    </nav>
+    <div class="daily-quote" id="dailyQuote" role="button" tabindex="0" aria-label="每日一句，点一下换一句" hidden></div>{% endif %}
     {% if not admin_as %}<div id="searchResults" class="search-results" hidden></div>{% include '_phone_pending_entry.html' %}{% endif %}
     {% if public %}
     <a class="row public-row" data-other="__public__" data-received-ts="{{ public.ts }}" href="{{ url_for('player_phone_public') }}">
@@ -876,7 +879,7 @@ a { color: var(--link); text-decoration: none; }
 {% elif mode == 'char' %}
   <header class="bar tab-bar">
     <div class="tab-head"><h1>角色</h1></div>
-    <div class="tab-sub">{{ owner }}{% if rpg_time %} · 同步于 {{ rpg_time }}{% endif %}</div>
+    <div class="tab-sub">{{ owner }}</div>
   </header>
   <div class="scroll ch-page">
     <nav class="song-tabs lm-tabs" aria-label="角色">
@@ -912,8 +915,10 @@ a { color: var(--link); text-decoration: none; }
         </div>{% endfor %}</div>
       {% endif %}
     {% endif %}
+    {% if rpg and rpg_time %}<div class="ch-sync">同步于 {{ rpg_time }}</div>{% endif %}
   </div>
   <style>
+  .ch-sync { margin: 14px var(--gutter, 18px) 0; text-align: center; font-size: 12px; color: var(--muted); }
   .ch-page { padding-bottom: 24px; }
   .ch-page .song-tabs + .ch-list { margin-top: 12px; }
   .gm-empty { color: var(--muted); font-size: 13px; text-align: center; }
@@ -1773,6 +1778,24 @@ a { color: var(--link); text-decoration: none; }
     });
     {% endif %}
   }
+  {% if mode == 'inbox' and not admin_as %}
+  (function () {
+    var box = document.getElementById('dailyQuote'), qs = [], i = 0;
+    if (!box) return;
+    function show() {
+      if (!qs.length) return;
+      var q = qs[i % qs.length];
+      box.textContent = '';
+      box.appendChild(document.createTextNode('「' + q.text + '」'));
+      if (q.source) { var sm = document.createElement('small'); sm.textContent = q.source; box.appendChild(sm); }
+      box.hidden = false;
+    }
+    box.addEventListener('click', function () { i++; show(); });
+    box.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); i++; show(); } });
+    fetch({{ url_for('player_quote')|tojson }}, { credentials: 'same-origin' }).then(function (r) { return r.json(); })
+      .then(function (d) { qs = d.quotes || []; i = Math.floor(Math.random() * Math.max(qs.length, 1)); show(); }).catch(function () {});
+  })();
+  {% endif %}
   unread();
   document.addEventListener('phone:updated', unread);
   document.addEventListener('visibilitychange', unread);

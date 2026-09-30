@@ -1511,6 +1511,16 @@ def _migrate(conn):
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_game_scores_rank ON game_scores(game, score DESC, updated_at)")
+    # 每日一句缓存：一言 / 今日诗词各一条，按天缓存，外部接口挂了就退回最近一条
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS daily_quotes (
+            day    TEXT NOT NULL,
+            kind   TEXT NOT NULL,
+            text   TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT '',
+            PRIMARY KEY (day, kind)
+        )
+    """)
     # 删图片 = 删文件 + deleted_at 置时间，行留着：那条朋友圈照样在，图片位置显示「图片已删除」
     conn.execute("""
         CREATE TABLE IF NOT EXISTS moment_images (
@@ -7900,6 +7910,47 @@ def _lm_for_bot(db, sid, done_ids, revoke_done):
     return ([{"id": m["id"], "from_role": m["from_role"], "to_role": m["to_role"], "content": m["content"],
               "signature": m["signature"], "game_day": m["game_day"], "timestamp": m["created_at"]} for m in mails],
             [{"id": r["id"], "from_role": r["from_role"], "ts": r["mail_ts"]} for r in revokes])
+
+_QUOTE_SOURCES = {
+    # 一言：只要文学(d)/诗词(i)/哲学(k)，避开动漫游戏类
+    "hitokoto": ("https://v1.hitokoto.cn/?c=d&c=i&c=k&max_length=40&encode=json",
+                 lambda j: (j["hitokoto"], "——" + (j.get("from_who") or "") + "《" + j["from"] + "》" if j.get("from") else ("——" + j["from_who"] if j.get("from_who") else ""))),
+    "shici":    ("https://v2.jinrishici.com/one.json",
+                 lambda j: (j["data"]["content"], "——" + j["data"]["origin"]["author"] + "《" + j["data"]["origin"]["title"] + "》")),
+}
+
+def _quote_fetch(kind):
+    import urllib.request
+    url, parse = _QUOTE_SOURCES[kind]
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "rp-archive"}), timeout=3) as r:
+            text, source = parse(json.loads(r.read().decode("utf-8")))
+        text = (text or "").strip()
+        return (text[:80], source[:40]) if text else None
+    except Exception:
+        return None
+
+@app.route("/p/me/quote")
+def player_quote():
+    """消息页「每日一句」：一言 / 今日诗词各缓存一条，当天第一次请求时去拉，拉不到就用最近一次的。"""
+    if not _phone_current():
+        return jsonify(error="手机登录已失效"), 401
+    db = get_db()
+    day = datetime.now().strftime("%Y-%m-%d")
+    out = []
+    for kind in _QUOTE_SOURCES:
+        row = db.execute("SELECT text, source FROM daily_quotes WHERE day=? AND kind=?", (day, kind)).fetchone()
+        if not row:
+            got = _quote_fetch(kind)
+            if got:
+                db.execute("INSERT OR IGNORE INTO daily_quotes (day, kind, text, source) VALUES (?,?,?,?)", (day, kind, got[0], got[1]))
+                db.commit()
+                row = {"text": got[0], "source": got[1]}
+            else:
+                row = db.execute("SELECT text, source FROM daily_quotes WHERE kind=? ORDER BY day DESC LIMIT 1", (kind,)).fetchone()
+        if row:
+            out.append({"kind": kind, "text": row["text"], "source": row["source"]})
+    return jsonify(quotes=out)
 
 @app.route("/p/me/character")
 def player_character():
