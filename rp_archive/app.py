@@ -5563,37 +5563,52 @@ def _phone_public_summary(db, sid):
 # 比对前去掉空格和标点，防「傻 逼」「傻.逼」这种拆字；命中的记进 logs/moderation.log（时间、季度、角色、场合、原文）。
 BLOCKLIST_PATH  = os.path.join(os.path.dirname(__file__), "blocklist.txt")
 MODERATION_LOG  = os.path.join(os.path.dirname(__file__), "logs", "moderation.log")
-_blocklist_cache = {"mtime": None, "words": []}
+_blocklist_cache = {"mtime": None, "words": [], "ascii": []}
 _BLOCK_NOISE     = re.compile(r"[\s\W_]+")
 BLOCKED_MSG      = "❌ 内容含有不允许的字词，请修改后再发"
 
-def _blocked_words():
+def _blocklist_load():
+    """返回 (子串词, 整词词)。含中文的词去掉空格符号后按子串匹配；纯英文/数字的短词（sb、av、np、3p…）
+    按整词匹配，否则 have、saving、happy 这类正常英文会被误伤。"""
     try:
         mtime = os.path.getmtime(BLOCKLIST_PATH)
     except OSError:
-        return []
+        return [], []
     if _blocklist_cache["mtime"] != mtime:
         with open(BLOCKLIST_PATH, encoding="utf-8") as f:
-            words = [_BLOCK_NOISE.sub("", ln.strip().lower()) for ln in f
-                     if ln.strip() and not ln.lstrip().startswith("#")]
-        _blocklist_cache.update(mtime=mtime, words=[w for w in words if w])
-    return _blocklist_cache["words"]
+            raw = [ln.strip().lower() for ln in f if ln.strip() and not ln.lstrip().startswith("#")]
+        words, ascii_words = [], []
+        for w in raw:
+            if re.fullmatch(r"[a-z0-9]+", w):
+                ascii_words.append(w)
+            else:
+                w = _BLOCK_NOISE.sub("", w)
+                if w:
+                    words.append(w)
+        _blocklist_cache.update(mtime=mtime, words=words, ascii=ascii_words)
+    return _blocklist_cache["words"], _blocklist_cache["ascii"]
+
+def _blocked_words():
+    words, ascii_words = _blocklist_load()
+    return words + ascii_words
 
 def _blocked_hit(sid, role, field, *texts):
     """命中违禁词返回该词并记日志；干净返回 None"""
     raw = "\n".join(t for t in texts if t)
-    flat = _BLOCK_NOISE.sub("", raw.lower())
-    for w in _blocked_words():
-        if w in flat:
-            try:
-                os.makedirs(os.path.dirname(MODERATION_LOG), exist_ok=True)
-                with open(MODERATION_LOG, "a", encoding="utf-8") as f:
-                    f.write(f"{datetime.now(TZ_BEIJING).isoformat(timespec='seconds')}\tshow={sid}\trole={role}\t"
-                            f"{field}\t命中「{w}」\t{raw}\n")
-            except OSError:
-                pass
-            return w
-    return None
+    low = raw.lower()
+    flat = _BLOCK_NOISE.sub("", low)
+    words, ascii_words = _blocklist_load()
+    hit = next((w for w in words if w in flat), None) or \
+          next((w for w in ascii_words if re.search(r"(?<![a-z0-9])" + re.escape(w) + r"(?![a-z0-9])", low)), None)
+    if hit:
+        try:
+            os.makedirs(os.path.dirname(MODERATION_LOG), exist_ok=True)
+            with open(MODERATION_LOG, "a", encoding="utf-8") as f:
+                f.write(f"{datetime.now(TZ_BEIJING).isoformat(timespec='seconds')}\tshow={sid}\trole={role}\t"
+                        f"{field}\t命中「{hit}」\t{raw}\n")
+        except OSError:
+            pass
+    return hit
 
 def _phone_web_send_on(db, sid):
     row = db.execute("SELECT web_send FROM phone_settings WHERE show_id=?", (sid,)).fetchone()
