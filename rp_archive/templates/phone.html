@@ -1598,6 +1598,37 @@ a { color: var(--link); text-decoration: none; }
   d.showModal();
 })();
 </script>
+{% if mode != 'lovemail' and not phone_admin and lovemail_last %}
+<dialog class="appearance notice-dialog lm-arrived" id="lmArrived" aria-labelledby="lmArrivedTitle">
+  <button type="button" class="lm-x" id="lmArrivedClose" aria-label="关闭">✕</button>
+  <div class="lm-arrived-ic" aria-hidden="true">💌</div>
+  <h2 id="lmArrivedTitle">你的心动信已经送达！</h2>
+  <a class="notice-ok" id="lmArrivedGo" href="{{ url_for('player_lovemail') }}">去看看</a>
+</dialog>
+<style>
+.lm-arrived { text-align: center; padding: 28px 22px 22px; position: relative; }
+.lm-arrived h2 { margin: 6px 0 18px; font-size: 18px; }
+.lm-arrived .lm-arrived-ic { font-size: 44px; line-height: 1; }
+.lm-arrived .lm-x { position: absolute; top: 8px; right: 10px; border: 0; background: none; color: var(--muted); font-size: 18px; width: 36px; height: 36px; cursor: pointer; }
+.lm-arrived .notice-ok { display: block; text-decoration: none; text-align: center; }
+</style>
+<script>
+(function () {
+  // 新的一封心动信送达（且还没进过信箱）时弹一次，叉掉或点「去看看」后同一封不再弹
+  var scope = {{ [sid, owner]|tojson }}, latest = {{ lovemail_last|int }};
+  var popKey = 'phone:lmpop:' + JSON.stringify(scope), readKey = 'phone:read:' + JSON.stringify(scope.concat(['__lovemail__']));
+  var d = document.getElementById('lmArrived'), notice = document.getElementById('phoneNotice');
+  function num(k) { try { return Number(localStorage.getItem(k)) || 0; } catch (_) { return 0; } }
+  function remember() { try { localStorage.setItem(popKey, String(latest)); } catch (_) {} }
+  if (!d || !d.showModal || (notice && notice.open)) return;
+  if (latest <= Math.max(num(popKey), num(readKey))) return;
+  document.getElementById('lmArrivedClose').addEventListener('click', function () { remember(); d.close(); });
+  document.getElementById('lmArrivedGo').addEventListener('click', remember);
+  d.addEventListener('cancel', remember);
+  d.showModal();
+})();
+</script>
+{% endif %}
 {% endif %}
 {% if phone_admin %}
 <dialog class="appearance" id="adminConfirm" aria-labelledby="adminConfirmTitle">
@@ -1796,9 +1827,9 @@ a { color: var(--link); text-decoration: none; }
       localStorage.setItem(key, String(Math.max(Number(localStorage.getItem(key)) || 0, ts)));
     } catch (_) {}
     {% else %}
-    document.querySelectorAll('#inbox .row, #discoverList .row, .phone-nav a[data-received-ts]').forEach(function (row) {
+    document.querySelectorAll('#inbox .row, #discoverList .row, .phone-nav a[data-received-ts], .phone-nav a[data-also-ts]').forEach(function (row) {
       var isUnread = false;
-      try { isUnread = Number(row.dataset.receivedTs) > (Number(localStorage.getItem(readKey(row.dataset.other))) || 0); } catch (_) {}
+      try { isUnread = Number(row.dataset.receivedTs) > (Number(localStorage.getItem(readKey(row.dataset.other))) || 0) || (!!row.dataset.alsoTs && Number(row.dataset.alsoTs) > (Number(localStorage.getItem(readKey(row.dataset.also))) || 0)); } catch (_) {}
       row.classList.toggle('unread', isUnread);
       var label = row.dataset.other === '__moments__' ? '朋友圈' : (row.dataset.other === '__public__' ? '公开播报' : row.dataset.other);
       if (isUnread) row.setAttribute('aria-label', label + '，有新内容');
