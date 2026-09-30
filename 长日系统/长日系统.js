@@ -1593,35 +1593,53 @@ cmd_role_list.solve =(ctx, msg) => {
         (npcSet.has(name) ? npcs : guests).push(entry);
     }
 
-    const sections = [[`💃 嘉宾（${guests.length}）`, guests]];
-    if (npcs.length) sections.push([`🎭 NPC（${npcs.length}）`, npcs]);
-    const full = `📊 当前已绑定角色列表：\n\n` + sections.map(([t, list]) => `${t}\n` + (list.length ? list.join("\n\n") : "（暂无）")).join("\n\n");
-
-    // 单条消息超过约 1000 字节会被平台静默丢掉——人一多整份名单就发不出来。
-    // 短的照旧一条发；长了就在群里改成合并转发，每栏按 ~800 字节切页
-    if (Buffer_byteLength(full) <= 900 || !msg.groupId) {
-        seal.replyToSender(ctx, msg, Buffer_byteLength(full) > 900 && !msg.groupId ? full.slice(0, 280) + "\n……（人太多，请在群里发「玩家名单」查看完整列表）" : full);
-        return seal.ext.newCmdExecuteResult(true);
-    }
-    const nodes = [{ type: "node", data: { name: "玩家名单", uin: "10001", content: `📊 当前已绑定角色：嘉宾 ${guests.length} 人${npcs.length ? `、NPC ${npcs.length} 人` : ""}` } }];
-    for (const [title, list] of sections) {
+    // 嘉宾一条、NPC 另起一条（没有 NPC 就不发第二条）。
+    // 单条消息超过约 1000 字节会被平台静默丢掉——人一多就发不出来，所以每条长了就在群里改成合并转发、按 ~800 字节切页
+    const sendList = (title, list) => {
+        const text = `${title}\n` + (list.length ? list.join("\n\n") : "（暂无）");
+        if (Buffer_byteLength(text) <= 900) return seal.replyToSender(ctx, msg, text);
+        if (!msg.groupId) return seal.replyToSender(ctx, msg, text.slice(0, 280) + "\n……（人太多，请在群里发「玩家名单」查看完整列表）");
+        const nodes = [];
         let page = [], size = 0, n = 1;
         const flush = () => {
             if (!page.length) return;
             nodes.push({ type: "node", data: { name: n > 1 ? `${title}·${n}` : title, uin: "10001", content: page.join("\n\n") } });
             page = []; size = 0; n++;
         };
-        if (!list.length) nodes.push({ type: "node", data: { name: title, uin: "10001", content: "（暂无）" } });
         for (const e of list) {
             const b = Buffer_byteLength(e) + 2;
             if (size + b > 800) flush();
             page.push(e); size += b;
         }
         flush();
-    }
-    const gidNum = parseInt(msg.groupId.replace(/\D/g, ""), 10);
-    ws({ action: "send_group_forward_msg", params: { group_id: gidNum, messages: nodes } }, ctx, msg, "");
+        ws({ action: "send_group_forward_msg", params: { group_id: parseInt(msg.groupId.replace(/\D/g, ""), 10), messages: nodes } }, ctx, msg, "");
+    };
+    sendList(`📊 当前已绑定角色 · 💃 嘉宾（${guests.length}）`, guests);
+    if (npcs.length) sendList(`🎭 NPC（${npcs.length}）`, npcs);
     return seal.ext.newCmdExecuteResult(true);
+}
+
+// 长回复自动分页：单条消息超过约 1000 字节会被平台静默丢掉（发出去了但群里看不到，也没有报错）。
+// 不超长照旧发一条；超长时群里改成合并转发（按行切成每页 ~800 字节），私聊拆成几条依次发。
+// 给「地点查看」「查看池子」「查看信箱」这类会随着数据变多而越来越长的列表用
+function replyLong(ctx, msg, text) {
+    text = String(text || "");
+    if (Buffer_byteLength(text) <= 900) return seal.replyToSender(ctx, msg, text);
+    const pages = [];
+    let cur = "";
+    for (let line of text.split("\n")) {
+        while (Buffer_byteLength(line) > 800) {            // 单行就超长：硬切
+            pages.push((cur ? cur + "\n" : "") + line.slice(0, 260)); cur = ""; line = line.slice(260);
+        }
+        const next = cur ? cur + "\n" + line : line;
+        if (Buffer_byteLength(next) > 800) { pages.push(cur); cur = line; } else cur = next;
+    }
+    if (cur) pages.push(cur);
+    if (msg.groupId) {
+        const nodes = pages.map((c, i) => ({ type: "node", data: { name: `第 ${i + 1}/${pages.length} 页`, uin: "10001", content: c } }));
+        return ws({ action: "send_group_forward_msg", params: { group_id: parseInt(msg.groupId.replace(/\D/g, ""), 10), messages: nodes } }, ctx, msg, "");
+    }
+    pages.forEach((c, i) => seal.replyToSender(ctx, msg, `${c}\n（${i + 1}/${pages.length}）`));
 }
 
 // UTF-8 字节数（海豹的 JS 环境不一定有 Buffer）
@@ -2036,6 +2054,7 @@ function normalizeInteractionForm(raw) {
 }
 
 const changriApi = {
+    replyLong: (ctx, msg, text) => replyLong(ctx, msg, text),   // 长列表自动分页（卫星插件用）
     normalizeInteractionForm: (raw) => normalizeInteractionForm(raw),   // 社交插件的无前缀分派也要先换算竖版写法
     parseInteractionForm: (raw, heads) => parseInteractionForm(raw, heads),   // 发帖的竖版写法（署名/内容分开给，不绕横版）
     ext,
@@ -2416,7 +2435,7 @@ cmdPlace.solve = (ctx, msg, cmdArgs) => {
             }
             if (allowPrivateRooms) rep += "\n💡 也可使用「[角色名]的房间」格式的私人地点";
         }
-        return seal.replyToSender(ctx, msg, rep);
+        return replyLong(ctx, msg, rep);
     }
 
     if (sub === "钥匙") {
@@ -2431,7 +2450,7 @@ cmdPlace.solve = (ctx, msg, cmdArgs) => {
                 rep += `  🔑 ${k}${exists.desc ? `（${exists.desc}）` : ""}${exists.locked ? "" : "（当前未上锁）"}\n`;
             }
         });
-        return seal.replyToSender(ctx, msg, rep);
+        return replyLong(ctx, msg, rep);
     }
 };
 ext.cmdMap["地点"] = cmdPlace;
@@ -2684,7 +2703,7 @@ cmdViewPlace.solve = (ctx, msg) => {
             rep += `   🔑 持钥匙者：${holders.join("、") || "无"}\n`;
         });
     }
-    seal.replyToSender(ctx, msg, rep);
+    replyLong(ctx, msg, rep);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["查看地点详情"] = cmdViewPlace;
@@ -4509,7 +4528,7 @@ cmd_show_group.solve = (ctx, msg, cmdArgs) => {
         const isOccupied = group[i].endsWith("_占用");
         rep += `• ${isOccupied ? group[i].replace(/_占用$/, "") + " 🔴占用中" : group[i]}\n`;
     }
-    seal.replyToSender(ctx, msg, rep.trim());
+    replyLong(ctx, msg, rep.trim());
     return seal.ext.newCmdExecuteResult(true);
 }
 ext.cmdMap["查看群号"] = cmd_show_group;
@@ -4722,7 +4741,7 @@ cmd_admin_view_active.solve =(ctx, msg, cmdArgs) => {
     reply += `${idx + 1}️⃣ ${getCustomTypeLabel(subtype)} ｜ 群号：${group}\n`;
   });
 
-  seal.replyToSender(ctx, msg, reply.trim());
+  replyLong(ctx, msg, reply.trim());
   return seal.ext.newCmdExecuteResult(true);
 };
 
@@ -5647,7 +5666,10 @@ const CLEAR_KEYS = [
     "feature_user_blocklist","noquit",                "season_show_name",
     "season_mode",           "season_schedule_start", "season_schedule_end",
     "season_supplement_end", "season_created_at",     "love_show_name",
-    "pending_npc_names",     "call_admin_counts",   "season_auto_toggles_off",
+    "pending_npc_names",     "call_admin_counts",
+    // 以下 4 个是 check_clear_keys_coverage.py 查出来漏清的：二表提交记录（不清的话下一季皮相墙直接显示 ✅）、
+    // 写信综待回信件（下一季「我的待回」会冒出上季的信）、撤回追踪、水群号（另外三个群号一直都清，只漏了它）
+    "form2_submitted",       "letter_pending_replies", "sent_recall_tracking", "water_group_id",   "season_auto_toggles_off",
     // ── 约会 / 日程 ──
     "appointmentList",       "b_MultiGroupRequest",   "b_confirmedSchedule",
     "join_request_list",     "allowed_appointment_times",
@@ -12123,7 +12145,7 @@ cmd_view_mylovemails.solve =(ctx, msg, cmdArgs) => {
     if (!my.length) return seal.replyToSender(ctx, msg, "📭 你目前没有待投递的信件。");
     let res = "📄 你待投递的信件如下：\n";
     my.forEach((r, i) => res += `\n#${i + 1} | 接收者: ${r.receiver}\n内容: ${r.content}\n`);
-    seal.replyToSender(ctx, msg, res);
+    replyLong(ctx, msg, res);
     return seal.ext.newCmdExecuteResult(true);
 };
 

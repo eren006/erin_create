@@ -45,6 +45,8 @@ const SETTING_POLL_INTERVAL_MS = 60000;      // 1 分钟
 // 核心依赖：主插件共享 API
 // ========================
 function getApi()              { return globalThis.__changriApi || null; }
+// 长列表自动分页（实现在主插件 replyLong；主插件没加载就照旧发一条）
+function replyLong(ctx, msg, text) { const api = getApi(); return api && api.replyLong ? api.replyLong(ctx, msg, text) : seal.replyToSender(ctx, msg, text); }
 function mainStorGet(key)      { return getApi()?.kvGetRaw(key) ?? null; }
 function mainStorSet(key, val) { const api = getApi(); if (api) api.kvSetRaw(key, val); else console.error(`[长日设置] 主插件未加载，写入丢失: ${key}`); }
 
@@ -2816,7 +2818,7 @@ cmd_random_group.solve = (ctx, msg, cmdArgs) => {
     });
     response += "━━━━━━━━━━━━━━";
 
-    seal.replyToSender(ctx, msg, response);
+    replyLong(ctx, msg, response);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["随机分组"] = cmd_random_group;

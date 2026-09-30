@@ -26,6 +26,8 @@ if (!ext) {
 // 核心依赖：主插件共享 API
 // ========================
 function getApi()                          { return globalThis.__changriApi || null; }
+// 长列表自动分页（实现在主插件 replyLong；主插件没加载就照旧发一条）
+function replyLong(ctx, msg, text) { const api = getApi(); return api && api.replyLong ? api.replyLong(ctx, msg, text) : seal.replyToSender(ctx, msg, text); }
 function mainStorGet(key)                  { return getApi()?.kvGetRaw(key) ?? null; }
 function mainStorSet(key, val)             { const api = getApi(); if (api) api.kvSetRaw(key, val); else console.error(`[长日RPG] 主插件未加载，写入丢失: ${key}`); }
 
@@ -1102,7 +1104,7 @@ cmd_view_pool.solve = (ctx, msg, cmdArgs) => {
             const pityNote = pool.type === "pity" ? `｜保底${pool.pityThreshold || 10}次` : "";
             text += `\n${icon} 【${pool.name}】${typeStr} | 库存${totalStock} | ${limitStr}${pityNote}`;
         }
-        return seal.replyToSender(ctx, msg, text);
+        return replyLong(ctx, msg, text);
     }
     const pool = defs[poolName];
     if (!pool) return seal.replyToSender(ctx, msg, `❌ 未找到池子「${poolName}」。`);
@@ -1131,7 +1133,7 @@ cmd_view_pool.solve = (ctx, msg, cmdArgs) => {
                 text += `\n  · ${item.name} [${entry.code}] 权重×${entry.weight}`;
             }
         }
-        return seal.replyToSender(ctx, msg, text);
+        return replyLong(ctx, msg, text);
     }
     if (pool.type === "tiered") {
         const tiers = pool.tiers || [];
@@ -1160,7 +1162,7 @@ cmd_view_pool.solve = (ctx, msg, cmdArgs) => {
             text += `\n\n合计库存：${total} 个`;
         }
     }
-    return seal.replyToSender(ctx, msg, text);
+    return replyLong(ctx, msg, text);
 };
 ext.cmdMap["查看池子"] = cmd_view_pool;
 
@@ -2623,7 +2625,7 @@ cmd_craft.solve = (ctx, msg, cmdArgs) => {
             }
             return line;
         });
-        seal.replyToSender(ctx, msg, `📋 合成配方（${filtered.length}/${Object.keys(recipes).length}）：
+        replyLong(ctx, msg, `📋 合成配方（${filtered.length}/${Object.keys(recipes).length}）：
 ${lines.join("\n")}`);
         return seal.ext.newCmdExecuteResult(true);
     }

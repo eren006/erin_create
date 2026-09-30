@@ -27,6 +27,8 @@ ext.autoActive = true;
 // 核心依赖：主插件共享 API
 // ========================
 function getApi()                          { return globalThis.__changriApi || null; }
+// 长列表自动分页（实现在主插件 replyLong；主插件没加载就照旧发一条）
+function replyLong(ctx, msg, text) { const api = getApi(); return api && api.replyLong ? api.replyLong(ctx, msg, text) : seal.replyToSender(ctx, msg, text); }
 function mainStorGet(key)                  { return getApi()?.kvGetRaw(key) ?? null; }
 function mainStorSet(key, val)             { const api = getApi(); if (api) api.kvSetRaw(key, val); else console.error(`[长日社交] 主插件未加载，写入丢失: ${key}`); }
 
@@ -1987,7 +1989,7 @@ cmd_view_my_gift_collection.solve =(ctx, msg, cmdArgs) => {
         if (!gift) { text += `\n${giftId} （已下架）`; continue; }
         text += `\n${giftId} 「${gift.name}」 🔥第${heatRanks[giftId]}名`;
     }
-    seal.replyToSender(ctx, msg, text.trim());
+    replyLong(ctx, msg, text.trim());
     return seal.ext.newCmdExecuteResult(true);
 };
 // 💌 心动信系统已迁移至主插件 长日系统.js

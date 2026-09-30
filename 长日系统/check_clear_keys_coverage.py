@@ -24,6 +24,13 @@ IGNORE_DIR_PARTS = ("长日extra", "_archive")
 # （这些都是「推送全部」会同步到网页端的机器人配置，跟季度生命周期无关）。
 # 新增一个持续生效的配置 key 时，把它加进这份白名单，而不是加进 CLEAR_KEYS。
 INTENTIONALLY_PERSISTENT = {
+    # 2026-09-30 补：跨季保留的配置/标记
+    "appointment_form_labels",            # 网页「邀约表单标签」配置
+    "private_resources",                  # 私约资源注册表（resetPrivateDefaultResourceName 单独处理）
+    "a_meetingCount_private_res:",        # 私约资源计数前缀（resetPrivateResourceCounts 单独清）
+    "a_meetingCount_private_res_migrated",# 一次性迁移标记
+    "sys_blocklist",                      # 玩家拉黑名单，按 QQ 记，视为跨季保留
+
     "a_adminList", "adminPassword",  # 清空季度时明确保留：管理员列表、密令
     "custom_type_labels", "force_end_grant_reward", "private_appointment_aliases",
     "sms_aliases", "gift_aliases",
