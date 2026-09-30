@@ -24,6 +24,7 @@
 <p><a href="{{ url_for('palaces') }}">东西六宫 · 看各宫住处</a></p>
 <p class="muted">和其他小主来往。好感 40 以上可以结为姐妹（最多三位）：姐妹会让算计你的人更难得手，也能为彼此求情。</p>
 <h3>各宫娘娘</h3>
+{% if knife.debt %}<p class="flash bad" style="padding:8px 10px">你还欠着华妃一笔人情：{{ knife.debt.ask }}　（第 {{ knife.debt.row.due_day }} 天前办妥，在下面华妃那一栏）</p>{% endif %}
 <p class="muted">每天能去一位娘娘那儿走动（1 点精力）。投其所好，她待你一天比一天亲；撞上忌讳，好感 −5。好感到「亲近」（{{ BOND_CLOSE }}）、「知己」（{{ BOND_INTIMATE }}）各有一样好处。知己要常走动，不然每晚会淡一点。{% if npc_visited %}<b>今天已经去过了。</b>{% endif %}</p>
 {% for n, cfg, aff in npcs %}
 {% set tier = bond_tier(aff) %}
@@ -35,6 +36,7 @@
   <p class="perk{{ ' on' if aff >= BOND_CLOSE }}">亲近：{{ cfg.perks[0] }}</p>
   <p class="perk{{ ' on' if aff >= BOND_INTIMATE }}">知己：{{ cfg.perks[1] }}</p>
   <p class="muted perk">风险：{{ cfg.risk }}</p>
+  {% if n.npc_key == 'huafei' %}{% include '_knife.html' %}{% endif %}
   {% if not npc_visited and n.status == 'normal' and c.status == 'normal' %}
   <div>
     {% for o in cfg.opts %}

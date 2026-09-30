@@ -3358,6 +3358,8 @@ def npc_visit():
     daily_inc(c['id'], 'npc_visit')
     before = bond(c['id'], key)
     greet = random.choice(cfg['greet'][bond_tier(before)])
+    if key == 'huanghou' and bond(c['id'], 'huafei') >= BOND_CLOSE:
+        greet = random.choice(HUANGHOU_WARN)          # 跟华妃走得近，皇后要敲打几句
     ok = opt['stat'] is None or c[opt['stat']] + random.randint(0, SCENE_ROLL) >= opt['dc']
     changes = change_bond(c['id'], key, opt['gain'] if ok else BOND_SNUB)
     after = bond(c['id'], key)
@@ -3408,6 +3410,304 @@ def promote_favor_need(c, rank):
     return math.ceil(need * BOND_HUANGHOU_PROMOTE) if bond(c['id'], 'huanghou') >= BOND_INTIMATE else need
 
 
+# ── 借华妃的刀（九点二十二节）────────────────────────────────────────────────────
+# 华妃知己才能求她出手：占当天的拜访、150 两，好感压回 45；当晚她照自己的心计出手。
+# 得手后她要一笔人情（KNIFE_DEBTS），办了相安无事，不办好感直接 −30，被她记恨。
+# 她出手败露时，好感越高越不会供出你。受害人只知道是华妃，除非她把你供出来
+
+KNIFE_COST = 150
+KNIFE_AFTER_BOND = 45          # 从知己压回亲近
+KNIFE_REFUSE = 0.20            # 华妃那天心情不好
+KNIFE_COOLDOWN = 3             # 两次借刀至少隔 3 天；同一个目标 3 天内只挨一次
+KNIFE_PUNISH_CHANCE = 0.25     # 目标宫里有宫人时，有时改成发落宫人
+KNIFE_BROKEN_BOND = -30        # 赖账：低于记仇线 −20，华妃会冲你来
+KNIFE_BETRAY_MAX, KNIFE_BETRAY_MIN = 0.50, 0.21   # 供出你的概率：好感 30 时 50%，59 时 21%
+
+KNIFE_ASK = {
+    'eager': ['「不过一个{t}，也值得你愁成这样？礼放下，这事本宫应了，你等着瞧就是。」',
+              '「就这点事？本宫还当你要求什么了不得的。回去等着，自有人替你出这口气。」'],
+    'stingy': ['「求本宫替你动手，就拿这么点东西来撑脸面？也罢，搁下吧，谁让本宫平日里高看了你一眼。」',
+               '「一百五十两就想请动本宫？看在你平日还算识趣的份上——下回可没这么便宜。」'],
+    'refuse': ['「本宫今日没工夫听你那些窝囊事，你受了气，倒来搅本宫清静？把你的礼原样拿回去，别杵在这儿碍眼！」',
+               '「本宫是你使唤的人么？今儿不想听，出去！」'],
+}
+KNIFE_HIT_LINES = {
+    'rumor': '「如今皇上听见{t}便皱眉，宫里也没谁肯夸她半句贤德，你出了这口气，该记着是谁赏你的吧？」',
+    'frame': '「{t}那道宫门已经封了，本宫替你费的这番手脚，你预备拿什么来还？」',
+    'punish': '「本宫才发落了{t}跟前的人，她便连求情都不敢，你倒落得清闲——这笔人情，先给本宫记在账上。」',
+}
+KNIFE_COVER = '「这回的责问本宫替你担了，你把嘴闭严些，别叫本宫白护了一个没出息的！」'
+KNIFE_BETRAY = ['「皇上，从送礼求告到盘算如何害{t}，桩桩都是{p}的主意，本宫竟叫这副恭顺模样蒙蔽了。」',
+                '「如今人证物证只管往{p}身上查，一个敢借本宫名头作恶的人，难道还会肯向皇上吐半句实话？」']
+HUANGHOU_WARN = [
+    '「你近来常往翊坤宫走动，想是与华妃投缘，本宫瞧着也欣慰。只是不知你还记不记得，姐妹情分之外，另有宫里的规矩。」',
+    '「华妃待你亲厚，是你的福气。本宫只盼你把她的好处学去，至于旁的，总还该拿规矩量一量。」',
+    '「今儿肯来陪本宫说话，倒是难得。想来翊坤宫再热闹，也没叫你忘了请安的规矩。」',
+]
+# 人情债。kind：silver 交银子 / hobby 交一件自己做的某类作品 / nogreet 期限内不去请安 /
+# rumor 期限内自己对 {x} 散一次流言 / seek 期限内去养心殿送一次汤羹 / maid 把 {m} 送去翊坤宫
+KNIFE_DEBTS = {
+    'silver80': dict(kind='silver', amount=80, days=2,
+        ask='「替你料理{t}，上下打点不花银子么？八十两，给本宫送来，别等着本宫催。」',
+        ok='「总算没叫本宫白开这个口，账平了，收起你那副等赏的样子。」',
+        broken='她冷笑一声：「八十两就试出了你的斤两，往后你在本宫眼里，便同{t}一个待遇。」'),
+    'painting': dict(kind='hobby', hobby='painting', days=3,
+        ask='「听说你的字画还算入眼，亲手画一幅送来。若拿旁人的笔墨搪塞，本宫会瞧不出来？」',
+        ok='「这画还有几分气势，勉强抵得过本宫替你费的心。」',
+        broken='她把空着的画匣推落在地：「本宫给你留着位置，你倒拿本宫当笑话。从前那点情分尽了，往后有你受的！」'),
+    'nogreet': dict(kind='nogreet', days=2,
+        ask='「从明日起，连着两日不许去景仁宫请安。皇后那几句贤良话，少听两日，你还能不认得路了？」',
+        ok='「还算分得清谁替你办过事，这两日本宫记下了。」',
+        broken='她笑意骤冷：「景仁宫的门槛竟比本宫的话还重。既舍不得皇后，就看她那张慈悲脸护不护得住你。」'),
+    'rumor': dict(kind='rumor', days=2,
+        ask='「把{x}私下怨怼圣意的话传出去，本宫要听见旁人议论。替自己出气时你倒殷勤，轮到替本宫办事，该不会连嘴都张不开吧？」',
+        ok='「传得还算像样，你欠的这一回便揭过去。」',
+        broken='她猛地一拍案：「求本宫时满口应承，替本宫传句话便装起了贤良。你既敢耍本宫，就连你那点底细一道传出去！」'),
+    'seek': dict(kind='seek', days=3,
+        ask='「去养心殿见了皇上，替本宫说说料理六宫的辛苦。皇后会占贤名，本宫做的事倒该没人提？」',
+        ok='「你那几句话皇上听进去了，算你这张嘴还有些用处。」',
+        broken='她当场摔碎了茶盏：「替本宫说句好话倒难住你了！好，从今往后你别想再沾本宫半分光，本宫有的是话说给皇上听！」'),
+    'maid': dict(kind='maid', days=1,
+        ask='「你宫里的{m}，本宫瞧着还算伶俐，送来翊坤宫当差。一个宫人罢了，难道还要本宫拿东西同你换？」',
+        ok='「人留下，你可以回去了，这回还算懂得报答。」',
+        broken='她拂袖起身：「连{m}都舍不得送来，倒舍得让本宫替你担事。这份交情到此为止，你那一宫的人，本宫会挨个留心！」'),
+    'silver120': dict(kind='silver', amount=120, days=1,
+        ask='「本宫要用一百二十两，你明日送齐。怎么，先前敢求本宫替你撑腰，如今倒要捂紧荷包了？」',
+        ok='「数目不错，本宫也懒得再同你算先前那笔账。」',
+        broken='她慢慢合上账册：「原来你打量着本宫只肯施恩、不会记仇。也好，这回便叫你长长见识。」'),
+    'incense': dict(kind='hobby', hobby='incense', days=3,
+        ask='「亲手调一盒清雅的熏香送来，别拿满宫都有的甜腻气糊弄本宫。受了本宫的照拂，总该肯费些心思吧？」',
+        ok='「这气味尚不俗，算你还没把本宫的恩情全忘干净。」',
+        broken='她把香炉掀翻在地：「本宫等了三日，就等来你这份怠慢。往日是本宫看走了眼，今日起，你就等着本宫一件件讨回来！」'),
+}
+
+
+def knife_open_debt(cid):
+    return q("SELECT * FROM knife_debts WHERE consort_id=? AND status IN ('hit','owed') ORDER BY id DESC LIMIT 1", (cid,), one=True)
+
+
+def knife_block_reason(c, t=None):
+    """借不了的原因；借得了返回空"""
+    day = cur_day()
+    hf = npc_row('huafei')
+    if not hf or hf['status'] != 'normal': return '华妃眼下不见客。'
+    if bond(c['id'], 'huafei') < BOND_INTIMATE: return '跟华妃的交情还不到知己，她不会替你出手。'
+    if c['status'] != 'normal' or is_sick(c): return '你现在出不了门。'
+    if knife_open_debt(c['id']): return '你还欠着华妃的人情。'
+    if q("SELECT 1 FROM knife_debts WHERE consort_id=? AND day>?", (c['id'], day - KNIFE_COOLDOWN), one=True):
+        return f'刚求过华妃，隔 {KNIFE_COOLDOWN} 天再说。'
+    if daily_count(c['id'], 'npc_visit'): return '今天已经去过一位娘娘那儿了。'
+    if c['energy'] < BOND_VISIT_ENERGY: return '精力不够了。'
+    if c['silver'] < KNIFE_COST: return f'求华妃出手要 {KNIFE_COST} 两的重礼。'
+    if t is not None:
+        if not t or not t['user_id'] or t['id'] == c['id'] or t['status'] != 'normal': return '这个人眼下对付不了。'
+        if q("SELECT 1 FROM knife_debts WHERE victim_id=? AND day>?", (t['id'], day - KNIFE_COOLDOWN), one=True):
+            return '她这几日刚吃过亏，华妃不肯接连对她下手。'
+        if q("SELECT COUNT(*) n FROM intrigues WHERE target_id=? AND day=? AND status='pending'",
+             (t['id'], day), one=True)['n'] >= INTRIGUE_TARGET_DAILY_MAX:
+            return '今晚冲她去的人已经够多了。'
+    return ''
+
+
+@app.route('/knife/borrow', methods=['POST'])
+@login_required
+def knife_borrow():
+    c = g.me
+    try: t = get_consort(int(request.form.get('target_id', 0)))
+    except ValueError: t = None
+    err = knife_block_reason(c, t)
+    if err:
+        flash(err, 'bad'); return redirect(url_for('social'))
+    day = cur_day()
+    run('UPDATE consorts SET energy=energy-? WHERE id=?', (BOND_VISIT_ENERGY, c['id']))
+    daily_inc(c['id'], 'npc_visit')
+    names = dict(t=display_name(t))
+    if random.random() < KNIFE_REFUSE:
+        flash(random.choice(KNIFE_ASK['refuse']).format(**names) + '　她没收你的礼。', 'bad')
+        return redirect(url_for('social'))
+    aff = bond(c['id'], 'huafei')
+    add_silver(c['id'], -KNIFE_COST)
+    add_affinity(c['id'], npc_row('huafei')['id'], KNIFE_AFTER_BOND - aff)
+    if punishable_maids(t['id']) and random.random() < KNIFE_PUNISH_CHANCE: method = 'punish'
+    elif t['rank'] >= 3: method = 'frame'
+    else: method = 'rumor'
+    it_id = run("INSERT INTO intrigues (day, attacker_id, target_id, method, created_ts) VALUES (?,?,?,?,?)",
+                (day, npc_row('huafei')['id'], t['id'], method, now_ts())).lastrowid
+    run("""INSERT INTO knife_debts (consort_id, intrigue_id, victim_id, day, status, created_ts)
+           VALUES (?,?,?,?,'hit',?)""", (c['id'], it_id, t['id'], day, now_ts()))
+    line = random.choice(KNIFE_ASK['eager' if aff >= 70 else 'stingy']).format(**names)
+    flash(f"{line}　银子 -{KNIFE_COST}，华妃好感压回 {KNIFE_AFTER_BOND}。今晚她会动手。", 'good')
+    return redirect(url_for('social'))
+
+
+def knife_pick_debt(c, victim):
+    """挑一笔玩家办得到的人情。返回 (key, x_id, maid_id)"""
+    kinds = hobby_unlocked_kinds(c)
+    made = {r['kind'] for r in q("SELECT kind FROM hobby_items WHERE maker_id=? AND holder_id=?", (c['id'], c['id']))}
+    maids = active_maids(c['id'])
+    xs = [p for p in q("""SELECT * FROM consorts WHERE user_id IS NOT NULL AND status='normal' AND id NOT IN (?,?)""",
+                       (c['id'], victim))] if c['rank'] >= INTRIGUES['rumor']['min_rank'] else []
+    ok = []
+    for key, d in KNIFE_DEBTS.items():
+        if d['kind'] == 'hobby' and d['hobby'] not in kinds and d['hobby'] not in made: continue
+        if d['kind'] == 'maid' and not maids: continue
+        if d['kind'] == 'rumor' and not xs: continue
+        ok.append(key)
+    key = random.choice(ok)
+    kind = KNIFE_DEBTS[key]['kind']
+    x = random.choice(xs)['id'] if kind == 'rumor' else 0
+    m = random.choice(maids)['id'] if kind == 'maid' else 0
+    return key, x, m
+
+
+def knife_names(debt):
+    x = get_consort(debt['x_id']) if debt['x_id'] else None
+    m = get_maid(debt['maid_id']) if debt['maid_id'] else None
+    return dict(t=display_name(get_consort(debt['victim_id'])), x=display_name(x) if x else '',
+                m=m['name'] if m else '', p=display_name(get_consort(debt['consort_id'])))
+
+
+def knife_betray_p(aff):
+    return max(KNIFE_BETRAY_MIN, min(KNIFE_BETRAY_MAX, KNIFE_BETRAY_MAX - (aff - BOND_CLOSE) / 100))
+
+
+def knife_hits_tick(day):
+    """当晚阴谋结算完：得手的记一笔人情，败露的看华妃护不护你"""
+    for d in q("SELECT * FROM knife_debts WHERE status='hit'"):
+        it = q("SELECT * FROM intrigues WHERE id=?", (d['intrigue_id'],), one=True)
+        if not it or it['status'] != 'done': continue
+        c = get_consort(d['consort_id'])
+        names = knife_names(d)
+        if it['result'] == 'success':
+            key, x, m = knife_pick_debt(c, d['victim_id'])
+            run("""UPDATE knife_debts SET status='owed', debt=?, x_id=?, maid_id=?, start_day=?, due_day=? WHERE id=?""",
+                (key, x, m, day + 1, day + KNIFE_DEBTS[key]['days'], d['id']))
+            names = knife_names(q("SELECT * FROM knife_debts WHERE id=?", (d['id'],), one=True))
+            notify(c['id'], '华妃差人来请你去翊坤宫。' + KNIFE_HIT_LINES[it['method']].format(**names) + '　她接着说：'
+                   + KNIFE_DEBTS[key]['ask'].format(**names) + f"（{KNIFE_DEBTS[key]['days']} 天内办妥，去六宫页看）", 'info')
+        elif it['result'] == 'caught':
+            if random.random() < knife_betray_p(bond(c['id'], 'huafei')):
+                run("UPDATE knife_debts SET status='exposed' WHERE id=?", (d['id'],))
+                knife_expose(c, it, names)
+            else:
+                run("UPDATE knife_debts SET status='covered' WHERE id=?", (d['id'],))
+                notify(c['id'], '华妃那边的事败露了，她没供出你。' + KNIFE_COVER, 'info')
+        else:
+            run("UPDATE knife_debts SET status='void' WHERE id=?", (d['id'],))
+            notify(c['id'], f"华妃对{names['t']}没能得手。礼，她是不会退的。", 'info')
+
+
+def knife_expose(c, it, names):
+    """华妃把你供了出来：按你亲自出手败露论处"""
+    m = it['method']
+    if m == 'rumor':
+        add_stat(c['id'], 'virtue', -5); cut_favor(c['id'], 0.1); pen = '德行 -5，圣宠 -10%'
+    elif m == 'frame':
+        confine(c['id'], CONFINE_DAYS); cut_favor(c['id'], 0.15); pen = f'禁足 {CONFINE_DAYS} 天，圣宠 -15%'
+    else:
+        add_stat(c['id'], 'virtue', -8); pen = '德行 -8'
+    tloss = 10 if m == 'punish' else 15
+    add_trust(c['id'], -tloss)
+    bond_caught_huanghou(c['id'])
+    night_mark(c['id'], 'caught')
+    notify(c['id'], '华妃在御前把你供了出来：' + ''.join(KNIFE_BETRAY).format(**names) + f"　{pen}，信任 -{tloss}。", 'bad')
+    victim = get_consort(it['target_id'])
+    if victim and victim['user_id']:
+        notify(victim['id'], f"华妃对你下手的事查清了：背后指使她的，是{names['p']}。", 'info')
+    gazette(f"华妃供称，对{names['t']}下手是受{names['p']}指使。{names['p']}{pen}。", 'scandal')
+
+
+def knife_settle_debt(debt, paid):
+    names = knife_names(debt)
+    cfg = KNIFE_DEBTS[debt['debt']]
+    if paid:
+        run("UPDATE knife_debts SET status='paid' WHERE id=?", (debt['id'],))
+        notify(debt['consort_id'], '华妃的人情还上了。' + cfg['ok'].format(**names), 'good')
+        return cfg['ok'].format(**names)
+    run("UPDATE knife_debts SET status='broken' WHERE id=?", (debt['id'],))
+    hf = npc_row('huafei')
+    if hf:
+        add_affinity(debt['consort_id'], hf['id'], KNIFE_BROKEN_BOND - bond(debt['consort_id'], 'huafei'))
+    notify(debt['consort_id'], cfg['broken'].format(**names) + f"　华妃好感变成 {KNIFE_BROKEN_BOND}，她记恨上你了。", 'bad')
+    return cfg['broken'].format(**names)
+
+
+def knife_debts_tick(day):
+    """每晚：自动算的几种人情（不请安 / 散流言 / 送汤羹）看办没办成，到期没办的算赖账"""
+    for d in q("SELECT * FROM knife_debts WHERE status='owed'"):
+        cfg = KNIFE_DEBTS[d['debt']]
+        c = get_consort(d['consort_id'])
+        if not c or c['status'] == 'dead':
+            run("UPDATE knife_debts SET status='void' WHERE id=?", (d['id'],)); continue
+        done = False
+        if cfg['kind'] == 'rumor':
+            done = bool(q("""SELECT 1 FROM intrigues WHERE attacker_id=? AND target_id=? AND method='rumor' AND day>=?""",
+                          (c['id'], d['x_id'], d['start_day']), one=True))
+        elif cfg['kind'] == 'seek':
+            done = bool(q("""SELECT 1 FROM daily_counters WHERE consort_id=? AND key='seek' AND count>0 AND day BETWEEN ? AND ?""",
+                          (c['id'], d['start_day'], d['due_day']), one=True))
+        elif cfg['kind'] == 'nogreet':
+            if c['greet_day'] >= d['start_day']:
+                knife_settle_debt(d, False); continue
+            done = day >= d['due_day']
+        if done:
+            knife_settle_debt(d, True)
+        elif day >= d['due_day']:
+            knife_settle_debt(d, False)
+
+
+@app.route('/knife/pay', methods=['POST'])
+@login_required
+def knife_pay():
+    """交银子 / 交作品 / 送宫人；赖账也走这里"""
+    c = g.me
+    d = knife_open_debt(c['id'])
+    if not d or d['status'] != 'owed':
+        flash('你没欠华妃什么。', 'bad'); return redirect(url_for('social'))
+    cfg = KNIFE_DEBTS[d['debt']]
+    if request.form.get('refuse'):
+        flash(knife_settle_debt(d, False), 'bad'); return redirect(url_for('social'))
+    err = None
+    if cfg['kind'] == 'silver':
+        if c['silver'] < cfg['amount']: err = f"银子不够，要 {cfg['amount']} 两。"
+        else: add_silver(c['id'], -cfg['amount'])
+    elif cfg['kind'] == 'hobby':
+        try: iid = int(request.form.get('item_id', 0))
+        except ValueError: iid = 0
+        item = q("SELECT * FROM hobby_items WHERE id=? AND maker_id=? AND holder_id=? AND kind=?",
+                 (iid, c['id'], c['id'], cfg['hobby']), one=True)
+        if not item: err = f"要一件你亲手做的{HOBBIES[cfg['hobby']]['item_word']}。"
+        else:
+            run("DELETE FROM displays WHERE item_id=?", (item['id'],))
+            run("UPDATE hobby_items SET holder_id=? WHERE id=?", (npc_row('huafei')['id'], item['id']))
+    elif cfg['kind'] == 'maid':
+        m = get_maid(d['maid_id'])
+        if not m or m['status'] != 'active' or m['owner_id'] != c['id']: err = '这名宫人已经不在你宫里了。'
+        else: maid_leave(m['id'], 'gone', '被送去翊坤宫当差')
+    else:
+        err = '这件事做了就算，不用来这里交。'
+    if err:
+        flash(err, 'bad'); return redirect(url_for('social'))
+    flash(knife_settle_debt(d, True), 'good')
+    return redirect(url_for('social'))
+
+
+def knife_view(c):
+    """六宫页上华妃那一栏要显示的：能不能借、欠着什么"""
+    d = knife_open_debt(c['id'])
+    debt = None
+    if d and d['status'] == 'owed':
+        cfg = KNIFE_DEBTS[d['debt']]
+        items = q("SELECT * FROM hobby_items WHERE maker_id=? AND holder_id=? AND kind=?",
+                  (c['id'], c['id'], cfg['hobby']), ) if cfg['kind'] == 'hobby' else []
+        debt = dict(row=d, cfg=cfg, ask=cfg['ask'].format(**knife_names(d)), works=items,
+                    payable=cfg['kind'] in ('silver', 'hobby', 'maid'))
+    targets = [] if bond(c['id'], 'huafei') < BOND_INTIMATE else \
+        q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND status='normal' AND id!=? ORDER BY rank DESC", (c['id'],))
+    return dict(debt=debt, pending=bool(d and d['status'] == 'hit'), targets=targets,
+                block=knife_block_reason(c) if targets else '', cost=KNIFE_COST)
+
+
 @app.route('/social')
 @login_required
 def social():
@@ -3425,7 +3725,7 @@ def social():
     return render_template('social.html', c=c, others=others, rels=rels, known=known, SECRETS=SECRETS,
                            inv=inv, sister_count=len(sisters_of(c['id'])), ACTIONS=ACTIONS,
                            npcs=npcs, bond_tier=bond_tier, npc_visited=daily_count(c['id'], 'npc_visit'),
-                           BOND_CLOSE=BOND_CLOSE, BOND_INTIMATE=BOND_INTIMATE)
+                           BOND_CLOSE=BOND_CLOSE, BOND_INTIMATE=BOND_INTIMATE, knife=knife_view(c))
 
 @app.route('/sister/<action>/<int:tid>', methods=['POST'])
 @login_required
@@ -5942,7 +6242,7 @@ def end_reign(day):
     run("DELETE FROM consorts WHERE npc_key IS NOT NULL")
     for t in ('intrigues', 'messages', 'gazette', 'relations', 'known_secrets', 'inventory', 'heirs', 'letters', 'letter_stars',
               'bribes', 'afflictions', 'cases', 'case_suspects', 'case_actions', 'stances', 'heir_claims',
-              'hobby_projects', 'hobby_items', 'displays', 'daily_counters', 'memories', 'gatherings'):
+              'hobby_projects', 'hobby_items', 'displays', 'daily_counters', 'memories', 'gatherings', 'knife_debts'):
         run(f"DELETE FROM {t}")
     run('UPDATE users SET lethal_ready_day=0, nameless_ready_day=0, forge_used=0')
 
@@ -6102,6 +6402,7 @@ def _settle_night():
     pend = list(pend); random.shuffle(pend)
     for it in pend:
         resolve_intrigue(it)
+    knife_hits_tick(day)   # 借刀：得手的记人情，败露的看华妃护不护你
 
     tick_drugs(day)
 
@@ -6229,6 +6530,7 @@ def _settle_night():
     housing_sync()
 
     npc_bond_tick(day)   # 齐妃求情要赶在下面「禁足/冷宫期满」之前
+    knife_debts_tick(day)
 
     # 5. 日常：长半岁、月例、圣宠流失、精力、禁足/冷宫期满、请安
     capital_mothers = capital_mother_ids()
@@ -6725,7 +7027,7 @@ def admin_reset():
         return redirect(url_for('admin'))
     for t in ('intrigues', 'messages', 'gazette', 'relations', 'known_secrets', 'inventory', 'heirs', 'letters', 'letter_stars', 'reports', 'maids',
               'bribes', 'afflictions', 'cases', 'case_suspects', 'case_actions', 'stances', 'heir_claims',
-              'hobby_projects', 'hobby_items', 'displays', 'daily_counters', 'memories', 'gatherings', 'consorts', 'game_state'):
+              'hobby_projects', 'hobby_items', 'displays', 'daily_counters', 'memories', 'gatherings', 'knife_debts', 'consorts', 'game_state'):
         run(f"DELETE FROM {t}")
     if request.form.get('keep_users') != '1':
         run("DELETE FROM users")

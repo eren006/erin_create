@@ -517,3 +517,20 @@ CREATE TABLE IF NOT EXISTS gatherings (
     status   TEXT NOT NULL DEFAULT 'pending'   -- pending / done / lapsed
 );
 CREATE INDEX IF NOT EXISTS idx_gatherings_guest ON gatherings(guest_id, day, status);
+
+-- 借华妃的刀（设计文档九点二十二节）：一次借刀一行，从「等今晚出手」走到「欠人情」再到还清/赖账
+CREATE TABLE IF NOT EXISTS knife_debts (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    consort_id  INTEGER NOT NULL,                    -- 求华妃出手的人
+    intrigue_id INTEGER NOT NULL DEFAULT 0,          -- 华妃替她发起的那条阴谋
+    victim_id   INTEGER NOT NULL,
+    day         INTEGER NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'hit',         -- hit 等今晚出手 / owed 欠着人情 / paid / broken 赖账 / void 没得手 / covered 败露但华妃护着 / exposed 被供出
+    debt        TEXT NOT NULL DEFAULT '',            -- KNIFE_DEBTS 的 key
+    x_id        INTEGER NOT NULL DEFAULT 0,          -- 人情是散流言时的对象
+    maid_id     INTEGER NOT NULL DEFAULT 0,          -- 人情是送宫人时的那名宫人
+    start_day   INTEGER NOT NULL DEFAULT 0,
+    due_day     INTEGER NOT NULL DEFAULT 0,
+    created_ts  INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_knife_debts_owner ON knife_debts(consort_id, status);

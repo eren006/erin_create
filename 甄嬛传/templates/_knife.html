@@ -1,0 +1,32 @@
+{# 借华妃的刀（九点二十二节）：知己才能借；欠着人情时在这里还 #}
+{% if knife.debt %}
+{% set d = knife.debt %}
+<div style="margin:8px 0;padding:8px 10px;border:1px solid var(--line)">
+  <p style="margin:0 0 6px"><b>欠华妃的人情</b>：{{ d.ask }}</p>
+  <p class="muted" style="margin:0 0 6px">第 {{ d.row.due_day }} 天前办妥。{% if d.cfg.kind == 'nogreet' %}期限内别去景仁宫请安，到期自动算数。{% elif d.cfg.kind == 'rumor' %}期限内自己去「使计」对她散一次流言，花费和败露风险你自己担。{% elif d.cfg.kind == 'seek' %}期限内去养心殿送一次汤羹就算。{% endif %}赖账的话，华妃好感直接变成 −30，她会冲你来。</p>
+  {% if d.payable %}
+  <form method="post" action="{{ url_for('knife_pay') }}" style="display:inline-block">
+    {% if d.cfg.kind == 'hobby' %}
+      {% if d.works %}<select name="item_id">{% for it in d.works %}<option value="{{ it.id }}">{{ it.quality }}·{{ it.style }}</option>{% endfor %}</select><button>送去</button>
+      {% else %}<span class="muted">你手上还没有自己做的这类作品，赶紧去做一件。</span>{% endif %}
+    {% elif d.cfg.kind == 'silver' %}<button>送 {{ d.cfg.amount }} 两去</button>
+    {% else %}<button>把人送去</button>{% endif %}
+  </form>
+  {% endif %}
+  <form method="post" action="{{ url_for('knife_pay') }}" style="display:inline-block" onsubmit="return confirm('赖掉这笔人情，华妃会记恨你。确定？')">
+    <input type="hidden" name="refuse" value="1"><button class="plain">不办了</button></form>
+</div>
+{% elif knife.pending %}
+<p class="muted">华妃已经应下了，今晚会动手。</p>
+{% elif knife.targets %}
+<div style="margin:8px 0">
+  {% if knife.block %}<p class="muted">求她出手：{{ knife.block }}</p>
+  {% else %}
+  <form method="post" action="{{ url_for('knife_borrow') }}" onsubmit="return confirm('送 {{ knife.cost }} 两重礼求华妃出手？好感会压回亲近，事后她还要你还一笔人情。')">
+    求她出手对付 <select name="target_id">{% for t in knife.targets %}<option value="{{ t.id }}">{{ dn(t) }}</option>{% endfor %}</select>
+    <button>送 {{ knife.cost }} 两求她</button>
+  </form>
+  <p class="muted" style="font-size:13px">占当天的拜访。她有两成可能心情不好不接；接了就扣钱、好感压回亲近，当晚照她自己的本事出手，没成钱也不退。得手后她会要你还一笔人情。她要是出手败露，好感越高越不会供出你。</p>
+  {% endif %}
+</div>
+{% endif %}
