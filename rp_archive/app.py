@@ -5229,7 +5229,7 @@ def player_phone_inbox():
                            threads=sorted(_phone_threads(db, sid, owner) + _group_threads(db, sid, owner),
                                           key=lambda t: -t["last"]["ts"]),
                            status=_phone_status(db, sid, owner), flash=session.pop("phone_flash", None),
-                           public=_phone_public_summary(db, sid),
+                           public=_phone_public_summary(db, sid), pending_summary=_phone_pending_summary(db, sid, owner),
                            moments_latest=db.execute(
                                "SELECT role_name, content, created_at, game_day, (SELECT COUNT(*) FROM moment_images i "
                                "WHERE i.moment_id=m.id) AS n FROM moments m WHERE show_id=? AND deleted=0 "
@@ -5258,7 +5258,7 @@ def player_phone_poll():
         if not m["mine"]:
             incoming[m["other"]] = max(incoming.get(m["other"], 0), m["ts"])
     return jsonify(latest=max((m["ts"] for m in views), default=0),
-                   revision=revision, incoming=incoming)
+                   revision=revision, incoming=incoming, pending=_phone_pending_summary(get_db(), sid, owner))
 
 @app.route("/p/me/public")
 def player_phone_public():
@@ -6910,6 +6910,29 @@ def _song_pending_for_bot(db, sid, done_ids):
 # 短信礼物照「对话」归人（误投/换落款照玩家看到的算），心动信只算寄出的去向、收到的只给总数（来信是匿名的）。
 _STATS_VIEWS = ("timeline", "counts", "pending", "arc", "interact")
 
+def _phone_pending_items(report):
+    pending = (report or {}).get("pending") or {}
+    items = []
+    for row in pending.get("pending") or []:
+        items.append({"kind": "session", "minutes": row["elapsed_min"], "data": row})
+    for row in pending.get("letters") or []:
+        items.append({"kind": "letter", "minutes": row["wait_min"], "data": row})
+    for name in pending.get("rel") or []:
+        items.append({"kind": "relation", "minutes": None, "data": name})
+    return sorted(items, key=lambda item: -(item["minutes"] if item["minutes"] is not None else -1))
+
+
+def _phone_pending_summary(db, sid, owner):
+    row = db.execute("SELECT data, updated_at FROM phone_reports WHERE show_id=? AND role=?", (sid, owner)).fetchone()
+    items = _phone_pending_items(json.loads(row["data"])) if row else []
+    longest = max((item["minutes"] for item in items if item["minutes"] is not None), default=None)
+    duration = ""
+    if longest is not None:
+        duration = (f"{longest // 60} 小时 " if longest >= 60 else "") + f"{longest % 60} 分钟"
+    return {"count": len(items), "longest": duration,
+            "stale": bool(row and int(time.time()*1000) - row["updated_at"] > 10*60*1000)}
+
+
 def _phone_arc_view(text):
     """兼容已上报的文字报告；未知格式保留原文，不推断回复状态。"""
     out = {"average": None, "sample": "", "sessions": [], "notes": []}
@@ -7025,6 +7048,7 @@ def player_stats():
                            updated=(_phone_time(row["updated_at"]) if row else ""),
                            stale=bool(row) and int(time.time() * 1000) - row["updated_at"] > 10 * 60 * 1000,
                            inter=inter, lm_recv=lm_recv,
+                           pending_items=_phone_pending_items(report) if view == "pending" else [],
                            arc_view=_phone_arc_view((report or {}).get("arc")) if view == "arc" else None,
                            personal_counts=_phone_personal_counts((report or {}).get("counts")) if view == "counts" else [])
 

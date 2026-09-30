@@ -127,6 +127,20 @@ ok('周屿未回：10m' in arc['sessions'][1]['waiting'], 'arc multiplayer waiti
 ok(A._phone_arc_view('新格式原文')['notes'] == ['新格式原文'], 'arc unknown fallback')
 ok(A._phone_arc_view('')['average'] is None, 'missing arc is not zero')
 
+# 首页待回入口与轮询只反映本人；跨类型按等待时长排序，关系线无时长置后。
+sync(REP)
+pending = lin.get('/p/me/poll').json['pending']
+ok(pending['count'] == 3 and pending['longest'] == '2 小时 5 分钟' and not pending['stale'], 'pending reminder totals')
+inbox = lin.get('/p/me').get_data(as_text=True)
+ok('待我回复 · 3 项' in inbox and '最长已等待 2 小时 5 分钟' in inbox, 'inbox reminder')
+ok(zy.get('/p/me/poll').json['pending']['count'] == 0, 'reminder owner isolation')
+ordered = A._phone_pending_items({'pending':{'pending':[{'elapsed_min':10}], 'letters':[{'wait_min':90}], 'rel':['周屿']}})
+ok([r['kind'] for r in ordered] == ['letter','session','relation'], 'cross-type wait ordering')
+c.execute('UPDATE phone_reports SET updated_at=? WHERE role=?',(int(time.time()*1000)-11*60*1000,'林晚'));c.commit()
+ok(lin.get('/p/me/poll').json['pending']['stale'], 'stale reminder')
+REP['林晚']['pending'] = {};sync(REP)
+ok(lin.get('/p/me/poll').json['pending']['count'] == 0, 'cleared pending removed on next poll')
+
 # 管理身份、没登录
 adm = app.test_client(); adm.get("/p/ADMINCODE1")
 ok(adm.get("/p/me/stats").status_code == 302 and app.test_client().get("/p/me/stats").status_code == 302, "access")

@@ -475,6 +475,7 @@ a { color: var(--link); text-decoration: none; }
   </header>
   <div class="scroll list" id="inbox">
     {% if not admin_as %}<a class="search-pill" href="{{ url_for('player_phone_library') }}"><span aria-hidden="true">🔍</span>检索短信和礼物</a>{% endif %}
+    {% if not admin_as %}{% include '_phone_pending_entry.html' %}{% endif %}
     {% if public %}
     <a class="row public-row" data-other="__public__" data-received-ts="{{ public.ts }}" href="{{ url_for('player_phone_public') }}">
       <div class="avatar public-avatar">📢</div>
@@ -854,25 +855,21 @@ a { color: var(--link); text-decoration: none; }
     {% elif view == 'arc' %}
       {% include '_phone_arc.html' %}
     {% elif view == 'pending' %}
-      {% set pd = report.pending or {} %}
-      {% if not (pd.pending or pd.rel or pd.letters) %}<div class="empty">🌙 当前没有等待你回复的事项</div>{% endif %}
-      {% if pd.pending %}
-      <div class="stamp"><b>🔴 待回复的场次</b></div>
-      {% for p in pd.pending %}
+      {% for item in pending_items %}
+      {% set p = item.data %}
       <article class="lm-letter lm-sent stats-card">
+        {% if item.kind == 'session' %}
         <div class="stats-title">{{ '🔴 已超时' if p.over else '⏳ 等待中' }} · {{ p.type }}</div>
         <div class="stats-line">群 {{ p.gid }} · 已经弧了 {{ (p.elapsed_min // 60) ~ 'h' if p.elapsed_min >= 60 else '' }}{{ p.elapsed_min % 60 }}m</div>
+        {% elif item.kind == 'letter' %}
+        <div class="stats-title">✉️ 还没回的信</div>
+        <div class="stats-line">{{ p.from }} 给你写了信还没回 · 已经等了 {{ (p.wait_min // 60) ~ 'h' if p.wait_min >= 60 else '' }}{{ p.wait_min % 60 }}m</div>
+        {% else %}
+        <div class="stats-title">🔗 待回关系线</div>
+        <div class="stats-line">{{ p }} 已回复你的关系线，在群里发「查看关系线 {{ p }}」回复</div>
+        {% endif %}
       </article>
-      {% endfor %}
-      {% endif %}
-      {% if pd.rel %}
-      <div class="stamp"><b>🔗 待回关系线</b></div>
-      {% for n in pd.rel %}<article class="lm-letter lm-sent stats-card"><div class="stats-line">{{ n }} 已回复你的关系线，在群里发「查看关系线 {{ n }}」回复</div></article>{% endfor %}
-      {% endif %}
-      {% if pd.letters %}
-      <div class="stamp"><b>✉️ 还没回的信</b></div>
-      {% for l in pd.letters %}<article class="lm-letter lm-sent stats-card"><div class="stats-line">{{ l.from }} 给你写了信还没回 · 已经等了 {{ (l.wait_min // 60) ~ 'h' if l.wait_min >= 60 else '' }}{{ l.wait_min % 60 }}m</div></article>{% endfor %}
-      {% endif %}
+      {% else %}<div class="empty">🌙 当前没有等待你回复的事项</div>{% endfor %}
       <p class="song-note">待进群、待退群和群名要实时问 QQ，这里看不到，在群里发「我的待回」查看。心动信投递情况在底部「心动信」里。</p>
     {% else %}
       {% include '_phone_interactions.html' %}
@@ -1609,6 +1606,14 @@ a { color: var(--link); text-decoration: none; }
       if (response.status === 401) { window.location.assign({{ url_for('phone_code_entry')|tojson }}); return; }
       if (!response.ok) return;
       var data = await response.json();
+      const reminder = document.getElementById('pendingEntry');
+      if (reminder && data.pending) {
+        const pending = data.pending;
+        reminder.hidden = !pending.count;
+        document.getElementById('pendingEntryTitle').textContent = (pending.stale ? '待回记录' : '待我回复') + ' · ' + pending.count + ' 项';
+        document.getElementById('pendingEntryDetail').textContent = pending.stale ? '同步延迟 · 请以最新回复情况为准' : (pending.longest ? '最长已等待 ' + pending.longest : '有关系线等待回复');
+        reminder.classList.toggle('is-stale',pending.stale);
+      }
       if (data.revision === revision) return;
       var page = await fetch(window.location.href, {cache: 'no-store'});
       if (!page.ok || page.redirected) return;
