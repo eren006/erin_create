@@ -117,7 +117,7 @@
   <form method="post" action="{{ url_for('succession_move') }}" class="row">
     <input type="hidden" name="move" value="peek">
     <b>窥匾</b>（{{ SUCCESSION_MOVES.peek.silver }} 两，嫔位以上）
-    <button class="plain">买通苏培盛</button><span class="muted">两成能得知皇上眼下最看重谁、他的胜面有几成（匾后是按圣眷的平方抽签定的，圣意难测，之后还会变）；有一成半败露，直接打入冷宫。</span>
+    <button class="plain">买通御前总管</button><span class="muted">两成能得知皇上眼下最看重谁、他的胜面有几成（匾后是按圣眷的平方抽签定的，圣意难测，之后还会变）；有一成半败露，直接打入冷宫。</span>
   </form>
   {% if c.rank >= SUCCESSION_MOVES.forge.min_rank %}
   <form method="post" action="{{ url_for('succession_move') }}" class="row">

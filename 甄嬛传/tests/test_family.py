@@ -89,11 +89,11 @@ class FamilyTests(unittest.TestCase):
         uid = self.new_user()
         other = self.new_user('别人')
         game.create_family(other, '林', 'dali')
-        for bad in ('乌拉那拉', '富察', '马佳', '林', '欧阳欧', ''):
+        for bad in ('西林觉罗', '富察', '马佳', '林', '欧阳欧', ''):
             self.client.post('/create', data={'step': 'family', 'surname': bad, 'family': 'dali'})
         with self.client.session_transaction() as sess: sess['uid'] = uid
         self.assertIsNone(self.frow(uid))
-        for bad in ('乌拉那拉', '富察', '林'):
+        for bad in ('西林觉罗', '富察', '林'):
             self.assertTrue(game.surname_taken(bad))
 
     def test_blocked_word_surname_rejected(self):

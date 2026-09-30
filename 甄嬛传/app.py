@@ -488,7 +488,7 @@ def guide_tip(cid, key, line):
 SCENE_ROLL = 40
 
 SCENES = {
-    'garden_emperor': dict(place='御花园', text='杏花树下，你一抬头，正撞见皇上负手而立，身边只跟着苏培盛。皇上也看见了你。', opts=[
+    'garden_emperor': dict(place='御花园', text='杏花树下，你一抬头，正撞见皇上负手而立，身边只跟着御前总管。皇上也看见了你。', opts=[
         dict(text='借眼前的景致吟两句诗', stat='talent', dc=70,
              win=dict(favor=18, seek=15), win_text='皇上接了下半句，笑说你是个妙人。',
              lose=dict(favor=3), lose_text='诗吟到一半卡了壳，皇上倒也没说什么，只点了点头。'),
@@ -496,7 +496,7 @@ SCENES = {
              win=dict(favor=8), win_text='皇上问了几句起居，便往前走了。'),
         dict(text='折一枝杏花奉上', stat='appearance', dc=72,
              win=dict(favor=15, seek=20), win_text='皇上接过花，多看了你两眼。',
-             lose=dict(favor=-3, virtue=-1), lose_text='苏培盛轻咳一声：「小主，御花园的花可折不得。」'),
+             lose=dict(favor=-3, virtue=-1), lose_text='御前总管轻咳一声：「小主，御花园的花可折不得。」'),
     ]),
     'garden_huafei': dict(place='御花园', text='华妃的轿辇迎面而来。她抬手让轿子停下，居高临下地看着你：「见了本宫，怎么不跪？」', opts=[
         dict(text='立刻跪下请罪', stat=None,
@@ -520,7 +520,7 @@ SCENES = {
     ]),
     'seek_angry': dict(place='养心殿', text='养心殿里一地碎瓷。皇上头也不抬：「谁让你来的？」', opts=[
         dict(text='放下汤羹，悄悄退下', stat=None,
-             win=dict(), win_text='苏培盛朝你感激地点了点头。'),
+             win=dict(), win_text='御前总管朝你感激地点了点头。'),
         dict(text='软语宽慰，替皇上揉一揉额角', stat='appearance', dc=75,
              win=dict(favor=15, seek=10), win_text='皇上的脸色慢慢缓和下来，留你坐了一会儿。',
              lose=dict(favor=-8), lose_text='「朕说了不见人！」你被赶了出来。'),
@@ -560,9 +560,9 @@ SCENES = {
              lose=dict(favor=3), lose_text='皇上没注意到你，径直进去了。'),
     ]),
     # ── 送汤羹时皇上心情平和，偶尔会留你（do_seek） ──
-    'yangxin_emperor': dict(place='养心殿', text='你去养心殿送汤羹，正逢皇上批完折子揉眉心。苏培盛悄悄给你打帘子，示意你进去。', opts=[
+    'yangxin_emperor': dict(place='养心殿', text='你去养心殿送汤羹，正逢皇上批完折子揉眉心。御前总管悄悄给你打帘子，示意你进去。', opts=[
         dict(text='放下东西，行礼告退', stat=None,
-             win=dict(favor=5), win_text='皇上点了点头，继续看折子。苏培盛送你出来时低声道：「小主有心了。」'),
+             win=dict(favor=5), win_text='皇上点了点头，继续看折子。御前总管送你出来时低声道：「小主有心了。」'),
         dict(text='主动上前替皇上揉肩', stat='scheme', dc=68,
              win=dict(favor=15, seek=10), win_text='皇上闭上眼，由你按了一刻钟。走时他道：「明儿还来。」',
              lose=dict(favor=-5, trust=-3), lose_text='皇上睁开眼，淡淡道：「不必了。」你意识到自己越了界。'),
@@ -804,28 +804,28 @@ EFFECT_NAMES = dict(favor='圣宠', trust='信任', virtue='德行', health='体
 # ── NPC ────────────────────────────────────────────────────────────────────────
 
 NPCS = [
-    dict(npc_key='huanghou', hall='main', surname='乌拉那拉', given='宜修', title='', rank=9, palace='景仁宫',
+    dict(npc_key='huanghou', hall='main', surname='西林觉罗', given='蕴仪', title='', rank=9, palace='景仁宫',
          appearance=62, talent=70, scheme=92, virtue=80, health=75, favor=250, aggression=0.35,
          intro='中宫皇后，待人宽和，六宫都说她贤德。'),
-    dict(npc_key='huafei', hall='main', surname='年', given='世兰', title='华', rank=6, palace='翊坤宫',
+    dict(npc_key='huafei', hall='main', surname='佟佳', given='灼华', title='华', rank=6, palace='翊坤宫',
          appearance=90, talent=55, scheme=70, virtue=30, health=85, favor=420, aggression=0.4,
-         intro='宠冠六宫，兄长年羹尧手握重兵。最见不得别人得宠。'),
-    dict(npc_key='duanfei', hall='main', surname='齐', given='月宾', title='端', rank=6, palace='延庆殿',
+         intro='宠冠六宫，兄长手握重兵。最见不得别人得宠。'),
+    dict(npc_key='duanfei', hall='main', surname='沈', given='疏影', title='端', rank=6, palace='延庆殿',
          appearance=55, talent=60, scheme=65, virtue=75, health=20, favor=40, aggression=0,
          intro='常年卧病，深居简出，却什么都看在眼里。'),
-    dict(npc_key='qifei', hall='main', surname='李', given='静言', title='齐', rank=6, palace='长春宫',
+    dict(npc_key='qifei', hall='main', surname='周', given='巧云', title='齐', rank=6, palace='长春宫',
          appearance=58, talent=35, scheme=30, virtue=50, health=70, favor=90, aggression=0.05,
          intro='三阿哥生母，心直口快，常被人当枪使。'),
-    dict(npc_key='jingpin', hall='main', surname='冯', given='若昭', title='敬', rank=5, palace='咸福宫',
+    dict(npc_key='jingpin', hall='main', surname='许', given='慧娴', title='敬', rank=5, palace='咸福宫',
          appearance=60, talent=58, scheme=50, virtue=70, health=72, favor=110, aggression=0,
          intro='性子温吞，与人为善，在宫里熬了许多年。'),
-    dict(npc_key='lipin', hall='main', surname='费', given='云烟', title='丽', rank=5, palace='启祥宫',
+    dict(npc_key='lipin', hall='main', surname='田', given='翠浓', title='丽', rank=5, palace='启祥宫',
          appearance=75, talent=40, scheme=40, virtue=35, health=75, favor=170, aggression=0.12,
          intro='华妃跟前的人，嘴快心浅。'),
-    dict(npc_key='caoguiren', hall='east', surname='曹', given='琴默', title='', rank=4, palace='启祥宫',
+    dict(npc_key='caoguiren', hall='east', surname='曹', given='映雪', title='曹', rank=4, palace='启祥宫',
          appearance=62, talent=55, scheme=80, virtue=45, health=65, favor=150, aggression=0.2,
-         intro='温宜公主生母，华妃的智囊，笑里藏刀。'),
-    dict(npc_key='xinchangzai', hall='east', surname='吕', given='盈风', title='欣', rank=3, palace='储秀宫',
+         intro='公主生母，华妃的智囊，笑里藏刀。'),
+    dict(npc_key='xinchangzai', hall='east', surname='孟', given='秀珠', title='欣', rank=3, palace='储秀宫',
          appearance=55, talent=45, scheme=40, virtue=55, health=70, favor=70, aggression=0,
          intro='资历老，位分低，说话爽利。'),
 ]
@@ -2651,10 +2651,10 @@ def do_seek(c, cfg):
             start_scene(c['id'], 'yangxin_emperor')
             return '', 'info'
         g_ = add_favor(c['id'], random.randint(5, 10))
-        return f"苏培盛接了汤羹，说皇上喝着很合口。圣宠 +{g_}。", 'good'
+        return f"御前总管接了汤羹，说皇上喝着很合口。圣宠 +{g_}。", 'good'
     if mood == '烦闷':
         if random.random() < 0.5:
-            return "苏培盛说皇上在批折子，汤羹放下就走吧。", 'info'
+            return "御前总管说皇上在批折子，汤羹放下就走吧。", 'info'
         g_ = add_favor(c['id'], random.randint(4, 8))
         return f"皇上心里烦，喝了你的汤倒舒坦了些。圣宠 +{g_}。", 'good'
     start_scene(c['id'], 'seek_angry')
@@ -2779,7 +2779,7 @@ def do_attend(c, cfg):
         for h in kids: add_merit(h['id'], ATTEND_HEIR_GAIN)
         extra = f"，你抚养的{len(kids)}位阿哥圣眷 +{ATTEND_HEIR_GAIN}" if kids else ''
         return f"你在榻前伺候汤药，皇上睁眼看了你一眼，什么也没说。信任 +{ATTEND_TRUST_GAIN}{extra}。", 'good'
-    return '苏培盛拦在殿外：「皇上需要静养，小主的心意奴才转达。」', 'info'
+    return '御前总管拦在殿外：「皇上需要静养，小主的心意奴才转达。」', 'info'
 
 
 # ── 宫里的日常开销：饮食、维修、礼佛 ─────────────────────────────────────────────
@@ -4838,7 +4838,7 @@ def succession_move():
         r = random.random()
         leader, chance = succession_favorite(day)
         if r < PEEK_LEARN:
-            flash(f"苏培盛一时不慎露了口风：皇上眼下最看重的是{heir_full_title(leader)}，胜面约 {round(chance * 100)}%。"
+            flash(f"御前总管一时不慎露了口风：皇上眼下最看重的是{heir_full_title(leader)}，胜面约 {round(chance * 100)}%。"
                   f"（这是眼下的行情，后面还会变；圣意难测，最后未必是他。）" if leader
                   else '匾后的名字，是从宗室里过继的一位，眼下还不是任何一位阿哥。', 'good')
         elif r < PEEK_LEARN + PEEK_CAUGHT:
@@ -4852,7 +4852,7 @@ def succession_move():
         if random.random() < FORGE_BASE + c['scheme'] * FORGE_PER_SCHEME:
             run('UPDATE heirs SET forged=0')
             run('UPDATE heirs SET forged=1 WHERE id=?', (target['id'],))
-            flash(f"苏培盛应下了。遗诏上的名字，到时会是{heir_full_title(target)}。这件事只有你知道。", 'good')
+            flash(f"御前总管应下了。遗诏上的名字，到时会是{heir_full_title(target)}。这件事只有你知道。", 'good')
         else:
             gazette(f"{display_name(c)}矫诏事发，赐死。", 'decree')
             die(c['id'], '矫诏败露，赐死')
@@ -5685,7 +5685,7 @@ def _settle_night():
         pool.remove(r); called.append(r)
         add_favor(r['id'], 5)
         run("UPDATE consorts SET last_audience_day=? WHERE id=?", (day, r['id']))
-        notify(r['id'], '苏培盛来传话：皇上要召你去养心殿说话。圣宠 +5。', 'good')
+        notify(r['id'], '御前总管来传话：皇上要召你去养心殿说话。圣宠 +5。', 'good')
         guide_tip(r['id'], 'audience', '「皇上召见，规规矩矩应答就是，不必太紧张。」')
         start_scene(r['id'], 'audience', prompt=random.randrange(len(AUDIENCE_PROMPTS)), bed=0, hoarse=bool(affliction(r['id'], 'yachan', day)))
     if called:
@@ -5877,7 +5877,7 @@ def issue_edicts(day):
         if not line and c['status'] != 'cold':
             line = memory_edict(c, day)
         if line:
-            notify(c['id'], f"苏培盛来传皇上口谕：「{line}」", 'edict')
+            notify(c['id'], f"御前总管来传皇上口谕：「{line}」", 'edict')
 
 # ── 告警：出了事要有人知道 ─────────────────────────────────────────────────────────
 # 结算出错、结算拖延、页面 500、备份失败都记进 alerts 表（后台首页有红色提示和列表）；
@@ -6620,7 +6620,7 @@ def scene_view(c, sc):
         if sc.get('bed'):
             title, lead = '侍寝', '红烛将尽，皇上倚着枕头，忽然问你：'
         else:
-            title, lead = '召见', '苏培盛引你进了养心殿。皇上放下奏折：'
+            title, lead = '召见', '御前总管引你进了养心殿。皇上放下奏折：'
         opts = list(prompt['opts'])
         if sc.get('hoarse'):
             return title, lead + prompt['ask'], [opts[0]]
@@ -6631,7 +6631,7 @@ def scene_view(c, sc):
         prompt = EXAM_PROMPTS[sc['prompt'] % len(EXAM_PROMPTS)]
         h = q('SELECT * FROM heirs WHERE id=?', (sc['heir'],), one=True)
         label = heir_label(h) if h else '孩子'
-        return f"考校·{prompt['topic']}", '苏培盛来传话，皇上要考校' + label + '的功课。' + prompt['ask'].format(h=label), prompt['opts']
+        return f"考校·{prompt['topic']}", '御前总管来传话，皇上要考校' + label + '的功课。' + prompt['ask'].format(h=label), prompt['opts']
     cfg = SCENES[sc['key']]
     return cfg['place'], cfg['text'], cfg['opts']
 

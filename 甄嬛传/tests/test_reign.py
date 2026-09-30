@@ -389,7 +389,7 @@ class ReignTests(unittest.TestCase):
         self.assertTrue(all(h['name'] for h in heirs.values()))
 
     def test_third_reign_uses_the_other_persona_set(self):
-        self.assertEqual([n['surname'] for n in game.npcs_for_reign(1)][:1], ['乌拉那拉'])
+        self.assertEqual([n['surname'] for n in game.npcs_for_reign(1)][:1], ['西林觉罗'])
         self.assertEqual(game.npcs_for_reign(2)[0]['surname'], '富察')
         self.assertEqual(game.npcs_for_reign(3)[0]['surname'], '马佳')
         self.assertEqual(game.npcs_for_reign(4)[0]['surname'], '富察')
@@ -599,7 +599,7 @@ class ReignTests(unittest.TestCase):
         st = self.st()
         self.assertEqual((st['reign_no'], st['emperor_start_age'], st['mourning']), (1, 52, 0))
         self.assertEqual(game.q('SELECT COUNT(*) n FROM reigns', one=True)['n'], 0)
-        self.assertEqual(game.q("SELECT surname FROM consorts WHERE npc_key='huanghou'", one=True)['surname'], '乌拉那拉')
+        self.assertEqual(game.q("SELECT surname FROM consorts WHERE npc_key='huanghou'", one=True)['surname'], '西林觉罗')
         self.assertEqual({h['npc_key'] for h in game.q('SELECT * FROM heirs')}, {'third', 'fourth'})
 
     def test_full_playthrough_of_a_reign(self):
