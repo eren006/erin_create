@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
-<title>{% if mode == 'thread' %}{{ group.name if group else other.partition('＠')[0] }} · {% elif mode == 'group_new' %}发起群聊 · {% elif mode == 'stats' %}时间线与统计 · {% elif mode == 'public' %}公开播报 · {% elif mode == 'moments' %}朋友圈 · {% elif mode == 'song' %}点歌 · {% elif mode == 'games' %}小游戏 · {% elif mode == 'shop' %}礼品店 · {% elif mode == 'lovemail' %}心动信箱 · {% elif mode == 'char' %}角色 · {% elif mode == 'library' %}{{ '收藏' if library_view == 'saved' else '检索' }} · {% elif mode == 'profile' %}我的手机 · {% endif %}短信</title>
+<title>{% if mode == 'thread' %}{{ group.name if group else other.partition('＠')[0] }} · {% elif mode == 'group_new' %}发起群聊 · {% elif mode == 'stats' %}时间线与统计 · {% elif mode == 'public' %}公开播报 · {% elif mode == 'moments' %}朋友圈 · {% elif mode == 'song' %}点歌 · {% elif mode == 'games' %}小游戏 · {% elif mode == 'shop' %}礼品店 · {% elif mode == 'lovemail' %}心动信箱 · {% elif mode == 'char' %}角色 · {% elif mode == 'discover' %}发现 · {% elif mode == 'library' %}{{ '收藏' if library_view == 'saved' else '检索' }} · {% elif mode == 'profile' %}我的手机 · {% endif %}短信</title>
 <style>
 :root {
   --page: #d9d9e0;
@@ -237,12 +237,6 @@ a { color: var(--link); text-decoration: none; }
 .stickers button.emoji { font-size: 22px; padding: 4px 6px; border-color: transparent; background: none; }
 .stickers button:active { background: var(--theirs); }
 .public-avatar { background: var(--theirs) !important; font-size: 19px; filter: grayscale(.7); }
-.daily-quote { margin: 0 var(--gutter, 18px) 8px; font-size: 13px; line-height: 1.6; color: var(--muted); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.daily-quote small { font-size: 12px; opacity: .8; margin-left: 6px; }
-.quick-chips { display: flex; gap: 8px; padding: 0 var(--gutter, 18px) 10px; overflow-x: auto; scrollbar-width: none; }
-.quick-chips::-webkit-scrollbar { display: none; }
-.quick-chips .chip { position: relative; flex: none; font-size: 13px; padding: 6px 12px; border-radius: 999px; background: var(--theirs); color: var(--text); text-decoration: none; white-space: nowrap; }
-.quick-chips .chip.unread::after { content: ""; position: absolute; right: 1px; top: 1px; width: 8px; height: 8px; border-radius: 50%; background: #69758b; box-shadow: 0 0 0 2px var(--bg); }
 .public-row { border-bottom: 6px solid var(--theirs); }
 #scroll .public-feed { margin-top: 0; padding: 12px 16px 32px; gap: 10px; }
 .public-new { bottom: calc(var(--dock-height, 61px) + 12px); }
@@ -466,6 +460,16 @@ a { color: var(--link); text-decoration: none; }
 .tab-head h1 { font-size: 32px; line-height: 40px; letter-spacing: -.5px; }
 .tab-sub { margin-top: 4px; font-size: 13px; line-height: 20px; }
 .bar.tab-bar .tab-sub .quota { font-size: 13px; }
+/* 标签页头部改成和二级页同一套紧凑款：居中小标题，左槽放次数，右槽放按钮，高度统一 */
+.bar.tab-bar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr); column-gap: 6px; align-items: start; padding: env(safe-area-inset-top) 8px 8px; }
+.bar.tab-bar .tab-head { display: contents; }
+.bar.tab-bar .tab-head h1 { grid-row: 1; grid-column: 2; font-size: 17px; line-height: 22px; font-weight: 600; letter-spacing: 0; padding-top: 11px; text-align: center; max-width: 62vw; }
+.bar.tab-bar .tab-actions { grid-row: 1; grid-column: 3; justify-self: end; height: 44px; gap: 4px; }
+.bar.tab-bar .tab-sub { display: none; }
+.bar.tab-bar .tab-sub.keep { display: flex; grid-row: 1; grid-column: 1; height: 44px; align-items: center; margin: 0; padding-left: 8px; font-size: 12px; line-height: 16px; }
+.bar.tab-bar .tab-sub.keep .quota { font-size: 12px; }
+.bar.tab-bar .tab-sub.keep .quota::before { content: ""; }
+.lm-note { padding: 8px var(--gutter, 18px) 0; font-size: 12px; color: var(--muted); }
 .icon-btn { width: 40px; height: 40px; }
 .icon-btn svg { width: 20px; height: 20px; }
 .song-tabs { padding: var(--gap) var(--gutter) 0; }
@@ -584,7 +588,7 @@ a { color: var(--link); text-decoration: none; }
   {% else %}
   <header class="bar tab-bar">
     <div class="tab-head"><h1>信息</h1></div>
-    <div class="tab-sub">{{ owner }}{% include "_phone_quota.html" %}</div>
+    <div class="tab-sub keep">{% include "_phone_quota.html" %}</div>
   </header>
   {% endif %}
   <div class="scroll list" id="inbox">
@@ -592,12 +596,6 @@ a { color: var(--link); text-decoration: none; }
       <label class="search-pill" for="phoneSearch"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><input id="phoneSearch" type="search" placeholder="搜索联系人、消息、朋友圈" autocomplete="off" enterkeyhint="search" maxlength="40" aria-label="搜索"><button type="button" class="search-clear" id="phoneSearchClear" aria-label="清除" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="currentColor" stroke="none" opacity=".35"/><path d="m9 9 6 6M15 9l-6 6" stroke="var(--bg)" stroke-width="2"/></svg></button></label>
       <a class="timeline-btn" href="{{ url_for('player_stats', view='timeline') }}" aria-label="时间线与统计" title="时间线与统计"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4M7.5 14h3M13.5 14h3M7.5 17h3"/></svg>{% if timeline_n %}<b>{{ timeline_n }}</b>{% endif %}</a>
     </div>{% endif %}
-    {% if not admin_as %}<nav class="quick-chips" aria-label="快捷入口">
-      <a class="chip" data-other="__lovemail__"{% if lovemail_last %} data-received-ts="{{ lovemail_last }}"{% endif %} href="{{ url_for('player_lovemail') }}">💌 心动信箱</a>
-      <a class="chip" href="{{ url_for('player_song') }}">🎵 点歌台</a>
-      <a class="chip" href="{{ url_for('phone_guide') }}">📱 使用指南</a>
-    </nav>
-    <div class="daily-quote" id="dailyQuote" role="button" tabindex="0" aria-label="每日一句，点一下换一句" hidden></div>{% endif %}
     {% if not admin_as %}<div id="searchResults" class="search-results" hidden></div>{% include '_phone_pending_entry.html' %}{% endif %}
     {% if public %}
     <a class="row public-row" data-other="__public__" data-received-ts="{{ public.ts }}" href="{{ url_for('player_phone_public') }}">
@@ -678,15 +676,13 @@ a { color: var(--link); text-decoration: none; }
     <div class="right">{% if not why %}<button class="icon-btn" id="mcOpen" type="button" aria-haspopup="dialog" aria-label="发朋友圈"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>{% endif %}</div>
   </header>
   {% else %}
-  <header class="bar tab-bar">
-    <div class="tab-head"><h1>朋友圈</h1>
-      <div class="tab-actions">
-        <a class="icon-btn" href="{{ url_for('player_games') }}" aria-label="小游戏" title="小游戏"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="7" width="20" height="11" rx="5"/><path d="M7 10v5M4.5 12.5h5"/><circle cx="16" cy="11.5" r=".8"/><circle cx="18.5" cy="14" r=".8"/></svg></a>
-        <a class="icon-btn" href="{{ url_for('player_moments', mine=1) }}" aria-label="我的朋友圈" title="我的朋友圈"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/></svg></a>
-        {% if not why %}<button class="icon-btn" id="mcOpen" type="button" aria-haspopup="dialog" aria-label="发朋友圈" title="发朋友圈"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>{% endif %}
-      </div>
+  <header class="bar">
+    <a class="back" href="{{ url_for('player_discover') }}">发现</a>
+    <div class="title">朋友圈</div>
+    <div class="right">
+      <a class="icon-btn" href="{{ url_for('player_moments', mine=1) }}" aria-label="我的朋友圈" title="我的朋友圈"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/></svg></a>
+      {% if not why %}<button class="icon-btn" id="mcOpen" type="button" aria-haspopup="dialog" aria-label="发朋友圈" title="发朋友圈"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>{% endif %}
     </div>
-    <div class="tab-sub">本季所有人都能看到</div>
   </header>
   {% endif %}
   <div class="scroll moments-scroll">
@@ -876,6 +872,40 @@ a { color: var(--link); text-decoration: none; }
   })();
   </script>
 
+{% elif mode == 'discover' %}
+  <header class="bar tab-bar">
+    <div class="tab-head"><h1>发现</h1></div>
+  </header>
+  <div class="scroll list" id="inbox">
+    <div class="daily-card" id="dailyQuote" role="button" tabindex="0" aria-label="每日一句，点一下换一句" hidden><div class="q"></div><div class="src"></div></div>
+    <a class="row" data-other="__moments__"{% if moments_latest %} data-received-ts="{{ moments_latest['created_at'] }}"{% endif %} href="{{ url_for('player_moments') }}">
+      <div class="avatar public-avatar">📷</div>
+      <div class="body"><div class="top"><span class="name">朋友圈</span></div><div class="preview">{% if moments_latest %}{{ moments_latest['role_name'] }}：{{ moments_latest['content'] or '[图片]' }}{% else %}本季所有人都能看到{% endif %}</div></div>
+    </a>
+    {% if not phone_admin %}
+    <a class="row" data-other="__lovemail__"{% if lovemail_last %} data-received-ts="{{ lovemail_last }}"{% endif %} href="{{ url_for('player_lovemail') }}">
+      <div class="avatar public-avatar">💌</div>
+      <div class="body"><div class="top"><span class="name">心动信箱</span></div><div class="preview">匿名来信、寄出的信、写信</div></div>
+    </a>
+    <a class="row" href="{{ url_for('player_song') }}">
+      <div class="avatar public-avatar">🎵</div>
+      <div class="body"><div class="top"><span class="name">点歌台</span></div><div class="preview">匿名点一首歌送给大家</div></div>
+    </a>
+    <a class="row" href="{{ url_for('player_games') }}">
+      <div class="avatar public-avatar">🎮</div>
+      <div class="body"><div class="top"><span class="name">小游戏</span></div><div class="preview">2048 · 贪吃蛇 · 打地鼠，全服排行榜</div></div>
+    </a>
+    {% endif %}
+    <a class="row" href="{{ url_for('phone_guide') }}">
+      <div class="avatar public-avatar">📱</div>
+      <div class="body"><div class="top"><span class="name">使用指南</span></div><div class="preview">怎么发、怎么点歌、哪些不能发</div></div>
+    </a>
+  </div>
+  <style>
+  .daily-card { margin: var(--gap, 12px) var(--gutter, 18px); padding: 14px 16px; border-radius: 14px; background: var(--theirs); cursor: pointer; min-height: 84px; box-sizing: border-box; }
+  .daily-card .q { font-size: 16px; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .daily-card .src { margin-top: 6px; font-size: 12px; color: var(--muted); text-align: right; }
+  </style>
 {% elif mode == 'char' %}
   <header class="bar tab-bar">
     <div class="tab-head"><h1>角色</h1></div>
@@ -940,7 +970,7 @@ a { color: var(--link); text-decoration: none; }
 {% include '_phone_games.html' %}
 {% elif mode == 'song' %}
   <header class="bar">
-    <a class="back" href="{{ url_for('player_phone_inbox') }}">消息</a>
+    <a class="back" href="{{ url_for('player_discover') }}">发现</a>
     <div class="title">点歌<small>匿名 · 今日 {{ used }}/{{ cap }}</small></div>
     <div class="right"></div>
   </header>
@@ -1111,9 +1141,10 @@ a { color: var(--link); text-decoration: none; }
   </form>
 
 {% elif mode == 'lovemail' %}
-  <header class="bar tab-bar">
-    <div class="tab-head"><h1>心动信箱</h1><div class="tab-actions"><a class="quiet-button" href="{{ url_for('player_phone_inbox') }}">‹ 消息</a></div></div>
-    <div class="tab-sub lm-sub"><small>{% if lm.ready %}{{ lm.game_day }} 已投 {{ lm.used }}/{{ lm.limit }}{% if lm.delivery_time %} · {{ lm.delivery_time }} 派送{% endif %}{% else %}匿名来信{% endif %}</small></div>
+  <header class="bar">
+    <a class="back" href="{{ url_for('player_discover') }}">发现</a>
+    <div class="title">心动信箱</div>
+    <div class="right"></div>
   </header>
   <div class="scroll lm-page" data-received-ts="{{ recv[0].id if recv else 0 }}">
     <nav class="song-tabs lm-tabs" aria-label="心动信箱">
@@ -1121,6 +1152,7 @@ a { color: var(--link); text-decoration: none; }
       <a href="{{ url_for('player_lovemail', view='sent') }}"{% if view == 'sent' %} aria-current="page"{% endif %}>寄出的 {{ sent|length + lm.pending|length }}</a>
       <a href="{{ url_for('player_lovemail', view='write') }}"{% if view == 'write' %} aria-current="page"{% endif %}>写信</a>
     </nav>
+    <div class="lm-note">{% if lm.ready %}{{ lm.game_day }} 已投 {{ lm.used }}/{{ lm.limit }}{% if lm.delivery_time %} · {{ lm.delivery_time }} 派送{% endif %}{% else %}匿名来信{% endif %}</div>
     {% if flash %}<div class="notice lm-flash">{{ flash }}</div>{% endif %}
 
     {% if view == 'inbox' %}
@@ -1545,7 +1577,7 @@ a { color: var(--link); text-decoration: none; }
 </dialog>
 {% endif %}
 
-{% if mode in ('inbox', 'thread', 'public', 'moments', 'new', 'song', 'library', 'profile', 'shop', 'lovemail', 'group_new', 'stats', 'games', 'char') %}
+{% if mode in ('inbox', 'thread', 'public', 'moments', 'new', 'song', 'library', 'profile', 'shop', 'lovemail', 'group_new', 'stats', 'games', 'char', 'discover') %}
 <dialog class="appearance notice-dialog" id="phoneNotice" aria-labelledby="phoneNoticeTitle">
   <div class="heading"><h2 id="phoneNoticeTitle">使用须知</h2></div>
   <div class="notice-body">
@@ -1641,7 +1673,7 @@ a { color: var(--link); text-decoration: none; }
     b.remove();
   });
 </script>
-{% if mode in ('inbox', 'thread', 'public', 'moments', 'song', 'library', 'profile', 'new', 'shop', 'lovemail', 'group_new', 'stats', 'games', 'char') %}
+{% if mode in ('inbox', 'thread', 'public', 'moments', 'song', 'library', 'profile', 'new', 'shop', 'lovemail', 'group_new', 'stats', 'games', 'char', 'discover') %}
 <script>
 (function () {
   var scope = {{ ([sid, owner]|tojson) }};
@@ -1768,7 +1800,7 @@ a { color: var(--link); text-decoration: none; }
       localStorage.setItem(key, String(Math.max(Number(localStorage.getItem(key)) || 0, ts)));
     } catch (_) {}
     {% else %}
-    document.querySelectorAll('#inbox .row, #inbox .chip[data-received-ts], .phone-nav a[data-received-ts]').forEach(function (row) {
+    document.querySelectorAll('#inbox .row, .phone-nav a[data-received-ts]').forEach(function (row) {
       var isUnread = false;
       try { isUnread = Number(row.dataset.receivedTs) > (Number(localStorage.getItem(readKey(row.dataset.other))) || 0); } catch (_) {}
       row.classList.toggle('unread', isUnread);
@@ -1778,16 +1810,15 @@ a { color: var(--link); text-decoration: none; }
     });
     {% endif %}
   }
-  {% if mode == 'inbox' and not admin_as %}
+  {% if mode == 'discover' %}
   (function () {
     var box = document.getElementById('dailyQuote'), qs = [], i = 0;
     if (!box) return;
     function show() {
       if (!qs.length) return;
       var q = qs[i % qs.length];
-      box.textContent = '';
-      box.appendChild(document.createTextNode('「' + q.text + '」'));
-      if (q.source) { var sm = document.createElement('small'); sm.textContent = q.source; box.appendChild(sm); }
+      box.querySelector('.q').textContent = '「' + q.text + '」';
+      box.querySelector('.src').textContent = q.source || '';
       box.hidden = false;
     }
     box.addEventListener('click', function () { i++; show(); });

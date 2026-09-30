@@ -6426,6 +6426,20 @@ def _moment_guard():
     tid = get_db().execute("SELECT tenant_id FROM shows WHERE id=?", (sid,)).fetchone()["tenant_id"]
     return (sid, owner, tid), None
 
+@app.route("/p/me/discover")
+def player_discover():
+    """「发现」页：朋友圈、心动信箱、点歌台、小游戏、使用指南都从这里进，顶上放每日一句。"""
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    db = get_db()
+    latest = db.execute(
+        "SELECT role_name, content, created_at, (SELECT COUNT(*) FROM moment_images i WHERE i.moment_id=m.id) AS n "
+        "FROM moments m WHERE show_id=? AND deleted=0 ORDER BY id DESC LIMIT 1", (sid,)).fetchone()
+    return render_template("phone.html", mode="discover", owner=owner, sid=sid, csrf=_phone_csrf(),
+                           phone_admin=(owner == PHONE_ADMIN), moments_latest=latest)
+
 @app.route("/p/me/moments")
 def player_moments():
     who = _phone_current()
