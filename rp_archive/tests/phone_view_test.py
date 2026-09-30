@@ -143,4 +143,6 @@ assert poller.get("/p/me/poll").status_code == 401
 # 时间不依赖服务器本地时区
 assert A._phone_time(1) == "08:00"
 assert A._phone_time(0) == "" and A._phone_time("bad") == ""
+import runpy
+runpy.run_path(os.path.join(os.path.dirname(__file__), "phone_ui_test.py"))
 print("ALL OK")
