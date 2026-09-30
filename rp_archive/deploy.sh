@@ -15,7 +15,7 @@ rsync -az --delete \
   --exclude 'logs/' --exclude 'backups/' --exclude 'error.log' --exclude '__pycache__/' \
   --exclude 'deploy.sh' --exclude 'start.bat' --exclude '.gitignore' --exclude 'backup_daily.sh' \
   "$LOCAL_DIR/app.py" "$LOCAL_DIR/backup.py" "$LOCAL_DIR/schema.sql" "$LOCAL_DIR/requirements.txt" \
-  "$LOCAL_DIR/run.py" "$LOCAL_DIR/templates" "$REMOTE"
+  "$LOCAL_DIR/run.py" "$LOCAL_DIR/blocklist.txt" "$LOCAL_DIR/templates" "$REMOTE"
 
 echo ">>> 安装依赖并重启..."
 ssh jarvis 'cd /home/ubuntu/rp_archive && venv/bin/pip install -q -r requirements.txt && sudo systemctl restart rp_archive && sleep 3 && systemctl is-active rp_archive'

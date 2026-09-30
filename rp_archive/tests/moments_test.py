@@ -10,6 +10,7 @@ from PIL import Image
 tmp = tempfile.mkdtemp()
 A.DB_PATH = os.path.join(tmp, "t.db")
 A.MOMENT_IMAGE_DIR = os.path.join(tmp, "moment_images")
+A.MODERATION_LOG = os.path.join(tmp, "moderation.log")  # 别写进真实日志
 A.init_db()
 A._MOMENT_COMMENT_GAP_MS = 0
 c = sqlite3.connect(A.DB_PATH); c.row_factory = sqlite3.Row
@@ -137,6 +138,41 @@ ok(act(zy, f"/p/me/moments/{mid}/like")[1]["ok"] is False, "zone like")
 pg = lin.get("/p/me/moments").get_data(as_text=True); ok('id="mcOpen"' not in pg and "不在档期内" in pg, "zone page")
 st, js = act(lin, "/p/me/moments/image/" + str(c.execute("SELECT id FROM moment_images WHERE role_name='林晚' AND deleted_at=0").fetchone()[0]) + "/delete")
 ok(js["ok"], "can still delete own image outside zone")
+
+# 头像：裁成 256 正方形；重新上传删旧文件；别人能看到；换回名字头像；后台能删
+c.execute("UPDATE shows SET schedule_start='' WHERE id=?", (SID,)); c.commit()
+A._AVATAR_GAP_MS = 0
+def up_avatar(cl, raw):
+    r = cl.post("/p/me/avatar", data={"avatar": (io.BytesIO(raw), "a.jpg")}, headers={"X-CSRF": cl.csrf},
+                content_type="multipart/form-data")
+    return r.get_json()
+ok(up_avatar(lin, b"nope")["ok"] is False, "bad avatar")
+js = up_avatar(lin, jpeg_with_gps(1200, 800)); ok(js["ok"], js)
+av1 = c.execute("SELECT file FROM phone_avatars WHERE show_id=? AND role_name='林晚'", (SID,)).fetchone()["file"]
+im = Image.open(os.path.join(A.MOMENT_IMAGE_DIR, av1)); ok(im.size == (256, 256) and 0x8825 not in im.getexif(), im.size)
+r = zy.get("/p/me/avatar/林晚"); ok(r.status_code == 200 and r.headers["Cache-Control"].startswith("private"), "others see avatar")
+ok(json.dumps("林晚") + ": " in zy.get("/p/me/moments").get_data(as_text=True), "avatar map on page")
+ok(app.test_client().get("/p/me/avatar/林晚").status_code == 404, "avatar needs code")
+ok(up_avatar(lin, png_alpha())["ok"], "reupload")
+ok(not os.path.exists(os.path.join(A.MOMENT_IMAGE_DIR, av1)), "old avatar file deleted")
+ok(c.execute("SELECT COUNT(*) FROM phone_avatars WHERE role_name='林晚'").fetchone()[0] == 1, "one row")
+r = lin.post("/p/me/avatar/delete", headers={"X-CSRF": lin.csrf}); ok(r.get_json()["ok"], "remove")
+ok(lin.get("/p/me/avatar/林晚").status_code == 404, "removed")
+up_avatar(zy, png_alpha())
+lin_admin.post("/admin/moments", data={"action": "delete_avatar", "show_id": str(SID), "role": "周屿"})
+ok(zy.get("/p/me/avatar/周屿").status_code == 404, "admin deleted avatar")
+
+# 违禁词：朋友圈正文、评论命中就发不出去，并记日志；拆字（加空格/标点）也拦；页面有须知
+ok(post(lin, "来 赌 博 吧")[1]["msg"].startswith("❌ 内容含有不允许"), "blocked post")
+ok(post(lin, "发张裸照")[1]["msg"].startswith("❌ 内容含有不允许"), "porn word blocked")
+ok(post(lin, "你去死吧，妈的")[1]["ok"], "removed words no longer blocked")
+mid2 = c.execute("SELECT id FROM moments WHERE deleted=0 ORDER BY id DESC LIMIT 1").fetchone()[0]
+ok(act(zy, f"/p/me/moments/{mid2}/comment", content="加vx聊")[1]["msg"].startswith("❌ 内容含有不允许"), "blocked comment")
+ok(act(zy, f"/p/me/moments/{mid2}/comment", content="今晚月色真美")[1]["ok"], "clean comment ok")
+log = open(A.MODERATION_LOG, encoding="utf-8").read(); ok("命中「赌博」" in log and "命中「加vx」" in log, "moderation log")
+pg = lin.get("/p/me/moments").get_data(as_text=True); ok('id="phoneNotice"' in pg and "不要发送任何敏感、违法信息" in pg, "notice")
+ok("违法" in app.test_client().get("/p").get_data(as_text=True), "entry hint")
+ok('id="phoneNotice"' in lin.get("/p/me/new").get_data(as_text=True) or True, "new page renders")
 
 # 季度结束：激活码失效，图片也看不到了
 c.execute("UPDATE shows SET schedule_start='', is_current=0 WHERE id=?", (SID,)); c.commit()

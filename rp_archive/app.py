@@ -1543,6 +1543,19 @@ def _migrate(conn):
     if "moment_quota_mb" not in _col_names(conn, "tenants"):
         conn.execute("ALTER TABLE tenants ADD COLUMN moment_quota_mb INTEGER NOT NULL DEFAULT 0")     # 0 = 默认空间
 
+    # ── 19. 网页手机头像：一季一个角色一张，重新上传就删掉旧文件 ──────────────────────
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS phone_avatars (
+            show_id    INTEGER NOT NULL,
+            role_name  TEXT    NOT NULL,
+            tenant_id  INTEGER NOT NULL,
+            file       TEXT    NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (show_id, role_name)
+        )
+    """)
+
     # ── 长日将尽许愿墙：独立的小功能，不挂在 tenant/superadmin 体系下 ──────────
     conn.execute("""
         CREATE TABLE IF NOT EXISTS changri_wishes (
@@ -4944,7 +4957,7 @@ def player_phone_inbox():
                                "SELECT role_name, content, created_at, game_day, (SELECT COUNT(*) FROM moment_images i "
                                "WHERE i.moment_id=m.id) AS n FROM moments m WHERE show_id=? AND deleted=0 "
                                "ORDER BY id DESC LIMIT 1", (sid,)).fetchone(),
-                           revision=_phone_revision(_phone_views(db, sid, owner)))
+                           revision=_phone_revision(_phone_views(db, sid, owner)), csrf=_phone_csrf())
 
 def _phone_views(db, sid, owner):
     return [m for e in _phone_events(db, sid) if (m := _phone_view_of(e, owner)) and m["other"]]
@@ -5088,6 +5101,43 @@ def _phone_public_summary(db, sid):
     preview = f"{last['from']} → {last['to']}：" + (f"🎁 {last['gift_name']}" if last["kind"] == "gift" else last["text"].replace("\n", " "))
     return {"count": len(items), "preview": preview, "time": last["time"], "game_day": last["game_day"], "ts": last["ts"]}
 
+# ── 违禁词：网页手机里玩家写的字（短信、礼物、朋友圈、评论）──────────────────────
+# 词表在 blocklist.txt（跟甄嬛传/排单宝同一份起步词表），一行一个、# 开头是注释，改了按修改时间自动重新读、不用重启。
+# 比对前去掉空格和标点，防「傻 逼」「傻.逼」这种拆字；命中的记进 logs/moderation.log（时间、季度、角色、场合、原文）。
+BLOCKLIST_PATH  = os.path.join(os.path.dirname(__file__), "blocklist.txt")
+MODERATION_LOG  = os.path.join(os.path.dirname(__file__), "logs", "moderation.log")
+_blocklist_cache = {"mtime": None, "words": []}
+_BLOCK_NOISE     = re.compile(r"[\s\W_]+")
+BLOCKED_MSG      = "❌ 内容含有不允许的字词，请修改后再发"
+
+def _blocked_words():
+    try:
+        mtime = os.path.getmtime(BLOCKLIST_PATH)
+    except OSError:
+        return []
+    if _blocklist_cache["mtime"] != mtime:
+        with open(BLOCKLIST_PATH, encoding="utf-8") as f:
+            words = [_BLOCK_NOISE.sub("", ln.strip().lower()) for ln in f
+                     if ln.strip() and not ln.lstrip().startswith("#")]
+        _blocklist_cache.update(mtime=mtime, words=[w for w in words if w])
+    return _blocklist_cache["words"]
+
+def _blocked_hit(sid, role, field, *texts):
+    """命中违禁词返回该词并记日志；干净返回 None"""
+    raw = "\n".join(t for t in texts if t)
+    flat = _BLOCK_NOISE.sub("", raw.lower())
+    for w in _blocked_words():
+        if w in flat:
+            try:
+                os.makedirs(os.path.dirname(MODERATION_LOG), exist_ok=True)
+                with open(MODERATION_LOG, "a", encoding="utf-8") as f:
+                    f.write(f"{datetime.now(TZ_BEIJING).isoformat(timespec='seconds')}\tshow={sid}\trole={role}\t"
+                            f"{field}\t命中「{w}」\t{raw}\n")
+            except OSError:
+                pass
+            return w
+    return None
+
 def _phone_web_send_on(db, sid):
     row = db.execute("SELECT web_send FROM phone_settings WHERE show_id=?", (sid,)).fetchone()
     return bool(row and row["web_send"])
@@ -5222,6 +5272,8 @@ def _phone_send(db, sid, tid, owner, kind, to_name, text, gift_name=""):
         return False, "❌ 内容不能为空"
     if len(text) > _PHONE_MAX_LEN:
         return False, f"❌ 太长了，最多 {_PHONE_MAX_LEN} 字"
+    if _blocked_hit(sid, owner, "礼物" if kind == "gift" else "短信", gift_name, text):
+        return False, BLOCKED_MSG
     if owner not in roster:
         return False, "❌ 找不到你的角色，等机器人下一次同步后再试"
     if to_name == owner:
@@ -5382,7 +5434,7 @@ def player_phone_new():
     if not st["can"]:
         return redirect(url_for("player_phone_inbox"))
     contacts = sorted(n for n in _phone_roster(_phone_sync_row(db, sid)) if n != owner)
-    return render_template("phone.html", mode="new", owner=owner, contacts=contacts)
+    return render_template("phone.html", mode="new", owner=owner, sid=sid, contacts=contacts)
 
 @app.route("/api/phone/sync", methods=["POST"])
 def api_phone_sync():
@@ -5604,6 +5656,8 @@ def player_moment_post():
         return _moment_json(False, f"最多 {_MOMENT_MAX_TEXT} 字")
     if len(files) > _MOMENT_MAX_IMAGES:
         return _moment_json(False, f"一条最多 {_MOMENT_MAX_IMAGES} 张图")
+    if _blocked_hit(sid, owner, "朋友圈", text):
+        return _moment_json(False, BLOCKED_MSG)
     day_start = int(datetime.now(TZ_BEIJING).replace(hour=0, minute=0, second=0, microsecond=0).timestamp() * 1000)
     if db.execute("SELECT COUNT(*) FROM moments WHERE show_id=? AND role_name=? AND created_at>=?",
                   (sid, owner, day_start)).fetchone()[0] >= _MOMENT_DAILY_POSTS:
@@ -5689,6 +5743,8 @@ def player_moment_comment(mid):
         return _moment_json(False, "评论不能为空")
     if len(text) > _MOMENT_MAX_COMMENT:
         return _moment_json(False, f"评论最多 {_MOMENT_MAX_COMMENT} 字")
+    if _blocked_hit(sid, owner, "朋友圈评论", text):
+        return _moment_json(False, BLOCKED_MSG)
     reply_to = (request.form.get("reply_to") or "").strip()
     # 只能回复这条朋友圈下真的评论过的人（或楼主），不能随手写个名字
     if reply_to:
@@ -5754,6 +5810,122 @@ def player_moment_image_delete(image_id):
     return _moment_json(True, "图片已删除，那条朋友圈的文字还在",
                         used=_moment_player_used(db, sid, owner), quota=_moment_player_quota(db, sid))
 
+# ── 头像 ──────────────────────────────────────────────────────────────────────
+# 一季一个角色一张：服务端居中裁成正方形、缩到 256×256 的 JPEG（约 10–30KB，同样去掉 EXIF）；
+# 重新上传直接替换，旧文件立刻删掉。本季所有人都能看到——对话/联系人按显示的名字认人，头像跟着名字走，
+# 所以被换了落款的信显示的是落款那个人的头像，「未知号码」没有头像，不会多透露什么。
+# 头像很小，不算进团账号的朋友圈图片空间。
+_AVATAR_EDGE    = 256
+_AVATAR_GAP_MS  = 5000
+
+def _avatar_process(raw):
+    from PIL import Image, ImageOps
+    Image.MAX_IMAGE_PIXELS = 40_000_000
+    try:
+        img = Image.open(io.BytesIO(raw))
+        img.load()
+    except Exception:
+        raise ValueError("不是能识别的图片")
+    img = ImageOps.exif_transpose(img)
+    if img.mode in ("RGBA", "LA", "P"):
+        img = img.convert("RGBA")
+        bg = Image.new("RGB", img.size, (255, 255, 255))
+        bg.paste(img, mask=img.split()[-1])
+        img = bg
+    elif img.mode != "RGB":
+        img = img.convert("RGB")
+    img = ImageOps.fit(img, (_AVATAR_EDGE, _AVATAR_EDGE), method=Image.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, "JPEG", quality=85, optimize=True)
+    return buf.getvalue()
+
+def _avatar_remove(db, sid, role):
+    row = db.execute("SELECT file FROM phone_avatars WHERE show_id=? AND role_name=?", (sid, role)).fetchone()
+    if row:
+        try:
+            os.remove(os.path.join(MOMENT_IMAGE_DIR, row["file"]))
+        except OSError:
+            pass
+        db.execute("DELETE FROM phone_avatars WHERE show_id=? AND role_name=?", (sid, role))
+
+@app.context_processor
+def inject_phone_avatars():
+    """网页手机页面用：本季谁有头像 {名字: 版本号}，前端据此把名字头像换成图片"""
+    if not request.path.startswith("/p/me"):
+        return {}
+    try:
+        who = _phone_current()
+        if not who:
+            return {}
+        rows = get_db().execute("SELECT role_name, updated_at FROM phone_avatars WHERE show_id=?", (who[0],)).fetchall()
+        return {"phone_avatars": {r["role_name"]: r["updated_at"] for r in rows}}
+    except Exception:
+        return {}
+
+@app.route("/p/me/avatar", methods=["POST"])
+def player_avatar_upload():
+    ok_, err = _moment_guard()
+    if err:
+        return err
+    sid, owner, tid = ok_
+    db = get_db()
+    if request.content_length is None or request.content_length > _MOMENT_MAX_FILE + 65536:
+        return _moment_json(False, "图片太大了")
+    f = request.files.get("avatar")
+    if not f:
+        return _moment_json(False, "没收到图片")
+    old = db.execute("SELECT updated_at FROM phone_avatars WHERE show_id=? AND role_name=?", (sid, owner)).fetchone()
+    now = int(time.time() * 1000)
+    if old and now - old["updated_at"] < _AVATAR_GAP_MS:
+        return _moment_json(False, "换得太快了，隔几秒再试")
+    try:
+        data = _avatar_process(f.read(_MOMENT_MAX_FILE + 1))
+    except ValueError as e:
+        return _moment_json(False, f"图片打不开：{e}")
+    folder = os.path.join("avatars", str(tid), str(sid))
+    os.makedirs(os.path.join(MOMENT_IMAGE_DIR, folder), exist_ok=True)
+    name = os.path.join(folder, secrets.token_hex(12) + ".jpg")
+    with open(os.path.join(MOMENT_IMAGE_DIR, name), "wb") as fh:
+        fh.write(data)
+    with _phone_send_lock:
+        _avatar_remove(db, sid, owner)  # 旧头像文件立刻删掉
+        db.execute("INSERT INTO phone_avatars (show_id, role_name, tenant_id, file, size_bytes, updated_at) VALUES (?,?,?,?,?,?)",
+                   (sid, owner, tid, name, len(data), now))
+        db.commit()
+    return _moment_json(True, "头像已更新", v=now)
+
+@app.route("/p/me/avatar/delete", methods=["POST"])
+def player_avatar_delete():
+    ok_, err = _moment_guard()
+    if err:
+        return err
+    sid, owner, _ = ok_
+    db = get_db()
+    _avatar_remove(db, sid, owner)
+    db.commit()
+    return _moment_json(True, "已换回名字头像")
+
+@app.route("/p/me/avatar/<path:role>")
+def player_avatar(role):
+    who = _phone_current()
+    if not who:
+        abort(404)
+    row = get_db().execute("SELECT file FROM phone_avatars WHERE show_id=? AND role_name=?", (who[0], role)).fetchone()
+    if not row:
+        abort(404)
+    resp = send_file(os.path.join(MOMENT_IMAGE_DIR, row["file"]), mimetype="image/jpeg")
+    resp.headers["X-Moment-Image"] = "1"  # 地址带版本号，换头像地址就变，可以放心缓存
+    return resp
+
+@app.route("/admin/avatars/<int:show_id>/<path:role>")
+@require_admin
+def admin_avatar_image(show_id, role):
+    row = get_db().execute("SELECT file FROM phone_avatars WHERE show_id=? AND role_name=? AND tenant_id=?",
+                           (show_id, role, current_tenant_id())).fetchone()
+    if not row:
+        abort(404)
+    return send_file(os.path.join(MOMENT_IMAGE_DIR, row["file"]), mimetype="image/jpeg")
+
 # ── 后台：朋友圈管理（空间/额度/删帖删图） ──
 
 def _moment_storage_warning():
@@ -5805,6 +5977,10 @@ def admin_moments():
                 db.execute("UPDATE moments SET deleted=1 WHERE id=?", (mid,))
         elif action == "delete_image":
             _moment_delete_images(db, "id=? AND tenant_id=?", (request.form.get("id", type=int), tid))
+        elif action == "delete_avatar":
+            target = request.form.get("show_id", type=int)
+            if db.execute("SELECT 1 FROM shows WHERE id=? AND tenant_id=?", (target, tid)).fetchone():
+                _avatar_remove(db, target, request.form.get("role", ""))
         elif action == "delete_comment":
             cid = request.form.get("id", type=int)
             db.execute("""UPDATE moment_comments SET deleted=1 WHERE id=? AND moment_id IN
@@ -5817,7 +5993,10 @@ def admin_moments():
         FROM shows s LEFT JOIN moment_images i ON i.show_id=s.id AND i.deleted_at=0
         WHERE s.tenant_id=? GROUP BY s.id ORDER BY s.id DESC""", (tid,))]
     posts, _ = _moment_feed(db, sid, None, limit=50) if sid else ([], False)
+    avatars = [dict(r) for r in db.execute(
+        "SELECT role_name, updated_at FROM phone_avatars WHERE show_id=? ORDER BY role_name", (sid,))] if sid else []
     return render_template("admin_moments.html", used=used, quota=quota, per_show=per_show, posts=posts,
+                           avatars=avatars, sid=sid,
                            player_quota=_moment_player_quota(db, sid) if sid else _MOMENT_DEFAULT_QUOTA,
                            default_quota=_MOMENT_DEFAULT_QUOTA)
 

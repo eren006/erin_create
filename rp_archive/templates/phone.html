@@ -247,6 +247,15 @@ a { color: var(--link); text-decoration: none; }
 .appearance-preview .preview-reply { align-self: flex-start; background: var(--theirs); color: var(--theirs-text); }
 .local-hint { font-size: 11px; color: var(--muted); margin-top: 16px; }
 :focus-visible { outline: 2px solid var(--link); outline-offset: 3px; }
+.notice-body p { font-size: 14px; line-height: 1.75; margin-bottom: 10px; }
+.notice-body b { color: var(--tag); }
+.notice-ok { width: 100%; margin-top: 6px; padding: 11px; border: none; border-radius: 12px; font: inherit; font-weight: 600; background: var(--mine); color: var(--mine-text); cursor: pointer; }
+.avatar { position: relative; }
+.avatar > img.av { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.avatar-edit { display: flex; gap: 14px; align-items: center; margin-bottom: 16px; }
+.avatar.big { width: 64px; height: 64px; font-size: 24px; flex-shrink: 0; }
+.avatar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
+.avatar-msg { flex-basis: 100%; font-size: 11px; color: var(--muted); }
 
 /* 朋友圈 */
 .moments-avatar { background: var(--theirs) !important; font-size: 19px; }
@@ -316,6 +325,7 @@ a { color: var(--link); text-decoration: none; }
     <button type="submit">打开我的手机</button>
     {% if error %}<div class="err">{{ error }}</div>{% endif %}
     <p class="hint">激活码只能看你自己的手机，别发给别人。<br>本季结束后自动失效。</p>
+    <p class="hint">请勿发送任何违法、色情、暴力、政治敏感、广告引流或他人隐私等内容。</p>
   </form>
 
 {% elif mode == 'inbox' %}
@@ -726,6 +736,15 @@ a { color: var(--link); text-decoration: none; }
 {% if mode == 'inbox' %}
 <dialog class="appearance" id="appearance" aria-labelledby="appearanceTitle">
   <div class="heading"><h2 id="appearanceTitle">我的手机</h2><button type="button" class="quiet-button" id="appearanceClose" aria-label="关闭外观设置">完成</button></div>
+  <div class="avatar-edit">
+    <div class="avatar big" data-name="{{ owner }}" id="myAvatar">{{ owner[:1] }}</div>
+    <div class="avatar-actions">
+      <button type="button" class="choice" id="avatarPick">上传头像</button>
+      <button type="button" class="quiet-button" id="avatarRemove"{% if not (phone_avatars or {}).get(owner) %} hidden{% endif %}>换回名字头像</button>
+      <input type="file" id="avatarFile" accept="image/*" hidden>
+      <div class="avatar-msg" id="avatarMsg">本季所有人都能看到，会自动裁成正方形。</div>
+    </div>
+  </div>
   <div class="appearance-preview"><div class="bubble preview-reply">今天过得好吗？</div><div class="bubble">想和你分享一件小事。</div></div>
   <fieldset><legend>主题色</legend><div class="choices">
     {% for value, label, color in [('purple','紫','#6854bc'),('blue','蓝','#3267a8'),('green','绿','#37765d'),('pink','粉','#a44770'),('orange','橙','#a45427'),('ink','墨','#505763')] %}
@@ -742,6 +761,32 @@ a { color: var(--link); text-decoration: none; }
 </dialog>
 {% endif %}
 
+{% if mode in ('inbox', 'thread', 'public', 'moments', 'new') %}
+<dialog class="appearance notice-dialog" id="phoneNotice" aria-labelledby="phoneNoticeTitle">
+  <div class="heading"><h2 id="phoneNoticeTitle">使用须知</h2></div>
+  <div class="notice-body">
+    <p>这里的短信、礼物、朋友圈和评论都是 RP 内容，请只写和戏有关的话。</p>
+    <p><b>不要发送任何敏感、违法信息</b>，包括但不限于：违法犯罪、色情低俗、暴力血腥、政治敏感、赌博诈骗、广告引流，以及任何人的真实姓名、联系方式、住址等隐私。</p>
+    <p>含有不允许字词的内容会发不出去。所有内容都会被记录，管理员可以删除，违规的激活码会被停用。</p>
+  </div>
+  <button type="button" class="notice-ok" id="phoneNoticeOk">我知道了</button>
+</dialog>
+<script>
+(function () {
+  // 每台设备每季看一次；没点「我知道了」之前不能关掉
+  var key = 'phone:notice:v1:' + JSON.stringify({{ [sid, owner]|tojson }}), d = document.getElementById('phoneNotice');
+  var seen = false;
+  try { seen = localStorage.getItem(key) === '1'; } catch (_) {}
+  if (seen || !d.showModal) return;
+  d.addEventListener('cancel', function (e) { e.preventDefault(); });
+  document.getElementById('phoneNoticeOk').addEventListener('click', function () {
+    try { localStorage.setItem(key, '1'); } catch (_) {}
+    d.close();
+  });
+  d.showModal();
+})();
+</script>
+{% endif %}
 </div>
 <script>
   // 头像底色按名字固定，同一个人每次颜色一样
@@ -751,6 +796,20 @@ a { color: var(--link); text-decoration: none; }
     for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
     el.style.background = palette[h % palette.length];
   });
+  // 头像：{名字: 版本号}，有图的把名字头像换成图片；版本号变了地址就变，缓存不会拿到旧图
+  window.PHONE_AVATARS = {{ (phone_avatars or {})|tojson }};
+  window.applyAvatars = function () {
+    document.querySelectorAll('.avatar[data-name]').forEach(function (el) {
+      var v = window.PHONE_AVATARS[el.dataset.name], img = el.querySelector('img.av');
+      if (!v) { if (img) img.remove(); return; }
+      var src = '/p/me/avatar/' + encodeURIComponent(el.dataset.name) + '?v=' + v;
+      if (img && img.getAttribute('src') === src) return;
+      if (!img) { img = document.createElement('img'); img.className = 'av'; img.alt = ''; el.appendChild(img); }
+      img.src = src;
+    });
+  };
+  applyAvatars();
+  document.addEventListener('phone:updated', applyAvatars);
 </script>
 {% if mode in ('inbox', 'thread', 'public', 'moments') %}
 <script>
@@ -820,6 +879,43 @@ a { color: var(--link); text-decoration: none; }
       if (b.dataset.wall) prefs.wall = b.dataset.wall;
       try { localStorage.setItem(prefKey, JSON.stringify(prefs)); } catch (_) {}
       applyPersonal();
+    });
+    // 头像：浏览器先缩到 512 再传，服务端裁成 256 正方形；重新上传会替换并删掉旧的
+    var avFile = document.getElementById('avatarFile'), avMsg = document.getElementById('avatarMsg'),
+        avRemove = document.getElementById('avatarRemove'), me = {{ owner|tojson }}, CSRF = {{ (csrf or '')|tojson }};
+    function avPost(url, body) {
+      return fetch(url, {method: 'POST', headers: {'X-CSRF': CSRF}, body: body || new FormData()})
+        .then(function (r) { return r.json().catch(function () { return {ok: false, msg: '出错了，稍后再试'}; }); });
+    }
+    function shrink(file) {
+      return new Promise(function (resolve) {
+        var url = URL.createObjectURL(file), im = new Image();
+        im.onload = function () {
+          var k = Math.min(1, 512 / Math.min(im.naturalWidth, im.naturalHeight)), c = document.createElement('canvas');
+          c.width = Math.round(im.naturalWidth * k); c.height = Math.round(im.naturalHeight * k);
+          var x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(im, 0, 0, c.width, c.height);
+          URL.revokeObjectURL(url);
+          c.toBlob(function (b) { resolve(b || file); }, 'image/jpeg', 0.88);
+        };
+        im.onerror = function () { URL.revokeObjectURL(url); resolve(file); };
+        im.src = url;
+      });
+    }
+    document.getElementById('avatarPick').addEventListener('click', function () { avFile.click(); });
+    avFile.addEventListener('change', async function () {
+      var f = avFile.files[0]; avFile.value = '';
+      if (!f) return;
+      avMsg.textContent = '上传中…';
+      var fd = new FormData(); fd.append('avatar', await shrink(f), 'avatar.jpg');
+      var r = await avPost('/p/me/avatar', fd);
+      avMsg.textContent = r.msg || '';
+      if (r.ok) { window.PHONE_AVATARS[me] = r.v; avRemove.hidden = false; applyAvatars(); }
+    });
+    avRemove.addEventListener('click', async function () {
+      if (!confirm('换回名字头像？')) return;
+      var r = await avPost('/p/me/avatar/delete');
+      avMsg.textContent = r.msg || '';
+      if (r.ok) { delete window.PHONE_AVATARS[me]; avRemove.hidden = true; applyAvatars(); }
     });
     document.getElementById('appearanceReset').addEventListener('click', function () {
       prefs = {theme:'purple', wall:'default'};

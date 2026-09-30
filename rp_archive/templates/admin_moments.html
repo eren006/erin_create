@@ -73,6 +73,17 @@
   </div>
 
   <div class="mm-card">
+    <h3>本季头像（当前查看的这一季）</h3>
+    {% if avatars %}<div class="mm-imgs">
+      {% for a in avatars %}<div style="text-align:center;font-size:11.5px;">
+        <div class="mm-img" style="border-radius:50%;"><img src="{{ url_for('admin_avatar_image', show_id=sid, role=a.role_name) }}?v={{ a.updated_at }}" loading="lazy" alt=""></div>
+        <div style="margin:4px 0;">{{ a.role_name }}</div>
+        <form method="post" onsubmit="return confirm('删除 {{ a.role_name }} 的头像？')"><input type="hidden" name="action" value="delete_avatar"><input type="hidden" name="show_id" value="{{ sid }}"><input type="hidden" name="role" value="{{ a.role_name }}"><button class="mm-btn danger sm" type="submit">删除</button></form>
+      </div>{% endfor %}
+    </div>{% else %}<div class="mm-note">还没有人上传头像。</div>{% endif %}
+  </div>
+
+  <div class="mm-card">
     <h3>最近的朋友圈（当前查看的这一季，最新 50 条）</h3>
     {% for p in posts %}
     <div class="mm-post">

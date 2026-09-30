@@ -7,6 +7,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 import app as A
 A.DB_PATH = os.path.join(tempfile.mkdtemp(), "t.db")
+A.MODERATION_LOG = os.path.join(os.path.dirname(A.DB_PATH), "moderation.log")  # 别写进真实日志
 A.init_db()
 c = sqlite3.connect(A.DB_PATH); c.row_factory = sqlite3.Row
 tok = c.execute("SELECT api_token, id FROM tenants").fetchone()
@@ -226,4 +227,10 @@ g = json.loads(c.execute("SELECT extra_info FROM extra_events ORDER BY id DESC L
 ok(g["giftName"] == "一支洋桔梗", g)
 zp = zy.get("/p/me/林晚").get_data(as_text=True)
 ok("一支洋桔梗" in zp and "路过花店，觉得像你" in zp and "一束玫瑰" in zp, "recipient card name + note")
+# 违禁词：短信、礼物名、礼物留言命中都发不出去（草稿保留）
+sync(after=10**9); A._PHONE_MIN_GAP_MS = 0
+p = send(lin, "周屿", "傻 逼")
+ok("不允许的字词" in p and "傻 逼</textarea>" in p, "blocked sms keeps draft")
+ok("不允许的字词" in send(lin, "周屿", "", kind="gift", gift_name="毒品"), "blocked gift name")
+ok("不允许的字词" in send(lin, "周屿", "加qq123", kind="gift", gift_name="花"), "blocked gift note")
 print("ALL OK")
