@@ -34,10 +34,12 @@ def player(code):
 def csrf(cl, other):
     page = cl.get("/p/me/"+other).get_data(as_text=True)
     m = re.search(r'name="csrf" value="([^"]+)"', page); return m.group(1) if m else None, page
-def send(cl, to, text, kind="sms", token=None):
+def send(cl, to, text, kind="sms", token=None, gift_name=None):
+    if kind == "gift" and gift_name is None:
+        gift_name = text[:20]
     cl.get("/p/me/周屿")  # 保证会话里有令牌
     with cl.session_transaction() as sess: t = sess.get("phone_csrf")
-    r = cl.post("/p/me/send", data={"to":to,"text":text,"kind":kind,"csrf":token if token is not None else t})
+    r = cl.post("/p/me/send", data={"to":to,"text":text,"kind":kind,"gift_name":gift_name or "","csrf":token if token is not None else t})
     assert r.status_code == 302
     with cl.session_transaction() as s: pass
     return cl.get("/p/me/"+to).get_data(as_text=True)
@@ -213,4 +215,15 @@ sync(after=10**9, rules_extra={"gift_public": True, "gift_public_chance": 100, "
 send(lin, "沈知意", "公开礼物", kind="gift")
 gi = json.loads(c.execute("SELECT extra_info FROM extra_events ORDER BY id DESC LIMIT 1").fetchone()[0])
 ok(gi["isPublic"] and gi["hide_receiver"], gi)
+# 网页礼物分两栏：礼物名必填（≤20），留言可空；卡片礼物名当标题、留言当正文
+sync(after=10**9)
+A._PHONE_MIN_GAP_MS = 0
+ok("请写上送什么礼物" in send(lin, "周屿", "只有留言", kind="gift", gift_name=""), "gift name required")
+ok("礼物名最多" in send(lin, "周屿", "x", kind="gift", gift_name="长" * 21), "gift name max")
+p = send(lin, "周屿", "", kind="gift", gift_name="一束玫瑰"); ok("已成功将「一束玫瑰」" in p, p[-300:])
+p = send(lin, "周屿", "路过花店，觉得像你", kind="gift", gift_name="一支洋桔梗")
+g = json.loads(c.execute("SELECT extra_info FROM extra_events ORDER BY id DESC LIMIT 1").fetchone()[0])
+ok(g["giftName"] == "一支洋桔梗", g)
+zp = zy.get("/p/me/林晚").get_data(as_text=True)
+ok("一支洋桔梗" in zp and "路过花店，觉得像你" in zp and "一束玫瑰" in zp, "recipient card name + note")
 print("ALL OK")

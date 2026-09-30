@@ -4933,7 +4933,8 @@ def player_phone_thread(other):
                            revision=_phone_revision(_phone_views(db, sid, owner)),
                            stickers=_phone_stickers(db, sid) if can_reply else [],
                            csrf=_phone_csrf(), sent=session.pop("phone_sent", False), flash=session.pop("phone_flash", None),
-                           draft=session.pop("phone_draft", ""), draft_kind=session.pop("phone_draft_kind", "sms"))
+                           draft=session.pop("phone_draft", ""), draft_kind=session.pop("phone_draft_kind", "sms"),
+                           draft_gift=session.pop("phone_draft_gift", ""))
 
 @app.route("/p/logout", methods=["POST"])
 def player_phone_logout():
@@ -5128,7 +5129,9 @@ def _phone_blocked(snap, blocker, blocked):
             return {"silent": bool(b.get("silent"))}
     return None
 
-def _phone_send(db, sid, tid, owner, kind, to_name, text):
+_PHONE_GIFT_NAME_MAX = 20
+
+def _phone_send(db, sid, tid, owner, kind, to_name, text, gift_name=""):
     """执行一次网页发送，返回 (是否发出, 给发件人看的一句话)；静默拉黑也算「发出」，发件人看不出区别。规则与插件的
     handleNaturalChaosLetter / handleNaturalGift 对齐；群里才有意义的部分（公开播报、截信器/回音壁道具、
     撤回、礼品店编号礼物）不做。"""
@@ -5145,7 +5148,14 @@ def _phone_send(db, sid, tid, owner, kind, to_name, text):
     rules = snap.get("rules") or {}
     roster = _phone_roster(sync)
     text = (text or "").strip()
-    if not text:
+    gift_name = (gift_name or "").strip()
+    # 短信：内容必填；网页礼物：礼物名必填（20 字内），留言可以不填
+    if kind == "gift":
+        if not gift_name:
+            return False, "❌ 请写上送什么礼物"
+        if len(gift_name) > _PHONE_GIFT_NAME_MAX:
+            return False, f"❌ 礼物名最多 {_PHONE_GIFT_NAME_MAX} 字"
+    elif not text:
         return False, "❌ 内容不能为空"
     if len(text) > _PHONE_MAX_LEN:
         return False, f"❌ 太长了，最多 {_PHONE_MAX_LEN} 字"
@@ -5249,10 +5259,12 @@ def _phone_send(db, sid, tid, owner, kind, to_name, text):
     if blk:
         lost = True  # 静默拉黑复用「礼物丢失」：不投递，发件人看到的跟成功一样
     is_public = (not lost) and bool(rules.get("gift_public")) and rnd.randint(1, 100) <= int(rules.get("gift_public_chance", 50))
-    info = {"source": "web", "day_key": day_key, "giftName": "一份特别的礼物", "intended_to": to_name,
+    # 网页礼物分「礼物」「留言」两栏：giftName 是玩家写的礼物名，content 是留言（群里送的自定义礼物仍是
+    # 「一份特别的礼物」+ 寄语，格式不变）
+    info = {"source": "web", "day_key": day_key, "giftName": gift_name, "intended_to": to_name,
             "isLost": lost, "isPublic": is_public, "hide_receiver": is_public and bool(rules.get("hide_receiver"))}
     _phone_insert_event(db, sid, tid, "gift", owner, true_to, text, info, now, game_day)
-    return True, f"🎁 已成功将 一份特别的礼物 送往「{to_name}」的房间。\n(今日第 {used + 1}份)"
+    return True, f"🎁 已成功将「{gift_name}」送往「{to_name}」的房间。\n(今日第 {used + 1}份)"
 
 def _phone_insert_event(db, sid, tid, etype, from_role, to_role, content, info, ts, game_day):
     db.execute("""
@@ -5280,17 +5292,20 @@ def player_phone_send():
         session["phone_flash"] = "❌ 页面过期了，刷新后再发"
         session["phone_draft"] = request.form.get("text", "")[:_PHONE_MAX_LEN]
         session["phone_draft_kind"] = "gift" if request.form.get("kind") == "gift" else "sms"
+        session["phone_draft_gift"] = request.form.get("gift_name", "")[:_PHONE_GIFT_NAME_MAX]
         return redirect(back)
     kind = "gift" if request.form.get("kind") == "gift" else "sms"
     db  = get_db()
     tid = db.execute("SELECT tenant_id FROM shows WHERE id=?", (sid,)).fetchone()["tenant_id"]
     with _phone_send_lock:  # 查次数和写入之间不能被另一个请求插队，否则连点能超上限
-        ok, msg = _phone_send(db, sid, tid, owner, kind, to_name, request.form.get("text", ""))
+        ok, msg = _phone_send(db, sid, tid, owner, kind, to_name, request.form.get("text", ""),
+                              request.form.get("gift_name", ""))
     session["phone_flash"] = msg
     session["phone_sent"] = ok
     if not ok:  # 没发出去，把草稿留着
         session["phone_draft"] = request.form.get("text", "")[:_PHONE_MAX_LEN]
         session["phone_draft_kind"] = kind
+        session["phone_draft_gift"] = request.form.get("gift_name", "")[:_PHONE_GIFT_NAME_MAX]
     return redirect(back)
 
 @app.route("/p/me/new")
