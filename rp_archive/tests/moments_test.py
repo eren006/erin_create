@@ -77,7 +77,10 @@ r = zy.get(f"/p/me/moments/img/{img_id}?s=thumb"); ok(r.status_code == 200 and r
 ok(r.headers["Cache-Control"].startswith("private"), r.headers["Cache-Control"])
 ok(app.test_client().get(f"/p/me/moments/img/{img_id}").status_code == 404, "img needs code")
 ok(zy.get("/p/me/moments").headers["Cache-Control"] == "no-store", "page no-store")
-ok("📷" in lin.get("/p/me").get_data(as_text=True) and "今天的晚霞" in lin.get("/p/me").get_data(as_text=True), "inbox entry")
+inbox_page = lin.get("/p/me").get_data(as_text=True)
+latest_ts = c.execute("SELECT MAX(created_at) FROM moments WHERE deleted=0").fetchone()[0]
+ok('aria-label="手机导航"' in inbox_page and 'href="/p/me/moments" data-other="__moments__"' in inbox_page
+   and f'data-received-ts="{latest_ts}"' in inbox_page, "bottom navigation entry and unread timestamp")
 
 # 点赞（切换）/ 评论 / 回复（只能回复楼主或评论过的人）
 mid = c.execute("SELECT id FROM moments").fetchone()[0]

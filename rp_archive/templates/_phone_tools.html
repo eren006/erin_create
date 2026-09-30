@@ -1,0 +1,165 @@
+<style>
+.library, .profile-page { min-height: 0; }
+.library-filters { padding: 16px; border-bottom: 1px solid var(--line); background: var(--bg); }
+.search-label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+.library input, .library select { font: inherit; font-size: 16px; color: var(--text); background: var(--theirs); border: 1px solid var(--line); border-radius: 12px; padding: 10px; min-width: 0; }
+.library input { width: 100%; }
+.filter-row { display: flex; gap: 8px; margin-top: 10px; }
+.filter-row select { flex: 1; width: 50%; font-size: 13px; }
+.library-note, .library-state { margin: 14px 18px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.library-card { margin: 10px 16px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; overflow-wrap: anywhere; }
+.library-card .record-title { display: block; color: var(--text); font-weight: 600; margin-bottom: 4px; }
+.record-meta { color: var(--muted); font-size: 11px; }
+.record-text { white-space: pre-wrap; font-size: var(--reading-size, 16px); line-height: 1.65; margin-top: 10px; }
+.record-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 12px; }
+.record-actions a, .save-message { min-height: 36px; display: inline-flex; align-items: center; }
+.save-message { background: none; border: 0; color: var(--muted); font: inherit; font-size: 11px; padding: 4px 6px; cursor: pointer; }
+.save-message[aria-pressed="true"] { color: var(--text); }
+.msg:target { outline: 2px solid var(--link); outline-offset: 4px; border-radius: 16px; scroll-margin: 110px 0 180px; }
+.library-more { display: block; margin: 16px auto 24px; min-height: 44px; }
+.library-more[hidden] { display: none; }
+.profile-page { padding: 20px 16px; }
+.profile-name { text-align: center; padding: 16px 0 28px; }
+.profile-name .avatar { margin: 0 auto 12px; }
+.profile-name h1 { font-size: 20px; overflow-wrap: anywhere; }
+.profile-name p { font-size: 12px; margin-top: 6px; color: var(--muted); }
+.profile-item { width: 100%; display: flex; justify-content: space-between; gap: 12px; min-height: 52px; align-items: center; padding: 14px; font: inherit; font-size: 15px; text-align: left; color: var(--text); border: 0; border-bottom: 1px solid var(--line); background: var(--bg); cursor: pointer; }
+.profile-item span { color: var(--muted); }
+.tools-toast { position: fixed; bottom: 130px; left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 40px); padding: 10px 16px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font-size: 13px; border-radius: 18px; box-shadow: 0 4px 24px #0002; z-index: 20; }
+
+.bottom-dock { position: sticky; bottom: 0; z-index: 7; flex-shrink: 0; background: var(--bar); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); margin-top: auto; backdrop-filter: blur(20px); }
+.phone-nav { display: grid; grid-template-columns: repeat(4, 1fr); padding: 3px 6px; }
+.phone-nav a { min-height: 54px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 1px; color: var(--muted); font-size: 11px; border-radius: 12px; }
+.phone-nav a.unread span::after { content: ""; position: absolute; width: 6px; height: 6px; border-radius: 50%; background: var(--muted); top: 1px; right: -6px; }
+.phone-nav a span { position: relative; font-size: 20px; line-height: 24px; }
+.phone-nav a[aria-current] { background: var(--theirs); color: var(--text); font-weight: 600; }
+.dock-action { display: flex; justify-content: flex-end; padding: 8px 16px 4px; }
+.primary-action { display: inline-flex; min-height: 44px; justify-content: center; align-items: center; padding: 0 20px; border: 1px solid var(--line); background: var(--bg); color: var(--text); border-radius: 24px; font: inherit; font-size: 14px; cursor: pointer; }
+.thread-tools { position: sticky; bottom: 0; flex-shrink: 0; z-index: 7; display: flex; justify-content: space-around; align-items: center; min-height: calc(48px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom); background: var(--bar); border-top: 1px solid var(--line); }
+.thread-tools a, .thread-tools button { background: none; border: 0; font: inherit; font-size: 12px; color: var(--link); min-height: 44px; padding: 10px; display: inline-flex; align-items: center; cursor: pointer; }
+.phone[data-mode="thread"] .compose { bottom: calc(48px + env(safe-area-inset-bottom)); padding-bottom: 8px; }
+.phone[data-mode="thread"] .compose-note { position: sticky; bottom: calc(48px + env(safe-area-inset-bottom)); background: var(--bar); padding-bottom: 10px; }
+.action-sheet { margin: auto auto 16px; }
+.action-sheet h2 { min-width: 0; overflow-wrap: anywhere; }
+</style>
+<div class="tools-toast" id="toolsToast" role="status" hidden></div>
+<script>
+(function () {
+  const scope = {{ [sid, owner]|tojson }}, key = 'phone:saved:' + JSON.stringify(scope);
+  let saved = [], storageOK = true, records = [], pageSize = 60;
+  const library = document.getElementById('library'), toast = document.getElementById('toolsToast');
+  let toastTimer;
+  function say(text) {
+    toast.textContent = text; toast.hidden = false; clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toast.hidden = true; }, 3500);
+  }
+  function loadSaved() {
+    saved = []; storageOK = true;
+    try {
+      const value = JSON.parse(localStorage.getItem(key) || '[]');
+      if (Array.isArray(value)) saved = Array.from(new Set(value.filter(x => typeof x === 'string' && /^[a-f0-9]{32}$/.test(x))));
+    } catch (_) { storageOK = false; }
+  }
+  function paintSaved() {
+    document.querySelectorAll('[data-save-key]').forEach(function (b) {
+      const on = saved.includes(b.dataset.saveKey);
+      b.textContent = on ? '★ 已收藏' : '☆ 收藏';
+      b.setAttribute('aria-pressed', String(on));
+      b.setAttribute('aria-label', on ? '取消收藏这条记录' : '收藏这条记录');
+    });
+  }
+  function toggleSaved(id) {
+    loadSaved();
+    if (!storageOK) { say('当前浏览器无法保存收藏'); return; }
+    const next = saved.includes(id) ? saved.filter(x => x !== id) : saved.concat([id]);
+    if (next.length > 1000) { say('收藏已满，先移除一些记录'); return; }
+    try { localStorage.setItem(key, JSON.stringify(next)); }
+    catch (_) { say('收藏没有保存成功，请检查浏览器存储空间'); return; }
+    saved = next; paintSaved();
+    if (library) render();
+    say(saved.includes(id) ? '已收藏到这台设备' : '已取消收藏');
+  }
+  function element(tag, className, text) {
+    const e = document.createElement(tag); e.className = className;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+  function render() {
+    const query = document.getElementById('messageQuery').value.trim().toLocaleLowerCase();
+    const other = document.getElementById('messageContact').value, day = document.getElementById('messageDay').value;
+    const result = records.filter(r => (library.dataset.view !== 'saved' || saved.includes(r.key))
+      && (!other || r.other === other) && (!day || r.day === day)
+      && (!query || [r.text,r.gift_name,r.other,r.signature].join('\n').toLocaleLowerCase().includes(query)));
+    const container = document.getElementById('libraryResults'); container.replaceChildren();
+    document.getElementById('libraryState').textContent = !storageOK && library.dataset.view === 'saved'
+      ? '当前浏览器无法读取本机收藏。'
+      : result.length ? '找到 ' + result.length + ' 条记录'
+      : library.dataset.view === 'saved' && !saved.length ? '还没有收藏。在对话里点 ☆，留下喜欢的那一句。' : '没有符合条件的记录';
+    result.slice(0,pageSize).forEach(function (r) {
+      const card = element('article','library-card');
+      card.appendChild(element('span','record-title',r.other + (r.mine ? ' · 我发出的' : ' · 收到的')));
+      card.appendChild(element('div','record-meta',[r.day,r.time].filter(Boolean).join(' ')));
+      if (r.kind === 'gift') card.appendChild(element('div','record-text','🎁 ' + r.gift_name));
+      if (r.text) card.appendChild(element('div','record-text',r.text));
+      const actions = element('div','record-actions'), link = element('a','','回到对话');
+      link.href = r.url;
+      const button = element('button','save-message'); button.type = 'button'; button.dataset.saveKey = r.key;
+      actions.append(link,button); card.appendChild(actions); container.appendChild(card);
+    });
+    document.getElementById('libraryMore').hidden = result.length <= pageSize;
+    paintSaved();
+  }
+  async function loadRecords() {
+    document.getElementById('libraryRetry').hidden = true;
+    document.getElementById('libraryState').textContent = '正在整理记录…';
+    try {
+      const response = await fetch({{ url_for('player_phone_library_data')|tojson }}, {cache:'no-store'});
+      if (response.status === 401) { location.assign({{ url_for('phone_code_entry')|tojson }}); return; }
+      if (!response.ok) throw Error();
+      records = (await response.json()).records.sort((a,b) => b.ts-a.ts);
+      [['messageContact','other','全部联系人'],['messageDay','day','全部游戏日']].forEach(function ([id,field,label]) {
+        const select = document.getElementById(id), old = select.value;
+        select.replaceChildren(new Option(label,''));
+        Array.from(new Set(records.map(r => r[field]).filter(Boolean))).sort().forEach(v => select.add(new Option(v,v)));
+        select.value = old;
+      });
+      const preset = new URLSearchParams(location.search).get('other');
+      if (preset && records.some(r=>r.other===preset)) document.getElementById('messageContact').value = preset;
+      render();
+    } catch (_) {
+      document.getElementById('libraryState').textContent = '暂时加载不了，稍后再试。';
+      document.getElementById('libraryRetry').hidden = false;
+    }
+  }
+  loadSaved(); paintSaved();
+  document.addEventListener('click', function (e) { const b=e.target.closest('[data-save-key]'); if(b)toggleSaved(b.dataset.saveKey); });
+  document.addEventListener('phone:updated',paintSaved);
+  window.addEventListener('storage',function(e){if(e.key===key||e.key===null){loadSaved();paintSaved();if(library)render();}});
+  if (library) {
+    ['messageQuery','messageContact','messageDay'].forEach(id=>document.getElementById(id).addEventListener('input',function(){pageSize=60;render();}));
+    document.getElementById('libraryMore').addEventListener('click',function(){pageSize+=60;render();});
+    document.getElementById('libraryRetry').addEventListener('click',loadRecords);
+    loadRecords();
+  }
+  function jumpToRecord() {
+    if (!/^#message-[a-f0-9]{32}$/.test(location.hash)) return;
+    const target=document.getElementById(location.hash.slice(1));
+    if(target)requestAnimationFrame(()=>target.scrollIntoView({block:'center'}));
+  }
+  jumpToRecord(); window.addEventListener('hashchange',jumpToRecord);
+  const menu = document.getElementById('threadMenu');
+  if (menu) {
+    document.getElementById('threadMenuOpen').addEventListener('click',()=>menu.showModal());
+    document.getElementById('threadMenuClose').addEventListener('click',()=>menu.close());
+    if (!location.hash) requestAnimationFrame(function () {
+      const sc=document.getElementById('scroll'); sc.scrollTop=sc.scrollHeight;
+      if (innerWidth<600) window.scrollTo(0,document.scrollingElement.scrollHeight);
+    });
+  }
+  const momentDock=document.getElementById('momentDock'), publish=document.getElementById('mcOpen');
+  if(momentDock && publish) {
+    publish.className='primary-action'; publish.removeAttribute('style'); publish.textContent='＋ 发朋友圈';
+    momentDock.appendChild(publish);
+  }
+})();
+</script>

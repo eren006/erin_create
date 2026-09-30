@@ -1,0 +1,26 @@
+{% if mode in ('inbox', 'moments', 'public', 'library', 'profile') %}
+<div class="bottom-dock">
+  {% if mode == 'inbox' and status.can %}<div class="dock-action"><a class="primary-action" href="{{ url_for('player_phone_new') }}">＋ 新信息</a></div>{% endif %}
+  {% if mode == 'moments' and not why %}<div class="dock-action" id="momentDock"></div>{% endif %}
+  <nav class="phone-nav" aria-label="手机导航">
+    <a href="{{ url_for('player_phone_inbox') }}"{% if mode in ('inbox', 'public') or (mode == 'library' and library_view == 'search') %} aria-current="page"{% endif %}><span aria-hidden="true">▤</span>消息</a>
+    <a href="{{ url_for('player_moments') }}" data-other="__moments__"{% if moments_latest is defined and moments_latest %} data-received-ts="{{ moments_latest['created_at'] }}"{% endif %}{% if mode == 'moments' %} aria-current="page"{% endif %}><span aria-hidden="true">◎</span>朋友圈</a>
+    <a href="{{ url_for('player_phone_library', view='saved') }}"{% if mode == 'library' and library_view == 'saved' %} aria-current="page"{% endif %}><span aria-hidden="true">☆</span>收藏</a>
+    <a href="{{ url_for('player_phone_library', view='profile') }}"{% if mode == 'profile' %} aria-current="page"{% endif %}><span aria-hidden="true">◉</span>我的</a>
+  </nav>
+</div>
+{% elif mode == 'thread' %}
+<nav class="thread-tools" aria-label="对话操作">
+  <a href="{{ url_for('player_phone_inbox') }}">‹ 消息</a>
+  <a href="{{ url_for('player_phone_library', other=other) }}">检索此对话</a>
+  <button type="button" id="threadMenuOpen" aria-haspopup="dialog">对话设置</button>
+</nav>
+<dialog class="appearance action-sheet" id="threadMenu" aria-labelledby="threadMenuTitle">
+  <div class="heading"><h2 id="threadMenuTitle">{{ other }}</h2><button class="quiet-button" id="threadMenuClose" type="button">完成</button></div>
+  <button type="button" class="profile-item" id="pinContact" aria-pressed="false">置顶</button>
+  <a class="profile-item" href="{{ url_for('player_phone_library', view='saved', other=other) }}">查看本机收藏 <span>›</span></a>
+  <a class="profile-item" href="{{ url_for('player_phone_library', view='profile') }}">外观与字号 <span>›</span></a>
+</dialog>
+{% elif mode == 'new' %}
+<nav class="thread-tools" aria-label="返回"><a href="{{ url_for('player_phone_inbox') }}">‹ 返回消息</a></nav>
+{% endif %}

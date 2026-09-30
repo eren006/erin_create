@@ -35,6 +35,7 @@ function run(store={}, blocked=false) {
 let x=run({},true);
 assert.equal(x.phone.style['--mine'],'#6854bc');
 assert.equal(x.phone.dataset.wall,'default');
+assert.equal(x.phone.style['--reading-size'],'16px');
 x=run({'phone:appearance:[901,"测试角色"]':'{"theme":"blue","wall":"mist"}',
        'phone:pins:[901,"测试角色"]':'["旧联系人"]'});
 assert.equal(x.phone.style['--mine'],'#3267a8');
@@ -49,6 +50,10 @@ for(const value of ['null','[]','"bad"','{bad','{"theme":"__proto__","wall":"mis
   assert.equal(x.phone.style['--mine'],'#6854bc');
   assert.equal(x.phone.dataset.wall,'default');
 }
+x=run({'phone:appearance:[901,"测试角色"]':'{"font":"large"}'});
+assert.equal(x.phone.style['--reading-size'],'19px');
+x=run({'phone:appearance:[901,"测试角色"]':'{"font":"999px"}'});
+assert.equal(x.phone.style['--reading-size'],'16px');
 // 其他季度/角色的偏好不串进来。
 x=run({'phone:appearance:[902,"测试角色"]':'{"theme":"green","wall":"sage"}'});
 assert.equal(x.phone.style['--mine'],'#6854bc');
