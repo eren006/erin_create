@@ -5003,8 +5003,14 @@ def _phone_security_headers(resp):
 
 @app.route("/p/guide")
 def phone_guide():
-    """网页手机指南：玩家篇 + 管理员篇，不用登录就能看"""
-    return render_template("phone_guide.html")
+    """网页手机里的「小手机」对话：按身份只给一组问题——管理员手机码或团后台管理员看管理篇，其余（含没登录）看玩家篇"""
+    who = _phone_current()
+    is_admin = bool(who and who[1] == PHONE_ADMIN) or bool(session.get("admin_logged_in") and not who)
+    if who:
+        back = url_for("admin_phone_index") if who[1] == PHONE_ADMIN else url_for("player_phone_inbox")
+    else:
+        back = url_for("admin_phone_codes") if is_admin else url_for("phone_code_entry")
+    return render_template("phone_guide.html", audience="admin" if is_admin else "player", back=back)
 
 @app.route("/p", methods=["GET", "POST"])
 def phone_code_entry():

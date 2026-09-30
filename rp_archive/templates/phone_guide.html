@@ -86,28 +86,28 @@ noscript .b { display: block; margin-bottom: 6px; }
 ] %}
 <div class="phone">
   <header>
-    <a class="back" href="{{ P }}">‹ 返回</a>
-    <div class="who"><b>小手机</b><small>使用指南</small></div>
-    <div class="seg" role="group" aria-label="问题分组">
-      <button type="button" data-set="player" aria-pressed="true">玩家</button>
-      <button type="button" data-set="admin" aria-pressed="false">管理员</button>
-    </div>
+    <a class="back" href="{{ back }}">‹ 返回</a>
+    <div class="who"><b>小手机</b><small>{{ '管理员指南' if audience == 'admin' else '使用指南' }}</small></div>
+    <div></div>
   </header>
 
   <main class="log" id="log" aria-live="polite">
+    {% set qa = admin if audience == 'admin' else player %}
+    {% if audience == 'admin' %}
+    <div class="b in">管理员你好 👋</div>
+    <div class="b in">发码、机器人暂停、维护删除，点下面的问题看怎么做。</div>
+    {% else %}
     <div class="b in">你好，我是这部手机 👋</div>
     <div class="b in">想知道什么，点下面的问题就好。</div>
     <div class="sys">只写和戏有关的内容，<b>不要发送任何敏感、违法信息</b></div>
+    {% endif %}
     <noscript>
-      {% for q, a in player + admin %}<div class="b out">{{ q }}</div><div class="b in">{{ a|safe }}</div>{% endfor %}
+      {% for q, a in qa %}<div class="b out">{{ q }}</div><div class="b in">{{ a|safe }}</div>{% endfor %}
     </noscript>
   </main>
 
-  <nav class="chips" id="chips-player" aria-label="玩家常见问题">
-    {% for q, a in player %}<button type="button" data-q="{{ q }}" data-a="{{ a }}">{{ q }}</button>{% endfor %}
-  </nav>
-  <nav class="chips" id="chips-admin" aria-label="管理员常见问题" hidden>
-    {% for q, a in admin %}<button type="button" data-q="{{ q }}" data-a="{{ a }}">{{ q }}</button>{% endfor %}
+  <nav class="chips" aria-label="常见问题">
+    {% for q, a in qa %}<button type="button" data-q="{{ q }}" data-a="{{ a }}">{{ q }}</button>{% endfor %}
   </nav>
 </div>
 <script>
@@ -129,15 +129,6 @@ noscript .b { display: block; margin-bottom: 6px; }
       window.scrollTo({top: document.body.scrollHeight, behavior: 'smooth'});
     });
   });
-  function show(set) {
-    document.querySelectorAll('.seg button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.set === set)); });
-    document.getElementById('chips-player').hidden = set !== 'player';
-    document.getElementById('chips-admin').hidden = set !== 'admin';
-  }
-  document.querySelectorAll('.seg button').forEach(function (b) {
-    b.addEventListener('click', function () { show(b.dataset.set); });
-  });
-  if (location.hash === '#admin') show('admin');
 })();
 </script>
 </body>
