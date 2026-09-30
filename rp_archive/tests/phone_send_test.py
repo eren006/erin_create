@@ -70,9 +70,11 @@ ok(sync()["web_send"] is True, "on")
 t, page = csrf(lin, "周屿"); ok(t and 'id="compose"' in page and "短信 0/3" in page, "compose shown")
 # CSRF 错
 p = send(lin, "周屿", "伪造", token="wrong"); ok("页面过期" in p and c.execute("SELECT COUNT(*) FROM extra_events").fetchone()[0]==0, "csrf")
+assert '<textarea name="text" id="text" rows="1" maxlength="500" placeholder="短信">伪造</textarea>' in p
 # 正常发
 p = send(lin, "周屿", "今晚天台见")
 ok("鸽子衔往 周屿" in p and "今晚天台见" in p and "短信 1/3" in p, p[-600:])
+ok("localStorage.removeItem(draftKey);" in p and "今晚天台见</textarea>" not in p, "successful send clears draft")
 zy = player("ZHOUYU0001")
 ok("今晚天台见" in zy.get("/p/me/林晚").get_data(as_text=True), "recipient sees")
 # 发给自己 / 名单外

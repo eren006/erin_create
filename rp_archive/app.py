@@ -4908,7 +4908,7 @@ def player_phone_thread(other):
     can_reply = st["can"] and other in _phone_roster(_phone_sync_row(db, sid)) and other != owner
     return render_template("phone.html", mode="thread", owner=owner, sid=sid, other=other,
                            msgs=_phone_msgs(db, sid, owner, other), status=st, can_reply=can_reply,
-                           csrf=_phone_csrf(), flash=session.pop("phone_flash", None),
+                           csrf=_phone_csrf(), sent=session.pop("phone_sent", False), flash=session.pop("phone_flash", None),
                            draft=session.pop("phone_draft", ""), draft_kind=session.pop("phone_draft_kind", "sms"))
 
 @app.route("/p/logout", methods=["POST"])
@@ -5184,6 +5184,8 @@ def player_phone_send():
     back = url_for("player_phone_thread", other=to_name) if to_name else url_for("player_phone_inbox")
     if not hmac.compare_digest(request.form.get("csrf", ""), session.get("phone_csrf", "") or "-"):
         session["phone_flash"] = "❌ 页面过期了，刷新后再发"
+        session["phone_draft"] = request.form.get("text", "")[:_PHONE_MAX_LEN]
+        session["phone_draft_kind"] = "gift" if request.form.get("kind") == "gift" else "sms"
         return redirect(back)
     kind = "gift" if request.form.get("kind") == "gift" else "sms"
     db  = get_db()
@@ -5191,6 +5193,7 @@ def player_phone_send():
     with _phone_send_lock:  # 查次数和写入之间不能被另一个请求插队，否则连点能超上限
         ok, msg = _phone_send(db, sid, tid, owner, kind, to_name, request.form.get("text", ""))
     session["phone_flash"] = msg
+    session["phone_sent"] = ok
     if not ok:  # 没发出去，把草稿留着
         session["phone_draft"] = request.form.get("text", "")[:_PHONE_MAX_LEN]
         session["phone_draft_kind"] = kind

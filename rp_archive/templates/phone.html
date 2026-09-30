@@ -176,6 +176,7 @@ a { color: var(--link); text-decoration: none; }
 .compose.gift-mode .gift-toggle { background: var(--gift-bg); filter: none; opacity: 1; box-shadow: 0 0 0 1px var(--gift-line); }
 .compose .send { background: var(--mine); color: var(--mine-text); font-weight: 700; }
 .compose .send:disabled { opacity: .4; }
+.remaining { font-size: 11px; color: var(--muted); align-self: center; white-space: nowrap; }
 .compose-note { text-align: center; font-size: 12px; color: var(--muted); padding: 10px 16px calc(env(safe-area-inset-bottom) + 10px); border-top: .5px solid var(--line); }
 </style>
 </head>
@@ -268,6 +269,7 @@ a { color: var(--link); text-decoration: none; }
     <input type="hidden" name="kind" id="kind" value="{{ 'gift' if draft_kind == 'gift' and status.gift else 'sms' }}">
     {% if status.gift %}<button class="icon gift-toggle" type="button" id="giftToggle" title="送礼物" aria-label="切换送礼物">🎁</button>{% endif %}
     <textarea name="text" id="text" rows="1" maxlength="500" placeholder="短信">{{ draft }}</textarea>
+    <span class="remaining" id="remaining" aria-live="polite" hidden></span>
     <button class="icon send" type="submit" id="sendBtn" aria-label="发送">↑</button>
   </form>
   <script>
@@ -275,19 +277,46 @@ a { color: var(--link); text-decoration: none; }
       var f = document.getElementById('compose'), t = document.getElementById('text'),
           k = document.getElementById('kind'), g = document.getElementById('giftToggle'), b = document.getElementById('sendBtn'),
           canSms = {{ 'true' if status.sms else 'false' }};
+      var draftKey = 'phone:draft:' + JSON.stringify({{ [sid, owner, other]|tojson }});
+      try {
+        {% if sent %}localStorage.removeItem(draftKey);
+        {% elif not draft %}
+        var saved = JSON.parse(localStorage.getItem(draftKey) || 'null');
+        if (saved && typeof saved.text === 'string') {
+          t.value = saved.text.slice(0, 500);
+          if (saved.kind === 'gift' && g) k.value = 'gift';
+        }
+        {% endif %}
+      } catch (_) {}
+      function saveDraft() {
+        try {
+          if (t.value) localStorage.setItem(draftKey, JSON.stringify({text: t.value, kind: k.value}));
+          else localStorage.removeItem(draftKey);
+        } catch (_) {}
+      }
       function place() { t.placeholder = k.value === 'gift' ? '礼物寄语（以「一份特别的礼物」送出）' : '短信'; }
-      function grow() { t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 140) + 'px'; t.style.overflowY = t.scrollHeight > 140 ? 'auto' : 'hidden'; b.disabled = !t.value.trim(); }
+      function grow() { t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 140) + 'px'; t.style.overflowY = t.scrollHeight > 140 ? 'auto' : 'hidden'; b.disabled = !t.value.trim();
+        var remaining = document.getElementById('remaining'), left = 500 - Array.from(t.value).length;
+        remaining.hidden = left > 50; remaining.textContent = '剩 ' + left + ' 字';
+      }
       if (!canSms) { k.value = 'gift'; f.classList.add('gift-mode'); if (g) g.style.display = 'none'; }
       if (g) g.addEventListener('click', function () {
         k.value = k.value === 'gift' ? 'sms' : 'gift';
-        f.classList.toggle('gift-mode', k.value === 'gift'); place(); t.focus();
+        f.classList.toggle('gift-mode', k.value === 'gift'); place(); saveDraft(); t.focus();
       });
-      t.addEventListener('input', grow);
+      t.addEventListener('input', function () { grow(); saveDraft(); });
+      t.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.isComposing) {
+          e.preventDefault(); f.requestSubmit();
+        }
+      });
+      window.addEventListener('pagehide', saveDraft);
       f.addEventListener('submit', function (e) {
         if (!t.value.trim() || b.disabled && b.dataset.sent) { e.preventDefault(); return; }
         b.disabled = true; b.dataset.sent = '1';  // 防连点重复发送
       });
-      place(); grow();
+      f.classList.toggle('gift-mode', k.value === 'gift');
+      place(); grow(); saveDraft();
     })();
   </script>
   {% elif status.can and not can_reply and other == '未知号码' %}
