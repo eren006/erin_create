@@ -198,7 +198,7 @@
       }
       function start() {
         snake = [{ x: 5, y: 8 }, { x: 4, y: 8 }, { x: 3, y: 8 }]; dir = next = 'r'; setScore(0); place(); draw(); running = true;
-        timer = setInterval(tick, 140); stop = function () { clearInterval(timer); };
+        timer = setInterval(tick, 230); stop = function () { clearInterval(timer); };
       }
       onDir = turn; swipe(board, turn);
       document.querySelectorAll('.gm-pad button').forEach(function (b) { b.addEventListener('click', function () { if (running) turn(b.dataset.d); }); });
