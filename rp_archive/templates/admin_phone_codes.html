@@ -32,7 +32,7 @@
 
 {% block body %}
 <div class="container" style="max-width:860px;margin:0 auto;padding:24px 16px;">
-  <h2 style="margin-bottom:8px;">📱 短信激活码</h2>
+  <h2 style="margin-bottom:8px;">📱 短信激活码 <a href="{{ url_for('phone_guide') }}#admin" target="_blank" rel="noopener" style="font-size:13px;font-weight:400;">网页手机指南 ›</a></h2>
   {% if not show %}
     <div class="pc-empty">还没有季度</div>
   {% else %}

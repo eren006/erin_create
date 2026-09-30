@@ -380,6 +380,7 @@ a { color: var(--link); text-decoration: none; }
     {% if error %}<div class="err">{{ error }}</div>{% endif %}
     <p class="hint">激活码只能看你自己的手机，别发给别人。<br>本季结束后自动失效。</p>
     <p class="hint">请勿发送任何违法、色情、暴力、政治敏感、广告引流或他人隐私等内容。</p>
+    <p class="hint"><a href="{{ url_for('phone_guide') }}">第一次用？看网页手机指南 ›</a></p>
   </form>
 
 {% elif mode == 'inbox' %}
@@ -738,7 +739,7 @@ a { color: var(--link); text-decoration: none; }
     <div class="right"></div>
   </header>
   <div class="scroll list">
-    <div class="song-note">点一个角色，用 ta 的视角翻手机；每条短信和礼物下面有真实情况和「管理删除」。删除都要再确认一次，并记进审核日志。</div>
+    <div class="song-note">点一个角色，用 ta 的视角翻手机；每条短信和礼物下面有真实情况和「管理删除」。删除都要再确认一次，并记进审核日志。<a href="{{ url_for('phone_guide') }}#admin">管理员指南 ›</a></div>
     <a class="row public-row" href="{{ url_for('player_phone_public') }}"><div class="avatar public-avatar">📢</div><div class="body"><div class="top"><span class="name">公开播报 · 点歌</span></div><div class="preview">看点歌人、删播报和点歌</div></div></a>
     <a class="row public-row" href="{{ url_for('player_moments') }}"><div class="avatar moments-avatar">📷</div><div class="body"><div class="top"><span class="name">朋友圈</span></div><div class="preview">删朋友圈、评论、图片</div></div></a>
     {% for r in roles %}

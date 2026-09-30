@@ -5001,6 +5001,11 @@ def _phone_security_headers(resp):
         resp.headers["X-Robots-Tag"]    = "noindex, nofollow"
     return resp
 
+@app.route("/p/guide")
+def phone_guide():
+    """网页手机指南：玩家篇 + 管理员篇，不用登录就能看"""
+    return render_template("phone_guide.html")
+
 @app.route("/p", methods=["GET", "POST"])
 def phone_code_entry():
     if request.method == "POST":
