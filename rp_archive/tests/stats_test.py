@@ -63,8 +63,19 @@ ok(tb.index("<b>D1") < tb.index("<b>D2") < tb.index("<b>我的微信群") and "�
 ok("D2 · " in t and "更新" in t, "updated time in header")
 ok("私约 1 次" in page(lin, "counts") and "周屿的数" not in page(lin, "counts"), "counts only mine")
 ok("本人总平均：12分钟" in page(lin, "arc"), "arc")
+# 字数统计：本季累计 + 进行中场次里我自己的本场字数；别人的字数不显示
+REP["林晚"]["arc"] = "【林晚 的弧长】\n本人总平均：18分钟（24次，3场，含已结/未结）\n当前未结双嘉宾小群：\n私约5001：林晚x周屿 3v4（待林晚），本人平均15分钟（2次），你还没回：2h5m"
+REP["林晚"]["stats"] = {"replies": 86, "words": 12345, "avg_words": 143.5, "avg_min": 18.2, "fastest": 3, "slowest": 240}
+REP["林晚"]["sessions"] = [{"gid": "5001", "type": "私约", "my_replies": 3, "my_words": 1240, "my_avg_words": 413, "my_avg_min": 15, "my_timed": 2, "members": []}]
+sync(REP)
+ar = page(lin, "arc")
+ok("字数统计" in ar and "12,345" in ar and "平均每条 144 字" in ar and "最快 3" in ar and "最慢 240" in ar, "stats block")
+ok("本场字数" in ar and "1,240" in ar and "平均 <b>413</b> 字/段" in ar, "session words")
+ok("999" not in ar, "partner words never shown")
+REP["林晚"].pop("stats"); REP["林晚"].pop("sessions"); sync(REP)
+ok("字数统计" not in page(lin, "arc") and "本场字数" not in page(lin, "arc"), "old plugin: no word blocks")
 p = page(lin, "pending")
-ok("已超时" in p and "群 5001" in p and "2h5m" in p and "查看关系线 周屿" in p and "沈知意 给你写了信" in p and "30m" in p, "pending")
+ok("已超时 2h5m" in p and "群 5001" in p and "查看关系线 周屿" in p and "✉️ 沈知意" in p and "给你写了信，还没回" in p and "等了 30m" in p, "pending")
 ok("当前暂无行程安排" in page(zy, "timeline") and "没有等待你回复" in page(zy, "pending"), "empty report")
 # 下一次同步不带报告：保留上一份
 sync()
@@ -158,7 +169,7 @@ ok(dismiss(lin, "s:5001:111").status_code == 302, "dismiss redirect")
 pend = lin.get('/p/me/poll').json['pending']
 ok(pend['count'] == 2 and pend['longest'] == '30 分钟', pend)
 pg = page(lin, "pending"); act = pg.split("已暂不提醒")[0]
-ok("群 5001" not in act and "已暂不提醒 · 1 项" in pg and "恢复提醒" in pg, "moved to muted")
+ok("群 5001" not in act and "已暂不提醒 · 1 项" in pg and ">恢复<" in pg, "moved to muted")
 ok("待我回复 · 2 项" in lin.get("/p/me").get_data(as_text=True), "inbox count excludes muted")
 dismiss(lin, "l:沈知意:222"); dismiss(lin, "r:周屿:3")
 ok(lin.get('/p/me/poll').json['pending']['count'] == 0 and "其余的都设了暂不提醒" in page(lin, "pending"), "all muted")

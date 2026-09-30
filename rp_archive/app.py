@@ -7083,7 +7083,8 @@ def _phone_arc_view(text):
         pair = re.fullmatch(r"(.+) (\d+v\d+)[（(]待(.+)[）)]", participants)
         if pair:
             participants, progress, turn = pair.groups()
-        out["sessions"].append({"title": title, "participants": participants, "progress": progress,
+        gid_m = re.search(r"(\d+)$", title)   # 标题如「私约5001」，末尾数字是群号，用来对上插件上报的本场字数
+        out["sessions"].append({"title": title, "gid": gid_m.group(1) if gid_m else "", "participants": participants, "progress": progress,
                                 "average": average, "sample": sample, "waiting": waiting})
     return out
 

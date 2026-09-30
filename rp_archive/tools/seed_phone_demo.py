@@ -80,7 +80,10 @@ def _demo_report(db, sid):
                {"day": "D1", "time": "22:30", "icon": "🎭", "label": "私约", "tag": "待开启", "place": "琴房", "partner": "沈知意", "progress": "", "wechat": False},
                {"day": "微信群", "time": "长期", "icon": "💬", "label": "微信群", "tag": "长期活跃", "place": "夜宵搭子", "partner": "体验者、林晚、周屿", "progress": "", "wechat": True}],
            "pending": {"pending": [{"gid": "5001", "type": "私约", "elapsed_min": 125, "over": True}], "rel": ["林晚"],
-                       "letters": [{"from": "沈知意", "wait_min": 42}]}}
+                       "letters": [{"from": "沈知意", "wait_min": 42}]},
+           "stats": {"replies": 86, "words": 12345, "avg_words": 143.5, "avg_min": 18.2, "fastest": 3, "slowest": 240},
+           "sessions": [{"gid": "5001", "type": "私约", "mode": "pair", "my_replies": 3, "my_words": 1240, "my_avg_words": 413,
+                         "my_avg_min": 15, "my_timed": 2, "members": []}]}
     # 更新时间写成很远的将来：演示季没有机器人，不然 10 分钟后就一直显示「有一阵子没同步」
     db.execute("INSERT INTO phone_reports (show_id, role, data, updated_at) VALUES (?, '体验者', ?, ?)",
                (sid, json.dumps(rep, ensure_ascii=False), int(time.time() * 1000) + 10 * 365 * 86400 * 1000))

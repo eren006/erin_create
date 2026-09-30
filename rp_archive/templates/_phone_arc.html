@@ -6,7 +6,14 @@
 .arc-overview strong { font-size: 22px; line-height: 1.2; font-weight: 650; font-variant-numeric: tabular-nums; }
 .arc-overview .arc-unit { font-size: 13px; color: var(--muted); }
 .arc-overview .arc-sample { margin-left: auto; font-size: 12px; color: var(--muted); text-align: right; }
+.arc-stats { list-style: none; margin: 0 0 16px; padding: 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--bg); }
+.arc-stat { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 11px 14px; border-top: .5px solid var(--line); }
+.arc-stat:first-child { border-top: 0; }
+.arc-stat span { font-size: 15px; }
+.arc-stat b { font-size: 17px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.arc-stat small { margin-left: 4px; font-size: 12px; font-weight: 400; color: var(--muted); }
 .arc-section { font-size: 14px; font-weight: 600; margin: 0 2px 6px; }
+.arc-hint { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 6px; }
 .arc-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--bg); }
 .arc-row { padding: 11px 14px; border-top: .5px solid var(--line); overflow-wrap: anywhere; }
 .arc-row:first-child { border-top: 0; }
@@ -28,6 +35,15 @@
     {% if arc_view.sample %}<span class="arc-sample">{{ arc_view.sample }}</span>{% endif %}
   </div>
   {% endif %}
+  {% set st = report.stats %}
+  {% if st %}
+  <h2 class="arc-section">字数统计 <small class="arc-hint">本季累计</small></h2>
+  <ul class="arc-stats">
+    <li class="arc-stat"><span>累计字数</span><b>{{ '{:,}'.format(st.words) }}<small>字</small></b></li>
+    <li class="arc-stat"><span>累计回复</span><b>{{ st.replies }}<small>次 · 平均每条 {{ st.avg_words|round|int }} 字</small></b></li>
+    <li class="arc-stat"><span>平均耗时</span><b>{{ st.avg_min|round|int }}<small>分钟{% if st.fastest is not none %} · 最快 {{ st.fastest }}{% endif %}{% if st.slowest is not none %} · 最慢 {{ st.slowest }}{% endif %}</small></b></li>
+  </ul>
+  {% endif %}
   {% if arc_view.sessions %}
   <h2 class="arc-section">进行中的场次 · {{ arc_view.sessions|length }}</h2>
   <ol class="arc-list">
@@ -43,7 +59,11 @@
         {% if due %}<span class="arc-chip is-due">待你回复 {{ parts[0][5:] }}</span>{% else %}<span class="arc-chip">{{ parts[0] }}</span>{% endif %}
       </div>
       {% if pg|length == 2 %}<div class="arc-line2"><span>本场回复　你 <b>{{ pg[0] }}</b> · {{ who }} <b>{{ pg[1] }}</b></span></div>{% endif %}
-      <div class="arc-line2"><span>平均回复 <b>{{ item.average }}</b> 分钟{% if item.sample %} · 基于 {{ item.sample }}{% endif %}</span></div>
+      {% set live = (report.sessions or []) | selectattr('gid', 'equalto', item.gid) | list %}
+      {% if live %}{% set lv = live[0] %}
+      <div class="arc-line2"><span>本场字数　<b>{{ '{:,}'.format(lv.my_words) }}</b> 字 · 平均 <b>{{ lv.my_avg_words }}</b> 字/段</span></div>
+      {% endif %}
+      <div class="arc-line2"><span>平均回复 <b>{{ item.average }}</b> 分钟</span></div>
       {% if parts|length > 1 %}<div class="arc-detail">{{ parts[1]|replace('；', '\n') }}</div>{% endif %}
     </li>
   {% endfor %}

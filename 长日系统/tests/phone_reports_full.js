@@ -22,7 +22,9 @@ set("b_confirmedSchedule", { "QQ:111": [
   { day: "D2", time: "20:00", subtype: "私约", place: "天台", partner: "周屿", status: "active", group: "5001" },
   { day: "D1", time: "14:00", subtype: "电话", place: "", partner: "沈知意", status: "ended", group: "5002", finalProgress: { "111": 12, "333": 10 } } ] });
 set("group_timers", { "5001": { platform: "QQ", subtype: "私约", timerMode: "turn_taking", participants: ["林晚", "周屿"], timeoutDuration: 3600000,
-  timerStatus: { "林晚": { status: "timing", startTime: now - 2 * 3600000, sessionReplies: 3 }, "周屿": { status: "replied", startTime: now, sessionReplies: 4 } } } });
+  timerStatus: { "林晚": { status: "timing", startTime: now - 2 * 3600000, sessionReplies: 3, sessionWords: 1240, sessionTimedReplies: 2, sessionReplyTimeMs: 30 * 60000 },
+                 "周屿": { status: "replied", startTime: now, sessionReplies: 4, sessionWords: 999 } } } });
+set("user_stats", { "QQ:111": { totalReplies: 86, totalWords: 12345, avgWords: 143.5, avgReplyTimeMin: 18.2, subtypeStats: { QQ: { "111": { fastestReply: 3, slowestReply: 240 } } } } });
 set("group_write_progress", { "5001": { "111": 3, "222": 4 } });
 set("wechat_groups", { QQ: { "6001": { status: "active", participants: ["林晚", "沈知意"], topic: "夜宵" } } });
 eval(src + "\n;globalThis.__t = { buildPhoneReports, cmd_view_schedule, cmdMyCounts, kvSet };");
@@ -39,6 +41,14 @@ assert.deepEqual(lin.timeline.map(e => e.day), ["D1", "D2", "微信群"]);
 assert.equal(lin.timeline[0].progress, "✍️ 最终段数：12v10");
 assert.ok(lin.timeline[1].tag.startsWith("进行中") && lin.timeline[1].tag.includes("未回") && lin.timeline[1].progress.includes("3v4"), JSON.stringify(lin.timeline[1]));
 assert.equal(lin.timeline[1].icon, "🎭"); assert.equal(lin.timeline[2].wechat, true);
+// 字数统计：本季累计来自 user_stats；进行中的场次带我自己的本场字数，别人的字数不上报
+assert.deepEqual(lin.stats, { replies: 86, words: 12345, avg_words: 143.5, avg_min: 18.2, fastest: 3, slowest: 240 });
+assert.equal(r["周屿"].stats, null);
+const ss = lin.sessions[0];
+assert.equal(ss.gid, "5001"); assert.equal(ss.my_replies, 3); assert.equal(ss.my_words, 1240); assert.equal(ss.my_avg_words, 413); assert.equal(ss.my_avg_min, 15); assert.equal(ss.my_timed, 2);
+assert.deepEqual(ss.members.map(m => [m.name, m.me, m.replies, m.status]), [["林晚", true, 3, "timing"], ["周屿", false, 4, "replied"]]);
+assert.ok(ss.members[0].wait_min >= 119 && ss.members[1].wait_min === null);
+assert.ok(!JSON.stringify(ss).includes("999"), "partner's words must not be uploaded");
 // 待回：5001 在等林晚、已超过 1 小时 → 超时
 assert.deepEqual(lin.pending.pending.map(p => [p.gid, p.over]), [["5001", true]]);
 assert.ok(lin.pending.pending[0].elapsed_min >= 119);

@@ -357,11 +357,6 @@ a { color: var(--link); text-decoration: none; }
 .stats-page .stats-tabs a[aria-current] { background: var(--theirs); color: var(--text); font-weight: 600; box-shadow: none; }
 .phone-watermark { flex-shrink: 0; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); text-align: center; color: var(--muted); font-size: 11px; letter-spacing: 2px; background: var(--bar); border-top: 1px solid var(--line); pointer-events: none; }
 .stats-card { padding: 12px 16px; }
-.pending-card { position: relative; }
-.pending-mute { margin: 8px 0 0; text-align: right; }
-.pending-card.is-muted { opacity: .7; }
-.pending-muted { margin: 12px 0; }
-.pending-muted summary { margin: 0 16px; font-size: 13px; color: var(--muted); cursor: pointer; }
 .stats-title { font-weight: 600; font-size: 15px; }
 .stats-line { font-size: 14px; color: var(--text); margin-top: 4px; line-height: 1.6; }
 .stats-table-wrap { margin: 10px 16px; overflow-x: auto; }
@@ -513,6 +508,24 @@ a { color: var(--link); text-decoration: none; }
 .stats-page .stats-tabs a { flex: 1; min-height: 34px; padding: 0 2px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font-size: 14px; box-shadow: none; }
 .stats-page .stats-tabs a[aria-current] { background: var(--bg); color: var(--text); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
 .stats-page .stats-tabs a:not([aria-current]):active { background: color-mix(in srgb, var(--bg) 50%, transparent); }
+
+/* 待回：分组列表，一项一行半，按钮在右边 */
+.pending-list { list-style: none; margin: 12px var(--gutter) 12px; padding: 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--bg); }
+.pending-row { display: flex; align-items: center; gap: 10px; padding: 10px 6px 10px 14px; border-top: .5px solid var(--line); }
+.pending-row:first-child { border-top: 0; }
+.pending-row.is-muted { opacity: .7; }
+.pending-body { flex: 1; min-width: 0; }
+.pending-line1 { display: flex; align-items: baseline; gap: 8px; line-height: 22px; }
+.pending-title { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.pending-chip { flex-shrink: 0; font-size: 12px; line-height: 20px; padding: 0 7px; border-radius: 10px; background: var(--theirs); color: var(--muted); font-variant-numeric: tabular-nums; }
+.pending-chip.is-due { background: #fff0eb; color: #9b3520; font-weight: 600; }
+.pending-line2 { margin-top: 1px; font-size: 13px; line-height: 20px; color: var(--muted); overflow-wrap: anywhere; }
+.pending-mute { margin: 0; flex-shrink: 0; }
+.pending-mute .quiet-button { padding: 0 8px; min-height: 40px; font-size: 13px; color: var(--muted); }
+.pending-muted { margin: 4px 0 12px; }
+.pending-muted .pending-list { margin-top: 8px; }
+.pending-muted summary { margin: 0 var(--gutter); font-size: 13px; color: var(--muted); cursor: pointer; }
+@media (prefers-color-scheme: dark) { .pending-chip.is-due { background: #351f20; color: #ffb4a0; } }
 </style>
 </head>
 <body>
@@ -957,30 +970,34 @@ a { color: var(--link); text-decoration: none; }
       {% if flash %}<div class="notice">{{ flash }}</div>{% endif %}
       {% set active = pending_items|rejectattr('dismissed')|list %}
       {% set muted = pending_items|selectattr('dismissed')|list %}
-      {% macro pending_card(item, restore) %}
+      {% macro pending_row(item, restore) %}
       {% set p = item.data %}
-      <article class="lm-letter lm-sent stats-card pending-card{{ ' is-muted' if restore }}">
-        {% if item.kind == 'session' %}
-        <div class="stats-title">{{ '🔴 已超时' if p.over else '⏳ 等待中' }} · {{ p.type }}</div>
-        <div class="stats-line">群 {{ p.gid }} · 已经弧了 {{ (p.elapsed_min // 60) ~ 'h' if p.elapsed_min >= 60 else '' }}{{ p.elapsed_min % 60 }}m</div>
-        {% elif item.kind == 'letter' %}
-        <div class="stats-title">✉️ 还没回的信</div>
-        <div class="stats-line">{{ p.from }} 给你写了信还没回 · 已经等了 {{ (p.wait_min // 60) ~ 'h' if p.wait_min >= 60 else '' }}{{ p.wait_min % 60 }}m</div>
-        {% else %}
-        <div class="stats-title">🔗 待回关系线</div>
-        <div class="stats-line">{{ p }} 已回复你的关系线，在群里发「查看关系线 {{ p }}」回复</div>
-        {% endif %}
+      {% set m = p.elapsed_min if item.kind == 'session' else (p.wait_min if item.kind == 'letter' else none) %}
+      <li class="pending-row{{ ' is-muted' if restore }}">
+        <div class="pending-body">
+          <div class="pending-line1">
+            {% if item.kind == 'session' %}<span class="pending-title">{{ p.type }}</span>
+            {% elif item.kind == 'letter' %}<span class="pending-title">✉️ {{ p.from }}</span>
+            {% else %}<span class="pending-title">🔗 {{ p }}</span>{% endif %}
+            {% if m is not none %}<span class="pending-chip{{ ' is-due' if item.kind == 'session' and p.over }}">{{ '已超时 ' if item.kind == 'session' and p.over else '等了 ' }}{{ (m // 60) ~ 'h' if m >= 60 else '' }}{{ m % 60 }}m</span>{% endif %}
+          </div>
+          <div class="pending-line2">
+            {% if item.kind == 'session' %}群 {{ p.gid }}
+            {% elif item.kind == 'letter' %}给你写了信，还没回
+            {% else %}已回复你的关系线 · 群里发「查看关系线 {{ p }}」回复{% endif %}
+          </div>
+        </div>
         <form method="post" action="{{ url_for('player_pending_dismiss') }}" class="pending-mute">
           <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="key" value="{{ item.key }}">
           <input type="hidden" name="action" value="{{ 'restore' if restore else 'dismiss' }}">
-          <button type="submit" class="quiet-button">{{ '恢复提醒' if restore else '暂不提醒' }}</button>
+          <button type="submit" class="quiet-button">{{ '恢复' if restore else '暂不提醒' }}</button>
         </form>
-      </article>
+      </li>
       {% endmacro %}
-      {% for item in active %}{{ pending_card(item, false) }}
-      {% else %}<div class="empty">🌙 {{ '其余的都设了暂不提醒' if muted else '当前没有等待你回复的事项' }}</div>{% endfor %}
+      {% if active %}<ol class="pending-list">{% for item in active %}{{ pending_row(item, false) }}{% endfor %}</ol>
+      {% else %}<div class="empty">🌙 {{ '其余的都设了暂不提醒' if muted else '当前没有等待你回复的事项' }}</div>{% endif %}
       {% if muted %}
-      <details class="pending-muted"><summary>已暂不提醒 · {{ muted|length }} 项</summary>{% for item in muted %}{{ pending_card(item, true) }}{% endfor %}</details>
+      <details class="pending-muted"><summary>已暂不提醒 · {{ muted|length }} 项</summary><ol class="pending-list">{% for item in muted %}{{ pending_row(item, true) }}{% endfor %}</ol></details>
       {% endif %}
       <p class="song-note">「暂不提醒」只是这一次不再提醒（首页的待回数也不算它），不会标成已回复；对方再回一轮会重新提醒。群里「我的待回」照旧会列出。</p>
       <p class="song-note">待进群、待退群和群名要实时问 QQ，这里看不到，在群里发「我的待回」查看。心动信投递情况在底部「心动信」里。</p>

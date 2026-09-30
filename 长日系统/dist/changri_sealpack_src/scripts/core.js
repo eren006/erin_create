@@ -12567,6 +12567,34 @@ function buildPhonePendingLite(platform, uid, roleName) {
     return { pending, rel, rel_n, letters };
 }
 
+// 「本场统计」里的本季累计（user_stats：每条有效回复实时累加，全季完整），网页弧长页的「字数统计」用
+function buildPhoneStats(platform, primary) {
+    const g = getUserStats()[`${platform}:${primary}`];
+    if (!g) return null;
+    const sub = g.subtypeStats?.[platform]?.[primary];
+    return { replies: g.totalReplies || 0, words: g.totalWords || 0, avg_words: g.avgWords || 0, avg_min: g.avgReplyTimeMin || 0,
+             fastest: sub?.fastestReply ?? null, slowest: sub?.slowestReply ?? null };
+}
+
+// 进行中的场次：每人本场回了几段、我自己写了多少字（别人的字数不上报，只给段数，同「我的弧长」）
+function buildPhoneSessions(platform, roleName) {
+    const now = Date.now(), out = [];
+    for (const [gid, t] of Object.entries(getGroupTimers())) {
+        const me = t.timerStatus?.[roleName];
+        if (!me || (t.platform && t.platform !== platform)) continue;
+        const timed = me.sessionTimedReplies || 0, replies = me.sessionReplies || 0, words = me.sessionWords || 0;
+        out.push({
+            gid, type: getCustomTypeLabel(t.subtype), mode: t.timerMode === "turn_taking" ? "pair" : "group",
+            members: Object.entries(t.timerStatus).map(([n, s]) => ({
+                name: n, me: n === roleName, replies: s.sessionReplies || 0, status: s.status,
+                wait_min: s.status === "timing" && s.startTime ? Math.floor((now - s.startTime) / 60000) : null })),
+            my_replies: replies, my_words: words, my_avg_words: replies ? Math.round(words / replies) : 0,
+            my_avg_min: timed ? Math.round(me.sessionReplyTimeMs / timed / 60000) : null, my_timed: timed
+        });
+    }
+    return out;
+}
+
 function buildPhoneReports(platform) {
     const priv = kvGet("a_private_group", {})[platform] || {};
     const gameDay = cachedGet("global_days") || "D0";
@@ -12581,6 +12609,8 @@ function buildPhoneReports(platform) {
                 day: gameDay,
                 counts: buildMyCountsText(gameDay, getDailyActivityCounts(gameDay, `${platform}:${primary}`)),
                 arc: buildArcLengthReport(platform, name, primary),
+                stats: buildPhoneStats(platform, primary),
+                sessions: buildPhoneSessions(platform, name),
                 timeline: view.allEvents.map(ev => ({ day: ev.day, time: ev.time, icon: ev.icon, label: ev.label, tag: ev.tag,
                                                       place: ev.place || "", partner: ev.partner || "", progress: (ev.progressText || "").trim(),
                                                       wechat: !!ev.isWechat })),
