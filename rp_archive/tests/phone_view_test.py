@@ -89,4 +89,12 @@ nc=app.test_client(); assert nc.get("/p/"+got["新人甲"]).status_code==302
 assert "还没有短信和礼物" in nc.get("/p/me").get_data(as_text=True)
 adm.post("/admin/phone_codes", data={"action":"delete","role":"新人乙"})
 assert "新人乙" not in adm.get("/admin/phone_codes").get_data(as_text=True)
+# 只有玩家入口强制 HTTPS，保留路径和查询串；本地仍可 HTTP
+secure = app.test_client()
+r = secure.get("/p/xxx?x=1", base_url="http://archive.changri.work")
+assert r.status_code == 301 and r.location == "https://archive.changri.work/p/xxx?x=1"
+assert secure.get("/p", base_url="http://127.0.0.1").status_code == 200
+assert secure.post("/api/phone/sync", base_url="http://archive.changri.work", json={}).status_code != 301
+with app.test_request_context("/", base_url="http://archive.changri.work"):
+    assert A._phone_base_url() == "https://archive.changri.work"
 print("ALL OK")

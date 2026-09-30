@@ -4830,6 +4830,17 @@ def _phone_current():
         session.pop("phone_code", None)
     return who
 
+def _phone_local():
+    return urlparse(request.host_url).hostname in ("localhost", "127.0.0.1")
+
+def _phone_base_url():
+    return request.host_url.rstrip("/") if _phone_local() else "https://" + request.host
+
+@app.before_request
+def _phone_require_https():
+    if (request.path == "/p" or request.path.startswith("/p/")) and not _phone_local() and request.scheme == "http":
+        return redirect(request.url.replace("http://", "https://", 1), code=301)
+
 @app.after_request
 def _phone_security_headers(resp):
     if request.path == "/p" or request.path.startswith("/p/"):
@@ -5269,7 +5280,7 @@ def admin_phone_codes():
     if sync and sync["synced_at"]:
         sync_ago = max(0, int(time.time() * 1000) - sync["synced_at"]) // 60000
     return render_template("admin_phone_codes.html", rows=rows, show=show,
-                           base_url=request.host_url.rstrip("/"),
+                           base_url=_phone_base_url(),
                            web_send=_phone_web_send_on(db, sid), sync_ago=sync_ago,
                            sync_fresh=bool(sync) and sync_ago is not None and sync_ago < 10,
                            zone=_schedule_zone(dict(show)))
