@@ -200,7 +200,7 @@ a { color: var(--link); text-decoration: none; }
     <div class="right">{% if status.can %}<a href="{{ url_for('player_phone_new') }}" aria-label="新信息" style="font-size:22px;line-height:1;">✎</a>{% endif %}</div>
   </header>
   {% include "_phone_quota.html" %}
-  <div class="scroll list">
+  <div class="scroll list" id="inbox">
     {% for t in threads %}
     <a class="row" href="{{ url_for('player_phone_thread', other=t.other) }}">
       <div class="avatar" data-name="{{ t.other }}">{{ t.other[:1] }}</div>
@@ -239,7 +239,7 @@ a { color: var(--link); text-decoration: none; }
   </header>
   {% include "_phone_quota.html" %}
   <div class="scroll" id="scroll">
-    <div class="chat">
+    <div class="chat" data-received-ts="{{ msgs|rejectattr('mine')|map(attribute='ts')|max|default(0) }}">
       {% for m in msgs %}
         {% if m.show_time %}<div class="stamp">{% if m.day_break %}<b>{{ m.day_break }}</b> {% endif %}{{ m.time }}</div>{% endif %}
         <div class="msg {{ 'mine' if m.mine else 'theirs' }}">
@@ -312,5 +312,48 @@ a { color: var(--link); text-decoration: none; }
     el.style.background = palette[h % palette.length];
   });
 </script>
+{% if mode in ('inbox', 'thread') %}
+<script>
+(function () {
+  var revision = null, busy = false;
+  function avatars() {
+    document.querySelectorAll('.avatar[data-name]').forEach(function (el) {
+      var h = 0, s = el.dataset.name;
+      for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+      el.style.background = palette[h % palette.length];
+    });
+  }
+  async function poll() {
+    if (document.hidden || busy) return;
+    busy = true;
+    try {
+      var response = await fetch({{ url_for('player_phone_poll')|tojson }}, {cache: 'no-store'});
+      if (response.status === 401) { window.location.assign({{ url_for('phone_code_entry')|tojson }}); return; }
+      if (!response.ok) return;
+      var data = await response.json();
+      if (data.revision === revision) return;
+      var page = await fetch(window.location.href, {cache: 'no-store'});
+      if (!page.ok || page.redirected) return;
+      var doc = new DOMParser().parseFromString(await page.text(), 'text/html');
+      if (document.hidden) return;
+      var selector = {{ ("#inbox" if mode == "inbox" else ".chat")|tojson }};
+      var current = document.querySelector(selector), next = doc.querySelector(selector);
+      if (!current || !next) return;
+      // 只替换消息区域，输入框、光标、输入法状态都保留。
+      current.replaceWith(next);
+      var sc = document.getElementById('scroll');
+      if (sc) sc.scrollTop = sc.scrollHeight;
+      avatars();
+      document.dispatchEvent(new Event('phone:updated'));
+      revision = data.revision;
+    } catch (_) {
+      // 网络恢复后下一轮再试。
+    } finally { busy = false; }
+  }
+  setInterval(poll, 15000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
+})();
+</script>
+{% endif %}
 </body>
 </html>

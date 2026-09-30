@@ -4737,6 +4737,7 @@ def _phone_threads(db, sid, owner):
         if not m or not m["other"]:
             continue
         t = threads.setdefault(m["other"], {"other": m["other"]})
+        t["received_ts"] = max(t.get("received_ts", 0), m["ts"] if not m["mine"] else 0)
         t["last"] = m  # 按时间升序遍历，最后一条就是最新
     threads = sorted(threads.values(), key=lambda t: -t["last"]["ts"])
     for t in threads:
@@ -4874,8 +4875,26 @@ def player_phone_inbox():
         return redirect(url_for("phone_code_entry"))
     sid, owner = who
     db = get_db()
-    return render_template("phone.html", mode="inbox", owner=owner,
+    return render_template("phone.html", mode="inbox", owner=owner, sid=sid,
                            threads=_phone_threads(db, sid, owner), status=_phone_status(db, sid, owner))
+
+@app.route("/p/me/poll")
+def player_phone_poll():
+    who = _phone_current()
+    if not who:
+        return jsonify(error="手机登录已失效"), 401
+    sid, owner = who
+    # 先翻译玩家视角，再生成版本和概况；隐藏事件不能触发可观察的变化。
+    views = [m for e in _phone_events(get_db(), sid)
+             if (m := _phone_view_of(e, owner)) and m["other"]]
+    visible = [{k: v for k, v in m.items() if k != "id"} for m in views]
+    revision = hashlib.sha256(json.dumps(visible, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+    incoming = {}
+    for m in views:
+        if not m["mine"]:
+            incoming[m["other"]] = max(incoming.get(m["other"], 0), m["ts"])
+    return jsonify(latest=max((m["ts"] for m in views), default=0),
+                   revision=revision, incoming=incoming)
 
 @app.route("/p/me/<other>")
 def player_phone_thread(other):
@@ -4887,7 +4906,7 @@ def player_phone_thread(other):
     st = _phone_status(db, sid, owner)
     # 能回复的对象必须在角色名单里（「未知号码」、名单外的名字不能回）
     can_reply = st["can"] and other in _phone_roster(_phone_sync_row(db, sid)) and other != owner
-    return render_template("phone.html", mode="thread", owner=owner, other=other,
+    return render_template("phone.html", mode="thread", owner=owner, sid=sid, other=other,
                            msgs=_phone_msgs(db, sid, owner, other), status=st, can_reply=can_reply,
                            csrf=_phone_csrf(), flash=session.pop("phone_flash", None),
                            draft=session.pop("phone_draft", ""), draft_kind=session.pop("phone_draft_kind", "sms"))

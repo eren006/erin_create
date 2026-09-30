@@ -119,4 +119,19 @@ fresh.set_cookie(A._PHONE_COOKIE, expired, path="/p")
 assert fresh.get("/p/me").status_code == 302
 r = app.test_client().get("/p/" + codes["林晚"], base_url="https://archive.changri.work")
 assert "Secure" in r.headers["Set-Cookie"]
+# 轮询使用同一玩家视角，不能泄露真发件人、原文或丢失礼物
+poller, _ = inbox("周屿")
+r = poller.get("/p/me/poll?since=0")
+assert r.status_code == 200 and r.headers["Cache-Control"] == "no-store"
+data = r.get_json()
+assert set(data["incoming"]) == {"林晚"} and data["latest"] == T + 3 * 60000
+assert "沈知意" not in r.get_data(as_text=True)
+before = data["revision"]
+c.execute("UPDATE extra_events SET content='隐藏变化' WHERE type='gift'"); c.commit()
+assert poller.get("/p/me/poll").get_json()["revision"] == before
+c.execute("UPDATE extra_events SET timestamp=timestamp+1 WHERE type='sms' AND to_role='周屿'"); c.commit()
+assert poller.get("/p/me/poll").get_json()["revision"] != before
+assert app.test_client().get("/p/me/poll").status_code == 401
+adm.post("/admin/phone_codes", data={"action":"reset", "role":"周屿"})
+assert poller.get("/p/me/poll").status_code == 401
 print("ALL OK")
