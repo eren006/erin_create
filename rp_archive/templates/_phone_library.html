@@ -28,24 +28,47 @@
 </div>
 {% else %}
 <div class="scroll profile-page">
-  <div class="profile-name"><div class="avatar big" data-name="{{ owner }}">{{ owner[:1] }}</div><h1>{{ disp(owner) if my_nick else owner }}</h1><p>这是你的私人手机</p></div>
+  <section class="pf-card">
+    <div class="avatar big" data-name="{{ owner }}">{{ owner[:1] }}</div>
+    <div class="pf-who"><h1>{{ my_nick or owner }}</h1>{% if my_nick %}<p>{{ owner }}</p>{% endif %}</div>
+  </section>
   {% if flash %}<div class="notice profile-flash">{{ flash }}</div>{% endif %}
-  <form class="nick-form" method="post" action="{{ url_for('player_nickname') }}">
+  <form class="pf-group pf-nick" method="post" action="{{ url_for('player_nickname') }}">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <label for="nickInput">微信名</label>
-    <div class="nick-row">
-      <input id="nickInput" name="nick" maxlength="{{ nick_max }}" value="{{ my_nick }}" placeholder="不填就显示「{{ owner }}」" autocomplete="off">
-      <button type="submit" class="quiet-button">保存</button>
-    </div>
-    <p class="nick-hint">别人会看到「{{ my_nick or '微信名' }}（{{ owner }}）」。想去掉就清空再保存。</p>
+    <input id="nickInput" name="nick" maxlength="{{ nick_max }}" value="{{ my_nick }}" placeholder="不填就显示「{{ owner }}」" autocomplete="off">
+    <button type="submit" class="quiet-button">保存</button>
   </form>
-  <a class="profile-item" href="{{ url_for('player_stats') }}">时间线与统计 <span>›</span></a>
-  <button class="profile-item" id="appearanceOpen" type="button" aria-haspopup="dialog">外观与阅读字号 <span>›</span></button>
-  <a class="profile-item" href="{{ url_for('player_phone_library', view='saved') }}">本机收藏 <span>›</span></a>
-  <a class="profile-item" href="{{ url_for('player_moments', mine=1) }}">我的朋友圈 <span>›</span></a>
-  <a class="profile-item" href="{{ url_for('player_shop', view='book') }}">礼品店 · 图鉴 <span>›</span></a>
-  <a class="profile-item" href="{{ url_for('phone_guide') }}">使用指南 <span>›</span></a>
-  <p class="library-note">主题、字号和收藏只保存在这台设备，按本季角色区分。</p>
-  <form method="post" action="{{ url_for('player_phone_logout') }}"><button class="profile-item" type="submit">退出这部手机 <span>›</span></button></form>
+  <div class="pf-group">
+    <a class="pf-row" href="{{ url_for('player_stats') }}"><span class="tile">📊</span><span class="name">时间线与统计</span><span class="chev" aria-hidden="true">›</span></a>
+    <a class="pf-row" href="{{ url_for('player_moments', mine=1) }}"><span class="tile">📷</span><span class="name">我的朋友圈</span><span class="chev" aria-hidden="true">›</span></a>
+    <a class="pf-row" href="{{ url_for('player_phone_library', view='saved') }}"><span class="tile">⭐</span><span class="name">本机收藏</span><span class="chev" aria-hidden="true">›</span></a>
+    <a class="pf-row" href="{{ url_for('player_shop', view='book') }}"><span class="tile">📖</span><span class="name">礼品图鉴</span><span class="chev" aria-hidden="true">›</span></a>
+  </div>
+  <div class="pf-group">
+    <button class="pf-row" id="appearanceOpen" type="button" aria-haspopup="dialog"><span class="tile">🎨</span><span class="name">头像与外观</span><span class="chev" aria-hidden="true">›</span></button>
+    <a class="pf-row" href="{{ url_for('phone_guide') }}"><span class="tile">📱</span><span class="name">使用指南</span><span class="chev" aria-hidden="true">›</span></a>
+  </div>
+  <form class="pf-group" method="post" action="{{ url_for('player_phone_logout') }}"><button class="pf-row pf-out" type="submit">退出这部手机</button></form>
+  <style>
+  .profile-page { padding-bottom: 28px; }
+  .pf-card { display: flex; align-items: center; gap: 14px; margin: var(--gap, 12px) var(--gutter, 18px) 0; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); }
+  .pf-card .avatar.big { flex: none; width: 60px; height: 60px; font-size: 26px; margin: 0; }
+  .pf-who { min-width: 0; }
+  .pf-who h1 { margin: 0; font-size: 20px; line-height: 26px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pf-who p { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+  .pf-group { display: block; margin: 14px var(--gutter, 18px) 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--bg); }
+  .pf-nick { display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 16px; }
+  .pf-nick label { flex: none; font-size: 16px; font-weight: 500; }
+  .pf-nick input { flex: 1; min-width: 0; height: 40px; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 16px; text-align: right; outline: none; }
+  .pf-nick input::placeholder { color: var(--muted); }
+  .pf-nick .quiet-button { flex: none; min-height: 40px; padding: 0 12px; font-size: 15px; font-weight: 600; }
+  .pf-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 0 14px; border: 0; border-bottom: .5px solid var(--line); background: transparent; color: var(--text); text-decoration: none; font: inherit; text-align: left; cursor: pointer; box-sizing: border-box; }
+  .pf-row:last-child { border-bottom: 0; }
+  .pf-row .tile { flex: none; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 9px; background: var(--theirs); font-size: 18px; }
+  .pf-row .name { flex: 1; font-size: 16px; font-weight: 500; }
+  .pf-row .chev { color: var(--muted); font-size: 22px; line-height: 1; }
+  .pf-out { justify-content: center; color: #c0392b; font-size: 16px; font-weight: 500; }
+  </style>
 </div>
 {% endif %}

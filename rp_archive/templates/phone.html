@@ -252,11 +252,13 @@ a { color: var(--link); text-decoration: none; }
 .compose-note { text-align: center; font-size: 12px; color: var(--muted); padding: 10px 16px calc(env(safe-area-inset-bottom) + 10px); border-top: .5px solid var(--line); }
 
 /* 本机外观：背景跟随系统明暗，主题色均满足白字 AA 对比度。 */
-.phone { --wall-paper: #f7f3eb; --wall-mist: #eef3f7; --wall-sage: #eff4ef; --wall-rose: #f8f0f2; --chat-bg: var(--bg); }
+.phone { --wall-paper: #f2eadb; --wall-mist: #e4edf5; --wall-sage: #e5efe7; --wall-rose: #f5e3e9; --chat-bg: var(--bg); }
 .phone[data-wall="paper"] { --chat-bg: var(--wall-paper); }
 .phone[data-wall="mist"] { --chat-bg: var(--wall-mist); }
 .phone[data-wall="sage"] { --chat-bg: var(--wall-sage); }
 .phone[data-wall="rose"] { --chat-bg: var(--wall-rose); }
+/* 选了底色后，头部和底栏跟着底色调深一点，和页面、白色卡片分得开 */
+.phone[data-wall="paper"], .phone[data-wall="mist"], .phone[data-wall="sage"], .phone[data-wall="rose"] { --bar: color-mix(in srgb, var(--chat-bg) 90%, var(--text) 10%); --line: color-mix(in srgb, var(--chat-bg) 82%, var(--text) 18%); }
 @media (prefers-color-scheme: dark) {
   .phone { --wall-paper: #201e1a; --wall-mist: #171e25; --wall-sage: #191f1b; --wall-rose: #241c20; }
 }
