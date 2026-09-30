@@ -1498,6 +1498,19 @@ def _migrate(conn):
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_moments_show ON moments(show_id, deleted, id)")
+    # 小游戏全服排行榜：不挂 show/tenant 外键，季度结束、激活码失效后名字和分数照样永久留在榜上
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS game_scores (
+            game       TEXT    NOT NULL,
+            show_id    INTEGER NOT NULL,
+            role_name  TEXT    NOT NULL,
+            label      TEXT    NOT NULL,
+            score      INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (game, show_id, role_name)
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_game_scores_rank ON game_scores(game, score DESC, updated_at)")
     # 删图片 = 删文件 + deleted_at 置时间，行留着：那条朋友圈照样在，图片位置显示「图片已删除」
     conn.execute("""
         CREATE TABLE IF NOT EXISTS moment_images (
@@ -6423,6 +6436,98 @@ def player_moments():
                            img_used=_moment_player_used(db, sid, owner), img_quota=quota, tenant_full=tenant_full,
                            max_images=_MOMENT_MAX_IMAGES, max_text=_MOMENT_MAX_TEXT, max_comment=_MOMENT_MAX_COMMENT,
                            latest_ts=(posts[0]["created_at"] if posts and not before and not mine_only else 0))
+
+# ── 小游戏 ──────────────────────────────────────────────────────────────────────
+# score_per_sec / min_secs 只是挡手滑和乱刷的粗略上限，分数本来就在前端算，不追求防作弊
+_GAMES = {
+    "2048":  {"name": "2048",   "icon": "🔢", "desc": "滑动合并方块，越大越好", "unit": "分", "score_per_sec": 600, "min_secs": 8},
+    "snake": {"name": "贪吃蛇", "icon": "🐍", "desc": "吃得越多分越高，别撞墙",   "unit": "分", "score_per_sec": 40,  "min_secs": 5},
+    "whack": {"name": "打地鼠", "icon": "🔨", "desc": "30 秒内敲中多少只",         "unit": "只", "score_per_sec": 7,   "min_secs": 29},
+}
+
+def _game_board(db, game, sid, owner, limit=50):
+    rows = db.execute("SELECT show_id, role_name, label, score FROM game_scores WHERE game=? "
+                      "ORDER BY score DESC, updated_at ASC LIMIT ?", (game, limit)).fetchall()
+    board = [{"rank": i + 1, "label": r["label"], "score": r["score"],
+              "me": r["show_id"] == sid and r["role_name"] == owner} for i, r in enumerate(rows)]
+    mine = db.execute("SELECT score FROM game_scores WHERE game=? AND show_id=? AND role_name=?",
+                      (game, sid, owner)).fetchone()
+    my_rank = None
+    if mine:
+        my_rank = 1 + db.execute(
+            "SELECT COUNT(*) FROM game_scores WHERE game=? AND (score > ? OR (score = ? AND updated_at < "
+            "(SELECT updated_at FROM game_scores WHERE game=? AND show_id=? AND role_name=?)))",
+            (game, mine["score"], mine["score"], game, sid, owner)).fetchone()[0]
+    return board, (mine["score"] if mine else None), my_rank
+
+@app.route("/p/me/games")
+@app.route("/p/me/games/<game>")
+def player_games(game=None):
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    if game is not None and game not in _GAMES:
+        return redirect(url_for("player_games"))
+    db = get_db()
+    if game:
+        session["game_start_" + game] = time.time()
+    summary = {}
+    for g in _GAMES:
+        _, best, rank = _game_board(db, g, sid, owner, limit=1)
+        summary[g] = {"best": best, "rank": rank}
+    board, best, rank = _game_board(db, game, sid, owner) if game else ([], None, None)
+    return render_template("phone.html", mode="games", owner=owner, sid=sid, csrf=_phone_csrf(),
+                           phone_admin=(owner == PHONE_ADMIN), games=_GAMES, game=game, summary=summary,
+                           board=board, my_best=best, my_rank=rank)
+
+@app.route("/p/me/games/<game>/score", methods=["POST"])
+def player_game_score(game):
+    ok_, err = _moment_guard()
+    if err:
+        return err
+    sid, owner, _ = ok_
+    g = _GAMES.get(game)
+    if not g:
+        return _moment_json(False, "没有这个游戏")
+    try:
+        score = int(request.get_json(silent=True, force=True).get("score"))
+    except (TypeError, ValueError, AttributeError):
+        return _moment_json(False, "分数不对")
+    started = session.get("game_start_" + game)
+    if not started:
+        return _moment_json(False, "请重新进入游戏再提交")
+    elapsed = time.time() - started
+    if score < 0 or elapsed < g["min_secs"] or score > max(50, elapsed * g["score_per_sec"]):
+        return _moment_json(False, "这个分数好像不太对，没有记入排行榜")
+    # 每次提交后重新计时：一局提交一次，再玩要重新开局（前端「再来一局」会刷新计时）
+    session["game_start_" + game] = time.time()
+    db = get_db()
+    nicks = _nick_map(db, sid)
+    label = f"{nicks[owner]}（{owner}）" if nicks.get(owner) else owner
+    now = int(time.time() * 1000)
+    cur = db.execute("SELECT score FROM game_scores WHERE game=? AND show_id=? AND role_name=?", (game, sid, owner)).fetchone()
+    new_best = not cur or score > cur["score"]
+    if not cur:
+        db.execute("INSERT INTO game_scores (game, show_id, role_name, label, score, updated_at) VALUES (?,?,?,?,?,?)",
+                   (game, sid, owner, label, score, now))
+    elif new_best:
+        db.execute("UPDATE game_scores SET score=?, label=?, updated_at=? WHERE game=? AND show_id=? AND role_name=?",
+                   (score, label, now, game, sid, owner))
+    else:
+        db.execute("UPDATE game_scores SET label=? WHERE game=? AND show_id=? AND role_name=?", (label, game, sid, owner))
+    db.commit()
+    _, best, rank = _game_board(db, game, sid, owner, limit=1)
+    return _moment_json(True, new_best=new_best, best=best, rank=rank)
+
+@app.route("/p/me/games/<game>/restart", methods=["POST"])
+def player_game_restart(game):
+    ok_, err = _moment_guard()
+    if err:
+        return err
+    if game in _GAMES:
+        session["game_start_" + game] = time.time()
+    return _moment_json(True)
 
 @app.route("/p/me/moments/img/<int:image_id>")
 def player_moment_image(image_id):

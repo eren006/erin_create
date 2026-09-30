@@ -1,0 +1,240 @@
+{# 小游戏：列表页 + 三个游戏（2048 / 贪吃蛇 / 打地鼠）+ 全服永久排行榜 #}
+<style>
+.gm-list { padding: var(--gap, 12px) var(--gutter, 18px); display: grid; gap: 10px; }
+.gm-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; color: var(--text); text-decoration: none; background: var(--bg); }
+.gm-card .ic { font-size: 28px; width: 40px; text-align: center; }
+.gm-card .tx { flex: 1; min-width: 0; }
+.gm-card .tx b { display: block; font-size: 16px; }
+.gm-card .tx span { font-size: 12px; color: var(--muted); }
+.gm-card .bs { font-size: 12px; color: var(--muted); text-align: right; white-space: nowrap; }
+.gm-note { padding: 10px var(--gutter, 18px) 0; font-size: 12px; color: var(--muted); line-height: 1.7; }
+.gm-stage { padding: 12px var(--gutter, 18px) 0; display: flex; flex-direction: column; align-items: center; }
+.gm-hud { display: flex; gap: 8px; width: 100%; max-width: 360px; margin-bottom: 10px; }
+.gm-hud div { flex: 1; text-align: center; border: 1px solid var(--line); border-radius: 10px; padding: 6px 4px; font-size: 11px; color: var(--muted); }
+.gm-hud b { display: block; font-size: 18px; color: var(--text); }
+.gm-board { position: relative; width: 100%; max-width: 360px; aspect-ratio: 1; touch-action: none; user-select: none; -webkit-user-select: none; }
+.gm-over { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: rgba(0,0,0,.55); color: #fff; border-radius: 12px; text-align: center; padding: 12px; }
+.gm-over.on { display: flex; }
+.gm-over b { font-size: 22px; }
+.gm-btn { border: 0; border-radius: 10px; padding: 9px 18px; font: inherit; font-size: 14px; background: var(--mine); color: var(--mine-text); cursor: pointer; }
+.gm-btn.quiet { background: var(--theirs); color: var(--text); }
+.gm-actions { margin: 12px 0 4px; display: flex; gap: 8px; }
+/* 2048 */
+.g2048 { display: grid; grid-template: repeat(4, 1fr) / repeat(4, 1fr); gap: 8px; padding: 8px; background: var(--theirs); border-radius: 12px; width: 100%; height: 100%; box-sizing: border-box; }
+.g2048 i { display: flex; align-items: center; justify-content: center; border-radius: 8px; font-style: normal; font-weight: 700; font-size: clamp(18px, 7vw, 28px); background: rgba(128,128,140,.15); color: #3a3340; }
+.g2048 i[data-v="2"] { background: #efe8f6; } .g2048 i[data-v="4"] { background: #e3d6f0; }
+.g2048 i[data-v="8"] { background: #f4c7a4; } .g2048 i[data-v="16"] { background: #f2a776; }
+.g2048 i[data-v="32"] { background: #ef8a6a; color: #fff; } .g2048 i[data-v="64"] { background: #e5654a; color: #fff; }
+.g2048 i[data-v="128"], .g2048 i[data-v="256"], .g2048 i[data-v="512"] { background: #d9b24f; color: #fff; font-size: clamp(16px, 6vw, 24px); }
+.g2048 i[data-v="1024"], .g2048 i[data-v="2048"], .g2048 i.big { background: var(--mine); color: #fff; font-size: clamp(13px, 5vw, 20px); }
+/* 贪吃蛇 / 打地鼠 */
+.gm-canvas { width: 100%; height: 100%; border-radius: 12px; background: var(--theirs); display: block; }
+.gm-pad { display: grid; grid-template: repeat(2, 48px) / repeat(3, 64px); gap: 6px; margin-top: 12px; justify-content: center; }
+.gm-pad button { border: 1px solid var(--line); border-radius: 12px; background: var(--bg); color: var(--text); font-size: 20px; cursor: pointer; }
+.gm-pad .u { grid-column: 2; grid-row: 1; } .gm-pad .l { grid-column: 1; grid-row: 2; } .gm-pad .d { grid-column: 2; grid-row: 2; } .gm-pad .r { grid-column: 3; grid-row: 2; }
+.whack { display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr); gap: 10px; width: 100%; height: 100%; }
+.whack button { border: 0; border-radius: 50%; background: var(--theirs); font-size: clamp(28px, 11vw, 44px); cursor: pointer; padding: 0; box-shadow: inset 0 -6px 0 rgba(0,0,0,.12); -webkit-tap-highlight-color: transparent; }
+/* 榜 */
+.gm-rank { margin: 14px var(--gutter, 18px) 24px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.gm-rank h3 { margin: 0; padding: 10px 14px; font-size: 14px; border-bottom: .5px solid var(--line); }
+.gm-rank ol { list-style: none; margin: 0; padding: 0; }
+.gm-rank li { display: flex; gap: 10px; padding: 9px 14px; font-size: 14px; border-bottom: .5px solid var(--line); }
+.gm-rank li:last-child { border-bottom: 0; }
+.gm-rank li .n { width: 26px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.gm-rank li .w { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gm-rank li .s { font-variant-numeric: tabular-nums; font-weight: 600; }
+.gm-rank li.me { background: var(--theirs); }
+.gm-rank li.top .n { color: var(--tag); font-weight: 700; }
+.gm-empty { padding: 16px; text-align: center; color: var(--muted); font-size: 13px; }
+</style>
+
+{% if not game %}
+  <header class="bar">
+    <a class="back" href="{{ url_for('player_moments') }}">朋友圈</a>
+    <div class="title">小游戏</div>
+    <div class="right"></div>
+  </header>
+  <div class="scroll">
+    <div class="gm-list">
+      {% for key, g in games.items() %}
+      <a class="gm-card" href="{{ url_for('player_games', game=key) }}">
+        <div class="ic">{{ g.icon }}</div>
+        <div class="tx"><b>{{ g.name }}</b><span>{{ g.desc }}</span></div>
+        <div class="bs">{% if summary[key].best is not none %}最高 {{ summary[key].best }}{{ g.unit }}<br>第 {{ summary[key].rank }} 名{% else %}还没玩过{% endif %}</div>
+      </a>
+      {% endfor %}
+    </div>
+    <div class="gm-note">纯消遣，不影响剧情和任何道具。每个游戏有一张全服排行榜，名字和最高分会永久留在榜上，季度结束也不会消失。{% if phone_admin %}（管理身份只能看榜，不能提交分数。）{% endif %}</div>
+  </div>
+{% else %}
+  {% set g = games[game] %}
+  <header class="bar">
+    <a class="back" href="{{ url_for('player_games') }}">小游戏</a>
+    <div class="title">{{ g.icon }} {{ g.name }}</div>
+    <div class="right"></div>
+  </header>
+  <div class="scroll">
+    <div class="gm-stage">
+      <div class="gm-hud">
+        <div>本局<b id="gmScore">0</b></div>
+        <div id="gmMidBox">{% if game == 'whack' %}剩余<b id="gmMid">30</b>{% else %}我的最高<b id="gmMid">{{ my_best if my_best is not none else '—' }}</b>{% endif %}</div>
+        <div>我的排名<b id="gmRank">{{ my_rank if my_rank else '—' }}</b></div>
+      </div>
+      <div class="gm-board" id="gmBoard">
+        <div class="gm-over" id="gmOver"><b id="gmOverTitle">游戏结束</b><span id="gmOverMsg"></span><button class="gm-btn" id="gmAgain" type="button">再来一局</button></div>
+      </div>
+      {% if game == 'snake' %}
+      <div class="gm-pad" aria-label="方向键"><button class="u" data-d="u" aria-label="上">▲</button><button class="l" data-d="l" aria-label="左">◀</button><button class="d" data-d="d" aria-label="下">▼</button><button class="r" data-d="r" aria-label="右">▶</button></div>
+      {% endif %}
+      <div class="gm-note" style="padding:10px 0 0;text-align:center">{% if game == '2048' %}在方块上滑动（或方向键）合并相同数字。{% elif game == 'snake' %}滑动屏幕或点方向键控制，吃到 🍎 +10 分。{% else %}点击地鼠，30 秒内敲得越多越好。{% endif %}</div>
+    </div>
+    <div class="gm-rank">
+      <h3>全服排行榜 · {{ g.name }}</h3>
+      {% if board %}<ol id="gmBoardList">
+        {% for r in board %}<li class="{% if r.me %}me {% endif %}{% if r.rank <= 3 %}top{% endif %}"><span class="n">{{ r.rank }}</span><span class="w">{{ r.label }}</span><span class="s">{{ r.score }}</span></li>{% endfor %}
+      </ol>{% else %}<div class="gm-empty">还没有人上榜，来当第一个吧</div>{% endif %}
+    </div>
+  </div>
+  <script>
+  (function () {
+    var GAME = {{ game|tojson }}, CSRF = {{ csrf|tojson }}, CAN = {{ (not phone_admin)|tojson }};
+    var board = document.getElementById('gmBoard'), scoreEl = document.getElementById('gmScore'),
+        midEl = document.getElementById('gmMid'), rankEl = document.getElementById('gmRank'),
+        over = document.getElementById('gmOver'), overTitle = document.getElementById('gmOverTitle'),
+        overMsg = document.getElementById('gmOverMsg'), again = document.getElementById('gmAgain');
+    var score = 0, running = false, stop = null;
+
+    function post(path, body) {
+      return fetch('/p/me/games/' + GAME + path, { method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF': CSRF }, body: JSON.stringify(body || {}) })
+        .then(function (r) { return r.json(); }).catch(function () { return { ok: false, msg: '网络不通，分数没有提交' }; });
+    }
+    function setScore(v) { score = v; scoreEl.textContent = v; }
+    function finish(title) {
+      if (!running) return;
+      running = false; if (stop) stop();
+      overTitle.textContent = title; overMsg.textContent = score > 0 && CAN ? '正在提交分数…' : '';
+      over.classList.add('on');
+      if (!score || !CAN) return;
+      post('/score', { score: score }).then(function (d) {
+        if (!d.ok) { overMsg.textContent = d.msg || '提交失败'; return; }
+        overMsg.textContent = (d.new_best ? '🎉 新纪录 ' : '本局 ') + score + '　全服第 ' + d.rank + ' 名';
+        if (GAME !== 'whack') midEl.textContent = d.best;
+        rankEl.textContent = d.rank;
+      });
+    }
+    function esc(t) { var d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+    function swipe(el, cb) {
+      var x0, y0;
+      el.addEventListener('touchstart', function (e) { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
+      el.addEventListener('touchend', function (e) {
+        var t = e.changedTouches[0], dx = t.clientX - x0, dy = t.clientY - y0;
+        if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return;
+        cb(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'r' : 'l') : (dy > 0 ? 'd' : 'u'));
+      }, { passive: true });
+    }
+    var KEYS = { ArrowUp: 'u', ArrowDown: 'd', ArrowLeft: 'l', ArrowRight: 'r', w: 'u', s: 'd', a: 'l', d: 'r' };
+    var onDir = function () {};
+    document.addEventListener('keydown', function (e) {
+      var d = KEYS[e.key]; if (!d || !running) return; e.preventDefault(); onDir(d);
+    });
+
+    /* ───── 2048 ───── */
+    function game2048() {
+      var g = [], el = document.createElement('div'); el.className = 'g2048'; board.insertBefore(el, over);
+      function empty() { var r = []; g.forEach(function (v, i) { if (!v) r.push(i); }); return r; }
+      function spawn() { var e = empty(); if (e.length) g[e[Math.floor(Math.random() * e.length)]] = Math.random() < .9 ? 2 : 4; }
+      function draw() {
+        el.innerHTML = g.map(function (v) { return '<i' + (v ? ' data-v="' + v + '"' + (v > 2048 ? ' class="big"' : '') : '') + '>' + (v || '') + '</i>'; }).join('');
+      }
+      function line(a) {
+        var f = a.filter(Boolean), gain = 0;
+        for (var i = 0; i < f.length - 1; i++) if (f[i] === f[i + 1]) { f[i] *= 2; gain += f[i]; f.splice(i + 1, 1); }
+        while (f.length < 4) f.push(0);
+        return { l: f, gain: gain };
+      }
+      function move(d) {
+        var moved = false, gain = 0, n = g.slice();
+        for (var k = 0; k < 4; k++) {
+          var idx = [0, 1, 2, 3].map(function (j) { return d === 'l' ? k * 4 + j : d === 'r' ? k * 4 + 3 - j : d === 'u' ? j * 4 + k : (3 - j) * 4 + k; });
+          var res = line(idx.map(function (i) { return g[i]; }));
+          gain += res.gain;
+          idx.forEach(function (i, j) { if (n[i] !== res.l[j]) moved = true; n[i] = res.l[j]; });
+        }
+        if (!moved) return;
+        g = n; setScore(score + gain); spawn(); draw();
+        if (!canMove()) finish('没有可合并的了');
+      }
+      function canMove() {
+        if (empty().length) return true;
+        for (var i = 0; i < 16; i++) { if ((i % 4 < 3 && g[i] === g[i + 1]) || (i < 12 && g[i] === g[i + 4])) return true; }
+        return false;
+      }
+      function start() { g = new Array(16).fill(0); setScore(0); spawn(); spawn(); draw(); running = true; }
+      onDir = move; swipe(board, move);
+      return start;
+    }
+
+    /* ───── 贪吃蛇 ───── */
+    function gameSnake() {
+      var N = 16, cv = document.createElement('canvas'); cv.className = 'gm-canvas'; cv.width = cv.height = 320; board.insertBefore(cv, over);
+      var ctx = cv.getContext('2d'), C = cv.width / N, snake, dir, next, food, timer;
+      var css = getComputedStyle(document.querySelector('.phone') || document.body);
+      function place() { do { food = { x: Math.floor(Math.random() * N), y: Math.floor(Math.random() * N) }; } while (snake.some(function (s) { return s.x === food.x && s.y === food.y; })); }
+      function draw() {
+        ctx.clearRect(0, 0, cv.width, cv.height);
+        ctx.fillStyle = css.getPropertyValue('--mine').trim() || '#6854bc';
+        snake.forEach(function (s, i) { ctx.globalAlpha = i ? .8 : 1; ctx.fillRect(s.x * C + 1, s.y * C + 1, C - 2, C - 2); }); ctx.globalAlpha = 1;
+        ctx.font = (C - 4) + 'px serif'; ctx.textBaseline = 'top'; ctx.fillText('🍎', food.x * C, food.y * C + 1);
+      }
+      var V = { u: [0, -1], d: [0, 1], l: [-1, 0], r: [1, 0] }, OPP = { u: 'd', d: 'u', l: 'r', r: 'l' };
+      function turn(d) { if (d !== OPP[dir]) next = d; }
+      function tick() {
+        dir = next; var h = { x: snake[0].x + V[dir][0], y: snake[0].y + V[dir][1] };
+        if (h.x < 0 || h.y < 0 || h.x >= N || h.y >= N || snake.some(function (s) { return s.x === h.x && s.y === h.y; })) return finish('撞到了');
+        snake.unshift(h);
+        if (h.x === food.x && h.y === food.y) { setScore(score + 10); place(); } else snake.pop();
+        draw();
+      }
+      function start() {
+        snake = [{ x: 5, y: 8 }, { x: 4, y: 8 }, { x: 3, y: 8 }]; dir = next = 'r'; setScore(0); place(); draw(); running = true;
+        timer = setInterval(tick, 140); stop = function () { clearInterval(timer); };
+      }
+      onDir = turn; swipe(board, turn);
+      document.querySelectorAll('.gm-pad button').forEach(function (b) { b.addEventListener('click', function () { if (running) turn(b.dataset.d); }); });
+      return start;
+    }
+
+    /* ───── 打地鼠 ───── */
+    function gameWhack() {
+      var el = document.createElement('div'); el.className = 'whack'; board.insertBefore(el, over);
+      var holes = [], cur = -1, left, t1, t2;
+      for (var i = 0; i < 9; i++) { var b = document.createElement('button'); b.type = 'button'; b.setAttribute('aria-label', '洞'); (function (i) {
+        b.addEventListener('pointerdown', function (e) { e.preventDefault(); if (!running || i !== cur) return; setScore(score + 1); holes[i].textContent = ''; cur = -1; });
+      })(i); el.appendChild(b); holes.push(b); }
+      function pop() {
+        if (cur >= 0) holes[cur].textContent = '';
+        var n; do { n = Math.floor(Math.random() * 9); } while (n === cur);
+        cur = n; holes[n].textContent = '🐹';
+        // 越到后面地鼠停留越短
+        t2 = setTimeout(pop, Math.max(380, 800 - (30 - left) * 14));
+      }
+      function start() {
+        holes.forEach(function (h) { h.textContent = ''; }); cur = -1; setScore(0); left = 30; midEl.textContent = left; running = true;
+        pop();
+        t1 = setInterval(function () { left--; midEl.textContent = left; if (left <= 0) finish('时间到'); }, 1000);
+        stop = function () { clearInterval(t1); clearTimeout(t2); holes.forEach(function (h) { h.textContent = ''; }); };
+      }
+      return start;
+    }
+
+    var startFn = { '2048': game2048, snake: gameSnake, whack: gameWhack }[GAME]();
+    again.addEventListener('click', function () {
+      over.classList.remove('on');
+      (CAN ? post('/restart') : Promise.resolve()).then(startFn);
+    });
+    over.classList.add('on'); overTitle.textContent = '准备好了吗'; overMsg.textContent = ''; again.textContent = '开始';
+    again.addEventListener('click', function once() { again.textContent = '再来一局'; again.removeEventListener('click', once); });
+  })();
+  </script>
+{% endif %}
