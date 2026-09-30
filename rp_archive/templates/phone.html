@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
-<title>{% if mode == 'thread' %}{{ other }} · {% elif mode == 'public' %}公开播报 · {% elif mode == 'moments' %}朋友圈 · {% elif mode == 'song' %}点歌 · {% elif mode == 'library' %}{{ '收藏' if library_view == 'saved' else '检索' }} · {% elif mode == 'profile' %}我的手机 · {% endif %}短信</title>
+<title>{% if mode == 'thread' %}{{ other }} · {% elif mode == 'public' %}公开播报 · {% elif mode == 'moments' %}朋友圈 · {% elif mode == 'song' %}点歌 · {% elif mode == 'shop' %}礼品店 · {% elif mode == 'library' %}{{ '收藏' if library_view == 'saved' else '检索' }} · {% elif mode == 'profile' %}我的手机 · {% endif %}短信</title>
 <style>
 :root {
   --page: #d9d9e0;
@@ -175,6 +175,19 @@ a { color: var(--link); text-decoration: none; }
 }
 .compose textarea:focus { outline: none; border-color: var(--mine); }
 .compose.gift-mode textarea { border-color: var(--gift-line); background: var(--gift-bg); color: var(--gift-text); }
+/* 图鉴选择 */
+.gift-row { display: none; order: -1; flex-basis: 100%; gap: 6px; align-items: center; }
+.compose.gift-mode .gift-row { display: flex; }
+.gift-row .gift-name { flex: 1; }
+.preset-open, .preset-clear { flex-shrink: 0; height: 38px; border-radius: 19px; border: 1px solid var(--gift-line); background: var(--gift-bg);
+  color: var(--gift-text); font: inherit; font-size: 13px; padding: 0 12px; cursor: pointer; }
+.preset-clear { width: 38px; padding: 0; font-size: 16px; }
+.preset-panel { flex-direction: column; flex-wrap: nowrap; }
+.preset-item { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; text-align: left; white-space: normal !important;
+  border-radius: 12px !important; background: var(--gift-bg) !important; color: var(--gift-text) !important; border-color: var(--gift-line) !important; }
+.preset-item span { font-size: 12.5px; opacity: .8; }
+.preset-empty { font-size: 13px; color: var(--muted); padding: 6px 4px; }
+.compose textarea:disabled { opacity: .55; }
 /* 礼物模式多一栏「礼物」（名字），留言仍在下面的输入框里 */
 .compose .gift-name {
   display: none; order: -1; flex-basis: 100%; min-width: 0; height: 38px; font: inherit; font-size: 16px;
@@ -182,6 +195,7 @@ a { color: var(--link); text-decoration: none; }
 }
 .compose .gift-name:focus { outline: none; border-color: var(--gift-text); }
 .compose.gift-mode .gift-name { display: block; }
+.gift-row .gift-name { order: 0; flex-basis: auto; }
 .compose .icon {
   flex-shrink: 0; width: 38px; height: 38px; border-radius: 50%; border: none; cursor: pointer;
   font-size: 18px; line-height: 38px; text-align: center; padding: 0;
@@ -248,6 +262,20 @@ a { color: var(--link); text-decoration: none; }
 .appearance-preview .preview-reply { align-self: flex-start; background: var(--theirs); color: var(--theirs-text); }
 .local-hint { font-size: 11px; color: var(--muted); margin-top: 16px; }
 :focus-visible { outline: 2px solid var(--link); outline-offset: 3px; }
+.npc-tag { display: inline-block; margin-left: 5px; padding: 0 5px; border-radius: 5px; border: 1px solid var(--line);
+  font-size: 10px; font-weight: 600; line-height: 16px; color: var(--muted); vertical-align: 2px; }
+.shop-page { padding-bottom: 28px; }
+.shelf { margin: 14px 16px; padding: 16px; border-radius: 16px; background: var(--gift-bg); color: var(--gift-text); border: 1px solid var(--gift-line); }
+.shelf-say { font-size: 14px; }
+.shelf-gift { display: flex; flex-direction: column; gap: 2px; margin-top: 10px; }
+.shelf-gift span { font-size: 13.5px; line-height: 1.7; opacity: .85; }
+.shelf-note { margin-top: 10px; font-size: 12.5px; opacity: .8; }
+.shelf-go { margin: 16px auto; }
+.book { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 4px 16px 10px; }
+.book-item { padding: 10px 12px; border-radius: 12px; background: var(--bg); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 3px; }
+.book-item b { font-size: 13.5px; }
+.book-item span { font-size: 12px; color: var(--muted); line-height: 1.6; }
+.book-item.locked { opacity: .55; border-style: dashed; }
 .admin-note { font-size: 11.5px; color: #b42318; margin-top: 4px; line-height: 1.6; word-break: break-word; }
 .admin-del { border: 1px solid #b4231866; border-radius: 10px; background: none; color: #b42318; font: inherit; font-size: 11.5px; padding: 1px 8px; cursor: pointer; }
 .row.admin-role { display: flex; gap: 12px; align-items: center; padding: 10px 16px; }
@@ -354,6 +382,7 @@ a { color: var(--link); text-decoration: none; }
 </style>
 </head>
 <body>
+{% macro npc(name) %}{% if name in (phone_npcs or []) %}<span class="npc-tag">NPC</span>{% endif %}{% endmacro %}
 {% macro song_card(sg) %}
 <div class="song-card">
   {% if sg.cover %}<img class="sc-cover" src="{{ sg.cover }}{{ '?param=120y120' if sg.platform == '163' else '' }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% else %}<div class="sc-cover sc-nocover">🎵</div>{% endif %}
@@ -408,7 +437,7 @@ a { color: var(--link); text-decoration: none; }
     <a class="row" data-other="{{ t.other }}" data-received-ts="{{ t.received_ts }}" href="{{ purl('player_phone_thread', other=t.other, _as=admin_as) }}">
       <div class="avatar" data-name="{{ t.other }}">{{ t.other[:1] }}</div>
       <div class="body">
-        <div class="top"><span class="name">{{ t.other }}</span><span class="time">{{ t.last.game_day }} {{ t.time }}</span></div>
+        <div class="top"><span class="name">{{ t.other }}{{ npc(t.other) }}</span><span class="time">{{ t.last.game_day }} {{ t.time }}</span></div>
         <div class="preview">{{ t.preview }}</div>
       </div>
     </a>
@@ -474,7 +503,7 @@ a { color: var(--link); text-decoration: none; }
       <article class="moment" id="m{{ p.id }}" data-id="{{ p.id }}">
         <div class="avatar" data-name="{{ p.role_name }}">{{ p.role_name[:1] }}</div>
         <div class="mbody">
-          <div class="mname">{{ p.role_name }}</div>
+          <div class="mname">{{ p.role_name }}{{ npc(p.role_name) }}</div>
           {% if p.content %}<div class="mtext">{{ p.content }}</div>{% endif %}
           {% if p.images %}
           <div class="mimgs n{{ p.images|length }}">
@@ -749,12 +778,56 @@ a { color: var(--link); text-decoration: none; }
     {% for r in roles %}
     <div class="row admin-role">
       <a class="avatar" data-name="{{ r.name }}" href="{{ url_for('admin_phone_inbox', role=r.name) }}">{{ r.name[:1] }}</a>
-      <a class="body" href="{{ url_for('admin_phone_inbox', role=r.name) }}"><div class="top"><span class="name">{{ r.name }}</span><span class="time">{{ r.count }} 条</span></div></a>
+      <a class="body" href="{{ url_for('admin_phone_inbox', role=r.name) }}"><div class="top"><span class="name">{{ r.name }}{{ npc(r.name) }}</span><span class="time">{{ r.count }} 条</span></div></a>
       {% if (phone_avatars or {}).get(r.name) %}<button type="button" class="admin-del" data-admin-del="avatar:{{ r.name }}" data-desc="删除 {{ r.name }} 的头像？会换回名字头像。">删头像</button>{% endif %}
     </div>
     {% else %}
     <div class="empty">本季还没有角色</div>
     {% endfor %}
+  </div>
+
+{% elif mode == 'shop' %}
+  <header class="bar">
+    <a class="back" href="{{ url_for('player_phone_library', view='profile') }}">我的</a>
+    <div class="title">礼品店<small>图鉴 {{ owned_count|default(0) }}/{{ catalog|length }}</small></div>
+    <div class="right"></div>
+  </header>
+  <div class="scroll shop-page">
+    {% if why %}<div class="song-note">{{ why }}</div>
+    {% else %}
+      {% if shop %}
+      <section class="shelf">
+        {% if shop.state == 'new' %}
+          <p class="shelf-say">你在货架上发现了{{ '两件' if shop.gifts|length > 1 else '一件' }}没见过的东西。</p>
+          {% for g in shop.gifts %}<div class="shelf-gift"><b>{{ g.id }}「{{ g.name }}」</b><span>{{ g.content }}</span></div>{% endfor %}
+          <p class="shelf-note">✨ 收入图鉴 · {{ shop.owned }}/{{ shop.total }}</p>
+        {% elif shop.state == 'owned' %}
+          <p class="shelf-say">货架上还是它——</p>
+          <div class="shelf-gift"><b>{{ shop.current.id }}「{{ shop.current.name }}」</b><span>{{ shop.current.content }}</span></div>
+          <p class="shelf-note">已经在你的图鉴里了。大约 {{ shop.next_hours }} 小时后会换一件。</p>
+        {% elif shop.state == 'complete' %}
+          <p class="shelf-say">这里全部 {{ shop.total }} 件礼物，都已经在你的图鉴里了。</p>
+        {% elif shop.state == 'empty' %}
+          <p class="shelf-say">货架上什么都没有，过些时候再来。</p>
+        {% else %}
+          <p class="shelf-say">今天似乎还没上架，过一会儿再来看看。</p>
+        {% endif %}
+      </section>
+      {% else %}
+      <a class="song-cta shelf-go" href="{{ url_for('player_shop') }}">🛍️ 去货架看看</a>
+      {% endif %}
+      <div class="book">
+        {% for g in catalog %}
+        <div class="book-item{{ ' locked' if not g.owned }}">
+          <b>{{ g.id }} {{ g.name if g.owned else '？？？' }}</b>
+          <span>{{ g.content if g.owned else '还没收集到' }}</span>
+        </div>
+        {% else %}
+        <div class="empty">礼品店还没有上架任何礼物</div>
+        {% endfor %}
+      </div>
+      <p class="song-note">图鉴里的礼物可以在对话里点 🎁 →「📖 图鉴」送出去；群里发「礼品店」也是逛同一个货架。</p>
+    {% endif %}
   </div>
 
 {% elif mode == 'new' %}
@@ -767,7 +840,7 @@ a { color: var(--link); text-decoration: none; }
     {% for n in contacts %}
     <a class="row" href="{{ url_for('player_phone_thread', other=n) }}">
       <div class="avatar sm" data-name="{{ n }}">{{ n[:1] }}</div>
-      <div class="body"><div class="top"><span class="name">{{ n }}</span></div></div>
+      <div class="body"><div class="top"><span class="name">{{ n }}{{ npc(n) }}</span></div></div>
     </a>
     {% else %}
     <div class="empty">还没有可以发送的对象</div>
@@ -777,7 +850,7 @@ a { color: var(--link); text-decoration: none; }
 {% else %}
   <header class="bar">
     <a class="back" href="{{ purl('player_phone_inbox', _as=admin_as) }}">信息</a>
-    <div class="title">{{ other }}{% if admin_as %}<small>管理 · 以 {{ owner }} 的视角</small>{% endif %}</div>
+    <div class="title">{{ other }}{{ npc(other) }}{% if admin_as %}<small>管理 · 以 {{ owner }} 的视角</small>{% endif %}</div>
     <div class="right"></div>
     {% include "_phone_quota.html" %}
   </header>
@@ -824,7 +897,19 @@ a { color: var(--link); text-decoration: none; }
     <input type="hidden" name="kind" id="kind" value="{{ 'gift' if draft_kind == 'gift' and status.gift else 'sms' }}">
     {% if status.gift %}<button class="icon gift-toggle" type="button" id="giftToggle" title="送礼物" aria-label="切换送礼物">🎁</button>{% endif %}
     {% if stickers %}<button class="icon sticker-toggle" type="button" id="stickerToggle" aria-expanded="false" aria-controls="stickers" aria-label="表情">☺</button>{% endif %}
-    {% if status.gift %}<input class="gift-name" name="gift_name" id="giftName" maxlength="20" autocomplete="off" placeholder="礼物，比如：一束玫瑰" aria-label="礼物" value="{{ draft_gift }}">{% endif %}
+    {% if status.gift %}
+    <div class="stickers preset-panel" id="presetPanel" hidden>
+      {% for g in my_presets %}<button type="button" class="preset-item" data-pid="{{ g.id }}" data-name="{{ g.name }}"><b>{{ g.name }}</b><span>{{ g.content }}</span></button>
+      {% else %}<div class="preset-empty">图鉴还是空的，<a href="{{ url_for('player_shop') }}">先去礼品店逛逛</a></div>{% endfor %}
+    </div>
+    <input type="hidden" name="preset_id" id="presetId" value="">
+    <div class="gift-row">
+      <input class="gift-name" name="gift_name" id="giftName" maxlength="20" autocomplete="off" aria-label="礼物"
+             placeholder="{{ '从图鉴选一件礼物' if status.preset_only else '礼物，比如：一束玫瑰' }}" value="{{ '' if status.preset_only else draft_gift }}"{% if status.preset_only %} readonly{% endif %}>
+      <button type="button" class="preset-open" id="presetOpen" aria-expanded="false" aria-controls="presetPanel">📖 图鉴</button>
+      <button type="button" class="preset-clear" id="presetClear" hidden aria-label="改成自己写礼物">×</button>
+    </div>
+    {% endif %}
     <textarea name="text" id="text" rows="1" maxlength="500" placeholder="短信">{{ draft }}</textarea>
     <span class="remaining" id="remaining" aria-live="polite" hidden></span>
     <button class="icon send" type="submit" id="sendBtn" aria-label="发送">↑</button>
@@ -854,8 +939,14 @@ a { color: var(--link); text-decoration: none; }
         } catch (_) {}
       }
       function isGift() { return k.value === 'gift'; }
-      function ready() { return isGift() ? !!(gn && gn.value.trim()) : !!t.value.trim(); }
-      function place() { t.placeholder = isGift() ? '留言（可以不写）' : '短信'; }
+      var pid = document.getElementById('presetId'), pp = document.getElementById('presetPanel'),
+          po = document.getElementById('presetOpen'), pc = document.getElementById('presetClear'),
+          presetOnly = {{ 'true' if status.preset_only else 'false' }};
+      function ready() { return isGift() ? (presetOnly ? !!(pid && pid.value) : !!((pid && pid.value) || (gn && gn.value.trim()))) : !!t.value.trim(); }
+      function place() {
+        if (pid && pid.value && isGift()) { t.placeholder = '图鉴礼物不能附留言'; return; }
+        t.placeholder = isGift() ? '留言（可以不写）' : '短信';
+      }
       function grow() { t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 140) + 'px'; t.style.overflowY = t.scrollHeight > 140 ? 'auto' : 'hidden'; b.disabled = !ready();
         var remaining = document.getElementById('remaining'), left = 500 - t.value.length;
         remaining.hidden = left > 50; remaining.textContent = '剩 ' + left + ' 字';
@@ -863,11 +954,32 @@ a { color: var(--link); text-decoration: none; }
       if (!canSms) { k.value = 'gift'; f.classList.add('gift-mode'); if (g) g.style.display = 'none'; }
       if (g) g.addEventListener('click', function () {
         k.value = k.value === 'gift' ? 'sms' : 'gift';
+        if (!isGift() && pid && pid.value) { pid.value = ''; gn.value = ''; t.disabled = false; gn.readOnly = presetOnly; pc.hidden = true; }
+        if (pp) pp.hidden = true;
         f.classList.toggle('gift-mode', isGift()); place(); grow(); saveDraft();
         if (isGift() && gn) gn.focus(); else t.focus();
       });
       t.addEventListener('input', function () { grow(); saveDraft(); });
       if (gn) gn.addEventListener('input', function () { grow(); saveDraft(); });
+      // 从图鉴送：选中后礼物名锁定、留言框停用（跟群里送预设礼物一样不能写留言）
+      function pickPreset(id, name) {
+        pid.value = id || '';
+        gn.value = id ? name : '';
+        gn.readOnly = !!id || presetOnly;
+        t.disabled = !!id; if (id) t.value = '';
+        pc.hidden = !id || presetOnly;
+        pp.hidden = true; po.setAttribute('aria-expanded', 'false');
+        place(); grow();
+      }
+      if (po) {
+        po.addEventListener('click', function () { pp.hidden = !pp.hidden; po.setAttribute('aria-expanded', String(!pp.hidden)); });
+        if (presetOnly) gn.addEventListener('click', function () { pp.hidden = false; po.setAttribute('aria-expanded', 'true'); });
+        pp.addEventListener('click', function (e) {
+          var it = e.target.closest('.preset-item'); if (!it) return;
+          pickPreset(it.dataset.pid, it.dataset.name);
+        });
+        pc.addEventListener('click', function () { pickPreset('', ''); gn.focus(); });
+      }
       t.addEventListener('keydown', function (e) {
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.isComposing) {
           e.preventDefault(); f.requestSubmit();
@@ -954,7 +1066,7 @@ a { color: var(--link); text-decoration: none; }
 </dialog>
 {% endif %}
 
-{% if mode in ('inbox', 'thread', 'public', 'moments', 'new', 'song', 'library', 'profile') %}
+{% if mode in ('inbox', 'thread', 'public', 'moments', 'new', 'song', 'library', 'profile', 'shop') %}
 <dialog class="appearance notice-dialog" id="phoneNotice" aria-labelledby="phoneNoticeTitle">
   <div class="heading"><h2 id="phoneNoticeTitle">使用须知</h2></div>
   <div class="notice-body">
@@ -1050,7 +1162,7 @@ a { color: var(--link); text-decoration: none; }
     b.remove();
   });
 </script>
-{% if mode in ('inbox', 'thread', 'public', 'moments', 'song', 'library', 'profile', 'new') %}
+{% if mode in ('inbox', 'thread', 'public', 'moments', 'song', 'library', 'profile', 'new', 'shop') %}
 <script>
 (function () {
   var scope = {{ ([sid, owner]|tojson) }};

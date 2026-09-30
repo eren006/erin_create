@@ -12574,18 +12574,35 @@ async function phoneWebSync() {
             if (giftCds[key]) last.gift[name] = giftCds[key];
         }
 
+        // 礼品店/图鉴：网页手机也能逛礼品店、送预设礼物，跟群里共用同一个图鉴和今日货架
+        const sightings = kvGet("gift_sightings", {}), displaysRaw = kvGet("shop_personal_display", {});
+        const catalogs = {}, displays = {};
+        for (const uid of Object.keys(priv)) {
+            const name = nameOf(uid), key = `${platform}:${uid}`;
+            if (!name) continue;
+            if (sightings[key]?.unlocked_gifts?.length) catalogs[name] = sightings[key].unlocked_gifts;
+            if (displaysRaw[key]) displays[name] = displaysRaw[key];
+        }
+        const shop = {
+            refresh_hours: parseInt(cachedGet("shop_refresh_hours") || "24") || 24,
+            catalog_on_receive: cachedGet("shop_gift_catalog_on_receive") === "true"
+        };
+
         const after = parseInt(cachedGet("phone_web_cursor") || "0") || 0;
+        const shopAfter = parseInt(cachedGet("phone_shop_cursor") || "0") || 0;
         const songsDone = kvGet("phone_songs_done", []);
         const resp = await fetch(base + "/api/phone/sync", {
             method: "POST",
             headers: { "Content-Type": "application/json", "X-Archive-Token": token },
-            body: JSON.stringify({ after, songs_done: songsDone, snapshot: { game_day: gameDay, roster, rules, feature_off: featureOff, blocks, counts, last } })
+            body: JSON.stringify({ after, shop_after: shopAfter, songs_done: songsDone,
+                snapshot: { game_day: gameDay, roster, rules, feature_off: featureOff, blocks, counts, last, catalogs, displays, shop } })
         });
         if (!resp.ok) return;
         const data = await resp.json();
         // 存档站已经收到这批回报，清掉；再把这次给的待播点歌发到公告群
         if (songsDone.length) kvSet("phone_songs_done", []);
         phoneAnnounceSongs(platform, data.songs || []);
+        phoneApplyShopEvents(platform, data.shop_events || [], shopAfter);
         kvSet("phone_web_send", { on: !!data.web_send, url: `${base}/p`, at: Date.now() });
 
         const events = data.events || [];
@@ -12629,6 +12646,28 @@ async function phoneWebSync() {
     } finally {
         _phoneSyncBusy = false;
     }
+}
+
+// 网页礼品店的变化写回图鉴：新收的礼物加进 gift_sightings，货架比本地新就覆盖 shop_personal_display。
+// 游标 phone_shop_cursor 只往前走，同一条不会处理两次；加图鉴本来就去重，重复也无害。
+function phoneApplyShopEvents(platform, events, after) {
+    if (!events.length) return;
+    const sightings = kvGet("gift_sightings", {}), displays = kvGet("shop_personal_display", {});
+    let cursor = after;
+    for (const ev of events) {
+        cursor = Math.max(cursor, ev.id);
+        const rawUid = getUidByRoleName(platform, ev.role);
+        if (!rawUid) continue;
+        const key = `${platform}:${getPrimaryUid(platform, rawUid)}`;
+        if (!sightings[key]) sightings[key] = { unlocked_gifts: [] };
+        for (const gid of ev.unlocked || []) {
+            if (!sightings[key].unlocked_gifts.includes(gid)) sightings[key].unlocked_gifts.push(gid);
+        }
+        if (ev.display && (!displays[key] || ev.display.refreshedAt > (displays[key].refreshedAt || 0))) displays[key] = ev.display;
+    }
+    kvSet("gift_sightings", sightings);
+    kvSet("shop_personal_display", displays);
+    cachedSet("phone_shop_cursor", String(cursor));
 }
 
 // 点歌播报：存档站同步回包里 announced=0 的点歌（网页点的和群里点的都在这），发到公告群。

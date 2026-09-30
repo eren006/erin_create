@@ -25,6 +25,7 @@
   <button class="profile-item" id="appearanceOpen" type="button" aria-haspopup="dialog">外观与阅读字号 <span>›</span></button>
   <a class="profile-item" href="{{ url_for('player_phone_library', view='saved') }}">本机收藏 <span>›</span></a>
   <a class="profile-item" href="{{ url_for('player_moments', mine=1) }}">我的朋友圈 <span>›</span></a>
+  <a class="profile-item" href="{{ url_for('player_shop', view='book') }}">礼品店 · 图鉴 <span>›</span></a>
   <a class="profile-item" href="{{ url_for('phone_guide') }}">使用指南 <span>›</span></a>
   <p class="library-note">主题、字号和收藏只保存在这台设备，按本季角色区分。</p>
   <form method="post" action="{{ url_for('player_phone_logout') }}"><button class="profile-item" type="submit">退出这部手机 <span>›</span></button></form>

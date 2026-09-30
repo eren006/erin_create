@@ -1594,6 +1594,20 @@ def _migrate(conn):
         )
     """)
 
+    # ── 22. 网页礼品店/图鉴：网页上逛礼品店、收到预设礼物解锁图鉴的记录，机器人同步时取走写回自己的图鉴 ──
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS phone_shop_log (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            show_id      INTEGER NOT NULL,
+            role_name    TEXT    NOT NULL,
+            unlocked     TEXT    NOT NULL DEFAULT '[]',
+            display_gift TEXT    NOT NULL DEFAULT '',
+            refreshed_at INTEGER NOT NULL DEFAULT 0,
+            created_at   INTEGER NOT NULL
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_phone_shop_log ON phone_shop_log(show_id, role_name)")
+
     # ── 长日将尽许愿墙：独立的小功能，不挂在 tenant/superadmin 体系下 ──────────
     conn.execute("""
         CREATE TABLE IF NOT EXISTS changri_wishes (
@@ -5125,6 +5139,8 @@ def player_phone_thread(other):
                            msgs=_phone_msgs(db, sid, owner, other), status=st, can_reply=can_reply,
                            revision=_phone_revision(_phone_views(db, sid, owner)),
                            stickers=_phone_stickers(db, sid) if can_reply else [],
+                           my_presets=([{"id": i, **g} for i, g in _preset_gifts(db, sid).items()
+                                        if i in _shop_catalog(db, sid, _phone_sync_row(db, sid), owner)] if can_reply else []),
                            csrf=_phone_csrf(), sent=session.pop("phone_sent", False), flash=session.pop("phone_flash", None),
                            draft=session.pop("phone_draft", ""), draft_kind=session.pop("phone_draft_kind", "sms"),
                            draft_gift=session.pop("phone_draft_gift", ""))
@@ -5336,7 +5352,8 @@ def _phone_status(db, sid, role):
     if rules.get("sms_enabled", True):
         used, _ = _phone_usage(db, sid, sync, role, "sms", now)
         st["sms"] = (used, int((rules.get("chaos") or {}).get("dailyLimit", 5)))
-    if rules.get("gift_enabled", True) and int(rules.get("gift_mode", 0)) != 1:
+    st["preset_only"] = int(rules.get("gift_mode", 0)) == 1
+    if rules.get("gift_enabled", True):
         used, _ = _phone_usage(db, sid, sync, role, "gift", now)
         st["gift"] = (used, int(rules.get("gift_daily_limit", 100)))
     return st
@@ -5371,7 +5388,7 @@ def _phone_blocked(snap, blocker, blocked):
 
 _PHONE_GIFT_NAME_MAX = 20
 
-def _phone_send(db, sid, tid, owner, kind, to_name, text, gift_name=""):
+def _phone_send(db, sid, tid, owner, kind, to_name, text, gift_name="", preset_id=""):
     """执行一次网页发送，返回 (是否发出, 给发件人看的一句话)；静默拉黑也算「发出」，发件人看不出区别。规则与插件的
     handleNaturalChaosLetter / handleNaturalGift 对齐；群里才有意义的部分（公开播报、截信器/回音壁道具、
     撤回、礼品店编号礼物）不做。"""
@@ -5389,8 +5406,18 @@ def _phone_send(db, sid, tid, owner, kind, to_name, text, gift_name=""):
     roster = _phone_roster(sync)
     text = (text or "").strip()
     gift_name = (gift_name or "").strip()
+    preset_id = (preset_id or "").strip()
+    preset = None
+    if kind == "gift" and preset_id:
+        # 从图鉴送：跟群里「送礼 某人 #001」一样，只能送图鉴里有的，内容就是预设的那段文字，不能再写留言
+        preset = _preset_gifts(db, sid).get(preset_id)
+        if not preset:
+            return False, "❌ 这件礼物已经下架了"
+        if preset_id not in _shop_catalog(db, sid, sync, owner):
+            return False, f"🔒 「{preset.get('name', '')}」不在你的图鉴里，先去礼品店收集"
+        gift_name, text = f"「{preset.get('name', '')}」", preset.get("content", "")
     # 短信：内容必填；网页礼物：礼物名必填（20 字内），留言可以不填
-    if kind == "gift":
+    if kind == "gift" and not preset:
         if not gift_name:
             return False, "❌ 请写上送什么礼物"
         if len(gift_name) > _PHONE_GIFT_NAME_MAX:
@@ -5399,7 +5426,7 @@ def _phone_send(db, sid, tid, owner, kind, to_name, text, gift_name=""):
         return False, "❌ 内容不能为空"
     if len(text) > _PHONE_MAX_LEN:
         return False, f"❌ 太长了，最多 {_PHONE_MAX_LEN} 字"
-    if _blocked_hit(sid, owner, "礼物" if kind == "gift" else "短信", gift_name, text):
+    if not preset and _blocked_hit(sid, owner, "礼物" if kind == "gift" else "短信", gift_name, text):
         return False, BLOCKED_MSG
     if owner not in roster:
         return False, "❌ 找不到你的角色，等机器人下一次同步后再试"
@@ -5468,11 +5495,11 @@ def _phone_send(db, sid, tid, owner, kind, to_name, text, gift_name=""):
         _phone_insert_event(db, sid, tid, "sms", owner, true_to, text, info, now, game_day)
         return True, receipt
 
-    # gift：只有自定义礼物（礼品店编号礼物要查图鉴，图鉴只在机器人里）
+    # gift：自定义礼物，或从图鉴送预设礼物（「仅允许预设礼物」模式下只能从图鉴送）
     if not rules.get("gift_enabled", True):
         return False, "🎁 礼物功能已被禁用。"
-    if int(rules.get("gift_mode", 0)) == 1:
-        return False, "❌ 当前仅允许使用预设礼物，网页不能送"
+    if int(rules.get("gift_mode", 0)) == 1 and not preset:
+        return False, "❌ 当前只能送图鉴里的礼物"
     win = rules.get("gift_window")
     if win:
         h = datetime.now(TZ_BEIJING).hour
@@ -5505,8 +5532,110 @@ def _phone_send(db, sid, tid, owner, kind, to_name, text, gift_name=""):
     # 「一份特别的礼物」+ 寄语，格式不变）
     info = {"source": "web", "day_key": day_key, "giftName": gift_name, "intended_to": to_name,
             "isLost": lost, "isPublic": is_public, "hide_receiver": is_public and bool(rules.get("hide_receiver"))}
+    if preset:
+        info["preset_id"] = preset_id
     _phone_insert_event(db, sid, tid, "gift", owner, true_to, text, info, now, game_day)
-    return True, f"🎁 已成功将「{gift_name}」送往「{to_name}」的房间。\n(今日第 {used + 1}份)"
+    # 收到即入图鉴：跟插件一样 50% 概率把这件预设礼物收进实际收件人的图鉴
+    if (preset and not lost and (snap.get("shop") or {}).get("catalog_on_receive")
+            and preset_id not in _shop_catalog(db, sid, sync, true_to) and rnd.random() < 0.5):
+        db.execute("INSERT INTO phone_shop_log (show_id, role_name, unlocked, created_at) VALUES (?,?,?,?)",
+                   (sid, true_to, json.dumps([preset_id]), now))
+        db.commit()
+    shown = gift_name if gift_name.startswith("「") else f"「{gift_name}」"  # 图鉴礼物名本身带「」（跟群里一致）
+    return True, f"🎁 已成功将{shown}送往「{to_name}」的房间。\n(今日第 {used + 1}份)"
+
+# ── 网页礼品店 / 图鉴 / 预设礼物 ──────────────────────────────────────────────────
+# 规则照插件 cmd_view_preset_gifts：每人一个「今日货架」，隔 shop_refresh_hours 小时刷新成一件图鉴里还没有的，
+# 逛到就收进图鉴，50% 再顺带一件；全收齐了就不再刷新。群里和网页共用同一个货架和图鉴：
+# 插件同步时上报 catalogs / displays，网页这边新增的解锁和货架写进 phone_shop_log，插件下次同步取走写回自己的 KV。
+# 预设礼物的名字和内容来自网页「礼品店管理」（site_config.preset_gifts，插件也是从这里同步的）。
+def _preset_gifts(db, sid):
+    try:
+        return json.loads(get_flat_config(db, sid).get("preset_gifts") or "{}") or {}
+    except Exception:
+        return {}
+
+def _shop_logs(db, sid, role):
+    return db.execute("SELECT * FROM phone_shop_log WHERE show_id=? AND role_name=? ORDER BY id", (sid, role)).fetchall()
+
+def _shop_catalog(db, sid, sync, role):
+    snap = sync["snap"] if sync else {}
+    owned = set(((snap.get("catalogs") or {}).get(role)) or [])
+    for r in _shop_logs(db, sid, role):
+        owned.update(json.loads(r["unlocked"] or "[]"))
+    return owned
+
+def _shop_display(db, sid, sync, role):
+    snap = sync["snap"] if sync else {}
+    disp = ((snap.get("displays") or {}).get(role)) or None
+    for r in _shop_logs(db, sid, role):
+        if r["display_gift"] and (not disp or r["refreshed_at"] > int(disp.get("refreshedAt") or 0)):
+            disp = {"giftId": r["display_gift"], "refreshedAt": r["refreshed_at"]}
+    return disp
+
+def _shop_visit(db, sid, role):
+    """逛一次礼品店（跟群里发「礼品店」一样）。返回 {state, gifts:[新收的], current, next_hours, owned, total}"""
+    sync = _phone_sync_row(db, sid)
+    presets = _preset_gifts(db, sid)
+    ids = list(presets.keys())
+    res = {"state": "empty", "gifts": [], "current": None, "next_hours": 0, "total": len(ids)}
+    owned = _shop_catalog(db, sid, sync, role)
+    res["owned"] = len(owned & set(ids))
+    if not ids:
+        return res
+    hours = int(((sync["snap"].get("shop") or {}).get("refresh_hours") or 24) if sync else 24)
+    now = int(time.time() * 1000)
+    disp = _shop_display(db, sid, sync, role)
+    rnd = secrets.SystemRandom()
+    new_disp = None
+    if not disp or now - int(disp.get("refreshedAt") or 0) > hours * 3600 * 1000:
+        unowned = [i for i in ids if i not in owned]
+        if unowned:
+            new_disp = {"giftId": rnd.choice(unowned), "refreshedAt": now}
+            disp = new_disp
+    cur = disp.get("giftId") if disp else None
+    if not cur or cur not in presets:
+        res["state"] = "complete" if res["owned"] >= len(ids) else "nothing"
+        return res
+    res["current"] = {"id": cur, **presets[cur]}
+    res["next_hours"] = max(1, math.ceil((int(disp["refreshedAt"]) + hours * 3600 * 1000 - now) / 3600000))
+    unlocked = []
+    if cur in owned:
+        res["state"] = "owned"
+    else:
+        unlocked.append(cur)
+        rest = [i for i in ids if i != cur and i not in owned]
+        if rest and rnd.random() < 0.5:
+            unlocked.append(rnd.choice(rest))
+        res["state"] = "new"
+        res["gifts"] = [{"id": i, **presets[i]} for i in unlocked]
+        res["owned"] += len(unlocked)
+    if unlocked or new_disp:
+        db.execute("INSERT INTO phone_shop_log (show_id, role_name, unlocked, display_gift, refreshed_at, created_at) VALUES (?,?,?,?,?,?)",
+                   (sid, role, json.dumps(unlocked), disp["giftId"], int(disp["refreshedAt"]), now))
+        db.commit()
+    return res
+
+@app.route("/p/me/shop")
+def player_shop():
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    if owner == PHONE_ADMIN:
+        return redirect(url_for("admin_phone_index"))
+    db = get_db()
+    sync = _phone_sync_row(db, sid)
+    if not sync or "catalogs" not in (sync["snap"] or {}):
+        return render_template("phone.html", mode="shop", owner=owner, sid=sid, shop=None, catalog=[],
+                               why="礼品店要等机器人升级到新版本、同步过一次才能在网页上逛")
+    with _phone_send_lock:
+        visit = _shop_visit(db, sid, owner) if request.args.get("view") != "book" else None
+    presets = _preset_gifts(db, sid)
+    owned = _shop_catalog(db, sid, _phone_sync_row(db, sid), owner)
+    catalog = [{"id": i, "owned": i in owned, **g} for i, g in presets.items()]
+    return render_template("phone.html", mode="shop", owner=owner, sid=sid, shop=visit, catalog=catalog, why=None,
+                           owned_count=sum(1 for g in catalog if g["owned"]))
 
 def _phone_insert_event(db, sid, tid, etype, from_role, to_role, content, info, ts, game_day):
     db.execute("""
@@ -5543,7 +5672,7 @@ def player_phone_send():
     tid = db.execute("SELECT tenant_id FROM shows WHERE id=?", (sid,)).fetchone()["tenant_id"]
     with _phone_send_lock:  # 查次数和写入之间不能被另一个请求插队，否则连点能超上限
         ok, msg = _phone_send(db, sid, tid, owner, kind, to_name, request.form.get("text", ""),
-                              request.form.get("gift_name", ""))
+                              request.form.get("gift_name", ""), request.form.get("preset_id", ""))
     session["phone_flash"] = msg
     session["phone_sent"] = ok
     if not ok:  # 没发出去，把草稿留着
@@ -5598,7 +5727,15 @@ def api_phone_sync():
         events.append({"id": r["id"], "type": r["type"], "from_role": r["from_role"], "to_role": r["to_role"],
                        "timestamp": r["timestamp"], "day_key": info.get("day_key", ""),
                        "lost": bool(info.get("isLost"))})
-    return jsonify({"ok": True, "web_send": _phone_web_send_on(db, show["id"]), "events": events,
+    try:
+        shop_after = int(data.get("shop_after") or 0)
+    except (TypeError, ValueError):
+        shop_after = 0
+    shop_events = [{"id": r["id"], "role": r["role_name"], "unlocked": json.loads(r["unlocked"] or "[]"),
+                    "display": ({"giftId": r["display_gift"], "refreshedAt": r["refreshed_at"]} if r["display_gift"] else None)}
+                   for r in db.execute("SELECT * FROM phone_shop_log WHERE show_id=? AND id>? ORDER BY id LIMIT 200",
+                                       (show["id"], shop_after))]
+    return jsonify({"ok": True, "web_send": _phone_web_send_on(db, show["id"]), "events": events, "shop_events": shop_events,
                     "songs": _song_pending_for_bot(db, show["id"], data.get("songs_done"))})
 
 @app.route("/p/<code>")
@@ -5994,6 +6131,18 @@ def inject_phone_urls():
                 return url_for("admin_phone_inbox", role=as_role)
         return url_for(endpoint, **kw)
     return {"purl": purl}
+
+@app.context_processor
+def inject_phone_npcs():
+    """网页手机页面用：本季的 NPC 名单（名字旁边标 NPC；匿名的地方不标）"""
+    if not (request.path.startswith("/p/me") or request.path.startswith("/p/admin")):
+        return {}
+    try:
+        who = _phone_current()
+        sync = _phone_sync_row(get_db(), who[0]) if who else None
+        return {"phone_npcs": [r["name"] for r in ((sync["snap"].get("roster") or []) if sync else []) if r.get("npc")]}
+    except Exception:
+        return {}
 
 @app.context_processor
 def inject_phone_avatars():
