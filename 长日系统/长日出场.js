@@ -287,6 +287,24 @@ function handleEntranceSubmit(ctx, msg, subM) {
     return seal.ext.newCmdExecuteResult(true);
 }
 
+// 从 get_msg 结果里找第一张图片的链接：先看 CQ 码字符串（message 或 raw_message），再看消息段数组
+function findImageUrl(data) {
+    for (const text of [data.message, data.raw_message]) {
+        if (typeof text !== "string") continue;
+        const tag = text.match(/\[CQ:image,[^\]]*\]/);
+        const url = tag && extractImageSrc(tag[0]);
+        if (url) return url;
+    }
+    if (Array.isArray(data.message)) {
+        for (const seg of data.message) {
+            if (!seg || seg.type !== "image" || !seg.data) continue;
+            if (seg.data.url) return seg.data.url;
+            if (/^https?:\/\//i.test(seg.data.file || "")) return seg.data.file;
+        }
+    }
+    return null;
+}
+
 // 回复自己发的图片消息「提交出场图片 评论」：和点歌一样经 get_msg 读原消息。
 // 不下载落地，直接存 QQ 原始链接（省 rp_archive 的下载/存盘），排队等太久链接过期就在真正念出场时自动降级成纯文字
 function handleEntranceImageSubmit(ctx, msg, raw, wdId) {
@@ -305,9 +323,8 @@ function handleEntranceImageSubmit(ctx, msg, raw, wdId) {
         (response) => {
             if (response.status !== "ok" && response.retcode !== 0) return seal.replyToSender(ctx, msg, errMsg);
             const data = response.data;
-            const originalContent = data && (typeof data.message === "string" ? data.message : JSON.stringify(data.message || ""));
-            const imgTagMatch = originalContent && originalContent.match(/\[CQ:image,[^\]]*\]/);
-            const srcUrl = imgTagMatch && extractImageSrc(imgTagMatch[0]);
+            // 协议端可能返回 CQ 码字符串，也可能返回消息段数组（此时 raw_message 也不一定有），两种都要认
+            const srcUrl = data && findImageUrl(data);
             if (!srcUrl) return seal.replyToSender(ctx, msg, "❌ 回复的消息里没有找到可下载的图片链接");
             let images = mainKvGet("sys_entrance_image", {});
             images[uid] = { roleName, url: srcUrl, comment, time: Date.now() };
