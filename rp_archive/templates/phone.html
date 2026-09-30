@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
-<title>{% if mode == 'thread' %}{{ group.name if group else other.partition('＠')[0] }} · {% elif mode == 'group_new' %}发起群聊 · {% elif mode == 'public' %}公开播报 · {% elif mode == 'moments' %}朋友圈 · {% elif mode == 'song' %}点歌 · {% elif mode == 'shop' %}礼品店 · {% elif mode == 'lovemail' %}心动信箱 · {% elif mode == 'library' %}{{ '收藏' if library_view == 'saved' else '检索' }} · {% elif mode == 'profile' %}我的手机 · {% endif %}短信</title>
+<title>{% if mode == 'thread' %}{{ group.name if group else other.partition('＠')[0] }} · {% elif mode == 'group_new' %}发起群聊 · {% elif mode == 'stats' %}时间线与统计 · {% elif mode == 'public' %}公开播报 · {% elif mode == 'moments' %}朋友圈 · {% elif mode == 'song' %}点歌 · {% elif mode == 'shop' %}礼品店 · {% elif mode == 'lovemail' %}心动信箱 · {% elif mode == 'library' %}{{ '收藏' if library_view == 'saved' else '检索' }} · {% elif mode == 'profile' %}我的手机 · {% endif %}短信</title>
 <style>
 :root {
   --page: #d9d9e0;
@@ -333,6 +333,15 @@ a { color: var(--link); text-decoration: none; }
 .song-form textarea { min-height: 70px; resize: vertical; }
 .song-submit { padding: 11px; font-weight: 600; }
 .song-submit:disabled { opacity: .45; }
+.stats-tabs a { padding: 7px 2px; font-size: 13px; }
+.stats-card { padding: 12px 16px; }
+.stats-title { font-weight: 600; font-size: 15px; }
+.stats-line { font-size: 14px; color: var(--text); margin-top: 4px; line-height: 1.6; }
+.stats-table-wrap { margin: 10px 16px; overflow-x: auto; }
+.stats-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.stats-table th, .stats-table td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: center; white-space: nowrap; }
+.stats-table th:first-child, .stats-table td:first-child { text-align: left; }
+.stats-table th small { font-weight: 400; color: var(--muted); }
 .group-avatar { background: var(--theirs) !important; color: var(--text) !important; font-weight: 600; }
 .group-sys { font-size: 12px; margin: 10px 24px 4px; }
 .inbox-flash { margin: 10px auto 4px; }
@@ -455,7 +464,7 @@ a { color: var(--link); text-decoration: none; }
   <header class="bar">
     {% if admin_as %}<a class="back" href="{{ url_for('admin_phone_index') }}">角色</a>{% else %}<a class="quiet-button" href="{{ url_for('player_phone_library') }}">检索</a>{% endif %}
     <div class="title">信息<small>{% if admin_as %}管理 · 以 {{ owner }} 的视角{% else %}{{ owner }}{% endif %}</small></div>
-    <div class="right"></div>
+    <div class="right">{% if not admin_as %}<a class="quiet-button" href="{{ url_for('player_stats') }}">时间线</a>{% endif %}</div>
     {% include "_phone_quota.html" %}
   </header>
   <div class="scroll list" id="inbox">
@@ -815,6 +824,76 @@ a { color: var(--link); text-decoration: none; }
     });
   })();
   </script>
+
+{% elif mode == 'stats' %}
+  <header class="bar">
+    <a class="back" href="{{ url_for('player_phone_library', view='profile') }}">我的</a>
+    <div class="title">时间线与统计<small>{% if report %}{{ report.day }} · {{ updated }} 更新{% else %}{{ owner }}{% endif %}</small></div>
+    <div class="right"></div>
+  </header>
+  <div class="scroll lm-page stats-page">
+    <nav class="song-tabs lm-tabs stats-tabs" aria-label="时间线与统计">
+      {% for v, label in [('timeline', '时间线'), ('counts', '数量'), ('pending', '待回'), ('arc', '弧长'), ('interact', '互动')] %}
+      <a href="{{ url_for('player_stats', view=v) }}"{% if view == v %} aria-current="page"{% endif %}>{{ label }}</a>
+      {% endfor %}
+    </nav>
+    {% if view != 'interact' and not report %}
+      <div class="song-note">这部分要等机器人升级到新版本、同步过一次才能看到。现在可以先在群里发「{{ {'timeline': '时间线', 'counts': '我的数量', 'pending': '我的待回', 'arc': '我的弧长'}[view] }}」查看。</div>
+    {% elif view == 'timeline' %}
+      {% for d in days %}
+      <div class="stamp"><b>{{ d.day if d.day != '微信群' else '💬 我的微信群' }}</b></div>
+      {% for ev in d.events %}
+      <article class="lm-letter lm-sent stats-card">
+        <div class="lm-to">{{ ev.time }}{% if ev.tag %} · {{ ev.tag }}{% endif %}</div>
+        <div class="stats-title">{{ ev.icon }} {{ ev.label }}</div>
+        {% if ev.place %}<div class="stats-line">📍 {{ ev.place }}</div>{% endif %}
+        {% if ev.partner %}<div class="stats-line">👥 {{ ev.partner }}</div>{% endif %}
+        {% if ev.progress %}<div class="stats-line">{{ ev.progress }}</div>{% endif %}
+      </article>
+      {% endfor %}
+      {% else %}
+      <div class="empty">当前暂无行程安排</div>
+      {% endfor %}
+    {% elif view == 'counts' %}
+      <article class="lm-letter lm-sent"><div class="lm-body">{{ report.counts }}</div></article>
+    {% elif view == 'arc' %}
+      <article class="lm-letter lm-sent"><div class="lm-body">{{ report.arc }}</div></article>
+    {% elif view == 'pending' %}
+      {% set pd = report.pending or {} %}
+      {% if not (pd.pending or pd.rel or pd.letters) %}<div class="empty">🌙 当前没有等待你回复的事项</div>{% endif %}
+      {% if pd.pending %}
+      <div class="stamp"><b>🔴 待回复的场次</b></div>
+      {% for p in pd.pending %}
+      <article class="lm-letter lm-sent stats-card">
+        <div class="stats-title">{{ '🔴 已超时' if p.over else '⏳ 等待中' }} · {{ p.type }}</div>
+        <div class="stats-line">群 {{ p.gid }} · 已经弧了 {{ (p.elapsed_min // 60) ~ 'h' if p.elapsed_min >= 60 else '' }}{{ p.elapsed_min % 60 }}m</div>
+      </article>
+      {% endfor %}
+      {% endif %}
+      {% if pd.rel %}
+      <div class="stamp"><b>🔗 待回关系线</b></div>
+      {% for n in pd.rel %}<article class="lm-letter lm-sent stats-card"><div class="stats-line">{{ n }} 已回复你的关系线，在群里发「查看关系线 {{ n }}」回复</div></article>{% endfor %}
+      {% endif %}
+      {% if pd.letters %}
+      <div class="stamp"><b>✉️ 还没回的信</b></div>
+      {% for l in pd.letters %}<article class="lm-letter lm-sent stats-card"><div class="stats-line">{{ l.from }} 给你写了信还没回 · 已经等了 {{ (l.wait_min // 60) ~ 'h' if l.wait_min >= 60 else '' }}{{ l.wait_min % 60 }}m</div></article>{% endfor %}
+      {% endif %}
+      <p class="song-note">待进群、待退群和群名要实时问 QQ，这里看不到，在群里发「我的待回」查看。心动信投递情况在底部「心动信」里。</p>
+    {% else %}
+      {% if inter or lm_recv %}
+      <div class="stats-table-wrap"><table class="stats-table">
+        <thead><tr><th>对象</th><th>短信<br><small>发 / 收</small></th><th>礼物<br><small>发 / 收</small></th><th>心动信<br><small>寄出</small></th></tr></thead>
+        <tbody>
+        {% for r in inter %}<tr><td>{{ r.name }}</td><td>{{ r.sms_sent }} / {{ r.sms_recv }}</td><td>{{ r.gift_sent }} / {{ r.gift_recv }}</td><td>{{ r.lm_sent }}</td></tr>{% endfor %}
+        </tbody>
+      </table></div>
+      <p class="song-note">本季一共收到 {{ lm_recv }} 封心动信（来信是匿名的，不按人统计）。短信和礼物按你手机里看到的算。</p>
+      {% else %}
+      <div class="empty">本季还没有短信、礼物或心动信往来</div>
+      {% endif %}
+    {% endif %}
+    {% if report and stale %}<p class="song-note">⚠️ 机器人有一阵子没同步了，上面可能不是最新的。</p>{% elif report and view != 'interact' %}<p class="song-note">机器人每 2 分钟更新一次，跟群里发同名指令看到的是同一份数据。</p>{% endif %}
+  </div>
 
 {% elif mode == 'group_new' %}
   <header class="bar">
@@ -1274,7 +1353,7 @@ a { color: var(--link); text-decoration: none; }
 </dialog>
 {% endif %}
 
-{% if mode in ('inbox', 'thread', 'public', 'moments', 'new', 'song', 'library', 'profile', 'shop', 'lovemail', 'group_new') %}
+{% if mode in ('inbox', 'thread', 'public', 'moments', 'new', 'song', 'library', 'profile', 'shop', 'lovemail', 'group_new', 'stats') %}
 <dialog class="appearance notice-dialog" id="phoneNotice" aria-labelledby="phoneNoticeTitle">
   <div class="heading"><h2 id="phoneNoticeTitle">使用须知</h2></div>
   <div class="notice-body">
@@ -1370,7 +1449,7 @@ a { color: var(--link); text-decoration: none; }
     b.remove();
   });
 </script>
-{% if mode in ('inbox', 'thread', 'public', 'moments', 'song', 'library', 'profile', 'new', 'shop', 'lovemail', 'group_new') %}
+{% if mode in ('inbox', 'thread', 'public', 'moments', 'song', 'library', 'profile', 'new', 'shop', 'lovemail', 'group_new', 'stats') %}
 <script>
 (function () {
   var scope = {{ ([sid, owner]|tojson) }};

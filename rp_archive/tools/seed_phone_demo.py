@@ -67,6 +67,25 @@ def _demo_block(db, sid):
             db.execute("UPDATE phone_sync SET snapshot=? WHERE show_id=?", (json.dumps(snap, ensure_ascii=False), sid))
             db.commit()
 
+def _demo_report(db, sid):
+    """演示季的「时间线与统计」：没有机器人上报，放一份写死的示例报告；已经有就不动"""
+    if db.execute("SELECT 1 FROM phone_reports WHERE show_id=? AND role='体验者'", (sid,)).fetchone():
+        return
+    rep = {"day": "D1",
+           "counts": "📊 我的数量（D1）\n👤 我今天：私约 1 次｜电话 0 次｜短信 2 次｜礼物 1 次｜心愿 0 次\n🌐 全员今天：私约 4 次｜电话 2 次｜短信 11 次｜礼物 5 次｜心愿 1 次",
+           "arc": "【体验者 的弧长】\n本人总平均：18分钟（24次，3场，含已结/未结）\n\n当前未结双嘉宾小群：\n私约5001：体验者x周屿 3v4（待你），本人平均15分钟（3次），你还没回：2h5m",
+           "timeline": [
+               {"day": "D0", "time": "21:00", "icon": "📞", "label": "电话", "tag": "已完结", "place": "", "partner": "林晚", "progress": "✍️ 最终段数：12v10", "wechat": False},
+               {"day": "D1", "time": "20:00", "icon": "🎭", "label": "私约", "tag": "进行中 [⏳未回]", "place": "天台", "partner": "周屿", "progress": "✍️ 当前进度：3v4", "wechat": False},
+               {"day": "D1", "time": "22:30", "icon": "🎭", "label": "私约", "tag": "待开启", "place": "琴房", "partner": "沈知意", "progress": "", "wechat": False},
+               {"day": "微信群", "time": "长期", "icon": "💬", "label": "微信群", "tag": "长期活跃", "place": "夜宵搭子", "partner": "体验者、林晚、周屿", "progress": "", "wechat": True}],
+           "pending": {"pending": [{"gid": "5001", "type": "私约", "elapsed_min": 125, "over": True}], "rel": ["林晚"],
+                       "letters": [{"from": "沈知意", "wait_min": 42}]}}
+    # 更新时间写成很远的将来：演示季没有机器人，不然 10 分钟后就一直显示「有一阵子没同步」
+    db.execute("INSERT INTO phone_reports (show_id, role, data, updated_at) VALUES (?, '体验者', ?, ?)",
+               (sid, json.dumps(rep, ensure_ascii=False), int(time.time() * 1000) + 10 * 365 * 86400 * 1000))
+    db.commit()
+
 def _demo_lovemail(db, tid, sid):
     """演示季的心动信：快照补上规则/次数/一封等派送的信（标成 demo，没有机器人也能投），再放几封已派送的往期；已经有就不动"""
     row = db.execute("SELECT snapshot FROM phone_sync WHERE show_id=?", (sid,)).fetchone()
@@ -108,6 +127,7 @@ if row:
     _demo_shop(db, tid, sid)
     _demo_lovemail(db, tid, sid)
     _demo_block(db, sid)
+    _demo_report(db, sid)
     print("演示团账号已存在。各角色激活码（一直有效）：")
     _print_codes(_demo_codes(db, tid, sid))
     print(f"演示管理员手机码：{acode}\n入口：https://archive.changri.work/p/{acode}")
@@ -168,6 +188,7 @@ db.commit()
 _demo_shop(db, tid, sid)
 _demo_lovemail(db, tid, sid)
 _demo_block(db, sid)
+_demo_report(db, sid)
 print("演示团账号已建好（跟真实数据完全隔开）。各角色激活码（一直有效）：")
 _print_codes(_demo_codes(db, tid, sid))
 print(f"体验激活码（一直有效）：{code}")

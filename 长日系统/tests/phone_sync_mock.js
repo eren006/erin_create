@@ -17,6 +17,7 @@ const kvGet = (k, d) => (k in KV ? JSON.parse(JSON.stringify(KV[k])) : d), kvSet
 const cachedGet = k => CACHE[k], cachedSet = (k, v) => { CACHE[k] = v; };
 const getStorageInt = (k, d) => (CACHE[k] ? parseInt(CACHE[k]) : d);
 const isArchiveEnabled = () => true; const BLOCK_UNDO_COOLDOWN_H = 2;
+const buildPhoneReports = () => ({ "林晚": { day: "D2" } });   // 报告函数在同步那一节外面，这里用桩（完整测试见 phone_reports_full.js）
 const ext = {}; const seal = { ext: { getStringConfig: (e, k) => k === "RP存档服务器地址" ? "https://archive.x/" : "TOK" } };
 const getPrimaryUid = (p, u) => u;
 const getUidByRoleName = (p, n) => Object.entries(KV.a_private_group.QQ).find(([_, v]) => v[0] === n || v[2] === n)?.[0] || null;
@@ -64,6 +65,7 @@ eval(fnSrc + "\n;globalThis.phoneWebSync = phoneWebSync; globalThis.phoneWebSend
   assert.equal(KV.global_gift_stats["QQ:111"].count, 1);
   assert.equal(CACHE["chaos_letter_cooldown_QQ:111"], "9700"); assert.equal(CACHE["chaos_letter_cooldown_QQ:222"], "9800");
   assert.equal(CACHE.phone_group_cursor, "8"); assert.equal(sent.body.group_after, 0);
+  assert.deepEqual(sent.body.reports, { "林晚": { day: "D2" } });   // 第一次同步带报告
   assert.equal(KV.global_gift_cooldowns["QQ:111"], 9500);
   assert.equal(CACHE.phone_web_cursor, "43");
   assert.deepEqual(stats, [["QQ","林晚","周屿","sms"],["QQ","林晚","周屿","gift",true],["QQ","周屿","林晚","sms"]]);
@@ -90,6 +92,7 @@ eval(fnSrc + "\n;globalThis.phoneWebSync = phoneWebSync; globalThis.phoneWebSend
   assert.equal(KV.lovemail_pool.length, 1); assert.equal(KV.lovemail_day_counts["222"].D2, 1);
   assert.deepEqual(KV.phone_lovemail_done, [5]); assert.deepEqual(KV.phone_lovemail_revoke_done, [9, 10]);
   assert.equal(sent.body.group_after, 8);
+  assert.equal(sent.body.reports, undefined);   // 2 分钟内不重复带
   LM = []; LMREV = []; BOPS = []; GEV = []; await phoneWebSync(); assert.deepEqual(KV.phone_block_ops_done, []);
   assert.deepEqual(KV.phone_lovemail_done, []); assert.deepEqual(KV.phone_lovemail_revoke_done, []);
   KV.feature_user_blocklist["111"] = { enable_lovemail: false }; await phoneWebSync();

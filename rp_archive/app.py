@@ -1623,6 +1623,17 @@ def _migrate(conn):
         )
     """)
 
+    # ── 27. 插件每 2 分钟随同步上报的每人报告（我的数量/弧长/时间线/待回），网页「时间线与统计」页只读 ──
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS phone_reports (
+            show_id    INTEGER NOT NULL,
+            role       TEXT    NOT NULL,
+            data       TEXT    NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (show_id, role)
+        )
+    """)
+
     # ── 26. 网页群聊：玩家自己拉人建群；只在网页上（不进 QQ），跟网页发送一起开关；一条消息算 1 次短信 ──
     conn.execute("""
         CREATE TABLE IF NOT EXISTS phone_groups (
@@ -6118,6 +6129,15 @@ def api_phone_sync():
                     "display": ({"giftId": r["display_gift"], "refreshedAt": r["refreshed_at"]} if r["display_gift"] else None)}
                    for r in db.execute("SELECT * FROM phone_shop_log WHERE show_id=? AND id>? ORDER BY id LIMIT 200",
                                        (show["id"], shop_after))]
+    reports = data.get("reports")
+    if isinstance(reports, dict):  # 插件每 2 分钟带一次；单人太大的丢掉，防异常数据撑爆库
+        for role, rep_ in list(reports.items())[:300]:
+            blob = json.dumps(rep_, ensure_ascii=False)
+            if isinstance(role, str) and role and isinstance(rep_, dict) and len(blob) <= 64000:
+                db.execute("""INSERT INTO phone_reports (show_id, role, data, updated_at) VALUES (?,?,?,?)
+                              ON CONFLICT(show_id, role) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at""",
+                           (show["id"], role, blob, now))
+        db.commit()
     lovemails, lm_revokes = _lm_for_bot(db, show["id"], data.get("lovemail_done"), data.get("lovemail_revoke_done"))
     return jsonify({"ok": True, "web_send": _phone_web_send_on(db, show["id"]), "events": events, "shop_events": shop_events,
                     "songs": _song_pending_for_bot(db, show["id"], data.get("songs_done")),
@@ -6883,6 +6903,54 @@ def _song_pending_for_bot(db, sid, done_ids):
              "name": r["song_name"], "artists": r["artists"], "to": r["to_role"], "message": r["message"]}
             for r in db.execute("SELECT * FROM song_requests WHERE show_id=? AND announced=0 AND deleted=0 ORDER BY id LIMIT 20",
                                 (sid,))]
+
+# ── 时间线与统计（只读）──────────────────────────────────────────────────────────
+# 时间线 / 我的数量 / 我的弧长 / 待回 来自插件每 2 分钟上报的报告（phone_reports），跟群里同名指令同一套算法；
+# 待回只有不用实时问 QQ 的部分（待进群/待退群/群名还是得在群里查）。互动统计存档站自己算，按玩家手机里看到的样子：
+# 短信礼物照「对话」归人（误投/换落款照玩家看到的算），心动信只算寄出的去向、收到的只给总数（来信是匿名的）。
+_STATS_VIEWS = ("timeline", "counts", "pending", "arc", "interact")
+
+def _phone_interactions(db, sid, owner):
+    rows = {}
+    for m in _phone_views(db, sid, owner):
+        if m["kind"] not in ("sms", "gift"):
+            continue
+        who = m["other"].partition("＠")[0]
+        r = rows.setdefault(who, {"name": who, "sms_sent": 0, "sms_recv": 0, "gift_sent": 0, "gift_recv": 0, "lm_sent": 0})
+        r[f"{m['kind']}_{'sent' if m['mine'] else 'recv'}"] += 1
+    lm_recv = 0
+    for e in db.execute("SELECT from_role, to_role FROM extra_events WHERE show_id=? AND type='lovemail' AND (from_role=? OR to_role=?)",
+                        (sid, owner, owner)):
+        if e["to_role"] == owner:
+            lm_recv += 1
+        if e["from_role"] == owner and e["to_role"]:
+            r = rows.setdefault(e["to_role"], {"name": e["to_role"], "sms_sent": 0, "sms_recv": 0, "gift_sent": 0, "gift_recv": 0, "lm_sent": 0})
+            r["lm_sent"] += 1
+    out = sorted(rows.values(), key=lambda r: -(r["sms_sent"] + r["sms_recv"] + r["gift_sent"] + r["gift_recv"] + r["lm_sent"]))
+    return out, lm_recv
+
+@app.route("/p/me/stats")
+def player_stats():
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    if owner == PHONE_ADMIN:
+        return redirect(url_for("admin_phone_index"))
+    db = get_db()
+    view = request.args.get("view") if request.args.get("view") in _STATS_VIEWS else "timeline"
+    row = db.execute("SELECT data, updated_at FROM phone_reports WHERE show_id=? AND role=?", (sid, owner)).fetchone()
+    report = json.loads(row["data"]) if row else None
+    days = []
+    for ev in (report or {}).get("timeline") or []:
+        if not days or days[-1]["day"] != ev.get("day"):
+            days.append({"day": ev.get("day") or "", "events": []})
+        days[-1]["events"].append(ev)
+    inter, lm_recv = _phone_interactions(db, sid, owner) if view == "interact" else ([], 0)
+    return render_template("phone.html", mode="stats", owner=owner, sid=sid, view=view, report=report, days=days,
+                           updated=(_phone_time(row["updated_at"]) if row else ""),
+                           stale=bool(row) and int(time.time() * 1000) - row["updated_at"] > 10 * 60 * 1000,
+                           inter=inter, lm_recv=lm_recv)
 
 # ── 网页群聊 ─────────────────────────────────────────────────────────────────────
 # 玩家自己拉人建群（至少再拉 2 个人），任何成员都能拉人、改群名，谁都可以退群；只在网页上，不进 QQ。

@@ -22,6 +22,7 @@
 {% else %}
 <div class="scroll profile-page">
   <div class="profile-name"><div class="avatar big" data-name="{{ owner }}">{{ owner[:1] }}</div><h1>{{ owner }}</h1><p>这是你的私人手机</p></div>
+  <a class="profile-item" href="{{ url_for('player_stats') }}">时间线与统计 <span>›</span></a>
   <button class="profile-item" id="appearanceOpen" type="button" aria-haspopup="dialog">外观与阅读字号 <span>›</span></button>
   <a class="profile-item" href="{{ url_for('player_phone_library', view='saved') }}">本机收藏 <span>›</span></a>
   <a class="profile-item" href="{{ url_for('player_moments', mine=1) }}">我的朋友圈 <span>›</span></a>

@@ -3920,17 +3920,12 @@ cmd_wechat.solve =async (ctx, msg, cmdArgs) => {
 
 
 
-let cmd_view_schedule = {};
-cmd_view_schedule.solve =(ctx, msg) => {
-    const platform = msg.platform, uid = msg.sender.userId, roleId = uid.replace(`${platform}:`, "");
+// 时间线（日程 + 微信群）的聚合和每条的显示文字；群里「时间线」和网页手机报告共用。
+// uid 是带平台前缀的发送者 id（b_confirmedSchedule 的键），roleId 是去掉前缀的
+function buildScheduleView(platform, uid, roleId, myName) {
     const storage = (k) => kvGet(k, {});
     const schedule = storage("b_confirmedSchedule"), multiReq = storage("b_MultiGroupRequest");
-    const privGroup = storage("a_private_group"), timers = storage("group_timers");
-    
-    // 新结构：uid为key，roleName在value[0]
-    const myName = privGroup[platform]?.[roleId]?.[0] || null;
-    if (!myName) return seal.replyToSender(ctx, msg, "请先绑定角色");
-
+    const timers = storage("group_timers");
     // 1. 聚合日程与微信群
     let events = (schedule[uid] || []).map(e => ({...e}));
     
@@ -3951,7 +3946,6 @@ cmd_view_schedule.solve =(ctx, msg) => {
         .map(g => ({ day: "微信群", time: "长期", subtype: "微信群", place: g.topic, partner: g.participants.join("、"), status: "active", isWechat: true }));
 
     const allEvents = [...events, ...wechat];
-    if (!allEvents.length) return seal.replyToSender(ctx, msg, "✨ 【日程表】\n\n当前暂无行程安排。");
 
     // 2. 构造显示文本
     allEvents.forEach(ev => {
@@ -3990,8 +3984,25 @@ cmd_view_schedule.solve =(ctx, msg) => {
             }
             if (counts.some(c => c > 0)) progressText = `\n✍️ ${ev.status === "ended" ? "最终段数" : "当前进度"}：${counts.join('v')}`;
         }
+        Object.assign(ev, { icon, tag, label: getCustomTypeLabel(ev.subtype), progressText });
         ev.displayText = `【${ev.day} ${ev.time}】\n${icon} ${getCustomTypeLabel(ev.subtype)} · ${tag}\n📍 地点：${ev.place || "未知"}\n👥 伙伴：${ev.partner}${progressText}`;
     });
+    return { events, wechat, allEvents };
+}
+
+let cmd_view_schedule = {};
+cmd_view_schedule.solve =(ctx, msg) => {
+    const platform = msg.platform, uid = msg.sender.userId, roleId = uid.replace(`${platform}:`, "");
+    const storage = (k) => kvGet(k, {});
+    const schedule = storage("b_confirmedSchedule"), multiReq = storage("b_MultiGroupRequest");
+    const privGroup = storage("a_private_group"), timers = storage("group_timers");
+    
+    // 新结构：uid为key，roleName在value[0]
+    const myName = privGroup[platform]?.[roleId]?.[0] || null;
+    if (!myName) return seal.replyToSender(ctx, msg, "请先绑定角色");
+
+    const { events, wechat, allEvents } = buildScheduleView(platform, uid, roleId, myName);
+    if (!allEvents.length) return seal.replyToSender(ctx, msg, "✨ 【日程表】\n\n当前暂无行程安排。");
 
     if (!msg.groupId) return seal.replyToSender(ctx, msg, "请在群内使用合并转发。");
     
@@ -11719,6 +11730,14 @@ function getTodayActivitySummaryLine(day) {
 }
 
 // 「我的数量」：自己今天发起的私约/电话/短信/心愿次数 + 全服今天的私约/电话/短信/礼物/心愿总数
+// 「我的数量」的文字，群指令和网页手机报告共用
+function buildMyCountsText(gameDay, counts) {
+    let reply = `📊 我的数量（${gameDay}）\n`;
+    reply += `👤 我今天：${formatPrivateFamilyCounts(counts.my.privateByRes)}｜电话 ${counts.my.phone} 次｜短信 ${counts.my.sms} 次｜礼物 ${counts.my.gift} 次｜心愿 ${counts.my.wish} 次\n`;
+    reply += getTodayActivitySummaryLine(gameDay);
+    return reply;
+}
+
 let cmdMyCounts = seal.ext.newCmdItemInfo();
 cmdMyCounts.name = "我的数量";
 cmdMyCounts.help = "。我的数量 —— 查看自己今天发起的私约/电话/短信/心愿次数，以及全服今天的私约/电话/短信/礼物/心愿总数";
@@ -11735,9 +11754,7 @@ cmdMyCounts.solve = (ctx, msg) => {
     const gameDay = cachedGet("global_days") || "D0";
     const counts = getDailyActivityCounts(gameDay, userKey);
 
-    let reply = `📊 我的数量（${gameDay}）\n`;
-    reply += `👤 我今天：${formatPrivateFamilyCounts(counts.my.privateByRes)}｜电话 ${counts.my.phone} 次｜短信 ${counts.my.sms} 次｜礼物 ${counts.my.gift} 次｜心愿 ${counts.my.wish} 次\n`;
-    reply += getTodayActivitySummaryLine(gameDay);
+    const reply = buildMyCountsText(gameDay, counts);
 
     seal.replyToSender(ctx, msg, reply);
     sendLuckyHint(ctx, msg);
@@ -12517,7 +12534,62 @@ function checkExpiredGroups() {
 // 游标存在 phone_web_cursor（存档站的 extra_events.id），只往前走，同一条不会被计两次。
 // 注意：海豹的 JS 引擎在 async 函数里「try 块中提前 return + finally」会崩（Panic in auxJob: index out of range，自动拉取踩过同一个坑），
 // 所以同步主体 phoneWebSyncCore 里不写 try/finally，外层只用 try/catch，「进行中」标记另外释放，再加超时防卡死
+// 网页手机「时间线与统计」页用的每人报告：我的数量 / 我的弧长 / 时间线 / 待回（不查群成员的部分）。
+// 「我的待回」里的待进群、待退群、群名要实时问 QQ，给所有人定时算太重，网页上不放，照旧在群里查。
+// 普通同步函数，每人单独 try/catch：谁的数据坏了只影响他自己那份，不会拖垮整次同步。
+function buildPhonePendingLite(platform, uid, roleName) {
+    const now = Date.now(), timers = kvGet("group_timers", {}), baseTimeout = getMonitorSettings().timeout;
+    const pending = [];
+    for (const [gid, timer] of Object.entries(timers)) {
+        if (timer.platform !== platform) continue;
+        const st = timer.timerStatus?.[roleName];
+        if (!st || st.status !== "timing") continue;
+        const elapsed = now - st.startTime;
+        pending.push({ gid, type: getCustomTypeLabel(timer.subtype), elapsed_min: Math.floor(elapsed / 60000),
+                       over: elapsed > sanitizeTimeoutMs(timer.timeoutDuration, baseTimeout) });
+    }
+    pending.sort((a, b) => (b.over - a.over) || (b.elapsed_min - a.elapsed_min));
+    const rel = [];
+    if (cachedGet("relationship_system_enabled") === "true") {
+        for (const [counterpartUid, r] of Object.entries(kvGet("relationship_lines", {})[platform]?.[uid] || {})) {
+            if (r.initiator === "SYSTEM" || r.confirmed || !r.details?.length) continue;
+            if (r.details[r.details.length - 1].from !== roleName) rel.push(resolveUidToName(platform, counterpartUid));
+        }
+    }
+    const letters = isLetterSystemEnabled()
+        ? (((kvGet("letter_pending_replies", {})[platform] || {})[roleName]) || []).map(l => ({ from: l.fromRole, wait_min: Math.floor((now - l.timestamp) / 60000) }))
+        : [];
+    return { pending, rel, letters };
+}
+
+function buildPhoneReports(platform) {
+    const priv = kvGet("a_private_group", {})[platform] || {};
+    const gameDay = cachedGet("global_days") || "D0";
+    const out = {};
+    for (const [roleId, info] of Object.entries(priv)) {
+        const name = info?.[0];
+        if (!name || out[name]) continue;
+        try {
+            const primary = getPrimaryUid(platform, roleId);
+            const view = buildScheduleView(platform, `${platform}:${roleId}`, roleId, name);
+            out[name] = {
+                day: gameDay,
+                counts: buildMyCountsText(gameDay, getDailyActivityCounts(gameDay, `${platform}:${primary}`)),
+                arc: buildArcLengthReport(platform, name, primary),
+                timeline: view.allEvents.map(ev => ({ day: ev.day, time: ev.time, icon: ev.icon, label: ev.label, tag: ev.tag,
+                                                      place: ev.place || "", partner: ev.partner || "", progress: (ev.progressText || "").trim(),
+                                                      wechat: !!ev.isWechat })),
+                pending: buildPhonePendingLite(platform, primary, name)
+            };
+        } catch (e) {
+            console.warn(`[网页手机报告] ${name} 生成失败：${e.message || e}`);
+        }
+    }
+    return out;
+}
+
 let _phoneSyncBusy = false;
+let _phoneReportsAt = 0;   // 报告每 2 分钟随同步上报一次
 let _phoneSyncBusySince = 0;
 async function phoneWebSync() {
     if (_phoneSyncBusy && Date.now() - _phoneSyncBusySince < 90 * 1000) return;
@@ -12639,11 +12711,14 @@ async function phoneWebSyncCore(base, token) {
     const lmDone = kvGet("phone_lovemail_done", []), lmRevokeDone = kvGet("phone_lovemail_revoke_done", []);
     const blockOpsDone = kvGet("phone_block_ops_done", []);
     const groupAfter = parseInt(cachedGet("phone_group_cursor") || "0") || 0;
+    const reports = Date.now() - _phoneReportsAt >= 120 * 1000 ? buildPhoneReports(platform) : null;
+    if (reports) _phoneReportsAt = Date.now();
     const resp = await fetch(base + "/api/phone/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Archive-Token": token },
         body: JSON.stringify({ after, shop_after: shopAfter, songs_done: songsDone,
             lovemail_done: lmDone, lovemail_revoke_done: lmRevokeDone, block_ops_done: blockOpsDone, group_after: groupAfter,
+            ...(reports ? { reports } : {}),
             // block_write：告诉存档站这个版本会处理网页上的实名拉黑，网页才显示拉黑按钮
             snapshot: { game_day: gameDay, roster, rules, feature_off: featureOff, blocks, block_write: true,
                         counts, last, catalogs, displays, shop, lovemail } })
