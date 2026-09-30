@@ -7981,6 +7981,15 @@ def player_character():
                            rpg_time=(ts_to_str(row["updated_at"]) if row and rpg else ""),
                            view="attrs" if request.args.get("view") == "attrs" else "bag")
 
+@app.route("/p/me/lovemail/last")
+def player_lovemail_last():
+    """轻量接口：收到的最新一封心动信的存档 id，页面开着时每 30 秒查一次，准点派送后弹「已送达」"""
+    who = _phone_current()
+    if not who:
+        return jsonify(error="手机登录已失效"), 401
+    last = get_db().execute("SELECT MAX(id) FROM extra_events WHERE show_id=? AND type='lovemail' AND to_role=?", who).fetchone()[0]
+    return jsonify(last=last or 0)
+
 @app.route("/p/me/lovemail")
 def player_lovemail():
     who = _phone_current()

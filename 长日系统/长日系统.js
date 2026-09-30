@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         长日将尽系统
 // @author       长日将尽
-// @version      1.10.1
+// @version      1.10.2
 // @description  无
 // @timestamp    1778742000
 // @license      CC BY-NC-SA
@@ -18,7 +18,7 @@
 
 let ext = seal.ext.find("changri")
 if (!ext) {
-    ext = seal.ext.new("changri", "长日将尽", "1.10.1");
+    ext = seal.ext.new("changri", "长日将尽", "1.10.2");
     // 注册扩展
     seal.ext.register(ext);
     ext.autoActive = true;

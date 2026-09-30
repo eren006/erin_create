@@ -460,15 +460,24 @@ a { color: var(--link); text-decoration: none; }
 .tab-head h1 { font-size: 32px; line-height: 40px; letter-spacing: -.5px; }
 .tab-sub { margin-top: 4px; font-size: 13px; line-height: 20px; }
 .bar.tab-bar .tab-sub .quota { font-size: 13px; }
-/* 标签页头部改成和二级页同一套紧凑款：居中小标题，左槽放次数，右槽放按钮，高度统一 */
-.bar.tab-bar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr); column-gap: 6px; align-items: start; padding: env(safe-area-inset-top) 8px 8px; }
-.bar.tab-bar .tab-head { display: contents; }
-.bar.tab-bar .tab-head h1 { grid-row: 1; grid-column: 2; font-size: 17px; line-height: 22px; font-weight: 600; letter-spacing: 0; padding-top: 11px; text-align: center; max-width: 62vw; }
-.bar.tab-bar .tab-actions { grid-row: 1; grid-column: 3; justify-self: end; height: 44px; gap: 4px; }
-.bar.tab-bar .tab-sub { display: none; }
-.bar.tab-bar .tab-sub.keep { display: flex; grid-row: 1; grid-column: 1; height: 44px; align-items: center; margin: 0; padding-left: 8px; font-size: 12px; line-height: 16px; }
-.bar.tab-bar .tab-sub.keep .quota { font-size: 12px; }
-.bar.tab-bar .tab-sub.keep .quota::before { content: ""; }
+/* 所有头部统一成大标题款：第一行 44px 放返回键/按钮（信息页放次数），第二行左对齐大标题，高度一致 */
+.bar:not(.big), .bar.tab-bar:not(.big) {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 44px auto; column-gap: 8px; align-items: center;
+  padding: calc(env(safe-area-inset-top) + 6px) var(--gutter, 18px) 10px; min-height: calc(env(safe-area-inset-top) + 104px); box-sizing: border-box;
+}
+.bar:not(.big):not(.tab-bar) > :first-child { grid-row: 1; grid-column: 1; height: 44px; justify-self: start; padding: 0; margin-left: -4px; }
+.bar:not(.big):not(.tab-bar) > .right { grid-row: 1; grid-column: 2; height: 44px; justify-self: end; }
+.bar:not(.big):not(.tab-bar) .title { grid-row: 2; grid-column: 1 / -1; align-self: start; max-width: none; text-align: left; font-size: 32px; line-height: 40px; font-weight: 700; letter-spacing: -.5px; padding: 0; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.bar:not(.big):not(.tab-bar) .title:has(.avatar.head) { padding-top: 0; }
+.bar .title small { display: none; }
+.bar:not(.big):not(.tab-bar) .title .avatar.head { margin: 0; flex: none; width: 34px; height: 34px; font-size: 15px; }
+.bar.tab-bar:not(.big) .tab-head { display: contents; }
+.bar.tab-bar:not(.big) .tab-head h1 { grid-row: 2; grid-column: 1 / -1; align-self: start; margin: 0; font-size: 32px; line-height: 40px; font-weight: 700; letter-spacing: -.5px; text-align: left; max-width: none; padding: 0; }
+.bar.tab-bar:not(.big) .tab-actions { grid-row: 1; grid-column: 2; justify-self: end; height: 44px; gap: 4px; }
+.bar.tab-bar:not(.big) .tab-sub { display: none; }
+.bar.tab-bar:not(.big) .tab-sub.keep { display: flex; grid-row: 1; grid-column: 1; height: 44px; align-items: center; margin: 0; padding: 0; font-size: 13px; line-height: 18px; }
+.bar.tab-bar:not(.big) .tab-sub.keep .quota { font-size: 13px; }
+.bar.tab-bar:not(.big) .tab-sub.keep .quota::before { content: ""; }
 .lm-note { padding: 8px var(--gutter, 18px) 0; font-size: 12px; color: var(--muted); }
 .icon-btn { width: 40px; height: 40px; }
 .icon-btn svg { width: 20px; height: 20px; }
@@ -1598,7 +1607,7 @@ a { color: var(--link); text-decoration: none; }
   d.showModal();
 })();
 </script>
-{% if mode != 'lovemail' and not phone_admin and lovemail_last %}
+{% if mode != 'lovemail' and not phone_admin %}
 <dialog class="appearance notice-dialog lm-arrived" id="lmArrived" aria-labelledby="lmArrivedTitle">
   <button type="button" class="lm-x" id="lmArrivedClose" aria-label="关闭">✕</button>
   <div class="lm-arrived-ic" aria-hidden="true">💌</div>
@@ -1614,18 +1623,38 @@ a { color: var(--link); text-decoration: none; }
 </style>
 <script>
 (function () {
-  // 新的一封心动信送达（且还没进过信箱）时弹一次，叉掉或点「去看看」后同一封不再弹
-  var scope = {{ [sid, owner]|tojson }}, latest = {{ lovemail_last|int }};
+  // 收到新的心动信（准点派送的那一刻，页面开着就会弹；没开着就在下次打开时弹）：叉掉或点「去看看」后同一封不再弹
+  var scope = {{ [sid, owner]|tojson }}, latest = {{ (lovemail_last or 0)|int }};
   var popKey = 'phone:lmpop:' + JSON.stringify(scope), readKey = 'phone:read:' + JSON.stringify(scope.concat(['__lovemail__']));
   var d = document.getElementById('lmArrived'), notice = document.getElementById('phoneNotice');
   function num(k) { try { return Number(localStorage.getItem(k)) || 0; } catch (_) { return 0; } }
   function remember() { try { localStorage.setItem(popKey, String(latest)); } catch (_) {} }
-  if (!d || !d.showModal || (notice && notice.open)) return;
-  if (latest <= Math.max(num(popKey), num(readKey))) return;
+  if (!d || !d.showModal) return;
+  function show() {
+    if (d.open || (notice && notice.open) || document.hidden) return;
+    if (latest <= Math.max(num(popKey), num(readKey))) return;
+    d.showModal();
+  }
   document.getElementById('lmArrivedClose').addEventListener('click', function () { remember(); d.close(); });
   document.getElementById('lmArrivedGo').addEventListener('click', remember);
   d.addEventListener('cancel', remember);
-  d.showModal();
+  function check() {
+    if (document.hidden) return;
+    fetch({{ url_for('player_lovemail_last')|tojson }}, { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        if (!j || !j.last || j.last <= latest) return;
+        latest = j.last;
+        document.querySelectorAll('[data-other="__lovemail__"], [data-also="__lovemail__"]').forEach(function (el) {
+          el.dataset[el.dataset.also ? 'alsoTs' : 'receivedTs'] = String(latest);
+        });
+        document.dispatchEvent(new Event('phone:updated'));
+        show();
+      }).catch(function () {});
+  }
+  show();
+  setInterval(check, 30000);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) { check(); show(); } });
 })();
 </script>
 {% endif %}
