@@ -140,4 +140,7 @@ assert poller.get("/p/me/poll").get_json()["revision"] != before
 assert app.test_client().get("/p/me/poll").status_code == 401
 adm.post("/admin/phone_codes", data={"action":"reset", "role":"周屿"})
 assert poller.get("/p/me/poll").status_code == 401
+# 时间不依赖服务器本地时区
+assert A._phone_time(1) == "08:00"
+assert A._phone_time(0) == "" and A._phone_time("bad") == ""
 print("ALL OK")

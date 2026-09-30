@@ -4726,7 +4726,7 @@ def _phone_preview(m):
 
 def _phone_time(ts):
     try:
-        return datetime.fromtimestamp(int(ts) / 1000).strftime("%H:%M") if ts else ""
+        return datetime.fromtimestamp(int(ts) / 1000, TZ_BEIJING).strftime("%H:%M") if ts else ""
     except Exception:
         return ""
 
