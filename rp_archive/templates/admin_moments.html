@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}长日存档 · 朋友圈管理{% endblock %}
+
+{% block head %}
+<style>
+.mm-wrap { max-width: 900px; margin: 0 auto; padding: 24px 16px; }
+.mm-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; margin-bottom: 16px; }
+.mm-card h3 { font-size: 14px; margin-bottom: 10px; }
+.mm-note { font-size: 12px; color: var(--muted); line-height: 1.8; }
+.mm-bar { height: 10px; border-radius: 5px; background: var(--surface2); overflow: hidden; margin: 8px 0 6px; }
+.mm-bar i { display: block; height: 100%; background: var(--accent); }
+.mm-bar i.warn { background: var(--red); }
+.mm-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.mm-table th { text-align: left; color: var(--muted); font-weight: 500; padding: 6px 8px; background: var(--surface2); }
+.mm-table td { padding: 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.mm-btn { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 6px 14px; font-size: 12.5px; cursor: pointer; font-family: inherit; }
+.mm-btn.ghost { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+.mm-btn.danger { background: transparent; color: var(--red); border: 1px solid var(--red); }
+.mm-btn.sm { padding: 3px 9px; font-size: 11.5px; }
+.mm-input { width: 80px; background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 6px 10px; font: inherit; }
+.mm-post { border-top: 1px solid var(--border); padding: 12px 0; }
+.mm-post:first-of-type { border-top: none; }
+.mm-head { display: flex; gap: 10px; align-items: center; font-size: 13px; }
+.mm-head .who { font-weight: 600; }
+.mm-head .when { color: var(--muted); font-size: 12px; }
+.mm-head form { margin-left: auto; }
+.mm-text { font-size: 13.5px; margin-top: 6px; white-space: pre-wrap; word-break: break-word; }
+.mm-imgs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.mm-img { position: relative; width: 84px; height: 84px; border-radius: 6px; overflow: hidden; background: var(--surface2); font-size: 11px; color: var(--muted); display: flex; align-items: center; justify-content: center; }
+.mm-img img { width: 100%; height: 100%; object-fit: cover; }
+.mm-img form { position: absolute; top: 3px; right: 3px; }
+.mm-cmts { margin-top: 8px; font-size: 12.5px; color: var(--muted); }
+.mm-cmts div { display: flex; gap: 6px; align-items: center; }
+.mm-cmts b { color: var(--text); font-weight: 500; }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="mm-wrap">
+  <h2 style="margin-bottom:12px;">📷 朋友圈管理</h2>
+
+  {% set pct = (used * 100 / quota)|round(1) if quota else 0 %}
+  <div class="mm-card">
+    <h3>图片空间（这个团账号所有季度加起来）</h3>
+    <div class="mm-bar"><i class="{{ 'warn' if pct >= 90 }}" style="width: {{ [pct, 100]|min }}%"></i></div>
+    <div class="mm-note">已用 <b>{{ '%.1f'|format(used / 1048576) }} MB</b> / {{ '%.0f'|format(quota / 1048576) }} MB（{{ pct }}%）。
+      季度结束后图片仍然保留，直到你在这里删除。空间满了玩家就不能再发图，用到 90% 后台顶部会有红字提醒。</div>
+    <table class="mm-table" style="margin-top:12px;">
+      <thead><tr><th>季度</th><th>图片</th><th>占用</th><th></th></tr></thead>
+      <tbody>
+      {% for s in per_show %}
+        <tr>
+          <td>{{ s.name }}{% if s.is_current %} <span style="color:var(--green);font-size:11px;">进行中</span>{% endif %}</td>
+          <td>{{ s.n }} 张</td>
+          <td>{{ '%.1f'|format(s.bytes / 1048576) }} MB</td>
+          <td>{% if s.n %}<form method="post" onsubmit="return confirm('删除「{{ s.name }}」的全部 {{ s.n }} 张朋友圈图片？朋友圈文字和评论保留，删掉的图片无法恢复。')">
+            <input type="hidden" name="action" value="purge_show"><input type="hidden" name="show_id" value="{{ s.id }}">
+            <button class="mm-btn danger sm" type="submit">删除这一季的图片</button></form>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="mm-card">
+    <h3>每人图片额度（当前查看的这一季）</h3>
+    <form method="post" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <input type="hidden" name="action" value="quota">
+      每人本季最多 <input class="mm-input" type="number" name="quota" min="0" max="500" value="{{ player_quota }}"> 张
+      <button class="mm-btn" type="submit">保存</button>
+      <span class="mm-note">填 0 恢复默认（{{ default_quota }} 张）。玩家用满后可以删自己以前朋友圈里的图片腾出位置，文字保留。</span>
+    </form>
+  </div>
+
+  <div class="mm-card">
+    <h3>最近的朋友圈（当前查看的这一季，最新 50 条）</h3>
+    {% for p in posts %}
+    <div class="mm-post">
+      <div class="mm-head">
+        <span class="who">{{ p.role_name }}</span><span class="when">{{ p.game_day }} {{ p.time }}</span>
+        <span class="when">♥ {{ p.likes|length }} · 评论 {{ p.comments|length }}</span>
+        <form method="post" onsubmit="return confirm('删除这条朋友圈？图片一起删掉。')">
+          <input type="hidden" name="action" value="delete_post"><input type="hidden" name="id" value="{{ p.id }}">
+          <button class="mm-btn danger sm" type="submit">删帖</button></form>
+      </div>
+      {% if p.content %}<div class="mm-text">{{ p.content }}</div>{% endif %}
+      {% if p.images %}<div class="mm-imgs">
+        {% for im in p.images %}<div class="mm-img">
+          {% if im.deleted_at %}已删除{% else %}
+          <a href="{{ url_for('admin_moment_image', image_id=im.id) }}" target="_blank" rel="noopener"><img src="{{ url_for('admin_moment_image', image_id=im.id, s='thumb') }}" loading="lazy" alt=""></a>
+          <form method="post" onsubmit="return confirm('删除这张图片？')"><input type="hidden" name="action" value="delete_image"><input type="hidden" name="id" value="{{ im.id }}"><button class="mm-btn sm" type="submit">×</button></form>
+          {% endif %}
+        </div>{% endfor %}
+      </div>{% endif %}
+      {% if p.comments %}<div class="mm-cmts">
+        {% for c in p.comments %}<div><span><b>{{ c.role_name }}</b>{% if c.reply_to %} 回复 <b>{{ c.reply_to }}</b>{% endif %}：{{ c.content }}</span>
+          <form method="post" onsubmit="return confirm('删除这条评论？')"><input type="hidden" name="action" value="delete_comment"><input type="hidden" name="id" value="{{ c.id }}"><button class="mm-btn ghost sm" type="submit">删</button></form></div>{% endfor %}
+      </div>{% endif %}
+    </div>
+    {% else %}
+    <div class="mm-note">这一季还没有朋友圈。</div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

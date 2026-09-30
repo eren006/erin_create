@@ -11,7 +11,7 @@ REMOTE="jarvis:/home/ubuntu/rp_archive/"
 
 echo ">>> 推送代码到 $REMOTE"
 rsync -az --delete \
-  --exclude 'venv/' --exclude '*.db' --exclude '*.db-*' --exclude 'static/' \
+  --exclude 'venv/' --exclude '*.db' --exclude '*.db-*' --exclude 'static/' --exclude 'moment_images/' \
   --exclude 'logs/' --exclude 'backups/' --exclude 'error.log' --exclude '__pycache__/' \
   --exclude 'deploy.sh' --exclude 'start.bat' --exclude '.gitignore' --exclude 'backup_daily.sh' \
   "$LOCAL_DIR/app.py" "$LOCAL_DIR/backup.py" "$LOCAL_DIR/schema.sql" "$LOCAL_DIR/requirements.txt" \

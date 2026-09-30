@@ -739,7 +739,6 @@ CONFIG_SCHEMA = [
         {"key": "dlc_attack",                "label": "攻防DLC",           "type": "bool", "default": "false"},
         {"key": "dlc_forum",                 "label": "论坛DLC",           "type": "bool", "default": "false"},
         {"key": "dlc_auto_day",              "label": "自动天数DLC",       "type": "bool", "default": "false"},
-        {"key": "dlc_moments",               "label": "朋友圈DLC",         "type": "bool", "default": "false"},
         {"key": "dlc_stakeout",              "label": "踩点DLC",            "type": "bool", "default": "false"},
         {"key": "dlc_battle_appt",           "label": "战斗邀约DLC",        "type": "bool", "default": "false"},
         {"key": "dlc_trade",                 "label": "议价交易DLC",        "type": "bool", "default": "false"},
@@ -1484,6 +1483,65 @@ def _migrate(conn):
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_phone_silent_show ON phone_silent(show_id, from_role)")
+
+    # ── 18. 朋友圈：帖子 / 图片 / 点赞 / 评论；图片额度（每人每季张数 + 团账号总空间）────────
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS moments (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            tenant_id  INTEGER NOT NULL,
+            show_id    INTEGER NOT NULL,
+            role_name  TEXT    NOT NULL,
+            content    TEXT    NOT NULL DEFAULT '',
+            game_day   TEXT    NOT NULL DEFAULT '',
+            created_at INTEGER NOT NULL,
+            deleted    INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_moments_show ON moments(show_id, deleted, id)")
+    # 删图片 = 删文件 + deleted_at 置时间，行留着：那条朋友圈照样在，图片位置显示「图片已删除」
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS moment_images (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            moment_id  INTEGER NOT NULL,
+            tenant_id  INTEGER NOT NULL,
+            show_id    INTEGER NOT NULL,
+            role_name  TEXT    NOT NULL,
+            file       TEXT    NOT NULL,
+            thumb      TEXT    NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            width      INTEGER NOT NULL DEFAULT 0,
+            height     INTEGER NOT NULL DEFAULT 0,
+            seq        INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            deleted_at INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_moment_images_moment ON moment_images(moment_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_moment_images_quota ON moment_images(tenant_id, deleted_at)")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS moment_likes (
+            moment_id  INTEGER NOT NULL,
+            role_name  TEXT    NOT NULL,
+            created_at INTEGER NOT NULL,
+            PRIMARY KEY (moment_id, role_name)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS moment_comments (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            moment_id  INTEGER NOT NULL,
+            role_name  TEXT    NOT NULL,
+            reply_to   TEXT    NOT NULL DEFAULT '',
+            content    TEXT    NOT NULL,
+            created_at INTEGER NOT NULL,
+            deleted    INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_moment_comments_moment ON moment_comments(moment_id)")
+    if "moment_quota" not in _col_names(conn, "phone_settings"):
+        conn.execute("ALTER TABLE phone_settings ADD COLUMN moment_quota INTEGER NOT NULL DEFAULT 0")  # 0 = 默认张数
+    if "moment_quota_mb" not in _col_names(conn, "tenants"):
+        conn.execute("ALTER TABLE tenants ADD COLUMN moment_quota_mb INTEGER NOT NULL DEFAULT 0")     # 0 = 默认空间
 
     # ── 长日将尽许愿墙：独立的小功能，不挂在 tenant/superadmin 体系下 ──────────
     conn.execute("""
@@ -4857,7 +4915,8 @@ def _phone_require_https():
 @app.after_request
 def _phone_security_headers(resp):
     if request.path == "/p" or request.path.startswith("/p/"):
-        resp.headers["Cache-Control"]   = "no-store"
+        cacheable_image = resp.headers.pop("X-Moment-Image", None) and resp.status_code == 200
+        resp.headers["Cache-Control"]   = "private, max-age=86400" if cacheable_image else "no-store"
         resp.headers["Referrer-Policy"] = "no-referrer"
         resp.headers["X-Frame-Options"] = "DENY"
         resp.headers["X-Robots-Tag"]    = "noindex, nofollow"
@@ -4881,6 +4940,10 @@ def player_phone_inbox():
     return render_template("phone.html", mode="inbox", owner=owner, sid=sid,
                            threads=_phone_threads(db, sid, owner), status=_phone_status(db, sid, owner),
                            public=_phone_public_summary(db, sid),
+                           moments_latest=db.execute(
+                               "SELECT role_name, content, created_at, game_day, (SELECT COUNT(*) FROM moment_images i "
+                               "WHERE i.moment_id=m.id) AS n FROM moments m WHERE show_id=? AND deleted=0 "
+                               "ORDER BY id DESC LIMIT 1", (sid,)).fetchone(),
                            revision=_phone_revision(_phone_views(db, sid, owner)))
 
 def _phone_views(db, sid, owner):
@@ -5359,6 +5422,414 @@ def api_phone_sync():
 @app.route("/p/<code>")
 def player_phone_enter(code):
     return _phone_try_enter(code)
+
+# ── 朋友圈 ─────────────────────────────────────────────────────────────────────
+# 网页手机里的朋友圈：本季所有拿到激活码的人都能看；发帖/点赞/评论只在主档期（跟短信一致），
+# 删自己的帖子/评论/图片随时可以。不经过机器人，也不在群里提醒。
+# 图片：浏览器先压缩再上传；服务端用 Pillow 重新编码（去掉 EXIF 里的 GPS 等信息、按 EXIF 方向转正、确认真是图片），
+# 存一张大图（长边 1600）+ 一张缩略图（长边 480），都在 moment_images/ 下——不放 static/，只能凭激活码/后台登录看。
+# 额度两层：
+#   · 每人每季图片张数（后台可改，默认 20）：满了可以删自己以前朋友圈里的图片腾名额，那条朋友圈的文字保留；
+#   · 团账号所有季度加起来的总空间（默认 300MB，tenants.moment_quota_mb 可单独调）：季度结束后图片仍保留，
+#     直到管理员删除；快满时后台顶部红字提醒，满了就不能再传图，逼管理员去清理旧季度。
+MOMENT_IMAGE_DIR           = os.path.join(os.path.dirname(__file__), "moment_images")
+_MOMENT_DEFAULT_QUOTA      = 20
+_MOMENT_DEFAULT_TENANT_MB  = 300
+_MOMENT_MAX_IMAGES         = 9
+_MOMENT_MAX_TEXT           = 1000
+_MOMENT_MAX_COMMENT        = 300
+_MOMENT_MAX_UPLOAD         = 40 * 1024 * 1024   # 一次发帖的整个请求
+_MOMENT_MAX_FILE           = 15 * 1024 * 1024   # 单张原图（浏览器没压缩成功时兜底）
+_MOMENT_DAILY_POSTS        = 20
+_MOMENT_COMMENT_GAP_MS     = 3000
+_MOMENT_WARN_RATIO         = 0.9
+
+def _moment_player_quota(db, sid):
+    row = db.execute("SELECT moment_quota FROM phone_settings WHERE show_id=?", (sid,)).fetchone()
+    return (row["moment_quota"] if row and row["moment_quota"] else _MOMENT_DEFAULT_QUOTA)
+
+def _moment_tenant_quota_bytes(db, tid):
+    row = db.execute("SELECT moment_quota_mb FROM tenants WHERE id=?", (tid,)).fetchone()
+    return (row["moment_quota_mb"] if row and row["moment_quota_mb"] else _MOMENT_DEFAULT_TENANT_MB) * 1024 * 1024
+
+def _moment_tenant_used(db, tid):
+    return db.execute("SELECT COALESCE(SUM(size_bytes),0) FROM moment_images WHERE tenant_id=? AND deleted_at=0",
+                      (tid,)).fetchone()[0]
+
+def _moment_player_used(db, sid, role):
+    return db.execute("SELECT COUNT(*) FROM moment_images WHERE show_id=? AND role_name=? AND deleted_at=0",
+                      (sid, role)).fetchone()[0]
+
+def _moment_process(raw):
+    """原始字节 → (大图 JPEG, 缩略图 JPEG, 宽, 高)；不是图片/太大/解不开抛 ValueError"""
+    from PIL import Image, ImageOps
+    Image.MAX_IMAGE_PIXELS = 40_000_000  # 超过就当解压炸弹拒掉
+    try:
+        img = Image.open(io.BytesIO(raw))
+        img.load()
+    except Exception:
+        raise ValueError("不是能识别的图片")
+    img = ImageOps.exif_transpose(img)
+    if img.mode in ("RGBA", "LA", "P"):
+        img = img.convert("RGBA")
+        bg = Image.new("RGB", img.size, (255, 255, 255))
+        bg.paste(img, mask=img.split()[-1])
+        img = bg
+    elif img.mode != "RGB":
+        img = img.convert("RGB")
+    def enc(im, edge, q):
+        im = im.copy()
+        im.thumbnail((edge, edge))
+        buf = io.BytesIO()
+        im.save(buf, "JPEG", quality=q, optimize=True, progressive=True)  # 不传 exif → 元数据全丢
+        return buf.getvalue(), im.size
+    full, (w, h) = enc(img, 1600, 82)
+    thumb, _ = enc(img, 480, 75)
+    return full, thumb, w, h
+
+def _moment_delete_image_file(row):
+    for name in (row["file"], row["thumb"]):
+        try:
+            os.remove(os.path.join(MOMENT_IMAGE_DIR, name))
+        except OSError:
+            pass
+
+def _moment_delete_images(db, where, args):
+    """删一批图片：文件删掉，行留着（deleted_at 置时间）"""
+    now = int(time.time() * 1000)
+    rows = db.execute(f"SELECT id, file, thumb FROM moment_images WHERE deleted_at=0 AND {where}", args).fetchall()
+    for r in rows:
+        _moment_delete_image_file(r)
+        db.execute("UPDATE moment_images SET deleted_at=? WHERE id=?", (now, r["id"]))
+    return len(rows)
+
+def _moment_feed(db, sid, viewer, before=None, limit=20, role=None):
+    q = "SELECT * FROM moments WHERE show_id=? AND deleted=0"
+    args = [sid]
+    if before:
+        q += " AND id<?"; args.append(before)
+    if role:
+        q += " AND role_name=?"; args.append(role)
+    posts = [dict(r) for r in db.execute(q + " ORDER BY id DESC LIMIT ?", args + [limit + 1]).fetchall()]
+    more = len(posts) > limit
+    posts = posts[:limit]
+    for p in posts:
+        p["mine"] = p["role_name"] == viewer
+        p["time"] = _phone_time(p["created_at"])
+        p["images"] = [dict(r) for r in db.execute(
+            "SELECT id, width, height, deleted_at FROM moment_images WHERE moment_id=? ORDER BY seq, id", (p["id"],))]
+        p["likes"] = [r["role_name"] for r in db.execute(
+            "SELECT role_name FROM moment_likes WHERE moment_id=? ORDER BY created_at", (p["id"],))]
+        p["liked"] = viewer in p["likes"]
+        p["comments"] = [dict(r, mine=r["role_name"] == viewer) for r in db.execute(
+            "SELECT id, role_name, reply_to, content FROM moment_comments WHERE moment_id=? AND deleted=0 ORDER BY id",
+            (p["id"],))]
+    return posts, more
+
+def _moment_can_write(db, sid):
+    """发帖/点赞/评论：本季进行中 + 主档期；返回不能的原因，能就返回 None"""
+    show = db.execute("SELECT * FROM shows WHERE id=?", (sid,)).fetchone()
+    if not show or _schedule_zone(dict(show)) != "main":
+        return "不在档期内，朋友圈暂时只能看"
+    return None
+
+def _moment_json(ok, msg="", **extra):
+    return jsonify(ok=ok, msg=msg, **extra), (200 if ok else 400)
+
+def _moment_guard():
+    """玩家朋友圈的写接口统一校验：激活码 + CSRF；返回 (sid, owner, tid) 或 (None, 错误响应)"""
+    who = _phone_current()
+    if not who:
+        return None, (jsonify(ok=False, msg="手机登录已失效"), 401)
+    token = request.headers.get("X-CSRF", "") or request.form.get("csrf", "")
+    if not hmac.compare_digest(token, session.get("phone_csrf", "") or "-"):
+        return None, _moment_json(False, "页面过期了，刷新后再试")
+    sid, owner = who
+    tid = get_db().execute("SELECT tenant_id FROM shows WHERE id=?", (sid,)).fetchone()["tenant_id"]
+    return (sid, owner, tid), None
+
+@app.route("/p/me/moments")
+def player_moments():
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    db = get_db()
+    tid = db.execute("SELECT tenant_id FROM shows WHERE id=?", (sid,)).fetchone()["tenant_id"]
+    try:
+        before = int(request.args.get("before") or 0) or None
+    except ValueError:
+        before = None
+    mine_only = request.args.get("mine") == "1"
+    posts, more = _moment_feed(db, sid, owner, before=before, role=owner if mine_only else None)
+    quota = _moment_player_quota(db, sid)
+    tenant_full = _moment_tenant_used(db, tid) >= _moment_tenant_quota_bytes(db, tid)
+    return render_template("phone.html", mode="moments", owner=owner, sid=sid, posts=posts, more=more,
+                           mine_only=mine_only, csrf=_phone_csrf(), why=_moment_can_write(db, sid),
+                           img_used=_moment_player_used(db, sid, owner), img_quota=quota, tenant_full=tenant_full,
+                           max_images=_MOMENT_MAX_IMAGES, max_text=_MOMENT_MAX_TEXT, max_comment=_MOMENT_MAX_COMMENT,
+                           latest_ts=(posts[0]["created_at"] if posts and not before and not mine_only else 0))
+
+@app.route("/p/me/moments/img/<int:image_id>")
+def player_moment_image(image_id):
+    who = _phone_current()
+    if not who:
+        abort(404)
+    row = get_db().execute("SELECT * FROM moment_images WHERE id=? AND show_id=? AND deleted_at=0",
+                           (image_id, who[0])).fetchone()
+    if not row:
+        abort(404)
+    name = row["thumb"] if request.args.get("s") == "thumb" else row["file"]
+    resp = send_file(os.path.join(MOMENT_IMAGE_DIR, name), mimetype="image/jpeg")
+    resp.headers["X-Moment-Image"] = "1"  # 让 /p 的安全头放开缓存：图片内容不会变，删了就 404
+    return resp
+
+@app.route("/p/me/moments/post", methods=["POST"])
+def player_moment_post():
+    ok_, err = _moment_guard()
+    if err:
+        return err
+    sid, owner, tid = ok_
+    db = get_db()
+    why = _moment_can_write(db, sid)
+    if why:
+        return _moment_json(False, why)
+    if request.content_length is None or request.content_length > _MOMENT_MAX_UPLOAD:
+        return _moment_json(False, "图片太大了，少选几张再试")
+    text = (request.form.get("content") or "").strip()
+    files = [f for f in request.files.getlist("images") if f and f.filename is not None]
+    if not text and not files:
+        return _moment_json(False, "写点什么，或者配张图")
+    if len(text) > _MOMENT_MAX_TEXT:
+        return _moment_json(False, f"最多 {_MOMENT_MAX_TEXT} 字")
+    if len(files) > _MOMENT_MAX_IMAGES:
+        return _moment_json(False, f"一条最多 {_MOMENT_MAX_IMAGES} 张图")
+    day_start = int(datetime.now(TZ_BEIJING).replace(hour=0, minute=0, second=0, microsecond=0).timestamp() * 1000)
+    if db.execute("SELECT COUNT(*) FROM moments WHERE show_id=? AND role_name=? AND created_at>=?",
+                  (sid, owner, day_start)).fetchone()[0] >= _MOMENT_DAILY_POSTS:
+        return _moment_json(False, f"今天已经发了 {_MOMENT_DAILY_POSTS} 条，明天再来")
+    processed = []
+    for f in files:
+        raw = f.read(_MOMENT_MAX_FILE + 1)
+        if len(raw) > _MOMENT_MAX_FILE:
+            return _moment_json(False, "有张图片太大了")
+        try:
+            processed.append(_moment_process(raw))
+        except ValueError as e:
+            return _moment_json(False, f"有张图片打不开：{e}")
+    with _phone_send_lock:  # 额度检查和写入之间不能被插队
+        if processed:
+            quota = _moment_player_quota(db, sid)
+            used = _moment_player_used(db, sid, owner)
+            if used + len(processed) > quota:
+                return _moment_json(False, f"图片额度不够：本季已用 {used}/{quota} 张。"
+                                          f"可以在「我的朋友圈」删掉以前的图片腾出位置，文字会保留")
+            new_bytes = sum(len(a) + len(b) for a, b, _, _ in processed)
+            if _moment_tenant_used(db, tid) + new_bytes > _moment_tenant_quota_bytes(db, tid):
+                return _moment_json(False, "存档空间满了，暂时不能发图，请联系管理员清理")
+        now = int(time.time() * 1000)
+        sync = _phone_sync_row(db, sid)
+        game_day = (sync["snap"].get("game_day") or "") if sync else ""
+        cur = db.execute("INSERT INTO moments (tenant_id, show_id, role_name, content, game_day, created_at) VALUES (?,?,?,?,?,?)",
+                         (tid, sid, owner, text, game_day, now))
+        mid = cur.lastrowid
+        folder = os.path.join(str(tid), str(sid))
+        os.makedirs(os.path.join(MOMENT_IMAGE_DIR, folder), exist_ok=True)
+        for i, (full, thumb, w, h) in enumerate(processed):
+            key = secrets.token_hex(12)
+            fname, tname = os.path.join(folder, key + ".jpg"), os.path.join(folder, key + "_t.jpg")
+            with open(os.path.join(MOMENT_IMAGE_DIR, fname), "wb") as fh:
+                fh.write(full)
+            with open(os.path.join(MOMENT_IMAGE_DIR, tname), "wb") as fh:
+                fh.write(thumb)
+            db.execute("""INSERT INTO moment_images (moment_id, tenant_id, show_id, role_name, file, thumb, size_bytes,
+                          width, height, seq, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                       (mid, tid, sid, owner, fname, tname, len(full) + len(thumb), w, h, i, now))
+        db.commit()
+    return _moment_json(True, "已发布", id=mid)
+
+@app.route("/p/me/moments/<int:mid>/like", methods=["POST"])
+def player_moment_like(mid):
+    ok_, err = _moment_guard()
+    if err:
+        return err
+    sid, owner, _ = ok_
+    db = get_db()
+    if not db.execute("SELECT 1 FROM moments WHERE id=? AND show_id=? AND deleted=0", (mid, sid)).fetchone():
+        return _moment_json(False, "这条朋友圈不见了")
+    why = _moment_can_write(db, sid)
+    if why:
+        return _moment_json(False, why)
+    if db.execute("SELECT 1 FROM moment_likes WHERE moment_id=? AND role_name=?", (mid, owner)).fetchone():
+        db.execute("DELETE FROM moment_likes WHERE moment_id=? AND role_name=?", (mid, owner))
+        liked = False
+    else:
+        db.execute("INSERT INTO moment_likes (moment_id, role_name, created_at) VALUES (?,?,?)",
+                   (mid, owner, int(time.time() * 1000)))
+        liked = True
+    db.commit()
+    likes = [r["role_name"] for r in db.execute(
+        "SELECT role_name FROM moment_likes WHERE moment_id=? ORDER BY created_at", (mid,))]
+    return _moment_json(True, liked=liked, likes=likes)
+
+@app.route("/p/me/moments/<int:mid>/comment", methods=["POST"])
+def player_moment_comment(mid):
+    ok_, err = _moment_guard()
+    if err:
+        return err
+    sid, owner, _ = ok_
+    db = get_db()
+    if not db.execute("SELECT 1 FROM moments WHERE id=? AND show_id=? AND deleted=0", (mid, sid)).fetchone():
+        return _moment_json(False, "这条朋友圈不见了")
+    why = _moment_can_write(db, sid)
+    if why:
+        return _moment_json(False, why)
+    text = (request.form.get("content") or "").strip()
+    if not text:
+        return _moment_json(False, "评论不能为空")
+    if len(text) > _MOMENT_MAX_COMMENT:
+        return _moment_json(False, f"评论最多 {_MOMENT_MAX_COMMENT} 字")
+    reply_to = (request.form.get("reply_to") or "").strip()
+    # 只能回复这条朋友圈下真的评论过的人（或楼主），不能随手写个名字
+    if reply_to:
+        valid = {r["role_name"] for r in db.execute(
+            "SELECT role_name FROM moment_comments WHERE moment_id=? AND deleted=0", (mid,))}
+        valid.add(db.execute("SELECT role_name FROM moments WHERE id=?", (mid,)).fetchone()["role_name"])
+        if reply_to not in valid or reply_to == owner:
+            reply_to = ""
+    now = int(time.time() * 1000)
+    last = db.execute("SELECT MAX(m.created_at) FROM moment_comments m JOIN moments p ON p.id=m.moment_id "
+                      "WHERE p.show_id=? AND m.role_name=?", (sid, owner)).fetchone()[0] or 0
+    if now - last < _MOMENT_COMMENT_GAP_MS:
+        return _moment_json(False, "慢一点，隔几秒再评论")
+    db.execute("INSERT INTO moment_comments (moment_id, role_name, reply_to, content, created_at) VALUES (?,?,?,?,?)",
+               (mid, owner, reply_to, text, now))
+    db.commit()
+    return _moment_json(True)
+
+@app.route("/p/me/moments/<int:mid>/delete", methods=["POST"])
+def player_moment_delete(mid):
+    ok_, err = _moment_guard()
+    if err:
+        return err
+    sid, owner, _ = ok_
+    db = get_db()
+    row = db.execute("SELECT 1 FROM moments WHERE id=? AND show_id=? AND role_name=? AND deleted=0",
+                     (mid, sid, owner)).fetchone()
+    if not row:
+        return _moment_json(False, "只能删自己的朋友圈")
+    _moment_delete_images(db, "moment_id=?", (mid,))
+    db.execute("UPDATE moments SET deleted=1 WHERE id=?", (mid,))
+    db.commit()
+    return _moment_json(True)
+
+@app.route("/p/me/moments/comment/<int:cid>/delete", methods=["POST"])
+def player_moment_comment_delete(cid):
+    ok_, err = _moment_guard()
+    if err:
+        return err
+    sid, owner, _ = ok_
+    db = get_db()
+    # 自己的评论可以删；楼主也可以删自己朋友圈下的任何评论
+    row = db.execute("""SELECT c.id FROM moment_comments c JOIN moments m ON m.id=c.moment_id
+                        WHERE c.id=? AND m.show_id=? AND c.deleted=0 AND (c.role_name=? OR m.role_name=?)""",
+                     (cid, sid, owner, owner)).fetchone()
+    if not row:
+        return _moment_json(False, "不能删这条评论")
+    db.execute("UPDATE moment_comments SET deleted=1 WHERE id=?", (cid,))
+    db.commit()
+    return _moment_json(True)
+
+@app.route("/p/me/moments/image/<int:image_id>/delete", methods=["POST"])
+def player_moment_image_delete(image_id):
+    ok_, err = _moment_guard()
+    if err:
+        return err
+    sid, owner, _ = ok_
+    db = get_db()
+    n = _moment_delete_images(db, "id=? AND show_id=? AND role_name=?", (image_id, sid, owner))
+    db.commit()
+    if not n:
+        return _moment_json(False, "只能删自己的图片")
+    return _moment_json(True, "图片已删除，那条朋友圈的文字还在",
+                        used=_moment_player_used(db, sid, owner), quota=_moment_player_quota(db, sid))
+
+# ── 后台：朋友圈管理（空间/额度/删帖删图） ──
+
+def _moment_storage_warning():
+    """后台页顶部的红字：团账号朋友圈图片空间用到 90% 以上时返回提示文字"""
+    tid = current_tenant_id()
+    if not tid:
+        return None
+    db = get_db()
+    used, quota = _moment_tenant_used(db, tid), _moment_tenant_quota_bytes(db, tid)
+    if quota and used >= quota * _MOMENT_WARN_RATIO:
+        pct = min(100, int(used * 100 / quota))
+        return (f"朋友圈图片空间已用 {pct}%（{used / 1048576:.0f}/{quota / 1048576:.0f} MB）"
+                + ("，已经满了，玩家暂时不能发图" if used >= quota else "，快满了") + "。请到「朋友圈管理」删除旧季度的图片。")
+    return None
+
+@app.context_processor
+def inject_moment_storage_warning():
+    ep = request.endpoint or ""
+    if ep.startswith("admin") and session.get("admin_logged_in"):
+        try:
+            return {"moment_storage_warning": _moment_storage_warning()}
+        except Exception:
+            return {}
+    return {}
+
+@app.route("/admin/moments", methods=["GET", "POST"])
+@require_admin
+def admin_moments():
+    tid = current_tenant_id()
+    sid = get_show_id()
+    db  = get_db()
+    if request.method == "POST":
+        action = request.form.get("action")
+        if action == "quota" and sid:
+            try:
+                q = max(0, min(500, int(request.form.get("quota") or 0)))
+            except ValueError:
+                q = 0
+            db.execute("INSERT INTO phone_settings (show_id, moment_quota) VALUES (?, ?) "
+                       "ON CONFLICT(show_id) DO UPDATE SET moment_quota=excluded.moment_quota", (sid, q))
+        elif action == "purge_show":
+            target = request.form.get("show_id", type=int)
+            if target and db.execute("SELECT 1 FROM shows WHERE id=? AND tenant_id=?", (target, tid)).fetchone():
+                _moment_delete_images(db, "show_id=? AND tenant_id=?", (target, tid))
+        elif action == "delete_post":
+            mid = request.form.get("id", type=int)
+            if db.execute("SELECT 1 FROM moments WHERE id=? AND tenant_id=?", (mid, tid)).fetchone():
+                _moment_delete_images(db, "moment_id=?", (mid,))
+                db.execute("UPDATE moments SET deleted=1 WHERE id=?", (mid,))
+        elif action == "delete_image":
+            _moment_delete_images(db, "id=? AND tenant_id=?", (request.form.get("id", type=int), tid))
+        elif action == "delete_comment":
+            cid = request.form.get("id", type=int)
+            db.execute("""UPDATE moment_comments SET deleted=1 WHERE id=? AND moment_id IN
+                          (SELECT id FROM moments WHERE tenant_id=?)""", (cid, tid))
+        db.commit()
+        return redirect(url_for("admin_moments"))
+    used, quota = _moment_tenant_used(db, tid), _moment_tenant_quota_bytes(db, tid)
+    per_show = [dict(r) for r in db.execute("""
+        SELECT s.id, s.name, s.is_current, COUNT(i.id) AS n, COALESCE(SUM(i.size_bytes),0) AS bytes
+        FROM shows s LEFT JOIN moment_images i ON i.show_id=s.id AND i.deleted_at=0
+        WHERE s.tenant_id=? GROUP BY s.id ORDER BY s.id DESC""", (tid,))]
+    posts, _ = _moment_feed(db, sid, None, limit=50) if sid else ([], False)
+    return render_template("admin_moments.html", used=used, quota=quota, per_show=per_show, posts=posts,
+                           player_quota=_moment_player_quota(db, sid) if sid else _MOMENT_DEFAULT_QUOTA,
+                           default_quota=_MOMENT_DEFAULT_QUOTA)
+
+@app.route("/admin/moments/img/<int:image_id>")
+@require_admin
+def admin_moment_image(image_id):
+    row = get_db().execute("SELECT * FROM moment_images WHERE id=? AND tenant_id=? AND deleted_at=0",
+                           (image_id, current_tenant_id())).fetchone()
+    if not row:
+        abort(404)
+    return send_file(os.path.join(MOMENT_IMAGE_DIR, row["thumb"] if request.args.get("s") == "thumb" else row["file"]),
+                     mimetype="image/jpeg")
 
 @app.route("/admin/phone_codes", methods=["GET", "POST"])
 @require_admin

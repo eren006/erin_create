@@ -1809,7 +1809,7 @@ const SYNC_JSON_PARENT_KEYS = {
         "enable_chaos_letter", "enable_wish_system", "enable_lovemail",
         "enable_wechat", "enable_direct_letter",
         "dlc_sighting", "dlc_fupan", "dlc_auction", "dlc_attack",
-        "dlc_forum", "dlc_auto_day", "dlc_moments",
+        "dlc_forum", "dlc_auto_day",
         "dlc_stakeout", "dlc_battle_appt", "dlc_trade"
     ],
     "chaos_letter_config": [

@@ -26,6 +26,7 @@
     ('admin_stats', '数据统计'),
     ('admin_blacklist', '黑名单'),
     ('admin_phone_codes', '短信激活码'),
+    ('admin_moments', '朋友圈管理'),
   ]),
   ('season', '📅 季与存档', 'admin_shows', [
     ('admin_shows', '季管理'),
@@ -66,6 +67,11 @@
   .adm-l2 .adm-sync { display: none; }
 }
 </style>
+{% if moment_storage_warning %}
+<div style="background:#7f1d1d;color:#fff;font-size:13px;padding:8px 16px;text-align:center;">
+  ⚠️ {{ moment_storage_warning }} <a href="{{ url_for('admin_moments') }}" style="color:#fecaca;text-decoration:underline;">去清理</a>
+</div>
+{% endif %}
 <div class="adm-nav">
   <div class="adm-nav-in">
     <div class="adm-l1">
