@@ -1577,25 +1577,58 @@ cmd_role_list.solve =(ctx, msg) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
-    // 获取 NPC 列表（全局存储）
-    let npcList = kvGet("a_npc_list", []);
-
-    let rep = `📊 当前已绑定角色列表：\n`;
+    // 嘉宾和 NPC 分两栏（通用 NPC 也算 NPC）
+    const npcSet = new Set([...kvGet("a_npc_list", []), ...kvGet("a_generic_npc_list", [])]);
+    const guests = [], npcs = [];
     // 新结构：uid为key，roleName在value[0]
     for (let [uid, info] of Object.entries(roles)) {
         const name = info[0];
-        let isNPC = npcList.includes(name);
-        let npcTag = isNPC ? " 🎭" : "";
         const prof = getCharProfile(platform, name);
         const gender = prof.gender || "女";
         const age = prof.age !== undefined ? prof.age : 18;
         const look = prof.look || (gender === "男" ? "亨利卡维尔" : "刘亦菲");
         const bio = prof.bio ? `\n   签名：${prof.bio}` : "";
         const nick = info[2];
-        rep += `👤 ${nick || name}${npcTag}\n${nick ? `   全名：${name}\n` : ""}   ${gender} · ${age}岁 · 皮相：${look}${bio}\n\n`;
+        const entry = `👤 ${nick || name}\n${nick ? `   全名：${name}\n` : ""}   ${gender} · ${age}岁 · 皮相：${look}${bio}`;
+        (npcSet.has(name) ? npcs : guests).push(entry);
     }
-    seal.replyToSender(ctx, msg, rep.trim());
+
+    const sections = [[`💃 嘉宾（${guests.length}）`, guests]];
+    if (npcs.length) sections.push([`🎭 NPC（${npcs.length}）`, npcs]);
+    const full = `📊 当前已绑定角色列表：\n\n` + sections.map(([t, list]) => `${t}\n` + (list.length ? list.join("\n\n") : "（暂无）")).join("\n\n");
+
+    // 单条消息超过约 1000 字节会被平台静默丢掉——人一多整份名单就发不出来。
+    // 短的照旧一条发；长了就在群里改成合并转发，每栏按 ~800 字节切页
+    if (Buffer_byteLength(full) <= 900 || !msg.groupId) {
+        seal.replyToSender(ctx, msg, Buffer_byteLength(full) > 900 && !msg.groupId ? full.slice(0, 280) + "\n……（人太多，请在群里发「玩家名单」查看完整列表）" : full);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    const nodes = [{ type: "node", data: { name: "玩家名单", uin: "10001", content: `📊 当前已绑定角色：嘉宾 ${guests.length} 人${npcs.length ? `、NPC ${npcs.length} 人` : ""}` } }];
+    for (const [title, list] of sections) {
+        let page = [], size = 0, n = 1;
+        const flush = () => {
+            if (!page.length) return;
+            nodes.push({ type: "node", data: { name: n > 1 ? `${title}·${n}` : title, uin: "10001", content: page.join("\n\n") } });
+            page = []; size = 0; n++;
+        };
+        if (!list.length) nodes.push({ type: "node", data: { name: title, uin: "10001", content: "（暂无）" } });
+        for (const e of list) {
+            const b = Buffer_byteLength(e) + 2;
+            if (size + b > 800) flush();
+            page.push(e); size += b;
+        }
+        flush();
+    }
+    const gidNum = parseInt(msg.groupId.replace(/\D/g, ""), 10);
+    ws({ action: "send_group_forward_msg", params: { group_id: gidNum, messages: nodes } }, ctx, msg, "");
     return seal.ext.newCmdExecuteResult(true);
+}
+
+// UTF-8 字节数（海豹的 JS 环境不一定有 Buffer）
+function Buffer_byteLength(str) {
+    let n = 0;
+    for (const ch of String(str)) { const c = ch.codePointAt(0); n += c < 0x80 ? 1 : c < 0x800 ? 2 : c < 0x10000 ? 3 : 4; }
+    return n;
 }
 // ========================
 // 🍀 幸运邂逅：随机挑一个人 + 一件「当前已开放」的事（短信/送礼/私约/电话）
