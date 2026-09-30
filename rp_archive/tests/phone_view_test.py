@@ -119,6 +119,12 @@ fresh.set_cookie(A._PHONE_COOKIE, expired, path="/p")
 assert fresh.get("/p/me").status_code == 302
 r = app.test_client().get("/p/" + codes["林晚"], base_url="https://archive.changri.work")
 assert "Secure" in r.headers["Set-Cookie"]
+# 未读概况只累计来信；之后发出的短信不能掩盖之前未读的来信
+with app.app_context():
+    threads = A._phone_threads(A.get_db(), 1, "周屿")
+    lin_thread = next(t for t in threads if t["other"] == "林晚")
+    assert lin_thread["received_ts"] == T + 2 * 60000
+    assert lin_thread["last"]["mine"] and lin_thread["last"]["ts"] == T + 3 * 60000
 # 轮询使用同一玩家视角，不能泄露真发件人、原文或丢失礼物
 poller, _ = inbox("周屿")
 r = poller.get("/p/me/poll?since=0")

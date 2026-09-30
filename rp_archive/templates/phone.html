@@ -106,6 +106,7 @@ a { color: var(--link); text-decoration: none; }
   color: var(--muted); font-size: 14px;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
+.row.unread .name::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--link); margin-right: 6px; }
 .row .meta { color: var(--muted); font-size: 14px; }
 
 .empty { color: var(--muted); text-align: center; padding: 60px 24px; font-size: 14px; }
@@ -202,7 +203,7 @@ a { color: var(--link); text-decoration: none; }
   {% include "_phone_quota.html" %}
   <div class="scroll list" id="inbox">
     {% for t in threads %}
-    <a class="row" href="{{ url_for('player_phone_thread', other=t.other) }}">
+    <a class="row" data-other="{{ t.other }}" data-received-ts="{{ t.received_ts }}" href="{{ url_for('player_phone_thread', other=t.other) }}">
       <div class="avatar" data-name="{{ t.other }}">{{ t.other[:1] }}</div>
       <div class="body">
         <div class="top"><span class="name">{{ t.other }}</span><span class="time">{{ t.last.game_day }} {{ t.time }}</span></div>
@@ -315,6 +316,30 @@ a { color: var(--link); text-decoration: none; }
 {% if mode in ('inbox', 'thread') %}
 <script>
 (function () {
+  var scope = {{ ([sid, owner]|tojson) }};
+  function readKey(other) { return 'phone:read:' + JSON.stringify(scope.concat([other])); }
+  function unread() {
+    if (document.hidden) return;
+    {% if mode == 'thread' %}
+    try {
+      var key = readKey({{ other|tojson }});
+      var ts = Number(document.querySelector('.chat').dataset.receivedTs);
+      localStorage.setItem(key, String(Math.max(Number(localStorage.getItem(key)) || 0, ts)));
+    } catch (_) {}
+    {% else %}
+    document.querySelectorAll('#inbox .row').forEach(function (row) {
+      var isUnread = false;
+      try { isUnread = Number(row.dataset.receivedTs) > (Number(localStorage.getItem(readKey(row.dataset.other))) || 0); } catch (_) {}
+      row.classList.toggle('unread', isUnread);
+      if (isUnread) row.setAttribute('aria-label', row.dataset.other + '，有未读信息');
+      else row.removeAttribute('aria-label');
+    });
+    {% endif %}
+  }
+  unread();
+  document.addEventListener('phone:updated', unread);
+  document.addEventListener('visibilitychange', unread);
+  window.addEventListener('storage', unread);
   var revision = null, busy = false;
   function avatars() {
     document.querySelectorAll('.avatar[data-name]').forEach(function (el) {
