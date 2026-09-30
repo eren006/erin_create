@@ -19,8 +19,8 @@
   --mine-text: #ffffff;
   --theirs: #f0eff2;
   --theirs-text: #111114;
-  --gift-bg: #fff6e0;
-  --gift-line: #f1d48a;
+  --gift-bg: #faf5e9;
+  --gift-line: #e8dcc0;
   --gift-text: #5b4410;
   --tag: #b4552f;
   --link: #62616a;
@@ -36,9 +36,9 @@
     --mine: #6854bc;
     --theirs: #25252b;
     --theirs-text: #f2f2f5;
-    --gift-bg: #2d2412;
-    --gift-line: #6b5420;
-    --gift-text: #f3d890;
+    --gift-bg: #29261e;
+    --gift-line: #494132;
+    --gift-text: #e2d3b3;
     --tag: #f0936b;
     --link: #aaa8b1;
   }
@@ -131,11 +131,11 @@ a { color: var(--link); text-decoration: none; }
 .sig { opacity: .82; font-size: 12px; color: var(--muted); margin: 6px 0 2px 12px; }
 .gift {
   border: 1px solid var(--gift-line); background: var(--gift-bg); color: var(--gift-text);
-  border-radius: 16px; padding: 10px 14px; min-width: 160px;
+  border-radius: 16px; padding: 16px 18px; min-width: 160px; max-width: 100%;
 }
-.gift .gname { font-weight: 600; }
+.gift .gname { font-weight: 600; font-size: 14px; overflow-wrap: anywhere; }
 .gift .gname::before { content: "🎁 "; }
-.gift .gnote { margin-top: 4px; font-size: 14px; white-space: pre-wrap; word-break: break-word; }
+.gift .gnote { margin-top: 10px; font-size: 14px; line-height: 1.8; white-space: pre-wrap; word-break: break-word; }
 .tag { font-size: 12px; color: var(--muted); margin-top: 3px; padding: 0 4px; }
 
 .linkbtn { background: none; border: none; color: var(--link); font: inherit; font-size: 16px; cursor: pointer; padding: 0; text-align: left; }
