@@ -1337,13 +1337,12 @@ def memories_between(a, b):
 
 def memory_line(a, b):
     """挑一件两人之间记着的事，回一句能接在场景/小聚开头的话；没有就是空"""
-    rows = memories_between(a, b)
-    if not rows: return ''
-    r = random.choice(rows)
     lines = dict(treat='想起她病中替你请过太医的事', visit_cold='想起她在你困顿时仍来看过你',
                  first_gift='想起她把自己做的第一件东西送了给你', testify='想起她当年替你在案子上作过证',
                  festival='想起你们曾一起过节')
-    return lines.get(r['kind'], '')
+    rows = [r for r in memories_between(a, b) if r['kind'] in lines]   # 交好线的记账（qifei_plead 等）不算
+    if not rows: return ''
+    return lines[random.choice(rows)['kind']]
 
 
 def sisters_of(cid):
@@ -2502,7 +2501,7 @@ def index():
     nxt = c['rank'] + 1
     promo = None
     if c['status'] not in ('cold',) and nxt <= PLAYER_MAX_RANK:
-        promo = dict(rank=RANK_NAMES[nxt], favor=PROMOTE_FAVOR[nxt], virtue=promote_virtue_need(nxt),
+        promo = dict(rank=RANK_NAMES[nxt], favor=promote_favor_need(c, nxt), virtue=promote_virtue_need(nxt),
                      slot=slot_free(nxt, c['id']), days_ok=(day - c['rank_since_day']) >= MIN_DAYS_AT_RANK)
     heirs = q("SELECT * FROM heirs WHERE mother_id=? ORDER BY id", (c['id'],))
     maid_gap = 0 if c['status'] == 'cold' else maid_quota(c['rank']) - len(active_maids(c['id']))
@@ -2973,6 +2972,442 @@ def confess():
 
 # ── 六宫（社交）────────────────────────────────────────────────────────────────
 
+# ── 交好 NPC（九点二十一节）──────────────────────────────────────────────────────
+# 每天拜访一位 NPC、选一种示好方式。好感四档：冷淡 <0 / 客气 0~29 / 亲近 30+ / 知己 60+，
+# 亲近、知己各解锁一项回报（见 BOND_PERKS 和各处 bond() 的调用）。换届时 NPC 换人、relations 清空，自然归零。
+# 台词只用封号，不写人名：NPC 每届换人，孩子也不一定是同一个
+
+BOND_CLOSE, BOND_INTIMATE = 30, 60
+BOND_TIERS = [(BOND_INTIMATE, '知己'), (BOND_CLOSE, '亲近'), (0, '客气'), (-101, '冷淡')]
+BOND_VISIT_ENERGY = 1
+BOND_SNUB = -5                 # 撞上忌讳
+BOND_INTIMATE_DECAY = 2        # 知己要常走动：每晚 −2
+BOND_SPILL = {                 # 讨好一位，牵连别人（只算涨的时候）
+    'huanghou': [('huafei', -0.5)],
+    'huafei':   [('huanghou', -0.5)],
+    'lipin':    [('huafei', 0.25), ('huanghou', -0.25)],   # 丽嫔是华妃的人，嘴又不严
+}
+BOND_LIPIN_BOOST = 1.5         # 丽嫔知己：替你在华妃跟前说好话，华妃好感的涨幅 ×1.5
+BOND_HUANGHOU_GUARD = 0.08     # 皇后亲近：别人对你使计成功率 −8%
+BOND_HUAFEI_GUARD = 0.10       # 华妃知己：−10%
+BOND_HUANGHOU_PROMOTE = 0.9    # 皇后知己：晋封所需圣宠打九折
+BOND_CAUGHT_HUANGHOU = -30     # 你使计败露，皇后好感 −30
+BOND_DUANFEI_SECRET = 0.30
+BOND_DUANFEI_HINT_DAYS = 3
+BOND_QIFEI_PLEAD, BOND_QIFEI_BACKFIRE, BOND_QIFEI_INTERVAL = 0.30, 0.20, 3
+BOND_JINGPIN_CASE = 10         # 敬嫔亲近：案子里你的嫌疑多减 10
+BOND_CAO_BOOST, BOND_CAO_LEAK, BOND_CAO_LEAK_CAUGHT = 0.05, 0.10, 0.15
+BOND_CAO_TRUE = 0.5
+
+NPC_BOND = {
+    'huanghou': dict(
+        likes='懂规矩、顾体面、人前恭敬', dislikes='让她在皇上面前失了体面、僭越',
+        perks=('别人对你使计，成功率 −8%', '替你说好话：晋封所需圣宠打九折'),
+        risk='你使计败露，她的好感 −30；讨好她，华妃会冷淡',
+        greet={
+            '冷淡': ['「妹妹来了。本宫这里没什么新鲜的，坐一坐就回吧，别误了自己的事。」',
+                   '「妹妹近来忙，本宫是知道的。难为你还记得景仁宫的门朝哪边开。」'],
+            '客气': ['「来了就坐。宫里规矩多，妹妹若有不明白的，只管问本宫。」',
+                   '「妹妹来得巧，本宫才叫人沏了新茶。尝尝，是皇上前日赏的。」'],
+            '亲近': ['「妹妹近日懂事多了，本宫都看在眼里，皇上那里也提过一句。」',
+                   '「坐近些。本宫这里没外人，妹妹不必拘着规矩。」'],
+            '知己': ['「这宫里本宫能放心说几句体己话的，也就妹妹了。」',
+                   '「妹妹来得正好。有些事，本宫想听听你的意思——只在这屋里说。」'],
+        },
+        opts=[
+            dict(text='备一份得体的礼送去', stat=None, silver=40, gain=8,
+                 like='「妹妹有心了。东西不在贵，贵在合规矩——这份礼，送得体面。」'),
+            dict(text='在人前替她维护规矩', stat='scheme', dc=65, gain=9,
+                 like='「宫里人人都像妹妹这样懂规矩，本宫也就省心了。」',
+                 dislike='「规矩是本宫来立的。妹妹的心意，本宫领了。」她笑着，没再往下说。'),
+            dict(text='陪她抄经，为皇上祈福', stat='virtue', dc=60, gain=7,
+                 like='「妹妹这笔字静。为皇上祈福的事，本宫会替你记着。」',
+                 dislike='「抄错了三处。心不静，抄多少都是白费纸墨。」'),
+            dict(text='当着众人夸她持家有道', stat='talent', dc=68, gain=10,
+                 like='「妹妹过誉了。本宫不过是替皇上看着这个家。」',
+                 dislike='「这样的话，妹妹往后在人前少说。叫皇上听见，倒像本宫在邀功。」'),
+        ]),
+    'huafei': dict(
+        likes='奉承、稀罕东西、顺着她说', dislikes='不识抬举、跟皇后走得近',
+        perks=('不再把你当成出手的目标', '给你撑腰：别人对你使计，成功率 −10%'),
+        risk='讨好她，皇后会冷淡',
+        greet={
+            '冷淡': ['「哟，今儿什么风把你吹到翊坤宫来了？本宫这儿的门槛，你也肯迈？」',
+                   '「来都来了，杵着做什么？还要本宫请你坐不成？」'],
+            '客气': ['「坐吧。本宫这儿的茶，可比你宫里的强多了。」',
+                   '「来陪本宫说话？也好，横竖皇上今儿在前朝，本宫闷得慌。」'],
+            '亲近': ['「你来得正好！瞧瞧本宫新得的这对翡翠镯子，满宫里谁有？」',
+                   '「还是你识趣。那些个木头美人，本宫看一眼都嫌烦。」'],
+            '知己': ['「往后在这宫里，有本宫一日，就没人敢给你脸色看。」',
+                   '「过来，坐本宫身边。有谁不长眼，你只管告诉本宫。」'],
+        },
+        opts=[
+            dict(text='送一件稀罕的珠宝', stat=None, silver=60, gain=9,
+                 like='「这成色倒还配得上翊坤宫。算你有眼光。」'),
+            dict(text='夸她圣眷无双', stat='appearance', dc=65, gain=8,
+                 like='「这还用你说？不过——从你嘴里说出来，本宫爱听。」',
+                 dislike='「圣眷？本宫什么时候失过圣眷？你这话是什么意思？」'),
+            dict(text='替她去敲打她看不顺眼的人', stat='scheme', dc=72, gain=12,
+                 like='「好！那起子人就该有人治一治。你这份心，本宫记下了。」',
+                 dislike='「谁叫你自作主张的？闹大了，还不是要本宫替你收拾！」'),
+            dict(text='弹琴唱曲陪她解闷', stat='talent', dc=62, gain=7,
+                 like='「唱得不错，比那些只会念经的强。再来一段！」',
+                 dislike='「行了行了，听得本宫脑仁疼。下去吧。」'),
+        ]),
+    'duanfei': dict(
+        likes='安静、点到为止、念旧', dislikes='吵闹、打听她的伤心事',
+        perks=('拜访时三成会告诉你一位小主的底细', '你被人算计后，她会说出三个可疑的人，真凶就在其中'),
+        risk='回报慢，没有直接的数值好处',
+        greet={
+            '冷淡': ['「……咳。有事？没事就回吧，我乏了。」',
+                   '「……延庆殿药气重。妹妹站远些，别熏着你。」'],
+            '客气': ['「坐。……这宫里，肯往延庆殿走的人不多。」',
+                   '「窗边亮些，坐那儿吧。……咳咳。」'],
+            '亲近': ['「你来了。……今日精神好些，陪我坐一坐。」',
+                   '「从前我也爱穿这样的颜色。……如今，穿不动了。」'],
+            '知己': ['「有些话，我只说一遍。……你记着就好。」',
+                   '「这么多年，你是头一个让我想多说几句的人。……咳，坐吧。」'],
+        },
+        opts=[
+            dict(text='送一剂安神的药', stat=None, silver=20, gain=7,
+                 like='「……难为你记挂。这方子，比太医院开的实在。」'),
+            dict(text='什么也不说，陪她坐着', stat='virtue', dc=60, gain=8,
+                 like='她没说话，只把手边的暖炉往你那边推了推。',
+                 dislike='「……咳咳。你心里有事，坐不住的。回吧。」'),
+            dict(text='请她讲讲宫里从前的事', stat='scheme', dc=70, gain=10,
+                 like='「从前……翊坤宫那位还没进宫的时候，这宫里也有过好日子。你想听，改日再说。」',
+                 dislike='「旧事？……旧事是拿来忘的。你打听这些做什么。」'),
+            dict(text='替她誊抄医书', stat='talent', dc=64, gain=8,
+                 like='「字写得清秀。……我这眼睛，看不清小字了。多谢。」',
+                 dislike='「……抄错了两味药。药错了，是要命的。」'),
+        ]),
+    'qifei': dict(
+        likes='夸她的儿子、直来直去、听她说话', dislikes='说她儿子不好、拿她当枪使',
+        perks=('你被禁足或打入冷宫时，她会去皇上跟前替你求情（三成能少关一天）', '你明着站队她的儿子时，每次打点功绩多 +1'),
+        risk='她嘴笨，求情碰了钉子会连累你：信任 −3',
+        greet={
+            '冷淡': ['「你来做什么？我可没什么好处给你！」',
+                   '「哼，平日里见了我头都不点，今儿倒想起我来了？」'],
+            '客气': ['「坐坐坐！我们阿哥刚下学，你来得不巧，不然让他给你背两段书！」',
+                   '「哎，你尝尝这个枣泥糕，我们阿哥最爱吃，我特意叫小厨房多做的。」'],
+            '亲近': ['「哈哈哈，你来啦！快来，我跟你说，阿哥今儿又被师傅夸了！」',
+                   '「我就说你这人实在！不像有些人，笑里藏刀的——我可没说是谁啊。」'],
+            '知己': ['「你是自己人，我什么都不瞒你。我们阿哥往后有出息了，忘不了你！」',
+                   '「谁要敢欺负你，你跟我说！大不了我去皇上跟前哭去！」'],
+        },
+        opts=[
+            dict(text='夸她家阿哥聪明', stat='virtue', dc=58, gain=8,
+                 like='「哈哈哈！可不是嘛！我就说我们阿哥最聪明，你眼光真好！」',
+                 dislike='「你什么意思？拿话套我呢？我们阿哥好不好，轮得到你来评？」'),
+            dict(text='耐着性子听她唠叨', stat='virtue', dc=55, gain=6,
+                 like='「跟你说话就是痛快！别走了，留下来用晚膳！」',
+                 dislike='「你打什么哈欠？嫌我话多就直说，我又不是听不懂！」'),
+            dict(text='给阿哥送一套笔墨', stat=None, silver=20, gain=8,
+                 like='「哎哟，阿哥见了准高兴坏了！我替他谢谢你啊！」'),
+            dict(text='替她出一口恶气', stat='scheme', dc=68, gain=11,
+                 like='「解气！真解气！我早就想骂她了，就是嘴笨说不过！」',
+                 dislike='「哎呀你这是害我！人家转头就去皇后那儿告我一状，我可怎么办！」'),
+        ]),
+    'jingpin': dict(
+        likes='温和、花草、清静', dislikes='争斗、逼她站队',
+        perks=('案子里你被当成嫌疑人时，她替你作证：嫌疑多减 10', '孩子按祖制要送走时，交给她抚养，你去探视不花精力'),
+        risk='没什么风险，就是回报不显眼',
+        greet={
+            '冷淡': ['「妹妹来了……坐吧。我这里没什么热闹，怕是留不住妹妹。」',
+                   '「哦……是妹妹。罢了，来都来了，喝盏茶再走。」'],
+            '客气': ['「妹妹坐。院里那盆茉莉今早开了，香得很，妹妹闻见没有？」',
+                   '「慢些走，台阶上有青苔……我总说要叫人扫，又舍不得。」'],
+            '亲近': ['「妹妹来了，我正要剪几枝月季插瓶，你帮我挑挑，哪枝好看？」',
+                   '「这宫里的事呀，看多了也就那样。妹妹坐，咱们只说花，不说人。」'],
+            '知己': ['「妹妹……我这个人没什么本事，可你的事，我放在心上了。」',
+                   '「往后有什么难处，别一个人扛着。我这咸福宫，总还能替你挡挡风。」'],
+        },
+        opts=[
+            dict(text='送几株稀罕的花苗', stat=None, silver=20, gain=7,
+                 like='「这是……绿萼梅的苗？妹妹有心了。等开了头一朵，请你来看。」'),
+            dict(text='陪她侍弄花草', stat='virtue', dc=55, gain=7,
+                 like='「妹妹手真轻。这株兰草最娇气，别人碰一下就蔫。」',
+                 dislike='「哎……这根断了。罢了罢了，不怪你，是它命薄。」'),
+            dict(text='在人前替她说句公道话', stat='scheme', dc=66, gain=9,
+                 like='「何必呢……不过，还是谢谢妹妹。我这人嘴笨，吃了亏也说不出。」',
+                 dislike='「妹妹这样一说，倒叫人以为是我在背后搬弄是非了……何必呢。」'),
+            dict(text='夸她待人宽厚', stat='virtue', dc=60, gain=6,
+                 like='「我哪有妹妹说的那样好……不过是不爱争罢了。」',
+                 dislike='「妹妹这样说，我倒不知怎么接了……咱们还是说花吧。」'),
+        ]),
+    'lipin': dict(
+        likes='漂亮东西、被夸美、热闹', dislikes='被比下去、在华妃面前丢脸',
+        perks=('拜访时告诉你华妃眼下最看谁不顺眼', '替你在华妃跟前说好话：华妃好感的涨幅 ×1.5'),
+        risk='她嘴不严：讨好她，华妃好感跟着涨一点，皇后好感跟着掉一点',
+        greet={
+            '冷淡': ['「哟，稀客呀。华妃娘娘前儿还说起你呢——说的什么，你自己猜去。」',
+                   '「你来干什么？我这儿可没有你想打听的事。」'],
+            '客气': ['「来得正好，你瞧我这新描的眉，是不是比上回那个好看？」',
+                   '「坐吧坐吧。华妃娘娘说了，要大方待人，我可不能怠慢你。」'],
+            '亲近': ['「你来！快帮我看看，这支步摇跟华妃娘娘赏的那支，哪支更衬我？」',
+                   '「我跟你说个事儿，你可千万别往外传啊——算了，传了也没事，反正大家都知道了。」'],
+            '知己': ['「这宫里我就跟你最好了！华妃娘娘那儿，我替你说了好几回好话呢！」',
+                   '「有什么想打听的只管问我，这宫里的事，还能瞒得过我这双耳朵？」'],
+        },
+        opts=[
+            dict(text='送一匣脂粉珠花', stat=None, silver=40, gain=8,
+                 like='「哎呀，这珠花！正好配我那件桃红的褂子！你可真会挑！」'),
+            dict(text='夸她是六宫里最美的', stat='appearance', dc=60, gain=8,
+                 like='「真的呀？比那谁还好看？我就知道！镜子里我也这么觉得！」',
+                 dislike='「你自个儿长得这样，还来夸我？存心寒碜我是不是！」'),
+            dict(text='陪她聊闲天', stat='talent', dc=58, gain=6,
+                 like='「跟你说话真有意思！比曹贵人强多了，她说话总说一半！」',
+                 dislike='「你到底听没听我说话呀？我都说三遍了！」'),
+            dict(text='替她在华妃跟前说好话', stat='scheme', dc=68, gain=10,
+                 like='「华妃娘娘今儿真夸我了！是你说的吧？我就知道你够意思！」',
+                 dislike='「你在娘娘跟前提我做什么！娘娘还以为我在背后撺掇人，骂了我一顿！」'),
+        ]),
+    'caoguiren': dict(
+        likes='聪明人、实在的好处、她的女儿', dislikes='蠢人、被人利用',
+        perks=('拜访时告诉你皇后、华妃在盯着谁（五成可信）', '替你出谋划策：你使计成功率 +5%'),
+        risk='她两头下注：知己之后你每次使计，有一成会被她走漏，败露的可能 +15%',
+        greet={
+            '冷淡': ['「妹妹来了？稀客。只是我这儿地方小，怕是……妹妹说呢？」',
+                   '「妹妹今日怎么想起我来了？我还当是……呵，瞧我，胡乱猜什么。坐吧。」'],
+            '客气': ['「妹妹坐。公主刚睡下，咱们小声说话。」',
+                   '「妹妹这身料子好，是内务府新进的吧？华妃娘娘那边……可还没有呢。」'],
+            '亲近': ['「妹妹来得巧，我正有句话想说，又怕说出来……妹妹不会往外传吧？」',
+                   '「妹妹是聪明人，有些事不用我说透。你心里明白，我心里也明白。」'],
+            '知己': ['「这宫里，谁都靠不住。可妹妹……我是愿意信一回的。」',
+                   '「只要公主平平安安长大，我这辈子也就……妹妹，往后你多照应她些。」'],
+        },
+        opts=[
+            dict(text='给小公主送衣料玩物', stat=None, silver=20, gain=8,
+                 like='「妹妹费心了。她呀，最喜欢这样鲜亮的颜色……」她低头笑了笑，这回笑到了眼睛里。'),
+            dict(text='替她出个主意', stat='scheme', dc=70, gain=10,
+                 like='「妹妹这主意……倒跟我想到一处去了。妹妹说，咱们是不是该常走动？」',
+                 dislike='「主意好是好，只是……我怎么听着，像是要拿我去试水呢？」'),
+            dict(text='陪她说些闲话', stat='talent', dc=60, gain=6,
+                 like='「跟妹妹说话省力。有些话，说一半妹妹就懂了。」',
+                 dislike='「妹妹今日心不在焉的，可是有什么……不方便说的？」'),
+            dict(text='替她跑腿传句话', stat='virtue', dc=60, gain=7,
+                 like='「妹妹办事稳妥。这份情，我记着——总有还的时候。」',
+                 dislike='「话是传到了，只是传的时候……旁边可有人听见？妹妹下回留神些。」'),
+        ]),
+    'xinchangzai': dict(
+        likes='爽快、说真话、敬重老人', dislikes='虚伪、新人摆架子',
+        perks=('拜访时告诉你某位小主昨天都干了什么', '有人今晚要对你下手，她会提前告诉你有几拨（不说是谁）'),
+        risk='没什么风险',
+        greet={
+            '冷淡': ['「嗐，你来干嘛？我这破地方可没什么值得你惦记的。」',
+                   '「要我说，你还是回吧。跟我走得近，可沾不着什么光。」'],
+            '客气': ['「坐！别客气，我这儿没那么多讲究。瓜子管够。」',
+                   '「嗐，又是来听闲话的吧？行，今儿有新鲜的。」'],
+            '亲近': ['「你这人对我胃口！要我说，这宫里就缺你这样不装腔的。」',
+                   '「来来来，我跟你说，新来的那几个昨儿闹的笑话可大了——」'],
+            '知己': ['「我在这宫里熬了这些年，什么没见过？要我说，你是个能成事的，我帮你盯着。」',
+                   '「谁敢打你的主意，我这双眼睛替你看着呢。别的没有，就是眼尖。」'],
+        },
+        opts=[
+            dict(text='跟她说几句掏心窝的实话', stat='virtue', dc=60, gain=9,
+                 like='「嗐！痛快！就冲你这句实话，我认你这个朋友！」',
+                 dislike='「要我说，你这话也太冲了。实话也得挑时候说，懂不懂？」'),
+            dict(text='听她讲宫里的旧闻', stat='virtue', dc=52, gain=6,
+                 like='「还是你爱听！那些个新人，我一开口就跑，嗐。」',
+                 dislike='「行了，看你那眼神就知道没听进去。去吧去吧。」'),
+            dict(text='敬她是宫里的老人', stat='scheme', dc=58, gain=7,
+                 like='「嗐，什么老人不老人的，熬出来的罢了。不过你这话我爱听。」',
+                 dislike='「少来这套！拍马屁拍到我这儿来了？我可不吃这一口。」'),
+            dict(text='送一篓上好的银炭', stat=None, silver=20, gain=7,
+                 like='「炭？嗐，你怎么知道我这屋冬天冷？内务府那帮人，净克扣我们这些没人疼的。」'),
+        ]),
+}
+
+
+def npc_row(key):
+    return q("SELECT * FROM consorts WHERE npc_key=?", (key,), one=True)
+
+
+def bond(cid, key):
+    """cid 跟某位 NPC 的好感；NPC 不在（换届前后、还没 seed）就当 0"""
+    npc = npc_row(key)
+    if not npc or npc['id'] == cid: return 0
+    rel = relation(cid, npc['id'])
+    return rel['affinity'] if rel else 0
+
+
+def bond_tier(aff):
+    return next(name for line, name in BOND_TIERS if aff >= line)
+
+
+def change_bond(cid, key, delta):
+    """加减 cid 跟 NPC 的好感，带上牵连（BOND_SPILL）。返回 [(npc, 实际变化), ...]"""
+    npc = npc_row(key)
+    if not npc or not delta: return []
+    if key == 'huafei' and delta > 0 and bond(cid, 'lipin') >= BOND_INTIMATE:
+        delta = math.ceil(delta * BOND_LIPIN_BOOST)
+    add_affinity(cid, npc['id'], delta)
+    out = [(npc, delta)]
+    if delta > 0:
+        for other, ratio in BOND_SPILL.get(key, ()):
+            d, o = int(delta * ratio), npc_row(other)
+            if d and o:
+                add_affinity(cid, o['id'], d)
+                out.append((o, d))
+    return out
+
+
+def bond_text(changes):
+    return '，'.join(f"{display_name(n)}好感 {d:+d}" for n, d in changes)
+
+
+def huafei_likely_target(exclude_id=0):
+    """照 npc_schemes 里华妃挑人的规矩，算她眼下最可能冲谁去"""
+    hf = npc_row('huafei')
+    if not hf or hf['status'] != 'normal': return None
+    pool = []
+    for p in q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND status='normal' AND id!=?", (exclude_id,)):
+        if bond(p['id'], 'huafei') >= BOND_CLOSE: continue
+        grudge = (relation(hf['id'], p['id']) or {'affinity': 0})['affinity'] <= -20
+        if p['favor'] >= 60 or grudge:
+            pool.append((p['favor'] + (100 if grudge else 0), p))
+    return max(pool, key=lambda x: x[0])[1] if pool else None
+
+
+def huanghou_likely_target(exclude_id=0):
+    hh = npc_row('huanghou')
+    if not hh or hh['status'] != 'normal': return None
+    players = q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND status='normal' AND id!=?", (exclude_id,))
+    preg = [p for p in players if p['pregnant_since']]
+    if preg: return preg[0]
+    return max(players, key=lambda p: p['favor']) if players else None
+
+
+def random_player(exclude_id):
+    rows = q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND status NOT IN ('xiunv','dead') AND id!=?", (exclude_id,))
+    return random.choice(rows) if rows else None
+
+
+def bond_visit_perk(c, key, aff):
+    """拜访成功后，亲近/知己的 NPC 顺口告诉你的事。返回一句话或空"""
+    day = cur_day()
+    if key == 'duanfei':
+        if aff >= BOND_INTIMATE:
+            npc = npc_row(key)
+            for it in q("""SELECT * FROM intrigues WHERE target_id=? AND status='done' AND result='success' AND day>=?
+                           ORDER BY id DESC""", (c['id'], day - BOND_DUANFEI_HINT_DAYS)):
+                if q("SELECT 1 FROM memories WHERE a_id=? AND b_id=? AND kind='duan_hint' AND note=?",
+                     (c['id'], npc['id'], str(it['id'])), one=True):
+                    continue
+                others = [r['id'] for r in q("""SELECT id FROM consorts WHERE id NOT IN (?,?) AND status IN ('normal','confined')
+                                                AND rank>=1""", (c['id'], it['attacker_id']))]
+                names = [display_name(get_consort(i)) for i in random.sample(others, min(2, len(others)))]
+                names.append(display_name(get_consort(it['attacker_id'])))
+                random.shuffle(names)
+                remember(c['id'], npc['id'], 'duan_hint', str(it['id']))
+                return f"端妃压低声音：「那几日……{'、'.join(names)}，都往你那边走动过。……我只能说到这儿。」"
+        if aff >= BOND_CLOSE and random.random() < BOND_DUANFEI_SECRET:
+            cands = q("""SELECT id FROM consorts WHERE user_id IS NOT NULL AND id!=? AND status NOT IN ('xiunv','dead')
+                         AND secret_revealed=0 AND id NOT IN (SELECT target_id FROM known_secrets WHERE knower_id=?)""",
+                      (c['id'], c['id']))
+            if cands:
+                t = get_consort(random.choice(cands)['id'])
+                run("INSERT OR IGNORE INTO known_secrets (knower_id, target_id, day) VALUES (?,?,?)", (c['id'], t['id'], day))
+                if t['secret'] == 'none':
+                    return f"端妃说起{display_name(t)}：「那孩子……干干净净的，没什么可说的。」"
+                return f"端妃淡淡提了一句：「{display_name(t)}？……她{SECRETS[t['secret']]['name']}。」"
+    elif key == 'lipin' and aff >= BOND_CLOSE:
+        t = huafei_likely_target(exclude_id=c['id'])
+        return (f"丽嫔凑过来：「华妃娘娘这几日最看不顺眼的，是{display_name(t)}。」" if t
+                else '丽嫔撇撇嘴：「华妃娘娘这几日心情好，没盯着谁。」')
+    elif key == 'caoguiren' and aff >= BOND_CLOSE:
+        parts = []
+        for who, fn in (('皇后', huanghou_likely_target), ('华妃', huafei_likely_target)):
+            t = fn(exclude_id=c['id'])
+            if random.random() >= BOND_CAO_TRUE: t = random_player(c['id'])   # 她的话只有五成可信
+            if t: parts.append(f"{who}那边留意着{display_name(t)}")
+        return f"曹贵人笑着说：「我也是听人说的——{'，'.join(parts)}。妹妹听听就算了。」" if parts else ''
+    elif key == 'xinchangzai':
+        if aff >= BOND_INTIMATE:
+            n = q("SELECT COUNT(*) n FROM intrigues WHERE target_id=? AND status='pending'", (c['id'],), one=True)['n']
+            if n: return f"欣常在一把拉住你：「嗐，你当心！今儿夜里，怕是有 {n} 拨人冲你来。是谁我可不知道。」"
+        if aff >= BOND_CLOSE:
+            t = random_player(c['id'])
+            if t: return f"欣常在嗑着瓜子说：「{display_name(t)}昨儿{daily_activity(t['id'], day - 1)}。」"
+    return ''
+
+
+@app.route('/npc/visit', methods=['POST'])
+@login_required
+def npc_visit():
+    c = g.me
+    key = request.form.get('npc', '')
+    cfg = NPC_BOND.get(key)
+    npc = npc_row(key) if cfg else None
+    try:
+        opt = cfg['opts'][int(request.form.get('opt', ''))] if cfg else None
+    except (ValueError, IndexError):
+        opt = None
+    err = None
+    if not npc or not opt: err = '没有这位娘娘。'
+    elif c['status'] != 'normal': err = '你现在出不了门。'
+    elif is_sick(c): err = '你病着，出不了门。'
+    elif npc['status'] != 'normal': err = f"{display_name(npc)}眼下不见客。"
+    elif daily_count(c['id'], 'npc_visit'): err = '今天已经去过一位娘娘那儿了。'
+    elif c['energy'] < BOND_VISIT_ENERGY: err = '精力不够了。'
+    elif opt.get('silver') and c['silver'] < opt['silver']: err = f"银子不够，要 {opt['silver']} 两。"
+    if err:
+        flash(err, 'bad'); return redirect(url_for('social'))
+    run('UPDATE consorts SET energy=energy-? WHERE id=?', (BOND_VISIT_ENERGY, c['id']))
+    if opt.get('silver'): add_silver(c['id'], -opt['silver'])
+    daily_inc(c['id'], 'npc_visit')
+    before = bond(c['id'], key)
+    greet = random.choice(cfg['greet'][bond_tier(before)])
+    ok = opt['stat'] is None or c[opt['stat']] + random.randint(0, SCENE_ROLL) >= opt['dc']
+    changes = change_bond(c['id'], key, opt['gain'] if ok else BOND_SNUB)
+    after = bond(c['id'], key)
+    lines = [greet, opt['like'] if ok else opt['dislike'], bond_text(changes) + '。']
+    if opt.get('silver'): lines[-1] = f"银子 -{opt['silver']}，" + lines[-1]
+    if bond_tier(after) != bond_tier(before):
+        lines.append(f"你和{display_name(npc)}如今算得上「{bond_tier(after)}」了。")
+    if ok:
+        perk = bond_visit_perk(c, key, after)
+        if perk: lines.append(perk)
+    flash('　'.join(lines), 'good' if ok else 'bad')
+    return redirect(url_for('social'))
+
+
+def npc_bond_tick(day):
+    """每晚：齐妃替禁足/冷宫里交好的人求情；知己的好感慢慢淡"""
+    qf = npc_row('qifei')
+    if qf and qf['status'] == 'normal':
+        for p in q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND status IN ('confined','cold') AND status_until_day>?", (day,)):
+            if bond(p['id'], 'qifei') < BOND_CLOSE: continue
+            if q("SELECT 1 FROM memories WHERE a_id=? AND b_id=? AND kind='qifei_plead' AND day>?",
+                 (p['id'], qf['id'], day - BOND_QIFEI_INTERVAL), one=True):
+                continue
+            remember(p['id'], qf['id'], 'qifei_plead')
+            r = random.random()
+            if r < BOND_QIFEI_PLEAD:
+                run('UPDATE consorts SET status_until_day=status_until_day-1 WHERE id=?', (p['id'],))
+                notify(p['id'], '齐妃在皇上跟前替你哭了一场，皇上心一软，你能早一天出来。', 'good')
+            elif r < BOND_QIFEI_PLEAD + BOND_QIFEI_BACKFIRE:
+                add_trust(p['id'], -3)
+                notify(p['id'], '齐妃去皇上跟前替你求情，话没说对，皇上连你也嫌上了。信任 -3。', 'bad')
+    npc_ids = [n['id'] for n in q("SELECT id FROM consorts WHERE npc_key IS NOT NULL")]
+    if npc_ids:
+        marks = ','.join('?' * len(npc_ids))
+        run(f"""UPDATE relations SET affinity=affinity-? WHERE affinity>=? AND (a_id IN ({marks}) OR b_id IN ({marks}))""",
+            (BOND_INTIMATE_DECAY, BOND_INTIMATE, *npc_ids, *npc_ids))
+
+
+def bond_caught_huanghou(cid):
+    """使计败露：皇后最恨不体面的人"""
+    if bond(cid, 'huanghou') > 0:
+        change_bond(cid, 'huanghou', BOND_CAUGHT_HUANGHOU)
+        notify(cid, f'这事传到了景仁宫。皇后好感 {BOND_CAUGHT_HUANGHOU:+d}。', 'bad')
+
+
+def promote_favor_need(c, rank):
+    need = PROMOTE_FAVOR[rank]
+    return math.ceil(need * BOND_HUANGHOU_PROMOTE) if bond(c['id'], 'huanghou') >= BOND_INTIMATE else need
+
+
 @app.route('/social')
 @login_required
 def social():
@@ -2984,8 +3419,13 @@ def social():
         rels[o['id']] = relation(c['id'], o['id'])
     known = {r['target_id'] for r in q("SELECT target_id FROM known_secrets WHERE knower_id=?", (c['id'],))}
     inv = q("SELECT * FROM inventory WHERE consort_id=? AND qty>0", (c['id'],))
+    npcs = [(n, NPC_BOND[n['npc_key']], bond(c['id'], n['npc_key'])) for n in
+            q("SELECT * FROM consorts WHERE npc_key IS NOT NULL AND status!='dead' ORDER BY rank DESC, id")
+            if n['npc_key'] in NPC_BOND]
     return render_template('social.html', c=c, others=others, rels=rels, known=known, SECRETS=SECRETS,
-                           inv=inv, sister_count=len(sisters_of(c['id'])), ACTIONS=ACTIONS)
+                           inv=inv, sister_count=len(sisters_of(c['id'])), ACTIONS=ACTIONS,
+                           npcs=npcs, bond_tier=bond_tier, npc_visited=daily_count(c['id'], 'npc_visit'),
+                           BOND_CLOSE=BOND_CLOSE, BOND_INTIMATE=BOND_INTIMATE)
 
 @app.route('/sister/<action>/<int:tid>', methods=['POST'])
 @login_required
@@ -3485,7 +3925,8 @@ def maid_event_choose():
 
 GOSSIP_WORDS = dict(greet='去景仁宫请了安', study='练了才艺', groom='梳妆打扮', garden='逛了御花园',
                     seek='往养心殿送了汤羹', rest='在宫里静养', reflect='闭门抄经', visit='四处串门',
-                    spy='派人打听别人的事', plead='去养心殿替人求情', letter='写了信', intrigue='私下里安排了什么事')
+                    spy='派人打听别人的事', plead='去养心殿替人求情', letter='写了信', intrigue='私下里安排了什么事',
+                    npc_visit='去各宫娘娘那儿走动')
 
 def maid_gossip(c, m):
     others = q("""SELECT * FROM consorts WHERE user_id IS NOT NULL AND id!=? AND status NOT IN ('xiunv','dead')""", (c['id'],))
@@ -3946,7 +4387,9 @@ def heir_growth_tick(day):
         if mother['user_id']:
             notify(mother['id'], f"{label}今日抓周，{item['line']}。{HEIR_STATS[item['stat']]} +{ZHUAZHOU_GAIN}。", 'good')
         if mother['rank'] < 5 and h['caretaker_id'] == h['mother_id']:
-            foster = pick_foster()
+            jp = npc_row('jingpin')
+            foster = jp if (jp and jp['status'] == 'normal' and jp['rank'] >= 5 and mother['user_id']
+                            and bond(mother['id'], 'jingpin') >= BOND_INTIMATE) else pick_foster()
             if foster:
                 run('UPDATE heirs SET caretaker_id=?, caretaker_affinity=50 WHERE id=?', (foster['id'], h['id']))
                 gazette(f"祖制：{label}生母位分不及，皇上指{display_name(foster)}抚养{label}。", 'decree')
@@ -4047,6 +4490,12 @@ def heir_entrust_reply(hid):
     return redirect(url_for('heirs'))
 
 
+def heir_visit_cost(c, h):
+    """孩子在敬嫔那儿、你又跟她是知己：去探视不花精力"""
+    jp = npc_row('jingpin')
+    return 0 if jp and h['caretaker_id'] == jp['id'] and bond(c['id'], 'jingpin') >= BOND_INTIMATE else HEIR_VISIT_ENERGY
+
+
 @app.route('/heirs/visit/<int:hid>', methods=['POST'])
 @login_required
 def heir_visit(hid):
@@ -4055,7 +4504,7 @@ def heir_visit(hid):
     err = None
     if not h or not maternal_kin(c, h) or h['caretaker_id'] in (0, c['id']): err = '孩子不在别人宫里，用不着探视。'
     elif c['status'] != 'normal': err = '你现在出不了门。'
-    elif c['energy'] < HEIR_VISIT_ENERGY: err = '精力不够了。'
+    elif c['energy'] < heir_visit_cost(c, h): err = '精力不够了。'
     elif daily_count(c['id'], f'hvisit:{hid}'): err = '今天已经去看过了。'
     else:
         fo = get_consort(h['caretaker_id'])
@@ -4064,7 +4513,7 @@ def heir_visit(hid):
     if err:
         flash(err, 'bad'); return redirect(url_for('heirs'))
     label = heir_label(h)
-    run('UPDATE consorts SET energy=energy-? WHERE id=?', (HEIR_VISIT_ENERGY, c['id']))
+    run('UPDATE consorts SET energy=energy-? WHERE id=?', (heir_visit_cost(c, h), c['id']))
     daily_inc(c['id'], f'hvisit:{hid}')
     add_heir_affinity(hid, 'mother', HEIR_VISIT_GAIN)
     msg = f"你去{display_name(fo)}宫里看了{label}，跟生母的情分 +{HEIR_VISIT_GAIN}。"
@@ -4732,9 +5181,14 @@ def succession_act():
     run('UPDATE consorts SET energy=energy-? WHERE id=?', (cfg['energy'], c['id']))
     if cfg['silver']: add_silver(c['id'], -cfg['silver'])
     daily_inc(c['id'], f"stance:{cfg['kind']}")
-    if cfg.get('merit'): add_merit(h['id'], cfg['merit'])
+    extra = ''
+    if cfg.get('merit'):
+        qf = npc_row('qifei')
+        bonus = 1 if cfg['kind'] == 'open' and qf and h['mother_id'] == qf['id'] and bond(c['id'], 'qifei') >= BOND_INTIMATE else 0
+        add_merit(h['id'], cfg['merit'] + bonus)
+        if bonus: extra = '齐妃知道了，又替你在阿哥跟前多说了几句好话，功绩多 +1'
     if cfg.get('exam'): run('UPDATE heirs SET exam_bonus=MAX(exam_bonus,?) WHERE id=?', (cfg['exam'], h['id']))
-    flash(f"{cfg['line']}。", 'good')
+    flash(f"{cfg['line']}。" + (extra + '。' if extra else ''), 'good')
     return redirect(url_for('succession'))
 
 
@@ -5046,11 +5500,17 @@ def intrigue_success_p(atk, tgt, cfg):
         p += 0.10
     if cfg is INTRIGUES['rumor'] and has_maid_trait(atk['id'], 'suizui'):
         p += 0.10                                   # 碎嘴的宫人替主子把话传出去
+    if tgt['user_id']:                              # 交好 NPC 的护持（九点二十一节）
+        if bond(tgt['id'], 'huanghou') >= BOND_CLOSE: p -= BOND_HUANGHOU_GUARD
+        if bond(tgt['id'], 'huafei') >= BOND_INTIMATE: p -= BOND_HUAFEI_GUARD
+    if atk['user_id'] and bond(atk['id'], 'caoguiren') >= BOND_INTIMATE: p += BOND_CAO_BOOST
     return max(0.08, min(0.85, p))
 
 def intrigue_caught_p(atk, tgt):
     p = 0.35 + (tgt['scheme'] - atk['scheme']) * 0.005 + (0.25 if eyes_active(tgt) else 0)
     if state()['emperor_mood'] == '震怒': p += 0.1
+    if atk['user_id'] and bond(atk['id'], 'caoguiren') >= BOND_INTIMATE and random.random() < BOND_CAO_LEAK:
+        p += BOND_CAO_LEAK_CAUGHT                   # 曹贵人两头下注，把风声漏了出去
     return max(0.15, min(0.8, p))
 
 def resolve_intrigue(it, bed_id=None):
@@ -5198,6 +5658,7 @@ def resolve_intrigue(it, bed_id=None):
         if atk['user_id']:
             tloss = 10 if m in ('expose', 'punish') else 15
             add_trust(atk['id'], -tloss)
+            bond_caught_huanghou(atk['id'])
             pen += f'，信任 -{tloss}'
             night_mark(atk['id'], 'caught')
         if atk['user_id']: notify(atk['id'], f"你对{tn}的「{cfg['name']}」败露了。{pen}。", 'bad')
@@ -5229,7 +5690,7 @@ def npc_schemes(day):
             else: continue
         elif key == 'huafei':
             grudge = {p['id'] for p in players if (relation(npc['id'], p['id']) or {'affinity': 0})['affinity'] <= -20}
-            pool = [p for p in players if p['favor'] >= 60 or p['id'] in grudge]
+            pool = [p for p in players if (p['favor'] >= 60 or p['id'] in grudge) and bond(p['id'], 'huafei') < BOND_CLOSE]
             if not pool: continue
             target = max(pool, key=lambda p: p['favor'] + (100 if p['id'] in grudge else 0))
             method = 'frame' if target['rank'] >= 3 else 'rumor'
@@ -5748,7 +6209,7 @@ def _settle_night():
         c = get_consort(c['id'])
         nxt = c['rank'] + 1
         if c['status'] != 'normal': continue
-        if c['favor'] < PROMOTE_FAVOR[nxt] or c['virtue'] < promote_virtue_need(nxt): continue
+        if c['favor'] < promote_favor_need(c, nxt) or c['virtue'] < promote_virtue_need(nxt): continue
         need_days = 1 if c['rank'] == 1 else MIN_DAYS_AT_RANK
         if day - c['rank_since_day'] < need_days: continue
         if not slot_free(nxt, c['id']):
@@ -5766,6 +6227,8 @@ def _settle_night():
 
     # 位分全部定下后，按位分、圣宠安置等待正殿的人。
     housing_sync()
+
+    npc_bond_tick(day)   # 齐妃求情要赶在下面「禁足/冷宫期满」之前
 
     # 5. 日常：长半岁、月例、圣宠流失、精力、禁足/冷宫期满、请安
     capital_mothers = capital_mother_ids()
@@ -6650,11 +7113,10 @@ def apply_effects(cid, eff):
         elif k == 'seek':
             run("UPDATE consorts SET seek_bonus=seek_bonus+? WHERE id=?", (v, cid))
             parts.append('今晚翻牌子的机会大了'); continue
-        elif k in NPC_KEYS:   # NPC 对你的好感（场景里写 huafei=-10 这种）
-            npc = q("SELECT * FROM consorts WHERE npc_key=?", (k,), one=True)
-            if not npc: continue
-            add_affinity(cid, npc['id'], v)
-            parts.append(f"{display_name(npc)}记下了这笔账" if v < 0 else f"{display_name(npc)}待你和气了些"); continue
+        elif k in NPC_KEYS:   # NPC 对你的好感（场景里写 huafei=-10 这种），牵连见 change_bond
+            for npc, d in change_bond(cid, k, v):
+                parts.append(f"{display_name(npc)}记下了这笔账" if d < 0 else f"{display_name(npc)}待你和气了些")
+            continue
         parts.append(f"{EFFECT_NAMES[k]} {v:+d}")
     return '，'.join(parts)
 
@@ -7261,7 +7723,7 @@ def resolve_drug_cases(day):
     for case in q("SELECT * FROM cases WHERE status='open' AND day<=?",(day,)):
         for s in q('SELECT * FROM case_suspects WHERE case_id=?',(case['id'],)):
             c=get_consort(s['consort_id'])
-            reduction=(0 if s['pleaded'] else int(c['trust']*0.2))+(20 if c['npc_key']=='huanghou' else 0)
+            reduction=(0 if s['pleaded'] else int(c['trust']*0.2)+(BOND_JINGPIN_CASE if c['user_id'] and bond(c['id'],'jingpin')>=BOND_CLOSE else 0))+(20 if c['npc_key']=='huanghou' else 0)
             run('UPDATE case_suspects SET suspicion=MAX(0,suspicion-?), pleaded=1 WHERE case_id=? AND consort_id=?',(reduction,case['id'],c['id']))
         s=q('SELECT * FROM case_suspects WHERE case_id=? ORDER BY suspicion DESC, consort_id LIMIT 1',(case['id'],),one=True)
         convicted=s['consort_id'] if s and s['suspicion']>=50 else 0
@@ -7276,6 +7738,7 @@ def resolve_drug_cases(day):
                 add_trust(convicted,-15)
             gazette(f"慎刑司定案：{display_name(c)}获罪。")
             notify(convicted,'慎刑司将你定罪，信任 -15，并按案情受罚。','bad')
+            if convicted==case['culprit_id'] and c['user_id']: bond_caught_huanghou(convicted)
             if convicted==case['culprit_id']:
                 m=get_maid(case['agent_maid_id'])
                 if m and m['status']=='active': maid_leave(m['id'],'dead','下药案连坐')
