@@ -6978,7 +6978,7 @@ ext.cmdMap["查看锁定"] = cmd_view_locks;
 // ========================
 let cmd_block_person = seal.ext.newCmdItemInfo();
 cmd_block_person.name = "拉黑";
-cmd_block_person.help = "。拉黑 角色名 [静默/不静默]\n屏蔽指定角色对你发起的短信/礼物/私约/电话/微信/漂流瓶回信联系，不影响你主动联系对方。\n默认不静默——对方联系你时会被明确告知「已拒绝TA的联络」。\n写「静默」则对方察觉不到自己被拉黑：短信/礼物/漂流瓶回信会看到和正常送达一样的成功提示；私约/电话/微信因为要占用真实群号，做不到伪装建群，会看到一个不说明原因的「发起失败」。\n随时可用「取消拉黑 角色名」解除，用「拉黑列表」查看自己拉黑了谁。";
+cmd_block_person.help = "。拉黑 角色名 [静默/不静默]\n屏蔽指定角色对你发起的短信/礼物/私约/电话/微信/漂流瓶回信联系，不影响你主动联系对方。\n默认不静默——对方联系你时会被明确告知「已拒绝TA的联络」。\n写「静默」则对方察觉不到自己被拉黑：短信/礼物/漂流瓶回信会看到和正常送达一样的成功提示；私约/电话/微信因为要占用真实群号，做不到伪装建群，会看到一个不说明原因的「发起失败」。\n拉黑满 2 小时后可用「取消拉黑 角色名」解除，用「拉黑列表」查看自己拉黑了谁。";
 cmd_block_person.solve = (ctx, msg, cmdArgs) => {
     const platform = msg.platform;
     const uid = msg.sender.userId.replace(`${platform}:`, "");
@@ -7007,14 +7007,17 @@ cmd_block_person.solve = (ctx, msg, cmdArgs) => {
     let bl = kvGet("sys_blocklist", {});
     if (!bl[platform]) bl[platform] = {};
     if (!bl[platform][blockerUid]) bl[platform][blockerUid] = {};
-    bl[platform][blockerUid][targetUid] = { silent, since: Date.now(), blockerName: sendname, blockedName: targetName };
+    // 已经拉黑过的再拉一次（比如换静默模式）不重新计时，免得解除冷却被无限往后推
+    const prevSince = bl[platform][blockerUid][targetUid]?.since;
+    bl[platform][blockerUid][targetUid] = { silent, since: prevSince || Date.now(), blockerName: sendname, blockedName: targetName };
     kvSet("sys_blocklist", bl);
 
-    seal.replyToSender(ctx, msg, `🚫 已拉黑「${targetName}」（${silent ? "静默" : "不静默"}模式），TA 之后发起的短信/礼物/私约/电话/微信/漂流瓶回信都不会再送达你。\n随时可用「取消拉黑 ${targetName}」解除。`);
+    seal.replyToSender(ctx, msg, `🚫 已拉黑「${targetName}」（${silent ? "静默" : "不静默"}模式），TA 之后发起的短信/礼物/私约/电话/微信/漂流瓶回信都不会再送达你。\n拉黑满 ${BLOCK_UNDO_COOLDOWN_H} 小时后才能用「取消拉黑 ${targetName}」解除。`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["拉黑"] = cmd_block_person;
 
+const BLOCK_UNDO_COOLDOWN_H = 2;
 let cmd_unblock_person = seal.ext.newCmdItemInfo();
 cmd_unblock_person.name = "取消拉黑";
 cmd_unblock_person.help = "。取消拉黑 角色名";
@@ -7040,6 +7043,13 @@ cmd_unblock_person.solve = (ctx, msg, cmdArgs) => {
     let bl = kvGet("sys_blocklist", {});
     if (!bl[platform]?.[blockerUid]?.[targetUid]) {
         seal.replyToSender(ctx, msg, `❓ 你并没有拉黑「${targetName}」`);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    // 拉黑满 2 小时才能解除：防止「拉黑 → 看反应 → 马上解除」反复试探
+    const since = bl[platform][blockerUid][targetUid].since || 0;
+    const waitMs = since + BLOCK_UNDO_COOLDOWN_H * 3600 * 1000 - Date.now();
+    if (waitMs > 0) {
+        seal.replyToSender(ctx, msg, `⏳ 拉黑满 ${BLOCK_UNDO_COOLDOWN_H} 小时才能解除，还要等 ${Math.ceil(waitMs / 60000)} 分钟`);
         return seal.ext.newCmdExecuteResult(true);
     }
     delete bl[platform][blockerUid][targetUid];

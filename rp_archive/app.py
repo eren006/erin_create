@@ -1608,6 +1608,21 @@ def _migrate(conn):
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_phone_shop_log ON phone_shop_log(show_id, role_name)")
 
+    # ── 23. 匿名对话的化名：谁(owner)对谁(target)用的什么化名；对同一个人最多 3 个；同一收件人下化名不重名 ──
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS phone_aliases (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            show_id     INTEGER NOT NULL,
+            owner_role  TEXT    NOT NULL,
+            target_role TEXT    NOT NULL,
+            alias_name  TEXT    NOT NULL,
+            created_at  INTEGER NOT NULL,
+            blocked_by  TEXT    NOT NULL DEFAULT '',
+            blocked_at  INTEGER NOT NULL DEFAULT 0,
+            UNIQUE (show_id, target_role, alias_name)
+        )
+    """)
+
     # ── 长日将尽许愿墙：独立的小功能，不挂在 tenant/superadmin 体系下 ──────────
     conn.execute("""
         CREATE TABLE IF NOT EXISTS changri_wishes (
@@ -4824,6 +4839,30 @@ def _phone_view_of(e, owner):
     frm, to = e["from_role"], e["to_role"]
     m = {"id": e["id"], "kind": e["type"], "public": bool(info.get("isPublic")),
          "ts": e["timestamp"] or 0, "game_day": e["game_day"] or "", "signature": ""}
+    if e["type"] == "sms" and info.get("alias_id"):
+        # 匿名对话：化名主人那边对话叫「对方＠化名」，收件人那边就叫化名。混乱效果跟普通短信一样：
+        # 被撕的收件人看到「未知号码」；误送到第三人手里时，化名的信照样在化名对话里，回化名的信按落款认人
+        a_owner, a_target, alias = info.get("alias_owner"), info.get("alias_target"), info.get("alias_name")
+        out = info.get("alias_dir") == "out"
+        sig = info.get("signature") or ""
+        if frm == owner:
+            m.update(other=f"{a_target}＠{alias}" if out else alias, mine=True, text=e["content"])
+        elif to == owner:
+            if info.get("is_torn"):
+                m.update(other="未知号码", signature="（落款在缺失的后半页上）")
+            elif out:
+                m.update(other=alias, signature=sig)
+            elif owner == a_owner:
+                m.update(other=f"{a_target}＠{alias}", signature=sig)
+            else:
+                m.update(other=_sig_name(sig) or frm, signature=sig)
+            m.update(mine=False, text=info.get("delivered") or e["content"])
+        elif info.get("is_torn") and info.get("torn_holder") == owner:
+            m.update(other=alias if out else (_sig_name(sig) or frm), mine=False, signature=sig,
+                     text="……" + (info.get("torn_second_half") or ""))
+        else:
+            return None
+        return m
     if e["type"] == "sms":
         sig = info.get("signature") or ""
         if frm == owner:
@@ -5133,9 +5172,13 @@ def player_phone_thread(other):
     sid, owner = who
     db = get_db()
     st = _phone_status(db, sid, owner)
-    # 能回复的对象必须在角色名单里（「未知号码」、名单外的名字不能回）
-    can_reply = st["can"] and other in _phone_roster(_phone_sync_row(db, sid)) and other != owner
+    # 能回复的对象必须在角色名单里（「未知号码」、名单外的名字不能回），或者是匿名对话
+    alias = _alias_resolve(db, sid, owner, other)
+    astate = _alias_state(db, sid, owner, other) if alias else None
+    can_reply = st["can"] and ((other in _phone_roster(_phone_sync_row(db, sid)) and other != owner)
+                               or bool(alias and not astate["blocked"]))
     return render_template("phone.html", mode="thread", owner=owner, sid=sid, other=other,
+                           alias_thread=(alias[2] if alias else None), alias_state=astate,
                            msgs=_phone_msgs(db, sid, owner, other), status=st, can_reply=can_reply,
                            revision=_phone_revision(_phone_views(db, sid, owner)),
                            stickers=_phone_stickers(db, sid) if can_reply else [],
@@ -5211,8 +5254,8 @@ def _phone_public_items(db, sid):
         info = e["extra_info"] or {}
         if e["type"] == "gift" and info.get("isLost"):
             continue
-        item = {"kind": e["type"], "from": info.get("from_custom_name") or e["from_role"],
-                "to": "某人" if info.get("hide_receiver") else (info.get("intended_to") or e["to_role"]),
+        item = {"kind": e["type"], "from": info.get("public_from") or info.get("from_custom_name") or e["from_role"],
+                "to": "某人" if info.get("hide_receiver") else (info.get("public_to") or info.get("intended_to") or e["to_role"]),
                 "ts": e["timestamp"] or 0, "time": _phone_time(e["timestamp"]), "game_day": e["game_day"] or "",
                 "admin_note": _admin_note(e), "admin_del": f"event:{e['id']}"}  # 只有管理身份的页面会显示这两个
         if e["type"] == "sms":
@@ -5388,6 +5431,30 @@ def _phone_blocked(snap, blocker, blocked):
 
 _PHONE_GIFT_NAME_MAX = 20
 
+def _sms_chaos_route(roster, owner, to_name, text, chaos, rnd, own_sig):
+    """短信混乱效果前半段（顺序同插件）：内容侵蚀 → 落款混乱 → 误投；返回 (送达内容, 落款, 实际收件人)"""
+    eroded = _chaos_erode(text, chaos)
+    signature = own_sig
+    if rnd.random() < float(chaos.get("mistakenSignature", 0)) / 100:
+        others = [n for n in roster if n != owner]
+        if others:
+            signature = f"落款：{rnd.choice(others)}"
+    true_to = to_name
+    if rnd.random() < float(chaos.get("misdelivery", 0)) / 100:
+        others = [n for n in roster if n != to_name]
+        if others:
+            true_to = rnd.choice(others)
+    return eroded, signature, true_to
+
+def _sms_chaos_torn(roster, owner, true_to, eroded, chaos, rnd):
+    """残页：信被撕成两半，后半页（带落款）落到第三人手里"""
+    if rnd.random() < float(chaos.get("tornPage", 0)) / 100 and len(eroded) >= 10:
+        others = [n for n in roster if n not in (owner, true_to)]
+        if others:
+            cut = math.ceil(len(eroded) / 2)
+            return {"holder": rnd.choice(others), "first": eroded[:cut], "second": eroded[cut:]}
+    return None
+
 def _phone_send(db, sid, tid, owner, kind, to_name, text, gift_name="", preset_id=""):
     """执行一次网页发送，返回 (是否发出, 给发件人看的一句话)；静默拉黑也算「发出」，发件人看不出区别。规则与插件的
     handleNaturalChaosLetter / handleNaturalGift 对齐；群里才有意义的部分（公开播报、截信器/回音壁道具、
@@ -5452,17 +5519,7 @@ def _phone_send(db, sid, tid, owner, kind, to_name, text, gift_name="", preset_i
         if used >= limit:
             return False, f"🕊️ 今日寄信次数已达上限({limit})"
         # 落款 / 误投 / 拉黑 / 侵蚀 / 残页，顺序同插件
-        eroded = _chaos_erode(text, chaos)
-        signature = f"落款：{owner}"
-        if rnd.random() < float(chaos.get("mistakenSignature", 0)) / 100:
-            others = [n for n in roster if n != owner]
-            if others:
-                signature = f"落款：{rnd.choice(others)}"
-        true_to = to_name
-        if rnd.random() < float(chaos.get("misdelivery", 0)) / 100:
-            others = [n for n in roster if n != to_name]
-            if others:
-                true_to = rnd.choice(others)
+        eroded, signature, true_to = _sms_chaos_route(roster, owner, to_name, text, chaos, rnd, f"落款：{owner}")
         blk = _phone_blocked(snap, true_to, owner)
         if blk and not blk["silent"]:
             return False, f"❌ {true_to} 已拒绝你的联络。"
@@ -5472,12 +5529,7 @@ def _phone_send(db, sid, tid, owner, kind, to_name, text, gift_name="", preset_i
                        "VALUES (?,?,?,?,?,?,?)", (sid, owner, to_name, text, now, game_day, day_key))
             db.commit()
             return True, receipt
-        torn = None
-        if rnd.random() < float(chaos.get("tornPage", 0)) / 100 and len(eroded) >= 10:
-            others = [n for n in roster if n not in (owner, true_to)]
-            if others:
-                cut = math.ceil(len(eroded) / 2)
-                torn = {"holder": rnd.choice(others), "first": eroded[:cut], "second": eroded[cut:]}
+        torn = _sms_chaos_torn(roster, owner, true_to, eroded, chaos, rnd)
         delivered = (torn["first"] + "\n（信纸的后半页不知去向……）") if torn else eroded
         info = {
             "source": "web", "day_key": day_key,
@@ -5637,6 +5689,189 @@ def player_shop():
     return render_template("phone.html", mode="shop", owner=owner, sid=sid, shop=visit, catalog=catalog, why=None,
                            owned_count=sum(1 for g in catalog if g["owned"]))
 
+# ── 匿名对话（化名）────────────────────────────────────────────────────────────
+# 群里的匿名就是普通的「[署名]短信」；网页发送打开时，网页上可以用化名开一段能来回聊的对话：
+#   · 「新信息」页勾选匿名、写化名、选收件人；对同一个人最多 3 个化名（外加真名）；同一收件人下化名不能重名；
+#   · 化名主人那边的对话 key 是「对方＠化名」，收件人那边就是化名；收件人回复会送回化名主人；
+#   · 跟短信共用每日次数和冷却；拉黑按真实身份；不加任何混乱效果、不公开播报（否则容易穿帮或串线）；
+#   · 只有管理身份能看到化名背后是谁。
+_ALIAS_MAX_PER_TARGET = 3
+_ALIAS_MAX_LEN        = 10
+_ALIAS_RESERVED       = {"未知号码", "点歌台", "大家", "所有人", "管理员", "小手机", "有人"}
+
+def _alias_resolve(db, sid, owner, key):
+    """对话 key → (真实收件人, 化名行, 方向)；不是匿名对话返回 None。out=化名主人发给对方，back=对方回给化名"""
+    if "＠" in key:
+        target, _, alias = key.partition("＠")
+        row = db.execute("SELECT * FROM phone_aliases WHERE show_id=? AND owner_role=? AND target_role=? AND alias_name=?",
+                         (sid, owner, target, alias)).fetchone()
+        return (target, row, "out") if row else None
+    row = db.execute("SELECT * FROM phone_aliases WHERE show_id=? AND target_role=? AND alias_name=?",
+                     (sid, owner, key)).fetchone()
+    if not row:
+        # 误送 / 撕信把化名的信带到了别人手里：收到过这个化名来信的人也能回它
+        ev = db.execute("""SELECT json_extract(extra_info, '$.alias_id') AS aid FROM extra_events
+                           WHERE show_id=? AND type='sms' AND json_extract(extra_info, '$.alias_name')=?
+                             AND json_extract(extra_info, '$.alias_dir')='out'
+                             AND (to_role=? OR json_extract(extra_info, '$.torn_holder')=?)
+                           ORDER BY id DESC LIMIT 1""", (sid, key, owner, owner)).fetchone()
+        if ev and ev["aid"]:
+            row = db.execute("SELECT * FROM phone_aliases WHERE id=? AND show_id=?", (ev["aid"], sid)).fetchone()
+    return (row["owner_role"], row, "back") if row and row["owner_role"] != owner else None
+
+def _alias_create(db, sid, owner, target, name):
+    """建化名（或复用自己对这个人已有的同名化名）→ (ok, 提示或对话 key)"""
+    name = (name or "").strip()
+    roster = _phone_roster(_phone_sync_row(db, sid))
+    if target not in roster or target == owner:
+        return False, "❌ 选一个要联系的人"
+    if not name:
+        return False, "❌ 写一个化名"
+    if len(name) > _ALIAS_MAX_LEN:
+        return False, f"❌ 化名最多 {_ALIAS_MAX_LEN} 字"
+    if "＠" in name or "@" in name or name in _ALIAS_RESERVED or name in roster:
+        return False, "❌ 这个化名不能用，换一个"
+    if _blocked_hit(sid, owner, "化名", name):
+        return False, BLOCKED_MSG
+    mine = db.execute("SELECT alias_name FROM phone_aliases WHERE show_id=? AND owner_role=? AND target_role=?",
+                      (sid, owner, target)).fetchall()
+    if name in {r["alias_name"] for r in mine}:
+        return True, f"{target}＠{name}"
+    if len(mine) >= _ALIAS_MAX_PER_TARGET:
+        return False, f"❌ 对 {target} 最多用 {_ALIAS_MAX_PER_TARGET} 个化名，已经用了：" + "、".join(r["alias_name"] for r in mine)
+    if db.execute("SELECT 1 FROM phone_aliases WHERE show_id=? AND target_role=? AND alias_name=?", (sid, target, name)).fetchone():
+        return False, "❌ 这个化名已经被别人用了，换一个"
+    db.execute("INSERT INTO phone_aliases (show_id, owner_role, target_role, alias_name, created_at) VALUES (?,?,?,?,?)",
+               (sid, owner, target, name, int(time.time() * 1000)))
+    db.commit()
+    return True, f"{target}＠{name}"
+
+def _alias_send(db, sid, tid, owner, key, text):
+    """匿名对话里发一条：开关/档期/功能权限/冷却/上限/违禁词同网页短信，混乱效果也跟群里一样；
+    但不看群里按真实身份的拉黑——不然「拉黑某人看化名对话断不断」就能反查出化名是谁。匿名对话有自己的「拉黑并结束」。"""
+    res = _alias_resolve(db, sid, owner, key)
+    if not res:
+        return False, "❌ 找不到这段匿名对话"
+    real_to, arow, direction = res
+    if arow["blocked_by"]:
+        return False, "❌ 这段匿名对话已经结束了"
+    shown_to = real_to if direction == "out" else arow["alias_name"]  # 回化名时绝不能露出真名
+    now = int(time.time() * 1000)
+    show = dict(db.execute("SELECT * FROM shows WHERE id=?", (sid,)).fetchone())
+    sync = _phone_sync_row(db, sid)
+    if not _phone_web_send_on(db, sid) or not sync:
+        return False, "❌ 网页发送没有开放"
+    if _schedule_zone(show) != "main":
+        return False, "❌ 不在档期内，暂时不能发送"
+    snap, rules = sync["snap"], (sync["snap"].get("rules") or {})
+    roster = _phone_roster(sync)
+    text = (text or "").strip()
+    if not text:
+        return False, "❌ 内容不能为空"
+    if len(text) > _PHONE_MAX_LEN:
+        return False, f"❌ 太长了，最多 {_PHONE_MAX_LEN} 字"
+    if _blocked_hit(sid, owner, "匿名短信", text):
+        return False, BLOCKED_MSG
+    if not rules.get("sms_enabled", True):
+        return False, "🕊️ 寄信功能已关闭。"
+    if "sms" in set((snap.get("feature_off") or {}).get(owner) or []):
+        return False, "🕊️ 你被限制使用寄信功能。"
+    chaos = rules.get("chaos") or {}
+    limit = int(chaos.get("dailyLimit", 5))
+    cooldown_ms = max(int(rules.get("mail_cooldown_min", 60)) * 60000, _PHONE_MIN_GAP_MS)
+    used, last = _phone_usage(db, sid, sync, owner, "sms", now)
+    if now - last < cooldown_ms:
+        return False, f"⏳ 鸽子正在休息，请 {math.ceil((cooldown_ms - (now - last)) / 60000)} 分钟后再试"
+    if used >= limit:
+        return False, f"🕊️ 今日寄信次数已达上限({limit})"
+    day_key, game_day, _ = _phone_day(sync, now)
+    rnd = secrets.SystemRandom()
+    own_sig = f"落款：{arow['alias_name'] if direction == 'out' else owner}"
+    eroded, signature, true_to = _sms_chaos_route(roster, owner, real_to, text, chaos, rnd, own_sig)
+    torn = _sms_chaos_torn(roster, owner, true_to, eroded, chaos, rnd)
+    delivered = (torn["first"] + "\n（信纸的后半页不知去向……）") if torn else eroded
+    is_public = bool(rules.get("sms_public")) and rnd.randint(1, 100) <= int(chaos.get("publicChance", 50))
+    info = {"source": "web", "day_key": day_key, "delivered": delivered, "signature": signature, "intended_to": real_to,
+            "is_misdelivered": true_to != real_to, "is_content_chaos": delivered != text,
+            "is_signature_chaos": signature != own_sig, "is_torn": bool(torn),
+            "torn_holder": torn["holder"] if torn else None, "torn_second_half": torn["second"] if torn else None,
+            "isPublic": is_public, "hide_receiver": is_public and bool(rules.get("hide_receiver")),
+            "public_show_effect": bool(chaos.get("publicShowEffect")),
+            # 公开播报只写化名那一侧：化名 → 对方 / 对方 → 化名，真名永远不上播报
+            "public_from": arow["alias_name"] if direction == "out" else owner,
+            "public_to": arow["target_role"] if direction == "out" else arow["alias_name"],
+            "alias_id": arow["id"], "alias_name": arow["alias_name"], "alias_owner": arow["owner_role"],
+            "alias_target": arow["target_role"], "alias_dir": direction}
+    info["is_chaos"] = info["is_misdelivered"] or info["is_content_chaos"] or info["is_signature_chaos"] or bool(torn)
+    _phone_insert_event(db, sid, tid, "sms", owner, true_to, text, info, now, game_day)
+    return True, f"🕊️ 信件已由鸽子衔往 {shown_to} 处。今日已发 {used + 1}/{limit}。"
+
+_ALIAS_UNBLOCK_MS = 2 * 3600 * 1000
+
+def _alias_state(db, sid, owner, key):
+    """对话页用：这段匿名对话有没有被拉黑结束、是不是我拉黑的、还要多久才能解除"""
+    res = _alias_resolve(db, sid, owner, key)
+    if not res:
+        return None
+    row = res[1]
+    party = "owner" if owner == row["owner_role"] else ("target" if owner == row["target_role"] else None)
+    wait = max(0, row["blocked_at"] + _ALIAS_UNBLOCK_MS - int(time.time() * 1000)) if row["blocked_by"] else 0
+    return {"dir": res[2], "party": party, "blocked": bool(row["blocked_by"]),
+            "by_me": bool(row["blocked_by"]) and row["blocked_by"] == party, "wait_min": math.ceil(wait / 60000)}
+
+@app.route("/p/me/alias/block", methods=["POST"])
+def player_alias_block():
+    """匿名对话里「拉黑并结束」/「解除拉黑」：只作用于这个化名，不牵涉任何真实身份；拉黑满 2 小时才能解除"""
+    who = _phone_current()
+    if not who or who[1] == PHONE_ADMIN:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    key = request.form.get("key", "")
+    if not hmac.compare_digest(request.form.get("csrf", ""), session.get("phone_csrf", "") or "-"):
+        session["phone_flash"] = "❌ 页面过期了，刷新后再试"
+        return redirect(url_for("player_phone_thread", other=key))
+    db = get_db()
+    res = _alias_resolve(db, sid, owner, key)
+    row = res[1] if res else None
+    party = row and ("owner" if owner == row["owner_role"] else ("target" if owner == row["target_role"] else None))
+    if not party:  # 误送/撕信收到信的第三人不能结束别人的对话
+        session["phone_flash"] = "❌ 这段对话不能由你结束"
+        return redirect(url_for("player_phone_thread", other=key))
+    now = int(time.time() * 1000)
+    if request.form.get("action") == "unblock":
+        if row["blocked_by"] != party:
+            session["phone_flash"] = "❌ 只有拉黑的一方能解除"
+        elif now - row["blocked_at"] < _ALIAS_UNBLOCK_MS:
+            session["phone_flash"] = f"⏳ 拉黑满 2 小时才能解除，还要等 {math.ceil((row['blocked_at'] + _ALIAS_UNBLOCK_MS - now) / 60000)} 分钟"
+        else:
+            db.execute("UPDATE phone_aliases SET blocked_by='', blocked_at=0 WHERE id=?", (row["id"],)); db.commit()
+            session["phone_flash"] = "✅ 已解除拉黑，这段匿名对话可以继续了"
+    elif not row["blocked_by"]:
+        db.execute("UPDATE phone_aliases SET blocked_by=?, blocked_at=? WHERE id=?", (party, now, row["id"])); db.commit()
+        session["phone_flash"] = "🚫 已拉黑，这段匿名对话结束了。满 2 小时后可以在这里解除"
+    return redirect(url_for("player_phone_thread", other=key))
+
+@app.route("/p/me/alias", methods=["POST"])
+def player_alias_create():
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    if owner == PHONE_ADMIN:
+        return redirect(url_for("admin_phone_index"))
+    if not hmac.compare_digest(request.form.get("csrf", ""), session.get("phone_csrf", "") or "-"):
+        session["phone_flash"] = "❌ 页面过期了，刷新后再试"
+        return redirect(url_for("player_phone_new"))
+    db = get_db()
+    if not _phone_status(db, sid, owner)["can"]:
+        return redirect(url_for("player_phone_inbox"))
+    with _phone_send_lock:
+        ok, res = _alias_create(db, sid, owner, request.form.get("to", "").strip(), request.form.get("alias", ""))
+    if not ok:
+        session["phone_flash"] = res
+        return redirect(url_for("player_phone_new"))
+    return redirect(url_for("player_phone_thread", other=res))
+
 def _phone_insert_event(db, sid, tid, etype, from_role, to_role, content, info, ts, game_day):
     db.execute("""
         INSERT INTO extra_events
@@ -5671,8 +5906,11 @@ def player_phone_send():
     db  = get_db()
     tid = db.execute("SELECT tenant_id FROM shows WHERE id=?", (sid,)).fetchone()["tenant_id"]
     with _phone_send_lock:  # 查次数和写入之间不能被另一个请求插队，否则连点能超上限
-        ok, msg = _phone_send(db, sid, tid, owner, kind, to_name, request.form.get("text", ""),
-                              request.form.get("gift_name", ""), request.form.get("preset_id", ""))
+        if _alias_resolve(db, sid, owner, to_name):  # 匿名对话
+            ok, msg = _alias_send(db, sid, tid, owner, to_name, request.form.get("text", ""))
+        else:
+            ok, msg = _phone_send(db, sid, tid, owner, kind, to_name, request.form.get("text", ""),
+                                  request.form.get("gift_name", ""), request.form.get("preset_id", ""))
     session["phone_flash"] = msg
     session["phone_sent"] = ok
     if not ok:  # 没发出去，把草稿留着
@@ -5692,7 +5930,8 @@ def player_phone_new():
     if not st["can"]:
         return redirect(url_for("player_phone_inbox"))
     contacts = sorted(n for n in _phone_roster(_phone_sync_row(db, sid)) if n != owner)
-    return render_template("phone.html", mode="new", owner=owner, sid=sid, contacts=contacts)
+    return render_template("phone.html", mode="new", owner=owner, sid=sid, contacts=contacts, csrf=_phone_csrf(),
+                           flash=session.pop("phone_flash", None), alias_max=_ALIAS_MAX_PER_TARGET, alias_len=_ALIAS_MAX_LEN)
 
 @app.route("/api/phone/sync", methods=["POST"])
 def api_phone_sync():
@@ -6512,6 +6751,8 @@ def _admin_note(e):
     if e["type"] == "song":
         return f"点歌人：{e['from_role']}"
     parts = [f"实际：{e['from_role']} → {e['to_role'] or '（静默拉黑，未送达）'}"]
+    if info.get("alias_id"):
+        parts.append(f"匿名对话：{info.get('alias_owner')} 用化名「{info.get('alias_name')}」")
     if info.get("from_custom_name"):
         parts.append(f"署名「{info['from_custom_name']}」")
     intended = info.get("intended_to")
