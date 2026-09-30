@@ -5304,11 +5304,11 @@ def player_phone_search():
         groups.append({"key": "lovemail", "label": "心动信", "items": lms[:_SEARCH_PER_GROUP]})
 
     # 朋友圈（本季所有人都能看到的）
-    moms = []
+    moms, nicks = [], _nick_map(db, sid)
     for r in db.execute("SELECT role_name, content, game_day, created_at FROM moments WHERE show_id=? AND deleted=0 ORDER BY id DESC LIMIT 500", (sid,)):
         if q in (r["content"] or "").lower():
             pre, hit, post = _snippet(r["content"], q)
-            moms.append({"title": r["role_name"], "meta": "%s %s" % (r["game_day"] or "", _phone_time(r["created_at"])), "pre": pre, "hit": hit,
+            moms.append({"title": ("%s（%s）" % (nicks[r["role_name"]], r["role_name"])) if r["role_name"] in nicks else r["role_name"], "meta": "%s %s" % (r["game_day"] or "", _phone_time(r["created_at"])), "pre": pre, "hit": hit,
                          "post": post, "url": url_for("player_moments")})
             if len(moms) >= _SEARCH_PER_GROUP:
                 break

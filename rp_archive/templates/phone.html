@@ -692,7 +692,7 @@ a { color: var(--link); text-decoration: none; }
       <article class="moment" id="m{{ p.id }}" data-id="{{ p.id }}">
         <div class="avatar" data-name="{{ p.role_name }}">{{ p.role_name[:1] }}</div>
         <div class="mbody">
-          <div class="mname">{{ p.role_name }}{{ npc(p.role_name) }}</div>
+          <div class="mname">{{ disp(p.role_name) if disp else p.role_name }}{{ npc(p.role_name) }}</div>
           {% if p.content %}<div class="mtext">{{ p.content }}</div>{% endif %}
           {% if p.images %}
           <div class="mimgs n{{ p.images|length }}">
@@ -715,7 +715,7 @@ a { color: var(--link); text-decoration: none; }
             {% if not why %}<button type="button" class="m-like{{ ' liked' if p.liked }}" aria-pressed="{{ 'true' if p.liked else 'false' }}">{{ '♥ 已赞' if p.liked else '♡ 赞' }}</button>
             <button type="button" class="m-cmt">评论</button>{% endif %}
           </div>
-          <div class="msocial"{% if not p.likes and not p.comments %} hidden{% endif %}>{% if p.likes %}<div class="mlikes">♥ {{ p.likes|join('，') }}</div>{% endif %}<div class="mcomments">{% for c in p.comments %}<div class="cm" data-role="{{ c.role_name }}"><b>{{ c.role_name }}</b>{% if c.reply_to %} 回复 <b>{{ c.reply_to }}</b>{% endif %}：{{ c.content }}{% if phone_admin %}<button type="button" class="cdel admin-del" data-admin-del="comment:{{ c.id }}" data-desc="删除 {{ c.role_name }} 的这条评论？">管理删除</button>{% elif c.mine or p.mine %}<button type="button" class="cdel" data-cid="{{ c.id }}">删除</button>{% endif %}</div>{% endfor %}</div></div>
+          <div class="msocial"{% if not p.likes and not p.comments %} hidden{% endif %}>{% if p.likes %}<div class="mlikes">♥ {% for n in p.likes %}{{ disp(n) if disp else n }}{% if not loop.last %}，{% endif %}{% endfor %}</div>{% endif %}<div class="mcomments">{% for c in p.comments %}<div class="cm" data-role="{{ c.role_name }}"><b>{{ disp(c.role_name) if disp else c.role_name }}</b>{% if c.reply_to %} 回复 <b>{{ disp(c.reply_to) if disp else c.reply_to }}</b>{% endif %}：{{ c.content }}{% if phone_admin %}<button type="button" class="cdel admin-del" data-admin-del="comment:{{ c.id }}" data-desc="删除 {{ c.role_name }} 的这条评论？">管理删除</button>{% elif c.mine or p.mine %}<button type="button" class="cdel" data-cid="{{ c.id }}">删除</button>{% endif %}</div>{% endfor %}</div></div>
           {% if not why %}
           <form class="cform" hidden><input name="content" maxlength="{{ max_comment }}" placeholder="评论" autocomplete="off"><input type="hidden" name="reply_to" value=""><button type="submit">发送</button></form>
           {% endif %}

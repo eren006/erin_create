@@ -73,6 +73,23 @@ ok("已清除" in setnick(lin, "林晚"), "own real name clears")
 # 改完可以立刻复用被清掉的名字
 ok("已设为「阿屿」" in setnick(sz, "阿屿"), "freed name reusable")
 
+# 朋友圈：发帖人、点赞列表、评论人和「回复 某某」都显示「微信名（真名）」；识别身份的 data-role 仍然是真名
+c.execute("INSERT INTO moments (tenant_id, show_id, role_name, content, game_day, created_at) VALUES (?,?,?,?,?,?)", (TID, SID, "周屿", "天台的风", "D2", now))
+mid = c.execute("SELECT last_insert_rowid()").fetchone()[0]
+c.execute("INSERT INTO moment_likes (moment_id, role_name, created_at) VALUES (?,?,?)", (mid, "林晚", now))
+c.execute("INSERT INTO moment_comments (moment_id, role_name, reply_to, content, created_at) VALUES (?,?,?,?,?)", (mid, "林晚", "周屿", "带我一个", now))
+c.execute("INSERT INTO moment_comments (moment_id, role_name, reply_to, content, created_at) VALUES (?,?,?,?,?)", (mid, "沈知意", "", "我也去", now)); c.commit()
+ok("已设为「屿哥」" in setnick(zy, "屿哥"), "zy nick for moments")   # 前面的清除/复用测试之后，三个人各自重新设
+ok("已设为「小晚」" in setnick(lin, "小晚"), "lin nick for moments")
+mo = lin.get("/p/me/moments").get_data(as_text=True)
+ok('<div class="mname">屿哥（周屿）</div>' in mo, "poster")
+ok("♥ 小晚（林晚）" in mo, "likes")
+ok("<b>小晚（林晚）</b> 回复 <b>屿哥（周屿）</b>：带我一个" in mo, "comment + reply_to")
+ok("<b>阿屿（沈知意）</b>：我也去" in mo, "third person with her own nick")
+setnick(sz, "")
+ok("<b>沈知意</b>：我也去" in lin.get("/p/me/moments").get_data(as_text=True), "someone without a nick stays plain")
+ok('data-role="林晚"' in mo and 'data-role="小晚' not in mo, "data-role stays the real name")
+ok(lin.get("/p/me/search?q=天台").get_json()["groups"][0]["items"][0]["title"] == "屿哥（周屿）", "moment in search")
 # 匿名化名不受影响：林晚用化名「小狐狸」给周屿发起，周屿那边看到的还是「小狐狸」，不会带出微信名
 setnick(lin, "小晚")
 lin.post("/p/me/alias", data={"csrf": lin.csrf, "to": "周屿", "alias": "小狐狸"})
