@@ -260,7 +260,7 @@ a { color: var(--link); text-decoration: none; }
 @media (prefers-color-scheme: dark) {
   .phone { --wall-paper: #201e1a; --wall-mist: #171e25; --wall-sage: #191f1b; --wall-rose: #241c20; }
 }
-#scroll { background: var(--chat-bg); }
+.phone, .phone .scroll, #scroll { background: var(--chat-bg); }
 .bar .right { gap: 14px; justify-content: flex-end; padding-right: 4px; }
 .bar .right .quiet-button, .bar .right > a { font-size: 16px; min-height: 44px; display: inline-flex; align-items: center; }
 /* 底部四个标签页（消息/朋友圈/心动信/我的）：大标题靠左，操作是标题同一行右侧的圆形图标按钮 */
@@ -1582,7 +1582,7 @@ a { color: var(--link); text-decoration: none; }
     <button type="button" class="choice" data-theme="{{ value }}" aria-pressed="false"><i style="--swatch:{{ color }}" aria-hidden="true"></i>{{ label }}</button>
     {% endfor %}
   </div></fieldset>
-  <fieldset><legend>聊天底色</legend><div class="choices">
+  <fieldset><legend>页面底色</legend><div class="choices">
     {% for value, label in [('default','纯色'),('paper','暖纸'),('mist','雾蓝'),('sage','浅叶'),('rose','微粉')] %}
     <button type="button" class="choice" data-wall="{{ value }}" aria-pressed="false">{{ label }}</button>
     {% endfor %}
