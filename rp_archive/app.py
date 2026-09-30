@@ -1623,6 +1623,20 @@ def _migrate(conn):
         )
     """)
 
+    # ── 25. 网页上的实名拉黑/解除：先在这里立刻对网页生效，机器人同步时取走写进 sys_blocklist（群里也生效），回报 done ──
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS phone_block_ops (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            show_id    INTEGER NOT NULL,
+            blocker    TEXT    NOT NULL,
+            target     TEXT    NOT NULL,
+            action     TEXT    NOT NULL,
+            silent     INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            done       INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+
     # ── 24. 网页投的心动信：先存这里，机器人同步时取走放进自己的信池，跟群里投的一起每晚派送 ──
     # state: new=还没交给机器人 / taken=机器人回报已放进信池 / revoked=撤回了；handed_at=已经在同步回包里给过机器人
     conn.execute("""
@@ -5209,6 +5223,7 @@ def player_phone_thread(other):
                                or bool(alias and not astate["blocked"]))
     return render_template("phone.html", mode="thread", owner=owner, sid=sid, other=other,
                            alias_thread=(alias[2] if alias else None), alias_state=astate,
+                           block_state=None if alias else _phone_block_state(db, sid, owner, other),
                            msgs=_phone_msgs(db, sid, owner, other), status=st, can_reply=can_reply,
                            revision=_phone_revision(_phone_views(db, sid, owner)),
                            stickers=_phone_stickers(db, sid) if can_reply else [],
@@ -5453,10 +5468,37 @@ def _chaos_erode(content, cfg):
             content = shuffled
     return content
 
+_BLOCK_UNDO_MS = 2 * 3600 * 1000   # 跟群里「取消拉黑」一样：拉黑满 2 小时才能解除
+
+def _phone_effective_blocks(db, sid, snap):
+    """快照里的拉黑名单 + 网页上还没被机器人取走的拉黑/解除（按先后叠上去）。机器人处理完、下一份快照带上时同一次同步里标 done，不会重复算"""
+    blocks = {(b.get("blocker"), b.get("blocked")): dict(b) for b in (snap.get("blocks") or [])}
+    for op in db.execute("SELECT * FROM phone_block_ops WHERE show_id=? AND done=0 ORDER BY id", (sid,)):
+        key = (op["blocker"], op["target"])
+        if op["action"] == "block":  # 再拉一次（换静默模式）不重新计时，同群里
+            since = (blocks.get(key) or {}).get("since") or op["created_at"]
+            blocks[key] = {"blocker": op["blocker"], "blocked": op["target"], "silent": bool(op["silent"]), "since": since}
+        else:
+            blocks.pop(key, None)
+    return list(blocks.values())
+
+def _phone_block_state(db, sid, owner, other):
+    """对话页「⋯」菜单用：能不能在这里实名拉黑 TA、现在拉黑了没有、还要等多久才能解除；不能操作返回 None"""
+    sync = _phone_sync_row(db, sid)
+    if not sync or not sync["snap"].get("block_write") or owner == PHONE_ADMIN:
+        return None
+    if other == owner or other not in _phone_roster(sync):
+        return None
+    b = _phone_blocked(dict(sync["snap"], blocks=_phone_effective_blocks(db, sid, sync["snap"])), owner, other)
+    if not b:
+        return {"blocked": False}
+    wait = int(b.get("since") or 0) + _BLOCK_UNDO_MS - int(time.time() * 1000)
+    return {"blocked": True, "silent": b["silent"], "wait_min": max(0, math.ceil(wait / 60000))}
+
 def _phone_blocked(snap, blocker, blocked):
     for b in snap.get("blocks") or []:
         if b.get("blocker") == blocker and b.get("blocked") == blocked:
-            return {"silent": bool(b.get("silent"))}
+            return {"silent": bool(b.get("silent")), "since": b.get("since") or 0}
     return None
 
 _PHONE_GIFT_NAME_MAX = 20
@@ -5498,7 +5540,7 @@ def _phone_send(db, sid, tid, owner, kind, to_name, text, gift_name="", preset_i
         return False, "❌ 机器人还没同步过规则，暂时不能从网页发送"
     if _schedule_zone(show) != "main":
         return False, "❌ 不在档期内，暂时不能发送"
-    snap  = sync["snap"]
+    snap  = dict(sync["snap"], blocks=_phone_effective_blocks(db, sid, sync["snap"]))
     rules = snap.get("rules") or {}
     roster = _phone_roster(sync)
     text = (text or "").strip()
@@ -6007,7 +6049,8 @@ def api_phone_sync():
     lovemails, lm_revokes = _lm_for_bot(db, show["id"], data.get("lovemail_done"), data.get("lovemail_revoke_done"))
     return jsonify({"ok": True, "web_send": _phone_web_send_on(db, show["id"]), "events": events, "shop_events": shop_events,
                     "songs": _song_pending_for_bot(db, show["id"], data.get("songs_done")),
-                    "lovemails": lovemails, "lovemail_revokes": lm_revokes})
+                    "lovemails": lovemails, "lovemail_revokes": lm_revokes,
+                    "block_ops": _block_ops_for_bot(db, show["id"], data.get("block_ops_done"))})
 
 @app.route("/p/<code>")
 def player_phone_enter(code):
@@ -6763,6 +6806,50 @@ def _song_pending_for_bot(db, sid, done_ids):
              "name": r["song_name"], "artists": r["artists"], "to": r["to_role"], "message": r["message"]}
             for r in db.execute("SELECT * FROM song_requests WHERE show_id=? AND announced=0 AND deleted=0 ORDER BY id LIMIT 20",
                                 (sid,))]
+
+@app.route("/p/me/block", methods=["POST"])
+def player_phone_block():
+    """对话页「⋯」里的实名拉黑/解除：规则同群里「拉黑 角色名 [静默]」「取消拉黑 角色名」"""
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    target = request.form.get("target", "").strip()
+    back = url_for("player_phone_thread", other=target) if target else url_for("player_phone_inbox")
+    if not hmac.compare_digest(request.form.get("csrf", ""), session.get("phone_csrf", "") or "-"):
+        session["phone_flash"] = "❌ 页面过期了，刷新后再试"
+        return redirect(back)
+    db = get_db()
+    with _phone_send_lock:
+        st = _phone_block_state(db, sid, owner, target)
+        action = "unblock" if request.form.get("action") == "unblock" else "block"
+        silent = request.form.get("silent") == "1"
+        if st is None:
+            msg = "❌ 这里不能拉黑 TA"
+        elif action == "unblock" and not st["blocked"]:
+            msg = f"❓ 你并没有拉黑「{target}」"
+        elif action == "unblock" and st["wait_min"]:
+            msg = f"⏳ 拉黑满 2 小时才能解除，还要等 {st['wait_min']} 分钟"
+        elif action == "block" and st["blocked"] and st["silent"] == silent:
+            msg = f"已经拉黑「{target}」了"
+        else:
+            db.execute("INSERT INTO phone_block_ops (show_id, blocker, target, action, silent, created_at) VALUES (?,?,?,?,?,?)",
+                       (sid, owner, target, action, 1 if silent else 0, int(time.time() * 1000)))
+            db.commit()
+            msg = (f"✅ 已取消拉黑「{target}」" if action == "unblock" else
+                   f"🚫 已拉黑「{target}」（{'静默' if silent else '不静默'}），TA 之后发起的短信/礼物/私约/电话/微信/漂流瓶回信都不会再送达你，"
+                   f"群里半分钟内同步生效。满 2 小时后才能解除")
+    session["phone_flash"] = msg
+    return redirect(back)
+
+def _block_ops_for_bot(db, sid, done_ids):
+    ids = [int(i) for i in (done_ids or []) if str(i).isdigit()][:200]
+    if ids:
+        db.execute(f"UPDATE phone_block_ops SET done=1 WHERE show_id=? AND id IN ({','.join('?' * len(ids))})", [sid] + ids)
+        db.commit()
+    return [{"id": r["id"], "blocker": r["blocker"], "target": r["target"], "action": r["action"],
+             "silent": bool(r["silent"]), "ts": r["created_at"]}
+            for r in db.execute("SELECT * FROM phone_block_ops WHERE show_id=? AND done=0 ORDER BY id LIMIT 50", (sid,))]
 
 # ── 心动信 ─────────────────────────────────────────────────────────────────────
 # 规则、今日已投封数、还在机器人信池里等派送的信，全部来自插件同步快照（rules.lovemail / snapshot.lovemail），存档站不另存一套。

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         长日将尽系统
 // @author       长日将尽
-// @version      1.10.1
+// @version      1.11.0
 // @description  无
 // @timestamp    1778742000
 // @license      CC BY-NC-SA
@@ -18,7 +18,7 @@
 
 let ext = seal.ext.find("changri")
 if (!ext) {
-    ext = seal.ext.new("changri", "长日将尽", "1.10.1");
+    ext = seal.ext.new("changri", "长日将尽", "1.11.0");
     // 注册扩展
     seal.ext.register(ext);
     ext.autoActive = true;
@@ -12590,7 +12590,7 @@ async function phoneWebSyncCore(base, token) {
     for (const [blockerUid, m] of Object.entries(kvGet("sys_blocklist", {})[platform] || {})) {
         for (const [blockedUid, entry] of Object.entries(m || {})) {
             const blocker = nameOf(blockerUid), blocked = nameOf(blockedUid);
-            if (blocker && blocked && entry) blocks.push({ blocker, blocked, silent: !!entry.silent });
+            if (blocker && blocked && entry) blocks.push({ blocker, blocked, silent: !!entry.silent, since: entry.since || 0 });
         }
     }
     const counts = { sms: {}, gift: {} }, last = { sms: {}, gift: {} };
@@ -12637,12 +12637,15 @@ async function phoneWebSyncCore(base, token) {
     const shopAfter = parseInt(cachedGet("phone_shop_cursor") || "0") || 0;
     const songsDone = kvGet("phone_songs_done", []);
     const lmDone = kvGet("phone_lovemail_done", []), lmRevokeDone = kvGet("phone_lovemail_revoke_done", []);
+    const blockOpsDone = kvGet("phone_block_ops_done", []);
     const resp = await fetch(base + "/api/phone/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Archive-Token": token },
         body: JSON.stringify({ after, shop_after: shopAfter, songs_done: songsDone,
-            lovemail_done: lmDone, lovemail_revoke_done: lmRevokeDone,
-            snapshot: { game_day: gameDay, roster, rules, feature_off: featureOff, blocks, counts, last, catalogs, displays, shop, lovemail } })
+            lovemail_done: lmDone, lovemail_revoke_done: lmRevokeDone, block_ops_done: blockOpsDone,
+            // block_write：告诉存档站这个版本会处理网页上的实名拉黑，网页才显示拉黑按钮
+            snapshot: { game_day: gameDay, roster, rules, feature_off: featureOff, blocks, block_write: true,
+                        counts, last, catalogs, displays, shop, lovemail } })
     });
     if (!resp.ok) return;
     const data = await resp.json();
@@ -12654,6 +12657,8 @@ async function phoneWebSyncCore(base, token) {
     if (lmDone.length) kvSet("phone_lovemail_done", kvGet("phone_lovemail_done", []).filter(id => !lmDone.includes(id)));
     if (lmRevokeDone.length) kvSet("phone_lovemail_revoke_done", kvGet("phone_lovemail_revoke_done", []).filter(id => !lmRevokeDone.includes(id)));
     phoneApplyLoveMails(platform, data.lovemails || [], data.lovemail_revokes || []);
+    if (blockOpsDone.length) kvSet("phone_block_ops_done", kvGet("phone_block_ops_done", []).filter(id => !blockOpsDone.includes(id)));
+    phoneApplyBlockOps(platform, data.block_ops || []);
     kvSet("phone_web_send", { on: !!data.web_send, url: `${base}/p`, at: Date.now() });
 
     const events = data.events || [];
@@ -12733,6 +12738,29 @@ function phoneApplyLoveMails(platform, mails, revokes) {
     kvSet("phone_lovemail_seen", seen.slice(-300));
     kvSet("phone_lovemail_done", done.slice(-300));
     kvSet("phone_lovemail_revoke_done", revDone.slice(-300));
+}
+
+// 网页上的实名拉黑/解除写进 sys_blocklist，规则同「拉黑」「取消拉黑」：再拉一次不重新计时，满 BLOCK_UNDO_COOLDOWN_H 小时才能解除
+// （网页已经校验过，这里再按自己的记录兜底一次）。处理过的 id 记进 phone_block_ops_done 下次回报；重复处理结果一样，不用去重。
+function phoneApplyBlockOps(platform, ops) {
+    if (!ops.length) return;
+    const bl = kvGet("sys_blocklist", {}), done = kvGet("phone_block_ops_done", []);
+    if (!bl[platform]) bl[platform] = {};
+    for (const op of ops) {
+        done.push(op.id);
+        const rawBlocker = getUidByRoleName(platform, op.blocker), targetUid = getUidByRoleName(platform, op.target);
+        if (!rawBlocker || !targetUid) continue;
+        const blockerUid = getPrimaryUid(platform, rawBlocker);
+        const mine = bl[platform][blockerUid] || (bl[platform][blockerUid] = {});
+        if (op.action === "block") {
+            mine[targetUid] = { silent: !!op.silent, since: mine[targetUid]?.since || op.ts || Date.now(),
+                                blockerName: op.blocker, blockedName: op.target };
+        } else if (mine[targetUid] && (mine[targetUid].since || 0) + BLOCK_UNDO_COOLDOWN_H * 3600 * 1000 <= Date.now()) {
+            delete mine[targetUid];
+        }
+    }
+    kvSet("sys_blocklist", bl);
+    kvSet("phone_block_ops_done", done.slice(-300));
 }
 
 // 网页礼品店的变化写回图鉴：新收的礼物加进 gift_sightings，货架比本地新就覆盖 shop_personal_display。

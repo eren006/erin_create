@@ -5,7 +5,7 @@ const KV = {
   a_private_group: { QQ: { "111": ["林晚", "g1"], "222": ["周屿", "g2", "阿屿"], "333": ["沈知意", "g3"] } },
   a_npc_list: ["沈知意"], global_feature_toggle: {}, chaos_letter_config: { misdelivery: 10, dailyLimit: 5 },
   feature_user_blocklist: { "222": { enable_general_gift: false } },
-  sys_blocklist: { QQ: { "333": { "111": { silent: true } } } },
+  sys_blocklist: { QQ: { "333": { "111": { silent: true, since: 50 } }, "222": { "333": { silent: false, since: 60 }, "111": { silent: true, since: Date.now() - 60000 } } } },
   global_chaos_letter_counts: { "QQ:111": { day: "D2", count: 2 }, "QQ:222": { day: "D1", count: 4 } },
   global_gift_stats: {}, global_gift_cooldowns: { "QQ:111": 1000 }, extra_accounts: {}, ts_feature_windows: [],
   gift_sightings: { "QQ:111": { unlocked_gifts: ["#001"] } }, shop_personal_display: { "QQ:111": { giftId: "#001", refreshedAt: 5 } },
@@ -16,16 +16,21 @@ const CACHE = { global_days: "D2", "chaos_letter_cooldown_QQ:111": "5000", mailC
 const kvGet = (k, d) => (k in KV ? JSON.parse(JSON.stringify(KV[k])) : d), kvSet = (k, v) => { KV[k] = v; };
 const cachedGet = k => CACHE[k], cachedSet = (k, v) => { CACHE[k] = v; };
 const getStorageInt = (k, d) => (CACHE[k] ? parseInt(CACHE[k]) : d);
-const isArchiveEnabled = () => true;
+const isArchiveEnabled = () => true; const BLOCK_UNDO_COOLDOWN_H = 2;
 const ext = {}; const seal = { ext: { getStringConfig: (e, k) => k === "RP存档服务器地址" ? "https://archive.x/" : "TOK" } };
 const getPrimaryUid = (p, u) => u;
 const getUidByRoleName = (p, n) => Object.entries(KV.a_private_group.QQ).find(([_, v]) => v[0] === n || v[2] === n)?.[0] || null;
 const stats = []; const recordInteractionStat = (...a) => stats.push(a);
 let sent;
+const NOW = Date.now();
+let BOPS = [{ id: 1, blocker: "林晚", target: "周屿", action: "block", silent: true, ts: 1111 },      // 新拉黑，since 用网页的时间
+            { id: 2, blocker: "沈知意", target: "林晚", action: "block", silent: false, ts: 2222 },   // 已拉黑过：换成不静默，不重新计时
+            { id: 3, blocker: "周屿", target: "沈知意", action: "unblock", silent: false, ts: 3333 },  // 满 2 小时：解除
+            { id: 4, blocker: "周屿", target: "林晚", action: "unblock", silent: false, ts: 4444 }];   // 不满 2 小时：不动
 let LM = [{ id: 5, from_role: "周屿", to_role: "林晚", content: "网页投的", signature: "匿名", game_day: "D2", timestamp: 888 }],
     LMREV = [{ id: 9, from_role: "林晚", ts: 777 }, { id: 10, from_role: "林晚", ts: 12345 }];
 global.fetch = async (url, opt) => { sent = { url, body: JSON.parse(opt.body) }; return { ok: true, json: async () => ({ web_send: true,
-  lovemails: LM, lovemail_revokes: LMREV, shop_events: [
+  lovemails: LM, lovemail_revokes: LMREV, block_ops: BOPS, shop_events: [
   { id: 7, role: "林晚", unlocked: ["#002", "#001"], display: { giftId: "#002", refreshedAt: 99 } },
   { id: 8, role: "周屿", unlocked: ["#003"], display: null } ], events: [
   { id: 41, type: "sms", from_role: "林晚", to_role: "周屿", timestamp: 9000, day_key: "D2", lost: false },
@@ -43,7 +48,12 @@ eval(fnSrc + "\n;globalThis.phoneWebSync = phoneWebSync; globalThis.phoneWebSend
   assert.equal(sent.url, "https://archive.x/api/phone/sync"); assert.equal(sent.body.after, 0);
   assert.deepEqual(snap.roster.map(r => r.name), ["林晚", "周屿", "沈知意"]); assert.equal(snap.roster[2].npc, true);
   assert.deepEqual(snap.feature_off, { "周屿": ["gift"] });
-  assert.deepEqual(snap.blocks, [{ blocker: "沈知意", blocked: "林晚", silent: true }]);
+  assert.deepEqual(snap.blocks.find(b => b.blocker === "沈知意"), { blocker: "沈知意", blocked: "林晚", silent: true, since: 50 }); assert.equal(snap.block_write, true);
+  // 网页拉黑写回 sys_blocklist
+  assert.deepEqual(KV.sys_blocklist.QQ["111"]["222"], { silent: true, since: 1111, blockerName: "林晚", blockedName: "周屿" });
+  assert.equal(KV.sys_blocklist.QQ["333"]["111"].silent, false); assert.equal(KV.sys_blocklist.QQ["333"]["111"].since, 50);
+  assert.equal(KV.sys_blocklist.QQ["222"]["333"], undefined); assert.ok(KV.sys_blocklist.QQ["222"]["111"]);
+  assert.deepEqual(KV.phone_block_ops_done, [1, 2, 3, 4]);
   assert.deepEqual(snap.counts.sms, { "林晚": 2 });           // 周屿的是 D1 的，不算
   assert.equal(snap.last.sms["林晚"], 5000); assert.equal(snap.last.gift["林晚"], 1000);
   assert.equal(snap.rules.chaos.misdelivery, 10); assert.equal(snap.rules.chaos.tornPage, 0); assert.equal(snap.rules.mail_cooldown_min, 60);
@@ -72,10 +82,11 @@ eval(fnSrc + "\n;globalThis.phoneWebSync = phoneWebSync; globalThis.phoneWebSend
   await phoneWebSync(); assert.equal(sent.body.after, 43); assert.equal(sent.body.shop_after, 8);
   // 第二次同步：回报上次处理的 id；同一封网页信（回报前又给了一次）不会重复进信池；回报过的清掉只剩这次的
   assert.deepEqual(sent.body.lovemail_done, [5]); assert.deepEqual(sent.body.lovemail_revoke_done, [9, 10]);
+  assert.deepEqual(sent.body.block_ops_done, [1, 2, 3, 4]);
   assert.equal(sent.body.snapshot.lovemail.pending[0].web_id, 5);
   assert.equal(KV.lovemail_pool.length, 1); assert.equal(KV.lovemail_day_counts["222"].D2, 1);
   assert.deepEqual(KV.phone_lovemail_done, [5]); assert.deepEqual(KV.phone_lovemail_revoke_done, [9, 10]);
-  LM = []; LMREV = []; await phoneWebSync();
+  LM = []; LMREV = []; BOPS = []; await phoneWebSync(); assert.deepEqual(KV.phone_block_ops_done, []);
   assert.deepEqual(KV.phone_lovemail_done, []); assert.deepEqual(KV.phone_lovemail_revoke_done, []);
   KV.feature_user_blocklist["111"] = { enable_lovemail: false }; await phoneWebSync();
   assert.deepEqual(sent.body.snapshot.feature_off["林晚"], ["lovemail"]);

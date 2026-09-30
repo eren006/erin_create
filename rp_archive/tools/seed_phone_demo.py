@@ -57,6 +57,16 @@ def _demo_shop(db, tid, sid):
             db.execute("UPDATE phone_sync SET snapshot=? WHERE show_id=?", (json.dumps(snap, ensure_ascii=False), sid))
     db.commit()
 
+def _demo_block(db, sid):
+    """演示季也显示对话页「⋯」里的实名拉黑（没有机器人，操作只在网页上生效）"""
+    row = db.execute("SELECT snapshot FROM phone_sync WHERE show_id=?", (sid,)).fetchone()
+    if row:
+        snap = json.loads(row["snapshot"] or "{}")
+        if not snap.get("block_write"):
+            snap["block_write"] = True
+            db.execute("UPDATE phone_sync SET snapshot=? WHERE show_id=?", (json.dumps(snap, ensure_ascii=False), sid))
+            db.commit()
+
 def _demo_lovemail(db, tid, sid):
     """演示季的心动信：快照补上规则/次数/一封等派送的信（标成 demo，没有机器人也能投），再放几封已派送的往期；已经有就不动"""
     row = db.execute("SELECT snapshot FROM phone_sync WHERE show_id=?", (sid,)).fetchone()
@@ -97,6 +107,7 @@ if row:
         acode = arow["code"]
     _demo_shop(db, tid, sid)
     _demo_lovemail(db, tid, sid)
+    _demo_block(db, sid)
     print("演示团账号已存在。各角色激活码（一直有效）：")
     _print_codes(_demo_codes(db, tid, sid))
     print(f"演示管理员手机码：{acode}\n入口：https://archive.changri.work/p/{acode}")
@@ -156,6 +167,7 @@ db.execute("""INSERT INTO song_requests (tenant_id, show_id, from_role, to_role,
 db.commit()
 _demo_shop(db, tid, sid)
 _demo_lovemail(db, tid, sid)
+_demo_block(db, sid)
 print("演示团账号已建好（跟真实数据完全隔开）。各角色激活码（一直有效）：")
 _print_codes(_demo_codes(db, tid, sid))
 print(f"体验激活码（一直有效）：{code}")

@@ -20,6 +20,25 @@
   <button type="button" class="profile-item" id="pinContact" aria-pressed="false">置顶</button>
   <a class="profile-item" href="{{ url_for('player_phone_library', view='saved', other=other) }}">查看本机收藏 <span>›</span></a>
   <a class="profile-item" href="{{ url_for('player_phone_library', view='profile') }}">外观与字号 <span>›</span></a>
+  {% if block_state %}
+  {% if block_state.blocked %}
+  <form method="post" action="{{ url_for('player_phone_block') }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="target" value="{{ other }}"><input type="hidden" name="action" value="unblock">
+    <button type="submit" class="profile-item"{% if block_state.wait_min %} disabled{% endif %}>解除拉黑 <span>{{ '还要等 %d 分钟' % block_state.wait_min if block_state.wait_min else '›' }}</span></button>
+  </form>
+  <p class="block-note">已拉黑（{{ '静默' if block_state.silent else '不静默' }}）：TA 发起的短信、礼物、私约等都不会送达你，群里同样生效。</p>
+  {% else %}
+  <form method="post" action="{{ url_for('player_phone_block') }}" onsubmit="return confirm('拉黑 {{ other }}？TA 再联系你时会被告知「已拒绝」。拉黑满 2 小时后才能解除。')">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="target" value="{{ other }}"><input type="hidden" name="action" value="block">
+    <button type="submit" class="profile-item block-danger">拉黑 <span>›</span></button>
+  </form>
+  <form method="post" action="{{ url_for('player_phone_block') }}" onsubmit="return confirm('静默拉黑 {{ other }}？TA 察觉不到，发来的短信和礼物看起来和送达一样。拉黑满 2 小时后才能解除。')">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="target" value="{{ other }}"><input type="hidden" name="action" value="block"><input type="hidden" name="silent" value="1">
+    <button type="submit" class="profile-item block-danger">静默拉黑 <span>›</span></button>
+  </form>
+  <p class="block-note">拉黑后 TA 发起的短信、礼物、私约、电话、微信、漂流瓶回信都不会送达你，群里同样生效；满 2 小时后才能解除。静默拉黑时 TA 察觉不到。</p>
+  {% endif %}
+  {% endif %}
 </dialog>
 {% elif mode == 'new' %}
 <nav class="thread-tools" aria-label="返回"><a href="{{ url_for('player_phone_inbox') }}">‹ 返回消息</a></nav>
