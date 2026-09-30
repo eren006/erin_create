@@ -528,7 +528,137 @@ SCENES = {
              win=dict(favor=6, trust=8), win_text='皇上叹了口气：「满宫里，也就你还敢说这话。」',
              lose=dict(favor=-8), lose_text='皇上冷冷看你一眼：「后宫不得干政。」'),
     ]),
+    # ── 2026-09-29 扩充：出门走动时撞见皇上（do_garden 的 emperor 事件从 EMPEROR_SCENES 里挑） ──
+    'lake_emperor': dict(place='太液池', text='暮色四合，太液池边只剩皇上一个人坐在石栏上钓鱼。他听见脚步声，回头看了你一眼。', opts=[
+        dict(text='远远行礼，转身便走', stat=None,
+             win=dict(favor=5), win_text='皇上「嗯」了一声，没再说什么。'),
+        dict(text='安静坐在一旁陪着', stat='virtue', dc=65,
+             win=dict(favor=12, seek=15), win_text='两人坐了一炷香，皇上钓到一条鱼，难得笑了。',
+             lose=dict(favor=2), lose_text='皇上钓了一刻钟，没钓到。他起身走了，你也不好再留。'),
+        dict(text='说几句俏皮话逗他开心', stat='appearance', dc=72,
+             win=dict(favor=18, seek=8), win_text='皇上捏了捏你的脸：「就你话多。」但嘴角是翘的。',
+             lose=dict(favor=-5, trust=-2), lose_text='皇上淡淡道：「朕钓鱼，不是来听戏的。」你讪讪闭嘴。'),
+    ]),
+    'street_emperor': dict(place='长街', text='天擦黑了，你从御花园回来得晚，长街上迎面撞上皇上銮驾。皇上掀开轿帘，似乎认出了你。', opts=[
+        dict(text='跪在路边，恭送圣驾', stat=None,
+             win=dict(favor=6), win_text='皇上没说什么，銮驾过去了。'),
+        dict(text='大胆抬头，迎视圣颜', stat='appearance', dc=75,
+             win=dict(favor=20, seek=15), win_text='皇上怔了一下，随即笑道：「这么晚了，怎么一个人？」',
+             lose=dict(favor=-8, virtue=-2), lose_text='皇上沉下脸：「没规矩。」轿帘放下了。'),
+        dict(text='「夜深露重，皇上保重龙体。」', stat='virtue', dc=65,
+             win=dict(favor=10, trust=5, seek=8), win_text='皇上「嗯」了一声，语气软了几分。',
+             lose=dict(favor=2), lose_text='皇上「嗯」了一声，銮驾过去了。'),
+    ]),
+    'shoukang_emperor': dict(place='寿康宫', text='你顺路去寿康宫给太后送燕窝，出来时正撞见皇上进门。太后笑着问皇上：「怎么来得这样巧？」', opts=[
+        dict(text='恭敬行礼，退到一旁', stat=None,
+             win=dict(favor=6, trust=2), win_text='太后留你用饭，皇上多看了你两眼。'),
+        dict(text='笑着说「嫔妾是来替皇上尽孝的」', stat='scheme', dc=70,
+             win=dict(favor=15, trust=8), win_text='太后笑得合不拢嘴：「这孩子，会说话。」皇上也笑了。',
+             lose=dict(favor=-5, trust=-3), lose_text='皇上淡淡道：「不必。」太后也没接话。你意识到自己弄巧成拙。'),
+        dict(text='低头不语，面露羞怯', stat='appearance', dc=68,
+             win=dict(favor=12, seek=12), win_text='太后看在眼里，晚上跟皇上提了你。',
+             lose=dict(favor=3), lose_text='皇上没注意到你，径直进去了。'),
+    ]),
+    # ── 送汤羹时皇上心情平和，偶尔会留你（do_seek） ──
+    'yangxin_emperor': dict(place='养心殿', text='你去养心殿送汤羹，正逢皇上批完折子揉眉心。苏培盛悄悄给你打帘子，示意你进去。', opts=[
+        dict(text='放下东西，行礼告退', stat=None,
+             win=dict(favor=5), win_text='皇上点了点头，继续看折子。苏培盛送你出来时低声道：「小主有心了。」'),
+        dict(text='主动上前替皇上揉肩', stat='scheme', dc=68,
+             win=dict(favor=15, seek=10), win_text='皇上闭上眼，由你按了一刻钟。走时他道：「明儿还来。」',
+             lose=dict(favor=-5, trust=-3), lose_text='皇上睁开眼，淡淡道：「不必了。」你意识到自己越了界。'),
+        dict(text='轻声念一段祈福的经文', stat='virtue', dc=70,
+             win=dict(favor=12, trust=5), win_text='皇上听完，神色舒展了些：「难为你有心。」',
+             lose=dict(favor=-3, virtue=-1), lose_text='皇上皱了皱眉：「朕这里不需要念经。」你讪讪退下。'),
+    ]),
+    # ── 撞见 NPC 妃嫔。npc= 是这个场景要谁在场（不在或进了冷宫就不出这个场景），
+    #    效果里写 NPC 的 npc_key 表示她对你的好感（见 apply_effects），不再借用皇上的「信任」 ──
+    'yikun_huafei': dict(place='翊坤宫', npc='huafei', text='华妃宫里的人把你请去了翊坤宫。她斜倚在榻上，手里把玩着一只赤金护甲，似笑非笑地看着你：「妹妹近来气色不错，想必是圣眷正隆？」', opts=[
+        dict(text='「姐姐说笑了，嫔妾不过是寻常度日。」', stat=None,
+             win=dict(virtue=1), win_text='华妃哼了一声，没再说什么。'),
+        dict(text='「姐姐才是真正的好气色，这护甲配姐姐正好。」', stat='scheme', dc=68,
+             win=dict(huafei=8), win_text='华妃哼了一声，倒没为难你。',
+             lose=dict(huafei=-5), lose_text='华妃冷笑：「油嘴滑舌，跟你那出身一样。」左右宫女都低下了头。'),
+        dict(text='「嫔妾气色好不好，与姐姐何干？」', stat='virtue', dc=75,
+             win=dict(virtue=1, huafei=10), win_text='华妃盯了你半晌，忽然笑了：「有脾气。本宫喜欢有脾气的。」',
+             lose=dict(health=-10, huafei=-15), lose_text='华妃把茶盏重重搁下：「给本宫跪下！」你在翊坤宫跪了整整一个时辰。'),
+    ]),
+    'yanqing_duanfei': dict(place='延庆殿', npc='duanfei', text='你路过延庆殿，听见里面传来咳嗽声。掌事姑姑悄悄告诉你：「端妃娘娘又犯了旧疾，已经三日没出门了。」', opts=[
+        dict(text='留下补品，转身便走', stat=None,
+             win=dict(virtue=1), win_text='掌事姑姑收了东西，代端妃道了谢。'),
+        dict(text='进去探望，亲自侍药', stat='virtue', dc=68,
+             win=dict(virtue=2, duanfei=10), win_text='端妃握着你的手，低声道：「这宫里，难得有个真心人。」',
+             lose=dict(), lose_text='端妃摆了摆手，没让你近身。掌事姑姑送你出来时叹了口气。'),
+        dict(text='向掌事姑姑打听端妃的病情和过往', stat='scheme', dc=72,
+             win=dict(scheme=2), win_text='掌事姑姑说了许多。你才知道端妃当年也曾盛宠一时。',
+             lose=dict(virtue=-2, duanfei=-8), lose_text='掌事姑姑脸色一变：「小主，这些话不是该问的。」你意识到自己犯了忌讳。'),
+    ]),
+    'street_qifei': dict(place='长街', npc='qifei', text='长街上，齐妃带着小阿哥迎面走来。小阿哥手里拿着风筝，齐妃正叮嘱他小心。', opts=[
+        dict(text='行礼问安后，避让到一旁', stat=None,
+             win=dict(virtue=1), win_text='齐妃点点头，牵着小阿哥走了。'),
+        dict(text='夸小阿哥聪明伶俐', stat='virtue', dc=65,
+             win=dict(virtue=1, qifei=6), win_text='齐妃笑得合不拢嘴：「你这人倒是实在。」',
+             lose=dict(qifei=-3), lose_text='齐妃警惕地看了你一眼，牵着小阿哥快步走了。'),
+        dict(text='主动提出陪小阿哥放风筝', stat='scheme', dc=70,
+             win=dict(qifei=10), win_text='小阿哥高兴得不得了，齐妃也放下了戒心。',
+             lose=dict(qifei=-10), lose_text='齐妃脸色一沉：「本宫的儿子，不劳外人费心。」说罢拂袖而去。'),
+    ]),
+    'garden_jingpin': dict(place='御花园', npc='jingpin', text='御花园里，敬嫔正蹲在花圃边修剪一株月季。她抬头看见你，温和地笑了笑。', opts=[
+        dict(text='问安后，在一旁静静看花', stat=None,
+             win=dict(virtue=1), win_text='敬嫔剪完花，跟你聊了几句天气。'),
+        dict(text='上前帮忙修剪', stat='virtue', dc=65,
+             win=dict(virtue=2, jingpin=6), win_text='敬嫔教你怎样剪枝，两人聊了一下午。',
+             lose=dict(jingpin=-3), lose_text='你剪坏了一枝花。敬嫔没说什么，但笑容淡了些。'),
+        dict(text='问敬嫔宫里的近况', stat='scheme', dc=68,
+             win=dict(scheme=1, jingpin=4), win_text='敬嫔叹了口气，说了些你不知道的内情。',
+             lose=dict(jingpin=-6), lose_text='敬嫔摇头道：「这些事，不该你问。」你意识到她虽温和，却并不糊涂。'),
+    ]),
+    'lake_caoguiren': dict(place='太液池', npc='caoguiren', text='太液池边，曹贵人抱着小公主在散步。她看见你，笑着打招呼：「妹妹也来透气？」', opts=[
+        dict(text='点头致意，转身便走', stat=None,
+             win=dict(virtue=1), win_text='曹贵人笑了笑，继续散步。'),
+        dict(text='夸公主可爱', stat='virtue', dc=65,
+             win=dict(virtue=1, caoguiren=4), win_text='曹贵人笑得真诚了几分：「妹妹是个喜欢孩子的人。」',
+             lose=dict(), lose_text='曹贵人淡淡一笑，抱着公主走开了。'),
+        dict(text='暗示华妃近日对曹贵人颇有微词', stat='scheme', dc=75,
+             win=dict(caoguiren=12), win_text='曹贵人脸色微变，低声道：「妹妹的好意，我记下了。」',
+             lose=dict(caoguiren=-8, huafei=-5), lose_text='曹贵人脸色一沉：「妹妹这话，若是让华妃娘娘听见……」她抱着公主快步离去。'),
+    ]),
+    'garden_lipin': dict(place='御花园', npc='lipin', text='御花园里，丽嫔正对着池水照影，嘴里念叨着新得的珠花。她看见你，扬声道：「妹妹来看看，这花好不好看？」', opts=[
+        dict(text='「好看。」', stat=None,
+             win=dict(), win_text='丽嫔满意地点点头，继续照她的影子。'),
+        dict(text='「这花配姐姐正好，只是不如姐姐本人。」', stat='scheme', dc=65,
+             win=dict(lipin=6), win_text='丽嫔笑得花枝乱颤：「就你嘴甜！」',
+             lose=dict(), lose_text='丽嫔撇撇嘴：「算你有眼光。」转身走了。'),
+        dict(text='「嫔妾还有事，先告辞了。」', stat='virtue', dc=60,
+             win=dict(virtue=1), win_text='丽嫔也没在意，继续照她的影子。',
+             lose=dict(lipin=-6), lose_text='丽嫔脸色一沉：「怎么，本宫配不上跟你说话？」你不得不赔笑解释。'),
+    ]),
+    # ── 请安时撞见（do_greet 从 GREET_SCENES 里挑） ──
+    'jingren_empress': dict(place='景仁宫', npc='huanghou', text='请安散了，皇后单留你说话。她亲手给你斟了一盏茶，温言道：「本宫听说你近来抄经祈福，倒是个虔心的。」', opts=[
+        dict(text='「谢皇后娘娘赐茶。」', stat=None,
+             win=dict(virtue=1), win_text='皇后点点头，让你退下了。'),
+        dict(text='「嫔妾是为皇上和皇后娘娘祈福。」', stat='virtue', dc=65,
+             win=dict(virtue=2, huanghou=10), win_text='皇后欣慰地点头：「难为你有心了。」',
+             lose=dict(virtue=-1), lose_text='皇后笑了笑，没接话。你总觉得那笑容意味深长。'),
+        dict(text='「嫔妾愚钝，不如姐姐们懂事，只能笨鸟先飞。」', stat='scheme', dc=70,
+             win=dict(virtue=1, huanghou=6), win_text='皇后拍拍你的手：「你这孩子，就是太谦了。」',
+             lose=dict(huanghou=-6), lose_text='皇后淡淡道：「本宫倒觉得你聪明得很。」你后背一凉。'),
+    ]),
+    'jingren_xinchangzai': dict(place='景仁宫', npc='xinchangzai', text='请安出来，景仁宫廊下，欣常在正嗑瓜子。她看见你，招招手：「过来，跟你说件事。」', opts=[
+        dict(text='「改日再聊。」', stat=None,
+             win=dict(virtue=1), win_text='欣常在撇撇嘴，继续嗑她的瓜子。'),
+        dict(text='过去听她说', stat='scheme', dc=65,
+             win=dict(scheme=1, xinchangzai=6), win_text='欣常在压低声音，把各宫这几日的动静数了一遍，你听出不少门道。',
+             lose=dict(), lose_text='欣常在说了几句闲话，没什么要紧的。'),
+        dict(text='「欣姐姐有什么好消息？」', stat='virtue', dc=60,
+             win=dict(xinchangzai=4), win_text='欣常在笑道：「好消息没有，坏消息倒有一堆。」',
+             lose=dict(xinchangzai=-4), lose_text='欣常在白了你一眼：「谁跟你姐姐妹妹的。」'),
+    ]),
 }
+
+EMPEROR_SCENES = ['garden_emperor', 'lake_emperor', 'street_emperor', 'shoukang_emperor']   # 出门走动撞见皇上
+NPC_SCENES = ['garden_huafei', 'yikun_huafei', 'yanqing_duanfei', 'street_qifei', 'garden_jingpin', 'lake_caoguiren', 'garden_lipin']
+GREET_SCENES = ['greet_huafei', 'jingren_empress', 'jingren_xinchangzai']                 # 请安时撞见
+SCENES['garden_huafei']['npc'] = SCENES['greet_huafei']['npc'] = 'huafei'
 
 # 侍寝和召见共用的问题池。三个选项分三路：体谅（稳）、讨巧（多涨圣宠）、直言（多涨信任、也可能碰钉子）
 AUDIENCE_PROMPTS = [
@@ -564,6 +694,103 @@ AUDIENCE_PROMPTS = [
         dict(text='直言：「这字……怕是赝品。」', stat='talent', dc=80,
              win=dict(favor=5, trust=15), win_text='皇上愣了愣，大笑：「果然瞒不过你。朕是故意试你的。」', lose=dict(favor=-10), lose_text='皇上不悦：「你懂什么。」'),
     ]),
+    # ── 2026-09-29 扩充 ──
+    dict(ask='「今日前朝大臣们又吵了一架，你说朕该听谁的？」', opts=[
+        dict(text='体谅：「皇上圣明，自有决断。嫔妾不懂朝政，只知皇上心里装着天下。」', stat='virtue', dc=65,
+             win=dict(favor=8, trust=4), win_text='皇上笑了笑：「就你懂事。」', lose=dict(favor=2), lose_text='皇上「嗯」了一声，似乎没听进去。'),
+        dict(text='讨巧：「皇上听谁的，嫔妾不管。嫔妾只管皇上今晚来不来。」', stat='appearance', dc=70,
+             win=dict(favor=18), win_text='皇上捏了捏你的脸：「就你嘴甜。」', lose=dict(favor=-4, trust=-2), lose_text='皇上淡淡道：「油嘴滑舌。」'),
+        dict(text='直言：「吵得最凶的那个，未必是最有理的那个。」', stat='scheme', dc=72,
+             win=dict(favor=2, trust=10), win_text='皇上沉默片刻：「难得有人跟朕说实话。」', lose=dict(favor=-10, trust=3), lose_text='皇上沉下脸来。可这话，他记住了。'),
+    ]),
+    dict(ask='「你若生了皇子，朕该高兴还是该忧心？」', opts=[
+        dict(text='体谅：「皇上高兴，嫔妾就高兴。皇子是皇上的儿子，自然是喜事。」', stat='virtue', dc=68,
+             win=dict(favor=10, trust=5), win_text='皇上点点头：「你这话说得妥当。」', lose=dict(favor=3), lose_text='皇上「嗯」了一声，没再说什么。'),
+        dict(text='讨巧：「皇上若忧心，嫔妾就不生了。」', stat='appearance', dc=72,
+             win=dict(favor=20), win_text='皇上大笑：「就你会说话！」', lose=dict(favor=-5, trust=-3), lose_text='皇上脸色一沉：「这话也说得出口？」'),
+        dict(text='直言：「皇上若忧心，是心里有顾忌。可皇子是皇上的血脉，不该成为负担。」', stat='scheme', dc=75,
+             win=dict(favor=5, trust=12), win_text='皇上长久地看着你：「你比朕想的明白。」', lose=dict(favor=-12, trust=5), lose_text='皇上沉下脸：「你懂什么？」但你看见他眼里有一丝动容。'),
+    ]),
+    dict(ask='「太后总觉得朕对你不够好，你说是不是？」', opts=[
+        dict(text='体谅：「太后是心疼嫔妾。皇上对嫔妾好不好，嫔妾心里清楚。」', stat='virtue', dc=65,
+             win=dict(favor=8, trust=6), win_text='皇上叹了口气：「难为你明白。」', lose=dict(favor=2), lose_text='皇上「嗯」了一声，没再说什么。'),
+        dict(text='讨巧：「皇上对嫔妾好不好，太后说了不算，皇上说了也不算——嫔妾自己说了算。」', stat='appearance', dc=68,
+             win=dict(favor=15), win_text='皇上笑了：「就你胆大。」', lose=dict(favor=-3, trust=-2), lose_text='皇上淡淡道：「你这话说得轻狂。」'),
+        dict(text='直言：「太后是心疼皇上。皇上对嫔妾好不好不要紧，对天下好不好才要紧。」', stat='scheme', dc=70,
+             win=dict(favor=3, trust=8), win_text='皇上怔了一下，随即点头：「你说得对。」', lose=dict(favor=-8, trust=4), lose_text='皇上沉下脸：「你这是在教训朕？」但他没有发怒。'),
+    ]),
+    dict(ask='「先帝在时，后宫比现在安分多了。你说朕是不是不如父皇？」', opts=[
+        dict(text='体谅：「先帝仁慈，皇上英明。各有各的好处，嫔妾不敢妄议。」', stat='virtue', dc=70,
+             win=dict(favor=10, trust=5), win_text='皇上点点头：「你这话说得中肯。」', lose=dict(favor=3), lose_text='皇上「嗯」了一声，没再说什么。'),
+        dict(text='讨巧：「先帝是先帝，皇上是皇上。嫔妾只认皇上。」', stat='appearance', dc=72,
+             win=dict(favor=18), win_text='皇上笑了：「就你会说话。」', lose=dict(favor=-5, trust=-3), lose_text='皇上淡淡道：「油嘴滑舌。」'),
+        dict(text='直言：「先帝时安分，是因为先帝年长。等皇上到了先帝的年纪，未必不如。」', stat='scheme', dc=75,
+             win=dict(favor=2, trust=10), win_text='皇上沉默良久：「你说得对。朕还年轻。」', lose=dict(favor=-10, trust=5), lose_text='皇上沉下脸：「你懂什么？」但他眼里有一丝动容。'),
+    ]),
+    dict(ask='「朕小时候，父皇从不抱朕。你说朕是不是不该学他？」', opts=[
+        dict(text='体谅：「皇上心里有遗憾，所以想对皇子好。这是皇上仁慈。」', stat='virtue', dc=65,
+             win=dict(favor=12, trust=6), win_text='皇上眼眶微红：「难为你懂朕。」', lose=dict(favor=3), lose_text='皇上「嗯」了一声，没再说什么。'),
+        dict(text='讨巧：「皇上若不抱皇子，嫔妾就天天抱着皇子在皇上面前晃。」', stat='appearance', dc=68,
+             win=dict(favor=15), win_text='皇上笑了：「就你闹腾。」', lose=dict(favor=-3, trust=-2), lose_text='皇上淡淡道：「没个正经。」'),
+        dict(text='直言：「不该学先帝冷着皇子，也不该为了补偿而溺爱。皇上要做的是比先帝更好。」', stat='scheme', dc=70,
+             win=dict(favor=3, trust=8), win_text='皇上点点头：「你说得对。」', lose=dict(favor=-8, trust=4), lose_text='皇上沉下脸：「你懂什么？」但他没有发怒。'),
+    ]),
+    dict(ask='「华妃近日越发骄纵了，你怎么看？」', opts=[
+        dict(text='体谅：「华妃姐姐性子直，心里没有坏心思。皇上多担待些。」', stat='virtue', dc=68,
+             win=dict(favor=8, trust=5), win_text='皇上叹了口气：「就你心善。」', lose=dict(favor=2), lose_text='皇上「嗯」了一声，没再说什么。'),
+        dict(text='讨巧：「华妃姐姐再骄纵，也比不上皇上对嫔妾好。」', stat='appearance', dc=72,
+             win=dict(favor=15), win_text='皇上笑了：「就你会说话。」', lose=dict(favor=-5, trust=-3), lose_text='皇上淡淡道：「朕问你华妃，你说朕做什么？」'),
+        dict(text='直言：「华妃姐姐骄纵，是因为娘家显赫。皇上若真想管，该从她娘家入手。」', stat='scheme', dc=75,
+             win=dict(favor=2, trust=12), win_text='皇上眼睛一亮：「你说得对。」', lose=dict(favor=-12, trust=5), lose_text='皇上沉下脸：「你懂什么？」但他记住了。'),
+    ]),
+    dict(ask='「皇后什么都好，就是太端着了。你不觉得吗？」', opts=[
+        dict(text='体谅：「皇后娘娘是国母，端庄是应该的。皇上该体谅她。」', stat='virtue', dc=65,
+             win=dict(favor=8, trust=4), win_text='皇上点点头：「你说得对。」', lose=dict(favor=2), lose_text='皇上「嗯」了一声，没再说什么。'),
+        dict(text='讨巧：「皇后娘娘端着，嫔妾不端着。皇上喜欢哪个？」', stat='appearance', dc=70,
+             win=dict(favor=18), win_text='皇上笑了：「就你嘴甜。」', lose=dict(favor=-4, trust=-2), lose_text='皇上淡淡道：「朕问你皇后，你说自己做什么？」'),
+        dict(text='直言：「皇后娘娘端着，是心里有顾忌。皇上若想她放下架子，得先让她安心。」', stat='scheme', dc=72,
+             win=dict(favor=3, trust=10), win_text='皇上沉默片刻：「你说得对。」', lose=dict(favor=-10, trust=4), lose_text='皇上沉下脸：「你懂什么？」但他没有发怒。'),
+    ]),
+    dict(ask='「今年入秋早，你说朕该多陪你还是多去前朝？」', opts=[
+        dict(text='体谅：「皇上以国事为重。嫔妾这里，皇上什么时候来都好。」', stat='virtue', dc=60,
+             win=dict(favor=10, trust=5), win_text='皇上点点头：「就你懂事。」', lose=dict(favor=3), lose_text='皇上「嗯」了一声，没再说什么。'),
+        dict(text='讨巧：「皇上多陪嫔妾。前朝有大臣，嫔妾这里只有皇上。」', stat='appearance', dc=65,
+             win=dict(favor=15), win_text='皇上笑了：「就你黏人。」', lose=dict(favor=-3, trust=-2), lose_text='皇上淡淡道：「不懂事。」'),
+        dict(text='直言：「皇上该去前朝。嫔妾这里，什么时候来都在。」', stat='scheme', dc=68,
+             win=dict(favor=2, trust=8), win_text='皇上点点头：「你说得对。」', lose=dict(favor=-5, trust=3), lose_text='皇上「嗯」了一声，没再说什么。'),
+    ]),
+    dict(ask='「敬嫔说你是个安分的，你觉得呢？」', opts=[
+        dict(text='体谅：「敬嫔姐姐抬举嫔妾了。嫔妾只求安分守己，不给皇上添乱。」', stat='virtue', dc=65,
+             win=dict(favor=8, trust=4), win_text='皇上点点头：「你这话说得妥当。」', lose=dict(favor=2), lose_text='皇上「嗯」了一声，没再说什么。'),
+        dict(text='讨巧：「嫔妾安不安分，皇上说了算。」', stat='appearance', dc=70,
+             win=dict(favor=18), win_text='皇上笑了：「就你嘴甜。」', lose=dict(favor=-4, trust=-2), lose_text='皇上淡淡道：「油嘴滑舌。」'),
+        dict(text='直言：「嫔妾知道什么该做、什么不该做。但若有人欺到头上，嫔妾也不会忍着。」', stat='scheme', dc=72,
+             win=dict(favor=2, trust=10), win_text='皇上眼睛一亮：「你说得对。」', lose=dict(favor=-8, trust=4), lose_text='皇上沉下脸：「你这是在威胁谁？」但他眼里有一丝欣赏。'),
+    ]),
+    dict(ask='「朕想废一条宫规，你说该废哪条？」', opts=[
+        dict(text='体谅：「宫规是祖宗定的，嫔妾不敢妄议。皇上若觉得不妥，自有道理。」', stat='virtue', dc=70,
+             win=dict(favor=8, trust=5), win_text='皇上点点头：「你这话说得中肯。」', lose=dict(favor=2), lose_text='皇上「嗯」了一声，没再说什么。'),
+        dict(text='讨巧：「嫔妾不管宫规废不废，嫔妾只管皇上高不高兴。」', stat='appearance', dc=75,
+             win=dict(favor=20), win_text='皇上笑了：「就你会说话。」', lose=dict(favor=-5, trust=-3), lose_text='皇上淡淡道：「朕问你正事，你说这个？」'),
+        dict(text='直言：「后宫不得干政这条。不是要妃嫔干政，是让皇上能听见不同的声音。」', stat='scheme', dc=78,
+             win=dict(favor=5, trust=12), win_text='皇上长久地看着你：「你比朕想的明白。」', lose=dict(favor=-12, trust=5), lose_text='皇上沉下脸：「你懂什么？」但他记住了。'),
+    ]),
+    dict(ask='「你家里前些日子递了折子上来，你说朕该准还是该驳？」', opts=[
+        dict(text='体谅：「皇上圣明，自有决断。嫔妾不敢干预朝政。」', stat='virtue', dc=68,
+             win=dict(favor=10, trust=5), win_text='皇上点点头：「你这话说得妥当。」', lose=dict(favor=3), lose_text='皇上「嗯」了一声，没再说什么。'),
+        dict(text='讨巧：「皇上准不准，嫔妾不管。嫔妾只管皇上今晚来不来。」', stat='appearance', dc=72,
+             win=dict(favor=18), win_text='皇上大笑：「就你会说话！」', lose=dict(favor=-5, trust=-3), lose_text='皇上脸色一沉：「这话也说得出口？」'),
+        dict(text='直言：「皇上若准，是看在嫔妾的面子上；若驳，是秉公办事。嫔妾都认。」', stat='scheme', dc=75,
+             win=dict(favor=2, trust=10), win_text='皇上点点头：「你这话说得明白。」', lose=dict(favor=-10, trust=5), lose_text='皇上沉下脸：「你这是在逼朕？」但他没有发怒。'),
+    ]),
+    dict(ask='「你若能许一个愿，想要什么？」', opts=[
+        dict(text='体谅：「嫔妾只求皇上平安喜乐，天下太平。」', stat='virtue', dc=65,
+             win=dict(favor=12, trust=6), win_text='皇上眼眶微红：「难为你有心。」', lose=dict(favor=3), lose_text='皇上「嗯」了一声，没再说什么。'),
+        dict(text='讨巧：「嫔妾只求皇上天天来嫔妾这里。」', stat='appearance', dc=68,
+             win=dict(favor=20), win_text='皇上笑了：「就你黏人。」', lose=dict(favor=-5, trust=-3), lose_text='皇上淡淡道：「没个正经。」'),
+        dict(text='直言：「嫔妾想要一个皇子。不是为了争宠，是为了让皇上后继有人。」', stat='scheme', dc=72,
+             win=dict(favor=5, trust=10), win_text='皇上点点头：「你这话说得明白。」', lose=dict(favor=-10, trust=4), lose_text='皇上沉下脸：「你急什么？」但他没有发怒。'),
+    ]),
 ]
 
 # 侍寝时额外多一个选项：替身在禁足或冷宫的姐妹求情，成败只看信任（信任 + 随机 0~40 ≥ 50）
@@ -572,7 +799,7 @@ PLEAD_IN_BED = dict(text='替身陷困境的姐妹求情', stat='trust', dc=50, 
                     lose=dict(trust=-3), lose_text='皇上翻了个身：「这事你别管。」')
 
 EFFECT_NAMES = dict(favor='圣宠', trust='信任', virtue='德行', health='体质',
-                    appearance='容貌', talent='才艺', silver='银子')
+                    appearance='容貌', talent='才艺', scheme='心计', silver='银子')
 
 # ── NPC ────────────────────────────────────────────────────────────────────────
 
@@ -604,6 +831,8 @@ NPCS = [
 ]
 
 # 系统皇子：开服就在。三阿哥是长子、老实鲁钝，朝中老臣认他；四阿哥学问骑射都不低，可惜没人抱他
+NPC_KEYS = {n['npc_key'] for n in NPCS}
+
 NPC_HEIRS = dict(
     third=dict(ordinal=3, age_days=14, personality='honest', study=30, riding=40, virtue=45, health=65, ambition=40, faction=3, zhuazhou='seal'),
     fourth=dict(ordinal=4, age_days=8, personality='clever', study=60, riding=55, virtue=60, health=80, ambition=65, faction=0, zhuazhou='book'),
@@ -2350,9 +2579,9 @@ def do_greet(c, cfg):
     run("UPDATE consorts SET greet_day=?, missed_greet=0 WHERE id=?", (cur_day(), c['id']))
     msg = f"你到景仁宫给皇后请了安。德行 +{gain}。"
     r = random.random()
-    huafei = q("SELECT * FROM consorts WHERE npc_key='huafei'", one=True)
-    if r < 0.3 and huafei['status'] == 'normal':
-        start_scene(c['id'], 'greet_huafei')
+    key = pick_scene(GREET_SCENES) if r < 0.3 else None
+    if key:
+        start_scene(c['id'], key)
         return msg, 'info'
     if r < 0.5:
         add_silver(c['id'], 20)
@@ -2406,6 +2635,8 @@ def do_eyes(c, cfg):
     run("UPDATE consorts SET eyes_until_day=? WHERE id=?", (cur_day() + 4, c['id']))
     return "你打点了几个宫人做眼线，接下来五天宫里的风吹草动都瞒不过你。", 'good'
 
+SEEK_SCENE_CHANCE = 0.3   # 皇上心情平和时，送汤羹有三成会被留下（yangxin_emperor 场景）
+
 def do_seek(c, cfg):
     if emperor_ill():
         raise Reject('皇上病重，不见外人。要尽心就去侍疾。')
@@ -2416,6 +2647,9 @@ def do_seek(c, cfg):
         g_ = add_favor(c['id'], random.randint(10, 15))
         return f"皇上心情正好，留你说了会儿话。圣宠 +{g_}。", 'good'
     if mood == '平和':
+        if random.random() < SEEK_SCENE_CHANCE:
+            start_scene(c['id'], 'yangxin_emperor')
+            return '', 'info'
         g_ = add_favor(c['id'], random.randint(5, 10))
         return f"苏培盛接了汤羹，说皇上喝着很合口。圣宠 +{g_}。", 'good'
     if mood == '烦闷':
@@ -2429,10 +2663,10 @@ def do_seek(c, cfg):
 def do_garden(c, cfg):
     charge(c, cfg)
     events = [('emperor', 18 + c['appearance'] / 6 + c['talent'] / 10), ('flower', 22), ('secret', 12),
-              ('huafei', 14), ('quiet', 22), ('meet', 12)]
+              ('npc', 18), ('quiet', 18), ('meet', 12)]
     ev = random.choices([e for e, _ in events], weights=[w for _, w in events])[0]
     if ev == 'emperor':
-        start_scene(c['id'], 'garden_emperor')
+        start_scene(c['id'], pick_scene(EMPEROR_SCENES))
         return '', 'info'
     if ev == 'flower':
         amt = random.randint(10, 30)
@@ -2450,9 +2684,11 @@ def do_garden(c, cfg):
                 return f"你在假山后听见{display_name(t)}的宫女在嚼舌根，说的都是些无关紧要的事——看来她确实清白。", 'info'
             return f"你在假山后听见{display_name(t)}的宫女在嚼舌根：原来她{SECRETS[t['secret']]['name']}。", 'good'
         return "你在假山后听见有人在说话，走近却没了人影。", 'info'
-    if ev == 'huafei':
-        start_scene(c['id'], 'garden_huafei')
-        return '', 'info'
+    if ev == 'npc':
+        key = pick_scene(NPC_SCENES)
+        if key:
+            start_scene(c['id'], key)
+            return '', 'info'
     if ev == 'meet':
         others = q("""SELECT id FROM consorts WHERE user_id IS NOT NULL AND id!=? AND status='normal'""", (c['id'],))
         if others:
@@ -6259,6 +6495,17 @@ def start_scene(cid, key, **ctx):
     if not settling():
         g.scene_started = True
 
+def pick_scene(keys):
+    """从一组场景里随机挑一个；要某位 NPC 在场的，她不在（死了、进了冷宫、禁足）就不挑"""
+    ok = []
+    for k in keys:
+        npc_key = SCENES[k].get('npc')
+        if npc_key:
+            npc = q("SELECT status FROM consorts WHERE npc_key=?", (npc_key,), one=True)
+            if not npc or npc['status'] != 'normal': continue
+        ok.append(k)
+    return random.choice(ok) if ok else None
+
 def get_scene(c):
     try:
         return json.loads(c['pending_scene']) if c['pending_scene'] else None
@@ -6312,10 +6559,11 @@ def apply_effects(cid, eff):
         elif k == 'seek':
             run("UPDATE consorts SET seek_bonus=seek_bonus+? WHERE id=?", (v, cid))
             parts.append('今晚翻牌子的机会大了'); continue
-        elif k == 'huafei':
-            hf = q("SELECT id FROM consorts WHERE npc_key='huafei'", one=True)
-            if hf: add_affinity(cid, hf['id'], v)
-            parts.append('华妃记下了这笔账' if v < 0 else '华妃待你和气了些'); continue
+        elif k in NPC_KEYS:   # NPC 对你的好感（场景里写 huafei=-10 这种）
+            npc = q("SELECT * FROM consorts WHERE npc_key=?", (k,), one=True)
+            if not npc: continue
+            add_affinity(cid, npc['id'], v)
+            parts.append(f"{display_name(npc)}记下了这笔账" if v < 0 else f"{display_name(npc)}待你和气了些"); continue
         parts.append(f"{EFFECT_NAMES[k]} {v:+d}")
     return '，'.join(parts)
 
