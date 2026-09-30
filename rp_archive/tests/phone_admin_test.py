@@ -86,7 +86,7 @@ iid = c.execute("SELECT id FROM moment_images").fetchone()[0]
 cid = c.execute("SELECT id FROM moment_comments").fetchone()[0]
 ok(adel(f"image:{iid}")["ok"] and c.execute("SELECT deleted_at FROM moment_images WHERE id=?", (iid,)).fetchone()[0] > 0, "image")
 ok(adel(f"comment:{cid}")["ok"] and "一条评论" not in lin.get("/p/me/moments").get_data(as_text=True), "comment")
-ok(adel(f"moment:{mid}")["ok"] and "我的朋友圈" not in lin.get("/p/me/moments").get_data(as_text=True), "moment")
+ok(adel(f"moment:{mid}")["ok"] and "我的朋友圈" not in lin.get("/p/me/moments").get_data(as_text=True).split("moments-feed")[-1], "moment")
 lin.post("/p/me/avatar", data={"avatar": (io.BytesIO(png()), "a.png")}, headers={"X-CSRF": lin.csrf}, content_type="multipart/form-data")
 ok("删头像" in m.get("/p/admin").get_data(as_text=True), "avatar delete button")
 ok(adel("avatar:林晚")["ok"] and lin.get("/p/me/avatar/林晚").status_code == 404, "avatar")

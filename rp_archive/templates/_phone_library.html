@@ -1,8 +1,15 @@
+{% if mode == 'profile' %}
+<header class="bar tab-bar">
+  <div class="tab-head"><h1>我的</h1></div>
+  <div class="tab-sub">{{ owner }} 的手机</div>
+</header>
+{% else %}
 <header class="bar">
-  <a class="back" href="{{ url_for('player_phone_inbox') }}">消息</a>
-  <div class="title">{{ '我的手机' if mode == 'profile' else ('本机收藏' if library_view == 'saved' else '消息检索') }}</div>
+  <a class="back" href="{{ url_for('player_phone_inbox') if library_view == 'search' else url_for('player_phone_library', view='profile') }}">{{ '信息' if library_view == 'search' else '我的' }}</a>
+  <div class="title">{{ '本机收藏' if library_view == 'saved' else '消息检索' }}</div>
   <div class="right"></div>
 </header>
+{% endif %}
 {% if mode == 'library' %}
 <div class="scroll library" id="library" data-view="{{ library_view }}">
   <div class="library-filters">

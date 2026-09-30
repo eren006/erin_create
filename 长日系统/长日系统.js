@@ -12545,21 +12545,26 @@ function buildPhonePendingLite(platform, uid, roleName) {
         const st = timer.timerStatus?.[roleName];
         if (!st || st.status !== "timing") continue;
         const elapsed = now - st.startTime;
-        pending.push({ gid, type: getCustomTypeLabel(timer.subtype), elapsed_min: Math.floor(elapsed / 60000),
+        // since：这一轮开始等的时间，网页「暂不提醒」按它认同一次提醒（对方又回了一轮就是新的提醒）
+        pending.push({ gid, type: getCustomTypeLabel(timer.subtype), elapsed_min: Math.floor(elapsed / 60000), since: st.startTime || 0,
                        over: elapsed > sanitizeTimeoutMs(timer.timeoutDuration, baseTimeout) });
     }
     pending.sort((a, b) => (b.over - a.over) || (b.elapsed_min - a.elapsed_min));
-    const rel = [];
+    const rel = [], rel_n = {};   // rel_n：关系线细节条数，对方再写一条就算新的提醒
     if (cachedGet("relationship_system_enabled") === "true") {
         for (const [counterpartUid, r] of Object.entries(kvGet("relationship_lines", {})[platform]?.[uid] || {})) {
             if (r.initiator === "SYSTEM" || r.confirmed || !r.details?.length) continue;
-            if (r.details[r.details.length - 1].from !== roleName) rel.push(resolveUidToName(platform, counterpartUid));
+            if (r.details[r.details.length - 1].from !== roleName) {
+                const who = resolveUidToName(platform, counterpartUid);
+                rel.push(who);
+                rel_n[who] = r.details.length;
+            }
         }
     }
     const letters = isLetterSystemEnabled()
-        ? (((kvGet("letter_pending_replies", {})[platform] || {})[roleName]) || []).map(l => ({ from: l.fromRole, wait_min: Math.floor((now - l.timestamp) / 60000) }))
+        ? (((kvGet("letter_pending_replies", {})[platform] || {})[roleName]) || []).map(l => ({ from: l.fromRole, ts: l.timestamp || 0, wait_min: Math.floor((now - l.timestamp) / 60000) }))
         : [];
-    return { pending, rel, letters };
+    return { pending, rel, rel_n, letters };
 }
 
 function buildPhoneReports(platform) {

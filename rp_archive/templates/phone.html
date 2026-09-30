@@ -71,14 +71,20 @@ a { color: var(--link); text-decoration: none; }
   position: sticky; top: 0; z-index: 5;
   background: var(--bar); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px);
   border-bottom: .5px solid var(--line);
-  padding: calc(env(safe-area-inset-top) + 10px) 12px 10px;
-  display: grid; grid-template-columns: 72px 1fr 72px; align-items: center;
+  padding: env(safe-area-inset-top) 8px 8px;
+  /* 二级页导航栏：左右两栏等宽，标题真正居中；左右按钮都固定在第一行 44px 里、跟标题文字同一条线，
+     副标题（small）和次数行排在下面，不会把两边的按钮挤得上下错位 */
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr); column-gap: 6px; align-items: start;
 }
-.bar .back { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.bar .back::before { content: "‹"; font-size: 26px; line-height: 0; margin-right: 2px; position: relative; top: 2px; }
-.bar .title { text-align: center; font-weight: 600; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bar .title small { display: block; font-weight: 400; font-size: 11px; color: var(--muted); }
-.bar .right { text-align: right; font-size: 13px; }
+.bar:not(.tab-bar) > :first-child, .bar:not(.tab-bar) > .right { grid-row: 1; height: 44px; display: flex; align-items: center; min-width: 0; }
+.bar:not(.tab-bar) > :first-child { justify-self: start; }
+.bar .back, .bar .linkbtn { font-size: 16px; line-height: 1; color: var(--link); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 4px; }
+.bar .back::before { content: ""; display: inline-block; width: 9px; height: 9px; margin-right: 5px; border-left: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-1px) rotate(45deg); }
+.bar .title { grid-row: 1; grid-column: 2; text-align: center; font-weight: 600; font-size: 17px; line-height: 22px; padding-top: 11px;
+              max-width: 62vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar .title:has(.avatar.head) { padding-top: 7px; }
+.bar .title small { display: block; font-weight: 400; font-size: 12px; line-height: 16px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+.bar .right { grid-column: 3; justify-self: end; font-size: 16px; }
 .bar.big { display: block; padding-bottom: 12px; }
 .bar.big h1 { font-size: 30px; font-weight: 700; letter-spacing: -.5px; margin-top: 6px; }
 .bar.big .sub { font-size: 13px; color: var(--muted); }
@@ -255,7 +261,18 @@ a { color: var(--link); text-decoration: none; }
   .phone { --wall-paper: #201e1a; --wall-mist: #171e25; --wall-sage: #191f1b; --wall-rose: #241c20; }
 }
 #scroll { background: var(--chat-bg); }
-.bar .right { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.bar .right { gap: 14px; justify-content: flex-end; padding-right: 4px; }
+.bar .right .quiet-button, .bar .right > a { font-size: 16px; min-height: 44px; display: inline-flex; align-items: center; }
+/* 底部四个标签页（消息/朋友圈/心动信/我的）：大标题靠左，操作是标题同一行右侧的圆形图标按钮 */
+.bar.tab-bar { display: block; padding: calc(env(safe-area-inset-top) + 8px) 16px 10px; }
+.tab-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
+.tab-head h1 { font-size: 28px; line-height: 34px; font-weight: 700; letter-spacing: -.3px; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tab-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.icon-btn { width: 36px; height: 36px; border-radius: 50%; border: 0; background: var(--theirs); color: var(--text); display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; text-decoration: none; font: inherit; }
+.icon-btn svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.tab-sub { font-size: 13px; line-height: 18px; color: var(--muted); margin-top: 2px; }
+.tab-sub .quota { display: inline; padding: 0; font-size: 13px; text-align: left; }
+.tab-sub .quota::before { content: " · "; }
 .quiet-button { border: 0; background: none; color: var(--link); font: inherit; font-size: 12px; cursor: pointer; min-height: 32px; white-space: nowrap; }
 .row.pinned .name::after { content: " · 置顶"; font-size: 10px; font-weight: 400; color: var(--muted); }
 .appearance { margin: auto; width: min(350px, calc(100vw - 28px)); max-height: calc(100dvh - 40px); overflow: auto; border: 1px solid var(--line); border-radius: 22px; padding: 22px; color: var(--text); background: var(--bg); }
@@ -340,6 +357,11 @@ a { color: var(--link); text-decoration: none; }
 .stats-page .stats-tabs a[aria-current] { background: var(--theirs); color: var(--text); font-weight: 600; box-shadow: none; }
 .phone-watermark { flex-shrink: 0; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); text-align: center; color: var(--muted); font-size: 11px; letter-spacing: 2px; background: var(--bar); border-top: 1px solid var(--line); pointer-events: none; }
 .stats-card { padding: 12px 16px; }
+.pending-card { position: relative; }
+.pending-mute { margin: 8px 0 0; text-align: right; }
+.pending-card.is-muted { opacity: .7; }
+.pending-muted { margin: 12px 0; }
+.pending-muted summary { margin: 0 16px; font-size: 13px; color: var(--muted); cursor: pointer; }
 .stats-title { font-weight: 600; font-size: 15px; }
 .stats-line { font-size: 14px; color: var(--text); margin-top: 4px; line-height: 1.6; }
 .stats-table-wrap { margin: 10px 16px; overflow-x: auto; }
@@ -347,6 +369,11 @@ a { color: var(--link); text-decoration: none; }
 .stats-table th, .stats-table td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: center; white-space: nowrap; }
 .stats-table th:first-child, .stats-table td:first-child { text-align: left; }
 .stats-table th small { font-weight: 400; color: var(--muted); }
+.quick-row { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 8px; margin: 0 16px 8px; }
+.quick-chip { display: flex; align-items: center; justify-content: center; gap: 4px; height: 36px; border-radius: 10px; border: 1px solid var(--line);
+              background: var(--bg); color: var(--text); font-size: 14px; text-decoration: none; white-space: nowrap; }
+.quick-chip svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.quick-chip b { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--mine); color: var(--mine-text); font-size: 11px; line-height: 18px; text-align: center; }
 .search-pill { display: flex; align-items: center; gap: 6px; margin: 10px 16px 6px; padding: 9px 12px; border-radius: 12px; background: var(--theirs); color: var(--muted); font-size: 15px; text-decoration: none; }
 .group-avatar { background: var(--theirs) !important; color: var(--text) !important; font-weight: 600; }
 .group-sys { font-size: 12px; margin: 10px 24px 4px; }
@@ -467,14 +494,27 @@ a { color: var(--link); text-decoration: none; }
   </form>
 
 {% elif mode == 'inbox' %}
+  {% if admin_as %}
   <header class="bar">
-    {% if admin_as %}<a class="back" href="{{ url_for('admin_phone_index') }}">角色</a>{% else %}<span></span>{% endif %}
-    <div class="title">信息<small>{% if admin_as %}管理 · 以 {{ owner }} 的视角{% else %}{{ owner }}{% endif %}</small></div>
-    <div class="right">{% if not admin_as %}<a class="quiet-button" href="{{ url_for('player_stats') }}">时间线</a>{% endif %}</div>
+    <a class="back" href="{{ url_for('admin_phone_index') }}">角色</a>
+    <div class="title">信息<small>管理 · 以 {{ owner }} 的视角</small></div>
+    <div class="right"></div>
     {% include "_phone_quota.html" %}
   </header>
+  {% else %}
+  <header class="bar tab-bar">
+    <div class="tab-head"><h1>信息</h1></div>
+    <div class="tab-sub">{{ owner }}{% include "_phone_quota.html" %}</div>
+  </header>
+  {% endif %}
   <div class="scroll list" id="inbox">
-    {% if not admin_as %}<a class="search-pill" href="{{ url_for('player_phone_library') }}"><span aria-hidden="true">🔍</span>检索短信和礼物</a>{% endif %}
+    {% if not admin_as %}<a class="search-pill" href="{{ url_for('player_phone_library') }}"><span aria-hidden="true">🔍</span>检索短信和礼物</a>
+    <nav class="quick-row" aria-label="时间线与统计">
+      <a class="quick-chip" href="{{ url_for('player_stats', view='timeline') }}"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4M7.5 14h3M13.5 14h3M7.5 17h3"/></svg>时间线{% if timeline_n %}<b>{{ timeline_n }}</b>{% endif %}</a>
+      <a class="quick-chip" href="{{ url_for('player_stats', view='counts') }}">数量</a>
+      <a class="quick-chip" href="{{ url_for('player_stats', view='arc') }}">弧长</a>
+      <a class="quick-chip" href="{{ url_for('player_stats', view='interact') }}">互动</a>
+    </nav>{% endif %}
     {% if not admin_as %}{% include '_phone_pending_entry.html' %}{% endif %}
     {% if public %}
     <a class="row public-row" data-other="__public__" data-received-ts="{{ public.ts }}" href="{{ url_for('player_phone_public') }}">
@@ -552,14 +592,23 @@ a { color: var(--link); text-decoration: none; }
   </script>
 
 {% elif mode == 'moments' %}
+  {% if mine_only %}
   <header class="bar">
-    <a class="back" href="{{ url_for('player_moments') if mine_only else url_for('player_phone_inbox') }}">{{ '朋友圈' if mine_only else '信息' }}</a>
-    <div class="title">{{ '我的朋友圈' if mine_only else '朋友圈' }}</div>
-    <div class="right">
-      {% if not mine_only %}<a class="quiet-button" href="{{ url_for('player_moments', mine=1) }}">我的</a>{% endif %}
-      {% if not why %}<button class="quiet-button" id="mcOpen" type="button" aria-haspopup="dialog" style="font-size:20px;">＋</button>{% endif %}
-    </div>
+    <a class="back" href="{{ url_for('player_moments') }}">朋友圈</a>
+    <div class="title">我的朋友圈</div>
+    <div class="right">{% if not why %}<button class="icon-btn" id="mcOpen" type="button" aria-haspopup="dialog" aria-label="发朋友圈"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>{% endif %}</div>
   </header>
+  {% else %}
+  <header class="bar tab-bar">
+    <div class="tab-head"><h1>朋友圈</h1>
+      <div class="tab-actions">
+        <a class="icon-btn" href="{{ url_for('player_moments', mine=1) }}" aria-label="我的朋友圈" title="我的朋友圈"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/></svg></a>
+        {% if not why %}<button class="icon-btn" id="mcOpen" type="button" aria-haspopup="dialog" aria-label="发朋友圈" title="发朋友圈"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>{% endif %}
+      </div>
+    </div>
+    <div class="tab-sub">本季所有人都能看到</div>
+  </header>
+  {% endif %}
   <div class="scroll moments-scroll">
     <div class="chat moments-feed" data-received-ts="{{ latest_ts }}">
       {% if mine_only or why %}
@@ -855,9 +904,12 @@ a { color: var(--link); text-decoration: none; }
     {% elif view == 'arc' %}
       {% include '_phone_arc.html' %}
     {% elif view == 'pending' %}
-      {% for item in pending_items %}
+      {% if flash %}<div class="notice">{{ flash }}</div>{% endif %}
+      {% set active = pending_items|rejectattr('dismissed')|list %}
+      {% set muted = pending_items|selectattr('dismissed')|list %}
+      {% macro pending_card(item, restore) %}
       {% set p = item.data %}
-      <article class="lm-letter lm-sent stats-card">
+      <article class="lm-letter lm-sent stats-card pending-card{{ ' is-muted' if restore }}">
         {% if item.kind == 'session' %}
         <div class="stats-title">{{ '🔴 已超时' if p.over else '⏳ 等待中' }} · {{ p.type }}</div>
         <div class="stats-line">群 {{ p.gid }} · 已经弧了 {{ (p.elapsed_min // 60) ~ 'h' if p.elapsed_min >= 60 else '' }}{{ p.elapsed_min % 60 }}m</div>
@@ -868,8 +920,19 @@ a { color: var(--link); text-decoration: none; }
         <div class="stats-title">🔗 待回关系线</div>
         <div class="stats-line">{{ p }} 已回复你的关系线，在群里发「查看关系线 {{ p }}」回复</div>
         {% endif %}
+        <form method="post" action="{{ url_for('player_pending_dismiss') }}" class="pending-mute">
+          <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="key" value="{{ item.key }}">
+          <input type="hidden" name="action" value="{{ 'restore' if restore else 'dismiss' }}">
+          <button type="submit" class="quiet-button">{{ '恢复提醒' if restore else '暂不提醒' }}</button>
+        </form>
       </article>
-      {% else %}<div class="empty">🌙 当前没有等待你回复的事项</div>{% endfor %}
+      {% endmacro %}
+      {% for item in active %}{{ pending_card(item, false) }}
+      {% else %}<div class="empty">🌙 {{ '其余的都设了暂不提醒' if muted else '当前没有等待你回复的事项' }}</div>{% endfor %}
+      {% if muted %}
+      <details class="pending-muted"><summary>已暂不提醒 · {{ muted|length }} 项</summary>{% for item in muted %}{{ pending_card(item, true) }}{% endfor %}</details>
+      {% endif %}
+      <p class="song-note">「暂不提醒」只是这一次不再提醒（首页的待回数也不算它），不会标成已回复；对方再回一轮会重新提醒。群里「我的待回」照旧会列出。</p>
       <p class="song-note">待进群、待退群和群名要实时问 QQ，这里看不到，在群里发「我的待回」查看。心动信投递情况在底部「心动信」里。</p>
     {% else %}
       {% include '_phone_interactions.html' %}
@@ -902,10 +965,9 @@ a { color: var(--link); text-decoration: none; }
   </form>
 
 {% elif mode == 'lovemail' %}
-  <header class="bar">
-    <a class="back" href="{{ url_for('player_phone_inbox') }}">信息</a>
-    <div class="title">心动信箱<small>{% if lm.ready %}{{ lm.game_day }} 已投 {{ lm.used }}/{{ lm.limit }}{% if lm.delivery_time %} · {{ lm.delivery_time }} 派送{% endif %}{% else %}匿名来信{% endif %}</small></div>
-    <div class="right"></div>
+  <header class="bar tab-bar">
+    <div class="tab-head"><h1>心动信箱</h1></div>
+    <div class="tab-sub lm-sub"><small>{% if lm.ready %}{{ lm.game_day }} 已投 {{ lm.used }}/{{ lm.limit }}{% if lm.delivery_time %} · {{ lm.delivery_time }} 派送{% endif %}{% else %}匿名来信{% endif %}</small></div>
   </header>
   <div class="scroll lm-page" data-received-ts="{{ recv[0].id if recv else 0 }}">
     <nav class="song-tabs lm-tabs" aria-label="心动信箱">

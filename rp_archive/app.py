@@ -1623,6 +1623,17 @@ def _migrate(conn):
         )
     """)
 
+    # ── 28. 待回「暂不提醒」：key 认的是「这一次」等待（场次按开始等的时间、信按寄来时间、关系线按条数），对方再回一轮就是新的提醒 ──
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS phone_pending_dismiss (
+            show_id    INTEGER NOT NULL,
+            role       TEXT    NOT NULL,
+            key        TEXT    NOT NULL,
+            created_at INTEGER NOT NULL,
+            PRIMARY KEY (show_id, role, key)
+        )
+    """)
+
     # ── 27. 插件每 2 分钟随同步上报的每人报告（我的数量/弧长/时间线/待回），网页「时间线与统计」页只读 ──
     conn.execute("""
         CREATE TABLE IF NOT EXISTS phone_reports (
@@ -5229,6 +5240,7 @@ def player_phone_inbox():
                            threads=sorted(_phone_threads(db, sid, owner) + _group_threads(db, sid, owner),
                                           key=lambda t: -t["last"]["ts"]),
                            status=_phone_status(db, sid, owner), flash=session.pop("phone_flash", None),
+                           timeline_n=_phone_timeline_upcoming(db, sid, owner),
                            public=_phone_public_summary(db, sid), pending_summary=_phone_pending_summary(db, sid, owner),
                            moments_latest=db.execute(
                                "SELECT role_name, content, created_at, game_day, (SELECT COUNT(*) FROM moment_images i "
@@ -6910,21 +6922,39 @@ def _song_pending_for_bot(db, sid, done_ids):
 # 短信礼物照「对话」归人（误投/换落款照玩家看到的算），心动信只算寄出的去向、收到的只给总数（来信是匿名的）。
 _STATS_VIEWS = ("timeline", "counts", "pending", "arc", "interact")
 
-def _phone_pending_items(report):
+def _phone_pending_items(report, dismissed=()):
+    """待回各项 + 认「这一次提醒」的 key（旧插件没报开始时间时退化成按群/人认）+ 是否已「暂不提醒」"""
     pending = (report or {}).get("pending") or {}
+    rel_n = pending.get("rel_n") or {}
     items = []
     for row in pending.get("pending") or []:
-        items.append({"kind": "session", "minutes": row["elapsed_min"], "data": row})
+        items.append({"kind": "session", "minutes": row["elapsed_min"], "data": row,
+                      "key": f"s:{row.get('gid')}:{row.get('since') or ''}"})
     for row in pending.get("letters") or []:
-        items.append({"kind": "letter", "minutes": row["wait_min"], "data": row})
+        items.append({"kind": "letter", "minutes": row["wait_min"], "data": row,
+                      "key": f"l:{row.get('from')}:{row.get('ts') or ''}"})
     for name in pending.get("rel") or []:
-        items.append({"kind": "relation", "minutes": None, "data": name})
+        items.append({"kind": "relation", "minutes": None, "data": name, "key": f"r:{name}:{rel_n.get(name, '')}"})
+    for item in items:
+        item["dismissed"] = item["key"] in dismissed
     return sorted(items, key=lambda item: -(item["minutes"] if item["minutes"] is not None else -1))
+
+
+def _phone_timeline_upcoming(db, sid, owner):
+    """首页「时间线」快捷入口的数字：还没结束的日程（进行中/待开启，不含微信群）"""
+    row = db.execute("SELECT data FROM phone_reports WHERE show_id=? AND role=?", (sid, owner)).fetchone()
+    events = (json.loads(row["data"]).get("timeline") or []) if row else []
+    return sum(1 for e in events if not e.get("wechat") and not str(e.get("tag") or "").startswith("已完结"))
+
+
+def _phone_dismissed(db, sid, owner):
+    return {r["key"] for r in db.execute("SELECT key FROM phone_pending_dismiss WHERE show_id=? AND role=?", (sid, owner))}
 
 
 def _phone_pending_summary(db, sid, owner):
     row = db.execute("SELECT data, updated_at FROM phone_reports WHERE show_id=? AND role=?", (sid, owner)).fetchone()
-    items = _phone_pending_items(json.loads(row["data"])) if row else []
+    items = [i for i in (_phone_pending_items(json.loads(row["data"]), _phone_dismissed(db, sid, owner)) if row else [])
+             if not i["dismissed"]]
     longest = max((item["minutes"] for item in items if item["minutes"] is not None), default=None)
     duration = ""
     if longest is not None:
@@ -7026,6 +7056,26 @@ def _phone_interactions(db, sid, owner):
     out = sorted(rows.values(), key=lambda r: -(r["sms_sent"] + r["sms_recv"] + r["gift_sent"] + r["gift_recv"] + r["lm_sent"]))
     return out, lm_recv
 
+@app.route("/p/me/pending/dismiss", methods=["POST"])
+def player_pending_dismiss():
+    """待回「暂不提醒 / 恢复提醒」：只影响网页上的提醒，不算已回复，群里「我的待回」照旧列出"""
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    key = (request.form.get("key") or "").strip()[:200]
+    if not hmac.compare_digest(request.form.get("csrf", ""), session.get("phone_csrf", "") or "-"):
+        session["phone_flash"] = "❌ 页面过期了，刷新后再试"
+    elif owner != PHONE_ADMIN and key:
+        db = get_db()
+        if request.form.get("action") == "restore":
+            db.execute("DELETE FROM phone_pending_dismiss WHERE show_id=? AND role=? AND key=?", (sid, owner, key))
+        else:
+            db.execute("INSERT OR IGNORE INTO phone_pending_dismiss (show_id, role, key, created_at) VALUES (?,?,?,?)",
+                       (sid, owner, key, int(time.time() * 1000)))
+        db.commit()
+    return redirect(url_for("player_stats", view="pending"))
+
 @app.route("/p/me/stats")
 def player_stats():
     who = _phone_current()
@@ -7048,7 +7098,8 @@ def player_stats():
                            updated=(_phone_time(row["updated_at"]) if row else ""),
                            stale=bool(row) and int(time.time() * 1000) - row["updated_at"] > 10 * 60 * 1000,
                            inter=inter, lm_recv=lm_recv,
-                           pending_items=_phone_pending_items(report) if view == "pending" else [],
+                           pending_items=_phone_pending_items(report, _phone_dismissed(db, sid, owner)) if view == "pending" else [],
+                           csrf=_phone_csrf(), flash=session.pop("phone_flash", None),
                            arc_view=_phone_arc_view((report or {}).get("arc")) if view == "arc" else None,
                            personal_counts=_phone_personal_counts((report or {}).get("counts")) if view == "counts" else [])
 

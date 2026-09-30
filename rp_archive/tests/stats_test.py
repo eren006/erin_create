@@ -38,7 +38,8 @@ lin, zy = player("LINWAN0001"), player("ZHOUYU0001")
 
 # 「我的」里有入口；还没有报告时提示去群里查
 ok("时间线与统计" in lin.get("/p/me/library?view=profile").get_data(as_text=True), "entry")
-ok('href="/p/me/stats">时间线</a>' in lin.get("/p/me").get_data(as_text=True), "inbox top-right entry")
+_inb = lin.get("/p/me").get_data(as_text=True)
+ok('aria-label="时间线与统计"' in _inb and 'href="/p/me/stats?view=timeline"' in _inb and 'href="/p/me/stats?view=interact"' in _inb, "inbox quick entries")
 sync()
 ok("等机器人升级" in page(lin, "timeline") and "「时间线」" in page(lin, "timeline"), "no report yet")
 ok("「我的待回」" in page(lin, "pending"), "no report pending hint")
@@ -140,6 +141,36 @@ c.execute('UPDATE phone_reports SET updated_at=? WHERE role=?',(int(time.time()*
 ok(lin.get('/p/me/poll').json['pending']['stale'], 'stale reminder')
 REP['林晚']['pending'] = {};sync(REP)
 ok(lin.get('/p/me/poll').json['pending']['count'] == 0, 'cleared pending removed on next poll')
+
+# 暂不提醒：从首页计数和待回列表里拿掉（收进「已暂不提醒」），可以恢复；对方再回一轮（开始时间变了）重新提醒
+REP["林晚"]["pending"] = {"pending": [{"gid": "5001", "type": "私约", "elapsed_min": 125, "over": True, "since": 111}],
+                         "rel": ["周屿"], "rel_n": {"周屿": 3}, "letters": [{"from": "沈知意", "wait_min": 30, "ts": 222}]}
+sync(REP)
+ok(lin.get('/p/me/poll').json['pending']['count'] == 3, 'before dismiss')
+with lin.session_transaction() as s_: csrf_ = s_["phone_csrf"]
+def dismiss(cl, key, action="dismiss", token=None):
+    return cl.post("/p/me/pending/dismiss", data={"csrf": token or csrf_, "key": key, "action": action})
+ok(dismiss(lin, "s:5001:111").status_code == 302, "dismiss redirect")
+pend = lin.get('/p/me/poll').json['pending']
+ok(pend['count'] == 2 and pend['longest'] == '30 分钟', pend)
+pg = page(lin, "pending"); act = pg.split("已暂不提醒")[0]
+ok("群 5001" not in act and "已暂不提醒 · 1 项" in pg and "恢复提醒" in pg, "moved to muted")
+ok("待我回复 · 2 项" in lin.get("/p/me").get_data(as_text=True), "inbox count excludes muted")
+dismiss(lin, "l:沈知意:222"); dismiss(lin, "r:周屿:3")
+ok(lin.get('/p/me/poll').json['pending']['count'] == 0 and "其余的都设了暂不提醒" in page(lin, "pending"), "all muted")
+dismiss(lin, "r:周屿:3", "restore")
+ok(lin.get('/p/me/poll').json['pending']['count'] == 1, "restore")
+# 对方又回了一轮：同一个群开始时间变了 → 新提醒；关系线多了一条 → 新提醒
+REP["林晚"]["pending"]["pending"][0]["since"] = 999; REP["林晚"]["pending"]["rel_n"]["周屿"] = 4; sync(REP)
+ok(lin.get('/p/me/poll').json['pending']['count'] == 2, "new round reminds again")
+# 只影响自己；别人的 key 不会串；页面过期不生效
+ok(zy.get('/p/me/poll').json['pending']['count'] == 0, "zy unaffected")
+dismiss(lin, "l:沈知意:999", token="bad")
+ok(c.execute("SELECT COUNT(*) FROM phone_pending_dismiss WHERE key='l:沈知意:999'").fetchone()[0] == 0, "csrf")
+ok(c.execute("SELECT COUNT(DISTINCT role) FROM phone_pending_dismiss").fetchone()[0] == 1, "only own rows")
+# 旧插件没报开始时间：按群认，照样能暂不提醒
+REP["林晚"]["pending"] = {"pending": [{"gid": "5009", "type": "电话", "elapsed_min": 5, "over": False}]}; sync(REP)
+dismiss(lin, "s:5009:"); ok(lin.get('/p/me/poll').json['pending']['count'] == 0, "legacy key")
 
 # 管理身份、没登录
 adm = app.test_client(); adm.get("/p/ADMINCODE1")
