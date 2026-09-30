@@ -3839,6 +3839,52 @@ EXAM_PROMPTS = [
              lose=dict(), lose_text='皇上听着，没说什么。'),
         dict(text='谦虚几句，说还要多教导', stat='virtue', dc=45, win=dict(heir_favor=6), win_text='皇上说你教子有方。',
              lose=dict(), lose_text='皇上「嗯」了一声，不甚在意。')]),
+    # ── 2026-09-29 扩充。考校对公主也开放，措辞别写成只对皇子（「手足」而不是「兄弟」） ──
+    dict(topic='学问', ask='「若让你治理一县之地，你当如何？」', opts=[
+        dict(text='让他自己阐述施政之策', stat='study', dc=65, win=dict(heir_favor=10), win_text='他答得头头是道，皇上龙颜大悦：「有见地。」',
+             lose=dict(), lose_text='他说了几句便卡住了，皇上没说什么，只是端起茶盏。'),
+        dict(text='在一旁替他铺垫几句', stat='study', dc=50, win=dict(heir_favor=6), win_text='你帮着开了个头，他顺着答下去，皇上点头称许。',
+             lose=dict(), lose_text='铺垫得有些刻意，皇上看了你一眼，没说什么。')]),
+    dict(topic='学问', ask='「『水能载舟，亦能覆舟』，你怎么看？」', opts=[
+        dict(text='让他自己解这句话', stat='study', dc=60, win=dict(heir_favor=8), win_text='他答得中规中矩，皇上颔首：「不错。」',
+             lose=dict(), lose_text='他答得有些偏，皇上皱了皱眉，没再追问。'),
+        dict(text='替他点出关键', stat='study', dc=45, win=dict(heir_favor=5), win_text='你点了一句，他顺着说下去，皇上倒也满意。',
+             lose=dict(), lose_text='点得太明显了，皇上不置可否。')]),
+    dict(topic='学问', ask='「太祖当年平定天下，你以为靠的是什么？」', opts=[
+        dict(text='让他自己说', stat='study', dc=62, win=dict(heir_favor=9), win_text='他说得有理有据，皇上眼中露出赞许。',
+             lose=dict(), lose_text='他说不到点子上，皇上叹了口气，没再问。'),
+        dict(text='替他圆个场', stat='study', dc=48, win=dict(heir_favor=5), win_text='你帮着搭了两句话，皇上点头：「你教得不错。」',
+             lose=dict(), lose_text='圆得不太漂亮，皇上端起茶盏，没再说什么。')]),
+    dict(topic='骑射', ask='「听说你近来骑射有进益，射几箭给朕看看。」', opts=[
+        dict(text='让他全力发挥', stat='riding', dc=65, win=dict(heir_favor=10), win_text='连中三箭，皇上大笑：「好！不愧是朕的孩子！」',
+             lose=dict(), lose_text='手一抖，只中了一箭。皇上没说什么，只是点了点头。'),
+        dict(text='让他求稳，别出丑', stat='riding', dc=50, win=dict(heir_favor=6), win_text='稳稳当当射完，皇上点头：「尚可。」',
+             lose=dict(), lose_text='射得歪歪扭扭，皇上看了你一眼，没说什么。')]),
+    dict(topic='骑射', ask='「骑射之道，你以为最要紧的是什么？」', opts=[
+        dict(text='让他自己说', stat='riding', dc=60, win=dict(heir_favor=8), win_text='他说「心稳手稳」，皇上颔首：「说得好。」',
+             lose=dict(), lose_text='他说不到点子上，皇上皱了皱眉。'),
+        dict(text='替他点一句', stat='riding', dc=45, win=dict(heir_favor=5), win_text='你点了一句，他顺着说下去，皇上点头称许。',
+             lose=dict(), lose_text='点得太刻意，皇上看了你一眼，没说什么。')]),
+    dict(topic='骑射', ask='「若让你与禁军教头比试一场，你敢不敢？」', opts=[
+        dict(text='让他应下', stat='riding', dc=68, win=dict(heir_favor=10), win_text='虽然输了，招式却有章法，皇上笑道：「有胆气。」',
+             lose=dict(), lose_text='他怯了场，皇上没说什么，只是摇了摇头。'),
+        dict(text='让他婉拒，说还需历练', stat='riding', dc=50, win=dict(heir_favor=5), win_text='皇上点头：「知道进退，也好。」',
+             lose=dict(), lose_text='皇上看了你一眼，没说什么。')]),
+    dict(topic='品行', ask='「若你的手足犯了错，你当如何？」', opts=[
+        dict(text='让他说大义', stat='virtue', dc=65, win=dict(heir_favor=9), win_text='他说「当规劝，若不听则禀明皇阿玛」，皇上颔首：「不错。」',
+             lose=dict(), lose_text='他说得太生硬，皇上皱了皱眉。'),
+        dict(text='让他说亲情', stat='virtue', dc=50, win=dict(heir_favor=6), win_text='他说「手足一体，当替他担着」，皇上点头：「有情义。」',
+             lose=dict(), lose_text='他说得太软，皇上看了你一眼，没说什么。')]),
+    dict(topic='品行', ask='「若下人犯了错，你当如何处置？」', opts=[
+        dict(text='让他说恩威并施', stat='virtue', dc=62, win=dict(heir_favor=8), win_text='他说「当赏罚分明」，皇上颔首：「说得好。」',
+             lose=dict(), lose_text='他说不到点子上，皇上没再追问。'),
+        dict(text='让他说宽厚', stat='virtue', dc=48, win=dict(heir_favor=5), win_text='他说「当给一次机会」，皇上点头：「心善。」',
+             lose=dict(), lose_text='他说得太软，皇上看了你一眼，没说什么。')]),
+    dict(topic='品行', ask='「若有人在你面前说另一位手足的坏话，你当如何？」', opts=[
+        dict(text='让他说当制止', stat='virtue', dc=65, win=dict(heir_favor=9), win_text='他说「当不听不信」，皇上颔首：「不错。」',
+             lose=dict(), lose_text='他说得太生硬，皇上皱了皱眉。'),
+        dict(text='让他说当劝和', stat='virtue', dc=50, win=dict(heir_favor=6), win_text='他说「当劝他们和睦」，皇上点头：「有心。」',
+             lose=dict(), lose_text='他说得太软，皇上看了你一眼，没说什么。')]),
 ]
 
 

@@ -128,5 +128,19 @@ class HeirEventStatTests(unittest.TestCase):
         self.assertEqual(game.get_consort(self.atk)['silver'], 2000 - 12)
 
 
+class ExamContentTests(unittest.TestCase):
+    def test_exam_format(self):
+        for i, p in enumerate(game.EXAM_PROMPTS):
+            p['ask'].format(h='大阿哥')
+            self.assertEqual(len(p['opts']), 2, i)
+            for o in p['opts']:
+                self.assertIn(o['stat'], game.HEIR_CHECK_NAMES, i)
+                self.assertLessEqual(set(o['win']) | set(o['lose']), {'heir_favor'}, i)
+                self.assertTrue(o['win_text'] and o['lose_text'], i)
+            blob = p['ask'] + ''.join(o['text'] + o['win_text'] + o['lose_text'] for o in p['opts'])
+            for word in ('兄弟', '男儿'):   # 公主也会被考校
+                self.assertNotIn(word, blob, i)
+
+
 if __name__ == '__main__':
     unittest.main()
