@@ -54,6 +54,18 @@ def text_of(html):
 
 lin, zy, sz, sn = player("LINWAN0001"), player("ZHOUYU0001"), player("SHENZY0001"), player("SUNIAN0001")
 
+# 总开关关着（默认）：入口、页面、指南条目都没有，直接 POST 也建不了
+ok(A.GROUP_CHAT_ON is False, "default off")
+c.execute("INSERT INTO phone_settings (show_id, web_send) VALUES (?,1)", (SID,)); c.commit(); sync()
+ok("发起群聊" not in lin.get("/p/me/new").get_data(as_text=True), "off: no entry")
+ok(lin.get("/p/me/g/new").status_code == 302, "off: page redirects")
+lin.post("/p/me/g/new", data={"csrf": lin.csrf, "name": "x", "member": ["周屿", "沈知意"]})
+ok(c.execute("SELECT COUNT(*) FROM phone_groups").fetchone()[0] == 0, "off: nothing created")
+ok("群聊怎么玩" not in lin.get("/p/guide").get_data(as_text=True), "off: no guide entry")
+c.execute("DELETE FROM phone_settings"); c.commit()
+A.GROUP_CHAT_ON = True; app.jinja_env.globals["group_chat_on"] = True
+ok("群聊怎么玩" in lin.get("/p/guide").get_data(as_text=True), "on: guide entry")
+
 # 网页发送关着：建群页提示，直接 POST 也建不了
 sync()
 ok("网页发送没有开放" in lin.get("/p/me/g/new").get_data(as_text=True), "closed page")

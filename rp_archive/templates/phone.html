@@ -995,10 +995,12 @@ a { color: var(--link); text-decoration: none; }
     {% if flash %}<p class="alias-err">{{ flash }}</p>{% endif %}
   </form>
   <div class="scroll list">
+    {% if group_chat_on %}
     <a class="row group-entry" href="{{ url_for('player_group_new') }}">
       <div class="avatar sm group-avatar">群</div>
       <div class="body"><div class="top"><span class="name">发起群聊</span></div></div>
     </a>
+    {% endif %}
     {% for n in contacts %}
     <a class="row" data-contact="{{ n }}" href="{{ url_for('player_phone_thread', other=n) }}">
       <div class="avatar sm" data-name="{{ n }}">{{ n[:1] }}</div>

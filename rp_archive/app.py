@@ -5361,8 +5361,8 @@ def _phone_public_items(db, sid):
         else:
             item.update(gift_name=info.get("giftName") or "礼物", text=e["content"] or "")
         items.append(item)
-    for g in db.execute("""SELECT m.*, g.name AS group_name FROM phone_group_msgs m JOIN phone_groups g ON g.id=m.group_id
-                           WHERE m.show_id=? AND m.kind='msg' AND m.is_public=1 AND m.deleted=0""", (sid,)):
+    for g in (db.execute("""SELECT m.*, g.name AS group_name FROM phone_group_msgs m JOIN phone_groups g ON g.id=m.group_id
+                            WHERE m.show_id=? AND m.kind='msg' AND m.is_public=1 AND m.deleted=0""", (sid,)) if GROUP_CHAT_ON else []):
         items.append({"kind": "sms", "from": g["signature"], "to": "某个群" if g["hide_receiver"] else f"群聊「{g['group_name']}」",
                       "text": g["delivered"] if g["show_effect"] else g["content"],
                       "ts": g["created_at"], "time": _phone_time(g["created_at"]), "game_day": g["game_day"],
@@ -6890,6 +6890,9 @@ def _song_pending_for_bot(db, sid, done_ids):
 # 插件同步时照短信计次数。规则照短信：违禁词、个人功能权限、混乱效果（内容侵蚀 + 落款错乱；误投/撕信在群里没意义不做）、
 # 公开播报（开关和概率同短信）。拉黑：你拉黑的人用真名发的群消息你看不到；化名发言不受实名拉黑影响（同匿名对话，防反查）。
 # 发件人自己永远看到原文；化名不能跟角色名单里的人重名。群聊不能送礼。
+# 总开关：用户 2026-09-30 要求做好先不放出来。关着时入口、页面、指南条目都不出现，已有的群也不显示；要开时改成 True 再部署
+GROUP_CHAT_ON       = False
+app.jinja_env.globals["group_chat_on"] = GROUP_CHAT_ON
 _GROUP_MAX_MEMBERS  = 20
 _GROUP_NAME_MAX     = 20
 _GROUP_DAILY_CREATE = 5
@@ -6898,7 +6901,9 @@ def _group_key(gid):
     return f"__group__{gid}"
 
 def _group_get(db, sid, owner, gid):
-    """owner 还在群里才返回 (群, 我的成员行)，否则 None"""
+    """owner 还在群里才返回 (群, 我的成员行)，否则 None；群聊没开放时一律 None"""
+    if not GROUP_CHAT_ON:
+        return None
     g = db.execute("SELECT * FROM phone_groups WHERE id=? AND show_id=?", (gid, sid)).fetchone()
     if not g:
         return None
@@ -6940,6 +6945,8 @@ def _group_msgs(db, sid, owner, g, me, roster=None, blocked=None):
     return out
 
 def _group_list(db, sid, owner):
+    if not GROUP_CHAT_ON:
+        return []
     return db.execute("""SELECT g.*, m.joined_at FROM phone_groups g JOIN phone_group_members m ON m.group_id=g.id
                          WHERE g.show_id=? AND m.role=? AND m.left_at=0 ORDER BY g.id""", (sid, owner)).fetchall()
 
@@ -6979,6 +6986,8 @@ def _phone_all_views(db, sid, owner):
 
 def _group_can_act(db, sid, owner):
     """建群/发言/拉人/改名的共同前提：跟网页发送一样"""
+    if not GROUP_CHAT_ON:
+        return "群聊还没有开放"
     st = _phone_status(db, sid, owner)
     if not st["can"]:
         return st["why"] or "网页发送没有开放"
@@ -7127,6 +7136,8 @@ def player_group_new():
     sid, owner = who
     if owner == PHONE_ADMIN:
         return redirect(url_for("admin_phone_index"))
+    if not GROUP_CHAT_ON:
+        return redirect(url_for("player_phone_new"))
     db = get_db()
     if request.method == "POST":
         if not hmac.compare_digest(request.form.get("csrf", ""), session.get("phone_csrf", "") or "-"):
