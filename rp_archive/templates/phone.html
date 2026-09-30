@@ -146,6 +146,10 @@ a { color: var(--link); text-decoration: none; }
 }
 .mine .bubble { background: var(--mine); color: var(--mine-text); border-bottom-right-radius: 5px; }
 .theirs .bubble { background: var(--theirs); color: var(--theirs-text); border-bottom-left-radius: 5px; }
+/* 选了页面底色后，对方的气泡用白底加细边，和底色分得开（深色模式本来就有明暗差，不用） */
+@media (prefers-color-scheme: light) {
+  .phone[data-wall="paper"] .theirs .bubble, .phone[data-wall="mist"] .theirs .bubble, .phone[data-wall="sage"] .theirs .bubble, .phone[data-wall="rose"] .theirs .bubble { background: #fff; border: 1px solid var(--line); }
+}
 .sig { opacity: .82; font-size: 12px; color: var(--muted); margin: 6px 0 2px 12px; }
 .gift {
   border: 1px solid var(--gift-line); background: var(--gift-bg); color: var(--gift-text);
@@ -1373,7 +1377,8 @@ a { color: var(--link); text-decoration: none; }
         {% if m.show_time %}<div class="stamp">{% if m.day_break %}<b>{{ m.day_break }}</b> {% endif %}{{ m.time }}</div>{% endif %}
         {% if m.kind == 'sys' %}<div class="stamp group-sys">{{ m.text }}</div>{% else %}
         <div class="msg {{ 'mine' if m.mine else 'theirs' }}" id="message-{{ [sid, owner, m.id]|phone_message_key }}">
-          {% if m.sig_above %}<div class="sig">{{ m.sig_above }}</div>{% endif %}
+          {# 一对一里落款和对方同名就不重复写；落款被换了/匿名/群聊才显示 #}
+          {% if m.sig_above and (group or m.sig_above != their_av) %}<div class="sig">{{ m.sig_above }}</div>{% endif %}
           {% if group and m.mine and m.alias %}<div class="avatar bav public-avatar" title="你的化名">{{ m.alias[:1] }}</div>
           {% elif group and not m.mine %}{% if m.av %}<div class="avatar bav" data-name="{{ m.av }}">{{ m.av[:1] }}</div>{% else %}<div class="avatar bav public-avatar">{{ m.av_initial }}</div>{% endif %}
           {% elif m.mine and my_alias %}<div class="avatar bav public-avatar" title="你的化名">{{ my_alias[:1] }}</div>
