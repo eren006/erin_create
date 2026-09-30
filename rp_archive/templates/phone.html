@@ -329,6 +329,7 @@ a { color: var(--link); text-decoration: none; }
 .avatar { position: relative; }
 .avatar > img.av { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 .avatar-edit { display: flex; gap: 14px; align-items: center; margin-bottom: 16px; }
+.bar .title .avatar.head { width: 30px; height: 30px; font-size: 13px; margin: 0 auto 3px; }
 .avatar.big { width: 64px; height: 64px; font-size: 24px; flex-shrink: 0; }
 .avatar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
 .avatar-msg { flex-basis: 100%; font-size: 11px; color: var(--muted); }
@@ -881,9 +882,9 @@ a { color: var(--link); text-decoration: none; }
 {% else %}
   <header class="bar">
     <a class="back" href="{{ purl('player_phone_inbox', _as=admin_as) }}">信息</a>
-    {% if alias_thread == 'out' %}<div class="title">{{ other.partition('＠')[0] }}<small>你的化名：{{ other.partition('＠')[2] }}</small></div>
-    {% elif alias_thread == 'back' %}<div class="title">{{ other }}<small>匿名</small></div>
-    {% else %}<div class="title">{{ other }}{{ npc(other) }}{% if admin_as %}<small>管理 · 以 {{ owner }} 的视角</small>{% endif %}</div>{% endif %}
+    {% if alias_thread == 'out' %}<div class="title">{% set _w = other.partition('＠')[0] %}<div class="avatar head" data-name="{{ _w }}">{{ _w[:1] }}</div>{{ _w }}<small>你的化名：{{ other.partition('＠')[2] }}</small></div>
+    {% elif alias_thread == 'back' %}<div class="title"><div class="avatar head public-avatar">?</div>{{ other }}<small>匿名</small></div>
+    {% else %}<div class="title"><div class="avatar head" data-name="{{ other }}">{{ other[:1] }}</div>{{ other }}{{ npc(other) }}{% if admin_as %}<small>管理 · 以 {{ owner }} 的视角</small>{% endif %}</div>{% endif %}
     <div class="right">{% if alias_state and alias_state.party and not alias_state.blocked and not phone_admin %}
       <form method="post" action="{{ url_for('player_alias_block') }}" onsubmit="return confirm('拉黑后这段匿名对话立刻结束，双方都不能再发；满 2 小时后你才能解除。确定？')">
         <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="key" value="{{ other }}">
