@@ -155,7 +155,8 @@ a { color: var(--link); text-decoration: none; }
 .entry .hint { color: var(--muted); font-size: 13px; text-align: center; }
 
 /* 次数条 / 回执 / 输入栏 */
-.quota { text-align: center; font-size: 12px; color: var(--muted); padding: 6px 12px; border-bottom: .5px solid var(--line); }
+.quota { grid-column: 1 / -1; text-align: center; font-size: 11px; font-weight: 400; color: var(--muted); padding-top: 4px; }
+.quota .near-limit { color: var(--tag); font-weight: 600; }
 .notice {
   align-self: center; max-width: 88%; margin: 14px 0 4px; padding: 6px 12px; border-radius: 12px;
   background: var(--theirs); color: var(--muted); font-size: 13px; text-align: center; white-space: pre-wrap;
@@ -220,8 +221,8 @@ a { color: var(--link); text-decoration: none; }
     <form method="post" action="{{ url_for('player_phone_logout') }}"><button class="linkbtn" type="submit">退出</button></form>
     <div class="title">信息<small>{{ owner }}</small></div>
     <div class="right">{% if status.can %}<a href="{{ url_for('player_phone_new') }}" aria-label="新信息" style="font-size:22px;line-height:1;">✎</a>{% endif %}</div>
+    {% include "_phone_quota.html" %}
   </header>
-  {% include "_phone_quota.html" %}
   <div class="scroll list" id="inbox">
     {% for t in threads %}
     <a class="row" data-other="{{ t.other }}" data-received-ts="{{ t.received_ts }}" href="{{ url_for('player_phone_thread', other=t.other) }}">
@@ -258,8 +259,8 @@ a { color: var(--link); text-decoration: none; }
     <a class="back" href="{{ url_for('player_phone_inbox') }}">信息</a>
     <div class="title">{{ other }}</div>
     <div class="right"></div>
+    {% include "_phone_quota.html" %}
   </header>
-  {% include "_phone_quota.html" %}
   <div class="scroll" id="scroll">
     <div class="chat" data-received-ts="{{ msgs|rejectattr('mine')|map(attribute='ts')|max|default(0) }}">
       {% for m in msgs %}

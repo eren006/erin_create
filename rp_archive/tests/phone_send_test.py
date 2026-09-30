@@ -41,6 +41,9 @@ def send(cl, to, text, kind="sms", token=None):
     assert r.status_code == 302
     with cl.session_transaction() as s: pass
     return cl.get("/p/me/"+to).get_data(as_text=True)
+def quota_text(html):
+    return re.sub(r"<[^>]+>", "", html)
+
 def ok(c, m): 
     if not c: raise AssertionError(m)
 
@@ -67,13 +70,13 @@ ok(c.execute("SELECT COUNT(*) FROM extra_events").fetchone()[0] == 0, "off: noth
 # 打开
 c.execute("INSERT INTO phone_settings (show_id, web_send) VALUES (?,1)", (SID,)); c.commit()
 ok(sync()["web_send"] is True, "on")
-t, page = csrf(lin, "周屿"); ok(t and 'id="compose"' in page and "短信 0/3" in page, "compose shown")
+t, page = csrf(lin, "周屿"); ok(t and 'id="compose"' in page and "短信 0/3" in quota_text(page), "compose shown")
 # CSRF 错
 p = send(lin, "周屿", "伪造", token="wrong"); ok("页面过期" in p and c.execute("SELECT COUNT(*) FROM extra_events").fetchone()[0]==0, "csrf")
 assert '<textarea name="text" id="text" rows="1" maxlength="500" placeholder="短信">伪造</textarea>' in p
 # 正常发
 p = send(lin, "周屿", "今晚天台见")
-ok("鸽子衔往 周屿" in p and "今晚天台见" in p and "短信 1/3" in p, p[-600:])
+ok("鸽子衔往 周屿" in p and "今晚天台见" in p and "短信 1/3" in quota_text(p), p[-600:])
 ok("localStorage.removeItem(draftKey);" in p and "今晚天台见</textarea>" not in p, "successful send clears draft")
 zy = player("ZHOUYU0001")
 ok("今晚天台见" in zy.get("/p/me/林晚").get_data(as_text=True), "recipient sees")
@@ -89,13 +92,13 @@ d = sync(counts={"sms":{"林晚":1},"gift":{}}); ev = d["events"]; ok(len(ev)==2
 # 机器人计进自己次数后上报 3，游标前进 → 仍是 3/3，不重复计
 last_id = max(e["id"] for e in ev)
 sync(after=last_id, counts={"sms":{"林晚":3},"gift":{}})
-ok("短信 3/3" in lin.get("/p/me/周屿").get_data(as_text=True), "no double count")
+ok("短信 3/3" in quota_text(lin.get("/p/me/周屿").get_data(as_text=True)), "no double count")
 # 新游戏日：机器人上报 D3 次数 0 → 可以继续发
 sync(after=last_id)
 r = bot.post("/api/phone/sync", headers={"X-Archive-Token":TOKEN}, json={"after":last_id,"snapshot":{
     "game_day":"D3","roster":ROSTER,"rules":{"chaos":{"dailyLimit":3},"mail_cooldown_min":0,"gift_daily_limit":2,"gift_cooldown_min":0},
     "counts":{"sms":{},"gift":{}},"last":{"sms":{},"gift":{}}}})
-ok("短信 0/3" in lin.get("/p/me/周屿").get_data(as_text=True), "new day")
+ok("短信 0/3" in quota_text(lin.get("/p/me/周屿").get_data(as_text=True)), "new day")
 # 冷却
 sync(after=last_id, rules_extra={"mail_cooldown_min":60})
 ok("鸽子正在休息" in send(lin, "沈知意", "冷却测试"), "cooldown")
@@ -112,7 +115,7 @@ p = send(lin, "沈知意", "你看不到这条")
 ok("鸽子衔往 沈知意" in p and "你看不到这条" in p, "silent: sender sees")
 ok(c.execute("SELECT COUNT(*) FROM extra_events").fetchone()[0] == n0, "silent: not in extra_events")
 szy = player("SHENZY0001"); ok("你看不到这条" not in szy.get("/p/me").get_data(as_text=True) + szy.get("/p/me/林晚").get_data(as_text=True), "silent: recipient blind")
-ok("短信 1/3" in lin.get("/p/me/沈知意").get_data(as_text=True), "silent counts")
+ok("短信 1/3" in quota_text(lin.get("/p/me/沈知意").get_data(as_text=True)), "silent counts")
 # 混乱：100% 误投 + 换落款 + 撕信 + 内容丢失
 sync(after=last_id, chaos={"misdelivery":100,"mistakenSignature":100,"tornPage":100,"loseContent":100})
 p = send(lin, "周屿", "这是一条足够长可以被撕开的短信内容呀")
@@ -138,7 +141,7 @@ ok('id="compose"' not in lin.get("/p/me/未知号码").get_data(as_text=True), "
 np = lin.get("/p/me/new").get_data(as_text=True); ok("周屿" in np and "沈知意" in np and ">林晚<" not in np, "new page")
 # 快照过期 → 按自然日只数网页记录
 c.execute("UPDATE phone_sync SET synced_at=0"); c.commit()
-ok("短信 0/3" in lin.get("/p/me/周屿").get_data(as_text=True), "stale: natural day")
+ok("短信 0/3" in quota_text(lin.get("/p/me/周屿").get_data(as_text=True)), "stale: natural day")
 p = send(lin, "周屿", "机器人挂了也能发"); ok("鸽子衔往" in p, "stale send")
 row = c.execute("SELECT extra_info FROM extra_events ORDER BY id DESC LIMIT 1").fetchone()
 ok(json.loads(row[0])["day_key"].startswith("日期"), "stale day_key")
