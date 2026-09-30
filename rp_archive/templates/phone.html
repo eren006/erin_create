@@ -1836,6 +1836,8 @@ a { color: var(--link); text-decoration: none; }
       });
     }
     document.getElementById('avatarPick').addEventListener('click', function () { avFile.click(); });
+    var avTap = document.getElementById('avatarTap');
+    if (avTap) avTap.addEventListener('click', function () { avFile.click(); });
     avFile.addEventListener('change', async function () {
       var f = avFile.files[0]; avFile.value = '';
       if (!f) return;
@@ -1843,6 +1845,7 @@ a { color: var(--link); text-decoration: none; }
       var fd = new FormData(); fd.append('avatar', await shrink(f), 'avatar.jpg');
       var r = await avPost('/p/me/avatar', fd);
       avMsg.textContent = r.msg || '';
+      if (!r.ok && r.msg && !document.getElementById('appearance').open) alert(r.msg);   // 从「我的」页点头像直接换时，弹窗关着，出错要让人看到
       if (r.ok) { window.PHONE_AVATARS[me] = r.v; avRemove.hidden = false; applyAvatars(); }
     });
     avRemove.addEventListener('click', async function () {

@@ -29,7 +29,7 @@
 {% else %}
 <div class="scroll profile-page">
   <section class="pf-card">
-    <div class="avatar big" data-name="{{ owner }}">{{ owner[:1] }}</div>
+    <button type="button" class="pf-avatar" id="avatarTap" aria-label="更换头像"><span class="avatar big" data-name="{{ owner }}">{{ owner[:1] }}</span><span class="pf-cam" aria-hidden="true">📷</span></button>
     <div class="pf-who"><h1>{{ my_nick or owner }}</h1>{% if my_nick %}<p>{{ owner }}</p>{% endif %}</div>
   </section>
   {% if flash %}<div class="notice profile-flash">{{ flash }}</div>{% endif %}
@@ -53,7 +53,9 @@
   <style>
   .profile-page { padding-bottom: 28px; }
   .pf-card { display: flex; align-items: center; gap: 14px; margin: var(--gap, 12px) var(--gutter, 18px) 0; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); }
-  .pf-card .avatar.big { flex: none; width: 60px; height: 60px; font-size: 26px; margin: 0; }
+  .pf-avatar { position: relative; flex: none; width: 60px; height: 60px; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .pf-card .avatar.big { display: flex; width: 60px; height: 60px; font-size: 26px; margin: 0; }
+  .pf-cam { position: absolute; right: -2px; bottom: -2px; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--bg); border: 1px solid var(--line); font-size: 11px; }
   .pf-who { min-width: 0; }
   .pf-who h1 { margin: 0; font-size: 20px; line-height: 26px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pf-who p { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
